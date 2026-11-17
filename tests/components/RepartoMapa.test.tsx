@@ -20,6 +20,9 @@ import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
 //   - R540: tocar un marcador abre su hoja, y su «Gestionar» lleva al MISMO modo foco que la
 //     tarjeta, sin llamar al servidor antes de «Confirmar guía»;
 //   - R544: «Mostrar mapa» / «Ocultar mapa» con sus textos, a 44 px.
+// SLT-192 «Mapa de ruta según el canvas» (R881-R885): con el mapa abierto, «Ocultar mapa» y la nota
+// del punto de partida van al pie del mapa (`RutaMapa` recibe la acción y la nota); el rótulo
+// «Mapa de ruta» se ve siempre; cerrado, «Mostrar mapa» en su sitio de hoy.
 // El mapa (Leaflet) y el carrusel (embla) se sustituyen por dobles que exponen sus props: aquí se
 // prueba el cableado del módulo; los dos componentes tienen sus propios tests.
 
@@ -57,6 +60,13 @@ vi.mock("@/app/(app)/mis-asignaciones/_components/RutaMapa", () => ({
             {`marcador ${p.id}`}
           </button>
         ))}
+        {/* SLT-192: en la app, «Ocultar mapa» del pie y la nota bajo la leyenda (RutaMapaInner). */}
+        {props.onOcultar ? (
+          <button type="button" onClick={props.onOcultar}>
+            plegar (doble)
+          </button>
+        ) : null}
+        {props.nota ? <p data-testid="nota-doble">{props.nota}</p> : null}
       </div>
     );
   },
@@ -215,7 +225,7 @@ describe("SLT-166 R540 — el marcador abre su hoja y «Gestionar» sigue el cam
     montar();
 
     await user.click(screen.getByRole("button", { name: "marcador g2" }));
-    const hoja = screen.getByRole("dialog", { name: "Parada 2 de 3" });
+    const hoja = screen.getByRole("dialog", { name: "Parada 2" });
     expect(within(hoja).getByText("REM-G2")).toBeInTheDocument();
     expect(within(hoja).getByText("Dos")).toBeInTheDocument();
 
@@ -233,37 +243,108 @@ describe("SLT-166 R540 — el marcador abre su hoja y «Gestionar» sigue el cam
     expect(panel).not.toHaveTextContent("Uno");
     expect(screen.getByRole("button", { name: "Confirmar guía" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Órdenes en reparto" })).toBeNull();
-    expect(screen.queryByRole("dialog", { name: "Parada 2 de 3" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Parada 2" })).toBeNull();
     // Como desde la tarjeta: el servidor no se entera hasta confirmar la guía.
     expect(vi.mocked(escogerParaGestion)).not.toHaveBeenCalled();
   });
 
-  it("cerrar la hoja vuelve al mapa", async () => {
+  it("cerrar la hoja (Escape; SLT-192 R889: ya no hay «Cerrar») vuelve al mapa", async () => {
     const user = userEvent.setup();
     montar();
     await user.click(screen.getByRole("button", { name: "marcador g1" }));
-    const hoja = screen.getByRole("dialog", { name: "Parada 1 de 3" });
-    await user.click(within(hoja).getByRole("button", { name: "Cerrar" }));
-    expect(screen.queryByRole("dialog", { name: "Parada 1 de 3" })).toBeNull();
+    const hoja = screen.getByRole("dialog", { name: "Parada 1" });
+    expect(within(hoja).queryByRole("button", { name: "Cerrar" })).toBeNull();
+    await user.keyboard("{Escape}");
+    await vi.waitFor(() => expect(screen.queryByRole("dialog", { name: "Parada 1" })).toBeNull());
     expect(screen.getByTestId("ruta-mapa")).toBeInTheDocument();
   });
 });
 
-describe("SLT-166 R544 — «Mostrar mapa» / «Ocultar mapa» a 44 px", () => {
-  it("conserva sus textos, abre y cierra el mapa y mide 44 px", async () => {
+describe("SLT-166 R544 + SLT-192 R882/R883 — «Mostrar mapa» (44 px) y la acción de plegar del pie", () => {
+  it("plegar desde el pie muestra «Mostrar mapa» (44 px, aria-expanded=false) y este reabre el mapa", async () => {
     const user = userEvent.setup();
     montar();
     const grupo = screen.getByRole("group", { name: "Mapa de ruta" });
-    const boton = within(grupo).getByRole("button", { name: "Ocultar mapa" });
-    expect(boton.className).toContain("h-11");
-    expect(boton).toHaveAttribute("aria-expanded", "true");
 
-    await user.click(boton);
-    expect(within(grupo).getByRole("button", { name: "Mostrar mapa" })).toHaveAttribute("aria-expanded", "false");
+    await user.click(within(grupo).getByRole("button", { name: "plegar (doble)" }));
+    const mostrar = within(grupo).getByRole("button", { name: "Mostrar mapa" });
+    expect(mostrar).toHaveAttribute("aria-expanded", "false");
+    expect(mostrar.className).toContain("h-11");
+    // El foco pasa a «Mostrar mapa»: el botón pulsado desaparece con el mapa.
+    expect(mostrar).toHaveFocus();
 
-    await user.click(within(grupo).getByRole("button", { name: "Mostrar mapa" }));
-    expect(within(grupo).getByRole("button", { name: "Ocultar mapa" })).toBeInTheDocument();
+    await user.click(mostrar);
+    expect(within(grupo).queryByRole("button", { name: "Mostrar mapa" })).toBeNull();
     expect(await screen.findByTestId("ruta-mapa")).toBeInTheDocument();
+  });
+});
+
+describe("SLT-192 R881/R884/R885 — rótulo, control único y nota en el pie", () => {
+  const RUTA_CON_AVISOS: RutaResumenDTO = { ...RUTA, estado: "desactualizada", secuenciaFuente: "local" };
+  const NOTA = "El punto de partida es aproximado (no se usó tu ubicación GPS reciente).";
+
+  function montarCon(ruta: RutaResumenDTO) {
+    return render(
+      <RepartoModule
+        kpis={<KpisMensajero kpis={{ pendientes: 3, entregadas: 0, porCobrar: 0, totalACobrar: 0 }} />}
+        porGestionar={TRES}
+        conAyuda={[]}
+        porRecoger={[]}
+        ordenEnGestionId={null}
+        ruta={ruta}
+        bloqueo={SIN_BLOQUEO}
+      />,
+    );
+  }
+
+  it("R881: abierto, el módulo no pinta ningún «Ocultar mapa»/«Mostrar mapa»; `RutaMapa` recibe la acción", () => {
+    montar();
+    expect(screen.queryByRole("button", { name: /Ocultar mapa|Mostrar mapa/ })).toBeNull();
+    expect(typeof ultimasPropsDelMapa().onOcultar).toBe("function");
+  });
+
+  it("R881: con avisos y el mapa abierto, la fila del aviso no tiene control del mapa", () => {
+    montarCon(RUTA_CON_AVISOS);
+    const [primero] = screen.getAllByRole("alert") as [HTMLElement];
+    expect(within(primero).getByRole("button", { name: /^Ver más/ })).toBeInTheDocument();
+    expect(within(primero).queryByRole("button", { name: /Ocultar mapa|Mostrar mapa/ })).toBeNull();
+  });
+
+  it("R883: con avisos y el mapa cerrado, «Mostrar mapa» va en la fila del primer aviso", async () => {
+    const user = userEvent.setup();
+    montarCon(RUTA_CON_AVISOS);
+    await user.click(screen.getByRole("button", { name: "plegar (doble)" }));
+    const [primero] = screen.getAllByRole("alert") as [HTMLElement];
+    expect(within(primero).getByRole("button", { name: "Mostrar mapa" })).toBeInTheDocument();
+    const grupo = screen.getByRole("group", { name: "Mapa de ruta" });
+    expect(within(grupo).queryByRole("button", { name: "Mostrar mapa" })).toBeNull();
+  });
+
+  it("R884: el rótulo «Mapa de ruta» se ve con y sin avisos, abierto y cerrado", async () => {
+    const user = userEvent.setup();
+    for (const ruta of [RUTA, RUTA_CON_AVISOS]) {
+      const { unmount } = montarCon(ruta);
+      const grupo = screen.getByRole("group", { name: "Mapa de ruta" });
+      expect(within(grupo).getByText("Mapa de ruta")).toBeVisible();
+      await user.click(screen.getByRole("button", { name: "plegar (doble)" }));
+      expect(within(grupo).getByText("Mapa de ruta")).toBeVisible();
+      unmount();
+    }
+  });
+
+  it("R885: con origen aproximado, la nota va al mapa (bajo su leyenda), no encima del mapa", () => {
+    montarCon({ ...RUTA, origenFuente: "centroide" });
+    expect(ultimasPropsDelMapa().nota).toBe(NOTA);
+    // Una sola vez y DENTRO del mapa (el doble la pinta donde la pinta `RutaMapaInner`).
+    const notas = screen.getAllByText(NOTA);
+    expect(notas).toHaveLength(1);
+    expect(screen.getByTestId("ruta-mapa").contains(notas[0]!)).toBe(true);
+  });
+
+  it("R885: con origen GPS no hay nota", () => {
+    montar();
+    expect(ultimasPropsDelMapa().nota).toBeUndefined();
+    expect(screen.queryByText(NOTA)).toBeNull();
   });
 });
 
@@ -279,6 +360,6 @@ describe("SLT-166 (review m3) — un solo total: el de la ruta sin filtrar", () 
     expect(tarjeta).toHaveTextContent("2 de 3");
     expect(ultimasPropsDelMapa().totalParadas).toBe(3);
     await user.click(screen.getByRole("button", { name: "marcador g2" }));
-    expect(screen.getByRole("dialog", { name: "Parada 2 de 3" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Parada 2" })).toBeInTheDocument();
   });
 });

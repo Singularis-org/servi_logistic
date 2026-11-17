@@ -146,6 +146,15 @@ function maestro(): Page {
   return paginaMaestro;
 }
 
+/**
+ * SLT-130 (design §4): pulsa «Siguiente» del form del plan y espera a que el paso `proximo` esté en
+ * pantalla (su título es el `h3` del paso).
+ */
+async function siguientePaso(form: Locator, proximo: string): Promise<void> {
+  await form.getByRole("button", { name: "Siguiente", exact: true }).click();
+  await expect(form.getByRole("heading", { level: 3, name: proximo, exact: true })).toBeVisible({ timeout: 30_000 });
+}
+
 function laOrden(): OrdenE2E {
   if (!orden) throw new Error("no hay orden: falló el caso que la crea");
   return orden;
@@ -223,6 +232,9 @@ test("el superadmin pone por pantalla el plan en «Porcentual», 2 % y mínimo 5
 
   const form = page.getByRole("dialog", { name: TEXTO.dialogoEditar }).getByRole("form", { name: TEXTO.formEditar });
   await expect(form).toBeVisible({ timeout: 60_000 });
+  // SLT-130 (design §4): el form va por pasos; el cobro por orden es el tercero.
+  await siguientePaso(form, "Precio y descuentos");
+  await siguientePaso(form, TEXTO.cobroPorOrden);
   const porcentual = form
     .getByRole("radiogroup", { name: TEXTO.cobroPorOrden })
     .getByRole("radio", { name: TEXTO.porcentual, exact: true });
@@ -230,6 +242,11 @@ test("el superadmin pone por pantalla el plan en «Porcentual», 2 % y mínimo 5
   await expect(porcentual).toBeChecked();
   await form.getByRole("textbox", { name: TEXTO.porcentaje, exact: true }).fill("2");
   await form.getByRole("textbox", { name: TEXTO.minimo, exact: true }).fill("500");
+  // El resto de pasos no cambia; «Cuándo rige» se queda en «De inmediato», así que el botón dice «Guardar».
+  await siguientePaso(form, "Topes");
+  await siguientePaso(form, "Módulos");
+  await siguientePaso(form, "Cuándo rige");
+  await siguientePaso(form, "Revisar y programar");
 
   const guardar = form.getByRole("button", { name: TEXTO.formEditar, exact: true });
   await expect(guardar).toBeEnabled({ timeout: 60_000 });

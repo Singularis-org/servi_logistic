@@ -73,6 +73,7 @@ const EMPRESAS: EmpresaListada[] = [
     // SL-45 (R28): el Record del listado exige la deuda; aquí, al día.
     deudaPlataforma: { deuda: "0.00", estado: "al_dia", importe: "0.00" },
     pagadoPlataforma: "0.00",
+    pagosPorConfirmar: 0,
     pais: { id: "CR", nombre: "Costa Rica" },
   },
   {
@@ -87,6 +88,7 @@ const EMPRESAS: EmpresaListada[] = [
     // SL-45 (R28): el Record del listado exige la deuda; aquí, al día.
     deudaPlataforma: { deuda: "0.00", estado: "al_dia", importe: "0.00" },
     pagadoPlataforma: "0.00",
+    pagosPorConfirmar: 0,
     // SL-20 (R9, R46): un país ya apagado sigue saliendo en la columna.
     pais: { id: "XA", nombre: "País Apagado" },
   },

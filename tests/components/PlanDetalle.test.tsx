@@ -18,6 +18,8 @@ vi.mock("next/navigation", () => ({
 
 import { PlanDetalle } from "@/app/(app)/plataforma/planes/[planId]/_components/PlanDetalle";
 
+import { avanzarHasta, terminar, tituloDelPasoActual } from "./plan-form-pasos";
+
 const PLAN_ID = "0b6f3a2e-1c4d-4e5f-8a9b-0c1d2e3f4a5b";
 const ORG = "6f1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f60";
 
@@ -301,8 +303,8 @@ describe("SLT-58 R15 — editar y los avisos de topes pasados", () => {
     montar(DETALLE, { editarPlan });
 
     await user.click(screen.getByRole("button", { name: "Editar" }));
-    const panel = await screen.findByRole("dialog", { name: "Editar plan" });
-    await user.click(within(panel).getByRole("button", { name: "Guardar" }));
+    await screen.findByRole("dialog", { name: "Editar plan" });
+    await terminar(user);
 
     await waitFor(() => expect(editarPlan).toHaveBeenCalledTimes(1));
     expect(editarPlan.mock.calls[0][0]).toMatchObject({ planId: PLAN_ID, vigenteDesde: null });
@@ -321,11 +323,38 @@ describe("SLT-58 R15 — editar y los avisos de topes pasados", () => {
 
     await user.click(screen.getByRole("button", { name: "Editar" }));
     const panel = await screen.findByRole("dialog", { name: "Editar plan" });
+    await avanzarHasta(user, "Cuándo rige");
     await user.click(within(panel).getByRole("radio", { name: "A partir de" }));
     await user.type(within(panel).getByLabelText("Fecha"), "2030-02-01");
+    await avanzarHasta(user, "Revisar y programar");
     await user.click(within(panel).getByRole("button", { name: "Programar cambio" }));
 
     expect(await screen.findByRole("status")).toHaveTextContent("Cambio programado desde 2030-02-01.");
+  });
+
+  it("R6: el panel abre el formulario por pasos", async () => {
+    const user = userEvent.setup();
+    montar(DETALLE);
+
+    await user.click(screen.getByRole("button", { name: "Editar" }));
+    const panel = await screen.findByRole("dialog", { name: "Editar plan" });
+    // El Sheet ancho de la maqueta (design §7), sin el tope de ancho por defecto. jsdom descarta el
+    // `width: min(…)`, así que se mide el `maxWidth` que lo acompaña.
+    expect(panel.style.maxWidth).toBe("none");
+    // El mismo componente de pasos que al crear, con los pasos de editar, abierto en General.
+    const pasos = within(panel).getByRole("navigation", { name: "Pasos" });
+    expect(within(pasos).getAllByRole("button").map((b) => b.textContent?.replace(/^\d+/, ""))).toEqual([
+      "General",
+      "Precio y descuentos",
+      "Cobro por orden",
+      "Topes",
+      "Módulos",
+      "Cuándo rige",
+      "Revisar y programar",
+    ]);
+    expect(tituloDelPasoActual()).toBe("General");
+    expect(within(panel).getByText("Paso 1 de 7")).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "Siguiente" })).toBeInTheDocument();
   });
 
   it("SLT-83 (texto aprobado 2026-11-04): el panel «Editar plan» explica cuándo se cobra el costo por orden fijo y el porcentual", async () => {
@@ -380,9 +409,10 @@ describe("SLT-58 R18 — un rechazo se explica y no da el cambio por hecho", () 
 
     await user.click(screen.getByRole("button", { name: "Editar" }));
     const panel = await screen.findByRole("dialog", { name: "Editar plan" });
-    await user.click(within(panel).getByRole("button", { name: "Guardar" }));
+    await terminar(user);
 
-    const nombre = within(panel).getByRole("textbox", { name: "Nombre" });
+    // SLT-130 (R25): el error del nombre lleva de vuelta a General.
+    const nombre = await within(panel).findByRole("textbox", { name: "Nombre" });
     await waitFor(() => expect(nombre).toHaveAttribute("aria-invalid", "true"));
     expect(within(panel).getByText("Ya hay un plan con ese nombre.")).toBeInTheDocument();
     expect(screen.queryByRole("status")).toBeNull();

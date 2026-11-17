@@ -12,9 +12,10 @@ import { derivarDeudaPlataforma } from "@/lib/utils/deuda-plataforma";
 /** Lo que lee el listado: las empresas, sus cargos de la plataforma y sus pagos (SL-45). */
 /** SL-36 (R37): y el estado de sus integraciones. SLT-66 (R31, R32): y su plan y cobro vigente (`$queryRaw`). */
 /** SLT-118 (design §5; R18): y las cuotas de sus facturas cerradas. */
+/** SLT-60 (design §4.7; R7, R8, R27): los pagos son los confirmados (sus aplicaciones), y el contador por confirmar. */
 export type EmpresasPlataformaPrismaClient = Pick<
   PrismaClient,
-  "organizacion" | "cobroPlataformaMovimiento" | "walletMovimiento" | "integracion" | "facturaPlataforma" | "$queryRaw"
+  "organizacion" | "cobroPlataformaMovimiento" | "pagoPlataformaAplicacion" | "integracion" | "facturaPlataforma" | "$queryRaw"
 >;
 
 /** SLT-66 (R31, R32): una fila de `planYCobroVigente`. SLT-83 (R22): la tarifa con su modo. */
@@ -38,6 +39,9 @@ type PlanYCobroLeido = TarifaLeida & {
  * agrupadas por `organizacion_id` para todas las empresas a la vez, no tres por empresa.
  *
  * SLT-66 (design §6.4; R31, R32): y su plan y su cobro vigente, en una consulta más para todas.
+ *
+ * SLT-60 (design §4.7; R7, R8, R27): «Pagado» y la deuda cuentan solo los pagos CONFIRMADOS, y cada empresa
+ * trae cuántos pagos tiene por confirmar, en una consulta más para todas.
  */
 export class EmpresasPlataformaRepository implements IEmpresasPlataformaRepository {
   constructor(private readonly prisma: EmpresasPlataformaPrismaClient) {}
@@ -66,6 +70,7 @@ export class EmpresasPlataformaRepository implements IEmpresasPlataformaReposito
       const ids = filas.map((f) => f.id);
       const { cargosDe, pagadoDe } = await this.cuentasConLaPlataforma(ids);
       const planYCobroDe = await this.planYCobroVigente(ids);
+      const porConfirmarDe = await this.pagosPorConfirmar(ids);
       return filas.map((f) => ({
         id: f.id,
         nombre: f.nombre,
@@ -75,6 +80,7 @@ export class EmpresasPlataformaRepository implements IEmpresasPlataformaReposito
         ...planYCobroDe(f.id),
         deudaPlataforma: derivarDeudaPlataforma(cargosDe(f.id), pagadoDe(f.id)),
         pagadoPlataforma: pagadoDe(f.id),
+        pagosPorConfirmar: porConfirmarDe(f.id),
         pais: f.pais,
       }));
     });
@@ -144,9 +150,24 @@ export class EmpresasPlataformaRepository implements IEmpresasPlataformaReposito
   }
 
   /**
-   * SL-45 (design §3, §9) — por empresa, las sumas de cargos y reversos y la Σ de los pagos vigentes.
-   * «Vigente» es la regla de `PagoPlataformaRepository.sumaPagosVigentes`: un pago con contra-asiento
-   * (`ingreso_ajuste`, `origen_tipo = gasto`, `origen_id` = el pago) está anulado y no cuenta.
+   * SLT-60 (design §4.7; R27) — por empresa, cuántos pagos tiene por confirmar. Una sola consulta para todas,
+   * con la MISMA `pago_plataforma_por_confirmar` que usan lo disponible y la lectura del detalle: si el
+   * contador tuviera su propia regla, podría contar un pago que el detalle no lista. Parte de la lista de ids
+   * (`unnest`), como `planYCobroVigente`: cada empresa pedida tiene su fila.
+   */
+  private async pagosPorConfirmar(organizacionIds: string[]) {
+    const filas = await this.prisma.$queryRaw<{ id: string; n: number }[]>`
+      SELECT i."id", (SELECT count(*) FROM pago_plataforma_por_confirmar(i."id"))::int AS "n"
+        FROM unnest(${organizacionIds}::text[]) AS i("id")`;
+    const porEmpresa = new Map(filas.map((f) => [f.id, Number(f.n)]));
+    return (id: string): number => porEmpresa.get(id) ?? 0;
+  }
+
+  /**
+   * SL-45 (design §3, §9) — por empresa, las sumas de cargos y reversos y la Σ de lo pagado.
+   * SLT-60 (design §4.7; R7, R8): lo pagado es la Σ de las aplicaciones de la empresa, que es la Σ de sus pagos
+   * CONFIRMADOS (cada confirmación reparte exactamente el monto de su pago). Un pago por confirmar o anulado
+   * no tiene aplicaciones: no cuenta. La misma regla que `PagoPlataformaRepository.sumaPagosConfirmados`.
    *
    * Cada consulta acota a las empresas del listado: en plataforma no hay extensión que filtre, y el
    * `organizacion_id` de la fila es lo que reparte cada suma a su empresa.
@@ -165,23 +186,11 @@ export class EmpresasPlataformaRepository implements IEmpresasPlataformaReposito
       where: { organizacionId: { in: organizacionIds }, estado: "cerrada" },
       _sum: { cuota: true, primeraCuota: true },
     });
-    const pagos = await this.prisma.walletMovimiento.findMany({
-      where: { organizacionId: { in: organizacionIds }, tipo: "egreso", categoria: "egreso_pago_plataforma" },
-      select: { id: true, organizacionId: true, monto: true },
+    const confirmados = await this.prisma.pagoPlataformaAplicacion.groupBy({
+      by: ["organizacionId"],
+      where: { organizacionId: { in: organizacionIds } },
+      _sum: { monto: true },
     });
-    const contra =
-      pagos.length === 0
-        ? []
-        : await this.prisma.walletMovimiento.findMany({
-            where: {
-              organizacionId: { in: organizacionIds },
-              tipo: "ingreso",
-              categoria: "ingreso_ajuste",
-              origenTipo: "gasto",
-              origenId: { in: pagos.map((p) => p.id) },
-            },
-            select: { origenId: true },
-          });
 
     const sumasPorEmpresa = new Map<string, SumaCobroPlataformaPorTipo[]>();
     for (const c of cargos) {
@@ -197,11 +206,9 @@ export class EmpresasPlataformaRepository implements IEmpresasPlataformaReposito
       lista.push({ tipo: "cuota", monto: total.toFixed(2) });
       sumasPorEmpresa.set(c.organizacionId, lista);
     }
-    const anulados = new Set(contra.map((c) => c.origenId));
     const pagadoPorEmpresa = new Map<string, Prisma.Decimal>();
-    for (const p of pagos) {
-      if (anulados.has(p.id)) continue;
-      pagadoPorEmpresa.set(p.organizacionId, (pagadoPorEmpresa.get(p.organizacionId) ?? new Prisma.Decimal(0)).add(p.monto));
+    for (const c of confirmados) {
+      if (c._sum.monto !== null) pagadoPorEmpresa.set(c.organizacionId, c._sum.monto);
     }
 
     return {

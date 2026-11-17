@@ -8,6 +8,8 @@ import userEvent from "@testing-library/user-event";
 import { PlanForm } from "@/app/(app)/plataforma/planes/_components/PlanForm";
 import type { PlanDTO, PlanResult } from "@/lib/types/planes";
 
+import { avanzarHasta, terminar } from "./plan-form-pasos";
+
 const PLAN_ID = "0b6f3a2e-1c4d-4e5f-8a9b-0c1d2e3f4a5b";
 const OK: PlanResult = { estado: "ok", planId: PLAN_ID, cambio: true, avisos: [], vigenteDesde: null };
 
@@ -49,8 +51,11 @@ function montarCrear(enviar = vi.fn().mockResolvedValue(OK)) {
 }
 
 describe("SLT-83 R20 — el modo del costo por orden", () => {
-  it("R20: el selector ofrece «Fijo» y «Porcentual»; por defecto «Fijo» con el campo de SLT-66", () => {
+  it("R20: el selector ofrece «Fijo» y «Porcentual»; por defecto «Fijo» con el campo de SLT-66", async () => {
+    const user = userEvent.setup();
     montarCrear();
+    await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Libre");
+    await avanzarHasta(user, "Cobro por orden");
     const grupo = screen.getByRole("radiogroup", { name: "Cobro por orden" });
     expect(grupo).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "Fijo" })).toBeChecked();
@@ -63,6 +68,8 @@ describe("SLT-83 R20 — el modo del costo por orden", () => {
   it("R20: con «Porcentual» pide «Porcentaje» (obligatorio, con sufijo %) y «Mínimo» (opcional)", async () => {
     const user = userEvent.setup();
     montarCrear();
+    await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Libre");
+    await avanzarHasta(user, "Cobro por orden");
     await user.click(screen.getByRole("radio", { name: "Porcentual" }));
 
     const porcentaje = screen.getByRole("textbox", { name: "Porcentaje" });
@@ -77,12 +84,13 @@ describe("SLT-83 R20 — el modo del costo por orden", () => {
     const enviar = montarCrear();
 
     await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Porcentual");
+    await avanzarHasta(user, "Cobro por orden");
     // Lo escrito en el fijo no viaja si el modo elegido es el porcentual.
     await user.type(screen.getByLabelText("Costo por orden"), "100");
     await user.click(screen.getByRole("radio", { name: "Porcentual" }));
     await user.type(screen.getByRole("textbox", { name: "Porcentaje" }), "2.5");
     await user.type(screen.getByLabelText("Mínimo"), "500");
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+    await terminar(user);
 
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
     expect(enviar.mock.calls[0][0]).toMatchObject({
@@ -96,9 +104,10 @@ describe("SLT-83 R20 — el modo del costo por orden", () => {
     const enviar = montarCrear();
 
     await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Sin mínimo");
+    await avanzarHasta(user, "Cobro por orden");
     await user.click(screen.getByRole("radio", { name: "Porcentual" }));
     await user.type(screen.getByRole("textbox", { name: "Porcentaje" }), "3");
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+    await terminar(user);
 
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
     expect(enviar.mock.calls[0][0]).toMatchObject({
@@ -112,11 +121,12 @@ describe("SLT-83 R20 — el modo del costo por orden", () => {
     const enviar = montarCrear();
 
     await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Fijo");
+    await avanzarHasta(user, "Cobro por orden");
     await user.click(screen.getByRole("radio", { name: "Porcentual" }));
     await user.type(screen.getByRole("textbox", { name: "Porcentaje" }), "2");
     await user.click(screen.getByRole("radio", { name: "Fijo" }));
     await user.type(screen.getByLabelText("Costo por orden"), "150");
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+    await terminar(user);
 
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
     expect(enviar.mock.calls[0][0]).toMatchObject({ costoPorOrden: "150", costoPorOrdenPorcentual: null });
@@ -125,6 +135,8 @@ describe("SLT-83 R20 — el modo del costo por orden", () => {
   it("R20: cambiar de modo no borra lo escrito en el otro", async () => {
     const user = userEvent.setup();
     montarCrear();
+    await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Libre");
+    await avanzarHasta(user, "Cobro por orden");
 
     await user.type(screen.getByLabelText("Costo por orden"), "100");
     await user.click(screen.getByRole("radio", { name: "Porcentual" }));
@@ -137,15 +149,19 @@ describe("SLT-83 R20 — el modo del costo por orden", () => {
     expect(screen.getByLabelText("Mínimo")).toHaveValue("500");
   });
 
-  it("R20: al editar un plan porcentual abre en «Porcentual» con sus valores", () => {
+  it("R20: al editar un plan porcentual abre en «Porcentual» con sus valores", async () => {
+    const user = userEvent.setup();
     render(<PlanForm modo="editar" plan={PLAN_PORCENTUAL} enviar={vi.fn()} onGuardado={vi.fn()} />);
+    await avanzarHasta(user, "Cobro por orden");
     expect(screen.getByRole("radio", { name: "Porcentual" })).toBeChecked();
     expect(screen.getByRole("textbox", { name: "Porcentaje" })).toHaveValue("2.50");
     expect(screen.getByLabelText("Mínimo")).toHaveValue("500");
   });
 
-  it("R20: al editar un plan fijo abre en «Fijo»", () => {
+  it("R20: al editar un plan fijo abre en «Fijo»", async () => {
+    const user = userEvent.setup();
     render(<PlanForm modo="editar" plan={PLAN_FIJO} enviar={vi.fn()} onGuardado={vi.fn()} />);
+    await avanzarHasta(user, "Cobro por orden");
     expect(screen.getByRole("radio", { name: "Fijo" })).toBeChecked();
     expect(screen.getByLabelText("Costo por orden")).toHaveValue("100");
   });
@@ -155,9 +171,11 @@ describe("SLT-83 R20 — el modo del costo por orden", () => {
     const enviar = montarCrear();
 
     await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Mal");
+    await avanzarHasta(user, "Cobro por orden");
     await user.click(screen.getByRole("radio", { name: "Porcentual" }));
     await user.type(screen.getByRole("textbox", { name: "Porcentaje" }), "100.01");
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+    // SLT-130 (R18): «Siguiente» valida el paso con el mismo esquema que la action.
+    await user.click(screen.getByRole("button", { name: "Siguiente" }));
 
     const campo = screen.getByRole("textbox", { name: "Porcentaje" });
     await waitFor(() => expect(campo).toHaveAttribute("aria-invalid", "true"));
@@ -178,11 +196,14 @@ describe("SLT-83 R20 — el modo del costo por orden", () => {
     const onGuardado = vi.fn();
     render(<PlanForm modo="editar" plan={PLAN_PORCENTUAL} enviar={enviar} onGuardado={onGuardado} />);
 
-    const porcentaje = screen.getByRole("textbox", { name: "Porcentaje" });
+    await avanzarHasta(user, "Cobro por orden");
+    await user.clear(screen.getByRole("textbox", { name: "Porcentaje" }));
+    await user.type(screen.getByRole("textbox", { name: "Porcentaje" }), "3");
+    await terminar(user);
+
+    // SLT-130 (R25): los errores llevan de vuelta al paso «Cobro por orden»; los campos se montan de nuevo.
+    const porcentaje = await screen.findByRole("textbox", { name: "Porcentaje" });
     const minimo = screen.getByLabelText("Mínimo");
-    await user.clear(porcentaje);
-    await user.type(porcentaje, "3");
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
 
     await waitFor(() => expect(porcentaje).toHaveAttribute("aria-invalid", "true"));
     expect(minimo).toHaveAttribute("aria-invalid", "true");

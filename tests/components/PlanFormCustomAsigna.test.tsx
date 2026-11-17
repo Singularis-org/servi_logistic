@@ -12,6 +12,8 @@ import userEvent from "@testing-library/user-event";
 import { PlanForm, type EmpresaParaCustom } from "@/app/(app)/plataforma/planes/_components/PlanForm";
 import type { CrearPlanInput, PlanResult, PrevisualizarCustomInput, VistaPreviaCustomResult } from "@/lib/types/planes";
 
+import { avanzarHasta } from "./plan-form-pasos";
+
 const SIN_PLAN = "6f1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f60";
 const CON_PLAN = "7a1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f61";
 const EMPRESAS: EmpresaParaCustom[] = [
@@ -69,17 +71,39 @@ async function custom(user: Usuario, empresa: string) {
   await user.click(within(await screen.findByRole("listbox")).getByRole("option", { name: empresa }));
 }
 
+/** SLT-130: el costo base en «Precio y descuentos» y el costo por orden en su paso. */
 async function conCosto(user: Usuario) {
+  await avanzarHasta(user, "Precio y descuentos");
   await user.click(screen.getByRole("radio", { name: "Con monto" }));
   await user.type(screen.getByLabelText("Costo base mensual"), "50000");
+  await avanzarHasta(user, "Cobro por orden");
   await user.type(screen.getByLabelText("Costo por orden"), "100");
+}
+
+/**
+ * SLT-130 (R24, R28): llega a «Revisar y crear» y pulsa «Crear plan» en cuanto la vista previa del custom
+ * lo deja (para una empresa sin plan, el botón espera la lectura).
+ */
+async function crear(user: Usuario) {
+  await avanzarHasta(user, "Revisar y crear");
+  const boton = screen.getByRole("button", { name: "Crear plan" });
+  await waitFor(() => expect(boton).toBeEnabled());
+  await user.click(boton);
+}
+
+/** SLT-130 (R5): salta a un paso ya visitado desde la lista de pasos. */
+async function irAlPaso(user: Usuario, titulo: string) {
+  await user.click(within(screen.getByRole("navigation", { name: "Pasos" })).getByRole("button", { name: titulo }));
 }
 
 const campoInicio = () => screen.queryByLabelText("Inicio del período");
 
 describe("D1 — el costo base ya no ofrece «Negociable»", () => {
-  it("solo «Sin precio» y «Con monto»", () => {
+  it("solo «Sin precio» y «Con monto»", async () => {
+    const user = userEvent.setup();
     montar();
+    await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Libre");
+    await avanzarHasta(user, "Precio y descuentos");
     const grupo = screen.getByRole("radiogroup", { name: "Costo base" });
     expect(within(grupo).getAllByRole("radio").map((r) => r.closest("label")?.textContent)).toEqual([
       "Sin precio",
@@ -111,7 +135,7 @@ describe("D4, D5 — «Inicio del ciclo» en el custom", () => {
     expect(campoInicio()).toBeNull();
 
     await conCosto(user);
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+    await crear(user);
 
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
     expect(enviar.mock.calls[0]![0]).not.toHaveProperty("inicioCiclo");
@@ -138,7 +162,7 @@ describe("D4, D5 — «Inicio del ciclo» en el custom", () => {
     await user.clear(campo);
     await user.type(campo, "2026-11-05");
     await conCosto(user);
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+    await crear(user);
 
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
     expect(enviar.mock.calls[0]![0]).toMatchObject({ organizacionId: SIN_PLAN, inicioCiclo: "2026-11-05" });
@@ -168,7 +192,7 @@ describe("D6 — el tipo de cobro en el custom", () => {
     await custom(user, "Envíos Norte");
     await user.click(screen.getByRole("radio", { name: "Anual" }));
     await conCosto(user);
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+    await crear(user);
 
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
     expect(enviar.mock.calls[0]![0]).toMatchObject({
@@ -186,7 +210,7 @@ describe("D6 — el tipo de cobro en el custom", () => {
     const user = userEvent.setup();
     const { enviar } = montar();
     await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Libre");
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+    await crear(user);
 
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
     expect(enviar.mock.calls[0]![0]).not.toHaveProperty("tipoCobro");
@@ -199,7 +223,7 @@ describe("D3 — un rechazo de la asignación no cierra el formulario", () => {
     const user = userEvent.setup();
     const { enviar, onGuardado } = montar();
     await custom(user, "Envíos Norte");
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+    await crear(user);
 
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
     expect(enviar.mock.calls[0]![0]).toMatchObject({ precio: { tipo: "sin_precio" }, costoPorOrden: null });
@@ -214,7 +238,7 @@ describe("D3 — un rechazo de la asignación no cierra el formulario", () => {
     const { onGuardado } = montar(vi.fn<Enviar>().mockResolvedValue({ estado: "not_found" }));
     await custom(user, "Envíos Norte");
     await conCosto(user);
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+    await crear(user);
 
     const empresa = screen.getByRole("combobox", { name: "Empresa" });
     await waitFor(() => expect(empresa).toHaveAttribute("aria-invalid", "true"));
@@ -233,14 +257,17 @@ describe("D3 — un rechazo de la asignación no cierra el formulario", () => {
       }),
     );
     await custom(user, "Reparto Sur");
-    await user.type(screen.getByLabelText("Usuarios activos con el rol Mensajero"), "5");
     await conCosto(user);
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+    await avanzarHasta(user, "Topes");
+    await user.type(screen.getByLabelText("Usuarios activos con el rol Mensajero"), "5");
+    await crear(user);
 
+    // SLT-130 (R26): sin campo, el aviso va en «Revisar y crear»; lo escrito sigue en su paso.
     expect(await screen.findByRole("alert")).toHaveTextContent(mensaje);
     expect(onGuardado).not.toHaveBeenCalled();
-    expect(screen.getByLabelText("Usuarios activos con el rol Mensajero")).toHaveValue("5");
     expect(screen.getByRole("button", { name: "Crear plan" })).toBeEnabled();
+    await irAlPaso(user, "Topes");
+    expect(screen.getByLabelText("Usuarios activos con el rol Mensajero")).toHaveValue("5");
   });
 
   it("D3: un `validation_error` de `inicioCiclo` va junto al campo de la fecha", async () => {
@@ -253,7 +280,7 @@ describe("D3 — un rechazo de la asignación no cierra el formulario", () => {
     );
     await custom(user, "Envíos Norte");
     await conCosto(user);
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+    await crear(user);
 
     const campo = campoInicio()!;
     await waitFor(() => expect(campo).toHaveAttribute("aria-invalid", "true"));

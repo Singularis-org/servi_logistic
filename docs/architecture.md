@@ -328,12 +328,55 @@ esta bien hecha, no solo si "funciona".
     aplica el cambio. No es un fallo.
   - **Sin devoluciones:** un cambio de plan o de tipo aplicado después de emitir una cuota no la
     devuelve ni baja la deuda. Las facturas cerradas no cambian.
-  - **Deuda:** cargos − reversos + (`cuota` + `primera_cuota` de las facturas **cerradas**) − pagos.
-    `CobroPlataformaMovimientoRepository.sumasPorTipo` las suma como el tipo `cuota` y
-    `derivarDeudaPlataforma` las suma como un cargo. `EmpresasPlataformaRepository` las suma por
-    empresa en el listado del superadmin. El trigger `wallet_movimiento_tope_pago_plataforma` las
-    incluye en el tope del pago. El cierre no escribe en `cobro_plataforma_movimiento`,
+  - **Deuda:** cargos − reversos + (`cuota` + `primera_cuota` de las facturas **cerradas**) − pagos
+    **confirmados** (SLT-60). `CobroPlataformaMovimientoRepository.sumasPorTipo` suma las cuotas como
+    el tipo `cuota` y `derivarDeudaPlataforma` las suma como un cargo. Los confirmados los suma
+    `PagoPlataformaRepository.sumaPagosConfirmados` (Σ `pago_plataforma_aplicacion.monto`, con la
+    empresa escrita en el `where`). `EmpresasPlataformaRepository` hace lo mismo por empresa en el
+    listado del superadmin: «Pagado» es la suma de los confirmados, y el contador «N pagos por
+    confirmar» sale de `pago_plataforma_por_confirmar`. Un pago por confirmar sale de la caja al
+    registrarlo, pero **no** baja la deuda. El cierre no escribe en `cobro_plataforma_movimiento`,
     `cobro_plataforma_traza` ni `wallet_movimiento`.
+  - **Pagos a la plataforma: registro y confirmación (SLT-60, migración
+    `20261116120000_pago_plataforma_confirmacion`).** El pago lo registra la empresa en la wallet
+    (`egreso_pago_plataforma`, SL-45) y nace **por confirmar**. Lo confirma el superadmin desde el
+    detalle de la empresa y lo reparte entre las facturas cerradas con saldo; la deuda baja entonces.
+    - **El saldo de una factura:** `factura_plataforma_saldos(org)` es su única definición: total de la
+      cerrada − Σ aplicado, **con signo**. Una cerrada de total negativo (solo reversos) da saldo
+      negativo, cuenta como saldo a favor y nunca recibe aplicaciones.
+    - **Lo disponible para registrar:** Σ saldo de las cerradas − Σ pagos por confirmar
+      (`pago_plataforma_disponible_de`). Un pago está por confirmar si es un `egreso_pago_plataforma`
+      sin contra-asiento y sin confirmación (`pago_plataforma_por_confirmar`, la única definición).
+      Solo se paga lo facturado en facturas cerradas: sin cerradas con saldo, o con lo disponible en 0
+      o menos, no entra ningún pago. El tope lo aplican dos capas con el mismo número. En la base, el
+      trigger `wallet_movimiento_tope_pago_plataforma` (23514, también para el dueño). En la app,
+      `TopePagoPlataformaService`, con un solo repositorio, vía
+      `PagoPlataformaRepository.disponibleParaRegistrar`. Esa lectura llama a
+      `pago_plataforma_disponible(org)`, la envoltura con `GRANT` a `servi_app`, que da `42501` con otra
+      empresa o sin empresa. Las dos capas toman el candado `pg_advisory_xact_lock(hashtext(
+      'pago_plataforma:' || org))`.
+    - **La confirmación:** `pago_plataforma_confirmar(org, pago, aplicaciones, por, ahora)`, función del
+      dueño (`SECURITY DEFINER`, `EXECUTE` revocado a `PUBLIC`), bajo el **mismo** candado. Valida
+      todo: el pago vigente de la empresa, cada factura cerrada de la empresa con saldo, montos
+      positivos, sin facturas repetidas, ninguno por encima del saldo, y la suma igual al monto del
+      pago. Un rechazo sale con `SQLSTATE SL060` y un JSON `{codigo, factura_id?}` que traduce
+      `lib/db/errores-pago-plataforma.ts`. Confirmar otra vez responde `ya_confirmado` sin escribir. No
+      toca `factura_plataforma` ni el libro. La app llega por `PagoPlataformaConfirmacionRepository`
+      (en `comoPlataforma`, con su entrada en `EXCEPCIONES_DE_PLATAFORMA`) y
+      `PagoPlataformaConfirmacionService`, que exige superadmin antes de leer nada
+      (`lib/actions/pagos-plataforma.ts`).
+    - **Las dos tablas:** `pago_plataforma_confirmacion` (una por pago, único por empresa y pago; quién
+      y cuándo confirmó) y `pago_plataforma_aplicacion` (una fila por factura del reparto, `monto > 0`).
+      Las dos son de negocio, con RLS por empresa: la empresa solo **lee** lo suyo. `servi_app` tiene
+      `REVOKE INSERT, UPDATE, DELETE`, y solo las escribe `pago_plataforma_confirmar`. Son inmutables:
+      el trigger `pago_plataforma_inmutable` rechaza con `SL060` todo `UPDATE`, también al dueño.
+      `confirmado_por` es FK a `usuario` (el superadmin, sin empresa) con su trigger de misma empresa.
+    - **El bloqueo de la anulación:** la empresa anula un pago solo mientras está por confirmar. Anular
+      uno por confirmar le devuelve el monto a la caja y a lo disponible, y la deuda no cambia. El
+      trigger `pago_plataforma_no_anular_confirmado` (bajo el mismo candado) rechaza con `SL060`
+      `pago_confirmado` el contra-asiento de un pago confirmado, por cualquier camino y con cualquier
+      rol. `EgresoCajaAnulacionService` lo traduce a `forbidden`. Anular y confirmar a la vez el mismo
+      pago no ganan los dos.
   - **Lectura:** la empresa lee sus facturas con `FacturaPlataformaRepository.deLaEmpresa`. Es una
     sola sentencia que trae las cerradas y `factura_plataforma_en_curso` (`42501` con otra empresa o
     sin empresa). Las no cerradas traen el total de órdenes hasta ahora y las cuotas previstas. El

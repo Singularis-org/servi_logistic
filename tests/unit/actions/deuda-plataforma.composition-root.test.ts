@@ -13,24 +13,24 @@ vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabric
 // cliente de `getPrismaClient`, filtrada por la empresa del actor de la sesión, y que la cifra salga
 // de lo que devolvió ese cliente.
 //
-// SL-45 (design §3, §12.3): el composition root pasa también el repositorio de pagos. La cifra
-// esperada (1.600 − 1.000 = 600) solo sale si los pagos del libro se leen y se restan, y si el pago
-// con contra-asiento (250) queda fuera.
+// SL-45 (design §3, §12.3): el composition root pasa también el repositorio de pagos.
+// SLT-60 (design §4.1, R7): la deuda resta solo los pagos CONFIRMADOS, que son la suma de las
+// aplicaciones de la empresa. La cifra esperada (1.600 − 1.000 = 600) solo sale si esa suma se lee
+// por el cliente real y se resta; el libro de la wallet (`walletMovimiento.findMany`, que devolvería
+// 9.999) ya no se lee: un pago por confirmar no baja la deuda (R6).
 
 const groupBy = vi.fn<(args: unknown) => Promise<unknown[]>>(async () => [
   { tipo: "cargo", _sum: { monto: new Prisma.Decimal("2100") } },
   { tipo: "reverso", _sum: { monto: new Prisma.Decimal("500.00") } },
 ]);
 
-/** Dos pagos en el libro; el de 250 tiene contra-asiento (anulado) y no cuenta. */
-const findMany = vi.fn<(args: { where: { categoria?: string } }) => Promise<unknown[]>>(async (args) =>
-  args.where.categoria === "egreso_pago_plataforma"
-    ? [
-        { id: "p-1", monto: new Prisma.Decimal("1000.00") },
-        { id: "p-2", monto: new Prisma.Decimal("250.00") },
-      ]
-    : [{ origenId: "p-2" }],
-);
+/** Trampa: si la deuda volviera a leer los pagos del libro, restaría 9.999 en vez de 1.000. */
+const findMany = vi.fn(async () => [{ id: "p-1", monto: new Prisma.Decimal("9999.00") }]);
+
+/** Σ de las aplicaciones de la empresa = Σ de sus pagos confirmados (design §3.4). */
+const aggregateAplicaciones = vi.fn<(args: unknown) => Promise<unknown>>(async () => ({
+  _sum: { monto: new Prisma.Decimal("1000.00") },
+}));
 
 // SLT-118 (design §5; R18): la deuda suma también las cuotas de las facturas cerradas; aquí, ninguna.
 const aggregate = vi.fn(async () => ({ _sum: { cuota: null, primeraCuota: null } }));
@@ -39,6 +39,7 @@ vi.mock("@/lib/db/prisma-client", () => ({
   getPrismaClient: () => ({
     cobroPlataformaMovimiento: { groupBy },
     walletMovimiento: { findMany },
+    pagoPlataformaAplicacion: { aggregate: aggregateAplicaciones },
     facturaPlataforma: { aggregate },
   }),
   PRISMA_OMIT: {},
@@ -56,11 +57,12 @@ const maestroA: Actor = { usuarioId: "u-a", rol: RolValue.maestro, organizacionI
 beforeEach(() => {
   groupBy.mockClear();
   findMany.mockClear();
+  aggregateAplicaciones.mockClear();
   actorDeLaSesion = null;
 });
 
-describe("SL-40/SL-45 — verDeudaPlataformaAction cablea los repositorios reales (R13, R14, R24, R25)", () => {
-  it("con el actor de la sesión, lee cargos y pagos por el cliente real, filtrados por su empresa, y deriva la deuda", async () => {
+describe("SL-40/SL-45 — verDeudaPlataformaAction cablea los repositorios reales (R13, R14, R24, R25; SLT-60 R7)", () => {
+  it("con el actor de la sesión, lee cargos y pagos confirmados por el cliente real, filtrados por su empresa, y deriva la deuda", async () => {
     actorDeLaSesion = maestroA;
     const r = await verDeudaPlataformaAction();
 
@@ -71,27 +73,19 @@ describe("SL-40/SL-45 — verDeudaPlataformaAction cablea los repositorios reale
       where: { organizacionId: "org-a" },
       _sum: { monto: true },
     });
-    expect(findMany).toHaveBeenCalledTimes(2);
-    expect(findMany.mock.calls[0][0]).toEqual({
-      where: { organizacionId: "org-a", tipo: "egreso", categoria: "egreso_pago_plataforma" },
-      select: { id: true, monto: true },
+    expect(aggregateAplicaciones).toHaveBeenCalledTimes(1);
+    expect(aggregateAplicaciones).toHaveBeenCalledWith({
+      where: { organizacionId: "org-a" },
+      _sum: { monto: true },
     });
-    expect(findMany.mock.calls[1][0]).toEqual({
-      where: {
-        organizacionId: "org-a",
-        tipo: "ingreso",
-        categoria: "ingreso_ajuste",
-        origenTipo: "gasto",
-        origenId: { in: ["p-1", "p-2"] },
-      },
-      select: { origenId: true },
-    });
+    expect(findMany).not.toHaveBeenCalled();
   });
 
   it("sin sesión, forbidden y no se lee nada", async () => {
     expect(await verDeudaPlataformaAction()).toEqual({ status: "forbidden" });
     expect(groupBy).not.toHaveBeenCalled();
     expect(findMany).not.toHaveBeenCalled();
+    expect(aggregateAplicaciones).not.toHaveBeenCalled();
   });
 
   it.each([RolValue.mensajero, RolValue.adminTienda, RolValue.superadmin])(
@@ -102,6 +96,7 @@ describe("SL-40/SL-45 — verDeudaPlataformaAction cablea los repositorios reale
       });
       expect(groupBy).not.toHaveBeenCalled();
       expect(findMany).not.toHaveBeenCalled();
+      expect(aggregateAplicaciones).not.toHaveBeenCalled();
     },
   );
 });

@@ -8,6 +8,8 @@ import userEvent from "@testing-library/user-event";
 import { PlanForm } from "@/app/(app)/plataforma/planes/_components/PlanForm";
 import type { PlanDTO, PlanResult } from "@/lib/types/planes";
 
+import { avanzarHasta, terminar } from "./plan-form-pasos";
+
 const PLAN_ID = "0b6f3a2e-1c4d-4e5f-8a9b-0c1d2e3f4a5b";
 const OK: PlanResult = { estado: "ok", planId: PLAN_ID, cambio: true, avisos: [], vigenteDesde: null };
 
@@ -43,8 +45,11 @@ function montarCrear(enviar = vi.fn().mockResolvedValue(OK)) {
 }
 
 describe("SLT-66 R5 — sin tope de maestro", () => {
-  it("R5: no hay ningún campo del rol Maestro", () => {
+  it("R5: no hay ningún campo del rol Maestro", async () => {
+    const user = userEvent.setup();
     montarCrear();
+    await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Libre");
+    await avanzarHasta(user, "Topes");
     expect(screen.queryByLabelText(/Maestro/)).toBeNull();
     expect(screen.queryByText(/Maestro/)).toBeNull();
     // Control de no vacuidad: los demás topes por rol sí están.
@@ -56,6 +61,8 @@ describe("SLT-66 R9 — «Costo base»", () => {
   it("R9: el grupo se llama «Costo base» y el campo mensual «Costo base mensual»", async () => {
     const user = userEvent.setup();
     montarCrear();
+    await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Libre");
+    await avanzarHasta(user, "Precio y descuentos");
 
     const grupo = screen.getByRole("radiogroup", { name: "Costo base" });
     // Ajuste planes-custom (D1): «Sin precio» y «Con monto»; ya no «Negociable».
@@ -71,13 +78,17 @@ describe("SLT-66 R23 — «Costo por orden»", () => {
     const user = userEvent.setup();
     const enviar = montarCrear();
 
+    await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Libre");
+    await avanzarHasta(user, "Precio y descuentos");
+    // SLT-130 (R14): fuera del grupo «Costo base»; ahora, en su propio paso.
+    expect(within(screen.getByRole("radiogroup", { name: "Costo base" })).queryByLabelText("Costo por orden")).toBeNull();
+    expect(screen.queryByLabelText("Costo por orden")).toBeNull();
+    await avanzarHasta(user, "Cobro por orden");
+    // Independiente de la forma de la base (R7): se ve también con «Sin precio».
     const campo = screen.getByLabelText("Costo por orden");
     expect(campo).toHaveAccessibleDescription("Vacío: se aplica el valor global de la plataforma.");
-    // Independiente de la forma de la base (R7): se ve también con «Sin precio».
-    expect(within(screen.getByRole("radiogroup", { name: "Costo base" })).queryByLabelText("Costo por orden")).toBeNull();
 
-    await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Libre");
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+    await terminar(user);
 
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
     expect(enviar.mock.calls[0][0]).toMatchObject({ precio: { tipo: "sin_precio" }, costoPorOrden: null });
@@ -89,19 +100,24 @@ describe("SLT-66 R23 — «Costo por orden»", () => {
 
     await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Por orden");
     // Ajuste planes-custom (D1): sin «Negociable»; la otra forma no «monto» es «Sin precio».
+    await avanzarHasta(user, "Precio y descuentos");
     await user.click(screen.getByRole("radio", { name: "Sin precio" }));
+    await avanzarHasta(user, "Cobro por orden");
     await user.type(screen.getByLabelText("Costo por orden"), "100.50");
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+    await terminar(user);
 
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
     expect(enviar.mock.calls[0][0]).toMatchObject({ precio: { tipo: "sin_precio" }, costoPorOrden: "100.50" });
     expect(typeof enviar.mock.calls[0][0].costoPorOrden).toBe("string");
   });
 
-  it("R23: al editar precarga el costo del plan sin «.00»", () => {
+  it("R23: al editar precarga el costo del plan sin «.00»", async () => {
+    const user = userEvent.setup();
     render(<PlanForm modo="editar" plan={PLAN} enviar={vi.fn()} onGuardado={vi.fn()} />);
-    expect(screen.getByLabelText("Costo por orden")).toHaveValue("100");
+    await avanzarHasta(user, "Precio y descuentos");
     expect(screen.getByLabelText("Costo base mensual")).toHaveValue("50000");
+    await avanzarHasta(user, "Cobro por orden");
+    expect(screen.getByLabelText("Costo por orden")).toHaveValue("100");
   });
 
   it("R23: el validation_error de costoPorOrden sale junto al campo y conserva lo escrito", async () => {
@@ -113,11 +129,13 @@ describe("SLT-66 R23 — «Costo por orden»", () => {
     const onGuardado = vi.fn();
     render(<PlanForm modo="editar" plan={PLAN} enviar={enviar} onGuardado={onGuardado} />);
 
-    const campo = screen.getByLabelText("Costo por orden");
-    await user.clear(campo);
-    await user.type(campo, "7");
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await avanzarHasta(user, "Cobro por orden");
+    await user.clear(screen.getByLabelText("Costo por orden"));
+    await user.type(screen.getByLabelText("Costo por orden"), "7");
+    await terminar(user);
 
+    // SLT-130 (R25): el error lleva de vuelta al paso «Cobro por orden»; el campo se monta de nuevo.
+    const campo = await screen.findByLabelText("Costo por orden");
     await waitFor(() => expect(campo).toHaveAttribute("aria-invalid", "true"));
     const ids = campo.getAttribute("aria-describedby")!.split(" ");
     expect(ids.map((id) => document.getElementById(id)?.textContent)).toContain("Importe inválido.");
@@ -133,8 +151,10 @@ describe("SLT-66 R23 — «Costo por orden»", () => {
     const enviar = montarCrear();
 
     await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Mal");
+    await avanzarHasta(user, "Cobro por orden");
     await user.type(screen.getByLabelText("Costo por orden"), "1.234");
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+    // SLT-130 (R18): «Siguiente» valida el paso con el mismo esquema que la action.
+    await user.click(screen.getByRole("button", { name: "Siguiente" }));
 
     await waitFor(() => expect(screen.getByLabelText("Costo por orden")).toHaveAttribute("aria-invalid", "true"));
     expect(enviar).not.toHaveBeenCalled();

@@ -72,9 +72,11 @@ vi.mock("@/lib/actions/orden-notas", () => ({
 // `"use server"` y arrastra Prisma/servicios que no deben cargarse en jsdom).
 const { rutaMapaMock } = vi.hoisted(() => ({ rutaMapaMock: vi.fn() }));
 vi.mock("@/app/(app)/mis-asignaciones/_components/RutaMapa", () => ({
-  RutaMapa: (props: { paradas: unknown[] }) => {
+  RutaMapa: (props: { paradas: unknown[]; nota?: React.ReactNode }) => {
     rutaMapaMock(props);
-    return <div data-testid="ruta-mapa" />;
+    // SLT-192 (R885): la nota del punto de partida la pinta el mapa bajo su leyenda; el doble la
+    // pinta para que los tests del módulo la sigan leyendo en el DOM.
+    return <div data-testid="ruta-mapa">{props.nota ? <p>{props.nota}</p> : null}</div>;
   },
 }));
 

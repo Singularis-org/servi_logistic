@@ -141,8 +141,10 @@ describeSiHayBase("SL-32 — listado de empresas del superadmin contra Postgres 
     // SLT-66 R31, R32: los dos campos nuevos del listado. Su valor se mide en empresas-plataforma-plan
     // (aquí el global no está fijado); este caso sigue midiendo lo de SL-32.
     const nuevosSlt66 = { cobroVigente: expect.anything(), plan: null };
+    // SLT-60 R27: sin pagos sembrados, ninguno por confirmar.
+    const nuevosSlt60 = { pagosPorConfirmar: 0 };
     expect(mias).toEqual([
-      { id: r.s.b.id, nombre: r.s.b.nombre, slug: r.s.b.slug, creadaEn: ALTA_B, maestros: [r.s.maestroB], deudaPlataforma: AL_DIA, pagadoPlataforma: "0.00", pais: COSTA_RICA, ...nuevosSlt66 },
+      { id: r.s.b.id, nombre: r.s.b.nombre, slug: r.s.b.slug, creadaEn: ALTA_B, maestros: [r.s.maestroB], deudaPlataforma: AL_DIA, pagadoPlataforma: "0.00", pais: COSTA_RICA, ...nuevosSlt66, ...nuevosSlt60 },
       {
         id: r.s.a.id,
         nombre: r.s.a.nombre,
@@ -152,6 +154,7 @@ describeSiHayBase("SL-32 — listado de empresas del superadmin contra Postgres 
         deudaPlataforma: AL_DIA, pagadoPlataforma: "0.00",
         pais: COSTA_RICA,
         ...nuevosSlt66,
+        ...nuevosSlt60,
       },
     ]);
     expect(JSON.stringify(r.listado)).not.toContain(r.s.admin.email);
@@ -180,6 +183,7 @@ describeSiHayBase("SL-32 — listado de empresas del superadmin contra Postgres 
         "maestros",
         "nombre",
         "pagadoPlataforma",
+        "pagosPorConfirmar", // SLT-60 R27
         "pais",
         "plan", // SLT-66 R32
         "slug",
@@ -225,8 +229,14 @@ describeSiHayBase("SL-32 — listado de empresas del superadmin contra Postgres 
       // SL-45 (R28): el listado lee también los cargos y los pagos de cada empresa. Sin restricciones
       // (`LIKE` a secas): el CHECK tipo-categoría compara con el enum de `public` y no dejaría cambiar
       // el tipo de la columna. Vacías: aquí solo importa que existan. SLT-118 (R18): y las cuotas de
-      // las facturas cerradas (`factura_plataforma`); su `estado` es texto, sin enum que copiar.
-      for (const tabla of ["cobro_plataforma_movimiento", "wallet_movimiento", "factura_plataforma"]) {
+      // las facturas cerradas (`factura_plataforma`); su `estado` es texto, sin enum que copiar. SLT-60 (R7, R8):
+      // y lo pagado sale de las aplicaciones de los pagos confirmados (`pago_plataforma_aplicacion`), sin enums.
+      for (const tabla of [
+        "cobro_plataforma_movimiento",
+        "wallet_movimiento",
+        "factura_plataforma",
+        "pago_plataforma_aplicacion",
+      ]) {
         await prisma.$executeRawUnsafe(`CREATE TABLE "${esquema}"."${tabla}" (LIKE "public"."${tabla}")`);
       }
       // Prisma califica el cast del enum con el esquema del cliente (`"<esquema>".rol_value`): el

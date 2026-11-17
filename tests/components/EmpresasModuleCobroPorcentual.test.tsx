@@ -24,6 +24,7 @@ function empresa(id: string, nombre: string, extra: Pick<EmpresaListada, "cobroV
     plan: null,
     deudaPlataforma: { deuda: "0.00", estado: "al_dia", importe: "0.00" },
     pagadoPlataforma: "0.00",
+    pagosPorConfirmar: 0,
     pais: { id: "CR", nombre: "Costa Rica" },
     ...extra,
   };

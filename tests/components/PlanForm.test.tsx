@@ -6,10 +6,12 @@
 // inmediato» o «A partir de» una fecha, y los `fieldErrors` de la action van junto a su campo.
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup, within, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import userEvent, { type UserEvent } from "@testing-library/user-event";
 
 import { PlanForm } from "@/app/(app)/plataforma/planes/_components/PlanForm";
 import type { PlanDTO, PlanResult } from "@/lib/types/planes";
+
+import { avanzarHasta, terminar } from "./plan-form-pasos";
 
 const ORG = "6f1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f60";
 const PLAN_ID = "0b6f3a2e-1c4d-4e5f-8a9b-0c1d2e3f4a5b";
@@ -62,6 +64,18 @@ function montarEditar(enviar = vi.fn().mockResolvedValue(OK), onGuardado = vi.fn
   return { enviar, onGuardado };
 }
 
+/**
+ * SLT-130 (R10): agrega una línea de descuento (sale con el primer período libre, «Quincenal») y la pasa
+ * a `periodo`. Devuelve el grupo de la línea.
+ */
+async function agregarDescuento(user: UserEvent, periodo: string): Promise<HTMLElement> {
+  await user.click(screen.getByRole("button", { name: "Agregar descuento" }));
+  const nueva = screen.getByRole("group", { name: "Descuento quincenal" });
+  await user.click(within(nueva).getByRole("combobox", { name: "Período" }));
+  await user.click(within(await screen.findByRole("listbox")).getByRole("option", { name: periodo }));
+  return screen.getByRole("group", { name: `Descuento ${periodo.toLowerCase()}` });
+}
+
 describe("SLT-58 R14 — crear un plan", () => {
   it("R14: la visibilidad ofrece solo «Público» y «Custom» (sin «enterprise»)", () => {
     montarCrear();
@@ -81,16 +95,23 @@ describe("SLT-58 R14 — crear un plan", () => {
     await user.click(screen.getByRole("radio", { name: "Custom" }));
     await user.click(screen.getByRole("combobox", { name: "Empresa" }));
     await user.click(within(await screen.findByRole("listbox")).getByRole("option", { name: "Envíos Norte" }));
-    await user.type(screen.getByLabelText("Usuarios activos con el rol Mensajero"), "5");
-    await user.click(screen.getByRole("checkbox", { name: "Monitoreo" }));
+    // SLT-130: cada campo en su paso.
+    await avanzarHasta(user, "Precio y descuentos");
     await user.click(screen.getByRole("radio", { name: "Con monto" }));
     // SLT-66 R9: el rótulo «Monto mensual» pasa a «Costo base mensual».
     await user.type(screen.getByLabelText("Costo base mensual"), "25.50");
-    // SLT-86 (R23): el descuento anual es uno de los cuatro por período.
-    const anual = screen.getByRole("group", { name: "Descuento anual" });
-    await user.click(within(anual).getByRole("radio", { name: "Porcentaje" }));
-    await user.type(within(anual).getByRole("textbox", { name: "Porcentaje" }), "10");
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+    // SLT-86 (R23); SLT-130 (R10): el descuento anual es una línea de la lista.
+    const anual = await agregarDescuento(user, "Anual");
+    await user.click(within(anual).getByRole("radio", { name: "%" }));
+    await user.type(within(anual).getByRole("textbox", { name: "Valor" }), "10");
+    await avanzarHasta(user, "Topes");
+    await user.type(screen.getByLabelText("Usuarios activos con el rol Mensajero"), "5");
+    await avanzarHasta(user, "Módulos");
+    await user.click(screen.getByRole("checkbox", { name: "Monitoreo" }));
+    await avanzarHasta(user, "Revisar y crear");
+    // R28: el custom de una empresa sin plan espera su vista previa antes de poder crearse.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Crear plan" })).toBeEnabled());
+    await terminar(user);
 
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
     expect(enviar).toHaveBeenCalledWith({
@@ -116,7 +137,7 @@ describe("SLT-58 R14 — crear un plan", () => {
     const { enviar } = montarCrear();
 
     await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Libre");
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+    await terminar(user);
 
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
     expect(enviar).toHaveBeenCalledWith({
@@ -138,7 +159,8 @@ describe("SLT-58 R14 — crear un plan", () => {
 
     await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Plan Norte");
     await user.click(screen.getByRole("radio", { name: "Custom" }));
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+    // SLT-130 (R18): «Siguiente» valida General con el esquema de la action y no deja pasar.
+    await user.click(screen.getByRole("button", { name: "Siguiente" }));
 
     expect(enviar).not.toHaveBeenCalled();
     expect(screen.getByRole("combobox", { name: "Empresa" })).toHaveAttribute("aria-invalid", "true");
@@ -151,7 +173,7 @@ describe("SLT-58 R14 — crear un plan", () => {
     montarCrear(enviar);
 
     await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Libre");
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+    await terminar(user);
 
     await waitFor(() => expect(screen.getByRole("button", { name: /Crear plan/ })).toBeDisabled());
     resolver(OK);
@@ -160,16 +182,22 @@ describe("SLT-58 R14 — crear un plan", () => {
 });
 
 describe("SLT-58 R15 — editar: de inmediato o a partir de una fecha", () => {
-  it("R15: no ofrece cambiar la visibilidad y precarga la versión vigente", () => {
+  it("R15: no ofrece cambiar la visibilidad y precarga la versión vigente", async () => {
+    const user = userEvent.setup();
     montarEditar();
-    expect(screen.queryByRole("radiogroup", { name: "Visibilidad" })).toBeNull();
+    // SLT-130 (R9): la visibilidad se ve, pero deshabilitada; no se puede cambiar.
+    const visibilidad = screen.getByRole("radiogroup", { name: "Visibilidad" });
+    for (const radio of within(visibilidad).getAllByRole("radio")) expect(radio).toHaveAttribute("aria-disabled", "true");
     expect(screen.getByRole("textbox", { name: "Nombre" })).toHaveValue("Básico");
-    expect(screen.getByLabelText("Usuarios activos con el rol Mensajero")).toHaveValue("5");
-    // SLT-86 (R8, R23): sin tope de órdenes.
-    expect(screen.queryByLabelText("Órdenes por ciclo")).toBeNull();
+    await avanzarHasta(user, "Precio y descuentos");
     // SLT-67: el servidor serializa «10.00»; el campo lo muestra sin «.00».
     // SLT-66 R9: el rótulo «Monto mensual» pasa a «Costo base mensual».
     expect(screen.getByLabelText("Costo base mensual")).toHaveValue("10");
+    await avanzarHasta(user, "Topes");
+    expect(screen.getByLabelText("Usuarios activos con el rol Mensajero")).toHaveValue("5");
+    // SLT-86 (R8, R23): sin tope de órdenes.
+    expect(screen.queryByLabelText("Órdenes por ciclo")).toBeNull();
+    await avanzarHasta(user, "Módulos");
     expect(screen.getByRole("checkbox", { name: "Analítica" })).toHaveAttribute("aria-checked", "true");
   });
 
@@ -177,12 +205,16 @@ describe("SLT-58 R15 — editar: de inmediato o a partir de una fecha", () => {
     const user = userEvent.setup();
     const { enviar } = montarEditar();
 
+    await avanzarHasta(user, "Topes");
+    await user.type(screen.getByLabelText("API keys activas"), "2");
+    // SLT-130 (R17): «Aplicar» vive en «Cuándo rige».
+    await avanzarHasta(user, "Cuándo rige");
     const grupo = screen.getByRole("radiogroup", { name: "Aplicar" });
     expect(within(grupo).getAllByRole("radio").map((r) => r.closest("label")?.textContent)).toEqual([
       "De inmediato",
       "A partir de",
     ]);
-    await user.type(screen.getByLabelText("API keys activas"), "2");
+    await avanzarHasta(user, "Revisar y programar");
     await user.click(screen.getByRole("button", { name: "Guardar" }));
 
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
@@ -208,11 +240,15 @@ describe("SLT-58 R15 — editar: de inmediato o a partir de una fecha", () => {
     };
     render(<PlanForm modo="editar" plan={plan} enviar={enviar} onGuardado={vi.fn()} />);
 
+    await avanzarHasta(user, "Precio y descuentos");
     // SLT-66 R9: el rótulo «Monto mensual» pasa a «Costo base mensual».
     expect(screen.getByLabelText("Costo base mensual")).toHaveValue("500");
+    // SLT-130 (R13): el descuento del plan abre como una línea de la lista, con su tipo «Fijo».
     const anual = screen.getByRole("group", { name: "Descuento anual" });
-    expect(within(anual).getByRole("textbox", { name: "Monto fijo" })).toHaveValue("5000");
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    expect(within(anual).getByRole("radio", { name: "Fijo" })).toBeChecked();
+    expect(within(anual).getByRole("textbox", { name: "Valor" })).toHaveValue("5000");
+    // El precio no cambia (el plan ya lo tenía), así que «Cuándo rige» ofrece «Aplicar» y el botón dice «Guardar».
+    await terminar(user);
 
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
     const precio = enviar.mock.calls[0][0].precio;
@@ -225,8 +261,10 @@ describe("SLT-58 R15 — editar: de inmediato o a partir de una fecha", () => {
     const user = userEvent.setup();
     const { enviar } = montarEditar();
 
+    await avanzarHasta(user, "Cuándo rige");
     await user.click(screen.getByRole("radio", { name: "A partir de" }));
     await user.type(screen.getByLabelText("Fecha"), "2030-01-15");
+    await avanzarHasta(user, "Revisar y programar");
     await user.click(screen.getByRole("button", { name: "Programar cambio" }));
 
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
@@ -246,20 +284,26 @@ describe("SLT-58 R18 — los rechazos se explican y no dan el cambio por hecho",
     } satisfies PlanResult);
     const { onGuardado } = montarEditar(enviar);
 
+    await avanzarHasta(user, "Cuándo rige");
     await user.click(screen.getByRole("radio", { name: "A partir de" }));
     await user.type(screen.getByLabelText("Fecha"), "2030-01-15");
+    await avanzarHasta(user, "Revisar y programar");
     await user.click(screen.getByRole("button", { name: "Programar cambio" }));
 
-    const fecha = await screen.findByLabelText("Fecha");
-    await waitFor(() => expect(fecha).toHaveAttribute("aria-invalid", "true"));
-    const errorFecha = document.getElementById(fecha.getAttribute("aria-describedby")!.split(" ").at(-1)!);
-    expect(errorFecha).toHaveTextContent("La fecha de vigencia tiene que ser posterior a hoy.");
-
-    const mensajero = screen.getByLabelText("Usuarios activos con el rol Mensajero");
-    expect(mensajero).toHaveAttribute("aria-invalid", "true");
+    // SLT-130 (R25): el formulario va al paso del primer error en pantalla, Topes.
+    const mensajero = await screen.findByLabelText("Usuarios activos con el rol Mensajero");
+    await waitFor(() => expect(mensajero).toHaveAttribute("aria-invalid", "true"));
     // El tope enlaza su error y la ayuda «Vacío = sin límite»; el error va primero.
     const errorMensajero = document.getElementById(mensajero.getAttribute("aria-describedby")!.split(" ")[0]);
     expect(errorMensajero).toHaveTextContent("Tope inválido.");
+
+    // La fecha conserva su error en su paso, «Cuándo rige».
+    const nav = screen.getByRole("navigation", { name: "Pasos" });
+    await user.click(within(nav).getByRole("button", { name: "Cuándo rige" }));
+    const fecha = screen.getByLabelText("Fecha");
+    expect(fecha).toHaveAttribute("aria-invalid", "true");
+    const errorFecha = document.getElementById(fecha.getAttribute("aria-describedby")!.split(" ").at(-1)!);
+    expect(errorFecha).toHaveTextContent("La fecha de vigencia tiene que ser posterior a hoy.");
     expect(onGuardado).not.toHaveBeenCalled();
   });
 
@@ -272,7 +316,7 @@ describe("SLT-58 R18 — los rechazos se explican y no dan el cambio por hecho",
     const user = userEvent.setup();
     const { onGuardado } = montarEditar(vi.fn().mockResolvedValue(respuesta));
 
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await terminar(user);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(texto);
     expect(onGuardado).not.toHaveBeenCalled();
@@ -283,7 +327,7 @@ describe("SLT-58 R18 — los rechazos se explican y no dan el cambio por hecho",
     const consola = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const { onGuardado } = montarEditar(vi.fn().mockRejectedValue(new Error("red")));
 
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await terminar(user);
 
     expect(await screen.findByRole("alert")).toHaveTextContent("No se pudo guardar. Inténtalo de nuevo.");
     expect(onGuardado).not.toHaveBeenCalled();
@@ -303,11 +347,13 @@ describe("SLT-58 — revisión de diseño del formulario", () => {
     } satisfies PlanResult);
     montarEditar(enviar);
 
+    await avanzarHasta(user, "Cuándo rige");
     await user.click(screen.getByRole("radio", { name: "A partir de" }));
     await user.type(screen.getByLabelText("Fecha"), "2030-01-15");
+    await avanzarHasta(user, "Revisar y programar");
     await user.click(screen.getByRole("button", { name: "Programar cambio" }));
 
-    const mensajero = screen.getByLabelText("Usuarios activos con el rol Mensajero");
+    const mensajero = await screen.findByLabelText("Usuarios activos con el rol Mensajero");
     await waitFor(() => expect(mensajero).toHaveFocus());
     expect(scroll).toHaveBeenCalled();
     expect(scroll.mock.contexts.at(-1)).toBe(mensajero);
@@ -318,7 +364,8 @@ describe("SLT-58 — revisión de diseño del formulario", () => {
     const { enviar } = montarCrear();
 
     await user.click(screen.getByRole("radio", { name: "Custom" }));
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+    // SLT-130 (R18): la validación del cliente corre al pulsar «Siguiente» en General.
+    await user.click(screen.getByRole("button", { name: "Siguiente" }));
 
     expect(enviar).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.getByRole("textbox", { name: "Nombre" })).toHaveFocus());
@@ -332,7 +379,7 @@ describe("SLT-58 — revisión de diseño del formulario", () => {
     } satisfies PlanResult);
     montarEditar(enviar);
 
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await terminar(user);
 
     const aviso = await screen.findByRole("alert");
     expect(aviso).toHaveTextContent("El plan no es válido.");
@@ -343,7 +390,7 @@ describe("SLT-58 — revisión de diseño del formulario", () => {
     const user = userEvent.setup();
     montarEditar(vi.fn().mockResolvedValue({ estado: "forbidden" } satisfies PlanResult));
 
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await terminar(user);
 
     const aviso = await screen.findByRole("alert");
     await waitFor(() => expect(aviso).toHaveFocus());
@@ -373,8 +420,11 @@ describe("SLT-58 — revisión de diseño del formulario", () => {
     );
   });
 
-  it("los topes dicen «Sin límite» de placeholder, enlazan la ayuda y van en una sola columna", () => {
+  it("los topes dicen «Sin límite» de placeholder, enlazan la ayuda y van en una sola columna", async () => {
+    const user = userEvent.setup();
     montarCrear();
+    await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Libre");
+    await avanzarHasta(user, "Topes");
     for (const nombre of ["Usuarios activos con el rol Mensajero", "API keys activas"]) {
       const campo = screen.getByLabelText(nombre);
       expect(campo).toHaveAttribute("placeholder", "Sin límite");
@@ -383,14 +433,19 @@ describe("SLT-58 — revisión de diseño del formulario", () => {
     }
   });
 
-  it("las casillas de módulos toman su nombre del <label> visible, sin aria-label duplicado", () => {
+  it("las casillas de módulos toman su nombre del <label> visible, sin aria-label duplicado", async () => {
+    const user = userEvent.setup();
     montarCrear();
+    await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Libre");
+    await avanzarHasta(user, "Módulos");
     expect(screen.getByRole("checkbox", { name: "Monitoreo" })).not.toHaveAttribute("aria-label");
   });
 
   it("el precio ofrece «Con monto» (no «Mensual») y cada descuento lleva un título visible, sin «Pago anual»", async () => {
     const user = userEvent.setup();
     montarCrear();
+    await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Libre");
+    await avanzarHasta(user, "Precio y descuentos");
 
     // SLT-66 R9: el grupo «Precio informativo» pasa a «Costo base».
     const precio = screen.getByRole("radiogroup", { name: "Costo base" });
@@ -401,26 +456,41 @@ describe("SLT-58 — revisión de diseño del formulario", () => {
     await user.click(screen.getByRole("radio", { name: "Con monto" }));
 
     // SLT-86 (R23): el pago anual fijo y su descuento se van; entra un descuento por período.
+    // SLT-130 (R10): los descuentos son una lista con su título visible; cada línea se nombra por su período.
     expect(screen.queryByRole("group", { name: "Pago anual" })).toBeNull();
-    const anual = screen.getByRole("group", { name: "Descuento anual" });
-    expect(within(anual).getByText("Descuento anual")).toBeVisible();
-    expect(within(anual).getByRole("radiogroup", { name: "Descuento anual" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Descuentos" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Descuentos" })).toBeVisible();
+    const anual = await agregarDescuento(user, "Anual");
+    expect(within(anual).getByRole("radiogroup", { name: "Tipo del descuento" })).toBeInTheDocument();
   });
 
   it("al editar, el botón dice «Programar cambio» con «A partir de» y vuelve a «Guardar» con «De inmediato»", async () => {
     const user = userEvent.setup();
     montarEditar();
 
+    // SLT-130 (R17, R24): «Aplicar» está en «Cuándo rige» y el botón final, en el paso siguiente.
+    await avanzarHasta(user, "Revisar y programar");
     expect(screen.getByRole("button", { name: "Guardar" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Anterior" }));
     await user.click(screen.getByRole("radio", { name: "A partir de" }));
+    await user.type(screen.getByLabelText("Fecha"), "2030-01-15");
+    await avanzarHasta(user, "Revisar y programar");
     expect(screen.getByRole("button", { name: "Programar cambio" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Guardar" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Anterior" }));
     await user.click(screen.getByRole("radio", { name: "De inmediato" }));
+    await avanzarHasta(user, "Revisar y programar");
     expect(screen.getByRole("button", { name: "Guardar" })).toBeInTheDocument();
   });
 
-  it("el pie con el botón de enviar queda fijo al fondo del panel", () => {
+  it("el pie con el botón de enviar queda fijo al fondo del panel", async () => {
+    // SLT-130 (design §3): el pie del componente de pasos queda fuera del contenido con scroll, sin `sticky`.
+    const user = userEvent.setup();
     montarCrear();
-    expect(screen.getByRole("button", { name: "Crear plan" }).parentElement).toHaveClass("sticky", "bottom-0");
+    await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Libre");
+    await avanzarHasta(user, "Revisar y crear");
+    const boton = screen.getByRole("button", { name: "Crear plan" });
+    expect(boton.closest(".overflow-y-auto")).toBeNull();
+    expect(boton.closest(".flex-none.border-t")).not.toBeNull();
   });
 });

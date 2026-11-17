@@ -10,6 +10,11 @@ import { verDetalleDePlan, verPlanDeEmpresa, verPreciosQueRigen } from "@/lib/ac
 import { verDetalleFacturaEmpresaAction } from "@/lib/actions/facturas-plataforma";
 import { fijarModuloEmpresaAction } from "@/lib/actions/modulos-empresa";
 import {
+  confirmarPagoPlataformaAction,
+  verComprobantePagoPlataformaAction,
+  verPagosDeEmpresaAction,
+} from "@/lib/actions/pagos-plataforma";
+import {
   asignarPlanAction,
   cambiarTipoCobroAction,
   cancelarCambioEmpresaAction,
@@ -26,10 +31,12 @@ import {
   rangoDeLaFechaDeEfecto,
   rangoDelInicioDelCiclo,
 } from "@/lib/planes/ciclo";
+import type { PagosDeEmpresa } from "@/lib/types/pago-plataforma";
 import type { FacturaPlataformaDTO } from "@/lib/types/factura-plataforma";
 import type { PlanDeEmpresaVista, PlanDTO, PreciosQueRigen } from "@/lib/types/planes";
 
 import { ModulosEmpresa } from "./_components/ModulosEmpresa";
+import { PagosPorConfirmar } from "./_components/PagosPorConfirmar";
 import { PlanEmpresa } from "./_components/PlanEmpresa";
 
 /** Textos de la pantalla, en un solo sitio para cuando llegue la i18n. */
@@ -52,6 +59,21 @@ async function leerPlan(actor: Actor, organizacionId: string): Promise<PlanDeEmp
     return r.estado === "ok" ? r.vista : null;
   } catch (error) {
     console.error("[EmpresaDetallePage] verPlanDeEmpresa lanzó", error);
+    return null;
+  }
+}
+
+/**
+ * SLT-60 (design §6.2; R12, R13) — los pagos por confirmar y las facturas cerradas con saldo, AISLADOS como el
+ * plan: un throw o un estado distinto de `ok` da `null`, la sección dice «No se pudieron cargar los pagos por
+ * confirmar» y el resto del detalle se pinta igual.
+ */
+async function leerPagos(actor: Actor, organizacionId: string): Promise<PagosDeEmpresa | null> {
+  try {
+    const r = await verPagosDeEmpresaAction({ organizacionId }, { getActor: async () => actor });
+    return r.estado === "ok" ? r.datos : null;
+  } catch (error) {
+    console.error("[EmpresaDetallePage] verPagosDeEmpresaAction lanzó", error);
     return null;
   }
 }
@@ -137,6 +159,10 @@ async function leerPreciosQueRigen(
  * SLT-58 (design §6.3; R19–R21): el plan de la empresa se lee en paralelo con los módulos y su
  * sección va antes de ellos. Su fallo no tumba la página.
  *
+ * SLT-60 (design §6.2): «Pagos por confirmar» va justo debajo de «Volver a Empresas» y antes del plan, con su
+ * lectura en el mismo `Promise.all` y aislada. El comprobante se pide con la empresa ligada aquí, en el
+ * servidor (`.bind`): el navegador solo manda el pago (R33).
+ *
  * SLT-119 (design §6.3; R12, P6): dos pestañas. «Empresa», la elegida al abrir, lleva lo de siempre (plan, núcleo
  * y módulos) sin cambios; «Facturación», las facturas de la empresa de la URL con su detalle. La pestaña elegida
  * no va en la URL: al recargar se vuelve a «Empresa».
@@ -153,10 +179,11 @@ export default async function EmpresaDetallePage({
   if (!actor || !esPlataforma(actor.rol)) notFound();
 
   const { organizacionId } = await params;
-  const [r, plan, asignables, facturas] = await Promise.all([
+  const [r, plan, asignables, pagos, facturas] = await Promise.all([
     verModulosEmpresa(actor, { organizacionId }),
     leerPlan(actor, organizacionId),
     leerAsignables(organizacionId),
+    leerPagos(actor, organizacionId),
     leerFacturas(actor, organizacionId),
   ]);
   if (r.estado !== "ok") notFound();
@@ -178,6 +205,13 @@ export default async function EmpresaDetallePage({
         >
           {TEXTOS.volver}
         </Link>
+
+        <PagosPorConfirmar
+          datos={pagos}
+          organizacionId={empresa.organizacionId}
+          confirmar={confirmarPagoPlataformaAction}
+          verComprobante={verComprobantePagoPlataformaAction.bind(null, empresa.organizacionId)}
+        />
 
         <Tabs defaultValue="empresa" className="flex flex-col gap-6">
           <TabsList aria-label={TEXTOS.pestanas} className="w-fit">
