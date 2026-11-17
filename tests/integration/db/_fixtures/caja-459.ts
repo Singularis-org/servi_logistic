@@ -157,7 +157,6 @@ export async function cargarCatalogo459(prisma: PrismaClient): Promise<Catalogo4
   for (const v of ESTATUS_USADOS) {
     if (!estatus.has(v)) throw new Error(`falta el estatus «${v}» en \`order_status\``);
   }
-  const central = await prisma.zona.findFirst({ where: { esCentral: true }, select: { id: true } });
   const tipo = await prisma.tipoIdentificacion.findUnique({
     where: { value: "cedula" },
     select: { id: true },
@@ -168,16 +167,25 @@ export async function cargarCatalogo459(prisma: PrismaClient): Promise<Catalogo4
     if (r === undefined) throw new Error(`falta el rol «${v}»: corre \`pnpm run db:seed\``);
     return r.id;
   };
-  const orden = await prisma.orden.findFirst({ select: { provinciaId: true, cantonId: true } });
-  if (central === null || tipo === null || orden === null) {
+  // SLT-177 (R737): provincia y canton por su clave (geografia de migracion), no de «la primera orden».
+  const canton = await prisma.canton.findFirst({
+    where: { nombre: "Cartago", provincia: { nombre: "Cartago" } },
+    select: { id: true, provinciaId: true },
+  });
+  if (tipo === null || canton === null) {
     throw new Error(
-      "hay DATABASE_URL pero faltan la zona central, el tipo `cedula` o una orden de la que tomar " +
-        "provincia y canton: esta suite necesita crear sus datos en el test (SL-31).",
+      "falta el tipo de identificacion `cedula` o la geografia Cartago/Cartago: aplica las migraciones.",
     );
   }
   return {
     estatus,
-    centralZonaId: central.id,
+    // La zona central es dato de negocio: la crea `asegurarCentral459` en la transaccion de cada caso.
+    get centralZonaId(): string {
+      if (centralActual459 === null) {
+        throw new Error("459: no hay zona central sembrada: usa enTransaccionRevertida459 o asegurarCentral459");
+      }
+      return centralActual459;
+    },
     tipoIdentificacionId: tipo.id,
     rolId: {
       maestro: rolDe("maestro"),
@@ -185,7 +193,7 @@ export async function cargarCatalogo459(prisma: PrismaClient): Promise<Catalogo4
       adminTienda: rolDe("adminTienda"),
       adminSatelite: rolDe("adminSatelite"),
     },
-    fks: { provinciaId: orden.provinciaId, cantonId: orden.cantonId },
+    fks: { provinciaId: canton.provinciaId, cantonId: canton.id },
   };
 }
 
@@ -195,6 +203,40 @@ class Revertir459 extends Error {
     super("rollback deliberado del escenario 459");
     this.name = "Revertir459";
   }
+}
+
+/**
+ * SLT-177 (R737): la zona central de la empresa del caso, creada en su transaccion (la base migrada
+ * no trae zonas). Una por empresa (indice unico parcial): se recuerda por `app.organizacion_id`, y
+ * cada transaccion revertida nace con una empresa nueva. `cat.centralZonaId` devuelve la ultima.
+ */
+const centralPorEmpresa459 = new Map<string, string>();
+let centralActual459: string | null = null;
+
+export async function asegurarCentral459(tx: TxDeTest): Promise<string> {
+  const [{ org }] = await tx.$queryRawUnsafe<{ org: string | null }[]>(
+    `SELECT current_setting('app.organizacion_id', true) AS org`,
+  );
+  if (!org) throw new Error("459: la transaccion no tiene empresa fijada: no se puede sembrar la zona central");
+  let id = centralPorEmpresa459.get(org);
+  if (id === undefined) {
+    const zona = await tx.zona.create({
+      data: {
+        nombre: `Central 459 ${randomUUID().slice(0, 8)}`,
+        sinpeNumero: "80000000",
+        sinpeNombre: "Titular 459",
+        esCentral: true,
+      },
+      select: { id: true },
+    });
+    // Control positivo (R739): la central sembrada se lee de vuelta, exactamente una en la empresa.
+    const centrales = await tx.zona.count({ where: { esCentral: true, organizacionId: org } });
+    if (centrales !== 1) throw new Error(`459: la empresa del caso tiene ${centrales} zonas centrales, no 1`);
+    id = zona.id;
+    centralPorEmpresa459.set(org, id);
+  }
+  centralActual459 = id;
+  return id;
 }
 
 /**
@@ -213,6 +255,7 @@ export async function enTransaccionRevertida459<T>(
         // DESPUES del lock: el lock tiene que seguir siendo la primera sentencia.
         const { id } = await crearOrganizacion(tx);
         await fijarEmpresa(tx, id);
+        await asegurarCentral459(tx);
         throw new Revertir459(await conEmpresa(id, () => fn(tx)));
       },
       {
@@ -428,6 +471,7 @@ export async function sembrarEscenario459(
   cat: Catalogo459,
 ): Promise<Escenario459> {
   const s = montarServicios459(tx);
+  await asegurarCentral459(tx);
   const sufijo = randomUUID().slice(0, 8);
   let n = 0;
   const pasos: Record<string, string> = {};

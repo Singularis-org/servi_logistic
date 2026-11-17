@@ -161,7 +161,23 @@ export async function sembrar468(tx: TxDeTest, cat: Catalogo459): Promise<Escena
   const s = montarServicios459(tx);
   const cliente = s.cliente as unknown as PrismaClient;
   const sufijo = randomUUID().slice(0, 8);
-  const tarifa = await tx.tarifa.findFirst({ select: { id: true } });
+  // SLT-177 (R737): la tarifa a la que apunta `cierre_detail.tarifa_id` se crea aqui (la base migrada
+  // no trae tarifas); los importes del caso salen de la foto de cada fila, no de esta tarifa.
+  const sembrada = await tx.tarifa.create({
+    data: {
+      tiendaId: null,
+      zonaId: null,
+      valorFlete: "2000.00",
+      valorFleteGam: "2500.00",
+      valorFleteDevuelto: "1000.00",
+      valorFleteDevueltoGam: "1200.00",
+      comisionCod: "3.50",
+      ivaFlete: "13.00",
+      ivaComisionCod: "13.00",
+    },
+    select: { id: true },
+  });
+  const tarifa = await tx.tarifa.findUnique({ where: { id: sembrada.id }, select: { id: true } });
   expect(tarifa, "la base no tiene ni una tarifa a la que apuntar `cierre_detail.tarifa_id`").not.toBeNull();
   const estatusId = cat.estatus.get("entregado");
   expect(estatusId, "falta el estatus «entregado»").toBeDefined();
