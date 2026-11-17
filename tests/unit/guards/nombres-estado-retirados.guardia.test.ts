@@ -138,6 +138,17 @@ const EXCEPCIONES: Record<string, { textos: readonly string[]; motivo: string }>
       "`NOTA_AYUDA_SOLICITADA`: la nota de la ayuda de la 454 (evento, no estado), texto fijado por " +
       "design §2.1 y la 456; §0.3 lo retira solo como nombre de estado",
   },
+  // SLT-168 «Escaneo continuo en las recogidas del mensajero» (2026-11-17): la fila y el contador de
+  // una LECTURA del escaneo continuo en Recolección dicen lo que hizo esa lectura, con el mismo
+  // patrón que «Recibida»/«Recibidas» de las recepciones (SLT-159). No nombran el estado de la orden
+  // (que se llama «En ruta a bodega central»). Textos aprobados por Carlos el 2026-11-17.
+  "lib/utils/sesion-escaneo.ts": {
+    textos: ["Recolectada", "Recolectadas"],
+    motivo:
+      "SLT-168 (R596, R597): `TEXTOS_RECOLECCION.exito` y `.contadorExitos`, el desenlace de una " +
+      "lectura del escaneo continuo y su contador; no nombran el estado de la orden. Aprobados por " +
+      "Carlos el 2026-11-17 (progress/features/SLT-168.md > Decisiones)",
+  },
   // FICHA 462 (2026-09-25): la Fase 2 (backend) declaro aqui una excepcion para
   // `lib/notificaciones/emitir.ts` («reprogramadas» en el literal de 462/R17) y la elevo al leader. El
   // leader decidio REFORMULAR los literales de la ficha —se habla del PAQUETE en masculino, con el

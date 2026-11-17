@@ -616,7 +616,10 @@ describe("RecoleccionModule — escaneo continuo (SLT-168: R595, R597, R598, R83
       [{ numGuia: 1002 }],
       [{ numGuia: 1003 }],
     ]);
-    await waitFor(() => expect(filas()).toHaveLength(4));
+    await waitFor(() => {
+      expect(filas()).toHaveLength(4);
+      expect(within(filas()[0]).getByText("Ya recolectada")).toBeInTheDocument();
+    });
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Simular escaneo" })).toBeInTheDocument();
     sinToasts();
@@ -709,8 +712,10 @@ describe("RecoleccionModule — escaneo continuo (SLT-168: R595, R597, R598, R83
     await abrirEscaner(user);
     await teclear(user, "1024", "1024");
 
-    await waitFor(() => expect(filas()).toHaveLength(2));
-    await waitFor(() => expect(within(filas()[1]).getByText("Recolectada")).toBeInTheDocument());
+    await waitFor(() => {
+      expect(filas()).toHaveLength(2);
+      expect(within(filas()[1]).getByText("Recolectada")).toBeInTheDocument();
+    });
     expect(within(filas()[0]).getByText("Ya recolectada")).toBeInTheDocument();
     expect(recolectarMock).toHaveBeenCalledTimes(1);
     expect(contador("Repetidas")).toBe("Repetidas1");
@@ -1060,8 +1065,10 @@ describe("RecoleccionModule — guía única por cámara o pistola (SLT-157)", (
     // una fila «Código inválido».
     await user.type(screen.getByRole("textbox"), "1024abc");
     await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
-    await waitFor(() => expect(filas()).toHaveLength(2));
-    expect(within(filas()[0]).getByText("Código inválido")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(filas()).toHaveLength(2);
+      expect(within(filas()[0]).getByText("Código inválido")).toBeInTheDocument();
+    });
     expect(within(filas()[1]).getByText("Código inválido")).toBeInTheDocument();
     expect(recolectarMock).not.toHaveBeenCalled();
   });
