@@ -580,3 +580,5 @@ comprueba con el diff.
 - **Choque con SLT-47** en `OrdenRepository.ts`: aquí solo se cambia la importación de
   `PROFUNDIDAD_DEL_NIVEL`. Lo detecta `archivos-en-vuelo.mjs`.
 - **Tránsito sin contexto de empresa.** Lo verifica T0.1.
+
+<!-- @test-desaparecido tests/unit/guards/geografia-lecturas-sin-nodo-fk.guardia.test.ts: SLT-48 «Geografía jerárquica: retirar modelo viejo» (T2.9, design §5) invierte la regla; desde SLT-48 el lugar de la orden ES su nodo y las 3 FK quedan en NULL en una orden nueva, así que «no leer nodo_geografico_id» dejó de ser cierto. La sustituye tests/unit/guards/orden-fk-geo-sin-uso.guardia.test.ts (SLT-48 R29), que prohíbe lo contrario: leer o escribir las 3 FK de la orden. -->

@@ -2992,7 +2992,7 @@ export class OrdenRepository implements IOrdenRepository {
       // SLT-48 (R16, R22): el lugar es el nodo; la ruta y el nombre del nivel 3 salen de el.
       nodoId: row.nodoGeograficoId,
       ruta,
-      distritoNombre: tresPrimerosNiveles(ruta).distrito?.nombre ?? null,
+      distritoNombre: nombresDeLaRuta(ruta).distritoNombre,
       distritoTarifaId: distritoDeTarifa(catalogo, row.nodoGeograficoId), // SLT-48 (P3)
       zonaId: row.zona.id,
       zonaNombre: row.zona.nombre,

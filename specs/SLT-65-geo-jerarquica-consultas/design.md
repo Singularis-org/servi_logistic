@@ -548,3 +548,5 @@ contexto de una empresa. Se le da contexto (`conEmpresa`), que es entrada, y no 
 - **Dobles de Prisma.** Hay cinco suites unitarias candidatas a cambiar de entrada (§14.1). Es el
   punto donde un cambio de aserción podría colarse, y el reviewer lo mira en el diff.
 - **`comoPlataforma` en el script.** Puede pedir una excepción en `EXCEPCIONES_DE_PLATAFORMA` (T5.1).
+
+<!-- @test-desaparecido tests/unit/guards/geografia-lecturas-sin-nodo-fk.guardia.test.ts: SLT-48 «Geografía jerárquica: retirar modelo viejo» (T2.9, design §5) invierte la regla; desde SLT-48 el lugar de la orden ES su nodo y las 3 FK quedan en NULL en una orden nueva, así que «no leer nodo_geografico_id» dejó de ser cierto. La sustituye tests/unit/guards/orden-fk-geo-sin-uso.guardia.test.ts (SLT-48 R29), que prohíbe lo contrario: leer o escribir las 3 FK de la orden. -->
