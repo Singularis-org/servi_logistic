@@ -150,6 +150,7 @@ import {
   type OrdenBaseCobroDevolucionRow,
   type OrdenParaCorreccionRow,
   type OrdenTransicionRow,
+  type ResumenRecepcion,
   type OrderStatusLiteRow,
   type ProvinciaRow,
   type RecepcionSateliteFiltro,
@@ -3482,6 +3483,27 @@ export class OrdenRepository implements IOrdenRepository {
       mensajeroAsignadoId: r.mensajeroAsignadoId,
       fechaReparto: r.fechaReparto,
     };
+  }
+
+  /**
+   * SLT-167 (R713, R714): destinatario y nombre de la tienda de una orden, para la respuesta de la
+   * recepcion por guia. Solo esas dos columnas (privacidad).
+   *
+   * Va en SQL a mano para que el acotado por empresa quede ESCRITO y se pueda medir: la RLS de la
+   * envoltura ya esconde las filas de otra empresa, pero el `organizacion_id` explicito es la segunda
+   * barrera (mismo criterio que `CierresBodegaAdminRepository.idsRecibidosIncompletos`).
+   */
+  async resumenRecepcion(ordenId: string): Promise<ResumenRecepcion | null> {
+    const [fila] = await this.prisma.$queryRaw<ResumenRecepcion[]>`
+      SELECT o."destinatario" AS "destinatario", t."nombre" AS "tienda"
+        FROM "orden" o
+        JOIN "usuario" t ON t."id" = o."tienda_id"
+       WHERE o."id" = ${ordenId}
+         AND o."organizacion_id" = NULLIF(current_setting('app.organizacion_id', true), '')
+       LIMIT 1`;
+    // R713: las dos claves, ambas texto. Una fila que no las trae como texto no es un resumen.
+    if (typeof fila?.destinatario !== "string" || typeof fila.tienda !== "string") return null;
+    return { destinatario: fila.destinatario, tienda: fila.tienda };
   }
 
   // --- Feature 106: canal integrador de lectura/cancelacion por API key ---

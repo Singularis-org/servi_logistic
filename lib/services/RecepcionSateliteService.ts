@@ -2,6 +2,7 @@ import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepos
 import type {
   RecepcionSateliteFiltro,
   RecepcionSateliteRow,
+  ResumenRecepcion,
 } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IOrdenHistorialService } from "@/lib/interfaces/services/IOrdenHistorialService";
@@ -80,6 +81,8 @@ type RecepcionSateliteRepo = Pick<
   | "findByNumGuiaForTransicion"
   | "findEstatusIdByValue"
   | "recibirEnSatelite"
+  // SLT-167 (R710, R711): destinatario y tienda en la respuesta de la recepcion por guia.
+  | "resumenRecepcion"
 >;
 
 /**
@@ -413,7 +416,9 @@ export class RecepcionSateliteService implements IRecepcionSateliteService {
     // R12: orden de otra zona -> zona_ajena, sin efectos.
     if (row.zonaId !== zonaId) return { status: "zona_ajena" };
     // R14: ya recibida (misma zona) -> idempotente, sin escribir.
-    if (row.estatusValue === ESTADO_RECIBIDA) return { status: "ya_recibida" };
+    if (row.estatusValue === ESTADO_RECIBIDA) {
+      return { status: "ya_recibida", ...(await this.conResumen(ordenId)) };
+    }
     // R13: origen distinto de en_ruta_bodega_satelite -> estado_invalido, sin efectos.
     if (row.estatusValue !== ORIGEN_RECEPCION) {
       return { status: "estado_invalido", estado: row.estatusValue };
@@ -433,15 +438,29 @@ export class RecepcionSateliteService implements IRecepcionSateliteService {
       actorUsuarioId: actor.usuarioId,
       origenTipo: "recepcion_satelite",
     });
-    if (ok) return { status: "ok", ordenId, estado: ESTADO_RECIBIDA };
+    if (ok) return { status: "ok", ordenId, estado: ESTADO_RECIBIDA, ...(await this.conResumen(ordenId)) };
 
     // R18: race — otro escaneo la movio entre la lectura y la escritura. Re-lee y
     // decide: si ahora esta recibida -> ya_recibida (idempotente); si no -> conflict.
     const actual = await this.repo.findByNumGuiaForTransicion(numGuia);
     if (actual && actual.deletedAt === null && actual.estatusValue === ESTADO_RECIBIDA) {
-      return { status: "ya_recibida" };
+      return { status: "ya_recibida", ...(await this.conResumen(ordenId)) };
     }
     return { status: "conflict" };
+  }
+
+  /**
+   * SLT-167 (R710, R711, R715): el `resumen` de la orden ya recibida, solo tras todas las guardas
+   * (`zona_ajena` incluida). Si la lectura no da datos o falla, la respuesta sale sin `resumen`: la
+   * recepcion ya se hizo y un error haria reintentar algo hecho.
+   */
+  private async conResumen(ordenId: string): Promise<{ resumen?: ResumenRecepcion }> {
+    try {
+      const resumen = await this.repo.resumenRecepcion(ordenId);
+      return resumen ? { resumen } : {};
+    } catch {
+      return {};
+    }
   }
 
 }
