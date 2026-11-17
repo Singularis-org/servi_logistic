@@ -343,9 +343,11 @@ export interface OrdenDTO {
   zonaId: string;
   /**
    * SLT-48 (R15, R22): el lugar de la orden es su nodo. Las 3 FK viejas ya no viajan en el DTO: en
-   * una orden nueva son NULL y ningun lector de produccion las lee (R29).
+   * una orden nueva son NULL y ningun lector de produccion las lee (R29). Opcional (`?`) por el
+   * patron aditivo de `mensajeroAsignadoId?`: no rompe los fixtures que construyen el DTO; `toDTO`
+   * SIEMPRE lo envia.
    */
-  nodoGeograficoId: string | null;
+  nodoGeograficoId?: string | null;
   producto: string;
   peso: number | null; // feature 15/R4: nullable (carga masiva no trae peso)
   notas: string | null;

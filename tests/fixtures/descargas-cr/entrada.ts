@@ -150,9 +150,6 @@ function ordenDe(c: CasoCR, i: number): OrdenListItemDTO {
     zonaId: `zona-${i}`,
     // Zona vacía: sin relación resuelta (abajo) y con el nombre en `""`.
     zonaNombre: c.zona,
-    provinciaId: provincia.id,
-    cantonId: canton.id,
-    distritoId: distrito?.id ?? null,
     producto: c.producto,
     peso: i % 2 === 0 ? 1.5 : null,
     notas: i === 1 ? "Llamar antes, por favor" : null,

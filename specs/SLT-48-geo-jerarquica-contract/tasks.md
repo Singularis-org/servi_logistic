@@ -71,44 +71,48 @@
 
 ## T2 — Servidor: escrituras, lectores y tarifas (backend_dev) · depende de T1
 
-- [ ] **T2.1** Regla de hoja en `geo-ubicacion.ts` (design §4.1): `esHoja` y `msgUbicacionIncompleta`.
+- [x] **T2.1** Regla de hoja en `geo-ubicacion.ts` (design §4.1): `esHoja` y `msgUbicacionIncompleta`.
   Fuera `esPaisDeTresNiveles`, `admiteGuardado`, `fksDeNodo` y `MSG_PAIS_NO_HABILITADO`. Hoja = sin
   hijos activos (P2).
   **Hecho:** `geo-ubicacion.test.ts` cubre CR (cantón con y sin distritos), 2, 4 y 10 niveles, y hoja con
   hijos retirados (R17, R18).
-- [ ] **T2.2** Vías de entrada (design §4.2): `BulkOrdenService`, `geo-resolucion` (v1),
+- [x] **T2.2** Vías de entrada (design §4.2): `BulkOrdenService`, `geo-resolucion` (v1),
   `CotizacionOrdenService`, `OrdenRepository.createManyOrdenes*`/`toCreateManyInput`/`toUpdateData`,
   `IOrdenRepository`, `lib/types/orden.ts`.
   **Hecho:** `orden-nodo-escritura.test.ts` comprueba que cada vía deja las 3 FK en NULL (R15);
   `bulk-orden-service.n-niveles`, `bulk-orden-service.forma-pais`, `geo-resolucion-v1-mensajes` y
   `v2-paises-de-prueba.route` verdes con la regla de hoja (R17–R19).
-- [ ] **T2.3** Corrección de ubicación a `nodoId` (design §4.2): `lib/types/correccion-datos-cliente.ts`,
+- [x] **T2.3** Corrección de ubicación a `nodoId` (design §4.2): `lib/types/correccion-datos-cliente.ts`,
   la action, `CorregirDatosClienteService`, su interfaz y `OrdenRepository.corregirDatosCliente`.
   **Hecho:** `corregir-datos-cliente.repo.test.ts` y los unitarios de corrección verdes; una orden vieja
   corregida queda con el nodo nuevo y las 3 FK en NULL (R16).
-- [ ] **T2.4** Tarifas (design §6): `distritoDeTarifa` en `geografia-dominio.ts` y sus llamadores
+- [x] **T2.4** Tarifas (design §6): `distritoDeTarifa` en `geografia-dominio.ts` y sus llamadores
   (`resolver-tarifas.ts`, `ApiOrdenLecturaService`, `RechazoTiendaService`, `CotizacionOrdenService`,
   `OrdenRepository`). Grupo desde el nodo si está en el nivel 3 o más hondo (P3).
   **Hecho:** `geografia-dominio.distrito-de-tarifa.test.ts`, `tarifas-flexibles-resolver.test.ts`,
   `slt89-equivalencia-cr.test.ts` y `slt48-tarifas-equivalencia.test.ts` verdes: mismos montos, zona y
   marca para órdenes viejas de CR (R31, R32).
-- [ ] **T2.5** [P] Lectores al nodo (design §5): `lugar-orden.ts`, `ruta-del-lugar.ts`,
+- [x] **T2.5** [P] Lectores al nodo (design §5): `lugar-orden.ts`, `ruta-del-lugar.ts`,
   `lugares-del-filtro.ts`, selects de `OrdenRepository`, `InformeTransitoRepository`,
   `ubicacion-presentacion.ts` (`D = P`).
   **Hecho:** `lugar-orden`, `ruta-del-lugar`, `lugares-del-filtro`, `orden-repository-filtros`,
   `ubicacion-presentacion`, `orden-lugar-owner`, `slt48-filtro-orden-nueva`, `informe-transito-nodo`,
   `geografia-ordenes-sin-entregar` y `zona-reconciliacion-ordenes` verdes (R22–R25).
-- [ ] **T2.6** [P] Cierre (design §5): `CierreDiaRepository` con nombres y snapshot desde la ruta del nodo.
+- [x] **T2.6** [P] Cierre (design §5): `CierreDiaRepository` con nombres y snapshot desde la ruta del nodo.
   **Hecho:** `cierre-dia-snapshot-nodo.test.ts` verde; para una orden vieja de CR da lo mismo que hoy
   (R27).
-- [ ] **T2.7** [P] API v1, respuestas desde la ruta del nodo.
+- [x] **T2.7** [P] API v1, respuestas desde la ruta del nodo.
   **Hecho:** `v1-ordenes-lugar.route.test.ts` verde; iguales a hoy para órdenes viejas (R28).
-- [ ] **T2.8** Camino B de T1.1, solo si se eligió: lectores por relación al catálogo
+- [x] **T2.8** — **no aplica (camino A, T1.1).** Camino B de T1.1, solo si se eligió: lectores por relación al catálogo
   (`geografia-activa.ts`, `GrupoDistritosRepository`, `TarifasPantallaRepository`, `ZonaRepository`).
   **Hecho:** sus tests de hoy verdes sin cambiar aserciones.
-- [ ] **T2.9** Guardias: `orden-fk-geo-sin-uso.guardia.test.ts` (nueva, con contraprueba) sustituye a
+- [x] **T2.9** Guardias: `orden-fk-geo-sin-uso.guardia.test.ts` (nueva, con contraprueba) sustituye a
   `geografia-lecturas-sin-nodo-fk.guardia.test.ts`; `geografia-vieja-sin-escritor` actualizada.
   **Hecho:** `pnpm run test:guardias` verde (R29).
+
+> T2 (2026-11-17): cerrada con aserciones viejas pendientes de autorización humana (las que afirman la
+> regla de SLT-45, las 3 FK escritas o la forma vieja de la corrección). Lista en `progress/impl_SLT-48.md`
+> sección T2.
 
 ## T3 — Mover nodo, servidor (backend_dev) · depende de T1.2 y T2.4
 

@@ -270,3 +270,217 @@ aserciones.
 **Veredicto T1:** hecha con el camino A. Migraciones, guardia, triggers, vistas y rendimiento en verde contra
 Postgres 16. Quedan 161 errores de typecheck esperados para T2/T5, una decisión humana sobre R2 y `servi_app`, y una
 aserción de SLT-89 que pide autorización.
+
+## T2 — Servidor: escrituras, lectores y tarifas (backend_dev, 2026-11-17)
+
+Base: `servi_logistic_slt48` (local, la de T1). Nada remoto, ni producción ni su copia ni Ordenex. Ninguna
+dependencia nueva. El MCP del grafo no se usó (Grep/Read). **T2.8 no aplica** (camino A).
+
+### Commits
+
+| Task | Commit |
+|---|---|
+| T2.1 | `5bdfba94` feat: regla de hoja en geo-ubicacion (esHoja, msgUbicacionIncompleta) |
+| T2.2 | `f2569b9b` feat: vías de entrada con la regla de hoja; la orden se crea solo con su nodo |
+| T2.3 | `b3ae2be9` feat: corrección de ubicación a nodoId con la regla de hoja |
+| T2.4 | `3ba50fd8` feat: distritoDeTarifa: el grupo de tarifas desde el nodo (P3) |
+| T2.5 (+ T2.2, T2.3, T2.7 dentro de `OrdenRepository`) | `5380c4e2` feat: lectores al nodo: lugar, ruta, filtros, tránsito, D = P |
+| T2.6 | `d3ab088a` feat: cierre con nombres, marca y snapshot desde la ruta del nodo |
+| desvío (scripts) | `10a34cf7` chore: scripts geo-equivalencia/explain compilan con las FK nullable |
+| T2.9 | `3aad3c79` test: guardia orden-fk-geo-sin-uso (R29) sustituye a geografia-lecturas-sin-nodo-fk |
+| T2.4–T2.7 | `b99d3eae` test: integración contra Postgres (tarifas, filtro, tránsito, cierre, v1) |
+| T2.2, T2.3 | `67a18b48` test: regla de hoja en la carga y en v1; entradas de corrección a nodoId |
+| T2.9 | `7db299b0` test: constancia del guardia retirado; nombre del nivel 3 por nombresDeLaRuta |
+| cierre de la tanda | `test(SLT-48): T2 fixtures de DTO sin las 3 FK; tasks.md y bitácora` (el último de la rama) |
+
+`OrdenRepository.ts` e `IOrdenRepository.ts` llevan cambios de T2.2, T2.3, T2.4, T2.5 y T2.7 en un solo commit
+(`5380c4e2`): sin `git add -p` no se podían partir por hunks. Los commits intermedios no compilan solos; el último sí.
+
+### Archivos
+
+Producción modificados:
+- `lib/services/{geo-ubicacion,geo-resolucion,geografia-dominio,BulkOrdenService,CotizacionOrdenService,CorregirDatosClienteService}.ts`
+- `lib/types/{api-v2,orden,correccion-datos-cliente}.ts`, `lib/actions/corregir-datos-cliente.ts`
+- `lib/interfaces/repositories/IOrdenRepository.ts`, `lib/interfaces/services/ICorregirDatosClienteService.ts`
+- `lib/repositories/{OrdenRepository,CierreDiaRepository,CierresAdminRepository,ZonaRepository,InformeTransitoRepository}.ts`
+- `lib/repositories/{GestionOrdenRepository,OrdenEnvioReader,OrdenGeocodeRepository}.ts` (desvío, ver abajo)
+- `lib/repositories/_shared/{lugar-orden,ruta-del-lugar}.ts`, `lib/utils/ubicacion-presentacion.ts`
+- `scripts/geo-equivalencia-{analitica,consultas,filtros,presentacion}.ts`, `scripts/geo-equivalencia/{consultas-de-hoy,lecturas-de-hoy}.ts`, `scripts/geo-explain-consultas.ts` (desvío)
+
+Tests nuevos:
+- `tests/unit/guards/orden-fk-geo-sin-uso.guardia.test.ts`
+- `tests/unit/services/geografia-dominio.distrito-de-tarifa.test.ts`
+- `tests/integration/db/{slt48-tarifas-equivalencia,slt48-filtro-orden-nueva,informe-transito-nodo,cierre-dia-snapshot-nodo}.test.ts`
+- `tests/integration/api/v1-ordenes-lugar.route.test.ts`
+
+Test borrado: `tests/unit/guards/geografia-lecturas-sin-nodo-fk.guardia.test.ts` (T2.9: «sustituye»). Sus citas
+`R → test` en los `design.md` de SLT-44 (R12), SLT-65 (R19) y SLT-71 (R14) llevan `@test-desaparecido` con el motivo
+(lo exige la guardia `test-citado-desaparecido`).
+
+Tests existentes con bloques NUEVOS de SLT-48, sin tocar los viejos: `geo-ubicacion`, `lugar-orden`,
+`ubicacion-presentacion`, `bulk-orden-service.n-niveles`, `geo-resolucion-v1-mensajes`, `orden-nodo-escritura`.
+
+Tests existentes con solo ENTRADAS cambiadas (firmas, dobles, fixtures; ningún `expect`):
+- `ruta-del-lugar`, `lugar-orden` (dos llamadas), `ubicacion-presentacion` (una `rutaDelLugar`);
+- los 5 `corregir-*` de servicio (dobles `findLugarParaCorreccion`/`LugarResueltoRow`, filas y entradas con `nodoId`);
+- `orden-lugar-owner` (copia local de `fksDeNodo` solo para armar el fixture), `geo-consultas-cierre` (R5: el
+  `select` de hoy), `geografia-vieja-sin-escritor` (cabecera y texto del mensaje, pedido por T2.9);
+- `bulk-orden-service`, `bulk-orden-service.carga-api`, `orden-service`, `rol-admin-satelite-authz`: el nombre del
+  método del doble;
+- los fixtures de `OrdenDTO`/`OrdenListItemDTO`/`CreateOrdenData` que llevaban `provinciaId`/`cantonId`/`distritoId`
+  (unos 60 archivos de `tests/components`, `tests/unit`, `tests/fixtures` y `tests/integration`): se quitaron esas
+  líneas del objeto y nada más. La única que caía dentro de un `expect` (`orden-repository.bulk.test.ts`,
+  `distritoId: true` del `select` de `zonaDistrito`) se repuso, y `rechazo-tienda-service.test.ts` se restauró entero
+  (su `distritoId` es el lugar de tarifa de `OrdenBaseCobroDevolucionRow`, que sigue).
+
+### Mapa R → test (lo cubierto en T2)
+
+| R | Test |
+|---|---|
+| R15 | `orden-nodo-escritura.test.ts` › «SLT-48 — la orden guarda solo su nodo» (v1, v2, repositorio con y sin guía); `bulk-orden-service.n-niveles.test.ts` › «SLT-48 R15/R17/R18» |
+| R16 | `orden-nodo-escritura.test.ts` › «R16 — corregir la ubicación de una orden vieja…» (nodo nuevo, 3 FK en NULL) |
+| R17 | `geo-ubicacion.test.ts` › «SLT-48 R17/R18» (CR con y sin distritos, raíz, hijos retirados = hoja); `bulk-orden-service.n-niveles.test.ts` (R17) |
+| R18 | `geo-ubicacion.test.ts` (2, 4 y 10 niveles; «no habilitado» no sale); `bulk-orden-service.n-niveles.test.ts` (2 y 4 niveles) |
+| R19 | `geo-resolucion-v1-mensajes.test.ts` › «SLT-48 R19» |
+| R22 | `lugar-orden.test.ts` › «SLT-48 R22/R23»; `ruta-del-lugar.test.ts`; `orden-lugar-owner.test.ts` |
+| R23 | `lugar-orden.test.ts`; `slt48-filtro-orden-nueva.test.ts` (listado y analítica, niveles 3 y 4) |
+| R24 | `slt48-filtro-orden-nueva.test.ts` (conteo sin entregar con una orden nueva) |
+| R25 | `ubicacion-presentacion.test.ts` › «SLT-48 R25/R26»; `informe-transito-nodo.test.ts` |
+| R26 (servidor) | `ubicacion-presentacion.test.ts` (ruta de nivel 4). El E2E es T6.1 |
+| R27 | `cierre-dia-snapshot-nodo.test.ts`; `geo-consultas-cierre.test.ts` › R5 (vieja = hoy) |
+| R28 | `v1-ordenes-lugar.route.test.ts` |
+| R29 | `orden-fk-geo-sin-uso.guardia.test.ts` (con contraprueba) |
+| R31, R32 | `geografia-dominio.distrito-de-tarifa.test.ts`; `slt48-tarifas-equivalencia.test.ts`; `tarifas-flexibles-resolver.test.ts` y `slt89-equivalencia-cr.test.ts` verdes sin cambios |
+
+### Salida real (resumida)
+
+```
+unit: geo-ubicacion, lugar-orden, ruta-del-lugar, ubicacion-presentacion, geografia-dominio.distrito-de-tarifa
+  → bloques SLT-48 verdes; 25 rojos, todos aserciones viejas (lista abajo)
+orden-fk-geo-sin-uso.guardia                                          18 passed (18)
+test-citado-desaparecido + presentacion-lugar-del-catalogo + orden-fk-geo-sin-uso   38 passed (38)
+bulk-orden-service.n-niveles -t SLT-48                                3 passed
+geo-resolucion-v1-mensajes                                            23 passed | 1 failed (control viejo)
+corregir-* (5 de servicio) + corregir-datos-cliente.action            111 passed | 10 failed (aserciones viejas)
+integración (Postgres 16 local):
+  orden-nodo-escritura           4 passed (SLT-48) | 5 failed (SLT-45, aserciones viejas)
+  slt48-tarifas-equivalencia 1/1 · slt48-filtro-orden-nueva 2/2 · informe-transito-nodo 1/1
+  cierre-dia-snapshot-nodo 2/2 · v1-ordenes-lugar.route 1/1 (una vez rojo en paralelo con otro archivo; solo y repetido, verde)
+  orden-lugar-owner + slt89-equivalencia-cr + tarifas-flexibles-resolver   37 passed (37)
+  geo-filtros-lugar, geo-analitica-lugar, geo-transito-nombres, geo-125-cierre-snapshot   verdes
+  geo-consultas-cierre 4/5 (R6: nombre de la tabla en el mensaje) · geo-consultas-ordenes 1 rojo (forma de la fila)
+  geografia-ordenes-sin-entregar, zona-reconciliacion-ordenes: `tx.distrito.create` → T5
+pnpm run test:guardias, rojos: corregir-datos-sin-rastro (2, aserciones), dependencias-declaradas-presentes
+  (baseline), zona-central-guarda-y-rastro, zona-guardado-conserva-costos, zona-guardado-conserva-inactivos (T5)
+eslint sobre lo tocado: 0 errores (avisos previos en IOrdenRepository, ZonaRepository y geo-equivalencia-analitica)
+```
+
+Los 59 archivos de test con fixtures editados (solo entradas): 57 verdes; los 2 rojos son las 4 aserciones de FK de
+`bulk-orden-service(.carga-api)` listadas abajo.
+
+### Typecheck que queda (`pnpm run typecheck`)
+
+**Producción: 0 errores** (al empezar T2 eran 36). Tests: 183 errores.
+- T5/T6 (lista de `design §9`/`tasks.md > Tests existentes` o del mismo tipo: `tx.distrito.create` y FK nullable en
+  fixtures): `tests/integration/db/*` (43 archivos) y `e2e/geo-presentacion-4-niveles.spec.ts`. Entre ellos, fuera de
+  la lista de T5 (ya los nombró T1): `_fixtures/caja-459.ts`, `_fixtures/geo-65.ts`, `_postgres-real.ts`,
+  `emisor-relaciones-anidadas`, `geo-125-cierre-snapshot`, `geo-125-geocode-cache`, `geo-125-nombres-catalogo`,
+  `geo-equivalencia-presentacion`; y nuevos de T2: `corregir-ubicacion-geocode`, `cobro-plataforma-plan`,
+  `pago-plataforma-sl45-concurrencia`, `orden-remision-borrada-libera-numero` (FK `string | null` o `create` con la terna).
+- Aserciones viejas (lista de autorización): `geo-ubicacion.test.ts` (6, importa lo que salió),
+  `corregir-datos-cliente-service.test.ts` (6), `ordenes-descarga-columnas.test.ts` (3),
+  `bulk-orden-service.n-niveles`, `bulk-orden-service.forma-pais`, `api-v2-servicios` y los 3 `v2-*.route` (1 cada uno:
+  importan `MSG_PAIS_NO_HABILITADO`).
+- UI (T4.2): `tests/components/CorregirDatosCliente.novedades.test.tsx` (2: la precarga trae `nodoId` y `ruta`).
+
+
+### Desvíos y decisiones
+
+1. **Archivos fuera de la lista**: `GestionOrdenRepository`, `OrdenEnvioReader`, `OrdenGeocodeRepository` (el
+   `select` pasa a `nodoGeograficoId`), `CierresAdminRepository` (el pago de un rechazo corregido lee
+   `orden.distrito_id` → `distritoDeTarifa`), `ZonaRepository` (el aviso de impacto de tarifa leía
+   `orden.distrito_id`; la guardia R29 lo encontró) y los scripts `geo-equivalencia*`/`geo-explain-consultas`.
+   Los scripts miden lo mismo sobre órdenes viejas: la lectura de hoy pide las FK aparte
+   (`SNAPSHOT_SELECT_DE_HOY` = el de `lib/` + las FK) y la fila nueva de corrección se proyecta a la terna
+   (niveles 1–3 de la ruta) para compararla. No se ejecutaron.
+2. **`ResolvedGeo`** pasa de la terna a `{ nodoId, distritoId, zonaId, esCentral, esZonaEspecial }`. `distritoId`
+   conserva el nombre interno de `ParTarifa` (design §6) y es el lugar del grupo (`distritoDeTarifa`), no una FK.
+3. **v1 y la orden de cantón sin distritos**: v1 (`resolveGeo`) sigue exigiendo distrito («distrito requerido»),
+   como su contrato de hoy; la regla de hoja se aplica al distrito nombrado (R19). En CR, un cantón sin distritos
+   entra por v2 o por la corrección, no por v1. Si R17 debe valer también por v1, es un cambio de contrato
+   público: **decisión humana**.
+4. **`DistritoRow.tipoHijosActivos`** (para R19) solo viaja cuando el distrito no es hoja: en un país de 3 niveles la
+   fila queda igual que la de hoy (`slt89-equivalencia-cr` la compara entera).
+5. **Mensaje de R17**: `msgUbicacionIncompleta(nombre, tipoPlural)` →
+   `ubicacion incompleta: '<nombre>' tiene <plural en minúsculas> debajo; indica el ultimo nivel`. El tipo es el de
+   los hijos activos. En la corrección se usa el mismo; los demás textos de la corrección (`El distrito indicado no
+   existe`, `Ese distrito fue retirado…`, `…no tiene una zona unica…`) y la clave `fieldErrors.distritoId` se
+   conservan para el modal de hoy; T4.2 decide si cambian.
+6. **Corrección**: desaparece la comprobación de la cadena provincia → cantón → distrito (327/R6): con un solo nodo
+   la da el árbol. El repositorio pone las 3 FK en NULL solo cuando cambia el nodo (`FK_GEO_VIEJAS_EN_NULL`, la
+   única escritura de las FK que queda; la guardia R29 permite `: null`). `obtenerUbicacion` añade `nodoId` y `ruta`
+   y conserva `provinciaId`/`cantonId`/`distritoId` sacados de la ruta (no de las FK) para que el modal de hoy
+   compile hasta T4.2. **El modal de hoy manda la terna y el schema ahora es `.strict()` con `nodoId`: la corrección
+   desde la pantalla queda rota hasta T4.2.**
+7. **`ApiOrdenLecturaService` y `RechazoTiendaService`** no cambian: el repositorio ya les entrega el lugar de
+   tarifa calculado con `distritoDeTarifa` en `costeo.distritoId` y `OrdenBaseCobroDevolucionRow.distritoId`.
+8. **`OrdenDTO`** pierde la terna y gana `nodoGeograficoId?` (opcional, mismo patrón aditivo que
+   `mensajeroAsignadoId?`); ninguna pantalla leía la terna del DTO.
+9. **Tránsito (R25)**: `canton`/`distrito` de cada fila son `dosMasHondos(ruta, P)` con D = P; en CR, cantón y
+   distrito como hoy. Una orden sin nodo o con el nodo fuera del catálogo sigue fallando con el log de R12.
+10. **Cierre**: los descriptivos se leen ANTES de la tarifa (traen el catálogo del que sale el lugar del grupo); la
+    marca congelada es la del nodo (`descriptivos.lugares`). Un nodo fuera del catálogo revierte el cierre con
+    «falta la fila de `nodo_geografico`».
+11. **API v1 y R28**: el contrato público de v1 no publica provincia, cantón ni distrito (`ApiZonaDTO`: «ni la
+    geografía»). R28 se prueba como «misma respuesta con y sin FK». Si R28 pedía añadir esos campos, es
+    **decisión humana** (cambio de contrato).
+
+### Aserciones que piden autorización (no se tocaron)
+
+Todas afirman lo que SLT-48 cambia a propósito (regla de SLT-45, «país no habilitado», FK escritas, forma vieja de
+la corrección o de `whereLugarEn`/`sqlLugarEn`, D = min(P, 3)):
+
+- `tests/unit/services/geo-ubicacion.test.ts`: los 6 de «R15/R33 — forma del país y regla de guardado»
+  (`esPaisDeTresNiveles`, `admiteGuardado`, `MSG_PAIS_NO_HABILITADO`), «un cantón con zona propia resuelve en
+  profundidad 2» (`u.fks`) y los 4 de «R25 — las tres FK se derivan de la ruta del nodo» (`fksDeNodo`). Las funciones
+  salen por T2.1.
+- `tests/unit/repositories/lugar-orden.test.ts`: «no mira … tampoco nodoGeograficoId (R19)», los 4 de
+  «SLT-65 — whereLugarEn» (forma `OR` de dos FK) y los 4 de «SLT-71 — sqlLugarEn».
+- `tests/unit/utils/ubicacion-presentacion.test.ts`: «país de 4 niveles: los niveles 2·3…», «país de 10 niveles:
+  también los niveles 2·3…», «país de 4 niveles: los tipos de los niveles 2 y 3», «no depende del orden…» (espera
+  Comuna·Barrio), «país de 10 niveles: los niveles 2 y 3» (D = min(P,3); design §5 pide D = P).
+- `tests/unit/repositories/lugares-del-filtro.test.ts` › «R11: un parámetro de array por rama» (dos ramas → una).
+- `tests/unit/repositories/orden-repository-filtros.test.ts` › «un lugar de distrito no puede seleccionar una fila
+  con distrito NULL» (espera el `OR` de FK).
+- `tests/unit/services/geo-resolucion-v1-mensajes.test.ts` › «con todo bien, resuelve (control positivo)» y
+  `geo-resolucion-retirados.test.ts` › «la terna resuelve igual que siempre» (`geo.distritoId`… ahora es el lugar de
+  tarifa; el primero espera `provinciaId`/`cantonId` en `geo`).
+- `tests/unit/services/bulk-orden-service.n-niveles.test.ts` (7), `bulk-orden-service.forma-pais.test.ts` (8),
+  `api-v2-servicios.test.ts` (4), `bulk-orden-service.test.ts` (3: `arg[0].provinciaId`…),
+  `bulk-orden-service.carga-api.test.ts` (1: `provinciaId: "p1"` en `createManyOrdenesConGuia`): esperan las 3 FK en
+  la orden creada o «país no habilitado».
+- `tests/integration/api/v2-paises-de-prueba.route.test.ts`, `v2-ordenes.route.test.ts`, `v2-cotizacion.route.test.ts`:
+  esperan `MSG_PAIS_NO_HABILITADO` (R18 dice que no sale nunca). No se corrieron (rojos seguros).
+- `tests/integration/db/orden-nodo-escritura.test.ts`: los 5 de «SLT-45 T3.3» (FK escritas; `fksDeNodo`; el cuerpo del
+  trigger de SLT-43, que T1 ya reescribió).
+- Corrección (contrato `nodoId`): `corregir-datos-cliente-service.test.ts` (7: cadena provincia/cantón, `cambios`
+  y `data` con la terna, los «NUEVE valores» de la precarga), `corregir-datos-cliente-bodega-satelite.test.ts` (1:
+  `data.distritoId`), `corregir-datos-cliente.action.test.ts` (2: la terna llega al servicio),
+  `correccion-datos-cliente-schema.test.ts` (3: la terna en el schema, «los tres juntos»),
+  `corregir-datos-sin-rastro.guardia.test.ts` (2: `CorregirDatosClienteData` y el `.pick()` deben nombrar la terna).
+- `tests/unit/components/ordenes-descarga-columnas.test.ts`: lee `orden.provinciaId/cantonId/distritoId` en la lista de
+  ids que no deben salir (el DTO ya no los tiene; no compila).
+- `tests/integration/db/geo-consultas-cierre.test.ts` › R6 (espera «falta la fila de `canton|distrito`», ahora
+  `nodo_geografico`) y `geo-consultas-ordenes.test.ts` › «cobro de la devolución y corrección: la fila entera es la de
+  hoy» (la fila de corrección cambió de forma).
+- Sigue pendiente la de T1: `orden-nodo-mas-profundo.test.ts` › R28 (SLT-89). No se tocó.
+
+### Decisiones humanas abiertas
+
+1. v1 y el cantón sin distritos (desvío 3).
+2. R28: ¿v1 debe publicar provincia/cantón/distrito? Hoy no los publica (desvío 11).
+3. Las aserciones de arriba: reescribir al requisito nuevo o retirar.
+
+**Veredicto T2:** servidor en el nodo, con regla de hoja y tarifa por `distritoDeTarifa`; producción compila, la
+guardia R29 está verde y los tests nuevos de R15–R19, R22–R25, R27–R29 y R31–R32 pasan contra Postgres; quedan rojas
+las aserciones viejas listadas (piden autorización) y los tests de T5/T6.

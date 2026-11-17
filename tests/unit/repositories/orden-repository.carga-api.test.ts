@@ -38,8 +38,6 @@ function baseCreateData(overrides: Partial<CreateOrdenData> = {}): CreateOrdenDa
     telefonoDest: "0991234567",
     tiendaId: "key-user-1",
     zonaId: "z1",
-    provinciaId: "p1",
-    cantonId: "c1",
     nodoGeograficoId: "c1",
     producto: "Caja",
     peso: null,
