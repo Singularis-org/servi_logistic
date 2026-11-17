@@ -186,22 +186,53 @@ function problemasSoloDocs(yml: string, saltados: string[], veredictos: string[]
 }
 
 const leerWf = (f: string) => readFileSync(join(WORKFLOWS, f), 'utf8').replace(/\r\n/g, '\n')
-const GATE = { archivo: 'gate.yml', saltados: ['estatico', 'vitest', 'e2e-grupo'], veredictos: ['gate-completo', 'e2e'] }
-const ARNES = { archivo: 'arnes-gate.yml', saltados: ['estatico', 'vitest'], veredictos: ['gate-completo', 'e2e'] }
+const GATE = { saltados: ['estatico', 'vitest', 'e2e-grupo'], veredictos: ['gate-completo', 'e2e'] }
+const ARNES = { saltados: ['estatico', 'vitest'], veredictos: ['gate-completo', 'e2e'] }
+
+/**
+ * El gate.yml tiene dos formas. GENERADO (lleva la MARCA, como en la plantilla): solo llama a
+ * arnes-gate.yml, donde vive la regla, así que se le exige no llevar `paths-ignore` y llamarlo. ESCRITO
+ * A MANO (sin MARCA, como en servi_logistic): lleva sus propios jobs y se le exige la regla entera.
+ */
+function problemasGate(yml: string): string[] {
+  if (!esGenerado(yml)) return problemasSoloDocs(yml, GATE.saltados, GATE.veredictos)
+  const p: string[] = []
+  if (conPathsIgnore(yml)) p.push('vuelve paths-ignore: el check requerido no se publicaría')
+  if (!/^ {4}uses: \.\/\.github\/workflows\/arnes-gate\.yml\s*$/m.test(yml)) p.push('el gate.yml generado no llama a arnes-gate.yml')
+  return p
+}
+
+const gateDelRepo = leerWf('gate.yml')
+const gateAMano = !esGenerado(gateDelRepo)
 
 describe('guardia: un PR solo de progress/ o specs/ publica gate-completo en verde', () => {
-  it('el gate.yml generado no lleva paths-ignore', () => {
-    expect(conPathsIgnore(generarGate(base))).toBe(false)
-    expect(conPathsIgnore(generarGate({ ...base, ci: { e2e: false } }))).toBe(false)
+  it(`el gate.yml del repo (${gateAMano ? 'escrito a mano' : 'generado'}) cumple la regla`, () => {
+    expect(problemasGate(gateDelRepo)).toEqual([])
   })
 
-  for (const w of [GATE, ARNES]) {
-    it(`${w.archivo}: job cambios, la suite se salta y los veredictos salen en verde con solo_docs`, () => {
-      expect(problemasSoloDocs(leerWf(w.archivo), w.saltados, w.veredictos)).toEqual([])
-    })
-  }
+  it('el gate.yml que genera ci.mjs no lleva paths-ignore y llama a arnes-gate.yml', () => {
+    expect(problemasGate(generarGate(base))).toEqual([])
+    expect(problemasGate(generarGate({ ...base, ci: { e2e: false } }))).toEqual([])
+  })
+
+  it('arnes-gate.yml: job cambios, la suite se salta y los veredictos salen en verde con solo_docs', () => {
+    expect(problemasSoloDocs(leerWf('arnes-gate.yml'), ARNES.saltados, ARNES.veredictos)).toEqual([])
+  })
 
   // Contraprueba (docs/gate.md > Probar que muerde): cada mutación del texto real pone la guardia en rojo.
+  it('contraprueba generado (ci.mjs en memoria): con paths-ignore → rojo', () => {
+    const original = generarGate(base)
+    const mutado = original.replace('  workflow_dispatch:', "    paths-ignore:\n      - 'specs/**'\n  workflow_dispatch:")
+    expect(mutado).not.toBe(original)
+    expect(problemasGate(mutado).join('\n')).toMatch(/paths-ignore/)
+  })
+  it('contraprueba generado (ci.mjs en memoria): sin llamar a arnes-gate.yml → rojo', () => {
+    const original = generarGate(base)
+    const mutado = original.replace('uses: ./.github/workflows/arnes-gate.yml', 'uses: ./.github/workflows/otro.yml')
+    expect(mutado).not.toBe(original)
+    expect(problemasGate(mutado).join('\n')).toMatch(/no llama a arnes-gate\.yml/)
+  })
+
   const mutaciones: [string, (y: string) => string, RegExp][] = [
     ['vuelve paths-ignore', (y) => y.replace(/\n {2}(pull_request|workflow_call):\n/, (m) => `${m}    paths-ignore:\n      - 'progress/**'\n`), /paths-ignore/],
     ['sin job cambios', (y) => y.replace('\n  cambios:\n', '\n  cambiosx:\n'), /falta el job cambios/],
@@ -211,23 +242,28 @@ describe('guardia: un PR solo de progress/ o specs/ publica gate-completo en ver
     ['gate-completo sin aviso', (y) => y.replace(/(\n {2}gate-completo:[\s\S]*?)PR solo de estado\/specs \(progress/, '$1PR (progress'), /gate-completo no escribe el aviso/],
     ['e2e sin cambios en needs', (y) => y.replace(/(\n {2}e2e:\n {4}name: e2e\n {4}needs: \[)cambios(, )?/, '$1').replace(/(\n {2}e2e:\n {4}name: e2e\n) {4}needs: \[\]\n/, '$1'), /e2e no depende de cambios/],
   ]
-  for (const w of [GATE, ARNES]) {
+  const objetivos = [
+    // El escrito a mano solo existe en un proyecto que lo tenga (servi_logistic); en la plantilla el
+    // gate.yml es el generado y su contraprueba es la de arriba.
+    { nombre: 'gate.yml a mano', aplica: gateAMano, texto: () => gateDelRepo, problemas: problemasGate },
+    { nombre: 'arnes-gate.yml', aplica: true, texto: () => leerWf('arnes-gate.yml'), problemas: (y: string) => problemasSoloDocs(y, ARNES.saltados, ARNES.veredictos) },
+  ]
+  for (const o of objetivos) {
     for (const [nombre, mutar, espera] of mutaciones) {
-      it(`contraprueba ${w.archivo}: ${nombre} → rojo`, () => {
-        const original = leerWf(w.archivo)
+      it.skipIf(!o.aplica)(`contraprueba ${o.nombre}: ${nombre} → rojo`, () => {
+        const original = o.texto()
         const mutado = mutar(original)
         expect(mutado).not.toBe(original)
-        expect(problemasSoloDocs(mutado, w.saltados, w.veredictos).join('\n')).toMatch(espera)
+        expect(o.problemas(mutado).join('\n')).toMatch(espera)
       })
     }
   }
-  it('contraprueba gate.yml: e2e-grupo corre con solo_docs → rojo', () => {
-    const mutado = leerWf('gate.yml').replace(/(\n {2}e2e-grupo:[\s\S]*?) && needs\.cambios\.outputs\.solo_docs != 'true'/, '$1')
-    expect(problemasSoloDocs(mutado, GATE.saltados, GATE.veredictos).join('\n')).toMatch(/e2e-grupo no se salta/)
+  it.skipIf(!gateAMano)('contraprueba gate.yml a mano: e2e-grupo corre con solo_docs → rojo', () => {
+    const mutado = gateDelRepo.replace(/(\n {2}e2e-grupo:[\s\S]*?) && needs\.cambios\.outputs\.solo_docs != 'true'/, '$1')
+    expect(mutado).not.toBe(gateDelRepo)
+    expect(problemasGate(mutado).join('\n')).toMatch(/e2e-grupo no se salta/)
   })
-  it('contraprueba ci.mjs: un generado con paths-ignore → rojo', () => {
-    const mutado = generarGate(base).replace('  workflow_dispatch:', "    paths-ignore:\n      - 'specs/**'\n  workflow_dispatch:")
-    expect(mutado).not.toBe(generarGate(base))
-    expect(conPathsIgnore(mutado)).toBe(true)
+  it('contraprueba: un generado que perdiera la MARCA se juzga entero → rojo', () => {
+    expect(problemasGate(generarGate(base).replace(MARCA, '# a mano')).join('\n')).toMatch(/falta el job cambios/)
   })
 })
