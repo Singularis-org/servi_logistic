@@ -100,3 +100,26 @@ Chip «Tú» con el token del podio, porcentaje del pedestal a 18 px, la lista d
 hoy, el desplegar en la columna derecha y `BuscadorFiltros` en las dos pantallas (DC23). Ninguna
 contradice el spec: R750/R767 piden el chip y la posición, no su color; el spec manda «Todo lo demás es la
 pantalla de hoy» para la lista; DC23 manda sobre el canvas.
+
+## Vuelta 2 (acotada a 9d79714d..19c15b4e)
+
+Diff: un commit (`19c15b4e`), tres archivos — `e2e/pwa-mensajero-ranking.spec.ts` (solo cabecera y
+`beforeAll`), `progress/impl_SLT-162.md` (bitácora) y `requirements.md` (T5 marcada). Nada fuera de lo
+esperado; código de producción sin cambios.
+
+- **M1 — cerrado.** La siembra pasa a cinco mensajeros de la central: cuatro con 2 de 2 (100 %) y el largo
+  con 1 de 2 (50 %). Con 1-3 en el podio ocupados por los de 100 %, el largo cae en «Resto del ranking
+  diario» por construcción (si es elegible, los cuatro también lo son con más %; si no, no tiene puesto).
+  Los montos (2000-2007, 2300, 2400) no chocan. El cuerpo de (a) (`:173-209`) **no se toca**: siguen sus
+  aserciones de R767, R758, R768, R750/R759, R769, R766 y R761 tras la fila propia. CI `gate` run
+  44000023680 sobre `19c15b4e`: SUCCESS, incluidos `e2e (reparto)` y `gate-completo` (antes rojo en
+  43998053418).
+- **M2 (T5/T6) — en parte.** T5 marcada `[x]` con el E2E en verde en CI. T6 (`./init.sh` con base
+  desechable y mapa R → test) sigue `[ ]`: es del leader, no bloquea esta review; márquese antes del PR a
+  mergear. La sustitución del E2E local por el de CI queda anotada en la bitácora y T5.
+- **m3 (foco del Histórico) — aceptado sin cambio.** Justificación en la bitácora: el desplegar es el
+  único control enfocable de la fila; moverlo exige tocar la `DataTable`.
+
+Sin regresiones ni hallazgos nuevos.
+
+### Veredicto vuelta 2: OK
