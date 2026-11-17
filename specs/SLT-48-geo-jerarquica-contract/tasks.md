@@ -140,15 +140,17 @@
 - [ ] **T4.2** [P] `CorregirUbicacionAviso.tsx` y `CorregirDatosClienteModal.tsx` con N selectores.
   **Hecho:** `CorregirUbicacionNNiveles.test.tsx` verde; los tests de hoy de `CorregirDatosCliente.*`
   pasan en CR sin cambiar aserciones visibles (R43).
-- [ ] **T4.3** [P] Etiquetas de historial con la ruta entera (`historial-accion-etiquetas.ts`).
+  *(Código hecho, commit eb76740a. Pendiente: 2 aserciones de carga útil (`.distritoId` → `.nodoId`) piden
+  autorización; ver `progress/impl_SLT-48.md > T4 (sin T4.1)`.)*
+- [x] **T4.3** [P] Etiquetas de historial con la ruta entera (`historial-accion-etiquetas.ts`).
   **Hecho:** `historial-accion-etiquetas-ruta.test.ts` verde; CR igual que hoy (R44).
-- [ ] **T4.4** [P] Tarifas y zonas hasta P: `TarifasGrupos.tsx`, `TarifasZonas.tsx`, `CrearZonaForm.tsx`,
+- [x] **T4.4** [P] Tarifas y zonas hasta P: `TarifasGrupos.tsx`, `TarifasZonas.tsx`, `CrearZonaForm.tsx`,
   `GeografiaSelector.tsx`, `filtrar-arbol-geografico.ts`.
   **Hecho:** `TarifasGruposNNiveles.test.tsx` y `ZonasNNiveles.test.tsx` verdes; `TarifasGrupos.test.tsx`
   y `geografia-arbol-n-niveles.test.tsx` sin cambiar aserciones de CR (R45).
-- [ ] **T4.5** Carga masiva de 4 niveles.
+- [x] **T4.5** Carga masiva de 4 niveles.
   **Hecho:** `carga-masiva-4-niveles.test.ts` verde (R46).
-- [ ] **T4.6** Guardia `etiquetas-geograficas-sin-literal` ampliada a los archivos tocados.
+- [x] **T4.6** Guardia `etiquetas-geograficas-sin-literal` ampliada a los archivos tocados.
   **Hecho:** verde (R47).
 
 ## T5 — Tests que escriben tablas viejas (backend_dev) · depende de T1.8

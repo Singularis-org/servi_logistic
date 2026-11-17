@@ -602,3 +602,129 @@ solo, 3 veces:                                   Tests  1 passed (1)  ×3
 en paralelo con geo-consultas-ordenes y cierre-dia-snapshot-nodo (--maxWorkers=3), 3 veces:
                                                  Test Files  3 passed (3) · Tests  9 passed (9)  ×3
 ```
+
+## T4 (sin T4.1) — Pantallas (frontend_dev, 2026-11-17)
+
+T4.1 (modal Mover) queda fuera: espera al servidor de T3. Base para T4.5: `servi_logistic_slt48` local
+(`DATABASE_URL` exportado a ella solo para ese test). Nada remoto, ni producción ni Ordenex. Ninguna dependencia nueva.
+
+### Commits
+
+| Task | Commit | Qué |
+|---|---|---|
+| T4.2 | eb76740a | Corregir ubicación: un selector por nivel del país hasta una hoja; manda `nodoId`; aviso con el tipo del último nivel |
+| T4.3 | 98ceaefd | Etiquetas de lugar del historial: `rutaDeHojaARaiz` y `valorDeRuta` (ruta entera, separador de hoy) |
+| T4.4 | 30a97bd3 | Tarifas (grupos por el nivel 3 del país, 2 niveles sin grupos) y zonas (cuenta del último nivel) |
+| T4.5 | 80a38ada | `carga-masiva-4-niveles.test.ts` contra Postgres (sin cambio de producción) |
+| T4.6 | 369cccc2 | Guardia `etiquetas-geograficas-sin-literal` ampliada a las pantallas de N niveles |
+
+### Archivos
+
+Producción:
+- `app/(app)/ordenes/_components/CorregirDatosClienteModal.tsx` — lee `niveles` y `lugares` del catálogo (no las listas
+  planas), un `Select` por nivel en un `fieldset`, `nodoId` en vez de la terna, error de ubicación (`nodoId` o
+  `distritoId`) junto al selector del lugar.
+- `app/(app)/ordenes/_components/CorregirUbicacionAviso.tsx` — fila del lugar rotulada con el tipo del último nivel;
+  celda «Barrio: Las Acacias» si la hoja está más arriba; «Sin <nivel>» solo a medias.
+- `app/(app)/ordenes/_components/corregir-ubicacion-arbol.ts` (nuevo) — regla de hoja (P2) y estado de cada selector, puro.
+- `lib/types/historial-accion-etiquetas.ts` — `SEPARADOR_DE_RUTA`, `rutaDeHojaARaiz`, `valorDeRuta` (para el
+  `valor_anterior`/`valor_nuevo` de «nodo movido», R38; lo usa T3).
+- `app/(app)/configuracion/_shared/nivel-del-grupo.ts` (nuevo) — `PROFUNDIDAD_DEL_GRUPO = 3` (P3), `nivelDelGrupo`,
+  `nombresDeNiveles`. En `_shared/` y no en `tarifas/_components/` porque `TarifasDisposicion.test.tsx` fija los 10
+  archivos de esa carpeta.
+- `app/(app)/configuracion/tarifas/_components/TarifasGrupos.tsx`, `TarifasZonas.tsx`, `tarifas-textos.ts`.
+- `app/(app)/configuracion/zonas/_components/GeografiaSelector.tsx`, `CrearZonaForm.tsx`, `seleccion-de-zona.ts`
+  (`distritosBajo` → `lugaresDelNivelBajo` + `profundidadDelUltimoNivel`).
+- `filtrar-arbol-geografico.ts` y `lib/utils/plantilla-geo.ts`: sin cambio (el selector ya usaba `filtrarArbolDeNodos`; la
+  plantilla ya traía una columna por nivel).
+
+Tests nuevos: `tests/components/CorregirUbicacionNNiveles.test.tsx`, `tests/unit/types/historial-accion-etiquetas-ruta.test.ts`,
+`tests/components/TarifasGruposNNiveles.test.tsx`, `tests/components/ZonasNNiveles.test.tsx`,
+`tests/integration/db/carga-masiva-4-niveles.test.ts`, `tests/fixtures/archivos-slt48.ts`.
+
+Tests tocados (solo entradas: fixtures con `nodoId`, `ruta`, `niveles` y `lugares`; ninguna aserción):
+`tests/components/CorregirDatosCliente.ordenes.test.tsx`, `tests/components/CorregirDatosCliente.novedades.test.tsx`,
+`tests/unit/components/corregir-ubicacion-inactivos.test.tsx`. Ampliado: `tests/unit/guards/etiquetas-geograficas-sin-literal.guardia.test.ts`.
+
+### Mapa R → test
+
+| R | Test |
+|---|---|
+| R43 | `tests/components/CorregirUbicacionNNiveles.test.tsx` (CR, 2, 4 y 10 niveles; hoja alta; a medias; aviso) + `CorregirDatosCliente.*` y `corregir-ubicacion-inactivos` en CR |
+| R44 (y R38, la ruta como valor) | `tests/unit/types/historial-accion-etiquetas-ruta.test.ts` |
+| R45 | `tests/components/TarifasGruposNNiveles.test.tsx`, `tests/components/ZonasNNiveles.test.tsx` + `TarifasGrupos.test.tsx`, `geografia-arbol-n-niveles.test.tsx` sin cambios |
+| R46 | `tests/integration/db/carga-masiva-4-niveles.test.ts` |
+| R47 | `tests/unit/guards/etiquetas-geograficas-sin-literal.guardia.test.ts` › «SLT-48 / R47» |
+
+### Desvíos respecto de la maqueta (y textos de CR que cambian)
+
+El tipo de nivel del país no trae género ni artículo, y la guardia R47 prohíbe la palabra de Costa Rica también en
+minúscula en estas pantallas. Por eso algunos textos de CR que llevaban artículo pasan a la forma neutra que la maqueta
+usa para los otros países. Ningún test los afirmaba; **son cambios visibles en CR, para que el humano los confirme**:
+
+1. Selector vacío: «Elige un distrito» → «Elige distrito» (la maqueta: CR «Elige un distrito», 4 niveles «Elige barrio»).
+2. «Falta completar: el distrito.» → «Falta completar: distrito.» (la maqueta: CR con artículo, 4 niveles «barrio.»).
+3. «La zona se calcula a partir del distrito.» → «…a partir del lugar.» (la maqueta lo propone para 2 niveles).
+4. Aviso: «Al cambiar el distrito, la orden…» → «Al cambiar el lugar, la orden…» (la maqueta lo propone para 4 niveles).
+5. Aviso, flete especial sin pacto: «el distrito está marcado como especial…» → «el lugar está marcado…» (fuera de la
+   maqueta; en un país de 4 niveles la marca es del nodo).
+6. «No se pudo cargar el catálogo de provincias, cantones y distritos.» → «No se pudo cargar el catálogo de lugares.»
+
+Otros:
+7. **«Ubicación incompleta: «Viña» tiene barrios debajo…» no se pinta en la pantalla.** La maqueta lo enseña en el caso
+   de 4 niveles y no en el de CR, con «Guardar» apagado en los dos. Se dejó como en CR («Falta completar: <nivel>»); el
+   texto del servidor sigue saliendo junto al selector si llega un rechazo.
+8. En la orden a medias, «Sin <nivel>» nombra el nivel que FALTA (el siguiente a la hoja guardada); en CR sale
+   «Sin distrito» como hoy. Sin lugar (orden de SQL a mano), el del nivel 1.
+9. Grupos en un país de 2 niveles: título «<zona>: grupos» (la maqueta no lo fija) y la explicación de la maqueta
+   («Este país no tiene nivel 3: sus órdenes usan el valor de la zona.»).
+10. `TEXTOS.gruposUnicidad` sigue con «Un <nivel>»: en un país cuyo nivel 3 es femenino sale «Un comuna» (la maqueta:
+    «Una comuna»). No se cambió porque cambiaría CR. Pendiente de decisión.
+11. Buscador de zonas: ya nombraba los 3 primeros tipos y «…» (regla 5): sin cambio. El resumen y el modal de guardado
+    cuentan ahora los lugares del ÚLTIMO nivel del país («Viña (comuna, 2 barrios)»); en CR, los distritos como hoy.
+
+### Aserciones que piden autorización (no se tocaron)
+
+Afirman la carga útil vieja de la corrección (la terna), que el servidor de T2 ya no acepta (`.strict()` con `nodoId`,
+R16). No son visibles. Con el modal nuevo están en rojo:
+
+- `tests/components/CorregirDatosCliente.ordenes.test.tsx` › «y sólo el botón del panel reenvía CONFIRMANDO, con el
+  distrito nuevo»: `segunda.distritoId` = `"dis-patarra"`, `segunda.cantonId` = `"can-desamp"`, `segunda.provinciaId` =
+  `"prov-sj"`. Propuesta: `expect(segunda.nodoId).toBe("dis-patarra")` y `not.toHaveProperty("distritoId")`.
+- `tests/components/CorregirDatosCliente.novedades.test.tsx` › «enseña la comparación, no escribe, y sólo el botón del
+  panel confirma»: `entradaDeLlamada(1).distritoId` = `"dis-patarra"`. Propuesta: `.nodoId`.
+
+Las de «precarga caída» (`entrada.provinciaId|cantonId|distritoId` `toBeUndefined()`) siguen verdes.
+
+### Lo que T4 deja para otros
+
+- T3 (backend): `valorDeRuta` está listo para el `valor_anterior`/`valor_nuevo` de «nodo movido» (R38).
+- El servidor de la corrección sigue colgando sus rechazos de `fieldErrors.distritoId`; el modal lee `nodoId` y
+  `distritoId`. Si el backend los pasa a `nodoId`, la pantalla ya lo pinta.
+
+### Salida real (resumida, `NODE_OPTIONS=--max-old-space-size=8192`)
+
+```
+$ pnpm exec vitest run <13 archivos de T4: CorregirUbicacionNNiveles, CorregirDatosCliente.{ordenes,novedades},
+    corregir-ubicacion-inactivos, historial-accion-etiquetas-ruta, historial-accion-entidades, TarifasGruposNNiveles,
+    ZonasNNiveles, TarifasGrupos, TarifasDisposicion, geografia-arbol-n-niveles, etiquetas-geograficas-sin-literal,
+    corregir-datos-sin-rastro>
+ Test Files  2 failed | 11 passed (13)
+      Tests  2 failed | 204 passed (206)      ← las 2 de carga útil que piden autorización (arriba)
+
+$ DATABASE_URL=…/servi_logistic_slt48 pnpm exec vitest run tests/integration/db/carga-masiva-4-niveles.test.ts
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+
+$ pnpm run typecheck        → exit 2: 156 errores, todos en tests/integration/db/* y e2e/geo-presentacion-4-niveles
+                              (T5/T6 y fixtures del backend). 0 en producción, 0 en archivos de T4.
+$ pnpm run lint             → exit 0: 0 errors, 246 warnings (ninguno nuevo en archivos de T4)
+$ pnpm run test:guardias    → Test Files 2 failed | 334 passed | 3 skipped · Tests 5 failed | 4734 passed
+    - descargas-por-registro: timeout de 20 s con la máquina cargada; solo, verde.
+    - dependencias-declaradas-presentes (4): init.sh no tiene el marcador «>>> FIN PASO 2: DEPENDENCIAS (ficha
+      420) <<<» ni llama a scripts/verificar-dependencias.mjs. Ajeno a T4 (init.sh no se tocó en esta rama);
+      es del arnés.
+```
+
+**Veredicto T4 (sin T4.1):** T4.3–T4.6 hechas y verdes; T4.2 hecha, con 2 aserciones de carga útil (terna → `nodoId`)
+pendientes de autorización y 6 textos de CR sin artículo para confirmar.
