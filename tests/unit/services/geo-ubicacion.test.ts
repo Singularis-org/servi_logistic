@@ -12,6 +12,7 @@ import {
   type EntradaUbicacion,
   type ResultadoUbicacion,
 } from "@/lib/services/geo-ubicacion";
+import { esHoja, msgUbicacionIncompleta } from "@/lib/services/geo-ubicacion";
 import { catalogoEnMemoria } from "../../fixtures/doble-catalogo-geografico";
 
 // SLT-45 (T2.1; design §2.2, §3.1, §5) — el motor de N niveles, sin base. Cubre R13–R16, R21 y la
@@ -381,5 +382,105 @@ describe("R21 — `rutaPublica` de la raiz al nodo", () => {
       [3, "nivel_3"],
       [4, "nivel_4"],
     ]);
+  });
+});
+
+// =================================================================================================
+// SLT-48 R17, R18 — regla de hoja (P2: hoja = sin hijos activos)
+// =================================================================================================
+
+describe("SLT-48 R17/R18 — la orden apunta a una hoja activa, en paises de 2 a 10 niveles", () => {
+  const sinZonaQueFalle = (ids: string[]) =>
+    crearAsignaciones(
+      ids.map((nodoId) => ({ nodoId, zona: Z.norte })),
+      [],
+    );
+
+  // Forma de Costa Rica: provincia › canton › distrito; un canton sin distritos es hoja.
+  const CR = catalogoEnMemoria([
+    { id: "SJ", nombre: "San José", codigoOficial: "1" },
+    { id: "ESC", padreId: "SJ", nombre: "Escazú", codigoOficial: "102" },
+    { id: "SR", padreId: "ESC", nombre: "San Rafael", codigoOficial: "10203" },
+    { id: "SOLO", padreId: "SJ", nombre: "Solitario", codigoOficial: "199" },
+    { id: "RET", padreId: "SJ", nombre: "Retirados", codigoOficial: "198" },
+    { id: "RET1", padreId: "RET", nombre: "Viejo", codigoOficial: "19801", activo: false },
+  ]);
+  const ASIG_CR = sinZonaQueFalle(["SJ"]);
+
+  it("CR: un canton con distritos se rechaza con un mensaje que nombra el lugar y pide el distrito", () => {
+    expect(error(resolverUbicacion(ruta("San José", "Escazú"), CR, ASIG_CR))).toEqual({
+      ubicacion: [msgUbicacionIncompleta("Escazú", "Niveles 3")],
+    });
+    expect(error(resolverUbicacion(codigo("102"), CR, ASIG_CR))).toEqual({
+      ubicacion: ["ubicacion incompleta: 'Escazú' tiene niveles 3 debajo; indica el ultimo nivel"],
+    });
+  });
+
+  it("CR: el distrito entra, y un canton sin distritos tambien", () => {
+    expect(resuelto(resolverUbicacion(ruta("San José", "Escazú", "San Rafael"), CR, ASIG_CR)).nodo.id).toBe("SR");
+    expect(resuelto(resolverUbicacion(ruta("San José", "Solitario"), CR, ASIG_CR)).nodo.id).toBe("SOLO");
+  });
+
+  it("P2: un canton con todos sus hijos retirados es hoja y entra", () => {
+    expect(esHoja(CR, nodoDe(CR, "RET"))).toBe(true);
+    expect(resuelto(resolverUbicacion(codigo("198"), CR, ASIG_CR)).nodo.id).toBe("RET");
+  });
+
+  it("una raiz con hijos no es hoja: el mensaje pide el nivel de sus hijos", () => {
+    expect(esHoja(CR, nodoDe(CR, "SJ"))).toBe(false);
+    expect(error(resolverUbicacion(ruta("San José"), CR, ASIG_CR))).toEqual({
+      ubicacion: [msgUbicacionIncompleta("San José", "Niveles 2")],
+    });
+  });
+
+  it("pais de 2 niveles: el nodo de nivel 2 entra; la raiz pide el nivel 2", () => {
+    expect(resuelto(resolverUbicacion(ruta("Alfa", "Uno"), DOS, TODO_CON_ZONA)).nodo.id).toBe("A1");
+    expect(resuelto(resolverUbicacion(codigo("A1"), DOS, TODO_CON_ZONA)).ruta.map((n) => n.id)).toEqual(["A", "A1"]);
+    expect(error(resolverUbicacion(ruta("Alfa"), DOS, TODO_CON_ZONA))).toEqual({
+      ubicacion: [msgUbicacionIncompleta("Alfa", "Niveles 2")],
+    });
+  });
+
+  it("pais de 4 niveles: el nodo de nivel 4 entra; el de nivel 3 pide el nivel 4", () => {
+    const u = resuelto(resolverUbicacion(ruta("Equis", "Uno", "Dos", "Tres"), CUATRO, TODO_CON_ZONA));
+    expect(u.nodo.id).toBe("X3");
+    expect(u.ruta.map((n) => n.id)).toEqual(["X", "X1", "X2", "X3"]);
+    expect(error(resolverUbicacion(codigo("X2"), CUATRO, TODO_CON_ZONA))).toEqual({
+      ubicacion: [msgUbicacionIncompleta("Dos", "Niveles 4")],
+    });
+  });
+
+  it("pais de 10 niveles: la hoja de nivel 10 entra con su ruta entera; el nivel 9 no", () => {
+    const nodos = Array.from({ length: 10 }, (_, i) => ({
+      id: `N${i + 1}`,
+      padreId: i === 0 ? undefined : `N${i}`,
+      nombre: `Lugar ${i + 1}`,
+      codigoOficial: `c${i + 1}`,
+    }));
+    const DIEZ = catalogoEnMemoria(nodos);
+    const asig = sinZonaQueFalle(["N1"]);
+    const u = resuelto(resolverUbicacion(ruta(...nodos.map((n) => n.nombre)), DIEZ, asig));
+    expect(u.nodo.id).toBe("N10");
+    expect(u.nodo.profundidad).toBe(10);
+    expect(u.ruta).toHaveLength(10);
+    expect(error(resolverUbicacion(codigo("c9"), DIEZ, asig))).toEqual({
+      ubicacion: [msgUbicacionIncompleta("Lugar 9", "Niveles 10")],
+    });
+  });
+
+  it("la regla de hoja va antes que la zona: un nodo sin hoja y sin zona dice «incompleta»", () => {
+    expect(error(resolverUbicacion(ruta("San José", "Escazú"), CR, sinZonaQueFalle([])))).toEqual({
+      ubicacion: [msgUbicacionIncompleta("Escazú", "Niveles 3")],
+    });
+  });
+
+  it("R18: el mensaje «pais aun no habilitado» no sale en ningun pais", () => {
+    const mensajes = [
+      resolverUbicacion(ruta("Alfa"), DOS, TODO_CON_ZONA),
+      resolverUbicacion(ruta("Equis", "Uno"), CUATRO, TODO_CON_ZONA),
+      resolverUbicacion(ruta("Montaña"), TRES, ASIG),
+    ].flatMap((r) => (r.ok ? [] : Object.values(r.fieldErrors).flat()));
+    expect(mensajes.length).toBeGreaterThan(0);
+    for (const m of mensajes) expect(m).not.toMatch(/no habilitado/);
   });
 });

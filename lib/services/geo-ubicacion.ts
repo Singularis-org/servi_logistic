@@ -18,7 +18,7 @@ import { normalizeName } from "@/lib/utils/normalize";
 // v1 NO pasa por aqui: sigue en `resolveGeo` con sus 11 mensajes (R3, design §2.1 y §11.1).
 //
 // Orden de comprobacion, que fija la precedencia de los errores: ruta o codigo (R13, R14), luego
-// la regla de guardado (R15) y al final la zona (R16). La regla va antes que la zona: decir «sin
+// la regla de hoja (SLT-48 R17) y al final la zona (R16). La regla va antes que la zona: decir «sin
 // zona» de algo que nunca se podra guardar manda al integrador a pedir una zona inutil.
 //
 // ⚠️ PURO A PROPOSITO, como `geografia-dominio.ts`: solo importa el dominio y `normalizeName`.
@@ -28,19 +28,12 @@ import { normalizeName } from "@/lib/utils/normalize";
 
 export type EntradaUbicacion = { tipo: "ruta"; nombres: string[] } | { tipo: "codigo"; codigo: string };
 
-export interface FksDeNodo {
-  provinciaId: string;
-  cantonId: string;
-  distritoId: string | null;
-}
-
 export interface UbicacionResuelta {
   nodo: NodoDelCatalogo;
   /** De la raiz al nodo. */
   ruta: NodoDelCatalogo[];
   zona: ZonaAsignada;
   esZonaEspecial: boolean;
-  fks: FksDeNodo;
 }
 
 export type ResultadoUbicacion =
@@ -61,8 +54,6 @@ export const CLAVE_UBICACION = "ubicacion";
 // ── Mensajes (design §5), sin tildes como los de v1 ──────────────────────────────────────────────
 
 export const MSG_UBICACION_UNA_DE_LAS_DOS = "indica ubicacion o ubicacion_codigo, uno de los dos";
-export const MSG_PAIS_NO_HABILITADO =
-  "pais aun no habilitado: solo se aceptan ubicaciones de nivel 2 o 3 en paises de 3 niveles";
 
 /**
  * Design §2.3: una via del motor sin catalogo es un error de CONFIGURACION del composition root, no
@@ -105,32 +96,31 @@ export function msgSinZona(nombre: string): string {
   return `la ubicacion '${nombre}' no tiene zona asignada`;
 }
 
-// ── Forma del pais y regla de guardado (R5, R15, R33) ────────────────────────────────────────────
-
-const PROFUNDIDAD_DE_FORMA_GUARDABLE = 3;
-const PROFUNDIDADES_GUARDABLES: ReadonlySet<number> = new Set([2, 3]);
-
-/** `true` si la profundidad maxima del catalogo es 3. Un catalogo vacio no lo es. */
-export function esPaisDeTresNiveles(cat: CatalogoGeografico): boolean {
-  let maxima = 0;
-  for (const n of cat.nodos) if (n.profundidad > maxima) maxima = n.profundidad;
-  return maxima === PROFUNDIDAD_DE_FORMA_GUARDABLE;
-}
-
-/** Hasta SLT-46 solo se guardan nodos de profundidad 2 o 3 de un pais de 3 niveles. */
-export function admiteGuardado(cat: CatalogoGeografico, nodo: NodoDelCatalogo): boolean {
-  return esPaisDeTresNiveles(cat) && PROFUNDIDADES_GUARDABLES.has(nodo.profundidad);
-}
+// ── Regla de hoja (SLT-48 R17, R18; decision P2) ─────────────────────────────────────────────────
 
 /**
- * Las tres FK viejas de la orden, derivadas de la ruta del nodo (design §3.1, R25): profundidad 3
- * → abuelo, padre, nodo; profundidad 2 → padre, nodo, `null`. `null` si no admite guardado.
+ * SLT-48 (design §4.1) — una orden apunta al ultimo nodo de su rama, en paises de 2 a 10 niveles.
+ * Hoja = sin hijos ACTIVOS (P2): un canton cuyos distritos estan todos retirados vuelve a ser hoja,
+ * porque si no ninguna orden podria entrar ahi.
  */
-export function fksDeNodo(cat: CatalogoGeografico, nodo: NodoDelCatalogo): FksDeNodo | null {
-  if (!admiteGuardado(cat, nodo)) return null;
-  const [padre, abuelo] = ancestros(cat, nodo.id);
-  if (nodo.profundidad === 3) return { provinciaId: abuelo.id, cantonId: padre.id, distritoId: nodo.id };
-  return { provinciaId: padre.id, cantonId: nodo.id, distritoId: null };
+export function esHoja(cat: CatalogoGeografico, n: NodoDelCatalogo): boolean {
+  return hijosActivos(cat, n).length === 0;
+}
+
+function hijosActivos(cat: CatalogoGeografico, n: NodoDelCatalogo): NodoDelCatalogo[] {
+  return (cat.hijos.get(n.id) ?? []).filter((h) => estaActivo(cat, h.id) === true);
+}
+
+export function msgUbicacionIncompleta(nombre: string, tipoPlural: string): string {
+  return `ubicacion incompleta: '${nombre}' tiene ${tipoPlural.toLowerCase()} debajo; indica el ultimo nivel`;
+}
+
+/** El mensaje de R17 para un nodo que no es hoja: el tipo es el de sus hijos activos. */
+export function msgUbicacionIncompletaDe(cat: CatalogoGeografico, n: NodoDelCatalogo): string {
+  const [hijo] = hijosActivos(cat, n);
+  const tipo = cat.tipos.find((t) => t.id === hijo?.tipoId);
+  if (!tipo) throw new CatalogoGeograficoInconsistente(n.id, `el tipo de sus hijos no esta en el catalogo`);
+  return msgUbicacionIncompleta(n.nombre, tipo.nombrePlural);
 }
 
 // ── Ruta publica (R21) ───────────────────────────────────────────────────────────────────────────
@@ -206,8 +196,7 @@ export function resolverUbicacion(
   if (!paso.ok) return fallo(paso.mensaje);
   const { nodo } = paso;
 
-  const fks = fksDeNodo(cat, nodo);
-  if (fks === null) return fallo(MSG_PAIS_NO_HABILITADO);
+  if (!esHoja(cat, nodo)) return fallo(msgUbicacionIncompletaDe(cat, nodo));
 
   const zona = zonaQueCubre(cat, asig, nodo.id);
   if (zona === null) return fallo(msgSinZona(nodo.nombre));
@@ -219,7 +208,6 @@ export function resolverUbicacion(
       ruta: [...ancestros(cat, nodo.id).reverse(), nodo],
       zona,
       esZonaEspecial: esZonaEspecial(cat, asig, nodo.id),
-      fks,
     },
   };
 }
