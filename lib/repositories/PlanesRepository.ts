@@ -1234,6 +1234,12 @@ function guardado(f: FilaGuardada): BorradorGuardado {
   return { borradorId: f.id, pasos: Object.keys(f.pasos), actualizadoAt: f.updated_at };
 }
 
+/**
+ * SLT-129 (R2, R9): las columnas son `TIMESTAMP` sin zona con el reloj UTC, como escribe Prisma. El DEFAULT
+ * `CURRENT_TIMESTAMP` y `CURRENT_TIMESTAMP` en un UPDATE dan la hora local de la sesión (medido en T6: 5 h de más).
+ */
+const AHORA_UTC = Prisma.sql`(now() AT TIME ZONE 'UTC')`;
+
 /** SLT-129 (R4): `pasos || {paso: valores}` reemplaza solo esa clave en una sentencia. */
 function pasoComoJson(paso: IdPasoBorrador, valores: ValoresDelPaso): Prisma.Sql {
   return Prisma.sql`jsonb_build_object(${paso}::text, ${JSON.stringify(valores)}::jsonb)`;
@@ -1537,8 +1543,8 @@ export class PlanesRepository
       this.prisma.$transaction(async (tx) => {
         const nombre = nombreDelActor(await resolverActorCongelado(tx, actorUsuarioId));
         const [fila] = await tx.$queryRaw<FilaGuardada[]>`
-          INSERT INTO "plan_borrador" ("id", "pasos", "iniciado_por_usuario_id", "iniciado_por_nombre")
-          VALUES (${randomUUID()}, ${pasoComoJson("general", general)}, ${actorUsuarioId}, ${nombre})
+          INSERT INTO "plan_borrador" ("id", "pasos", "iniciado_por_usuario_id", "iniciado_por_nombre", "created_at", "updated_at")
+          VALUES (${randomUUID()}, ${pasoComoJson("general", general)}, ${actorUsuarioId}, ${nombre}, ${AHORA_UTC}, ${AHORA_UTC})
           RETURNING "id", "pasos", "updated_at"`;
         return guardado(fila as FilaGuardada);
       }),
@@ -1549,7 +1555,7 @@ export class PlanesRepository
     return comoPlataforma("SL-24", "guardar un paso de un borrador de plan (superadmin, SLT-129)", () =>
       this.prisma.$transaction(async (tx) => {
         const [fila] = await tx.$queryRaw<FilaGuardada[]>`
-          UPDATE "plan_borrador" SET "pasos" = "pasos" || ${pasoComoJson(paso, valores)}, "updated_at" = CURRENT_TIMESTAMP
+          UPDATE "plan_borrador" SET "pasos" = "pasos" || ${pasoComoJson(paso, valores)}, "updated_at" = ${AHORA_UTC}
            WHERE "id" = ${borradorId} AND "plan_id" IS NULL
           RETURNING "id", "pasos", "updated_at"`;
         return fila === undefined ? null : guardado(fila);
@@ -1574,10 +1580,10 @@ export class PlanesRepository
         const nombre = nombreDelActor(await resolverActorCongelado(tx, actorUsuarioId));
         // R5: dos primeros guardados a la vez dejan una fila y conservan el iniciador del primero.
         const [fila] = await tx.$queryRaw<FilaGuardada[]>`
-          INSERT INTO "plan_borrador" ("id", "plan_id", "pasos", "iniciado_por_usuario_id", "iniciado_por_nombre")
-          VALUES (${randomUUID()}, ${planId}, ${pasoComoJson(paso, valores)}, ${actorUsuarioId}, ${nombre})
+          INSERT INTO "plan_borrador" ("id", "plan_id", "pasos", "iniciado_por_usuario_id", "iniciado_por_nombre", "created_at", "updated_at")
+          VALUES (${randomUUID()}, ${planId}, ${pasoComoJson(paso, valores)}, ${actorUsuarioId}, ${nombre}, ${AHORA_UTC}, ${AHORA_UTC})
           ON CONFLICT ("plan_id") DO UPDATE
-            SET "pasos" = "plan_borrador"."pasos" || EXCLUDED."pasos", "updated_at" = CURRENT_TIMESTAMP
+            SET "pasos" = "plan_borrador"."pasos" || EXCLUDED."pasos", "updated_at" = ${AHORA_UTC}
           RETURNING "id", "pasos", "updated_at"`;
         return { estado: "ok", ...guardado(fila as FilaGuardada) };
       }),

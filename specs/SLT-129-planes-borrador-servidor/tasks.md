@@ -68,9 +68,9 @@ verde (R21).
 
 ## T6 — Integración contra Postgres — depende de T3–T5
 
-- [ ] T6.1 `tests/integration/db/plan-borrador.test.ts`: R2, R4 (con dos conexiones en paralelo), R5 (los
+- [x] T6.1 `tests/integration/db/plan-borrador.test.ts`: R2, R4 (con dos conexiones en paralelo), R5 (los
   primeros guardados simultáneos), R8–R14 y R22.
-- [ ] T6.2 `tests/integration/db/plan-borrador-confirmar.test.ts`: R17 (público y custom), R18 (pendiente,
+- [x] T6.2 `tests/integration/db/plan-borrador-confirmar.test.ts`: R17 (público y custom), R18 (pendiente,
   recepciones de SLT-128, trabajos de aviso, rastro), R19 (validación y reglas, el borrador queda) y R20 (dos
   confirmaciones simultáneas, borrador descartado).
 
@@ -87,10 +87,10 @@ fuera de `PlanesRepository` o con `plan_borrador` en un cron.
 ## T8 — Cierre
 
 - [ ] T8.1 `./init.sh` en verde.
-- [ ] T8.2 Antes del PR, en local y sobre una base desechable: `e2e/planes-superadmin.spec.ts`,
+- [x] T8.2 Antes del PR, en local y sobre una base desechable: `e2e/planes-superadmin.spec.ts`,
   `e2e/planes-costeo.spec.ts`, `e2e/planes-costo-porcentual.spec.ts` y `e2e/mi-plan-cambiar-plan.spec.ts`
   (R21; el diff toca `db/`).
-- [ ] T8.3 El mapa `R1–R24 → test` en `progress/impl_SLT-129.md`.
+- [x] T8.3 El mapa `R1–R24 → test` en `progress/impl_SLT-129.md`.
 
 **Hecho:** el gate local en verde, los E2E de planes en verde y el mapa completo.
 

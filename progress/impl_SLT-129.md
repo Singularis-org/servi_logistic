@@ -127,3 +127,92 @@ fila de `plan_tope_rol`, `plan_descuento_periodo` y `plan_precio_historial` (no 
 Quedan 0 planes `smoke%`.
 
 **Veredicto:** R9, R10 y R15 implementados y en verde en unitarios; falta T6 (integración).
+
+## Tanda T6 + T8.2 + T8.3 (backend_dev, 2026-11-17)
+
+**Archivos**
+- Tests (nuevos): `tests/integration/db/plan-borrador.test.ts` (15 casos), `tests/integration/db/plan-borrador-confirmar.test.ts` (9 casos).
+- Producción (bug que destapó R2, arreglo mínimo): `lib/repositories/PlanesRepository.ts`. `crearBorrador`,
+  `guardarPasoDeCreacion` y `guardarPasoDeCambio` escribían `created_at`/`updated_at` con el DEFAULT
+  `CURRENT_TIMESTAMP` y `"updated_at" = CURRENT_TIMESTAMP`: en una columna `TIMESTAMP` sin zona eso es la hora LOCAL
+  de la sesión, no el reloj UTC con el que escribe Prisma (`docs/architecture.md > Ciclo en UTC`). Medido en
+  `servi_logistic_slt129` (`TimeZone = America/Bogota`): `iniciadoAt`/`actualizadoAt` salían 5 h atrasados
+  (18 000 146 ms). Ahora las tres sentencias escriben las dos columnas con `(now() AT TIME ZONE 'UTC')` (constante
+  `AHORA_UTC`); la migración no cambia (el DEFAULT queda como en las demás tablas `plan_*`). En CI no se ve porque el
+  Postgres del job está en UTC. +13/−7 líneas; producción queda en `git diff dev --shortstat -- db lib` = 17 files,
+  1029 insertions, 51 deletions.
+- `specs/SLT-129-planes-borrador-servidor/tasks.md`: T6.1, T6.2, T8.2 y T8.3 marcadas (T8.1 la corre el leader).
+
+**Cómo se prueba la concurrencia (R4, R5, R20).** Dos clientes Prisma (dos conexiones) con filas COMMITEADAS, bajo
+`bajoLockDeEscrituraReal`. La simultaneidad se fuerza: una tercera conexión toma en `FOR UPDATE` la fila que los dos
+van a escribir (el borrador en R4 y R20, el plan en R5), los dos arrancan, el test espera consultando
+`pg_blocking_pids` (en cadena: el segundo espera al primero en el lock de la tupla) a que los dos estén bloqueados, y
+solo entonces suelta. Contraprueba a mano: sin el `FOR UPDATE` de `consumirBorrador`, «dos confirmaciones
+simultáneas» cae en rojo (restaurado después). La limpieza deja `plan_borrador` vacía y 0 planes de prueba (medido).
+
+**Mapa R → test (completo)**
+| R | Test |
+|---|---|
+| R1 | `tests/unit/services/plan-borrador-service.test.ts > R1 — cualquier rol que no es superadmin recibe forbidden y el repositorio no se llama` (cada operación × maestro/admin/sin sesión); `tests/unit/actions/plan-borrador.test.ts > R1 — con la sesión de un maestro, forbidden en las cuatro y la base no se toca` |
+| R2 | `tests/integration/db/plan-borrador.test.ts > R2 — guardar General sin borrador crea uno con el iniciador y la fecha` |
+| R3 | `tests/unit/services/plan-borrador-service.test.ts > R3 — un plan nuevo empieza por General`; `tests/unit/types/plan-borrador-schema.test.ts > R3 — guardar un paso: la entrada > un plan nuevo empieza por General` |
+| R4 | `plan-borrador.test.ts > R4 — guardar un paso no toca los demás` y `> R4 — dos guardados simultáneos de pasos distintos conservan los dos (dos conexiones en paralelo)` |
+| R5 | `plan-borrador.test.ts > R5 — el segundo superadmin sigue el borrador del primero` y `> R5 — dos primeros guardados simultáneos del mismo plan dejan un solo borrador (dos conexiones en paralelo)` |
+| R6 | `tests/unit/types/plan-borrador-schema.test.ts > R6 — un caso por paso con un valor inválido y su clave` y `> R6 — lo que cruza pasos o necesita la base o el reloj no se mira al guardar`; `plan-borrador-service.test.ts > R6 — un paso inválido no llega al repositorio…` y `> R6 — una fecha fuera de rango se acepta al guardar General` |
+| R7 | `plan-borrador-schema.test.ts > R7 — los descuentos en lista > período repetido / porcentaje 0 y 100.01 / monto inválido, con el mensaje de hoy / sin precio con líneas / la lista vacía es sin descuentos`; `tests/unit/planes/plan-borrador.test.ts > R7 — la lista de descuentos en el registro por período de hoy` |
+| R8 | `plan-borrador.test.ts > R8 — plan inexistente, plan archivado y borrador inexistente no escriben` (servicio y repositorio bajo el cerrojo); `plan-borrador-service.test.ts > R8 …` |
+| R9 | `plan-borrador.test.ts > R9 — otro superadmin lee el borrador tal como se guardó` y `> R9 — un plan sin borrador de cambio devuelve null`; unitarios `plan-borrador-service.test.ts > R9 …` |
+| R10 | `plan-borrador.test.ts > R10 — la lista trae los borradores de los dos superadmins con su nombre`; `plan-borrador-service.test.ts > R10 …` |
+| R11 | `plan-borrador.test.ts > R11 — un borrador completo no aparece en asignables, públicos ni catálogo, y asignarlo da not_found (incluye uno custom con su empresa)` |
+| R12 | `plan-borrador.test.ts > R12 — guardar los seis pasos del cambio deja el plan, el pendiente y la cola de trabajos igual` (foto de `plan`, `plan_tope_rol`, `plan_modulo`, `plan_descuento_periodo`, `plan_precio_historial`, `plan_cambio_programado`, `plan_cambio_recepcion`, `plan_version_empresa`, `organizacion`, `plan_rastro` y `jobs`, con un pendiente de SLT-128 vivo y dos empresas) |
+| R13 | `plan-borrador.test.ts > R13 — guardar y descartar no dejan rastro` |
+| R14 | `plan-borrador.test.ts > R14 — otro superadmin descarta el borrador y ya no se lee` y `> R14 — descartar uno inexistente da borrador_no_encontrado`; `plan-borrador-service.test.ts > R14 …`; `actions/plan-borrador.test.ts > R14 …` |
+| R15 | `tests/unit/guards/plan-borrador-sin-caducidad.guardia.test.ts` (árbol real + contrapruebas en memoria) |
+| R16 | `plan-borrador-service.test.ts > R16 — crear sin Topes y programar sin Cuándo rige dan pasos_pendientes`; `tests/unit/planes/plan-borrador.test.ts > R16 — los pasos que faltan, en el orden del formulario` |
+| R17 | `tests/integration/db/plan-borrador-confirmar.test.ts > R17 — crear un público desde el borrador (plan con el id del borrador, rastro «creado», borrador borrado)` y `> R17 — crear un custom desde el borrador lo asigna a su empresa` |
+| R18 | `plan-borrador-confirmar.test.ts > R18 — programar desde el borrador crea el pendiente y una recepción por empresa (trabajos de aviso, rastro, borrador borrado)`; `> R18 (decisión del implementer) — confirmar un cambio sin diferencias da ok con cambio:false y también borra el borrador` |
+| R19 | `plan-borrador-confirmar.test.ts > R19 — un custom con tipo quincenal y facturación mensual da validation_error y el borrador queda`, `> R19 — una fecha de efecto pasada da validation_error en vigenteDesde y el borrador queda` y `> R19 — una regla del repositorio bajo el cerrojo (cambio_a_medias) pasa tal cual, no escribe nada y el borrador queda` |
+| R20 | `plan-borrador-confirmar.test.ts > R20 — dos confirmaciones simultáneas crean un solo plan (dos conexiones en paralelo)` y `> R20 — confirmar un borrador descartado da borrador_no_encontrado` (incluye el borrado entre la lectura del servicio y el FOR UPDATE) |
+| R21 | `tests/unit/services/planes-service.test.ts`, `tests/integration/db/planes-crear-custom-asigna.test.ts`, `planes-cambio-programado.test.ts` y `planes-cambio-por-empresa.test.ts` sin tocar sus aserciones, en verde; E2E de planes (T8.2) |
+| R22 | `plan-borrador.test.ts > R22 — borrar la empresa del custom borra el borrador de su plan` |
+| R23 | `tests/integration/db/planes-acceso-servi-app.test.ts > R23 — servi_app no lee ni escribe plan_borrador` |
+| R24 | `tests/integration/db/migracion-plan-borrador-ida-y-vuelta.test.ts` (cinco casos R24) |
+
+**Decisiones para el reviewer** (fuera del spec)
+1. Mensajes nuevos: «Un plan nuevo empieza por el paso General.» (R3, `UN_PLAN_NUEVO_EMPIEZA_POR_GENERAL`) y «Un período
+   no puede repetirse.» (R7, `PERIODO_REPETIDO`). El spec fija las claves, no los textos.
+2. `guardarPasoDeCambio` toma `plan_borrador WHERE plan_id = … FOR UPDATE` ANTES del `plan FOR SHARE`: el orden de
+   confirmar (borrador → plan), para no abrazarse con él.
+3. `guardarPasoDeCreacion` filtra `plan_id IS NULL`: el id de un borrador de CAMBIO en `modo: "crear"` da
+   `borrador_no_encontrado` y no mezcla pasos de crear en un cambio.
+4. `IPlanBorradorRepository` extiende `Pick<IPlanesRepository, "plan">`: el servicio responde R8 (`not_found`,
+   `archivado`) sin otra dependencia; el repositorio lo repite bajo `FOR SHARE`.
+5. Confirmar en `ok` con `cambio: false` (un cambio sin diferencias) también borra el borrador (`consumirBorrador` borra
+   en todo `ok`). Probado en `plan-borrador-confirmar.test.ts > R18 (decisión del implementer)`.
+6. Import circular entre `lib/types/plan-borrador.ts` y `lib/planes/borrador.ts`: seguro porque ninguno usa al otro al
+   cargarse (solo dentro de funciones); lo dice la cabecera de `lib/planes/borrador.ts`.
+7. `asignarPlanSchema` también usa `noInicioYEfecto` (misma lógica y mismo mensaje que antes, ahora compartida).
+8. `borradores()` ordena por `updated_at DESC, id` (lo último guardado primero); R10 no fija orden.
+9. El nombre de la lista sale de General solo si General sigue validando (lectura defensiva); si no, el del plan en un
+   cambio, o `null` en una creación.
+10. (Nueva en T6) `created_at`/`updated_at` del borrador se escriben con `(now() AT TIME ZONE 'UTC')` y no con
+    `CURRENT_TIMESTAMP` (ver «Archivos» arriba): arreglo en producción destapado por R2.
+
+**Salida real**
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: `tsc --noEmit` sin errores.
+- `pnpm exec eslint` sobre los dos tests nuevos y `PlanesRepository.ts`: «No issues found», exit 0.
+- `vitest run tests/integration/db/plan-borrador.test.ts tests/integration/db/plan-borrador-confirmar.test.ts`
+  (base `servi_logistic_slt129`), dos corridas seguidas: 2 archivos, **24 passed / 0 failed / 0 skipped** cada una.
+- `vitest run --no-file-parallelism` de `planes-acceso-servi-app`, `migracion-plan-borrador-ida-y-vuelta`,
+  `planes-crear-custom-asigna`, `planes-cambio-programado`, `planes-cambio-por-empresa`, `services/plan-borrador-service`,
+  `actions/plan-borrador` y las guardias `plan-borrador-sin-caducidad`, `sql-a-mano-por-empresa`, `planes-sin-borrado`:
+  10 archivos, 122 passed.
+- E2E (T8.2) sobre la base desechable NUEVA `servi_logistic_slt129_e2e` (DROP/CREATE, `prisma migrate deploy`,
+  `db:seed`), `next build` con `NEXT_PUBLIC_APP_URL=http://localhost:3000`, `SESSION_SECRET`/`CRON_SECRET` efímeros como
+  en `gate.yml`, `playwright test e2e/planes-superadmin.spec.ts e2e/planes-costeo.spec.ts
+  e2e/planes-costo-porcentual.spec.ts e2e/mi-plan-cambiar-plan.spec.ts --no-deps`:
+  corrida 1: **20 passed** (3.1 min), 0 failed, 0 flaky.
+  corrida 2: **20 passed** (3.1 min), 0 failed, 0 flaky. Ningún fallo ajeno que documentar.
+
+**Veredicto:** T6.1, T6.2, T8.2 y T8.3 en verde (24 de integración ×2, 20 E2E ×2); un bug real arreglado en
+`PlanesRepository` (fechas del borrador en hora local de la sesión); falta T8.1 (`./init.sh`, el leader).
