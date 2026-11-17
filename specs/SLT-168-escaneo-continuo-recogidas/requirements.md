@@ -147,6 +147,8 @@ en los tests de componente (sin servidor nuevo); el E2E ejercita las acciones re
 
 ## Preguntas abiertas
 
+> **Cerradas por Carlos el 2026-11-17** (ver `progress/features/SLT-168.md > Decisiones`): textos aprobados, sin la línea «Guía {n} recogida correctamente.», «—» aceptado en Recolección, y «Recogida en tienda» / «Recogidas en tienda» en lugar del nombre retirado «Recolectada». Lo que sigue queda como historia.
+
 **Para Carlos:**
 
 1. **Textos (R596, R597, R830, R831).** Siguen como propuesta: «Recogiendo…» / «Recolectando…»,

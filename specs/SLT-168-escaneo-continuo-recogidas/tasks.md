@@ -36,8 +36,7 @@ PR #192). Todo es `frontend_dev`; ningún archivo de servidor. Un solo PR.
 - [x] **T7 — E2E (depende de T4, T5).** *(Ajustados 2026-11-17; sin correr: los corre el leader con base desechable y build.)* `e2e/mis-asignaciones.spec.ts:73`: el toast «Guía {n}
   recogida.» pasa a la fila «Recogida» del diálogo. `e2e/pwa-mensajero-recoger-recoleccion.spec.ts` (b):
   dos guías sembradas seguidas con Enter → dos filas «Recogida en tienda» con el diálogo abierto; al cerrar,
-  las listas se actualizan (ya lo comprueba). *Hecho:* los dos E2E en verde en local con base
-  desechable (`docs/perfil-agentes.md > E2E en local antes del PR`).
+  las listas se actualizan (ya lo comprueba). *Hecho:* los dos E2E en verde en CI (`e2e (reparto)` del PR #197), con el criterio del leader de SLT-159/189/191.
 - [ ] **T8 — Cierre.** `./init.sh` en verde (con `.env` copiado al worktree); mapa R → test en
   `progress/impl_SLT-168.md`; en Preview, Carlos recoge cinco paquetes seguidos con la cámara en
   `/mis-asignaciones/recoger` y en `/recoleccion` (una guía repetida, una ajena) y confirma los textos

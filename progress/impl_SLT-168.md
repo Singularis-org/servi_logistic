@@ -123,3 +123,8 @@ Veredicto: SLT-168 implementada (T1-T7) con los textos finales de Carlos; typech
 ## T8 — gate (leader, 2026-11-17)
 
 - `./init.sh` (rápido) con `.env` de dev: `INIT_EXIT=0`; 16/40 archivos, 345/1000 producción, 1294/3000 tests. E2E `mis-asignaciones` y `pwa-mensajero-recoger-recoleccion` en CI. Prueba en dispositivo: Carlos en Preview.
+
+## Notas del leader (2026-11-17)
+
+- Donde arriba dice «Recolectada», el texto final es «Recogida en tienda» (ebce90ca).
+- Review OK (96bbdd99). m1 (ningún test de Recoger/Recolección cubre cerrar con lecturas en vuelo; lo cubre `useSesionEscaneo.test.ts`) y m4 (la guardia `lectura-guia-unica` mira también comentarios) quedan anotados para SLT-190, que toca estas pantallas.
