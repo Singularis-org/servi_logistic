@@ -200,8 +200,9 @@ export async function filtrosDeLaEmpresa(
 /** Una orden viva con la cadena de FK viejas rota, con sus tres columnas. */
 interface OrdenIncoherente {
   id: string;
-  provinciaId: string;
-  cantonId: string;
+  // SLT-48 (R4): nullable desde que la orden nueva deja las FK en NULL.
+  provinciaId: string | null;
+  cantonId: string | null;
   distritoId: string | null;
 }
 
@@ -219,8 +220,13 @@ async function ordenesIncoherentes(cliente: PrismaClient): Promise<OrdenIncohere
       distrito: { select: { cantonId: true } },
     },
   });
+  // SLT-48: una orden sin canton (nueva, FK en NULL) no es incoherente por sus FK.
   return vivas
-    .filter((o) => o.canton.provinciaId !== o.provinciaId || (o.distrito !== null && o.distrito.cantonId !== o.cantonId))
+    .filter(
+      (o) =>
+        o.canton !== null &&
+        (o.canton.provinciaId !== o.provinciaId || (o.distrito !== null && o.distrito.cantonId !== o.cantonId)),
+    )
     .map(({ id, provinciaId, cantonId, distritoId }) => ({ id, provinciaId, cantonId, distritoId }));
 }
 
@@ -243,7 +249,8 @@ function entraHoy(o: OrdenIncoherente, filtro: FacetasDeHoy): boolean {
 
 /** Si la orden entra en el filtro por su lugar (nuevo), con los ids ya resueltos. SLT-47: un solo lugar. */
 function entraPorLugar(o: OrdenIncoherente, lugar: readonly string[] | undefined): boolean {
-  return lugar === undefined || lugar.includes(o.distritoId ?? o.cantonId);
+  const lugarDeFk = o.distritoId ?? o.cantonId;
+  return lugar === undefined || (lugarDeFk !== null && lugar.includes(lugarDeFk));
 }
 
 /**

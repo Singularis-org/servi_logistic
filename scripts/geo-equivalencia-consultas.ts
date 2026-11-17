@@ -9,7 +9,6 @@ import type {
   OrdenParaCorreccionRow,
 } from "@/lib/interfaces/repositories/IOrdenRepository";
 import {
-  SNAPSHOT_SELECT,
   congeladoDeLaFila,
   leerDescriptivosDeOrdenes,
 } from "@/lib/repositories/CierreDiaRepository";
@@ -88,7 +87,8 @@ export interface OpcionesDeComparacion {
 // Bloque `cierres`: lo que congelaria un cierre y el ingreso de los detalles
 // ---------------------------------------------------------------------------------------------
 
-type FilaSnapshot = Prisma.GestionOrdenGetPayload<{ select: typeof SNAPSHOT_SELECT }>;
+// SLT-48: las filas se leen con el `select` de hoy, que es el de `lib/` mas las FK viejas.
+type FilaSnapshot = Prisma.GestionOrdenGetPayload<{ select: typeof hoy.SNAPSHOT_SELECT_DE_HOY }>;
 
 /** Lo que se compara de cada orden. `estado: "error"` = falta un descriptivo (el cierre lanzaria). */
 interface CongeladoComparable {
@@ -152,7 +152,7 @@ async function compararCierres(
   const vigentes = await cliente.gestionOrden.findMany({
     where: { cierreId: null, anuladaAt: null },
     orderBy: [{ createdAt: "desc" }, { id: "asc" }],
-    select: SNAPSHOT_SELECT,
+    select: hoy.SNAPSHOT_SELECT_DE_HOY,
   });
   // (b) Los `muestra` detalles mas recientes y las gestiones de su cierre.
   const detalles = await cliente.cierreDetail.findMany({
@@ -169,7 +169,7 @@ async function compararCierres(
           anuladaAt: null,
         },
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-        select: { ...SNAPSHOT_SELECT, cierreId: true, resultado: true },
+        select: { ...hoy.SNAPSHOT_SELECT_DE_HOY, cierreId: true, resultado: true },
       });
   const detallePorPar = new Map(detalles.map((d) => [`${d.cierreId}|${d.ordenId}`, d]));
   const gestionesDeDetalles = delDetalle.flatMap((g) => {
@@ -297,23 +297,40 @@ const CAMPOS_DE_TEXTO_CORRECCION = new Set([
   "zonaNombre",
 ]);
 
+/**
+ * SLT-48 (design §4.2): la fila nueva lleva el nodo y su ruta en vez de la terna. Para compararla con
+ * la de hoy, la terna sale de los niveles 1–3 de la ruta (lo que dice R22 de una orden vieja).
+ */
+function comoLaDeHoy(fila: OrdenParaCorreccionRow): hoy.OrdenParaCorreccionRowDeHoy {
+  const resto: Partial<OrdenParaCorreccionRow> = { ...fila };
+  delete resto.nodoId;
+  delete resto.ruta;
+  delete resto.distritoTarifaId;
+  return {
+    ...(resto as Omit<OrdenParaCorreccionRow, "nodoId" | "ruta" | "distritoTarifaId">),
+    provinciaId: fila.ruta[0]?.id ?? "",
+    cantonId: fila.ruta[1]?.id ?? "",
+    distritoId: fila.ruta[2]?.id ?? null,
+  };
+}
+
 async function compararCorreccion(
   cliente: PrismaClient,
   nuevo: OrdenRepository,
   ordenes: readonly OrdenDeMuestra[],
   diferencias: Diferencia[],
 ): Promise<Cifras> {
-  const deHoy: OrdenParaCorreccionRow[] = [];
-  const nuevos: OrdenParaCorreccionRow[] = [];
+  const deHoy: hoy.OrdenParaCorreccionRowDeHoy[] = [];
+  const nuevos: hoy.OrdenParaCorreccionRowDeHoy[] = [];
   for (const { id } of ordenes) {
     const a = await hoy.findParaCorreccion(cliente, id);
     const b = await nuevo.findParaCorreccion(id);
     if (a !== null) deHoy.push(a);
-    if (b !== null) nuevos.push(b);
+    if (b !== null) nuevos.push(comoLaDeHoy(b));
   }
   // Todos los campos de la fila, de cualquiera de los dos lados.
   const campos = [...new Set([...deHoy, ...nuevos].flatMap((f) => Object.keys(f)))].filter(
-    (c): c is keyof OrdenParaCorreccionRow & string => c !== "id",
+    (c): c is keyof hoy.OrdenParaCorreccionRowDeHoy & string => c !== "id",
   );
   return compararPorId(deHoy, nuevos, campos, CAMPOS_DE_TEXTO_CORRECCION, diferencias, "correccion");
 }
@@ -511,7 +528,12 @@ export async function compararConteosDelPais(
     },
   });
   const cadenaIncoherente = vivas
-    .filter((o) => o.canton.provinciaId !== o.provinciaId || (o.distrito !== null && o.distrito.cantonId !== o.cantonId))
+    // SLT-48: una orden sin canton (nueva, FK en NULL) no es incoherente por sus FK.
+    .filter(
+      (o) =>
+        o.canton !== null &&
+        (o.canton.provinciaId !== o.provinciaId || (o.distrito !== null && o.distrito.cantonId !== o.cantonId)),
+    )
     .map((o) => o.id);
 
   return { paisId, ambito: opciones.ambito, conteoSinEntregar, cadenaIncoherente, diferencias };

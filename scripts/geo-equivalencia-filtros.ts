@@ -149,7 +149,12 @@ export async function ordenesIncoherentes(cliente: PrismaClient): Promise<string
     },
   });
   return vivas
-    .filter((o) => o.canton.provinciaId !== o.provinciaId || (o.distrito !== null && o.distrito.cantonId !== o.cantonId))
+    // SLT-48: una orden sin canton (nueva, FK en NULL) no es incoherente por sus FK.
+    .filter(
+      (o) =>
+        o.canton !== null &&
+        (o.canton.provinciaId !== o.provinciaId || (o.distrito !== null && o.distrito.cantonId !== o.cantonId)),
+    )
     .map((o) => o.id);
 }
 

@@ -4,6 +4,15 @@ import type {
   OrdenBaseCobroDevolucionRow,
   OrdenParaCorreccionRow,
 } from "@/lib/interfaces/repositories/IOrdenRepository";
+
+/**
+ * SLT-48 (design §4.2): la fila de la correccion TAL COMO ERA antes de SLT-48 (la terna de FK en vez
+ * del nodo y su ruta). La de `lib/` cambio de forma; esta copia conserva la de hoy para comparar.
+ */
+export type OrdenParaCorreccionRowDeHoy = Omit<
+  OrdenParaCorreccionRow,
+  "nodoId" | "ruta" | "distritoTarifaId"
+> & { provinciaId: string; cantonId: string; distritoId: string | null };
 import { SNAPSHOT_SELECT } from "@/lib/repositories/CierreDiaRepository";
 import { conAyudaAbiertaDe, type ClienteSqlAyuda } from "@/lib/repositories/ayuda-abierta";
 import { zonaUnicaDeDistrito } from "@/lib/repositories/_shared/zona-colapso";
@@ -49,7 +58,15 @@ type TxDePlan = Pick<PrismaClient, "zonaDistrito" | "orden">;
 // =================================================================================================
 
 // Copia de CierreDiaRepository.ts:291 en b2bade4. `SNAPSHOT_SELECT` se importa: es exportado.
-type SnapshotRow = Prisma.GestionOrdenGetPayload<{ select: typeof SNAPSHOT_SELECT }>;
+// SLT-48 (R29): el de `lib/` ya no trae las FK viejas de la orden; la lectura de hoy las pide aqui,
+// ademas de lo que pide el de `lib/`, para que las dos lecturas se hagan sobre las mismas filas.
+export const SNAPSHOT_SELECT_DE_HOY = {
+  ...SNAPSHOT_SELECT,
+  orden: {
+    select: { ...SNAPSHOT_SELECT.orden.select, provinciaId: true, cantonId: true, distritoId: true },
+  },
+} as const;
+type SnapshotRow = Prisma.GestionOrdenGetPayload<{ select: typeof SNAPSHOT_SELECT_DE_HOY }>;
 
 /**
  * FICHA 450 (T2.7) — los descriptivos que el snapshot CONGELA COMO VALOR, leidos de uno en uno.
@@ -178,12 +195,13 @@ export function congeladoDeHoy(f: SnapshotRow, descriptivos: DescriptivosDeOrden
     // descriptivos (R7).
     tiendaNombre: descriptivoDe(descriptivos.tiendas, f.orden.tiendaId, "usuario").nombre,
     zonaNombre: descriptivoDe(descriptivos.zonas, f.orden.zonaId, "zona").nombre,
+    // SLT-48: las FK son NULL en una orden nueva; la lectura de hoy no la sabe nombrar y lanza.
     provinciaNombre: descriptivoDe(
       descriptivos.provincias,
-      f.orden.provinciaId,
+      f.orden.provinciaId ?? "",
       "provincia",
     ).nombre,
-    cantonNombre: descriptivoDe(descriptivos.cantones, f.orden.cantonId, "canton").nombre,
+    cantonNombre: descriptivoDe(descriptivos.cantones, f.orden.cantonId ?? "", "canton").nombre,
     distritoNombre:
       f.orden.distritoId === null
         ? null
@@ -248,7 +266,7 @@ export async function findBaseCobroDevolucion(
 export async function findParaCorreccion(
   cliente: ClienteOrdenConAyuda,
   ordenId: string,
-): Promise<OrdenParaCorreccionRow | null> {
+): Promise<OrdenParaCorreccionRowDeHoy | null> {
   const row = await cliente.orden.findFirst({
     where: { id: ordenId, deletedAt: null },
     select: {
@@ -286,8 +304,9 @@ export async function findParaCorreccion(
     peso: row.peso ? row.peso.toNumber() : null,
     montoCobrar: row.montoCobrar ? row.montoCobrar.toFixed(2) : null,
     cobraComision: row.cobraComision,
-    provinciaId: row.provinciaId,
-    cantonId: row.cantonId,
+    // SLT-48: nullable desde R4; en una orden vieja nunca es NULL.
+    provinciaId: row.provinciaId ?? "",
+    cantonId: row.cantonId ?? "",
     distritoId: row.distritoId,
     distritoNombre: row.distrito?.nombre ?? null,
     zonaId: row.zona.id,
