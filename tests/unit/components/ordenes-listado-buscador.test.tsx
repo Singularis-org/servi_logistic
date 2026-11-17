@@ -93,7 +93,7 @@ function ultimoFilter(): Record<string, unknown> | undefined {
 
 /** El campo de busqueda de la barra. */
 function buscador(): HTMLElement {
-  return screen.getByRole("searchbox", { name: "Buscar" });
+  return screen.getByRole("searchbox", { name: "Buscar órdenes" });
 }
 
 /**
@@ -160,9 +160,9 @@ describe("OrdenesListado — el buscador es el PRIMER control (R32)", () => {
   it("R32: la barra monta UN campo de busqueda, con su placeholder de los cinco datos", async () => {
     renderListado(<OrdenesListado catalogoFiltros={CATALOGO} />);
 
-    const campo = await screen.findByRole("searchbox", { name: "Buscar" });
+    const campo = await screen.findByRole("searchbox", { name: "Buscar órdenes" });
     expect(campo).toHaveAttribute("placeholder", PLACEHOLDER_BUSQUEDA);
-    expect(screen.getAllByRole("searchbox", { name: "Buscar" })).toHaveLength(1);
+    expect(screen.getAllByRole("searchbox", { name: "Buscar órdenes" })).toHaveLength(1);
   });
 
   // ATENCION al traducir este caso: lo que afirmaba —el campo DELANTE de los ocho
@@ -177,7 +177,7 @@ describe("OrdenesListado — el buscador es el PRIMER control (R32)", () => {
   it("R32: es el UNICO control permanente; los demas se piden, el de estado incluido", async () => {
     const user = userEvent.setup();
     renderListado(<OrdenesListado catalogoFiltros={CATALOGO} />);
-    await screen.findByRole("searchbox", { name: "Buscar" });
+    await screen.findByRole("searchbox", { name: "Buscar órdenes" });
 
     // Barra recien abierta: ni un disparador de filtro, ni el calendario, ni el
     // interruptor.
@@ -212,7 +212,7 @@ describe("OrdenesListado — el buscador es el PRIMER control (R32)", () => {
     const user = userEvent.setup();
     renderListado(<OrdenesListado catalogoFiltros={null} />);
 
-    expect(await screen.findByRole("searchbox", { name: "Buscar" })).toBeEnabled();
+    expect(await screen.findByRole("searchbox", { name: "Buscar órdenes" })).toBeEnabled();
     // Y los que si dependen del catalogo, una vez puestos, siguen deshabilitados (sin
     // regresion): el fallo del catalogo no se lleva por delante la busqueda.
     await ponerFiltros(user, "Zona");
@@ -225,7 +225,7 @@ describe("OrdenesListado — el termino llega a `listarOrdenes` (R34, R36)", () 
   it("R34: teclear un termino lo envia como ESCALAR `q`, en una sola consulta", async () => {
     const user = userEvent.setup();
     renderListado(<OrdenesListado catalogoFiltros={CATALOGO} />);
-    await screen.findByRole("searchbox", { name: "Buscar" });
+    await screen.findByRole("searchbox", { name: "Buscar órdenes" });
     const llamadasPrevias = listarOrdenesMock.mock.calls.length;
 
     await user.type(buscador(), "juan perez");
@@ -235,10 +235,19 @@ describe("OrdenesListado — el termino llega a `listarOrdenes` (R34, R36)", () 
     expect(listarOrdenesMock.mock.calls.length).toBe(llamadasPrevias + 1);
   });
 
+  it("SLT-160 R772: el campo se llama «Buscar órdenes», con la ayuda del escaneo de descripción", async () => {
+    renderListado(<OrdenesListado catalogoFiltros={CATALOGO} />);
+    const campo = await screen.findByRole("searchbox", { name: "Buscar órdenes" });
+    expect(screen.queryByRole("searchbox", { name: "Buscar" })).toBeNull();
+    expect(campo).toHaveAccessibleDescription(
+      "Escanea o escribe la guía y pulsa Enter. Lo leído por la pistola o por la cámara (QR o código de barras) se busca igual.",
+    );
+  });
+
   it("SLT-160 R601: la URL del QR + Enter llega como `q: \"1024\"` y el campo queda con el número", async () => {
     const user = userEvent.setup();
     renderListado(<OrdenesListado catalogoFiltros={CATALOGO} />);
-    await screen.findByRole("searchbox", { name: "Buscar" });
+    await screen.findByRole("searchbox", { name: "Buscar órdenes" });
 
     await user.click(buscador());
     await user.paste("https://app.ejemplo.test/paquete/1024");
@@ -252,7 +261,7 @@ describe("OrdenesListado — el termino llega a `listarOrdenes` (R34, R36)", () 
   it("R35: por debajo del minimo no se consulta nada y se avisa del minimo", async () => {
     const user = userEvent.setup();
     renderListado(<OrdenesListado catalogoFiltros={CATALOGO} />);
-    await screen.findByRole("searchbox", { name: "Buscar" });
+    await screen.findByRole("searchbox", { name: "Buscar órdenes" });
     const llamadasPrevias = listarOrdenesMock.mock.calls.length;
 
     await user.type(buscador(), "ju");
@@ -268,7 +277,7 @@ describe("OrdenesListado — el termino llega a `listarOrdenes` (R34, R36)", () 
   it("R36: vaciar el campo devuelve el listado a la consulta SIN busqueda", async () => {
     const user = userEvent.setup();
     renderListado(<OrdenesListado catalogoFiltros={CATALOGO} />);
-    await screen.findByRole("searchbox", { name: "Buscar" });
+    await screen.findByRole("searchbox", { name: "Buscar órdenes" });
 
     await user.type(buscador(), "juan");
     await waitFor(() => expect(ultimoFilter()).toEqual({ q: "juan" }), ESPERA);
@@ -307,7 +316,7 @@ describe("OrdenesListado — el termino llega a `listarOrdenes` (R34, R36)", () 
   it("R37: 'Limpiar todo' vacia tambien el buscador y su clave sale de la consulta", async () => {
     const user = userEvent.setup();
     renderListado(<OrdenesListado catalogoFiltros={CATALOGO} />);
-    await screen.findByRole("searchbox", { name: "Buscar" });
+    await screen.findByRole("searchbox", { name: "Buscar órdenes" });
 
     await user.type(buscador(), "juan");
     await waitFor(() => expect(ultimoFilter()).toEqual({ q: "juan" }), ESPERA);

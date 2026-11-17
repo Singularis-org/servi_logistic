@@ -170,7 +170,7 @@ describe("OrdenesListado — el control de orden está A LA VISTA", () => {
   it("no se ofrece como un filtro más del selector (no es un filtro: no oculta filas)", async () => {
     const user = userEvent.setup();
     renderListado(<OrdenesListado catalogoFiltros={CATALOGO} />);
-    await screen.findByRole("searchbox", { name: "Buscar" });
+    await screen.findByRole("searchbox", { name: "Buscar órdenes" });
 
     await user.click(screen.getByRole("button", { name: /^Filtros/ }));
     const selector = await screen.findByRole("listbox", { name: "Filtros" });
@@ -445,7 +445,7 @@ describe("OrdenesListado — el orden y la paginación", () => {
   it("«Limpiar todo» no toca el orden: no es un filtro", async () => {
     const user = userEvent.setup();
     renderListado(<OrdenesListado catalogoFiltros={CATALOGO} />);
-    await screen.findByRole("searchbox", { name: "Buscar" });
+    await screen.findByRole("searchbox", { name: "Buscar órdenes" });
 
     await user.click(
       within(grupoDireccion(GRUPO_DIR_FECHA)).getByRole("button", {

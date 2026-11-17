@@ -272,7 +272,7 @@ describe("SLT-160 — la cámara del buscador", () => {
 const AYUDA =
   "Escanea o escribe la guía y pulsa Enter. Lo leído por la pistola o por la cámara (QR o código de barras) se busca igual.";
 
-describe("SLT-160 — R690: la ayuda del escaneo debajo del campo (DC2)", () => {
+describe("SLT-160 — R770: la ayuda del escaneo debajo del campo (DC2)", () => {
   it("con `escaneo` está y es la descripción accesible del campo", () => {
     const { campo } = montar();
     expect(screen.getByText(AYUDA)).toBeInTheDocument();
@@ -292,7 +292,7 @@ describe("SLT-160 — R690: la ayuda del escaneo debajo del campo (DC2)", () => 
   });
 });
 
-describe("SLT-160 — R691: 44 px de alto con `escaneo` (DC2)", () => {
+describe("SLT-160 — R771: 44 px de alto con `escaneo` (DC2)", () => {
   it("con `escaneo`, el contenedor del campo mide h-11", () => {
     const { campo } = montar();
     expect(campo.parentElement).toHaveClass("h-11");

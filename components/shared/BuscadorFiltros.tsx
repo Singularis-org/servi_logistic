@@ -50,7 +50,7 @@ const ALTO_CONTROL = "h-8";
  */
 const ALTO_CONTROL_TACTIL = "h-8 max-md:h-11";
 
-/** SLT-160 (R691, DC2): con `escaneo`, el campo y los controles de la barra miden 44 px, como el canvas. */
+/** SLT-160 (R771, DC2): con `escaneo`, el campo y los controles de la barra miden 44 px, como el canvas. */
 const ALTO_CONTROL_ESCANEO = "h-11";
 
 /** SLT-156 (R496): con `fija`, la barra queda pegada arriba mientras se desplaza la lista. */
@@ -59,7 +59,7 @@ export const BARRA_FIJA = "sticky top-0 z-20 bg-background py-2";
 /** SLT-160 (R600): nombre accesible del botón de cámara del buscador y título de su visor. */
 export const ESCANEAR_CON_CAMARA = "Escanear con cámara";
 
-/** SLT-160 (R690, DC2): la ayuda que va debajo de un buscador con `escaneo`, la del canvas. */
+/** SLT-160 (R770, DC2): la ayuda que va debajo de un buscador con `escaneo`, la del canvas. */
 export const AYUDA_ESCANEO =
   "Escanea o escribe la guía y pulsa Enter. Lo leído por la pistola o por la cámara (QR o código de barras) se busca igual.";
 
@@ -794,7 +794,7 @@ export function BuscadorFiltros({
           ya dentro no se anuncia— y solo cambia su contenido. Su alto está RESERVADO
           (`h-4`, vacía incluida): el aviso aparece y desaparece sin empujar ni un
           píxel de lo que hay debajo, que en esta barra es la tabla entera. */}
-      {/* SLT-160 (R690): la ayuda del escaneo, debajo del campo y descripción accesible de él. */}
+      {/* SLT-160 (R770): la ayuda del escaneo, debajo del campo y descripción accesible de él. */}
       {buscador && escaneo ? (
         <p id={idAyuda} className="mt-1 text-xs text-muted-foreground">
           {AYUDA_ESCANEO}

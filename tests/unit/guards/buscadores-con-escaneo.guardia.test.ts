@@ -95,6 +95,16 @@ describe("SLT-160 — guardia: buscadores con `escaneo` (R609)", () => {
     expect(conEscaneo).toEqual([...CON_ESCANEO].sort());
   });
 
+  // SLT-160 (R772, DC2): el nombre accesible propio de B1 y B2 (B3-B7 ya lo tenían).
+  it.each([
+    ["app/(app)/ordenes/_components/OrdenesListado.tsx", "Buscar órdenes"],
+    ["app/(app)/recepcion-satelite/_components/SateliteOrdenesListado.tsx", "Buscar órdenes de la bodega"],
+  ])("R772: %s nombra su campo «%s»", (archivo, nombre) => {
+    const aperturas = aperturasDeBuscador(leer(archivo));
+    expect(aperturas).toHaveLength(1);
+    expect(aperturas[0]).toContain(`label="${nombre}"`);
+  });
+
   it("contraprueba: el detector ve y no ve `escaneo` donde toca", () => {
     const con = `<BuscadorFiltros\n  escaneo\n  onChange={(t) => f(t > 1)}\n/>`;
     const sin = `<BuscadorFiltros\n  onChange={(t) => f({ escaneo: t })}\n/>`;

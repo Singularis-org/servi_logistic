@@ -125,17 +125,23 @@ Veredicto: T1-T4 hechas, R600-R609 con test, typecheck 0 y mutaciones del WHERE 
 
 | SHA | Qué |
 | --- | --- |
-| 15cfb30e | spec: DC2, R600 reescrito, R690 (ayuda), R691 (44 px), R692 (nombre accesible, pendiente), T4b |
+| 15cfb30e | spec: DC2, R600 reescrito, R770 (ayuda), R771 (44 px), R772 (nombre accesible, pendiente), T4b |
 | 8c3760ff | cámara como botón aparte de 44 px (`EscanerModal` `soloIcono` = `outline` `size-11`), ayuda bajo el campo como descripción accesible, `h-11` en campo, «Filtros» y «Limpiar todo» solo con `escaneo` |
 
-- R600 → `buscador-filtros-escaneo.test.tsx` «… fuera del campo y de 44 px»; R690 → «R690: la ayuda…» (3 tests);
-  R691 → «R691: 44 px…» (3 tests, incluido el «sin `escaneo`, h-8»).
+- R600 → `buscador-filtros-escaneo.test.tsx` «… fuera del campo y de 44 px»; R770 → «R770: la ayuda…» (3 tests);
+  R771 → «R771: 44 px…» (3 tests, incluido el «sin `escaneo`, h-8»).
 - Salidas: escaneo + `buscador-filtros-*` + `EscanerModal` + `QrScanner` + `ordenes-listado-buscador` → 10 archivos,
   116 passed; tests de los 7 montajes → 34 archivos, 422 passed; `tsc` → `TSC_EXIT=0`; eslint de lo tocado limpio.
 - Mutaciones (restauradas con `git checkout --`): M8 cámara de vuelta dentro del campo → rojo R600; M9 sin el texto
-  de ayuda → rojo R690; M10 `ALTO_CONTROL_ESCANEO = "h-8"` → rojo R691 ×2.
-- **R692 (nombre accesible) NO hecho, a la espera del leader:** cambiar B1 a «Buscar órdenes» obliga a tocar
-  `tests/unit/components/ordenes-listado-{filtros,orden,vistas}.test.tsx`, fuera de la lista; B2 no tiene texto en el
-  canvas (propuesta: «Buscar órdenes de la bodega»); B3-B7 ya tienen nombre propio.
-- **R691, alcance:** los `children` de cada pantalla (Estado, Zona, Fecha…) y la descarga de `DataTable` siguen a 32 px.
-- Numeración R690-R692: libre en `dev` (R610-R689 en uso); a confirmar.
+  de ayuda → rojo R770; M10 `ALTO_CONTROL_ESCANEO = "h-8"` → rojo R771 ×2.
+- Numeración: primero R690-R692, que son de SLT-176 «Sacar de CierreBodegaService las lecturas de cifras de
+  presentación del cierre»; renumerados a R770-R772 (rango reservado por el leader para esta ficha).
+
+### R772 — nombre accesible (aprobado por el leader 2026-11-16)
+
+- B1 `label="Buscar órdenes"`, B2 `label="Buscar órdenes de la bodega"`; B3-B7 ya tenían el suyo.
+- Tests: `ordenes-listado-buscador.test.tsx` «SLT-160 R772: el campo se llama «Buscar órdenes»…» y las consultas
+  del campo en `ordenes-listado-{buscador,filtros,orden,vistas}.test.tsx` pasan a `name: "Buscar órdenes"`;
+  guardia «R772: … nombra su campo …» para B1 y B2.
+- Salidas: `ordenes-listado-*` + guardia + escaneo → 7 archivos, 115 passed; tests de los 7 montajes → 34 archivos,
+  423 passed; `tsc` 0; eslint de lo tocado limpio.
