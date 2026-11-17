@@ -12,7 +12,7 @@ mismo.
 
 ## (b1) Escaneo continuo en el diálogo
 
-- [ ] **T1 — Sesión pura.** `lib/utils/sesion-escaneo.ts`: tipos de fila (con `hora` y `resumen?` de
+- [x] **T1 — Sesión pura.** `lib/utils/sesion-escaneo.ts`: tipos de fila (con `hora` y `resumen?` de
   `ResumenRecepcion`) y desenlace, reductor, `contadores`, `horaLectura` (`HH:mm:ss`) y
   `lineaDeEstado`. *Hecho:* R586 en verde en `tests/unit/utils/sesion-escaneo.test.ts` con literales a
   mano (incluido «—» sin `resumen`).
