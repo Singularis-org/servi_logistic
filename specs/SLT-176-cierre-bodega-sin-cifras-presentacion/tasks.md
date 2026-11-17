@@ -90,8 +90,8 @@ En `tests/unit/guards/pago-tienda-no-mueve-dinero.guardia.test.ts`, según `desi
   - quitar la comprobación de rol → rojo el `forbidden` de `consolidacion-completo` (R693).
 - [x] `git diff --name-only origin/dev` no lista nada de `db/` ni `CierresAdminService.ts` /
   `ICierresAdminService.ts`. (R703, R704)
-- [ ] `./init.sh` verde (con `.env`; mirar que la integración no se salta).
-- [ ] E2E en local con base desechable y build: `e2e/cierres-rediseno.spec.ts`,
+- [x] `./init.sh` verde (con `.env`; mirar que la integración no se salta).
+- [x] E2E en local con base desechable y build: `e2e/cierres-rediseno.spec.ts`,
   `e2e/cierre-bodega-satelite.spec.ts` y `--project=dinero`.
 - [x] Mapa `R → test` en `progress/impl_SLT-176.md` (abajo, el previsto).
 

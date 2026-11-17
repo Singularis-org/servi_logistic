@@ -93,3 +93,9 @@ Tests (8): `tests/unit/guards/pago-tienda-no-mueve-dinero.guardia.test.ts`,
   aquí: por instrucción del leader los E2E los corre CI (`e2e (dinero)`) y el gate local lo cierra el leader.
 
 Veredicto: la descarga de la satélite vive en un servicio de solo lectura, `CierreBodegaService` ya no llega a las cifras de presentación y la guardia R631 queda sin excepciones (tope 0); verde con mutaciones que lo matan.
+
+## Cierre (leader, 2026-11-16)
+
+- `./init.sh` (rápido) en el worktree con `.env` de dev: `INIT_EXIT=0`; tamaño 13/40 archivos, 279/1000 producción, 346/3000 tests.
+- E2E de dinero (`cierres-rediseno`, `cierre-bodega-satelite`) y aislamiento: los corre CI en el PR #185 (`e2e (dinero)`, `e2e (aislamiento)`); su resultado queda en el PR y condiciona el aviso «listo para mergear».
+- Review OK (`progress/review_SLT-176.md`). m2 (mover `anularEmpresaSiNoCentral` a util puro) y m3 (`design.md:111` dice un error, son dos) quedan para después del merge de SLT-125 (#161).
