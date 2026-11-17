@@ -154,3 +154,15 @@ Veredicto: T1-T4 hechas, R600-R609 con test, typecheck 0 y mutaciones del WHERE 
 - E2E de los listados B1-B8: los corre CI en el PR #187; su resultado condiciona el aviso «listo para mergear».
 - T5 (pistola y cámara en dispositivo) la hace Carlos en Preview.
 - Review OK (`progress/review_SLT-160.md`); menores m1 (comentario de `escaneo` en `BuscadorFiltros.tsx:241`) y m2 (bitácora `right-8`/`pr-16`) quedan anotados.
+
+## Rojos de `gate-completo` del PR #187 (run 43993390110)
+
+| Test | Causa | Arreglo |
+| --- | --- | --- |
+| `tests/components/EstadoCuentaBarra467.test.tsx` R23 | afirmaba `h-8` en el contenedor del buscador; con `escaneo` mide `h-11` (R771, DC2) | literal a mano `toHaveClass("h-11")`; los controles de filtro siguen en `h-8` (a SLT-194 «Buscar escaneando en recolección, devoluciones y rechazos») |
+| `tests/components/WalletCajaBarra467.test.tsx` R23 | ídem | ídem |
+| `tests/components/RecepcionSateliteModule.test.tsx` R25/R27 | sin zona exigía cero botones «Escanear con cámara»; ahora existe el del buscador del listado (R600), que busca y no recibe | exige exactamente uno y dentro de la región del listado |
+
+- Tests de las pantallas B1-B8 (99 archivos que alcanzan los 7 montajes por imports, 5 de integración): 1258 passed, 0 skipped.
+- Mutaciones (restauradas con `git checkout --`): `ALTO_CONTROL_ESCANEO = "h-8"` → rojo los dos R23; quitar `escaneo` de B2 →
+  rojo R25/R27 de `RecepcionSateliteModule`.
