@@ -325,6 +325,9 @@ está aceptado en SLT-128.
   - párrafo con el período (`periodoNumerico`);
   - una lista con «Cuota del plan» (`sumaDeCuotas ?? "0.00"`), «Cargos por orden», «Reversos de cargos» (en
     negativo) y «Total a pagar», todos con `money()` sobre el texto de la base;
+    - *Ajuste en la implementación (review vuelta 1):* van como un párrafo por concepto, «Concepto: importe», porque
+      `componerCorreo` (`plantilla-marca`) no tiene bloque de lista y añadirlo a la plantilla común queda fuera de
+      esta ficha. Mismos conceptos, mismo orden;
   - el botón «Ver factura» → `${urlApp}/mi-plan`.
 - **Sin URL de la app:** sin botón, y una `nota` con «Encuéntrala en Mi plan, dentro de la app.» (R29).
 - **Adjuntos:** ninguno (R26).

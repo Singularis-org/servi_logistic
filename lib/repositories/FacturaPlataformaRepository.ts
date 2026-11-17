@@ -363,6 +363,9 @@ export class FacturaPlataformaRepository implements IFacturaPlataformaRepository
     const factura = (await this.deLaEmpresa()).find((f) => f.id === facturaId);
     if (factura === undefined || factura.estado !== "cerrada") return null;
     // Movimientos y empresa de la misma foto (`repeatable read`). Sin `$transaction`, ya se está en una.
+    // La cabecera de arriba (`deLaEmpresa()`) se lee FUERA de esa foto. Es inocuo: la factura ya está cerrada,
+    // así que ni ella ni su traza en `[desde, hasta)` cambian entre las dos lecturas, y si algo descuadrara, la
+    // conciliación de R15 lo detectaría al armar el archivo.
     const leer = (c: LectorDeDescarga) => leerDescarga(c, factura.desde, factura.hasta);
     const leido =
       this.prisma.$transaction === undefined

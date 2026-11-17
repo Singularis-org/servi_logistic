@@ -1,7 +1,7 @@
 import { sumaDeCuotas } from "@/components/shared/facturas/facturas-vista";
 import { money } from "@/lib/config/moneda";
-import { periodoNumerico } from "@/lib/facturas-plataforma/resumen";
 import type { EmailMessage } from "@/lib/interfaces/external/IEmailSender";
+import { periodoDeFactura, textoFacturaEmitida } from "@/lib/notificaciones/emitir";
 import { aCentimos, aTexto } from "@/lib/planes/centimos";
 import { componerCorreo, type Bloque } from "@/lib/services/email/plantillas/plantilla-marca";
 import type { FacturaPlataformaDTO } from "@/lib/types/factura-plataforma";
@@ -16,8 +16,11 @@ export const FACTURA_EMITIDA_TEXTOS = {
   asunto: (numero: number, empresa: string) => `Factura N.º ${numero} de la plataforma — ${empresa}`,
   preheader: (total: string) => `Total a pagar ${total}`,
   saludo: (nombre: string) => `Hola, ${nombre}:`,
-  /** La misma frase que la campanita (`textoFacturaEmitida` de `lib/notificaciones/emitir.ts`). */
-  periodo: (numero: number, periodo: string) => `Se emitió la factura N.º ${numero} de la plataforma, del ${periodo}.`,
+  /**
+   * La frase de la campanita, sin copia: el emisor central es el dueño del texto del aviso (146 §4.6), así que el
+   * correo y la campanita no pueden divergir.
+   */
+  periodo: textoFacturaEmitida,
   cuota: "Cuota del plan",
   cargos: "Cargos por orden",
   reversos: "Reversos de cargos",
@@ -56,7 +59,7 @@ export function plantillaFacturaEmitida(p: FacturaEmitidaParams): EmailMessage {
   const linea = (concepto: string, importe: string): Bloque => ({ tipo: "parrafo", texto: `${concepto}: ${money(importe)}` });
   const bloques: Bloque[] = [
     { tipo: "parrafo", texto: T.saludo(p.nombre) },
-    { tipo: "parrafo", texto: T.periodo(factura.numero, periodoNumerico(factura.desde, factura.hasta)) },
+    { tipo: "parrafo", texto: T.periodo(factura.numero, periodoDeFactura(factura.desde, factura.hasta)) },
     linea(T.cuota, sumaDeCuotas(factura) ?? "0.00"),
     linea(T.cargos, factura.cargos),
     linea(T.reversos, aTexto(-aCentimos(factura.reversos))),
