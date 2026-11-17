@@ -10,7 +10,7 @@ PR #192). Todo es `frontend_dev`; ningún archivo de servidor. Un solo PR.
   de textos de R831 en verde en `tests/unit/utils/sesion-escaneo.test.ts`; R834: los casos de SLT-159
   de `sesion-escaneo.test.ts` y `EscaneoContinuo.test.tsx` en verde **sin tocarlos**, más el caso nuevo
   «sin `textos` pinta «Recibidas»».
-- [ ] **T2 [P] — M1 a desenlace (depende de T1 solo por el tipo).** `useRecogerPorGuia.ts`: devuelve
+- [x] **T2 [P] — M1 a desenlace (depende de T1 solo por el tipo).** `useRecogerPorGuia.ts`: devuelve
   `DesenlaceRecepcion` con `resumen` de la orden resuelta (lista o relectura), sin `useToast`; mismos
   motivos de hoy, mismo `nombreDeEstado`. *Hecho:* R596 (M1, por `status`), R599 y R832 (fuente) en
   verde en `tests/components/useRecogerPorGuia.test.tsx`; la relectura de SLT-69 una vez por lectura

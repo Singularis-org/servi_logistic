@@ -2,8 +2,6 @@
 
 import { useCallback, useRef, useState } from "react";
 
-import { useToast } from "@/hooks/useToast";
-import type { ResultadoLectura } from "@/hooks/useEntradaEscaneo";
 import {
   listarMisAsignaciones,
   recogerAsignaciones,
@@ -13,6 +11,7 @@ import type { MiAsignacionDTO } from "@/lib/interfaces/services/IMisAsignaciones
 // frase que pinta la card y la misma que devuelve el servidor. Aquí no se redacta nada.
 import { avisoReservaParaOtroDia } from "@/lib/utils/dia-reparto-textos";
 import { nombreDeEstado } from "@/lib/types/order-status";
+import type { DesenlaceRecepcion } from "@/lib/utils/sesion-escaneo";
 
 // Feature 96 (DRY): lógica compartida por el escáner de cámara (`EscanerRecoger`) y el
 // input de número de guía (`InputRecoger`). Resuelve un `num_guia` contra las órdenes
@@ -37,15 +36,20 @@ import { nombreDeEstado } from "@/lib/types/order-status";
 // del toast) para que la tarjeta de escaneo suene, marque y deje escrito el motivo. Y la guarda
 // anti-doble envío pasa a un ref: con estado, la lectura que la tarjeta encola justo al
 // terminar la anterior veía todavía el `procesando` del render previo y se perdía.
+//
+// SLT-168 «Escaneo continuo en las recogidas del mensajero»: `recoger` devuelve el DESENLACE de
+// la fila de la sesión continua (R596) y ya no lanza toasts (R590): la fila lo dice. El éxito
+// lleva destinatario y tienda de la orden resuelta, de la lista cargada o de la relectura (R832).
+// Los motivos son los de siempre.
 
 export interface UseRecogerPorGuia {
   /**
-   * Recoge la orden cuyo `numGuia` coincide con `numGuia`. Devuelve `{ tipo: "acierto" }`
-   * SOLO si la recogida fue exitosa (el consumidor revalida la lista); si no, el error con el
-   * mismo motivo del toast. Si la guía no está entre las "por recoger" cargadas, relee una
-   * vez la lista del servidor; si tampoco está ahí, la rechaza y NO llama a la action.
+   * Recoge la orden cuyo `numGuia` coincide con `numGuia`. Devuelve `recibida` (con el resumen
+   * de la orden) SOLO si la recogida fue exitosa; si no, `no_se_pudo` con el motivo de siempre.
+   * Si la guía no está entre las "por recoger" cargadas, relee una vez la lista del servidor;
+   * si tampoco está ahí, devuelve `no_encontrada` y NO llama a la action. Sin toasts.
    */
-  recoger: (numGuia: number) => Promise<ResultadoLectura>;
+  recoger: (numGuia: number) => Promise<DesenlaceRecepcion>;
   /** `true` mientras hay una recogida o una relectura en curso (para deshabilitar controles). */
   procesando: boolean;
 }
@@ -53,25 +57,17 @@ export interface UseRecogerPorGuia {
 export function useRecogerPorGuia(
   porRecoger: MiAsignacionDTO[],
 ): UseRecogerPorGuia {
-  const toast = useToast();
   const [procesando, setProcesando] = useState(false);
   // La guarda de SLT-69/R9, en un ref: se suelta en el `finally`, sin esperar a un render.
   const enCurso = useRef(false);
 
-  /** Rechazo: el toast de siempre y el mismo motivo para la tarjeta (SLT-158). */
-  const rechazar = useCallback(
-    (motivo: string): ResultadoLectura => {
-      toast.error(motivo);
-      return { tipo: "error", motivo };
-    },
-    [toast],
-  );
-
   const recoger = useCallback(
-    async (numGuia: number): Promise<ResultadoLectura> => {
-      // Sin toast: la otra recogida en curso ya dirá el suyo.
+    async (numGuia: number): Promise<DesenlaceRecepcion> => {
+      /** Rechazo: el motivo de siempre, para la fila de la sesión (R596). */
+      const rechazar = (motivo: string): DesenlaceRecepcion => ({ tipo: "no_se_pudo", motivo });
+      // La cadena única de la sesión continua ya impide dos a la vez; la guarda se queda.
       if (enCurso.current) {
-        return { tipo: "error", motivo: "Hay otra recogida en curso." };
+        return rechazar("Hay otra recogida en curso.");
       }
       // SLT-69 (R10): la guía que SÍ está en la lista cargada sigue el camino de siempre, sin
       // un viaje extra al servidor.
@@ -101,7 +97,8 @@ export function useRecogerPorGuia(
           }
           orden = vigente.porRecoger.find((o) => o.numGuia === numGuia);
           if (!orden) {
-            return rechazar(`La guía ${numGuia} no está entre tus órdenes para recoger.`);
+            // R596: «No está entre tus órdenes» en la fila; suma a «No encontradas» (R597).
+            return { tipo: "no_encontrada" };
           }
         }
         // Feature 261 (F1, R13) — LA ORDEN ESTÁ RESERVADA PARA UN DÍA POSTERIOR: se rechaza AQUÍ,
@@ -118,8 +115,11 @@ export function useRecogerPorGuia(
         }
         const result = await recogerAsignaciones({ ordenIds: [orden.id] });
         if (result.status === "ok") {
-          toast.success(`Guía ${numGuia} recogida.`);
-          return { tipo: "acierto" };
+          // R832: destinatario y tienda de la orden con la que se recogió (lista o relectura).
+          return {
+            tipo: "recibida",
+            resumen: { destinatario: orden.destinatario, tienda: orden.tiendaNombre },
+          };
         }
         switch (result.status) {
           case "conflict":
@@ -153,7 +153,7 @@ export function useRecogerPorGuia(
         setProcesando(false);
       }
     },
-    [porRecoger, toast, rechazar],
+    [porRecoger],
   );
 
   return { recoger, procesando };
