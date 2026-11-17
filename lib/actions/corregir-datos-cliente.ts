@@ -85,8 +85,8 @@ function toCorregirActionError(shape: AppErrorShape): BorderError {
 
 /**
  * Corrige los datos del cliente de UNA orden y, desde la ficha 327, tambien su ubicacion:
- * `destinatario`, `telefonoDest`, `producto`, `notas`, `direccion`, `provinciaId`, `cantonId`,
- * `distritoId` y `peso`. Nada mas (312/D1 + 327/D1).
+ * `destinatario`, `telefonoDest`, `producto`, `notas`, `direccion`, `nodoId` (SLT-48: el lugar,
+ * antes la terna provincia/canton/distrito) y `peso`. Nada mas (312/D1 + 327/D1).
  *
  * ⚠️ ESTA ACCION PUEDE MOVER DINERO (327/D5), y por eso puede responder `confirmacion_requerida`:
  * si la correccion cambia el DISTRITO y no llega `confirmaCambioDeUbicacion: true`, el servidor NO
@@ -127,12 +127,9 @@ export async function corregirDatosCliente(
         telefonoDest: data.telefonoDest,
         producto: data.producto,
         notas: data.notas,
-        // Ficha 327 — la ubicacion. `distritoId` sale del schema como `string | undefined`: el
-        // `refine` de R4 ya descarto el `null` que el origen admitia.
+        // Ficha 327 — la ubicacion; SLT-48 (R16): el lugar es un nodo.
         direccion: data.direccion,
-        provinciaId: data.provinciaId,
-        cantonId: data.cantonId,
-        distritoId: data.distritoId ?? undefined,
+        nodoId: data.nodoId,
         peso: data.peso,
         confirmaCambioDeUbicacion: data.confirmaCambioDeUbicacion,
       },
