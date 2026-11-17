@@ -141,7 +141,7 @@ tiene indexado este worktree** (`index_status`: project not found).
 
 Orden: (T1 ∥ T2) → T3 → T4. `[P]` = paralelizable con su hermana.
 
-- [ ] **T1 [P] — Fila de Reparto** (`pos-card/PosOrderCard.tsx`, `pos-card/PosOrderCardDetalle.tsx`).
+- [x] **T1 [P] — Fila de Reparto** (`pos-card/PosOrderCard.tsx`, `pos-card/PosOrderCardDetalle.tsx`).
   Prop opcional en `PosOrderCardProps` que elige la fila de Reparto y su segunda línea (dirección o
   tienda); ausente = la fila de hoy (DS2). Con ella: `numGuia ?? numRemision` en mono arriba;
   «destinatario · dirección» o «destinatario · tienda» con `TEXTO_ENTERO`, omitiendo « · » si falta
