@@ -165,7 +165,7 @@ en la fila y las tarjetas de ganancia de arriba (`ColaCierres.tsx:328-330`).
 
 Orden: (T1 ∥ T2 ∥ T3) → T4. `[P]` = paralelizable con sus hermanas.
 
-- [ ] **T1 [P] — Tarjeta de gestión** (`fila/FilaGestion.tsx`, `fila/GestionesCierre.tsx`). Prop
+- [x] **T1 [P] — Tarjeta de gestión** (`fila/FilaGestion.tsx`, `fila/GestionesCierre.tsx`). Prop
   opcional en `FilaGestionProps` que activa la tarjeta del mensajero; `GestionesCierre` la pasa con
   `esMovil && audiencia === "mensajero"`; ausente = DOM de hoy. Con ella: áreas nuevas (guía, dest,
   tienda a la izquierda; resultado, «Ganancia» y monto a la derecha), «Devolver a gestión» al pie del

@@ -182,3 +182,136 @@ describe("SLT-165 R524, R538 — en escritorio, lo de hoy", () => {
     expect(screen.getByRole("button", { name: "Descargar Gestiones de hoy" })).toBeInTheDocument();
   });
 });
+
+// SLT-191 «Cierre del día del mensajero según el canvas» (R810-R814; DS1-DS4) — la tarjeta de la
+// gestión del propio mensajero en el teléfono, como `GestionesVolumen` del canvas. Las clases y los
+// textos van escritos a mano: son el contrato de la tarjeta.
+describe("SLT-191 R810-R814 — la tarjeta del mensajero en el teléfono", () => {
+  const G = gestionFila({
+    gestionId: "t1",
+    numGuia: 14974806,
+    numRemision: "REM-777",
+    destinatario: "María Fernanda Rodríguez Villalobos de la Cruz",
+    tiendaNombre: "Distribuidora Comercial El Buen Precio del Norte S.A.",
+    pagoMensajero: "1500.00",
+  });
+
+  function montarUna(
+    g: CierreDetalleGestion,
+    opciones: { audiencia?: "mensajero" | "central"; devolver?: (g: CierreDetalleGestion) => void } = {},
+  ) {
+    render(
+      <GestionesCierre
+        gestiones={[{ gestion: g }]}
+        audiencia={opciones.audiencia ?? "mensajero"}
+        quienMiraEsCentral={opciones.audiencia === "central"}
+        congeladoAt={null}
+        acciones={{ devolver: opciones.devolver ?? vi.fn() }}
+        descargar={DESCARGAR}
+      />,
+    );
+    return userEvent.setup();
+  }
+
+  const tarjeta = () => {
+    const el = document.querySelector<HTMLElement>("[data-gestion] [data-tarjeta-mensajero]");
+    if (!el) throw new Error("sin tarjeta del mensajero");
+    return el;
+  };
+  const DISPARADOR = "Detalle de la orden REM-777 · María Fernanda Rodríguez Villalobos de la Cruz";
+  const DEVOLVER = "Devolver a gestión la orden REM-777 · María Fernanda Rodríguez Villalobos de la Cruz";
+
+  it("R810: a la izquierda guía (mono) → destinatario → tienda, cada uno en su línea; a la derecha resultado, «Ganancia» y monto", () => {
+    montarUna(G);
+    const t = tarjeta();
+    const [izquierda, derecha] = Array.from(t.children).filter((c) => c.tagName === "DIV");
+    expect(Array.from(izquierda.children).map((c) => c.getAttribute("data-columna"))).toEqual(["guia", "destinatario", "tienda"]);
+    expect(Array.from(izquierda.children).map((c) => c.textContent)).toEqual([
+      "14974806",
+      "María Fernanda Rodríguez Villalobos de la Cruz",
+      "Distribuidora Comercial El Buen Precio del Norte S.A.",
+    ]);
+    expect(izquierda.className.split(/\s+/)).toContain("flex-col");
+    expect(izquierda.querySelector('[data-columna="guia"] > span')?.className.split(/\s+/)).toContain("font-mono");
+    // Enteros (R490): el texto envuelve, no se recorta.
+    expect(izquierda.querySelector('[data-columna="tienda"] > span')?.className.split(/\s+/)).toContain("whitespace-normal");
+    expect(derecha.textContent).toBe("EntregadoGanancia₡1.500");
+    expect(within(derecha as HTMLElement).getByRole("button", { name: "Qué significa «Entregado»" })).toBeInTheDocument();
+    expect(t.className.split(/\s+/)).toContain("grid-cols-[minmax(0,1fr)_max-content]");
+  });
+
+  it("R810: sin guía «—» y sin ganancia «—», nunca ₡0 (R86)", () => {
+    montarUna(gestionFila({ gestionId: "t2", numGuia: null, pagoMensajero: null }));
+    const t = tarjeta();
+    expect(t.querySelector('[data-columna="guia"]')?.textContent).toBe("—");
+    expect(t.querySelector('[data-columna="ganancia"]')?.textContent).toBe("—");
+  });
+
+  it("R811: plegada NO muestra «Devolver a gestión»; al desplegar va al pie del desplegado y abre el mismo callback", async () => {
+    const devolver = vi.fn();
+    const user = montarUna(G, { devolver });
+    expect(screen.queryByRole("button", { name: DEVOLVER })).toBeNull();
+    await user.click(screen.getByRole("button", { name: DISPARADOR }));
+    const boton = screen.getByRole("button", { name: DEVOLVER });
+    expect(tarjeta().contains(boton)).toBe(false);
+    expect(boton.className.split(/\s+/)).toContain("max-md:min-h-11");
+    await user.click(boton);
+    expect(devolver).toHaveBeenCalledWith(G);
+  });
+
+  it("R811 (R244): desde la ayuda de la tienda, deshabilitado con su motivo en el desplegado", async () => {
+    const user = montarUna({ ...G, desdeAyudaTienda: true });
+    await user.click(screen.getByRole("button", { name: DISPARADOR }));
+    const boton = screen.getByRole("button", { name: /^Devolver a gestión la orden REM-777 .* — no disponible: / });
+    expect(boton).toBeDisabled();
+    expect(boton).toHaveAttribute("title");
+  });
+
+  it("R812: el disparador es un botón con `aria-expanded`, el nombre de hoy, estirado sobre toda la tarjeta y de 44 px", async () => {
+    const user = montarUna(G);
+    const disparador = screen.getByRole("button", { name: DISPARADOR });
+    expect(disparador).toHaveAttribute("aria-expanded", "false");
+    expect(disparador.parentElement).toBe(tarjeta());
+    const clases = disparador.className.split(/\s+/);
+    for (const c of ["absolute", "inset-0", "min-h-11", "w-full"]) expect(clases, c).toContain(c);
+    expect(tarjeta().className.split(/\s+/)).toContain("relative");
+    // El contenido no captura el toque: cae en el disparador.
+    for (const bloque of Array.from(tarjeta().children).filter((c) => c !== disparador)) {
+      expect(bloque.className.split(/\s+/), bloque.tagName).toContain("pointer-events-none");
+    }
+    await user.click(disparador);
+    expect(disparador).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("Orden")).toBeInTheDocument();
+    await user.click(disparador);
+    expect(disparador).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Orden")).toBeNull();
+  });
+
+  it("R813: la información del resultado capta su toque y no despliega; ningún botón dentro de otro", async () => {
+    const user = montarUna(G);
+    const info = screen.getByRole("button", { name: "Qué significa «Entregado»" });
+    expect(info.closest('[data-columna="resultado"]')?.className.split(/\s+/)).toContain("[&_button]:pointer-events-auto");
+    await user.click(info);
+    expect(screen.getByRole("button", { name: DISPARADOR })).toHaveAttribute("aria-expanded", "false");
+    for (const b of Array.from(document.querySelectorAll("button"))) {
+      expect(b.parentElement?.closest("button"), b.getAttribute("aria-label") ?? b.textContent ?? "").toBeNull();
+    }
+  });
+
+  it("R814: en escritorio, la fila de hoy: sin tarjeta, «Devolver a gestión» y el chevron en la fila", () => {
+    movil.valor = false;
+    montarUna(G);
+    expect(document.querySelector("[data-tarjeta-mensajero]")).toBeNull();
+    const fila = document.querySelector<HTMLElement>("[data-gestion]")!;
+    expect(within(fila).getByRole("button", { name: DEVOLVER })).toBeInTheDocument();
+    expect(within(fila).getByRole("button", { name: DISPARADOR }).className.split(/\s+/)).toContain("size-8");
+  });
+
+  it("R814: la administración en el teléfono, la tarjeta de hoy (R523) sin la del mensajero", () => {
+    montarUna(G, { audiencia: "central" });
+    expect(document.querySelector("[data-tarjeta-mensajero]")).toBeNull();
+    const rejilla = document.querySelector<HTMLElement>("[data-gestion]")?.firstElementChild as HTMLElement;
+    expect(rejilla.className.split(/\s+/)).toContain("max-md:grid-cols-[max-content_minmax(0,1fr)_max-content]");
+    expect(within(rejilla).getByRole("button", { name: DISPARADOR }).className.split(/\s+/)).toContain("size-8");
+  });
+});
