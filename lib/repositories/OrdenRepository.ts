@@ -1192,6 +1192,11 @@ type OrdenListRow = Prisma.OrdenGetPayload<typeof WITH_ESTATUS_Y_TIENDA>;
  */
 type TarifaListRow = Prisma.TarifaGetPayload<{ select: typeof TARIFA_SELECT }>;
 
+/** SLT-48 (R19): la clave `tipoHijosActivos` de `DistritoRow`, solo cuando el distrito no es hoja. */
+function conHijosActivos(tipo: string | null): { tipoHijosActivos?: string } {
+  return tipo === null ? {} : { tipoHijosActivos: tipo };
+}
+
 /** SLT-48: la marca y el lugar de tarifa de un lugar (el nodo de una orden), del catalogo. */
 function geoDeOrden(
   catalogo: CatalogoGeografico,
@@ -2873,8 +2878,9 @@ export class OrdenRepository implements IOrdenRepository {
         esZonaEspecial: esZonaEspecial(catalogo, asignaciones, n.id),
         // FICHA 374: la disponibilidad EFECTIVA, compuesta con todos sus ancestros (R5).
         disponible: disponibleEnCatalogo(catalogo, n),
-        // SLT-48 (R19): un distrito con hijos activos no es hoja y v1 lo rechaza.
-        tipoHijosActivos: tipoDeHijosActivos(catalogo, n),
+        // SLT-48 (R19): un distrito con hijos activos no es hoja y v1 lo rechaza. Solo viaja si no es
+        // hoja: en un pais de 3 niveles la fila queda igual que la de hoy.
+        ...conHijosActivos(tipoDeHijosActivos(catalogo, n)),
       };
     });
   }

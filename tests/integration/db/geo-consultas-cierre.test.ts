@@ -120,9 +120,10 @@ describeSiHayBase("SLT-65 T3.2 — el cierre congela nombres y marca del catalog
         const leido = await comoLaEmpresa(tx, empresa, async () => {
           const cliente = clienteConSavepoint(tx);
           // Lo de hoy se lee antes del cierre, en la misma foto: las gestiones aun no tienen cierre.
+          // SLT-48: con el `select` de hoy (el de `lib/` ya no trae las FK viejas que lee la copia).
           const filas = await cliente.gestionOrden.findMany({
             where: { id: { in: empresa.gestionesSinCierreIds } },
-            select: SNAPSHOT_SELECT,
+            select: hoy.SNAPSHOT_SELECT_DE_HOY,
           });
           const descriptivos = await hoy.leerDescriptivosDeOrdenes(filas, cliente);
           const deHoy = new Map(filas.map((f) => [f.ordenId, hoy.congeladoDeHoy(f, descriptivos)]));
