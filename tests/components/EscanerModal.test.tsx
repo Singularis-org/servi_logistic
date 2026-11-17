@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { useEffect } from "react";
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { ESCANER_LABEL_GUIA, EscanerModal } from "@/components/shared/EscanerModal";
@@ -258,5 +258,51 @@ describe("EscanerModal — foco inicial según el puntero (SLT-158)", () => {
       expect(screen.getByRole("dialog").contains(document.activeElement)).toBe(true),
     );
     expect(document.activeElement).not.toBe(campo);
+  });
+});
+
+// SLT-190 «Recoger y Recolección según el canvas» (R869, R871, DS7) — con `titulo`, el diálogo pinta
+// arriba una barra con el título VISIBLE y un único «Cerrar» de 44 × 44 px; sin él, todo como siempre
+// (título `sr-only` con `label` y la X del `Dialog`). jsdom no aplica Tailwind: se afirman las clases.
+describe("SLT-190 — barra del diálogo con `titulo`", () => {
+  it("R869: un solo «Cerrar», de 44 px (`size-11`), en la barra con el título visible; cierra y desmonta", async () => {
+    const user = userEvent.setup();
+    render(
+      <EscanerModal label={ESCANER_LABEL_GUIA} titulo="Recoger paquete" tactil>
+        <p>tarjeta de escaneo</p>
+      </EscanerModal>,
+    );
+    await user.click(screen.getByRole("button", { name: "Escanear o escribir guía" }));
+
+    const dialogo = screen.getByRole("dialog", { name: "Recoger paquete" });
+    const titulo = within(dialogo).getByText("Recoger paquete");
+    expect(titulo).not.toHaveClass("sr-only");
+    const cerrar = within(dialogo).getAllByRole("button", { name: "Cerrar" });
+    expect(cerrar).toHaveLength(1);
+    expect(cerrar[0].className.split(/\s+/)).toContain("size-11");
+    // Título y «Cerrar» en la misma barra, encima del contenido.
+    expect(titulo.parentElement).toBe(cerrar[0].parentElement);
+    const contenido = within(dialogo).getByText("tarjeta de escaneo");
+    expect(titulo.compareDocumentPosition(contenido) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+
+    await user.click(cerrar[0]);
+    await vi.waitFor(() => expect(screen.queryByText("tarjeta de escaneo")).toBeNull());
+  });
+
+  it("R871: sin `titulo`, el título es `sr-only` con `label` y la X de siempre (la del `Dialog`, no la de 44 px)", async () => {
+    const user = userEvent.setup();
+    render(
+      <EscanerModal label={ESCANER_LABEL_GUIA}>
+        <p>tarjeta de escaneo</p>
+      </EscanerModal>,
+    );
+    await user.click(screen.getByRole("button", { name: "Escanear o escribir guía" }));
+
+    const dialogo = screen.getByRole("dialog", { name: "Escanear o escribir guía" });
+    expect(within(dialogo).getByText("Escanear o escribir guía")).toHaveClass("sr-only");
+    const cerrar = within(dialogo).getAllByRole("button", { name: "Cerrar" });
+    expect(cerrar).toHaveLength(1);
+    expect(cerrar[0]).toHaveAttribute("data-slot", "dialog-close");
+    expect(cerrar[0].className.split(/\s+/)).not.toContain("size-11");
   });
 });

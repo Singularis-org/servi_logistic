@@ -63,6 +63,28 @@ function barra(page: Page): Locator {
   return page.locator(".sticky").filter({ has: page.getByRole("searchbox", { name: "Buscar guías" }) }).last();
 }
 
+/**
+ * `scrollY` una vez asentado: espera a que dos frames seguidos lean el mismo valor (sin tiempos fijos).
+ */
+async function scrollAsentado(page: Page): Promise<number> {
+  return page.evaluate(
+    () =>
+      new Promise<number>((resolver) => {
+        let previo = window.scrollY;
+        const mirar = () => {
+          requestAnimationFrame(() => {
+            if (window.scrollY === previo) resolver(previo);
+            else {
+              previo = window.scrollY;
+              mirar();
+            }
+          });
+        };
+        mirar();
+      }),
+  );
+}
+
 async function cajaDe(l: Locator) {
   const caja = await l.boundingBox();
   expect(caja, "sin caja (¿está visible?)").not.toBeNull();
@@ -313,4 +335,138 @@ test.describe("SLT-164 — Recoger en bodega y Recolección en el móvil", () =>
       await sinDesborde(page);
     });
   }
+
+  // ===============================================================================================
+  // SLT-190 «Recoger y Recolección según el canvas» (T6): (a) la barra con el filtro «Tienda» puesto y
+  // el conmutador no desborda a 360/414 px y sus controles miden 44 px (R852, R861); (b) el conmutador
+  // sigue pegado arriba al bajar (R861); (c) el diálogo lleva la barra con el título y un «Cerrar» de
+  // 44 × 44 (R867-R869); (d) la fila plegada de Recolección muestra el estado y, en «Recogidos en
+  // tienda hoy», la hora (R862, R863).
+  // ===============================================================================================
+  for (const ancho of ANCHOS_MOVIL) {
+    test(`SLT-190 Recolección a ${ancho} px: filtro «Tienda» y conmutador en la barra, pegados al bajar; diálogo con barra; fila plegada con estado y hora`, async ({ browser }) => {
+      const m = await crearMensajero(r, "satelite");
+      const aRecolectar = await porRecolectar(m, { destinatario: "Elena Campos", montoCobrar: 3000 });
+      for (const nombre of ["Fabio Ureña", "Gina Porras", "Hugo Chaves", "Irene Mata", "Jorge Leiva"]) {
+        await porRecolectar(m, { ...datosLargos(), destinatario: `${nombre} ${DESTINATARIO_LARGO}` });
+      }
+
+      const page = await paginaDe(browser, m, { viewport: { width: ancho, height: ALTO_MOVIL } });
+      await page.goto(RECOLECCION);
+      const seccionPor = page.getByRole("region", { name: "Por recolectar en tienda", exact: true });
+      const seccionHoy = page.getByRole("region", { name: "Recogidos en tienda hoy", exact: true });
+      await expect(seccionPor.getByText("6 paquetes por recolectar en tienda.")).toBeVisible();
+
+      // (c) R868, R869: la barra del diálogo con «Recolectar en tienda» y un solo «Cerrar» de 44 × 44.
+      const escaner = page.getByRole("button", { name: "Escanear o escribir guía" });
+      await escaner.click();
+      const dialogo = page.getByRole("dialog", { name: "Recolectar en tienda" });
+      await expect(dialogo).toBeVisible();
+      await expect(dialogo.getByText("Escanea o ingresa el número de guía")).toHaveCount(0);
+      const cerrar = dialogo.getByRole("button", { name: "Cerrar" });
+      await expect(cerrar).toHaveCount(1);
+      await tactil(cerrar);
+      expect(await encimaDe(dialogo.getByText("Recolectar en tienda", { exact: true }), dialogo.getByRole("textbox", { name: "Número de guía", exact: true }))).toBe(true);
+      const campo = dialogo.getByRole("textbox");
+      await campo.fill(String(aRecolectar.numGuia));
+      await campo.press("Enter");
+      await expect(
+        dialogo.getByRole("log", { name: "Lecturas" }).getByText("Recogida en tienda", { exact: true }),
+      ).toBeVisible();
+      await cerrar.click();
+      await expect(dialogo).toHaveCount(0);
+      await expect(seccionHoy.getByText("1 paquete recogido en tienda hoy.")).toBeVisible();
+
+      // (a) R852, R861: el filtro «Tienda» puesto y el conmutador, en la barra, a 44 px y sin desborde.
+      await barra(page).getByRole("button", { name: /^Filtros/ }).click();
+      await page.getByRole("listbox", { name: "Filtros" }).getByRole("option", { name: "Tienda" }).click();
+      await page.keyboard.press("Escape");
+      const control = barra(page).getByRole("combobox", { name: "Filtrar por tienda" });
+      await control.click();
+      await page.getByRole("listbox").getByRole("option", { name: TIENDA_LARGA }).click();
+      await expect(control).toContainText(`Tienda: ${TIENDA_LARGA}`);
+      await expect(barra(page).getByRole("button", { name: /^Filtros \(1\)/ })).toBeVisible();
+      const conmutador = barra(page).getByRole("group", { name: "Vista de las órdenes" });
+      await expect(page.getByRole("group", { name: "Vista de las órdenes" })).toHaveCount(1);
+      for (const c of [
+        control,
+        barra(page).getByRole("button", { name: "Limpiar todo" }),
+        conmutador.getByRole("button", { name: /Mosaico/ }),
+        conmutador.getByRole("button", { name: /Detalle/ }),
+      ]) {
+        await tactil(c);
+      }
+      await sinDesborde(page);
+
+      // (d) R862, R863: en Detalle, la fila plegada lleva la tienda y el estado; en «Recogidos hoy»,
+      // además la hora.
+      await aDetalle(page, "Órdenes por recolectar");
+      const filaPor = seccionPor.locator("article").first().locator(":scope > button[aria-expanded]");
+      await expect(filaPor).toHaveAttribute("aria-expanded", "false");
+      await expect(filaPor).toContainText(TIENDA_LARGA);
+      await expect(filaPor).toContainText(/Orden 1 de \d/);
+      // B1 (decisión de Carlos, 2026-11-17): el estado va plegado con su (i), FUERA del botón de la
+      // fila (como la fila del chat); el área táctil del (i) es su `::after`, de 44 × 44.
+      const tarjetaPor = seccionPor.locator("article").first();
+      await expect(tarjetaPor).toContainText("Recolectando");
+      await expect(filaPor).not.toContainText("Recolectando");
+      const infoPor = tarjetaPor.getByRole("button", { name: "Qué significa «Recolectando»" });
+      await expect(infoPor).toBeVisible();
+      const zona = await infoPor.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        const cs = getComputedStyle(el, "::after");
+        return {
+          ancho: r.width - parseFloat(cs.left) - parseFloat(cs.right),
+          alto: r.height - parseFloat(cs.top) - parseFloat(cs.bottom),
+        };
+      });
+      expect(zona.ancho).toBeGreaterThanOrEqual(44);
+      expect(zona.alto).toBeGreaterThanOrEqual(44);
+      await infoPor.click();
+      await expect(filaPor).toHaveAttribute("aria-expanded", "false");
+      await page.keyboard.press("Escape");
+      const filaHoy = seccionHoy.locator("article").first().locator(":scope > button[aria-expanded]");
+      await expect(filaHoy).toContainText(new RegExp(`${TIENDA_LARGA} · Recogido a las \\d`));
+      await sinDesborde(page);
+      await sinElipsis(seccionPor);
+      await sinElipsis(seccionHoy);
+
+      // (b) R861: al bajar, la barra —con el conmutador— sigue pegada arriba.
+      // Se mide con el scroll ASENTADO (mismo `scrollY` dos frames seguidos) y se reintenta el bloque
+      // entero: en CI la caja se leía antes de que el scroll y la barra fija se asentaran (283 px,
+      // flaky). Lo comprobado no cambia: la página bajó y el conmutador queda en el tercio de arriba.
+      await expect(async () => {
+        await page.evaluate(() => window.scrollTo({ top: 900, behavior: "instant" }));
+        expect(await scrollAsentado(page)).toBeGreaterThan(0);
+        await expect(conmutador).toBeVisible();
+        const caja = await cajaDe(conmutador);
+        expect(caja.y).toBeGreaterThanOrEqual(0);
+        expect(caja.y).toBeLessThan(ALTO_MOVIL / 3);
+      }).toPass({ timeout: 10_000 });
+    });
+  }
+
+  test("SLT-190 Recoger a 360 px: conmutador en la barra y diálogo con barra «Recoger paquete» y «Cerrar» de 44 × 44", async ({ browser }) => {
+    const m = await crearMensajero(r, "satelite");
+    await llevarA(r, await crearOrden(r, { zona: "satelite", destinatario: "Karla Mena", montoCobrar: 4000 }), "mensajero_recogiendo_en_bodega", { mensajero: m });
+
+    const page = await paginaDe(browser, m, { viewport: { width: 360, height: ALTO_MOVIL } });
+    await page.goto(RECOGER);
+
+    // R859: el conmutador está en la barra; la fila de las pestañas no lleva ninguno.
+    await expect(page.getByRole("group", { name: "Vista de las órdenes" })).toHaveCount(1);
+    await expect(barra(page).getByRole("group", { name: "Vista de las órdenes" })).toBeVisible();
+    await sinDesborde(page);
+
+    // R867, R869: la barra del diálogo y un solo «Cerrar» de 44 × 44.
+    await page.getByRole("button", { name: "Escanear o escribir guía" }).click();
+    const dialogo = page.getByRole("dialog", { name: "Recoger paquete" });
+    await expect(dialogo).toBeVisible();
+    await expect(dialogo.getByText("Escanea o ingresa el número de guía")).toHaveCount(0);
+    const cerrar = dialogo.getByRole("button", { name: "Cerrar" });
+    await expect(cerrar).toHaveCount(1);
+    await tactil(cerrar);
+    await cerrar.click();
+    await expect(dialogo).toHaveCount(0);
+  });
 });
