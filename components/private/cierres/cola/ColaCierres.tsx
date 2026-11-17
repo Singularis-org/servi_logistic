@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DataTable, type Column } from "@/components/shared/DataTable";
+import { DESPLEGABLE_TACTIL } from "@/components/shared/texto-entero";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { money } from "@/lib/config/moneda";
 import type { CierreAdminResumen } from "@/lib/interfaces/services/ICierresAdminService";
@@ -232,9 +233,6 @@ interface TablaComun {
   error: string | null;
   vacio: string;
 }
-
-/** SLT-165 (R493): el botón de desplegar de la `DataTable` de la cola propia, a 44 px en el teléfono. */
-export const DESPLEGABLE_TACTIL = "max-md:[&_button[aria-expanded]]:min-h-11 max-md:[&_button[aria-expanded]]:min-w-11";
 
 /** La ÚNICA tabla de la cola (una sola en el censo), genérica en el tipo de fila. */
 function TablaCola<T>({

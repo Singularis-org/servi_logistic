@@ -24,6 +24,15 @@ export const PRODUCTO_LARGO =
 /** Motivo de rechazo de 300 caracteres. */
 export const MOTIVO_LARGO = ("El cliente no quiso recibir el paquete porque dice que no lo pidió y que no conoce la tienda. ").repeat(4).slice(0, 300);
 /**
+ * SLT-162: nombre de mensajero de 80 caracteres con una palabra de 40 sin espacios (el ranking lo
+ * pinta en el podio, en «Ranking del día» y en el Histórico).
+ */
+export const MENSAJERO_LARGO = "Luis Fernando Solanoesquivelmontenegrocastrobarqueroch Jiménez Araya Mora Vegass";
+/** SLT-162: descripción de premio de 200 caracteres («Premios del podio» y el Histórico). */
+export const PREMIO_DESCRIPCION_LARGA =
+  "Bono por el mejor desempeño del día: tarjeta de regalo del supermercado, almuerzo pagado el " +
+  "viernes y medio día libre a elegir durante el mes siguiente, coordinado con la central de despacho y su jefe";
+/**
  * El importe más ancho que admite una orden: ₡99 999 999. El monto a cobrar es ENTERO
  * (`orden_monto_cobrar_entero_check`), y el monto recibido de una entrega tiene que cuadrar con él.
  */
