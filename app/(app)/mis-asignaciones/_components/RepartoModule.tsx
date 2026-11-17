@@ -608,6 +608,8 @@ export function RepartoModule({
         bloqueado={bloqueadaPara(orden)}
         // SLT-156 (R508): en Detalle, la fila compacta que se despliega al tocarla.
         compacta={vista === "detalle"}
+        // SLT-189 (R790-R792): la fila de Reparto lleva la guía y «destinatario · dirección».
+        filaReparto="direccion"
         // Pedido humano (ux): la card ya NO selecciona al tocarla. Cambiar la orden del panel
         // pasa por el botón "Gestionar" del pie, que además pide confirmación.
         acciones={
@@ -650,6 +652,7 @@ export function RepartoModule({
    * Una card de la seccion «Con ayuda solicitada». SIEMPRE en vista de DETALLE (pedido humano):
    * son las órdenes atascadas, la fila ancha deja leer de un vistazo cuál es cuál, y esta sección
    * no participa del conmutador mosaico/detalle de arriba.
+   * SLT-189 (R800): y como FILA COMPACTA plegada; sus acciones van al despliegue.
    *
    * Feature 235 (T3.5/T5.2, R19/R35) — SUS ACCIONES CAMBIAN, y las dos por un motivo medible:
    *
@@ -694,6 +697,10 @@ export function RepartoModule({
            navegación, el nº de remisión, el destinatario, los intentos, el monto y «Gestionar más
            tarde» siguen intactos. */
         mostrarRuta={false}
+        /* SLT-189 (R800, R801, DS5): fila compacta plegada, en Mosaico y en Detalle, con la guía y
+           «destinatario · tienda»; «Recuperar» y «Conversación» van al despliegue. */
+        compacta
+        filaReparto="tienda"
         acciones={
           <div className="flex items-center justify-between gap-2">
             {/* Feature 235 (R25) — LA EXCEPCIÓN AL BLOQUEO, y es deliberada: este botón NO recibe
@@ -782,12 +789,16 @@ export function RepartoModule({
       {modoFoco && detalleOrden ? (
         /* ---------- MODO FOCO (feature 113/R5–R9; SLT-156 R504) ---------- */
         /* Vista sin distracciones para gestionar UNA orden en la calle: SOLO el panel (detalle
-           completo + flujo de resultados + "Cancelar gestión"). Se omiten KPI, barra de
-           filtros, grilla de cards y mapa. Se entra por el puntero 1-a-1 del servidor (gestión
+           completo + flujo de resultados + "Cancelar gestión"), con los KPI encima (SLT-189). Se
+           omiten barra de filtros, grilla de cards y mapa. Se entra por el puntero 1-a-1 del servidor (gestión
            ya fijada) o por la orden que el mensajero eligió en su tarjeta (`ordenEnFocoId`,
            guía todavía sin confirmar); en ese segundo caso «Volver a la lista» deshace la
            elección sin tocar el servidor. */
         <div className="flex flex-col gap-3">
+          {/* SLT-189 (R798, DS4): los KPI también en el foco, encima de «Volver a la lista» y del
+              panel, antes y después de confirmar la guía. La barra, el conmutador y el escáner no
+              (R799). */}
+          {kpis}
           {/* SLT-156 (R513, C2): solo antes de confirmar la guía; después ya existe «Cancelar
               gestión». A todo el ancho, como el canvas. */}
           {ordenEnGestionId === null && guiaConfirmadaId !== detalleOrden.id ? (
@@ -852,6 +863,10 @@ export function RepartoModule({
             hayFiltrosAplicados={filtro.hayFiltro || filtrosPuestos.length > 0}
             fija
             tactil
+            // SLT-189 (R795, DS3): el conmutador Mosaico/Detalle va en la barra fija, tras «Filtros».
+            trasFiltros={
+              <VistaCardsToggle vista={vistaCardsPedida} onVistaChange={cambiarVista} />
+            }
           >
             {/* Feature 117: elegir cantón resetea el distrito (R5) y el distrito va
                 deshabilitado sin cantón (R3); las opciones salen del conjunto completo (R13). */}
@@ -880,16 +895,11 @@ export function RepartoModule({
               </h2>
               {/* R31/R32: sincronización manual de la ruta. El botón captura el GPS del
                   navegador (best-effort) y lo eleva aquí para dibujar el origen en el mapa.
-                  Rama ux: el conmutador mosaico/detalle de las cards de abajo, puramente visual
-                  (no filtra ni reordena). */}
+                  SLT-189 (R795): el conmutador mosaico/detalle pasó a la barra fija. */}
               <div className="flex flex-wrap items-center gap-2">
                 <SincronizarRutaButton
                   onUbicacion={setUbicacionActual}
                   onTrazado={setTrazadoRuta}
-                />
-                <VistaCardsToggle
-                  vista={vistaCardsPedida}
-                  onVistaChange={cambiarVista}
                 />
               </div>
             </div>

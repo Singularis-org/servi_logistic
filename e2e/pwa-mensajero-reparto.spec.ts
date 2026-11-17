@@ -38,6 +38,11 @@ import {
  *      de los KPI y la barra debajo; al bajar, la barra se queda pegada arriba y el `SidebarTrigger`
  *      no queda encima de ella (ni se cruzan sus cajas ni el trigger tapa ningún punto de la barra).
  *
+ * SLT-189 «Reparto del mensajero según el canvas» añade: en (a) la fila Detalle plegada con la guía y
+ * «destinatario · dirección» (R790, R792) y el conmutador en la barra, de 44 px y sin desborde a 360
+ * y 414 (R795, R797); en (b) los KPI en el foco, encima de «Volver a la lista» y tras confirmar la
+ * guía (R798); en (c) el conmutador sigue en la barra pegada al bajar (R796).
+ *
  * DATOS: empresa nueva (`crearEscenarioReparto`, con la tienda de nombre largo), cada caso con SU
  * mensajero de la zona satélite y SUS órdenes, por los servicios reales. Sin datos, los `expect`
  * fallan: no se salta nada.
@@ -112,7 +117,7 @@ test.describe("SLT-163 — Reparto en el móvil", () => {
   for (const ancho of ANCHOS_MOVIL) {
     test(`(a) R502, R501, R490: a ${ancho} px, KPI 2 × 2 y ningún dato fuera ni con «…»`, async ({ browser }) => {
       const m = await crearMensajero(r, "satelite");
-      await ordenLarga(m);
+      const larga = await ordenLarga(m);
       await enReparto(m, { destinatario: "Beto Ruiz", montoCobrar: 4000 });
 
       const page = await paginaDe(browser, m, { viewport: { width: ancho, height: ALTO_MOVIL } });
@@ -133,7 +138,11 @@ test.describe("SLT-163 — Reparto en el móvil", () => {
       await sinElipsis(page.locator("article"));
 
       // R508: en Detalle, la fila compacta; desplegada, la dirección entera.
-      const conmutador = page.getByRole("group", { name: "Vista de las órdenes" });
+      // SLT-189 (R795, R797): el conmutador vive en la barra fija, con sus botones de 44 px.
+      const conmutador = barra(page).getByRole("group", { name: "Vista de las órdenes" });
+      await expect(conmutador).toBeVisible();
+      await tactil(conmutador.getByRole("button", { name: /Mosaico/ }));
+      await tactil(conmutador.getByRole("button", { name: /Detalle/ }));
       await conmutador.getByRole("button", { name: /Detalle/ }).click();
       await expect(conmutador.getByRole("button", { name: /Detalle/ })).toHaveAttribute("aria-pressed", "true");
       // El cambio de vista va animado: hasta que se va el carrusel, las tarjetas de Mosaico siguen ahí.
@@ -142,6 +151,10 @@ test.describe("SLT-163 — Reparto en el móvil", () => {
       // La fila compacta es el botón hijo directo de la tarjeta (dentro hay otros desplegables).
       const disparador = fila.locator(":scope > button[aria-expanded]");
       await expect(disparador).toHaveAttribute("aria-expanded", "false");
+      // SLT-189 (R790, R792): plegada, la guía (no la remisión) y «destinatario · dirección» entero.
+      await expect(disparador.getByText(String(larga.numGuia), { exact: true })).toBeVisible();
+      await expect(disparador).not.toContainText(larga.numRemision);
+      await expect(disparador).toContainText(`${DESTINATARIO_LARGO} · ${DIRECCION_LARGA}`);
       await tactil(disparador);
       await disparador.click();
       await expect(disparador).toHaveAttribute("aria-expanded", "true");
@@ -179,8 +192,14 @@ test.describe("SLT-163 — Reparto en el móvil", () => {
     // R510: solo el panel de esa orden, con la verificación abierta.
     const panel = page.getByRole("region", { name: "Detalle de la orden" });
     await expect(panel.getByText(`Guía ${orden.numGuia}`).first()).toBeVisible();
-    await expect(page.getByRole("region", { name: "Indicadores de mis asignaciones" })).toHaveCount(0);
+    // SLT-189 (R798): los KPI se quedan en el foco, encima de «Volver a la lista».
+    const kpisFoco = page.getByRole("region", { name: "Indicadores de mis asignaciones" });
+    await expect(kpisFoco).toBeVisible();
+    const cajaKpis = await cajaDe(kpisFoco);
+    const cajaVolver = await cajaDe(page.getByRole("button", { name: "Volver a la lista" }));
+    expect(cajaKpis.y + cajaKpis.height).toBeLessThanOrEqual(cajaVolver.y + 1);
     await expect(page.getByRole("searchbox", { name: "Buscar guías" })).toHaveCount(0);
+    await expect(page.getByRole("group", { name: "Vista de las órdenes" })).toHaveCount(0);
     await expect(page.getByRole("article", { name: /^Orden / })).toHaveCount(0);
 
     // R511: un único «Confirmar guía» y ningún otro «Gestionar».
@@ -198,6 +217,8 @@ test.describe("SLT-163 — Reparto en el móvil", () => {
     await confirmar.click();
     await expect(panel.getByText("¿Cómo terminó la gestión?")).toBeVisible();
     await expect(page.getByRole("button", { name: "Volver a la lista" })).toHaveCount(0);
+    // SLT-189 (R798, DS4): con la guía confirmada, los KPI siguen encima del panel.
+    await expect(kpisFoco).toBeVisible();
   });
 
   test("(c) R496, R500, R503: escáner arriba, barra pegada al bajar y fuera del alcance del SidebarTrigger", async ({ browser }) => {
@@ -228,6 +249,10 @@ test.describe("SLT-163 — Reparto en el móvil", () => {
     // R496: pegada arriba.
     await expect.poll(async () => Math.round((await cajaDe(barra(page))).y)).toBeLessThanOrEqual(1);
     const fija = await cajaDe(barra(page));
+    // SLT-189 (R796): el conmutador baja pegado con la barra, dentro de su caja.
+    const conmutador = await cajaDe(barra(page).getByRole("group", { name: "Vista de las órdenes" }));
+    expect(conmutador.y).toBeGreaterThanOrEqual(fija.y - 1);
+    expect(conmutador.y + conmutador.height).toBeLessThanOrEqual(fija.y + fija.height + 1);
 
     // El SidebarTrigger no se cruza con la barra…
     const trigger = page.locator('[data-slot="sidebar-trigger"]');

@@ -44,6 +44,7 @@ export function PosOrderCardDetalle({
   acciones,
   mensajero,
   compacta = false,
+  filaReparto,
 }: PosOrderCardProps) {
   // SLT-156 (R508): estado del despliegue de la vista compacta. Va arriba, antes de cualquier
   // retorno, por la regla de los hooks; la vista de siempre no lo lee.
@@ -172,6 +173,17 @@ export function PosOrderCardDetalle({
 
   const borde = esDetalle ? "border-brand ring-1 ring-brand" : "border-border";
 
+  // SLT-189 (R790-R792, R800): en Reparto la fila lleva la GUÍA (si no hay, la remisión, R791) y
+  // «destinatario · dirección|tienda»; sin el segundo dato, el nombre solo, sin « · ».
+  const segundoDato =
+    filaReparto === "direccion"
+      ? orden.direccion
+      : filaReparto === "tienda"
+        ? orden.tiendaNombre
+        : null;
+  const lineaArriba = filaReparto ? (orden.numGuia ?? orden.numRemision) : orden.numRemision;
+  const lineaAbajo = segundoDato ? `${orden.destinatario} · ${segundoDato}` : orden.destinatario;
+
   if (compacta) {
     // SLT-156 (R508, canvas v35: RepartoDetalle) — UNA fila por orden: lo que el mensajero
     // necesita para reconocer el paquete (parada, guía, destinatario) y lo que va a cobrar, en
@@ -193,10 +205,10 @@ export function PosOrderCardDetalle({
           {parada}
           <span className="flex min-w-0 flex-1 flex-col gap-1">
             <span className={`font-mono text-xs font-bold text-foreground ${TEXTO_ENTERO}`}>
-              {orden.numRemision}
+              {lineaArriba}
             </span>
             <span className={`text-sm font-bold text-foreground ${TEXTO_ENTERO}`}>
-              {orden.destinatario}
+              {lineaAbajo}
             </span>
           </span>
           {verCobro ? (
