@@ -174,3 +174,47 @@ describe("useSesionEscaneo — refresco único al cerrar (R592)", () => {
     expect(alCerrar).not.toHaveBeenCalled();
   });
 });
+
+describe("useSesionEscaneo — cerrar con lecturas en vuelo (review m4)", () => {
+  it("la que estaba en vuelo termina y refresca una vez; la que esperaba turno no sale", async () => {
+    const enVuelo = diferida();
+    const recibir = vi
+      .fn<(numGuia: number) => Promise<DesenlaceRecepcion>>()
+      .mockReturnValueOnce(enVuelo.promesa)
+      .mockResolvedValue({ tipo: "recibida" });
+    const alCerrar = vi.fn();
+    const hook = montar(recibir, alCerrar);
+
+    await leer(hook, "1024", "2048");
+    expect(recibir.mock.calls).toEqual([[1024]]);
+
+    hook.unmount();
+    expect(alCerrar).not.toHaveBeenCalled();
+
+    await act(async () => enVuelo.resolver({ tipo: "recibida" }));
+    await vi.waitFor(() => expect(alCerrar).toHaveBeenCalledTimes(1));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(recibir.mock.calls).toEqual([[1024]]);
+    expect(alCerrar).toHaveBeenCalledTimes(1);
+  });
+
+  it("si ya hubo una recibida, refresca al cerrar y no otra vez cuando termina la que estaba en vuelo", async () => {
+    const enVuelo = diferida();
+    const recibir = vi
+      .fn<(numGuia: number) => Promise<DesenlaceRecepcion>>()
+      .mockResolvedValueOnce({ tipo: "recibida" })
+      .mockReturnValueOnce(enVuelo.promesa);
+    const alCerrar = vi.fn();
+    const hook = montar(recibir, alCerrar);
+
+    await leer(hook, "1024");
+    await vi.waitFor(() => expect(estados(hook)[0][1]).toBe("recibida"));
+    await leer(hook, "2048");
+    hook.unmount();
+    expect(alCerrar).toHaveBeenCalledTimes(1);
+
+    await act(async () => enVuelo.resolver({ tipo: "recibida" }));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(alCerrar).toHaveBeenCalledTimes(1);
+  });
+});

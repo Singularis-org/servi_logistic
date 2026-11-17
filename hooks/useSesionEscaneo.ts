@@ -52,20 +52,32 @@ export function useSesionEscaneo(
   const pendientes = useRef<number[]>([]);
   const cadena = useRef<Promise<unknown>>(Promise.resolve());
   const huboRecepcion = useRef(false);
+  // Review m4: tras cerrar, la sesión ya no envía nada nuevo; lo que estaba en vuelo termina y,
+  // si trae una recepción, refresca el listado (una sola vez en total).
+  const cerrado = useRef(false);
+  const refrescado = useRef(false);
 
   const actual = useRef({ recibir, alCerrarConRecepcion: opciones.alCerrarConRecepcion });
   useEffect(() => {
     actual.current = { recibir, alCerrarConRecepcion: opciones.alCerrarConRecepcion };
   });
 
-  // R592: el refresco del listado, una sola vez y al cerrar. En StrictMode el doble montaje
-  // de desarrollo ocurre con la sesión vacía, así que no dispara.
-  useEffect(
-    () => () => {
-      if (huboRecepcion.current) actual.current.alCerrarConRecepcion?.();
-    },
-    [],
-  );
+  /** R592: refresca una vez, cuando ya se cerró y hubo alguna recepción (al cerrar o después). */
+  const refrescarSiToca = useCallback(() => {
+    if (!cerrado.current || !huboRecepcion.current || refrescado.current) return;
+    refrescado.current = true;
+    actual.current.alCerrarConRecepcion?.();
+  }, []);
+
+  // En StrictMode el doble montaje de desarrollo ocurre con la sesión vacía: no dispara, y el
+  // montaje de nuevo reabre la sesión.
+  useEffect(() => {
+    cerrado.current = false;
+    return () => {
+      cerrado.current = true;
+      refrescarSiToca();
+    };
+  }, [refrescarSiToca]);
 
   const aplicar = useCallback((accion: AccionSesion) => {
     sesionRef.current = reducirSesion(sesionRef.current, accion);
@@ -75,7 +87,10 @@ export function useSesionEscaneo(
   /** Envía una guía por la cadena única y pone el desenlace en SU fila (R587). */
   const enviar = useCallback(
     (filaId: number, numGuia: number): Promise<DesenlaceRecepcion> => {
-      const llamada = cadena.current.then(() => actual.current.recibir(numGuia));
+      // m4: lo que espera turno en la cadena no sale si el diálogo ya se cerró.
+      const llamada = cadena.current.then(() =>
+        cerrado.current ? Promise.reject(new Error("cerrado")) : actual.current.recibir(numGuia),
+      );
       cadena.current = llamada.catch(() => undefined);
       return llamada
         .catch((): DesenlaceRecepcion => ({ tipo: "no_se_pudo", motivo: MOTIVO_FALLO }))
@@ -84,10 +99,11 @@ export function useSesionEscaneo(
             huboRecepcion.current = true;
           }
           aplicar({ tipo: "resolver", id: filaId, desenlace });
+          refrescarSiToca();
           return desenlace;
         });
     },
-    [aplicar],
+    [aplicar, refrescarSiToca],
   );
 
   const registrar = useCallback(

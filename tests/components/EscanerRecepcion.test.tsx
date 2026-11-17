@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup, act } from "@testing-library/react";
+import { render, screen, cleanup, act, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { EscanerRecepcion } from "@/app/(app)/recepcion-satelite/_components/EscanerRecepcion";
@@ -430,5 +430,26 @@ describe("EscanerRecepcion — recepción continua (R580, R611)", () => {
       expect(screen.getByRole("log", { name: "Lecturas" })).toHaveTextContent("Recibida"),
     );
     expect(successMock).not.toHaveBeenCalled();
+  });
+});
+
+// SLT-159, review B1: con el puntero del servidor (desconocido hasta hidratar) la entrada a la
+// recepción continua NO se pinta; así nunca conviven dos botones cuyo nombre contiene «Recibir
+// paquete» (Playwright compara por subcadena) ni la entrada cambia de botón a enlace al hidratar.
+describe("EscanerRecepcion — HTML del servidor (SLT-159, B1)", () => {
+  it("un solo botón con «Recibir paquete» en el nombre, y ningún «Recibir paquetes»", async () => {
+    const { renderToString } = await import("react-dom/server");
+    const contenedor = document.createElement("div");
+    contenedor.innerHTML = renderToString(<EscanerRecepcion onRecibida={vi.fn()} />);
+    document.body.appendChild(contenedor);
+    try {
+      expect(within(contenedor).getAllByRole("button", { name: /Recibir paquete/ })).toHaveLength(1);
+      expect(
+        within(contenedor).getAllByRole("button", { name: "Recibir paquete" }),
+      ).toHaveLength(1);
+      expect(within(contenedor).queryByRole("link", { name: "Recibir paquetes" })).toBeNull();
+    } finally {
+      contenedor.remove();
+    }
   });
 });
