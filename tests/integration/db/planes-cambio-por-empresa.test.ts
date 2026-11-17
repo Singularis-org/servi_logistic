@@ -584,12 +584,39 @@ describeSiHayBase("SLT-128 — el cambio programado llega a cada empresa en su r
     expect(r.deC.version).toMatchObject({ cambioId: r.cambio, desdeAt: a("2026-11-20"), version: { nombre: "Entra la nueva" } });
     expect(r.conTopePasado).toMatchObject({ estado: "tope_excedido", excedidos: [{ tope: "admin", usados: 2, maximo: 1 }] });
     expect(r.planDeD).toBeNull();
-    // C no tiene recepción: el «N de M» sigue con B y la vieja.
+    // C no tiene recepción, pero entra en F con la versión del cambio: por R23 (SLT-144)
+    // cuenta en N y en M junto a B y la vieja.
     expect(Object.keys(r.aMedias.recepciones).sort()).toEqual([r.vieja, r.antesDeF].sort());
-    expect(r.aMedias.detalle).toMatchObject({ recibidas: 1, total: 2 });
+    expect(r.aMedias.detalle).toMatchObject({ recibidas: 2, total: 3 });
     expect(r.versionesFinal).toBe(0);
     expect(r.moduloDeC).toEqual(["monitoreo"]);
     expect(r.plan).toMatchObject({ nombre: "Entra la nueva", porRol: [["admin", 1]], modulos: ["monitoreo"] });
+  });
+
+  it("R23 (SLT-144): la empresa que entra en F cuenta en N y en M", async () => {
+    const r = await revertida(base, async (tx) => {
+      const p = await preparar(tx, {}, ["mensual"]);
+      await p.programar("2026-11-16", { nombre: "Cuenta por empresa" });
+      // C entra el 16 (en F), mensual: con la versión programada y sin recepción.
+      const enF = new PlanesService(planesEnTx(tx), () => a("2026-11-16", 60));
+      const { id: entraEnF } = await crearOrganizacion(tx);
+      const asignada = await enF.asignar(SUPERADMIN, { organizacionId: entraEnF, planId: p.planId, tipoCobro: "mensual" });
+      return {
+        asignada,
+        entraEnF,
+        recepciones: await recepciones(tx, await p.pendiente()),
+        version: await tx.planVersionEmpresa.findUnique({ where: { empresaId: entraEnF }, select: { cambioId: true } }),
+        cambio: await p.pendiente(),
+        detalle: (await planesEnTx(tx).detalle(p.planId))?.pendiente,
+      };
+    });
+    expect(r.asignada).toMatchObject({ estado: "ok", cambio: true });
+    // C solo tiene versión propia del pendiente; la mensual, su recepción sin recibir.
+    expect(Object.keys(r.recepciones)).not.toContain(r.entraEnF);
+    expect(r.version).toEqual({ cambioId: r.cambio });
+    // «1 de 2»: C cuenta como recibida y en el total. Que la que lo recibió por su recepción (recepción y versión)
+    // cuenta una sola vez lo sigue diciendo el «1 de 2» del caso de R11.
+    expect(r.detalle).toMatchObject({ recibidas: 1, total: 2 });
   });
 
   it("R18: la última sin recibirlo deja el plan después de F: su recepción se borra, el plan se promueve en esa transacción y su trabajo ya encolado no hace nada", async () => {

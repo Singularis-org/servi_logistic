@@ -147,6 +147,15 @@ export interface VistaPreviaLeida {
   avisos: TopeExcedido[];
 }
 
+/**
+ * SLT-144 (design §3.1; R21): las empresas que HOY tienen el plan, por nombre, con su tipo de cobro, y los topes
+ * nuevos que ya pasan. El servicio calcula con el tipo la fecha de cada una.
+ */
+export interface VistaPreviaCambioLeida {
+  empresas: { id: string; nombre: string; tipoCobro: TipoCobro }[];
+  avisos: TopeExcedido[];
+}
+
 export type ResultadoCancelarCambio =
   | { estado: "ok" }
   | { estado: "not_found" }
@@ -427,6 +436,11 @@ export interface IPlanesRepository {
    * en el form del custom (el plan aún no existe). Solo lee. `null` si la empresa no existe.
    */
   vistaPreviaConTopes(organizacionId: string, topes: TopesPlan): Promise<VistaPreviaLeida | null>;
+  /**
+   * SLT-144 (design §3.1; R21): las empresas del plan y los topes que pasarían con `topes`, con las mismas piezas
+   * que `programarCambio` (`excedidosDe`). Solo lee. `null` si el plan no existe.
+   */
+  vistaPreviaCambio(planId: string, topes: TopesPlan): Promise<VistaPreviaCambioLeida | null>;
   /**
    * Ajuste planes-custom (D10, D16) y SLT-86 (R16–R19): el tipo de cobro del plan que la empresa YA tiene,
    * con fecha de efecto, por el mismo camino que `asignar` con ese plan. No toca `plan_id` ni los módulos.

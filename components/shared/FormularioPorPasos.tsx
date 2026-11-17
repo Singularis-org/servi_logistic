@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode, Ref } from "react";
+import { Check } from "lucide-react";
 
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
@@ -8,7 +9,9 @@ import { cn } from "@/lib/utils";
 /**
  * Formulario por pasos genérico (SLT-130, R1–R5): la lista de pasos, «Paso n de m» con el
  * título del actual, el contenido con su propio scroll y el pie fijo abajo. No guarda estado:
- * quien lo usa decide el paso actual, cuáles se visitaron y qué hace al elegir uno.
+ * quien lo usa decide el paso actual, cuáles se pueden elegir y qué hace al elegir uno.
+ * SLT-144 (R5, R6): con borrador, además, qué pasos están guardados (✓) y cuáles cambiaron sin volver a
+ * guardarse («Sin guardar»).
  */
 export type PasoDelFormulario = { id: string; titulo: string };
 
@@ -16,8 +19,20 @@ export type FormularioPorPasosProps = {
   pasos: readonly PasoDelFormulario[];
   /** Id del paso actual. */
   actual: string;
-  /** Pasos que se pueden elegir; el resto va deshabilitado (R5). */
-  visitados: ReadonlySet<string>;
+  /**
+   * SLT-144 (R5): pasos que se pueden elegir; el resto va deshabilitado. El paso actual siempre se puede
+   * elegir. Con borrador, `pasosElegibles` aplica la regla de los pasos guardados.
+   */
+  elegibles?: ReadonlySet<string>;
+  /**
+   * SLT-130 (R5): el nombre de `elegibles` antes de SLT-144. Se usa solo si no llega `elegibles`; se quita
+   * cuando `PlanForm` pase a `elegibles` (SLT-144 T3.2).
+   */
+  visitados?: ReadonlySet<string>;
+  /** SLT-144 (R6): pasos guardados en el borrador; llevan ✓ y el nombre accesible «<título> (guardado)». */
+  guardados?: ReadonlySet<string>;
+  /** SLT-144 (R6): pasos guardados cuyos valores cambiaron en pantalla; pierden el ✓ y dicen «Sin guardar». */
+  sinGuardar?: ReadonlySet<string>;
   onIr: (id: string) => void;
   /** Por defecto "vertical". En pantalla angosta siempre es "horizontal" (R3). */
   orientacion?: "vertical" | "horizontal";
@@ -32,12 +47,32 @@ export type FormularioPorPasosProps = {
 export const TEXTOS_FORMULARIO_POR_PASOS = {
   navegacion: "Pasos",
   pasoDe: (n: number, m: number) => `Paso ${n} de ${m}`,
+  // SLT-144 (design §9): viven aquí y no en los textos de planes porque los pinta este componente compartido.
+  pasoGuardado: (titulo: string) => `${titulo} (guardado)`,
+  marcaSinGuardar: "Sin guardar",
 } as const;
+
+const NINGUNO: ReadonlySet<string> = new Set();
+
+/**
+ * SLT-144 (design §4.3; R5): con borrador se elige el primer paso, un paso guardado o el que sigue a uno
+ * guardado. Así no se salta a un paso sin haber guardado el anterior.
+ */
+export function pasosElegibles(pasos: readonly PasoDelFormulario[], guardados: ReadonlySet<string>): Set<string> {
+  return new Set(
+    pasos
+      .filter((p, i) => i === 0 || guardados.has(p.id) || guardados.has(pasos[i - 1]?.id ?? ""))
+      .map((p) => p.id),
+  );
+}
 
 export function FormularioPorPasos({
   pasos,
   actual,
+  elegibles,
   visitados,
+  guardados = NINGUNO,
+  sinGuardar = NINGUNO,
   onIr,
   orientacion = "vertical",
   pie,
@@ -48,6 +83,7 @@ export function FormularioPorPasos({
   const vertical = efectiva === "vertical";
   const indice = pasos.findIndex((p) => p.id === actual);
   const pasoActual = indice >= 0 ? pasos[indice] : undefined;
+  const sePuedenElegir = elegibles ?? visitados ?? NINGUNO;
 
   return (
     <div
@@ -70,7 +106,8 @@ export function FormularioPorPasos({
                 numero={i + 1}
                 titulo={paso.titulo}
                 esActual={paso.id === actual}
-                habilitado={paso.id === actual || visitados.has(paso.id)}
+                habilitado={paso.id === actual || sePuedenElegir.has(paso.id)}
+                estado={sinGuardar.has(paso.id) ? "sin_guardar" : guardados.has(paso.id) ? "guardado" : null}
                 onClick={() => onIr(paso.id)}
               />
             </li>
@@ -109,18 +146,23 @@ function BotonDelPaso({
   titulo,
   esActual,
   habilitado,
+  estado,
   onClick,
 }: {
   numero: number;
   titulo: string;
   esActual: boolean;
   habilitado: boolean;
+  /** SLT-144 (R6): «Sin guardar» manda sobre el ✓: un paso que cambió ya no está guardado como se ve. */
+  estado: "guardado" | "sin_guardar" | null;
   onClick: () => void;
 }) {
+  const guardado = estado === "guardado";
   return (
     <button
       type="button"
       aria-current={esActual ? "step" : undefined}
+      aria-label={guardado ? TEXTOS_FORMULARIO_POR_PASOS.pasoGuardado(titulo) : undefined}
       disabled={!habilitado}
       onClick={onClick}
       className={cn(
@@ -138,12 +180,19 @@ function BotonDelPaso({
           "flex size-6 flex-none items-center justify-center rounded-full border text-xs",
           esActual
             ? "border-primary bg-primary text-primary-foreground"
-            : "border-border",
+            : guardado
+              ? "border-primary text-primary"
+              : "border-border",
         )}
       >
-        {numero}
+        {guardado ? <Check className="size-3.5" /> : numero}
       </span>
       <span>{titulo}</span>
+      {estado === "sin_guardar" ? (
+        <span className="rounded-sm bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+          {TEXTOS_FORMULARIO_POR_PASOS.marcaSinGuardar}
+        </span>
+      ) : null}
     </button>
   );
 }

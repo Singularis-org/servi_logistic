@@ -6,35 +6,35 @@
 
 ## T1 · Servidor: fecha de cada empresa, «N de M» y lector de borradores — backend_dev
 
-- [ ] **T1.1 [P]** `previsualizarCambioSchema`, `FechaDeEmpresa` y `VistaPreviaCambioResult` en `lib/types/planes.ts`.
+- [x] **T1.1 [P]** `previsualizarCambioSchema`, `FechaDeEmpresa` y `VistaPreviaCambioResult` en `lib/types/planes.ts`.
   Añadir `vistaPreviaCambio(planId, topes)` a `IPlanesRepository` y su implementación en `PlanesRepository`, con
   `excedidosDe` y bajo `comoPlataforma("SL-24", …)` (design §3.1).
   *Hecho:* `pnpm run typecheck` verde, y el repositorio no escribe nada (revisión del diff: sin `create`, `update`,
   `delete` ni `jobs`).
-- [ ] **T1.2** Añadir `PlanesService.previsualizarCambio` y su firma en `IPlanesService`: quién → zod → repositorio →
+- [x] **T1.2** Añadir `PlanesService.previsualizarCambio` y su firma en `IPlanesService`: quién → zod → repositorio →
   `fechaDeRecepcion` por empresa. Añadir `previsualizarCambioPlanAction` en `lib/actions/planes.ts`. Depende de T1.1.
   *Hecho:* `tests/unit/services/planes-previsualizar-cambio.test.ts` verde (R22, `recibeEl` con un ejemplo
   quincenal, uno mensual y F `null`).
-- [ ] **T1.3** Integración de la vista previa. Depende de T1.2.
+- [x] **T1.3** Integración de la vista previa. Depende de T1.2.
   *Hecho:* `tests/integration/db/planes-previsualizar-cambio.test.ts` verde (R21: misma fecha que `recibe_at` y
   mismos avisos que el `ok` de programar con la misma F; foto sin cambios en `plan_cambio_programado`,
   `plan_cambio_recepcion` y `jobs`).
-- [ ] **T1.4 [P]** «N de M» por empresa en `PlanesRepository.detalle` / `pendienteDelDetalle` (design §3.2).
+- [x] **T1.4 [P]** «N de M» por empresa en `PlanesRepository.detalle` / `pendienteDelDetalle` (design §3.2).
   *Hecho:* el caso nuevo de R23 en `tests/integration/db/planes-cambio-por-empresa.test.ts` está verde, y los casos
   de R11 de SLT-128 siguen verdes sin cambiar sus aserciones.
-- [ ] **T1.5 [P]** Añadir `verBorradoresDePlanes` en `lib/actions/_shared/planes-plataforma.ts` (design §3.3).
+- [x] **T1.5 [P]** Añadir `verBorradoresDePlanes` en `lib/actions/_shared/planes-plataforma.ts` (design §3.3).
   *Hecho:* typecheck verde; se prueba con T5.3.
 
 ## T2 · Puro: del formulario al borrador — frontend_dev
 
-- [ ] **T2.1** Crear `plan-form/borrador.ts` con `valoresDelPaso`, `formDelBorrador`, `pasoInicial` y `fechaHora`
+- [x] **T2.1** Crear `plan-form/borrador.ts` con `valoresDelPaso`, `formDelBorrador`, `pasoInicial` y `fechaHora`
   (movida desde `PlanDetalle.tsx`, que pasa a importarla). En `estado.ts`, `IdPasoGuardable` y
   `PASOS_QUE_SE_GUARDAN`.
   *Hecho:* `tests/unit/planes/plan-form-borrador.test.ts` verde (R2: ida y vuelta por paso y por modo; `pasoInicial`).
 
 ## T3 · El formulario guarda por pasos — frontend_dev
 
-- [ ] **T3.1** `FormularioPorPasos`: `elegibles`, `guardados`, `sinGuardar`, el ✓ y «Sin guardar», con el nombre
+- [x] **T3.1** `FormularioPorPasos`: `elegibles`, `guardados`, `sinGuardar`, el ✓ y «Sin guardar», con el nombre
   accesible (R5, R6).
   *Hecho:* `tests/components/FormularioPorPasos.test.tsx` verde, con los casos nuevos de R5 y R6 y los de SLT-130 R1–R4.
 - [ ] **T3.2** Crear `plan-form/usar-borrador.ts` y conectarlo en `PlanForm.tsx`: «Guardar y continuar», `enVuelo`

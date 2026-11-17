@@ -10,6 +10,7 @@ import type {
   PlanResult,
   PreciosQueRigenResult,
   VistaPreviaAsignacionResult,
+  VistaPreviaCambioResult,
   VistaPreviaCustomResult,
 } from "@/lib/types/planes";
 
@@ -41,6 +42,11 @@ export interface IPlanesService {
   previsualizarAsignacion(actor: Actor | null, input: unknown): Promise<VistaPreviaAsignacionResult>;
   /** Ajuste planes-custom (D13): `{ organizacionId, inicioCiclo, topes }`; solo lee. */
   previsualizarCustom(actor: Actor | null, input: unknown): Promise<VistaPreviaCustomResult>;
+  /**
+   * SLT-144 (design §3.1; R21, R22): `{ planId, vigenteDesde, topes }`; la fecha en que cada empresa del plan
+   * recibiría el cambio y los topes que ya pasa, como los dejaría programar. Solo lee.
+   */
+  previsualizarCambio(actor: Actor | null, input: unknown): Promise<VistaPreviaCambioResult>;
   /**
    * Ajuste planes-custom (D10): `{ organizacionId, tipoCobro, vigenteDesde }`; solo el tipo de cobro del
    * plan actual, desde la fecha de efecto (SLT-86 R16, R17).

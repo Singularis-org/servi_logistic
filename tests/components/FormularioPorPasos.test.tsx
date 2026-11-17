@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 
 import {
   FormularioPorPasos,
+  pasosElegibles,
   type FormularioPorPasosProps,
   type PasoDelFormulario,
 } from "@/components/shared/FormularioPorPasos";
@@ -126,5 +127,89 @@ describe("FormularioPorPasos", () => {
     expect(general).toBeEnabled();
     fireEvent.click(general);
     expect(onIr).toHaveBeenCalledWith("general");
+  });
+});
+
+// SLT-144 «Planes: formulario por pasos conectado al borrador y a la fecha de cada empresa» (R5, R6).
+const PASOS_BORRADOR: PasoDelFormulario[] = [
+  { id: "general", titulo: "General" },
+  { id: "precio", titulo: "Precio y descuentos" },
+  { id: "orden", titulo: "Cobro por orden" },
+  { id: "topes", titulo: "Topes" },
+  { id: "revisar", titulo: "Revisar" },
+];
+
+function montarConBorrador(props: Partial<FormularioPorPasosProps> & { guardados: ReadonlySet<string> }) {
+  return render(
+    <FormularioPorPasos
+      pasos={PASOS_BORRADOR}
+      actual="general"
+      elegibles={pasosElegibles(PASOS_BORRADOR, props.guardados)}
+      onIr={() => {}}
+      pie={null}
+      {...props}
+    >
+      <p>contenido</p>
+    </FormularioPorPasos>,
+  );
+}
+
+const botonesDelPaso = () => within(screen.getByRole("navigation", { name: "Pasos" })).getAllByRole("button");
+
+describe("FormularioPorPasos con borrador (SLT-144)", () => {
+  afterEach(cleanup);
+
+  it("R5: solo se elige un paso guardado o el que sigue a uno guardado", () => {
+    expect(pasosElegibles(PASOS_BORRADOR, new Set())).toEqual(new Set(["general"]));
+
+    const onIr = vi.fn();
+    montarConBorrador({ guardados: new Set(["general", "orden"]), onIr });
+    const [general, precio, orden, topes, revisar] = botonesDelPaso();
+    expect(general).toBeEnabled();
+    expect(precio).toBeEnabled();
+    expect(orden).toBeEnabled();
+    expect(topes).toBeEnabled();
+    expect(revisar).toBeDisabled();
+    fireEvent.click(revisar);
+    expect(onIr).not.toHaveBeenCalled();
+    fireEvent.click(topes);
+    expect(onIr).toHaveBeenCalledWith("topes");
+  });
+
+  it("R5: el paso actual se puede elegir aunque no sea elegible", () => {
+    montarConBorrador({ guardados: new Set(), actual: "topes" });
+    const [general, precio, , topes] = botonesDelPaso();
+    expect(general).toBeEnabled();
+    expect(precio).toBeDisabled();
+    expect(topes).toBeEnabled();
+  });
+
+  it("R6: ✓ con su nombre accesible", () => {
+    const { container } = montarConBorrador({ guardados: new Set(["general", "precio"]) });
+    expect(screen.getByRole("button", { name: "General (guardado)" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Precio y descuentos (guardado)" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cobro por orden" })).toBeInTheDocument();
+    // El ✓ ocupa el sitio del número: la marca visual no se lee dos veces.
+    expect(container.querySelectorAll("nav svg")).toHaveLength(2);
+    expect(screen.queryByText("Sin guardar")).not.toBeInTheDocument();
+  });
+
+  it("R6: un paso guardado que cambió pierde el ✓ y dice Sin guardar", () => {
+    montarConBorrador({ guardados: new Set(["general", "precio"]), sinGuardar: new Set(["precio"]) });
+    const precio = screen.getByRole("button", { name: /Precio y descuentos/ });
+    expect(precio).not.toHaveAccessibleName("Precio y descuentos (guardado)");
+    expect(within(precio).getByText("Sin guardar")).toBeInTheDocument();
+    expect(within(precio).queryByText("2")).toBeInTheDocument();
+    expect(precio.querySelector("svg")).toBeNull();
+    // Sigue siendo elegible: está en los guardados del servidor.
+    expect(precio).toBeEnabled();
+    expect(screen.getByRole("button", { name: "General (guardado)" })).toBeInTheDocument();
+  });
+
+  it("sin las props del borrador no pinta ✓ ni Sin guardar (como SLT-130)", () => {
+    const { container } = montar();
+    expect(container.querySelectorAll("nav svg")).toHaveLength(0);
+    expect(screen.queryByText("Sin guardar")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "General" })).toBeEnabled();
   });
 });

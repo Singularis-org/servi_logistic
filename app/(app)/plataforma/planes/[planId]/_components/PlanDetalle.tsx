@@ -46,7 +46,6 @@ import {
   type TopesPlan,
 } from "@/lib/types/planes";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
-import { horaCostaRica } from "@/lib/utils/hora-cr";
 import { cn } from "@/lib/utils";
 
 import {
@@ -56,6 +55,7 @@ import {
   RECHAZO_GENERICO,
   TEXTOS_PLAN_FORM,
 } from "../../_components/PlanForm";
+import { fechaHora } from "../../_components/plan-form/borrador";
 import {
   lineasDeTopes,
   TEXTOS_PLAN,
@@ -549,13 +549,6 @@ function AvisoDesenlace({ desenlace, focoRef }: { desenlace: Desenlace; focoRef:
       ) : null}
     </div>
   );
-}
-
-/** «AAAA-MM-DD HH:mm» de un instante, en la hora de la plataforma (design §7). */
-function fechaHora(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return `${fechaCalendarioCR(d)} ${horaCostaRica(iso)}`;
 }
 
 /** El día (`AAAA-MM-DD`, hora de la plataforma) de un `vigenteDesde` guardado como instante. */

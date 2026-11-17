@@ -12,6 +12,7 @@ import type {
   ListarPlanesAsignablesResult,
   PlanResult,
   VistaPreviaAsignacionResult,
+  VistaPreviaCambioResult,
   VistaPreviaCustomResult,
 } from "@/lib/types/planes";
 
@@ -92,6 +93,15 @@ export async function previsualizarAsignacionPlanAction(
  */
 export async function previsualizarCustomAction(input: unknown, deps: PlanesDeps = {}): Promise<VistaPreviaCustomResult> {
   return conServicio(deps, (s, actor) => s.previsualizarCustom(actor, input));
+}
+
+/**
+ * SLT-144 (design §3.1; R17–R22): «Cuándo rige» del formulario de editar. `{ planId, vigenteDesde, topes }`: la
+ * fecha en que cada empresa del plan recibiría el cambio y los topes que ya pasa, como los dejaría programar.
+ * Solo lee.
+ */
+export async function previsualizarCambioPlanAction(input: unknown, deps: PlanesDeps = {}): Promise<VistaPreviaCambioResult> {
+  return conServicio(deps, (s, actor) => s.previsualizarCambio(actor, input));
 }
 
 /**
