@@ -18,6 +18,7 @@ import { textoMensajero } from "./pos-mensajero";
 import { posSeleccionHandlers } from "./pos-seleccion";
 import { seccionesVisibles } from "./pos-secciones";
 import { EstadoConInfo, NotaAyudaConInfo } from "@/components/shared/EstadoInfo";
+import { nombreDeEstado } from "@/lib/types/order-status";
 import type { PosOrderCardProps } from "./PosOrderCard";
 
 // POS card · vista DETALLE en FILA (rama ux, pedido humano): una línea por orden con la
@@ -45,6 +46,8 @@ export function PosOrderCardDetalle({
   mensajero,
   compacta = false,
   filaReparto,
+  posicion,
+  filaRecoleccion,
 }: PosOrderCardProps) {
   // SLT-156 (R508): estado del despliegue de la vista compacta. Va arriba, antes de cualquier
   // retorno, por la regla de los hooks; la vista de siempre no lo lee.
@@ -86,6 +89,12 @@ export function PosOrderCardDetalle({
           : `Parada ${orden.secuenciaRuta} de ${total}`}
       </span>
       <span aria-hidden="true">{textoParada(orden)}</span>
+    </span>
+  ) : posicion !== undefined ? (
+    // SLT-190 (R855, R856, DS3): la posición en la lista visible, que no es una parada.
+    <span className="flex size-5 shrink-0 items-center justify-center rounded-md bg-navy text-[10px] font-black text-white">
+      <span className="sr-only">{`Orden ${posicion} de ${total}`}</span>
+      <span aria-hidden="true">{posicion}</span>
     </span>
   ) : null;
 
@@ -210,6 +219,25 @@ export function PosOrderCardDetalle({
             <span className={`text-sm font-bold text-foreground ${TEXTO_ENTERO}`}>
               {lineaAbajo}
             </span>
+            {filaRecoleccion ? (
+              <>
+                {/* SLT-190 (R862, R863, P3): la tienda (solo su nombre: su dirección no viaja) y,
+                    en «Recogidos en tienda hoy», « · Recogido a las {hora}». */}
+                {orden.tiendaNombre || filaRecoleccion.sufijo ? (
+                  <span className={`text-xs text-muted-foreground ${TEXTO_ENTERO}`}>
+                    {orden.tiendaNombre}
+                    {orden.tiendaNombre && filaRecoleccion.sufijo ? " · " : null}
+                    {filaRecoleccion.sufijo}
+                  </span>
+                ) : null}
+                {/* SLT-190 (R862, R864, DS5): el nombre VIGENTE del estado, en texto. Sin botón de
+                    información: un botón no puede ir dentro del botón de la fila; el chip con su
+                    información sigue en el despliegue. */}
+                <span className="text-[11px] font-semibold text-muted-foreground">
+                  {nombreDeEstado(orden.estatusValue)}
+                </span>
+              </>
+            ) : null}
           </span>
           {verCobro ? (
             <span className={`flex flex-col items-end ${COLUMNA_FIJA}`}>

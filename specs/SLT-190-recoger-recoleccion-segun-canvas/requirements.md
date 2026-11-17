@@ -173,7 +173,7 @@ Recolección, «Por recolectar en tienda» y «Recogidos en tienda hoy».
 
 Orden: (T1 ∥ T2 ∥ T3) → T4 → T5 → T6. `[P]` = paralelizable con sus hermanas.
 
-- [ ] **T1 [P] — Posición y fila de Recolección en la tarjeta** (`pos-card/PosOrderCard.tsx`,
+- [x] **T1 [P] — Posición y fila de Recolección en la tarjeta** (`pos-card/PosOrderCard.tsx`,
   `pos-card/PosOrderCardMosaico.tsx`, `pos-card/PosOrderCardDetalle.tsx`). Props opcionales en
   `PosOrderCardProps`: la posición en la lista (DS3) y la variante de fila de Recolección con la línea
   de ubicación y el sufijo de hora (DS5, DS6). Ausentes = como hoy.
@@ -181,25 +181,25 @@ Orden: (T1 ∥ T2 ∥ T3) → T4 → T5 → T6. `[P]` = paralelizable con sus he
   prop y con `mostrarRuta`, la parada de Reparto intacta); `PosOrderCardDetalleCompacta.test.tsx`
   cubre R862 (con fixture de estado `recolectando`), R864 y R866 (sin la prop: remisión y
   destinatario). Mutación: devolver el número a `secuenciaRuta` deja R855 en rojo.
-- [ ] **T2 [P] — Filtro «Tienda», función pura**
+- [x] **T2 [P] — Filtro «Tienda», función pura**
   (`app/(app)/mis-asignaciones/_components/filtro-tienda.ts`, nuevo). Opciones a partir de las
   órdenes (DS1) y filtrado por tienda.
   *Hecho:* `tests/unit/components/filtro-tienda.test.ts` cubre R850 (sin repetir, alfabético) y R851
   (combinado con `filtrarAsignaciones`).
-- [ ] **T3 [P] — Barra del diálogo** (`components/shared/EscanerModal.tsx`,
+- [x] **T3 [P] — Barra del diálogo** (`components/shared/EscanerModal.tsx`,
   `components/shared/EscanerGuiaCard.tsx`, `components/shared/EscaneoContinuo.tsx`). Prop `titulo`
   en `EscanerModal` (barra visible + «Cerrar» 44 px + `showCloseButton={false}`) y prop para montar
   la tarjeta sin encabezado, pasada por `TarjetaEscaneoContinuo` (DS7).
   *Hecho:* `EscanerModal.test.tsx` cubre R869 (un solo «Cerrar», 44 px por clase) y R871 (sin
   `titulo`, la X de siempre); `EscanerGuiaCard.test.tsx` cubre R871 (sin la prop, icono, título y
   descripción siguen); `EscaneoContinuo.test.tsx` sigue en verde.
-- [ ] **T4 — Recoger en bodega** (`RecogerModule.tsx`, `RecogerPaqueteCard.tsx`; depende de T1-T3).
+- [x] **T4 — Recoger en bodega** (`RecogerModule.tsx`, `RecogerPaqueteCard.tsx`; depende de T1-T3).
   `filtros`/`activos`/`onLimpiarTodo` en la barra con el control de P2; `VistaCardsToggle` a
   `trasFiltros` y fuera de la fila de pestañas; posición en las tarjetas; `buscando` = término o
   filtro (DS2); diálogo con `titulo="Recoger paquete"` y tarjeta sin encabezado.
   *Hecho:* `RecogerModule.test.tsx` cubre R851-R854 (contadores intactos, vacío y puntero con solo
   el filtro), R857 y R859; `RecogerPaqueteCard.test.tsx` cubre R867, R869 y R870.
-- [ ] **T5 — Recolección** (`RecoleccionModule.tsx`, `RecolectadasHoyLista.tsx`; depende de T1-T3).
+- [x] **T5 — Recolección** (`RecoleccionModule.tsx`, `RecolectadasHoyLista.tsx`; depende de T1-T3).
   Filtro y conmutador en la barra; se quita el conmutador de las dos cabeceras (y las props
   `vistaPedida`/`onVistaChange` de `RecolectadasHoyLista` que quedan sin uso); fila de Recolección en
   Detalle con «Recogido a las» plegado; diálogo con `titulo="Recolectar en tienda"`.
@@ -215,6 +215,9 @@ Orden: (T1 ∥ T2 ∥ T3) → T4 → T5 → T6. `[P]` = paralelizable con sus he
   (`docs/perfil-agentes.md > Todos los agentes`) y `./init.sh`.
   *Hecho:* E2E en verde en local; `INIT_EXIT=0`; mapa `R<n> -> test` completo en
   `progress/features/SLT-190.md`.
+  *Estado (2026-11-17, frontend_dev):* E2E (a)-(d) escritos en el spec; **sin correr** (piden
+  build y base desechable; lo corre el leader). Falta también `./init.sh`. Mapa en
+  `progress/impl_SLT-190.md`.
 
 ## Tamaño
 

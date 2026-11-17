@@ -193,6 +193,11 @@ export interface TarjetaEscaneoContinuoProps {
   textos?: TextosSesion;
   /** SLT-168: icono de la tarjeta (`PackageCheck`, `Store`); sin él, el de `EscanerGuiaCard`. */
   icono?: LucideIcon;
+  /**
+   * SLT-190 (DS7): la tarjeta va bajo la barra de título de `EscanerModal` y se monta sin su
+   * encabezado (`EscanerGuiaCard.sinEncabezado`). Sin ella, como siempre.
+   */
+  sinEncabezado?: boolean;
 }
 
 /**
@@ -209,6 +214,7 @@ export function TarjetaEscaneoContinuo({
   submitLabel,
   textos,
   icono,
+  sinEncabezado = false,
 }: Readonly<TarjetaEscaneoContinuoProps>) {
   const sesion = useSesionEscaneo(recibir, { alCerrarConRecepcion });
   return (
@@ -218,6 +224,7 @@ export function TarjetaEscaneoContinuo({
       titulo={titulo}
       descripcion={descripcion}
       icono={icono}
+      sinEncabezado={sinEncabezado}
       onDecoded={sesion.procesar}
       manual={{ onSubmit: sesion.procesar, submitLabel }}
       alLlegar={sesion.registrar}

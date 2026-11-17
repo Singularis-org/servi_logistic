@@ -9,6 +9,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, within, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactNode } from "react";
 
 import { PosOrderCardDetalle } from "@/app/(app)/mis-asignaciones/_components/pos-card/PosOrderCardDetalle";
 import { COLUMNA_FIJA, TEXTO_ENTERO } from "@/components/shared/texto-entero";
@@ -225,5 +226,82 @@ describe("SLT-189 — fila compacta de Reparto", () => {
     expect(within(fila).queryByText("1001")).toBeNull();
     expect(within(fila).getByText(DESTINATARIO)).toBeInTheDocument();
     expect(within(fila).queryByText(/ · /)).toBeNull();
+  });
+});
+
+// SLT-190 «Recoger y Recolección según el canvas» (R862-R866, DS5, DS6) — fila plegada de
+// Recolección: número, remisión, destinatario, la tienda (solo su nombre, P3), el nombre VIGENTE
+// del estado en texto y «Valor a cobrar»; en «Recogidos hoy», « · Recogido a las {hora}».
+function montarRecoleccion(sufijo?: ReactNode, over: Partial<MiAsignacionDTO> = {}) {
+  return render(
+    <PosOrderCardDetalle
+      orden={makeOrden({ estatusValue: "recolectando", secuenciaRuta: null, ...over })}
+      total={2}
+      mostrarRuta={false}
+      posicion={1}
+      filaRecoleccion={sufijo === undefined ? {} : { sufijo }}
+      compacta
+    />,
+  );
+}
+
+describe("SLT-190 — fila plegada de Recolección", () => {
+  it("R862: número, remisión, destinatario, tienda, estado vigente y «Valor a cobrar», enteros", () => {
+    montarRecoleccion();
+    const fila = screen.getByRole("button", { expanded: false });
+    expect(within(fila).getByText("Orden 1 de 2")).toBeInTheDocument();
+    expect(within(fila).getByText("REM-7731")).toBeInTheDocument();
+    expect(within(fila).getByText(DESTINATARIO)).toBeInTheDocument();
+    const tienda = within(fila).getByText("Tienda Norte");
+    for (const clase of TEXTO_ENTERO.split(" ")) expect(clases(tienda)).toContain(clase);
+    expect(clases(tienda)).not.toContain("truncate");
+    // El nombre del catálogo para `recolectando`, en texto (sin botón de información dentro del botón).
+    expect(within(fila).getByText("Recolectando")).toBeInTheDocument();
+    expect(within(fila).queryAllByRole("button")).toHaveLength(0);
+    expect(within(fila).getByText("Valor a cobrar")).toBeInTheDocument();
+    const monto = within(fila).getByText(norm(formatMonto(99999999.99)));
+    expect(clases(monto)).toEqual(expect.arrayContaining(COLUMNA_FIJA.split(" ")));
+  });
+
+  it("R863: con sufijo, la línea de la tienda termina en « · Recogido a las {hora}»", () => {
+    montarRecoleccion(<>Recogido a las <time>10:42</time></>);
+    const fila = screen.getByRole("button", { expanded: false });
+    const linea = within(fila).getByText((_, el) => el?.textContent === "Tienda Norte · Recogido a las 10:42");
+    expect(linea.tagName).toBe("SPAN");
+  });
+
+  it("R864: el estado plegado nunca es «Por recolectar», «Recolectada» ni «Recolectado»", () => {
+    montarRecoleccion();
+    const fila = screen.getByRole("button", { expanded: false });
+    expect(fila.textContent).not.toMatch(/Por recolectar|Recolectada|Recolectado/);
+  });
+
+  it("R865: al desplegar sigue el chip con su información; el sufijo no se repite", async () => {
+    const user = userEvent.setup();
+    montarRecoleccion(<>Recogido a las <time>10:42</time></>);
+    await user.click(screen.getByRole("button", { expanded: false }));
+    const fila = screen.getByRole("button", { expanded: true });
+    const despliegue = document.getElementById(fila.getAttribute("aria-controls") ?? "")!;
+    expect(within(despliegue).getByRole("button", { name: "Qué significa «Recolectando»" })).toBeInTheDocument();
+    expect(within(despliegue).getByText("Intentos: 2")).toBeInTheDocument();
+    expect(within(despliegue).queryByText(/Recogido a las/)).toBeNull();
+    expect(screen.getAllByText(/Recogido a las/)).toHaveLength(1);
+  });
+
+  it("R866: sin `filaRecoleccion` (Recoger) la fila sigue con remisión y destinatario, sin tienda ni estado", () => {
+    render(
+      <PosOrderCardDetalle
+        orden={makeOrden({ estatusValue: "recolectando", secuenciaRuta: null })}
+        total={2}
+        mostrarRuta={false}
+        posicion={1}
+        compacta
+      />,
+    );
+    const fila = screen.getByRole("button", { expanded: false });
+    expect(within(fila).getByText("REM-7731")).toBeInTheDocument();
+    expect(within(fila).getByText(DESTINATARIO)).toBeInTheDocument();
+    expect(within(fila).queryByText("Tienda Norte")).toBeNull();
+    expect(within(fila).queryByText("Recolectando")).toBeNull();
   });
 });

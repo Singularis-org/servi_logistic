@@ -29,6 +29,13 @@ import {
   VistaCardsToggle,
   type VistaCards,
 } from "@/app/(app)/mis-asignaciones/_components/VistaCardsToggle";
+import { FiltroTienda } from "@/app/(app)/mis-asignaciones/_components/FiltroTienda";
+import {
+  ETIQUETA_FILTRO_TIENDA,
+  FILTRO_TIENDA,
+  filtrarPorTienda,
+  opcionesTienda,
+} from "@/app/(app)/mis-asignaciones/_components/filtro-tienda";
 import {
   CLASE_FASE,
   useTransicionVista,
@@ -152,14 +159,36 @@ export function RecoleccionModule({
   // SLT-156 (R520): UN término para las dos listas, con la misma función que Recoger y Reparto.
   // Filtra lo que se ve; los conteos de las cabeceras siguen contando lo que el mensajero tiene.
   const [query, setQuery] = useState("");
-  const buscando = query.trim() !== "";
+
+  // SLT-190 (R850-R854, DS1, DS2): el filtro «Tienda», tratado como el término: filtra las DOS
+  // listas, no toca los contadores de las cabeceras ni lo que acepta el escáner (`conocidas`, la
+  // lista completa) y cuenta como búsqueda activa para el vacío.
+  const [tienda, setTienda] = useState("");
+  const [filtrosPuestos, setFiltrosPuestos] = useState<string[]>([]);
+  const tiendas = useMemo(
+    () => opcionesTienda(porRecolectar, recolectadasHoy),
+    [porRecolectar, recolectadasHoy],
+  );
+  const filtrosOfrecidos = [{ key: FILTRO_TIENDA, label: ETIQUETA_FILTRO_TIENDA }];
+  // Quitar el filtro de «Filtros» vacía su valor: un filtro que ya no se ve no puede seguir filtrando.
+  function cambiarFiltrosPuestos(siguientes: string[]) {
+    if (!siguientes.includes(FILTRO_TIENDA)) setTienda("");
+    setFiltrosPuestos(siguientes);
+  }
+  // «Limpiar todo»: la barra vacía su campo y emite `""`; aquí se quita el filtro.
+  function limpiarTodo() {
+    setTienda("");
+    setFiltrosPuestos([]);
+  }
+
+  const buscando = query.trim() !== "" || tienda !== "";
   const porRecolectarVisibles = useMemo(
-    () => filtrarAsignaciones(porRecolectar, query),
-    [porRecolectar, query],
+    () => filtrarPorTienda(filtrarAsignaciones(porRecolectar, query), tienda),
+    [porRecolectar, query, tienda],
   );
   const recolectadasHoyVisibles = useMemo(
-    () => filtrarAsignaciones(recolectadasHoy, query),
-    [recolectadasHoy, query],
+    () => filtrarPorTienda(filtrarAsignaciones(recolectadasHoy, query), tienda),
+    [recolectadasHoy, query, tienda],
   );
 
   /**
@@ -180,15 +209,25 @@ export function RecoleccionModule({
     orden: RecoleccionOrdenDTO,
     total: number,
     vista: VistaCards,
+    posicion: number,
   ) {
     // SLT-156 (R517): en Detalle, la misma tarjeta compacta de Reparto (sin acciones).
+    // SLT-190 (R855, R857, R862): numerada en la lista visible y, en Detalle, con la fila de
+    // Recolección (tienda y estado plegados).
     return vista === "mosaico" ? (
-      <PosOrderCardMosaico orden={orden} total={total} mostrarRuta={false} />
+      <PosOrderCardMosaico
+        orden={orden}
+        total={total}
+        mostrarRuta={false}
+        posicion={posicion}
+      />
     ) : (
       <PosOrderCardDetalle
         orden={orden}
         total={total}
         mostrarRuta={false}
+        posicion={posicion}
+        filaRecoleccion={{}}
         compacta
       />
     );
@@ -216,11 +255,14 @@ export function RecoleccionModule({
            tarjeta desnuda. SLT-156 (R500, R519): el disparador único de las pantallas del
            mensajero, de 44 px y a todo el ancho; la tarjeta de dentro conserva «Recolectar en
            tienda». */
-        <EscanerModal label={ESCANER_LABEL_GUIA} tactil>
+        <EscanerModal label={ESCANER_LABEL_GUIA} titulo="Recolectar en tienda" tactil>
           {/* SLT-168 (R595, R833): la sesión continua de SLT-159. La lectura (`leerGuia`, R11) la
              hace la sesión; cada guía es una fila y la cámara sigue abierta. R14/R598: las dos
              listas las resuelve el servidor y se releen UNA vez al cerrar, no por lectura. */}
+          {/* SLT-190 (R868-R870, DS7): «Recolectar en tienda» va en la barra del diálogo, con un
+             solo «Cerrar» de 44 px, y la tarjeta se monta sin su encabezado. */}
           <TarjetaEscaneoContinuo
+            sinEncabezado
             recibir={recolectar}
             alCerrarConRecepcion={() => router.refresh()}
             textos={TEXTOS_RECOLECCION}
@@ -243,27 +285,33 @@ export function RecoleccionModule({
         onChange={setQuery}
         debounceMs={0}
         leerDeUrl={false}
+        // SLT-190 (R850-R852): el filtro «Tienda» con el selector de siempre (P2).
+        filtros={filtrosOfrecidos}
+        activos={filtrosPuestos}
+        onActivosChange={cambiarFiltrosPuestos}
+        onLimpiarTodo={limpiarTodo}
+        hayFiltrosAplicados={tienda !== "" || filtrosPuestos.length > 0}
         fija
         tactil
-      />
+        // SLT-190 (R860, DS4): el ÚNICO conmutador del apartado, en la barra tras «Filtros» y
+        // siempre visible (también con «Por recolectar» vacía); gobierna las dos listas.
+        trasFiltros={
+          <VistaCardsToggle vista={vistaCardsPedida} onVistaChange={cambiarVista} />
+        }
+      >
+        {filtrosPuestos.includes(FILTRO_TIENDA) ? (
+          <FiltroTienda tienda={tienda} tiendas={tiendas} onTiendaChange={setTienda} />
+        ) : null}
+      </BuscadorFiltros>
 
       <section aria-label={TITULO} className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-lg font-semibold">{TITULO}</h2>
+          {/* SLT-190 (R860): la cabecera ya no lleva conmutador; el único está en la barra. */}
           {porRecolectar.length > 0 ? (
-            <div className="flex flex-wrap items-center gap-3">
-              <p role="status" className="text-sm text-muted-foreground">
-                {textoConteo(porRecolectar.length)}
-              </p>
-              {/* Feature 196: el conmutador ya no es uno por tienda —la agrupación se retiró—,
-                  sino uno por LISTA. La preferencia es UNA sola para todo el apartado (el estado
-                  vive aquí y «Recolectadas hoy» recibe el mismo), así que los dos controles se
-                  mueven juntos; lo que se duplica es el mando, no la decisión. */}
-              <VistaCardsToggle
-                vista={vistaCardsPedida}
-                onVistaChange={cambiarVista}
-              />
-            </div>
+            <p role="status" className="text-sm text-muted-foreground">
+              {textoConteo(porRecolectar.length)}
+            </p>
           ) : null}
         </div>
 
@@ -293,15 +341,20 @@ export function RecoleccionModule({
               singular="Orden"
               plural="Órdenes"
               renderItem={(orden) =>
-                renderCardRecoleccion(orden, porRecolectarVisibles.length, "mosaico")
+                renderCardRecoleccion(
+                  orden,
+                  porRecolectarVisibles.length,
+                  "mosaico",
+                  porRecolectarVisibles.indexOf(orden) + 1,
+                )
               }
             />
           </div>
         ) : (
           <ul className={`flex flex-col gap-3 ${CLASE_FASE[faseVista]}`}>
-            {porRecolectarVisibles.map((orden) => (
+            {porRecolectarVisibles.map((orden, i) => (
               <li key={orden.id}>
-                {renderCardRecoleccion(orden, porRecolectarVisibles.length, "detalle")}
+                {renderCardRecoleccion(orden, porRecolectarVisibles.length, "detalle", i + 1)}
               </li>
             ))}
           </ul>
@@ -317,9 +370,7 @@ export function RecoleccionModule({
         buscando={buscando}
         recortada={recolectadasHoyRecortada}
         vista={vistaCards}
-        vistaPedida={vistaCardsPedida}
         fase={faseVista}
-        onVistaChange={cambiarVista}
       />
     </div>
   );

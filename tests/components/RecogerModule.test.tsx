@@ -749,8 +749,13 @@ describe("RecogerModule — conmutador mosaico/detalle y carrusel (pedido humano
     expect(
       within(carrusel).getByRole("button", { name: /siguiente/i }),
     ).toBeInTheDocument();
-    // La etiqueta de posición nombra el total con el plural que recibe el compuesto.
-    expect(within(carrusel).getByText(/de 2/)).toBeInTheDocument();
+    // La etiqueta de posición nombra el total con el plural que recibe el compuesto. SLT-190
+    // (R855): las tarjetas también dicen «{n} de 2»; la etiqueta del carrusel es la que va fuera
+    // de ellas.
+    const etiquetas = within(carrusel)
+      .getAllByText(/de 2/)
+      .filter((el) => el.closest("article") === null);
+    expect(etiquetas.length).toBeGreaterThan(0);
   });
 
   it("pasar a DETALLE saca las cards del carrusel y las pone en lista", async () => {
@@ -1967,5 +1972,170 @@ describe("SLT-156 rebanada C — Recoger en bodega en el móvil (R500, R506, R51
     expect(
       await screen.findByRole("button", { expanded: false, name: /REM-C1/ }),
     ).toBeInTheDocument();
+  });
+});
+
+// =================================================================================================
+// SLT-190 «Recoger y Recolección según el canvas» — filtro «Tienda» (R850-R854), tarjetas numeradas
+// (R857) y el conmutador en la barra fija (R859). jsdom no aplica Tailwind: se afirman las clases; la
+// medida a 360/414 px y el pegado al desplazar son del E2E `e2e/pwa-mensajero-recoger-recoleccion.spec.ts`.
+// =================================================================================================
+describe("SLT-190 — Recoger en bodega según el canvas", () => {
+  const TRES = [
+    makeAsignacion({ id: "t1", numGuia: 3001, numRemision: "REM-T1", destinatario: "Ana Mora", tiendaNombre: "Tienda Sur" }),
+    makeAsignacion({ id: "t2", numGuia: 3002, numRemision: "REM-T2", destinatario: "Beto Ruiz", tiendaNombre: "Tienda Norte" }),
+    makeAsignacion({ id: "t3", numGuia: 3003, numRemision: "REM-T3", destinatario: "Carla Vega", tiendaNombre: "Tienda Sur" }),
+    makeAsignacion({
+      id: "t4",
+      numGuia: 3004,
+      numRemision: "REM-T4",
+      destinatario: "Dani Solano",
+      tiendaNombre: "Tienda Sur",
+      esParaManana: true,
+    }),
+  ];
+
+  const barra = () => buscador().closest(".sticky") as HTMLElement;
+
+  async function ponerTienda(user: ReturnType<typeof userEvent.setup>, tienda: string) {
+    await user.click(screen.getByRole("button", { name: /^Filtros/ }));
+    const selector = await screen.findByRole("listbox", { name: "Filtros" });
+    await user.click(within(selector).getByRole("option", { name: "Tienda" }));
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("combobox", { name: "Filtrar por tienda" }));
+    const lista = await screen.findByRole("listbox");
+    await user.click(within(lista).getByRole("option", { name: tienda }));
+  }
+
+  it("R850: «Filtros» ofrece «Tienda» y sus opciones son las tiendas cargadas, sin repetir y en orden", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecoger: TRES });
+    await user.click(screen.getByRole("button", { name: /^Filtros/ }));
+    const selector = await screen.findByRole("listbox", { name: "Filtros" });
+    expect(within(selector).getAllByRole("option").map((o) => o.textContent)).toEqual(["Tienda"]);
+    await user.click(within(selector).getByRole("option", { name: "Tienda" }));
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("combobox", { name: "Filtrar por tienda" }));
+    const lista = await screen.findByRole("listbox");
+    expect(within(lista).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Todas",
+      "Tienda Norte",
+      "Tienda Sur",
+    ]);
+  });
+
+  it("R851/R853: deja solo esa tienda en las dos pestañas, combinada con el término; los contadores no cambian", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecoger: TRES });
+    await ponerTienda(user, "Tienda Sur");
+
+    expect(within(panelActivo()).getByText("REM-T1")).toBeInTheDocument();
+    expect(within(panelActivo()).getByText("REM-T3")).toBeInTheDocument();
+    expect(within(panelActivo()).queryByText("REM-T2")).toBeNull();
+    // Contadores: lo que el mensajero TIENE (277 R16/R20).
+    expect(pestanaHoy()).toHaveTextContent("Para recoger hoy (3)");
+    expect(pestanaOtroDia()).toHaveTextContent("Para otro día (1)");
+    expect(contadorNuevas()).toHaveTextContent("3 órdenes nuevas para recoger");
+
+    await user.type(buscador(), "carla");
+    expect(within(panelActivo()).getByText("REM-T3")).toBeInTheDocument();
+    expect(within(panelActivo()).queryByText("REM-T1")).toBeNull();
+  });
+
+  it("R853: el filtro no cambia lo que acepta el escáner (una guía de otra tienda se recoge)", async () => {
+    const user = userEvent.setup();
+    recogerMock.mockResolvedValue({ status: "ok", recogidas: ["t2"] });
+    renderModule({ porRecoger: TRES });
+    await ponerTienda(user, "Tienda Sur");
+
+    await abrirRecogida(user);
+    await user.type(screen.getByRole("textbox"), "3002");
+    await user.click(screen.getByRole("button", { name: "Recoger" }));
+    await vi.waitFor(() => expect(recogerMock).toHaveBeenCalled());
+    expect(JSON.stringify(recogerMock.mock.calls[0])).toContain("t2");
+  });
+
+  it("R852: con el filtro puesto, «Filtros (1)», el control «Tienda: {nombre}» a 44 px y «Limpiar todo» que lo quita y vacía el término", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecoger: TRES });
+    await ponerTienda(user, "Tienda Sur");
+    await user.type(buscador(), "ana");
+
+    expect(within(barra()).getByRole("button", { name: /^Filtros \(1\)/ })).toBeInTheDocument();
+    const control = within(barra()).getByRole("combobox", { name: "Filtrar por tienda" });
+    expect(control).toHaveTextContent("Tienda: Tienda Sur");
+    expect(control.className.split(/\s+/)).toContain("max-md:h-11");
+
+    await user.click(within(barra()).getByRole("button", { name: "Limpiar todo" }));
+    expect(buscador()).toHaveValue("");
+    expect(screen.queryByRole("combobox", { name: "Filtrar por tienda" })).toBeNull();
+    for (const rem of ["REM-T1", "REM-T2", "REM-T3"]) {
+      expect(within(panelActivo()).getByText(rem)).toBeInTheDocument();
+    }
+  });
+
+  it("R852: quitar «Tienda» de «Filtros» vuelve a mostrar todas las órdenes", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecoger: TRES });
+    await ponerTienda(user, "Tienda Sur");
+    expect(within(panelActivo()).queryByText("REM-T2")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: /^Filtros/ }));
+    const selector = await screen.findByRole("listbox", { name: "Filtros" });
+    await user.click(within(selector).getByRole("option", { name: "Tienda" }));
+    await user.keyboard("{Escape}");
+    expect(within(panelActivo()).getByText("REM-T2")).toBeInTheDocument();
+  });
+
+  it("R854: con solo el filtro, una pestaña que queda vacía dice el vacío de búsqueda y el puntero a la otra", async () => {
+    const user = userEvent.setup();
+    renderModule({
+      porRecoger: [
+        makeAsignacion({ id: "h1", numGuia: 4001, numRemision: "REM-H1", tiendaNombre: "Tienda Norte" }),
+        makeAsignacion({
+          id: "m1",
+          numGuia: 4002,
+          numRemision: "REM-M1",
+          tiendaNombre: "Tienda Sur",
+          esParaManana: true,
+        }),
+      ],
+    });
+    await ponerTienda(user, "Tienda Sur");
+
+    expect(within(panelActivo()).getByText("Ninguna guía para recoger coincide con la búsqueda.")).toBeInTheDocument();
+    expect(within(panelActivo()).getByText("Hay 1 coincidencia en «Para otro día».")).toBeInTheDocument();
+    expect(within(panelActivo()).queryByText("No hay órdenes para recoger hoy.")).toBeNull();
+  });
+
+  it("R857: la numeración se recalcula sobre la lista visible, de 1 a n sin huecos", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecoger: TRES });
+    await cambiarVista(user, "Detalle");
+    expect(await within(panelActivo()).findByText("Orden 3 de 3")).toBeInTheDocument();
+
+    await ponerTienda(user, "Tienda Sur");
+    const fila3 = within(panelActivo()).getByRole("button", { name: /REM-T3/ });
+    expect(within(fila3).getByText("Orden 2 de 2")).toBeInTheDocument();
+    const fila1 = within(panelActivo()).getByRole("button", { name: /REM-T1/ });
+    expect(within(fila1).getByText("Orden 1 de 2")).toBeInTheDocument();
+    expect(within(panelActivo()).queryByText(/de 3$/)).toBeNull();
+
+    // Y en la otra pestaña, por separado.
+    await irAOtroDia(user);
+    expect(await within(panelActivo()).findByText("Orden 1 de 1")).toBeInTheDocument();
+  });
+
+  it("R859: el conmutador va en la barra, tras el campo y «Filtros»; la fila de pestañas no lleva ninguno", () => {
+    renderModule({ porRecoger: TRES });
+    const conmutador = screen.getByRole("group", { name: "Vista de las órdenes" });
+    expect(screen.getAllByRole("group", { name: "Vista de las órdenes" })).toHaveLength(1);
+    expect(barra().contains(conmutador)).toBe(true);
+    const filtros = within(barra()).getByRole("button", { name: /^Filtros/ });
+    expect(buscador().compareDocumentPosition(conmutador) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(filtros.compareDocumentPosition(conmutador) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    const filaPestanas = screen.getByRole("tablist").parentElement as HTMLElement;
+    expect(within(filaPestanas).queryByRole("group", { name: "Vista de las órdenes" })).toBeNull();
+    expect(within(filaPestanas).queryByRole("button", { name: /Mosaico|Detalle/ })).toBeNull();
   });
 });
