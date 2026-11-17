@@ -17,11 +17,11 @@ Producción (24, los del spec):
 - `components/shared/EscanerModal.tsx` — `titulo` obligatorio; se borran la rama sin barra y la X del `Dialog` (`showCloseButton={false}` siempre).
 - `.../EscanerGuiaReparto.tsx` (`titulo="Abrir orden por guía"` + `sinEncabezado`), `app/(app)/recepcion-satelite/_components/EscanerRecepcion.tsx` («Recibir paquete»; tarjetas suelta y continua `sinEncabezado`), `app/(app)/ordenes/_components/OrdenesListado.tsx` («Recibir paquete»), `EscanerRecepcionBodegaCentral.tsx` y `EscanerRecepcionOrigen.tsx` (tarjetas suelta y continua `sinEncabezado`), `components/shared/RecibirPaquetesEntrada.tsx` (`titulo={RECIBIR_PAQUETES}`), `components/shared/BuscadorFiltros.tsx` (`titulo={ESCANEAR_CON_CAMARA}`; `CamaraDelBuscador` sin `CardHeader`).
 
-Tests (15) + E2E (1) + config (1):
+Tests (14) + E2E (1) + config (1):
 - nuevos: `tests/components/botones-44-pwa-mensajero.test.tsx`, `tests/unit/guards/escaner-un-solo-cierre.guardia.test.ts`, `e2e/pwa-mensajero-botones-44.spec.ts`.
 - ampliados: `PageHeader`, `Sidebar`, `EstadoInfo`, `EscanerModal` (el caso R871 de SLT-190 sustituido por R925 parametrizado), `EscanerGuiaReparto`, `EscanerRecepcion`, `EscanerRecepcionOrigen` (R579 reescrito: el título vive en la barra), `EscanerRecepcionBodegaCentral`, `RecibirPaquetesEntrada`, `tests/unit/components/buscador-filtros-escaneo.test.tsx`.
 - **fuera de la lista del spec** (3): `tests/components/EscaneoContinuo.test.tsx` (solo `titulo=`, lo exige el typecheck), `tests/components/NotificationsBell.test.tsx` (R911 «con y sin pendientes»: la píldora no sale en `PageHeader.test`), `playwright.config.ts` (registrar el spec en el proyecto `reparto`, lo exige `e2e-sin-saltos`).
-- Total código + tests: 41 (24 + 15 + 1 + 1), más `requirements.md` (tasks marcadas) y estos `progress/`.
+- Total código + tests: 40 (24 + 14 + 1 + 1), más `requirements.md` (tasks marcadas) y estos `progress/`.
 
 ## Mapa R → test
 
@@ -59,8 +59,8 @@ Las cuatro revertidas (sin `.orig` ni diff residual).
 
 - `pnpm typecheck` → exit 0.
 - `pnpm lint` → exit 0 (0 errores, 248 warnings; ninguno nuevo: el único en un archivo tocado, `GestionarOrdenPanel.tsx:73`, ya estaba).
-- `vitest run` de los 15 archivos de test tocados → 15 archivos, 293 tests, todos verdes.
-- `vitest related --run` de los 39 archivos de producción y tests → 297 archivos, 4375 passed, 26 skipped, 0 failed (exit 0).
+- `vitest run` de los 14 archivos de test tocados (más `PosOrderCardDetalleCompacta`) → 15 archivos, 293 tests, todos verdes.
+- `vitest related --run` de los 38 archivos de producción y tests → 297 archivos, 4375 passed, 26 skipped, 0 failed (exit 0).
 - `pnpm run test:guardias` → 354/355 archivos verdes; rojo `dependencias-declaradas-presentes.guardia.test.ts` (4 casos: «init.sh ya no tiene el marcador FIN PASO 2»). Ajeno: `init.sh` no cambia respecto a `origin/dev`.
 - `db:seed` + `next build` con `NEXT_PUBLIC_APP_URL=http://localhost:3193` → exit 0 y 0.
 - `playwright test e2e/pwa-mensajero-botones-44.spec.ts --retries=0` (`E2E_PUERTO=3193`) → 5 passed.
