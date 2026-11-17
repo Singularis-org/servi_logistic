@@ -1,5 +1,5 @@
 // SLT-136 (design §4, R7–R14, R17) — el PDF de una factura cerrada de la plataforma, según la plantilla de
-// referencia (`docs/referencias/Factura-1-Ordenex.pdf`): cabecera con marca, seis tarjetas, «Resumen», «Total a
+// referencia en `docs/referencias/`: cabecera con marca, seis tarjetas, «Resumen», «Total a
 // pagar» y, en página aparte, «Desglose por día».
 //
 // Función pura sobre jsPDF: recibe los datos, su resumen y el logo ya cargado (lo carga el componente) y devuelve

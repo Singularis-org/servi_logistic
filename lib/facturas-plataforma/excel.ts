@@ -3,9 +3,8 @@
 // redondear: lo convierte y lo comprueba `celdaMonto`. exceljs entra con `import()` dinámico dentro de
 // `buildXlsxLibro`.
 import { FACTURA_DESCARGA_TEXTOS, fechaNumerica } from "@/lib/facturas-plataforma/resumen";
+import { horaDeParedPlataforma } from "@/lib/planes/ciclo";
 import type { DatosDescargaFactura } from "@/lib/types/factura-plataforma";
-import { horaDePared } from "@/lib/utils/calendario-zona";
-import { ZONA_CR } from "@/lib/utils/fecha-cr";
 import { comprobarLimiteExcel } from "@/lib/utils/limite-excel";
 import { buildXlsxLibro, type XlsxCellValue, type XlsxColumn } from "@/lib/utils/xlsx-template";
 
@@ -25,7 +24,7 @@ const COLUMNAS: XlsxColumn[] = [
  */
 export async function construirExcelFactura(datos: DatosDescargaFactura): Promise<ArrayBuffer> {
   const filas: Array<Record<string, XlsxCellValue>> = datos.movimientos.map((m) => ({
-    fecha: `${fechaNumerica(m.instante)} ${horaDePared(m.instante, ZONA_CR)}`,
+    fecha: `${fechaNumerica(m.instante)} ${horaDeParedPlataforma(m.instante)}`,
     guia: m.numGuia,
     remision: m.numRemision,
     tipo: T.tipos[m.tipo],

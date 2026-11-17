@@ -390,7 +390,27 @@ esta bien hecha, no solo si "funciona".
     Una cerrada muestra su número «N.º N»; una no cerrada, «En curso». El detalle se abre en un panel
     lateral, se carga al abrirlo y al paginar, y sus líneas salen de `cobro_plataforma_traza` por
     `cobrado_at` en `[desde, hasta)`, 100 por página (`detalleDeLaEmpresa` / `detalleParaPlataforma`),
-    sin copiarlas. Solo lectura: sin descarga (SLT-136).
+    sin copiarlas. Las pantallas no escriben (SLT-119 R16 sigue en pie).
+  - **Descarga (SLT-136, 2026-11-17).** Una factura **cerrada** se descarga en PDF y en Excel desde las
+    dos pantallas, solo por el maestro (`descargarFacturaMiPlanAction`) y el superadmin
+    (`descargarFacturaEmpresaAction`, con la empresa ligada en la página). El servidor solo devuelve los
+    datos (`datosDescargaDeLaEmpresa` / `datosDescargaParaPlataforma`: cabecera y todos los movimientos,
+    sin paginar); los archivos se arman en el navegador (`lib/facturas-plataforma/{resumen,pdf,excel}.ts`,
+    `components/shared/facturas/DescargarFactura.tsx`). Si el resumen no cuadra con la base, no sale
+    archivo. Una no cerrada no tiene botones.
+    - **Logo PROVISIONAL:** `public/brand/logo-singularis.png` (`MARCA_FACTURA` en `lib/config/marca.ts`)
+      es un marcador; el humano lo reemplaza por el real con el mismo nombre.
+  - **Aviso al cerrar (SLT-136).** `FacturaPlataformaRepository.cerrar` cierra y, en la **misma**
+    transacción (outbox), encola un trabajo `factura_plataforma_aviso` por factura cerrada
+    (`lib/repositories/_shared/encolar-en-empresas.ts`, dedupe `factura_plataforma_aviso:<facturaId>`).
+    El manejador (`lib/planes/jobs-factura-aviso.ts`, de núcleo, no recurrente) emite la campanita
+    `factura_plataforma_emitida` (sin montos), el push y el correo (`plantillaFacturaEmitida`, con
+    montos), solo a los maestros de la empresa; también avisa una factura de total 0.
+    - **Enmienda de SLT-118 R25:** el manejador del cierre sigue sin enviar nada; los avisos salen por la
+      cola.
+    - **Enmienda de la guardia de SLT-91 R10:** `mi-plan-solo-maestro` admite nombrar `/mi-plan` en
+      `lib/notificaciones/catalogo-avisos.ts` (atajo «Ver factura») y en
+      `lib/services/email/plantillas/factura-emitida.ts`.
 - **Reportes de problemas (SLT-87, 2026-11-09).** `bug_report` (migración `20261110120000`) es de
   plataforma (`MODELOS_DE_PLATAFORMA`): RLS sin políticas y `REVOKE ALL … FROM servi_app`, así que la
   empresa no la lee ni la escribe, ni lo suyo ni lo de su gente (`42501`). La escribe solo

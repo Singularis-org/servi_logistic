@@ -100,14 +100,14 @@
 
 ## Tanda 7 — Enmiendas y documentación
 
-- [ ] **T7.1** `[P]` Enmienda de SLT-118 R25 en `tests/unit/planes/jobs-factura-plataforma.test.ts` y en el comentario
+- [x] **T7.1** `[P]` Enmienda de SLT-118 R25 en `tests/unit/planes/jobs-factura-plataforma.test.ts` y en el comentario
   de cabecera de `lib/planes/jobs-factura-plataforma.ts` («Sin correos ni avisos (R25)» pasa a «los avisos los encola
   `cerrar` en su transacción, SLT-136 R21»). Detalle en §8.
   *Hecho:* el test está en verde.
-- [ ] **T7.2** `[P]` Enmienda de la guardia de SLT-91 R10 en `tests/unit/guards/mi-plan-solo-maestro.guardia.test.ts`
+- [x] **T7.2** `[P]` Enmienda de la guardia de SLT-91 R10 en `tests/unit/guards/mi-plan-solo-maestro.guardia.test.ts`
   (§8, R32). Depende de T5.4 y T6.1.
   *Hecho:* la guardia está en verde, con los dos archivos admitidos y la autocomprobación que los exige.
-- [ ] **T7.3** `[P]` En `docs/architecture.md > Facturas de la plataforma`, sustituir «sin descarga (SLT-136)» por:
+- [x] **T7.3** `[P]` En `docs/architecture.md > Facturas de la plataforma`, sustituir «sin descarga (SLT-136)» por:
   - la descarga: PDF y Excel en el navegador, solo de las cerradas, para el maestro y el superadmin;
   - el aviso al cerrar: outbox → `factura_plataforma_aviso` → campanita, push y correo a los maestros;
   - la enmienda de SLT-118 R25 y la de la guardia de SLT-91 R10;

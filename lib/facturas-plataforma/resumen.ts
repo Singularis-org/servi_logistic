@@ -2,16 +2,12 @@ import { FACTURAS_TEXTOS, sumaDeCuotas } from "@/components/shared/facturas/fact
 import { MARCA_FACTURA } from "@/lib/config/marca";
 import { monedaConfig } from "@/lib/config/moneda";
 import { aCentimos, aCentimosConSigno, aTexto } from "@/lib/planes/centimos";
+import { fechaCalendarioPlataforma } from "@/lib/planes/ciclo";
 import type { DatosDescargaFactura, TipoLineaFactura } from "@/lib/types/factura-plataforma";
-import { fechaCalendario } from "@/lib/utils/calendario-zona";
-import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 // SLT-136 (design §3) — el resumen de la descarga de una factura cerrada, sin React y sin E/S. Lo comparten el PDF,
 // el Excel y sus pruebas. Los importes son los de la base (R9, R10); lo único que se suma aquí es el importe de
 // cada día del desglose (R11), en céntimos exactos, y esa suma se contrasta con los totales de la base (R15).
-
-/** La hora de la plataforma hasta SLT-90, la misma de las pantallas de SLT-119. */
-const ZONA_PLATAFORMA = ZONA_CR;
 
 /** Todos los literales del PDF y del Excel de la factura, en un sitio para cuando llegue la i18n. */
 export const FACTURA_DESCARGA_TEXTOS = {
@@ -105,9 +101,9 @@ export class DescuadreDeFactura extends Error {
   }
 }
 
-/** El día de calendario de un instante, en la hora de la plataforma. */
+/** El día de calendario de un instante, en la hora de la plataforma (hasta SLT-90, la de las pantallas de SLT-119). */
 function diaDe(instante: Date): string {
-  return fechaCalendario(instante, ZONA_PLATAFORMA);
+  return fechaCalendarioPlataforma(instante);
 }
 
 function aDiaNumerico(dia: string): string {
