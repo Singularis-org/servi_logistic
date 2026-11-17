@@ -166,15 +166,18 @@ export const TEXTOS_RECOGIDA: TextosSesion = {
   contadorExitos: "Recogidas",
 };
 
-/** M2 «Recolectar en tienda» (textos aprobados por Carlos el 2026-11-17). */
+/**
+ * M2 «Recolectar en tienda» (Carlos, 2026-11-17): «Recolectada»/«Recolectadas» son nombres de estado
+ * retirados por la 455; el desenlace se dice «Recogida en tienda».
+ */
 export const TEXTOS_RECOLECCION: TextosSesion = {
   enCurso: "Recolectando…",
-  exito: "Recolectada",
-  yaHecha: "Ya recolectada",
-  repetida: "Ya recolectada",
+  exito: "Recogida en tienda",
+  yaHecha: "Ya recogida en tienda",
+  repetida: "Ya recogida en tienda",
   noEncontrada: "No está entre tus órdenes",
   noSePudo: "No se pudo recolectar",
-  contadorExitos: "Recolectadas",
+  contadorExitos: "Recogidas en tienda",
 };
 
 /** Texto de la columna «Estado» (R582-R585). El motivo de «No se pudo …» va aparte. */

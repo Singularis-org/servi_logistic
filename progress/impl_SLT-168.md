@@ -14,7 +14,7 @@ Tasks T1-T7 hechas (T7: E2E ajustados, **sin correr**, por instrucción del lead
 | `c85e6f07` | T4 `RecogerPaqueteCard` con `TarjetaEscaneoContinuo` (`RecogerModule.tsx` sin cambios) |
 | `528e59c9` | T5 `RecoleccionModule`: solo el contenido del `EscanerModal` y su `procesar` |
 | `f219e2d2` | T6 guardias `lectura-guia-unica` y `rutas-336-retiradas` |
-| `9f89030e` | T6 esperas con contenido (ancla-de-carga) + excepción declarada en la guardia 455 |
+| `9f89030e` | T6 esperas con contenido (ancla-de-carga) + excepción en la guardia 455 (retirada después) |
 | `8389162f` | T7 E2E `mis-asignaciones` y `pwa-mensajero-recoger-recoleccion` (b) |
 | `8b2e38b7` | fix: comentario JSX dentro de llaves (lint) y tipos de los dobles |
 
@@ -28,7 +28,7 @@ Tests (9): `tests/unit/utils/sesion-escaneo.test.ts`, `tests/components/EscaneoC
 `tests/components/useRecogerPorGuia.test.tsx`, `tests/components/RecogerPaqueteCard.test.tsx`,
 `tests/components/RecogerModule.test.tsx`, `tests/components/RecoleccionModule.test.tsx`,
 `tests/unit/guards/lectura-guia-unica.guardia.test.ts`, `tests/unit/guards/rutas-336-retiradas.guardia.test.ts`,
-`tests/unit/guards/nombres-estado-retirados.guardia.test.ts`.
+(`tests/unit/guards/nombres-estado-retirados.guardia.test.ts` vuelve a ser idéntica a `origin/dev`).
 
 E2E (2): `e2e/mis-asignaciones.spec.ts`, `e2e/pwa-mensajero-recoger-recoleccion.spec.ts`.
 Spec: `specs/SLT-168-escaneo-continuo-recogidas/tasks.md` (T1-T7 marcadas).
@@ -97,15 +97,24 @@ Producción: 6 archivos, +180 / −162. Tests y E2E: 11 archivos, +969 / −336.
 
 ## Abierto
 
-- **«Recolectada» / «Recolectadas» chocan con la guardia 455** (`nombres-estado-retirados`): son
-  nombres de estado retirados. Carlos los aprobó el 2026-11-17 como texto de la fila y del contador;
-  añadí una excepción declarada con motivo para `lib/utils/sesion-escaneo.ts` (`9f89030e`). Si se
-  prefiere no abrir excepción, hay que cambiar `TEXTOS_RECOLECCION.exito`/`.contadorExitos` (pregunta
-  para Carlos).
 - Rojo preexistente de `dependencias-declaradas-presentes.guardia.test.ts` (ajeno a esta rama).
 - E2E sin correr; T8 (gate con `.env`, Preview) pendiente del leader.
 - Choque con SLT-190 y SLT-194: solo cambió el contenido del `EscanerModal` y su `procesar` en
   `RecogerPaqueteCard.tsx` y `RecoleccionModule.tsx`; barra, buscador y listas, intactos.
 - MCP del grafo no consultado: se trabajó con Grep/Read.
 
-Veredicto: SLT-168 implementada (T1-T7), typecheck/lint/tests en verde y mutaciones en rojo; queda la decisión sobre la excepción 455 y el E2E/gate del leader.
+## Cambio 2026-11-17: «Recogida en tienda» (decisión de Carlos)
+
+«Recolectada»/«Recolectadas» son nombres de estado retirados por la 455. Carlos decidió no usarlos:
+`TEXTOS_RECOLECCION` pasa a fila «Recogida en tienda», «Ya recogida en tienda» y contador «Recogidas
+en tienda». «Recolectando…» y «No se pudo recolectar» se quedan porque la guardia no los marca.
+Se retiró la excepción de `nombres-estado-retirados.guardia.test.ts` (idéntica a `origin/dev`, en
+verde). Literales actualizados a mano en `sesion-escaneo.test.ts`, `RecoleccionModule.test.tsx` y el
+E2E (b); spec (R596-R598, R830, R831) y `progress/features/SLT-168.md > Decisiones`.
+
+- Vitest (14 archivos de la ficha + guardia 455 + `ContrasteBrandSoftOscuro` + recepciones):
+  `VITEST_EXIT=0`, `Tests 357 passed`. Typecheck y lint: ver el commit del cambio.
+- Mutación: `TEXTOS_RECOLECCION.exito` = «Recolectada» → guardia 455 y tests de M2 en rojo
+  (detalle abajo, restaurada con `git checkout --`).
+
+Veredicto: SLT-168 implementada (T1-T7) con los textos finales de Carlos; typecheck, lint y tests en verde y las mutaciones en rojo; quedan el E2E y el gate del leader.

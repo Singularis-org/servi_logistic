@@ -414,7 +414,7 @@ async function lecturaQueDice(estado: string): Promise<HTMLElement> {
   return filas()[0];
 }
 
-/** «Recolectadas1»: el rótulo y su valor, tal como se leen. */
+/** «Recogidas en tienda1»: el rótulo y su valor, tal como se leen. */
 function contador(rotulo: string): string {
   return screen.getByText(rotulo).parentElement?.textContent ?? "";
 }
@@ -435,7 +435,7 @@ async function cerrarEscaner(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("RecoleccionModule — confirmar la recolección (R10/R11/R12/R13/R14 + SLT-168)", () => {
-  it("R10 + R596: la vía manual confirma la guía y la fila dice «Recolectada», sin toast", async () => {
+  it("R10 + R596: la vía manual confirma la guía y la fila dice «Recogida en tienda», sin toast", async () => {
     const user = userEvent.setup();
     renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
 
@@ -444,7 +444,7 @@ describe("RecoleccionModule — confirmar la recolección (R10/R11/R12/R13/R14 +
     await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
 
     await waitFor(() => expect(recolectarMock).toHaveBeenCalledWith({ numGuia: 1001 }));
-    await lecturaQueDice("Recolectada");
+    await lecturaQueDice("Recogida en tienda");
     sinToasts();
   });
 
@@ -457,7 +457,7 @@ describe("RecoleccionModule — confirmar la recolección (R10/R11/R12/R13/R14 +
     await user.click(screen.getByRole("button", { name: "Simular escaneo" }));
 
     await waitFor(() => expect(recolectarMock).toHaveBeenCalledWith({ numGuia: 1001 }));
-    await lecturaQueDice("Recolectada");
+    await lecturaQueDice("Recogida en tienda");
   });
 
   it("R11: un código que no son dígitos no llega a la action (vía manual)", async () => {
@@ -481,7 +481,7 @@ describe("RecoleccionModule — confirmar la recolección (R10/R11/R12/R13/R14 +
 
     await lecturaQueDice("Código inválido");
     expect(recolectarMock).not.toHaveBeenCalled();
-    expect(contador("Recolectadas")).toBe("Recolectadas0");
+    expect(contador("Recogidas en tienda")).toBe("Recogidas en tienda0");
     expect(contador("Repetidas")).toBe("Repetidas0");
     expect(contador("No encontradas")).toBe("No encontradas0");
     sinToasts();
@@ -506,7 +506,7 @@ describe("RecoleccionModule — confirmar la recolección (R10/R11/R12/R13/R14 +
     expect(refreshMock).not.toHaveBeenCalled();
   });
 
-  it("R13 + R596: `ya_recolectada` → «Ya recolectada», no un error", async () => {
+  it("R13 + R596: `ya_recolectada` → «Ya recogida en tienda», no un error", async () => {
     const user = userEvent.setup();
     recolectarMock.mockResolvedValue({ status: "ya_recolectada" });
     renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
@@ -514,7 +514,7 @@ describe("RecoleccionModule — confirmar la recolección (R10/R11/R12/R13/R14 +
     await abrirEscaner(user);
     await teclear(user, "1001");
 
-    await lecturaQueDice("Ya recolectada");
+    await lecturaQueDice("Ya recogida en tienda");
     expect(screen.queryByText("No se pudo recolectar")).toBeNull();
     sinToasts();
   });
@@ -618,14 +618,14 @@ describe("RecoleccionModule — escaneo continuo (SLT-168: R595, R597, R598, R83
     ]);
     await waitFor(() => {
       expect(filas()).toHaveLength(4);
-      expect(within(filas()[0]).getByText("Ya recolectada")).toBeInTheDocument();
+      expect(within(filas()[0]).getByText("Ya recogida en tienda")).toBeInTheDocument();
     });
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Simular escaneo" })).toBeInTheDocument();
     sinToasts();
   });
 
-  it("R597: `ok`, `ya_recolectada` y `no_encontrada` → «Recolectadas» 1, «Repetidas» 1, «No encontradas» 1", async () => {
+  it("R597: `ok`, `ya_recolectada` y `no_encontrada` → «Recogidas en tienda» 1, «Repetidas» 1, «No encontradas» 1", async () => {
     const user = userEvent.setup();
     recolectarMock
       .mockResolvedValueOnce({ status: "ok", ordenId: "o1", estado: "en_ruta_bodega_central" })
@@ -637,7 +637,7 @@ describe("RecoleccionModule — escaneo continuo (SLT-168: R595, R597, R598, R83
     await teclear(user, "1001", "5001", "7777777");
 
     await lecturaQueDice("No está entre tus órdenes");
-    expect(contador("Recolectadas")).toBe("Recolectadas1");
+    expect(contador("Recogidas en tienda")).toBe("Recogidas en tienda1");
     expect(contador("Repetidas")).toBe("Repetidas1");
     expect(contador("No encontradas")).toBe("No encontradas1");
   });
@@ -648,7 +648,7 @@ describe("RecoleccionModule — escaneo continuo (SLT-168: R595, R597, R598, R83
 
     await abrirEscaner(user);
     await teclear(user, "1001", "1002");
-    await waitFor(() => expect(contador("Recolectadas")).toBe("Recolectadas2"));
+    await waitFor(() => expect(contador("Recogidas en tienda")).toBe("Recogidas en tienda2"));
     expect(refreshMock).not.toHaveBeenCalled();
 
     await cerrarEscaner(user);
@@ -663,7 +663,7 @@ describe("RecoleccionModule — escaneo continuo (SLT-168: R595, R597, R598, R83
 
     await abrirEscaner(user);
     await teclear(user, "1001");
-    await lecturaQueDice("Ya recolectada");
+    await lecturaQueDice("Ya recogida en tienda");
     expect(refreshMock).not.toHaveBeenCalled();
 
     await cerrarEscaner(user);
@@ -702,10 +702,10 @@ describe("RecoleccionModule — escaneo continuo (SLT-168: R595, R597, R598, R83
     await lecturaQueDice("Recolectando…");
     expect(screen.queryByText("Recibiendo…")).toBeNull();
     soltar();
-    await lecturaQueDice("Recolectada");
+    await lecturaQueDice("Recogida en tienda");
   });
 
-  it("R831: 1024 dos veces → la segunda dice «Ya recolectada», la action se llama una vez y suma a Repetidas", async () => {
+  it("R831: 1024 dos veces → la segunda dice «Ya recogida en tienda», la action se llama una vez y suma a Repetidas", async () => {
     const user = userEvent.setup();
     renderModule({ porRecolectar: [makeOrden({ numGuia: 1024 })] });
 
@@ -714,9 +714,9 @@ describe("RecoleccionModule — escaneo continuo (SLT-168: R595, R597, R598, R83
 
     await waitFor(() => {
       expect(filas()).toHaveLength(2);
-      expect(within(filas()[1]).getByText("Recolectada")).toBeInTheDocument();
+      expect(within(filas()[1]).getByText("Recogida en tienda")).toBeInTheDocument();
     });
-    expect(within(filas()[0]).getByText("Ya recolectada")).toBeInTheDocument();
+    expect(within(filas()[0]).getByText("Ya recogida en tienda")).toBeInTheDocument();
     expect(recolectarMock).toHaveBeenCalledTimes(1);
     expect(contador("Repetidas")).toBe("Repetidas1");
   });
@@ -748,9 +748,9 @@ describe("RecoleccionModule — escaneo continuo (SLT-168: R595, R597, R598, R83
     await teclear(user, "1001", "5001", "7777777");
 
     await waitFor(() => expect(recolectarMock).toHaveBeenCalledTimes(3));
-    await lecturaQueDice("Recolectada");
+    await lecturaQueDice("Recogida en tienda");
     expect(within(filas()[2]).getByText(/^Ana Quesada Mora · Tienda Prueba Norte · /)).toBeInTheDocument();
-    expect(within(filas()[1]).getByText("Ya recolectada")).toBeInTheDocument();
+    expect(within(filas()[1]).getByText("Ya recogida en tienda")).toBeInTheDocument();
     expect(within(filas()[1]).getByText(/^Beto Ruiz · Tienda Prueba Sur · /)).toBeInTheDocument();
     expect(within(filas()[0]).getByText(/^— · — · /)).toBeInTheDocument();
   });
@@ -761,7 +761,7 @@ describe("RecoleccionModule — escaneo continuo (SLT-168: R595, R597, R598, R83
 
     await abrirEscaner(user);
     await teclear(user, "1001");
-    await lecturaQueDice("Recolectada");
+    await lecturaQueDice("Recogida en tienda");
 
     expect(escaner()).toBeInTheDocument();
     expect(screen.getByRole("dialog")).toHaveTextContent("Recolectar en tienda");
@@ -1222,7 +1222,7 @@ describe("SLT-156 rebanada C — Recolección en el móvil (R500, R506, R516, R5
     await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
 
     await waitFor(() => expect(recolectarMock).toHaveBeenCalledWith({ numGuia: 2001 }));
-    const fila = await lecturaQueDice("Recolectada");
+    const fila = await lecturaQueDice("Recogida en tienda");
     expect(within(fila).getByText(/^Ana Gómez · Tienda Norte · /)).toBeInTheDocument();
     await cerrarEscaner(user);
     await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));

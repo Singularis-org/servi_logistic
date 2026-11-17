@@ -37,7 +37,7 @@ import {
  *      ni el documento ni ningún dato se sale; ninguna tarjeta recorta con «…», en Mosaico ni en
  *      Detalle (fila desplegada: dirección entera); el importe, en una línea.
  *  (b) Recolección a 360 y 414 px, igual de larga: el escáner recolecta (R522) dos guías seguidas con
- *      Enter sin cerrar el diálogo (SLT-168, R595: dos filas «Recolectada») y, al cerrar, las órdenes
+ *      Enter sin cerrar el diálogo (SLT-168, R595: dos filas «Recogida en tienda») y, al cerrar, las órdenes
  *      pasan a «Recogidos en tienda hoy»; orden escáner → barra → «Por recolectar en
  *      tienda» → «Recogidos en tienda hoy»; sin desborde ni «…» en las dos listas, en Mosaico y en
  *      Detalle; importes en una línea; la búsqueda filtra las DOS listas (R520) y la que se queda sin
@@ -245,7 +245,7 @@ test.describe("SLT-164 — Recoger en bodega y Recolección en el móvil", () =>
       await expect(seccionPor.getByText("4 paquetes por recolectar en tienda.")).toBeVisible();
 
       // R522: el escáner recolecta con el mismo resultado. SLT-168 (R595, R596, R833): dos guías
-      // seguidas con Enter, el diálogo sigue abierto con su título y cada una es una fila «Recolectada».
+      // seguidas con Enter, el diálogo sigue abierto con su título y cada una es una fila «Recogida en tienda».
       const escaner = page.getByRole("button", { name: "Escanear o escribir guía" });
       await tactil(escaner);
       await escaner.click();
@@ -262,7 +262,7 @@ test.describe("SLT-164 — Recoger en bodega y Recolección en el móvil", () =>
           lecturas
             .getByRole("listitem")
             .filter({ hasText: String(orden.numGuia) })
-            .getByText("Recolectada", { exact: true }),
+            .getByText("Recogida en tienda", { exact: true }),
         ).toBeVisible();
       }
       await expect(dialogo).toBeVisible();

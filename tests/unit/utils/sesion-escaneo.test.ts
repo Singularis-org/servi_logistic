@@ -148,9 +148,9 @@ describe("sesion-escaneo — textos de M1 y M2 (R596, R597, R830, R831)", () => 
     expect(textoEstado({ tipo: "codigo_invalido" }, TEXTOS_RECOGIDA)).toBe("Código inválido");
   });
 
-  it("R596: éxito, ya recolectada, no encontrada y no se pudo con el verbo de M2", () => {
-    expect(textoEstado({ tipo: "recibida" }, TEXTOS_RECOLECCION)).toBe("Recolectada");
-    expect(textoEstado({ tipo: "ya_recibida" }, TEXTOS_RECOLECCION)).toBe("Ya recolectada");
+  it("R596: éxito, ya recogida en tienda, no encontrada y no se pudo con el verbo de M2", () => {
+    expect(textoEstado({ tipo: "recibida" }, TEXTOS_RECOLECCION)).toBe("Recogida en tienda");
+    expect(textoEstado({ tipo: "ya_recibida" }, TEXTOS_RECOLECCION)).toBe("Ya recogida en tienda");
     expect(textoEstado({ tipo: "no_encontrada" }, TEXTOS_RECOLECCION)).toBe(
       "No está entre tus órdenes",
     );
@@ -159,15 +159,15 @@ describe("sesion-escaneo — textos de M1 y M2 (R596, R597, R830, R831)", () => 
     );
   });
 
-  it("R831: la relectura en la sesión dice «Ya recogida» en M1 y «Ya recolectada» en M2", () => {
+  it("R831: la relectura en la sesión dice «Ya recogida» en M1 y «Ya recogida en tienda» en M2", () => {
     const repetida = { tipo: "repetida_en_sesion" } as const;
     expect(textoEstado(repetida, TEXTOS_RECOGIDA)).toBe("Ya recogida");
-    expect(textoEstado(repetida, TEXTOS_RECOLECCION)).toBe("Ya recolectada");
+    expect(textoEstado(repetida, TEXTOS_RECOLECCION)).toBe("Ya recogida en tienda");
   });
 
-  it("R597: rótulo del primer contador «Recogidas» / «Recolectadas»", () => {
+  it("R597: rótulo del primer contador «Recogidas» / «Recogidas en tienda»", () => {
     expect(TEXTOS_RECOGIDA.contadorExitos).toBe("Recogidas");
-    expect(TEXTOS_RECOLECCION.contadorExitos).toBe("Recolectadas");
+    expect(TEXTOS_RECOLECCION.contadorExitos).toBe("Recogidas en tienda");
   });
 
   it("R597: «No se pudo recolectar» y «Código inválido» no suman; la relectura suma a Repetidas", () => {

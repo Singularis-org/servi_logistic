@@ -48,7 +48,7 @@ Sin rutas, Server Actions ni cambios de servidor.
 | Superficie | Acción | Respuesta → desenlace (fila) |
 | --- | --- | --- |
 | M1 `/mis-asignaciones/recoger` | `recogerAsignaciones({ ordenIds: [orden.id] })`, tras resolver `numGuia` → orden en `porRecoger` o en la relectura `listarMisAsignaciones` (SLT-69) | `ok` → `recibida` + `resumen` de la orden («Recogida»); guía ausente tras la relectura → `no_encontrada` («No está entre tus órdenes»); `orden.esParaManana` → `no_se_pudo` con `avisoReservaParaOtroDia` **sin llamar** (R599); `conflict` → `no_se_pudo` (reserva o «La orden ya no está en «…»…»); `forbidden`, `unauthenticated`, `validation_error`, `error`, relectura fallida → `no_se_pudo` con el texto de hoy. |
-| M2 `/recoleccion` | `recolectarEnTiendaPorQr({ numGuia })` | `ok` → `recibida` + `resumen` si la guía está en las listas cargadas («Recolectada»); `ya_recolectada` → `ya_recibida` + `resumen` ídem («Ya recolectada»); `no_encontrada` → `no_encontrada`; `estado_invalido`, `conflict`, `forbidden`, `unauthenticated`, `validation_error` → `no_se_pudo` con el texto de hoy. |
+| M2 `/recoleccion` | `recolectarEnTiendaPorQr({ numGuia })` | `ok` → `recibida` + `resumen` si la guía está en las listas cargadas («Recogida en tienda»); `ya_recolectada` → `ya_recibida` + `resumen` ídem («Ya recogida en tienda»); `no_encontrada` → `no_encontrada`; `estado_invalido`, `conflict`, `forbidden`, `unauthenticated`, `validation_error` → `no_se_pudo` con el texto de hoy. |
 
 ### Contratos internos (cliente)
 
@@ -56,12 +56,12 @@ Sin rutas, Server Actions ni cambios de servidor.
 // lib/utils/sesion-escaneo.ts — los textos de cada superficie (R596, R597, R830, R831, R834).
 export interface TextosSesion {
   enCurso: string;        // «Recibiendo…» | «Recogiendo…» | «Recolectando…»
-  exito: string;          // «Recibida» | «Recogida» | «Recolectada»
-  yaHecha: string;        // `ya_recibida` del servidor: «Ya recibida» | «Ya recogida» | «Ya recolectada»
+  exito: string;          // «Recibida» | «Recogida» | «Recogida en tienda»
+  yaHecha: string;        // `ya_recibida` del servidor: «Ya recibida» | «Ya recogida» | «Ya recogida en tienda»
   repetida: string;       // `repetida_en_sesion` (R585/R831): igual que `yaHecha` en las tres
   noEncontrada: string;   // «No encontrada» | «No está entre tus órdenes»
   noSePudo: string;       // «No se pudo recibir» | «No se pudo recoger» | «No se pudo recolectar»
-  contadorExitos: string; // «Recibidas» | «Recogidas» | «Recolectadas»
+  contadorExitos: string; // «Recibidas» | «Recogidas» | «Recogidas en tienda»
 }
 export const TEXTOS_RECEPCION: TextosSesion;  // los literales de hoy; es el valor por defecto
 export const TEXTOS_RECOGIDA: TextosSesion;

@@ -81,17 +81,20 @@ DC7 → este spec (R595-R599 con su numeración).
   R587-R591 y R593), con la acción de hoy de cada uno; la cámara del teléfono DEBE seguir abierta
   entre lecturas.
 - **R596** — CUANDO responde la acción de M1 o M2, la fila DEBE pasar a: «Recogida» (M1, éxito),
-  «Recolectada» (M2, éxito), «Ya recolectada» (M2, ya recolectada), «No está entre tus órdenes» (la
+  «Recogida en tienda» (M2, éxito), «Ya recogida en tienda» (M2, ya recolectada), «No está entre tus órdenes» (la
   guía no está en su lista ni tras la relectura de SLT-69 «Escáner rechaza guías asignadas después
   de abrir la pantalla»), o «No se pudo recoger» / «No se pudo recolectar» seguido del motivo que
   hoy muestra el toast de esa respuesta, con «Reintentar» (44 px). Textos propuestos por el leader
-  (2026-11-14), en «tú», con el patrón del canvas («Recibida» / «Ya recibida»).
+  (2026-11-14), en «tú», con el patrón del canvas («Recibida» / «Ya recibida»). Carlos (2026-11-17):
+  en M2 no se usan «Recolectada»/«Recolectadas», nombres de estado retirados por la 455; se dice
+  «Recogida en tienda» / «Ya recogida en tienda».
 - **R597** — Los contadores de M1 y M2 DEBEN seguir la regla de R586 con el verbo de la superficie:
-  «Recogidas» (M1) o «Recolectadas» (M2), «Repetidas» (filas «Ya recolectada» y relecturas de la
+  «Recogidas» (M1) o «Recogidas en tienda» (M2), «Repetidas» (filas «Ya recogida en tienda» y relecturas de la
   sesión) y «No encontradas» (filas «No está entre tus órdenes»); «No se pudo recoger» / «No se pudo
-  recolectar» y «Código inválido» no suman (DC6). Textos propuestos por el leader (2026-11-14).
+  recolectar» y «Código inválido» no suman (DC6). Textos propuestos por el leader (2026-11-14); el de
+  M2, «Recogidas en tienda», por Carlos (2026-11-17, nombres retirados de la 455).
 - **R598** — CUANDO se cierra el modal de M1 o M2 después de al menos un éxito (o una «Ya
-  recolectada»), la lista de órdenes de la pantalla DEBE refrescarse una vez; si no hubo ninguno, NO
+  recogida en tienda»), la lista de órdenes de la pantalla DEBE refrescarse una vez; si no hubo ninguno, NO
   DEBE refrescarse. La relectura de SLT-69 ante una guía que no está en la lista cargada DEBE seguir
   ocurriendo en cada lectura que la necesite.
 - **R599** — SI la orden leída en M1 está reservada para otro día, ENTONCES su fila DEBE quedar en
@@ -101,16 +104,18 @@ DC7 → este spec (R595-R599 con su numeración).
 
 - **R830** — MIENTRAS la acción de una lectura de M1 o M2 no ha respondido (también si espera en la
   cola detrás de otra), su fila DEBE mostrar «Recogiendo…» (M1) o «Recolectando…» (M2) en lugar del
-  «Recibiendo…» de R582. (Texto propuesto por el spec_author, mismo patrón que R596.)
+  «Recibiendo…» de R582. (Texto propuesto por el spec_author, mismo patrón que R596. Carlos,
+  2026-11-17: «Recolectando…» se queda porque la guardia de nombres retirados de la 455 no lo marca.)
 - **R831** — SI la guía leída ya está en la lista de la sesión como en curso, éxito o repetida
-  (R585), ENTONCES su fila nueva DEBE decir «Ya recogida» en M1 y «Ya recolectada» en M2, la acción NO
+  (R585), ENTONCES su fila nueva DEBE decir «Ya recogida» en M1 y «Ya recogida en tienda» en M2, la acción NO
   DEBE llamarse y la fila DEBE sumar a «Repetidas» (R597). (Texto de M1 propuesto por el spec_author:
-  R596 no lo nombra porque el servidor de M1 no tiene un «ya recogida».)
+  R596 no lo nombra porque el servidor de M1 no tiene un «ya recogida». El de M2, «Ya recogida en
+  tienda», por Carlos el 2026-11-17: «Ya recolectada» nombra un estado retirado por la 455.)
 - **R832** — En M1 y M2, «Destinatario» y «Tienda» de la fila (R581) DEBEN salir de la orden que la
   pantalla ya tiene para esa guía: en M1, la orden de «Por recoger» con la que se recogió (la de la
   lista cargada o la de la relectura de SLT-69); en M2, la orden de «Por recolectar en tienda» o de
   «Recogidos en tienda hoy» cargadas con ese `numGuia`. SI la guía no está en ninguna, ENTONCES DEBEN
-  mostrar «—». En cualquier estado que no sea éxito, «Ya recolectada» o repetida (R831), DEBEN mostrar
+  mostrar «—». En cualquier estado que no sea éxito, «Ya recogida en tienda» o repetida (R831), DEBEN mostrar
   «—».
 - **R833** — MIENTRAS el diálogo de M1 o M2 está en escaneo continuo, DEBE conservar su título, su
   nombre accesible y su botón de hoy («Recoger paquete», «Recoger por número de guía o escaneo»,
@@ -129,13 +134,13 @@ en los tests de componente (sin servidor nuevo); el E2E ejercita las acciones re
 
 | R | Test |
 | --- | --- |
-| R595 | `tests/components/RecogerPaqueteCard.test.tsx` y `tests/components/RecoleccionModule.test.tsx` — tres lecturas seguidas (cámara doble y Enter) sin cerrar: la acción doble se llama tres veces en orden, `stop()` no se llamó, sin toast por lectura (`success`, `info` y `error` del doble sin llamar), y una guía repetida no se reenvía. `e2e/pwa-mensajero-recoger-recoleccion.spec.ts` (b) — dos guías sembradas tecleadas con Enter seguidas en el diálogo de Recolección: dos filas «Recolectada» y el diálogo sigue abierto. |
-| R596 | `tests/components/RecogerPaqueteCard.test.tsx` — éxito → «Recogida»; guía `7777777` ausente tras la relectura doble → «No está entre tus órdenes»; `forbidden` → «No se pudo recoger» + «No tienes permiso para recoger esta orden.» + botón «Reintentar» que vuelve a llamar a la acción sin añadir fila. `tests/components/RecoleccionModule.test.tsx` — éxito → «Recolectada»; `ya_recolectada` → «Ya recolectada»; `no_encontrada` → «No está entre tus órdenes»; `forbidden` → «No se pudo recolectar» + «No tienes permiso para recolectar órdenes.». `tests/components/useRecogerPorGuia.test.tsx` — cada `status` de `recogerAsignaciones` → su desenlace con el motivo de hoy. `e2e/mis-asignaciones.spec.ts` — tras recoger por el diálogo, la fila dice «Recogida». |
-| R597 | `tests/unit/utils/sesion-escaneo.test.ts` — con los textos de M1: rótulos «Recogidas», «Repetidas», «No encontradas»; con los de M2: «Recolectadas»; una fila «No se pudo recolectar» no suma. `tests/components/RecoleccionModule.test.tsx` — `ok`, `ya_recolectada` y `no_encontrada`: «Recolectadas» 1, «Repetidas» 1, «No encontradas» 1. |
+| R595 | `tests/components/RecogerPaqueteCard.test.tsx` y `tests/components/RecoleccionModule.test.tsx` — tres lecturas seguidas (cámara doble y Enter) sin cerrar: la acción doble se llama tres veces en orden, `stop()` no se llamó, sin toast por lectura (`success`, `info` y `error` del doble sin llamar), y una guía repetida no se reenvía. `e2e/pwa-mensajero-recoger-recoleccion.spec.ts` (b) — dos guías sembradas tecleadas con Enter seguidas en el diálogo de Recolección: dos filas «Recogida en tienda» y el diálogo sigue abierto. |
+| R596 | `tests/components/RecogerPaqueteCard.test.tsx` — éxito → «Recogida»; guía `7777777` ausente tras la relectura doble → «No está entre tus órdenes»; `forbidden` → «No se pudo recoger» + «No tienes permiso para recoger esta orden.» + botón «Reintentar» que vuelve a llamar a la acción sin añadir fila. `tests/components/RecoleccionModule.test.tsx` — éxito → «Recogida en tienda»; `ya_recolectada` → «Ya recogida en tienda»; `no_encontrada` → «No está entre tus órdenes»; `forbidden` → «No se pudo recolectar» + «No tienes permiso para recolectar órdenes.». `tests/components/useRecogerPorGuia.test.tsx` — cada `status` de `recogerAsignaciones` → su desenlace con el motivo de hoy. `e2e/mis-asignaciones.spec.ts` — tras recoger por el diálogo, la fila dice «Recogida». |
+| R597 | `tests/unit/utils/sesion-escaneo.test.ts` — con los textos de M1: rótulos «Recogidas», «Repetidas», «No encontradas»; con los de M2: «Recogidas en tienda»; una fila «No se pudo recolectar» no suma. `tests/components/RecoleccionModule.test.tsx` — `ok`, `ya_recolectada` y `no_encontrada`: «Recogidas en tienda» 1, «Repetidas» 1, «No encontradas» 1. |
 | R598 | `tests/components/RecogerModule.test.tsx` — dos éxitos y cerrar: el refresco de la lista se llama una vez y ninguna antes de cerrar; solo errores: cero. `tests/components/RecoleccionModule.test.tsx` — ídem con `router.refresh` (un `ya_recolectada` solo también refresca una vez). `tests/components/RecogerPaqueteCard.test.tsx` — dos guías fuera de la lista cargada: `listarMisAsignaciones` (doble) se llama dos veces. |
 | R599 | `tests/components/RecogerPaqueteCard.test.tsx` — orden con `esParaManana`: fila «No se pudo recoger» con el aviso de `avisoReservaParaOtroDia` (texto literal a mano) y `recogerAsignaciones` no llamada. |
 | R830 | `tests/components/RecogerPaqueteCard.test.tsx` — con la acción de `1024` pendiente, la fila dice «Recogiendo…». `tests/components/RecoleccionModule.test.tsx` — ídem «Recolectando…». `tests/unit/utils/sesion-escaneo.test.ts` — `textoEstado` de `recibiendo` con los textos de M1 y de M2. |
-| R831 | `tests/components/RecogerPaqueteCard.test.tsx` — `1024`, `1024`: segunda fila «Ya recogida», `recogerAsignaciones` llamada una vez, «Repetidas» 1. `tests/components/RecoleccionModule.test.tsx` — ídem «Ya recolectada», `recolectarEnTiendaPorQr` llamada una vez. |
+| R831 | `tests/components/RecogerPaqueteCard.test.tsx` — `1024`, `1024`: segunda fila «Ya recogida», `recogerAsignaciones` llamada una vez, «Repetidas» 1. `tests/components/RecoleccionModule.test.tsx` — ídem «Ya recogida en tienda», `recolectarEnTiendaPorQr` llamada una vez. |
 | R832 | `tests/components/RecogerPaqueteCard.test.tsx` — orden cargada con destinatario «Ana Quesada Mora» y tienda «Tienda Prueba Norte»: la fila «Recogida» muestra los dos; orden que llega por la relectura con «Beto Ruiz» / «Tienda Prueba Sur»: muestra esos; «No está entre tus órdenes»: «—» en los dos. `tests/components/RecoleccionModule.test.tsx` — guía de «Por recolectar» con `ok`: sus dos datos; guía de «Recogidos en tienda hoy» con `ya_recolectada`: sus dos datos; `ok` de una guía que no está en ninguna lista: «—». |
 | R833 | `tests/components/RecogerPaqueteCard.test.tsx` — tras un éxito: `getByRole("region", { name: "Recoger por número de guía o escaneo" })`, el título «Recoger paquete» y el botón «Recoger»; `queryByText(/recogida correctamente/)` es `null`; un solo botón «Escanear o escribir guía». `tests/components/RecoleccionModule.test.tsx` — ídem con «Recolectar en tienda», «Confirmar recolección» y `/recolectada correctamente/`. `e2e/pwa-mensajero-recoger-recoleccion.spec.ts` (b) — el diálogo sigue mostrando «Recolectar en tienda». |
 | R834 | `tests/components/EscaneoContinuo.test.tsx` y `tests/unit/utils/sesion-escaneo.test.ts` — sus casos de SLT-159 («Recibiendo…», «Recibida», «Recibidas»…) siguen en verde **sin tocarlos**; un caso nuevo: `TarjetaEscaneoContinuo` sin `textos` pinta «Recibidas». |
