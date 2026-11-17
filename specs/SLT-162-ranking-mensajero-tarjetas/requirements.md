@@ -258,19 +258,26 @@ Orden: T1 → (T2 ∥ T3) → T4 → T5 → T6. `[P]` = paralelizable con su her
 
 | R | Test |
 |---|---|
-| R750, R751 | `tests/components/RankingModule.test.tsx` |
-| R752, R753, R754 | `tests/components/RankingModule.test.tsx`; R753 también `e2e/pwa-mensajero-ranking.spec.ts` |
-| R755, R756, R757 | `tests/components/RankingHistoricoModule.test.tsx`; R757 (44 px) también el E2E |
-| R758 | `tests/unit/guards/pwa-mensajero-sin-recorte.guardia.test.ts` + `e2e/pwa-mensajero-ranking.spec.ts` (`sinElipsis`) |
-| R759 | `e2e/pwa-mensajero-ranking.spec.ts` (`sinSolapes`) |
-| R760 | `tests/components/RankingHistoricoModule.test.tsx` (estado y nombre) + E2E (`tactil`) |
-| R761 | `e2e/pwa-mensajero-ranking.spec.ts` (`sinDesborde`) |
-| R762 | `tests/components/descarga/RankingDescarga.test.tsx` (sin término y con término), `tests/components/descarga/RankingHistoricoDescarga.test.tsx` |
-| R769 | `tests/components/RankingModule.test.tsx` + E2E (`tactil` del campo) |
-| R763, R764 | `tests/components/RankingModule.test.tsx`, `tests/components/RankingHistoricoModule.test.tsx` (orden por `compareDocumentPosition`) |
-| R765 | `tests/unit/guards/pwa-mensajero-sin-recorte.guardia.test.ts` |
-| R766 | tests de componente (orden respecto a la lista) + E2E (`tactil` y ancho) |
-| R767, R768 | `tests/components/RankingPodio.test.tsx` + E2E (`sinSolapes` en la fila, tamaño de letra calculado) |
+| R750 | `RankingModule.test.tsx` › «R750: cada fila es una tarjeta…», «R750: el chip «Tú» va SOLO en la tarjeta del mensajero que mira», «R750: maestro/admin … no ven ningún chip «Tú»» |
+| R751 | `RankingModule.test.tsx` › «R751: las cuatro columnas de hoy, en su orden, y sin tarjeta» |
+| R752 | `RankingModule.test.tsx` › «R752: la cabecera queda solo para lector…», «R752: arriba «{n}º · {ocupante}»…», «R752: sin ocupante, sin descripción y sin monto…» |
+| R753 | `RankingModule.test.tsx` › «R753 (DC24): el editable muestra monto, descripción y «Guardar» a 44 px…»; E2E (b) `tactil` de campos y «Guardar» |
+| R754 | `RankingModule.test.tsx` › «R754: las columnas de hoy, con «Acciones» solo si es editable» |
+| R755 | `RankingHistoricoModule.test.tsx` › «R755: tarjeta «{posición}º · {nombre}»…», «R755/R760: «Ver detalle» despliega…», «R755/R760: el desplegar va a la derecha…»; E2E (c) |
+| R756 | `RankingHistoricoModule.test.tsx` › «R756: las siete columnas de hoy, en su orden, sin desplegar» |
+| R757 | `RankingHistoricoModule.test.tsx` › «a %i px: una sola barra, sin búsqueda, con la fecha dentro y siempre visible» (360 y 1280), «en el teléfono el campo de fecha ocupa el ancho y mide 44 px», «elegir una fecha navega…»; E2E (c) `tactil` y ancho |
+| R758 | `pwa-mensajero-sin-recorte.guardia.test.ts` (4 archivos nuevos + contraprueba SLT-162); `RankingModule.test.tsx` › «R758/R759…»; `RankingHistoricoModule.test.tsx` › «R758/R759…»; `RankingPodio.test.tsx` › «R758: los nombres de los escalones envuelven»; E2E `sinElipsis` |
+| R759 | `RankingModule.test.tsx` / `RankingHistoricoModule.test.tsx` › «R758/R759…» (clases de columna fija); E2E `sinSolapes` en tarjetas y fila del resto |
+| R760 | `RankingHistoricoModule.test.tsx` › «R755/R760: «Ver detalle» despliega… pasa a «Ocultar detalle»», «…mide 44 × 44 px»; E2E (c) `tactil` |
+| R761 | E2E `sinDesborde` en (a), (b) y (c) |
+| R762 | `RankingDescarga.test.tsx` › «a 360 px entrega las mismas columnas y filas que a 1280», «a %i px, con un término, entrega solo las filas que la lista muestra», «la pantalla sigue con UNA tabla…»; `RankingHistoricoDescarga.test.tsx` › «a 360 px entrega las mismas columnas y filas que a 1280», «sigue habiendo UNA tabla…» |
+| R763 | `RankingModule.test.tsx` › «R763: sin mensajeros, el vacío de hoy con su texto»; `RankingHistoricoModule.test.tsx` › «R763: los dos vacíos de hoy…» |
+| R764 | `RankingModule.test.tsx` › «R764: las tarjetas salen en el orden del servidor», «R764: las tarjetas de premios van por posición 1-3…»; `RankingHistoricoModule.test.tsx` › «R764: las tarjetas en el orden en que llegaron» |
+| R765 | `pwa-mensajero-sin-recorte.guardia.test.ts` (regla `escala` en los 4 archivos + contraprueba SLT-162) |
+| R766 | `RankingModule.test.tsx` / `RankingHistoricoModule.test.tsx` › «R766: «Descargar» a todo el ancho y 44 px…»; E2E `descargaAnchaEncima` |
+| R767 | `RankingPodio.test.tsx` › «lugar, nombre con «Tú» al lado, conteo y porcentaje…», «el nombre envuelve; el conteo…»; E2E `sinSolapes` en la fila propia |
+| R768 | `RankingPodio.test.tsx` › «R768: todo texto de 10-11 px … sube a 12 px», «R768: la fila anclada «fuera del top» también…»; E2E `letraMinima` ≥ 12 |
+| R769 | `RankingModule.test.tsx` › «una sola barra de búsqueda a %i px…», «filtra sin mayúsculas ni acentos…», «sin coincidencias avisa «sin resultados»…», «no filtra «Premios del podio» ni el podio, y no pide nada al servidor»; E2E `tactil` del campo |
 
 ## Archivos esperados
 
