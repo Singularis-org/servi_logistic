@@ -22,6 +22,7 @@ import type {
   PaginaDeLineas,
 } from "@/lib/types/factura-plataforma";
 
+import { DescargarFactura, type DescargarFacturaFn } from "./DescargarFactura";
 import {
   FACTURAS_TEXTOS,
   diasVisibles,
@@ -35,7 +36,10 @@ import {
 
 // SLT-119 (design §6.1; R6–R11, R16, R17) — el detalle de una factura en un panel lateral de la misma pantalla
 // (P4), sin ruta nueva. Lo pide al abrirse y al paginar con la función que le pasa la pantalla: la action del
-// maestro o la del superadmin ligada a su empresa. Solo lectura: los únicos botones son cerrar y paginar (R16).
+// maestro o la del superadmin ligada a su empresa.
+// SLT-136 (design §6; R19, R20): una factura cerrada lleva además «Descargar PDF» y «Descargar Excel» bajo la
+// cabecera. Sigue siendo de solo lectura: las descargas leen y arman el archivo en el navegador, no escriben nada;
+// los demás botones son cerrar y paginar (SLT-119 R16).
 
 /** La lectura del detalle: la action de «Mi plan» o la del detalle de empresa, ya ligada. */
 export type CargarDetalleFactura = (input: { facturaId: string; pagina: number }) => Promise<DetalleFacturaResult>;
@@ -45,11 +49,13 @@ export interface DetalleDeFacturaProps {
   readonly factura: FacturaPlataformaDTO | null;
   readonly onCerrar: () => void;
   readonly cargarDetalle: CargarDetalleFactura;
+  /** SLT-136 (R19): la lectura de la descarga; solo se ofrece en una factura cerrada. */
+  readonly descargar: DescargarFacturaFn;
 }
 
 const T = FACTURAS_TEXTOS.detalle;
 
-export function DetalleDeFactura({ factura, onCerrar, cargarDetalle }: DetalleDeFacturaProps) {
+export function DetalleDeFactura({ factura, onCerrar, cargarDetalle, descargar }: DetalleDeFacturaProps) {
   return (
     <Sheet open={factura !== null} onOpenChange={(abierto) => !abierto && onCerrar()}>
       {factura !== null && (
@@ -60,6 +66,12 @@ export function DetalleDeFactura({ factura, onCerrar, cargarDetalle }: DetalleDe
             </SheetTitle>
             <SheetDescription>{FACTURAS_TEXTOS.descripcionDetalle}</SheetDescription>
           </SheetHeader>
+          {/* R19: solo una cerrada se descarga; `key`: otra factura empieza sin el error de la anterior. */}
+          {!esNoCerrada(factura) && (
+            <div className="px-4">
+              <DescargarFactura key={factura.id} facturaId={factura.id} descargar={descargar} />
+            </div>
+          )}
           {/* `key`: otra factura empieza en la página 1 y sin la respuesta de la anterior. */}
           <CuerpoDelDetalle key={factura.id} facturaId={factura.id} cargarDetalle={cargarDetalle} />
         </SheetContent>

@@ -52,7 +52,6 @@ export async function verDetalleFacturaEmpresaAction(
 
 /**
  * SLT-136 (R1, R3–R5): el maestro pide `{ facturaId }` de una factura cerrada de su empresa.
- * @sin-superficie SLT-136 tanda 1 (backend): el botón «Descargar PDF/Excel» de «Mi plan» lo monta la T4.2; al cablearlo, la guardia exige quitar esta anotación.
  */
 export async function descargarFacturaMiPlanAction(
   input: unknown,
@@ -64,7 +63,6 @@ export async function descargarFacturaMiPlanAction(
 /**
  * SLT-136 (R2–R5): el superadmin pide `{ facturaId }` de una factura cerrada de la empresa `organizacionId`, que
  * la página liga en el servidor. Un `organizacionId` en `input` no cuenta: manda el ligado.
- * @sin-superficie SLT-136 tanda 1 (backend): los botones de la pestaña «Facturación» los monta la T4.2; al cablearlos, la guardia exige quitar esta anotación.
  */
 export async function descargarFacturaEmpresaAction(
   organizacionId: string,

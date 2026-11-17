@@ -52,10 +52,10 @@
 
 ## Tanda 4 — Botones en las dos pantallas (frontend)
 
-- [ ] **T4.1** `components/shared/facturas/DescargarFactura.tsx`, más los textos en `facturas-vista.ts` (§6). Depende
+- [x] **T4.1** `components/shared/facturas/DescargarFactura.tsx`, más los textos en `facturas-vista.ts` (§6). Depende
   de T2.4 y T3.1.
   *Hecho:* `tests/components/DescargarFactura.test.tsx` en verde (R14, R15, R20).
-- [ ] **T4.2** Cablear `descargar` en las pantallas. Depende de T1.3 y T4.1.
+- [x] **T4.2** Cablear `descargar` en las pantallas. Depende de T1.3 y T4.1.
   - `DetalleDeFactura.tsx`: los botones solo en una cerrada; se actualiza el comentario de la línea 38.
   - `FacturasDeLaEmpresa.tsx`.
   - `app/(app)/mi-plan/page.tsx` y `MiPlanModule.tsx`.
