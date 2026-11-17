@@ -24,6 +24,8 @@ import type {
   VistaPreviaCustomResult,
 } from "@/lib/types/planes";
 
+import { avanzarHasta, tituloDelPasoActual } from "./plan-form-pasos";
+
 const SIN_PLAN = "6f1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f60";
 const CON_PLAN = "7a1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f61";
 const EMPRESAS: EmpresaParaCustom[] = [
@@ -82,11 +84,17 @@ async function custom(user: Usuario, empresa: string) {
   await user.click(within(await screen.findByRole("listbox")).getByRole("option", { name: empresa }));
 }
 
+/** SLT-130: el costo base en «Precio y descuentos» y el costo por orden en su paso. */
 async function conCosto(user: Usuario) {
+  await avanzarHasta(user, "Precio y descuentos");
   await user.click(screen.getByRole("radio", { name: "Con monto" }));
   await user.type(screen.getByLabelText("Costo base mensual"), "50000");
+  await avanzarHasta(user, "Cobro por orden");
   await user.type(screen.getByLabelText("Costo por orden"), "100");
 }
+
+/** SLT-130 (R24): el botón final está en el último paso. */
+const aRevisar = (user: Usuario) => avanzarHasta(user, "Revisar y crear");
 
 describe("Ajuste planes-custom D13 — vista previa de topes en el form del custom", () => {
   it("D13: empresa sin plan y fecha → lee la vista previa con la empresa, la fecha y los topes del form", async () => {
@@ -98,6 +106,7 @@ describe("Ajuste planes-custom D13 — vista previa de topes en el form del cust
       expect(previsualizar).toHaveBeenLastCalledWith({ organizacionId: SIN_PLAN, inicioCiclo: MANANA, topes: SIN_TOPES }),
     );
 
+    await avanzarHasta(user, "Topes");
     await user.type(screen.getByLabelText("API keys activas"), "2");
     await waitFor(() =>
       expect(previsualizar).toHaveBeenLastCalledWith({
@@ -129,6 +138,8 @@ describe("Ajuste planes-custom D13 — vista previa de topes en el form del cust
     const user = userEvent.setup();
     montarForm(vi.fn<Previsualizar>().mockResolvedValue(PREVIA_CON_AVISOS));
     await custom(user, "Envíos Norte");
+    // SLT-130 (R27): la vista previa se pinta en el paso Topes.
+    await avanzarHasta(user, "Topes");
 
     expect(await screen.findByText(AVISO_MENSAJEROS)).toBeInTheDocument();
     // SLT-86 (R8): ningún aviso de órdenes.
@@ -140,6 +151,7 @@ describe("Ajuste planes-custom D13 — vista previa de topes en el form del cust
     const { previsualizar } = montarForm();
     await custom(user, "Envíos Norte");
     await waitFor(() => expect(previsualizar).toHaveBeenCalled());
+    await avanzarHasta(user, "Topes");
     expect(screen.queryByText(/ya lleva|ya tiene/)).toBeNull();
     expect(screen.queryByText("No se pudo comprobar el consumo de la empresa")).toBeNull();
   });
@@ -162,12 +174,14 @@ describe("Ajuste planes-custom D13 — vista previa de topes en el form del cust
       }),
     );
     await custom(user, "Envíos Norte");
+    await conCosto(user);
+    await avanzarHasta(user, "Topes");
 
     expect(await screen.findByText("No se pudo comprobar el consumo de la empresa")).toBeInTheDocument();
     expect(screen.getByText("Elige una fecha entre el 2026-09-29 y el 2026-11-29.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reintentar" })).toBeInTheDocument();
 
-    await conCosto(user);
+    await aRevisar(user);
     expect(screen.getByRole("button", { name: "Crear plan" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "Crear plan" }));
     expect(enviar).not.toHaveBeenCalled();
@@ -178,8 +192,10 @@ describe("Ajuste planes-custom D13 — vista previa de topes en el form del cust
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     montarForm(vi.fn<Previsualizar>().mockRejectedValue(new Error("red")));
     await custom(user, "Envíos Norte");
+    await avanzarHasta(user, "Topes");
     expect(await screen.findByText("No se pudo comprobar el consumo de la empresa")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reintentar" })).toBeInTheDocument();
+    await aRevisar(user);
     expect(screen.getByRole("button", { name: "Crear plan" })).toBeDisabled();
     error.mockRestore();
   });
@@ -194,14 +210,17 @@ describe("Ajuste planes-custom D13 — vista previa de topes en el form del cust
     const { enviar, onGuardado } = montarForm(previsualizar);
     await custom(user, "Envíos Norte");
     await conCosto(user);
+    await avanzarHasta(user, "Topes");
     await user.click(await screen.findByRole("button", { name: "Reintentar" }));
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "Crear plan" })).toBeEnabled());
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Reintentar" })).toBeNull());
     expect(previsualizar).toHaveBeenCalledTimes(2);
     expect(previsualizar).toHaveBeenLastCalledWith({ organizacionId: SIN_PLAN, inicioCiclo: MANANA, topes: SIN_TOPES });
     expect(screen.queryByText("No se pudo comprobar el consumo de la empresa")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Reintentar" })).toBeNull();
 
+    await aRevisar(user);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Crear plan" })).toBeEnabled());
+    expect(screen.queryByText("No se pudo comprobar el consumo de la empresa")).toBeNull();
     await user.click(screen.getByRole("button", { name: "Crear plan" }));
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
     expect(onGuardado).toHaveBeenCalledWith(OK, "Norte a medida");
@@ -220,12 +239,17 @@ describe("Ajuste planes-custom D13 — vista previa de topes en el form del cust
     await conCosto(user);
     await waitFor(() => expect(previsualizar).toHaveBeenCalledTimes(1));
     // Un tope nuevo abre la pausa; se guarda antes de que termine: la lectura se hace al guardar.
+    await avanzarHasta(user, "Topes");
     await user.type(screen.getByLabelText("API keys activas"), "2");
+    await aRevisar(user);
     await user.click(screen.getByRole("button", { name: "Crear plan" }));
 
-    expect(await screen.findByRole("button", { name: "Reintentar" })).toBeInTheDocument();
+    // SLT-130 (R28): en «Revisar», el motivo y el enlace a Topes, donde está «Reintentar».
+    expect(await screen.findByText("No se pudo comprobar el consumo de la empresa")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Crear plan" })).toBeDisabled();
     expect(enviar).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Ir a Topes" }));
+    expect(screen.getByRole("button", { name: "Reintentar" })).toBeInTheDocument();
     error.mockRestore();
   });
 
@@ -234,6 +258,7 @@ describe("Ajuste planes-custom D13 — vista previa de topes en el form del cust
     const { enviar, previsualizar } = montarForm();
     await custom(user, "Reparto Sur");
     await conCosto(user);
+    await aRevisar(user);
     expect(screen.getByRole("button", { name: "Crear plan" })).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "Crear plan" }));
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
@@ -241,6 +266,7 @@ describe("Ajuste planes-custom D13 — vista previa de topes en el form del cust
     cleanup();
     const publico = montarForm();
     await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Público");
+    await aRevisar(user);
     expect(screen.getByRole("button", { name: "Crear plan" })).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "Crear plan" }));
     await waitFor(() => expect(publico.enviar).toHaveBeenCalledTimes(1));
@@ -261,6 +287,7 @@ describe("Ajuste planes-custom D13 — vista previa de topes en el form del cust
     await custom(user, "Envíos Norte");
     await conCosto(user);
     await waitFor(() => expect(previsualizar).toHaveBeenCalled());
+    await aRevisar(user);
     expect(screen.getByRole("button", { name: "Crear plan" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "Crear plan" }));
     expect(enviar).not.toHaveBeenCalled();
@@ -270,6 +297,44 @@ describe("Ajuste planes-custom D13 — vista previa de topes en el form del cust
     await user.click(screen.getByRole("button", { name: "Crear plan" }));
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
     expect(onGuardado).toHaveBeenCalledWith(OK, "Norte a medida");
+  });
+
+  it("R28: botón final bloqueado con su motivo y enlace a Topes", async () => {
+    const user = userEvent.setup();
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    let fallar: (e: Error) => void = () => {};
+    const previsualizar = vi.fn<Previsualizar>().mockImplementation(
+      () =>
+        new Promise((_resolver, rechazar) => {
+          fallar = rechazar;
+        }),
+    );
+    const { enviar } = montarForm(previsualizar);
+    await custom(user, "Envíos Norte");
+    await waitFor(() => expect(previsualizar).toHaveBeenCalled());
+    await aRevisar(user);
+
+    // Cargando: el botón final espera, dice por qué (enlazado con aria-describedby) y ofrece ir a Topes.
+    const boton = screen.getByRole("button", { name: "Crear plan" });
+    expect(boton).toBeDisabled();
+    expect(boton).toHaveAccessibleDescription(expect.stringContaining("Comprobando el consumo de la empresa…"));
+    expect(screen.getByRole("button", { name: "Ir a Topes" })).toBeInTheDocument();
+
+    // Falló: el motivo cambia y el enlace sigue; lleva al paso Topes, donde está «Reintentar».
+    fallar(new Error("red"));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Crear plan" })).toHaveAccessibleDescription(
+        expect.stringContaining("No se pudo comprobar el consumo de la empresa"),
+      ),
+    );
+    expect(screen.getByRole("button", { name: "Crear plan" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+    expect(enviar).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Ir a Topes" }));
+    expect(tituloDelPasoActual()).toBe("Topes");
+    expect(screen.getByRole("button", { name: "Reintentar" })).toBeInTheDocument();
+    error.mockRestore();
   });
 });
 
@@ -295,6 +360,8 @@ describe("Ajuste planes-custom D12 — los avisos del `ok` al crear un custom co
     await user.click(screen.getByRole("button", { name: "Nuevo plan" }));
     await custom(user, "Envíos Norte");
     await conCosto(user);
+    await aRevisar(user);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Crear plan" })).toBeEnabled());
     await user.click(screen.getByRole("button", { name: "Crear plan" }));
 
     expect(await screen.findByRole("status")).toHaveTextContent("Plan «Norte a medida» creado.");
@@ -309,6 +376,8 @@ describe("Ajuste planes-custom D12 — los avisos del `ok` al crear un custom co
     await user.click(screen.getByRole("button", { name: "Nuevo plan" }));
     await custom(user, "Envíos Norte");
     await conCosto(user);
+    await aRevisar(user);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Crear plan" })).toBeEnabled());
     await user.click(screen.getByRole("button", { name: "Crear plan" }));
 
     expect(await screen.findByRole("status")).toHaveTextContent("Plan «Norte a medida» creado.");
