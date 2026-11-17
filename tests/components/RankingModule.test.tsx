@@ -412,9 +412,9 @@ describe("SLT-162 — búsqueda por nombre en Ranking del día (R769)", () => {
     },
   ];
 
-  /** Los nombres que la lista está pintando, en su orden (vale en los dos anchos). */
-  function nombresVisibles(): string[] {
-    return filasRanking().map((f) => f.textContent ?? "");
+  /** El encabezado «{posición} · {nombre}» de cada tarjeta que la lista está pintando, en su orden. */
+  function encabezados(): string[] {
+    return filasRanking().map((f) => f.querySelector('[data-columna="nombre"]')?.textContent ?? "");
   }
 
   it.each([360, 1280])("una sola barra de búsqueda a %i px, con el campo a 44 px en el teléfono", (ancho) => {
@@ -433,24 +433,21 @@ describe("SLT-162 — búsqueda por nombre en Ranking del día (R769)", () => {
     const campo = screen.getByRole("searchbox", { name: "Buscar mensajero" });
 
     await user.type(campo, "ANDRES");
-    await waitFor(() => expect(filasRanking()).toHaveLength(1));
-    expect(nombresVisibles()[0]).toContain("— · Andrés Núñez");
+    await waitFor(() => expect(encabezados()).toEqual(["— · Andrés Núñez"]));
 
     await user.clear(campo);
     await user.type(campo, "nuñez");
-    await waitFor(() => expect(filasRanking()).toHaveLength(1));
+    await waitFor(() => expect(encabezados()).toEqual(["— · Andrés Núñez"]));
 
     // «a» casa con Ana, Caro y Andrés: los tres, en el orden del servidor y con su posición.
     await user.clear(campo);
     await user.type(campo, "a");
-    await waitFor(() => expect(filasRanking()).toHaveLength(3));
-    const nombres = nombresVisibles();
-    expect(nombres[0]).toContain("1 · Ana");
-    expect(nombres[1]).toContain("— · Caro");
-    expect(nombres[2]).toContain("— · Andrés Núñez");
+    await waitFor(() => expect(encabezados()).toEqual(["1 · Ana", "— · Caro", "— · Andrés Núñez"]));
 
     await user.clear(campo);
-    await waitFor(() => expect(filasRanking()).toHaveLength(4));
+    await waitFor(() =>
+      expect(encabezados()).toEqual(["1 · Ana", "2 · Beto", "— · Caro", "— · Andrés Núñez"]),
+    );
   });
 
   it("sin coincidencias avisa «sin resultados», distinto del vacío del día", async () => {
@@ -474,7 +471,11 @@ describe("SLT-162 — búsqueda por nombre en Ranking del día (R769)", () => {
       </>,
     );
     await user.type(screen.getByRole("searchbox", { name: "Buscar mensajero" }), "Caro");
-    await waitFor(() => expect(filasRanking()).toHaveLength(1));
+    await waitFor(() =>
+      expect(filasRanking().map((f) => f.querySelector('[data-columna="nombre"]')?.textContent)).toEqual([
+        "— · Caro",
+      ]),
+    );
 
     // Premios: Beto sigue ocupando el 2º aunque la lista solo muestre a Caro.
     const filaPos2 = within(tablaPremios())

@@ -331,7 +331,11 @@ describe("SLT-162 — Ranking del día · descarga en el teléfono y con búsque
     montar();
     await user.type(screen.getByRole("searchbox", { name: "Buscar mensajero" }), "repartidor");
     const tabla = screen.getByRole("table", { name: "Ranking diario de mensajeros" });
-    await waitFor(() => expect(within(tabla).getAllByRole("row")).toHaveLength(2));
+    // Ancla de contenido: la única fila que queda es la de Beto (no basta contar filas).
+    await waitFor(() => {
+      const filas = within(tabla).getAllByRole("row").slice(1);
+      expect(filas.map((f) => (f.textContent ?? "").includes("Beto Repartidor"))).toEqual([true]);
+    });
 
     await user.click(screen.getByRole("button", { name: `Descargar ${TITULO}` }));
     await waitFor(() => expect(buildXlsxRowsMock).toHaveBeenCalledTimes(1));
