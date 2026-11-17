@@ -759,6 +759,7 @@ export function EstadoCuenta({
         // todo]. Periodo y Tipo de movimiento son el orquestador; el Cierre, el selector de la superficie.
         filtros={
           <BuscadorFiltros
+            escaneo
             label={ZONA_LIBRO_TEXTO.buscar}
             // FICHA 469 (R24/R36) — la satélite tiene su texto propio: no nombra la guía.
             placeholder={ESTADO_CUENTA_TEXTO.buscarPlaceholder[tipo === "bodega" ? "bodega" : vista]}

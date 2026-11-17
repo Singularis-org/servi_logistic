@@ -1450,9 +1450,9 @@ export function OrdenesListado({
         // y se traduce lo emitido.
         filtros={
           <BuscadorFiltros
-            // El mismo nombre accesible que tenía como control de la barra: el campo
-            // cambió de sitio, no de identidad.
-            label="Buscar"
+            escaneo
+            // SLT-160 (R772, DC2): el nombre accesible del canvas.
+            label="Buscar órdenes"
             placeholder={PLACEHOLDER_BUSQUEDA}
             minChars={BUSQUEDA_MIN_CHARS}
             onChange={cambiarTermino}

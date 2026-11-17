@@ -712,7 +712,9 @@ export function SateliteOrdenesListado({
         // `ReactNode` opaco): solo lo coloca.
         filtros={
           <BuscadorFiltros
-            label="Buscar"
+            escaneo
+            // SLT-160 (R772, DC2): nombre accesible propio del listado.
+            label="Buscar órdenes de la bodega"
             placeholder={PLACEHOLDER_BUSQUEDA}
             minChars={BUSQUEDA_MIN_CHARS}
             onChange={cambiarTermino}

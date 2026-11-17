@@ -67,6 +67,7 @@ export function NovedadesFiltrosBarra({
     // búsqueda— no puede decir en cuál de las dos está.
     <section aria-label={regionLabel} className="flex flex-col gap-1">
       <BuscadorFiltros
+        escaneo
         // Remonta la barra al limpiar: el campo de texto es estado INTERNO de `BuscadorFiltros` y
         // no se puede vaciar desde fuera, asi que se le cambia la `key`. Es el mismo gesto que
         // `/ordenes` usa con `FilterComponent`, aplicado tambien al campo para que «Limpiar todo»

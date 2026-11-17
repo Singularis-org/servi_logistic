@@ -1725,6 +1725,10 @@ function condicionesSatelite(filtro: RecepcionSateliteFiltro): Prisma.Sql[] {
   if (filtro.busqueda) {
     condiciones.push(condicionBusquedaSatelite(filtro.busqueda, filtro.busquedaDigitos));
   }
+  // SLT-160 (R606-R608): guia exacta, hermana del acotamiento en el AND (nunca en un `OR`).
+  if (filtro.numGuia !== undefined) {
+    condiciones.push(Prisma.sql`o."num_guia" = ${filtro.numGuia}`);
+  }
   return condiciones;
 }
 
@@ -4370,6 +4374,23 @@ export class OrdenRepository implements IOrdenRepository {
       ${desdeSatelite(condiciones)}
     `);
     return filas.map((fila) => fila.id);
+  }
+
+  /**
+   * SLT-160 (R606, R608) — ¿la guia es de una orden del listado? El MISMO `condicionesSatelite`
+   * que la pagina, la descarga y la vigencia (con `numGuia` en su AND): una guia de otra zona,
+   * otra empresa o fuera de los filtros no activa la busqueda exacta.
+   */
+  async existeGuiaEnBodega(
+    filtro: RecepcionSateliteFiltro & { numGuia: number },
+  ): Promise<boolean> {
+    if (filtro.estatusValues.length === 0) return false;
+    const filas = await this.prisma.$queryRaw<{ existe: number }[]>(Prisma.sql`
+      SELECT 1 AS "existe"
+      ${desdeSatelite(condicionesSatelite(filtro))}
+      LIMIT 1
+    `);
+    return filas.length > 0;
   }
 
   /**
