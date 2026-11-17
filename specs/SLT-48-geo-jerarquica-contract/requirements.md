@@ -38,7 +38,7 @@
 | R | Requisito |
 |---|---|
 | R1 | El sistema DEBE servir `provincia`, `canton` y `distrito` como vistas de solo lectura sobre `nodo_geografico`, con los mismos nombres y columnas que hoy (`id`, `nombre`, `activo`, `codigo_dta`, `pais_id`, y `provincia_id` en `canton` y `canton_id` en `distrito`). Cada vista DEBE tener una fila por nodo de profundidad 1, 2 o 3, con los datos actuales del nodo. Ejemplo: un nodo de profundidad 2 llamado «Escazú», hijo de «San José», sale en `canton` con `provincia_id` = el id de «San José». |
-| R2 | SI alguien intenta `INSERT`, `UPDATE` o `DELETE` sobre una de las vistas, ENTONCES la base DEBE rechazarlo con un error que nombre `nodo_geografico` y DEBE dejar todo sin cambios. Vale para `servi_app` y para el dueño de la base. |
+| R2 | SI alguien intenta `INSERT`, `UPDATE` o `DELETE` sobre una de las vistas, ENTONCES la base DEBE rechazarlo y DEBE dejar todo sin cambios. Para el dueño de la base y los scripts, el error DEBE nombrar `nodo_geografico` (`SL048`). Para `servi_app`, que solo tiene `SELECT`, el rechazo es el de permisos (`42501`) (decisión del humano, 2026-11-17). |
 | R3 | MIENTRAS una transacción corra con la empresa de un país, las vistas DEBEN devolver solo la geografía de ese país, como las políticas `*_del_pais` de hoy. En plataforma (sin empresa) DEBEN devolver todos los países, como hoy. |
 | R4 | La migración DEBE quitar toda FK que apunte a las tablas viejas (las 3 de la orden, la de `zona_distrito.distrito_id` y la de `distrito_zona_especial.distrito_id`) y DEBE quitar el NOT NULL de `orden.provincia_id` y `orden.canton_id`. Ninguna columna se borra y ningún valor de una orden vieja cambia. |
 | R5 | Tras la migración NO DEBE quedar ningún trigger de sincronía entre las tablas viejas y `nodo_geografico`, en ningún sentido. CUANDO el superadmin crea, renombra, retira o mueve un nodo de profundidad 1 a 3, la vista correspondiente DEBE mostrar el cambio en la misma transacción. |
@@ -74,7 +74,7 @@
 | R25 | El informe de tránsito DEBE leer el lugar del nodo. Su título DEBE usar los tipos de los 2 niveles más hondos de la ruta de la orden, también si la orden está en el nivel 4 o más hondo. En Costa Rica sigue «CANTÓN · DISTRITO». |
 | R26 | La ruta de una orden DEBE llegar al nivel de su nodo. En un país de 4 niveles, la descarga de órdenes DEBE llenar la cuarta columna de lugar de una orden de nivel 4 (cambia la expectativa de `e2e/geo-presentacion-4-niveles.spec.ts`, decisión «Nivel 4 de la orden»). |
 | R27 | CUANDO se cierra un día, el cierre DEBE escribir las 3 columnas de nombre de `cierre_detail` con los niveles 1, 2 y 3 de la ruta del nodo, y DEBE escribir los ids de `ubicacion_snapshot` desde la ruta del nodo, no desde las 3 FK. En Costa Rica, el resultado de una orden vieja DEBE ser igual al de hoy. Los cierres ya hechos no cambian. |
-| R28 | Las respuestas de la API v1 DEBEN conservar sus campos de provincia, cantón y distrito, llenados desde los niveles 1, 2 y 3 de la ruta del nodo. Para una orden vieja DEBEN ser iguales a hoy. |
+| R28 | Las respuestas de la API v1 DEBEN ser exactamente las de hoy, sin campos nuevos, tengan o no la orden las 3 FK (decisión del humano, 2026-11-17). |
 | R29 | Ningún archivo de producción DEBE leer ni escribir las 3 FK de la orden. Lo vigila una guardia. |
 | R30 | Las consultas calientes que cambian de las 3 FK al nodo (listado y filtros, conteo sin entregar, analítica, tránsito) NO DEBEN empeorar más de un 20 % (mediana de 5) ni sumar un Seq Scan nuevo sobre `orden`. Lo mide una persona sobre la copia de producción con los scripts `geo:explain-*`, y el resultado va al PR. Si el listado empeora, la primera mitigación es llevar los nombres al catálogo. |
 
@@ -178,5 +178,6 @@ Ninguna.
 | 2026-11-17 | P3 — Grupo de tarifas en países que no son de 3 niveles | El grupo se busca desde el nodo de la orden si está en el nivel 3 o más hondo; más arriba, sin grupo. |
 | 2026-11-17 | P4 — Mover bajo un padre retirado | Se rechaza. |
 | 2026-11-17 | P5 — `down.sql` con órdenes que el modelo viejo no sabe guardar | El `down.sql` aborta sin cambiar nada y dice cuántas órdenes lo impiden. |
+| 2026-11-17 | API v1 y el cantón sin distritos | La v1 queda igual: sigue exigiendo el distrito. Un cantón sin distritos solo entra por v2 o por la pantalla. Lo fija un test. |
 | 2026-11-17 | Tamaño del PR | Un solo PR de ~150 archivos: 48 de producción y unos 85–105 de tests. |
 | heredada épica | Producción | Hay backup verificado antes de la release y ningún agente toca la base de producción. Las migraciones las aplica el build de `prod`. |

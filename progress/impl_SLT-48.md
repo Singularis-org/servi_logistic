@@ -484,3 +484,12 @@ la corrección o de `whereLugarEn`/`sqlLugarEn`, D = min(P, 3)):
 **Veredicto T2:** servidor en el nodo, con regla de hoja y tarifa por `distritoDeTarifa`; producción compila, la
 guardia R29 está verde y los tests nuevos de R15–R19, R22–R25, R27–R29 y R31–R32 pasan contra Postgres; quedan rojas
 las aserciones viejas listadas (piden autorización) y los tests de T5/T6.
+
+## Decisiones del humano tras T2 (2026-11-17, `progress/features/SLT-48.md` commit ff1c7c8a)
+
+- **Postgres de producción (Supabase):** el humano confirma que es 15 o más, así que `security_invoker` vale. Ya no queda abierto.
+- **R2:** se acepta el `42501` para `servi_app`, que no recibe permisos de escritura sobre las vistas. `SL048` queda para el dueño de la base y los scripts. Se corrigió el texto de R2 en `requirements.md`; su test se ajusta en T3+.
+- **API v1:** queda igual y sigue exigiendo el distrito. Un cantón sin distritos solo entra por v2 o por la pantalla. Está anotado en las Decisiones cerradas y lo fijará un test.
+- **R28:** la v1 responde exactamente lo mismo que hoy, sin campos nuevos. Se corrigió el texto.
+- **Aserciones:** hay autorización para cambiar las ~70 que contradicen una decisión cerrada de SLT-48, incluida `orden-nodo-mas-profundo` › R28 de SLT-89, que contradice R9. Cada cambio cita su R de SLT-48 en un comentario y en esta bitácora.
+- **Archivos fuera de la lista:** están añadidos a `tasks.md > Archivos esperados > Añadidos tras T2`.

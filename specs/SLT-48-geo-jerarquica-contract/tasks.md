@@ -354,3 +354,115 @@
 - `e2e/_planes-fixture.ts`
 - `e2e/_zona-especial-fixture.ts`
 - `e2e/geo-presentacion-4-niveles.spec.ts`
+
+### Añadidos tras T2 (decisión del humano, 2026-11-17)
+
+Producción, fuera de la lista inicial (consecuencia de que la orden deja de exigir las 3 FK):
+
+- `lib/repositories/CierresAdminRepository.ts`
+- `lib/repositories/GestionOrdenRepository.ts`
+- `lib/repositories/OrdenEnvioReader.ts`
+- `lib/repositories/OrdenGeocodeRepository.ts`
+- `lib/types/api-v2.ts`
+- `scripts/geo-equivalencia/consultas-de-hoy.ts`
+- `scripts/geo-equivalencia/lecturas-de-hoy.ts`
+- `scripts/geo-equivalencia-analitica.ts`
+- `scripts/geo-equivalencia-consultas.ts`
+- `scripts/geo-equivalencia-filtros.ts`
+- `scripts/geo-equivalencia-presentacion.ts`
+- `scripts/geo-explain-consultas.ts`
+
+Notas `@test-desaparecido` por la guardia retirada `geografia-lecturas-sin-nodo-fk`:
+
+- `specs/SLT-44-geo-jerarquica-dominio/design.md`
+- `specs/SLT-65-geo-jerarquica-consultas/design.md`
+- `specs/SLT-71-geo-jerarquica-transito-analitica/design.md`
+
+Tests que escriben tablas viejas o leen las FK, fuera de la lista de T5:
+
+- `tests/integration/db/_fixtures/caja-459.ts`
+- `tests/integration/db/caja-459-migration.test.ts`
+- `tests/integration/db/_fixtures/geo-65.ts`
+- `tests/integration/db/geo-65-fixture.test.ts`
+- `tests/integration/db/_postgres-real.ts`
+- `tests/integration/db/emisor-relaciones-anidadas.test.ts`
+- `tests/integration/db/geo-125-cierre-snapshot.test.ts`
+- `tests/integration/db/geo-125-fixture.test.ts`
+- `tests/integration/db/geo-125-geocode-cache.test.ts`
+- `tests/integration/db/geo-125-nombres-catalogo.test.ts`
+- `tests/integration/db/geo-equivalencia-presentacion.test.ts`
+- `tests/integration/db/corregir-ubicacion-geocode.test.ts`
+- `tests/integration/db/cobro-plataforma-plan.test.ts`
+- `tests/integration/db/pago-plataforma-sl45-concurrencia.test.ts`
+- `tests/integration/db/orden-remision-borrada-libera-numero.test.ts`
+- `tests/integration/db/orden-nodo-mas-profundo.test.ts`
+
+Tests ya tocados en T1 y T2 (fixtures de DTO sin las 3 FK, firmas o tests nuevos), fuera de la lista inicial:
+
+- `tests/components/AsignacionBloqueoPorCierre.test.tsx`
+- `tests/components/AsignacionMensajeroNoAsignable.test.tsx`
+- `tests/components/AsignarBodegaModal.autorizacion.test.tsx`
+- `tests/components/AsignarBodegaModal.test.tsx`
+- `tests/components/ComprobanteEntregaTienda.test.tsx`
+- `tests/components/ConfirmarEntregaTiendaModal.test.tsx`
+- `tests/components/descarga/ControlDescargaTransversal.test.tsx`
+- `tests/components/DevolverATiendaModal.test.tsx`
+- `tests/components/EtiquetasGuiaModal.test.tsx`
+- `tests/components/GenerarGuiaModal.test.tsx`
+- `tests/components/ManifiestoFlujos.test.tsx`
+- `tests/components/OrdenesDescarga.test.tsx`
+- `tests/components/OrdenesDescargaColumnas.test.tsx`
+- `tests/components/OrdenesListado.confirmar-entrega-419.test.tsx`
+- `tests/components/OrdenesListadoBloqueoCierre.test.tsx`
+- `tests/components/OrdenesListadoDevolucion.test.tsx`
+- `tests/components/OrdenesListadoEtiquetasChain.test.tsx`
+- `tests/components/OrdenesPage.test.tsx`
+- `tests/components/OrdenesPagination.test.tsx`
+- `tests/components/OrdenesRutearSatelite.test.tsx`
+- `tests/components/RecuperarABodegaModal.test.tsx`
+- `tests/components/RutearSateliteModal.test.tsx`
+- `tests/fixtures/descargas-cr/entrada.ts`
+- `tests/fixtures/fila-bodega-satelite.ts`
+- `tests/fixtures/orden-detalle-dia.ts`
+- `tests/integration/actions/ordenes-action.test.ts`
+- `tests/integration/db/geo-consultas-cierre.test.ts`
+- `tests/integration/descarga-dataset-roundtrip.test.ts`
+- `tests/integration/repositories/orden-geocode-enqueue.test.ts`
+- `tests/integration/repositories/orden-mensajero-meta.int.test.ts`
+- `tests/unit/actions/ordenes-descarga-action.test.ts`
+- `tests/unit/components/ordenes-columns.test.tsx`
+- `tests/unit/components/ordenes-descarga-columnas.test.ts`
+- `tests/unit/components/ordenes-listado.test.tsx`
+- `tests/unit/components/ordenes-listado-buscador.test.tsx`
+- `tests/unit/components/ordenes-listado-filtros.test.tsx`
+- `tests/unit/components/ordenes-listado-orden.test.tsx`
+- `tests/unit/components/ordenes-listado-vistas.test.tsx`
+- `tests/unit/components/ordenes-module-busqueda.test.tsx`
+- `tests/unit/components/ordenes-module-filter-key.test.tsx`
+- `tests/unit/descarga/archivo-identico-470.test.ts`
+- `tests/unit/guards/organizacion-en-modelos.guardia.test.ts`
+- `tests/unit/repositories/orden-repository.bulk.test.ts`
+- `tests/unit/repositories/orden-repository.carga-api.test.ts`
+- `tests/unit/repositories/orden-repository.carga-lote.test.ts`
+- `tests/unit/repositories/orden-repository.creacion-bifurcada.test.ts`
+- `tests/unit/services/bulk-orden-service.carga-api.test.ts`
+- `tests/unit/services/bulk-orden-service.test.ts`
+- `tests/unit/services/corregir-datos-cliente-bodega-satelite.test.ts`
+- `tests/unit/services/corregir-datos-cliente-texto-etiqueta.test.ts`
+- `tests/unit/services/corregir-ubicacion-importes.test.ts`
+- `tests/unit/services/devolucion-origen-service.test.ts`
+- `tests/unit/services/eliminar-criterio-unico.test.ts`
+- `tests/unit/services/envio-devolucion-central-service.test.ts`
+- `tests/unit/services/intentos-entrega-criterio-unico.test.ts`
+- `tests/unit/services/orden-historial-fusion.test.ts`
+- `tests/unit/services/OrdenHistorialService.evento-orden.test.ts`
+- `tests/unit/services/orden-historial-service.test.ts`
+- `tests/unit/services/orden-mensajero-meta-service.test.ts`
+- `tests/unit/services/orden-service.test.ts`
+- `tests/unit/services/orden-service-busqueda-alcance.test.ts`
+- `tests/unit/services/orden-service-descarga.test.ts`
+- `tests/unit/services/rechazo-tienda-service.test.ts`
+- `tests/unit/services/recuperacion-bodega-service.test.ts`
+- `tests/unit/services/reprogramacion-tienda-service.test.ts`
+- `tests/unit/services/rol-admin-satelite-authz.test.ts`
+- `tests/unit/types/orden-list-dto-zona.test.ts`
