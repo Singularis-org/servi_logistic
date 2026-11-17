@@ -69,3 +69,73 @@ La acotación por empresa no está en este `WHERE`: la ponen la extensión de em
 ### Veredicto
 
 Servidor de SLT-197 listo para la tanda de pantalla: typecheck y lint verdes, 591/591 en los tests tocados, 4/4 mutaciones muertas; queda la guardia de dependencias en rojo, que ya venía de HEAD.
+
+## Frontend
+
+Tanda de pantalla (T6–T8), frontend_dev, 2026-11-17. Sin pantalla nueva: una acción por lote más en
+`/ordenes`, con `Modal`, `ManifiestoResultado`, `BuscadorFiltros` y la página de recepción de la central
+(«Recibir paquetes», `/ordenes/recibir`) que ya existían. El grafo no indexa el worktree: Grep/Read.
+
+### Archivos
+
+Producción:
+- `app/(app)/ordenes/_components/RetirarACentralModal.tsx` (nuevo) — calco de `RutearSateliteModal`:
+  confirmación con el número, una llamada a `retirarABodegaCentral`, toast, fase «resultado» con
+  `ManifiestoResultado flujo="retiro_satelite"` y `onSuccess` al cerrar. Un no-`ok` va al canal de error
+  del `Modal` (toast de `guiaDecisionErrorMessage`, diálogo abierto); en `conflict` lista además cada
+  orden rechazada con un motivo de usuario (el valor interno del estado no se muestra).
+- `app/(app)/ordenes/_components/OrdenesListado.tsx` — `case "en_bodega_satelite"` en `accionesDe`
+  («Retirar a bodega central», primaria, única del estado), `abrirRetirarCentral` (solo las
+  seleccionadas en `en_bodega_satelite`) y el montaje del modal.
+- `lib/actions/ordenes-guia.ts` — fuera la anotación `@sin-superficie` de `retirarABodegaCentral`.
+- `lib/types/order-status.ts` — `DESCRIPCION_ESTADO.en_ruta_bodega_central` = «El paquete va camino a la
+  bodega central.» (D7).
+
+Docs:
+- `docs/ayuda/publico/rastreo-de-paquete.md` — el mismo literal (D7). La guía de integración de la API no
+  se toca (D8).
+- `specs/456-tooltip-estados/textos-aprobados.md` — la fila aprobada pasa al texto de D7, con una línea
+  de enmienda: `tests/unit/types/descripcion-estado.test.ts` lee esa tabla del disco y si no, se ponía rojo.
+- `docs/ayuda/oficina/ordenes.md` (la acción, cuándo usarla, recepción con el escáner y volver a
+  rutear) y `docs/ayuda/satelite/en-bodega.md` (la central puede retirar lo del estante y desaparece).
+
+Tests:
+- `tests/components/RetirarACentralModal.test.tsx` (nuevo, 5 casos).
+- `tests/components/OrdenesRetirarACentral.test.tsx` (nuevo, 6 casos; monta la página real y varía el rol).
+- `tests/unit/types/order-status.test.ts` — caso R984 con el literal escrito a mano.
+- `e2e/retiro-satelite-central.spec.ts` (nuevo) + su entrada en el proyecto `reparto` de
+  `playwright.config.ts` (lo exige la guardia `e2e-sin-saltos`).
+
+### Mapa R → test (pantalla)
+
+| R | Test |
+|---|---|
+| R980 | `tests/components/OrdenesRetirarACentral.test.tsx` (maestro y admin la ven en `en_bodega_satelite`; adminTienda sin casilla ni acción; no sale en `en_bodega_central` ni en `en_ruta_bodega_central`; una sola llamada con el lote de dos satélites, R985) + `e2e/retiro-satelite-central.spec.ts` |
+| R981 | `tests/components/RetirarACentralModal.test.tsx` (confirmación con el número; ok: una llamada, toast, manifiesto, `onSuccess` solo al cerrar; conflict: diálogo abierto con el motivo de cada orden; inexistente/borrada; forbidden) + E2E (manifiesto visible tras retirar) |
+| R984 | `tests/unit/types/order-status.test.ts` (literal a mano) |
+| R971, R977, R978 | además de los de la tanda de servidor, `e2e/retiro-satelite-central.spec.ts` en pantalla |
+
+Sin test de pantalla: ninguno de los R de UI.
+
+### Salidas reales
+
+- `pnpm typecheck` → `tsc --noEmit`, exit 0.
+- `pnpm lint` → `✖ 248 problems (0 errors, 248 warnings)`, exit 0; ninguno en los archivos tocados.
+- vitest (desechable `servi_slt197_desechable`):
+  - `RetirarACentralModal`, `OrdenesRetirarACentral`, `RutearSateliteModal`, `OrdenesRutearSatelite`,
+    `order-status`, `descripcion-estado`, `superficie-de-uso.guardia` → `Test Files 7 passed (7)`,
+    `Tests 96 passed (96)`.
+  - Textos de estado y ayuda: guardias `ayuda-*` (4), `docs-marca-heredada`, `estado-con-info`,
+    `nombres-estado-retirados`, `rastreo-hitos-exhaustivo` + los componentes que pintan el (i)
+    (`EstadoInfo`, `RastreoDialogInfoEstado`, `MultiSelectFilterInfoEstado`, `PosOrderCardInfoEstado`,
+    `ChatOrdenesListaInfoEstado`, `SateliteOrderCardInfo`, `AyudaDocumentoPage`) y
+    `asistente/acotamiento-por-rol` → `Test Files 16 passed (16)`, `Tests 216 passed (216)`.
+  - `e2e-sin-saltos.guardia` → `Tests 38 passed (38)`.
+- E2E (base nueva `servi_slt197e_desechable`: crear + `db:seed` + `next build`, puerto 3047):
+  - `e2e/retiro-satelite-central.spec.ts --project=reparto --retries=0 --repeat-each=2` → `6 passed (22.5s)`.
+  - `e2e/recepcion-satelite.spec.ts e2e/asignacion-satelite.spec.ts --retries=0` → `2 passed (10.9s)`.
+
+### Veredicto
+
+Pantalla de SLT-197 «Retirar paquetes de una bodega satélite a la central» lista: acción, modal, textos,
+ayuda y E2E en verde; ningún R de UI sin test.

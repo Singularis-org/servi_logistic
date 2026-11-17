@@ -67,12 +67,12 @@
 
 ## T6 — Pantalla (frontend_dev; depende de T4 y T5)
 
-- [ ] **T6.1** `RetirarACentralModal.tsx` (calco de `RutearSateliteModal`: confirmación con el número,
+- [x] **T6.1** `RetirarACentralModal.tsx` (calco de `RutearSateliteModal`: confirmación con el número,
   una llamada, toast, fase resultado con `ManifiestoResultado flujo="retiro_satelite"`, error al canal
   del `Modal` con `guiaDecisionErrorMessage`).
   **Hecho:** R981 verde en `tests/components/RetirarACentralModal.test.tsx` (ok, conflict, forbidden;
   una sola llamada a la action; `onSuccess` solo al cerrar).
-- [ ] **T6.2** `case "en_bodega_satelite"` en `accionesDe` con «Retirar a bodega central»,
+- [x] **T6.2** `case "en_bodega_satelite"` en `accionesDe` con «Retirar a bodega central»,
   `abrirRetirarCentral` (pasa solo las seleccionadas en `en_bodega_satelite`) y el montaje del modal en
   `OrdenesListado.tsx`.
   **Hecho:** R980 verde en `tests/components/OrdenesRetirarACentral.test.tsx` (la acción sale en
@@ -81,12 +81,12 @@
 
 ## T7 — Textos y ayuda ([P] con T6)
 
-- [ ] **T7.1** `DESCRIPCION_ESTADO.en_ruta_bodega_central` = «El paquete va camino a la bodega
+- [x] **T7.1** `DESCRIPCION_ESTADO.en_ruta_bodega_central` = «El paquete va camino a la bodega
   central.» y el mismo literal en `docs/ayuda/publico/rastreo-de-paquete.md`. La guía de integración
   de la API no se toca (D8).
   **Hecho:** R984 verde en `tests/unit/types/order-status.test.ts` (literal a mano);
   `rastreo-hitos-exhaustivo.guardia` verde.
-- [ ] **T7.2** Ayuda: `docs/ayuda/oficina/ordenes.md` (la acción, cuándo usarla, que se recibe con el
+- [x] **T7.2** Ayuda: `docs/ayuda/oficina/ordenes.md` (la acción, cuándo usarla, que se recibe con el
   escáner y se vuelve a rutear) y `docs/ayuda/satelite/en-bodega.md` (la central puede retirar lo del
   estante y entonces desaparece del listado); fecha `actualizado` y `fuentes` al día.
   **Hecho:** `ayuda-pantalla-ruta-existe`, `ayuda-md-viajan-a-produccion` y `docs-marca-heredada`
@@ -94,7 +94,7 @@
 
 ## T8 — E2E (depende de T6)
 
-- [ ] **T8.1** `e2e/retiro-satelite-central.spec.ts`: maestro en `/ordenes` filtra «En bodega
+- [x] **T8.1** `e2e/retiro-satelite-central.spec.ts`: maestro en `/ordenes` filtra «En bodega
   satélite», retira dos órdenes, ve «En ruta a bodega central», las recibe con el escáner de la central,
   quedan «En bodega central» y «Rutear a bodega satélite» las acepta. Espera condiciones, nunca
   `waitForTimeout`.

@@ -269,10 +269,7 @@ export async function rutearABodegaSatelite(
 /**
  * SLT-197 (R971/R975/R976): retira ordenes del estante de una satelite a la central
  * (`en_bodega_satelite -> en_ruta_bodega_central`). Solo maestro/admin (lo decide el service).
- *
- * @sin-superficie SLT-197 tanda de servidor (T1-T5): la pantalla que la llama
- * (`RetirarACentralModal`, accion «Retirar a bodega central» de `/ordenes`) es la tarea T6 de la
- * misma ficha, en la tanda siguiente. Esa tanda QUITA esta anotacion al darle superficie.
+ * Superficie: `RetirarACentralModal` (accion «Retirar a bodega central» de `/ordenes`).
  */
 export async function retirarABodegaCentral(
   input: unknown,

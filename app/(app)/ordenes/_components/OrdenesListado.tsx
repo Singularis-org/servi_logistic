@@ -49,6 +49,7 @@ import { AsignarBodegaModal } from "./AsignarBodegaModal";
 import { AsignarRecoleccionModal } from "./AsignarRecoleccionModal";
 import { QuitarRecoleccionModal } from "./QuitarRecoleccionModal";
 import { RutearSateliteModal } from "./RutearSateliteModal";
+import { RetirarACentralModal } from "./RetirarACentralModal";
 import { EtiquetasGuiaModal } from "./EtiquetasGuiaModal";
 import { ESTADOS_ETIQUETAS_TIENDA, MOTIVO_SIN_GUIA } from "../estados-etiquetas-tienda";
 import { DevolverATiendaModal } from "./DevolverATiendaModal";
@@ -108,6 +109,7 @@ type ModalAbierto =
   | "asignar-recoleccion" // feature 157
   | "quitar-recoleccion" // feature 157 (ampliacion)
   | "rutear-satelite" // feature 30 (reinstalado el 2026-08-05)
+  | "retirar-central" // SLT-197
   | "etiquetas"
   | "devolver-tienda"
   | "confirmar-entrega-tienda" // ficha 419
@@ -492,6 +494,14 @@ export function OrdenesListado({
     setOrdenesSeleccionadas(seleccionadas.filter((o) => o.zonaEsGam === false));
     setModalAbierto("rutear-satelite");
   }
+  // SLT-197 (R980): «Retirar a bodega central» solo para las seleccionadas que siguen en el
+  // estante de una satélite; el service revalida (R973).
+  function abrirRetirarCentral(seleccionadas: OrdenListItemDTO[]) {
+    setOrdenesSeleccionadas(
+      seleccionadas.filter((o) => o.estatusValue === "en_bodega_satelite"),
+    );
+    setModalAbierto("retirar-central");
+  }
   function abrirEtiquetas(seleccionadas: OrdenListItemDTO[]) {
     setOrdenesSeleccionadas(seleccionadas);
     setModalAbierto("etiquetas");
@@ -845,6 +855,16 @@ export function OrdenesListado({
             label: "Imprimir etiquetas",
             variant: "outline",
             onRun: abrirEtiquetas,
+          },
+        ];
+      case "en_bodega_satelite":
+        // SLT-197 (R980): la satélite dejó de operar y la central se trae lo del estante. Única
+        // acción del estado, así que va primaria.
+        return [
+          {
+            key: "retirar-central",
+            label: "Retirar a bodega central",
+            onRun: abrirRetirarCentral,
           },
         ];
       case "en_ruta_bodega_satelite":
@@ -1630,6 +1650,12 @@ export function OrdenesListado({
               modo que las órdenes ruteadas pasan a `en_ruta_bodega_satelite`. */}
           <RutearSateliteModal
             open={modalAbierto === "rutear-satelite"}
+            ordenes={ordenesSeleccionadas}
+            onOpenChange={cerrarModal}
+            onSuccess={handleSuccess}
+          />
+          <RetirarACentralModal
+            open={modalAbierto === "retirar-central"}
             ordenes={ordenesSeleccionadas}
             onOpenChange={cerrarModal}
             onSuccess={handleSuccess}
