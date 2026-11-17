@@ -658,7 +658,7 @@
       "desde": "2026-10-22"
     },
     "tests/integration/db/454/retiro-estados-migration.test.ts": {
-      "motivo": "Otra causa (depende del estado de la base). Medido el 2026-11-16 en base desechable migrada con catalogos y datos de otra empresa (y en la base local de dev del leader): el bloque «M3 contra Postgres real» aplica la migracion 20260923120200_retiro_estados_454 sobre TODA la base y falla con P0001 «migracion 454: 1 orden(es) en ayuda_tienda sin fila de solicitud con actor» por una orden ajena; en base vacia pasa 13/13. Test de migracion que solo vale en base sin ordenes retiradas ajenas. La retira SLT-187.",
+      "motivo": "Otra causa (depende del estado de la base). Medido el 2026-11-16 en base desechable migrada con catalogos y datos de otra empresa (y en la base local de dev del leader): el bloque «M3 contra Postgres real» aplica la migracion 20260923120200_retiro_estados_454 sobre TODA la base y falla con P0001 «migracion 454: 1 orden(es) en ayuda_tienda sin fila de solicitud con actor» por una orden ajena; en base vacia pasa 13/13. Test de migracion que solo vale en base sin ordenes retiradas ajenas. La retira SLT-187. En CI pasa (base vacia) y el gate avisa «ya pasa»: es esperado y se queda hasta SLT-187, porque en local con datos ajenos sigue rojo (anotado el 2026-11-17 al cerrar SLT-60).",
       "desde": "2026-10-22"
     }
   }

@@ -1,10 +1,15 @@
 "use client";
 
 import { useRef, useState, type ReactNode } from "react";
-import { Camera, ScanLine } from "lucide-react";
+import { Camera, ScanLine, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { SELECTOR_CAMPO_ESCANER } from "@/components/shared/EscanerGuiaCard";
 import { usePunteroFino } from "@/hooks/useEntradaEscaneo";
 import { cn } from "@/lib/utils";
@@ -76,8 +81,18 @@ export interface EscanerModalProps {
    * junto al campo del buscador de los listados. Sin envoltorio de fila. Arranca cerrado igual.
    */
   soloIcono?: boolean;
+  /**
+   * SLT-190 (R867-R869, DS7): título VISIBLE del diálogo, en una barra arriba con un único «Cerrar»
+   * de 44 × 44 px (la X pequeña del `Dialog` se apaga). La tarjeta de dentro se monta entonces sin
+   * su encabezado (`sinEncabezado`), para no tener dos títulos. Es también el nombre accesible del
+   * diálogo. Sin ella, todo como siempre: título `sr-only` con `label` y la X del `Dialog` (R871).
+   */
+  titulo?: string;
   className?: string;
 }
+
+/** SLT-190 (R869): nombre accesible del único botón de cierre de la barra. */
+export const ESCANER_CERRAR_LABEL = "Cerrar";
 
 export function EscanerModal({
   label = ESCANER_LABEL_POR_DEFECTO,
@@ -85,6 +100,7 @@ export function EscanerModal({
   children,
   tactil = false,
   soloIcono = false,
+  titulo,
   className,
 }: Readonly<EscanerModalProps>) {
   const [abierto, setAbierto] = useState(false);
@@ -105,10 +121,33 @@ export function EscanerModal({
       <DialogContent
         ref={popupRef}
         initialFocus={focoInicial}
-        className="max-h-[90dvh] max-w-md overflow-y-auto border-0 bg-transparent p-0 shadow-none">
-        {/* El nombre accesible del diálogo. Visualmente lo dice el título de la tarjeta,
-            que es de quien la monta: aquí solo se garantiza que el diálogo tenga uno. */}
-        <DialogTitle className="sr-only">{label}</DialogTitle>
+        // SLT-190 (R869): con barra propia, un solo «Cerrar» (el de la barra, de 44 px).
+        showCloseButton={titulo === undefined}
+        className={cn(
+          "max-h-[90dvh] max-w-md overflow-y-auto border-0 bg-transparent p-0 shadow-none",
+          titulo === undefined ? undefined : "gap-0",
+        )}>
+        {titulo === undefined ? (
+          /* El nombre accesible del diálogo. Visualmente lo dice el título de la tarjeta,
+             que es de quien la monta: aquí solo se garantiza que el diálogo tenga uno. */
+          <DialogTitle className="sr-only">{label}</DialogTitle>
+        ) : (
+          /* SLT-190 (R867-R869, DS7): la barra del canvas. El título visible es el nombre del
+             diálogo (R870) y el «Cerrar» cierra con el efecto de siempre: el `Dialog` desmonta la
+             tarjeta (cámara apagada) y la sesión refresca una vez si hubo recepción (R598). La
+             barra continúa la tarjeta de abajo (mismo borde y fondo, sin redondeo entre las dos). */
+          <div className="flex items-center justify-between gap-2 rounded-t-2xl border border-b-0 border-border bg-card py-2 pr-2 pl-6 sm:pl-8">
+            <DialogTitle className="text-lg leading-tight font-semibold text-balance text-card-foreground">
+              {titulo}
+            </DialogTitle>
+            <DialogClose
+              aria-label={ESCANER_CERRAR_LABEL}
+              render={<Button type="button" variant="ghost" size="icon-touch" />}
+            >
+              <X className="size-5" aria-hidden="true" />
+            </DialogClose>
+          </div>
+        )}
         {typeof children === "function" ? children(() => setAbierto(false)) : children}
       </DialogContent>
     </Dialog>

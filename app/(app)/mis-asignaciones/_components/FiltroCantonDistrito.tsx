@@ -23,9 +23,10 @@ const PREFIJO_FILTRAR = "Filtrar por";
 const CANTON_TODOS = "Todos los cantones";
 const DISTRITO_TODOS = "Todos los distritos";
 
-// Mismo alto que el campo de la barra con `tactil` (44 px en el teléfono, R493). Sin `labelPrefix`
-// del `Select`: ese rótulo recorta con «…» (R490); el placeholder ya dice qué filtra.
-const CLASE_SELECT = "h-8 w-full max-md:h-11 sm:w-52";
+// Alto MÍNIMO del campo de la barra con `tactil` (44 px en el teléfono, R493). Sin `labelPrefix`:
+// el placeholder ya dice qué filtra. SLT-190 (decisión de Carlos, 2026-11-17): el nombre elegido va
+// entero y parte línea (`partirLinea`), así que la altura es mínima, no fija.
+export const CLASE_SELECT_CANTON = "min-h-8 w-full max-md:min-h-11 sm:w-52";
 
 export interface FiltroCantonDistritoProps {
   /** Cantón elegido (`""` = todos). */
@@ -70,7 +71,8 @@ export function FiltroCantonDistrito({
       {mostrarCanton ? (
         <Select
           aria-label={cantonAria}
-          className={CLASE_SELECT}
+          className={CLASE_SELECT_CANTON}
+          partirLinea
           value={canton}
           options={conTodos(cantones, CANTON_TODOS)}
           placeholder={CANTON_TODOS}
@@ -80,7 +82,8 @@ export function FiltroCantonDistrito({
       {mostrarDistrito ? (
         <Select
           aria-label={distritoAria}
-          className={CLASE_SELECT}
+          className={CLASE_SELECT_CANTON}
+          partirLinea
           value={distrito}
           options={conTodos(distritos, DISTRITO_TODOS)}
           placeholder={DISTRITO_TODOS}

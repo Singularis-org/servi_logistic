@@ -38,6 +38,13 @@ import {
   VACIO_GRUPO_HOY,
   VACIO_GRUPO_OTRO_DIA,
 } from "./recoger-grupos";
+import { FiltroTienda } from "./FiltroTienda";
+import {
+  ETIQUETA_FILTRO_TIENDA,
+  FILTRO_TIENDA,
+  filtrarPorTienda,
+  opcionesTienda,
+} from "./filtro-tienda";
 import { RecogerPaqueteCard } from "./RecogerPaqueteCard";
 import { PosOrderCardDetalle } from "./pos-card/PosOrderCardDetalle";
 import { PosOrderCardMosaico } from "./pos-card/PosOrderCardMosaico";
@@ -147,7 +154,26 @@ export function RecogerModule({
   // Feature 114: texto del buscador. Estado de UI EFÍMERO, de un solo consumidor.
   // `buscando` distingue "hay búsqueda activa" de "grupo vacío".
   const [query, setQuery] = useState("");
-  const buscando = query.trim() !== "";
+
+  // SLT-190 (R850-R854, DS1, DS2): el filtro «Tienda». Se trata como el término: filtra lo que se
+  // ve en las DOS pestañas, no toca contadores ni lo que acepta el escáner (que mira `porRecoger`
+  // completo), y cuenta como búsqueda activa para el vacío y el puntero a la otra pestaña.
+  const [tienda, setTienda] = useState("");
+  const [filtrosPuestos, setFiltrosPuestos] = useState<string[]>([]);
+  const tiendas = useMemo(() => opcionesTienda(porRecoger), [porRecoger]);
+  const filtrosOfrecidos = [{ key: FILTRO_TIENDA, label: ETIQUETA_FILTRO_TIENDA }];
+  // Quitar el filtro de «Filtros» vacía su valor: un filtro que ya no se ve no puede seguir filtrando.
+  function cambiarFiltrosPuestos(siguientes: string[]) {
+    if (!siguientes.includes(FILTRO_TIENDA)) setTienda("");
+    setFiltrosPuestos(siguientes);
+  }
+  // «Limpiar todo»: la barra vacía su campo y emite `""`; aquí se quita el filtro.
+  function limpiarTodo() {
+    setTienda("");
+    setFiltrosPuestos([]);
+  }
+
+  const buscando = query.trim() !== "" || tienda !== "";
 
   // Feature 277 (R12/R13): la pestaña activa, tercer estado EFÍMERO de esta pantalla, con el
   // mismo criterio que los otros dos (no sube a la URL: nadie enlaza una pestaña, y un `?tab=`
@@ -165,13 +191,14 @@ export function RecogerModule({
   // destinatario (parcial, insensible a mayúsculas/acentos) y se aplica a LOS DOS grupos, no sólo
   // al que esté a la vista. Si mirara sólo el activo, teclear la guía de una orden de otro día
   // respondería «ninguna coincide» — que es falso, y el mensajero la tiene en la mano.
+  // SLT-190 (R851): y sobre su salida, la tienda (término AND tienda), también en los dos grupos.
   const hoyFiltrado = useMemo<MiAsignacionDTO[]>(
-    () => filtrarAsignaciones(grupos.hoy, query),
-    [grupos.hoy, query],
+    () => filtrarPorTienda(filtrarAsignaciones(grupos.hoy, query), tienda),
+    [grupos.hoy, query, tienda],
   );
   const otroDiaFiltrado = useMemo<MiAsignacionDTO[]>(
-    () => filtrarAsignaciones(grupos.otroDia, query),
-    [grupos.otroDia, query],
+    () => filtrarPorTienda(filtrarAsignaciones(grupos.otroDia, query), tienda),
+    [grupos.otroDia, query, tienda],
   );
 
   /**
@@ -188,15 +215,23 @@ export function RecogerModule({
     orden: MiAsignacionDTO,
     vista: VistaCards,
     total: number,
+    posicion: number,
   ) {
     // SLT-156 (R517): en Detalle, la misma tarjeta compacta de Reparto (sin acciones).
+    // SLT-190 (R855, R857): numerada por su posición en la lista visible de su pestaña.
     return vista === "mosaico" ? (
-      <PosOrderCardMosaico orden={orden} total={total} mostrarRuta={false} />
+      <PosOrderCardMosaico
+        orden={orden}
+        total={total}
+        mostrarRuta={false}
+        posicion={posicion}
+      />
     ) : (
       <PosOrderCardDetalle
         orden={orden}
         total={total}
         mostrarRuta={false}
+        posicion={posicion}
         compacta
       />
     );
@@ -251,7 +286,12 @@ export function RecogerModule({
             singular="Orden"
             plural="Órdenes"
             renderItem={(orden) =>
-              renderCardPorRecoger(orden, "mosaico", visibles.length)
+              renderCardPorRecoger(
+                orden,
+                "mosaico",
+                visibles.length,
+                visibles.indexOf(orden) + 1,
+              )
             }
           />
         </div>
@@ -266,9 +306,9 @@ export function RecogerModule({
         aria-label={listadoLabel}
         className={`flex flex-col gap-3 ${CLASE_FASE[faseVista]}`}
       >
-        {visibles.map((orden) => (
+        {visibles.map((orden, i) => (
           <li key={orden.id}>
-            {renderCardPorRecoger(orden, "detalle", visibles.length)}
+            {renderCardPorRecoger(orden, "detalle", visibles.length, i + 1)}
           </li>
         ))}
       </ul>
@@ -324,9 +364,23 @@ export function RecogerModule({
           onChange={setQuery}
           debounceMs={0}
           leerDeUrl={false}
+          // SLT-190 (R850-R852): el filtro «Tienda» con el selector de siempre (P2).
+          filtros={filtrosOfrecidos}
+          activos={filtrosPuestos}
+          onActivosChange={cambiarFiltrosPuestos}
+          onLimpiarTodo={limpiarTodo}
+          hayFiltrosAplicados={tienda !== "" || filtrosPuestos.length > 0}
           fija
           tactil
-        />
+          // SLT-190 (R859): el conmutador Mosaico/Detalle va en la barra fija, tras «Filtros».
+          trasFiltros={
+            <VistaCardsToggle vista={vistaCardsPedida} onVistaChange={cambiarVista} />
+          }
+        >
+          {filtrosPuestos.includes(FILTRO_TIENDA) ? (
+            <FiltroTienda tienda={tienda} tiendas={tiendas} onTiendaChange={setTienda} />
+          ) : null}
+        </BuscadorFiltros>
 
         {/* ---------- Los dos grupos, feature 277 ---------- */}
         {/* SIN `keepMounted` a propósito: no hay nada dentro de un panel que valga la pena
@@ -341,8 +395,8 @@ export function RecogerModule({
           value={grupoActivo}
           onValueChange={(siguiente) => setGrupoActivo(siguiente as Grupo)}
         >
-          {/* Pestañas y conmutador de vista en una fila que envuelve: a 360 px el conmutador
-              baja en vez de empujar las pestañas fuera del ancho. Las pestañas, a 44 px (R493). */}
+          {/* Las pestañas, a 44 px (R493). SLT-190 (R859): el conmutador de vista ya no va en esta
+              fila, sino en la barra fija. */}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <TabsList aria-label={TABLIST_LABEL} className="w-auto flex-wrap">
               <TabsTrigger value="hoy" className="min-h-11">
@@ -352,10 +406,6 @@ export function RecogerModule({
                 {`${PESTANA_PARA_OTRO_DIA} (${grupos.otroDia.length})`}
               </TabsTrigger>
             </TabsList>
-            <VistaCardsToggle
-              vista={vistaCardsPedida}
-              onVistaChange={cambiarVista}
-            />
           </div>
 
           <TabsContent value="hoy" className="flex flex-col gap-3">
