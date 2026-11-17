@@ -147,11 +147,18 @@ test.describe("SLT-166 — mapa de ruta en el móvil", () => {
       await expect(verCompleto).toBeVisible();
       await sinDesborde(page);
 
-      // SLT-192 (R882, R883): «Ocultar mapa» del pie lo pliega; «Mostrar mapa» (44 px) aparece
-      // junto al rótulo, que sigue a la vista (R884), y lo vuelve a abrir.
+      // SLT-192 (R882, R883, DC2): «Ocultar mapa» del pie lo pliega y «Mostrar mapa» (44 px) lo vuelve
+      // a abrir. Este escenario tiene avisos de ruta (la orden sin coordenadas queda sin optimizar →
+      // «ruta desactualizada»), así que «Mostrar mapa» va como hoy: en la fila del PRIMER aviso, fuera
+      // del grupo «Mapa de ruta», cuyo rótulo sigue a la vista sin botón (R884).
       await ocultar.click();
-      const mostrar = grupo.getByRole("button", { name: "Mostrar mapa" });
+      const avisoConMapa = page
+        .getByRole("alert")
+        .filter({ has: page.getByRole("button", { name: "Mostrar mapa" }) });
+      await expect(avisoConMapa).toHaveCount(1);
+      const mostrar = avisoConMapa.getByRole("button", { name: "Mostrar mapa" });
       await expect(mostrar).toBeVisible();
+      await expect(grupo.getByRole("button", { name: "Mostrar mapa" })).toHaveCount(0);
       await expect(mostrar).toHaveAttribute("aria-expanded", "false");
       await expect(alternar).toHaveCount(1);
       await tactil(mostrar);
@@ -192,12 +199,21 @@ test.describe("SLT-166 — mapa de ruta en el móvil", () => {
     await expect(hoja).toHaveCount(0);
     await expect(page.getByRole("group", { name: "Mapa de ruta" })).toBeVisible();
 
+    // SLT-192 (R889): tocar fuera de la hoja (arriba de la ventana: la hoja se abre desde abajo y
+    // ocupa como mucho el 60 % del alto) también la cierra.
+    await page.locator(".leaflet-marker-icon").first().click();
+    await expect(hoja).toBeVisible();
+    await page.mouse.click(180, 10);
+    await expect(hoja).toHaveCount(0);
+
     await page.locator(".leaflet-marker-icon").first().click();
     await expect(hoja).toBeVisible();
     await expect(hoja.getByText(larga.numRemision, { exact: true })).toBeVisible();
     await expect(hoja.getByText(DESTINATARIO_LARGO, { exact: true })).toBeVisible();
-    // SLT-192 (R888): la dirección va como «Cantón · Distrito — dirección».
-    await expect(hoja.getByText(DIRECCION_LARGA, { exact: false })).toBeVisible();
+    // SLT-192 (R888): la dirección va como «Cantón · Distrito — dirección», con el cantón y el
+    // distrito de la zona satélite (la carga masiva pone la orden en ese distrito).
+    const { canton, distrito } = r.zonaSatelite.geo;
+    await expect(hoja.getByText(`${canton} · ${distrito} — ${DIRECCION_LARGA}`, { exact: true })).toBeVisible();
     await expect(hoja.getByText("Cobrar", { exact: true })).toBeVisible();
     await sinElipsis(hoja);
     const cajaHoja = await hoja.boundingBox();

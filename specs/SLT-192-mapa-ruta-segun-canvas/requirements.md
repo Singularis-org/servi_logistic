@@ -123,7 +123,7 @@ Orden: T1 → T2 → T3; T4 [P] con T1-T3 (otro archivo). T5 al final.
   avisos, abierto y cerrado; con avisos y mapa abierto, la fila del aviso no tiene control.
   Ajustar el `describe` de R544 del mismo archivo y lo que choque en
   `tests/components/RepartoMovil.test.tsx` y `tests/components/RepartoModule.test.tsx`.
-- [x] **T3 — E2E del mapa (R880, R882, R883, R884, R885 de extremo a extremo).** En
+- [ ] **T3 — E2E del mapa (R880, R882, R883, R884, R885 de extremo a extremo).** En
   `e2e/pwa-mensajero-mapa.spec.ts (a)`: con el mapa abierto, «Ocultar mapa» está dentro del grupo
   «Mapa de ruta», debajo del mapa, y mide ≥ 44 px; al pulsarlo aparece «Mostrar mapa» en su sitio y
   lo vuelve a abrir; el rótulo «Mapa de ruta» es visible.
