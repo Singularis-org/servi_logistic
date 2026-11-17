@@ -40,7 +40,7 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 
 ### D8 — La suite de integración necesita datos que la app vacía ya no siembra
 - **Origen:** SL-11 (app vacía), medido en el gate completo de `dev` tras SL-16 (2026-10-22): 245 archivos de `tests/integration/` en `tests/baseline-rojos.json`, todos por base sin órdenes, usuarios ni zonas.
-- **Qué falta:** SLT-177 midió las 239 entradas de SL-31 en CI (run 43973243440: 227 base vacía, 12 otra causa) y sacó 92 con siembra propia. Las que quedan llevan su causa y su ficha: SLT-178…SLT-184 (siembra), SLT-185 (sin empresa en contexto), SLT-186 (estados retirados), SLT-187 (migraciones tras SL-17) SLT-188 (filas fuera de la transacción) y SLT-195 (21 de cierre de satélite, ver D64). Ningún motivo cita ya SL-31 (guardia R743).
+- **Qué falta:** SLT-177 midió las 239 entradas de SL-31 en CI (run 43973243440: 227 base vacía, 12 otra causa) y sacó 91 con siembra propia. Las que quedan llevan su causa y su ficha: SLT-178…SLT-184 (siembra), SLT-185 (sin empresa en contexto), SLT-186 (estados retirados), SLT-187 (migraciones tras SL-17) SLT-188 (filas fuera de la transacción) y SLT-195 (21 de cierre de satélite, ver D64). Ningún motivo cita ya SL-31 (guardia R743).
 - **Dueño:** las fichas SLT-178…SLT-188.
 
 ### D9 — Docs del perfil que nombran la app de origen

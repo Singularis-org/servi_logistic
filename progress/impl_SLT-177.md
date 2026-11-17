@@ -12,7 +12,7 @@ Ruta ligera. Spec: `specs/SLT-177-remedir-baseline-sl31/requirements.md` (R730-R
   «PODA DEL 2026-11-16 (SLT-177)» de `_lee_esto` va con T7.
 - [x] T5 — Sembrar el lote. `d432d21f`.
 - [x] T6 — Mutaciones y R738. `d20248aa`.
-- [x] T7 — Baseline. `12412b11`, `b386a76f` y la tanda de SLT-195: 92 fuera, 147 motivos nuevos, regla R743 en la guardia.
+- [x] T7 — Baseline. `12412b11`, `b386a76f` y la tanda de SLT-195: 91 fuera (92 menos `retiro-estados-migration`, que volvió), 148 motivos nuevos, regla R743 en la guardia.
 - [ ] T8 — Cierre. Hecho: deudas, diff de producción vacío y tamaño. Falta: `./init.sh` y el CI del PR.
 
 ## T1 — Medición
@@ -293,3 +293,5 @@ causa. Parado en la puerta T2.
 ## Gate (leader, 2026-11-16)
 
 - `./init.sh` contra la base local de dev: rojos solo en `total-a-cobrar-sin-cerrado-sql-real` y `whatsapp-envios-migration`, que fallan IGUAL en `dev` sin esta rama (estado de la base local; el primero, lectura global de zona central, anotado en SLT-188). Tamaño 17/40 archivos, 0 producción, ~1064/3000 tests. Manda CI (`gate-completo` con base limpia).
+
+> Nota del leader (2026-11-16): las cifras «92» de las secciones de arriba son anteriores a `40f66cda`; el resultado final es 91 fuera y 152 entradas en el baseline.
