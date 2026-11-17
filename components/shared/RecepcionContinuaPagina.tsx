@@ -33,10 +33,10 @@ import { cn } from "@/lib/utils";
 const MOTIVO_FALLO_INESPERADO = "No se pudo procesar la lectura. Intenta de nuevo.";
 
 const COLOR_LINEA: Partial<Record<EstadoFila["tipo"], string>> = {
-  recibida: "bg-success-soft text-success-strong",
-  no_encontrada: "bg-warning-soft text-warning-strong",
-  no_se_pudo: "bg-danger-soft text-danger-strong",
-  codigo_invalido: "bg-danger-soft text-danger-strong",
+  recibida: "bg-success-soft text-success-strong dark:bg-success/15",
+  no_encontrada: "bg-warning-soft text-warning-strong dark:bg-warning/15",
+  no_se_pudo: "bg-danger-soft text-danger-strong dark:bg-danger/15",
+  codigo_invalido: "bg-danger-soft text-danger-strong dark:bg-danger/15",
 };
 
 function sonarResultado(resultado: ResultadoLectura) {

@@ -24,13 +24,13 @@ import { cn } from "@/lib/utils";
 const SIN_DATO = "—";
 
 const COLOR_ESTADO: Record<EstadoFila["tipo"], string> = {
-  recibiendo: "bg-info-soft text-info-strong",
-  recibida: "bg-success-soft text-success-strong",
+  recibiendo: "bg-info-soft text-info-strong dark:bg-info/15",
+  recibida: "bg-success-soft text-success-strong dark:bg-success/15",
   ya_recibida: "bg-muted text-muted-foreground",
   repetida_en_sesion: "bg-muted text-muted-foreground",
-  no_encontrada: "bg-warning-soft text-warning-strong",
-  no_se_pudo: "bg-danger-soft text-danger-strong",
-  codigo_invalido: "bg-danger-soft text-danger-strong",
+  no_encontrada: "bg-warning-soft text-warning-strong dark:bg-warning/15",
+  no_se_pudo: "bg-danger-soft text-danger-strong dark:bg-danger/15",
+  codigo_invalido: "bg-danger-soft text-danger-strong dark:bg-danger/15",
 };
 
 export function ContadoresEscaneo({
