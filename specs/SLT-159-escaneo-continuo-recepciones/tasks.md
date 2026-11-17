@@ -47,10 +47,10 @@ mismo.
   `app/(app)/ordenes/recibir/page.tsx` y `app/(app)/recepcion-satelite/recibir/page.tsx` con el gate
   de `por-recibir/page.tsx` y la lista blanca de `desde`. *Hecho:* R610, R612, R613 y R615 en verde en
   `RecepcionContinuaPagina.test.tsx` y `recibir-paquetes-page.test.tsx`.
-- [ ] **T11 — Enlace con puntero fino (depende de T10).** `RecibirPaquetesEntrada`: enlace con puntero
+- [x] **T11 — Enlace con puntero fino (depende de T10).** *(Hecho junto con T5: un solo PR.)* `RecibirPaquetesEntrada`: enlace con puntero
   fino, diálogo con táctil; `href` de la satélite con `desde` por `usePathname()`. *Hecho:* R611 en
   verde en `RecibirPaquetesEntrada.test.tsx`, `OrdenesPage.test.tsx` y `EscanerRecepcion.test.tsx`.
-- [ ] **T8 — E2E y dispositivo (depende de T10-T11).** `e2e/recibir-paquetes.spec.ts`: maestro, tres
+- [ ] **T8 — E2E y dispositivo (depende de T10-T11).** *(E2E escrito y registrado en `reparto`; lo corre CI. Pendiente: Preview y nota en `progress/features/SLT-159.md`.)* `e2e/recibir-paquetes.spec.ts`: maestro, tres
   guías sembradas con Enter seguidas en `/ordenes/recibir` → tres «Recibida» con destinatario y tienda
   sembrados; «Terminar recepción (3)» vuelve a `/ordenes`. En Preview: recibir 10 etiquetas con la
   pistola sin tocar la pantalla (una repetida, una ajena) en la página; en el teléfono de tienda,

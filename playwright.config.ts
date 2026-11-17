@@ -130,6 +130,8 @@ export default defineConfig({
         "pwa-mensajero-mapa",
         // SLT-162 · R753, R757-R761, R766-R769: /ranking y /ranking/historico en tarjetas a 360/414 px.
         "pwa-mensajero-ranking",
+        // SLT-159 · R580, R581, R610, R613: la página «Recibir paquetes» con la pistola, satélite y central.
+        "recibir-paquetes",
       ),
     },
     {
