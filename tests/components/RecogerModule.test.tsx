@@ -2039,17 +2039,21 @@ describe("SLT-190 — Recoger en bodega según el canvas", () => {
     renderModule({ porRecoger: [...TRES, otroDiaNorte] });
     await ponerTienda(user, "Tienda Sur");
 
-    expect(within(panelActivo()).getByText("REM-T1")).toBeInTheDocument();
-    expect(within(panelActivo()).getByText("REM-T3")).toBeInTheDocument();
-    expect(within(panelActivo()).queryByText("REM-T2")).toBeNull();
+    await vi.waitFor(() => {
+      expect(within(panelActivo()).getByText("REM-T1")).toBeInTheDocument();
+      expect(within(panelActivo()).getByText("REM-T3")).toBeInTheDocument();
+      expect(within(panelActivo()).queryByText("REM-T2")).toBeNull();
+    });
     // Contadores: lo que el mensajero TIENE (277 R16/R20).
     expect(pestanaHoy()).toHaveTextContent("Para recoger hoy (3)");
     expect(pestanaOtroDia()).toHaveTextContent("Para otro día (2)");
     expect(contadorNuevas()).toHaveTextContent("3 órdenes nuevas para recoger");
 
     await user.type(buscador(), "carla");
-    expect(within(panelActivo()).getByText("REM-T3")).toBeInTheDocument();
-    expect(within(panelActivo()).queryByText("REM-T1")).toBeNull();
+    await vi.waitFor(() => {
+      expect(within(panelActivo()).getByText("REM-T3")).toBeInTheDocument();
+      expect(within(panelActivo()).queryByText("REM-T1")).toBeNull();
+    });
   });
 
   it("R853: el filtro no cambia lo que acepta el escáner (una guía de otra tienda se recoge)", async () => {
@@ -2071,33 +2075,35 @@ describe("SLT-190 — Recoger en bodega según el canvas", () => {
     await ponerTienda(user, "Tienda Sur");
     await user.type(buscador(), "ana");
 
-    expect(within(barra()).getByRole("button", { name: /^Filtros \(1\)/ })).toBeInTheDocument();
+    expect(await within(barra()).findByRole("button", { name: /^Filtros \(1\)/ })).toBeInTheDocument();
     const control = within(barra()).getByRole("combobox", { name: "Filtrar por tienda" });
-    expect(control).toHaveTextContent("Tienda: Tienda Sur");
+    await vi.waitFor(() => expect(control).toHaveTextContent("Tienda: Tienda Sur"));
     // 44 px como alto MÍNIMO, y el nombre entero: parte línea, sin «…» (decisión de Carlos, 2026-11-17).
     expect(control.className.split(/\s+/)).toContain("max-md:min-h-11");
     expect(control.querySelector(".truncate")).toBeNull();
     expect(control.querySelector(".whitespace-normal")).not.toBeNull();
 
     await user.click(within(barra()).getByRole("button", { name: "Limpiar todo" }));
-    expect(buscador()).toHaveValue("");
-    expect(screen.queryByRole("combobox", { name: "Filtrar por tienda" })).toBeNull();
-    for (const rem of ["REM-T1", "REM-T2", "REM-T3"]) {
-      expect(within(panelActivo()).getByText(rem)).toBeInTheDocument();
-    }
+    await vi.waitFor(() => {
+      expect(buscador()).toHaveValue("");
+      expect(screen.queryByRole("combobox", { name: "Filtrar por tienda" })).toBeNull();
+      for (const rem of ["REM-T1", "REM-T2", "REM-T3"]) {
+        expect(within(panelActivo()).getByText(rem)).toBeInTheDocument();
+      }
+    });
   });
 
   it("R852: quitar «Tienda» de «Filtros» vuelve a mostrar todas las órdenes", async () => {
     const user = userEvent.setup();
     renderModule({ porRecoger: TRES });
     await ponerTienda(user, "Tienda Sur");
-    expect(within(panelActivo()).queryByText("REM-T2")).toBeNull();
+    await vi.waitFor(() => expect(within(panelActivo()).queryByText("REM-T2")).toBeNull());
 
     await user.click(screen.getByRole("button", { name: /^Filtros/ }));
     const selector = await screen.findByRole("listbox", { name: "Filtros" });
     await user.click(within(selector).getByRole("option", { name: "Tienda" }));
     await user.keyboard("{Escape}");
-    expect(within(panelActivo()).getByText("REM-T2")).toBeInTheDocument();
+    expect(await within(panelActivo()).findByText("REM-T2")).toBeInTheDocument();
   });
 
   it("R854: con solo el filtro, una pestaña que queda vacía dice el vacío de búsqueda y el puntero a la otra", async () => {
@@ -2116,9 +2122,11 @@ describe("SLT-190 — Recoger en bodega según el canvas", () => {
     });
     await ponerTienda(user, "Tienda Sur");
 
-    expect(within(panelActivo()).getByText("Ninguna guía para recoger coincide con la búsqueda.")).toBeInTheDocument();
-    expect(within(panelActivo()).getByText("Hay 1 coincidencia en «Para otro día».")).toBeInTheDocument();
-    expect(within(panelActivo()).queryByText("No hay órdenes para recoger hoy.")).toBeNull();
+    await vi.waitFor(() => {
+      expect(within(panelActivo()).getByText("Ninguna guía para recoger coincide con la búsqueda.")).toBeInTheDocument();
+      expect(within(panelActivo()).getByText("Hay 1 coincidencia en «Para otro día».")).toBeInTheDocument();
+      expect(within(panelActivo()).queryByText("No hay órdenes para recoger hoy.")).toBeNull();
+    });
   });
 
   it("R857: la numeración se recalcula sobre la lista visible, de 1 a n sin huecos", async () => {
@@ -2128,11 +2136,15 @@ describe("SLT-190 — Recoger en bodega según el canvas", () => {
     expect(await within(panelActivo()).findByText("Orden 3 de 3")).toBeInTheDocument();
 
     await ponerTienda(user, "Tienda Sur");
-    const fila3 = within(panelActivo()).getByRole("button", { name: /REM-T3/ });
-    expect(within(fila3).getByText("Orden 2 de 2")).toBeInTheDocument();
-    const fila1 = within(panelActivo()).getByRole("button", { name: /REM-T1/ });
-    expect(within(fila1).getByText("Orden 1 de 2")).toBeInTheDocument();
-    expect(within(panelActivo()).queryByText(/de 3$/)).toBeNull();
+    // El filtrado llega en un render posterior al clic: bajo carga (CI) aún no está al volver de
+    // `ponerTienda`. Se espera con todas las aserciones dentro, sin aflojar ninguna.
+    await vi.waitFor(() => {
+      const fila3 = within(panelActivo()).getByRole("button", { name: /REM-T3/ });
+      expect(within(fila3).getByText("Orden 2 de 2")).toBeInTheDocument();
+      const fila1 = within(panelActivo()).getByRole("button", { name: /REM-T1/ });
+      expect(within(fila1).getByText("Orden 1 de 2")).toBeInTheDocument();
+      expect(within(panelActivo()).queryByText(/de 3$/)).toBeNull();
+    });
 
     // Y en la otra pestaña, por separado.
     await irAOtroDia(user);
