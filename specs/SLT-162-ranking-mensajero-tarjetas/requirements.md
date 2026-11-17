@@ -203,7 +203,7 @@ Orden: T1 → (T2 ∥ T3) → T4 → T5 → T6. `[P]` = paralelizable con su her
   (80 caracteres con una palabra de 40 sin espacios) y una descripción de premio larga (200
   caracteres).
   *Hecho:* typecheck verde; tests de la cola de cierres sin cambios y en verde.
-- [ ] **T2 [P] — Ranking del día, Premios y podio** (`RankingModule.tsx`, `PremioInputRow.tsx`,
+- [x] **T2 [P] — Ranking del día, Premios y podio** (`RankingModule.tsx`, `PremioInputRow.tsx`,
   `RankingPodio.tsx`, `ranking/page.tsx`). Columnas móviles de T6 con `useIsMobile` sobre la MISMA
   `DataTable` (modelo `columnasTablaPropiaMovil`, cabeceras `sr-only`), `TEXTO_ENTERO` y
   `COLUMNA_FIJA`; `page.tsx` pasa `mensajeroPropioId` a `RankingModule` para el chip «Tú» (rótulo
