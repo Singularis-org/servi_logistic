@@ -82,3 +82,8 @@ Base: `servi_slt167_desechable` (local, migrada), vía el envoltorio del leader;
 ## Veredicto
 
 R710-R716 implementados y con test; integración contra Postgres real verde y la mutación de R714 la pone roja; falta el gate `./init.sh` con base sembrada.
+
+## T4 — gate (leader, 2026-11-16)
+
+- `./init.sh` (rápido) en el worktree, con `.env` de dev: `INIT_EXIT=0`. Tamaño 20/40 archivos, 159/1000 producción, 482/3000 tests. La suite completa la corre `gate-completo` del PR #186.
+- Review OK (`progress/review_SLT-167.md`). Menores (helper `conResumen` triplicado, `catch {}` sin rastro) anotados para una limpieza posterior.

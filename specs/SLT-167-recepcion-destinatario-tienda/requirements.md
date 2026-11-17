@@ -107,7 +107,7 @@ seed antes del primer gate (si no, la integración se salta y el gate sale verde
   donde lleguen a `ok`/`ya_recibida`; sus aserciones de `status`, `ordenId` y `estado` intactas.
   *Hecho:* R716: los archivos de su fila en verde con `pnpm exec vitest related --run`, y
   `pnpm run typecheck` en verde (los componentes que consumen las acciones compilan sin tocarse).
-- [ ] **T4 — Cierre.** `./init.sh` en verde con la integración ejecutada (no saltada); mapa R → test
+- [x] **T4 — Cierre.** `./init.sh` en verde con la integración ejecutada (no saltada); mapa R → test
   y la mutación de R714 en `progress/impl_SLT-167.md`. *Hecho:* gate verde y mapa con R710-R716.
 
 ## Archivos esperados
