@@ -181,3 +181,26 @@ Comandos (base desechable `servi_slt190_desechable`, `NODE_OPTIONS=--max-old-spa
   por `RepartoModule.test.tsx`.
 
 Veredicto vuelta 4: T6 cerrada; E2E 11/11 y componentes 398/398 en verde.
+
+## Vuelta 5 (flaky de CI en `e2e (reparto)`, PR #201) — frontend_dev, 2026-11-17
+
+Archivo modificado: `e2e/pwa-mensajero-recoger-recoleccion.spec.ts`.
+
+- Causa: en (b) R861 la caja del conmutador se medía justo después de `scrollBy`, antes de que el
+  scroll y la barra fija se asentaran (CI: `caja.y` 283 ≥ 260, pasa en el reintento).
+- Arreglo, sin aflojar lo comprobado: helper `scrollAsentado` (mismo `scrollY` dos frames seguidos,
+  sin tiempos fijos) y el bloque scroll + medida dentro de `expect(...).toPass({ timeout: 10_000 })`,
+  con `scrollTo({ top: 900, behavior: "instant" })` (idempotente entre reintentos). Siguen las mismas
+  aserciones: la página bajó (`scrollY > 0`), el conmutador visible y `0 ≤ y < ALTO_MOVIL / 3`. Es la
+  única medida tras scroll del spec (las de :210/:280 son sin scroll).
+
+Comandos (HEAD c06b1ba8 + este cambio; base `servi_slt190_desechable`; `NODE_OPTIONS=--max-old-space-size=8192`):
+- `pnpm exec next build`: `✓ Compiled successfully`, BUILD_EXIT=0.
+- `playwright test e2e/pwa-mensajero-recoger-recoleccion.spec.ts --repeat-each=5 --retries=0`:
+  - 1.ª pasada: `34 passed, 1 failed`. El rojo NO es de esta medida: SLT-164 (a) Recoger a 360 px, en
+    la PREPARACIÓN del escenario (`drenarGeocodificacion`, `e2e/_escenarios/crons.ts:83`: «tras 15
+    pasadas de procesar-jobs, la geocodificación … no falló por configuración»), en la primera
+    repetición tras el build; las otras 4 repeticiones de ese test, verdes. Probable cola de jobs
+    acumulada en la base desechable reutilizada; no se toca aquí.
+  - 2.ª pasada: `35 passed (2.2m)`, E2E_EXIT=0, sin flaky (los 10 SLT-190 a 360/414 px, verdes).
+- `eslint` del spec: sin problemas.

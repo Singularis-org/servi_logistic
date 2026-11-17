@@ -63,6 +63,28 @@ function barra(page: Page): Locator {
   return page.locator(".sticky").filter({ has: page.getByRole("searchbox", { name: "Buscar guías" }) }).last();
 }
 
+/**
+ * `scrollY` una vez asentado: espera a que dos frames seguidos lean el mismo valor (sin tiempos fijos).
+ */
+async function scrollAsentado(page: Page): Promise<number> {
+  return page.evaluate(
+    () =>
+      new Promise<number>((resolver) => {
+        let previo = window.scrollY;
+        const mirar = () => {
+          requestAnimationFrame(() => {
+            if (window.scrollY === previo) resolver(previo);
+            else {
+              previo = window.scrollY;
+              mirar();
+            }
+          });
+        };
+        mirar();
+      }),
+  );
+}
+
 async function cajaDe(l: Locator) {
   const caja = await l.boundingBox();
   expect(caja, "sin caja (¿está visible?)").not.toBeNull();
@@ -410,12 +432,17 @@ test.describe("SLT-164 — Recoger en bodega y Recolección en el móvil", () =>
       await sinElipsis(seccionHoy);
 
       // (b) R861: al bajar, la barra —con el conmutador— sigue pegada arriba.
-      await page.evaluate(() => window.scrollBy(0, 900));
-      await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
-      await expect(conmutador).toBeVisible();
-      const caja = await cajaDe(conmutador);
-      expect(caja.y).toBeGreaterThanOrEqual(0);
-      expect(caja.y).toBeLessThan(ALTO_MOVIL / 3);
+      // Se mide con el scroll ASENTADO (mismo `scrollY` dos frames seguidos) y se reintenta el bloque
+      // entero: en CI la caja se leía antes de que el scroll y la barra fija se asentaran (283 px,
+      // flaky). Lo comprobado no cambia: la página bajó y el conmutador queda en el tercio de arriba.
+      await expect(async () => {
+        await page.evaluate(() => window.scrollTo({ top: 900, behavior: "instant" }));
+        expect(await scrollAsentado(page)).toBeGreaterThan(0);
+        await expect(conmutador).toBeVisible();
+        const caja = await cajaDe(conmutador);
+        expect(caja.y).toBeGreaterThanOrEqual(0);
+        expect(caja.y).toBeLessThan(ALTO_MOVIL / 3);
+      }).toPass({ timeout: 10_000 });
     });
   }
 
