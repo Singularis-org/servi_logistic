@@ -197,7 +197,7 @@ para al tocar cualquiera de los dos topes:
     las crea en el board y anota las keys en `progress/features/SLT-177.md`.
   - *Hecho:* lote cerrado en el spec, sin choque (o choque aceptado por escrito), y una key de ficha
     para cada entrada que se queda.
-- [ ] **T3 [P con T1] — Guardia de forma del baseline: `SLT-<n>`** (R742), en
+- [x] **T3 [P con T1] — Guardia de forma del baseline: `SLT-<n>`** (R742), en
   `tests/unit/guards/gate-cableado-arnes-v2.guardia.test.ts`.
   - `FICHA` acepta `SL-<n>` y `SLT-<n>` (y sigue sin aceptar otra cosa); casos en memoria.
   - La regla de R743 (ningún motivo cita SL-31) NO va aquí: daría rojo sobre el archivo real en cada

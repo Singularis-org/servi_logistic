@@ -15,14 +15,15 @@ import { RAIZ_DEL_REPO } from "../../fixtures/raices-de-codigo";
 // El baseline se vigila por su FORMA, no por su lista: podarlo es obligatorio (`docs/gate.md`),
 // y una guardia que congelara las rutas pelearia con la poda. El comparador de CI ya exige
 // `motivo` y `desde`, pero el rapido no los valida; por eso se hace aqui, mas estricto: el motivo
-// cita la ficha `SL-<n>` que retira la excepcion (R21).
+// cita la ficha `SL-<n>` o `SLT-<n>` que retira la excepcion (R21, R742 de SLT-177).
 
 const SCRIPT_TEST_RAPIDO = "node scripts/test-rapido.mjs";
 const SCRIPT_TEST_JSON =
   "vitest run --reporter=default --reporter=json --outputFile.json=.vitest-rojos.json";
 
 const MOTIVO_MINIMO = 40;
-const FICHA = /SL-\d+/;
+// SLT-177 (R742): las fichas del board actual son `SLT-<n>`; las antiguas, `SL-<n>`. Vale cualquiera.
+const FICHA = /\bSLT?-\d+\b/;
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 
 type BaselineCrudo = { archivos?: Record<string, unknown> } & Record<string, unknown>;
@@ -41,7 +42,7 @@ export function erroresDelBaseline(
     if (motivo.length < MOTIVO_MINIMO) {
       errores.push(`${ruta}: \`motivo\` ausente o de menos de ${MOTIVO_MINIMO} caracteres`);
     } else if (!FICHA.test(motivo)) {
-      errores.push(`${ruta}: el \`motivo\` no cita la ficha SL-<n> que retira la entrada`);
+      errores.push(`${ruta}: el \`motivo\` no cita la ficha SL-<n> o SLT-<n> que retira la entrada`);
     }
     if (typeof m.desde !== "string" || !FECHA.test(m.desde)) {
       errores.push(`${ruta}: \`desde\` no tiene la forma AAAA-MM-DD`);
@@ -95,7 +96,25 @@ describe("SL-10 — el gate rapido esta cableado al arnes v2", () => {
       "tests/no-existe.test.ts: `motivo` ausente o de menos de 40 caracteres",
       "tests/no-existe.test.ts: `desde` no tiene la forma AAAA-MM-DD",
       "tests/no-existe.test.ts: el archivo no existe",
-      "tests/existe.test.ts: el `motivo` no cita la ficha SL-<n> que retira la entrada",
+      "tests/existe.test.ts: el `motivo` no cita la ficha SL-<n> o SLT-<n> que retira la entrada",
+    ]);
+  });
+
+  it("SLT-177 R742: un motivo que cita SLT-<n> vale; uno que solo dice «SLTX» o «ASL-» sin numero, no", () => {
+    const fixture: BaselineCrudo = {
+      archivos: {
+        "tests/slt.test.ts": {
+          motivo: "Base vacia medida en CI el 2026-11-16 (run 1); la retira la ficha SLT-178.",
+          desde: "2026-10-21",
+        },
+        "tests/sin-ficha.test.ts": {
+          motivo: "Motivo largo que habla de SLT y de SL- pero no da el numero de ninguna ficha.",
+          desde: "2026-10-21",
+        },
+      },
+    };
+    expect(erroresDelBaseline(fixture, () => true)).toEqual([
+      "tests/sin-ficha.test.ts: el `motivo` no cita la ficha SL-<n> o SLT-<n> que retira la entrada",
     ]);
   });
 });
