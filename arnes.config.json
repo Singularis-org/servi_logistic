@@ -58,6 +58,7 @@
           "migracion",
           "demo-qa",
           "sql-real",
+          "schema-drift",
           "tests/unit/scripts/verificar-rls"
         ]
       },
