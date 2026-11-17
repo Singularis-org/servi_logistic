@@ -25,6 +25,9 @@ const PROPORCION_MARCO = 0.7;
  */
 const FORMATOS_ETIQUETA: Html5QrcodeSupportedFormats[] = [0, 5];
 
+/** SLT-159 (R589): en modo continuo, el mismo texto antes de este tiempo se ignora. */
+export const ESPERA_MISMO_CODIGO_MS = 3000;
+
 /**
  * Lado del recuadro de escaneo para un visor de `ancho`×`alto`. Cuadrado y
  * medido sobre el lado CORTO: así cabe entero tanto en un visor vertical (el
@@ -47,6 +50,13 @@ export interface QrScannerProps {
    * (el botón de cámara del buscador). Apagada por defecto: los demás usos arrancan con el botón.
    */
   encendidaAlMontar?: boolean;
+  /**
+   * SLT-159 (R588): escaneo continuo. La cámara NO se cierra tras leer y sigue entregando; el
+   * mismo texto antes de `ESPERA_MISMO_CODIGO_MS` se ignora (R589). Por defecto, guía suelta.
+   */
+  continuo?: boolean;
+  /** SLT-159: se llama al pulsar «Cerrar cámara» (la página desmonta el visor). */
+  alCerrar?: () => void;
 }
 
 /**
@@ -60,6 +70,8 @@ export function QrScanner({
   disabled = false,
   mensajeErrorCamara = MENSAJE_ERROR_CAMARA_DEFAULT,
   encendidaAlMontar = false,
+  continuo = false,
+  alCerrar,
 }: Readonly<QrScannerProps>) {
   const toast = useToast();
   const [camaraAbierta, setCamaraAbierta] = useState(encendidaAlMontar);
@@ -82,7 +94,9 @@ export function QrScanner({
   const onDecodedRef = useRef(onDecoded);
   const toastRef = useRef(toast);
   const mensajeErrorCamaraRef = useRef(mensajeErrorCamara);
+  const continuoRef = useRef(continuo);
   useEffect(() => {
+    continuoRef.current = continuo;
     onDecodedRef.current = onDecoded;
     toastRef.current = toast;
     mensajeErrorCamaraRef.current = mensajeErrorCamara;
@@ -97,6 +111,8 @@ export function QrScanner({
     // vez por frame. Un `useState` no serviría — el callback vive en la clausura
     // que `start()` capturó y nunca vería el valor nuevo.
     let entregado = false;
+    // Modo continuo (R589): el último texto entregado y cuándo.
+    let ultimo: { texto: string; en: number } | null = null;
     let instancia: {
       stop: () => Promise<void>;
       clear: () => void;
@@ -126,7 +142,17 @@ export function QrScanner({
             },
           },
           (decodedText: string) => {
-            if (entregado || cancelado) return;
+            if (cancelado) return;
+            if (continuoRef.current) {
+              const ahora = Date.now();
+              if (ultimo?.texto === decodedText && ahora - ultimo.en < ESPERA_MISMO_CODIGO_MS) {
+                return;
+              }
+              ultimo = { texto: decodedText, en: ahora };
+              onDecodedRef.current(decodedText);
+              return;
+            }
+            if (entregado) return;
             entregado = true;
             setCamaraAbierta(false);
             onDecodedRef.current(decodedText);
@@ -260,6 +286,7 @@ export function QrScanner({
           onClick={() => {
             setIniciando(false);
             setCamaraAbierta(false);
+            alCerrar?.();
           }}
         >
           Cerrar cámara

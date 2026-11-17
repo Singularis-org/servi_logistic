@@ -21,7 +21,7 @@ mismo.
   `reintentar`, cola FIFO de filas pendientes, cadena de promesas única, `alCerrarConRecepcion` al
   desmontar. *Hecho:* R585 y R587 en verde en `tests/unit/hooks/useSesionEscaneo.test.ts`; los casos
   de SLT-158 en `tests/components/EscanerGuiaCard.test.tsx` siguen en verde sin tocarlos.
-- [ ] **T3 [P] — Cámara continua.** `QrScanner` props `continuo` (no cierra; mismo texto antes de
+- [x] **T3 [P] — Cámara continua.** `QrScanner` props `continuo` (no cierra; mismo texto antes de
   `ESPERA_MISMO_CODIGO_MS = 3000` se ignora) y `alCerrar`. Modo suelto intacto. *Hecho:* R588-R589 en
   verde en `tests/components/QrScanner.test.tsx`; sus casos existentes sin tocar y en verde.
 - [ ] **T4 — Lista y tarjeta (depende de T1-T3).** `components/shared/EscaneoContinuo.tsx` (variantes

@@ -303,3 +303,72 @@ describe("QrScanner — SLT-160 (D4) `encendidaAlMontar`", () => {
     expect(startMock).not.toHaveBeenCalled();
   });
 });
+
+// SLT-159 «Escaneo continuo en recepciones y recogidas» — la cámara continua.
+describe("QrScanner — modo continuo (R588, R589)", () => {
+  it("R588: en continuo, tras dos textos distintos la cámara sigue encendida y entrega los dos", async () => {
+    const onDecoded = vi.fn();
+    render(<QrScanner onDecoded={onDecoded} continuo encendidaAlMontar />);
+    await vi.waitFor(() => expect(decodeCallback.current).not.toBeNull());
+
+    await decodificar("1024");
+    await decodificar("2048");
+
+    expect(onDecoded.mock.calls).toEqual([["1024"], ["2048"]]);
+    expect(stopMock).not.toHaveBeenCalled();
+    expect(screen.getByRole("region", { name: "Visor de cámara QR" })).toBeInTheDocument();
+  });
+
+  it("R588: en guía suelta, tras una lectura la cámara se apaga", async () => {
+    const onDecoded = vi.fn();
+    render(<QrScanner onDecoded={onDecoded} encendidaAlMontar />);
+    await vi.waitFor(() => expect(decodeCallback.current).not.toBeNull());
+
+    await decodificar("1024");
+
+    expect(onDecoded).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(stopMock).toHaveBeenCalled());
+  });
+
+  describe("R589: el mismo texto antes de 3 s se ignora", () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(2026, 10, 16, 17, 42, 0));
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    async function montarYLeer(segundaTras: number, segundo: string) {
+      const onDecoded = vi.fn();
+      render(<QrScanner onDecoded={onDecoded} continuo encendidaAlMontar />);
+      await vi.waitFor(() => expect(decodeCallback.current).not.toBeNull());
+      await decodificar("1024");
+      vi.setSystemTime(Date.now() + segundaTras);
+      await decodificar(segundo);
+      return onDecoded;
+    }
+
+    it("mismo texto a 1 s: una entrega", async () => {
+      expect(await montarYLeer(1000, "1024")).toHaveBeenCalledTimes(1);
+    });
+
+    it("mismo texto a 3,1 s: dos entregas", async () => {
+      expect(await montarYLeer(3100, "1024")).toHaveBeenCalledTimes(2);
+    });
+
+    it("texto distinto a 0,5 s: dos entregas", async () => {
+      expect(await montarYLeer(500, "2048")).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("«Cerrar cámara» llama a alCerrar", async () => {
+    const user = userEvent.setup();
+    const alCerrar = vi.fn();
+    render(<QrScanner onDecoded={vi.fn()} continuo encendidaAlMontar alCerrar={alCerrar} />);
+
+    await user.click(screen.getByRole("button", { name: "Cerrar cámara" }));
+
+    expect(alCerrar).toHaveBeenCalledTimes(1);
+  });
+});
