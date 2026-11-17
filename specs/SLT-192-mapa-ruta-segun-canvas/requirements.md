@@ -105,7 +105,7 @@ Buscado `Ocultar mapa`, `Ver mapa completo`, `HojaParadaMapa`, `mapa de ruta` en
 
 Orden: T1 → T2 → T3; T4 [P] con T1-T3 (otro archivo). T5 al final.
 
-- [ ] **T1 — Pie del mapa y nota (R880, R881, R885, R886).** `RutaMapaInner` (y su paso por
+- [x] **T1 — Pie del mapa y nota (R880, R881, R885, R886).** `RutaMapaInner` (y su paso por
   `RutaMapa`) recibe dos props opcionales: la acción de ocultar y la nota del punto de partida.
   Bajo `LeyendaMapa` pinta la nota y, en una fila, «Ver mapa completo» + «Ocultar mapa»
   (`size="touch"`); a pantalla completa no pinta ninguno de los dos. Sin la prop de ocultar, el pie
@@ -113,7 +113,7 @@ Orden: T1 → T2 → T3; T4 [P] con T1-T3 (otro archivo). T5 al final.
   *Hecho:* `tests/components/RutaMapaInner.test.tsx` comprueba el orden leyenda → nota → botones,
   que los dos botones tienen `size="touch"` (clase de 44 px) y que a pantalla completa no están ni
   la nota ni «Ocultar mapa» y vuelven al salir.
-- [ ] **T2 — Rótulo y control en `RepartoModule` (R881-R884).** El rótulo «Mapa de ruta» se pinta
+- [x] **T2 — Rótulo y control en `RepartoModule` (R881-R884).** El rótulo «Mapa de ruta» se pinta
   siempre que `hayMapa`. Con el mapa abierto, `botonMapa` no se pinta ni en el aviso ni junto al
   rótulo, y `RutaMapa` recibe `mapa.cerrar` y la nota (que sale de encima del mapa). Con el mapa
   cerrado, «Mostrar mapa» en su sitio de hoy.
@@ -123,12 +123,12 @@ Orden: T1 → T2 → T3; T4 [P] con T1-T3 (otro archivo). T5 al final.
   avisos, abierto y cerrado; con avisos y mapa abierto, la fila del aviso no tiene control.
   Ajustar el `describe` de R544 del mismo archivo y lo que choque en
   `tests/components/RepartoMovil.test.tsx` y `tests/components/RepartoModule.test.tsx`.
-- [ ] **T3 — E2E del mapa (R880, R882, R883, R884, R885 de extremo a extremo).** En
+- [x] **T3 — E2E del mapa (R880, R882, R883, R884, R885 de extremo a extremo).** En
   `e2e/pwa-mensajero-mapa.spec.ts (a)`: con el mapa abierto, «Ocultar mapa» está dentro del grupo
   «Mapa de ruta», debajo del mapa, y mide ≥ 44 px; al pulsarlo aparece «Mostrar mapa» en su sitio y
   lo vuelve a abrir; el rótulo «Mapa de ruta» es visible.
   *Hecho:* el spec pasa en local a 360 px y en el ancho de escritorio que ya usa.
-- [ ] **T4 [P] — Cabecera de la hoja (R887-R890).** En `HojaParadaMapa.tsx`: fila
+- [x] **T4 [P] — Cabecera de la hoja (R887-R890).** En `HojaParadaMapa.tsx`: fila
   `flex-wrap` con número, remisión mono (`TEXTO_ENTERO`), destinatario y `EstadoConInfo`; dirección
   con el mismo armado que `PosOrderCardDetalle.tsx:69-75` (extraerlo a `pos-card/pos-format.ts`
   como función pura y usarla en los dos sitios); quitar el botón «Cerrar» y la constante

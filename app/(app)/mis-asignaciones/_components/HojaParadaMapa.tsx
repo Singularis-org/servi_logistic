@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { GripHorizontal, Navigation, X } from "lucide-react";
+import { GripHorizontal, Navigation } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -18,7 +18,7 @@ import { AbrirEnAppNavegacion } from "./AbrirEnAppNavegacion";
 import { GestionarOrdenCardButton } from "./GestionarOrdenCardButton";
 import { PosAmountRow } from "./pos-card/PosAmountRow";
 import { claseChipEstado, textoParada } from "./pos-card/pos-estado";
-import { destinoDeOrden } from "./pos-card/pos-format";
+import { destinoDeOrden, lineaUbicacion } from "./pos-card/pos-format";
 
 // SLT-166 (R540, design §11, canvas v35: RepartoMapaCompleto) — la hoja inferior que abre el
 // marcador de una parada. Presentación pura: la orden llega del módulo, y las dos acciones son las
@@ -26,10 +26,12 @@ import { destinoDeOrden } from "./pos-card/pos-format";
 //   - «Navegar» despliega la fila «Abrir en:» (`AbrirEnAppNavegacion`, feature 289).
 //   - «Gestionar» es el `GestionarOrdenCardButton` de la tarjeta, con su «¿Gestionar esta orden?»;
 //     al aceptar, el módulo cierra la hoja y abre el modo foco (R510), el mismo camino que la tarjeta.
+// SLT-192 (R887-R890): cabecera como el canvas —«número · remisión · destinatario · estado» en una
+// fila y la dirección «Cantón · Distrito — dirección»—, sin botón «Cerrar» (asa, Escape o tocar
+// fuera) y con nombre accesible «Parada {n}».
 
 export const ASA_HOJA = "Arrastrar para ampliar la hoja";
 export const NAVEGAR = "Navegar";
-export const CERRAR_HOJA = "Cerrar";
 
 /** Píxeles de arrastre del asa que cuentan como gesto (menos es un toque). */
 const UMBRAL_ARRASTRE = 24;
@@ -37,8 +39,6 @@ const UMBRAL_ARRASTRE = 24;
 export interface HojaParadaMapaProps {
   /** La orden de la parada tocada; `null` = hoja cerrada. */
   orden: MiAsignacionDTO | null;
-  /** Órdenes en reparto, para «Parada {n} de {total}». */
-  total: number;
   onOpenChange: (abierta: boolean) => void;
   /** Las mismas condiciones que apagan «Gestionar» en la tarjeta (bloqueo, reserva, otra en gestión). */
   gestionarDeshabilitado: boolean;
@@ -48,7 +48,6 @@ export interface HojaParadaMapaProps {
 
 export function HojaParadaMapa({
   orden,
-  total,
   onOpenChange,
   gestionarDeshabilitado,
   onGestionar,
@@ -60,7 +59,6 @@ export function HojaParadaMapa({
         <ContenidoHoja
           key={orden.id}
           orden={orden}
-          total={total}
           onCerrar={() => onOpenChange(false)}
           gestionarDeshabilitado={gestionarDeshabilitado}
           onGestionar={onGestionar}
@@ -72,13 +70,11 @@ export function HojaParadaMapa({
 
 function ContenidoHoja({
   orden,
-  total,
   onCerrar,
   gestionarDeshabilitado,
   onGestionar,
 }: {
   orden: MiAsignacionDTO;
-  total: number;
   onCerrar: () => void;
   gestionarDeshabilitado: boolean;
   onGestionar: (orden: MiAsignacionDTO) => void;
@@ -104,7 +100,9 @@ function ContenidoHoja({
     }
   }
 
-  const parada = orden.secuenciaRuta === null ? "Parada sin posición" : `Parada ${textoParada(orden)} de ${total}`;
+  // R890: nombre accesible de la hoja (el `aria-label` del canvas); el número ya se ve en la fila.
+  const parada = orden.secuenciaRuta === null ? "Parada sin posición" : `Parada ${textoParada(orden)}`;
+  const ubicacion = lineaUbicacion(orden);
 
   return (
     <SheetContent
@@ -135,29 +133,31 @@ function ContenidoHoja({
         </button>
       </div>
 
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 flex-col gap-1">
-          <SheetTitle className="text-base font-bold">{parada}</SheetTitle>
-          <SheetDescription className={`font-mono text-xs font-bold text-foreground ${TEXTO_ENTERO}`}>
-            {orden.numRemision}
-          </SheetDescription>
-        </div>
-        <Button type="button" variant="ghost" size="icon-touch" onClick={onCerrar}>
-          <X aria-hidden="true" />
-          <span className="sr-only">{CERRAR_HOJA}</span>
-        </Button>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
+      {/* R887: una fila que se parte en líneas sin recortar: número · remisión · destinatario · estado. */}
+      <SheetTitle className="sr-only">{parada}</SheetTitle>
+      <div data-testid="hoja-parada-cabecera" className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span
+          aria-hidden="true"
+          className="flex size-7 shrink-0 items-center justify-center rounded-md bg-navy text-xs font-black text-white"
+        >
+          {textoParada(orden)}
+        </span>
+        <SheetDescription
+          render={<span />}
+          className={`font-mono text-xs font-bold text-foreground ${TEXTO_ENTERO}`}
+        >
+          {orden.numRemision}
+        </SheetDescription>
+        <span className={`text-sm font-bold text-foreground ${TEXTO_ENTERO}`}>{orden.destinatario}</span>
         <EstadoConInfo
           codigo={orden.estatusValue}
           chipClassName={`rounded-full px-2 py-1 text-[10px] font-bold tracking-wide ${claseChipEstado(orden.estatusValue)}`}
         />
       </div>
 
-      <p className={`text-sm font-bold text-foreground ${TEXTO_ENTERO}`}>{orden.destinatario}</p>
+      {/* R888: «Cantón · Distrito — dirección», como la fila Detalle. */}
       <p className={`text-sm text-muted-foreground ${TEXTO_ENTERO}`}>
-        {orden.direccion ?? "Sin dirección"}
+        {ubicacion || "Sin dirección"}
       </p>
 
       <PosAmountRow montoCobrar={orden.montoCobrar} />

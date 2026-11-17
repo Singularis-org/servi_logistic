@@ -95,17 +95,24 @@ test.describe("SLT-166 — mapa de ruta en el móvil", () => {
   });
 
   for (const ancho of ANCHOS_MOVIL) {
-    test(`(a) R539, R541, R543, R544: a ${ancho} px, mapa abierto sin desborde, marcadores con la paleta y pantalla completa`, async ({ browser }) => {
+    test(`(a) R539, R541, R543, R544, R880, R882-R884: a ${ancho} px, mapa abierto sin desborde, marcadores con la paleta y pantalla completa`, async ({ browser }) => {
       const m = await crearMensajero(r, "satelite");
       const { sinCoordenadas } = await dosOrdenes(m);
       const page = await abrirReparto(browser, m, ancho);
 
-      // R544: el mapa arranca abierto y su control mide 44 px.
+      // R544 + SLT-192 (R880, R884): el mapa arranca abierto con el rótulo «Mapa de ruta» a la
+      // vista, y «Ocultar mapa» (44 px) es el único control del mapa y va DEBAJO del mapa.
       const grupo = page.getByRole("group", { name: "Mapa de ruta" });
       await expect(grupo).toBeVisible();
+      await expect(grupo.getByText("Mapa de ruta", { exact: true })).toBeVisible();
       const alternar = page.getByRole("button", { name: /^(Ocultar mapa|Mostrar mapa)$/ });
-      await expect(alternar).toHaveText("Ocultar mapa");
-      await tactil(alternar);
+      await expect(alternar).toHaveCount(1);
+      const ocultar = grupo.getByRole("button", { name: "Ocultar mapa" });
+      await expect(ocultar).toBeVisible();
+      await tactil(ocultar);
+      const cajaMapa = await grupo.locator(".leaflet-container").boundingBox();
+      const cajaOcultar = await ocultar.boundingBox();
+      expect(cajaOcultar!.y).toBeGreaterThanOrEqual(cajaMapa!.y + cajaMapa!.height);
 
       // R543: un solo marcador (la orden sin coordenadas no está en el mapa) y su tarjeta sí.
       const marcadores = page.locator(".leaflet-marker-icon");
@@ -127,6 +134,8 @@ test.describe("SLT-166 — mapa de ruta en el móvil", () => {
       const caja = await completo.boundingBox();
       expect(caja).toEqual({ x: 0, y: 0, width: ancho, height: ALTO_MOVIL });
       await expect(completo.getByText("Paradas 1 de 2")).toBeVisible();
+      // SLT-192 (R886): a pantalla completa no hay «Ocultar mapa».
+      await expect(page.getByRole("button", { name: "Ocultar mapa" })).toHaveCount(0);
       await tactil(completo.getByRole("button", { name: "Cerrar" }));
       await tactil(completo.getByRole("button", { name: "Centrar en mi ubicación" }));
       // `invalidateSize`: el mapa crece con su contenedor (si no, se quedaría en las 288 px de la página).
@@ -138,12 +147,18 @@ test.describe("SLT-166 — mapa de ruta en el móvil", () => {
       await expect(verCompleto).toBeVisible();
       await sinDesborde(page);
 
-      // R544: «Ocultar mapa» lo pliega y «Mostrar mapa» lo vuelve a abrir, en su sitio.
-      await alternar.click();
-      await expect(alternar).toHaveText("Mostrar mapa");
+      // SLT-192 (R882, R883): «Ocultar mapa» del pie lo pliega; «Mostrar mapa» (44 px) aparece
+      // junto al rótulo, que sigue a la vista (R884), y lo vuelve a abrir.
+      await ocultar.click();
+      const mostrar = grupo.getByRole("button", { name: "Mostrar mapa" });
+      await expect(mostrar).toBeVisible();
+      await expect(mostrar).toHaveAttribute("aria-expanded", "false");
+      await expect(alternar).toHaveCount(1);
+      await tactil(mostrar);
       await expect(page.locator(".leaflet-container")).toHaveCount(0);
-      await alternar.click();
-      await expect(alternar).toHaveText("Ocultar mapa");
+      await expect(grupo.getByText("Mapa de ruta", { exact: true })).toBeVisible();
+      await mostrar.click();
+      await expect(grupo.getByRole("button", { name: "Ocultar mapa" })).toBeVisible();
       await expect(page.locator(".leaflet-marker-icon")).toHaveCount(1);
 
       // R539: el marcador de la tarjeta a la vista se pinta en Amarillo Señal (la variable existe).
@@ -162,17 +177,27 @@ test.describe("SLT-166 — mapa de ruta en el móvil", () => {
     });
   }
 
-  test("(b) R540: el marcador abre su hoja; «Navegar» y «Gestionar» → modo foco", async ({ browser }) => {
+  test("(b) R540, R889, R890: el marcador abre su hoja «Parada {n}»; Escape la cierra; «Navegar» y «Gestionar» → modo foco", async ({ browser }) => {
     const m = await crearMensajero(r, "satelite");
     const { larga } = await dosOrdenes(m);
     const page = await abrirReparto(browser, m, 360);
 
+    // SLT-192 (R890): el nombre accesible es «Parada {n}» (o «Parada sin posición»), sin «de {total}».
+    const hoja = page.getByRole("dialog", { name: /^Parada( \d+| sin posición)$/ });
+    // SLT-192 (R889): sin botón «Cerrar»; Escape la cierra y vuelve al mapa.
     await page.locator(".leaflet-marker-icon").first().click();
-    const hoja = page.getByRole("dialog", { name: /^Parada/ });
+    await expect(hoja).toBeVisible();
+    await expect(hoja.getByRole("button", { name: "Cerrar" })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(hoja).toHaveCount(0);
+    await expect(page.getByRole("group", { name: "Mapa de ruta" })).toBeVisible();
+
+    await page.locator(".leaflet-marker-icon").first().click();
     await expect(hoja).toBeVisible();
     await expect(hoja.getByText(larga.numRemision, { exact: true })).toBeVisible();
     await expect(hoja.getByText(DESTINATARIO_LARGO, { exact: true })).toBeVisible();
-    await expect(hoja.getByText(DIRECCION_LARGA, { exact: true })).toBeVisible();
+    // SLT-192 (R888): la dirección va como «Cantón · Distrito — dirección».
+    await expect(hoja.getByText(DIRECCION_LARGA, { exact: false })).toBeVisible();
     await expect(hoja.getByText("Cobrar", { exact: true })).toBeVisible();
     await sinElipsis(hoja);
     const cajaHoja = await hoja.boundingBox();
