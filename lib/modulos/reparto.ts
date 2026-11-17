@@ -206,6 +206,8 @@ export const MODULO_POR_ACTION: Readonly<Record<string, Destino>> = {
   "mi-plan": "nucleo",
   // SL-24: de plataforma, como `modulos-empresa` (solo el superadmin).
   planes: "nucleo",
+  // SLT-129: el borrador de planes del superadmin, de plataforma como `planes`.
+  "plan-borrador": "nucleo",
   "postulacion-mensajero": "nucleo",
   "postulacion-recurso": "nucleo",
   push: "nucleo",

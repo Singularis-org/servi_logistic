@@ -1,0 +1,189 @@
+import { randomUUID } from "node:crypto";
+
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { IPlanBorradorRepository } from "@/lib/interfaces/repositories/IPlanBorradorRepository";
+import type { IPlanesService } from "@/lib/interfaces/services/IPlanesService";
+import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { BorradorNoEncontrado } from "@/lib/planes/borrador";
+import { PlanBorradorService } from "@/lib/services/PlanBorradorService";
+import type { PlanDTO } from "@/lib/types/planes";
+
+// SLT-129 (design §5.2; R1, R3, R6, R8, R16, R19, R20) — el servicio del borrador con dobles: el orden quién → zod →
+// existencia → repositorio, y confirmar por `PlanesService` sin reglas propias.
+
+const SUPERADMIN: Actor = { usuarioId: "u-sa", rol: "superadmin", organizacionId: null };
+const NO_SUPERADMIN: (Actor | null)[] = [
+  { usuarioId: "u-m", rol: "maestro", organizacionId: "org-a" },
+  { usuarioId: "u-a", rol: "admin", organizacionId: "org-a" },
+  null,
+];
+const BORRADOR = randomUUID();
+const PLAN = randomUUID();
+const EMPRESA = randomUUID();
+const ACTUALIZADO = new Date("2026-11-17T15:00:00.000Z");
+
+const GENERAL = { nombre: "Pro", visibilidad: "publico" as const, organizacionId: null };
+const PRECIO = { precio: { tipo: "monto" as const, mensual: "50000", descuentos: [] } };
+const ORDEN = { costoPorOrden: "100", costoPorOrdenPorcentual: null, periodicidadOrdenes: "quincenal" as const };
+const TOPES = { topes: { porRol: { admin: 2 }, apiKeys: 3 } };
+const MODULOS = { modulos: ["ranking" as const] };
+const PASOS_DE_CREAR = { general: GENERAL, precio: PRECIO, orden: ORDEN, topes: TOPES, modulos: MODULOS };
+
+function fila(planId: string | null, pasos: Record<string, unknown>) {
+  return { id: BORRADOR, planId, pasos, iniciadoPorNombre: "Sara Admin", createdAt: ACTUALIZADO, updatedAt: ACTUALIZADO };
+}
+
+const repo = {
+  plan: vi.fn(async (): Promise<PlanDTO | null> => ({ id: PLAN, archivado: false }) as PlanDTO),
+  crearBorrador: vi.fn(async () => ({ borradorId: BORRADOR, pasos: ["general"], actualizadoAt: ACTUALIZADO })),
+  guardarPasoDeCreacion: vi.fn(async () => ({ borradorId: BORRADOR, pasos: ["topes", "general"], actualizadoAt: ACTUALIZADO })),
+  guardarPasoDeCambio: vi.fn(async () => ({
+    estado: "ok" as const,
+    borradorId: BORRADOR,
+    pasos: ["vigencia", "general"],
+    actualizadoAt: ACTUALIZADO,
+  })),
+  descartar: vi.fn(async () => true),
+  borrador: vi.fn(async () => fila(null, PASOS_DE_CREAR)),
+} satisfies IPlanBorradorRepository;
+
+const OK = { estado: "ok" as const, planId: BORRADOR, cambio: true, avisos: [], vigenteDesde: null };
+const planes = { crear: vi.fn(async () => OK), editar: vi.fn(async () => OK) };
+const servicio = () => new PlanBorradorService(repo, planes as unknown as IPlanesService);
+
+beforeEach(() => vi.clearAllMocks());
+
+function nadieTocoLaBase() {
+  for (const fn of Object.values(repo)) expect(fn).not.toHaveBeenCalled();
+  expect(planes.crear).not.toHaveBeenCalled();
+  expect(planes.editar).not.toHaveBeenCalled();
+}
+
+describe("R1 — cualquier rol que no es superadmin recibe forbidden y el repositorio no se llama", () => {
+  const operaciones = {
+    guardarPaso: { modo: "crear", borradorId: null, paso: "general", valores: GENERAL },
+    descartar: { borradorId: BORRADOR },
+    confirmar: { borradorId: BORRADOR },
+  } as const;
+  for (const [op, input] of Object.entries(operaciones)) {
+    for (const actor of NO_SUPERADMIN) {
+      it(`${op} con ${actor?.rol ?? "sin sesión"}`, async () => {
+        const s = servicio();
+        const r = await (s[op as keyof typeof operaciones] as (a: Actor | null, i: unknown) => Promise<unknown>).call(s, actor, input);
+        expect(r).toEqual({ estado: "forbidden" });
+        nadieTocoLaBase();
+      });
+    }
+  }
+});
+
+describe("guardar un paso", () => {
+  it("R3 — un plan nuevo empieza por General", async () => {
+    const r = await servicio().guardarPaso(SUPERADMIN, { modo: "crear", borradorId: null, paso: "precio", valores: PRECIO });
+    expect(r).toEqual({ estado: "validation_error", fieldErrors: { paso: [expect.any(String)] } });
+    nadieTocoLaBase();
+  });
+
+  it("R6 — un paso inválido no llega al repositorio, con la clave del campo sin `valores.`", async () => {
+    const r = await servicio().guardarPaso(SUPERADMIN, {
+      modo: "crear",
+      borradorId: BORRADOR,
+      paso: "topes",
+      valores: { topes: { porRol: { admin: -1 }, apiKeys: 3 } },
+    });
+    if (r.estado !== "validation_error") throw new Error(r.estado);
+    expect(Object.keys(r.fieldErrors)).toEqual(["topes.porRol.admin"]);
+    nadieTocoLaBase();
+  });
+
+  it("R6 — una fecha fuera de rango se acepta al guardar General", async () => {
+    const general = { nombre: "Custom A", visibilidad: "custom", organizacionId: EMPRESA, tipoCobro: "mensual", vigenteDesde: "2099-01-01" };
+    const r = await servicio().guardarPaso(SUPERADMIN, { modo: "crear", borradorId: null, paso: "general", valores: general });
+    expect(r).toEqual({ estado: "ok", borradorId: BORRADOR, pasosGuardados: ["general"], actualizadoAt: ACTUALIZADO.toISOString() });
+    expect(repo.crearBorrador).toHaveBeenCalledWith(general, "u-sa");
+  });
+
+  it("R4 — en un borrador que existe guarda ese paso y devuelve los pasos en el orden del formulario", async () => {
+    const r = await servicio().guardarPaso(SUPERADMIN, { modo: "crear", borradorId: BORRADOR, paso: "topes", valores: TOPES });
+    expect(repo.guardarPasoDeCreacion).toHaveBeenCalledWith(BORRADOR, "topes", TOPES);
+    expect(r).toMatchObject({ estado: "ok", pasosGuardados: ["general", "topes"] });
+  });
+
+  it("R5 — un paso del cambio va al borrador del plan, con quien guarda", async () => {
+    const r = await servicio().guardarPaso(SUPERADMIN, { modo: "editar", planId: PLAN, paso: "vigencia", valores: { vigenteDesde: "2026-12-01" } });
+    expect(repo.guardarPasoDeCambio).toHaveBeenCalledWith(PLAN, "vigencia", { vigenteDesde: "2026-12-01" }, "u-sa");
+    expect(r).toMatchObject({ estado: "ok", pasosGuardados: ["general", "vigencia"] });
+  });
+
+  it("R8 — plan inexistente, plan archivado y borrador inexistente no escriben", async () => {
+    const editar = { modo: "editar", planId: PLAN, paso: "general", valores: { nombre: "Otro" } };
+    repo.plan.mockResolvedValueOnce(null);
+    expect(await servicio().guardarPaso(SUPERADMIN, editar)).toEqual({ estado: "not_found" });
+    repo.plan.mockResolvedValueOnce({ id: PLAN, archivado: true } as PlanDTO);
+    expect(await servicio().guardarPaso(SUPERADMIN, editar)).toEqual({ estado: "archivado" });
+    expect(repo.guardarPasoDeCambio).not.toHaveBeenCalled();
+    repo.guardarPasoDeCreacion.mockResolvedValueOnce(null as never);
+    const r = await servicio().guardarPaso(SUPERADMIN, { modo: "crear", borradorId: BORRADOR, paso: "topes", valores: TOPES });
+    expect(r).toEqual({ estado: "borrador_no_encontrado" });
+  });
+});
+
+describe("descartar", () => {
+  it("R14 — borra el borrador; si no existe, borrador_no_encontrado", async () => {
+    expect(await servicio().descartar(SUPERADMIN, { borradorId: BORRADOR })).toEqual({ estado: "ok" });
+    repo.descartar.mockResolvedValueOnce(false);
+    expect(await servicio().descartar(SUPERADMIN, { borradorId: BORRADOR })).toEqual({ estado: "borrador_no_encontrado" });
+    expect(await servicio().descartar(SUPERADMIN, { borradorId: "x" })).toMatchObject({ estado: "validation_error" });
+  });
+});
+
+describe("confirmar", () => {
+  it("R16 — crear sin Topes y programar sin Cuándo rige dan pasos_pendientes", async () => {
+    repo.borrador.mockResolvedValueOnce(fila(null, { ...PASOS_DE_CREAR, topes: undefined }));
+    expect(await servicio().confirmar(SUPERADMIN, { borradorId: BORRADOR })).toEqual({ estado: "pasos_pendientes", pasos: ["topes"] });
+    repo.borrador.mockResolvedValueOnce(fila(PLAN, { ...PASOS_DE_CREAR, general: { nombre: "Pro" } }));
+    expect(await servicio().confirmar(SUPERADMIN, { borradorId: BORRADOR })).toEqual({ estado: "pasos_pendientes", pasos: ["vigencia"] });
+    expect(planes.crear).not.toHaveBeenCalled();
+    expect(planes.editar).not.toHaveBeenCalled();
+  });
+
+  it("lectura defensiva — un paso guardado que ya no valida cuenta como pendiente", async () => {
+    repo.borrador.mockResolvedValueOnce(fila(null, { ...PASOS_DE_CREAR, orden: { costoPorOrden: "abc" } }));
+    expect(await servicio().confirmar(SUPERADMIN, { borradorId: BORRADOR })).toEqual({ estado: "pasos_pendientes", pasos: ["orden"] });
+  });
+
+  it("R17 — un borrador de creación completo se crea por PlanesService con su borradorId", async () => {
+    expect(await servicio().confirmar(SUPERADMIN, { borradorId: BORRADOR })).toEqual(OK);
+    expect(planes.crear).toHaveBeenCalledWith(SUPERADMIN, expect.objectContaining({ nombre: "Pro", topes: TOPES.topes }), {
+      borradorId: BORRADOR,
+    });
+  });
+
+  it("R18 — un borrador de cambio completo se edita por PlanesService con su borradorId", async () => {
+    repo.borrador.mockResolvedValueOnce(fila(PLAN, { ...PASOS_DE_CREAR, general: { nombre: "Pro" }, vigencia: { vigenteDesde: "2026-12-01" } }));
+    await servicio().confirmar(SUPERADMIN, { borradorId: BORRADOR });
+    expect(planes.editar).toHaveBeenCalledWith(SUPERADMIN, expect.objectContaining({ planId: PLAN, vigenteDesde: "2026-12-01" }), {
+      borradorId: BORRADOR,
+    });
+  });
+
+  it("R19 — el rechazo de crear pasa tal cual", async () => {
+    const rechazo = { estado: "validation_error" as const, fieldErrors: { tipoCobro: ["no"] } };
+    planes.crear.mockResolvedValueOnce(rechazo as never);
+    expect(await servicio().confirmar(SUPERADMIN, { borradorId: BORRADOR })).toEqual(rechazo);
+  });
+
+  it("R20 — sin borrador, o si desaparece dentro de la transacción, borrador_no_encontrado", async () => {
+    repo.borrador.mockResolvedValueOnce(null as never);
+    expect(await servicio().confirmar(SUPERADMIN, { borradorId: BORRADOR })).toEqual({ estado: "borrador_no_encontrado" });
+    expect(planes.crear).not.toHaveBeenCalled();
+    planes.crear.mockRejectedValueOnce(new BorradorNoEncontrado(BORRADOR));
+    expect(await servicio().confirmar(SUPERADMIN, { borradorId: BORRADOR })).toEqual({ estado: "borrador_no_encontrado" });
+  });
+
+  it("otro error del repositorio no se traga", async () => {
+    planes.crear.mockRejectedValueOnce(new Error("se cayó la base"));
+    await expect(servicio().confirmar(SUPERADMIN, { borradorId: BORRADOR })).rejects.toThrow("se cayó la base");
+  });
+});
