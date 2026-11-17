@@ -4,17 +4,20 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { contextoActual, type ContextoDatos } from "@/lib/db/contexto-empresa";
+import type { EmailMessage } from "@/lib/interfaces/external/IEmailSender";
 import type { DestinatariosDelAviso } from "@/lib/interfaces/repositories/IPlanesRepository";
 import type { JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
 import { MODULO_POR_JOB } from "@/lib/modulos/reparto";
 import type { FacturaEmitidaContexto } from "@/lib/notificaciones/emitir";
 import type { DepsAvisoFactura } from "@/lib/planes/jobs-factura-aviso";
 import type { FacturaPlataformaDTO } from "@/lib/types/factura-plataforma";
+import { money } from "@/lib/config/moneda";
 
-// SLT-136 · T5.5 (design §7.2; R22, R24, R25, R28, R30) — el trabajo `factura_plataforma_aviso`, sin correo
-// (los pasos 1–4; el correo es la tanda 6). Con dobles: emite el aviso de la campanita una vez, en el orden
-// de §7.2; no hace nada con una factura que ya no está o no está cerrada; termina sin maestros; un aviso que
-// lanza falla el trabajo; y el tipo está registrado en la cola, de núcleo y no recurrente.
+// SLT-136 · T5.5 y T6.2 (design §7.2; R22, R24–R28, R30) — el trabajo `factura_plataforma_aviso`. Con dobles:
+// emite el aviso de la campanita una vez y después envía un correo por maestro, en el orden de §7.2; un envío que
+// falla no corta los demás y falla el trabajo sin el correo en el motivo; no hace nada con una factura que ya no
+// está o no está cerrada; sin maestros termina con el aviso y sin correos; un aviso que lanza falla el trabajo antes
+// de enviar; y el tipo está registrado en la cola, de núcleo y no recurrente.
 
 // Las deps del handler cableado: un doble que registra en qué contexto se usan. El resto del módulo es el real.
 const registro: { paso: string; contexto: ContextoDatos | undefined; args: unknown[] }[] = [];
@@ -89,13 +92,18 @@ interface Dobles {
   pasos: string[];
   avisos: FacturaEmitidaContexto[];
   consultas: [string, string | null][];
+  enviados: EmailMessage[];
 }
 
 function dobles(o: {
   facturas?: FacturaPlataformaDTO[];
   destino?: DestinatariosDelAviso | null;
   emitir?: (ctx: FacturaEmitidaContexto) => Promise<number>;
+  /** Los destinatarios cuyo envío lanza. */
+  fallanA?: string[];
+  urlApp?: string | null;
 } = {}): Dobles {
+  const enviados: EmailMessage[] = [];
   const pasos: string[] = [];
   const avisos: FacturaEmitidaContexto[] = [];
   const consultas: [string, string | null][] = [];
@@ -119,15 +127,25 @@ function dobles(o: {
       avisos.push(ctx);
       return o.emitir ? o.emitir(ctx) : 1;
     },
+    sender: {
+      enviar: async (m) => {
+        pasos.push(`enviar ${m.to}`);
+        if (o.fallanA?.includes(m.to)) throw new Error(`SMTP rechazó ${m.to}`);
+        enviados.push(m);
+        return { messageId: null };
+      },
+    },
+    contacto: "soporte@plataforma.test",
+    urlApp: o.urlApp === undefined ? "https://app.test" : o.urlApp,
   };
-  return { deps, pasos, avisos, consultas };
+  return { deps, pasos, avisos, consultas, enviados };
 }
 
 describe("SLT-136/R22 — el trabajo avisa una vez, en el orden de §7.2", () => {
-  it("⭑ lee la factura, crea el aviso con su número y su período y después lee los maestros activos de la empresa", async () => {
+  it("⭑ lee la factura, crea el aviso con su número y su período, lee los maestros activos y les envía el correo", async () => {
     const d = dobles();
     await crearFacturaAvisoHandler(() => d.deps)(job());
-    expect(d.pasos).toEqual(["leer factura", "aviso", "leer maestros"]);
+    expect(d.pasos).toEqual(["leer factura", "aviso", "leer maestros", "enviar a@uno.test", "enviar b@uno.test"]);
     expect(d.avisos).toEqual([
       {
         facturaId: ID,
@@ -144,6 +162,7 @@ describe("SLT-136/R22 — el trabajo avisa una vez, en el orden de §7.2", () =>
     const d = dobles({ emitir: async () => Promise.reject(new Error("base caida")) });
     await expect(crearFacturaAvisoHandler(() => d.deps)(job())).rejects.toThrow("base caida");
     expect(d.pasos).toEqual(["leer factura", "aviso"]);
+    expect(d.enviados).toEqual([]);
   });
 
   it("R22: el reintento vuelve a pedir el aviso; la dedupe por factura del emisor lo absorbe (0 filas) sin fallar", async () => {
@@ -156,22 +175,82 @@ describe("SLT-136/R22 — el trabajo avisa una vez, en el orden de §7.2", () =>
   });
 });
 
+describe("SLT-136/R26 — un correo por maestro, con la plantilla de la factura", () => {
+  it("⭑ cada maestro recibe el suyo: su nombre, el número, el período, el total y el botón a «Mi plan»", async () => {
+    const d = dobles();
+    await crearFacturaAvisoHandler(() => d.deps)(job());
+    expect(d.enviados.map((m) => m.to)).toEqual(["a@uno.test", "b@uno.test"]);
+    const [ana, beto] = d.enviados;
+    expect(ana!.subject).toBe("Factura N.º 2 de la plataforma — Tienda Uno");
+    expect(ana!.text).toContain("Hola, Ana:");
+    expect(beto!.text).toContain("Hola, Beto:");
+    expect(ana!.text).toContain("16/11/2026 al 30/11/2026");
+    expect(ana!.text).toContain(`Total a pagar: ${money("300.00")}`);
+    expect(ana!.text).toContain("https://app.test/mi-plan");
+    expect(ana!.text).toContain("soporte@plataforma.test");
+  });
+
+  it("R29: sin la URL de la app, el correo sale sin botón y dice dónde está la factura", async () => {
+    const d = dobles({ urlApp: null });
+    await crearFacturaAvisoHandler(() => d.deps)(job());
+    expect(d.enviados).toHaveLength(2);
+    expect(d.enviados[0]!.text).not.toContain("/mi-plan");
+    expect(d.enviados[0]!.text).toContain("Encuéntrala en Mi plan, dentro de la app.");
+  });
+});
+
+describe("SLT-136/R27 — un envío que falla", () => {
+  it("⭑ sigue con los demás maestros y después falla el trabajo, sin el correo en el motivo", async () => {
+    const d = dobles({ fallanA: ["a@uno.test"] });
+    const error = await crearFacturaAvisoHandler(() => d.deps)(job()).then(
+      () => null,
+      (e: unknown) => e as Error,
+    );
+    expect(error?.message).toBe("factura_plataforma_aviso: fallaron 1 de 2 envío(s) a la empresa org-a");
+    expect(error?.message).not.toContain("@");
+    expect(d.pasos).toEqual(["leer factura", "aviso", "leer maestros", "enviar a@uno.test", "enviar b@uno.test"]);
+    expect(d.enviados.map((m) => m.to)).toEqual(["b@uno.test"]);
+  });
+
+  it("⭑ el reintento vuelve a pedir el aviso, que la dedupe absorbe (0 filas): no hay segunda campanita", async () => {
+    let filas = 0;
+    let veces = 0;
+    const d = dobles({
+      fallanA: ["a@uno.test"],
+      emitir: async () => {
+        const n = veces++ === 0 ? 1 : 0;
+        filas += n;
+        return n;
+      },
+    });
+    const handler = crearFacturaAvisoHandler(() => d.deps);
+    await expect(handler(job())).rejects.toThrow("fallaron 1 de 2");
+    await expect(handler(job())).rejects.toThrow("fallaron 1 de 2");
+    expect(veces).toBe(2);
+    expect(filas).toBe(1);
+  });
+});
+
 describe("SLT-136/R25 — una factura de ₡0 avisa igual", () => {
   it("⭑ con total 0 y sin movimientos, el aviso sale por el mismo camino", async () => {
     const d = dobles({
       facturas: [factura({ cargos: "0.00", reversos: "0.00", movimientos: 0, totalOrdenes: "0.00", total: "0.00" })],
     });
     await crearFacturaAvisoHandler(() => d.deps)(job());
-    expect(d.pasos).toEqual(["leer factura", "aviso", "leer maestros"]);
+    expect(d.pasos).toEqual(["leer factura", "aviso", "leer maestros", "enviar a@uno.test", "enviar b@uno.test"]);
     expect(d.avisos).toHaveLength(1);
+    // R25 + R26: el correo también sale, con sus importes en cero.
+    expect(d.enviados).toHaveLength(2);
+    expect(d.enviados[0]!.text).toContain(`Total a pagar: ${money("0.00")}`);
   });
 });
 
 describe("SLT-136/R28 — sin maestros o sin factura", () => {
-  it("⭑ sin maestros activos: crea el aviso y termina sin fallar", async () => {
+  it("⭑ sin maestros activos: crea el aviso y termina sin fallar ni enviar correos", async () => {
     const d = dobles({ destino: { empresaNombre: "Tienda Uno", maestros: [] } });
     await expect(crearFacturaAvisoHandler(() => d.deps)(job())).resolves.toBeUndefined();
     expect(d.avisos).toHaveLength(1);
+    expect(d.enviados).toEqual([]);
   });
 
   it("sin destinatarios (la empresa ya no se lee): crea el aviso y termina", async () => {
@@ -185,6 +264,7 @@ describe("SLT-136/R28 — sin maestros o sin factura", () => {
     await crearFacturaAvisoHandler(() => d.deps)(job());
     expect(d.pasos).toEqual(["leer factura"]);
     expect(d.avisos).toEqual([]);
+    expect(d.enviados).toEqual([]);
   });
 
   it("una factura que no está cerrada (en curso o por cerrar) no avisa", async () => {
@@ -237,7 +317,7 @@ describe("SLT-136/R30 — en la cola: con manejador, de núcleo y no recurrente"
     registro.length = 0;
     try {
       await buildHandlers(() => AHORA).get("factura_plataforma_aviso")!(job());
-      expect(d.pasos).toEqual(["leer factura", "aviso", "leer maestros"]);
+      expect(d.pasos).toEqual(["leer factura", "aviso", "leer maestros", "enviar a@uno.test", "enviar b@uno.test"]);
       expect(registro[0]?.contexto).toMatchObject({ organizacionId: ORG });
     } finally {
       depsCableadas = null;

@@ -92,9 +92,9 @@
 
 ## Tanda 6 — Correo (backend)
 
-- [ ] **T6.1** `lib/services/email/plantillas/factura-emitida.ts`: `plantillaFacturaEmitida` (§7.4).
+- [x] **T6.1** `lib/services/email/plantillas/factura-emitida.ts`: `plantillaFacturaEmitida` (§7.4).
   *Hecho:* `tests/unit/services/email/plantilla-factura-emitida.test.ts` en verde (R26, R29).
-- [ ] **T6.2** El envío en el manejador: paso 5 de §7.2, y `sender`, `contacto` y `urlApp` en las deps. Depende de T5.5
+- [x] **T6.2** El envío en el manejador: paso 5 de §7.2, y `sender`, `contacto` y `urlApp` en las deps. Depende de T5.5
   y T6.1.
   *Hecho:* los casos de correo de `jobs-factura-aviso.test.ts` en verde (R26, R27, R28).
 
