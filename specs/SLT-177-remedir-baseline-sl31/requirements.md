@@ -203,16 +203,16 @@ para al tocar cualquiera de los dos topes:
   - La regla de R743 (ningún motivo cita SL-31) NO va aquí: daría rojo sobre el archivo real en cada
     tanda hasta T7. Va en T7.
   - *Hecho:* caso `SLT-<n>` verde, caso sin ficha rojo, guardia verde sobre el archivo real.
-- [ ] **T4 — Podar** (R734, R735). Depende de T1. Borrar las entradas **pasa** y **verde sin datos**;
+- [x] **T4 — Podar** (R734, R735). Depende de T1. Borrar las entradas **pasa** y **verde sin datos**;
   añadir un párrafo «PODA DEL <fecha> (SLT-177)» en `_lee_esto` con el recuento y el id del run.
   - *Hecho:* `git diff tests/baseline-rojos.json` solo quita esas claves y añade el párrafo.
-- [ ] **T5 — Sembrar el lote** (R736-R740). Depende de T2. Un archivo (o un grupo de helper) cada vez.
+- [x] **T5 — Sembrar el lote** (R736-R740). Depende de T2. Un archivo (o un grupo de helper) cada vez.
   - Quitar `fksDeOrden` y las lecturas de «la primera fila»; sembrar con `crearFksDeOrden` y
     `crearUsuarioDePrueba` dentro de la tx; añadir el control positivo que cuente lo sembrado.
   - Ningún `it`, `expect` ni literal cambia.
   - *Hecho:* cada archivo, en la base desechable de T1, todos sus casos pasados, 0 saltados, 0
     fallidos; anotado en la bitácora.
-- [ ] **T6 — Mutaciones** (R739, R738). Depende de T5. Una a una, nunca a la vez que el gate.
+- [x] **T6 — Mutaciones** (R739, R738). Depende de T5. Una a una, nunca a la vez que el gate.
   - Por archivo (o por helper, si el grupo lo comparte): quitar la siembra de una fila → el control
     positivo cae. Por helper cambiado: correr todos sus usuarios.
   - *Hecho:* tabla mutación → caso rojo → restaurado en `progress/impl_SLT-177.md`; árbol restaurado.

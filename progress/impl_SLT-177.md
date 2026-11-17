@@ -7,9 +7,14 @@ Ruta ligera. Spec: `specs/SLT-177-remedir-baseline-sl31/requirements.md` (R730-R
 - [x] **T1 — Medir** (R730-R733). 2026-11-16, backend_dev. Detalle y tabla de 239 filas en
   `progress/medicion_SLT-177.md`.
 - [x] T2 — Puerta: lote aprobado con la excepción D37/premio; fichas SLT-178…SLT-188 creadas (`progress/features/SLT-177.md > Decisiones`).
-- [ ] T3 — Guardia de forma del baseline: `SLT-<n>` (R742).
-- [ ] T4 — Podar (R734, R735). Con T1 no hay nada que podar (0 pasa, 0 verde sin datos).
-- [ ] T5 — Sembrar el lote. · [ ] T6 — Mutaciones. · [ ] T7 — Baseline. · [ ] T8 — Cierre.
+- [x] T3 — Guardia de forma del baseline: `SLT-<n>` (R742). `9aa40d6f`.
+- [x] T4 — Podar (R734, R735). Con T1 no había nada que podar (0 pasa, 0 verde sin datos); el párrafo
+  «PODA DEL 2026-11-16 (SLT-177)» de `_lee_esto` va con T7.
+- [x] T5 — Sembrar el lote. `d432d21f`.
+- [x] T6 — Mutaciones y R738. `d20248aa`.
+- [ ] T7 — Baseline. `12412b11`, `b386a76f`: 92 fuera, 126 motivos nuevos. **Parado:** 21 entradas
+  siguen citando SL-31 porque su causa medida no tiene ficha; sin eso no entra la regla de R743.
+- [ ] T8 — Cierre. Hecho: deudas, diff de producción vacío y tamaño. Falta: `./init.sh` y el CI del PR.
 
 ## T1 — Medición
 
@@ -105,6 +110,108 @@ Cuenta: lote 122 + excepción 2 + F1 17 + F2 15 + F3 15 + F4 14 + F5 15 + F6 15 
 
 Opcional, a decidir por el leader: F11 «Encontrar el test que deja filas de otra empresa en la base de
 CI» (hallazgo de T1). No retira entradas; evita que vuelvan los «dato ajeno».
+
+## T3-T8 (2026-11-16, backend_dev, en primer plano)
+
+### Entorno de medición local
+- Junction `node_modules` → raíz del repo (`mklink /J`), ignorado por git.
+- Base: `servi_slt177_desechable` vía `scratchpad/con-desechable.cjs` (sin leer `.env` ni ver la URL),
+  ya migrada. Le corrí `pnpm run db:seed` por el mismo wrapper para que quede como la de CI
+  (`gate.yml:180-187`): sin él faltaban los vehículos y `454/ayuda-evento` y `454/caracterizacion/traspaso`
+  daban un rojo que CI no da.
+
+### T5 — qué se sembró (13 archivos, 952 líneas de tests en el PR con baseline y guardia)
+| archivo | siembra en la tx del caso | control positivo |
+|---|---|---|
+| `_picking-476.ts` | zona | `zona.count({id}) === 1` |
+| `_informe-transito-475.ts` | tienda con `crearUsuarioDePrueba` | `usuario.count({id}) === 1` |
+| `_whatsapp-envios-474.ts` | usuario modelo (inactivo) con `crearUsuarioDePrueba` | `usuario.count({id}) === 1` |
+| `419/_escenario-419.ts` | empresa del escenario (como `enTransaccionRevertida459`) y zona central; geografía y `cedula` por clave | `zona.count({id, esCentral}) === 1` |
+| `_fixtures/caja-459.ts` | zona central por empresa (`asegurarCentral459`); provincia/cantón por clave | 1 central en la empresa |
+| `454/_escenario.ts` | zona central en `crearEscenario` (solo con el Mundo de `prepararMundo`); geografía y `cedula` por clave | `zona.count({id, esCentral}) === 1` |
+| `_fixtures/libro-468.ts`, `detalle-en-lote-464.test.ts` | tarifa a la que apunta `cierre_detail.tarifa_id` | el `expect` existente, sobre la sembrada |
+| `_fixtures/wallet-458.ts` | — (pasa `reglasPaisFijas()` a `EstadoCuentaService`, como `buildService()`; sin eso `leer` lanzaba, SLT-42) | — |
+| `detalle-movimiento-cierre-postgres.test.ts` (D37) | `crearFksDeOrden` + tarifa | 3 `count === 1` |
+| `premio-ranking-idempotencia.test.ts` | `crearFksDeOrden` por caso; rol y `cedula` por clave | 2 `count === 1` |
+
+Ningún `it`, `expect` ni literal esperado cambió (R740); los `expect` de «la base no tiene…» siguen,
+ahora sobre la fila sembrada.
+
+### Resultado en la base desechable (JSON de vitest; 0 saltados en todos los verdes)
+- **92 de los 124 archivos del lote, verdes** (G1 63/76, G2 13/29, G3 7/7, G4 5/5, G5 2/3, G6 1/2,
+  D37 1/1, premio 0/1) → salen del baseline.
+- **R738**: los 13 usuarios de los helpers tocados que NO están en el baseline (`caja-estado-459`,
+  `caja-iva-aparte-sl39`, `deuda-plataforma-*`, `pago-plataforma-sl45`, `estado-cuenta-concurrencia-458`,
+  `cobro-tienda-461-completar-migration`, `cierre-sin-gestion-confirmacion-sql-real`,
+  `462/medir-462-hoy-cr`, `tope-intentos-caminos`, `tope-intentos-carreras`,
+  `total-a-cobrar-sin-cerrado-sql-real`, `components/WalletCuentasPorPagarRefrescoP1`): 13/13 verdes.
+  Los tres `tope-*`/`total-a-cobrar` cayeron con la primera versión (arman su Mundo con su propia
+  central y la del escenario chocaba con el índice único por empresa); se arregló con `sembrarCentral`.
+  Los usuarios de 474/475/476 fuera del baseline (9 archivos): verdes.
+
+### Los 32 del lote que siguen rojos (causa medida tras sembrar; se quedan, decisión 3 de Carlos)
+| causa | archivos | ficha |
+|---|---|---|
+| sin empresa en contexto: action/servicio fuera de la tx, o escenario CONFIRMADO sin empresa (`organizacion_id NOT NULL`) | `picking-resumen-tiendas`, `ajuste-caja-anulacion-461`, `premio-ranking-idempotencia` (16/17; falla 293/T2.5), `419/confirmar-entrega-lote` (9/11; bloque R8), `454/registro-gestion-concurrencia`, `454/senales-gestion-lectores`, `454/caracterizacion/corte-concurrencia`, `454/caracterizacion/no-doble-gestion` | SLT-185 (amplía su alcance: hay que confirmarlo) |
+| índice único por empresa / columna nueva tras SL-17 | `wallet-461-idempotencia-clave`, `454/orden-evento-migration` | SLT-187 |
+| base vacía propia del archivo | `455/caracterizacion/api-lectura` («distrito activo con zona», :124) | SLT-184 |
+| **sin ficha**: escenario 459 cae en `repartoMensajero` con `sin_saldo` (`caja-459.ts:773`, ver D64) | `analitica-anulacion-rechazo-458`, `caja-caracterizacion-459`, `caja-invariante-tiendas`, `como-quedo`, `efecto-movimiento-predice`, `libro-caja-a-quien`, `libro-caja-filtro-a-quien`, `libro-caja-revision-458c`, `libro-caja-revision-458e`, `liquidacion-fechas-cr-461`, `wallet-anulacion-458`, `wallet-comprobante-alcance`, `wallet-documento-comprobante-458`, `wallet-registro-comprobante-458` | **falta** |
+| **sin ficha**: aserción de dinero/estado del cierre de satélite que no cuadra (p. ej. `pago_satelite` donde se espera `pago_efectivo`) | `477-aprobacion-tras-correccion`, `454/registro-gestion-sin-transicion`, `454/caracterizacion/{cierre-rechazado,deshacer,dinero-aprobacion,multi-dia-271}`, `455/caracterizacion/dinero-aprobacion` | **falta** |
+
+### T6 — mutaciones (una a una, restauradas con `git checkout --`, árbol limpio tras cada una)
+| id | quitar la siembra en | test | resultado |
+|---|---|---|---|
+| M1 | `_picking-476.ts` (zona) | `picking-ordenes-en-preparacion` | 7/7 rojos: «476: la zona sembrada no esta en la base (0)» |
+| M2 | `_informe-transito-475.ts` (tienda) | `informe-transito-zonas` | 3/3 rojos: «475: la tienda sembrada no esta en la base (0)» |
+| M3 | `_whatsapp-envios-474.ts` (modelo) | `whatsapp-envio-historial` | 1 rojo (el otro caso no usa modelo): «474: el usuario modelo sembrado no esta en la base (0)» |
+| M4 | `419/_escenario-419.ts` (central) | `419/confirmar-entrega-webhook` | suite roja: «419: la zona central sembrada no esta en la base (0)» |
+| M5 | `_fixtures/caja-459.ts` (central) | `estado-cuenta-saldo-corrido` | 6/6 rojos: «459: la empresa del caso tiene 0 zonas centrales, no 1» |
+| M6 | `454/_escenario.ts` (central) | `454/caracterizacion/tablero-dia` | suite roja: «454: la zona central sembrada no esta en la base (0)» (repetida tras `d20248aa`) |
+| M7 | `_fixtures/libro-468.ts` (tarifa) | `libro-kardex-468` | 6/6 rojos: «la base no tiene ni una tarifa…» |
+| M8 | `detalle-en-lote-464` (tarifa) | el mismo | 6/6 rojos: ídem |
+| M9 | `detalle-movimiento-cierre-postgres` (tarifa) | el mismo | 14/14 rojos: ídem |
+
+Guardia T3 (R742): con `FICHA = /SL-\d+/` el caso nuevo cae (1 rojo) y se restauró.
+
+### T7 — baseline
+- 243 → 151 entradas. Quedan 147 de SL-31: 126 con motivo nuevo (clase, mensaje, fecha, run
+  43973243440 y ficha SLT-178…SLT-187; las 32 rojas del lote añaden la medición local tras sembrar) y
+  **21 sin tocar** (las dos filas «sin ficha» de arriba). `desde` intacto; las 4 entradas ajenas, intactas.
+- Motivos sin `en_fulfillment` ni «336»: los vigilan `censo-order-status-rename` y `rutas-336-retiradas`.
+- **No** entra todavía la regla de R743 (rojo si un motivo cita SL-31): daría rojo con las 21.
+
+### T8
+- `progress/deudas.md`: D8 apunta a SLT-178…SLT-188; D37 cerrada; D64 con lo medido.
+- `git diff --name-only origin/dev -- lib/ app/ components/ hooks/ db/ scripts/ .github/ package.json`: vacío.
+- `node scripts/tamano-pr.mjs`: 13/40 archivos, 0/1000 producción, 952/3000 tests.
+- Sin hacer: `./init.sh` (requiere el `.env` del worktree, que no leo) y el CI del PR.
+
+### Mapa R → test (T3-T8)
+| R | evidencia |
+|---|---|
+| R734 | nada que podar (T1) |
+| R735 | sin verdes sin datos (T1) |
+| R736, R737 | los 92 archivos verdes (JSON de vitest en la desechable) |
+| R738 | 13 usuarios externos de los helpers verdes + M1-M6 |
+| R739 | controles positivos de la tabla T5 + M1-M9 |
+| R740 | `git diff` de los archivos sembrados: sin `it`/`expect`/literales quitados |
+| R741 | las 92 fuera; **incumplido** para `premio-ranking-idempotencia` (16/17, decisión 3 aplicada) |
+| R742 | `gate-cableado-arnes-v2.guardia.test.ts` caso «SLT-177 R742» + mutación |
+| R743 | **pendiente** (21 entradas sin ficha) |
+| R744, R745 | 126 motivos nuevos; 21 pendientes |
+| R746 | pendiente del CI del PR |
+| R747, R748 | diff de producción vacío; `tamano-pr` 13/40, 952/3000 |
+| R749 | `progress/deudas.md` D8, D37 |
+
+### Salidas
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec tsc --noEmit -p .` → exit 0.
+- `pnpm exec eslint <archivos tocados>` → 0 errores, 1 aviso previo (`detalle-movimiento-cierre-postgres.test.ts:432 'pageSize'`, no es de este diff).
+- `pnpm run test:guardias` → 352/353 archivos; el rojo es `dependencias-declaradas-presentes` (baseline, SL-29).
+- Lote en la desechable: 124 archivos, 92 verdes, 32 rojos (tabla de arriba).
+
+### Veredicto
+T3-T6 hechas. T7 y T8 a medias: faltan una ficha para 21 entradas (escenarios de satélite) y el OK
+de ampliar SLT-185 a «sin empresa en contexto» en general.
 
 ## Archivos creados o modificados (T1)
 
