@@ -98,7 +98,6 @@ export async function sembrarEmpresaGeo47(tx: TxDeTest, e: EmpresaGeo65): Promis
   const sufijo = randomUUID().replace(/-/g, "").slice(0, 10);
   const nombreCentral = `Central SLT47 ${sufijo}`;
   const nombreSanRafael = `San Rafael SLT47 ${sufijo}`;
-  const id = { select: { id: true } } as const;
 
   // SLT-48: la geografía se escribe en `nodo_geografico`; `provincia`/`canton`/`distrito` son vistas.
   const provinciaCentral = await crearNodoDeNivel(tx, 1, { nombre: nombreCentral, paisId: e.base.paisId });

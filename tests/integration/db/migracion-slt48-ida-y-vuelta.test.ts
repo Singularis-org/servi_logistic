@@ -294,7 +294,11 @@ describeSiHayBase("SLT-48 — geografía vieja a vistas, de ida y vuelta", () =>
       expect(constraints, fk).not.toContain(fk);
     }
     const nulable = async (columna: string) =>
-      uno(`SELECT is_nullable FROM information_schema.columns WHERE table_name = 'orden' AND column_name = $1`, [columna]);
+      uno(
+        `SELECT is_nullable FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = 'orden' AND column_name = $1`,
+        [columna],
+      );
     expect([await nulable("provincia_id"), await nulable("canton_id"), await nulable("distrito_id")]).toEqual([
       "YES",
       "YES",

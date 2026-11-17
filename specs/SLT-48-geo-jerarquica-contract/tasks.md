@@ -34,7 +34,7 @@
 
 ## T1 — Base y Prisma (backend_dev) · sin dependencias
 
-- [ ] **T1.1** Comprobar Prisma y las vistas (design §3). Pasos:
+- [x] **T1.1** Comprobar Prisma y las vistas (design §3). Pasos:
   1. comprobar que Postgres es ≥ 15, en la base de tests y en la versión de Supabase del proyecto
      (`security_invoker`);
   2. en una rama local, probar el camino A (`previewFeatures = ["views"]`, `view` con relaciones) con
@@ -43,28 +43,28 @@
   3. elegir el camino A o el B según los tres criterios del diseño.
   **Hecho:** la decisión y la salida de los comandos están en `progress/impl_SLT-48.md`. Si ningún camino
   funciona, se para y se pregunta.
-- [ ] **T1.2** Migración `…_slt48_historial_nodo_movido` (`migration.sql` + `down.sql`) y el valor en
+- [x] **T1.2** Migración `…_slt48_historial_nodo_movido` (`migration.sql` + `down.sql`) y el valor en
   `HistorialPlataformaAccion` de `schema.prisma`.
   **Hecho:** aplica y revierte en la base de tests.
-- [ ] **T1.3** Migración `…_slt48_geografia_vieja_a_vistas` (design §2.1, en este orden): precondición,
+- [x] **T1.3** Migración `…_slt48_geografia_vieja_a_vistas` (design §2.1, en este orden): precondición,
   FK y NOT NULL, sincronía, `orden_nodo_geografico`, `geografia_del_pais_de_la_empresa`, tablas → vistas
   con `security_invoker`, `INSTEAD OF` (`SL048`) y `GRANT SELECT`. Su `down.sql` lleva precondición
   (P5), tablas, datos, FK de órdenes nuevas, NOT NULL, FK, triggers y funciones de antes. Depende de T1.1.
   **Hecho:** `migracion-slt48-ida-y-vuelta.test.ts` verde (R4, R6, R11, R12, R20).
-- [ ] **T1.4** `schema.prisma` según el camino elegido en T1.1 y `prisma generate`.
+- [x] **T1.4** `schema.prisma` según el camino elegido en T1.1 y `prisma generate`.
   **Hecho:** `pnpm run typecheck` verde, o con los errores esperados que listan los lectores de T2.
-- [ ] **T1.5** [P] Guardia `tests/unit/db/slt48-migraciones-declaradas.test.ts`, con la lista cerrada de
+- [x] **T1.5** [P] Guardia `tests/unit/db/slt48-migraciones-declaradas.test.ts`, con la lista cerrada de
   operaciones destructivas y una contraprueba (y `destructivasDeclaradas` en `_migraciones-aditivas.ts`
   si hace falta).
   **Hecho:** verde sobre las migraciones reales; rojo con un `DROP COLUMN`, un `DROP VIEW`, un
   `ALTER TABLE "pais"` o un `SET NOT NULL` sobre `nodo_geografico_id` inventados (R13, R14).
-- [ ] **T1.6** [P] Tests de integración de la base: `slt48-vistas-geografia.test.ts` (R1, R2, R3, R5) y
+- [x] **T1.6** [P] Tests de integración de la base: `slt48-vistas-geografia.test.ts` (R1, R2, R3, R5) y
   `slt48-triggers-orden-pais.test.ts` (R7, R8, R9).
   **Hecho:** verdes contra Postgres real.
-- [ ] **T1.7** [P] `slt48-trigger-orden-rendimiento.test.ts`: carga masiva de prueba con los triggers
+- [x] **T1.7** [P] `slt48-trigger-orden-rendimiento.test.ts`: carga masiva de prueba con los triggers
   nuevos.
   **Hecho:** ≤ 1 ms por fila (R10). Si se pasa, no entra y se avisa.
-- [ ] **T1.8** Fábrica y fixtures base a nodos: `tests/fabricas/paises.ts` y `_fixtures/geo-43.ts`,
+- [x] **T1.8** Fábrica y fixtures base a nodos: `tests/fabricas/paises.ts` y `_fixtures/geo-43.ts`,
   `geo-44.ts`, `geo-47.ts`, `geo-71.ts` crean tipos y nodos con los mismos ids de hoy. Helper
   `_fixtures/sin-slt48.ts` para las idas y vueltas de migraciones viejas (design §9). Depende de T1.3.
   **Hecho:** los tests que solo usan la fábrica pasan sin cambiar aserciones.
