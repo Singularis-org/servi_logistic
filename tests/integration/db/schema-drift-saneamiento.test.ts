@@ -157,6 +157,11 @@ describe("updated_at · el modelo declara el DEFAULT que el SQL creo", () => {
       // `"updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP`; el modelo `Plan` lo declara
       // con `@default(now()) @updatedAt`.
       "plan",
+      // SLT-129 (2026-11-17) - el borrador del formulario de planes. Su `CREATE TABLE`
+      // (`20261117120000_plan_borrador/migration.sql`) escribe
+      // `"updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP`, el molde de `plan`; el modelo
+      // `PlanBorrador` lo declara con `@default(now()) @updatedAt`.
+      "plan_borrador",
       "premio_ranking",
       // FICHA 410 (2026-09-10) - las suscripciones de push web. Su `CREATE TABLE`
       // (`20260912120000_push_suscripcion/migration.sql`) escribe

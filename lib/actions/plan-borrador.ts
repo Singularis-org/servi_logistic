@@ -37,22 +37,34 @@ async function conServicio<T>(
   return fn(deps.service ?? construirPlanBorradorService(), actor);
 }
 
-/** R2–R8: guarda un paso de un borrador de creación o del borrador de cambio de un plan. */
+/**
+ * R2–R8: guarda un paso de un borrador de creación o del borrador de cambio de un plan.
+ * @sin-superficie SLT-129 es solo el servidor del borrador (design §4, «no hay pantalla»); la pantalla que lo dispara es SLT-144, y al montarla esta anotación caduca y la guardia pide quitarla.
+ */
 export async function guardarPasoBorradorAction(input: unknown, deps: PlanBorradorDeps = {}): Promise<GuardarPasoResult> {
   return conServicio(deps, (s, actor) => s.guardarPaso(actor, input));
 }
 
-/** R9: `{ borradorId }` o `{ planId }`; lectura, como `previsualizarAsignacionAction` (la lista no tiene action). */
+/**
+ * R9: `{ borradorId }` o `{ planId }`; lectura, como `previsualizarAsignacionAction` (la lista no tiene action).
+ * @sin-superficie SLT-129 es solo el servidor del borrador (design §4, «no hay pantalla»); la pantalla que lo dispara es SLT-144, y al montarla esta anotación caduca y la guardia pide quitarla.
+ */
 export async function leerBorradorAction(input: unknown, deps: PlanBorradorDeps = {}): Promise<LeerBorradorResult> {
   return conServicio(deps, (s, actor) => s.leer(actor, input));
 }
 
-/** R14: `{ borradorId }`. */
+/**
+ * R14: `{ borradorId }`.
+ * @sin-superficie SLT-129 es solo el servidor del borrador (design §4, «no hay pantalla»); la pantalla que lo dispara es SLT-144, y al montarla esta anotación caduca y la guardia pide quitarla.
+ */
 export async function descartarBorradorAction(input: unknown, deps: PlanBorradorDeps = {}): Promise<DescartarBorradorResult> {
   return conServicio(deps, (s, actor) => s.descartar(actor, input));
 }
 
-/** R16–R20: `{ borradorId }`; «Crear plan» o «Programar cambios». */
+/**
+ * R16–R20: `{ borradorId }`; «Crear plan» o «Programar cambios».
+ * @sin-superficie SLT-129 es solo el servidor del borrador (design §4, «no hay pantalla»); la pantalla que lo dispara es SLT-144, y al montarla esta anotación caduca y la guardia pide quitarla.
+ */
 export async function confirmarBorradorAction(input: unknown, deps: PlanBorradorDeps = {}): Promise<ConfirmarBorradorResult> {
   return conServicio(deps, (s, actor) => s.confirmar(actor, input));
 }

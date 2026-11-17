@@ -216,3 +216,36 @@ simultáneas» cae en rojo (restaurado después). La limpieza deja `plan_borrado
 
 **Veredicto:** T6.1, T6.2, T8.2 y T8.3 en verde (24 de integración ×2, 20 E2E ×2); un bug real arreglado en
 `PlanesRepository` (fechas del borrador en hora local de la sesión); falta T8.1 (`./init.sh`, el leader).
+
+## Tanda 4 — rojos de CI del PR #200 (T8.1)
+
+El job `gate-completo` (run 44143372362) dio tres rojos fuera de `tests/baseline-rojos.json`. Los tres los causa la
+tabla o las actions nuevas de SLT-129 (cada mensaje nombra solo `plan_borrador` o `lib/actions/plan-borrador.ts`), así
+que no fallan en `origin/dev`. Reproducidos en local por archivo antes de arreglar.
+
+| Rojo | Causa | Arreglo |
+|---|---|---|
+| `tests/unit/guards/unicos-por-empresa.guardia.test.ts` | El detector solo sigue `CREATE UNIQUE INDEX` y `ADD CONSTRAINT … UNIQUE`; la migración escribía el único como `CONSTRAINT … UNIQUE` dentro del `CREATE TABLE` («1 UNIQUE escritos y 0 reconocidos»). | `migration.sql`: el único sale del `CREATE TABLE` a `CREATE UNIQUE INDEX "plan_borrador_plan_id_key" ON "plan_borrador" ("plan_id")`, la forma de `plan_cambio_programado_plan_id_key`. Mismo nombre y mismo 23505; `down.sql` sin cambios (cae con la tabla). La tabla no es de negocio (no está en `MODELOS_DE_NEGOCIO`), así que no entra en `UNICOS_SIN_EMPRESA`. |
+| `tests/unit/guards/superficie-de-uso.guardia.test.ts` (R-A) | Las cuatro actions de `lib/actions/plan-borrador.ts` no las importa nada alcanzable desde una ruta: SLT-129 es solo servidor y la pantalla es SLT-144 (design §4). | `/** @sin-superficie … */` pegado a cada export, con el motivo (sin pantalla hasta SLT-144). La anotación caduca sola: cuando SLT-144 las monte, la guardia exigirá quitarla. |
+| `tests/integration/db/schema-drift-saneamiento.test.ts` | El censo escrito a mano de tablas con `DEFAULT` en `updated_at` no incluía `plan_borrador` (el modelo sí declara `@default(now()) @updatedAt`, el caso hermano pasa). | `"plan_borrador"` añadida a la lista con su comentario de origen, como las demás. |
+
+Ni baseline ni guardia tocadas.
+
+**Archivos:** `db/migrations/20261117120000_plan_borrador/migration.sql`, `lib/actions/plan-borrador.ts`,
+`tests/integration/db/schema-drift-saneamiento.test.ts`, `specs/SLT-129-planes-borrador-servidor/tasks.md` (T8.1 [x]).
+
+**Salida real**
+- Antes: `vitest run` de las dos guardias → unicos «1 UNIQUE escritos y 0 reconocidos»; superficie 1 failed | 17 passed
+  (las 4 actions). Drift contra `servi_logistic_slt129`: 1 failed | 15 passed (`+ "plan_borrador"`).
+- Después: `superficie-de-uso`, `unicos-por-empresa`, `plan-borrador-sin-caducidad`: 3 archivos, **40 passed**.
+- Migración reaplicada en `servi_logistic_slt129` (`prisma db execute --file down.sql` y luego `migration.sql`: «Script
+  executed successfully» las dos). `migracion-plan-borrador-ida-y-vuelta`, `plan-borrador`, `plan-borrador-confirmar`,
+  `schema-drift-saneamiento`: 4 archivos, **45 passed / 0 failed**.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: sin errores. `eslint` de `lib/actions/plan-borrador.ts`
+  y del test del drift: exit 0.
+- E2E `dos-empresas-humo`: el reviewer lo corrió con 8 passed. Corrida de esta tanda sobre `servi_logistic_slt129_e2e`
+  recreada (DROP … WITH (FORCE)/CREATE, `prisma migrate deploy` «All migrations have been successfully applied»,
+  `db:seed`), `next build` con `NEXT_PUBLIC_APP_URL=http://localhost:3000` y secretos efímeros como en `gate.yml`,
+  `playwright test e2e/dos-empresas-humo.spec.ts --no-deps`: **8 passed (2.3m)**.
+
+**Veredicto:** los tres rojos del CI arreglados en origen (migración, anotación, censo) y verdes en local; E2E humo 8 passed.

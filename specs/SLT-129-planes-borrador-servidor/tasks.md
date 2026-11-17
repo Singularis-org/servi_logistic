@@ -86,7 +86,7 @@ fuera de `PlanesRepository` o con `plan_borrador` en un cron.
 
 ## T8 — Cierre
 
-- [ ] T8.1 `./init.sh` en verde.
+- [x] T8.1 `./init.sh` en verde.
 - [x] T8.2 Antes del PR, en local y sobre una base desechable: `e2e/planes-superadmin.spec.ts`,
   `e2e/planes-costeo.spec.ts`, `e2e/planes-costo-porcentual.spec.ts` y `e2e/mi-plan-cambiar-plan.spec.ts`
   (R21; el diff toca `db/`).
