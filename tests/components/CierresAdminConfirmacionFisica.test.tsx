@@ -685,6 +685,20 @@ describe("T4.4/R28 — se confirma por cámara o por número tecleado", () => {
     );
   });
 
+  // SLT-159 «Escaneo continuo en recepciones y recogidas» (R588): la cámara de C5 sigue abierta.
+  it("SLT-159 (R588): tras leer por cámara, la cámara sigue encendida para la siguiente", async () => {
+    const user = userEvent.setup();
+    conGrupos({ novedad: [DEV_1] });
+    const dialog = await abrirVentana(user);
+
+    await escanear(user, dialog, qrDeGuia(7001));
+
+    expect(fila(dialog, DEV_1.gestionId)).toContain("Confirmada");
+    expect(within(dialog).getByRole("region", { name: "Visor de cámara QR" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Cerrar cámara" })).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: BOTON_ESCANEAR })).toBeNull();
+  });
+
   it("por NÚMERO TECLEADO: el mismo número confirma la misma gestión", async () => {
     const user = userEvent.setup();
     conGrupos({ novedad: [DEV_1] });

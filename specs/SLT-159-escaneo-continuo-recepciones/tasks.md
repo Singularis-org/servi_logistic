@@ -34,7 +34,7 @@ mismo.
   cualquier puntero; en b2 gana el enlace). `OrdenesListado` y `EscanerRecepcion` la montan en
   `acciones`. *Hecho:* R580, R583, R592 y R594 (guía suelta) en verde en los tests de las tres
   superficies; R611 (diálogo) en `RecibirPaquetesEntrada.test.tsx` y `OrdenesPage.test.tsx`.
-- [ ] **T6 [P] — C5 (depende de T3).** `cierre-confirmacion-fisica.tsx` pasa `continuo` a su tarjeta.
+- [x] **T6 [P] — C5 (depende de T3).** `cierre-confirmacion-fisica.tsx` pasa `continuo` a su tarjeta.
   *Hecho:* R588 (C5) en verde en `CierresAdminConfirmacionFisica.test.tsx`; sus casos en verde.
 - [ ] **T7 [P] — Verificar guía sigue suelta (depende de T3).** Sin cambio de producción; caso nuevo
   en `VerificarGuiaGate.test.tsx`. *Hecho:* R594 en verde.
