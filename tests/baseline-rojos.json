@@ -49,7 +49,7 @@
     "",
     "PODA DEL 2026-11-16 (SLT-177): las 239 entradas «La retira SL-31» se midieron en el run 43973243440 de CI",
     "(0 pasaban, 0 verdes sin datos, 227 base vacia, 12 otra causa: progress/medicion_SLT-177.md). Salen",
-    "92 archivos que el lote de SLT-177 siembra con datos propios y quedan verdes con 0 saltados; las",
+    "91 archivos que el lote de SLT-177 siembra con datos propios y quedan verdes con 0 saltados; las",
     "que se quedan llevan la causa medida y la ficha SLT-178..SLT-187 o SLT-195 que las retira."
   ],
   "archivos": {
@@ -655,6 +655,10 @@
     },
     "tests/integration/db/wallet-461-migration.test.ts": {
       "motivo": "Postgres 17 (CI) frente a 18 (local): el DELETE de un usuario referenciado por una FK RESTRICT y por otra NO ACTION da 23503 en PG 17.11 y 23001 en PG 18.2 (medido el 2026-10-22 sobre base nueva migrada en los dos; en PG 18 pasa). No es falta de datos: la fixture crea sus usuarios. Lee db/migrations, asi que la retira SL-28; la version de Postgres de CI sigue ABIERTA en gate.yml.",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/retiro-estados-migration.test.ts": {
+      "motivo": "Otra causa (depende del estado de la base). Medido el 2026-11-16 en base desechable migrada con catalogos y datos de otra empresa (y en la base local de dev del leader): el bloque «M3 contra Postgres real» aplica la migracion 20260923120200_retiro_estados_454 sobre TODA la base y falla con P0001 «migracion 454: 1 orden(es) en ayuda_tienda sin fila de solicitud con actor» por una orden ajena; en base vacia pasa 13/13. Test de migracion que solo vale en base sin ordenes retiradas ajenas. La retira SLT-187.",
       "desde": "2026-10-22"
     }
   }

@@ -278,3 +278,14 @@ causa. Parado en la puerta T2.
   arreglo; pasa en CI (base vacía). Queda para SLT-188 «Tests que dejan filas fuera de su transacción»
   o la ficha que decida el leader.
 - typecheck 0, lint limpio. Commit `4cf40dce`.
+
+## Tanda «retiro-estados-migration» (2026-11-16)
+- Rojo del gate del leader en la base de dev: `454/retiro-estados-migration.test.ts` > «M3 contra
+  Postgres real». Reproducido en `servi_slt177_desechable` añadiendo (confirmado, con
+  `scratchpad/scripts/slt177-retirados.tmp.ts`, fuera del repo) `ayuda_tienda` al catálogo y una orden
+  AJENA en ese estado sin su fila de solicitud: `P0001 «migracion 454: 1 orden(es) en ayuda_tienda sin
+  fila de solicitud con actor»` (`:155`). El bloque aplica la migración M3 sobre TODA la base: depende
+  del estado de la base, no de lo que siembra. En base vacía, 13/13.
+- Decisión (instrucción del leader): no se fuerza; vuelve al baseline con motivo medido, `desde`
+  original (2026-10-22), citando SLT-187 «Tests de migración desfasados tras SL-17». Salen 91, no 92;
+  el baseline queda en 152 entradas.
