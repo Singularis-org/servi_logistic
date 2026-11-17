@@ -1,9 +1,10 @@
 # SLT-197 «Retirar paquetes de una bodega satélite a la central» — tasks
 
-> Requisitos: R970–R987 (`requirements.md`). Diseño: `design.md`. **Sin migración.** Antes del primer
+> Requisitos: R970–R986 (`requirements.md`), aprobados por Carlos el 2026-11-17 con D1–D9 (D8: sin
+> trabajo de API). Diseño: `design.md`. **Sin migración.** Antes del primer
 > gate, copiar `.env` al worktree (sin él el gate sale verde saltándose la integración). Exportar la
 > base desechable antes de cualquier `vitest`. Literales de los tests escritos a mano (nunca comparados
-> contra su propia fuente). Si Carlos cambia la respuesta de una P, se ajusta solo el R que la cita.
+> contra su propia fuente). Nada de webhooks, API ni documentación de API (D8).
 
 ## T1 — Dominio: la arista #73 (backend_dev)
 
@@ -12,7 +13,8 @@
   `tests/fixtures/inventario-transiciones-140.ts` con su call-site (`OrdenRepository.retirarSateliteLote`)
   y `RECUENTO_INVENTARIO` a 60 aristas / 55 pares, con la línea de historia.
   **Hecho:** `order-status-transiciones.guardia.test.ts` y `.connectividad.test.ts` verdes; caso nuevo
-  R970 que afirma que `en_bodega_satelite -> en_bodega_central` sigue ilegal;
+  R970 que afirma que `en_bodega_satelite -> en_bodega_central` y `en_ruta_bodega_central ->
+  en_bodega_satelite` siguen ilegales;
   `tests/unit/utils/estados-bodega-satelite.test.ts` verde **sin tocarlo** (el alcance no cambia).
   Va en el mismo commit que T2.1 (una arista no entra sin su productor).
 
@@ -26,7 +28,7 @@
   **Hecho:** typecheck verde; `orden-historial-cobertura.test.ts` verde.
 - [ ] **T2.2** `tests/integration/db/retiro-satelite-central.int.test.ts`, contra Postgres real, con
   órdenes de dos zonas satélite y una de la central:
-  - R971/R972/R986: lote de dos zonas → `en_ruta_bodega_central`, historial (origen, destino, actor,
+  - R971/R972/R985: lote de dos zonas → `en_ruta_bodega_central`, historial (origen, destino, actor,
     `ajuste_estado`), mensajero/asignado/día en null, zona/tienda/guía/remisión/monto intactos.
   - R973/R974: lote con una orden en `mensajero_recogiendo_en_bodega` → `"conflicto"`, cero filas
     cambiadas, cero historial.
@@ -35,8 +37,7 @@
   - R978: `rutearABodegaSatelite` la acepta; `asignarBodega` la rechaza con «orden de zona no-GAM».
   - R979: `findRecepcionSatelitePaginada` de su zona no la devuelve, ni en tránsito ni recibida.
   - R983: conteos de `wallet_*`, `cierre_*`, cobros y pagos iguales antes y después.
-  - R984: dos filas de outbox de webhook por orden (`en_ruta_bodega_central` y `en_bodega_central`).
-  - R987: `ZonaRepository.update` que pasa su distrito a otra zona le cambia la zona y no la cuenta en
+  - R986: `ZonaRepository.update` que pasa su distrito a otra zona le cambia la zona y no la cuenta en
     `ordenesRetenidasEnBodegaSatelite`; una vecina que sigue en el estante sí se cuenta.
   **Hecho:** verde contra Postgres real; mutación de control (quitar `estatus` del `where` del
   `updateMany`) pone rojo el caso R973/R974, anotada en `progress/impl_SLT-197.md`.
@@ -48,7 +49,7 @@
   `lib/types/orden-guia.ts` (design §4.2/§4.4).
   **Hecho:** `tests/unit/services/guia-asignacion-retiro-satelite.test.ts` verde con dobles: R975
   (adminSatelite, adminTienda, mensajero → `forbidden` sin llamar al repo), R973 (detalle por motivo,
-  sin escribir), R974 (`"conflicto"` del repo → `conflict`), R986 (dos zonas → `ok`), R971 (llama al repo
+  sin escribir), R974 (`"conflicto"` del repo → `conflict`), R985 (dos zonas → `ok`), R971 (llama al repo
   con `ajuste_estado` y el actor).
 
 ## T4 — Action (backend_dev; depende de T3)
@@ -81,14 +82,13 @@
 ## T7 — Textos y ayuda ([P] con T6)
 
 - [ ] **T7.1** `DESCRIPCION_ESTADO.en_ruta_bodega_central` = «El paquete va camino a la bodega
-  central.» y el mismo literal en `docs/ayuda/publico/rastreo-de-paquete.md` y
-  `docs/api/guia-integracion/guia-integracion.html`.
-  **Hecho:** R985 verde en `tests/unit/types/order-status.test.ts` (literal a mano);
+  central.» y el mismo literal en `docs/ayuda/publico/rastreo-de-paquete.md`. La guía de integración
+  de la API no se toca (D8).
+  **Hecho:** R984 verde en `tests/unit/types/order-status.test.ts` (literal a mano);
   `rastreo-hitos-exhaustivo.guardia` verde.
 - [ ] **T7.2** Ayuda: `docs/ayuda/oficina/ordenes.md` (la acción, cuándo usarla, que se recibe con el
   escáner y se vuelve a rutear) y `docs/ayuda/satelite/en-bodega.md` (la central puede retirar lo del
-  estante y entonces desaparece del listado); fecha `actualizado` y `fuentes` al día. Entrada «Sin
-  ruptura» en `docs/api/CHANGELOG.md` (secuencia nueva de eventos, P8).
+  estante y entonces desaparece del listado); fecha `actualizado` y `fuentes` al día.
   **Hecho:** `ayuda-pantalla-ruta-existe`, `ayuda-md-viajan-a-produccion` y `docs-marca-heredada`
   verdes.
 
@@ -104,7 +104,7 @@
 ## T9 — Cierre (depende de todo)
 
 - [ ] **T9.1** `./init.sh` verde; `pnpm run test:guardias` verde; mapa `R<n> -> test` completo en
-  `progress/impl_SLT-197.md` (R970–R987, ninguno sin test).
+  `progress/impl_SLT-197.md` (R970–R986, ninguno sin test).
 
 ## Archivos esperados
 
@@ -123,8 +123,6 @@
 - `docs/ayuda/oficina/ordenes.md`
 - `docs/ayuda/satelite/en-bodega.md`
 - `docs/ayuda/publico/rastreo-de-paquete.md`
-- `docs/api/guia-integracion/guia-integracion.html`
-- `docs/api/CHANGELOG.md`
 - `tests/fixtures/inventario-transiciones-140.ts`
 - `tests/unit/domain/order-status-transiciones.guardia.test.ts`
 - `tests/unit/repositories/orden-historial-cobertura.test.ts`
@@ -140,6 +138,6 @@
 
 ## Tamaño
 
-28 archivos que cuentan (17 de producción y docs, 11 de tests) de 40: 70 %, por debajo del aviso del
-80 %. Líneas estimadas: ~360 de producción (tope 1000) y ~950 de tests (tope 3000). `progress/` y
+26 archivos que cuentan (15 de producción y docs, 11 de tests) de 40: 65 %, por debajo del aviso del
+80 %. Líneas estimadas: ~350 de producción (tope 1000) y ~900 de tests (tope 3000). `progress/` y
 `specs/` no cuentan.

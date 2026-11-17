@@ -1,6 +1,7 @@
 # SLT-197 «Retirar paquetes de una bodega satélite a la central» — design
 
-> Requisitos R970–R987 (`requirements.md`). Sin migración, sin tabla nueva, sin dependencia nueva.
+> Requisitos R970–R986 (`requirements.md`). Aprobado por Carlos el 2026-11-17 con las decisiones
+> D1–D9 de `requirements.md` (D8: sin trabajo de API). Sin migración, sin tabla nueva, sin dependencia nueva.
 > Todo se leyó con Grep/Read en este worktree: el grafo (`codebase-memory-mcp`) no tiene indexado el
 > proyecto `R-job-singularis-projects-servi_logistic-.worktrees-SLT-197-retirar-satelite-a-central`.
 
@@ -74,7 +75,7 @@ guía (#5), antes de rutearla. El sistema ya lo trata bien:
   central reparte en Cartago (R978).
 - El listado de la satélite no la ve: su estado está fuera de `ESTADOS_BODEGA_SATELITE` (R979).
 - La reconciliación de zonas (366/377) deja de retenerla: ya no está en `ESTADOS_PAQUETE_EN_ESTANTE`,
-  así que si Carlos pasa los distritos de Cartago a otra zona, la orden se mueve con ellos (R987). Es
+  así que si Carlos pasa los distritos de Cartago a otra zona, la orden se mueve con ellos (R986). Es
   justo lo que la 377 no podía hacer con el paquete en el estante.
 
 Conservar la zona también conserva la tarifa: el cobro de la entrega, cuando ocurra, sale de la zona de
@@ -132,8 +133,7 @@ En **una** transacción (la extensión de empresa ya fija `organizacion_id` y el
    la transacción; el método lo captura fuera y devuelve `"conflicto"` (R974). Ninguna fila cambia y
    ningún historial se escribe.
 4. Con el `count` completo, `appendCambioEstado(tx, …)` con una entrada por orden (origen leído en el
-   paso 1). Ese choke point valida la arista #73 contra `TRANSICIONES` (fallo cerrado) y encola el
-   webhook de estado (R984).
+   paso 1). Ese choke point valida la arista #73 contra `TRANSICIONES` (fallo cerrado).
 
 La guarda de estado vive en el `WHERE`, no en JS: se prueba contra Postgres real
 (`retiro-satelite-central.int.test.ts`), con una mutación de control que quite la condición de estado y
@@ -155,7 +155,7 @@ retirarABodegaCentral(input: { ordenIds: string[] }, actor: Actor): Promise<Reti
 2. `distinct(ordenIds)`; lote vacío → `ok` con `resultados: []` (defensa; la action ya exige `min(1)`).
 3. `findByIdsForTransicion(ordenIds)` y, por orden: `orden no existe`, `orden borrada`, `estado de origen
    no permitido: <value>` si no es `en_bodega_satelite` (R973). Con algún motivo → `{ status:
-   "conflict", detalle }` sin escribir. **No se filtra por zona** (R986).
+   "conflict", detalle }` sin escribir. **No se filtra por zona** (R985).
 4. `findEstatusIdByValue("en_ruta_bodega_central")`; si falta → `validation_error` (catálogo).
 5. `retirarSateliteLote(...)`; `"conflicto"` → `{ status: "conflict", detalle: [{ ordenId, motivo:
    "la orden cambió de estado; recarga" }] }` para todo el lote (R974).
@@ -192,7 +192,7 @@ prueba sobre una orden retirada para dejar fijado que el caso nuevo pasa por el 
 ## 5. Autorización
 
 - **Quién:** maestro y admin (`esAccesoTotal`), en el servicio, antes de leer órdenes (R975). Igual que
-  «Rutear a bodega satélite». El `adminSatelite` no puede (P3); si Carlos lo pide, la rama es la de
+  «Rutear a bodega satélite». El `adminSatelite` no puede (D3); si algún día se pide, la rama es la de
   `EnvioDevolucionCentralService:58-60` (rol + `findUsuarioZonaId === orden.zonaId`).
 - **Empresa:** la de la sesión, por la extensión de empresa y la RLS de `orden` y
   `orden_historial_estado`. No hay SQL a mano nuevo.
@@ -217,9 +217,10 @@ prueba sobre una orden retirada para dejar fijado que el caso nuevo pasa por el 
 - **Recibir:** el escáner único de la central (`EscanerRecepcionBodegaCentral`), sin cambios.
 - **Buscar/filtrar:** `BuscadorFiltros` de `/ordenes` con los filtros de estado y zona que ya existen.
 - **Texto del (i):** `DESCRIPCION_ESTADO.en_ruta_bodega_central` en `lib/types/order-status.ts` pasa a «El
-  paquete va camino a la bodega central.» (R985, P7). Es el mismo texto del rastreo público, y el
-  literal viejo está copiado en `docs/ayuda/publico/rastreo-de-paquete.md` y en
-  `docs/api/guia-integracion/guia-integracion.html`: se cambian los tres a la vez.
+  paquete va camino a la bodega central.» (R984, D7). Es el mismo texto del rastreo público, y el
+  literal viejo está copiado en `docs/ayuda/publico/rastreo-de-paquete.md`: se cambian los dos a la
+  vez. La copia de `docs/api/guia-integracion/guia-integracion.html` **no se toca** (D8: sin trabajo de
+  API); queda con el texto viejo.
 - **Ayuda:** `docs/ayuda/oficina/ordenes.md` (la acción y cuándo usarla) y
   `docs/ayuda/satelite/en-bodega.md` (la central puede retirar órdenes del estante; desaparecen del
   listado).
@@ -239,16 +240,14 @@ el usuario que retiró.
   tienda ni pagos. Una orden en el estante no tiene gestión vigente ni cierre abierto: las que llegaron
   al estante por liberación (#18, #20/#24, #26) lo hicieron con su cierre ya aprobado. El cierre de
   bodega de la satélite consolida efectivo de cierres de mensajeros, no paquetes. La tarifa no cambia
-  porque la zona no cambia. Si Carlos decide cobrar el traslado (P2), es otra ficha de dinero.
-- **Webhook (R984):** `en_ruta_bodega_central` y `en_bodega_central` están en `EVENTOS_PUBLICOS` y
-  `ORIGENES_SIN_EVENTO_PUBLICO` está vacía: `appendCambioEstado` encola los dos eventos sin tocar
-  `webhook-eventos.ts` (P8). Lo nuevo para el integrador es la secuencia (una orden ya despachada a una
-  satélite vuelve a «en ruta a bodega central»), así que se añade una entrada «Sin ruptura» en
-  `docs/api/CHANGELOG.md`.
+  porque la zona no cambia. Cobrar el traslado quedó descartado (D2).
+- **API e integradores (D8: sin trabajo de API):** el mecanismo genérico (`appendCambioEstado` con la
+  política de `webhook-eventos.ts`) ya encola un evento de estado al pasar a `en_ruta_bodega_central` y a
+  `en_bodega_central`; se deja como está, sin requisito, test ni documentación propios.
 - **Cancelación por API:** la tienda ya puede cancelar desde `en_ruta_bodega_central` y
   `en_bodega_central` (#30/#29). Sigue igual.
 - **Rastreo público e informe de tránsito por WhatsApp:** leen el estado, que ya existe; solo cambia el
-  texto del (i) (R985).
+  texto del (i) (R984).
 - **Datos de país:** ninguno (sin moneda, geografía nueva, impuestos ni métodos de pago).
 
 ## 9. Modelo de datos y migraciones
@@ -267,7 +266,7 @@ el usuario que retiró.
   Un estado nuevo exigiría migración de catálogo, entradas en rastreo, webhook, tablero e informe de
   tránsito, y una segunda rama en la recepción central.
 - **A3 — Saltar el tránsito** (`en_bodega_satelite -> en_bodega_central` en un paso): ahorra el
-  escaneo pero la central daría por recibido un paquete que nadie vio llegar (P4). Además, mientras
+  escaneo pero la central daría por recibido un paquete que nadie vio llegar (D4). Además, mientras
   viaja, el listado de la central lo mostraría como disponible.
 - **A4 — Cambiar la zona de la orden a la central al retirar:** perdería la zona de la dirección (y con
   ella la tarifa) y la orden ya no podría volver a rutearse a la satélite de su zona sin corregir datos
@@ -280,16 +279,14 @@ el usuario que retiró.
 - **Carrera con la satélite:** si la satélite asigna una orden mientras la central la retira, gana la
   primera escritura; la otra recibe conflicto sin efectos (R974; la asignación satélite ya guarda por
   estado). Se prueba en integración.
-- **El texto del (i) lo ve el destinatario** (rastreo público). Por eso la propuesta es neutra (P7).
-- **El integrador** recibe dos eventos de estado que antes no esperaba en esa secuencia. El contrato
-  público no cambia (mismos estados), pero conviene avisarle si Carlos lo considera (P8).
+- **El texto del (i) lo ve el destinatario** (rastreo público). Por eso es neutro (D7).
 
 ## 12. Tamaño
 
 | | Archivos | Líneas (estimación) |
 |---|---|---|
-| Producción y docs (`lib/`, `app/`, `docs/`) | 17 | ~360 (repo ~70, servicio ~60, modal ~110, listado ~25, tipos/action ~40, manifiesto ~10, transiciones/texto ~15, docs ~30) |
-| Tests (`tests/`, `e2e/`) | 11 | ~950 |
-| **Total que cuenta** | **28 de 40 (70 %)** | ~360/1000 prod · ~950/3000 tests |
+| Producción y docs (`lib/`, `app/`, `docs/ayuda/`) | 15 | ~350 (repo ~70, servicio ~60, modal ~110, listado ~25, tipos/action ~40, manifiesto ~10, transiciones/texto ~15, ayuda ~20) |
+| Tests (`tests/`, `e2e/`) | 11 | ~900 |
+| **Total que cuenta** | **26 de 40 (65 %)** | ~350/1000 prod · ~900/3000 tests |
 
 `specs/` y `progress/` no cuentan (`docs/gate.md > Tamaño del PR`). Por debajo del aviso del 80 %.
