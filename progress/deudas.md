@@ -450,3 +450,13 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** SLT-153 «Cabecera del detalle del cierre con rótulos y folio buscable» (2026-11-13, review m1 en `progress/review_SLT-153.md`). Con un trozo de folio corto (1-2 caracteres), `idsPorFolio` puede devolver miles de ids que luego entran en un `IN` del `where` de las colas.
 - **Qué falta:** medir con volumen real; si crece, filtrar por folio en la misma consulta (subconsulta o `right(id, 8) ILIKE`) en vez de la lista de ids, o exigir un mínimo de caracteres.
 - **Dueño:** ArqDev.
+
+### D77 — `CURRENT_TIMESTAMP` en una escritura de planes anterior a SLT-129
+- **Origen:** SLT-129 «Planes: borrador del plan guardado en el servidor por pasos» (2026-11-17, review m5 en `progress/review_SLT-129.md`). `PlanesRepository.ts:834` guarda con `CURRENT_TIMESTAMP`, que toma la zona de la sesión de Postgres; en local sale 5 h atrás. En CI no se ve porque su Postgres está en UTC.
+- **Qué falta:** pasarla a `now() AT TIME ZONE 'UTC'` (`docs/architecture.md > Ciclo en UTC`), con su test.
+- **Dueño:** Camilo.
+
+### D78 — Deadlock poco probable entre el borrador y el borrado en cascada del plan
+- **Origen:** SLT-129 (2026-11-17, review m3). Guardar o confirmar un borrador mientras se borra el plan en cascada (R22) puede cruzar bloqueos; Postgres corta uno con `40P01` y el error llega sin traducir.
+- **Qué falta:** traducir `40P01` a un error de dominio reintentable, o fijar el orden de bloqueos también en el borrado.
+- **Dueño:** Camilo.

@@ -5,6 +5,13 @@ import { Prisma, type ModuloApagable, type PrismaClient, type RolValue } from "@
 import { comoPlataforma } from "@/lib/db/contexto-empresa";
 import type { ActorCongelado, EntradaAccion } from "@/lib/interfaces/repositories/IHistorialAccionRepository";
 import type {
+  BorradorGuardado,
+  BorradorLeido,
+  BorradorListado,
+  IPlanBorradorRepository,
+  ResultadoGuardarCambio,
+} from "@/lib/interfaces/repositories/IPlanBorradorRepository";
+import type {
   AsignacionLeida,
   AvisoCorreoPlan,
   AvisoNoAplicadaPlan,
@@ -40,6 +47,7 @@ import type {
   ResultadoRecordatorio,
   VistaPreviaLeida,
 } from "@/lib/interfaces/repositories/IPlanesRepository";
+import { BorradorNoEncontrado } from "@/lib/planes/borrador";
 import { valorDelHistorialDeAsignacion } from "@/lib/planes/cobro";
 import type { CambioDelPlanLeido } from "@/lib/planes/consumo";
 import { costoVigenteDeLaTarifa, type TarifaLeida } from "@/lib/planes/costeo";
@@ -58,6 +66,7 @@ import { pendienteDeEmpresa, precioDelHistorial } from "@/lib/repositories/_shar
 import { JobRepository } from "@/lib/repositories/JobRepository";
 import { ACTOR_SISTEMA, appendAccion, resolverActorCongelado } from "@/lib/repositories/registrar-accion";
 import { etiquetaDeEntidad } from "@/lib/types/historial-accion-etiquetas";
+import type { GeneralDeCrear, IdPasoBorrador, ValoresDelPaso } from "@/lib/types/plan-borrador";
 import {
   ACCIONES_DE_ASIGNACION,
   ROLES_CON_TOPE,
@@ -1159,10 +1168,14 @@ function cambioDeLaEmpresa(
   return pendienteDe({ vigenteDesde: recepcion.recibeAt, version: c.version });
 }
 
-/** Crea el plan, sus topes y sus módulos, con su fila `creado` de `plan_rastro` (R1, R29), dentro de `tx`. */
-async function crearEnTx(tx: Tx, input: CrearPlanInput, actorUsuarioId: string): Promise<string> {
+/**
+ * Crea el plan, sus topes y sus módulos, con su fila `creado` de `plan_rastro` (R1, R29), dentro de `tx`.
+ * SLT-129 (design §1.3): el plan que nace de un borrador toma su `id`.
+ */
+async function crearEnTx(tx: Tx, input: CrearPlanInput, actorUsuarioId: string, borradorId?: string): Promise<string> {
   const { id } = await tx.plan.create({
     data: {
+      id: borradorId,
       nombre: input.nombre,
       visibilidad: input.visibilidad,
       organizacionExclusivaId: input.organizacionId,
@@ -1196,6 +1209,40 @@ async function crearEnTx(tx: Tx, input: CrearPlanInput, actorUsuarioId: string):
   const actor = await resolverActorCongelado(tx, actorUsuarioId);
   await escribirRastro(tx, creado, "creado", diferenciasDelPlan(null, creado), actorUsuarioId, actor);
   return id;
+}
+
+/**
+ * SLT-129 (design §5.4; R19, R20): con `borradorId`, `fn` corre con el borrador en FOR UPDATE, tomado al empezar
+ * la transacción (sin fila, lanza `BorradorNoEncontrado` y se deshace todo), y se borra solo si `fn` da `ok`.
+ */
+async function consumirBorrador<T extends { estado: string }>(
+  tx: Tx,
+  borradorId: string | undefined,
+  fn: () => Promise<T>,
+): Promise<T> {
+  if (borradorId === undefined) return fn();
+  const fila = await tx.$queryRaw<unknown[]>`SELECT "id" FROM "plan_borrador" WHERE "id" = ${borradorId} FOR UPDATE`;
+  if (fila.length === 0) throw new BorradorNoEncontrado(borradorId);
+  const r = await fn();
+  if (r.estado === "ok") await tx.$executeRaw`DELETE FROM "plan_borrador" WHERE "id" = ${borradorId}`;
+  return r;
+}
+
+type FilaGuardada = { id: string; pasos: Record<string, unknown>; updated_at: Date };
+
+function guardado(f: FilaGuardada): BorradorGuardado {
+  return { borradorId: f.id, pasos: Object.keys(f.pasos), actualizadoAt: f.updated_at };
+}
+
+/**
+ * SLT-129 (R2, R9): las columnas son `TIMESTAMP` sin zona con el reloj UTC, como escribe Prisma. El DEFAULT
+ * `CURRENT_TIMESTAMP` y `CURRENT_TIMESTAMP` en un UPDATE dan la hora local de la sesión (medido en T6: 5 h de más).
+ */
+const AHORA_UTC = Prisma.sql`(now() AT TIME ZONE 'UTC')`;
+
+/** SLT-129 (R4): `pasos || {paso: valores}` reemplaza solo esa clave en una sentencia. */
+function pasoComoJson(paso: IdPasoBorrador, valores: ValoresDelPaso): Prisma.Sql {
+  return Prisma.sql`jsonb_build_object(${paso}::text, ${JSON.stringify(valores)}::jsonb)`;
 }
 
 /**
@@ -1323,7 +1370,9 @@ class AsignacionRechazada extends Error {
 /* El repositorio                                                              */
 /* -------------------------------------------------------------------------- */
 
-export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRepository, IPlanesRecepcionesRepository {
+export class PlanesRepository
+  implements IPlanesRepository, IPlanesDelMaestroRepository, IPlanesRecepcionesRepository, IPlanBorradorRepository
+{
   constructor(private readonly prisma: PlanesPrismaClient) {}
 
   empresa(organizacionId: string): Promise<EmpresaDePlanes | null> {
@@ -1342,15 +1391,27 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
     });
   }
 
-  crear(input: CrearPlanInput, actorUsuarioId: string): Promise<string> {
+  crear(input: CrearPlanInput, actorUsuarioId: string, borradorId?: string): Promise<string> {
     return comoPlataforma("SL-24", "crear un plan del catálogo (superadmin)", () =>
-      this.prisma.$transaction((tx) => crearEnTx(tx, input, actorUsuarioId)),
+      this.prisma.$transaction(async (tx) => {
+        const r = await consumirBorrador(tx, borradorId, async () => ({
+          estado: "ok" as const,
+          id: await crearEnTx(tx, input, actorUsuarioId, borradorId),
+        }));
+        return r.id;
+      }),
     );
   }
 
-  editar(planId: string, version: VersionPlan, actorUsuarioId: string, precioDesde: Date): Promise<ResultadoEdicion> {
+  editar(
+    planId: string,
+    version: VersionPlan,
+    actorUsuarioId: string,
+    precioDesde: Date,
+    borradorId?: string,
+  ): Promise<ResultadoEdicion> {
     return comoPlataforma("SL-24", "editar un plan del catálogo de inmediato (superadmin)", () =>
-      this.prisma.$transaction(async (tx): Promise<ResultadoEdicion> => {
+      this.prisma.$transaction((tx) => consumirBorrador(tx, borradorId, async (): Promise<ResultadoEdicion> => {
         if (!(await bloquearPlanParaEscribir(tx, planId))) return { estado: "not_found" };
         const antes = (await leerPlan(tx, planId)) as PlanDTO;
         if (antes.archivado) return { estado: "archivado" };
@@ -1390,7 +1451,7 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
           })),
         );
         return { estado: "ok", cambio: true, avisos };
-      }),
+      })),
     );
   }
 
@@ -1444,17 +1505,18 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
     actorUsuarioId: string,
     asignacion: AsignacionAlCrear,
     ahora: Date,
+    borradorId?: string,
   ): Promise<ResultadoCrearYAsignar> {
     // Ajuste planes-custom (D2): crear el custom y asignarlo es UNA transacción. Cualquier rechazo de la
     // asignación (topes, R31 bajo cerrojo…) la revierte entera: ni plan, ni rastro, ni historial.
     return comoPlataforma("SL-24", "crear un plan custom y asignarlo a su empresa (superadmin)", async () => {
       try {
-        return await this.prisma.$transaction(async (tx): Promise<ResultadoCrearYAsignar> => {
+        return await this.prisma.$transaction((tx) => consumirBorrador(tx, borradorId, async (): Promise<ResultadoCrearYAsignar> => {
           // La empresa primero (§4.4): el mismo orden que `asignar`, que la vuelve a pedir (ya es nuestra).
           const empresa = await tx.$queryRaw<{ id: string }[]>`
             SELECT "id" FROM "organizacion" WHERE "id" = ${input.organizacionId} FOR UPDATE`;
           if (empresa.length === 0) return { estado: "not_found" };
-          const planId = await crearEnTx(tx, input, actorUsuarioId);
+          const planId = await crearEnTx(tx, input, actorUsuarioId, borradorId);
           const r = await this.asignarEnTx(
             tx,
             input.organizacionId,
@@ -1466,12 +1528,102 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
           );
           if (r.estado !== "ok") throw new AsignacionRechazada(r);
           return { estado: "ok", planId, avisos: r.avisos, pendiente: r.pendiente, vigenteDesde: r.vigenteDesde };
-        });
+        }));
       } catch (e) {
         if (e instanceof AsignacionRechazada) return e.resultado;
         throw e;
       }
     });
+  }
+
+  /* SLT-129 (design §1.1, §5.4) — los borradores del superadmin. Ni rastro ni trabajos (R12, R13). */
+
+  crearBorrador(general: GeneralDeCrear, actorUsuarioId: string): Promise<BorradorGuardado> {
+    return comoPlataforma("SL-24", "crear un borrador de plan (superadmin, SLT-129)", () =>
+      this.prisma.$transaction(async (tx) => {
+        const nombre = nombreDelActor(await resolverActorCongelado(tx, actorUsuarioId));
+        const [fila] = await tx.$queryRaw<FilaGuardada[]>`
+          INSERT INTO "plan_borrador" ("id", "pasos", "iniciado_por_usuario_id", "iniciado_por_nombre", "created_at", "updated_at")
+          VALUES (${randomUUID()}, ${pasoComoJson("general", general)}, ${actorUsuarioId}, ${nombre}, ${AHORA_UTC}, ${AHORA_UTC})
+          RETURNING "id", "pasos", "updated_at"`;
+        return guardado(fila as FilaGuardada);
+      }),
+    );
+  }
+
+  guardarPasoDeCreacion(borradorId: string, paso: IdPasoBorrador, valores: ValoresDelPaso): Promise<BorradorGuardado | null> {
+    return comoPlataforma("SL-24", "guardar un paso de un borrador de plan (superadmin, SLT-129)", () =>
+      this.prisma.$transaction(async (tx) => {
+        const [fila] = await tx.$queryRaw<FilaGuardada[]>`
+          UPDATE "plan_borrador" SET "pasos" = "pasos" || ${pasoComoJson(paso, valores)}, "updated_at" = ${AHORA_UTC}
+           WHERE "id" = ${borradorId} AND "plan_id" IS NULL
+          RETURNING "id", "pasos", "updated_at"`;
+        return fila === undefined ? null : guardado(fila);
+      }),
+    );
+  }
+
+  guardarPasoDeCambio(
+    planId: string,
+    paso: IdPasoBorrador,
+    valores: ValoresDelPaso,
+    actorUsuarioId: string,
+  ): Promise<ResultadoGuardarCambio> {
+    return comoPlataforma("SL-24", "guardar un paso del borrador de cambio de un plan (superadmin, SLT-129)", () =>
+      this.prisma.$transaction(async (tx): Promise<ResultadoGuardarCambio> => {
+        // El borrador antes que el plan, el orden de confirmar (borrador → plan): sin abrazo mortal.
+        await tx.$queryRaw`SELECT "id" FROM "plan_borrador" WHERE "plan_id" = ${planId} FOR UPDATE`;
+        const [plan] = await tx.$queryRaw<{ archivado_at: Date | null }[]>`
+          SELECT "archivado_at" FROM "plan" WHERE "id" = ${planId} FOR SHARE`;
+        if (plan === undefined) return { estado: "not_found" };
+        if (plan.archivado_at !== null) return { estado: "archivado" };
+        const nombre = nombreDelActor(await resolverActorCongelado(tx, actorUsuarioId));
+        // R5: dos primeros guardados a la vez dejan una fila y conservan el iniciador del primero.
+        const [fila] = await tx.$queryRaw<FilaGuardada[]>`
+          INSERT INTO "plan_borrador" ("id", "plan_id", "pasos", "iniciado_por_usuario_id", "iniciado_por_nombre", "created_at", "updated_at")
+          VALUES (${randomUUID()}, ${planId}, ${pasoComoJson(paso, valores)}, ${actorUsuarioId}, ${nombre}, ${AHORA_UTC}, ${AHORA_UTC})
+          ON CONFLICT ("plan_id") DO UPDATE
+            SET "pasos" = "plan_borrador"."pasos" || EXCLUDED."pasos", "updated_at" = ${AHORA_UTC}
+          RETURNING "id", "pasos", "updated_at"`;
+        return { estado: "ok", ...guardado(fila as FilaGuardada) };
+      }),
+    );
+  }
+
+  descartar(borradorId: string): Promise<boolean> {
+    return comoPlataforma("SL-24", "descartar un borrador de plan (superadmin, SLT-129)", () =>
+      this.prisma.$transaction(async (tx) => (await tx.planBorrador.deleteMany({ where: { id: borradorId } })).count > 0),
+    );
+  }
+
+  borrador(borradorId: string): Promise<BorradorLeido | null> {
+    return comoPlataforma("SL-24", "leer un borrador de plan (superadmin, SLT-129)", () =>
+      this.prisma.$transaction(async (tx) => {
+        const f = await tx.planBorrador.findUnique({ where: { id: borradorId } });
+        return f === null ? null : { ...f, pasos: f.pasos as Record<string, unknown> };
+      }),
+    );
+  }
+
+  borradorDelPlan(planId: string): Promise<BorradorLeido | null> {
+    return comoPlataforma("SL-24", "leer el borrador de cambio de un plan (superadmin, SLT-129)", () =>
+      this.prisma.$transaction(async (tx) => {
+        const f = await tx.planBorrador.findUnique({ where: { planId } });
+        return f === null ? null : { ...f, pasos: f.pasos as Record<string, unknown> };
+      }),
+    );
+  }
+
+  borradores(): Promise<BorradorListado[]> {
+    return comoPlataforma("SL-24", "listar los borradores de planes (superadmin, SLT-129)", () =>
+      this.prisma.$transaction(async (tx) => {
+        const filas = await tx.planBorrador.findMany({
+          include: { plan: { select: { nombre: true } } },
+          orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+        });
+        return filas.map(({ plan, ...f }) => ({ ...f, pasos: f.pasos as Record<string, unknown>, nombreDelPlan: plan?.nombre ?? null }));
+      }),
+    );
   }
 
   /**
@@ -1757,9 +1909,10 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
     vigenteDesde: Date,
     actorUsuarioId: string,
     ahora: Date,
+    borradorId?: string,
   ): Promise<ResultadoProgramar> {
     return comoPlataforma("SL-24", "programar un cambio de un plan del catálogo (superadmin)", () =>
-      this.prisma.$transaction(async (tx): Promise<ResultadoProgramar> => {
+      this.prisma.$transaction((tx) => consumirBorrador(tx, borradorId, async (): Promise<ResultadoProgramar> => {
         // SLT-128 (design §6): las empresas del plan FOR SHARE ANTES que el plan (empresa → plan). Un cambio de
         // tipo en vuelo (empresa FOR UPDATE) termina antes y la recepción se calcula con su tipo.
         await tx.$queryRaw`SELECT "id" FROM "organizacion" WHERE "plan_id" = ${planId} ORDER BY "id" FOR SHARE`;
@@ -1876,7 +2029,7 @@ export class PlanesRepository implements IPlanesRepository, IPlanesDelMaestroRep
           }),
         );
         return { estado: "ok", cambio: true, avisos, cambioId };
-      }),
+      })),
     );
   }
 

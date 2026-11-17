@@ -21,13 +21,16 @@ import type {
 // servidor, que ya resolvieron el actor; no hay action de lectura. Cualquier otro rol: `forbidden` sin
 // leer nada (R22). La excepción es la vista previa de la primera asignación (§11.4), que sí tiene action.
 
+/** SLT-129 (design §5.3): confirmar un borrador; sin opciones, el comportamiento de hoy (R21). */
+export type OpcionesDeBorrador = { borradorId: string };
+
 export interface IPlanesService {
-  crear(actor: Actor | null, input: unknown): Promise<PlanResult>;
+  crear(actor: Actor | null, input: unknown, opciones?: OpcionesDeBorrador): Promise<PlanResult>;
   /**
    * De inmediato (`vigenteDesde: null`) o programada (R37, T11). SLT-86 (R22): un cambio de costo base o de
    * descuento lleva fecha `≥ hoy`; la de hoy se aplica en el acto.
    */
-  editar(actor: Actor | null, input: unknown): Promise<PlanResult>;
+  editar(actor: Actor | null, input: unknown, opciones?: OpcionesDeBorrador): Promise<PlanResult>;
   archivar(actor: Actor | null, input: unknown): Promise<PlanResult>;
   /**
    * SLT-58 (R29–R31, R36, R42): `inicioCiclo` opcional, solo en la primera asignación. SLT-86 (R16):
