@@ -74,3 +74,7 @@ sin número de parada en la ayuda (235 R15). No apareció ninguna otra al implem
 - Rojo ajeno de la guardia 420 (`init.sh` sin el marcador del paso 2).
 
 Veredicto: T1-T3 hechas y verdes con mutaciones en rojo; T4 escrita, falta el E2E en CI.
+
+## T4 — gate (leader, 2026-11-16)
+
+- `./init.sh` (rápido) con `.env` de dev: `INIT_EXIT=0`; tamaño 10/40 archivos, 59/1000 producción, 375/3000 tests. E2E `pwa-mensajero-reparto` en CI (proyecto `reparto`).
