@@ -56,7 +56,7 @@ export function RecibirPaquetesEntrada({ href, children }: Readonly<RecibirPaque
     );
   }
   return (
-    <EscanerModal label={RECIBIR_PAQUETES} className="w-auto">
+    <EscanerModal label={RECIBIR_PAQUETES} titulo={RECIBIR_PAQUETES} className="w-auto">
       {children}
     </EscanerModal>
   );

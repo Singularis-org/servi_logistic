@@ -40,11 +40,14 @@ import { cn } from "@/lib/utils";
 // es "Recibir paquete" —el acto de las dos superficies de recepción, que son la mayoría—,
 // pero una pantalla que hace OTRA cosa debe pasarlo: heredar en silencio el vocabulario ajeno
 // es lo que se quiere evitar. Las del mensajero (Reparto, Recoger en bodega y Recolección) pasan
-// `ESCANER_LABEL_GUIA` («Escanear o escribir guía», SLT-156 R500); la tarjeta de dentro nombra el
+// `ESCANER_LABEL_GUIA` («Escanear o escribir guía», SLT-156 R500); el título de la barra nombra el
 // acto («Recoger paquete», «Recolectar en tienda»).
 //
-// El cierre lo pone el propio Dialog (la "X" con nombre accesible "Cerrar"), así que ya no
-// hay un segundo texto que mantener por superficie.
+// SLT-193 (R925-R928, decisión de Carlos del 2026-11-17): el escáner es UN solo componente. La
+// barra con el título visible y el único «Cerrar» de 44 × 44 px son de aquí, para TODOS los usos
+// y cualquier disparador; la X pequeña del `Dialog` no se pinta y ninguna pantalla pinta su
+// propio cierre (lo vigila `tests/unit/guards/escaner-un-solo-cierre.guardia.test.ts`). Cada
+// pantalla pasa `titulo` (obligatorio) y monta su tarjeta sin encabezado propio.
 //
 // SLT-158 (R571): con puntero fino (escritorio, pistola) el foco inicial va al campo de la
 // guía, para que la pistola escriba ahí sin un clic previo; con táctil NO, porque en el
@@ -56,7 +59,7 @@ export const ESCANER_LABEL_POR_DEFECTO = "Recibir paquete";
 /**
  * SLT-156 (R500): el disparador ÚNICO de escaneo de las pantallas del mensajero (Reparto, Recoger en
  * bodega y Recolección), bajo el encabezado y encima de `BuscadorFiltros`. Arranca cerrado, como
- * todos. La tarjeta de dentro conserva su título y su flujo.
+ * todos. El título del diálogo va en su barra (`titulo`); la tarjeta conserva su flujo.
  */
 export const ESCANER_LABEL_GUIA = "Escanear o escribir guía";
 
@@ -82,12 +85,11 @@ export interface EscanerModalProps {
    */
   soloIcono?: boolean;
   /**
-   * SLT-190 (R867-R869, DS7): título VISIBLE del diálogo, en una barra arriba con un único «Cerrar»
-   * de 44 × 44 px (la X pequeña del `Dialog` se apaga). La tarjeta de dentro se monta entonces sin
-   * su encabezado (`sinEncabezado`), para no tener dos títulos. Es también el nombre accesible del
-   * diálogo. Sin ella, todo como siempre: título `sr-only` con `label` y la X del `Dialog` (R871).
+   * SLT-190 (R867-R869, DS7) y SLT-193 (R925, R927): título VISIBLE del diálogo, en una barra arriba
+   * con el único «Cerrar» de 44 × 44 px. Obligatorio: es el único título del diálogo (la tarjeta de
+   * dentro va sin encabezado, `sinEncabezado`) y también su nombre accesible.
    */
-  titulo?: string;
+  titulo: string;
   className?: string;
 }
 
@@ -121,33 +123,24 @@ export function EscanerModal({
       <DialogContent
         ref={popupRef}
         initialFocus={focoInicial}
-        // SLT-190 (R869): con barra propia, un solo «Cerrar» (el de la barra, de 44 px).
-        showCloseButton={titulo === undefined}
-        className={cn(
-          "max-h-[90dvh] max-w-md overflow-y-auto border-0 bg-transparent p-0 shadow-none",
-          titulo === undefined ? undefined : "gap-0",
-        )}>
-        {titulo === undefined ? (
-          /* El nombre accesible del diálogo. Visualmente lo dice el título de la tarjeta,
-             que es de quien la monta: aquí solo se garantiza que el diálogo tenga uno. */
-          <DialogTitle className="sr-only">{label}</DialogTitle>
-        ) : (
-          /* SLT-190 (R867-R869, DS7): la barra del canvas. El título visible es el nombre del
-             diálogo (R870) y el «Cerrar» cierra con el efecto de siempre: el `Dialog` desmonta la
-             tarjeta (cámara apagada) y la sesión refresca una vez si hubo recepción (R598). La
-             barra continúa la tarjeta de abajo (mismo borde y fondo, sin redondeo entre las dos). */
-          <div className="flex items-center justify-between gap-2 rounded-t-2xl border border-b-0 border-border bg-card py-2 pr-2 pl-6 sm:pl-8">
-            <DialogTitle className="text-lg leading-tight font-semibold text-balance text-card-foreground">
-              {titulo}
-            </DialogTitle>
-            <DialogClose
-              aria-label={ESCANER_CERRAR_LABEL}
-              render={<Button type="button" variant="ghost" size="icon-touch" />}
-            >
-              <X className="size-5" aria-hidden="true" />
-            </DialogClose>
-          </div>
-        )}
+        // SLT-190 (R869) y SLT-193 (R925): un solo «Cerrar», el de la barra, de 44 px.
+        showCloseButton={false}
+        className="max-h-[90dvh] max-w-md gap-0 overflow-y-auto border-0 bg-transparent p-0 shadow-none">
+        {/* SLT-190 (R867-R869, DS7): la barra del canvas. El título visible es el nombre del
+            diálogo (R870) y el «Cerrar» cierra con el efecto de siempre: el `Dialog` desmonta la
+            tarjeta (cámara apagada) y la sesión refresca una vez si hubo recepción (R598). La
+            barra continúa la tarjeta de abajo (mismo borde y fondo, sin redondeo entre las dos). */}
+        <div className="flex items-center justify-between gap-2 rounded-t-2xl border border-b-0 border-border bg-card py-2 pr-2 pl-6 sm:pl-8">
+          <DialogTitle className="text-lg leading-tight font-semibold text-balance text-card-foreground">
+            {titulo}
+          </DialogTitle>
+          <DialogClose
+            aria-label={ESCANER_CERRAR_LABEL}
+            render={<Button type="button" variant="ghost" size="icon-touch" />}
+          >
+            <X className="size-5" aria-hidden="true" />
+          </DialogClose>
+        </div>
         {typeof children === "function" ? children(() => setAbierto(false)) : children}
       </DialogContent>
     </Dialog>

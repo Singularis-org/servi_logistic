@@ -7,6 +7,8 @@ import { logout } from "@/lib/actions/auth";
 import { darDeBajaDeEsteDispositivo } from "@/lib/pwa/baja-push";
 import { useToast } from "@/hooks/useToast";
 import { Button } from "@/components/ui/button";
+import { TACTIL_MOVIL } from "@/components/shared/texto-entero";
+import { cn } from "@/lib/utils";
 
 /**
  * Control "Salir" del topbar (feature 57). Vive en el `PageHeader` compartido
@@ -67,7 +69,11 @@ export function LogoutButton() {
       onClick={handleLogout}
       loading={isPending}
       variant="outline"
-      className="cursor-pointer bg-transparent text-foreground hover:bg-foreground/10 hover:text-foreground"
+      // SLT-193 (R911, R913): 44 × 44 en móvil para cualquier rol; en escritorio no cambia.
+      className={cn(
+        "cursor-pointer bg-transparent text-foreground hover:bg-foreground/10 hover:text-foreground",
+        TACTIL_MOVIL,
+      )}
     >
       {isPending ? null : <LogOut aria-hidden="true" />}
       {isPending ? "Saliendo…" : "Salir"}

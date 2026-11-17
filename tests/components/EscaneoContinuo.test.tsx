@@ -63,7 +63,7 @@ const RESUMEN = { destinatario: "Ana Quesada Mora", tienda: "Tienda Prueba Norte
 
 function dialogo(recibir: (n: number) => Promise<DesenlaceRecepcion>) {
   return (
-    <EscanerModal label="Recibir paquetes">
+    <EscanerModal label="Recibir paquetes" titulo="Recibir paquetes">
       <TarjetaEscaneoContinuo
         recibir={recibir}
         titulo="Recibir paquetes"
@@ -325,7 +325,7 @@ describe("EscaneoContinuo — textos por superficie (R597, R830, R834)", () => {
       () => new Promise<DesenlaceRecepcion>((r) => { responder = r; }),
     );
     render(
-      <EscanerModal label="Recoger">
+      <EscanerModal label="Recoger" titulo="Recoger paquete">
         <TarjetaEscaneoContinuo
           recibir={recibir}
           titulo="Recoger paquete"

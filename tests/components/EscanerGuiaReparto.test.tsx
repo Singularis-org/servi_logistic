@@ -171,7 +171,7 @@ const disparador = () => screen.getByRole("button", { name: "Escanear o escribir
 /** Abre el escáner y escribe la guía en su campo, como la pistola o el mensajero. */
 async function leerGuia(user: ReturnType<typeof userEvent.setup>, guia: string) {
   await user.click(disparador());
-  const escaner = await screen.findByRole("dialog", { name: "Escanear o escribir guía" });
+  const escaner = await screen.findByRole("dialog", { name: "Abrir orden por guía" });
   await user.type(within(escaner).getByLabelText("Número de guía"), guia);
   await user.click(within(escaner).getByRole("button", { name: "Abrir orden" }));
 }
@@ -202,6 +202,29 @@ describe("SLT-156 R500/R503 — el disparador del escáner", () => {
   });
 });
 
+// SLT-193 «Botones de 44 px pendientes en la PWA del mensajero» (R925, R927; P4 de Carlos): el
+// diálogo lleva «Abrir orden por guía» en la barra de `EscanerModal`, con un único «Cerrar» de
+// 44 px; la tarjeta va sin encabezado y su región conserva el nombre.
+describe("SLT-193 R927 — un solo título, en la barra", () => {
+  it("«Abrir orden por guía» en la barra; un solo título, un solo «Cerrar» de 44 px; la sección conserva el nombre", async () => {
+    const user = userEvent.setup();
+    montar();
+    await user.click(disparador());
+    const escaner = await screen.findByRole("dialog", { name: "Abrir orden por guía" });
+    const titulo = within(escaner).getByText("Abrir orden por guía", { selector: "h2" });
+    expect(titulo).not.toHaveClass("sr-only");
+    expect(within(escaner).getAllByRole("heading")).toEqual([titulo]);
+    // Sin la descripción ni el icono del encabezado de la tarjeta.
+    expect(within(escaner).queryByText("Escanea o ingresa el número de guía de una orden de tu reparto.")).toBeNull();
+    const cerrar = within(escaner).getAllByRole("button", { name: "Cerrar" });
+    expect(cerrar).toHaveLength(1);
+    expect(cerrar[0].className.split(/\s+/)).toContain("size-11");
+    expect(within(escaner).getByRole("region", { name: "Abrir orden por guía" })).toBeInTheDocument();
+    // El botón de envío no cambia.
+    expect(within(escaner).getByRole("button", { name: "Abrir orden" })).toBeInTheDocument();
+  });
+});
+
 describe("SLT-156 R514 — la guía de una orden propia", () => {
   it("cierra el escáner, pide «¿Gestionar esta orden?» y al aceptar abre el foco en los resultados", async () => {
     const user = userEvent.setup();
@@ -209,7 +232,7 @@ describe("SLT-156 R514 — la guía de una orden propia", () => {
 
     await leerGuia(user, "7305");
     const dialogo = await screen.findByRole("dialog", { name: "¿Gestionar esta orden?" });
-    expect(screen.queryByRole("dialog", { name: "Escanear o escribir guía" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Abrir orden por guía" })).toBeNull();
     // Hasta aceptar no se fija nada.
     expect(escogerMock).not.toHaveBeenCalled();
 

@@ -239,11 +239,11 @@ Ninguna. P1-P7 están resueltas en `## Decisiones` (Carlos, 2026-11-17).
 Un solo PR. Orden: T0 → (T1 ∥ T2 ∥ T3 ∥ T5) → T4 → T6. `[P]` = paralelizable.
 
 **Bloque A**
-- [ ] **T0 — Base.** Rebasar sobre el merge de SLT-190. Mover `CLASE_INFO_TACTIL` a
+- [x] **T0 — Base.** Rebasar sobre el merge de SLT-190. Mover `CLASE_INFO_TACTIL` a
   `components/shared/texto-entero.ts` (con re-export en `PosOrderCardDetalle.tsx`) y añadir allí su
   variante `max-md:`.
   *Hecho:* typecheck en verde; el test de SLT-190 que importa `CLASE_INFO_TACTIL` sigue en verde.
-- [ ] **T1 [P] — Mosaico y (i) (R910, R916-R920).**
+- [x] **T1 [P] — Mosaico y (i) (R910, R916-R920).**
   - `min-h-11` en `PosOrderCardMosaico.tsx:273`.
   - `CLASE_INFO_TACTIL` en cada uso que entra; `ChatOrdenesLista.tsx:169` necesita envoltorio nuevo.
   - Variante `max-md:` en `FilaGestion.tsx:223,483`.
@@ -253,10 +253,10 @@ Un solo PR. Orden: T0 → (T1 ∥ T2 ∥ T3 ∥ T5) → T4 → T6. `[P]` = paral
   - `botones-44-pwa-mensajero.test.tsx` cubre R910 y R916-R919, y `EstadoInfo.test.tsx` cubre R920.
   - Mutación 1: quitar la clase de un uso deja ese caso en rojo.
   - Mutación 2: ponerla en el flotante deja R918 en rojo.
-- [ ] **T2 [P] — Encabezado (R911, R913).** `TACTIL_MOVIL` en la hamburguesa (`layout.tsx:173`) y en
+- [x] **T2 [P] — Encabezado (R911, R913).** `TACTIL_MOVIL` en la hamburguesa (`layout.tsx:173`) y en
   `InstalarPwaButton`, `AyudaBoton`, `TemaToggle`, `NotificationsBell` y `LogoutButton`.
   *Hecho:* `PageHeader.test.tsx` cubre R911 y R913.
-- [ ] **T3 [P] — Menú (R914, R915).** `max-md:h-11` en `SidebarMenuButton` y `SidebarMenuSubButton`
+- [x] **T3 [P] — Menú (R914, R915).** `max-md:h-11` en `SidebarMenuButton` y `SidebarMenuSubButton`
   desde `app/(app)/_components/Sidebar.tsx`.
   *Hecho:* `Sidebar.test.tsx` cubre R914 y R915.
 - [ ] **T4 — E2E y gate (R910-R921).** `e2e/pwa-mensajero-botones-44.spec.ts`, a 360 px (y a 1280 px
@@ -264,7 +264,7 @@ Un solo PR. Orden: T0 → (T1 ∥ T2 ∥ T3 ∥ T5) → T4 → T6. `[P]` = paral
   *Hecho:* E2E en verde en local, `INIT_EXIT=0` y mapa `R<n> -> test` en `progress/features/SLT-193.md`.
 
 **Bloque B**
-- [ ] **T5 [P] — `EscanerModal` único y sus usos (R925-R929).**
+- [x] **T5 [P] — `EscanerModal` único y sus usos (R925-R929).**
   - En `EscanerModal`, `titulo` pasa a obligatorio; se borran la rama sin barra y `showCloseButton`.
   - Cada uso pasa su título según la tabla y monta la tarjeta con `sinEncabezado`.
   - En `BuscadorFiltros` se quita el `CardHeader` de `CamaraDelBuscador`.

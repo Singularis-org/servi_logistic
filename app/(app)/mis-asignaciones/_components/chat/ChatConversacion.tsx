@@ -18,6 +18,7 @@ import {
 import useSWR from "swr";
 
 import { EstadoConInfo } from "@/components/shared/EstadoInfo";
+import { CLASE_INFO_TACTIL } from "@/components/shared/texto-entero";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/useToast";
@@ -699,6 +700,7 @@ export function ChatConversacion({
             {/* FICHA 456 (T3.7, R9): el estado de la conversación con su botón de información. */}
             <EstadoConInfo
               codigo={orden.estatusValue}
+              className={CLASE_INFO_TACTIL}
               chipClassName={cn(
                 "rounded-full px-2 py-0.5 text-[10px] font-medium leading-none",
                 chip.className,
