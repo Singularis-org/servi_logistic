@@ -25,7 +25,7 @@ PR #192). Todo es `frontend_dev`; ningún archivo de servidor. Un solo PR.
   y refresco único), R599, R830-R833 en verde en `tests/components/RecogerPaqueteCard.test.tsx` y
   `tests/components/RecogerModule.test.tsx` (los casos de toast y de refresco por acierto se reescriben
   al comportamiento nuevo, no se borran sin sustituto).
-- [ ] **T5 — Diálogo continuo en M2 (depende de T1, T3).** `RecoleccionModule.tsx`: lo mismo dentro de
+- [x] **T5 — Diálogo continuo en M2 (depende de T1, T3).** `RecoleccionModule.tsx`: lo mismo dentro de
   su `EscanerModal`; `router.refresh()` pasa a `alCerrarConRecepcion`; `conocidas` en memo. Nada fuera
   del bloque del escáner. *Hecho:* R595-R598, R830-R833 en verde en
   `tests/components/RecoleccionModule.test.tsx`.

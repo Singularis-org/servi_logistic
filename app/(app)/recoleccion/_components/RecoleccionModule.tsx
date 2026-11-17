@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Store } from "lucide-react";
 
@@ -9,18 +9,14 @@ import {
   ESCANER_LABEL_GUIA,
   EscanerModal,
 } from "@/components/shared/EscanerModal";
-import {
-  EscanerGuiaCard,
-  type ResultadoLectura,
-} from "@/components/shared/EscanerGuiaCard";
-import { useToast } from "@/hooks/useToast";
+import { TarjetaEscaneoContinuo } from "@/components/shared/EscaneoContinuo";
 // Feature 111/R12 + 167/R9 -> FEATURE 271 (T9.1/T9.2): el aviso del bloqueo dejó de ser una
 // constante y pasó a ser un FORMATEADOR que CUENTA (cuántos cierres arrastra el mensajero y cuál
 // toca resolver primero, R43). El MISMO de los otros tres portales; `conCta: true` porque desde
 // aquí hay que decirle a dónde ir (R52).
 import { avisoBloqueo } from "@/lib/constants/bloqueo-mensajero";
 import { SIN_BLOQUEO, type BloqueoDetalle } from "@/lib/utils/bloqueo-cierre";
-import { leerGuia } from "@/lib/utils/paquete-url";
+import { TEXTOS_RECOLECCION } from "@/lib/utils/sesion-escaneo";
 import type {
   RecolectadaHoyDTO,
   RecoleccionOrdenDTO,
@@ -136,11 +132,13 @@ export function RecoleccionModule({
   // FEATURE 271 (T9.1): el veredicto sale del detalle, no se re-deriva aquí.
   const bloqueado = bloqueo.bloqueado;
   const router = useRouter();
-  const toast = useToast();
-  const { recolectar } = useRecolectarPorGuia();
-  // Confirmación PERSISTENTE de la última (R15): el toast se va solo y en una tanda seguida
-  // el mensajero necesita ver que la anterior sí entró (mismo criterio que `RecogerPaqueteCard`).
-  const [ultima, setUltima] = useState<number | null>(null);
+  // SLT-168 (R832): las dos listas cargadas solo dan destinatario y tienda a la fila; de quién
+  // es la guía lo sigue decidiendo el servidor (167/R12).
+  const conocidas = useMemo(
+    () => [...porRecolectar, ...recolectadasHoy],
+    [porRecolectar, recolectadasHoy],
+  );
+  const { recolectar } = useRecolectarPorGuia(conocidas);
 
   // Feature 196: mismo conmutador y misma transicion que Entregas/Por recoger, sobre las
   // MISMAS piezas. Estado de UI efimero de un solo consumidor: no sube a la URL.
@@ -162,31 +160,6 @@ export function RecoleccionModule({
   const recolectadasHoyVisibles = useMemo(
     () => filtrarAsignaciones(recolectadasHoy, query),
     [recolectadasHoy, query],
-  );
-
-  /**
-   * Cámara, tecleo o pistola: misma `leerGuia` para todos (SLT-157). R11: lo mal formado se
-   * corta aquí CON mensaje, sin viaje al servidor; de quién es la guía lo decide el servidor
-   * (R12). SLT-158: devuelve el resultado a la tarjeta (tono, marca, línea de error).
-   */
-  const procesar = useCallback(
-    async (texto: string): Promise<ResultadoLectura> => {
-      const numGuia = leerGuia(texto);
-      if (numGuia === null) {
-        toast.error("Código inválido.");
-        return { tipo: "error", motivo: "Código inválido." };
-      }
-      const resultado = await recolectar(numGuia);
-      if (resultado.tipo === "acierto") {
-        setUltima(numGuia);
-        // R14: la orden deja de estar pendiente y pasa a "Recolectadas hoy". Las dos listas
-        // las resuelve el servidor, así que la verdad se relee de allí en vez de moverse a
-        // mano en el cliente (que es como se desincronizan).
-        router.refresh();
-      }
-      return resultado;
-    },
-    [recolectar, router, toast],
   );
 
   /**
@@ -244,22 +217,18 @@ export function RecoleccionModule({
            mensajero, de 44 px y a todo el ancho; la tarjeta de dentro conserva «Recolectar en
            tienda». */
         <EscanerModal label={ESCANER_LABEL_GUIA} tactil>
-          <EscanerGuiaCard
+          /* SLT-168 (R595, R833): la sesión continua de SLT-159. La lectura (`leerGuia`, R11) la
+             hace la sesión; cada guía es una fila y la cámara sigue abierta. R14/R598: las dos
+             listas las resuelve el servidor y se releen UNA vez al cerrar, no por lectura. */
+          <TarjetaEscaneoContinuo
+            recibir={recolectar}
+            alCerrarConRecepcion={() => router.refresh()}
+            textos={TEXTOS_RECOLECCION}
+            icono={Store}
             ariaLabel="Recolectar por número de guía o escaneo"
             titulo="Recolectar en tienda"
             descripcion="Escanea o ingresa el número de guía"
-            icono={Store}
-            onDecoded={procesar}
-            mensajeErrorCamara="No se pudo abrir la cámara."
-            manual={{ onSubmit: procesar, submitLabel: "Confirmar recolección" }}
-            exito={
-              ultima === null ? undefined : (
-                <>
-                  Guía <span className="font-semibold">{ultima}</span> recolectada
-                  correctamente.
-                </>
-              )
-            }
+            submitLabel="Confirmar recolección"
           />
         </EscanerModal>
       )}
