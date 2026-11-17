@@ -81,3 +81,9 @@ Veredicto: bloque A y bloque B hechos, con E2E y tests en verde; falta `./init.s
 - m4: detecta texto JSX, `"Cerrar"` como literal en cualquier prop o expresión y constantes con valor «Cerrar». Mutaciones: `{"Cerrar"}` en `EscanerGuiaCard` → rojo; `aria-label="Cerrar"` en `TarjetaEscaneoContinuo` → rojo; un «Cerrar» en las `acciones` de Órdenes → verde.
 - m6: recuento real en el spec: 41 archivos de código (37 + 4 justificados).
 - m7: `EscanerModal` da un contexto (`DentroDeEscanerContext`) y `EscanerGuiaCard` no pinta su encabezado dentro. En producción no pasaba (todos los usos pasan `sinEncabezado`); solo el test lo montaba con dos títulos. Ahora queda garantizado por construcción.
+
+## Gate local (leader) — 2026-11-17
+
+- `./init.sh` sobre 1b6dd446 (rama mezclada con origin/dev, SLT-190 dentro) → INIT_EXIT=0.
+- typecheck, lint, test:rapido y guardias en verde. Lotes: 1346 passed (9 skipped), 1712, 1603 y 1212 passed (1 skipped).
+- Tamaño 41/40, aceptado por Carlos (marca en Decisiones). T4 y T6 marcadas.

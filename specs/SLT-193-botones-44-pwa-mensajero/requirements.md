@@ -260,7 +260,7 @@ Un solo PR. Orden: T0 → (T1 ∥ T2 ∥ T3 ∥ T5) → T4 → T6. `[P]` = paral
 - [x] **T3 [P] — Menú (R914, R915).** `max-md:h-11` en `SidebarMenuButton` y `SidebarMenuSubButton`
   desde `app/(app)/_components/Sidebar.tsx`.
   *Hecho:* `Sidebar.test.tsx` cubre R914 y R915.
-- [ ] **T4 — E2E y gate (R910-R921).** `e2e/pwa-mensajero-botones-44.spec.ts`, a 360 px (y a 1280 px
+- [x] **T4 — E2E y gate (R910-R921).** `e2e/pwa-mensajero-botones-44.spec.ts`, a 360 px (y a 1280 px
   para R913). Base desechable nueva (`docs/perfil-agentes.md > Todos los agentes`) y `./init.sh`.
   *Hecho:* E2E en verde en local, `INIT_EXIT=0` y mapa `R<n> -> test` en `progress/features/SLT-193.md`.
 
@@ -275,7 +275,7 @@ Un solo PR. Orden: T0 → (T1 ∥ T2 ∥ T3 ∥ T5) → T4 → T6. `[P]` = paral
   - Los tests de R925-R929 están en verde.
   - Mutación 1: devolver `showCloseButton` en un uso deja la guardia en rojo.
   - Mutación 2: quitar `titulo` a un uso rompe el typecheck y la guardia.
-- [ ] **T6 — E2E y gate (R925).** «Cerrar» de 44 × 44 en Reparto a 360 px, en
+- [x] **T6 — E2E y gate (R925).** «Cerrar» de 44 × 44 en Reparto a 360 px, en
   `e2e/pwa-mensajero-botones-44.spec.ts`. Después, `./init.sh`.
   *Hecho:* E2E en verde en local, `INIT_EXIT=0` y mapa `R<n> -> test` completo (R910-R921 y
   R925-R929) en `progress/features/SLT-193.md`.
