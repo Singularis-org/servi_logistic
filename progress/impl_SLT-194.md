@@ -4,6 +4,7 @@
 
 - 2026-11-17 · backend_dev · T4 (Rechazos, servidor): `q` en la acción, término por servicio y repositorio, `rechazoSlaWhere` con `criterioBusqueda` en AND; integración SQL real con las dos mutaciones muertas.
 - 2026-11-17 · frontend_dev · T1-T3 (filtros a 44 px en barras con `escaneo` por contexto, «Descargar» a 44 px, Recolección con `escaneo` que solo filtra): unitarios en verde y 7 tests nuevos que mueren con mutación. E2E de R945 escrito, sin correr.
+- 2026-11-17 · frontend_dev · T5 (Rechazos, pantalla): el `BuscadorFiltros` con `escaneo` en «Devolución a origen por plazo vencido», con `q` en cada petición de página y el «sin coincidencias». 8 tests nuevos y 3 mutaciones muertas.
 
 ## Backend
 
@@ -102,3 +103,47 @@ Todo con `NODE_OPTIONS=--max-old-space-size=8192`, y vitest con la desechable `s
 
 ### Veredicto
 Recolección con escaneo (solo filtra) y filtros + «Descargar» a 44 px solo en móvil: hechos y en verde. Falta R945 en E2E (escrito, sin correr).
+
+## Frontend Rechazos (frontend_dev, 2026-11-17)
+
+T5 hecha. No hay E2E nuevo: el spec no le asigna ninguno a R949-R957. En T6 quedan los E2E existentes de `/novedades`, que corre el leader.
+
+### Archivos
+- `app/(app)/novedades/_components/RechazosSlaModule.tsx`: monta `BuscadorFiltros` con estas props, sin filtros y con `leerDeUrl={false}` (D4):
+  - `escaneo`;
+  - `minChars={BUSQUEDA_MIN_CHARS}` y `maxLength={BUSQUEDA_MAX_CHARS}`, para que el cliente no mande un `q` que la acción rechace;
+  - el placeholder de `/ordenes`.
+
+  Comportamiento:
+  - Guarda el término y lo pasa como `q` en cada petición de página. Sin término, la petición es `{ page }` sin la clave.
+  - Un término nuevo, o el campo vacío, pide la página 1.
+  - Solo cuenta la respuesta de la última petición (`useRef`).
+  - Con término y sin resultados: `SIN_COINCIDENCIAS_TITULO` + `LIMPIAR_BUSQUEDA`, ambos de `NovedadesModule`. Limpiar remonta la barra por `key`, como `NovedadesFiltrosBarra`.
+  - Sin término y sin rechazos: el vacío de hoy, sin barra.
+- `tests/components/RechazosSlaModule.test.tsx`: bloque SLT-194 con mocks de `next/navigation` y `QrScanner`. Los tests existentes no se tocaron.
+- `tests/unit/guards/buscadores-con-escaneo.guardia.test.ts`: `RechazosSlaModule.tsx` añadido a `CON_ESCANEO`.
+
+### Mapa R → test (parte de pantalla)
+| R | Test |
+| --- | --- |
+| R949 | `RechazosSlaModule.test.tsx` «R949: buscador con su nombre…» y «R949: el mínimo es de 3 caracteres…»; guardia `buscadores-con-escaneo` |
+| R950 | `RechazosSlaModule.test.tsx` «R950: escribir 91024 + Enter…» y «R950: la cámara del buscador…» |
+| R951 | `RechazosSlaModule.test.tsx` «R951: con término, «Página siguiente» lo lleva; la X…» |
+| R952 | `RechazosSlaModule.test.tsx` «R952: con término y sin coincidencias…» y «R952: sin término y sin rechazos…» |
+| R957 (cliente) | `RechazosSlaModule.test.tsx` «R957: al montar no se pide nada»; `NovedadesTabs.test.tsx` y `NovedadesPage.test.tsx` en verde |
+
+### Mutaciones (una por vez, restauradas desde copia; `cmp` OK)
+1. Petición siempre `{ page }` sin `q` → 3 failed (los dos R950 y el R951).
+2. Vacío de hoy también con término → 1 failed (R952).
+3. `escaneo={false}` → 2 failed (R949 y R950 cámara).
+   - La guardia no lo detecta: su detector cuenta `escaneo={false}` como si pasara `escaneo`. Es una limitación previa de la guardia y no la he cambiado.
+
+### Salidas
+- vitest, solo con los archivos concretos y la desechable (`RechazosSlaModule.test.tsx`, guardia, `NovedadesTabs.test.tsx`, `NovedadesPage.test.tsx`): `Test Files 4 passed (4)`, `Tests 57 passed (57)`.
+- `pnpm typecheck`: TC_EXIT=0.
+- `pnpm lint`: `✖ 248 problems (0 errors, 248 warnings)`, LINT_EXIT=0.
+  - En la tanda 1 eran 1 warning. Los nuevos son 246 `no-unused-vars` en archivos que no toqué (analítica, repositorios, jobs, tests de analítica…). No los he investigado; para el leader.
+  - `eslint` sobre mis 3 archivos: «No issues found».
+
+### Veredicto
+Rechazos busca escaneando en servidor (`q`), con paginación y «sin coincidencias». R949-R952 y la parte de cliente de R957 en verde.

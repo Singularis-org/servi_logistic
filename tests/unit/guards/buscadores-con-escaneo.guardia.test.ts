@@ -22,6 +22,7 @@ const CON_ESCANEO = [
   "app/(app)/wallet/_components/LibroCajaBarra.tsx", // B6
   "components/shared/estado-cuenta/EstadoCuenta.tsx", // B7 y B8
   "app/(app)/recoleccion/_components/RecoleccionModule.tsx", // SLT-194 (R940): Recolección
+  "app/(app)/novedades/_components/RechazosSlaModule.tsx", // SLT-194 (R949): Rechazos por plazo vencido
 ];
 
 const CIERRES_ADMIN = "app/(app)/cierres-admin/_components/FiltrosCierresBarra.tsx";

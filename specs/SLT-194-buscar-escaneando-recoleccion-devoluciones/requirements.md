@@ -213,7 +213,7 @@ Requisito previo: SLT-193 mergeado en `dev` y traído a esta rama antes de T1 (c
   - `rechazoSlaWhere` con `...OrdenRepository.criterioBusqueda(...)` como clave hermana.
 
   *Hecho:* R953-R957 en verde contra Postgres real, con las dos mutaciones muertas y anotadas en `progress/`. `orden-repository.rechazos-sla.test.ts` y los dobles del repositorio de otros tests, sin tocar y en verde.
-- [ ] **T5 — Rechazos, pantalla (depende de T4).** `RechazosSlaModule` monta el buscador (D4), guarda el
+- [x] **T5 — Rechazos, pantalla (depende de T4).** `RechazosSlaModule` monta el buscador (D4), guarda el
   término, lo pasa en cada petición de página y pinta el «sin coincidencias». La guardia incluye
   `RechazosSlaModule.tsx`. *Hecho:* R949-R952 y la parte de cliente de R957 en verde.
 - [ ] **T6 — E2E.** R945 en `e2e/pwa-mensajero-recoger-recoleccion.spec.ts` a 360 px. Además, los E2E de
