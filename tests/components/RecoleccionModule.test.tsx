@@ -1394,9 +1394,12 @@ describe("SLT-190 — Recolección según el canvas", () => {
     expect(within(fila).getByText("REM-P1")).toBeInTheDocument();
     expect(within(fila).getByText("Ana Gómez")).toBeInTheDocument();
     expect(within(fila).getByText("Tienda Sur")).toBeInTheDocument();
-    expect(within(fila).getByText("Recolectando")).toBeInTheDocument();
+    // El estado y su (i) van en la fila plegada, fuera del botón (B1): se ven sin desplegar.
+    const tarjeta = fila.closest("article")!;
+    expect(within(tarjeta).getByText("Recolectando")).toBeInTheDocument();
+    expect(within(tarjeta).getByRole("button", { name: "Qué significa «Recolectando»" })).toBeInTheDocument();
     expect(within(fila).getByText("Valor a cobrar")).toBeInTheDocument();
-    expect(fila.textContent).not.toMatch(/Por recolectar|Recolectada|Recolectado/);
+    expect(tarjeta.textContent).not.toMatch(/Por recolectar|Recolectada|Recolectado/);
   });
 
   it("R863/R865: en «Recogidos hoy» la hora va plegada tras la tienda y no se repite al desplegar; en Mosaico sigue al pie", async () => {

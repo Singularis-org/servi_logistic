@@ -11,7 +11,10 @@ import { render, screen, within, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 
-import { PosOrderCardDetalle } from "@/app/(app)/mis-asignaciones/_components/pos-card/PosOrderCardDetalle";
+import {
+  CLASE_INFO_TACTIL,
+  PosOrderCardDetalle,
+} from "@/app/(app)/mis-asignaciones/_components/pos-card/PosOrderCardDetalle";
 import { COLUMNA_FIJA, TEXTO_ENTERO } from "@/components/shared/texto-entero";
 import { formatMonto } from "@/lib/config/moneda";
 import type { MiAsignacionDTO } from "@/lib/interfaces/services/IMisAsignacionesService";
@@ -248,15 +251,18 @@ function montarRecoleccion(sufijo?: ReactNode, over: Partial<MiAsignacionDTO> = 
 describe("SLT-190 — fila plegada de Recolección", () => {
   it("R862: número, remisión, destinatario, tienda, estado vigente y «Valor a cobrar», enteros", () => {
     montarRecoleccion();
-    const fila = screen.getByRole("button", { expanded: false });
+    const fila = screen.getByRole("button", { expanded: false, name: /REM-7731/ });
     expect(within(fila).getByText("Orden 1 de 2")).toBeInTheDocument();
     expect(within(fila).getByText("REM-7731")).toBeInTheDocument();
     expect(within(fila).getByText(DESTINATARIO)).toBeInTheDocument();
     const tienda = within(fila).getByText("Tienda Norte");
     for (const clase of TEXTO_ENTERO.split(" ")) expect(clases(tienda)).toContain(clase);
     expect(clases(tienda)).not.toContain("truncate");
-    // El nombre del catálogo para `recolectando`, en texto (sin botón de información dentro del botón).
-    expect(within(fila).getByText("Recolectando")).toBeInTheDocument();
+    // El nombre del catálogo para `recolectando`, en texto, en la fila plegada pero FUERA del botón
+    // (B1: su (i) es hermano, y un botón no anida otro).
+    const tarjeta = fila.closest("article")!;
+    const estado = within(tarjeta).getByText("Recolectando");
+    expect(fila.contains(estado)).toBe(false);
     expect(within(fila).queryAllByRole("button")).toHaveLength(0);
     expect(within(fila).getByText("Valor a cobrar")).toBeInTheDocument();
     const monto = within(fila).getByText(norm(formatMonto(99999999.99)));
@@ -265,21 +271,41 @@ describe("SLT-190 — fila plegada de Recolección", () => {
 
   it("R863: con sufijo, la línea de la tienda termina en « · Recogido a las {hora}»", () => {
     montarRecoleccion(<>Recogido a las <time>10:42</time></>);
-    const fila = screen.getByRole("button", { expanded: false });
+    const fila = screen.getByRole("button", { expanded: false, name: /REM-7731/ });
     const linea = within(fila).getByText((_, el) => el?.textContent === "Tienda Norte · Recogido a las 10:42");
     expect(linea.tagName).toBe("SPAN");
   });
 
   it("R864: el estado plegado nunca es «Por recolectar», «Recolectada» ni «Recolectado»", () => {
     montarRecoleccion();
-    const fila = screen.getByRole("button", { expanded: false });
-    expect(fila.textContent).not.toMatch(/Por recolectar|Recolectada|Recolectado/);
+    const fila = screen.getByRole("button", { expanded: false, name: /REM-7731/ });
+    expect(fila.closest("article")!.textContent).not.toMatch(/Por recolectar|Recolectada|Recolectado/);
+  });
+
+  it("R864 (B1, decisión de Carlos 2026-11-17): el (i) del estado se ve sin desplegar, fuera del botón de la fila, con 44 px, y tocarlo no despliega", async () => {
+    const user = userEvent.setup();
+    montarRecoleccion();
+    const fila = screen.getByRole("button", { expanded: false, name: /REM-7731/ });
+    const info = screen.getByRole("button", { name: "Qué significa «Recolectando»" });
+    expect(fila.contains(info)).toBe(false);
+    expect(fila.closest("article")!.contains(info)).toBe(true);
+    // Hermano del texto del estado (mismo contenedor), no del chip del despliegue.
+    expect(info.parentElement!.textContent).toBe("Recolectando");
+    // Área táctil: el pseudo-elemento del botón crece a 44 × 44 (jsdom no aplica Tailwind).
+    expect(info.parentElement!.classList.contains(CLASE_INFO_TACTIL)).toBe(true);
+    expect(CLASE_INFO_TACTIL).toBe("[&_button]:after:-inset-3.5");
+    await user.click(info);
+    expect(fila).toHaveAttribute("aria-expanded", "false");
+    expect(fila).not.toHaveAttribute("aria-controls");
+    // El toque abrió la explicación del (i), no el despliegue (sin «Intentos», que solo vive ahí).
+    expect(info).toHaveAttribute("aria-expanded", "true");
+    expect(screen.queryByText("Intentos: 2")).toBeNull();
   });
 
   it("R865: al desplegar sigue el chip con su información; el sufijo no se repite", async () => {
     const user = userEvent.setup();
     montarRecoleccion(<>Recogido a las <time>10:42</time></>);
-    await user.click(screen.getByRole("button", { expanded: false }));
+    await user.click(screen.getByRole("button", { expanded: false, name: /REM-7731/ }));
     const fila = screen.getByRole("button", { expanded: true });
     const despliegue = document.getElementById(fila.getAttribute("aria-controls") ?? "")!;
     expect(within(despliegue).getByRole("button", { name: "Qué significa «Recolectando»" })).toBeInTheDocument();
@@ -298,10 +324,11 @@ describe("SLT-190 — fila plegada de Recolección", () => {
         compacta
       />,
     );
-    const fila = screen.getByRole("button", { expanded: false });
+    const fila = screen.getByRole("button", { expanded: false, name: /REM-7731/ });
     expect(within(fila).getByText("REM-7731")).toBeInTheDocument();
     expect(within(fila).getByText(DESTINATARIO)).toBeInTheDocument();
     expect(within(fila).queryByText("Tienda Norte")).toBeNull();
     expect(within(fila).queryByText("Recolectando")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Qué significa/ })).toBeNull();
   });
 });

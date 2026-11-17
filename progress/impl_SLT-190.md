@@ -107,3 +107,35 @@ Comandos (base desechable `servi_slt190_desechable`):
 - `pnpm exec eslint` de los dos archivos tocados: exit 0.
 
 Veredicto vuelta 2: m1 y m2 cerrados; B1 sigue rojo a la espera de la decisión de Carlos.
+
+## Vuelta 3 (B1 con la decisión de Carlos: opción 2) — frontend_dev, 2026-11-17
+
+Archivos modificados:
+- `app/(app)/mis-asignaciones/_components/pos-card/PosOrderCardDetalle.tsx`
+- `tests/components/PosOrderCardDetalleCompacta.test.tsx`
+- `tests/components/RecoleccionModule.test.tsx`
+
+- El estado de la fila plegada de Recolección y su (i) salen del botón de la fila y van debajo,
+  alineados con su columna de texto, como hermanos del disparador (patrón de la fila del chat:
+  un botón no anida otro). Se pintan con `EstadoConInfo` (que usa `InfoEstado`), sin componente
+  nuevo; el archivo ya no importa `nombreDeEstado`, así que la guardia `estado-con-info` queda
+  verde SIN tocarla y sin excepción nueva. Dejar el nombre dentro del botón (como el chip del chat)
+  habría pedido una entrada en `USOS_PERMITIDOS`, que es tocar la guardia.
+- Área táctil 44 × 44: `CLASE_INFO_TACTIL = "[&_button]:after:-inset-3.5"` (el pseudo-elemento del
+  botón pasa de 24 a 44 px sin ocupar caja); la línea mide `min-h-11`.
+- Efecto colateral: el nombre accesible del botón de la fila ya no incluye el estado; lo anuncia el
+  (i) («Qué significa «Recolectando»»).
+
+Mapa R -> test (cambio):
+- R864 (B1) -> `PosOrderCardDetalleCompacta.test.tsx` «R864 (B1, decisión de Carlos…)»: (i) visible
+  sin desplegar, fuera del botón, hermano del texto del estado, con la clase de 44 px; tocarlo abre
+  su explicación y no despliega la tarjeta.
+- R862/R864 -> `RecoleccionModule.test.tsx` «R862/R864…»: estado y (i) en la tarjeta plegada.
+- R866 -> sin `filaRecoleccion` no hay (i) ni estado.
+
+Comandos (base desechable `servi_slt190_desechable`):
+- `vitest run` estado-con-info.guardia, RecogerModule, RecoleccionModule, PosOrderCardDetalleCompacta:
+  `Test Files 4 passed (4)`, `Tests 186 passed (186)`.
+- `pnpm exec eslint` de los tres archivos tocados: exit 0.
+
+Veredicto vuelta 3: B1 cerrado; la guardia `estado-con-info` en verde.

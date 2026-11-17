@@ -18,7 +18,6 @@ import { textoMensajero } from "./pos-mensajero";
 import { posSeleccionHandlers } from "./pos-seleccion";
 import { seccionesVisibles } from "./pos-secciones";
 import { EstadoConInfo, NotaAyudaConInfo } from "@/components/shared/EstadoInfo";
-import { nombreDeEstado } from "@/lib/types/order-status";
 import type { PosOrderCardProps } from "./PosOrderCard";
 
 // POS card · vista DETALLE en FILA (rama ux, pedido humano): una línea por orden con la
@@ -30,6 +29,9 @@ import type { PosOrderCardProps } from "./PosOrderCard";
 // El botón de navegar es un ENLACE real a Google Maps (mismo criterio que `PosNavBlock`:
 // ruta directa, pestaña nueva, sin forzar permisos de GPS), no un botón decorativo. Al ser
 // un control interno, pulsarlo NO selecciona la orden de rebote (ver `pos-seleccion`).
+
+/** SLT-190 (B1): el (i) de la fila plegada de Recolección, con área táctil de 44 × 44 (16 + 2 × 14). */
+export const CLASE_INFO_TACTIL = "[&_button]:after:-inset-3.5";
 
 export function PosOrderCardDetalle({
   orden,
@@ -230,12 +232,6 @@ export function PosOrderCardDetalle({
                     {filaRecoleccion.sufijo}
                   </span>
                 ) : null}
-                {/* SLT-190 (R862, R864, DS5): el nombre VIGENTE del estado, en texto. Sin botón de
-                    información: un botón no puede ir dentro del botón de la fila; el chip con su
-                    información sigue en el despliegue. */}
-                <span className="text-[11px] font-semibold text-muted-foreground">
-                  {nombreDeEstado(orden.estatusValue)}
-                </span>
               </>
             ) : null}
           </span>
@@ -254,6 +250,22 @@ export function PosOrderCardDetalle({
             aria-hidden="true"
           />
         </button>
+
+        {filaRecoleccion ? (
+          // SLT-190 (R862, R864; decisión de Carlos sobre B1, 2026-11-17): el nombre VIGENTE del
+          // estado, en texto, con su botón de información (456 R18) como HERMANO de la fila, igual
+          // que en la fila del chat: un botón no anida otro, así que estado e (i) van FUERA del
+          // botón de la fila, debajo, alineados con su columna de texto. Tocar el (i) no despliega
+          // la tarjeta (no está dentro del disparador). Área táctil de 44 × 44: el pseudo-elemento
+          // del botón crece de 24 a 44 px sin ocupar caja (se aparta del canvas en ese icono).
+          <div className={`-mt-2 flex min-h-11 items-center pr-3 ${parada ? "pl-11" : "pl-3"}`}>
+            <EstadoConInfo
+              codigo={orden.estatusValue}
+              chipClassName="text-[11px] font-semibold text-muted-foreground"
+              className={CLASE_INFO_TACTIL}
+            />
+          </div>
+        ) : null}
 
         {abierta ? (
           <div
