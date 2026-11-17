@@ -147,3 +147,10 @@ Veredicto: T1-T4 hechas, R600-R609 con test, typecheck 0 y mutaciones del WHERE 
   423 passed; `tsc` 0; eslint de lo tocado limpio.
 - Mutación M11 (restaurada con `git checkout --`): B1 y B2 de vuelta a `label="Buscar"` → rojo la guardia R772 ×2
   y los tests de `ordenes-listado-buscador.test.tsx`, incluido «SLT-160 R772…».
+
+## T6 — gate (leader, 2026-11-16)
+
+- `./init.sh` (rápido) con `.env` de dev: `INIT_EXIT=0`; tamaño 28/40 archivos, 295/1000 producción, 998/3000 tests.
+- E2E de los listados B1-B8: los corre CI en el PR #187; su resultado condiciona el aviso «listo para mergear».
+- T5 (pistola y cámara en dispositivo) la hace Carlos en Preview.
+- Review OK (`progress/review_SLT-160.md`); menores m1 (comentario de `escaneo` en `BuscadorFiltros.tsx:241`) y m2 (bitácora `right-8`/`pr-16`) quedan anotados.
