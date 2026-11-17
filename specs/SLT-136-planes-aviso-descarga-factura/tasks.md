@@ -29,25 +29,25 @@
 
 ## Tanda 2 — Resumen y PDF (frontend, lib puro)
 
-- [ ] **T2.1** `lib/facturas-plataforma/resumen.ts`: `resumirFactura`, `DescuadreDeFactura`,
+- [x] **T2.1** `lib/facturas-plataforma/resumen.ts`: `resumirFactura`, `DescuadreDeFactura`,
   `FACTURA_DESCARGA_TEXTOS`, `fechaNumerica`, `periodoNumerico` y `nombreArchivoFactura` (§3). Depende de T1.1.
   *Hecho:* `tests/unit/facturas-plataforma/resumen.test.ts` en verde (R9–R11, R15, R17, R18).
-- [ ] **T2.2** Logo y marca, marcado como **PROVISIONAL**.
+- [x] **T2.2** Logo y marca, marcado como **PROVISIONAL**.
   - Copiar `C:\Users\Cristian\Documents\trabajo\arc\servi_logistic\docs\referencias\logo-singularis.png` a
     `public/brand/logo-singularis.png`.
   - Añadir `MARCA_FACTURA` a `lib/config/marca.ts`, con el comentario de §4: el humano reemplaza el PNG por el real
     con el mismo nombre.
 
   *Hecho:* el archivo existe y `MARCA_FACTURA.logo.ruta` apunta a él.
-- [ ] **T2.3** Mover `imprimible` de `lib/whatsapp-envios/informes/transito/pdf.ts` a `lib/pdf/imprimible.ts`, sin
+- [x] **T2.3** Mover `imprimible` de `lib/whatsapp-envios/informes/transito/pdf.ts` a `lib/pdf/imprimible.ts`, sin
   cambiar su comportamiento.
   *Hecho:* los tests del informe de tránsito siguen en verde.
-- [ ] **T2.4** `lib/facturas-plataforma/pdf.ts`: `construirPdfFactura` (§4). Depende de T2.1, T2.2 y T2.3.
+- [x] **T2.4** `lib/facturas-plataforma/pdf.ts`: `construirPdfFactura` (§4). Depende de T2.1, T2.2 y T2.3.
   *Hecho:* `tests/unit/facturas-plataforma/pdf.test.ts` en verde (R7–R14, R17).
 
 ## Tanda 3 — Excel (frontend, lib puro)
 
-- [ ] **T3.1** `[P]` `lib/facturas-plataforma/excel.ts`: `construirExcelFactura` (§5). Depende de T2.1.
+- [x] **T3.1** `[P]` `lib/facturas-plataforma/excel.ts`: `construirExcelFactura` (§5). Depende de T2.1.
   *Hecho:* `tests/unit/facturas-plataforma/excel.test.ts` en verde (R16, R17).
 
 ## Tanda 4 — Botones en las dos pantallas (frontend)
