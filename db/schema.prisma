@@ -6182,6 +6182,7 @@ model Plan {
   descuentos       PlanDescuentoPeriodo[] // SLT-86
   historialPrecio  PlanPrecioHistorial[] // SLT-86
   versionesDeEmpresa PlanVersionEmpresa[] // SLT-128: empresas que ya corren el cambio a medias
+  borradorDeCambio   PlanBorrador? // SLT-129: el cambio a medio llenar, uno por plan
 
   @@map("plan")
 }
@@ -6325,6 +6326,27 @@ model PlanVersionEmpresa {
 
   @@index([planId])
   @@map("plan_version_empresa")
+}
+
+// SLT-129 (design §1.1; R5, R22, R23) — el avance del formulario de planes del superadmin, paso a paso.
+// `planId` NULL = borrador de un plan nuevo (varios a la vez); con valor = el borrador del cambio de ese plan,
+// uno solo (UNIQUE) y cae con el plan. `pasos` es `{ "<idPaso>": <valores validados> }`: guardar un paso
+// mezcla su clave con `||` en una sola sentencia, así que dos pasos a la vez no se pisan (R4). Es un objeto
+// aparte de `plan` para que ninguna lectura de planes vea un plan a medias (design §1.3). `iniciadoPor*` son
+// opacos y SIN FK, como el actor del rastro. De PLATAFORMA. Viven solo en el SQL de 20261117120000: los CHECK
+// `plan_borrador_pasos_objeto`, `plan_borrador_pasos_conocidos` y `plan_borrador_vigencia_solo_cambio`, la RLS
+// sin políticas y el `REVOKE ALL … FROM servi_app` (R23).
+model PlanBorrador {
+  id                   String   @id @default(uuid())
+  planId               String?  @unique @map("plan_id")
+  plan                 Plan?    @relation(fields: [planId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  pasos                Json     @default("{}")
+  iniciadoPorUsuarioId String   @map("iniciado_por_usuario_id")
+  iniciadoPorNombre    String   @map("iniciado_por_nombre") @db.VarChar(120)
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("plan_borrador")
 }
 
 // SL-40 (design §3.3) — los cargos y reversos del cobro de la plataforma, append-only. De NEGOCIO.

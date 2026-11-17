@@ -5,13 +5,13 @@ Todo es backend (`backend_dev`). Las referencias `§n` son de `design.md`. Antes
 
 ## T1 — Esquema y migración (§1)
 
-- [ ] T1.1 Modelo `PlanBorrador` en `db/schema.prisma`, con la relación opcional `borradorDeCambio` en `Plan` y
+- [x] T1.1 Modelo `PlanBorrador` en `db/schema.prisma`, con la relación opcional `borradorDeCambio` en `Plan` y
   un comentario que diga qué vive solo en el SQL.
-- [ ] T1.2 `db/migrations/20261117120000_plan_borrador/migration.sql` (tabla, `UNIQUE`, FK `CASCADE`, los tres
+- [x] T1.2 `db/migrations/20261117120000_plan_borrador/migration.sql` (tabla, `UNIQUE`, FK `CASCADE`, los tres
   `CHECK`, RLS sin políticas, `REVOKE ALL … FROM servi_app`, dentro de `BEGIN/COMMIT`) y `down.sql`.
-- [ ] T1.3 `{ modelo: "PlanBorrador", tabla: "plan_borrador" }` en la lista de plataforma de
+- [x] T1.3 `{ modelo: "PlanBorrador", tabla: "plan_borrador" }` en la lista de plataforma de
   `lib/db/modelos-de-negocio.ts`.
-- [ ] T1.4 Tests: `tests/integration/db/migracion-plan-borrador-ida-y-vuelta.test.ts` (R24) y el caso de
+- [x] T1.4 Tests: `tests/integration/db/migracion-plan-borrador-ida-y-vuelta.test.ts` (R24) y el caso de
   `servi_app` en `tests/integration/db/planes-acceso-servi-app.test.ts` (R23).
 
 **Hecho:** la migración sube y baja en una base desechable, `prisma generate` y el typecheck pasan, la guardia
@@ -19,15 +19,15 @@ Todo es backend (`backend_dev`). Las referencias `§n` son de `design.md`. Antes
 
 ## T2 — Esquemas por paso y helpers puros (§3, §5.1) [P con T1]
 
-- [ ] T2.1 En `lib/types/planes.ts`, exportar las reglas internas (`nombreSchema`, `fechaSchema`,
+- [x] T2.1 En `lib/types/planes.ts`, exportar las reglas internas (`nombreSchema`, `fechaSchema`,
   `modulosSchema`, `unSoloModo`/`UN_SOLO_MODO` y los refines de `crearPlanSchema`) y hacer que
   `crearPlanSchema` las use, sin cambiar su salida ni sus mensajes.
-- [ ] T2.2 `lib/types/plan-borrador.ts`: `PASOS_DE_CREAR`, `PASOS_DE_EDITAR`, el esquema de cada paso, la lista
+- [x] T2.2 `lib/types/plan-borrador.ts`: `PASOS_DE_CREAR`, `PASOS_DE_EDITAR`, el esquema de cada paso, la lista
   de descuentos, `guardarPasoBorradorSchema` y los esquemas de leer, descartar y confirmar. También los tipos de
   resultado de §4 (`GuardarPasoResult`, `BorradorVista`, `BorradorResumen`, `ConfirmarBorradorResult`…).
-- [ ] T2.3 `lib/planes/borrador.ts`: `pasosDelModo`, `pasosQueFaltan`, `descuentosDeLaLista`,
+- [x] T2.3 `lib/planes/borrador.ts`: `pasosDelModo`, `pasosQueFaltan`, `descuentosDeLaLista`,
   `peticionDeCrear`, `peticionDeEditar` y `BorradorNoEncontrado`.
-- [ ] T2.4 Tests: `tests/unit/types/plan-borrador-schema.test.ts` (R3, R6, R7) y
+- [x] T2.4 Tests: `tests/unit/types/plan-borrador-schema.test.ts` (R3, R6, R7) y
   `tests/unit/planes/plan-borrador.test.ts` (R16 y la conversión de la petición).
 
 **Hecho:** los tests nuevos en verde y `tests/unit/types/planes-schema*.test.ts` sin tocar y en verde (R21).

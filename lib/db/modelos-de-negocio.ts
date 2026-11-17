@@ -187,6 +187,8 @@ export const MODELOS_DE_PLATAFORMA: readonly ModeloClasificado[] = [
   // modelos de negocio), pero la empresa no las lee ni las escribe
   { modelo: "PlanCambioRecepcion", tabla: "plan_cambio_recepcion" },
   { modelo: "PlanVersionEmpresa", tabla: "plan_version_empresa" },
+  // El borrador del superadmin, de un plan nuevo o del cambio de uno (SLT-129): igual que el catalogo
+  { modelo: "PlanBorrador", tabla: "plan_borrador" },
   // Paises (SL-20): solo lectura para `servi_app` (R3); los da de alta el superadmin
   { modelo: "Pais", tabla: "pais" },
   // Historial del superadmin (SL-20, D15): sin acceso para `servi_app` (R34)
