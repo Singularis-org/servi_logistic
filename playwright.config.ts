@@ -132,6 +132,8 @@ export default defineConfig({
         "pwa-mensajero-ranking",
         // SLT-159 · R580, R581, R610, R613: la página «Recibir paquetes» con la pistola, satélite y central.
         "recibir-paquetes",
+        // SLT-193 · R910-R917, R919, R925: botones de 44 px en la PWA del mensajero: encabezado, menú, info y escáner.
+        "pwa-mensajero-botones-44",
       ),
     },
     {

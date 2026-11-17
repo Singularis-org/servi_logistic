@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { EstadoConInfo } from "@/components/shared/EstadoInfo";
 import { money } from "@/lib/config/moneda";
 import { cn } from "@/lib/utils";
-import { COLUMNA_FIJA, TACTIL_MOVIL, TEXTO_ENTERO } from "@/components/shared/texto-entero";
+import { CLASE_INFO_TACTIL_MOVIL, COLUMNA_FIJA, TACTIL_MOVIL, TEXTO_ENTERO } from "@/components/shared/texto-entero";
 import type { CierreDetalleGestion, CierreResultado } from "@/lib/interfaces/services/ICierreDiaService";
 import { BotonesEvidencia } from "@/app/(app)/cierres-admin/_components/botones-evidencia";
 import { contextoEvidencia } from "@/components/private/cierres/dialogos/dialogos-labels";
@@ -222,6 +222,7 @@ export function FilaGestion({
         return (
           <EstadoConInfo
             codigo={g.resultado}
+            className={CLASE_INFO_TACTIL_MOVIL}
             chipClassName={cn("rounded-full px-2 py-1 text-xs font-medium", TONO_RESULTADO[g.resultado])}
           />
         );
@@ -482,6 +483,7 @@ function TarjetaMensajero({
         <span data-columna="resultado" className={INFO_CON_TOQUE}>
           <EstadoConInfo
             codigo={g.resultado}
+            className={CLASE_INFO_TACTIL_MOVIL}
             chipClassName={cn("rounded-full px-2 py-1 text-xs font-medium", TONO_RESULTADO[g.resultado])}
           />
         </span>

@@ -8,6 +8,7 @@ import { slugParaRuta } from "@/lib/ayuda/documento";
 import { useMapaAyuda, type MapaAyuda } from "@/providers/AyudaProvider";
 import { useAsistente } from "@/providers/AsistenteProvider";
 import { cn } from "@/lib/utils";
+import { TACTIL_MOVIL } from "@/components/shared/texto-entero";
 
 /**
  * ⭑ FICHA 433 — EL «?» DEL ENCABEZADO: la ayuda DE LA PANTALLA EN LA QUE ESTÁS.
@@ -117,6 +118,8 @@ function AyudaDeLaRuta({ mapa }: Readonly<{ mapa: MapaAyuda }>) {
       className={cn(
         buttonVariants({ variant: "outline" }),
         "bg-transparent text-foreground hover:bg-foreground/10 hover:text-foreground",
+        // SLT-193 (R911, R913): 44 × 44 en móvil para cualquier rol; en escritorio no cambia.
+        TACTIL_MOVIL,
       )}
       // El nombre accesible dice QUÉ ayuda se abre, no «ayuda» a secas: quien navega por
       // lista de controles necesita distinguirlo del ítem «Ayuda» del menú, que lleva al índice.

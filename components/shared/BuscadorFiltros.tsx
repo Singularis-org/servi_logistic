@@ -11,7 +11,7 @@ import { Check, ChevronDown, Search, SlidersHorizontal, X } from "lucide-react";
 import { Popover } from "@base-ui/react/popover";
 
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { EscanerModal } from "@/components/shared/EscanerModal";
 import { QrScanner } from "@/components/shared/QrScanner";
@@ -81,10 +81,9 @@ function CamaraDelBuscador({
 }) {
   const toast = useToast();
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{ESCANEAR_CON_CAMARA}</CardTitle>
-      </CardHeader>
+    // SLT-193 (R927): sin encabezado propio; «Escanear con cámara» va en la barra de `EscanerModal`,
+    // que la tarjeta continúa por debajo.
+    <Card className="rounded-t-none">
       <CardContent>
         <QrScanner
           encendidaAlMontar
@@ -697,7 +696,12 @@ export function BuscadorFiltros({
         {/* SLT-160 (R600, R604, DC2): la cámara es un botón APARTE de 44 px, pegado al campo y fuera
             de él, como en el canvas. Abre el visor de hoy ya encendido. */}
         {buscador && escaneo ? (
-          <EscanerModal label={ESCANEAR_CON_CAMARA} soloIcono className="size-11 shrink-0">
+          <EscanerModal
+            label={ESCANEAR_CON_CAMARA}
+            titulo={ESCANEAR_CON_CAMARA}
+            soloIcono
+            className="size-11 shrink-0"
+          >
             {(cerrar) => (
               <CamaraDelBuscador cerrar={cerrar} onGuia={(guia) => buscarYa(String(guia))} />
             )}

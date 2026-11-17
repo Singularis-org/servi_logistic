@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ChevronDown, MapPin, Navigation, Package } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { COLUMNA_FIJA, TEXTO_ENTERO } from "@/components/shared/texto-entero";
+import { CLASE_INFO_TACTIL, COLUMNA_FIJA, TEXTO_ENTERO } from "@/components/shared/texto-entero";
 import {
   Collapsible,
   CollapsibleContent,
@@ -142,6 +142,7 @@ export function PosOrderCardMosaico({
           {/* FICHA 456 (T3.6, R9): el chip con su botón de información (nombre calculado dentro). */}
           <EstadoConInfo
             codigo={orden.estatusValue}
+            className={CLASE_INFO_TACTIL}
             chipClassName={`rounded-full px-2 py-1 text-[10px] font-bold tracking-wide ${claseChipEstado(orden.estatusValue)}`}
           />
           {marcas.map((m) => (
@@ -151,6 +152,7 @@ export function PosOrderCardMosaico({
           ))}
           {notaAyuda ? (
             <NotaAyudaConInfo
+              className={CLASE_INFO_TACTIL}
               chipClassName={`rounded-full px-2 py-1 text-[10px] font-bold tracking-wide ${CLASE_NOTA_AYUDA}`}
             />
           ) : null}
@@ -284,7 +286,7 @@ export function PosOrderCardMosaico({
           onOpenChange={setDetalleAbierto}
           className="group/detalle rounded-lg border border-border bg-muted/40 px-3 py-2"
         >
-          <CollapsibleTrigger className="flex w-full cursor-pointer items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+          <CollapsibleTrigger className="flex min-h-11 w-full cursor-pointer items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
             Ver detalle completo
             <ChevronDown
               aria-hidden="true"

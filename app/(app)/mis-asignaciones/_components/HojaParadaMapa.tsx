@@ -11,7 +11,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { EstadoConInfo } from "@/components/shared/EstadoInfo";
-import { TEXTO_ENTERO } from "@/components/shared/texto-entero";
+import { CLASE_INFO_TACTIL, TEXTO_ENTERO } from "@/components/shared/texto-entero";
 import type { MiAsignacionDTO } from "@/lib/interfaces/services/IMisAsignacionesService";
 
 import { AbrirEnAppNavegacion } from "./AbrirEnAppNavegacion";
@@ -151,6 +151,7 @@ function ContenidoHoja({
         <span className={`text-sm font-bold text-foreground ${TEXTO_ENTERO}`}>{orden.destinatario}</span>
         <EstadoConInfo
           codigo={orden.estatusValue}
+          className={CLASE_INFO_TACTIL}
           chipClassName={`rounded-full px-2 py-1 text-[10px] font-bold tracking-wide ${claseChipEstado(orden.estatusValue)}`}
         />
       </div>
