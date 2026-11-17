@@ -2,10 +2,9 @@
 
 Zona frontend, complexity low. Rango de requisitos: **R910-R939** (usados R910-R921 y R925-R929).
 
-> **BLOQUEADO: no cabe en un PR.** Con las decisiones de Carlos del 2026-11-17, `## Archivos
-> esperados` suma 37 archivos (92,5% del tope de 40; el límite del spec es el 80% = 32). La
-> propuesta de corte en dos rebanadas está en `## Preguntas abiertas > P5`. Los requisitos ya van
-> agrupados por rebanada para que el corte sea mecánico.
+> **Tamaño aceptado por encima del tope.** Un solo PR de 37 archivos (24 de producción y 13 de
+> tests), el 92,5% del tope de 40. Carlos aceptó superar el tope el 2026-11-17 (`## Decisiones`).
+> Los bloques A y B agrupan los requisitos, pero no son un corte: van en el mismo PR.
 
 ## Alcance
 
@@ -14,7 +13,7 @@ Cierra lo que R493 de SLT-156 «PWA de los mensajeros: tablas usables en el móv
 comentario de la tarjeta sobre el (i) de `EstadoConInfo`. Los tamaños de «Hoy» salen de las clases
 (`size="touch"` = `h-11`, `icon-touch` = `size-11`); el informe no midió.
 
-### Rebanada A — controles de la PWA, encabezado y menú
+### Bloque A — controles de la PWA, encabezado y menú
 
 | # | Control | Archivo:línea (rama de hoy) | Hoy |
 |---|---|---|---|
@@ -46,7 +45,7 @@ Usos del (i):
 - Lo hace **SLT-190 «Recoger y Recolección según el canvas»** (fuera): el (i) de la fila plegada de
   Recolección.
 
-### Rebanada B — el escáner es un solo componente
+### Bloque B — el escáner es un solo componente
 
 Todos los usos de `components/shared/EscanerModal.tsx` (estado tras SLT-190), con el título de su barra:
 
@@ -66,9 +65,9 @@ No son diálogos de escáner y no cambian:
 - `RecepcionContinuaPagina` (modo `pagina`): una página, no un diálogo.
 
 `EscanerGuiaCard` y `EscaneoContinuo` no tienen cierre propio. «Cerrar cámara» de `QrScanner.tsx:281-293`
-apaga la cámara: no cierra el diálogo y no entra (ver P6).
+apaga la cámara: no cierra el diálogo y se queda como está, fuera de alcance (decisión de Carlos del 2026-11-17).
 
-**Fuera de las dos rebanadas:**
+**Fuera de alcance:**
 - «Navegar» de 44 × 44 aparte (D10): no está en la ficha.
 - La X de la hoja del mapa (M6): es una acción de más, no un tamaño.
 
@@ -102,7 +101,7 @@ Nada de rediseño: se reutilizan los patrones que ya existen.
 «Móvil» = viewport de menos de 768 px (`max-md`). Los E2E van a **360 px** con la sesión de mensajero
 de `e2e/_pwa-mensajero-fixture.ts`.
 
-### Rebanada A
+### Bloque A
 
 **«Ver detalle completo» (D9)**
 
@@ -167,11 +166,11 @@ de `e2e/_pwa-mensajero-fixture.ts`.
   `SenalPendienteConInfo` NO DEBEN cambiar: siguen con un área de 24 × 24 (landing, rastreo, admin,
   satélite, tienda).
   - *Test de componente:* `tests/components/EstadoInfo.test.tsx` (`CLASES_BOTON_INFO` sigue con `after:-inset-1` y sin `-inset-3.5`; sin `className`, el envoltorio no lleva `CLASE_INFO_TACTIL`).
-- **R921** — Ningún control que toca la rebanada A DEBE cambiar su nombre accesible, su texto visible
+- **R921** — Ningún control que toca el bloque A DEBE cambiar su nombre accesible, su texto visible
   ni su acción.
   - *Tests de componente:* cada test busca el control por su rol y su nombre de hoy, y los asertos de hoy siguen en verde.
 
-### Rebanada B — escáner único
+### Bloque B — escáner único
 
 - **R925** — CUANDO se abre cualquier diálogo de `EscanerModal`, DEBE mostrar arriba una barra con
   el título visible que pasa la pantalla y un único botón «Cerrar» de al menos 44 × 44 px, en todos
@@ -183,9 +182,11 @@ de `e2e/_pwa-mensajero-fixture.ts`.
   cámara se apaga y, si hubo al menos una recepción, la sesión refresca una vez (R598).
   - *Test de componente:* `EscanerModal.test.tsx` (cierra y desmonta la tarjeta).
   - Los casos de refresco de `tests/components/RecibirPaquetesEntrada.test.tsx` siguen en verde.
-- **R927** — Cada uso de la tabla de la rebanada B DEBE pasar el título de su fila, y la tarjeta de
-  dentro NO DEBE repetir el encabezado (icono, título y descripción). El nombre accesible de la
-  sección y el texto del botón de envío NO DEBEN cambiar.
+- **R927** — Cada diálogo de la tabla del bloque B DEBE tener **un solo título**, el de su fila, en
+  la barra de `EscanerModal`. Ninguna tarjeta de dentro DEBE pintar encabezado propio (ni icono, ni
+  título, ni descripción), aunque el diálogo monte dos. En Órdenes, el título es «Recibir paquete»
+  y sus tarjetas (`EscanerRecepcionBodegaCentral`, `EscanerRecepcionOrigen`) van sin encabezado. El
+  nombre accesible de cada sección y el texto del botón de envío NO DEBEN cambiar.
   - *Tests de componente:* `tests/components/EscanerGuiaReparto.test.tsx`, `EscanerRecepcion.test.tsx`, `EscanerRecepcionOrigen.test.tsx`, `EscanerRecepcionBodegaCentral.test.tsx`, `RecibirPaquetesEntrada.test.tsx` y `tests/unit/components/buscador-filtros-escaneo.test.tsx`. Cada uno comprueba el título de la barra, un único encabezado y el nombre de la sección.
 - **R928** — Ninguna pantalla DEBE pintar su propio cierre del diálogo del escáner. `EscanerModal`
   DEBE ser el único que lo pinta, y todo `<EscanerModal` del código DEBE llevar `titulo`.
@@ -215,6 +216,14 @@ de `e2e/_pwa-mensajero-fixture.ts`.
   - `titulo` pasa a obligatorio y se borra la rama sin barra.
   - El R871 de SLT-190 («los demás usos, la X de siempre») queda sustituido por R925 y su test se reescribe.
   - `tactil` se queda, porque solo gobierna el disparador.
+- **2026-11-17 · Carlos (P5): un solo PR de 37 archivos** (24 de producción y 13 de tests), por
+  encima del tope de 40 × 80%. No se parte; Carlos aceptó superar el tope.
+- **2026-11-17 · Carlos (P6):** «Cerrar cámara» (`QrScanner.tsx:281-293`) se queda como está, fuera de
+  alcance.
+- **2026-11-17 · Carlos (P7):** solo hay un componente de escáner, así que el título vive en la barra
+  de `EscanerModal` y hay uno por diálogo, no uno por tarjeta. En Órdenes, el diálogo lleva
+  «Recibir paquete» y las tarjetas de dentro van sin encabezado propio, ni de cierre ni de título
+  (R927).
 - **Orden de merge:** primero SLT-190 «Recoger y Recolección según el canvas». Esta ficha parte de su
   `EscanerModal` (barra, `titulo`), de `sinEncabezado` en `EscanerGuiaCard` / `EscaneoContinuo` y de
   `CLASE_INFO_TACTIL`.
@@ -223,29 +232,13 @@ de `e2e/_pwa-mensajero-fixture.ts`.
 
 ## Preguntas abiertas
 
-- **P5 (bloquea) — Corte.** 37 archivos son el 92,5% del tope de 40 (límite del spec: 32). Propuesta,
-  en rebanadas verticales que se mergean solas:
-  - **SLT-193 se queda con la rebanada A** (R910-R921): 16 de producción y 5 de tests, 21 archivos
-    (52%). Estimado: ~70 líneas de producción y ~300 de tests.
-  - **Ficha nueva con la rebanada B** (R925-R929), «Escáner único: barra con título y Cerrar de 44 px
-    en todos los usos», con `depends_on` SLT-190. Son 8 de producción y 9 de tests, 17 archivos
-    (42%). Estimado: ~120 líneas de producción y ~450 de tests. Los R925-R929 se mueven a su spec.
-
-  Alternativa: aceptar los 37 en un solo PR con el desglose, como ya se hizo con el tamaño roto por
-  tests. Aquí, sin embargo, la producción también crece.
-- **P6 (nueva)** — «Cerrar cámara» de `QrScanner.tsx:281-293` (`size="sm"`, 28 de alto) está dentro
-  de todos los escáneres, también los de la PWA, y mide menos de 44. Apaga la cámara, no cierra el
-  diálogo. ¿Entra a 44 px (con `TACTIL_MOVIL` o `size="touch"`) en la rebanada B, o se deja?
-- **P7 (nueva)** — En Órdenes (`OrdenesListado.tsx:1424-1429`), si un usuario puede recibir en bodega
-  central **y** escanear QR de tienda, el diálogo monta dos tarjetas que hoy se titulan igual
-  («Recibir paquete»). Con una sola barra y las tarjetas sin encabezado, solo las distingue su nombre
-  accesible. ¿Puede darse esa combinación de permisos? Si sí, ¿qué título lleva cada una?
+Ninguna. P1-P7 están resueltas en `## Decisiones` (Carlos, 2026-11-17).
 
 ## Tasks
 
-Orden: T0 → (T1 ∥ T2 ∥ T3) → T4 en la rebanada A, y T5 → T6 en la rebanada B. `[P]` = paralelizable.
+Un solo PR. Orden: T0 → (T1 ∥ T2 ∥ T3 ∥ T5) → T4 → T6. `[P]` = paralelizable.
 
-**Rebanada A**
+**Bloque A**
 - [ ] **T0 — Base.** Rebasar sobre el merge de SLT-190. Mover `CLASE_INFO_TACTIL` a
   `components/shared/texto-entero.ts` (con re-export en `PosOrderCardDetalle.tsx`) y añadir allí su
   variante `max-md:`.
@@ -270,8 +263,8 @@ Orden: T0 → (T1 ∥ T2 ∥ T3) → T4 en la rebanada A, y T5 → T6 en la reba
   para R913). Base desechable nueva (`docs/perfil-agentes.md > Todos los agentes`) y `./init.sh`.
   *Hecho:* E2E en verde en local, `INIT_EXIT=0` y mapa `R<n> -> test` en `progress/features/SLT-193.md`.
 
-**Rebanada B** (si P5 se acepta, se va a la ficha nueva)
-- [ ] **T5 — `EscanerModal` único y sus usos (R925-R929).**
+**Bloque B**
+- [ ] **T5 [P] — `EscanerModal` único y sus usos (R925-R929).**
   - En `EscanerModal`, `titulo` pasa a obligatorio; se borran la rama sin barra y `showCloseButton`.
   - Cada uso pasa su título según la tabla y monta la tarjeta con `sinEncabezado`.
   - En `BuscadorFiltros` se quita el `CardHeader` de `CamaraDelBuscador`.
@@ -282,20 +275,22 @@ Orden: T0 → (T1 ∥ T2 ∥ T3) → T4 en la rebanada A, y T5 → T6 en la reba
   - Mutación 1: devolver `showCloseButton` en un uso deja la guardia en rojo.
   - Mutación 2: quitar `titulo` a un uso rompe el typecheck y la guardia.
 - [ ] **T6 — E2E y gate (R925).** «Cerrar» de 44 × 44 en Reparto a 360 px, en
-  `e2e/pwa-mensajero-botones-44.spec.ts` (o en el spec de la ficha nueva). Después, `./init.sh`.
-  *Hecho:* E2E en verde en local y `INIT_EXIT=0`.
+  `e2e/pwa-mensajero-botones-44.spec.ts`. Después, `./init.sh`.
+  *Hecho:* E2E en verde en local, `INIT_EXIT=0` y mapa `R<n> -> test` completo (R910-R921 y
+  R925-R929) en `progress/features/SLT-193.md`.
 
 ## Tamaño
 
-37 archivos (24 de producción y 13 de tests): el 92,5% de `max_archivos` (40). **Pasa del 80%**
-(ver P5). Estimado: ~190 líneas de producción y ~750 de tests.
-- Rebanada A: 21 archivos.
-- Rebanada B: 17 archivos (el E2E es compartido).
+37 archivos en un solo PR: **24 de producción y 13 de tests**, el 92,5% de `max_archivos` (40).
+Pasa del 80% y del tope; **Carlos lo aceptó el 2026-11-17** (`## Decisiones`, P5). Estimado: ~190
+líneas de producción y ~750 de tests, ambos por debajo de sus topes (1000 y 3000).
+- Bloque A: 21 archivos.
+- Bloque B: 17 archivos (el E2E es compartido).
 
 ## Archivos esperados
 
 Marcados **[SLT-190]** los que también toca SLT-190 «Recoger y Recolección según el canvas»; **[B]**,
-los de la rebanada B.
+los del bloque B.
 
 Producción:
 - `app/(app)/mis-asignaciones/_components/pos-card/PosOrderCardMosaico.tsx` **[SLT-190]**
