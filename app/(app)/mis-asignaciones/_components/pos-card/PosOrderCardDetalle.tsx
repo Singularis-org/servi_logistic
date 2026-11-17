@@ -12,7 +12,7 @@ import {
 } from "@/lib/utils/dia-reparto-textos";
 
 import { UbicacionTrigger } from "../UbicacionTrigger";
-import { formatMonto } from "./pos-format";
+import { formatMonto, lineaUbicacion } from "./pos-format";
 import { CLASE_NOTA_AYUDA, claseChipEstado, marcasDeTarjeta, textoParada } from "./pos-estado";
 import { textoMensajero } from "./pos-mensajero";
 import { posSeleccionHandlers } from "./pos-seleccion";
@@ -67,12 +67,7 @@ export function PosOrderCardDetalle({
 
 
   // Ubicación en una línea: cantón · distrito — dirección (lo que falta se omite).
-  const ubicacion = [
-    [orden.cantonNombre, orden.distritoNombre].filter(Boolean).join(" · "),
-    orden.direccion,
-  ]
-    .filter(Boolean)
-    .join(" — ");
+  const ubicacion = lineaUbicacion(orden);
 
   const nombreAccesible = onGestionar
     ? `Gestionar orden ${orden.numRemision} · ${orden.destinatario}`

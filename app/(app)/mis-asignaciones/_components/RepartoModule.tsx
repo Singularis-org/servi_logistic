@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
@@ -238,9 +238,22 @@ export function RepartoModule({
       ? { encodedPolyline: ruta.trazado.encodedPolyline, fuente: ruta.trazado.fuente }
       : null,
   );
-  // Mapa de ruta como ACORDEÓN: abierto de entrada, se pliega y despliega con animación
-  // desde un control que no se mueve de su sitio (ver el bloque del mapa, más abajo).
+  // Mapa de ruta como ACORDEÓN: abierto de entrada, se pliega y despliega con animación. SLT-192:
+  // abierto, se pliega desde el pie del mapa; cerrado, se abre desde el aviso o el rótulo.
   const mapa = useSeccionColapsable(true);
+  // SLT-192 (R882): «Ocultar mapa» vive en el pie del mapa y desaparece con él; el foco pasa a
+  // «Mostrar mapa» para que el teclado y el lector de pantalla no se queden en el vacío.
+  const botonMostrarMapa = useRef<HTMLButtonElement>(null);
+  const enfocarMostrarMapa = useRef(false);
+  function ocultarMapa() {
+    enfocarMostrarMapa.current = true;
+    mapa.cerrar();
+  }
+  useEffect(() => {
+    if (mapa.abierta || !enfocarMostrarMapa.current) return;
+    enfocarMostrarMapa.current = false;
+    botonMostrarMapa.current?.focus();
+  }, [mapa.abierta]);
 
   // Rediseño ux: apertura del CHAT (el modal del botón flotante). Vive aquí porque tiene
   // DOS disparadores: el propio botón flotante y la acción "Mensaje" del panel de detalle.
@@ -746,21 +759,27 @@ export function RepartoModule({
       : []),
   ];
   const hayMapa = paradasMapa.length > 0;
-  // SLT-156 (R509): con avisos, «Mostrar mapa» sube a la fila del primero; sin avisos, el mapa
-  // conserva su cabecera. Un solo botón en los dos casos, con la misma posición abierto y cerrado.
-  const botonMapa = (
+  // SLT-156 (R509) + SLT-192 (R881-R883): con el mapa CERRADO, «Mostrar mapa» va en la fila del
+  // primer aviso o, sin avisos, junto al rótulo. Con el mapa ABIERTO no se pinta aquí: «Ocultar
+  // mapa» va en el pie del mapa (`RutaMapa` recibe `mapa.cerrar`), junto a «Ver mapa completo».
+  const botonMapa = mapa.abierta ? null : (
     <Button
       type="button"
       variant="ghost"
       // SLT-166 (R544): 44 px; era `xs` (24 px) y el mensajero lo pulsa con el pulgar.
       size="touch"
-      aria-expanded={mapa.abierta}
-      onClick={mapa.abierta ? mapa.cerrar : mapa.abrir}
+      ref={botonMostrarMapa}
+      aria-expanded={false}
+      onClick={mapa.abrir}
     >
-      {mapa.abierta ? "Ocultar mapa" : "Mostrar mapa"}
+      Mostrar mapa
     </Button>
   );
   const mapaEnAviso = hayMapa && avisosRuta.length > 0;
+  // SLT-192 (R885): la nota del punto de partida va bajo la leyenda del mapa, no encima.
+  const notaPartida = origenAproximado
+    ? "El punto de partida es aproximado (no se usó tu ubicación GPS reciente)."
+    : undefined;
   // SLT-166 (R542): en Mosaico, la parada activa es la de la tarjeta a la vista; en Detalle no hay
   // carrusel y el mapa marca la primera de la ruta (`null` = que la elija `RutaMapaInner`).
   const paradaActivaId =
@@ -905,7 +924,7 @@ export function RepartoModule({
             </div>
 
             {/* SLT-156 (R509): cada aviso de ruta en una línea, con «Ver más» y, en el primero,
-                «Mostrar mapa». */}
+                «Mostrar mapa» solo con el mapa cerrado (SLT-192, R881). */}
             {avisosRuta.map((aviso, i) => (
               <AvisoRutaLinea
                 key={aviso.titulo}
@@ -919,30 +938,23 @@ export function RepartoModule({
 
             {/* R28/mapa: recorrido optimizado sobre OpenStreetMap. Solo si hay paradas
                 con coordenadas; las paradas sin coords van igual en la lista de abajo.
-                Acordeón (pedido humano): el control está SIEMPRE en el mismo sitio —abierto y
-                cerrado—; lo único que aparece y desaparece es el cuerpo del mapa. */}
+                Acordeón (pedido humano). SLT-192 (canvas RepartoMapa): abierto, «Ocultar mapa» va en
+                el pie junto a «Ver mapa completo»; cerrado, «Mostrar mapa» en su sitio de siempre. */}
             {hayMapa ? (
               <div
                 aria-label="Mapa de ruta"
                 role="group"
                 className="flex flex-col gap-2"
               >
-                {mapaEnAviso ? null : (
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-muted-foreground">
-                      Mapa de ruta
-                    </span>
-                    {botonMapa}
-                  </div>
-                )}
+                {/* SLT-192 (R884): el rótulo se ve siempre, haya o no avisos, abierto o cerrado. */}
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-muted-foreground">
+                    Mapa de ruta
+                  </span>
+                  {mapaEnAviso ? null : botonMapa}
+                </div>
                 {mapa.montada ? (
                   <div className={`flex flex-col gap-2 ${mapa.clase}`}>
-                    {origenAproximado ? (
-                      <p className="text-xs text-muted-foreground">
-                        El punto de partida es aproximado (no se usó tu ubicación
-                        GPS reciente).
-                      </p>
-                    ) : null}
                     <RutaMapa
                       paradas={paradasMapa}
                       origen={origenMapa}
@@ -952,6 +964,9 @@ export function RepartoModule({
                       onSeleccionarParada={setParadaHojaId}
                       // El total de la RUTA, sin filtrar: el mismo que la tarjeta y la hoja.
                       totalParadas={porGestionar.length}
+                      // SLT-192 (R880, R885): «Ocultar mapa» y la nota van en el pie del mapa.
+                      onOcultar={ocultarMapa}
+                      nota={notaPartida}
                     />
                   </div>
                 ) : null}
@@ -1039,7 +1054,6 @@ export function RepartoModule({
           al aceptar sigue el MISMO camino: `seleccionar` → modo foco con «Confirmar guía». */}
       <HojaParadaMapa
         orden={ordenHoja}
-        total={porGestionar.length}
         onOpenChange={(abierta) => {
           if (!abierta) setParadaHojaId(null);
         }}

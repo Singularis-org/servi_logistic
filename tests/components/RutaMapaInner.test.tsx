@@ -306,7 +306,6 @@ describe("SLT-166 (review m4) — Escape con la hoja abierta sobre la pantalla c
         <RutaMapaInner paradas={TRES} onSeleccionarParada={setHoja} />
         <HojaParadaMapa
           orden={hoja === null ? null : ORDEN}
-          total={3}
           onOpenChange={(abierta) => {
             if (!abierta) setHoja(null);
           }}
@@ -323,15 +322,75 @@ describe("SLT-166 (review m4) — Escape con la hoja abierta sobre la pantalla c
     await user.click(screen.getByRole("button", { name: "Ver mapa completo" }));
     const contenedor = screen.getByTestId("ruta-mapa");
     await user.click(screen.getAllByRole("button", { name: "tocar marcador" })[1]!);
-    expect(screen.getByRole("dialog", { name: "Parada 2 de 3" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Parada 2" })).toBeInTheDocument();
 
     await user.keyboard("{Escape}");
 
-    await vi.waitFor(() => expect(screen.queryByRole("dialog", { name: "Parada 2 de 3" })).toBeNull());
+    await vi.waitFor(() => expect(screen.queryByRole("dialog", { name: "Parada 2" })).toBeNull());
     expect(contenedor).toHaveAttribute("data-completo", "true");
 
     await user.keyboard("{Escape}");
 
     expect(contenedor).toHaveAttribute("data-completo", "false");
+  });
+});
+
+describe("SLT-192 R880/R885/R886 — pie del mapa: leyenda → nota → «Ver mapa completo» + «Ocultar mapa»", () => {
+  const NOTA = "El punto de partida es aproximado (no se usó tu ubicación GPS reciente).";
+
+  it("R880/R885: bajo la leyenda va la nota y después los dos botones, ambos de 44 px", () => {
+    render(<RutaMapaInner paradas={PARADAS} onOcultar={vi.fn()} nota={NOTA} />);
+
+    const mapaDom = screen.getByTestId("map-container");
+    const leyenda = screen.getByRole("list", { name: "Leyenda del mapa" });
+    const nota = screen.getByText(NOTA);
+    const verCompleto = screen.getByRole("button", { name: "Ver mapa completo" });
+    const ocultar = screen.getByRole("button", { name: "Ocultar mapa" });
+
+    // Orden en el documento: mapa → leyenda → nota → «Ver mapa completo» → «Ocultar mapa».
+    const sigue = (a: Node, b: Node) =>
+      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(sigue(mapaDom, leyenda)).toBe(true);
+    expect(sigue(leyenda, nota), "R885: la nota va DESPUÉS de la leyenda").toBe(true);
+    expect(sigue(nota, verCompleto), "R885: la nota va ANTES de los botones").toBe(true);
+    expect(sigue(verCompleto, ocultar)).toBe(true);
+
+    // `size="touch"` = `h-11` (44 px).
+    expect(verCompleto.className).toContain("h-11");
+    expect(ocultar.className).toContain("h-11");
+    expect(ocultar).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("R882: pulsar «Ocultar mapa» llama a la acción de plegar", async () => {
+    const user = userEvent.setup();
+    const onOcultar = vi.fn();
+    render(<RutaMapaInner paradas={PARADAS} onOcultar={onOcultar} />);
+
+    await user.click(screen.getByRole("button", { name: "Ocultar mapa" }));
+
+    expect(onOcultar).toHaveBeenCalledTimes(1);
+  });
+
+  it("sin `onOcultar` ni nota, el pie queda como antes: solo «Ver mapa completo»", () => {
+    render(<RutaMapaInner paradas={PARADAS} />);
+
+    expect(screen.getByRole("button", { name: "Ver mapa completo" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Ocultar mapa" })).toBeNull();
+    expect(screen.queryByTestId("ruta-mapa-nota")).toBeNull();
+  });
+
+  it("R886: a pantalla completa no están ni la nota ni «Ocultar mapa»; vuelven al cerrarla", async () => {
+    const user = userEvent.setup();
+    render(<RutaMapaInner paradas={PARADAS} onOcultar={vi.fn()} nota={NOTA} />);
+
+    await user.click(screen.getByRole("button", { name: "Ver mapa completo" }));
+    expect(screen.getByTestId("ruta-mapa")).toHaveAttribute("data-completo", "true");
+    expect(screen.queryByText(NOTA)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Ocultar mapa" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Cerrar" }));
+    expect(screen.getByTestId("ruta-mapa")).toHaveAttribute("data-completo", "false");
+    expect(screen.getByText(NOTA)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ocultar mapa" })).toBeInTheDocument();
   });
 });
