@@ -266,3 +266,88 @@ describe("Ranking del día · descarga", () => {
     expect(descargarBlobMock).not.toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// SLT-162 «Ranking del mensajero en tarjetas en el móvil» (R762) — en el teléfono la tabla pinta
+// tarjetas, pero el archivo sigue con las MISMAS columnas y filas; con un término de búsqueda,
+// solo las filas que la lista muestra. `useIsMobile` se simula con `matchMedia`.
+// ---------------------------------------------------------------------------------------------
+
+function simularAncho(ancho: number) {
+  vi.spyOn(window, "matchMedia").mockImplementation(
+    (query: string) =>
+      ({
+        matches: (() => {
+          const max = /max-width:\s*(\d+)px/.exec(query);
+          return max ? ancho <= Number(max[1]) : false;
+        })(),
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      }) as unknown as MediaQueryList,
+  );
+}
+
+/** Lo que entrega «Descargar» a un ancho dado: claves de columna y filas. */
+async function descargaA(ancho: number) {
+  simularAncho(ancho);
+  buildXlsxRowsMock.mockClear();
+  const user = userEvent.setup();
+  const { unmount } = montar();
+  await user.click(screen.getByRole("button", { name: `Descargar ${TITULO}` }));
+  await waitFor(() => expect(buildXlsxRowsMock).toHaveBeenCalledTimes(1));
+  const [columnas, filas] = buildXlsxRowsMock.mock.calls[0];
+  unmount();
+  vi.restoreAllMocks();
+  return { claves: columnas.map((c) => c.key), filas };
+}
+
+/** Las tres filas del ranking de prueba, escritas a mano (valores crudos, R7). */
+const FILAS_ESPERADAS = [
+  { posicion: 1, mensajero: "Ana Mensajera", porcentaje: "100.0", entregadas: 5, asignadas: 5 },
+  { posicion: 2, mensajero: "Beto Repartidor", porcentaje: "80.0", entregadas: 4, asignadas: 5 },
+  { posicion: null, mensajero: "Caro Sin Ruta", porcentaje: null, entregadas: 0, asignadas: 0 },
+];
+
+describe("SLT-162 — Ranking del día · descarga en el teléfono y con búsqueda (R762)", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("a 360 px entrega las mismas columnas y filas que a 1280", async () => {
+    const escritorio = await descargaA(1280);
+    const telefono = await descargaA(360);
+    expect(telefono.claves).toEqual(["posicion", "mensajero", "porcentaje", "entregadas", "asignadas"]);
+    expect(telefono.claves).toEqual(escritorio.claves);
+    expect(telefono.filas).toEqual(FILAS_ESPERADAS);
+    expect(telefono.filas).toEqual(escritorio.filas);
+  });
+
+  it.each([360, 1280])("a %i px, con un término, entrega solo las filas que la lista muestra", async (ancho) => {
+    simularAncho(ancho);
+    const user = userEvent.setup();
+    montar();
+    await user.type(screen.getByRole("searchbox", { name: "Buscar mensajero" }), "repartidor");
+    const tabla = screen.getByRole("table", { name: "Ranking diario de mensajeros" });
+    await waitFor(() => expect(within(tabla).getAllByRole("row")).toHaveLength(2));
+
+    await user.click(screen.getByRole("button", { name: `Descargar ${TITULO}` }));
+    await waitFor(() => expect(buildXlsxRowsMock).toHaveBeenCalledTimes(1));
+    const [columnas, filas] = buildXlsxRowsMock.mock.calls[0];
+    expect(columnas.map((c) => c.key)).toEqual(["posicion", "mensajero", "porcentaje", "entregadas", "asignadas"]);
+    expect(filas).toEqual([FILAS_ESPERADAS[1]]);
+  });
+
+  it("la pantalla sigue con UNA tabla de ranking (y la de premios), en los dos anchos", () => {
+    for (const ancho of [360, 1280]) {
+      simularAncho(ancho);
+      const { unmount } = montar();
+      expect(screen.getAllByRole("table", { name: "Ranking diario de mensajeros" })).toHaveLength(1);
+      expect(screen.getAllByRole("table")).toHaveLength(2);
+      unmount();
+      vi.restoreAllMocks();
+    }
+  });
+});

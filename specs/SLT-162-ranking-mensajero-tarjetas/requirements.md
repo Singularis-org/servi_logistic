@@ -231,7 +231,7 @@ Orden: T1 → (T2 ∥ T3) → T4 → T5 → T6. `[P]` = paralelizable con su her
   cual»). Quitar `gap-1.5`.
   *Hecho:* tests de componente de R755-R757, R760 (estado y nombre), R763 (los dos vacíos), R764 y
   R766 en verde, a 360 y 1280 px.
-- [ ] **T4 — Descarga y guardia.** Comprobar R762 a ancho móvil en
+- [x] **T4 — Descarga y guardia.** Comprobar R762 a ancho móvil en
   `tests/components/descarga/RankingDescarga.test.tsx` y `RankingHistoricoDescarga.test.tsx` (mismas
   columnas y filas que a escritorio). Añadir a `ARCHIVOS_PWA_MENSAJERO`: `RankingModule.tsx`,
   `PremioInputRow.tsx` y `RankingHistoricoModule.tsx` con `recorte`, `escala` y `oculta`;
