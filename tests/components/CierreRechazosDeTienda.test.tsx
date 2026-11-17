@@ -1,6 +1,14 @@
 // @vitest-environment jsdom
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, cleanup, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+// SLT-191: `useIsMobile` se simula (el corte de 768 px no existe en jsdom). Por defecto, escritorio:
+// los casos de antes de la ficha montan lo de siempre.
+const movil = vi.hoisted(() => ({ valor: false }));
+vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => movil.valor }));
 
 import { RechazosDeTiendaCierre } from "@/components/private/cierres/detalle/RechazosDeTiendaCierre";
 import {
@@ -759,5 +767,135 @@ describe("SLT-165 R529, R524 — «Órdenes sin gestión»: tarjeta en el teléf
     const cabecera = lista.previousElementSibling;
     expect(Array.from(cabecera!.children).map((c) => c.textContent)).toEqual(["Guía", "Destinatario", "Tienda"]);
     expect(clases(cabecera)).toEqual(expect.arrayContaining(["max-md:hidden", "md:grid-cols-[auto_minmax(0,1.4fr)_minmax(0,1fr)]"]));
+  });
+});
+
+// SLT-191 «Cierre del día del mensajero según el canvas» (R815-R817; DS1, DS5) — en `/cierre-dia`
+// (prop `desplegableMovil`) y en el teléfono, cada rechazo es una fila desplegable como `CierreDia`
+// del canvas. Los esperados, a mano.
+describe("SLT-191 R815-R817 — «Rechazados por la tienda» en filas desplegables (teléfono, /cierre-dia)", () => {
+  afterEach(() => {
+    movil.valor = false;
+  });
+
+  const MOTIVO_LARGO =
+    "El cliente recibió un producto de otro color y talla que no corresponde al pedido; la tienda lo rechaza para cambio";
+
+  function montar(over: Partial<CierreRechazoDeTienda> = {}, props: { desplegableMovil?: boolean } = { desplegableMovil: true }) {
+    render(
+      <RechazosDeTiendaCierre
+        rechazos={[rechazo({ destinatario: LARGO_DESTINATARIO, tiendaNombre: LARGO_TIENDA, motivo: MOTIVO_LARGO, ...over })]}
+        {...props}
+      />,
+    );
+    return userEvent.setup();
+  }
+  const fila = () => within(screen.getByRole("list", { name: "Lista de paquetes rechazados por la tienda" })).getByRole("listitem");
+
+  it("R815: plegada — guía en mono, destinatario, «Motivo: …» entero y la fecha en columna fija a la derecha; sin la tienda", () => {
+    movil.valor = true;
+    montar();
+    const boton = within(fila()).getByRole("button");
+    const [izquierda, derecha] = Array.from(boton.children);
+    expect(Array.from(izquierda.children).map((c) => c.textContent)).toEqual([
+      "19301246",
+      LARGO_DESTINATARIO,
+      "Motivo: El cliente recibió un producto de otro color y talla que no corresponde al pedido; la tienda lo rechaza para cambio",
+    ]);
+    expect(clases(izquierda.children[0])).toContain("font-mono");
+    expect(clases(izquierda.children[2])).toEqual(expect.arrayContaining(["whitespace-normal", "wrap-anywhere"]));
+    expect(derecha.tagName).toBe("TIME");
+    expect(derecha.textContent).toBe("2026-08-28");
+    expect(clases(derecha)).toEqual(expect.arrayContaining(["shrink-0", "whitespace-nowrap", "text-right"]));
+    expect(clases(boton)).toContain("grid-cols-[minmax(0,1fr)_max-content]");
+    expect(fila().textContent ?? "").not.toContain(LARGO_TIENDA);
+    sinRecorte(fila(), "fila desplegable");
+  });
+
+  it("R815: sin guía y sin motivo, la fila omite esas piezas (ni guion ni «Motivo:» vacío)", () => {
+    movil.valor = true;
+    montar({ numGuia: null, motivo: null });
+    const texto = fila().textContent ?? "";
+    expect(texto).not.toContain("Motivo");
+    expect(texto).not.toContain("—");
+  });
+
+  it("R816: toda la fila es un botón con `aria-expanded` de 44 px; al tocarla despliega «Tienda» y «Fecha del rechazo» y al volver a tocarla pliega", async () => {
+    movil.valor = true;
+    const user = montar();
+    const boton = within(fila()).getByRole("button");
+    expect(boton.parentElement).toBe(fila());
+    expect(clases(boton)).toEqual(expect.arrayContaining(["min-h-11", "w-full"]));
+    expect(boton).toHaveAttribute("aria-expanded", "false");
+    expect(within(fila()).queryByText("Tienda")).toBeNull();
+    await user.click(within(boton).getByText(LARGO_DESTINATARIO));
+    expect(boton).toHaveAttribute("aria-expanded", "true");
+    const pares = Array.from(fila().querySelectorAll("dl > div")).map((d) => [
+      d.querySelector("dt")?.textContent,
+      d.querySelector("dd")?.textContent,
+    ]);
+    expect(pares).toEqual([
+      ["Tienda", LARGO_TIENDA],
+      ["Fecha del rechazo", "2026-08-28"],
+    ]);
+    // Un solo botón por fila: dentro solo hay texto.
+    expect(boton.querySelector("button")).toBeNull();
+    await user.click(boton);
+    expect(boton).toHaveAttribute("aria-expanded", "false");
+    expect(within(fila()).queryByText("Tienda")).toBeNull();
+  });
+
+  it("R817: la nota, «Separar …», «Al aprobar …» y el estado vacío no cambian", () => {
+    movil.valor = true;
+    montar();
+    expect(screen.getByText("Separar 1 orden para devolución, sin escanearla.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Al aprobar el cierre, la orden pasa sola a «Por devolver a tienda» (si es de zona satélite, a «Por devolver a bodega central»).",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/No son gestiones del mensajero/)).toBeInTheDocument();
+    cleanup();
+    render(<RechazosDeTiendaCierre rechazos={[]} desplegableMovil />);
+    expect(screen.getByRole("status")).toBeInTheDocument();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("R817: en escritorio, con la prop, la tabla de hoy (cabecera y `subgrid`, sin botón)", () => {
+    movil.valor = false;
+    montar();
+    expect(within(fila()).queryByRole("button")).toBeNull();
+    expect(clases(fila())).toEqual(expect.arrayContaining(["md:grid-cols-subgrid", "md:col-span-full"]));
+    expect(fila().textContent ?? "").toContain(LARGO_TIENDA);
+  });
+
+  it("R817: fuera de `/cierre-dia` (sin la prop), en el teléfono, la tarjeta de hoy (R528), sin botón", () => {
+    movil.valor = true;
+    montar({}, {});
+    expect(within(fila()).queryByRole("button")).toBeNull();
+    expect(clases(fila())).toContain("max-md:[grid-template-areas:'dest_dest_fecha'_'guia_tienda_fecha'_'motivo_motivo_motivo']");
+    expect(fila().textContent ?? "").toContain(LARGO_TIENDA);
+  });
+});
+
+// SLT-191 (DS1; composition root): la prop la pasa SOLO `/cierre-dia`, en sus tres usos (cierre de
+// hoy, rechazado o vencido, y el detalle de «Ver»); `/cierres-admin` no la pasa. Sin esto, la fila
+// desplegable no llegaría nunca a la pantalla del mensajero aunque el componente la tenga.
+describe("SLT-191 R815, R817 — quién pasa `desplegableMovil`", () => {
+  function usos(archivo: string): string[] {
+    const fuente = readFileSync(join(process.cwd(), archivo), "utf8");
+    return fuente.match(/<RechazosDeTiendaCierre\s[^>]*\/>/g) ?? [];
+  }
+
+  it("`CierreDiaModule`: los tres usos llevan la prop", () => {
+    const u = usos("app/(app)/cierre-dia/_components/CierreDiaModule.tsx");
+    expect(u).toHaveLength(3);
+    for (const x of u) expect(x, x).toContain(" desplegableMovil");
+  });
+
+  it("`CierresAdminModule`: ningún uso la lleva", () => {
+    const u = usos("app/(app)/cierres-admin/_components/CierresAdminModule.tsx");
+    expect(u.length).toBeGreaterThan(0);
+    for (const x of u) expect(x, x).not.toContain("desplegableMovil");
   });
 });

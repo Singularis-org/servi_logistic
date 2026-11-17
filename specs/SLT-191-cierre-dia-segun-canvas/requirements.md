@@ -174,7 +174,7 @@ Orden: (T1 ∥ T2 ∥ T3) → T4. `[P]` = paralelizable con sus hermanas.
   el caso admin en móvil sin cambios y un aserto de que ningún `button` contiene otro); guardias
   `estado-con-info` y `pwa-mensajero-sin-recorte` en verde. Mutaciones: devolver «Devolver» a la
   fila plegada y quitar el estiramiento del botón dejan algún test en rojo.
-- [ ] **T2 [P] — Rechazos desplegables** (`detalle/RechazosDeTiendaCierre.tsx`,
+- [x] **T2 [P] — Rechazos desplegables** (`detalle/RechazosDeTiendaCierre.tsx`,
   `app/(app)/cierre-dia/_components/CierreDiaModule.tsx`). Prop opcional que activa la fila
   desplegable en móvil (`useIsMobile`); `CierreDiaModule` la pasa en sus tres usos (`:551,582,730`);
   ausente = DOM de hoy. Rótulos `FILA_MOTIVO_LABEL`, `FILA_TIENDA_LABEL`, `RECHAZOS_FECHA_COL`.
