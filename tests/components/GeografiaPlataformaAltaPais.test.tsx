@@ -286,21 +286,23 @@ describe("GeografiaPlataformaModule > alta de país: lista de niveles (SLT-46)",
     });
   });
 
-  it("R63: con 3 niveles no hay aviso; con 2 o 4, avisa «país aún no habilitado» hasta SLT-48", async () => {
+  it("R63: con 2, 3 o 4 niveles no hay aviso de «país aún no habilitado» (SLT-48 R21)", async () => {
     const { user, dialogo } = await abrirAlta();
-    const aviso = () => within(dialogo).queryByText(/«país aún no habilitado».*SLT-48/);
+    // SLT-48 R21: los países de 2 a 10 niveles ya crean órdenes (R18); el aviso se quita.
+    // Antes: con 2 y con 4 niveles el aviso salía y era la descripción accesible de la casilla.
+    const aviso = () => within(dialogo).queryByText(/país aún no habilitado/);
     expect(aviso()).toBeNull();
 
     await user.click(within(dialogo).getByRole("button", { name: "Quitar nivel 3" }));
-    expect(aviso()).toHaveTextContent("Con 2 niveles");
-    expect(within(dialogo).getByRole("checkbox", { name: "Disponible para crear empresas" })).toHaveAccessibleDescription(
+    expect(aviso()).toBeNull();
+    expect(within(dialogo).getByRole("checkbox", { name: "Disponible para crear empresas" })).not.toHaveAccessibleDescription(
       /país aún no habilitado/,
     );
 
     await user.click(within(dialogo).getByRole("button", { name: "Agregar nivel" }));
     expect(aviso()).toBeNull();
     await user.click(within(dialogo).getByRole("button", { name: "Agregar nivel" }));
-    expect(aviso()).toHaveTextContent("Con 4 niveles");
+    expect(aviso()).toBeNull();
   });
 
   it("un `validation_error` del servidor vuelve al formulario con su mensaje", async () => {

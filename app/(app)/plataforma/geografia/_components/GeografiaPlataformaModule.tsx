@@ -64,6 +64,10 @@ import { TiposDeNivelPais } from "./TiposDeNivelPais";
 //
 // SLT-46 (design §6; R58, R59, P11): las tres escrituras de este archivo (alta de país, «Disponible»
 // y carga CSV) pasan por `ConfirmarCambio`; ninguna action se llama sin el «Sí, …» del modal.
+//
+// SLT-48 (R21, R34; design §4.3 y §7.3): el alta ya no avisa de «país aún no habilitado» (los países de
+// 2 a 10 niveles crean órdenes, R18), y cada lugar del árbol que no es raíz ofrece «Mover»
+// (`GeografiaAdminModule` → `MoverNodoDialog`).
 
 const RUTA = "/plataforma/geografia";
 
@@ -270,9 +274,6 @@ type AltaPendiente = CrearPaisInput & { nombre: string };
 /** Maqueta T0.2: el alta arranca con tres filas vacías, la forma más común. */
 const FILAS_INICIALES = 3;
 
-/** R29 (regla de SLT-45): solo un país de 3 niveles crea órdenes hasta SLT-48. */
-const NIVELES_QUE_CREAN_ORDENES = 3;
-
 /** R63: cómo se lee `disponible` en el modal de confirmación. */
 const estadoDeDisponible = (valor: boolean) => (valor ? "Disponible" : "No disponible");
 
@@ -328,7 +329,6 @@ function NuevoPaisDialog({
   const toast = useToast();
   const tituloNivelesId = useId();
   const disponibleId = useId();
-  const avisoDisponibleId = useId();
   const opciones = paisesPorDarDeAlta(idsDadosDeAlta);
   const [pais, setPais] = useState<PaisDelCatalogo | null>(null);
   const [filas, setFilas] = useState<FilaDeNivel[]>(filasVacias);
@@ -411,7 +411,6 @@ function NuevoPaisDialog({
 
   const titulo = `Niveles ${filas.length} (máximo ${PAIS_NIVELES_MAX})`;
   const erroresDeLista = [...(errores.tipos ?? []), ...(errores.entrada ?? [])];
-  const sinOrdenesHastaSlt48 = filas.length !== NIVELES_QUE_CREAN_ORDENES;
 
   return (
     <Modal
@@ -489,25 +488,18 @@ function NuevoPaisDialog({
           </p>
         </section>
 
-        {/* R63: la casilla viaja en el alta; con otra cantidad de niveles que 3 avisa de R29. */}
+        {/* R63: la casilla viaja en el alta. SLT-48 R21: sin aviso por la cantidad de niveles. */}
         <div className="flex flex-col gap-1">
           <div className="flex min-h-11 items-center gap-2">
             <Checkbox
               id={disponibleId}
               checked={disponible}
-              aria-describedby={sinOrdenesHastaSlt48 ? avisoDisponibleId : undefined}
               onCheckedChange={(marcado) => setDisponible(marcado === true)}
             />
             <Label htmlFor={disponibleId} className="cursor-pointer text-sm font-normal">
               Disponible para crear empresas
             </Label>
           </div>
-          {sinOrdenesHastaSlt48 ? (
-            <p id={avisoDisponibleId} className="max-w-prose text-xs text-muted-foreground">
-              Con {filas.length} niveles, sus empresas verán «país aún no habilitado» al crear órdenes
-              hasta SLT-48.
-            </p>
-          ) : null}
         </div>
 
         {erroresDeLista.length > 0 ? (

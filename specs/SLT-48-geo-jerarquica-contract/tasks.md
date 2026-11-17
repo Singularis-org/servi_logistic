@@ -133,7 +133,7 @@
 
 ## T4 — Pantallas (frontend_dev) · depende de T0.2, T2 y T3
 
-- [ ] **T4.1** [P] `MoverNodoDialog.tsx` y la acción «Mover» en `GeografiaPlataformaModule.tsx`. Se quita
+- [x] **T4.1** [P] `MoverNodoDialog.tsx` y la acción «Mover» en `GeografiaPlataformaModule.tsx`. Se quita
   el aviso de «aún no habilitado».
   **Hecho:** `MoverNodoDialog.test.tsx` y `GeografiaPlataformaSinAviso.test.tsx` verdes, igual que la
   maqueta (R21, R36).

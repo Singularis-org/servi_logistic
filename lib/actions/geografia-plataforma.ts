@@ -414,8 +414,6 @@ export type VistaPreviaMoverNodoActionResult =
 /**
  * SLT-48 (R36): el modal antes → después de mover un nodo. Solo lectura, con las validaciones de R35;
  * si la base falla, `error` con log (R36 de SL-20).
- *
- * @sin-superficie SLT-48 T4.1 (frontend_dev, en curso): la monta `MoverNodoDialog` en `/plataforma/geografia`; quitar esta anotacion al montarla.
  */
 export async function vistaPreviaMoverNodoAction(
   input: unknown,
@@ -439,8 +437,6 @@ export type MoverNodoActionResult = MoverNodoServiceResult | ErrorDeValidacion |
  * SLT-48 (R34–R40): mueve un nodo a otro padre. Solo superadmin (`puerta`); el servicio lo vuelve a
  * mirar. Un hermano con el mismo nombre creado en carrera lo para el único de la base: `conflict`,
  * como el alta y el renombre. Cualquier otro fallo es `error` con log.
- *
- * @sin-superficie SLT-48 T4.1 (frontend_dev, en curso): la monta `MoverNodoDialog` en `/plataforma/geografia`; quitar esta anotacion al montarla.
  */
 export async function moverNodoAction(
   input: unknown,

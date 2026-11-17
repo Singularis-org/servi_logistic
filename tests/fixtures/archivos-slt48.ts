@@ -19,5 +19,6 @@ export const ARCHIVOS_SLT48_PANTALLAS: readonly string[] = [
   "app/(app)/ordenes/_components/CorregirDatosClienteModal.tsx",
   "app/(app)/ordenes/_components/CorregirUbicacionAviso.tsx",
   "app/(app)/ordenes/_components/corregir-ubicacion-arbol.ts",
+  "app/(app)/plataforma/geografia/_components/MoverNodoDialog.tsx",
   "lib/types/historial-accion-etiquetas.ts",
 ];

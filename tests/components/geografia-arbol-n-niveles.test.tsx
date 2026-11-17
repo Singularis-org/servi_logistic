@@ -2,7 +2,7 @@
 // SLT-46 (T6.1; design §4.6, §4.7, §6) — EL PANEL «LUGARES»: el árbol de N niveles del superadmin.
 //
 // Cubre R21 (árbol a cualquier profundidad con el singular del tipo de cada lugar, y «agregar hijo»
-// solo donde hay tipo siguiente), R14 (el tipo del alta no se elige), R22 (no hay mover), R58/R59
+// solo donde hay tipo siguiente), R14 (el tipo del alta no se elige), R22 (no hay mover; SLT-48 R34 lo abre fuera de la raíz), R58/R59
 // para las cuatro escrituras (validación con el esquema del servidor antes del modal, antes → después,
 // cancelar no llama, confirmar llama una vez), R61 (el aviso del cambio concurrente del renombre),
 // R20 (el conteo del retiro) y R12 (Costa Rica con sus tres niveles de siempre).
@@ -178,12 +178,22 @@ describe("R21 — el árbol a cualquier profundidad", () => {
   });
 });
 
-describe("R22 — no hay mover", () => {
-  it("ninguna fila ofrece mover ni se puede arrastrar", async () => {
+describe("R22 — no hay mover (SLT-48 R34: «Mover» solo fuera de la raíz)", () => {
+  it("ninguna raíz ofrece mover y ninguna fila se puede arrastrar", async () => {
     const user = userEvent.setup();
     const { container } = montar();
     await expandir(user, "Norte", "Arica", "Centro");
-    expect(screen.queryAllByRole("button", { name: /mover|cambiar de padre/i })).toHaveLength(0);
+    // SLT-48 R34: mover un nodo entra en SLT-48 (decisión heredada «Mover nodos»); solo la raíz no lo ofrece.
+    // Antes: ningún botón /mover|cambiar de padre/i en todo el árbol.
+    expect(screen.queryAllByRole("button", { name: /cambiar de padre/i })).toHaveLength(0);
+    expect(within(fila(container, "r1")).queryByRole("button", { name: /mover/i })).toBeNull();
+    expect(within(fila(container, "r2")).queryByRole("button", { name: /mover/i })).toBeNull();
+    expect(screen.getAllByRole("button", { name: /^Mover / }).map((b) => b.getAttribute("aria-label"))).toEqual([
+      "Mover Arica",
+      "Mover Centro",
+      "Mover Manzana Uno",
+      "Mover Putre",
+    ]);
     expect(container.querySelectorAll('[draggable="true"]')).toHaveLength(0);
   });
 });

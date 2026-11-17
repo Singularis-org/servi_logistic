@@ -971,3 +971,88 @@ $ pnpm run typecheck       → 9 errores, todos fuera de mi alcance o parados:
 
 **Veredicto T5:** 43 archivos de integración pasados a nodos o a las vistas, sin borrar tests; quedan 17 casos sin
 objeto parados y pendientes de decisión humana, y 5 suites que solo corren con la base sembrada (baseline).
+
+## T4.1 — Mover un nodo, pantalla (frontend_dev, 2026-11-17)
+
+Sin base de datos (tests de componente con las actions dobladas). Ninguna dependencia nueva. El MCP del grafo no se
+usó (Grep/Read).
+
+### Archivos
+
+Producción:
+- `app/(app)/plataforma/geografia/_components/MoverNodoDialog.tsx` (nuevo) — un solo diálogo en dos pasos: 1) elegir
+  el padre nuevo entre los nodos de la profundidad del padre actual, de todo el país (buscador sin acentos, insignias
+  «Padre actual» y «Retirado»); 2) la vista previa del servidor: tabla «Dato · Antes · Después» con «Ubicación»
+  (regla 6) y el tipo del padre, «Lugares que cuelgan de él: N (desglose por nivel)» (regla 1), las órdenes que cambian
+  de nombre y, si hay bloqueo P1, cuántas órdenes abiertas y de qué empresas con «Sí, mover» apagado. Los rechazos de
+  R35 (retirado, padre actual, no existe, `conflict`) salen en el paso 2 con «No se puede mover aquí.». R37: viaja
+  `padreIdAnterior` de la vista; `cambio_concurrente` cierra, deja el aviso de siempre y refresca. Un bloqueo P1 que
+  aparece entre la vista y el «Sí» se pinta en el modal. Textos en `TEXTOS_MOVER_NODO` (sobreescribibles, i18n).
+- `app/(app)/plataforma/geografia/_components/GeografiaAdminModule.tsx` — la fila del árbol gana «Mover» (solo fuera de
+  la raíz) y monta `MoverNodoDialog`. **Fuera de la lista de archivos esperados:** las filas del árbol viven aquí, no en
+  `GeografiaPlataformaModule.tsx`.
+- `app/(app)/plataforma/geografia/_components/GeografiaPlataformaModule.tsx` — se quita el aviso «país aún no
+  habilitado» del alta de país (R21) y su `aria-describedby`.
+- `lib/actions/geografia-plataforma.ts` — solo se quitan las 2 anotaciones `@sin-superficie` provisionales de
+  `vistaPreviaMoverNodoAction` y `moverNodoAction`: ya las importa una pantalla.
+
+Tests: nuevos `tests/components/MoverNodoDialog.test.tsx` (19) y `tests/components/GeografiaPlataformaSinAviso.test.tsx`
+(3). `tests/fixtures/archivos-slt48.ts` suma `MoverNodoDialog.tsx` a la guardia `etiquetas-geograficas-sin-literal` (R47).
+
+### Aserciones cambiadas (autorización del humano del 2026-11-17: contradicen una decisión cerrada de SLT-48)
+
+Con la pantalla de T4.1 estaban en rojo. Cada una lleva su comentario `// SLT-48 R<n>: …`. **El leader debe confirmar
+que la autorización general las cubre** (la orden de T4.1 no las nombraba).
+
+| Archivo › test | Antes → después | R |
+|---|---|---|
+| `tests/components/geografia-arbol-n-niveles.test.tsx` › «R22 — no hay mover» (renombrado «… (SLT-48 R34: «Mover» solo fuera de la raíz)») | ningún botón `/mover\|cambiar de padre/i` en el árbol → ninguno `/cambiar de padre/i`; las raíces sin «Mover»; «Mover» en Arica, Centro, Manzana Uno y Putre; sigue sin `draggable` | R34 (decisión heredada «Mover nodos: va en SLT-48»; contradice SLT-46 R22) |
+| `tests/components/GeografiaPlataformaAltaPais.test.tsx` › «R63: con 3 niveles no hay aviso; con 2 o 4, avisa…» (renombrado «R63: con 2, 3 o 4 niveles no hay aviso…») | con 2 y 4 niveles el aviso sale y describe la casilla → no sale nunca y la casilla no lo tiene como descripción | R21 |
+
+### Mapa R → test
+
+| R | Test |
+|---|---|
+| R21 | `GeografiaPlataformaSinAviso.test.tsx` › «SLT-48 R21 — …» (alta con 2 a 10 niveles; la pantalla entera) + `GeografiaPlataformaAltaPais.test.tsx` › «R63: con 2, 3 o 4 niveles no hay aviso…» |
+| R34 (pantalla) | `GeografiaPlataformaSinAviso.test.tsx` › «SLT-48 R34 — la acción «Mover» del árbol»; `geografia-arbol-n-niveles.test.tsx` › «R22 — … SLT-48 R34»; `MoverNodoDialog.test.tsx` › «sin permiso (R34)» |
+| R35 (pantalla) | `MoverNodoDialog.test.tsx` › «R35, P4 — el destino rechazado…» (retirado, `conflict`, `not_found`, padre actual, otra profundidad) y «paso 1» (solo la profundidad del padre; «Ver el cambio» apagado con el padre actual) |
+| R36 | `MoverNodoDialog.test.tsx` › «R36 — paso 2: antes → después» (Ubicación, tipo del padre, descendientes, órdenes; regla 1 del desglose; «Volver»; confirmar una vez) + «funciones puras» |
+| R37 | `MoverNodoDialog.test.tsx` › «R36 … «Sí, mover» llama una vez con el padre que mostró el modal (R37)…» y «R37 — cambio concurrente» |
+| R40 / P1 (pantalla) | `MoverNodoDialog.test.tsx` › «R40, P1 — bloqueado por órdenes abiertas» (37 órdenes de 2 empresas, apagado; y el bloqueo en carrera) |
+| R47 | `etiquetas-geograficas-sin-literal.guardia.test.ts` › «SLT-48 / R47» con `MoverNodoDialog.tsx` en la lista |
+
+### Desvíos respecto de la maqueta
+
+Los tipos del país no traen género, y R47 prohíbe la palabra de Costa Rica en estas pantallas; por eso:
+1. Paso 1: «Elige el cantón al que pasa.» → «Elige el lugar al que pasa.»; la etiqueta «Cantón nuevo» → «<Tipo> de
+   destino» («Cantón de destino», «Comuna de destino»).
+2. Retirado: «Tibás está retirado. Reactívalo o elige otro cantón.» → «… o elige otro destino.».
+3. Conflicto: «"Santa Ana" ya tiene un distrito "San Rafael".» → «"Santa Ana" ya tiene un lugar llamado "San Rafael".».
+4. El padre actual sale en la lista con su insignia (como la maqueta) y elegido deja «Ver el cambio» apagado, en vez de
+   pintarse gris: el `RadioGroup` de `components/ui` no apaga una opción suelta.
+5. Los números van sin separador de miles («1284», la maqueta «1.284»): no hay un formateador de conteos en el repo y
+   no se inventó uno.
+6. Éxito: un toast «Se movió «San Rafael» a Santa Ana.» (la maqueta no lo fija).
+7. Un motivo de R35 sin texto propio en la maqueta (otro país, otra profundidad, raíz) sale con el mensaje del servidor
+   (`MENSAJE_DE_MOTIVO_DE_MOVER`).
+
+### Salida real (`NODE_OPTIONS=--max-old-space-size=8192`)
+
+```
+$ pnpm exec vitest run tests/components/MoverNodoDialog.test.tsx tests/components/GeografiaPlataformaSinAviso.test.tsx \
+    tests/components/geografia-arbol-n-niveles.test.tsx tests/components/GeografiaPlataformaAltaPais.test.tsx
+ Test Files  4 passed (4)
+      Tests  60 passed (60)
+$ pnpm exec eslint <archivos de T4.1>   → sin salida (0 errores, 0 avisos)
+$ pnpm run typecheck   → exit 2: 9 errores, 0 en T4.1: e2e/geo-presentacion-4-niveles.spec.ts (3, T6.1),
+                         geo-sincronia-geografia (4), geografia-por-pais (1), geo-equivalencia (1) (T5, parados)
+$ pnpm run test:guardias → Test Files 3 failed | 333 passed | 3 skipped · Tests 6 failed | 4733 passed | 25 skipped
+    - dependencias-declaradas-presentes (4): baseline, no es de esta rama.
+    - descargas-por-registro (1): «Test timed out in 20000ms»; con --testTimeout=120000, 9/9 verdes. Tiempo, no aserción.
+    - sin-estados-retirados (1): rojo en la corrida completa y verde solo (junto con superficie-de-uso y
+      etiquetas-geograficas-sin-literal: Test Files 3 passed). Carga de la máquina.
+    superficie-de-uso y etiquetas-geograficas-sin-literal: verdes.
+```
+
+**Veredicto T4.1:** modal «Mover» y aviso quitado, verdes como la maqueta; 2 aserciones de SLT-46 cambiadas bajo la
+autorización general, pendientes de que el leader lo confirme.
