@@ -251,7 +251,7 @@ Orden: T1 → (T2 ∥ T3) → T4 → T5 → T6. `[P]` = paralelizable con su her
   *Hecho:* E2E en verde en local (E2E_EXIT=0 en el log); mutaciones que lo ponen rojo: `truncate`
   en el nombre de una tarjeta, quitar `DESCARGA_MOVIL`, `size="sm"` en «Guardar», volver las columnas
   de escritorio en móvil.
-- [ ] **T6 — Cierre local.** `./init.sh` verde con base desechable (`INIT_EXIT=0` en el log) y mapa
+- [x] **T6 — Cierre local.** `./init.sh` verde con base desechable (`INIT_EXIT=0` en el log) y mapa
   `R → test` de abajo completado con el nombre de cada caso.
   *Hecho:* cada R750-R769 con al menos un test que falla si se rompe.
 

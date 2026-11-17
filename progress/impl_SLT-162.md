@@ -145,3 +145,7 @@ M3, M4 y M8 se repitieron tras el arreglo de anclas: siguen ROJAS.
 - Cambio de firma en `DataTable.expandAriaLabel` (decisión 1): aceptado por el leader (compatible).
 
 Veredicto: T1-T4 hechos y verdes en local con 20 mutaciones en rojo; E2E escrito sin correr y T6 pendientes del leader.
+
+## T6 — gate (leader, 2026-11-16)
+
+- `./init.sh` (rápido) con `.env` de dev: `INIT_EXIT=0` tras registrar el E2E en el proyecto `reparto`; tamaño 19/40 archivos, 546/1000 producción, 1188/3000 tests. CI `gate` sobre 19c15b4e: SUCCESS (incluye `e2e (reparto)`).
