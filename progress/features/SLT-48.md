@@ -12,8 +12,8 @@ Rama `feature/SLT-48-geo-jerarquica-contract` desde `feature/SLT-125-geo-jerarqu
 F1.0 hecha y acotada (2026-11-17). Sigue F1.2 (spec).
 
 ## Evaluación
-- zone backend: migraciones, Prisma, repositorios y código muerto; la UI solo cambia en mover nodos y en el tope de niveles.
-- complexity medium (del board), ruta completa: es la única fase irreversible (DROP, NOT NULL, RENAME) y lleva puerta humana y backup.
+- zone fullstack (acotación 2026-11-17): migraciones, Prisma y lectores al nodo, más pantallas de mover nodos y de N niveles (SLT-125 P6).
+- complexity high, ruta completa: migraciones con DROP de FK y triggers, tarifas y permisos de superadmin. ~35-50 archivos de producción y 60-90 de tests, tamaño aceptado.
 - Cupo: excedido por las fichas geo en pausa; el humano lo aceptó (2026-11-17: «omite el cupo, las tareas estan en pausa como parte de una tarea mas grande»).
 - `depends_on` (SLT-45, 46, 47, 65, 71, 89, 125) siguen in_progress: terminadas, esperan el merge de la pila geo.
 
