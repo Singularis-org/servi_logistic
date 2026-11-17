@@ -1,7 +1,12 @@
 import { randomUUID } from "node:crypto";
 
 import { fijarEmpresa } from "@/tests/fabricas/organizaciones";
-import { crearOrganizacionEnPais, crearPaisDePrueba, type CodigoPaisDePrueba } from "@/tests/fabricas/paises";
+import {
+  crearNodoDeNivel,
+  crearOrganizacionEnPais,
+  crearPaisDePrueba,
+  type CodigoPaisDePrueba,
+} from "@/tests/fabricas/paises";
 import type { TxDeTest } from "../_postgres-real";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./orden-minima";
 import { comoDueno } from "./pais-20";
@@ -117,21 +122,14 @@ export async function sembrarEscenarioGeo43(
   const { id: paisId } = await crearPaisDePrueba(tx, codigo);
   const { id: empresaId } = await crearOrganizacionEnPais(tx, paisId);
 
-  const provincia = await tx.provincia.create({
-    data: { nombre: `Región ${sufijo}`, paisId, codigoDta: "1" },
-    select: { id: true },
-  });
-  const canton = await tx.canton.create({
-    data: { nombre: `Comuna ${sufijo}`, provinciaId: provincia.id, codigoDta: "1" },
-    select: { id: true },
-  });
-  const distrito = await tx.distrito.create({
-    data: { nombre: `Barrio ${sufijo}`, cantonId: canton.id, codigoDta: "1-1" },
-    select: { id: true },
-  });
-  const otroDistrito = await tx.distrito.create({
-    data: { nombre: `Barrio otro ${sufijo}`, cantonId: canton.id, codigoDta: "1-2" },
-    select: { id: true },
+  // SLT-48: la geografía se escribe en `nodo_geografico`; `provincia`/`canton`/`distrito` son vistas.
+  const provincia = await crearNodoDeNivel(tx, 1, { nombre: `Región ${sufijo}`, paisId, codigoDta: "1" });
+  const canton = await crearNodoDeNivel(tx, 2, { nombre: `Comuna ${sufijo}`, padreId: provincia.id, codigoDta: "1" });
+  const distrito = await crearNodoDeNivel(tx, 3, { nombre: `Barrio ${sufijo}`, padreId: canton.id, codigoDta: "1-1" });
+  const otroDistrito = await crearNodoDeNivel(tx, 3, {
+    nombre: `Barrio otro ${sufijo}`,
+    padreId: canton.id,
+    codigoDta: "1-2",
   });
 
   await fijarEmpresa(tx, empresaId);

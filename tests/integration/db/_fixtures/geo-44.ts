@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 
 import { crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones";
+import { crearNodoDeNivel } from "@/tests/fabricas/paises";
 import type { TxDeTest } from "../_postgres-real";
 import { crearEscenarioGeo43, type EscenarioGeo43 } from "./geo-43";
 import { crearUsuarioDePrueba } from "./orden-minima";
@@ -81,17 +82,16 @@ export async function sembrarEmpresaGeo44(tx: TxDeTest, paisId: string, empresaI
   const sufijo = randomUUID().replace(/-/g, "").slice(0, 10);
   const id = { select: { id: true } } as const;
 
-  const provincia = await tx.provincia.create({ data: { nombre: `Provincia SLT44 ${sufijo}`, paisId }, ...id });
-  const canton = await tx.canton.create({
-    data: { nombre: `Canton SLT44 ${sufijo}`, provinciaId: provincia.id },
-    ...id,
-  });
-  const cantonRetirado = await tx.canton.create({
-    data: { nombre: `Canton retirado SLT44 ${sufijo}`, provinciaId: provincia.id, activo: false },
-    ...id,
+  // SLT-48: la geografía se escribe en `nodo_geografico`; `provincia`/`canton`/`distrito` son vistas.
+  const provincia = await crearNodoDeNivel(tx, 1, { nombre: `Provincia SLT44 ${sufijo}`, paisId });
+  const canton = await crearNodoDeNivel(tx, 2, { nombre: `Canton SLT44 ${sufijo}`, padreId: provincia.id });
+  const cantonRetirado = await crearNodoDeNivel(tx, 2, {
+    nombre: `Canton retirado SLT44 ${sufijo}`,
+    padreId: provincia.id,
+    activo: false,
   });
   const distrito = (nombre: string, cantonId: string, activo = true) =>
-    tx.distrito.create({ data: { nombre: `${nombre} SLT44 ${sufijo}`, cantonId, activo }, ...id });
+    crearNodoDeNivel(tx, 3, { nombre: `${nombre} SLT44 ${sufijo}`, padreId: cantonId, activo });
   const dCentral = await distrito("Central", canton.id);
   const dDosZonas = await distrito("Dos zonas", canton.id);
   const dSinZona = await distrito("Sin zona", canton.id);
