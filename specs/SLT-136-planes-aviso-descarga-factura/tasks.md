@@ -12,17 +12,17 @@
 
 ## Tanda 1 — Datos y lectura de la descarga (backend)
 
-- [ ] **T1.1** Tipos en `lib/types/factura-plataforma.ts`: `MovimientoDeFactura`, `DatosDescargaFactura`,
+- [x] **T1.1** Tipos en `lib/types/factura-plataforma.ts`: `MovimientoDeFactura`, `DatosDescargaFactura`,
   `DescargaFacturaResult`, `descargaFacturaSchema` y `descargaFacturaEmpresaSchema` (design §2.1).
   *Hecho:* typecheck en verde.
-- [ ] **T1.2** Repositorio: `datosDescargaDeLaEmpresa` y `datosDescargaParaPlataforma`, en la interfaz y en
+- [x] **T1.2** Repositorio: `datosDescargaDeLaEmpresa` y `datosDescargaParaPlataforma`, en la interfaz y en
   `FacturaPlataformaRepository` (§2.2). Depende de T1.1.
   *Hecho:* el test de T1.4 está en verde.
-- [ ] **T1.3** Servicio y actions: `descargaDeMiEmpresa` y `descargaDeEmpresa` en `IFacturaPlataformaService` y en
+- [x] **T1.3** Servicio y actions: `descargaDeMiEmpresa` y `descargaDeEmpresa` en `IFacturaPlataformaService` y en
   `FacturaPlataformaService`; `descargarFacturaMiPlanAction` y `descargarFacturaEmpresaAction` en
   `lib/actions/facturas-plataforma.ts` (§2.3). Depende de T1.2.
   *Hecho:* los tests de servicio y actions (R1, R2, R3, R4, R5) están en verde.
-- [ ] **T1.4** `[P]` Tests: `tests/integration/db/factura-plataforma-descarga.test.ts` (R1, R2, R4, R6); se amplían
+- [x] **T1.4** `[P]` Tests: `tests/integration/db/factura-plataforma-descarga.test.ts` (R1, R2, R4, R6); se amplían
   `tests/unit/services/factura-plataforma-service.test.ts` (R3–R5) y `tests/unit/actions/facturas-plataforma.test.ts`
   (R1, R2). Si la remisión de la orden eliminada sale `null`, se aplica el plan B de §2.2.
   *Hecho:* verdes contra la base de pruebas.
