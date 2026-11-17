@@ -87,6 +87,7 @@ export const RANKING_HISTORICO_LABELS = {
  */
 export const RANKING_HISTORICO_TARJETA = {
   premio: RANKING_HISTORICO_COLUMNAS.premio,
-  verDetalle: "Ver detalle",
-  ocultarDetalle: "Ocultar detalle",
+  /** Identifica SU fila (doc de `DataTable.expandAriaLabel`), no un «Ver detalle» repetido N veces. */
+  verDetalle: (nombre: string) => `Ver detalle de ${nombre}`,
+  ocultarDetalle: (nombre: string) => `Ocultar detalle de ${nombre}`,
 } as const;

@@ -128,6 +128,8 @@ export default defineConfig({
         "pwa-mensajero-recoger-recoleccion",
         // SLT-166, rebanada E de SLT-156 · R539-R544: el mapa de ruta a 360/414 px, su hoja y la pantalla completa.
         "pwa-mensajero-mapa",
+        // SLT-162 · R753, R757-R761, R766-R769: /ranking y /ranking/historico en tarjetas a 360/414 px.
+        "pwa-mensajero-ranking",
       ),
     },
     {

@@ -190,8 +190,10 @@ function detalleHistoricoMovil(fila: RankingSnapshotFilaDTO) {
 }
 
 /** SLT-162 (R760): el nombre del control de desplegar dice lo que hará. */
-function nombreDesplegar(_fila: RankingSnapshotFilaDTO, abierta: boolean): string {
-  return abierta ? RANKING_HISTORICO_TARJETA.ocultarDetalle : RANKING_HISTORICO_TARJETA.verDetalle;
+function nombreDesplegar(fila: RankingSnapshotFilaDTO, abierta: boolean): string {
+  return abierta
+    ? RANKING_HISTORICO_TARJETA.ocultarDetalle(fila.nombre)
+    : RANKING_HISTORICO_TARJETA.verDetalle(fila.nombre);
 }
 
 /**

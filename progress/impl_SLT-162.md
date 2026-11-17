@@ -51,8 +51,10 @@ Tests: `tests/components/RankingModule.test.tsx`, `RankingHistoricoModule.test.t
    (filtra en memoria), `leerDeUrl={false}`, `tactil`. Nombre accesible «Buscar mensajero».
 7. **Histórico (R757)**: la fecha es `children` de `BuscadorFiltros buscador={false}`; `children` se pinta
    siempre, así que NO hizo falta modificarlo (no hubo que parar).
-8. **R760 literal**: «Ver detalle»/«Ocultar detalle» igual en todas las filas, como pide el spec; la doc de
-   `expandAriaLabel` recomienda identificar la fila («Ver detalle de {nombre}»). Abierto para el reviewer.
+8. **R760 ajustado (decisión técnica del leader, 2026-11-16)**: «Ver detalle de {nombre}» / «Ocultar detalle
+   de {nombre}», como recomienda la doc de `DataTable.expandAriaLabel`; R760, su test y el E2E ajustados.
+9. **E2E registrado** en el proyecto `reparto` de `playwright.config.ts` (donde viven Reparto, Recoger y Mapa
+   de la PWA): lo exigía la guardia `e2e-sin-saltos` («spec-sin-proyecto»).
 
 ## Diferencias con el canvas (manda el spec)
 
@@ -122,8 +124,6 @@ M3, M4 y M8 se repitieron tras el arreglo de anclas: siguen ROJAS.
 - E2E `e2e/pwa-mensajero-ranking.spec.ts` sin ejecutar (siembra con Prisma de `premio_ranking` y
   `ranking_snapshot_*` con `organizacionId` explícito; si alguna restricción de la base lo rechaza, saldrá en CI).
 - T6 (`./init.sh` con base desechable) para el leader.
-- R760: nombre genérico «Ver detalle» por fila (literal del spec) frente a la recomendación de la `DataTable`.
-- Cambio de firma en `DataTable.expandAriaLabel` (decisión 1): fuera de lo que el spec autorizaba
-  expresamente para ese archivo; compatible con todos los consumidores.
+- Cambio de firma en `DataTable.expandAriaLabel` (decisión 1): aceptado por el leader (compatible).
 
 Veredicto: T1-T4 hechos y verdes en local con 20 mutaciones en rojo; E2E escrito sin correr y T6 pendientes del leader.

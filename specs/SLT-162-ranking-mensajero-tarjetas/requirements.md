@@ -158,7 +158,8 @@ diseño aprobado por Carlos 2026-11-14) y fijadas por el canvas v.1794871729-fd7
   intersectar la caja de ningún otro dato.
 - **R760** — MIENTRAS la ventana sea móvil, el control para desplegar una tarjeta del Histórico DEBE
   medir al menos 44 × 44 px, exponer su estado con `aria-expanded` y tener nombre accesible «Ver
-  detalle» (plegado) u «Ocultar detalle» (desplegado).
+  detalle de {nombre}» (plegado) u «Ocultar detalle de {nombre}» (desplegado). *(Ajustado por el leader
+  2026-11-16: el nombre identifica su fila, como pide la doc de `DataTable.expandAriaLabel`.)*
 - **R761** — MIENTRAS la ventana mida 360 o 414 px de ancho, `/ranking` y `/ranking/historico` NO DEBEN
   desbordar el ancho de la ventana, y ninguna de sus tarjetas, controles ni secciones DEBE desbordar
   su contenedor.
@@ -221,7 +222,7 @@ Orden: T1 → (T2 ∥ T3) → T4 → T5 → T6. `[P]` = paralelizable con su her
   (ranking), R764, R766, R767, R768 y R769 (acentos, mayúsculas, vaciar, sin resultados, podio y
   premios intactos, ninguna llamada a red) en verde, con `matchMedia` simulado a 360 y a 1280 px.
 - [x] **T3 [P] — Histórico** (`RankingHistoricoModule.tsx`, `ranking-historico-labels.ts` para los
-  rótulos «Premio», «Ver detalle», «Ocultar detalle»). Columnas móviles con `useIsMobile` y
+  rótulos «Premio», «Ver detalle de {nombre}», «Ocultar detalle de {nombre}»). Columnas móviles con `useIsMobile` y
   `renderExpanded` solo en móvil (Puesto, Entregado, Asignados); `expandAriaLabel`;
   `DESPLEGABLE_TACTIL` y `DESCARGA_MOVIL` en la sección. El selector de fecha pasa a `children` de un
   `BuscadorFiltros` tal cual con `buscador={false}`, `tactil`, `leerDeUrl={false}` (la página ya lee
@@ -263,12 +264,12 @@ Orden: T1 → (T2 ∥ T3) → T4 → T5 → T6. `[P]` = paralelizable con su her
 | R752 | `RankingModule.test.tsx` › «R752: la cabecera queda solo para lector…», «R752: arriba «{n}º · {ocupante}»…», «R752: sin ocupante, sin descripción y sin monto…» |
 | R753 | `RankingModule.test.tsx` › «R753 (DC24): el editable muestra monto, descripción y «Guardar» a 44 px…»; E2E (b) `tactil` de campos y «Guardar» |
 | R754 | `RankingModule.test.tsx` › «R754: las columnas de hoy, con «Acciones» solo si es editable» |
-| R755 | `RankingHistoricoModule.test.tsx` › «R755: tarjeta «{posición}º · {nombre}»…», «R755/R760: «Ver detalle» despliega…», «R755/R760: el desplegar va a la derecha…»; E2E (c) |
+| R755 | `RankingHistoricoModule.test.tsx` › «R755: tarjeta «{posición}º · {nombre}»…», «R755/R760: «Ver detalle de {nombre}» despliega…», «R755/R760: el desplegar va a la derecha…»; E2E (c) |
 | R756 | `RankingHistoricoModule.test.tsx` › «R756: las siete columnas de hoy, en su orden, sin desplegar» |
 | R757 | `RankingHistoricoModule.test.tsx` › «a %i px: una sola barra, sin búsqueda, con la fecha dentro y siempre visible» (360 y 1280), «en el teléfono el campo de fecha ocupa el ancho y mide 44 px», «elegir una fecha navega…»; E2E (c) `tactil` y ancho |
 | R758 | `pwa-mensajero-sin-recorte.guardia.test.ts` (4 archivos nuevos + contraprueba SLT-162); `RankingModule.test.tsx` › «R758/R759…»; `RankingHistoricoModule.test.tsx` › «R758/R759…»; `RankingPodio.test.tsx` › «R758: los nombres de los escalones envuelven»; E2E `sinElipsis` |
 | R759 | `RankingModule.test.tsx` / `RankingHistoricoModule.test.tsx` › «R758/R759…» (clases de columna fija); E2E `sinSolapes` en tarjetas y fila del resto |
-| R760 | `RankingHistoricoModule.test.tsx` › «R755/R760: «Ver detalle» despliega… pasa a «Ocultar detalle»», «…mide 44 × 44 px»; E2E (c) `tactil` |
+| R760 | `RankingHistoricoModule.test.tsx` › «R755/R760: «Ver detalle de {nombre}» despliega… pasa a «Ocultar detalle de {nombre}»», «…mide 44 × 44 px»; E2E (c) `tactil` |
 | R761 | E2E `sinDesborde` en (a), (b) y (c) |
 | R762 | `RankingDescarga.test.tsx` › «a 360 px entrega las mismas columnas y filas que a 1280», «a %i px, con un término, entrega solo las filas que la lista muestra», «la pantalla sigue con UNA tabla…»; `RankingHistoricoDescarga.test.tsx` › «a 360 px entrega las mismas columnas y filas que a 1280», «sigue habiendo UNA tabla…» |
 | R763 | `RankingModule.test.tsx` › «R763: sin mensajeros, el vacío de hoy con su texto»; `RankingHistoricoModule.test.tsx` › «R763: los dos vacíos de hoy…» |
@@ -292,6 +293,7 @@ Producción:
 - `components/shared/texto-entero.ts`
 - `components/shared/DataTable.tsx`
 - `components/private/cierres/cola/ColaCierres.tsx`
+- `playwright.config.ts` (registra el E2E en el proyecto `reparto`)
 
 Tests:
 - `tests/components/RankingModule.test.tsx`

@@ -236,13 +236,13 @@ test.describe("SLT-162 — Ranking del mensajero en tarjetas a 360 y 414 px", ()
       await sinSolapes(tarjeta, "[data-columna]");
 
       // R755, R760: el desplegar a la derecha de la tarjeta, a 44 px, y abre Puesto/Entregado/Asignados.
-      const desplegar = tarjeta.getByRole("button", { name: "Ver detalle" });
+      const desplegar = tarjeta.getByRole("button", { name: `Ver detalle de ${MENSAJERO_LARGO}` });
       await tactil(desplegar);
       const cajaBoton = await desplegar.boundingBox();
       const cajaNombre = await tarjeta.locator('[data-columna="nombre"]').boundingBox();
       expect(cajaBoton!.x).toBeGreaterThanOrEqual(cajaNombre!.x + cajaNombre!.width - 1);
       await desplegar.click();
-      await expect(tarjeta.getByRole("button", { name: "Ocultar detalle" })).toHaveAttribute("aria-expanded", "true");
+      await expect(tarjeta.getByRole("button", { name: `Ocultar detalle de ${MENSAJERO_LARGO}` })).toHaveAttribute("aria-expanded", "true");
       await expect(page.getByText("Puesto", { exact: true })).toBeVisible();
 
       // R766: «Descargar» a todo el ancho, 44 px y encima de la lista.

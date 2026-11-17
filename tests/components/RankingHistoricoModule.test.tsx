@@ -390,16 +390,16 @@ describe("SLT-162 — Histórico en el teléfono (R755, R758, R759, R760)", () =
     expect(within(ana).queryByText("Asignados")).toBeNull();
   });
 
-  it("R755/R760: «Ver detalle» despliega Puesto, Entregado y Asignados y pasa a «Ocultar detalle»", async () => {
+  it("R755/R760: «Ver detalle de {nombre}» despliega Puesto, Entregado y Asignados y pasa a «Ocultar detalle de {nombre}»", async () => {
     const user = userEvent.setup();
     montar({ ...SNAPSHOT, filas: FILAS_TARJETA });
     const [, beto] = filasHistorico();
-    const desplegar = within(beto).getByRole("button", { name: "Ver detalle" });
+    const desplegar = within(beto).getByRole("button", { name: "Ver detalle de Beto Repartidor" });
     expect(desplegar).toHaveAttribute("aria-expanded", "false");
 
     await user.click(desplegar);
     expect(desplegar).toHaveAttribute("aria-expanded", "true");
-    expect(desplegar).toHaveAccessibleName("Ocultar detalle");
+    expect(desplegar).toHaveAccessibleName("Ocultar detalle de Beto Repartidor");
 
     const detalle = document.getElementById(desplegar.getAttribute("aria-controls") ?? "") as HTMLElement;
     expect(detalle).not.toBeNull();
@@ -410,12 +410,12 @@ describe("SLT-162 — Histórico en el teléfono (R755, R758, R759, R760)", () =
 
     await user.click(desplegar);
     expect(desplegar).toHaveAttribute("aria-expanded", "false");
-    expect(desplegar).toHaveAccessibleName("Ver detalle");
+    expect(desplegar).toHaveAccessibleName("Ver detalle de Beto Repartidor");
   });
 
   it("R755/R760: el desplegar va a la derecha de la tarjeta y mide 44 × 44 px en el teléfono", () => {
     montar();
-    const desplegar = within(filasHistorico()[0]).getByRole("button", { name: "Ver detalle" });
+    const desplegar = within(filasHistorico()[0]).getByRole("button", { name: "Ver detalle de Ana Mensajera" });
     const derecha = ancestroConClase(desplegar, "max-md:[&_table]:[direction:rtl]");
     expect(derecha, "la tabla no se escribe de derecha a izquierda").not.toBeNull();
     expect(clases(derecha!)).toEqual(
@@ -496,7 +496,7 @@ describe("SLT-162 — Histórico en escritorio (R756)", () => {
       "Asignados",
       "Premio",
     ]);
-    expect(within(tablaHistorico()).queryByRole("button", { name: "Ver detalle" })).toBeNull();
+    expect(within(tablaHistorico()).queryByRole("button", { name: /^Ver detalle/ })).toBeNull();
     expect(screen.queryByText("1º · Ana Mensajera")).toBeNull();
   });
 });
