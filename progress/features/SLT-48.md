@@ -22,7 +22,7 @@ F1.0 hecha y acotada (2026-11-17). Sigue F1.2 (spec).
 - 2026-11-17: acotada con `/afinar-feature`. Alcance y decisiones en `specs/SLT-48-geo-jerarquica-contract/requirements.md`. El deploy 2 pasó a SLT-196 «Geografía jerárquica: borrar el modelo viejo». En Trello, zone pasó a fullstack y complexity a high.
 
 ## Preguntas abiertas
-- Las de `requirements.md > Preguntas abiertas`: si mover un nodo cambia la zona y el precio de las órdenes, y cuánto dura la observación.
+Ninguna (cerradas el 2026-11-17 en `requirements.md`).
 
 ## Tandas
 

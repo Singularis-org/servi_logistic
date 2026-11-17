@@ -22,8 +22,7 @@ _Pendiente: los escribe spec_author (F1.2)._
 
 ## Preguntas abiertas
 
-- **Mover un nodo y las órdenes ya creadas.** Cuando un nodo cambia de padre, sus órdenes leen el padre nuevo. Falta decidir si también cambian la zona que las cubre y su precio, o solo el nombre del lugar que se muestra. Los cierres y los cobros ya hechos no se tocan. Le toca al humano en F1.2.
-- **Duración del periodo de observación en producción** antes de SLT-196. No bloquea este spec: lo decide el humano antes de tomar SLT-196.
+Ninguna.
 
 ## Decisiones cerradas (no reabrir)
 
@@ -34,6 +33,8 @@ _Pendiente: los escribe spec_author (F1.2)._
 | 2026-11-17 | Tarifas | El precio pasa a leer el nodo, pero el resultado no cambia. Con distrito, la orden usa el grupo del distrito. Sin distrito, sigue sin grupo y usa la tarifa base (SLT-89 R20). Ningún cobro cambia. |
 | 2026-11-17 | Pantallas con 3 niveles fijos (SLT-125 P6) | Entran en SLT-48 y pasan a N niveles, con maqueta antes: el aviso y el modal de corregir ubicación, las etiquetas del historial, las pantallas de tarifas y de zonas, y la plantilla de carga masiva. |
 | 2026-11-17 | ¿Hay consumidores externos que leen la base (BI, reportes)? | No hay ninguno. |
+| 2026-11-17 | Mover un nodo: ¿qué pasa con las órdenes ya creadas? | Solo cambia el nombre del lugar que muestran, porque leen el padre del árbol. Conservan la zona y el precio que tenían al crearse. Las órdenes nuevas en ese nodo usan la zona y el precio de su posición nueva. Ejemplo: San Rafael pasa de Escazú a Santa Ana; sus órdenes viejas muestran «Santa Ana › San Rafael» con su zona y su precio de siempre. |
+| 2026-11-17 | ¿Cuánto se observa SLT-48 en producción antes de SLT-196? | Un cierre mensual completo, incluida una factura de planes, con SLT-48 en producción. |
 | heredada SLT-43 | Migraciones | Cada migración lleva su `down.sql` y no edita migraciones aplicadas. El `down.sql` de este deploy restaura las tablas desde los nodos. Los DROP de FK, NOT NULL y triggers de este deploy van con la excepción declarada en la guardia de migraciones aditivas. |
 | heredada SLT-43 | Tope del trigger de `orden` | ≤ 1 ms por fila en una carga masiva de prueba. Los triggers llevan tests de integración contra Postgres real. |
 | heredada SLT-43 / SLT-125 | Snapshot del cierre | `cierre_detail.ubicacion_snapshot` saca los ids del nodo, porque las FK de la orden quedan en NULL. |
