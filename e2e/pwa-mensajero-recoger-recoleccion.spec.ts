@@ -475,7 +475,12 @@ test.describe("SLT-164 — Recoger en bodega y Recolección en el móvil", () =>
     await campo.press("Enter");
     await expect(campo).toHaveValue(String(buscada.numGuia));
     await expect(seccionPor.getByText("Mario Brenes")).toHaveCount(0);
-    await expect(seccionPor.getByText("Lidia Soto")).toBeVisible();
+    // La card pinta el destinatario dos veces (cabecera y detalle): se comprueba la TARJETA, que es
+    // una sola y es la de Lidia Soto.
+    const tarjetas = seccionPor.locator("article");
+    await expect(tarjetas).toHaveCount(1);
+    await expect(tarjetas).toBeVisible();
+    await expect(tarjetas).toContainText("Lidia Soto");
     await expect(seccionPor.getByText("2 paquetes por recolectar en tienda.")).toBeVisible();
   });
 

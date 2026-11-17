@@ -216,7 +216,7 @@ Requisito previo: SLT-193 mergeado en `dev` y traído a esta rama antes de T1 (c
 - [x] **T5 — Rechazos, pantalla (depende de T4).** `RechazosSlaModule` monta el buscador (D4), guarda el
   término, lo pasa en cada petición de página y pinta el «sin coincidencias». La guardia incluye
   `RechazosSlaModule.tsx`. *Hecho:* R949-R952 y la parte de cliente de R957 en verde.
-- [ ] **T6 — E2E.** R945 en `e2e/pwa-mensajero-recoger-recoleccion.spec.ts` a 360 px. Además, los E2E de
+- [x] **T6 — E2E.** R945 en `e2e/pwa-mensajero-recoger-recoleccion.spec.ts` a 360 px. Además, los E2E de
   `/novedades` y de las pantallas B1-B8 (`grep -rl` en `e2e/`), en local con base desechable
   (`docs/perfil-agentes.md > Todos los agentes`). *Hecho:* todo en verde, sin reintentos.
 - [ ] **T7 — Dispositivo.** En Preview y con el teléfono:

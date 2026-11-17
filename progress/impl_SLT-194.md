@@ -5,6 +5,7 @@
 - 2026-11-17 · backend_dev · T4 (Rechazos, servidor): `q` en la acción, término por servicio y repositorio, `rechazoSlaWhere` con `criterioBusqueda` en AND; integración SQL real con las dos mutaciones muertas.
 - 2026-11-17 · frontend_dev · T1-T3 (filtros a 44 px en barras con `escaneo` por contexto, «Descargar» a 44 px, Recolección con `escaneo` que solo filtra): unitarios en verde y 7 tests nuevos que mueren con mutación. E2E de R945 escrito, sin correr.
 - 2026-11-17 · frontend_dev · T5 (Rechazos, pantalla): el `BuscadorFiltros` con `escaneo` en «Devolución a origen por plazo vencido», con `q` en cada petición de página y el «sin coincidencias». 8 tests nuevos y 3 mutaciones muertas.
+- 2026-11-17 · frontend_dev · T6 (E2E): arreglado el locator del E2E de R945/R941 (strict mode con «Lidia Soto»). `pwa-mensajero-recoger-recoleccion.spec.ts` con `--retries=0 --repeat-each=3`: 24 passed.
 
 ## Backend
 
@@ -147,3 +148,17 @@ T5 hecha. No hay E2E nuevo: el spec no le asigna ninguno a R949-R957. En T6 qued
 
 ### Veredicto
 Rechazos busca escaneando en servidor (`q`), con paginación y «sin coincidencias». R949-R952 y la parte de cliente de R957 en verde.
+
+## E2E de Recolección (frontend_dev, 2026-11-17)
+
+- **Rojo del leader** sobre 9c84b826, con build en `servi_slt194e_desechable`: 12 passed, 1 failed.
+  - Falló «SLT-194 Recolección a 360 px…» en :478 por un `strict mode violation`: la card pinta «Lidia Soto» dos veces (cabecera `<p>` y detalle `<dd>`).
+  - Era un fallo del test, no de la app.
+- **Arreglo:** en vez de `getByText`, el test comprueba la TARJETA. `seccionPor.locator("article")` debe tener 1 elemento, ser visible y contener «Lidia Soto».
+  - El `toHaveCount(0)` de «Mario Brenes» se queda.
+  - Los demás `getByText` del test son textos únicos: el conteo `role="status"` y el valor del campo.
+- **Evidencia**, sin rehacer el build: `con-desechable.cjs … servi_slt194e_desechable -- pnpm exec playwright test e2e/pwa-mensajero-recoger-recoleccion.spec.ts --retries=0 --repeat-each=3 --reporter=line` → `24 passed (1.3m)`, exit 0 (8 tests × 3, sin flaky).
+- **T6** queda marcada:
+  - R945 en verde a 360 px.
+  - Los E2E de `/novedades` y de B1-B8 los corrió el leader sobre 9c84b826 y salieron verdes; el único rojo era este.
+  - El gate (T8) lo corre el leader.
