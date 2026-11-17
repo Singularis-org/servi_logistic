@@ -153,7 +153,7 @@ Orden: (T1 ∥ T2) → T3 → T4. `[P]` = paralelizable con su hermana.
   hoy (DS3).
   *Hecho:* `tests/unit/components/buscador-filtros-movil.test.tsx` comprueba el orden campo →
   «Filtros» → hueco y que sin la prop no se añade nada; tests de `BuscadorFiltros` existentes en verde.
-- [ ] **T3 — Reparto** (`RepartoModule.tsx`, depende de T1 y T2). Pasar `VistaCardsToggle` al hueco de
+- [x] **T3 — Reparto** (`RepartoModule.tsx`, depende de T1 y T2). Pasar `VistaCardsToggle` al hueco de
   la barra y quitarlo de la cabecera de la sección (`:885-894`); pintar `{kpis}` en la rama de foco
   encima de «Volver a la lista» y del panel (`:790-817`); `renderCardEnReparto` con la fila de Reparto
   (dirección) en Detalle; `renderCardConAyuda` con `compacta` y la fila de Reparto (tienda), sin tocar

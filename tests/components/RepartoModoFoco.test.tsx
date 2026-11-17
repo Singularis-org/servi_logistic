@@ -150,14 +150,24 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("SLT-156 R510/R511 — «Gestionar» lleva al modo foco con la guía por confirmar", () => {
-  it("solo queda el panel de esa orden: sin KPI, sin barra, sin tarjetas", async () => {
+  // SLT-189 «Reparto del mensajero según el canvas» (R798, R799, DS4): antes este caso exigía «sin KPI».
+  // Ahora el foco lleva los KPI encima de «Volver a la lista» y del panel; lo demás sigue fuera.
+  it("queda el panel de esa orden con los KPI encima; sin barra, conmutador, escáner ni tarjetas", async () => {
     const user = userEvent.setup();
     montar();
     await entrarEnFoco(user);
 
     expect(panel()).toHaveTextContent("Segunda Persona");
-    expect(screen.queryByRole("region", { name: "Indicadores de mis asignaciones" })).toBeNull();
+    const kpis = screen.getByRole("region", { name: "Indicadores de mis asignaciones" });
+    for (const rotulo of ["Pendientes", "Entregado", "Por cobrar", "Total a cobrar"]) {
+      expect(within(kpis).getByText(rotulo)).toBeInTheDocument();
+    }
+    const volver = screen.getByRole("button", { name: "Volver a la lista" });
+    expect(kpis.compareDocumentPosition(volver) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(kpis.compareDocumentPosition(panel()) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
     expect(screen.queryByRole("searchbox")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Mosaico" })).toBeNull();
+    expect(screen.queryByText("Escanear o escribir guía")).toBeNull();
     expect(screen.queryAllByRole("article", { name: /^Orden REM-G/ })).toHaveLength(0);
     // Elegirla no fija nada en el servidor: eso llega al confirmar la guía.
     expect(escogerMock).not.toHaveBeenCalled();
@@ -199,6 +209,10 @@ describe("SLT-156 R512 — confirmar la guía en el foco", () => {
     expect(await screen.findByText("¿Cómo terminó la gestión?")).toBeInTheDocument();
     expect(escogerMock).toHaveBeenCalledWith({ ordenId: "g2" });
     expect(errorMock).not.toHaveBeenCalled();
+    // SLT-189 (R798, DS4): con la guía ya confirmada los KPI siguen encima del panel.
+    const kpis = screen.getByRole("region", { name: "Indicadores de mis asignaciones" });
+    expect(kpis.compareDocumentPosition(panel()) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(screen.queryByRole("searchbox")).toBeNull();
   });
 
   it("otra guía avisa «La guía {n} no corresponde a esta orden.» y se queda en la verificación", async () => {

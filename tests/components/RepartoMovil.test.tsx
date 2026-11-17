@@ -195,11 +195,13 @@ describe("SLT-156 R504 — fuera del modo foco no hay panel de gestión", () => 
     expect(screen.queryByRole("region", { name: "Detalle de la orden" })).toBeNull();
   });
 
-  it("en modo foco solo queda el panel: sin KPI ni barra de búsqueda", () => {
+  // SLT-189 «Reparto del mensajero según el canvas» (R798, R799, DS4): antes este caso exigía «sin KPI».
+  it("en modo foco queda el panel con los KPI encima, sin barra de búsqueda ni conmutador", () => {
     montar({ ordenEnGestionId: "g1" });
-    expect(screen.getByRole("region", { name: "Detalle de la orden" })).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "Indicadores de mis asignaciones" })).toBeNull();
+    const panel = screen.getByRole("region", { name: "Detalle de la orden" });
+    expect(vaAntes(kpis(), panel)).toBe(true);
     expect(screen.queryByRole("searchbox", { name: "Buscar guías" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Vista de las órdenes" })).toBeNull();
   });
 });
 
@@ -216,9 +218,10 @@ describe("SLT-156 R507 — la lista arranca en Mosaico", () => {
     expect(screen.getByRole("region", { name: "Órdenes en reparto" })).toBeInTheDocument();
 
     await user.click(within(conmutador).getByRole("button", { name: /Detalle/ }));
-    // Detalle: tarjetas compactas en lista (R508), con su fila desplegable.
+    // Detalle: tarjetas compactas en lista (R508), con su fila desplegable. SLT-189 (R790): la fila
+    // lleva la guía (1001), no la remisión.
     expect(
-      await screen.findByRole("button", { expanded: false, name: /REM-G1/ }),
+      await screen.findByRole("button", { expanded: false, name: /1001/ }),
     ).toBeInTheDocument();
   });
 });
@@ -273,11 +276,15 @@ describe("SLT-156 R509 — avisos de ruta en una línea", () => {
 describe("SLT-156 R493 — los botones de las tarjetas de Reparto miden 44 px", () => {
   const ALTO_TACTIL = "h-11";
 
-  it("«Gestionar», «Gestionar más tarde», «Recuperar» y «Conversación» llevan `h-11`", () => {
+  it("«Gestionar», «Gestionar más tarde», «Recuperar» y «Conversación» llevan `h-11`", async () => {
+    const user = userEvent.setup();
     montar({
       porGestionar: [orden({ id: "g1", numRemision: "REM-G1" })],
       conAyuda: [orden({ id: "a1", numRemision: "REM-A1" })],
     });
+    // SLT-189 (R801): «Recuperar» y «Conversación» viven en el despliegue de la fila de ayuda.
+    const ayuda = screen.getByRole("region", { name: "Con ayuda solicitada" });
+    await user.click(within(ayuda).getByRole("button", { expanded: false }));
 
     const botones = [
       screen.getByRole("button", { name: "Gestionar la orden REM-G1" }),
@@ -303,5 +310,61 @@ describe("SLT-156 R493 — los botones de las tarjetas de Reparto miden 44 px", 
         ALTO_TACTIL,
       );
     }
+  });
+});
+
+// =================================================================================================
+// SLT-189 «Reparto del mensajero según el canvas» — conmutador en la barra fija (R795-R797) y el
+// escáner que se queda (R802). jsdom no aplica Tailwind: se afirman las clases; la medida a 360/414
+// px y el pegado al desplazar los toma el E2E `e2e/pwa-mensajero-reparto.spec.ts`.
+// =================================================================================================
+describe("SLT-189 R795-R797 — el conmutador Mosaico/Detalle va en la barra fija", () => {
+  const conmutador = () => screen.getByRole("group", { name: "Vista de las órdenes" });
+
+  it("R795: dentro de la barra, tras el campo y tras «Filtros»; la cabecera conserva «Sincronizar ruta» y ningún conmutador", () => {
+    montar();
+    const fija = barra()!;
+    expect(fija.contains(conmutador())).toBe(true);
+    expect(vaAntes(buscador(), conmutador())).toBe(true);
+    expect(vaAntes(within(fija).getByRole("button", { name: /Filtros/ }), conmutador())).toBe(true);
+
+    const cabecera = within(seccionReparto()).getByRole("heading", { name: "En reparto / por gestionar" })
+      .parentElement as HTMLElement;
+    expect(within(cabecera).queryByRole("group", { name: "Vista de las órdenes" })).toBeNull();
+    expect(within(cabecera).queryByRole("button", { name: /Mosaico|Detalle/ })).toBeNull();
+    expect(within(cabecera).getByRole("button", { name: /Sincronizar ruta/ })).toBeInTheDocument();
+    expect(screen.getAllByRole("group", { name: "Vista de las órdenes" })).toHaveLength(1);
+  });
+
+  it("R796: va en la barra `sticky top-0` y cambiar de vista sigue funcionando en los dos sentidos", async () => {
+    const user = userEvent.setup();
+    montar();
+    expect(barra()!.className.split(/\s+/)).toEqual(expect.arrayContaining(["sticky", "top-0"]));
+    expect(barra()!.contains(conmutador())).toBe(true);
+
+    await user.click(within(conmutador()).getByRole("button", { name: /Detalle/ }));
+    expect(within(conmutador()).getByRole("button", { name: /Detalle/ })).toHaveAttribute("aria-pressed", "true");
+    expect(await screen.findByRole("button", { expanded: false, name: /1001/ })).toBeInTheDocument();
+
+    await user.click(within(conmutador()).getByRole("button", { name: /Mosaico/ }));
+    expect(within(conmutador()).getByRole("button", { name: /Mosaico/ })).toHaveAttribute("aria-pressed", "true");
+    expect(await screen.findByRole("region", { name: "Órdenes en reparto" })).toBeInTheDocument();
+  });
+
+  it("R797: en la fila que envuelve de la barra, con sus botones a 44 px en móvil", () => {
+    montar();
+    expect(conmutador().className.split(/\s+/)).toEqual(
+      expect.arrayContaining(["max-md:[&>button]:h-11"]),
+    );
+    expect(conmutador().parentElement!.className.split(/\s+/)).toContain("flex-wrap");
+  });
+});
+
+describe("SLT-189 R802 — «Escanear o escribir guía» se queda", () => {
+  it("fuera del foco y sin bloqueo, el escáner va encima de los KPI y de la barra", () => {
+    montar();
+    const escaner = screen.getByRole("button", { name: /Escanear o escribir guía/ });
+    expect(vaAntes(escaner, kpis())).toBe(true);
+    expect(vaAntes(escaner, barra()!)).toBe(true);
   });
 });
