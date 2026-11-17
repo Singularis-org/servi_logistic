@@ -393,9 +393,10 @@ describe("RecepcionSateliteModule", () => {
     expect(
       screen.queryByRole("region", { name: "Recepción por escaneo" }),
     ).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "Escanear con cámara" }),
-    ).toBeNull();
+    // SLT-160 (R600): la única cámara que queda es la del BUSCADOR del listado (busca, no recibe).
+    const camaras = screen.queryAllByRole("button", { name: "Escanear con cámara" });
+    expect(camaras).toHaveLength(1);
+    expect(listado).toContainElement(camaras[0]!);
   });
 
   // El camino del lector físico (input keyboard-wedge, R10) se retiró por decisión

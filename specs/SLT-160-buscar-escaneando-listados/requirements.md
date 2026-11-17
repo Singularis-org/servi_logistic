@@ -192,6 +192,9 @@ test de integración no está probado. En los negativos, guías imposibles por c
 - `tests/components/QrScanner.test.tsx`
 - `tests/unit/components/ordenes-listado-{filtros,orden,vistas}.test.tsx` — solo el nombre con que buscan
   el campo (R772, aprobado por el leader 2026-11-16).
+- `tests/components/EstadoCuentaBarra467.test.tsx` y `tests/components/WalletCajaBarra467.test.tsx` — el
+  alto del buscador pasa a `h-11` (R771); `tests/components/RecepcionSateliteModule.test.tsx` — sin zona,
+  la única «Escanear con cámara» es la del buscador del listado (R600). Rojos de `gate-completo` del PR #187.
 - `tests/unit/services/recepcion-satelite-paginado.test.ts` y los dobles completos del repositorio en
   `tests/unit/services/{bulk-orden-service.carga-api,bulk-orden-service,orden-service,rol-admin-satelite-authz}.test.ts`
   — una línea cada uno: declaran `existeGuiaEnBodega` (T4).
