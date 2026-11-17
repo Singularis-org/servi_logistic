@@ -77,9 +77,10 @@ export function columnasColaPropia(): ColumnaPropia[] {
 }
 
 /**
- * SLT-156 (R535) — en el teléfono, la MISMA tabla con dos columnas: «Cierre» (fecha de solicitud y
- * estado, el destino debajo) y «Ganancia» (el importe en su columna fija y «Ver»). Folio, recaudado
- * y pago van en el desplegable de la fila. «Descargar» no cambia (R538): no sale de estas columnas.
+ * SLT-156 (R535) con SLT-191 (R818-R820) — en el teléfono, la MISMA tabla con dos columnas: «Cierre»
+ * (el folio arriba, «Solicitado …» con el estado y «Destino: …» debajo) y «Ganancia» (rótulo e
+ * importe en su columna fija). El desplegable de la fila solo trae «Ver»; recaudado y pago no se ven
+ * en el teléfono (DC1). «Descargar» no cambia (R538): no sale de estas columnas.
  */
 export type ColumnaPropiaMovilId = "cierre" | "ganancia";
 export function columnasColaPropiaMovil(): { id: ColumnaPropiaMovilId; label: string; align?: "right" }[] {

@@ -300,37 +300,65 @@ describe("SLT-112 · /cierre-dia: las tarjetas de la ganancia (R358)", () => {
 
 // SLT-165 «PWA del mensajero: Cierre del día en tarjetas» (D5; R535, R536, R538). Esperados a mano.
 describe("SLT-165 R535 — «Cierres solicitados» en el teléfono: dos columnas y desplegable", () => {
-  it("dos columnas: «Cierre» (fecha, estado y destino) y «Ganancia» (importe y «Ver»)", () => {
+  // SLT-191 (R818): reescrito al canvas aprobado — antes «Ganancia» traía «Ver» y la fecha y el
+  // destino iban sin rótulo; ahora el folio sube a la fila y «Ver» baja al desplegado.
+  it("SLT-191 R818: dos columnas — «Cierre» (folio en mono, «Solicitado …» con el estado y «Destino: …») y «Ganancia» (rótulo e importe)", () => {
     movil.valor = true;
     const region = montar();
     // La primera cabecera es la del botón de desplegar de la tabla (solo para lector).
     expect(within(region).getAllByRole("columnheader").map((h) => h.textContent?.trim())).toEqual(["Desglose", "Cierre", "Ganancia"]);
     const [, cierre, ganancia] = within(within(region).getAllByRole("row")[1]).getAllByRole("cell");
-    expect(cierre.textContent).toBe("2026-07-11 04:00AprobadoBodega central");
-    expect(ganancia.textContent).toBe("₡875Ver");
-    const ver = within(ganancia).getByRole("button", { name: "Ver del cierre del 2026-07-11" });
-    // R493 (B2 de la review): el desplegable de la fila (botón con `aria-expanded`) a 44 px en el teléfono.
+    expect(cierre.textContent).toBe("#AAAA1111Solicitado 2026-07-11 04:00AprobadoDestino: Bodega central");
+    const lineas = cierre.firstElementChild!.children;
+    expect(lineas[0].textContent).toBe("#AAAA1111");
+    expect(lineas[0].className.split(/\s+/)).toContain("font-mono");
+    expect(lineas[1].textContent).toBe("Solicitado 2026-07-11 04:00Aprobado");
+    expect(lineas[2].textContent).toBe("Destino: Bodega central");
+    expect(ganancia.textContent).toBe("Ganancia₡875");
+    // R493 (B2 de la review de SLT-165): el desplegable de la fila (botón con `aria-expanded`) a 44 px.
     const desplegar = within(region).getByRole("button", { name: "Más datos del cierre del 2026-07-11" });
     expect(desplegar.hasAttribute("aria-expanded")).toBe(true);
     expect(region.className.split(/\s+/)).toEqual(
       expect.arrayContaining(["max-md:[&_button[aria-expanded]]:min-h-11", "max-md:[&_button[aria-expanded]]:min-w-11"]),
     );
-    expect(ver.className.split(/\s+/)).toEqual(expect.arrayContaining(["max-md:min-h-11", "max-md:min-w-11"]));
     // El importe, en su columna fija a la derecha.
     expect(within(ganancia).getByText("₡875").className.split(/\s+/)).toEqual(
       expect.arrayContaining(["shrink-0", "whitespace-nowrap", "tabular-nums", "text-right"]),
     );
   });
 
-  it("al desplegar: folio, recaudado y pago", async () => {
+  it("SLT-191 R819: la fila plegada no trae «Ver»; al desplegar, «Ver» a todo el ancho, de 44 px, y abre el detalle", async () => {
+    movil.valor = true;
+    const user = userEvent.setup();
+    const region = montar();
+    expect(within(region).queryByRole("button", { name: /^Ver del cierre/ })).toBeNull();
+    await user.click(within(region).getByRole("button", { name: "Más datos del cierre del 2026-07-11" }));
+    const desplegado = region.querySelector<HTMLElement>("tr[id$='-expandido']");
+    expect(desplegado).not.toBeNull();
+    const ver = within(desplegado!).getByRole("button", { name: "Ver del cierre del 2026-07-11" });
+    expect(ver.textContent).toBe("Ver");
+    expect(ver.className.split(/\s+/)).toEqual(expect.arrayContaining(["w-full", "min-h-11"]));
+    expect(ver).toBeEnabled();
+    vi.mocked(verCierrePasado).mockReturnValue(new Promise(() => {}));
+    await user.click(ver);
+    expect(vi.mocked(verCierrePasado)).toHaveBeenCalledWith({ cierreId: "c0000000-0000-4000-8000-0000aaaa1111" });
+    // R181: deshabilitado mientras lee.
+    expect(ver).toBeDisabled();
+  });
+
+  // SLT-191 (R820; DC1): reescrito — antes el desplegado traía Folio, Recaudado y Pago.
+  it("SLT-191 R820: al desplegar, solo «Ver»: ni «Folio», ni «Recaudado», ni «Pago» (ni su estado)", async () => {
     movil.valor = true;
     const user = userEvent.setup();
     const region = montar();
     await user.click(within(region).getByRole("button", { name: "Más datos del cierre del 2026-07-11" }));
-    const dl = region.querySelector("tr[id$='-expandido'] dl");
-    expect(dl).not.toBeNull();
-    const pares = Array.from(dl!.children).map((e) => e.textContent);
-    expect(pares).toEqual(["Folio", "#AAAA1111", "Recaudado", "₡12.500", "Pago", "Pendiente de pago"]);
+    const desplegado = region.querySelector<HTMLElement>("tr[id$='-expandido']")!;
+    expect(desplegado.textContent).toBe("Ver");
+    expect(desplegado.querySelector("dl")).toBeNull();
+    const texto = region.textContent ?? "";
+    for (const fuera of ["Folio", "Recaudado", "₡12.500", "Pendiente de pago", "Liquidado"]) {
+      expect(texto, fuera).not.toContain(fuera);
+    }
   });
 
   it("R538: una sola tabla y la misma «Descargar» en los dos anchos", () => {
@@ -362,7 +390,43 @@ describe("SLT-165 R535 — «Cierres solicitados» en el teléfono: dos columnas
   it("en escritorio, las ocho columnas de hoy sin desplegable", () => {
     const region = montar();
     expect(within(region).getAllByRole("columnheader")).toHaveLength(8);
+    // SLT-191 (R821): en escritorio siguen «Recaudado» y «Pago» con su dato, y «Ver» en la fila.
+    expect(within(region).getAllByRole("columnheader").map((h) => h.textContent?.trim())).toEqual([
+      "Folio", "Solicitado", "Destino", "Estado", "Recaudado", "Ganancia", "Pago", "Acciones",
+    ]);
+    const fila = within(region).getAllByRole("row")[1];
+    expect(fila.textContent ?? "").toContain("₡12.500");
+    expect(fila.textContent ?? "").toContain("Pendiente de pago");
+    expect(within(fila).getByRole("button", { name: "Ver del cierre del 2026-07-11" })).toBeInTheDocument();
     expect(within(region).queryByRole("button", { name: /^Más datos del cierre/ })).toBeNull();
     expect(within(screen.getByRole("navigation", { name: "Paginación de los cierres solicitados" })).getByRole("button", { name: "Ir a la página 1" })).toBeInTheDocument();
+  });
+});
+
+// SLT-191 «Cierre del día del mensajero según el canvas» (R822, R823; DS6) — la barra de «Cierres
+// solicitados» (buscador, «Filtros» y «Descargar») queda fija arriba en el teléfono. Clases a mano.
+describe("SLT-191 R822, R823 — la barra de «Cierres solicitados» fija en el teléfono", () => {
+  function barra(): HTMLElement {
+    const buscador = screen.getByPlaceholderText("Busca por folio");
+    const el = buscador.closest<HTMLElement>("[data-barra-cola]");
+    if (!el) throw new Error("sin barra de la cola");
+    return el;
+  }
+
+  it("R822: en el teléfono, el envoltorio de buscador, «Filtros» y «Descargar» es `sticky top-0` con fondo", () => {
+    movil.valor = true;
+    montar();
+    const b = barra();
+    expect(b.className.split(/\s+/)).toEqual(expect.arrayContaining(["sticky", "top-0", "z-20", "bg-background"]));
+    expect(within(b).getByRole("button", { name: "Descargar Cierres solicitados" })).toBeInTheDocument();
+    expect(within(b).getByRole("button", { name: /^Filtros/ })).toBeInTheDocument();
+    // Sin desbordar (R536): envuelve en lugar de forzar una línea.
+    expect(b.className.split(/\s+/)).toContain("flex-wrap");
+  });
+
+  it("R823: en escritorio, la barra no queda fija", () => {
+    movil.valor = false;
+    montar();
+    expect(barra().className.split(/\s+/)).not.toContain("sticky");
   });
 });

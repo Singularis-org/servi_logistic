@@ -180,7 +180,7 @@ Orden: (T1 ∥ T2 ∥ T3) → T4. `[P]` = paralelizable con sus hermanas.
   ausente = DOM de hoy. Rótulos `FILA_MOTIVO_LABEL`, `FILA_TIENDA_LABEL`, `RECHAZOS_FECHA_COL`.
   *Hecho:* `CierreRechazosDeTienda.test.tsx` con R815-R817 en verde (con y sin la prop, móvil y
   escritorio); `CierreDiaModule.test.tsx` en verde.
-- [ ] **T3 [P] — Cola propia y barra** (`cola/TablaColaPropia.tsx`, `cola/ColaCierres.tsx`,
+- [x] **T3 [P] — Cola propia y barra** (`cola/TablaColaPropia.tsx`, `cola/ColaCierres.tsx`,
   `cola/cola-propia-vista.ts`). Columna «Cierre» con folio, «Solicitado …» + estado y «Destino: …»;
   columna «Ganancia» con rótulo y monto, sin «Ver»; `detallePropioMovil` pasa a recibir las acciones y
   pinta solo «Ver» a todo el ancho; el envoltorio de barra y «Descargar» lleva `BARRA_FIJA` con
