@@ -164,7 +164,7 @@ Orden: (T1 ∥ T2) → T3 → T4. `[P]` = paralelizable con su hermana.
   (`RepartoMovil.test.tsx:198-203`, `RepartoModoFoco.test.tsx:153-159`) se reescriben a R798, no se
   borran. Mutaciones: quitar `{kpis}` del foco, volver a `numRemision` en la fila y devolver el
   conmutador a la cabecera dejan algún test en rojo.
-- [ ] **T4 — E2E y gate** (depende de T3). En `e2e/pwa-mensajero-reparto.spec.ts`: (a) la fila Detalle
+- [x] **T4 — E2E y gate** (depende de T3). En `e2e/pwa-mensajero-reparto.spec.ts`: (a) la fila Detalle
   muestra `orden.numGuia` y la dirección plegada (R790, R792) y no desborda a 360/414 (R797); (b) el
   foco muestra «Indicadores de mis asignaciones» (cambia el aserto de `:182`, R798); (c) el conmutador
   sigue pegado arriba al bajar (R796) y mide 44 px (R797). Correr el E2E en local sobre base
