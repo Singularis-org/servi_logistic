@@ -120,3 +120,22 @@ Diferencias NO cambiadas (manda el spec aprobado); a decidir por el humano:
 - Las 5 diferencias con el canvas de arriba.
 
 Veredicto: T1-T4 hechas, R600-R609 con test, typecheck 0 y mutaciones del WHERE matadas contra Postgres real.
+
+## DC2 — ajustes del canvas (Carlos, 2026-11-16)
+
+| SHA | Qué |
+| --- | --- |
+| 15cfb30e | spec: DC2, R600 reescrito, R690 (ayuda), R691 (44 px), R692 (nombre accesible, pendiente), T4b |
+| 8c3760ff | cámara como botón aparte de 44 px (`EscanerModal` `soloIcono` = `outline` `size-11`), ayuda bajo el campo como descripción accesible, `h-11` en campo, «Filtros» y «Limpiar todo» solo con `escaneo` |
+
+- R600 → `buscador-filtros-escaneo.test.tsx` «… fuera del campo y de 44 px»; R690 → «R690: la ayuda…» (3 tests);
+  R691 → «R691: 44 px…» (3 tests, incluido el «sin `escaneo`, h-8»).
+- Salidas: escaneo + `buscador-filtros-*` + `EscanerModal` + `QrScanner` + `ordenes-listado-buscador` → 10 archivos,
+  116 passed; tests de los 7 montajes → 34 archivos, 422 passed; `tsc` → `TSC_EXIT=0`; eslint de lo tocado limpio.
+- Mutaciones (restauradas con `git checkout --`): M8 cámara de vuelta dentro del campo → rojo R600; M9 sin el texto
+  de ayuda → rojo R690; M10 `ALTO_CONTROL_ESCANEO = "h-8"` → rojo R691 ×2.
+- **R692 (nombre accesible) NO hecho, a la espera del leader:** cambiar B1 a «Buscar órdenes» obliga a tocar
+  `tests/unit/components/ordenes-listado-{filtros,orden,vistas}.test.tsx`, fuera de la lista; B2 no tiene texto en el
+  canvas (propuesta: «Buscar órdenes de la bodega»); B3-B7 ya tienen nombre propio.
+- **R691, alcance:** los `children` de cada pantalla (Estado, Zona, Fecha…) y la descarga de `DataTable` siguen a 32 px.
+- Numeración R690-R692: libre en `dev` (R610-R689 en uso); a confirmar.
