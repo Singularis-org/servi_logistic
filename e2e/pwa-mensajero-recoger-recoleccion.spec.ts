@@ -446,6 +446,39 @@ test.describe("SLT-164 — Recoger en bodega y Recolección en el móvil", () =>
     });
   }
 
+  // SLT-194 «Buscar escaneando en recolección, devoluciones y rechazos» (R945, R941, D2): a 360 px la
+  // barra con la cámara del buscador no desborda y «Escanear con cámara» mide 44 × 44; lo leído por
+  // la pistola (Enter) filtra y no recolecta.
+  test("SLT-194 Recolección a 360 px: la barra con la cámara no desborda, cámara de 44 × 44 y Enter solo filtra", async ({ browser }) => {
+    const m = await crearMensajero(r, "satelite");
+    const buscada = await porRecolectar(m, { destinatario: "Lidia Soto", montoCobrar: 3000 });
+    await porRecolectar(m, { destinatario: "Mario Brenes", montoCobrar: 3000 });
+
+    const page = await paginaDe(browser, m, { viewport: { width: 360, height: ALTO_MOVIL } });
+    await page.goto(RECOLECCION);
+    const seccionPor = page.getByRole("region", { name: "Por recolectar en tienda", exact: true });
+    await expect(seccionPor.getByText("2 paquetes por recolectar en tienda.")).toBeVisible();
+
+    // R945: la barra no desborda en horizontal y la cámara mide al menos 44 × 44.
+    const camara = barra(page).getByRole("button", { name: "Escanear con cámara" });
+    await expect(camara).toBeVisible();
+    const caja = await cajaDe(camara);
+    expect(caja.width).toBeGreaterThanOrEqual(44);
+    expect(caja.height).toBeGreaterThanOrEqual(44);
+    const medidas = await barra(page).evaluate((el) => ({ scroll: el.scrollWidth, cliente: el.clientWidth }));
+    expect(medidas.scroll).toBeLessThanOrEqual(medidas.cliente);
+    await sinDesborde(page);
+
+    // R941, D2: la guía + Enter filtra «Por recolectar» y la orden sigue sin recolectar.
+    const campo = barra(page).getByRole("searchbox", { name: "Buscar guías" });
+    await campo.fill(String(buscada.numGuia));
+    await campo.press("Enter");
+    await expect(campo).toHaveValue(String(buscada.numGuia));
+    await expect(seccionPor.getByText("Mario Brenes")).toHaveCount(0);
+    await expect(seccionPor.getByText("Lidia Soto")).toBeVisible();
+    await expect(seccionPor.getByText("2 paquetes por recolectar en tienda.")).toBeVisible();
+  });
+
   test("SLT-190 Recoger a 360 px: conmutador en la barra y diálogo con barra «Recoger paquete» y «Cerrar» de 44 × 44", async ({ browser }) => {
     const m = await crearMensajero(r, "satelite");
     await llevarA(r, await crearOrden(r, { zona: "satelite", destinatario: "Karla Mena", montoCobrar: 4000 }), "mensajero_recogiendo_en_bodega", { mensajero: m });

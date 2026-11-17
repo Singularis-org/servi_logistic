@@ -21,6 +21,7 @@ const CON_ESCANEO = [
   "app/(app)/historico/acciones/_components/HistorialAccionesFiltrosBar.tsx", // B5
   "app/(app)/wallet/_components/LibroCajaBarra.tsx", // B6
   "components/shared/estado-cuenta/EstadoCuenta.tsx", // B7 y B8
+  "app/(app)/recoleccion/_components/RecoleccionModule.tsx", // SLT-194 (R940): Recolección
 ];
 
 const CIERRES_ADMIN = "app/(app)/cierres-admin/_components/FiltrosCierresBarra.tsx";

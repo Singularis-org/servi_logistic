@@ -293,6 +293,9 @@ export function RecoleccionModule({
         hayFiltrosAplicados={tienda !== "" || filtrosPuestos.length > 0}
         fija
         tactil
+        // SLT-194 (R940-R944, D2): la pistola (Enter) y la cámara del buscador SOLO filtran las dos
+        // listas; recolectar sigue siendo «Escanear o escribir guía». Va también bloqueado: no mueve nada.
+        escaneo
         // SLT-190 (R860, DS4): el ÚNICO conmutador del apartado, en la barra tras «Filtros» y
         // siempre visible (también con «Por recolectar» vacía); gobierna las dos listas.
         trasFiltros={

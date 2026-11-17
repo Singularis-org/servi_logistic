@@ -3,6 +3,7 @@
 ## Tandas
 
 - 2026-11-17 · backend_dev · T4 (Rechazos, servidor): `q` en la acción, término por servicio y repositorio, `rechazoSlaWhere` con `criterioBusqueda` en AND; integración SQL real con las dos mutaciones muertas.
+- 2026-11-17 · frontend_dev · T1-T3 (filtros a 44 px en barras con `escaneo` por contexto, «Descargar» a 44 px, Recolección con `escaneo` que solo filtra): unitarios en verde y 7 tests nuevos que mueren con mutación. E2E de R945 escrito, sin correr.
 
 ## Backend
 
@@ -47,3 +48,57 @@ Las dos se revirtieron restaurando una copia del archivo, comprobada con `cmp`. 
 - No se pasó `vitest related` sobre `OrdenRepository.ts`/`IOrdenRepository.ts`: arrastra casi toda la suite, que este encargo prohíbe. Sus dobles en otros tests compilan (typecheck verde), porque los parámetros nuevos son opcionales.
 
 Veredicto: T4 hecho. R953-R957 en su parte de servidor quedan en verde contra Postgres real, y las dos mutaciones del `WHERE` están muertas.
+
+## Frontend Recolección/filtros (frontend_dev, 2026-11-17)
+
+Tasks: T1, T2 y T3 hechas. T6: el E2E de R945 está escrito, pero no se ha corrido (sin build, como pidió el leader). Rechazos (T5) queda fuera de esta tanda.
+
+### Archivos
+Producción:
+- `components/shared/alto-controles-barra.ts` (nuevo): el contexto de D1. Por defecto vale `""`; la barra con `escaneo` lo pone a `max-md:h-11`.
+- `components/shared/BuscadorFiltros.tsx`: con `escaneo`, envuelve sus `children` en el contexto.
+- `components/shared/FilterComponent.tsx`: texto, casilla, pastillas y `Select` (vía `className`) añaden el alto del contexto.
+- `components/shared/MultiSelectFilter.tsx`, `components/shared/DateRangeFilter.tsx`: el disparador añade el alto del contexto. En móvil, la X del rango se centra en 44 px (`max-md:bottom-2.5`).
+- `components/shared/DescargarDatasetButton.tsx`: `max-md:h-11` en el disparador (D5). El selector de columnas no se toca.
+- `app/(app)/recoleccion/_components/RecoleccionModule.tsx`: `escaneo` en «Buscar guías». Solo filtra (D2).
+
+Tests:
+- `tests/unit/components/filtros-barra-escaneo.test.tsx` (nuevo)
+- `tests/components/RecoleccionModule.test.tsx` (bloque SLT-194)
+- `tests/components/DescargarDataset.test.tsx` (bloque SLT-194)
+- `tests/unit/guards/buscadores-con-escaneo.guardia.test.ts` (Recolección en `CON_ESCANEO`)
+- `e2e/pwa-mensajero-recoger-recoleccion.spec.ts` (test «SLT-194 Recolección a 360 px»; escrito, sin correr)
+
+### Mapa R → test
+| R | Test |
+| --- | --- |
+| R940 | `tests/components/RecoleccionModule.test.tsx` «R940: campo de 44 px…»; `tests/unit/guards/buscadores-con-escaneo.guardia.test.ts` |
+| R941 | `tests/components/RecoleccionModule.test.tsx` «R941: una URL de paquete + Enter…» (E2E también lo cubre) |
+| R942 | `tests/components/RecoleccionModule.test.tsx` «R942: la cámara del buscador lee una guía…» |
+| R943 | `tests/components/RecoleccionModule.test.tsx` «R943: dos accesos distintos…» |
+| R944 | `tests/components/RecoleccionModule.test.tsx` «R944: bloqueado…» |
+| R945 | `e2e/pwa-mensajero-recoger-recoleccion.spec.ts` «SLT-194 Recolección a 360 px…» (escrito, SIN correr: lo corre el leader) |
+| R946 | `tests/unit/components/filtros-barra-escaneo.test.tsx` «R946…» |
+| R947 | `tests/components/DescargarDataset.test.tsx` «R947…» |
+| R948 | `tests/unit/components/filtros-barra-escaneo.test.tsx` «R948…» (barra sin `escaneo` y suelto); `tests/unit/components/filter-component.test.tsx` sin tocar |
+
+### Mutaciones (los tests nuevos ven el cambio)
+Se aplicaron tres mutaciones a la vez y luego se restauraron los archivos desde copia:
+- valor del contexto a `""`;
+- `escaneo={false}` en Recolección;
+- sin `max-md:h-11` en «Descargar».
+
+Resultado: `Test Files 3 failed (3)`, `Tests 7 failed | 85 passed (92)`. Fallan los 7 nuevos: R940-R944, R946 y R947.
+
+### Salidas
+Todo con `NODE_OPTIONS=--max-old-space-size=8192`, y vitest con la desechable `servi_slt194_desechable`.
+- `pnpm typecheck` → `tsc --noEmit`, exit 0.
+- `pnpm lint` → `✖ 1 problem (0 errors, 1 warning)`, exit 0. El aviso, `OrdenHistorialOrigenTipo` sin usar en `lib/interfaces/repositories/IOrdenRepository.ts`, está en un archivo del backend_dev, no en uno de esta tanda.
+- `vitest run` de los 4 archivos de test tocados → `Test Files 4 passed (4)`, `Tests 105 passed (105)`.
+- `vitest related --run` (componentes tocados + tests que importan `RecoleccionModule`): `vitest related` arrastró 408 archivos, casi la suite entera, porque `FilterComponent`/`BuscadorFiltros` están en todo. Salida: `Test Files 12 failed | 395 passed (408)`, `Tests 69 failed | 5735 passed | 17 skipped (5829)`, exit 1. Lo que falló no es de esta tanda:
+    - **10 de integración DB** (wallet, libro de caja y cierres: `libro-caja-*`, `wallet-*`, `ajuste-caja-anulacion-461`). Los errores son de dominio: «referencia a otra empresa: …», `sin_saldo` en el escenario 459, `AppErrorCode INTERNAL` y caída de worker. Ninguno monta UI. Corrieron en la misma desechable que el backend_dev y no los he investigado: los mira el leader.
+    - **2 de componente** (`DetalleMensajeroPanel`, `TableroOperativo`): `Test timed out in 20000ms` con la carga de toda la suite. Corridos solos: `Test Files 2 passed (2)`, `Tests 78 passed (78)`.
+  - Nota: a través del envoltorio de la desechable (cmd.exe), la ruta con `(app)` rompe el comando. Por eso los tests que importan `RecoleccionModule.tsx` se pasan explícitos.
+
+### Veredicto
+Recolección con escaneo (solo filtra) y filtros + «Descargar» a 44 px solo en móvil: hechos y en verde. Falta R945 en E2E (escrito, sin correr).

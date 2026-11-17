@@ -415,3 +415,15 @@ describe("DataTable · descarga · ficha 470", () => {
     expect(descargarBlobMock).not.toHaveBeenCalled();
   });
 });
+
+// SLT-194 (R947, DC3, D5): «Descargar» mide 44 px solo en móvil, en todos sus usos (se cambia una vez
+// en `DescargarDatasetButton`); en escritorio conserva el alto por defecto del `Button` (`h-8`).
+describe("SLT-194 — «Descargar» a 44 px en móvil (R947)", () => {
+  it("R947: el disparador lleva `max-md:h-11` y, sin prefijo, solo el `h-8` de siempre", () => {
+    renderTabla(descargaConfig());
+    const clases = boton().className.split(/\s+/);
+    expect(clases).toContain("max-md:h-11");
+    const altosSinPrefijo = clases.filter((c) => /^h-/.test(c));
+    expect(altosSinPrefijo).toEqual(["h-8"]);
+  });
+});

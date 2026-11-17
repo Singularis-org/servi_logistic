@@ -14,6 +14,10 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { EscanerModal } from "@/components/shared/EscanerModal";
+import {
+  ALTO_FILTRO_MOVIL_ESCANEO,
+  AltoControlesBarraContext,
+} from "@/components/shared/alto-controles-barra";
 import { QrScanner } from "@/components/shared/QrScanner";
 import {
   avisoMinimoCaracteres,
@@ -624,8 +628,16 @@ export function BuscadorFiltros({
           />
         ) : null}
 
-        {/* Los controles de los filtros puestos van DELANTE del campo. */}
-        {children}
+        {/* Los controles de los filtros puestos van DELANTE del campo. SLT-194 (R946, D1): con
+            `escaneo`, la barra les pide 44 px en móvil por contexto; sin él, el valor por defecto
+            los deja como estaban (R948). */}
+        {escaneo ? (
+          <AltoControlesBarraContext.Provider value={ALTO_FILTRO_MOVIL_ESCANEO}>
+            {children}
+          </AltoControlesBarraContext.Provider>
+        ) : (
+          children
+        )}
 
         {/* El campo se lleva todo el espacio sobrante (`flex-1`) y desde `sm` nunca baja de
             250px: por debajo de eso una guía deja de verse entera mientras se teclea. En el

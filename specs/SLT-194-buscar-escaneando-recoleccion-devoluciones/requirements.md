@@ -197,13 +197,13 @@ Rechazos se prueba contra Postgres real: un test de servicio con dobles no ve el
 Requisito previo: SLT-193 mergeado en `dev` y traído a esta rama antes de T1 (comparte
 `BuscadorFiltros.tsx`).
 
-- [ ] **T1 — Alto en móvil desde la barra (D1).** `BuscadorFiltros` con `escaneo` provee el contexto; `FilterComponent`
+- [x] **T1 — Alto en móvil desde la barra (D1).** `BuscadorFiltros` con `escaneo` provee el contexto; `FilterComponent`
   (texto, casilla, pastillas, `Select` vía `className`), `MultiSelectFilter` y `DateRangeFilter` añaden
   `max-md:h-11`. Sin barra con `escaneo`, el valor por defecto deja todo como hoy. No se tocan
   `components/ui/*`. *Hecho:* R946 y R948 en verde.
-- [ ] **T2 [P] — Descarga (D5).** `DescargarDatasetButton`: `max-md:h-11` en el disparador. *Hecho:* R947
+- [x] **T2 [P] — Descarga (D5).** `DescargarDatasetButton`: `max-md:h-11` en el disparador. *Hecho:* R947
   en verde; los tests de descarga existentes en verde.
-- [ ] **T3 [P] — Recolección.** `RecoleccionModule` pasa `escaneo`; la guardia incluye Recolección.
+- [x] **T3 [P] — Recolección.** `RecoleccionModule` pasa `escaneo`; la guardia incluye Recolección.
   *Hecho:* R940-R944 en verde; los tests existentes de `RecoleccionModule` en verde.
 - [x] **T4 [P] — Rechazos, servidor (backend_dev).** Lo de D3:
   - `q` opcional en el esquema de la acción;
