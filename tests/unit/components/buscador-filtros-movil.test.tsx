@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
 
 // SLT-156 «PWA de los mensajeros: tablas usables en el móvil» (A4; R495, R496, R493) — `BuscadorFiltros`
 // cabe en 312 px y tiene dos props ADITIVAS, apagadas por defecto: `fija` (pegada arriba) y
@@ -41,7 +42,7 @@ function cajaDelCampo(): Element {
   return screen.getByRole("searchbox", { name: "Buscar" }).parentElement as Element;
 }
 
-function montar(props: { fija?: boolean; tactil?: boolean } = {}) {
+function montar(props: { fija?: boolean; tactil?: boolean; trasFiltros?: ReactNode } = {}) {
   return render(
     <BuscadorFiltros
       onChange={vi.fn()}
@@ -100,5 +101,30 @@ describe("R493 — `tactil`", () => {
     expect(campo).not.toContain("max-md:h-11");
     expect(clases(screen.getByRole("button", { name: /Filtros/ }))).not.toContain("max-md:h-11");
     expect(clases(screen.getByRole("button", { name: "Limpiar todo" }))).not.toContain("max-md:h-11");
+  });
+});
+
+// SLT-189 «Reparto del mensajero según el canvas» (DS3, R795) — hueco opcional `trasFiltros`, en la
+// misma fila y DESPUÉS de «Filtros» (orden del canvas: campo → «Filtros» → conmutador).
+describe("SLT-189 R795 — `trasFiltros`", () => {
+  const sigue = (a: Element, b: Element) =>
+    (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+
+  it("se pinta en la fila del campo, tras el campo y tras «Filtros»", () => {
+    montar({ trasFiltros: <button type="button">Conmutador de prueba</button> });
+    const campo = screen.getByRole("searchbox", { name: "Buscar" });
+    const filtros = screen.getByRole("button", { name: /Filtros/ });
+    const hueco = screen.getByRole("button", { name: "Conmutador de prueba" });
+    expect(hueco.parentElement).toBe(cajaDelCampo().parentElement);
+    expect(sigue(campo, filtros)).toBe(true);
+    expect(sigue(filtros, hueco)).toBe(true);
+  });
+
+  it("sin la prop la fila no gana ningún hijo (los demás consumidores no cambian)", () => {
+    montar();
+    const sinHueco = cajaDelCampo().parentElement!.children.length;
+    cleanup();
+    montar({ trasFiltros: <button type="button">Conmutador de prueba</button> });
+    expect(cajaDelCampo().parentElement!.children.length).toBe(sinHueco + 1);
   });
 });

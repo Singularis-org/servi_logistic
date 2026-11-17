@@ -241,6 +241,12 @@ export interface BuscadorFiltrosProps {
    * de cámara dentro del campo, junto a la «X». Apagada por defecto: los demás no cambian (R609).
    */
   escaneo?: boolean;
+  /**
+   * SLT-189 (DS3, R795) — controles propios de la pantalla que van DESPUÉS de «Filtros», en la misma
+   * fila (p. ej. el conmutador Mosaico/Detalle de Reparto). Los `children` no sirven: se pintan antes
+   * del campo. Sin la prop no se monta nada: los demás consumidores no cambian.
+   */
+  trasFiltros?: ReactNode;
   className?: string;
 }
 
@@ -321,6 +327,7 @@ export function BuscadorFiltros({
   fija = false,
   tactil = false,
   escaneo = false,
+  trasFiltros,
   className,
 }: BuscadorFiltrosProps) {
   const alto = escaneo ? ALTO_CONTROL_ESCANEO : tactil ? ALTO_CONTROL_TACTIL : ALTO_CONTROL;
@@ -771,6 +778,9 @@ export function BuscadorFiltros({
             </Popover.Portal>
           </Popover.Root>
         ) : null}
+
+        {/* SLT-189 (DS3): el hueco opcional tras «Filtros». */}
+        {trasFiltros}
 
         {/* "Limpiar todo" cierra la barra por la derecha, DESPUÉS del selector: es la
             última pieza de la fila porque es lo último que se hace con ella. Solo

@@ -148,7 +148,7 @@ Orden: (T1 ∥ T2) → T3 → T4. `[P]` = paralelizable con su hermana.
   el segundo dato. Despliegue sin cambios.
   *Hecho:* `tests/components/PosOrderCardDetalleCompacta.test.tsx` con R790, R791, R792, R793 y R794
   (sin la prop: remisión y destinatario solo) en verde, con fixture cuya guía y remisión difieren.
-- [ ] **T2 [P] — Hueco al final de la barra** (`components/shared/BuscadorFiltros.tsx`). Prop opcional
+- [x] **T2 [P] — Hueco al final de la barra** (`components/shared/BuscadorFiltros.tsx`). Prop opcional
   que se pinta después de «Filtros», dentro de la misma fila con `flex-wrap`; ausente = mismo DOM que
   hoy (DS3).
   *Hecho:* `tests/unit/components/buscador-filtros-movil.test.tsx` comprueba el orden campo →
