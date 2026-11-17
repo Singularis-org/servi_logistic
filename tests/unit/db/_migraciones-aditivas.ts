@@ -16,6 +16,13 @@
  *     corre al migrar y su DML cuenta.
  *   · `reemplazablesPermitidas`: con la lista puesta, `CREATE OR REPLACE FUNCTION` solo se admite
  *     sobre esos nombres; con cualquier otro es falta (reemplazaría una función que ya existe).
+ *
+ * SLT-48 (design §2.2; R13) añade una tercera, también apagada por defecto:
+ *   · `destructivasDeclaradas`: fragmentos literales de SQL (`DROP TABLE "distrito"`, `ALTER COLUMN
+ *     "canton_id" DROP NOT NULL`…) que se admiten, cada uno UNA vez en el conjunto. Se borran del texto
+ *     antes de buscar faltas, así que lo que queda destructivo y no está en la lista sigue saltando.
+ *     Un fragmento declarado que no aparece, o que aparece más de una vez, también es falta: la lista
+ *     tiene que decir exactamente lo que hacen las migraciones.
  */
 
 export interface Migracion {
@@ -28,6 +35,39 @@ export interface OpcionesAditivas {
   dmlEnCuerpoDeFuncion?: boolean;
   /** Si se da, únicas funciones que una migración puede `CREATE OR REPLACE`. */
   reemplazablesPermitidas?: readonly string[];
+  /** Si se da, sentencias destructivas admitidas, cada una exactamente una vez en el conjunto. */
+  destructivasDeclaradas?: readonly string[];
+}
+
+/** El fragmento como expresión: los espacios valen cualquier blanco y las comillas son opcionales. */
+function patronDeFragmento(fragmento: string): RegExp {
+  const partes = fragmento
+    .trim()
+    .split(/\s+/)
+    .map((p) => p.replace(/"/g, "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/([A-Za-z0-9_]+)/g, '"?$1"?'));
+  return new RegExp(String.raw`\b${partes.join(String.raw`\s+`)}`, "gi");
+}
+
+/**
+ * Tacha (con espacios del mismo largo, para no mover los índices de los cuerpos de función) cada
+ * fragmento declarado y devuelve las faltas de la lista: declarado y ausente, o repetido.
+ */
+function tacharDeclaradas(
+  limpias: { nombre: string; sql: string }[],
+  declaradas: readonly string[],
+): string[] {
+  const faltas: string[] = [];
+  for (const fragmento of declaradas) {
+    let veces = 0;
+    for (const m of limpias) {
+      m.sql = m.sql.replace(patronDeFragmento(fragmento), (x) => {
+        veces += 1;
+        return " ".repeat(x.length);
+      });
+    }
+    if (veces !== 1) faltas.push(`declarada ${veces === 0 ? "y ausente" : `${veces} veces`}: ${fragmento}`);
+  }
+  return faltas;
 }
 
 /**
@@ -68,7 +108,8 @@ export function faltasR19(migraciones: readonly Migracion[], opciones: OpcionesA
       ),
     ),
   );
-  const faltas: string[] = [];
+  const faltas: string[] =
+    opciones.destructivasDeclaradas === undefined ? [] : tacharDeclaradas(limpias, opciones.destructivasDeclaradas);
 
   for (const { nombre, sql } of limpias) {
     const falta = (que: string) => faltas.push(`${nombre}: ${que}`);
