@@ -51,3 +51,70 @@ Salida:
 montar los botones; la guardia `superficie-de-uso` se pone roja si se dejan.
 
 Veredicto: tanda 1 verde; R1–R6 mapeados.
+
+## Tandas 2-3 (T2.1–T2.4, T3.1) · resumen, PDF y Excel (lib puro) · sin commit (lo hace el leader)
+Subagente: `frontend_dev`. No hay dependencias nuevas: jsPDF y exceljs ya estaban aprobadas. No toca archivos de la tanda 5.
+
+Archivos:
+- `lib/facturas-plataforma/resumen.ts` (nuevo). Contiene `resumirFactura`, `DescuadreDeFactura`,
+  `FACTURA_DESCARGA_TEXTOS`, `fechaNumerica`, `periodoNumerico` y `nombreArchivoFactura`. Añade además `diaNumerico`,
+  `cantidadVisible` (separador de miles del dinero), `planVisible` y `periodicidadVisible`, que comparten el PDF y los
+  tests.
+- `lib/facturas-plataforma/pdf.ts` (nuevo): `construirPdfFactura(datos, resumen, logo)` → `ArrayBuffer`, y el tipo
+  `LogoDelPdf = Uint8Array`.
+- `lib/facturas-plataforma/excel.ts` (nuevo): `construirExcelFactura(datos)`. Llama a `comprobarLimiteExcel` y después
+  a `buildXlsxLibro`.
+- `lib/pdf/imprimible.ts` (nuevo): `imprimible`, movida sin cambios desde
+  `lib/whatsapp-envios/informes/transito/pdf.ts` (mod.: ahora la importa).
+- `lib/config/marca.ts` (mod.): `MARCA_FACTURA`, con el comentario PROVISIONAL.
+- `public/brand/logo-singularis.png` (nuevo): copia del provisional (rectángulo negro de 400×100).
+- Tests:
+  - `tests/unit/facturas-plataforma/{resumen,pdf,excel}.test.ts` (nuevos).
+  - `tests/components/_facturas-plataforma.ts` (mod.): añade `movimiento()` y `datosDescarga()` al fixture de
+    SLT-119.
+
+Decisiones menores (el spec no las fija):
+- La fuente embebida tiene un solo peso. La «negrita» de los valores y totales es el mismo glifo relleno y con trazo
+  (`renderingMode: fillThenStroke`).
+- El valor de una tarjeta parte en hasta dos líneas: «Sin plan asignado · sin cuota de plan» no cabe en una.
+- Si el nombre de la empresa no deja nada tras normalizarlo, el archivo se llama `factura-<n>.<ext>`, sin guion
+  colgando.
+- Un PNG que jsPDF no sabe pintar cuenta como logo que no se pudo cargar (R14).
+- Texto de la nota del desglose (R11): «Cada cargo y cada reverso, con su guía y su remisión, va en el Excel de esta
+  factura.»
+
+Mapa R → test (tandas 2-3):
+- R7 → `pdf.test.ts` «R7 — A4 vertical y cabecera con marca» (A4 en todas las páginas; logo como imagen; título,
+  número y cliente).
+- R8 → `pdf.test.ts` «R8 — las seis tarjetas» (2 casos); `resumen.test.ts` «R8 — fechas, período y plan…».
+- R9 → `resumen.test.ts` «R9: cuenta cargos y reversos…», «R9: la cuota del plan es la cuota de la emisión más la
+  primera…», «R9: sin cuota… 0.00»; `pdf.test.ts` «R9: Concepto · Cantidad · Importe, sin columna de tarifa» y
+  «R9: las cuatro filas…».
+- R10 → `resumen.test.ts` «R10: el total y los movimientos son los de la base…»; `pdf.test.ts` «R10, R13: el total
+  de la base sin redondear…».
+- R11 → `resumen.test.ts` «R11 — el desglose por día…» (3 casos, incluido el de las 23:30 en CR); `pdf.test.ts` «R11 —
+  el desglose por día en página aparte» (3 casos).
+- R12 → `pdf.test.ts` «R12 — paginación y pie»: 60 días en 3 o más páginas, cabecera repetida, 60 filas sin pérdida
+  ni duplicado, y pie con «Página n de m» en todas.
+- R13 → `pdf.test.ts` «R10, R13…» (₡ y céntimos de la base) y «R13: un carácter que la fuente no cubre sale como «?»».
+- R14 → `pdf.test.ts` «R14 — sin logo…» (con `null` y con bytes que no son PNG). Falta el lado del componente (T4.1).
+- R15 → `resumen.test.ts` «R15 — un descuadre con la base no produce archivo»: importe y conteo. Falta el lado del
+  componente (T4.1).
+- R16 → `excel.test.ts` «R16 — …» (3 casos: hoja, cabeceras, filas, guía vacía, Cobrado/Reverso, valor numérico
+  `#,##0.00` con signo).
+- R17 → `excel.test.ts` «R17 — sin movimientos»; `pdf.test.ts` «R17 — sin movimientos»; `resumen.test.ts` «R17 —…».
+- R18 → `resumen.test.ts` «R18 — el nombre de los archivos».
+
+Salida:
+- `vitest run tests/unit/facturas-plataforma/ tests/unit/pdf/informe-transito-pdf.test.ts`: 4 archivos y 57 tests, todos
+  verdes. Por archivo: resumen 15, pdf 17, excel 5 y tránsito 20.
+- `vitest related --run` sobre los archivos tocados: 935 archivos, de los que 811 pasan, 4 fallan y 120 se saltan.
+  - Tres de los rojos son de componentes y fallaron por timeout con la máquina cargada (20–60 s):
+    `DetalleMensajeroPanel`, `DetalleMovimientoCierre` y `EstadoCuenta463`. Corridos solos dan 3 archivos y 80 tests,
+    todos verdes.
+  - El cuarto es `jobs-handler-por-tipo.guardia.test.ts`: es de la tanda 5 en curso (el `job_tipo` nuevo aún sin
+    handler registrado), no de estas tandas.
+- `pnpm run typecheck`: limpio (exit 0).
+- `eslint` de los archivos tocados: limpio.
+
+Veredicto: tandas 2-3 en verde; R7–R13 y R16–R18 cubiertos en lib, y R14 y R15 en lib a falta del componente (T4.1).

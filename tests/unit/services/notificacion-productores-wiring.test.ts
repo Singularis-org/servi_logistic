@@ -522,6 +522,7 @@ describe("R26 — la feature no introduce ningun trabajo programado", () => {
       // el inventario sigue cerrado. El CUARTO aviso AGREGADO: reprogramadas de hoy retenidas por
       // un cierre sin aprobar, UNA fila por ambito (central | zona) y por rol, a las 07:00 CR.
       "reprogramadas_esperan_cierre", // ficha 462 / design §3.1 - a maestro/admin (central) y adminSatelite (zona); push admin+satelite
+      "factura_plataforma_emitida", // SLT-136 / design §7.3 - al maestro, una vez por factura cerrada; push solo maestro
     ]);
   });
 
@@ -619,6 +620,7 @@ describe("R26 — la feature no introduce ningun trabajo programado", () => {
       // esta en `notificacion_dedupe_key`; y es "central", no "global": maestro y admin cuentan el
       // ambito central, no el total del sistema.
       "reprogramadas_esperan_cierre_dia", // ficha 462 / design DE - EL AMBITO Y EL DIA, no un cierre ni una orden
+      "factura_plataforma", // SLT-136 / design §7.3 - la factura de la plataforma: se cierra una sola vez
     ]);
   });
 });

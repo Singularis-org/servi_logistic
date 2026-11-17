@@ -151,7 +151,12 @@ export type NotificacionEvento =
   //
   // ⚠️ SU ENTIDAD ES `${ambito}:${diaCR}` con `ambito ∈ { "central" } ∪ { zonaId }`: ver el
   // comentario de `reprogramadas_esperan_cierre_dia` mas abajo. La regla 276 NO cambia con esto.
-  | "reprogramadas_esperan_cierre";
+  | "reprogramadas_esperan_cierre"
+  // SLT-136 (design §7.3; R22-R24) — se cerro una factura de la plataforma de la empresa. UNA fila
+  // `alert` al rol `maestro` y a nadie mas (ni admin ni superadmin), emitida por el job
+  // `factura_plataforma_aviso`. Texto con numero y periodo, SIN montos (146 §4.6); los montos van en
+  // el correo. Push solo al maestro.
+  | "factura_plataforma_emitida";
 
 /** Entidad de origen referenciada (referencia polimorfica, sin FK — design §1.2). */
 export type NotificacionEntidadTipo =
@@ -351,7 +356,10 @@ export type NotificacionEntidadTipo =
   // tiene destino `bodega_central`—, porque es exactamente lo que ven en `/cierres-admin`
   // (`resolveAlcance`). Un aviso que dijera 5 y una pantalla con 3 marcas quedaria desacreditado el
   // primer dia (requirements, decision 3). El literal nunca colisiona con un uuid de zona.
-  | "reprogramadas_esperan_cierre_dia";
+  | "reprogramadas_esperan_cierre_dia"
+  // SLT-136 (design §7.3) — la entidad es la fila de `factura_plataforma`. Una factura se cierra una
+  // sola vez, asi que la clave unica da UN aviso por factura para siempre (R22, R27).
+  | "factura_plataforma";
 
 /**
  * DTO que viaja al cliente (design §3.1). `read` NO es una columna de `notificacion`:

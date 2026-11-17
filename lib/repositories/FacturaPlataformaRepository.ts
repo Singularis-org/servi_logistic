@@ -3,6 +3,8 @@ import { z } from "zod";
 
 import { comoPlataforma, conEmpresa } from "@/lib/db/contexto-empresa";
 import type { IFacturaPlataformaRepository } from "@/lib/interfaces/repositories/IFacturaPlataformaRepository";
+import { encolarEnEmpresas } from "@/lib/repositories/_shared/encolar-en-empresas";
+import { JobRepository } from "@/lib/repositories/JobRepository";
 import type {
   CuotaDeLaFactura,
   DatosDescargaFactura,
@@ -18,7 +20,8 @@ import { tipoCobroSchema } from "@/lib/types/planes";
 // SLT-118 (design §2.5, §3, §4) — las facturas de la plataforma. Ningún método escribe la tabla: el cierre
 // lo hace `factura_plataforma_cerrar`, del dueño, con `REVOKE EXECUTE … FROM PUBLIC`. Por eso corre como
 // plataforma (sin `servi_app`), igual que el cambio de plan que llama a `factura_plataforma_tomar_cambio`.
-// `FichaJira` no admite `SLT` (deuda D29): lleva `SL-24`, la ficha de los planes.
+// `FichaJira` no admite `SLT` (deuda D29): lleva `SL-24`, la ficha de los planes. SLT-136 (§7.1): `cerrar`
+// encola además, en su misma transacción, el aviso `factura_plataforma_aviso` de cada factura que cerró.
 //
 // `deLaEmpresa` (design §2.6; R21, R24) es lo contrario: corre en la empresa de la sesión, como `servi_app`,
 // sin `comoPlataforma`. Las cerradas las filtra la RLS además del `WHERE`; las no cerradas solo salen por
@@ -31,11 +34,46 @@ import { tipoCobroSchema } from "@/lib/types/planes";
 // SLT-119 (design §2): las líneas del detalle salen de la traza de SLT-85 (`cobroPlataformaTraza`), con la página
 // y su total en una transacción `repeatable read`. `$transaction` es opcional porque el tipo del cliente de una
 // transacción (`Prisma.TransactionClient`) no lo declara; sin él, ya se está dentro de una.
-type FacturaPlataformaPrismaClient = Pick<PrismaClient, "$queryRaw" | "organizacion" | "cobroPlataformaTraza"> & {
+type FacturaPlataformaPrismaClient = Pick<
+  PrismaClient,
+  "$queryRaw" | "$executeRaw" | "organizacion" | "cobroPlataformaTraza"
+> & {
   $transaction?: PrismaClient["$transaction"];
 };
 type LectorDeTraza = Pick<PrismaClient, "cobroPlataformaTraza">;
 type LectorDeDescarga = Pick<PrismaClient, "cobroPlataformaTraza" | "$queryRaw">;
+type ClienteDelCierre = Pick<PrismaClient, "$queryRaw" | "$executeRaw">;
+
+/** `dedupe_key` del aviso de una factura cerrada (SLT-136 §7.1): un trabajo por factura, aunque se encole dos veces. */
+export function dedupeAvisoFactura(facturaId: string): string {
+  return `factura_plataforma_aviso:${facturaId}`;
+}
+
+/**
+ * SLT-136 (§7.1, R21): cierra y, en la MISMA transacción, encola el aviso de cada factura que cerró esta llamada.
+ * La función del dueño fija `cerrada_at = p_ahora`, así que las de esta llamada son las cerradas con ese instante.
+ * Si el cierre no se confirma, no queda ningún trabajo; si se repite, la `dedupe_key` no duplica nada.
+ */
+async function cerrarYEncolarAvisos(c: ClienteDelCierre, organizacionId: string, ahora: Date): Promise<number> {
+  // La función toma la empresa en FOR UPDATE y el candado dura hasta el commit: dos cierres, o un cierre y un
+  // cambio de plan, de la misma empresa se serializan (SLT-118 R11).
+  const [fila] = await c.$queryRaw<{ cerradas: number }[]>`
+    SELECT factura_plataforma_cerrar(${organizacionId}, ${comoTimestamp(ahora)}::timestamp) AS "cerradas"`;
+  const cerradas = await c.$queryRaw<{ id: string }[]>`
+    SELECT "id" FROM "factura_plataforma"
+     WHERE "organizacion_id" = ${organizacionId} AND "estado" = 'cerrada'
+       AND "cerrada_at" = ${comoTimestamp(ahora)}::timestamp
+     ORDER BY "numero"`;
+  const jobs = new JobRepository(c);
+  await encolarEnEmpresas(
+    c,
+    cerradas.map(({ id }) => ({
+      organizacionId,
+      encolar: () => jobs.enqueue("factura_plataforma_aviso", { facturaId: id }, { dedupeKey: dedupeAvisoFactura(id) }, c),
+    })),
+  );
+  return fila?.cerradas ?? 0;
+}
 
 /** El instante como `TIMESTAMP` sin zona en UTC, como lo guarda la base (la forma de `PlanesRepository`). */
 function comoTimestamp(instante: Date): string {
@@ -252,13 +290,12 @@ export class FacturaPlataformaRepository implements IFacturaPlataformaRepository
   }
 
   cerrar(organizacionId: string, ahora: Date): Promise<number> {
-    return comoPlataforma("SL-24", "SLT-118: cerrar las facturas de la plataforma de una empresa (R3, R11)", async () => {
-      // Una sola sentencia: su propia transacción. La función toma la empresa en FOR UPDATE, así que dos
-      // cierres, o un cierre y un cambio de plan, de la misma empresa se serializan (R11).
-      const [fila] = await this.prisma.$queryRaw<{ cerradas: number }[]>`
-        SELECT factura_plataforma_cerrar(${organizacionId}, ${comoTimestamp(ahora)}::timestamp) AS "cerradas"`;
-      return fila?.cerradas ?? 0;
-    });
+    return comoPlataforma("SL-24", "SLT-118: cerrar las facturas de la plataforma de una empresa (R3, R11)", () =>
+      // SLT-136 R21: cierre y avisos se confirman o se pierden juntos. Sin `$transaction`, ya se está en una.
+      this.prisma.$transaction === undefined
+        ? cerrarYEncolarAvisos(this.prisma, organizacionId, ahora)
+        : this.prisma.$transaction((tx) => cerrarYEncolarAvisos(tx, organizacionId, ahora)),
+    );
   }
 
   async deLaEmpresa(): Promise<FacturaPlataformaDTO[]> {

@@ -264,6 +264,8 @@ export const MODULO_POR_JOB: Readonly<Record<JobTipo, Destino>> = {
   plan_aplicar_cambio_empresa: "nucleo",
   // SLT-118 (design §4.1): el cierre de las facturas de la plataforma; de plataforma, sin módulo.
   factura_plataforma_cerrar: "nucleo",
+  // SLT-136 (design §7.2, R30): el aviso de una factura cerrada; ningún módulo apagado lo descarta.
+  factura_plataforma_aviso: "nucleo",
 };
 
 /** §3.4 — carpetas de `app/api/cron/`. */

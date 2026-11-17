@@ -50,6 +50,7 @@ describe("R32 — el drenador resuelve el handler de geocodificacion y no lo re-
     expect([...handlers.keys()].sort()).toEqual([
       "analitica_invalidacion_cache", // feature 128: PUNTUAL, no va en buildRecurrencias
       "analitica_rollup_diario", // feature 124
+      "factura_plataforma_aviso", // SLT-136 (design §7.2): el aviso de UNA factura cerrada (PUNTUAL, con empresa)
       "factura_plataforma_cerrar", // SLT-118 (design §4.2): el cierre horario (HH:10) de las facturas de la plataforma (RECURRENTE)
       "geocodificacion",
       "liberar_reprogramadas",

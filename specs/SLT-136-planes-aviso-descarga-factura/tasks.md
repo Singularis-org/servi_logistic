@@ -66,17 +66,17 @@
 
 ## Tanda 5 — Migración, outbox del cierre, campanita y push (backend)
 
-- [ ] **T5.1** Migración `db/migrations/20261117120000_factura_plataforma_aviso_enums/` (`migration.sql` y `down.sql`
+- [x] **T5.1** Migración `db/migrations/20261117120000_factura_plataforma_aviso_enums/` (`migration.sql` y `down.sql`
   con `quitar_valores_de_enum_136`) y los tres valores en `db/schema.prisma` (§1). Renumerar si `dev` avanzó.
   *Hecho:* `tests/integration/db/factura-plataforma-aviso-migration.test.ts` en verde; los inventarios de enums de §9
   ampliados a mano y en verde; `prisma generate` limpio.
-- [ ] **T5.2** Mover `encolarEnEmpresas` a `lib/repositories/_shared/encolar-en-empresas.ts` y hacer que
+- [x] **T5.2** Mover `encolarEnEmpresas` a `lib/repositories/_shared/encolar-en-empresas.ts` y hacer que
   `PlanesRepository` lo importe. Mismo comportamiento.
   *Hecho:* los tests de planes que encolan avisos siguen en verde.
-- [ ] **T5.3** `FacturaPlataformaRepository.cerrar` con transacción y outbox (§7.1). Depende de T5.1 y T5.2.
+- [x] **T5.3** `FacturaPlataformaRepository.cerrar` con transacción y outbox (§7.1). Depende de T5.1 y T5.2.
   *Hecho:* `tests/integration/db/factura-plataforma-cierre-aviso.test.ts` en verde (R21, R25), y
   `factura-plataforma-cierre.test.ts` sigue en verde.
-- [ ] **T5.4** `[P]` La campanita y el push (§7.3). Depende de T5.1.
+- [x] **T5.4** `[P]` La campanita y el push (§7.3). Depende de T5.1.
   - Evento y entidad en `lib/types/notificacion.ts`.
   - `textoFacturaEmitida` y `emitirFacturaEmitida` en `emitir.ts`.
   - `emitirFacturaEmitidaReal` en `notificadores.ts`.
@@ -84,7 +84,7 @@
 
   *Hecho:* `emitir-factura-emitida.test.ts` nuevo y verde (R22, R24). Ampliados y en verde: `catalogo-avisos.test.ts`,
   `push-elegibles.test.ts`, `eventos-envio.test.ts` y `notificacion-notificadores-reales.test.ts` (R23).
-- [ ] **T5.5** `lib/planes/jobs-factura-aviso.ts` (manejador y `buildDepsAvisoFactura`, por ahora sin correo: los pasos
+- [x] **T5.5** `lib/planes/jobs-factura-aviso.ts` (manejador y `buildDepsAvisoFactura`, por ahora sin correo: los pasos
   1–4 de §7.2). Se registra en `app/api/cron/procesar-jobs/route.ts` y en `lib/modulos/reparto.ts`
   (`MODULO_POR_JOB`). Depende de T5.4.
   *Hecho:* `tests/unit/planes/jobs-factura-aviso.test.ts` (casos de aviso, R22, R24, R25, R28, R30) y
