@@ -44,7 +44,8 @@ B5 `/historico/acciones`, B6 `/wallet` (caja), B7 estado de cuenta de tienda y d
 (`EstadoCuenta`), B8 `/mi-wallet` (el mismo `EstadoCuenta`).
 - Enter en el buscador busca **ya**; una lectura de guía (dígitos, URL del QR, «#») se deja como el
   número; la siguiente lectura **reemplaza** el término.
-- Botón de cámara dentro del campo, junto a la «X».
+- Botón de cámara de 44 px **aparte**, junto al campo (no dentro); campo de 44 px de alto; texto de
+  ayuda debajo; nombre accesible propio de cada listado (DC2).
 - B2: guía exacta como en B1.
 
 **Fuera:**
@@ -60,6 +61,7 @@ B5 `/historico/acciones`, B6 `/wallet` (caja), B7 estado de cuenta de tienda y d
 
 | # | Decisión | Quién / cuándo |
 | --- | --- | --- |
+| DC2 | Ajustar la UI al canvas aprobado antes del PR: (1) la cámara es un botón aparte de 44 px, fuera del campo (cambia R600); (2) texto de ayuda debajo del campo, el del canvas; (3) el campo mide 44 px de alto; (4) nombre accesible del campo como en el canvas: «Buscar órdenes» en `/ordenes` y el equivalente en cada listado. Recolección, devoluciones y rechazos NO entran: van a SLT-194 «Buscar escaneando en recolección, devoluciones y rechazos». Lo cubren R600, R690, R691 y R692. | Carlos, 2026-11-16 |
 | DC1 | Una guía escaneada que no está en el listado de la satélite cae a la búsqueda normal por contención (puede traer parecidas), como hoy en `/ordenes`. Se descarta buscar solo esa guía con lista vacía (exigía un filtro nuevo en la URL y en las descargas de los dos listados). Lo cubren D3, R606 y R608. | Carlos, 2026-11-14 |
 
 ## Decisiones (tomadas aquí)
@@ -73,8 +75,9 @@ B5 `/historico/acciones`, B6 `/wallet` (caja), B7 estado de cuenta de tienda y d
 
 ## Requisitos (EARS)
 
-- **R600** — Los buscadores B1-B8 DEBEN mostrar, dentro del campo, un botón con nombre accesible
-  «Escanear con cámara». El buscador de `/cierres-admin` y los buscadores sin guía NO DEBEN mostrarlo.
+- **R600** — Los buscadores B1-B8 DEBEN mostrar, junto al campo y FUERA de él, un botón de 44 px con
+  nombre accesible «Escanear con cámara» (DC2). El buscador de `/cierres-admin` y los buscadores sin
+  guía NO DEBEN mostrarlo.
 - **R601** — CUANDO se pulsa Enter en un buscador B1-B8 y lo escrito es una guía (dígitos, URL
   `/paquete/<n>` o `#<n>`, con espacios o caracteres de control en los extremos), el campo DEBE pasar
   a contener solo el número y el listado DEBE buscar ese número en ese momento, sin esperar el
@@ -96,6 +99,14 @@ B5 `/historico/acciones`, B6 `/wallet` (caja), B7 estado de cuenta de tienda y d
   descarga y en la comprobación de vigencia de la selección.
 - **R608** — SI la orden con esa guía es de otra zona, de otra bodega o de otra empresa, ENTONCES
   NO DEBE aparecer en B2 ni activar la búsqueda exacta.
+- **R690** — Los buscadores B1-B8 DEBEN mostrar debajo del campo el texto «Escanea o escribe la guía
+  y pulsa Enter. Lo leído por la pistola o por la cámara (QR o código de barras) se busca igual.», y
+  el campo DEBE tenerlo como descripción accesible (DC2).
+- **R691** — En los buscadores B1-B8 el campo, el botón de cámara, «Filtros» y «Limpiar todo» DEBEN
+  medir 44 px de alto (DC2). Los buscadores sin `escaneo` NO cambian de alto.
+- **R692** — El campo de cada buscador B1-B8 DEBE tener un nombre accesible propio del listado:
+  «Buscar órdenes» en `/ordenes` (DC2). *Pendiente de OK del leader: toca tests fuera de
+  `## Archivos esperados`, ver Preguntas abiertas.*
 - **R609** — MIENTRAS no se pulse Enter ni la cámara, los buscadores DEBEN comportarse como hoy
   (debounce, `minChars`, «X» de limpiar); y solo B1-B8 DEBEN pasar `escaneo`.
 
@@ -106,7 +117,10 @@ test de integración no está probado. En los negativos, guías imposibles por c
 
 | R | Test |
 | --- | --- |
-| R600 | `tests/unit/components/buscador-filtros-escaneo.test.tsx` (nuevo) — con `escaneo`: `getByRole("button", { name: "Escanear con cámara" })`; sin `escaneo`: `queryByRole` es `null`. |
+| R600 | `tests/unit/components/buscador-filtros-escaneo.test.tsx` (nuevo) — con `escaneo`: `getByRole("button", { name: "Escanear con cámara" })`, fuera del contenedor del campo y con `size-11`; sin `escaneo`: `queryByRole` es `null`. |
+| R690 | `tests/unit/components/buscador-filtros-escaneo.test.tsx` — el texto de ayuda literal está y es la descripción accesible del campo; sin `escaneo` no está. |
+| R691 | `tests/unit/components/buscador-filtros-escaneo.test.tsx` — con `escaneo` el contenedor del campo, la cámara y «Filtros» llevan `h-11`/`size-11`; sin `escaneo`, `h-8`. |
+| R692 | Pendiente (ver Preguntas abiertas). |
 | R601 | `tests/unit/components/buscador-filtros-escaneo.test.tsx` — escribir `https://app.ejemplo.test/paquete/1024` + Enter: el campo vale `1024` y `onChange("1024")` se llama antes de avanzar los timers del debounce; ídem `" #1024\r"`. `tests/unit/components/ordenes-listado-buscador.test.tsx` — B1 recibe `1024`. |
 | R602 | `tests/unit/components/buscador-filtros-escaneo.test.tsx` — `Ana Pérez` + Enter: `onChange("Ana Pérez")` sin avanzar timers; con `minChars=3`, `ab` + Enter: `onChange` no recibe `ab`. |
 | R603 | `tests/unit/components/buscador-filtros-escaneo.test.tsx` — tras Enter, `selectionStart === 0` y `selectionEnd === "1024".length`; escribir `2048` + Enter deja `2048`, nunca `10242048`. |
@@ -135,6 +149,8 @@ test de integración no está probado. En los negativos, guías imposibles por c
   Interfaz del repositorio actualizada. *Hecho:* R606-R608 en verde contra Postgres real; los tests
   existentes de la satélite (`recepcion-satelite-*.test.ts`, `satelite-paginado-where.test.ts`,
   `satelite-*-real.test.ts`) sin tocar y en verde.
+- [ ] **T4b — Ajustes del canvas (DC2).** R600 (cámara aparte de 44 px), R690 (ayuda), R691 (44 px);
+  R692 (nombre accesible) pendiente del OK del leader. *Hecho:* R600, R690, R691 en verde.
 - [ ] **T5 — Dispositivo.** En Preview: en `/ordenes` y en la satélite, leer una etiqueta con la
   pistola (CODE128 y QR) en el buscador, y luego otra sin tocar; con la cámara del teléfono, una.
   Nota en `progress/features/SLT-160.md`. *Hecho:* nota escrita.
@@ -172,6 +188,17 @@ test de integración no está probado. En los negativos, guías imposibles por c
 - `tests/components/QrScanner.test.tsx`
 
 ## Preguntas abiertas
+
+- **R692 (DC2 punto 4), para el leader:** B3-B7 ya tienen nombre propio («Buscar en el registro»,
+  «Buscar conversación», «Buscar en el libro», el de `/novedades`). Solo cambian B1 («Buscar» →
+  «Buscar órdenes») y B2 («Buscar» → ¿«Buscar órdenes de la bodega»?, el canvas no lo dibuja). B1 obliga a
+  tocar tres tests fuera de la lista, que buscan el campo por `name: "Buscar"`:
+  `tests/unit/components/ordenes-listado-{filtros,orden,vistas}.test.tsx` (más
+  `ordenes-listado-buscador.test.tsx`, que sí está en la lista). Numeración R690-R692: libre en `dev`
+  (R610-R689 ya usados); a confirmar.
+- **R691, alcance:** los controles de filtro que monta cada pantalla (`children`: Estado, Zona, Fecha…) y
+  el botón de descarga de `DataTable` siguen a 32 px; el canvas los dibuja a 44 px. Igualarlos toca
+  componentes fuera de la lista.
 
 - **Ruta (para el leader):** como SLT-153 «Cabecera del detalle del cierre con rótulos y folio
   buscable», toca un `WHERE` de servidor (B2). No toca esquema, migraciones, dinero ni permisos, así
