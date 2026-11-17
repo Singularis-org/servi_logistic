@@ -258,6 +258,30 @@ export function grupoDelLugar(
   return null;
 }
 
+/** SLT-48 (P3): el grupo de tarifas se busca desde el nivel 3; mas arriba la orden va sin grupo. */
+export const PROFUNDIDAD_MINIMA_DEL_GRUPO = 3;
+
+/**
+ * SLT-48 (design §6, R31, P3) — el lugar con el que se busca el grupo de tarifas de una orden
+ * (`ParTarifa.distritoId`, nombre interno heredado): el propio nodo si esta en el nivel 3 o mas
+ * hondo; si no, `null` (sin grupo, tarifa base: SLT-89 R20).
+ *
+ * Para una orden vieja de Costa Rica da lo mismo que leer `orden.distrito_id`: su nodo es el
+ * distrito (profundidad 3) o, sin distrito, el canton (profundidad 2 → `null`). Un nodo que no
+ * esta en el catalogo tambien da `null`: no se inventa un grupo.
+ */
+export function distritoDeTarifa(cat: CatalogoGeografico, nodoId: string | null): string | null {
+  if (nodoId === null) return null;
+  const n = cat.porId.get(nodoId);
+  return distritoDeTarifaDelNodo(n ?? null);
+}
+
+/** La misma regla, cuando ya se tiene el nodo (o su profundidad) sin el catalogo. */
+export function distritoDeTarifaDelNodo(n: { id: string; profundidad: number } | null): string | null {
+  if (n === null) return null;
+  return n.profundidad >= PROFUNDIDAD_MINIMA_DEL_GRUPO ? n.id : null;
+}
+
 /**
  * SLT-89 (R16, R43, R45; design §5.4) — `true` si las dos listas tienen los mismos elementos, sin
  * importar el orden ni los repetidos. Compara el «antes» que mostro la pantalla con lo que hay en la
