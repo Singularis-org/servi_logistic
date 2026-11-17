@@ -16,7 +16,7 @@ mismo.
   `ResumenRecepcion`) y desenlace, reductor, `contadores`, `horaLectura` (`HH:mm:ss`) y
   `lineaDeEstado`. *Hecho:* R586 en verde en `tests/unit/utils/sesion-escaneo.test.ts` con literales a
   mano (incluido «—» sin `resumen`).
-- [ ] **T2 — Llegada y sesión (depende de T1).** `hooks/useEntradaEscaneo.ts`: opción `alLlegar`
+- [x] **T2 — Llegada y sesión (depende de T1).** `hooks/useEntradaEscaneo.ts`: opción `alLlegar`
   (opcional; sin ella, nada cambia). `hooks/useSesionEscaneo.ts`: `registrar` / `procesar` /
   `reintentar`, cola FIFO de filas pendientes, cadena de promesas única, `alCerrarConRecepcion` al
   desmontar. *Hecho:* R585 y R587 en verde en `tests/unit/hooks/useSesionEscaneo.test.ts`; los casos
