@@ -1,226 +1,250 @@
 # SLT-159 «Escaneo continuo en recepciones y recogidas» — design
 
+**Rebanada (b) de DC7** (acotado el 2026-11-16): recepciones de bodega y tienda, página y diálogo
+(R580-R594, R610-R613, R615). (a) está hecha por SLT-167 «Recepción: destinatario y tienda en la
+respuesta»; (c) es SLT-168 «Escaneo continuo en las recogidas del mensajero», que reutiliza las
+piezas de cliente de aquí.
+
 ## Lo que ya existe
 
-Buscado en `feature_list.json` (todos los estados), `specs/` y el código: `escaneo continuo`,
-`pistola`, `EscanerGuiaCard`, `QrScanner`, `entregado`, `ultimaRecibida`, `cola`. El grafo no tiene
-indexado este worktree (`index_status`: proyecto no encontrado); se usó Grep/Read.
+Buscado el 2026-11-16 en `feature_list.json`, `specs/` y el código de este worktree (parte de `dev`
+con SLT-167 y SLT-160 mergeadas). El grafo no se consultó: se leyó con Grep/Read.
 
 | Qué apareció | Dónde | Qué se hace con ello |
 | --- | --- | --- |
-| SLT-158 «Entrada de escaneo para pistola» (spec) | `specs/SLT-158-entrada-escaneo-pistola/requirements.md` | Se **reutiliza**: su cola en orden (`hooks/useEntradaEscaneo.ts`), foco, limpieza, tono, orden por puntero y el contrato `acierto / error` de la tarjeta. Esta ficha no los rehace. |
-| SLT-157 «Guía única leída por cámara o pistola» (spec) | `specs/SLT-157-guia-unica-camara-pistola/requirements.md` | `leerGuia` decide «Código inválido» (R584). |
-| `EscanerModal`, `EscanerGuiaCard`, `QrScanner` | `components/shared/` | Se amplían. `EscanerModal` sigue arrancando cerrado y desmontando al cerrar (eso es lo que apaga la cámara y descarta la sesión, R591). |
-| Pestillo `entregado` de la cámara | `QrScanner.tsx:82`, `:108-113` | Es lo que hoy cierra la cámara tras leer. En modo continuo se sustituye por el filtro «mismo texto en 3 s» (R589). |
-| Línea `ultimaRecibida` / `exito` | `EscanerRecepcionBodegaCentral.tsx:33-35`, `EscanerGuiaCard.tsx:167-` | La lista de la sesión la sustituye en las tres superficies de recepción. |
-| Barra de progreso, faltantes y aviso persistente de C5 | `cierre-confirmacion-fisica.tsx:612-641` | Se queda tal cual; C5 solo gana la cámara continua (R588). |
-| Traducción de cada respuesta a texto | `notificar` en las tres superficies (p. ej. `EscanerRecepcionBodegaCentral.tsx:38-81`) | Los motivos de «No se pudo recibir» salen de ahí: se extrae la traducción a una función por superficie y la usan el toast (guía suelta, si quedara) y la fila. |
-| SLT-69 «Escáner rechaza guías asignadas después de abrir la pantalla» | board, `done` | No solapa: trata la lista de recoger del mensajero. |
-| SLT-156 «PWA de los mensajeros: tablas usables en el móvil» | board, `in_progress` | Su escáner colapsado «Escanear o escribir guía» abre `EscanerModal`. El modo continuo vive en el **contenido** del modal (la tarjeta), no en el disparador: M1 y M2 son continuos con cualquier disparador, el de hoy o el de SLT-156 (DC4). |
-| `useRecogerPorGuia` (SLT-69 relectura, feature 261 reserva) y `useRecolectarPorGuia` | `app/(app)/mis-asignaciones/_components/`, `app/(app)/recoleccion/_components/` | Se conservan sus reglas (relectura una vez, reserva para otro día sin llamar). Cambia la salida: devuelven el desenlace en vez de `boolean` + toast, y sueltan su `if (procesando) return` (la cola de SLT-158 serializa). |
+| SLT-158 «Entrada de escaneo para pistola» (`done`) | `hooks/useEntradaEscaneo.ts` | Se **reutiliza**: cola en orden (`recibirLectura`, una a la vez), campo nunca `disabled`, limpieza, último error, marca, tono (`alTerminar`) y `usePunteroFino()` (`useSyncExternalStore`, en servidor = táctil). Gana **una** opción: `alLlegar` (ver Contratos). |
+| SLT-157 «Guía única leída por cámara o pistola» | `leerGuia` | Decide «Código inválido» (R584). |
+| SLT-167 «Recepción: destinatario y tienda en la respuesta» (`done`, PR #186) | `ResumenRecepcion { destinatario: string; tienda: string }` en `lib/interfaces/repositories/IOrdenRepository.ts:1362`; `resumen?: ResumenRecepcion` en `ok` y `ya_recibida` de `lib/types/recepcion-bodega-central.ts:30-34`, `recepcion-origen.ts:21-24`, `recepcion-satelite.ts:211-216` | Se **consume** tal cual. Es **opcional**: ausente → «—» en la fila (R581) y línea de estado sin « · {destinatario}» (R615). Ningún archivo de servidor en esta rebanada. |
+| SLT-160 «Buscar escaneando en los listados» (`done`) | `EscanerModal` prop `soloIcono` (botón outline de solo icono); `QrScanner` prop `encendidaAlMontar` | `encendidaAlMontar` se reutiliza en la página: el botón compacto «Escanear con cámara» monta el visor ya encendido (patrón D4 de SLT-160). `soloIcono` no se usa aquí. |
+| `EscanerModal` | `components/shared/EscanerModal.tsx` | **No cambia.** Monta y desmonta el contenido al abrir/cerrar; eso apaga la cámara y descarta la sesión (R591), y el desmontaje es el «al cerrar» de R592. Su slot `acciones` aloja «Recibir paquetes». |
+| `QrScanner` con `disabled` | `QrScanner.tsx:165` | Con `disabled` pinta el botón en vez del visor: **desmontaría la cámara continua**. `EscanerGuiaCard` ya no se lo pasa (SLT-158); el modo continuo tampoco debe pasarlo. |
+| Pestillo `entregado` | `QrScanner.tsx:99`, `:128-133` | Es lo que hoy cierra la cámara tras leer. En modo continuo se sustituye por el filtro «mismo texto en 3 s» (R589). |
+| Línea `exito` / `ultimaRecibida` y línea de error de la tarjeta | `EscanerGuiaCard.tsx:248-263`; `EscanerRecepcionBodegaCentral.tsx:42` y equivalentes | En modo continuo la lista los sustituye (`lineaDeError={false}`, sin `exito`). En guía suelta, igual que hoy. |
+| Barra de progreso, faltantes y aviso de C5 | `cierre-confirmacion-fisica.tsx:684` (`EscanerGuiaCard` sin `EscanerModal`) | Se queda tal cual; C5 solo gana `continuo` en su tarjeta (R588). |
+| Traducción de cada respuesta a texto | `notificar` en las tres superficies (p. ej. `EscanerRecepcionBodegaCentral.tsx:54-92`) | Se parte en `desenlace(result)` puro (los motivos son los textos de hoy) + el toast, que solo queda en guía suelta. |
+| Disparadores de hoy | `OrdenesListado.tsx:1405-1423` (`EscanerModal` con `acciones` = carga masiva); `EscanerRecepcion.tsx:117` (el `EscanerModal` vive dentro de la superficie satélite, montada por `PorRecibirModule.tsx:76` y `RecepcionSateliteModule.tsx:478`) | «Recibir paquetes» va en el `acciones` del mismo `EscanerModal`. En la satélite lo pone `EscanerRecepcion` (lee `usePathname()` para `desde`), así **`PorRecibirModule` y `RecepcionSateliteModule` no cambian**. |
+| Gate de rol de página | `recepcion-satelite/por-recibir/page.tsx:27-32`; `AppPage` (`components/shared/AppPage.tsx`) | Se copia la forma. `AppPage` es el único envoltorio de página: la página continua lo usa. |
+| SLT-168 «Escaneo continuo en las recogidas del mensajero» (`pending`) | `feature_list.json` | Consumirá `sesion-escaneo.ts`, `useSesionEscaneo`, `EscaneoContinuo` y `EscanerGuiaCard continuo`. Por eso aquí son genéricos (sin «recibir» cableado en el tipo de fila más allá de los textos). |
 
-Nada del board duplica esta ficha.
+Nada del board duplica esta rebanada.
 
 ## Modelo de datos
 
-**Ninguno.** Sin tablas, sin migraciones, sin `down.sql`, sin cambios en `db/schema.prisma`. La
-sesión vive en memoria del cliente mientras el modal está abierto y se pierde al cerrarlo (R591), a
-propósito: no hay nada que auditar que no quede ya en el historial de la orden que escribe cada
-recepción.
+**Ninguno.** Sin tablas, migraciones, `down.sql` ni cambios en `db/schema.prisma`. La sesión vive en
+memoria del cliente mientras el modal o la página están montados y se pierde al desmontar (R591), a
+propósito: lo recibido ya queda en el historial de cada orden.
 
 - **Multi-empresa / RLS:** no cambia nada. Cada lectura llama a la Server Action de hoy, que resuelve
-  la empresa desde la sesión y filtra por `organizacion_id`.
+  la empresa desde la sesión; el `resumen` ya viene acotado a la empresa (SLT-167 R714).
 - **Autorización:** la de hoy. El padre solo monta cada recepción para su rol (C1 maestro/admin, C2
-  adminTienda, C3/C4 adminSatelite) y cada Server Action revalida en servidor (R16 de la 138 y
-  equivalentes). Ningún módulo nuevo que encender.
-- **País:** nada depende del país (ni moneda, ni geografía, ni impuestos).
+  adminTienda, C3/C4 adminSatelite) y cada Server Action revalida en servidor. Las dos páginas nuevas
+  validan rol en el Server Component antes de nada (R612). Ningún módulo que encender.
+- **País:** nada depende del país. La columna «Hora» es la hora del **dispositivo** que lee
+  (`Intl.DateTimeFormat` sin `timeZone`, `hourCycle: "h23"`, `HH:mm:ss`): es el reloj de quien
+  escanea en ese momento, no se guarda ni se compara con datos del servidor.
 
 ## Rutas y contratos
 
-Sin Server Actions nuevas; dos páginas nuevas y el resultado de las tres acciones ampliado (ver
-«Página de recepción en escritorio»). Se usan las acciones de hoy:
+Sin Server Actions nuevas ni cambios de servidor. Se usan las de hoy:
 
 | Superficie | Acción | Respuestas |
 | --- | --- | --- |
-| C1 `/ordenes` | `recibirEnBodegaCentralPorQr({ numGuia })` (`lib/actions/recepcion-bodega-central`) | `ok` (con `estado`), `ya_recibida`, `estado_invalido`, `no_encontrada`, `validation_error`, `forbidden`, `unauthenticated`, `conflict` |
-| C2 `/ordenes` | `recibirEnOrigenPorQr` | las anteriores + `tienda_ajena` |
+| C1 `/ordenes`, `/ordenes/recibir` | `recibirEnBodegaCentralPorQr({ numGuia })` | `ok` (`estado`, `resumen?`), `ya_recibida` (`resumen?`), `estado_invalido`, `no_encontrada`, `validation_error`, `forbidden`, `unauthenticated`, `conflict` |
+| C2 `/ordenes`, `/ordenes/recibir` | `recibirEnOrigenPorQr` | las anteriores + `tienda_ajena` |
 | C3/C4 `/recepcion-satelite/*` | `recibirPorQr` | las de C1 + `zona_ajena`, `sin_zona` |
-| M1 `/mis-asignaciones` (mensajero) | `recogerAsignaciones({ ordenIds })` vía `useRecogerPorGuia` (y `listarMisAsignaciones` para la relectura) | `ok`, `conflict` (con `reservada_para_otro_dia`), `forbidden`, `unauthenticated`, `validation_error`…; más los rechazos de cliente «no está entre tus órdenes» y «reservada para otro día» |
-| M2 `/recoleccion` (mensajero) | acción de recolección vía `useRecolectarPorGuia` | éxito, ya recolectada, no está entre tus órdenes, motivo propio, `forbidden`, `unauthenticated`, `validation_error` |
-
-Autorización de M1/M2: la de hoy (solo el mensajero ve esas pantallas; las acciones revalidan rol y
-pertenencia de la orden en servidor). Sin cambios de servidor.
 
 ### Contratos internos nuevos (cliente)
 
 ```ts
 // lib/utils/sesion-escaneo.ts — puro, sin React (R581-R587).
+import type { ResumenRecepcion } from "@/lib/interfaces/repositories/IOrdenRepository";
+
 type EstadoFila =
   | { tipo: "recibiendo" }
-  | { tipo: "recibida" }
-  | { tipo: "ya_recibida" }
+  | { tipo: "recibida"; resumen?: ResumenRecepcion }
+  | { tipo: "ya_recibida"; resumen?: ResumenRecepcion }     // respuesta del servidor
+  | { tipo: "repetida_en_sesion"; resumen?: ResumenRecepcion } // R585, sin llamar; se pinta «Ya recibida»
   | { tipo: "no_encontrada" }
   | { tipo: "no_se_pudo"; motivo: string }
-  | { tipo: "codigo_invalido" }
-  | { tipo: "repetida_en_sesion" };
+  | { tipo: "codigo_invalido" };
 
-interface FilaLectura { id: number; leido: string; numGuia: number | null; estado: EstadoFila }
+interface FilaLectura { id: number; hora: Date; leido: string; numGuia: number | null; estado: EstadoFila }
 
 /** Lo que cada superficie traduce desde la respuesta de su acción. */
 type DesenlaceRecepcion =
-  | { tipo: "recibida" } | { tipo: "ya_recibida" } | { tipo: "no_encontrada" }
+  | { tipo: "recibida"; resumen?: ResumenRecepcion }
+  | { tipo: "ya_recibida"; resumen?: ResumenRecepcion }
+  | { tipo: "no_encontrada" }
   | { tipo: "no_se_pudo"; motivo: string };
 
-function contadores(filas: readonly FilaLectura[]): { recibidas: number; repetidas: number; noEncontradas: number }; // rótulos del canvas: «Recibidas», «Repetidas», «No encontradas»
-function textoContador(n: number, singular: string, plural: string): string; // solo M1/M2 (R597, propuesta abierta); la recepción usa rótulo + número (R586)
+function contadores(filas: readonly FilaLectura[]): { recibidas: number; repetidas: number; noEncontradas: number };
+function horaLectura(d: Date): string;              // «HH:mm:ss», hora del dispositivo
+function lineaDeEstado(fila: FilaLectura): string;  // R615
+```
+
+- `repetidas` = filas `ya_recibida` + `repetida_en_sesion` (las dos se pintan «Ya recibida», R585/R586).
+- «Destinatario» y «Tienda» salen de `estado.resumen` solo en `recibida`, `ya_recibida` y
+  `repetida_en_sesion` (esta copia el `resumen` de la fila anterior de esa guía); en todo lo demás, o
+  si `resumen` falta, «—» (R581).
+
+```ts
+// hooks/useEntradaEscaneo.ts — una opción nueva, opcional (SLT-158 no cambia si no se pasa).
+interface OpcionesEntradaEscaneo {
+  // …lo de hoy…
+  /** Se llama en `recibirLectura`, ANTES de encolar: la fila nace al llegar, no al salir de la cola (R581-R582). */
+  alLlegar?: (texto: string, origen: OrigenLectura) => void;
+}
 ```
 
 ```ts
-// hooks/useSesionEscaneo.ts — une la cola de SLT-158 con la lista.
-function useSesionEscaneo(recibir: (numGuia: number) => Promise<DesenlaceRecepcion>): {
+// hooks/useSesionEscaneo.ts
+function useSesionEscaneo(
+  recibir: (numGuia: number) => Promise<DesenlaceRecepcion>,
+  opciones?: { alCerrarConRecepcion?: () => void },  // R592: se llama al DESMONTAR si hubo recibida/ya_recibida
+): {
   filas: readonly FilaLectura[];
   contadores: { recibidas: number; repetidas: number; noEncontradas: number };
-  leer: (texto: string) => void;          // lo llama la tarjeta (pistola, teclado y cámara)
-  huboRecepcion: boolean;                 // para el refresco único al cerrar (R592)
+  registrar: (texto: string) => void;                 // → `alLlegar`: crea la fila (R581, R584, R585)
+  procesar: (texto: string) => Promise<ResultadoLectura>; // → `procesar` de la cola de SLT-158
+  reintentar: (filaId: number) => void;               // R583: misma fila a «recibiendo», a la cadena
+  recibidas: number;                                  // {n} de «Terminar recepción ({n})»
 };
 ```
 
-- `leer` pasa el texto por `leerGuia`: `null` → fila «Código inválido» sin llamar (R584); guía ya en
-  la lista en curso o ya entrada → fila «Ya recibida» sin llamar, que suma a «Repetidas» (R585); si no (también
-  si su fila anterior falló), fila «Recibiendo…» y a la cola.
-- La cola es la de SLT-158 (una a la vez, en orden, R587). Cada respuesta actualiza **su** fila por
-  `id`, no «la última».
-- El resultado `acierto / error` que espera la tarjeta (contrato de SLT-158) sale del desenlace:
-  `recibida` y `ya_recibida` → acierto; el resto → error. Así suenan el tono y el destello.
+- `registrar` clasifica al llegar: `leerGuia` → `null` = fila «Código inválido» (R584); guía ya en la
+  lista como `recibiendo`/`recibida`/`ya_recibida`/`repetida_en_sesion` = fila `repetida_en_sesion`
+  (R585); si no (también si su fila anterior falló), fila «Recibiendo…» y su id a una cola FIFO de
+  filas pendientes.
+- `procesar` (la llama la cola de SLT-158, una a una y en orden) toma la fila pendiente más antigua:
+  si es inválida o repetida devuelve `error`/`acierto` sin llamar; si no, llama a `recibir` y pone el
+  desenlace en **esa** fila por `id` (R587). `recibida` y `ya_recibida` → `acierto` (tono y marca de
+  SLT-158); el resto → `error`.
+- Las llamadas a `recibir` (las de la cola y los «Reintentar») pasan por **una** cadena de promesas
+  propia del hook: nunca hay dos en vuelo (R587).
+- Sin toasts (R590): la superficie no llama a `toast` en modo continuo. El toast de permisos de
+  cámara sigue en `QrScanner`.
+- `alCerrarConRecepcion`: efecto de desmontaje que lo llama una vez si hubo al menos una
+  `recibida`/`ya_recibida` (ref, no estado). En `StrictMode` el doble montaje de desarrollo ocurre
+  con la sesión vacía, así que no dispara.
 
 ### Piezas de UI
 
-- `components/shared/EscaneoContinuo.tsx` (nuevo): lista (`role="log"`, la más reciente arriba,
-  alto máximo con desplazamiento) y los tres contadores. No sabe de dominio: recibe `filas` y
-  `contadores`.
-- `EscanerGuiaCard` gana la prop `continuo` (por defecto `false`): pasa `continuo` a `QrScanner`, no
-  pinta la línea `exito` y acepta la lista como `children` debajo de la cámara y el campo, respetando
-  el orden por puntero de SLT-158 (R593).
-- `EscanerModal` gana `onCerrado` (se llama al cerrarse) para el refresco único (R592).
-- `QrScanner` gana la prop `continuo`: no pone `entregado` ni cierra; recuerda el último texto y su
-  hora y descarta el mismo texto antes de `ESPERA_MISMO_CODIGO_MS = 3000` (R588-R589). En modo
-  suelto, todo como hoy (R594).
-- C1, C2, C3/C4: montan la tarjeta en modo continuo con `useSesionEscaneo`; su `notificar` se parte en
-  `desenlace(result)` (puro) y el toast desaparece en este modo (R590). `onRecibida` pasa a llamarse
-  desde `onCerrado` si `huboRecepcion` (R592).
-- C5: solo pasa `continuo` a su tarjeta para la cámara (R588); su lógica de filas no cambia.
-- M1, M2: `useRecogerPorGuia` y `useRecolectarPorGuia` devuelven un `DesenlaceRecepcion` ampliado
-  con el verbo de la superficie (`recibida` se pinta «Recogida» / «Recolectada»; `ya_recibida`, «Ya
-  estaba recolectada»; un caso `no_esta_en_tus_ordenes`). La tabla de textos por superficie va en
-  `lib/utils/sesion-escaneo.ts` junto a `textoContador`, que recibe el verbo (R596-R597). El
-  refresco de la lista (`RecogerModule`, `RecoleccionModule`) pasa a `onCerrado` (R598).
+- `components/shared/EscaneoContinuo.tsx` (nuevo): contadores (`Recibidas`, `Repetidas`, `No
+  encontradas`, rótulo + número) y lista (`role="log"`, más reciente arriba, alto máximo con
+  desplazamiento) con «Hora», «Guía», «Destinatario», «Tienda», «Estado» y «Reintentar» (44 px) en
+  `no_se_pudo`. Variante `tabla` (página, cinco columnas como `Main.dc.html:49-65`) y `lista` (diálogo
+  `max-w-md`: guía y estado en la primera línea, destinatario · tienda · hora debajo). No sabe de
+  dominio: recibe `filas`, `contadores` y `onReintentar`.
+- `EscanerGuiaCard` gana `continuo?: boolean` (por defecto `false`), `alLlegar?` y `children`:
+  pasa `continuo` a `QrScanner` y `alLlegar` a `useEntradaEscaneo`; en continuo no pinta `exito`, y la
+  superficie pasa `lineaDeError={false}` (la fila ya lo dice). `children` (la lista) va debajo de
+  cámara y campo, en el orden por puntero de SLT-158 (R593).
+- `QrScanner` gana `continuo?: boolean`: no pone `entregado` ni cierra; recuerda el último texto y su
+  hora y descarta el mismo texto antes de `ESPERA_MISMO_CODIGO_MS = 3000` (R588-R589). Y `alCerrar?:
+  () => void`, llamado al pulsar «Cerrar cámara», para que la página desmonte el visor y vuelva a su
+  botón compacto. En modo suelto, todo como hoy (R594).
+- `components/shared/RecibirPaquetesEntrada.tsx` (nuevo): con `usePunteroFino()` → `next/link`
+  «Recibir paquetes» a `href`; táctil → `EscanerModal label="Recibir paquetes"` con `children` (la
+  superficie en modo continuo). Al hidratar, `usePunteroFino` arranca en táctil (snapshot de
+  servidor) y pasa a enlace en el primer render del cliente con puntero fino: sin error de
+  hidratación; un parpadeo de un frame, aceptado.
+- C1, C2, C3/C4: cada superficie gana `modo?: "suelta" | "continua" | "pagina"` (por defecto
+  `"suelta"`, lo de hoy). `notificar` se parte en `desenlace(result)` (puro, exportado) + toast solo en
+  `suelta`. `continua` monta `EscanerGuiaCard continuo` con `useSesionEscaneo(recibir, {
+  alCerrarConRecepcion: onRecibida })`. `pagina` monta `RecepcionContinuaPagina` con su `recibir` y
+  `volverA`. En `suelta`, `onRecibida` se sigue llamando por lectura como hoy.
+- `OrdenesListado`: en `acciones` del `EscanerModal` de hoy, delante de la carga masiva,
+  `<RecibirPaquetesEntrada href="/ordenes/recibir">` con la superficie del rol en `modo="continua"` y
+  `onRecibida={handleSuccess}`.
+- `EscanerRecepcion` (satélite): lo mismo en su propio `EscanerModal`, con
+  `href="/recepcion-satelite/recibir?desde=<por-recibir|en-bodega>"` según `usePathname()`.
+- C5: solo pasa `continuo` a su tarjeta (R588); su lógica de filas no cambia.
 - `VerificarGuiaGate` no cambia: usa `QrScanner` en modo suelto (R594).
 
-## Integraciones externas
-
-Ninguna. `html5-qrcode` ya está instalada (`^2.3.8`); la cámara continua solo deja de llamar a
-`stop()` tras leer. **Ninguna librería nueva.**
-
-## Alternativas descartadas
-
-1. **Mantener los toasts y añadir solo un contador.** Descartada: con 30 lecturas seguidas los
-   toasts se apilan o se pisan, y el que se fue no se puede consultar; quien tiene una pila de
-   paquetes necesita ver cuál falló (la fila), no solo cuántos.
-2. **Refrescar el listado tras cada recepción (como hoy).** Descartada: en una tanda de 50 lecturas
-   son 50 recargas del listado de `/ordenes` tapado por el modal; el listado no se ve hasta cerrar.
-   Se refresca una vez al cerrar (R592).
-3. **Guardar la sesión en el servidor (tabla de lotes de recepción).** Descartada: no la pide nadie,
-   exigiría tabla con `organizacion_id`, RLS, migración y ruta completa por esquema, y la trazabilidad
-   ya existe por orden en su historial.
-4. **Frenar como repetida cualquier guía ya leída, también las que fallaron.** Descartada: un
-   `conflict` («La orden cambió de estado. Vuelve a intentar.») pide justamente volver a pasarla.
-   R585 solo frena las que están en curso o ya entraron; las que fallaron se reenvían.
-5. **Un componente de sesión aparte para el mensajero.** Descartada: M1/M2 y las recepciones solo
-   difieren en la acción y en el verbo; dos listas acabarían divergiendo. Una sola
-   `EscaneoContinuo` con los textos por superficie.
-6. **Botón «Reintentar» en las filas con error.** Adoptada solo para «No se pudo recibir» /
-   «No se pudo recoger» / «No se pudo recolectar» (DC6, decisión del leader 2026-11-14): 44 px,
-   reencola la guía. Pasar la etiqueta otra vez sigue funcionando igual (R585).
-
-## Página de recepción en escritorio (DC5, R610-R614)
+## Página de recepción en escritorio (DC5, R610-R613, R615)
 
 ### Rutas
 
-| Ruta | Roles | Qué monta | Patrón |
-| --- | --- | --- | --- |
-| `app/(app)/ordenes/recibir/page.tsx` → `/ordenes/recibir` | maestro, admin (C1, `recibirEnBodegaCentralPorQr`); adminTienda (C2, `recibirEnOrigenPorQr`) | `RecepcionContinuaPagina` con la acción del rol | Hija de `/ordenes`, donde viven hoy C1 y C2; mismo reparto de rol que `OrdenesListado` (`puedeRecibirBodegaCentral` / tienda) |
-| `app/(app)/recepcion-satelite/recibir/page.tsx` → `/recepcion-satelite/recibir` | adminSatelite (C3/C4, `recibirPorQr`) | ídem con la acción de la satélite | Hermana de `por-recibir` y `en-bodega` |
+| Ruta | Roles | Qué monta |
+| --- | --- | --- |
+| `app/(app)/ordenes/recibir/page.tsx` → `/ordenes/recibir` | maestro, admin → `EscanerRecepcionBodegaCentral modo="pagina"`; adminTienda → `EscanerRecepcionOrigen modo="pagina"` | `volverA="/ordenes"` |
+| `app/(app)/recepcion-satelite/recibir/page.tsx` → `/recepcion-satelite/recibir` | adminSatelite → `EscanerRecepcion modo="pagina"` | `volverA` = `/recepcion-satelite/<desde>` con lista blanca `por-recibir`/`en-bodega`; otro valor o ausente → `por-recibir` |
 
-- **Permisos (R612):** el gate es el de las páginas hermanas (`recepcion-satelite/por-recibir/page.tsx:27-29`):
-  `resolveActorFromSession()` en el Server Component y `notFound()` para cualquier otro rol o sin
-  sesión, **antes** de leer nada. Cada Server Action vuelve a validar rol y alcance como hoy; la
-  página no amplía nada. Sin entrada nueva en el menú (`lib/auth/menu-visibility.ts`): se llega por el
-  enlace, y el menú sigue marcando su sección padre (`/ordenes`, `/recepcion-satelite`) por prefijo.
-- La página no lee datos en servidor: solo resuelve el rol y pasa al cliente qué acción usar y a dónde
-  volver.
+- **Permisos (R612):** `resolveActorFromSession()` en el Server Component y `notFound()` para
+  cualquier otro rol o sin sesión, **antes** de leer nada (forma de `por-recibir/page.tsx:27-29`).
+  Cada Server Action revalida como hoy. Sin entrada nueva en el menú: se llega por el enlace y el
+  menú marca la sección padre por prefijo.
+- La página **no lee datos** en servidor: solo resuelve el rol, calcula `volverA` desde `searchParams`
+  y pasa props serializables a la superficie (cliente), que es quien conoce su acción. Una función no
+  cruza del servidor al cliente; por eso no se pasa `recibir` desde la página.
+- **Satélite sin zona:** la página no lo comprueba (no lee datos); el enlace no aparece sin zona
+  (`EscanerRecepcion` no se monta, R42/R43 de la 279) y, si alguien teclea la URL, cada lectura
+  queda «No se pudo recibir» con el motivo de `sin_zona` de hoy.
 
-### Entrada y página frente a diálogo (R611)
+### `RecepcionContinuaPagina` (nuevo, cliente)
 
-- En `OrdenesListado` (C1/C2), `PorRecibirModule` (C3) y `RecepcionSateliteModule` (C4), junto al
-  `EscanerModal` «Recibir paquete» de hoy (que **sigue siendo guía suelta**), aparece «Recibir
-  paquetes».
-- Se decide con el mismo criterio que SLT-158 D1: **puntero fino** (`(pointer: fine)`) → enlace
-  (`next/link`) a la página; **puntero táctil** → botón que abre un segundo `EscanerModal` con la
-  tarjeta en modo continuo (la tienda en el teléfono). El hook de puntero es el de SLT-158
-  (`hooks/useEntradaEscaneo.ts` o el que exporte para `matchMedia`); se evalúa en el cliente tras
-  montar para no romper la hidratación (antes de saberlo no se pinta ninguno de los dos).
-- En la satélite el enlace lleva `?desde=por-recibir` o `?desde=en-bodega`.
+- Envuelve `AppPage` (`title="Recibir paquetes"`, `description` = nombre de la recepción,
+  `actions` = «Terminar recepción ({n})»): el botón comparte estado con la sesión sin portales.
+  `AppPage`/`PageHeader` no son async ni de servidor: se pueden pintar desde un cliente.
+- Cuerpo como `Main.dc.html:26-66`: rejilla de tres columnas; a la izquierda (2/3) el campo propio
+  «Escanea la guía con la pistola» (`useEntradaEscaneo` con `alLlegar`, foco inicial y tras cada
+  lectura con puntero fino), la línea de estado (R615), la ayuda y el botón compacto «Escanear con
+  cámara» (outline, 44 px, icono `Camera`) que monta `QrScanner continuo encendidaAlMontar
+  alCerrar={…}` debajo; a la derecha (1/3) los contadores; debajo, `EscaneoContinuo` en variante
+  `tabla`.
+- «Terminar recepción ({n})» (R613): `router.push(volverA)` + `router.refresh()`. La sesión vive en
+  el estado del componente: salir por el menú o el navegador la descarta (R591). Sin aviso al salir:
+  lo recibido ya está guardado.
+- No sabe de dominio: recibe `recibir(numGuia) => Promise<DesenlaceRecepcion>` (de la superficie, en
+  el cliente), `volverA` y `nombreRecepcion`.
 
-### «Terminar recepción ({n})» (R613)
+## Integraciones externas
 
-- `router.push(destino)` + `router.refresh()`: `/ordenes`, o `/recepcion-satelite/<desde>` si `desde` es
-  `por-recibir` o `en-bodega` (lista blanca; cualquier otro valor, `por-recibir`). El refresco es el
-  «una vez» de R592 en la página: el listado de destino se vuelve a leer al llegar.
-- La sesión vive en el estado del componente de la página: salir por el menú o el navegador la
-  descarta (R591). No se avisa al salir: lo recibido ya está guardado, solo se pierde la lista.
+Ninguna. `html5-qrcode` ya está instalada; la cámara continua solo deja de llamar a `stop()` tras
+leer. **Ninguna librería nueva.**
 
-### Piezas
+## Alternativas descartadas
 
-- `components/shared/RecepcionContinuaPagina.tsx` (nuevo, cliente): título, campo «Escanea la guía con
-  la pistola», línea de estado, ayuda + «Escanear con cámara», `EscaneoContinuo` y «Terminar
-  recepción ({n})». Reutiliza `useSesionEscaneo`, `useEntradaEscaneo` (SLT-158) y `QrScanner` continuo;
-  no sabe de dominio: recibe `recibir(numGuia) => Promise<DesenlaceRecepcion>` y `volverA`.
-- `desenlace(result)` de cada superficie (C1, C2, C3) se exporta para que la página lo use igual que
-  el diálogo: un texto de motivo, un sitio.
-
-### Servidor: destinatario y tienda en la respuesta (R614)
-
-- **Evidencia de que hace falta:** R581 pide «Destinatario» y «Tienda» por fila y R610 «Guía {n}
-  recibida · {destinatario}», pero las respuestas de hoy solo traen `ordenId` y `estado`
-  (`lib/types/recepcion-bodega-central.ts:25-28`, `lib/types/recepcion-origen.ts:20-23`,
-  `lib/types/recepcion-satelite.ts:210-215`), y en `/ordenes/recibir` no hay lista cargada de donde
-  sacarlos (en M1/M2 sí: `porRecoger` y la lista de recolección traen la orden, y de ahí salen).
-- **Sin acción nueva ni en lote:** la cola de SLT-158 envía de una en una y las acciones de hoy
-  bastan. Cambia solo su resultado: `ok` y `ya_recibida` ganan `resumen: { destinatario: string;
-  tienda: string }`.
-- **De dónde:** método nuevo del repositorio `resumenRecepcion(ordenId)` (`OrdenRepository`, interfaz
-  en `IOrdenRepository`) que lee `orden.destinatario` y el nombre de la tienda dueña con el cliente de
-  la empresa de la sesión. Los tres servicios lo llaman solo en `ok` y `ya_recibida`, que en C2 y
-  C3 ya van **después** de `tienda_ajena` / `zona_ajena` (`RecepcionOrigenService.ts:51-54`; comentario
-  equivalente en la satélite), así que nunca se revela una orden ajena. En C1 la bodega central es
-  global dentro de la empresa.
-- Multi-empresa: la lectura filtra por `organizacion_id` (la de la sesión); probado contra Postgres
-  real con una orden de otra empresa (R614). Sin tabla, migración ni RLS nuevas.
-
-### Alternativas descartadas (página)
-
-7. **Solo diálogo, también en escritorio.** Descartada por DC5: el canvas aprobado (Main) es una
+1. **Mantener los toasts y añadir solo un contador.** Con 30 lecturas seguidas los toasts se apilan o
+   se pisan; quien tiene una pila de paquetes necesita ver cuál falló (la fila), no solo cuántos.
+2. **Refrescar el listado tras cada recepción (como hoy).** En una tanda de 50 son 50 recargas del
+   listado tapado por el modal. Se refresca una vez al cerrar (R592).
+3. **Guardar la sesión en el servidor (tabla de lotes).** Nadie la pide; exigiría tabla con
+   `organizacion_id`, RLS y migración, y la trazabilidad ya existe por orden.
+4. **Frenar como repetida cualquier guía ya leída, también las que fallaron.** Un `conflict` pide
+   justamente volver a pasarla. R585 solo frena las que están en curso o ya entraron.
+5. **Crear la fila al salir de la cola de SLT-158, sin tocar `useEntradaEscaneo`.** Descartada: con
+   la pistola, la segunda lectura no se vería hasta que respondiera la primera (R581-R582 piden la
+   fila al llegar). `alLlegar` es una opción opcional de ~10 líneas; sin ella SLT-158 no cambia.
+6. **Una segunda cola dentro de `useSesionEscaneo` en vez de la de SLT-158.** Descartada: duplicaría
+   el orden, el foco y la limpieza que SLT-158 ya garantiza. El hook solo añade una cadena de promesas
+   para que los «Reintentar» no se crucen con la cola.
+7. **`onCerrado` en `EscanerModal` para el refresco único.** Descartada: el contenido ya se desmonta
+   al cerrar, y un efecto de desmontaje en el hook lo resuelve sin tocar `EscanerModal`; además sirve
+   igual en SLT-168.
+8. **Solo diálogo, también en escritorio.** Descartada por DC5: el canvas aprobado (Main) es una
    página con tabla de cinco columnas, que no cabe en `max-w-md`.
-8. **Una sola ruta `/recibir` para todos los roles.** Descartada: la satélite no tiene acceso a
-   `/ordenes` ni las tiendas a `/recepcion-satelite`; colgar la página de la sección de cada rol
-   conserva el menú marcado y el gate por pantalla que ya existe.
-9. **Buscar destinatario y tienda en el cliente con otra lectura por guía.** Descartada: duplica
-   cada viaje al servidor y abre una lectura por guía sin las guardas de alcance de la recepción.
+9. **Una sola ruta `/recibir` para todos los roles.** La satélite no entra a `/ordenes` ni las
+   tiendas a `/recepcion-satelite`; colgar la página de la sección de cada rol conserva el menú y el
+   gate por pantalla.
+10. **Que la página pase la acción como prop desde el Server Component.** Una función normal no se
+    serializa al cliente y pasar Server Actions sueltas obligaría a repetir `desenlace` en la página.
+    La superficie, ya cliente, monta la página con su acción y su traducción (un texto de motivo, un
+    sitio).
+11. **Reusar el botón grande de `QrScanner` en la página.** El canvas pone un botón compacto junto a
+    la ayuda (`Main.dc.html:34-40`); el de `QrScanner` es una caja punteada de ancho completo. Se monta
+    el visor con `encendidaAlMontar` (como SLT-160) y `alCerrar` lo desmonta.
 
 ## Riesgos
 
-- **Cámara continua y batería/calor en el teléfono de la tienda.** Mitigado: se apaga al cerrar el
-  modal o con «Cerrar cámara» (R588), como hoy al desmontar.
+- **Cámara continua y batería en el teléfono de la tienda.** Se apaga con «Cerrar cámara» o al cerrar
+  el modal (R588), como hoy al desmontar.
 - **El mismo QR delante de la cámara durante segundos.** R589 lo frena en 3 s y R585 después.
-- **Lecturas muy rápidas de pistola frente a una acción lenta.** La cola (SLT-158) las ordena; la fila
-  «Recibiendo…» deja ver cuántas faltan.
+- **Lecturas muy rápidas de pistola frente a una acción lenta.** La cola las ordena; las filas
+  «Recibiendo…» dejan ver cuántas faltan.
+- **Nombre accesible «Recibir paquete» contenido en «Recibir paquetes».** Testing Library compara
+  exacto, pero Playwright por subcadena: `e2e/recepcion-satelite.spec.ts:44` usa
+  `getByRole("button", { name: "Recibir paquete" })`. Con los proyectos de hoy (todos «Desktop
+  Chrome», puntero fino) «Recibir paquetes» es un **enlace** y no choca; si un E2E futuro usa táctil,
+  `exact: true`.
+- **Tamaño:** las líneas de producción rozan el tope; ver `tasks.md > Tamaño` y la pregunta 5.
