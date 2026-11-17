@@ -249,3 +249,32 @@ T1 solo escribe dos archivos en `progress/`: no hay código ni tests tocados, as
 
 T1 hecha: 239/239 medidas en el run 43973243440. 0 pasa, 0 verde sin datos, 227 base vacía, 12 otra
 causa. Parado en la puerta T2.
+
+## Tanda «base con datos» (2026-11-16, tras el rojo del `./init.sh` del leader en la base de dev)
+
+- **Causa real:** el `tx` de los tests es el del dueño de las tablas (sin RLS). El código bajo test
+  hace lecturas globales que en producción acota la RLS por empresa, p. ej.
+  `ZonaRepository.findCentralZonaId()` = `zona.findFirst({ where: { esCentral: true } })`. En una base
+  con datos devolvía la central de OTRA empresa: la aprobación mandaba a `en_bodega_satelite` /
+  `por_devolver_a_bodega_central` y las correcciones daban `no_encontrada`. En la desechable vacía la
+  única central era la del escenario, por eso pasaba.
+- **Arreglo** (`tests/integration/db/454/_escenario.ts`): `conEscenario` pone el rol `servi_app` con la
+  empresa de la tx (`comoApp`), como en producción. La fila de m4 del catálogo (`order_status`) se
+  inserta con el rol del dueño y vuelve a `servi_app`. Los 4 tests de migración que hacen DDL o
+  escriben el catálogo dentro del escenario (`455/migracion`, `454/retiro-estados-migration`,
+  `455/caracterizacion/rastreo`, `455/caracterizacion/webhook-estado`) lo apagan con
+  `{ rolDeLaApp: false }`; no llaman a lecturas globales.
+- **Reproducción sin tocar la base de dev:** `scratchpad/scripts/slt177-otra-empresa.tmp.ts` (no está
+  en el repo) siembra CONFIRMADA en `servi_slt177_desechable` una empresa ajena con central, satélite,
+  tarifas, 5 usuarios y 40 órdenes (una por estado y zona). Antes del arreglo: 75/92 verdes (17 rojos,
+  los del informe del leader). Después: **92/92 verdes con datos ajenos** y **92/92 en una base vacía
+  nueva** (`servi_slt177b_desechable`, migrada + `db:seed`), 0 saltados.
+- **Mutación de control:** quitar el `comoApp` → `484-puntero-aprobacion-sql-real` vuelve a rojo en la
+  base con datos; restaurado con `git checkout --`.
+- **R738:** usuarios externos del helper con datos ajenos: 12/13 verdes. El rojo,
+  `total-a-cobrar-sin-cerrado-sql-real` (no está en el baseline), arma su propio Mundo con
+  `tx.zona.findFirst({ where: { esCentral: true } })` sin acotar (su línea 68): en una base con datos
+  toma la central ajena y el trigger SL017 rechaza la orden. No pasa por `conEscenario` ni lo toca este
+  arreglo; pasa en CI (base vacía). Queda para SLT-188 «Tests que dejan filas fuera de su transacción»
+  o la ficha que decida el leader.
+- typecheck 0, lint limpio. Commit `4cf40dce`.
