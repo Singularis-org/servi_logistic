@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 
-import { CierreBodegaService } from "@/lib/services/CierreBodegaService";
+// SLT-176 (R705): la descarga de la satelite vive en su servicio de solo lectura; los esperados no cambian.
+import { CierresBodegaSateliteDescargaService } from "@/lib/services/CierresBodegaSateliteDescargaService";
 import { cifrasBodegaDescarga, LecturaCifrasBodegaAusenteError } from "@/lib/services/cifras-bodega-descarga";
 import type { CierreBodegaResumen } from "@/lib/interfaces/services/ICierreBodegaService";
 import type { ICierreBodegaRepository } from "@/lib/interfaces/repositories/ICierreBodegaRepository";
@@ -99,11 +100,10 @@ function montar(conjunto: CierreBodegaResumen[], opciones: { sinLote?: boolean }
   } as unknown as IOrdenRepository;
   const lote = { leerCierresDiaDeBodegas: vi.fn(async () => [D_BS]) };
   const zonaHoraria = vi.fn(async () => ZONA);
-  const service = new CierreBodegaService(
+  const service = new CierresBodegaSateliteDescargaService(
     repo,
     ordenRepo,
     { zonaHoraria },
-    undefined,
     opciones.sinLote ? undefined : (lote as ICifrasBodegaLoteLectura),
   );
   return { lote, zonaHoraria, service };
