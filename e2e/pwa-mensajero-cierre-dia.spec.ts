@@ -120,8 +120,20 @@ test.describe("SLT-165 D — Cierre del día en tarjetas a 360 y 414 px", () => 
       const disparador = larga.locator("button[aria-expanded]").first();
       await expect(disparador).toHaveAttribute("aria-expanded", "false");
       await tactil(disparador);
-      const cajaTexto = await caja(page, "destinatario", larga.getByText(DESTINATARIO_LARGO, { exact: true }));
-      await page.mouse.click(cajaTexto.x + 8, cajaTexto.y + cajaTexto.height / 2);
+      // `page.mouse.click` no desplaza: con la tarjeta bajo el pliegue (780 px) o bajo el pie fijo, el
+      // toque caía fuera de ella. Se centra el texto en la ventana y se comprueba qué recibe el punto.
+      const texto = larga.getByText(DESTINATARIO_LARGO, { exact: true });
+      await texto.evaluate((el) => el.scrollIntoView({ block: "center" }));
+      const cajaTexto = await caja(page, "destinatario", texto);
+      const punto = { x: cajaTexto.x + 8, y: cajaTexto.y + Math.min(cajaTexto.height / 2, 10) };
+      expect(
+        await page.evaluate(
+          ({ x, y }) => (document.elementFromPoint(x, y)?.closest("[data-tarjeta-mensajero] > button") ?? null) !== null,
+          punto,
+        ),
+        "el punto del texto lo recibe el disparador estirado",
+      ).toBe(true);
+      await page.mouse.click(punto.x, punto.y);
       await expect(disparador).toHaveAttribute("aria-expanded", "true");
       await expect(devolver).toBeVisible();
       await tactil(devolver);

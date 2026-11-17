@@ -287,6 +287,24 @@ describe("SLT-191 R810-R814 — la tarjeta del mensajero en el teléfono", () =>
     expect(screen.queryByText("Orden")).toBeNull();
   });
 
+  // Fallo del E2E en el PR #196: jsdom no hace hit-testing, así que el orden de apilado se fija por sus
+  // clases. En el navegador, el punto de un texto de la tarjeta lo recibe el disparador porque está
+  // ENCIMA (`z-10`) y el contenido no capta (`pointer-events-none`); solo la información, más arriba.
+  it("R812, R813: orden de apilado — disparador encima del contenido, la información encima del disparador, la tarjeta aislada", () => {
+    montarUna(G);
+    const t = tarjeta();
+    expect(t.className.split(/\s+/)).toEqual(expect.arrayContaining(["relative", "isolate"]));
+    const disparador = screen.getByRole("button", { name: DISPARADOR });
+    expect(disparador.className.split(/\s+/)).toEqual(expect.arrayContaining(["absolute", "inset-0", "z-10"]));
+    const info = screen.getByRole("button", { name: "Qué significa «Entregado»" }).closest<HTMLElement>('[data-columna="resultado"]')!;
+    expect(info.className.split(/\s+/)).toEqual(expect.arrayContaining(["relative", "z-20", "[&_button]:pointer-events-auto"]));
+    // Ningún otro bloque de la tarjeta sube por encima del disparador.
+    for (const el of Array.from(t.querySelectorAll<HTMLElement>("*"))) {
+      if (el === disparador || el === info) continue;
+      expect(el.className.toString().split(/\s+/).some((c) => /^z-/.test(c)), el.outerHTML.slice(0, 80)).toBe(false);
+    }
+  });
+
   it("R813: la información del resultado capta su toque y no despliega; ningún botón dentro de otro", async () => {
     const user = montarUna(G);
     const info = screen.getByRole("button", { name: "Qué significa «Entregado»" });

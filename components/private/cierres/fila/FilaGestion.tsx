@@ -431,15 +431,19 @@ export function FilaGestion({
  * el canvas (`GestionesVolumen`): a la izquierda guía (mono) → destinatario → tienda, cada uno en su
  * línea; a la derecha, en columna fija, el resultado con su información, «Ganancia» y el monto; las
  * señales debajo. Toda la tarjeta despliega: el disparador de hoy va ESTIRADO sobre ella (`absolute
- * inset-0`) y el contenido no captura el toque (`pointer-events-none`), salvo el botón de información
- * del resultado, que queda por encima. No se envuelve en un `<button>`: `EstadoConInfo` es un botón y
- * un botón dentro de otro es HTML inválido (y la guardia `estado-con-info` exige el chip en la fila).
+ * inset-0`) y ENCIMA del contenido (`z-10`), así que en cualquier punto de la tarjeta el toque cae en
+ * él; el contenido, además, no captura el toque (`pointer-events-none`). Solo el botón de información
+ * del resultado queda por encima del disparador (`relative z-20`). La tarjeta es su propio contexto de
+ * apilado (`isolate`): esos `z-` no compiten con la barra fija de arriba (`BARRA_FIJA`, `z-20`). No
+ * se envuelve en un `<button>`: `EstadoConInfo` es un botón y un botón dentro de otro es HTML
+ * inválido (y la guardia `estado-con-info` exige el chip en la fila).
  */
-export const TARJETA_MENSAJERO = "relative grid min-h-14 grid-cols-[minmax(0,1fr)_max-content] gap-x-3 gap-y-1 px-4 py-3 text-sm";
+export const TARJETA_MENSAJERO =
+  "relative isolate grid min-h-14 grid-cols-[minmax(0,1fr)_max-content] gap-x-3 gap-y-1 px-4 py-3 text-sm";
 export const DISPARADOR_ESTIRADO =
-  "absolute inset-0 min-h-11 w-full hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset";
+  "absolute inset-0 z-10 min-h-11 w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset";
 export const CONTENIDO_SIN_TOQUE = "pointer-events-none relative";
-export const INFO_CON_TOQUE = "[&_button]:pointer-events-auto";
+export const INFO_CON_TOQUE = "relative z-20 [&_button]:pointer-events-auto";
 
 function TarjetaMensajero({
   g,

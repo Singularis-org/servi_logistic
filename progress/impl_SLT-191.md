@@ -69,3 +69,34 @@ Tests: `tests/components/GestionesCierreMovil.test.tsx`, `CierreRechazosDeTienda
 - Sin chevron visible en la tarjeta de gestión ni en la fila de rechazo (el canvas no lo pinta).
 
 Veredicto: T1-T3 hechos y verificados (tsc 0, lint 0 errores, 373+1050 tests verdes, 10 mutaciones en rojo); falta correr el E2E.
+
+## Fix E2E (a) del PR #196 — la tarjeta no se desplegaba en Chromium (2026-11-17)
+Rojo de CI: `e2e (dinero)`, `pwa-mensajero-cierre-dia.spec.ts` (a) a 360 y 414 px, `aria-expanded` seguía
+en "false" tras el toque en el texto.
+
+**Causa (por el código; Playwright no se pudo correr aquí):** el E2E tocaba con `page.mouse.click(x, y)`
+usando la caja del destinatario SIN desplazar antes. `page.mouse.click` no hace scroll ni comprueba qué
+elemento recibe el punto (a diferencia de `locator.click`). La tarjeta del destinatario largo está en una
+ventana de 780 px por debajo de la cabecera del detalle, las cifras, las pestañas y la barra, y el
+pie fijo «Solicitar cierre del día» tapa los ~76 px de abajo: el punto caía fuera de la ventana o sobre
+el pie, nunca sobre la tarjeta. El apilado de antes (disparador `absolute` primero en el DOM, contenido
+`relative` encima con `pointer-events-none`) sí dejaba pasar el toque al disparador en un navegador: no
+era la causa, pero dependía solo de la herencia de `pointer-events`.
+
+**Cambio:**
+- E2E (mal escrito, se corrige): centra el texto en la ventana (`scrollIntoView({ block: "center" })`),
+  comprueba con `document.elementFromPoint` que el punto lo recibe el disparador estirado y solo
+  entonces hace el clic. Si vuelve a fallar, el mensaje dice QUÉ tapa el punto.
+- Pantalla (robustez): el disparador va ENCIMA del contenido (`z-10`); la información del resultado,
+  encima de él (`relative z-20`); la tarjeta es su propio contexto de apilado (`isolate`), para que esos
+  `z-` no pasen por encima de la barra fija (`BARRA_FIJA`, `z-20`) al desplazar. El contenido sigue con
+  `pointer-events-none`. Se quita el `hover:bg-muted/40` del disparador (ahora estaría encima del texto).
+
+**Por qué ahora el clic llega al botón:** en el punto (x, y) del texto, el hit-testing de Chromium recorre
+de arriba abajo el contexto de apilado de la tarjeta: lo primero es el disparador (`z-10`, posicionado,
+cubre `inset-0`); el texto está debajo (orden `z-auto`) y además no capta. Solo el botón de información
+(`z-20`, `pointer-events: auto`) está por encima, y ocupa únicamente su icono. Y el punto está dentro de la
+ventana y lejos del pie porque el texto se centró antes.
+
+**Test:** `GestionesCierreMovil.test.tsx` «R812, R813: orden de apilado…» (clases `isolate`, `z-10`, `z-20`
+y ningún otro `z-` dentro de la tarjeta).
