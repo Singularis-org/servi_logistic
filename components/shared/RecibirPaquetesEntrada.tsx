@@ -7,6 +7,7 @@ import { ScanLine } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { EscanerModal } from "@/components/shared/EscanerModal";
 import { usePunteroFino } from "@/hooks/useEntradaEscaneo";
+import { cn } from "@/lib/utils";
 
 // SLT-159 «Escaneo continuo en recepciones y recogidas» (R611, DC5) — la entrada a la recepción
 // continua, junto al «Recibir paquete» de guía suelta. Con puntero fino (escritorio, pistola) es
@@ -30,7 +31,7 @@ export function RecibirPaquetesEntrada({ href, children }: Readonly<RecibirPaque
   const punteroFino = usePunteroFino();
   if (punteroFino) {
     return (
-      <Link href={href} className={buttonVariants({ variant: "outline" })}>
+      <Link href={href} className={cn(buttonVariants({ variant: "outline" }))}>
         <ScanLine aria-hidden="true" />
         {RECIBIR_PAQUETES}
       </Link>
