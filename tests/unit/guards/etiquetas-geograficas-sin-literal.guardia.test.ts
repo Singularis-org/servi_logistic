@@ -28,6 +28,7 @@ import { describe, expect, it } from "vitest";
 
 import { CLAVES_OCULTAS_EN_SELECTOR } from "@/lib/types/plantilla-datos";
 import { ARCHIVOS_NUEVOS_SLT125, ARCHIVOS_SLT125 } from "../../fixtures/archivos-slt125";
+import { ARCHIVOS_SLT48_PANTALLAS } from "../../fixtures/archivos-slt48";
 
 const RAIZ = path.resolve(__dirname, "../../..");
 const ARBOLES = ["app", "components"] as const;
@@ -279,5 +280,80 @@ describe("SLT-54 / R61 — Tarifas no escribe a mano el nivel en un conteo", () 
     const fuentes = listarFuentes(path.join(RAIZ, "app/(app)/configuracion/tarifas"));
     expect(fuentes.length, "no se leyó la carpeta de Tarifas").toBeGreaterThan(5);
     expect(fuentes.flatMap((f) => conteosDeNivel(readFileSync(f, "utf8")))).toEqual([]);
+  });
+});
+
+// SLT-48 (T4.6; R47) — las pantallas que SLT-48 pasa a N niveles, MÁS ESTRICTO que el barrido de SL-20: en
+// estos archivos ningún texto visible nombra un nivel con la palabra de Costa Rica, ni con mayúscula ni en
+// minúscula («Elige un distrito», «Falta completar: el distrito», «a partir del distrito»). En un país de 2,
+// 4 o 10 niveles esa palabra es falsa; el nivel sale de los tipos del país (`useNivelesGeograficos`, los
+// `tipos` del árbol o `NivelDeFiltroDTO`). Incluye `lib/types/historial-accion-etiquetas.ts`, fuera de
+// `app/`. Los tipos literales (`P["distritos"]`) no son texto para una persona y no cuentan.
+const PALABRA_EN_CUALQUIER_CAJA =
+  /(?<![\p{L}\p{N}_])(provincias?|cant[oó]n(?:es)?|distritos?)(?![\p{L}\p{N}_])/iu;
+
+/** Los literales visibles que nombran un nivel en cualquier caja (sin especificadores ni tipos literales). */
+export function nivelesEnCualquierCaja(fuente: string, archivo = "fuente.tsx"): Hallazgo[] {
+  const sf = ts.createSourceFile(archivo, fuente, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const hallazgos: Hallazgo[] = [];
+  const mirar = (nodo: ts.Node, texto: string) => {
+    if (!PALABRA_EN_CUALQUIER_CAJA.test(texto)) return;
+    const { line } = sf.getLineAndCharacterOfPosition(nodo.getStart(sf));
+    hallazgos.push({ archivo, linea: line + 1, texto: texto.trim().slice(0, 120) });
+  };
+  const visitar = (nodo: ts.Node) => {
+    if (ts.isStringLiteral(nodo) || ts.isNoSubstitutionTemplateLiteral(nodo)) {
+      const enTipo = nodo.parent !== undefined && ts.isLiteralTypeNode(nodo.parent);
+      if (!esEspecificadorDeModulo(nodo) && !enTipo) mirar(nodo, nodo.text);
+    } else if (ts.isTemplateHead(nodo) || ts.isTemplateMiddle(nodo) || ts.isTemplateTail(nodo)) {
+      mirar(nodo, nodo.text);
+    } else if (ts.isJsxText(nodo)) {
+      mirar(nodo, nodo.text);
+    }
+    ts.forEachChild(nodo, visitar);
+  };
+  visitar(sf);
+  return hallazgos;
+}
+
+describe("SLT-48 / R47 — las pantallas de N niveles no nombran un nivel con la palabra de Costa Rica", () => {
+  const leerFuente = (rel: string) => readFileSync(path.join(RAIZ, rel), "utf8");
+
+  it("el barrido lee de verdad (anti-vacuidad): cada archivo existe, y hay de app/ y de lib/", () => {
+    expect(ARCHIVOS_SLT48_PANTALLAS.length).toBeGreaterThanOrEqual(10);
+    for (const rel of ARCHIVOS_SLT48_PANTALLAS) expect(leerFuente(rel).length, rel).toBeGreaterThan(100);
+    expect(ARCHIVOS_SLT48_PANTALLAS.some((r) => r.startsWith("lib/"))).toBe(true);
+    expect(ARCHIVOS_SLT48_PANTALLAS.some((r) => r.startsWith("app/"))).toBe(true);
+  });
+
+  it("contraprueba: caza la minúscula en un string, una plantilla y un texto JSX; no comentarios, identificadores ni tipos literales", () => {
+    const inventado = [
+      'const a = "Elige un distrito";',
+      "const b = `Falta completar: ${x}, el cantón.`;",
+      "const c = <p>a partir de la provincia</p>;",
+      "// el distrito en un comentario",
+      "type T = P[\"distritos\"];",
+      "const distritoPlural = etiquetas.distrito.plural;",
+      'import { x } from "./distritos";',
+    ].join("\n");
+    expect(nivelesEnCualquierCaja(inventado).map((h) => h.linea)).toEqual([1, 2, 3]);
+  });
+
+  it("contraprueba: un literal sembrado en un archivo real de SLT-48 se detecta", () => {
+    const rel = "app/(app)/ordenes/_components/CorregirDatosClienteModal.tsx";
+    expect(nivelesEnCualquierCaja(leerFuente(rel), rel)).toEqual([]);
+    const sembrado = `${leerFuente(rel)}\nexport const PLACEHOLDER = "Elige un distrito";\n`;
+    expect(nivelesEnCualquierCaja(sembrado, rel).map((h) => h.texto)).toEqual(["Elige un distrito"]);
+  });
+
+  it("el barrido de los archivos de SLT-48 no encuentra ninguno", () => {
+    const hallazgos = ARCHIVOS_SLT48_PANTALLAS.flatMap((rel) => nivelesEnCualquierCaja(leerFuente(rel), rel)).map(
+      (h) => `${h.archivo}:${h.linea} — ${h.texto}`,
+    );
+    expect(
+      hallazgos,
+      "El nombre de un nivel sale de los tipos del país (`useNivelesGeograficos()`, los `tipos` del árbol), " +
+        "nunca de un literal, tampoco en minúscula (SLT-48 R47).",
+    ).toEqual([]);
   });
 });
