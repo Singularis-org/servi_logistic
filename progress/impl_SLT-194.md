@@ -162,3 +162,16 @@ Rechazos busca escaneando en servidor (`q`), con paginación y «sin coincidenci
   - R945 en verde a 360 px.
   - Los E2E de `/novedades` y de B1-B8 los corrió el leader sobre 9c84b826 y salieron verdes; el único rojo era este.
   - El gate (T8) lo corre el leader.
+
+## Gate local (T8, 2026-11-17)
+
+Lo corrió el leader sobre e4c5b094: la rama ya mezclada con origin/dev, con SLT-193 dentro.
+
+- `./init.sh`: INIT_EXIT=0, con la base `servi_slt194g_desechable`.
+- Tamaño:
+  - 22/40 archivos;
+  - 233/1000 líneas de producción;
+  - 831/3000 líneas de tests.
+- Lotes de tests: 1435, 1746, 1660 y 934 passed (1 skipped).
+
+T8 queda marcada. T7 (prueba con el teléfono en Preview) queda sin marcar: se hará en la ronda de Preview de Carlos al terminar la cola, antes de la release; el merge a dev no la espera (decisión de Carlos, 2026-11-17).

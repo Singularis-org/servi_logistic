@@ -224,7 +224,9 @@ Requisito previo: SLT-193 mergeado en `dev` y traído a esta rama antes de T1 (c
   - en la pestaña de Rechazos, leer una guía: la encuentra.
 
   Nota en `progress/features/SLT-194.md`. *Hecho:* nota escrita.
-- [ ] **T8 — Cierre.** `./init.sh` en verde. *Hecho:* gate en verde.
+
+  Diferida a la ronda de Preview de Carlos al terminar la cola (decisión de Carlos, 2026-11-17).
+- [x] **T8 — Cierre.** `./init.sh` en verde. *Hecho:* gate en verde.
 
 ## Tamaño
 
