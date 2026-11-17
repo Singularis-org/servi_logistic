@@ -194,3 +194,33 @@ describe("SLT-45 R3 — la precedencia: provincia, canton, distrito vacio, distr
     expect(Object.keys(r.fieldErrors)).toEqual(["provincia"]);
   });
 });
+
+describe("SLT-48 R19 — v1 aplica la regla de hoja: un distrito con hijos activos no es hoja", () => {
+  const conHijos: Mundo = {
+    provincias: [P("p1", "Montaña")],
+    cantones: [C("c1", "p1", "Río Claro")],
+    distritos: [{ ...D("d1", "c1", "Peñas"), tipoHijosActivos: "Sectores" }],
+  };
+
+  it("en un pais de mas de 3 niveles el distrito que nombra v1 se rechaza con el mensaje de R17, bajo `ubicacion`", () => {
+    const r = resolver({ provincia: "Montaña", canton: "Río Claro", distrito: "Peñas" }, conHijos);
+    expect(r).toEqual({
+      ok: false,
+      fieldErrors: { ubicacion: ["ubicacion incompleta: 'Peñas' tiene sectores debajo; indica el ultimo nivel"] },
+    });
+  });
+
+  it("el retirado sigue ganando a la regla de hoja (va antes)", () => {
+    const retirado: Mundo = { ...conHijos, distritos: [{ ...conHijos.distritos[0], disponible: false }] };
+    const r = resolver({ provincia: "Montaña", canton: "Río Claro", distrito: "Peñas" }, retirado);
+    expect(r).toEqual({ ok: false, fieldErrors: { distrito: ["el distrito 'Peñas' esta retirado del catalogo"] } });
+  });
+
+  it("un distrito hoja resuelve al nodo, con el lugar de tarifa en el propio distrito (P3)", () => {
+    const r = resolver({ provincia: "Montaña", canton: "Río Claro", distrito: "Peñas" });
+    expect(r).toEqual({
+      ok: true,
+      geo: { nodoId: "d1", distritoId: "d1", zonaId: "z1", esCentral: false, esZonaEspecial: false },
+    });
+  });
+});

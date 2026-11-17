@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { msgUbicacionIncompleta } from "@/lib/services/geo-ubicacion";
 
 import { BulkOrdenService } from "@/lib/services/BulkOrdenService";
 import {
@@ -312,5 +313,60 @@ describe("R29/R32 — un pais de forma CR sigue con `provincia` + `canton_distri
     ]);
     expect(errores).toEqual([]);
     expect(creadas[0]).toMatchObject({ distritoId: "d1", nodoGeograficoId: "d1" });
+  });
+});
+
+// =================================================================================================
+// SLT-48 (design §4.1, §4.2; R15, R17, R18) — la regla de hoja en la carga por sesion
+// =================================================================================================
+
+describe("SLT-48 R15/R17/R18 — la carga crea solo en una hoja y guarda solo el nodo", () => {
+  const sinFk = (o: CreateOrdenData) => [
+    (o as unknown as Record<string, unknown>).provinciaId,
+    (o as unknown as Record<string, unknown>).cantonId,
+    (o as unknown as Record<string, unknown>).distritoId,
+  ];
+
+  it("R18: pais de 2 niveles, la hoja de nivel 2 se crea con su nodo y sin las 3 FK", async () => {
+    const cols = columnasGeoDePlantilla(DOS)?.map((c) => c.key) ?? [];
+    const { errores, creadas } = await cargar(catalogoRepo(DOS, [{ nodoId: "B", zona: ZONA }]), [
+      fila("R-2", { [cols[0]]: "Beta", [cols[1]]: "Uno" }),
+    ]);
+    expect(errores).toEqual([]);
+    expect(creadas[0]).toMatchObject({ numRemision: "R-2", nodoGeograficoId: "B1", zonaId: "z1" });
+    expect(sinFk(creadas[0])).toEqual([undefined, undefined, undefined]);
+  });
+
+  it("R18: pais de 4 niveles, la hoja de nivel 4 se crea; el nivel 3 pide el nivel 4 (R17)", async () => {
+    const cols = columnasGeoDePlantilla(CUATRO)?.map((c) => c.key) ?? [];
+    const { errores, creadas } = await cargar(catalogoRepo(CUATRO, [{ nodoId: "X", zona: ZONA }]), [
+      fila("R-4", { [cols[0]]: "Equis", [cols[1]]: "Uno", [cols[2]]: "Dos", [cols[3]]: "Tres" }),
+      fila("R-3", { [cols[0]]: "Equis", [cols[1]]: "Uno", [cols[2]]: "Dos" }),
+    ]);
+    expect(creadas.map((c) => [c.numRemision, c.nodoGeograficoId])).toEqual([["R-4", "X3"]]);
+    expect(sinFk(creadas[0])).toEqual([undefined, undefined, undefined]);
+    expect(errores).toEqual([
+      {
+        fila: 2,
+        numRemision: "R-3",
+        resultado: "error",
+        errores: { ubicacion: [msgUbicacionIncompleta("Dos", "Niveles 4")] },
+      },
+    ]);
+  });
+
+  it("R17: en 3 niveles un municipio con barrios se rechaza nombrando el lugar; uno sin hijos activos entra", async () => {
+    const cat = catalogoRepo(TRES_NO_CR, [{ nodoId: "A", zona: ZONA }]);
+    const { errores, creadas } = await cargar(cat, [
+      fila("R-5", { departamento: "Alfa", municipio: "Uno" }),
+      fila("R-6", { departamento: "Alfa", municipio: "Dos" }),
+    ]);
+    expect(creadas.map((c) => [c.numRemision, c.nodoGeograficoId])).toEqual([["R-6", "A2"]]);
+    expect(errores).toHaveLength(1);
+    expect(errores[0]).toMatchObject({ numRemision: "R-5" });
+    const mensaje = (errores[0] as { errores: Record<string, string[]> }).errores.ubicacion[0];
+    // El tipo es el plural de los hijos (en el doble, `nombrePlural` es «Niveles 3»).
+    expect(mensaje).toBe(msgUbicacionIncompleta("Uno", "Niveles 3"));
+    expect(mensaje).not.toMatch(/no habilitado/);
   });
 });

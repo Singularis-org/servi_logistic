@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 import { CorregirDatosClienteService } from "@/lib/services/CorregirDatosClienteService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type {
-  DistritoResueltoRow,
+  LugarResueltoRow,
   OrdenParaCorreccionRow,
 } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { TarifaVigente } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
@@ -64,9 +64,9 @@ function orden(overrides: Partial<OrdenParaCorreccionRow> = {}): OrdenParaCorrec
     peso: 1,
     montoCobrar: "12345.00",
     cobraComision: true,
-    provinciaId: "p-1",
-    cantonId: "c-1",
-    distritoId: "d-1",
+    nodoId: "d-1",
+    ruta: [{ id: "p-1", nombre: "P" }, { id: "c-1", nombre: "C" }, { id: "d-1", nombre: "D" }],
+    distritoTarifaId: "d-1",
     distritoNombre: "Distrito Uno",
     zonaId: "z-1",
     zonaNombre: "Zona Uno",
@@ -78,12 +78,12 @@ function orden(overrides: Partial<OrdenParaCorreccionRow> = {}): OrdenParaCorrec
   };
 }
 
-function distrito(overrides: Partial<DistritoResueltoRow> = {}): DistritoResueltoRow {
+function distrito(overrides: Partial<LugarResueltoRow> = {}): LugarResueltoRow {
   return {
     id: "d-2",
     nombre: "Distrito Dos",
-    cantonId: "c-1",
-    provinciaId: "p-1",
+    tipoHijosActivos: null,
+    distritoTarifaId: "d-2",
     zonaId: "z-2",
     zonaNombre: "Zona Dos",
     esCentral: false,
@@ -97,13 +97,13 @@ function distrito(overrides: Partial<DistritoResueltoRow> = {}): DistritoResuelt
 /** Pide el aviso: cambia el distrito y NO confirma, que es lo que devuelve las dos columnas. */
 async function avisoDe(opciones: {
   ordenFila?: Partial<OrdenParaCorreccionRow>;
-  distritoFila?: Partial<DistritoResueltoRow>;
+  distritoFila?: Partial<LugarResueltoRow>;
   tarifaFila?: TarifaVigente | null;
 }) {
   const service = new CorregirDatosClienteService(
     {
       findParaCorreccion: vi.fn(async () => orden(opciones.ordenFila)),
-      findDistritoParaCorreccion: vi.fn(async () => distrito(opciones.distritoFila)),
+      findLugarParaCorreccion: vi.fn(async () => distrito(opciones.distritoFila)),
       corregirDatosCliente: vi.fn(async () => "ok" as const),
     },
     {
@@ -113,7 +113,7 @@ async function avisoDe(opciones: {
     },
   );
   const r = await service.corregir(
-    { ordenId: ORDEN_ID, provinciaId: "p-1", cantonId: "c-1", distritoId: "d-2" },
+    { ordenId: ORDEN_ID, nodoId: "d-2" },
     MAESTRO,
   );
   if (r.status !== "confirmacion_requerida") {
@@ -233,14 +233,14 @@ describe("SLT-52 — R16/R18: cada ubicacion del aviso pide su tarifa con SU dis
     const service = new CorregirDatosClienteService(
       {
         findParaCorreccion: vi.fn(async () => orden()),
-        findDistritoParaCorreccion: vi.fn(async () => distrito()),
+        findLugarParaCorreccion: vi.fn(async () => distrito()),
         corregirDatosCliente: vi.fn(async () => "ok" as const),
       },
       { resolveTarifa },
     );
 
     const r = await service.corregir(
-      { ordenId: ORDEN_ID, provinciaId: "p-1", cantonId: "c-1", distritoId: "d-2" },
+      { ordenId: ORDEN_ID, nodoId: "d-2" },
       MAESTRO,
     );
 

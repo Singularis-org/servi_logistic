@@ -4,7 +4,7 @@ import { CorregirDatosClienteService } from "@/lib/services/CorregirDatosCliente
 import type { CorregirDatosClienteInput } from "@/lib/interfaces/services/ICorregirDatosClienteService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type {
-  DistritoResueltoRow,
+  LugarResueltoRow,
   OrdenParaCorreccionRow,
 } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { TarifaVigente } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
@@ -51,9 +51,9 @@ function orden(overrides: Partial<OrdenParaCorreccionRow> = {}): OrdenParaCorrec
     peso: 1.5,
     montoCobrar: "15000.00",
     cobraComision: true,
-    provinciaId: "p-1",
-    cantonId: "c-1",
-    distritoId: "d-1",
+    nodoId: "d-1",
+    ruta: [{ id: "p-1", nombre: "P" }, { id: "c-1", nombre: "C" }, { id: "d-1", nombre: "D" }],
+    distritoTarifaId: "d-1",
     distritoNombre: "Distrito Uno",
     zonaId: "z-1",
     zonaNombre: "Zona Uno",
@@ -65,12 +65,12 @@ function orden(overrides: Partial<OrdenParaCorreccionRow> = {}): OrdenParaCorrec
   };
 }
 
-function distrito(): DistritoResueltoRow {
+function distrito(): LugarResueltoRow {
   return {
     id: "d-2",
     nombre: "Distrito Dos",
-    cantonId: "c-1",
-    provinciaId: "p-1",
+    tipoHijosActivos: null,
+    distritoTarifaId: "d-2",
     zonaId: "z-2",
     zonaNombre: "Zona Dos",
     esCentral: false,
@@ -95,7 +95,7 @@ function tarifa(): TarifaVigente {
 
 function escenario(ordenFila: OrdenParaCorreccionRow = orden()) {
   const findParaCorreccion = vi.fn(async () => ordenFila);
-  const findDistritoParaCorreccion = vi.fn(async () => distrito());
+  const findLugarParaCorreccion = vi.fn(async () => distrito());
   const corregirDatosCliente = vi.fn(
     async (
       _ordenId: string,
@@ -105,10 +105,10 @@ function escenario(ordenFila: OrdenParaCorreccionRow = orden()) {
   );
   const resolveTarifa = vi.fn(async () => tarifaViejaDeFormula(tarifa()));
   const service = new CorregirDatosClienteService(
-    { findParaCorreccion, findDistritoParaCorreccion, corregirDatosCliente },
+    { findParaCorreccion, findLugarParaCorreccion, corregirDatosCliente },
     { resolveTarifa },
   );
-  return { service, corregirDatosCliente, findDistritoParaCorreccion };
+  return { service, corregirDatosCliente, findLugarParaCorreccion };
 }
 
 function entrada(extra: Partial<CorregirDatosClienteInput>): CorregirDatosClienteInput {
