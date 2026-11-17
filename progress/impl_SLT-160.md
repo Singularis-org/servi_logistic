@@ -134,7 +134,7 @@ Veredicto: T1-T4 hechas, R600-R609 con test, typecheck 0 y mutaciones del WHERE 
   116 passed; tests de los 7 montajes → 34 archivos, 422 passed; `tsc` → `TSC_EXIT=0`; eslint de lo tocado limpio.
 - Mutaciones (restauradas con `git checkout --`): M8 cámara de vuelta dentro del campo → rojo R600; M9 sin el texto
   de ayuda → rojo R770; M10 `ALTO_CONTROL_ESCANEO = "h-8"` → rojo R771 ×2.
-- Numeración: primero R690-R692, que son de SLT-176 «Sacar de CierreBodegaService las lecturas de cifras de
+- Numeración: el primer rango que usé es de SLT-176 «Sacar de CierreBodegaService las lecturas de cifras de
   presentación del cierre»; renumerados a R770-R772 (rango reservado por el leader para esta ficha).
 
 ### R772 — nombre accesible (aprobado por el leader 2026-11-16)
@@ -145,3 +145,5 @@ Veredicto: T1-T4 hechas, R600-R609 con test, typecheck 0 y mutaciones del WHERE 
   guardia «R772: … nombra su campo …» para B1 y B2.
 - Salidas: `ordenes-listado-*` + guardia + escaneo → 7 archivos, 115 passed; tests de los 7 montajes → 34 archivos,
   423 passed; `tsc` 0; eslint de lo tocado limpio.
+- Mutación M11 (restaurada con `git checkout --`): B1 y B2 de vuelta a `label="Buscar"` → rojo la guardia R772 ×2
+  y los tests de `ordenes-listado-buscador.test.tsx`, incluido «SLT-160 R772…».
