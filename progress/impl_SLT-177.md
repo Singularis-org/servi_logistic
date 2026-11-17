@@ -289,3 +289,7 @@ causa. Parado en la puerta T2.
 - Decisión (instrucción del leader): no se fuerza; vuelve al baseline con motivo medido, `desde`
   original (2026-10-22), citando SLT-187 «Tests de migración desfasados tras SL-17». Salen 91, no 92;
   el baseline queda en 152 entradas.
+
+## Gate (leader, 2026-11-16)
+
+- `./init.sh` contra la base local de dev: rojos solo en `total-a-cobrar-sin-cerrado-sql-real` y `whatsapp-envios-migration`, que fallan IGUAL en `dev` sin esta rama (estado de la base local; el primero, lectura global de zona central, anotado en SLT-188). Tamaño 17/40 archivos, 0 producción, ~1064/3000 tests. Manda CI (`gate-completo` con base limpia).
