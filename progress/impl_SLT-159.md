@@ -135,3 +135,43 @@ Veredicto: rebanada (b) implementada y verificada en local (typecheck, lint, 77 
 ## T9 — gate (leader, 2026-11-16)
 
 - `./init.sh` (rápido) con `.env` de dev: `INIT_EXIT=0` (tamaño aceptado por Carlos). E2E `recibir-paquetes` en CI (proyecto `reparto`). Prueba en dispositivo (pistola y teléfono): Carlos en Preview.
+
+## Correcciones de la review (`progress/review_SLT-159.md`, cbda0490)
+
+- **B1 — la entrada ya no cambia de rol al hidratar.** `RecibirPaquetesEntrada` lee el puntero con un
+  `useSyncExternalStore` de tres estados: en servidor y en la hidratación es `null` y **no pinta nada**;
+  en el primer render del cliente aparece ya como enlace (fino) o botón (táctil). Se eligió no pintar
+  hasta saberlo porque es lo más simple que cumple R611 (con puntero conocido, enlace o diálogo, como
+  antes) y elimina la ventana con dos botones cuyo nombre contenía «Recibir paquete». Coste: la
+  entrada aparece un frame después de hidratar, sin cambiar de tipo.
+  Localizadores: `e2e/recepcion-satelite.spec.ts:44` con `exact: true` (Playwright compara por
+  subcadena); en `EscanerModal.test.tsx` las regex `/Recibir paquete/` pasan a la cadena
+  `"Recibir paquete"`, que en Testing Library ya es exacta (allí `exact` no existe en `ByRole`).
+  La `queryByRole(... /Recibir paquete/ ...)` negativa de `:108` se deja con regex: por subcadena es
+  más estricta. Ningún otro E2E de `/ordenes` o de la satélite busca «Recibir paquete».
+  Test: `EscanerRecepcion.test.tsx` «HTML del servidor»: `renderToString` → un solo botón con
+  «Recibir paquete» en el nombre (por subcadena y exacto) y ningún enlace «Recibir paquetes».
+- **m1 — cableado del diálogo continuo en `/ordenes`.** `OrdenesPage.test.tsx`, táctil: maestro abre
+  «Recibir paquetes» y la lectura llega a `recibirEnBodegaCentralPorQr` (y no a la de origen);
+  adminTienda, a `recibirEnOrigenPorQr` (y no a la central).
+- **m4 — cerrar con lecturas en vuelo.** `useSesionEscaneo`: al desmontar la sesión queda `cerrado`.
+  Lo que ya estaba en la acción termina; si trae «Recibida»/«Ya recibida», el listado se refresca en
+  ese momento, y en total el refresco ocurre **una sola vez** (al cerrar si ya había alguna, o cuando
+  termine la primera que llegue después). Lo que aún esperaba turno en la cadena no sale (se rechaza
+  sin llamar a la acción). Tests: `useSesionEscaneo.test.ts` «cerrar con lecturas en vuelo» (dos).
+- **m2 y m3: aceptados sin cambio** (decisión del leader): «Reintentar» no mira otras filas de la misma
+  guía en curso (m2) y la relectura durante «Recibiendo…» queda «Ya recibida» aunque la original
+  falle, como dice R585 (m3).
+
+Mutaciones de la review (en rojo y restauradas con `git checkout --`):
+
+| # | Mutación | Rojo en |
+| --- | --- | --- |
+| B1 | snapshot de servidor = táctil (`false`) | `EscanerRecepcion` «HTML del servidor» (1) |
+| m1 | rol cruzado en `OrdenesListado.tsx` (`!puedeRecibirBodegaCentral`) | `OrdenesPage` maestro y adminTienda (2) |
+| m4a | la cadena envía tras cerrar | `useSesionEscaneo` «la que esperaba turno no sale» (1) |
+| m4b | sin refresco cuando termina tras cerrar | ídem (1) |
+| m4c | sin el «una sola vez» | `useSesionEscaneo` los dos de m4 (2) |
+
+Salidas: typecheck 0; lint de lo tocado 0; `vitest run` de los 77 archivos relacionados: 77/77,
+1449/1449.

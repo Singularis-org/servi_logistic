@@ -116,3 +116,5 @@ tests y el E2E.
 - `tests/components/RecepcionContinuaPagina.test.tsx`
 - `tests/unit/app/recibir-paquetes-page.test.tsx`
 - `e2e/recibir-paquetes.spec.ts`
+- `lib/modulos/reparto.ts` (guardia `modulos-reparto`: las dos rutas nuevas)
+- `tests/components/EscanerModal.test.tsx` y `e2e/recepcion-satelite.spec.ts` (review B1: localizadores exactos)
