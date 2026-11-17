@@ -15,6 +15,7 @@
 #   PR a la rama de integracion   -> estatico + vitest (N shards) + gate-completo
 #   PR a la rama de produccion    -> lo anterior + e2e
 #   PR en borrador                -> nada, salvo la variable GATE_EN_BORRADOR=true
+#   PR solo de progress/ o specs/ -> gate-completo (y e2e) en verde sin suite (job `cambios`)
 #   workflow_dispatch             -> todo, a mano
 # El runner sale de la variable GATE_RUNNER (p. ej. self-hosted); sin ella, ubuntu-latest.
 #
@@ -67,9 +68,46 @@ jobs:
   # validadores), `vitest` (N shards SIN veredicto) y `gate-completo`, que une los informes y da el
   # veredicto UNA vez. `shards` y `shards_lista` los escribe scripts/ci.mjs desde el mismo numero:
   # si no coincidieran, `--unir` daria rojo (exige exactamente N informes).
+  #
+  # PR SOLO DE ESTADO O SPECS (docs/gate.md > El CI se genera): si el diff contra la base solo toca
+  # `progress/` o `specs/`, ningun test lo lee; `gate-completo` y `e2e` salen en verde sin suite.
+  # Con `paths-ignore` el check no se publicaba y la proteccion de la rama dejaba el PR bloqueado.
+  cambios:
+    name: cambios
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false || vars.GATE_EN_BORRADOR == 'true'
+    runs-on: ${{ vars.GATE_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 5
+    outputs:
+      solo_docs: ${{ steps.diff.outputs.solo_docs }}
+    steps:
+      - name: Checkout (historia completa)
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Solo progress/ o specs/?
+        id: diff
+        shell: bash
+        env:
+          EVENTO: ${{ github.event_name }}
+          BASE: ${{ github.base_ref }}
+        # `--no-renames`: mover un archivo de codigo a `progress/` lista tambien el origen.
+        run: |
+          set -euo pipefail
+          if [ "$EVENTO" != "pull_request" ]; then echo "solo_docs=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          git fetch --no-tags origin "+refs/heads/$BASE:refs/remotes/origin/$BASE"
+          archivos=$(git diff --no-renames --name-only "origin/$BASE...HEAD")
+          # Al menos un archivo y NINGUNO fuera de progress/ o specs/.
+          if [ -n "$archivos" ] && ! grep -qvE '^(progress|specs)/' <<< "$archivos"; then solo=true; else solo=false; fi
+          echo "solo_docs=$solo" >> "$GITHUB_OUTPUT"
+          echo "solo_docs=$solo; archivos del diff:"
+          echo "$archivos"
+
   estatico:
     name: estatico
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false || vars.GATE_EN_BORRADOR == 'true'
+    needs: [cambios]
+    if: (github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false || vars.GATE_EN_BORRADOR == 'true') && needs.cambios.outputs.solo_docs != 'true'
     runs-on: ${{ vars.GATE_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
     steps:
@@ -110,7 +148,8 @@ jobs:
 
   vitest:
     name: vitest (shard ${{ matrix.shard }}/${{ inputs.shards }})
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false || vars.GATE_EN_BORRADOR == 'true'
+    needs: [cambios]
+    if: (github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false || vars.GATE_EN_BORRADOR == 'true') && needs.cambios.outputs.solo_docs != 'true'
     runs-on: ${{ vars.GATE_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 20
     strategy:
@@ -195,22 +234,32 @@ jobs:
 
   gate-completo:
     name: gate-completo
-    needs: [estatico, vitest]
+    needs: [cambios, estatico, vitest]
     # `always()`: tiene que correr AUNQUE un shard haya fallado, para decir por que.
     if: always() && (github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false || vars.GATE_EN_BORRADOR == 'true')
     runs-on: ${{ vars.GATE_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
+    # Con solo_docs solo corre el aviso: los demas pasos se saltan y el job sale en verde.
     steps:
+      - name: PR solo de estado/specs
+        if: needs.cambios.outputs.solo_docs == 'true'
+        shell: bash
+        run: |
+          echo "PR solo de estado/specs (progress/, specs/): sin suite" | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: Checkout
+        if: needs.cambios.outputs.solo_docs != 'true'
         uses: actions/checkout@v4
 
       # Solo Node: `./init.sh --unir` es Node puro sobre JSON.
       - name: Node
+        if: needs.cambios.outputs.solo_docs != 'true'
         uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.node_version }}
 
       - name: El job estatico y los shards corrieron
+        if: needs.cambios.outputs.solo_docs != 'true'
         shell: bash
         env:
           ESTATICO: ${{ needs.estatico.result }}
@@ -222,12 +271,14 @@ jobs:
           esac
 
       - name: Informes de los shards
+        if: needs.cambios.outputs.solo_docs != 'true'
         uses: actions/download-artifact@v4
         with:
           pattern: informe-shard-*
           path: informes/
 
       - name: ./init.sh --unir informes ${{ inputs.shards }}
+        if: needs.cambios.outputs.solo_docs != 'true'
         shell: bash
         env:
           SHARDS: ${{ inputs.shards }}
@@ -236,7 +287,7 @@ jobs:
           bash ./init.sh --unir informes "$SHARDS" 2>&1 | tee init-completo.log
 
       - name: Resumen (poda del baseline de rojos)
-        if: always()
+        if: always() && needs.cambios.outputs.solo_docs != 'true'
         shell: bash
         run: |
           {
@@ -248,7 +299,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Informe de vitest (unido)
-        if: always()
+        if: always() && needs.cambios.outputs.solo_docs != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: gate-completo-informe
@@ -261,6 +312,7 @@ jobs:
 
   e2e:
     name: e2e
+    needs: [cambios]
     # Solo en el PR de despliegue (base = rama de produccion), fuera de borrador, y a mano.
     if: >-
       inputs.e2e && (
@@ -285,42 +337,57 @@ jobs:
           --health-timeout 5s
           --health-retries 20
 
+    # Con solo_docs solo corre el aviso: los demas pasos se saltan y el job sale en verde.
     steps:
+      - name: PR solo de estado/specs
+        if: needs.cambios.outputs.solo_docs == 'true'
+        shell: bash
+        run: |
+          echo "PR solo de estado/specs (progress/, specs/): sin suite" | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: Checkout
+        if: needs.cambios.outputs.solo_docs != 'true'
         uses: actions/checkout@v4
 
       - name: pnpm
+        if: needs.cambios.outputs.solo_docs != 'true'
         uses: pnpm/action-setup@v4
 
       - name: Node
+        if: needs.cambios.outputs.solo_docs != 'true'
         uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.node_version }}
           cache: pnpm
 
       - name: Dependencias
+        if: needs.cambios.outputs.solo_docs != 'true'
         shell: bash
         run: pnpm install --frozen-lockfile
 
       # El script `codegen` de package.json genera lo que no esta en git (cliente del ORM, tipos de
       # ruta...). Sin script, el paso no hace nada.
       - name: Codigo generado
+        if: needs.cambios.outputs.solo_docs != 'true'
         shell: bash
         run: pnpm run --if-present codegen
 
       - name: Entorno del proyecto (scripts/ci-entorno.sh)
+        if: needs.cambios.outputs.solo_docs != 'true'
         shell: bash
         run: |
           if [ -f scripts/ci-entorno.sh ]; then bash scripts/ci-entorno.sh
           else echo "sin scripts/ci-entorno.sh: el E2E corre con el entorno por defecto"; fi
 
       - name: Preparar el E2E (scripts/ci-e2e-preparar.sh)
+        if: needs.cambios.outputs.solo_docs != 'true'
         shell: bash
         run: |
           if [ -f scripts/ci-e2e-preparar.sh ]; then bash scripts/ci-e2e-preparar.sh
           else echo "sin scripts/ci-e2e-preparar.sh: el E2E usa la base de servicio tal cual"; fi
 
       - name: Version de Playwright
+        if: needs.cambios.outputs.solo_docs != 'true'
         id: pw
         shell: bash
         env:
@@ -330,6 +397,7 @@ jobs:
           echo "clave=$(echo "$NAVEGADORES" | tr ' ' '-')" >> "$GITHUB_OUTPUT"
 
       - name: Cache de navegadores
+        if: needs.cambios.outputs.solo_docs != 'true'
         id: pw-cache
         uses: actions/cache@v4
         with:
@@ -337,7 +405,7 @@ jobs:
           key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}-${{ steps.pw.outputs.clave }}
 
       - name: Navegadores de Playwright
-        if: steps.pw-cache.outputs.cache-hit != 'true'
+        if: steps.pw-cache.outputs.cache-hit != 'true' && needs.cambios.outputs.solo_docs != 'true'
         shell: bash
         env:
           NAVEGADORES: ${{ inputs.navegadores }}
@@ -347,7 +415,7 @@ jobs:
           pnpm exec playwright install --with-deps "${lista[@]}"
 
       - name: Dependencias de sistema de los navegadores
-        if: steps.pw-cache.outputs.cache-hit == 'true'
+        if: steps.pw-cache.outputs.cache-hit == 'true' && needs.cambios.outputs.solo_docs != 'true'
         shell: bash
         env:
           NAVEGADORES: ${{ inputs.navegadores }}
@@ -356,11 +424,12 @@ jobs:
           pnpm exec playwright install-deps "${lista[@]}"
 
       - name: Playwright
+        if: needs.cambios.outputs.solo_docs != 'true'
         shell: bash
         run: pnpm run e2e
 
       - name: Trazas de Playwright
-        if: failure()
+        if: failure() && needs.cambios.outputs.solo_docs != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: e2e-test-results

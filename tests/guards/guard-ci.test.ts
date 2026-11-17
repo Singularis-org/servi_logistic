@@ -118,3 +118,116 @@ describe('guardia: el gate.yml se genera desde arnes.config.json', { timeout: 30
     expect(mal.salida).toMatch(/no escucha PRs a prod/)
   })
 })
+
+// Un PR solo de `progress/` o `specs/` publica `gate-completo` (y `e2e`) en verde sin correr la suite
+// (`docs/gate.md > El CI se genera`). Con `paths-ignore` el check requerido no se publicaba y la
+// protección de `dev` dejó el #190 bloqueado. Se lee el texto del workflow (sin parser YAML: no es
+// dependencia del proyecto) por bloques de indentación, que es como los escribe el arnés.
+const WORKFLOWS = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '.github', 'workflows')
+const SOLO_NO = "needs.cambios.outputs.solo_docs != 'true'"
+const SOLO_SI = "needs.cambios.outputs.solo_docs == 'true'"
+const AVISO = 'PR solo de estado/specs (progress/, specs/): sin suite'
+// La clave, no la palabra: los comentarios del workflow explican por qué ya no está.
+const conPathsIgnore = (yml: string) => /^\s*paths-ignore:/m.test(yml)
+
+/** El bloque de un job: desde `  <job>:` hasta el siguiente job (o el final). */
+function job(yml: string, nombre: string): string | null {
+  const lineas = yml.replace(/\r\n/g, '\n').split('\n')
+  const ini = lineas.findIndex((l) => l === `  ${nombre}:`)
+  if (ini < 0 || !lineas.slice(0, ini).includes('jobs:')) return null
+  let fin = ini + 1
+  while (fin < lineas.length && !/^ {2}[A-Za-z0-9_-]+:\s*$/.test(lineas[fin]) && !/^\S/.test(lineas[fin])) fin++
+  return lineas.slice(ini, fin).join('\n')
+}
+/** Un campo del job (4 espacios), con sus líneas de continuación (`if: >-`). */
+function campo(bloque: string, clave: string): string {
+  const lineas = bloque.split('\n')
+  const i = lineas.findIndex((l) => l.startsWith(`    ${clave}:`))
+  if (i < 0) return ''
+  let fin = i + 1
+  while (fin < lineas.length && /^ {6,}\S/.test(lineas[fin])) fin++
+  return lineas.slice(i, fin).join(' ')
+}
+/** Los pasos del job: el texto de cada `- name:` y su `if:` (8 espacios), si lo tiene. */
+function pasos(bloque: string): { nombre: string; si: string }[] {
+  return bloque.split(/\n(?= {6}- name: )/).slice(1).map((s) => ({
+    nombre: s.split('\n')[0].replace(/^ {6}- name: /, ''),
+    si: s.split('\n').find((l) => l.startsWith('        if: '))?.slice(12) ?? '',
+  }))
+}
+
+/** Los problemas del workflow frente a la regla (lista vacía = la cumple). */
+function problemasSoloDocs(yml: string, saltados: string[], veredictos: string[]): string[] {
+  const p: string[] = []
+  if (conPathsIgnore(yml)) p.push('vuelve paths-ignore: el check requerido no se publicaría')
+  const cambios = job(yml, 'cambios')
+  if (!cambios) p.push('falta el job cambios')
+  else {
+    if (!/solo_docs: \$\{\{ steps\.\w+\.outputs\.solo_docs \}\}/.test(cambios)) p.push('cambios no expone el output solo_docs')
+    if (!/git diff --no-renames --name-only "origin\/\$BASE\.\.\.HEAD"/.test(cambios)) p.push('cambios no compara contra la base del PR')
+    if (!cambios.includes("'^(progress|specs)/'")) p.push('cambios no filtra progress/ y specs/')
+  }
+  for (const n of saltados) {
+    const b = job(yml, n)
+    if (!b) { p.push(`falta el job ${n}`); continue }
+    if (!/cambios/.test(campo(b, 'needs'))) p.push(`${n} no depende de cambios`)
+    if (!campo(b, 'if').includes(SOLO_NO)) p.push(`${n} no se salta con solo_docs`)
+  }
+  for (const n of veredictos) {
+    const b = job(yml, n)
+    if (!b) { p.push(`falta el job ${n}`); continue }
+    if (!/cambios/.test(campo(b, 'needs'))) p.push(`${n} no depende de cambios`)
+    const ps = pasos(b)
+    const aviso = ps.filter((x) => x.si === SOLO_SI)
+    if (aviso.length !== 1 || !b.includes(AVISO) || !b.includes('$GITHUB_STEP_SUMMARY')) p.push(`${n} no escribe el aviso en el summary con solo_docs`)
+    for (const x of ps) if (x.si !== SOLO_SI && !x.si.includes(SOLO_NO)) p.push(`${n}: el paso «${x.nombre}» corre con solo_docs`)
+  }
+  return p
+}
+
+const leerWf = (f: string) => readFileSync(join(WORKFLOWS, f), 'utf8').replace(/\r\n/g, '\n')
+const GATE = { archivo: 'gate.yml', saltados: ['estatico', 'vitest', 'e2e-grupo'], veredictos: ['gate-completo', 'e2e'] }
+const ARNES = { archivo: 'arnes-gate.yml', saltados: ['estatico', 'vitest'], veredictos: ['gate-completo', 'e2e'] }
+
+describe('guardia: un PR solo de progress/ o specs/ publica gate-completo en verde', () => {
+  it('el gate.yml generado no lleva paths-ignore', () => {
+    expect(conPathsIgnore(generarGate(base))).toBe(false)
+    expect(conPathsIgnore(generarGate({ ...base, ci: { e2e: false } }))).toBe(false)
+  })
+
+  for (const w of [GATE, ARNES]) {
+    it(`${w.archivo}: job cambios, la suite se salta y los veredictos salen en verde con solo_docs`, () => {
+      expect(problemasSoloDocs(leerWf(w.archivo), w.saltados, w.veredictos)).toEqual([])
+    })
+  }
+
+  // Contraprueba (docs/gate.md > Probar que muerde): cada mutación del texto real pone la guardia en rojo.
+  const mutaciones: [string, (y: string) => string, RegExp][] = [
+    ['vuelve paths-ignore', (y) => y.replace(/\n {2}(pull_request|workflow_call):\n/, (m) => `${m}    paths-ignore:\n      - 'progress/**'\n`), /paths-ignore/],
+    ['sin job cambios', (y) => y.replace('\n  cambios:\n', '\n  cambiosx:\n'), /falta el job cambios/],
+    ['estatico corre con solo_docs', (y) => y.replace(/(\n {2}estatico:[\s\S]*?) && needs\.cambios\.outputs\.solo_docs != 'true'/, '$1'), /estatico no se salta/],
+    ['vitest corre con solo_docs', (y) => y.replace(/(\n {2}vitest:[\s\S]*?) && needs\.cambios\.outputs\.solo_docs != 'true'/, '$1'), /vitest no se salta/],
+    ['gate-completo exige estatico con solo_docs', (y) => y.replace(/(\n {2}gate-completo:[\s\S]*?- name: El job estatico y los shards corrieron\n) {8}if: [^\n]*\n/, '$1'), /gate-completo: el paso «El job estatico/],
+    ['gate-completo sin aviso', (y) => y.replace(/(\n {2}gate-completo:[\s\S]*?)PR solo de estado\/specs \(progress/, '$1PR (progress'), /gate-completo no escribe el aviso/],
+    ['e2e sin cambios en needs', (y) => y.replace(/(\n {2}e2e:\n {4}name: e2e\n {4}needs: \[)cambios(, )?/, '$1').replace(/(\n {2}e2e:\n {4}name: e2e\n) {4}needs: \[\]\n/, '$1'), /e2e no depende de cambios/],
+  ]
+  for (const w of [GATE, ARNES]) {
+    for (const [nombre, mutar, espera] of mutaciones) {
+      it(`contraprueba ${w.archivo}: ${nombre} → rojo`, () => {
+        const original = leerWf(w.archivo)
+        const mutado = mutar(original)
+        expect(mutado).not.toBe(original)
+        expect(problemasSoloDocs(mutado, w.saltados, w.veredictos).join('\n')).toMatch(espera)
+      })
+    }
+  }
+  it('contraprueba gate.yml: e2e-grupo corre con solo_docs → rojo', () => {
+    const mutado = leerWf('gate.yml').replace(/(\n {2}e2e-grupo:[\s\S]*?) && needs\.cambios\.outputs\.solo_docs != 'true'/, '$1')
+    expect(problemasSoloDocs(mutado, GATE.saltados, GATE.veredictos).join('\n')).toMatch(/e2e-grupo no se salta/)
+  })
+  it('contraprueba ci.mjs: un generado con paths-ignore → rojo', () => {
+    const mutado = generarGate(base).replace('  workflow_dispatch:', "    paths-ignore:\n      - 'specs/**'\n  workflow_dispatch:")
+    expect(mutado).not.toBe(generarGate(base))
+    expect(conPathsIgnore(mutado)).toBe(true)
+  })
+})
