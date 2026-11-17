@@ -105,3 +105,25 @@ repetirlo sin otra carga en paralelo.
 ## Vuelta 1 — resumen para el implementer
 Arreglar M1 (localizador de «Mostrar mapa» en E2E (a) + comentario), correr
 `e2e/pwa-mensajero-mapa.spec.ts` en local y marcar T3/T5. m2 y m3 opcionales; m4 lo resuelve repetir el gate.
+
+## Vuelta 2 (acotada a 2b98b576..b8b6df96)
+
+### Veredicto: OK
+
+Los cinco hallazgos de la vuelta 1 están cerrados. No hay regresiones: el diff solo toca
+`e2e/pwa-mensajero-mapa.spec.ts`, las casillas de T3/T5 en `requirements.md` y `progress/`.
+
+- [x] **M1 (cerrado).** En (a), «Mostrar mapa» se busca ahora en el `alert` que lo contiene, con `toHaveCount(1)`
+      (`e2e/pwa-mensajero-mapa.spec.ts:155-161`). Se comprueba que no está dentro del grupo «Mapa de ruta»
+      (`toHaveCount(0)`), y además su `aria-expanded="false"` y sus 44 px. El comentario explica DC2 para el
+      escenario con avisos.
+- [x] **m1 (cerrado).** T3 y T5 están marcadas `[x]` y ahora hay evidencia (`progress/impl_SLT-192.md > Vuelta 2`).
+- [x] **m2 (cerrado).** En (b), un clic en (180, 10), por encima de la hoja, la cierra (`:202-207`). La `Sheet` es modal,
+      así que el clic cae en el backdrop. Es el «tocar fuera» de R889.
+- [x] **m3 (cerrado).** En (b) se afirma la línea completa `${canton} · ${distrito} — ${DIRECCION_LARGA}` con
+      `exact: true` (`:212-214`), usando el cantón y el distrito de la zona satélite del escenario.
+- [x] **m4 (cerrado).** El leader reporta `./init.sh` con INIT_EXIT=0 sobre 30b043c8, ya sin el timeout de la guardia otp.
+
+**Verificación propia:** corrí `pnpm exec playwright test e2e/pwa-mensajero-mapa.spec.ts --reporter=line` contra
+`servi_slt192_desechable`, con el build que ya existía y sin rehacerlo. Resultado: **3 passed (21.3 s), E2E_EXIT=0**.
+No repetí el gate.
