@@ -682,6 +682,7 @@ export function ConfirmacionFisicaCuerpo({
         {/* La tarjeta de captura, con sus DOS caminos (R28). `max-w-none` porque la tarjeta nace
             con el ancho de una pantalla de teléfono y acá vive en una columna del modal. */}
         <EscanerGuiaCard
+          continuo
           className="max-w-none"
           ariaLabel="Confirmar por número de guía o escaneo"
           titulo={ESCANER_TITULO}

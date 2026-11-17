@@ -58,7 +58,7 @@ describe("EscanerModal", () => {
     );
 
     expect(
-      screen.getByRole("button", { name: /Recibir paquete/ }),
+      screen.getByRole("button", { name: "Recibir paquete" }),
     ).toBeInTheDocument();
     expect(screen.queryByText("tarjeta de escaneo")).toBeNull();
   });
@@ -88,7 +88,7 @@ describe("EscanerModal", () => {
       </EscanerModal>,
     );
 
-    await user.click(screen.getByRole("button", { name: /Recibir paquete/ }));
+    await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
 
     const modal = await screen.findByRole("dialog");
     expect(modal).toHaveAccessibleName("Recibir paquete");
@@ -135,7 +135,7 @@ describe("EscanerModal", () => {
       </EscanerModal>,
     );
 
-    await user.click(screen.getByRole("button", { name: /Recibir paquete/ }));
+    await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
     expect(await screen.findByText("tarjeta de escaneo")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /Cerrar/ }));
@@ -166,7 +166,7 @@ describe("EscanerModal", () => {
     // Cerrado de entrada: la cámara ni siquiera llegó a montarse.
     expect(screen.queryByText("cámara")).toBeNull();
 
-    await user.click(screen.getByRole("button", { name: /Recibir paquete/ }));
+    await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
     expect(await screen.findByText("cámara")).toBeInTheDocument();
     expect(apagarCamara).not.toHaveBeenCalled();
 
@@ -214,7 +214,7 @@ describe("EscanerModal — foco inicial según el puntero (SLT-158)", () => {
     const user = userEvent.setup();
     render(<EscanerModal>{tarjeta}</EscanerModal>);
 
-    await user.click(screen.getByRole("button", { name: /Recibir paquete/ }));
+    await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
 
     const campo = await screen.findByLabelText("Número de guía");
     await vi.waitFor(() => expect(document.activeElement).toBe(campo));
@@ -239,7 +239,7 @@ describe("EscanerModal — foco inicial según el puntero (SLT-158)", () => {
       </EscanerModal>,
     );
 
-    await user.click(screen.getByRole("button", { name: /Recibir paquete/ }));
+    await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
 
     const campo = await screen.findByLabelText("Número de guía");
     await vi.waitFor(() => expect(document.activeElement).toBe(campo));
@@ -250,7 +250,7 @@ describe("EscanerModal — foco inicial según el puntero (SLT-158)", () => {
     const user = userEvent.setup();
     render(<EscanerModal>{tarjeta}</EscanerModal>);
 
-    await user.click(screen.getByRole("button", { name: /Recibir paquete/ }));
+    await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
 
     const campo = await screen.findByLabelText("Número de guía");
     // Se espera a que el Dialog asiente su foco inicial antes de afirmar dónde NO está.

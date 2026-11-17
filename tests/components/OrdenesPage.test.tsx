@@ -10,6 +10,8 @@ import { RolValue } from "@prisma/client";
 import OrdenesPage from "@/app/(app)/ordenes/page";
 import { ToastProvider } from "@/providers/ToastProvider";
 import { listarOrdenes } from "@/lib/actions/ordenes";
+import { recibirEnBodegaCentralPorQr } from "@/lib/actions/recepcion-bodega-central";
+import { recibirEnOrigenPorQr } from "@/lib/actions/recepcion-origen";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { resolverAlcanceEtiquetasOrden } from "@/lib/services/alcance-etiquetas-orden";
 import type { CatalogoFiltrosOrdenesDTO } from "@/lib/types/filtros-ordenes";
@@ -38,6 +40,10 @@ vi.mock("next/navigation", () => ({
 
 // La Server Action se mockea: los tests afirman el render de SWR (carga/datos/
 // vacío/error) sin DB ni sesión. `listarOrdenes` es el fetcher de la página.
+// SLT-159 (review m1): las dos acciones de recepción, dobladas para ver a cuál llega el diálogo continuo.
+vi.mock("@/lib/actions/recepcion-bodega-central", () => ({ recibirEnBodegaCentralPorQr: vi.fn() }));
+vi.mock("@/lib/actions/recepcion-origen", () => ({ recibirEnOrigenPorQr: vi.fn() }));
+
 vi.mock("@/lib/actions/ordenes", () => ({
   listarOrdenes: vi.fn(),
 }));
@@ -635,6 +641,57 @@ describe("OrdenesPage", () => {
     expect(screen.queryByLabelText("Número de guía")).toBeNull();
     expect(screen.queryByRole("button", { name: "Recibir" })).toBeNull();
   });
+
+  it("SLT-159 (R611): maestro con puntero fino ve el enlace «Recibir paquetes» y «Recibir paquete» sigue suelto", async () => {
+    listarOrdenesMock.mockResolvedValue({ status: "ok", items: [], page: 1, pageSize: 25, total: 0 });
+    const matchMediaOriginal = window.matchMedia;
+    window.matchMedia = ((consulta: string) => ({
+      matches: consulta === "(pointer: fine)",
+      media: consulta,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })) as unknown as typeof window.matchMedia;
+    try {
+      const user = userEvent.setup();
+      resolveActorMock.mockResolvedValueOnce({ usuarioId: "u", rol: RolValue.maestro });
+      await renderPage();
+
+      expect(screen.getByRole("link", { name: "Recibir paquetes" })).toHaveAttribute(
+        "href",
+        "/ordenes/recibir",
+      );
+      await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
+      expect(screen.getByRole("region", { name: "Recepción en bodega central" })).toBeInTheDocument();
+      expect(screen.queryByRole("log", { name: "Lecturas" })).toBeNull();
+    } finally {
+      window.matchMedia = matchMediaOriginal;
+    }
+  });
+
+  it.each([
+    [RolValue.maestro, "central"],
+    [RolValue.adminTienda, "origen"],
+  ] as const)(
+    "SLT-159 (m1, R580): %s, táctil, abre «Recibir paquetes» y la lectura llega a la recepción de su rol",
+    async (rol, destino) => {
+      listarOrdenesMock.mockResolvedValue({ status: "ok", items: [], page: 1, pageSize: 25, total: 0 });
+      const central = vi.mocked(recibirEnBodegaCentralPorQr);
+      const origen = vi.mocked(recibirEnOrigenPorQr);
+      central.mockResolvedValue({ status: "no_encontrada" });
+      origen.mockResolvedValue({ status: "no_encontrada" });
+      const user = userEvent.setup();
+      resolveActorMock.mockResolvedValueOnce({ usuarioId: "u", rol });
+      await renderPage();
+
+      await user.click(screen.getByRole("button", { name: "Recibir paquetes" }));
+      await user.type(screen.getByLabelText("Número de guía"), "1024{Enter}");
+
+      const [esperada, otra] = destino === "central" ? [central, origen] : [origen, central];
+      await vi.waitFor(() => expect(esperada).toHaveBeenCalledWith({ numGuia: 1024 }));
+      expect(otra).not.toHaveBeenCalled();
+      expect(screen.getByRole("log", { name: "Lecturas" })).toBeInTheDocument();
+    },
+  );
 
   it("seguridad: mensajero y adminSatelite NO alcanzan /ordenes (notFound)", async () => {
     // El mensajero opera en /mis-asignaciones y el adminSatelite en /recepcion-satelite;

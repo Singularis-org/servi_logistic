@@ -6,6 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { EscanerRecepcionBodegaCentral } from "@/app/(app)/ordenes/_components/EscanerRecepcionBodegaCentral";
 import { ORDER_STATUS_LABELS } from "@/app/(app)/ordenes/_components/EstatusBadge";
 import { recibirEnBodegaCentralPorQr } from "@/lib/actions/recepcion-bodega-central";
+import { EscanerModal } from "@/components/shared/EscanerModal";
 
 // Feature 138 — Receptor de la BODEGA CENTRAL en `/ordenes` (maestro/admin): dos
 // entradas equivalentes (escaneo por cámara + entrada manual de guía) que funelan a
@@ -16,12 +17,13 @@ vi.mock("@/lib/actions/recepcion-bodega-central", () => ({
   recibirEnBodegaCentralPorQr: vi.fn(),
 }));
 
-const { successMock, errorMock, infoMock, startMock, decodeCallback } = vi.hoisted(
+const { successMock, errorMock, infoMock, startMock, stopMock, decodeCallback } = vi.hoisted(
   () => ({
     successMock: vi.fn(),
     errorMock: vi.fn(),
     infoMock: vi.fn(),
     startMock: vi.fn(),
+    stopMock: vi.fn().mockResolvedValue(undefined),
     decodeCallback: { current: null as ((texto: string) => void) | null },
   }),
 );
@@ -40,7 +42,7 @@ vi.mock("@/hooks/useToast", () => ({
 vi.mock("html5-qrcode", () => ({
   Html5Qrcode: class {
     start = startMock;
-    stop = vi.fn().mockResolvedValue(undefined);
+    stop = stopMock;
     clear = vi.fn();
   },
 }));
@@ -359,5 +361,93 @@ describe("EscanerRecepcionBodegaCentral — línea de error persistente (SLT-158
     await recibirManual(user, "1024");
 
     await vi.waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  });
+});
+
+// SLT-159 «Escaneo continuo en recepciones y recogidas» — bodega central en el diálogo continuo.
+describe("EscanerRecepcionBodegaCentral — diálogo continuo (R580, R590, R592, R594)", () => {
+  const OK = { status: "ok", ordenId: "o1", estado: "en_bodega_central" } as const;
+
+  function dialogoContinuo(onRecibida: () => void) {
+    return (
+      <EscanerModal label="Recibir paquetes">
+        <EscanerRecepcionBodegaCentral modo="continua" onRecibida={onRecibida} />
+      </EscanerModal>
+    );
+  }
+
+  function filasDeLaSesion(): HTMLElement[] {
+    return Array.from(screen.getByRole("log", { name: "Lecturas" }).querySelectorAll("li"));
+  }
+
+  async function abrirYLeer(user: ReturnType<typeof userEvent.setup>, ...guias: string[]) {
+    await user.click(screen.getByRole("button", { name: "Recibir paquetes" }));
+    for (const g of guias) await user.type(screen.getByLabelText("Número de guía"), `${g}{Enter}`);
+  }
+
+  async function cerrar(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole("button", { name: "Cerrar" }));
+    await vi.waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  }
+
+  it("R580/R592: tres ok llegan a la acción; onRecibida una vez al cerrar y ninguna antes", async () => {
+    const user = userEvent.setup();
+    const onRecibida = vi.fn();
+    recibirMock.mockResolvedValue(OK);
+    render(dialogoContinuo(onRecibida));
+
+    await abrirYLeer(user, "1024", "2048", "4096");
+    await vi.waitFor(() => expect(filasDeLaSesion()[0]).toHaveTextContent("Recibida"));
+    expect(recibirMock.mock.calls).toEqual([
+      [{ numGuia: 1024 }],
+      [{ numGuia: 2048 }],
+      [{ numGuia: 4096 }],
+    ]);
+    expect(onRecibida).not.toHaveBeenCalled();
+
+    await cerrar(user);
+    expect(onRecibida).toHaveBeenCalledTimes(1);
+  });
+
+  it("R590: ni «Recibida» ni «No encontrada» sacan toast", async () => {
+    const user = userEvent.setup();
+    recibirMock.mockResolvedValueOnce(OK).mockResolvedValueOnce({ status: "no_encontrada" });
+    render(dialogoContinuo(vi.fn()));
+
+    await abrirYLeer(user, "1024", "7777777");
+    await vi.waitFor(() => expect(filasDeLaSesion()[0]).toHaveTextContent("No encontrada"));
+
+    expect(successMock).not.toHaveBeenCalled();
+    expect(infoMock).not.toHaveBeenCalled();
+    expect(errorMock).not.toHaveBeenCalled();
+  });
+
+  it("R592: solo no_encontrada y cerrar: onRecibida cero veces", async () => {
+    const user = userEvent.setup();
+    const onRecibida = vi.fn();
+    recibirMock.mockResolvedValue({ status: "no_encontrada" });
+    render(dialogoContinuo(onRecibida));
+
+    await abrirYLeer(user, "7777777");
+    await vi.waitFor(() => expect(filasDeLaSesion()[0]).toHaveTextContent("No encontrada"));
+    await cerrar(user);
+
+    expect(onRecibida).not.toHaveBeenCalled();
+  });
+
+  it("R594: en el diálogo «Recibir paquete», tras leer por cámara la cámara se apaga y no hay lista", async () => {
+    const user = userEvent.setup();
+    recibirMock.mockResolvedValue(OK);
+    render(
+      <EscanerModal>
+        <EscanerRecepcionBodegaCentral onRecibida={vi.fn()} />
+      </EscanerModal>,
+    );
+    await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
+
+    await escanear(user, qrDeGuia(1024));
+
+    await vi.waitFor(() => expect(stopMock).toHaveBeenCalled());
+    expect(screen.queryByRole("log", { name: "Lecturas" })).toBeNull();
   });
 });
