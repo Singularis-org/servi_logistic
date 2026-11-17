@@ -2,7 +2,7 @@
   "$comment": "Lo escribe scripts/arnes-sync.mjs. Hash de cada archivo del arnes tal como vino de la plantilla. No lo edites a mano.",
   "plantilla": "https://github.com/singularis-co/harness_config.git",
   "ref": "main",
-  "commit": "90b8caae5d672dfe3110c74da47bcb20f87b5715",
+  "commit": "f400481ddf3e0f1c163832b335e5ea0e0553cb8d",
   "arnes_version": "2.14.0",
   "archivos": {
     ".claude/agents/backend_dev.md": "dadb458d163fbd41ad960fc17792b8616d4ab5404700163a88d6806b20cd1fda",
@@ -57,7 +57,7 @@
     "scripts/validate-features.mjs": "9e3eeae0e2f8722c460145c5c2061f97df68b6885d22eaf54e5b420d6c2a30c0",
     "scripts/wt.sh": "b917a35e185c455426770f0343267680e15a5ae3bcaaff14a77ff03e10113b7a",
     "tests/guards/guard-archivos-en-vuelo-sin-ruido.test.ts": "0df3143c40a699681ec55edcf2868825862fa8ce52b8253fe2bc5c6a1e98c511",
-    "tests/guards/guard-ci.test.ts": "05979524a7a9f3b1ab4b81e47694ba13b2758f684e39401c62a6f9204dad43e6",
+    "tests/guards/guard-ci.test.ts": "69370630780aee26d4d6d49ec1e6b93cbf6e8bd91d27d3996c6c95e26057917d",
     "tests/guards/guard-dependencias-aprobadas.test.ts": "22568afc7962c5c5eb647372c8e5d1f4e4c8118dce937c4281ce38ec50731210",
     "tests/guards/guard-gate-rapido.test.ts": "5563158596842f45b3c07db79f51f2b34eb902b0c487d6a06be53be9bca5471b",
     "tests/guards/guard-hooks-anclados.test.ts": "abb24db12674ee9b500cb3ca0bec58ca6dfdda9574efeb0d3dcfac83a9e0e4fc",
@@ -81,66 +81,6 @@
     "tests/guards/guard-wt-done.test.ts": "033ad44661bf8f804f395c89d4ede4ee5bc219bb71069639035e998737bba893"
   },
   "subidos": [
-    {
-      "pr": "https://github.com/singularis-co/harness_config/pull/18",
-      "archivos": [
-        ".claude/agents/implementer.md",
-        ".claude/agents/leader.md",
-        ".claude/agents/reviewer.md",
-        ".claude/agents/spec_author.md",
-        ".claude/hooks/arranque.mjs",
-        "AGENTS.md",
-        "arnes.manifest",
-        "docs/jira.md",
-        "docs/worktrees.md",
-        "init.sh",
-        "progress/features/_plantilla.md",
-        "scripts/validate-features.mjs",
-        "tests/guards/guard-init-node-modules-enlazado.test.ts",
-        "tests/guards/guard-validador-titulo.test.ts"
-      ],
-      "fecha": "2026-10-22"
-    },
-    {
-      "pr": "https://github.com/singularis-co/harness_config/pull/21",
-      "archivos": [
-        "docs/trello.md",
-        "scripts/trello.mjs",
-        "tests/guards/guard-trello-cliente.test.ts",
-        "tests/guards/guard-trello-red.test.ts"
-      ],
-      "fecha": "2026-10-30"
-    },
-    {
-      "pr": "https://github.com/singularis-co/harness_config/pull/28",
-      "archivos": [
-        "scripts/disparadores.mjs",
-        "tests/guards/guard-metricas.test.ts"
-      ],
-      "fecha": "2026-11-08"
-    },
-    {
-      "pr": "https://github.com/singularis-co/harness_config/pull/29",
-      "archivos": [
-        "CLAUDE.md",
-        "docs/jira.md",
-        "scripts/nombres-de-fichas.mjs",
-        "tests/guards/guard-nombres-de-fichas.test.ts"
-      ],
-      "fecha": "2026-11-10"
-    },
-    {
-      "pr": "https://github.com/singularis-co/harness_config/pull/30",
-      "archivos": [
-        ".claude/hooks/fin-de-turno.mjs",
-        ".claude/settings.json",
-        "CLAUDE.md",
-        "docs/jira.md",
-        "scripts/nombres-de-fichas.mjs",
-        "tests/guards/guard-nombres-de-fichas.test.ts"
-      ],
-      "fecha": "2026-11-10"
-    },
     {
       "pr": "https://github.com/singularis-co/harness_config/pull/31",
       "archivos": [
@@ -168,6 +108,16 @@
     },
     {
       "pr": "https://github.com/singularis-co/harness_config/pull/33",
+      "archivos": [
+        ".github/workflows/arnes-gate.yml",
+        "docs/gate.md",
+        "scripts/ci.mjs",
+        "tests/guards/guard-ci.test.ts"
+      ],
+      "fecha": "2026-11-17"
+    },
+    {
+      "pr": "https://github.com/singularis-co/harness_config/pull/34",
       "archivos": [
         ".github/workflows/arnes-gate.yml",
         "docs/gate.md",
