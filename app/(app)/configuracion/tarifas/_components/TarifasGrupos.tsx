@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
+import { useNivelesGeograficos } from "@/hooks/use-niveles-geograficos";
 import { useToast } from "@/hooks/useToast";
 import {
   borrarGrupoDistritos,
@@ -30,6 +31,7 @@ import {
   type TarifaValorDTO,
 } from "@/lib/types/tarifa-flexible";
 
+import { nivelDelGrupo, nombresDeNiveles, PROFUNDIDAD_DEL_GRUPO } from "@/app/(app)/configuracion/_shared/nivel-del-grupo";
 import { textoValor, textoValorSinIva, TEXTOS } from "./tarifas-textos";
 
 export interface TarifasGruposProps {
@@ -63,7 +65,6 @@ interface Lugar {
   padre: string | null;
 }
 
-const PROFUNDIDAD_DE_DISTRITO = 3;
 const FOCO = "focus-visible:ring-3 focus-visible:ring-ring";
 
 /** La maqueta `Vigente`: lo que define el grupo, o que cae a la zona. */
@@ -101,8 +102,11 @@ export function TarifasGrupos({
 }: Readonly<TarifasGruposProps>) {
   const toast = useToast();
   const etiquetas = useEtiquetasGeograficas();
-  const distritoPlural = etiquetas.distrito.plural.toLowerCase();
-  const distritoSingular = etiquetas.distrito.singular.toLowerCase();
+  // SLT-48 (R45, P3): los grupos se nombran por el nivel 3 del país; un país de 2 niveles no lo tiene.
+  const niveles = useNivelesGeograficos();
+  const nivelGrupo = nivelDelGrupo(niveles, etiquetas);
+  const distritoPlural = (nivelGrupo?.plural ?? "").toLowerCase();
+  const distritoSingular = (nivelGrupo?.singular ?? "").toLowerCase();
 
   const [dialogo, setDialogo] = useState<Dialogo | null>(null);
   const [confirmando, setConfirmando] = useState(false);
@@ -112,16 +116,13 @@ export function TarifasGrupos({
   const [errorDistritos, setErrorDistritos] = useState<string[] | undefined>();
   const [aviso, setAviso] = useState<string | null>(null);
 
-  // Los nombres de nivel: del árbol cubierto si lo hay; si no, los del país (R61 de SLT-54).
+  // Los nombres de nivel: del árbol cubierto si lo hay; si no, los del país hasta P (R61 de SLT-54;
+  // SLT-48 R45: todos los niveles, no solo los tres primeros).
   const nivelDe = useMemo(() => {
-    const porProfundidad = new Map<number, string>([
-      [1, etiquetas.provincia.singular],
-      [2, etiquetas.canton.singular],
-      [3, etiquetas.distrito.singular],
-    ]);
+    const porProfundidad = nombresDeNiveles(niveles, etiquetas);
     for (const t of nodos?.tipos ?? []) porProfundidad.set(t.profundidad, t.nombreSingular);
     return (profundidad: number) => (porProfundidad.get(profundidad) ?? "").toLowerCase();
-  }, [etiquetas, nodos]);
+  }, [niveles, etiquetas, nodos]);
 
   // Cada lugar conocido, con su nivel y su padre: del árbol cubierto, de los distritos de la zona y de los
   // miembros de los grupos (un miembro que ya no está cubierto sigue teniendo nombre).
@@ -138,12 +139,12 @@ export function TarifasGrupos({
     // sin árbol; el del árbol, si lo hay, ya está y coincide.
     for (const d of distritos) {
       if (!m.has(d.id)) {
-        m.set(d.id, { id: d.id, nombre: d.nombre, profundidad: PROFUNDIDAD_DE_DISTRITO, padre: d.padre ?? null });
+        m.set(d.id, { id: d.id, nombre: d.nombre, profundidad: PROFUNDIDAD_DEL_GRUPO, padre: d.padre ?? null });
       }
     }
     for (const g of grupos) {
       for (const d of g.distritos) {
-        if (!m.has(d.id)) m.set(d.id, { id: d.id, nombre: d.nombre, profundidad: PROFUNDIDAD_DE_DISTRITO, padre: null });
+        if (!m.has(d.id)) m.set(d.id, { id: d.id, nombre: d.nombre, profundidad: PROFUNDIDAD_DEL_GRUPO, padre: null });
       }
       for (const n of g.nodos ?? []) if (!m.has(n.id)) m.set(n.id, { ...n, padre: null });
     }
@@ -197,8 +198,8 @@ export function TarifasGrupos({
     const distritoIds: string[] = [];
     const nodoIds: string[] = [];
     for (const id of elegidos) {
-      const p = lugares.get(id)?.profundidad ?? PROFUNDIDAD_DE_DISTRITO;
-      if (p === PROFUNDIDAD_DE_DISTRITO) distritoIds.push(id);
+      const p = lugares.get(id)?.profundidad ?? PROFUNDIDAD_DEL_GRUPO;
+      if (p === PROFUNDIDAD_DEL_GRUPO) distritoIds.push(id);
       else nodoIds.push(id);
     }
     return { distritoIds, nodoIds };
@@ -345,6 +346,24 @@ export function TarifasGrupos({
     );
   }
 
+  // SLT-48 (R45, regla 4 de la maqueta): un país sin nivel 3 no tiene grupos (P3). La sección se ve
+  // vacía, con la explicación y sin el botón de crear.
+  if (nivelGrupo === null) {
+    return (
+      <section
+        ref={seccionRef}
+        tabIndex={-1}
+        aria-label={TEXTOS.gruposSinNivelEtiqueta}
+        className="scroll-mt-4 overflow-hidden rounded-xl border border-border bg-card outline-none"
+      >
+        <div className="border-b border-border px-[18px] py-4">
+          <h2 className="text-lg font-bold">{TEXTOS.gruposSinNivelTitulo(zona.nombre)}</h2>
+        </div>
+        <EmptyState title={TEXTOS.sinGruposTitulo} description={TEXTOS.gruposSinNivelDetalle} className="py-8" />
+      </section>
+    );
+  }
+
   return (
     <section
       ref={seccionRef}
@@ -476,7 +495,7 @@ export function TarifasGrupos({
 
             {dialogo.tipo === "renombrar" ? null : (
               <fieldset className="flex flex-col gap-1">
-                <legend className="mb-1 text-sm font-medium">{nodos ? TEXTOS.lugares : etiquetas.distrito.plural}</legend>
+                <legend className="mb-1 text-sm font-medium">{nodos ? TEXTOS.lugares : nivelGrupo.plural}</legend>
                 {hayMarcas ? <p className="mb-1 text-[13px] text-muted-foreground">{TEXTOS.marcaEspecialNota}</p> : null}
                 {nodos ? arbolDeMiembros(nodos.raices) : distritos.map((d) => casilla(d.id, d.nombre, null))}
                 <FieldError messages={errorDistritos} />

@@ -257,6 +257,13 @@ export const TEXTOS = {
   borrar: "Borrar",
   nombreGrupo: "Nombre del grupo",
   sinGruposTitulo: "Esta zona no tiene grupos",
+  /**
+   * SLT-48 (R45, P3; regla 4 de la maqueta) — un país de 2 niveles: ninguna orden llega al nivel 3, así que
+   * ninguna usa grupo. Texto propuesto por la maqueta.
+   */
+  gruposSinNivelTitulo: (zona: string) => `${zona}: grupos`,
+  gruposSinNivelEtiqueta: "Grupos de la zona",
+  gruposSinNivelDetalle: "Este país no tiene nivel 3: sus órdenes usan el valor de la zona.",
   sinGruposDetalle: "Crea un grupo si algunos lugares de la zona tienen otro precio. Lo demás sigue con el valor de la zona.",
   usaElDeLaZona: "Usa el de la zona",
   valoresPropios: (n: number) => (n === 1 ? "1 valor propio" : `${n} valores propios`),

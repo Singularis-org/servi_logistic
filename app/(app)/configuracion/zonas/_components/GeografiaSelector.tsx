@@ -13,10 +13,10 @@ import { ESTADO_GEOGRAFICO_TEXTO } from "@/app/(app)/configuracion/_shared/geogr
 
 import {
   alternarNodo,
-  distritosBajo,
   estadoDeNodo,
   indexarArbol,
-  PROFUNDIDAD_DE_DISTRITO,
+  lugaresDelNivelBajo,
+  profundidadDelUltimoNivel,
   repartirPorProfundidad,
   type EstadoDeNodo,
   type Herencia,
@@ -92,7 +92,9 @@ export function GeografiaSelector({
   }
 
   const nivel = (profundidad: number) => tipoDe(profundidad)?.nombreSingular.toLowerCase() ?? "";
-  const placeholder = arbol.tipos
+  // SLT-48 (regla 5 de la maqueta): el buscador nombra los 3 primeros tipos del país y luego «…».
+  const placeholder = [...arbol.tipos]
+    .sort((a, b) => a.profundidad - b.profundidad)
     .slice(0, 3)
     .map((t) => t.nombreSingular.toLowerCase())
     .join(", ");
@@ -182,7 +184,7 @@ export function GeografiaSelector({
 
   // La búsqueda conserva la cadena desde la raíz (un padre sobrevive si un descendiente casa), así que
   // recorrer `filtradas` desde arriba da la misma herencia que el árbol entero.
-  const resumen = resumenDeSeleccion(marcados, indice, tipoDe);
+  const resumen = resumenDeSeleccion(marcados, indice, tipoDe, profundidadDelUltimoNivel(arbol));
 
   return (
     <div className="flex flex-col gap-3">
@@ -259,8 +261,10 @@ function resumenDeSeleccion(
   marcados: ReadonlySet<string>,
   indice: ReturnType<typeof indexarArbol>,
   tipoDe: (profundidad: number) => { nombreSingular: string; nombrePlural: string } | undefined,
+  ultimaProfundidad: number,
 ): string {
-  const distrito = tipoDe(PROFUNDIDAD_DE_DISTRITO);
+  // SLT-48 (R45; maqueta, sección 4): se cuentan los lugares del ÚLTIMO nivel del país («12 barrios»).
+  const ultimo = tipoDe(ultimaProfundidad);
   if (marcados.size === 0) {
     return "Ningún lugar elegido. Marca un lugar de cualquier nivel: lo que cuelga de él lo hereda.";
   }
@@ -268,10 +272,10 @@ function resumenDeSeleccion(
     const n = indice.get(id)?.nodo;
     if (n === undefined) return id;
     const tipo = tipoDe(n.profundidad)?.nombreSingular.toLowerCase();
-    const k = distritosBajo(n);
+    const k = lugaresDelNivelBajo(n, ultimaProfundidad);
     const extra =
-      n.hijos.length > 0 && distrito !== undefined && k > 0
-        ? `, ${k} ${(k === 1 ? distrito.nombreSingular : distrito.nombrePlural).toLowerCase()}`
+      n.hijos.length > 0 && ultimo !== undefined && k > 0
+        ? `, ${k} ${(k === 1 ? ultimo.nombreSingular : ultimo.nombrePlural).toLowerCase()}`
         : "";
     return tipo ? `${n.nombre} (${tipo}${extra})` : n.nombre;
   });

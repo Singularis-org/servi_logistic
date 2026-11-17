@@ -155,18 +155,30 @@ export function estadoDeNodo(
 }
 
 /**
- * Cuántos distritos cuelgan de un nodo (a cualquier profundidad por debajo). Con `zonaEnEdicionId`, solo
- * los que heredaría la zona: una rama asignada a OTRA zona es una excepción y no cuenta (R11). Sin él
- * (`undefined` al crear) toda asignación de la base es de otra zona.
+ * SLT-48 (R45; maqueta, sección 4) — el último nivel del país (P): el mayor de sus tipos. El resumen del
+ * selector y el modal de guardado cuentan los lugares de ESE nivel («12 barrios»), no los del nivel 3.
  */
-export function distritosBajo(
+export function profundidadDelUltimoNivel(arbol: Pick<ArbolDeZonasDTO, "tipos">): number {
+  return arbol.tipos.reduce((max, t) => Math.max(max, t.profundidad), 0);
+}
+
+/**
+ * Cuántos lugares del nivel `profundidad` cuelgan de un nodo (a cualquier profundidad por debajo). Con
+ * `zonaEnEdicionId`, solo los que heredaría la zona: una rama asignada a OTRA zona es una excepción y no
+ * cuenta (R11). Sin él (`undefined` al crear) toda asignación de la base es de otra zona.
+ *
+ * SLT-48 (R45): antes contaba siempre los distritos (profundidad 3); ahora el nivel lo da quien llama, el
+ * último del país. En Costa Rica es el mismo número.
+ */
+export function lugaresDelNivelBajo(
   nodo: NodoDeZonasDTO,
+  profundidad: number,
   excepciones?: { zonaEnEdicionId: string | undefined },
 ): number {
   let n = 0;
   for (const hijo of nodo.hijos) {
     if (excepciones && hijo.asignadaA !== null && hijo.asignadaA.id !== excepciones.zonaEnEdicionId) continue;
-    n += hijo.profundidad === PROFUNDIDAD_DE_DISTRITO ? 1 : distritosBajo(hijo, excepciones);
+    n += hijo.profundidad === profundidad ? 1 : lugaresDelNivelBajo(hijo, profundidad, excepciones);
   }
   return n;
 }

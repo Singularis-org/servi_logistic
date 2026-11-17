@@ -28,9 +28,9 @@ import type { ArbolDeZonasDTO } from "@/lib/types/geografia-nodo";
 import { GeografiaSelector } from "./GeografiaSelector";
 import {
   diferencia,
-  distritosBajo,
+  lugaresDelNivelBajo,
+  profundidadDelUltimoNivel,
   indexarArbol,
-  PROFUNDIDAD_DE_DISTRITO,
   repartirPorProfundidad,
   type NodoIndexado,
   type NodosRepartidos,
@@ -622,7 +622,9 @@ function ListaDeLugares({
   pie: string;
   zonaEnEdicionId: string | undefined;
 }>) {
-  const distrito = arbol.tipos.find((t) => t.profundidad === PROFUNDIDAD_DE_DISTRITO);
+  // SLT-48 (R45): «Incluye sus N <lugares del último nivel del país>», no los del nivel 3.
+  const ultimaProfundidad = profundidadDelUltimoNivel(arbol);
+  const distrito = arbol.tipos.find((t) => t.profundidad === ultimaProfundidad);
   return (
     <section aria-label={titulo} className="flex flex-col gap-1.5 rounded-lg border border-border p-3">
       <p className="text-sm font-semibold">{titulo}</p>
@@ -633,7 +635,7 @@ function ListaDeLugares({
           {ids.map((id) => {
             const { nombre, detalle } = lineaDeLugar(id, indice, arbol);
             const nodo = indice.get(id)?.nodo;
-            const k = nodo ? distritosBajo(nodo, { zonaEnEdicionId }) : 0;
+            const k = nodo ? lugaresDelNivelBajo(nodo, ultimaProfundidad, { zonaEnEdicionId }) : 0;
             const excepciones = titulo === "Entran" && nodo ? excepcionesBajo(nodo, zonaEnEdicionId) : [];
             return (
               <li key={id} className="flex flex-col text-sm">
