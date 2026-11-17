@@ -2,14 +2,14 @@
 
 | key | nombre | zone | complexity | rama | assignee | estado |
 |---|---|---|---|---|---|---|
-| SLT-48 | geo-jerarquica-contract | fullstack | high | feature/SLT-48-geo-jerarquica-contract | Camilo | pending |
+| SLT-48 | geo-jerarquica-contract | fullstack | high | feature/SLT-48-geo-jerarquica-contract | Camilo | spec_ready |
 
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 Rama `feature/SLT-48-geo-jerarquica-contract` desde `feature/SLT-125-geo-jerarquica-exportes` (PR #161). Épica geo apilada antes de mergear a dev.
 
 ## Estado
-F1.0 hecha y acotada (2026-11-17). Sigue F1.2 (spec).
+F1.3 (2026-11-17): spec en `specs/SLT-48-geo-jerarquica-contract/` (R1–R49, T0–T7), sin preguntas abiertas. Espera aprobación humana (F1.4).
 
 ## Evaluación
 - zone fullstack (acotación 2026-11-17): migraciones, Prisma y lectores al nodo, más pantallas de mover nodos y de N niveles (SLT-125 P6).
@@ -29,3 +29,4 @@ Ninguna (cerradas el 2026-11-17 en `requirements.md`).
 ## Modelos (overrides)
 
 ## Cierre
+- 2026-11-17 spec escrito; P1–P5 y tamaño (~150 archivos) cerrados por el humano. spec_ready.

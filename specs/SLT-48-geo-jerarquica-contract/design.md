@@ -3,8 +3,8 @@
 > Requisitos: `requirements.md` (R1–R49). Escrito por `spec_author` el 2026-11-17 sobre la rama
 > `feature/SLT-48-geo-jerarquica-contract` (pila geo hasta SLT-125). El MCP del grafo no tenía indexado
 > este worktree: la exploración se hizo con Grep y Read, sobre el inventario previo del leader
-> (`slt48-inventario.md` en el scratchpad de la sesión). Las preguntas P1–P5 siguen abiertas; donde el
-> diseño depende de ellas, dice qué propone y qué cambia si la respuesta es otra.
+> (`slt48-inventario.md` en el scratchpad de la sesión). P1–P5 las decidió el humano el 2026-11-17
+> («Decisiones cerradas»); este diseño ya las aplica.
 
 ## Lo que ya existe
 
@@ -175,9 +175,8 @@ Ninguna dependencia nueva: un preview feature de Prisma no es un paquete.
 
 - Salen `esPaisDeTresNiveles`, `admiteGuardado`, `PROFUNDIDADES_GUARDABLES`, `fksDeNodo` y
   `MSG_PAIS_NO_HABILITADO`. `UbicacionResuelta` pierde `fks`.
-- Entra `esHoja(cat, nodo)`: con la propuesta de P2, `true` si no tiene hijos activos en el catálogo
-  (`cat.hijos.get(nodo.id)` filtrado por `estaActivo`). Si P2 se responde «sin hijos», se quita el filtro y
-  no cambia nada más.
+- Entra `esHoja(cat, nodo)` (P2): `true` si no tiene hijos activos en el catálogo
+  (`cat.hijos.get(nodo.id)` filtrado por `estaActivo`).
 - Entra `msgUbicacionIncompleta(nombre, tipoSiguiente)`, sin tildes como los mensajes de v1:
   `ubicacion incompleta: '<nombre>' tiene <tipo plural> debajo; indica el ultimo nivel`. El tipo sale del
   catálogo (el de los hijos del nodo).
@@ -246,9 +245,8 @@ la primera mitigación es llevar los nombres al catálogo (decisión heredada de
 `orden.distrito_id`: la calcula una función pura nueva, `distritoDeTarifa(cat, nodoId)` en
 `lib/services/geografia-dominio.ts`:
 
-- en Costa Rica (y con la propuesta (a) de P3, en todo país): el nodo de la orden si su profundidad es
-  ≥ 3; si no, `null` → sin grupo, tarifa base (SLT-89 R20);
-- si P3 se responde distinto, cambia solo esta función y sus tests.
+- en todo país (P3): el nodo de la orden si su profundidad es ≥ 3; si no, `null` → sin grupo, tarifa
+  base (SLT-89 R20).
 
 Llamadores: `resolver-tarifas.ts` (`:99-185`, `:276`, `:397`, `:488`, `:606-629`), `ApiOrdenLecturaService.ts:50`,
 `RechazoTiendaService.ts:250`, `CotizacionOrdenService.ts:139`, `OrdenRepository.ts:1262`, `:2256`. Los
@@ -266,7 +264,7 @@ cuando no: la función devuelve lo mismo que hoy (R32). La equivalencia la cierr
 - **Repositorio** (`GeoRepository.mover`, interfaz `IGeoRepository`), en una transacción:
   1. lee el nodo y el padre destino; `no_existe` si falta alguno;
   2. valida país, profundidad (`destino.profundidad === nodo.profundidad - 1`), que no sea el padre
-     actual y que el nodo no sea raíz (R35). Con la propuesta de P4, rechaza un destino retirado;
+     actual y que el nodo no sea raíz, y rechaza un destino retirado (R35, P4);
   3. `updateMany({ where: { id, padreId: padreIdAnterior }, data: { padreId: padreIdNuevo } })`. Con
      `count = 0` → `cambio_concurrente` (R37). El único `(padre_id, nombre_normalizado)` de la base lanza
      la violación de UNIQUE → `conflict` en el borde (R35);
@@ -277,8 +275,7 @@ cuando no: la función devuelve lo mismo que hoy (R32). La equivalencia la cierr
   `nodo-geografico-escritor-unico.guardia` sigue verde: escribe `GeoRepository`.
 - **Vista previa** (`GeoRepository.vistaPreviaMover`, solo lectura): rutas antes/después, número de
   descendientes (CTE recursiva sobre `padre_id`) y número de órdenes en el subárbol (por
-  `nodo_geografico_id`, todas las empresas: es plataforma). Corre las validaciones de R35 (R36). Con la
-  propuesta (a) de P1, cuenta también las órdenes abiertas cuyo grupo de tarifas o marca de zona especial
+  `nodo_geografico_id`, todas las empresas: es plataforma). Corre las validaciones de R35 (R36). Por P1, cuenta también las órdenes abiertas cuyo grupo de tarifas o marca de zona especial
   cambiaría, por empresa (§7.2). Si hay alguna, la vista previa la devuelve como bloqueo y `mover` la
   rechaza con `validation_error`.
 - **Servicio** (`GeografiaService.moverNodo`, `vistaPreviaMoverNodo`; interfaz `IGeografiaService`).
@@ -293,13 +290,12 @@ cuando no: la función devuelve lo mismo que hoy (R32). La equivalencia la cierr
   guardada en `orden.zona_id` y no cambia.
 - El precio de una orden abierta no está congelado: se resuelve con `distritoDeTarifa` y el catálogo. Si
   el grupo o la marca del nodo eran **heredados** de un antepasado que deja de serlo, la orden cambiaría
-  de precio. Eso choca con la decisión «Mover un nodo» (P1). La propuesta (a) lo evita sin tocar el
-  esquema. Para cada empresa con órdenes abiertas en el subárbol, se calcula con el catálogo de antes y
+  de precio. Eso choca con la decisión «Mover un nodo». La decisión P1 lo evita bloqueando el movimiento, sin
+  tocar el esquema. Para cada empresa con órdenes abiertas en el subárbol, se calcula con el catálogo de antes y
   con uno «movido» en memoria (una función pura en `geografia-dominio.ts`: `catalogoConPadre(cat, id,
   padreNuevo)`) el grupo (`grupoDeNodo`) y la marca de cada nodo con órdenes abiertas. Si alguno difiere,
   se bloquea. Un nodo con grupo o marca propios (fila en `grupo_distritos_distrito`, `zona_distrito` o
-  `distrito_zona_especial`) no cambia nunca. Si P1 se responde (b) o (c), cambia esta sección y la tarea
-  T3.3.
+  `distrito_zona_especial`) no cambia nunca. El modal dice cuántas órdenes bloquean y de qué empresas.
 - Las órdenes nuevas toman la zona y el grupo de la posición nueva porque el catálogo ya refleja el padre
   nuevo (R41).
 
@@ -382,13 +378,13 @@ Con vistas de solo lectura, todo test que escribe `provincia`, `canton` o `distr
 
 - **Prisma y vistas (§3):** no se sabe si el camino A funciona. El camino B suma archivos. T1.1 va
   primero y decide.
-- **Tamaño:** 48 archivos de producción y 85–105 de tests (ver `tasks.md > Tamaño`). La parte de
-  producción está dentro de lo aceptado; la de tests puede pasar de los 60–90 aceptados.
+- **Tamaño:** 48 archivos de producción y 85–105 de tests (ver `tasks.md > Tamaño`), aceptado por el
+  humano (~150 en total, un solo PR).
 - **Choques:** SLT-183 «Usuarios propios en tests de geografía, avisos y migraciones», SLT-187 «Tests
   de migración desfasados tras SL-17» y SLT-61 «Endurecer search_path de las funciones SECURITY DEFINER»
   tocan archivos de esta lista. Lo detecta `archivos-en-vuelo.mjs`.
-- **`down.sql` con órdenes no representables (P5):** si se aborta, volver atrás después de abrir un país
-  de 4 niveles exige antes decidir qué hacer con esas órdenes.
+- **`down.sql` con órdenes no representables (P5):** aborta; volver atrás después de abrir un país de 4
+  niveles exige antes decidir qué hacer con esas órdenes.
 
 ## 13. Mapa R → test
 
@@ -421,7 +417,7 @@ Con vistas de solo lectura, todo test que escribe `provincia`, `canton` o `distr
 | R31, R32 | `tests/unit/services/geografia-dominio.distrito-de-tarifa.test.ts`, `tests/integration/db/tarifas-flexibles-resolver.test.ts` y `slt89-equivalencia-cr.test.ts` (ampliados), `tests/integration/db/slt48-tarifas-equivalencia.test.ts` |
 | R34, R35, R37, R38 | `tests/integration/db/geografia-mover-nodo.test.ts`, `tests/unit/actions/geografia-plataforma.mover.test.ts` |
 | R36 | `tests/integration/db/geografia-mover-nodo.test.ts` (vista previa), `tests/components/MoverNodoDialog.test.tsx` |
-| R39–R41 | `tests/integration/db/geografia-mover-nodo-ordenes.test.ts` (sin escrituras en `orden`, ruta nueva, precio y marca iguales o bloqueo según P1, orden nueva con zona nueva) |
+| R39–R41 | `tests/integration/db/geografia-mover-nodo-ordenes.test.ts` (sin escrituras en `orden`, ruta nueva, precio y marca iguales o movimiento bloqueado (P1), orden nueva con zona nueva) |
 | R42 | `progress/impl_SLT-48.md` (aprobación anotada) — revisado por el reviewer |
 | R43 | `tests/components/CorregirUbicacionNNiveles.test.tsx` |
 | R44 | `tests/unit/types/historial-accion-etiquetas-ruta.test.ts` (nuevo) |

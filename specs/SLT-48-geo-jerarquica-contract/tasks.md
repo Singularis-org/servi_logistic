@@ -6,8 +6,7 @@
 > Cada tanda cierra con `./init.sh` en verde. Si el gate local muere por memoria, se cierra con
 > typecheck y guardias, y el gate completo corre en CI.
 >
-> Preguntas abiertas P1–P5 (`requirements.md`). Cada tarea que depende de una lo dice. Mientras no hay
-> respuesta, se implementa la propuesta del diseño, y cambiarla queda acotado a esa tarea.
+> P1–P5 y el tamaño los decidió el humano el 2026-11-17 («Decisiones cerradas» de `requirements.md`).
 >
 > Reparto por capa (`docs/perfil-agentes.md > implementer`):
 > - `backend_dev`: T1, T2, T3 y T5;
@@ -23,7 +22,7 @@
 - [ ] **T0.1** El leader arma la maqueta (`/design`) en un país de 2, 3 (Costa Rica), 4 y 10 niveles.
   Cubre:
   - en `/plataforma/geografia`, la acción «Mover» y el modal antes → después: rutas, descendientes,
-    órdenes que cambian de nombre, y el estado bloqueado (propuesta de P1);
+    órdenes que cambian de nombre, y el estado bloqueado con cuántas órdenes y de qué empresas (P1);
   - el aviso y el modal de corregir ubicación con un selector por nivel hasta la hoja, y el mensaje de
     «ubicación incompleta»;
   - las etiquetas de lugar del historial con rutas de 2, 3, 4 y 10 niveles;
@@ -73,8 +72,8 @@
 ## T2 — Servidor: escrituras, lectores y tarifas (backend_dev) · depende de T1
 
 - [ ] **T2.1** Regla de hoja en `geo-ubicacion.ts` (design §4.1): `esHoja` y `msgUbicacionIncompleta`.
-  Fuera `esPaisDeTresNiveles`, `admiteGuardado`, `fksDeNodo` y `MSG_PAIS_NO_HABILITADO`. Depende de P2
-  (propuesta: hijos activos).
+  Fuera `esPaisDeTresNiveles`, `admiteGuardado`, `fksDeNodo` y `MSG_PAIS_NO_HABILITADO`. Hoja = sin
+  hijos activos (P2).
   **Hecho:** `geo-ubicacion.test.ts` cubre CR (cantón con y sin distritos), 2, 4 y 10 niveles, y hoja con
   hijos retirados (R17, R18).
 - [ ] **T2.2** Vías de entrada (design §4.2): `BulkOrdenService`, `geo-resolucion` (v1),
@@ -89,7 +88,7 @@
   corregida queda con el nodo nuevo y las 3 FK en NULL (R16).
 - [ ] **T2.4** Tarifas (design §6): `distritoDeTarifa` en `geografia-dominio.ts` y sus llamadores
   (`resolver-tarifas.ts`, `ApiOrdenLecturaService`, `RechazoTiendaService`, `CotizacionOrdenService`,
-  `OrdenRepository`). Depende de P3 (propuesta a).
+  `OrdenRepository`). Grupo desde el nodo si está en el nivel 3 o más hondo (P3).
   **Hecho:** `geografia-dominio.distrito-de-tarifa.test.ts`, `tarifas-flexibles-resolver.test.ts`,
   `slt89-equivalencia-cr.test.ts` y `slt48-tarifas-equivalencia.test.ts` verdes: mismos montos, zona y
   marca para órdenes viejas de CR (R31, R32).
@@ -113,14 +112,14 @@
 
 ## T3 — Mover nodo, servidor (backend_dev) · depende de T1.2 y T2.4
 
-- [ ] **T3.1** `moverNodoSchema`, `GeoRepository.mover` e `IGeoRepository` (design §7.1). Depende de P4
-  (propuesta: rechazar un destino retirado).
+- [ ] **T3.1** `moverNodoSchema`, `GeoRepository.mover` e `IGeoRepository` (design §7.1). Rechaza un
+  destino retirado (P4).
   **Hecho:** `geografia-mover-nodo.test.ts` cubre éxito, cada rechazo de R35, `conflict` por nombre,
   `cambio_concurrente` (R37) y la fila de historial en la misma transacción (R38).
 - [ ] **T3.2** `GeoRepository.vistaPreviaMover`: rutas, descendientes y órdenes del subárbol (R36).
   **Hecho:** cubierto en `geografia-mover-nodo.test.ts`.
 - [ ] **T3.3** Órdenes abiertas afectadas (design §7.2): `catalogoConPadre` y la comparación de grupo y
-  marca por empresa. Bloqueo en la vista previa y en `mover`. Depende de P1 (propuesta a).
+  marca por empresa. Bloqueo en la vista previa y en `mover`, con cuántas órdenes y de qué empresas (P1).
   **Hecho:** `geografia-mover-nodo-ordenes.test.ts` comprueba con dos empresas que no hay escrituras en
   `orden`, que la ruta es la nueva, que la zona se conserva, que el precio y la marca no cambian (o el
   movimiento se bloquea) y que una orden nueva usa la zona nueva (R39–R41).
@@ -190,9 +189,8 @@
   de fixtures a nodos. De las existentes, unas 20 unitarias se listan porque *pueden* cambiar (firmas de
   `lugarDeLaOrden`, `geo-ubicacion`, corrección). El tope real esperado es de 85–105 archivos de test.
 - Por encima del tope por defecto del arnés (40 archivos). `arnes.config.json` no fija `gate.tamano_pr`.
-  El humano aceptó un solo PR de ~35–50 archivos de producción y 60–90 de tests (decisión «¿Una ficha o
-  varias?»). **La estimación de tests puede pasar de 90:** el leader lo confirma con el humano junto
-  con la aprobación del spec.
+  El humano aceptó un solo PR de ~150 archivos: 48 de producción y unos 85–105 de tests (decisión
+  «Tamaño del PR», 2026-11-17).
 
 ## Archivos esperados
 

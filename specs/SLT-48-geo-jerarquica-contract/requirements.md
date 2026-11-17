@@ -28,8 +28,8 @@
 > - **«Las 3 FK de la orden»**: `orden.provincia_id`, `orden.canton_id` y `orden.distrito_id`.
 > - **«Nodo de la orden»**: `orden.nodo_geografico_id`.
 > - **«P»**: el número de niveles del país (de 2 a 10).
-> - **«Hoja»**: el último nodo de su rama (decisión «¿A qué nodo apunta una orden?»). Si cuentan los
->   hijos retirados está en la pregunta P2.
+> - **«Hoja»**: el último nodo de su rama (decisión «¿A qué nodo apunta una orden?»): un nodo sin hijos
+>   activos (decisión P2).
 > - **«Orden vieja»**: una orden creada antes de esta feature. **«Orden nueva»**: una creada después.
 > - **«Orden abierta»**: una orden que todavía no entró en un cierre (su precio todavía no está congelado).
 
@@ -48,7 +48,7 @@
 | R9 | SI se inserta una orden con alguna de las 3 FK y sin nodo (SQL a mano, fixtures), ENTONCES la base DEBE poner como nodo el lugar de esas FK (el distrito, o el cantón si no hay distrito), como hoy. SI la orden trae nodo, la base NO DEBE cambiarlo. |
 | R10 | Los triggers de `orden` DEBEN costar ≤ 1 ms por fila en una carga masiva de prueba contra Postgres real (decisión heredada de SLT-43). |
 | R11 | El `down.sql` de la migración DEBE devolver la base a como estaba antes: tablas viejas reales con sus filas copiadas de los nodos de profundidad 1–3, sus restricciones, índices, políticas y triggers (también los de sincronía); las FK y los NOT NULL de vuelta; y las 3 FK de cada orden nueva rellenadas desde la ruta de su nodo. Una ida y vuelta (`migration.sql` → `down.sql` → `migration.sql`) DEBE dejar el esquema y los datos iguales. |
-| R12 | SI al aplicar el `down.sql` existe una orden cuyo nodo no se puede expresar con las 3 FK (un nodo de profundidad 4 o más, o de profundidad 1), ENTONCES el `down.sql` DEBE abortar sin cambiar nada y con un mensaje que diga cuántas órdenes son. (Ver pregunta P5.) |
+| R12 | SI al aplicar el `down.sql` existe una orden cuyo nodo no se puede expresar con las 3 FK (un nodo de profundidad 4 o más, o de profundidad 1), ENTONCES el `down.sql` DEBE abortar sin cambiar nada y con un mensaje que diga cuántas órdenes son (decisión P5). |
 | R13 | Toda operación destructiva de las migraciones de esta feature (`DROP CONSTRAINT`, `DROP NOT NULL`, `DROP TRIGGER`, `DROP FUNCTION`, `DROP TABLE` de las tablas viejas, `CREATE OR REPLACE FUNCTION`) DEBE estar declarada una por una en la guardia de migraciones. Cualquier otra operación destructiva DEBE ponerla en rojo. Cada migración DEBE traer su `down.sql` y ninguna migración ya aplicada DEBE editarse. |
 | R14 | Ninguna migración de esta feature DEBE borrar columnas, borrar las vistas, tocar `pais.nivel_N_*` ni `digitos_codigo_nivel_N`, poner NOT NULL a `orden.nodo_geografico_id` ni renombrar `zona_distrito` o `distrito_zona_especial` (todo eso es de SLT-196 «Geografía jerárquica: borrar el modelo viejo»). |
 
@@ -82,7 +82,7 @@
 
 | R | Requisito |
 |---|---|
-| R31 | El precio de una orden DEBE leer su nodo y no las 3 FK. Una orden cuyo nodo es un distrito DEBE usar el grupo de tarifas del distrito, como hoy. Una orden sin distrito (en Costa Rica, un cantón sin distritos) DEBE seguir sin grupo y DEBE usar la tarifa base (SLT-89 R20). Cómo se aplica esto en un país que no es de 3 niveles está en la pregunta P3. |
+| R31 | El precio de una orden DEBE leer su nodo y no las 3 FK. Una orden cuyo nodo es un distrito DEBE usar el grupo de tarifas del distrito, como hoy. Una orden sin distrito (en Costa Rica, un cantón sin distritos) DEBE seguir sin grupo y DEBE usar la tarifa base (SLT-89 R20). En todo país, el grupo se busca desde el nodo de la orden si está en el nivel 3 o más hondo; más arriba, la orden va sin grupo (decisión P3). |
 | R32 | Para toda orden vieja, la cotización, el cobro de entrega, el de devolución, el de rechazo, la lectura de órdenes de la API y el cierre DEBEN dar los mismos montos, la misma zona y la misma marca de zona especial que hoy. Ningún cobro cambia. |
 | R33 | Antes del merge, una persona DEBE correr los scripts de equivalencia `geo:equivalencia-*` sobre la copia de producción con esta feature aplicada, y todos DEBEN salir con 0. La salida va al PR. Ningún agente toca producción ni su copia. |
 
@@ -91,12 +91,12 @@
 | R | Requisito |
 |---|---|
 | R34 | DONDE el usuario es superadmin, el sistema DEBE permitir mover un nodo a otro padre de la misma profundidad que su padre actual, dentro del mismo país. Ningún otro rol DEBE poder hacerlo: la acción responde `forbidden` y no escribe. |
-| R35 | SI el destino no existe, es de otro país, es de otra profundidad, es el padre actual, o el nodo a mover es una raíz, ENTONCES el sistema DEBE rechazar el movimiento sin escribir, con un mensaje que diga el motivo. SI el padre destino ya tiene un hijo con el mismo nombre, ENTONCES DEBE responder `conflict` sin escribir. |
+| R35 | SI el destino no existe, es de otro país, es de otra profundidad, es el padre actual, está retirado (decisión P4), o el nodo a mover es una raíz, ENTONCES el sistema DEBE rechazar el movimiento sin escribir, con un mensaje que diga el motivo. SI el padre destino ya tiene un hijo con el mismo nombre, ENTONCES DEBE responder `conflict` sin escribir. |
 | R36 | ANTES de mover, el sistema DEBE mostrar un modal antes → después con: la ruta actual y la nueva del nodo, cuántos nodos cuelgan de él y cuántas órdenes cambian el nombre de lugar que muestran. Las validaciones de R35 DEBEN correr al abrir el modal, no solo al guardar. |
 | R37 | CUANDO se confirma el movimiento, SI el padre del nodo ya no es el que mostró el modal, ENTONCES el sistema DEBE responder `cambio_concurrente` sin escribir. |
 | R38 | CUANDO un movimiento se guarda, el sistema DEBE registrar en el historial de plataforma, en la misma transacción, una acción «nodo movido» con la ruta del padre anterior, la del nuevo, el actor y el país. |
 | R39 | CUANDO un nodo se mueve, toda orden ya creada en él o debajo DEBE mostrar la ruta nueva (ejemplo: San Rafael pasa de Escazú a Santa Ana y sus órdenes muestran «Santa Ana › San Rafael»), y DEBE conservar su zona. El movimiento NO DEBE escribir ninguna fila de `orden`. |
-| R40 | CUANDO un nodo se mueve, el precio y la marca de zona especial de toda orden abierta en él o debajo NO DEBEN cambiar (decisión «Mover un nodo»). Cómo se garantiza está en la pregunta P1. |
+| R40 | CUANDO un nodo se mueve, el precio y la marca de zona especial de toda orden abierta en él o debajo NO DEBEN cambiar (decisión «Mover un nodo»). SI el movimiento cambiaría el grupo de tarifas o la marca de zona especial de alguna orden abierta, ENTONCES el sistema DEBE bloquearlo sin escribir, y el modal DEBE decir cuántas órdenes son y de qué empresas (decisión P1). |
 | R41 | CUANDO un nodo se mueve, una orden nueva en él DEBE usar la zona, el grupo y la marca de su posición nueva. |
 
 ### F. Pantallas de N niveles
@@ -140,51 +140,16 @@
 | Nombres internos `provincia/canton/distrito` | R1, R28 |
 | Nivel 4 de la orden | R26 |
 | Producción (backup, ningún agente, build de `prod`) | R33, R49 (y `tasks.md`, tanda de cierre) |
+| P1 (bloquear mover con órdenes abiertas afectadas) | R36, R40 |
+| P2 (hoja = sin hijos activos) | R17 |
+| P3 (grupo desde el nivel 3 o más hondo) | R31 |
+| P4 (no mover bajo padre retirado) | R35 |
+| P5 (`down.sql` aborta) | R12 |
+| Tamaño del PR | R48 (alcance; el tamaño lo revisa el reviewer) |
 
 ## Preguntas abiertas
 
-> Escritas por `spec_author` el 2026-11-17. Ninguna bloquea la tanda de base de datos; cada una dice qué
-> requisito y qué tarea espera la respuesta, y qué propone el diseño mientras tanto.
-
-**P1 — Mover un nodo cuando el grupo de tarifas o la marca especial vienen del padre viejo.**
-Hoy el precio de una orden abierta no está congelado: se calcula con el grupo y la marca de zona especial
-que hereda subiendo por el árbol. Ejemplo: el grupo «GAM Oeste» de la zona Oeste incluye el cantón Escazú
-entero. San Rafael (distrito de Escazú) no tiene grupo propio y hereda «GAM Oeste». Si San Rafael pasa a
-Santa Ana, que es de otra zona, una orden abierta de San Rafael (zona Oeste, guardada) ya no encuentra
-«GAM Oeste» al subir y caería a la tarifa base: su precio cambiaría, y la decisión dice que no cambia.
-¿Qué hacemos?
-- (a) **Bloquear el movimiento** mientras haya órdenes abiertas afectadas: el modal dice cuántas y de qué
-  empresas, y el superadmin espera a que se cierren o pide a la empresa que ajuste el grupo.
-- (b) Mover y congelar el grupo y la marca de esas órdenes en ellas (columna nueva en `orden`).
-- (c) Mover y aceptar que esas órdenes cambien de precio.
-El diseño propone (a): no toca `orden` ni el esquema. Esperan la respuesta R40 y la tarea T3.3.
-
-**P2 — ¿Una hoja puede tener hijos retirados?**
-Ejemplo: un cantón cuyos distritos están todos retirados. Si los hijos retirados cuentan, ese cantón no es
-hoja y nadie puede crear órdenes ahí hasta reactivar un distrito. Si no cuentan, el cantón pasa a ser
-hoja y acepta órdenes. ¿Hoja = «sin hijos» o «sin hijos activos»? El diseño propone «sin hijos activos».
-Esperan R17 y T2.1.
-
-**P3 — Grupo de tarifas en países que no son de 3 niveles.**
-La decisión «Tarifas» habla de distritos, que es la forma de Costa Rica. Ejemplo: en un país de 4 niveles
-(región › comuna › sector › barrio) una orden va a un barrio (nivel 4); en uno de 2 niveles (departamento
-› municipio), a un municipio (nivel 2). ¿Desde qué nodo se busca el grupo?
-- (a) Desde el nodo de la orden, si está en el nivel 3 o más hondo; más arriba, sin grupo (en Costa Rica
-  da lo mismo que hoy).
-- (b) Desde el nodo de la orden, a cualquier profundidad, salvo en Costa Rica, que sigue como hoy.
-- (c) Sin grupo fuera de Costa Rica hasta otra ficha.
-El diseño propone (a). Esperan R31 y T2.4.
-
-**P4 — Mover bajo un padre retirado.**
-Ejemplo: el superadmin quiere pasar San Rafael bajo un cantón que está retirado. Si se permite, San
-Rafael queda retirado en cascada y sus órdenes nuevas dejan de entrar. ¿Se permite (con aviso en el
-modal) o se rechaza? El diseño propone rechazarlo. Esperan R35 y T3.1.
-
-**P5 — Volver atrás (`down.sql`) con órdenes que el modelo viejo no sabe guardar.**
-Si en producción ya se crearon órdenes en un país de 4 niveles (en el nivel 4), las tablas viejas no
-tienen dónde ponerlas. El diseño propone que el `down.sql` aborte sin cambiar nada y diga cuántas son
-(R12): volver atrás exigiría antes decidir qué hacer con esas órdenes. La otra opción es volver atrás
-dejando las 3 FK de esas órdenes en NULL y sin el NOT NULL. ¿Vale abortar? Espera T1.3.
+Ninguna.
 
 ## Decisiones cerradas (no reabrir)
 
@@ -208,4 +173,10 @@ dejando las 3 FK de esas órdenes en NULL y sin el NOT NULL. ¿Vale abortar? Esp
 | heredada SLT-65 | Rendimiento | Si el listado empeora, la primera mitigación es llevar los nombres al catálogo, antes que crear un índice. |
 | heredada SL-20 / SLT-125 | Nombres internos | `provincia/canton/distrito` se quedan en la base, el código y la API v1. Cada superficie conserva su separador y su orden. |
 | heredada SLT-125 P1 | Nivel 4 de la orden | Hasta SLT-48 la cuarta columna salía vacía. Desde aquí se llena, y la expectativa de `e2e/geo-presentacion-4-niveles.spec.ts` cambia. |
+| 2026-11-17 | P1 — Mover un nodo cuando el grupo de tarifas o la marca especial de una orden abierta vienen del padre viejo | Se bloquea el movimiento mientras haya órdenes abiertas afectadas. El modal dice cuántas son y de qué empresas. |
+| 2026-11-17 | P2 — ¿Una hoja puede tener hijos retirados? | Hoja = sin hijos activos. |
+| 2026-11-17 | P3 — Grupo de tarifas en países que no son de 3 niveles | El grupo se busca desde el nodo de la orden si está en el nivel 3 o más hondo; más arriba, sin grupo. |
+| 2026-11-17 | P4 — Mover bajo un padre retirado | Se rechaza. |
+| 2026-11-17 | P5 — `down.sql` con órdenes que el modelo viejo no sabe guardar | El `down.sql` aborta sin cambiar nada y dice cuántas órdenes lo impiden. |
+| 2026-11-17 | Tamaño del PR | Un solo PR de ~150 archivos: 48 de producción y unos 85–105 de tests. |
 | heredada épica | Producción | Hay backup verificado antes de la release y ningún agente toca la base de producción. Las migraciones las aplica el build de `prod`. |
