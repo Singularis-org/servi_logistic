@@ -119,3 +119,7 @@ E2E (b); spec (R596-R598, R830, R831) y `progress/features/SLT-168.md > Decision
   `sesion-escaneo` R596 y 7 de `RecoleccionModule`); restaurada con `git checkout --`.
 
 Veredicto: SLT-168 implementada (T1-T7) con los textos finales de Carlos; typecheck, lint y tests en verde y las mutaciones en rojo; quedan el E2E y el gate del leader.
+
+## T8 — gate (leader, 2026-11-17)
+
+- `./init.sh` (rápido) con `.env` de dev: `INIT_EXIT=0`; 16/40 archivos, 345/1000 producción, 1294/3000 tests. E2E `mis-asignaciones` y `pwa-mensajero-recoger-recoleccion` en CI. Prueba en dispositivo: Carlos en Preview.
