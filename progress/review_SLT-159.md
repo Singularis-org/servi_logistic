@@ -165,3 +165,34 @@ porque con puntero fino el enlace solo existe en cliente.
 2. B2: correr en local (base desechable) los E2E afectados, pegar la salida en
    `progress/impl_SLT-159.md` y marcar T9 (T8 con Preview pendiente de Carlos, anotado).
 3. Recomendado: m1 (test del cableado) y m2.
+
+## Vuelta 2 (acotada a cbda0490..HEAD)
+
+Diff: `RecibirPaquetesEntrada.tsx`, `useSesionEscaneo.ts`, `e2e/recepcion-satelite.spec.ts`, tests
+(`EscanerRecepcion`, `OrdenesPage`, `useSesionEscaneo`, `EscanerModal`), tasks e impl.
+
+### Checklist
+- [x] **B1 cerrado.** `usePunteroConocido` (useSyncExternalStore, snapshot de servidor `null`): en
+  servidor e hidratación no se pinta la entrada; en el primer render del cliente aparece ya como
+  enlace o botón. No hay ventana con dos botones «Recibir paquete…». El E2E pasa a `exact: true`
+  (la etiqueta por defecto es exactamente `ESCANER_LABEL_POR_DEFECTO = "Recibir paquete"`): endurece.
+  - Mutación «servidor asume táctil» (`() => false`): el test SSR nuevo cae (1 failed). Mutación
+    «servidor asume fino» (`() => true`): también cae.
+  - R611 intacto: `RecibirPaquetesEntrada.test.tsx` verde. Sin pantalla sin entrada: en cliente el
+    snapshot siempre resuelve a booleano. Salto de layout: la entrada aparece al hidratar al lado
+    del botón existente (antes parpadeaba botón->enlace); equivalente al frame ya aceptado en el design.
+- [x] **m1 cerrado.** `OrdenesPage.test.tsx` (maestro -> central, adminTienda -> origen, y la otra
+  acción no llamada). Mutación: invertir `puedeRecibirBodegaCentral` en `OrdenesListado.tsx:1414`
+  -> los 2 casos caen.
+- [x] **m4 cerrado.** Tras cerrar: lo que esperaba turno no sale (resuelve `no_se_pudo`, la UI no
+  queda esperando); lo ya en vuelo termina y refresca una vez en total. StrictMode: el remontaje
+  reabre (`cerrado=false`) con la sesión vacía, sin refresco. Mutaciones (las 3 matadas):
+  quitar el `cerrado ? reject`, quitar el guard `refrescado`, quitar `refrescarSiToca()` en `enviar`.
+- [x] `EscanerModal.test.tsx`: regex -> nombre exacto; endurece, no debilita.
+- [x] Tests: 5 archivos, 64 passed. `tsc --noEmit` 0. eslint de los archivos tocados 0.
+- [ ] T8/T9 sin marcar: son B2 (E2E/Preview), que cierra el leader con la evidencia de CI.
+
+### Hallazgos
+- Ninguno nuevo. B2 queda para el leader (CI); m2/m3 aceptados.
+
+### Veredicto vuelta 2: OK
