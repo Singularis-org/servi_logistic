@@ -8,7 +8,7 @@
 
 ## T1 — Dominio: la arista #73 (backend_dev)
 
-- [ ] **T1.1** Arista `en_bodega_satelite -> en_ruta_bodega_central` (`via: "ajuste_estado"`, `rol:
+- [x] **T1.1** Arista `en_bodega_satelite -> en_ruta_bodega_central` (`via: "ajuste_estado"`, `rol:
   "maestro/admin"`, comentario `// #73 (SLT-197)`) en `TRANSICIONES`. Fila #73 en
   `tests/fixtures/inventario-transiciones-140.ts` con su call-site (`OrdenRepository.retirarSateliteLote`)
   y `RECUENTO_INVENTARIO` a 60 aristas / 55 pares, con la línea de historia.
@@ -20,13 +20,13 @@
 
 ## T2 — Repositorio (backend_dev; con T1)
 
-- [ ] **T2.1** `retirarSateliteLote(ordenIds, destinoEstatusId, historial): Promise<"ok" | "conflicto">`
+- [x] **T2.1** `retirarSateliteLote(ordenIds, destinoEstatusId, historial): Promise<"ok" | "conflicto">`
   en `OrdenRepository` e `IOrdenRepository` (design §4.1): lectura y `updateMany` con el mismo `where`
   (ids ∧ no borrada ∧ `en_bodega_satelite`), conteo exacto o rollback, `mensajeroAsignadoId`/`asignadoAt`/
   `fechaReparto` a null, `appendCambioEstado` por orden. Punto #35 en el mapa de
   `tests/unit/repositories/orden-historial-cobertura.test.ts` (34 → 35).
   **Hecho:** typecheck verde; `orden-historial-cobertura.test.ts` verde.
-- [ ] **T2.2** `tests/integration/db/retiro-satelite-central.int.test.ts`, contra Postgres real, con
+- [x] **T2.2** `tests/integration/db/retiro-satelite-central.int.test.ts`, contra Postgres real, con
   órdenes de dos zonas satélite y una de la central:
   - R971/R972/R985: lote de dos zonas → `en_ruta_bodega_central`, historial (origen, destino, actor,
     `ajuste_estado`), mensajero/asignado/día en null, zona/tienda/guía/remisión/monto intactos.
@@ -44,7 +44,7 @@
 
 ## T3 — Servicio (backend_dev; depende de T2.1)
 
-- [ ] **T3.1** `retirarABodegaCentral` en `GuiaAsignacionService` + firma en `IGuiaAsignacionService`;
+- [x] **T3.1** `retirarABodegaCentral` en `GuiaAsignacionService` + firma en `IGuiaAsignacionService`;
   tipos `retirarSateliteSchema`, `RetirarSateliteResult`, `RetirarSateliteResultadoItem` en
   `lib/types/orden-guia.ts` (design §4.2/§4.4).
   **Hecho:** `tests/unit/services/guia-asignacion-retiro-satelite.test.ts` verde con dobles: R975
@@ -54,14 +54,14 @@
 
 ## T4 — Action (backend_dev; depende de T3)
 
-- [ ] **T4.1** `retirarABodegaCentral` en `lib/actions/ordenes-guia.ts`, calco de
+- [x] **T4.1** `retirarABodegaCentral` en `lib/actions/ordenes-guia.ts`, calco de
   `rutearABodegaSatelite`.
   **Hecho:** casos R976 (sin sesión, `ordenIds: []`, `ordenIds` no string) y un `ok` en
   `tests/integration/actions/ordenes-guia-action.test.ts`.
 
 ## T5 — Manifiesto (backend_dev; [P] con T3)
 
-- [ ] **T5.1** `"retiro_satelite"` en `MANIFIESTO_FLUJOS` y su `case` en `ManifiestoService`
+- [x] **T5.1** `"retiro_satelite"` en `MANIFIESTO_FLUJOS` y su `case` en `ManifiestoService`
   (`origen: zona`, `destino: ctx.central`, `responsable: ctx.actor`).
   **Hecho:** R982 verde en `tests/unit/services/manifiesto-service.test.ts` con literales.
 

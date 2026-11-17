@@ -88,6 +88,7 @@ function buildRepo(overrides: Partial<IOrdenRepository> = {}): IOrdenRepository 
     findMensajerosNoAsignablesPorEstado: vi.fn(async () => new Set<string>()),
     findMensajeroIdsValidosByZona: vi.fn().mockResolvedValue(new Set()),
     rutearBodegaSateliteLote: vi.fn().mockResolvedValue(0),
+    retirarSateliteLote: vi.fn().mockResolvedValue("ok"),
     // Feature 32: etiqueta de guia, exigida por la interfaz IOrdenRepository.
     findEtiquetasByIds: vi.fn().mockResolvedValue([]),
     findEtiquetaByNumGuia: vi.fn().mockResolvedValue(null),

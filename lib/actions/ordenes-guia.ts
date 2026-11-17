@@ -6,11 +6,13 @@ import {
   asignarRecoleccionSchema,
   desasignarRecoleccionSchema,
   generarGuiaSchema,
+  retirarSateliteSchema,
   rutearSateliteSchema,
   type AsignarBodegaResult,
   type AsignarRecoleccionResult,
   type GenerarGuiaResult,
   type ListarMensajerosParaAsignacionResult,
+  type RetirarSateliteResult,
   type RutearSateliteResult,
 } from "@/lib/types/orden-guia";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
@@ -260,6 +262,28 @@ export async function rutearABodegaSatelite(
     const data = rutearSateliteSchema.parse(input); // ZodError -> VALIDATION_ERROR
     const service = deps.guiaService ?? buildGuiaService();
     return service.rutearABodegaSatelite(data, actor); // resultado tipado de dominio
+  });
+  return isAppErrorShape(r) ? toGuiaActionError(r) : r;
+}
+
+/**
+ * SLT-197 (R971/R975/R976): retira ordenes del estante de una satelite a la central
+ * (`en_bodega_satelite -> en_ruta_bodega_central`). Solo maestro/admin (lo decide el service).
+ *
+ * @sin-superficie SLT-197 tanda de servidor (T1-T5): la pantalla que la llama
+ * (`RetirarACentralModal`, accion «Retirar a bodega central» de `/ordenes`) es la tarea T6 de la
+ * misma ficha, en la tanda siguiente. Esa tanda QUITA esta anotacion al darle superficie.
+ */
+export async function retirarABodegaCentral(
+  input: unknown,
+  deps: GuiaActionDeps = {},
+): Promise<RetirarSateliteResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError(); // R976: antes de tocar el service
+    const data = retirarSateliteSchema.parse(input); // ZodError -> VALIDATION_ERROR (R976)
+    const service = deps.guiaService ?? buildGuiaService();
+    return service.retirarABodegaCentral(data, actor);
   });
   return isAppErrorShape(r) ? toGuiaActionError(r) : r;
 }
