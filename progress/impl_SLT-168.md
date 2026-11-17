@@ -113,8 +113,9 @@ verde). Literales actualizados a mano en `sesion-escaneo.test.ts`, `RecoleccionM
 E2E (b); spec (R596-R598, R830, R831) y `progress/features/SLT-168.md > Decisiones`.
 
 - Vitest (14 archivos de la ficha + guardia 455 + `ContrasteBrandSoftOscuro` + recepciones):
-  `VITEST_EXIT=0`, `Tests 357 passed`. Typecheck y lint: ver el commit del cambio.
-- Mutación: `TEXTOS_RECOLECCION.exito` = «Recolectada» → guardia 455 y tests de M2 en rojo
-  (detalle abajo, restaurada con `git checkout --`).
+  `VITEST_EXIT=0`, `Tests 357 passed`.
+- Typecheck `TSC_EXIT=0`; lint de los archivos tocados `LINT_EXIT=0`. Commit `ebce90ca`.
+- Mutación (tras el commit): `TEXTOS_RECOLECCION.exito` = «Recolectada» → 9 rojos de 84 (guardia 455,
+  `sesion-escaneo` R596 y 7 de `RecoleccionModule`); restaurada con `git checkout --`.
 
 Veredicto: SLT-168 implementada (T1-T7) con los textos finales de Carlos; typecheck, lint y tests en verde y las mutaciones en rojo; quedan el E2E y el gate del leader.
