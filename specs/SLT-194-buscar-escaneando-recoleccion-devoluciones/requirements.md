@@ -205,7 +205,7 @@ Requisito previo: SLT-193 mergeado en `dev` y traído a esta rama antes de T1 (c
   en verde; los tests de descarga existentes en verde.
 - [ ] **T3 [P] — Recolección.** `RecoleccionModule` pasa `escaneo`; la guardia incluye Recolección.
   *Hecho:* R940-R944 en verde; los tests existentes de `RecoleccionModule` en verde.
-- [ ] **T4 [P] — Rechazos, servidor (backend_dev).** Lo de D3:
+- [x] **T4 [P] — Rechazos, servidor (backend_dev).** Lo de D3:
   - `q` opcional en el esquema de la acción;
   - `ListarRechazosSlaTiendaInput.busqueda?: TerminoBusqueda`, construido con `terminoDeBusqueda`;
   - `countRechazadasSlaByTienda` / `findRechazadasSlaByTienda` con el término opcional, en

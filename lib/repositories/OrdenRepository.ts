@@ -158,6 +158,7 @@ import {
   // FICHA 370: «¿ya salio a reparto?», el MISMO tipo para las dos rutas de consulta.
   type SalioAReparto,
   type RechazoSlaTiendaRow,
+  type BusquedaRechazosSla,
   type UpdateOrdenData,
   type ApiOrdenListResult,
   type ApiOrdenDetalleRow,
@@ -6032,19 +6033,31 @@ export class OrdenRepository implements IOrdenRepository {
    * (R15), su estatus ACTUAL es `rechazada` Y tiene AL MENOS una transicion del cron SLA en su
    * historial (`origen_tipo = escalado_devuelta_sla`, feature 99). Un rechazo MANUAL del mensajero
    * (sin esa transicion) NO entra. Al salir de `rechazada` o al borrarse, deja de casar (R15).
+   *
+   * SLT-194 (D3, R953/R954/R957): `busqueda` opcional, el MISMO criterio de `/ordenes` y de la
+   * satelite (`criterioBusqueda`). Va como clave HERMANA de las cuatro de arriba (AND): el termino
+   * solo estrecha, nunca ensancha el alcance por tienda. Sin termino, `criterioBusqueda` devuelve
+   * `{}` y el `where` es el de antes, clave por clave.
    */
-  private rechazoSlaWhere(tiendaId: string): Prisma.OrdenWhereInput {
+  private rechazoSlaWhere(
+    tiendaId: string,
+    busqueda?: BusquedaRechazosSla,
+  ): Prisma.OrdenWhereInput {
     return {
       tiendaId, // R13: acotada a la tienda del actor
       deletedAt: null, // R15: excluye borradas
       estatus: { value: ESTATUS_RECHAZADA }, // R12/R15: solo mientras REPOSE en `rechazada`
       historialEstados: { some: { origenTipo: ORIGEN_TIPO_RECHAZO_SLA } }, // R12: alcanzada por el cron SLA
+      ...OrdenRepository.criterioBusqueda(busqueda?.busqueda, busqueda?.busquedaDigitos), // SLT-194/R953
     };
   }
 
   /** Feature 102/R12/R13/R15: cuenta los rechazos por SLA de `tiendaId` (mismo `where` que find). */
-  async countRechazadasSlaByTienda(tiendaId: string): Promise<number> {
-    return this.prisma.orden.count({ where: this.rechazoSlaWhere(tiendaId) });
+  async countRechazadasSlaByTienda(
+    tiendaId: string,
+    busqueda?: BusquedaRechazosSla,
+  ): Promise<number> {
+    return this.prisma.orden.count({ where: this.rechazoSlaWhere(tiendaId, busqueda) });
   }
 
   /**
@@ -6057,9 +6070,10 @@ export class OrdenRepository implements IOrdenRepository {
   async findRechazadasSlaByTienda(
     tiendaId: string,
     pagination: { skip: number; take: number },
+    busqueda?: BusquedaRechazosSla,
   ): Promise<RechazoSlaTiendaRow[]> {
     const rows = await this.prisma.orden.findMany({
-      where: this.rechazoSlaWhere(tiendaId),
+      where: this.rechazoSlaWhere(tiendaId, busqueda), // SLT-194/R953: el mismo filtro que el total
       orderBy: { createdAt: "desc" },
       skip: pagination.skip,
       take: pagination.take,
