@@ -139,3 +139,10 @@ Sin test de pantalla: ninguno de los R de UI.
 
 Pantalla de SLT-197 «Retirar paquetes de una bodega satélite a la central» lista: acción, modal, textos,
 ayuda y E2E en verde; ningún R de UI sin test.
+
+## Cierre (T9.1)
+
+Evidencia que reportó el coordinador el 2026-11-17. No la volví a ejecutar:
+- Review OK, sin hallazgos mayores (`7fbf0433`).
+- Gate local verde sobre `d38a0be7` (ya mezclado con `dev`): `INIT_EXIT=0`, 33/40 archivos.
+- E2E tras rehacer el build, corridos por el reviewer: 5/5, y `dos-empresas-humo` 18/18.

@@ -103,7 +103,7 @@
 
 ## T9 — Cierre (depende de todo)
 
-- [ ] **T9.1** `./init.sh` verde; `pnpm run test:guardias` verde; mapa `R<n> -> test` completo en
+- [x] **T9.1** `./init.sh` verde; `pnpm run test:guardias` verde; mapa `R<n> -> test` completo en
   `progress/impl_SLT-197.md` (R970–R986, ninguno sin test).
 
 ## Archivos esperados
