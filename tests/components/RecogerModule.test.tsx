@@ -2026,7 +2026,17 @@ describe("SLT-190 — Recoger en bodega según el canvas", () => {
 
   it("R851/R853: deja solo esa tienda en las dos pestañas, combinada con el término; los contadores no cambian", async () => {
     const user = userEvent.setup();
-    renderModule({ porRecoger: TRES });
+    // Una orden de OTRO día de OTRA tienda (review m1): con el contador de «Para otro día» calculado
+    // sobre la lista filtrada, la pestaña diría (1) y no (2).
+    const otroDiaNorte = makeAsignacion({
+      id: "t5",
+      numGuia: 3005,
+      numRemision: "REM-T5",
+      destinatario: "Eva Paz",
+      tiendaNombre: "Tienda Norte",
+      esParaManana: true,
+    });
+    renderModule({ porRecoger: [...TRES, otroDiaNorte] });
     await ponerTienda(user, "Tienda Sur");
 
     expect(within(panelActivo()).getByText("REM-T1")).toBeInTheDocument();
@@ -2034,7 +2044,7 @@ describe("SLT-190 — Recoger en bodega según el canvas", () => {
     expect(within(panelActivo()).queryByText("REM-T2")).toBeNull();
     // Contadores: lo que el mensajero TIENE (277 R16/R20).
     expect(pestanaHoy()).toHaveTextContent("Para recoger hoy (3)");
-    expect(pestanaOtroDia()).toHaveTextContent("Para otro día (1)");
+    expect(pestanaOtroDia()).toHaveTextContent("Para otro día (2)");
     expect(contadorNuevas()).toHaveTextContent("3 órdenes nuevas para recoger");
 
     await user.type(buscador(), "carla");

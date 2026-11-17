@@ -73,3 +73,37 @@ Tests (9):
 ## Veredicto
 
 T1-T5 hechas y en verde (typecheck, lint, 3278 tests relacionados); T6 pendiente de correr el E2E y `./init.sh`; R861 solo tiene cobertura E2E.
+
+## Vuelta 2 (hallazgos de `progress/review_SLT-190.md`) — frontend_dev, 2026-11-17
+
+Archivos modificados:
+- `tests/components/RecogerModule.test.tsx` (m1)
+- `app/(app)/recoleccion/_components/RecoleccionModule.tsx` (m2, solo comentario)
+
+- **B1 — ABIERTO, pregunta para Carlos; guardia NO tocada.** La guardia no admite la fila tal cual:
+  el brazo (a) no tiene excepciones para `{nombreDeEstado(x)}` como hijo JSX, y la única clase que
+  encaja (`control-con-hermano`) exige el botón de información como HERMANO del control. En la fila
+  plegada de Recolección no hay hermano visible: el único `EstadoConInfo` de la tarjeta está en el
+  despliegue (se ve solo tras tocar la fila). Declararlo como `H` pasaría el brazo (c) por mecánica
+  (el archivo usa `EstadoConInfo`), pero forzaría la regla de la 456 R18. Opciones para Carlos:
+  (1) aceptar el despliegue como «hermano» y declarar la excepción `H` (calcular el nombre en una
+  constante para que (a) no lo vea como render); (2) poner un `InfoEstado` junto al botón de la fila,
+  fuera de él (como la fila del chat), lo que cambia DS5 y el canvas; (3) quitar el estado de la fila
+  plegada (cambia R864).
+- **m1 — hecho.** En el test «R851/R853» se añade `t5` (otro día, «Tienda Norte»); con «Tienda Sur»
+  filtrada la pestaña debe decir «Para otro día (2)». Mutación `RecogerModule.tsx:406`
+  `grupos.otroDia.length` → `otroDiaFiltrado.length`: el test cae (1 failed | 84 skipped); revertida
+  con `git checkout --`.
+- **m2 — hecho.** El comentario dice ahora que el título lo pinta la barra del diálogo (DS7).
+- **m3 — no se hace** (nota del reviewer, por indicación del leader).
+
+Mapa R -> test (cambio): R853 (contador «Para otro día» = lo que el mensajero TIENE) ->
+`tests/components/RecogerModule.test.tsx` «R851/R853: deja solo esa tienda en las dos pestañas…».
+
+Comandos (base desechable `servi_slt190_desechable`):
+- `vitest run` estado-con-info.guardia, RecogerModule, RecoleccionModule, PosOrderCardDetalleCompacta:
+  `Test Files 1 failed | 3 passed (4)`, `Tests 2 failed | 183 passed (185)`; los 2 rojos son (a) y (b)
+  de `estado-con-info` (B1, abierto).
+- `pnpm exec eslint` de los dos archivos tocados: exit 0.
+
+Veredicto vuelta 2: m1 y m2 cerrados; B1 sigue rojo a la espera de la decisión de Carlos.

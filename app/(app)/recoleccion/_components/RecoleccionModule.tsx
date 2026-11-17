@@ -253,8 +253,8 @@ export function RecoleccionModule({
            en el resto de la app. Lo que se gana: la cámara no queda encendida todo el
            rato que el mensajero tiene la pantalla abierta, que es lo que pasaba con la
            tarjeta desnuda. SLT-156 (R500, R519): el disparador único de las pantallas del
-           mensajero, de 44 px y a todo el ancho; la tarjeta de dentro conserva «Recolectar en
-           tienda». */
+           mensajero, de 44 px y a todo el ancho; el título «Recolectar en tienda» lo pinta la
+           barra del diálogo (SLT-190, DS7), no la tarjeta de dentro. */
         <EscanerModal label={ESCANER_LABEL_GUIA} titulo="Recolectar en tienda" tactil>
           {/* SLT-168 (R595, R833): la sesión continua de SLT-159. La lectura (`leerGuia`, R11) la
              hace la sesión; cada guía es una fila y la cámara sigue abierta. R14/R598: las dos
