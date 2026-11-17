@@ -15,11 +15,11 @@ import {
 
 describe("SLT-65 — lugarDeLaOrden", () => {
   it("con distrito, el lugar es el distrito", () => {
-    expect(lugarDeLaOrden({ distritoId: "d-1", cantonId: "c-1" })).toBe("d-1");
+    expect(lugarDeLaOrden({ nodoGeograficoId: "d-1" })).toBe("d-1");
   });
 
   it("sin distrito, el lugar es el canton", () => {
-    expect(lugarDeLaOrden({ distritoId: null, cantonId: "c-1" })).toBe("c-1");
+    expect(lugarDeLaOrden({ nodoGeograficoId: "c-1" })).toBe("c-1");
   });
 
   it("no mira ninguna otra columna de la orden, tampoco nodoGeograficoId (R19)", () => {
@@ -95,5 +95,34 @@ describe("SLT-71 — sqlLugarEn", () => {
 describe("SLT-71 — PROFUNDIDAD_DEL_NIVEL", () => {
   it("provincia 1, canton 2, distrito 3: la unica correspondencia entre nivel y profundidad", () => {
     expect(PROFUNDIDAD_DEL_NIVEL).toEqual({ provincia: 1, canton: 2, distrito: 3 });
+  });
+});
+
+// =================================================================================================
+// SLT-48 (design §5; R22, R23) — el lugar de la orden es su nodo
+// =================================================================================================
+
+describe("SLT-48 R22/R23 — lugarDeLaOrden, whereLugarEn y sqlLugarEn leen el nodo", () => {
+  it("el lugar es `nodoGeograficoId`; sin nodo (SQL a mano) es null", () => {
+    expect(lugarDeLaOrden({ nodoGeograficoId: "n-4" })).toBe("n-4");
+    expect(lugarDeLaOrden({ nodoGeograficoId: null })).toBeNull();
+  });
+
+  it("whereLugarEn es un `in` sobre el nodo, sin las FK viejas; copia la lista", () => {
+    const ids = ["a", "b"];
+    const where = whereLugarEn(ids);
+    ids.push("c");
+    expect(where).toEqual({ nodoGeograficoId: { in: ["a", "b"] } });
+    expect(JSON.stringify(where)).not.toMatch(/distritoId|cantonId|provinciaId/);
+    expect(whereLugarEn([])).toEqual({ nodoGeograficoId: { in: [] } });
+  });
+
+  it("sqlLugarEn es `o.nodo_geografico_id = ANY(...)` con UN parametro de array", () => {
+    const ids = ["a", "b"];
+    const s = sqlLugarEn(ids);
+    ids.push("c");
+    expect(s.text.replace(/\s+/g, " ").trim()).toBe('o."nodo_geografico_id" = ANY($1::text[])');
+    expect(s.values).toEqual([["a", "b"]]);
+    expect(s.sql).not.toMatch(/distrito_id|canton_id|provincia_id/);
   });
 });

@@ -31,14 +31,13 @@ export class OrdenGeocodeRepository implements IOrdenGeocodeRepository {
     const row = await this.prisma.orden.findFirst({
       // R30: una orden borrada se comporta como inexistente.
       where: { id: ordenId, deletedAt: null },
-      // SLT-125 (design §4.5; R19, R32): las FK del lugar (`lugarDeLaOrden`) para la ruta del
-      // catalogo, no las relaciones viejas ni `nodo_geografico_id`; y el nombre del pais de la
-      // empresa, que reemplaza la constante que la consulta llevaba fija.
+      // SLT-125 (design §4.5; R19, R32), SLT-48 (R22): el nodo de la orden (`lugarDeLaOrden`) para la
+      // ruta del catalogo; y el nombre del pais de la empresa, que reemplaza la constante que la
+      // consulta llevaba fija.
       select: {
         id: true,
         direccion: true,
-        cantonId: true,
-        distritoId: true,
+        nodoGeograficoId: true,
         organizacion: { select: { pais: { select: { nombre: true } } } },
       },
     });

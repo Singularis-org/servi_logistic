@@ -72,10 +72,9 @@ export class OrdenEnvioReader implements IOrdenEnvioReader {
         // EXISTIA. Cero consultas nuevas: son dos columnas mas de una relacion que este metodo ya
         // traia para `{{zona}}`.
         zona: { select: { nombre: true, sinpeNumero: true, sinpeNombre: true } },
-        // SLT-125 (design §4.2; R16, R19): las FK del lugar (`lugarDeLaOrden`), no las relaciones a las
-        // tablas viejas; los nombres de `{{provincia}}`…`{{ubicacion}}` salen de la ruta del catalogo.
-        cantonId: true,
-        distritoId: true,
+        // SLT-125 (design §4.2; R16, R19), SLT-48 (R22): el nodo de la orden (`lugarDeLaOrden`); los
+        // nombres de `{{provincia}}`…`{{ubicacion}}` salen de la ruta del catalogo.
+        nodoGeograficoId: true,
         mensajeroAsignado: {
           select: {
             id: true,

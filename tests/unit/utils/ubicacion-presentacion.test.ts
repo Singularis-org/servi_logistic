@@ -179,7 +179,7 @@ describe("nivelesDelCatalogo", () => {
 
 describe("rutaConTipos (R21)", () => {
   it("anade a cada paso su profundidad y el tipo de ese nivel; la ruta sigue saliendo de lugarDeLaOrden (P1)", () => {
-    const r = rutaDelLugar(CATALOGO_4, { cantonId: "c1", distritoId: "b1" });
+    const r = rutaDelLugar(CATALOGO_4, { nodoGeograficoId: "b1" });
     expect(rutaConTipos(CATALOGO_4, r)).toEqual([
       { profundidad: 1, tipo: "Región", nombre: "Metropolitana", id: "r1" },
       { profundidad: 2, tipo: "Comuna", nombre: "Providencia", id: "c1" },
@@ -194,5 +194,55 @@ describe("rutaConTipos (R21)", () => {
   it("un nivel sin tipo en el pais lanza: no se congela un tipo inventado (R23)", () => {
     const sinTipos = crearCatalogo("XA", [], CATALOGO_4.nodos);
     expect(() => rutaConTipos(sinTipos, [{ id: "r1", nombre: "Metropolitana" }])).toThrow(TipoDeNivelAusente);
+  });
+});
+
+// =================================================================================================
+// SLT-48 (design §5; R25, R26) — la orden llega al nivel de su nodo: D = P
+// =================================================================================================
+
+describe("SLT-48 R25/R26 — los dos mas hondos son los niveles P−1 y P del pais", () => {
+  it("CR (P = 3) queda igual: canton y distrito, o solo el canton sin distrito", () => {
+    expect(dosMasHondos(ruta("San José", "San José", "Carmen"), 3)).toEqual({ arriba: "San José", abajo: "Carmen" });
+    expect(dosMasHondos(ruta("San José", "Escazú"), 3)).toEqual({ arriba: "Escazú", abajo: null });
+    expect(tiposDeDosMasHondos(CR)).toEqual(["Cantón", "Distrito"]);
+  });
+
+  it("pais de 4 niveles: una orden de nivel 4 muestra los niveles 3·4, y el titulo sus tipos", () => {
+    expect(dosMasHondos(ruta("Metropolitana", "Providencia", "Bellavista", "Sector 1"), 4)).toEqual({
+      arriba: "Bellavista",
+      abajo: "Sector 1",
+    });
+    expect(tiposDeDosMasHondos(CUATRO)).toEqual(["Barrio", "Sector"]);
+  });
+
+  it("pais de 10 niveles: los niveles 9·10", () => {
+    const diez = ruta(...Array.from({ length: 10 }, (_, i) => `L${i + 1}`));
+    expect(dosMasHondos(diez, 10)).toEqual({ arriba: "L9", abajo: "L10" });
+    expect(tiposDeDosMasHondos(DIEZ)).toEqual(["Tramo 9", "Tramo 10"]);
+  });
+
+  it("R26: la ruta de una orden de nivel 4 llega al nivel 4 (sale del nodo, no de las FK)", () => {
+    const nodos: NodoDelCatalogo[] = [
+      { id: "r1", padreId: null, profundidad: 1, tipoId: "t1", nombre: "Metropolitana", nombreNormalizado: "metropolitana", codigoOficial: null, activo: true },
+      { id: "c1", padreId: "r1", profundidad: 2, tipoId: "t2", nombre: "Providencia", nombreNormalizado: "providencia", codigoOficial: null, activo: true },
+      { id: "b1", padreId: "c1", profundidad: 3, tipoId: "t3", nombre: "Bellavista", nombreNormalizado: "bellavista", codigoOficial: null, activo: true },
+      { id: "s1", padreId: "b1", profundidad: 4, tipoId: "t4", nombre: "Sector 1", nombreNormalizado: "sector 1", codigoOficial: null, activo: true },
+    ];
+    const tipos: TipoDeNivel[] = CUATRO.map((n) => ({
+      id: `t${n.profundidad}`,
+      clave: `nivel_${n.profundidad}`,
+      nombreSingular: n.singular,
+      nombrePlural: n.singular,
+      digitosCodigo: null,
+      codigoHeredaPrefijo: false,
+    }));
+    const cat = crearCatalogo("XA", tipos, nodos);
+    expect(rutaDelLugar(cat, { nodoGeograficoId: "s1" }).map((p) => p.nombre)).toEqual([
+      "Metropolitana",
+      "Providencia",
+      "Bellavista",
+      "Sector 1",
+    ]);
   });
 });

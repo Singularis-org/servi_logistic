@@ -35,11 +35,6 @@ export interface ColumnaDeNivel {
 // antes de esta ficha sigue aplicandose. Desde el nivel 4 la clave es la de reserva.
 const CLAVES_DE_HOY: readonly string[] = ["provincia", "canton", "distrito"];
 
-// Hasta SLT-48 el lugar de una orden es `lugarDeLaOrden` (su distrito o su canton): ninguna ruta de orden
-// pasa del nivel 3, aunque el pais tenga mas (decision P1). Es lo que fija los «dos mas hondos» de una
-// orden en un pais de 4 niveles en los niveles 2·3 y no en 3·4.
-const PROFUNDIDAD_MAXIMA_DE_UNA_ORDEN = 3;
-
 function ordenados(niveles: readonly NivelDelPais[]): NivelDelPais[] {
   return [...niveles].sort((a, b) => a.profundidad - b.profundidad);
 }
@@ -101,14 +96,18 @@ export function lineaDeUbicacion(zona: string | null, ruta: Ruta, separador: str
   return partes.length === 0 ? null : partes.join(separador);
 }
 
-/** D: el nivel mas hondo que puede tener una orden en un pais de P niveles (hasta SLT-48). */
+/**
+ * D: el nivel mas hondo que puede tener una orden en un pais de P niveles. Desde SLT-48 (design §5,
+ * R25, R26) el lugar de la orden es su nodo, una hoja de cualquier nivel: D = P. Hasta SLT-48 era
+ * `min(P, 3)`; en Costa Rica (P = 3) da lo mismo.
+ */
 function nivelMasHondoDeUnaOrden(P: number): number {
-  return Math.min(P, PROFUNDIDAD_MAXIMA_DE_UNA_ORDEN);
+  return P;
 }
 
 /**
  * Los dos niveles mas hondos de la ruta DE LA ORDEN (R11; decision del 2026-11-12): los pasos de los
- * niveles D−1 y D, con D = min(P, 3). Cada uno es `null` si la ruta no llega o su nombre esta vacio.
+ * niveles D−1 y D, con D = P (SLT-48; antes min(P, 3)). Cada uno es `null` si la ruta no llega o su nombre esta vacio.
  *
  * P7 (opcion a, «como hoy»): se toman por NIVEL y no como «los dos ultimos pasos». Asi una orden de Costa
  * Rica sin distrito da `{ arriba: canton, abajo: null }` y las tarjetas siguen mostrando solo el canton,

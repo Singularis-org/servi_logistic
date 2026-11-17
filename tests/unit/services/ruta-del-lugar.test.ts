@@ -35,7 +35,7 @@ const cat = crearCatalogo("XA", TIPOS, [
 
 describe("SLT-47 — rutaDelLugar (R16)", () => {
   it("con distrito: del nivel 1 al distrito, con ids y nombres", () => {
-    expect(rutaDelLugar(cat, { distritoId: "D1", cantonId: "C1" })).toEqual([
+    expect(rutaDelLugar(cat, { nodoGeograficoId: "D1" })).toEqual([
       { id: "P1", nombre: "Nombre P1" },
       { id: "C1", nombre: "Nombre C1" },
       { id: "D1", nombre: "San Rafael" },
@@ -43,25 +43,25 @@ describe("SLT-47 — rutaDelLugar (R16)", () => {
   });
 
   it("sin distrito: termina en el canton", () => {
-    expect(rutaDelLugar(cat, { distritoId: null, cantonId: "C2" })).toEqual([
+    expect(rutaDelLugar(cat, { nodoGeograficoId: "C2" })).toEqual([
       { id: "P2", nombre: "Nombre P2" },
       { id: "C2", nombre: "Nombre C2" },
     ]);
   });
 
   it("R13: dos distritos con el mismo nombre dan rutas con ids distintos", () => {
-    const a = rutaDelLugar(cat, { distritoId: "D1", cantonId: "C1" });
-    const b = rutaDelLugar(cat, { distritoId: "D3", cantonId: "C2" });
+    const a = rutaDelLugar(cat, { nodoGeograficoId: "D1" });
+    const b = rutaDelLugar(cat, { nodoGeograficoId: "D3" });
     expect(a.at(-1)?.nombre).toBe(b.at(-1)?.nombre);
     expect(a.map((p) => p.id)).not.toEqual(b.map((p) => p.id));
   });
 
   it("un lugar fuera del catalogo da []", () => {
-    expect(rutaDelLugar(cat, { distritoId: "nope", cantonId: "C1" })).toEqual([]);
+    expect(rutaDelLugar(cat, { nodoGeograficoId: "nope" })).toEqual([]);
   });
 
   it("solo lleva id y nombre, ningun otro campo", () => {
-    for (const paso of rutaDelLugar(cat, { distritoId: "D2", cantonId: "C1" })) {
+    for (const paso of rutaDelLugar(cat, { nodoGeograficoId: "D2" })) {
       expect(Object.keys(paso).sort()).toEqual(["id", "nombre"]);
     }
   });
