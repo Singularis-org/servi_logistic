@@ -216,7 +216,7 @@ para al tocar cualquiera de los dos topes:
   - Por archivo (o por helper, si el grupo lo comparte): quitar la siembra de una fila → el control
     positivo cae. Por helper cambiado: correr todos sus usuarios.
   - *Hecho:* tabla mutación → caso rojo → restaurado en `progress/impl_SLT-177.md`; árbol restaurado.
-- [ ] **T7 — Baseline: lote fuera y motivos nuevos** (R741, R744, R745). Depende de T2, T4 y T5.
+- [x] **T7 — Baseline: lote fuera y motivos nuevos** (R741, R744, R745). Depende de T2, T4 y T5.
   - Borrar las entradas del lote. Reescribir el motivo de cada entrada que queda con su fila de T1 y la
     key de T2; `desde` intacto. Un motivo sin fila de T1 que lo respalde no se escribe.
   - Añadir a la guardia la regla de R743 con su caso en memoria (rojo con un motivo que cita SL-31).
@@ -279,6 +279,11 @@ fuera del cómputo: `progress/impl_SLT-177.md`, `progress/deudas.md`, `progress/
 Un usuario de G1/G2 que, arreglado su helper, siga rojo por otra causa se queda en el baseline con
 motivo nuevo medido (decisión de Carlos). Fichas siguientes: SLT-178…SLT-187 (= F1…F10 de
 `progress/impl_SLT-177.md > T2`) y SLT-188 «Tests que dejan filas fuera de su transacción».
+
+**Tras T5-T7** (2026-11-16, Carlos): SLT-195 «Cierre de la satélite: pruebas de dinero que no cuadran
+(D64)» retira las 21 entradas de cierre de satélite que siguen rojas tras sembrar; SLT-185 «aporte-capital
+sin empresa en contexto» se amplía a las 8 sin empresa en contexto; la base desechable de las
+mediciones locales lleva `db:seed`, como la de CI.
 
 ## Tamaño
 

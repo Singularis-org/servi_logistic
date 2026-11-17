@@ -24,6 +24,8 @@ const SCRIPT_TEST_JSON =
 const MOTIVO_MINIMO = 40;
 // SLT-177 (R742): las fichas del board actual son `SLT-<n>`; las antiguas, `SL-<n>`. Vale cualquiera.
 const FICHA = /\bSLT?-\d+\b/;
+// SLT-177 (R743): SL-31 se cerro sin retirar sus entradas; ningun motivo puede volver a colgar de ella.
+const SL31 = /\bSL-31\b/;
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 
 type BaselineCrudo = { archivos?: Record<string, unknown> } & Record<string, unknown>;
@@ -43,6 +45,8 @@ export function erroresDelBaseline(
       errores.push(`${ruta}: \`motivo\` ausente o de menos de ${MOTIVO_MINIMO} caracteres`);
     } else if (!FICHA.test(motivo)) {
       errores.push(`${ruta}: el \`motivo\` no cita la ficha SL-<n> o SLT-<n> que retira la entrada`);
+    } else if (SL31.test(motivo)) {
+      errores.push(`${ruta}: el \`motivo\` cita SL-31, que esta cerrada: cita la ficha que lo retira de verdad`);
     }
     if (typeof m.desde !== "string" || !FECHA.test(m.desde)) {
       errores.push(`${ruta}: \`desde\` no tiene la forma AAAA-MM-DD`);
@@ -115,6 +119,24 @@ describe("SL-10 — el gate rapido esta cableado al arnes v2", () => {
     };
     expect(erroresDelBaseline(fixture, () => true)).toEqual([
       "tests/sin-ficha.test.ts: el `motivo` no cita la ficha SL-<n> o SLT-<n> que retira la entrada",
+    ]);
+  });
+
+  it("SLT-177 R743: un motivo que vuelve a decir «La retira SL-31» da rojo; SL-310 no es SL-31", () => {
+    const fixture: BaselineCrudo = {
+      archivos: {
+        "tests/vuelve.test.ts": {
+          motivo: "La app nace vacia y la suite asume ordenes sembradas. La retira SL-31 (datos propios).",
+          desde: "2026-10-22",
+        },
+        "tests/otra.test.ts": {
+          motivo: "Motivo largo de sobra que cita la ficha SL-310, que no es la cerrada.",
+          desde: "2026-10-22",
+        },
+      },
+    };
+    expect(erroresDelBaseline(fixture, () => true)).toEqual([
+      "tests/vuelve.test.ts: el `motivo` cita SL-31, que esta cerrada: cita la ficha que lo retira de verdad",
     ]);
   });
 });

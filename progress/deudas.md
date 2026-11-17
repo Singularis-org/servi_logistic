@@ -40,7 +40,7 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 
 ### D8 — La suite de integración necesita datos que la app vacía ya no siembra
 - **Origen:** SL-11 (app vacía), medido en el gate completo de `dev` tras SL-16 (2026-10-22): 245 archivos de `tests/integration/` en `tests/baseline-rojos.json`, todos por base sin órdenes, usuarios ni zonas.
-- **Qué falta:** SLT-177 midió las 239 entradas de SL-31 en CI (run 43973243440: 227 base vacía, 12 otra causa) y sacó 92 con siembra propia. Las que quedan llevan su causa y su ficha: SLT-178…SLT-184 (siembra), SLT-185 (sin empresa en contexto), SLT-186 (estados retirados), SLT-187 (migraciones tras SL-17) y SLT-188 (filas fuera de la transacción). 21 siguen citando SL-31 a la espera de ficha (escenarios de cierre de satélite, ver D64).
+- **Qué falta:** SLT-177 midió las 239 entradas de SL-31 en CI (run 43973243440: 227 base vacía, 12 otra causa) y sacó 92 con siembra propia. Las que quedan llevan su causa y su ficha: SLT-178…SLT-184 (siembra), SLT-185 (sin empresa en contexto), SLT-186 (estados retirados), SLT-187 (migraciones tras SL-17) SLT-188 (filas fuera de la transacción) y SLT-195 (21 de cierre de satélite, ver D64). Ningún motivo cita ya SL-31 (guardia R743).
 - **Dueño:** las fichas SLT-178…SLT-188.
 
 ### D9 — Docs del perfil que nombran la app de origen
@@ -372,8 +372,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 ### D64 — Fixture `caja-459`: premio movido a cierre central sin medir
 - **Origen:** SLT-124 (2026-11-11, review m2 y m3). El cierre del premio pasó de `bodega_satelite` a `bodega_central` porque con R1 la siembra daría `sin_cierre`. Los 15 tests del fixture y la integración de R6 (`premio-ranking-idempotencia`) están en el baseline por SL-31 (app vacía) y hoy no corren. El mensajero del fixture sigue en zona satélite con un cierre central.
 - **Medido en SLT-177 (2026-11-16):** con la zona central sembrada, `sembrarEscenario459` cae en su paso `repartoMensajero` con `sin_saldo` (`_fixtures/caja-459.ts:773`): 14 archivos del fixture siguen rojos. `premio-ranking-idempotencia` queda 16/17 (el que falla es la action sin empresa, SLT-185). Siete casos de `454/` con cierre de satélite fallan en aserciones de dinero.
-- **Qué falta:** una ficha para esos 21 archivos (pedida al leader en SLT-177); ajustar la zona del mensajero si choca con R12.
-- **Dueño:** ArqDev / la ficha que se cree.
+- **Qué falta:** SLT-195 «Cierre de la satélite: pruebas de dinero que no cuadran (D64)» (decisión de Carlos, 2026-11-16) para esos 21 archivos; ajustar la zona del mensajero si choca con R12.
+- **Dueño:** SLT-195.
 
 ### D65 — Guardias de diálogos y visor de cierres con huecos conocidos
 - **Origen:** SLT-103 (2026-11-11, review m1-m3 en `progress/review_SLT-103.md`). `cierres-dialogos-modal.guardia.test.ts`:

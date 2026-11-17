@@ -12,8 +12,7 @@ Ruta ligera. Spec: `specs/SLT-177-remedir-baseline-sl31/requirements.md` (R730-R
   «PODA DEL 2026-11-16 (SLT-177)» de `_lee_esto` va con T7.
 - [x] T5 — Sembrar el lote. `d432d21f`.
 - [x] T6 — Mutaciones y R738. `d20248aa`.
-- [ ] T7 — Baseline. `12412b11`, `b386a76f`: 92 fuera, 126 motivos nuevos. **Parado:** 21 entradas
-  siguen citando SL-31 porque su causa medida no tiene ficha; sin eso no entra la regla de R743.
+- [x] T7 — Baseline. `12412b11`, `b386a76f` y la tanda de SLT-195: 92 fuera, 147 motivos nuevos, regla R743 en la guardia.
 - [ ] T8 — Cierre. Hecho: deudas, diff de producción vacío y tamaño. Falta: `./init.sh` y el CI del PR.
 
 ## T1 — Medición
@@ -118,7 +117,7 @@ CI» (hallazgo de T1). No retira entradas; evita que vuelvan los «dato ajeno».
 - Base: `servi_slt177_desechable` vía `scratchpad/con-desechable.cjs` (sin leer `.env` ni ver la URL),
   ya migrada. Le corrí `pnpm run db:seed` por el mismo wrapper para que quede como la de CI
   (`gate.yml:180-187`): sin él faltaban los vehículos y `454/ayuda-evento` y `454/caracterizacion/traspaso`
-  daban un rojo que CI no da.
+  daban un rojo que CI no da. Carlos lo dio por bueno (2026-11-16): CI también siembra catálogos.
 
 ### T5 — qué se sembró (13 archivos, 952 líneas de tests en el PR con baseline y guardia)
 | archivo | siembra en la tx del caso | control positivo |
@@ -197,8 +196,8 @@ Guardia T3 (R742): con `FICHA = /SL-\d+/` el caso nuevo cae (1 rojo) y se restau
 | R740 | `git diff` de los archivos sembrados: sin `it`/`expect`/literales quitados |
 | R741 | las 92 fuera; **incumplido** para `premio-ranking-idempotencia` (16/17, decisión 3 aplicada) |
 | R742 | `gate-cableado-arnes-v2.guardia.test.ts` caso «SLT-177 R742» + mutación |
-| R743 | **pendiente** (21 entradas sin ficha) |
-| R744, R745 | 126 motivos nuevos; 21 pendientes |
+| R743 | `gate-cableado-arnes-v2.guardia.test.ts` caso «SLT-177 R743» + archivo real + mutaciones A y B |
+| R744, R745 | 147 motivos nuevos (126 + 21 a SLT-195), cada uno con su fila de T1 |
 | R746 | pendiente del CI del PR |
 | R747, R748 | diff de producción vacío; `tamano-pr` 13/40, 952/3000 |
 | R749 | `progress/deudas.md` D8, D37 |
@@ -209,9 +208,20 @@ Guardia T3 (R742): con `FICHA = /SL-\d+/` el caso nuevo cae (1 rojo) y se restau
 - `pnpm run test:guardias` → 352/353 archivos; el rojo es `dependencias-declaradas-presentes` (baseline, SL-29).
 - Lote en la desechable: 124 archivos, 92 verdes, 32 rojos (tabla de arriba).
 
+### Tanda final (decisiones de Carlos del 2026-11-16)
+- Las 21 «sin ficha» citan SLT-195 «Cierre de la satélite: pruebas de dinero que no cuadran (D64)»: 14
+  por `repartoMensajero` con `sin_saldo` y 7 por una aserción de dinero o estado del cierre de satélite.
+- SLT-185 «aporte-capital sin empresa en contexto» cubre las 8 sin empresa (ya lo citaban).
+- Baseline: 151 entradas; 0 citan SL-31; 21 citan SLT-195. `_lee_esto` nombra SLT-195.
+- R743 en `gate-cableado-arnes-v2.guardia.test.ts`: `SL31 = /SL-31/` da error de forma. Caso en memoria
+  (rojo con «La retira SL-31», verde con SL-310) y archivo real verde.
+  - Mutación A (desactivar la regla): cae el caso R743 (1 rojo). Restaurado desde copia.
+  - Mutación B (devolver « La retira SL-31.» a `como-quedo` en el baseline real): cae el caso del archivo
+    real con «como-quedo.test.ts: el `motivo` cita SL-31…». Restaurado desde copia.
+- D8 y D64 apuntan a SLT-195.
+
 ### Veredicto
-T3-T6 hechas. T7 y T8 a medias: faltan una ficha para 21 entradas (escenarios de satélite) y el OK
-de ampliar SLT-185 a «sin empresa en contexto» en general.
+T1-T7 hechas; T8 hecha salvo `./init.sh` (sin `.env`) y el CI del PR, que son del leader.
 
 ## Archivos creados o modificados (T1)
 
