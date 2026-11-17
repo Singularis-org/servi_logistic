@@ -128,3 +128,7 @@ compara con el disparador de ESTA tarjeta (`:scope > button` de su `[data-tarjet
 cualquiera. Si falla, el rojo dice qué recibe el punto: etiqueta, clases, `aria-label` y texto corto, o
 «ninguno (fuera de la ventana)». Además se comprueba que el punto está dentro de la ventana.
 Si el próximo CI vuelve a dar rojo, ese mensaje identifica al elemento y el arreglo pasa a la pantalla.
+
+## Nota del leader (2026-11-17)
+
+- Vuelta 2 OK (58015ac4). Menor aceptado: sin `hover` la tarjeta no se ilumina con ratón en ventana estrecha; la tarjeta es solo del teléfono (< 768 px). Si se quiere: `[@media(hover:hover)]:hover:bg-muted/40`.
