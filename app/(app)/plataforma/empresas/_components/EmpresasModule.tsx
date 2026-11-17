@@ -579,6 +579,8 @@ const TEXTOS_PLATAFORMA = {
   alDia: "Al día",
   aFavor: (importe: string) => `A favor ${importe}`,
   pagado: (importe: string) => `Pagado ${importe}`,
+  /** SLT-60 (R27): la tercera línea, solo con pagos por confirmar. */
+  pagosPorConfirmar: (n: number) => (n === 1 ? "1 pago por confirmar" : `${n} pagos por confirmar`),
 } as const;
 
 /** El texto del estado de la deuda. `Record` total: un estado nuevo no compila sin el suyo. */
@@ -596,6 +598,15 @@ function CeldaPlataforma({ empresa }: { empresa: EmpresaListada }) {
       <span className="text-xs text-muted-foreground tabular-nums">
         {TEXTOS_PLATAFORMA.pagado(money(empresa.pagadoPlataforma))}
       </span>
+      {/* SLT-60 (design §6.3; R27): el aviso de pagos por confirmar; con 0, nada. */}
+      {empresa.pagosPorConfirmar > 0 ? (
+        <span
+          className="text-xs font-medium text-primary-strong tabular-nums"
+          data-pagos-por-confirmar={empresa.pagosPorConfirmar}
+        >
+          {TEXTOS_PLATAFORMA.pagosPorConfirmar(empresa.pagosPorConfirmar)}
+        </span>
+      ) : null}
     </div>
   );
 }

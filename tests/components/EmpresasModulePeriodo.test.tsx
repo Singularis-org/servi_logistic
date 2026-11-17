@@ -24,6 +24,7 @@ function empresa(id: string, nombre: string, plan: EmpresaListada["plan"]): Empr
     maestros: [],
     deudaPlataforma: { deuda: "0.00", estado: "al_dia", importe: "0.00" },
     pagadoPlataforma: "0.00",
+    pagosPorConfirmar: 0,
     pais: { id: "CR", nombre: "Costa Rica" },
     cobroVigente: { modo: "fijo", monto: "100.00", fuente: "plan" },
     plan,

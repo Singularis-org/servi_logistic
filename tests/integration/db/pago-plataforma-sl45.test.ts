@@ -23,6 +23,7 @@ import { limpiar459, sembrarPersonas459, type Personas459 } from "./_fixtures/es
 import { asignarPlan, crearPlan } from "./_fixtures/planes";
 import { tomarTarifaGlobal, type TarifaGlobalBajoLock } from "./_fixtures/cobro-plataforma-40";
 import { menos } from "./_fixtures/caja-459";
+import { cerrarFacturaEnCurso, confirmarComoDueno } from "./_fixtures/factura-cerrada";
 
 // SLT-42 (T5.4): la zona del pais de la empresa es la de CR, como antes. Las reglas reales leen el pais
 // de la empresa en curso con el cliente global, que no ve la empresa de una transaccion revertida ni
@@ -58,6 +59,14 @@ vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabric
 // fijo de 300,00 (SLT-126: antes, una excepción del mismo importe).
 //
 // Lo que se mide se lee con el cliente BASE (dueño, sin extensión ni RLS): las filas que hay de verdad.
+//
+// SLT-60 (design §8.1): solo se paga lo de facturas cerradas, y la deuda baja al CONFIRMAR el pago, no al
+// registrarlo. Las facturas de A (1 500) y de B (300) se cierran en la siembra con el fixture
+// `factura-cerrada.ts`. Donde la tabla de SL-45 decía «la deuda baja», el pago queda por confirmar y la deuda
+// baja cuando se confirma como dueño (`confirmarComoDueno`). Lo que el pago por confirmar sí baja es lo
+// disponible para registrar (`pago_plataforma_disponible_de`), que se mide en los pasos que lo mueven. Un pago
+// confirmado ya no se anula (SLT-60 R10), así que el R18 de SL-45 (anular con la deuda en cero o a favor) se
+// mide con el pago por confirmar de B.
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
@@ -65,7 +74,7 @@ const RUN = randomUUID().replace(/-/g, "").slice(0, 10);
 const SIN_FILTROS = { page: 1, pageSize: 10 };
 const MOTIVO = `Pago mal registrado SL45 ${RUN}`;
 /** R9, copiado a mano del requisito: es el texto que ve la persona bajo el monto. */
-const MENSAJE_TOPE = "El pago no puede ser mayor que lo que la empresa debe a la plataforma.";
+const MENSAJE_TOPE = "El pago no puede ser mayor que lo pendiente de las facturas cerradas, descontados los pagos por confirmar.";
 
 let base: PrismaClient;
 let app: PrismaClient;
@@ -85,6 +94,8 @@ let estatusInicialId: string;
 /** Los pagos de A por su nombre en la tabla de design §3. */
 const pago: Record<string, string> = {};
 let clavePago1000: string;
+/** SLT-60: la factura cerrada de cada empresa. */
+const factura = { A: "", B: "" };
 
 const deps = (actor: Actor) => ({ getActor: async () => actor });
 const org = (e: Empresa) => e.p.organizacionId;
@@ -182,9 +193,20 @@ function anular(e: Empresa, movimientoId: string) {
   );
 }
 
+/** SLT-60: el pago entero contra la factura cerrada de la empresa, como dueño y commiteado. */
+function confirmar(e: Empresa, facturaId: string, pagoId: string, monto: string) {
+  return bajoLockDeEscrituraReal(() => confirmarComoDueno(base, org(e), pagoId, [{ facturaId, monto }], e.p.maestro.usuarioId));
+}
+
 /* -------------------------------------------------------------------------- */
 /* Lecturas                                                                    */
 /* -------------------------------------------------------------------------- */
+
+/** SLT-60: lo disponible para registrar (Σ saldo de las cerradas − Σ por confirmar), leído como dueño. */
+async function disponible(e: Empresa): Promise<string> {
+  const [f] = await base.$queryRaw<{ d: string }[]>`SELECT pago_plataforma_disponible_de(${org(e)})::text AS d`;
+  return f.d;
+}
 
 function verDeuda(e: Empresa) {
   return conEmpresa(org(e), () => verDeudaPlataformaAction(deps(e.p.maestro)));
@@ -301,6 +323,9 @@ describeSiHayBase("SL-45 — el pago a la plataforma desde la wallet (Postgres, 
 
     await crearOrdenes(A, 3);
     await crearOrdenes(B, 1);
+    // SLT-60 (R3): sin factura cerrada no se puede pagar nada.
+    factura.A = (await cerrarFacturaEnCurso(base, org(A))).id;
+    factura.B = (await cerrarFacturaEnCurso(base, org(B))).id;
   }, 180_000);
 
   afterAll(async () => {
@@ -310,6 +335,10 @@ describeSiHayBase("SL-45 — el pago a la plataforma desde la wallet (Postgres, 
       if (orgs.length > 0) {
         // Los cargos se van con su orden (ON DELETE CASCADE). Las anulaciones y el libro, en `limpiar459`.
         await bajoLockDeEscrituraReal(async () => {
+          // SLT-60: la FK del pago a su confirmación no tiene acción; las confirmaciones se van antes que el libro.
+          for (const tabla of ["pago_plataforma_aplicacion", "pago_plataforma_confirmacion"]) {
+            await base.$executeRawUnsafe(`DELETE FROM "${tabla}" WHERE "organizacion_id" = ANY($1::text[])`, orgs);
+          }
           for (const tabla of ["historial_accion", "orden_historial_estado", "jobs", "orden", "carga", "zona"]) {
             await base.$executeRawUnsafe(`DELETE FROM "${tabla}" WHERE "organizacion_id" = ANY($1::text[])`, orgs);
           }
@@ -347,16 +376,26 @@ describeSiHayBase("SL-45 — el pago a la plataforma desde la wallet (Postgres, 
     expect(cajaB.enCaja).toBe("1000.00");
     huella = await huellaDeCargos();
     expect(huella).toHaveLength(2);
+
+    // SLT-60: las dos facturas están cerradas con esos cargos (leídas como dueño).
+    const deLaFactura = async (id: string) => {
+      const f = await base.facturaPlataforma.findUniqueOrThrow({ where: { id }, select: { organizacionId: true, estado: true, total: true } });
+      return { ...f, total: f.total?.toFixed(2) ?? null };
+    };
+    expect(await deLaFactura(factura.A)).toEqual({ organizacionId: org(A), estado: "cerrada", total: "1500.00" });
+    expect(await deLaFactura(factura.B)).toEqual({ organizacionId: org(B), estado: "cerrada", total: "300.00" });
   });
 
-  it("R13/R14: antes de pagar, A debe 1.500,00 y B 300,00", async () => {
+  it("R13/R14: antes de pagar, A debe 1.500,00 y B 300,00, y es lo que tienen disponible para pagar (SLT-60)", async () => {
     expect(await verDeuda(A)).toEqual(deuda("1500.00", "debe", "1500.00"));
     expect(await verDeuda(B)).toEqual(deuda("300.00", "debe", "300.00"));
+    expect(await disponible(A)).toBe("1500.00");
+    expect(await disponible(B)).toBe("300.00");
   });
 
   /* ------------------------------ los pasos -------------------------------- */
 
-  it("R7/R8/R13/R20/R22: A paga 1.000,00 con fecha de ayer → un egreso, su historial, y la deuda baja a 500,00", async () => {
+  it("R7/R8/R13/R20/R22, SLT-60 R6: A paga 1.000,00 con fecha de ayer → un egreso y su historial; por confirmar, la deuda sigue en 1.500,00 y lo disponible baja a 500,00", async () => {
     const ayer = fechaCalendarioCR(new Date(Date.now() - 24 * 60 * 60 * 1000));
     clavePago1000 = randomUUID();
     pago.p1000 = await pagarOk(A, "1000.00", { clave: clavePago1000, fecha: ayer });
@@ -386,24 +425,25 @@ describeSiHayBase("SL-45 — el pago a la plataforma desde la wallet (Postgres, 
     const historial = await base.historialAccion.findMany({ where: { entidadId: pago.p1000 }, select: { accion: true, organizacionId: true } });
     expect(historial).toEqual([{ accion: "egreso_administrativo_registrado", organizacionId: org(A) }]);
 
-    await tras({ deudaA: deuda("500.00", "debe", "500.00"), deudaB: deuda("300.00", "debe", "300.00"), cajaA: sale("1000.00") });
+    await tras({ deudaA: deuda("1500.00", "debe", "1500.00"), deudaB: deuda("300.00", "debe", "300.00"), cajaA: sale("1000.00") });
+    expect(await disponible(A)).toBe("500.00");
   });
 
-  it("R11: el reenvío con la misma clave responde el pago original y no escribe nada (aunque ya supere la deuda)", async () => {
+  it("R11: el reenvío con la misma clave responde el pago original y no escribe nada (aunque ya supere lo disponible)", async () => {
     const antes = await escrituras();
     const r = await pagar(A, "1000.00", { clave: clavePago1000 });
     expect(r.status, JSON.stringify(r)).toBe("ya_registrado");
     if (r.status !== "ya_registrado") return;
     expect(r.movimiento.id).toBe(pago.p1000);
     expect(await escrituras()).toEqual(antes);
-    await tras({ deudaA: deuda("500.00", "debe", "500.00"), deudaB: deuda("300.00", "debe", "300.00"), cajaA: CAJA_QUIETA });
+    await tras({ deudaA: deuda("1500.00", "debe", "1500.00"), deudaB: deuda("300.00", "debe", "300.00"), cajaA: CAJA_QUIETA });
   });
 
-  it("R9: A intenta pagar 600,00 con una deuda de 500,00 → validation_error en monto, y nada escrito", async () => {
+  it("R9, SLT-60 R2: A intenta pagar 600,00 con 500,00 disponibles → validation_error en monto, y nada escrito", async () => {
     const antes = await escrituras();
     expect(await pagar(A, "600.00")).toEqual({ status: "validation_error", fieldErrors: { monto: [MENSAJE_TOPE] } });
     expect(await escrituras()).toEqual(antes);
-    await tras({ deudaA: deuda("500.00", "debe", "500.00"), deudaB: deuda("300.00", "debe", "300.00"), cajaA: CAJA_QUIETA });
+    await tras({ deudaA: deuda("1500.00", "debe", "1500.00"), deudaB: deuda("300.00", "debe", "300.00"), cajaA: CAJA_QUIETA });
   });
 
   it("R19: un mensajero de A no registra el pago → forbidden, y nada escrito", async () => {
@@ -416,10 +456,10 @@ describeSiHayBase("SL-45 — el pago a la plataforma desde la wallet (Postgres, 
     const antes = await escrituras();
     expect(await anular(B, pago.p1000)).toEqual({ status: "no_encontrado" });
     expect(await escrituras()).toEqual(antes);
-    await tras({ deudaA: deuda("500.00", "debe", "500.00"), deudaB: deuda("300.00", "debe", "300.00"), cajaA: CAJA_QUIETA });
+    await tras({ deudaA: deuda("1500.00", "debe", "1500.00"), deudaB: deuda("300.00", "debe", "300.00"), cajaA: CAJA_QUIETA });
   });
 
-  it("R15/R22: A anula el pago de 1.000,00 → constancia con motivo, contra-asiento por el monto del pago, y la deuda vuelve a 1.500,00", async () => {
+  it("R15/R22, SLT-60 R9: A anula el pago de 1.000,00 por confirmar → constancia con motivo y contra-asiento por el monto del pago; la deuda sigue en 1.500,00 y lo disponible vuelve a 1.500,00", async () => {
     expect(await anular(A, pago.p1000)).toEqual({ status: "ok", camino: "egreso_caja" });
 
     const constancia = await base.ajusteCajaAnulacion.findUniqueOrThrow({
@@ -436,6 +476,7 @@ describeSiHayBase("SL-45 — el pago a la plataforma desde la wallet (Postgres, 
     ]);
 
     await tras({ deudaA: deuda("1500.00", "debe", "1500.00"), deudaB: deuda("300.00", "debe", "300.00"), cajaA: vuelve("1000.00") });
+    expect(await disponible(A)).toBe("1500.00");
   });
 
   it("R16: anular el mismo pago otra vez → ya_anulado, y nada escrito", async () => {
@@ -445,9 +486,16 @@ describeSiHayBase("SL-45 — el pago a la plataforma desde la wallet (Postgres, 
     await tras({ deudaA: deuda("1500.00", "debe", "1500.00"), deudaB: deuda("300.00", "debe", "300.00"), cajaA: CAJA_QUIETA });
   });
 
-  it("R9 (borde): A paga exactamente lo que debe, 1.500,00 → al día, importe 0,00", async () => {
+  it("R9 (borde), SLT-60 R2: A paga exactamente lo disponible, 1.500,00 → entra; por confirmar, la deuda sigue en 1.500,00 y no queda nada disponible", async () => {
     pago.p1500 = await pagarOk(A, "1500.00");
-    await tras({ deudaA: deuda("0.00", "al_dia", "0.00"), deudaB: deuda("300.00", "debe", "300.00"), cajaA: sale("1500.00") });
+    await tras({ deudaA: deuda("1500.00", "debe", "1500.00"), deudaB: deuda("300.00", "debe", "300.00"), cajaA: sale("1500.00") });
+    expect(await disponible(A)).toBe("0.00");
+  });
+
+  it("SLT-60 R7: confirmado el pago de 1.500,00 contra la factura de A → al día, importe 0,00, y la caja no se mueve", async () => {
+    await confirmar(A, factura.A, pago.p1500, "1500.00");
+    await tras({ deudaA: deuda("0.00", "al_dia", "0.00"), deudaB: deuda("300.00", "debe", "300.00"), cajaA: CAJA_QUIETA });
+    expect(await disponible(A)).toBe("0.00");
   });
 
   it("R9: al día, A intenta pagar 1,00 → validation_error en monto, y nada escrito", async () => {
@@ -475,18 +523,35 @@ describeSiHayBase("SL-45 — el pago a la plataforma desde la wallet (Postgres, 
     await tras({ deudaA: deuda("-500.00", "a_favor", "500.00"), deudaB: deuda("300.00", "debe", "300.00"), cajaA: CAJA_QUIETA });
   });
 
-  it("R20: B paga sus 300,00 → B al día, y ni la deuda ni la caja de A cambian", async () => {
-    await pagarOk(B, "300.00");
+  it("R20: B paga sus 300,00 → por confirmar, B sigue debiendo 300,00 (SLT-60 R6), y ni la deuda ni la caja de A cambian", async () => {
+    pago.b300 = await pagarOk(B, "300.00");
+    await tras({
+      deudaA: deuda("-500.00", "a_favor", "500.00"),
+      deudaB: deuda("300.00", "debe", "300.00"),
+      cajaA: CAJA_QUIETA,
+      cajaB: sale("300.00"),
+    });
+    expect(await disponible(B)).toBe("0.00");
+  });
+
+  it("SLT-60 R10: con saldo a favor, A intenta anular su pago CONFIRMADO de 1.500,00 → forbidden, y nada escrito", async () => {
+    const antes = await escrituras();
+    expect(await anular(A, pago.p1500)).toEqual({ status: "forbidden" });
+    expect(await escrituras()).toEqual(antes);
+    await tras({ deudaA: deuda("-500.00", "a_favor", "500.00"), deudaB: deuda("300.00", "debe", "300.00"), cajaA: CAJA_QUIETA });
+  });
+
+  it("R18: con la deuda de B en 0,00 (eliminó su orden), B anula su pago de 300,00 por confirmar → se anula, la caja vuelve y la deuda sigue en 0,00", async () => {
+    const r = await eliminarOrden(B, B.ordenes[0]);
+    expect(r.status, JSON.stringify(r)).toBe("ok");
+    await tras({ deudaA: deuda("-500.00", "a_favor", "500.00"), deudaB: deuda("0.00", "al_dia", "0.00"), cajaA: CAJA_QUIETA, cargosCambian: true });
+
+    expect(await anular(B, pago.b300)).toEqual({ status: "ok", camino: "egreso_caja" });
     await tras({
       deudaA: deuda("-500.00", "a_favor", "500.00"),
       deudaB: deuda("0.00", "al_dia", "0.00"),
       cajaA: CAJA_QUIETA,
-      cajaB: sale("300.00"),
+      cajaB: vuelve("300.00"),
     });
-  });
-
-  it("R18: con saldo a favor, A anula su pago de 1.500,00 → se anula, y la deuda pasa a 1.000,00", async () => {
-    expect(await anular(A, pago.p1500)).toEqual({ status: "ok", camino: "egreso_caja" });
-    await tras({ deudaA: deuda("1000.00", "debe", "1000.00"), deudaB: deuda("0.00", "al_dia", "0.00"), cajaA: vuelve("1500.00") });
   });
 });
