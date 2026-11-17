@@ -7,6 +7,7 @@ import {
   type ResultadoLectura,
 } from "@/components/shared/EscanerGuiaCard";
 import { TarjetaEscaneoContinuo } from "@/components/shared/EscaneoContinuo";
+import { RecepcionContinuaPagina } from "@/components/shared/RecepcionContinuaPagina";
 import { useToast } from "@/hooks/useToast";
 import { recibirEnBodegaCentralPorQr } from "@/lib/actions/recepcion-bodega-central";
 import { leerGuia } from "@/lib/utils/paquete-url";
@@ -38,6 +39,8 @@ export interface EscanerRecepcionBodegaCentralProps {
   onRecibida?: () => void;
   /** SLT-159: `suelta` (lo de hoy), `continua` (el diálogo con lista) o `pagina`. */
   modo?: ModoRecepcion;
+  /** SLT-159 (R613): en `pagina`, adónde vuelve «Terminar recepción». */
+  volverA?: string;
 }
 
 const sinRefresco = () => {};
@@ -75,7 +78,13 @@ async function recibirBodegaCentral(numGuia: number): Promise<DesenlaceRecepcion
 export function EscanerRecepcionBodegaCentral({
   onRecibida = sinRefresco,
   modo = "suelta",
+  volverA = "/ordenes",
 }: Readonly<EscanerRecepcionBodegaCentralProps>) {
+  if (modo === "pagina") {
+    return (
+      <RecepcionContinuaPagina recibir={recibirBodegaCentral} volverA={volverA} nombreRecepcion="Bodega central" />
+    );
+  }
   if (modo === "continua") {
     return (
       <TarjetaEscaneoContinuo

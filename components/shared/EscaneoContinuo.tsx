@@ -35,8 +35,9 @@ const COLOR_ESTADO: Record<EstadoFila["tipo"], string> = {
 
 export function ContadoresEscaneo({
   contadores,
+  apilado = false,
   className,
-}: Readonly<{ contadores: ContadoresSesion; className?: string }>) {
+}: Readonly<{ contadores: ContadoresSesion; apilado?: boolean; className?: string }>) {
   const items = [
     { rotulo: "Recibidas", valor: contadores.recibidas },
     { rotulo: "Repetidas", valor: contadores.repetidas },
@@ -44,7 +45,8 @@ export function ContadoresEscaneo({
   ];
   return (
     <section aria-label="Resumen" className={className}>
-      <dl className="grid grid-cols-3 gap-3">
+      {/* `apilado`: la columna derecha de la página, uno bajo otro (canvas: Main). */}
+      <dl className={cn("grid gap-3", apilado ? "grid-cols-1" : "grid-cols-3")}>
         {items.map(({ rotulo, valor }) => (
           <div key={rotulo} className="rounded-lg border border-border bg-card px-3 py-2">
             <dt className="text-xs text-muted-foreground">{rotulo}</dt>

@@ -7,6 +7,7 @@ import {
   type ResultadoLectura,
 } from "@/components/shared/EscanerGuiaCard";
 import { TarjetaEscaneoContinuo } from "@/components/shared/EscaneoContinuo";
+import { RecepcionContinuaPagina } from "@/components/shared/RecepcionContinuaPagina";
 import { useToast } from "@/hooks/useToast";
 import { recibirEnOrigenPorQr } from "@/lib/actions/recepcion-origen";
 import { leerGuia } from "@/lib/utils/paquete-url";
@@ -37,6 +38,8 @@ export interface EscanerRecepcionOrigenProps {
   onRecibida?: () => void;
   /** SLT-159: `suelta` (lo de hoy), `continua` (el diálogo con lista) o `pagina`. */
   modo?: ModoRecepcion;
+  /** SLT-159 (R613): en `pagina`, adónde vuelve «Terminar recepción». */
+  volverA?: string;
 }
 
 const sinRefresco = () => {};
@@ -73,7 +76,13 @@ async function recibirOrigen(numGuia: number): Promise<DesenlaceRecepcion> {
 export function EscanerRecepcionOrigen({
   onRecibida = sinRefresco,
   modo = "suelta",
+  volverA = "/ordenes",
 }: Readonly<EscanerRecepcionOrigenProps>) {
+  if (modo === "pagina") {
+    return (
+      <RecepcionContinuaPagina recibir={recibirOrigen} volverA={volverA} nombreRecepcion="Tienda" />
+    );
+  }
   if (modo === "continua") {
     return (
       <TarjetaEscaneoContinuo

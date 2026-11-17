@@ -41,7 +41,7 @@ mismo.
 
 ## (b2) Página «Recibir paquetes» en escritorio
 
-- [ ] **T10 — Página (depende de T4, T5).** `components/shared/RecepcionContinuaPagina.tsx` (dentro de
+- [x] **T10 — Página (depende de T4, T5).** `components/shared/RecepcionContinuaPagina.tsx` (dentro de
   `AppPage`; campo propio, línea de estado, cámara compacta con `encendidaAlMontar` + `alCerrar`,
   contadores, `tabla`, «Terminar recepción ({n})»). `modo="pagina"` en C1, C2 y C3. Rutas
   `app/(app)/ordenes/recibir/page.tsx` y `app/(app)/recepcion-satelite/recibir/page.tsx` con el gate

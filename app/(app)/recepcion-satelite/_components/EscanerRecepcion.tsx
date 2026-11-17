@@ -8,6 +8,7 @@ import {
   type ResultadoLectura,
 } from "@/components/shared/EscanerGuiaCard";
 import { TarjetaEscaneoContinuo } from "@/components/shared/EscaneoContinuo";
+import { RecepcionContinuaPagina } from "@/components/shared/RecepcionContinuaPagina";
 import { RecibirPaquetesEntrada } from "@/components/shared/RecibirPaquetesEntrada";
 import { useToast } from "@/hooks/useToast";
 import { recibirPorQr } from "@/lib/actions/recepcion-satelite";
@@ -41,6 +42,8 @@ export interface EscanerRecepcionProps {
   onRecibida?: () => void;
   /** SLT-159: `suelta` (lo de hoy, con su modal), `continua` (solo la tarjeta) o `pagina`. */
   modo?: ModoRecepcion;
+  /** SLT-159 (R613): en `pagina`, adónde vuelve «Terminar recepción». */
+  volverA?: string;
 }
 
 const sinRefresco = () => {};
@@ -90,7 +93,16 @@ function useHrefRecibirPaquetes(): string {
   return `/recepcion-satelite/recibir?desde=${enBodega ? "en-bodega" : "por-recibir"}`;
 }
 
-export function EscanerRecepcion({ onRecibida = sinRefresco, modo = "suelta" }: EscanerRecepcionProps) {
+export function EscanerRecepcion({
+  onRecibida = sinRefresco,
+  modo = "suelta",
+  volverA = "/recepcion-satelite/por-recibir",
+}: EscanerRecepcionProps) {
+  if (modo === "pagina") {
+    return (
+      <RecepcionContinuaPagina recibir={recibirSatelite} volverA={volverA} nombreRecepcion="Bodega satélite" />
+    );
+  }
   if (modo === "continua") {
     return (
       <TarjetaEscaneoContinuo
