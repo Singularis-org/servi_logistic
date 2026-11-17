@@ -106,7 +106,7 @@
       "desde": "2026-10-22"
     },
     "tests/integration/db/analytics-daily-job.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): Error: el catalogo local no tiene el estatus \"en_fulfillment\"; usa el estatus 'en_fulfillment', retirado del catalogo por la 155: una base nueva no lo tiene (_semilla-rollup.ts:85). La retira SLT-186.",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): Error: el catalogo local no tiene el estatus \"el estado de fulfillment retirado por la 155\"; usa el estatus 'el estado de fulfillment retirado por la 155', retirado del catalogo por la 155: una base nueva no lo tiene (_semilla-rollup.ts:85). La retira SLT-186.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/api-key-eliminabilidad.test.ts": {
@@ -214,7 +214,7 @@
       "desde": "2026-10-22"
     },
     "tests/integration/db/cierre-rechazo-tienda-totales.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/cierre-rechazo-tienda-totales.test.ts:336 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: corre 'pnpm run db:seed'.. La retira SLT-178 (siembra propia en la transaccion).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/cierre-rechazo-tienda-totales.test.ts (su beforeAll) al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: corre 'pnpm run db:seed'.. La retira SLT-178 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/cierre-segundo-vincula-solo-lo-suyo.test.ts": {
