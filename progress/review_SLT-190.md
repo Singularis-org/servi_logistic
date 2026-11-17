@@ -86,3 +86,31 @@ en un sitio; no bloquea.
 **RECHAZADO (CAMBIOS).** Vuelve al implementer por B1 (guardia `estado-con-info` en rojo) y a quien corra
 el E2E y `./init.sh` por B2. El resto —trazabilidad, mutaciones, reuso, 44 px, SLT-168 y R794 intactos—
 está bien.
+
+## Vuelta 2 (acotada a 57ac5dc7..4c672c4b + merge a406ca9e)
+
+Fecha: 2026-11-17. HEAD `a406ca9e` (merge de `origin/dev` con SLT-192 «Mapa de ruta según el canvas»).
+
+**Veredicto: OK.** Quedan cerrados B1, B2, m1 y m2. No hay hallazgos nuevos bloqueantes. m3 (estado del filtro duplicado) era opcional y sigue abierto, sin bloquear.
+
+### Hallazgos de la vuelta 1
+- [x] **B1, guardia `estado-con-info`.** `PosOrderCardDetalle.tsx` ya no pinta `nombreDeEstado` suelto: el estado va con `EstadoConInfo` debajo de la fila plegada y FUERA del botón de la fila (`:254-268`, decisión de Carlos). La guardia sale verde sin tocarla. Lo cubre `PosOrderCardDetalleCompacta.test.tsx` «R864 (B1…)»: el (i) está fuera del botón, es hermano del texto del estado, lleva `CLASE_INFO_TACTIL` (literal-contrato) y tocarlo no despliega la tarjeta. Recoger no lleva (i) (R866).
+- [x] **B2, E2E, gate y T6.** T6 está `[x]`. `progress/impl_SLT-190.md:171-179` registra el E2E en local de `pwa-mensajero-recoger-recoleccion` y `mis-asignaciones`: 11 passed sobre `4c672c4b`, con build, `E2E_EXIT=0`. El leader reporta además `./init.sh` `INIT_EXIT=0` sobre `a406ca9e`. El E2E es anterior al merge. Lo acepto porque el merge solo trae, en el código de esta ficha, el refactor equivalente de `lineaUbicacion` (ver abajo).
+- [x] **m1, contador «Para otro día».** El fixture suma `REM-T5` (otro día, «Tienda Norte») y la aserción pasa a `(2)`. La mutación de la vuelta 1 ahora muere.
+- [x] **m2, comentario.** `RecoleccionModule.tsx:256-257` ya dice que el título lo pinta la barra del diálogo.
+
+### `partirLinea` en `components/ui/select.tsx`
+- **Sin la prop no cambia nada.** `cn(…, className, false)` deja la misma clase. El hueco sin `labelPrefix` sigue siendo el `Select.Value` pelado. Con `labelPrefix` mantiene `min-w-0 truncate`. A `Select.Icon` le llega `className={undefined}`. De los 39 archivos que importan `Select`, solo `FiltroTienda.tsx:44` y `FiltroCantonDistrito.tsx:75,86` pasan la prop.
+- **Mutaciones (revertidas con `git checkout --`, `git status` limpio):**
+  - el hueco con `truncate` aunque llegue `partirLinea` → 3 rojos (`Select.test.tsx` y R852 en RecogerModule y RecoleccionModule);
+  - `partirLinea = true` por defecto → rojo en «SIN `partirLinea` el disparador es el de siempre».
+  - Las dos mueren.
+- **El filtro de cantón y distrito también cambia.** `FiltroCantonDistrito` pasa de `h-8`/`max-md:h-11` a alto mínimo y parte línea. Es la decisión de Carlos y la cubre `RepartoModule.test.tsx`. Ningún E2E usa esos selectores (`grep` en `e2e/` por «Filtrar por cantón», «Todos los cantones»: nada), así que no queda ningún E2E afectado sin correr.
+
+### Merge en `PosOrderCardDetalle.tsx`
+`git diff 4c672c4b a406ca9e` sobre `pos-card/`: lo único que entra es `ubicacion = lineaUbicacion(orden)`, extraída a `pos-format.ts` por SLT-192 con la misma lógica que el literal que reemplaza. No toca `posicion`, `filaRecoleccion` ni el (i). No hay conflicto ni pérdida.
+
+### Verificación ejecutada (base `servi_slt190_desechable`)
+- **vitest:** 10 archivos verdes, 403 tests: Select, PosOrderCardDetalleCompacta, PosOrderCardPosicion, RecogerModule, RecoleccionModule, RepartoModule y RepartoMovil, más las guardias `estado-con-info`, `nombres-estado-retirados` y `pwa-mensajero-sin-recorte`.
+- **Tamaño:** `node scripts/tamano-pr.mjs` da 25/40 archivos, 594/1000 líneas de producción y 1058/3000 de tests.
+- **Sin hallazgo:** que la barra y la X de 44 px del escáner pasen a ser de `EscanerModal` para todos los usos lo consolida SLT-193 «Botones de 44 px pendientes en la PWA del mensajero», por decisión de Carlos.
