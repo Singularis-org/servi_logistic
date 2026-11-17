@@ -15,7 +15,7 @@ PR #192). Todo es `frontend_dev`; ningún archivo de servidor. Un solo PR.
   motivos de hoy, mismo `nombreDeEstado`. *Hecho:* R596 (M1, por `status`), R599 y R832 (fuente) en
   verde en `tests/components/useRecogerPorGuia.test.tsx`; la relectura de SLT-69 una vez por lectura
   que la necesite.
-- [ ] **T3 [P] — M2 a desenlace (depende de T1 solo por el tipo).** `useRecolectarPorGuia.ts`: recibe
+- [x] **T3 [P] — M2 a desenlace (depende de T1 solo por el tipo).** `useRecolectarPorGuia.ts`: recibe
   `conocidas`, devuelve `DesenlaceRecepcion` con `resumen` si la guía está en ellas, sin `useToast`;
   sigue sin rechazar en cliente. *Hecho:* cubierto por los casos de T5 (no hay test propio del hook
   hoy).
