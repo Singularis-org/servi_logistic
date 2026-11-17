@@ -37,6 +37,21 @@ const SUPERFICIES_DE_CAPTURA = [
   "app/(app)/mis-asignaciones/_components/VerificarGuiaGate.tsx",
 ] as const;
 
+/**
+ * SLT-168 «Escaneo continuo en las recogidas del mensajero»: estas dos superficies ya no leen la
+ * guía ellas mismas; montan `<TarjetaEscaneoContinuo`, cuya sesión (`lib/utils/sesion-escaneo.ts`)
+ * lee con `leerGuia`. Valen si importan `leerGuia` O montan la tarjeta continua.
+ */
+const DELEGAN_EN_LA_SESION = new Set<string>([
+  "app/(app)/mis-asignaciones/_components/RecogerPaqueteCard.tsx",
+  "app/(app)/recoleccion/_components/RecoleccionModule.tsx",
+]);
+
+const MONTA_TARJETA_CONTINUA = /<TarjetaEscaneoContinuo[\s/>]/;
+
+/** Donde vive la lectura de las superficies que delegan (en `lib/`, fuera del barrido). */
+const SESION_ESCANEO = "lib/utils/sesion-escaneo.ts";
+
 /** La regla de dígitos suelta, tal como se escribía (`/^\d+$/`). */
 const REGLA_DIGITOS = "/^\\d+$/";
 
@@ -87,9 +102,18 @@ describe("R567 — una sola lectura de guía en app/ y components/", () => {
     expect(infractores, AVISO).toEqual([]);
   });
 
-  it("las siete superficies de captura importan `leerGuia`", () => {
-    const sinLeerGuia = SUPERFICIES_DE_CAPTURA.filter((f) => !IMPORTA_LEER_GUIA.test(leer(f)));
+  it("las siete superficies de captura importan `leerGuia` (o, M1 y M2, montan la tarjeta continua)", () => {
+    const sinLeerGuia = SUPERFICIES_DE_CAPTURA.filter((f) => {
+      const fuente = leer(f);
+      if (IMPORTA_LEER_GUIA.test(fuente)) return false;
+      return !(DELEGAN_EN_LA_SESION.has(f) && MONTA_TARJETA_CONTINUA.test(fuente));
+    });
     expect(sinLeerGuia, AVISO).toEqual([]);
+  });
+
+  it("SLT-168: la sesión del escaneo continuo, a la que delegan M1 y M2, lee con `leerGuia`", () => {
+    expect(leer(SESION_ESCANEO), AVISO).toMatch(IMPORTA_LEER_GUIA);
+    expect(leer("components/shared/EscaneoContinuo.tsx")).toMatch(/useSesionEscaneo/);
   });
 
   it("las siete superficies de captura no convierten lo leído con `Number(...)`", () => {

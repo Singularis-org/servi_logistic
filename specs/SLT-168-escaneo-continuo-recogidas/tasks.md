@@ -29,7 +29,7 @@ PR #192). Todo es `frontend_dev`; ningún archivo de servidor. Un solo PR.
   su `EscanerModal`; `router.refresh()` pasa a `alCerrarConRecepcion`; `conocidas` en memo. Nada fuera
   del bloque del escáner. *Hecho:* R595-R598, R830-R833 en verde en
   `tests/components/RecoleccionModule.test.tsx`.
-- [ ] **T6 [P] — Guardias (depende de T4, T5).** `lectura-guia-unica.guardia.test.ts` y
+- [x] **T6 [P] — Guardias (depende de T4, T5).** `lectura-guia-unica.guardia.test.ts` y
   `rutas-336-retiradas.guardia.test.ts` según `design.md > Guardias`. *Hecho:* `pnpm run
   test:guardias` en verde; mutación anotada en `progress/impl_SLT-168.md`: quitar
   `<TarjetaEscaneoContinuo` de `RecogerPaqueteCard.tsx` pone las dos en rojo.
