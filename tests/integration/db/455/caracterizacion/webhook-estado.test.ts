@@ -13,6 +13,8 @@ import { C, R, claveDe } from "../../../../fixtures/codigos-455";
 import { HAY_BASE_DE_DATOS } from "../../_postgres-real";
 import { conEscenario, prepararMundo, type Mundo } from "../../454/_escenario";
 
+const SIN_ROL_DE_APP = { rolDeLaApp: false } as const;
+
 /**
  * FEATURE 455 — FASE 0 · C11 (R28, R50). EL WEBHOOK `orden.estado_actualizado`.
  *
@@ -145,7 +147,7 @@ describeSiHayBase("455/C11 — webhook de estado (Postgres real)", () => {
         entregas: entregas.sort((a, b) => String(a.orden).localeCompare(String(b.orden))),
         renombre,
       };
-    });
+    }, SIN_ROL_DE_APP); // SLT-177: DDL/catalogo dentro del escenario
   }
 
   beforeAll(async () => {

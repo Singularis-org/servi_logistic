@@ -46,6 +46,7 @@ import {
   type TxDeTest,
 } from "../_postgres-real";
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { comoApp } from "@/tests/fabricas/organizaciones";
 
 /**
  * FEATURE 454 (T0.1) — EL ESCENARIO COMPARTIDO DE LA FASE 0.
@@ -367,9 +368,14 @@ export async function crearEscenario(
           `el estatus retirado «${v}» no esta en el catalogo y un escenario COMPROMETIDO no lo puede sembrar`,
         );
       }
+      // SLT-177: el catalogo es de plataforma y `servi_app` no puede escribirlo; la fila de m4 se
+      // inserta con el rol del dueno y se vuelve al de la app si el escenario lo tenia.
+      const [{ rol }] = await tx.$queryRawUnsafe<{ rol: string }[]>(`SELECT current_setting('role') AS rol`);
+      if (rol === "servi_app") await tx.$executeRawUnsafe("RESET ROLE");
       await tx.$executeRaw`INSERT INTO "order_status" ("id", "value")
         SELECT gen_random_uuid()::text, ${v}
          WHERE NOT EXISTS (SELECT 1 FROM "order_status" WHERE "value" = ${v})`;
+      if (rol === "servi_app") await tx.$executeRawUnsafe(`SELECT set_config('role', 'servi_app', true)`);
       const fila = await tx.orderStatus.findUniqueOrThrow({ where: { value: v }, select: { id: true } });
       retiradosLocales.set(v, fila.id);
       valorRetiradoLocal.set(fila.id, v);
@@ -746,9 +752,27 @@ export async function crearEscenario(
 export type Escenario = Awaited<ReturnType<typeof crearEscenario>>;
 
 /** Corre `fn` sobre un escenario nuevo, en una transaccion que SIEMPRE se revierte. */
-export function conEscenario<T>(mundo: Mundo, fn: (e: Escenario) => Promise<T>): Promise<T> {
+/**
+ * `opciones.rolDeLaApp` (por defecto `true`): el escenario corre como `servi_app` con RLS. Lo apagan
+ * solo los tests de migracion que hacen DDL o escriben el catalogo dentro del escenario (eso es del
+ * dueno de las tablas); esos no llaman a lecturas globales del codigo bajo test.
+ */
+export function conEscenario<T>(
+  mundo: Mundo,
+  fn: (e: Escenario) => Promise<T>,
+  opciones: { rolDeLaApp?: boolean } = {},
+): Promise<T> {
   return enTransaccionRevertida(mundo.prisma, async (tx) => {
     await serializarEscriturasReales(tx);
+    // SLT-177: el escenario corre con el rol de la app (`servi_app`, sin BYPASSRLS) y la empresa de
+    // la tx, como en produccion. Sin esto el `tx` es el del dueno de las tablas y una lectura global
+    // del codigo bajo test (p. ej. `ZonaRepository.findCentralZonaId`, `findFirst({ esCentral })`)
+    // devolvia la central de OTRA empresa en una base con datos: la aprobacion mandaba a satelite.
+    const [{ org }] = await tx.$queryRawUnsafe<{ org: string | null }[]>(
+      `SELECT current_setting('app.organizacion_id', true) AS org`,
+    );
+    if (!org) throw new Error("454: la transaccion del escenario no tiene empresa fijada");
+    if (opciones.rolDeLaApp !== false) await comoApp(tx, org);
     const cliente = clienteConTransaccionAnidada(tx);
     const e = await crearEscenario(mundo, tx, cliente);
     return fn(e);
