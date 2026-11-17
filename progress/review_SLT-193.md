@@ -133,3 +133,67 @@ repetí.
 - `playwright test e2e/pwa-mensajero-botones-44.spec.ts --retries=0`: 5 passed (18,4 s).
 - `node scripts/tamano-pr.mjs`: 61/40 archivos, 719/1000 líneas de producción y 2003/3000 de tests,
   contra `dev` y con SLT-190 incluido.
+
+## Vuelta 2 (acotada a 8c2e004a..838b2431)
+
+Commits: b6d33ca5 (menores), 129c9cde (merge de origin/dev con SLT-190 dentro), 1b6dd446 (marca de
+tamaño) y 838b2431 (T4/T6 y mapa R→test).
+
+### Veredicto: OK
+
+### Hallazgos de la vuelta 1
+
+| # | Estado | Cómo se comprobó |
+|---|---|---|
+| M1 marcador de tamaño | cerrado | `progress/features/SLT-193.md:19`: «Acepto 41». `scripts/tamano-pr.mjs` da 41/40 como AVISO aceptado (216/1000 líneas de producción, 1184/3000 de tests), ya medido contra `dev` sin SLT-190. |
+| M2 T4/T6 | cerrado | `requirements.md:263,278` en `[x]`. `INIT_EXIT=0` sobre 1b6dd446 (`features/SLT-193.md:36`). El mapa R→test está en Tandas (`:37-38`) y cubre R910-R921 y R925-R929. |
+| m3 alcance de la guardia | cerrado | La guardia sigue el contenido de cada `<EscanerModal>` y de sus envoltorios (`RecibirPaquetesEntrada`), y también los componentes que monta, aunque estén en otro archivo. Excluye `acciones` y los otros diálogos del archivo. |
+| m4 formas de «Cerrar» | cerrado | Detecta texto JSX, `{"Cerrar"}`, cualquier prop `"Cerrar"`, una constante cuyo valor es «Cerrar», `DialogClose`, `showCloseButton` y `ESCANER_CERRAR_LABEL`. Las piezas tienen tests propios, y «Cerrar cámara» queda fuera. |
+| m5 R916 leído del disco | aceptado como estaba | — |
+| m6 cuenta del spec | cerrado | `requirements.md:7,291`: 41 reales, 37 previstos más 4 justificados. |
+| m7 dos títulos | cerrado | `EscanerModal.tsx:145-147` monta su contenido bajo `DentroDeEscanerContext`, y `EscanerGuiaCard.tsx:136-137` hace `sinEncabezado = pedido \|\| dentroDeEscaner`. `EscaneoContinuo.test.tsx` cubre las dos caras: dentro del escáner, un solo título; fuera, la tarjeta conserva su encabezado. |
+
+### Mutaciones de esta vuelta (revertidas; `git status` limpio)
+
+| # | Mutación | Esperado | Resultado |
+|---|---|---|---|
+| V1 | `<button>Cerrar</button>` en el cuerpo de `EscanerGuiaCard.tsx`, un archivo que no monta `EscanerModal` | rojo | rojo: «nada de lo que vive dentro del escáner…». Antes este caso se le escapaba. |
+| V2 | `cerrarLabel={"Cerrar"}` en la tarjeta suelta de `EscanerRecepcionBodegaCentral` | rojo | rojo |
+| V3 | función ajena con `<button>Cerrar</button>` en `OrdenesListado.tsx`, fuera del escáner | verde (sin falso rojo) | verde, 11/11 |
+| V4 | `DentroDeEscanerContext.Provider value={false}` | rojo | rojo: R927 «un único título» en `EscaneoContinuo.test` |
+
+### `DentroDeEscanerContext` no toca nada fuera del escáner
+
+- El Provider envuelve solo los hijos dentro de `DialogContent` (`EscanerModal.tsx:145-147`). Las
+  `acciones` se pintan fuera (`:182`), así que el disparador de «Recibir paquetes» no hereda el
+  contexto.
+- El valor por defecto es `false`, así que siguen como estaban:
+  - `cierre-confirmacion-fisica.tsx`, que monta su `EscanerGuiaCard` en otro diálogo;
+  - `RecepcionContinuaPagina` (modo página);
+  - las rutas `/ordenes/recibir` y `/recepcion-satelite/recibir`.
+- `vitest related` de `EscanerGuiaCard.tsx`, `EscanerModal.tsx`, la guardia y `EscaneoContinuo.test`
+  pasa 210 archivos y 3140 tests en verde, entre ellos `CierresAdminConfirmacionFisica.test` y
+  `EscanerGuiaCard.test`.
+
+### El merge con dev
+
+- 129c9cde no cambia ningún archivo frente a b6d33ca5: `git diff --name-only b6d33ca5 129c9cde`
+  sale vacío.
+- `dev` (8a6a07a7) tiene el mismo árbol que b2e872ee, el HEAD de SLT-190 que ya estaba en la rama.
+- Los archivos compartidos con SLT-190 no cambian por el merge.
+
+### Comandos (base `servi_slt193_desechable`)
+
+- `pnpm typecheck`: exit 0.
+- `vitest related --run` de los 4 archivos de arriba: 210 archivos, 3140 passed y 17 skipped, exit 0.
+- Las mutaciones V1-V4, con su test: lo esperado en los 4 casos.
+- `playwright test` de `pwa-mensajero-botones-44`, `pwa-mensajero-recoger-recoleccion` y
+  `recepcion-satelite`, con `--retries=0`: 13 passed.
+
+### Nuevos hallazgos
+
+Ninguno bloqueante.
+- **menor (nota):** la guardia recorre todo lo que monta el contenido del escáner. Un «Cerrar»
+  legítimo que se añada en el futuro dentro de esa cadena, por ejemplo en un sub-diálogo de una
+  tarjeta, la pondrá en rojo. Es lo que pide R928 («ningún cierre propio dentro»), así que no hay
+  que cambiar nada.
