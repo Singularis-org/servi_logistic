@@ -6073,6 +6073,9 @@ enum HistorialPlataformaAccion {
   /// agregar un nivel (`"nivel_agregado"`); edición de un nombre de tipo (`detalle.campo`).
   tipo_nivel_geografico_creado
   tipo_nivel_geografico_renombrado
+  /// SLT-48 (design §7.1; 20261117120000): el superadmin mueve un nodo a otro padre de la misma
+  /// profundidad; `valorAnterior`/`valorNuevo` = rutas de los padres.
+  nodo_geografico_movido
 
   @@map("historial_plataforma_accion")
 }
