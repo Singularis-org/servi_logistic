@@ -51,7 +51,7 @@ REVOKE ALL ON "plan_borrador" FROM servi_app;            -- como el resto de pla
   claves. Guardar un paso es `pasos || jsonb_build_object(<idPaso>, <valores>)`: la mezcla de primer nivel de
   `jsonb` reemplaza solo esa clave, en una sola sentencia, así que dos guardados de pasos distintos a la vez no
   se pisan (R4).
-- **`plan_id`**: `UNIQUE` admite varios `NULL` (varios borradores de creación; pregunta abierta 1) y uno solo
+- **`plan_id`**: `UNIQUE` admite varios `NULL` (varios borradores de creación, sin límite: decisión cerrada del 2026-11-17) y uno solo
   por plan (R5). El primer guardado de un cambio es
   `INSERT … ON CONFLICT ("plan_id") DO UPDATE SET pasos = plan_borrador.pasos || EXCLUDED.pasos, updated_at = now()`:
   dos primeros guardados simultáneos dejan una fila y conservan el iniciador del primero.

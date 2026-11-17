@@ -196,13 +196,7 @@ solo en un borrador de cambio, `vigencia`. *Claves de campo*: las que ya usan `c
 
 ## Preguntas abiertas
 
-Las dos tienen una respuesta por defecto en el spec; se confirman al aprobarlo.
-
-1. ¿Puede haber varios borradores de creación a la vez? El spec dice que sí, sin límite: cada «Nuevo plan»
-   es uno, y la lista (R10) los muestra todos.
-2. Si dos superadmins guardan el MISMO paso del mismo borrador casi a la vez, gana el último guardado, sin
-   aviso (R4 protege los pasos distintos, no el mismo). ¿Basta, o hace falta avisar al segundo de que el
-   paso cambió desde que lo abrió?
+Ninguna.
 
 ## Decisiones cerradas (no reabrir)
 
@@ -216,3 +210,5 @@ Las dos tienen una respuesta por defecto en el spec; se confirman al aprobarlo.
 | 2026-11-17 | ¿Cómo se programa el cambio al confirmar? | Con el mecanismo por empresa de SLT-128. |
 | 2026-11-17 | ¿E2E? | No en esta ficha: no tiene pantalla. El E2E va en SLT-144. |
 | 2026-11-17 | ¿Ruta? | Completa: esquema y migración nuevos. |
+| 2026-11-17 | ¿Puede haber varios borradores de creación a la vez? | Sí, sin límite: cada «Nuevo plan» es uno y la lista (R10) los muestra todos. |
+| 2026-11-17 | ¿Qué pasa si dos superadmins guardan el MISMO paso del mismo borrador casi a la vez? | Gana el último guardado, sin aviso (R4 protege los pasos distintos, no el mismo). |
