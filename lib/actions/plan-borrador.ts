@@ -7,7 +7,12 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { PlanesRepository } from "@/lib/repositories/PlanesRepository";
 import { PlanBorradorService } from "@/lib/services/PlanBorradorService";
 import { PlanesService } from "@/lib/services/PlanesService";
-import type { ConfirmarBorradorResult, DescartarBorradorResult, GuardarPasoResult } from "@/lib/types/plan-borrador";
+import type {
+  ConfirmarBorradorResult,
+  DescartarBorradorResult,
+  GuardarPasoResult,
+  LeerBorradorResult,
+} from "@/lib/types/plan-borrador";
 
 // SLT-129 (design §4) — el borde del borrador de planes del superadmin, para SLT-144. El actor sale de la sesión y
 // la autorización la decide el servicio (R1). De plataforma: va al núcleo en `lib/modulos/reparto.ts`.
@@ -35,6 +40,11 @@ async function conServicio<T>(
 /** R2–R8: guarda un paso de un borrador de creación o del borrador de cambio de un plan. */
 export async function guardarPasoBorradorAction(input: unknown, deps: PlanBorradorDeps = {}): Promise<GuardarPasoResult> {
   return conServicio(deps, (s, actor) => s.guardarPaso(actor, input));
+}
+
+/** R9: `{ borradorId }` o `{ planId }`; lectura, como `previsualizarAsignacionAction` (la lista no tiene action). */
+export async function leerBorradorAction(input: unknown, deps: PlanBorradorDeps = {}): Promise<LeerBorradorResult> {
+  return conServicio(deps, (s, actor) => s.leer(actor, input));
 }
 
 /** R14: `{ borradorId }`. */

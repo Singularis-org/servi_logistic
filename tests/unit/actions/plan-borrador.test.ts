@@ -16,7 +16,7 @@ const sesion = vi.fn(async (): Promise<Actor | null> => SUPERADMIN);
 vi.mock("@/lib/auth/resolve-actor", () => ({ resolveActorFromSession: () => sesion() }));
 
 const deleteMany = vi.fn(async () => ({ count: 1 }));
-const findUnique = vi.fn(async () => null);
+const findUnique = vi.fn(async (): Promise<unknown> => null);
 const transaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn({ planBorrador: { deleteMany, findUnique } }));
 vi.mock("@/lib/db/prisma-client", () => ({
   getPrismaClient: () => ({ $transaction: transaction }),
@@ -39,19 +39,27 @@ describe("SLT-129 — el borde del borrador de planes", () => {
     expect(findUnique).toHaveBeenCalledWith({ where: { id: BORRADOR } });
   });
 
-  it("R1 — con la sesión de un maestro, forbidden en las tres y la base no se toca", async () => {
+  it("R9 — leer por plan va al repositorio real con el actor de la sesión; sin borrador, null", async () => {
+    const plan = randomUUID();
+    expect(await acciones.leerBorradorAction({ planId: plan })).toEqual({ estado: "ok", borrador: null });
+    expect(sesion).toHaveBeenCalledOnce();
+    expect(findUnique).toHaveBeenCalledWith({ where: { planId: plan } });
+  });
+
+  it("R1 — con la sesión de un maestro, forbidden en las cuatro y la base no se toca", async () => {
     sesion.mockResolvedValue(MAESTRO);
     const guardar = { modo: "crear", borradorId: null, paso: "general", valores: { nombre: "X" } };
     expect(await acciones.guardarPasoBorradorAction(guardar)).toEqual({ estado: "forbidden" });
     expect(await acciones.descartarBorradorAction({ borradorId: BORRADOR })).toEqual({ estado: "forbidden" });
     expect(await acciones.confirmarBorradorAction({ borradorId: BORRADOR })).toEqual({ estado: "forbidden" });
+    expect(await acciones.leerBorradorAction({ borradorId: BORRADOR })).toEqual({ estado: "forbidden" });
     expect(transaction).not.toHaveBeenCalled();
     sesion.mockResolvedValue(SUPERADMIN);
   });
 
   it("el cliente no elige el actor: un servicio inyectado recibe el de getActor", async () => {
     const descartar = vi.fn(async () => ({ estado: "ok" as const }));
-    const service = { guardarPaso: vi.fn(), descartar, confirmar: vi.fn() };
+    const service = { guardarPaso: vi.fn(), descartar, confirmar: vi.fn(), leer: vi.fn(), borradores: vi.fn() };
     await acciones.descartarBorradorAction({ borradorId: BORRADOR, actor: SUPERADMIN }, { service, getActor: async () => MAESTRO });
     expect(descartar).toHaveBeenCalledWith(MAESTRO, { borradorId: BORRADOR, actor: SUPERADMIN });
   });

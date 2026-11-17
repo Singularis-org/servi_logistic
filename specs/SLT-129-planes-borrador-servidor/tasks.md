@@ -35,7 +35,7 @@ Todo es backend (`backend_dev`). Las referencias `§n` son de `design.md`. Antes
 ## T3 — Repositorio (§1.1, §5.4) — depende de T1 y T2
 
 - [x] T3.1 `lib/interfaces/repositories/IPlanBorradorRepository.ts`.
-- [~] T3.2 (sin R9–R10: leer y listar, corte de design §11) En `PlanesRepository`, los métodos de borrador: `crearBorrador`, `guardarPasoDeCreacion`,
+- [x] T3.2 En `PlanesRepository`, los métodos de borrador: `crearBorrador`, `guardarPasoDeCreacion`,
   `guardarPasoDeCambio` (con `ON CONFLICT ("plan_id")` y el plan bajo `FOR SHARE`), `borrador`,
   `borradorDelPlan`, `borradores` y `descartar`. El nombre del iniciador se congela como el del rastro.
 - [x] T3.3 `consumirBorrador` (`FOR UPDATE` al empezar, `DELETE` solo en el camino `ok`) dentro de `crearEnTx`
@@ -50,7 +50,7 @@ verde (R21).
 
 - [x] T4.1 `IPlanesService` y `PlanesService`: el tercer parámetro opcional `{ borradorId }` en `crear` y
   `editar`, que se pasa al repositorio. Sin él, el comportamiento es el de hoy.
-- [~] T4.2 (sin R9–R10: leer y listar, corte de design §11) `lib/interfaces/services/IPlanBorradorService.ts` y `lib/services/PlanBorradorService.ts`
+- [x] T4.2 `lib/interfaces/services/IPlanBorradorService.ts` y `lib/services/PlanBorradorService.ts`
   (`guardarPaso`, `leer`, `borradores`, `descartar`, `confirmar`).
 - [x] T4.3 Test: `tests/unit/services/plan-borrador-service.test.ts` (R1, R3, R6, R16, R19, R20).
 
@@ -58,7 +58,7 @@ verde (R21).
 
 ## T5 — Actions (§4) — depende de T4
 
-- [~] T5.1 (sin R9–R10: leer y listar, corte de design §11) `lib/actions/plan-borrador.ts`: `guardarPasoBorradorAction`, `leerBorradorAction`,
+- [x] T5.1 `lib/actions/plan-borrador.ts`: `guardarPasoBorradorAction`, `leerBorradorAction`,
   `descartarBorradorAction` y `confirmarBorradorAction`, con su composition root.
 - [x] T5.2 `"plan-borrador": "nucleo"` en `lib/modulos/reparto.ts`.
 - [x] T5.3 Test: `tests/unit/actions/plan-borrador.test.ts` (el actor sale de la sesión y el servicio se
@@ -79,7 +79,7 @@ verde (R21).
 
 ## T7 — Guardia (§7) [P con T6]
 
-- [ ] T7.1 `tests/unit/guards/plan-borrador-sin-caducidad.guardia.test.ts`, con su contraprueba (R15).
+- [x] T7.1 `tests/unit/guards/plan-borrador-sin-caducidad.guardia.test.ts`, con su contraprueba (R15).
 
 **Hecho:** en verde sobre el árbol, y en rojo sobre un texto en memoria con un `DELETE FROM "plan_borrador"`
 fuera de `PlanesRepository` o con `plan_borrador` en un cron.

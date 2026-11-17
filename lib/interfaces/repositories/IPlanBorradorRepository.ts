@@ -14,6 +14,11 @@ export interface BorradorLeido {
   updatedAt: Date;
 }
 
+/** R10: una fila de la lista, con el nombre del plan del cambio (`null` en una creación). */
+export interface BorradorListado extends BorradorLeido {
+  nombreDelPlan: string | null;
+}
+
 /** Tras guardar un paso: las claves de `pasos` (sin orden) y el instante del guardado. */
 export interface BorradorGuardado {
   borradorId: string;
@@ -41,4 +46,8 @@ export interface IPlanBorradorRepository extends Pick<IPlanesRepository, "plan">
   /** R14: `false` si no existía. */
   descartar(borradorId: string): Promise<boolean>;
   borrador(borradorId: string): Promise<BorradorLeido | null>;
+  /** R9: el borrador de cambio del plan, o `null`. */
+  borradorDelPlan(planId: string): Promise<BorradorLeido | null>;
+  /** R10: todos, de creación y de cambio, de todos los superadmins; el último guardado primero. */
+  borradores(): Promise<BorradorListado[]>;
 }

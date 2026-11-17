@@ -1,7 +1,7 @@
 import type { z } from "zod";
 
 import { esPlataforma } from "@/lib/auth/plataforma";
-import type { BorradorGuardado, IPlanBorradorRepository } from "@/lib/interfaces/repositories/IPlanBorradorRepository";
+import type { BorradorGuardado, BorradorLeido, IPlanBorradorRepository } from "@/lib/interfaces/repositories/IPlanBorradorRepository";
 import type { IPlanBorradorService } from "@/lib/interfaces/services/IPlanBorradorService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IPlanesService } from "@/lib/interfaces/services/IPlanesService";
@@ -12,10 +12,14 @@ import {
   confirmarBorradorSchema,
   descartarBorradorSchema,
   guardarPasoBorradorSchema,
+  leerBorradorSchema,
+  type BorradoresResult,
+  type BorradorVista,
   type ConfirmarBorradorResult,
   type DescartarBorradorResult,
   type GuardarPasoResult,
   type IdPasoBorrador,
+  type LeerBorradorResult,
   type ModoDelBorrador,
   type PasosDeCrear,
   type PasosDeEditar,
@@ -66,6 +70,22 @@ function guardadoOk(modo: ModoDelBorrador, g: BorradorGuardado): GuardarPasoResu
   };
 }
 
+/** R9: los pasos tal como se guardaron, con la lectura defensiva; los pasos guardados en el orden del formulario. */
+function vista(b: BorradorLeido): BorradorVista {
+  const modo = b.planId === null ? "crear" : "editar";
+  const pasos = pasosValidos(modo, b.pasos);
+  return {
+    id: b.id,
+    modo,
+    planId: b.planId,
+    pasos,
+    pasosGuardados: pasosDelModo(modo).filter((p) => p in pasos),
+    iniciadoPor: b.iniciadoPorNombre,
+    iniciadoAt: b.createdAt.toISOString(),
+    actualizadoAt: b.updatedAt.toISOString(),
+  };
+}
+
 export class PlanBorradorService implements IPlanBorradorService {
   constructor(
     private readonly repo: IPlanBorradorRepository,
@@ -93,6 +113,37 @@ export class PlanBorradorService implements IPlanBorradorService {
           ? null
           : await this.repo.guardarPasoDeCreacion(e.borradorId, e.paso, e.valores);
     return g === null ? NO_ENCONTRADO : guardadoOk("crear", g);
+  }
+
+  async leer(actor: Actor | null, input: unknown): Promise<LeerBorradorResult> {
+    if (!esSuperadmin(actor)) return FORBIDDEN;
+    const parsed = leerBorradorSchema.safeParse(input);
+    if (!parsed.success) return erroresDeCampo(parsed.error);
+    const e = parsed.data;
+    const b = "borradorId" in e ? await this.repo.borrador(e.borradorId) : await this.repo.borradorDelPlan(e.planId);
+    return { estado: "ok", borrador: b === null ? null : vista(b) };
+  }
+
+  async borradores(actor: Actor | null): Promise<BorradoresResult> {
+    if (!esSuperadmin(actor)) return FORBIDDEN;
+    const filas = await this.repo.borradores();
+    return {
+      estado: "ok",
+      borradores: filas.map((f) => {
+        const v = vista(f);
+        const general = v.pasos.general as { nombre: string } | undefined;
+        // R10: el nombre de General si está guardado; si no, el del plan en un cambio, o ninguno en una creación.
+        return {
+          id: v.id,
+          modo: v.modo,
+          planId: v.planId,
+          nombre: general?.nombre ?? f.nombreDelPlan,
+          iniciadoPor: v.iniciadoPor,
+          iniciadoAt: v.iniciadoAt,
+          actualizadoAt: v.actualizadoAt,
+        };
+      }),
+    };
   }
 
   async descartar(actor: Actor | null, input: unknown): Promise<DescartarBorradorResult> {

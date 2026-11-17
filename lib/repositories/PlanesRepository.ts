@@ -7,6 +7,7 @@ import type { ActorCongelado, EntradaAccion } from "@/lib/interfaces/repositorie
 import type {
   BorradorGuardado,
   BorradorLeido,
+  BorradorListado,
   IPlanBorradorRepository,
   ResultadoGuardarCambio,
 } from "@/lib/interfaces/repositories/IPlanBorradorRepository";
@@ -1594,6 +1595,27 @@ export class PlanesRepository
       this.prisma.$transaction(async (tx) => {
         const f = await tx.planBorrador.findUnique({ where: { id: borradorId } });
         return f === null ? null : { ...f, pasos: f.pasos as Record<string, unknown> };
+      }),
+    );
+  }
+
+  borradorDelPlan(planId: string): Promise<BorradorLeido | null> {
+    return comoPlataforma("SL-24", "leer el borrador de cambio de un plan (superadmin, SLT-129)", () =>
+      this.prisma.$transaction(async (tx) => {
+        const f = await tx.planBorrador.findUnique({ where: { planId } });
+        return f === null ? null : { ...f, pasos: f.pasos as Record<string, unknown> };
+      }),
+    );
+  }
+
+  borradores(): Promise<BorradorListado[]> {
+    return comoPlataforma("SL-24", "listar los borradores de planes (superadmin, SLT-129)", () =>
+      this.prisma.$transaction(async (tx) => {
+        const filas = await tx.planBorrador.findMany({
+          include: { plan: { select: { nombre: true } } },
+          orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+        });
+        return filas.map(({ plan, ...f }) => ({ ...f, pasos: f.pasos as Record<string, unknown>, nombreDelPlan: plan?.nombre ?? null }));
       }),
     );
   }

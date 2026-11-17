@@ -87,3 +87,43 @@ el plan en SHARE esperando la fila del borrador mientras confirmar la tiene y es
   Dejó un plan público «smoke …» en `servi_logistic_slt129`.
 
 **Veredicto:** T3–T5 en verde sin R9–R10 (corte de §11 por tamaño: 921 líneas de producción).
+
+## Tanda R9–R10 + T7 (backend_dev, 2026-11-17) — el humano aceptó el tamaño: sin corte de §11
+
+**Archivos**
+- Producción: `lib/interfaces/repositories/IPlanBorradorRepository.ts` (`BorradorListado`, `borradorDelPlan`,
+  `borradores`), `lib/repositories/PlanesRepository.ts` (`borradorDelPlan` por `planId` único; `borradores` con el
+  nombre del plan por la relación), `lib/interfaces/services/IPlanBorradorService.ts` y
+  `lib/services/PlanBorradorService.ts` (`leer`, `borradores`; `vista()` comparte la lectura defensiva de
+  confirmar), `lib/actions/plan-borrador.ts` (`leerBorradorAction`; la lista va sin action, design §4).
+- Tests: `tests/unit/services/plan-borrador-service.test.ts` (+R9, R10; R1 cubre ahora `leer` y `borradores`),
+  `tests/unit/actions/plan-borrador.test.ts` (+R9; R1 con las cuatro actions),
+  `tests/unit/guards/plan-borrador-sin-caducidad.guardia.test.ts` (nuevo, R15).
+- `specs/SLT-129-planes-borrador-servidor/tasks.md`: T3.2, T4.2, T5.1 y T7.1 marcadas.
+
+**Decisión fuera del spec (a revisar):** la lista sale ordenada por `updated_at DESC, id` (lo último guardado
+primero). R10 y design §4 no fijan orden; se eligió uno determinista.
+
+**Producción:** `git diff dev --shortstat -- db lib` = 17 files changed, 1023 insertions(+), 51 deletions(-).
+
+**R → test (de esta tanda)**
+| R | Test |
+|---|---|
+| R1 | `plan-borrador-service.test.ts > R1 — … > leer / borradores con maestro/admin/sin sesión`; `plan-borrador.test.ts (actions) > R1 — … forbidden en las cuatro` |
+| R9 | `plan-borrador-service.test.ts > R9 — por id devuelve los pasos tal como se guardaron…`, `> R9 — por plan … sin él, borrador null…`, `> R9 — lectura defensiva…`; `plan-borrador.test.ts (actions) > R9 — leer por plan va al repositorio real…` (la integración, T6) |
+| R10 | `plan-borrador-service.test.ts > R10 — la lista trae creación y cambio con su nombre…` (la integración, T6) |
+| R15 | `plan-borrador-sin-caducidad.guardia.test.ts` (árbol real + contraprueba en memoria: DELETE/TRUNCATE/delegado fuera de `PlanesRepository`, y `plan_borrador` en cron o `jobs-*`) |
+
+**Salida real**
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: sin errores.
+- `pnpm exec eslint` sobre los 8 archivos tocados: exit 0, sin salida.
+- `vitest run` `plan-borrador-service`, `actions/plan-borrador`, `plan-borrador-sin-caducidad`, `planes-sin-borrado`,
+  `sql-a-mano-por-empresa`, `modulos-reparto`: 6 archivos, 113 passed.
+- `vitest run` `actions/planes.composition-root`, `rls-por-empresa`, `organizacion-en-modelos`, `services/planes-service*` (9):
+  12 archivos, 446 passed.
+
+**Limpieza:** en `servi_logistic_slt129` se borró el plan público «smoke 741bbc86» (`105ecf5d-…`) y, por cascada, su
+fila de `plan_tope_rol`, `plan_descuento_periodo` y `plan_precio_historial` (no tenía rastro, borrador ni trabajos).
+Quedan 0 planes `smoke%`.
+
+**Veredicto:** R9, R10 y R15 implementados y en verde en unitarios; falta T6 (integración).
