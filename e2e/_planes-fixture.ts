@@ -107,9 +107,11 @@ export async function crearOrdenesDirectas(dueno: PrismaClient, e: EmpresaConZon
   return dueno.$transaction(async (tx) => {
     await fijarEmpresa(tx, e.organizacionId);
     const estatus = await tx.orderStatus.findUnique({ where: { value: "en_preparacion" }, select: { id: true } });
-    const canton = await tx.canton.findFirst({
-      where: { nombre: "Cartago", provincia: { nombre: "Cartago" } },
-      select: { id: true, provinciaId: true },
+    // SLT-48 (R15, design §9): la orden guarda solo su nodo, con las 3 FK viejas en NULL. El nodo es el
+    // mismo que antes ponía el trigger desde la FK (`COALESCE(distrito_id, canton_id)`): el cantón.
+    const canton = await tx.nodoGeografico.findFirst({
+      where: { nombre: "Cartago", profundidad: 2, padre: { nombre: "Cartago", profundidad: 1 } },
+      select: { id: true },
     });
     if (!estatus || !canton) throw new Error("SL-24 T9: faltan catálogos o geografía (¿base sin `pnpm run db:seed`?)");
     const ids: string[] = [];
@@ -124,8 +126,7 @@ export async function crearOrdenesDirectas(dueno: PrismaClient, e: EmpresaConZon
           telefonoDest: "88881111",
           tiendaId: e.tiendaId,
           zonaId: e.zonaId,
-          provinciaId: canton.provinciaId,
-          cantonId: canton.id,
+          nodoGeograficoId: canton.id,
           producto: "Producto plan humo",
           montoCobrar: 15000,
         },
@@ -156,8 +157,13 @@ function geografiaDelEjemplo(): { provincia: string; canton: string; distrito: s
  */
 export async function enlazarDistritoDeLaPlantilla(dueno: PrismaClient, e: EmpresaConZona): Promise<void> {
   const geo = geografiaDelEjemplo();
-  const distrito = await dueno.distrito.findFirst({
-    where: { nombre: geo.distrito, canton: { nombre: geo.canton, provincia: { nombre: geo.provincia } } },
+  // SLT-48 (design §9): el lugar se busca en el árbol, no en las vistas viejas.
+  const distrito = await dueno.nodoGeografico.findFirst({
+    where: {
+      nombre: geo.distrito,
+      profundidad: 3,
+      padre: { nombre: geo.canton, profundidad: 2, padre: { nombre: geo.provincia, profundidad: 1 } },
+    },
     select: { id: true },
   });
   if (!distrito) throw new Error(`SL-24 T9: no está el distrito ${JSON.stringify(geo)} (¿base sin \`pnpm run db:seed\`?)`);

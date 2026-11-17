@@ -51,21 +51,22 @@ export function clienteDuenoLocal(): PrismaClient {
  * Cuatro distritos activos con nombre ASCII que no aparece dentro del nombre de ningún otro
  * distrito, cantón ni provincia, cada uno de un cantón distinto: su nombre identifica una sola fila
  * del selector de grupos.
+ *
+ * SLT-48 (design §9): se lee el árbol (`nodo_geografico`, niveles 1 a 3), no las vistas viejas; es el
+ * mismo conjunto que daban `provincia`, `canton` y `distrito`.
  */
 export async function elegirDistritos(dueno: PrismaClient): Promise<DistritoElegido[]> {
   const filas = await dueno.$queryRaw<DistritoElegido[]>`
     WITH nombres AS (
-      SELECT lower(nombre) AS n FROM distrito
-      UNION ALL SELECT lower(nombre) FROM canton
-      UNION ALL SELECT lower(nombre) FROM provincia
+      SELECT lower(nombre) AS n FROM nodo_geografico WHERE profundidad BETWEEN 1 AND 3
     ),
     candidatos AS (
-      SELECT d.id, d.nombre, d.canton_id,
-             row_number() OVER (PARTITION BY d.canton_id ORDER BY d.nombre) AS rn
-      FROM distrito d
-      JOIN canton c ON c.id = d.canton_id
-      JOIN provincia p ON p.id = c.provincia_id
-      WHERE d.activo AND c.activo AND p.activo
+      SELECT d.id, d.nombre, d.padre_id,
+             row_number() OVER (PARTITION BY d.padre_id ORDER BY d.nombre) AS rn
+      FROM nodo_geografico d
+      JOIN nodo_geografico c ON c.id = d.padre_id AND c.profundidad = 2
+      JOIN nodo_geografico p ON p.id = c.padre_id AND p.profundidad = 1
+      WHERE d.profundidad = 3 AND d.activo AND c.activo AND p.activo
         AND d.nombre ~ '^[A-Za-z]{5,}$'
         AND (SELECT count(*) FROM nombres WHERE nombres.n LIKE '%' || lower(d.nombre) || '%') = 1
     )
