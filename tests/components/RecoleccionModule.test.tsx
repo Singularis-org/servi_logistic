@@ -1333,7 +1333,10 @@ describe("SLT-190 — Recolección según el canvas", () => {
     expect(within(barra()).getByRole("button", { name: /^Filtros \(1\)/ })).toBeInTheDocument();
     const control = within(barra()).getByRole("combobox", { name: "Filtrar por tienda" });
     expect(control).toHaveTextContent("Tienda: Tienda Sur");
-    expect(control.className.split(/\s+/)).toContain("max-md:h-11");
+    // 44 px como alto MÍNIMO, y el nombre entero: parte línea, sin «…» (decisión de Carlos, 2026-11-17).
+    expect(control.className.split(/\s+/)).toContain("max-md:min-h-11");
+    expect(control.querySelector(".truncate")).toBeNull();
+    expect(control.querySelector(".whitespace-normal")).not.toBeNull();
 
     await user.click(within(barra()).getByRole("button", { name: "Limpiar todo" }));
     expect(buscador()).toHaveValue("");

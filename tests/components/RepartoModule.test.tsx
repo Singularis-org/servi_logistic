@@ -1888,6 +1888,14 @@ describe("RepartoModule", () => {
     expect(
       screen.getByRole("combobox", { name: "Filtrar por distrito" }),
     ).toBeInTheDocument();
+    // SLT-190 (decisión de Carlos, 2026-11-17): el nombre elegido va entero y parte línea, sin «…»;
+    // 44 px como alto MÍNIMO.
+    for (const nombre of ["Filtrar por cantón", "Filtrar por distrito"]) {
+      const control = screen.getByRole("combobox", { name: nombre });
+      expect(control.className.split(/\s+/)).toContain("max-md:min-h-11");
+      expect(control.querySelector(".truncate")).toBeNull();
+      expect(control.querySelector(".whitespace-normal")).not.toBeNull();
+    }
   });
 
   it("117/R1: en modo foco NO se renderiza el filtro cantón/distrito (no hay lista que filtrar)", () => {

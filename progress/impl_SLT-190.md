@@ -139,3 +139,45 @@ Comandos (base desechable `servi_slt190_desechable`):
 - `pnpm exec eslint` de los tres archivos tocados: exit 0.
 
 Veredicto vuelta 3: B1 cerrado; la guardia `estado-con-info` en verde.
+
+## Vuelta 4 (E2E y nombre de tienda entero en el filtro) — frontend_dev, 2026-11-17
+
+Archivos modificados:
+- `components/ui/select.tsx` — prop nueva `partirLinea` (y `CLASE_VALOR_PARTE_LINEA`). El control del
+  filtro es el `Select` de `components/ui/select.tsx`, NO `SelectorBuscable` (lo nombré mal en el
+  informe anterior). `Select` se usa fuera de la PWA (FilterComponent, wallet, configuración…), así
+  que el comportamiento por defecto NO cambia: solo con `partirLinea` el valor parte línea
+  (`whitespace-normal break-words`, sin `truncate`), el disparador pasa a `h-auto` y el icono es
+  `shrink-0`.
+- `app/(app)/mis-asignaciones/_components/FiltroTienda.tsx` — `partirLinea`; alto mínimo
+  `min-h-8 max-md:min-h-11` (antes fijo).
+- `app/(app)/mis-asignaciones/_components/FiltroCantonDistrito.tsx` — igual en cantón (y distrito,
+  mismo control) de Reparto.
+- `e2e/pwa-mensajero-recoger-recoleccion.spec.ts` — locator `getByRole("textbox", { name: "Número de
+  guía", exact: true })` (strict mode); (d) ajustado a B1: estado e (i) en la tarjeta, fuera del
+  botón, con el `::after` del (i) medido en el navegador (≥ 44 × 44), y tocarlo no despliega.
+- Tests: `Select.test.tsx` (3 casos `partirLinea`, con el default intacto), `RecogerModule` y
+  `RecoleccionModule` (R852: `max-md:min-h-11`, sin `.truncate`, con `.whitespace-normal`),
+  `RepartoModule` (117/R1: cantón y distrito sin `.truncate`).
+- `specs/.../requirements.md` — T6 `[x]`.
+
+Mapa R -> test (cambio):
+- R852 (control «Tienda: {nombre}» entero, ≥ 44 px) -> `RecogerModule.test.tsx` y
+  `RecoleccionModule.test.tsx` «R852…»; E2E SLT-190 Recolección a 360/414 px (`sinDesborde`).
+- R861 -> E2E SLT-190 Recolección a 360/414 px.
+- R864 (B1, (i) a 44 px) -> E2E (d) con el `::after` medido.
+
+Comandos (base desechable `servi_slt190_desechable`, `NODE_OPTIONS=--max-old-space-size=8192`):
+- Gate previo (leader): `./init.sh` INIT_EXIT=0 sobre `9dfdf94b`, 21/40 archivos.
+- `vitest run` Select, SelectorBuscable, SelectorBuscableRotulo467, RecogerModule, RecoleccionModule,
+  RepartoModule, RepartoMovil, PosOrderCardDetalleCompacta, guardias `pwa-mensajero-sin-recorte` y
+  `estado-con-info`: `Test Files 10 passed (10)`, `Tests 398 passed (398)`.
+- `eslint` de los archivos tocados: 0 errores (1 warning previo en `RepartoModule.test.tsx:161`,
+  `ordenCardsEnReparto` sin usar, no es de este cambio).
+- `pnpm exec next build`: `✓ Compiled successfully`, BUILD_EXIT=0.
+- `playwright test e2e/pwa-mensajero-recoger-recoleccion.spec.ts e2e/mis-asignaciones.spec.ts
+  --reporter=line`: `11 passed (1.3m)`, E2E_EXIT=0.
+- No hay E2E de Reparto que ponga el filtro de cantón (búsqueda en `e2e/*.spec.ts`): cubierto solo
+  por `RepartoModule.test.tsx`.
+
+Veredicto vuelta 4: T6 cerrada; E2E 11/11 y componentes 398/398 en verde.

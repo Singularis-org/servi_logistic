@@ -207,7 +207,7 @@ Orden: (T1 ∥ T2 ∥ T3) → T4 → T5 → T6. `[P]` = paralelizable con sus he
   asertos de hoy que exigen un conmutador por sección o «Recogido a las» en el despliegue se
   reescriben a R860/R865, no se borran. Mutación: volver a pintar el conmutador en la cabecera deja
   R860 en rojo.
-- [ ] **T6 — E2E y gate** (depende de T4 y T5). En `e2e/pwa-mensajero-recoger-recoleccion.spec.ts`:
+- [x] **T6 — E2E y gate** (depende de T4 y T5). En `e2e/pwa-mensajero-recoger-recoleccion.spec.ts`:
   (a) a 360 y 414 px la barra con filtro puesto y conmutador no desborda y sus controles miden 44 px
   (R852, R861); (b) el conmutador sigue pegado arriba al bajar (R861); (c) el diálogo muestra la barra
   con el título y un «Cerrar» de 44 × 44 (R867-R869); (d) la fila de Recolección plegada muestra

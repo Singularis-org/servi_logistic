@@ -18,8 +18,9 @@ import {
 // volver a «todas» desde el desplegable se antepone este centinela, que el handler traduce a `""`.
 const TODAS = "__todas__";
 
-// Mismo alto que el campo de la barra con `tactil` (44 px en el teléfono, R493/R852).
-const CLASE_SELECT = "h-8 w-full max-md:h-11 sm:w-auto sm:min-w-56";
+// Alto MÍNIMO del campo de la barra con `tactil` (44 px en el teléfono, R493/R852). Mínimo, no fijo:
+// el nombre de la tienda va entero y parte línea (`partirLinea`; decisión de Carlos, 2026-11-17).
+export const CLASE_SELECT_TIENDA = "min-h-8 w-full max-md:min-h-11 sm:w-auto sm:min-w-56";
 
 export interface FiltroTiendaProps {
   /** Tienda elegida (`""` = todas). */
@@ -39,7 +40,8 @@ export function FiltroTienda({ tienda, tiendas, onTiendaChange }: FiltroTiendaPr
     <Select
       aria-label={ARIA_FILTRO_TIENDA}
       labelPrefix={ETIQUETA_FILTRO_TIENDA}
-      className={CLASE_SELECT}
+      className={CLASE_SELECT_TIENDA}
+      partirLinea
       value={tienda}
       options={opciones}
       placeholder={TIENDA_TODAS}

@@ -344,7 +344,7 @@ test.describe("SLT-164 — Recoger en bodega y Recolección en el móvil", () =>
       const cerrar = dialogo.getByRole("button", { name: "Cerrar" });
       await expect(cerrar).toHaveCount(1);
       await tactil(cerrar);
-      expect(await encimaDe(dialogo.getByText("Recolectar en tienda", { exact: true }), dialogo.getByLabel("Número de guía"))).toBe(true);
+      expect(await encimaDe(dialogo.getByText("Recolectar en tienda", { exact: true }), dialogo.getByRole("textbox", { name: "Número de guía", exact: true }))).toBe(true);
       const campo = dialogo.getByRole("textbox");
       await campo.fill(String(aRecolectar.numGuia));
       await campo.press("Enter");
@@ -382,8 +382,27 @@ test.describe("SLT-164 — Recoger en bodega y Recolección en el móvil", () =>
       const filaPor = seccionPor.locator("article").first().locator(":scope > button[aria-expanded]");
       await expect(filaPor).toHaveAttribute("aria-expanded", "false");
       await expect(filaPor).toContainText(TIENDA_LARGA);
-      await expect(filaPor).toContainText("Recolectando");
       await expect(filaPor).toContainText(/Orden 1 de \d/);
+      // B1 (decisión de Carlos, 2026-11-17): el estado va plegado con su (i), FUERA del botón de la
+      // fila (como la fila del chat); el área táctil del (i) es su `::after`, de 44 × 44.
+      const tarjetaPor = seccionPor.locator("article").first();
+      await expect(tarjetaPor).toContainText("Recolectando");
+      await expect(filaPor).not.toContainText("Recolectando");
+      const infoPor = tarjetaPor.getByRole("button", { name: "Qué significa «Recolectando»" });
+      await expect(infoPor).toBeVisible();
+      const zona = await infoPor.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        const cs = getComputedStyle(el, "::after");
+        return {
+          ancho: r.width - parseFloat(cs.left) - parseFloat(cs.right),
+          alto: r.height - parseFloat(cs.top) - parseFloat(cs.bottom),
+        };
+      });
+      expect(zona.ancho).toBeGreaterThanOrEqual(44);
+      expect(zona.alto).toBeGreaterThanOrEqual(44);
+      await infoPor.click();
+      await expect(filaPor).toHaveAttribute("aria-expanded", "false");
+      await page.keyboard.press("Escape");
       const filaHoy = seccionHoy.locator("article").first().locator(":scope > button[aria-expanded]");
       await expect(filaHoy).toContainText(new RegExp(`${TIENDA_LARGA} · Recogido a las \\d`));
       await sinDesborde(page);
