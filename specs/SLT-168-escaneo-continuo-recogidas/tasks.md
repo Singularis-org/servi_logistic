@@ -19,7 +19,7 @@ PR #192). Todo es `frontend_dev`; ningún archivo de servidor. Un solo PR.
   `conocidas`, devuelve `DesenlaceRecepcion` con `resumen` si la guía está en ellas, sin `useToast`;
   sigue sin rechazar en cliente. *Hecho:* cubierto por los casos de T5 (no hay test propio del hook
   hoy).
-- [ ] **T4 — Diálogo continuo en M1 (depende de T1, T2).** `RecogerPaqueteCard.tsx`:
+- [x] **T4 — Diálogo continuo en M1 (depende de T1, T2).** `RecogerPaqueteCard.tsx`:
   `TarjetaEscaneoContinuo` dentro del `EscanerModal` de hoy, `alCerrarConRecepcion={onRecogida}`, sin
   `ultimaRecogida` ni `exito`. `RecogerModule.tsx` **no cambia**. *Hecho:* R595, R596, R598 (relectura
   y refresco único), R599, R830-R833 en verde en `tests/components/RecogerPaqueteCard.test.tsx` y

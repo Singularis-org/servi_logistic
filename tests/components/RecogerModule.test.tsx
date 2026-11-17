@@ -129,6 +129,26 @@ async function abrirRecogida(user: ReturnType<typeof userEvent.setup>) {
 }
 
 /**
+ * SLT-168 «Escaneo continuo en las recogidas del mensajero»: el diálogo es la sesión continua;
+ * cada lectura es una fila (la más reciente arriba) y el motivo de un «No se pudo recoger» va en
+ * ella, no en un toast.
+ */
+function ultimaLectura(): HTMLElement {
+  return within(screen.getByRole("log", { name: "Lecturas" })).getAllByRole("listitem")[0];
+}
+
+/** Espera a que la última lectura diga `estado` y la devuelve. */
+async function lecturaQueDice(estado: string): Promise<HTMLElement> {
+  await vi.waitFor(() => expect(within(ultimaLectura()).getByText(estado)).toBeInTheDocument());
+  return ultimaLectura();
+}
+
+async function cerrarRecogida(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: "Cerrar" }));
+  await vi.waitFor(() => expect(screen.queryByRole("log", { name: "Lecturas" })).toBeNull());
+}
+
+/**
  * El banner de órdenes nuevas. SLT-156: `BuscadorFiltros` trae su propio `status` (el aviso de
  * caracteres), así que el banner se reconoce por su texto y no por ser el único `status`.
  */
@@ -368,9 +388,9 @@ describe("RecogerModule — las dos vías de recogida (feature 96)", () => {
     expect(screen.queryByRole("dialog", { name: "Recoger órdenes" })).toBeNull();
   });
 
-  it("teclear una guía por recoger + confirmar recoge esa orden por su id y refresca", async () => {
+  it("R598: dos guías recogidas por su id; la lista se refresca UNA vez al cerrar y ninguna antes", async () => {
     const user = userEvent.setup();
-    recogerMock.mockResolvedValue({ status: "ok", recogidas: ["r2"] });
+    recogerMock.mockImplementation(async ({ ordenIds }) => ({ status: "ok", recogidas: ordenIds }));
     renderModule({
       porRecoger: [
         makeAsignacion({ id: "r1", numGuia: 1001 }),
@@ -384,11 +404,34 @@ describe("RecogerModule — las dos vías de recogida (feature 96)", () => {
     });
     await user.type(within(region).getByLabelText("Número de guía"), "1002");
     await user.click(within(region).getByRole("button", { name: "Recoger" }));
+    await user.type(within(region).getByLabelText("Número de guía"), "1001{Enter}");
 
-    await vi.waitFor(() =>
-      expect(recogerMock).toHaveBeenCalledWith({ ordenIds: ["r2"] }),
-    );
-    await vi.waitFor(() => expect(refreshMock).toHaveBeenCalled());
+    await vi.waitFor(() => expect(recogerMock).toHaveBeenCalledTimes(2));
+    expect(recogerMock).toHaveBeenNthCalledWith(1, { ordenIds: ["r2"] });
+    expect(recogerMock).toHaveBeenNthCalledWith(2, { ordenIds: ["r1"] });
+    await lecturaQueDice("Recogida");
+    expect(refreshMock).not.toHaveBeenCalled();
+
+    await cerrarRecogida(user);
+
+    await vi.waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
+  });
+
+  it("R598: solo errores y cerrar: la lista NO se refresca", async () => {
+    const user = userEvent.setup();
+    recogerMock.mockResolvedValue({ status: "forbidden" });
+    renderModule({ porRecoger: [makeAsignacion({ id: "r1", numGuia: 1001 })] });
+
+    await abrirRecogida(user);
+    const region = screen.getByRole("region", {
+      name: "Recoger por número de guía o escaneo",
+    });
+    await user.type(within(region).getByLabelText("Número de guía"), "1001{Enter}");
+    await lecturaQueDice("No se pudo recoger");
+
+    await cerrarRecogida(user);
+
+    expect(refreshMock).not.toHaveBeenCalled();
   });
 
   it("restricción 'asignada a mí': una guía que NO está por recoger se rechaza sin llamar la action", async () => {
@@ -399,12 +442,12 @@ describe("RecogerModule — las dos vías de recogida (feature 96)", () => {
     const region = screen.getByRole("region", {
       name: "Recoger por número de guía o escaneo",
     });
-    await user.type(within(region).getByLabelText("Número de guía"), "9999");
+    await user.type(within(region).getByLabelText("Número de guía"), "7777777");
     await user.click(within(region).getByRole("button", { name: "Recoger" }));
 
-    await vi.waitFor(() => expect(errorMock).toHaveBeenCalled());
-    expect(errorMock.mock.calls[0][0]).toMatch(/9999/);
+    await lecturaQueDice("No está entre tus órdenes");
     expect(recogerMock).not.toHaveBeenCalled();
+    expect(errorMock).not.toHaveBeenCalled();
     expect(refreshMock).not.toHaveBeenCalled();
   });
 
@@ -930,7 +973,8 @@ describe("RecogerModule — la guía reservada no se recoge (feature 261/R13)", 
 
     // Que el AVISO se diga es la mitad; que la action NO se llame es la otra, y sin ella el caso
     // pasaría igual con una defensa que avisa y recoge de todos modos.
-    await vi.waitFor(() => expect(errorMock).toHaveBeenCalledWith(AVISO_22));
+    const fila = await lecturaQueDice("No se pudo recoger");
+    expect(within(fila).getByText(AVISO_22)).toBeInTheDocument();
     expect(recogerMock).not.toHaveBeenCalled();
     expect(refreshMock).not.toHaveBeenCalled();
   });
@@ -958,8 +1002,7 @@ describe("RecogerModule — la guía reservada no se recoge (feature 261/R13)", 
 
     // El par del caso anterior. Con el mensaje de «no está entre tus órdenes» el mensajero
     // buscaría un problema que no existe —la orden SÍ es suya— y acabaría llamando a bodega.
-    await vi.waitFor(() => expect(errorMock).toHaveBeenCalled());
-    const dicho = errorMock.mock.calls[0][0] as string;
+    const dicho = (await lecturaQueDice("No se pudo recoger")).textContent ?? "";
     expect(dicho).not.toMatch(/no está entre tus órdenes/i);
     expect(dicho).not.toMatch(/inválido/i);
   });
@@ -1002,10 +1045,13 @@ describe("RecogerModule — la guía reservada no se recoge (feature 261/R13)", 
 
     await vi.waitFor(() => expect(recogerMock).toHaveBeenCalledWith({ ordenIds: ["r1"] }));
     // Y con EL DÍA que la orden trae consigo: una regla, dos sitios, un texto.
-    await vi.waitFor(() => expect(errorMock).toHaveBeenCalledWith(AVISO_22));
-    expect(errorMock).not.toHaveBeenCalledWith(
-      "La orden ya no está en «Mensajero recogiendo en la bodega». Actualiza y vuelve a intentar.",
-    );
+    const fila = await lecturaQueDice("No se pudo recoger");
+    expect(within(fila).getByText(AVISO_22)).toBeInTheDocument();
+    expect(
+      within(fila).queryByText(
+        "La orden ya no está en «Mensajero recogiendo en la bodega». Actualiza y vuelve a intentar.",
+      ),
+    ).toBeNull();
   });
 
   it("un `conflict` SIN código sigue diciendo el mensaje de siempre", async () => {
@@ -1027,11 +1073,12 @@ describe("RecogerModule — la guía reservada no se recoge (feature 261/R13)", 
     await user.type(within(region).getByLabelText("Número de guía"), "1001");
     await user.click(within(region).getByRole("button", { name: "Recoger" }));
 
-    await vi.waitFor(() =>
-      expect(errorMock).toHaveBeenCalledWith(
+    const fila = await lecturaQueDice("No se pudo recoger");
+    expect(
+      within(fila).getByText(
         "La orden ya no está en «Mensajero recogiendo en la bodega». Actualiza y vuelve a intentar.",
       ),
-    );
+    ).toBeInTheDocument();
   });
 
   it("R8: la orden de HOY se recoge igual — el bloqueo no se come a las demás", async () => {
@@ -1066,8 +1113,8 @@ describe("RecogerModule — la guía reservada no se recoge (feature 261/R13)", 
     // La mitad POSITIVA de la regla, en la misma pantalla que la negativa: sin ella, un bloqueo
     // que rechazara TODO también pasaría los casos de arriba.
     await vi.waitFor(() => expect(recogerMock).toHaveBeenCalledWith({ ordenIds: ["r2"] }));
+    await lecturaQueDice("Recogida");
     expect(errorMock).not.toHaveBeenCalled();
-    await vi.waitFor(() => expect(refreshMock).toHaveBeenCalled());
   });
 
   // ⚠️ ESTE TEST VIENE DE LA FEATURE 261 (R9) Y CAMBIÓ DE FORMA CON LA 277 (2026-08-24).
@@ -1615,11 +1662,12 @@ describe("RecogerModule — los dos grupos en pestañas (feature 277)", () => {
     await user.type(within(region).getByLabelText("Número de guía"), "2002");
     await user.click(within(region).getByRole("button", { name: "Recoger" }));
 
-    await vi.waitFor(() =>
-      expect(errorMock).toHaveBeenCalledWith(
+    const fila = await lecturaQueDice("No se pudo recoger");
+    expect(
+      within(fila).getByText(
         "Esta orden es para el reparto del 25 de agosto. Ese día podrás recogerla y gestionarla.",
       ),
-    );
+    ).toBeInTheDocument();
     expect(recogerMock).not.toHaveBeenCalled();
   });
 
@@ -1802,9 +1850,7 @@ describe("RecogerModule — un tropiezo de base se cuenta, no se traga (ficha 44
     await vi.waitFor(() => expect(recogerMock).toHaveBeenCalledWith({ ordenIds: ["r1"] }));
     // Y se DICE. Sin esta asercion, el `switch` sin `default` se traga el desenlace y la suite
     // entera sigue verde: ese es exactamente el fallo que llego a produccion.
-    await vi.waitFor(() => expect(errorMock).toHaveBeenCalled());
-
-    const texto = String(errorMock.mock.calls.at(-1)?.[0]);
+    const texto = (await lecturaQueDice("No se pudo recoger")).textContent ?? "";
     expect(texto).toMatch(/[Ii]ntentá de nuevo/);
     // Ni jerga ni culpas ajenas: no es un codigo invalido, ni falta de permiso, ni que la orden
     // haya cambiado de estado. Cualquiera de esas tres le haria buscar un problema inexistente.
