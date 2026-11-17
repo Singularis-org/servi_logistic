@@ -37,12 +37,12 @@
 - [x] **T3.1** `FormularioPorPasos`: `elegibles`, `guardados`, `sinGuardar`, el ✓ y «Sin guardar», con el nombre
   accesible (R5, R6).
   *Hecho:* `tests/components/FormularioPorPasos.test.tsx` verde, con los casos nuevos de R5 y R6 y los de SLT-130 R1–R4.
-- [ ] **T3.2** Crear `plan-form/usar-borrador.ts` y conectarlo en `PlanForm.tsx`: «Guardar y continuar», `enVuelo`
+- [x] **T3.2** Crear `plan-form/usar-borrador.ts` y conectarlo en `PlanForm.tsx`: «Guardar y continuar», `enVuelo`
   único, confirmar, aviso del paso, estado y hora, `onBorradorGuardado`, y las nuevas props `borrador`,
   `borradorInicial` y `previsualizarCambio` (design §4.3, §4.4, §4.6, §4.7). Añadir los textos de §9 en `textos.ts`.
   Motivo «Faltan pasos por guardar» en `PasoRevisar.tsx`. Depende de T2.1 y T3.1.
   *Hecho:* `tests/components/PlanFormBorrador.test.tsx` verde en R1, R3–R12 y R16.
-- [ ] **T3.3** Crear `plan-form/AbrirPlanForm.tsx` (design §4.5). Depende de T3.2.
+- [x] **T3.3** Crear `plan-form/AbrirPlanForm.tsx` (design §4.5). Depende de T3.2.
   *Hecho:* los casos R14 y R15 de `tests/components/PlanFormBorrador.test.tsx` están verdes.
 - [ ] **T3.4** Adaptar los tests de hoy con el helper (`accionesFalsas`, «Guardar y continuar»,
   `peticionConfirmada`) sin cambiar sus aserciones de carga útil (design §11). Depende de T3.2.

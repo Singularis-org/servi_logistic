@@ -2,31 +2,37 @@
 
 import { useCallback, useEffect, useId, useRef, useState, type CSSProperties, type FormEvent } from "react";
 
-import { FormularioPorPasos } from "@/components/shared/FormularioPorPasos";
+import { FormularioPorPasos, pasosElegibles } from "@/components/shared/FormularioPorPasos";
+import { Modal } from "@/components/shared/Modal";
 import { primerPeriodoDelCambio, TEXTOS_TIPO_COBRO, textoDelPeriodo } from "@/components/shared/tipo-cobro";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import type { RangoDelInicioDelCiclo } from "@/lib/planes/ciclo";
 import { MENSAJE_EDITAR_CAMBIO_A_MEDIAS } from "@/lib/planes/mensajes";
 import { cambiaElPrecio, diferenciasDelPlan } from "@/lib/planes/rastro";
+import type { BorradorVista, DescartarBorradorResult } from "@/lib/types/plan-borrador";
 import {
   crearPlanSchema,
   editarPlanSchema,
   precioPlanSchema,
   previsualizarCustomSchema,
-  type CrearPlanInput,
-  type EditarPlanInput,
   type PlanDTO,
   type PlanResult,
+  type previsualizarCambioSchema,
   type PrevisualizarCustomInput,
   type TopeExcedido,
+  type VistaPreviaCambioResult,
   type VistaPreviaCustomResult,
 } from "@/lib/types/planes";
 import { esFechaCalendarioValida, mananaCalendarioCR } from "@/lib/utils/fecha-cr";
+import type { z } from "zod";
 
+import { fechaHora, formDelBorrador, pasoInicial, valoresDelPaso } from "./plan-form/borrador";
 import {
   camposEnOrden,
   erroresDeZod,
   inicial,
+  PASOS_QUE_SE_GUARDAN,
   pasoDeLaClave,
   pasosDe,
   precioDe,
@@ -36,6 +42,8 @@ import {
   type Errores,
   type Formulario,
   type IdPaso,
+  type IdPasoGuardable,
+  type ModoDelPlanForm,
   type PropsDelPaso,
 } from "./plan-form/estado";
 import { PasoCobroPorOrden } from "./plan-form/PasoCobroPorOrden";
@@ -47,10 +55,20 @@ import { PasoRevisar } from "./plan-form/PasoRevisar";
 import { PasoTopes } from "./plan-form/PasoTopes";
 import { extrasDeGeneral, filaDeCuandoRige } from "./plan-form/revision";
 import { TEXTOS_PLAN_FORM } from "./plan-form/textos";
+import {
+  SIN_BORRADOR,
+  useBorrador,
+  type AccionesDelBorrador,
+  type EstadoDelBorrador,
+  type RechazoDeGuardar,
+} from "./plan-form/usar-borrador";
 
 // SLT-130 (design §2): `PlanDetalle.tsx`, `PlanesModule.tsx` y `PlanEmpresa.tsx` siguen importando de aquí.
 export { TEXTOS_PLAN_FORM };
-export type { EmpresaParaCustom };
+export type { AccionesDelBorrador, EmpresaParaCustom };
+
+/** SLT-144 (design §3.1, §5): la entrada de la fecha de cada empresa; la usa T4 (`FechasPorEmpresa`). */
+export type PrevisualizarCambioInput = z.infer<typeof previsualizarCambioSchema>;
 
 /**
  * SLT-130 (R6; design §7): el ancho del Sheet que monta el formulario, el de la maqueta. Va en `style`
@@ -106,9 +124,27 @@ export function mensajeDelRechazo(r: PlanResult): string | null {
 
 export const RECHAZO_GENERICO = RECHAZOS.generico;
 
+/** SLT-144 (R3, R11): el texto de un rechazo al guardar un paso, para el aviso del paso. `null`: la llamada lanzó. */
+function textoDelRechazoDeGuardar(r: RechazoDeGuardar | null): string {
+  if (r === null) return TEXTOS_PLAN_FORM.noSeGuardoElPaso;
+  if (r.estado === "borrador_no_encontrado") return TEXTOS_PLAN_FORM.borradorYaNoExiste;
+  return RECHAZOS[r.estado];
+}
+
+/** SLT-144 (R16): el texto de un descarte que falló, para el diálogo. `null`: la llamada lanzó. */
+function textoDelRechazoDeDescartar(r: DescartarBorradorResult | null): string {
+  return r?.estado === "forbidden" ? RECHAZOS.forbidden : TEXTOS_PLAN_FORM.noSeDescarto;
+}
+
 type PropsComunes = {
-  /** Tras un `ok`: quien monta el formulario cierra el panel, relee y avisa. `nombre`, el guardado. */
+  /** Tras confirmar con `ok`: quien monta el formulario cierra el panel, relee y avisa. `nombre`, el confirmado. */
   onGuardado: (resultado: Extract<PlanResult, { estado: "ok" }>, nombre: string) => void;
+  /** SLT-144 (design §4.7): las actions del borrador, inyectadas desde la página. */
+  borrador: AccionesDelBorrador;
+  /** SLT-144 (R15): el borrador que se retoma, ya leído por `AbrirPlanForm`; `null` sin borrador. */
+  borradorInicial: BorradorVista | null;
+  /** SLT-144 (design §4.6; R13): en el primer guardado `ok`, para avisar al cerrar que el borrador queda. */
+  onBorradorGuardado?: () => void;
 };
 
 export type PlanFormProps = PropsComunes &
@@ -129,8 +165,6 @@ export type PlanFormProps = PropsComunes &
         rangoInicioCiclo: RangoDelInicioDelCiclo;
         /** SLT-86 (R16): el `min`/`max` de «Rige desde» para una empresa con plan, del reloj del servidor. */
         rangoFechaDeEfecto: RangoDelInicioDelCiclo;
-        /** `crearPlanAction`, inyectada desde la página. */
-        enviar: (input: CrearPlanInput) => Promise<PlanResult>;
         /**
          * Ajuste planes-custom (D13): `previsualizarCustomAction`, inyectada desde la página. Se llama
          * con la empresa sin plan, la fecha y los topes que se están escribiendo.
@@ -145,33 +179,107 @@ export type PlanFormProps = PropsComunes &
          * Sin él se calcula con el reloj del navegador; el campo solo aparece tras tocar el precio.
          */
         precioDesdePorDefecto?: string;
-        /** `editarPlanAction`, inyectada desde la página. */
-        enviar: (input: EditarPlanInput) => Promise<PlanResult>;
+        /**
+         * SLT-144 (design §4.7, §5): `previsualizarCambioPlanAction`, inyectada desde la página; la fecha en que
+         * cada empresa recibiría el cambio. La pinta `FechasPorEmpresa` (T4).
+         */
+        previsualizarCambio: (input: PrevisualizarCambioInput) => Promise<VistaPreviaCambioResult>;
       }
   );
+
+/** SLT-144 (R14, R16): los valores del formulario sin borrador: los del plan al editar, vacíos al crear. */
+function formBase(props: PlanFormProps): Formulario {
+  return inicial(
+    props.modo === "editar" ? props.plan : null,
+    props.modo === "crear" ? props.inicioCicloPorDefecto : "",
+    props.modo === "editar" ? (props.precioDesdePorDefecto ?? mananaCalendarioCR()) : "",
+  );
+}
+
+/**
+ * Qué campos condicionales hay en pantalla con estos valores. Ajuste planes-custom (D4): «Inicio del ciclo»
+ * solo para un custom cuya empresa elegida NO tiene plan; si ya lo tiene, la asignación conserva el ancla.
+ * SLT-86 (R16, R25): un custom para una empresa que ya tiene plan pide su fecha de efecto. SLT-86 (R22, R23):
+ * al editar, cambiar el costo base o un descuento pide «Rige desde»; se compara en forma canónica, como el rastro.
+ */
+function visiblesDe(
+  props: PlanFormProps,
+  form: Formulario,
+): { visibles: CamposVisibles; empresaElegida: EmpresaParaCustom | undefined } {
+  const empresaElegida =
+    props.modo === "crear" && form.visibilidad === "custom"
+      ? (props.empresas ?? []).find((e) => e.id === form.organizacionId)
+      : undefined;
+  const cambiaPrecio =
+    props.modo === "editar" &&
+    cambiaElPrecio(diferenciasDelPlan(props.plan, { ...props.plan, precio: precioDe(form) }));
+  return {
+    visibles: {
+      pideInicioCiclo: empresaElegida !== undefined && !empresaElegida.tienePlan,
+      pideFechaDeEfecto: empresaElegida !== undefined && empresaElegida.tienePlan,
+      cambiaPrecio,
+    },
+    empresaElegida,
+  };
+}
+
+/** SLT-144 (R6): la huella de los valores de un paso; si deja de ser la del guardado, el paso queda «Sin guardar». */
+function instantaneaDe(modo: ModoDelPlanForm, paso: IdPasoGuardable, form: Formulario, visibles: CamposVisibles) {
+  return JSON.stringify(valoresDelPaso(modo, paso, form, visibles));
+}
+
+/** SLT-144 (R6, R12, R15): las instantáneas de unos pasos con los valores que ya están en `form`. */
+function instantaneasDe(
+  props: PlanFormProps,
+  form: Formulario,
+  pasos: Iterable<IdPasoGuardable>,
+): Partial<Record<IdPasoGuardable, string>> {
+  const { visibles } = visiblesDe(props, form);
+  return Object.fromEntries([...pasos].map((p) => [p, instantaneaDe(props.modo, p, form, visibles)]));
+}
+
+/**
+ * SLT-144 (R15; design §4.5): con un borrador, sus pasos guardados encima de la base, con ✓ y en el primer
+ * paso sin guardar. Sin borrador, el formulario de hoy en General.
+ */
+function arranqueDe(props: PlanFormProps): { form: Formulario; borrador: EstadoDelBorrador; paso: IdPaso } {
+  const base = formBase(props);
+  const b = props.borradorInicial;
+  if (b === null) return { form: base, borrador: SIN_BORRADOR, paso: "general" };
+  const form = formDelBorrador(base, b.pasos);
+  const guardados = new Set<IdPasoGuardable>(b.pasosGuardados);
+  return {
+    form,
+    borrador: {
+      borradorId: b.id,
+      guardados,
+      instantaneas: instantaneasDe(props, form, guardados),
+      actualizadoAt: b.actualizadoAt,
+      aviso: null,
+      retomado: { iniciadoPor: b.iniciadoPor, actualizadoAt: b.actualizadoAt },
+    },
+    paso: pasoInicial(props.modo, guardados),
+  };
+}
 
 /**
  * SLT-58 (design §6.3; R14, R15, R18) — crear o editar un plan. SLT-130 (design §4): por pasos, con el
  * mismo componente de pasos y los mismos pasos en los dos modos; este componente solo orquesta (estado,
- * navegación, guardar y la vista previa del custom). «Siguiente» valida con el MISMO esquema que la
- * action, solo los campos del paso actual; el botón final valida todo, llama a la action una sola vez y,
- * si hay errores, lleva al paso del primero. «Guardar» se deshabilita mientras la petición está en vuelo.
+ * navegación, guardar y la vista previa del custom).
+ * SLT-144 (design §4): cada paso se guarda en el borrador del servidor con «Guardar y continuar», que antes
+ * valida con el MISMO esquema que la action, solo los campos del paso. El botón final confirma el borrador y
+ * solo se habilita con todos los pasos guardados. Mientras un guardado o la confirmación están en vuelo no se
+ * puede pulsar nada más (R4).
  */
 export function PlanForm(props: PlanFormProps) {
   const base = useId();
-  const [form, setForm] = useState<Formulario>(() =>
-    inicial(
-      props.modo === "editar" ? props.plan : null,
-      props.modo === "crear" ? props.inicioCicloPorDefecto : "",
-      props.modo === "editar" ? (props.precioDesdePorDefecto ?? mananaCalendarioCR()) : "",
-    ),
-  );
+  const [arranque] = useState(() => arranqueDe(props));
+  const [form, setForm] = useState<Formulario>(arranque.form);
   const [errores, setErrores] = useState<Errores>({});
   const [rechazo, setRechazo] = useState<string | null>(null);
-  const [enviando, setEnviando] = useState(false);
-  const [paso, setPaso] = useState<IdPaso>("general");
-  const [visitados, setVisitados] = useState<ReadonlySet<IdPaso>>(() => new Set<IdPaso>(["general"]));
-  const enVuelo = useRef(false);
+  const [paso, setPaso] = useState<IdPaso>(arranque.paso);
+  const [confirmandoDescarte, setConfirmandoDescarte] = useState(false);
+  const [errorDescarte, setErrorDescarte] = useState<string | null>(null);
   const avisoRef = useRef<HTMLDivElement>(null);
   const tituloRef = useRef<HTMLHeadingElement>(null);
   /**
@@ -181,31 +289,33 @@ export function PlanForm(props: PlanFormProps) {
    */
   const focoPendiente = useRef<{ clave: string | null } | null>(null);
 
+  const borrador = useBorrador({
+    modo: props.modo,
+    planId: props.modo === "editar" ? props.plan.id : null,
+    acciones: props.borrador,
+    inicial: () => arranque.borrador,
+    onPrimerGuardado: props.onBorradorGuardado,
+  });
+  const { guardados, instantaneas } = borrador.estado;
+  const enVuelo = borrador.enVuelo;
+
   const pasos = pasosDe(props.modo);
   const indice = pasos.findIndex((p) => p.id === paso);
   const esUltimo = indice === pasos.length - 1;
 
   const idDe = (clave: string) => `${base}-${clave.replaceAll(".", "-")}`;
   const errorDe = (clave: string) => errores[clave];
-  /**
-   * Ajuste planes-custom (D4): «Inicio del ciclo» solo para un custom cuya empresa elegida NO tiene
-   * plan. Si ya lo tiene, el campo no aparece y la asignación conserva el ancla, como un cambio de plan.
-   */
-  const empresaElegida =
-    props.modo === "crear" && form.visibilidad === "custom"
-      ? (props.empresas ?? []).find((e) => e.id === form.organizacionId)
-      : undefined;
-  const pideInicioCiclo = empresaElegida !== undefined && !empresaElegida.tienePlan;
-  /** SLT-86 (R16, R25): un custom para una empresa que ya tiene plan pide su fecha de efecto. */
-  const pideFechaDeEfecto = empresaElegida !== undefined && empresaElegida.tienePlan;
-  /**
-   * SLT-86 (R22, R23): al editar, cambiar el costo base o un descuento pide «Rige desde» en lugar de
-   * «Aplicar»: el precio ya no se edita de inmediato. Se compara en forma canónica, como el rastro.
-   */
-  const cambiaPrecio =
-    props.modo === "editar" &&
-    cambiaElPrecio(diferenciasDelPlan(props.plan, { ...props.plan, precio: precioDe(form) }));
-  const visibles: CamposVisibles = { pideInicioCiclo, pideFechaDeEfecto, cambiaPrecio };
+  const { visibles, empresaElegida } = visiblesDe(props, form);
+  const { pideInicioCiclo, pideFechaDeEfecto, cambiaPrecio } = visibles;
+
+  // SLT-144 (R6, R8): un paso guardado cuyos valores ya no son los guardados queda «Sin guardar»; sin todos
+  // guardados y al día no se confirma.
+  const guardables = PASOS_QUE_SE_GUARDAN(props.modo);
+  const sinGuardar = new Set<IdPasoGuardable>(
+    guardables.filter((p) => guardados.has(p) && instantaneas[p] !== instantaneaDe(props.modo, p, form, visibles)),
+  );
+  const faltan = guardables.filter((p) => !guardados.has(p) || sinGuardar.has(p));
+  const tituloDe = (id: IdPaso) => pasos.find((p) => p.id === id)?.titulo ?? id;
 
   /**
    * Ajuste planes-custom (D13): la entrada de la vista previa, solo con empresa sin plan, fecha y topes
@@ -339,21 +449,23 @@ export function PlanForm(props: PlanFormProps) {
     destino.focus({ preventScroll: true });
   }, [errores, rechazo, base]);
 
+  /** SLT-144: cambiar de paso deja atrás el aviso del paso anterior. */
   function irA(destino: IdPaso) {
+    setRechazo(null);
     setPaso(destino);
-    setVisitados((v) => (v.has(destino) ? v : new Set(v).add(destino)));
   }
 
   /**
    * Pinta los errores y lleva el foco al primero en el orden del formulario, en su paso (R25). Si ninguno
-   * tiene un campo visible (solo errores sueltos o un rechazo), al aviso general de «Revisar» (R26).
+   * tiene un campo visible (solo errores sueltos o un rechazo), al aviso de `sinCampo`: el general de
+   * «Revisar» (R26) o, al guardar un paso, el de ese paso (SLT-144 R3).
    */
-  function mostrarErrores(nuevos: Errores, nuevoRechazo: string | null = null) {
-    setErrores(nuevos);
-    setRechazo(nuevoRechazo);
+  function mostrarErrores(nuevos: Errores, nuevoRechazo: string | null = null, sinCampo: IdPaso = "revisar") {
     const primera = camposEnOrden(props.modo, form, visibles).find((clave) => (nuevos[clave]?.length ?? 0) > 0);
     focoPendiente.current = { clave: primera ?? null };
-    irA((primera === undefined ? null : pasoDeLaClave(primera, props.modo)) ?? "revisar");
+    setPaso((primera === undefined ? null : pasoDeLaClave(primera, props.modo)) ?? sinCampo);
+    setErrores(nuevos);
+    setRechazo(nuevoRechazo);
   }
 
   function cambiar<K extends keyof Formulario>(campo: K, valor: Formulario[K]) {
@@ -369,13 +481,12 @@ export function PlanForm(props: PlanFormProps) {
   }
 
   /**
-   * Valida con el esquema de la action y devuelve la llamada lista para hacer, o los errores de
-   * campo si no pasa. El esquema se importa, no se copia: las dos validaciones no pueden divergir.
+   * Valida con el esquema completo de la action de crear o editar y devuelve los errores de campo. El esquema
+   * se importa, no se copia: las dos validaciones no pueden divergir.
    */
-  function peticion(): { llamar: () => Promise<PlanResult> } | { errores: Errores } {
+  function erroresDelFormulario(): Errores {
     const version = versionDe(form);
     if (props.modo === "crear") {
-      const { enviar } = props;
       const custom = form.visibilidad === "custom";
       const v = crearPlanSchema.safeParse({
         ...version,
@@ -387,94 +498,120 @@ export function PlanForm(props: PlanFormProps) {
         // SLT-86 (R16): a una empresa con plan, la fecha de efecto del cambio.
         ...(custom && pideFechaDeEfecto ? { vigenteDesde: form.vigenteDesde } : {}),
       });
-      return v.success ? { llamar: () => enviar(v.data) } : { errores: erroresDeZod(v.error.issues) };
+      return v.success ? {} : erroresDeZod(v.error.issues);
     }
-    const { enviar, plan } = props;
     const v = editarPlanSchema.safeParse({
       ...version,
-      planId: plan.id,
+      planId: props.plan.id,
       // SLT-86 (R22): un cambio de precio va siempre con su «Rige desde»; lo demás, como SLT-58.
       vigenteDesde: cambiaPrecio ? form.precioDesde : form.aplicar === "inmediato" ? null : form.vigenteDesde,
     });
-    return v.success ? { llamar: () => enviar(v.data) } : { errores: erroresDeZod(v.error.issues) };
+    return v.success ? {} : erroresDeZod(v.error.issues);
+  }
+
+  /** SLT-130 (R18): los errores de los campos visibles de ESTE paso, con el esquema completo de la action. */
+  function erroresDelPaso(): Errores {
+    const conCampo = new Set(camposEnOrden(props.modo, form, visibles));
+    return Object.fromEntries(
+      Object.entries(erroresDelFormulario()).filter(
+        ([clave]) => conCampo.has(clave) && pasoDeLaClave(clave, props.modo) === paso,
+      ),
+    );
   }
 
   /**
-   * R18: valida con el esquema completo de la action y se queda solo con los errores de los campos
-   * visibles de ESTE paso. Con alguno, no avanza; sin ninguno, limpia los errores y pasa al siguiente.
-   * No llama a ninguna action.
+   * SLT-144 (R1, R3, R10–R12): valida el paso como hoy y, sin errores, lo guarda en el borrador con una sola
+   * llamada. Con `ok`, carga los pasos que guardó otra pantalla y pasa al siguiente.
    */
-  function siguiente() {
-    const p = peticion();
-    const conCampo = new Set(camposEnOrden(props.modo, form, visibles));
-    const delPaso =
-      "errores" in p
-        ? Object.fromEntries(
-            Object.entries(p.errores).filter(([clave]) => conCampo.has(clave) && pasoDeLaClave(clave, props.modo) === paso),
-          )
-        : {};
+  async function guardarYContinuar() {
+    if (paso === "revisar" || borrador.enVueloRef.current) return;
+    const delPaso = erroresDelPaso();
     if (Object.keys(delPaso).length > 0) {
-      mostrarErrores(delPaso, rechazo);
+      mostrarErrores(delPaso, null, paso);
       return;
     }
     setErrores({});
-    const destino = pasos[indice + 1];
+    setRechazo(null);
+    const valores = valoresDelPaso(props.modo, paso, form, visibles);
+    const res = await borrador.guardar(paso, valores, JSON.stringify(valores));
+    switch (res.tipo) {
+      case "ocupado":
+        return;
+      case "errores": {
+        // R3: cada error junto a su campo; el que no tiene campo visible (`paso`…), en el aviso del paso.
+        const conCampo = new Set(camposEnOrden(props.modo, form, visibles));
+        const deCampo = Object.fromEntries(Object.entries(res.fieldErrors).filter(([c]) => conCampo.has(c)));
+        const sueltos = Object.entries(res.fieldErrors)
+          .filter(([c]) => !conCampo.has(c))
+          .flatMap(([, m]) => m);
+        mostrarErrores(deCampo, sueltos.length > 0 ? sueltos.join(" ") : null, paso);
+        return;
+      }
+      case "rechazo":
+        mostrarErrores({}, textoDelRechazoDeGuardar(res.r), paso);
+        return;
+      case "ok": {
+        const { ajenos } = res;
+        if (ajenos !== null) {
+          // R12: solo los pasos ajenos toman los valores del servidor; lo escrito en los demás se queda.
+          const deOtros = Object.fromEntries(ajenos.pasos.map((p) => [p, ajenos.borrador.pasos[p]]));
+          setForm((f) => formDelBorrador(f, deOtros));
+          borrador.anotarInstantaneas(instantaneasDe(props, formDelBorrador(form, deOtros), ajenos.pasos));
+        }
+        const destino = pasos[indice + 1];
+        if (destino !== undefined) irA(destino.id);
+      }
+    }
+  }
+
+  /** R20: «Anterior» y la lista de pasos cambian de paso sin validar ni guardar (SLT-144 R5). */
+  function anterior() {
+    if (borrador.enVueloRef.current) return;
+    const destino = pasos[indice - 1];
     if (destino !== undefined) irA(destino.id);
   }
 
-  /** R20: «Anterior» y la lista de pasos cambian de paso sin validar; lo escrito vive en `form`. */
-  function anterior() {
-    const destino = pasos[indice - 1];
-    if (destino !== undefined) setPaso(destino.id);
-  }
+  const elegibles = pasosElegibles(pasos, guardados);
 
   function alElegirPaso(id: string) {
+    if (borrador.enVueloRef.current) return;
     const destino = pasos.find((p) => p.id === id);
-    if (destino !== undefined && visitados.has(destino.id)) setPaso(destino.id);
+    if (destino !== undefined && (destino.id === paso || elegibles.has(destino.id))) irA(destino.id);
   }
 
-  /** R19, R24: el formulario es uno solo; Enter o el botón del pie avanzan, y solo el último paso guarda. */
+  /** R19, R24: el formulario es uno solo; Enter o el botón del pie guardan el paso, y solo el último confirma. */
   function alEnviar(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (esUltimo) void guardar();
-    else siguiente();
+    // SLT-144 (R4): con un guardado o la confirmación en vuelo, Enter no hace nada.
+    if (borrador.enVueloRef.current) return;
+    if (esUltimo) void confirmar();
+    else void guardarYContinuar();
   }
 
-  async function guardar() {
-    if (enVuelo.current || creacionBloqueada) return;
+  /**
+   * SLT-144 (R8, R9): confirma el borrador una sola vez. El resultado es el `PlanResult` de crear o editar y se
+   * trata como antes al guardar; además, `pasos_pendientes` lleva al primero que falta y
+   * `borrador_no_encontrado` avisa en «Revisar».
+   */
+  async function confirmar() {
+    if (!puedeConfirmar) return;
     setErrores({});
     setRechazo(null);
-
-    const p = peticion();
-    if ("errores" in p) {
-      mostrarErrores(p.errores);
+    // D17: si la vista previa del custom no cargó, no se confirma: el aviso con «Reintentar» ya está en pantalla.
+    const res = await borrador.confirmar(vistaPreviaLista);
+    if (res.tipo === "cancelado") return;
+    if (res.tipo === "fallo") {
+      // Un fallo de red o del servidor no da el cambio por hecho (R18): se avisa y el formulario sigue.
+      mostrarErrores({}, RECHAZOS.generico);
       return;
     }
-
-    enVuelo.current = true;
-    setEnviando(true);
-    let r: PlanResult | null;
-    try {
-      // D17: si la vista previa que se leyó al guardar (en la pausa) no cargó, no se crea: el aviso con
-      // «Reintentar» ya está en pantalla.
-      if (!(await vistaPreviaLista())) {
-        enVuelo.current = false;
-        setEnviando(false);
-        return;
-      }
-      r = await p.llamar();
-    } catch (error) {
-      // Un fallo de red o del servidor no da el cambio por hecho (R18): se avisa y el formulario sigue.
-      console.error("[PlanForm] la action de guardar lanzó", error);
-      r = null;
-    }
-    enVuelo.current = false;
-    setEnviando(false);
-
-    if (r === null) {
-      mostrarErrores({}, RECHAZOS.generico);
-    } else if (r.estado === "ok") {
+    const r = res.r;
+    if (r.estado === "ok") {
       props.onGuardado(r, form.nombre.trim());
+    } else if (r.estado === "pasos_pendientes") {
+      irA(guardables.find((p) => r.pasos.includes(p)) ?? "general");
+    } else if (r.estado === "borrador_no_encontrado") {
+      mostrarErrores({}, TEXTOS_PLAN_FORM.borradorYaNoExiste);
     } else if (r.estado === "validation_error") {
       mostrarErrores(r.fieldErrors);
     } else {
@@ -483,6 +620,23 @@ export function PlanForm(props: PlanFormProps) {
       if (deCampo !== null) mostrarErrores(deCampo);
       else mostrarErrores({}, mensajeDelRechazo(r));
     }
+  }
+
+  /**
+   * SLT-144 (R16): descarta el borrador tras confirmarlo en el diálogo. Con éxito, el formulario vuelve a
+   * General con los valores de la base, sin pasos guardados ni aviso; si falla, el mensaje queda en el diálogo.
+   */
+  async function descartarYEmpezar() {
+    setErrorDescarte(null);
+    const res = await borrador.descartar();
+    if (res !== "descartado") {
+      setErrorDescarte(textoDelRechazoDeDescartar(res.r));
+      return;
+    }
+    setConfirmandoDescarte(false);
+    setForm(formBase(props));
+    setErrores({});
+    irA("general");
   }
 
   // Los errores que no tienen un campo VISIBLE donde ir (`_`, `planId`…) se pintan en «Revisar».
@@ -532,6 +686,11 @@ export function PlanForm(props: PlanFormProps) {
           }),
         ];
   const idMotivo = idDe("motivo-bloqueo");
+  const idFaltan = idDe("motivo-faltan");
+  const puedeConfirmar = faltan.length === 0 && !enVuelo && !creacionBloqueada;
+  const motivosDelFinal = [faltan.length > 0 ? idFaltan : null, creacionBloqueada ? idMotivo : null].filter(
+    (id) => id !== null,
+  );
 
   const delPaso: PropsDelPaso = {
     modo: props.modo,
@@ -589,37 +748,71 @@ export function PlanForm(props: PlanFormProps) {
             bloqueo={creacionBloqueada && vistaPreviaVigente !== null ? (vistaPreviaVigente.fase === "fallo" ? "fallo" : "cargando") : null}
             idMotivo={idMotivo}
             onIrATopes={() => irA("topes")}
+            faltan={faltan.map(tituloDe)}
+            idFaltan={idFaltan}
+            onIrAlPrimeroQueFalta={() => {
+              const primero = faltan[0];
+              if (primero !== undefined) irA(primero);
+            }}
           />
         );
     }
   }
 
-  // «Siguiente» es `submit` para que Enter dentro de un paso intermedio avance (R19): sin un botón de
-  // envío, el navegador no envía el formulario con Enter cuando hay más de un campo. `alEnviar` decide
-  // por el paso, así que solo el último guarda. Las `key` distintas impiden que el botón final reutilice
-  // el nodo de «Siguiente».
+  /** SLT-144 (R3, R7): en los pasos que se guardan, el aviso de borrador y, si lo hay, el rechazo del guardado. */
+  function avisosDelPaso() {
+    if (paso === "revisar") return null;
+    return (
+      <div className="mb-4 flex flex-col gap-3">
+        <p className="text-sm text-muted-foreground">{TEXTOS_PLAN_FORM.avisoBorrador}</p>
+        {rechazo !== null ? (
+          <Alert
+            ref={avisoRef}
+            tabIndex={-1}
+            variant="destructive"
+            className="focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none"
+          >
+            <AlertDescription>
+              <p>{rechazo}</p>
+            </AlertDescription>
+          </Alert>
+        ) : null}
+      </div>
+    );
+  }
+
+  const { borradorId, actualizadoAt, aviso, retomado } = borrador.estado;
+
+  // «Guardar y continuar» es `submit` para que Enter dentro de un paso intermedio guarde y avance (R19): sin
+  // un botón de envío, el navegador no envía el formulario con Enter cuando hay más de un campo. `alEnviar`
+  // decide por el paso, así que solo el último confirma. Las `key` distintas impiden que el botón final
+  // reutilice el nodo de «Guardar y continuar».
   const pie = (
-    <div className="flex items-center justify-between gap-2">
-      {indice > 0 ? (
-        <Button type="button" variant="outline" onClick={anterior}>
-          {TEXTOS_PLAN_FORM.anterior}
-        </Button>
-      ) : (
-        <span />
-      )}
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center gap-3">
+        {indice > 0 ? (
+          <Button type="button" variant="outline" onClick={anterior} disabled={enVuelo}>
+            {TEXTOS_PLAN_FORM.anterior}
+          </Button>
+        ) : null}
+        {/* SLT-144 (R7): la hora del último guardado que respondió el servidor. */}
+        <span role="status" className="text-xs text-muted-foreground">
+          {actualizadoAt === null ? TEXTOS_PLAN_FORM.sinGuardarAun : TEXTOS_PLAN_FORM.guardadoEl(fechaHora(actualizadoAt))}
+        </span>
+      </div>
       {esUltimo ? (
         <Button
           key="final"
           type="submit"
-          loading={enviando}
-          disabled={creacionBloqueada}
-          aria-describedby={creacionBloqueada ? idMotivo : undefined}
+          loading={enVuelo}
+          disabled={!puedeConfirmar}
+          aria-describedby={motivosDelFinal.length > 0 ? motivosDelFinal.join(" ") : undefined}
         >
           {textoEnviar}
         </Button>
       ) : (
-        <Button key="siguiente" type="submit">
-          {TEXTOS_PLAN_FORM.siguiente}
+        <Button key="guardar-y-continuar" type="submit" loading={enVuelo}>
+          {TEXTOS_PLAN_FORM.guardarYContinuar}
         </Button>
       )}
     </div>
@@ -632,16 +825,64 @@ export function PlanForm(props: PlanFormProps) {
       onSubmit={alEnviar}
       className="flex min-h-0 flex-1 flex-col"
     >
+      {/* SLT-144 (R7, R10, R12, R15): el estado del borrador, de quién es y lo que pasó al guardar. */}
+      <div className="flex flex-none flex-col gap-2 border-b border-border px-4 py-2">
+        <p className="text-sm font-medium">{TEXTOS_PLAN_FORM.estadoBorrador(guardados.size, guardables.length)}</p>
+        {borradorId !== null && (retomado !== null || aviso !== null) ? (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+            <div role="status" className="flex flex-col">
+              {retomado !== null ? (
+                <span>{TEXTOS_PLAN_FORM.borradorDe(retomado.iniciadoPor, fechaHora(retomado.actualizadoAt))}</span>
+              ) : null}
+              {aviso !== null ? <span>{aviso}</span> : null}
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={enVuelo}
+              onClick={() => {
+                setErrorDescarte(null);
+                setConfirmandoDescarte(true);
+              }}
+            >
+              {TEXTOS_PLAN_FORM.descartarYEmpezar}
+            </Button>
+          </div>
+        ) : null}
+      </div>
       <FormularioPorPasos
         pasos={pasos}
         actual={paso}
-        visitados={visitados}
+        elegibles={elegibles}
+        guardados={guardados}
+        sinGuardar={sinGuardar}
+        deshabilitado={enVuelo}
         onIr={alElegirPaso}
         pie={pie}
         tituloRef={tituloRef}
       >
+        {avisosDelPaso()}
         {contenido()}
       </FormularioPorPasos>
+      <Modal
+        open={confirmandoDescarte}
+        onOpenChange={setConfirmandoDescarte}
+        title={TEXTOS_PLAN_FORM.descartarYEmpezar}
+        description={TEXTOS_PLAN_FORM.confirmarDescarte}
+        confirmLabel={TEXTOS_PLAN_FORM.descartar}
+        cancelLabel={TEXTOS_PLAN_FORM.cancelar}
+        confirmVariant="destructive"
+        closeOnConfirm={false}
+        size="md"
+        onConfirm={descartarYEmpezar}
+      >
+        {errorDescarte !== null ? (
+          <p role="alert" className="text-sm text-danger-strong">
+            {errorDescarte}
+          </p>
+        ) : null}
+      </Modal>
     </form>
   );
 }

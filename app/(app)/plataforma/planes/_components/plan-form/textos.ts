@@ -96,4 +96,38 @@ export const TEXTOS_PLAN_FORM = {
   descuentoPorciento: "%",
   quitarDescuento: (tipo: TipoCobro) => `Quitar descuento ${tipo}`,
   agregarDescuento: "Agregar descuento",
+
+  // SLT-144 (design §9): el borrador del servidor. `pasoGuardado` y `marcaSinGuardar` viven en
+  // `TEXTOS_FORMULARIO_POR_PASOS`, porque los pinta el componente compartido.
+  guardarYContinuar: "Guardar y continuar",
+  estadoBorrador: (n: number, m: number) => `Borrador · ${n} de ${m} pasos guardados`,
+  sinGuardarAun: "Aún sin guardar",
+  guardadoEl: (fecha: string) => `Borrador guardado el ${fecha}`,
+  avisoBorrador: "Borrador: se guarda al continuar, pero no se aplica a ninguna empresa hasta el último paso.",
+  faltanPasos: (titulos: string) => `Faltan pasos por guardar: ${titulos}.`,
+  /** SLT-144 (R8): el enlace al primer paso que falta guardar. */
+  irAPaso: (titulo: string) => `Ir a ${titulo}`,
+  borradorDe: (quien: string, fecha: string) => `Borrador de ${quien}, guardado el ${fecha}`,
+  descartarYEmpezar: "Descartar y empezar de nuevo",
+  confirmarDescarte: "¿Descartar el borrador? Se borran todos sus pasos guardados. No se puede deshacer.",
+  descartar: "Descartar",
+  cancelar: "Cancelar",
+  /** SLT-144 (R16): descartar falló; el mensaje se queda en el diálogo. */
+  noSeDescarto: "No se pudo descartar el borrador. Inténtalo de nuevo.",
+  borradorYaNoExiste: "Este borrador ya no existe: se confirmó o se descartó en otra pantalla.",
+  borradorNuevo:
+    "El borrador que tenías abierto ya se programó o se descartó en otra pantalla. Lo que acabas de guardar abrió un borrador nuevo.",
+  pasosAjenos: "Otro superadmin guardó pasos de este borrador: se cargaron sus valores.",
+  noSeGuardoElPaso: "No se pudo guardar el paso. Inténtalo de nuevo.",
+  cargandoBorrador: "Cargando el borrador…",
+  errorBorrador: "No se pudo leer el borrador.",
+  /** SLT-144 (design §4.5): retomar una creación que ya no existe. */
+  borradorNoExiste: "Este borrador ya no existe.",
+  cerrar: "Cerrar",
+  calculandoFechas: "Calculando la fecha de cada empresa…",
+  errorFechas: "No se pudo calcular la fecha de cada empresa.",
+  sinEmpresasDelPlan: (fecha: string) => `Este plan no tiene empresas: el cambio pasa al plan el ${fecha}.`,
+  columnaEmpresa: "Empresa",
+  columnaPeriodo: "Período",
+  columnaRecibe: "Recibe el cambio el",
 } as const;

@@ -21,7 +21,7 @@ function montar(props: Partial<FormularioPorPasosProps> = {}) {
     <FormularioPorPasos
       pasos={PASOS}
       actual="precio"
-      visitados={new Set(["general", "precio"])}
+      elegibles={new Set(["general", "precio"])}
       onIr={() => {}}
       pie={<button type="button">Siguiente</button>}
       {...props}
@@ -89,7 +89,7 @@ describe("FormularioPorPasos", () => {
       <FormularioPorPasos
         pasos={PASOS}
         actual="precio"
-        visitados={new Set(["general", "precio"])}
+        elegibles={new Set(["general", "precio"])}
         onIr={() => {}}
         orientacion="horizontal"
         pie={null}
@@ -116,7 +116,7 @@ describe("FormularioPorPasos", () => {
     expect(contenedor(container)).toHaveAttribute("data-orientacion", "vertical");
   });
 
-  it("R5: no visitado deshabilitado; visitado llama a onIr", () => {
+  it("R5: no elegible deshabilitado; elegible llama a onIr", () => {
     const onIr = vi.fn();
     montar({ onIr });
     const nav = screen.getByRole("navigation", { name: "Pasos" });
@@ -211,5 +211,13 @@ describe("FormularioPorPasos con borrador (SLT-144)", () => {
     expect(container.querySelectorAll("nav svg")).toHaveLength(0);
     expect(screen.queryByText("Sin guardar")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "General" })).toBeEnabled();
+  });
+
+  it("R4: deshabilitado apaga toda la lista, también el paso actual", () => {
+    const onIr = vi.fn();
+    montarConBorrador({ guardados: new Set(["general", "precio"]), actual: "precio", deshabilitado: true, onIr });
+    for (const boton of botonesDelPaso()) expect(boton).toBeDisabled();
+    fireEvent.click(botonesDelPaso()[0]!);
+    expect(onIr).not.toHaveBeenCalled();
   });
 });

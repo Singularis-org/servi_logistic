@@ -21,14 +21,14 @@ export type FormularioPorPasosProps = {
   actual: string;
   /**
    * SLT-144 (R5): pasos que se pueden elegir; el resto va deshabilitado. El paso actual siempre se puede
-   * elegir. Con borrador, `pasosElegibles` aplica la regla de los pasos guardados.
+   * elegir, salvo con `deshabilitado`. Con borrador, `pasosElegibles` aplica la regla de los pasos guardados.
    */
   elegibles?: ReadonlySet<string>;
   /**
-   * SLT-130 (R5): el nombre de `elegibles` antes de SLT-144. Se usa solo si no llega `elegibles`; se quita
-   * cuando `PlanForm` pase a `elegibles` (SLT-144 T3.2).
+   * SLT-144 (R4): toda la lista deshabilitada, también el paso actual. Mientras un guardado o la confirmación
+   * están en vuelo no se cambia de paso.
    */
-  visitados?: ReadonlySet<string>;
+  deshabilitado?: boolean;
   /** SLT-144 (R6): pasos guardados en el borrador; llevan ✓ y el nombre accesible «<título> (guardado)». */
   guardados?: ReadonlySet<string>;
   /** SLT-144 (R6): pasos guardados cuyos valores cambiaron en pantalla; pierden el ✓ y dicen «Sin guardar». */
@@ -69,8 +69,8 @@ export function pasosElegibles(pasos: readonly PasoDelFormulario[], guardados: R
 export function FormularioPorPasos({
   pasos,
   actual,
-  elegibles,
-  visitados,
+  elegibles = NINGUNO,
+  deshabilitado = false,
   guardados = NINGUNO,
   sinGuardar = NINGUNO,
   onIr,
@@ -83,7 +83,6 @@ export function FormularioPorPasos({
   const vertical = efectiva === "vertical";
   const indice = pasos.findIndex((p) => p.id === actual);
   const pasoActual = indice >= 0 ? pasos[indice] : undefined;
-  const sePuedenElegir = elegibles ?? visitados ?? NINGUNO;
 
   return (
     <div
@@ -106,7 +105,7 @@ export function FormularioPorPasos({
                 numero={i + 1}
                 titulo={paso.titulo}
                 esActual={paso.id === actual}
-                habilitado={paso.id === actual || sePuedenElegir.has(paso.id)}
+                habilitado={!deshabilitado && (paso.id === actual || elegibles.has(paso.id))}
                 estado={sinGuardar.has(paso.id) ? "sin_guardar" : guardados.has(paso.id) ? "guardado" : null}
                 onClick={() => onIr(paso.id)}
               />
