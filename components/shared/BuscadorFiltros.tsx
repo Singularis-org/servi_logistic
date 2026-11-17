@@ -50,11 +50,18 @@ const ALTO_CONTROL = "h-8";
  */
 const ALTO_CONTROL_TACTIL = "h-8 max-md:h-11";
 
+/** SLT-160 (R691, DC2): con `escaneo`, el campo y los controles de la barra miden 44 px, como el canvas. */
+const ALTO_CONTROL_ESCANEO = "h-11";
+
 /** SLT-156 (R496): con `fija`, la barra queda pegada arriba mientras se desplaza la lista. */
 export const BARRA_FIJA = "sticky top-0 z-20 bg-background py-2";
 
 /** SLT-160 (R600): nombre accesible del botón de cámara del buscador y título de su visor. */
 export const ESCANEAR_CON_CAMARA = "Escanear con cámara";
+
+/** SLT-160 (R690, DC2): la ayuda que va debajo de un buscador con `escaneo`, la del canvas. */
+export const AYUDA_ESCANEO =
+  "Escanea o escribe la guía y pulsa Enter. Lo leído por la pistola o por la cámara (QR o código de barras) se busca igual.";
 
 /** SLT-160 (R605): lo que dice la cámara del buscador cuando lee algo que no es una guía. */
 const CODIGO_INVALIDO = "Código inválido.";
@@ -316,9 +323,10 @@ export function BuscadorFiltros({
   escaneo = false,
   className,
 }: BuscadorFiltrosProps) {
-  const alto = tactil ? ALTO_CONTROL_TACTIL : ALTO_CONTROL;
+  const alto = escaneo ? ALTO_CONTROL_ESCANEO : tactil ? ALTO_CONTROL_TACTIL : ALTO_CONTROL;
   const idBase = useId();
   const idAviso = `${idBase}-minimo`;
+  const idAyuda = `${idBase}-ayuda`;
 
   const { params, borrarParams } = useFiltrosUrl(leerDeUrl);
 
@@ -633,7 +641,11 @@ export function BuscadorFiltros({
             type="search"
             value={texto}
             aria-label={label}
-            aria-describedby={faltanCaracteres ? idAviso : undefined}
+            aria-describedby={
+              [escaneo ? idAyuda : null, faltanCaracteres ? idAviso : null]
+                .filter(Boolean)
+                .join(" ") || undefined
+            }
             placeholder={placeholder}
             maxLength={maxLength}
             disabled={disabled}
@@ -647,11 +659,7 @@ export function BuscadorFiltros({
             // quita la del navegador y no la propia porque la nativa no existe en
             // todos (Firefox no la pinta), así que dejar solo esa daría un campo sin
             // forma de limpiarse en unos navegadores sí y en otros no.
-            className={cn(
-              "h-full w-full pl-8 text-ellipsis [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden",
-              // SLT-160: con la cámara, sitio para dos botones a la derecha («X» y cámara).
-              escaneo ? "pr-16" : "pr-9",
-            )}
+            className="h-full w-full pr-9 pl-8 text-ellipsis [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden"
             onChange={(e) => escribir(e.target.value)}
             onKeyDown={
               escaneo
@@ -670,28 +678,23 @@ export function BuscadorFiltros({
               size="icon-xs"
               disabled={disabled}
               aria-label={`Limpiar ${label}`}
-              className={cn(
-                "absolute hover:bg-transparent hover:text-foreground",
-                escaneo ? "right-8" : "right-1.5",
-              )}
+              className="absolute right-1.5 hover:bg-transparent hover:text-foreground"
               onClick={() => escribir("")}
             >
               <X className="size-4 opacity-60" aria-hidden />
             </Button>
           ) : null}
-          {/* SLT-160 (R600, R604): la cámara, el último botón del campo y siempre en el mismo sitio
-              (la «X» aparece y desaparece a su izquierda). Abre el visor de hoy ya encendido. */}
-          {escaneo ? (
-            <EscanerModal label={ESCANEAR_CON_CAMARA} soloIcono className="absolute right-1.5">
-              {(cerrar) => (
-                <CamaraDelBuscador
-                  cerrar={cerrar}
-                  onGuia={(guia) => buscarYa(String(guia))}
-                />
-              )}
-            </EscanerModal>
-          ) : null}
         </div>
+        ) : null}
+
+        {/* SLT-160 (R600, R604, DC2): la cámara es un botón APARTE de 44 px, pegado al campo y fuera
+            de él, como en el canvas. Abre el visor de hoy ya encendido. */}
+        {buscador && escaneo ? (
+          <EscanerModal label={ESCANEAR_CON_CAMARA} soloIcono className="size-11 shrink-0">
+            {(cerrar) => (
+              <CamaraDelBuscador cerrar={cerrar} onGuia={(guia) => buscarYa(String(guia))} />
+            )}
+          </EscanerModal>
         ) : null}
 
         {/* El selector va AL FINAL de la barra. `listbox` multiseleccionable con el
@@ -779,7 +782,7 @@ export function BuscadorFiltros({
             variant="outline"
             size="sm"
             disabled={disabled}
-            className={cn("shrink-0", tactil && "max-md:h-11")}
+            className={cn("shrink-0", tactil && "max-md:h-11", escaneo && ALTO_CONTROL_ESCANEO)}
             onClick={limpiarTodo}
           >
             Limpiar todo
@@ -791,6 +794,12 @@ export function BuscadorFiltros({
           ya dentro no se anuncia— y solo cambia su contenido. Su alto está RESERVADO
           (`h-4`, vacía incluida): el aviso aparece y desaparece sin empujar ni un
           píxel de lo que hay debajo, que en esta barra es la tabla entera. */}
+      {/* SLT-160 (R690): la ayuda del escaneo, debajo del campo y descripción accesible de él. */}
+      {buscador && escaneo ? (
+        <p id={idAyuda} className="mt-1 text-xs text-muted-foreground">
+          {AYUDA_ESCANEO}
+        </p>
+      ) : null}
       {buscador ? (
         <p
           id={idAviso}

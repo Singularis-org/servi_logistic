@@ -198,10 +198,14 @@ describe("SLT-160 — R609: sin Enter, la barra de siempre", () => {
   });
 });
 
-describe("SLT-160 — R600: el botón de cámara dentro del campo", () => {
-  it("con `escaneo` se muestra con su nombre accesible", () => {
-    montar();
-    expect(screen.getByRole("button", { name: "Escanear con cámara" })).toBeInTheDocument();
+describe("SLT-160 — R600: el botón de cámara aparte, junto al campo (DC2)", () => {
+  it("con `escaneo` se muestra con su nombre accesible, fuera del campo y de 44 px", () => {
+    const { campo } = montar();
+    const camara = screen.getByRole("button", { name: "Escanear con cámara" });
+    expect(camara).toBeInTheDocument();
+    // Fuera del contenedor del campo (el de la lupa, el input y la «X»).
+    expect(campo.parentElement).not.toContainElement(camara);
+    expect(camara).toHaveClass("size-11");
   });
 
   it("sin `escaneo` no se monta", () => {
@@ -262,5 +266,57 @@ describe("SLT-160 — la cámara del buscador", () => {
     expect(errorMock).toHaveBeenCalledWith("Código inválido.");
     expect(onChange).not.toHaveBeenCalled();
     expect(campo.value).toBe("Ana");
+  });
+});
+
+const AYUDA =
+  "Escanea o escribe la guía y pulsa Enter. Lo leído por la pistola o por la cámara (QR o código de barras) se busca igual.";
+
+describe("SLT-160 — R690: la ayuda del escaneo debajo del campo (DC2)", () => {
+  it("con `escaneo` está y es la descripción accesible del campo", () => {
+    const { campo } = montar();
+    expect(screen.getByText(AYUDA)).toBeInTheDocument();
+    expect(campo).toHaveAccessibleDescription(AYUDA);
+  });
+
+  it("con `escaneo` y por debajo de `minChars`, la descripción lleva la ayuda y el aviso", () => {
+    const { campo } = montar({ minChars: 3 });
+    fireEvent.change(campo, { target: { value: "ab" } });
+    expect(campo.getAttribute("aria-describedby")?.split(" ")).toHaveLength(2);
+  });
+
+  it("sin `escaneo` no está", () => {
+    const { campo } = montar({ escaneo: false });
+    expect(screen.queryByText(AYUDA)).toBeNull();
+    expect(campo).not.toHaveAttribute("aria-describedby");
+  });
+});
+
+describe("SLT-160 — R691: 44 px de alto con `escaneo` (DC2)", () => {
+  it("con `escaneo`, el contenedor del campo mide h-11", () => {
+    const { campo } = montar();
+    expect(campo.parentElement).toHaveClass("h-11");
+    expect(campo.parentElement).not.toHaveClass("h-8");
+  });
+
+  it("con `escaneo`, «Filtros» y «Limpiar todo» miden h-11", () => {
+    render(
+      <BuscadorFiltros
+        onChange={vi.fn()}
+        leerDeUrl={false}
+        escaneo
+        filtros={[{ key: "zona", label: "Zona" }]}
+        onLimpiarTodo={vi.fn()}
+        hayFiltrosAplicados
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Filtros" })).toHaveClass("h-11");
+    expect(screen.getByRole("button", { name: "Limpiar todo" })).toHaveClass("h-11");
+  });
+
+  it("sin `escaneo`, el alto de siempre (h-8)", () => {
+    const { campo } = montar({ escaneo: false });
+    expect(campo.parentElement).toHaveClass("h-8");
+    expect(campo.parentElement).not.toHaveClass("h-11");
   });
 });

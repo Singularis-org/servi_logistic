@@ -72,8 +72,8 @@ export interface EscanerModalProps {
    */
   tactil?: boolean;
   /**
-   * SLT-160 (R604): disparador de solo icono (cámara), con `label` como nombre accesible, para ir
-   * dentro de un campo (el buscador de los listados). Sin envoltorio de fila. Arranca cerrado igual.
+   * SLT-160 (R600, R604): disparador de solo icono (cámara), con `label` como nombre accesible, para ir
+   * junto al campo del buscador de los listados. Sin envoltorio de fila. Arranca cerrado igual.
    */
   soloIcono?: boolean;
   className?: string;
@@ -119,13 +119,13 @@ export function EscanerModal({
       <>
         <Button
           type="button"
-          variant="ghost"
-          size="icon-xs"
+          variant="outline"
+          size="icon"
           aria-label={label}
-          className={cn("hover:bg-transparent hover:text-foreground", className)}
+          className={className}
           onClick={() => setAbierto(true)}
         >
-          <Camera className="size-4 opacity-60" aria-hidden="true" />
+          <Camera className="size-5" aria-hidden="true" />
         </Button>
         {dialogo}
       </>
