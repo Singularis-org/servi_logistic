@@ -115,12 +115,16 @@ export function msgUbicacionIncompleta(nombre: string, tipoPlural: string): stri
   return `ubicacion incompleta: '${nombre}' tiene ${tipoPlural.toLowerCase()} debajo; indica el ultimo nivel`;
 }
 
-/** El mensaje de R17 para un nodo que no es hoja: el tipo es el de sus hijos activos. */
-export function msgUbicacionIncompletaDe(cat: CatalogoGeografico, n: NodoDelCatalogo): string {
+/**
+ * El tipo plural de los hijos activos del nodo, o `null` si es hoja. Lo usan el motor y la carga de
+ * v1 (`DistritoRow.tipoHijosActivos`) para el mensaje de R17.
+ */
+export function tipoDeHijosActivos(cat: CatalogoGeografico, n: NodoDelCatalogo): string | null {
   const [hijo] = hijosActivos(cat, n);
-  const tipo = cat.tipos.find((t) => t.id === hijo?.tipoId);
-  if (!tipo) throw new CatalogoGeograficoInconsistente(n.id, `el tipo de sus hijos no esta en el catalogo`);
-  return msgUbicacionIncompleta(n.nombre, tipo.nombrePlural);
+  if (hijo === undefined) return null;
+  const tipo = cat.tipos.find((t) => t.id === hijo.tipoId);
+  if (!tipo) throw new CatalogoGeograficoInconsistente(hijo.id, `su tipo ${hijo.tipoId} no esta en el catalogo`);
+  return tipo.nombrePlural;
 }
 
 // ── Ruta publica (R21) ───────────────────────────────────────────────────────────────────────────
@@ -196,7 +200,8 @@ export function resolverUbicacion(
   if (!paso.ok) return fallo(paso.mensaje);
   const { nodo } = paso;
 
-  if (!esHoja(cat, nodo)) return fallo(msgUbicacionIncompletaDe(cat, nodo));
+  const tipoQueFalta = tipoDeHijosActivos(cat, nodo);
+  if (tipoQueFalta !== null) return fallo(msgUbicacionIncompleta(nodo.nombre, tipoQueFalta));
 
   const zona = zonaQueCubre(cat, asig, nodo.id);
   if (zona === null) return fallo(msgSinZona(nodo.nombre));

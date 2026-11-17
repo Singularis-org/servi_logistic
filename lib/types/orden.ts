@@ -62,9 +62,8 @@ export const actualizarOrdenSchema = z
     estatusId: z.string().min(1).optional(),
     tiendaId: z.string().min(1).optional(),
     zonaId: z.string().min(1).optional(),
-    provinciaId: z.string().min(1).optional(),
-    cantonId: z.string().min(1).optional(),
-    distritoId: z.string().min(1).nullable().optional(),
+    // SLT-48 (design §4.2, R16): la ubicacion es el nodo; las 3 FK viejas ya no se aceptan.
+    nodoId: z.string().min(1).optional(),
     // FICHA 327 (A1, design §8.1) — la direccion entra al schema. Estuvo fuera desde siempre y la
     // 312 la dejo fuera A SABIENDAS; la 327 reabre esa decision (su D1) porque es el error de
     // carga mas caro. Se amplia AQUI, y no con un `.extend()` local en el schema de la
@@ -342,9 +341,11 @@ export interface OrdenDTO {
   telefonoDest: string;
   tiendaId: string;
   zonaId: string;
-  provinciaId: string;
-  cantonId: string;
-  distritoId: string | null;
+  /**
+   * SLT-48 (R15, R22): el lugar de la orden es su nodo. Las 3 FK viejas ya no viajan en el DTO: en
+   * una orden nueva son NULL y ningun lector de produccion las lee (R29).
+   */
+  nodoGeograficoId: string | null;
   producto: string;
   peso: number | null; // feature 15/R4: nullable (carga masiva no trae peso)
   notas: string | null;

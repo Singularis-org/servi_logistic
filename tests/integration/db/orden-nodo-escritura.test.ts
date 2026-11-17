@@ -339,3 +339,172 @@ describeSiHayBase("SLT-45 T3.3 — la orden guarda el nodo y las 3 FK (R25–R28
     expect(trigger.def).toContain("EXECUTE FUNCTION orden_nodo_geografico()");
   });
 });
+
+// =================================================================================================
+// SLT-48 (design §4.2; R15, R16) — LA ORDEN GUARDA SOLO SU NODO
+// =================================================================================================
+//
+// Las vias que crean una orden la guardan con su nodo y con las 3 FK viejas en NULL. La corrige
+// `OrdenRepository.corregirDatosCliente`, que escribe el nodo nuevo y vacia las 3 FK tambien en una
+// orden vieja. La base no rellena las FK desde el nodo (el trigger de SLT-48 solo va de FK a nodo).
+
+interface FilaSoloNodo {
+  provincia_id: string | null;
+  canton_id: string | null;
+  distrito_id: string | null;
+  nodo_geografico_id: string | null;
+}
+
+async function leerSoloNodo(tx: TxDeTest, numRemision: string): Promise<FilaSoloNodo & { id: string }> {
+  const filas = await tx.$queryRawUnsafe<(FilaSoloNodo & { id: string })[]>(
+    `SELECT id, provincia_id, canton_id, distrito_id, nodo_geografico_id FROM orden WHERE num_remision = $1`,
+    numRemision,
+  );
+  if (filas.length !== 1) throw new Error(`se esperaba UNA orden ${numRemision} y hay ${filas.length}`);
+  return filas[0];
+}
+
+function soloNodo(nodo: string): FilaSoloNodo {
+  return { provincia_id: null, canton_id: null, distrito_id: null, nodo_geografico_id: nodo };
+}
+
+function ordenSoloNodo(c: Contexto, numRemision: string, nodoGeograficoId: string): CreateOrdenData {
+  return {
+    numRemision,
+    estatusId: c.estatusId,
+    destinatario: "Destinatario SLT-48",
+    telefonoDest: "80000001",
+    tiendaId: c.tiendaId,
+    zonaId: c.zonaId,
+    nodoGeograficoId,
+    producto: "Caja",
+    peso: null,
+    notas: null,
+    direccion: null,
+    montoCobrar: null,
+  };
+}
+
+const HISTORIAL_API = (c: Contexto) => ({ actorUsuarioId: c.tiendaId, origenTipo: "carga_api" as const });
+const LOTE_API = (c: Contexto) => ({ cargaId: null, usuarioCargaId: c.tiendaId, totalFiles: 1, name: null });
+
+describeSiHayBase("SLT-48 — la orden guarda solo su nodo (R15, R16)", () => {
+  let prisma: PrismaClient;
+
+  beforeAll(() => {
+    prisma = crearPrismaDeTest();
+  });
+
+  afterAll(async () => {
+    await prisma?.$disconnect();
+  });
+
+  function servicio(c: Contexto): BulkOrdenService {
+    return new BulkOrdenService(
+      c.repo,
+      new TarifaVigenteRepository(c.cli),
+      undefined,
+      new CupoPlanRepository(c.cli),
+      new CatalogoGeograficoRepository(c.cli),
+    );
+  }
+
+  it("R15 — API v1 (`cargarViaApi`): nodo = distrito de la terna y las 3 FK en NULL", async () => {
+    await conEmpresaSembrada(prisma, async (c) => {
+      const r = await servicio(c).cargarViaApi(
+        [
+          {
+            num_remision: "SLT48-V1",
+            destinatario: "Destinatario 1",
+            telefono: "80000001",
+            provincia: "Cartago",
+            canton: "Cartago",
+            distrito: "Occidental",
+            direccion: "Direccion 1",
+            producto: "Producto 1",
+          },
+        ],
+        { usuarioId: c.tiendaId, rol: "apiKey" },
+      );
+      expect(r.status === "ok" ? r.summary.creadas : r.status).toBe(1);
+      const distrito = await nodoPorRuta(c.tx, ["Cartago", "Cartago", "Occidental"]);
+      expect(await leerSoloNodo(c.tx, "SLT48-V1")).toMatchObject(soloNodo(distrito));
+    });
+  });
+
+  it("R15 — API v2 (`cargarViaApiV2`, motor): nodo = hoja resuelta y las 3 FK en NULL", async () => {
+    await conEmpresaSembrada(prisma, async (c) => {
+      const r = await servicio(c).cargarViaApiV2(
+        [
+          {
+            campos: {
+              num_remision: "SLT48-V2",
+              destinatario: "Destinatario 2",
+              telefono: "80000002",
+              direccion: "Direccion 2",
+              producto: "Producto 2",
+            },
+            ubicacion: { tipo: "ruta", nombres: ["Cartago", "Cartago", "Oriental"] },
+          },
+        ],
+        { usuarioId: c.tiendaId, rol: "apiKey" },
+      );
+      expect(r.status === "ok" ? r.summary.creadas : r.status).toBe(1);
+      const distrito = await nodoPorRuta(c.tx, ["Cartago", "Cartago", "Oriental"]);
+      expect(await leerSoloNodo(c.tx, "SLT48-V2")).toMatchObject(soloNodo(distrito));
+    });
+  });
+
+  it("R15 — el repositorio, con guia y sin guia (carga masiva de sesion): las 3 FK en NULL", async () => {
+    await conEmpresaSembrada(prisma, async (c) => {
+      const distrito = await nodoPorRuta(c.tx, ["Cartago", "Cartago", "Occidental"]);
+      const conGuia = await c.repo.createManyOrdenesConGuia(
+        [ordenSoloNodo(c, "SLT48-GUIA", distrito)],
+        500,
+        HISTORIAL_API(c),
+        LOTE_API(c),
+        { conGuia: true },
+      );
+      expect(conGuia.creadas).toHaveLength(1);
+      const sinGuia = await c.repo.createManyOrdenes(
+        [ordenSoloNodo(c, "SLT48-SIN-GUIA", distrito)],
+        500,
+        HISTORIAL_API(c),
+        LOTE_API(c),
+      );
+      expect(sinGuia.inserted).toBe(1);
+      expect(await leerSoloNodo(c.tx, "SLT48-GUIA")).toMatchObject(soloNodo(distrito));
+      expect(await leerSoloNodo(c.tx, "SLT48-SIN-GUIA")).toMatchObject(soloNodo(distrito));
+    });
+  });
+
+  it("R16 — corregir la ubicacion de una orden vieja (con las 3 FK) deja el nodo nuevo y las 3 FK en NULL", async () => {
+    await conEmpresaSembrada(prisma, async (c) => {
+      const provincia = await nodoPorRuta(c.tx, ["Cartago"]);
+      const canton = await nodoPorRuta(c.tx, ["Cartago", "Cartago"]);
+      const occidental = await nodoPorRuta(c.tx, ["Cartago", "Cartago", "Occidental"]);
+      const oriental = await nodoPorRuta(c.tx, ["Cartago", "Cartago", "Oriental"]);
+      // Una orden «vieja»: con sus 3 FK, como las que hay en produccion antes de SLT-48.
+      await c.repo.createManyOrdenes([ordenSoloNodo(c, "SLT48-VIEJA", occidental)], 500, HISTORIAL_API(c), LOTE_API(c));
+      const vieja = await leerSoloNodo(c.tx, "SLT48-VIEJA");
+      await c.tx.$executeRawUnsafe(
+        `UPDATE orden SET provincia_id = $2, canton_id = $3, distrito_id = $4 WHERE id = $1`,
+        vieja.id,
+        provincia,
+        canton,
+        occidental,
+      );
+      expect(await leerSoloNodo(c.tx, "SLT48-VIEJA")).toMatchObject({ distrito_id: occidental, nodo_geografico_id: occidental });
+
+      expect(
+        await c.repo.corregirDatosCliente(
+          vieja.id,
+          { nodoGeograficoId: oriental, zonaId: c.zonaId },
+          ESTADOS_SIN_CORRECCION,
+          { actorUsuarioId: null, ubicacionCorregida: false },
+        ),
+      ).toBe("ok");
+      expect(await leerSoloNodo(c.tx, "SLT48-VIEJA")).toMatchObject(soloNodo(oriental));
+    });
+  });
+});
