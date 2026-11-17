@@ -8,6 +8,8 @@ import {
   reducirSesion,
   textoEstado,
   ultimaRespondida,
+  TEXTOS_RECOGIDA,
+  TEXTOS_RECOLECCION,
   type AccionSesion,
   type FilaLectura,
   type SesionEscaneo,
@@ -124,5 +126,64 @@ describe("sesion-escaneo — hora y línea de estado (R581, R615)", () => {
     });
     expect(ultimaRespondida(sesion.filas)?.leido).toBe("1024");
     expect(ultimaRespondida(aplicar(llegar("1024")).filas)).toBeUndefined();
+  });
+});
+
+// SLT-168 «Escaneo continuo en las recogidas del mensajero» — el verbo de cada superficie.
+// Literales a mano (aprobados por Carlos el 2026-11-17).
+describe("sesion-escaneo — textos de M1 y M2 (R596, R597, R830, R831)", () => {
+  it("R830: «recibiendo» dice «Recogiendo…» en M1 y «Recolectando…» en M2", () => {
+    expect(textoEstado({ tipo: "recibiendo" }, TEXTOS_RECOGIDA)).toBe("Recogiendo…");
+    expect(textoEstado({ tipo: "recibiendo" }, TEXTOS_RECOLECCION)).toBe("Recolectando…");
+  });
+
+  it("R596: éxito, ya hecha, no encontrada y no se pudo con el verbo de M1", () => {
+    expect(textoEstado({ tipo: "recibida" }, TEXTOS_RECOGIDA)).toBe("Recogida");
+    expect(textoEstado({ tipo: "no_encontrada" }, TEXTOS_RECOGIDA)).toBe(
+      "No está entre tus órdenes",
+    );
+    expect(textoEstado({ tipo: "no_se_pudo", motivo: "x" }, TEXTOS_RECOGIDA)).toBe(
+      "No se pudo recoger",
+    );
+    expect(textoEstado({ tipo: "codigo_invalido" }, TEXTOS_RECOGIDA)).toBe("Código inválido");
+  });
+
+  it("R596: éxito, ya recogida en tienda, no encontrada y no se pudo con el verbo de M2", () => {
+    expect(textoEstado({ tipo: "recibida" }, TEXTOS_RECOLECCION)).toBe("Recogida en tienda");
+    expect(textoEstado({ tipo: "ya_recibida" }, TEXTOS_RECOLECCION)).toBe("Ya recogida en tienda");
+    expect(textoEstado({ tipo: "no_encontrada" }, TEXTOS_RECOLECCION)).toBe(
+      "No está entre tus órdenes",
+    );
+    expect(textoEstado({ tipo: "no_se_pudo", motivo: "x" }, TEXTOS_RECOLECCION)).toBe(
+      "No se pudo recolectar",
+    );
+  });
+
+  it("R831: la relectura en la sesión dice «Ya recogida» en M1 y «Ya recogida en tienda» en M2", () => {
+    const repetida = { tipo: "repetida_en_sesion" } as const;
+    expect(textoEstado(repetida, TEXTOS_RECOGIDA)).toBe("Ya recogida");
+    expect(textoEstado(repetida, TEXTOS_RECOLECCION)).toBe("Ya recogida en tienda");
+  });
+
+  it("R597: rótulo del primer contador «Recogidas» / «Recogidas en tienda»", () => {
+    expect(TEXTOS_RECOGIDA.contadorExitos).toBe("Recogidas");
+    expect(TEXTOS_RECOLECCION.contadorExitos).toBe("Recogidas en tienda");
+  });
+
+  it("R597: «No se pudo recolectar» y «Código inválido» no suman; la relectura suma a Repetidas", () => {
+    const sesion = aplicar(
+      llegar("1024"),
+      llegar("1024"),
+      llegar("2048"),
+      llegar("abc"),
+      { tipo: "resolver", id: 1, desenlace: { tipo: "recibida" } },
+      { tipo: "resolver", id: 3, desenlace: { tipo: "no_se_pudo", motivo: "Sin red." } },
+    );
+    expect(contadores(sesion.filas)).toEqual({ recibidas: 1, repetidas: 1, noEncontradas: 0 });
+  });
+
+  it("R834: sin textos, «recibiendo» sigue diciendo «Recibiendo…»", () => {
+    expect(textoEstado({ tipo: "recibiendo" })).toBe("Recibiendo…");
+    expect(textoEstado({ tipo: "repetida_en_sesion" })).toBe("Ya recibida");
   });
 });

@@ -399,8 +399,43 @@ describe("RecoleccionModule — el escáner está SIEMPRE accesible (R7/R8)", ()
   });
 });
 
-describe("RecoleccionModule — confirmar la recolección (R10/R11/R12/R13/R14/R15)", () => {
-  it("R10: la vía manual confirma la guía y revalida el apartado", async () => {
+// SLT-168 «Escaneo continuo en las recogidas del mensajero»: el diálogo es la sesión continua de
+// SLT-159. Cada lectura es una fila con su desenlace (R596) y NO hay toasts (R590); la lista se
+// relee UNA vez al cerrar si hubo alguna recolectada o ya recolectada (R598). Textos a mano.
+
+/** Las filas de la lista de la sesión, la más reciente primero. */
+function filas(): HTMLElement[] {
+  return within(screen.getByRole("log", { name: "Lecturas" })).queryAllByRole("listitem");
+}
+
+/** Espera a que la última lectura diga `estado` y la devuelve. */
+async function lecturaQueDice(estado: string): Promise<HTMLElement> {
+  await waitFor(() => expect(within(filas()[0]).getByText(estado)).toBeInTheDocument());
+  return filas()[0];
+}
+
+/** «Recogidas en tienda1»: el rótulo y su valor, tal como se leen. */
+function contador(rotulo: string): string {
+  return screen.getByText(rotulo).parentElement?.textContent ?? "";
+}
+
+function sinToasts() {
+  expect(toastSuccess).not.toHaveBeenCalled();
+  expect(toastError).not.toHaveBeenCalled();
+  expect(toastInfo).not.toHaveBeenCalled();
+}
+
+async function teclear(user: ReturnType<typeof userEvent.setup>, ...guias: string[]) {
+  for (const g of guias) await user.type(screen.getByRole("textbox"), `${g}{Enter}`);
+}
+
+async function cerrarEscaner(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: "Cerrar" }));
+  await waitFor(() => expect(escaner()).toBeNull());
+}
+
+describe("RecoleccionModule — confirmar la recolección (R10/R11/R12/R13/R14 + SLT-168)", () => {
+  it("R10 + R596: la vía manual confirma la guía y la fila dice «Recogida en tienda», sin toast", async () => {
     const user = userEvent.setup();
     renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
 
@@ -409,9 +444,8 @@ describe("RecoleccionModule — confirmar la recolección (R10/R11/R12/R13/R14/R
     await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
 
     await waitFor(() => expect(recolectarMock).toHaveBeenCalledWith({ numGuia: 1001 }));
-    // R14: la orden deja de estar pendiente y pasa a "Recolectadas hoy"; las dos listas las
-    // resuelve el servidor, así que la verdad se relee de allí.
-    expect(refreshMock).toHaveBeenCalled();
+    await lecturaQueDice("Recogida en tienda");
+    sinToasts();
   });
 
   it("R10: la vía CÁMARA confirma exactamente igual (mismo action, mismo resultado)", async () => {
@@ -423,8 +457,7 @@ describe("RecoleccionModule — confirmar la recolección (R10/R11/R12/R13/R14/R
     await user.click(screen.getByRole("button", { name: "Simular escaneo" }));
 
     await waitFor(() => expect(recolectarMock).toHaveBeenCalledWith({ numGuia: 1001 }));
-    expect(toastSuccess).toHaveBeenCalled();
-    expect(refreshMock).toHaveBeenCalled();
+    await lecturaQueDice("Recogida en tienda");
   });
 
   it("R11: un código que no son dígitos no llega a la action (vía manual)", async () => {
@@ -438,7 +471,7 @@ describe("RecoleccionModule — confirmar la recolección (R10/R11/R12/R13/R14/R
     expect(recolectarMock).not.toHaveBeenCalled();
   });
 
-  it("R11: un QR que no es la URL del paquete tampoco llega a la action (vía cámara)", async () => {
+  it("R11 + R597: un QR que no es guía es una fila «Código inválido» que no suma (vía cámara)", async () => {
     const user = userEvent.setup();
     textoEscaneado = "esto-no-es-una-url";
     renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
@@ -446,11 +479,15 @@ describe("RecoleccionModule — confirmar la recolección (R10/R11/R12/R13/R14/R
     await abrirEscaner(user);
     await user.click(screen.getByRole("button", { name: "Simular escaneo" }));
 
+    await lecturaQueDice("Código inválido");
     expect(recolectarMock).not.toHaveBeenCalled();
-    expect(toastError).toHaveBeenCalledWith("Código inválido.");
+    expect(contador("Recogidas en tienda")).toBe("Recogidas en tienda0");
+    expect(contador("Repetidas")).toBe("Repetidas0");
+    expect(contador("No encontradas")).toBe("No encontradas0");
+    sinToasts();
   });
 
-  it("R12: una guía que NO está en la lista cargada SÍ llega al servidor", async () => {
+  it("R12 + R596: una guía que NO está en la lista cargada SÍ llega al servidor; `no_encontrada` → «No está entre tus órdenes»", async () => {
     const user = userEvent.setup();
     // SUSTITUYE al caso de la 157 "una guía que NO es suya se rechaza en cliente". El
     // servidor es la autoridad: con la lista vacía o desactualizada, el corte local
@@ -459,32 +496,27 @@ describe("RecoleccionModule — confirmar la recolección (R10/R11/R12/R13/R14/R
     renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
 
     await abrirEscaner(user);
-    await user.type(screen.getByRole("textbox"), "9999");
-    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
+    await teclear(user, "7777777");
 
-    await waitFor(() => expect(recolectarMock).toHaveBeenCalledWith({ numGuia: 9999 }));
-    // R13: el mensaje sale del resultado del SERVIDOR, y dice lo mismo que decía el corte
-    // local — el mensajero no pierde información por el cambio.
-    expect(toastError).toHaveBeenCalledWith(
-      "La guía 9999 no está entre tus órdenes por recolectar.",
-    );
+    await waitFor(() => expect(recolectarMock).toHaveBeenCalledWith({ numGuia: 7777777 }));
+    const fila = await lecturaQueDice("No está entre tus órdenes");
+    expect(within(fila).getByText(/^— · — · /)).toBeInTheDocument();
+    await cerrarEscaner(user);
     // No hubo transición: no hay nada que revalidar.
     expect(refreshMock).not.toHaveBeenCalled();
   });
 
-  it("R13: escanear dos veces la misma etiqueta informa, no dice que sea un error", async () => {
+  it("R13 + R596: `ya_recolectada` → «Ya recogida en tienda», no un error", async () => {
     const user = userEvent.setup();
     recolectarMock.mockResolvedValue({ status: "ya_recolectada" });
     renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
 
     await abrirEscaner(user);
-    await user.type(screen.getByRole("textbox"), "1001");
-    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
+    await teclear(user, "1001");
 
-    await waitFor(() => expect(toastInfo).toHaveBeenCalled());
-    expect(toastError).not.toHaveBeenCalled();
-    // R14: idempotente, la lista se revalida igual porque esa orden ya no va aquí.
-    expect(refreshMock).toHaveBeenCalled();
+    await lecturaQueDice("Ya recogida en tienda");
+    expect(screen.queryByText("No se pudo recolectar")).toBeNull();
+    sinToasts();
   });
 
   it("R13: un estado inválido dice EN QUÉ estado está, no un error genérico", async () => {
@@ -496,16 +528,13 @@ describe("RecoleccionModule — confirmar la recolección (R10/R11/R12/R13/R14/R
     renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
 
     await abrirEscaner(user);
-    await user.type(screen.getByRole("textbox"), "1001");
-    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
+    await teclear(user, "1001");
 
     // ⏳ 2026-09-24 (FICHA 455, R3): el estado se nombra con su nombre visible, no con el código.
-    await waitFor(() =>
-      expect(toastError).toHaveBeenCalledWith(
-        "La guía 1001 ya no está por recolectar (está en «En bodega central»).",
-      ),
-    );
-    expect(refreshMock).not.toHaveBeenCalled();
+    const fila = await lecturaQueDice("No se pudo recolectar");
+    expect(
+      within(fila).getByText("La guía 1001 ya no está por recolectar (está en «En bodega central»)."),
+    ).toBeInTheDocument();
   });
 
   it("R13: un conflicto (bloqueo o carrera) traslada el MOTIVO que da el servidor", async () => {
@@ -517,34 +546,25 @@ describe("RecoleccionModule — confirmar la recolección (R10/R11/R12/R13/R14/R
     renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
 
     await abrirEscaner(user);
-    await user.type(screen.getByRole("textbox"), "1001");
-    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
+    await teclear(user, "1001");
 
-    await waitFor(() =>
-      expect(toastError).toHaveBeenCalledWith("Tienes un cierre pendiente."),
-    );
+    const fila = await lecturaQueDice("No se pudo recolectar");
+    expect(within(fila).getByText("Tienes un cierre pendiente.")).toBeInTheDocument();
   });
 
-  // Los TRES resultados que faltaban (hallazgo m1 del review). Son inalcanzables desde la
-  // pantalla en la práctica —la página hace `notFound` antes de montar nada para un rol ajeno o
-  // sin sesión (R3), y el código mal formado se corta en cliente (R11)—, pero R13 exige un
-  // mensaje propio para CADA resultado, y lo que el mensajero lee no lo prueba el test de la
-  // action: aquel verifica el `status` que devuelve el servidor, no el texto del toast.
-  it("R13: `forbidden` dice que no tiene permiso, no un error genérico", async () => {
+  it("R13 + R596: `forbidden` → «No se pudo recolectar» + «No tienes permiso para recolectar órdenes.» con «Reintentar»", async () => {
     const user = userEvent.setup();
     recolectarMock.mockResolvedValue({ status: "forbidden" });
     renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
 
     await abrirEscaner(user);
-    await user.type(screen.getByRole("textbox"), "1001");
-    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
+    await teclear(user, "1001");
 
-    await waitFor(() =>
-      expect(toastError).toHaveBeenCalledWith("No tienes permiso para recolectar órdenes."),
-    );
-    // No hubo transición: nada que revalidar y nada que confirmar en pantalla.
-    expect(refreshMock).not.toHaveBeenCalled();
+    const fila = await lecturaQueDice("No se pudo recolectar");
+    expect(within(fila).getByText("No tienes permiso para recolectar órdenes.")).toBeInTheDocument();
+    expect(within(fila).getByRole("button", { name: "Reintentar" })).toBeInTheDocument();
     expect(screen.queryByText(/recolectada correctamente/i)).toBeNull();
+    sinToasts();
   });
 
   it("R13: `unauthenticated` manda a iniciar sesión de nuevo (no dice que la guía esté mal)", async () => {
@@ -553,13 +573,10 @@ describe("RecoleccionModule — confirmar la recolección (R10/R11/R12/R13/R14/R
     renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
 
     await abrirEscaner(user);
-    await user.type(screen.getByRole("textbox"), "1001");
-    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
+    await teclear(user, "1001");
 
-    await waitFor(() =>
-      expect(toastError).toHaveBeenCalledWith("Tu sesión expiró. Inicia sesión de nuevo."),
-    );
-    expect(refreshMock).not.toHaveBeenCalled();
+    const fila = await lecturaQueDice("No se pudo recolectar");
+    expect(within(fila).getByText("Tu sesión expiró. Inicia sesión de nuevo.")).toBeInTheDocument();
   });
 
   it("R13: `validation_error` del SERVIDOR también dice que el código es inválido", async () => {
@@ -571,50 +588,188 @@ describe("RecoleccionModule — confirmar la recolección (R10/R11/R12/R13/R14/R
     renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
 
     await abrirEscaner(user);
-    await user.type(screen.getByRole("textbox"), "1001");
-    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
+    await teclear(user, "1001");
 
     // A diferencia del corte de R11, aquí el viaje al servidor SÍ ocurrió: el rechazo lo dio el
     // borde (zod) y el mensajero lee el mismo texto, sin jerga de validación.
     await waitFor(() => expect(recolectarMock).toHaveBeenCalledWith({ numGuia: 1001 }));
-    expect(toastError).toHaveBeenCalledWith("Código inválido.");
+    const fila = await lecturaQueDice("No se pudo recolectar");
+    expect(within(fila).getByText("Código inválido.")).toBeInTheDocument();
+  });
+});
+
+describe("RecoleccionModule — escaneo continuo (SLT-168: R595, R597, R598, R830-R833)", () => {
+  it("R595: tres lecturas seguidas (cámara y Enter) sin cerrar: tres llamadas en orden, el diálogo sigue y sin toasts; la repetida no se reenvía", async () => {
+    const user = userEvent.setup();
+    textoEscaneado = TEXTO_QR(1001);
+    renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
+
+    await abrirEscaner(user);
+    await user.click(screen.getByRole("button", { name: "Simular escaneo" }));
+    textoEscaneado = "1002";
+    await user.click(screen.getByRole("button", { name: "Simular escaneo" }));
+    await teclear(user, "1003", "1002");
+
+    await waitFor(() => expect(recolectarMock).toHaveBeenCalledTimes(3));
+    expect(recolectarMock.mock.calls).toEqual([
+      [{ numGuia: 1001 }],
+      [{ numGuia: 1002 }],
+      [{ numGuia: 1003 }],
+    ]);
+    await waitFor(() => {
+      expect(filas()).toHaveLength(4);
+      expect(within(filas()[0]).getByText("Ya recogida en tienda")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Simular escaneo" })).toBeInTheDocument();
+    sinToasts();
+  });
+
+  it("R597: `ok`, `ya_recolectada` y `no_encontrada` → «Recogidas en tienda» 1, «Repetidas» 1, «No encontradas» 1", async () => {
+    const user = userEvent.setup();
+    recolectarMock
+      .mockResolvedValueOnce({ status: "ok", ordenId: "o1", estado: "en_ruta_bodega_central" })
+      .mockResolvedValueOnce({ status: "ya_recolectada" })
+      .mockResolvedValueOnce({ status: "no_encontrada" });
+    renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
+
+    await abrirEscaner(user);
+    await teclear(user, "1001", "5001", "7777777");
+
+    await lecturaQueDice("No está entre tus órdenes");
+    expect(contador("Recogidas en tienda")).toBe("Recogidas en tienda1");
+    expect(contador("Repetidas")).toBe("Repetidas1");
+    expect(contador("No encontradas")).toBe("No encontradas1");
+  });
+
+  it("R598: dos recolectadas y cerrar: router.refresh una vez y ninguna antes de cerrar", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
+
+    await abrirEscaner(user);
+    await teclear(user, "1001", "1002");
+    await waitFor(() => expect(contador("Recogidas en tienda")).toBe("Recogidas en tienda2"));
+    expect(refreshMock).not.toHaveBeenCalled();
+
+    await cerrarEscaner(user);
+
+    await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
+  });
+
+  it("R598: un `ya_recolectada` solo también refresca una vez al cerrar", async () => {
+    const user = userEvent.setup();
+    recolectarMock.mockResolvedValue({ status: "ya_recolectada" });
+    renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
+
+    await abrirEscaner(user);
+    await teclear(user, "1001");
+    await lecturaQueDice("Ya recogida en tienda");
+    expect(refreshMock).not.toHaveBeenCalled();
+
+    await cerrarEscaner(user);
+
+    await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
+  });
+
+  it("R598: solo errores y cerrar: router.refresh no se llama", async () => {
+    const user = userEvent.setup();
+    recolectarMock.mockResolvedValue({ status: "forbidden" });
+    renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
+
+    await abrirEscaner(user);
+    await teclear(user, "1001");
+    await lecturaQueDice("No se pudo recolectar");
+
+    await cerrarEscaner(user);
+
     expect(refreshMock).not.toHaveBeenCalled();
   });
 
-  it("R15: la confirmación de la última guía PERMANECE tras el toast", async () => {
+  it("R830: con la acción de 1024 pendiente, la fila dice «Recolectando…»", async () => {
     const user = userEvent.setup();
-    renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
+    let soltar: () => void = () => {};
+    recolectarMock.mockImplementationOnce(
+      () =>
+        new Promise((res) => {
+          soltar = () => res({ status: "ok", ordenId: "o1", estado: "en_ruta_bodega_central" });
+        }),
+    );
+    renderModule({ porRecolectar: [makeOrden({ numGuia: 1024 })] });
 
     await abrirEscaner(user);
-    expect(screen.queryByText(/recolectada correctamente/i)).toBeNull();
+    await teclear(user, "1024");
 
-    await user.type(screen.getByRole("textbox"), "1001");
-    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
-
-    // En una tanda de decenas de paquetes el toast se va solo y el mensajero necesita ver
-    // que la anterior sí entró.
-    const exito = await screen.findByText(/recolectada correctamente/i);
-    expect(exito).toHaveTextContent("1001");
+    await lecturaQueDice("Recolectando…");
+    expect(screen.queryByText("Recibiendo…")).toBeNull();
+    soltar();
+    await lecturaQueDice("Recogida en tienda");
   });
 
-  it("R15: la confirmación sobrevive a cerrar y volver a abrir la tarjeta", async () => {
+  it("R831: 1024 dos veces → la segunda dice «Ya recogida en tienda», la action se llama una vez y suma a Repetidas", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: [makeOrden({ numGuia: 1024 })] });
+
+    await abrirEscaner(user);
+    await teclear(user, "1024", "1024");
+
+    await waitFor(() => {
+      expect(filas()).toHaveLength(2);
+      expect(within(filas()[1]).getByText("Recogida en tienda")).toBeInTheDocument();
+    });
+    expect(within(filas()[0]).getByText("Ya recogida en tienda")).toBeInTheDocument();
+    expect(recolectarMock).toHaveBeenCalledTimes(1);
+    expect(contador("Repetidas")).toBe("Repetidas1");
+  });
+
+  it("R832: destinatario y tienda de «Por recolectar» (ok), de «Recogidos en tienda hoy» (ya recolectada) y «—» fuera de las listas", async () => {
+    const user = userEvent.setup();
+    recolectarMock
+      .mockResolvedValueOnce({ status: "ok", ordenId: "o1", estado: "en_ruta_bodega_central" })
+      .mockResolvedValueOnce({ status: "ya_recolectada" })
+      .mockResolvedValueOnce({ status: "ok", ordenId: "o9", estado: "en_ruta_bodega_central" });
+    renderModule({
+      porRecolectar: [
+        makeOrden({
+          numGuia: 1001,
+          destinatario: "Ana Quesada Mora",
+          tiendaNombre: "Tienda Prueba Norte",
+        }),
+      ],
+      recolectadasHoy: [
+        makeRecolectada({
+          numGuia: 5001,
+          destinatario: "Beto Ruiz",
+          tiendaNombre: "Tienda Prueba Sur",
+        }),
+      ],
+    });
+
+    await abrirEscaner(user);
+    await teclear(user, "1001", "5001", "7777777");
+
+    await waitFor(() => expect(recolectarMock).toHaveBeenCalledTimes(3));
+    await lecturaQueDice("Recogida en tienda");
+    expect(within(filas()[2]).getByText(/^Ana Quesada Mora · Tienda Prueba Norte · /)).toBeInTheDocument();
+    expect(within(filas()[1]).getByText("Ya recogida en tienda")).toBeInTheDocument();
+    expect(within(filas()[1]).getByText(/^Beto Ruiz · Tienda Prueba Sur · /)).toBeInTheDocument();
+    expect(within(filas()[0]).getByText(/^— · — · /)).toBeInTheDocument();
+  });
+
+  it("R833: tras un éxito conserva título, nombre accesible y botón, sin la línea «recolectada correctamente»; un solo disparador", async () => {
     const user = userEvent.setup();
     renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
 
     await abrirEscaner(user);
-    await user.type(screen.getByRole("textbox"), "1001");
-    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
-    await screen.findByText(/recolectada correctamente/i);
+    await teclear(user, "1001");
+    await lecturaQueDice("Recogida en tienda");
 
-    // La guía confirmada la recuerda el MÓDULO, que vive por encima del modal: cerrar
-    // apaga la cámara, no el rastro de lo que el mensajero acaba de recolectar.
-    await user.click(screen.getByRole("button", { name: "Cerrar" }));
-    await waitFor(() => expect(escaner()).toBeNull());
-    await abrirEscaner(user);
-
-    expect(await screen.findByText(/recolectada correctamente/i)).toHaveTextContent(
-      "1001",
-    );
+    expect(escaner()).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toHaveTextContent("Recolectar en tienda");
+    expect(screen.getByRole("button", { name: "Confirmar recolección" })).toBeInTheDocument();
+    expect(screen.queryByText(/recolectada correctamente/)).toBeNull();
+    expect(
+      screen.getAllByRole("button", { name: "Escanear o escribir guía", hidden: true }),
+    ).toHaveLength(1);
   });
 });
 
@@ -898,21 +1053,23 @@ describe("RecoleccionModule — guía única por cámara o pistola (SLT-157)", (
     expect(recolectarMock).toHaveBeenNthCalledWith(2, { numGuia: 1024 });
   });
 
-  it("R566: lo que no es guía avisa «Código inválido.» por los dos caminos y no llama a la action", async () => {
+  it("R566: lo que no es guía es «Código inválido» por los dos caminos y no llama a la action", async () => {
     const user = userEvent.setup();
     textoEscaneado = "1024abc";
     renderModule({ porRecolectar: [makeOrden({ numGuia: 1024 })] });
 
     await abrirEscaner(user);
     await user.click(screen.getByRole("button", { name: "Simular escaneo" }));
-    await waitFor(() => expect(toastError).toHaveBeenCalledTimes(1));
-    expect(toastError).toHaveBeenLastCalledWith("Código inválido.");
 
-    // Antes, lo tecleado que no eran dígitos se descartaba EN SILENCIO.
+    // Antes, lo tecleado que no eran dígitos se descartaba EN SILENCIO. SLT-168: cada lectura es
+    // una fila «Código inválido».
     await user.type(screen.getByRole("textbox"), "1024abc");
     await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
-    await waitFor(() => expect(toastError).toHaveBeenCalledTimes(2));
-    expect(toastError).toHaveBeenLastCalledWith("Código inválido.");
+    await waitFor(() => {
+      expect(filas()).toHaveLength(2);
+      expect(within(filas()[0]).getByText("Código inválido")).toBeInTheDocument();
+    });
+    expect(within(filas()[1]).getByText("Código inválido")).toBeInTheDocument();
     expect(recolectarMock).not.toHaveBeenCalled();
   });
 });
@@ -1055,7 +1212,7 @@ describe("SLT-156 rebanada C — Recolección en el móvil (R500, R506, R516, R5
     ).toBeInTheDocument();
   });
 
-  it("R522: la guía confirmada en el escáner se recolecta con el mismo resultado y mensaje de hoy", async () => {
+  it("R522: la guía confirmada en el escáner se recolecta con el mismo resultado; SLT-168: la fila lo dice y refresca al cerrar", async () => {
     const user = userEvent.setup();
     renderModule({ porRecolectar: DOS_POR_RECOLECTAR });
 
@@ -1065,9 +1222,9 @@ describe("SLT-156 rebanada C — Recolección en el móvil (R500, R506, R516, R5
     await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
 
     await waitFor(() => expect(recolectarMock).toHaveBeenCalledWith({ numGuia: 2001 }));
-    expect(await screen.findByText(/recolectada/)).toHaveTextContent(
-      "Guía 2001 recolectada correctamente.",
-    );
-    expect(refreshMock).toHaveBeenCalled();
+    const fila = await lecturaQueDice("Recogida en tienda");
+    expect(within(fila).getByText(/^Ana Gómez · Tienda Norte · /)).toBeInTheDocument();
+    await cerrarEscaner(user);
+    await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
   });
 });

@@ -5,7 +5,11 @@ import userEvent from "@testing-library/user-event";
 
 import { EscanerModal } from "@/components/shared/EscanerModal";
 import { LecturasEscaneo, TarjetaEscaneoContinuo } from "@/components/shared/EscaneoContinuo";
-import type { DesenlaceRecepcion, FilaLectura } from "@/lib/utils/sesion-escaneo";
+import {
+  TEXTOS_RECOGIDA,
+  type DesenlaceRecepcion,
+  type FilaLectura,
+} from "@/lib/utils/sesion-escaneo";
 
 // SLT-159 «Escaneo continuo en recepciones y recogidas» — el diálogo continuo: la tarjeta de
 // SLT-158 en modo continuo + la sesión + una acción doble. Textos a mano.
@@ -296,5 +300,49 @@ describe("EscaneoContinuo — sin toasts, sesión y orden (R590, R591, R593)", (
     lista = screen.getByRole("log", { name: "Lecturas" });
     expect(precede(campo, camara)).toBe(true);
     expect(precede(camara, lista)).toBe(true);
+  });
+});
+
+// SLT-168 «Escaneo continuo en las recogidas del mensajero» — los textos por superficie.
+describe("EscaneoContinuo — textos por superficie (R597, R830, R834)", () => {
+  it("R834: sin `textos` pinta «Recibidas» y «Recibida», no el verbo de las recogidas", async () => {
+    const user = userEvent.setup();
+    const recibir = vi.fn(async (): Promise<DesenlaceRecepcion> => ({ tipo: "recibida" }));
+    render(dialogo(recibir));
+    await abrir(user);
+    await teclear(user, "1024");
+
+    await vi.waitFor(() => expect(within(filas()[0]).getByText("Recibida")).toBeInTheDocument());
+    expect(contador("Recibidas")).toBe("Recibidas1");
+    expect(screen.queryByText("Recogidas")).toBeNull();
+    expect(screen.queryByText("Recogida")).toBeNull();
+  });
+
+  it("R597/R830: con los textos de M1, «Recogiendo…», «Recogida» y el contador «Recogidas»", async () => {
+    const user = userEvent.setup();
+    let responder: (d: DesenlaceRecepcion) => void = () => {};
+    const recibir = vi.fn(
+      () => new Promise<DesenlaceRecepcion>((r) => { responder = r; }),
+    );
+    render(
+      <EscanerModal label="Recoger">
+        <TarjetaEscaneoContinuo
+          recibir={recibir}
+          titulo="Recoger paquete"
+          descripcion="Escanea o ingresa el número de guía"
+          ariaLabel="Recoger por número de guía o escaneo"
+          submitLabel="Recoger"
+          textos={TEXTOS_RECOGIDA}
+        />
+      </EscanerModal>,
+    );
+    await user.click(screen.getByRole("button", { name: "Recoger" }));
+    await teclear(user, "1024");
+
+    await vi.waitFor(() => expect(within(filas()[0]).getByText("Recogiendo…")).toBeInTheDocument());
+    await act(async () => responder({ tipo: "recibida" }));
+    expect(within(filas()[0]).getByText("Recogida")).toBeInTheDocument();
+    expect(contador("Recogidas")).toBe("Recogidas1");
+    expect(screen.queryByText("Recibidas")).toBeNull();
   });
 });
