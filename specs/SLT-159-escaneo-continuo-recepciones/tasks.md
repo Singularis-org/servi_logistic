@@ -36,7 +36,7 @@ mismo.
   superficies; R611 (diálogo) en `RecibirPaquetesEntrada.test.tsx` y `OrdenesPage.test.tsx`.
 - [x] **T6 [P] — C5 (depende de T3).** `cierre-confirmacion-fisica.tsx` pasa `continuo` a su tarjeta.
   *Hecho:* R588 (C5) en verde en `CierresAdminConfirmacionFisica.test.tsx`; sus casos en verde.
-- [ ] **T7 [P] — Verificar guía sigue suelta (depende de T3).** Sin cambio de producción; caso nuevo
+- [x] **T7 [P] — Verificar guía sigue suelta (depende de T3).** Sin cambio de producción; caso nuevo
   en `VerificarGuiaGate.test.tsx`. *Hecho:* R594 en verde.
 
 ## (b2) Página «Recibir paquetes» en escritorio
