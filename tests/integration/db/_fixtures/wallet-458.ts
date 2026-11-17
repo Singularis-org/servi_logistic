@@ -417,6 +417,7 @@ export function montarEstadoCuenta(s: Servicios459): EstadoCuentaService {
     new RechazoTiendaCobroAnulacionRepository(s.cliente),
     new OrigenLegibleService(new OrigenLegibleRepository(s.cliente), reglasPaisFijas()),
     busquedaPorGuiaDe(s.cliente), // FICHA 469: como `buildService()`
+    reglasPaisFijas(), // SLT-42: `buildService()` le pasa las reglas del pais; sin ellas `leer` lanza
   );
 }
 

@@ -42,11 +42,11 @@ import {
   clienteConTransaccionAnidada,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
   type TxDeTest,
 } from "../_postgres-real";
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { comoApp } from "@/tests/fabricas/organizaciones";
 
 /**
  * FEATURE 454 (T0.1) — EL ESCENARIO COMPARTIDO DE LA FASE 0.
@@ -101,12 +101,15 @@ const RETIRADOS = new Set<string>(ESTATUS_RETIRADOS_454);
 
 export interface Mundo {
   prisma: PrismaClient;
-  fks: { tiendaId: string; zonaId: string; provinciaId: string; cantonId: string };
+  // `tiendaId` y `zonaId` ya no salen de la base (SLT-177); quedan opcionales para los Mundo armados a mano.
+  fks: { tiendaId?: string; zonaId?: string; provinciaId: string; cantonId: string };
   tipoIdentificacionId: string;
   rolId: Map<string, string>;
   estatus: Map<string, string>;
   valorDeEstatus: Map<string, string>;
   centralZonaId: string;
+  /** SLT-177: `true` en el Mundo de `prepararMundo`: `crearEscenario` siembra la central en su tx. */
+  sembrarCentral?: boolean;
 }
 
 let secuencia = 0;
@@ -129,10 +132,15 @@ export function guiaUnica(): number {
 /** Carga el catalogo y las FKs. Falla ruidosamente si la base no esta sembrada. */
 export async function prepararMundo(): Promise<Mundo> {
   const prisma = crearPrismaDeTest();
-  const fks = await fksDeOrden(prisma);
-  if (fks === null) throw new Error("tabla `orden` vacia: corre `pnpm run db:seed`.");
-  const u = await prisma.usuario.findFirst({ select: { tipoIdentificacionId: true } });
-  if (u === null) throw new Error("hace falta al menos un usuario en la base.");
+  // SLT-177 (R737): del `beforeAll` solo se leen catalogos y geografia por su clave. La tienda y las
+  // zonas (central incluida) son datos de negocio: las crea `crearEscenario` en la tx de cada caso.
+  const canton = await prisma.canton.findFirst({
+    where: { nombre: "Cartago", provincia: { nombre: "Cartago" } },
+    select: { id: true, provinciaId: true },
+  });
+  if (canton === null) throw new Error("falta la geografia Cartago/Cartago: aplica las migraciones.");
+  const tipo = await prisma.tipoIdentificacion.findUnique({ where: { value: "cedula" }, select: { id: true } });
+  if (tipo === null) throw new Error("falta el tipo de identificacion «cedula»: aplica las migraciones.");
   const roles = await prisma.rol.findMany({ select: { id: true, value: true } });
   const rolId = new Map(roles.map((r) => [r.value as string, r.id]));
   for (const r of ["maestro", "admin", "mensajero", "adminTienda", "adminSatelite"]) {
@@ -145,20 +153,25 @@ export async function prepararMundo(): Promise<Mundo> {
     if (RETIRADOS.has(v)) continue; // m4: los siembra el escenario, si hacen falta
     if (!estatus.has(v)) throw new Error(`falta el estatus «${v}» en \`order_status\``);
   }
-  const central = await prisma.zona.findFirst({ where: { esCentral: true }, select: { id: true } });
-  if (central === null) {
-    throw new Error("la base no tiene zona central: corre `pnpm exec tsx scripts/seed-zonas.ts`.");
-  }
   return {
     prisma,
-    fks,
-    tipoIdentificacionId: u.tipoIdentificacionId,
+    fks: { provinciaId: canton.provinciaId, cantonId: canton.id },
+    tipoIdentificacionId: tipo.id,
     rolId,
     estatus,
     valorDeEstatus,
-    centralZonaId: central.id,
+    sembrarCentral: true,
+    get centralZonaId(): string {
+      if (centralActual454 === null) {
+        throw new Error("454: no hay zona central sembrada: se lee dentro de un escenario (crearEscenario)");
+      }
+      return centralActual454;
+    },
   };
 }
+
+/** SLT-177 (R737): la zona central del escenario en curso; la crea `crearEscenario` en su tx. */
+let centralActual454: string | null = null;
 
 const URLS: ISignedUrlProvider = {
   createSignedUrl: async (ruta: string) => ruta,
@@ -355,9 +368,14 @@ export async function crearEscenario(
           `el estatus retirado «${v}» no esta en el catalogo y un escenario COMPROMETIDO no lo puede sembrar`,
         );
       }
+      // SLT-177: el catalogo es de plataforma y `servi_app` no puede escribirlo; la fila de m4 se
+      // inserta con el rol del dueno y se vuelve al de la app si el escenario lo tenia.
+      const [{ rol }] = await tx.$queryRawUnsafe<{ rol: string }[]>(`SELECT current_setting('role') AS rol`);
+      if (rol === "servi_app") await tx.$executeRawUnsafe("RESET ROLE");
       await tx.$executeRaw`INSERT INTO "order_status" ("id", "value")
         SELECT gen_random_uuid()::text, ${v}
          WHERE NOT EXISTS (SELECT 1 FROM "order_status" WHERE "value" = ${v})`;
+      if (rol === "servi_app") await tx.$executeRawUnsafe(`SELECT set_config('role', 'servi_app', true)`);
       const fila = await tx.orderStatus.findUniqueOrThrow({ where: { value: v }, select: { id: true } });
       retiradosLocales.set(v, fila.id);
       valorRetiradoLocal.set(fila.id, v);
@@ -387,6 +405,18 @@ export async function crearEscenario(
   }
 
   const clave = claveUnica();
+  // SLT-177 (R737): con el Mundo de `prepararMundo`, la zona central es propia del escenario (una por
+  // empresa; la tx tiene la suya). Un Mundo armado a mano trae ya su central y no se toca.
+  if (mundo.sembrarCentral === true) {
+    const central = await tx.zona.create({
+      data: { sinpeNumero: "80000000", sinpeNombre: "Titular 454", nombre: `Central 454 ${clave}`, esCentral: true },
+      select: { id: true },
+    });
+    // Control positivo (R739): la central sembrada se lee de vuelta, exactamente una.
+    const centrales = await tx.zona.count({ where: { id: central.id, esCentral: true } });
+    if (centrales !== 1) throw new Error(`454: la zona central sembrada no esta en la base (${centrales})`);
+    centralActual454 = central.id;
+  }
   const zona = await tx.zona.create({
     data: { sinpeNumero: "80000000", sinpeNombre: "Titular 454", nombre: `Zona 454 ${clave}` },
     select: { id: true },
@@ -722,9 +752,27 @@ export async function crearEscenario(
 export type Escenario = Awaited<ReturnType<typeof crearEscenario>>;
 
 /** Corre `fn` sobre un escenario nuevo, en una transaccion que SIEMPRE se revierte. */
-export function conEscenario<T>(mundo: Mundo, fn: (e: Escenario) => Promise<T>): Promise<T> {
+/**
+ * `opciones.rolDeLaApp` (por defecto `true`): el escenario corre como `servi_app` con RLS. Lo apagan
+ * solo los tests de migracion que hacen DDL o escriben el catalogo dentro del escenario (eso es del
+ * dueno de las tablas); esos no llaman a lecturas globales del codigo bajo test.
+ */
+export function conEscenario<T>(
+  mundo: Mundo,
+  fn: (e: Escenario) => Promise<T>,
+  opciones: { rolDeLaApp?: boolean } = {},
+): Promise<T> {
   return enTransaccionRevertida(mundo.prisma, async (tx) => {
     await serializarEscriturasReales(tx);
+    // SLT-177: el escenario corre con el rol de la app (`servi_app`, sin BYPASSRLS) y la empresa de
+    // la tx, como en produccion. Sin esto el `tx` es el del dueno de las tablas y una lectura global
+    // del codigo bajo test (p. ej. `ZonaRepository.findCentralZonaId`, `findFirst({ esCentral })`)
+    // devolvia la central de OTRA empresa en una base con datos: la aprobacion mandaba a satelite.
+    const [{ org }] = await tx.$queryRawUnsafe<{ org: string | null }[]>(
+      `SELECT current_setting('app.organizacion_id', true) AS org`,
+    );
+    if (!org) throw new Error("454: la transaccion del escenario no tiene empresa fijada");
+    if (opciones.rolDeLaApp !== false) await comoApp(tx, org);
     const cliente = clienteConTransaccionAnidada(tx);
     const e = await crearEscenario(mundo, tx, cliente);
     return fn(e);

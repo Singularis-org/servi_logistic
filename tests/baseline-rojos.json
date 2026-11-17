@@ -45,7 +45,12 @@
     "y sus hermanas `obtenerZona`/`obtenerUsuario` SI estan enganchadas en sus modulos, asi que no",
     "era un patron de CRUD sin UI: era la unica huerfana real. Se retiro la Server Action junto con",
     "`TarifaService.obtener`, `ITarifaService.obtener` y sus tests dedicados; `findById` del",
-    "repositorio se queda porque lo siguen usando `actualizar`/`borrar`."
+    "repositorio se queda porque lo siguen usando `actualizar`/`borrar`.",
+    "",
+    "PODA DEL 2026-11-16 (SLT-177): las 239 entradas «La retira SL-31» se midieron en el run 43973243440 de CI",
+    "(0 pasaban, 0 verdes sin datos, 227 base vacia, 12 otra causa: progress/medicion_SLT-177.md). Salen",
+    "91 archivos que el lote de SLT-177 siembra con datos propios y quedan verdes con 0 saltados; las",
+    "que se quedan llevan la causa medida y la ficha SLT-178..SLT-187 o SLT-195 que las retira."
   ],
   "archivos": {
     "tests/unit/guards/dependencias-declaradas-presentes.guardia.test.ts": {
@@ -53,959 +58,591 @@
       "desde": "2026-10-21"
     },
     "tests/integration/actions/analitica-financiera-action.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/actions/analitica-financiera-action.test.ts:283 al leer una fila de negocio que la base migrada no trae: AssertionError: expected null not to be null. La retira SLT-182 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/repositories/chat-media-autorizada.int.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/repositories/chat-media-autorizada.int.test.ts:159 al leer una fila de negocio que la base migrada no trae: Error: La base de pruebas no tiene catalogos de geografia/estatus sembrados: sin ellos no se puede crear la orden propia del test. La retira SLT-184 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/repositories/chat-media-historico.int.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/repositories/chat-media-historico.int.test.ts:168 al leer una fila de negocio que la base migrada no trae: Error: La base de pruebas no tiene catalogos de geografia/estatus sembrados: sin ellos no se puede crear la orden propia del test. La retira SLT-184 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/repositories/conteo-productos.int.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/repositories/conteo-productos.int.test.ts:263 al leer una fila de negocio que la base migrada no trae: Error: La base de pruebas no tiene catalogos de geografia/estatus sembrados: sin ellos no se puede crear la orden propia del test.. La retira SLT-184 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/repositories/dinero-productos.int.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/repositories/dinero-productos.int.test.ts:790 al leer una fila de negocio que la base migrada no trae: Error: sin 'zona' sembrada no se puede crear el cierre del test. La retira SLT-184 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/repositories/financiera-cubo-temporal.integration.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/repositories/financiera-cubo-temporal.integration.test.ts:309 al leer una fila de negocio que la base migrada no trae: Error: no hay ningun usuario en la base: la FK no se puede cumplir. La retira SLT-182 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/repositories/historico-conversaciones.int.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): DriverAdapterError: referencia a otra empresa: orden.zona_id -> zona; 'tx.zona.findFirst' (:636) devolvio una zona de OTRA empresa; el trigger misma-empresa (SL017) rechaza 'orden.zona_id'. La retira SLT-184.",
       "desde": "2026-10-22"
     },
     "tests/integration/repositories/orden-nota.int.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/repositories/orden-nota.int.test.ts:202 al leer una fila de negocio que la base migrada no trae: Error: La base de pruebas no tiene catalogos de geografia/estatus sembrados: sin ellos no se puede crear la orden propia del test. La retira SLT-184 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/477-aprobacion-tras-correccion-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/477-deshacer-cierre-rechazado-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/477-ordenes-en-correccion-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/477-regestionar-sin-cierre-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/477-resolicitud-rechazado-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/484-puntero-aprobacion-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/484-puntero-corte-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/484-puntero-incidente-blst765.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/484-puntero-traspaso-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/484-puntero-vigente-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: tabla 'orden' vacia: corre 'pnpm run db:seed'. en tests/integration/db/454/_escenario.ts:133. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: falla una asercion de dinero o estado del cierre de satelite: expected [] to deeply equal [ cod_recaudado|4000.00, …(1) ]. La retira SLT-195.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/486-evidencias-cierres-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/486-evidencias-cierres-sql-real.test.ts:84 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar el corpus. Corre 'pnpm run db:seed' antes de. La retira SLT-180 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/ajuste-caja-anulacion-461.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: la action `registrarMovimientoManualAction` corre sin empresa: `EmpresaNoResuelta: Sin empresa en contexto para WalletMovimiento.createMany` -> INTERNAL. La retira SLT-185.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/analitica-anulacion-rechazo-458.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/analytics-daily-job.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): Error: el catalogo local no tiene el estatus \"el estado de fulfillment retirado por la 155\"; usa el estatus 'el estado de fulfillment retirado por la 155', retirado del catalogo por la 155: una base nueva no lo tiene (_semilla-rollup.ts:85). La retira SLT-186.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/api-key-eliminabilidad.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/api-key-eliminabilidad.test.ts:51 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' (y 'pnpm exec tsx. La retira SLT-180 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/api-key-eliminar-fk-inesperada.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/api-key-eliminar-fk-inesperada.test.ts:54 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero 'orden' esta vacia: corre 'pnpm run db:seed' antes.. La retira SLT-180 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/api-key-eliminar-tienda-destino.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/api-key-eliminar-tienda-destino.test.ts:48 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero 'orden' esta vacia: corre 'pnpm run db:seed' antes.. La retira SLT-180 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/api-key-eliminar.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/api-key-eliminar.test.ts:54 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero no hay ningun usuario con rol 'maestro': esta suite necesita crear su usuario en el test.. La retira SLT-183 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/aporte-capital.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): Error: aporte-capital: AppErrorCode inesperado INTERNAL; la action corre sin empresa en contexto: 'EmpresaNoResuelta: Sin empresa en contexto para WalletMovimiento.aggregate' (lib/db/extension-empresa.ts:206, stderr del log) -> AppErrorCode INTERNAL en lib/actions/aporte-capital.ts:70. La retira SLT-185.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/asistente-uso-diario.int.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/asistente-uso-diario.int.test.ts:55 al leer una fila de negocio que la base migrada no trae: AssertionError: la base no tiene ni un usuario: no hay FK que satisfacer: expected null not to be null. La retira SLT-183 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/aviso-agregado-repository.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/aviso-agregado-repository.test.ts:153 al leer una fila de negocio que la base migrada no trae: AssertionError: la tabla 'orden' esta vacia: el caso no se puede medir: expected null not to be null. La retira SLT-181 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/busqueda-comportamiento.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/busqueda-comportamiento.test.ts:207 al leer una fila de negocio que la base migrada no trae: AssertionError: expected null not to be null. La retira SLT-181 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/busqueda-normalizacion-paridad.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/busqueda-por-guia-469.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/busqueda-normalizacion-paridad.test.ts:233 al leer una fila de negocio que la base migrada no trae: AssertionError: no hay ninguna fila en 'orden' de la que copiar las FKs: siembra la base local: expected null not to be null. La retira SLT-181 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/busqueda-sincronizacion-columna.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/busqueda-sincronizacion-columna.test.ts:47 al leer una fila de negocio que la base migrada no trae: AssertionError: expected null not to be null. La retira SLT-181 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/busqueda-usa-indice.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/busqueda-usa-indice.test.ts:186 al leer una fila de negocio que la base migrada no trae: AssertionError: expected null not to be null. La retira SLT-181 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/caja-caracterizacion-459.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/caja-invariante-tiendas.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/chat-entrante-telefono-cr.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/chat-entrante-telefono-cr.test.ts:154 al leer una fila de negocio que la base migrada no trae: AssertionError: expected null not to be null. La retira SLT-184 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/cierre-aprobacion-libera-solo-lo-suyo.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/cierre-aprobacion-libera-solo-lo-suyo.test.ts:65 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' antes de esta suit. La retira SLT-178 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/cierre-aprobar-el-mas-viejo-desbloquea.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): DriverAdapterError: referencia a otra empresa: cierre_dia.destino_zona_id -> zona; 'fksDeOrden' (:122) devolvio una orden de OTRA empresa; el trigger misma-empresa (SL017) rechaza 'cierre_dia.destino_zona_id'. La retira SLT-178.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/cierre-bloqueo-nv-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/cierre-bloqueo-nv-sql-real.test.ts:62 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' (y las semillas de. La retira SLT-178 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/cierre-bodega-conciliacion.int.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/cierre-bodega-conciliacion.int.test.ts:178 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'usuario' esta vacia: sin FK no se puede sembrar un cierre_bodega. Corre 'pnpm run db:seed'. La retira SLT-182 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/cierre-bodega-resumen-pendientes.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/cierre-bodega-resumen-pendientes.test.ts:137 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'usuario' esta vacia: sin FK no se puede sembrar un cierre_dia. Corre 'pnpm run db:seed' ant. La retira SLT-182 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/cierre-descarga-fechas-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): DriverAdapterError: referencia a otra empresa: cierre_dia.destino_zona_id -> zona; 'fksDeOrden' (:77) devolvio una orden de OTRA empresa; el trigger misma-empresa (SL017) rechaza 'cierre_dia.destino_zona_id'. La retira SLT-178.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/cierre-descarga-intentos-entrega-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/cierre-descarga-intentos-entrega-sql-real.test.ts:150 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' (y las semillas de. La retira SLT-178 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/cierre-excluye-gestiones-de-escritorio.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/cierre-excluye-gestiones-de-escritorio.test.ts:91 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' antes de esta suit. La retira SLT-178 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/cierre-rechazado-aviso-dedupe.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/cierre-rechazado-aviso-dedupe.test.ts:65 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' antes de esta suit. La retira SLT-178 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/cierre-rechazado-jornada-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/cierre-rechazado-jornada-sql-real.test.ts:65 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' antes de esta suit. La retira SLT-178 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/cierre-rechazo-tienda-aprobacion.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/cierre-rechazo-tienda-aprobacion.test.ts:762 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: corre 'pnpm run db:seed'.. La retira SLT-178 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/cierre-rechazo-tienda-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/cierre-rechazo-tienda-sql-real.test.ts:78 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' antes de esta suit. La retira SLT-178 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/cierre-rechazo-tienda-totales.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/cierre-rechazo-tienda-totales.test.ts (su beforeAll) al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: corre 'pnpm run db:seed'.. La retira SLT-178 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/cierre-segundo-vincula-solo-lo-suyo.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/cierre-segundo-vincula-solo-lo-suyo.test.ts:60 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' antes de esta suit. La retira SLT-178 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/cierre-sin-gestion-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/cierre-sin-gestion-sql-real.test.ts:97 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar el corpus. Corre 'pnpm run db:seed' (y las s. La retira SLT-178 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/cierre-sin-gestion-tope-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/cierre-sin-gestion-tope-sql-real.test.ts:166 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar el corpus. Corre 'pnpm run db:seed' (y las s. La retira SLT-178 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/cierres-admin-retornables-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/cierres-admin-retornables-sql-real.test.ts:88 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar el corpus. Corre 'pnpm run db:seed' (y las s. La retira SLT-178 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/cierres-filtro-estado-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/cierres-filtro-estado-sql-real.test.ts:84 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' (y las semillas de. La retira SLT-178 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/cobertura-repository.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/cobertura-repository.test.ts:76 al leer una fila de negocio que la base migrada no trae: Error: no hay ningun usuario adminTienda en esta base: corre 'pnpm run db:seed'. La retira SLT-183 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/como-quedo.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/confirmacion-fisica-migration.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/confirmacion-fisica-migration.test.ts:289 al leer una fila de negocio que la base migrada no trae: AssertionError: esta base no tiene gestiones que comprobar: expected 0 to be greater than 0. La retira SLT-184 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/consolidacion-concurrente.int.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/consolidacion-concurrente.int.test.ts:84 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'usuario' esta vacia: sin FK no se puede sembrar un cierre_dia. Corre 'pnpm run db:seed' ant. La retira SLT-182 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/correccion-dia-reparto-efectos.int.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/correccion-dia-reparto-efectos.int.test.ts:89 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' (y las semillas de. La retira SLT-179 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/correccion-dia-reparto-historial.int.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/correccion-dia-reparto-historial.int.test.ts:67 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' (y las semillas de. La retira SLT-179 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/correccion-dia-reparto.int.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/correccion-dia-reparto.int.test.ts:69 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' (y las semillas de. La retira SLT-179 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/correccion-fecha-reprogramacion.int.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/correccion-fecha-reprogramacion.int.test.ts:111 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar el escenario. Corre 'pnpm run db:seed' (y la. La retira SLT-179 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/correccion-resultado-gestion.int.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/correccion-resultado-gestion.int.test.ts:74 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar el corpus. Corre 'pnpm run db:seed' (y las s. La retira SLT-179 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/corregir-conciliacion.int.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/corregir-conciliacion.int.test.ts:73 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero 'usuario' tiene menos de 2 filas: R2 necesita a quien marco y a quien corrige. Corre 'pnpm run db:see. La retira SLT-182 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/corregir-datos-cliente.chat.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/corregir-datos-cliente.chat.test.ts:88 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' (y las semillas de. La retira SLT-184 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/corregir-datos-cliente.repo.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/corregir-datos-cliente.repo.test.ts:90 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' (y las semillas de. La retira SLT-179 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/corregir-ubicacion-geocode.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/corregir-ubicacion-geocode.test.ts:116 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' (y las semillas de. La retira SLT-179 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/corte-diario-segundo-cierre-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/corte-diario-segundo-cierre-sql-real.test.ts:102 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar el corpus. Corre 'pnpm run db:seed' (y las s. La retira SLT-178 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/costo-y-zona-api-415.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/costo-y-zona-api-415.test.ts:135 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' antes de esta suit. La retira SLT-181 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/deshacer-asignacion-zona-satelite.int.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/deshacer-asignacion-zona-satelite.int.test.ts:92 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' (y 'pnpm exec tsx. La retira SLT-179 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/deshacer-gestion-conserva-reserva.int.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/detalle-en-lote-464.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/detalle-movimiento-cierre-postgres.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/deshacer-gestion-conserva-reserva.int.test.ts:83 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' (y las semillas de. La retira SLT-179 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/efecto-movimiento-predice.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/eliminar-orden-api-frontera-tienda.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/eliminar-orden-api-frontera-tienda.test.ts:54 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' antes de esta suit. La retira SLT-180 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/eliminar-orden-pantalla-frontera-tienda.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/eliminar-orden-pantalla-frontera-tienda.test.ts:75 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' antes de esta suit. La retira SLT-180 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/emisor-relaciones-anidadas.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/estado-cuenta-busqueda-orden-463.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/estado-cuenta-cierre-pagos-172r52.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/estado-cuenta-pago-tienda-172r53.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/estado-cuenta-saldo-corrido.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/estado-cuenta-servidor-458d.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/emisor-relaciones-anidadas.test.ts:116 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar la gestion que este test necesita. Corre 'pn. La retira SLT-180 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/gasto-fijo-cobro-aprobacion.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/gasto-fijo-cobro-aprobacion.test.ts:129 al leer una fila de negocio que la base migrada no trae: Error: La base tiene 0 usuarios y hacen falta 1: esta suite necesita crear sus usuarios en el test. Sin usuarios no se pue. La retira SLT-182 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/gasto-fijo-cobro-idempotencia.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/gasto-fijo-cobro-idempotencia.test.ts:519 al leer una fila de negocio que la base migrada no trae: Error: La base no tiene ni un 'usuario': esta suite necesita crear su usuario en el test. Sin usuario no se puede ejercer. La retira SLT-182 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/gasto-fijo-cobro-migration.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/gasto-fijo-cobro-migration.test.ts:71 al leer una fila de negocio que la base migrada no trae: Error: La base no tiene ni un 'usuario': esta suite necesita crear su usuario en el test. Sin usuario no se puede ejercer. La retira SLT-182 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/geografia-cascada-reversible.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/geografia-cascada-reversible.test.ts:59 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero 'usuario' esta vacia: sin actor no se puede ejercer el registro de acciones que acompaña al cambio de. La retira SLT-183 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/geografia-historico-intacto.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/geografia-historico-intacto.test.ts:54 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero 'orden' esta vacia: sin una fila de la que tomar las FK (estatus, tienda, zona) no se puede sembrar l. La retira SLT-184 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/geografia-ordenes-sin-entregar.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/geografia-ordenes-sin-entregar.test.ts:59 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero 'orden' esta vacia: sin una fila de la que tomar 'tienda_id' y 'zona_id' no se puede sembrar el corpu. La retira SLT-184 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/geografia-registro-accion.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/geografia-registro-accion.test.ts:80 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero 'usuario' esta vacia: sin actor no se puede comprobar el congelado de nombre y rol, que es la mitad d. La retira SLT-183 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/geografia-renombrado.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/geografia-renombrado.test.ts:80 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero 'usuario' esta vacia: sin actor no se puede comprobar el congelado de nombre y rol de la fila del reg. La retira SLT-183 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/gestion-desde-ayuda-dia-reserva.int.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/gestion-desde-ayuda-dia-reserva.int.test.ts:93 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' antes de esta suit. La retira SLT-179 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/gestiones-detalle-api-405.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/gestiones-detalle-api-405.test.ts:136 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' antes de esta suit. La retira SLT-179 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/habilitacion-api-migration.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/habilitacion-api-migration.test.ts:588 al leer una fila de negocio que la base migrada no trae: Error: La base de pruebas no tiene catalogos de geografia/estatus sembrados: sin ellos no se puede crear la orden propia del test. La retira SLT-184 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/historial-accion-atomicidad.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/historial-accion-atomicidad.test.ts:107 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' (y 'pnpm exec tsx. La retira SLT-180 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/historial-accion-lectura.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/historial-accion-lectura.test.ts:495 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' antes de esta suit. La retira SLT-180 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/historial-accion-migration.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): AssertionError: expected [ Array(1) ] to deeply equal []; R8 espera 0 policies en 'historial_accion' y hay 1 (expected [ Array(1) ] to deeply equal [], :90): la RLS por empresa de SL-17 anadio policies. La retira SLT-187.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/historial-accion-q1-ubicacion.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/informe-transito-catalogo-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/informe-transito-hitos.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/informe-transito-parados.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/informe-transito-seleccion.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/informe-transito-zonas.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/kardex-cuentas-468.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/historial-accion-q1-ubicacion.test.ts:79 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' antes de esta suit. La retira SLT-180 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/liberacion-al-aprobar-cierre-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/liberacion-al-aprobar-cierre-real.test.ts:115 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar el corpus. Corre 'pnpm run db:seed' (y las s. La retira SLT-181 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/liberacion-reprogramada-cierre-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/liberacion-reprogramada-cierre-real.test.ts:107 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar el corpus. Corre 'pnpm run db:seed' (y las s. La retira SLT-181 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/libro-caja-a-quien.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/libro-caja-busqueda-orden-463.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/libro-caja-filtro-a-quien.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/libro-caja-revision-458c.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/libro-caja-revision-458e.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/libro-kardex-468.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/liquidacion-fechas-cr-461.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/marca-conciliacion.int.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/marca-conciliacion.int.test.ts:68 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'usuario' esta vacia: sin FK no se puede sembrar un cierre_bodega. Corre 'pnpm run db:seed'. La retira SLT-182 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/mi-wallet-cierres-alcance.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/mi-wallet-resumen-458d.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/mi-wallet-cierres-alcance.test.ts:49 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero no hay ningun usuario: falta el catalogo (rol / tipo de identificacion) que las FK de 'usuario' exige. La retira SLT-182 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/notificacion-bloqueo-otro-cierre-avisa.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/notificacion-bloqueo-otro-cierre-avisa.test.ts:62 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' antes de esta suit. La retira SLT-180 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/notificacion-evento-cierre-rechazado-migration.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/notificacion-evento-cierre-rechazado-migration.test.ts:478 al leer una fila de negocio que la base migrada no trae: PrismaClientKnownRequestError. La retira SLT-183 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/notificacion-evento-geocodificacion-caida-migration.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/notificacion-evento-geocodificacion-caida-migration.test.ts:427 al leer una fila de negocio que la base migrada no trae: AssertionError: no hay ningún usuario en la base: el caso no se puede medir: expected +0 to be 1 // Object.is equality. La retira SLT-183 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/notificacion-evento-reparto-manana-migration.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/notificacion-evento-reparto-manana-migration.test.ts:510 al leer una fila de negocio que la base migrada no trae: PrismaClientKnownRequestError. La retira SLT-183 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/notificacion-evento-traspaso-migration.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/notificacion-evento-traspaso-migration.test.ts:475 al leer una fila de negocio que la base migrada no trae: PrismaClientKnownRequestError. La retira SLT-183 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/novedades-sin-gestionar-aviso-dedupe.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/novedades-sin-gestionar-aviso-dedupe.test.ts:111 al leer una fila de negocio que la base migrada no trae: AssertionError: la tabla 'orden' está vacía: el caso no se puede medir: expected null not to be null. La retira SLT-179 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/orden-eliminada-actor-admin.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/orden-eliminada-actor-admin.test.ts:64 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' (y 'pnpm exec tsx. La retira SLT-180 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/orden-mensajero-meta-drop-nota-migration.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/orden-mensajero-meta-drop-nota-migration.test.ts:407 al leer una fila de negocio que la base migrada no trae: Error: La base de pruebas no tiene catalogos de geografia/estatus sembrados: sin ellos no se puede crear la orden propia del test.. La retira SLT-184 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/orden-nota-migration.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/orden-nota-migration.test.ts:406 al leer una fila de negocio que la base migrada no trae: Error: La base de pruebas no tiene catalogos de geografia/estatus sembrados: sin ellos no se puede crear la orden propia del test. La retira SLT-184 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/orden-remision-borrada-libera-numero.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/orden-remision-borrada-libera-numero.test.ts:72 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar el caso. Corre 'pnpm run db:seed' (y las sem. La retira SLT-180 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/orden-traspaso-migration.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/picking-ordenes-en-preparacion.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/orden-traspaso-migration.test.ts:211 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar la fila con la que se miden el CHECK y los R. La retira SLT-180 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/picking-resumen-tiendas.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: 476: la base no tiene ninguna zona en tests/integration/db/_picking-476.ts:35. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: la action `listarTiendasPicking` lee la empresa fuera de la transaccion del test: `EmpresaNoResuelta: Sin empresa en contexto para Pais.zonaHoraria`. La retira SLT-185.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/postulacion-recurso-migration.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): AssertionError: expected 1 to be +0 // Object.is equality; R22 espera 0 policies en 'postulacion_recurso' y hay 1 (expected 1 to be +0, :261): la RLS por empresa de SL-17 anadio policies. La retira SLT-187.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/premio-ranking-devengo-migration.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/premio-ranking-devengo-migration.test.ts:447 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero no hay ningun usuario 'mensajero': sin catalogo no se puede sembrar el mensajero de prueba. Esta suit. La retira SLT-182 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/premio-ranking-idempotencia.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error DriverAdapterError: referencia a otra empresa: cierre_dia.destino_zona_id -> zona. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: 16 de 17 casos verdes con siembra propia; el caso 293/T2.5 llama a la action real `listarCierresAdmin` sin empresa (`EmpresaNoResuelta` en CierreDia.findMany) y responde unauthenticated. La retira SLT-185.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/push-canal-restricciones.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/push-canal-restricciones.test.ts:77 al leer una fila de negocio que la base migrada no trae: AssertionError: la tabla 'orden' esta vacia: el caso no se puede medir: expected null not to be null. La retira SLT-181 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/push-destinatarios-equivalencia.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/push-destinatarios-equivalencia.test.ts:166 al leer una fila de negocio que la base migrada no trae: AssertionError: la tabla 'orden' esta vacia: el caso no se puede medir: expected null not to be null. La retira SLT-181 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/ranking-snapshot-migration.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/ranking-snapshot-migration.test.ts:803 al leer una fila de negocio que la base migrada no trae: Error: La base de pruebas no tiene dos usuarios en 'public.usuario': sin ellos la FK 'ranking_snapshot_fila_mensajero_id_fkey' no. La retira SLT-182 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/rechazo-tienda-cobro.int.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/rechazo-tienda-cobro.int.test.ts:62 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' antes de esta suit. La retira SLT-181 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/recoger-lote-dia-reserva.int.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/recoger-lote-dia-reserva.int.test.ts:88 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar el corpus. Corre 'pnpm run db:seed' (y las s. La retira SLT-179 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/reparto-manana-aviso-dedupe.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/reparto-manana-aviso-dedupe.test.ts:59 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero hacen falta al menos DOS usuarios en la base. Corre 'pnpm run db:seed' antes de esta suite.. La retira SLT-183 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/reparto-manana-repository.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/saldos-tiendas-busqueda-463.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/reparto-manana-repository.test.ts:147 al leer una fila de negocio que la base migrada no trae: AssertionError: la tabla 'orden' está vacía: el caso no se puede medir: expected null not to be null. La retira SLT-179 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/satelite-bodega-alcance-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): Error: el catalogo local no tiene el estatus ayuda_tienda; usa el estatus 'ayuda_tienda', retirado del catalogo por la 454 ('ORDER_STATUS_RETIRADOS'): una base nueva no lo tiene (:178). La retira SLT-186.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/tarifa-zona-borrado-fk-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/tarifa-zona-borrado-fk-real.test.ts:83 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero 'orden' esta vacia: corre 'pnpm run db:seed' antes.. La retira SLT-180 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/traspaso-mensajero.int.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/traspaso-mensajero.int.test.ts:72 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' (y las semillas de. La retira SLT-179 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/usuario-preferencia.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/usuario-preferencia.test.ts:72 al leer una fila de negocio que la base migrada no trae: AssertionError: la tabla 'orden' esta vacia: el caso no se puede medir: expected null not to be null. La retira SLT-181 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/vista-filtro-migration.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): AssertionError: 20261022130100_organizacion_id_en_negocio fue tocado: expected '-- DOWN (SL-17 M2) — revierte; '20261022130100_organizacion_id_en_negocio/down.sql' contiene 'vista_filtro' y el test exige que ningun down.sql anterior lo nombre (:159). La retira SLT-187.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/vista-filtro.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/vista-filtro.test.ts:93 al leer una fila de negocio que la base migrada no trae: AssertionError: la tabla 'usuario' esta vacia: estos casos no se pueden medir: expected null not to be null. La retira SLT-183 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/wallet-458-migration.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): AssertionError: expected [ 'egreso_reverso_fulfillment', …(1) ] to deeply equal [ …(2) ]; el orden de etiquetas de 'wallet_movimiento_categoria' ya no termina en los dos valores de la 458 (deep equal, :101): migraciones posteriores anadieron valores. La retira SLT-187.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/wallet-461-idempotencia-clave.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: R67 espera los indices unicos de `clave_idempotencia` sin empresa y hoy son `(organizacion_id, clave_idempotencia)` (SL-17). La retira SLT-187.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/wallet-anulacion-458.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/wallet-anulacion-concurrencia.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/wallet-caracterizacion-458.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/wallet-anulacion-concurrencia.test.ts:40 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: corre 'pnpm run db:seed'. La retira SLT-181 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/wallet-cierres-selector.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/wallet-cierres-selector.test.ts:81 al leer una fila de negocio que la base migrada no trae: PrismaClientKnownRequestError. La retira SLT-184 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/wallet-comprobante-alcance.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/wallet-documento-comprobante-458.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/wallet-etiqueta-historial-458.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/wallet-etiqueta-historial-458.test.ts:103 al leer una fila de negocio que la base migrada no trae: Error: base sin sembrar: falta una zona. La retira SLT-184 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/wallet-fecha-elegida.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/wallet-fecha-elegida.test.ts:64 al leer una fila de negocio que la base migrada no trae: Error: la base de desarrollo no tiene ningun usuario y 'registrado_por' es una FK: sembrá al menos uno antes de correr esta suite. La retira SLT-182 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/wallet-origen-legible.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/wallet-origen-legible.test.ts:52 al leer una fila de negocio que la base migrada no trae: Error: base sin sembrar: faltan zona u orden. La retira SLT-184 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/wallet-registro-comprobante-458.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/wallet-tienda-cobro.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/wallet-tienda-cobro.test.ts:79 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero faltan el maestro o los catalogos 'rol.adminTienda' / 'rol.mensajero' / 'cedula': corre 'pnpm run db. La retira SLT-182 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/webhook-evidencias-url-resuelve-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/webhook-evidencias-url-resuelve-sql-real.test.ts:94 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar el caso. Corre 'pnpm run db:seed' (y las sem. La retira SLT-181 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/webhook-suscripcion-circuito-migracion.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/whatsapp-envio-defaults.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/whatsapp-envio-ejecucion-admintienda.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada). Nota (SLT-83, PR #79): mismo helper `usuarioModelo` que sus hermanos de la 474; en dev pasaba solo por el orden de los archivos entre shards (otro archivo dejaba un usuario visible). Evidencia en progress/impl_SLT-83.md > Rojos de CI (PR #79).",
-      "desde": "2026-11-05"
-    },
-    "tests/integration/db/whatsapp-envio-entrega-estado-webhook.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/whatsapp-envio-entrega-reclamo.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/whatsapp-envio-historial.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/webhook-suscripcion-circuito-migracion.test.ts:220 al leer una fila de negocio que la base migrada no trae: AssertionError: no hay ni un 'usuario' en la base: el caso no midio nada: expected null not to be null. La retira SLT-183 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/whatsapp-envio-idempotencia-programado.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/whatsapp-envio-prueba-limite.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/whatsapp-envio-resolver-destinatarios.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/aplicacion-al-aprobar-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/ayuda-abierta-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/ayuda-evento-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/carga-mensajero-pendiente-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/cierre-bodega-sf001-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/correccion-ayuda-abierta-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/correccion-ramas-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/corte-excluye-pendientes-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/deshacer-ramas-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/devolucion-rechazadas-seleccion-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/gestion-pendiente-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/intentos-segunda-via-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/novedades-predicado-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/whatsapp-envio-idempotencia-programado.test.ts:31 al leer una fila de negocio que la base migrada no trae: Error: 474: hacen falta dos usuarios en la base de test. La retira SLT-183 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/454/orden-evento-migration.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/rastreo-pendiente-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: tabla 'orden' vacia: corre 'pnpm run db:seed'. en tests/integration/db/454/_escenario.ts:133. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: la lista de columnas de `orden_evento` tiene una mas que la esperada (expected [ actor_rol, …(12) ] to deeply equal [ actor_rol, …(11) ]). La retira SLT-187.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/454/registro-gestion-concurrencia-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: tabla 'orden' vacia: corre 'pnpm run db:seed'. en tests/integration/db/454/_escenario.ts:133. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario CONFIRMADO (`sembrarComprometido`) escribe sin empresa: `zona.create` viola `organizacion_id NOT NULL` (SL-17). La retira SLT-185.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/454/registro-gestion-sin-transicion-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/retiro-estados-migration.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: tabla 'orden' vacia: corre 'pnpm run db:seed'. en tests/integration/db/454/_escenario.ts:133. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: falla una asercion de dinero o estado del cierre de satelite: expected +0 to be 1. La retira SLT-195.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/454/senales-gestion-lectores-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/webhook-evento-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: tabla 'orden' vacia: corre 'pnpm run db:seed'. en tests/integration/db/454/_escenario.ts:133. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario CONFIRMADO (`sembrarComprometido`) escribe sin empresa: `zona.create` viola `organizacion_id NOT NULL` (SL-17). La retira SLT-185.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/419/confirmar-entrega-lote-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/419/confirmar-entrega-sin-dinero-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/419/confirmar-entrega-webhook-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/462/reprogramadas-retenidas-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/455/interruptor-codigos.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/455/migracion.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/455/rastreo-retirado-y-pendiente-sql-real.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/455/snapshot-lectura.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/caracterizacion/alcance-satelite-y-sf001.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/caracterizacion/ayuda-ciclo.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/caracterizacion/cambio-dia.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: tabla 'orden' vacia: corre 'pnpm run db:seed'. en tests/integration/db/419/_escenario-419.ts:58. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: 9 casos verdes; el bloque de concurrencia R8 siembra CONFIRMADO con clientes sin empresa y `zona.create` viola `organizacion_id NOT NULL` (SL-17). La retira SLT-185.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/454/caracterizacion/cierre-rechazado.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/caracterizacion/confirmacion-fisica-238.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/caracterizacion/correccion-69.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: tabla 'orden' vacia: corre 'pnpm run db:seed'. en tests/integration/db/454/_escenario.ts:133. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: falla una asercion de dinero o estado del cierre de satelite: expected 0 to be greater than 0 (:87). La retira SLT-195.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/454/caracterizacion/corte-concurrencia.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/caracterizacion/corte-no-barre-gestionadas.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: tabla 'orden' vacia: corre 'pnpm run db:seed'. en tests/integration/db/454/_escenario.ts:133. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario CONFIRMADO (`sembrarComprometido`) escribe sin empresa: `zona.create` viola `organizacion_id NOT NULL` (SL-17). La retira SLT-185.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/454/caracterizacion/deshacer.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/caracterizacion/devolucion-rechazadas-139.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: tabla 'orden' vacia: corre 'pnpm run db:seed'. en tests/integration/db/454/_escenario.ts:133. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: falla una asercion de dinero o estado del cierre de satelite: expected [] to deeply equal [ '2000.00' ]. La retira SLT-195.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/454/caracterizacion/dinero-aprobacion.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/caracterizacion/dos-gestiones-vivas.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/caracterizacion/intentos-conteo.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/caracterizacion/kpi-portal.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/caracterizacion/liberacion-por-cierre.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: tabla 'orden' vacia: corre 'pnpm run db:seed'. en tests/integration/db/454/_escenario.ts:133. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: falla una asercion de dinero o estado del cierre de satelite: los movimientos tras aprobar traen pago_satelite donde se espera pago_efectivo (:130). La retira SLT-195.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/454/caracterizacion/multi-dia-271.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: tabla 'orden' vacia: corre 'pnpm run db:seed'. en tests/integration/db/454/_escenario.ts:133. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: falla una asercion de dinero o estado del cierre de satelite: expected 0 to be greater than 0 (:77). La retira SLT-195.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/454/caracterizacion/no-doble-gestion.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/caracterizacion/notificacion-n1.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/caracterizacion/portal-listas-mapa-ruta.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/caracterizacion/rastreo-y-historial-legado.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/caracterizacion/rechazos-tienda-425.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/caracterizacion/reprogramadas-liberacion.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/caracterizacion/sla-devolucion-reloj.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/caracterizacion/solicitar-cierre.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/caracterizacion/tablero-dia.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/caracterizacion/tope-276.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/caracterizacion/traspaso.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/caracterizacion/webhook-estado.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: tabla 'orden' vacia: corre 'pnpm run db:seed'. en tests/integration/db/454/_escenario.ts:133. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario CONFIRMADO (`sembrarComprometido`) escribe sin empresa: `zona.create` viola `organizacion_id NOT NULL` (SL-17). La retira SLT-185.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/455/caracterizacion/api-lectura.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: tabla 'orden' vacia: corre 'pnpm run db:seed'. en tests/integration/db/454/_escenario.ts:133. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: tras sembrar el helper, el primer error nace en el propio archivo (:124): «la base no tiene un distrito activo con zona». La retira SLT-184.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/455/caracterizacion/dinero-aprobacion.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/455/caracterizacion/filtro-ordenes-por-estado.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/455/caracterizacion/filtro-satelite-por-codigo.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/455/caracterizacion/intentos-y-tope.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/455/caracterizacion/novedades-y-ayuda.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/455/caracterizacion/plantilla-estatus.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/455/caracterizacion/rastreo.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/455/caracterizacion/snapshot-correccion.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/455/caracterizacion/sql-crudo-avisos-y-corte.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/455/caracterizacion/sql-crudo-cron-devoluciones.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/455/caracterizacion/sql-crudo-tablero-dia.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/455/caracterizacion/webhook-estado.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: tabla 'orden' vacia: corre 'pnpm run db:seed'. en tests/integration/db/454/_escenario.ts:133. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: falla una asercion de dinero o estado del cierre de satelite: expected [ …(18) ] to deeply equal [ …(18) ] (:133). La retira SLT-195.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/usuario-contar-adminsatelites.test.ts": {
-      "motivo": "La app nace vacia (SL-11, plan-saas punto 5): la base de test solo tiene catalogos y la suite asume ordenes, usuarios y zonas sembrados. No es regresion de codigo. La retira SL-31 (tests con datos propios y CI migrada).",
+      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/usuario-contar-adminsatelites.test.ts:65 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'usuario' esta vacia: sin el catalogo de tipos de identificacion no se puede sembrar. Corre. La retira SLT-183 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/abono-tienda-457-migration.test.ts": {
@@ -1018,6 +655,10 @@
     },
     "tests/integration/db/wallet-461-migration.test.ts": {
       "motivo": "Postgres 17 (CI) frente a 18 (local): el DELETE de un usuario referenciado por una FK RESTRICT y por otra NO ACTION da 23503 en PG 17.11 y 23001 en PG 18.2 (medido el 2026-10-22 sobre base nueva migrada en los dos; en PG 18 pasa). No es falta de datos: la fixture crea sus usuarios. Lee db/migrations, asi que la retira SL-28; la version de Postgres de CI sigue ABIERTA en gate.yml.",
+      "desde": "2026-10-22"
+    },
+    "tests/integration/db/454/retiro-estados-migration.test.ts": {
+      "motivo": "Otra causa (depende del estado de la base). Medido el 2026-11-16 en base desechable migrada con catalogos y datos de otra empresa (y en la base local de dev del leader): el bloque «M3 contra Postgres real» aplica la migracion 20260923120200_retiro_estados_454 sobre TODA la base y falla con P0001 «migracion 454: 1 orden(es) en ayuda_tienda sin fila de solicitud con actor» por una orden ajena; en base vacia pasa 13/13. Test de migracion que solo vale en base sin ordenes retiradas ajenas. La retira SLT-187.",
       "desde": "2026-10-22"
     }
   }

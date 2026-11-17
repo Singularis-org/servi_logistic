@@ -21,10 +21,11 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
+  type FksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 
 /**
  * FEATURE 293 (T4.4, design §3.3/§3.4/§5) — LA GUARDA DE LA BASE Y EL CICLO COMPLETO, CONTRA
@@ -75,22 +76,20 @@ const ventanaDe = (f: string) => ({
 
 describeSiHayBase("293/T4.4 — el premio del ranking, contra Postgres", () => {
   let prisma: PrismaClient;
-  let fks: NonNullable<Awaited<ReturnType<typeof fksDeOrden>>>;
+  // SLT-177 (R737): las FK de orden (tienda, zona) se crean en la tx de cada caso (`sembrar`); en CI
+  // «la primera orden» de la base era de OTRA empresa y el trigger SL017 rechazaba el cierre.
+  let fks: FksDeOrden;
   let catalogo: { tipoIdentificacionId: string; rolId: string };
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const encontradas = await fksDeOrden(prisma);
-    if (encontradas === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se pueden sembrar las " +
-          "gestiones que atan el dia al cierre. Corre `pnpm run db:seed` antes de esta suite.",
-      );
+    // Del `beforeAll` solo se leen catalogos, por su clave.
+    const tipo = await prisma.tipoIdentificacion.findUnique({ where: { value: "cedula" }, select: { id: true } });
+    const rol = await prisma.rol.findUnique({ where: { value: RolValue.mensajero }, select: { id: true } });
+    if (tipo === null || rol === null) {
+      throw new Error("falta el tipo `cedula` o el rol `mensajero`: aplica las migraciones.");
     }
-    fks = encontradas;
-    const u = await prisma.usuario.findFirst({ select: { tipoIdentificacionId: true, rolId: true } });
-    if (u === null) throw new Error("hay DATABASE_URL pero no hay ningun usuario: falta el catalogo.");
-    catalogo = u;
+    catalogo = { tipoIdentificacionId: tipo.id, rolId: rol.id };
   });
 
   afterAll(async () => {
@@ -129,6 +128,10 @@ describeSiHayBase("293/T4.4 — el premio del ranking, contra Postgres", () => {
   ) {
     await serializarEscriturasReales(tx);
     const sufijo = randomUUID();
+    fks = await crearFksDeOrden(tx);
+    // Control positivo (R739): la zona y la tienda sembradas estan en la base, una de cada.
+    expect(await tx.zona.count({ where: { id: fks.zonaId } })).toBe(1);
+    expect(await tx.usuario.count({ where: { id: fks.tiendaId } })).toBe(1);
 
     const crearUsuario = async (etiqueta: string) =>
       (
@@ -978,6 +981,9 @@ describeSiHayBase("293/T4.4 — el premio del ranking, contra Postgres", () => {
   it("§4.2: una gestion ANULADA o de OTRO dia no arrastra su cierre", async () => {
     const medido = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      // SLT-177: este caso no pasa por `sembrar`; siembra sus propias FK de orden en su tx.
+      fks = await crearFksDeOrden(tx);
+      expect(await tx.zona.count({ where: { id: fks.zonaId } })).toBe(1);
       const sufijo = randomUUID();
       const mensajeroId = (
         await tx.usuario.create({
