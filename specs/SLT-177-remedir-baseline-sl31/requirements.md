@@ -178,7 +178,7 @@ para al tocar cualquiera de los dos topes:
 
 ## Tasks
 
-- [ ] **T1 — Medir** (R730-R733). La hace el implementer antes de tocar nada.
+- [x] **T1 — Medir** (R730-R733). La hace el implementer antes de tocar nada.
   - Fuente: el artefacto `gate-completo-informe` (`.vitest-rojos.json` unido) de la última corrida de
     `gate` del PR #184 «SLT-175 pruebas R621/R623 y guardia R631», cuyo árbol es el de `dev` en
     `825ba66d`. Si el artefacto expiró, `workflow_dispatch` de `gate.yml` sobre la rama de esta ficha
@@ -190,7 +190,7 @@ para al tocar cualquiera de los dos topes:
     versión de Postgres. No imprimir la URL.
   - *Hecho:* tabla de 239 filas en `progress/impl_SLT-177.md`, con el recuento por clase (suma 239), el
     id del run y los grupos por punto de fallo. Si hay algún archivo sin ejecutar (R733), se para.
-- [ ] **T2 — Puerta: lote y fichas siguientes** (leader + Carlos). Depende de T1.
+- [x] **T2 — Puerta: lote y fichas siguientes** (leader + Carlos). Depende de T1.
   - El leader elige el lote con la prioridad de `## Corte`, lo añade a `## Archivos esperados` de este
     archivo y corre `node scripts/archivos-en-vuelo.mjs --candidata SLT-177`.
   - Redacta en borrador las fichas siguientes con la lista de archivos de cada una; con el OK de Carlos
@@ -262,6 +262,23 @@ Candidatos del lote (prioridad 1 de `## Corte`; entran solo si T1 los clasifica 
 
 Resto del lote: lo añade el leader en T2, como mucho hasta 20 archivos de siembra en total. Estado
 fuera del cómputo: `progress/impl_SLT-177.md`, `progress/deudas.md`, `progress/features/SLT-177.md`.
+
+**Lote cerrado en T2** (2026-11-16, OK de Carlos; medición en `progress/medicion_SLT-177.md`). T1 midió
+`detalle-movimiento-cierre-postgres` y `premio-ranking-idempotencia` como **otra causa / dato ajeno**
+(leen una fila de otra empresa); Carlos los admite en el lote por excepción, con el mismo remedio
+(R737). `detalle-en-lote-464` sale **base vacía** (G2).
+- G2 (29 entradas): `tests/integration/db/_fixtures/caja-459.ts`, `…/detalle-en-lote-464.test.ts`,
+  `…/estado-cuenta-cierre-pagos-172r52.test.ts`, `…/estado-cuenta-servidor-458d.test.ts`
+- Excepción D37/premio (2): `…/detalle-movimiento-cierre-postgres.test.ts`, `…/premio-ranking-idempotencia.test.ts`
+- G1 (76): `tests/integration/db/454/_escenario.ts`, `…/454/caracterizacion/notificacion-n1.test.ts`,
+  `…/462/reprogramadas-retenidas-sql-real.test.ts`, `…/477-ordenes-en-correccion-sql-real.test.ts`
+- G3-G6 (17): `…/_whatsapp-envios-474.ts`, `…/_informe-transito-475.ts`, `…/419/_escenario-419.ts`,
+  `…/_picking-476.ts`
+- `…/_fixtures/orden-minima.ts` si hace falta.
+
+Un usuario de G1/G2 que, arreglado su helper, siga rojo por otra causa se queda en el baseline con
+motivo nuevo medido (decisión de Carlos). Fichas siguientes: SLT-178…SLT-187 (= F1…F10 de
+`progress/impl_SLT-177.md > T2`) y SLT-188 «Tests que dejan filas fuera de su transacción».
 
 ## Tamaño
 

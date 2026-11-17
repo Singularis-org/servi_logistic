@@ -6,7 +6,7 @@ Ruta ligera. Spec: `specs/SLT-177-remedir-baseline-sl31/requirements.md` (R730-R
 
 - [x] **T1 — Medir** (R730-R733). 2026-11-16, backend_dev. Detalle y tabla de 239 filas en
   `progress/medicion_SLT-177.md`.
-- [ ] T2 — Puerta: lote y fichas siguientes (leader + Carlos). Propuesta abajo.
+- [x] T2 — Puerta: lote aprobado con la excepción D37/premio; fichas SLT-178…SLT-188 creadas (`progress/features/SLT-177.md > Decisiones`).
 - [ ] T3 — Guardia de forma del baseline: `SLT-<n>` (R742).
 - [ ] T4 — Podar (R734, R735). Con T1 no hay nada que podar (0 pasa, 0 verde sin datos).
 - [ ] T5 — Sembrar el lote. · [ ] T6 — Mutaciones. · [ ] T7 — Baseline. · [ ] T8 — Cierre.
