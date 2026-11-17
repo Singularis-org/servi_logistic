@@ -107,6 +107,8 @@ export interface Mundo {
   estatus: Map<string, string>;
   valorDeEstatus: Map<string, string>;
   centralZonaId: string;
+  /** SLT-177: `true` en el Mundo de `prepararMundo`: `crearEscenario` siembra la central en su tx. */
+  sembrarCentral?: boolean;
 }
 
 let secuencia = 0;
@@ -157,6 +159,7 @@ export async function prepararMundo(): Promise<Mundo> {
     rolId,
     estatus,
     valorDeEstatus,
+    sembrarCentral: true,
     get centralZonaId(): string {
       if (centralActual454 === null) {
         throw new Error("454: no hay zona central sembrada: se lee dentro de un escenario (crearEscenario)");
@@ -396,15 +399,18 @@ export async function crearEscenario(
   }
 
   const clave = claveUnica();
-  // SLT-177 (R737): la zona central es propia del escenario (una por empresa; la tx tiene la suya).
-  const central = await tx.zona.create({
-    data: { sinpeNumero: "80000000", sinpeNombre: "Titular 454", nombre: `Central 454 ${clave}`, esCentral: true },
-    select: { id: true },
-  });
-  // Control positivo (R739): la central sembrada se lee de vuelta, exactamente una.
-  const centrales = await tx.zona.count({ where: { id: central.id, esCentral: true } });
-  if (centrales !== 1) throw new Error(`454: la zona central sembrada no esta en la base (${centrales})`);
-  centralActual454 = central.id;
+  // SLT-177 (R737): con el Mundo de `prepararMundo`, la zona central es propia del escenario (una por
+  // empresa; la tx tiene la suya). Un Mundo armado a mano trae ya su central y no se toca.
+  if (mundo.sembrarCentral === true) {
+    const central = await tx.zona.create({
+      data: { sinpeNumero: "80000000", sinpeNombre: "Titular 454", nombre: `Central 454 ${clave}`, esCentral: true },
+      select: { id: true },
+    });
+    // Control positivo (R739): la central sembrada se lee de vuelta, exactamente una.
+    const centrales = await tx.zona.count({ where: { id: central.id, esCentral: true } });
+    if (centrales !== 1) throw new Error(`454: la zona central sembrada no esta en la base (${centrales})`);
+    centralActual454 = central.id;
+  }
   const zona = await tx.zona.create({
     data: { sinpeNumero: "80000000", sinpeNombre: "Titular 454", nombre: `Zona 454 ${clave}` },
     select: { id: true },
