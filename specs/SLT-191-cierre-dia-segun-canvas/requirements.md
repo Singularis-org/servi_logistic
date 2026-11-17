@@ -188,7 +188,7 @@ Orden: (T1 ∥ T2 ∥ T3) → T4. `[P]` = paralelizable con sus hermanas.
   *Hecho:* `CierreDiaColaPropia.test.tsx` con R818-R823 en verde; el aserto de hoy
   `["Folio", "#AAAA1111", "Recaudado", …]` (`:333`) y `"₡875Ver"` (`:310`) se reescriben a R819-R820,
   no se borran. Mutación: volver a pintar «Recaudado» en el desplegado deja un test en rojo.
-- [ ] **T4 — E2E y gate** (depende de T1-T3). En `e2e/pwa-mensajero-cierre-dia.spec.ts` a 360 y 414
+- [x] **T4 — E2E y gate** (depende de T1-T3). En `e2e/pwa-mensajero-cierre-dia.spec.ts` a 360 y 414
   px: (a) la tarjeta de gestión muestra la guía antes que el destinatario y no muestra «Devolver a
   gestión» hasta desplegar tocando el texto de la tarjeta (R810-R812); (b) en «Cierres solicitados»
   el folio se ve plegado, «Ver» solo tras desplegar (cambia `:198-203`) y la barra sigue arriba al
