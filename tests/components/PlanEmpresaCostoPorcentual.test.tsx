@@ -211,7 +211,7 @@ describe("SLT-83 R21 — catálogo y detalle del plan", () => {
     rastro,
   });
   const montarDetalle = (d: DetallePlan) =>
-    render(<PlanDetalle detalle={d} editarPlan={vi.fn()} archivarPlan={vi.fn()} cancelarCambio={vi.fn()} />);
+    render(<PlanDetalle detalle={d} borrador={{ guardarPaso: vi.fn(), leer: vi.fn(), descartar: vi.fn(), confirmar: vi.fn() }} previsualizarCambio={vi.fn()} archivarPlan={vi.fn()} cancelarCambio={vi.fn()} />);
   const dato = (termino: string) => screen.getByText(termino, { selector: "dt" }).nextElementSibling as HTMLElement;
 
   it("R21: la columna «Costo» del catálogo pinta el porcentual, con y sin mínimo, y el fijo como SLT-66", () => {

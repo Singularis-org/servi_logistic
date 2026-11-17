@@ -116,7 +116,7 @@ describe("SLT-66 R24, R10 — detalle del plan", () => {
     rastro,
   });
   const montar = (d: DetallePlan) =>
-    render(<PlanDetalle detalle={d} editarPlan={vi.fn()} archivarPlan={vi.fn()} cancelarCambio={vi.fn()} />);
+    render(<PlanDetalle detalle={d} borrador={{ guardarPaso: vi.fn(), leer: vi.fn(), descartar: vi.fn(), confirmar: vi.fn() }} previsualizarCambio={vi.fn()} archivarPlan={vi.fn()} cancelarCambio={vi.fn()} />);
   const dato = (termino: string) => screen.getByText(termino, { selector: "dt" }).nextElementSibling as HTMLElement;
 
   it("R24: «Costo base» y «Costo por orden» como datos de la versión vigente", () => {

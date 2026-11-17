@@ -35,7 +35,12 @@ const CONCRETO: PlanDTO = {
 
 function montar(plan: PlanDTO, empresasCandidatas?: { id: string; nombre: string }[] | null) {
   const detalle: DetallePlan = { plan, empresaNombre: null, pendiente: null, empresas: [], rastro: [] };
-  const acciones = { editarPlan: vi.fn(), archivarPlan: vi.fn(), cancelarCambio: vi.fn() };
+  const acciones = {
+    borrador: { guardarPaso: vi.fn(), leer: vi.fn(), descartar: vi.fn(), confirmar: vi.fn() },
+    previsualizarCambio: vi.fn(),
+    archivarPlan: vi.fn(),
+    cancelarCambio: vi.fn(),
+  };
   render(<PlanDetalle detalle={detalle} {...acciones} empresasCandidatas={empresasCandidatas} />);
   return acciones;
 }
@@ -64,7 +69,8 @@ describe("SLT-66 R33 — «Asignar a una empresa»", () => {
       `/plataforma/empresas/${SUR.id}?plan=${PLAN_ID}#plan`,
     );
     // Elegir no asigna nada: ninguna action del detalle se llama.
-    for (const accion of Object.values(acciones)) expect(accion).not.toHaveBeenCalled();
+    const { borrador, ...resto } = acciones;
+    for (const accion of [...Object.values(resto), ...Object.values(borrador)]) expect(accion).not.toHaveBeenCalled();
   });
 
   it("R33: un custom ofrece solo su empresa (la lista que baja la página)", async () => {

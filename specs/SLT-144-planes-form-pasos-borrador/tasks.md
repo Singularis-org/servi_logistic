@@ -65,7 +65,7 @@
   «Descartar» y el aviso al cerrar. En `planes/page.tsx`, los borradores y las actions, y quitar `crearPlan`
   (design §6). Depende de T1.5 y T3.3.
   *Hecho:* `tests/components/PlanesModule.test.tsx` verde (R13, R24–R27, más los casos de hoy).
-- [ ] **T5.2 [P]** `PlanDetalle.tsx` y `[planId]/page.tsx`: `AbrirPlanForm` con `{ planId }`, `?editar=1`, las
+- [x] **T5.2 [P]** `PlanDetalle.tsx` y `[planId]/page.tsx`: `AbrirPlanForm` con `{ planId }`, `?editar=1`, las
   actions del borrador, `previsualizarCambioPlanAction` y el aviso al cerrar. Depende de T3.3 y T4.1.
   *Hecho:* `tests/components/PlanDetalle.test.tsx` verde (R13, R26, más los casos de hoy y el «N de M» de SLT-128 R11).
 - [ ] **T5.3** La página no lee borradores sin superadmin. Depende de T5.1.

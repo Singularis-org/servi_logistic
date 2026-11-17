@@ -37,13 +37,13 @@ import {
   type CostoPorOrdenPorcentual,
   type DescuentoPeriodo,
   type DetallePlan,
-  type EditarPlanInput,
   type FilaRastro,
   type PlanResult,
   type PrecioPlan,
   type TipoCobro,
   type TopeExcedido,
   type TopesPlan,
+  type VistaPreviaCambioResult,
 } from "@/lib/types/planes";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 import { cn } from "@/lib/utils";
@@ -51,10 +51,12 @@ import { cn } from "@/lib/utils";
 import {
   ESTILO_SHEET_PLAN,
   mensajeDelRechazo,
-  PlanForm,
   RECHAZO_GENERICO,
   TEXTOS_PLAN_FORM,
+  type AccionesDelBorrador,
+  type PrevisualizarCambioInput,
 } from "../../_components/PlanForm";
+import { AbrirPlanForm } from "../../_components/plan-form/AbrirPlanForm";
 import { fechaHora } from "../../_components/plan-form/borrador";
 import {
   lineasDeTopes,
@@ -128,6 +130,8 @@ const TEXTOS = {
   // SLT-66 (design §2.3 bis; R34): la fila `desasignado` que escribe la migración.
   desasignadoDe: (empresa: string) =>
     `Desasignado de ${empresa} por la migración: el plan no tenía costo base concreto`,
+  /** SLT-144 (R13): al cerrar el panel con algún paso guardado y sin confirmar. */
+  borradorQueda: "El borrador queda guardado. Puedes retomarlo luego.",
 } as const;
 
 /** SLT-128 (design §7): el texto del rechazo `cambio_a_medias` de cada confirmación (R14 cancelar, R15 archivar). */
@@ -150,8 +154,16 @@ const ACCIONES: Record<PlanRastroAccion, string> = {
 
 export interface PlanDetalleProps {
   detalle: DetallePlan;
+  /**
+   * SLT-144 (design §4.7, §6): las actions de `lib/actions/plan-borrador.ts`. Editar guarda por pasos en el
+   * borrador de cambio del plan y lo confirma; `editarPlanAction` ya no baja a la pantalla.
+   */
+  borrador: AccionesDelBorrador;
+  /** SLT-144 (design §3.1): `previsualizarCambioPlanAction`, la fecha en que cada empresa recibe el cambio. */
+  previsualizarCambio: (input: PrevisualizarCambioInput) => Promise<VistaPreviaCambioResult>;
+  /** SLT-144 (R26): `?editar=1` en la dirección, al retomar un borrador de cambio desde la lista. */
+  abrirEditar?: boolean;
   /** Las actions de SL-24, inyectadas desde la página para poder probarlas. */
-  editarPlan: (input: EditarPlanInput) => Promise<PlanResult>;
   archivarPlan: (input: ArchivarPlanInput) => Promise<PlanResult>;
   cancelarCambio: (input: CancelarCambioPlanInput) => Promise<PlanResult>;
   /**
@@ -178,7 +190,9 @@ type Desenlace =
  */
 export function PlanDetalle({
   detalle,
-  editarPlan,
+  borrador,
+  previsualizarCambio,
+  abrirEditar = false,
   archivarPlan,
   cancelarCambio,
   empresasCandidatas = [],
@@ -187,7 +201,10 @@ export function PlanDetalle({
   const router = useRouter();
   const { plan, pendiente } = detalle;
   const noAplicadas = detalle.noAplicadas ?? [];
-  const [editando, setEditando] = useState(false);
+  // SLT-144 (R26): un plan archivado no se edita, aunque la dirección lo pida.
+  const [editando, setEditando] = useState(abrirEditar && !plan.archivado);
+  /** SLT-144 (R13): el panel abierto guardó algún paso; vuelve a `false` al abrirlo y al confirmar. */
+  const guardadoEnElPanel = useRef(false);
   const [confirmar, setConfirmar] = useState<"archivar" | "cancelar" | null>(null);
   const [desenlace, setDesenlace] = useState<Desenlace | null>(null);
   /** El aviso de desenlace, que recibe el foco cuando el botón que abrió la confirmación desaparece. */
@@ -232,6 +249,7 @@ export function PlanDetalle({
   }
 
   function alEditar(r: Extract<PlanResult, { estado: "ok" }>) {
+    guardadoEnElPanel.current = false;
     setEditando(false);
     const mensaje =
       r.vigenteDesde !== null
@@ -241,6 +259,14 @@ export function PlanDetalle({
           : TEXTOS.sinCambios;
     setDesenlace({ tipo: "ok", mensaje, avisos: r.avisos });
     router.refresh();
+  }
+
+  /** SLT-144 (R13): cerrar sin confirmar con algún paso guardado avisa de que el borrador sigue ahí. */
+  function alCambiarPanel(abierto: boolean) {
+    setEditando(abierto);
+    if (abierto || !guardadoEnElPanel.current) return;
+    guardadoEnElPanel.current = false;
+    setDesenlace({ tipo: "ok", mensaje: TEXTOS.borradorQueda, avisos: [] });
   }
 
   return (
@@ -258,6 +284,7 @@ export function PlanDetalle({
               type="button"
               onClick={() => {
                 setDesenlace(null);
+                guardadoEnElPanel.current = false;
                 setEditando(true);
               }}
             >
@@ -396,19 +423,26 @@ export function PlanDetalle({
 
       {plan.archivado ? null : (
         <>
-          <Sheet open={editando} onOpenChange={setEditando}>
+          <Sheet open={editando} onOpenChange={alCambiarPanel}>
             <SheetContent className="gap-0" style={ESTILO_SHEET_PLAN}>
               <SheetHeader>
                 <SheetTitle>{TEXTOS.tituloEditar}</SheetTitle>
                 <SheetDescription>{TEXTOS.descripcionEditar}</SheetDescription>
               </SheetHeader>
               <div className="flex min-h-0 flex-1">
-                <PlanForm
+                {/* SLT-144 (design §4.5): lee el borrador de cambio del plan antes de montar el formulario. */}
+                <AbrirPlanForm
+                  origen={{ planId: plan.id }}
+                  onCerrar={() => alCambiarPanel(false)}
                   modo="editar"
                   plan={plan}
                   precioDesdePorDefecto={precioDesdePorDefecto}
-                  enviar={editarPlan}
+                  borrador={borrador}
+                  previsualizarCambio={previsualizarCambio}
                   onGuardado={(r) => alEditar(r)}
+                  onBorradorGuardado={() => {
+                    guardadoEnElPanel.current = true;
+                  }}
                 />
               </div>
             </SheetContent>
