@@ -397,7 +397,10 @@ describe("RecogerPaqueteCard — el diálogo continuo (R595, R833)", () => {
 
   it("R595: tres lecturas seguidas (cámara, cámara, Enter) sin cerrar: tres llamadas en orden, cámara abierta y sin toasts; la repetida no se reenvía", async () => {
     const user = userEvent.setup();
-    recogerMock.mockImplementation(async ({ ordenIds }) => ({ status: "ok", recogidas: ordenIds }));
+    recogerMock.mockImplementation(async (input) => ({
+      status: "ok",
+      recogidas: (input as { ordenIds: string[] }).ordenIds,
+    }));
     render(<RecogerPaqueteCard porRecoger={tres} onRecogida={vi.fn()} />);
     await user.click(screen.getByRole("button", { name: "Escanear o escribir guía" }));
 
@@ -488,7 +491,10 @@ describe("RecogerPaqueteCard — el diálogo continuo (R595, R833)", () => {
       destinatario: "Beto Ruiz",
       tiendaNombre: "Tienda Prueba Sur",
     });
-    recogerMock.mockImplementation(async ({ ordenIds }) => ({ status: "ok", recogidas: ordenIds }));
+    recogerMock.mockImplementation(async (input) => ({
+      status: "ok",
+      recogidas: (input as { ordenIds: string[] }).ordenIds,
+    }));
     await renderCon(user, [cargadaAna]);
     listarMock.mockResolvedValue(listaVigente([cargadaAna, nuevaBeto]));
 
@@ -533,7 +539,10 @@ describe("RecogerPaqueteCard — refresco único al cerrar (R598)", () => {
   it("dos éxitos y cerrar: onRecogida una vez, ninguna antes de cerrar", async () => {
     const user = userEvent.setup();
     const onRecogida = vi.fn();
-    recogerMock.mockImplementation(async ({ ordenIds }) => ({ status: "ok", recogidas: ordenIds }));
+    recogerMock.mockImplementation(async (input) => ({
+      status: "ok",
+      recogidas: (input as { ordenIds: string[] }).ordenIds,
+    }));
     await renderAbierta(user, onRecogida);
 
     await tecleaYConfirma(user, "1001");

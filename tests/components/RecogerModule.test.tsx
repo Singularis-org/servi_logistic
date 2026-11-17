@@ -390,7 +390,10 @@ describe("RecogerModule — las dos vías de recogida (feature 96)", () => {
 
   it("R598: dos guías recogidas por su id; la lista se refresca UNA vez al cerrar y ninguna antes", async () => {
     const user = userEvent.setup();
-    recogerMock.mockImplementation(async ({ ordenIds }) => ({ status: "ok", recogidas: ordenIds }));
+    recogerMock.mockImplementation(async (input) => ({
+      status: "ok",
+      recogidas: (input as { ordenIds: string[] }).ordenIds,
+    }));
     renderModule({
       porRecoger: [
         makeAsignacion({ id: "r1", numGuia: 1001 }),

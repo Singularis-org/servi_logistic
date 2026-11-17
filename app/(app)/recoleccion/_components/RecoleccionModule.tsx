@@ -217,9 +217,9 @@ export function RecoleccionModule({
            mensajero, de 44 px y a todo el ancho; la tarjeta de dentro conserva «Recolectar en
            tienda». */
         <EscanerModal label={ESCANER_LABEL_GUIA} tactil>
-          /* SLT-168 (R595, R833): la sesión continua de SLT-159. La lectura (`leerGuia`, R11) la
+          {/* SLT-168 (R595, R833): la sesión continua de SLT-159. La lectura (`leerGuia`, R11) la
              hace la sesión; cada guía es una fila y la cámara sigue abierta. R14/R598: las dos
-             listas las resuelve el servidor y se releen UNA vez al cerrar, no por lectura. */
+             listas las resuelve el servidor y se releen UNA vez al cerrar, no por lectura. */}
           <TarjetaEscaneoContinuo
             recibir={recolectar}
             alCerrarConRecepcion={() => router.refresh()}
