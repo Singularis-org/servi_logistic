@@ -1,20 +1,22 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Store } from "lucide-react";
 
-import { ContactoButtons } from "@/components/shared/ContactoButtons";
-import { EscanerModal } from "@/components/shared/EscanerModal";
-import { EscanerGuiaCard } from "@/components/shared/EscanerGuiaCard";
-import { useToast } from "@/hooks/useToast";
+import { BuscadorFiltros } from "@/components/shared/BuscadorFiltros";
+import {
+  ESCANER_LABEL_GUIA,
+  EscanerModal,
+} from "@/components/shared/EscanerModal";
+import { TarjetaEscaneoContinuo } from "@/components/shared/EscaneoContinuo";
 // Feature 111/R12 + 167/R9 -> FEATURE 271 (T9.1/T9.2): el aviso del bloqueo dejó de ser una
 // constante y pasó a ser un FORMATEADOR que CUENTA (cuántos cierres arrastra el mensajero y cuál
 // toca resolver primero, R43). El MISMO de los otros tres portales; `conCta: true` porque desde
 // aquí hay que decirle a dónde ir (R52).
 import { avisoBloqueo } from "@/lib/constants/bloqueo-mensajero";
 import { SIN_BLOQUEO, type BloqueoDetalle } from "@/lib/utils/bloqueo-cierre";
-import { extractNumGuiaFromScan } from "@/lib/utils/paquete-url";
+import { TEXTOS_RECOLECCION } from "@/lib/utils/sesion-escaneo";
 import type {
   RecolectadaHoyDTO,
   RecoleccionOrdenDTO,
@@ -31,8 +33,16 @@ import {
   CLASE_FASE,
   useTransicionVista,
 } from "@/app/(app)/mis-asignaciones/_components/useTransicionVista";
+import {
+  BUSCADOR_GUIAS_LABEL,
+  BUSCADOR_GUIAS_PLACEHOLDER,
+  filtrarAsignaciones,
+} from "@/app/(app)/mis-asignaciones/_components/mis-asignaciones-buscador";
 
-import { RecolectadasHoyLista } from "./RecolectadasHoyLista";
+import {
+  RecolectadasHoyLista,
+  SIN_RESULTADOS_BUSQUEDA,
+} from "./RecolectadasHoyLista";
 import { useRecolectarPorGuia } from "./useRecolectarPorGuia";
 
 // Feature 157 (R13-R24) + 167 — apartado PROPIO del mensajero para lo que va a recoger EN LA
@@ -122,11 +132,13 @@ export function RecoleccionModule({
   // FEATURE 271 (T9.1): el veredicto sale del detalle, no se re-deriva aquí.
   const bloqueado = bloqueo.bloqueado;
   const router = useRouter();
-  const toast = useToast();
-  const { recolectar, procesando } = useRecolectarPorGuia();
-  // Confirmación PERSISTENTE de la última (R15): el toast se va solo y en una tanda seguida
-  // el mensajero necesita ver que la anterior sí entró (mismo criterio que `RecogerPaqueteCard`).
-  const [ultima, setUltima] = useState<number | null>(null);
+  // SLT-168 (R832): las dos listas cargadas solo dan destinatario y tienda a la fila; de quién
+  // es la guía lo sigue decidiendo el servidor (167/R12).
+  const conocidas = useMemo(
+    () => [...porRecolectar, ...recolectadasHoy],
+    [porRecolectar, recolectadasHoy],
+  );
+  const { recolectar } = useRecolectarPorGuia(conocidas);
 
   // Feature 196: mismo conmutador y misma transicion que Entregas/Por recoger, sobre las
   // MISMAS piezas. Estado de UI efimero de un solo consumidor: no sube a la URL.
@@ -137,43 +149,17 @@ export function RecoleccionModule({
     cambiarVista,
   } = useTransicionVista<VistaCards>("mosaico");
 
-  const recolectarGuia = useCallback(
-    async (numGuia: number): Promise<boolean> => {
-      const ok = await recolectar(numGuia);
-      if (ok) {
-        setUltima(numGuia);
-        // R14: la orden deja de estar pendiente y pasa a "Recolectadas hoy". Las dos listas
-        // las resuelve el servidor, así que la verdad se relee de allí en vez de moverse a
-        // mano en el cliente (que es como se desincronizan).
-        router.refresh();
-      }
-      return ok;
-    },
-    [recolectar, router],
+  // SLT-156 (R520): UN término para las dos listas, con la misma función que Recoger y Reparto.
+  // Filtra lo que se ve; los conteos de las cabeceras siguen contando lo que el mensajero tiene.
+  const [query, setQuery] = useState("");
+  const buscando = query.trim() !== "";
+  const porRecolectarVisibles = useMemo(
+    () => filtrarAsignaciones(porRecolectar, query),
+    [porRecolectar, query],
   );
-
-  /** Camino cámara: el QR de la etiqueta codifica `/paquete/<numGuia>`. */
-  const onDecoded = useCallback(
-    (texto: string) => {
-      const numGuia = extractNumGuiaFromScan(texto);
-      if (numGuia === null) {
-        // R11: código MAL FORMADO -> se corta aquí, sin viaje al servidor. Es lo único que
-        // el cliente sigue decidiendo; de quién es la guía lo decide el servidor (R12).
-        toast.error("Código inválido.");
-        return;
-      }
-      void recolectarGuia(numGuia);
-    },
-    [recolectarGuia, toast],
-  );
-
-  /** Camino manual: lo tecleado ES el número (base 10, mismo criterio que la URL, R10). */
-  const onManual = useCallback(
-    async (valor: string): Promise<boolean> => {
-      if (!/^\d+$/.test(valor)) return false; // R11
-      return recolectarGuia(Number(valor));
-    },
-    [recolectarGuia],
+  const recolectadasHoyVisibles = useMemo(
+    () => filtrarAsignaciones(recolectadasHoy, query),
+    [recolectadasHoy, query],
   );
 
   /**
@@ -195,38 +181,21 @@ export function RecoleccionModule({
     total: number,
     vista: VistaCards,
   ) {
-    const CardVista =
-      vista === "mosaico" ? PosOrderCardMosaico : PosOrderCardDetalle;
-    return (
-      <CardVista
+    // SLT-156 (R517): en Detalle, la misma tarjeta compacta de Reparto (sin acciones).
+    return vista === "mosaico" ? (
+      <PosOrderCardMosaico orden={orden} total={total} mostrarRuta={false} />
+    ) : (
+      <PosOrderCardDetalle
         orden={orden}
         total={total}
         mostrarRuta={false}
+        compacta
       />
     );
   }
 
   return (
-    <section aria-label={TITULO} className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold">{TITULO}</h2>
-        {porRecolectar.length > 0 ? (
-          <div className="flex flex-wrap items-center gap-3">
-            <p role="status" className="text-sm text-muted-foreground">
-              {textoConteo(porRecolectar.length)}
-            </p>
-            {/* Feature 196: el conmutador ya no es uno por tienda —la agrupación se retiró—,
-                sino uno por LISTA. La preferencia es UNA sola para todo el apartado (el estado
-                vive aquí y «Recolectadas hoy» recibe el mismo), así que los dos controles se
-                mueven juntos; lo que se duplica es el mando, no la decisión. */}
-            <VistaCardsToggle
-              vista={vistaCardsPedida}
-              onVistaChange={cambiarVista}
-            />
-          </div>
-        ) : null}
-      </div>
-
+    <div className="flex flex-col gap-6">
       {/* R9: bloqueado por cierre pendiente -> las listas se ven, pero no hay cómo mover
           nada, y el apartado dice POR QUÉ por sí mismo. Cuando vivía dentro de Entregas el
           aviso lo ponía el módulo de al lado y aquí no quedaría ninguno; el texto es el
@@ -244,74 +213,114 @@ export function RecoleccionModule({
            raíz—, pero la tarjeta vive tras él (en modal desde el 2026-08-10), igual que
            en el resto de la app. Lo que se gana: la cámara no queda encendida todo el
            rato que el mensajero tiene la pantalla abierta, que es lo que pasaba con la
-           tarjeta desnuda. El label NO es el de por defecto: aquí se RECOLECTA. */
-        <EscanerModal label="Recolectar en tienda">
-          <EscanerGuiaCard
+           tarjeta desnuda. SLT-156 (R500, R519): el disparador único de las pantallas del
+           mensajero, de 44 px y a todo el ancho; la tarjeta de dentro conserva «Recolectar en
+           tienda». */
+        <EscanerModal label={ESCANER_LABEL_GUIA} tactil>
+          {/* SLT-168 (R595, R833): la sesión continua de SLT-159. La lectura (`leerGuia`, R11) la
+             hace la sesión; cada guía es una fila y la cámara sigue abierta. R14/R598: las dos
+             listas las resuelve el servidor y se releen UNA vez al cerrar, no por lectura. */}
+          <TarjetaEscaneoContinuo
+            recibir={recolectar}
+            alCerrarConRecepcion={() => router.refresh()}
+            textos={TEXTOS_RECOLECCION}
+            icono={Store}
             ariaLabel="Recolectar por número de guía o escaneo"
             titulo="Recolectar en tienda"
             descripcion="Escanea o ingresa el número de guía"
-            icono={Store}
-            onDecoded={onDecoded}
-            procesando={procesando}
-            mensajeErrorCamara="No se pudo abrir la cámara."
-            manual={{ onSubmit: onManual, submitLabel: "Confirmar recolección" }}
-            exito={
-              ultima === null ? undefined : (
-                <>
-                  Guía <span className="font-semibold">{ultima}</span> recolectada
-                  correctamente.
-                </>
-              )
-            }
+            submitLabel="Confirmar recolección"
           />
         </EscanerModal>
       )}
 
-      {/* R8: sin nada asignado se DICE, en vez de dejar una pantalla muda bajo el escáner.
-          La promesa de escanear se AÑADE sólo si el escáner está —bloqueado no lo está—: ver
-          `VACIO_PUEDES_ESCANEAR`. */}
-      {porRecolectar.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          {bloqueado ? VACIO : `${VACIO} ${VACIO_PUEDES_ESCANEAR}`}
-        </p>
-      ) : vistaCards === "mosaico" ? (
-        /* 2026-08-11 (decisión del humano): las cards van SUELTAS, en un carrusel único, igual
-           que en «Por recoger». Antes iban dentro de una caja por tienda (la agrupación de
-           R17), con un carrusel por grupo; esa caja se retira y con ella la cabecera de tienda
-           y sus botones de contacto. La tienda de cada orden sigue estando en la card, dentro
-           del detalle completo. */
-        <div className={CLASE_FASE[faseVista]}>
-          <CarruselCards
-            items={porRecolectar}
-            getKey={(orden) => orden.id}
-            ariaLabel="Órdenes por recolectar"
-            singular="Orden"
-            plural="Órdenes"
-            renderItem={(orden) =>
-              renderCardRecoleccion(orden, porRecolectar.length, "mosaico")
-            }
-          />
+      {/* SLT-156 (R495, R496, R506, R519, R520): UNA barra para las dos listas, pegada arriba
+          mientras se desplazan. Hija directa del contenedor: `sticky` se pega dentro de su padre,
+          que llega hasta el final de «Recogidos en tienda hoy». Filtro puro de cliente, sin URL ni
+          debounce; se queda aunque el mensajero esté bloqueado (las listas siguen visibles). */}
+      <BuscadorFiltros
+        label={BUSCADOR_GUIAS_LABEL}
+        placeholder={BUSCADOR_GUIAS_PLACEHOLDER}
+        onChange={setQuery}
+        debounceMs={0}
+        leerDeUrl={false}
+        fija
+        tactil
+      />
+
+      <section aria-label={TITULO} className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold">{TITULO}</h2>
+          {porRecolectar.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <p role="status" className="text-sm text-muted-foreground">
+                {textoConteo(porRecolectar.length)}
+              </p>
+              {/* Feature 196: el conmutador ya no es uno por tienda —la agrupación se retiró—,
+                  sino uno por LISTA. La preferencia es UNA sola para todo el apartado (el estado
+                  vive aquí y «Recolectadas hoy» recibe el mismo), así que los dos controles se
+                  mueven juntos; lo que se duplica es el mando, no la decisión. */}
+              <VistaCardsToggle
+                vista={vistaCardsPedida}
+                onVistaChange={cambiarVista}
+              />
+            </div>
+          ) : null}
         </div>
-      ) : (
-        <ul className={`flex flex-col gap-3 ${CLASE_FASE[faseVista]}`}>
-          {porRecolectar.map((orden) => (
-            <li key={orden.id}>
-              {renderCardRecoleccion(orden, porRecolectar.length, "detalle")}
-            </li>
-          ))}
-        </ul>
-      )}
+
+        {/* R8: sin nada asignado se DICE, en vez de dejar una pantalla muda bajo el escáner.
+            La promesa de escanear se AÑADE sólo si el escáner está —bloqueado no lo está—: ver
+            `VACIO_PUEDES_ESCANEAR`. */}
+        {porRecolectar.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            {bloqueado ? VACIO : `${VACIO} ${VACIO_PUEDES_ESCANEAR}`}
+          </p>
+        ) : buscando && porRecolectarVisibles.length === 0 ? (
+          /* SLT-156 (R521): hay órdenes, pero el término no deja ninguna. */
+          <p className="text-sm text-muted-foreground">
+            {SIN_RESULTADOS_BUSQUEDA}
+          </p>
+        ) : vistaCards === "mosaico" ? (
+          /* 2026-08-11 (decisión del humano): las cards van SUELTAS, en un carrusel único, igual
+             que en «Por recoger». Antes iban dentro de una caja por tienda (la agrupación de
+             R17), con un carrusel por grupo; esa caja se retira y con ella la cabecera de tienda
+             y sus botones de contacto. La tienda de cada orden sigue estando en la card, dentro
+             del detalle completo. */
+          <div className={CLASE_FASE[faseVista]}>
+            <CarruselCards
+              items={porRecolectarVisibles}
+              getKey={(orden) => orden.id}
+              ariaLabel="Órdenes por recolectar"
+              singular="Orden"
+              plural="Órdenes"
+              renderItem={(orden) =>
+                renderCardRecoleccion(orden, porRecolectarVisibles.length, "mosaico")
+              }
+            />
+          </div>
+        ) : (
+          <ul className={`flex flex-col gap-3 ${CLASE_FASE[faseVista]}`}>
+            {porRecolectarVisibles.map((orden) => (
+              <li key={orden.id}>
+                {renderCardRecoleccion(orden, porRecolectarVisibles.length, "detalle")}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       {/* R24: el trabajo del día, que sale del HISTORIAL y por tanto sobrevive a que la
-          bodega central ya haya recibido el paquete (R26). */}
+          bodega central ya haya recibido el paquete (R26). SLT-156 (R520): recibe también lo
+          que deja el término; su cabecera sigue contando el día entero. */}
       <RecolectadasHoyLista
         recolectadasHoy={recolectadasHoy}
+        visibles={recolectadasHoyVisibles}
+        buscando={buscando}
         recortada={recolectadasHoyRecortada}
         vista={vistaCards}
         vistaPedida={vistaCardsPedida}
         fase={faseVista}
         onVistaChange={cambiarVista}
       />
-    </section>
+    </div>
   );
 }

@@ -113,6 +113,20 @@ export interface PosOrderCardProps {
    * directo que nadie pidió. Para hablar con él ya está el hilo de notas de la orden.
    */
   mensajero?: string | null;
+  /**
+   * SLT-156 (R508) — vista Detalle COMPACTA, solo la lee `PosOrderCardDetalle`: una fila
+   * (parada · guía y destinatario · «Valor a cobrar») que al tocarla despliega el resto, las
+   * `acciones` incluidas. Opcional y apagada por defecto: Novedades (la tienda) y las pantallas
+   * que todavía no la adoptaron siguen con la fila de siempre.
+   */
+  compacta?: boolean;
+  /**
+   * SLT-189 (R790-R792, R800, DS2) — fila compacta de REPARTO, solo la lee `PosOrderCardDetalle`
+   * con `compacta`: arriba la guía (`numGuia ?? numRemision`) y debajo «destinatario · {dato}»,
+   * donde el dato es la dirección o la tienda. Ausente = la fila de hoy (remisión y destinatario
+   * solo), la que siguen usando Recoger y Recolección (R794).
+   */
+  filaReparto?: "direccion" | "tienda";
 }
 
 export function PosOrderCard({

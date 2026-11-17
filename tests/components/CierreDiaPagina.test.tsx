@@ -24,6 +24,13 @@ import type {
   CorreccionCierreDTO,
 } from "@/lib/interfaces/services/ICierreDiaService";
 
+// SLT-165 «PWA del mensajero: Cierre del día en tarjetas» (R531): el botón del pie dice «Solicitar
+// cierre del día» con su contador dentro («3 gestiones»), que entra en el nombre accesible. El
+// botón del diálogo sigue siendo «Solicitar cierre» (C8). Las ausencias miran el prefijo: con el
+// nombre exacto de antes saldrían verdes sin mirar nada.
+const SOLICITAR_DEL_DIA = /^Solicitar cierre del día \d+ gesti(?:ón|ones)$/;
+const ALGUN_SOLICITAR_DEL_DIA = /^Solicitar cierre del día/;
+
 // SLT-109 «/cierre-dia: el cierre de hoy, rechazado o vencido como página» (T3.2) — la parte de arriba
 // de `/cierre-dia` es UN detalle único en marco página: el cierre de hoy en curso o, con un cierre por
 // reenviar, ése en modo rechazado o vencido (R240). Un caso por requisito de R240 a R253 y R255.
@@ -193,6 +200,18 @@ function cabecera(): string {
   return within(detalle()).getByRole("heading", { level: 2 }).closest("header")?.textContent ?? "";
 }
 
+/**
+ * SLT-153 «Cabecera del detalle del cierre con rótulos y folio buscable» (R452, R453, R455): los
+ * pares [rótulo, valor] de la cabecera de un detalle, en orden.
+ */
+function paresDe(raiz: HTMLElement): [string, string][] {
+  const header = raiz.querySelector("header") as HTMLElement;
+  const terminos = within(header).queryAllByRole("term");
+  const definiciones = within(header).queryAllByRole("definition");
+  expect(definiciones).toHaveLength(terminos.length);
+  return terminos.map((t, i) => [t.textContent ?? "", definiciones[i]!.textContent ?? ""]);
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   solicitarMock.mockResolvedValue({ status: "ok", via: "creado" } as unknown as Awaited<ReturnType<typeof solicitarCierre>>);
@@ -209,7 +228,7 @@ describe("R240 — qué cierre pinta la página", () => {
     expect(screen.getAllByRole("region", { name: DETALLE })).toHaveLength(1);
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(within(detalle()).getByText("Sin solicitar")).toBeInTheDocument();
-    expect(within(detalle()).getByRole("button", { name: "Solicitar cierre" })).toBeInTheDocument();
+    expect(within(detalle()).getByRole("button", { name: SOLICITAR_DEL_DIA })).toBeInTheDocument();
   });
 
   it("con un vencido por reenviar: pinta ESE, en modo vencido, y NO el de hoy", () => {
@@ -218,7 +237,7 @@ describe("R240 — qué cierre pinta la página", () => {
     expect(screen.getAllByRole("region", { name: DETALLE })).toHaveLength(1);
     expect(within(detalle()).getByText("Vencido")).toBeInTheDocument();
     expect(within(detalle()).queryByText("Sin solicitar")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Solicitar cierre" })).toBeNull();
+    expect(screen.queryByRole("button", { name: ALGUN_SOLICITAR_DEL_DIA })).toBeNull();
     // Las cifras son las de ESE cierre (5.000), no las de hoy (11.000).
     expect(valorDe("Recaudado")).toBe("₡5.000");
   });
@@ -228,18 +247,22 @@ describe("R240 — qué cierre pinta la página", () => {
     montar({ bloqueo, reenviable: leidoDe(bloqueo, { motivoRechazo: "Faltan 2 paquetes" }) });
     expect(within(detalle()).getByText("Rechazado")).toBeInTheDocument();
     expect(within(detalle()).getByRole("button", { name: "Solicitar aprobación del cierre rechazado" })).toBeEnabled();
-    expect(screen.queryByRole("button", { name: "Solicitar cierre" })).toBeNull();
+    expect(screen.queryByRole("button", { name: ALGUN_SOLICITAR_DEL_DIA })).toBeNull();
   });
 });
 
 describe("R61, R241, R242 — el cierre de hoy", () => {
-  it("R241: cabecera «Tu cierre del día», «Sin solicitar», «Solicitud nueva · Hoy · sin solicitar», sin destino", () => {
+  it("R241, SLT-153 R453: cabecera «Tu cierre del día», «Sin solicitar», «Folio» → «Solicitud nueva» y «Día» → «Hoy», sin destino", () => {
     montar();
     const texto = cabecera();
     expect(texto).toContain("Tu cierre del día");
     expect(texto).toContain("Sin solicitar");
-    expect(texto).toContain("Solicitud nueva · Hoy · sin solicitar");
-    expect(texto).not.toMatch(/^\s*·|· ·/);
+    expect(paresDe(detalle())).toEqual([
+      ["Folio", "Solicitud nueva"],
+      ["Día", "Hoy"],
+    ]);
+    expect(texto).not.toContain("Solicitud nueva · Hoy · sin solicitar");
+    expect(texto).not.toContain("Destino");
   });
 
   it("R241: tres cifras — Recaudado 11.000 con sus métodos, 3 gestiones y Tu ganancia 3.400 — y nada de la empresa", () => {
@@ -270,7 +293,7 @@ describe("R61, R241, R242 — el cierre de hoy", () => {
     const lista = screen.getByRole("region", { name: "Órdenes del cierre" });
     expect(lista.querySelectorAll("[data-gestion]")).toHaveLength(3);
     expect(within(lista).getByText("Ganancia")).toBeInTheDocument();
-    expect(screen.getByText("Entregado 2")).toBeInTheDocument();
+    expect(screen.getByText("Entregado (2)")).toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: "Rechazados por la tienda (0)" }));
     expect(screen.getByText("Este cierre no tiene paquetes rechazados por la tienda.")).toBeInTheDocument();
@@ -309,7 +332,7 @@ describe("R245 — «Solicitar cierre» en el pie", () => {
   it("con la línea de contexto, y su confirmación resume Gestiones / Recaudado / Tu ganancia y llama a `solicitarCierre`", async () => {
     const user = montar();
     expect(within(detalle()).getByText("Se agrupan todas tus gestiones pendientes. No se puede deshacer.")).toBeInTheDocument();
-    await user.click(within(detalle()).getByRole("button", { name: "Solicitar cierre" }));
+    await user.click(within(detalle()).getByRole("button", { name: SOLICITAR_DEL_DIA }));
     const dialogo = await screen.findByRole("dialog", { name: "Solicitar cierre del día" });
     const resumen = dialogo.querySelector('dl[aria-label="Resumen del cierre a solicitar"]');
     expect(Array.from(resumen?.children ?? []).map((el) => el.textContent?.trim())).toEqual([
@@ -328,7 +351,7 @@ describe("R245 — «Solicitar cierre» en el pie", () => {
   it("sin poder solicitar: deshabilitado con el motivo como descripción, y la franja «Antes de cerrar:»", async () => {
     const motivo = "Tienes 2 paquetes en reparto sin gestionar.";
     const user = montar({ puedesSolicitar: false, motivoBloqueo: motivo });
-    const boton = within(detalle()).getByRole("button", { name: "Solicitar cierre" });
+    const boton = within(detalle()).getByRole("button", { name: SOLICITAR_DEL_DIA });
     expect(boton).toBeDisabled();
     expect(boton).toHaveAccessibleDescription(motivo);
     expect(within(detalle()).getByText("Antes de cerrar:").closest('[role="status"]')).toHaveTextContent(motivo);
@@ -364,11 +387,16 @@ describe("R247, R250 — el rechazado como página", () => {
         resueltoAt: "2026-11-11T15:30:00.000Z",
       }),
     });
-    const texto = cabecera();
-    expect(texto).toContain("Rechazado");
-    expect(texto).toContain("Bodega satélite · ");
-    expect(texto).toContain("Solicitado 2026-11-10 17:00");
-    expect(texto).toContain("Rechazado 2026-11-11 09:30");
+    expect(cabecera()).toContain("Rechazado");
+    // SLT-153 (R452): el DTO no trae zona ni quién lo rechazó: esos pares no se pintan.
+    const pares = paresDe(detalle());
+    expect(pares).toEqual([
+      // El id del doble de `bloqueoConRechazado` es «c-viejo»: su folio son sus 8 últimos, en mayúsculas.
+      ["Folio", "#C-VIEJO"],
+      ["Destino", "Bodega satélite"],
+      ["Solicitado", "2026-11-10 17:00"],
+      ["Rechazado", "2026-11-11 09:30"],
+    ]);
     expect(within(detalle()).getByText("Motivo del rechazo:").closest('[role="status"]')).toHaveTextContent("«Faltan 2 paquetes»");
     expect(screen.getByRole("tab", { name: "Corregir" })).toHaveAttribute("aria-selected", "true");
   });
@@ -386,13 +414,15 @@ describe("R247, R250 — el rechazado como página", () => {
 });
 
 describe("R63, R249, R251 — el vencido como página", () => {
-  it("R249: «Vencido», «Del … · venció sin solicitarse», franja de bloqueo y SIN «Devolver a gestión»", () => {
+  it("R249, SLT-153 R452: «Vencido», «Del día» en lugar de «Solicitado», franja de bloqueo y SIN «Devolver a gestión»", () => {
     const bloqueo = bloqueoConVencido("2026-11-10");
     const grupos = { ...vacios(), entregado: [makeGestion({ gestionId: "v1", resultado: "entregado", numRemision: "REM-V1", destinatario: "Vera" })] };
     montar({ bloqueo, reenviable: leidoDe(bloqueo, {}, grupos) });
     const texto = cabecera();
     expect(texto).toContain("Vencido");
-    expect(texto).toContain("Del 2026-11-10 17:00 · venció sin solicitarse");
+    const pares = paresDe(detalle());
+    expect(pares.map(([r]) => r)).toEqual(["Folio", "Destino", "Del día"]);
+    expect(pares[2]).toEqual(["Del día", "2026-11-10 17:00"]);
     expect(within(detalle()).getByText("Tu cierre está bloqueado:")).toBeInTheDocument();
     expect(within(detalle()).getAllByRole("tab").map((t) => t.textContent)).toEqual([
       "Gestiones (1)",
@@ -415,6 +445,39 @@ describe("R63, R249, R251 — el vencido como página", () => {
     await vi.waitFor(() => expect(solicitarMock).toHaveBeenCalledTimes(1));
     await vi.waitFor(() => expect(successMock).toHaveBeenCalledWith("Cierre vencido enviado a aprobación."));
     expect(refreshMock).toHaveBeenCalled();
+  });
+});
+
+describe("SLT-153 (R452) — un cierre pasado aprobado, abierto desde la cola", () => {
+  const APROBADO = "dddddddd-0000-4000-8000-00000000a7b3";
+  const aprobado = pasado({
+    cierreId: APROBADO,
+    estado: "aprobado",
+    solicitadoAt: "2026-11-09T23:00:00.000Z",
+    resueltoAt: "2026-11-10T15:30:00.000Z",
+  });
+
+  it("Folio, Destino, Solicitado y Aprobado; sin «Zona» ni «Aprobado por» (el DTO no los trae)", async () => {
+    verMock.mockResolvedValue({
+      status: "ok" as const,
+      cierre: aprobado,
+      grupos: vacios(),
+      ordenesSinGestion: [],
+      sinGestionRegistrado: true,
+      rechazosDeTienda: [],
+    });
+    const user = montar({ cierresPasados: [aprobado] });
+    await user.click(await screen.findByRole("button", { name: "Ver del cierre del 2026-11-09" }));
+    const dialogo = await screen.findByRole("dialog", { name: DETALLE });
+    expect(paresDe(dialogo)).toEqual([
+      ["Folio", "#0000A7B3"],
+      ["Destino", "Bodega satélite"],
+      ["Solicitado", "2026-11-09 17:00"],
+      ["Aprobado", "2026-11-10 09:30"],
+    ]);
+    const header = dialogo.querySelector("header") as HTMLElement;
+    expect(within(header).queryByText("Zona")).toBeNull();
+    expect(within(header).queryByText("Aprobado por")).toBeNull();
   });
 });
 
@@ -492,7 +555,7 @@ describe("R253 — la lectura del cierre por reenviar falló", () => {
     const user = montar({ bloqueo: bloqueoConVencido("2026-11-10"), reenviable: { estado: "error", reenviableEstado: "vencido" } });
     expect(screen.getByRole("alert")).toHaveTextContent("No se pudo cargar el cierre que tienes que enviar. Recarga la página.");
     expect(screen.queryByRole("region", { name: DETALLE })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Solicitar cierre" })).toBeNull();
+    expect(screen.queryByRole("button", { name: ALGUN_SOLICITAR_DEL_DIA })).toBeNull();
     await user.click(screen.getByRole("button", { name: "Solicitar aprobación del cierre vencido" }));
     expect(await screen.findByRole("dialog", { name: "Solicitar aprobación del cierre vencido" })).toBeInTheDocument();
   });

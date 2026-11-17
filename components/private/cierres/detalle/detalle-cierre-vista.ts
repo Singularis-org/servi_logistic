@@ -40,14 +40,18 @@ import {
   INGRESO_BODEGA_RECHAZOS_SLA_LABEL,
   ORDEN_RESULTADOS,
   PAGO_MENSAJERO_LABEL,
+  esMontoNegativo,
   rotuloIngresoBodega,
 } from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
 import { money } from "@/lib/config/moneda";
 import { hrefDetalleCierre } from "@/lib/utils/cierre-enlace";
 import { lineasCascadaCentral } from "@/app/(app)/cierres-admin/_components/cascadas-bodega";
-import { marcaDeVariasTiendas } from "@/app/(app)/cierres-admin/_components/DesglosePorTienda";
+import { marcaDeVariasTiendas } from "@/app/(app)/cierres-admin/_components/cierre-labels";
 
-import { pagosAjustados } from "../cola/cola-cierres-labels";
+import { NOTA_DEBE_LLEGAR, NOTA_GANA_BODEGA_VIEJO, TARJETA_GANA_BODEGA, pagosAjustados } from "../cola/cola-cierres-labels";
+// SLT-154 (D8): ciclo entre dos módulos de funciones (este exporta `fechaHora`/`folioDe` a aquel); ninguno
+// usa al otro al cargarse.
+import { tarjetasAConsolidar } from "../cola/cola-cierres-vista";
 import type { ItemGestion } from "../fila/fila-gestion-vista";
 import * as L from "./detalle-cierre-labels";
 import { folioCierre } from "@/lib/utils/folio-cierre";
@@ -77,7 +81,6 @@ export interface ConteosMensajero {
 export interface DineroEmpresaMensajero {
   pagoTienda: string;
   cobradoSobreRecaudado: string;
-  ganaLaTienda: string;
   totalIngresoBodegaRechazos: string;
   ivaFacturado: string;
   netoEmpresa: string;
@@ -91,10 +94,30 @@ export interface DineroEmpresaMensajero {
   porcentajesReparto?: readonly number[] | null;
 }
 
+/**
+ * SLT-154 (R467, R472) — lo que va a la central de un cierre: los datos de la satélite, que viajan a
+ * todo lector. STRING del servidor tal cual (R71).
+ */
+export interface NivelCentral {
+  totales: CierreTotales;
+  pago: string;
+  ganaBodega: string;
+  paraLaCentral: string;
+  efectivoCubreDescuentos: boolean;
+  /** [debe llegar a la central, pago, gana la bodega] en %, del servidor. `null` = sin barra. */
+  porcentajes: readonly number[] | null;
+  modeloNuevo: boolean;
+}
+
 export interface DetalleMensajeroVista {
   mensajeroNombre: string;
-  /** Destino ya legible: «Bodega central · GAM». */
+  /** Tipo de destino ya legible: «Bodega central». `""` = sin destino (el cierre de hoy). */
   destino: string;
+  /**
+   * SLT-153 (R450): la zona de destino, aparte del tipo. Ausente o vacía = no se pinta «Zona» (R451):
+   * `/cierre-dia` no la trae.
+   */
+  zona?: string | null;
   /** `null` = aún no solicitado (modo «en curso»). */
   folio: string | null;
   /** `null` = aún no solicitado (modo «en curso»). */
@@ -108,6 +131,11 @@ export interface DetalleMensajeroVista {
   totalPagoMensajero: string;
   /** `null` con audiencia mensajero: el dinero de la empresa no llega a su pantalla (R9). */
   empresa: DineroEmpresaMensajero | null;
+  /**
+   * SLT-154 (R467): lo que va a la central de este cierre. `null` o ausente = sin dato (el mensajero
+   * no lo ve; o el servidor no lo trajo): no se pinta nada de la central, nunca «₡0» (R478).
+   */
+  haciaLaCentral?: NivelCentral | null;
   conteos: ConteosMensajero;
   /**
    * SLT-100 (R81): de dónde salió el ingreso de bodega (plazo vencido / manual), los STRING del
@@ -136,12 +164,18 @@ export interface DetalleBodegaVista {
   totalIngresoBodegaRechazos: string;
   paraLaCentral: string;
   efectivoCubreDescuentos: boolean;
-  pagoTienda: string;
-  cobradoSobreRecaudado: string;
-  ivaFacturado: string;
-  netoEmpresa: string;
-  totalesIngreso: DineroEmpresaMensajero["totalesIngreso"];
-  partesPorTienda: readonly ParteDeTienda[];
+  /** SLT-154 (R460): las cifras de la empresa; `null` = a quien mira no le toca (R478: no se pintan). */
+  pagoTienda: string | null;
+  cobradoSobreRecaudado: string | null;
+  ivaFacturado: string | null;
+  netoEmpresa: string | null;
+  totalesIngreso: DineroEmpresaMensajero["totalesIngreso"] | null;
+  partesPorTienda: readonly ParteDeTienda[] | null;
+  /**
+   * SLT-154 (R466, R468): «La central debe» del cierre de bodega. `null` o ausente = sin dato: no hay
+   * tarjeta, nunca «₡0».
+   */
+  centralDebe?: string | null;
   modeloNuevo: boolean;
   /** [central, mensajeros, bodega satélite] ya derivado en el servidor (S13, R70). */
   porcentajesReparto?: readonly number[] | null;
@@ -170,24 +204,87 @@ export function fechaHora(iso: string | null): string {
   return `${fechaCalendarioCR(instante)} ${horaCostaRica(iso)}`;
 }
 
-const FECHA_RESOLUCION: Partial<Record<CierreEstado, string>> = {
-  aprobado: L.FECHA_APROBADO,
-  rechazado: L.FECHA_RECHAZADO,
-};
-
-export function fechasMensajero(d: DetalleMensajeroVista): string {
-  if (d.estado === null) return L.HOY_SIN_SOLICITAR;
-  if (d.estado === "vencido") return L.fechaVencido(fechaHora(d.solicitadoAt));
-  const solicitado = `${L.FECHA_SOLICITADO} ${fechaHora(d.solicitadoAt)}`;
-  const resolucion = FECHA_RESOLUCION[d.estado];
-  if (!resolucion || !d.resueltoAt) return solicitado;
-  return `${solicitado} · ${L.fechaConQuien(`${resolucion} ${fechaHora(d.resueltoAt)}`, d.resueltoPorNombre)}`;
+/**
+ * SLT-153 «Cabecera del detalle del cierre con rótulos y folio buscable» (R450-R455): un dato de la
+ * cabecera con su rótulo. `mono` = se pinta en monoespaciada (el folio).
+ */
+export interface ParCabecera {
+  rotulo: string;
+  valor: string;
+  mono?: boolean;
 }
 
-export function fechasBodega(d: DetalleBodegaVista): string {
-  const solicitado = `${L.FECHA_SOLICITADO} ${fechaHora(d.solicitadoAt)}`;
-  if (!d.conciliadoAt) return solicitado;
-  return `${solicitado} · ${L.fechaConQuien(`${L.FECHA_RECIBIDO} ${fechaHora(d.conciliadoAt)}`, d.conciliadoPorNombre)}`;
+/** El folio como en las colas: «#» delante (D2). */
+function folioConAlmohadilla(folio: string): string {
+  return `#${folio}`;
+}
+
+/** La fecha y hora legible, o `null` si no hay instante válido (R451: no se pinta «—»). */
+function fechaHoraOpcional(iso: string | null): string | null {
+  const texto = fechaHora(iso);
+  return texto === "—" ? null : texto;
+}
+
+/** Solo los pares con valor (R451): un par vacío no deja ni rótulo ni relleno. */
+function conValor(pares: readonly (readonly [string, string | null | undefined, boolean?])[]): ParCabecera[] {
+  const out: ParCabecera[] = [];
+  for (const [rotulo, valor, mono] of pares) {
+    if (!valor) continue;
+    out.push(mono ? { rotulo, valor, mono } : { rotulo, valor });
+  }
+  return out;
+}
+
+const RESOLUCION: Partial<Record<CierreEstado, readonly [string, string]>> = {
+  aprobado: [L.ROTULO_APROBADO, L.ROTULO_APROBADO_POR],
+  rechazado: [L.ROTULO_RECHAZADO, L.ROTULO_RECHAZADO_POR],
+};
+
+/**
+ * R450-R453: los pares de la cabecera de un cierre de mensajero, en orden. El de hoy sin solicitar
+ * lleva «Folio» → «Solicitud nueva» y «Día» → «Hoy»; el vencido, «Del día» en lugar de «Solicitado».
+ */
+export function paresCabeceraMensajero(d: DetalleMensajeroVista): ParCabecera[] {
+  if (d.estado === null) {
+    return conValor([
+      [L.ROTULO_FOLIO, d.folio ? folioConAlmohadilla(d.folio) : L.FOLIO_NUEVO_LABEL, d.folio !== null],
+      [L.ROTULO_DIA, L.DIA_HOY],
+    ]);
+  }
+  const inicio: (readonly [string, string | null | undefined, boolean?])[] = [
+    [L.ROTULO_FOLIO, d.folio ? folioConAlmohadilla(d.folio) : null, true],
+    [L.ROTULO_DESTINO, d.destino],
+    [L.ROTULO_ZONA, d.zona],
+  ];
+  if (d.estado === "vencido") {
+    return conValor([...inicio, [L.ROTULO_DEL_DIA, fechaHoraOpcional(d.solicitadoAt)]]);
+  }
+  const resolucion = RESOLUCION[d.estado];
+  return conValor([
+    ...inicio,
+    [L.ROTULO_SOLICITADO, fechaHoraOpcional(d.solicitadoAt)],
+    ...(resolucion
+      ? ([
+          [resolucion[0], fechaHoraOpcional(d.resueltoAt)],
+          [resolucion[1], d.resueltoPorNombre],
+        ] as const)
+      : []),
+  ]);
+}
+
+/** R454: los pares de la cabecera de un cierre de bodega, en orden; «Recibido» solo con la marca. */
+export function paresCabeceraBodega(d: DetalleBodegaVista): ParCabecera[] {
+  const recibidoAt = fechaHoraOpcional(d.conciliadoAt);
+  return conValor([
+    [L.ROTULO_FOLIO, d.folio ? folioConAlmohadilla(d.folio) : null, true],
+    [L.ROTULO_ORIGEN, L.ORIGEN_BODEGA_SATELITE],
+    [L.ROTULO_ZONA, d.zonaNombre],
+    [L.ROTULO_SOLICITADO_POR, d.solicitadoPorNombre],
+    [L.ROTULO_MENSAJEROS, String(d.conteos.mensajeros)],
+    [L.ROTULO_SOLICITADO, fechaHoraOpcional(d.solicitadoAt)],
+    [L.ROTULO_RECIBIDO, recibidoAt],
+    [L.ROTULO_RECIBIDO_POR, recibidoAt ? d.conciliadoPorNombre : null],
+  ]);
 }
 
 export function estadoConciliacionBodega(d: DetalleBodegaVista): EstadoConciliacion {
@@ -237,6 +334,8 @@ export interface Cifra {
   destacada: boolean;
   /** SLT-106 (R196): caja en tono de aviso («La central debe»). Ausente = tono normal. */
   aviso?: boolean;
+  /** SLT-169 (R625): junto al importe, p. ej. «(la tienda debe)». Ausente = nada. */
+  sufijo?: string;
 }
 
 function cifra(
@@ -256,9 +355,13 @@ export function cifrasDe(
   audiencia: Audiencia,
   detalle: DetalleMensajeroVista | DetalleBodegaVista,
 ): Cifra[] {
-  if (tipo === "bodega") return cifrasBodega(detalle as DetalleBodegaVista);
+  if (tipo === "bodega") {
+    const b = detalle as DetalleBodegaVista;
+    return audiencia === "satelite" ? cifrasBodegaSatelite(b) : cifrasBodega(b);
+  }
   const d = detalle as DetalleMensajeroVista;
   const recaudado = cifra("recaudado", L.RECAUDADO_LABEL, d.totales.general, "", { conMetodos: true });
+  if (audiencia === "satelite") return cifrasMensajeroSatelite(d, recaudado);
   if (audiencia === "mensajero") {
     return [
       recaudado,
@@ -275,27 +378,75 @@ export function cifrasDe(
     ];
   }
   const e = d.empresa;
+  const pago = cifraPagoMensajero(d);
+  // R478: sin el dinero de la empresa no hay sus dos tarjetas (ni «₡0» ni «—» en su lugar).
+  if (!e) return [recaudado, pago];
   return [
     recaudado,
-    cifra(
-      "paraTienda",
-      L.SE_LE_PAGA_HOY_LABEL,
-      e?.pagoTienda ?? null,
-      e ? L.contextoTiendas(d.conteos.tiendas, e.ganaLaTienda) : "",
-    ),
-    cifra(
-      "pago",
-      PAGO_MENSAJERO_LABEL,
-      d.totalPagoMensajero,
-      L.contextoPagoMensajero(d.conteos.gestiones, d.conteos.pagosAjustados),
-    ),
-    cifra("leQueda", L.LE_QUEDA_A_LA_EMPRESA_LABEL, e?.netoEmpresa ?? null, L.NOTA_LE_QUEDA_MENSAJERO, {
+    cifraParaTienda(e.pagoTienda, d.conteos.tiendas),
+    pago,
+    cifra("leQueda", L.LE_QUEDA_A_LA_EMPRESA_LABEL, e.netoEmpresa, L.NOTA_LE_QUEDA_MENSAJERO, {
       destacada: true,
     }),
   ];
 }
 
+/**
+ * SLT-169 (R625): «Se le paga hoy a la tienda» ya resta todo lo facturado y puede ser negativa. El
+ * sufijo sale del signo del STRING del servidor (`esMontoNegativo`): la pantalla no resta (R71).
+ */
+function cifraParaTienda(pagoTienda: string, tiendas: number): Cifra {
+  const c = cifra("paraTienda", L.SE_LE_PAGA_HOY_LABEL, pagoTienda, L.contextoTiendas(tiendas));
+  return esMontoNegativo(pagoTienda) ? { ...c, sufijo: L.TIENDA_DEBE(tiendas) } : c;
+}
+
+function cifraPagoMensajero(d: DetalleMensajeroVista): Cifra {
+  return cifra(
+    "pago",
+    PAGO_MENSAJERO_LABEL,
+    d.totalPagoMensajero,
+    L.contextoPagoMensajero(d.conteos.gestiones, d.conteos.pagosAjustados),
+  );
+}
+
+/**
+ * SLT-154 (R471) — la satélite en el cierre del mensajero: lo suyo, con los `CifraId` de siempre (RU3).
+ * Sin `haciaLaCentral`, solo recaudado y pago (falla cerrado, R478).
+ */
+function cifrasMensajeroSatelite(d: DetalleMensajeroVista, recaudado: Cifra): Cifra[] {
+  const pago = cifraPagoMensajero(d);
+  const n = d.haciaLaCentral ?? null;
+  if (n === null) return [recaudado, pago];
+  return [
+    recaudado,
+    pago,
+    cifra("ganaBodega", TARJETA_GANA_BODEGA, n.ganaBodega, n.modeloNuevo ? "" : NOTA_GANA_BODEGA_VIEJO),
+    cifra("paraCentral", L.DEBE_LLEGAR_A_LA_CENTRAL_LABEL, n.paraLaCentral, NOTA_DEBE_LLEGAR, { destacada: true }),
+  ];
+}
+
+/**
+ * SLT-154 (R468, P1, P8) — la satélite en su cierre de bodega: las tarjetas de «A consolidar», las
+ * mismas que vio al solicitarlo. Sin `centralDebe` no hay su caja: `tarjetasAConsolidar` la omite en
+ * cero, así que un dato ausente sale igual que «0.00» (nada pintado, nunca «₡0»).
+ */
+function cifrasBodegaSatelite(d: DetalleBodegaVista): Cifra[] {
+  return tarjetasAConsolidar({
+    totales: d.totales,
+    pagoMensajeros: d.totalPagoMensajero,
+    ganaBodega: d.totalIngresoBodegaRechazos,
+    paraLaCentral: d.paraLaCentral,
+    centralDebe: d.centralDebe ?? "0.00",
+    mensajeros: d.conteos.mensajeros,
+    incluyeModeloNuevo: d.modeloNuevo,
+  });
+}
+
 function cifrasBodega(d: DetalleBodegaVista): Cifra[] {
+  const leQueda =
+    d.netoEmpresa === null
+      ? []
+      : [cifra("leQueda", L.LE_QUEDA_A_LA_EMPRESA_LABEL, d.netoEmpresa, L.NOTA_LE_QUEDA_BODEGA, { destacada: true })];
   return [
     cifra("recaudado", L.RECAUDADO_LABEL, d.totales.general, "", { conMetodos: true }),
     cifra(
@@ -310,9 +461,8 @@ function cifrasBodega(d: DetalleBodegaVista): Cifra[] {
       d.totalPagoMensajero,
       L.contextoPagoMensajeros(d.conteos.mensajeros, d.conteos.pagosAjustados),
     ),
-    cifra("leQueda", L.LE_QUEDA_A_LA_EMPRESA_LABEL, d.netoEmpresa, L.NOTA_LE_QUEDA_BODEGA, {
-      destacada: true,
-    }),
+    // R478: sin `netoEmpresa`, sin la tarjeta.
+    ...leQueda,
   ];
 }
 
@@ -417,16 +567,18 @@ export function pestanasDe(
 ): Pestana[] {
   const gestiones: Pestana = { id: "gestiones", label: L.conConteo(L.PESTANA_GESTIONES, opciones.gestiones) };
   const dinero: Pestana = { id: "dinero", label: L.PESTANA_DINERO };
+  // SLT-154 (R470, R473, RU5): la satélite abre en Gestiones; su pestaña del dinero, segunda y con el
+  // nombre de lo único que contiene. Mismo `PestanaId`.
+  const haciaLaCentral: Pestana = { id: "dinero", label: CASCADA_CENTRAL_TITULO };
   if (tipo === "bodega") {
-    return [
-      dinero,
-      gestiones,
-      { id: "mensajeros", label: L.conConteo(L.PESTANA_MENSAJEROS, opciones.mensajeros ?? 0) },
-      { id: "conciliacion", label: L.PESTANA_CONCILIACION },
-    ];
+    const mensajeros: Pestana = { id: "mensajeros", label: L.conConteo(L.PESTANA_MENSAJEROS, opciones.mensajeros ?? 0) };
+    const conciliacion: Pestana = { id: "conciliacion", label: L.PESTANA_CONCILIACION };
+    if (audiencia === "satelite") return [gestiones, haciaLaCentral, mensajeros, conciliacion];
+    return [dinero, gestiones, mensajeros, conciliacion];
   }
   // D11: siempre visible, también con 0 rechazos.
   const rechazos: Pestana = { id: "rechazos", label: L.conConteo(L.PESTANA_RECHAZOS, opciones.rechazos ?? 0) };
+  if (audiencia === "satelite") return [gestiones, haciaLaCentral, rechazos];
   if (audiencia === "mensajero") {
     const corregir: Pestana[] = modo === "rechazado" ? [{ id: "corregir", label: L.PESTANA_CORREGIR }] : [];
     return [...corregir, gestiones, rechazos];
@@ -598,13 +750,13 @@ const partida = (label: string, monto: string, signo: SignoLinea = "neutro"): Li
   tipo: "partida",
 });
 
-function cuentaFactura(t: DineroEmpresaMensajero["totalesIngreso"], cobrado: string, modeloNuevo: boolean): CuentaVista {
+/** SLT-169 (R626): sin el subtotal «Sale de lo recaudado»; todo lo facturado se resta del pago a la tienda. */
+function cuentaFactura(t: DineroEmpresaMensajero["totalesIngreso"], modeloNuevo: boolean): CuentaVista {
   return {
     titulo: L.CUENTA_FACTURA_TITULO,
     lineas: [
       partida(L.FLETE_POR_ENTREGADO_LABEL, t.fleteConIva),
       partida(L.COMISION_COD_LABEL, t.comisionConIva),
-      { label: L.SALE_DE_LO_RECAUDADO_LABEL, monto: cobrado, signo: "neutro", tipo: "subtotal" },
       partida(modeloNuevo ? FLETE_NO_ENTREGADAS_CON_IVA_LABEL : FLETE_DEV_CON_IVA_LABEL, t.fleteDevolucionConIva, "suma"),
       { label: L.TOTAL_FACTURADO_LABEL, monto: t.total, signo: "neutro", tipo: "total" },
     ],
@@ -645,33 +797,52 @@ export function notaOrigenIngresoBodega(d: { sla: string; manual: string }): str
  * «Dinero» una cifra tiene un solo nombre (R9; decisión de Carlos 2026-11-09). La función compartida
  * no cambia: el detalle viejo de bodega sigue con sus rótulos hasta que S6 lo sustituya.
  */
-const ROTULO_UNICO_CENTRAL: Readonly<Record<string, string>> = {
-  [PAGO_MENSAJERO_LABEL]: L.PAGO_A_MENSAJEROS_LABEL,
-  [PARA_LA_CENTRAL_LABEL]: L.DEBE_LLEGAR_A_LA_CENTRAL_LABEL,
-};
+function rotuloUnicoCentral(rotuloPago: string): Readonly<Record<string, string>> {
+  return {
+    [PAGO_MENSAJERO_LABEL]: rotuloPago,
+    [PARA_LA_CENTRAL_LABEL]: L.DEBE_LLEGAR_A_LA_CENTRAL_LABEL,
+  };
+}
 
-/** La cascada «Lo que va a la central» de hoy (`lineasCascadaCentral`), en formato de cuenta. */
-function cuentaCentral(d: DetalleBodegaVista): CuentaVista {
+/**
+ * La cascada «Lo que va a la central» de hoy (`lineasCascadaCentral`), en formato de cuenta.
+ * SLT-154 (R472, RU2): generalizada al nivel; `rotuloPago` es el nombre de la cifra del pago en ese
+ * detalle («Pago a mensajeros» en el de bodega, «Pago al mensajero» en el del mensajero).
+ */
+function cuentaCentral(n: NivelCentral, rotuloPago: string): CuentaVista {
   const lineas = lineasCascadaCentral(
     {
-      general: d.totales.general,
-      totalPagoMensajero: d.totalPagoMensajero,
-      totalIngresoBodegaRechazos: d.totalIngresoBodegaRechazos,
-      paraLaCentral: d.paraLaCentral,
-      efectivoCubreDescuentos: d.efectivoCubreDescuentos,
+      general: n.totales.general,
+      totalPagoMensajero: n.pago,
+      totalIngresoBodegaRechazos: n.ganaBodega,
+      paraLaCentral: n.paraLaCentral,
+      efectivoCubreDescuentos: n.efectivoCubreDescuentos,
     },
-    d.modeloNuevo,
+    n.modeloNuevo,
   );
+  const rotulos = rotuloUnicoCentral(rotuloPago);
   return {
     titulo: CASCADA_CENTRAL_TITULO,
     lineas: lineas.map((l) => ({
-      label: ROTULO_UNICO_CENTRAL[l.label] ?? l.label,
+      label: rotulos[l.label] ?? l.label,
       monto: l.monto,
       signo: l.signo,
       tipo: l.destacado ? "total" : "partida",
       notas: l.notas,
     })),
   };
+}
+
+/** La barra «¿A dónde va lo recaudado?» de la central: [debe llegar, pago, gana la bodega] (RU1). */
+function repartoCentral(n: NivelCentral, rotuloPago: string): ParteReparto[] {
+  return reparto(
+    [
+      [L.DEBE_LLEGAR_A_LA_CENTRAL_LABEL, n.paraLaCentral],
+      [rotuloPago, n.pago],
+      [GANA_BODEGA_SATELITE_LABEL, n.ganaBodega],
+    ],
+    n.porcentajes,
+  );
 }
 
 export function lineasDinero(tipo: "mensajero", detalle: DetalleMensajeroVista): DineroVista | null;
@@ -682,42 +853,58 @@ export function lineasDinero(
 ): DineroVista | null {
   if (tipo === "bodega") {
     const d = detalle as DetalleBodegaVista;
-    return {
-      reparto: reparto(
-        [
-          [L.DEBE_LLEGAR_A_LA_CENTRAL_LABEL, d.paraLaCentral],
-          [L.PAGO_A_MENSAJEROS_LABEL, d.totalPagoMensajero],
-          [GANA_BODEGA_SATELITE_LABEL, d.totalIngresoBodegaRechazos],
-        ],
-        d.porcentajesReparto,
-      ),
-      cuentas: [
-        cuentaCentral(d),
-        cuentaFactura(d.totalesIngreso, d.cobradoSobreRecaudado, d.modeloNuevo),
+    const nivel: NivelCentral = {
+      totales: d.totales,
+      pago: d.totalPagoMensajero,
+      ganaBodega: d.totalIngresoBodegaRechazos,
+      paraLaCentral: d.paraLaCentral,
+      efectivoCubreDescuentos: d.efectivoCubreDescuentos,
+      porcentajes: d.porcentajesReparto ?? null,
+      modeloNuevo: d.modeloNuevo,
+    };
+    // SLT-154 (R469, R478, D4): cada cuenta de la empresa, solo si llegan sus cifras.
+    const t = d.totalesIngreso;
+    const cuentas: CuentaVista[] = [cuentaCentral(nivel, L.PAGO_A_MENSAJEROS_LABEL)];
+    if (t !== null && d.cobradoSobreRecaudado !== null) {
+      cuentas.push(cuentaFactura(t, d.modeloNuevo));
+    }
+    if (t !== null && d.ivaFacturado !== null && d.netoEmpresa !== null) {
+      cuentas.push(
         cuentaQueda(
-          d.totalesIngreso.total,
+          t.total,
           d.ivaFacturado,
           [L.PAGO_A_MENSAJEROS_LABEL, d.totalPagoMensajero],
           [GANA_BODEGA_SATELITE_LABEL, d.totalIngresoBodegaRechazos],
           d.netoEmpresa,
         ),
-      ],
-      porTienda: marcaDeVariasTiendas(d.partesPorTienda) === null ? null : d.partesPorTienda,
+      );
+    }
+    return {
+      reparto: repartoCentral(nivel, L.PAGO_A_MENSAJEROS_LABEL),
+      cuentas,
+      porTienda:
+        d.partesPorTienda === null || marcaDeVariasTiendas(d.partesPorTienda) === null ? null : d.partesPorTienda,
     };
   }
   const d = detalle as DetalleMensajeroVista;
   const e = d.empresa;
-  if (!e) return null;
+  if (!e) {
+    // SLT-154 (R472): sin el dinero de la empresa, lo que va a la central, si llegó; si no, nada.
+    const n = d.haciaLaCentral ?? null;
+    if (n === null) return null;
+    return { reparto: repartoCentral(n, PAGO_MENSAJERO_LABEL), cuentas: [cuentaCentral(n, PAGO_MENSAJERO_LABEL)], porTienda: null };
+  }
   return {
     reparto: reparto(
       [
+        // SLT-169 (R624): las dos partes suman lo recaudado.
         [L.SE_LE_PAGA_HOY_LABEL, e.pagoTienda],
-        [L.SALE_DE_LO_RECAUDADO_LABEL, e.cobradoSobreRecaudado],
+        [L.TOTAL_FACTURADO_LABEL, e.totalesIngreso.total],
       ],
       e.porcentajesReparto,
     ),
     cuentas: [
-      cuentaFactura(e.totalesIngreso, e.cobradoSobreRecaudado, e.modeloNuevo),
+      cuentaFactura(e.totalesIngreso, e.modeloNuevo),
       cuentaQueda(
         e.totalesIngreso.total,
         e.ivaFacturado,
@@ -737,8 +924,9 @@ export function lineasDinero(
 type DetalleAdminOk = Omit<Extract<CierreDetalleAdminServiceResult, { status: "ok" }>, "status">;
 type DetalleBodegaOk = Extract<CierreBodegaDetalleServiceResult, { status: "ok" }>;
 
-function destinoLegible(tipo: CierreDestinoTipo, zona: string): string {
-  return zona ? `${DESTINO_TIPO_LABEL[tipo]} · ${zona}` : DESTINO_TIPO_LABEL[tipo];
+/** SLT-153 (R450): solo el tipo; la zona va en su propio par. */
+function destinoLegible(tipo: CierreDestinoTipo): string {
+  return DESTINO_TIPO_LABEL[tipo];
 }
 
 /** El detalle del cierre de mensajero que ven la central y la satélite (`verCierreDetalle`). */
@@ -751,7 +939,8 @@ export function vistaMensajeroDesdeAdmin(r: DetalleAdminOk): DetalleMensajeroVis
   const desglose = r.desgloseIngresoBodegaRechazos;
   return {
     mensajeroNombre: r.cierre.mensajeroNombre,
-    destino: destinoLegible(r.cierre.destinoTipo, r.cierre.destinoZonaNombre),
+    destino: destinoLegible(r.cierre.destinoTipo),
+    zona: r.cierre.destinoZonaNombre || null,
     folio: folioDe(r.cierre.cierreId),
     estado: r.cierre.estado,
     solicitadoAt: r.cierre.solicitadoAt,
@@ -761,19 +950,8 @@ export function vistaMensajeroDesdeAdmin(r: DetalleAdminOk): DetalleMensajeroVis
     motivoRechazo: r.cierre.motivoRechazo,
     totales: r.cierre.totales,
     totalPagoMensajero: r.cierre.totalPagoMensajero,
-    empresa: {
-      pagoTienda: r.pagoTienda,
-      cobradoSobreRecaudado: r.cobradoSobreRecaudado,
-      ganaLaTienda: r.ganaLaTienda,
-      totalIngresoBodegaRechazos: r.cierre.totalIngresoBodegaRechazos,
-      ivaFacturado: r.ivaFacturado,
-      netoEmpresa: r.netoEmpresa,
-      totalesIngreso: r.totalesIngreso,
-      partesPorTienda: r.partesPorTienda,
-      modeloNuevo,
-      // SLT-111 (R267): el reparto del servidor, tal cual; sin él no hay barra.
-      porcentajesReparto: r.porcentajesReparto ?? null,
-    },
+    empresa: empresaDe(r, modeloNuevo),
+    haciaLaCentral: haciaLaCentralDe(r, modeloNuevo),
     // R81: oculto en el modelo nuevo (el origen solo existe para un rechazo) o sin desglose.
     desgloseIngresoBodega:
       modeloNuevo || desglose?.sla === undefined || desglose?.manual === undefined
@@ -787,8 +965,56 @@ export function vistaMensajeroDesdeAdmin(r: DetalleAdminOk): DetalleMensajeroVis
       incidentesSinIndemnizar: r.grupos.incidente.filter((g) => g.indemnizacion === null).length,
       rechazosDeTienda: r.rechazosDeTienda.length,
       paquetesVuelven,
-      tiendas: r.partesPorTienda.length,
+      // «Tiendas» solo la usa una cifra de la empresa: sin ella, 0 (no se pinta).
+      tiendas: r.partesPorTienda?.length ?? 0,
     },
+  };
+}
+
+/**
+ * SLT-154 (R462, R478) — el dinero de la empresa del cierre, solo si llegan TODAS sus cifras: con una
+ * en `null` (quien mira no es la central), `null` entero y la pantalla no pinta nada de la empresa.
+ */
+function empresaDe(r: DetalleAdminOk, modeloNuevo: boolean): DineroEmpresaMensajero | null {
+  const { pagoTienda, cobradoSobreRecaudado, ivaFacturado, netoEmpresa, totalesIngreso, partesPorTienda } = r;
+  if (
+    pagoTienda === null ||
+    cobradoSobreRecaudado === null ||
+    ivaFacturado === null ||
+    netoEmpresa === null ||
+    totalesIngreso === null ||
+    partesPorTienda === null
+  ) {
+    return null;
+  }
+  return {
+    pagoTienda,
+    cobradoSobreRecaudado,
+    totalIngresoBodegaRechazos: r.cierre.totalIngresoBodegaRechazos,
+    ivaFacturado,
+    netoEmpresa,
+    totalesIngreso,
+    partesPorTienda,
+    modeloNuevo,
+    // SLT-111 (R267): el reparto del servidor, tal cual; sin él no hay barra.
+    porcentajesReparto: r.porcentajesReparto ?? null,
+  };
+}
+
+/**
+ * SLT-154 (R467) — lo que va a la central del cierre, tal cual del servidor. Sin `paraLaCentral` o sin
+ * `efectivoCubreDescuentos` (un doble que no los trae), `null`: falla cerrado, nunca «₡0».
+ */
+function haciaLaCentralDe(r: DetalleAdminOk, modeloNuevo: boolean): NivelCentral | null {
+  if (r.paraLaCentral === undefined || r.efectivoCubreDescuentos === undefined) return null;
+  return {
+    totales: r.cierre.totales,
+    pago: r.cierre.totalPagoMensajero,
+    ganaBodega: r.cierre.totalIngresoBodegaRechazos,
+    paraLaCentral: r.paraLaCentral,
+    efectivoCubreDescuentos: r.efectivoCubreDescuentos,
+    porcentajes: r.porcentajesRepartoCentral ?? null,
+    modeloNuevo,
   };
 }
 
@@ -817,7 +1043,7 @@ export function vistaMensajeroDesdeCierreDia(
   return {
     // Con audiencia mensajero el título es «Tu cierre del día»: el nombre no se pinta.
     mensajeroNombre: "",
-    destino: destinoLegible(c.destinoTipo, ""),
+    destino: destinoLegible(c.destinoTipo),
     folio: folioDe(c.cierreId),
     estado: c.estado,
     solicitadoAt: c.solicitadoAt,
@@ -964,6 +1190,8 @@ export function vistaBodegaDesdeAdmin(r: DetalleBodegaOk): DetalleBodegaVista {
     netoEmpresa: r.netoEmpresa,
     totalesIngreso: r.totalesIngreso,
     partesPorTienda: r.partesPorTienda,
+    // SLT-154 (R466): tal cual; ausente = sin dato (sin tarjeta).
+    centralDebe: r.centralDebe ?? null,
     modeloNuevo: r.cierres.some((cd) => hayGestionEnModeloNuevo(cd.grupos)),
     // SLT-111 (R267): el reparto del servidor, tal cual; sin él no hay barra.
     porcentajesReparto: r.porcentajesReparto ?? null,

@@ -11,7 +11,10 @@ import { Check, ChevronDown, Search, SlidersHorizontal, X } from "lucide-react";
 import { Popover } from "@base-ui/react/popover";
 
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { EscanerModal } from "@/components/shared/EscanerModal";
+import { QrScanner } from "@/components/shared/QrScanner";
 import {
   avisoMinimoCaracteres,
   DEBOUNCE_MS_DEFAULT,
@@ -21,6 +24,8 @@ import {
   type VistasFiltroBarra,
 } from "@/components/shared/VistasFiltro";
 import { useFiltrosUrl } from "@/hooks/useFiltrosUrl";
+import { useToast } from "@/hooks/useToast";
+import { leerGuia } from "@/lib/utils/paquete-url";
 import {
   activosDesdeUrl,
   PARAM_TERMINO_DEFAULT,
@@ -38,6 +43,65 @@ import { cn } from "@/lib/utils";
  * defecto, así que no hace falta forzárselo.
  */
 const ALTO_CONTROL = "h-8";
+
+/**
+ * SLT-156 (R493): con `tactil`, el campo, «Filtros» y «Limpiar todo» miden 44 px en móvil (las
+ * pantallas del mensajero); en escritorio siguen con `ALTO_CONTROL`.
+ */
+const ALTO_CONTROL_TACTIL = "h-8 max-md:h-11";
+
+/** SLT-160 (R771, DC2): con `escaneo`, el campo y los controles de la barra miden 44 px, como el canvas. */
+const ALTO_CONTROL_ESCANEO = "h-11";
+
+/** SLT-156 (R496): con `fija`, la barra queda pegada arriba mientras se desplaza la lista. */
+export const BARRA_FIJA = "sticky top-0 z-20 bg-background py-2";
+
+/** SLT-160 (R600): nombre accesible del botón de cámara del buscador y título de su visor. */
+export const ESCANEAR_CON_CAMARA = "Escanear con cámara";
+
+/** SLT-160 (R770, DC2): la ayuda que va debajo de un buscador con `escaneo`, la del canvas. */
+export const AYUDA_ESCANEO =
+  "Escanea o escribe la guía y pulsa Enter. Lo leído por la pistola o por la cámara (QR o código de barras) se busca igual.";
+
+/** SLT-160 (R605): lo que dice la cámara del buscador cuando lee algo que no es una guía. */
+const CODIGO_INVALIDO = "Código inválido.";
+
+/**
+ * SLT-160 (R604, R605) — el visor de la cámara del buscador, ya encendido (D4). Vive DENTRO del
+ * modal, y es ahí donde pide el toast: solo se monta al abrirlo, así la barra sigue sin exigir un
+ * `ToastProvider` a quien la monta. Una guía cierra el modal y se busca; otra cosa avisa y no toca
+ * el término.
+ */
+function CamaraDelBuscador({
+  onGuia,
+  cerrar,
+}: {
+  onGuia: (guia: number) => void;
+  cerrar: () => void;
+}) {
+  const toast = useToast();
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{ESCANEAR_CON_CAMARA}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <QrScanner
+          encendidaAlMontar
+          onDecoded={(texto) => {
+            const guia = leerGuia(texto);
+            if (guia === null) {
+              toast.error(CODIGO_INVALIDO);
+              return;
+            }
+            cerrar();
+            onGuia(guia);
+          }}
+        />
+      </CardContent>
+    </Card>
+  );
+}
 
 /** Un filtro OFRECIDO en el selector: su clave y como se llama. Nada mas. */
 export interface FiltroDisponible {
@@ -63,6 +127,12 @@ export interface BuscadorFiltrosProps {
    * faltan; no es un error de validación, es "todavía no hay búsqueda". Default `0`.
    */
   minChars?: number;
+  /**
+   * SLT-153 «Cabecera del detalle del cierre con rótulos y folio buscable» — tope de caracteres del
+   * campo, tal como se escribe. Lo que pase del tope (también al pegar) no entra ni se emite: así el
+   * término nunca supera lo que acepta el borde del servidor. Ausente = sin tope (como antes).
+   */
+  maxLength?: number;
   /**
    * Espera (ms) entre la última pulsación y la emisión. El campo responde al
    * instante; lo que se aplaza es AVISAR al consumidor, para que teclear una guía no
@@ -154,6 +224,29 @@ export interface BuscadorFiltrosProps {
    * cierre, cuyo canvas no dibuja buscador. Default `true`: los demás consumidores no cambian.
    */
   buscador?: boolean;
+  /**
+   * SLT-156 (R496) — la barra queda pegada al borde superior de la ventana mientras se desplaza la
+   * lista. Apagada por defecto: los demás consumidores no cambian.
+   */
+  fija?: boolean;
+  /**
+   * SLT-156 (R493) — controles de 44 px en móvil (campo, «Filtros», «Limpiar todo»). Apagada por
+   * defecto: los demás consumidores no cambian.
+   */
+  tactil?: boolean;
+  /**
+   * SLT-160 «Buscar escaneando en los listados» (D1, D2) — buscador de un listado con guía (B1-B8):
+   * Enter busca en el acto (una guía leída por pistola, URL del QR o `#n`, queda como el número,
+   * `leerGuia`) y deja el texto seleccionado para que la siguiente lectura lo sustituya; y un botón
+   * de cámara dentro del campo, junto a la «X». Apagada por defecto: los demás no cambian (R609).
+   */
+  escaneo?: boolean;
+  /**
+   * SLT-189 (DS3, R795) — controles propios de la pantalla que van DESPUÉS de «Filtros», en la misma
+   * fila (p. ej. el conmutador Mosaico/Detalle de Reparto). Los `children` no sirven: se pintan antes
+   * del campo. Sin la prop no se monta nada: los demás consumidores no cambian.
+   */
+  trasFiltros?: ReactNode;
   className?: string;
 }
 
@@ -215,6 +308,7 @@ export function BuscadorFiltros({
   label = "Buscar",
   placeholder,
   minChars = 0,
+  maxLength,
   debounceMs = DEBOUNCE_MS_DEFAULT,
   disabled = false,
   onChange,
@@ -230,10 +324,16 @@ export function BuscadorFiltros({
   siembra,
   vistas,
   buscador = true,
+  fija = false,
+  tactil = false,
+  escaneo = false,
+  trasFiltros,
   className,
 }: BuscadorFiltrosProps) {
+  const alto = escaneo ? ALTO_CONTROL_ESCANEO : tactil ? ALTO_CONTROL_TACTIL : ALTO_CONTROL;
   const idBase = useId();
   const idAviso = `${idBase}-minimo`;
+  const idAyuda = `${idBase}-ayuda`;
 
   const { params, borrarParams } = useFiltrosUrl(leerDeUrl);
 
@@ -386,7 +486,10 @@ export function BuscadorFiltros({
     onChangeRef.current(siguiente);
   }
 
-  function escribir(valor: string) {
+  function escribir(entrada: string) {
+    // El atributo `maxLength` ya frena el teclado; el recorte cubre lo que el atributo no frena
+    // (un valor puesto por código o un navegador que no lo respete).
+    const valor = maxLength === undefined ? entrada : entrada.slice(0, maxLength);
     setTexto(valor);
     const recortado = valor.trim();
     // `!== ""` aparte del mínimo: con `minChars` 0 (default) un campo vacío seguiría
@@ -408,6 +511,39 @@ export function BuscadorFiltros({
       temporizador.current = null;
       emitir(siguiente);
     }, debounceMs);
+  }
+
+  /**
+   * SLT-160 (R601-R603) — BUSCAR YA, sin debounce: Enter o una lectura de la cámara. Si `entrada`
+   * es una guía (`leerGuia`), el campo pasa a mostrar solo el número. Se cancela lo pendiente y se
+   * emite aunque coincida con lo emitido si había un debounce en vuelo (ese llevaba este mismo
+   * término); por debajo de `minChars` el término es `""`, como al teclear. Al final se pide
+   * seleccionar el texto: la siguiente lectura lo sustituye en vez de añadirse.
+   */
+  const campoRef = useRef<HTMLInputElement>(null);
+  const [seleccionPedida, setSeleccionPedida] = useState(0);
+  useEffect(() => {
+    if (seleccionPedida > 0) campoRef.current?.select();
+  }, [seleccionPedida]);
+
+  function buscarYa(entrada: string) {
+    const guia = leerGuia(entrada);
+    const leido = guia === null ? entrada : String(guia);
+    const valor = maxLength === undefined ? leido : leido.slice(0, maxLength);
+    setTexto(valor);
+    const recortado = valor.trim();
+    const siguiente =
+      recortado !== "" && recortado.length >= minChars ? recortado : "";
+    const habiaPendiente = temporizador.current !== null;
+    if (temporizador.current) {
+      clearTimeout(temporizador.current);
+      temporizador.current = null;
+    }
+    if (siguiente !== emitido.current || habiaPendiente) {
+      emitido.current = siguiente;
+      emitir(siguiente);
+    }
+    setSeleccionPedida((n) => n + 1);
   }
 
   /**
@@ -461,7 +597,7 @@ export function BuscadorFiltros({
     // por sí mismo —el campo con el borde de `Input`, el selector con el de `Button`—,
     // que es como se ven en el resto de la app, y así el primer elemento arranca
     // pegado al borde izquierdo, sin sangría.
-    <div className={cn("w-full", className)}>
+    <div className={cn("w-full", fija && BARRA_FIJA, className)}>
       {/* `flex-wrap`: con varios filtros puestos la línea salta antes que estrujar el
           campo por debajo de su mínimo. */}
       <div className="flex w-full flex-wrap items-center gap-2">
@@ -492,15 +628,15 @@ export function BuscadorFiltros({
         {/* Los controles de los filtros puestos van DELANTE del campo. */}
         {children}
 
-        {/* El campo se lleva todo el espacio sobrante (`flex-1`) pero nunca baja de
-            250px: por debajo de eso una guía deja de verse entera mientras se teclea.
-            `min-w-0` en el contenedor flexible no aplica aquí a propósito — el mínimo
-            es justamente lo que no queremos que el flex ignore. */}
+        {/* El campo se lleva todo el espacio sobrante (`flex-1`) y desde `sm` nunca baja de
+            250px: por debajo de eso una guía deja de verse entera mientras se teclea. En el
+            móvil (SLT-156, R496) el mínimo es 0: 250px más «Filtros» no caben en 312px y la
+            barra desbordaba; ahí la fila envuelve y el campo ocupa la línea entera. */}
         {buscador ? (
         <div
           className={cn(
-            "relative flex min-w-[250px] flex-1 items-center",
-            ALTO_CONTROL,
+            "relative flex min-w-0 flex-1 items-center sm:min-w-[250px]",
+            alto,
           )}
         >
           <Search
@@ -508,11 +644,17 @@ export function BuscadorFiltros({
             aria-hidden
           />
           <Input
+            ref={campoRef}
             type="search"
             value={texto}
             aria-label={label}
-            aria-describedby={faltanCaracteres ? idAviso : undefined}
+            aria-describedby={
+              [escaneo ? idAyuda : null, faltanCaracteres ? idAviso : null]
+                .filter(Boolean)
+                .join(" ") || undefined
+            }
             placeholder={placeholder}
+            maxLength={maxLength}
             disabled={disabled}
             // El campo ocupa el 100% de su hueco, alto incluido, y conserva su marco y
             // su anillo de foco de `Input`. `text-ellipsis` porque el placeholder
@@ -526,6 +668,15 @@ export function BuscadorFiltros({
             // forma de limpiarse en unos navegadores sí y en otros no.
             className="h-full w-full pr-9 pl-8 text-ellipsis [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden"
             onChange={(e) => escribir(e.target.value)}
+            onKeyDown={
+              escaneo
+                ? (e) => {
+                    if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+                    e.preventDefault();
+                    buscarYa(e.currentTarget.value);
+                  }
+                : undefined
+            }
           />
           {texto !== "" ? (
             <Button
@@ -543,6 +694,16 @@ export function BuscadorFiltros({
         </div>
         ) : null}
 
+        {/* SLT-160 (R600, R604, DC2): la cámara es un botón APARTE de 44 px, pegado al campo y fuera
+            de él, como en el canvas. Abre el visor de hoy ya encendido. */}
+        {buscador && escaneo ? (
+          <EscanerModal label={ESCANEAR_CON_CAMARA} soloIcono className="size-11 shrink-0">
+            {(cerrar) => (
+              <CamaraDelBuscador cerrar={cerrar} onGuia={(guia) => buscarYa(String(guia))} />
+            )}
+          </EscanerModal>
+        ) : null}
+
         {/* El selector va AL FINAL de la barra. `listbox` multiseleccionable con el
             mismo ARIA que `MultiSelectFilter`: marcar una opción PONE su filtro y no
             cierra el panel, para poder pedir dos o tres del tirón. */}
@@ -555,7 +716,7 @@ export function BuscadorFiltros({
               className={cn(
                 buttonVariants({ variant: "outline" }),
                 "shrink-0 gap-2 font-normal",
-                ALTO_CONTROL,
+                alto,
               )}
             >
               <SlidersHorizontal className="size-4" aria-hidden />
@@ -590,7 +751,7 @@ export function BuscadorFiltros({
                         role="option"
                         aria-selected={marcado}
                         className={cn(
-                          "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm",
+                          "flex w-full items-center gap-2 rounded-sm px-2 py-2 text-left text-sm",
                           "hover:bg-accent hover:text-accent-foreground",
                           marcado && "font-medium",
                         )}
@@ -618,6 +779,9 @@ export function BuscadorFiltros({
           </Popover.Root>
         ) : null}
 
+        {/* SLT-189 (DS3): el hueco opcional tras «Filtros». */}
+        {trasFiltros}
+
         {/* "Limpiar todo" cierra la barra por la derecha, DESPUÉS del selector: es la
             última pieza de la fila porque es lo último que se hace con ella. Solo
             existe cuando hay algo que limpiar —búsqueda escrita o filtros aplicados—;
@@ -628,7 +792,7 @@ export function BuscadorFiltros({
             variant="outline"
             size="sm"
             disabled={disabled}
-            className="shrink-0"
+            className={cn("shrink-0", tactil && "max-md:h-11", escaneo && ALTO_CONTROL_ESCANEO)}
             onClick={limpiarTodo}
           >
             Limpiar todo
@@ -640,6 +804,12 @@ export function BuscadorFiltros({
           ya dentro no se anuncia— y solo cambia su contenido. Su alto está RESERVADO
           (`h-4`, vacía incluida): el aviso aparece y desaparece sin empujar ni un
           píxel de lo que hay debajo, que en esta barra es la tabla entera. */}
+      {/* SLT-160 (R770): la ayuda del escaneo, debajo del campo y descripción accesible de él. */}
+      {buscador && escaneo ? (
+        <p id={idAyuda} className="mt-1 text-xs text-muted-foreground">
+          {AYUDA_ESCANEO}
+        </p>
+      ) : null}
       {buscador ? (
         <p
           id={idAviso}

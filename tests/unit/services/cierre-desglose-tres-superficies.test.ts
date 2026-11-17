@@ -185,12 +185,11 @@ const INGRESO_BODEGA = "500.00";
  * EL DESGLOSE ESPERADO, ESCRITO A MANO. Es el CONTRATO, no la salida de `partesPorTienda`:
  * cambiarlo por lo que devuelva la función dejaría los tres casos siempre verdes.
  *
- *   Norte · recaudado 100.000,00 · se le paga 100.000,00 − 2.825,00 − 3.390,00 = 93.785,00
- *                                · gana      100.000,00 − (6.215,00 + 1.695,00) = 92.090,00
- *                                · diferencia = 1.695,00, su flete por devolución a origen
- *   Sur   · recaudado  40.000,00 · se le paga  40.000,00 − 2.260,00 − 1.356,00 = 36.384,00
- *                                · gana        40.000,00 − 3.616,00            = 36.384,00
- *                                · diferencia = 0,00, no trajo rechazos
+ * Desde SLT-169 (R621, R623) «se le paga» resta TODO lo facturado, flete por rechazo incluido:
+ *
+ *   Norte · recaudado 100.000,00 · se le paga 100.000,00 − (6.215,00 + 1.695,00) = 92.090,00
+ *                                  (con la definición anterior daba 93.785,00)
+ *   Sur   · recaudado  40.000,00 · se le paga  40.000,00 − 3.616,00            = 36.384,00
  *
  * Ordenadas por lo que se les paga, de mayor a menor (R8).
  */
@@ -199,15 +198,13 @@ const DESGLOSE_ESPERADO = [
     tiendaId: "t-norte",
     tiendaNombre: "Tienda Norte",
     recaudado: "100000.00",
-    pagoTienda: "93785.00",
-    ganaLaTienda: "92090.00",
+    pagoTienda: "92090.00",
   },
   {
     tiendaId: "t-sur",
     tiendaNombre: "Tienda Sur",
     recaudado: "40000.00",
     pagoTienda: "36384.00",
-    ganaLaTienda: "36384.00",
   },
 ];
 
@@ -284,7 +281,7 @@ async function desgloseDelDetalleDeMensajero() {
 
   const r = await service.verCierreDetalle("c1", MAESTRO);
   if (r.status !== "ok") throw new Error("esperaba ok en el detalle del mensajero");
-  return { partes: r.partesPorTienda, pagoTienda: r.pagoTienda, ganaLaTienda: r.ganaLaTienda };
+  return { partes: r.partesPorTienda, pagoTienda: r.pagoTienda };
 }
 
 /** Superficies 2 y 3 — la bodega, con UN solo `cierre_dia`, para que el conjunto sea el mismo. */
@@ -340,9 +337,7 @@ async function desglosesDelDetalleDeBodega() {
     porMensajero: r.cierres[0].partesPorTienda,
     agregado: r.partesPorTienda,
     pagoTiendaPorMensajero: r.cierres[0].pagoTienda,
-    ganaLaTiendaPorMensajero: r.cierres[0].ganaLaTienda,
     pagoTiendaAgregado: r.pagoTienda,
-    ganaLaTiendaAgregado: r.ganaLaTienda,
   };
 }
 
@@ -376,12 +371,10 @@ describe("396/D4 — el desglose por tienda entra por LAS TRES superficies (R22)
 
     // Y las dos cifras que el desglose parte también coinciden en las tres, al céntimo: es el
     // mismo dinero mirado desde tres pantallas.
-    expect(mensajero.pagoTienda).toBe("130169.00"); // 140.000,00 − 5.085,00 − 4.746,00
-    expect(bodega.pagoTiendaPorMensajero).toBe("130169.00");
-    expect(bodega.pagoTiendaAgregado).toBe("130169.00");
-    expect(mensajero.ganaLaTienda).toBe("128474.00"); // 140.000,00 − 11.526,00
-    expect(bodega.ganaLaTiendaPorMensajero).toBe("128474.00");
-    expect(bodega.ganaLaTiendaAgregado).toBe("128474.00");
+    // SLT-169 R620/R623: 140.000,00 − 11.526,00 (todo lo facturado); antes 130.169,00.
+    expect(mensajero.pagoTienda).toBe("128474.00");
+    expect(bodega.pagoTiendaPorMensajero).toBe("128474.00");
+    expect(bodega.pagoTiendaAgregado).toBe("128474.00");
   });
 
   it("ninguna de las tres devuelve la lista vacía — que es la forma que tiene «nadie la llama»", async () => {

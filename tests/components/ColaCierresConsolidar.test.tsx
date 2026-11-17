@@ -203,23 +203,25 @@ const celdas = (nombre: string) =>
 const boton = () => screen.getByRole("button", { name: "Solicitar cierre de bodega" });
 
 describe("ColaCierres · bodega satélite — pestañas y barra (R190, R191, R203)", () => {
-  it("tablist «Cierre de bodega por etapa» con «A consolidar 3» activa y «Solicitados 8»", () => {
+  it("R447, R449 (SLT-152): tablist «Cierre de bodega por etapa» con «A consolidar (3)» activa y «Solicitados (8)»", () => {
     render(<ColaCierres {...props()} />);
     const lista = screen.getByRole("tablist", { name: "Cierre de bodega por etapa" });
     expect(within(lista).getAllByRole("tab").map((t) => t.textContent)).toEqual([
-      "A consolidar 3",
-      "Solicitados 8",
+      "A consolidar (3)",
+      "Solicitados (8)",
     ]);
-    expect(within(lista).getByRole("tab", { name: "A consolidar 3" })).toHaveAttribute(
+    expect(within(lista).getByRole("tab", { name: "A consolidar (3)" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
+    expect(within(lista).getByRole("tab", { name: "Solicitados (8)" })).toBeInTheDocument();
+    for (const t of within(lista).getAllByRole("tab")) expect(t.textContent).not.toMatch(/^\S.* \d+$/);
   });
 
   it("cambiar de pestaña avisa con el id interno", async () => {
     const onPestana = vi.fn();
     render(<ColaCierres {...props({ onPestana })} />);
-    await userEvent.setup().click(screen.getByRole("tab", { name: "Solicitados 8" }));
+    await userEvent.setup().click(screen.getByRole("tab", { name: "Solicitados (8)" }));
     expect(onPestana).toHaveBeenCalledWith("solicitados");
   });
 
@@ -471,7 +473,7 @@ describe("ColaCierres · bodega satélite — «Solicitados»: tarjetas (R49, R2
     ).toEqual(["Por llegar a la central", "Recibido por la central (30 días)", "Falta por recibir"]);
     expect(caja("Por llegar a la central")).toHaveTextContent("₡436.963,27");
     expect(caja("Por llegar a la central")).toHaveTextContent("3 cierres pendientes de conciliar");
-    expect(caja("Por llegar a la central")).toHaveClass("bg-brand-soft");
+    expect(caja("Por llegar a la central")).toHaveClass("bg-accent");
     expect(caja("Recibido por la central (30 días)")).toHaveTextContent("₡53.500");
     expect(caja("Recibido por la central (30 días)")).toHaveTextContent("2 cierres de bodega");
     expect(caja("Falta por recibir")).toHaveTextContent("₡15.000");

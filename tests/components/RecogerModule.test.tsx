@@ -117,7 +117,7 @@ function listado() {
 
 /** El acceso a la recogida por guía/escaneo, plegado o no. */
 const accesoRecogida = () =>
-  screen.queryByRole("button", { name: "Recoger paquete" });
+  screen.queryByRole("button", { name: "Escanear o escribir guía" });
 
 /**
  * Despliega la tarjeta de recogida. Vive plegada tras su disparador (decisión del humano,
@@ -125,7 +125,39 @@ const accesoRecogida = () =>
  * que el mensajero tuviera abierta la pantalla.
  */
 async function abrirRecogida(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole("button", { name: "Recoger paquete" }));
+  await user.click(screen.getByRole("button", { name: "Escanear o escribir guía" }));
+}
+
+/**
+ * SLT-168 «Escaneo continuo en las recogidas del mensajero»: el diálogo es la sesión continua;
+ * cada lectura es una fila (la más reciente arriba) y el motivo de un «No se pudo recoger» va en
+ * ella, no en un toast.
+ */
+function ultimaLectura(): HTMLElement {
+  return within(screen.getByRole("log", { name: "Lecturas" })).getAllByRole("listitem")[0];
+}
+
+/** Espera a que la última lectura diga `estado` y la devuelve. */
+async function lecturaQueDice(estado: string): Promise<HTMLElement> {
+  await vi.waitFor(() => expect(within(ultimaLectura()).getByText(estado)).toBeInTheDocument());
+  return ultimaLectura();
+}
+
+async function cerrarRecogida(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: "Cerrar" }));
+  await vi.waitFor(() => expect(screen.queryByRole("log", { name: "Lecturas" })).toBeNull());
+}
+
+/**
+ * El banner de órdenes nuevas. SLT-156: `BuscadorFiltros` trae su propio `status` (el aviso de
+ * caracteres), así que el banner se reconoce por su texto y no por ser el único `status`.
+ */
+function contadorNuevas(): HTMLElement | null {
+  return (
+    screen
+      .queryAllByRole("status")
+      .find((el) => /nuevas? para recoger/.test(el.textContent ?? "")) ?? null
+  );
 }
 
 /** El campo de búsqueda de guías (input type="search" con label "Buscar guías"). */
@@ -356,9 +388,12 @@ describe("RecogerModule — las dos vías de recogida (feature 96)", () => {
     expect(screen.queryByRole("dialog", { name: "Recoger órdenes" })).toBeNull();
   });
 
-  it("teclear una guía por recoger + confirmar recoge esa orden por su id y refresca", async () => {
+  it("R598: dos guías recogidas por su id; la lista se refresca UNA vez al cerrar y ninguna antes", async () => {
     const user = userEvent.setup();
-    recogerMock.mockResolvedValue({ status: "ok", recogidas: ["r2"] });
+    recogerMock.mockImplementation(async (input) => ({
+      status: "ok",
+      recogidas: (input as { ordenIds: string[] }).ordenIds,
+    }));
     renderModule({
       porRecoger: [
         makeAsignacion({ id: "r1", numGuia: 1001 }),
@@ -372,11 +407,34 @@ describe("RecogerModule — las dos vías de recogida (feature 96)", () => {
     });
     await user.type(within(region).getByLabelText("Número de guía"), "1002");
     await user.click(within(region).getByRole("button", { name: "Recoger" }));
+    await user.type(within(region).getByLabelText("Número de guía"), "1001{Enter}");
 
-    await vi.waitFor(() =>
-      expect(recogerMock).toHaveBeenCalledWith({ ordenIds: ["r2"] }),
-    );
-    await vi.waitFor(() => expect(refreshMock).toHaveBeenCalled());
+    await vi.waitFor(() => expect(recogerMock).toHaveBeenCalledTimes(2));
+    expect(recogerMock).toHaveBeenNthCalledWith(1, { ordenIds: ["r2"] });
+    expect(recogerMock).toHaveBeenNthCalledWith(2, { ordenIds: ["r1"] });
+    await lecturaQueDice("Recogida");
+    expect(refreshMock).not.toHaveBeenCalled();
+
+    await cerrarRecogida(user);
+
+    await vi.waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
+  });
+
+  it("R598: solo errores y cerrar: la lista NO se refresca", async () => {
+    const user = userEvent.setup();
+    recogerMock.mockResolvedValue({ status: "forbidden" });
+    renderModule({ porRecoger: [makeAsignacion({ id: "r1", numGuia: 1001 })] });
+
+    await abrirRecogida(user);
+    const region = screen.getByRole("region", {
+      name: "Recoger por número de guía o escaneo",
+    });
+    await user.type(within(region).getByLabelText("Número de guía"), "1001{Enter}");
+    await lecturaQueDice("No se pudo recoger");
+
+    await cerrarRecogida(user);
+
+    expect(refreshMock).not.toHaveBeenCalled();
   });
 
   it("restricción 'asignada a mí': una guía que NO está por recoger se rechaza sin llamar la action", async () => {
@@ -387,12 +445,12 @@ describe("RecogerModule — las dos vías de recogida (feature 96)", () => {
     const region = screen.getByRole("region", {
       name: "Recoger por número de guía o escaneo",
     });
-    await user.type(within(region).getByLabelText("Número de guía"), "9999");
+    await user.type(within(region).getByLabelText("Número de guía"), "7777777");
     await user.click(within(region).getByRole("button", { name: "Recoger" }));
 
-    await vi.waitFor(() => expect(errorMock).toHaveBeenCalled());
-    expect(errorMock.mock.calls[0][0]).toMatch(/9999/);
+    await lecturaQueDice("No está entre tus órdenes");
     expect(recogerMock).not.toHaveBeenCalled();
+    expect(errorMock).not.toHaveBeenCalled();
     expect(refreshMock).not.toHaveBeenCalled();
   });
 
@@ -788,6 +846,10 @@ describe("RecogerModule — orden reservada para mañana (feature 246)", () => {
         screen.queryByRole("region", { name: "Órdenes para otro día" }),
       ).toBeNull(),
     );
+    // SLT-156 (R517): en Detalle la tarjeta es la compacta; la marca está en su despliegue.
+    await user.click(
+      within(cardDe("REM-MAN")).getByRole("button", { expanded: false }),
+    );
     expect(within(cardDe("REM-MAN")).getByText("Para mañana")).toBeInTheDocument();
   });
 
@@ -914,7 +976,8 @@ describe("RecogerModule — la guía reservada no se recoge (feature 261/R13)", 
 
     // Que el AVISO se diga es la mitad; que la action NO se llame es la otra, y sin ella el caso
     // pasaría igual con una defensa que avisa y recoge de todos modos.
-    await vi.waitFor(() => expect(errorMock).toHaveBeenCalledWith(AVISO_22));
+    const fila = await lecturaQueDice("No se pudo recoger");
+    expect(within(fila).getByText(AVISO_22)).toBeInTheDocument();
     expect(recogerMock).not.toHaveBeenCalled();
     expect(refreshMock).not.toHaveBeenCalled();
   });
@@ -942,8 +1005,7 @@ describe("RecogerModule — la guía reservada no se recoge (feature 261/R13)", 
 
     // El par del caso anterior. Con el mensaje de «no está entre tus órdenes» el mensajero
     // buscaría un problema que no existe —la orden SÍ es suya— y acabaría llamando a bodega.
-    await vi.waitFor(() => expect(errorMock).toHaveBeenCalled());
-    const dicho = errorMock.mock.calls[0][0] as string;
+    const dicho = (await lecturaQueDice("No se pudo recoger")).textContent ?? "";
     expect(dicho).not.toMatch(/no está entre tus órdenes/i);
     expect(dicho).not.toMatch(/inválido/i);
   });
@@ -986,10 +1048,13 @@ describe("RecogerModule — la guía reservada no se recoge (feature 261/R13)", 
 
     await vi.waitFor(() => expect(recogerMock).toHaveBeenCalledWith({ ordenIds: ["r1"] }));
     // Y con EL DÍA que la orden trae consigo: una regla, dos sitios, un texto.
-    await vi.waitFor(() => expect(errorMock).toHaveBeenCalledWith(AVISO_22));
-    expect(errorMock).not.toHaveBeenCalledWith(
-      "La orden ya no está en «Mensajero recogiendo en la bodega». Actualiza y vuelve a intentar.",
-    );
+    const fila = await lecturaQueDice("No se pudo recoger");
+    expect(within(fila).getByText(AVISO_22)).toBeInTheDocument();
+    expect(
+      within(fila).queryByText(
+        "La orden ya no está en «Mensajero recogiendo en la bodega». Actualiza y vuelve a intentar.",
+      ),
+    ).toBeNull();
   });
 
   it("un `conflict` SIN código sigue diciendo el mensaje de siempre", async () => {
@@ -1011,11 +1076,12 @@ describe("RecogerModule — la guía reservada no se recoge (feature 261/R13)", 
     await user.type(within(region).getByLabelText("Número de guía"), "1001");
     await user.click(within(region).getByRole("button", { name: "Recoger" }));
 
-    await vi.waitFor(() =>
-      expect(errorMock).toHaveBeenCalledWith(
+    const fila = await lecturaQueDice("No se pudo recoger");
+    expect(
+      within(fila).getByText(
         "La orden ya no está en «Mensajero recogiendo en la bodega». Actualiza y vuelve a intentar.",
       ),
-    );
+    ).toBeInTheDocument();
   });
 
   it("R8: la orden de HOY se recoge igual — el bloqueo no se come a las demás", async () => {
@@ -1050,8 +1116,8 @@ describe("RecogerModule — la guía reservada no se recoge (feature 261/R13)", 
     // La mitad POSITIVA de la regla, en la misma pantalla que la negativa: sin ella, un bloqueo
     // que rechazara TODO también pasaría los casos de arriba.
     await vi.waitFor(() => expect(recogerMock).toHaveBeenCalledWith({ ordenIds: ["r2"] }));
+    await lecturaQueDice("Recogida");
     expect(errorMock).not.toHaveBeenCalled();
-    await vi.waitFor(() => expect(refreshMock).toHaveBeenCalled());
   });
 
   // ⚠️ ESTE TEST VIENE DE LA FEATURE 261 (R9) Y CAMBIÓ DE FORMA CON LA 277 (2026-08-24).
@@ -1349,7 +1415,7 @@ describe("RecogerModule — los dos grupos en pestañas (feature 277)", () => {
       porRecoger: [OTRO_DIA({ id: "r1", numRemision: "REM-MAN" })],
     });
 
-    expect(screen.queryByRole("status")).toBeNull();
+    expect(contadorNuevas()).toBeNull();
     expect(screen.queryByText(/orden(es)? nueva(s)? asignada(s)?/)).toBeNull();
     expect(
       within(panelActivo()).getByText("No hay órdenes para recoger hoy."),
@@ -1365,13 +1431,11 @@ describe("RecogerModule — los dos grupos en pestañas (feature 277)", () => {
       ],
     });
 
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "1 orden nueva para recoger",
-    );
+    expect(contadorNuevas()).toHaveTextContent("1 orden nueva para recoger");
 
     await user.click(pestanaOtroDia());
 
-    expect(screen.queryByRole("status")).toBeNull();
+    expect(contadorNuevas()).toBeNull();
   });
 
   it("R10: el vacío de cada pestaña nombra SU grupo, y el de la búsqueda dice otra cosa", async () => {
@@ -1562,9 +1626,7 @@ describe("RecogerModule — los dos grupos en pestañas (feature 277)", () => {
     expect(
       screen.getByRole("tab", { name: "Para otro día (1)" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "2 órdenes nuevas para recoger",
-    );
+    expect(contadorNuevas()).toHaveTextContent("2 órdenes nuevas para recoger");
   });
 
   it("R22: los controles de recogida no dependen de la pestaña activa", async () => {
@@ -1603,11 +1665,12 @@ describe("RecogerModule — los dos grupos en pestañas (feature 277)", () => {
     await user.type(within(region).getByLabelText("Número de guía"), "2002");
     await user.click(within(region).getByRole("button", { name: "Recoger" }));
 
-    await vi.waitFor(() =>
-      expect(errorMock).toHaveBeenCalledWith(
+    const fila = await lecturaQueDice("No se pudo recoger");
+    expect(
+      within(fila).getByText(
         "Esta orden es para el reparto del 25 de agosto. Ese día podrás recogerla y gestionarla.",
       ),
-    );
+    ).toBeInTheDocument();
     expect(recogerMock).not.toHaveBeenCalled();
   });
 
@@ -1729,9 +1792,8 @@ describe("RecogerModule — los dos grupos en pestañas (feature 277)", () => {
     expect(
       screen.getByRole("tablist", { name: "Grupos de órdenes para recoger" }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("region", { name: "Buscar guías para recoger" }),
-    ).toBeInTheDocument();
+    // SLT-156 (R495): el buscador es el campo de `BuscadorFiltros`, con su nombre propio.
+    expect(buscador()).toBeInTheDocument();
     expect(listado()).toBeInTheDocument();
 
     // El panel cuelga de SU pestaña. Se afirma sobre el DOM renderizado y no se da por hecho que
@@ -1791,13 +1853,119 @@ describe("RecogerModule — un tropiezo de base se cuenta, no se traga (ficha 44
     await vi.waitFor(() => expect(recogerMock).toHaveBeenCalledWith({ ordenIds: ["r1"] }));
     // Y se DICE. Sin esta asercion, el `switch` sin `default` se traga el desenlace y la suite
     // entera sigue verde: ese es exactamente el fallo que llego a produccion.
-    await vi.waitFor(() => expect(errorMock).toHaveBeenCalled());
-
-    const texto = String(errorMock.mock.calls.at(-1)?.[0]);
+    const texto = (await lecturaQueDice("No se pudo recoger")).textContent ?? "";
     expect(texto).toMatch(/[Ii]ntentá de nuevo/);
     // Ni jerga ni culpas ajenas: no es un codigo invalido, ni falta de permiso, ni que la orden
     // haya cambiado de estado. Cualquiera de esas tres le haria buscar un problema inexistente.
     expect(texto).not.toMatch(/inválido|permiso|sesión|ya no está/i);
     expect(texto).not.toMatch(/25P02|transaction|INTERNAL/i);
+  });
+});
+
+// SLT-164 «PWA del mensajero: Recoger en bodega y Recolección» (rebanada C de SLT-156): el escáner
+// único bajo el encabezado, UNA barra fija, pestañas de 44 px, Mosaico de entrada y Detalle con la
+// tarjeta compacta de Reparto.
+describe("SLT-156 rebanada C — Recoger en bodega en el móvil (R500, R506, R516-R518, R521)", () => {
+  /** `true` si `a` va ANTES que `b` en el documento. */
+  const antes = (a: Element, b: Element) =>
+    Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+  const HOY_1 = makeAsignacion({
+    id: "c1",
+    numGuia: 3001,
+    numRemision: "REM-C1",
+    destinatario: "Ana Gómez",
+    esParaManana: false,
+  });
+  const HOY_2 = makeAsignacion({
+    id: "c2",
+    numGuia: 3002,
+    numRemision: "REM-C2",
+    destinatario: "Bruno Solís",
+    telefonoDest: "61234567",
+    esParaManana: false,
+  });
+
+  it("R518/R500: «Escanear o escribir guía» (cerrado) → barra fija → pestañas → aviso de nuevas → lista", () => {
+    renderModule({ porRecoger: [HOY_1, HOY_2] });
+
+    const boton = accesoRecogida();
+    expect(boton).not.toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    const tablist = screen.getByRole("tablist", { name: "Grupos de órdenes para recoger" });
+    const aviso = screen
+      .getAllByRole("status")
+      .find((el) => /nuevas? para recoger/.test(el.textContent ?? ""));
+    expect(aviso).toBeDefined();
+    const lista = screen.getByRole("region", { name: "Órdenes para recoger" });
+
+    expect(antes(boton!, buscador())).toBe(true);
+    expect(antes(buscador(), tablist)).toBe(true);
+    expect(antes(tablist, aviso!)).toBe(true);
+    expect(antes(aviso!, lista)).toBe(true);
+
+    // La barra está pegada arriba y su padre contiene las pestañas y la lista.
+    const barra = buscador().closest(".sticky");
+    expect(barra).not.toBeNull();
+    expect(barra!.className.split(/\s+/)).toEqual(expect.arrayContaining(["sticky", "top-0"]));
+    expect(barra!.parentElement!.contains(lista)).toBe(true);
+  });
+
+  it("R518/R516: bloqueado, el aviso va primero, no hay «Escanear o escribir guía» y la barra sigue", () => {
+    renderModule({ porRecoger: [HOY_1], bloqueo: bloqueoConVencido() });
+    expect(accesoRecogida()).toBeNull();
+    expect(antes(screen.getByRole("alert"), buscador())).toBe(true);
+  });
+
+  it("R493: el disparador mide 44 px y va a todo el ancho; las pestañas, 44 px", () => {
+    renderModule({ porRecoger: [HOY_1] });
+    expect(accesoRecogida()!.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(["h-11", "w-full"]),
+    );
+    for (const pestana of screen.getAllByRole("tab")) {
+      expect(pestana.className.split(/\s+/)).toContain("min-h-11");
+    }
+  });
+
+  it("R495/R506: un solo campo, con el placeholder «Guía, remisión, teléfono o nombre», que busca también por teléfono", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecoger: [HOY_1, HOY_2] });
+
+    expect(screen.getAllByRole("searchbox")).toHaveLength(1);
+    expect(buscador()).toHaveAttribute("placeholder", "Guía, remisión, teléfono o nombre");
+
+    await user.type(buscador(), "6123-4567");
+    expect(within(listado()).getByText("REM-C2")).toBeInTheDocument();
+    expect(within(listado()).queryByText("REM-C1")).toBeNull();
+  });
+
+  it("R521: sin coincidencias dice el vacío de búsqueda, distinto del vacío sin órdenes", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecoger: [HOY_1] });
+
+    await user.type(buscador(), "zzzz");
+    expect(
+      within(listado()).getByText("Ninguna guía para recoger coincide con la búsqueda."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("No hay órdenes para recoger hoy.")).toBeNull();
+  });
+
+  it("R517: arranca en Mosaico (carrusel) y Detalle pinta las tarjetas compactas", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecoger: [HOY_1, HOY_2] });
+
+    const conmutador = screen.getByRole("group", { name: "Vista de las órdenes" });
+    expect(within(conmutador).getByRole("button", { name: /Mosaico/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(
+      screen.getByRole("region", { name: "Órdenes para recoger" }),
+    ).toHaveAttribute("aria-roledescription", "carousel");
+
+    await cambiarVista(user, "Detalle");
+    expect(
+      await screen.findByRole("button", { expanded: false, name: /REM-C1/ }),
+    ).toBeInTheDocument();
   });
 });

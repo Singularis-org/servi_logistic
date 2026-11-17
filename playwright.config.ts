@@ -122,6 +122,16 @@ export default defineConfig({
         "reintentos-escalado",
         "reprogramacion-liberacion",
         "etiquetas-lote-tienda",
+        // SLT-163, rebanada B de SLT-156 · R493, R496, R500-R513: Reparto a 360/414 px, KPI 2 × 2 y modo foco.
+        "pwa-mensajero-reparto",
+        // SLT-164, rebanada C de SLT-156 · R500, R517-R522: Recoger en bodega y Recolección a 360/414 px.
+        "pwa-mensajero-recoger-recoleccion",
+        // SLT-166, rebanada E de SLT-156 · R539-R544: el mapa de ruta a 360/414 px, su hoja y la pantalla completa.
+        "pwa-mensajero-mapa",
+        // SLT-162 · R753, R757-R761, R766-R769: /ranking y /ranking/historico en tarjetas a 360/414 px.
+        "pwa-mensajero-ranking",
+        // SLT-159 · R580, R581, R610, R613: la página «Recibir paquetes» con la pistola, satélite y central.
+        "recibir-paquetes",
       ),
     },
     {
@@ -160,6 +170,10 @@ export default defineConfig({
         // SLT-119 R19: las facturas de la plataforma en «Mi plan» y en la pestaña «Facturación»; cierra una
         // factura de su empresa con la función de cierre de la base y usa el superadmin de prueba.
         "facturas-plataforma",
+        // SLT-156 A · R490-R492, R497, R501: Reparto a 360/414 px y «Gestiones» de /cierre-dia con importes.
+        "pwa-mensajero-base",
+        // SLT-165, rebanada D de SLT-156 · R523-R537: /cierre-dia a 360/414 px, tarjetas, barra fija y «Ver».
+        "pwa-mensajero-cierre-dia",
       ),
     },
   ],

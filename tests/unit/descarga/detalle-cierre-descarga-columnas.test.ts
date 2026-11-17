@@ -4,6 +4,7 @@ import {
   COLUMNAS_DESCARGA_DETALLE_BODEGA,
   COLUMNAS_DESCARGA_DETALLE_CIERRE,
   COLUMNAS_DESCARGA_DETALLE_MENSAJERO,
+  columnasDescargaDetalle,
   filaDescargaDetalleBodega,
   filaDescargaDetalleCierre,
   filaDescargaDetalleMensajero,
@@ -219,5 +220,70 @@ describe("SLT-108 — columnas de «Descargar» del detalle visto por el mensaje
 
   it("un pago ausente sale como celda vacía (null), nunca «0»", () => {
     expect(filaDescargaDetalleMensajero(gestion({ pagoMensajero: null })).ganancia).toBeNull();
+  });
+});
+
+// SLT-154 «Vista de la bodega satélite: solo lo suyo» (R476, R477): la descarga de quien no es la
+// central lleva «Gana bodega» en el sitio de «Cobro a la tienda»; las demás, en su orden. Encabezados
+// escritos a mano: son lo que llega al archivo.
+describe("SLT-154 — la descarga del detalle según quien mira (R476, R477)", () => {
+  it("R476 — mensajero, sin la central: ocho, con «Gana bodega» en el sitio del cobro", () => {
+    const columnas = columnasDescargaDetalle("mensajero", false);
+    expect(columnas.map((c) => c.encabezado)).toEqual([
+      "Nº Guía",
+      "Destinatario",
+      "Tienda",
+      "Resultado",
+      "Recibido",
+      "Gana bodega",
+      "Pago al mensajero",
+      "Señales",
+    ]);
+    expect(columnas.map((c) => c.clave)).not.toContain("cobroTienda");
+  });
+
+  it("R476 — bodega, sin la central: nueve, con «Mensajero» y «Gana bodega»", () => {
+    expect(columnasDescargaDetalle("bodega", false).map((c) => c.encabezado)).toEqual([
+      "Nº Guía",
+      "Destinatario",
+      "Tienda",
+      "Mensajero",
+      "Resultado",
+      "Recibido",
+      "Gana bodega",
+      "Pago al mensajero",
+      "Señales",
+    ]);
+  });
+
+  it("R477 — la central: las de siempre, con «Cobro a la tienda»", () => {
+    expect(columnasDescargaDetalle("mensajero", true).map((c) => c.encabezado)).toEqual([
+      "Nº Guía",
+      "Destinatario",
+      "Tienda",
+      "Resultado",
+      "Recibido",
+      "Cobro a la tienda",
+      "Pago al mensajero",
+      "Señales",
+    ]);
+    expect(columnasDescargaDetalle("bodega", true).map((c) => c.encabezado)).toEqual([
+      "Nº Guía",
+      "Destinatario",
+      "Tienda",
+      "Mensajero",
+      "Resultado",
+      "Recibido",
+      "Cobro a la tienda",
+      "Pago al mensajero",
+      "Señales",
+    ]);
+  });
+
+  it("R476 — la fila lleva lo que gana la bodega por la gestión; sin dato, celda vacía", () => {
+    const rechazo = gestion({ resultado: "devolucion_a_origen_por_rechazo", ingresoBodegaRechazo: "500.00" });
+    expect(filaDescargaDetalleCierre(rechazo, "satelite").ganaBodega).toBe("500.00");
+    expect(filaDescargaDetalleBodega(rechazo, "Mario Mensajero").ganaBodega).toBe("500.00");
+    expect(filaDescargaDetalleCierre(gestion({ ingresoBodegaRechazo: null }), "satelite").ganaBodega).toBeNull();
   });
 });

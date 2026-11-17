@@ -250,7 +250,6 @@ function conGrupos(
     pagoTienda: "0.00",
     cobradoSobreRecaudado: "0.00",
     netoEmpresa: "0.00",
-    ganaLaTienda: "0.00",
     fleteRechazoYaCobradoATienda: false,
     // Ficha 396: el desglose por tienda viaja SIEMPRE en el DTO, tambien con una sola
     // tienda. Estas pruebas no lo miran, asi que aqui va vacio; las suyas estan en
@@ -323,6 +322,11 @@ function fila(dialog: HTMLElement, gestionId: string): string {
   const li = dialog.querySelector(`[data-gestion="${gestionId}"]`);
   expect(li, `no se pintó la fila de ${gestionId}`).not.toBeNull();
   return li?.textContent ?? "";
+}
+
+/** El aviso informativo de la última lectura (SLT-158: la relectura inocua, sin `role="alert"`). */
+function avisoInocuo(dialog: HTMLElement): HTMLElement {
+  return within(dialog).getByText(/ya está confirmada/).closest("p") as HTMLElement;
 }
 
 /** El progreso, que vive en la barra de estado de la ventana. */
@@ -643,9 +647,12 @@ describe("T4.3/R32 — una guía ya confirmada en esta sesión", () => {
 
     await teclear(user, dialog, "7001");
 
-    expect(within(dialog).getByRole("alert")).toHaveTextContent(
+    // SLT-158 (M5, decisión del leader): la relectura es INOCUA. Se dice como información, no
+    // como error: ningún `role="alert"`.
+    expect(avisoInocuo(dialog)).toHaveTextContent(
       "Esa guía ya está confirmada. No se cuenta dos veces.",
     );
+    expect(within(dialog).queryByRole("alert")).toBeNull();
     // El contador NO avanza: dos lecturas de la misma guía no cubren dos paquetes.
     expect(progreso(dialog)).toBe("Paquetes confirmados: 1 de 2.");
     expect(
@@ -678,6 +685,20 @@ describe("T4.4/R28 — se confirma por cámara o por número tecleado", () => {
     );
   });
 
+  // SLT-159 «Escaneo continuo en recepciones y recogidas» (R588): la cámara de C5 sigue abierta.
+  it("SLT-159 (R588): tras leer por cámara, la cámara sigue encendida para la siguiente", async () => {
+    const user = userEvent.setup();
+    conGrupos({ novedad: [DEV_1] });
+    const dialog = await abrirVentana(user);
+
+    await escanear(user, dialog, qrDeGuia(7001));
+
+    expect(fila(dialog, DEV_1.gestionId)).toContain("Confirmada");
+    expect(within(dialog).getByRole("region", { name: "Visor de cámara QR" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Cerrar cámara" })).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: BOTON_ESCANEAR })).toBeNull();
+  });
+
   it("por NÚMERO TECLEADO: el mismo número confirma la misma gestión", async () => {
     const user = userEvent.setup();
     conGrupos({ novedad: [DEV_1] });
@@ -696,18 +717,39 @@ describe("T4.4/R28 — se confirma por cámara o por número tecleado", () => {
     );
   });
 
-  it("un número tecleado que no son dígitos se queda en el campo para corregirlo", async () => {
+  // SLT-158 (R575, D2): el campo se vacía siempre al enviar, para que la lectura siguiente de la
+  // pistola no se pegue a esta. Lo que falló lo sigue diciendo el aviso de la ventana, el ÚNICO
+  // `role="alert"`: la tarjeta va con `lineaDeError={false}` y no lo repite.
+  it("un número tecleado que no son dígitos vacía el campo y el aviso dice qué falló", async () => {
     const user = userEvent.setup();
     conGrupos({ novedad: [DEV_1] });
     const dialog = await abrirVentana(user);
 
     await teclear(user, dialog, "70O1"); // una «O» donde va un cero
 
-    expect(within(dialog).getByLabelText("Número de guía")).toHaveValue("70O1");
+    expect(within(dialog).getByLabelText("Número de guía")).toHaveValue("");
     expect(within(dialog).getByRole("alert")).toHaveTextContent(
       "No se pudo leer un número de guía en ese código.",
     );
+    // SLT-158 (R576, review M4): el campo ya está vacío, así que el aviso dice LO LEÍDO.
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("Lectura 70O1:");
     expect(progreso(dialog)).toBe("Paquetes confirmados: 0 de 1.");
+  });
+
+  // SLT-158 (review M5, decisión del leader 2026-11-14): volver a leer una guía ya confirmada es
+  // inocuo. La tarjeta lo trata como ACIERTO (tono y marca de acierto), igual que `ya_recibida`.
+  it("SLT-158: la relectura de una guía ya confirmada marca acierto, sin aviso de error", async () => {
+    const user = userEvent.setup();
+    conGrupos({ novedad: [DEV_1], devolucion_a_origen_por_rechazo: [REC_1] });
+    const dialog = await abrirVentana(user);
+
+    await teclear(user, dialog, "7001");
+    await teclear(user, dialog, "7001");
+
+    const campo = within(dialog).getByLabelText("Número de guía");
+    await vi.waitFor(() => expect(campo).toHaveAttribute("data-resultado", "acierto"));
+    expect(within(dialog).queryByRole("alert")).toBeNull();
+    expect(avisoInocuo(dialog)).toHaveTextContent("Lectura 7001:");
   });
 });
 
@@ -1078,9 +1120,12 @@ describe("guía repetida — una lectura confirma TODAS las filas de ese paquete
 
     await teclear(user, dialog, "7010");
 
-    expect(within(dialog).getByRole("alert")).toHaveTextContent(
+    // SLT-158 (M5, decisión del leader): la relectura es INOCUA. Se dice como información, no
+    // como error: ningún `role="alert"`.
+    expect(avisoInocuo(dialog)).toHaveTextContent(
       "Esa guía ya está confirmada. No se cuenta dos veces.",
     );
+    expect(within(dialog).queryByRole("alert")).toBeNull();
     expect(progreso(dialog)).toBe("Paquetes confirmados: 1 de 2.");
     expect(fila(dialog, "g-rec-1")).toContain("Pendiente");
     expect(
@@ -1363,9 +1408,12 @@ describe("451/R32 — leer la guía de una barrida pendiente la confirma", () =>
     await teclear(user, dialog, "8001");
     await teclear(user, dialog, "8001");
 
-    expect(within(dialog).getByRole("alert")).toHaveTextContent(
+    // SLT-158 (M5, decisión del leader): la relectura es INOCUA. Se dice como información, no
+    // como error: ningún `role="alert"`.
+    expect(avisoInocuo(dialog)).toHaveTextContent(
       "Esa guía ya está confirmada. No se cuenta dos veces.",
     );
+    expect(within(dialog).queryByRole("alert")).toBeNull();
     expect(progreso(dialog)).toBe("Paquetes confirmados: 1 de 2.");
   });
 });
@@ -1650,5 +1698,61 @@ describe("PREMISA — `orden.numGuia` es @unique, y de eso depende que el arregl
     // dos aserciones de abajo pasarían a rojo por la razón correcta, no por un regex mudo.
     expect(modeloOrden).toContain('@@map("orden")');
     expect(modeloOrden).toMatch(/numGuia\s+Int\?\s+@unique\s+@map\("num_guia"\)/);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// SLT-157 «Guía única leída por cámara o pistola»: los dos caminos leen con `leerGuia`. La
+// «acción» de esta superficie es confirmar la fila: la guía 1024 la confirma por los dos.
+// ---------------------------------------------------------------------------------------------
+
+describe("SLT-157 — guía única por cámara o pistola", () => {
+  const DEV_1024 = makeGestion({
+    gestionId: "g-dev-1024",
+    resultado: "novedad",
+    numGuia: 1024,
+  });
+  const AVISO_ILEGIBLE =
+    "No se pudo leer un número de guía en ese código. Escanea de nuevo o escribe el número.";
+
+  it("R565: el CODE128 por cámara confirma la fila 1024", async () => {
+    const user = userEvent.setup();
+    conGrupos({ novedad: [DEV_1024] });
+    const dialog = await abrirVentana(user);
+
+    await escanear(user, dialog, "1024");
+
+    expect(fila(dialog, DEV_1024.gestionId)).toContain("Confirmada");
+    expect(progreso(dialog)).toBe("Paquetes confirmados: 1 de 1.");
+  });
+
+  it("R565: la URL del QR tecleada (pistola 2D) confirma la fila 1024", async () => {
+    const user = userEvent.setup();
+    conGrupos({ novedad: [DEV_1024] });
+    const dialog = await abrirVentana(user);
+
+    await teclear(user, dialog, "https://app.ejemplo.test/paquete/1024");
+
+    expect(fila(dialog, DEV_1024.gestionId)).toContain("Confirmada");
+    expect(progreso(dialog)).toBe("Paquetes confirmados: 1 de 1.");
+  });
+
+  // Un caso por camino, cada uno con la ventana recién abierta: el aviso persiste entre
+  // lecturas, y con los dos en el mismo caso el segundo vería el aviso del primero.
+  it.each([
+    ["cámara", escanear],
+    ["teclado", teclear],
+  ] as const)("R566: lo que no es guía avisa (D4) por %s y no confirma nada", async (_camino, leer) => {
+    const user = userEvent.setup();
+    conGrupos({ novedad: [DEV_1024] });
+    const dialog = await abrirVentana(user);
+    expect(within(dialog).queryByRole("alert")).toBeNull();
+
+    await leer(user, dialog, "1024abc");
+
+    expect(within(dialog).getByRole("alert")).toHaveTextContent(AVISO_ILEGIBLE);
+    expect(fila(dialog, DEV_1024.gestionId)).toContain("Pendiente");
+    expect(progreso(dialog)).toBe("Paquetes confirmados: 0 de 1.");
+    expect(aprobarMock).not.toHaveBeenCalled();
   });
 });

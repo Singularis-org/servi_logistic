@@ -114,3 +114,36 @@ describe("KpisMensajero — brillo al pasar el cursor (D4)", () => {
     }
   });
 });
+
+// SLT-156 rebanada B (SLT-163, B1; R502) — en el teléfono los cuatro KPI van en 2 × 2: en una
+// columna empujaban la lista fuera de la primera pantalla. jsdom no aplica Tailwind: se afirman
+// las clases; la medida a 360 px es del E2E de la rebanada (B8).
+describe("KpisMensajero — 2 × 2 en el móvil (SLT-156 R502)", () => {
+  it("la rejilla tiene 2 columnas desde el ancho más chico, sin la columna única de antes", () => {
+    const { container } = montar();
+    const seccion = container.querySelector("section")!;
+    const clases = seccion.className.split(/\s+/);
+    expect(clases).toContain("grid-cols-2");
+    expect(clases).not.toContain("grid-cols-1");
+  });
+
+  it("cada cifra va en una sola línea (R492): columna fija, 14 px en el móvil y 24 desde md", () => {
+    montar();
+    for (const cifra of ["3", "7", norm(formatMonto(12500)), norm(formatMonto(48000))]) {
+      const clases = screen.getByText(cifra).closest("span.col-span-2")?.className.split(/\s+/) ?? [];
+      // SLT-163 (R492): un importe no se parte; para que quepa en la tarjeta del móvil se achica.
+      expect(clases).toEqual(
+        expect.arrayContaining(["shrink-0", "whitespace-nowrap", "tabular-nums", "text-sm", "md:text-2xl"]),
+      );
+      for (const parte of ["wrap-anywhere", "whitespace-normal", "text-base", "text-xl", "truncate"]) {
+        expect(clases).not.toContain(parte);
+      }
+    }
+    // Los importes: el contador animado tampoco envuelve.
+    for (const importe of [norm(formatMonto(12500)), norm(formatMonto(48000))]) {
+      const propias = screen.getByText(importe).className.split(/\s+/);
+      expect(propias).toContain("whitespace-nowrap");
+      expect(propias).not.toContain("whitespace-normal");
+    }
+  });
+});

@@ -20,15 +20,24 @@ import {
 export const FILTRAR_POR_RESULTADO = "Filtrar por resultado";
 export const FILTRO_TODAS = "Todas";
 export const FILTRO_CON_SENALES = "Con señales";
-/** «Entregado 12», como el canvas: el conteo detrás del nombre, separado por un espacio (R84). */
-export const textoFiltro = (nombre: string, n: number): string => `${nombre} ${n}`;
+/** «Entregado (12)»: el conteo entre paréntesis, como las pestañas de la cola (SLT-152 PA1, R450). */
+export const textoFiltro = (nombre: string, n: number): string => `${nombre} (${n})`;
 export const ORDENES_DEL_CIERRE = "Órdenes del cierre";
 export const SIN_GESTIONES = "Este cierre no tiene gestiones.";
 export const SIN_GESTIONES_CON_SENALES = "Ninguna gestión de este cierre tiene señales.";
 
+// --- Lista en el teléfono (SLT-156, R526, R527) ---
+/** P2 de SLT-156 (Carlos, 2026-11-14): busca por guía, remisión o destinatario. */
+export const BUSCAR_GESTION_PLACEHOLDER = "Guía, remisión o nombre";
+export const BUSCAR_GESTION_LABEL = "Buscar gestión";
+export const SIN_COINCIDENCIAS = "Ninguna gestión coincide con la búsqueda.";
+export const PAGINACION_GESTIONES_LABEL = "Páginas de las gestiones";
+
 // --- Columnas (R23) ---
 export const COL_GUIA = "Guía";
-export const COL_DESTINO = "Destinatario · tienda";
+// SLT-152: «Destinatario · tienda» se parte en dos columnas (R440).
+export const COL_DESTINATARIO = "Destinatario";
+export const COL_TIENDA = "Tienda";
 export const COL_MENSAJERO = "Mensajero";
 export const COL_RESULTADO = "Resultado";
 export const COL_RECIBIDO = "Recibido";

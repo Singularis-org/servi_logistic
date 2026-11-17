@@ -87,8 +87,8 @@ const G2: GestionDeTienda = {
 describe("SLT-140 R380 — cifrasDelCierre: las cifras de N1 contra literales a mano", () => {
   const cifras = cifrasDelCierre(SNAPSHOTS_N1, [G1, G2]);
 
-  it("Se le paga a la tienda = 100 000,00 − 4 520,00 − 1 130,00 = 94 350,00", () => {
-    expect(cifras.pagoTienda).toBe("94350.00");
+  it("SLT-169 R620: Se le paga a la tienda = 100 000,00 − 7 910,00 (TODO lo facturado) = 92 090,00", () => {
+    expect(cifras.pagoTienda).toBe("92090.00");
   });
 
   it("Total facturado = 4 520,00 + 1 130,00 + 2 260,00 = 7 910,00", () => {
@@ -99,8 +99,8 @@ describe("SLT-140 R380 — cifrasDelCierre: las cifras de N1 contra literales a 
     expect(cifras.ivaFacturado).toBe("910.00");
   });
 
-  it("Gana la tienda en total = 100 000,00 − 7 910,00 = 92 090,00", () => {
-    expect(cifras.ganaLaTienda).toBe("92090.00");
+  it("SLT-174 (R651): las cifras del cierre ya no llevan el campo que duplicaba el pago", () => {
+    expect(cifras).not.toHaveProperty("ganaLaTienda");
   });
 
   it("Le queda a la empresa = 7 910,00 − 910,00 − 3 000,00 − 500,00 = 3 500,00", () => {
@@ -116,33 +116,120 @@ describe("SLT-140 R380 — cifrasDelCierre: las cifras de N1 contra literales a 
 describe("SLT-140 R381 — cifrasDelCierre: la particion por tienda", () => {
   const cifras = cifrasDelCierre(SNAPSHOTS_N1, [G2, G1]);
 
-  it("una fila por tienda, de mayor a menor pago, con «Gana» negativo y con su signo en Tienda Sur", () => {
+  it("una fila por tienda, de mayor a menor pago, con el pago de Tienda Sur negativo y con su signo", () => {
     expect(cifras.partesPorTienda).toEqual([
       {
         tiendaId: "tienda-norte",
         tiendaNombre: "Tienda Norte",
         recaudado: "100000.00",
         pagoTienda: "94350.00",
-        ganaLaTienda: "94350.00",
       },
       {
         tiendaId: "tienda-sur",
         tiendaNombre: "Tienda Sur",
         recaudado: "0.00",
-        pagoTienda: "0.00",
-        ganaLaTienda: "-2260.00",
+        pagoTienda: "-2260.00",
       },
     ]);
   });
 
-  it("las tres sumas de las partes dan las del cierre: 100 000,00 · 94 350,00 · 92 090,00", () => {
+  it("las dos sumas de las partes dan las del cierre: 100 000,00 · 92 090,00", () => {
     // Las sumas se hacen sobre literales de dos decimales: comparar centimos enteros evita floats.
     const centimos = (s: string) => BigInt(s.replace(".", ""));
-    const suma = (k: "recaudado" | "pagoTienda" | "ganaLaTienda") =>
+    const suma = (k: "recaudado" | "pagoTienda") =>
       cifras.partesPorTienda.reduce((acc, p) => acc + centimos(p[k]), BigInt(0));
     expect(suma("recaudado")).toBe(BigInt(10000000));
-    expect(suma("pagoTienda")).toBe(BigInt(9435000));
-    expect(suma("ganaLaTienda")).toBe(BigInt(9209000));
+    expect(suma("pagoTienda")).toBe(BigInt(9209000));
+  });
+});
+
+// SLT-169 «Se le paga hoy a la tienda con todos los cobros restados» — R620, R622, R635.
+//
+// El folio #C51B7B93 de produccion (cierre aprobado): 1 entrega de ₡19.900 recaudados con
+// ₡3.273,05 de flete y comision con IVA, y 12 devoluciones por rechazo de ₡2.486,00 con IVA cada
+// una. Las cifras van ESCRITAS A MANO: son el contrato, no la salida de una funcion de produccion.
+const SNAPSHOTS_C51B7B93: SnapshotsCierre = {
+  totales: { efectivo: "19900.00", simpe: "0.00", transferencia: "0.00", general: "19900.00" },
+  totalPagoMensajero: "0.00",
+  totalIngresoBodegaRechazos: "0.00",
+};
+
+const ENTREGA_C51B7B93: GestionDeTienda = {
+  resultado: "entregado",
+  pagos: [{ metodo: "efectivo", monto: "19900.00" }],
+  tiendaId: "tienda-c51",
+  tiendaNombre: "Tienda C51",
+  ingresoEmpresa: ingreso({
+    montoCobrar: "19900.00",
+    cobraComision: true,
+    flete: "2200.00",
+    ivaFlete: "286.00",
+    fleteConIva: "2486.00",
+    comisionCod: "696.50",
+    ivaComisionCod: "90.55",
+    comisionConIva: "787.05",
+    total: "3273.05",
+  }),
+};
+
+/** Una devolucion por rechazo de ₡2.486,00 con IVA, con la forma de cada modelo de tarifa. */
+function rechazo(modelo: "viejo" | "nuevo", resultado: GestionDeTienda["resultado"], n: number): GestionDeTienda {
+  return {
+    resultado,
+    pagos: [],
+    tiendaId: "tienda-c51",
+    tiendaNombre: "Tienda C51",
+    ingresoEmpresa: ingreso({
+      montoCobrar: `${10000 + n}.00`,
+      tarifaModelo: modelo,
+      fleteDevolucion: "2200.00",
+      ivaFleteDevolucion: "286.00",
+      fleteDevolucionConIva: "2486.00",
+      total: "2486.00",
+    }),
+  };
+}
+
+describe("SLT-169 R620/R622 — el pago a la tienda resta TODO lo facturado (folio #C51B7B93)", () => {
+  const rechazos = Array.from({ length: 12 }, (_, i) =>
+    rechazo("nuevo", "devolucion_a_origen_por_rechazo", i),
+  );
+  const cifras = cifrasDelCierre(SNAPSHOTS_C51B7B93, [ENTREGA_C51B7B93, ...rechazos]);
+
+  it("#C51B7B93: 19.900 − 3.273,05 − 12 × 2.486 = −13.205,05", () => {
+    expect(cifras.pagoTienda).toBe("-13205.05");
+  });
+
+  it("R622: negativo con su signo, nunca recortado a 0.00 (ni el del cierre ni el de su tienda)", () => {
+    expect(cifras.pagoTienda.startsWith("-")).toBe(true);
+    expect(cifras.partesPorTienda).toHaveLength(1);
+    expect(cifras.partesPorTienda[0].pagoTienda).toBe("-13205.05");
+  });
+
+  it("R624: lo que se le paga + Total facturado = lo recaudado (−13.205,05 + 33.105,05 = 19.900)", () => {
+    expect(cifras.totalesIngreso.total).toBe("33105.05");
+    // SLT-174 (R656): la identidad misma, en céntimos enteros, contra el recaudado escrito a mano.
+    const centimos = (s: string) => BigInt(s.replace(".", ""));
+    expect(centimos(cifras.pagoTienda) + centimos(cifras.totalesIngreso.total)).toBe(BigInt(1990000));
+  });
+});
+
+describe("SLT-169 R635 — igual en el modelo viejo y en el nuevo", () => {
+  it("viejo: el flete de devolucion nace de `devolucion_a_origen_por_rechazo` y se resta", () => {
+    const cifras = cifrasDelCierre(SNAPSHOTS_C51B7B93, [
+      ENTREGA_C51B7B93,
+      rechazo("viejo", "devolucion_a_origen_por_rechazo", 1),
+    ]);
+    // 19.900 − 3.273,05 − 2.486 = 14.140,95
+    expect(cifras.pagoTienda).toBe("14140.95");
+  });
+
+  it("nuevo: el flete de no entregadas de un reprogramado tambien se resta", () => {
+    const cifras = cifrasDelCierre(SNAPSHOTS_C51B7B93, [
+      ENTREGA_C51B7B93,
+      rechazo("nuevo", "reprogramado", 1),
+    ]);
+    expect(cifras.pagoTienda).toBe("14140.95");
   });
 });
 

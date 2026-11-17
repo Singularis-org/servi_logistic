@@ -110,20 +110,24 @@ describe("R84, S3-5 — filtros, orden y filtrado", () => {
     expect(lista.map((g) => g.gestionId)).toEqual(["e1", "g-canvas", "g-dev", "g-inc"]);
   });
 
-  it("7 opciones «<nombre> <n>», «Todas» primero, «Con señales» al final con tono de aviso", () => {
-    expect(filtrosDe(lista, "central")).toEqual([
-      { value: "todas", label: "Todas 4" },
-      { value: "entregado", label: "Entregado 2" },
-      { value: "reprogramado", label: "Reprogramado 0" },
-      { value: "novedad", label: "Novedad 0" },
-      { value: "devolucion_a_origen_por_rechazo", label: "Devolución a origen por rechazo 1" },
-      { value: "incidente", label: "Incidente 1" },
-      { value: "con_senales", label: "Con señales 3", tono: "aviso" },
+  // SLT-152 PA1 (R450): las pastillas llevan el conteo entre paréntesis, como las pestañas.
+  it("R450 — 7 opciones «<nombre> (<n>)», «Todas» primero, «Con señales» al final con tono de aviso", () => {
+    const filtros = filtrosDe(lista, "central");
+    expect(filtros).toEqual([
+      { value: "todas", label: "Todas (4)" },
+      { value: "entregado", label: "Entregado (2)" },
+      { value: "reprogramado", label: "Reprogramado (0)" },
+      { value: "novedad", label: "Novedad (0)" },
+      { value: "devolucion_a_origen_por_rechazo", label: "Devolución a origen por rechazo (1)" },
+      { value: "incidente", label: "Incidente (1)" },
+      { value: "con_senales", label: "Con señales (3)", tono: "aviso" },
     ]);
+    // R450: ninguna pastilla con el conteo suelto detrás del nombre.
+    for (const f of filtros) expect(f.label).not.toMatch(/^\S.* \d+$/);
   });
 
   it("«Con señales» cuenta por audiencia: el mensajero no ve el ajuste", () => {
-    expect(filtrosDe(lista, "mensajero").at(-1)?.label).toBe("Con señales 2");
+    expect(filtrosDe(lista, "mensajero").at(-1)?.label).toBe("Con señales (2)");
   });
 
   it("filtrar devuelve el subconjunto sin reordenar", () => {
@@ -141,12 +145,13 @@ describe("R84, S3-5 — filtros, orden y filtrado", () => {
   });
 });
 
-describe("R23, R86 — columnas por audiencia", () => {
-  it("central y satélite: cobro a la tienda, pago al mensajero y señales", () => {
-    for (const a of ["central", "satelite"] as const) {
-      expect(columnasDe(a).map((c) => c.label)).toEqual([
+describe("R23, R86, R440, R441 — columnas por audiencia", () => {
+  it("R477 — la central: cobro a la tienda, pago al mensajero y señales", () => {
+    for (const [a, central] of [["central", true], ["solo lectura", true]] as const) {
+      expect(columnasDe(a, false, central).map((c) => c.label)).toEqual([
         "Guía",
-        "Destinatario · tienda",
+        "Destinatario",
+        "Tienda",
         "Resultado",
         "Recibido",
         "Cobro a la tienda",
@@ -156,10 +161,11 @@ describe("R23, R86 — columnas por audiencia", () => {
     }
   });
 
-  it("con mensajero (bodega): «Mensajero» tras «Destinatario · tienda»", () => {
-    expect(columnasDe("solo lectura", true).map((c) => c.label)).toEqual([
+  it("con mensajero (bodega): «Mensajero» tras «Destinatario» y «Tienda»", () => {
+    expect(columnasDe("solo lectura", true, true).map((c) => c.label)).toEqual([
       "Guía",
-      "Destinatario · tienda",
+      "Destinatario",
+      "Tienda",
       "Mensajero",
       "Resultado",
       "Recibido",
@@ -170,14 +176,21 @@ describe("R23, R86 — columnas por audiencia", () => {
   });
 
   it("mensajero: «Ganancia», sin cobro a la tienda", () => {
-    expect(columnasDe("mensajero").map((c) => c.label)).toEqual([
+    expect(columnasDe("mensajero", false, false).map((c) => c.label)).toEqual([
       "Guía",
-      "Destinatario · tienda",
+      "Destinatario",
+      "Tienda",
       "Resultado",
       "Recibido",
       "Ganancia",
       "Señales",
     ]);
+  });
+
+  it("R441 — ninguna audiencia muestra la columna «Destinatario · tienda»", () => {
+    for (const [a, m] of [["central", false], ["satelite", false], ["solo lectura", true], ["mensajero", false]] as const) {
+      expect(columnasDe(a, m, a === "central").map((c) => c.label)).not.toContain("Destinatario · tienda");
+    }
   });
 
   it("los importes son el string del servidor; nulo se queda nulo (se pinta «—»)", () => {
@@ -192,16 +205,67 @@ describe("R23, R86 — columnas por audiencia", () => {
   });
 });
 
+describe("SLT-154 — la lista de gestiones de quien no es la central (R474, R475, R477)", () => {
+  it("R474 — satélite (cierre del mensajero): «Gana bodega» en el sitio de «Cobro a la tienda»", () => {
+    expect(columnasDe("satelite", false, false).map((c) => c.label)).toEqual([
+      "Guía",
+      "Destinatario",
+      "Tienda",
+      "Resultado",
+      "Recibido",
+      "Gana bodega",
+      "Pago al mensajero",
+      "Señales",
+    ]);
+  });
+
+  it("R474 — satélite en su cierre de bodega («solo lectura» sin la central), con Mensajero", () => {
+    expect(columnasDe("solo lectura", true, false).map((c) => c.label)).toEqual([
+      "Guía",
+      "Destinatario",
+      "Tienda",
+      "Mensajero",
+      "Resultado",
+      "Recibido",
+      "Gana bodega",
+      "Pago al mensajero",
+      "Señales",
+    ]);
+  });
+
+  it("R474 — «Gana bodega» es lo que gana la bodega por la gestión; sin dato, nulo («—»)", () => {
+    const rechazo = gestionFila({ gestionId: "r", resultado: "devolucion_a_origen_por_rechazo", ingresoBodegaRechazo: "500.00" });
+    expect(montoDeColumna(rechazo, "ganaBodega")).toBe("500.00");
+    expect(montoDeColumna(gestionFila({ gestionId: "e", ingresoBodegaRechazo: null }), "ganaBodega")).toBeNull();
+  });
+
+  it("R475 — sin la central, la fila desplegada no trae «Se le cobra a la tienda»; conserva Recibió y el pago", () => {
+    const g = gestionFila({ gestionId: "v", ingresoEmpresa: ingresoViejo() });
+    for (const [a, central] of [["satelite", false], ["solo lectura", false], ["satelite", true]] as const) {
+      const tarjetas = tarjetasDe(g, a, central);
+      expect(tarjetas.map((t) => t.id)).toEqual(["recibido", "pago"]);
+      expect(tarjetas.map((t) => t.titulo)).not.toContain("Se le cobra a la tienda");
+    }
+  });
+
+  it("R477 — la central (y «solo lectura» que mira la central) conserva la tarjeta del cobro", () => {
+    const g = gestionFila({ gestionId: "v", ingresoEmpresa: ingresoViejo() });
+    expect(tarjetasDe(g, "central", true)[1].titulo).toBe("Se le cobra a la tienda");
+    expect(tarjetasDe(g, "solo lectura", true)[1].titulo).toBe("Se le cobra a la tienda");
+  });
+});
+
 describe("R25, R27, R30, R93-R95, R98 — tarjetas", () => {
   const vieja = gestionFila({ gestionId: "v", ingresoEmpresa: ingresoViejo() });
 
   it("R25: qué tarjetas ve cada audiencia", () => {
     const ids = (a: AudienciaFila, central = false) => tarjetasDe(vieja, a, central).map((t) => t.id);
     expect(ids("central", true)).toEqual(["recibido", "cobro", "pago", "fulfillment"]);
-    expect(ids("satelite")).toEqual(["recibido", "cobro", "pago"]);
+    // SLT-154 (R475): sin la central, sin «Se le cobra a la tienda».
+    expect(ids("satelite")).toEqual(["recibido", "pago"]);
     expect(ids("mensajero")).toEqual(["recibido", "pago"]);
     expect(ids("solo lectura", true)).toEqual(["recibido", "cobro", "pago", "fulfillment"]);
-    expect(ids("solo lectura", false)).toEqual(["recibido", "cobro", "pago"]);
+    expect(ids("solo lectura", false)).toEqual(["recibido", "pago"]);
   });
 
   it("R27: «Recibió el mensajero» sin los métodos en 0 (D4)", () => {
@@ -248,7 +312,8 @@ describe("R25, R27, R30, R93-R95, R98 — tarjetas", () => {
         ivaIncluido: "260.00",
       }),
     });
-    expect(lineas(tarjetasDe(g, "satelite", false)[1])).toEqual([
+    // SLT-154 (R475): la tarjeta del cobro solo la ve la central.
+    expect(lineas(tarjetasDe(g, "central", true)[1])).toEqual([
       ["Flete por devolución a origen + IVA", "2260.00"],
       ["Se le cobra", "2260.00"],
     ]);
@@ -282,7 +347,8 @@ describe("R25, R27, R30, R93-R95, R98 — tarjetas", () => {
       pagoMensajero: "3200.00",
       pagoPorTarifa: { ...gestionCanvas().pagoPorTarifa!, ajuste: { signo: "suma", monto: "700.00" } },
     });
-    expect(lineas(tarjetasDe(g, "satelite", false)[2])).toEqual([
+    // SLT-154 (R475): sin la tarjeta del cobro, el pago es la segunda (y conserva su ajuste).
+    expect(lineas(tarjetasDe(g, "satelite", false)[1])).toEqual([
       ["Por tarifa · precio propio del mensajero", "2500.00"],
       ["+ Ajuste", "700.00"],
       ["Se le paga", "3200.00"],

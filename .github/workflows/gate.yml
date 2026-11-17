@@ -17,19 +17,14 @@
 name: gate
 
 # Plan GRATUITO de GitHub (2000 min/mes en repos privados; agotados, no corre nada): cada
-# minuto cuenta. Por eso: nada en borradores, nada si el PR solo toca estado (`progress/`) o
-# specs, cancelacion de corridas viejas y timeouts ajustados. Y sin branch protection en
-# este plan: el check es INFORMATIVO; la convencion es mergear solo con el check en verde.
+# minuto cuenta. Por eso: nada en borradores, sin suite si el PR solo toca estado (`progress/`) o
+# specs (job `cambios`), cancelacion de corridas viejas y timeouts ajustados.
 on:
   pull_request:
     branches: [dev, prod]
     types: [opened, synchronize, reopened, ready_for_review]
-    # Solo se salta lo que ningun test lee: el estado (`progress/`) y los specs. Los `.md` del arnes
-    # y del perfil NO: varias guardias leen docs y agentes, y un PR solo de texto puede romperlas
-    # (paso con el #155, que se mergeo sin CI).
-    paths-ignore:
-      - 'progress/**'
-      - 'specs/**'
+    # Sin `paths-ignore`: un PR solo de `progress/` o `specs/` no publicaba `gate-completo` y la
+    # proteccion de `dev` lo dejaba bloqueado (#190). Lo decide el job `cambios` (docs/gate.md).
   workflow_dispatch:
 
 permissions:
@@ -64,9 +59,45 @@ jobs:
   # El 3 vive en DOS sitios y tienen que coincidir: la matriz de `vitest` (`shard: [1, 2, 3]` y el
   # `/3` de GATE_SHARD) y el `--unir informes 3` de `gate-completo`. Si no coinciden, `--unir` da
   # rojo (exige exactamente N informes), asi que un desajuste no puede pasar en verde.
+  #
+  # PR SOLO DE ESTADO O SPECS (docs/gate.md > El CI se genera): si el diff contra la base solo toca
+  # `progress/` o `specs/`, ningun test lo lee; `gate-completo` y `e2e` salen en verde sin suite.
+  cambios:
+    name: cambios
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      solo_docs: ${{ steps.diff.outputs.solo_docs }}
+    steps:
+      - name: Checkout (historia completa)
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Solo progress/ o specs/?
+        id: diff
+        shell: bash
+        env:
+          EVENTO: ${{ github.event_name }}
+          BASE: ${{ github.base_ref }}
+        # `--no-renames`: mover un archivo de codigo a `progress/` lista tambien el origen.
+        run: |
+          set -euo pipefail
+          if [ "$EVENTO" != "pull_request" ]; then echo "solo_docs=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          git fetch --no-tags origin "+refs/heads/$BASE:refs/remotes/origin/$BASE"
+          archivos=$(git diff --no-renames --name-only "origin/$BASE...HEAD")
+          # Al menos un archivo y NINGUNO fuera de progress/ o specs/.
+          if [ -n "$archivos" ] && ! grep -qvE '^(progress|specs)/' <<< "$archivos"; then solo=true; else solo=false; fi
+          echo "solo_docs=$solo" >> "$GITHUB_OUTPUT"
+          echo "solo_docs=$solo; archivos del diff:"
+          echo "$archivos"
+
   estatico:
     name: estatico
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
+    needs: [cambios]
+    if: (github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false) && needs.cambios.outputs.solo_docs != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # Sin Postgres: typecheck, lint y validadores no tocan la base. El `db:test status` de
@@ -108,7 +139,8 @@ jobs:
 
   vitest:
     name: vitest (shard ${{ matrix.shard }}/3)
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
+    needs: [cambios]
+    if: (github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false) && needs.cambios.outputs.solo_docs != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -221,27 +253,37 @@ jobs:
 
   gate-completo:
     name: gate-completo
-    needs: [estatico, vitest]
+    needs: [cambios, estatico, vitest]
     # `always()`: tiene que correr AUNQUE un shard haya fallado, para decir por que. Sin el, un
     # job de shard caido dejaria `gate-completo` en «skipped», y un check saltado no es un rojo.
     if: always() && (github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false)
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
+    # Con solo_docs solo corre el aviso: los demas pasos se saltan y el job sale en verde.
     steps:
+      - name: PR solo de estado/specs
+        if: needs.cambios.outputs.solo_docs == 'true'
+        shell: bash
+        run: |
+          echo "PR solo de estado/specs (progress/, specs/): sin suite" | tee -a "$GITHUB_STEP_SUMMARY"
+
       # Clon superficial: `--unir` solo lee los informes, el baseline y los dos scripts del
       # veredicto; no mira la historia.
       - name: Checkout
+        if: needs.cambios.outputs.solo_docs != 'true'
         uses: actions/checkout@v4
 
       # Solo Node, sin pnpm ni `pnpm install`: `./init.sh --unir` es Node puro sobre JSON y corre
       # antes de cualquier paso que pida pnpm o node_modules. Una instalacion menos por corrida.
       - name: Node
+        if: needs.cambios.outputs.solo_docs != 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 24
 
       - name: El job estatico y los shards corrieron
+        if: needs.cambios.outputs.solo_docs != 'true'
         shell: bash
         env:
           ESTATICO: ${{ needs.estatico.result }}
@@ -255,6 +297,7 @@ jobs:
           esac
 
       - name: Informes de los shards
+        if: needs.cambios.outputs.solo_docs != 'true'
         uses: actions/download-artifact@v4
         with:
           # Cada artefacto en su carpeta, informes/informe-shard-<i>/ (sin `merge-multiple`).
@@ -262,13 +305,14 @@ jobs:
           path: informes/
 
       - name: ./init.sh --unir informes 3
+        if: needs.cambios.outputs.solo_docs != 'true'
         shell: bash
         run: |
           set -o pipefail
           bash ./init.sh --unir informes 3 2>&1 | tee init-completo.log
 
       - name: Resumen (poda del baseline de rojos)
-        if: always()
+        if: always() && needs.cambios.outputs.solo_docs != 'true'
         shell: bash
         run: |
           {
@@ -280,7 +324,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Informe de vitest (unido)
-        if: always()
+        if: always() && needs.cambios.outputs.solo_docs != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: gate-completo-informe
@@ -302,7 +346,8 @@ jobs:
   e2e-grupo:
     name: e2e (${{ matrix.grupo }})
     # Mismo disparo que `gate-completo`: cada PR a `dev` o a `prod` fuera de borrador, y a mano (R20).
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
+    needs: [cambios]
+    if: (github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false) && needs.cambios.outputs.solo_docs != 'true'
     runs-on: ubuntu-latest
     # R28: cada grupo cabe en 30 min (install, build y Playwright incluidos).
     timeout-minutes: 30
@@ -439,7 +484,7 @@ jobs:
 
   e2e:
     name: e2e
-    needs: [e2e-grupo]
+    needs: [cambios, e2e-grupo]
     # `always()`: tiene que correr AUNQUE un grupo haya fallado, para decir por que. Sin el, un
     # grupo caido dejaria `e2e` en «skipped», y un check saltado no es un rojo.
     if: always() && (github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false)
@@ -447,8 +492,15 @@ jobs:
     timeout-minutes: 5
 
     steps:
+      - name: PR solo de estado/specs
+        if: needs.cambios.outputs.solo_docs == 'true'
+        shell: bash
+        run: |
+          echo "PR solo de estado/specs (progress/, specs/): sin suite" | tee -a "$GITHUB_STEP_SUMMARY"
+
       # R22: verde solo si TODOS los grupos salieron `success`; rojo, cancelado o saltado, rojo.
       - name: Los grupos del E2E salieron en verde
+        if: needs.cambios.outputs.solo_docs != 'true'
         shell: bash
         env:
           GRUPOS: ${{ needs.e2e-grupo.result }}

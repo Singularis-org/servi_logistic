@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { OrdenHistorialOrigenTipo, PrismaClient } from "@prisma/client";
 import type { TxDeTest } from "./_postgres-real";
+import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import { InformeTransitoRepository } from "@/lib/repositories/InformeTransitoRepository";
 
 // Ficha 475 — siembras de los tests de integracion del informe de transito. NO es un archivo de
@@ -29,8 +30,11 @@ export async function sembrarBase475(tx: TxDeTest): Promise<Base475> {
     select: { id: true, nombre: true, canton: { select: { id: true, nombre: true, provinciaId: true } } },
   });
   if (distrito === null) throw new Error("475: la base no tiene catalogo geografico (distrito)");
-  const tienda = await tx.$queryRawUnsafe<{ id: string }[]>(`SELECT "id" FROM "usuario" ORDER BY "created_at" LIMIT 1`);
-  if (tienda.length === 0) throw new Error("475: no hay ningun usuario en la base de test");
+  // SLT-177 (R737): la tienda se crea en la transaccion del test; la base migrada no trae usuarios.
+  const tienda = await crearUsuarioDePrueba(tx, "adminTienda");
+  // Control positivo (R739): la tienda sembrada se lee de vuelta, exactamente una.
+  const tiendasSembradas = await tx.usuario.count({ where: { id: tienda.id } });
+  if (tiendasSembradas !== 1) throw new Error(`475: la tienda sembrada no esta en la base (${tiendasSembradas})`);
   const catalogo = await tx.orderStatus.findMany({ select: { id: true, value: true } });
   const estatus = new Map(catalogo.map((s) => [s.value, s.id]));
   for (const v of ["entregado", "devuelta_a_tienda", "en_bodega_central", "en_reparto", "por_recolectar_en_tienda"]) {
@@ -38,7 +42,7 @@ export async function sembrarBase475(tx: TxDeTest): Promise<Base475> {
   }
   return {
     sufijo: `475-${randomUUID().slice(0, 8)}`,
-    tiendaId: tienda[0].id,
+    tiendaId: tienda.id,
     provinciaId: distrito.canton.provinciaId,
     cantonId: distrito.canton.id,
     cantonNombre: distrito.canton.nombre,

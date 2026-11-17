@@ -1,11 +1,12 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { BuscadorFiltros } from "@/components/shared/BuscadorFiltros";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
 import { useToast } from "@/hooks/useToast";
 import {
   escogerParaGestion,
@@ -30,6 +31,9 @@ import type { BloqueoDetalle } from "@/lib/utils/bloqueo-cierre";
 import { avisoReservaParaOtroDia } from "@/lib/utils/dia-reparto-textos";
 import { normalizeName } from "@/lib/utils/normalize";
 
+import { AvisoRutaLinea } from "./AvisoRutaLinea";
+import { ConfirmarGestionDialog } from "./ConfirmarGestionDialog";
+import { EscanerGuiaReparto } from "./EscanerGuiaReparto";
 import { coincideBusqueda } from "./mis-asignaciones-buscador";
 import { FiltroCantonDistrito } from "./FiltroCantonDistrito";
 import { useFiltroCantonDistrito } from "./useFiltroCantonDistrito";
@@ -43,6 +47,7 @@ import { PosOrderCardDetalle } from "./pos-card/PosOrderCardDetalle";
 import { RecuperarAyudaButton } from "./RecuperarAyudaButton";
 import { PosOrderCardMosaico } from "./pos-card/PosOrderCardMosaico";
 import { RutaMapa } from "./RutaMapa";
+import { HojaParadaMapa } from "./HojaParadaMapa";
 import { useSeguimientoUbicacion } from "./useSeguimientoUbicacion";
 import { SincronizarRutaButton } from "./SincronizarRutaButton";
 import { CarruselCards } from "@/components/shared/CarruselCards";
@@ -122,15 +127,33 @@ export interface RepartoModuleProps {
    * controles de escoger y gestionar. Defensa SUAVE; el backend (R25) es la defensa real.
    */
   bloqueo: BloqueoDetalle;
+  /**
+   * SLT-156 (R502, R503): los KPI del portal (`KpisMensajero`), ya montados por la página. Entran
+   * como pieza para que el módulo los pinte DEBAJO del aviso de bloqueo y ENCIMA de la barra de
+   * filtros, y los esconda en modo foco. Requerida a propósito: una pantalla que se olvide de
+   * pasarlos no compila (`null` = sin KPI, que es lo que usan los tests que no los miden).
+   */
+  kpis: ReactNode;
 }
 
 // Feature 114: textos del buscador (separados para i18n futura, lenguaje claro). La
 // región y la etiqueta del campo son DISTINTAS a propósito: si coincidieran, el nombre
 // accesible del `searchbox` (de su `<label>`) chocaría con el de la región.
-const BUSCADOR_REGION = "Buscar guías asignadas";
+// SLT-156 (R506, DC15): el placeholder aprobado, el mismo en Reparto, Recoger y Recolección.
 const BUSCADOR_LABEL = "Buscar guías";
-const BUSCADOR_PLACEHOLDER =
-  "Filtra por número de guía, remisión, teléfono o nombre";
+const BUSCADOR_PLACEHOLDER = "Guía, remisión, teléfono o nombre";
+// SLT-156 (R505): claves de los filtros que ofrece «Filtros». Sus rótulos salen del país.
+const FILTRO_CANTON = "canton";
+const FILTRO_DISTRITO = "distrito";
+const VOLVER_A_LA_LISTA = "Volver a la lista";
+
+// R30 / feature 265: los textos de los avisos de ruta (ahora en una línea, SLT-156 R509).
+const AVISO_DESACTUALIZADA_TITULO = "El orden mostrado no está actualizado";
+const AVISO_DESACTUALIZADA_TEXTO =
+  "La ruta cambió desde el último cálculo. Pulsa «Sincronizar ruta» para recalcular el orden de entrega.";
+const AVISO_APROXIMADO_TITULO = "El orden de las paradas es aproximado";
+const AVISO_APROXIMADO_TEXTO =
+  "Lo calculamos en la app, por cercanía en línea recta: no toma en cuenta calles ni tráfico. Revísalo antes de salir.";
 // R6: mensaje de "sin resultados", distinto del vacío sin búsqueda; contiene la
 // frase «coincide con la búsqueda» para ser reconocible.
 const SIN_RESULTADOS_REPARTO = "Ninguna guía en reparto coincide con la búsqueda.";
@@ -147,6 +170,9 @@ const AYUDA_ACCION_HILO = "Conversación";
 // FICHA 455 (2026-09-24, R7/R8/R6; design §2.1): aquí vivía `AYUDA_CARD_ESTADO = «En ayuda»`, un
 // rótulo que SUSTITUÍA al chip de estado de la card de ayuda. La orden está `en_reparto` y el chip
 // lo dice; la ayuda de la 454 va como NOTA aparte (`NOTA_AYUDA_SOLICITADA`, texto de la 456).
+// SLT-166 (R542, canvas v35: RepartoMapa): bajo el carrusel, con el mapa abierto.
+const MAPA_SIGUE_AL_CARRUSEL = "El mapa se centra en la orden del carrusel.";
+
 const SIN_PENDIENTES_TODAS_CON_AYUDA =
   "Todas tus órdenes en reparto tienen ayuda solicitada; están abajo.";
 
@@ -168,6 +194,7 @@ export function RepartoModule({
   ordenEnGestionId,
   ruta,
   bloqueo,
+  kpis,
 }: RepartoModuleProps) {
   const router = useRouter();
   const toast = useToast();
@@ -236,7 +263,6 @@ export function RepartoModule({
   // (no sube a URL ni a contexto). Se muestra solo en la VISTA COMPLETA; en modo foco no
   // hay cards que filtrar. `buscando` distingue "hay búsqueda activa" de "grupo vacío".
   const [query, setQuery] = useState("");
-  const buscarId = useId();
   const buscando = query.trim() !== "";
 
   // Feature 117: filtro por cantón/distrito (100% cliente, R12). Las OPCIONES se derivan
@@ -248,6 +274,26 @@ export function RepartoModule({
   // (salvaguarda R10/R14).
   const filtro = useFiltroCantonDistrito(porGestionar);
   const aplicarFiltroZona = filtro.aplicar;
+
+  // SLT-156 (R505): qué filtros están PUESTOS en «Filtros» de la barra. Quitar uno vacía su valor:
+  // un filtro que ya no se ve no puede seguir filtrando. Quitar el cantón vacía también el
+  // distrito (el mismo reset de 117/R5).
+  const etiquetasGeo = useEtiquetasGeograficas();
+  const filtrosOfrecidos = [
+    { key: FILTRO_CANTON, label: etiquetasGeo.canton.singular },
+    { key: FILTRO_DISTRITO, label: etiquetasGeo.distrito.singular },
+  ];
+  const [filtrosPuestos, setFiltrosPuestos] = useState<string[]>([]);
+  function cambiarFiltrosPuestos(siguientes: string[]) {
+    if (!siguientes.includes(FILTRO_CANTON)) filtro.setCantonYReset("");
+    if (!siguientes.includes(FILTRO_DISTRITO)) filtro.setDistrito("");
+    setFiltrosPuestos(siguientes);
+  }
+  // «Limpiar todo»: la barra vacía su campo y emite `""`; aquí se quitan los filtros.
+  function limpiarTodo() {
+    filtro.limpiar();
+    setFiltrosPuestos([]);
+  }
 
   // Feature 114/R8+R9 + 117/R6/R14: "En reparto" filtrado, ÚNICA fuente para grilla, mapa
   // y panel de detalle (coherencia lista↔mapa↔panel, gate F1.4). Composición EN AND:
@@ -372,10 +418,21 @@ export function RepartoModule({
   const [hiloOrden, setHiloOrden] = useState<MiAsignacionDTO | null>(null);
   const tramoResaltado = ruta.tramoSiguiente?.encodedPolyline ?? null;
 
-  // Orden que el mensajero eligió explícitamente para el panel de detalle. Es
-  // solo una PREFERENCIA: la orden mostrada se DERIVA (ver `detalleOrden`) para
-  // no quedar pegada a una orden que ya no existe tras `router.refresh()`.
-  const [seleccionId, setSeleccionId] = useState<string | null>(null);
+  // SLT-156 (R504, R510): la orden que el mensajero eligió con "Gestionar" en su tarjeta y que
+  // está en MODO FOCO con la guía todavía sin confirmar. Estado de cliente: el servidor no sabe
+  // nada hasta que se confirma la guía (`escogerParaGestion`). Es solo una PREFERENCIA: la orden
+  // mostrada se DERIVA (ver `detalleOrden`) para no quedar pegada a una orden que ya no existe
+  // tras `router.refresh()`.
+  const [ordenEnFocoId, setOrdenEnFocoId] = useState<string | null>(null);
+  // SLT-156 (R514): la orden del foco cuya guía YA se confirmó con el escáner de la lista. El panel
+  // arranca en «¿Cómo terminó la gestión?» sin esperar a que `router.refresh()` traiga el puntero.
+  const [guiaConfirmadaId, setGuiaConfirmadaId] = useState<string | null>(null);
+  // SLT-156 (R514): la orden leída por el escáner de la lista, pendiente de «¿Gestionar esta orden?».
+  const [ordenEscaneada, setOrdenEscaneada] = useState<MiAsignacionDTO | null>(null);
+  // SLT-166 (R542): la primera tarjeta de la página del carrusel a la vista; el mapa se centra en ella.
+  const [indiceCarrusel, setIndiceCarrusel] = useState(0);
+  // SLT-166 (R540): la parada cuyo marcador se tocó; su hoja inferior está abierta.
+  const [paradaHojaId, setParadaHojaId] = useState<string | null>(null);
 
   // Orden mostrada en el panel de detalle. Nunca `null` si hay al menos una en
   // reparto. Prioridad: (1) la ACTIVA (puntero fijado); (2) la elegida por el
@@ -396,19 +453,21 @@ export function RepartoModule({
   // transicionar, así que `porGestionarFiltrado` ya no las contiene y la exclusión sobra.
 
   const detalleOrden = useMemo<MiAsignacionDTO | null>(() => {
-    if (porGestionarFiltrado.length === 0) return null;
     if (ordenEnGestionId !== null) {
       return (
         porGestionarFiltrado.find((o) => o.id === ordenEnGestionId) ??
-        porGestionarFiltrado[0]
+        porGestionarFiltrado[0] ??
+        null
       );
     }
-    if (seleccionId !== null) {
-      const elegida = porGestionarFiltrado.find((o) => o.id === seleccionId);
+    // SLT-156 (R514): la elegida se busca en la lista ENTERA: el escáner encuentra la guía aunque la
+    // búsqueda de la barra la tenga oculta, y el mensajero la eligió a ella.
+    if (ordenEnFocoId !== null) {
+      const elegida = porGestionar.find((o) => o.id === ordenEnFocoId);
       if (elegida) return elegida;
     }
-    return porGestionarFiltrado[0];
-  }, [porGestionarFiltrado, ordenEnGestionId, seleccionId]);
+    return porGestionarFiltrado[0] ?? null;
+  }, [porGestionar, porGestionarFiltrado, ordenEnGestionId, ordenEnFocoId]);
 
   // Feature 113/R5 — MODO FOCO: flag DERIVADO de una sola fuente de verdad
   // (`ordenEnGestionId`, backend, robusto a recarga). Con una gestión activa y sin
@@ -416,10 +475,16 @@ export function RepartoModule({
   // puntero a `null` tras `router.refresh()` deja de cumplirse y se restaura la vista
   // completa (R10) sin estado extra. `bloqueado` tiene precedencia: anula el foco (R12).
   // FICHA 477 (R27): con el bloqueo puesto, el foco solo se abre sobre una orden en corrección.
+  //
+  // SLT-156 (R504, R510): la segunda entrada al foco es la orden elegida en su tarjeta
+  // (`ordenEnFocoId`), y solo mientras SIGA en la lista: si desapareció tras un refresh, el foco
+  // no cae sobre «la primera», que el mensajero no eligió.
+  const enFocoElegida =
+    ordenEnFocoId !== null && detalleOrden !== null && detalleOrden.id === ordenEnFocoId;
   const modoFoco =
     !bloqueadaPara(detalleOrden) &&
-    ordenEnGestionId !== null &&
-    detalleOrden !== null;
+    detalleOrden !== null &&
+    (ordenEnGestionId !== null || enFocoElegida);
 
   // Seleccionar una card la lleva al panel de detalle. Bloqueada si hay otra
   // gestión activa (R19/R20): no se puede cambiar la orden del panel. Feature
@@ -432,7 +497,7 @@ export function RepartoModule({
     // servidor rechaza igual (R3/R5).
     if (orden.esParaManana) return;
     if (ordenEnGestionId !== null && ordenEnGestionId !== orden.id) return;
-    setSeleccionId(orden.id);
+    setOrdenEnFocoId(orden.id);
   }
 
   // R17 (T17): al pulsar "Gestionar pedido" se fija el puntero de bloqueo 1-a-1
@@ -440,9 +505,14 @@ export function RepartoModule({
   // panel revela los 4 botones).
   async function gestionarPedido(): Promise<boolean> {
     if (!detalleOrden) return false;
+    return escoger(detalleOrden);
+  }
+
+  // SLT-156 (R514): fijar el puntero sobre una orden concreta, la del panel o la que leyó el escáner.
+  async function escoger(orden: MiAsignacionDTO): Promise<boolean> {
     // Feature 111/R14: guarda suave. El mensajero bloqueado no puede escoger para
     // gestión; se le remite a resolver su cierre. El backend (R1/R4) rechaza igual.
-    if (bloqueadaPara(detalleOrden)) {
+    if (bloqueadaPara(orden)) {
       toast.error(avisoDeBloqueo);
       return false;
     }
@@ -451,11 +521,11 @@ export function RepartoModule({
     // ningún botón de card. Sin esto, el `conflict` del servidor se traduciría a «ya tienes otra
     // orden activa en gestión», que es falso y manda a buscar un problema que no existe. El texto
     // sale de la fuente única, con el día que la orden trae consigo (R15).
-    if (detalleOrden.esParaManana) {
-      toast.error(avisoReservaParaOtroDia(detalleOrden.fechaRepartoISO));
+    if (orden.esParaManana) {
+      toast.error(avisoReservaParaOtroDia(orden.fechaRepartoISO));
       return false;
     }
-    const result = await escogerParaGestion({ ordenId: detalleOrden.id });
+    const result = await escogerParaGestion({ ordenId: orden.id });
     if (result.status === "ok") {
       router.refresh(); // refleja el bloqueo de las demás (ordenEnGestionId)
       return true;
@@ -476,10 +546,19 @@ export function RepartoModule({
     return false;
   }
 
+  // SLT-156 (R514): el mensajero aceptó gestionar la orden que leyó el escáner. La guía ya está
+  // confirmada (la acaba de leer): se fija el puntero y el foco abre directo en los resultados.
+  async function gestionarEscaneada(orden: MiAsignacionDTO) {
+    if (!(await escoger(orden))) return;
+    setGuiaConfirmadaId(orden.id);
+    setOrdenEnFocoId(orden.id);
+  }
+
   function handleGestionSuccess() {
     // Path de ÉXITO: el backend YA limpió el puntero dentro de la transacción de
     // `gestionar`. NO se llama a `liberarGestion` aquí (evita doble limpieza).
-    setSeleccionId(null);
+    setOrdenEnFocoId(null);
+    setGuiaConfirmadaId(null);
     router.refresh();
   }
 
@@ -489,6 +568,9 @@ export function RepartoModule({
   async function cancelarGestion() {
     if (!detalleOrden) return;
     await liberarGestion({ ordenId: detalleOrden.id });
+    // SLT-156: soltar la gestión devuelve a la lista, como antes de esta ficha.
+    setOrdenEnFocoId(null);
+    setGuiaConfirmadaId(null);
     router.refresh();
   }
 
@@ -521,12 +603,17 @@ export function RepartoModule({
         orden={orden}
         total={porGestionar.length}
         esActiva={ordenEnGestionId === orden.id}
-        esDetalle={detalleOrden?.id === orden.id}
+        // SLT-156 (R504): fuera de foco no hay panel, así que ninguna card es «la del panel».
+        esDetalle={false}
         bloqueado={bloqueadaPara(orden)}
+        // SLT-156 (R508): en Detalle, la fila compacta que se despliega al tocarla.
+        compacta={vista === "detalle"}
+        // SLT-189 (R790-R792): la fila de Reparto lleva la guía y «destinatario · dirección».
+        filaReparto="direccion"
         // Pedido humano (ux): la card ya NO selecciona al tocarla. Cambiar la orden del panel
         // pasa por el botón "Gestionar" del pie, que además pide confirmación.
         acciones={
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             {/* Feature 115/R5/R6: puramente informativo (no cambia estado ni ruta), así que
                 sigue disponible aunque la card esté deshabilitada por el cierre pendiente. */}
             <MarcarLuegoToggle
@@ -551,11 +638,7 @@ export function RepartoModule({
               disabled={
                 bloqueadaPara(orden) ||
                 Boolean(orden.esParaManana) ||
-                ordenEnGestionId !== null ||
-                // La que YA está en el panel: es la que se está gestionando ahora mismo, así
-                // que su botón no ofrece nada (llevaría al panel donde ya está) y confirmar
-                // un aviso de "esto puede cambiar tu ruta" que no cambia nada engaña.
-                detalleOrden?.id === orden.id
+                ordenEnGestionId !== null
               }
               onConfirmar={() => seleccionar(orden)}
             />
@@ -569,6 +652,7 @@ export function RepartoModule({
    * Una card de la seccion «Con ayuda solicitada». SIEMPRE en vista de DETALLE (pedido humano):
    * son las órdenes atascadas, la fila ancha deja leer de un vistazo cuál es cuál, y esta sección
    * no participa del conmutador mosaico/detalle de arriba.
+   * SLT-189 (R800): y como FILA COMPACTA plegada; sus acciones van al despliegue.
    *
    * Feature 235 (T3.5/T5.2, R19/R35) — SUS ACCIONES CAMBIAN, y las dos por un motivo medible:
    *
@@ -613,6 +697,10 @@ export function RepartoModule({
            navegación, el nº de remisión, el destinatario, los intentos, el monto y «Gestionar más
            tarde» siguen intactos. */
         mostrarRuta={false}
+        /* SLT-189 (R800, R801, DS5): fila compacta plegada, en Mosaico y en Detalle, con la guía y
+           «destinatario · tienda»; «Recuperar» y «Conversación» van al despliegue. */
+        compacta
+        filaReparto="tienda"
         acciones={
           <div className="flex items-center justify-between gap-2">
             {/* Feature 235 (R25) — LA EXCEPCIÓN AL BLOQUEO, y es deliberada: este botón NO recibe
@@ -629,10 +717,11 @@ export function RepartoModule({
               numRemision={orden.numRemision}
               onRecuperada={() => router.refresh()}
             />
+            {/* SLT-156 (R493): 44 px, como todos los botones de las tarjetas del mensajero. */}
             <Button
               type="button"
               variant="secondary"
-              size="sm"
+              size="touch"
               onClick={() => setHiloOrden(orden)}
             >
               {AYUDA_ACCION_HILO}
@@ -643,12 +732,51 @@ export function RepartoModule({
     );
   }
 
+  // R30: aviso de que el orden mostrado no está actualizado. Feature 265 (R38/R40-R44): el orden de
+  // las paradas lo calculó la app. `default` y NO `destructive` para el segundo: no es un error, es
+  // una ruta utilizable que conviene revisar. Los dos van FUERA del acordeón del mapa: el orden
+  // manda en la lista, que se ve siempre, y un aviso escondido en un mapa cerrado no existe. Los
+  // textos dicen QUÉ pasa y QUÉ hacer, no por qué (R44), sin jerga ni datos de la orden (R41/R42).
+  const avisosRuta: { titulo: string; descripcion: string; variant: "default" | "destructive" }[] = [
+    ...(rutaDesactualizada
+      ? [{ titulo: AVISO_DESACTUALIZADA_TITULO, descripcion: AVISO_DESACTUALIZADA_TEXTO, variant: "destructive" as const }]
+      : []),
+    ...(ordenAproximado
+      ? [{ titulo: AVISO_APROXIMADO_TITULO, descripcion: AVISO_APROXIMADO_TEXTO, variant: "default" as const }]
+      : []),
+  ];
+  const hayMapa = paradasMapa.length > 0;
+  // SLT-156 (R509): con avisos, «Mostrar mapa» sube a la fila del primero; sin avisos, el mapa
+  // conserva su cabecera. Un solo botón en los dos casos, con la misma posición abierto y cerrado.
+  const botonMapa = (
+    <Button
+      type="button"
+      variant="ghost"
+      // SLT-166 (R544): 44 px; era `xs` (24 px) y el mensajero lo pulsa con el pulgar.
+      size="touch"
+      aria-expanded={mapa.abierta}
+      onClick={mapa.abierta ? mapa.cerrar : mapa.abrir}
+    >
+      {mapa.abierta ? "Ocultar mapa" : "Mostrar mapa"}
+    </Button>
+  );
+  const mapaEnAviso = hayMapa && avisosRuta.length > 0;
+  // SLT-166 (R542): en Mosaico, la parada activa es la de la tarjeta a la vista; en Detalle no hay
+  // carrusel y el mapa marca la primera de la ruta (`null` = que la elija `RutaMapaInner`).
+  const paradaActivaId =
+    vistaCards === "mosaico"
+      ? (visualSinAyuda[indiceCarrusel] ?? visualSinAyuda[0])?.id ?? null
+      : null;
+  const ordenHoja =
+    paradaHojaId === null ? null : (porGestionar.find((o) => o.id === paradaHojaId) ?? null);
+
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-6">
       {/* ---------- Aviso de BLOQUEO TOTAL del mensajero (feature 111/R12) ---------- */}
       {/* Precede a todo y tiene precedencia sobre el modo foco (feature 113/R12): un
-          mensajero BLOQUEADO no colapsa a foco; ve el aviso, la lista con detalle inline
-          y las cards deshabilitadas, sin panel de gestión. */}
+          mensajero BLOQUEADO no colapsa a foco; ve el aviso, la lista y las cards
+          deshabilitadas, sin panel de gestión. SLT-156 (R503): va bajo el encabezado, en la
+          misma posición que en Recoger en bodega y Recolección. */}
       {bloqueado ? (
         <p
           role="alert"
@@ -659,49 +787,104 @@ export function RepartoModule({
       ) : null}
 
       {modoFoco && detalleOrden ? (
-        /* ---------- MODO FOCO (feature 113/R5–R9) ---------- */
-        /* Vista sin distracciones para gestionar la orden activa en la calle: SOLO el
-           panel (que ya incluye el detalle completo + el flujo de 4 resultados y
-           "Cancelar gestión"). Se omiten la grilla de cards (R6) y el mapa/ruta con
-           "Sincronizar ruta" (R7). Arranca en `yaActiva` (el puntero 1-a-1 ya está
-           fijado). Al liberar/finalizar la gestión el puntero vuelve a `null` y la vista
-           completa se restaura sola (R10). */
-        <GestionarOrdenPanel
-          key={detalleOrden.id}
-          orden={detalleOrden}
-          yaActiva
-          onGestionarPedido={gestionarPedido}
-          onCancelarGestion={cancelarGestion}
-          onSuccess={handleGestionSuccess}
-          count={1}
-          onAbrirChat={() => setChatAbierto(true)}
-        />
+        /* ---------- MODO FOCO (feature 113/R5–R9; SLT-156 R504) ---------- */
+        /* Vista sin distracciones para gestionar UNA orden en la calle: SOLO el panel (detalle
+           completo + flujo de resultados + "Cancelar gestión"), con los KPI encima (SLT-189). Se
+           omiten barra de filtros, grilla de cards y mapa. Se entra por el puntero 1-a-1 del servidor (gestión
+           ya fijada) o por la orden que el mensajero eligió en su tarjeta (`ordenEnFocoId`,
+           guía todavía sin confirmar); en ese segundo caso «Volver a la lista» deshace la
+           elección sin tocar el servidor. */
+        <div className="flex flex-col gap-3">
+          {/* SLT-189 (R798, DS4): los KPI también en el foco, encima de «Volver a la lista» y del
+              panel, antes y después de confirmar la guía. La barra, el conmutador y el escáner no
+              (R799). */}
+          {kpis}
+          {/* SLT-156 (R513, C2): solo antes de confirmar la guía; después ya existe «Cancelar
+              gestión». A todo el ancho, como el canvas. */}
+          {ordenEnGestionId === null && guiaConfirmadaId !== detalleOrden.id ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="touch"
+              className="w-full"
+              onClick={() => setOrdenEnFocoId(null)}
+            >
+              <ArrowLeft aria-hidden="true" />
+              {VOLVER_A_LA_LISTA}
+            </Button>
+          ) : null}
+          <GestionarOrdenPanel
+            key={detalleOrden.id}
+            orden={detalleOrden}
+            yaActiva={
+              ordenEnGestionId === detalleOrden.id || guiaConfirmadaId === detalleOrden.id
+            }
+            onGestionarPedido={gestionarPedido}
+            onCancelarGestion={cancelarGestion}
+            onSuccess={handleGestionSuccess}
+            count={ordenEnGestionId === null ? porGestionar.length : 1}
+            onAbrirChat={() => setChatAbierto(true)}
+          />
+        </div>
       ) : (
         /* ---------- VISTA COMPLETA (fuera de foco) ---------- */
         <>
-          {/* ---------- Feature 117: filtro por cantón y distrito (solo vista de lista) ----------
-              Se compone en AND con el buscador. Las opciones se derivan del conjunto completo
-              cargado (R13); elegir cantón resetea el distrito (R5) y el distrito va
-              deshabilitado sin cantón (R3). En modo foco no se renderiza (no hay cards que
-              filtrar). Puro filtro de cliente, así que permanece aunque el mensajero esté
-              bloqueado (la lista sigue como solo-visualización). */}
-          <FiltroCantonDistrito
-            canton={filtro.canton}
-            distrito={filtro.distrito}
-            cantones={filtro.cantones}
-            distritos={filtro.distritos}
-            hayFiltro={filtro.hayFiltro}
-            onCantonChange={filtro.setCantonYReset}
-            onDistritoChange={filtro.setDistrito}
-            onLimpiar={filtro.limpiar}
-          />
+          {/* SLT-156 (R500, R503, R516): el escáner de la lista, bajo el encabezado y encima de los
+              KPI y la barra, en la misma posición que en Recoger y Recolección. Con el mensajero
+              bloqueado no se monta: en su sitio va el aviso de bloqueo. */}
+          {bloqueado ? null : (
+            <EscanerGuiaReparto
+              porGestionar={porGestionar}
+              conAyuda={conAyuda}
+              onOrdenEncontrada={setOrdenEscaneada}
+            />
+          )}
+
+          {/* SLT-156 (R503): KPI bajo el aviso, y la barra de filtros DEBAJO de ellos. */}
+          {kpis}
+
+          {/* ---------- SLT-156 (R495, R496, R505, R506): UNA barra de búsqueda y filtros ----------
+              Hija DIRECTA del contenedor del módulo a propósito: `sticky` se pega dentro de su
+              padre, y así sigue arriba mientras se desplaza toda la lista. El `SidebarTrigger`
+              del layout va en el flujo, por encima, y se va con el desplazamiento: la barra no
+              queda debajo de él. Filtro puro de cliente (114 + 117), así que permanece aunque el
+              mensajero esté bloqueado (la lista sigue como solo-visualización). Sin debounce: la
+              lista ya está en memoria y no hay consulta que ahorrar. */}
+          <BuscadorFiltros
+            label={BUSCADOR_LABEL}
+            placeholder={BUSCADOR_PLACEHOLDER}
+            onChange={setQuery}
+            debounceMs={0}
+            leerDeUrl={false}
+            filtros={filtrosOfrecidos}
+            activos={filtrosPuestos}
+            onActivosChange={cambiarFiltrosPuestos}
+            onLimpiarTodo={limpiarTodo}
+            hayFiltrosAplicados={filtro.hayFiltro || filtrosPuestos.length > 0}
+            fija
+            tactil
+            // SLT-189 (R795, DS3): el conmutador Mosaico/Detalle va en la barra fija, tras «Filtros».
+            trasFiltros={
+              <VistaCardsToggle vista={vistaCardsPedida} onVistaChange={cambiarVista} />
+            }
+          >
+            {/* Feature 117: elegir cantón resetea el distrito (R5) y el distrito va
+                deshabilitado sin cantón (R3); las opciones salen del conjunto completo (R13). */}
+            <FiltroCantonDistrito
+              canton={filtro.canton}
+              distrito={filtro.distrito}
+              cantones={filtro.cantones}
+              distritos={filtro.distritos}
+              mostrarCanton={filtrosPuestos.includes(FILTRO_CANTON)}
+              mostrarDistrito={filtrosPuestos.includes(FILTRO_DISTRITO)}
+              onCantonChange={filtro.setCantonYReset}
+              onDistritoChange={filtro.setDistrito}
+            />
+          </BuscadorFiltros>
 
           {/* ---------- Apartado: En reparto / por gestionar (en_reparto) ---------- */}
-          {/* Feature 113/R1: cada card en grilla (1/2/3 col) muestra el detalle COMPLETO
-              inline (`AsignacionDetalle`). Seleccionar una la lleva también al panel de
-              gestión grande de abajo (donde vive el gate "Gestionar pedido"). El bloqueo
-              1-a-1 (R19/R20) es una restricción de ACCIÓN: en cuanto hay una gestión
-              activa sin bloqueo la vista ya está en foco (R5) y las demás no se muestran. */}
+          {/* SLT-156 (R504): la LISTA va primero y sin panel al lado. La gestión se abre en modo
+              foco desde el botón "Gestionar" de cada card. */}
           <section
             aria-label="En reparto / por gestionar"
             className="flex flex-col gap-3"
@@ -711,7 +894,8 @@ export function RepartoModule({
                 En reparto / por gestionar
               </h2>
               {/* R31/R32: sincronización manual de la ruta. El botón captura el GPS del
-                  navegador (best-effort) y lo eleva aquí para dibujar el origen en el mapa. */}
+                  navegador (best-effort) y lo eleva aquí para dibujar el origen en el mapa.
+                  SLT-189 (R795): el conmutador mosaico/detalle pasó a la barra fija. */}
               <div className="flex flex-wrap items-center gap-2">
                 <SincronizarRutaButton
                   onUbicacion={setUbicacionActual}
@@ -720,67 +904,37 @@ export function RepartoModule({
               </div>
             </div>
 
-            {/* R30: aviso VISIBLE de que el orden mostrado no está actualizado. */}
-            {rutaDesactualizada ? (
-              <Alert variant="destructive">
-                <AlertTitle>El orden mostrado no está actualizado</AlertTitle>
-                <AlertDescription>
-                  La ruta cambió desde el último cálculo. Pulsa «Sincronizar
-                  ruta» para recalcular el orden de entrega.
-                </AlertDescription>
-              </Alert>
-            ) : null}
-
-            {/* Feature 265 (R38/R40/R41/R42/R44): el orden de las paradas lo calculó la app.
-                `variant="default"` y NO `destructive`: esto no es un error, es una ruta
-                utilizable que conviene revisar — el rojo está reservado al aviso de arriba.
-
-                Va AQUÍ, fuera del acordeón del mapa, y no es un detalle de maquetación: el
-                orden manda en la LISTA de abajo, que se ve siempre, mientras que el mapa se
-                pliega. Un aviso sobre el orden escondido dentro de un mapa cerrado es un aviso
-                que no existe.
-
-                El texto dice QUÉ pasa y QUÉ hacer, y NO dice por qué (R44): al mensajero no le
-                sirve saber si faltó una credencial o si el servicio de rutas no pudo con las
-                paradas, le sirve saber que debe revisar el orden antes de salir. Sin jerga
-                interna (R41) y sin coordenadas, direcciones, guías ni ids (R42). */}
-            {ordenAproximado ? (
-              <Alert variant="default">
-                <AlertTitle>El orden de las paradas es aproximado</AlertTitle>
-                <AlertDescription>
-                  Lo calculamos en la app, por cercanía en línea recta: no toma
-                  en cuenta calles ni tráfico. Revísalo antes de salir.
-                </AlertDescription>
-              </Alert>
-            ) : null}
+            {/* SLT-156 (R509): cada aviso de ruta en una línea, con «Ver más» y, en el primero,
+                «Mostrar mapa». */}
+            {avisosRuta.map((aviso, i) => (
+              <AvisoRutaLinea
+                key={aviso.titulo}
+                titulo={aviso.titulo}
+                variant={aviso.variant}
+                accion={i === 0 && mapaEnAviso ? botonMapa : undefined}
+              >
+                {aviso.descripcion}
+              </AvisoRutaLinea>
+            ))}
 
             {/* R28/mapa: recorrido optimizado sobre OpenStreetMap. Solo si hay paradas
-                con coordenadas; las paradas sin coords van igual en la lista de abajo. */}
-            {/* Acordeón (pedido humano): la CABECERA con el título y el botón está SIEMPRE
-                en el mismo sitio —abierto y cerrado—; lo único que aparece y desaparece es
-                el cuerpo del mapa, con animación en los dos sentidos. Antes el control
-                saltaba de sitio al cerrarlo (dentro de la cabecera para ocultar, suelto
-                debajo para mostrar) y había que buscarlo. */}
-            {paradasMapa.length > 0 ? (
+                con coordenadas; las paradas sin coords van igual en la lista de abajo.
+                Acordeón (pedido humano): el control está SIEMPRE en el mismo sitio —abierto y
+                cerrado—; lo único que aparece y desaparece es el cuerpo del mapa. */}
+            {hayMapa ? (
               <div
                 aria-label="Mapa de ruta"
                 role="group"
                 className="flex flex-col gap-2"
               >
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-muted-foreground">
-                    Mapa de ruta
-                  </span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="xs"
-                    aria-expanded={mapa.abierta}
-                    onClick={mapa.abierta ? mapa.cerrar : mapa.abrir}
-                  >
-                    {mapa.abierta ? "Ocultar mapa" : "Mostrar mapa"}
-                  </Button>
-                </div>
+                {mapaEnAviso ? null : (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-muted-foreground">
+                      Mapa de ruta
+                    </span>
+                    {botonMapa}
+                  </div>
+                )}
                 {mapa.montada ? (
                   <div className={`flex flex-col gap-2 ${mapa.clase}`}>
                     {origenAproximado ? (
@@ -794,64 +948,16 @@ export function RepartoModule({
                       origen={origenMapa}
                       trazado={trazadoRuta}
                       tramoSiguiente={tramoResaltado}
+                      paradaActivaId={paradaActivaId}
+                      onSeleccionarParada={setParadaHojaId}
+                      // El total de la RUTA, sin filtrar: el mismo que la tarjeta y la hoja.
+                      totalParadas={porGestionar.length}
                     />
                   </div>
                 ) : null}
               </div>
             ) : null}
-            {/* Panel de detalle grande e inline (gate "Gestionar pedido"): muestra la
-                orden seleccionada o la primera. Fuera de foco el puntero está en `null`,
-                así que arranca en el paso de detalle (`yaActiva=false`); al fijarse el
-                puntero la vista pasa a MODO FOCO (arriba). Feature 111/R14: BLOQUEADO no
-                renderiza el panel (debe resolver su cierre antes de operar con las guías).
-                Pedido humano (rama ux): el detalle va PRIMERO y la lista de cards debajo,
-                así el mensajero ve la orden con la que está trabajando sin desplazarse. */}
-            {detalleOrden && !bloqueadaPara(detalleOrden) ? (
-              <GestionarOrdenPanel
-                key={detalleOrden.id}
-                orden={detalleOrden}
-                yaActiva={ordenEnGestionId === detalleOrden.id}
-                onGestionarPedido={gestionarPedido}
-                onCancelarGestion={cancelarGestion}
-                onSuccess={handleGestionSuccess}
-                count={porGestionar.length}
-                onAbrirChat={() => setChatAbierto(true)}
-              />
-            ) : null}
 
-            {/* ---------- Feature 114: buscador de guías (solo en vista de lista) ----------
-              Filtra por número de guía, remisión, teléfono o nombre del destinatario
-              (parcial, insensible a mayúsculas/acentos). En modo foco no se renderiza: no
-              hay cards que filtrar. Es un filtro puro de cliente, así que permanece visible
-              aunque el mensajero esté bloqueado (la lista sigue como solo-visualización). */}
-            {/* Buscador y conmutador de vista comparten fila: son los dos controles de la
-                lista. En pantallas angostas se apilan (`flex-col`) para que el input no se
-                estruje; desde `sm` van en la MISMA línea, el input ocupando el espacio libre
-                y el conmutador alineado a su base. */}
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:gap-3">
-              <section
-                aria-label={BUSCADOR_REGION}
-                className="flex min-w-0 flex-1 flex-col gap-1"
-              >
-                <label htmlFor={buscarId} className="text-sm font-medium">
-                  {BUSCADOR_LABEL}
-                </label>
-                <Input
-                  id={buscarId}
-                  type="search"
-                  autoComplete="off"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder={BUSCADOR_PLACEHOLDER}
-                />
-              </section>
-              {/* Rama ux: conmutador mosaico/detalle de las cards de abajo. Puramente
-                  visual (no filtra ni reordena), pegado al buscador que sí filtra. */}
-              <VistaCardsToggle
-                vista={vistaCardsPedida}
-                onVistaChange={cambiarVista}
-              />
-            </div>
             {porGestionarFiltrado.length === 0 && !buscando && conAyuda.length > 0 ? (
               /* Hay órdenes, pero TODAS están abajo con ayuda solicitada. Sin este caso el
                  listado principal diría «No hay órdenes en reparto» justo encima de una sección
@@ -871,8 +977,7 @@ export function RepartoModule({
               /* Pedido humano: en MOSAICO las cards van en carrusel (`CarruselCards`,
                  componente shared sobre la primitiva shadcn), no en grilla. Se ven de 3 en 3
                  según el ancho —1 en móvil, 2 desde `sm`, 3 desde `lg`, los mismos cortes que
-                 tenía la grilla— y debajo queda la etiqueta de posición ("Órdenes 1-3 de 5").
-                 La vista "detalle" NO se toca: sigue siendo la lista de una fila por orden. */
+                 tenía la grilla— y debajo queda la etiqueta de posición ("Órdenes 1-3 de 5"). */
               <div className={CLASE_FASE[faseVista]}>
                 <CarruselCards
                   items={visualSinAyuda}
@@ -881,7 +986,13 @@ export function RepartoModule({
                   singular="Orden"
                   plural="Órdenes"
                   renderItem={(orden) => renderCardEnReparto(orden, "mosaico")}
+                  onIndiceChange={setIndiceCarrusel}
                 />
+                {hayMapa && mapa.abierta ? (
+                  <p className="mt-2 text-center text-xs text-muted-foreground">
+                    {MAPA_SIGUE_AL_CARRUSEL}
+                  </p>
+                ) : null}
               </div>
             ) : (
               /* La clase de fase anima la lista ENTERA como bloque (bajar+desvanecer /
@@ -898,14 +1009,13 @@ export function RepartoModule({
 
             {/* Pedido humano 2026-08-18 — las órdenes con AYUDA SOLICITADA, DEBAJO y aparte.
                 No están escondidas ni deshabilitadas: siguen siendo órdenes en reparto de este
-                mensajero y se pueden gestionar desde aquí. Lo que cambia es que dejan de
-                mezclarse con las que avanzan solas, que es lo que se pidió. */}
+                mensajero. Lo que cambia es que dejan de mezclarse con las que avanzan solas. */}
             {conAyuda.length > 0 ? (
               <section
                 aria-label={AYUDA_SECCION_TITULO}
                 className="mt-6 flex flex-col gap-3 border-t border-border pt-4"
               >
-                <div className="flex flex-col gap-0.5">
+                <div className="flex flex-col gap-1">
                   <h3 className="text-xs font-bold uppercase tracking-widest text-warning-strong">
                     {AYUDA_SECCION_TITULO}
                   </h3>
@@ -924,6 +1034,37 @@ export function RepartoModule({
           </section>
         </>
       )}
+
+      {/* SLT-166 (R540): la hoja del marcador. Su «Gestionar» es el de la tarjeta (mismo diálogo) y
+          al aceptar sigue el MISMO camino: `seleccionar` → modo foco con «Confirmar guía». */}
+      <HojaParadaMapa
+        orden={ordenHoja}
+        total={porGestionar.length}
+        onOpenChange={(abierta) => {
+          if (!abierta) setParadaHojaId(null);
+        }}
+        gestionarDeshabilitado={
+          ordenHoja === null ||
+          bloqueadaPara(ordenHoja) ||
+          Boolean(ordenHoja.esParaManana) ||
+          ordenEnGestionId !== null
+        }
+        onGestionar={(orden) => {
+          setParadaHojaId(null);
+          seleccionar(orden);
+        }}
+      />
+
+      {/* SLT-156 (R514): el MISMO «¿Gestionar esta orden?» que el botón de la tarjeta. */}
+      <ConfirmarGestionDialog
+        abierto={ordenEscaneada !== null}
+        onAbiertoChange={(abierto) => {
+          if (!abierto) setOrdenEscaneada(null);
+        }}
+        onAceptar={() => {
+          if (ordenEscaneada) void gestionarEscaneada(ordenEscaneada);
+        }}
+      />
 
       {/* Chat del mensajero — CÓDIGO VIVO Y ÚNICA ENTRADA AL CHAT. Esto NO es una maqueta:
           el hilo lo sirve `listarHiloChat` (feature 120) y las plantillas

@@ -3,6 +3,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
+// SLT-165: el corte de 768 px no existe en jsdom; `useIsMobile` se simula (por defecto, escritorio).
+const movil = vi.hoisted(() => ({ valor: false }));
+vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => movil.valor }));
+
 import {
   DetalleCierre,
   type AccionesPie,
@@ -15,14 +19,25 @@ import type {
   Modo,
 } from "@/components/private/cierres/detalle/detalle-cierre-vista";
 
+// SLT-165 «PWA del mensajero: Cierre del día en tarjetas» (R531): el botón del pie dice «Solicitar
+// cierre del día» con su contador dentro («3 gestiones»), que entra en el nombre accesible. El
+// botón del diálogo sigue siendo «Solicitar cierre» (C8). Las ausencias miran el prefijo: con el
+// nombre exacto de antes saldrían verdes sin mirar nada.
+const SOLICITAR_DEL_DIA = /^Solicitar cierre del día \d+ gesti(?:ón|ones)$/;
+const ALGUN_SOLICITAR_DEL_DIA = /^Solicitar cierre del día/;
+
 // SLT-95 «Rediseño del detalle de cierre (mensajero y bodega)», S1 (T2.3) — el detalle único:
 // marco, cabecera, franja, pestañas, un solo scroll y pie. Los textos esperados van escritos aquí.
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  movil.valor = false;
+});
 
 const MENSAJERO: DetalleMensajeroVista = {
   mensajeroNombre: "Ana Mensajera",
-  destino: "Bodega central · GAM",
+  destino: "Bodega central",
+  zona: "GAM",
   folio: "8F2A11C4",
   estado: "solicitado",
   solicitadoAt: "2026-11-08T00:42:00.000Z",
@@ -34,7 +49,6 @@ const MENSAJERO: DetalleMensajeroVista = {
   empresa: {
     pagoTienda: "94350.00",
     cobradoSobreRecaudado: "5650.00",
-    ganaLaTienda: "92090.00",
     totalIngresoBodegaRechazos: "500.00",
     ivaFacturado: "910.00",
     netoEmpresa: "3500.00",
@@ -137,6 +151,22 @@ async function cabecera(): Promise<HTMLElement> {
   return dialogo.querySelector("header") as HTMLElement;
 }
 
+/** La fila del título y la insignia de estado (sin los pares de datos, que repiten «Solicitado»). */
+async function filaTitulo(): Promise<HTMLElement> {
+  return (await cabecera()).firstElementChild as HTMLElement;
+}
+
+/**
+ * SLT-153 (R455): los pares de la cabecera como [término, definición], en orden. Falla si las dos
+ * cuentas no cuadran: cada término lleva su definición.
+ */
+function paresDe(raiz: HTMLElement): [string, string][] {
+  const terminos = within(raiz).queryAllByRole("term");
+  const definiciones = within(raiz).queryAllByRole("definition");
+  expect(definiciones).toHaveLength(terminos.length);
+  return terminos.map((t, i) => [t.textContent ?? "", definiciones[i]!.textContent ?? ""]);
+}
+
 describe("R13 — marco: modal con nombre accesible y X, o región sin X", () => {
   it("modal de mensajero: dialog «Detalle del cierre · Cierre de Ana Mensajera» con su X", async () => {
     mensajero("central", "decidir");
@@ -166,10 +196,10 @@ describe("R13 — marco: modal con nombre accesible y X, o región sin X", () =>
 describe("R2, R3 — identidad, estado y retención arriba", () => {
   it("el estado de cada modo sale de `EstadoCierreBadge` / `estadoConciliacionDe`", async () => {
     mensajero("central", "decidir");
-    expect(await screen.findByText("Solicitado")).toBeTruthy();
+    expect(within(await filaTitulo()).getByText("Solicitado")).toBeTruthy();
     cleanup();
     mensajero("central", "solo lectura", { detalle: { ...MENSAJERO, estado: "aprobado", resueltoAt: "2026-11-08T01:10:00.000Z" } });
-    expect(await screen.findByText("Aprobado")).toBeTruthy();
+    expect(within(await filaTitulo()).getByText("Aprobado")).toBeTruthy();
     cleanup();
     mensajero("mensajero", "en curso", { marco: "pagina", detalle: { ...MENSAJERO, estado: null, folio: null, empresa: null } });
     expect(screen.getByText("Sin solicitar")).toBeTruthy();
@@ -183,53 +213,6 @@ describe("R2, R3 — identidad, estado y retención arriba", () => {
     cleanup();
     bodega("central", "solo lectura", { ...BODEGA, conciliado: true, faltaPorRecibir: "1234.56" });
     expect(within(await cabecera()).getByText("Recibido incompleto")).toBeTruthy();
-  });
-
-  it("cabecera: destino, folio y fecha de solicitud", async () => {
-    mensajero("central", "decidir");
-    const dialogo = await screen.findByRole("dialog");
-    expect(dialogo.textContent).toContain("Bodega central · GAM · 8F2A11C4 · Solicitado 2026-11-07 18:42");
-  });
-
-  it("aprobado: la fecha de resolución y quién lo resolvió", async () => {
-    mensajero("central", "solo lectura", {
-      detalle: { ...MENSAJERO, estado: "aprobado", resueltoAt: "2026-11-08T01:10:00.000Z", resueltoPorNombre: "Carlos R." },
-    });
-    expect((await cabecera()).textContent).toContain(
-      "Bodega central · GAM · 8F2A11C4 · Solicitado 2026-11-07 18:42 · Aprobado 2026-11-07 19:10 por Carlos R.",
-    );
-  });
-
-  it("rechazado: la fecha del rechazo", async () => {
-    mensajero("central", "solo lectura", {
-      detalle: { ...MENSAJERO, estado: "rechazado", resueltoAt: "2026-11-08T01:20:00.000Z" },
-    });
-    expect((await cabecera()).textContent).toContain("Solicitado 2026-11-07 18:42 · Rechazado 2026-11-07 19:20");
-  });
-
-  it("vencido: «Del … · venció sin solicitarse»", async () => {
-    mensajero("central", "vencido", { detalle: { ...MENSAJERO, estado: "vencido" } });
-    expect((await cabecera()).textContent).toContain("8F2A11C4 · Del 2026-11-07 18:42 · venció sin solicitarse");
-  });
-
-  it("bodega: quién lo solicitó, cuántos mensajeros, folio y fecha", async () => {
-    bodega("central", "decidir");
-    expect((await cabecera()).textContent).toContain(
-      "Bodega satélite · lo solicitó Sara Satélite · 2 mensajeros · C07B3E19 · Solicitado 2026-11-07 19:05",
-    );
-  });
-
-  it("bodega recibida: «Recibido … por …»", async () => {
-    bodega("central", "solo lectura", {
-      ...BODEGA,
-      conciliado: true,
-      faltaPorRecibir: "0.00",
-      conciliadoAt: "2026-11-08T15:12:00.000Z",
-      conciliadoPorNombre: "Carlos R.",
-    });
-    expect((await cabecera()).textContent).toContain(
-      "Solicitado 2026-11-07 19:05 · Recibido 2026-11-08 09:12 por Carlos R.",
-    );
   });
 
   it("con 2 reprogramadas retenidas la cabecera lo dice; con 0, nada", async () => {
@@ -360,7 +343,7 @@ describe("R12 — el pie fijo y sus acciones", () => {
     const sinEmpresa = { ...MENSAJERO, empresa: null };
 
     mensajero("mensajero", "en curso", { marco: "pagina", acciones, detalle: { ...sinEmpresa, estado: null } });
-    await user.click(screen.getByRole("button", { name: "Solicitar cierre" }));
+    await user.click(screen.getByRole("button", { name: SOLICITAR_DEL_DIA }));
     expect(solicitar).toHaveBeenCalledTimes(1);
     cleanup();
 
@@ -384,7 +367,7 @@ describe("R12 — el pie fijo y sus acciones", () => {
       deshabilitadas: { solicitar: motivo },
       detalle: { ...MENSAJERO, estado: null, folio: null, empresa: null },
     });
-    const boton = screen.getByRole("button", { name: "Solicitar cierre" });
+    const boton = screen.getByRole("button", { name: SOLICITAR_DEL_DIA });
     expect(boton).toBeDisabled();
     expect(boton).toHaveAttribute("title", motivo);
     expect(boton).toHaveAccessibleDescription(motivo);
@@ -400,16 +383,177 @@ describe("R12 — el pie fijo y sus acciones", () => {
   });
 });
 
-describe("SLT-109 (R241) — la cabecera del cierre de hoy", () => {
-  it("sin destino no queda un « · » suelto: «Solicitud nueva · Hoy · sin solicitar»", () => {
+// SLT-153 «Cabecera del detalle del cierre con rótulos y folio buscable» — los rótulos y valores
+// van escritos aquí a mano; nunca se comparan contra la constante que los genera.
+describe("SLT-153 (R450-R455) — la cabecera reparte cada dato con su rótulo", () => {
+  it("R450: mensajero solicitado (central): Folio, Destino, Zona y Solicitado, en ese orden", async () => {
+    mensajero("central", "decidir");
+    expect(paresDe(await cabecera())).toEqual([
+      ["Folio", "#8F2A11C4"],
+      ["Destino", "Bodega central"],
+      ["Zona", "GAM"],
+      ["Solicitado", "2026-11-07 18:42"],
+    ]);
+  });
+
+  it("R450: aprobado (satélite): siguen «Aprobado» y «Aprobado por»", async () => {
+    mensajero("satelite", "solo lectura", {
+      detalle: {
+        ...MENSAJERO,
+        destino: "Bodega satélite",
+        estado: "aprobado",
+        resueltoAt: "2026-11-08T01:10:00.000Z",
+        resueltoPorNombre: "Carlos R.",
+      },
+    });
+    expect(paresDe(await cabecera())).toEqual([
+      ["Folio", "#8F2A11C4"],
+      ["Destino", "Bodega satélite"],
+      ["Zona", "GAM"],
+      ["Solicitado", "2026-11-07 18:42"],
+      ["Aprobado", "2026-11-07 19:10"],
+      ["Aprobado por", "Carlos R."],
+    ]);
+  });
+
+  it("R450: rechazado: siguen «Rechazado» y «Rechazado por»", async () => {
+    mensajero("central", "solo lectura", {
+      detalle: { ...MENSAJERO, estado: "rechazado", resueltoAt: "2026-11-08T01:20:00.000Z", resueltoPorNombre: "Berta B." },
+    });
+    expect(paresDe(await cabecera())).toEqual([
+      ["Folio", "#8F2A11C4"],
+      ["Destino", "Bodega central"],
+      ["Zona", "GAM"],
+      ["Solicitado", "2026-11-07 18:42"],
+      ["Rechazado", "2026-11-07 19:20"],
+      ["Rechazado por", "Berta B."],
+    ]);
+  });
+
+  it("R451: sin zona ni quién lo aprobó, esos pares no se pintan (ni rótulo ni «—»)", async () => {
+    mensajero("central", "solo lectura", {
+      detalle: { ...MENSAJERO, zona: "", estado: "aprobado", resueltoAt: "2026-11-08T01:10:00.000Z", resueltoPorNombre: null },
+    });
+    const cab = await cabecera();
+    expect(paresDe(cab)).toEqual([
+      ["Folio", "#8F2A11C4"],
+      ["Destino", "Bodega central"],
+      ["Solicitado", "2026-11-07 18:42"],
+      ["Aprobado", "2026-11-07 19:10"],
+    ]);
+    expect(within(cab).queryByText("Zona")).toBeNull();
+    expect(within(cab).queryByText("Aprobado por")).toBeNull();
+    expect(cab.querySelector("dl")!.textContent).not.toContain("—");
+  });
+
+  it("R452: vencido: «Del día» en lugar de «Solicitado»", async () => {
+    mensajero("central", "vencido", { detalle: { ...MENSAJERO, estado: "vencido" } });
+    expect(paresDe(await cabecera())).toEqual([
+      ["Folio", "#8F2A11C4"],
+      ["Destino", "Bodega central"],
+      ["Zona", "GAM"],
+      ["Del día", "2026-11-07 18:42"],
+    ]);
+  });
+
+  it("R453: el cierre de hoy sin solicitar: «Folio» → «Solicitud nueva» y «Día» → «Hoy», sin Destino", () => {
     mensajero("mensajero", "en curso", {
       marco: "pagina",
       onCerrar: undefined,
-      detalle: { ...MENSAJERO, destino: "", estado: null, folio: null, empresa: null, solicitadoAt: null },
+      detalle: { ...MENSAJERO, destino: "", zona: null, estado: null, folio: null, empresa: null, solicitadoAt: null },
     });
     const region = screen.getByRole("region", { name: "Detalle del cierre · Tu cierre del día" });
-    const linea = within(region).getByText("Solicitud nueva").parentElement!;
-    expect(linea.textContent).toBe("Solicitud nueva · Hoy · sin solicitar");
+    const cab = region.querySelector("header") as HTMLElement;
+    expect(paresDe(cab)).toEqual([
+      ["Folio", "Solicitud nueva"],
+      ["Día", "Hoy"],
+    ]);
+    expect(within(cab).queryByText("Destino")).toBeNull();
+  });
+
+  it("R454: bodega sin marca: Folio, Origen, Zona, Solicitado por, Mensajeros y Solicitado", async () => {
+    bodega("central", "decidir", { ...BODEGA, conteos: { ...BODEGA.conteos, mensajeros: 3 } });
+    expect(paresDe(await cabecera())).toEqual([
+      ["Folio", "#C07B3E19"],
+      ["Origen", "Bodega satélite"],
+      ["Zona", "Limón"],
+      ["Solicitado por", "Sara Satélite"],
+      ["Mensajeros", "3"],
+      ["Solicitado", "2026-11-07 19:05"],
+    ]);
+  });
+
+  it("R454: bodega con la marca de recibido (satélite): siguen «Recibido» y «Recibido por»", async () => {
+    bodega("satelite", "solo lectura", {
+      ...BODEGA,
+      conciliado: true,
+      faltaPorRecibir: "0.00",
+      conciliadoAt: "2026-11-08T15:12:00.000Z",
+      conciliadoPorNombre: "Carlos R.",
+    });
+    expect(paresDe(await cabecera())).toEqual([
+      ["Folio", "#C07B3E19"],
+      ["Origen", "Bodega satélite"],
+      ["Zona", "Limón"],
+      ["Solicitado por", "Sara Satélite"],
+      ["Mensajeros", "2"],
+      ["Solicitado", "2026-11-07 19:05"],
+      ["Recibido", "2026-11-08 09:12"],
+      ["Recibido por", "Carlos R."],
+    ]);
+  });
+
+  it("R455: un término y una definición por par, y ya no hay línea única con « · »", async () => {
+    mensajero("central", "solo lectura", {
+      detalle: { ...MENSAJERO, estado: "aprobado", resueltoAt: "2026-11-08T01:10:00.000Z", resueltoPorNombre: "Carlos R." },
+    });
+    const cab = await cabecera();
+    expect(within(cab).getAllByRole("term")).toHaveLength(6);
+    expect(within(cab).getAllByRole("definition")).toHaveLength(6);
+    expect(cab.textContent).not.toContain(" · Solicitado ");
+    expect(cab.textContent).not.toContain("Bodega central · GAM");
+    cleanup();
+    bodega("central", "decidir");
+    const cabBodega = await cabecera();
+    expect(within(cabBodega).getAllByRole("term")).toHaveLength(6);
+    expect(within(cabBodega).getAllByRole("definition")).toHaveLength(6);
+    expect(cabBodega.textContent).not.toContain("lo solicitó");
+  });
+});
+
+// ═══ SLT-169 «Se le paga hoy a la tienda con todos los cobros restados» (R625) ═══════════════════════
+// El folio #C51B7B93 de producción, a mano: 19.900 − 3.273,05 − 12 × 2.486 = −13.205,05. Una sola cifra
+// con su signo; negativa, en rojo y con la marca de deuda junto al importe.
+describe("SLT-169 R625 — «Se le paga hoy a la tienda» negativa: rojo y «(la tienda debe)»", () => {
+  const caja = () => screen.getByRole("group", { name: "Se le paga hoy a la tienda" });
+  const conPago = (pagoTienda: string, tiendas: number): DetalleMensajeroVista => ({
+    ...MENSAJERO,
+    empresa: { ...MENSAJERO.empresa!, pagoTienda },
+    conteos: { ...MENSAJERO.conteos, tiendas },
+  });
+
+  it("una tienda: el importe en rojo, «(la tienda debe)» y «1 tienda», sin «gana en total»", () => {
+    mensajero("central", "solo lectura", { detalle: conPago("-13205.05", 1) });
+    const importe = caja().querySelector("[data-cifra]")!;
+    expect(importe.textContent).toBe("-₡13.205,05");
+    expect(importe.className).toContain("text-danger-strong");
+    expect(importe.className).not.toContain("text-success-strong");
+    expect(caja().textContent).toBe("Se le paga hoy a la tienda-₡13.205,05(la tienda debe)1 tienda");
+    expect(within(caja()).getByText("(la tienda debe)").className).toContain("text-danger-strong");
+  });
+
+  it("dos tiendas: «(las tiendas deben)»", () => {
+    mensajero("central", "solo lectura", { detalle: conPago("-13205.05", 2) });
+    expect(within(caja()).getByText("(las tiendas deben)")).toBeTruthy();
+    expect(caja().textContent).not.toContain("(la tienda debe)");
+    expect(caja().textContent).toContain("2 tiendas");
+  });
+
+  it("positiva: en verde y sin marca de deuda", () => {
+    mensajero("central", "solo lectura", { detalle: conPago("92090.00", 2) });
+    const importe = caja().querySelector("[data-cifra]")!;
+    expect(importe.className).toContain("text-success-strong");
+    expect(caja().textContent).toBe("Se le paga hoy a la tienda₡92.0902 tiendas");
   });
 });
 
@@ -433,5 +577,219 @@ describe("R1 — un componente para todo", () => {
       expect(screen.getByRole("tablist", { name: "Secciones del cierre" }), combo).toBeTruthy();
       cleanup();
     }
+  });
+});
+
+// ═══ SLT-154 «Vista de la bodega satélite: solo lo suyo» (T3.5) ═══════════════════════════════════
+// Corpus de `e2e/cierre-bodega-satelite.spec.ts`, a mano: recaudado 9 000 (efectivo) − pago 1 500 −
+// gana la bodega 500 = debe llegar 7 000. `money()` no pinta «,00»: «₡9.000», «₡1.500», «₡500»,
+// «₡7.000». Lo de la empresa llega en `null` a la satélite (R460, R462).
+describe("SLT-154 — la satélite ve solo lo suyo (R468-R473)", () => {
+  const TOTALES_S = { efectivo: "9000.00", simpe: "0.00", transferencia: "0.00", general: "9000.00" };
+  const S4: DetalleBodegaVista = {
+    ...BODEGA,
+    zonaNombre: "Satélite Norte",
+    faltaPorRecibir: "7000.00",
+    totales: TOTALES_S,
+    totalPagoMensajero: "1500.00",
+    totalIngresoBodegaRechazos: "500.00",
+    paraLaCentral: "7000.00",
+    efectivoCubreDescuentos: true,
+    pagoTienda: null,
+    cobradoSobreRecaudado: null,
+    ivaFacturado: null,
+    netoEmpresa: null,
+    totalesIngreso: null,
+    partesPorTienda: null,
+    centralDebe: "0.00",
+    porcentajesReparto: [78, 17, 5],
+    conteos: { gestiones: 2, mensajeros: 1, cierres: 1, pagosAjustados: 0 },
+  };
+  const S6: DetalleMensajeroVista = {
+    ...MENSAJERO,
+    estado: "aprobado",
+    totales: TOTALES_S,
+    totalPagoMensajero: "1500.00",
+    empresa: null,
+    haciaLaCentral: {
+      totales: TOTALES_S,
+      pago: "1500.00",
+      ganaBodega: "500.00",
+      paraLaCentral: "7000.00",
+      efectivoCubreDescuentos: true,
+      porcentajes: [78, 17, 5],
+      modeloNuevo: false,
+    },
+    conteos: { ...MENSAJERO.conteos, gestiones: 2, entregadas: 1, noEntregadas: 1, rechazosDeTienda: 0, tiendas: 0 },
+  };
+
+  const tarjeta = (id: string) => document.querySelector<HTMLElement>(`[data-cifra="${id}"]`);
+  const PROHIBIDOS = ["Le queda a la empresa", "Lo que se le factura a la tienda", "Se le paga hoy a la tienda"];
+
+  async function revisar(user: ReturnType<typeof userEvent.setup>) {
+    const dialogo = await screen.findByRole("dialog");
+    expect(tarjeta("recaudado")).toHaveTextContent("₡9.000");
+    expect(tarjeta("pago")).toHaveTextContent("₡1.500");
+    expect(tarjeta("ganaBodega")).toHaveTextContent("₡500");
+    expect(tarjeta("paraCentral")).toHaveTextContent("₡7.000");
+    expect(tarjeta("leQueda")).toBeNull();
+    expect(tarjeta("paraTienda")).toBeNull();
+    // R470, R473: abre en Gestiones.
+    expect(screen.getByRole("tab", { name: "Gestiones (2)" }).getAttribute("aria-selected")).toBe("true");
+    for (const t of PROHIBIDOS) expect(dialogo.textContent).not.toContain(t);
+    // Y en la pestaña del dinero, tampoco.
+    await user.click(screen.getByRole("tab", { name: "Lo que va a la central" }));
+    expect(screen.getByRole("tabpanel").textContent).toContain("Lo que va a la central");
+    for (const t of PROHIBIDOS) expect(dialogo.textContent).not.toContain(t);
+  }
+
+  it("S4 (R468, R469, R470) — tarjetas, pestaña abierta y sin las cifras de la empresa", async () => {
+    bodega("satelite", "decidir", S4);
+    await revisar(userEvent.setup());
+    expect(
+      within(screen.getByRole("tablist", { name: "Secciones del cierre" }))
+        .getAllByRole("tab")
+        .map((t) => t.textContent),
+    ).toEqual(["Gestiones (2)", "Lo que va a la central", "Mensajeros (1)", "Conciliación"]);
+  });
+
+  it("S6 (R471, R472, R473) — tarjetas, pestaña abierta y sin las cifras de la empresa", async () => {
+    mensajero("satelite", "solo lectura", { detalle: S6 });
+    await revisar(userEvent.setup());
+    expect(
+      within(screen.getByRole("tablist", { name: "Secciones del cierre" }))
+        .getAllByRole("tab")
+        .map((t) => t.textContent),
+    ).toEqual(["Gestiones (2)", "Lo que va a la central", "Rechazados por la tienda (0)"]);
+  });
+});
+
+// SLT-165 «PWA del mensajero: Cierre del día en tarjetas» (D3, D4, D6; R530, R531, R534, R537). Las
+// clases van escritas a mano: son el contrato del pie fijo y del marco a pantalla completa.
+function clases(el: Element | null | undefined): string[] {
+  if (!el) throw new Error("sin elemento");
+  return el.className.split(/\s+/);
+}
+
+function enPagina(extra: Partial<Extract<DetalleCierreProps, { tipo: "mensajero" }>> = {}) {
+  return mensajero("mensajero", "en curso", { marco: "pagina", onCerrar: undefined, acciones: { solicitar: vi.fn() }, ...extra });
+}
+
+describe("SLT-165 R530 — las pestañas pasan a otra línea antes que desbordar", () => {
+  it("la lista de pestañas envuelve, con su hueco vertical y sin alto fijo", () => {
+    enPagina();
+    expect(clases(screen.getByRole("tablist", { name: "Secciones del cierre" }))).toEqual(
+      expect.arrayContaining(["flex-wrap", "gap-x-6", "gap-y-2", "h-auto"]),
+    );
+  });
+});
+
+describe("SLT-165 R531 — «Solicitar cierre del día» con su contador, en la barra fija del teléfono", () => {
+  it("el botón dice «Solicitar cierre del día» con «19 gestiones» dentro, a la derecha", () => {
+    enPagina();
+    const boton = screen.getByRole("button", { name: "Solicitar cierre del día 19 gestiones" });
+    expect(boton).toBeEnabled();
+    const partes = Array.from(boton.querySelectorAll("span")).map((s) => s.textContent);
+    expect(partes).toEqual(["Solicitar cierre del día", "19 gestiones"]);
+    expect(clases(boton)).toEqual(expect.arrayContaining(["justify-between", "max-md:h-13", "max-md:w-full"]));
+  });
+
+  it("el pie de la página: barra fija abajo en el teléfono (fondo, borde arriba) y pegado como hoy desde 768 px", () => {
+    enPagina();
+    const pie = screen.getByRole("button", { name: SOLICITAR_DEL_DIA }).closest("footer");
+    expect(clases(pie)).toEqual(
+      expect.arrayContaining([
+        "max-md:fixed",
+        "max-md:inset-x-0",
+        "max-md:bottom-0",
+        "max-md:z-30",
+        "md:sticky",
+        "md:bottom-0",
+        "bg-background",
+        "border-t",
+      ]),
+    );
+    expect(clases(pie)).not.toContain("sticky");
+  });
+
+  it("también en el rechazado y el vencido de la página", () => {
+    mensajero("mensajero", "rechazado", { marco: "pagina", onCerrar: undefined, acciones: { solicitarRechazado: vi.fn() } });
+    const pie = screen.getByRole("button", { name: "Solicitar aprobación del cierre rechazado" }).closest("footer");
+    expect(clases(pie)).toContain("max-md:fixed");
+  });
+
+  it("sin gestiones pendientes: desactivado con «0 gestiones» y «No tienes gestiones pendientes» encima", () => {
+    const vacio = { ...SIN_ASUNTOS, conteos: { ...SIN_ASUNTOS.conteos, gestiones: 0 } };
+    enPagina({ detalle: vacio });
+    const boton = screen.getByRole("button", { name: "Solicitar cierre del día 0 gestiones" });
+    expect(boton).toBeDisabled();
+    const pie = boton.closest("footer")!;
+    expect(within(pie).getByText("No tienes gestiones pendientes")).toBeInTheDocument();
+    // El aviso va antes (encima) del botón.
+    expect(within(pie).getByText("No tienes gestiones pendientes").compareDocumentPosition(boton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("el modal (solo lectura) no tiene barra fija ni «Solicitar cierre del día»", async () => {
+    mensajero("mensajero", "solo lectura");
+    const dialogo = await screen.findByRole("dialog");
+    expect(within(dialogo).queryByRole("button", { name: ALGUN_SOLICITAR_DEL_DIA })).toBeNull();
+    expect(clases(dialogo.querySelector("footer"))).not.toContain("max-md:fixed");
+  });
+});
+
+describe("SLT-165 B3 de la review — el panel de la página entre 768 y 1023 px", () => {
+  it("se desplaza de lado desde 768 px y entero desde `lg`; en el teléfono fluye con la ventana", () => {
+    enPagina();
+    const panel = screen.getByRole("tabpanel");
+    expect(clases(panel)).toEqual(expect.arrayContaining(["md:overflow-x-auto", "lg:overflow-auto"]));
+    expect(clases(panel)).not.toContain("overflow-auto");
+  });
+});
+
+describe("SLT-165 R534 — la barra publica su alto para los flotantes", () => {
+  it("en el teléfono, `--alto-barra-inferior` en `<html>`; se quita al desmontar", () => {
+    movil.valor = true;
+    const { unmount } = enPagina();
+    expect(document.documentElement.style.getPropertyValue("--alto-barra-inferior")).toMatch(/^\d+px$/);
+    // Lo que se desplaza a la vista (foco, `scrollIntoView`) queda encima de la barra, no debajo.
+    expect(document.documentElement.style.getPropertyValue("scroll-padding-bottom")).toBe(
+      document.documentElement.style.getPropertyValue("--alto-barra-inferior"),
+    );
+    unmount();
+    expect(document.documentElement.style.getPropertyValue("--alto-barra-inferior")).toBe("");
+    expect(document.documentElement.style.getPropertyValue("scroll-padding-bottom")).toBe("");
+  });
+
+  it("en escritorio no hay barra fija: la variable no existe", () => {
+    enPagina();
+    expect(document.documentElement.style.getPropertyValue("--alto-barra-inferior")).toBe("");
+  });
+});
+
+describe("SLT-165 R537 — «Ver» en el teléfono: el detalle a pantalla completa con «Volver» arriba", () => {
+  it("marco de pantalla completa, sin la X; «Volver» de 44 px cierra", async () => {
+    movil.valor = true;
+    const onCerrar = vi.fn();
+    mensajero("mensajero", "solo lectura", { onCerrar });
+    const dialogo = await screen.findByRole("dialog");
+    expect(clases(dialogo)).toEqual(
+      expect.arrayContaining(["max-md:h-dvh", "max-md:w-screen", "max-md:rounded-none", "max-w-none"]),
+    );
+    expect(dialogo.querySelector('[data-slot="dialog-close"]')).toBeNull();
+    const volver = within(dialogo).getByRole("button", { name: "Volver" });
+    expect(clases(volver)).toContain("h-11");
+    // Arriba: antes del título.
+    const titulo = within(dialogo).getByRole("heading");
+    expect(volver.compareDocumentPosition(titulo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await userEvent.setup().click(volver);
+    expect(onCerrar).toHaveBeenCalledTimes(1);
+  });
+
+  it("en escritorio, el marco de hoy con la X y sin «Volver»", async () => {
+    mensajero("mensajero", "solo lectura");
+    const dialogo = await screen.findByRole("dialog");
+    expect(clases(dialogo)).toEqual(expect.arrayContaining(["md:h-[calc(100dvh-2rem)]", "md:w-[75vw]"]));
+    expect(dialogo.querySelector('[data-slot="dialog-close"]')).not.toBeNull();
+    expect(within(dialogo).queryByRole("button", { name: "Volver" })).toBeNull();
   });
 });

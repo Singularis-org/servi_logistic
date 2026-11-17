@@ -18,7 +18,6 @@ fuentes:
   - app/(app)/cierres-admin/_components/CierresTabs.tsx
   - app/(app)/cierres-admin/_components/CierresBodegaAdminModule.tsx
   - app/(app)/cierres-admin/_components/ConsolidacionBodegaModule.tsx
-  - app/(app)/cierres-admin/_components/CascadaDinero.tsx
   - lib/repositories/CierresAdminRepository.ts
 ---
 

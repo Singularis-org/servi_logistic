@@ -106,3 +106,25 @@ export const RANKING_LABELS = {
   premiosAria: "Premios del podio",
   vacio: "Todavía no hay mensajeros para mostrar hoy.",
 } as const;
+
+/**
+ * SLT-162 (R750) — el conteo de la tarjeta de «Ranking del día» en el teléfono: «{entregados} /
+ * {asignados}», con espacios, como el rótulo «Entregados / asignados» que lleva encima. La celda de
+ * escritorio y el podio siguen con `conteoCrudo`.
+ */
+export function conteoTarjeta(entregadasHoy: number, asignadasHoy: number): string {
+  return `${entregadasHoy} / ${asignadasHoy}`;
+}
+
+/** SLT-162 (R752): el puesto del podio de una tarjeta de premios, «1º». */
+export function ordinal(posicion: number): string {
+  return `${posicion}º`;
+}
+
+/** SLT-162 (R769, DC23) — la búsqueda por nombre de «Ranking del día». */
+export const BUSQUEDA_RANKING = {
+  label: "Buscar mensajero",
+  placeholder: "Buscar por nombre del mensajero",
+  /** Distinto del vacío del día (`RANKING_LABELS.vacio`): hay mensajeros, pero ninguno coincide. */
+  sinResultados: "Ningún mensajero coincide con la búsqueda.",
+} as const;

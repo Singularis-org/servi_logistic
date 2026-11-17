@@ -220,7 +220,7 @@ async function filtrarPor(
   resultado: string,
 ): Promise<HTMLElement> {
   const grupo = within(dialog).getByRole("group", { name: "Filtrar por resultado" });
-  await user.click(within(grupo).getByRole("button", { name: new RegExp(`^${resultado} \\d+$`) }));
+  await user.click(within(grupo).getByRole("button", { name: new RegExp(`^${resultado} \\(\\d+\\)$`) }));
   return within(dialog).getByRole("region", { name: "Órdenes del cierre" });
 }
 
@@ -399,7 +399,6 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       // Ficha 396: el desglose por tienda viaja SIEMPRE en el DTO, tambien con una sola
       // tienda. Estas pruebas no lo miran, asi que aqui va vacio; las suyas estan en
@@ -444,11 +443,11 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
-    renderModule({ pendientes: [makeResumen({ cierreId: "c1" })] });
+    // SLT-154 (R477): el dinero de la empresa solo lo ve la central.
+    renderModule({ audiencia: "admin", pendientes: [makeResumen({ cierreId: "c1" })] });
 
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
     const dialog = await screen.findByRole("dialog", { name: /^Detalle del cierre · / });
@@ -491,11 +490,11 @@ describe("CierresAdminModule", () => {
       // resto de fixturas: esta si lleva importes, y un cero mentiria sobre la resta de arriba.
       cobradoSobreRecaudado: "3672.50", // 2825.00 + 847.50
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
-    renderModule({ pendientes: [makeResumen({ cierreId: "c1" })] });
+    // SLT-154 (R477): el dinero de la empresa solo lo ve la central.
+    renderModule({ audiencia: "admin", pendientes: [makeResumen({ cierreId: "c1" })] });
 
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
     const dialog = await screen.findByRole("dialog", { name: /^Detalle del cierre · / });
@@ -526,11 +525,11 @@ describe("CierresAdminModule", () => {
       // SLT-100: el neto que deriva el servidor para este cierre (0 − 0 − 1.500 − 0); con "0.00"
       // la fixtura mentía sobre la cifra que ahora se pinta.
       netoEmpresa: "-1500.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
-    renderModule({ pendientes: [makeResumen({ cierreId: "c1" })] });
+    // SLT-154 (R477): el dinero de la empresa solo lo ve la central.
+    renderModule({ audiencia: "admin", pendientes: [makeResumen({ cierreId: "c1" })] });
 
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
     const dialog = await screen.findByRole("dialog", { name: /^Detalle del cierre · / });
@@ -570,11 +569,11 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
-    renderModule({ pendientes: [makeResumen({ cierreId: "c1" })] });
+    // SLT-154 (R477): el dinero de la empresa solo lo ve la central.
+    renderModule({ audiencia: "admin", pendientes: [makeResumen({ cierreId: "c1" })] });
 
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
 
@@ -656,11 +655,11 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
-    renderModule({ pendientes: [makeResumen({ cierreId: "c1" })] });
+    // SLT-154 (R477): el dinero de la empresa solo lo ve la central.
+    renderModule({ audiencia: "admin", pendientes: [makeResumen({ cierreId: "c1" })] });
 
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
     const dialog = await screen.findByRole("dialog", { name: /^Detalle del cierre · / });
@@ -753,7 +752,6 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
@@ -801,7 +799,6 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
@@ -856,7 +853,6 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
@@ -915,7 +911,6 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
@@ -966,7 +961,6 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
@@ -1009,11 +1003,11 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
-    renderModule({ pendientes: [makeResumen({ cierreId: "c1" })] });
+    // SLT-154 (R477): el dinero de la empresa solo lo ve la central.
+    renderModule({ audiencia: "admin", pendientes: [makeResumen({ cierreId: "c1" })] });
 
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
     const dialog = await screen.findByRole("dialog", {
@@ -1057,11 +1051,11 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
-    renderModule({ pendientes: [makeResumen({ cierreId: "c1" })] });
+    // SLT-154 (R477): el dinero de la empresa solo lo ve la central.
+    renderModule({ audiencia: "admin", pendientes: [makeResumen({ cierreId: "c1" })] });
 
     await user.click(screen.getByRole("button", { name: "Ver / decidir" }));
     const dialog = await screen.findByRole("dialog", {
@@ -1126,7 +1120,6 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
@@ -1176,7 +1169,6 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
@@ -1224,7 +1216,6 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
@@ -1265,7 +1256,6 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
@@ -1305,7 +1295,6 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
@@ -1357,7 +1346,6 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
@@ -1398,7 +1386,6 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
@@ -1500,7 +1487,6 @@ describe("CierresAdminModule", () => {
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
@@ -1685,11 +1671,11 @@ describe("SLT-102 — la cola única en /cierres-admin (R99, R103, R106, R107)",
     });
     const lista = screen.getByRole("tablist", { name: "Cierres del día por estado" });
     expect(within(lista).getAllByRole("tab").map((t) => t.textContent)).toEqual([
-      "Pendientes 37",
-      "Resueltos 12",
+      "Pendientes (37)",
+      "Resueltos (12)",
     ]);
     // Arranca en Pendientes (R99).
-    expect(within(lista).getByRole("tab", { name: "Pendientes 37" })).toHaveAttribute(
+    expect(within(lista).getByRole("tab", { name: "Pendientes (37)" })).toHaveAttribute(
       "aria-selected",
       "true",
     );

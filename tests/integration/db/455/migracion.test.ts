@@ -8,6 +8,8 @@ import { C, R, RETIRADO } from "../../../fixtures/codigos-455";
 import { HAY_BASE_DE_DATOS } from "../_postgres-real";
 import { conEscenario, prepararMundo, type Escenario, type Mundo } from "../454/_escenario";
 
+const SIN_ROL_DE_APP = { rolDeLaApp: false } as const;
+
 /**
  * FICHA 455 (T1.3, design §3.1; R14-R19) — LAS TRES MIGRACIONES, contra Postgres real.
  *
@@ -275,7 +277,7 @@ describeSiHayBase("455/T1.3 — M1-M3 contra Postgres real (up → up → down �
       const f3 = await foto(e, ids);
 
       return { vigente, f0, f1, f1b, f2, f3, antes, despues, anteriorDelSnapshot, nuevoDelSnapshot };
-    });
+    }, SIN_ROL_DE_APP); // SLT-177: DDL/catalogo dentro del escenario
   }
 
   /** R20-bis: M1 falla RUIDOSAMENTE si conviven el codigo anterior y el vigente. */
@@ -291,7 +293,7 @@ describeSiHayBase("455/T1.3 — M1-M3 contra Postgres real (up → up → down �
       } catch (err) {
         return String((err as Error).message);
       }
-    });
+    }, SIN_ROL_DE_APP); // SLT-177: DDL/catalogo dentro del escenario
   }
 
   /** R18: M3 borra el huerfano que nadie cita y conserva el que el historial cita. */
@@ -343,7 +345,7 @@ describeSiHayBase("455/T1.3 — M1-M3 contra Postgres real (up → up → down �
         fulfillmentQueda: await quedan(RETIRADO.enFulfillment),
         pendienteQueda: await quedan(RETIRADO.pendiente),
       };
-    });
+    }, SIN_ROL_DE_APP); // SLT-177: DDL/catalogo dentro del escenario
   }
 
   beforeAll(async () => {

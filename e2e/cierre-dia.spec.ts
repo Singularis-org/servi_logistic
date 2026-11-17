@@ -111,7 +111,7 @@ test.describe("Cierre del día — el mensajero solicita y deshace", () => {
     // SLT-137: «Cierres solicitados» es la cola del mensajero, una fila por cierre (la cabecera
     // también dice «Solicitado»: se lee la fila, no la región entera).
     const historico = page.getByRole("region", { name: "Cierres solicitados" });
-    await expect(page.getByRole("tab", { name: "Cierres solicitados 1" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Cierres solicitados (1)" })).toBeVisible();
     const filaCola = historico.getByRole("row").nth(1);
     await expect(filaCola.getByText("Solicitado", { exact: true })).toBeVisible();
     await expect(filaCola.getByRole("cell", { name: "Bodega satélite", exact: true })).toBeVisible();
@@ -185,13 +185,22 @@ test.describe("Cierre del día — el mensajero solicita y deshace", () => {
     await page.goto("/cierre-dia");
 
     const detalle = page.getByRole("region", { name: DETALLE });
-    const boton = detalle.getByRole("button", { name: "Solicitar cierre" });
+    // SLT-165 «PWA del mensajero: Cierre del día en tarjetas» (R531): «Solicitar cierre del día» con
+    // su contador, en una barra FIJA al borde inferior de la ventana.
+    const boton = detalle.getByRole("button", { name: "Solicitar cierre del día 6 gestiones" });
     await expect(boton).toBeVisible();
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
     const caja = await boton.boundingBox();
     expect(caja, "el botón del pie no tiene caja").not.toBeNull();
     expect(caja!.y).toBeGreaterThanOrEqual(0);
     expect(caja!.y + caja!.height).toBeLessThanOrEqual(667);
+    const pie = await page.locator("footer").filter({ has: page.getByRole("button", { name: "Solicitar cierre del día 6 gestiones" }) }).boundingBox();
+    expect(pie, "el pie no tiene caja").not.toBeNull();
+    expect(Math.round(pie!.y + pie!.height)).toBe(667);
+    // Sigue abajo al desplazar la página.
+    await page.mouse.wheel(0, 400);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+    await expect.poll(async () => Math.round(((await boton.boundingBox())?.y ?? 0) + ((await boton.boundingBox())?.height ?? 0))).toBeLessThanOrEqual(667);
 
     const cajaDetalle = await detalle.boundingBox();
     const cola = await page.getByRole("heading", { level: 2, name: "Cierres solicitados" }).boundingBox();

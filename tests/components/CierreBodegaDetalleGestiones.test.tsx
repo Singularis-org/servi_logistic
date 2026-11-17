@@ -195,7 +195,6 @@ function dia(
     pagoTienda: "0.00",
     cobradoSobreRecaudado: "0.00",
     netoEmpresa: "0.00",
-    ganaLaTienda: "0.00",
     partesPorTienda: [],
     paraLaCentral: "0.00",
     efectivoCubreDescuentos: true,
@@ -225,7 +224,6 @@ function detalle(gruposAna: CierreGrupos = GRUPOS_ANA) {
     pagoTienda: "0.00",
     cobradoSobreRecaudado: "0.00",
     netoEmpresa: "0.00",
-    ganaLaTienda: "0.00",
     partesPorTienda: [],
     paraLaCentral: "6949.75",
     efectivoCubreDescuentos: true,
@@ -270,7 +268,7 @@ async function abrirDetalle(gruposAna?: CierreGrupos) {
 /** SLT-104 (R41, R113): UNA lista con las gestiones de todos los cierres del día. */
 const lista = () => screen.getByRole("region", { name: "Órdenes del cierre" });
 
-const FILTRO = /^(Todas|Entregado|Reprogramado|Novedad|Devolución a origen por rechazo|Incidente|Con señales) \d+$/;
+const FILTRO = /^(Todas|Entregado|Reprogramado|Novedad|Devolución a origen por rechazo|Incidente|Con señales) \(\d+\)$/;
 
 /** Los filtros por resultado, como se leen: rótulo y conteo. */
 function filtros(): string[] {
@@ -283,12 +281,12 @@ function filtros(): string[] {
 async function filtrar(user: ReturnType<typeof userEvent.setup>, rotulo: string) {
   const boton = within(screen.getByRole("dialog"))
     .getAllByRole("button")
-    .find((b) => FILTRO.test(b.textContent ?? "") && (b.textContent ?? "").startsWith(`${rotulo} `));
+    .find((b) => FILTRO.test(b.textContent ?? "") && (b.textContent ?? "").startsWith(`${rotulo} (`));
   if (!boton) throw new Error(`sin filtro «${rotulo}»`);
   await user.click(boton);
 }
 
-/** Las celdas de una fila (guía, destinatario · tienda, mensajero, resultado, importes, señales). */
+/** Las celdas de una fila (guía, destinatario, tienda, mensajero, resultado, importes, señales). */
 function celdasDe(fila: Element): string[] {
   return [...fila.firstElementChild!.children].map((c) => c.textContent ?? "");
 }
@@ -297,7 +295,7 @@ function celdasDe(fila: Element): string[] {
 function filas(): string[][] {
   return [...lista().querySelectorAll("[data-gestion]")].map((f) => {
     const c = celdasDe(f);
-    return [c[0]!, c[2]!];
+    return [c[0]!, c[3]!];
   });
 }
 
@@ -356,14 +354,14 @@ describe("478 · gestiones por resultado, con su mensajero (R1-R5 → SLT-104 R4
   it("R1: los filtros por resultado llevan el conteo de TODOS los cierres del día", async () => {
     await abrirDetalle();
     expect(filtros()).toEqual([
-      "Todas 7",
-      "Entregado 3",
-      "Reprogramado 1",
-      "Novedad 1",
-      "Devolución a origen por rechazo 1",
-      "Incidente 1",
+      "Todas (7)",
+      "Entregado (3)",
+      "Reprogramado (1)",
+      "Novedad (1)",
+      "Devolución a origen por rechazo (1)",
+      "Incidente (1)",
       // Vuelven a bodega la reprogramada, la novedad y la devolución; el incidente lleva su causa.
-      "Con señales 4",
+      "Con señales (4)",
     ]);
   });
 
@@ -396,12 +394,13 @@ describe("478 · gestiones por resultado, con su mensajero (R1-R5 → SLT-104 R4
     ]);
   });
 
-  it("R5: la fila compacta enseña guía, destinatario · tienda, mensajero, resultado, recibido, cobro y pago", async () => {
+  it("R5: la fila compacta enseña guía, destinatario, tienda, mensajero, resultado, recibido, cobro y pago", async () => {
     await abrirDetalle();
     const fila = within(lista()).getByRole("button", { name: BOTON_ENTREGA }).closest("[data-gestion]")!;
-    expect(celdasDe(fila).slice(0, 7)).toEqual([
+    expect(celdasDe(fila).slice(0, 8)).toEqual([
       "5001",
-      "Carla Entregada · Tienda Norte",
+      "Carla Entregada",
+      "Tienda Norte",
       "Ana Mensajera",
       "Entregado",
       "₡8.000,50",
@@ -410,6 +409,51 @@ describe("478 · gestiones por resultado, con su mensajero (R1-R5 → SLT-104 R4
     ]);
     expect(lista()).toHaveTextContent("Mensajero");
     expect(lista()).toHaveTextContent("Cobro a la tienda");
+  });
+});
+
+// SLT-152 «Tablas de cierres legibles»: la cabecera con «Destinatario» y «Tienda» separadas, y la
+// misma rejilla en la cabecera y en cada fila.
+describe("SLT-152 · cabecera y rejilla de la lista con columna Mensajero (R440, R441, R443)", () => {
+  it("R440, R441: la cabecera, en literal, con «Mensajero» tras «Tienda»", async () => {
+    await abrirDetalle();
+    const cabecera = lista().firstElementChild as HTMLElement;
+    expect([...cabecera.children].map((c) => c.textContent)).toEqual([
+      "Guía",
+      "Destinatario",
+      "Tienda",
+      "Mensajero",
+      "Resultado",
+      "Recibido",
+      "Cobro a la tienda",
+      "Pago al mensajero",
+      "Señales",
+      "",
+    ]);
+    expect(within(lista()).queryByText("Destinatario · tienda")).toBeNull();
+  });
+
+  it("R443: la cabecera y cada fila tienen el mismo número de celdas y el mismo gridTemplateColumns", async () => {
+    await abrirDetalle();
+    const cabecera = lista().firstElementChild as HTMLElement;
+    const filasDom = [...lista().querySelectorAll<HTMLElement>("[data-gestion]")].map((f) => f.firstElementChild as HTMLElement);
+    expect(filasDom).toHaveLength(7);
+    // 9 columnas de datos + la de acciones.
+    expect(cabecera.children).toHaveLength(10);
+    // SLT-156 «PWA de los mensajeros: tablas usables en el móvil» (R492): la guía es una pista
+    // `max-content` y cada importe `minmax(max-content,1fr)`, para que ninguno se monte en la columna vecina.
+    // SLT-165 «PWA del mensajero: Cierre del día en tarjetas» (R523, R524): la plantilla viaja en
+    // `--plantilla-fila` y solo la aplica la clase `md:` (en el teléfono la fila es una tarjeta);
+    // nada de `gridTemplateColumns` en línea, que ganaría a la tarjeta.
+    expect(cabecera.style.getPropertyValue("--plantilla-fila")).toBe(
+      "max-content minmax(0,1.2fr) minmax(0,1fr) minmax(0,1.1fr) minmax(110px,1.2fr) minmax(max-content,1fr) minmax(max-content,1fr) minmax(max-content,1fr) minmax(0,1.3fr) auto",
+    );
+    expect(cabecera.style.gridTemplateColumns).toBe("");
+    for (const fila of filasDom) {
+      expect(fila.children).toHaveLength(cabecera.children.length);
+      expect(fila.style.getPropertyValue("--plantilla-fila")).toBe(cabecera.style.getPropertyValue("--plantilla-fila"));
+      expect(fila.style.gridTemplateColumns).toBe("");
+    }
   });
 });
 

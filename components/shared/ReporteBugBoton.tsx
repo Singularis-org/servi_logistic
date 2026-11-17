@@ -8,6 +8,11 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { useBorradorReporteBug } from "@/hooks/useBorradorReporteBug";
+import {
+  BOTTOM_FLOTANTE_ESQUINA,
+  BOTTOM_FLOTANTE_SOBRE_CHAT,
+  useFlotanteCompacto,
+} from "@/hooks/use-flotante-compacto";
 import { enviarReporteBugAction, prepararSubidaImagenesReporteAction } from "@/lib/actions/reporte-bug";
 import {
   DESCRIPCION_MAX,
@@ -219,6 +224,9 @@ export interface ReporteBugBotonProps {
 export function ReporteBugBoton({ usuarioId }: ReporteBugBotonProps) {
   const ruta = usePathname();
   const sobreChat = vaSobreElChat(ruta);
+  // SLT-156 (R497-R499): al bajar por la página el botón se reduce a 44 px y se aclara; el nombre
+  // accesible y la acción no dependen de esto.
+  const compacto = useFlotanteCompacto();
   const { texto, cambiar, limpiar } = useBorradorReporteBug(usuarioId);
   const [abierto, setAbierto] = useState(false);
   const [estado, setEstado] = useState<Estado>("editando");
@@ -445,7 +453,7 @@ export function ReporteBugBoton({ usuarioId }: ReporteBugBotonProps) {
               <X aria-hidden="true" />
             </Button>
           </div>
-          <div className="flex flex-col gap-1.5 px-(--card-spacing)">
+          <div className="flex flex-col gap-2 px-(--card-spacing)">
             <label htmlFor={idCampo} className="sr-only">
               {TEXTOS_REPORTE_BUG.etiquetaDescripcion}
             </label>
@@ -556,10 +564,12 @@ export function ReporteBugBoton({ usuarioId }: ReporteBugBotonProps) {
         aria-expanded={abierto}
         aria-controls={abierto ? idPanel : undefined}
         data-posicion={sobreChat ? "sobre-chat" : "esquina"}
+        data-compacto={compacto ? "" : undefined}
         onClick={() => (abierto ? cerrar() : abrir())}
         className={cn(
-          "fixed right-5 z-40 flex size-12 items-center justify-center rounded-full border bg-card text-foreground shadow-lg transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-2 active:scale-95",
-          sobreChat ? "bottom-24" : "bottom-5",
+          "fixed right-5 z-40 flex items-center justify-center rounded-full border bg-card text-foreground shadow-lg transition-[width,height,opacity,transform] hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-2 active:scale-95",
+          sobreChat ? BOTTOM_FLOTANTE_SOBRE_CHAT : BOTTOM_FLOTANTE_ESQUINA,
+          compacto ? "size-11 opacity-80" : "size-12",
         )}
       >
         <Bug className="size-5" aria-hidden="true" />

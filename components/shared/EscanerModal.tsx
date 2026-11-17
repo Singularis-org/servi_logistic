@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
-import { ScanLine } from "lucide-react";
+import { useRef, useState, type ReactNode } from "react";
+import { Camera, ScanLine } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { SELECTOR_CAMPO_ESCANER } from "@/components/shared/EscanerGuiaCard";
+import { usePunteroFino } from "@/hooks/useEntradaEscaneo";
 import { cn } from "@/lib/utils";
 
 // El envoltorio ÚNICO de toda tarjeta de escaneo del producto (`EscanerGuiaCard` y
@@ -31,22 +33,49 @@ import { cn } from "@/lib/utils";
 //
 // No sabe de dominio: el acto lo nombra cada superficie con `label`. El valor por defecto
 // es "Recibir paquete" —el acto de las dos superficies de recepción, que son la mayoría—,
-// pero una pantalla que hace OTRA cosa ("Recoger paquete", "Recolectar en tienda") debe
-// pasarlo: heredar en silencio el vocabulario ajeno es lo que se quiere evitar.
+// pero una pantalla que hace OTRA cosa debe pasarlo: heredar en silencio el vocabulario ajeno
+// es lo que se quiere evitar. Las del mensajero (Reparto, Recoger en bodega y Recolección) pasan
+// `ESCANER_LABEL_GUIA` («Escanear o escribir guía», SLT-156 R500); la tarjeta de dentro nombra el
+// acto («Recoger paquete», «Recolectar en tienda»).
 //
 // El cierre lo pone el propio Dialog (la "X" con nombre accesible "Cerrar"), así que ya no
 // hay un segundo texto que mantener por superficie.
+//
+// SLT-158 (R571): con puntero fino (escritorio, pistola) el foco inicial va al campo de la
+// guía, para que la pistola escriba ahí sin un clic previo; con táctil NO, porque en el
+// teléfono abriría el teclado y taparía el visor. Arrancar cerrado no cambia.
 
 /** Texto del disparador cuando la superficie no nombra su propio acto. */
 export const ESCANER_LABEL_POR_DEFECTO = "Recibir paquete";
+
+/**
+ * SLT-156 (R500): el disparador ÚNICO de escaneo de las pantallas del mensajero (Reparto, Recoger en
+ * bodega y Recolección), bajo el encabezado y encima de `BuscadorFiltros`. Arranca cerrado, como
+ * todos. La tarjeta de dentro conserva su título y su flujo.
+ */
+export const ESCANER_LABEL_GUIA = "Escanear o escribir guía";
 
 export interface EscanerModalProps {
   /** Texto del disparador. Nombra el ACTO de esta superficie. */
   label?: string;
   /** Acciones que acompañan al disparador, alineadas al lado contrario. */
   acciones?: ReactNode;
-  /** La tarjeta de escaneo propiamente dicha; vive DENTRO del modal. */
-  children: ReactNode;
+  /**
+   * La tarjeta de escaneo propiamente dicha; vive DENTRO del modal. Como función recibe `cerrar`:
+   * SLT-156 (R514), Reparto cierra el modal al encontrar la orden para pasar a «¿Gestionar esta
+   * orden?». Solo se puede CERRAR desde dentro; abrir sigue siendo el gesto del mensajero.
+   */
+  children: ReactNode | ((cerrar: () => void) => ReactNode);
+  /**
+   * SLT-156 (R493, design §4): disparador de 44 px a todo el ancho, para las pantallas del mensajero
+   * que ya lo piden (Reparto). Sin ella, el botón de siempre: los demás usos no cambian.
+   */
+  tactil?: boolean;
+  /**
+   * SLT-160 (R600, R604): disparador de solo icono (cámara), con `label` como nombre accesible, para ir
+   * junto al campo del buscador de los listados. Sin envoltorio de fila. Arranca cerrado igual.
+   */
+  soloIcono?: boolean;
   className?: string;
 }
 
@@ -54,29 +83,70 @@ export function EscanerModal({
   label = ESCANER_LABEL_POR_DEFECTO,
   acciones,
   children,
+  tactil = false,
+  soloIcono = false,
   className,
 }: Readonly<EscanerModalProps>) {
   const [abierto, setAbierto] = useState(false);
+  const punteroFino = usePunteroFino();
+  const popupRef = useRef<HTMLDivElement>(null);
+
+  /** El campo de la tarjeta con puntero fino; si no, el foco inicial por defecto del Dialog. */
+  function focoInicial(): HTMLElement | true {
+    if (!punteroFino) return true;
+    return popupRef.current?.querySelector<HTMLElement>(SELECTOR_CAMPO_ESCANER) ?? true;
+  }
+
+  const dialogo = (
+    <Dialog open={abierto} onOpenChange={setAbierto}>
+      {/* El popup no pinta superficie propia: la tarjeta que entra como `children` YA es
+          una tarjeta (borde, fondo, sombra), y envolverla en otra la enmarcaba dos veces.
+          El alto lo limita el viewport: la tarjeta es alta y en un teléfono no cabe. */}
+      <DialogContent
+        ref={popupRef}
+        initialFocus={focoInicial}
+        className="max-h-[90dvh] max-w-md overflow-y-auto border-0 bg-transparent p-0 shadow-none">
+        {/* El nombre accesible del diálogo. Visualmente lo dice el título de la tarjeta,
+            que es de quien la monta: aquí solo se garantiza que el diálogo tenga uno. */}
+        <DialogTitle className="sr-only">{label}</DialogTitle>
+        {typeof children === "function" ? children(() => setAbierto(false)) : children}
+      </DialogContent>
+    </Dialog>
+  );
+
+  if (soloIcono) {
+    return (
+      <>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          aria-label={label}
+          className={className}
+          onClick={() => setAbierto(true)}
+        >
+          <Camera className="size-5" aria-hidden="true" />
+        </Button>
+        {dialogo}
+      </>
+    );
+  }
 
   return (
     <div className={cn("flex w-full flex-wrap items-center gap-2", className)}>
-      <Button type="button" variant="outline" onClick={() => setAbierto(true)}>
+      <Button
+        type="button"
+        variant="outline"
+        size={tactil ? "touch" : "default"}
+        className={tactil ? "w-full" : undefined}
+        onClick={() => setAbierto(true)}
+      >
         <ScanLine aria-hidden="true" />
         {label}
       </Button>
       {acciones ? <div className="ms-auto flex gap-2">{acciones}</div> : null}
 
-      <Dialog open={abierto} onOpenChange={setAbierto}>
-        {/* El popup no pinta superficie propia: la tarjeta que entra como `children` YA es
-            una tarjeta (borde, fondo, sombra), y envolverla en otra la enmarcaba dos veces.
-            El alto lo limita el viewport: la tarjeta es alta y en un teléfono no cabe. */}
-        <DialogContent className="max-h-[90dvh] max-w-md overflow-y-auto border-0 bg-transparent p-0 shadow-none">
-          {/* El nombre accesible del diálogo. Visualmente lo dice el título de la tarjeta,
-              que es de quien la monta: aquí solo se garantiza que el diálogo tenga uno. */}
-          <DialogTitle className="sr-only">{label}</DialogTitle>
-          {children}
-        </DialogContent>
-      </Dialog>
+      {dialogo}
     </div>
   );
 }

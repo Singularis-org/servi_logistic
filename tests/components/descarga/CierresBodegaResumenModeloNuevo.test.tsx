@@ -111,11 +111,11 @@ const CIFRAS_BN: CifrasCierreBodegaCentralDescargaDTO = {
   totalFacturado: "7910.00",
   ivaFacturado: "910.00",
   netoEmpresa: "3500.00",
-  ganaLaTienda: "92090.00",
+  pagoTienda: "92090.00",
   pagoEntregado: "3000.00",
   partesPorTienda: [
-    { tiendaId: "t1", tiendaNombre: "Tienda Uno", recaudado: "70000.00", pagoTienda: "65480.00", ganaLaTienda: "63220.00" },
-    { tiendaId: "t2", tiendaNombre: "Tienda Dos", recaudado: "30000.00", pagoTienda: "28870.00", ganaLaTienda: "28870.00" },
+    { tiendaId: "t1", tiendaNombre: "Tienda Uno", recaudado: "70000.00", pagoTienda: "63220.00" },
+    { tiendaId: "t2", tiendaNombre: "Tienda Dos", recaudado: "30000.00", pagoTienda: "28870.00" },
   ],
 };
 
@@ -202,7 +202,40 @@ const FILA_SOLICITADO_BV = {
   faltaPorRecibir: "0.00",
 };
 
-/** «Cierres» de la satélite: las 25 columnas del documento, a mano. */
+/** «Cierres» de la central: las 26 columnas del documento, a mano. */
+const COLUMNAS_CIERRES_CENTRAL: DescargaColumna[] = [
+  { clave: "folio", encabezado: "Folio" },
+  { clave: "bodega", encabezado: "Bodega" },
+  { clave: "destino", encabezado: "Destino" },
+  { clave: "estado", encabezado: "Estado" },
+  { clave: "solicitado", encabezado: "Solicitado" },
+  { clave: "resuelto", encabezado: "Resuelto" },
+  { clave: "efectivo", encabezado: "Efectivo", formato: "monto" },
+  { clave: "sinpe", encabezado: "SINPE", formato: "monto" },
+  { clave: "transferencia", encabezado: "Transferencia", formato: "monto" },
+  { clave: "recaudado", encabezado: "Recaudado", formato: "monto" },
+  { clave: "paraLaCentral", encabezado: "Debe llegar a la central", formato: "monto" },
+  // SLT-169 (R629): misma clave y posición, otro rótulo.
+  { clave: "pagoTienda", encabezado: "Se le paga a la tienda", formato: "monto" },
+  { clave: "pagoMensajero", encabezado: "Pago al mensajero", formato: "monto" },
+  { clave: "pagoBodega", encabezado: "Pago a la bodega satélite", formato: "monto" },
+  { clave: "totalFacturado", encabezado: "Total facturado", formato: "monto" },
+  { clave: "ivaFacturado", encabezado: "IVA facturado", formato: "monto" },
+  { clave: "netoEmpresa", encabezado: "Le queda a la empresa", formato: "monto" },
+  { clave: "gestiones", encabezado: "Gestiones" },
+  { clave: "pagosAjustados", encabezado: "Pagos ajustados" },
+  { clave: "pagoEntregado", encabezado: "Pago entregado", formato: "monto" },
+  { clave: "cierresIncluidos", encabezado: "Cierres incluidos" },
+  { clave: "recibido", encabezado: "Recibido", formato: "monto" },
+  { clave: "faltaPorRecibir", encabezado: "Falta por recibir", formato: "monto" },
+  { clave: "estadoConciliacion", encabezado: "Estado de conciliación" },
+  { clave: "conciliadoPor", encabezado: "Conciliado por" },
+  { clave: "conciliadoEl", encabezado: "Conciliado el" },
+];
+/**
+ * «Cierres» de la satélite: 21, a mano. Las 26 sin «Pago entregado» (F481) ni, desde SLT-161 (R485),
+ * «Se le paga a la tienda», «Total facturado», «IVA facturado» y «Le queda a la empresa».
+ */
 const COLUMNAS_CIERRES_SATELITE: DescargaColumna[] = [
   { clave: "folio", encabezado: "Folio" },
   { clave: "bodega", encabezado: "Bodega" },
@@ -215,12 +248,8 @@ const COLUMNAS_CIERRES_SATELITE: DescargaColumna[] = [
   { clave: "transferencia", encabezado: "Transferencia", formato: "monto" },
   { clave: "recaudado", encabezado: "Recaudado", formato: "monto" },
   { clave: "paraLaCentral", encabezado: "Debe llegar a la central", formato: "monto" },
-  { clave: "ganaLaTienda", encabezado: "Gana la tienda en total", formato: "monto" },
   { clave: "pagoMensajero", encabezado: "Pago al mensajero", formato: "monto" },
   { clave: "pagoBodega", encabezado: "Pago a la bodega satélite", formato: "monto" },
-  { clave: "totalFacturado", encabezado: "Total facturado", formato: "monto" },
-  { clave: "ivaFacturado", encabezado: "IVA facturado", formato: "monto" },
-  { clave: "netoEmpresa", encabezado: "Le queda a la empresa", formato: "monto" },
   { clave: "gestiones", encabezado: "Gestiones" },
   { clave: "pagosAjustados", encabezado: "Pagos ajustados" },
   { clave: "cierresIncluidos", encabezado: "Cierres incluidos" },
@@ -230,13 +259,36 @@ const COLUMNAS_CIERRES_SATELITE: DescargaColumna[] = [
   { clave: "conciliadoPor", encabezado: "Conciliado por" },
   { clave: "conciliadoEl", encabezado: "Conciliado el" },
 ];
-/** «Cierres» de la central: las 26, con «Pago entregado» tras «Pagos ajustados». */
-const COLUMNAS_CIERRES_CENTRAL: DescargaColumna[] = [
-  ...COLUMNAS_CIERRES_SATELITE.slice(0, 19),
-  { clave: "pagoEntregado", encabezado: "Pago entregado", formato: "monto" },
-  ...COLUMNAS_CIERRES_SATELITE.slice(19),
-];
 
+const FILA_CIERRES_BN_CENTRAL = {
+  folio: "B0DE9A01",
+  bodega: "Centro",
+  destino: "Bodega central",
+  estado: "Recibido incompleto",
+  solicitado: "2026-11-06",
+  resuelto: "2026-11-06",
+  efectivo: "70000.00",
+  sinpe: "30000.00",
+  transferencia: "0.00",
+  recaudado: "100000.00",
+  paraLaCentral: "96500.00",
+  pagoTienda: "92090.00",
+  pagoMensajero: "3000.00",
+  pagoBodega: "500.00",
+  totalFacturado: "7910.00",
+  ivaFacturado: "910.00",
+  netoEmpresa: "3500.00",
+  gestiones: 3,
+  pagosAjustados: 1,
+  pagoEntregado: "3000.00",
+  cierresIncluidos: 1,
+  recibido: "96000.00",
+  faltaPorRecibir: "500.00",
+  estadoConciliacion: "Recibido incompleto",
+  conciliadoPor: "Ana Pérez",
+  conciliadoEl: "2026-11-06",
+};
+/** La fila de la satélite: sin la clave de ninguna columna de la empresa (SLT-161 R489). */
 const FILA_CIERRES_BN_SATELITE = {
   folio: "B0DE9A01",
   bodega: "Centro",
@@ -249,12 +301,8 @@ const FILA_CIERRES_BN_SATELITE = {
   transferencia: "0.00",
   recaudado: "100000.00",
   paraLaCentral: "96500.00",
-  ganaLaTienda: "92090.00",
   pagoMensajero: "3000.00",
   pagoBodega: "500.00",
-  totalFacturado: "7910.00",
-  ivaFacturado: "910.00",
-  netoEmpresa: "3500.00",
   gestiones: 3,
   pagosAjustados: 1,
   cierresIncluidos: 1,
@@ -264,7 +312,6 @@ const FILA_CIERRES_BN_SATELITE = {
   conciliadoPor: "Ana Pérez",
   conciliadoEl: "2026-11-06",
 };
-const FILA_CIERRES_BN_CENTRAL = { ...FILA_CIERRES_BN_SATELITE, pagoEntregado: "3000.00" };
 
 const HOJA_POR_TIENDA_BN = {
   titulo: "Por tienda",
@@ -273,11 +320,10 @@ const HOJA_POR_TIENDA_BN = {
     { clave: "tienda", encabezado: "Tienda" },
     { clave: "recaudado", encabezado: "Recaudado", formato: "monto" },
     { clave: "pagoTienda", encabezado: "Se le paga hoy", formato: "monto" },
-    { clave: "ganaLaTienda", encabezado: "Gana en total", formato: "monto" },
   ],
   filas: [
-    { folio: "B0DE9A01", tienda: "Tienda Uno", recaudado: "70000.00", pagoTienda: "65480.00", ganaLaTienda: "63220.00" },
-    { folio: "B0DE9A01", tienda: "Tienda Dos", recaudado: "30000.00", pagoTienda: "28870.00", ganaLaTienda: "28870.00" },
+    { folio: "B0DE9A01", tienda: "Tienda Uno", recaudado: "70000.00", pagoTienda: "63220.00" },
+    { folio: "B0DE9A01", tienda: "Tienda Dos", recaudado: "30000.00", pagoTienda: "28870.00" },
   ],
 };
 
@@ -397,8 +443,8 @@ describe("SLT-141 — el «Resumen» de bodega con el libro del modelo nuevo (T4
     });
   });
 
-  it("(b, c) «Solicitados», mixto: el libro de la satélite, sin «Pago entregado» aunque llegara (R385, R386)", async () => {
-    // Una respuesta que trajera la clave por error no la cuela en el archivo: la satélite no la ve.
+  it("(b, c) «Solicitados», mixto: el libro de la satélite, sin el dinero de la empresa aunque llegara (R385, R386; SLT-161 R485, R486)", async () => {
+    // Una respuesta que trajera las cifras por error no las cuela en el archivo: la satélite no las ve.
     H.datos.mockResolvedValue(respuesta([BV, BN], [CIFRAS_BN]));
     const config = await descargarSolicitados();
     expect(H.datos).toHaveBeenCalledTimes(1);
@@ -409,7 +455,6 @@ describe("SLT-141 — el «Resumen» de bodega con el libro del modelo nuevo (T4
       columnas: COLUMNAS_CIERRES_SATELITE,
       filas: [FILA_CIERRES_BN_SATELITE],
       hojasAdicionales: [
-        HOJA_POR_TIENDA_BN,
         { titulo: "Cierres modelo anterior", columnas: COLUMNAS_SOLICITADOS_HOY, filas: [FILA_SOLICITADO_BV] },
       ],
     });

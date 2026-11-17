@@ -12,6 +12,7 @@ import { categoriasConModeloNuevoSql } from "@/lib/repositories/libro-caja-a-qui
 import { SaldosSatelitesRepository } from "@/lib/repositories/SaldosSatelitesRepository";
 import { WalletMovimientoRepository } from "@/lib/repositories/WalletMovimientoRepository";
 import { CierreBodegaService } from "@/lib/services/CierreBodegaService";
+import { CierresBodegaSateliteDescargaService } from "@/lib/services/CierresBodegaSateliteDescargaService";
 import { CierresBodegaAdminService } from "@/lib/services/CierresBodegaAdminService";
 import { ConciliacionSatelitesService } from "@/lib/services/ConciliacionSatelitesService";
 import { FiltrosWalletService } from "@/lib/services/FiltrosWalletService";
@@ -461,11 +462,20 @@ interface LecturaBodega {
 }
 
 function servicioZona(cli: PrismaClient, zonaId: string) {
-  // SLT-141 (R389): con una consolidacion nueva, la descarga de «Solicitados» lee sus cifras en lote;
-  // sin la lectura el servicio lanza (no devuelve el archivo sin cifras). La real, como produccion.
-  return new CierreBodegaService(new CierreBodegaRepository(cli), {
-    findUsuarioZonaId: async () => zonaId,
-  } as never, reglasPaisFijas(), undefined, new CifrasBodegaLoteRepository(cli));
+  const ordenRepo = { findUsuarioZonaId: async () => zonaId } as never;
+  return {
+    // La pagina y la consolidacion siguen en CierreBodegaService.
+    cierre: new CierreBodegaService(new CierreBodegaRepository(cli), ordenRepo, reglasPaisFijas()),
+    // SLT-176 (R705): la descarga de «Solicitados», en su servicio de solo lectura.
+    // SLT-141 (R389): con una consolidacion nueva, lee sus cifras en lote; sin la lectura el servicio
+    // lanza (no devuelve el archivo sin cifras). La real, como produccion.
+    descarga: new CierresBodegaSateliteDescargaService(
+      new CierreBodegaRepository(cli),
+      ordenRepo,
+      reglasPaisFijas(),
+      new CifrasBodegaLoteRepository(cli),
+    ),
+  };
 }
 
 async function leerBodega(tx: TxDeTest, e: Empresa): Promise<LecturaBodega> {
@@ -477,9 +487,9 @@ async function leerBodega(tx: TxDeTest, e: Empresa): Promise<LecturaBodega> {
     const saldos = new ConciliacionSatelitesService(new SaldosSatelitesRepository(cli), {} as never, reglasPaisFijas());
     const zonaId = e.fks.zonaId;
 
-    const pagina = await zona.listarCierresBodegaSolicitadosPaginado(PAGINA, satelite);
-    const completo = await zona.listarCierresBodegaSolicitadosCompleto(satelite);
-    const consolidacion = await zona.listarConsolidacion(satelite);
+    const pagina = await zona.cierre.listarCierresBodegaSolicitadosPaginado(PAGINA, satelite);
+    const completo = await zona.descarga.listarCierresBodegaSolicitadosCompleto(satelite);
+    const consolidacion = await zona.cierre.listarConsolidacion(satelite);
     const lista = await admin.listarCierresBodegaAdmin(MAESTRO);
     const pendientes = await admin.listarPendientesCierresBodegaPaginado(PAGINA, MAESTRO);
     const saldosPagina = await saldos.listarConsolidacionesSatelite({ zonaId, ...PAGINA }, MAESTRO);
@@ -649,7 +659,7 @@ describeSiHayBase("D39 y D40 — sin una consulta por fila", () => {
     async function comoEmpresaConSiembra(tx: TxDeTest, e: Empresa) {
       const satelite: Actor = { usuarioId: "adminSatelite-del-test", rol: "adminSatelite" };
       const vacia = await comoEmpresa(tx, e.org, () =>
-        sentencias(() => servicioZona(clienteConSavepoint(tx), e.fks.zonaId).listarCierresBodegaSolicitadosCompleto(satelite)),
+        sentencias(() => servicioZona(clienteConSavepoint(tx), e.fks.zonaId).descarga.listarCierresBodegaSolicitadosCompleto(satelite)),
       );
       for (let i = 0; i < 3; i += 1) {
         const cierre = await crearCierre(tx, e, ["nuevo"]);
@@ -660,7 +670,7 @@ describeSiHayBase("D39 y D40 — sin una consulta por fila", () => {
         const cli = clienteConSavepoint(tx);
         return {
           vacia,
-          zona: await sentencias(() => servicioZona(cli, e.fks.zonaId).listarCierresBodegaSolicitadosCompleto(satelite)),
+          zona: await sentencias(() => servicioZona(cli, e.fks.zonaId).descarga.listarCierresBodegaSolicitadosCompleto(satelite)),
           saldos: await sentencias(() =>
             new ConciliacionSatelitesService(new SaldosSatelitesRepository(cli), {} as never, reglasPaisFijas()).listarConsolidacionesSatelite(
               { zonaId: e.fks.zonaId, ...PAGINA },

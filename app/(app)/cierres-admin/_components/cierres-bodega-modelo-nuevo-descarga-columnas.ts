@@ -1,6 +1,6 @@
 // SLT-141 «Excel del modelo nuevo: hojas por cierre de bodega» (S15c, design «Hojas») — columnas y
 // proyección de la hoja «Cierres» del «Resumen» de los cierres de bodega del modelo nuevo. «Por
-// tienda» es la de SLT-140 tal cual (mismas cinco columnas sobre la misma forma de la parte), y el
+// tienda» es la de SLT-140 tal cual (mismas cuatro columnas sobre la misma forma de la parte), y el
 // libro (qué hojas, en qué orden) lo arma `cierres-bodega-modelo-nuevo-descarga.ts`.
 //
 // Lleva el sufijo `-descarga-columnas` porque declara columnas de export: así la guardia de datos
@@ -33,6 +33,18 @@ import type { AudienciaDescargaGestionesFundida } from "./cierres-gestiones-fund
 /** La columna que es dato de la CENTRAL (R386, F481): la satélite no la recibe. */
 const CLAVE_PAGO_ENTREGADO = "pagoEntregado";
 
+/**
+ * Las columnas de «Cierres» de bodega que son dinero de la empresa (SLT-161 R485, R489): solo la
+ * central las recibe. «Pago entregado» (R386) ya lo era.
+ */
+const CLAVES_EMPRESA = new Set<string>([
+  CLAVE_PAGO_ENTREGADO,
+  "pagoTienda",
+  "totalFacturado",
+  "ivaFacturado",
+  "netoEmpresa",
+]);
+
 /** Las 26 columnas de «Cierres» de bodega para la central, en el orden de `design.md > Hojas`. */
 export const COLUMNAS_CIERRES_BODEGA_MODELO_NUEVO: DescargaColumna[] = [
   { clave: "folio", encabezado: "Folio" },
@@ -46,7 +58,9 @@ export const COLUMNAS_CIERRES_BODEGA_MODELO_NUEVO: DescargaColumna[] = [
   { clave: "transferencia", encabezado: "Transferencia", formato: "monto" },
   { clave: "recaudado", encabezado: "Recaudado", formato: "monto" },
   { clave: "paraLaCentral", encabezado: "Debe llegar a la central", formato: "monto" },
-  { clave: "ganaLaTienda", encabezado: "Gana la tienda en total", formato: "monto" },
+  // SLT-169 (R629): el valor resta todo lo facturado. SLT-174 (R653): la clave interna pasa a
+  // `pagoTienda`, con el mismo valor; el encabezado y la posición no cambian.
+  { clave: "pagoTienda", encabezado: "Se le paga a la tienda", formato: "monto" },
   { clave: "pagoMensajero", encabezado: "Pago al mensajero", formato: "monto" },
   { clave: "pagoBodega", encabezado: "Pago a la bodega satélite", formato: "monto" },
   { clave: "totalFacturado", encabezado: "Total facturado", formato: "monto" },
@@ -63,12 +77,15 @@ export const COLUMNAS_CIERRES_BODEGA_MODELO_NUEVO: DescargaColumna[] = [
   { clave: "conciliadoEl", encabezado: "Conciliado el" },
 ];
 
-/** Columnas de «Cierres» de bodega para una audiencia: la satélite, sin «Pago entregado» (falla cerrado). */
+/**
+ * Columnas de «Cierres» de bodega para una audiencia: la satélite, sin las de la empresa (falla
+ * cerrado; SLT-161 R485).
+ */
 export function columnasCierresBodegaModeloNuevoPara(
   audiencia: AudienciaDescargaGestionesFundida,
 ): DescargaColumna[] {
   if (audiencia === "admin") return COLUMNAS_CIERRES_BODEGA_MODELO_NUEVO;
-  return COLUMNAS_CIERRES_BODEGA_MODELO_NUEVO.filter((columna) => columna.clave !== CLAVE_PAGO_ENTREGADO);
+  return COLUMNAS_CIERRES_BODEGA_MODELO_NUEVO.filter((columna) => !CLAVES_EMPRESA.has(columna.clave));
 }
 
 /**
@@ -118,18 +135,18 @@ export function filaCierreBodegaModeloNuevo(
     transferencia: item.totales.transferencia,
     recaudado: item.totales.general,
     paraLaCentral: item.paraLaCentral,
-    ganaLaTienda: cifras.ganaLaTienda,
     pagoMensajero: item.totalPagoMensajero,
     pagoBodega: item.totalIngresoBodegaRechazos,
-    totalFacturado: cifras.totalFacturado,
-    ivaFacturado: cifras.ivaFacturado,
-    netoEmpresa: cifras.netoEmpresa,
     gestiones: cifras.gestiones,
     pagosAjustados: cifras.pagosAjustados,
   };
-  // R386: lo de la central solo entra en la fila de la central (el servidor ya no se lo manda a la
-  // satélite; aquí además no viaja la clave).
+  // R386, SLT-161 R489: lo de la empresa solo entra en la fila de la central (el servidor ya no se
+  // lo manda a la satélite; aquí además no viaja la clave).
   if (audiencia === "admin") {
+    fila.pagoTienda = cifras.pagoTienda;
+    fila.totalFacturado = cifras.totalFacturado;
+    fila.ivaFacturado = cifras.ivaFacturado;
+    fila.netoEmpresa = cifras.netoEmpresa;
     fila[CLAVE_PAGO_ENTREGADO] = cifras.pagoEntregado ?? null;
   }
   fila.cierresIncluidos = item.cantidadCierres;

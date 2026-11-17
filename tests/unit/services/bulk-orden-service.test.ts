@@ -77,6 +77,7 @@ function buildRepo(overrides: Partial<IOrdenRepository> = {}): IOrdenRepository 
     // carga masiva (feature 15) pero exigidos por la interfaz IOrdenRepository.
     findByIdsForTransicion: vi.fn().mockResolvedValue([]),
     findByNumGuiaForTransicion: vi.fn().mockResolvedValue(null),
+    resumenRecepcion: vi.fn().mockResolvedValue(null),
     findMensajeroIdsValidos: vi.fn().mockResolvedValue(new Set()),
     findAllMensajeros: vi.fn().mockResolvedValue([]),
     listOrderStatus: vi.fn().mockResolvedValue([]),
@@ -104,6 +105,8 @@ function buildRepo(overrides: Partial<IOrdenRepository> = {}): IOrdenRepository 
     // Feature 184 (T A.1/T A.2): el conjunto completo del listado y la vigencia de ids.
     findRecepcionSateliteCompleta: vi.fn().mockResolvedValue([]),
     findIdsVigentesEnBodega: vi.fn().mockResolvedValue([]),
+    // SLT-160: la guia exacta de la satelite; este archivo no la ejerce.
+    existeGuiaEnBodega: vi.fn().mockResolvedValue(false),
     recibirEnSatelite: vi.fn().mockResolvedValue(false),
     recibirEnOrigen: vi.fn().mockResolvedValue(false),
     recibirEnBodegaCentral: vi.fn().mockResolvedValue(false),

@@ -31,6 +31,9 @@ import {
   CATALOGO_FILTROS_CIERRES_VACIO,
   type CatalogoFiltrosCierresDTO,
   type FiltrosCierresBodega,
+  // SLT-153 (T3/T5): el compartido, que cuenta el folio; sin él la página 1 pre-cargada sin
+  // filtrar se serviría con un folio puesto.
+  sinFiltrosBodega,
 } from "@/lib/types/filtros-cierres";
 import { filasDesdeResultado } from "@/components/shared/descarga-resultado";
 import { useToast } from "@/hooks/useToast";
@@ -67,11 +70,6 @@ const TITULO_DESCARGA_CONSOLIDABLES = "Cierres del día a consolidar";
 /** Nombre accesible del control (R43). Propio: la pantalla monta dos listados paginados. */
 export const PAGINACION_CONSOLIDABLES_LABEL =
   "Paginación de los cierres del día a consolidar";
-
-/** `true` si el objeto no recorta nada: entonces la página pre-cargada del servidor sirve. */
-function sinFiltrosBodega(filtros: FiltrosCierresBodega): boolean {
-  return Object.values(filtros).every((v) => v === undefined);
-}
 
 // --- Pedido humano del 2026-08-16: las dos mitades de esta sección, en pestañas ---
 //

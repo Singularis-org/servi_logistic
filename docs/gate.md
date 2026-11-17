@@ -36,6 +36,11 @@ Nadie escribe ni copia el workflow a mano:
 - **Los checks se llaman `gate / estatico`, `gate / vitest (shard i/N)`, `gate / gate-completo`** y
   `gate / e2e`: el prefijo es el job que llama. La regla de merge sigue siendo la misma:
   `gate-completo` en verde.
+- **Un PR que solo toca `progress/` o `specs/` publica `gate-completo` y `e2e` en verde sin correr
+  la suite.** Lo decide el job `cambios` (`git diff` contra la base del PR) y lo anuncia en el
+  resumen del job. No vuelvas a poner `paths-ignore` en el `on:`: un workflow que no corre no
+  publica el check, y la protección de la rama lo espera para siempre. Cualquier otro PR, y el
+  `workflow_dispatch`, corren todo. La guardia es `tests/guards/guard-ci.test.ts`.
 
 ### Por qué
 
@@ -43,6 +48,11 @@ Antes cada proyecto copiaba un workflow de 400 líneas y lo adaptaba, así que c
 arnés (shards, CI por tanda, runner propio…) había que volver a copiarla a mano en cada proyecto, y
 la copia se desalineaba en silencio. Ahora la mecánica viaja con el sync y lo del proyecto es un
 dato que el gate comprueba.
+
+El PR solo de estado o specs se saltaba con `paths-ignore`, y eso tenía un agujero: el 2026-11-16 el
+#190 (solo `progress/`) se quedó bloqueado, porque la protección de `dev` exige `gate-completo` y
+el workflow, al no correr, nunca lo publicó. Un `workflow_dispatch` no sirve: su check no cuenta
+para el PR. Ahora el workflow corre siempre y es el job `cambios` el que decide saltarse la suite.
 
 - **En local corre siempre el rápido**: typecheck + lint + los tests que el grafo de imports
   (`vitest related`) relaciona con tu diff + **todas** las guardias (~1 min).

@@ -211,7 +211,6 @@ const DIA_ANA: CierreBodegaDetalleCierre = {
   netoEmpresa: "8750.55",
   // Ficha 396 (D1) — el agregado que le faltaba a este nivel: 80.000,10 - 18.001,10. Difiere
   // de `pagoTienda` en exactamente su flete por devolución a origen (500,75), que es el dia CON rechazo.
-  ganaLaTienda: "61999.00",
   // Ficha 396 — este bloque es de la 393 y no pinta el desglose; el campo va porque el DTO lo
   // declara REQUERIDO. Los casos del desglose viven en su propio archivo.
   partesPorTienda: [],
@@ -247,7 +246,6 @@ const DIA_BETO: CierreBodegaDetalleCierre = {
   cobradoSobreRecaudado: "9634.48",
   netoEmpresa: "4634.23",
   // Ficha 396 (D1): 46.089,07 - 9.634,48. Sin rechazos, COINCIDE con `pagoTienda`.
-  ganaLaTienda: "36454.59",
   partesPorTienda: [],
   paraLaCentral: "41088.82",
   efectivoCubreDescuentos: true,
@@ -271,7 +269,6 @@ const DETALLE_OK = {
   cobradoSobreRecaudado: "27134.83",
   netoEmpresa: "13384.78",
   // Ficha 396 (D1) — el agregado que le faltaba a este contrato: 126.089,17 - 27.635,58.
-  ganaLaTienda: "98453.59",
   partesPorTienda: [],
   paraLaCentral: "111838.37",
   efectivoCubreDescuentos: true,
@@ -298,6 +295,9 @@ async function abrirDetalle(detalle: DetalleOk = DETALLE_OK) {
   render(
     <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
       <CierresBodegaAdminModule
+        // SLT-154 (R469, R477): las cuentas de la empresa son de la central; la satélite (la
+        // audiencia por defecto del módulo) ya no las ve.
+        audiencia="admin"
         pendientes={paginaInicial([CABECERA])}
         historico={paginaInicial([])}
       />
@@ -413,31 +413,32 @@ describe("393 · F6 — las cuentas del detalle (SLT-104: pestaña «Dinero»)",
       ["Le queda a la empresa", "₡13.384,78", "neutro", "total"],
     ]);
     laCuentaCierraConSigno(queda(), "le queda a la empresa");
-    // R6 — lo que sale de lo recaudado es el flete + la comisión.
+    // R6 — SLT-169 (R626): lo facturado es flete + comisión + flete por devolución, sin subtotal.
     laCuentaCierra(
-      [importeTras(factura(), "Flete por entregado + IVA"), importeTras(factura(), "Comisión COD + IVA")],
-      importeTras(factura(), "Sale de lo recaudado"),
-      "sale de lo recaudado",
+      [
+        importeTras(factura(), "Flete por entregado + IVA"),
+        importeTras(factura(), "Comisión COD + IVA"),
+        importeTras(factura(), "Flete por devolución a origen + IVA"),
+      ],
+      importeTras(factura(), "Total facturado"),
+      "total facturado",
     );
   });
 
-  it("la LÍNEA PUENTE explica la diferencia que el flete por devolución a origen abre (R7/R10)", async () => {
+  // SLT-169 «Se le paga hoy a la tienda con todos los cobros restados» (R626): «Se le paga hoy» ya
+  // resta todo lo facturado, así que la línea puente «Sale de lo recaudado» (R7/R10 de la 393) sale.
+  it("sin LÍNEA PUENTE: flete, comisión y flete por devolución dan lo facturado (SLT-169 R626)", async () => {
     await abrirDetalle();
     expect(lineas(factura())).toEqual([
       ["Flete por entregado + IVA", "₡23.000,33", "neutro", "partida"],
       ["Comisión COD + IVA", "₡4.134,50", "neutro", "partida"],
-      ["Sale de lo recaudado", "₡27.134,83", "neutro", "subtotal"],
       ["+ Flete por devolución a origen + IVA", "₡500,75", "suma", "partida"],
       ["Total facturado", "₡27.635,58", "neutro", "total"],
     ]);
-    // Lo facturado NO es lo que sale de lo recaudado: la diferencia es el flete por devolución.
-    const sale = centimos(importeTras(factura(), "Sale de lo recaudado"));
-    const facturado = centimos(importeTras(factura(), "Total facturado"));
-    expect(facturado - sale).toBe(centimos(importeTras(factura(), "Flete por devolución a origen + IVA")));
-    expect(facturado).not.toBe(sale);
+    laCuentaCierraConSigno(factura(), "lo facturado");
   });
 
-  it("la línea puente sale TAMBIÉN con el flete por devolución a origen en cero (R10)", async () => {
+  it("sin línea puente TAMBIÉN con el flete por devolución a origen en cero (SLT-169 R626)", async () => {
     // Antes se medía en la cascada del día sin rechazos; el Dinero de bodega es el agregado (R118), así
     // que el caso se mide con un agregado sin rechazos.
     await abrirDetalle({
@@ -451,7 +452,6 @@ describe("393 · F6 — las cuentas del detalle (SLT-104: pestaña «Dinero»)",
       cobradoSobreRecaudado: "9634.48",
     });
     expect(lineas(factura()).slice(2)).toEqual([
-      ["Sale de lo recaudado", "₡9.634,48", "neutro", "subtotal"],
       ["+ Flete por devolución a origen + IVA", "₡0", "suma", "partida"],
       ["Total facturado", "₡9.634,48", "neutro", "total"],
     ]);
@@ -652,7 +652,6 @@ describe("SL-39 — el IVA facturado en el detalle del cierre de bodega (R24, R2
     pagoTienda: "16384.00",
     cobradoSobreRecaudado: "3616.00",
     netoEmpresa: "1600.00",
-    ganaLaTienda: "14124.00",
     paraLaCentral: "16400.00",
     ...marcaSinConciliar("20000.00"),
   };
@@ -671,9 +670,9 @@ describe("SL-39 — el IVA facturado en el detalle del cierre de bodega (R24, R2
     laCuentaCierraConSigno(queda(), "le queda · agregado");
   });
 
-  it("R26: lo que sale de lo recaudado y lo de la central no cambian, y el IVA no entra en la cuenta de la central", async () => {
+  it("R26: lo facturado y lo de la central no cambian, y el IVA no entra en la cuenta de la central", async () => {
     await abrirDetalle(DETALLE_AB);
-    expect(importeTras(factura(), "Sale de lo recaudado")).toBe("₡3.616");
+    expect(importeTras(factura(), "Total facturado")).toBe("₡5.876");
     expect(importeTras(central(), "Debe llegar a la central")).toBe("₡16.400");
     expect(within(central()).queryByText(/IVA/)).toBeNull();
   });
@@ -716,7 +715,8 @@ describe("SL-15 R4 — el nombre de la empresa sale del módulo de marca", () =>
 
     render(
       <SWRAcme value={{ provider: () => new Map(), dedupingInterval: 0 }}>
-        <ModuloAcme pendientes={paginaInicial([CABECERA])} historico={paginaInicial([])} />
+        {/* SLT-154 (R477): la cuenta de la empresa es de la central. */}
+        <ModuloAcme audiencia="admin" pendientes={paginaInicial([CABECERA])} historico={paginaInicial([])} />
       </SWRAcme>,
     );
     const user = userEvent.setup();

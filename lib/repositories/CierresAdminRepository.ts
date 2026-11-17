@@ -10,6 +10,7 @@ import {
 import { alcanceWhere } from "@/lib/repositories/alcance-cierre-where"; // SLT-122: compartido con el pago
 import { leerTopeIntentosDeLaEmpresa } from "@/lib/repositories/_shared/tope-intentos-empresa";
 import { contarSenalesPorCierreCon } from "@/lib/repositories/_shared/senales-cola-cierre";
+import { idsCierresDiaPorFolio, recortePorFolio } from "@/lib/repositories/_shared/folio-cierres-sql";
 import type { JobTxClient } from "@/lib/interfaces/repositories/IJobRepository";
 import { encolarWebhookEvento } from "@/lib/services/jobs/webhook-evento-encolado";
 import { ESTADOS_USUARIO_NO_ASIGNABLES } from "@/lib/constants/estado-usuario-asignable";
@@ -995,8 +996,10 @@ const ORDEN_CIERRES_ADMIN = { solicitadoAt: "desc" } as const satisfies Prisma.C
 function historicoWhere(
   alcance: Alcance,
   filtros?: FiltrosCierresRepo,
+  idsPorFolio?: readonly string[],
 ): Prisma.CierreDiaWhereInput {
-  const recortes = filtrosWhere(filtros);
+  // SLT-153 (R458): el folio, como un recorte mas DENTRO del `AND`, despues de los de siempre.
+  const recortes = [...filtrosWhere(filtros), ...recortePorFolio(idsPorFolio)];
   return {
     ...alcanceWhere(alcance), // R2/R13: el alcance, en el WHERE y nunca en memoria
     estado: { notIn: [...ESTADOS_COLA_CIERRE_DIA] },
@@ -1016,8 +1019,12 @@ function historicoWhere(
  * las dos — y en esta cola «caerse» significa que un cierre `vencido` deja de verse, con la
  * bodega de su mensajero bloqueada hasta que alguien lo note.
  */
-function colaWhere(alcance: Alcance, filtros?: FiltrosCierresRepo): Prisma.CierreDiaWhereInput {
-  const recortes = filtrosWhere(filtros);
+function colaWhere(
+  alcance: Alcance,
+  filtros?: FiltrosCierresRepo,
+  idsPorFolio?: readonly string[],
+): Prisma.CierreDiaWhereInput {
+  const recortes = [...filtrosWhere(filtros), ...recortePorFolio(idsPorFolio)]; // SLT-153 (R458)
   return {
     ...alcanceWhere(alcance),
     estado: { in: [...ESTADOS_COLA_CIERRE_DIA] },
@@ -1411,6 +1418,15 @@ export class CierresAdminRepository implements ICierresAdminRepository {
     private readonly walletIndemnizacionFeedService: IWalletIndemnizacionFeedService,
   ) {}
 
+  /**
+   * SLT-153 (R458) — con folio, los ids de los cierres del dia de la empresa que lo contienen; sin
+   * folio, `undefined` y ni una consulta (el `WHERE` queda como antes, R459).
+   */
+  private async idsPorFolio(filtros: FiltrosCierresRepo | undefined): Promise<string[] | undefined> {
+    if (filtros?.folio === undefined) return undefined;
+    return idsCierresDiaPorFolio(this.prisma, filtros.folio);
+  }
+
   leerTopeIntentos(): Promise<number> {
     return leerTopeIntentosDeLaEmpresa(this.prisma);
   }
@@ -1552,7 +1568,7 @@ export class CierresAdminRepository implements ICierresAdminRepository {
     filtros?: FiltrosCierresRepo,
   ): Promise<CierreAdminResumenRow[]> {
     const rows = await this.prisma.cierreDia.findMany({
-      where: historicoWhere(alcance, filtros),
+      where: historicoWhere(alcance, filtros, await this.idsPorFolio(filtros)),
       orderBy: ORDEN_CIERRES_ADMIN,
       select: CIERRE_RESUMEN_SELECT,
     });
@@ -1577,7 +1593,7 @@ export class CierresAdminRepository implements ICierresAdminRepository {
     filtros?: FiltrosCierresRepo,
   ): Promise<CierreAdminResumenRow[]> {
     const rows = await this.prisma.cierreDia.findMany({
-      where: colaWhere(alcance, filtros),
+      where: colaWhere(alcance, filtros, await this.idsPorFolio(filtros)),
       orderBy: ORDEN_CIERRES_ADMIN,
       select: CIERRE_RESUMEN_SELECT,
     });
@@ -1600,7 +1616,7 @@ export class CierresAdminRepository implements ICierresAdminRepository {
     // Feature 184/R16: el criterio sale de `historicoWhere`, la MISMA declaracion que usa el
     // conjunto completo del que sale el archivo. Estaba escrito aqui y habria que haberlo
     // escrito otra vez alli.
-    const where = historicoWhere(alcance, filtros);
+    const where = historicoWhere(alcance, filtros, await this.idsPorFolio(filtros));
     const [rows, total] = await Promise.all([
       this.prisma.cierreDia.findMany({
         where,
@@ -1634,7 +1650,7 @@ export class CierresAdminRepository implements ICierresAdminRepository {
     filtros?: FiltrosCierresRepo,
   ): Promise<PaginaRepositorio<CierreAdminResumenRow>> {
     // Feature 184/R16: mismo criterio compartido que el conjunto completo de esta cola.
-    const where = colaWhere(alcance, filtros);
+    const where = colaWhere(alcance, filtros, await this.idsPorFolio(filtros));
     const [rows, total] = await Promise.all([
       this.prisma.cierreDia.findMany({
         where,

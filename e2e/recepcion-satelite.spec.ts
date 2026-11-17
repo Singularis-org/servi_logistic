@@ -41,7 +41,7 @@ test.describe.serial("Recepción satélite — recibir por número de guía", ()
     await expect(porRecibir.getByText(orden.numRemision).first()).toBeVisible();
     await expect(porRecibir.getByText(`Guía ${orden.numGuia}`).first()).toBeVisible();
 
-    await page.getByRole("button", { name: "Recibir paquete" }).click();
+    await page.getByRole("button", { name: "Recibir paquete", exact: true }).click();
     const tarjeta = page.getByRole("region", { name: "Recibir por número de guía o escaneo" });
     await tarjeta.getByLabel("Número de guía").fill(String(orden.numGuia));
     await tarjeta.getByRole("button", { name: "Recibir", exact: true }).click();

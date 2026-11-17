@@ -66,10 +66,11 @@ import {
   CONFIRMACION_DETALLE,
   CONFIRMACION_CONTINUAR,
   CONFIRMACION_APROBAR,
+  type AvisoLectura,
   type EntradaConfirmacionFisica,
   type FilaAConfirmar,
-  type MedioDeCaptura,
 } from "./cierre-confirmacion-fisica";
+import type { ResultadoLectura } from "@/components/shared/EscanerGuiaCard";
 // `moneyTope` lo usan los mensajes de la indemnizacion (feature 230 de `dev`); los tres
 // simbolos de tabla que `dev` importaba aqui se fueron con la tira de comprobantes.
 import { moneyTope } from "./cierre-detalle-shared";
@@ -90,7 +91,7 @@ import {
 } from "@/components/private/cierres/detalle/detalle-cierre-vista";
 import { tituloDescargaGestiones } from "@/components/private/cierres/detalle/detalle-cierre-labels";
 import {
-  COLUMNAS_DESCARGA_DETALLE_CIERRE,
+  columnasDescargaDetalle,
   filaDescargaDetalleCierre,
 } from "@/components/private/cierres/detalle/detalle-cierre-descarga-columnas";
 import { DescargarDatasetButton } from "@/components/shared/DescargarDatasetButton";
@@ -454,12 +455,16 @@ const INDEMNIZACION_MONTO_AYUDA = `Mayor que 0 y hasta ${moneyTope(INDEMNIZACION
 const INDEMNIZACION_FALTAN =
   "Falta el monto de al menos un incidente, o alguno no es válido. No se puede aprobar así.";
 
-/** Detalle abierto: la cabecera del cierre + sus gestiones agrupadas por resultado. */
+/**
+ * Detalle abierto: la cabecera del cierre + sus gestiones agrupadas por resultado.
+ * SLT-154 (R462): las cifras de la empresa llegan en `null` a quien no es la central; se guardan tal
+ * cual y la vista no las pinta (R478).
+ */
 interface DetalleAbierto {
   cierre: CierreAdminResumen;
   grupos: CierreGrupos;
   /** Ingreso de la empresa del cierre por concepto (derivado del snapshot, money-safe). */
-  totalesIngreso: TotalesIngresoEmpresa;
+  totalesIngreso: TotalesIngresoEmpresa | null;
   /**
    * Feature 102/R8/R10: desglose del ingreso de bodega por rechazos particionado por origen
    * (SLA del cron 99 / manual del mensajero). `total` = snapshot leído; `sla + manual === total`
@@ -470,32 +475,31 @@ interface DetalleAbierto {
    * SL-39 (R21) — el IVA facturado del cierre, derivado server-side. Va a la cascada «Lo que le
    * queda a la empresa» como línea propia (R24).
    */
-  ivaFacturado: string;
+  ivaFacturado: string | null;
   /** Ingreso sin IVA menos el pago al mensajero, derivado server-side (SL-39, R22; puede ser negativo). */
-  ganancia: string;
+  ganancia: string | null;
   /** Total general menos flete + IVA y comisión + IVA, derivado server-side (puede ser negativo). */
-  pagoTienda: string;
+  pagoTienda: string | null;
   /**
-   * FICHA 395 — los cuatro derivados de las tres cascadas, tal como los emite el servidor. Los
-   * tres importes son STRING con su signo y NINGUNO se recorta a cero.
+   * FICHA 395 — los derivados de la cuenta, tal como los emite el servidor. Los importes son
+   * STRING con su signo y NINGUNO se recorta a cero.
    *
    * `ganancia` y `pagoTienda` siguen aquí arriba, intactos y con el mismo significado: nadie los
-   * absorbió. `netoEmpresa` NO es `ganancia` (resta ADEMÁS el ingreso de bodega) y `ganaLaTienda`
-   * NO es `pagoTienda` (aquel no descuenta el flete por rechazo, que nunca entró en lo
-   * recaudado). Los cuatro se pasan tal cual a `CascadasCierreMensajero`: aquí no se deriva nada.
+   * absorbió. `netoEmpresa` NO es `ganancia` (resta ADEMÁS el ingreso de bodega). Se pasan tal
+   * cual a `DetalleCierre` (`detalle-cierre-vista.ts`): aquí no se deriva nada.
    */
-  cobradoSobreRecaudado: string;
-  netoEmpresa: string;
-  ganaLaTienda: string;
-  fleteRechazoYaCobradoATienda: boolean;
+  cobradoSobreRecaudado: string | null;
+  netoEmpresa: string | null;
+  fleteRechazoYaCobradoATienda: boolean | null;
   /**
-   * FICHA 396 — de qué tienda es cada parte de `pagoTienda` y de `ganaLaTienda`: una entrada por
-   * tienda del cierre, con sus tres cifras ya derivadas y **ya ordenadas por el servidor**.
+   * FICHA 396 — de qué tienda es cada parte de `pagoTienda`: una entrada por tienda del cierre,
+   * con sus cifras ya derivadas y **ya ordenadas por el servidor**.
    *
    * Llega SIEMPRE, también con una sola tienda; el umbral de enseñarlo —dos o más— lo evalúa
-   * `CascadasCierreMensajero`. Aquí no se ordena, no se filtra y no se suma nada.
+   * `marcaDeVariasTiendas` desde `detalle-cierre-vista.ts`. Aquí no se ordena, no se filtra y no
+   * se suma nada.
    */
-  partesPorTienda: ParteDeTienda[];
+  partesPorTienda: ParteDeTienda[] | null;
   /**
    * Feature 264 (R7/R13) — las órdenes que el corte del día barrió a `sin_gestionar` al crear
    * ESTE cierre. Sin un solo campo de dinero: no tienen gestión, así que no hay nada que sumar.
@@ -516,6 +520,13 @@ interface DetalleAbierto {
   resueltoPorNombre?: string | null;
   /** SLT-111 (R267): el reparto en % ya derivado en el servidor; `null` o ausente = sin barra. */
   porcentajesReparto?: number[] | null;
+  /**
+   * SLT-154 (R467): lo que va a la central de este cierre, tal cual del servidor (dato de la
+   * satélite, viaja a todo lector). Ausentes = sin dato: la vista no pinta nada de la central.
+   */
+  paraLaCentral?: string;
+  efectivoCubreDescuentos?: boolean;
+  porcentajesRepartoCentral?: number[] | null;
 }
 
 /**
@@ -620,7 +631,7 @@ export function CierresAdminModule({
   // descarta en `cerrarDetalle`, junto a los montos. Mismo criterio que la 158.
   const [confirmadas, setConfirmadas] = useState<Record<string, number>>({});
   // R29-R32: qué pasó con la ÚLTIMA lectura. Persistente y no un toast, que se va solo.
-  const [avisoLectura, setAvisoLectura] = useState<string | null>(null);
+  const [avisoLectura, setAvisoLectura] = useState<AvisoLectura | null>(null);
   // Confirmación persistente del último acierto (patrón de `RecogerPaqueteCard`).
   const [ultimaGuiaConfirmada, setUltimaGuiaConfirmada] = useState<number | null>(null);
   // Errores del servidor de la confirmación física, por clave de fila. Conjunto de claves DISJUNTO
@@ -804,7 +815,6 @@ export function CierresAdminModule({
         // resta aquí: el navegador no hace aritmética de dinero.
         cobradoSobreRecaudado: result.cobradoSobreRecaudado,
         netoEmpresa: result.netoEmpresa,
-        ganaLaTienda: result.ganaLaTienda,
         fleteRechazoYaCobradoATienda: result.fleteRechazoYaCobradoATienda,
         // FICHA 396: el desglose por tienda, tal cual llega. Ya viene ordenado por el servidor
         // (R8) y con las tres cifras derivadas: aquí no se reordena ni se recalcula nada.
@@ -820,6 +830,10 @@ export function CierresAdminModule({
         resueltoPorNombre: result.resueltoPorNombre ?? null,
         // SLT-111 (R267): tal cual llega; aquí no se redondea ni se reordena.
         porcentajesReparto: result.porcentajesReparto ?? null,
+        // SLT-154 (R467): los tres, tal cual; aquí no se resta nada.
+        paraLaCentral: result.paraLaCentral,
+        efectivoCubreDescuentos: result.efectivoCubreDescuentos,
+        porcentajesRepartoCentral: result.porcentajesRepartoCentral ?? null,
       });
       return;
     }
@@ -1026,23 +1040,27 @@ export function CierresAdminModule({
   }
 
   /**
-   * Feature 238 (R29-R32) — una guía leída, por cámara o tecleada. Devuelve `true` sólo si
-   * marcó una fila; con `false` el campo conserva lo escrito para poder corregirlo (patrón de
-   * `RecogerPaqueteCard`).
+   * Feature 238 (R29-R32) — una guía leída, por cámara, tecleada o con la pistola. Devuelve a la
+   * tarjeta el resultado de la lectura (SLT-158): acierto si marcó una fila o si es la relectura
+   * inocua de una ya confirmada; error con su motivo en los otros tres avisos. El campo se vacía
+   * siempre al enviar (R575): lo leído queda escrito en el aviso de la ventana (R576).
    *
    * Ninguno de los cuatro desenlaces manda nada al servidor: la resolución es local contra el
    * detalle ya cargado, y el envío ocurre una sola vez, al confirmar la ventana.
    */
-  function leerGuia(texto: string, medio: MedioDeCaptura): boolean {
+  function aplicarLectura(texto: string): ResultadoLectura {
     const lectura = interpretarLectura(
       texto,
-      medio,
       filasDelCierreAbierto,
       confirmadas,
     );
     if (lectura.tipo === "aviso") {
-      setAvisoLectura(lectura.mensaje);
-      return false;
+      setAvisoLectura({ lectura: texto.trim(), mensaje: lectura.mensaje, inocuo: false });
+      return { tipo: "error", motivo: lectura.mensaje };
+    }
+    if (lectura.tipo === "repetida") {
+      setAvisoLectura({ lectura: texto.trim(), mensaje: lectura.mensaje, inocuo: true });
+      return { tipo: "acierto" };
     }
     // Una lectura puede cubrir MÁS DE UNA fila: hay un solo paquete físico, y si dos gestiones
     // vivas de la misma orden comparten guía, las dos quedan cubiertas por ese único gesto.
@@ -1063,7 +1081,7 @@ export function CierresAdminModule({
       for (const clave of lectura.claves) delete resto[clave];
       return resto;
     });
-    return true;
+    return { tipo: "acierto" };
   }
 
   /**
@@ -1432,7 +1450,7 @@ export function CierresAdminModule({
                     // R21/R82/R91: las gestiones del detalle ya leído, todas, sea cual sea el filtro.
                     <DescargarDatasetButton
                       titulo={tituloDescargaGestiones(folioDe(cierreAbierto.cierreId))}
-                      columnas={COLUMNAS_DESCARGA_DETALLE_CIERRE}
+                      columnas={columnasDescargaDetalle("mensajero", audiencia === "admin")}
                       obtenerFilas={async () => ({
                         status: "ok",
                         filas: Object.values(detalle.grupos)
@@ -1617,7 +1635,7 @@ export function CierresAdminModule({
             errores={confirmacionErrores}
             aviso={avisoLectura}
             ultimaGuiaConfirmada={ultimaGuiaConfirmada}
-            onLectura={leerGuia}
+            onLectura={aplicarLectura}
           />
         ) : null}
       </Modal>

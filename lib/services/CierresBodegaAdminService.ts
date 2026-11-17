@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { esAccesoTotal } from "@/lib/auth/acceso-total";
 import type { FiltrosCierresBodega } from "@/lib/types/filtros-cierres";
 import { cierreConfig } from "@/lib/config/cierre";
@@ -36,15 +37,21 @@ import { esColaSolicitado } from "@/lib/utils/colas-cierre";
 import { rangoDePagina } from "@/lib/utils/rango-pagina";
 import { rutasAFirmar } from "@/lib/utils/evidencias-gestion";
 import { toDetalleDTO } from "@/lib/services/CierreDiaService";
-// SLT-107 (R283, D-H110): la MISMA anulacion del fulfillment que el detalle de mensajeros.
-import { ocultarFulfillmentSiNoCentral } from "@/lib/services/CierresAdminService";
+// SLT-107 (R283, D-H110) y SLT-154 (R460, R461, R463): el MISMO corte del dinero de la empresa que el
+// detalle de mensajeros.
+import {
+  anularEmpresaSiNoCentral,
+  ocultarDineroEmpresaSiNoCentral,
+  type ClasificacionDinero,
+} from "@/lib/services/CierresAdminService";
+// SLT-154 (R466): «La central debe» con la MISMA regla que «A consolidar».
+import { repartirEfectivo } from "@/lib/services/CierreBodegaService";
 import {
   cobradoSobreRecaudado,
   efectivoCubreDescuentos,
   ganaLaTienda,
   gananciaEmpresa,
   netoEmpresa,
-  pagoTiendaEmpresa,
   paraLaCentral,
   partesPorTienda,
   totalesIngresoEmpresa,
@@ -66,6 +73,51 @@ import { facturadoSinIva, ivaFacturado } from "@/lib/utils/iva-cierre";
 
 // Mensaje accionable cuando falta el motivo de rechazo (R17).
 const MSG_MOTIVO_REQUERIDO = "El motivo de rechazo es obligatorio.";
+
+type CierreBodegaDetalleOk = Extract<CierreBodegaDetalleServiceResult, { status: "ok" }>;
+
+/**
+ * SLT-154 (R460) — de quien es cada campo del detalle del cierre de bodega. `cierre` y `cierres`
+ * son `"propio"`: la cabecera es de la satelite, y cada cierre del dia se recorta con
+ * `CLASE_CIERRE_DEL_DIA_BODEGA`. `porcentajesReparto` es [central, mensajeros, bodega]: suyo.
+ */
+export const CLASE_DETALLE_BODEGA = {
+  cierre: "propio",
+  cierres: "propio",
+  totalesIngreso: "empresa",
+  ivaFacturado: "empresa",
+  ganancia: "empresa",
+  pagoTienda: "empresa",
+  cobradoSobreRecaudado: "empresa",
+  netoEmpresa: "empresa",
+  partesPorTienda: "empresa",
+  paraLaCentral: "propio",
+  efectivoCubreDescuentos: "propio",
+  porcentajesReparto: "propio",
+  centralDebe: "propio",
+} as const satisfies ClasificacionDinero<CierreBodegaDetalleOk>;
+
+/** SLT-154 (R461) — lo mismo en cada cierre del dia del detalle de bodega. */
+export const CLASE_CIERRE_DEL_DIA_BODEGA = {
+  cierreDiaId: "propio",
+  mensajeroId: "propio",
+  mensajeroNombre: "propio",
+  totales: "propio",
+  totalPagoMensajero: "propio",
+  totalIngresoBodegaRechazos: "propio",
+  gestionesAjustadas: "propio",
+  solicitadoAt: "propio",
+  grupos: "propio", // el cobro de cada gestion ya lo corta `ocultarDineroEmpresaSiNoCentral`
+  totalesIngreso: "empresa",
+  ivaFacturado: "empresa",
+  ganancia: "empresa",
+  pagoTienda: "empresa",
+  cobradoSobreRecaudado: "empresa",
+  netoEmpresa: "empresa",
+  partesPorTienda: "empresa",
+  paraLaCentral: "propio",
+  efectivoCubreDescuentos: "propio",
+} as const satisfies ClasificacionDinero<CierreBodegaDetalleCierre>;
 
 /**
  * Feature 40 — logica de negocio de "Cierres de bodega" del maestro (aprobar /
@@ -149,9 +201,9 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
 
   /**
    * SLT-42 (R22, R23): los filtros con `desde`/`hasta` resueltos en la zona del pais de la empresa.
-   * La zona solo se lee si el filtro trae rango.
+   * La zona solo se lee si el filtro trae rango. SLT-153 (R457): un folio imposible da `vacio`.
    */
-  private filtrosRepo<F extends RangoDeFechasCierres>(filtros: F | undefined) {
+  private filtrosRepo<F extends RangoDeFechasCierres & { folio?: string }>(filtros: F | undefined) {
     return filtrosParaRepo(filtros, zonaPerezosa(this.reglasPais, "CierresBodegaAdminService"));
   }
 
@@ -192,10 +244,9 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
 
     // Pedido humano del 2026-08-16: el filtro RECORTA dentro del alcance del rol, no lo
     // sustituye — se compone con `AND` en el repositorio.
-    const { items, total } = await this.repo.findHistoricoPaginado(
-      rangoDePagina(input),
-      await this.filtrosRepo(input.filtros),
-    );
+    const resueltos = await this.filtrosRepo(input.filtros);
+    if (resueltos.tipo === "vacio") return { status: "ok", items: [], page: input.page, pageSize: input.pageSize, total: 0 }; // SLT-153 (R457)
+    const { items, total } = await this.repo.findHistoricoPaginado(rangoDePagina(input), resueltos.filtros);
 
     return {
       status: "ok",
@@ -224,7 +275,9 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
   ): Promise<ListarPendientesCierresBodegaServiceResult> {
     if (!esAccesoTotal(actor.rol)) return { status: "forbidden" }; // R2
 
-    const { items, total } = await this.repo.findColaPaginada(rangoDePagina(input), await this.filtrosRepo(input.filtros));
+    const resueltos = await this.filtrosRepo(input.filtros);
+    if (resueltos.tipo === "vacio") return { status: "ok", items: [], page: input.page, pageSize: input.pageSize, total: 0 }; // SLT-153 (R457)
+    const { items, total } = await this.repo.findColaPaginada(rangoDePagina(input), resueltos.filtros);
 
     return {
       status: "ok",
@@ -281,7 +334,9 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
     if (!esAccesoTotal(actor.rol)) return { status: "forbidden" }; // R4: antes del repo
 
     // Los MISMOS filtros que la pagina: el archivo es «esto que estoy viendo, entero».
-    const conjunto = await this.repo.findHistoricoCompleto(await this.filtrosRepo(filtros));
+    const resueltos = await this.filtrosRepo(filtros);
+    if (resueltos.tipo === "vacio") return { status: "ok", items: [], total: 0 }; // SLT-153 (R457, R459)
+    const conjunto = await this.repo.findHistoricoCompleto(resueltos.filtros);
 
     const limite = descargaConfig.MAX_FILAS;
     // R6: o van TODAS las filas del conjunto, o van solo los conteos. Nunca un archivo truncado.
@@ -322,7 +377,9 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
   ): Promise<ListarPendientesCierresBodegaCompletoServiceResult> {
     if (!esAccesoTotal(actor.rol)) return { status: "forbidden" }; // R4: antes del repo
 
-    const conjunto = await this.repo.findColaCompleta(await this.filtrosRepo(filtros)); // idem
+    const resueltos = await this.filtrosRepo(filtros); // idem
+    if (resueltos.tipo === "vacio") return { status: "ok", items: [], total: 0 }; // SLT-153 (R457, R459)
+    const conjunto = await this.repo.findColaCompleta(resueltos.filtros);
 
     const limite = descargaConfig.MAX_FILAS;
     if (conjunto.length > limite) {
@@ -427,15 +484,15 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
         incidente: [], // feature 158/R18
       };
       for (const g of cd.gestiones) {
-        // SLT-107 (R283, D-H110): el fulfillment (con `fulfillmentCargadoAt`) es dato de la
-        // central; quien no es acceso total lo recibe anulado, con la MISMA funcion que el detalle
-        // de mensajeros. Para acceso total devuelve la fila tal cual.
-        grupos[g.resultado].push(ocultarFulfillmentSiNoCentral(toDetalleDTO(g, urlByPath), actor));
+        // SLT-107 (R283) y SLT-154 (R463): el cobro a la tienda de la fila (con su fulfillment) es
+        // dato de la central; quien no es acceso total lo recibe anulado, con la MISMA funcion que
+        // el detalle de mensajeros. Para acceso total devuelve la fila tal cual.
+        grupos[g.resultado].push(ocultarDineroEmpresaSiNoCentral(toDetalleDTO(g, urlByPath), actor));
       }
       const totalesIngreso = totalesIngresoEmpresa(cd.gestiones);
       // SL-39 (R21–R23): ganancia y neto de ESTE dia restan desde lo facturado SIN IVA.
       const sinIva = facturadoSinIva(totalesIngreso);
-      return {
+      const delDia: CierreBodegaDetalleCierre = {
         cierreDiaId: cd.resumen.cierreDiaId,
         mensajeroId: cd.resumen.mensajeroId,
         mensajeroNombre: cd.resumen.mensajeroNombre,
@@ -451,12 +508,10 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
         ivaFacturado: ivaFacturado(totalesIngreso),
         // Ganancia del dia de ESE mensajero: su ingreso sin IVA menos SU pago (snapshot).
         ganancia: gananciaEmpresa(sinIva, cd.resumen.totalPagoMensajero),
-        // Pago a la tienda de ESTE cierre_dia: lo que recibio menos lo que se le facturo.
-        pagoTienda: pagoTiendaEmpresa(
-          cd.resumen.totales.general,
-          totalesIngreso.fleteConIva,
-          totalesIngreso.comisionConIva,
-        ),
+        // SLT-169 R623: «Se le paga hoy» de ESTE cierre_dia = lo que recibio menos TODO lo que se
+        // le facturo (flete por rechazo incluido). MISMA definicion que `cifrasDelCierre`, sobre
+        // los datos de ESTE dia: la suma de los dias da el agregado de la bodega.
+        pagoTienda: ganaLaTienda(cd.resumen.totales.general, totalesIngreso.total),
         // Feature 393 (R15): los cuatro derivados de ESTE cierre_dia salen de SUS PROPIOS
         // snapshots y de SU propio desglose. Ninguno se deriva de un agregado ni de otro
         // nivel: si el dia usara el pago AGREGADO, el neto del dia mentiria y la suma de los
@@ -470,15 +525,6 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
           cd.resumen.totalPagoMensajero,
           cd.resumen.totalIngresoBodegaRechazos,
         ),
-        // 💰 FICHA 396 (D1) — LO QUE LA TIENDA GANA EN TOTAL con el dia de ESTE mensajero. Es la
-        // ASIMETRIA que la 395 dejo abierta: puso `ganaLaTienda` solo en el detalle del cierre del
-        // mensajero, asi que aqui el desglose de abajo sumaria hacia un total que no estaba en
-        // ninguna pantalla. MISMA funcion que alli, sobre los datos de ESTE cierre_dia.
-        //
-        // NO es `pagoTienda` —dos lineas mas arriba—: aquel no resta el flete por rechazo, porque
-        // ese flete nunca entro en lo recaudado y se le cobra aparte contra la wallet de la
-        // tienda. La diferencia entre los dos es exactamente `fleteDevolucionConIva` de este dia.
-        ganaLaTienda: ganaLaTienda(cd.resumen.totales.general, totalesIngreso.total),
         // 💰 FICHA 396 (R19) — DE QUIEN ES CADA PARTE, en el nivel del MENSAJERO.
         //
         // MISMO argumento y MISMO sitio que `totalesIngresoEmpresa(cd.gestiones)` de arriba: las
@@ -503,6 +549,8 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
           cd.resumen.totalIngresoBodegaRechazos,
         ),
       };
+      // SLT-154 (R461): las cifras de la empresa de ESTE cierre del dia, solo para la central.
+      return anularEmpresaSiNoCentral(delDia, CLASE_CIERRE_DEL_DIA_BODEGA, actor);
     });
 
     // SLT-141 (R387): el agregado de toda la bodega sale de `cifrasAgregadasBodega`, la MISMA
@@ -515,8 +563,21 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
       found.cierresDia.flatMap((cd) => cd.gestiones),
     );
 
+    // SLT-154 (R466): «La central debe» reparte el efectivo de los cierres del dia del modelo
+    // anterior entre SUS pagos, como `listarConsolidacion`; los del modelo nuevo no se pagan del
+    // efectivo y no entran. Snapshots que no cambian tras consolidar: el mismo numero que la
+    // satelite vio al solicitar.
+    const viejos = found.cierresDia.filter((cd) => !cd.resumen.pagoIndependienteEfectivo);
+    const efectivoViejos = viejos
+      .reduce((suma, cd) => suma.plus(cd.resumen.totales.efectivo), new Prisma.Decimal(0))
+      .toFixed(2);
+    const { centralDebe } = repartirEfectivo(
+      efectivoViejos,
+      viejos.map((cd) => cd.resumen.totalPagoMensajero),
+    );
+
     // R11/R13: cabecera con totales agregados snapshot.
-    return {
+    const detalle: CierreBodegaDetalleOk = {
       status: "ok",
       // SLT-107 (R283): solo la central puede desmarcar; para quien no es acceso total, `false`.
       cierre: esAccesoTotal(actor.rol) ? resumen : { ...resumen, desmarcable: false },
@@ -528,7 +589,6 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
       cobradoSobreRecaudado: agregado.cobradoSobreRecaudado,
       netoEmpresa: agregado.netoEmpresa,
       // Ficha 396: la particion por tienda ya ORDENADA por el servidor (de mayor a menor pago).
-      ganaLaTienda: agregado.ganaLaTienda,
       partesPorTienda: agregado.partesPorTienda,
       paraLaCentral: resumen.paraLaCentral,
       efectivoCubreDescuentos: resumen.efectivoCubreDescuentos,
@@ -538,7 +598,10 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
         [resumen.paraLaCentral, resumen.totalPagoMensajero, resumen.totalIngresoBodegaRechazos],
         resumen.totales.general,
       ),
+      centralDebe,
     };
+    // SLT-154 (R460, R465): el calculo no cambia; el recorte actua sobre el resultado.
+    return anularEmpresaSiNoCentral(detalle, CLASE_DETALLE_BODEGA, actor);
   }
 
   async aprobarCierreBodega(

@@ -23,6 +23,8 @@ export const MODULO_POR_RUTA: Readonly<Record<string, Destino>> = {
   // núcleo
   "/dashboard": "nucleo",
   "/ordenes": "nucleo",
+  // SLT-159: la página «Recibir paquetes» de escritorio (central y tienda; satélite abajo).
+  "/ordenes/recibir": "nucleo",
   // Redirige a `/mis-asignaciones/reparto` (Entregas, núcleo): no pinta nada propio.
   "/mis-asignaciones": "nucleo",
   "/mis-asignaciones/reparto": "nucleo",
@@ -59,6 +61,7 @@ export const MODULO_POR_RUTA: Readonly<Record<string, Destino>> = {
   "/recepcion-satelite": "nucleo",
   "/recepcion-satelite/por-recibir": "nucleo",
   "/recepcion-satelite/en-bodega": "nucleo",
+  "/recepcion-satelite/recibir": "nucleo",
   "/mi-bodega": "nucleo",
   // analitica, monitoreo
   "/analitica": "analitica",

@@ -21,19 +21,34 @@ export const DETALLE_CIERRE_BODEGA_PREFIJO = "Detalle del cierre de bodega";
 export const TU_CIERRE_TITULO = "Tu cierre del día";
 export const tituloCierreMensajero = (nombre: string): string => `Cierre de ${nombre}`;
 export const tituloCierreBodega = (zona: string): string => `Cierre de bodega · ${zona}`;
-export const subtituloCierreBodega = (solicitadoPor: string, mensajeros: number): string =>
-  `Bodega satélite · lo solicitó ${solicitadoPor} · ${cuantos(mensajeros, "mensajero", "mensajeros")}`;
 /** El estado de un cierre del día que todavía no se ha solicitado (modo «en curso»). */
 export const SIN_SOLICITAR_LABEL = "Sin solicitar";
+/** El valor de «Folio» del cierre de hoy, que aún no tiene folio (R453). */
 export const FOLIO_NUEVO_LABEL = "Solicitud nueva";
-export const FECHA_SOLICITADO = "Solicitado";
-export const FECHA_APROBADO = "Aprobado";
-export const FECHA_RECHAZADO = "Rechazado";
-export const FECHA_RECIBIDO = "Recibido";
-export const fechaConQuien = (fecha: string, quien: string | null | undefined): string =>
-  quien ? `${fecha} por ${quien}` : fecha;
-export const fechaVencido = (fecha: string): string => `Del ${fecha} · venció sin solicitarse`;
-export const HOY_SIN_SOLICITAR = "Hoy · sin solicitar";
+/** El valor de «Día» del cierre de hoy sin solicitar (R453). */
+export const DIA_HOY = "Hoy";
+/** El valor de «Origen» del cierre de bodega: siempre lo solicita una satélite (R454). */
+export const ORIGEN_BODEGA_SATELITE = "Bodega satélite";
+
+// SLT-153 «Cabecera del detalle del cierre con rótulos y folio buscable» (R450-R455): los rótulos
+// de los pares de la cabecera, uno por dato.
+export const ROTULO_FOLIO = "Folio";
+export const ROTULO_DESTINO = "Destino";
+export const ROTULO_ZONA = "Zona";
+export const ROTULO_SOLICITADO = "Solicitado";
+export const ROTULO_APROBADO = "Aprobado";
+export const ROTULO_APROBADO_POR = "Aprobado por";
+export const ROTULO_RECHAZADO = "Rechazado";
+export const ROTULO_RECHAZADO_POR = "Rechazado por";
+export const ROTULO_DEL_DIA = "Del día";
+export const ROTULO_DIA = "Día";
+export const ROTULO_ORIGEN = "Origen";
+export const ROTULO_SOLICITADO_POR = "Solicitado por";
+export const ROTULO_MENSAJEROS = "Mensajeros";
+export const ROTULO_RECIBIDO = "Recibido";
+export const ROTULO_RECIBIDO_POR = "Recibido por";
+/** El nombre accesible de la lista de pares de la cabecera. */
+export const DATOS_DEL_CIERRE_LABEL = "Datos del cierre";
 
 // --- Franja de atención (R4) ---
 export const POR_REVISAR_TITULO = "Por revisar:";
@@ -66,10 +81,11 @@ export const GESTIONES_LABEL = "Gestiones";
 export const TU_GANANCIA_LABEL = "Tu ganancia";
 export const METODOS_DEL_RECAUDADO_LABEL = "Métodos de pago de lo recaudado";
 
-export const contextoTiendas = (tiendas: number, ganaLaTienda: string): string =>
-  tiendas === 1
-    ? `1 tienda · gana en total ${money(ganaLaTienda)}`
-    : `${tiendas} tiendas · ganan en total ${money(ganaLaTienda)}`;
+// SLT-169 (R625): la tarjeta ya resta todo lo facturado; el contexto es solo el número de tiendas.
+export const contextoTiendas = (tiendas: number): string => cuantos(tiendas, "tienda", "tiendas");
+/** SLT-169 (R625, R627): junto a una cifra de la tienda negativa. Copia por confirmar en Preview (P2). */
+export const TIENDA_DEBE = (tiendas: number): string =>
+  tiendas > 1 ? "(las tiendas deben)" : "(la tienda debe)";
 export const contextoPagoMensajero = (gestiones: number, ajustadas: number): string =>
   ajustadas > 0
     ? `${cuantos(gestiones, "gestión", "gestiones")} · ${cuantos(ajustadas, "ajustada", "ajustadas")}`
@@ -111,7 +127,14 @@ export const ACCION_APROBAR = "Aprobar";
 export const ACCION_REVISAR_Y_APROBAR = "Revisar paquetes y aprobar";
 export const ACCION_CERRAR = "Cerrar";
 export const ACCION_DESTRABAR = "Destrabar cierre vencido";
-export const ACCION_SOLICITAR = "Solicitar cierre";
+/** SLT-156 (R531): el botón principal del cierre en curso; solo lo ve el mensajero. */
+export const ACCION_SOLICITAR = "Solicitar cierre del día";
+/** SLT-156 (R531): el contador dentro del botón, «0 gestiones», «1 gestión», «12 gestiones». */
+export const contadorGestiones = (n: number): string => cuantos(n, "gestión", "gestiones");
+/** SLT-156 (R531): encima del botón desactivado cuando no hay nada que agrupar. */
+export const SIN_GESTIONES_PENDIENTES = "No tienes gestiones pendientes";
+/** SLT-156 (R537): sale del detalle a pantalla completa en el teléfono (canvas v35: CierreVer). */
+export const ACCION_VOLVER = "Volver";
 export const ACCION_SOLICITAR_RECHAZADO = "Solicitar aprobación del cierre rechazado";
 export const ACCION_SOLICITAR_VENCIDO = "Solicitar aprobación del cierre vencido";
 
@@ -172,7 +195,6 @@ export const REPARTO_TITULO = "¿A dónde va lo recaudado?";
 export const CUENTA_FACTURA_TITULO = "Lo que se le factura a la tienda";
 export const FLETE_POR_ENTREGADO_LABEL = `Flete por entregado + ${IMPUESTO_ROTULO}`;
 export const COMISION_COD_LABEL = `Comisión COD + ${IMPUESTO_ROTULO}`;
-export const SALE_DE_LO_RECAUDADO_LABEL = "Sale de lo recaudado";
 export const TOTAL_FACTURADO_LABEL = "Total facturado";
 export const CUENTA_QUEDA_TITULO = `De lo facturado, le queda a ${EMPRESA.enFrase}`;
 export const IVA_NO_ES_DE_LA_EMPRESA = `${IMPUESTO_ROTULO} (no es de ${EMPRESA.enFrase})`;
@@ -181,7 +203,6 @@ export const POR_TIENDA_COLUMNAS = {
   tienda: "Tienda",
   recaudado: RECAUDADO_LABEL,
   hoy: "Se le paga hoy",
-  gana: "Gana en total",
 } as const;
 
 // --- Pestañas que rellena S2 (SLT-100 «Detalle de cierre único en /cierres-admin (mensajeros)») ---

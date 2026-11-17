@@ -4,8 +4,11 @@ import { PackageCheck } from "lucide-react";
 
 import { EstadoConInfo } from "@/components/shared/EstadoInfo";
 import { Badge } from "@/components/ui/badge";
-import { EscanerGuiaCard } from "@/components/shared/EscanerGuiaCard";
-import { extractNumGuiaFromScan } from "@/lib/utils/paquete-url";
+import {
+  EscanerGuiaCard,
+  type ResultadoLectura,
+} from "@/components/shared/EscanerGuiaCard";
+import { leerGuia } from "@/lib/utils/paquete-url";
 import {
   RESULTADOS_QUE_VUELVEN,
   vuelveABodegaElPaquete,
@@ -31,12 +34,9 @@ import { RESULTADO_LABEL, RESULTADO_FILA_LABEL, tituloResultadoConCifra } from "
 // una función de sus props.
 //
 // Lo que NO se reinventa: la captura es `EscanerGuiaCard` con sus dos caminos (cámara y número
-// tecleado) y el parseo del QR es `extractNumGuiaFromScan`, los mismos que usan las otras seis
+// tecleado) y la lectura de la guía es `leerGuia` (SLT-157), los mismos que usan las otras seis
 // superficies de escaneo. Y **no** se usa `EscanerModal`: ese envoltorio trae su propio botón
 // disparador y su propio diálogo, y esto ya vive dentro de uno.
-
-/** Cómo llegó el texto que hay que interpretar: la cámara entrega una URL, el teclado un número. */
-export type MedioDeCaptura = "camara" | "manual";
 
 // --- Textos de la ventana (i18n-ready, separados de la lógica, como el resto del módulo) ---
 
@@ -292,7 +292,22 @@ export function filasDelCierre(
  */
 export type LecturaInterpretada =
   | { tipo: "confirma"; claves: readonly string[]; numGuia: number }
-  | { tipo: "aviso"; mensaje: string };
+  | { tipo: "aviso"; mensaje: string }
+  // R32 + SLT-158 (decisión del leader, 2026-11-14): volver a leer una guía ya confirmada es
+  // INOCUO. No marca nada, pero tampoco es un error: suena a acierto y se dice como información,
+  // igual que `ya_recibida` en las recepciones.
+  | { tipo: "repetida"; mensaje: string };
+
+/**
+ * Qué pasó con la última lectura, para la barra de estado (R29-R32). Lleva LO LEÍDO (SLT-158,
+ * R576): el campo se vacía al enviar y, sin esto, quien tecleó «70O1» ya no vería qué escribió.
+ * `inocuo` = la relectura de una guía ya confirmada: se pinta como información, no como error.
+ */
+export interface AvisoLectura {
+  lectura: string;
+  mensaje: string;
+  inocuo: boolean;
+}
 
 /**
  * R29-R32 — de un texto leído a uno de los cuatro desenlaces. **Función pura**: no toca estado,
@@ -333,20 +348,14 @@ export type LecturaInterpretada =
  */
 export function interpretarLectura(
   texto: string,
-  medio: MedioDeCaptura,
   filasDelCierreAbierto: readonly FilaAConfirmar[],
   yaConfirmadas: Readonly<Record<string, number>>,
 ): LecturaInterpretada {
-  // La cámara entrega la URL del paquete (`<origin>/paquete/<numGuia>`) y hay que extraer el
-  // número; lo tecleado ES el número. Es la ÚNICA diferencia entre los dos caminos, igual que
-  // en `RecogerPaqueteCard`: de aquí en adelante los dos recorren exactamente el mismo camino.
-  const numGuia =
-    medio === "camara"
-      ? extractNumGuiaFromScan(texto)
-      : /^\d+$/.test(texto.trim())
-        ? Number(texto.trim())
-        : null;
-  if (numGuia === null || !Number.isSafeInteger(numGuia) || numGuia <= 0) {
+  // SLT-157: cámara y teclado (o pistola) leen igual, con `leerGuia`: el QR (URL del paquete) o
+  // el CODE128 (dígitos) de la etiqueta, por cualquiera de los dos caminos. Ya no importa por
+  // dónde llegó el texto.
+  const numGuia = leerGuia(texto);
+  if (numGuia === null) {
     return { tipo: "aviso", mensaje: LECTURA_ILEGIBLE }; // R29
   }
 
@@ -379,7 +388,7 @@ export function interpretarLectura(
   // el caso en que la segunda lectura del mismo bulto no cuenta. Mientras quede una fila
   // pendiente sí hay algo que confirmar, y avisar ahí era el defecto.
   if (pendientes.length === 0) {
-    return { tipo: "aviso", mensaje: LECTURA_YA_CONFIRMADA };
+    return { tipo: "repetida", mensaje: LECTURA_YA_CONFIRMADA };
   }
   return { tipo: "confirma", claves: pendientes.map((f) => f.clave), numGuia };
 }
@@ -494,11 +503,11 @@ export interface ConfirmacionFisicaCuerpoProps {
   /** Errores del servidor por clave de fila (`fieldErrors`), pintados en su fila. */
   errores: Readonly<Record<string, string>>;
   /** R29-R32: qué pasó con la última lectura; `null` si no hay nada que decir. */
-  aviso: string | null;
+  aviso: AvisoLectura | null;
   /** Confirmación persistente del último acierto, bajo el formulario. */
   ultimaGuiaConfirmada: number | null;
-  /** Interpreta y aplica una lectura. Devuelve `true` si marcó una fila (limpia el campo). */
-  onLectura: (texto: string, medio: MedioDeCaptura) => boolean;
+  /** Interpreta y aplica una lectura, y devuelve su resultado a la tarjeta (SLT-158, D4). */
+  onLectura: (texto: string) => ResultadoLectura;
 }
 
 interface FilaConfirmacionProps {
@@ -631,12 +640,21 @@ export function ConfirmacionFisicaCuerpo({
         )}
         {/* R29-R32: qué pasó con la última lectura. Persistente y no un toast: el toast se va
             solo y quien está escaneando una tanda seguida necesita seguir viéndolo. */}
+        {/* SLT-158 (R576): con lo leído delante del motivo. Es el ÚNICO aviso de la lectura:
+            la tarjeta de abajo va con `lineaDeError={false}` para no repetirlo. La relectura de
+            una guía ya confirmada es información, no error (sin `role="alert"`). */}
         {aviso ? (
           <p
-            role="alert"
-            className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            role={aviso.inocuo ? undefined : "alert"}
+            aria-live={aviso.inocuo ? "polite" : undefined}
+            className={
+              aviso.inocuo
+                ? "rounded-md border border-info/40 bg-info-soft px-3 py-2 text-sm text-info-strong dark:bg-info/15"
+                : "rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            }
           >
-            {aviso}
+            Lectura <span className="font-mono font-semibold">{aviso.lectura}</span>:{" "}
+            {aviso.mensaje}
           </p>
         ) : null}
       </div>
@@ -664,17 +682,17 @@ export function ConfirmacionFisicaCuerpo({
         {/* La tarjeta de captura, con sus DOS caminos (R28). `max-w-none` porque la tarjeta nace
             con el ancho de una pantalla de teléfono y acá vive en una columna del modal. */}
         <EscanerGuiaCard
+          continuo
           className="max-w-none"
           ariaLabel="Confirmar por número de guía o escaneo"
           titulo={ESCANER_TITULO}
           descripcion={ESCANER_DESCRIPCION}
           icono={PackageCheck}
-          onDecoded={(texto) => {
-            onLectura(texto, "camara");
-          }}
+          onDecoded={onLectura}
+          lineaDeError={false}
           mensajeErrorCamara={ESCANER_ERROR_CAMARA}
           manual={{
-            onSubmit: (valor) => onLectura(valor, "manual"),
+            onSubmit: onLectura,
             submitLabel: ESCANER_BOTON,
           }}
           exito={

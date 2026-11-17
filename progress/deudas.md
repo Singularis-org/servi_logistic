@@ -40,8 +40,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 
 ### D8 — La suite de integración necesita datos que la app vacía ya no siembra
 - **Origen:** SL-11 (app vacía), medido en el gate completo de `dev` tras SL-16 (2026-10-22): 245 archivos de `tests/integration/` en `tests/baseline-rojos.json`, todos por base sin órdenes, usuarios ni zonas.
-- **Qué falta:** SL-31 (tests con datos propios y CI migrada); al cerrarla, el baseline vuelve a su única entrada de SL-29.
-- **Dueño:** quien tome SL-31.
+- **Qué falta:** SLT-177 midió las 239 entradas de SL-31 en CI (run 43973243440: 227 base vacía, 12 otra causa) y sacó 91 con siembra propia. Las que quedan llevan su causa y su ficha: SLT-178…SLT-184 (siembra), SLT-185 (sin empresa en contexto), SLT-186 (estados retirados), SLT-187 (migraciones tras SL-17) SLT-188 (filas fuera de la transacción) y SLT-195 (21 de cierre de satélite, ver D64). Ningún motivo cita ya SL-31 (guardia R743).
+- **Dueño:** las fichas SLT-178…SLT-188.
 
 ### D9 — Docs del perfil que nombran la app de origen
 - **Origen:** verificación previa al push (2026-10-22). `docs/architecture.md`, `checkpoints-proyecto.md`, `dependencias.md`, `limpieza-ordenex.md`, `perfil-agentes.md`, `plan-saas.md` y `verification.md` la nombran para fijar reglas e historia, no como marca de la app.
@@ -227,10 +227,10 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Qué falta:** buscar la causa si vuelve a aparecer. Si aparece en `next start`, deja de ser menor.
 - **Dueño:** Carlos Restrepo (decidir si va a ficha).
 
-### D37 — `detalle-movimiento-cierre-postgres` y `detalle-en-lote-464` ciegos, también en CI
+### D37 — `detalle-movimiento-cierre-postgres` y `detalle-en-lote-464` ciegos, también en CI — CERRADA
 - **Origen:** review de SLT-54 (2026-11-05, `progress/review_SLT-54.md`, menor 4). Fallan por su siembra (14 fallan y 6 se saltan) y `tests/baseline-rojos.json` los tapa también en `gate-completo`. No hay regresión: con copias temporales que crean sus FK en la transacción, 20 de 20 en verde. Pero son un `WHERE` de dinero sin vigilancia en CI.
-- **Qué falta:** portar los dos a `crearFksDeOrden` (SL-31) y sacarlos del baseline.
-- **Dueño:** Carlos Restrepo (decidir si va a ficha).
+- **Resolución:** SLT-177 (2026-11-16) los siembra con `crearFksDeOrden` y una tarifa propia en la transacción; 14/14 y 6/6 verdes con 0 saltados en base migrada con catálogos, y fuera del baseline.
+- **Dueño:** cerrada.
 
 ### D38 — El libro de la tienda sigue diciendo «devolución a origen» en el cobro del modelo nuevo — CERRADA
 - **Origen:** tandas H1 y H2 de SLT-54 (2026-11-05, `progress/impl_SLT-54.md`).
@@ -371,8 +371,9 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 
 ### D64 — Fixture `caja-459`: premio movido a cierre central sin medir
 - **Origen:** SLT-124 (2026-11-11, review m2 y m3). El cierre del premio pasó de `bodega_satelite` a `bodega_central` porque con R1 la siembra daría `sin_cierre`. Los 15 tests del fixture y la integración de R6 (`premio-ranking-idempotencia`) están en el baseline por SL-31 (app vacía) y hoy no corren. El mensajero del fixture sigue en zona satélite con un cierre central.
-- **Qué falta:** cuando SL-31 saque esos tests del baseline, comprobar que pasan y que R6 sigue vigilado; ajustar la zona del mensajero si choca con R12.
-- **Dueño:** ArqDev / quien cierre SL-31.
+- **Medido en SLT-177 (2026-11-16):** con la zona central sembrada, `sembrarEscenario459` cae en su paso `repartoMensajero` con `sin_saldo` (`_fixtures/caja-459.ts:773`): 14 archivos del fixture siguen rojos. `premio-ranking-idempotencia` queda 16/17 (el que falla es la action sin empresa, SLT-185). Siete casos de `454/` con cierre de satélite fallan en aserciones de dinero.
+- **Qué falta:** SLT-195 «Cierre de la satélite: pruebas de dinero que no cuadran (D64)» (decisión de Carlos, 2026-11-16) para esos 21 archivos; ajustar la zona del mensajero si choca con R12.
+- **Dueño:** SLT-195.
 
 ### D65 — Guardias de diálogos y visor de cierres con huecos conocidos
 - **Origen:** SLT-103 (2026-11-11, review m1-m3 en `progress/review_SLT-103.md`). `cierres-dialogos-modal.guardia.test.ts`:
@@ -420,7 +421,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 ### D71 — «SINPE» en encabezados
 - **Origen:** SL-22; anotada en la épica de cierres. Encabezados de pantalla y descarga nombran «SINPE», un medio de pago de un país, en una plataforma multipaís.
 - **Qué falta:** decidir con Carlos el rótulo genérico y aplicarlo.
-- **Dueño:** Carlos (decisión) / ArqDev.
+- **Cerrada (2026-11-13, Carlos):** duplicada de SL-22 «Métodos de pago configurables por país». «SINPE» no es solo un rótulo (módulos `/configuracion/sinpe` y «Mi bodega», columnas `sinpe_*` y `total_simpe`): un rótulo genérico le quitaría al cliente de Costa Rica la palabra que usa. Se resuelve con los medios de pago por país.
+- **Dueño:** cerrada.
 
 ### D72 — Tests R190/R191 de SLT-106 cubiertos solo por SLT-107
 - **Origen:** SLT-106 (review). Sus requisitos R190 y R191 no tienen test propio; los cubren los tests de SLT-107.
@@ -436,9 +438,15 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 ### D74 — T0.4 de SLT-123/SLT-139: conteo en producción diferido
 - **Origen:** SLT-123 y SLT-139 (T0.4). El conteo en producción no se hizo: la lectura de prod está bloqueada para agentes.
 - **Qué falta:** que Carlos corra la SQL de T0.4 (en sus specs) en producción y se anote el número.
-- **Dueño:** Carlos.
+- **Cerrada (2026-11-13, Carlos):** opcional e informativa; no condiciona el código. Ni SLT-123 ni SLT-139 están en `prod`: si se quiere el número, se corre justo antes de promover, en prod y `BEGIN READ ONLY`: `SELECT destino_tipo, estado, count(*) FROM cierre_dia WHERE estado IN ('solicitado','vencido') GROUP BY 1, 2;`.
+- **Dueño:** cerrada.
 
 ### D75 — Dobles de cierres con datos fuera de contrato
 - **Origen:** SLT-149 «Fábrica de dobles de ICierresAdminRepository» (2026-11-13, review m2 en `progress/review_SLT-149.md`). En `tests/unit/services/cierres-admin-fulfillment-solo-central.test.ts`, `tests/unit/services/CierresAdminService.gestiones-completo.test.ts` y `tests/unit/services/cierre-desglose-tres-superficies.test.ts` (B6, B11, B12) los datos que devuelve el doble no cumplen el tipo de retorno (faltan `rechazosDeTienda` y `pagoIndependienteEfectivo`, o devuelven el DTO en vez de la fila). Antes lo escondía un `as unknown as` sobre el repositorio; ahora el cast va solo sobre el dato, para no cambiar lo que miden.
 - **Qué falta:** completar esos datos al contrato y quitar el cast; comprobar que las aserciones siguen verdes.
+- **Dueño:** ArqDev.
+
+### D76 — Búsqueda por folio corto: lista `IN` de ids sin tope
+- **Origen:** SLT-153 «Cabecera del detalle del cierre con rótulos y folio buscable» (2026-11-13, review m1 en `progress/review_SLT-153.md`). Con un trozo de folio corto (1-2 caracteres), `idsPorFolio` puede devolver miles de ids que luego entran en un `IN` del `where` de las colas.
+- **Qué falta:** medir con volumen real; si crece, filtrar por folio en la misma consulta (subconsulta o `right(id, 8) ILIKE`) en vez de la lista de ids, o exigir un mínimo de caracteres.
 - **Dueño:** ArqDev.

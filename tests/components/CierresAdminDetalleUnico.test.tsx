@@ -166,10 +166,10 @@ function detalle(estado: Estado, extra: Partial<DetalleOk> = {}, cierreExtra: Pa
     desgloseIngresoBodegaRechazos: { sla: "0.00", manual: "500.00", total: "500.00" },
     ivaFacturado: "910.00",
     ganancia: "4000.00",
-    pagoTienda: "94350.00",
+    // SLT-169 (R620): 100.000 − 7.910 de todo lo facturado.
+    pagoTienda: "92090.00",
     cobradoSobreRecaudado: "5650.00",
     netoEmpresa: "3500.00",
-    ganaLaTienda: "92090.00",
     fleteRechazoYaCobradoATienda: false,
     partesPorTienda: [],
     ordenesSinGestion: [],
@@ -243,7 +243,8 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("SLT-100 R38 — el detalle de /cierres-admin es el detalle único", () => {
-  it.each(["admin", "satelite"] as const)("con audiencia %s abre el diálogo nuevo con sus pestañas", async (audiencia) => {
+  // SLT-154 (R473, R471): la satélite tiene su propio caso, abajo.
+  it.each(["admin"] as const)("con audiencia %s abre el diálogo nuevo con sus pestañas", async (audiencia) => {
     const { dialogo } = await abrir(detalle("solicitado"), { audiencia });
     const pestanas = within(dialogo).getByRole("tablist", { name: "Secciones del cierre" });
     expect(within(pestanas).getAllByRole("tab").map((t) => t.textContent)).toEqual([
@@ -258,6 +259,20 @@ describe("SLT-100 R38 — el detalle de /cierres-admin es el detalle único", ()
     // Lo que el modal anterior pintaba y el nuevo no (D3, D12).
     expect(within(dialogo).queryByText("Debe")).toBeNull();
     expect(within(dialogo).queryByRole("region", { name: "Decisión del cierre" })).toBeNull();
+  });
+
+  it("SLT-154 (R473, R471) — con audiencia satelite abre en Gestiones, sin «Le queda a la empresa»", async () => {
+    const { dialogo } = await abrir(detalle("solicitado"), { audiencia: "satelite" });
+    const pestanas = within(dialogo).getByRole("tablist", { name: "Secciones del cierre" });
+    expect(within(pestanas).getAllByRole("tab").map((t) => t.textContent)).toEqual([
+      "Gestiones (2)",
+      "Lo que va a la central",
+      "Rechazados por la tienda (0)",
+    ]);
+    const cifras = within(dialogo).getByRole("group", { name: "Cifras del cierre" });
+    expect(within(cifras).getByRole("group", { name: "Recaudado" })).toHaveTextContent("₡100.000");
+    expect(within(cifras).queryByRole("group", { name: "Le queda a la empresa" })).toBeNull();
+    expect(within(cifras).queryByRole("group", { name: "Se le paga hoy a la tienda" })).toBeNull();
   });
 });
 
@@ -436,19 +451,30 @@ describe("SLT-100 R19, R21 — «Gestiones»: novedad interna, «Descargar» y s
   });
 });
 
+/**
+ * SLT-153 «Cabecera del detalle del cierre con rótulos y folio buscable» (R455): el valor del par
+ * con ese rótulo en la cabecera (`<dt>` → su `<dd>`), o `null` si el par no se pinta.
+ */
+function valorDelPar(raiz: HTMLElement, rotulo: string): string | null {
+  const header = raiz.querySelector("header") as HTMLElement;
+  const dt = within(header).queryAllByRole("term").find((t) => t.textContent === rotulo);
+  return dt?.nextElementSibling?.textContent ?? null;
+}
+
 describe("SLT-100 R80 — la cabecera dice quién resolvió", () => {
   it("con el nombre del servidor: «Aprobado <fecha> por <nombre>»", async () => {
     const { dialogo } = await abrir(detalle("aprobado", { resueltoPorNombre: "Carla Resolutora" }));
-    expect(
-      within(dialogo).getByText(
-        /· Solicitado 2026-11-07 18:42 · Aprobado 2026-11-07 19:10 por Carla Resolutora$/,
-      ),
-    ).toBeInTheDocument();
+    // SLT-153 (R450): cada dato en su par.
+    expect(valorDelPar(dialogo, "Solicitado")).toBe("2026-11-07 18:42");
+    expect(valorDelPar(dialogo, "Aprobado")).toBe("2026-11-07 19:10");
+    expect(valorDelPar(dialogo, "Aprobado por")).toBe("Carla Resolutora");
   });
 
   it("sin el nombre: la fecha sola, sin «por»", async () => {
     const { dialogo } = await abrir(detalle("aprobado"));
-    expect(within(dialogo).getByText(/· Solicitado 2026-11-07 18:42 · Aprobado 2026-11-07 19:10$/)).toBeInTheDocument();
+    expect(valorDelPar(dialogo, "Aprobado")).toBe("2026-11-07 19:10");
+    // SLT-153 (R451): sin nombre, el par «Aprobado por» no se pinta.
+    expect(valorDelPar(dialogo, "Aprobado por")).toBeNull();
     expect(within(dialogo).queryByText(/Aprobado 2026-11-07 19:10 por/)).toBeNull();
   });
 });
@@ -523,13 +549,13 @@ describe("SLT-101 R90 — «Gestiones» monta la lista y la fila únicas", () =>
     const { dialogo } = await abrirGestiones(conCobro(detalle("solicitado")), { audiencia });
     const grupo = within(dialogo).getByRole("group", { name: "Filtrar por resultado" });
     expect(within(grupo).getAllByRole("button").map((b) => b.textContent)).toEqual([
-      "Todas 2",
-      "Entregado 2",
-      "Reprogramado 0",
-      "Novedad 0",
-      "Devolución a origen por rechazo 0",
-      "Incidente 0",
-      "Con señales 0",
+      "Todas (2)",
+      "Entregado (2)",
+      "Reprogramado (0)",
+      "Novedad (0)",
+      "Devolución a origen por rechazo (0)",
+      "Incidente (0)",
+      "Con señales (0)",
     ]);
     expect(within(dialogo).queryByRole("searchbox")).toBeNull();
     const descargar = within(dialogo).getByRole("button", { name: "Descargar Gestiones del cierre C0FFEE01" });
@@ -560,10 +586,11 @@ describe("SLT-101 R90 — «Gestiones» monta la lista y la fila únicas", () =>
     expect(within(dialogo).queryByRole("button", { name: /Corregir métodos de pago/ })).toBeNull();
     expect(within(dialogo).queryByRole("button", { name: /Corregir el resultado/ })).toBeNull();
     expect(within(dialogo).getByRole("button", { name: "Ajustar pago al mensajero de la orden REM-001 · Beto Ruiz" })).toBeInTheDocument();
-    // Lo que sí ve: el cobro a la tienda con su IVA incluido (R25, R93).
-    const cobro = within(dialogo).getByRole("region", { name: "Se le cobra a la tienda de la orden REM-001 · Beto Ruiz" });
-    expect(cobro).toHaveTextContent("Se le cobra₡3.051");
-    expect(cobro).toHaveTextContent("de eso, IVA (no es de la empresa)₡351");
+    // SLT-154 (R475): tampoco el cobro a la tienda, aunque llegara (antes lo veía: R25, R93).
+    expect(
+      within(dialogo).queryByRole("region", { name: "Se le cobra a la tienda de la orden REM-001 · Beto Ruiz" }),
+    ).toBeNull();
+    expect(within(dialogo).queryByRole("button", { name: "Ver cómo se calculó" })).toBeNull();
   });
 
   it("«Ajustar pago» abre el diálogo de hoy con esa gestión", async () => {
@@ -607,21 +634,22 @@ describe("SLT-101 R90 — «Gestiones» monta la lista y la fila únicas", () =>
 
 // SLT-111 «Cifras del servidor: reparto en % y señales de la cola» (T5.4, R267) — el reparto que
 // emite `verCierreDetalle` llega al detalle montado por el módulo: `abrirDetalle` lo guarda y el
-// mapeador lo pone en su hueco. Esperados escritos a mano (MA [94, 6]).
+// mapeador lo pone en su hueco. Esperados escritos a mano (MA [92, 8] desde SLT-169).
 describe("SLT-111 R267 — el reparto del servidor llega a «Dinero»", () => {
-  it.each(["admin", "satelite"] as const)("con audiencia %s la leyenda lleva «(94 %)» y «(6 %)»", async (audiencia) => {
-    const { dialogo } = await abrir(detalle("solicitado", { porcentajesReparto: [94, 6] }), { audiencia });
+  // SLT-154 (R472): la satélite ya no ve esta barra (la de la empresa); la suya, en la vista (unidad).
+  it.each(["admin"] as const)("con audiencia %s la leyenda lleva «(92 %)» y «(8 %)»", async (audiencia) => {
+    const { dialogo } = await abrir(detalle("solicitado", { porcentajesReparto: [92, 8] }), { audiencia });
     const reparto = within(dialogo).getByRole("region", { name: "Reparto de lo recaudado" });
     expect([...reparto.querySelectorAll("li")].map((li) => li.textContent)).toEqual([
-      "Se le paga hoy a la tienda ₡94.350 (94 %)",
-      "Sale de lo recaudado ₡5.650 (6 %)",
+      "Se le paga hoy a la tienda ₡92.090 (92 %)",
+      "Total facturado ₡7.910 (8 %)",
     ]);
   });
 
   it("con `null` del servidor: solo la leyenda, sin «%»", async () => {
     const { dialogo } = await abrir(detalle("solicitado", { porcentajesReparto: null }));
     const reparto = within(dialogo).getByRole("region", { name: "Reparto de lo recaudado" });
-    expect(reparto.textContent).toContain("Se le paga hoy a la tienda ₡94.350");
+    expect(reparto.textContent).toContain("Se le paga hoy a la tienda ₡92.090");
     expect(reparto.textContent).not.toContain("%");
   });
 });

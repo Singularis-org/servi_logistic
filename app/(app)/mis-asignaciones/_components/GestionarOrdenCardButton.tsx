@@ -4,33 +4,18 @@ import { useState } from "react";
 import { Truck } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 
-// Rama ux (pedido humano): llevar una orden al panel de detalle deja de ser un TOQUE en
-// cualquier parte de la card —se disparaba sin querer al manipular la lista— y pasa por un
-// control explícito al pie, en la misma línea que "Gestionar más tarde" y en el extremo
-// opuesto.
-//
-// Y no confirma solo: gestionar una orden fuera del orden sugerido puede cambiar la ruta de
-// reparto, así que el mensajero lo acepta a mano en un modal (aceptar/cancelar) antes de que
-// pase nada. Cancelar no toca nada.
+import { ConfirmarGestionDialog } from "./ConfirmarGestionDialog";
 
-const TITULO = "¿Gestionar esta orden?";
-const AVISO =
-  "Si gestionas esta orden fuera del orden sugerido, tu ruta de reparto puede cambiar.";
-const ACEPTAR = "Aceptar";
-const CANCELAR = "Cancelar";
+// Rama ux (pedido humano): llevar una orden a gestión deja de ser un TOQUE en cualquier parte de
+// la card —se disparaba sin querer al manipular la lista— y pasa por un control explícito al pie,
+// en la misma línea que "Gestionar más tarde" y en el extremo opuesto. La confirmación vive en
+// `ConfirmarGestionDialog` (SLT-156: la comparte con el escáner de la lista).
 
 export interface GestionarOrdenCardButtonProps {
   /** Nº de remisión; solo para el nombre accesible del control y del modal. */
   numRemision: string;
-  /** Confirmación del mensajero: lleva esta orden al panel de detalle. */
+  /** Confirmación del mensajero: lleva esta orden a gestión. */
   onConfirmar: () => void;
   /**
    * Mensajero bloqueado (cierre pendiente), gestión activa en otra orden, o —desde la feature
@@ -53,10 +38,11 @@ export function GestionarOrdenCardButton({
 
   return (
     <>
+      {/* SLT-156 (R493): 44 px; el mensajero lo pulsa en la calle, con el pulgar. */}
       <Button
         type="button"
         variant="outline"
-        size="sm"
+        size="touch"
         className="w-fit"
         disabled={disabled}
         aria-label={`Gestionar la orden ${numRemision}`}
@@ -66,32 +52,11 @@ export function GestionarOrdenCardButton({
         Gestionar
       </Button>
 
-      <Dialog open={abierto} onOpenChange={setAbierto}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>{TITULO}</DialogTitle>
-            <DialogDescription>{AVISO}</DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setAbierto(false)}
-            >
-              {CANCELAR}
-            </Button>
-            <Button
-              type="button"
-              onClick={() => {
-                setAbierto(false);
-                onConfirmar();
-              }}
-            >
-              {ACEPTAR}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <ConfirmarGestionDialog
+        abierto={abierto}
+        onAbiertoChange={setAbierto}
+        onAceptar={onConfirmar}
+      />
     </>
   );
 }

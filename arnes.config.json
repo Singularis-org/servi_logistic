@@ -73,6 +73,40 @@
         "corre": [
           "tests/unit/services/liquidacion-"
         ]
+      },
+      {
+        "si_cambia": [
+          "lib/services/CierresAdminService.ts",
+          "lib/interfaces/services/ICierresAdminService.ts"
+        ],
+        "corre": [
+          "tests/unit/services/cierres-",
+          "tests/unit/services/CierresAdminService."
+        ]
+      },
+      {
+        "si_cambia": [
+          "components/shared/BuscadorFiltros.tsx",
+          "components/shared/EscanerModal.tsx",
+          "components/shared/QrScanner.tsx"
+        ],
+        "corre": [
+          "buscador-filtros",
+          "tests/components/EstadoCuentaBarra467",
+          "tests/components/WalletCajaBarra467",
+          "tests/components/RecepcionSateliteModule",
+          "tests/unit/components/ordenes-listado-",
+          "tests/unit/guards/buscadores-con-escaneo"
+        ]
+      },
+      {
+        "si_cambia": [
+          "app/**/*.tsx",
+          "components/**/*.tsx"
+        ],
+        "corre": [
+          "tests/components/ContrasteBrandSoftOscuro"
+        ]
       }
     ]
   }

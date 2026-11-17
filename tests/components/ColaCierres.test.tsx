@@ -16,7 +16,14 @@ import type { CierreAdminResumen } from "@/lib/interfaces/services/ICierresAdmin
 // Los esperados van escritos a mano: los textos del canvas (`ColaCierres.dc.html`, rama mensajero)
 // pasados por el formateador compartido (`money()`, que omite «,00») y los nombres de hoy (R104, R105).
 
-afterEach(cleanup);
+// SLT-191: `useIsMobile` se simula (por defecto, escritorio: los casos de antes no cambian).
+const movil = vi.hoisted(() => ({ valor: false }));
+vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => movil.valor }));
+
+afterEach(() => {
+  cleanup();
+  movil.valor = false;
+});
 
 function cierre(over: Partial<CierreAdminResumen> & { cierreId: string }): CierreAdminResumen {
   return {
@@ -130,15 +137,40 @@ function filaDe(region: HTMLElement, mensajero: string): HTMLElement {
 }
 
 describe("ColaCierres — pestañas y barra (R99, R100)", () => {
-  it("un tablist «Cierres del día por estado» con «Pendientes 37» / «Resueltos 12»", () => {
+  it("un tablist «Cierres del día por estado» con «Pendientes (37)» / «Resueltos (12)»", () => {
     render(<ColaCierres {...props()} />);
     const lista = screen.getByRole("tablist", { name: "Cierres del día por estado" });
     const tabs = within(lista).getAllByRole("tab");
-    expect(tabs.map((t) => t.textContent)).toEqual(["Pendientes 37", "Resueltos 12"]);
-    expect(within(lista).getByRole("tab", { name: "Pendientes 37" })).toHaveAttribute(
+    expect(tabs.map((t) => t.textContent)).toEqual(["Pendientes (37)", "Resueltos (12)"]);
+    expect(within(lista).getByRole("tab", { name: "Pendientes (37)" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
+  });
+
+  // SLT-152 «Tablas de cierres legibles»: el conteo entre paréntesis; el nombre accesible es ese texto.
+  it("R447, R449: «Pendientes (37)» y «Resueltos (12)» son texto y nombre accesible; ninguna «<nombre> <n>»", () => {
+    render(<ColaCierres {...props()} />);
+    const tabs = within(screen.getByRole("tablist", { name: "Cierres del día por estado" })).getAllByRole("tab");
+    expect(tabs.map((t) => t.textContent)).toEqual(["Pendientes (37)", "Resueltos (12)"]);
+    expect(screen.getByRole("tab", { name: "Pendientes (37)" })).toBe(tabs[0]);
+    expect(screen.getByRole("tab", { name: "Resueltos (12)" })).toBe(tabs[1]);
+    for (const t of tabs) expect(t.textContent).not.toMatch(/^\S.* \d+$/);
+    expect(screen.queryByRole("tab", { name: "Resueltos 12" })).toBeNull();
+  });
+
+  it("R448: un conteo 0 se pinta «Resueltos (0)»", () => {
+    render(
+      <ColaCierres
+        {...props({
+          pestanas: [
+            { id: "pendientes", label: "Pendientes", conteo: 37 },
+            { id: "resueltos", label: "Resueltos", conteo: 0 },
+          ],
+        })}
+      />,
+    );
+    expect(screen.getByRole("tab", { name: "Resueltos (0)" })).toBeInTheDocument();
   });
 
   it("cambiar de pestaña llama a `onPestana` y no desmonta la barra (conserva su estado)", async () => {
@@ -164,7 +196,7 @@ describe("ColaCierres — pestañas y barra (R99, R100)", () => {
     const user = userEvent.setup();
     await user.type(screen.getByRole("textbox", { name: "Buscar" }), "Diego");
 
-    await user.click(screen.getByRole("tab", { name: "Resueltos 12" }));
+    await user.click(screen.getByRole("tab", { name: "Resueltos (12)" }));
 
     expect(onPestana).toHaveBeenCalledWith("resueltos");
     expect(screen.getByRole("region", { name: "Histórico" })).toBeInTheDocument();
@@ -373,3 +405,28 @@ describe("ColaCierres — color de la pastilla de estado (R101, decisión de Car
     expect(pastilla).toHaveClass(fondo, texto);
   });
 });
+
+// SLT-191 «Cierre del día del mensajero según el canvas» (R821, R823; DS1) — la barra fija y el
+// desplegable de «Cierres solicitados» son solo del mensajero: las colas de `/cierres-admin`, en el
+// teléfono, quedan como hoy.
+describe("SLT-191 R821, R823 — las colas de la administración no cambian en el teléfono", () => {
+  it("central y satélite: la barra no queda fija", () => {
+    movil.valor = true;
+    for (const rol of ["central", "satelite"] as const) {
+      render(<ColaCierres {...props({ rol })} />);
+      const barra = screen.getByRole("textbox", { name: "Buscar" }).closest<HTMLElement>("[data-barra-cola]");
+      expect(barra, rol).not.toBeNull();
+      expect(barra!.className.split(/\s+/), rol).not.toContain("sticky");
+      cleanup();
+    }
+  });
+
+  it("central: la cola no lleva el desplegable de «Cierres solicitados»", () => {
+    movil.valor = true;
+    render(<ColaCierres {...props()} />);
+    const region = screen.getByRole("region", { name: "Pendientes de decisión" });
+    expect(within(region).queryByRole("button", { name: /^Más datos del cierre/ })).toBeNull();
+    expect(region.className.split(/\s+/)).not.toContain("max-md:[&_button[aria-expanded]]:min-h-11");
+  });
+});
+

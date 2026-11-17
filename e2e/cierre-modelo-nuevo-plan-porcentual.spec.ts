@@ -373,7 +373,7 @@ async function cobrosDeLaOrden(detalle: Locator, pestana: RegExp, orden: OrdenE2
   // SLT-101 (R84): la pestaña por resultado es ahora el filtro «Filtrar por resultado» («<resultado> <n>»).
   await detalle
     .getByRole("group", { name: "Filtrar por resultado" })
-    .getByRole("button", { name: new RegExp(`^${pestana.source}.* \\d+$`) })
+    .getByRole("button", { name: new RegExp(`^${pestana.source}.* \\(\\d+\\)$`) })
     .click();
   const ordenes = detalle.getByRole("region", { name: "Órdenes del cierre" });
   const fila = ordenes.getByRole("button", { name: new RegExp(`^Desglose de ingreso de la orden ${orden.numRemision}`) });

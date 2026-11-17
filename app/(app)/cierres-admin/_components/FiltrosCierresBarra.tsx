@@ -16,6 +16,7 @@ import { ultimosNDiasCalendarioCR } from "@/lib/utils/fecha-cr";
 // servidor vaya a rechazar, ni dejar de ofrecer uno que acepta.
 import {
   ESTADOS_FILTRO_CIERRES,
+  MAX_FOLIO_FILTRO,
   type CatalogoFiltrosCierresDTO,
   type FiltrosCierres,
 } from "@/lib/types/filtros-cierres";
@@ -25,6 +26,8 @@ import type { CierreEstado } from "@/lib/types/cierre";
 // arrastrar nada. Leerlo de aquí es lo que hace imposible que el desplegable diga que un estado
 // vive en una lista y la consulta lo mande a la otra.
 import { esColaCierreDia } from "@/lib/utils/colas-cierre";
+// SLT-153 (R456): el MISMO placeholder que el buscador por folio de `/cierre-dia` (D4), importado.
+import { BUSCA_POR_FOLIO } from "@/components/private/cierres/cola/cola-propia-vista";
 import {
   ESTADO_LABEL,
   TAB_PENDIENTES_LABEL,
@@ -66,10 +69,11 @@ import {
  *     provincia → cantón → distrito). No se reimplementa: elegir otra bodega poda sola la
  *     selección de mensajeros que deja de ser coherente, que es la parte que a mano se olvida.
  *
- * NO HAY BUSCADOR DE TEXTO, y es una decisión: un cierre no se busca escribiendo. Se localiza
- * por su mensajero, su bodega o su fecha, que son justo los tres filtros. `BuscadorFiltros`
- * monta su campo igualmente —es su forma— pero se le da un `placeholder` que dice qué hace y un
- * `onChange` que no aplica nada; ver la nota de `SIN_BUSQUEDA` más abajo.
+ * EL CAMPO DE TEXTO BUSCA POR FOLIO (SLT-153 «Cabecera del detalle del cierre con rótulos y folio
+ * buscable», R456). Hasta esa ficha no aplicaba nada: un cierre se localizaba por mensajero, bodega
+ * o fecha. Ahora el texto viaja tal cual (recortado) en `filtros.folio`, en el MISMO bloque que los
+ * demás recortes, y el servidor lo normaliza como en `/cierre-dia` (R171): sin «#» inicial, en
+ * mayúsculas, contenido en los 8 del folio. Con el campo vacío la clave no viaja.
  *
  * ────────────────────────────────────────────────────────────────────────────────────────────
  * FICHA 386 (2026-09-08) — EL FILTRO POR ESTADO, Y LA DECISIÓN QUE OBLIGA A TOMAR
@@ -236,8 +240,10 @@ function estadosONada(
  * nombradas. Una cadena vacía en la terna significa «ese extremo no se fijó», y por eso se
  * traduce a `undefined` en vez de viajar: `desde: ""` no es una fecha, es la ausencia de una.
  */
-function aFiltros(seleccion: FilterSelection): FiltrosCierres {
+function aFiltros(seleccion: FilterSelection, termino: string): FiltrosCierres {
   const [, desde = "", hasta = ""] = seleccion[CLAVE_FECHA] ?? [];
+  // SLT-153 (R456, R457): el folio va recortado; vacío no es un filtro y la clave no viaja.
+  const folio = termino.trim();
   // FICHA 386 — el ÚNICO sitio donde se escribe el nombre del contrato del servidor (`estados`,
   // en plural) a partir de la clave del control (`estado`, en singular).
   const estados = estadosONada(seleccion[CLAVE_ESTADO]);
@@ -251,6 +257,7 @@ function aFiltros(seleccion: FilterSelection): FiltrosCierres {
     // listados de BODEGA, cuyo bloque (`filtrosCierresBodegaSchema`) no declara `estados` y es
     // `.strict()`. Omitiendo la clave, lo que esas dos pantallas emiten no cambia ni un byte.
     ...(estados === undefined ? {} : { estados }),
+    ...(folio === "" ? {} : { folio }),
   };
 }
 
@@ -271,6 +278,8 @@ export function FiltrosCierresBarra({
   const [activos, setActivos] = useState<string[]>([]);
   /** La selección agregada que devuelve `FilterComponent`. */
   const [seleccion, setSeleccion] = useState<FilterSelection>({});
+  /** SLT-153 (R456): el último término que emitió el buscador por folio. */
+  const [termino, setTermino] = useState("");
   /**
    * Contador de «Limpiar todo». `FilterComponent` es dueño de su selección y no expone forma de
    * vaciarla desde fuera, así que se le cambia la `key` para remontarlo limpio. Mismo recurso
@@ -368,16 +377,22 @@ export function FiltrosCierresBarra({
     [declarados, activos],
   );
 
-  const filtros = useMemo(() => aFiltros(seleccion), [seleccion]);
+  const filtros = useMemo(() => aFiltros(seleccion, termino), [seleccion, termino]);
   const hayFiltro = !vacio(filtros);
 
   function aplicar(next: FilterSelection) {
     setSeleccion(next);
-    onChange(aFiltros(next));
+    onChange(aFiltros(next, termino));
+  }
+
+  function aplicarTermino(t: string) {
+    setTermino(t);
+    onChange(aFiltros(seleccion, t));
   }
 
   function limpiarTodo() {
     setSeleccion({});
+    setTermino("");
     // También se retiran los filtros PEDIDOS: «limpiar todo» es volver al punto de partida, y
     // una barra que se queda con tres controles vacíos no lo es.
     setActivos([]);
@@ -389,11 +404,16 @@ export function FiltrosCierresBarra({
     <section aria-label={BARRA_LABEL} className="flex flex-col gap-2">
       <BuscadorFiltros
         label="Buscar"
-        // El campo de la barra no aplica nada en esta pantalla (ver la nota de cabecera): el
-        // placeholder lo dice en vez de dejar que alguien teclee una guía y no pase nada.
-        placeholder="Usa los filtros para acotar los cierres"
-        disabled={disabled}
-        onChange={SIN_BUSQUEDA}
+        placeholder={BUSCA_POR_FOLIO}
+        // SLT-153 (R457): el borde rechaza más de `MAX_FOLIO_FILTRO`; el campo no deja escribirlos
+        // (pegar el id entero de 36 dejaba las dos listas en error).
+        maxLength={MAX_FOLIO_FILTRO}
+        // SLT-153: el buscador NO se deshabilita mientras las listas cargan. Cada término que
+        // emite pone las listas en vuelo, y un campo `disabled` pierde el foco: quien escribe el
+        // folio tendría que volver a pulsarlo tras cada pausa. La clave de SWR lleva los filtros,
+        // así que la respuesta que se pinta es siempre la del último término. Los selectores sí
+        // siguen deshabilitados (`FilterComponent`).
+        onChange={aplicarTermino}
         filtros={ofrecidos}
         activos={activos}
         onActivosChange={setActivos}
@@ -425,11 +445,3 @@ export function FiltrosCierresBarra({
   );
 }
 
-/**
- * El campo de texto de la barra no aplica nada aquí, y esta constante existe para que eso sea
- * una decisión con nombre y no un `() => {}` anónimo que parezca un olvido. Un cierre no se
- * busca escribiendo: se localiza por mensajero, bodega o fecha, que son los tres filtros que el
- * selector ofrece. El día que haya algo que teclear —un folio, por ejemplo— esta constante es
- * el sitio donde se ve que faltaba.
- */
-const SIN_BUSQUEDA = () => {};

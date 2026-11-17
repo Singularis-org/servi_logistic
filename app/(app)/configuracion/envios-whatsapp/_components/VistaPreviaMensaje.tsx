@@ -67,7 +67,7 @@ export function VistaPreviaMensaje({ cuerpo, variables, conDocumento, lector }: 
                   <div className="mb-3 flex items-center gap-3 rounded-md border border-border bg-card p-2.5">
                     <span
                       aria-hidden="true"
-                      className="flex h-9 w-8 items-end justify-center rounded bg-danger-soft pb-1 text-[10px] font-bold text-danger-strong"
+                      className="flex h-9 w-8 items-end justify-center rounded bg-danger-soft pb-1 dark:bg-danger/15 text-[10px] font-bold text-danger-strong"
                     >
                       PDF
                     </span>

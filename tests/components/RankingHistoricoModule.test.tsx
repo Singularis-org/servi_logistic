@@ -8,7 +8,9 @@
 // tiene que pintarlas tal cual, aunque quede feo. Si algún día alguien las ordena, ese caso
 // se pone rojo y dice por qué.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import type React from "react";
 import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import { ToastProvider } from "@/providers/ToastProvider";
 import { RankingHistoricoModule } from "@/app/(app)/ranking/historico/_components/RankingHistoricoModule";
@@ -21,6 +23,22 @@ const pushMock = vi.fn();
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock, replace: vi.fn(), refresh: vi.fn() }),
 }));
+
+// SLT-162 (R757): el `BuscadorFiltros` REAL, envuelto en una marca que guarda sus props, para poder
+// afirmar que la fecha vive DENTRO de una única instancia y con qué props se monta.
+const { propsBuscador } = vi.hoisted(() => ({ propsBuscador: [] as Array<Record<string, unknown>> }));
+vi.mock("@/components/shared/BuscadorFiltros", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/components/shared/BuscadorFiltros")>();
+  function BuscadorMarcado(props: React.ComponentProps<typeof real.BuscadorFiltros>) {
+    propsBuscador.push(props as unknown as Record<string, unknown>);
+    return (
+      <div data-testid="buscador-filtros">
+        <real.BuscadorFiltros {...props} />
+      </div>
+    );
+  }
+  return { ...real, BuscadorFiltros: BuscadorMarcado };
+});
 
 const FECHA = "2026-08-09";
 
@@ -272,5 +290,257 @@ describe("RankingHistoricoModule — los dos vacíos son distintos (R26)", () =>
     expect(screen.queryByRole("button", { name: /^Descargar / })).not.toBeInTheDocument();
     // Y el selector sigue ahí: es la única forma de salir de una fecha sin snapshot.
     expect(screen.getByLabelText("Fecha del histórico")).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// SLT-162 «Ranking del mensajero en tarjetas en el móvil» — R755-R760, R763, R764 y R766 en el
+// Histórico. `useIsMobile` se simula con `matchMedia` (360 = teléfono, 1280 = escritorio); lo que
+// solo es CSS (`max-md:`) se afirma por su clase escrita a mano y lo mide el E2E.
+// ---------------------------------------------------------------------------------------------
+
+function simularAncho(ancho: number) {
+  vi.spyOn(window, "matchMedia").mockImplementation(
+    (query: string) =>
+      ({
+        matches: (() => {
+          const max = /max-width:\s*(\d+)px/.exec(query);
+          return max ? ancho <= Number(max[1]) : false;
+        })(),
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      }) as unknown as MediaQueryList,
+  );
+}
+
+function clases(el: Element): string[] {
+  return (el.getAttribute("class") ?? "").split(/\s+/);
+}
+
+function ancestroConClase(el: Element, clase: string): Element | null {
+  for (let n: Element | null = el; n; n = n.parentElement) {
+    if (clases(n).includes(clase)) return n;
+  }
+  return null;
+}
+
+function antes(a: Node, b: Node): boolean {
+  return Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+}
+
+function tablaHistorico() {
+  return screen.getByRole("table", { name: "Ranking congelado del día" });
+}
+
+function filasHistorico(): HTMLElement[] {
+  return within(tablaHistorico()).getAllByRole("row").slice(1);
+}
+
+/** Con una fila con monto y SIN descripción, que es el tercer caso del premio. */
+const FILAS_TARJETA: RankingSnapshotFilaDTO[] = [
+  FILAS[0],
+  FILAS[1],
+  fila({
+    puesto: 3,
+    posicion: 3,
+    mensajeroId: "m4",
+    nombre: "Dani Bronce",
+    entregadas: 3,
+    asignadas: 4,
+    pct: "75.0",
+    premioMonto: "1000.00",
+    premioDescripcion: null,
+  }),
+  { ...FILAS[2], puesto: 4 },
+];
+
+describe("SLT-162 — Histórico en el teléfono (R755, R758, R759, R760)", () => {
+  beforeEach(() => {
+    simularAncho(360);
+    propsBuscador.length = 0;
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it("R755: tarjeta «{posición}º · {nombre}» con «Premio» y «% del día», sin cabecera visible", () => {
+    montar({ ...SNAPSHOT, filas: FILAS_TARJETA });
+
+    // Sin cabecera visible: la del desglose y la de la tarjeta, las dos solo para lector.
+    for (const cabecera of within(tablaHistorico()).getAllByRole("columnheader")) {
+      expect(cabecera.querySelector(".sr-only"), cabecera.textContent ?? "").not.toBeNull();
+    }
+
+    const [ana, beto, dani, caro] = filasHistorico();
+    expect(within(ana).getByText("1º · Ana Mensajera")).toBeInTheDocument();
+    expect(within(ana).getByText("Premio")).toBeInTheDocument();
+    expect(ana.querySelector("[data-premio]")?.textContent).toBe("₡5.000 · Bono oro");
+    expect(within(ana).getByText("% del día")).toBeInTheDocument();
+    expect(within(ana).getByText("100.0%")).toBeInTheDocument();
+    // Sin monto: «Sin premio asignado». Con monto y sin descripción: solo el monto.
+    expect(beto.querySelector("[data-premio]")?.textContent).toBe("Sin premio asignado");
+    expect(dani.querySelector("[data-premio]")?.textContent).toBe("₡1.000");
+    // Sin podio: «— · {nombre}».
+    expect(within(caro).getByText("— · Caro Sin Ruta")).toBeInTheDocument();
+    // Puesto, Entregado y Asignados NO están en la tarjeta plegada.
+    expect(within(ana).queryByText("Puesto")).toBeNull();
+    expect(within(ana).queryByText("Asignados")).toBeNull();
+  });
+
+  it("R755/R760: «Ver detalle de {nombre}» despliega Puesto, Entregado y Asignados y pasa a «Ocultar detalle de {nombre}»", async () => {
+    const user = userEvent.setup();
+    montar({ ...SNAPSHOT, filas: FILAS_TARJETA });
+    const [, beto] = filasHistorico();
+    const desplegar = within(beto).getByRole("button", { name: "Ver detalle de Beto Repartidor" });
+    expect(desplegar).toHaveAttribute("aria-expanded", "false");
+
+    await user.click(desplegar);
+    expect(desplegar).toHaveAttribute("aria-expanded", "true");
+    expect(desplegar).toHaveAccessibleName("Ocultar detalle de Beto Repartidor");
+
+    const detalle = document.getElementById(desplegar.getAttribute("aria-controls") ?? "") as HTMLElement;
+    expect(detalle).not.toBeNull();
+    const pares = Array.from(detalle.querySelectorAll("dt")).map(
+      (dt) => `${dt.textContent}=${dt.nextElementSibling?.textContent}`,
+    );
+    expect(pares).toEqual(["Puesto=2", "Entregado=4", "Asignados=5"]);
+
+    await user.click(desplegar);
+    expect(desplegar).toHaveAttribute("aria-expanded", "false");
+    expect(desplegar).toHaveAccessibleName("Ver detalle de Beto Repartidor");
+  });
+
+  it("R755/R760: el desplegar va a la derecha de la tarjeta y mide 44 × 44 px en el teléfono", () => {
+    montar();
+    const desplegar = within(filasHistorico()[0]).getByRole("button", { name: "Ver detalle de Ana Mensajera" });
+    const derecha = ancestroConClase(desplegar, "max-md:[&_table]:[direction:rtl]");
+    expect(derecha, "la tabla no se escribe de derecha a izquierda").not.toBeNull();
+    expect(clases(derecha!)).toEqual(
+      expect.arrayContaining(["max-md:[&_td]:[direction:ltr]", "max-md:[&_th]:[direction:ltr]"]),
+    );
+    const tactil = ancestroConClase(desplegar, "max-md:[&_button[aria-expanded]]:min-h-11");
+    expect(tactil, "falta DESPLEGABLE_TACTIL").not.toBeNull();
+    expect(clases(tactil!)).toContain("max-md:[&_button[aria-expanded]]:min-w-11");
+  });
+
+  it("R758/R759: el nombre envuelve; el monto y el porcentaje van en columna fija", () => {
+    montar();
+    const [ana] = filasHistorico();
+    expect(clases(within(ana).getByText("1º · Ana Mensajera"))).toEqual(
+      expect.arrayContaining(["min-w-0", "whitespace-normal", "wrap-anywhere"]),
+    );
+    for (const dato of ["₡5.000", "100.0%"]) {
+      expect(clases(within(ana).getByText(dato)), dato).toEqual(
+        expect.arrayContaining(["shrink-0", "whitespace-nowrap", "tabular-nums"]),
+      );
+    }
+  });
+
+  it("R764: las tarjetas en el orden en que llegaron, sin reordenar", () => {
+    const desordenadas = [FILAS[2], FILAS[0], FILAS[1]];
+    montar({ ...SNAPSHOT, filas: desordenadas });
+    const caro = screen.getByText("— · Caro Sin Ruta");
+    const ana = screen.getByText("1º · Ana Mensajera");
+    const beto = screen.getByText("2º · Beto Repartidor");
+    expect(antes(caro, ana)).toBe(true);
+    expect(antes(ana, beto)).toBe(true);
+  });
+
+  it("R763: los dos vacíos de hoy, con sus textos, también en el teléfono", () => {
+    const { unmount } = montar({ ...SNAPSHOT, filas: [] });
+    expect(
+      screen.getByText("Ese día no hubo actividad: ningún mensajero tuvo entregas ni asignaciones."),
+    ).toBeInTheDocument();
+    unmount();
+    montar(null);
+    expect(screen.getByText("No se generó el snapshot de esta fecha.")).toBeInTheDocument();
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Descargar/ })).toBeNull();
+  });
+
+  it("R766: «Descargar» a todo el ancho y 44 px en el teléfono, encima de la lista", () => {
+    montar();
+    const descargar = screen.getByRole("button", { name: `Descargar Ranking del día ${FECHA}` });
+    const seccion = ancestroConClase(
+      tablaHistorico(),
+      "max-md:[&_[data-slot=button][aria-label^=Descargar]]:w-full",
+    );
+    expect(seccion, "la sección de la tabla no lleva DESCARGA_MOVIL").not.toBeNull();
+    expect(clases(seccion!)).toEqual(
+      expect.arrayContaining([
+        "max-md:[&_div:has(>[data-slot=button][aria-label^=Descargar])]:w-full",
+        "max-md:[&_[data-slot=button][aria-label^=Descargar]]:min-h-11",
+      ]),
+    );
+    expect(seccion!.contains(descargar)).toBe(true);
+    expect(descargar.getAttribute("data-slot")).toBe("button");
+    expect(antes(descargar, tablaHistorico())).toBe(true);
+  });
+});
+
+describe("SLT-162 — Histórico en escritorio (R756)", () => {
+  beforeEach(() => simularAncho(1280));
+  afterEach(() => vi.restoreAllMocks());
+
+  it("R756: las siete columnas de hoy, en su orden, sin desplegar", () => {
+    montar();
+    expect(within(tablaHistorico()).getAllByRole("columnheader").map((c) => c.textContent)).toEqual([
+      "Puesto",
+      "Posición",
+      "Mensajero",
+      "% del día",
+      "Entregado",
+      "Asignados",
+      "Premio",
+    ]);
+    expect(within(tablaHistorico()).queryByRole("button", { name: /^Ver detalle/ })).toBeNull();
+    expect(screen.queryByText("1º · Ana Mensajera")).toBeNull();
+  });
+});
+
+describe("SLT-162 — la fecha como filtro de BuscadorFiltros (R757)", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it.each([360, 1280])("a %i px: una sola barra, sin búsqueda, con la fecha dentro y siempre visible", (ancho) => {
+    simularAncho(ancho);
+    propsBuscador.length = 0;
+    montar();
+    const barras = screen.getAllByTestId("buscador-filtros");
+    expect(barras).toHaveLength(1);
+    const fecha = screen.getByLabelText("Fecha del histórico");
+    expect(barras[0].contains(fecha)).toBe(true);
+    // Su rótulo visible está dentro de la misma barra.
+    expect(within(barras[0]).getByText("Fecha del histórico").tagName).toBe("LABEL");
+    // Sin campo de búsqueda ni «Filtros»: la fecha no se esconde detrás de nada.
+    expect(screen.queryByRole("searchbox")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Filtros/ })).toBeNull();
+    // Montada tal cual: sin buscador, sin leer la URL y táctil.
+    const ultima = propsBuscador[propsBuscador.length - 1];
+    expect(ultima.buscador).toBe(false);
+    expect(ultima.leerDeUrl).toBe(false);
+    expect(ultima.tactil).toBe(true);
+    // Ningún otro campo de filtro fuera de la barra.
+    const campos = Array.from(document.querySelectorAll("input"));
+    expect(campos.every((c) => barras[0].contains(c))).toBe(true);
+  });
+
+  it("en el teléfono el campo de fecha ocupa el ancho y mide 44 px", () => {
+    simularAncho(360);
+    montar();
+    expect(clases(screen.getByLabelText("Fecha del histórico"))).toEqual(
+      expect.arrayContaining(["max-md:h-11", "max-md:w-full"]),
+    );
+  });
+
+  it("elegir una fecha navega a /ranking/historico?fecha=<fecha>, también sin snapshot", () => {
+    simularAncho(360);
+    montar(null);
+    fireEvent.change(screen.getByLabelText("Fecha del histórico"), {
+      target: { value: "2026-08-01" },
+    });
+    expect(pushMock).toHaveBeenCalledWith("/ranking/historico?fecha=2026-08-01");
   });
 });

@@ -421,7 +421,7 @@ interface Cola {
   contadorRol?: "group" | "tablist";
   /**
    * SLT-102: cómo se lee el contador. Por defecto «(n)»; la cola única lo pinta como el canvas,
-   * detrás del nombre de la pestaña («Pendientes 60»).
+   * detrás del nombre de la pestaña («Pendientes (60)»).
    */
   textoContador?: (n: number) => string;
   /** Nombre del control de descarga («Descargar …», R13). */
@@ -443,7 +443,7 @@ const COLAS: Cola[] = [
     rol: "table",
     contadorEn: "Cierres del día por estado",
     contadorRol: "tablist",
-    textoContador: (n) => `Pendientes ${n}`,
+    textoContador: (n) => `Pendientes (${n})`,
     textoFila: (i) => `Mensajero ${etiqueta(i)}`,
     montar: () => {
       const todos = conjunto(cierreAdmin);
@@ -479,7 +479,7 @@ const COLAS: Cola[] = [
     rol: "table",
     contadorEn: "Cierres de bodega por estado",
     contadorRol: "tablist",
-    textoContador: (n) => `Por conciliar ${n}`,
+    textoContador: (n) => `Por conciliar (${n})`,
     descarga: "Cierres de bodega pendientes",
     textoFila: (i) => `Satélite ${etiqueta(i)}`,
     montar: () => {
@@ -515,7 +515,7 @@ const COLAS: Cola[] = [
     rol: "table",
     contadorEn: "Cierre de bodega por etapa",
     contadorRol: "tablist",
-    textoContador: (n) => `A consolidar ${n}`,
+    textoContador: (n) => `A consolidar (${n})`,
     textoFila: (i) => `Mensajero ${etiqueta(i)}`,
     montar: () => montarConsolidacion(),
   },
@@ -633,7 +633,7 @@ function tablaDe(cola: Cola, trasModal = false): HTMLElement {
  * retiró por redundante, dentro de su conmutador de pestañas. Lo que se afirma sobre él no
  * cambia en un caso ni en el otro.
  */
-/** El texto del contador de una cola para `n` (SLT-102: el de la cola única es «Pendientes n»). */
+/** El texto del contador de una cola para `n` (SLT-102: el de la cola única es «Pendientes (n)», SLT-152). */
 function contador(cola: Cola, n: number): string {
   return cola.textoContador ? cola.textoContador(n) : `(${n})`;
 }

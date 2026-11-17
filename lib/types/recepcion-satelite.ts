@@ -8,6 +8,7 @@ import type { ListarPaginadoResult } from "@/lib/types/listado-paginado";
 import { paginaInputSchema } from "@/lib/types/pagina-input";
 import { conRefinesDeCreacion, ordenFilterBase } from "@/lib/types/orden";
 import { ESTADOS_BODEGA_SATELITE } from "@/lib/utils/estados-bodega-satelite";
+import type { ResumenRecepcion } from "@/lib/interfaces/repositories/IOrdenRepository";
 
 // Feature 33 — validacion de borde (zod) de la recepcion por QR y tipos de
 // resultado expuestos por las Server Actions. El schema se usa en la action; los
@@ -207,12 +208,12 @@ export type ListarRecepcionSateliteResult =
   | { status: "unauthenticated" }; // R3
 
 export type RecibirResult =
-  | { status: "ok"; ordenId: string; estado: "en_bodega_satelite" }
+  | { status: "ok"; ordenId: string; estado: "en_bodega_satelite"; resumen?: ResumenRecepcion } // SLT-167 (R710)
   | { status: "forbidden" }
   | { status: "sin_zona" }
   | { status: "zona_ajena" }
   | { status: "estado_invalido"; estado: string }
-  | { status: "ya_recibida" }
+  | { status: "ya_recibida"; resumen?: ResumenRecepcion } // SLT-167 (R711)
   | { status: "no_encontrada" }
   | { status: "validation_error"; fieldErrors: Record<string, string[]> }
   | { status: "conflict" }

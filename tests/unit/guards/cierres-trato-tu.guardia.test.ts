@@ -292,7 +292,7 @@ const DESCARGA = "app/(app)/cierres-admin/_components/DescargarGestionesDialog.t
 const PAGO = "app/(app)/cierres-admin/_components/pago-mensajero-labels.ts";
 const ERROR = "app/(app)/cierres-admin/error.tsx";
 const CIERRE_LABELS = "app/(app)/cierres-admin/_components/cierre-labels.ts";
-const FILTROS = "app/(app)/cierres-admin/_components/FiltrosCierresBarra.tsx";
+const COLA_PROPIA_VISTA = "components/private/cierres/cola/cola-propia-vista.ts";
 const CIERRE_DIA = "app/(app)/cierre-dia/_components/CierreDiaModule.tsx";
 const FILA_LABELS = "components/private/cierres/fila/fila-gestion-labels.ts";
 const CONCILIACION = "components/shared/conciliacion/conciliacion-labels.ts";
@@ -460,7 +460,10 @@ const ANEXO_A: readonly FilaAnexo[] = [
     ],
     veces: 1,
   },
-  { fila: "I1", archivo: FILTROS, tramos: ["Usa los filtros para acotar los cierres"], veces: 1 },
+  // SLT-153 «Cabecera del detalle del cierre con rótulos y folio buscable» (R456): el campo de la barra
+  // dejó de decir «Usa los filtros para acotar los cierres» y busca por folio con el placeholder de
+  // `/cierre-dia`, que vive en `cola-propia-vista.ts` y la barra importa.
+  { fila: "I1", archivo: COLA_PROPIA_VISTA, tramos: ["Busca por folio"], veces: 1 },
   { fila: "J1", archivo: CIERRE_DIA, tramos: ["No puedes deshacer esta gestión."], veces: 1 },
   { fila: "J2", archivo: CIERRE_DIA, tramos: ["No se pudo deshacer la gestión. Inténtalo de nuevo."], veces: 1 },
   {

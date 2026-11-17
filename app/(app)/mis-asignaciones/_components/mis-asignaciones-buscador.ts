@@ -8,6 +8,13 @@
 import { normalizeName } from "@/lib/utils/normalize";
 
 /**
+ * SLT-156 (R506): nombre accesible y placeholder del buscador de guías de Recoger en bodega y
+ * Recolección (Reparto pinta el mismo texto). El placeholder enumera lo que el campo alcanza.
+ */
+export const BUSCADOR_GUIAS_LABEL = "Buscar guías";
+export const BUSCADOR_GUIAS_PLACEHOLDER = "Guía, remisión, teléfono o nombre";
+
+/**
  * Lo UNICO que el buscador necesita de una orden. Tipar por forma —y no por
  * `MiAsignacionDTO`— permite reusarlo tal cual en la bodega satelite
  * (`RecepcionSateliteDTO`), que trae los mismos cuatro campos buscables.

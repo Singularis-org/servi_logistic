@@ -132,16 +132,15 @@ const GESTIONES_N1 = [
 function cifrasN1(cierreId: string, pagoEntregado: string | null) {
   return {
     cierreId,
-    pagoTienda: "94350.00",
-    ganaLaTienda: "92090.00",
+    pagoTienda: "92090.00", // SLT-169 R620: 100 000 − 7 910 (antes 94 350)
     totalFacturado: "7910.00",
     ivaFacturado: "910.00",
     netoEmpresa: "3500.00",
     gestiones: 2,
     pagoEntregado,
     partesPorTienda: [
-      { tiendaNombre: "Tienda Norte", recaudado: "100000.00", pagoTienda: "94350.00", ganaLaTienda: "94350.00" },
-      { tiendaNombre: "Tienda Sur", recaudado: "0.00", pagoTienda: "0.00", ganaLaTienda: "-2260.00" },
+      { tiendaNombre: "Tienda Norte", recaudado: "100000.00", pagoTienda: "94350.00" },
+      { tiendaNombre: "Tienda Sur", recaudado: "0.00", pagoTienda: "-2260.00" }, // R622
     ],
   };
 }
@@ -225,6 +224,21 @@ describe("SLT-140 (b) R378/R383 — conjunto mixto", () => {
     expect(r.items.find((c) => c.cierreId === "n-a")?.pendientePagoMensajero).toBe("1800.00");
   });
 
+  it("SLT-174 (R651/R652): ni el DTO ni sus partes llevan `ganaLaTienda`; cada parte, tres claves", async () => {
+    const { svc } = montar([nuevo("n-a")], { "n-a": GESTIONES_N1 });
+    const r = await svc.listarHistoricoCierresAdminCompleto(MAESTRO);
+    if (r.status !== "ok") throw new Error(`status ${r.status}`);
+    const cifras = r.cifrasModeloNuevo?.[0];
+    if (cifras === undefined || cifras.partesPorTienda === null) throw new Error("esperaba cifras de la central");
+    expect(cifras).not.toHaveProperty("ganaLaTienda");
+    expect(cifras.pagoTienda).toBe("92090.00"); // 100 000 − 7 910, escrito a mano
+    expect(cifras.partesPorTienda).toHaveLength(2);
+    for (const parte of cifras.partesPorTienda) {
+      expect(parte).not.toHaveProperty("ganaLaTienda");
+      expect(Object.keys(parte).sort()).toEqual(["pagoTienda", "recaudado", "tiendaNombre"]);
+    }
+  });
+
   it("la clasificacion la da `incluyeModeloNuevo`, no la marca de pago: un viejo con la marca no lleva cifras", async () => {
     const { svc } = montar([fila({ cierreId: "v-marca", pagoIndependienteEfectivo: true }), nuevo("n-a")], {
       "n-a": GESTIONES_N1,
@@ -235,16 +249,41 @@ describe("SLT-140 (b) R378/R383 — conjunto mixto", () => {
   });
 });
 
-describe("SLT-140 (c) R382 — la satelite no recibe «Pago entregado»", () => {
-  it("`pagoEntregado` es null en todas sus entradas, con el alcance de su zona", async () => {
+/**
+ * SLT-161 «Descargas de la satélite sin el dinero de la empresa» (R481): lo que la satélite recibe de
+ * N1. Solo `cierreId` y el número de gestiones; lo demás es de la empresa, en `null`. «Pago entregado»
+ * ya era `null` para ella (SLT-140 R382).
+ */
+function cifrasN1Satelite(cierreId: string) {
+  return {
+    cierreId,
+    pagoTienda: null,
+    totalFacturado: null,
+    ivaFacturado: null,
+    netoEmpresa: null,
+    gestiones: 2, // G1 y G2
+    pagoEntregado: null,
+    partesPorTienda: null,
+  };
+}
+
+describe("SLT-161 (R481) — la satelite no recibe las cifras de la empresa (SLT-140 R382: ni «Pago entregado»)", () => {
+  it("R481: cifras de la empresa en null para la satélite", async () => {
     const { svc, findGestionesDeCierresEnAlcance } = montar(
-      [nuevo("s1", { destinoTipo: "bodega_satelite", destinoZonaId: "z-a" })],
-      { s1: GESTIONES_N1 },
+      [
+        nuevo("s1", { destinoTipo: "bodega_satelite", destinoZonaId: "z-a" }),
+        nuevo("s2", { destinoTipo: "bodega_satelite", destinoZonaId: "z-a", estado: "solicitado", resueltoAt: null }),
+      ],
+      { s1: GESTIONES_N1, s2: GESTIONES_N1 },
     );
     const r = await svc.listarHistoricoCierresAdminCompleto(SATELITE);
     if (r.status !== "ok") throw new Error(`status ${r.status}`);
-    expect(r.cifrasModeloNuevo).toEqual([cifrasN1("s1", null)]);
+    expect(r.cifrasModeloNuevo).toEqual([cifrasN1Satelite("s1")]);
     expect(findGestionesDeCierresEnAlcance.mock.calls[0][1]).toEqual({ destinoTipo: "bodega_satelite", destinoZonaId: "z-a" });
+    // Pendientes: el mismo corte (las dos pestañas pasan por `completoConCifras`).
+    const cola = await svc.listarPendientesCierresAdminCompleto(SATELITE);
+    if (cola.status !== "ok") throw new Error(`status ${cola.status}`);
+    expect(cola.cifrasModeloNuevo).toEqual([cifrasN1Satelite("s2")]);
   });
 });
 

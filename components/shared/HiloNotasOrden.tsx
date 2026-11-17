@@ -249,7 +249,7 @@ export function HiloNotasOrden({
               data-propia={nota.esPropia ? "true" : "false"}
               className={`flex flex-col gap-1 rounded-xl border px-3 py-2 ${
                 nota.esPropia
-                  ? "self-end border-brand/40 bg-brand-soft/40 text-right"
+                  ? "self-end border-brand/40 bg-accent/40 text-right"
                   : "self-start border-border bg-muted/30 text-left"
               }`}
             >

@@ -4,7 +4,20 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { EscanerModal } from "@/components/shared/EscanerModal";
+import { ESCANER_LABEL_GUIA, EscanerModal } from "@/components/shared/EscanerModal";
+import { EscanerGuiaCard } from "@/components/shared/EscanerGuiaCard";
+
+// La tarjeta REAL (R571 con la tarjeta de verdad) monta `QrScanner`, que pide un toast.
+vi.mock("@/hooks/useToast", () => ({
+  useToast: () => ({
+    success: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+    warning: vi.fn(),
+    show: vi.fn(),
+    dismiss: vi.fn(),
+  }),
+}));
 
 // El disparador de la tarjeta de escaneo: la abre en un MODAL y la cierra. Lo que se fija
 // aquí es el CONTRATO (texto del disparador, montaje/desmontaje del contenido y las acciones
@@ -18,6 +31,25 @@ import { EscanerModal } from "@/components/shared/EscanerModal";
 afterEach(() => cleanup());
 
 describe("EscanerModal", () => {
+  // SLT-156 «PWA de los mensajeros: tablas usables en el móvil» (A6; R500): el disparador único de
+  // las pantallas del mensajero. El texto es el contrato (aprobado por Carlos): va tecleado.
+  it("R500: con la etiqueta «Escanear o escribir guía» arranca cerrado y abre al pulsar", async () => {
+    const user = userEvent.setup();
+    render(
+      <EscanerModal label={ESCANER_LABEL_GUIA}>
+        <p>tarjeta de escaneo</p>
+      </EscanerModal>,
+    );
+
+    const disparador = screen.getByRole("button", { name: "Escanear o escribir guía" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByText("tarjeta de escaneo")).toBeNull();
+
+    await user.click(disparador);
+    expect(screen.getByRole("dialog", { name: "Escanear o escribir guía" })).toBeInTheDocument();
+    expect(screen.getByText("tarjeta de escaneo")).toBeInTheDocument();
+  });
+
   it("arranca cerrado: el contenido no está montado", () => {
     render(
       <EscanerModal>
@@ -26,9 +58,26 @@ describe("EscanerModal", () => {
     );
 
     expect(
-      screen.getByRole("button", { name: /Recibir paquete/ }),
+      screen.getByRole("button", { name: "Recibir paquete" }),
     ).toBeInTheDocument();
     expect(screen.queryByText("tarjeta de escaneo")).toBeNull();
+  });
+
+  it("SLT-160 (R604): con `soloIcono` el disparador es un icono con `label` de nombre; abre igual", async () => {
+    const user = userEvent.setup();
+    render(
+      <EscanerModal label="Escanear con cámara" soloIcono>
+        <p>tarjeta de escaneo</p>
+      </EscanerModal>,
+    );
+
+    const boton = screen.getByRole("button", { name: "Escanear con cámara" });
+    expect(boton).toHaveTextContent("");
+    expect(screen.queryByText("tarjeta de escaneo")).toBeNull();
+
+    await user.click(boton);
+    expect(await screen.findByRole("dialog")).toHaveAccessibleName("Escanear con cámara");
+    expect(screen.getByText("tarjeta de escaneo")).toBeInTheDocument();
   });
 
   it("al pulsar abre el modal con el contenido dentro", async () => {
@@ -39,7 +88,7 @@ describe("EscanerModal", () => {
       </EscanerModal>,
     );
 
-    await user.click(screen.getByRole("button", { name: /Recibir paquete/ }));
+    await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
 
     const modal = await screen.findByRole("dialog");
     expect(modal).toHaveAccessibleName("Recibir paquete");
@@ -86,7 +135,7 @@ describe("EscanerModal", () => {
       </EscanerModal>,
     );
 
-    await user.click(screen.getByRole("button", { name: /Recibir paquete/ }));
+    await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
     expect(await screen.findByText("tarjeta de escaneo")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /Cerrar/ }));
@@ -117,7 +166,7 @@ describe("EscanerModal", () => {
     // Cerrado de entrada: la cámara ni siquiera llegó a montarse.
     expect(screen.queryByText("cámara")).toBeNull();
 
-    await user.click(screen.getByRole("button", { name: /Recibir paquete/ }));
+    await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
     expect(await screen.findByText("cámara")).toBeInTheDocument();
     expect(apagarCamara).not.toHaveBeenCalled();
 
@@ -125,5 +174,89 @@ describe("EscanerModal", () => {
 
     await vi.waitFor(() => expect(apagarCamara).toHaveBeenCalled());
     expect(screen.queryByText("cámara")).toBeNull();
+  });
+});
+
+// SLT-158 «Entrada de escaneo para pistola» (R571, D1): con puntero fino (escritorio, pistola)
+// el foco inicial cae en el campo de la guía, para que la pistola escriba ahí sin un clic
+// previo; con puntero táctil no, porque en el teléfono abriría el teclado sobre el visor.
+describe("EscanerModal — foco inicial según el puntero (SLT-158)", () => {
+  const matchMediaOriginal = window.matchMedia;
+
+  function conPuntero(fino: boolean) {
+    window.matchMedia = ((consulta: string) => ({
+      matches: fino && consulta === "(pointer: fine)",
+      media: consulta,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    })) as unknown as typeof window.matchMedia;
+  }
+
+  afterEach(() => {
+    window.matchMedia = matchMediaOriginal;
+  });
+
+  // Un botón ANTES del campo: así el foco en el campo no es el "primer tabulable" por defecto
+  // del Dialog, sino la elección del modal.
+  const tarjeta = (
+    <div>
+      <button type="button">Escanear con cámara</button>
+      <input aria-label="Número de guía" data-escaner-campo="" />
+    </div>
+  );
+
+  it("R571: con puntero fino, al abrir el foco queda en el campo «Número de guía»", async () => {
+    conPuntero(true);
+    const user = userEvent.setup();
+    render(<EscanerModal>{tarjeta}</EscanerModal>);
+
+    await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
+
+    const campo = await screen.findByLabelText("Número de guía");
+    await vi.waitFor(() => expect(document.activeElement).toBe(campo));
+  });
+
+  // Review de SLT-158, M7: con la tarjeta REAL. Si `EscanerGuiaCard` perdiera la marca
+  // `data-escaner-campo` de su campo, el modal no lo encontraría y este caso se pondría rojo.
+  it("R571: con la EscanerGuiaCard real y puntero fino, el foco queda en su campo", async () => {
+    conPuntero(true);
+    const user = userEvent.setup();
+    render(
+      <EscanerModal>
+        {/* Un tabulable ANTES de la tarjeta: sin él, el campo sería el primero y el foco por
+            defecto del Dialog ya caería ahí, con o sin la marca. */}
+        <button type="button">Antes de la tarjeta</button>
+        <EscanerGuiaCard
+          titulo="Recibir paquete"
+          descripcion="Escanea o ingresa el número de guía"
+          onDecoded={() => ({ tipo: "acierto" })}
+          manual={{ onSubmit: () => ({ tipo: "acierto" }), submitLabel: "Recibir" }}
+        />
+      </EscanerModal>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
+
+    const campo = await screen.findByLabelText("Número de guía");
+    await vi.waitFor(() => expect(document.activeElement).toBe(campo));
+  });
+
+  it("R571: con puntero táctil, al abrir el foco NO va al campo", async () => {
+    conPuntero(false);
+    const user = userEvent.setup();
+    render(<EscanerModal>{tarjeta}</EscanerModal>);
+
+    await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
+
+    const campo = await screen.findByLabelText("Número de guía");
+    // Se espera a que el Dialog asiente su foco inicial antes de afirmar dónde NO está.
+    await vi.waitFor(() =>
+      expect(screen.getByRole("dialog").contains(document.activeElement)).toBe(true),
+    );
+    expect(document.activeElement).not.toBe(campo);
   });
 });
