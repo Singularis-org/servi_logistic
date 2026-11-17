@@ -66,6 +66,24 @@ Tests: `tests/components/RankingModule.test.tsx`, `RankingHistoricoModule.test.t
 - Desplegar del Histórico: el canvas lo pone en la línea del nombre; aquí ocupa la columna derecha de la
   tarjeta, alineado arriba (misma posición visual, sin tocar la `DataTable`).
 
+## Review M1 / m3 (tras `9d79714d`)
+
+- **M1 (E2E (a) rojo en CI, run 43998053418):** la siembra tenía 3 mensajeros y el del nombre largo (50 %)
+  quedaba 3º EN el podio, así que `:173` no encontraba su fila en «Resto del ranking diario». Ahora siembra
+  CINCO de la central: cuatro con 2 de 2 (100 %) y el largo con 1 de 2. Razonamiento (no se pudo correr en
+  local, sin build ni dev server; lo valida CI): el podio da las posiciones 1-3, en el orden del servidor
+  (% desc), a los ELEGIBLES (`asignadas >= RANKING_MIN_ASIGNADAS`, por defecto 1, y al menos una entrega).
+  Si el largo es elegible, los cuatro de arriba también (mismas asignadas, más %) y llenan el podio; si no
+  lo es, no tiene posición. En los dos casos cae en el resto, y con `limite` 10 del mensajero sigue visible.
+- Revisado que (a), tras `:173`, sigue verificando: R767 (`sinSolapes` de la fila propia y «Tú»), R758
+  (`sinElipsis` de podio, Ranking del día y Premios), R768 (`letraMinima` ≥ 12 del podio), R750/R759
+  (tarjeta con «Tú» y `sinSolapes`), R769 (`tactil` del buscador), R766 (`descargaAnchaEncima`) y R761
+  (`sinDesborde`). El 1º del podio existe (el premio 1 tiene ocupante), así que `premio1` tiene sus tres
+  `data-columna`.
+- **m3 (foco del Histórico): no se cambia.** El botón de desplegar es el ÚNICO control enfocable de la fila,
+  así que no hay otro orden posible dentro de ella; moverlo detrás de la tarjeta en el DOM exige tocar la
+  `DataTable` (pone el botón en la primera columna). Queda anotado.
+
 ## Mapa R → test
 
 En `specs/SLT-162-ranking-mensajero-tarjetas/requirements.md > Mapa R → test`, con el nombre de cada caso.

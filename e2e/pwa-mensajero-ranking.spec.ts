@@ -35,10 +35,13 @@ import {
  *  (c) `/ranking/historico?fecha=<ayer>` con un snapshot sembrado: la tarjeta sin «…», el desplegar a
  *      la derecha y a 44 px, el selector de fecha a todo el ancho y 44 px, «Descargar» a 44 px.
  *
- * DATOS: empresa nueva (`crearEscenarioReparto`, módulo `ranking` encendido por defecto) con tres
+ * DATOS: empresa nueva (`crearEscenarioReparto`, módulo `ranking` encendido por defecto) con CINCO
  * mensajeros de la CENTRAL (el ranking es de la central, SLT-124) y sus entregas del día por los
- * servicios reales; el del nombre largo con una entrega y una orden aún en reparto (queda el último,
- * en la lista del resto). Los premios —con la descripción larga— y el snapshot del Histórico se
+ * servicios reales: cuatro con 2 de 2 (100 %) y el del nombre largo con 1 de 2 (50 %). Así el largo
+ * queda 5º y cae en la lista del resto sea cual sea `RANKING_MIN_ASIGNADAS`: si es elegible (≥ min
+ * asignadas), los cuatro de arriba también lo son (tienen las mismas asignadas y más %) y ocupan el
+ * podio; si no lo es, no puede tener posición de podio. Con solo tres mensajeros quedaba 3º EN el podio
+ * y (a) no encontraba su fila del resto (review M1, run 43998053418). Los premios —con la descripción larga— y el snapshot del Histórico se
  * siembran con Prisma en la base desechable (precedente: `pwa-mensajero-recoger-recoleccion.spec.ts`).
  * Sin datos, los `expect` fallan: no se salta nada.
  */
@@ -99,6 +102,8 @@ test.describe("SLT-162 — Ranking del mensajero en tarjetas a 360 y 414 px", ()
     r = await crearEscenarioReparto("pwa-mensajero-ranking");
     const primero = await crearMensajero(r, "central");
     const segundo = await crearMensajero(r, "central");
+    const tercero = await crearMensajero(r, "central");
+    const cuarto = await crearMensajero(r, "central");
     largo = await crearMensajero(r, "central");
     const db = baseReparto();
     await db.usuario.update({
@@ -106,10 +111,12 @@ test.describe("SLT-162 — Ranking del mensajero en tarjetas a 360 y 414 px", ()
       data: { nombre: MENSAJERO_LARGO, primerApellido: null, segundoApellido: null },
     });
 
-    // Entregas del día: los dos primeros al 100 %; el largo con una de dos (queda el último).
-    await entregada(primero, 2000);
-    await entregada(primero, 2100);
-    await entregada(segundo, 2200);
+    // Entregas del día: cuatro al 100 % con 2 de 2; el largo con 1 de 2 (queda 5º, en el resto).
+    let monto = 2000;
+    for (const m of [primero, segundo, tercero, cuarto]) {
+      await entregada(m, monto++);
+      await entregada(m, monto++);
+    }
     await entregada(largo, 2300);
     await llevarA(r, await crearOrden(r, { zona: "central", montoCobrar: 2400 }), "en_reparto", {
       mensajero: largo,
