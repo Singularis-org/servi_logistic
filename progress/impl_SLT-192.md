@@ -63,3 +63,16 @@ el cierre Escape y el asa.
 ## Veredicto
 
 T1-T4 hechas, R880-R890 con test, typecheck/lint/vitest related en verde; falta T5 (gate + E2E en local).
+
+## Vuelta 2
+
+Arreglos de la review v1 (commit 30b043c8, solo en `e2e/pwa-mensajero-mapa.spec.ts`):
+- M1: en (a), «Mostrar mapa» se busca en la fila del aviso de ruta (DC2), no dentro del grupo «Mapa de ruta».
+- m2: en (b), tocar fuera de la hoja la cierra (R889).
+- m3: en (b), R888 se comprueba con la línea completa «Cantón · Distrito — dirección» (`exact: true`).
+- m1: T3 se desmarcó hasta correr el E2E; ya está corrido, así que T3 y T5 quedan `[x]`.
+
+Evidencia (corrida por el leader sobre HEAD 30b043c8):
+- Base desechable `servi_slt192_desechable`: `migrate deploy` + `db:seed` + `next build` (BUILD_EXIT=0).
+- `e2e/pwa-mensajero-mapa.spec.ts`: 3 passed (24.2 s), E2E_EXIT=0.
+- `./init.sh` (typecheck, lint, test:rapido, guardias): INIT_EXIT=0.
