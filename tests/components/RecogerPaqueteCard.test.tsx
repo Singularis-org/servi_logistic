@@ -721,3 +721,56 @@ describe("RecogerPaqueteCard — dos lecturas seguidas de la pistola (SLT-158)",
     expect(recogerMock).toHaveBeenNthCalledWith(2, { ordenIds: ["ord-2"] });
   });
 });
+
+// SLT-190 «Recoger y Recolección según el canvas» (R867, R869, R870, DS7) — el diálogo de Recoger:
+// arriba la barra con «Recoger paquete» y un solo «Cerrar» de 44 px; debajo cámara, «o» y campo, sin
+// el icono, un segundo título ni «Escanea o ingresa el número de guía». La sesión de SLT-168 sigue.
+describe("SLT-190 — barra del diálogo de Recoger", () => {
+  it("R867: barra con el título visible «Recoger paquete» y «Cerrar»; debajo cámara, «o» y campo; sin icono, segundo título ni descripción", async () => {
+    const user = userEvent.setup();
+    await renderAbierta(user);
+
+    const dialogo = screen.getByRole("dialog", { name: "Recoger paquete" });
+    const titulos = within(dialogo).getAllByText("Recoger paquete");
+    expect(titulos).toHaveLength(1);
+    expect(titulos[0]).not.toHaveClass("sr-only");
+    const cerrar = within(dialogo).getByRole("button", { name: "Cerrar" });
+    expect(titulos[0].parentElement).toBe(cerrar.parentElement);
+
+    const camara = within(dialogo).getByRole("button", { name: "Escanear con cámara" });
+    const campo = within(dialogo).getByLabelText("Número de guía");
+    expect(within(dialogo).getByText("o")).toBeInTheDocument();
+    for (const debajo of [camara, campo]) {
+      expect(titulos[0].compareDocumentPosition(debajo) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    }
+    expect(within(dialogo).queryByText("Escanea o ingresa el número de guía")).toBeNull();
+    // Un solo encabezado: el de la barra (el título del diálogo).
+    expect(within(dialogo).getAllByRole("heading")).toEqual([titulos[0]]);
+    expect(dialogo.querySelector("svg.lucide-package-check")).toBeNull();
+  });
+
+  it("R869: un solo «Cerrar», de 44 × 44 px (`size-11`); al pulsarlo se cierra y la cámara se apaga", async () => {
+    const user = userEvent.setup();
+    await renderAbierta(user);
+
+    const cerrar = screen.getAllByRole("button", { name: "Cerrar" });
+    expect(cerrar).toHaveLength(1);
+    expect(cerrar[0].className.split(/\s+/)).toContain("size-11");
+
+    await user.click(cerrar[0]);
+    await vi.waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.queryByRole("button", { name: "Cerrar cámara" })).toBeNull();
+  });
+
+  it("R870: conserva el nombre de la región, el botón de envío y la sesión continua (contadores y lecturas)", async () => {
+    const user = userEvent.setup();
+    recogerMock.mockResolvedValue({ status: "ok", recogidas: ["ord-1"] });
+    await renderAbierta(user);
+
+    expect(screen.getByRole("region", { name: "Recoger por número de guía o escaneo" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Recoger" })).toBeInTheDocument();
+    await tecleaYConfirma(user, "1001");
+    await vi.waitFor(() => expect(contador("Recogidas")).toBe("Recogidas1"));
+    expect(within(filas()[0]).getByText("Recogida")).toBeInTheDocument();
+  });
+});

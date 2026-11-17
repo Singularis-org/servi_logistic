@@ -30,6 +30,9 @@ import type { PosOrderCardProps } from "./PosOrderCard";
 // ruta directa, pestaña nueva, sin forzar permisos de GPS), no un botón decorativo. Al ser
 // un control interno, pulsarlo NO selecciona la orden de rebote (ver `pos-seleccion`).
 
+/** SLT-190 (B1): el (i) de la fila plegada de Recolección, con área táctil de 44 × 44 (16 + 2 × 14). */
+export const CLASE_INFO_TACTIL = "[&_button]:after:-inset-3.5";
+
 export function PosOrderCardDetalle({
   orden,
   total,
@@ -45,6 +48,8 @@ export function PosOrderCardDetalle({
   mensajero,
   compacta = false,
   filaReparto,
+  posicion,
+  filaRecoleccion,
 }: PosOrderCardProps) {
   // SLT-156 (R508): estado del despliegue de la vista compacta. Va arriba, antes de cualquier
   // retorno, por la regla de los hooks; la vista de siempre no lo lee.
@@ -81,6 +86,12 @@ export function PosOrderCardDetalle({
           : `Parada ${orden.secuenciaRuta} de ${total}`}
       </span>
       <span aria-hidden="true">{textoParada(orden)}</span>
+    </span>
+  ) : posicion !== undefined ? (
+    // SLT-190 (R855, R856, DS3): la posición en la lista visible, que no es una parada.
+    <span className="flex size-5 shrink-0 items-center justify-center rounded-md bg-navy text-[10px] font-black text-white">
+      <span className="sr-only">{`Orden ${posicion} de ${total}`}</span>
+      <span aria-hidden="true">{posicion}</span>
     </span>
   ) : null;
 
@@ -205,6 +216,19 @@ export function PosOrderCardDetalle({
             <span className={`text-sm font-bold text-foreground ${TEXTO_ENTERO}`}>
               {lineaAbajo}
             </span>
+            {filaRecoleccion ? (
+              <>
+                {/* SLT-190 (R862, R863, P3): la tienda (solo su nombre: su dirección no viaja) y,
+                    en «Recogidos en tienda hoy», « · Recogido a las {hora}». */}
+                {orden.tiendaNombre || filaRecoleccion.sufijo ? (
+                  <span className={`text-xs text-muted-foreground ${TEXTO_ENTERO}`}>
+                    {orden.tiendaNombre}
+                    {orden.tiendaNombre && filaRecoleccion.sufijo ? " · " : null}
+                    {filaRecoleccion.sufijo}
+                  </span>
+                ) : null}
+              </>
+            ) : null}
           </span>
           {verCobro ? (
             <span className={`flex flex-col items-end ${COLUMNA_FIJA}`}>
@@ -221,6 +245,22 @@ export function PosOrderCardDetalle({
             aria-hidden="true"
           />
         </button>
+
+        {filaRecoleccion ? (
+          // SLT-190 (R862, R864; decisión de Carlos sobre B1, 2026-11-17): el nombre VIGENTE del
+          // estado, en texto, con su botón de información (456 R18) como HERMANO de la fila, igual
+          // que en la fila del chat: un botón no anida otro, así que estado e (i) van FUERA del
+          // botón de la fila, debajo, alineados con su columna de texto. Tocar el (i) no despliega
+          // la tarjeta (no está dentro del disparador). Área táctil de 44 × 44: el pseudo-elemento
+          // del botón crece de 24 a 44 px sin ocupar caja (se aparta del canvas en ese icono).
+          <div className={`-mt-2 flex min-h-11 items-center pr-3 ${parada ? "pl-11" : "pl-3"}`}>
+            <EstadoConInfo
+              codigo={orden.estatusValue}
+              chipClassName="text-[11px] font-semibold text-muted-foreground"
+              className={CLASE_INFO_TACTIL}
+            />
+          </div>
+        ) : null}
 
         {abierta ? (
           <div

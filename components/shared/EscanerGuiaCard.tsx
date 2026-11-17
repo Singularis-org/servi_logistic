@@ -74,6 +74,13 @@ export interface EscanerGuiaCardProps {
   alLlegar?: (texto: string, origen: OrigenLectura) => void;
   /** SLT-159 (R593): lo que va debajo de cámara y campo (la lista de la sesión). */
   children?: ReactNode;
+  /**
+   * SLT-190 (R867, R868, DS7): la tarjeta va bajo la barra de título de `EscanerModal` (`titulo`),
+   * así que no pinta su encabezado (icono, título y descripción) ni su borde de arriba: la barra ya
+   * los dice. El nombre accesible de la región no cambia (`ariaLabel ?? titulo`, R870). Por
+   * defecto, `false`: los demás usos conservan su encabezado (R871).
+   */
+  sinEncabezado?: boolean;
 }
 
 /** Motivo si la superficie lanza en vez de devolver un resultado (p. ej., sin red). */
@@ -116,6 +123,7 @@ export function EscanerGuiaCard({
   continuo = false,
   alLlegar,
   children,
+  sinEncabezado = false,
 }: Readonly<EscanerGuiaCardProps>) {
   const inputId = useId();
   const campoRef = useRef<HTMLInputElement>(null);
@@ -228,22 +236,25 @@ export function EscanerGuiaCard({
       aria-busy={entrada.procesando || undefined}
       className={cn(
         "w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8",
+        sinEncabezado && "rounded-t-none border-t-0 pt-2 sm:pt-2",
         className,
       )}
     >
-      <div className="flex items-center gap-3">
-        <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-          <Icono className="size-5" aria-hidden="true" />
+      {sinEncabezado ? null : (
+        <div className="flex items-center gap-3">
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Icono className="size-5" aria-hidden="true" />
+          </div>
+          <div>
+            <h2 className="text-lg leading-tight font-semibold text-balance text-card-foreground">
+              {titulo}
+            </h2>
+            <p className="text-sm text-muted-foreground">{descripcion}</p>
+          </div>
         </div>
-        <div>
-          <h2 className="text-lg leading-tight font-semibold text-balance text-card-foreground">
-            {titulo}
-          </h2>
-          <p className="text-sm text-muted-foreground">{descripcion}</p>
-        </div>
-      </div>
+      )}
 
-      <div className="mt-6">
+      <div className={sinEncabezado ? undefined : "mt-6"}>
         {!formulario ? (
           camara
         ) : punteroFino ? (

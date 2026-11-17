@@ -52,7 +52,10 @@ export function PosOrderCardMosaico({
   secciones,
   acciones,
   mensajero,
+  posicion,
 }: PosOrderCardProps) {
+  // SLT-190 (DS3): la posición en la lista visible solo se pinta donde no hay ruta.
+  const conPosicion = !mostrarRuta && posicion !== undefined;
   // Estado del desplegable del detalle: UI efímera, de un solo consumidor.
   const [detalleAbierto, setDetalleAbierto] = useState(false);
   // FICHA 455 (R7/R8): el chip es el estado de la orden; activa/detalle/nota van en marcas aparte.
@@ -99,6 +102,13 @@ export function PosOrderCardMosaico({
             >
               {textoParada(orden)}
             </span>
+          ) : conPosicion ? (
+            /* SLT-190 (R855, R856): la posición en la lista, con nombre accesible propio; no es
+               una parada. */
+            <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-navy text-[11px] font-black text-white">
+              <span className="sr-only">{`Orden ${posicion} de ${total}`}</span>
+              <span aria-hidden="true">{posicion}</span>
+            </span>
           ) : null}
           <div className="min-w-0 leading-none">
             <p className={`font-mono text-xs font-bold tracking-wide text-foreground ${TEXTO_ENTERO}`}>
@@ -119,6 +129,10 @@ export function PosOrderCardMosaico({
                   )}{" "}
                   ·{" "}
                 </>
+              ) : conPosicion ? (
+                /* SLT-190 (R855): «{posición} de {total} · {peso}». El número ya se anuncia en la
+                   insignia de al lado; aquí se oculta para no leerlo dos veces. */
+                <span aria-hidden="true">{`${posicion} de ${total} · `}</span>
               ) : null}
               {formatPeso(orden.peso)}
             </p>
