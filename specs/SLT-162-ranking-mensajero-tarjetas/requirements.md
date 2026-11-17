@@ -239,7 +239,7 @@ Orden: T1 → (T2 ∥ T3) → T4 → T5 → T6. `[P]` = paralelizable con su her
   no un dato).
   *Hecho:* guardia en verde; mutación: devolver `truncate` al nombre del podio o `gap-1.5` al
   Histórico la pone en rojo.
-- [ ] **T5 — E2E** `e2e/pwa-mensajero-ranking.spec.ts` a 360 y 414 px (`ANCHOS_MOVIL`): módulo
+- [ ] **T5 — E2E** (escrito; sin correr en local por orden del leader, lo corre CI) `e2e/pwa-mensajero-ranking.spec.ts` a 360 y 414 px (`ANCHOS_MOVIL`): módulo
   `ranking` encendido, un mensajero con el nombre largo y entregas del día, premios con la descripción
   larga y un snapshot del Histórico sembrado con Prisma en la base desechable (precedente
   `e2e/pwa-mensajero-recoger-recoleccion.spec.ts`). Afirma `sinDesborde`, `sinElipsis` y `sinSolapes`
