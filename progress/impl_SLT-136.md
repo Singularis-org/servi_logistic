@@ -201,6 +201,51 @@ node scripts/check-perfil.mjs: exit 0
 Lint: cada subagente corrió `eslint` sobre todos los archivos que tocó, limpio en cada tanda. El `pnpm run lint`
 completo del implementer lo paró el sistema por falta de memoria (no es un fallo del lint); queda para el gate de CI.
 
+## Review vuelta 1 · correcciones (commit f5982fc8)
+
+- Menor 1: la plantilla del correo usa `periodoDeFactura` y `textoFacturaEmitida` de `lib/notificaciones/emitir.ts`
+  (un solo origen para campanita y correo). `periodoNumerico` (`resumen.ts`, va al navegador) no puede importar
+  emitir.ts ni al revés sin meter Prisma en el cliente o UI en el emisor; lo ata el test nuevo
+  `emitir-factura-emitida.test.ts > «SLT-136/R8, R22, R26 — campanita, correo y PDF dicen el mismo período»`
+  (6 pares de fechas con bordes de medianoche CR y `hasta − 1 ms`, control a mano, y frase del correo = campanita).
+  Salida: 7 archivos, 105 tests verdes (incluidas las guardias `pais-sin-literales`, `mi-plan-solo-maestro`,
+  `correos-sin-secretos`); typecheck limpio; eslint limpio.
+- Menor 2: nota en design §7.4 (importes como párrafos «Concepto: importe», sin bloque de lista en `componerCorreo`).
+- Menor 3: comentario de `datosDescargaDeLaEmpresa`: la cabecera se lee fuera de la foto `RepeatableRead`, inocuo con
+  factura cerrada; R15 detectaría un descuadre. Sin cambio de código.
+
+### Mayor 1: proyecto E2E `aislamiento` entero en local (HEAD f5982fc8)
+
+Base desechable nueva `servi_logistic_slt136_aisl` (`migrate deploy` + `db:seed`), `next build` nuevo con
+`NEXT_PUBLIC_APP_URL`/`APP_BASE_URL=http://localhost:3044`, como `gate.yml`. Comando:
+`CI=1 E2E_PUERTO=3044 pnpm exec playwright test --project=aislamiento --reporter=list` (con `CI=1`: `retries: 1`,
+`failOnFlakyTests`, `forbidOnly`, como en CI).
+
+Specs: `plataforma-vacia` (superadmin-arranque, superadmin-empresas) y `aislamiento` (analitica-roles, auth,
+cobro-plataforma-sl40, dos-empresas-humo, integraciones-por-empresa, login-varias-empresas, marca,
+mi-plan-cambiar-plan, pago-plataforma-sl45, planes-costeo, planes-superadmin, rastreo-publico, reporte-de-bugs,
+tarifas-maqueta, wallet-iva-aparte-sl39, zona-especial-dos-empresas, zonas-crear-sin-costos).
+
+| Corrida | passed | failed | flaky | skipped | Duración |
+|---|---|---|---|---|---|
+| 1 | 99 | 3 | 0 | 0 | 10,2 min |
+| 2 | 98 | 3 | 1 | 0 | 20,5 min |
+| 3 | 102 | 0 | 0 | 0 | 6,8 min |
+| 4 | 102 | 0 | 0 | 0 | 12,3 min |
+
+Salida real de las dos últimas (seguidas, misma base): `102 passed (6.8m)` y `102 passed (12.3m)`.
+
+Rojos de las corridas 1-2, no de SLT-136:
+- `marca.spec.ts:294` y `rastreo-publico.spec.ts:86`/`:115`: `page.goto("/")` no recibe `load` en 30 s porque
+  `/_next/image?url=/landing/*.jpg` queda sin respuesta con la máquina cargada. `superadmin-arranque.spec.ts:72`
+  (flaky en la corrida 2, la más lenta): timeout preparando `page`.
+- Evidencia: el diff contra el merge-base `a9471ed9` no toca `app/_landing`, `app/page.tsx`, `public/landing`,
+  `next.config.ts`, `package.json`, `playwright.config.ts` ni esas specs (en marca solo se añade `MARCA_FACTURA`).
+  Esas specs solas pasan sobre el mismo build (9 passed; con `plataforma-vacia` + `dos-empresas-humo`, 25 passed).
+  El subconjunto previo sobre el merge-base exportado también pasa (42 passed). Las corridas 3 y 4 pasan enteras.
+  En CI, el run 44164952802 sobre f5982fc8 da `e2e (aislamiento)` y `gate-completo` en success.
+- Logs: `aisl-e2e{,-2,-3,-4}.log` en el scratchpad de la sesión.
+
 ## Mapa R → test (R1–R33)
 
 | R | Test |

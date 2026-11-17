@@ -145,3 +145,61 @@ E2E afectados corridos en local.
 ## Para la vuelta 2
 
 Solo el mayor 1: la salida real de los E2E afectados en la bitácora. Los menores no bloquean.
+
+## Vuelta 2 (acotada a 84f5b210..cf0b79dd)
+
+### Veredicto: OK
+
+El mayor de la vuelta 1 está resuelto y los menores 1 a 3 también. No hay regresiones en f5982fc8. Queda un hallazgo
+de proceso: el PR se mergeó antes de esta vuelta.
+
+### Checklist
+
+- [x] **Mayor 1 (E2E afectados).** `progress/impl_SLT-136.md > Mayor 1` registra cuatro corridas del proyecto
+      `aislamiento` entero, que incluye `plataforma-vacia`, `dos-empresas-humo`, `mi-plan-cambiar-plan`,
+      `planes-superadmin` y las otras specs pedidas. Se corrieron sobre una base desechable nueva, con `next build` y
+      `NEXT_PUBLIC_APP_URL` como en `gate.yml` y con `CI=1`. Las corridas 3 y 4, seguidas, dan `102 passed`.
+- [x] **Rojos de las corridas 1-2 (`marca`, `rastreo-publico`, flaky `superadmin-arranque`): no son de esta ficha.**
+      Lo verifiqué yo; no tomé la afirmación de la bitácora.
+  - `git diff --name-only a9471ed9 f5982fc8` (`a9471ed9` es ancestro de HEAD) no toca `app/_landing`,
+    `app/page.tsx`, `public/landing`, `next.config.*`, `package.json`, `pnpm-lock`, `playwright.config.ts`, el
+    middleware ni esas specs.
+  - En esa zona solo tocan `e2e/facturas-plataforma.spec.ts` (propia), `lib/config/marca.ts` (solo se añade
+    `MARCA_FACTURA`, un export nuevo) y `public/brand/logo-singularis.png` (nuevo, no es de la landing).
+  - El síntoma descrito no sale de este diff: timeout de `load` en `/` por `/_next/image?url=/landing/*.jpg`.
+  - El CI lo confirma: el run 44164952802 sobre `f5982fc8` da `success` en `e2e (aislamiento)`, `e2e (dinero)`,
+    `e2e (reparto)`, los tres shards de vitest, `estatico` y `gate-completo` (`gh run view`).
+- [x] **Menor 1.**
+  - `FACTURA_EMITIDA_TEXTOS.periodo` es ahora `textoFacturaEmitida` (la misma función, no una copia).
+  - La plantilla usa `periodoDeFactura`.
+  - `periodoNumerico` (PDF, navegador) sigue siendo una segunda implementación. Está justificado: importar
+    `emitir.ts` arrastra `NotificacionRepository`/Prisma al cliente.
+  - El test nuevo las ata con 6 pares de bordes (medianoche CR, `hasta − 1 ms`, fin de mes, cambio de año, febrero,
+    un intervalo de 1 ms) y tiene controles con valor esperado escrito a mano.
+  - No es un test vacío: comprueba la igualdad de funciones y la frase dentro de `correo.text`.
+- [x] **Menor 2.** Nota en design §7.4 con el motivo: `componerCorreo` no tiene bloque de lista, y siguen los mismos
+      conceptos en el mismo orden.
+- [x] **Menor 3.** El comentario de `datosDescargaDeLaEmpresa` ya dice que la cabecera se lee fuera de la foto y por
+      qué es inocuo. No cambia código.
+- [x] **Menor 4 (lint completo).** Cubierto por `gate-completo` en verde en CI sobre `f5982fc8`.
+- [x] **Regresiones de f5982fc8.**
+  - El import nuevo `factura-emitida.ts → lib/notificaciones/emitir.ts` no crea ciclo: `emitir.ts` no importa
+    plantillas ni jobs.
+  - La plantilla solo la importa `lib/planes/jobs-factura-aviso.ts`, que es servidor. Ningún componente cliente la
+    importa.
+  - `tsc --noEmit` limpio. `eslint` sobre los tres archivos de código tocados, limpio.
+  - `vitest run` de `emitir-factura-emitida`, `plantilla-factura-emitida`, `jobs-factura-aviso` y `pdf` (4 archivos,
+    57 tests): verde.
+- [x] **Trazabilidad.** El mapa R1–R33 de la bitácora sigue completo; f5982fc8 solo añade tests (R8/R22/R26 quedan
+      reforzados). `tasks.md` no tiene ninguna casilla sin marcar.
+
+### Hallazgos nuevos
+
+1. **menor (proceso, no de código) — PR #202 mergeado a `dev` antes del OK del reviewer.**
+   - `gh pr view 202`: `MERGED` el 2026-11-17T20:55:58Z, con head `f5982fc8`. Fue antes de `cf0b79dd` (bitácora con
+     la salida E2E) y antes de esta vuelta 2.
+   - El código mergeado es el mismo que reviso aquí y el gate de CI estaba en verde, así que no hay daño en el
+     producto.
+   - Choca con `CLAUDE.md > regla 5`: nadie mergea antes del aviso «#n listo para mergear».
+   - `cf0b79dd` (bitácora) y este review quedan en la rama, no en `dev`. El leader decide si los lleva a `dev` y
+     anota el desvío.
