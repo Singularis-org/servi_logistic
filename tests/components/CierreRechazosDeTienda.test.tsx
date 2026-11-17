@@ -826,6 +826,10 @@ describe("SLT-191 R815-R817 — «Rechazados por la tienda» en filas desplegabl
     const boton = within(fila()).getByRole("button");
     expect(boton.parentElement).toBe(fila());
     expect(clases(boton)).toEqual(expect.arrayContaining(["min-h-11", "w-full"]));
+    // Anillo de foco visible al llegar con el teclado, como la fila de Reparto (review de SLT-191).
+    expect(clases(boton)).toEqual(
+      expect.arrayContaining(["focus-visible:outline-2", "focus-visible:outline-offset-2", "focus-visible:outline-brand"]),
+    );
     expect(boton).toHaveAttribute("aria-expanded", "false");
     expect(within(fila()).queryByText("Tienda")).toBeNull();
     await user.click(within(boton).getByText(LARGO_DESTINATARIO));

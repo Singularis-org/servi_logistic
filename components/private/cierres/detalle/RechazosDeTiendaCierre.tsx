@@ -56,9 +56,13 @@ export interface RechazosDeTiendaCierreProps {
   desplegableMovil?: boolean;
 }
 
-/** SLT-191 (R816): la fila plegada es UN botón a todo el ancho, de 44 px como mínimo. */
+/**
+ * SLT-191 (R816): la fila plegada es UN botón a todo el ancho, de 44 px como mínimo, con el mismo
+ * anillo de foco que la fila compacta de Reparto (`PosOrderCardDetalle`).
+ */
 export const FILA_RECHAZO_BOTON =
-  "grid min-h-11 w-full grid-cols-[minmax(0,1fr)_max-content] items-start gap-x-3 py-2 text-left text-sm";
+  "grid min-h-11 w-full grid-cols-[minmax(0,1fr)_max-content] items-start gap-x-3 py-2 text-left text-sm " +
+  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
 
 export function RechazosDeTiendaCierre({ rechazos, desplegableMovil = false }: Readonly<RechazosDeTiendaCierreProps>) {
   const cuantas = rechazos.length;
