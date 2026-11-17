@@ -20,6 +20,10 @@ import { quitarComentarios } from "../../fixtures/sin-comentarios";
 // escribe `INSERT INTO`, `UPDATE` o `DELETE FROM` SQL sobre ellas. `GeoRepository` tampoco: ya no
 // tiene esos delegados en su `Pick`. Las migraciones (`db/`), los tests y `scripts/` quedan fuera.
 //
+// SLT-48 (T2.9, R2, R5): desde SLT-48 `provincia`, `canton` y `distrito` son VISTAS de solo lectura
+// sobre `nodo_geografico`, sin sincronía; la base rechaza la escritura (`SL048`). La guardia se queda:
+// una escritura de la app ya no se propagaría a ningún sitio, solo fallaría en producción.
+//
 // Se mide sobre el código sin comentarios: la prosa del árbol nombra a propósito lo prohibido.
 // CON CONTRAPRUEBA sobre líneas y un archivo inventados: un detector roto que no encontrara nada
 // dejaría la guardia verde para siempre.
@@ -137,8 +141,8 @@ describe("SLT-46 R1 — ningún archivo de lib/, app/ ni components/ escribe pro
   it("cero escrituras en todo el árbol", () => {
     expect(
       fallosEn(FUENTES),
-      "Desde SLT-46 la geografía se escribe en nodo_geografico y el trigger copia las profundidades 1–3 " +
-        "a la geografía vieja (R1, design §2.2). Una escritura directa se salta el service y el historial.",
+      "Desde SLT-46 la geografía se escribe en nodo_geografico (R1, design §2.2), y desde SLT-48 provincia, " +
+        "canton y distrito son vistas de solo lectura sobre él: la base rechaza la escritura (SL048).",
     ).toEqual([]);
   });
 });
