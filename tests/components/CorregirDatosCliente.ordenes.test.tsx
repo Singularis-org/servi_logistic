@@ -48,7 +48,7 @@ import type { AvisoCambioUbicacion } from "@/lib/interfaces/services/ICorregirDa
 import { ESTADOS_SIN_CORRECCION } from "@/lib/types/correccion-datos-cliente";
 import type { OrdenListItemDTO } from "@/lib/types/orden";
 
-import { ETIQUETAS_CR } from "../fabricas/etiquetas-geograficas";
+import { ETIQUETAS_CR, NIVELES_CR } from "../fabricas/etiquetas-geograficas";
 
 // SL-20 (R19): las pantallas nombran los niveles con los del país de la empresa. Estos casos son de
 // Costa Rica: el hook da sus etiquetas (sin proveedor daría las neutras, «Nivel 1»…).
@@ -150,6 +150,14 @@ const CATALOGO_OK = {
     provincias: PROVINCIAS,
     cantones: CANTONES,
     distritos: DISTRITOS,
+    // SLT-48 (design §8): la ventana lee los niveles del país y el árbol de lugares, no las listas
+    // planas. Es la misma geografía de arriba.
+    niveles: NIVELES_CR,
+    lugares: [
+      ...PROVINCIAS.map((p) => ({ ...p, padreId: null, profundidad: 1 })),
+      ...CANTONES.map((c) => ({ ...c, profundidad: 2 })),
+      ...DISTRITOS.map((d) => ({ ...d, profundidad: 3 })),
+    ],
   },
 };
 
@@ -165,6 +173,13 @@ function ubicacion(over: Record<string, unknown> = {}) {
       notas: "Dejar con el guarda",
       direccion: "Av. Central 120, portón verde",
       peso: 1.5,
+      // SLT-48 (R16, R43): el lugar es el nodo, con su ruta de la raíz a la hoja.
+      nodoId: "dis-san-rafael",
+      ruta: [
+        { id: "prov-sj", nombre: "San José" },
+        { id: "can-escazu", nombre: "Escazú" },
+        { id: "dis-san-rafael", nombre: "San Rafael" },
+      ],
       provinciaId: "prov-sj",
       cantonId: "can-escazu",
       distritoId: "dis-san-rafael",

@@ -36,7 +36,7 @@ import { obtenerCatalogoFiltrosOrdenes } from "@/lib/actions/filtros-ordenes";
 import type { AvisoCambioUbicacion } from "@/lib/interfaces/services/ICorregirDatosClienteService";
 import type { NovedadDTO } from "@/lib/types/novedad";
 
-import { ETIQUETAS_CR } from "../fabricas/etiquetas-geograficas";
+import { ETIQUETAS_CR, NIVELES_CR } from "../fabricas/etiquetas-geograficas";
 
 // SL-20 (R19): las pantallas nombran los niveles con los del país de la empresa. Estos casos son de
 // Costa Rica: el hook da sus etiquetas (sin proveedor daría las neutras, «Nivel 1»…).
@@ -171,6 +171,16 @@ const CATALOGO_OK = {
       { id: "dis-san-rafael", nombre: "San Rafael", padreId: "can-escazu", disponible: true },
       { id: "dis-patarra", nombre: "Patarrá", padreId: "can-desamp", disponible: true },
     ],
+    // SLT-48 (design §8): la ventana lee los niveles del país y el árbol de lugares. Misma geografía.
+    niveles: NIVELES_CR,
+    lugares: [
+      { id: "prov-sj", nombre: "San José", padreId: null, profundidad: 1, disponible: true },
+      { id: "prov-al", nombre: "Alajuela", padreId: null, profundidad: 1, disponible: true },
+      { id: "can-escazu", nombre: "Escazú", padreId: "prov-sj", profundidad: 2, disponible: true },
+      { id: "can-desamp", nombre: "Desamparados", padreId: "prov-sj", profundidad: 2, disponible: true },
+      { id: "dis-san-rafael", nombre: "San Rafael", padreId: "can-escazu", profundidad: 3, disponible: true },
+      { id: "dis-patarra", nombre: "Patarrá", padreId: "can-desamp", profundidad: 3, disponible: true },
+    ],
   },
 };
 
@@ -184,6 +194,13 @@ const UBICACION_OK = {
     notas: "Llamar antes de llegar",
     direccion: "Av. Central 120, portón verde",
     peso: 1.5,
+    // SLT-48 (R16, R43): el lugar es el nodo, con su ruta de la raíz a la hoja.
+    nodoId: "dis-san-rafael",
+    ruta: [
+      { id: "prov-sj", nombre: "San José" },
+      { id: "can-escazu", nombre: "Escazú" },
+      { id: "dis-san-rafael", nombre: "San Rafael" },
+    ],
     provinciaId: "prov-sj",
     cantonId: "can-escazu",
     distritoId: "dis-san-rafael",
