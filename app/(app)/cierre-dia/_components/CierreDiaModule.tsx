@@ -548,7 +548,7 @@ export function CierreDiaModule({
               titulo: DESCARGA_GESTIONES_HOY,
             }),
             // R242 (D11, PA3): siempre visible, con su estado vacío.
-            rechazos: <RechazosDeTiendaCierre rechazos={[]} />,
+            rechazos: <RechazosDeTiendaCierre rechazos={[]} desplegableMovil />,
           }}
         />
       );
@@ -579,7 +579,7 @@ export function CierreDiaModule({
             titulo: tituloDescargaGestiones(folioDe(pagina.cierreId)),
             sinGestion: { ordenes: leido.ordenesSinGestion, registrado: leido.sinGestionRegistrado },
           }),
-          rechazos: <RechazosDeTiendaCierre rechazos={leido.rechazosDeTienda} />,
+          rechazos: <RechazosDeTiendaCierre rechazos={leido.rechazosDeTienda} desplegableMovil />,
         }}
       />
     );
@@ -727,7 +727,7 @@ export function CierreDiaModule({
               },
             }),
             // R151 — siempre visible, también con 0 (D11).
-            rechazos: <RechazosDeTiendaCierre rechazos={detallePasado.rechazosDeTienda} />,
+            rechazos: <RechazosDeTiendaCierre rechazos={detallePasado.rechazosDeTienda} desplegableMovil />,
           }}
         />
       ) : null}

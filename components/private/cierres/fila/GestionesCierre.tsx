@@ -207,6 +207,8 @@ export function GestionesCierre({
               onVerEvidencia={onVerEvidencia}
               columnaMensajero={columnaMensajero}
               enVuelo={enVuelo}
+              // SLT-191 (R810-R814, DS1): la tarjeta del canvas, solo para el propio mensajero en el teléfono.
+              tarjetaMensajero={esMovil && audiencia === "mensajero"}
             />
           ))
         )}

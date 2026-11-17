@@ -64,6 +64,12 @@ export interface FilaGestionProps {
    * (anti doble envío en la UI; el servidor lo corta igual).
    */
   enVuelo?: string | null;
+  /**
+   * SLT-191 (R810-R814): la tarjeta del canvas para el propio mensajero en el teléfono (`/cierre-dia`,
+   * < 768 px). Solo la pasa `GestionesCierre` con `esMovil && audiencia === "mensajero"`; ausente, el
+   * DOM es el de hoy (escritorio y `/cierres-admin`).
+   */
+  tarjetaMensajero?: boolean;
 }
 
 /** Ancho de cada columna (canvas: `70px 1.7fr 110px 1fr 1fr 1fr 1.3fr 40px`). */
@@ -190,6 +196,7 @@ export function FilaGestion({
   onVerEvidencia,
   columnaMensajero = false,
   enVuelo = null,
+  tarjetaMensajero = false,
 }: Readonly<FilaGestionProps>) {
   const [abierta, setAbierta] = useState(false);
   const [calculoAbierto, setCalculoAbierto] = useState(false);
@@ -275,65 +282,83 @@ export function FilaGestion({
     return null;
   }
 
+  // R89: el nombre de hoy del disparador, que leen los E2E (con snapshot, el del desglose). SLT-191
+  // (DS4): la tarjeta del mensajero lo conserva.
+  const nombreDisparador = g.ingresoEmpresa ? desgloseAriaLabel(g) : L.detalleOrdenAriaLabel(g.numRemision, g.destinatario);
+
+  function botonDevolver(): ReactNode {
+    if (!ofrecidas.devolver) return null;
+    // R244 (feature 237): deshabilitado CON SU MOTIVO, no oculto — en `title` y al final del
+    // nombre accesible, porque un botón `disabled` sale del orden de tabulación.
+    return (
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        aria-label={
+          ofrecidas.devolverDeshabilitado
+            ? L.devolverNoDisponibleAriaLabel(g.numRemision, g.destinatario, ofrecidas.devolverDeshabilitado)
+            : L.devolverAriaLabel(g.numRemision, g.destinatario)
+        }
+        title={ofrecidas.devolverDeshabilitado ?? undefined}
+        className={TACTIL_MOVIL}
+        disabled={ofrecidas.devolverDeshabilitado !== null || enVuelo === g.gestionId}
+        onClick={() => acciones.devolver?.(g)}
+      >
+        {L.DEVOLVER_A_GESTION}
+      </Button>
+    );
+  }
+
   return (
     // `break-inside-avoid` (feature 223): la fila no se parte entre dos páginas al imprimir.
     <div className="break-inside-avoid border-b border-border last:border-b-0" data-gestion={g.gestionId}>
-      <div
-        className={cn(
-          "grid items-center gap-2 px-4 py-3 text-sm",
-          REJILLA_ESCRITORIO,
-          REJILLA_TARJETA,
-          areasTarjeta(columnas),
-        )}
-        style={plantillaFila(columnas)}
-      >
-        {columnas.map((c) => (
-          <span
-            key={c.id}
-            data-columna={c.id}
-            className={cn(
-              "min-w-0",
-              c.derecha && "text-right",
-              // Sin señales, la tarjeta no reserva su línea.
-              c.id === "senales" && senales === "" ? "max-md:hidden" : areaTarjeta(c.id),
-            )}
-          >
-            {celda(c)}
-          </span>
-        ))}
-        <span className="flex items-center justify-end gap-2 max-md:[grid-area:acciones]">
-          {ofrecidas.devolver ? (
-            // R244 (feature 237): deshabilitado CON SU MOTIVO, no oculto — en `title` y al final del
-            // nombre accesible, porque un botón `disabled` sale del orden de tabulación.
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              aria-label={
-                ofrecidas.devolverDeshabilitado
-                  ? L.devolverNoDisponibleAriaLabel(g.numRemision, g.destinatario, ofrecidas.devolverDeshabilitado)
-                  : L.devolverAriaLabel(g.numRemision, g.destinatario)
-              }
-              title={ofrecidas.devolverDeshabilitado ?? undefined}
-              className={TACTIL_MOVIL}
-              disabled={ofrecidas.devolverDeshabilitado !== null || enVuelo === g.gestionId}
-              onClick={() => acciones.devolver?.(g)}
+      {tarjetaMensajero ? (
+        <TarjetaMensajero
+          g={g}
+          abierta={abierta}
+          nombreDisparador={nombreDisparador}
+          onAlternar={() => setAbierta((v) => !v)}
+          senales={senales}
+        />
+      ) : (
+        <div
+          className={cn(
+            "grid items-center gap-2 px-4 py-3 text-sm",
+            REJILLA_ESCRITORIO,
+            REJILLA_TARJETA,
+            areasTarjeta(columnas),
+          )}
+          style={plantillaFila(columnas)}
+        >
+          {columnas.map((c) => (
+            <span
+              key={c.id}
+              data-columna={c.id}
+              className={cn(
+                "min-w-0",
+                c.derecha && "text-right",
+                // Sin señales, la tarjeta no reserva su línea.
+                c.id === "senales" && senales === "" ? "max-md:hidden" : areaTarjeta(c.id),
+              )}
             >
-              {L.DEVOLVER_A_GESTION}
-            </Button>
-          ) : null}
-          <button
-            type="button"
-            aria-expanded={abierta}
-            // R89: el nombre de hoy, que leen los E2E (con snapshot, el del desglose).
-            aria-label={g.ingresoEmpresa ? desgloseAriaLabel(g) : L.detalleOrdenAriaLabel(g.numRemision, g.destinatario)}
-            onClick={() => setAbierta((v) => !v)}
-            className={cn("flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted", TACTIL_MOVIL)}
-          >
-            <ChevronDown size={16} aria-hidden="true" className={cn("transition-transform", abierta && "rotate-180")} />
-          </button>
-        </span>
-      </div>
+              {celda(c)}
+            </span>
+          ))}
+          <span className="flex items-center justify-end gap-2 max-md:[grid-area:acciones]">
+            {botonDevolver()}
+            <button
+              type="button"
+              aria-expanded={abierta}
+              aria-label={nombreDisparador}
+              onClick={() => setAbierta((v) => !v)}
+              className={cn("flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted", TACTIL_MOVIL)}
+            >
+              <ChevronDown size={16} aria-hidden="true" className={cn("transition-transform", abierta && "rotate-180")} />
+            </button>
+          </span>
+        </div>
+      )}
 
       {abierta ? (
         <div className="flex flex-col gap-4 bg-muted/30 px-5 py-4">
@@ -392,9 +417,85 @@ export function FilaGestion({
                 {FILA_CORREGIR_RESULTADO}
               </Button>
             ) : null}
+            {/* SLT-191 (R811): en la tarjeta del mensajero, «Devolver a gestión» va al pie del desplegado. */}
+            {tarjetaMensajero ? botonDevolver() : null}
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * SLT-191 (R810, R812, R813; DS2, DS3) — la tarjeta plegada del propio mensajero en el teléfono, como
+ * el canvas (`GestionesVolumen`): a la izquierda guía (mono) → destinatario → tienda, cada uno en su
+ * línea; a la derecha, en columna fija, el resultado con su información, «Ganancia» y el monto; las
+ * señales debajo. Toda la tarjeta despliega: el disparador de hoy va ESTIRADO sobre ella (`absolute
+ * inset-0`) y ENCIMA del contenido (`z-10`), así que en cualquier punto de la tarjeta el toque cae en
+ * él; el contenido, además, no captura el toque (`pointer-events-none`). Solo el botón de información
+ * del resultado queda por encima del disparador (`relative z-20`). La tarjeta es su propio contexto de
+ * apilado (`isolate`): esos `z-` no compiten con la barra fija de arriba (`BARRA_FIJA`, `z-20`). No
+ * se envuelve en un `<button>`: `EstadoConInfo` es un botón y un botón dentro de otro es HTML
+ * inválido (y la guardia `estado-con-info` exige el chip en la fila).
+ */
+export const TARJETA_MENSAJERO =
+  "relative isolate grid min-h-14 grid-cols-[minmax(0,1fr)_max-content] gap-x-3 gap-y-1 px-4 py-3 text-sm";
+export const DISPARADOR_ESTIRADO =
+  "absolute inset-0 z-10 min-h-11 w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset";
+export const CONTENIDO_SIN_TOQUE = "pointer-events-none relative";
+export const INFO_CON_TOQUE = "relative z-20 [&_button]:pointer-events-auto";
+
+function TarjetaMensajero({
+  g,
+  abierta,
+  nombreDisparador,
+  onAlternar,
+  senales,
+}: Readonly<{
+  g: CierreDetalleGestion;
+  abierta: boolean;
+  nombreDisparador: string;
+  onAlternar: () => void;
+  senales: string;
+}>) {
+  return (
+    <div className={TARJETA_MENSAJERO} data-tarjeta-mensajero="">
+      <button
+        type="button"
+        aria-expanded={abierta}
+        aria-label={nombreDisparador}
+        onClick={onAlternar}
+        className={DISPARADOR_ESTIRADO}
+      />
+      <div className={cn(CONTENIDO_SIN_TOQUE, "flex min-w-0 flex-col gap-1")}>
+        <span data-columna="guia" className="min-w-0">
+          <span className={cn("font-mono text-[13px]", GUIA_CELDA)}>{g.numGuia ?? "—"}</span>
+        </span>
+        <span data-columna="destinatario" className="min-w-0 font-medium">
+          <TextoCelda texto={g.destinatario} />
+        </span>
+        <span data-columna="tienda" className="min-w-0">
+          <TextoCelda texto={g.tiendaNombre} className="text-muted-foreground" />
+        </span>
+      </div>
+      <div className={cn(CONTENIDO_SIN_TOQUE, "flex flex-col items-end gap-1 text-right")}>
+        <span data-columna="resultado" className={INFO_CON_TOQUE}>
+          <EstadoConInfo
+            codigo={g.resultado}
+            chipClassName={cn("rounded-full px-2 py-1 text-xs font-medium", TONO_RESULTADO[g.resultado])}
+          />
+        </span>
+        <span className="text-xs text-muted-foreground">{L.COL_GANANCIA}</span>
+        {/* R86: un importe nulo es «—», nunca ₡0. */}
+        <span data-columna="ganancia" className={cn("text-base font-semibold", COLUMNA_FIJA)}>
+          {money(montoDeColumna(g, "ganancia"))}
+        </span>
+      </div>
+      {senales === "" ? null : (
+        <span data-columna="senales" className={cn(CONTENIDO_SIN_TOQUE, "col-span-2 text-xs text-warning-strong")}>
+          {senales}
+        </span>
+      )}
     </div>
   );
 }
