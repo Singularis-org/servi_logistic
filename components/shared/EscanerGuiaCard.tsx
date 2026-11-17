@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Barcode, CheckCircle2, Package, type LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,13 @@ export type { ResultadoLectura } from "@/hooks/useEntradaEscaneo";
  * busca para dejar ahí el foco al abrir (R571) sin que la tarjeta y el modal se pasen refs.
  */
 export const SELECTOR_CAMPO_ESCANER = "[data-escaner-campo]";
+
+/**
+ * SLT-193 (R927): `EscanerModal` lo enciende para su contenido. Su barra ya lleva el único título
+ * del diálogo, así que una tarjeta montada dentro no pinta el suyo aunque nadie le pase
+ * `sinEncabezado`: nunca hay dos títulos en un diálogo del escáner.
+ */
+export const DentroDeEscanerContext = createContext(false);
 
 /** Entrada manual del número de guía, para las superficies que la ofrecen. */
 export interface EscanerGuiaManual {
@@ -78,7 +85,8 @@ export interface EscanerGuiaCardProps {
    * SLT-190 (R867, R868, DS7): la tarjeta va bajo la barra de título de `EscanerModal` (`titulo`),
    * así que no pinta su encabezado (icono, título y descripción) ni su borde de arriba: la barra ya
    * los dice. El nombre accesible de la región no cambia (`ariaLabel ?? titulo`, R870). Por
-   * defecto, `false`: los demás usos conservan su encabezado (R871).
+   * defecto, `false`: los demás usos conservan su encabezado (R871). SLT-193 (R927): dentro de un
+   * `EscanerModal` vale siempre `true` (`DentroDeEscanerContext`).
    */
   sinEncabezado?: boolean;
 }
@@ -123,8 +131,10 @@ export function EscanerGuiaCard({
   continuo = false,
   alLlegar,
   children,
-  sinEncabezado = false,
+  sinEncabezado: sinEncabezadoPedido = false,
 }: Readonly<EscanerGuiaCardProps>) {
+  const dentroDeEscaner = useContext(DentroDeEscanerContext);
+  const sinEncabezado = sinEncabezadoPedido || dentroDeEscaner;
   const inputId = useId();
   const campoRef = useRef<HTMLInputElement>(null);
   const punteroFino = usePunteroFino();

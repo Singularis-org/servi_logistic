@@ -4,7 +4,7 @@ import { useId, useState } from "react";
 import { ChevronDown, MapPin, Navigation } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { COLUMNA_FIJA, TEXTO_ENTERO } from "@/components/shared/texto-entero";
+import { CLASE_INFO_TACTIL, COLUMNA_FIJA, TEXTO_ENTERO } from "@/components/shared/texto-entero";
 import { IntentosDato, valorIntentos } from "@/components/shared/intentos-entrega";
 import {
   avisoReservaParaOtroDia,
@@ -30,8 +30,8 @@ import type { PosOrderCardProps } from "./PosOrderCard";
 // ruta directa, pestaña nueva, sin forzar permisos de GPS), no un botón decorativo. Al ser
 // un control interno, pulsarlo NO selecciona la orden de rebote (ver `pos-seleccion`).
 
-/** SLT-190 (B1): el (i) de la fila plegada de Recolección, con área táctil de 44 × 44 (16 + 2 × 14). */
-export const CLASE_INFO_TACTIL = "[&_button]:after:-inset-3.5";
+/** SLT-190 (B1): el (i) de la fila plegada de Recolección (vive en `texto-entero`; su test lo importa de aquí). */
+export { CLASE_INFO_TACTIL };
 
 export function PosOrderCardDetalle({
   orden,
@@ -113,6 +113,7 @@ export function PosOrderCardDetalle({
       ))}
       {notaAyuda ? (
         <NotaAyudaConInfo
+          className={CLASE_INFO_TACTIL}
           chipClassName={`rounded-full px-2 py-1 text-[9px] font-bold tracking-wide ${CLASE_NOTA_AYUDA}`}
         />
       ) : null}

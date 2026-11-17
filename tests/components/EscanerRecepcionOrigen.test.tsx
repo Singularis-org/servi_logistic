@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup, act } from "@testing-library/react";
+import { render, screen, cleanup, act, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { EscanerRecepcionOrigen } from "@/app/(app)/ordenes/_components/EscanerRecepcionOrigen";
+import { EscanerModal } from "@/components/shared/EscanerModal";
 import { ORDER_STATUS_LABELS } from "@/app/(app)/ordenes/_components/EstatusBadge";
 import { recibirEnOrigenPorQr } from "@/lib/actions/recepcion-origen";
 
@@ -230,10 +231,32 @@ describe("EscanerRecepcionOrigen", () => {
 
   // SLT-158 (R579, D5, decisión de Carlos del 2026-11-14): en la tienda, la tarjeta y su botón
   // dicen lo mismo que el disparador de `/ordenes`.
-  it("R579: título y botón de enviar dicen «Recibir paquete»", () => {
-    render(<EscanerRecepcionOrigen onRecibida={vi.fn()} />);
+  //
+  // SLT-193 «Botones de 44 px pendientes en la PWA del mensajero» (R927; P7 de Carlos): el título
+  // vive ahora en la barra de `EscanerModal` (en `/ordenes`, «Recibir paquete») y la tarjeta va sin
+  // encabezado propio; el botón de envío y el nombre de la región no cambian.
+  it("R579/R927: en el diálogo, un solo título «Recibir paquete» (el de la barra); la tarjeta sin encabezado", async () => {
+    const user = userEvent.setup();
+    render(
+      <EscanerModal titulo="Recibir paquete">
+        <EscanerRecepcionOrigen onRecibida={vi.fn()} />
+      </EscanerModal>,
+    );
+    await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
+    const dialogo = await screen.findByRole("dialog", { name: "Recibir paquete" });
 
-    expect(screen.getByRole("heading", { name: "Recibir paquete" })).toBeInTheDocument();
+    expect(within(dialogo).getAllByRole("heading").map((h) => h.textContent)).toEqual(["Recibir paquete"]);
+    expect(
+      within(dialogo).queryByText("Escanea el código de la guía devuelta o ingresa su número"),
+    ).toBeNull();
+    expect(within(dialogo).getByRole("region", { name: "Recepción en tienda por escaneo" })).toBeInTheDocument();
+    expect(within(dialogo).getByRole("button", { name: "Recibir paquete" })).toBeInTheDocument();
+    expect(within(dialogo).getAllByRole("button", { name: "Cerrar" })).toHaveLength(1);
+  });
+
+  it("R927: la tarjeta suelta no pinta encabezado propio", () => {
+    render(<EscanerRecepcionOrigen onRecibida={vi.fn()} />);
+    expect(screen.queryByRole("heading")).toBeNull();
     expect(screen.getByRole("button", { name: "Recibir paquete" })).toBeInTheDocument();
   });
 
@@ -280,6 +303,13 @@ describe("EscanerRecepcionOrigen", () => {
 
 // SLT-159 «Escaneo continuo en recepciones y recogidas» — la tienda en modo continuo.
 describe("EscanerRecepcionOrigen — modo continuo (R580, R583)", () => {
+  it("SLT-193 R927: la tarjeta continua no pinta encabezado propio; la región conserva el nombre", () => {
+    render(<EscanerRecepcionOrigen modo="continua" />);
+    expect(screen.queryByRole("heading")).toBeNull();
+    expect(screen.getByRole("region", { name: "Recepción continua en tienda" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Recibir" })).toBeInTheDocument();
+  });
+
   function filasDeLaSesion(): HTMLElement[] {
     return Array.from(screen.getByRole("log", { name: "Lecturas" }).querySelectorAll("li"));
   }

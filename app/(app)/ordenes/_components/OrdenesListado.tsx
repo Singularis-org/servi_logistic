@@ -1407,6 +1407,8 @@ export function OrdenesListado({
     puedeCargarMasiva || puedeEscanearQr || puedeRecibirBodegaCentral ? (
       puedeEscanearQr || puedeRecibirBodegaCentral ? (
         <EscanerModal
+          // SLT-193 (R925, R927; P7 de Carlos): un solo título para el diálogo, en su barra.
+          titulo="Recibir paquete"
           acciones={
             <>
               {/* SLT-159 (R611): la recepción continua, junto a la guía suelta. */}

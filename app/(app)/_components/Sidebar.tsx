@@ -60,6 +60,12 @@ import { Logo } from "@/components/shared/Logo";
 
 type SidebarIcon = ComponentType<LucideProps>;
 
+/**
+ * SLT-193 (R914, R915): ítems y subítems del menú a 44 px de alto en móvil, para cualquier rol.
+ * Solo con `max-md:`: en escritorio siguen `h-8` / `h-7` de `components/ui/sidebar.tsx` (rail incluido).
+ */
+export const ITEM_MENU_TACTIL_MOVIL = "max-md:h-11";
+
 /** Datos mínimos del usuario para el footer del sidebar. */
 export interface SidebarUsuario {
   nombre: string;
@@ -390,6 +396,7 @@ export function Sidebar({
                             <SidebarMenuButton
                               isActive={childActive}
                               tooltip={item.label}
+                              className={ITEM_MENU_TACTIL_MOVIL}
                             />
                           }
                         >
@@ -405,6 +412,7 @@ export function Sidebar({
                                 <SidebarMenuSubItem key={child.href}>
                                   <SidebarMenuSubButton
                                     isActive={isActive}
+                                    className={ITEM_MENU_TACTIL_MOVIL}
                                     render={
                                       <Link
                                         href={child.href}
@@ -434,6 +442,7 @@ export function Sidebar({
                       <SidebarMenuButton
                         isActive={isActive}
                         tooltip={item.label}
+                        className={ITEM_MENU_TACTIL_MOVIL}
                         render={
                           <Link
                             href={item.href}

@@ -87,7 +87,9 @@ export function EscanerRecepcionBodegaCentral({
   }
   if (modo === "continua") {
     return (
+      // SLT-193 (R927): vive en el diálogo de `RecibirPaquetesEntrada`, que lleva el título en su barra.
       <TarjetaEscaneoContinuo
+        sinEncabezado
         recibir={recibirBodegaCentral}
         alCerrarConRecepcion={onRecibida}
         ariaLabel="Recepción continua en bodega central"
@@ -164,7 +166,9 @@ function RecepcionBodegaCentralSuelta({ onRecibida }: Readonly<{ onRecibida: () 
   );
 
   return (
+    // SLT-193 (R927): vive en el diálogo de `OrdenesListado`, que lleva el título en su barra.
     <EscanerGuiaCard
+      sinEncabezado
       ariaLabel="Recepción en bodega central"
       titulo="Recibir paquete"
       descripcion="Escanea o ingresa el número de guía"
