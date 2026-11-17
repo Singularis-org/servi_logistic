@@ -32,6 +32,9 @@ export type DesenlaceRecepcion =
   | { tipo: "no_encontrada" }
   | { tipo: "no_se_pudo"; motivo: string };
 
+/** Cómo se monta una recepción: guía suelta (lo de siempre), diálogo continuo o página (DC5). */
+export type ModoRecepcion = "suelta" | "continua" | "pagina";
+
 export interface ContadoresSesion {
   recibidas: number;
   repetidas: number;

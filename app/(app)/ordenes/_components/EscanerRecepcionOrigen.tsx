@@ -6,9 +6,11 @@ import {
   EscanerGuiaCard,
   type ResultadoLectura,
 } from "@/components/shared/EscanerGuiaCard";
+import { TarjetaEscaneoContinuo } from "@/components/shared/EscaneoContinuo";
 import { useToast } from "@/hooks/useToast";
 import { recibirEnOrigenPorQr } from "@/lib/actions/recepcion-origen";
 import { leerGuia } from "@/lib/utils/paquete-url";
+import type { DesenlaceRecepcion, ModoRecepcion } from "@/lib/utils/sesion-escaneo";
 import type { RecibirEnOrigenResult } from "@/lib/types/recepcion-origen";
 
 import { estatusLabel } from "./estatus-label";
@@ -28,13 +30,66 @@ import { estatusLabel } from "./estatus-label";
 // 2026-11-14).
 
 export interface EscanerRecepcionOrigenProps {
-  /** Se invoca tras una recepción efectiva o idempotente (ok/ya_recibida). */
-  onRecibida: () => void;
+  /**
+   * Se invoca tras una recepción efectiva o idempotente (ok/ya_recibida). SLT-159 (R592): en
+   * `continua`, una sola vez al cerrar el diálogo si hubo alguna.
+   */
+  onRecibida?: () => void;
+  /** SLT-159: `suelta` (lo de hoy), `continua` (el diálogo con lista) o `pagina`. */
+  modo?: ModoRecepcion;
+}
+
+const sinRefresco = () => {};
+
+/** SLT-159 (R583): la respuesta traducida a desenlace de la fila, con los motivos del toast. */
+export function desenlaceOrigen(result: RecibirEnOrigenResult): DesenlaceRecepcion {
+  const noSePudo = (motivo: string): DesenlaceRecepcion => ({ tipo: "no_se_pudo", motivo });
+  switch (result.status) {
+    case "ok":
+      return { tipo: "recibida", resumen: result.resumen };
+    case "ya_recibida":
+      return { tipo: "ya_recibida", resumen: result.resumen };
+    case "no_encontrada":
+      return { tipo: "no_encontrada" };
+    case "tienda_ajena":
+      return noSePudo("Esta orden es de otra tienda.");
+    case "estado_invalido":
+      return noSePudo(`No se puede recibir: la orden está en "${estatusLabel(result.estado)}".`);
+    case "validation_error":
+      return noSePudo("Código inválido.");
+    case "forbidden":
+      return noSePudo("No tienes permiso para recibir órdenes.");
+    case "unauthenticated":
+      return noSePudo("Tu sesión expiró. Inicia sesión de nuevo.");
+    case "conflict":
+      return noSePudo("La orden cambió de estado. Vuelve a escanear.");
+  }
+}
+
+async function recibirOrigen(numGuia: number): Promise<DesenlaceRecepcion> {
+  return desenlaceOrigen(await recibirEnOrigenPorQr({ numGuia }));
 }
 
 export function EscanerRecepcionOrigen({
-  onRecibida,
+  onRecibida = sinRefresco,
+  modo = "suelta",
 }: Readonly<EscanerRecepcionOrigenProps>) {
+  if (modo === "continua") {
+    return (
+      <TarjetaEscaneoContinuo
+        recibir={recibirOrigen}
+        alCerrarConRecepcion={onRecibida}
+        ariaLabel="Recepción continua en tienda"
+        titulo="Recibir paquetes"
+        descripcion="Escanea las guías una tras otra"
+        submitLabel="Recibir"
+      />
+    );
+  }
+  return <RecepcionOrigenSuelta onRecibida={onRecibida} />;
+}
+
+function RecepcionOrigenSuelta({ onRecibida }: Readonly<{ onRecibida: () => void }>) {
   const toast = useToast();
   const [ultimaRecibida, setUltimaRecibida] = useState<number | null>(null);
 
@@ -50,6 +105,7 @@ export function EscanerRecepcionOrigen({
   /** Traduce cada resultado de la acción a un toast y al resultado de la lectura. */
   const notificar = useCallback(
     (result: RecibirEnOrigenResult, numGuia: number): ResultadoLectura => {
+      const desenlace = desenlaceOrigen(result);
       switch (result.status) {
         case "ok":
           toast.success(`Guía ${numGuia} recibida en tienda.`);
@@ -61,22 +117,10 @@ export function EscanerRecepcionOrigen({
           toast.info(`La guía ${numGuia} ya estaba recibida.`);
           onRecibida();
           return { tipo: "acierto" };
-        case "tienda_ajena":
-          return rechazar("Esta orden es de otra tienda.");
-        case "estado_invalido":
-          return rechazar(
-            `No se puede recibir: la orden está en "${estatusLabel(result.estado)}".`,
-          );
         case "no_encontrada":
           return rechazar("Orden no encontrada.");
-        case "validation_error":
-          return rechazar("Código inválido.");
-        case "forbidden":
-          return rechazar("No tienes permiso para recibir órdenes.");
-        case "unauthenticated":
-          return rechazar("Tu sesión expiró. Inicia sesión de nuevo.");
-        case "conflict":
-          return rechazar("La orden cambió de estado. Vuelve a escanear.");
+        default:
+          return rechazar(desenlace.tipo === "no_se_pudo" ? desenlace.motivo : "");
       }
     },
     [toast, onRecibida, rechazar],

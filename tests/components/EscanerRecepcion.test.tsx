@@ -372,3 +372,63 @@ describe("EscanerRecepcion — guía única por cámara o pistola (SLT-157)", ()
     expect(recibirMock).not.toHaveBeenCalled();
   });
 });
+
+// SLT-159 «Escaneo continuo en recepciones y recogidas» — satélite: entrada y modo continuo.
+describe("EscanerRecepcion — recepción continua (R580, R611)", () => {
+  const matchMediaOriginal = window.matchMedia;
+
+  function conPunteroFino() {
+    window.matchMedia = ((consulta: string) => ({
+      matches: consulta === "(pointer: fine)",
+      media: consulta,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    })) as unknown as typeof window.matchMedia;
+  }
+
+  afterEach(() => {
+    window.matchMedia = matchMediaOriginal;
+    window.history.replaceState(null, "", "/");
+  });
+
+  it("R611: en «En bodega», con puntero fino, el enlace lleva desde=en-bodega", () => {
+    conPunteroFino();
+    window.history.replaceState(null, "", "/recepcion-satelite/en-bodega");
+    render(<EscanerRecepcion onRecibida={vi.fn()} />);
+
+    expect(screen.getByRole("link", { name: "Recibir paquetes" })).toHaveAttribute(
+      "href",
+      "/recepcion-satelite/recibir?desde=en-bodega",
+    );
+    expect(screen.getByRole("button", { name: "Recibir paquete" })).toBeInTheDocument();
+  });
+
+  it("R611: en «Por recibir», el enlace lleva desde=por-recibir", () => {
+    conPunteroFino();
+    window.history.replaceState(null, "", "/recepcion-satelite/por-recibir");
+    render(<EscanerRecepcion onRecibida={vi.fn()} />);
+
+    expect(screen.getByRole("link", { name: "Recibir paquetes" })).toHaveAttribute(
+      "href",
+      "/recepcion-satelite/recibir?desde=por-recibir",
+    );
+  });
+
+  it("R580: en modo continuo, una lectura llega a recibirPorQr con su numGuia y queda en la lista", async () => {
+    const user = userEvent.setup();
+    recibirMock.mockResolvedValue({ status: "ok", ordenId: "o1" } as never);
+    render(<EscanerRecepcion modo="continua" />);
+
+    await user.type(screen.getByLabelText("Número de guía"), "1024{Enter}");
+
+    await vi.waitFor(() => expect(recibirMock).toHaveBeenCalledWith({ numGuia: 1024 }));
+    await vi.waitFor(() =>
+      expect(screen.getByRole("log", { name: "Lecturas" })).toHaveTextContent("Recibida"),
+    );
+    expect(successMock).not.toHaveBeenCalled();
+  });
+});

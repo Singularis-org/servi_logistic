@@ -28,7 +28,7 @@ mismo.
   `lista` y `tabla`, `role="log"`, «Reintentar» 44 px). `EscanerGuiaCard`: `continuo`, `alLlegar`,
   `children`. *Hecho:* R581-R584, R590, R591 y R593 en verde en
   `tests/components/EscaneoContinuo.test.tsx` (tarjeta continua + sesión + acción doble).
-- [ ] **T5 — Recepciones en diálogo (depende de T4).** C1, C2 y C3/C4: `modo`, `desenlace(result)`
+- [x] **T5 — Recepciones en diálogo (depende de T4).** C1, C2 y C3/C4: `modo`, `desenlace(result)`
   puro y exportado (motivos = textos de hoy), sin toast en continuo, `onRecibida` una vez al
   desmontar. `components/shared/RecibirPaquetesEntrada.tsx` (en b1: botón que abre el diálogo con
   cualquier puntero; en b2 gana el enlace). `OrdenesListado` y `EscanerRecepcion` la montan en

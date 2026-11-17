@@ -636,6 +636,32 @@ describe("OrdenesPage", () => {
     expect(screen.queryByRole("button", { name: "Recibir" })).toBeNull();
   });
 
+  it("SLT-159 (R611): maestro con puntero fino ve el enlace «Recibir paquetes» y «Recibir paquete» sigue suelto", async () => {
+    listarOrdenesMock.mockResolvedValue({ status: "ok", items: [], page: 1, pageSize: 25, total: 0 });
+    const matchMediaOriginal = window.matchMedia;
+    window.matchMedia = ((consulta: string) => ({
+      matches: consulta === "(pointer: fine)",
+      media: consulta,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })) as unknown as typeof window.matchMedia;
+    try {
+      const user = userEvent.setup();
+      resolveActorMock.mockResolvedValueOnce({ usuarioId: "u", rol: RolValue.maestro });
+      await renderPage();
+
+      expect(screen.getByRole("link", { name: "Recibir paquetes" })).toHaveAttribute(
+        "href",
+        "/ordenes/recibir",
+      );
+      await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
+      expect(screen.getByRole("region", { name: "Recepción en bodega central" })).toBeInTheDocument();
+      expect(screen.queryByRole("log", { name: "Lecturas" })).toBeNull();
+    } finally {
+      window.matchMedia = matchMediaOriginal;
+    }
+  });
+
   it("seguridad: mensajero y adminSatelite NO alcanzan /ordenes (notFound)", async () => {
     // El mensajero opera en /mis-asignaciones y el adminSatelite en /recepcion-satelite;
     // ninguno debe ver el listado plano de todas las ordenes. La pagina llama notFound()

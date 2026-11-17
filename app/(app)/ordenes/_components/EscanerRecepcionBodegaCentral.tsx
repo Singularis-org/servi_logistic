@@ -6,9 +6,11 @@ import {
   EscanerGuiaCard,
   type ResultadoLectura,
 } from "@/components/shared/EscanerGuiaCard";
+import { TarjetaEscaneoContinuo } from "@/components/shared/EscaneoContinuo";
 import { useToast } from "@/hooks/useToast";
 import { recibirEnBodegaCentralPorQr } from "@/lib/actions/recepcion-bodega-central";
 import { leerGuia } from "@/lib/utils/paquete-url";
+import type { DesenlaceRecepcion, ModoRecepcion } from "@/lib/utils/sesion-escaneo";
 import type { RecibirEnBodegaCentralResult } from "@/lib/types/recepcion-bodega-central";
 
 import { estatusLabel } from "./estatus-label";
@@ -29,13 +31,67 @@ import { estatusLabel } from "./estatus-label";
 // control cuando `puedeRecibirBodegaCentral`, y el service revalida server-side (R16).
 
 export interface EscanerRecepcionBodegaCentralProps {
-  /** Se invoca tras una recepción efectiva o idempotente (ok/ya_recibida). */
-  onRecibida: () => void;
+  /**
+   * Se invoca tras una recepción efectiva o idempotente (ok/ya_recibida). SLT-159 (R592): en
+   * `continua`, una sola vez al cerrar el diálogo si hubo alguna.
+   */
+  onRecibida?: () => void;
+  /** SLT-159: `suelta` (lo de hoy), `continua` (el diálogo con lista) o `pagina`. */
+  modo?: ModoRecepcion;
+}
+
+const sinRefresco = () => {};
+
+/**
+ * SLT-159 (R583): la respuesta de la acción traducida a desenlace de la fila. Los motivos son
+ * los textos de siempre del toast.
+ */
+export function desenlaceBodegaCentral(result: RecibirEnBodegaCentralResult): DesenlaceRecepcion {
+  const noSePudo = (motivo: string): DesenlaceRecepcion => ({ tipo: "no_se_pudo", motivo });
+  switch (result.status) {
+    case "ok":
+      return { tipo: "recibida", resumen: result.resumen };
+    case "ya_recibida":
+      return { tipo: "ya_recibida", resumen: result.resumen };
+    case "no_encontrada":
+      return { tipo: "no_encontrada" };
+    case "estado_invalido":
+      return noSePudo(`No se puede recibir: la orden está en "${estatusLabel(result.estado)}".`);
+    case "validation_error":
+      return noSePudo("Código inválido.");
+    case "forbidden":
+      return noSePudo("No tienes permiso para recibir órdenes.");
+    case "unauthenticated":
+      return noSePudo("Tu sesión expiró. Inicia sesión de nuevo.");
+    case "conflict":
+      return noSePudo("La orden cambió de estado. Vuelve a intentar.");
+  }
+}
+
+async function recibirBodegaCentral(numGuia: number): Promise<DesenlaceRecepcion> {
+  return desenlaceBodegaCentral(await recibirEnBodegaCentralPorQr({ numGuia }));
 }
 
 export function EscanerRecepcionBodegaCentral({
-  onRecibida,
+  onRecibida = sinRefresco,
+  modo = "suelta",
 }: Readonly<EscanerRecepcionBodegaCentralProps>) {
+  if (modo === "continua") {
+    return (
+      <TarjetaEscaneoContinuo
+        recibir={recibirBodegaCentral}
+        alCerrarConRecepcion={onRecibida}
+        ariaLabel="Recepción continua en bodega central"
+        titulo="Recibir paquetes"
+        descripcion="Escanea las guías una tras otra"
+        submitLabel="Recibir"
+      />
+    );
+  }
+  return <RecepcionBodegaCentralSuelta onRecibida={onRecibida} />;
+}
+
+function RecepcionBodegaCentralSuelta({ onRecibida }: Readonly<{ onRecibida: () => void }>) {
   const toast = useToast();
   // Confirmacion PERSISTENTE del ultimo acierto: el toast se va solo y quien recibe
   // una tanda seguida necesita ver que la anterior si entro.
@@ -53,6 +109,7 @@ export function EscanerRecepcionBodegaCentral({
   /** Traduce cada resultado de la acción a un toast (R15, los 8 estados). */
   const notificar = useCallback(
     (result: RecibirEnBodegaCentralResult, numGuia: number): ResultadoLectura => {
+      const desenlace = desenlaceBodegaCentral(result);
       switch (result.status) {
         case "ok":
           // Feature 139/T3.5: la recepción central es STATE-AWARE. Si la orden venía
@@ -72,20 +129,10 @@ export function EscanerRecepcionBodegaCentral({
           toast.info(`La guía ${numGuia} ya estaba recibida.`);
           onRecibida();
           return { tipo: "acierto" };
-        case "estado_invalido":
-          return rechazar(
-            `No se puede recibir: la orden está en "${estatusLabel(result.estado)}".`,
-          );
         case "no_encontrada":
           return rechazar("Orden no encontrada.");
-        case "validation_error":
-          return rechazar("Código inválido.");
-        case "forbidden":
-          return rechazar("No tienes permiso para recibir órdenes.");
-        case "unauthenticated":
-          return rechazar("Tu sesión expiró. Inicia sesión de nuevo.");
-        case "conflict":
-          return rechazar("La orden cambió de estado. Vuelve a intentar.");
+        default:
+          return rechazar(desenlace.tipo === "no_se_pudo" ? desenlace.motivo : "");
       }
     },
     [toast, onRecibida, rechazar],

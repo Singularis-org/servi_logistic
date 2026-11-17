@@ -19,6 +19,7 @@ import { listarOrderStatus } from "@/lib/actions/order-status";
 import { listarMensajerosParaAsignacion } from "@/lib/actions/ordenes-guia";
 import type { Column } from "@/components/shared/DataTable";
 import { EscanerModal } from "@/components/shared/EscanerModal";
+import { RecibirPaquetesEntrada } from "@/components/shared/RecibirPaquetesEntrada";
 import { BUSQUEDA_MIN_CHARS, type OrdenListItemDTO } from "@/lib/types/orden";
 import type { FechasDiaReparto } from "@/lib/utils/dia-reparto-textos";
 import type { DireccionOrden } from "@/lib/types/ordenamiento-listado";
@@ -1406,7 +1407,19 @@ export function OrdenesListado({
     puedeCargarMasiva || puedeEscanearQr || puedeRecibirBodegaCentral ? (
       puedeEscanearQr || puedeRecibirBodegaCentral ? (
         <EscanerModal
-          acciones={puedeCargarMasiva ? <OrdenesCargaMasivaButton /> : null}
+          acciones={
+            <>
+              {/* SLT-159 (R611): la recepción continua, junto a la guía suelta. */}
+              <RecibirPaquetesEntrada href="/ordenes/recibir">
+                {puedeRecibirBodegaCentral ? (
+                  <EscanerRecepcionBodegaCentral modo="continua" onRecibida={handleSuccess} />
+                ) : (
+                  <EscanerRecepcionOrigen modo="continua" onRecibida={handleSuccess} />
+                )}
+              </RecibirPaquetesEntrada>
+              {puedeCargarMasiva ? <OrdenesCargaMasivaButton /> : null}
+            </>
+          }
         >
           {puedeRecibirBodegaCentral ? (
             <EscanerRecepcionBodegaCentral onRecibida={handleSuccess} />

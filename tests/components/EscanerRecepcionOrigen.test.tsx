@@ -277,3 +277,57 @@ describe("EscanerRecepcionOrigen", () => {
     });
   });
 });
+
+// SLT-159 «Escaneo continuo en recepciones y recogidas» — la tienda en modo continuo.
+describe("EscanerRecepcionOrigen — modo continuo (R580, R583)", () => {
+  function filasDeLaSesion(): HTMLElement[] {
+    return Array.from(screen.getByRole("log", { name: "Lecturas" }).querySelectorAll("li"));
+  }
+
+  it("R580: una lectura llega a recibirEnOrigenPorQr con su numGuia, sin toast", async () => {
+    const user = userEvent.setup();
+    recibirMock.mockResolvedValue({ status: "ok", ordenId: "o1" } as never);
+    render(<EscanerRecepcionOrigen modo="continua" />);
+
+    await user.type(screen.getByLabelText("Número de guía"), "1024{Enter}");
+
+    await vi.waitFor(() => expect(recibirMock).toHaveBeenCalledWith({ numGuia: 1024 }));
+    await vi.waitFor(() => expect(filasDeLaSesion()[0]).toHaveTextContent("Recibida"));
+    expect(successMock).not.toHaveBeenCalled();
+  });
+
+  it("R583: tienda_ajena → «No se pudo recibir» con el motivo de hoy", async () => {
+    const user = userEvent.setup();
+    recibirMock.mockResolvedValue({ status: "tienda_ajena" });
+    render(<EscanerRecepcionOrigen modo="continua" />);
+
+    await user.type(screen.getByLabelText("Número de guía"), "1024{Enter}");
+
+    await vi.waitFor(() =>
+      expect(filasDeLaSesion()[0]).toHaveTextContent(
+        "No se pudo recibirEsta orden es de otra tienda.",
+      ),
+    );
+    expect(errorMock).not.toHaveBeenCalled();
+  });
+
+  it("R583: con estado_invalido, «Reintentar» vuelve a llamar con la misma guía sin añadir fila", async () => {
+    const user = userEvent.setup();
+    recibirMock
+      .mockResolvedValueOnce({ status: "estado_invalido", estado: "en_reparto" })
+      .mockResolvedValueOnce({ status: "ok", ordenId: "o1" } as never);
+    render(<EscanerRecepcionOrigen modo="continua" />);
+
+    await user.type(screen.getByLabelText("Número de guía"), "1024{Enter}");
+    await vi.waitFor(() =>
+      expect(filasDeLaSesion()[0]).toHaveTextContent(
+        'No se pudo recibirNo se puede recibir: la orden está en "En reparto".',
+      ),
+    );
+    await user.click(screen.getByRole("button", { name: "Reintentar" }));
+
+    await vi.waitFor(() => expect(filasDeLaSesion()[0]).toHaveTextContent("Recibida"));
+    expect(recibirMock.mock.calls).toEqual([[{ numGuia: 1024 }], [{ numGuia: 1024 }]]);
+    expect(filasDeLaSesion()).toHaveLength(1);
+  });
+});
