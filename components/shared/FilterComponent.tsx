@@ -14,6 +14,7 @@ import {
   podarSeleccion,
 } from "@/lib/utils/filter-dependencies";
 import { seleccionDesdeUrl } from "@/lib/utils/filtros-url";
+import { useAltoControlesBarra } from "@/components/shared/alto-controles-barra";
 
 import { DateRangeFilter } from "./DateRangeFilter";
 import { MultiSelectFilter } from "./MultiSelectFilter";
@@ -256,6 +257,8 @@ function TextFilter({
   const idBase = useId();
   const idAviso = `${idBase}-minimo`;
   const [texto, setTexto] = useState(valorInicial);
+  // SLT-194 (R946, D1): 44 px en móvil si la barra con `escaneo` lo pide; si no, `""`.
+  const altoBarra = useAltoControlesBarra();
 
   // Limpieza externa ("Limpiar todo"): mismo patron que `DateRangeFilter` — se ajusta el
   // estado DURANTE el render, sin efecto y sin emitir (el orquestador ya emite `{}`).
@@ -298,7 +301,7 @@ function TextFilter({
           // lo decide el ancho de cada viewport, NO una cadena acortada a mano: el texto
           // completo sigue en el DOM, asi que quien tenga sitio —o use un lector de
           // pantalla— lo recibe entero. Acortar la constante lo habria perdido para todos.
-          className="min-w-56 pr-8 text-ellipsis"
+          className={cn("min-w-56 pr-8 text-ellipsis", altoBarra)}
           onChange={(e) => escribir(e.target.value)}
         />
         {/* R37: limpieza individual, sin tocar el resto de la barra. */}
@@ -419,6 +422,10 @@ export function FilterComponent({
   );
 
   const { params } = useFiltrosUrl(leerDeUrl);
+
+  // SLT-194 (R946, R948, D1): el alto en móvil que pide la barra con `escaneo`; fuera de ella, `""`
+  // y los controles quedan como estaban. `MultiSelectFilter` y `DateRangeFilter` lo leen solos.
+  const altoBarra = useAltoControlesBarra();
 
   /**
    * R7 — LA FOTO DE LOS PARAMS AL ENTRAR. Se captura UNA sola vez, en el inicializador
@@ -843,6 +850,7 @@ export function FilterComponent({
               key={filtro.key}
               className={cn(
                 "flex h-8 items-center gap-2 rounded-lg border border-border px-2.5 text-sm select-none",
+                altoBarra,
                 inhabilitado
                   ? "cursor-not-allowed opacity-50"
                   : "cursor-pointer hover:bg-muted",
@@ -883,6 +891,7 @@ export function FilterComponent({
                     onClick={() => fijar(filtro.key, [o.value])}
                     className={cn(
                       "h-8 rounded-full border px-3 text-[13px] transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+                      altoBarra,
                       pulsada
                         ? "border-foreground bg-foreground text-background"
                         : o.tono === "aviso"
@@ -923,7 +932,7 @@ export function FilterComponent({
               key={filtro.key}
               aria-label={filtro.label}
               labelPrefix={filtro.label}
-              className="w-auto min-w-56"
+              className={cn("w-auto min-w-56", altoBarra)}
               value={valores[0] ?? ""}
               // R7: elegir un valor SUSTITUYE al anterior (nunca coexisten dos).
               onValueChange={(v) => fijar(filtro.key, v ? [v] : [])}

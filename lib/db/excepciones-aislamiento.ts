@@ -221,7 +221,7 @@ export const EXCEPCIONES_DE_PLATAFORMA: readonly ExcepcionDeAislamiento[] = [
     archivo: "lib/repositories/PlanesRepository.ts",
     ficha: "SL-24",
     motivo:
-      "catálogo de planes y su asignación: los escribe el superadmin, que no tiene empresa (R5); y los destinatarios de los correos del cambio de plan, los maestros activos de las empresas con el plan (R41, R45); y las lecturas del catálogo, el detalle de un plan y el plan de una empresa para el superadmin (SLT-58); y la vista previa de la primera asignación (SLT-58 §11); y el cambio de plan del maestro de su propia empresa, con la empresa de la sesión (SLT-99)",
+      "catálogo de planes y su asignación: los escribe el superadmin, que no tiene empresa (R5); y los destinatarios de los correos del cambio de plan, los maestros activos de las empresas con el plan (R41, R45); y las lecturas del catálogo, el detalle de un plan y el plan de una empresa para el superadmin (SLT-58); y la vista previa de la primera asignación (SLT-58 §11); y el cambio de plan del maestro de su propia empresa, con la empresa de la sesión (SLT-99); y los borradores del superadmin (SLT-129)",
   },
   {
     // SLT-118 (design §3). Lleva `SL-24` (la ficha de los planes) porque `FichaJira` no admite `SLT` (deuda D29).

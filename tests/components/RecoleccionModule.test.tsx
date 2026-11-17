@@ -1454,3 +1454,107 @@ describe("SLT-190 — Recolección según el canvas", () => {
     await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
   });
 });
+
+// SLT-194 «Buscar escaneando en recolección, devoluciones y rechazos» (R940-R944, D2): el buscador
+// «Buscar guías» es el `BuscadorFiltros` con `escaneo`. La pistola (Enter) y la cámara del buscador
+// SOLO filtran las dos listas; recolectar sigue siendo «Escanear o escribir guía». Guías imposibles
+// por casualidad: `91024` y `95555`.
+describe("SLT-194 — Recolección busca escaneando (R940-R944)", () => {
+  const buscador = () => screen.getByRole("searchbox", { name: "Buscar guías" }) as HTMLInputElement;
+  const camara = () => screen.queryByRole("button", { name: "Escanear con cámara" });
+  const seccionPor = () => screen.getByRole("region", { name: "Por recolectar en tienda" });
+  const seccionHoy = () => screen.getByRole("region", { name: "Recogidos en tienda hoy" });
+
+  const POR = [
+    makeOrden({ id: "p1", numGuia: 91024, numRemision: "REM-PA", destinatario: "Ana Gómez" }),
+    makeOrden({ id: "p2", numGuia: 95555, numRemision: "REM-PB", destinatario: "Bruno Solís" }),
+  ];
+  const HOY = [
+    makeRecolectada({ id: "h1", numGuia: 91024, numRemision: "REM-HA", destinatario: "Carla Mora" }),
+  ];
+
+  it("R940: campo de 44 px con la ayuda como descripción y la cámara de 44 px aparte, sin cambiar nombre, placeholder, «Filtros» ni conmutador", () => {
+    renderModule({ porRecolectar: POR, recolectadasHoy: HOY });
+
+    expect(screen.getAllByRole("searchbox")).toHaveLength(1);
+    expect(buscador()).toHaveAttribute("placeholder", "Guía, remisión, teléfono o nombre");
+    expect(buscador()).toHaveAccessibleDescription(
+      "Escanea o escribe la guía y pulsa Enter. Lo leído por la pistola o por la cámara (QR o código de barras) se busca igual.",
+    );
+    // El campo mide 44 px (su contenedor lleva el alto) y la cámara es un botón de 44 × 44 FUERA de él.
+    const cajaCampo = buscador().parentElement!;
+    expect(cajaCampo.className.split(/\s+/)).toContain("h-11");
+    const boton = camara();
+    expect(boton).not.toBeNull();
+    expect(boton!.className.split(/\s+/)).toContain("size-11");
+    expect(cajaCampo.contains(boton)).toBe(false);
+    // Barra fija, «Filtros» (con la «Tienda») y el conmutador, como antes.
+    const barra = buscador().closest(".sticky");
+    expect(barra).not.toBeNull();
+    expect(within(barra as HTMLElement).getByRole("button", { name: /^Filtros/ })).toBeInTheDocument();
+    expect(
+      within(barra as HTMLElement).getByRole("group", { name: "Vista de las órdenes" }),
+    ).toBeInTheDocument();
+  });
+
+  it("R941: una URL de paquete + Enter deja el número, filtra las DOS listas y selecciona el texto", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: POR, recolectadasHoy: HOY });
+
+    await user.click(buscador());
+    await user.paste("https://app.ejemplo.test/paquete/91024");
+    await user.keyboard("{Enter}");
+
+    expect(buscador().value).toBe("91024");
+    expect(within(seccionPor()).getByText("REM-PA")).toBeInTheDocument();
+    expect(within(seccionPor()).queryByText("REM-PB")).toBeNull();
+    expect(within(seccionHoy()).getByText("REM-HA")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(buscador().selectionStart).toBe(0);
+      expect(buscador().selectionEnd).toBe("91024".length);
+    });
+    expect(recolectarMock).not.toHaveBeenCalled();
+  });
+
+  it("R942: la cámara del buscador lee una guía → cierra el visor, pone el número y filtra; NO recolecta", async () => {
+    const user = userEvent.setup();
+    textoEscaneado = "91024";
+    renderModule({ porRecolectar: POR, recolectadasHoy: HOY });
+
+    await user.click(camara()!);
+    const visor = await screen.findByRole("dialog", { name: "Escanear con cámara" });
+    await user.click(within(visor).getByRole("button", { name: "Simular escaneo" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(buscador().value).toBe("91024");
+    expect(within(seccionPor()).getByText("REM-PA")).toBeInTheDocument();
+    expect(within(seccionPor()).queryByText("REM-PB")).toBeNull();
+    expect(within(seccionHoy()).getByText("REM-HA")).toBeInTheDocument();
+    expect(recolectarMock).not.toHaveBeenCalled();
+    expect(refreshMock).not.toHaveBeenCalled();
+  });
+
+  it("R943: dos accesos distintos; «Escanear con cámara» NO abre «Recolectar en tienda»", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: POR });
+
+    const recolectarBoton = disparador();
+    const buscarBoton = camara();
+    expect(recolectarBoton).not.toBeNull();
+    expect(buscarBoton).not.toBeNull();
+    expect(recolectarBoton).not.toBe(buscarBoton);
+
+    await user.click(buscarBoton!);
+    expect(await screen.findByRole("dialog", { name: "Escanear con cámara" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Recolectar en tienda" })).toBeNull();
+    expect(escaner()).toBeNull();
+  });
+
+  it("R944: bloqueado, sin «Escanear o escribir guía» pero con «Buscar guías» y «Escanear con cámara»", () => {
+    renderModule({ porRecolectar: POR, bloqueo: bloqueoConVencido() });
+
+    expect(disparador()).toBeNull();
+    expect(buscador()).toBeInTheDocument();
+    expect(camara()).not.toBeNull();
+  });
+});

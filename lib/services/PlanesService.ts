@@ -7,7 +7,7 @@ import type {
   IPlanesRepository,
   ResultadoAsignar,
 } from "@/lib/interfaces/repositories/IPlanesRepository";
-import type { IPlanesService } from "@/lib/interfaces/services/IPlanesService";
+import type { IPlanesService, OpcionesDeBorrador } from "@/lib/interfaces/services/IPlanesService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import {
   fechaCalendarioPlataforma,
@@ -84,6 +84,11 @@ function ok(planId: string, cambio: boolean, extra: Partial<Pick<Extract<PlanRes
 }
 
 const FORBIDDEN = { estado: "forbidden" } as const;
+
+/** SLT-129: el `borradorId` como último argumento del repositorio, o ninguno (las llamadas de hoy no cambian). */
+function delBorrador(opciones: OpcionesDeBorrador | undefined): [] | [string] {
+  return opciones === undefined ? [] : [opciones.borradorId];
+}
 
 /** Los rechazos que comparten `asignar` y su vista previa antes de llegar al repositorio. */
 type RechazoDeAsignar =
@@ -186,12 +191,12 @@ export class PlanesService implements IPlanesService {
     private readonly ahora: () => Date = () => new Date(),
   ) {}
 
-  async crear(actor: Actor | null, input: unknown): Promise<PlanResult> {
+  async crear(actor: Actor | null, input: unknown, opciones?: OpcionesDeBorrador): Promise<PlanResult> {
     if (!esSuperadmin(actor)) return FORBIDDEN;
     const parsed = crearPlanSchema.safeParse(input);
     if (!parsed.success) return { estado: "validation_error", fieldErrors: erroresDeCampo(parsed.error) };
     const { organizacionId, tipoCobro, inicioCiclo, vigenteDesde } = parsed.data;
-    if (organizacionId === null) return ok(await this.repo.crear(parsed.data, actor.usuarioId), true);
+    if (organizacionId === null) return ok(await this.repo.crear(parsed.data, actor.usuarioId, ...delBorrador(opciones)), true);
 
     // Ajuste planes-custom (D2): un custom se asigna a su empresa al crearlo, en UNA operación. Las
     // mismas reglas que `asignar`, en su orden: el rango de la fecha (SLT-58 R30, SLT-86 R16), la empresa
@@ -215,13 +220,14 @@ export class PlanesService implements IPlanesService {
       // El refine de `crearPlanSchema` exige el tipo en un custom.
       { efecto, tipoCobro: tipoCobro ?? "mensual" },
       ahora,
+      ...delBorrador(opciones),
     );
     // SLT-118 (R32): la fecha real del pendiente, la que dejó el repositorio (puede ser posterior a la elegida).
     if (r.estado === "ok") return ok(r.planId, true, { avisos: r.avisos, vigenteDesde: r.vigenteDesde ?? null });
     return rechazoDeAsignar(r);
   }
 
-  async editar(actor: Actor | null, input: unknown): Promise<PlanResult> {
+  async editar(actor: Actor | null, input: unknown, opciones?: OpcionesDeBorrador): Promise<PlanResult> {
     if (!esSuperadmin(actor)) return FORBIDDEN;
     const parsed = editarPlanSchema.safeParse(input);
     if (!parsed.success) return { estado: "validation_error", fieldErrors: erroresDeCampo(parsed.error) };
@@ -239,7 +245,7 @@ export class PlanesService implements IPlanesService {
     // futura es el cambio programado de SLT-58. Lo demás sigue la regla de SLT-58 (R37).
     if (cambiaElPrecio(diferenciasDelPlan(plan, { ...plan, ...version }))) {
       if (vigenteDesde === null) return errorEn("vigenteDesde", FECHA_DE_EFECTO_OBLIGATORIA);
-      if (vigenteDesde === hoy) return this.editarYa(planId, version, actor.usuarioId, inicioDelDiaPlataforma(hoy));
+      if (vigenteDesde === hoy) return this.editarYa(planId, version, actor.usuarioId, inicioDelDiaPlataforma(hoy), opciones);
     } else if (vigenteDesde !== null && inicioDelDiaPlataforma(vigenteDesde).getTime() <= ahora.getTime()) {
       // R37: la fecha rige a las 00:00 de la plataforma y tiene que caer después de ahora.
       return errorEn("vigenteDesde", "La fecha de vigencia tiene que ser posterior a hoy.");
@@ -255,18 +261,25 @@ export class PlanesService implements IPlanesService {
         inicioDelDiaPlataforma(vigenteDesde),
         actor.usuarioId,
         ahora,
+        ...delBorrador(opciones),
       );
       if (p.estado === "periodicidad_incompatible") return periodicidadQueNoCabe(p.empresas);
       if (p.estado !== "ok") return p;
       // `vigenteDesde` vuelve como la fecha elegida (`AAAA-MM-DD`, P8); null si no se programó nada.
       return ok(planId, p.cambio, { avisos: p.avisos, vigenteDesde: p.cambio ? vigenteDesde : null });
     }
-    return this.editarYa(planId, version, actor.usuarioId, inicioDelDiaPlataforma(hoy));
+    return this.editarYa(planId, version, actor.usuarioId, inicioDelDiaPlataforma(hoy), opciones);
   }
 
   /** La edición inmediata; `precioDesde` (las 00:00 de hoy) es desde cuándo rige un precio nuevo (R15). */
-  private async editarYa(planId: string, version: VersionPlan, actorUsuarioId: string, precioDesde: Date): Promise<PlanResult> {
-    const r = await this.repo.editar(planId, version, actorUsuarioId, precioDesde);
+  private async editarYa(
+    planId: string,
+    version: VersionPlan,
+    actorUsuarioId: string,
+    precioDesde: Date,
+    opciones?: OpcionesDeBorrador,
+  ): Promise<PlanResult> {
+    const r = await this.repo.editar(planId, version, actorUsuarioId, precioDesde, ...delBorrador(opciones));
     if (r.estado === "periodicidad_incompatible") return periodicidadQueNoCabe(r.empresas);
     // SLT-128 (R16): `cambio_a_medias` pasa tal cual; lo decide el repositorio bajo el cerrojo del plan.
     if (r.estado !== "ok") return r;

@@ -1300,6 +1300,17 @@ export interface RechazoSlaTiendaRow {
   monto: string | null;
 }
 
+/**
+ * SLT-194 (D3) — el termino de busqueda de Rechazos, en las formas que da `terminoDeBusqueda`
+ * (`lib/utils/filtros-listado-ordenes.ts`): normalizado y, si difiere, solo-digitos. Se escribe aqui
+ * con la misma forma y no se importa `TerminoBusqueda` porque aquel modulo ya importa de este
+ * (`SalioAReparto`), y el import cerraria un ciclo. Son estructuralmente el mismo tipo.
+ */
+export interface BusquedaRechazosSla {
+  busqueda: string;
+  busquedaDigitos?: string;
+}
+
 // --- FICHA 427: traspasar a otro mensajero lo que ya lleva encima ---
 
 /**
@@ -2676,17 +2687,22 @@ export interface IOrdenRepository {
    * (`deleted_at IS NULL`), su estatus ACTUAL es `rechazada` Y existe una transicion del cron SLA
    * en su historial (`origen_tipo = escalado_devuelta_sla`, feature 99). Al salir de `rechazada` o
    * al borrarse, cae del conteo (R15). Alimenta el `total` paginado.
+   *
+   * SLT-194 (R953/R954): con `busqueda`, ademas, la columna de busqueda contiene el termino (el
+   * criterio de `/ordenes`), en AND con todo lo anterior. Sin ella, el predicado de siempre (R957).
    */
-  countRechazadasSlaByTienda(tiendaId: string): Promise<number>;
+  countRechazadasSlaByTienda(tiendaId: string, busqueda?: BusquedaRechazosSla): Promise<number>;
   /**
    * Feature 102/R12/R14/R15: una PAGINA de RECHAZOS POR SLA de `tiendaId` con el MISMO predicado
    * que `countRechazadasSlaByTienda`, ordenada por `Orden.createdAt` desc. Por cada orden, el
    * `monto` = `ingreso_bodega_rechazo` de su gestion sintetica SLA (la enlazada por la transicion
    * `origen_tipo = escalado_devuelta_sla`), YA serializado a STRING escala 2; `null` mientras no
    * este snapshoteada (pendiente de cierre, Q2 default). `skip`/`take` para la paginacion.
+   * SLT-194 (R953): `busqueda` con el MISMO efecto que en `countRechazadasSlaByTienda`.
    */
   findRechazadasSlaByTienda(
     tiendaId: string,
     pagination: { skip: number; take: number },
+    busqueda?: BusquedaRechazosSla,
   ): Promise<RechazoSlaTiendaRow[]>;
 }
