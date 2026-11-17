@@ -64,3 +64,46 @@ Ningún mayor / BLOQUEANTE.
 ## Veredicto
 
 **OK**
+
+## Vuelta 2 (acotada a e82f218c..d63275a0)
+
+Commits: 4fb7ade8 (anillo de foco en la fila de rechazo), d1ba1cc5 (apilado de la tarjeta), d63275a0 (E2E).
+
+- [x] **Hallazgo menor 1 de la vuelta 1 cerrado**: `FILA_RECHAZO_BOTON` lleva `focus-visible:outline-2 outline-offset-2 outline-brand`
+  (mismo patrón que `PosOrderCardDetalle`), asertado en `CierreRechazosDeTienda.test.tsx`.
+- [x] **Botón de información alcanzable**: el span `data-columna="resultado"` es `relative z-20` y su padre
+  `CONTENIDO_SIN_TOQUE` (`relative`, sin `z-`) no abre contexto propio, así que el z-20 compite dentro de la
+  tarjeta por encima del disparador `z-10`; `[&_button]:pointer-events-auto` sigue. El resto del span no capta
+  (hereda `pointer-events-none`), así que fuera del botón el toque cae en el disparador. Guardia
+  `estado-con-info` en verde; R813 «la información capta su toque y no despliega» en verde.
+- [x] **`isolate` y la barra/pie**: la tarjeta queda como contexto `z-auto` posicionado; sus `z-10/z-20` ya no
+  compiten con `BARRA_FIJA` (`sticky z-20`, `BuscadorFiltros.tsx:57`) ni con el pie móvil (`fixed z-30`,
+  `DetalleCierre.tsx:339`). Sin `isolate`, el z-20 de la información, posterior en el DOM, pintaría encima de
+  la barra al desplazar: el cambio lo evita.
+- [x] **/cierres-admin y escritorio igual**: `TARJETA_MENSAJERO`/`DISPARADOR_ESTIRADO`/`INFO_CON_TOQUE` solo se
+  usan en `TarjetaMensajero` (rama `tarjetaMensajero ?`), y `FILA_RECHAZO_BOTON` solo con `desplegableMovil`.
+  `FilaGestion.test`, `DetalleCierreGestiones.test` y los tests R814/R817 de admin/escritorio en verde.
+- [x] **Quitar `hover:bg-muted/40`**: en táctil el hover no existe (y en iOS deja la tarjeta «pegada» tras el
+  toque); el teclado conserva `focus-visible:ring-2 ring-ring ring-inset`, asertado en R812. Ver menor abajo.
+- [x] **E2E no debilitado, reforzado**: sigue `aria-expanded` false → true y `devolver` visible + tocado; añade
+  que el punto está dentro de la ventana y que `elementFromPoint` es el `:scope > button` de ESA tarjeta, con
+  mensaje que nombra al intruso. Scroll `instant` justificado por `scroll-behavior: smooth`. CI `gate` del
+  PR #196 en SUCCESS (dato del leader; no corrí E2E).
+- [x] **Test de apilado**: fija `relative isolate`, `absolute inset-0 z-10`, `relative z-20` y que ningún otro
+  nodo de la tarjeta lleve `z-`.
+- [x] **Mutación propia**: quitar `z-10` de `DISPARADOR_ESTIRADO` → ROJO «R812, R813: orden de apilado…»
+  (1 failed / 17). Restaurada con `git checkout --`; `git status` limpio.
+- [x] **Ejecutado**: GestionesCierreMovil, CierreRechazosDeTienda, FilaGestion, DetalleCierreGestiones,
+  ContrasteBrandSoftOscuro, guardia estado-con-info → 6 archivos, 216 tests en verde. `tsc --noEmit` limpio.
+
+### Hallazgos
+
+- **menor** — sin `hover:bg-muted/40`, con ratón (ventana estrecha de escritorio) la tarjeta ya no da señal al
+  pasar por encima más que el cursor del botón. Aceptable: la vista es del teléfono; si se quiere, un
+  `[@media(hover:hover)]:hover:bg-muted/40` la recuperaría sin el efecto pegado del táctil.
+
+Ningún BLOQUEANTE.
+
+### Veredicto vuelta 2
+
+**OK**
