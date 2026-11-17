@@ -35,6 +35,12 @@ import {
  *      en «Cierres solicitados» como tarjeta con «Ver», y «Ver» abre el detalle a pantalla completa con
  *      «Volver» de 44 px, que lo cierra.
  *
+ *  SLT-191 «Cierre del día del mensajero según el canvas» (R810-R812, R818-R820, R822): en (a), la
+ *  tarjeta de gestión pinta guía → destinatario → tienda y no muestra «Devolver a gestión» hasta
+ *  desplegarla tocando su texto; en (b), el folio va en la fila, «Ver» solo tras desplegar (sin
+ *  «Recaudado» ni «Pago») y la barra de la cola es `sticky` arriba. Con un solo cierre la cola no da
+ *  para desplazar: la barra fija se comprueba por su estilo calculado, no por un desplazamiento.
+ *
  * DATOS: empresa nueva (`crearEscenarioReparto`), un mensajero por caso con SUS órdenes, gestionadas
  * por los servicios reales. El escenario solo deja fijar destinatario, remisión y monto
  * (`crearOrden`): la tienda, la dirección, el producto y el motivo de rechazo largos de
@@ -96,6 +102,33 @@ test.describe("SLT-165 D — Cierre del día en tarjetas a 360 y 414 px", () => 
       await sinSolapes(larga, "[data-columna]");
       // R523: la columna «Recibido» no se pinta en la tarjeta (va en el detalle desplegado).
       await expect(larga.locator('[data-columna="recibido"]')).toBeHidden();
+
+      // SLT-191 (R810): la guía va encima del destinatario y este encima de la tienda; «Ganancia» a la derecha.
+      const yDe = async (sel: string) => (await caja(page, sel, larga.locator(sel))).y;
+      const [yGuia, yDest, yTienda] = [
+        await yDe('[data-columna="guia"]'),
+        await yDe('[data-columna="destinatario"]'),
+        await yDe('[data-columna="tienda"]'),
+      ];
+      expect(yGuia).toBeLessThan(yDest);
+      expect(yDest).toBeLessThan(yTienda);
+      await expect(larga.getByText("Ganancia", { exact: true })).toBeVisible();
+      // SLT-191 (R811, R812): sin «Devolver a gestión» plegada; se despliega tocando el TEXTO de la
+      // tarjeta (el toque cae en el disparador estirado) y entonces aparece al pie.
+      const devolver = larga.getByRole("button", { name: new RegExp(`^Devolver a gestión la orden .* · ${DESTINATARIO_LARGO}$`) });
+      await expect(devolver).toHaveCount(0);
+      const disparador = larga.locator("button[aria-expanded]").first();
+      await expect(disparador).toHaveAttribute("aria-expanded", "false");
+      await tactil(disparador);
+      const cajaTexto = await caja(page, "destinatario", larga.getByText(DESTINATARIO_LARGO, { exact: true }));
+      await page.mouse.click(cajaTexto.x + 8, cajaTexto.y + cajaTexto.height / 2);
+      await expect(disparador).toHaveAttribute("aria-expanded", "true");
+      await expect(devolver).toBeVisible();
+      await tactil(devolver);
+      // Y se pliega con otro toque en la tarjeta.
+      await disparador.click({ position: { x: 8, y: 8 } });
+      await expect(disparador).toHaveAttribute("aria-expanded", "false");
+      await expect(devolver).toHaveCount(0);
 
       // R501, R530: nada desborda (pestañas, barra, tarjetas, paginación).
       await sinDesborde(page);
@@ -189,14 +222,29 @@ test.describe("SLT-165 D — Cierre del día en tarjetas a 360 y 414 px", () => 
     await dialogo.getByRole("button", { name: "Solicitar cierre" }).click();
     await expect(page.getByText("Cierre solicitado correctamente.")).toBeVisible();
 
-    // R535: la cola en tarjetas de dos columnas, con «Ver».
+    // R535: la cola en tarjetas de dos columnas. SLT-191 (R818, R819): el folio en la fila y «Ver»
+    // solo tras desplegar, a todo el ancho; R820: sin «Recaudado» ni «Pago» en el desplegado.
     const cola = page.getByRole("region", { name: "Cierres solicitados" });
     await expect(page.getByRole("tab", { name: "Cierres solicitados (1)" })).toBeVisible();
     await expect(cola.getByRole("columnheader", { name: "Cierre" })).toBeVisible();
     await expect(cola.getByRole("columnheader", { name: "Ganancia" })).toBeVisible();
     await expect(cola.getByRole("columnheader", { name: "Folio" })).toHaveCount(0);
+    await expect(cola.getByText(/^#[0-9A-F]{8}$/)).toBeVisible();
+    await expect(cola.getByText(/^Solicitado \d{4}-\d{2}-\d{2} \d{2}:\d{2}$/)).toBeVisible();
+    await expect(cola.getByText(/^Destino: /)).toBeVisible();
     const ver = cola.getByRole("button", { name: /^Ver del cierre del \d{4}-\d{2}-\d{2}$/ });
+    await expect(ver).toHaveCount(0);
+    const masDatos = cola.getByRole("button", { name: /^Más datos del cierre del \d{4}-\d{2}-\d{2}$/ });
+    await masDatos.click();
+    await expect(ver).toBeVisible();
     await tactil(ver);
+    await expect(cola.getByText("Recaudado", { exact: true })).toHaveCount(0);
+    await expect(cola.getByText("Pago", { exact: true })).toHaveCount(0);
+    // R822: la barra de la cola (buscador, «Filtros» y «Descargar») es fija arriba y no desborda.
+    const barraCola = page.locator("[data-barra-cola]").filter({ has: page.getByPlaceholder("Busca por folio") });
+    await expect(barraCola).toHaveCSS("position", "sticky");
+    await expect(barraCola).toHaveCSS("top", "0px");
+    await expect(barraCola.getByRole("button", { name: "Descargar Cierres solicitados" })).toBeVisible();
     await sinDesborde(page);
 
     // R537: pantalla completa, «Volver» de 44 px arriba, sin la X.
