@@ -80,3 +80,13 @@ export const RANKING_HISTORICO_LABELS = {
     "El histórico solo tiene los días que el congelado diario alcanzó a cerrar. Probá con otra fecha.",
   volverAlVivo: "Ver el ranking de hoy",
 } as const;
+
+/**
+ * SLT-162 «Ranking del mensajero en tarjetas en el móvil» (R755, R760) — la tarjeta del Histórico en
+ * el teléfono: el rótulo del premio y el nombre del control de desplegar según su estado.
+ */
+export const RANKING_HISTORICO_TARJETA = {
+  premio: RANKING_HISTORICO_COLUMNAS.premio,
+  verDetalle: "Ver detalle",
+  ocultarDetalle: "Ocultar detalle",
+} as const;

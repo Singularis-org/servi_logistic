@@ -220,7 +220,7 @@ Orden: T1 → (T2 ∥ T3) → T4 → T5 → T6. `[P]` = paralelizable con su her
   *Hecho:* tests de componente de R750-R754, R758 (podio y premios), R762 (con término), R763
   (ranking), R764, R766, R767, R768 y R769 (acentos, mayúsculas, vaciar, sin resultados, podio y
   premios intactos, ninguna llamada a red) en verde, con `matchMedia` simulado a 360 y a 1280 px.
-- [ ] **T3 [P] — Histórico** (`RankingHistoricoModule.tsx`, `ranking-historico-labels.ts` para los
+- [x] **T3 [P] — Histórico** (`RankingHistoricoModule.tsx`, `ranking-historico-labels.ts` para los
   rótulos «Premio», «Ver detalle», «Ocultar detalle»). Columnas móviles con `useIsMobile` y
   `renderExpanded` solo en móvil (Puesto, Entregado, Asignados); `expandAriaLabel`;
   `DESPLEGABLE_TACTIL` y `DESCARGA_MOVIL` en la sección. El selector de fecha pasa a `children` de un

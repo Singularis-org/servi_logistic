@@ -249,8 +249,11 @@ export interface DataTableProps<T> {
   /**
    * Nombre accesible del botón de expandir de cada fila. Debe identificar SU fila, no ser
    * un genérico "Ver detalle" repetido N veces.
+   *
+   * SLT-162 (R760): recibe además si la fila está desplegada, para que el nombre pueda decir lo
+   * que hará el botón («Ver…»/«Ocultar…»). Opcional en la firma: quien solo mira la fila no cambia.
    */
-  expandAriaLabel?: (row: T) => string;
+  expandAriaLabel?: (row: T, abierta: boolean) => string;
   /**
    * Clase(s) opcional(es) por fila de DATOS, derivadas de la propia fila. Se
    * combinan con la clase base del `<tr>` vía `cn("border-b", rowClassName?.(row))`,
@@ -539,7 +542,7 @@ export function DataTable<T>({
                     onClick={() => toggle(key)}
                     aria-expanded={abierta}
                     aria-controls={`${key}-expandido`}
-                    aria-label={expandAriaLabel?.(row)}
+                    aria-label={expandAriaLabel?.(row, abierta)}
                     className="inline-flex items-center justify-center rounded p-1 text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                   >
                     <ExpandIcon open={abierta} />
