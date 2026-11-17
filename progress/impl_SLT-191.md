@@ -100,3 +100,31 @@ ventana y lejos del pie porque el texto se centró antes.
 
 **Test:** `GestionesCierreMovil.test.tsx` «R812, R813: orden de apilado…» (clases `isolate`, `z-10`, `z-20`
 y ningún otro `z-` dentro de la tarjeta).
+
+## Segundo rojo del E2E (a), run 44027473005 sobre d1ba1cc5 (2026-11-17)
+Rojo: `pwa-mensajero-cierre-dia.spec.ts:135` «el punto del texto lo recibe el disparador estirado» → false,
+a 360 y 414 px y en el reintento. Artefacto `e2e-dinero` bajado a
+`C:/Users/ArqDev/AppData/Local/Temp/claude/aab05f6b97f87a08/0a929361-2ad4-41de-8647-ae84c49c1ab6/scratchpad/slt191-e2e/run44027473005/`.
+
+**Evidencia:**
+- El `error-context.md` (snapshot accesible) muestra la tarjeta bien formada: es la PRIMERA de «Órdenes del
+  cierre». El botón «Detalle de la orden … · Ana María …» es el primer hijo y le siguen el bloque de
+  guía, destinatario y tienda y el de resultado, «Ganancia» y monto. El snapshot no dice qué elemento
+  recibe un punto: con él no se puede afirmar qué lo tapaba.
+- `app/globals.css:1057-1060`: `html { scroll-behavior: smooth }` (si no hay `prefers-reduced-motion`,
+  como en el Chromium del CI). Por eso `el.scrollIntoView({ block: "center" })` sin `behavior` ANIMA el
+  desplazamiento. El test medía la caja (`boundingBox`) y luego, en otra llamada,
+  `elementFromPoint` mientras la página seguía moviéndose. El punto de la caja ya no caía sobre el texto:
+  caía en otra parte de la página (otra tarjeta, la barra o lo que pasara por ahí en ese instante).
+  Encaja con los dos rojos: en d1ba1cc5 el `closest(...)` daba falso, y en 4fb7ade8, sin scroll, el
+  punto caía bajo el pliegue de 780 px o bajo el pie fijo.
+- En la pantalla no hay causa a la vista: el disparador es `absolute inset-0 z-10` dentro de una tarjeta
+  `relative isolate`, y por encima solo está la información (`relative z-20`). Con el texto centrado,
+  la barra fija (arriba) y el pie fijo (abajo) quedan lejos del punto.
+
+**Cambio (solo el E2E):** el scroll es `behavior: "instant"`. Medir el punto y preguntar
+`document.elementFromPoint` se hace en el MISMO `evaluate`, sin que el navegador desplace entre medias. Se
+compara con el disparador de ESTA tarjeta (`:scope > button` de su `[data-tarjeta-mensajero]`), no con
+cualquiera. Si falla, el rojo dice qué recibe el punto: etiqueta, clases, `aria-label` y texto corto, o
+«ninguno (fuera de la ventana)». Además se comprueba que el punto está dentro de la ventana.
+Si el próximo CI vuelve a dar rojo, ese mensaje identifica al elemento y el arreglo pasa a la pantalla.

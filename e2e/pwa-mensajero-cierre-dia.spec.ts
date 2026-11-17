@@ -120,19 +120,33 @@ test.describe("SLT-165 D — Cierre del día en tarjetas a 360 y 414 px", () => 
       const disparador = larga.locator("button[aria-expanded]").first();
       await expect(disparador).toHaveAttribute("aria-expanded", "false");
       await tactil(disparador);
-      // `page.mouse.click` no desplaza: con la tarjeta bajo el pliegue (780 px) o bajo el pie fijo, el
-      // toque caía fuera de ella. Se centra el texto en la ventana y se comprueba qué recibe el punto.
+      // `page.mouse.click` no desplaza ni mira qué recibe el punto. Se centra el texto con un scroll
+      // INSTANTÁNEO —`<html>` lleva `scroll-behavior: smooth` (globals.css): sin `instant` la página
+      // sigue animándose y la caja medida ya no es la del clic— y, en el MISMO paso del navegador, se
+      // mide el punto y se pregunta qué elemento lo recibe. Si no es el disparador de ESTA tarjeta, el
+      // rojo dice cuál es.
       const texto = larga.getByText(DESTINATARIO_LARGO, { exact: true });
-      await texto.evaluate((el) => el.scrollIntoView({ block: "center" }));
-      const cajaTexto = await caja(page, "destinatario", texto);
-      const punto = { x: cajaTexto.x + 8, y: cajaTexto.y + Math.min(cajaTexto.height / 2, 10) };
-      expect(
-        await page.evaluate(
-          ({ x, y }) => (document.elementFromPoint(x, y)?.closest("[data-tarjeta-mensajero] > button") ?? null) !== null,
-          punto,
-        ),
-        "el punto del texto lo recibe el disparador estirado",
-      ).toBe(true);
+      const punto = await texto.evaluate((el) => {
+        el.scrollIntoView({ block: "center", behavior: "instant" });
+        const r = el.getBoundingClientRect();
+        const x = Math.round(r.left + 8);
+        const y = Math.round(r.top + Math.min(r.height / 2, 10));
+        const arriba = document.elementFromPoint(x, y);
+        const propio = el.closest("[data-tarjeta-mensajero]")?.querySelector(":scope > button") ?? null;
+        const describir = (e: Element | null) =>
+          e === null
+            ? "ninguno (fuera de la ventana)"
+            : `<${e.tagName.toLowerCase()} class="${(e.getAttribute("class") ?? "").slice(0, 120)}"` +
+              ` aria-label="${(e.getAttribute("aria-label") ?? "").slice(0, 60)}"> «${(e.textContent ?? "").trim().slice(0, 40)}»`;
+        return {
+          x,
+          y,
+          ventana: { ancho: window.innerWidth, alto: window.innerHeight },
+          recibe: arriba !== null && arriba === propio ? "disparador" : describir(arriba),
+        };
+      });
+      expect(punto.x >= 0 && punto.y >= 0 && punto.x < punto.ventana.ancho && punto.y < punto.ventana.alto, JSON.stringify(punto)).toBe(true);
+      expect(punto.recibe, `qué recibe el punto (${punto.x}, ${punto.y}) del texto de la tarjeta`).toBe("disparador");
       await page.mouse.click(punto.x, punto.y);
       await expect(disparador).toHaveAttribute("aria-expanded", "true");
       await expect(devolver).toBeVisible();
