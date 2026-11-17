@@ -48,7 +48,17 @@ vi.mock("@/lib/actions/orden-notas", () => ({
 }));
 
 vi.mock("@/app/(app)/mis-asignaciones/_components/RutaMapa", () => ({
-  RutaMapa: () => <div data-testid="ruta-mapa" />,
+  // SLT-192: el doble expone la acción de plegar que el módulo le pasa (en la app, «Ocultar mapa»
+  // del pie del mapa; lo prueba `RutaMapaInner.test.tsx`).
+  RutaMapa: (props: { onOcultar?: () => void }) => (
+    <div data-testid="ruta-mapa">
+      {props.onOcultar ? (
+        <button type="button" onClick={props.onOcultar}>
+          plegar (doble)
+        </button>
+      ) : null}
+    </div>
+  ),
 }));
 
 vi.mock("@/lib/actions/ruta-mensajero", () => ({
@@ -234,7 +244,7 @@ describe("SLT-156 R509 — avisos de ruta en una línea", () => {
   };
   const TEXTO_DESACTUALIZADA = /La ruta cambió desde el último cálculo/;
 
-  it("cada aviso: título a la vista, descripción oculta tras «Ver más» y «Mostrar mapa» en la fila del primero", async () => {
+  it("cada aviso: título a la vista, descripción oculta tras «Ver más» y, con el mapa cerrado, «Mostrar mapa» en la fila del primero", async () => {
     const user = userEvent.setup();
     montar({ ruta: RUTA_CON_AVISOS });
 
@@ -249,8 +259,13 @@ describe("SLT-156 R509 — avisos de ruta en una línea", () => {
     expect(verMas).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByText(TEXTO_DESACTUALIZADA)).toBeNull();
 
-    // «Mostrar mapa» en la MISMA fila que el título del primer aviso, y una sola vez.
-    const mapa = within(desactualizada).getByRole("button", { name: /Ocultar mapa|Mostrar mapa/ });
+    // SLT-192 (R881): con el mapa abierto, la fila del aviso queda solo con «Ver más».
+    expect(within(desactualizada).queryByRole("button", { name: /Ocultar mapa|Mostrar mapa/ })).toBeNull();
+
+    // SLT-192 (R883): cerrado, «Mostrar mapa» en la MISMA fila que el título del primer aviso, y
+    // una sola vez.
+    await user.click(screen.getByRole("button", { name: "plegar (doble)" }));
+    const mapa = within(desactualizada).getByRole("button", { name: "Mostrar mapa" });
     expect(mapa.parentElement).toBe(verMas.parentElement);
     expect(screen.getAllByRole("button", { name: /Ocultar mapa|Mostrar mapa/ })).toHaveLength(1);
 
@@ -266,10 +281,12 @@ describe("SLT-156 R509 — avisos de ruta en una línea", () => {
     );
   });
 
-  it("sin avisos, «Mostrar mapa» sigue en la cabecera del mapa", () => {
+  it("sin avisos y con el mapa cerrado, «Mostrar mapa» sigue en la cabecera del mapa", async () => {
+    const user = userEvent.setup();
     montar();
+    await user.click(screen.getByRole("button", { name: "plegar (doble)" }));
     const mapa = screen.getByRole("group", { name: "Mapa de ruta" });
-    expect(within(mapa).getByRole("button", { name: /Ocultar mapa|Mostrar mapa/ })).toBeInTheDocument();
+    expect(within(mapa).getByRole("button", { name: "Mostrar mapa" })).toBeInTheDocument();
   });
 });
 

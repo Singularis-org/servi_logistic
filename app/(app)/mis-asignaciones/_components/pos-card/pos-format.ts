@@ -71,3 +71,22 @@ export function destinoDeOrden(orden: MiAsignacionDTO): DestinoNavegacion {
       .join(", "),
   };
 }
+
+/**
+ * Ubicación en una línea: «{cantón} · {distrito} — {dirección}», omitiendo lo que falte y sin
+ * dejar separadores sobrantes. Cadena vacía si no hay ninguna de las tres: quien pinta decide el
+ * texto de ausencia («Sin dirección»).
+ *
+ * SLT-192 (R888): se extrajo de `PosOrderCardDetalle` para que la hoja de la parada del mapa
+ * (`HojaParadaMapa`) arme la dirección igual que la fila Detalle, sin una segunda copia.
+ */
+export function lineaUbicacion(
+  orden: Pick<MiAsignacionDTO, "cantonNombre" | "distritoNombre" | "direccion">,
+): string {
+  return [
+    [orden.cantonNombre, orden.distritoNombre].filter(Boolean).join(" · "),
+    orden.direccion,
+  ]
+    .filter(Boolean)
+    .join(" — ");
+}

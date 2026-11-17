@@ -2,6 +2,8 @@ import type { RolValue } from "@prisma/client";
 import type { ReactNode } from "react";
 import { cookies } from "next/headers";
 import { Sidebar } from "./_components/Sidebar";
+import { TACTIL_MOVIL } from "@/components/shared/texto-entero";
+import { cn } from "@/lib/utils";
 import { ToastProvider } from "@/providers/ToastProvider";
 import { AvisoVersionNueva } from "@/components/shared/AvisoVersionNueva";
 import { PushReactivacion } from "@/components/shared/PushReactivacion";
@@ -170,7 +172,8 @@ export default async function AppLayout({
               data-rol={actor?.rol}
               className="group/app overflow-x-clip pb-40 lg:pb-12"
             >
-              <SidebarTrigger className={"relative md:hidden"} />
+              {/* SLT-193 (R911): la hamburguesa a 44 × 44 en móvil (solo existe por debajo de `md`). */}
+              <SidebarTrigger className={cn("relative md:hidden", TACTIL_MOVIL)} />
               {/* ⭑ Ficha 433 — el proveedor envuelve SÓLO a `{children}` porque es ahí donde
                   vive el `PageHeader` que consume el mapa, y así el cambio no re-indenta el
                   resto del layout. No pinta ninguna caja: es un proveedor de contexto. */}

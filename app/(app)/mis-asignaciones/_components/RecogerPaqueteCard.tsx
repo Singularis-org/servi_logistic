@@ -49,9 +49,12 @@ export function RecogerPaqueteCard({
        tiempo que el mensajero tuviera abierta la pantalla — o sea, la cámara encendida en la
        calle. La sesión vive con el diálogo: cerrarlo la descarta (R591) y refresca una vez.
        El label NO es el de por defecto: SLT-156 (R500) es el disparador único de las pantallas
-       del mensajero, de 44 px y a todo el ancho; la tarjeta de dentro conserva «Recoger paquete». */
-    <EscanerModal label={ESCANER_LABEL_GUIA} tactil>
+       del mensajero, de 44 px y a todo el ancho.
+       SLT-190 (R867, R869, R870, DS7): «Recoger paquete» pasa a la barra del diálogo, con un solo
+       «Cerrar» de 44 px, y la tarjeta se monta sin su encabezado (icono, título y descripción). */
+    <EscanerModal label={ESCANER_LABEL_GUIA} titulo="Recoger paquete" tactil>
       <TarjetaEscaneoContinuo
+        sinEncabezado
         recibir={recoger}
         alCerrarConRecepcion={onRecogida}
         textos={TEXTOS_RECOGIDA}

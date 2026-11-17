@@ -64,9 +64,12 @@ export function EscanerGuiaReparto({
   }
 
   return (
-    <EscanerModal label={ESCANER_LABEL_GUIA} tactil>
+    // SLT-193 (R925, R927; P4 de Carlos): el título va en la barra del diálogo, con su único
+    // «Cerrar» de 44 px; la tarjeta se monta sin su encabezado y su región conserva el nombre.
+    <EscanerModal label={ESCANER_LABEL_GUIA} titulo={TITULO} tactil>
       {(cerrar) => (
         <EscanerGuiaCard
+          sinEncabezado
           titulo={TITULO}
           descripcion={DESCRIPCION}
           icono={ScanLine}

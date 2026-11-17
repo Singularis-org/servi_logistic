@@ -19,6 +19,19 @@ export const COLUMNA_FIJA = "shrink-0 whitespace-nowrap tabular-nums";
 export const TACTIL_MOVIL = "max-md:min-h-11 max-md:min-w-11";
 
 /**
+ * SLT-190 (B1), promovido por SLT-193 (R916): área táctil de 44 × 44 px para el (i) de
+ * `EstadoInfo` (caja de 16 + 2 × 14). Va en el envoltorio (`className`) y crece el
+ * pseudo-elemento del botón, no su caja: la fila no cambia de alto.
+ */
+export const CLASE_INFO_TACTIL = "[&_button]:after:-inset-3.5";
+
+/**
+ * SLT-193 (R919): la misma área de 44 × 44 solo en móvil, para un (i) compartido con escritorio
+ * (en escritorio sigue en 24 × 24).
+ */
+export const CLASE_INFO_TACTIL_MOVIL = "max-md:[&_button]:after:-inset-3.5";
+
+/**
  * SLT-165 (R493), promovido por SLT-162 (dos consumidores): el botón de desplegar de una `DataTable`
  * (el único `button[aria-expanded]` de la fila) a 44 × 44 px en el teléfono. Va en el contenedor de
  * la tabla, por selector de descendiente: la `DataTable` no cambia.

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ChevronDown, MapPin, Navigation, Package } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { COLUMNA_FIJA, TEXTO_ENTERO } from "@/components/shared/texto-entero";
+import { CLASE_INFO_TACTIL, COLUMNA_FIJA, TEXTO_ENTERO } from "@/components/shared/texto-entero";
 import {
   Collapsible,
   CollapsibleContent,
@@ -52,7 +52,10 @@ export function PosOrderCardMosaico({
   secciones,
   acciones,
   mensajero,
+  posicion,
 }: PosOrderCardProps) {
+  // SLT-190 (DS3): la posición en la lista visible solo se pinta donde no hay ruta.
+  const conPosicion = !mostrarRuta && posicion !== undefined;
   // Estado del desplegable del detalle: UI efímera, de un solo consumidor.
   const [detalleAbierto, setDetalleAbierto] = useState(false);
   // FICHA 455 (R7/R8): el chip es el estado de la orden; activa/detalle/nota van en marcas aparte.
@@ -99,6 +102,13 @@ export function PosOrderCardMosaico({
             >
               {textoParada(orden)}
             </span>
+          ) : conPosicion ? (
+            /* SLT-190 (R855, R856): la posición en la lista, con nombre accesible propio; no es
+               una parada. */
+            <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-navy text-[11px] font-black text-white">
+              <span className="sr-only">{`Orden ${posicion} de ${total}`}</span>
+              <span aria-hidden="true">{posicion}</span>
+            </span>
           ) : null}
           <div className="min-w-0 leading-none">
             <p className={`font-mono text-xs font-bold tracking-wide text-foreground ${TEXTO_ENTERO}`}>
@@ -119,6 +129,10 @@ export function PosOrderCardMosaico({
                   )}{" "}
                   ·{" "}
                 </>
+              ) : conPosicion ? (
+                /* SLT-190 (R855): «{posición} de {total} · {peso}». El número ya se anuncia en la
+                   insignia de al lado; aquí se oculta para no leerlo dos veces. */
+                <span aria-hidden="true">{`${posicion} de ${total} · `}</span>
               ) : null}
               {formatPeso(orden.peso)}
             </p>
@@ -128,6 +142,7 @@ export function PosOrderCardMosaico({
           {/* FICHA 456 (T3.6, R9): el chip con su botón de información (nombre calculado dentro). */}
           <EstadoConInfo
             codigo={orden.estatusValue}
+            className={CLASE_INFO_TACTIL}
             chipClassName={`rounded-full px-2 py-1 text-[10px] font-bold tracking-wide ${claseChipEstado(orden.estatusValue)}`}
           />
           {marcas.map((m) => (
@@ -137,6 +152,7 @@ export function PosOrderCardMosaico({
           ))}
           {notaAyuda ? (
             <NotaAyudaConInfo
+              className={CLASE_INFO_TACTIL}
               chipClassName={`rounded-full px-2 py-1 text-[10px] font-bold tracking-wide ${CLASE_NOTA_AYUDA}`}
             />
           ) : null}
@@ -270,7 +286,7 @@ export function PosOrderCardMosaico({
           onOpenChange={setDetalleAbierto}
           className="group/detalle rounded-lg border border-border bg-muted/40 px-3 py-2"
         >
-          <CollapsibleTrigger className="flex w-full cursor-pointer items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+          <CollapsibleTrigger className="flex min-h-11 w-full cursor-pointer items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
             Ver detalle completo
             <ChevronDown
               aria-hidden="true"

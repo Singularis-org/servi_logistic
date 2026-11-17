@@ -72,9 +72,11 @@ vi.mock("@/lib/actions/orden-notas", () => ({
 // `"use server"` y arrastra Prisma/servicios que no deben cargarse en jsdom).
 const { rutaMapaMock } = vi.hoisted(() => ({ rutaMapaMock: vi.fn() }));
 vi.mock("@/app/(app)/mis-asignaciones/_components/RutaMapa", () => ({
-  RutaMapa: (props: { paradas: unknown[] }) => {
+  RutaMapa: (props: { paradas: unknown[]; nota?: React.ReactNode }) => {
     rutaMapaMock(props);
-    return <div data-testid="ruta-mapa" />;
+    // SLT-192 (R885): la nota del punto de partida la pinta el mapa bajo su leyenda; el doble la
+    // pinta para que los tests del módulo la sigan leyendo en el DOM.
+    return <div data-testid="ruta-mapa">{props.nota ? <p>{props.nota}</p> : null}</div>;
   },
 }));
 
@@ -1888,6 +1890,14 @@ describe("RepartoModule", () => {
     expect(
       screen.getByRole("combobox", { name: "Filtrar por distrito" }),
     ).toBeInTheDocument();
+    // SLT-190 (decisión de Carlos, 2026-11-17): el nombre elegido va entero y parte línea, sin «…»;
+    // 44 px como alto MÍNIMO.
+    for (const nombre of ["Filtrar por cantón", "Filtrar por distrito"]) {
+      const control = screen.getByRole("combobox", { name: nombre });
+      expect(control.className.split(/\s+/)).toContain("max-md:min-h-11");
+      expect(control.querySelector(".truncate")).toBeNull();
+      expect(control.querySelector(".whitespace-normal")).not.toBeNull();
+    }
   });
 
   it("117/R1: en modo foco NO se renderiza el filtro cantón/distrito (no hay lista que filtrar)", () => {

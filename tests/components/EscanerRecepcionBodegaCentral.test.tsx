@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup, act } from "@testing-library/react";
+import { render, screen, cleanup, act, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { EscanerRecepcionBodegaCentral } from "@/app/(app)/ordenes/_components/EscanerRecepcionBodegaCentral";
@@ -370,7 +370,7 @@ describe("EscanerRecepcionBodegaCentral — diálogo continuo (R580, R590, R592,
 
   function dialogoContinuo(onRecibida: () => void) {
     return (
-      <EscanerModal label="Recibir paquetes">
+      <EscanerModal label="Recibir paquetes" titulo="Recibir paquetes">
         <EscanerRecepcionBodegaCentral modo="continua" onRecibida={onRecibida} />
       </EscanerModal>
     );
@@ -439,7 +439,7 @@ describe("EscanerRecepcionBodegaCentral — diálogo continuo (R580, R590, R592,
     const user = userEvent.setup();
     recibirMock.mockResolvedValue(OK);
     render(
-      <EscanerModal>
+      <EscanerModal titulo="Recibir paquete">
         <EscanerRecepcionBodegaCentral onRecibida={vi.fn()} />
       </EscanerModal>,
     );
@@ -449,5 +449,33 @@ describe("EscanerRecepcionBodegaCentral — diálogo continuo (R580, R590, R592,
 
     await vi.waitFor(() => expect(stopMock).toHaveBeenCalled());
     expect(screen.queryByRole("log", { name: "Lecturas" })).toBeNull();
+  });
+});
+
+// SLT-193 «Botones de 44 px pendientes en la PWA del mensajero» (R927; P7 de Carlos): en `/ordenes`
+// el diálogo lleva «Recibir paquete» en la barra de `EscanerModal`; las tarjetas de la bodega
+// central (suelta y continua) van sin encabezado y sus regiones conservan el nombre.
+describe("EscanerRecepcionBodegaCentral — un solo título por diálogo (SLT-193)", () => {
+  it("R927: la guía suelta en el diálogo: un solo título, el de la barra; un solo «Cerrar»", async () => {
+    const user = userEvent.setup();
+    render(
+      <EscanerModal titulo="Recibir paquete">
+        <EscanerRecepcionBodegaCentral onRecibida={vi.fn()} />
+      </EscanerModal>,
+    );
+    await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
+    const dialogo = await screen.findByRole("dialog", { name: "Recibir paquete" });
+
+    expect(within(dialogo).getAllByRole("heading").map((h) => h.textContent)).toEqual(["Recibir paquete"]);
+    expect(within(dialogo).queryByText("Escanea o ingresa el número de guía")).toBeNull();
+    expect(within(dialogo).getByRole("region", { name: "Recepción en bodega central" })).toBeInTheDocument();
+    expect(within(dialogo).getByRole("button", { name: "Recibir" })).toBeInTheDocument();
+    expect(within(dialogo).getAllByRole("button", { name: "Cerrar" })).toHaveLength(1);
+  });
+
+  it("R927: la tarjeta continua no pinta encabezado propio; la región conserva el nombre", () => {
+    render(<EscanerRecepcionBodegaCentral modo="continua" onRecibida={vi.fn()} />);
+    expect(screen.queryByRole("heading")).toBeNull();
+    expect(screen.getByRole("region", { name: "Recepción continua en bodega central" })).toBeInTheDocument();
   });
 });

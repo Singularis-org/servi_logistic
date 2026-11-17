@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 // SLT-160 «Buscar escaneando en los listados» — la prop `escaneo` de `BuscadorFiltros`: Enter busca
@@ -237,6 +237,28 @@ describe("SLT-160 — la cámara del buscador", () => {
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledWith("1024");
     expect(campo.value).toBe("1024");
+  });
+
+  // SLT-193 «Botones de 44 px pendientes en la PWA del mensajero» (R925, R927, R929): el diálogo
+  // lleva «Escanear con cámara» en la barra de `EscanerModal`, con un solo «Cerrar» de 44 px; la
+  // tarjeta de la cámara va sin su `CardHeader`. El disparador (icono de cámara) no cambia.
+  it("R927: un solo título «Escanear con cámara», el de la barra; la tarjeta sin encabezado", async () => {
+    await abrirCamara();
+    const dialogo = screen.getByRole("dialog", { name: "Escanear con cámara" });
+    const titulos = within(dialogo).getAllByRole("heading");
+    expect(titulos.map((h) => h.textContent)).toEqual(["Escanear con cámara"]);
+    expect(dialogo.querySelector('[data-slot="card-header"]')).toBeNull();
+    const cerrar = within(dialogo).getAllByRole("button", { name: "Cerrar" });
+    expect(cerrar).toHaveLength(1);
+    expect(cerrar[0]).toHaveClass("size-11");
+  });
+
+  it("R929: el disparador sigue siendo el icono de cámara de 44 px, sin texto", () => {
+    montar();
+    const camara = screen.getByRole("button", { name: "Escanear con cámara" });
+    expect(camara).toHaveTextContent("");
+    expect(camara.querySelector("svg")).not.toBeNull();
+    expect(camara).toHaveClass("size-11");
   });
 
   it("R604 — la URL del QR leída por la cámara queda como el número", async () => {

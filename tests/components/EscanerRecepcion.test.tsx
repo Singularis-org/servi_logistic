@@ -335,6 +335,31 @@ describe("EscanerRecepcion — el modal (cámara apagada por defecto)", () => {
   });
 });
 
+// SLT-193 «Botones de 44 px pendientes en la PWA del mensajero» (R925, R927): el diálogo de la guía
+// suelta lleva «Recibir paquete» en la barra de `EscanerModal`, con un solo «Cerrar» de 44 px; las
+// tarjetas (suelta y continua) van sin encabezado y sus regiones conservan el nombre.
+describe("EscanerRecepcion — un solo título por diálogo (SLT-193)", () => {
+  it("R927: la guía suelta: «Recibir paquete» en la barra, un solo título y un solo «Cerrar» de 44 px", async () => {
+    const user = userEvent.setup();
+    await renderAbierto(user);
+    const dialogo = await screen.findByRole("dialog", { name: "Recibir paquete" });
+    expect(within(dialogo).getAllByRole("heading").map((h) => h.textContent)).toEqual(["Recibir paquete"]);
+    expect(within(dialogo).queryByText("Escanea o ingresa el número de guía")).toBeNull();
+    expect(within(dialogo).getByRole("region", { name: "Recibir por número de guía o escaneo" })).toBeInTheDocument();
+    expect(within(dialogo).getByRole("button", { name: "Recibir" })).toBeInTheDocument();
+    const cerrar = within(dialogo).getAllByRole("button", { name: "Cerrar" });
+    expect(cerrar).toHaveLength(1);
+    expect(cerrar[0].className.split(/\s+/)).toContain("size-11");
+  });
+
+  it("R927: la tarjeta continua no pinta encabezado propio; la región conserva el nombre", () => {
+    render(<EscanerRecepcion modo="continua" />);
+    expect(screen.queryByRole("heading")).toBeNull();
+    expect(screen.getByRole("region", { name: "Recepción continua en bodega satélite" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Recibir" })).toBeInTheDocument();
+  });
+});
+
 // SLT-157 «Guía única leída por cámara o pistola»: los dos caminos leen con `leerGuia`.
 describe("EscanerRecepcion — guía única por cámara o pistola (SLT-157)", () => {
   it("R565: el CODE128 por cámara y la URL del QR tecleada llegan con el mismo numGuia", async () => {

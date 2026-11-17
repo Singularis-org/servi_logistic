@@ -85,7 +85,9 @@ export function EscanerRecepcionOrigen({
   }
   if (modo === "continua") {
     return (
+      // SLT-193 (R927): vive en el diálogo de `RecibirPaquetesEntrada`, que lleva el título en su barra.
       <TarjetaEscaneoContinuo
+        sinEncabezado
         recibir={recibirOrigen}
         alCerrarConRecepcion={onRecibida}
         ariaLabel="Recepción continua en tienda"
@@ -153,7 +155,9 @@ function RecepcionOrigenSuelta({ onRecibida }: Readonly<{ onRecibida: () => void
   );
 
   return (
+    // SLT-193 (R927): vive en el diálogo de `OrdenesListado`, que lleva el título en su barra.
     <EscanerGuiaCard
+      sinEncabezado
       ariaLabel="Recepción en tienda por escaneo"
       titulo="Recibir paquete"
       descripcion="Escanea el código de la guía devuelta o ingresa su número"

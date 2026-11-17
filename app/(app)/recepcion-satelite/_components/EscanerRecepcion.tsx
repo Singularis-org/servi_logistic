@@ -105,7 +105,9 @@ export function EscanerRecepcion({
   }
   if (modo === "continua") {
     return (
+      // SLT-193 (R927): vive en el diálogo de `RecibirPaquetesEntrada`, que lleva el título en su barra.
       <TarjetaEscaneoContinuo
+        sinEncabezado
         recibir={recibirSatelite}
         alCerrarConRecepcion={onRecibida}
         ariaLabel="Recepción continua en bodega satélite"
@@ -186,6 +188,8 @@ function RecepcionSateliteSuelta({ onRecibida }: Readonly<{ onRecibida: () => vo
        tiempo que la bodega tuviera la pantalla abierta, con la cámara encendida detrás del
        listado. El label es el que `EscanerModal` trae por defecto. */
     <EscanerModal
+      // SLT-193 (R925, R927): el único título del diálogo, en la barra de `EscanerModal`.
+      titulo="Recibir paquete"
       acciones={
         <RecibirPaquetesEntrada href={hrefRecibirPaquetes}>
           <EscanerRecepcion modo="continua" onRecibida={onRecibida} />
@@ -193,6 +197,7 @@ function RecepcionSateliteSuelta({ onRecibida }: Readonly<{ onRecibida: () => vo
       }
     >
       <EscanerGuiaCard
+        sinEncabezado
         ariaLabel="Recibir por número de guía o escaneo"
         titulo="Recibir paquete"
         descripcion="Escanea o ingresa el número de guía"

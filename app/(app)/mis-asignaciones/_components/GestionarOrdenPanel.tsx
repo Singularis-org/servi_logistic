@@ -63,6 +63,7 @@ import {
 import { mananaCalendarioCR, ZONA_CR } from "@/lib/utils/fecha-cr";
 import { estatusLabel } from "@/app/(app)/ordenes/_components/estatus-label";
 import { EstadoConInfo } from "@/components/shared/EstadoInfo";
+import { CLASE_INFO_TACTIL } from "@/components/shared/texto-entero";
 import type { CausaDevolucion } from "@/lib/types/causa-devolucion";
 import type { CausaIncidente } from "@/lib/types/causa-incidente";
 import type { MiAsignacionDTO } from "@/lib/interfaces/services/IMisAsignacionesService";
@@ -851,7 +852,7 @@ export function GestionarOrdenPanel({
         {/* FICHA 456 (T3.6, R9): el estado en la cabecera del panel, con su botón de información. */}
         <EstadoConInfo
           codigo={orden.estatusValue}
-          className="shrink-0"
+          className={`shrink-0 ${CLASE_INFO_TACTIL}`}
           chipClassName="rounded-full bg-warning/15 px-3 py-1 text-xs font-bold uppercase tracking-wide text-warning-strong"
         />
       </header>

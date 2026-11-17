@@ -3,7 +3,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { Select, type SelectOption } from "@/components/ui/select";
+import { CLASE_VALOR_PARTE_LINEA, Select, type SelectOption } from "@/components/ui/select";
 
 afterEach(() => {
   cleanup();
@@ -226,5 +226,42 @@ describe("Select — rótulo visible en el disparador (ficha 372)", () => {
     const trigger = screen.getByRole("combobox", { name: "Mensajero" });
     expect(trigger.textContent).toContain("Ana Mensajera");
     expect(trigger.textContent).not.toContain("Mensajero:");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SLT-190 «Recoger y Recolección según el canvas» (decisión de Carlos, 2026-11-17) — `partirLinea`:
+// en la PWA del mensajero el valor elegido va ENTERO y parte línea, sin «…». Aditiva: sin la prop,
+// el disparador conserva su `truncate` (escritorio y admin no cambian).
+// ---------------------------------------------------------------------------
+describe("Select — `partirLinea` (SLT-190)", () => {
+  const clasesDe = (el: Element) => (el.getAttribute("class") ?? "").split(/\s+/);
+  const conTruncate = (raiz: HTMLElement) =>
+    Array.from(raiz.querySelectorAll("*")).filter((el) => clasesDe(el).includes("truncate"));
+
+  it("con `labelPrefix` y `partirLinea`, ningún hueco del disparador recorta y el valor parte línea", () => {
+    renderSelect({ labelPrefix: "Mensajero", value: "m1", partirLinea: true });
+    const trigger = screen.getByRole("combobox", { name: "Mensajero" });
+    expect(conTruncate(trigger)).toEqual([]);
+    const hueco = within(trigger).getByText("Mensajero:", { exact: false }).parentElement!;
+    expect(clasesDe(hueco)).toEqual(expect.arrayContaining(CLASE_VALOR_PARTE_LINEA.split(" ")));
+    // El alto lo fija el consumidor como mínimo: el fijo `h-8` de la base se cambia por `h-auto`.
+    expect(clasesDe(trigger)).toContain("h-auto");
+    expect(clasesDe(trigger)).not.toContain("h-8");
+  });
+
+  it("sin `labelPrefix`, con `partirLinea`, el valor también va en un hueco que parte línea", () => {
+    renderSelect({ value: "m1", partirLinea: true });
+    const trigger = screen.getByRole("combobox", { name: "Mensajero" });
+    expect(conTruncate(trigger)).toEqual([]);
+    const valor = within(trigger).getByText("Ana Mensajera");
+    expect(valor.closest(`span[class="${CLASE_VALOR_PARTE_LINEA}"]`)).not.toBeNull();
+  });
+
+  it("SIN `partirLinea` el disparador es el de siempre: el rótulo trunca y la altura es fija", () => {
+    renderSelect({ labelPrefix: "Mensajero", value: "m1" });
+    const trigger = screen.getByRole("combobox", { name: "Mensajero" });
+    expect(conTruncate(trigger)).toHaveLength(1);
+    expect(clasesDe(trigger)).toContain("h-8");
   });
 });

@@ -15,9 +15,9 @@
 // contenedor pasa a pantalla completa y la parada del carrusel centra el mapa.
 import "leaflet/dist/leaflet.css";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import L, { type LatLngTuple } from "leaflet";
-import { LocateFixed, Maximize2, X } from "lucide-react";
+import { ChevronUp, LocateFixed, Maximize2, X } from "lucide-react";
 import {
   MapContainer,
   Marker,
@@ -47,6 +47,7 @@ const OSM_ATTRIBUTION =
 export const VER_MAPA_COMPLETO = "Ver mapa completo";
 export const CERRAR_MAPA_COMPLETO = "Cerrar";
 export const CENTRAR_EN_MI_UBICACION = "Centrar en mi ubicación";
+export const OCULTAR_MAPA = "Ocultar mapa";
 export const LEYENDA_MAPA: { tipo: TipoMarcador; texto: string }[] = [
   { tipo: "siguiente", texto: "Siguiente" },
   { tipo: "pendiente", texto: "Pendiente" },
@@ -192,6 +193,13 @@ export interface RutaMapaInnerProps {
   onSeleccionarParada?: (id: string) => void;
   /** SLT-166 (R541): paradas de la ruta sin filtrar, con y sin coordenadas, para «Paradas {n} de {total}». */
   totalParadas?: number;
+  /**
+   * SLT-192 (R880-R882): pliega el mapa. Con ella, «Ocultar mapa» va en el pie junto a «Ver mapa
+   * completo»; sin ella, el pie queda como antes (solo «Ver mapa completo»).
+   */
+  onOcultar?: () => void;
+  /** SLT-192 (R885): nota bajo la leyenda (p. ej. el punto de partida aproximado). */
+  nota?: ReactNode;
 }
 
 export function RutaMapaInner({
@@ -202,6 +210,8 @@ export function RutaMapaInner({
   paradaActivaId,
   onSeleccionarParada,
   totalParadas,
+  onOcultar,
+  nota,
 }: RutaMapaInnerProps) {
   // La ruta (Polyline) conecta SOLO las paradas ya optimizadas, en orden de secuencia.
   // Las pendientes (sin secuencia) se muestran como marcador pero no entran a la línea:
@@ -372,17 +382,41 @@ export function RutaMapaInner({
         <LeyendaMapa />
       </div>
 
+      {/* SLT-192 (R885, R886): la nota va bajo la leyenda y encima de los botones del pie; a
+          pantalla completa no se pinta (el canvas RepartoMapaCompleto no la dibuja). */}
+      {completo || !nota ? null : (
+        <p data-testid="ruta-mapa-nota" className="text-xs text-muted-foreground">
+          {nota}
+        </p>
+      )}
+
+      {/* SLT-192 (R880, R886): «Ver mapa completo» y «Ocultar mapa» juntos bajo el mapa. */}
       {completo ? null : (
-        <Button
-          type="button"
-          variant="outline"
-          size="touch"
-          className="w-full"
-          onClick={() => setCompleto(true)}
-        >
-          <Maximize2 aria-hidden="true" />
-          {VER_MAPA_COMPLETO}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="touch"
+            className="flex-1"
+            onClick={() => setCompleto(true)}
+          >
+            <Maximize2 aria-hidden="true" />
+            {VER_MAPA_COMPLETO}
+          </Button>
+          {onOcultar ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="touch"
+              className="flex-1"
+              aria-expanded={true}
+              onClick={onOcultar}
+            >
+              <ChevronUp aria-hidden="true" />
+              {OCULTAR_MAPA}
+            </Button>
+          ) : null}
+        </div>
       )}
     </div>
   );

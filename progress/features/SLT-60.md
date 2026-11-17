@@ -7,9 +7,8 @@
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
 ## Estado
-F1.2 — spec_author escribiendo design.md y tasks.md sobre el requirements.md sembrado por
-/afinar-feature (2026-11-11). Worktree sincronizado con origin/dev el 2026-11-13 (traía 281
-commits de atraso, entre ellos SLT-118 ya mergeada).
+F2.6 — done. PR #151 mergeado en dev el 2026-11-17; tarjeta en Finalizado; worktree y rama
+desmontados; grafo borrado.
 
 ## Evaluación
 - zone `fullstack`: pantalla del superadmin (Plataforma > Empresas), estado en la wallet, contadores;
@@ -46,3 +45,15 @@ Ver `specs/SLT-60-confirmar-pago-plataforma/requirements.md` (afinada 2026-11-11
 ## Modelos (overrides)
 
 ## Cierre
+- 2026-11-17: PR https://github.com/Singularis-org/servi_logistic/pull/151 mergeado en dev (CI run 44107372846,
+  `gate-completo` verde). Tarjeta movida a done y comentada con la URL del PR.
+- Resumen: el superadmin confirma el pago a la plataforma y se reparte entre facturas cerradas (sin excedentes).
+  Rechazo y estado en la wallet siguen en SLT-142; pago por fuera y anulación, en SLT-143.
+- PR por encima del tope (aceptado por el humano el 2026-11-13).
+- Al moverla a done, la tarjeta perdió el label `ruta:completa`; se repuso con `trello.mjs editar`.
+- Baseline de rojos: el CI avisa que `tests/integration/db/454/retiro-estados-migration.test.ts` ya pasa.
+  Pendiente: borrarlo de `tests/baseline-rojos.json` en un PR (no se hizo en #151).
+- Métricas (`node scripts/metricas.mjs informe --key SLT-60`):
+  - gate rápido: 4 corridas, mediana 21 s, p90 57 s, 100% en rojo (cupo geo en pausa).
+  - tomar -> spec listo 1.2 h; espera de aprobación 0 h; implementación hasta el PR 3.9 h.
+  - PR -> merge y ciclo completo: sin datos.
