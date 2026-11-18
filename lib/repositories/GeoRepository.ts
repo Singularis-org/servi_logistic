@@ -415,6 +415,8 @@ async function evaluarMovimiento(
   id: string,
   padreIdNuevo: string,
   catalogoDe: (paisId: string) => Promise<CatalogoGeografico>,
+  /** Solo `mover`: bloquea el subarbol antes de contar sus ordenes (P1). La vista previa no bloquea. */
+  bloquearSubarbol?: (subarbol: readonly string[]) => Promise<void>,
 ): Promise<EvaluacionDeMover> {
   const nodoLeido = await db.nodoGeografico.findUnique({
     where: { id },
@@ -450,6 +452,7 @@ async function evaluarMovimiento(
 
   const debajo = nodosBajo(antes, id);
   const subarbol = [id, ...debajo.map((n) => n.id)];
+  if (bloquearSubarbol !== undefined) await bloquearSubarbol(subarbol);
   const despues = catalogoConPadre(antes, id, padreIdNuevo);
   const tipo = antes.tipos.find((t) => t.id === nodo.tipoId);
   if (tipo === undefined) throw new Error(`mover: el tipo del nodo ${id} no esta en el catalogo`);
@@ -473,6 +476,25 @@ async function evaluarMovimiento(
       paisId: nodoLeido.paisId,
     },
   };
+}
+
+/**
+ * SLT-48 (P1, review vuelta 1) — `FOR UPDATE` de los nodos del subarbol, en orden de id (dos `mover`
+ * que se pisan esperan en el mismo orden y no se cruzan).
+ *
+ * POR QUE BASTA. Toda escritura de `orden` que pone `nodo_geografico_id` (alta, carga masiva,
+ * correccion) pasa por la FK `orden_nodo_geografico_id_fkey`, y su comprobacion toma `FOR KEY SHARE`
+ * del nodo, que choca con `FOR UPDATE` (no con el `FOR NO KEY UPDATE` del `updateMany` de `mover`:
+ * por eso antes se colaba). Asi, una orden que se escribe a la vez en el subarbol:
+ *   - si llego antes, `mover` espera a que confirme y el conteo, que va despues (otra sentencia, otra
+ *     foto en READ COMMITTED), ya la ve: entra en P1;
+ *   - si llega despues, espera a que `mover` termine y queda escrita con el arbol nuevo (R41).
+ * La escritura de la orden no cambia: la FK ya tomaba ese `FOR KEY SHARE`, y la carga masiva (R10)
+ * no paga nada nuevo. Solo espera si coincide con un `mover` en ese subarbol, lo que dure su
+ * transaccion.
+ */
+async function bloquearNodos(tx: Pick<PrismaClient, "$queryRaw">, ids: readonly string[]): Promise<void> {
+  await tx.$queryRaw`SELECT "id" FROM "nodo_geografico" WHERE "id" = ANY(${[...ids]}::text[]) ORDER BY "id" FOR UPDATE`;
 }
 
 /** Las claves del plan traducidas a los ids que se generan al escribir. */
@@ -906,7 +928,8 @@ export class GeoRepository implements IGeoRepository {
   /**
    * SLT-48 (R34–R40) — mueve el nodo en UNA transaccion:
    *   1. el padre de hoy contra el que mostro el modal: si ya es otro, `cambio_concurrente` (R37);
-   *   2. las validaciones de R35 y el bloqueo de P1, con el catalogo de esta misma transaccion;
+   *   2. las validaciones de R35 y el bloqueo de P1, con el catalogo de esta misma transaccion y el
+   *      subarbol bloqueado `FOR UPDATE` antes de contar (`bloquearNodos`);
    *   3. el `updateMany` con `padre_id = padreIdAnterior` en el `where`, la UNICA escritura, y solo
    *      de `padre_id`: si otra persona lo movio entre la lectura y aqui, toca 0 filas →
    *      `cambio_concurrente`. El trigger de invariantes de SLT-43 vuelve a comprobar la profundidad;
@@ -922,7 +945,14 @@ export class GeoRepository implements IGeoRepository {
         if (previo.padreId !== datos.padreIdAnterior) return { estado: "cambio_concurrente" };
 
         const catalogo = new CatalogoGeograficoRepository(tx);
-        const r = await evaluarMovimiento(tx, datos.id, datos.padreIdNuevo, (paisId) => catalogo.dePais(paisId));
+        // P1: el subarbol queda bloqueado antes de contar sus ordenes (`bloquearNodos`).
+        const r = await evaluarMovimiento(
+          tx,
+          datos.id,
+          datos.padreIdNuevo,
+          (paisId) => catalogo.dePais(paisId),
+          (subarbol) => bloquearNodos(tx, subarbol),
+        );
         if (r.estado !== "ok") return r;
         const { vista, cadenaDelPadreAnterior, paisId } = r.movimiento;
         if (vista.bloqueo !== null) return { estado: "bloqueado", bloqueo: vista.bloqueo };
