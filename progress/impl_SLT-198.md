@@ -34,7 +34,7 @@ Tests:
 | R1222 | `zona-schema.test.ts` «R1222: ... `esCentral: true`»; `zona-service.test.ts` «R1222: -> validation_error ... literal»; `zona-sin-distritos.test.ts` los dos casos «R1222» (estado, zona, distritos e historial iguales) |
 | R1223 | `zona-sin-distritos.test.ts` «R1220/R1223/R1225» (una fila por distrito quitado) |
 | R1224 | `zona-sin-distritos.test.ts` «R1224/R1226/...» (`findDistritosByCantonIds` y `findDistritoParaCorreccion`: null tras vaciar; GAM / null tras guardar GAM) |
-| R1225 | `zona-sin-distritos.test.ts` «R1220/R1223/R1225» (zona intacta en las dos ordenes; ver ABIERTO) |
+| R1225 | `zona-sin-distritos.test.ts` «R1220/R1223/R1225» (zona intacta en las dos ordenes; resuelto: `ordenesReconciliadas = 0`) |
 | R1226 | `zona-sin-distritos.test.ts` «R1224/R1226/...» (ok, 1 reconciliada, 1 retenida) |
 | R1227 | idem (retiro -> `en_ruta_bodega_central`) |
 | R1228 | idem (recibida sigue en Cartago; re-guardar GAM la pasa) |
