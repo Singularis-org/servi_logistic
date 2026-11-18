@@ -145,3 +145,75 @@ Si sale en CI, mirar memoria del worker antes que la receta.
 
 Los puntos 1, 2, 4, 5, 6 y 7 están bien hechos y probados. Tras arreglar B1, la vuelta 2 puede ir acotada a su diff y a
 la salida de los E2E.
+
+## Vuelta 2 (acotada a b9bd54de..2b1dbab9)
+
+Commits: `db80576a` (wip), `e5c80aa3` (B1-B2, m1-m4), `2b1dbab9` (`flex-wrap` en la cabecera por el CI del #226).
+Ningún archivo de `e2e/` cambia en el rango (`git diff --stat b9bd54de..2b1dbab9 -- e2e` vacío).
+
+### Checklist
+- [x] **B1 cerrado.** Comparé, con un script, las 43 `className` de `PosOrderCardMosaico.tsx` contra el merge-base con
+  dev (`ede99e23`), quitando los tokens `max-md:`. Son idénticas a dev salvo una: la cabecera, que añade `flex-wrap`
+  (ver m6). La guía vuelve a `font-mono text-xs font-bold tracking-wide`. Insignia, «Sin posición», intentos, mensajero
+  y aviso vuelven a `text-[11px]`. Chips, «Cobrar» y «Ver detalle» vuelven a `text-[10px]`, la dirección a
+  `text-[0.6875rem]` y el icono a `size-3`. El móvil sube con `max-md:`. No hay ninguna clase `md:` de tamaño.
+- [x] **El test fija el escritorio.** El bloque «desde md, la tarjeta Mosaico como antes» escribe a mano guía 12/mono,
+  «Sin posición»/producto/intentos 11, «Cobrar»/«Ver detalle» 10, producto mono, icono `size-3` y ninguna `md:` de
+  tamaño. `tamano(…, "escritorio")` ignora `max-md:`, así que un arreglo correcto ya no da rojo. Hueco: m7.
+- [x] **B2.** La bitácora registra `--project=reparto`: `48 passed`, con `pwa-mensajero-botones-44` 5/5. Según el
+  leader, `e2e (reparto)` de CI pasó en `e5c80aa3`. Yo no lo corrí en local porque necesita `next build`.
+- [x] **Guía en un solo nodo; por qué fallaban los E2E.** La cabecera tiene un único `<p>` con la guía. Lo fija el test
+  nuevo. Fuera de él, la guía solo sale en el detalle plegado. El proyecto `reparto` de Playwright es
+  **Desktop Chrome** (`playwright.config.ts:118-119`). En `b9bd54de` los chips iban a `text-xs` en todos los anchos. En
+  la columna estrecha de «Recoger en bodega», la cabecera (`flex` sin `wrap`, chips `shrink-0`, guía `min-w-0`) dejaba
+  la guía a 0 px. Por eso `.first()` encontraba el único nodo y Playwright lo veía `hidden`. No era un duplicado.
+  - En `e5c80aa3` el escritorio recupera los chips de 10 px, la cabecera vuelve a caber y el CI pasa.
+  - `2b1dbab9` añade `flex-wrap` para el móvil, donde los chips siguen a 12 px.
+  - La bitácora cuenta que con la tarjeta de `d8bf6e62` el rojo se reprodujo y que con solo `flex-wrap` sale verde.
+  - Ningún E2E se tocó para que pase.
+- [x] **m1:** la leyenda queda en `gap-1 max-md:gap-2` (`gap-1` es el de dev, `RutaMapaInner.tsx:165` en `ede99e23`).
+- [x] **m2:** hay un `useId` y un `<span id sr-only>` con la ayuda. `aria-describedby` solo se pone si hay `ayuda`. El
+  `span` se pinta siempre que haya ayuda, así que el id nunca queda colgando. El botón llega por
+  `TooltipTrigger render`, que conserva el atributo: el test `toHaveAccessibleDescription("Buscar escaneando la guía")`
+  sale verde. El caso del foco busca el tooltip con `:not(.sr-only)`, así que no lo satisface la descripción oculta.
+- [x] **m3:** los comentarios de `KpisMensajero.tsx` y de su test ya no llevan el símbolo de moneda.
+- [x] **m4:** la fila del punto 5 está en la tabla `R → test` (`impl_SLT-200.md:88`).
+- [x] **Clases nuevas sin `max-md:`:** solo dos.
+  - `flex-wrap` (m6) no cambia ningún tamaño.
+  - `sr-only` del `EscanerModal` no se ve.
+  - El resto del rango son comentarios.
+- [x] **Tests del rango, corridos por mí** (con `con-desechable`): `PosOrderCardMosaicoLegible`, `KpisMensajero` y
+  `buscador-filtros-camara-tooltip` dan **3 files / 21 tests passed**, `EXIT=0`.
+- [ ] **CI de `2b1dbab9`:** al revisar, `e2e (reparto)`, `vitest` y `estatico` seguían `pending`
+  (run 44412018046).
+
+### Hallazgos
+
+#### m6 — menor: `flex-wrap` va en todos los anchos
+`<header className="flex flex-wrap items-start justify-between gap-2">`. Si la cabecera cabe en una línea, `flex-wrap`
+no cambia nada: una sola línea flex se reparte igual que con `nowrap`. Eso es lo que pasa en escritorio en los casos de
+los E2E, que salen verdes en `e5c80aa3` sin él.
+Si en escritorio NO cabe (tarjeta muy estrecha, muchos chips o una guía larga), el resultado cambia:
+- en dev, la guía (`wrap-anywhere`) se partía en varias líneas junto a los chips;
+- ahora los chips bajan de línea y la guía queda entera.
+
+Es una mejora y es coherente con SLT-156 («la guía no se parte»), pero difiere de prod en ese caso límite. No lo medí
+en navegador. Si Carlos quiere el escritorio idéntico, basta `max-md:flex-wrap`, porque el problema solo existe con los
+chips a 12 px. Si no, se acepta como está.
+
+#### m7 — menor: el test «desde md» no fija todos los tamaños que dice
+El nombre del caso dice «…chip…», pero en `casos` no hay ningún chip. Tampoco están la insignia de parada (11), la
+dirección (0.6875rem), el mensajero ni el aviso de reserva (11). Si se cambia la base de uno de ellos (por ejemplo, el
+chip a `text-xs`), la suite sigue verde, porque el test del móvil no lo detecta. Hoy el código coincide con dev (lo
+comprobé con el script). Conviene añadirlos a `casos`.
+
+#### m8 — menor: el test nuevo no mide el ancho
+«la cabecera de la tarjeta envuelve» afirma la clase `flex-wrap` y que la guía tiene un solo `<p>`. jsdom no da anchos,
+así que no puede exigir «visible con ancho > 0». Eso lo exige el E2E `mis-asignaciones` (`.first()` + visible, sin
+tocar), que es la guarda real. Es aceptable. Lo anoto para que nadie lo tome por una medida.
+
+### Veredicto vuelta 2
+
+**OK.** B1 y B2 están cerrados y m1-m4 arreglados. Los tres hallazgos nuevos son menores (m6-m8). Queda una condición
+del gate, no de esta review: que el `gate-completo` de `2b1dbab9` (run 44412018046) termine en verde antes del aviso de
+merge.
