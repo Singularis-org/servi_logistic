@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 
 import { HAY_BASE_DE_DATOS } from "../../_postgres-real";
+import { asentarCierreDia } from "@/lib/repositories/_shared/asientos-cierre-dia";
 import { conEscenario, prepararMundo, type Mundo } from "../_escenario";
 
 /**
@@ -35,15 +36,22 @@ describeSiHayBase("454/C18 — multi-dia: cada aprobacion toca solo lo suyo (Pos
       const c2 = await e.solicitarCierreOk();
 
       const aprobC2 = await e.aprobar(c2);
+      // SLT-195 (R1193; SLT-73 R1, R10): los dos cierres son de SATELITE; aprobar no escribe dinero,
+      // asentar si. Se asienta C2 para que «no escribe dinero de C1» mire un asiento real de C2.
+      await asentarCierreDia(e.tx, c2);
       const trasC2 = {
         a: await e.ordenDe(a.ordenId),
         g1: await e.tx.gestionOrden.findUniqueOrThrow({ where: { id: g1 }, select: { cierreId: true } }),
         c1Estado: (await e.tx.cierreDia.findUniqueOrThrow({ where: { id: c1.id }, select: { estado: true } })).estado,
         dineroC1: await e.tx.walletMovimiento.count({ where: { origenId: c1.id } }),
+        dineroC2: await e.tx.walletMovimiento.count({ where: { origenId: c2 } }),
       };
       const aprobC1 = await e.aprobar(c1.id);
+      // SLT-195 R1190: aprobar C1 (satelite) no escribe dinero; se cuenta y luego se asienta.
+      const dineroC1AlAprobar = await e.tx.walletMovimiento.count({ where: { origenId: c1.id } });
+      await asentarCierreDia(e.tx, c1.id);
       const trasC1 = { a: await e.ordenDe(a.ordenId), dineroC1: await e.tx.walletMovimiento.count({ where: { origenId: c1.id } }) };
-      return { mensajeroId: e.mensajeroId, c1: c1.id, resolicitud, aprobC2: aprobC2.status, trasC2, aprobC1: aprobC1.status, trasC1 };
+      return { mensajeroId: e.mensajeroId, c1: c1.id, resolicitud, aprobC2: aprobC2.status, trasC2, aprobC1: aprobC1.status, dineroC1AlAprobar, trasC1 };
     });
   }
 
@@ -69,11 +77,15 @@ describeSiHayBase("454/C18 — multi-dia: cada aprobacion toca solo lo suyo (Pos
     expect(r.trasC2.g1.cierreId).toBe(r.c1);
     expect(r.trasC2.c1Estado).toBe("solicitado");
     expect(r.trasC2.dineroC1).toBe(0);
+    // SLT-195 R1193 (control positivo): el asiento de C2 si escribio dinero, el suyo.
+    expect(r.trasC2.dineroC2, "SLT-195 R1193: asentar C2 no escribio su dinero").toBeGreaterThan(0);
   });
 
   it("aprobar C1 despues libera A a bodega y emite su dinero", () => {
     expect(r.aprobC1).toBe("ok");
     expect(estatus(r.trasC1.a)).toBe("en_bodega_central");
+    // SLT-195 R1190: aprobar C1 no escribe dinero; R1193: asentarlo si.
+    expect(r.dineroC1AlAprobar, "SLT-195 R1190: dinero escrito al aprobar una satelite").toBe(0);
     expect(r.trasC1.dineroC1).toBeGreaterThan(0);
   });
 });
