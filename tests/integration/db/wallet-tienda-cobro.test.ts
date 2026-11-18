@@ -20,6 +20,7 @@ import {
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -59,10 +60,6 @@ describeSiHayBase("381/G.1 — cobrarle un costo a una tienda (Postgres real)", 
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const maestro = await prisma.usuario.findFirst({
-      where: { rol: { value: "maestro" } },
-      select: { id: true },
-    });
     const rolTienda = await prisma.rol.findUnique({
       where: { value: "adminTienda" },
       select: { id: true },
@@ -75,13 +72,12 @@ describeSiHayBase("381/G.1 — cobrarle un costo a una tienda (Postgres real)", 
       where: { value: "cedula" },
       select: { id: true },
     });
-    if (maestro === null || rolTienda === null || rolMensajero === null || tipo === null) {
+    if (rolTienda === null || rolMensajero === null || tipo === null) {
       throw new Error(
-        "hay DATABASE_URL pero faltan el maestro o los catalogos `rol.adminTienda` / " +
+        "hay DATABASE_URL pero faltan los catalogos `rol.adminTienda` / " +
           "`rol.mensajero` / `cedula`: corre `pnpm run db:seed` antes.",
       );
     }
-    MAESTRO = { usuarioId: maestro.id, rol: "maestro" };
     ROL_ADMIN_TIENDA = rolTienda.id;
     ROL_MENSAJERO = rolMensajero.id;
     TIPO_CEDULA = tipo.id;
@@ -90,6 +86,18 @@ describeSiHayBase("381/G.1 — cobrarle un costo a una tienda (Postgres real)", 
   afterAll(async () => {
     await prisma?.$disconnect();
   });
+
+  /**
+   * SLT-182: el maestro que cobra se SIEMBRA en la tx de CADA caso (y queda en `MAESTRO` para ese
+   * caso); antes se leia «el primer maestro» de la base, y la base recien migrada no tiene ninguno.
+   */
+  async function sembrarMaestro(tx: TxDeTest): Promise<Actor> {
+    const { id } = await crearUsuarioDePrueba(tx, "maestro");
+    // Control positivo (R1084): la siembra llego a la base.
+    const sembrados = await tx.usuario.count({ where: { id, rol: { value: "maestro" } } });
+    if (sembrados !== 1) throw new Error("SLT-182: el maestro sembrado no esta en la base");
+    return { usuarioId: id, rol: "maestro" };
+  }
 
   /** Una cuenta de prueba con el rol y el estado que se pidan. Se revierte con la transaccion. */
   async function sembrarCuenta(
@@ -162,6 +170,7 @@ describeSiHayBase("381/G.1 — cobrarle un costo a una tienda (Postgres real)", 
   it("⭑ (a)(c)(g) el cobro se escribe, baja el saldo exactamente y deja UNA linea de cargo en la caja (461)", async () => {
     await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      MAESTRO = await sembrarMaestro(tx);
       const tiendaId = await sembrarCuenta(tx, "feliz");
       await sembrarSaldoAFavor(tx, tiendaId, "10000.00");
 
@@ -237,6 +246,7 @@ describeSiHayBase("381/G.1 — cobrarle un costo a una tienda (Postgres real)", 
   it("⭑ (b) un `credito`/`cobro_manual` lo RECHAZA la base, no el codigo", async () => {
     await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      MAESTRO = await sembrarMaestro(tx);
       const tiendaId = await sembrarCuenta(tx, "check");
 
       // Control positivo PRIMERO: el par correcto SI entra. Sin esto, el rechazo de abajo podria
@@ -276,6 +286,7 @@ describeSiHayBase("381/G.1 — cobrarle un costo a una tienda (Postgres real)", 
   it("⭑ (d) un cobro mayor que el saldo se ACEPTA y lo deja NEGATIVO (R27)", async () => {
     await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      MAESTRO = await sembrarMaestro(tx);
       const tiendaId = await sembrarCuenta(tx, "negativo");
       await sembrarSaldoAFavor(tx, tiendaId, "5000.00");
 
@@ -302,6 +313,7 @@ describeSiHayBase("381/G.1 — cobrarle un costo a una tienda (Postgres real)", 
   it("un SEGUNDO cobro sobre un saldo ya negativo lo hunde mas, sin quejarse", async () => {
     await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      MAESTRO = await sembrarMaestro(tx);
       const tiendaId = await sembrarCuenta(tx, "doble");
       const servicio = servicioReal(tx);
 
@@ -329,6 +341,7 @@ describeSiHayBase("381/G.1 — cobrarle un costo a una tienda (Postgres real)", 
   it("⭑ (e) si el registro del historial falla, NO queda el asiento (R25/R42)", async () => {
     await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      MAESTRO = await sembrarMaestro(tx);
       const tiendaId = await sembrarCuenta(tx, "atomico");
       await sembrarSaldoAFavor(tx, tiendaId, "10000.00");
       const rastroAntes = await tx.historialAccion.count({
@@ -364,6 +377,7 @@ describeSiHayBase("381/G.1 — cobrarle un costo a una tienda (Postgres real)", 
     // Sin esta mitad, el caso de arriba pasaria con un servicio que no escribiera NUNCA.
     await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      MAESTRO = await sembrarMaestro(tx);
       const tiendaId = await sembrarCuenta(tx, "atomico-ok");
       await sembrarSaldoAFavor(tx, tiendaId, "10000.00");
 
@@ -387,6 +401,7 @@ describeSiHayBase("381/G.1 — cobrarle un costo a una tienda (Postgres real)", 
   it("⭑ (f) el cobro NO aparece en el libro de otra tienda, ni le mueve el saldo (R38)", async () => {
     await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      MAESTRO = await sembrarMaestro(tx);
       const cobrada = await sembrarCuenta(tx, "cobrada");
       const ajena = await sembrarCuenta(tx, "ajena");
       await sembrarSaldoAFavor(tx, cobrada, "10000.00");
@@ -422,6 +437,7 @@ describeSiHayBase("381/G.1 — cobrarle un costo a una tienda (Postgres real)", 
   it("R17: una cuenta que no es tienda, o esta inactiva, se rechaza SIN escribir nada", async () => {
     await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      MAESTRO = await sembrarMaestro(tx);
       const mensajero = await sembrarCuenta(tx, "mensajero", ROL_MENSAJERO);
       const inactiva = await sembrarCuenta(tx, "inactiva", ROL_ADMIN_TIENDA, "inactivo");
       const servicio = servicioReal(tx);
@@ -474,6 +490,7 @@ describeSiHayBase("381/G.1 — cobrarle un costo a una tienda (Postgres real)", 
   ])("R18: el importe %s llega a la columna como %s, sin pasar por un float", async (dado, esperado) => {
     await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      MAESTRO = await sembrarMaestro(tx);
       const tiendaId = await sembrarCuenta(tx, "monto");
 
       const r = await servicioReal(tx).registrarCobro(
@@ -504,6 +521,7 @@ describeSiHayBase("381/G.1 — cobrarle un costo a una tienda (Postgres real)", 
   it("R21: sin fecha, el movimiento se fecha con el instante del registro; con una anterior, con ella", async () => {
     await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      MAESTRO = await sembrarMaestro(tx);
       const tiendaId = await sembrarCuenta(tx, "fecha");
       const servicio = servicioReal(tx);
       const antesDeTodo = new Date(Date.now() - 60_000);

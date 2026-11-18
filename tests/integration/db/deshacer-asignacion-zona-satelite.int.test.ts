@@ -12,9 +12,9 @@ import {
   clienteConTransaccionAnidada,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 
 /**
  * ⭑⭑ FICHA 363 — DESHACER EL RUTEO DE UNA ORDEN DE ZONA SATELITE.
@@ -87,32 +87,6 @@ describeSiHayBase("363 — deshacer el ruteo a una bodega satelite, contra Postg
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
 
-    const fks = await fksDeOrden(prisma);
-    if (fks === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar. Corre " +
-          "`pnpm run db:seed` (y `pnpm exec tsx scripts/seed-zonas.ts`) antes de esta suite.",
-      );
-    }
-
-    // Las DOS zonas REALES de la base, no inventadas: el defecto vivia en la comparacion entre
-    // la zona de la orden y la central, asi que la satelite tiene que ser una satelite de verdad.
-    const central = await prisma.zona.findFirst({
-      where: { esCentral: true },
-      select: { id: true, nombre: true },
-    });
-    const satelite = await prisma.zona.findFirst({
-      where: { esCentral: false },
-      select: { id: true, nombre: true },
-    });
-    if (central === null || satelite === null) {
-      throw new Error(
-        `la tabla \`zona\` no tiene una central (es_central) y una satelite a la vez ` +
-          `(central=${central?.nombre ?? "AUSENTE"}, satelite=${satelite?.nombre ?? "AUSENTE"}): ` +
-          "sin las dos no hay nada que medir. Corre `pnpm exec tsx scripts/seed-zonas.ts`.",
-      );
-    }
-
     const filas = await prisma.orderStatus.findMany({
       where: { value: { in: [...VALUES] } },
       select: { id: true, value: true },
@@ -129,15 +103,40 @@ describeSiHayBase("363 — deshacer el ruteo a una bodega satelite, contra Postg
     const valueDe = (id: string): string =>
       filas.find((f) => f.id === id)?.value ?? `id-desconocido:${id}`;
 
-    // `orden.tienda_id` es FK -> `usuario` (la tienda ES un usuario), asi que el mismo id sirve
-    // de actor del historial. Lo que se mide aqui es una SENTENCIA, no un rol.
-    const actor: Actor = { usuarioId: fks.tiendaId, rol: MAESTRO_ROL };
     let n = 0;
 
     ejecutar = (semilla) =>
       enTransaccionRevertida(prisma, async (tx) => {
         await serializarEscriturasReales(tx);
         n += 1;
+
+        // SLT-179 — las DOS zonas nacen en la empresa del caso: la satelite (no central) de
+        // `crearFksDeOrden` y una central propia (el indice unico admite una por empresa, y la del
+        // caso no tiene ninguna). Leer «la primera central/satelite de la base» tomaba la de otra
+        // empresa. Control positivo: una central y una satelite, o el caso cae.
+        const fks = await crearFksDeOrden(tx);
+        const satelite = { id: fks.zonaId };
+        const central = await tx.zona.create({
+          data: {
+            nombre: `Central ${SUFIJO}-${n}`,
+            sinpeNumero: "80000000",
+            sinpeNombre: "Titular de Prueba",
+            esCentral: true,
+          },
+          select: { id: true },
+        });
+        expect(
+          await tx.zona.count({ where: { id: central.id, esCentral: true } }),
+          "SLT-179: la zona central sembrada no esta en la base",
+        ).toBe(1);
+        expect(
+          await tx.zona.count({ where: { id: satelite.id, esCentral: false } }),
+          "SLT-179: la zona satelite sembrada no esta en la base",
+        ).toBe(1);
+
+        // `orden.tienda_id` es FK -> `usuario` (la tienda ES un usuario), asi que el mismo id sirve
+        // de actor del historial. Lo que se mide aqui es una SENTENCIA, no un rol.
+        const actor: Actor = { usuarioId: fks.tiendaId, rol: MAESTRO_ROL };
         const orden = await tx.orden.create({
           data: {
             numGuia: GUIA_BASE + n,

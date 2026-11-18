@@ -8,9 +8,9 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 /**
@@ -89,16 +89,6 @@ describeSiHayBase("264/B7 — la lista de ordenes sin gestionar contra Postgres 
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const fks = await fksDeOrden(prisma);
-    // Fallo RUIDOSO, no `return` silencioso: con base alcanzable y sin catalogo este archivo no
-    // puede comprobar nada, y un `passed` en esas condiciones es exactamente la clase de verde
-    // que este repo ya se comio una vez.
-    if (fks === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar el " +
-          "corpus. Corre `pnpm run db:seed` (y las semillas de zonas) antes de esta suite.",
-      );
-    }
     const catalogo = await prisma.orderStatus.findMany({
       where: { value: { in: ["en_reparto", "novedad_interna", "en_bodega_central"] } },
       select: { id: true, value: true },
@@ -116,22 +106,22 @@ describeSiHayBase("264/B7 — la lista de ordenes sin gestionar contra Postgres 
     const sinGestionar = idPorValue.get("novedad_interna") as string;
     const enBodega = idPorValue.get("en_bodega_central") as string;
 
-    // `cierre_dia.mensajero_id` es FK -> `usuario`. Se reusan dos usuarios REALES distintos: lo
-    // que se mide aqui es un WHERE, no un rol. Hacen falta DOS para el señuelo «otro mensajero».
-    const usuarios = await prisma.usuario.findMany({ select: { id: true }, take: 2 });
-    if (usuarios.length < 2) {
-      throw new Error(
-        "hacen falta al menos DOS usuarios en la base para sembrar el señuelo de «otro " +
-          "mensajero». Corre las semillas antes de esta suite.",
-      );
-    }
-    const [m1, m2] = usuarios;
-
     conCorpus = (fn) =>
       enTransaccionRevertida(prisma, async (tx) => {
         // PRIMERA sentencia: serializa contra los otros archivos que escriben en las tablas
         // reales de `public` (ver `_postgres-real.ts`).
         await serializarEscriturasReales(tx);
+
+        // SLT-178: tienda, zona y los DOS mensajeros (el del caso y el señuelo «otro mensajero») se
+        // crean aqui, en la transaccion revertida; nada de negocio se lee de la base.
+        const fks = await crearFksDeOrden(tx);
+        const m1 = await crearUsuarioDePrueba(tx, "mensajero");
+        const m2 = await crearUsuarioDePrueba(tx, "mensajero");
+        expect(
+          await tx.usuario.count({ where: { id: { in: [fks.tiendaId, m1.id, m2.id] } } }),
+          "usuarios sembrados (tienda, m1, m2)",
+        ).toBe(3);
+        expect(await tx.zona.count({ where: { id: fks.zonaId } }), "zona sembrada").toBe(1);
 
         const nuevoCierre = (mensajeroId: string) =>
           tx.cierreDia.create({
