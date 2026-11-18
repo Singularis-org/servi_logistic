@@ -317,9 +317,9 @@ test("R30: crear y editar un plan por pasos con borrador — editar con empresas
   await irAlPaso(retomado, "Módulos", "Módulos");
   await guardarYContinuar(retomado, "Cuándo rige");
 
-  // R30.4: «A partir de» F; la tabla dice cuándo recibe el cambio cada empresa.
-  await retomado.getByRole("radio", { name: "A partir de", exact: true }).click();
-  await retomado.getByLabel("Fecha", { exact: true }).fill(f);
+  // R30.4: «A partir de» F; la tabla dice cuándo recibe el cambio cada empresa. SLT-135 (R14): sin la
+  // opción «De inmediato», «A partir de» es directamente el campo de fecha (ya no un radio con «Fecha»).
+  await retomado.getByLabel("A partir de", { exact: true }).fill(f);
   const tabla = retomado.getByRole("table");
   await expect(tabla.getByRole("columnheader", { name: "Recibe el cambio el", exact: true })).toBeVisible({ timeout: 60_000 });
   const filaM = tabla.getByRole("row").filter({ hasText: nombreM });

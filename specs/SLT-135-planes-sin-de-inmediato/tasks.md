@@ -168,7 +168,7 @@ Producción (17):
 - `app/(app)/plataforma/planes/[planId]/_components/PlanDetalle.tsx`
 - `app/(app)/plataforma/empresas/[organizacionId]/_components/PlanEmpresa.tsx`
 
-Tests (32):
+Tests (33):
 - `tests/unit/services/planes-service.test.ts`
 - `tests/unit/services/planes-service-periodo.test.ts`
 - `tests/unit/services/planes-service-costeo.test.ts`
@@ -201,5 +201,6 @@ Tests (32):
 - `tests/integration/db/planes-asignacion.test.ts`
 - `tests/integration/db/cobro-plataforma-plan.test.ts`
 - `e2e/planes-costo-porcentual.spec.ts`
+- `e2e/planes-borrador.spec.ts` (añadido en T7.1: usaba el radio «A partir de» y el campo «Fecha»)
 
-Total: 49 (tamaño aceptado por el humano el 2026-11-18, `tamano-pr-aceptado`).
+Total: 50 (tamaño aceptado por el humano el 2026-11-18, `tamano-pr-aceptado`).
