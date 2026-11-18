@@ -186,3 +186,11 @@ Veredicto: 21 de 22 archivos recuperados y fuera del baseline, sin tocar producc
   `git checkout --`, `git diff --name-only -- lib` vacío.
 - Baseline: sale también esta entrada. Ya no queda ninguna de SLT-195 por R1203. La línea de poda de
   `_lee_esto` dice 22 archivos.
+
+## Vuelta 2 — merge y gate final
+- `git merge origin/dev` (con #218 de SLT-186): el único conflicto fue `tests/baseline-rojos.json`. Lo
+  fusioné por clave (base − ours − theirs): base 69, ours 47, theirs 56 → 34 entradas, sin conflicto de
+  contenido. `_lee_esto` = base + las líneas que añadió cada lado. El JSON parsea.
+- Los 22 archivos tras el merge, en la desechable: 155/155 en verde, 0 saltados.
+- `git diff -- lib app db` y `git diff origin/dev...HEAD -- lib app db`: vacíos.
+- Gate rápido tras el merge: `== init OK ==`, **INIT_EXIT=0**.
