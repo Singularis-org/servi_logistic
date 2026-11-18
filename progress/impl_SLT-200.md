@@ -207,6 +207,23 @@ Veredicto (punto 5): hecho. La tarjeta del mensajero-reposo trae parada, peso y 
 
 Gate rápido tras el arreglo: `INIT_EXIT=0`.
 
+## Vuelta 3 (review `3c52b755`: m6, m7)
+
+- m6: la cabecera lleva `max-md:flex-wrap`; desde md, `flex` como en dev. En escritorio los chips vuelven a 10 px
+  (B1) y la guía cabe.
+  - Proyecto `reparto` tras `next build`: `47 passed, 1 failed`. El que falla es `asignacion-satelite:45`, en 0 ms y
+    en su preparación: «SL-44 E2E: tras 15 pasadas de procesar-jobs, la geocodificación … no falló por
+    configuración». Es la cola de geocodificación, no la tarjeta.
+  - Repetido solo, junto a `mis-asignaciones`: `5 passed`. Sin ningún `hidden`.
+- m7: un caso nuevo en `PosOrderCardMosaicoLegible.test.tsx` fija, con valores escritos a mano, el chip de estado
+  (`text-[10px]`), la insignia de parada (`text-[11px]`), la dirección (`text-[0.6875rem]`), el mensajero
+  (`text-[11px]`) y el aviso de reserva (`text-[11px]`): ese tamaño desde md y 12 px en el móvil. Otro caso fija
+  `max-md:flex-wrap` sin `flex-wrap` base.
+  - Resultado: `10 passed`.
+  - Mutación (dirección y chip a `text-xs` base): `1 failed | 9 passed`; restaurado.
+
+Gate rápido de la vuelta 3: `INIT_EXIT=0`.
+
 ## No verificado
 
 - El aspecto real en modo oscuro (captura). Las medidas salen del E2E (tamaños, disposición, desborde) y el contraste

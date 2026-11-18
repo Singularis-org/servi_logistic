@@ -158,15 +158,55 @@ describe("SLT-200 — desde md, la tarjeta Mosaico como antes", () => {
 });
 
 // SLT-200 (CI del #226): con los chips más grandes, la columna de los chips (`shrink-0`) estrujaba la de
-// la guía (`min-w-0`) hasta 0 px y la guía quedaba oculta en «Recoger en bodega». La cabecera envuelve:
+// la guía (`min-w-0`) hasta 0 px y la guía quedaba oculta en «Recoger en bodega». En el móvil (donde los
+// chips van a 12 px) la cabecera envuelve; desde md los chips vuelven a 10 px y queda como en dev (m6):
 // si los chips no caben, bajan de línea y la guía conserva su ancho. La medida es del E2E
 // `mis-asignaciones` (la guía visible en «Recoger en bodega»).
 describe("SLT-200 — la guía no se queda sin ancho por los chips", () => {
-  it("la cabecera de la tarjeta envuelve (`flex-wrap`) en vez de estrujar la guía", () => {
+  it("en el móvil la cabecera envuelve (`max-md:flex-wrap`) en vez de estrujar la guía", () => {
     const { container } = montar();
     const cabecera = container.querySelector("article > header")!;
-    expect(clases(cabecera)).toEqual(expect.arrayContaining(["flex", "flex-wrap"]));
+    expect(clases(cabecera)).toEqual(expect.arrayContaining(["flex", "max-md:flex-wrap"]));
     // Un solo nodo con la guía en la cabecera.
     expect(Array.from(cabecera.querySelectorAll("p")).filter((p) => p.textContent === "REM-QX-7")).toHaveLength(1);
+  });
+});
+
+// SLT-200 (review m7): el resto de textos secundarios, contra sus clases de dev (`8dad4167`), escritas a
+// mano. Desde md manda la clase base (no hay `md:` de tamaño); el móvil, `max-md:text-xs`.
+describe("SLT-200 — desde md: chip, insignia, dirección, mensajero y aviso como en dev", () => {
+  function montarCompleta() {
+    return render(
+      <PosOrderCardMosaico
+        orden={makeOrden({ secuenciaRuta: 2, esParaManana: true, fechaRepartoISO: null })}
+        total={3}
+        mensajero="Pedro Mora"
+      />,
+    );
+  }
+
+  it("cada uno conserva su tamaño de dev desde md y sube a 12 px en el móvil", () => {
+    const { container } = montarCompleta();
+    const cabecera = container.querySelector("article > header")!;
+    const casos: [string, Element, string, number][] = [
+      ["chip de estado", cabecera.querySelector("[class*='rounded-full'][class*='px-2']")!, "text-[10px]", 10],
+      ["insignia de parada", cabecera.querySelector("span.size-6")!, "text-[11px]", 11],
+      ["dirección", screen.getAllByText("100 m norte de la iglesia")[0]!, "text-[0.6875rem]", 11],
+      ["mensajero", screen.getAllByText(/Pedro Mora/)[0]!, "text-[11px]", 11],
+      ["aviso de reserva", screen.getByRole("note"), "text-[11px]", 11],
+    ];
+    for (const [nombre, el, claseDev, pxDev] of casos) {
+      expect(el, nombre).toBeTruthy();
+      expect(clases(el), nombre).toEqual(expect.arrayContaining([claseDev, "max-md:text-xs"]));
+      expect(tamano(el, "escritorio"), nombre).toBe(pxDev);
+      expect(tamano(el, "movil"), nombre).toBe(12);
+    }
+  });
+
+  it("la cabecera solo envuelve en el móvil (`max-md:flex-wrap`); desde md, como en dev", () => {
+    const { container } = montarCompleta();
+    const cabecera = clases(container.querySelector("article > header")!);
+    expect(cabecera).toContain("max-md:flex-wrap");
+    expect(cabecera).not.toContain("flex-wrap");
   });
 });
