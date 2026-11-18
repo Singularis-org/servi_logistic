@@ -26,6 +26,10 @@ import {
 
 test.describe.configure({ mode: "serial" });
 
+/** SINPE de prueba (ficticio, el mismo de `zonas-crear-sin-costos`): el repo es publico. */
+const SINPE_NUMERO = "80000000";
+const SINPE_NOMBRE = "Titular de Prueba";
+
 let dueno: PrismaClient | null = null;
 let userAgent = "";
 let empresa: EmpresaDeTarifas | null = null;
@@ -60,8 +64,8 @@ test.beforeAll(async ({ browser }) => {
     const z = await tx.zona.create({
       data: {
         nombre,
-        sinpeNumero: "80000000",
-        sinpeNombre: "Titular de Prueba",
+        sinpeNumero: SINPE_NUMERO,
+        sinpeNombre: SINPE_NOMBRE,
         esCentral: false,
         sinpeRevisadoAt: new Date(),
       },
