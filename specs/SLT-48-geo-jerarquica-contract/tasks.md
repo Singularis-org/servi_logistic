@@ -473,3 +473,28 @@ Tests ya tocados en T1 y T2 (fixtures de DTO sin las 3 FK, firmas o tests nuevos
 - `tests/unit/services/reprogramacion-tienda-service.test.ts`
 - `tests/unit/services/rol-admin-satelite-authz.test.ts`
 - `tests/unit/types/orden-list-dto-zona.test.ts`
+
+### Añadidos tras T6 (decisión del humano, 2026-11-18)
+
+Producción:
+
+- `lib/repositories/_shared/zona-especial.ts`
+- `app/(app)/plataforma/geografia/_components/GeografiaAdminModule.tsx`
+- `app/(app)/ordenes/_components/corregir-ubicacion-arbol.ts`
+- `app/(app)/configuracion/_shared/nivel-del-grupo.ts`
+- `app/(app)/configuracion/tarifas/_components/tarifas-textos.ts`
+- `app/(app)/configuracion/zonas/_components/seleccion-de-zona.ts`
+- `specs/SLT-48-geo-jerarquica-contract/maqueta-SLT-48.html`
+
+Tests:
+
+- `tests/fixtures/archivos-slt48.ts`
+- `tests/components/CorregirDatosCliente.novedades.test.tsx`
+- `tests/components/GeografiaPlataformaAltaPais.test.tsx`
+- `tests/unit/actions/geografia-plataforma-action.test.ts`
+- `tests/unit/components/corregir-ubicacion-inactivos.test.tsx`
+- `tests/unit/guards/corregir-datos-sin-rastro.guardia.test.ts`
+- `tests/unit/types/correccion-datos-cliente-schema.test.ts`
+- `tests/integration/db/geo-consultas-ordenes.test.ts`
+- `tests/integration/db/geo-lecturas-catalogo.test.ts`
+- `tests/integration/db/geografia-dos-paises.test.ts`

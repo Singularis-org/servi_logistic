@@ -179,5 +179,6 @@ Ninguna.
 | 2026-11-17 | P4 — Mover bajo un padre retirado | Se rechaza. |
 | 2026-11-17 | P5 — `down.sql` con órdenes que el modelo viejo no sabe guardar | El `down.sql` aborta sin cambiar nada y dice cuántas órdenes lo impiden. |
 | 2026-11-17 | API v1 y el cantón sin distritos | La v1 queda igual: sigue exigiendo el distrito. Un cantón sin distritos solo entra por v2 o por la pantalla. Lo fija un test. |
+| 2026-11-18 | Textos de Costa Rica que cambian en T4 (excepción a «CR igual que hoy») | Se aceptan 6 cambios, porque el tipo de nivel no trae género y la guardia de R47 no admite el literal: «Elige un distrito» → «Elige distrito»; «Falta completar: el distrito.» → «Falta completar: distrito.»; «a partir del distrito» → «a partir del lugar»; «Al cambiar el distrito» → «Al cambiar el lugar»; «el distrito está marcado» → «el lugar está marcado»; «catálogo de provincias, cantones y distritos» → «catálogo de lugares». |
 | 2026-11-17 | Tamaño del PR | Un solo PR de ~150 archivos: 48 de producción y unos 85–105 de tests. |
 | heredada épica | Producción | Hay backup verificado antes de la release y ningún agente toca la base de producción. Las migraciones las aplica el build de `prod`. |
