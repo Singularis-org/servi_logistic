@@ -53,3 +53,10 @@ de origen desaparece; `pdf.ts` sigue existiendo, así que `pdf-comun.ts` cuenta 
 la Tanda 1 la producción suma +534 −317 = 851 de las 1 000.
 
 Veredicto: Tanda 1 en verde; el presupuesto de 1 000 líneas no alcanza para T2–T5 tal como está el diseño.
+
+## Parada por tamaño (implementer, 2026-11-18)
+
+- Tras la Tanda 1, `node scripts/tamano-pr.mjs`: «AVISO: … 6/40 archivos, 851/1000 lineas de produccion, 250/3000 de tests».
+- El `git mv` no ahorra: `pdf.ts` sigue existiendo, así que `pdf-comun.ts` cuenta +387 y `pdf.ts` +66 −307.
+- Proyección con T2.1, T3.1, T4.x y T5.1: ~1 300 líneas de producción. Pasa claramente del tope.
+- Parado antes de la Tanda 2, como pide el leader. Corte de reserva: `design.md §12` (rebanada A / B).

@@ -12,7 +12,7 @@
 
 ## Tanda 1 — Módulo común y formato
 
-- [ ] **T1.1** Crear `lib/facturas-plataforma/pdf-comun.ts` (design §2, §3).
+- [x] **T1.1** Crear `lib/facturas-plataforma/pdf-comun.ts` (design §2, §3).
   - Hacerlo con `git mv lib/facturas-plataforma/pdf.ts lib/facturas-plataforma/pdf-comun.ts`, para que el diff
     cuente un renombrado (design §12).
   - Dejar en él `Lienzo`, `COLORES`, `MEDIDAS` y los componentes: cabecera con barra degradada, tarjetas en N
@@ -23,7 +23,7 @@
 
   *Hecho:* `tests/unit/facturas-plataforma/pdf-comun.test.ts` en verde (R2, R5, R6) y el `pdf.test.ts` actual
   sigue en verde.
-- [ ] **T1.2** `[P]` En `lib/facturas-plataforma/resumen.ts` (design §5):
+- [x] **T1.2** `[P]` En `lib/facturas-plataforma/resumen.ts` (design §5):
   - `importeDocumento`;
   - `cantidadVisible` con espacio;
   - `tarifaDeLaFactura` (R26);
