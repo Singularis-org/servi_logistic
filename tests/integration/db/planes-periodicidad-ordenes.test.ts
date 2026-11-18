@@ -18,11 +18,13 @@ import { crearPlan, entradaAsignable, entradaDePlan, planesEnTx, revertida, sqls
 // de la del caso, que siempre se revierte). El reloj del servicio es fijo: 10 de noviembre de 2026, 09:00 de la
 // plataforma.
 //
-// R35: crear con y sin ella, editar en el acto y programada (con su rastro y el aplicador de la cola), un plan
+// R35: crear con y sin ella, editar con F hoy y programada (con su rastro y el aplicador de la cola), un plan
 // existente queda quincenal, valor inválido. R37: asignar, crear el custom y cambiar el tipo con quincenal en un
 // plan de órdenes mensuales; editar a mensual con una empresa quincenal y con un pendiente quincenal. Cada
 // rechazo se mide «sin escribir nada».
 // SLT-128 (R8, R28): la programada que deja de pasar deja «no aplicada» la recepción de ESA empresa, no el plan.
+// SLT-135: ya no hay edición «en el acto». Editar con F = hoy programa; el cambio llega por la cola
+// (`recibirTodo`, con el reloj en cada recepción).
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
@@ -31,6 +33,8 @@ const SUPERADMIN: Actor = { usuarioId: ACTOR, rol: "superadmin", organizacionId:
 /** 10 de noviembre de 2026, 15:00 UTC = 09:00 en la plataforma (−06:00). */
 const AHORA = new Date("2026-11-10T15:00:00.000Z");
 const PROGRAMADA = "2026-11-20";
+/** SLT-135: el día de `AHORA` en la plataforma, la F de una edición que rige hoy. */
+const HOY = "2026-11-10";
 
 let base: PrismaClient;
 
@@ -44,7 +48,7 @@ async function crear(tx: TxDeTest, entrada: CrearPlanInput): Promise<string> {
 }
 
 /** La edición completa a partir del plan leído: lo que manda el formulario, con `cambio` encima. */
-function edicion(plan: PlanDTO, cambio: Record<string, unknown>, vigenteDesde: string | null = null): Record<string, unknown> {
+function edicion(plan: PlanDTO, cambio: Record<string, unknown>, vigenteDesde: string = HOY): Record<string, unknown> {
   return {
     planId: plan.id,
     nombre: plan.nombre,
@@ -58,12 +62,30 @@ function edicion(plan: PlanDTO, cambio: Record<string, unknown>, vigenteDesde: s
   };
 }
 
-async function editar(tx: TxDeTest, planId: string, cambio: Record<string, unknown>, vigenteDesde: string | null = null) {
+async function editar(tx: TxDeTest, planId: string, cambio: Record<string, unknown>, vigenteDesde: string = HOY) {
   const plan = await planesEnTx(tx).plan(planId);
   if (plan === null) throw new Error(`no existe el plan ${planId}`);
   // El superadmin no tiene empresa: los avisos y el trabajo del programado nacen sin ella.
   await fijarEmpresa(tx, "");
   return servicio(tx).editar(SUPERADMIN, edicion(plan, cambio, vigenteDesde));
+}
+
+/**
+ * SLT-135: lo que hace la cola con el pendiente de `planId`: cada empresa lo recibe con el reloj en su recepción
+ * (`recibirCambio`) y, si no queda ninguna, el plan se promueve en F (`aplicarCambioProgramado`).
+ */
+async function recibirTodo(tx: TxDeTest, planId: string): Promise<void> {
+  const p = await tx.planCambioProgramado.findUnique({
+    where: { planId },
+    select: { id: true, vigenteDesde: true, recepciones: { orderBy: { recibeAt: "asc" }, select: { empresaId: true, recibeAt: true } } },
+  });
+  if (p === null) return;
+  const repo = planesEnTx(tx);
+  const cambio = { planId, cambioId: p.id };
+  for (const r of p.recepciones) await repo.recibirCambio(cambio, r.empresaId, new Date(r.recibeAt.getTime() + 60_000));
+  if ((await tx.planCambioProgramado.count({ where: { id: p.id } })) > 0) {
+    await repo.aplicarCambioProgramado(cambio, new Date(Math.max(p.vigenteDesde.getTime(), AHORA.getTime()) + 60_000));
+  }
 }
 
 async function columna(tx: TxDeTest, planId: string): Promise<string> {
@@ -133,19 +155,23 @@ describeSiHayBase("SLT-118 — la periodicidad de órdenes del plan (R35, R37)",
     ]);
   });
 
-  it("R35: editar en el acto la cambia con su fila de rastro; una edición que no la trae no la cambia", async () => {
+  it("R35: editar con F hoy la cambia con su fila de rastro; una edición que no la trae no la cambia", async () => {
     const r = await revertida(base, async (tx) => {
       const planId = await crear(tx, entradaDePlan());
       const aMensual = await editar(tx, planId, { periodicidadOrdenes: "mensual" });
+      // SLT-135: sin empresas, lo promueve la siguiente pasada de la cola.
+      await recibirTodo(tx, planId);
       const trasEditar = await columna(tx, planId);
       const soloNombre = await editar(tx, planId, { nombre: `otro ${randomUUID().slice(0, 6)}` });
+      await recibirTodo(tx, planId);
       return { aMensual, trasEditar, soloNombre, final: await columna(tx, planId), rastro: await rastro(tx, planId) };
     });
-    expect(r.aMensual).toMatchObject({ estado: "ok", cambio: true, vigenteDesde: null });
+    expect(r.aMensual).toMatchObject({ estado: "ok", cambio: true, vigenteDesde: HOY });
     expect(r.trasEditar).toBe("mensual");
     expect(r.soloNombre).toMatchObject({ estado: "ok", cambio: true });
     expect(r.final).toBe("mensual");
-    const editados = r.rastro.filter((f) => f.accion === "editado");
+    // SLT-135: el antes y el después de cada edición quedan en su fila `cambio_aplicado`.
+    const editados = r.rastro.filter((f) => f.accion === "cambio_aplicado");
     expect(editados).toHaveLength(2);
     expect(editados.map((f) => f.cambios.periodicidadOrdenes)).toContainEqual({ antes: "quincenal", despues: "mensual" });
     // La edición sin ella no deja la clave: no cambió.
@@ -280,7 +306,7 @@ describeSiHayBase("SLT-118 — la periodicidad de órdenes del plan (R35, R37)",
     expect(r.despues).toEqual(r.antes);
   });
 
-  it("R37: editar a mensual con una empresa quincenal es validation_error en `periodicidadOrdenes`, en el acto y programada, sin escribir nada; con empresas mensuales se guarda", async () => {
+  it("R37: editar a mensual con una empresa quincenal es validation_error en `periodicidadOrdenes`, con F hoy y programada, sin escribir nada; con empresas mensuales se guarda", async () => {
     const r = await revertida(base, async (tx) => {
       const planId = await crear(tx, entradaAsignable());
       await empresaCon(tx, planId, "quincenal");
@@ -293,6 +319,8 @@ describeSiHayBase("SLT-118 — la periodicidad de órdenes del plan (R35, R37)",
       const otro = await crear(tx, entradaAsignable());
       await empresaCon(tx, otro, "mensual");
       const control = await editar(tx, otro, { periodicidadOrdenes: "mensual" });
+      // SLT-135: la mensual lo recibe el 1 de diciembre y con ella se promueve el plan.
+      await recibirTodo(tx, otro);
       return { enElActo, programada, antes, despues, control, controlColumna: await columna(tx, otro) };
     });
     const error = { estado: "validation_error", fieldErrors: { periodicidadOrdenes: [periodicidadIncompatible(1)] } };

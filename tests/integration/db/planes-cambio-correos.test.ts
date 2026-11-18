@@ -35,6 +35,11 @@ const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 const SUPERADMIN: Actor = { usuarioId: randomUUID(), rol: "superadmin", organizacionId: null };
 /** 2026-10-28 12:00 UTC = 06:00 en la plataforma. */
 const AHORA = new Date("2026-10-28T12:00:00.000Z");
+/**
+ * SLT-135: el 1 de noviembre a las 09:00 de la plataforma, el día en que la mensual empieza período. Editar con
+ * F = hoy le llega hoy (R4): la recepción son las 00:00 del 1 y la toma la siguiente pasada de la cola.
+ */
+const EL_1 = new Date("2026-11-01T15:00:00.000Z");
 /** El instante en que rige una fecha `AAAA-MM-DD` (00:00 a −06:00), en ISO. */
 const cero = (fecha: string) => `${fecha}T06:00:00.000Z`;
 
@@ -141,8 +146,8 @@ async function preparar(tx: TxDeTest, plan: Partial<CrearPlanInput> = {}, empres
   }
   // El superadmin no tiene empresa: lo que encole sin empresa nace con `organizacion_id` NULL.
   await fijarEmpresa(tx, "");
-  /** `ahora`: el reloj del servicio al guardar (por defecto `AHORA`). */
-  const editar = async (vigenteDesde: string | null, cambio: Partial<EditarPlanInput> = {}, ahora: Date = AHORA) => {
+  /** `ahora`: el reloj del servicio al guardar (por defecto `AHORA`). SLT-135: toda edición lleva fecha. */
+  const editar = async (vigenteDesde: string, cambio: Partial<EditarPlanInput> = {}, ahora: Date = AHORA) => {
     await fijarEmpresa(tx, "");
     return new PlanesService(planesEnTx(tx), () => ahora).editar(SUPERADMIN, {
       planId: creado.planId,
@@ -176,7 +181,9 @@ describeSiHayBase("SL-24 — los correos del cambio de un plan (R41, R42, R45; S
     await base?.$disconnect();
   });
 
-  it("R41: la edición inmediata avisa a los maestros activos de cada empresa del plan, con los topes que ya pasa cada una", async () => {
+  // SLT-135 (R4): sin edición inmediata, el aviso de R41 es el correo de guardado de la programación. Con F = hoy
+  // y las empresas mensuales empezando período hoy, sale con la fecha de hoy y sin recordatorios.
+  it("R41: editar con F hoy avisa a los maestros activos de cada empresa del plan, con los topes que ya pasa cada una", async () => {
     const r = await revertida(base, async (tx) => {
       const p = await preparar(tx, { topes: { porRol: { admin: 5 }, apiKeys: null } });
       // Otra empresa con maestro, sin el plan: no recibe.
@@ -184,24 +191,27 @@ describeSiHayBase("SL-24 — los correos del cambio de un plan (R41, R42, R45; S
       await maestro(tx, ajena);
       await fijarEmpresa(tx, "");
       // SLT-86 (R8): el tope que cambia junto al de admin es el de API keys (ya no hay tope de órdenes).
-      const resultado = await p.editar(null, { topes: { porRol: { admin: 0 }, apiKeys: 40 } });
+      const resultado = await p.editar("2026-11-01", { topes: { porRol: { admin: 0 }, apiKeys: 40 } }, EL_1);
       const avisos = await trabajos(tx, "plan_aviso_correo", p.planId);
-      const rastro = await tx.planRastro.findFirstOrThrow({ where: { planId: p.planId, accion: "editado" }, select: { id: true } });
+      const recordatorios = await trabajos(tx, "plan_recordatorio_cambio", p.planId);
+      const { id: cambioId } = await tx.planCambioProgramado.findUniqueOrThrow({ where: { planId: p.planId }, select: { id: true } });
       const sender = emisor();
       await drenarAvisos(tx, p.planId, sender);
-      return { p, resultado, avisos, rastro, enviados: sender.enviados };
+      return { p, resultado, avisos, recordatorios, cambioId, enviados: sender.enviados };
     });
-    expect(r.resultado).toMatchObject({ estado: "ok", cambio: true });
-    // Un aviso por empresa del plan, en SU empresa, con la clave de la fila `editado`.
+    expect(r.resultado).toMatchObject({ estado: "ok", cambio: true, vigenteDesde: "2026-11-01" });
+    // Un aviso por empresa del plan, en SU empresa, con la clave de la programación.
     expect(r.avisos.map((a) => [a.organizacionId, a.dedupeKey]).sort()).toEqual(
-      r.p.orgs.map((o) => [o.id, `plan_aviso:${r.rastro.id}:guardado:${o.id}`]).sort(),
+      r.p.orgs.map((o) => [o.id, `plan_aviso:${r.cambioId}:guardado:${o.id}`]).sort(),
     );
-    expect(r.avisos[0].payload).toMatchObject({ cambioId: null, tipo: "guardado", vigenteDesde: null, reemplazaA: null });
+    expect(r.avisos[0].payload).toMatchObject({ cambioId: r.cambioId, tipo: "guardado", vigenteDesde: cero("2026-11-01"), reemplazaA: null });
+    // SLT-128 R21: la recepción es hoy; el recordatorio de 1 día caería antes de guardar.
+    expect(r.recordatorios).toEqual([]);
     // Destinatarios: los maestros activos de las empresas del plan; ni el inactivo, ni el admin, ni la ajena.
     expect(destinatarios(r.enviados)).toEqual(r.p.orgs.flatMap((o) => o.maestros).sort());
     for (const m of r.enviados) {
       expect(m.subject).toBe(`Cambios en el plan ${r.p.entrada.nombre}`);
-      expect(m.text).toContain("cambió y los cambios ya rigen.");
+      expect(m.text).toContain("cambia a partir del 1 nov 2026.");
       expect(m.text).toContain("API keys activas: sin límite → 40");
       expect(m.text).not.toContain("Órdenes por ciclo");
       expect(m.text).toContain("Usuarios activos con el rol Administrador: 5 → 0");
@@ -220,7 +230,7 @@ describeSiHayBase("SL-24 — los correos del cambio de un plan (R41, R42, R45; S
   it("R41: una edición sin cambios no encola ningún correo", async () => {
     const r = await revertida(base, async (tx) => {
       const p = await preparar(tx);
-      const resultado = await p.editar(null);
+      const resultado = await p.editar("2026-10-28");
       return { resultado, avisos: await trabajos(tx, "plan_aviso_correo", p.planId) };
     });
     expect(r.resultado).toMatchObject({ estado: "ok", cambio: false });
@@ -557,16 +567,18 @@ describeSiHayBase("SL-24 — los correos del cambio de un plan (R41, R42, R45; S
   it("R41/R45: un fallo del emisor falla el trabajo, pero la edición y la cancelación persisten", async () => {
     const r = await revertida(base, async (tx) => {
       const p = await preparar(tx, { topes: { porRol: {}, apiKeys: 100 } }, 1);
-      await p.editar(null, { topes: { porRol: {}, apiKeys: 7 } });
+      await p.editar("2026-11-01", { topes: { porRol: {}, apiKeys: 7 } }, EL_1);
       let errorEdicion: unknown = null;
       try {
         await drenarAvisos(tx, p.planId, emisor(true));
       } catch (e) {
         errorEdicion = e;
       }
+      // SLT-135: la edición persiste y llega por la cola: la única empresa la recibe hoy y el plan se promueve.
+      await p.recibir(p.orgs[0].id, new Date(EL_1.getTime() + 60_000));
       const tope = (await tx.plan.findUniqueOrThrow({ where: { id: p.planId }, select: { topeApiKeys: true } })).topeApiKeys;
 
-      await p.editar("2026-11-07", { nombre: "Se cancela" });
+      await p.editar("2026-11-07", { nombre: "Se cancela" }, EL_1);
       await fijarEmpresa(tx, "");
       await p.servicio.cancelarCambio(SUPERADMIN, { planId: p.planId });
       const cancelados = (await trabajos(tx, "plan_aviso_correo", p.planId)).filter((a) => a.payload.tipo === "cancelado");

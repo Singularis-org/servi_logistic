@@ -345,46 +345,72 @@ describeSiHayBase("SLT-129 — confirmar un borrador de plan (Postgres real)", (
     expect(r.despues).toEqual(r.antes);
   });
 
-  it("R19 — una regla del repositorio bajo el cerrojo (cambio_a_medias) pasa tal cual, no escribe nada y el borrador queda", async () => {
+  // SLT-135 (R11; sustituye el caso «De inmediato rechazado por el repositorio», que ya no existe): un borrador que
+  // guardó `vigencia` sin fecha antes de esta ficha. La fila se escribe a mano: hoy el esquema ya no lo deja guardar.
+  it("R11: una vigencia sin fecha guardada antes queda pendiente al confirmar", async () => {
     const r = await revertida(base, async (tx) => {
       const p = await planConEmpresas(tx, ["quincenal", "mensual"]);
-      const { planes } = servicios(planesEnTx(tx), () => AHORA);
-      const entrada = entradaAsignable({ topes: TOPES.topes, modulos: ["ranking"] });
-      const programado = await planes.editar(SUPERADMIN, {
-        planId: p.planId,
-        nombre: "Programado",
-        topes: entrada.topes,
-        modulos: entrada.modulos,
-        precio: entrada.precio,
-        costoPorOrden: entrada.costoPorOrden,
-        costoPorOrdenPorcentual: null,
-        vigenteDesde: "2026-11-16",
-      });
-      if (programado.estado !== "ok") throw new Error(`programar: ${JSON.stringify(programado)}`);
-      // La quincenal lo recibe el 16: el plan queda partido (SLT-128 R16).
-      await fijarEmpresa(tx, "");
-      const cambioId = (await tx.planCambioProgramado.findUniqueOrThrow({ where: { planId: p.planId }, select: { id: true } })).id;
-      const recibido = await planesEnTx(tx).recibirCambio({ planId: p.planId, cambioId }, p.orgs[0], new Date("2026-11-16T06:01:00.000Z"));
-      if (recibido.estado !== "aplicado") throw new Error(`recibir: ${JSON.stringify(recibido)}`);
-      // El 17, «De inmediato» sin cambiar el precio: lo rechaza el repositorio con el borrador ya en FOR UPDATE.
-      const el17 = () => new Date("2026-11-17T15:00:00.000Z");
-      const { borradores } = servicios(planesEnTx(tx), el17);
-      const id = await borradorDeCambio(borradores, p.planId, { vigencia: { vigenteDesde: null } });
+      const { borradores } = servicios(planesEnTx(tx), () => AHORA);
+      const id = await borradorDeCambio(borradores, p.planId, {});
+      await tx.$executeRawUnsafe(
+        `UPDATE "plan_borrador" SET "pasos" = jsonb_set("pasos", '{vigencia}', '{"vigenteDesde": null}'::jsonb) WHERE "id" = $1`,
+        id,
+      );
       const antes = { borrador: await tx.planBorrador.findUniqueOrThrow({ where: { id } }), plan: await fotoDelPlan(tx, p.planId) };
+      const leido = await borradores.leer(SUPERADMIN, { borradorId: id });
       const res = await borradores.confirmar(SUPERADMIN, { borradorId: id });
-      return { res, antes, despues: { borrador: await tx.planBorrador.findUnique({ where: { id } }), plan: await fotoDelPlan(tx, p.planId) } };
+      return { leido, res, antes, despues: { borrador: await tx.planBorrador.findUnique({ where: { id } }), plan: await fotoDelPlan(tx, p.planId) } };
     });
-    expect(r.res).toEqual({ estado: "cambio_a_medias" });
+    // Leer lo da sin «Cuándo rige»; confirmar lo pide y no escribe nada.
+    expect(r.leido).toMatchObject({ estado: "ok", borrador: { pasosGuardados: ["general", "precio", "orden", "topes", "modulos"] } });
+    expect(r.leido.estado === "ok" ? r.leido.borrador?.pasos : undefined).not.toHaveProperty("vigencia");
+    expect(r.res).toEqual({ estado: "pasos_pendientes", pasos: ["vigencia"] });
     expect(r.despues).toEqual(r.antes);
   });
 
+  // SLT-135 (R12): el 16 de noviembre a las 15:00, confirmar con F = 16 programa como editar (R4): la quincenal lo
+  // recibe con las 00:00 del 16, sin recordatorios, y la mensual el 1 de diciembre. El plan no cambia al confirmar.
+  it("R12: confirmar con F hoy programa", async () => {
+    const el16 = new Date("2026-11-16T21:00:00.000Z");
+    const r = await revertida(base, async (tx) => {
+      const p = await planConEmpresas(tx, ["quincenal", "mensual"]);
+      const { borradores } = servicios(planesEnTx(tx), () => el16);
+      const id = await borradorDeCambio(borradores, p.planId, { vigencia: { vigenteDesde: "2026-11-16" } });
+      const res = await borradores.confirmar(SUPERADMIN, { borradorId: id });
+      const pendiente = await tx.planCambioProgramado.findUniqueOrThrow({ where: { planId: p.planId }, select: { id: true, vigenteDesde: true } });
+      const recepciones = await tx.planCambioRecepcion.findMany({ where: { cambioId: pendiente.id }, select: { empresaId: true, recibeAt: true } });
+      const planAlConfirmar = (await tx.plan.findUniqueOrThrow({ where: { id: p.planId }, select: { nombre: true } })).nombre;
+      const jobs = await trabajos(tx, p.planId);
+      // La siguiente pasada de la cola: la quincenal lo recibe hoy.
+      const recibido = await planesEnTx(tx).recibirCambio({ planId: p.planId, cambioId: pendiente.id }, p.orgs[0], new Date("2026-11-16T21:01:00.000Z"));
+      const version = await tx.planVersionEmpresa.findUnique({ where: { empresaId: p.orgs[0] }, select: { version: true, desdeAt: true } });
+      return { p, res, pendiente, recepciones, planAlConfirmar, jobs, recibido, version, borrador: await tx.planBorrador.count({ where: { id } }) };
+    });
+    const [quincenal, mensual] = r.p.orgs;
+    expect(r.res).toMatchObject({ estado: "ok", planId: r.p.planId, cambio: true, vigenteDesde: "2026-11-16" });
+    expect(r.pendiente.vigenteDesde).toEqual(new Date("2026-11-16T06:00:00.000Z"));
+    expect(Object.fromEntries(r.recepciones.map((x) => [x.empresaId, x.recibeAt.toISOString()]))).toEqual({
+      [quincenal]: "2026-11-16T06:00:00.000Z",
+      [mensual]: "2026-12-01T06:00:00.000Z",
+    });
+    expect(r.planAlConfirmar).toBe(r.p.nombre);
+    const de = (org: string) => r.jobs.filter((t) => t.organizacion_id === org).map((t) => [t.tipo, t.aviso ?? t.recibe]);
+    // SLT-128 R21: para la recepción de hoy no hay recordatorio; la del 1 de diciembre sí los tiene.
+    expect(de(quincenal).filter(([tipo]) => tipo === "plan_recordatorio_cambio")).toEqual([]);
+    expect(de(quincenal)).toContainEqual(["plan_aplicar_cambio", "2026-11-16T06:00:00.000Z"]);
+    expect(de(mensual).filter(([tipo]) => tipo === "plan_recordatorio_cambio").length).toBeGreaterThan(0);
+    expect(r.recibido).toEqual({ estado: "aplicado" });
+    expect(r.version).toMatchObject({ version: { nombre: "Desde el borrador" }, desdeAt: new Date("2026-11-16T06:00:00.000Z") });
+    expect(r.borrador).toBe(0);
+  });
   it("R18 (decisión del implementer) — confirmar un cambio sin diferencias da ok con cambio:false y también borra el borrador", async () => {
     const r = await revertida(base, async (tx) => {
       const p = await planConEmpresas(tx, ["mensual"]);
       const { borradores } = servicios(planesEnTx(tx), () => AHORA);
       const id = await borradorDeCambio(borradores, p.planId, {
         general: { nombre: p.nombre },
-        vigencia: { vigenteDesde: null },
+        // SLT-135: con fecha (ya no hay «De inmediato»); sin diferencias no programa nada (R7).
+        vigencia: { vigenteDesde: "2026-11-16" },
       });
       const antes = await fotoDelPlan(tx, p.planId);
       const res = await borradores.confirmar(SUPERADMIN, { borradorId: id });

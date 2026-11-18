@@ -33,8 +33,9 @@ import { limpiar459, sembrarPersonas459, type Personas459 } from "./_fixtures/es
 // sobre el cliente extendido, como en una petición. Se anulan y se recuperan con los servicios de la
 // pantalla. Quien escribe el cargo es el trigger: aquí no hay ningún INSERT a mano en la tabla.
 //
-// El plan se crea, se edita, se archiva y se aplica su cambio programado con `PlanesRepository` real
-// (como dueño, igual que el superadmin en `comoPlataforma`); el global, con el
+// El plan se crea, se archiva y se aplica su cambio programado con `PlanesRepository` real (como dueño, igual
+// que el superadmin en `comoPlataforma`); SLT-135: cada «edición» de P es un pendiente que ya rige, escrito a
+// mano y promovido por `aplicarCambioProgramado` (no hay edición inmediata). El global, con el
 // repositorio del superadmin bajo el lock de `_fixtures/cobro-plataforma-40`. La asignación es la
 // misma sentencia que usan los fixtures de SL-24 (`_fixtures/planes.ts > asignarPlan`).
 //
@@ -173,10 +174,24 @@ async function versionDeP(cambio: Partial<VersionPlan>): Promise<VersionPlan> {
   return { nombre: actual.nombre, topes: actual.topes, modulos: actual.modulos, precio: actual.precio, costoPorOrden: actual.costoPorOrden, costoPorOrdenPorcentual: actual.costoPorOrdenPorcentual, ...cambio };
 }
 
-async function editarP(cambio: Partial<VersionPlan>): Promise<void> {
-  // SLT-86 (R15): un precio nuevo regiría desde las 00:00 de hoy; aquí no cambia el cargo de las órdenes (R13).
-  const r = await planes().editar(P, await versionDeP(cambio), ACTOR, new Date());
-  expect(r, JSON.stringify(r)).toMatchObject({ estado: "ok", cambio: true });
+/**
+ * Un pendiente de P que ya rige, escrito a mano (sin recepciones: A y B lo toman del plan), y su promoción por
+ * `aplicarCambioProgramado`, como la pasada de la cola. Sin trabajos en `jobs`: esto se commitea. SLT-135: así
+ * llega cada «edición» de P (ya no hay edición inmediata). SLT-86 (R15): un precio nuevo rige desde ese instante;
+ * aquí no cambia el cargo de las órdenes (R13).
+ */
+async function aplicarAP(cambio: Partial<VersionPlan>): Promise<void> {
+  const cambioId = randomUUID();
+  await base.$executeRawUnsafe(
+    `INSERT INTO "plan_cambio_programado" ("id", "plan_id", "vigente_desde", "version", "avisos_al_programar",
+       "actor_usuario_id", "actor_nombre")
+     VALUES ($1, $2, (now() AT TIME ZONE 'UTC') - interval '1 minute', $3::jsonb, '[]'::jsonb, $4, 'Superadmin SLT66')`,
+    cambioId,
+    P,
+    JSON.stringify(await versionDeP(cambio)),
+    ACTOR,
+  );
+  expect(await planes().aplicarCambioProgramado({ planId: P, cambioId }, new Date())).toEqual({ estado: "aplicado" });
 }
 
 /** Lo que hay en la base para cada orden creada hasta ahora, contra lo esperado. */
@@ -293,8 +308,8 @@ describeSiHayBase("SLT-66 — el cargo de cada orden con el costo por orden del 
     await todasComoSeEspera();
   });
 
-  it("R15: P pasa a 120.00 (edición inmediata) y A crea o2 → 120.00; o1 sigue en 100.00", async () => {
-    await editarP({ costoPorOrden: "120.00" });
+  it("R15: P pasa a 120.00 (cambio ya aplicado) y A crea o2 → 120.00; o1 sigue en 100.00", async () => {
+    await aplicarAP({ costoPorOrden: "120.00" });
     await crear(A, "o2", "sinGuia");
     esperado.o2 = [cargo("120.00", "plan")];
     await todasComoSeEspera();
@@ -329,7 +344,7 @@ describeSiHayBase("SLT-66 — el cargo de cada orden con el costo por orden del 
 
   it("R14: P con descuento anual del 20 %; B crea p2 → 120.00 «plan», sin descuento", async () => {
     // SLT-86 (R13, R33): el descuento anual de antes es ahora el descuento del período anual.
-    await editarP({ precio: { tipo: "monto", mensual: "50000.00", descuentos: { anual: { tipo: "porcentaje", porcentaje: "20" } } } });
+    await aplicarAP({ precio: { tipo: "monto", mensual: "50000.00", descuentos: { anual: { tipo: "porcentaje", porcentaje: "20" } } } });
     await crear(B, "p2", "conGuia");
     esperado.p2 = [cargo("120.00", "plan")];
     await todasComoSeEspera();
@@ -337,7 +352,7 @@ describeSiHayBase("SLT-66 — el cargo de cada orden con el costo por orden del 
 
   it("R14: P con base sin precio; B crea p3 → 120.00 «plan» (la forma del costo base no cuenta)", async () => {
     // D1 (ajuste planes-custom): «negociable» ya no existe; «sin precio» es la otra forma sin monto.
-    await editarP({ precio: { tipo: "sin_precio" } });
+    await aplicarAP({ precio: { tipo: "sin_precio" } });
     await crear(B, "p3", "sinGuia");
     esperado.p3 = [cargo("120.00", "plan")];
     await todasComoSeEspera();
@@ -346,17 +361,7 @@ describeSiHayBase("SLT-66 — el cargo de cada orden con el costo por orden del 
   /* ------------------------- más allá de la tabla -------------------------- */
 
   it("R15: un cambio programado que se aplica (aplicarCambioProgramado) pone P en 130.00; B crea p4 → 130.00", async () => {
-    const cambioId = randomUUID();
-    await base.$executeRawUnsafe(
-      `INSERT INTO "plan_cambio_programado" ("id", "plan_id", "vigente_desde", "version", "avisos_al_programar",
-         "actor_usuario_id", "actor_nombre")
-       VALUES ($1, $2, (now() AT TIME ZONE 'UTC') - interval '1 minute', $3::jsonb, '[]'::jsonb, $4, 'Superadmin SLT66')`,
-      cambioId,
-      P,
-      JSON.stringify(await versionDeP({ costoPorOrden: "130.00" })),
-      ACTOR,
-    );
-    expect(await planes().aplicarCambioProgramado({ planId: P, cambioId }, new Date())).toEqual({ estado: "aplicado" });
+    await aplicarAP({ costoPorOrden: "130.00" });
     expect((await planes().plan(P))?.costoPorOrden).toBe("130.00");
 
     await crear(B, "p4", "conGuia");

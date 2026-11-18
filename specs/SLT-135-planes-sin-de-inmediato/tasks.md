@@ -65,13 +65,13 @@ Base desechable (`docs/verification.md`). Depende de T2.
   - `tests/integration/db/plan-precio-historial.test.ts`: R6, y los casos de la edición inmediata reescritos con F.
 
   *Hecho:* los tres verdes.
-- [ ] **T4.2 [P]** El resto de R6 y R11, R12:
+- [x] **T4.2 [P]** El resto de R6 y R11, R12:
   - `tests/integration/db/plan-descuento-periodo.test.ts`: R6;
   - `tests/integration/db/plan-borrador-confirmar.test.ts`: R11 y R12. El caso «De inmediato rechazado por el
     repositorio» pasa a R11.
 
   *Hecho:* verdes.
-- [ ] **T4.3 [P]** Los que editaban sin fecha o con `repo.editar` como atajo, con las mismas aserciones de su
+- [x] **T4.3 [P]** Los que editaban sin fecha o con `repo.editar` como atajo, con las mismas aserciones de su
   ficha. Programar y correr `recibirCambio` / `aplicarCambioProgramado` con el reloj en la recepción, o SQL a mano
   si solo preparan datos:
   - `tests/integration/db/planes-edicion-en-uso.test.ts` (además, R3);
