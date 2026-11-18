@@ -103,19 +103,19 @@ Buscado `pg_policies`, `_por_empresa`, `clave_idempotencia_key`, `etiquetasDeEnu
 
 ## Tasks
 
-- [ ] **T1 — Medir** (R1160, R1168). Correr los 7 en la desechable; anotar cada primer error y, con el
+- [x] **T1 — Medir** (R1160, R1168). Correr los 7 en la desechable; anotar cada primer error y, con el
   primero corregido en local, si hay más. Confirmar en `pg_policies`/`pg_indexes`/`information_schema`
   que la base tiene lo que dicen las migraciones. *Hecho:* tabla en `progress/impl_SLT-187.md`.
-- [ ] **T2 [P] — Policies** (#1, #2; R1161, R1162, R1167). *Hecho:* verdes + mutación roja por archivo.
-- [ ] **T3 [P] — `vista-filtro-migration`** (#3; R1163). *Hecho:* verde + mutación del filtro roja.
-- [ ] **T4 [P] — Enum de la 458** (#4; R1164). *Hecho:* verde + mutación roja.
-- [ ] **T5 [P] — Índices y columnas** (#5, #6; R1165). *Hecho:* verdes + caso nuevo «otra empresa» +
+- [x] **T2 [P] — Policies** (#1, #2; R1161, R1162, R1167). *Hecho:* verdes + mutación roja por archivo.
+- [x] **T3 [P] — `vista-filtro-migration`** (#3; R1163). *Hecho:* verde + mutación del filtro roja.
+- [x] **T4 [P] — Enum de la 458** (#4; R1164). *Hecho:* verde + mutación roja.
+- [x] **T5 [P] — Índices y columnas** (#5, #6; R1165). *Hecho:* verdes + caso nuevo «otra empresa» +
   mutación roja.
-- [ ] **T6 — `retiro-estados-migration`** (#7; R1166). Elegir y justificar el aislamiento. *Hecho:*
+- [x] **T6 — `retiro-estados-migration`** (#7; R1166). Elegir y justificar el aislamiento. *Hecho:*
   13/13 en base vacía y con la orden ajena. Si no hay forma sin coste desproporcionado, parar y
   preguntar (la entrada se quedaría con su motivo).
-- [ ] **T7 — Baseline** (R1169).
-- [ ] **T8 — Cierre.** typecheck, lint, `pnpm run test:guardias`, `git diff --name-only origin/dev -- lib
+- [x] **T7 — Baseline** (R1169).
+- [x] **T8 — Cierre.** typecheck, lint, `pnpm run test:guardias`, `git diff --name-only origin/dev -- lib
   app components hooks db scripts` vacío, `node scripts/tamano-pr.mjs`, mapa R → test, `./init.sh`
   (leader) y `gate-completo` verde en el PR.
 

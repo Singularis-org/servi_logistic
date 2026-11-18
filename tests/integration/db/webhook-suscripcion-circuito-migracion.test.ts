@@ -284,11 +284,13 @@ describeSiHayBase("403/T1 — la base aplicada, medida de verdad", () => {
 
     expect(restantes).not.toContain("fallos_consecutivos");
     expect(restantes).not.toContain("sin_exito_desde");
-    // Y las de la 99 siguen ahi: el down no se lleva por delante nada mas.
+    // Y las de la 99 siguen ahi: el down no se lleva por delante nada mas. SLT-187: tampoco la
+    // empresa, que anadio SL-17 despues (`20261022130100_organizacion_id_en_negocio`).
     expect(restantes.sort()).toEqual([
       "activa",
       "created_at",
       "id",
+      "organizacion_id",
       "owner_usuario_id",
       "secret",
       "updated_at",

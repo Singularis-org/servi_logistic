@@ -290,7 +290,9 @@ describe("266 / paridad — el SQL y `schema.prisma` describen la MISMA tabla (R
       "nota",
       "orden_id",
     ]);
-    expect([...prisma].sort()).toEqual([...sql].sort());
+    // SLT-187: el modelo tiene UNA columna mas que el CREATE TABLE de la 266, la empresa, que anadio
+    // SL-17 en su propia migracion (`20261022130100_organizacion_id_en_negocio`, ALTER TABLE).
+    expect([...prisma].sort()).toEqual([...sql, "organizacion_id"].sort());
   });
 
   // ASERTO 5 (la parte que de verdad se puede romper por descuido).
