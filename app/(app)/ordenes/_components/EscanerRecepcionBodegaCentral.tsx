@@ -1,16 +1,8 @@
 "use client";
 
-import { useCallback, useState } from "react";
-
-import {
-  EscanerGuiaCard,
-  type ResultadoLectura,
-} from "@/components/shared/EscanerGuiaCard";
 import { TarjetaEscaneoContinuo } from "@/components/shared/EscaneoContinuo";
 import { RecepcionContinuaPagina } from "@/components/shared/RecepcionContinuaPagina";
-import { useToast } from "@/hooks/useToast";
 import { recibirEnBodegaCentralPorQr } from "@/lib/actions/recepcion-bodega-central";
-import { leerGuia } from "@/lib/utils/paquete-url";
 import type { DesenlaceRecepcion, ModoRecepcion } from "@/lib/utils/sesion-escaneo";
 import type { RecibirEnBodegaCentralResult } from "@/lib/types/recepcion-bodega-central";
 
@@ -37,8 +29,11 @@ export interface EscanerRecepcionBodegaCentralProps {
    * `continua`, una sola vez al cerrar el diálogo si hubo alguna.
    */
   onRecibida?: () => void;
-  /** SLT-159: `suelta` (lo de hoy), `continua` (el diálogo con lista) o `pagina`. */
-  modo?: ModoRecepcion;
+  /**
+   * SLT-159: `continua` (el diálogo con lista) o `pagina`. SLT-202: la guía `suelta` se quitó (la
+   * cubre la continua).
+   */
+  modo: Exclude<ModoRecepcion, "suelta">;
   /** SLT-159 (R613): en `pagina`, adónde vuelve «Terminar recepción». */
   volverA?: string;
 }
@@ -77,7 +72,7 @@ async function recibirBodegaCentral(numGuia: number): Promise<DesenlaceRecepcion
 
 export function EscanerRecepcionBodegaCentral({
   onRecibida = sinRefresco,
-  modo = "suelta",
+  modo,
   volverA = "/ordenes",
 }: Readonly<EscanerRecepcionBodegaCentralProps>) {
   if (modo === "pagina") {
@@ -85,104 +80,18 @@ export function EscanerRecepcionBodegaCentral({
       <RecepcionContinuaPagina recibir={recibirBodegaCentral} volverA={volverA} nombreRecepcion="Bodega central" />
     );
   }
-  if (modo === "continua") {
-    return (
-      // SLT-193 (R927): vive en el diálogo de `RecibirPaquetesEntrada`, que lleva el título en su barra.
-      <TarjetaEscaneoContinuo
-        sinEncabezado
-        recibir={recibirBodegaCentral}
-        alCerrarConRecepcion={onRecibida}
-        ariaLabel="Recepción continua en bodega central"
-        titulo="Recibir paquetes"
-        descripcion="Escanea las guías una tras otra"
-        submitLabel="Recibir"
-      />
-    );
-  }
-  return <RecepcionBodegaCentralSuelta onRecibida={onRecibida} />;
-}
-
-function RecepcionBodegaCentralSuelta({ onRecibida }: Readonly<{ onRecibida: () => void }>) {
-  const toast = useToast();
-  // Confirmacion PERSISTENTE del ultimo acierto: el toast se va solo y quien recibe
-  // una tanda seguida necesita ver que la anterior si entro.
-  const [ultimaRecibida, setUltimaRecibida] = useState<number | null>(null);
-
-  /** Rechazo: el toast de siempre y el mismo motivo para la tarjeta (SLT-158). */
-  const rechazar = useCallback(
-    (motivo: string): ResultadoLectura => {
-      toast.error(motivo);
-      return { tipo: "error", motivo };
-    },
-    [toast],
-  );
-
-  /** Traduce cada resultado de la acción a un toast (R15, los 8 estados). */
-  const notificar = useCallback(
-    (result: RecibirEnBodegaCentralResult, numGuia: number): ResultadoLectura => {
-      const desenlace = desenlaceBodegaCentral(result);
-      switch (result.status) {
-        case "ok":
-          // Feature 139/T3.5: la recepción central es STATE-AWARE. Si la orden venía
-          // en `devolviendo_a_bodega_central`, la acción la deja en `por_devolver_a_tienda`
-          // (no en bodega central): el toast nombra ese destino real. El caso 138
-          // (`en_bodega_central`) conserva su mensaje.
-          toast.success(
-            result.estado === "por_devolver_a_tienda"
-              ? `Guía ${numGuia} recibida; queda por devolver a la tienda.`
-              : `Guía ${numGuia} recibida en bodega central.`,
-          );
-          setUltimaRecibida(numGuia);
-          onRecibida();
-          return { tipo: "acierto" };
-        case "ya_recibida":
-          // La lectura fue buena: el paquete ya estaba dentro. Suena como acierto.
-          toast.info(`La guía ${numGuia} ya estaba recibida.`);
-          onRecibida();
-          return { tipo: "acierto" };
-        case "no_encontrada":
-          return rechazar("Orden no encontrada.");
-        default:
-          return rechazar(desenlace.tipo === "no_se_pudo" ? desenlace.motivo : "");
-      }
-    },
-    [toast, onRecibida, rechazar],
-  );
-
-  /**
-   * Cámara, tecleo o pistola: el QR (`<origin>/paquete/<numGuia>`) o el CODE128 (dígitos) de
-   * la etiqueta, los dos por `leerGuia` (SLT-157), así la pistola 2D que teclea la URL del QR
-   * también vale. Un texto que no resuelve a num_guia (p. ej. el UUID de una etiqueta vieja)
-   * se rechaza aquí con "Código inválido", sin llamar a la acción (R10).
-   */
-  const procesar = useCallback(
-    async (escaneado: string): Promise<ResultadoLectura> => {
-      const numGuia = leerGuia(escaneado);
-      if (numGuia === null) return rechazar("Código inválido.");
-      const result = await recibirEnBodegaCentralPorQr({ numGuia });
-      return notificar(result, numGuia);
-    },
-    [notificar, rechazar],
-  );
-
+  // SLT-202 (Carlos, 2026-11-18): la guía suelta se quitó; `/ordenes` tiene un solo «Recibir paquete»,
+  // que abre la continua (SLT-159). Fuera de `pagina`, la tarjeta continua.
   return (
-    // SLT-193 (R927): vive en el diálogo de `OrdenesListado`, que lleva el título en su barra.
-    <EscanerGuiaCard
+    // SLT-193 (R927): vive en el diálogo de `RecibirPaquetesEntrada`, que lleva el título en su barra.
+    <TarjetaEscaneoContinuo
       sinEncabezado
-      ariaLabel="Recepción en bodega central"
-      titulo="Recibir paquete"
-      descripcion="Escanea o ingresa el número de guía"
-      onDecoded={procesar}
-      mensajeErrorCamara="No se pudo abrir la cámara."
-      manual={{ onSubmit: procesar, submitLabel: "Recibir" }}
-      exito={
-        ultimaRecibida === null ? undefined : (
-          <>
-            Guía <span className="font-semibold">{ultimaRecibida}</span> recibida
-            correctamente.
-          </>
-        )
-      }
+      recibir={recibirBodegaCentral}
+      alCerrarConRecepcion={onRecibida}
+      ariaLabel="Recepción continua en bodega central"
+      titulo="Recibir paquetes"
+      descripcion="Escanea las guías una tras otra"
+      submitLabel="Recibir"
     />
   );
 }

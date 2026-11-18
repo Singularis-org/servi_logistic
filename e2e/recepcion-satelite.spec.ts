@@ -18,6 +18,9 @@ import {
  * la pistola lectora, que «teclea» el código) y la orden pasa a `en_bodega_satelite`: sale de «Por
  * recibir» y aparece en «Órdenes de la bodega» con el estado «En bodega satélite».
  *
+ * SLT-202 (Carlos, 2026-11-18): «Recibir paquete» es el único disparador y, en escritorio, lleva a la
+ * recepción continua de SLT-159 («Recibir paquetes»); la guía suelta se quitó.
+ *
  * DATOS (R7, R8): una empresa nueva por corrida (`crearEscenarioReparto`) y una orden llevada hasta
  * `en_ruta_bodega_satelite` por los servicios reales (carga masiva → generar guía → rutear).
  *
@@ -41,15 +44,19 @@ test.describe.serial("Recepción satélite — recibir por número de guía", ()
     await expect(porRecibir.getByText(orden.numRemision).first()).toBeVisible();
     await expect(porRecibir.getByText(`Guía ${orden.numGuia}`).first()).toBeVisible();
 
-    await page.getByRole("button", { name: "Recibir paquete", exact: true }).click();
-    const tarjeta = page.getByRole("region", { name: "Recibir por número de guía o escaneo" });
-    await tarjeta.getByLabel("Número de guía").fill(String(orden.numGuia));
-    await tarjeta.getByRole("button", { name: "Recibir", exact: true }).click();
+    await page.getByRole("link", { name: "Recibir paquete", exact: true }).click();
+    await expect(page).toHaveURL(/\/recepcion-satelite\/recibir\?desde=por-recibir$/);
+    const campo = page.getByLabel("Escanea la guía con la pistola");
+    await expect(campo).toBeFocused();
+    await page.keyboard.type(String(orden.numGuia));
+    await page.keyboard.press("Enter");
+    await expect(
+      page.getByRole("log", { name: "Lecturas" }).getByRole("row", { name: new RegExp(String(orden.numGuia)) }).getByText("Recibida", { exact: true }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Terminar recepción (1)" }).click();
+    await expect(page).toHaveURL(/\/recepcion-satelite\/por-recibir$/);
 
-    await expect(page.getByText(`Guía ${orden.numGuia} recibida.`, { exact: true })).toBeVisible();
-    await page.keyboard.press("Escape");
-
-    // Tras el refresco, la orden ya no está por recibir…
+    // De vuelta en «Por recibir», la orden ya no está…
     await expect(porRecibir.getByText(orden.numRemision)).toHaveCount(0);
     expect(await estadoDe(orden)).toBe("en_bodega_satelite");
 

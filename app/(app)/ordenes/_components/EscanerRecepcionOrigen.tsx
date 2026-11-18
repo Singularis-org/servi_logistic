@@ -1,16 +1,8 @@
 "use client";
 
-import { useCallback, useState } from "react";
-
-import {
-  EscanerGuiaCard,
-  type ResultadoLectura,
-} from "@/components/shared/EscanerGuiaCard";
 import { TarjetaEscaneoContinuo } from "@/components/shared/EscaneoContinuo";
 import { RecepcionContinuaPagina } from "@/components/shared/RecepcionContinuaPagina";
-import { useToast } from "@/hooks/useToast";
 import { recibirEnOrigenPorQr } from "@/lib/actions/recepcion-origen";
-import { leerGuia } from "@/lib/utils/paquete-url";
 import type { DesenlaceRecepcion, ModoRecepcion } from "@/lib/utils/sesion-escaneo";
 import type { RecibirEnOrigenResult } from "@/lib/types/recepcion-origen";
 
@@ -36,8 +28,11 @@ export interface EscanerRecepcionOrigenProps {
    * `continua`, una sola vez al cerrar el diálogo si hubo alguna.
    */
   onRecibida?: () => void;
-  /** SLT-159: `suelta` (lo de hoy), `continua` (el diálogo con lista) o `pagina`. */
-  modo?: ModoRecepcion;
+  /**
+   * SLT-159: `continua` (el diálogo con lista) o `pagina`. SLT-202: la guía `suelta` se quitó (la
+   * cubre la continua).
+   */
+  modo: Exclude<ModoRecepcion, "suelta">;
   /** SLT-159 (R613): en `pagina`, adónde vuelve «Terminar recepción». */
   volverA?: string;
 }
@@ -75,7 +70,7 @@ async function recibirOrigen(numGuia: number): Promise<DesenlaceRecepcion> {
 
 export function EscanerRecepcionOrigen({
   onRecibida = sinRefresco,
-  modo = "suelta",
+  modo,
   volverA = "/ordenes",
 }: Readonly<EscanerRecepcionOrigenProps>) {
   if (modo === "pagina") {
@@ -83,95 +78,18 @@ export function EscanerRecepcionOrigen({
       <RecepcionContinuaPagina recibir={recibirOrigen} volverA={volverA} nombreRecepcion="Tienda" />
     );
   }
-  if (modo === "continua") {
-    return (
-      // SLT-193 (R927): vive en el diálogo de `RecibirPaquetesEntrada`, que lleva el título en su barra.
-      <TarjetaEscaneoContinuo
-        sinEncabezado
-        recibir={recibirOrigen}
-        alCerrarConRecepcion={onRecibida}
-        ariaLabel="Recepción continua en tienda"
-        titulo="Recibir paquetes"
-        descripcion="Escanea las guías una tras otra"
-        submitLabel="Recibir"
-      />
-    );
-  }
-  return <RecepcionOrigenSuelta onRecibida={onRecibida} />;
-}
-
-function RecepcionOrigenSuelta({ onRecibida }: Readonly<{ onRecibida: () => void }>) {
-  const toast = useToast();
-  const [ultimaRecibida, setUltimaRecibida] = useState<number | null>(null);
-
-  /** Rechazo: el toast de siempre y el mismo motivo para la tarjeta (SLT-158). */
-  const rechazar = useCallback(
-    (motivo: string): ResultadoLectura => {
-      toast.error(motivo);
-      return { tipo: "error", motivo };
-    },
-    [toast],
-  );
-
-  /** Traduce cada resultado de la acción a un toast y al resultado de la lectura. */
-  const notificar = useCallback(
-    (result: RecibirEnOrigenResult, numGuia: number): ResultadoLectura => {
-      const desenlace = desenlaceOrigen(result);
-      switch (result.status) {
-        case "ok":
-          toast.success(`Guía ${numGuia} recibida en tienda.`);
-          setUltimaRecibida(numGuia);
-          onRecibida();
-          return { tipo: "acierto" };
-        case "ya_recibida":
-          // La lectura fue buena: el paquete ya estaba dentro. Suena como acierto.
-          toast.info(`La guía ${numGuia} ya estaba recibida.`);
-          onRecibida();
-          return { tipo: "acierto" };
-        case "no_encontrada":
-          return rechazar("Orden no encontrada.");
-        default:
-          return rechazar(desenlace.tipo === "no_se_pudo" ? desenlace.motivo : "");
-      }
-    },
-    [toast, onRecibida, rechazar],
-  );
-
-  /**
-   * Cámara, tecleo o pistola: el QR (`<origin>/paquete/<numGuia>`) o el CODE128 (dígitos) de
-   * la etiqueta, los dos por `leerGuia` (SLT-157). El camino tecleado es un pedido humano del
-   * 2026-08-10: sin cámara disponible, o con una etiqueta ilegible, no había forma de recibir.
-   * Un texto que no resuelve a num_guia (p. ej. el UUID de una etiqueta vieja) se rechaza
-   * aquí con "Código inválido.", sin llamar a la acción.
-   */
-  const procesar = useCallback(
-    async (escaneado: string): Promise<ResultadoLectura> => {
-      const numGuia = leerGuia(escaneado);
-      if (numGuia === null) return rechazar("Código inválido.");
-      const result = await recibirEnOrigenPorQr({ numGuia });
-      return notificar(result, numGuia);
-    },
-    [notificar, rechazar],
-  );
-
+  // SLT-202 (Carlos, 2026-11-18): la guía suelta se quitó; `/ordenes` tiene un solo «Recibir paquete»,
+  // que abre la continua (SLT-159). Fuera de `pagina`, la tarjeta continua.
   return (
-    // SLT-193 (R927): vive en el diálogo de `OrdenesListado`, que lleva el título en su barra.
-    <EscanerGuiaCard
+    // SLT-193 (R927): vive en el diálogo de `RecibirPaquetesEntrada`, que lleva el título en su barra.
+    <TarjetaEscaneoContinuo
       sinEncabezado
-      ariaLabel="Recepción en tienda por escaneo"
-      titulo="Recibir paquete"
-      descripcion="Escanea el código de la guía devuelta o ingresa su número"
-      manual={{ onSubmit: procesar, submitLabel: "Recibir paquete" }}
-      onDecoded={procesar}
-      mensajeErrorCamara="No se pudo abrir la cámara."
-      exito={
-        ultimaRecibida === null ? undefined : (
-          <>
-            Guía <span className="font-semibold">{ultimaRecibida}</span> recibida
-            correctamente.
-          </>
-        )
-      }
+      recibir={recibirOrigen}
+      alCerrarConRecepcion={onRecibida}
+      ariaLabel="Recepción continua en tienda"
+      titulo="Recibir paquetes"
+      descripcion="Escanea las guías una tras otra"
+      submitLabel="Recibir"
     />
   );
 }

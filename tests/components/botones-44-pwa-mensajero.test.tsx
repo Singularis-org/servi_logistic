@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 // SLT-193 «Botones de 44 px pendientes en la PWA del mensajero» — bloque A (R910, R916-R919, R921).
 //
-// - R910: «Ver detalle completo» del Mosaico mide 44 px de alto (`min-h-11`) a todo el ancho y
-//   despliega como hoy.
+// - R910: «Ver detalle completo» del Mosaico mide 44 px de alto a todo el ancho y despliega como hoy.
+//   SLT-202 «Escritorio igual a prod: tamaños de controles y un solo botón de recibir» (decisión de
+//   Carlos del 2026-11-18): los 44 px, solo en el móvil (`max-md:min-h-11`); la tarjeta también se
+//   monta en `/novedades` de escritorio, que vuelve al alto de prod.
 // - R916: el (i) de los usos del mensajero lleva `CLASE_INFO_TACTIL` en su envoltorio (el
 //   pseudo-elemento crece de 24 a 44; la caja sigue en 16 × 16, `size-4`).
 // - R918: el (i) que flota sobre el chip en la tarjeta Detalle NO lo lleva (excepción de Carlos).
@@ -84,11 +86,12 @@ describe("SLT-193 · las constantes (contrato literal: 16 + 2 × 14 = 44)", () =
 });
 
 describe("SLT-193 · R910 — «Ver detalle completo» del Mosaico", () => {
-  it("R910/R921: el disparador mide 44 px de alto a todo el ancho y despliega como hoy", async () => {
+  it("R910/R921: el disparador mide 44 px de alto en el móvil (SLT-202), a todo el ancho, y despliega como hoy", async () => {
     const user = userEvent.setup();
     render(<PosOrderCardMosaico orden={makeOrden()} total={3} onGestionar={() => {}} />);
     const disparador = screen.getByRole("button", { name: "Ver detalle completo" });
-    expect(clases(disparador)).toEqual(expect.arrayContaining(["min-h-11", "w-full"]));
+    expect(clases(disparador)).toEqual(expect.arrayContaining(["max-md:min-h-11", "w-full"]));
+    expect(clases(disparador)).not.toContain("min-h-11");
     // Texto y chevron de hoy.
     expect(disparador).toHaveTextContent("Ver detalle completo");
     expect(disparador.querySelector("svg")).not.toBeNull();

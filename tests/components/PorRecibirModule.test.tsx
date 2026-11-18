@@ -209,15 +209,18 @@ describe("PorRecibirModule — el escáner", () => {
     const user = userEvent.setup();
     renderModule({ porRecibir: [makeOrden({ id: "r1" })] });
 
-    // La tarjeta arranca plegada (la cámara no se enciende sola).
+    // La tarjeta arranca plegada (la cámara no se enciende sola). SLT-202 «Escritorio igual a prod:
+    // tamaños de controles y un solo botón de recibir» (Carlos, 2026-11-18): «Recibir paquete» es el
+    // único disparador y abre la recepción continua (en jsdom, táctil: el diálogo).
+    expect(screen.getAllByRole("button", { name: /Recibir paquete/ })).toHaveLength(1);
     await user.click(screen.getByRole("button", { name: ABRIR_ESCANER }));
-    const region = screen.getByRole("region", {
-      name: "Recibir por número de guía o escaneo",
+    const region = await screen.findByRole("region", {
+      name: "Recepción continua en bodega satélite",
     });
     expect(
       within(region).getByRole("button", { name: "Escanear con cámara" }),
     ).toBeInTheDocument();
-    expect(within(region).getByRole("textbox")).toBeInTheDocument();
+    expect(within(region).getByLabelText("Número de guía")).toBeInTheDocument();
   });
 
   // R28/R42 — EL CASO QUE EL HUMANO FIRMÓ. Hasta el 2026-08-24 la pantalla escondía el
@@ -261,15 +264,21 @@ describe("PorRecibirModule — el escáner", () => {
 
     await user.click(screen.getByRole("button", { name: ABRIR_ESCANER }));
     const modal = await screen.findByRole("dialog");
-    await user.type(within(modal).getByRole("textbox"), "1001");
+    await user.type(within(modal).getByLabelText("Número de guía"), "1001");
     await user.click(within(modal).getByRole("button", { name: "Recibir" }));
 
     // POSITIVO: la acción se invocó con la guía tecleada — no se está midiendo un no-op.
     await waitFor(() =>
       expect(recibirPorQrMock).toHaveBeenCalledWith({ numGuia: 1001 }),
     );
+    // SLT-202: la recepción continua relee UNA vez, al cerrar la sesión (SLT-159 R592).
+    await waitFor(() =>
+      expect(within(modal).getByRole("log", { name: "Lecturas" })).toHaveTextContent("Recibida"),
+    );
+    expect(refreshMock).not.toHaveBeenCalled();
+    await user.click(within(modal).getByRole("button", { name: "Cerrar" }));
     // Y la relectura del Server Component, que es lo que hace desaparecer la orden.
-    await waitFor(() => expect(refreshMock).toHaveBeenCalled());
+    await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
   });
 });
 

@@ -207,7 +207,7 @@ export function PosOrderCardDetalle({
           aria-expanded={abierta}
           aria-controls={abierta ? idDespliegue : undefined}
           onClick={() => setAbierta((previo) => !previo)}
-          className="flex min-h-11 w-full items-start gap-3 rounded-xl p-3 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+          className="flex w-full items-start gap-3 rounded-xl p-3 max-md:min-h-11 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
         >
           {parada}
           <span className="flex min-w-0 flex-1 flex-col gap-1">
@@ -254,7 +254,7 @@ export function PosOrderCardDetalle({
           // botón de la fila, debajo, alineados con su columna de texto. Tocar el (i) no despliega
           // la tarjeta (no está dentro del disparador). Área táctil de 44 × 44: el pseudo-elemento
           // del botón crece de 24 a 44 px sin ocupar caja (se aparta del canvas en ese icono).
-          <div className={`-mt-2 flex min-h-11 items-center pr-3 ${parada ? "pl-11" : "pl-3"}`}>
+          <div className={`-mt-2 flex items-center pr-3 max-md:min-h-11 ${parada ? "pl-11" : "pl-3"}`}>
             <EstadoConInfo
               codigo={orden.estatusValue}
               chipClassName="text-[11px] font-semibold text-muted-foreground"

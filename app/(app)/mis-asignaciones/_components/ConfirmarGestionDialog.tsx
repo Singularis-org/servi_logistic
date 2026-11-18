@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { BOTON_TACTIL_MOVIL } from "@/components/shared/texto-entero";
 import {
   Dialog,
   DialogContent,
@@ -40,18 +41,20 @@ export function ConfirmarGestionDialog({
           <DialogTitle>{CONFIRMAR_GESTION_TITULO}</DialogTitle>
           <DialogDescription>{AVISO}</DialogDescription>
         </DialogHeader>
-        <div className="flex flex-wrap items-center justify-end gap-3">
+        {/* SLT-202 (Carlos, 2026-11-18): desde `md`, el `gap-2` y el tamaño por defecto de prod; en
+            el móvil, los 44 px de SLT-156 (R493). */}
+        <div className="flex flex-wrap items-center justify-end gap-2 max-md:gap-3">
           <Button
             type="button"
             variant="outline"
-            size="touch"
+            className={BOTON_TACTIL_MOVIL}
             onClick={() => onAbiertoChange(false)}
           >
             {CANCELAR}
           </Button>
           <Button
             type="button"
-            size="touch"
+            className={BOTON_TACTIL_MOVIL}
             onClick={() => {
               onAbiertoChange(false);
               onAceptar();

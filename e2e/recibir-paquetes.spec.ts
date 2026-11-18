@@ -59,7 +59,8 @@ test.describe.serial("Recibir paquetes — escaneo continuo en la página", () =
   test("satélite: tres guías seguidas quedan «Recibida» y «Terminar recepción (3)» vuelve a Por recibir", async ({ browser }) => {
     const page = await paginaDe(browser, r.adminSatelite);
     await page.goto("/recepcion-satelite/por-recibir");
-    await page.getByRole("link", { name: "Recibir paquetes" }).click();
+    // SLT-202: el único disparador de recibir dice «Recibir paquete», como en prod.
+    await page.getByRole("link", { name: "Recibir paquete", exact: true }).click();
     await expect(page).toHaveURL(/\/recepcion-satelite\/recibir\?desde=por-recibir$/);
     await expect(page.getByRole("heading", { name: "Recibir paquetes" })).toBeVisible();
     await expect(page.getByText("Bodega satélite", { exact: true })).toBeVisible();
@@ -84,7 +85,8 @@ test.describe.serial("Recibir paquetes — escaneo continuo en la página", () =
   test("bodega central: la página de /ordenes/recibir dice «Ya recibida» con destinatario y tienda", async ({ browser }) => {
     const page = await paginaDe(browser, r.empresa.maestro);
     await page.goto("/ordenes");
-    await page.getByRole("link", { name: "Recibir paquetes" }).click();
+    // SLT-202: el único disparador de recibir dice «Recibir paquete», como en prod.
+    await page.getByRole("link", { name: "Recibir paquete", exact: true }).click();
     await expect(page).toHaveURL(/\/ordenes\/recibir$/);
     await expect(page.getByText("Bodega central", { exact: true })).toBeVisible();
 

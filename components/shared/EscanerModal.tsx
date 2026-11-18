@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { DentroDeEscanerContext, SELECTOR_CAMPO_ESCANER } from "@/components/shared/EscanerGuiaCard";
+import { BOTON_TACTIL_MOVIL, ICONO_TACTIL_MOVIL } from "@/components/shared/texto-entero";
 import { usePunteroFino } from "@/hooks/useEntradaEscaneo";
 import { cn } from "@/lib/utils";
 
@@ -143,9 +144,13 @@ export function EscanerModal({
           <DialogTitle className="text-lg leading-tight font-semibold text-balance text-card-foreground">
             {titulo}
           </DialogTitle>
+          {/* SLT-202 (Carlos, 2026-11-18): desde `md`, el `icon-sm` del «Cerrar» de prod (el de
+              `DialogContent`); en el móvil, los 44 × 44 de SLT-193 (R925). */}
           <DialogClose
             aria-label={ESCANER_CERRAR_LABEL}
-            render={<Button type="button" variant="ghost" size="icon-touch" />}
+            render={
+              <Button type="button" variant="ghost" size="icon-sm" className={ICONO_TACTIL_MOVIL} />
+            }
           >
             <X className="size-5" aria-hidden="true" />
           </DialogClose>
@@ -197,8 +202,9 @@ export function EscanerModal({
       <Button
         type="button"
         variant="outline"
-        size={tactil ? "touch" : "default"}
-        className={tactil ? "w-full" : undefined}
+        // SLT-202 (Carlos, 2026-11-18): con `tactil`, 44 px y todo el ancho SOLO en el móvil (SLT-156,
+        // R493); desde `md`, el botón de prod.
+        className={tactil ? `${BOTON_TACTIL_MOVIL} max-md:w-full` : undefined}
         onClick={() => setAbierto(true)}
       >
         <ScanLine aria-hidden="true" />

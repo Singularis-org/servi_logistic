@@ -238,7 +238,9 @@ describe("SLT-156 R513 — «Volver a la lista»", () => {
     await entrarEnFoco(user);
 
     const volver = screen.getByRole("button", { name: "Volver a la lista" });
-    expect(volver.className.split(/\s+/)).toEqual(expect.arrayContaining(["h-11", "w-full"]));
+    // SLT-202 «Escritorio igual a prod: tamaños de controles y un solo botón de recibir» (Carlos, 2026-11-18): 44 px y ancho completo solo en el móvil (`max-md:`); en escritorio, el tamaño de prod.
+    expect(volver.className.split(/\s+/)).toEqual(expect.arrayContaining(["h-8", "max-md:h-11", "w-full"]));
+    expect(volver.className.split(/\s+/)).not.toContain("h-11");
     await user.click(volver);
 
     expect(screen.queryByRole("region", { name: "Detalle de la orden" })).toBeNull();

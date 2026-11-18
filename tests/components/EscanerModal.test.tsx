@@ -271,9 +271,13 @@ const DISPARADORES = [
   { caso: "por defecto", props: {}, nombre: ESCANER_LABEL_GUIA },
 ] as const;
 
-describe("SLT-193 — la barra con título y «Cerrar» de 44 px es de EscanerModal, para todos", () => {
+// SLT-202 «Escritorio igual a prod: tamaños de controles y un solo botón de recibir»: R925 y R929
+// pedían 44 px «en todos los anchos». Por decisión de Carlos del 2026-11-18, solo en el móvil
+// (`max-md:`); desde `md`, el tamaño de prod: «Cerrar» en `icon-sm` (el de `DialogContent`) y el
+// disparador `tactil` en el botón por defecto (`h-8`, sin el ancho completo).
+describe("SLT-193 — la barra con título y «Cerrar» (44 px en el móvil) es de EscanerModal, para todos", () => {
   it.each(DISPARADORES)(
-    "R925/R926: con el disparador $caso, un solo «Cerrar» de 44 px (`size-11`) en la barra con el título visible; cierra y desmonta",
+    "R925/R926: con el disparador $caso, un solo «Cerrar» (`size-7`, `max-md:size-11`) en la barra con el título visible; cierra y desmonta",
     async ({ props, nombre }) => {
       const user = userEvent.setup();
       render(
@@ -288,7 +292,8 @@ describe("SLT-193 — la barra con título y «Cerrar» de 44 px es de EscanerMo
       expect(titulo).not.toHaveClass("sr-only");
       const cerrar = within(dialogo).getAllByRole("button", { name: "Cerrar" });
       expect(cerrar).toHaveLength(1);
-      expect(cerrar[0].className.split(/\s+/)).toContain("size-11");
+      expect(cerrar[0].className.split(/\s+/)).toEqual(expect.arrayContaining(["size-7", "max-md:size-11"]));
+      expect(cerrar[0].className.split(/\s+/)).not.toContain("size-11");
       // Ninguna X del `Dialog` (la de `showCloseButton`, `icon-sm`): la única es la de la barra.
       const xDelDialog = [...dialogo.querySelectorAll('[data-slot="dialog-close"]')].filter(
         (el) => el !== cerrar[0],
@@ -307,15 +312,16 @@ describe("SLT-193 — la barra con título y «Cerrar» de 44 px es de EscanerMo
 
   // R929: los disparadores no cambian (`tactil` 44 px a todo el ancho; `soloIcono` icono de
   // cámara; por defecto, el `h-8` de `size="default"`).
-  it("R929: `tactil` es de 44 px a todo el ancho", () => {
+  it("R929: `tactil` es de 44 px a todo el ancho solo en el móvil; en escritorio, el `h-8` de prod", () => {
     render(
       <EscanerModal label={ESCANER_LABEL_GUIA} titulo="Recoger paquete" tactil>
         <p>x</p>
       </EscanerModal>,
     );
     const clases = screen.getByRole("button", { name: ESCANER_LABEL_GUIA }).className.split(/\s+/);
-    expect(clases).toContain("h-11");
-    expect(clases).toContain("w-full");
+    expect(clases).toEqual(expect.arrayContaining(["h-8", "max-md:h-11", "max-md:w-full"]));
+    expect(clases).not.toContain("h-11");
+    expect(clases).not.toContain("w-full");
   });
 
   it("R929: `soloIcono` es un icono sin texto, con `label` de nombre", () => {

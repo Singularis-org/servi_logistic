@@ -45,6 +45,11 @@ const SUPERFICIES_DE_CAPTURA = [
 const DELEGAN_EN_LA_SESION = new Set<string>([
   "app/(app)/mis-asignaciones/_components/RecogerPaqueteCard.tsx",
   "app/(app)/recoleccion/_components/RecoleccionModule.tsx",
+  // SLT-202 «Escritorio igual a prod: tamaños de controles y un solo botón de recibir» (Carlos,
+  // 2026-11-18): la guía suelta de las tres recepciones se quitó; solo montan la tarjeta continua.
+  "app/(app)/ordenes/_components/EscanerRecepcionBodegaCentral.tsx",
+  "app/(app)/ordenes/_components/EscanerRecepcionOrigen.tsx",
+  "app/(app)/recepcion-satelite/_components/EscanerRecepcion.tsx",
 ]);
 
 const MONTA_TARJETA_CONTINUA = /<TarjetaEscaneoContinuo[\s/>]/;

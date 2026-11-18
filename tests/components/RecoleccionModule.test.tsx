@@ -1127,11 +1127,12 @@ describe("SLT-156 rebanada C — Recolección en el móvil (R500, R506, R516, R5
     expect(barra!.parentElement!.contains(seccionHoy())).toBe(true);
   });
 
-  it("R493: el disparador mide 44 px (`h-11`) y va a todo el ancho", () => {
+  // SLT-202 «Escritorio igual a prod: tamaños de controles y un solo botón de recibir» (Carlos, 2026-11-18): 44 px solo en el móvil; en escritorio, el tamaño de prod.
+  it("R493: el disparador mide 44 px y va a todo el ancho en el móvil; en escritorio, el `h-8` de prod", () => {
     renderModule({ porRecolectar: DOS_POR_RECOLECTAR });
-    expect(disparador()!.className.split(/\s+/)).toEqual(
-      expect.arrayContaining(["h-11", "w-full"]),
-    );
+    const cl = disparador()!.className.split(/\s+/);
+    expect(cl).toEqual(expect.arrayContaining(["h-8", "max-md:h-11", "max-md:w-full"]));
+    expect(cl).not.toContain("h-11");
   });
 
   it("R516/R519: bloqueado no hay disparador; el aviso va primero y la barra sigue", () => {
@@ -1455,7 +1456,8 @@ describe("SLT-190 — Recolección según el canvas", () => {
     expect(within(dialogo).getByText("o")).toBeInTheDocument();
     const cerrar = within(dialogo).getAllByRole("button", { name: "Cerrar" });
     expect(cerrar).toHaveLength(1);
-    expect(cerrar[0].className.split(/\s+/)).toContain("size-11");
+    // SLT-202 «Escritorio igual a prod: tamaños de controles y un solo botón de recibir» (Carlos, 2026-11-18): 44 px solo en el móvil; en escritorio, el tamaño de prod.
+    expect(cerrar[0].className.split(/\s+/)).toEqual(expect.arrayContaining(["size-7", "max-md:size-11"]));
     expect(escaner()).not.toBeNull();
     expect(screen.getByRole("button", { name: "Confirmar recolección" })).toBeInTheDocument();
 

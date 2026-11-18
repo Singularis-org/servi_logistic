@@ -292,7 +292,9 @@ export function PosOrderCardMosaico({
           onOpenChange={setDetalleAbierto}
           className="group/detalle rounded-lg border border-border bg-muted/40 px-3 py-2"
         >
-          <CollapsibleTrigger className="flex min-h-11 w-full cursor-pointer items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground max-md:text-xs">
+          {/* SLT-202 (Carlos, 2026-11-18): 44 px solo en el móvil (SLT-193, R910); desde `md`, como
+              prod. La tarjeta también se monta en `/novedades` de escritorio. */}
+          <CollapsibleTrigger className="flex w-full max-md:min-h-11 cursor-pointer items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground max-md:text-xs">
             Ver detalle completo
             <ChevronDown
               aria-hidden="true"

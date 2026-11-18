@@ -1,0 +1,91 @@
+# impl SLT-202 «Escritorio igual a prod: tamaños de controles y un solo botón de recibir»
+
+Ruta directa. frontend_dev, 2026-11-18. Regla: desde `md` las clases EXACTAS de origin/prod; por debajo
+de `md` (PWA en el teléfono), los 44 px de dev con `max-md:`.
+
+**Estado: PARADO en el gate por `tamano-pr` (62/40 archivos). SIN commit ni push**, como pide el brief.
+
+## Puntos (antes → después)
+
+1. `components/shared/BuscadorFiltros.tsx` (barra con `escaneo`, 10 pantallas)
+   - `ALTO_CONTROL_ESCANEO`: `h-11` → `h-8 max-md:h-11` (campo y «Filtros»).
+   - Cámara: `size-11 shrink-0` → `shrink-0 max-md:size-11` sobre `size="icon"` (32 × 32; 44 en el móvil).
+   - «Limpiar todo»: `shrink-0 h-11` → `shrink-0 max-md:h-11` sobre `size="sm"`: **28 px en escritorio, que es
+     lo que tiene prod** (el brief decía 32; manda la regla «clases EXACTAS de prod»). Fuera del test de
+     alineación porque solo aparece con algo escrito.
+   - Texto de ayuda y tooltip de SLT-200: sin cambio.
+2. PWA del mensajero en escritorio (constantes nuevas en `components/shared/texto-entero.ts`:
+   `BOTON_TACTIL_MOVIL` = lo que medía `touch`, con `max-md:`; `ICONO_TACTIL_MOVIL` = `max-md:size-11`):
+   - `GestionarOrdenCardButton`, `MarcarLuegoToggle`, `RecuperarAyudaButton`, «Conversación»: `touch` → `sm` (prod).
+   - «Mostrar mapa»: `touch` → `xs` (prod). `ConfirmarGestionDialog`: `touch` → por defecto, `gap-3` → `gap-2 max-md:gap-3` (prod).
+   - Sin par en prod → tamaño por defecto (32): «Volver a la lista», «Ver más» de `AvisoRutaLinea`, «Navegar» y asa
+     de `HojaParadaMapa` (`h-11` → `h-8 max-md:h-11`), «Cerrar»/«Centrar»/«Ver mapa completo»/«Ocultar mapa» de
+     `RutaMapaInner`, campo y «Confirmar guía» de `VerificarGuiaGate`.
+   - `min-h-11` → `max-md:min-h-11`: pestañas de `RecogerModule`, filas de `PosOrderCardDetalle` (`:210`, `:257`).
+   - `EscanerModal`: disparador `tactil` `touch w-full` → por defecto + `BOTON_TACTIL_MOVIL max-md:w-full`;
+     «Cerrar» `icon-touch` → `icon-sm` (el de `DialogContent` de prod) + `max-md:size-11`.
+3. `PosOrderCardMosaico` «Ver detalle completo»: `min-h-11` → `max-md:min-h-11` (arregla `/novedades`).
+4. `RepartoModule`: `gap-6` → `gap-8`; se quita «El mapa se centra en la orden del carrusel.» (el mapa sigue al carrusel, R542).
+5. Un solo «Recibir paquete» en `/ordenes`, `/recepcion-satelite/por-recibir` y `/en-bodega`:
+   - `RecibirPaquetesEntrada` es el único disparador; su texto pasa a «Recibir paquete» (`RECIBIR_PAQUETE`); el
+     diálogo y la página siguen llamándose «Recibir paquetes». Con puntero fino, enlace a la página; con táctil,
+     diálogo continuo. En `/ordenes` va a la izquierda (sitio de prod) y la carga masiva sigue a la derecha.
+   - **Verificado que la continua cubre la suelta:** misma acción (`recibirPorQr`, `recibirEnBodegaCentralPorQr`,
+     `recibirEnOrigenPorQr`), mismos motivos (`desenlace*`), campo para teclear/pistola, «Recibir» manual y cámara;
+     el código inválido lo corta la sesión (`EscaneoContinuo.test.tsx` R584). Diferencias: sin toast por lectura
+     (R590) y el listado se relee una vez al cerrar (R592), no tras cada guía. Por eso se **quitó** la suelta:
+     `RecepcionSateliteSuelta`, `RecepcionBodegaCentralSuelta`, `RecepcionOrigenSuelta` y sus pruebas.
+   - `modo` de los tres receptores: `Exclude<ModoRecepcion, "suelta">`. El literal `"suelta"` sigue en
+     `lib/utils/sesion-escaneo.ts` (fuera de mi capa; queda sin uso, anotado).
+   - Consecuencia: el HTML del servidor ya no trae disparador de recibir (aparece al hidratar; review B1 de SLT-159).
+
+No tocado (no está en la lista): `RecepcionContinuaPagina` y «Reintentar» de `EscaneoContinuo` (`touch`, SLT-159 R610),
+`PasoModulos` (heredado de prod), `RecoleccionModule` `gap-6`.
+
+## Enmiendas (decisión de Carlos del 2026-11-18, citada en cada test)
+SLT-156 design §4, SLT-160 R600/R771/DC2, SLT-193 R910/R925/R929: 44 px solo en el móvil. SLT-159 R594/R611: una
+sola entrada (la continua). Guardias: `lectura-guia-unica` (las 3 recepciones delegan en la sesión continua) y
+`escaner-un-solo-cierre` (montajes 7 → 5: Órdenes y satélite ya no montan `EscanerModal`).
+
+## Mapa R → test
+- Barra 32 px alineada a 1280 / 44 px a 360 / un solo «Recibir paquete»: `e2e/escritorio-igual-a-prod.spec.ts` (**NO CORRIDO**, ver abajo).
+- R771/R600 clases: `tests/unit/components/buscador-filtros-escaneo.test.tsx`, `WalletCajaBarra467`, `EstadoCuentaBarra467`.
+- PWA: `tests/components/escritorio-igual-a-prod.test.tsx` (constantes, «Gestionar» y confirmación), `RepartoMovil`,
+  `RepartoModoFoco`, `RecogerModule`, `RecoleccionModule`, `EscanerGuiaReparto`, `RecogerPaqueteCard`, `EscanerModal`.
+- Mosaico (R910): `botones-44-pwa-mensajero.test.tsx`. Reparto gap y texto: `RepartoMapa.test.tsx`.
+- Un solo disparador: `EscanerRecepcion.test.tsx`, `RecibirPaquetesEntrada.test.tsx`, `OrdenesPage.test.tsx`,
+  `PorRecibirModule.test.tsx`, `RecepcionSateliteModule.test.tsx`; E2E `recepcion-satelite.spec.ts` y
+  `recibir-paquetes.spec.ts` ajustados (no corridos).
+
+## Salida real
+ROJO (tests nuevos y ajustados contra el código de antes; fuentes en `git stash`, base `servi_slt202_desechable`):
+```
+ Test Files  18 failed | 6 passed (24)
+      Tests  42 failed | 430 passed (472)
+VEXIT=1
+```
+(Fallan por archivo: buscador-filtros-escaneo 4, escritorio-igual-a-prod 4, EscanerRecepcion 4, RecibirPaquetesEntrada 4,
+OrdenesPage 5, RepartoMovil 2, EscanerGuiaReparto 2, EscanerModal 2, RecoleccionModule 2, PorRecibirModule 2 y 1 en
+cada uno de los otros ocho.)
+
+VERDE (mismo set + 3 vecinos, con el arreglo):
+```
+ Test Files  24 passed (24)
+      Tests  472 passed (472)
+VEXIT=0
+```
+`vitest related` de las 20 fuentes (antes de ajustar los últimos tests): 17 rojos, todos ajustados después y verdes arriba.
+`pnpm run typecheck`: exit 0. `eslint` de los archivos tocados: exit 0, sin avisos.
+`pnpm run test:guardias`: 5 rojos ajenos (`dependencias-declaradas-presentes`, 4, que buscan marcadores de `init.sh`;
+`otp-debug-solo-en-pruebas`, timeout); ninguno toca este diff.
+
+Gate rápido:
+```
+✗ SLT-202: el PR de esta feature pasa del tamano maximo (62/40 archivos, 877/1000 lineas de produccion, 2126/3000 de tests)
+INIT_EXIT=1
+```
+Desglose: SLT-202 sola = 46 archivos, 584 líneas de producción, 1473 de tests (≈1000 son borrado de las pruebas de la
+guía suelta). Lo traído de SLT-200 (merge `d016b9c9`, aún no en dev) = 25 archivos, 295 / 651; 9 archivos en común.
+
+## Veredicto
+Implementado y verde en vitest/typecheck/lint; parado en `tamano-pr` (46 archivos propios > 40) sin commit, push ni E2E.
