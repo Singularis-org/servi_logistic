@@ -6,7 +6,15 @@ import { anularMovimientoAction } from "@/lib/actions/wallet-anulacion";
 import { RechazoTiendaCobroRepository } from "@/lib/repositories/RechazoTiendaCobroRepository";
 
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
-import { conCandado459, limpiar459, sembrarPersonas459, type Personas459 } from "./_fixtures/escrituras-459";
+import {
+  clienteConEmpresa459,
+  conCandado459,
+  conEmpresa459,
+  limpiar459,
+  sembrarPersonas459,
+  type Personas459,
+} from "./_fixtures/escrituras-459";
+import { contextoActual } from "@/lib/db/contexto-empresa";
 
 // SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
 vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
@@ -57,7 +65,15 @@ describeSiHayBase("458-B/TB.9 — R67: dos anulaciones a la vez dejan UN solo ju
       let p: Personas459 | null = null;
       try {
         p = await sembrarPersonas459(prisma);
-        await cuerpo(p);
+        const sembradas = p;
+        // SLT-185 (R1141/R1146): las actions corren con la empresa sembrada en contexto, como en una
+        // peticion; sin ella el cliente global falla cerrado o escribe con `organizacion_id` NULL (SL017).
+        expect(await prisma.organizacion.count({ where: { id: sembradas.organizacionId } }), "SLT-185: empresa sembrada").toBe(1);
+        await conEmpresa459(sembradas, async () => {
+          const ctx = contextoActual();
+          expect(ctx?.tipo === "empresa" ? ctx.organizacionId : null, "SLT-185: empresa en contexto").toBe(sembradas.organizacionId);
+          await cuerpo(sembradas);
+        });
       } finally {
         await limpiar459(prisma, p);
       }
@@ -75,6 +91,8 @@ describeSiHayBase("458-B/TB.9 — R67: dos anulaciones a la vez dejan UN solo ju
           origenId: null,
           descripcion: "Sueldo 458 concurrencia",
           registradoPor: p.maestro.usuarioId,
+          // SLT-185: la escritura directa (sin la envoltura) lleva la empresa explicita (SL-17).
+          organizacionId: p.organizacionId,
         },
         select: { id: true },
       });
@@ -142,7 +160,9 @@ describeSiHayBase("458-B/TB.9 — R67: dos anulaciones a la vez dejan UN solo ju
           select: { id: true },
         });
         gestionId = gestion.id;
-        await new RechazoTiendaCobroRepository(prisma).crearPendiente(prisma, {
+        // SLT-185: el cobro pendiente se escribe por la envoltura de produccion, con la empresa del contexto.
+        const deLaApp = clienteConEmpresa459(prisma);
+        await new RechazoTiendaCobroRepository(deLaApp).crearPendiente(deLaApp, {
           gestionId,
           ordenId,
           tiendaId: p.tiendaId,

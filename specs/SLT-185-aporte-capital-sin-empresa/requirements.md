@@ -109,24 +109,24 @@ Efectos que el arreglo tiene que vigilar:
 
 ## Tasks
 
-- [ ] **T1 — Medir** (R1140, R1148). Correr los 9 archivos en la desechable vacía; anotar en
+- [x] **T1 — Medir** (R1140, R1148). Correr los 9 archivos en la desechable vacía; anotar en
   `progress/impl_SLT-185.md` el primer error real de cada uno con `archivo:línea`. Confirmar o
   descartar la hipótesis de `senales-gestion-lectores` (#9). Si alguno es fallo de producción, parar.
   *Hecho:* tabla de 9 filas con causa medida.
-- [ ] **T2 — Familia 459** (R1141-R1143, R1146). `aporte-capital` y `ajuste-caja-anulacion-461` con
+- [x] **T2 — Familia 459** (R1141-R1143, R1146). `aporte-capital` y `ajuste-caja-anulacion-461` con
   `conEmpresa459`; lecturas acotadas a la empresa; siembra del movimiento previo de R71 con su control.
   *Hecho:* los 2 archivos verdes en (a) y (b).
-- [ ] **T3 — Bordes con país y action real** (R1141, R1146). `picking-resumen-tiendas` con `reglasPais`;
+- [x] **T3 — Bordes con país y action real** (R1141, R1146). `picking-resumen-tiendas` con `reglasPais`;
   `premio-ranking-idempotencia` caso T2.5 con empresa sembrada en contexto. *Hecho:* verdes, 17/17 el
   segundo.
-- [ ] **T4 — Escenarios confirmados** (R1144, R1145, R1147). `sembrarComprometido`/`limpiarComprometido`
+- [x] **T4 — Escenarios confirmados** (R1144, R1145, R1147). `sembrarComprometido`/`limpiarComprometido`
   y el bloque R8 de 419 con empresa propia y limpieza completa (central y organización incluidas).
   *Hecho:* #5-#8 verdes; conteos antes = después.
-- [ ] **T5 — `senales-gestion-lectores`** (R1140, R1147). Arreglo según T1. *Hecho:* verde.
-- [ ] **T6 — Mutaciones y usuarios de helpers** (R1146, R1147). Quitar cada arreglo uno a uno → rojo;
+- [x] **T5 — `senales-gestion-lectores`** (R1140, R1147). Arreglo según T1. *Hecho:* verde.
+- [x] **T6 — Mutaciones y usuarios de helpers** (R1146, R1147). Quitar cada arreglo uno a uno → rojo;
   restaurar desde copia. Correr todos los usuarios de los helpers tocados. *Hecho:* tabla de
   mutaciones y lista de usuarios verdes en la bitácora.
-- [ ] **T7 — Baseline** (R1149). Retirar las entradas verdes; reescribir el motivo de las que queden.
+- [x] **T7 — Baseline** (R1149). Retirar las entradas verdes; reescribir el motivo de las que queden.
 - [ ] **T8 — Cierre.** `pnpm run typecheck`, `pnpm run lint`, `pnpm run test:guardias`,
   `git diff --name-only origin/dev -- lib app components hooks db scripts` vacío,
   `node scripts/tamano-pr.mjs`, mapa R → test en `progress/impl_SLT-185.md`, `./init.sh` (leader) y CI

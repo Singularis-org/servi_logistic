@@ -57,10 +57,6 @@
       "motivo": "Vigila el paso 2 del init.sh del producto de origen (ficha 420: marcadores, verificar-dependencias.mjs, --frozen-lockfile); el init.sh del arnes v2 no lo tiene y es archivo del arnes. La retira SL-29, la ficha /afinar-regla que sube la mejora a la plantilla o retira la guardia.",
       "desde": "2026-10-21"
     },
-    "tests/integration/actions/analitica-financiera-action.test.ts": {
-      "motivo": "Otra causa. Medido en local el 2026-11-17 tras sembrar sus usuarios en SLT-182 (base desechable migrada + db:seed, Postgres 18.2; igual con una empresa ajena confirmada): 2 de 15 verdes; los 13 que llaman a la action fallan con EmpresaNoResuelta: Sin empresa en contexto para Pais.zonaHoraria (tests/integration/actions/analitica-financiera-action.test.ts:325, desde lib/actions/analitica-financiera.ts:106 -> ReglasPaisEmpresaService.ts:89): la action resuelve el pais de la empresa con el cliente global, que no ve la empresa de la transaccion del test. La retira SLT-185.",
-      "desde": "2026-10-22"
-    },
     "tests/integration/repositories/dinero-productos.int.test.ts": {
       "motivo": "Otra causa (contrato desfasado). Medido en local el 2026-11-18 (Postgres 18.2, migrate deploy + db:seed, base vacia y con empresa ajena), ya sembrado por SLT-184: 21/1/0. (k) R22: AssertionError: modelo: expected 'viejo' to match /^-?\\d+\\.\\d{2}$/ (tests/integration/repositories/dinero-productos.int.test.ts:759): el caso recorre `congelada.tarifa` esperando solo importes, y desde SLT-52 esa tarifa es la union { modelo: 'viejo' | 'nuevo', ... } (lib/types/tarifa-flexible.ts:64). La retira SLT-186.",
       "desde": "2026-10-22"
@@ -69,24 +65,12 @@
       "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: tabla 'orden' vacia: corre 'pnpm run db:seed'. en tests/integration/db/454/_escenario.ts:133. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: falla una asercion de dinero o estado del cierre de satelite: expected [] to deeply equal [ cod_recaudado|4000.00, …(1) ]. La retira SLT-195.",
       "desde": "2026-10-22"
     },
-    "tests/integration/db/ajuste-caja-anulacion-461.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: la action `registrarMovimientoManualAction` corre sin empresa: `EmpresaNoResuelta: Sin empresa en contexto para WalletMovimiento.createMany` -> INTERNAL. La retira SLT-185.",
-      "desde": "2026-10-22"
-    },
     "tests/integration/db/analitica-anulacion-rechazo-458.test.ts": {
       "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/analytics-daily-job.test.ts": {
       "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): Error: el catalogo local no tiene el estatus \"el estado de fulfillment retirado por la 155\"; usa el estatus 'el estado de fulfillment retirado por la 155', retirado del catalogo por la 155: una base nueva no lo tiene (_semilla-rollup.ts:85). La retira SLT-186.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/aporte-capital.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): Error: aporte-capital: AppErrorCode inesperado INTERNAL; la action corre sin empresa en contexto: 'EmpresaNoResuelta: Sin empresa en contexto para WalletMovimiento.aggregate' (lib/db/extension-empresa.ts:206, stderr del log) -> AppErrorCode INTERNAL en lib/actions/aporte-capital.ts:70. La retira SLT-185.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/asistente-uso-diario.int.test.ts": {
-      "motivo": "Otra causa. Medido en local el 2026-11-17 tras sembrar sus usuarios en SLT-183 (base desechable migrada + db:seed, Postgres 18.2; igual con una empresa ajena confirmada): 4 de 11 verdes; los 7 que escriben el contador fallan con SL017 «referencia a otra empresa: asistente_uso_diario.usuario_id -> usuario» (tests/integration/db/asistente-uso-diario.int.test.ts:125, desde AsistenteUsoRepository.consumirUnaConsulta): las dos conexiones crudas de la carrera escriben sin empresa en contexto, y el usuario sembrado ya es de una empresa. La retira SLT-185.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/busqueda-usa-indice.test.ts": {
@@ -177,10 +161,6 @@
       "motivo": "Otra causa. Medido en local el 2026-11-17 (Postgres 18.2, migrate deploy + db:seed, base vacia y con empresa ajena), ya sembrado por SLT-180: 13/2/0. AssertionError: expected [ ...(136) ] to deeply equal [ ...(33) ] (tests/integration/db/orden-traspaso-migration.test.ts:114): la lista de migraciones posteriores a la 427 acaba en 20261021120000 y ya hay detras las de SL-17 (20261022130100_organizacion_id_en_negocio) y siguientes; y (a) espera 9 columnas y hay 10 (expected [ 'actor_rol', ...(9) ] to deeply equal [ 'actor_rol', ...(8) ], :294): SL-17 anadio organizacion_id a orden_traspaso_mensajero. La retira SLT-187.",
       "desde": "2026-10-22"
     },
-    "tests/integration/db/picking-resumen-tiendas.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: 476: la base no tiene ninguna zona en tests/integration/db/_picking-476.ts:35. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: la action `listarTiendasPicking` lee la empresa fuera de la transaccion del test: `EmpresaNoResuelta: Sin empresa en contexto para Pais.zonaHoraria`. La retira SLT-185.",
-      "desde": "2026-10-22"
-    },
     "tests/integration/db/postulacion-recurso-migration.test.ts": {
       "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): AssertionError: expected 1 to be +0 // Object.is equality; R22 espera 0 policies en 'postulacion_recurso' y hay 1 (expected 1 to be +0, :261): la RLS por empresa de SL-17 anadio policies. La retira SLT-187.",
       "desde": "2026-10-22"
@@ -189,24 +169,12 @@
       "motivo": "Otra causa. Medido en local el 2026-11-17 tras sembrar sus usuarios en SLT-182 (base desechable migrada + db:seed, Postgres 18.2; igual con una empresa ajena confirmada): 31 de 32 verdes; el caso estatico de origenes falla con AssertionError: expected [ 'cierre_dia', 'gestion_orden', ...(8) ] to have a length of 8 but got 10 (tests/integration/db/premio-ranking-devengo-migration.test.ts:117): AGREGADOS_DESPUES no lista conciliacion_bodega_ajuste (SLT-73) ni orden_fulfillment (SLT-94) del enum de origenes de wallet. La retira SLT-187.",
       "desde": "2026-10-22"
     },
-    "tests/integration/db/premio-ranking-idempotencia.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error DriverAdapterError: referencia a otra empresa: cierre_dia.destino_zona_id -> zona. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: 16 de 17 casos verdes con siembra propia; el caso 293/T2.5 llama a la action real `listarCierresAdmin` sin empresa (`EmpresaNoResuelta` en CierreDia.findMany) y responde unauthenticated. La retira SLT-185.",
-      "desde": "2026-10-22"
-    },
     "tests/integration/db/push-canal-restricciones.test.ts": {
       "motivo": "Otra causa (RLS tras SL-17). Medido el 2026-11-17 en base desechable migrada con catalogos (db:seed), ya sembrado por SLT-181: 6/7; AssertionError: expected 2 to be +0 en «y no tienen policies» (tests/integration/db/push-canal-restricciones.test.ts:353). La migracion 20261022130100_organizacion_id_en_negocio de SL-17 creo las policies push_suscripcion_por_empresa y push_envio_dia_por_empresa; el test aun espera cero. Igual con datos de otra empresa. La retira SLT-187.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/ranking-snapshot-migration.test.ts": {
       "motivo": "Otra causa. Medido en local el 2026-11-17 tras sembrar sus usuarios en SLT-182 (base desechable migrada + db:seed, Postgres 18.2; igual con una empresa ajena confirmada): 48 de 49 verdes; R12 falla con AssertionError: expected false to be true (tests/integration/db/ranking-snapshot-migration.test.ts:992): el create de modelo sobre el esquema temporal con el DDL de la 196 da P2022 (falta la columna organizacion_id que SL-17 anadio al modelo), no P2002. La retira SLT-187.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/rechazo-tienda-cobro.int.test.ts": {
-      "motivo": "Otra causa (empresa en contexto). Medido el 2026-11-17 en base desechable migrada con catalogos (db:seed), ya sembrado por SLT-181: 9/1; el bloque de concurrencia COMMITEA fuera de una empresa en contexto y RechazoTiendaCobroRepository.crearPendiente inserta con el DEFAULT de organizacion_id: DriverAdapterError: referencia a otra empresa: rechazo_tienda_cobro.gestion_id -> gestion_orden (tests/integration/db/rechazo-tienda-cobro.int.test.ts:394). Las filas commiteadas propias se borran: 0 tras el archivo. Igual con datos de otra empresa. La retira SLT-185.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/reparto-manana-aviso-dedupe.test.ts": {
-      "motivo": "Otra causa. Medido en local el 2026-11-17 tras sembrar sus usuarios en SLT-183 (base desechable migrada + db:seed, Postgres 18.2; igual con una empresa ajena confirmada): 7 de 8 verdes; R24 (dos emisiones concurrentes sobre conexiones crudas, fuera de una tx) falla con SL017 «referencia a otra empresa: notificacion.destinatario_usuario_id -> usuario» (tests/integration/db/reparto-manana-aviso-dedupe.test.ts:307, emitirRepartoManana por clienteA): las conexiones crudas escriben sin empresa en contexto. La retira SLT-185.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/satelite-bodega-alcance-real.test.ts": {
@@ -219,10 +187,6 @@
     },
     "tests/integration/db/traspaso-mensajero.int.test.ts": {
       "motivo": "Test desfasado tras 454, ya sembrado (SLT-179). Medido en local el 2026-11-17 (Postgres 18, migrate deploy + db:seed): Error: el catalogo `order_status` no tiene ayuda_tienda (tests/integration/db/traspaso-mensajero.int.test.ts:88, beforeAll, estado retirado en 454); detras, R4 traspasa `ayuda_tienda` (inexistente) y en T9.9 el job lleva `origen` ademas de `mensajeroId`. La retira SLT-186.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/usuario-preferencia.test.ts": {
-      "motivo": "Otra causa (empresa en contexto). Medido el 2026-11-17 en base desechable migrada con catalogos (db:seed), ya sembrado por SLT-181: 10/4; los 4 casos de carrera sobre los esquemas clonados (LIKE ... INCLUDING ALL) escriben sin empresa en contexto y el DEFAULT de organizacion_id (SL-17) da NULL: PrismaClientKnownRequestError Null constraint violation en UsuarioPreferenciaRepository.fijarAvisosPush (tests/integration/db/usuario-preferencia.test.ts:299 y :314) y 23502 organizacion_id de push_suscripcion (:399 y :425). Igual con datos de otra empresa. La retira SLT-185.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/vista-filtro-migration.test.ts": {
@@ -241,10 +205,6 @@
       "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
       "desde": "2026-10-22"
     },
-    "tests/integration/db/wallet-anulacion-concurrencia.test.ts": {
-      "motivo": "Otra causa (empresa en contexto). Medido el 2026-11-17 en base desechable migrada con catalogos (db:seed), ya sembrado por SLT-181: 0/2; las escrituras commiteadas corren sin empresa en contexto: DriverAdapterError: referencia a otra empresa: wallet_movimiento.registrado_por -> usuario (tests/integration/db/wallet-anulacion-concurrencia.test.ts:69) y rechazo_tienda_cobro.gestion_id -> gestion_orden en crearPendiente (:145). Las filas commiteadas propias se borran: 0 tras el archivo. Igual con datos de otra empresa. La retira SLT-185.",
-      "desde": "2026-10-22"
-    },
     "tests/integration/db/wallet-comprobante-alcance.test.ts": {
       "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
       "desde": "2026-10-22"
@@ -261,36 +221,16 @@
       "motivo": "Otra causa. Medido en local el 2026-11-17 tras sembrar sus usuarios en SLT-183 (base desechable migrada + db:seed, Postgres 18.2; igual con una empresa ajena confirmada): 16 de 17 verdes; el caso del DOWN falla con AssertionError: expected [ 'activa', 'created_at', 'id', …(5) ] to deeply equal [ 'activa', 'created_at', 'id', …(4) ] (tests/integration/db/webhook-suscripcion-circuito-migracion.test.ts:288): la lista de columnas que deja el down no cuenta organizacion_id, que añadio SL-17 (20261022130100_organizacion_id_en_negocio). La retira SLT-187.",
       "desde": "2026-10-22"
     },
-    "tests/integration/db/whatsapp-envio-idempotencia-programado.test.ts": {
-      "motivo": "Otra causa. Medido en local el 2026-11-17 tras sembrar sus usuarios en SLT-183 (base desechable migrada + db:seed, Postgres 18.2; igual con una empresa ajena confirmada): 0 de 4 verdes (antes 4 saltados); los 4 fallan con SL017 «referencia a otra empresa: whatsapp_envio_ejecucion.envio_id -> whatsapp_envio» (tests/integration/db/whatsapp-envio-idempotencia-programado.test.ts:81, desde WhatsappEjecucionRepository.insertarProgramada): las conexiones crudas escriben la ejecucion sin empresa en contexto y el envio sembrado es de una empresa. La retira SLT-185.",
-      "desde": "2026-10-22"
-    },
     "tests/integration/db/454/orden-evento-migration.test.ts": {
       "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: tabla 'orden' vacia: corre 'pnpm run db:seed'. en tests/integration/db/454/_escenario.ts:133. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: la lista de columnas de `orden_evento` tiene una mas que la esperada (expected [ actor_rol, …(12) ] to deeply equal [ actor_rol, …(11) ]). La retira SLT-187.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/registro-gestion-concurrencia-sql-real.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: tabla 'orden' vacia: corre 'pnpm run db:seed'. en tests/integration/db/454/_escenario.ts:133. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario CONFIRMADO (`sembrarComprometido`) escribe sin empresa: `zona.create` viola `organizacion_id NOT NULL` (SL-17). La retira SLT-185.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/454/registro-gestion-sin-transicion-sql-real.test.ts": {
       "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: tabla 'orden' vacia: corre 'pnpm run db:seed'. en tests/integration/db/454/_escenario.ts:133. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: falla una asercion de dinero o estado del cierre de satelite: expected +0 to be 1. La retira SLT-195.",
       "desde": "2026-10-22"
     },
-    "tests/integration/db/454/senales-gestion-lectores-sql-real.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: tabla 'orden' vacia: corre 'pnpm run db:seed'. en tests/integration/db/454/_escenario.ts:133. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario CONFIRMADO (`sembrarComprometido`) escribe sin empresa: `zona.create` viola `organizacion_id NOT NULL` (SL-17). La retira SLT-185.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/419/confirmar-entrega-lote-sql-real.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: tabla 'orden' vacia: corre 'pnpm run db:seed'. en tests/integration/db/419/_escenario-419.ts:58. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: 9 casos verdes; el bloque de concurrencia R8 siembra CONFIRMADO con clientes sin empresa y `zona.create` viola `organizacion_id NOT NULL` (SL-17). La retira SLT-185.",
-      "desde": "2026-10-22"
-    },
     "tests/integration/db/454/caracterizacion/cierre-rechazado.test.ts": {
       "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: tabla 'orden' vacia: corre 'pnpm run db:seed'. en tests/integration/db/454/_escenario.ts:133. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: falla una asercion de dinero o estado del cierre de satelite: expected 0 to be greater than 0 (:87). La retira SLT-195.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/caracterizacion/corte-concurrencia.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: tabla 'orden' vacia: corre 'pnpm run db:seed'. en tests/integration/db/454/_escenario.ts:133. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario CONFIRMADO (`sembrarComprometido`) escribe sin empresa: `zona.create` viola `organizacion_id NOT NULL` (SL-17). La retira SLT-185.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/454/caracterizacion/deshacer.test.ts": {
@@ -303,10 +243,6 @@
     },
     "tests/integration/db/454/caracterizacion/multi-dia-271.test.ts": {
       "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: tabla 'orden' vacia: corre 'pnpm run db:seed'. en tests/integration/db/454/_escenario.ts:133. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: falla una asercion de dinero o estado del cierre de satelite: expected 0 to be greater than 0 (:77). La retira SLT-195.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/caracterizacion/no-doble-gestion.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: tabla 'orden' vacia: corre 'pnpm run db:seed'. en tests/integration/db/454/_escenario.ts:133. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario CONFIRMADO (`sembrarComprometido`) escribe sin empresa: `zona.create` viola `organizacion_id NOT NULL` (SL-17). La retira SLT-185.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/455/caracterizacion/dinero-aprobacion.test.ts": {

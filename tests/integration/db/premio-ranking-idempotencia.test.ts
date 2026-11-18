@@ -26,6 +26,8 @@ import {
 } from "./_postgres-real";
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 import { crearFksDeOrden } from "./_fixtures/orden-minima";
+import { crearOrganizacion } from "@/tests/fabricas/organizaciones";
+import { conEmpresa, contextoActual } from "@/lib/db/contexto-empresa";
 
 /**
  * FEATURE 293 (T4.4, design §3.3/§3.4/§5) — LA GUARDA DE LA BASE Y EL CICLO COMPLETO, CONTRA
@@ -1071,10 +1073,20 @@ describeSiHayBase("293/T2.5 — la action construida DE VERDAD usa el repositori
       "@/lib/repositories/PagoMensajeroMovimientoRepository"
     );
     const espia = vi.spyOn(Repo.prototype, "sumarPremiosVivosPorCierre");
+    // SLT-185 (R1141): la action corre con una empresa en contexto, como en una peticion. Sin ella, el
+    // cliente global falla cerrado (`EmpresaNoResuelta` en `CierreDia.findMany` → `unauthenticated`).
+    // La empresa es propia del caso, sin filas de negocio (lista vacia), y se borra al final.
+    const prisma = crearPrismaDeTest();
+    const empresa = await crearOrganizacion(prisma);
 
     try {
-      const r = await listarCierresAdmin({
-        getActor: async () => ({ usuarioId: "u-maestro", rol: RolValue.maestro }),
+      expect(await prisma.organizacion.count({ where: { id: empresa.id } }), "SLT-185: empresa sembrada").toBe(1);
+      const r = await conEmpresa(empresa.id, async () => {
+        const ctx = contextoActual();
+        expect(ctx?.tipo === "empresa" ? ctx.organizacionId : null, "SLT-185: empresa en contexto").toBe(empresa.id);
+        return listarCierresAdmin({
+          getActor: async () => ({ usuarioId: "u-maestro", rol: RolValue.maestro }),
+        });
       });
 
       expect(r.status).toBe("ok");
@@ -1083,6 +1095,10 @@ describeSiHayBase("293/T2.5 — la action construida DE VERDAD usa el repositori
       expect(espia).toHaveBeenCalledTimes(1);
     } finally {
       espia.mockRestore();
+      // La organizacion, la ultima y sola: si la action hubiera dejado algo de esta empresa, el
+      // borrado falla (RESTRICT) en vez de dejar basura muda (R1145).
+      await prisma.organizacion.delete({ where: { id: empresa.id } });
+      await prisma.$disconnect();
     }
   });
 });
