@@ -101,16 +101,12 @@
       "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): Error: el catalogo local no tiene el estatus \"el estado de fulfillment retirado por la 155\"; usa el estatus 'el estado de fulfillment retirado por la 155', retirado del catalogo por la 155: una base nueva no lo tiene (_semilla-rollup.ts:85). La retira SLT-186.",
       "desde": "2026-10-22"
     },
-    "tests/integration/db/api-key-eliminar.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/api-key-eliminar.test.ts:54 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero no hay ningun usuario con rol 'maestro': esta suite necesita crear su usuario en el test.. La retira SLT-183 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
     "tests/integration/db/aporte-capital.test.ts": {
       "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): Error: aporte-capital: AppErrorCode inesperado INTERNAL; la action corre sin empresa en contexto: 'EmpresaNoResuelta: Sin empresa en contexto para WalletMovimiento.aggregate' (lib/db/extension-empresa.ts:206, stderr del log) -> AppErrorCode INTERNAL en lib/actions/aporte-capital.ts:70. La retira SLT-185.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/asistente-uso-diario.int.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/asistente-uso-diario.int.test.ts:55 al leer una fila de negocio que la base migrada no trae: AssertionError: la base no tiene ni un usuario: no hay FK que satisfacer: expected null not to be null. La retira SLT-183 (siembra propia en la transaccion).",
+      "motivo": "Otra causa. Medido en local el 2026-11-17 tras sembrar sus usuarios en SLT-183 (base desechable migrada + db:seed, Postgres 18.2; igual con una empresa ajena confirmada): 4 de 11 verdes; los 7 que escriben el contador fallan con SL017 «referencia a otra empresa: asistente_uso_diario.usuario_id -> usuario» (tests/integration/db/asistente-uso-diario.int.test.ts:125, desde AsistenteUsoRepository.consumirUnaConsulta): las dos conexiones crudas de la carrera escriben sin empresa en contexto, y el usuario sembrado ya es de una empresa. La retira SLT-185.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/busqueda-usa-indice.test.ts": {
@@ -135,10 +131,6 @@
     },
     "tests/integration/db/cierre-sin-gestion-tope-sql-real.test.ts": {
       "motivo": "Otra causa (estado retirado del catalogo). Medido el 2026-11-17 en base desechable migrada con catalogos (db:seed), ya sembrado por SLT-178: Error: falta el estatus «devolucion_por_confirmar» en `order_status` (tests/integration/db/cierre-sin-gestion-tope-sql-real.test.ts:182); el estado lo retiro la 454 y una base nueva no lo trae. Con el estatus anadido a mano en una desechable pasa 9/9, tambien con datos de otra empresa. La retira SLT-186.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/cobertura-repository.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/cobertura-repository.test.ts:76 al leer una fila de negocio que la base migrada no trae: Error: no hay ningun usuario adminTienda en esta base: corre 'pnpm run db:seed'. La retira SLT-183 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/como-quedo.test.ts": {
@@ -177,24 +169,12 @@
       "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
       "desde": "2026-10-22"
     },
-    "tests/integration/db/geografia-cascada-reversible.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/geografia-cascada-reversible.test.ts:59 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero 'usuario' esta vacia: sin actor no se puede ejercer el registro de acciones que acompaña al cambio de. La retira SLT-183 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
     "tests/integration/db/geografia-historico-intacto.test.ts": {
       "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/geografia-historico-intacto.test.ts:54 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero 'orden' esta vacia: sin una fila de la que tomar las FK (estatus, tienda, zona) no se puede sembrar l. La retira SLT-184 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/geografia-ordenes-sin-entregar.test.ts": {
       "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/geografia-ordenes-sin-entregar.test.ts:59 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero 'orden' esta vacia: sin una fila de la que tomar 'tienda_id' y 'zona_id' no se puede sembrar el corpu. La retira SLT-184 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/geografia-registro-accion.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/geografia-registro-accion.test.ts:80 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero 'usuario' esta vacia: sin actor no se puede comprobar el congelado de nombre y rol, que es la mitad d. La retira SLT-183 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/geografia-renombrado.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/geografia-renombrado.test.ts:80 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero 'usuario' esta vacia: sin actor no se puede comprobar el congelado de nombre y rol de la fila del reg. La retira SLT-183 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/gestiones-detalle-api-405.test.ts": {
@@ -231,22 +211,6 @@
     },
     "tests/integration/db/marca-conciliacion.int.test.ts": {
       "motivo": "Otra causa. Medido en local el 2026-11-17 tras sembrar sus usuarios en SLT-182 (base desechable migrada + db:seed, Postgres 18.2; igual con una empresa ajena confirmada): 5 de 8 verdes; los 3 que revierten una marca con diferencia fallan con AssertionError: expected 'con_asientos' to be 'updated' (tests/integration/db/marca-conciliacion.int.test.ts:272): desde SLT-73 (D11) revertir una marca que ya asento dinero responde con_asientos; los casos esperan la reversion anterior. La retira SLT-195.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/notificacion-evento-cierre-rechazado-migration.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/notificacion-evento-cierre-rechazado-migration.test.ts:478 al leer una fila de negocio que la base migrada no trae: PrismaClientKnownRequestError. La retira SLT-183 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/notificacion-evento-geocodificacion-caida-migration.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/notificacion-evento-geocodificacion-caida-migration.test.ts:427 al leer una fila de negocio que la base migrada no trae: AssertionError: no hay ningún usuario en la base: el caso no se puede medir: expected +0 to be 1 // Object.is equality. La retira SLT-183 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/notificacion-evento-reparto-manana-migration.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/notificacion-evento-reparto-manana-migration.test.ts:510 al leer una fila de negocio que la base migrada no trae: PrismaClientKnownRequestError. La retira SLT-183 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/notificacion-evento-traspaso-migration.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/notificacion-evento-traspaso-migration.test.ts:475 al leer una fila de negocio que la base migrada no trae: PrismaClientKnownRequestError. La retira SLT-183 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/orden-mensajero-meta-drop-nota-migration.test.ts": {
@@ -290,7 +254,7 @@
       "desde": "2026-10-22"
     },
     "tests/integration/db/reparto-manana-aviso-dedupe.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/reparto-manana-aviso-dedupe.test.ts:59 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero hacen falta al menos DOS usuarios en la base. Corre 'pnpm run db:seed' antes de esta suite.. La retira SLT-183 (siembra propia en la transaccion).",
+      "motivo": "Otra causa. Medido en local el 2026-11-17 tras sembrar sus usuarios en SLT-183 (base desechable migrada + db:seed, Postgres 18.2; igual con una empresa ajena confirmada): 7 de 8 verdes; R24 (dos emisiones concurrentes sobre conexiones crudas, fuera de una tx) falla con SL017 «referencia a otra empresa: notificacion.destinatario_usuario_id -> usuario» (tests/integration/db/reparto-manana-aviso-dedupe.test.ts:307, emitirRepartoManana por clienteA): las conexiones crudas escriben sin empresa en contexto. La retira SLT-185.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/satelite-bodega-alcance-real.test.ts": {
@@ -311,10 +275,6 @@
     },
     "tests/integration/db/vista-filtro-migration.test.ts": {
       "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): AssertionError: 20261022130100_organizacion_id_en_negocio fue tocado: expected '-- DOWN (SL-17 M2) — revierte; '20261022130100_organizacion_id_en_negocio/down.sql' contiene 'vista_filtro' y el test exige que ningun down.sql anterior lo nombre (:159). La retira SLT-187.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/vista-filtro.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/vista-filtro.test.ts:93 al leer una fila de negocio que la base migrada no trae: AssertionError: la tabla 'usuario' esta vacia: estos casos no se pueden medir: expected null not to be null. La retira SLT-183 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/wallet-458-migration.test.ts": {
@@ -358,11 +318,11 @@
       "desde": "2026-10-22"
     },
     "tests/integration/db/webhook-suscripcion-circuito-migracion.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/webhook-suscripcion-circuito-migracion.test.ts:220 al leer una fila de negocio que la base migrada no trae: AssertionError: no hay ni un 'usuario' en la base: el caso no midio nada: expected null not to be null. La retira SLT-183 (siembra propia en la transaccion).",
+      "motivo": "Otra causa. Medido en local el 2026-11-17 tras sembrar sus usuarios en SLT-183 (base desechable migrada + db:seed, Postgres 18.2; igual con una empresa ajena confirmada): 16 de 17 verdes; el caso del DOWN falla con AssertionError: expected [ 'activa', 'created_at', 'id', …(5) ] to deeply equal [ 'activa', 'created_at', 'id', …(4) ] (tests/integration/db/webhook-suscripcion-circuito-migracion.test.ts:288): la lista de columnas que deja el down no cuenta organizacion_id, que añadio SL-17 (20261022130100_organizacion_id_en_negocio). La retira SLT-187.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/whatsapp-envio-idempotencia-programado.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/whatsapp-envio-idempotencia-programado.test.ts:31 al leer una fila de negocio que la base migrada no trae: Error: 474: hacen falta dos usuarios en la base de test. La retira SLT-183 (siembra propia en la transaccion).",
+      "motivo": "Otra causa. Medido en local el 2026-11-17 tras sembrar sus usuarios en SLT-183 (base desechable migrada + db:seed, Postgres 18.2; igual con una empresa ajena confirmada): 0 de 4 verdes (antes 4 saltados); los 4 fallan con SL017 «referencia a otra empresa: whatsapp_envio_ejecucion.envio_id -> whatsapp_envio» (tests/integration/db/whatsapp-envio-idempotencia-programado.test.ts:81, desde WhatsappEjecucionRepository.insertarProgramada): las conexiones crudas escriben la ejecucion sin empresa en contexto y el envio sembrado es de una empresa. La retira SLT-185.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/454/orden-evento-migration.test.ts": {
@@ -415,10 +375,6 @@
     },
     "tests/integration/db/455/caracterizacion/dinero-aprobacion.test.ts": {
       "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: tabla 'orden' vacia: corre 'pnpm run db:seed'. en tests/integration/db/454/_escenario.ts:133. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: falla una asercion de dinero o estado del cierre de satelite: expected [ …(18) ] to deeply equal [ …(18) ] (:133). La retira SLT-195.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/usuario-contar-adminsatelites.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/usuario-contar-adminsatelites.test.ts:65 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'usuario' esta vacia: sin el catalogo de tipos de identificacion no se puede sembrar. Corre. La retira SLT-183 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/abono-tienda-457-migration.test.ts": {

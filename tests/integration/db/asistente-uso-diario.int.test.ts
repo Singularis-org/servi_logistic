@@ -3,7 +3,9 @@ import type { PrismaClient } from "@prisma/client";
 
 import { AsistenteUsoRepository } from "@/lib/repositories/AsistenteUsoRepository";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
-import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
+import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
+import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
+import { datosDeOrganizacionDePrueba, fijarEmpresa } from "@/tests/fabricas/organizaciones";
 
 /**
  * ⭑ FICHA 436 · R16 y R17 — EL CONTADOR, CONTRA POSTGRES DE VERDAD.
@@ -40,6 +42,7 @@ describeSiHayBase("436/R16-R17 — asistente_uso_diario contra Postgres real", (
   let clienteA: PrismaClient;
   let clienteB: PrismaClient;
   let usuarioId: string;
+  let empresaId: string | undefined;
 
   const limpiar = () =>
     admin.$executeRawUnsafe(`DELETE FROM "asistente_uso_diario" WHERE "fecha" >= DATE '2999-01-01'`);
@@ -49,11 +52,28 @@ describeSiHayBase("436/R16-R17 — asistente_uso_diario contra Postgres real", (
     clienteA = crearPrismaDeTest();
     clienteB = crearPrismaDeTest();
 
-    const alguien = await admin.usuario.findFirst({ select: { id: true } });
-    // ⚠️ SE ROMPE RUIDOSAMENTE Y NO SE SALTA. Un `if (!alguien) return;` dejaría el archivo en
-    // «passed» sin haber comprobado nada, que es el modo de fallo que este repo ya se comió.
-    expect(alguien, "la base no tiene ni un usuario: no hay FK que satisfacer").not.toBeNull();
-    usuarioId = alguien!.id;
+    // SLT-183: la empresa y el usuario se SIEMBRAN, COMMITEADOS (R1103): las dos conexiones de la carrera tienen
+    // que verlo. Antes se leia «el primer usuario» de la base, y la recien migrada no tiene ninguno.
+    // Se borra en el `afterAll`, que comprueba que no queda.
+    // Bajo el lock de la 227 (`bajoLockDeEscrituraReal`): un INSERT/DELETE commiteado de
+    // `organizacion`/`usuario` fuera de el choca con el DDL de otro archivo (40P01, medido).
+    const sembrado = await bajoLockDeEscrituraReal(async () => {
+      const empresa = await admin.organizacion.create({
+        data: datosDeOrganizacionDePrueba(),
+        select: { id: true },
+      });
+      empresaId = empresa.id;
+      return admin.$transaction(async (tx) => {
+        await fijarEmpresa(tx, empresa.id);
+        return crearUsuarioDePrueba(tx as unknown as TxDeTest, "maestro");
+      });
+    });
+    // ⚠️ SE ROMPE RUIDOSAMENTE Y NO SE SALTA. Control positivo (R1104): la siembra llego a la base.
+    expect(
+      await admin.usuario.count({ where: { id: sembrado.id } }),
+      "SLT-183: el usuario sembrado (dueno del contador) no esta en la base",
+    ).toBe(1);
+    usuarioId = sembrado.id;
 
     // Restos de una corrida que muriera a mitad. Acotado a las centinela: no puede tocar nada real.
     await limpiar();
@@ -64,6 +84,16 @@ describeSiHayBase("436/R16-R17 — asistente_uso_diario contra Postgres real", (
 
   afterAll(async () => {
     await limpiar();
+    // SLT-183 (R1103): la empresa y el usuario sembrados commiteados se van, y se comprueba
+    // contando por sus ids.
+    await bajoLockDeEscrituraReal(async () => {
+      if (usuarioId !== undefined) await admin.usuario.deleteMany({ where: { id: usuarioId } });
+      if (empresaId !== undefined) await admin.organizacion.deleteMany({ where: { id: empresaId } });
+    });
+    const quedan =
+      (usuarioId === undefined ? 0 : await admin.usuario.count({ where: { id: usuarioId } })) +
+      (empresaId === undefined ? 0 : await admin.organizacion.count({ where: { id: empresaId } }));
+    if (quedan !== 0) throw new Error(`SLT-183: ${quedan} filas sembradas siguen en la base`);
     await clienteA?.$disconnect();
     await clienteB?.$disconnect();
     await admin?.$disconnect();

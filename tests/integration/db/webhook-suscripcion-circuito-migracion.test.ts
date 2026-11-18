@@ -9,6 +9,7 @@ import {
   enTransaccionRevertida,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 
 // FICHA 403 (T1, design §1.1) — las DOS columnas del circuito en `webhook_suscripcion`, su
 // ADITIVIDAD y su rollback.
@@ -195,8 +196,13 @@ describeSiHayBase("403/T1 — la base aplicada, medida de verdad", () => {
     // valida: su propia creacion»— y sin ella la ventana de R4 no tendria contra que medirse.
     const leido = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      // La FK exige un usuario real: se toma uno cualquiera que ya exista.
-      const dueños = await tx.$queryRawUnsafe<{ id: string }[]>(`SELECT "id" FROM "usuario" LIMIT 1`);
+      // La FK exige un usuario real. SLT-183: se SIEMBRA en la tx del caso; antes se tomaba «uno
+      // cualquiera que ya exista», y la base recien migrada no tiene ninguno.
+      const { id: dueñoId } = await crearUsuarioDePrueba(tx, "maestro");
+      const dueños = await tx.$queryRawUnsafe<{ id: string }[]>(
+        `SELECT "id" FROM "usuario" WHERE "id" = $1`,
+        dueñoId,
+      );
       if (dueños.length === 0) return null;
       const id = randomUUID();
       await tx.$executeRawUnsafe(
@@ -230,7 +236,12 @@ describeSiHayBase("403/T1 — la base aplicada, medida de verdad", () => {
     // no necesite una rama para el caso.
     const rechazo = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const dueños = await tx.$queryRawUnsafe<{ id: string }[]>(`SELECT "id" FROM "usuario" LIMIT 1`);
+      // SLT-183: el dueño se SIEMBRA en la tx del caso (antes «el primer usuario» de la base).
+      const { id: dueñoId } = await crearUsuarioDePrueba(tx, "maestro");
+      const dueños = await tx.$queryRawUnsafe<{ id: string }[]>(
+        `SELECT "id" FROM "usuario" WHERE "id" = $1`,
+        dueñoId,
+      );
       if (dueños.length === 0) return "sin-usuarios";
       try {
         await tx.$executeRawUnsafe(
