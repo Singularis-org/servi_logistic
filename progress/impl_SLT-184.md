@@ -138,7 +138,13 @@ Siembra: +303 / −261 líneas en `tests/integration` (18 archivos), muy por deb
 Baseline: +2 / −66.
 
 ## Gate
-(ver abajo)
+- `pnpm run typecheck`: exit 0. `eslint` de los 18 archivos: exit 0.
+- `./init.sh` contra `servi_slt184_desechable` (tras merge de `origin/dev` con SLT-181), 2026-11-18:
+  **INIT_EXIT=0**. 375 archivos de test seleccionados (18 por imports, 356 guardias, 5 que nombran un
+  cambiado): 100/100, 100/100, 100/100 y 75/75 archivos verdes (969 passed, 1 skipped en el último lote);
+  «80 rojo(s) heredado(s) del baseline no cuentan en esta seleccion».
+- `scripts/tamano-pr.mjs`: 19/40 archivos, 0/1000 producción, 632/3000 tests.
+- CI del PR (`gate-completo`, R1131): pendiente; lo anota el leader tras abrir el PR.
 
 ## Veredicto
-(ver abajo)
+16 de 18 retirados del baseline, verdes en base vacía y con empresa ajena; 2 siguen con motivo medido (SLT-187, SLT-186); gate local verde.
