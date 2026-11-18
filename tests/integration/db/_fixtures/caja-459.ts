@@ -22,10 +22,6 @@ import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteReposit
 import { TarifaZonaMensajeroRepository } from "@/lib/repositories/TarifaZonaMensajeroRepository";
 import { UserRepository } from "@/lib/repositories/UserRepository";
 import { WalletMovimientoRepository } from "@/lib/repositories/WalletMovimientoRepository";
-import {
-  ASIENTOS_POR_DEFECTO,
-  asentarCierreDia,
-} from "@/lib/repositories/_shared/asientos-cierre-dia";
 import { WalletTiendaMovimientoRepository } from "@/lib/repositories/WalletTiendaMovimientoRepository";
 import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
 import { AjusteCajaAnulacionRepository } from "@/lib/repositories/AjusteCajaAnulacionRepository";
@@ -445,6 +441,8 @@ export type Servicios459 = ReturnType<typeof montarServicios459>;
 /** Lo que el escenario deja sembrado y que las lecturas necesitan para acotar. */
 export interface Escenario459 {
   maestro: Actor;
+  /** SLT-195 (review B1): quien aprobo el cierre del dia; acceso total y distinto del `maestro`. */
+  aprobador: Actor;
   tiendaA: string;
   tiendaB: string;
   mensajeroId: string;
@@ -486,9 +484,25 @@ export async function sembrarEscenario459(
     },
     select: { id: true },
   });
-  await tx.tarifaZonaMensajero.create({
-    data: { zonaId: zona.id, vehiculoId: null, cobroEntregado: "1500.00", cobroRechazado: "164.00" },
+  // SLT-195 (R1198): el mensajero es de la CENTRAL, asi que su tarifa (1500/164) va en la zona
+  // central para que P siga siendo 4500.00 (O1, O2 y O3 entregadas: 3 x 1500).
+  // La central es UNA por empresa (`asegurarCentral459`) y dos siembras en la misma tx la comparten:
+  // si ya trae la fila `(zona, vehiculo null)` se deja los mismos importes; nunca se crea otra
+  // (indice unico).
+  const tarifaCentral = await tx.tarifaZonaMensajero.findFirst({
+    where: { zonaId: cat.centralZonaId, vehiculoId: null },
+    select: { id: true },
   });
+  if (tarifaCentral === null) {
+    await tx.tarifaZonaMensajero.create({
+      data: { zonaId: cat.centralZonaId, vehiculoId: null, cobroEntregado: "1500.00", cobroRechazado: "164.00" },
+    });
+  } else {
+    await tx.tarifaZonaMensajero.update({
+      where: { id: tarifaCentral.id },
+      data: { cobroEntregado: "1500.00", cobroRechazado: "164.00" },
+    });
+  }
 
   const crearUsuario = async (
     prefijo: string,
@@ -514,14 +528,21 @@ export async function sembrarEscenario459(
     return u.id;
   };
 
-  const mensajeroId = await crearUsuario("Mensajero", cat.rolId.mensajero, zona.id);
-  const adminSatId = await crearUsuario("AdminSat", cat.rolId.adminSatelite, zona.id);
+  // SLT-195 (R1198; SLT-122 R9/R10, SLT-139 D7): la central solo reparte y paga cierres de la
+  // central. Con un mensajero de la satelite el reparto respondia `sin_saldo`. El adminSatelite y la
+  // zona satelite se quedan: otras pruebas los leen.
+  const mensajeroId = await crearUsuario("Mensajero", cat.rolId.mensajero, cat.centralZonaId);
+  await crearUsuario("AdminSat", cat.rolId.adminSatelite, zona.id);
   const maestroId = await crearUsuario("Maestro", cat.rolId.maestro, null);
   const tiendaA = await crearUsuario("TiendaA", cat.rolId.adminTienda, null);
   const tiendaB = await crearUsuario("TiendaB", cat.rolId.adminTienda, null);
   const maestro: Actor = { usuarioId: maestroId, rol: "maestro" };
+  // SLT-195 (R1198, review B1): quien APRUEBA el cierre del dia es otra persona con acceso total,
+  // DISTINTA del `maestro` que registra y lee el resto. Asi la autoria «aprobacion_cierre» del libro
+  // (libro-caja-a-quien R57) sigue distinguiendo al aprobador del lector.
+  const aprobadorId = await crearUsuario("Aprobador", cat.rolId.maestro, null);
+  const aprobador: Actor = { usuarioId: aprobadorId, rol: "maestro" };
   const actorMensajero: Actor = { usuarioId: mensajeroId, rol: "mensajero" };
-  const actorAdminSat: Actor = { usuarioId: adminSatId, rol: "adminSatelite", zonaId: zona.id };
 
   // Tarifa de NIVEL 2 (la tienda entera, sin zona) para cada tienda. Las ordenes van a la zona
   // CENTRAL, asi que se cobra la columna GAM. Comision con decimales para que un redondeo
@@ -659,34 +680,23 @@ export async function sembrarEscenario459(
   const o5 = await sembrarOrden({ tiendaId: tiendaA, estatus: "incidente", montoCobrar: "7000.00" });
   const g5 = await sembrarGestion({ ordenId: o5.ordenId, resultado: "incidente" });
 
-  // ── El cierre: solicitar (mensajero) y aprobar (admin de la bodega) ───────────────────────
+  // ── El cierre: solicitar (mensajero) y aprobar (maestro, la central) ───────────────────────
   const solicitud = await s.cierreMensajero.solicitarCierre(actorMensajero);
   if (solicitud.status !== "ok" || solicitud.cierreId === undefined) {
     throw new Error(`escenario 459: solicitarCierre respondio ${JSON.stringify(solicitud)}`);
   }
   const cierreId = solicitud.cierreId;
   pasos.solicitarCierre = solicitud.status;
+  // SLT-195 (R1198): el cierre es `bodega_central` y lo aprueba el `aprobador` (acceso total). Aprobar
+  // un cierre de la central asienta en la misma tx (SLT-73 R3), con las dependencias del `adminRepo`
+  // de `montarServicios459`: ya no se llama aparte a `asentarCierreDia`.
   const aprobacion = await s.cierresAdmin.aprobarCierre(
     cierreId,
-    actorAdminSat,
+    aprobador,
     [{ gestionId: g5, monto: "6500.00" }],
     [{ origen: "gestion" as const, gestionId: g4, numGuia: o4.numGuia }],
   );
   afirmarOk(pasos, "aprobarCierre", aprobacion);
-  // SLT-73 (R1/R10, D2): el mensajero de este escenario es de la SATELITE (aprueba el adminSatelite),
-  // y aprobar su cierre ya NO escribe dinero: entra al CONCILIAR la consolidacion, que llama a
-  // `asentarCierreDia`. El escenario sigue necesitando esos asientos en el libro, asi que se escriben
-  // aqui con el MISMO escritor y las MISMAS dependencias que el `adminRepo` de arriba. No se sustituye
-  // por consolidar + marcar (T4): las ~35 suites de este escenario no corren en la base local (falta la
-  // zona central, baseline) y la marca cambia la fecha de los asientos y anade una diferencia si lo
-  // recibido no cuadra; un cambio a ciegas aqui no se puede verificar (bitacora SLT-73, tanda 2).
-  await asentarCierreDia(tx, cierreId, {
-    ...ASIENTOS_POR_DEFECTO,
-    walletMovimientoRepo: new WalletMovimientoRepository(s.cliente),
-    walletTiendaMovimientoRepo: new WalletTiendaMovimientoRepository(s.cliente),
-    walletTiendaFeedService: new WalletTiendaFeedService({ TIENDA_DEBITA_FLETE_DEVOLUCION: true }),
-    pagoMensajeroMovimientoRepo: new PagoMensajeroMovimientoRepository(s.cliente),
-  });
 
   // ── Cobro por devolución a origen de tienda (337), fuera de todo cierre ───────────────────────────────
   const o6 = await sembrarOrden({
@@ -875,7 +885,8 @@ export async function sembrarEscenario459(
   // Precondicion (no es dinero): un cierre APROBADO del mensajero con una gestion de ese dia y el
   // podio congelado. El cierre se siembra a mano con P = 0: no aporta ningun asiento propio.
   // SLT-124 (R1): el premio solo se imputa a un cierre de la CENTRAL; uno de satelite daria
-  // `sin_cierre`. Por eso este cierre es `bodega_central` (antes `bodega_satelite`).
+  // `sin_cierre`. Por eso este cierre es `bodega_central`. Desde SLT-195 el mensajero tambien es de la
+  // central (antes era de la satelite con este cierre central: la incoherencia de D64).
   const DIA_PREMIO_459 = diaDelPremio();
   const cierrePremio = await tx.cierreDia.create({
     data: {
@@ -926,6 +937,7 @@ export async function sembrarEscenario459(
 
   return {
     maestro,
+    aprobador,
     tiendaA,
     tiendaB,
     mensajeroId,

@@ -16,6 +16,7 @@ import {
   enTransaccionRevertida,
   etiquetasDeEnum,
   serializarEscriturasReales,
+  type TxDeTest,
 } from "./_postgres-real";
 import { sembrarPersonas461 } from "./_fixtures/personas-461";
 import { soloEjecutable } from "./_fixtures/sql-ejecutable";
@@ -75,6 +76,19 @@ const VALORES_458 = {
   wallet_tienda_movimiento_categoria: ["flete_devolucion_anulado", "iva_flete_devolucion_anulado"],
   historial_accion_tipo: ["cobro_rechazo_tienda_anulado", "egreso_caja_anulado"],
 } as const;
+
+/**
+ * SLT-195 (mismo patron que `tarifa-zona-borrado-fk-real.test.ts`, SLT-186): el SQLSTATE de un borrado
+ * bloqueado por una FK `ON DELETE RESTRICT` depende de la version de Postgres. En 18+ es `23001`
+ * (restrict_violation); en <= 17 —el de CI— la RESTRICT se reporta como cualquier FK, `23503`.
+ */
+async function versionDePostgres(tx: TxDeTest): Promise<number> {
+  const [{ version }] = await tx.$queryRawUnsafe<{ version: number }[]>(
+    `SELECT current_setting('server_version_num')::int AS version`,
+  );
+  return version;
+}
+const sqlstateRestrict = (version: number): string => (version >= 180000 ? "23001" : "23503");
 
 describeSiHayBase("458-B/TB.2–TB.3 — las migraciones de la wallet contra Postgres", () => {
   let prisma: PrismaClient;
@@ -229,6 +243,7 @@ describeSiHayBase("458-B/TB.2–TB.3 — las migraciones de la wallet contra Pos
       const borrarMovAnotado = await intentar(tx, `DELETE FROM "wallet_movimiento" WHERE "id" = $1`, mov.id);
       const borrarMovConComprobante = await intentar(tx, `DELETE FROM "wallet_movimiento" WHERE "id" = $1`, mov2.id);
       const borrarSubidor = await intentar(tx, `DELETE FROM "usuario" WHERE "id" = $1`, p.maestro.usuarioId);
+      const version = await versionDePostgres(tx);
       const unicosComprobante = await tx.$queryRawUnsafe<{ indexname: string }[]>(
         `SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'wallet_comprobante'
            AND indexdef LIKE 'CREATE UNIQUE INDEX%' ORDER BY 1`,
@@ -249,6 +264,7 @@ describeSiHayBase("458-B/TB.2–TB.3 — las migraciones de la wallet contra Pos
         borrarMovAnotado,
         borrarMovConComprobante,
         borrarSubidor,
+        version,
         unicosComprobante: unicosComprobante.map((u) => u.indexname),
       };
     });
@@ -264,7 +280,9 @@ describeSiHayBase("458-B/TB.2–TB.3 — las migraciones de la wallet contra Pos
     expect(m.primero).toBeNull();
     expect(m.segundo).toBe("23505"); // R79: ni se reemplaza ni se suma otro
     expect(m.deLaTienda).toBeNull();
-    expect([m.borrarMovAnotado, m.borrarMovConComprobante, m.borrarSubidor]).toEqual(["23001", "23001", "23001"]);
+    // FK RESTRICT: `23001` en Postgres 18+, `23503` en <= 17 (CI). Ver `sqlstateRestrict`.
+    const restrict = sqlstateRestrict(m.version);
+    expect([m.borrarMovAnotado, m.borrarMovConComprobante, m.borrarSubidor]).toEqual([restrict, restrict, restrict]);
     expect(m.unicosComprobante).toEqual([
       "wallet_comprobante_caja_movimiento_id_key",
       "wallet_comprobante_liquidacion_pago_id_key",
@@ -300,12 +318,14 @@ describeSiHayBase("458-B/TB.2–TB.3 — las migraciones de la wallet contra Pos
       const borrarCobro = await intentar(tx, `DELETE FROM "rechazo_tienda_cobro" WHERE "id" = $1`, cobro.id);
       const borrarAnulador = await intentar(tx, `DELETE FROM "usuario" WHERE "id" = $1`, esc.maestro.usuarioId);
       const estado = await tx.rechazoTiendaCobro.findUniqueOrThrow({ where: { id: cobro.id }, select: { estado: true } });
-      return { vacia, primera, segunda, borrarCobro, borrarAnulador, estado: estado.estado };
+      return { vacia, primera, segunda, borrarCobro, borrarAnulador, estado: estado.estado, version: await versionDePostgres(tx) };
     });
     expect(m.vacia).toBe("23514");
     expect(m.primera).toBeNull();
     expect(m.segunda).toBe("23505");
-    expect([m.borrarCobro, m.borrarAnulador]).toEqual(["23001", "23001"]);
+    // FK RESTRICT: `23001` en Postgres 18+, `23503` en <= 17 (CI). Ver `sqlstateRestrict`.
+    const restrict = sqlstateRestrict(m.version);
+    expect([m.borrarCobro, m.borrarAnulador]).toEqual([restrict, restrict]);
     // R73: la constancia no toca el cobro; su estado sigue `aprobado`.
     expect(m.estado).toBe("aprobado");
   }, 300_000);

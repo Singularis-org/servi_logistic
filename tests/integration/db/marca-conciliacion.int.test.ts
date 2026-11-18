@@ -23,7 +23,7 @@ import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 //   · que al revertir, el monto del historial es EL QUE SE BORRA — el unico sitio donde sobrevive;
 //   · SLT-73 (R14, D11): revertir una marca que ya asento dinero responde `con_asientos` sin tocar
 //     nada. Ese caso vive en `slt73-revertir-con-asientos.int.test.ts`, con datos propios: este
-//     archivo esta en el baseline y en el CI su rojo no contaria (review SLT-73, m2).
+//     archivo estaba en el baseline y en el CI su rojo no contaba (review SLT-73, m2; sale con SLT-195).
 //
 // ⚠️ LO QUE ESTE ARCHIVO **NO** PUEDE CAZAR, Y ESTA MEDIDO EN ESTE REPO: si alguien cambiara
 // `appendAccion(tx, …)` por `appendAccion(this.prisma, …)`, ESTOS CASOS SEGUIRIAN VERDES — aqui
@@ -243,7 +243,11 @@ describeSiHayBase("431/T7 — la marca de conciliacion (Postgres real)", () => {
       await serializarEscriturasReales(tx);
       const usuarioId = await algunUsuarioId(tx);
       const zonaId = await sembrarZona(tx, "revertir");
-      const id = await sembrarConsolidacion(tx, zonaId, usuarioId, "500.00");
+      // SLT-195 (SLT-73 R13, R14, D11): se marca con lo MISMO que se consolido (485 - 485 = 0), asi
+      // la marca no escribe la «diferencia de la satelite» y revertir sigue siendo `updated`. Con un
+      // faltante (antes 500 consolidado, 485 recibido = 15) hay ajuste de dinero y revertir responde
+      // `con_asientos`: ese caso vive en `slt73-revertir-con-asientos.int.test.ts`.
+      const id = await sembrarConsolidacion(tx, zonaId, usuarioId, "485.00");
 
       const repo = new CierresBodegaAdminRepository(tx as unknown as PrismaClient);
       await repo.marcarConciliado({ zonaHoraria: ZONA_DE_CR,
@@ -290,7 +294,11 @@ describeSiHayBase("431/T7 — la marca de conciliacion (Postgres real)", () => {
       await serializarEscriturasReales(tx);
       const usuarioId = await algunUsuarioId(tx);
       const zonaId = await sembrarZona(tx, "monto-borrado");
-      const id = await sembrarConsolidacion(tx, zonaId, usuarioId, "500.00");
+      // SLT-195 (SLT-73 R13, R14, D11): se marca con lo MISMO que se consolido (485 - 485 = 0), asi
+      // la marca no escribe la «diferencia de la satelite» y revertir sigue siendo `updated`. Con un
+      // faltante (antes 500 consolidado, 485 recibido = 15) hay ajuste de dinero y revertir responde
+      // `con_asientos`: ese caso vive en `slt73-revertir-con-asientos.int.test.ts`.
+      const id = await sembrarConsolidacion(tx, zonaId, usuarioId, "485.00");
 
       const repo = new CierresBodegaAdminRepository(tx as unknown as PrismaClient);
       await repo.marcarConciliado({ zonaHoraria: ZONA_DE_CR,
@@ -346,9 +354,12 @@ describeSiHayBase("431/T7 — la marca de conciliacion (Postgres real)", () => {
       const id = await sembrarConsolidacion(tx, zonaId, usuarioId, "500.00");
       const repo = new CierresBodegaAdminRepository(tx as unknown as PrismaClient);
 
+      // SLT-195 (SLT-73 R13, R14, D11): la primera marca recibe lo consolidado (500 - 500 = 0), sin
+      // ajuste de diferencia, para que revertir sea `updated`. Antes 485 (faltante de 15 -> ajuste ->
+      // `con_asientos`, cubierto en `slt73-revertir-con-asientos.int.test.ts`).
       const a = await repo.marcarConciliado({ zonaHoraria: ZONA_DE_CR,
         id,
-        montoRecibido: "485.00",
+        montoRecibido: "500.00",
         nota: null,
         actorUsuarioId: usuarioId,
       });
@@ -356,7 +367,7 @@ describeSiHayBase("431/T7 — la marca de conciliacion (Postgres real)", () => {
       const c = await repo.marcarConciliado({ zonaHoraria: ZONA_DE_CR,
         id,
         montoRecibido: "500.00",
-        nota: "llego el resto",
+        nota: "se marca de nuevo",
         actorUsuarioId: usuarioId,
       });
       const fila = await tx.cierreBodega.findUnique({

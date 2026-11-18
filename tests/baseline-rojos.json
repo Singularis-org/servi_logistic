@@ -50,104 +50,17 @@
     "PODA DEL 2026-11-16 (SLT-177): las 239 entradas «La retira SL-31» se midieron en el run 43973243440 de CI",
     "(0 pasaban, 0 verdes sin datos, 227 base vacia, 12 otra causa: progress/medicion_SLT-177.md). Salen",
     "91 archivos que el lote de SLT-177 siembra con datos propios y quedan verdes con 0 saltados; las",
-    "que se quedan llevan la causa medida y la ficha SLT-178..SLT-187 o SLT-195 que las retira."
+    "que se quedan llevan la causa medida y la ficha SLT-178..SLT-187 o SLT-195 que las retira.",
+    "",
+    "PODA DEL 2026-11-18 (SLT-195): salen 22 archivos (los 21 de la ficha y `marca-conciliacion.int`), verdes con",
+    "0 saltados en base desechable migrada y sembrada. Pruebas desactualizadas por SLT-73/79/122/123/139; sin fallo",
+    "de produccion. `analitica-anulacion-rechazo-458` sale tras la decision de Carlos (2026-11-18): ganancia sin IVA, SL-39 R11.",
+    "Con SLT-187 en dev, sale tambien `wallet-458-migration` (8/8 en base desechable, 2026-11-18): su caso (c) caia por el escenario 459."
   ],
   "archivos": {
     "tests/unit/guards/dependencias-declaradas-presentes.guardia.test.ts": {
       "motivo": "Vigila el paso 2 del init.sh del producto de origen (ficha 420: marcadores, verificar-dependencias.mjs, --frozen-lockfile); el init.sh del arnes v2 no lo tiene y es archivo del arnes. La retira SL-29, la ficha /afinar-regla que sube la mejora a la plantilla o retira la guardia.",
       "desde": "2026-10-21"
-    },
-    "tests/integration/db/477-aprobacion-tras-correccion-sql-real.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: tabla 'orden' vacia: corre 'pnpm run db:seed'. en tests/integration/db/454/_escenario.ts:133. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: falla una asercion de dinero o estado del cierre de satelite: expected [] to deeply equal [ cod_recaudado|4000.00, …(1) ]. La retira SLT-195.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/analitica-anulacion-rechazo-458.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/caja-caracterizacion-459.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/caja-invariante-tiendas.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/como-quedo.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/efecto-movimiento-predice.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/libro-caja-a-quien.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/libro-caja-filtro-a-quien.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/libro-caja-revision-458c.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/libro-caja-revision-458e.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/liquidacion-fechas-cr-461.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/marca-conciliacion.int.test.ts": {
-      "motivo": "Otra causa. Medido en local el 2026-11-17 tras sembrar sus usuarios en SLT-182 (base desechable migrada + db:seed, Postgres 18.2; igual con una empresa ajena confirmada): 5 de 8 verdes; los 3 que revierten una marca con diferencia fallan con AssertionError: expected 'con_asientos' to be 'updated' (tests/integration/db/marca-conciliacion.int.test.ts:272): desde SLT-73 (D11) revertir una marca que ya asento dinero responde con_asientos; los casos esperan la reversion anterior. La retira SLT-195.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/wallet-458-migration.test.ts": {
-      "motivo": "Otra causa. Medido en base desechable migrada con catalogos el 2026-11-18 (SLT-187): el caso (a) del enum de la 458 ya pasa; queda rojo SOLO el caso (c) R92/R66, por el escenario 459: su paso «repartoMensajero» responde sin_saldo (tests/integration/db/_fixtures/caja-459.ts:773, D64). La retira SLT-195 (PR #219).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/wallet-anulacion-458.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/wallet-comprobante-alcance.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/wallet-documento-comprobante-458.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/wallet-registro-comprobante-458.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/registro-gestion-sin-transicion-sql-real.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: tabla 'orden' vacia: corre 'pnpm run db:seed'. en tests/integration/db/454/_escenario.ts:133. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: falla una asercion de dinero o estado del cierre de satelite: expected +0 to be 1. La retira SLT-195.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/caracterizacion/cierre-rechazado.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: tabla 'orden' vacia: corre 'pnpm run db:seed'. en tests/integration/db/454/_escenario.ts:133. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: falla una asercion de dinero o estado del cierre de satelite: expected 0 to be greater than 0 (:87). La retira SLT-195.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/caracterizacion/deshacer.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: tabla 'orden' vacia: corre 'pnpm run db:seed'. en tests/integration/db/454/_escenario.ts:133. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: falla una asercion de dinero o estado del cierre de satelite: expected [] to deeply equal [ '2000.00' ]. La retira SLT-195.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/caracterizacion/dinero-aprobacion.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: tabla 'orden' vacia: corre 'pnpm run db:seed'. en tests/integration/db/454/_escenario.ts:133. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: falla una asercion de dinero o estado del cierre de satelite: los movimientos tras aprobar traen pago_satelite donde se espera pago_efectivo (:130). La retira SLT-195.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/caracterizacion/multi-dia-271.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: tabla 'orden' vacia: corre 'pnpm run db:seed'. en tests/integration/db/454/_escenario.ts:133. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: falla una asercion de dinero o estado del cierre de satelite: expected 0 to be greater than 0 (:77). La retira SLT-195.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/455/caracterizacion/dinero-aprobacion.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: tabla 'orden' vacia: corre 'pnpm run db:seed'. en tests/integration/db/454/_escenario.ts:133. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: falla una asercion de dinero o estado del cierre de satelite: expected [ …(18) ] to deeply equal [ …(18) ] (:133). La retira SLT-195.",
-      "desde": "2026-10-22"
     },
     "tests/integration/db/abono-tienda-457-migration.test.ts": {
       "motivo": "Postgres 17 (CI) frente a 18 (local): el DELETE de un usuario referenciado por una FK RESTRICT y por otra NO ACTION da 23503 en PG 17.11 y 23001 en PG 18.2 (medido el 2026-10-22 sobre base nueva migrada en los dos; en PG 18 pasa). No es falta de datos: la fixture crea sus usuarios. Lee db/migrations, asi que la retira SL-28; la version de Postgres de CI sigue ABIERTA en gate.yml.",
