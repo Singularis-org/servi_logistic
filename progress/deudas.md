@@ -373,7 +373,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** SLT-124 (2026-11-11, review m2 y m3). El cierre del premio pasó de `bodega_satelite` a `bodega_central` porque con R1 la siembra daría `sin_cierre`. Los 15 tests del fixture y la integración de R6 (`premio-ranking-idempotencia`) están en el baseline por SL-31 (app vacía) y hoy no corren. El mensajero del fixture sigue en zona satélite con un cierre central.
 - **Medido en SLT-177 (2026-11-16):** con la zona central sembrada, `sembrarEscenario459` cae en su paso `repartoMensajero` con `sin_saldo` (`_fixtures/caja-459.ts:773`): 14 archivos del fixture siguen rojos. `premio-ranking-idempotencia` queda 16/17 (el que falla es la action sin empresa, SLT-185). Siete casos de `454/` con cierre de satélite fallan en aserciones de dinero.
 - **Qué falta:** SLT-195 «Cierre de la satélite: pruebas de dinero que no cuadran (D64)» (decisión de Carlos, 2026-11-16) para esos 21 archivos; ajustar la zona del mensajero si choca con R12.
-- **Dueño:** SLT-195.
+- **Cerrada en SLT-195 (2026-11-18):** el mensajero del escenario 459 pasa a la central y aprueba el `maestro` (sin `asentarCierreDia` aparte); los 7 de `454/455/477` siguen SLT-73/79/139. Sin fallo de producción. 20 de los 21 y `marca-conciliacion.int` salen del baseline, verdes en base desechable y con control positivo (`progress/impl_SLT-195.md`). Se queda `analitica-anulacion-rechazo-458` por R1203: la ganancia baja 1000 y no 1130 por SL-39 R11 (pregunta abierta a Carlos en la bitácora).
+- **Dueño:** cerrada.
 
 ### D65 — Guardias de diálogos y visor de cierres con huecos conocidos
 - **Origen:** SLT-103 (2026-11-11, review m1-m3 en `progress/review_SLT-103.md`). `cierres-dialogos-modal.guardia.test.ts`:
