@@ -178,3 +178,62 @@ Ninguna. El trigger de `orden` y la ida de la migración no cambian, y R10 sigue
 
 ### Veredicto vuelta 2
 **OK con menores.** No quedan bloqueantes ni mayores. Quedan como menores la espera de las cargas mientras dura `mover` (arriba) y T7.1, T7.3 y T7.4 pendientes de persona y CI, que son condición para `done`.
+
+## Vuelta 3 (acotada a 906c5cc7..1cc0f397)
+
+Alcance: la decisión del humano «tope corto a mover». Revisé 7f446927, b94c1535 y 1cc0f397, y el archivo nuevo `lib/repositories/_shared/prisma-ocupado.ts`.
+
+### Verificación ejecutada
+- Base limpia propia `servi_logistic_slt48_review` (`prisma migrate deploy`), borrada al terminar.
+- `pnpm run typecheck`: 0 errores.
+- `eslint` de `GeoRepository.ts`, `prisma-ocupado.ts`, `geografia-plataforma.ts`, `MoverNodoDialog.tsx` y `geografia-mover-nodo-cede.test.ts`: 0 errores.
+- `vitest` de 7 archivos, 194 tests, todos verdes: `geografia-mover-nodo-cede` (nuevo, 3 casos con dos conexiones), `geografia-mover-nodo-carrera`, `geografia-mover-nodo`, `geografia-mover-nodo-ordenes`, `geografia-plataforma.mover`, `geografia-plataforma-action` y `MoverNodoDialog`.
+
+### P1 sigue cerrado
+- **Fase 1, sin bloqueos y fuera de la transacción:** padre de hoy, R35, P4 y el cálculo caro de P1. Si P1 bloquea, devuelve `bloqueado` sin abrir la transacción.
+- **Fase 2, en una transacción con `lock_timeout` de 2 s:**
+  - bloquea el subárbol con `bloquearNodos` y fija `statement_timeout` = 2 s;
+  - `confirmarP1`:
+    - **Nodos colgados después:** si algún nodo fuera de la lista tiene el padre dentro del subárbol, da `cambio_concurrente`. Con el subárbol bloqueado no se puede colgar uno nuevo, porque la FK `padre_id` toma `FOR KEY SHARE` y choca.
+    - **Órdenes nuevas:** `bloqueoDeMover` con `yaVistas` evalúa toda orden abierta del subárbol que la fase 1 no vio. Eso incluye las creadas entre fases y las que entraron por una corrección. La primera pasada dio `null`, así que el bloqueo de las nuevas es el bloqueo entero.
+  - `updateMany` condicionado a `padre_id = padreIdAnterior`, y el historial.
+- El test de carrera de la vuelta 2 sigue en verde.
+
+### «Ocupado» no escribe
+- La fase 1 solo lee.
+- La fase 2 es una sola transacción. 55P03, 57014, 40P01 y P2028/P2034 la revierten entera, sin `padre_id` ni fila de historial. Los tres casos de `geografia-mover-nodo-cede` lo comprueban.
+- `moverNodoAction` devuelve `{ status: "conflict", motivo: "ocupado" }` sin log. El modal muestra el aviso y queda en el paso 2 para reintentar (`MoverNodoDialog.test.tsx`).
+- `prisma-ocupado.ts` se ve correcto:
+  - busca el código en `code`, en `originalCode` y en las causas anidadas, con un tope de profundidad y control de ciclos, y también en el mensaje;
+  - solo se usa en la action de mover, así que no oculta errores de otras operaciones;
+  - no hay riesgo de clasificar como «ocupado» un fallo de datos: los cinco códigos son de concurrencia o de tiempo.
+
+### Hallazgos
+
+1. **menor: la ventana entre fases no protege el destino ni lo ya visto.**
+   - El destino y sus antepasados no se bloquean ni se vuelven a comprobar en la fase 2. Si otro superadmin lo retira o lo mueve mientras corre la fase 1, `mover` cuelga el nodo de un padre retirado (P4) o con un P1 calculado sobre otro árbol.
+   - Las órdenes ya vistas (`abiertasVistas`) no se reevalúan. Si una corrección les cambia la zona o el nodo dentro del subárbol entre fases, ese cambio no se mira.
+   - Pasaba lo mismo en la vuelta 2, pero ahora la ventana es toda la fase 1, que en un nodo alto puede durar segundos.
+   - Arreglo barato: en la fase 2, `FOR SHARE` del destino y sus antepasados, y volver a comprobar `activo`/P4 y su `padre_id`.
+   - Es un caso de superadmin contra superadmin, o de corrección contra mover en la misma ventana. No bloquea.
+2. **menor: el tope de 4 s. Coherente, pero conviene bajarlo.**
+   - El cálculo de la propia doc:
+     - una escritura de empresa espera como mucho el `lock_timeout` (2 s), si llega mientras `mover` espera su bloqueo;
+     - o el resto de la transacción con los bloqueos tomados (≤ 4 s de `timeout` de Prisma, más una sentencia en vuelo de ≤ 2 s);
+     - en total, ~6 s en el peor caso teórico.
+   - Para «unos segundos» vale. Contra los 5 s del `timeout` por defecto de cada chunk de la carga masiva (`OrdenRepository.ts:3235`) va justo:
+     - el chunk tiene además su propio trabajo (insert, guía, historial);
+     - en el peor caso teórico podría caer él en P2028, que es justo lo que la decisión quiere evitar («cede siempre el superadmin»).
+   - En la práctica, la fase 2 son unas 10 sentencias de milisegundos, y la espera real de una empresa es la del `lock_timeout` más esos milisegundos.
+   - Recomendación: `TOPE_MOVER_MS` = 1 s y `timeout` de la transacción ≈ 2 s. Así el peor caso queda en ~3 s, con margen claro bajo los 5 s del chunk, y el superadmin sigue reintentando muy poco.
+   - Los tiempos de `geografia-mover-nodo-cede` salen de las constantes exportadas, así que cambiarlas no exige reescribir el test.
+3. **menor: T7.1, T7.3 y T7.4 pendientes**, sin cambios.
+
+### Regresiones
+Ninguna:
+- la vista previa no cambia: misma `vista`, ahora con `bloqueo` desde `p1.bloqueo`;
+- los tests de mover de vueltas anteriores siguen en verde;
+- `docs/architecture.md` describe lo implementado.
+
+### Veredicto vuelta 3
+**OK con menores.** No hay bloqueantes ni mayores. Recomiendo, sin bloquear, bajar el tope (hallazgo 2) y bloquear y volver a comprobar el destino en la fase 2 (hallazgo 1).
