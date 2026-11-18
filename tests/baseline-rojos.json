@@ -361,6 +361,10 @@
       "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): Error: el catalogo local no tiene el estatus ayuda_tienda; usa el estatus 'ayuda_tienda', retirado del catalogo por la 454 ('ORDER_STATUS_RETIRADOS'): una base nueva no lo tiene (:178). La retira SLT-186.",
       "desde": "2026-10-22"
     },
+    "tests/integration/db/tarifa-zona-borrado-fk-real.test.ts": {
+      "motivo": "Otra causa. Medido en CI el 2026-11-18 (run 44235155028, PR #213, Postgres 17), ya sembrado por SLT-180: el caso 'el error REAL de la FK no es un P2003: la comprobacion ingenua NO lo caza' falla en tests/integration/db/tarifa-zona-borrado-fk-real.test.ts:382 con 'la comprobacion ingenua ahora SI caza el error: expected true to be false'; en local (Postgres 18.2, migrate deploy + db:seed, base vacia y con empresa ajena) el archivo pasa 9/0/0. Test-cicatriz desfasado cuyo resultado depende del entorno. La retira SLT-186.",
+      "desde": "2026-10-22"
+    },
     "tests/integration/db/traspaso-mensajero.int.test.ts": {
       "motivo": "Test desfasado tras 454, ya sembrado (SLT-179). Medido en local el 2026-11-17 (Postgres 18, migrate deploy + db:seed): Error: el catalogo `order_status` no tiene ayuda_tienda (tests/integration/db/traspaso-mensajero.int.test.ts:88, beforeAll, estado retirado en 454); detras, R4 traspasa `ayuda_tienda` (inexistente) y en T9.9 el job lleva `origen` ademas de `mensajeroId`. La retira SLT-186.",
       "desde": "2026-10-22"

@@ -138,3 +138,14 @@ del alcance (p. ej. `api-key-eliminabilidad`, `historial-accion-lectura`, `emiso
 ## Veredicto
 14 de 15 verdes en base vacía y con empresa ajena y fuera del baseline; `orden-traspaso-migration`
 sembrado (13/2/0) y en el baseline por SL-17 → SLT-187 «Tests de migración desfasados tras SL-17».
+
+## CI del PR #213 (run 44235155028) — `tarifa-zona-borrado-fk-real` vuelve al baseline
+En CI (Postgres 17) el `gate-completo` salió rojo por un único archivo fuera del baseline:
+`tarifa-zona-borrado-fk-real`, caso «⭑ el error REAL de la FK no es un `P2003`: la comprobacion
+ingenua NO lo caza», `:382`: «la comprobacion ingenua ahora SI caza el error: expected true to be
+false». En local (Postgres 18.2) el archivo pasa 9/0/0 en las dos bases. La siembra no es la causa:
+es un test-cicatriz cuyo resultado depende del entorno. Decisión del leader (2026-11-18): vuelve al
+baseline con su `desde` original (`2026-10-22`, el de `origin/dev`) y motivo medido en CI, citando
+SLT-186 «Tests con estados retirados del catálogo» (alcance «tests desfasados»). El test no se toca;
+la siembra se queda. Retirados del baseline: 13 (128 → 115 claves); se quedan 2 de los 15
+(`orden-traspaso-migration` → SLT-187, `tarifa-zona-borrado-fk-real` → SLT-186).
