@@ -8,6 +8,7 @@ import { OrigenLegibleService } from "@/lib/services/OrigenLegibleService";
 import { WalletTiendaService } from "@/lib/services/WalletTiendaService";
 
 import { sembrarPersonas461 } from "./_fixtures/personas-461";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
@@ -45,11 +46,11 @@ const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
 async function sembrar(tx: TxDeTest) {
   const p = await sembrarPersonas461(tx);
-  const zona = await tx.zona.findFirst({ select: { id: true } });
-  const fks = await tx.orden.findFirst({
-    select: { estatusId: true, zonaId: true, provinciaId: true, cantonId: true },
-  });
-  if (zona === null || fks === null) throw new Error("base sin sembrar: faltan zona u orden");
+  // SLT-184 (R1122/R1124): zona y FK de la orden propias, sembradas en la tx (antes «la primera
+  // zona» y «la primera orden» de la base), con su control positivo.
+  const fks = await crearFksDeOrden(tx);
+  const zona = { id: fks.zonaId };
+  expect(await tx.zona.count({ where: { id: zona.id } }), "SLT-184: la zona sembrada no esta en la base").toBe(1);
   // Un mensajero con segundo apellido, como 11 de los 22 de produccion: el origen lo nombra entero.
   await tx.usuario.update({
     where: { id: p.mensajeroId },

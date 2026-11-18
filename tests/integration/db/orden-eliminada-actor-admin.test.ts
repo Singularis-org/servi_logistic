@@ -7,10 +7,11 @@ import {
   clienteConSavepoint,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
+  type FksDeOrden,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FICHA 424 / T7 (R11/R12/R13/R14/R19) — **LA CONTRAPARTIDA DE LA REVERSION, MEDIDA CON EL ROL
@@ -53,21 +54,28 @@ const SUFIJO = `424-adm-${Date.now().toString(36)}`;
 
 describeSiHayBase("424/T7 — borrar como `admin` deja nombre y rol congelados (Postgres real)", () => {
   let prisma: PrismaClient;
-  let FKS: Awaited<ReturnType<typeof fksDeOrden>>;
+  // SLT-180 (R1042): tienda y zona se SIEMBRAN en la tx de cada caso (`sembrarFks`); ya no se lee
+  // «la primera orden» de la base.
+  let FKS: FksDeOrden | null = null;
   let ESTATUS_ID: string;
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    FKS = await fksDeOrden(prisma);
-    if (FKS === null) {
-      // LANZA, no `return`: ver la cabecera.
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar. Corre " +
-          "`pnpm run db:seed` (y `pnpm exec tsx scripts/seed-zonas.ts`) antes de esta suite.",
-      );
-    }
-    ESTATUS_ID = FKS.estatusId;
   });
+
+  /** SLT-180 (R1044): siembra propia del caso + control positivo. LANZA, no `return`. */
+  async function sembrarFks(tx: TxDeTest): Promise<void> {
+    FKS = await crearFksDeOrden(tx);
+    ESTATUS_ID = FKS.estatusId;
+    expect(
+      await tx.usuario.count({ where: { id: FKS.tiendaId } }),
+      "SLT-180: la tienda sembrada no esta en la base",
+    ).toBe(1);
+    expect(
+      await tx.zona.count({ where: { id: FKS.zonaId } }),
+      "SLT-180: la zona sembrada no esta en la base",
+    ).toBe(1);
+  }
 
   afterAll(async () => {
     await prisma.$disconnect();
@@ -115,9 +123,11 @@ describeSiHayBase("424/T7 — borrar como `admin` deja nombre y rol congelados (
       where: { value: "admin" },
       select: { id: true },
     });
-    // Solo para copiar el `tipo_identificacion_id`, que es un catalogo y no se puede inventar.
-    const plantilla = await tx.usuario.findFirstOrThrow({
-      select: { tipoIdentificacionId: true },
+    // El `tipo_identificacion_id` es un catalogo y no se puede inventar: se lee POR SU CLAVE
+    // (SLT-180: antes se copiaba del primer usuario de la base).
+    const cedula = await tx.tipoIdentificacion.findUniqueOrThrow({
+      where: { value: "cedula" },
+      select: { id: true },
     });
     const nombre = `Admin${marca}`;
     const primerApellido = "Efimero424";
@@ -130,7 +140,7 @@ describeSiHayBase("424/T7 — borrar como `admin` deja nombre y rol congelados (
         passwordHash: "x",
         cedula: `${SUFIJO}-${marca}`,
         estado: "activo",
-        tipoIdentificacionId: plantilla.tipoIdentificacionId,
+        tipoIdentificacionId: cedula.id,
         rolId: rolAdmin.id,
       },
       select: { id: true },
@@ -162,6 +172,7 @@ describeSiHayBase("424/T7 — borrar como `admin` deja nombre y rol congelados (
     // POR LA RELACION desde la base, no del objeto que devolvio el helper.
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarFks(tx);
       const admin = await sembrarAdmin(tx, "anti");
       return tx.usuario.findUniqueOrThrow({
         where: { id: admin.id },
@@ -176,6 +187,7 @@ describeSiHayBase("424/T7 — borrar como `admin` deja nombre y rol congelados (
   it("⭑ R11/R12: dos ordenes borradas por un `admin` dejan DOS filas con su nombre y su rol congelados", async () => {
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarFks(tx);
       const admin = await sembrarAdmin(tx, "r11");
       const ids = await sembrarOrdenes(tx, 2, "r11");
       const repo = new OrdenRepository(clienteConSavepoint(tx));
@@ -232,6 +244,7 @@ describeSiHayBase("424/T7 — borrar como `admin` deja nombre y rol congelados (
     // siendo `admin`, y ese error es indetectable a ojo.
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarFks(tx);
       const admin = await sembrarAdmin(tx, "promo");
       const [ordenId] = await sembrarOrdenes(tx, 1, "promo");
       const repo = new OrdenRepository(clienteConSavepoint(tx));
@@ -263,6 +276,7 @@ describeSiHayBase("424/T7 — borrar como `admin` deja nombre y rol congelados (
     // persona, no solo cuantas ordenes se llevo por delante.
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarFks(tx);
       const admin = await sembrarAdmin(tx, "lote");
       const acto1 = await sembrarOrdenes(tx, 2, "lote1");
       const acto2 = await sembrarOrdenes(tx, 2, "lote2");
@@ -290,6 +304,7 @@ describeSiHayBase("424/T7 — borrar como `admin` deja nombre y rol congelados (
     // filas, y una seria la auditoria de un borrado que no ocurrio.
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarFks(tx);
       const admin = await sembrarAdmin(tx, "r14");
       const ids = await sembrarOrdenes(tx, 3, "r14");
       await tx.orden.update({ where: { id: ids[1] }, data: { deletedAt: new Date() } });

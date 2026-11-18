@@ -15,6 +15,7 @@ import {
   enTransaccionRevertida,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 import type { ReglasTelefono } from "@/lib/utils/telefono-pais";
 
 // SLT-42 (R18): la resolucion del entrante normaliza con las reglas del pais (aqui, Costa Rica).
@@ -67,30 +68,12 @@ const MAESTRO: Actor = { usuarioId: "u-maestro", rol: "maestro" };
 describeSiHayBase("⭑ 312/G1 — corregir el telefono y el hilo de WhatsApp", () => {
   let prisma: PrismaClient;
   let ESTATUS_EN_REPARTO: string;
-  let FKS: {
-    estatusId: string;
-    tiendaId: string;
-    zonaId: string;
-    provinciaId: string;
-    cantonId: string;
-  };
-  // SLT-42: la empresa de la transaccion es la de las FKs; con la empresa nueva que crea
-  // `enTransaccionRevertida`, una base con mas de una empresa cae en «referencia a otra empresa».
-  let EMPRESA: string | undefined;
 
+  // SLT-184 (R1122): las FK de la orden (tienda y zona) ya no salen de «la primera orden» de la
+  // base: se SIEMBRAN en la tx de cada caso con `crearFksDeOrden`, en la empresa que crea
+  // `enTransaccionRevertida`. De la base solo se lee el catalogo (`en_reparto`).
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const fks = await prisma.orden.findFirst({
-      select: { organizacionId: true, estatusId: true, tiendaId: true, zonaId: true, provinciaId: true, cantonId: true },
-    });
-    EMPRESA = fks?.organizacionId;
-    if (fks === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar. Corre " +
-          "`pnpm run db:seed` (y las semillas de zonas) antes de esta suite.",
-      );
-    }
-    FKS = fks;
 
     const estado = await prisma.orderStatus.findFirst({
       where: { value: "en_reparto" },
@@ -123,6 +106,16 @@ describeSiHayBase("⭑ 312/G1 — corregir el telefono y el hilo de WhatsApp", (
   ): Promise<T> {
     return enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      const FKS = await crearFksDeOrden(tx);
+      // SLT-184 (R1124): control positivo de lo sembrado.
+      expect(
+        await tx.usuario.count({ where: { id: FKS.tiendaId } }),
+        "SLT-184: la tienda sembrada no esta en la base",
+      ).toBe(1);
+      expect(
+        await tx.zona.count({ where: { id: FKS.zonaId } }),
+        "SLT-184: la zona sembrada no esta en la base",
+      ).toBe(1);
       const orden = await tx.orden.create({
         data: {
           numGuia: GUIA_BASE + Math.floor(Math.random() * 1_000_000),
@@ -180,7 +173,7 @@ describeSiHayBase("⭑ 312/G1 — corregir el telefono y el hilo de WhatsApp", (
         // no montar un doble que no aporta nada.
         tarifas: new TarifaVigenteRepository(cliente),
       });
-    }, { organizacionId: EMPRESA });
+    });
   }
 
   it("⭑ R20/R21: el numero NUEVO resuelve a la orden y el ANTERIOR ya no", async () => {

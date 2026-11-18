@@ -89,6 +89,8 @@ export default defineConfig({
         "dos-empresas-humo",
         "zona-especial-dos-empresas",
         "zonas-crear-sin-costos",
+        // SLT-198 R1233: el maestro vacía una zona satélite y pasa su distrito a la principal.
+        "zona-sin-distritos",
         "wallet-iva-aparte-sl39",
         "marca",
         "auth",

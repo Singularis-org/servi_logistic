@@ -14,9 +14,10 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { comoApp } from "@/tests/fabricas/organizaciones";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
@@ -86,7 +87,9 @@ type Tx = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0];
 
 describeSiHayBase("271/T10.3 — el corte diario, sembrado contra Postgres", () => {
   let prisma: PrismaClient;
-  let fks: NonNullable<Awaited<ReturnType<typeof fksDeOrden>>>;
+  // SLT-178: `fks` y `zonaCentralId` se SIEMBRAN en cada caso (`sembrarBaseDelCaso`), dentro de su
+  // transaccion revertida; nunca se leen de la base.
+  let fks: Awaited<ReturnType<typeof crearFksDeOrden>>;
   let catalogo: { enReparto: string; ayuda: string; sinGestionar: string };
   let zonaCentralId: string;
   let rolMensajeroId: string;
@@ -94,17 +97,6 @@ describeSiHayBase("271/T10.3 — el corte diario, sembrado contra Postgres", () 
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-
-    const encontradas = await fksDeOrden(prisma);
-    // Fallo RUIDOSO, no `return` silencioso: con base alcanzable y sin datos este archivo no puede
-    // comprobar nada, y un `passed` en esas condiciones es peor que no tener el test.
-    if (encontradas === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar el corpus. " +
-          "Corre `pnpm run db:seed` (y las semillas de zonas) antes de esta suite.",
-      );
-    }
-    fks = encontradas;
 
     const estatus = await prisma.orderStatus.findMany({
       where: { value: { in: ["en_reparto", "ayuda_tienda", "novedad_interna"] } },
@@ -125,23 +117,14 @@ describeSiHayBase("271/T10.3 — el corte diario, sembrado contra Postgres", () 
       sinGestionar: porValue.get("novedad_interna") as string,
     };
 
-    const central = await prisma.zona.findFirst({
-      where: { esCentral: true },
-      select: { id: true },
-    });
-    if (central === null) {
-      throw new Error(
-        "no hay ninguna zona con `es_central = true`: sin ella el corte no puede derivar la bodega " +
-          "responsable y el corpus no seria el de produccion.",
-      );
-    }
-    zonaCentralId = central.id;
-
     const rol = await prisma.rol.findFirst({
       where: { value: "mensajero" },
       select: { id: true },
     });
-    const tipo = await prisma.tipoIdentificacion.findFirst({ select: { id: true } });
+    const tipo = await prisma.tipoIdentificacion.findUnique({
+      where: { value: "cedula" },
+      select: { id: true },
+    });
     if (rol === null || tipo === null) {
       throw new Error(
         "faltan el rol `mensajero` o el catalogo de tipos de identificacion: no se pueden sembrar " +
@@ -159,6 +142,37 @@ describeSiHayBase("271/T10.3 — el corte diario, sembrado contra Postgres", () 
   // ===============================================================================================
   // Utilidades de siembra. Todas reciben la `tx` y escriben DENTRO de la transaccion revertida.
   // ===============================================================================================
+
+  /**
+   * SLT-178: tienda, zona de las ordenes y zona CENTRAL de la empresa del caso, creadas en la tx. El
+   * corte busca la central con una lectura global (`findCentralZonaId`); por eso el caso corre como
+   * `servi_app` con la empresa de la tx (RLS), igual que en produccion, y solo ve la suya.
+   */
+  async function sembrarBaseDelCaso(tx: Tx): Promise<void> {
+    const [{ org }] = await tx.$queryRawUnsafe<{ org: string | null }[]>(
+      `SELECT current_setting('app.organizacion_id', true) AS org`,
+    );
+    if (!org) throw new Error("la transaccion del caso no tiene empresa fijada");
+    fks = await crearFksDeOrden(tx);
+    zonaCentralId = (
+      await tx.zona.create({
+        data: {
+          nombre: `Central ${SUFIJO}`,
+          sinpeNumero: "80000000",
+          sinpeNombre: "Titular de Prueba",
+          esCentral: true,
+        },
+        select: { id: true },
+      })
+    ).id;
+    await comoApp(tx, org);
+    expect(
+      await tx.zona.count({ where: { id: { in: [fks.zonaId, zonaCentralId] } } }),
+      "zonas sembradas (la de las ordenes y la central)",
+    ).toBe(2);
+    expect(await tx.zona.count({ where: { esCentral: true } }), "centrales visibles en la empresa del caso").toBe(1);
+    expect(await tx.usuario.count({ where: { id: fks.tiendaId } }), "tienda sembrada").toBe(1);
+  }
 
   /**
    * Mensajeros **PROPIOS**, creados por el test.
@@ -361,6 +375,7 @@ describeSiHayBase("271/T10.3 — el corte diario, sembrado contra Postgres", () 
   it("R21/R23 · el caso `79cb2c0f`: con un `solicitado` de ayer, el corte SI le crea el segundo cierre", async () => {
     const medido = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
 
       const m = await sembrarMensajero(tx, "c1");
       const cuarentena = await sembrarCierre(tx, m, "aprobado");
@@ -483,6 +498,7 @@ describeSiHayBase("271/T10.3 — el corte diario, sembrado contra Postgres", () 
   it("R22/R17 · el mensajero YA bloqueado con un `vencido` y nada que cerrar NO recibe un segundo", async () => {
     const medido = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
 
       const bloqueado = await sembrarMensajero(tx, "c2");
       const testigo = await sembrarMensajero(tx, "c2t");
@@ -592,6 +608,7 @@ describeSiHayBase("271/T10.3 — el corte diario, sembrado contra Postgres", () 
   it("R23/R24 · el barrido a `novedad_interna`, la vinculacion y la idempotencia de la 2.ª corrida", async () => {
     const medido = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
 
       const uno = await sembrarMensajero(tx, "c3a");
       const dos = await sembrarMensajero(tx, "c3b");
@@ -814,6 +831,7 @@ describeSiHayBase("271/T10.3 — el corte diario, sembrado contra Postgres", () 
   it("R17 · dos `vencido` a la vez es ALCANZABLE: la orden reservada (246) sobrevive al corte que bloquea y la noche siguiente trae el SEGUNDO", async () => {
     const medido = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
 
       const m = await sembrarMensajero(tx, "c4");
       const cuarentena = await sembrarCierre(tx, m, "aprobado");

@@ -8,7 +8,9 @@ import {
   crearPrismaDeTest,
   enTransaccionRevertida,
   serializarEscriturasReales,
+  type TxDeTest,
 } from "./_postgres-real";
+import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 
 // Feature 238 (T3.1, R20/R21/R43) — la migracion `*_gestion_orden_confirmacion_fisica`.
 //
@@ -225,6 +227,47 @@ async function auditarMarcas(
   };
 }
 
+/** SLT-184: cuantas gestiones siembra cada caso que audita. */
+const GESTIONES_SEMBRADAS = 2;
+
+/**
+ * SLT-184 (R1122/R1124): las gestiones que la auditoria mira las CREA el caso en su tx revertida
+ * (orden propia sobre `crearFksDeOrden`, mensajero propio, sin cierre ni marca), con su control
+ * positivo. Antes se auditaba «lo que hubiera» en la base y, vacia, no habia nada que comprobar.
+ */
+async function sembrarGestiones(tx: TxDeTest): Promise<string[]> {
+  const fks = await crearFksDeOrden(tx);
+  const mensajero = await crearUsuarioDePrueba(tx, "mensajero");
+  const orden = await tx.orden.create({
+    data: {
+      numRemision: `t238-${mensajero.id.slice(0, 8)}`,
+      destinatario: "Destinatario de prueba",
+      telefonoDest: "00000000",
+      producto: "Producto",
+      estatusId: fks.estatusId,
+      tiendaId: fks.tiendaId,
+      zonaId: fks.zonaId,
+      provinciaId: fks.provinciaId,
+      cantonId: fks.cantonId,
+      mensajeroAsignadoId: mensajero.id,
+    },
+    select: { id: true },
+  });
+  const ids: string[] = [];
+  for (let i = 0; i < GESTIONES_SEMBRADAS; i += 1) {
+    const g = await tx.gestionOrden.create({
+      data: { ordenId: orden.id, mensajeroId: mensajero.id, resultado: "entregado" },
+      select: { id: true },
+    });
+    ids.push(g.id);
+  }
+  expect(
+    await tx.gestionOrden.count({ where: { id: { in: ids }, confirmadaFisicaAt: null, cierreId: null } }),
+    "SLT-184: las gestiones sembradas no estan en la base",
+  ).toBe(GESTIONES_SEMBRADAS);
+  return ids;
+}
+
 describeSiHayBase("Feature 238 · la columna, tal como quedo en Postgres (R20)", () => {
   let prisma: PrismaClient;
 
@@ -284,20 +327,28 @@ describeSiHayBase("Feature 238 · la columna, tal como quedo en Postgres (R20)",
   // comparar nada), y ademas el caso siguiente PLANTA un backfill de mentira y comprueba que los
   // dos contadores lo cazan.
   it("R20/R17: ninguna marca es anterior a la migracion ni vive fuera de un cierre aprobado", async () => {
-    const universo = await contarGestiones(prisma);
+    // SLT-184: la auditoria corre en una tx revertida con sus gestiones SEMBRADAS (la base de CI
+    // no trae ninguna). Mide lo mismo: toda la tabla, sembradas incluidas.
+    const { universo, migracion, auditoria } = await enTransaccionRevertida(prisma, async (tx) => {
+      await serializarEscriturasReales(tx);
+      await sembrarGestiones(tx);
+      return {
+        universo: await contarGestiones(tx),
+        migracion: (await tx.$queryRawUnsafe(
+          `SELECT "finished_at" FROM "_prisma_migrations" WHERE "migration_name" = $1`,
+          MIGRACION,
+        )) as Array<{ finished_at: Date | null }>,
+        auditoria: await auditarMarcas(tx),
+      };
+    });
     // Anti-vacuidad 1: hay filas que mirar.
     expect(Number(universo.total), "esta base no tiene gestiones que comprobar").toBeGreaterThan(0);
 
     // Anti-vacuidad 2: la migracion figura como aplicada y con instante. Es el punto de
     // referencia de (1); sin el, el `JOIN` no casaria y el contador daria cero sin comparar nada.
-    const migracion = (await prisma.$queryRawUnsafe(
-      `SELECT "finished_at" FROM "_prisma_migrations" WHERE "migration_name" = $1`,
-      MIGRACION,
-    )) as Array<{ finished_at: Date | null }>;
     expect(migracion, `la migracion ${MIGRACION} no figura aplicada en esta base`).toHaveLength(1);
     expect(migracion[0].finished_at).not.toBeNull();
 
-    const auditoria = await auditarMarcas(prisma);
     expect(
       auditoria.anterioresALaMigracion,
       "hay marcas con fecha ANTERIOR a que la columna existiera: eso solo lo produce un backfill",
@@ -321,18 +372,23 @@ describeSiHayBase("Feature 238 · la columna, tal como quedo en Postgres (R20)",
       // PRIMERA sentencia: serializa contra los otros archivos que escriben en las tablas reales
       // de `public` (ver `_postgres-real.ts`).
       await serializarEscriturasReales(tx);
+      // SLT-184 (R1122): el backfill se planta en gestiones SEMBRADAS, no en «la primera» y «la
+      // ultima» de la base.
+      const [primera, ultima] = await sembrarGestiones(tx);
       const antes = await auditarMarcas(tx);
 
       // (1) Backfill historico: una marca con fecha ANTERIOR a la migracion. Es exactamente la
       // forma que tendria «copiar `resuelto_at` de los cierres ya aprobados».
       await tx.$executeRawUnsafe(
         `UPDATE "gestion_orden" SET "confirmada_fisica_at" = TIMESTAMP '2026-01-01 00:00:00'
-          WHERE "id" = (SELECT "id" FROM "gestion_orden" ORDER BY "created_at" LIMIT 1)`,
+          WHERE "id" = $1`,
+        primera,
       );
       // (2) Marca fuera de la transaccion de aprobacion: una gestion sin cierre, marcada.
       await tx.$executeRawUnsafe(
         `UPDATE "gestion_orden" SET "confirmada_fisica_at" = now(), "cierre_id" = NULL
-          WHERE "id" = (SELECT "id" FROM "gestion_orden" ORDER BY "created_at" DESC LIMIT 1)`,
+          WHERE "id" = $1`,
+        ultima,
       );
 
       return { antes, conBackfill: await auditarMarcas(tx) };

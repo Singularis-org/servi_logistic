@@ -10,6 +10,7 @@ import {
   enTransaccionRevertida,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 
 /**
  * FICHA 374 (R35) — **EL HISTORICO NO SE TOCA: LAS ORDENES DE UN NODO RETIRADO SIGUEN AHI Y SIGUEN
@@ -41,25 +42,11 @@ interface Sembrado {
 
 describeSiHayBase("374/R35 — el historico de un nodo retirado (Postgres real)", () => {
   let prisma: PrismaClient;
-  let estatusId: string;
-  let tiendaId: string;
-  let zonaId: string;
 
-  beforeAll(async () => {
+  // SLT-184 (R1122): las FK de la orden historica (estatus, tienda, zona) ya no salen de «la
+  // primera orden» de la base: se SIEMBRAN en la tx de cada caso con `crearFksDeOrden`.
+  beforeAll(() => {
     prisma = crearPrismaDeTest();
-    const fila = await prisma.orden.findFirst({
-      select: { estatusId: true, tiendaId: true, zonaId: true },
-    });
-    if (!fila) {
-      throw new Error(
-        "hay DATABASE_URL pero `orden` esta vacia: sin una fila de la que tomar las FK " +
-          "(estatus, tienda, zona) no se puede sembrar la orden historica, que ES este test. " +
-          "Este archivo NO debe pasar en verde asi.",
-      );
-    }
-    estatusId = fila.estatusId;
-    tiendaId = fila.tiendaId;
-    zonaId = fila.zonaId;
   });
 
   async function conCorpus<T>(
@@ -72,6 +59,10 @@ describeSiHayBase("374/R35 — el historico de un nodo retirado (Postgres real)"
   ): Promise<T> {
     return enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      const { estatusId, tiendaId, zonaId } = await crearFksDeOrden(tx);
+      // SLT-184 (R1124): control positivo de lo sembrado.
+      expect(await tx.usuario.count({ where: { id: tiendaId } }), "SLT-184: la tienda sembrada no esta en la base").toBe(1);
+      expect(await tx.zona.count({ where: { id: zonaId } }), "SLT-184: la zona sembrada no esta en la base").toBe(1);
 
       const provincia = (
         await tx.provincia.create({ data: { nombre: `Prov hist ${SUFIJO}` }, select: { id: true } })

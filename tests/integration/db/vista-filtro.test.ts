@@ -41,21 +41,28 @@ const OTRO_PAYLOAD: VistaFiltroPayload = {
   seleccion: { zona: ["z-9"] },
 };
 
-/** Clona la identidad de un usuario existente para crear una persona propia del test. */
-async function crearUsuario(tx: TxDeTest, modeloUsuarioId: string, etiqueta: string): Promise<string> {
+/**
+ * Crea una persona propia del test. SLT-183: el tipo de identificacion y el rol salen del CATALOGO
+ * por su clave; antes se clonaban de «el primer usuario» de la base, y la recien migrada no tiene
+ * ninguno.
+ */
+async function crearUsuario(tx: TxDeTest, etiqueta: string): Promise<string> {
   const id = randomUUID();
   await tx.$executeRawUnsafe(
     `INSERT INTO "usuario"
        ("id","nombre","email","telefono","password_hash","cedula","tipo_identificacion_id","rol_id","updated_at")
-     SELECT $1, $2, $3, '00000000', 'x', $4,
-            u."tipo_identificacion_id", u."rol_id", CURRENT_TIMESTAMP
-       FROM "usuario" u WHERE u."id" = $5`,
+     SELECT $1, $2, $3, '00000000', 'x', $4, t."id", r."id", CURRENT_TIMESTAMP
+       FROM "tipo_identificacion" t, "rol" r
+      WHERE t."value" = 'cedula' AND r."value" = 'maestro'`,
     id,
     `453 ${etiqueta}`,
     `453-${id}@test.local`,
     `453-${id.slice(0, 12)}`,
-    modeloUsuarioId,
   );
+  // Control positivo (R1104): sin el catalogo el INSERT ... SELECT no inserta nada, y lo dice.
+  if ((await tx.usuario.count({ where: { id } })) !== 1) {
+    throw new Error(`SLT-183: el usuario sembrado «${etiqueta}» no esta en la base (¿falta «cedula» o «maestro»?)`);
+  }
   return id;
 }
 
@@ -83,15 +90,8 @@ function repoDe(tx: TxDeTest): VistaFiltroRepository {
 
 describeSiHayBase("453/T1.5 · el repositorio de vistas contra Postgres real", () => {
   let prisma: PrismaClient;
-  let modeloUsuarioId: string;
-
-  beforeAll(async () => {
+  beforeAll(() => {
     prisma = crearPrismaDeTest();
-    const modelo = await prisma.usuario.findFirst({ select: { id: true } });
-    // ⚠️ FALLA RUIDOSAMENTE si la base no tiene ni un usuario: un `if (!modelo) return` reportaria
-    // `passed` sin haber comprobado nada. Este repo ya midio lo que cuesta ese atajo.
-    expect(modelo, "la tabla `usuario` esta vacia: estos casos no se pueden medir").not.toBeNull();
-    modeloUsuarioId = modelo!.id;
   });
 
   afterAll(async () => {
@@ -101,8 +101,8 @@ describeSiHayBase("453/T1.5 · el repositorio de vistas contra Postgres real", (
   it("⭑ R2: `listar` devuelve SOLO las del dueño, y ordenadas por nombre", async () => {
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const ana = await crearUsuario(tx, modeloUsuarioId, "ana");
-      const beto = await crearUsuario(tx, modeloUsuarioId, "beto");
+      const ana = await crearUsuario(tx, "ana");
+      const beto = await crearUsuario(tx, "beto");
       const repo = repoDe(tx);
       // Sembradas a proposito EN DESORDEN: si el `orderBy` desapareciera, saldrian asi.
       for (const nombre of ["Zarcero", "Alajuela", "Moravia"]) {
@@ -127,8 +127,8 @@ describeSiHayBase("453/T1.5 · el repositorio de vistas contra Postgres real", (
   it("⭑ `contar` acota por dueño Y por superficie (es lo que alimenta el tope)", async () => {
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const ana = await crearUsuario(tx, modeloUsuarioId, "ana");
-      const beto = await crearUsuario(tx, modeloUsuarioId, "beto");
+      const ana = await crearUsuario(tx, "ana");
+      const beto = await crearUsuario(tx, "beto");
       const repo = repoDe(tx);
       await repo.crear(ana, "ordenes", "Una", PAYLOAD, VISTA_FILTRO_VERSION);
       await repo.crear(ana, "ordenes", "Dos", PAYLOAD, VISTA_FILTRO_VERSION);
@@ -147,8 +147,8 @@ describeSiHayBase("453/T1.5 · el repositorio de vistas contra Postgres real", (
   it("⭑ R11: el nombre duplicado lo revienta EL INDICE, no una comprobacion de codigo", async () => {
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const ana = await crearUsuario(tx, modeloUsuarioId, "ana");
-      const beto = await crearUsuario(tx, modeloUsuarioId, "beto");
+      const ana = await crearUsuario(tx, "ana");
+      const beto = await crearUsuario(tx, "beto");
       const repo = repoDe(tx);
       const primera = await repo.crear(ana, "ordenes", "San Jose arriba", PAYLOAD, 1);
       // El repositorio NO pregunta antes: manda el `INSERT` y traduce el `P2002`. Es la unica forma
@@ -173,8 +173,8 @@ describeSiHayBase("453/T1.5 · el repositorio de vistas contra Postgres real", (
   it("⭑ R2: `renombrar` con el id de OTRA persona no toca nada y no encuentra nada", async () => {
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const ana = await crearUsuario(tx, modeloUsuarioId, "ana");
-      const beto = await crearUsuario(tx, modeloUsuarioId, "beto");
+      const ana = await crearUsuario(tx, "ana");
+      const beto = await crearUsuario(tx, "beto");
       const repo = repoDe(tx);
       const creada = await repo.crear(ana, "ordenes", "San Jose arriba", PAYLOAD, 1);
       const id = creada.estado === "creada" ? creada.fila.id : "";
@@ -197,8 +197,8 @@ describeSiHayBase("453/T1.5 · el repositorio de vistas contra Postgres real", (
   it("⭑ R2/R15: `actualizarFiltro` con el id de OTRA persona no toca el documento", async () => {
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const ana = await crearUsuario(tx, modeloUsuarioId, "ana");
-      const beto = await crearUsuario(tx, modeloUsuarioId, "beto");
+      const ana = await crearUsuario(tx, "ana");
+      const beto = await crearUsuario(tx, "beto");
       const repo = repoDe(tx);
       const creada = await repo.crear(ana, "ordenes", "San Jose arriba", PAYLOAD, 1);
       const id = creada.estado === "creada" ? creada.fila.id : "";
@@ -221,8 +221,8 @@ describeSiHayBase("453/T1.5 · el repositorio de vistas contra Postgres real", (
   it("⭑ R2: `eliminar` con el id de OTRA persona borra CERO filas", async () => {
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const ana = await crearUsuario(tx, modeloUsuarioId, "ana");
-      const beto = await crearUsuario(tx, modeloUsuarioId, "beto");
+      const ana = await crearUsuario(tx, "ana");
+      const beto = await crearUsuario(tx, "beto");
       const repo = repoDe(tx);
       const creada = await repo.crear(ana, "ordenes", "San Jose arriba", PAYLOAD, 1);
       const id = creada.estado === "creada" ? creada.fila.id : "";
@@ -249,7 +249,7 @@ describeSiHayBase("453/T1.5 · el repositorio de vistas contra Postgres real", (
   it("⭑ R14/R11: renombrar a un nombre que ya tiene otra vista suya se rechaza", async () => {
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const ana = await crearUsuario(tx, modeloUsuarioId, "ana");
+      const ana = await crearUsuario(tx, "ana");
       const repo = repoDe(tx);
       await repo.crear(ana, "ordenes", "San Jose arriba", PAYLOAD, 1);
       const otra = await repo.crear(ana, "ordenes", "San Jose abajo", OTRO_PAYLOAD, 1);
@@ -270,7 +270,7 @@ describeSiHayBase("453/T1.5 · el repositorio de vistas contra Postgres real", (
   it("⭑ un id que NO existe responde igual que uno ajeno (no se filtra si existe)", async () => {
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const ana = await crearUsuario(tx, modeloUsuarioId, "ana");
+      const ana = await crearUsuario(tx, "ana");
       const repo = repoDe(tx);
       const inexistente = randomUUID();
       return {
