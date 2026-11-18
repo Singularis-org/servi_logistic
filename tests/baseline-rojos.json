@@ -257,20 +257,8 @@
       "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/correccion-dia-reparto-efectos.int.test.ts:89 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' (y las semillas de. La retira SLT-179 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
-    "tests/integration/db/correccion-dia-reparto-historial.int.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/correccion-dia-reparto-historial.int.test.ts:67 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' (y las semillas de. La retira SLT-179 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
     "tests/integration/db/correccion-dia-reparto.int.test.ts": {
       "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/correccion-dia-reparto.int.test.ts:69 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' (y las semillas de. La retira SLT-179 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/correccion-fecha-reprogramacion.int.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/correccion-fecha-reprogramacion.int.test.ts:111 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar el escenario. Corre 'pnpm run db:seed' (y la. La retira SLT-179 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/correccion-resultado-gestion.int.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/correccion-resultado-gestion.int.test.ts:74 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar el corpus. Corre 'pnpm run db:seed' (y las s. La retira SLT-179 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/corregir-conciliacion.int.test.ts": {
@@ -285,24 +273,12 @@
       "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/corregir-datos-cliente.repo.test.ts:90 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' (y las semillas de. La retira SLT-179 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
-    "tests/integration/db/corregir-ubicacion-geocode.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/corregir-ubicacion-geocode.test.ts:116 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' (y las semillas de. La retira SLT-179 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
     "tests/integration/db/corte-diario-segundo-cierre-sql-real.test.ts": {
       "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/corte-diario-segundo-cierre-sql-real.test.ts:102 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar el corpus. Corre 'pnpm run db:seed' (y las s. La retira SLT-178 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/costo-y-zona-api-415.test.ts": {
       "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/costo-y-zona-api-415.test.ts:135 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' antes de esta suit. La retira SLT-181 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/deshacer-asignacion-zona-satelite.int.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/deshacer-asignacion-zona-satelite.int.test.ts:92 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' (y 'pnpm exec tsx. La retira SLT-179 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/deshacer-gestion-conserva-reserva.int.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/deshacer-gestion-conserva-reserva.int.test.ts:83 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' (y las semillas de. La retira SLT-179 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/efecto-movimiento-predice.test.ts": {
@@ -351,10 +327,6 @@
     },
     "tests/integration/db/geografia-renombrado.test.ts": {
       "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/geografia-renombrado.test.ts:80 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero 'usuario' esta vacia: sin actor no se puede comprobar el congelado de nombre y rol de la fila del reg. La retira SLT-183 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/gestion-desde-ayuda-dia-reserva.int.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/gestion-desde-ayuda-dia-reserva.int.test.ts:93 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' antes de esta suit. La retira SLT-179 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/gestiones-detalle-api-405.test.ts": {
@@ -437,10 +409,6 @@
       "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/notificacion-evento-traspaso-migration.test.ts:475 al leer una fila de negocio que la base migrada no trae: PrismaClientKnownRequestError. La retira SLT-183 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
-    "tests/integration/db/novedades-sin-gestionar-aviso-dedupe.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/novedades-sin-gestionar-aviso-dedupe.test.ts:111 al leer una fila de negocio que la base migrada no trae: AssertionError: la tabla 'orden' está vacía: el caso no se puede medir: expected null not to be null. La retira SLT-179 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
     "tests/integration/db/orden-eliminada-actor-admin.test.ts": {
       "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/orden-eliminada-actor-admin.test.ts:64 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' (y 'pnpm exec tsx. La retira SLT-180 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
@@ -493,16 +461,8 @@
       "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/rechazo-tienda-cobro.int.test.ts:62 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' antes de esta suit. La retira SLT-181 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
-    "tests/integration/db/recoger-lote-dia-reserva.int.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/recoger-lote-dia-reserva.int.test.ts:88 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar el corpus. Corre 'pnpm run db:seed' (y las s. La retira SLT-179 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
     "tests/integration/db/reparto-manana-aviso-dedupe.test.ts": {
       "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/reparto-manana-aviso-dedupe.test.ts:59 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero hacen falta al menos DOS usuarios en la base. Corre 'pnpm run db:seed' antes de esta suite.. La retira SLT-183 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/reparto-manana-repository.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/reparto-manana-repository.test.ts:147 al leer una fila de negocio que la base migrada no trae: AssertionError: la tabla 'orden' está vacía: el caso no se puede medir: expected null not to be null. La retira SLT-179 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/satelite-bodega-alcance-real.test.ts": {
