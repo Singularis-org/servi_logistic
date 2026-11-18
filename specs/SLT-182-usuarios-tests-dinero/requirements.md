@@ -147,31 +147,31 @@ al leader; no se parte sin su OK.
 
 ## Tasks
 
-- [ ] **T1 — Punto de partida** (R1080, R1087). Worktree al día con `origin/dev`; `.env` copiado al
+- [x] **T1 — Punto de partida** (R1080, R1087). Worktree al día con `origin/dev`; `.env` copiado al
   worktree (sin leerlo); base desechable de `## Cómo se verifica`. Correr los 15 archivos tal cual y
   anotar p/f/s en `progress/impl_SLT-182.md`. Si alguno ya pasa, o ya no está en el baseline, se anota y
   sale del alcance. *Hecho:* tabla «antes» con 15 filas.
-- [ ] **T2 — Conciliación y cierre de bodega** (R1080-R1085, R1083): `cierre-bodega-conciliacion.int`,
+- [x] **T2 — Conciliación y cierre de bodega** (R1080-R1085, R1083): `cierre-bodega-conciliacion.int`,
   `cierre-bodega-resumen-pendientes`, `consolidacion-concurrente.int`, `corregir-conciliacion.int`,
   `marca-conciliacion.int`. Cambiar la lectura del usuario por `crearUsuarioDePrueba` dentro de la tx
   (o siembra confirmada con limpieza en el concurrente); control positivo. *Hecho:* los 5 verdes en la
   base de R1080, 0 saltados.
-- [ ] **T3 [P con T2] — Gasto fijo y wallet** (R1080-R1085): `gasto-fijo-cobro-aprobacion`,
+- [x] **T3 [P con T2] — Gasto fijo y wallet** (R1080-R1085): `gasto-fijo-cobro-aprobacion`,
   `gasto-fijo-cobro-idempotencia`, `gasto-fijo-cobro-migration`, `wallet-fecha-elegida`,
   `wallet-tienda-cobro`, `mi-wallet-cierres-alcance`. *Hecho:* ídem, 6 archivos.
-- [ ] **T4 [P con T2] — Analítica y ranking** (R1080-R1085): `actions/analitica-financiera-action`,
+- [x] **T4 [P con T2] — Analítica y ranking** (R1080-R1085): `actions/analitica-financiera-action`,
   `repositories/financiera-cubo-temporal.integration`, `premio-ranking-devengo-migration`,
   `ranking-snapshot-migration`. *Hecho:* ídem, 4 archivos.
-- [ ] **T5 — Base con datos ajenos** (R1081, R1083, R1089). Depende de T2-T4. Repetir los 15 con la
+- [x] **T5 — Base con datos ajenos** (R1081, R1083, R1089). Depende de T2-T4. Repetir los 15 con la
   empresa ajena confirmada; si el código hace una lectura global, sembrar lo que lee en la empresa del
   caso y correr como `servi_app` (patrón `comoApp`). *Hecho:* 15/15 iguales que en R1080; 0 filas
   propias tras cada archivo con siembra confirmada.
-- [ ] **T6 — Mutaciones** (R1086). Depende de T5. Una por archivo. *Hecho:* tabla mutación → caso
+- [x] **T6 — Mutaciones** (R1086). Depende de T5. Una por archivo. *Hecho:* tabla mutación → caso
   rojo → restaurado en `progress/impl_SLT-182.md`; árbol limpio de mutaciones.
-- [ ] **T7 — Baseline** (R1087, R1088). Borrar las entradas de los verdes; reescribir el motivo de los
+- [x] **T7 — Baseline** (R1087, R1088). Borrar las entradas de los verdes; reescribir el motivo de los
   que sigan rojos por otra causa (o parar, R1088). *Hecho:* `git diff tests/baseline-rojos.json` solo
   quita claves del alcance o reescribe sus motivos.
-- [ ] **T8 — Cierre** (R1089-R1092). `pnpm run typecheck`, `pnpm run lint`, `./init.sh` en verde;
+- [x] **T8 — Cierre** (R1089-R1092; CI del PR pendiente). `pnpm run typecheck`, `pnpm run lint`, `./init.sh` en verde;
   `git diff --name-only origin/dev -- lib/ app/ components/ hooks/ db/ scripts/ .github/ package.json`
   vacío; `node scripts/tamano-pr.mjs` bajo el tope. En `progress/impl_SLT-182.md`: mapa R → test, salidas
   y, tras el PR, el run de CI con «sin rojos nuevos» y 0 «por limpiar». *Hecho:* todo lo anterior escrito.
