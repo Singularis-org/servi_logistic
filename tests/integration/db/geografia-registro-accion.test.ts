@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
 import { GeoRepository } from "@/lib/repositories/GeoRepository";
@@ -13,7 +13,7 @@ import {
   enTransaccionRevertida,
   serializarEscriturasReales,
 } from "./_postgres-real";
-import { idDeRol, insertarUsuario } from "./_fixtures/superadmin-32";
+import { idDeRol, insertarUsuario, liberarHuecoDeSuperadmin, tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
 
 /**
  * FICHA 374 (R51–R55) — **EL RASTRO DE RETIRAR Y DEVOLVER UN NODO DEL CATALOGO GEOGRAFICO.**
@@ -71,23 +71,39 @@ describeSiHayBase("374 — el registro de acciones del catalogo geografico (Post
   let actorUsuarioId: string;
   let actorNombreEsperado: string;
 
+  // SLT-183: el actor es el SUPERADMIN (la geografia la gestiona la plataforma, `GESTION_ROLES`),
+  // SEMBRADO en la tx revertida de cada caso. Antes se leia «el primer usuario» de la base, y la
+  // recien migrada no tiene ninguno. El lock de superadmin (SL-32) serializa a los archivos que
+  // ocupan el unico hueco; va ANTES que el de la 227 (`serializarEscriturasReales`).
+  let soltarSuperadmin: () => Promise<void> = async () => {};
+
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const usuario = await prisma.usuario.findFirst({
+    soltarSuperadmin = await tomarLockDeSuperadmin();
+  });
+
+  afterAll(async () => {
+    await soltarSuperadmin();
+    await prisma?.$disconnect();
+  });
+
+  /** Siembra el superadmin del caso en `tx` y deja su id (y su nombre) para las aserciones. */
+  async function sembrarActor(tx: Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0]): Promise<void> {
+    const rolSuperadmin = await idDeRol(tx, "superadmin");
+    await liberarHuecoDeSuperadmin(tx, rolSuperadmin);
+    const actor = await insertarUsuario(tx, rolSuperadmin, null);
+    if (!actor.desenlace.ok) throw new Error(`SLT-183: no se sembro el superadmin: ${JSON.stringify(actor.desenlace)}`);
+    // Control positivo (R1104): la siembra llego a la base. LANZA, no `return`.
+    const sembrado = await tx.usuario.findUnique({
+      where: { id: actor.id },
       select: { id: true, nombre: true, primerApellido: true },
     });
-    if (!usuario) {
-      throw new Error(
-        "hay DATABASE_URL pero `usuario` esta vacia: sin actor no se puede comprobar el congelado " +
-          "de nombre y rol, que es la mitad de R54. Esta suite necesita crear su usuario en el " +
-          "test (SL-31).",
-      );
-    }
-    actorUsuarioId = usuario.id;
-    actorNombreEsperado = [usuario.nombre, usuario.primerApellido]
+    if (sembrado === null) throw new Error("SLT-183: el superadmin sembrado (actor) no esta en la base");
+    actorUsuarioId = sembrado.id;
+    actorNombreEsperado = [sembrado.nombre, sembrado.primerApellido]
       .filter((p) => p != null && p !== "")
       .join(" ");
-  });
+  }
 
   async function conCorpus<T>(
     fn: (ctx: {
@@ -100,6 +116,7 @@ describeSiHayBase("374 — el registro de acciones del catalogo geografico (Post
   ): Promise<T> {
     return enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarActor(tx);
 
       const provincia = (
         await tx.provincia.create({
