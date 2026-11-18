@@ -105,6 +105,11 @@ Script: `mutar.sh` del scratchpad.
 | M8 | `LiquidacionService.imputablesDe` siempre `[]` | los 13 del escenario 459 (114 casos) | «escenario 459: el paso «repartoMensajero» respondio {"status":"sin_saldo"}» (R1199) |
 | M9 | `WalletService` composición con `filas.slice(1)` | libro-caja-filtro-a-quien | R54/R59 «tiendaA: expected { ingresos … } to deeply equal …» |
 
+| B1 | `LibroCajaAutoriaService.ts:135` `por:` del cierre → el nombre que empieza por «Maestro» (mutación de la review) | libro-caja-a-quien | R57 `expected { nombre: null, automatico: { …(2) } } to deeply equal …` (antes del arreglo B1: 7/7 en verde) |
+| F461 | `LiquidacionService` reverso al mensajero con `fechaMovimiento` + 1 día | liquidacion-fechas-cr-461 | «escenario entero…»: `expected [ '2026-11-18T06:00:00.000Z', …(1) ] to deeply equal [ '2026-11-18T06:00:00.000Z' ]` |
+| WCA | `WalletComprobanteService.ts:155` `no_anulable` no responde `no_admite` | wallet-comprobante-alcance (7 casos) | el escenario del archivo cae con `AppErrorCode inesperado INTERNAL` (cae, pero por error, no por aserción) |
+| WCA2 | `WalletComprobanteService.ts:157` `en_su_documento` → `no_admite` | wallet-comprobante-alcance | D6 `expected { status: 'no_admite', … } to deeply equal …` |
+
 (M6 —`if (delta.isZero() && false)`— cayó por el `CHECK` de la tabla, no por una aserción; se
 descartó y se usó M6b.)
 
@@ -147,3 +152,18 @@ descartó y se usó M6b.)
 - `node scripts/tamano-pr.mjs`: «13/40 archivos, 0/1000 lineas de produccion, 330/3000 de tests».
 
 Veredicto: 21 de 22 archivos recuperados y fuera del baseline, sin tocar producción; 1 se queda por R1203 con pregunta a Carlos.
+
+## Vuelta 2 — review RECHAZADA (`progress/review_SLT-195.md`)
+- **B1:** el escenario 459 crea un segundo usuario de acceso total, `Aprobador` (rol `maestro`), que
+  aprueba el cierre del día; el `maestro` sigue registrando y leyendo el resto. `Escenario459` expone
+  `aprobador`. En `libro-caja-a-quien`, `nombres.adminSat` → `nombres.aprobador`, más un control
+  `aprobador != maestro`. En `caja-caracterizacion-459` (R1198), `resueltoPor` = aprobador y
+  `aprobadorId != maestroId`. La mutación B1 de la review pasa a ROJO (tabla de arriba).
+- **m1:** mutaciones dirigidas B1, F461, WCA y WCA2 (tabla de arriba); las cuatro muerden. Tras cada
+  una, `git diff --name-only -- lib` vacío.
+- **m3:** `libro-caja-filtro-a-quien` comprueba que `categoriasConModeloNuevo` es un array antes de quitarlo.
+- Los 22 archivos de nuevo en la desechable: 155 casos, 154 pasan, 1 falla (el de R1203), 0 saltados.
+- **`wallet-458-migration` (petición del leader, review de SLT-187):** corrido en `servi_slt195_desechable`
+  con este cambio, pasa 7/8; los dos casos (c), que usan `sembrarEscenario459`, pasan. Solo cae (a)
+  («los catálogos son EXACTAMENTE los seeds…»), por el orden de etiquetas del enum, que es causa de SLT-187.
+  La entrada se queda en el baseline con ese motivo, re-medido.

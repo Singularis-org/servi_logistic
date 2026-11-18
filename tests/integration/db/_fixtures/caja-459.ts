@@ -441,6 +441,8 @@ export type Servicios459 = ReturnType<typeof montarServicios459>;
 /** Lo que el escenario deja sembrado y que las lecturas necesitan para acotar. */
 export interface Escenario459 {
   maestro: Actor;
+  /** SLT-195 (review B1): quien aprobo el cierre del dia; acceso total y distinto del `maestro`. */
+  aprobador: Actor;
   tiendaA: string;
   tiendaB: string;
   mensajeroId: string;
@@ -535,6 +537,11 @@ export async function sembrarEscenario459(
   const tiendaA = await crearUsuario("TiendaA", cat.rolId.adminTienda, null);
   const tiendaB = await crearUsuario("TiendaB", cat.rolId.adminTienda, null);
   const maestro: Actor = { usuarioId: maestroId, rol: "maestro" };
+  // SLT-195 (R1198, review B1): quien APRUEBA el cierre del dia es otra persona con acceso total,
+  // DISTINTA del `maestro` que registra y lee el resto. Asi la autoria «aprobacion_cierre» del libro
+  // (libro-caja-a-quien R57) sigue distinguiendo al aprobador del lector.
+  const aprobadorId = await crearUsuario("Aprobador", cat.rolId.maestro, null);
+  const aprobador: Actor = { usuarioId: aprobadorId, rol: "maestro" };
   const actorMensajero: Actor = { usuarioId: mensajeroId, rol: "mensajero" };
 
   // Tarifa de NIVEL 2 (la tienda entera, sin zona) para cada tienda. Las ordenes van a la zona
@@ -680,12 +687,12 @@ export async function sembrarEscenario459(
   }
   const cierreId = solicitud.cierreId;
   pasos.solicitarCierre = solicitud.status;
-  // SLT-195 (R1198): el cierre es `bodega_central` y lo aprueba el `maestro` (acceso total). Aprobar
+  // SLT-195 (R1198): el cierre es `bodega_central` y lo aprueba el `aprobador` (acceso total). Aprobar
   // un cierre de la central asienta en la misma tx (SLT-73 R3), con las dependencias del `adminRepo`
   // de `montarServicios459`: ya no se llama aparte a `asentarCierreDia`.
   const aprobacion = await s.cierresAdmin.aprobarCierre(
     cierreId,
-    maestro,
+    aprobador,
     [{ gestionId: g5, monto: "6500.00" }],
     [{ origen: "gestion" as const, gestionId: g4, numGuia: o4.numGuia }],
   );
@@ -930,6 +937,7 @@ export async function sembrarEscenario459(
 
   return {
     maestro,
+    aprobador,
     tiendaA,
     tiendaB,
     mensajeroId,

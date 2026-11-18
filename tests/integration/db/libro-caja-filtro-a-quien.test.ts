@@ -488,6 +488,8 @@ describeSiHayBase("458-E/TE.2 — filtro «A quién» del libro de la caja (Post
       // ROTULO de cada fila (no es dinero, no sale de las filas). Se compara solo el dinero; el rotulo
       // lo vigilan las pruebas de D39. Lo tapaba el escenario 459, que caia antes.
       const dineroDeLaComposicion = { ...(l.composicion as Record<string, unknown>) };
+      // Review m3: la clave existe (el rotulo sigue llegando) antes de quitarla.
+      expect(Array.isArray(dineroDeLaComposicion.categoriasConModeloNuevo), `${k}: sin categoriasConModeloNuevo`).toBe(true);
       delete dineroDeLaComposicion.categoriasConModeloNuevo;
       expect(dineroDeLaComposicion, k).toEqual(l.composicionDeLasFilas);
       expect((l.resumen as { periodoFiltrado: boolean }).periodoFiltrado, k).toBe(true);

@@ -190,7 +190,7 @@
       "desde": "2026-10-22"
     },
     "tests/integration/db/wallet-458-migration.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): AssertionError: expected [ 'egreso_reverso_fulfillment', …(1) ] to deeply equal [ …(2) ]; el orden de etiquetas de 'wallet_movimiento_categoria' ya no termina en los dos valores de la 458 (deep equal, :101): migraciones posteriores anadieron valores. La retira SLT-187.",
+      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): AssertionError: expected [ 'egreso_reverso_fulfillment', …(1) ] to deeply equal [ …(2) ]; el orden de etiquetas de 'wallet_movimiento_categoria' ya no termina en los dos valores de la 458 (deep equal, :101): migraciones posteriores anadieron valores. La retira SLT-187. Re-medido el 2026-11-18 en base desechable con el escenario 459 de SLT-195: los dos casos (c) pasan (el sin_saldo de caja-459 ya no ocurre); 7/8, solo cae (a) por el orden de etiquetas del enum.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/wallet-461-idempotencia-clave.test.ts": {

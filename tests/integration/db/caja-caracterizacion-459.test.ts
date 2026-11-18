@@ -46,6 +46,7 @@ interface Fotografia {
   /** SLT-195 (R1198): el cierre del dia del escenario, y quien deberia haberlo aprobado. */
   cierreDelDia: { destinoTipo: string; resueltoPor: string | null; pagoIndependienteEfectivo: boolean };
   maestroId: string;
+  aprobadorId: string;
   antes: LecturaCaja459;
   despues: LecturaCaja459;
   filas: Awaited<ReturnType<typeof filasDelEscenario>>;
@@ -120,6 +121,7 @@ describeSiHayBase("⭑ 459/FASE 0 — la fotografia de lo que no puede cambiar (
           select: { destinoTipo: true, resueltoPor: true, pagoIndependienteEfectivo: true },
         }),
         maestroId: esc.maestro.usuarioId,
+        aprobadorId: esc.aprobador.usuarioId,
       };
       // FICHA 458-B — SOLO DESPUES de la foto: anular el cobro por devolución a origen aprobado del escenario.
       const cobro = await tx.rechazoTiendaCobro.findFirstOrThrow({
@@ -170,10 +172,12 @@ describeSiHayBase("⭑ 459/FASE 0 — la fotografia de lo que no puede cambiar (
     });
   });
 
-  it("SLT-195 R1198: el cierre del dia es de la CENTRAL, nuevo, y lo aprobo el maestro", () => {
+  it("SLT-195 R1198: el cierre del dia es de la CENTRAL, nuevo, y lo aprobo el aprobador (acceso total)", () => {
+    // Review B1: el aprobador NO es el maestro que registra y lee el resto.
+    expect(foto().aprobadorId, "SLT-195 B1: aprobador y maestro son la misma persona").not.toBe(foto().maestroId);
     expect(foto().cierreDelDia).toEqual({
       destinoTipo: "bodega_central",
-      resueltoPor: foto().maestroId,
+      resueltoPor: foto().aprobadorId,
       pagoIndependienteEfectivo: true,
     });
   });
