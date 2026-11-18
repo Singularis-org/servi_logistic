@@ -66,7 +66,7 @@ PR: https://github.com/Singularis-org/servi_logistic/pull/224, contra `dev`, mon
   - T4.1, tras «Gana el último»: `461 passed (461)` (bloqueo 1).
   - T4.2–T4.3: 11 archivos, `128 passed (128)` y 0 skipped.
 - E2E: en CI (bloqueo 2).
-- `./init.sh`: sin correr.
+- `./init.sh` (2026-11-18, tras `e6800455`): corta en el paso 3 con «feature_list.json invalido: zona fullstack: … 8 in_progress, max 7». Es el cupo del board, no el código de la ficha; lo resuelve el leader. Sustituto local (memoria `gate-en-ci-no-local`): `pnpm run typecheck` 0 errores; eslint del diff (lib, app, tests, e2e) exit 0; `test:guardias` `4 failed | 5279 passed | 28 skipped`, los 4 de `dependencias-declaradas-presentes` (baseline); integración T4 completa (14 archivos y el extra que casa por nombre) `Test Files 15 passed (15)`, `Tests 178 passed (178)` en `servi_logistic_slt135`.
 - Bases: las dos se crearon con DROP/CREATE, `prisma migrate deploy` y `db:seed` con el árbol de dev #223:
   - `servi_logistic_slt135` (integración);
   - `servi_logistic_slt135_e2e` (E2E).
@@ -91,3 +91,16 @@ PR: https://github.com/Singularis-org/servi_logistic/pull/224, contra `dev`, mon
   negativas. En `lib/` y `app/` no queda ninguno.
 - En `factura-plataforma-cambio-plan` y `cobro-plataforma-plan`, la preparación de datos se hace con SQL a mano
   (motivo en `impl_SLT-135-T4.md`).
+
+## CI del PR #224 (run 44389082761, sobre `e6800455`)
+- Verdes: `estatico`, `vitest` 1/3, 2/3 y 3/3, `e2e (aislamiento)`, `e2e (dinero)`, `e2e (reparto)` y `e2e`. Los E2E
+  de T7.1 (R23 y `planes-borrador`) pasaron en CI.
+- `gate-completo` en rojo por un solo archivo fuera del baseline: `tests/integration/db/planes-previsualizar-cambio.test.ts`
+  (de SLT-144). «R21: leer no escribe» esperaba `ok` con F null. Con R13 es `validation_error`. Se ajustó la
+  aserción, porque sigue sin escribir. En local, en `servi_logistic_slt135`: `Tests 3 passed (3)`.
+- El archivo se añadió a `tasks.md > Archivos esperados`, que pasa a 51.
+- Nuevo push. Falta ver `gate-completo` en verde: el leader da el aviso.
+
+## Tamaño
+51 archivos: 17 de producción y 34 de tests. El humano aceptó ~48 (marcador `tamano-pr-aceptado`). Las 3 de más
+son tests que el cambio rompía; están anotados en `tasks.md`.

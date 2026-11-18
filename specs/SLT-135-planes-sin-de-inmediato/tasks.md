@@ -137,10 +137,10 @@ Depende de T5.
 
 ## T8 · Cierre
 
-- [ ] **T8.1** `./init.sh` verde. Mapa `R<n> → test` completo (R1–R23) en `progress/impl_SLT-135.md`. Nada en
+- [x] **T8.1** `./init.sh` verde. Mapa `R<n> → test` completo (R1–R23) en `progress/impl_SLT-135.md`. Nada en
   `lib/`, `app/` ni `tests/` menciona «De inmediato» salvo el correo de R21 y su test.
   *Hecho:* gate local verde, `gate-completo` en CI verde y el mapa sin huecos.
-- [ ] **T8.2** Tamaño. El PR pasa del tope de `gate.tamano_pr` (40 archivos): unos 48, 17 de producción y unos 31
+- [x] **T8.2** Tamaño. El PR pasa del tope de `gate.tamano_pr` (40 archivos): unos 48, 17 de producción y unos 31
   de tests. **Tamaño aceptado por el humano el 2026-11-18** («Un PR sobre el tope», P1 en
   `requirements.md > Decisiones cerradas`), como en SLT-144. El leader deja el marcador `tamano-pr-aceptado` en
   `progress/features/SLT-135.md`. Líneas estimadas: unas 250 de producción y entre 800 y 1 200 de tests, dentro
@@ -168,7 +168,7 @@ Producción (17):
 - `app/(app)/plataforma/planes/[planId]/_components/PlanDetalle.tsx`
 - `app/(app)/plataforma/empresas/[organizacionId]/_components/PlanEmpresa.tsx`
 
-Tests (33):
+Tests (34):
 - `tests/unit/services/planes-service.test.ts`
 - `tests/unit/services/planes-service-periodo.test.ts`
 - `tests/unit/services/planes-service-costeo.test.ts`
@@ -200,7 +200,8 @@ Tests (33):
 - `tests/integration/db/factura-plataforma-cambio-plan.test.ts`
 - `tests/integration/db/planes-asignacion.test.ts`
 - `tests/integration/db/cobro-plataforma-plan.test.ts`
+- `tests/integration/db/planes-previsualizar-cambio.test.ts` (añadido en T8.1: rojo de CI, la vista previa con F null ya es validation_error, R13)
 - `e2e/planes-costo-porcentual.spec.ts`
 - `e2e/planes-borrador.spec.ts` (añadido en T7.1: usaba el radio «A partir de» y el campo «Fecha»)
 
-Total: 50 (tamaño aceptado por el humano el 2026-11-18, `tamano-pr-aceptado`).
+Total: 51 (tamaño aceptado por el humano el 2026-11-18, `tamano-pr-aceptado`).
