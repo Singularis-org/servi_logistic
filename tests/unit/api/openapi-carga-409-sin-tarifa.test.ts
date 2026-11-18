@@ -66,9 +66,15 @@ describe("274/R31 — /carga declara el 409 nuevo, en los DOS artefactos", () =>
   it("el ejemplo del 409 es LA CONSTANTE `MSG_CARGA_SIN_TARIFA`, no un literal re-escrito", () => {
     const respuesta409 = cargaTs.responses["409"] as {
       description: string;
-      content: { "application/json": { example: { status: string; code: string; message: string } } };
+      content: {
+        "application/json": {
+          examples: { sinTarifa: { value: { status: string; code: string; message: string } } };
+        };
+      };
     };
-    const ejemplo = respuesta409.content["application/json"].example;
+    // SLT-201: el 409 tiene ahora DOS ejemplos (sin tarifa y nombre de lote repetido); el de
+    // tarifa sigue siendo la constante.
+    const ejemplo = respuesta409.content["application/json"].examples.sinTarifa.value;
     // Identidad con la constante: si la cadena del service cambia y el contrato no, esto cae.
     expect(ejemplo.message).toBe(MSG_CARGA_SIN_TARIFA);
     expect(ejemplo.code).toBe("CONFLICT");
