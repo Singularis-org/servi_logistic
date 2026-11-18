@@ -24,9 +24,10 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
+  type TxDeTest,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
@@ -84,15 +85,6 @@ describeSiHayBase("262/B13 — las ausencias y las consecuencias, contra Postgre
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const fks = await fksDeOrden(prisma);
-    if (fks === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar. Corre " +
-          "`pnpm run db:seed` (y las semillas de zonas) antes de esta suite.",
-      );
-    }
-    FKS = fks;
-    ACTOR = fks.tiendaId;
 
     const valores = ["mensajero_recogiendo_en_bodega", "en_reparto", "ayuda_tienda"];
     const estados = await prisma.orderStatus.findMany({
@@ -111,7 +103,7 @@ describeSiHayBase("262/B13 — las ausencias y las consecuencias, contra Postgre
     // ruidoso si faltan los catálogos: sin ellos el bloque R32 no puede sembrar nada, y un test
     // que no siembra nada mide cero y se pone verde.
     const [tipoIdentificacion, rolMensajero] = await Promise.all([
-      prisma.tipoIdentificacion.findFirst({ select: { id: true } }),
+      prisma.tipoIdentificacion.findUnique({ where: { value: "cedula" }, select: { id: true } }),
       prisma.rol.findFirst({ where: { value: "mensajero" }, select: { id: true } }),
     ]);
     if (tipoIdentificacion === null || rolMensajero === null) {
@@ -128,6 +120,22 @@ describeSiHayBase("262/B13 — las ausencias y las consecuencias, contra Postgre
     await prisma?.$disconnect();
   });
 
+  /**
+   * SLT-179 — la tienda y la zona del caso nacen en SU transaccion (nada de leer la primera orden de
+   * la base). Control positivo: si la siembra no llega, el caso cae nombrando la fila.
+   */
+  async function sembrarFks(tx: TxDeTest): Promise<void> {
+    const fks = await crearFksDeOrden(tx);
+    const [tiendas, zonas] = await Promise.all([
+      tx.usuario.count({ where: { id: fks.tiendaId } }),
+      tx.zona.count({ where: { id: fks.zonaId } }),
+    ]);
+    expect(tiendas, "SLT-179: la tienda sembrada no esta en la base").toBe(1);
+    expect(zonas, "SLT-179: la zona sembrada no esta en la base").toBe(1);
+    FKS = fks;
+    ACTOR = fks.tiendaId;
+  }
+
   function estatusIdsAdmitidos(): string[] {
     return [ESTATUS.mensajero_recogiendo_en_bodega, ESTATUS.en_reparto, ESTATUS.ayuda_tienda];
   }
@@ -140,6 +148,7 @@ describeSiHayBase("262/B13 — las ausencias y las consecuencias, contra Postgre
   ): Promise<T> {
     return enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarFks(tx);
       const orden = await tx.orden.create({
         data: {
           numGuia: GUIA_BASE + Math.floor(Math.random() * 1_000_000),
@@ -479,6 +488,7 @@ describeSiHayBase("262/B13 — las ausencias y las consecuencias, contra Postgre
   ): Promise<T> {
     return enTransaccionRevertida(prisma, async (txRaw) => {
       await serializarEscriturasReales(txRaw);
+      await sembrarFks(txRaw);
       const tx = txRaw as unknown as PrismaClient;
       const marca = `${SUFIJO}-${Math.random().toString(36).slice(2, 10)}`;
 

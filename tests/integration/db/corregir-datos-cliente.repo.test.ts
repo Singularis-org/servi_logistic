@@ -22,9 +22,10 @@ import {
   clienteConTransaccionAnidada,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
+  type TxDeTest,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 
 /**
  * ⭑ FICHA 312 (B3 + G3) — LA CORRECCION DE LOS DATOS DEL CLIENTE, CONTRA POSTGRES REAL.
@@ -85,14 +86,6 @@ describeSiHayBase("⭑ 312/B3 — corregirDatosCliente contra Postgres real", ()
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const fks = await fksDeOrden(prisma);
-    if (fks === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar. Corre " +
-          "`pnpm run db:seed` (y las semillas de zonas) antes de esta suite.",
-      );
-    }
-    FKS = fks;
 
     const valores = ["en_reparto", "novedad", "ayuda_tienda", ...ESTADOS_SIN_CORRECCION];
     const estados = await prisma.orderStatus.findMany({
@@ -112,6 +105,19 @@ describeSiHayBase("⭑ 312/B3 — corregirDatosCliente contra Postgres real", ()
     await prisma?.$disconnect();
   });
 
+  /**
+   * SLT-179 — la tienda y la zona del caso nacen en SU transaccion (nada de leer la primera orden de
+   * la base). Control positivo: si la siembra no llega, el caso cae nombrando la fila.
+   */
+  async function sembrarFks(tx: TxDeTest): Promise<void> {
+    const fks = await crearFksDeOrden(tx);
+    const tiendas = await tx.usuario.count({ where: { id: fks.tiendaId } });
+    const zonas = await tx.zona.count({ where: { id: fks.zonaId } });
+    expect(tiendas, "SLT-179: la tienda sembrada no esta en la base").toBe(1);
+    expect(zonas, "SLT-179: la zona sembrada no esta en la base").toBe(1);
+    FKS = fks;
+  }
+
   /** Siembra UNA orden con los valores ORIGINAL y ejecuta `fn`. Todo se revierte. */
   async function conOrden<T>(
     opciones: { estatusValue?: string; borrada?: boolean; producto?: string },
@@ -119,6 +125,7 @@ describeSiHayBase("⭑ 312/B3 — corregirDatosCliente contra Postgres real", ()
   ): Promise<T> {
     return enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarFks(tx);
       const orden = await tx.orden.create({
         data: {
           numGuia: GUIA_BASE + Math.floor(Math.random() * 1_000_000),
@@ -431,15 +438,13 @@ describeSiHayBase("⭑ 312/B3 — corregirDatosCliente contra Postgres real", ()
    * solo el dia que alguien limpie el catalogo.
    */
   async function sembrarGeografia(tx: PrismaClient, sufijo: string) {
-    // ⚠️ `esCentral: true` NO se puede sembrar a voluntad: `zona` tiene un indice UNICO PARCIAL que
-    // admite UNA sola zona central en toda la base (feature 54). Se REUTILIZA la que ya exista y
-    // solo se crea si no hay ninguna. Medido: crear una segunda revienta con «unique constraint».
-    const zonaCentral =
-      (await tx.zona.findFirst({ where: { esCentral: true }, select: { id: true } })) ??
-      (await tx.zona.create({
-        data: { sinpeNumero: "80000000", sinpeNombre: "Titular de Prueba", nombre: `Z-327-central-${sufijo}`, esCentral: true },
-        select: { id: true },
-      }));
+    // ⚠️ `esCentral: true`: el indice UNICO PARCIAL admite UNA central por empresa (feature 54,
+    // SL-17). SLT-179: la empresa del caso nace con `enTransaccionRevertida` y no tiene ninguna, asi
+    // que se CREA siempre; leer «la central que haya» tomaba la de otra empresa en una base con datos.
+    const zonaCentral = await tx.zona.create({
+      data: { sinpeNumero: "80000000", sinpeNombre: "Titular de Prueba", nombre: `Z-327-central-${sufijo}`, esCentral: true },
+      select: { id: true },
+    });
     // La zona de DESTINO se crea siempre: asi se garantiza que es DISTINTA de la de la orden.
     const zonaDestino = await tx.zona.create({
       data: { sinpeNumero: "80000000", sinpeNombre: "Titular de Prueba", nombre: `Z-327-destino-${sufijo}`, esCentral: false },
@@ -493,6 +498,7 @@ describeSiHayBase("⭑ 312/B3 — corregirDatosCliente contra Postgres real", ()
   ): Promise<T> {
     return enTransaccionRevertida(prisma, async (txCrudo) => {
       await serializarEscriturasReales(txCrudo);
+      await sembrarFks(txCrudo);
       const tx = clienteConTransaccionAnidada(txCrudo);
       const sufijo = Math.random().toString(36).slice(2, 10);
       const geo = await sembrarGeografia(tx, sufijo);
@@ -810,6 +816,8 @@ describeSiHayBase("⭑ 312/B3 — corregirDatosCliente contra Postgres real", ()
     const viva = await conOrdenUbicada({}, async (ctx) => ({
       fila: await ctx.repo.findParaCorreccion(ctx.ordenId),
       geo: ctx.geo,
+      // SLT-179: la zona sembrada en ESTE caso; los dos de abajo siembran otra.
+      zonaSembrada: FKS.zonaId,
     }));
     const borrada = await conOrdenUbicada({ borrada: true }, async (ctx) =>
       ctx.repo.findParaCorreccion(ctx.ordenId),
@@ -821,7 +829,7 @@ describeSiHayBase("⭑ 312/B3 — corregirDatosCliente contra Postgres real", ()
     // Anti-vacuidad: la viva SI sale, y sale con lo que el aviso necesita.
     expect(viva.fila?.direccion).toBe("avenida siempre viva 742");
     expect(viva.fila?.montoCobrar).toBeNull(); // la fila se siembra sin monto
-    expect(viva.fila?.zonaId).toBe(FKS.zonaId);
+    expect(viva.fila?.zonaId).toBe(viva.zonaSembrada);
     expect(viva.fila?.distritoId).toBe(viva.geo.origen);
     expect(viva.fila?.yaEnUnCierre).toBe(false);
     expect(viva.fila?.peso).toBe(1.5);
