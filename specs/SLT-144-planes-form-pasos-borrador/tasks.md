@@ -95,7 +95,7 @@
 
 ## T8 · Cierre
 
-- [ ] **T8.1** `./init.sh` verde. Mapa `R<n> → test` completo en `progress/impl_SLT-144.md` (R1–R30).
+- [x] **T8.1** `./init.sh` verde. Mapa `R<n> → test` completo en `progress/impl_SLT-144.md` (R1–R30).
   *Hecho:* gate local verde, `gate-completo` en CI verde y el mapa sin huecos.
 
 ## Archivos esperados
