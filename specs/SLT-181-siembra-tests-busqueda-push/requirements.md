@@ -146,31 +146,31 @@ líneas de siembra. Si la siembra pasa de 1300 sin llegar a 3000, se anota el de
 
 ## Tasks
 
-- [ ] **T1 — Punto de partida** (R1060, R1067). Worktree al día con `origin/dev`; `.env` copiado al
+- [x] **T1 — Punto de partida** (R1060, R1067). Worktree al día con `origin/dev`; `.env` copiado al
   worktree (sin leerlo); base desechable de `## Cómo se verifica`. Correr los 14 archivos tal cual y
   anotar p/f/s en `progress/impl_SLT-181.md`. Si alguno ya pasa, o ya no está en el baseline, se anota y
   sale del alcance. *Hecho:* tabla «antes» con 14 filas.
-- [ ] **T2 — Búsqueda** (R1060-R1065): `busqueda-comportamiento`, `busqueda-normalizacion-paridad`,
+- [x] **T2 — Búsqueda** (R1060-R1065): `busqueda-comportamiento`, `busqueda-normalizacion-paridad`,
   `busqueda-sincronizacion-columna`, `busqueda-usa-indice`. Quitar `fksDeOrden`; sembrar con
   `crearFksDeOrden`/`crearUsuarioDePrueba` dentro de la tx de cada caso; control positivo. *Hecho:* los
   4 verdes en la base de R1060, 0 saltados (o `busqueda-usa-indice` medido como otra causa, R1068).
-- [ ] **T3 [P con T2] — Push y avisos** (R1060-R1065): `aviso-agregado-repository`,
+- [x] **T3 [P con T2] — Push y avisos** (R1060-R1065): `aviso-agregado-repository`,
   `push-canal-restricciones`, `push-destinatarios-equivalencia`, `usuario-preferencia`. *Hecho:* ídem,
   4 archivos.
-- [ ] **T4 [P con T2] — Liberación, cobro y API** (R1060-R1065, R1063):
+- [x] **T4 [P con T2] — Liberación, cobro y API** (R1060-R1065, R1063):
   `liberacion-al-aprobar-cierre-real`, `liberacion-reprogramada-cierre-real`,
   `rechazo-tienda-cobro.int`, `wallet-anulacion-concurrencia` (siembra confirmada con limpieza),
   `costo-y-zona-api-415`, `webhook-evidencias-url-resuelve-sql-real`. *Hecho:* ídem, 6 archivos.
-- [ ] **T5 — Base con datos ajenos** (R1061, R1063, R1069). Depende de T2-T4. Repetir los 14 con la
+- [x] **T5 — Base con datos ajenos** (R1061, R1063, R1069). Depende de T2-T4. Repetir los 14 con la
   empresa ajena confirmada; si el código hace una lectura global, sembrar lo que lee en la empresa del
   caso y correr como `servi_app` (patrón `comoApp`). *Hecho:* 14/14 iguales que en R1060; 0 filas
   propias tras cada archivo con siembra confirmada.
-- [ ] **T6 — Mutaciones** (R1066). Depende de T5. Una por archivo. *Hecho:* tabla mutación → caso
+- [x] **T6 — Mutaciones** (R1066). Depende de T5. Una por archivo. *Hecho:* tabla mutación → caso
   rojo → restaurado en `progress/impl_SLT-181.md`; árbol limpio de mutaciones.
-- [ ] **T7 — Baseline** (R1067, R1068). Borrar las entradas de los verdes; reescribir el motivo de los
+- [x] **T7 — Baseline** (R1067, R1068). Borrar las entradas de los verdes; reescribir el motivo de los
   que sigan rojos por otra causa (o parar, R1068). *Hecho:* `git diff tests/baseline-rojos.json` solo
   quita claves del alcance o reescribe sus motivos.
-- [ ] **T8 — Cierre** (R1069-R1072). `pnpm run typecheck`, `pnpm run lint`, `./init.sh` en verde;
+- [x] **T8 — Cierre** (R1069-R1072). *(CI del PR pendiente.)* `pnpm run typecheck`, `pnpm run lint`, `./init.sh` en verde;
   `git diff --name-only origin/dev -- lib/ app/ components/ hooks/ db/ scripts/ .github/ package.json`
   vacío; `node scripts/tamano-pr.mjs` bajo el tope. En `progress/impl_SLT-181.md`: mapa R → test, salidas
   y, tras el PR, el run de CI con «sin rojos nuevos» y 0 «por limpiar». *Hecho:* todo lo anterior escrito.
