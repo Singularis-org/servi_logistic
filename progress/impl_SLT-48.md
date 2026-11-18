@@ -1144,3 +1144,144 @@ T6.2 — un spec por corrida (R49; la lista de flujos críticos de docs/checkpoi
 
 **Veredicto T6:** T6.1 verde dos veces en local; T6.2 con 12 de 14 specs verdes y 2 sin cerrar por tiempo y recursos
 de la máquina, sin cambiar aserciones.
+
+## T5.1 retiros (backend_dev, 2026-11-18)
+
+Decisión del humano del 2026-11-18 (`progress/features/SLT-48.md`, punto a): se retiran los 17 casos sin objeto de
+T5. Se borraron solo esos casos; ningún archivo quedó vacío y ningún otro caso se tocó. Salieron también los imports
+y helpers que solo usaban ellos, y la cabecera de cada archivo dice qué se retiró y por qué. Base
+`servi_logistic_slt48` local. Ninguna dependencia. El MCP del grafo no se usó (Grep/Read).
+
+| Archivo › test retirado | Qué cubre hoy la regla, o por qué se retira |
+|---|---|
+| `slt46-nodo-copia-vieja` › «R4: escribir el nodo termina sin bucle…» | regla retirada por SLT-48 R5: sin copia ni sincronía no puede haber bucle. Que no queda ningún trigger de sincronía: `slt48-vistas-geografia.test.ts` › «R5: no queda ningún trigger ni función de sincronía…» |
+| idem › «R5: si la copia choca con un único de la tabla vieja…» | regla retirada por SLT-48 R1/R5: la tabla vieja es una vista y no tiene únicos. El único del nodo: `geo-nodo-invariantes.test.ts` › «R9: hermanos o raíces con el mismo nombre normalizado…» |
+| idem › «R6: cambiar la profundidad de una hoja de 1–3…» | regla retirada por SLT-48 R5 (era un freno de la copia, `SLT46`). La profundidad la sigue protegiendo el trigger de SLT-43: `geo-nodo-invariantes.test.ts` › los «R7: …» (profundidad mala al crear o al mover → `SLT43`) |
+| `geo-sincronia-geografia` › «R16: cambio de padre…, de código y de país se reflejan en el nodo» | regla retirada por SLT-48 R2/R5: la tabla vieja ya no se escribe (`SL048`). Mover un nodo: `geografia-mover-nodo.test.ts` (R34–R38); el nodo en su vista: `slt48-vistas-geografia.test.ts` › «R5: crear, renombrar, retirar y mover un nodo se ve en su vista…» |
+| idem › «R16: un UPDATE que no cambia nada del nodo no lo reescribe» | regla retirada por SLT-48 R5 (no hay sincronía que reescriba) |
+| idem › «R17: el borrado físico borra el nodo…» | regla retirada por SLT-48 R2: `DELETE` sobre la vista es `SL048` (`slt48-vistas-geografia.test.ts` › «R2: INSERT, UPDATE y DELETE sobre las vistas…») |
+| idem › «R18: `canton.pais_id` sigue saliendo del padre y la sincronía no escribe historial» | el país del padre lo garantiza la FK compuesta del nodo: `geografia-por-pais.test.ts` › «R11: un nodo en otro país que su padre lo rechaza la base (23503)…» y `geo-nodo-invariantes.test.ts` › «R5: un padre de otro país…». Lo del historial de la sincronía: regla retirada por SLT-48 R5 |
+| idem › «lo que la sincronía tumba: un homónimo normalizado…» | `geo-nodo-invariantes.test.ts` › «R9: hermanos o raíces con el mismo nombre normalizado… → 23505»; en la app, `geografia-admin-n-niveles.test.ts` › «R16: un hermano… con el mismo nombre normalizado → `conflict`» |
+| `geo-sincronia-orden-zonas` › «borrar un distrito con orden no falla…» | regla retirada por SLT-48 R2: `DELETE FROM distrito` es `SL048` (`slt48-vistas-geografia.test.ts` › «R2: …») |
+| idem › «la FK nueva solo rechaza un distrito SIN nodo…» | regla retirada por SLT-48 R4/R5: esa FK y la sincronía que se apagaba ya no existen. Que se quitaron las 5 FK: `migracion-slt48-ida-y-vuelta.test.ts` › «R4/R20/R1: la ida quita las 5 FK y dos NOT NULL…» |
+| `geografia-por-pais` › «R10: una provincia creada sin país queda en CR» | regla retirada por SLT-48 R1: `provincia` es una vista sin `DEFAULT`, y el nodo exige su país |
+| idem › «R11: el cantón y el distrito heredan el país del padre aunque se pida otro» | regla retirada por SLT-48 R5 (se quitó el trigger `geografia_pais_del_padre`). Lo que sigue vivo, un hijo en el país de su padre: `geografia-por-pais.test.ts` › «R11: un nodo en otro país que su padre lo rechaza…» y «R11: mover un cantón a una provincia de otro país…» |
+| `geo-equivalencia-geografia` › «R13: una provincia con otro nombre…» | regla retirada por SLT-48 R1: la tabla vieja es una vista del nodo y no puede diferir de él (`slt48-vistas-geografia.test.ts` › «R1: una fila por nodo de su profundidad, con los datos del nodo…»). El modo sigue probado por los 3 casos que quedan (reconoce el modo, «iguales → 0», código de salida) |
+| idem › «R13: código, activo y padre distintos también cuentan…» | ídem |
+| idem › «R13: un nodo sin su fila vieja…» | ídem |
+| idem › «R13: una fila vieja sin su nodo…» | ídem |
+| `geo-equivalencia` › «R32: un distrito sin nodo descuadra el conteo…» | ídem (SLT-48 R1). El resto de R32 sigue en el mismo archivo (iguales → 0, zona desviada, orden sin nodo) |
+
+**`@test-desaparecido`: no se puso, a propósito.** La guardia `test-citado-desaparecido` se pone ROJA si una
+anotación `@test-desaparecido` nombra un archivo que sigue en el árbol («la excepción caducó»), y los 6 archivos
+siguen vivos con sus otros casos. En su lugar, cada design que los cita lleva bajo su mapa R → test un comentario HTML
+con la razón (SLT-48 retira la sincronía y la copia vieja):
+- `specs/SL-20-pais-geografia-configurable/design.md` (R11, R16);
+- `specs/SLT-43-geo-jerarquica-modelo/design.md` (R15–R18, R20, R21, R32);
+- `specs/SLT-46-geo-jerarquica-admin/design.md` (R4–R6, R13);
+- y una nota en `specs/SLT-48-geo-jerarquica-contract/design.md` §9.
+
+Las filas de esos mapas no se reescribieron: son specs de features cerradas.
+
+## Design §7.1 — `nodo_geografico_movido` (backend_dev, 2026-11-18)
+
+Decisión del humano (punto e): sigue el criterio actual del historial de plataforma, sin catálogo nuevo. El código ya
+lo seguía (desvío 7 de T3). `GeoRepository.mover` llama a `appendAccionPlataforma` igual que `crear`
+(`nodo_geografico_creado`, SLT-46): `entidadTipo: "nodo_geografico"`, `entidadEtiqueta: etiquetaDeNodo(...)`, `paisId`
+y el actor. Además lleva `valorAnterior`/`valorNuevo` con las rutas, como `renombrar`. Ningún valor de
+`HistorialPlataformaAccion` tiene etiqueta en `lib/types/historial-accion.ts`, que es el catálogo del historial de
+empresa. **El código no cambió**; se corrigió el texto de design §7.1 › «Historial». Test que lo fija:
+`geografia-mover-nodo.test.ts` › «R34, R38: mover escribe solo `padre_id` y su fila `nodo_geografico_movido`…».
+
+## T7.2 — `docs/architecture.md` (backend_dev, 2026-11-18)
+
+Corregido lo que el deploy 1 deja falso:
+- el país del padre: ya no lo pone un trigger de las tablas viejas, sino la FK compuesta del nodo;
+- la RLS por país: `nodo_geografico_del_pais`, que las vistas heredan;
+- la sincronía de SLT-43/46: ya no existe en ningún sentido;
+- «el lugar de una orden se lee de las FK viejas»: ahora es el nodo (guardia `orden-fk-geo-sin-uso`);
+- el trigger de `orden` (R9): conserva el nodo y, sin nodo, pone el de sus FK;
+- «hasta SLT-48 la ruta llega al nivel 3»;
+- «una orden sin distrito sigue sin grupo (hasta SLT-48)»: ahora rige P3.
+
+Añadido el bloque «Modelo viejo retirado (SLT-48, deploy 1)»:
+- las vistas: `security_invoker`, `INSTEAD OF` con `SL048` para el dueño y `42501` para `servi_app`;
+- las FK quitadas y el `down.sql` (P5);
+- la regla de hoja (P2, sin hijos activos);
+- mover nodos (R34–R41, bloqueo P1, P4).
+
+Comprobado contra `db/migrations/20261117120100_slt48_geografia_vieja_a_vistas/migration.sql`,
+`lib/services/geo-ubicacion.ts › esHoja`, `lib/services/geografia-dominio.ts › distritoDeTarifa` y
+`GeoRepository.mover`.
+
+## Checklist para la persona (T7.1 y T7.4)
+
+**Ningún agente corre esto.** Lo hace una persona: T7.1 sobre la **copia de producción** y T7.4 sobre producción, solo
+para el backup. La salida de cada comando se pega en el PR.
+
+### T7.1 — Equivalencia, rendimiento y vuelta del `down.sql` (R30, R33, R11, R12)
+
+Base: la **copia de producción** con las dos migraciones de SLT-48 aplicadas
+(`20261117120000_slt48_historial_nodo_movido` y `20261117120100_slt48_geografia_vieja_a_vistas`). `DATABASE_URL` y
+`DIRECT_URL` apuntan a esa copia, nunca a producción. Antes, `pnpm exec prisma migrate status` debe decir que la base
+está al día. Si la migración aborta con «faltan nodos; corre antes pnpm geo:backfill» (R6), se corre el backfill en
+la copia y se repite.
+
+1. Equivalencia (R33). Cada uno **debe salir con código 0**, es decir, 0 diferencias:
+   ```
+   pnpm run geo:equivalencia-dinero
+   pnpm run geo:equivalencia-consultas
+   pnpm run geo:equivalencia-analitica
+   pnpm run geo:equivalencia-filtros
+   pnpm run geo:equivalencia-presentacion
+   ```
+   `geo:equivalencia-dinero` sale con 1 si algo difiere y con 2 si una empresa no se pudo leer. Las dos son rojo.
+2. Rendimiento (R30). Se corre cada uno y se compara con su corrida en la misma copia SIN SLT-48 (antes de aplicar
+   las migraciones, o tras la vuelta del paso 3). Ninguna consulta debe **empeorar más de un 20 %** (mediana de 5) ni
+   sumar un `Seq Scan` nuevo sobre `orden`:
+   ```
+   pnpm run geo:explain-consultas
+   pnpm run geo:explain-analitica
+   pnpm run geo:explain-filtros
+   ```
+   Si el listado empeora, la primera mitigación es llevar los nombres al catálogo (R30). No se mergea sin decidirlo.
+3. Ida y vuelta del `down.sql` (R11, R12), en la copia:
+   ```
+   pnpm run db:rollback               # down.sql de 20261117120100 (la última) y la saca de _prisma_migrations
+   pnpm run db:rollback               # ídem con 20261117120000 (su down.sql no hace nada a propósito: SELECT 1)
+   pnpm exec prisma migrate status    # las dos, pendientes
+   pnpm exec prisma migrate deploy    # la ida otra vez
+   pnpm exec prisma migrate status    # al día
+   ```
+   Esperado: la vuelta deja `provincia`, `canton` y `distrito` como tablas con sus filas, las FK y la sincronía. Si
+   aborta con «SLT-48 down: N ordenes estan en un nodo que la geografia vieja no sabe guardar» (P5), la base no
+   cambia: hay que decidir antes qué hacer con esas órdenes. Tras la ida otra vez, repetir el paso 1: todo en 0.
+
+**Hecho:** pasos 1 y 3 con 0 diferencias y el paso 2 dentro del 20 %, con la salida en el PR.
+
+### T7.4 — Backup verificado antes de la release
+
+1. Justo antes de la release, un backup de producción.
+2. **Restaurarlo** en una base aparte, nunca sobre producción, y comprobarlo: `prisma migrate status` responde, y los
+   conteos de `orden`, `nodo_geografico`, `zona_distrito`, `distrito_zona_especial` y `cierre_detail` son iguales a
+   los de producción en ese momento.
+3. Anotar en `progress/features/SLT-48.md` quién lo hizo, cuándo, dónde quedó el backup y los conteos.
+4. Las migraciones las aplica el build de `prod`; no las aplica una persona ni un agente.
+
+### Salida real (`NODE_OPTIONS=--max-old-space-size=8192`)
+
+```
+$ pnpm run typecheck   → exit 0 (los 6 errores que dejaba T5 eran de los casos retirados)
+$ pnpm exec eslint <los 6 archivos de test>   → sin salida (0 errores, 0 avisos)
+$ pnpm exec vitest run --maxWorkers=3 <slt46-nodo-copia-vieja, geo-sincronia-geografia, geo-sincronia-orden-zonas,
+    geografia-por-pais, geo-equivalencia-geografia, geo-equivalencia>   (base servi_logistic_slt48 local)
+ Test Files  6 passed (6)
+      Tests  32 passed (32)
+$ pnpm run test:guardias → Test Files 2 failed | 334 passed | 3 skipped · Tests 5 failed | 4734 passed | 25 skipped
+    - dependencias-declaradas-presentes (4): baseline, ajeno a esta rama.
+    - sin-estados-retirados (1): rojo en la corrida completa y verde sola (carga de la máquina, como en T3 y T4.1).
+$ pnpm exec vitest run sin-estados-retirados.guardia test-citado-desaparecido.guardia → 2 passed, 21 tests
+```
+
+**Veredicto:** T5.1 cerrada (17 casos retirados, cada regla viva con su test). Design §7.1 corregido sin tocar código.
+T7.2 hecha y el checklist de T7.1/T7.4 listo para la persona.
