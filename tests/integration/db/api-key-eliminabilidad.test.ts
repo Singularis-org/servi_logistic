@@ -9,10 +9,11 @@ import {
   clienteConTransaccionAnidada,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
+  type FksDeOrden,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FICHA 373 / C1 (R8/R9/R10) — EL GUARD, CONTRA POSTGRES DE VERDAD.
@@ -38,21 +39,14 @@ const SUFIJO = `373-elig-${Date.now().toString(36)}`;
 
 describeSiHayBase("373/C1 — dependenciasDeCuentasDedicadas contra Postgres", () => {
   let prisma: PrismaClient;
-  let FKS: Awaited<ReturnType<typeof fksDeOrden>>;
+  // SLT-180 (R1042): las FK de orden se SIEMBRAN dentro de la tx de cada caso (`sembrarFks`); ya
+  // no se lee «la primera orden» de la base, que en una base recien migrada no existe.
+  let FKS: FksDeOrden | null = null;
   let ROL_API_KEY: string;
   let TIPO_CEDULA: string;
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    FKS = await fksDeOrden(prisma);
-    // ⚠️ LANZA, no `return`. Un `if (!fks) return;` reporta `passed` sin comprobar NADA, y este
-    // repo ya se comio esa mentira una vez.
-    if (FKS === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar. Corre " +
-          "`pnpm run db:seed` (y `pnpm exec tsx scripts/seed-zonas.ts`) antes de esta suite.",
-      );
-    }
     const rol = await prisma.rol.findUnique({ where: { value: "apiKey" }, select: { id: true } });
     const tipo = await prisma.tipoIdentificacion.findUnique({
       where: { value: "cedula" },
@@ -68,6 +62,22 @@ describeSiHayBase("373/C1 — dependenciasDeCuentasDedicadas contra Postgres", (
   afterAll(async () => {
     await prisma?.$disconnect();
   });
+
+  /**
+   * SLT-180 (R1042/R1044): tienda y zona propias, creadas en la tx del caso, con su control
+   * positivo. Si la siembra no llega a la base, el caso cae aqui nombrando la fila.
+   */
+  async function sembrarFks(tx: TxDeTest): Promise<void> {
+    FKS = await crearFksDeOrden(tx);
+    expect(
+      await tx.usuario.count({ where: { id: FKS.tiendaId } }),
+      "SLT-180: la tienda sembrada no esta en la base",
+    ).toBe(1);
+    expect(
+      await tx.zona.count({ where: { id: FKS.zonaId } }),
+      "SLT-180: la zona sembrada no esta en la base",
+    ).toBe(1);
+  }
 
   /** Una cuenta dedicada nueva (rol `apiKey`), como la que crea `createConUsuario`. */
   async function sembrarCuenta(tx: TxDeTest, marca: string): Promise<string> {
@@ -118,6 +128,7 @@ describeSiHayBase("373/C1 — dependenciasDeCuentasDedicadas contra Postgres", (
   it("⭑ una cuenta LIMPIA sale con los tres booleanos en false", async () => {
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarFks(tx);
       const cuenta = await sembrarCuenta(tx, "limpia");
       return { cuenta, mapa: await dependencias(tx, [cuenta]) };
     });
@@ -128,6 +139,7 @@ describeSiHayBase("373/C1 — dependenciasDeCuentasDedicadas contra Postgres", (
   it("⭑ R8: con UNA orden viva -> `ordenes: true`", async () => {
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarFks(tx);
       const cuenta = await sembrarCuenta(tx, "orden-viva");
       await sembrarOrden(tx, cuenta, false);
       return { cuenta, mapa: await dependencias(tx, [cuenta]) };
@@ -142,6 +154,7 @@ describeSiHayBase("373/C1 — dependenciasDeCuentasDedicadas contra Postgres", (
     // el boton. Este test es el que impide ese «boton que falla al pulsarlo».
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarFks(tx);
       const cuenta = await sembrarCuenta(tx, "orden-borrada");
       await sembrarOrden(tx, cuenta, true);
       // Se comprueba que la fila esta REALMENTE borrada; si no, este caso seria el anterior.
@@ -158,6 +171,7 @@ describeSiHayBase("373/C1 — dependenciasDeCuentasDedicadas contra Postgres", (
   it("⭑ R9: con un movimiento del libro de tienda -> `dinero: true`", async () => {
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarFks(tx);
       const cuenta = await sembrarCuenta(tx, "wallet");
       await tx.walletTiendaMovimiento.create({
         data: {
@@ -180,6 +194,7 @@ describeSiHayBase("373/C1 — dependenciasDeCuentasDedicadas contra Postgres", (
     // Las DOS tablas de dinero cuentan, y por separado: si el `OR` se cayera, este caso lo dice.
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarFks(tx);
       const cuenta = await sembrarCuenta(tx, "pago");
       await tx.liquidacionPago.create({
         data: {
@@ -201,6 +216,7 @@ describeSiHayBase("373/C1 — dependenciasDeCuentasDedicadas contra Postgres", (
   it("⭑ R10: con una tarifa configurada -> `tarifas: true`", async () => {
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarFks(tx);
       const cuenta = await sembrarCuenta(tx, "tarifa");
       await tx.tarifa.create({
         data: {
@@ -227,6 +243,7 @@ describeSiHayBase("373/C1 — dependenciasDeCuentasDedicadas contra Postgres", (
     // se llevaria el precio pactado en silencio. Sin fila en `tarifas`, solo este EXISTS lo ve.
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarFks(tx);
       const cuenta = await sembrarCuenta(tx, "tarifa-valor");
       await tx.tarifaValor.create({
         data: { concepto: "tienda_flete_entregado", modo: "monto", valor: "1.00", ivaPct: "13.00", tiendaId: cuenta },
@@ -248,6 +265,7 @@ describeSiHayBase("373/C1 — dependenciasDeCuentasDedicadas contra Postgres", (
     // todas. Con cuatro cuentas y cuatro respuestas distintas, no hay forma de que pase por azar.
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarFks(tx);
       const limpia = await sembrarCuenta(tx, "mix-limpia");
       const conOrden = await sembrarCuenta(tx, "mix-orden");
       const conDinero = await sembrarCuenta(tx, "mix-dinero");
@@ -295,6 +313,7 @@ describeSiHayBase("373/C1 — dependenciasDeCuentasDedicadas contra Postgres", (
     // servicio distingue «no tiene datos» de «no la encontre» y las dos llevan al mismo sitio.
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarFks(tx);
       const inexistente = randomUUID();
       return { inexistente, mapa: await dependencias(tx, [inexistente]) };
     });
@@ -307,6 +326,7 @@ describeSiHayBase("373/C1 — dependenciasDeCuentasDedicadas contra Postgres", (
     // una sola orden en toda la base (y las hay).
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarFks(tx);
       const ajena = await sembrarCuenta(tx, "ajena");
       const propia = await sembrarCuenta(tx, "propia");
       await sembrarOrden(tx, propia, false);

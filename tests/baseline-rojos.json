@@ -89,10 +89,6 @@
       "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: tabla 'orden' vacia: corre 'pnpm run db:seed'. en tests/integration/db/454/_escenario.ts:133. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: falla una asercion de dinero o estado del cierre de satelite: expected [] to deeply equal [ cod_recaudado|4000.00, …(1) ]. La retira SLT-195.",
       "desde": "2026-10-22"
     },
-    "tests/integration/db/486-evidencias-cierres-sql-real.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/486-evidencias-cierres-sql-real.test.ts:84 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar el corpus. Corre 'pnpm run db:seed' antes de. La retira SLT-180 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
     "tests/integration/db/ajuste-caja-anulacion-461.test.ts": {
       "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: la action `registrarMovimientoManualAction` corre sin empresa: `EmpresaNoResuelta: Sin empresa en contexto para WalletMovimiento.createMany` -> INTERNAL. La retira SLT-185.",
       "desde": "2026-10-22"
@@ -103,18 +99,6 @@
     },
     "tests/integration/db/analytics-daily-job.test.ts": {
       "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): Error: el catalogo local no tiene el estatus \"el estado de fulfillment retirado por la 155\"; usa el estatus 'el estado de fulfillment retirado por la 155', retirado del catalogo por la 155: una base nueva no lo tiene (_semilla-rollup.ts:85). La retira SLT-186.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/api-key-eliminabilidad.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/api-key-eliminabilidad.test.ts:51 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' (y 'pnpm exec tsx. La retira SLT-180 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/api-key-eliminar-fk-inesperada.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/api-key-eliminar-fk-inesperada.test.ts:54 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero 'orden' esta vacia: corre 'pnpm run db:seed' antes.. La retira SLT-180 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/api-key-eliminar-tienda-destino.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/api-key-eliminar-tienda-destino.test.ts:48 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero 'orden' esta vacia: corre 'pnpm run db:seed' antes.. La retira SLT-180 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/api-key-eliminar.test.ts": {
@@ -209,18 +193,6 @@
       "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
       "desde": "2026-10-22"
     },
-    "tests/integration/db/eliminar-orden-api-frontera-tienda.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/eliminar-orden-api-frontera-tienda.test.ts:54 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' antes de esta suit. La retira SLT-180 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/eliminar-orden-pantalla-frontera-tienda.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/eliminar-orden-pantalla-frontera-tienda.test.ts:75 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' antes de esta suit. La retira SLT-180 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/emisor-relaciones-anidadas.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/emisor-relaciones-anidadas.test.ts:116 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar la gestion que este test necesita. Corre 'pn. La retira SLT-180 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
     "tests/integration/db/geografia-cascada-reversible.test.ts": {
       "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/geografia-cascada-reversible.test.ts:59 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero 'usuario' esta vacia: sin actor no se puede ejercer el registro de acciones que acompaña al cambio de. La retira SLT-183 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
@@ -249,20 +221,8 @@
       "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/habilitacion-api-migration.test.ts:588 al leer una fila de negocio que la base migrada no trae: Error: La base de pruebas no tiene catalogos de geografia/estatus sembrados: sin ellos no se puede crear la orden propia del test. La retira SLT-184 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
-    "tests/integration/db/historial-accion-atomicidad.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/historial-accion-atomicidad.test.ts:107 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' (y 'pnpm exec tsx. La retira SLT-180 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/historial-accion-lectura.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/historial-accion-lectura.test.ts:495 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' antes de esta suit. La retira SLT-180 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
     "tests/integration/db/historial-accion-migration.test.ts": {
       "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): AssertionError: expected [ Array(1) ] to deeply equal []; R8 espera 0 policies en 'historial_accion' y hay 1 (expected [ Array(1) ] to deeply equal [], :90): la RLS por empresa de SL-17 anadio policies. La retira SLT-187.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/historial-accion-q1-ubicacion.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/historial-accion-q1-ubicacion.test.ts:79 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' antes de esta suit. La retira SLT-180 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/liberacion-al-aprobar-cierre-real.test.ts": {
@@ -297,10 +257,6 @@
       "motivo": "Otra causa. Medido en local el 2026-11-17 tras sembrar sus usuarios en SLT-182 (base desechable migrada + db:seed, Postgres 18.2; igual con una empresa ajena confirmada): 5 de 8 verdes; los 3 que revierten una marca con diferencia fallan con AssertionError: expected 'con_asientos' to be 'updated' (tests/integration/db/marca-conciliacion.int.test.ts:272): desde SLT-73 (D11) revertir una marca que ya asento dinero responde con_asientos; los casos esperan la reversion anterior. La retira SLT-195.",
       "desde": "2026-10-22"
     },
-    "tests/integration/db/notificacion-bloqueo-otro-cierre-avisa.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/notificacion-bloqueo-otro-cierre-avisa.test.ts:62 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' antes de esta suit. La retira SLT-180 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
     "tests/integration/db/notificacion-evento-cierre-rechazado-migration.test.ts": {
       "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/notificacion-evento-cierre-rechazado-migration.test.ts:478 al leer una fila de negocio que la base migrada no trae: PrismaClientKnownRequestError. La retira SLT-183 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
@@ -317,10 +273,6 @@
       "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/notificacion-evento-traspaso-migration.test.ts:475 al leer una fila de negocio que la base migrada no trae: PrismaClientKnownRequestError. La retira SLT-183 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
-    "tests/integration/db/orden-eliminada-actor-admin.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/orden-eliminada-actor-admin.test.ts:64 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' (y 'pnpm exec tsx. La retira SLT-180 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
     "tests/integration/db/orden-mensajero-meta-drop-nota-migration.test.ts": {
       "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/orden-mensajero-meta-drop-nota-migration.test.ts:407 al leer una fila de negocio que la base migrada no trae: Error: La base de pruebas no tiene catalogos de geografia/estatus sembrados: sin ellos no se puede crear la orden propia del test.. La retira SLT-184 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
@@ -329,12 +281,8 @@
       "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/orden-nota-migration.test.ts:406 al leer una fila de negocio que la base migrada no trae: Error: La base de pruebas no tiene catalogos de geografia/estatus sembrados: sin ellos no se puede crear la orden propia del test. La retira SLT-184 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
-    "tests/integration/db/orden-remision-borrada-libera-numero.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/orden-remision-borrada-libera-numero.test.ts:72 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar el caso. Corre 'pnpm run db:seed' (y las sem. La retira SLT-180 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
     "tests/integration/db/orden-traspaso-migration.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/orden-traspaso-migration.test.ts:211 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar la fila con la que se miden el CHECK y los R. La retira SLT-180 (siembra propia en la transaccion).",
+      "motivo": "Otra causa. Medido en local el 2026-11-17 (Postgres 18.2, migrate deploy + db:seed, base vacia y con empresa ajena), ya sembrado por SLT-180: 13/2/0. AssertionError: expected [ ...(136) ] to deeply equal [ ...(33) ] (tests/integration/db/orden-traspaso-migration.test.ts:114): la lista de migraciones posteriores a la 427 acaba en 20261021120000 y ya hay detras las de SL-17 (20261022130100_organizacion_id_en_negocio) y siguientes; y (a) espera 9 columnas y hay 10 (expected [ 'actor_rol', ...(9) ] to deeply equal [ 'actor_rol', ...(8) ], :294): SL-17 anadio organizacion_id a orden_traspaso_mensajero. La retira SLT-187.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/picking-resumen-tiendas.test.ts": {
@@ -378,7 +326,7 @@
       "desde": "2026-10-22"
     },
     "tests/integration/db/tarifa-zona-borrado-fk-real.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/tarifa-zona-borrado-fk-real.test.ts:83 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero 'orden' esta vacia: corre 'pnpm run db:seed' antes.. La retira SLT-180 (siembra propia en la transaccion).",
+      "motivo": "Otra causa. Medido en CI el 2026-11-18 (run 44235155028, PR #213, Postgres 17), ya sembrado por SLT-180: el caso 'el error REAL de la FK no es un P2003: la comprobacion ingenua NO lo caza' falla en tests/integration/db/tarifa-zona-borrado-fk-real.test.ts:382 con 'la comprobacion ingenua ahora SI caza el error: expected true to be false'; en local (Postgres 18.2, migrate deploy + db:seed, base vacia y con empresa ajena) el archivo pasa 9/0/0. Test-cicatriz desfasado cuyo resultado depende del entorno. La retira SLT-186.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/traspaso-mensajero.int.test.ts": {
