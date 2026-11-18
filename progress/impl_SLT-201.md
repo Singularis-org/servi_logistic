@@ -63,3 +63,11 @@ PDF: `python docs/api/guia-integracion/generar-pdf.py <scratchpad>/Guia-Integrac
 
 ## Veredicto
 Contrato de `POST carga` documentado y bajo guardia (rojo antes, verde después); guía y Postman al día; D6 cerrada.
+
+## Tras la review (M2) y la sincronización con dev
+- Se mergea `origin/dev`, que trae #227 (SLT-93 «API v1: nombre de lote repetido responde 500 en vez de 409»): el 409 por nombre repetido ya es el comportamiento real.
+- M2: el test del 500 pide ahora la ruta real (`handleCargaApi` con un servicio que lanza) y comprueba el **HTTP 500**, además del cuerpo publicado.
+  - Antes de la mutación → 16 passed (16).
+  - Mutación `INTERNAL: 500` → `400` en `lib/errors/codes.ts` → **1 failed** («expected 400 to be 500»).
+  - Restaurado con `git checkout -- lib/errors/codes.ts`.
+- Gate rápido tras el merge y M2 → **INIT_EXIT=0**.

@@ -426,6 +426,16 @@ describe("SLT-201 R3 — los errores que la ruta emite están en el contrato", (
     const ejemplo = openApiSpec.components.responses.InternalError.content["application/json"].example;
     expect(res).toEqual(ejemplo);
 
+    // Review M2: el CÓDIGO HTTP también, por la ruta real. Un fallo inesperado del servicio sale
+    // como 500 con el cuerpo publicado y sin el detalle original.
+    const http = await llamar(CUERPO, {
+      bulkService: bulk(async () => {
+        throw new Error("SLT-201: detalle interno que no debe salir");
+      }),
+    });
+    expect(http.status, "SLT-201: un error inesperado tiene que ser HTTP 500").toBe(500);
+    expect(http.json).toEqual(ejemplo);
+
     let ops = 0;
     for (const metodos of Object.values(openApiSpec.paths)) {
       for (const [verbo, op] of Object.entries(metodos as Record<string, { responses?: Record<string, unknown> }>)) {
