@@ -104,3 +104,70 @@ este archivo (p. ej. la de arriba) que lo ponga rojo.
 **RECHAZADO** — un bloqueante (B1): `libro-caja-a-quien` R57 quedó sin poder de discriminación por el
 cambio de aprobador del escenario, medido con una mutación que sobrevive. El resto (trazabilidad,
 literales de dinero, poda del baseline, R1203, R1209, D64, typecheck, lint) está bien.
+
+## Vuelta 2 (acotada a 28df32d7..3dabdd30)
+
+Diff revisado: `3e54e322` (B1, m1, m3, re-medida de `wallet-458-migration`), `81c6d940` (R1203 tras la
+decisión de Carlos) y `3dabdd30` (bitácora). Lo que entró del merge de origin/dev (#218, SLT-186) queda
+fuera, salvo la fusión de `tests/baseline-rojos.json`. Todas las mutaciones las corrí yo en
+`servi_slt195_desechable` (vía `con-desechable.cjs`). Las restauré con `git checkout --`, y después de
+cada una `git diff -- lib` salía vacío; `git status` también queda limpio al final.
+
+### Checklist
+- [x] **B1 resuelto.** El escenario 459 crea `Aprobador` (acceso total, distinto del `maestro`), que
+  aprueba el cierre del día; `Escenario459.aprobador` expuesto. `libro-caja-a-quien` R57 compara contra
+  `nombres.aprobador` y antes afirma `aprobador != maestro`; `caja-caracterizacion-459` R1198 igual con ids.
+  **Repetí la mutación de la vuelta 1** (`LibroCajaAutoriaService.ts:135`, `por:` → el nombre que empieza
+  por «Maestro»): **ROJO**, 1 failed | 6 passed, en R57, `AssertionError: expected { nombre: null,
+  automatico: … } to deeply equal …`. Es la aserción la que cae, no el montaje.
+- [x] **m1.** F461 repetida (reverso `ajuste_devengo` del mensajero con `fechaMovimiento` + 1 día,
+  `LiquidacionService.ts:1331`): ROJO en `liquidacion-fechas-cr-461`, `AssertionError: expected
+  [ '2026-11-18T06:00:00.000Z', …(1) ] to deeply equal [ '2026-11-18T06:00:00.000Z' ]`. WCA2 repetida
+  (`WalletComprobanteService.ts:157`, `en_su_documento` → `no_admite`): ROJO en
+  `wallet-comprobante-alcance` D6, `AssertionError … to deeply equal`. Las dos caen por aserción. La
+  bitácora anota bien que WCA cae por error (`INTERNAL`) y que por eso se añadió WCA2.
+- [x] **m3.** `libro-caja-filtro-a-quien` afirma `Array.isArray(composicion.categoriasConModeloNuevo)` antes de quitarla.
+- [x] **R1203 / decisión de Carlos (2026-11-18, «dale del todo»).** `analitica-anulacion-rechazo-458`, «la
+  ganancia cuadra»: `expect(bajaGanancia).toBe("1000.00")` es un **literal**, no sale de la app ni de su
+  propia fuente. La aserción reescrita no queda vacía: `bajaGanancia == bajaFlete` va anclada al literal
+  1000.00, y además `bajaIva` se fija en el literal `"130.00"`, así que el IVA tiene que moverse sin tocar
+  la ganancia. La cabecera del archivo está al día. Sale del baseline con razón.
+- [x] **GAN5 y el hueco por un solo sitio.** GAN5 solo muerde con los dos sitios a la vez, porque el
+  reverso de IVA queda fuera de la ganancia por dos vías. Medí cada mitad sola **contra el resto de la suite**:
+  - Solo `metrics.ts` (reverso de IVA dentro de `ganancia_empresa.categorias`): ROJO en 4 pruebas.
+    Son `metrics-caja-naturaleza.guardia` (2), `financiera-ingresos-repo` (R57) y
+    `analitica-financiera-service` (R11).
+  - Solo `esCategoriaIva` (devuelve false para `egreso_reverso_iva_flete_devolucion`): ROJO en 13 pruebas
+    de 6 archivos (`caja-iva-aparte-sl39`, `caja-composicion`, `analitica-financiera-service`,
+    `finanzas-diario`, `caja-derivaciones.guardia`…), sin contar `dependencias-declaradas-presentes`, que
+    está en el baseline.
+
+  Una regresión en un solo sitio **no pasa desapercibida en la suite**: las unitarias y las guardias de
+  SL-39 la cazan. Que el test de integración necesite las dos es redundancia del diseño (doble
+  exclusión), no un hueco. Sin hallazgo.
+- [x] **Fixture compartido `_fixtures/caja-459.ts`.** Corrí los **37 archivos** que lo consumen: 34 en verde
+  y 0 saltados. Caen 3, los tres en el baseline y por el motivo registrado: `ajuste-caja-anulacion-461`
+  (`INTERNAL`, SLT-185), `wallet-461-idempotencia-clave` (índice R67, SLT-187) y `wallet-458-migration`
+  (solo el caso (a), orden de etiquetas del enum, SLT-187). Fuera de los dos tests ajustados, nadie más lee
+  `resueltoPor` ni cuenta usuarios de rol maestro. Añadir el aprobador no rompe a nadie.
+- [x] **Baseline tras el merge.** Lo comprobé a tres vías por clave (merge-base 69, ours `81c6d940` 47,
+  theirs `7de2d4e2` 56): las esperadas son 34 y HEAD tiene 34. No falta ni sobra ninguna, y ninguna es
+  nueva. El motivo de `wallet-458-migration` en HEAD es el re-medido de ours. Su caso (a) depende de SLT-187
+  (PR #220 sin mergear): se queda con razón, y mi corrida confirma que solo cae (a).
+- [x] Producción intacta: `git diff --name-only origin/dev...HEAD -- lib app db components hooks scripts package.json` vacío.
+- [x] Tamaño: «14/40 archivos, 0/1000 líneas de producción, 371/3000 de tests».
+
+### Hallazgos
+- **menor — tabla de mutaciones en `progress/impl_SLT-195.md`:** las filas B1/F461/WCA/WCA2 y GAN5 van
+  separadas de la tabla por líneas en blanco, así que en Markdown no se ven como tabla. Es solo forma.
+- **menor (informativo) — GAN5:** como control positivo de este archivo solo cae con dos cambios. Está
+  cubierto por la suite (ver arriba). Si un día se quita una de las dos exclusiones del IVA, este test
+  pasaría a morder con un solo cambio.
+
+Ningún bloqueante.
+
+### Veredicto vuelta 2
+
+**OK.** B1 está resuelto y la mutación de la vuelta 1 ahora cae por aserción. m1 y m3 están atendidos. La
+decisión de Carlos sobre R1203 está aplicada con un literal y la aserción no queda vacía. El fixture no
+rompe a sus 37 consumidores y el baseline queda coherente (34).
