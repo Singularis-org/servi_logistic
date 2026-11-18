@@ -1,0 +1,135 @@
+# Review SLT-48 «Geografía jerárquica: retirar modelo viejo»
+
+- Ruta: completa. Zona fullstack, complexity high.
+- Diff revisado: `origin/feature/SLT-125-geo-jerarquica-exportes...HEAD` (HEAD `ac4e8ad4`), 245 archivos.
+- Reviewer, 2026-11-18. El MCP del grafo no se usó; la revisión se hizo con Grep, Read y ejecución.
+
+## Verificación ejecutada (no la bitácora)
+
+- `pnpm run typecheck`: 0 errores.
+- `eslint` sobre los .ts/.tsx añadidos o cambiados: 0 errores.
+- `pnpm run test:guardias`: 335/339 archivos en verde (3 skipped). El único rojo es `dependencias-declaradas-presentes` (4 tests), que está en `tests/baseline-rojos.json`.
+- Base limpia propia `servi_logistic_slt48_review` (local, `prisma migrate deploy` de todas las migraciones, SLT-48 incluida):
+  - lote 1 (13 archivos, 80 tests, todos verdes): `slt48-vistas-geografia`, `migracion-slt48-ida-y-vuelta`, `slt48-triggers-orden-pais`, `slt48-trigger-orden-rendimiento`, `slt48-tarifas-equivalencia`, `slt48-filtro-orden-nueva`, `geografia-mover-nodo`, `geografia-mover-nodo-ordenes`, `aislamiento-rls`, `migracion-sl20-ida-y-vuelta`, `migracion-sl38-ida-y-vuelta`, `geografia-dta-2026-migration` y `tests/unit/db/slt48-migraciones-declaradas`;
+  - lote 2 (17 archivos, 16 verdes): `geografia-ordenes-sin-entregar`, `zona-reconciliacion-ordenes`, `informe-transito-nodo`, `cierre-dia-snapshot-nodo`, `carga-masiva-4-niveles`, `orden-nodo-escritura`, `v1-ordenes-lugar.route`, `geografia-por-pais`, `geo-sincronia-orden-zonas`, `geo-sincronia-geografia`, `slt46-nodo-copia-vieja`, `migracion-slt43/46-ida-y-vuelta`, `geo-lecturas-catalogo`, `geografia-catalogo-activo` y `orden-lugar-owner`. El rojo es `corregir-datos-cliente.repo`, que está en el baseline (pide una base sembrada);
+  - unit y componentes (17 archivos, 361 tests, todos verdes): `geo-ubicacion`, `geo-resolucion-v1-mensajes`, `bulk-orden-service.n-niveles`, `.forma-pais`, `geografia-dominio.distrito-de-tarifa`, `geografia-plataforma.mover`, `historial-accion-etiquetas-ruta`, `CorregirUbicacionNNiveles`, `MoverNodoDialog`, `TarifasGruposNNiveles`, `ZonasNNiveles`, `GeografiaPlataformaSinAviso`, `CorregirDatosCliente.ordenes`, `.novedades`, `corregir-datos-cliente-service`, `ubicacion-presentacion` y `lugar-orden`.
+- No corrí E2E ni `./init.sh`. `init.sh` sale rojo por el cupo del board, y el humano lo aceptó.
+- `node scripts/tamano-pr.mjs`: el script no existe en este worktree (el arnés de la rama es anterior). Medí el diff a mano, sin contar `specs/` ni `progress/`: 57 archivos de producción con 3.841 líneas, y 176 de tests con 8.775 líneas.
+
+## Checklist
+
+### CHECKPOINTS.md
+- [x] `requirements.md` con R1–R49 en EARS.
+- [x] `design.md` con alternativas descartadas (§11, siete).
+- [ ] `tasks.md` todo `[x]`: faltan T7.1, T7.3 y T7.4. Son de persona o de CI (equivalencia sobre la copia de producción, `gate-completo` y backup). No los hace un agente, pero la feature no pasa a `done` sin ellos.
+- [x] `design.md > ## Lo que ya existe`: presente y con contenido, y el diff no re-crea nada de esa lista. Reutiliza `ruta-del-lugar`, el catálogo, el patrón de `renombrar` (en `mover`), `appendAccionPlataforma` y los scripts `geo:*`.
+- [x] Assignee y rama (`progress/features/SLT-48.md`).
+- [x] Cada R tiene un test concreto que existe y lo prueba (ver «Trazabilidad»).
+- [x] Mapa R → test en `progress/impl_SLT-48.md` › T7.3.
+- [x] Typecheck y lint en 0.
+- [ ] `gate-completo` en CI: pendiente, todavía no hay PR.
+- [x] Flujos críticos: los 14 specs de R49 salieron verdes en local según la bitácora («Ajustes tras T6»). En el diff solo cambian los fixtures `e2e/_planes-fixture.ts` y `_zona-especial-fixture.ts`, y `geo-presentacion-4-niveles` (R26, autorizado). Ningún spec crítico cambia de aserción.
+- [x] Sin dependencias nuevas.
+- [x] Sin secretos, sin webhooks nuevos y nada de configuración escrito a mano.
+- [ ] `./init.sh` en verde: rojo solo por cupo, aceptado por el humano.
+
+### docs/checkpoints-proyecto.md
+- [x] No hay tablas nuevas. Las vistas usan `security_invoker` y heredan la RLS `nodo_geografico_del_pais` (R3 probado con `servi_app` y en plataforma).
+- [x] Las queries nuevas de negocio filtran por empresa. `mover` es de plataforma (superadmin) y cuenta órdenes de todas las empresas a propósito (P1 dice «de qué empresas»).
+- [x] Toda migración trae `down.sql` y ninguna aplicada se editó.
+- [x] Nada de Ordenex y ningún `console.log` de PII.
+- [x] Las capas se respetan (action → service → repository). zod en el borde (`moverNodoSchema`, `vistaPreviaMoverNodoSchema`).
+- [x] No hay literal de país en código nuevo. El `DEFAULT 'CR'` del `down.sql` restaura el DDL anterior tal cual.
+- [x] Autorización en el servidor: `puerta` en las dos actions de mover (R34, probado en `geografia-plataforma.mover.test.ts`).
+
+### docs/perfil-agentes.md > reviewer
+- [x] Las tablas y queries de negocio llevan `organizacion_id` y RLS, y cada migración trae su `down.sql`.
+- [x] Sin literales de país o moneda en código nuevo y sin recursos de Ordenex.
+- [x] Sin dependencias nuevas.
+- [x] Los comentarios explican el porqué.
+
+## Puntos que pidió el humano
+
+### 1. Aserciones cambiadas
+Revisé por archivo el diff de cada test modificado: las aserciones que se quitan contra las que se añaden, y las citas `SLT-48`. Las de la tabla «Aserciones autorizadas», las 5 extra y las 4 de «Ubicación incompleta» citan su R y siguen una decisión cerrada: regla de hoja (P2), fin de «país no habilitado», FK en NULL (R15/R16), R9, R25/R26 (D = P), R21 y R34.
+
+También revisé las que no están en la tabla: `zona-nodo-herencia`, `geo-lecturas-catalogo`, `geografia-catalogo-activo`, `geografia-historico-intacto`, `aislamiento-mecanismo`, `ruta-del-lugar`, `corregir-datos-cliente-geo-retirada`, `GeografiaPlataformaAltaPais`, `geografia-plataforma-action` y los dos `CorregirDatosCliente.*`. Son cambios de forma (la terna pasa a `nodoId`, la fábrica escribe nodos) o siguen R17 o R34. Ninguna afloja una regla que siga viva:
+- el aislamiento entre empresas se conserva: un distrito de otra empresa sigue dando `null`;
+- el `42501` de `servi_app` sobre `provincia` sigue en `aislamiento-rls`, sin cambios y en verde;
+- `padre` y los demás nombres siguen prohibidos en la lista de actions. Solo `mover` sale de esa lista (R34).
+
+### 2. T5.1 (17 tests retirados) y la falta de `@test-desaparecido`
+Vale. La guardia `test-citado-desaparecido` se pondría roja con una anotación sobre archivos que siguen vivos, así que las notas HTML en los designs de SL-20, SLT-43 y SLT-46, más la §9 de este design, son lo coherente. Comprobé que las reglas que siguen vivas tienen otro test, y que existe y pasa:
+- `geo-nodo-invariantes` › R5, R7 y R9;
+- `geografia-por-pais` › R11 (otro país, 23503) y R11 (mover a otra provincia de otro país);
+- `geografia-admin-n-niveles` › «R16: un hermano…»;
+- `slt48-vistas-geografia` › R1, R2 y R5;
+- `migracion-slt48-ida-y-vuelta` › R4.
+
+La guardia `geografia-lecturas-sin-nodo-fk` se borró con su `@test-desaparecido` en SLT-44, 65 y 71, y la sustituye `orden-fk-geo-sin-uso` (R29).
+
+### 3. Trazabilidad R1–R49
+Todas las rutas del mapa T7.3 existen, y las que corrí prueban su R. R30 y R33 dependen por diseño de la persona (T7.1). R42 tiene su aprobación anotada (T0, 2026-11-17, «Aprobada»).
+
+### 4. Migraciones
+- Cada una trae su `down.sql`.
+  - El de `20261117120000` es un no-op documentado: Postgres no tiene `DROP VALUE`, y la ida usa `IF NOT EXISTS`.
+  - El de `20261117120100` recrea las tablas, los índices, la RLS, las FK, el NOT NULL, las funciones y la sincronía.
+  - La ida y vuelta de esquema y datos está probada: ida, vuelta y otra vez ida, comparando funciones por md5 y triggers por `pg_get_triggerdef`.
+- La excepción está declarada una por una en `tests/unit/db/slt48-migraciones-declaradas.test.ts`: 24 destructivas y 2 `CREATE OR REPLACE`, exactamente una vez cada una. Tiene contraprueba, y `_migraciones-aditivas.ts` se amplió con la opción nueva, que viene apagada por defecto. R14 (SLT-196) se prohíbe por patrón.
+- P5: `down.sql` aborta con `profundidad NOT IN (2,3)` y dice la cuenta (test R12).
+- R6: la ida aborta con el nodo en NULL, también en órdenes borradas, y da las cuentas por tabla.
+- Vistas: `security_invoker = true`. El trigger `INSTEAD OF` da `SL048` y nombra `nodo_geografico`. `REVOKE ALL` + `GRANT SELECT` a `servi_app`, que recibe `42501` (probado).
+- Bloqueos sobre `orden`: solo DDL de catálogo (`DROP CONSTRAINT`, `DROP NOT NULL`, triggers). Nada reescribe la tabla y el `count(*)` va antes de tomar el lock exclusivo. Es aceptable.
+
+### 5. Decisiones
+- Hoja = sin hijos activos (`geo-ubicacion.ts:106`, `esHoja`).
+- Tarifas: `distritoDeTarifaDelNodo` da grupo solo con profundidad ≥ 3 (P3). Lo usan la cotización, el cierre y el cobro de devolución y de rechazo (`findBaseCobroDevolucion`).
+- Mover (`GeoRepository.ts:413` `evaluarMovimiento`, `:916` `mover`):
+  - solo a la misma profundidad, y se rechazan raíz, destino inexistente, de otro país y padre actual;
+  - P4 con la cascada de retiro, y `conflict`;
+  - bloqueo P1 con su cuenta y sus empresas;
+  - `cambio_concurrente` con `updateMany` condicionado;
+  - historial en la misma transacción;
+  - descendientes desglosados por nivel y la fila «Ubicación» (`MoverNodoDialog.tsx:114`).
+- v1 igual que hoy: `ApiOrdenLecturaService` no cambia y `v1-ordenes-lugar` compara la respuesta con y sin FK.
+- Los 6 textos de CR, «Un/Una <tipo>» (`tarifas-textos.ts:255`) y el aviso único (`CorregirDatosClienteModal.tsx:487-496`) están implementados como se decidió.
+
+### 6. Archivos fuera de `## Archivos esperados`
+Solo `specs/SL-20…`, `specs/SLT-43…` y `specs/SLT-46…/design.md` (notas HTML de T5.1, autorizadas el 2026-11-18), y los `specs/`/`progress/` propios. Hay archivos esperados que no se tocaron:
+- los del camino B (no se usó);
+- `ApiOrdenLecturaService`, `RechazoTiendaService` y `resolver-tarifas` (leen lo que les da el repositorio, que ya pasó al nodo);
+- `historial-accion.ts` (decisión e);
+- `lugares-del-filtro` y `filtrar-arbol-geografico`;
+- algunos tests de la lista que no escriben las tablas viejas, o que pasan intactos sobre una base limpia (`aislamiento-rls`, `migracion-sl20`, `migracion-sl38` y `geografia-dta-2026`, verdes en mi corrida).
+
+### 7. Nada de SLT-196
+Confirmado:
+- ningún `DROP COLUMN`, `DROP VIEW`, `RENAME` ni NOT NULL del nodo, y no se toca `pais.nivel_N_*`;
+- `NivelGeografico`, `PROFUNDIDAD_DEL_NIVEL` y `_shared/zona-colapso.ts` siguen;
+- las 3 columnas de nombre de `cierre_detail` se siguen escribiendo (R27).
+
+## Hallazgos
+
+1. **BLOQUEANTE (de proceso, no de código): tamaño del PR sin marca de aceptación y por encima de lo aceptado.**
+   - El diff tiene 233 archivos sin contar `specs/` ni `progress/`: 57 de producción con 3.841 líneas y 176 de tests con 8.775.
+   - El humano aceptó «~150 archivos: 48 de producción y 85–105 de tests» (requirements › Decisiones, «Tamaño del PR»), y la ficha dice «60-90 de tests».
+   - Los tests superan ese tope en un 70 %, y el total en un 55 %.
+   - `progress/features/SLT-48.md` no tiene la línea `<!-- tamano-pr-aceptado: AAAA-MM-DD · <motivo> -->`, y `scripts/tamano-pr.mjs` no está en este worktree.
+   - Para cumplirlo, el leader enseña las cifras reales al humano y, si este acepta, añade la marca con su frase a `progress/features/SLT-48.md`. El código no cambia.
+2. **menor:** R25 dice «los 2 niveles más hondos de la ruta de la orden», pero lo implementado es D = P, es decir los niveles P−1 y P del país (design §5, `ubicacion-presentacion.ts`).
+   - En CR y para órdenes en el último nivel da lo mismo.
+   - Una hoja más alta que P (por ejemplo, un nivel 3 sin hijos en un país de 4) sale como «Bellavista · vacío».
+   - Un nivel 3 en un país de 10 niveles sale con las dos columnas vacías (`ubicacion-presentacion.test.ts`, describe `dosMasHondos`).
+   - Lo respalda el design, no el texto de R25. Conviene alinear el texto o confirmarlo con el humano.
+3. **menor:** dos tests del mapa están en `tests/baseline-rojos.json`, y CI no detectaría una regresión en ellos.
+   - `corregir-datos-cliente.repo` (R16) pide una base sembrada. R16 también lo cubren en Postgres `orden-nodo-escritura` (verde) y los unit y de componente.
+   - `geografia-ordenes-sin-entregar` (R24) sale verde en una base limpia: según la regla del baseline, debería salir de la lista en este PR, y el gate avisará.
+4. **menor:** con el aviso único, si no hay ningún lugar elegido sigue saliendo «Falta completar: <nivel>.» (`CorregirDatosClienteModal.tsx:491`). Es una interpretación razonable, porque sin lugar no hay a quién nombrar en «Ubicación incompleta». Conviene que el humano la confirme.
+5. **menor:** P1 tiene una carrera. `mover` evalúa las órdenes abiertas dentro de la transacción, pero sin bloquear filas. Una orden creada en el subárbol entre esa lectura y el commit no entra en el bloqueo. La ventana es corta y es una operación de superadmin, pero queda anotada.
+6. **menor:** en el `down.sql`, una orden creada tras el deploy sin nodo ni FK (SQL a mano) haría fallar `SET NOT NULL` con un error genérico, no con el mensaje de P5. Además, `ADD FOREIGN KEY` valida `orden` entera durante la vuelta. Es aceptable para un rollback.
+7. **menor:** quedan T7.1, T7.3 y T7.4 sin marcar: equivalencia y `explain` en la copia de producción, `gate-completo` y backup. Son de persona o de CI y condición para pasar a `done`.
+
+## Veredicto
+
+**RECHAZADO**, solo por el hallazgo 1, que es de proceso: el tamaño real del PR supera lo que aceptó el humano y falta la línea `tamano-pr-aceptado`. El código, las migraciones, la trazabilidad y las decisiones pasan la revisión. Basta que el humano acepte las cifras reales y el leader escriba la marca. Después, una vuelta 2 acotada a ese commit puede cerrar en OK con menores.
