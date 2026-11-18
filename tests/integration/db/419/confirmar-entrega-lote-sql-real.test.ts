@@ -4,6 +4,9 @@ import type { PrismaClient } from "@prisma/client";
 
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "../_postgres-real";
+import { conEmpresa } from "@/lib/db/contexto-empresa";
+import { conAislamientoPorEmpresa } from "@/lib/db/extension-empresa";
+import { crearOrganizacion } from "@/tests/fabricas/organizaciones";
 import {
   EnlaceCaido,
   FOTO,
@@ -268,57 +271,76 @@ describeSiHayBase("419 — lote central de entrega a la tienda (Postgres real)",
     let c2: PrismaClient;
     const ordenIds: string[] = [];
     let usuarios: string[] = [];
+    // SLT-185 (R1144): los datos CONFIRMADOS viven en una empresa propia; se borra la ultima (R1145).
+    let organizacionId: string | undefined;
+    let centralesSembradas = -1;
     const dosLotes: { estados: string[]; historial: number; enlace: boolean }[] = [];
     const loteVsEscaner: { lote: string; escaner: boolean; historial: number; enlace: boolean }[] = [];
 
     beforeAll(async () => {
-      c1 = crearPrismaDeTest();
-      c2 = crearPrismaDeTest();
-      const p = await crearPersonas419(mundo, mundo.prisma);
-      usuarios = p.usuarios;
-      const leer = lecturas419(mundo, mundo.prisma);
-      const devueltaId = p.id("devuelta_a_tienda");
-      const lote = (c: PrismaClient, ordenId: string) =>
-        montarServicio419(c).service.confirmarEntrega(
-          { tiendaId: p.tiendaA, ordenIds: [ordenId], evidencias: FOTO },
-          p.actorMaestro,
-        );
+      // SLT-185 (R1144): siembra y clientes de concurrencia con la envoltura de produccion
+      // (`conAislamientoPorEmpresa`): sus escrituras fijan la empresa del contexto y bajan a `servi_app`.
+      // Sin ella, `zona.create` de la central viola `organizacion_id NOT NULL` (SL-17).
+      organizacionId = (await crearOrganizacion(mundo.prisma)).id;
+      const empresa = organizacionId;
+      const deLaApp = (base: PrismaClient) => conAislamientoPorEmpresa(base, async () => null);
+      c1 = deLaApp(crearPrismaDeTest());
+      c2 = deLaApp(crearPrismaDeTest());
+      await conEmpresa(empresa, async () => {
+        const p = await crearPersonas419(mundo, deLaApp(mundo.prisma));
+        usuarios = p.usuarios;
+        centralesSembradas = await mundo.prisma.zona.count({ where: { organizacionId: empresa, esCentral: true } });
+        const leer = lecturas419(mundo, mundo.prisma);
+        const devueltaId = p.id("devuelta_a_tienda");
+        const lote = (c: PrismaClient, ordenId: string) =>
+          montarServicio419(c).service.confirmarEntrega(
+            { tiendaId: p.tiendaA, ordenIds: [ordenId], evidencias: FOTO },
+            p.actorMaestro,
+          );
 
-      for (let i = 0; i < REPETICIONES; i++) {
-        const a = await p.sembrarOrden({ estatus: "devolviendo_a_tienda" });
-        ordenIds.push(a.ordenId);
-        const res = await Promise.all([lote(c1, a.ordenId), lote(c2, a.ordenId)]);
-        dosLotes.push({
-          estados: res.map((x) => x.status).sort(),
-          historial: (await leer.historialDevuelta(a.ordenId)).length,
-          enlace: (await leer.enlaceDe(a.ordenId)) !== null,
-        });
+        for (let i = 0; i < REPETICIONES; i++) {
+          const a = await p.sembrarOrden({ estatus: "devolviendo_a_tienda" });
+          ordenIds.push(a.ordenId);
+          const res = await Promise.all([lote(c1, a.ordenId), lote(c2, a.ordenId)]);
+          dosLotes.push({
+            estados: res.map((x) => x.status).sort(),
+            historial: (await leer.historialDevuelta(a.ordenId)).length,
+            enlace: (await leer.enlaceDe(a.ordenId)) !== null,
+          });
 
-        const b = await p.sembrarOrden({ estatus: "devolviendo_a_tienda" });
-        ordenIds.push(b.ordenId);
-        const [rl, re] = await Promise.all([
-          lote(c1, b.ordenId),
-          new OrdenRepository(c2).recibirEnOrigen(b.ordenId, p.tiendaA, devueltaId, {
-            actorUsuarioId: p.tiendaA,
-            origenTipo: "ajuste_estado",
-          }),
-        ]);
-        loteVsEscaner.push({
-          lote: rl.status,
-          escaner: re,
-          historial: (await leer.historialDevuelta(b.ordenId)).length,
-          enlace: (await leer.enlaceDe(b.ordenId)) !== null,
-        });
-      }
+          const b = await p.sembrarOrden({ estatus: "devolviendo_a_tienda" });
+          ordenIds.push(b.ordenId);
+          const [rl, re] = await Promise.all([
+            lote(c1, b.ordenId),
+            new OrdenRepository(c2).recibirEnOrigen(b.ordenId, p.tiendaA, devueltaId, {
+              actorUsuarioId: p.tiendaA,
+              origenTipo: "ajuste_estado",
+            }),
+          ]);
+          loteVsEscaner.push({
+            lote: rl.status,
+            escaner: re,
+            historial: (await leer.historialDevuelta(b.ordenId)).length,
+            enlace: (await leer.enlaceDe(b.ordenId)) !== null,
+          });
+        }
+      });
     }, 300_000);
 
     afterAll(async () => {
-      await limpiar419(mundo.prisma, { usuarios, ordenIds });
+      await limpiar419(mundo.prisma, { usuarios, ordenIds, organizacionId });
+      // SLT-185 (R1145): tras limpiar no queda ni la empresa ni sus zonas (central incluida).
+      if (organizacionId !== undefined) {
+        expect(await mundo.prisma.organizacion.count({ where: { id: organizacionId } }), "SLT-185: empresa borrada").toBe(0);
+        expect(await mundo.prisma.zona.count({ where: { organizacionId } }), "SLT-185: zonas borradas").toBe(0);
+      }
       await c1?.$disconnect();
       await c2?.$disconnect();
     }, 120_000);
 
     it(`dos lotes a la vez sobre la misma orden (${REPETICIONES}x): uno ok, otro ninguna_devuelta; 1 historial, 1 enlace`, () => {
+      // SLT-185 (R1146): control positivo: la empresa propia y su UNA central estan confirmadas.
+      expect(centralesSembradas, "SLT-185: central sembrada en la empresa del escenario").toBe(1);
       expect(dosLotes).toHaveLength(REPETICIONES);
       for (const m of dosLotes) {
         expect(m).toEqual({ estados: ["ninguna_devuelta", "ok"], historial: 1, enlace: true });

@@ -129,6 +129,11 @@ function ubicacionesDe(
       };
     case "devolucion_central":
       return { origen: zona, destino: ctx.central, responsable: ctx.actor };
+    case "retiro_satelite":
+      // SLT-197 (R982, D1): de la satelite de la zona a la central, sin mensajero; responde
+      // quien retiro. Rama propia (no comparte con `devolucion_central`): el flujo es la etiqueta
+      // de la operacion y llamar «devolucion» a un retiro seria mentir en el papel.
+      return { origen: zona, destino: ctx.central, responsable: ctx.actor };
     case "envio_tienda":
       return { origen: ctx.central, destino: tienda, responsable: ctx.actor };
   }

@@ -5,7 +5,7 @@ import path from "node:path";
 import { conAyudaAbiertaDe } from "@/lib/repositories/ayuda-abierta";
 import { whereGestionPendiente } from "@/lib/repositories/gestion-pendiente";
 import { HAY_BASE_DE_DATOS } from "../_postgres-real";
-import { enLaEraAnterior455 } from "../455/_era-anterior";
+import { SQL_455 } from "../455/_era-anterior";
 import { conEscenario, prepararMundo, type Escenario, type Mundo } from "./_escenario";
 
 const SIN_ROL_DE_APP = { rolDeLaApp: false } as const;
@@ -35,6 +35,40 @@ const DOWN = fs.readFileSync(path.join(M3, "down.sql"), "utf8");
 const RASTRO = ["migracion 454: retiro de ayuda_tienda", "migracion 454: retiro de devolucion_por_confirmar"];
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
+
+interface EjecutaSql {
+  $executeRawUnsafe(sql: string): Promise<unknown>;
+}
+
+/**
+ * SLT-187 (R1166): aplica M3 (o su down) SOLO sobre las filas de la empresa del escenario.
+ *
+ * El bloque `DO` de M3 recorre TODA la tabla `orden`: en una base con datos de otra empresa (p. ej.
+ * una orden ajena en `ayuda_tienda` sin fila de solicitud) levantaba `P0001` por filas que este
+ * test no sembro, y en una base vacia pasaba (resultado distinto segun la base). Se aisla con la
+ * RLS que ya existe: el SQL de M3 corre como `servi_app` (sin BYPASSRLS) con la empresa de la tx
+ * fijada, asi que las policies `<tabla>_por_empresa` solo le dejan ver y tocar lo de esta empresa.
+ *
+ * Lo que hace falta para eso, todo dentro de la tx que SIEMPRE se revierte:
+ *  - el DDL de la 455 (`m2Down`/`m1Down` y vuelta) sigue corriendo con el rol del dueno;
+ *  - `GRANT INSERT, DELETE ON order_status TO servi_app`: M3 nombra el catalogo (DELETE en el up,
+ *    INSERT en el down) y Postgres comprueba el permiso aunque la sentencia no toque filas. Con la
+ *    unica policy del catalogo (`order_status_lectura`, solo SELECT) el DELETE no ve filas: el
+ *    retiro es no-op, que es lo que (c) ya afirma para esta base (el propio rastro los referencia).
+ * Por que no un esquema desechable: el escenario usa los servicios reales sobre ~30 tablas de
+ * `public`; clonarlas en otro esquema costaria mas que el caso.
+ */
+async function m3SoloDeLaEmpresa(tx: EjecutaSql, sql: string): Promise<void> {
+  await tx.$executeRawUnsafe(SQL_455.m2Down);
+  await tx.$executeRawUnsafe(SQL_455.m1Down);
+  await tx.$executeRawUnsafe(`GRANT INSERT, DELETE ON "order_status" TO servi_app`);
+  await tx.$executeRawUnsafe(`SELECT set_config('role', 'servi_app', true)`);
+  // Si el SQL falla, la tx queda abortada: se propaga el error tal cual (el RESET no podria correr).
+  await tx.$executeRawUnsafe(sql);
+  await tx.$executeRawUnsafe("RESET ROLE");
+  await tx.$executeRawUnsafe(SQL_455.m1Up);
+  await tx.$executeRawUnsafe(SQL_455.m2Up);
+}
 
 describe("454/T1.24 — M3, leida del archivo", () => {
   it("up y down son UN bloque `DO` cada uno (todo o nada)", () => {
@@ -152,7 +186,7 @@ describeSiHayBase("454/T1.24 — M3 contra Postgres real", () => {
       const enCatalogo = async (value: string) => (await e.tx.orderStatus.count({ where: { value } })) === 1;
 
       // ── UP ──
-      await enLaEraAnterior455(e.tx, UP);
+      await m3SoloDeLaEmpresa(e.tx, UP);
       const up1 = {
         estados: await estados(todas),
         rastros: await rastros(),
@@ -176,7 +210,7 @@ describeSiHayBase("454/T1.24 — M3 contra Postgres real", () => {
       };
 
       // ── UP otra vez: idempotente ──
-      await enLaEraAnterior455(e.tx, UP);
+      await m3SoloDeLaEmpresa(e.tx, UP);
       const up2 = { estados: await estados(todas), rastros: await rastros(), eventos: await eventos() };
 
       // ── Actividad del modelo NUEVO antes del down ──
@@ -187,7 +221,7 @@ describeSiHayBase("454/T1.24 — M3 contra Postgres real", () => {
       const pedida = (await e.pedirAyuda(nAy.ordenId)).status;
 
       // ── DOWN ──
-      await enLaEraAnterior455(e.tx, DOWN);
+      await m3SoloDeLaEmpresa(e.tx, DOWN);
       const down = {
         estados: await estados(todas),
         nPend: await e.estadoDe(nPend.ordenId),
@@ -210,7 +244,7 @@ describeSiHayBase("454/T1.24 — M3 contra Postgres real", () => {
       };
 
       // ── UP de nuevo ──
-      await enLaEraAnterior455(e.tx, UP);
+      await m3SoloDeLaEmpresa(e.tx, UP);
       const up3 = {
         estados: await estados(todas),
         nPend: await e.estadoDe(nPend.ordenId),
@@ -236,7 +270,7 @@ describeSiHayBase("454/T1.24 — M3 contra Postgres real", () => {
     return conEscenario(mundo, async (e) => {
       await prep(e);
       try {
-        await enLaEraAnterior455(e.tx, UP);
+        await m3SoloDeLaEmpresa(e.tx, UP);
         return "sin error";
       } catch (err) {
         return String((err as Error).message);

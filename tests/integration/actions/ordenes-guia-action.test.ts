@@ -5,6 +5,7 @@ import {
   asignarRecoleccion,
   listarMensajerosParaAsignacion,
   rutearABodegaSatelite,
+  retirarABodegaCentral,
 } from "@/lib/actions/ordenes-guia";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IGuiaAsignacionService } from "@/lib/interfaces/services/IGuiaAsignacionService";
@@ -18,6 +19,7 @@ function fakeGuiaService(overrides: Partial<IGuiaAsignacionService> = {}): IGuia
     generarGuia: vi.fn().mockResolvedValue({ status: "ok", resultados: [] }),
     asignarDesdeBodega: vi.fn().mockResolvedValue({ status: "ok", resultados: [] }),
     rutearABodegaSatelite: vi.fn().mockResolvedValue({ status: "ok", resultados: [] }),
+    retirarABodegaCentral: vi.fn().mockResolvedValue({ status: "ok", resultados: [] }),
     asignarRecoleccion: vi.fn().mockResolvedValue({ status: "ok", resultados: [] }),
     desasignarRecoleccion: vi.fn().mockResolvedValue({ status: "ok", resultados: [] }),
     ...overrides,
@@ -488,6 +490,72 @@ describe("Feature 30/R13/R16: rutearABodegaSatelite (server action)", () => {
       resultados: [{ ordenId: "o1", estado: "en_ruta_bodega_satelite" }],
     });
     expect(service.rutearABodegaSatelite).toHaveBeenCalledWith({ ordenIds: ["o1"] }, MAESTRO);
+  });
+});
+
+// SLT-197 «Retirar paquetes de una bodega satelite a la central» — borde de la action.
+describe("SLT-197 R976: retirarABodegaCentral (server action)", () => {
+  it("R976: sin sesion -> unauthenticated sin tocar el service", async () => {
+    const service = fakeGuiaService();
+    const r = await retirarABodegaCentral(
+      { ordenIds: ["o1"] },
+      { guiaService: service, getActor: getActor(null) },
+    );
+    expect(r).toEqual({ status: "unauthenticated" });
+    expect(service.retirarABodegaCentral).not.toHaveBeenCalled();
+  });
+
+  it("R976: lista vacia -> validation_error sin tocar el service", async () => {
+    const service = fakeGuiaService();
+    const r = await retirarABodegaCentral(
+      { ordenIds: [] },
+      { guiaService: service, getActor: getActor(MAESTRO) },
+    );
+    expect(r.status).toBe("validation_error");
+    expect(service.retirarABodegaCentral).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["ordenIds no es lista", { ordenIds: "o1" }],
+    ["ordenIds con un no-string", { ordenIds: [42] }],
+    ["sin ordenIds", {}],
+  ])("R976: %s -> validation_error sin tocar el service", async (_n, input) => {
+    const service = fakeGuiaService();
+    const r = await retirarABodegaCentral(input, {
+      guiaService: service,
+      getActor: getActor(MAESTRO),
+    });
+    expect(r.status).toBe("validation_error");
+    expect(service.retirarABodegaCentral).not.toHaveBeenCalled();
+  });
+
+  it("camino ok: delega con el actor resuelto y devuelve el resultado del service", async () => {
+    const service = fakeGuiaService({
+      retirarABodegaCentral: vi.fn().mockResolvedValue({
+        status: "ok",
+        resultados: [{ ordenId: "o1", estado: "en_ruta_bodega_central" }],
+      }),
+    });
+    const r = await retirarABodegaCentral(
+      { ordenIds: ["o1"] },
+      { guiaService: service, getActor: getActor(ADMIN) },
+    );
+    expect(r).toEqual({
+      status: "ok",
+      resultados: [{ ordenId: "o1", estado: "en_ruta_bodega_central" }],
+    });
+    expect(service.retirarABodegaCentral).toHaveBeenCalledWith({ ordenIds: ["o1"] }, ADMIN);
+  });
+
+  it("R975: el forbidden del service llega tal cual", async () => {
+    const service = fakeGuiaService({
+      retirarABodegaCentral: vi.fn().mockResolvedValue({ status: "forbidden" }),
+    });
+    const r = await retirarABodegaCentral(
+      { ordenIds: ["o1"] },
+      { guiaService: service, getActor: getActor({ usuarioId: "u-sat", rol: "adminSatelite" }) },
+    );
+    expect(r).toEqual({ status: "forbidden" });
   });
 });
 

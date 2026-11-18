@@ -1,8 +1,10 @@
 import type {
   CuotaDeLaFactura,
+  DatosDescargaFactura,
   DetalleDeFactura,
   FacturaPlataformaDTO,
   LineaDeFactura,
+  MovimientoDeFactura,
 } from "@/lib/types/factura-plataforma";
 
 // SLT-119 — facturas de la plataforma para los tests de las pantallas. Los instantes van en UTC: las 00:00 de la
@@ -66,5 +68,45 @@ export function detalle(f: FacturaPlataformaDTO, lineas: LineaDeFactura[], extra
   return {
     factura: f,
     lineas: { lineas, pagina: extra.pagina ?? 1, porPagina: 100, total: extra.total ?? lineas.length },
+  };
+}
+
+/* SLT-136 — los datos de la descarga de una factura cerrada. */
+
+export function movimiento(extra: Partial<MovimientoDeFactura> = {}): MovimientoDeFactura {
+  return {
+    id: "cccccccc-0000-4000-8000-000000000001",
+    instante: enPlataforma("2026-11-17", "09:30"),
+    numGuia: 1001,
+    numRemision: "R-1001",
+    tipo: "cargo",
+    valor: "300.00",
+    ...extra,
+  };
+}
+
+/** La factura de `factura()` con sus tres movimientos: dos cargos de 300 y el reverso de uno. */
+export function datosDescarga(extra: Partial<DatosDescargaFactura> = {}): DatosDescargaFactura {
+  return {
+    factura: factura(),
+    empresaNombre: "Mensajería Ñandú S.A.",
+    movimientos: [
+      movimiento({ id: "cccccccc-0000-4000-8000-000000000001" }),
+      movimiento({
+        id: "cccccccc-0000-4000-8000-000000000002",
+        instante: enPlataforma("2026-11-18", "10:00"),
+        numGuia: 1002,
+        numRemision: "R-1002",
+      }),
+      movimiento({
+        id: "cccccccc-0000-4000-8000-000000000003",
+        instante: enPlataforma("2026-11-18", "15:45"),
+        numGuia: null,
+        numRemision: "R-1001",
+        tipo: "reverso",
+        valor: "-300.00",
+      }),
+    ],
+    ...extra,
   };
 }

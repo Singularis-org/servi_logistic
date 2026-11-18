@@ -6,7 +6,9 @@ import {
   crearPrismaDeTestConEspia,
   enTransaccionRevertida,
   serializarEscriturasReales,
+  type FksDeOrden,
 } from "../db/_postgres-real";
+import { crearFksDeOrden } from "../db/_fixtures/orden-minima";
 import { OrdenNotaRepository } from "@/lib/repositories/OrdenNotaRepository";
 import type { OrdenNotaRow } from "@/lib/interfaces/repositories/IOrdenNotaRepository";
 
@@ -93,8 +95,11 @@ describeSiHayBase("227 / T2.5 — OrdenNotaRepository contra Postgres real (R3, 
 
     const tienda = await crearUsuario(tx, "Tienda del test");
     const mensajero = await crearUsuario(tx, "Mensajero del test");
-    const ordenId = await crearOrden(tx, tienda, mensajero);
-    const otraOrdenId = await crearOrden(tx, tienda, mensajero);
+    // SLT-184 (R1122/R1124): zona propia, sembrada en la tx, con su control positivo.
+    const fks = await crearFksDeOrden(tx);
+    expect(await tx.zona.count({ where: { id: fks.zonaId } }), "SLT-184: la zona sembrada no esta en la base").toBe(1);
+    const ordenId = await crearOrden(tx, fks, tienda, mensajero);
+    const otraOrdenId = await crearOrden(tx, fks, tienda, mensajero);
 
     // Sembradas por `tx` y NO por el repo: hacen falta instantes CONTROLADOS (uno repetido), y
     // `crear` —con razon— no deja fijar `created_at`. Se insertan en orden C, B, A para que el
@@ -193,29 +198,22 @@ describeSiHayBase("227 / T2.5 — OrdenNotaRepository contra Postgres real (R3, 
     return id;
   }
 
-  /** Una orden NUEVA del test, con las FK obligatorias tomadas de los catalogos. */
-  async function crearOrden(tx: Tx, tiendaId: string, mensajeroId: string): Promise<string> {
-    const canton = await tx.canton.findFirst({ select: { id: true, provinciaId: true } });
-    const zona = await tx.zona.findFirst({ select: { id: true } });
-    const estatus = await tx.orderStatus.findFirst({ select: { id: true } });
-    if (!canton || !zona || !estatus) {
-      throw new Error(
-        "La base de pruebas no tiene catalogos de geografia/estatus sembrados: sin ellos no se " +
-          "puede crear la orden propia del test (y sin orden no hay hilo que medir). Corre " +
-          "`pnpm db:seed`. Este test NO se salta en ese caso a proposito.",
-      );
-    }
+  /**
+   * Una orden NUEVA del test. SLT-184 (R1122): sus FK (zona, estatus, geografia) son las que
+   * `crearFksDeOrden` sembro en la tx; antes salian de «la primera zona» de la base.
+   */
+  async function crearOrden(tx: Tx, fks: FksDeOrden, tiendaId: string, mensajeroId: string): Promise<string> {
     const sufijo = randomUUID().slice(0, 12);
     const { id } = await tx.orden.create({
       data: {
         numRemision: `t227-${sufijo}`,
-        estatusId: estatus.id,
+        estatusId: fks.estatusId,
         destinatario: "Destinatario de prueba",
         telefonoDest: "00000000",
         tiendaId,
-        zonaId: zona.id,
-        provinciaId: canton.provinciaId,
-        cantonId: canton.id,
+        zonaId: fks.zonaId,
+        provinciaId: fks.provinciaId,
+        cantonId: fks.cantonId,
         producto: "Producto",
         mensajeroAsignadoId: mensajeroId,
       },

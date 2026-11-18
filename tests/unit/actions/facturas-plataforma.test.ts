@@ -26,6 +26,8 @@ function servicioEspia(): IFacturaPlataformaService & { [K in keyof IFacturaPlat
     detalleDeMiEmpresa: vi.fn(async () => ({ estado: "not_found" as const })),
     deEmpresa: vi.fn(async () => ({ estado: "ok" as const, facturas: [] })),
     detalleDeEmpresa: vi.fn(async () => ({ estado: "not_found" as const })),
+    descargaDeMiEmpresa: vi.fn(async () => ({ estado: "not_found" as const })),
+    descargaDeEmpresa: vi.fn(async () => ({ estado: "not_found" as const })),
   };
 }
 
@@ -41,6 +43,8 @@ function servicioSinBase(): IFacturaPlataformaService {
     deEmpresaParaPlataforma: lanza,
     detalleDeLaEmpresa: lanza,
     detalleParaPlataforma: lanza,
+    datosDescargaDeLaEmpresa: lanza,
+    datosDescargaParaPlataforma: lanza,
   };
   return new FacturaPlataformaService(repo);
 }
@@ -48,8 +52,13 @@ function servicioSinBase(): IFacturaPlataformaService {
 const sesion = (actor: Actor | null) => async () => actor;
 
 describe("SLT-119 — el borde de las facturas de la plataforma (R13)", () => {
-  it("R16: solo dos actions, las dos de lectura del detalle", () => {
-    expect(Object.keys(acciones).sort()).toEqual(["verDetalleFacturaEmpresaAction", "verDetalleFacturaMiPlanAction"]);
+  it("R16: solo cuatro actions, todas de lectura: las dos del detalle y las dos de la descarga (SLT-136)", () => {
+    expect(Object.keys(acciones).sort()).toEqual([
+      "descargarFacturaEmpresaAction",
+      "descargarFacturaMiPlanAction",
+      "verDetalleFacturaEmpresaAction",
+      "verDetalleFacturaMiPlanAction",
+    ]);
   });
 
   it("R13: el detalle del maestro pasa el actor de la sesión y la entrada tal cual; ninguna empresa del cliente", async () => {
@@ -110,5 +119,53 @@ describe("SLT-119 — el borde de las facturas de la plataforma (R13)", () => {
     await expect(verFacturasDeEmpresa(MAESTRO, { organizacionId: LIGADA }, servicioSinBase())).resolves.toEqual({
       estado: "forbidden",
     });
+  });
+});
+
+// SLT-136 · T1.4 (design §2.3; R1, R2, R3) — el borde de la descarga: el actor de la sesión, ninguna empresa del
+// cliente por la vía del maestro y la empresa ligada por la del superadmin.
+describe("SLT-136 — el borde de la descarga de una factura (R1, R2, R3)", () => {
+  it("R1: la descarga del maestro pasa el actor de la sesión y la entrada tal cual, sin pedir otra empresa", async () => {
+    const service = servicioEspia();
+    const input = { facturaId: FACTURA, organizacionId: OTRA };
+    await acciones.descargarFacturaMiPlanAction(input, { service, getActor: sesion(MAESTRO) });
+    expect(service.descargaDeMiEmpresa).toHaveBeenCalledWith(MAESTRO, input);
+    expect(service.descargaDeEmpresa).not.toHaveBeenCalled();
+  });
+
+  it("R2: la descarga del superadmin usa la empresa ligada en el servidor, aunque el cliente mande otra", async () => {
+    const service = servicioEspia();
+    await acciones.descargarFacturaEmpresaAction(LIGADA, { facturaId: FACTURA, organizacionId: OTRA }, {
+      service,
+      getActor: sesion(SUPERADMIN),
+    });
+    expect(service.descargaDeEmpresa).toHaveBeenCalledWith(SUPERADMIN, { facturaId: FACTURA, organizacionId: LIGADA });
+    expect(service.descargaDeMiEmpresa).not.toHaveBeenCalled();
+  });
+
+  it("R2: con una entrada que no es objeto, el superadmin sigue pidiendo la empresa ligada (el servicio valida)", async () => {
+    const service = servicioEspia();
+    await acciones.descargarFacturaEmpresaAction(LIGADA, "basura", { service, getActor: sesion(SUPERADMIN) });
+    expect(service.descargaDeEmpresa).toHaveBeenCalledWith(SUPERADMIN, { organizacionId: LIGADA });
+  });
+
+  it.each([
+    ["sin sesión", null],
+    ["el admin", ADMIN],
+    ["el superadmin", SUPERADMIN],
+  ])("R3: %s pide la descarga por la vía del maestro → forbidden sin leer la base", async (_, actor) => {
+    await expect(
+      acciones.descargarFacturaMiPlanAction({ facturaId: FACTURA }, { service: servicioSinBase(), getActor: sesion(actor) }),
+    ).resolves.toEqual({ estado: "forbidden" });
+  });
+
+  it.each([
+    ["sin sesión", null],
+    ["el maestro", MAESTRO],
+    ["el admin", ADMIN],
+  ])("R3: %s pide la descarga de una empresa por su id → forbidden sin leer la base", async (_, actor) => {
+    await expect(
+      acciones.descargarFacturaEmpresaAction(LIGADA, { facturaId: FACTURA }, { service: servicioSinBase(), getActor: sesion(actor) }),
+    ).resolves.toEqual({ estado: "forbidden" });
   });
 });

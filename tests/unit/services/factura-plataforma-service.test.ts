@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { IFacturaPlataformaRepository } from "@/lib/interfaces/repositories/IFacturaPlataformaRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { FacturaPlataformaService } from "@/lib/services/FacturaPlataformaService";
-import type { DetalleDeFactura, FacturaPlataformaDTO } from "@/lib/types/factura-plataforma";
+import type { DatosDescargaFactura, DetalleDeFactura, FacturaPlataformaDTO } from "@/lib/types/factura-plataforma";
 
 // SLT-119 · T2.2 (design §4; R1, R13, R14, R15) — el servicio de las facturas con un repositorio doble que
 // FALLA si se le llama cuando no toca. Lo que se mide: quién (R13) y la entrada (R15) van antes que la base, un
@@ -51,13 +51,26 @@ const DETALLE: DetalleDeFactura = {
   lineas: { lineas: [], pagina: 1, porPagina: 100, total: 0 },
 };
 
+/** SLT-136: los datos de la descarga de la cerrada f-1. */
+const DESCARGA: DatosDescargaFactura = {
+  factura: DEL_REPO[0],
+  empresaNombre: "Empresa Uno",
+  movimientos: [
+    { id: "t-1", instante: new Date("2026-10-02T12:00:00.000Z"), numGuia: 7, numRemision: "R-1", tipo: "cargo", valor: "10.00" },
+  ],
+};
+
 type Metodo = keyof IFacturaPlataformaRepository;
 
 /** El repositorio doble: cuenta y anota cada llamada; si `prohibido`, cualquier llamada lanza. */
 class RepoDoble implements IFacturaPlataformaRepository {
   readonly llamadas: { metodo: Metodo; args: unknown[] }[] = [];
   constructor(
-    private readonly opciones: { prohibido?: boolean; detalle?: DetalleDeFactura | null } = {},
+    private readonly opciones: {
+      prohibido?: boolean;
+      detalle?: DetalleDeFactura | null;
+      descarga?: DatosDescargaFactura | null;
+    } = {},
   ) {}
 
   private anotar(metodo: Metodo, args: unknown[]): void {
@@ -88,6 +101,14 @@ class RepoDoble implements IFacturaPlataformaRepository {
   async detalleParaPlataforma(organizacionId: string, facturaId: string, pagina: number): Promise<DetalleDeFactura | null> {
     this.anotar("detalleParaPlataforma", [organizacionId, facturaId, pagina]);
     return this.opciones.detalle === undefined ? DETALLE : this.opciones.detalle;
+  }
+  async datosDescargaDeLaEmpresa(facturaId: string): Promise<DatosDescargaFactura | null> {
+    this.anotar("datosDescargaDeLaEmpresa", [facturaId]);
+    return this.opciones.descarga === undefined ? DESCARGA : this.opciones.descarga;
+  }
+  async datosDescargaParaPlataforma(organizacionId: string, facturaId: string): Promise<DatosDescargaFactura | null> {
+    this.anotar("datosDescargaParaPlataforma", [organizacionId, facturaId]);
+    return this.opciones.descarga === undefined ? DESCARGA : this.opciones.descarga;
   }
 }
 
@@ -213,6 +234,85 @@ describe("SLT-119 — FacturaPlataformaService: quién, la entrada y el orden (R
       const repo = new RepoDoble();
       repo.deLaEmpresa = async () => [];
       await expect(new FacturaPlataformaService(repo).deMiEmpresa(MAESTRO)).resolves.toEqual({ estado: "ok", facturas: [] });
+    });
+  });
+});
+
+// SLT-136 · T1.4 (design §2.3; R1–R5) — la descarga de una factura cerrada: mismo orden que el detalle. Qué
+// factura y qué movimientos salen lo mide `tests/integration/db/factura-plataforma-descarga.test.ts`.
+describe("SLT-136 — FacturaPlataformaService: la descarga (R1–R5)", () => {
+  it.each([
+    ["sin sesión", null],
+    ["el admin de la empresa", ADMIN],
+    ["el superadmin por la vía del maestro", SUPERADMIN],
+    ["un mensajero", { usuarioId: "u-m", rol: "mensajero" } as Actor],
+  ])("R3: %s pide la descarga por la vía del maestro → forbidden sin leer la base", async (_, actor) => {
+    await expect(servicioProhibido().descargaDeMiEmpresa(actor, { facturaId: FACTURA })).resolves.toEqual({
+      estado: "forbidden",
+    });
+  });
+
+  it.each([
+    ["sin sesión", null],
+    ["el maestro por la vía del superadmin", MAESTRO],
+    ["el admin de la empresa", ADMIN],
+  ])("R3: %s pide la descarga por la vía del superadmin → forbidden sin leer la base", async (_, actor) => {
+    await expect(
+      servicioProhibido().descargaDeEmpresa(actor, { organizacionId: EMPRESA, facturaId: FACTURA }),
+    ).resolves.toEqual({ estado: "forbidden" });
+  });
+
+  it("R3: el rol se mira antes que la entrada: sin el rol, una entrada inválida → forbidden, no validation_error", async () => {
+    await expect(servicioProhibido().descargaDeMiEmpresa(ADMIN, { facturaId: "abc" })).resolves.toEqual({ estado: "forbidden" });
+    await expect(servicioProhibido().descargaDeEmpresa(MAESTRO, {})).resolves.toEqual({ estado: "forbidden" });
+  });
+
+  it("R1: el maestro recibe los datos del repositorio de su empresa, sin empresa en la entrada", async () => {
+    const repo = new RepoDoble();
+    await expect(new FacturaPlataformaService(repo).descargaDeMiEmpresa(MAESTRO, { facturaId: FACTURA })).resolves.toEqual({
+      estado: "ok",
+      datos: DESCARGA,
+    });
+    expect(repo.llamadas).toEqual([{ metodo: "datosDescargaDeLaEmpresa", args: [FACTURA] }]);
+  });
+
+  it("R2: el superadmin recibe los datos de la empresa que nombra", async () => {
+    const repo = new RepoDoble();
+    await expect(
+      new FacturaPlataformaService(repo).descargaDeEmpresa(SUPERADMIN, { organizacionId: EMPRESA, facturaId: FACTURA }),
+    ).resolves.toEqual({ estado: "ok", datos: DESCARGA });
+    expect(repo.llamadas).toEqual([{ metodo: "datosDescargaParaPlataforma", args: [EMPRESA, FACTURA] }]);
+  });
+
+  it.each([
+    ["facturaId no uuid", { facturaId: "abc" }, "facturaId"],
+    ["sin facturaId", {}, "facturaId"],
+    ["facturaId numérico", { facturaId: 12 }, "facturaId"],
+  ])("R5: maestro, %s → validation_error sin leer la base", async (_, input, campo) => {
+    const r = await servicioProhibido().descargaDeMiEmpresa(MAESTRO, input);
+    expect(r.estado).toBe("validation_error");
+    if (r.estado === "validation_error") expect(Object.keys(r.errores)).toContain(campo);
+  });
+
+  it.each([
+    ["organizacionId no uuid", { organizacionId: "empresa-1", facturaId: FACTURA }, "organizacionId"],
+    ["facturaId no uuid", { organizacionId: EMPRESA, facturaId: "f-1" }, "facturaId"],
+  ])("R5: superadmin, %s → validation_error sin leer la base", async (_, input, campo) => {
+    const r = await servicioProhibido().descargaDeEmpresa(SUPERADMIN, input);
+    expect(r.estado).toBe("validation_error");
+    if (r.estado === "validation_error") expect(Object.keys(r.errores)).toContain(campo);
+  });
+
+  it("R5: una entrada que no es un objeto → validation_error sin leer la base", async () => {
+    expect((await servicioProhibido().descargaDeMiEmpresa(MAESTRO, "x")).estado).toBe("validation_error");
+    expect((await servicioProhibido().descargaDeEmpresa(SUPERADMIN, null)).estado).toBe("validation_error");
+  });
+
+  it("R4: el repositorio da null (no existe, es de otra empresa o no está cerrada) → not_found por las dos vías", async () => {
+    const s = new FacturaPlataformaService(new RepoDoble({ descarga: null }));
+    await expect(s.descargaDeMiEmpresa(MAESTRO, { facturaId: FACTURA })).resolves.toEqual({ estado: "not_found" });
+    await expect(s.descargaDeEmpresa(SUPERADMIN, { organizacionId: EMPRESA, facturaId: FACTURA })).resolves.toEqual({
+      estado: "not_found",
     });
   });
 });

@@ -68,26 +68,26 @@
 - [x] **T5.2 [P]** `PlanDetalle.tsx` y `[planId]/page.tsx`: `AbrirPlanForm` con `{ planId }`, `?editar=1`, las
   actions del borrador, `previsualizarCambioPlanAction` y el aviso al cerrar. Depende de T3.3 y T4.1.
   *Hecho:* `tests/components/PlanDetalle.test.tsx` verde (R13, R26, más los casos de hoy y el «N de M» de SLT-128 R11).
-- [ ] **T5.3** La página no lee borradores sin superadmin. Depende de T5.1.
+- [x] **T5.3** La página no lee borradores sin superadmin. Depende de T5.1.
   *Hecho:* `tests/integration/plataforma-planes-page.test.tsx` verde, con el caso de R28.
 - [ ] **T5.4** Quitar los cuatro `@sin-superficie` de `lib/actions/plan-borrador.ts`. Depende de T5.1 y T5.2.
   *Hecho:* `pnpm run test:guardias` verde (R29). `crearPlanAction` y `editarPlanAction` siguen sin pedir anotación.
 
 ## T6 · E2E — frontend_dev
 
-- [ ] **T6.1** Crear `e2e/planes-borrador.spec.ts` (R30) con los fixtures de `e2e/planes-superadmin.spec.ts`:
+- [x] **T6.1** Crear `e2e/planes-borrador.spec.ts` (R30) con los fixtures de `e2e/planes-superadmin.spec.ts`:
   superadmin con OTP, empresas con `crearEmpresaE2E` y un plan con dos empresas de tipos distintos. Esperar
   condiciones, nunca `waitForTimeout`. Depende de T5.
   *Hecho:* `pnpm exec playwright test e2e/planes-borrador.spec.ts` verde dos veces seguidas sobre la misma base
   desechable.
-- [ ] **T6.2 [P]** Adaptar `e2e/planes-superadmin.spec.ts`, `e2e/planes-costeo.spec.ts` y
+- [x] **T6.2 [P]** Adaptar `e2e/planes-superadmin.spec.ts`, `e2e/planes-costeo.spec.ts` y
   `e2e/planes-costo-porcentual.spec.ts` a «Guardar y continuar», con las mismas aserciones. Depende de T5.
   *Hecho:* los tres verdes en local. También `e2e/mi-plan-cambiar-plan.spec.ts` (sin cambios) y
   `e2e/dos-empresas-humo.spec.ts`, porque el diff toca `lib/repositories/`. Queda constancia en `progress/impl_SLT-144.md`.
 
 ## T7 · Revisión de textos y maqueta
 
-- [ ] **T7.1** Comparar con `specs/SLT-130-planes-form-pasos/maqueta/formulario-planes-c.html`: el estado «Borrador · n
+- [x] **T7.1** Comparar con `specs/SLT-130-planes-form-pasos/maqueta/formulario-planes-c.html`: el estado «Borrador · n
   de m», «Guardar y continuar», el aviso de borrador y la tabla de «Cuándo rige». Comprobar que todos los textos de
   `design.md §9` están en `textos.ts` o en los `TEXTOS` de los hosts.
   *Hecho:* captura de crear y de editar en `progress/impl_SLT-144.md`, y ningún literal de §9 fuera de esos objetos.

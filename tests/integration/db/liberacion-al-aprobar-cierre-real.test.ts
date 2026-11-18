@@ -10,9 +10,9 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 
 /**
  * FICHA 315 — **APROBAR UN CIERRE LIBERA SUS REPROGRAMADAS VENCIDAS, Y SOLO ESAS.** Contra Postgres.
@@ -107,16 +107,9 @@ describeSiHayBase("315 — liberar al aprobar el cierre, contra Postgres real", 
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const fks = await fksDeOrden(prisma);
     // Fallo RUIDOSO, jamas un `return` silencioso: con base alcanzable y sin catalogo este archivo
     // no puede comprobar nada, y un `passed` en esas condiciones es la clase de verde que este
     // repo ya se comio una vez.
-    if (fks === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar el " +
-          "corpus. Corre `pnpm run db:seed` (y las semillas de zonas) antes de esta suite.",
-      );
-    }
     const VALORES = ["reprogramado", "en_bodega_central", "en_bodega_satelite"];
     const catalogo = await prisma.orderStatus.findMany({
       where: { value: { in: VALORES } },
@@ -133,16 +126,24 @@ describeSiHayBase("315 — liberar al aprobar el cierre, contra Postgres real", 
     const estatusReprogramadaId = idPorValue.get("reprogramado") as string;
     const enBodegaCentralId = idPorValue.get("en_bodega_central") as string;
 
-    const usuarios = await prisma.usuario.findMany({ select: { id: true }, take: 1 });
-    if (usuarios.length < 1) {
-      throw new Error("hace falta al menos UN usuario en la base para sembrar las gestiones.");
-    }
-    const mensajeroId = usuarios[0].id;
-
     conCorpus = (fn) =>
       enTransaccionRevertida(prisma, async (tx) => {
         // PRIMERA sentencia: serializa contra los otros archivos que escriben en `public`.
         await serializarEscriturasReales(tx);
+
+        // SLT-181 — tienda, zona y mensajero nacen en ESTA transaccion (nada de leer la primera
+        // orden ni el primer usuario de la base). Control positivo: si la siembra no llega, el
+        // caso cae nombrando la fila.
+        const fks = await crearFksDeOrden(tx);
+        const mensajeroId = (await crearUsuarioDePrueba(tx, "mensajero")).id;
+        expect(
+          await tx.usuario.count({ where: { id: { in: [fks.tiendaId, mensajeroId] } } }),
+          "SLT-181: la tienda y el mensajero sembrados no estan en la base",
+        ).toBe(2);
+        expect(
+          await tx.zona.count({ where: { id: fks.zonaId } }),
+          "SLT-181: la zona sembrada no esta en la base",
+        ).toBe(1);
 
         const crearCierre = async () =>
           (

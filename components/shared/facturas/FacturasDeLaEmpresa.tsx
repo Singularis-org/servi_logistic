@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { money } from "@/lib/config/moneda";
 import type { FacturaPlataformaDTO } from "@/lib/types/factura-plataforma";
 
+import type { DescargarFacturaFn } from "./DescargarFactura";
 import { DetalleDeFactura, type CargarDetalleFactura } from "./DetalleDeFactura";
 import {
   FACTURAS_TEXTOS,
@@ -21,16 +22,19 @@ import {
 // y la pestaña «Facturación» del detalle de empresa. Las facturas van por empresa, no por plan (decisión del
 // humano, 2026-11-12): no se filtran ni se agrupan por plan y el plan es una columna más. Llegan ya ordenadas de la
 // más reciente a la más antigua (el servicio). Solo lectura: el único botón de cada fila abre su detalle (R16).
+// SLT-136 (design §6): pasa al detalle la lectura de la descarga de una factura cerrada.
 
 export interface FacturasDeLaEmpresaProps {
   /** Las facturas de la empresa; `null` = no se pudieron leer (R17). */
   readonly facturas: FacturaPlataformaDTO[] | null;
   readonly cargarDetalle: CargarDetalleFactura;
+  /** SLT-136 (R19): la action de descarga de la pantalla, ya ligada a la empresa si es la del superadmin. */
+  readonly descargar: DescargarFacturaFn;
 }
 
 const C = FACTURAS_TEXTOS.columnas;
 
-export function FacturasDeLaEmpresa({ facturas, cargarDetalle }: FacturasDeLaEmpresaProps) {
+export function FacturasDeLaEmpresa({ facturas, cargarDetalle, descargar }: FacturasDeLaEmpresaProps) {
   const tituloId = useId();
   const [abierta, setAbierta] = useState<FacturaPlataformaDTO | null>(null);
   return (
@@ -42,7 +46,12 @@ export function FacturasDeLaEmpresa({ facturas, cargarDetalle }: FacturasDeLaEmp
         <p className="text-sm text-muted-foreground">{FACTURAS_TEXTOS.ayuda}</p>
       </div>
       <Cuerpo facturas={facturas} onAbrir={setAbierta} />
-      <DetalleDeFactura factura={abierta} onCerrar={() => setAbierta(null)} cargarDetalle={cargarDetalle} />
+      <DetalleDeFactura
+        factura={abierta}
+        onCerrar={() => setAbierta(null)}
+        cargarDetalle={cargarDetalle}
+        descargar={descargar}
+      />
     </section>
   );
 }

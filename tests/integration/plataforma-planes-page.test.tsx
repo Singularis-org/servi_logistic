@@ -6,6 +6,10 @@
 // de empresa ve las pantallas y las páginas ni siquiera piden el catálogo ni el detalle. Un `planId` que
 // no es uuid o que no existe responde «no encontrado». Con el superadmin se monta el módulo REAL con
 // lo que baja por props.
+//
+// SLT-144 (design §3.3, §6; R28): la página de «Planes» también lee los borradores, y solo después del
+// `notFound()`. Se doblan `verBorradoresDePlanes`, las actions del borrador y el servicio, y se comprueba que
+// ningún rol de empresa llega a ninguno de ellos.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -22,15 +26,29 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/auth/resolve-actor", () => ({ resolveActorFromSession: vi.fn() }));
 
-const { catalogoMock, detalleMock, empresasMock } = vi.hoisted(() => ({
-  catalogoMock: vi.fn(),
-  detalleMock: vi.fn(),
-  empresasMock: vi.fn(),
-}));
+const { catalogoMock, detalleMock, empresasMock, borradoresMock, borradorServiceMock, accionesBorrador } = vi.hoisted(
+  () => ({
+    catalogoMock: vi.fn(),
+    detalleMock: vi.fn(),
+    empresasMock: vi.fn(),
+    borradoresMock: vi.fn(),
+    borradorServiceMock: vi.fn(),
+    accionesBorrador: {
+      guardarPasoBorradorAction: vi.fn(),
+      leerBorradorAction: vi.fn(),
+      descartarBorradorAction: vi.fn(),
+      confirmarBorradorAction: vi.fn(),
+    },
+  }),
+);
 vi.mock("@/lib/actions/_shared/planes-plataforma", () => ({
   verCatalogoDePlanes: (...a: unknown[]) => catalogoMock(...a),
   verDetalleDePlan: (...a: unknown[]) => detalleMock(...a),
+  verBorradoresDePlanes: (...a: unknown[]) => borradoresMock(...a),
 }));
+vi.mock("@/lib/actions/plan-borrador", () => accionesBorrador);
+// SLT-144 R28: si algo construyera el servicio del borrador antes del `notFound()`, este doble lo cuenta.
+vi.mock("@/lib/services/PlanBorradorService", () => ({ PlanBorradorService: borradorServiceMock }));
 vi.mock("@/lib/actions/_shared/empresas-plataforma", () => ({
   listarEmpresasPlataforma: (...a: unknown[]) => empresasMock(...a),
 }));
@@ -38,6 +56,7 @@ vi.mock("@/lib/actions/planes", () => ({
   crearPlanAction: vi.fn(),
   previsualizarCustomAction: vi.fn(),
   editarPlanAction: vi.fn(),
+  previsualizarCambioPlanAction: vi.fn(),
   archivarPlanAction: vi.fn(),
   cancelarCambioPlanAction: vi.fn(),
 }));
@@ -83,7 +102,15 @@ beforeEach(() => {
   catalogoMock.mockResolvedValue(CATALOGO);
   detalleMock.mockResolvedValue(DETALLE);
   empresasMock.mockResolvedValue({ status: "ok", empresas: [] });
+  borradoresMock.mockResolvedValue({ estado: "ok", borradores: [] });
 });
+
+/** SLT-144 R28: ni la lectura de la lista, ni las actions, ni el servicio del borrador. */
+function noSeLeyoNingunBorrador() {
+  expect(borradoresMock).not.toHaveBeenCalled();
+  expect(borradorServiceMock).not.toHaveBeenCalled();
+  for (const action of Object.values(accionesBorrador)) expect(action).not.toHaveBeenCalled();
+}
 
 afterEach(() => cleanup());
 
@@ -121,6 +148,32 @@ describe("SLT-58 R22 — «Planes» solo para la plataforma", () => {
 
     await expect(PlanDetallePage({ params: params("no-es-uuid") })).rejects.toThrow("NEXT_NOT_FOUND");
     expect(detalleMock).toHaveBeenCalledWith(superadmin, { planId: "no-es-uuid" });
+  });
+});
+
+describe("SLT-144 R28 — un admin no llega a leer los borradores", () => {
+  it.each(ROLES_DE_EMPRESA)("R28: %s → notFound() en «Planes» y en el detalle, sin leer borradores", async (rol) => {
+    actorMock.mockResolvedValue({ usuarioId: "u-1", rol });
+
+    await expect(PlanesPage()).rejects.toThrow("NEXT_NOT_FOUND");
+    await expect(PlanDetallePage({ params: params() })).rejects.toThrow("NEXT_NOT_FOUND");
+    noSeLeyoNingunBorrador();
+  });
+
+  it("R28: sin sesión → notFound() en las dos, sin leer borradores", async () => {
+    actorMock.mockResolvedValue(null);
+
+    await expect(PlanesPage()).rejects.toThrow("NEXT_NOT_FOUND");
+    await expect(PlanDetallePage({ params: params() })).rejects.toThrow("NEXT_NOT_FOUND");
+    noSeLeyoNingunBorrador();
+  });
+
+  it("R28: el superadmin sí los lee, con su actor", async () => {
+    actorMock.mockResolvedValue(superadmin);
+
+    render(<ToastProvider>{await PlanesPage()}</ToastProvider>);
+
+    expect(borradoresMock).toHaveBeenCalledWith(superadmin);
   });
 });
 

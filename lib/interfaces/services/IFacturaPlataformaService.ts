@@ -1,5 +1,5 @@
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
-import type { DetalleFacturaResult, FacturasResult } from "@/lib/types/factura-plataforma";
+import type { DescargaFacturaResult, DetalleFacturaResult, FacturasResult } from "@/lib/types/factura-plataforma";
 
 // SLT-119 (design §4) — las facturas de la plataforma que ve la empresa: el maestro las de la suya, en «Mi
 // plan», y el superadmin las de la empresa que nombra. Solo lectura (R16). La autorización va antes que la
@@ -21,4 +21,13 @@ export interface IFacturaPlataformaService {
 
   /** R12–R15: el detalle de una factura de la empresa que nombra el superadmin; `{ organizacionId, facturaId, pagina? }`. */
   detalleDeEmpresa(actor: Actor | null, input: unknown): Promise<DetalleFacturaResult>;
+
+  /**
+   * SLT-136 (design §2.3; R1, R3–R5): los datos de la descarga de una factura cerrada de la empresa del maestro;
+   * `input` es `{ facturaId }`.
+   */
+  descargaDeMiEmpresa(actor: Actor | null, input: unknown): Promise<DescargaFacturaResult>;
+
+  /** SLT-136 (R2–R5): lo mismo para el superadmin, de la empresa que nombra; `{ organizacionId, facturaId }`. */
+  descargaDeEmpresa(actor: Actor | null, input: unknown): Promise<DescargaFacturaResult>;
 }

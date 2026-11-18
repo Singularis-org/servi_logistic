@@ -46,7 +46,9 @@ import {
   type TxDeTest,
 } from "../_postgres-real";
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
-import { comoApp } from "@/tests/fabricas/organizaciones";
+import { comoApp, crearOrganizacion } from "@/tests/fabricas/organizaciones";
+import { conEmpresa } from "@/lib/db/contexto-empresa";
+import { conAislamientoPorEmpresa } from "@/lib/db/extension-empresa";
 
 /**
  * FEATURE 454 (T0.1) — EL ESCENARIO COMPARTIDO DE LA FASE 0.
@@ -786,6 +788,10 @@ export function diaCR(dias = 0, now: Date = new Date()): Date {
 }
 
 export interface Comprometido {
+  /** SLT-185 (R1144): la empresa propia del escenario confirmado; la borra `limpiarComprometido`, la ultima. */
+  organizacionId: string;
+  /** SLT-185 (R1145): la zona central propia del escenario (SLT-177), que tambien se borra. */
+  centralZonaId: string | null;
   usuarios: string[];
   zonaId: string;
   ordenIds: string[];
@@ -805,29 +811,57 @@ export async function sembrarComprometido(
   mundo: Mundo,
   fn: (e: Escenario) => Promise<{ ordenIds: string[] }>,
 ): Promise<Comprometido> {
-  return mundo.prisma.$transaction(
-    async (tx) => {
-      const e = await crearEscenario(mundo, tx, clienteConTransaccionAnidada(tx), { comprometido: true });
-      const { ordenIds } = await fn(e);
-      return {
-        usuarios: [e.tiendaId, e.mensajeroId, e.mensajero2Id, e.adminSateliteId, e.maestroId],
+  // SLT-185 (R1144): el escenario confirmado crea y fija SU empresa, como `conEscenario`: sin ella el
+  // `zona.create` de la central viola `organizacion_id NOT NULL` (SL-17). La organizacion se confirma
+  // aparte; si la siembra falla, se borra aqui mismo (R1145).
+  const organizacionId = (await crearOrganizacion(mundo.prisma)).id;
+  try {
+    return await conEmpresa(organizacionId, () =>
+      mundo.prisma.$transaction(
+        async (tx) => {
+          await comoApp(tx, organizacionId);
+          const e = await crearEscenario(mundo, tx, clienteConTransaccionAnidada(tx), { comprometido: true });
+          const { ordenIds } = await fn(e);
+          return {
+            organizacionId,
+            centralZonaId: mundo.sembrarCentral === true ? mundo.centralZonaId : null,
+            usuarios: [e.tiendaId, e.mensajeroId, e.mensajero2Id, e.adminSateliteId, e.maestroId],
         zonaId: e.zonaSateliteId,
         ordenIds,
         mensajeroId: e.mensajeroId,
         mensajero2Id: e.mensajero2Id,
         tiendaId: e.tiendaId,
-        actorMensajero: e.actorMensajero,
-        actorTienda: e.actorTienda,
-      };
-    },
-    { timeout: 30_000, maxWait: 15_000 },
-  );
+            actorMensajero: e.actorMensajero,
+            actorTienda: e.actorTienda,
+          };
+        },
+        { timeout: 30_000, maxWait: 15_000 },
+      ),
+    );
+  } catch (error) {
+    await mundo.prisma.organizacion.delete({ where: { id: organizacionId } }).catch(() => {});
+    throw error;
+  }
+}
+
+/**
+ * SLT-185 (R1144): un cliente propio de un test de concurrencia con la MISMA envoltura que
+ * `getPrismaClient()`: sus transacciones fijan la empresa del contexto y bajan a `servi_app` (RLS y
+ * triggers de misma empresa activos), como en produccion. La empresa sale de `enEmpresaDe`.
+ */
+export function clienteDeLaApp454(base: PrismaClient): PrismaClient {
+  return conAislamientoPorEmpresa(base, async () => null);
+}
+
+/** SLT-185 (R1144): corre `fn` con la empresa del escenario confirmado en contexto, como una peticion. */
+export function enEmpresaDe<T>(s: Pick<Comprometido, "organizacionId">, fn: () => Promise<T>): Promise<T> {
+  return conEmpresa(s.organizacionId, fn);
 }
 
 /** Borra, en orden de FKs, todo lo que un escenario CONFIRMADO pudo dejar. */
 export async function limpiarComprometido(
   prisma: PrismaClient,
-  s: { usuarios: string[]; zonaId: string; ordenIds: string[] },
+  s: { usuarios: string[]; zonaId: string; ordenIds: string[]; organizacionId?: string; centralZonaId?: string | null },
 ): Promise<void> {
   const cierres = (
     await prisma.cierreDia.findMany({ where: { mensajeroId: { in: s.usuarios } }, select: { id: true } })
@@ -865,4 +899,11 @@ export async function limpiarComprometido(
   await prisma.usuario.deleteMany({ where: { id: { in: s.usuarios } } });
   await prisma.tarifaZonaMensajero.deleteMany({ where: { zonaId: s.zonaId } });
   await prisma.zona.deleteMany({ where: { id: s.zonaId } });
+  // SLT-185 (R1145): la central propia (SLT-177) y la empresa, la ULTIMA: las tablas de negocio la
+  // referencian con RESTRICT, asi que una fila olvidada hace fallar el borrado en vez de quedar muda.
+  if (s.centralZonaId) {
+    await prisma.tarifaZonaMensajero.deleteMany({ where: { zonaId: s.centralZonaId } });
+    await prisma.zona.deleteMany({ where: { id: s.centralZonaId } });
+  }
+  if (s.organizacionId) await prisma.organizacion.delete({ where: { id: s.organizacionId } });
 }

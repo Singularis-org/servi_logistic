@@ -6,10 +6,15 @@ import { emitirRepartoManana } from "@/lib/notificaciones/emitir";
 
 import {
   HAY_BASE_DE_DATOS,
+  bajoLockDeEscrituraReal,
   crearPrismaDeTest,
   enTransaccionRevertida,
   serializarEscriturasReales,
+  type TxDeTest,
 } from "./_postgres-real";
+import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
+import { datosDeOrganizacionDePrueba, fijarEmpresa } from "@/tests/fabricas/organizaciones";
+import { conAislamientoPorEmpresa } from "@/lib/db/extension-empresa";
 
 /**
  * FICHA 413 (T7.1, R7/R14/R22/R23/R24) — **DOS NOCHES SON DOS AVISOS, Y LA MISMA NOCHE ES UNO. Y
@@ -51,15 +56,31 @@ describeSiHayBase("413/R7-R24 · la dedupe del aviso de reparto, contra Postgres
   let prisma: PrismaClient;
   let mensajeroA: string;
   let mensajeroB: string;
+  let empresaId: string | undefined;
+  let sembrados: string[] = [];
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const usuarios = await prisma.usuario.findMany({ select: { id: true }, take: 20 });
-    if (usuarios.length < 2) {
-      throw new Error(
-        "hay DATABASE_URL pero hacen falta al menos DOS usuarios en la base. " +
-          "Corre `pnpm run db:seed` antes de esta suite.",
-      );
+    // SLT-183: los dos mensajeros (y su empresa) se SIEMBRAN, COMMITEADOS (R1103): el caso R24
+    // escribe desde dos conexiones que tienen que verlos. Antes se leian «los primeros usuarios» de
+    // la base, y la recien migrada no tiene ninguno. Se borran en el `afterAll`, que lo comprueba.
+    // Bajo el lock de la 227 (`bajoLockDeEscrituraReal`): un INSERT/DELETE commiteado de
+    // `organizacion`/`usuario` fuera de el choca con el DDL de otro archivo (40P01, medido).
+    const usuarios = await bajoLockDeEscrituraReal(async () => {
+      const id = (await prisma.organizacion.create({ data: datosDeOrganizacionDePrueba(), select: { id: true } })).id;
+      empresaId = id;
+      return prisma.$transaction(async (tx) => {
+        await fijarEmpresa(tx, id);
+        return [
+          await crearUsuarioDePrueba(tx as unknown as TxDeTest, "mensajero"),
+          await crearUsuarioDePrueba(tx as unknown as TxDeTest, "mensajero"),
+        ];
+      });
+    });
+    sembrados = usuarios.map((u) => u.id);
+    // Control positivo (R1104): los dos sembrados llegaron a la base.
+    if ((await prisma.usuario.count({ where: { id: { in: sembrados } } })) !== 2) {
+      throw new Error("SLT-183: los dos mensajeros sembrados no estan en la base");
     }
     // Los mensajeros del caso parten de CERO avisos de este evento: contar filas sobre alguien que
     // ya arrastra las suyas mediría otra cosa. Si no hay dos limpios, se falla RUIDOSAMENTE.
@@ -82,8 +103,23 @@ describeSiHayBase("413/R7-R24 · la dedupe del aviso de reparto, contra Postgres
   });
 
   afterAll(async () => {
+    // SLT-183 (R1103): los sembrados commiteados se van, y se comprueba contando por sus ids. Sus
+    // avisos ya los barrio el `finally` de R24 (el unico caso que escribe fuera de una tx).
+    await bajoLockDeEscrituraReal(async () => {
+      await prisma.usuario.deleteMany({ where: { id: { in: sembrados } } });
+      if (empresaId !== undefined) await prisma.organizacion.deleteMany({ where: { id: empresaId } });
+    });
+    const quedan =
+      (await prisma.usuario.count({ where: { id: { in: sembrados } } })) +
+      (empresaId === undefined ? 0 : await prisma.organizacion.count({ where: { id: empresaId } }));
     await prisma.$disconnect();
+    if (quedan !== 0) throw new Error(`SLT-183: ${quedan} filas sembradas siguen en la base`);
   });
+
+  /** Los casos en transaccion revertida corren en la empresa de los mensajeros sembrados. */
+  function enTx<T>(fn: (tx: TxDeTest) => Promise<T>): Promise<T> {
+    return enTransaccionRevertida(prisma, fn, { organizacionId: empresaId });
+  }
 
   // =============================================================================================
   // R7 — DOS MENSAJEROS LA MISMA NOCHE: DOS FILAS. LA DECISIÓN MÁS DELICADA DE LA FICHA.
@@ -97,7 +133,7 @@ describeSiHayBase("413/R7-R24 · la dedupe del aviso de reparto, contra Postgres
     // MUTACIÓN OBLIGATORIA (design §13.2): dirigir el aviso a un ROL en vez de a un usuario ⇒ las
     // dos filas colisionan en la clave, `crear` absorbe el `P2002`, aquí sale **1** y ESTO SE PONE
     // ROJO. Es exactamente el silencio que la 409 destapó.
-    const medido = await enTransaccionRevertida(prisma, async (tx) => {
+    const medido = await enTx(async (tx) => {
       await serializarEscriturasReales(tx);
       const repo = new NotificacionRepository(tx as unknown as PrismaClient);
 
@@ -160,7 +196,7 @@ describeSiHayBase("413/R7-R24 · la dedupe del aviso de reparto, contra Postgres
     //
     // La primera se deja SIN LEER a propósito: es lo que hace el caso duro. Con el estado de
     // lectura de por medio, la guardia previa no se ejercitaría.
-    const medido = await enTransaccionRevertida(prisma, async (tx) => {
+    const medido = await enTx(async (tx) => {
       await serializarEscriturasReales(tx);
       const repo = new NotificacionRepository(tx as unknown as PrismaClient);
 
@@ -198,7 +234,7 @@ describeSiHayBase("413/R7-R24 · la dedupe del aviso de reparto, contra Postgres
   // =============================================================================================
 
   it("⭑ R22: dos corridas del MISMO anuncio dejan UNA fila", async () => {
-    const medido = await enTransaccionRevertida(prisma, async (tx) => {
+    const medido = await enTx(async (tx) => {
       await serializarEscriturasReales(tx);
       const repo = new NotificacionRepository(tx as unknown as PrismaClient);
       const ctx = { mensajeroUsuarioId: mensajeroA, diaAnunciadoISO: DIA_12 };
@@ -225,7 +261,7 @@ describeSiHayBase("413/R7-R24 · la dedupe del aviso de reparto, contra Postgres
     //
     // La `descripcion` de la única fila tampoco puede haber cambiado: si alguien metiera el número
     // dentro, las dos emisiones producirían textos distintos y el segundo aserto lo delataría.
-    const medido = await enTransaccionRevertida(prisma, async (tx) => {
+    const medido = await enTx(async (tx) => {
       await serializarEscriturasReales(tx);
       const repo = new NotificacionRepository(tx as unknown as PrismaClient);
       const ctx = { mensajeroUsuarioId: mensajeroA, diaAnunciadoISO: DIA_12 };
@@ -262,8 +298,14 @@ describeSiHayBase("413/R7-R24 · la dedupe del aviso de reparto, contra Postgres
     //
     // ES R24 LITERAL: la unicidad es ESTRUCTURAL —una propiedad de la clave de los datos— y no el
     // resultado de una comprobación previa que una carrera o un reintento puedan burlar.
-    const clienteA = crearPrismaDeTest();
-    const clienteB = crearPrismaDeTest();
+    // SLT-185 (R1141): las dos conexiones escriben como en produccion: con la envoltura de
+    // `getPrismaClient()` y la empresa que resolveria la sesion (la de los mensajeros sembrados). Sin
+    // ella, el aviso nace con `organizacion_id` NULL y el trigger de misma empresa lo rechaza (SL017).
+    const baseA = crearPrismaDeTest();
+    const baseB = crearPrismaDeTest();
+    const empresaDeLaSesion = async () => empresaId ?? null;
+    const clienteA = conAislamientoPorEmpresa(baseA, empresaDeLaSesion);
+    const clienteB = conAislamientoPorEmpresa(baseB, empresaDeLaSesion);
     try {
       const ctx = { mensajeroUsuarioId: mensajeroA, diaAnunciadoISO: DIA_12 };
 
@@ -286,9 +328,16 @@ describeSiHayBase("413/R7-R24 · la dedupe del aviso de reparto, contra Postgres
       expect(creadas.filter((n) => n === 0)).toHaveLength(1);
       // ⭑ Y EN LA TABLA: UNA sola fila. Lo decidió el índice, no un `if`.
       expect(filas).toBe(1);
+      // SLT-185 (R1146): y es de la empresa de la sesion.
+      expect(
+        await prisma.notificacion.count({
+          where: { evento: "reparto_manana", entidadId: DIA_12, destinatarioUsuarioId: mensajeroA, organizacionId: empresaId },
+        }),
+        "SLT-185: empresa en contexto",
+      ).toBe(1);
     } finally {
-      await clienteA.$disconnect();
-      await clienteB.$disconnect();
+      await baseA.$disconnect();
+      await baseB.$disconnect();
       // Limpieza EXPLÍCITA: ésta es la única parte del archivo que escribe fuera de una
       // transacción revertida, y la base local es COMPARTIDA entre worktrees. Una tabla que crece
       // rompe tests ajenos, y en este repo ya pasó.
@@ -329,7 +378,7 @@ describeSiHayBase("413/R7-R24 · la dedupe del aviso de reparto, contra Postgres
     // Es la lección «test de integración verde sin datos»: un `if (!fks) return;` reporta `passed`
     // sin comprobar nada. Aquí se demuestra que el contador que usan los casos de arriba DISTINGUE
     // el estado sembrado del vacío: si devolviera siempre 2, este caso se pondría rojo.
-    const vacio = await enTransaccionRevertida(prisma, async (tx) => {
+    const vacio = await enTx(async (tx) => {
       await serializarEscriturasReales(tx);
       return tx.notificacion.count({
         where: {

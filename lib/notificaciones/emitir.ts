@@ -21,6 +21,9 @@ import { fechaLegible } from "@/lib/utils/dia-reparto-textos";
 // `YYYY-MM-DD`; quien decide QUE dia es ese a partir de un instante es esta funcion, y por eso no
 // vale `toISOString().slice(0, 10)` (en UTC, un fallo de las 19:00 CR ya cae en el dia siguiente).
 import { fechaCalendario } from "@/lib/utils/calendario-zona";
+// SLT-136: el período de la factura emitida, en la hora de la plataforma (la de las pantallas de SLT-119),
+// por la puerta de `ciclo.ts` y no por el envoltorio de CR (guardia de SLT-42 R29).
+import { fechaCalendarioPlataforma } from "@/lib/planes/ciclo";
 // Feature 271 (§9.2/§10.1): el aviso de bloqueo al mensajero se COMPONE con el mismo formateador
 // que la pantalla. No es una cadena importada de fuera: es la regla que CUENTA (N, V y cual toca
 // primero) escrita una sola vez, para que campana y pantalla no puedan divergir (R43/R52).
@@ -1588,6 +1591,67 @@ export async function emitirTraspasoCedido(
         entidadTipo: "orden_traspaso_lote",
         entidadId: ctx.loteId,
         destinatario: { tipo: "usuario", usuarioId: ctx.mensajeroUsuarioId },
+      },
+    ],
+    tx,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SLT-136 §7.3 — Se cerró una factura de la plataforma. Lo emite el job `factura_plataforma_aviso`,
+// NO best-effort: si lanza, el job falla antes de enviar correos y se reintenta (R22, R27).
+//
+// LA ENTIDAD ES LA FACTURA: se cierra una sola vez, así que `notificacion_dedupe_key` da UN aviso por
+// factura para siempre, y el reintento del job no crea un segundo (R22). Sin montos (146 §4.6): van en
+// el correo.
+// ---------------------------------------------------------------------------
+
+/** Lo que el aviso necesita de la factura cerrada: su id (la entidad), su número y su intervalo `[desde, hasta)`. */
+export interface FacturaEmitidaContexto {
+  facturaId: string;
+  numero: number;
+  desde: Date;
+  hasta: Date;
+}
+
+/** `dd/mm/aaaa` del día de un instante en la hora de la plataforma (la de las pantallas de SLT-119). */
+function diaDeLaPlataforma(instante: Date): string {
+  const [anio, mes, dia] = fechaCalendarioPlataforma(instante).split("-");
+  return `${dia}/${mes}/${anio}`;
+}
+
+/**
+ * «dd/mm/aaaa al dd/mm/aaaa»: el último día es el de `hasta − 1 ms`, porque `hasta` es exclusivo. Es el mismo
+ * período que pintan el PDF y el correo (`periodoNumerico` de `lib/facturas-plataforma/resumen.ts`).
+ */
+export function periodoDeFactura(desde: Date, hasta: Date): string {
+  return `${diaDeLaPlataforma(desde)} al ${diaDeLaPlataforma(new Date(hasta.getTime() - 1))}`;
+}
+
+export function textoFacturaEmitida(numero: number, periodo: string): string {
+  return `Se emitió la factura N.º ${numero} de la plataforma, del ${periodo}.`;
+}
+
+/**
+ * R22/R24 — UNA fila `alert` dirigida al rol `maestro`, y a nadie más: ni `admin` ni ningún usuario (el
+ * superadmin no tiene empresa). `alert` y no `warning`: es dinero que la empresa debe a la plataforma.
+ */
+export async function emitirFacturaEmitida(
+  repo: INotificacionRepository,
+  ctx: FacturaEmitidaContexto,
+  tx?: NotificacionTxClient,
+): Promise<number> {
+  return emitirFilas(
+    repo,
+    [
+      {
+        tipo: "alert",
+        evento: "factura_plataforma_emitida",
+        descripcion: textoFacturaEmitida(ctx.numero, periodoDeFactura(ctx.desde, ctx.hasta)),
+        anexo: null,
+        entidadTipo: "factura_plataforma",
+        entidadId: ctx.facturaId,
+        destinatario: { tipo: "rol", rol: "maestro" },
       },
     ],
     tx,

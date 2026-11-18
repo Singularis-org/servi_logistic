@@ -10,7 +10,21 @@ import {
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import { tomarExclusionDemoQa, type ExclusionDemoQa } from "./_exclusion-demo-qa";
+
+/**
+ * SLT-183: el destinatario del aviso, SEMBRADO (un mensajero) en la tx revertida del caso. Antes se leia
+ * `(SELECT "id" FROM "usuario" LIMIT 1)`, y la base recien migrada no tiene ninguno.
+ */
+async function destinatarioSembrado(tx: TxDeTest): Promise<string> {
+  const { id } = await crearUsuarioDePrueba(tx, "mensajero");
+  // Control positivo (R1104): la siembra llego a la base. LANZA, no `return`.
+  if ((await tx.usuario.count({ where: { id } })) !== 1) {
+    throw new Error("SLT-183: el mensajero sembrado (destinatario del aviso) no esta en la base");
+  }
+  return id;
+}
 
 // FICHA 413 (T2.4, R38) — la migración que añade el aviso de «tu reparto de mañana» a los DOS
 // enums de `notificacion`, y las propiedades que dependen de ella.
@@ -488,10 +502,11 @@ describeSiHayBase("413/T2.4 — el DOWN ejercitado de verdad, con su precondici�
            VALUES ($1, 'box'::"notificacion_tipo", $2::"notificacion_evento",
                    'Es tu reparto del 12 de septiembre.', $3::"notificacion_entidad_tipo",
                    '2091-05-01',
-                   (SELECT "id" FROM "usuario" LIMIT 1))`,
+                   $4)`,
           randomUUID(),
           "reparto_manana",
           "reparto_manana_dia",
+          await destinatarioSembrado(tx),
         );
 
         for (const sentencia of sentenciasDelDown()) await tx.$executeRawUnsafe(sentencia);
@@ -512,8 +527,9 @@ describeSiHayBase("413/T2.4 — el DOWN ejercitado de verdad, con su precondici�
            ("id","tipo","evento","descripcion","entidad_tipo","entidad_id","destinatario_usuario_id")
          VALUES ($1, 'box'::"notificacion_tipo", 'reparto_manana'::"notificacion_evento",
                  'Es tu reparto del 12 de septiembre.', 'reparto_manana_dia'::"notificacion_entidad_tipo",
-                 '2091-05-02', (SELECT "id" FROM "usuario" LIMIT 1))`,
+                 '2091-05-02', $2)`,
         id,
+        await destinatarioSembrado(tx),
       );
       // El `down` se intenta dentro de un SAVEPOINT: su fallo no se lleva la transacción entera, y
       // así se puede volver a consultar después.

@@ -178,6 +178,10 @@ export const TRANSICIONES = {
       via: "incidente",
       rol: "maestro/admin/adminSatelite (de la zona)",
     }, // #49 (158)
+    // #73 (SLT-197): la central retira el paquete del estante de la satelite (la satelite deja
+    // de operar). Unica salida nueva: ni `-> en_bodega_central` directa (la central lo recibe con
+    // su escaner, #37) ni vuelta `en_ruta_bodega_central -> en_bodega_satelite` (D6).
+    { to: "en_ruta_bodega_central", via: "ajuste_estado", rol: "maestro/admin" }, // #73 (SLT-197)
   ],
   mensajero_recogiendo_en_bodega: [
     { to: "en_reparto", via: "recoleccion", rol: "mensajero" }, // #11
