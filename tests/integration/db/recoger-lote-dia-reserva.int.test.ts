@@ -7,9 +7,9 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 
 /**
  * FEATURE 261 (B11, R1/R4/R5/R7/R8) — EL `WHERE` DE `recogerLote`, EJECUTADO CONTRA POSTGRES.
@@ -80,16 +80,9 @@ describeSiHayBase("261/B11 — el dia de reparto en el `WHERE` de recogerLote, c
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const fks = await fksDeOrden(prisma);
     // Fallo RUIDOSO, no `return` silencioso: con base alcanzable y sin catalogo este archivo no
     // puede comprobar nada, y un `passed` en esas condiciones es la clase de verde que este repo
     // ya se comio una vez.
-    if (fks === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar el " +
-          "corpus. Corre `pnpm run db:seed` (y las semillas de zonas) antes de esta suite.",
-      );
-    }
     const estados = await prisma.orderStatus.findMany({
       where: { value: { in: ["mensajero_recogiendo_en_bodega", "en_reparto"] } },
       select: { id: true, value: true },
@@ -102,15 +95,26 @@ describeSiHayBase("261/B11 — el dia de reparto en el `WHERE` de recogerLote, c
           "transicion que medir. Corre el seed del catalogo.",
       );
     }
-    // `mensajero_asignado_id` es FK -> `usuario`. Se reusa el id de la tienda de una orden real:
-    // lo que se mide aqui es un WHERE, no un rol.
-    const mensajeroId = fks.tiendaId;
-
     conCorpus = (fn) =>
       enTransaccionRevertida(prisma, async (tx) => {
         // PRIMERA sentencia: serializa contra los otros archivos que escriben en las tablas
         // reales de `public` (ver `_postgres-real.ts`).
         await serializarEscriturasReales(tx);
+
+        // SLT-179 — tienda y zona nacen en ESTA transaccion (nada de leer la primera orden de la
+        // base). Control positivo: si la siembra no llega, el caso cae nombrando la fila.
+        const fks = await crearFksDeOrden(tx);
+        expect(
+          await tx.usuario.count({ where: { id: fks.tiendaId } }),
+          "SLT-179: la tienda sembrada no esta en la base",
+        ).toBe(1);
+        expect(
+          await tx.zona.count({ where: { id: fks.zonaId } }),
+          "SLT-179: la zona sembrada no esta en la base",
+        ).toBe(1);
+        // `mensajero_asignado_id` es FK -> `usuario`. Se reusa el id de la tienda sembrada: lo que
+        // se mide aqui es un WHERE, no un rol.
+        const mensajeroId = fks.tiendaId;
 
         const idPorClave = new Map<string, string>();
         let n = 0;

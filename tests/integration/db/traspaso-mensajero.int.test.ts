@@ -9,10 +9,10 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 import { inicioDelDiaCR } from "@/tests/fabricas/reglas-pais";
 
 /**
@@ -67,15 +67,6 @@ describeSiHayBase("427/T9 — el traspaso entre mensajeros, contra Postgres real
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
 
-    const fks = await fksDeOrden(prisma);
-    if (fks === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar. Corre " +
-          "`pnpm run db:seed` (y las semillas de zonas) antes de esta suite.",
-      );
-    }
-    FKS = fks;
-
     const valores = ["en_reparto", "ayuda_tienda", "entregado", "mensajero_recogiendo_en_bodega"];
     const estados = await prisma.orderStatus.findMany({
       where: { value: { in: valores } },
@@ -100,8 +91,12 @@ describeSiHayBase("427/T9 — el traspaso entre mensajeros, contra Postgres real
       throw new Error("faltan los roles `mensajero`/`maestro` en el catalogo: corre el seed.");
     }
 
-    const tipo = await prisma.tipoIdentificacion.findFirst({ select: { id: true } });
-    if (!tipo) throw new Error("no hay `tipo_identificacion` en la base: corre el seed.");
+    // SLT-179: por su clave, no «el primero que haya».
+    const tipo = await prisma.tipoIdentificacion.findUnique({
+      where: { value: "cedula" },
+      select: { id: true },
+    });
+    if (!tipo) throw new Error("no hay `tipo_identificacion` «cedula» en la base: corre el seed.");
     TIPO_IDENT = tipo.id;
   });
 
@@ -174,6 +169,18 @@ describeSiHayBase("427/T9 — el traspaso entre mensajeros, contra Postgres real
   ): Promise<T> {
     return enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+
+      // SLT-179 — tienda y zona nacen en ESTA transaccion (nada de leer la primera orden de la
+      // base). Control positivo: si la siembra no llega, el caso cae nombrando la fila.
+      FKS = await crearFksDeOrden(tx);
+      expect(
+        await tx.usuario.count({ where: { id: FKS.tiendaId } }),
+        "SLT-179: la tienda sembrada no esta en la base",
+      ).toBe(1);
+      expect(
+        await tx.zona.count({ where: { id: FKS.zonaId } }),
+        "SLT-179: la zona sembrada no esta en la base",
+      ).toBe(1);
 
       const origenId = await crearUsuario(tx, ROL_MENSAJERO, "origen");
       const destinoId = await crearUsuario(tx, ROL_MENSAJERO, "destino");
