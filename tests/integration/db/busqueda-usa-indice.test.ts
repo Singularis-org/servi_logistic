@@ -150,6 +150,41 @@ describeSiHayBase("R31 — la busqueda usa el indice y no recorre `orden`", () =
     return { findMany, count };
   }
 
+  /**
+   * SLT-187: crea (una vez por tx) `pg_temp.orden` con las filas del corpus y SOLO el indice
+   * trigram, con su definicion real. Ver el comentario de `explicar`.
+   */
+  async function copiaConSoloElTrigram(ctx: Contexto): Promise<void> {
+    const ya = await ctx.tx.$queryRawUnsafe<{ n: number }[]>(
+      `SELECT count(*)::int AS n FROM pg_class WHERE relname = 'orden' AND relpersistence = 't'
+          AND relnamespace = pg_my_temp_schema()`,
+    );
+    if (ya[0].n > 0) return;
+    const [{ def }] = await ctx.tx.$queryRawUnsafe<{ def: string }[]>(
+      `SELECT pg_get_indexdef('public.orden_busqueda_texto_trgm_idx'::regclass) AS def`,
+    );
+    const ON_REAL = " ON public.orden USING ";
+    if (!def.includes(ON_REAL)) throw new Error(`SLT-187: definicion inesperada del trigram: ${def}`);
+    await ctx.tx.$executeRawUnsafe(`CREATE TEMP TABLE orden (LIKE public.orden INCLUDING DEFAULTS)`);
+    await ctx.tx.$executeRawUnsafe(
+      `INSERT INTO pg_temp.orden SELECT * FROM public.orden WHERE num_guia > $1 AND num_guia <= $2`,
+      GUIA_BASE,
+      GUIA_BASE + FILAS,
+    );
+    // Control positivo: la copia tiene el corpus entero, ni una fila de mas ni de menos.
+    const copiadas = await ctx.tx.$queryRawUnsafe<{ n: number }[]>(`SELECT count(*)::int AS n FROM pg_temp.orden`);
+    if (copiadas[0].n !== FILAS) throw new Error(`SLT-187: la copia tiene ${copiadas[0].n} filas, no ${FILAS}`);
+    await ctx.tx.$executeRawUnsafe(def.replace(ON_REAL, " ON pg_temp.orden USING "));
+    await ctx.tx.$executeRawUnsafe("ANALYZE pg_temp.orden");
+  }
+
+  /** SLT-187: el SQL capturado, apuntado a la copia temporal (solo cambia la tabla). */
+  function contraLaCopia(query: string): string {
+    const QUALIFICADA = /"public"."orden"/g;
+    if (!QUALIFICADA.test(query)) throw new Error(`SLT-187: el SQL no nombra "public"."orden": ${query}`);
+    return query.replace(QUALIFICADA, 'pg_temp."orden"');
+  }
+
   /** `EXPLAIN` del SQL EXACTO capturado. Ver la cabecera sobre `forzarIndice`. */
   async function explicar(
     ctx: Contexto,
@@ -179,13 +214,28 @@ describeSiHayBase("R31 — la busqueda usa el indice y no recorre `orden`", () =
       // aparece en ningun plan (coste del trigram 55,25 / 86,67 frente a un recorrido integro
       // del parcial). El riesgo de que el indice nuevo se coma la busqueda existe SOLO en un
       // corpus de tres cifras como el de este archivo.
-      await ctx.tx.$executeRawUnsafe(
-        `SELECT gin_clean_pending_list('orden_busqueda_texto_trgm_idx')`,
-      );
+      //
+      // SLT-187 (2026-11-18) — Y POR QUE AHORA SE MIDE SOBRE UNA COPIA CON EL TRIGRAM SOLO.
+      //
+      // SL-24 anadio otro parcial `WHERE deleted_at IS NULL`,
+      // `orden_organizacion_id_created_at_vivas_idx`, y con este corpus de tres cifras el
+      // planificador lo elegia por coste aun con la pending list vaciada (medido en base nueva: 12
+      // verdes / 2 rojos en una corrida, 14 / 0 en otra). Cada indice parcial nuevo sobre
+      // `orden` reabre la misma carrera. La pregunta de este archivo no es de coste: es
+      // «¿PUEDE el trigram servir esta consulta?». Para contestarla sin carrera se quitan de la
+      // ecuacion los DEMAS indices, no se empuja el plan: el SQL capturado se explica contra una
+      // copia temporal de `orden` (solo el corpus de esta tx) que tiene UN unico indice, creado
+      // con la definicion REAL de `orden_busqueda_texto_trgm_idx` leida de `pg_get_indexdef`
+      // (asi un opclass roto en la base se sigue viendo). Con `enable_seqscan = off` le quedan
+      // dos salidas: el trigram, si puede servir, o el `Seq Scan` penalizado, si no. La copia
+      // vive en `pg_temp` y muere con la tx revertida: ningun lock sobre la `orden` real. Y como
+      // su indice se construye DESPUES de copiar las filas, no tiene pending list que vaciar.
+      await copiaConSoloElTrigram(ctx);
       await ctx.tx.$executeRawUnsafe("SET LOCAL enable_seqscan = off");
     }
+    const sql = opciones.forzarIndice ? contraLaCopia(evento.query) : evento.query;
     const filas = (await ctx.tx.$queryRawUnsafe(
-      `EXPLAIN ${evento.query}`,
+      `EXPLAIN ${sql}`,
       ...parametrosDe(evento),
     )) as Record<string, string>[];
     return filas.map((f) => Object.values(f)[0]).join("\n");

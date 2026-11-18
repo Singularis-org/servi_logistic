@@ -87,6 +87,30 @@ function sinComentarios(sql: string): string {
 const upDdl = sinComentarios(upSql);
 const downDdl = sinComentarios(downSql);
 
+/**
+ * SLT-187: lo que SL-17 le hizo DESPUES a estas dos tablas (`organizacion_id` con su FK, indice y
+ * policy por empresa; el unico de `fecha` rehecho sobre `(organizacion_id, fecha)`). El esquema
+ * temporal del bloque C lo necesita: el cliente Prisma se genera del `schema.prisma` VIGENTE, y un
+ * `create` con `RETURNING` de `organizacion_id` sobre la tabla de la 196 sola da P2022 (columna
+ * inexistente) en vez del P2002 que R12 mide. Se ejecutan las sentencias REALES de esas dos
+ * migraciones que nombran estas tablas, MENOS dos clases:
+ *  - los triggers de `20261022130300_misma_empresa_en_fk`: buscan `usuario` en el esquema del
+ *    trigger, y el temporal no la tiene;
+ *  - la FK a `organizacion`: `ADD CONSTRAINT ... REFERENCES "organizacion"` toma un lock sobre la
+ *    `organizacion` REAL, y con la suite en paralelo (otros archivos creando empresas) dio
+ *    `40P01` (deadlock, medido). Ninguna asercion de este archivo depende de esa FK.
+ */
+const POSTERIORES_SL17 = [
+  "20261022130100_organizacion_id_en_negocio",
+  "20261023090000_unicos_por_empresa",
+].flatMap((c) =>
+  sinComentarios(fs.readFileSync(path.join(MIGRATIONS_DIR, c, "migration.sql"), "utf8"))
+    .split(";")
+    .map((x) => x.trim())
+    .filter((x) => /"ranking_snapshot_(dia|fila)/.test(x))
+    .filter((x) => !/REFERENCES "organizacion"/.test(x)),
+);
+
 /** Sentencias sueltas del DDL. Ver el test que fija la invariante que hace valido el split. */
 function sentenciasDe(ddl: string): string[] {
   return ddl
@@ -772,12 +796,22 @@ describeSiHayBase("196 / bloque C — reejecutar el cron sobre una fecha ya cong
       async (tx) => {
         await tx.$executeRawUnsafe(`SET LOCAL search_path TO "${esquema}", public`);
         for (const sentencia of sentenciasDe(upDdl)) await tx.$executeRawUnsafe(sentencia);
+        // SLT-187: 4 sentencias por tabla en SL-17 M2 (sin la FK) y 2 en `unicos_por_empresa`
+        // (contadas a mano).
+        if (POSTERIORES_SL17.length !== 10) {
+          throw new Error(`SLT-187: se esperaban 10 sentencias de SL-17 sobre el ranking, hay ${POSTERIORES_SL17.length}`);
+        }
+        for (const sentencia of POSTERIORES_SL17) await tx.$executeRawUnsafe(sentencia);
       },
       { timeout: 60_000, maxWait: 15_000 },
     );
 
-    cliente = crearPrismaDeTestEnEsquema(esquema);
-    medicion = await medir(admin, cliente);
+    // SLT-187: los mensajeros (y su empresa) se siembran ANTES de abrir el cliente del esquema
+    // temporal, porque ese cliente fija `app.organizacion_id` en sus conexiones: es lo que en
+    // produccion pone la sesion, y lo que el DEFAULT de `organizacion_id` (SL-17) lee al insertar.
+    const mensajeros = await dosMensajeros(admin);
+    cliente = crearPrismaDeTestEnEsquema(esquema, { organizacionId: sembrados!.empresaId });
+    medicion = await medir(admin, cliente, mensajeros);
   }, 180_000);
 
   afterAll(async () => {
@@ -786,7 +820,17 @@ describeSiHayBase("196 / bloque C — reejecutar el cron sobre una fecha ya cong
       await cliente?.$disconnect();
     } finally {
       try {
-        await admin?.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${esquema}" CASCADE`);
+        // SLT-187: el DROP suelta la FK del detalle a la `usuario` REAL y con la suite en paralelo
+        // salio victima de un deadlock (40P01, medido 1 de 4 corridas). La victima de un deadlock se
+        // reintenta: Postgres ya revirtio su intento entero.
+        for (let intento = 1; ; intento++) {
+          try {
+            await admin?.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${esquema}" CASCADE`);
+            break;
+          } catch (e) {
+            if (intento >= 3 || !String((e as Error).message).includes("40P01")) throw e;
+          }
+        }
         // SLT-182: DESPUES del esquema (sus filas apuntan a los mensajeros con RESTRICT).
         await borrarSembrados();
       } finally {
@@ -855,8 +899,11 @@ describeSiHayBase("196 / bloque C — reejecutar el cron sobre una fecha ya cong
     throw new Error("la operacion NO fallo, y tenia que fallar");
   }
 
-  async function medir(adm: PrismaClient, cli: PrismaClient): Promise<MedicionRepo> {
-    const [m1, m2] = await dosMensajeros(adm);
+  async function medir(
+    adm: PrismaClient,
+    cli: PrismaClient,
+    [m1, m2]: [string, string],
+  ): Promise<MedicionRepo> {
     const repo = new RankingSnapshotRepository(cli);
 
     // --- corrida 1: la fecha se congela con DOS filas -------------------------------------
