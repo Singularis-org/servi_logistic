@@ -30,6 +30,7 @@ import {
   type GrupoDistritosDTO,
   type TarifaValorDTO,
 } from "@/lib/types/tarifa-flexible";
+import { esFemenino } from "@/lib/utils/filtro-ubicacion";
 
 import { nivelDelGrupo, nombresDeNiveles, PROFUNDIDAD_DEL_GRUPO } from "@/app/(app)/configuracion/_shared/nivel-del-grupo";
 import { textoValor, textoValorSinIva, TEXTOS } from "./tarifas-textos";
@@ -375,7 +376,7 @@ export function TarifasGrupos({
         <div className="min-w-0">
           <h2 className="text-lg font-bold">{`${zona.nombre}: grupos de ${distritoPlural}`}</h2>
           <p className="mt-[3px] text-[13px] text-muted-foreground">
-            {TEXTOS.gruposUnicidad(distritoSingular)} {TEXTOS.gruposNota}
+            {TEXTOS.gruposUnicidad(distritoSingular, esFemenino(distritoSingular))} {TEXTOS.gruposNota}
           </p>
         </div>
         {puedeEscribir ? (

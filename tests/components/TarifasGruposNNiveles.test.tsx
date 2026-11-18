@@ -150,6 +150,21 @@ describe("SLT-48 / R45 — los grupos se nombran por el nivel 3 del país", () =
   });
 });
 
+// Decisión del humano del 2026-11-18 (d): el artículo de la regla de unicidad concuerda con el género del
+// tipo del nivel 3, con la regla de SLT-47 (`esFemenino`).
+describe("SLT-48 / R45 — «Un <tipo>» concuerda con el género del tipo", () => {
+  it("tipo femenino (Comuna): «Una comuna está en un solo grupo por zona.»", () => {
+    montar(NIVELES_XA);
+    expect(screen.getByText(/Una comuna está en un solo grupo por zona\./)).toBeInTheDocument();
+    expect(screen.queryByText(/Un comuna/)).not.toBeInTheDocument();
+  });
+
+  it("tipo masculino (Distrito, Costa Rica): «Un distrito está en un solo grupo por zona.», como hoy", () => {
+    montar(NIVELES_CR);
+    expect(screen.getByText(/Un distrito está en un solo grupo por zona\./)).toBeInTheDocument();
+  });
+});
+
 describe("SLT-48 / R45, P3 — un país de 2 niveles no tiene grupos (regla 4 de la maqueta)", () => {
   it("la sección se ve vacía, con la explicación y sin el botón de crear", () => {
     montar(NIVELES_2, { zona: { id: "z1", nombre: "Bolívar" } });

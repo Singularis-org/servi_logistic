@@ -250,7 +250,10 @@ export const TEXTOS = {
   activarSinPermiso: "Solo el maestro puede activar las tarifas nuevas.",
 
   gruposNota: "Lo que no definas en el grupo usa el valor de la zona.",
-  gruposUnicidad: (distrito: string) => `Un ${distrito} está en un solo grupo por zona.`,
+  // SLT-48 (decisión del humano 2026-11-18): el artículo concuerda con el género del tipo, con la regla
+  // de SLT-47 (`esFemenino`): «Un distrito», «Una comuna».
+  gruposUnicidad: (lugar: string, femenino: boolean) =>
+    `${femenino ? "Una" : "Un"} ${lugar} está en un solo grupo por zona.`,
   crearGrupo: "Crear grupo",
   renombrar: "Renombrar",
   renombrarGrupo: "Renombrar grupo",
