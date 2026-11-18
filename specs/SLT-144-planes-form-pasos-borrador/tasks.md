@@ -75,12 +75,12 @@
 
 ## T6 · E2E — frontend_dev
 
-- [ ] **T6.1** Crear `e2e/planes-borrador.spec.ts` (R30) con los fixtures de `e2e/planes-superadmin.spec.ts`:
+- [x] **T6.1** Crear `e2e/planes-borrador.spec.ts` (R30) con los fixtures de `e2e/planes-superadmin.spec.ts`:
   superadmin con OTP, empresas con `crearEmpresaE2E` y un plan con dos empresas de tipos distintos. Esperar
   condiciones, nunca `waitForTimeout`. Depende de T5.
   *Hecho:* `pnpm exec playwright test e2e/planes-borrador.spec.ts` verde dos veces seguidas sobre la misma base
   desechable.
-- [ ] **T6.2 [P]** Adaptar `e2e/planes-superadmin.spec.ts`, `e2e/planes-costeo.spec.ts` y
+- [x] **T6.2 [P]** Adaptar `e2e/planes-superadmin.spec.ts`, `e2e/planes-costeo.spec.ts` y
   `e2e/planes-costo-porcentual.spec.ts` a «Guardar y continuar», con las mismas aserciones. Depende de T5.
   *Hecho:* los tres verdes en local. También `e2e/mi-plan-cambiar-plan.spec.ts` (sin cambios) y
   `e2e/dos-empresas-humo.spec.ts`, porque el diff toca `lib/repositories/`. Queda constancia en `progress/impl_SLT-144.md`.

@@ -236,11 +236,11 @@ function b(): EmpresaE2E {
 }
 
 /**
- * SLT-130 (design §4): pulsa «Siguiente» del form del plan y espera a que el paso `proximo` esté en
- * pantalla (su título es el `h3` del paso).
+ * SLT-130 (design §4): pulsa «Guardar y continuar» del form del plan (SLT-144 R1: guarda el paso en el
+ * borrador) y espera a que el paso `proximo` esté en pantalla (su título es el `h3` del paso).
  */
 async function siguientePaso(form: Locator, proximo: string): Promise<void> {
-  await form.getByRole("button", { name: "Siguiente", exact: true }).click();
+  await form.getByRole("button", { name: "Guardar y continuar", exact: true }).click();
   await expect(form.getByRole("heading", { level: 3, name: proximo, exact: true })).toBeVisible({ timeout: 30_000 });
 }
 
