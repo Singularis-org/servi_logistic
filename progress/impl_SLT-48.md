@@ -1446,3 +1446,62 @@ Arreglados los hallazgos 5 (carrera P1) y 6 (`down.sql` sin el mensaje de P5) de
 Mapa R → test: P1/R40 suma `geografia-mover-nodo-carrera.test.ts`; R12 suma «R12 (P5): una orden sin nodo ni FK…».
 
 Veredicto: hallazgos 5 y 6 arreglados, los dos con evidencia de rojo a verde.
+
+## Review vuelta 2 — tope de mover (backend_dev, 2026-11-18)
+
+Decisión del humano (`progress/features/SLT-48.md`, «tope corto a mover»): el que cede siempre es el superadmin. Base: `servi_logistic_slt48_gate`, local y limpia (`prisma migrate status`: al día). No se usó el grafo: bastaron Grep y Read sobre lo de esta feature.
+
+### Diseño elegido: (a), P1 sin bloqueos y luego una transacción corta con tope
+- `GeoRepository.mover` calcula P1 (la parte cara) **fuera de toda transacción y sin bloqueos**, con `evaluarMovimiento` sobre el cliente, igual que la vista previa.
+- Después abre una transacción corta:
+  1. `SET LOCAL lock_timeout = TOPE_MOVER_MS`;
+  2. `bloquearNodos`: el subárbol `FOR UPDATE`, como en la vuelta 1;
+  3. `SET LOCAL statement_timeout = TOPE_MOVER_MS`. Va después de bloquear: antes cortaba la espera del bloqueo como 57014 en vez de 55P03 (medido, el test de carrera lo vio);
+  4. `confirmarP1`: si un nodo se colgó del subárbol desde la lectura, `cambio_concurrente`. Si no, P1 solo para las órdenes abiertas que no estaban en la primera pasada (`bloqueoDeMover` con `yaVistas`). Las de la primera pasada ya dieron `null`, así que el bloqueo de las nuevas es el bloqueo entero;
+  5. el `updateMany` y el historial, como antes.
+- La transacción lleva `timeout: TIMEOUT_TRANSACCION_MOVER_MS` (2 × tope = 4 s), en lugar de los 30 s de antes.
+- `TOPE_MOVER_MS = 2_000`, con el porqué en el comentario. Con los bloqueos quedan unas 10 sentencias pequeñas (milisegundos en local), y 4 s queda por debajo de los 5 s por defecto de cada chunk de la carga masiva.
+- Error tipado: `lib/repositories/_shared/prisma-ocupado.ts > esMoverOcupado` reconoce 55P03, 57014, 40P01, P2028 y P2034, en `code`, en `originalCode` de algún `cause` o en el mensaje.
+  - `moverNodoAction` lo devuelve como `{ status: "conflict", motivo: "ocupado" }` (`MoverOcupadoResult`), igual que `cambio_concurrente`, y sin `console.error`.
+  - El repositorio deja subir el error de Postgres o Prisma tal cual. Así el test de carrera sigue esperando `{ error: "55P03" }` sin cambiar su aserción.
+- UI: `MoverNodoDialog` recibe un texto nuevo, `avisoOcupado`: «Se están guardando órdenes en ese lugar. Intenta de nuevo en unos segundos.».
+  - Ante `ocupado` muestra un `toast.error` y se queda en el paso 2, para que «Sí, mover» se pueda pulsar otra vez.
+  - Va antes de `motivoDeRechazo`, que pintaría el otro `conflict` (el hermano con el mismo nombre).
+  - No hay literales de país.
+- `docs/architecture.md`, en el bloque de mover un nodo: quién cede, el tope y el error.
+
+### Archivos
+- `lib/repositories/GeoRepository.ts`: `TOPE_MOVER_MS` y `TIMEOUT_TRANSACCION_MOVER_MS` (exportadas para el test), `confirmarP1`, `bloqueoDeMover` con `yaVistas`, y `mover` en dos tiempos. `evaluarMovimiento` ya no recibe `bloquearSubarbol`.
+- `lib/repositories/_shared/prisma-ocupado.ts` (nuevo).
+- `lib/actions/geografia-plataforma.ts`: `MoverOcupadoResult` y la traducción en `moverNodoAction`.
+- `app/(app)/plataforma/geografia/_components/MoverNodoDialog.tsx`: `avisoOcupado` y la rama `ocupado`.
+- `docs/architecture.md`.
+- Tests:
+  - `tests/integration/db/geografia-mover-nodo-cede.test.ts` (nuevo, 3 casos);
+  - casos nuevos en `tests/unit/actions/geografia-plataforma.mover.test.ts` (6) y en `tests/components/MoverNodoDialog.test.tsx` (1);
+  - `geografia-mover-nodo-carrera.test.ts`: solo el comentario de cabecera. Ninguna aserción existente cambió.
+
+### Evidencia: `geografia-mover-nodo-cede.test.ts`, dos conexiones y país `XK`
+Medido con un log temporal, que se quitó después:
+
+| Caso | Espera medida | Resultado |
+|---|---|---|
+| 1. `mover` tiene los bloqueos y una sentencia se alarga (`pg_sleep(10)` inyectado tras tomarlos) | la orden esperó **2037 ms** y se guardó | `mover` → `{ conflict, ocupado }` (57014), `padre_id` igual, 0 filas de historial. Un `mover` posterior cuenta esa orden y se bloquea (P1). |
+| 2. `mover` tiene los bloqueos y se para fuera de la base (promesa sin resolver) | la orden esperó **4016 ms** (`timeout` de Prisma) | `mover` → `{ conflict, ocupado }` (P2028), sin escribir. |
+| 3. Al revés: una orden en vuelo en el subárbol | `mover` esperó **2108 ms** (su `lock_timeout`) | `mover` → `{ conflict, ocupado }` (55P03), sin escribir. |
+
+- Las cotas del test: la espera de la orden está entre `tope/2` (prueba que esperó de verdad) y `tope + 1,5 s` (en el caso 2, el `timeout` de la transacción + 1,5 s). En el caso 3, `mover` está entre `tope − 100 ms` y `tope + 1,5 s`. Sin sleeps en Node: se usan transacciones abiertas, promesas y un `pg_sleep` dentro de la base, que corta el `statement_timeout`. Cada caso desconecta sus dos clientes en un `finally`, y el `afterAll` exige que `XK` no deje residuos.
+- **Rojo con el `mover` de antes**: `lib` en `HEAD` más las dos constantes, para que compile. Los 3 casos fallan.
+  - En el caso 3, `mover` esperó **30 525 ms**, su `timeout` de 30 s.
+  - En los casos 1 y 2, `mover` devolvió `ok`: no había tope que lo hiciera ceder.
+- `DeprecationWarning: client.query() when the client is already executing` sale de `geografia-mover-nodo-ordenes` y ya salía en `HEAD` (comprobado). No es de este cambio.
+
+### Salida
+- `pnpm run typecheck`: 0 errores.
+- `eslint` de los 8 archivos tocados: 0 problemas.
+- `vitest run tests/integration/db/geografia-mover-nodo tests/unit/actions/geografia-plataforma.mover tests/components/MoverNodoDialog`: **6 archivos, 67 tests, todos verdes**. Incluye `geografia-mover-nodo-carrera` (P1 sigue cerrado, con `{ error: "55P03" }` y luego `bloqueado` con 1 orden), `geografia-mover-nodo`, `geografia-mover-nodo-ordenes` y `geografia-mover-nodo-cede`.
+- `pnpm run test:guardias`: 338/339 archivos. El único rojo es `dependencias-declaradas-presentes` (4 tests), que está en el baseline, como en las vueltas anteriores.
+
+Mapa: P1/R40 (el tope de mover) suma `geografia-mover-nodo-cede.test.ts` (3 casos), «SLT-48 P1, review vuelta 2 — `mover` cede…» en `geografia-plataforma.mover.test.ts` y «P1, review vuelta 2 — mover cedió…» en `MoverNodoDialog.test.tsx`.
+
+Veredicto: `mover` cede siempre ante las escrituras de una empresa, con un tope de 2 s (4 s por transacción), y falla limpio con `ocupado`. P1 sigue cerrado.

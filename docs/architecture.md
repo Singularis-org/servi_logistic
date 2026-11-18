@@ -196,6 +196,25 @@ esta bien hecha, no solo si "funciona".
       cambiaría de grupo de tarifas o de marca de zona especial heredados, la vista previa lo muestra
       por empresa y `mover` se bloquea (P1). Las órdenes no se reescriben: su ruta cambia porque se lee
       del árbol, y la zona y el precio ya guardados se quedan.
+      - **Quién cede: siempre el superadmin** (review vuelta 2, decisión del humano). `mover` calcula
+        P1, la parte cara, sin bloqueos. Después abre una transacción corta y hace tres cosas:
+        - bloquea el subárbol `FOR UPDATE`;
+        - vuelve a mirar P1 solo con lo nuevo (`confirmarP1`): las órdenes abiertas que aparecieron y
+          los nodos que se colgaron del subárbol, que dan `cambio_concurrente`;
+        - escribe.
+      - **El tope es `TOPE_MOVER_MS` = 2 s** (`GeoRepository.ts`). Se aplica en tres sitios:
+        - el `lock_timeout` de la transacción: lo que `mover` espera a una orden en vuelo;
+        - el `statement_timeout`, una vez tomados los bloqueos;
+        - el `timeout` de Prisma de la transacción, que es el doble (4 s).
+      - **Lo que espera una empresa.** Un alta de orden o un chunk de la carga masiva en ese subárbol
+        espera como mucho ese tope detrás de `mover`. Medido: ~2 s con una sentencia lenta y ~4 s con
+        la transacción parada. Nunca espera lo que dure P1 en un nodo alto.
+      - **Si no alcanza**, `mover` se revierte entero: no cambia `padre_id` ni deja fila de historial.
+        Los errores son 55P03, 57014, 40P01, P2028 y P2034, que reconoce `esMoverOcupado`
+        (`lib/repositories/_shared/prisma-ocupado.ts`). `moverNodoAction` los devuelve como
+        `{ status: "conflict", motivo: "ocupado" }`, sin log. El modal avisa «Intenta de nuevo en unos
+        segundos» y sigue abierto para reintentar.
+      - Lo prueba `tests/integration/db/geografia-mover-nodo-cede.test.ts`, con dos conexiones.
   - **Lecturas sobre el árbol (SLT-44).** Las reglas del árbol viven en un dominio puro,
     `lib/services/geografia-dominio.ts` (sin Prisma: ancestros, descendientes, activo en cascada,
     zona heredada y marca especial sobre el catálogo en memoria). El catálogo del país y las
