@@ -45,6 +45,7 @@ import type {
   ResultadoProgramar,
   ResultadoRecibir,
   ResultadoRecordatorio,
+  VistaPreviaCambioLeida,
   VistaPreviaLeida,
 } from "@/lib/interfaces/repositories/IPlanesRepository";
 import { BorradorNoEncontrado } from "@/lib/planes/borrador";
@@ -1099,15 +1100,21 @@ function pendienteDe(c: { vigenteDesde: Date; version: Prisma.JsonValue } | null
 }
 
 /**
- * SLT-128 (design §3.6; R11): el pendiente del detalle con «N de M»: de sus recepciones, cuántas ya se aplicaron
- * y cuántas tiene. Un plan sin empresas tiene 0 de 0.
+ * SLT-128 (design §3.6; R11): el pendiente del detalle con «N de M». Un plan sin empresas tiene 0 de 0.
+ * SLT-144 (design §3.2; R23): se cuenta por empresa. `conVersion` son las empresas con versión propia de ese
+ * pendiente: la que entró en F o después solo tiene esa fila y ya lo recibió; la que lo recibió por su recepción
+ * tiene las dos y cuenta una vez.
  */
 function pendienteDelDetalle(
-  c: { vigenteDesde: Date; version: Prisma.JsonValue; recepciones: { recibidoAt: Date | null }[] } | null,
+  c: { vigenteDesde: Date; version: Prisma.JsonValue; recepciones: { empresaId: string; recibidoAt: Date | null }[] } | null,
+  conVersion: readonly string[],
 ): PendienteDelDetalleLeido | null {
   const leido = pendienteDe(c);
   if (c === null || leido === null) return null;
-  return { ...leido, recibidas: c.recepciones.filter((r) => r.recibidoAt !== null).length, total: c.recepciones.length };
+  const conRecepcion = new Set(c.recepciones.map((r) => r.empresaId));
+  const recibidas = new Set(c.recepciones.filter((r) => r.recibidoAt !== null).map((r) => r.empresaId));
+  for (const empresaId of conVersion) if (!conRecepcion.has(empresaId)) recibidas.add(empresaId);
+  return { ...leido, recibidas: recibidas.size, total: new Set([...conRecepcion, ...conVersion]).size };
 }
 
 type FilaNoAplicada = {
@@ -1654,6 +1661,23 @@ export class PlanesRepository
     // custom en vez de los de un plan guardado. Lo que avisa es lo que avisará `crearYAsignar`.
     return comoPlataforma("SL-24", "vista previa de un plan custom antes de crearlo (superadmin, ajuste planes-custom)", () =>
       this.prisma.$transaction((tx) => vistaPreviaEnTx(tx, organizacionId, topes)),
+    );
+  }
+
+  vistaPreviaCambio(planId: string, topes: TopesPlan): Promise<VistaPreviaCambioLeida | null> {
+    // SLT-144 (design §3.1; R21): lectura, sin cerrojos ni escrituras. Las empresas y `excedidosDe` son los de
+    // `programarCambio`, así que avisa lo mismo que avisará programar con esos topes.
+    return comoPlataforma("SL-24", "vista previa de un cambio de un plan antes de programarlo (superadmin, SLT-144)", () =>
+      this.prisma.$transaction(async (tx): Promise<VistaPreviaCambioLeida | null> => {
+        const plan = await tx.plan.findUnique({ where: { id: planId }, select: { id: true } });
+        if (plan === null) return null;
+        const empresas = await tx.$queryRaw<{ id: string; nombre: string; plan_tipo_cobro: string }[]>`
+          SELECT "id", "nombre", "plan_tipo_cobro" FROM "organizacion" WHERE "plan_id" = ${planId} ORDER BY "nombre", "id"`;
+        return {
+          empresas: empresas.map((e) => ({ id: e.id, nombre: e.nombre, tipoCobro: tipoCobroSchema.parse(e.plan_tipo_cobro) })),
+          avisos: await excedidosDe(tx, empresas, topes),
+        };
+      }),
     );
   }
 
@@ -2370,6 +2394,7 @@ export class PlanesRepository
           // SLT-128 (R11): sus recepciones, para «N de M empresas ya lo recibieron».
           cambioProgramado: {
             select: {
+              id: true,
               vigenteDesde: true,
               version: true,
               // SLT-128 (R28): las no aplicadas cuentan en `total` pero no en `recibidas`, y van a `noAplicadas`.
@@ -2386,13 +2411,25 @@ export class PlanesRepository
           },
           empresas: { select: { id: true, nombre: true }, orderBy: [{ nombre: "asc" }, { id: "asc" }] },
           // SLT-128 (§14.3; R28): las versiones que sus empresas conservan por una no aplicada, ya promovido el plan.
+          // SLT-144 (R23): todas, también las del pendiente sin marcar, para «N de M»; `noAplicadasDelDetalle` salta
+          // las que no están marcadas.
           versionesDeEmpresa: {
-            where: { noAplicadaAt: { not: null } },
-            select: { empresaId: true, noAplicadaAt: true, noAplicadaMotivo: true, empresa: { select: { nombre: true } } },
+            select: {
+              empresaId: true,
+              cambioId: true,
+              noAplicadaAt: true,
+              noAplicadaMotivo: true,
+              empresa: { select: { nombre: true } },
+            },
           },
         },
       });
       if (fila === null) return null;
+      // SLT-144 (R23): las empresas con la versión del pendiente, que entraron en F o después o ya lo recibieron.
+      const pendienteId = fila.cambioProgramado?.id;
+      const conVersion = fila.versionesDeEmpresa
+        .filter((v) => v.cambioId === pendienteId && v.noAplicadaAt === null)
+        .map((v) => v.empresaId);
       // Usa el índice `(plan_id, created_at)`. El `id` solo desempata: las filas de una misma
       // operación (reemplazar y programar) comparten `created_at`.
       const rastro = await this.prisma.planRastro.findMany({
@@ -2404,7 +2441,7 @@ export class PlanesRepository
       return {
         plan: aDTO(fila),
         empresaNombre: fila.organizacionExclusiva?.nombre ?? null,
-        pendiente: pendienteDelDetalle(fila.cambioProgramado),
+        pendiente: pendienteDelDetalle(fila.cambioProgramado, conVersion),
         noAplicadas: noAplicadasDelDetalle(fila.cambioProgramado?.recepciones ?? [], fila.versionesDeEmpresa),
         empresas: fila.empresas,
         rastro: rastro.map((r) => ({

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // SLT-130 (design §4, §5; R7, R9, R14, R16, R18–R21, R25) — el formulario de planes por pasos: qué pasos
-// ofrece en cada modo, cómo se navega entre ellos («Siguiente» valida solo el paso actual, Enter avanza,
+// ofrece en cada modo, cómo se navega entre ellos («Guardar y continuar» valida solo el paso actual, Enter avanza,
 // «Anterior» y la lista no validan, el foco va al título) y adónde lleva un error al guardar.
 //
 // Se monta el `PlanForm` REAL con las actions como dobles (las inyecta la página).
@@ -11,7 +11,7 @@ import userEvent from "@testing-library/user-event";
 import { PlanForm, type EmpresaParaCustom } from "@/app/(app)/plataforma/planes/_components/PlanForm";
 import type { CrearPlanInput, EditarPlanInput, PlanDTO, PlanResult } from "@/lib/types/planes";
 
-import { avanzarHasta, terminar, tituloDelPasoActual } from "./plan-form-pasos";
+import { avanzarHasta, terminar, tituloDelPasoActual, conBorrador, conBorradorDeCambio, botonDeLaLista } from "./plan-form-pasos";
 
 const PLAN_ID = "0b6f3a2e-1c4d-4e5f-8a9b-0c1d2e3f4a5b";
 const CON_PLAN = "7a1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f61";
@@ -49,7 +49,7 @@ function montarCrear(enviar = vi.fn<Crear>().mockResolvedValue(OK)) {
       inicioCicloPorDefecto={MANANA}
       rangoInicioCiclo={RANGO}
       rangoFechaDeEfecto={RANGO_EFECTO}
-      enviar={enviar}
+      {...conBorrador(enviar)}
       previsualizar={vi.fn().mockResolvedValue({ estado: "ok", avisos: [] })}
       onGuardado={vi.fn()}
     />,
@@ -58,16 +58,16 @@ function montarCrear(enviar = vi.fn<Crear>().mockResolvedValue(OK)) {
 }
 
 function montarEditar(enviar = vi.fn<Editar>().mockResolvedValue(OK)) {
-  render(<PlanForm modo="editar" plan={PLAN} precioDesdePorDefecto={MANANA} enviar={enviar} onGuardado={vi.fn()} />);
+  render(<PlanForm modo="editar" plan={PLAN} precioDesdePorDefecto={MANANA} {...conBorradorDeCambio(enviar)} onGuardado={vi.fn()} />);
   return enviar;
 }
 
 const nav = () => screen.getByRole("navigation", { name: "Pasos" });
 /** Los títulos de la lista de pasos, sin su número (que es decorativo). */
 const titulosDeLaLista = () => within(nav()).getAllByRole("button").map((b) => b.textContent?.replace(/^\d+/, ""));
-const botonDelPaso = (titulo: string) => within(nav()).getByRole("button", { name: titulo });
+const botonDelPaso = botonDeLaLista;
 const titulo = (texto: string) => screen.getByRole("heading", { name: texto });
-const siguiente = () => screen.getByRole("button", { name: "Siguiente" });
+const siguiente = () => screen.getByRole("button", { name: "Guardar y continuar" });
 const textosHoy = () => screen.queryAllByText(/^Hoy: /).map((p) => p.textContent);
 
 describe("SLT-130 R7 — los pasos de cada modo", () => {
@@ -219,7 +219,7 @@ describe("SLT-130 R18–R21 — la navegación", () => {
     expect(tituloDelPasoActual()).toBe("Precio y descuentos");
     expect(document.querySelector('[aria-invalid="true"]')).toBeNull();
 
-    // En su paso, el error sí detiene «Siguiente».
+    // En su paso, el error sí detiene «Guardar y continuar».
     await avanzarHasta(user, "Topes");
     await user.click(siguiente());
     expect(tituloDelPasoActual()).toBe("Topes");

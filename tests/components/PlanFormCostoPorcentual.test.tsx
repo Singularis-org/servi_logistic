@@ -8,7 +8,7 @@ import userEvent from "@testing-library/user-event";
 import { PlanForm } from "@/app/(app)/plataforma/planes/_components/PlanForm";
 import type { PlanDTO, PlanResult } from "@/lib/types/planes";
 
-import { avanzarHasta, terminar } from "./plan-form-pasos";
+import { avanzarHasta, terminar, conBorrador, conBorradorDeCambio } from "./plan-form-pasos";
 
 const PLAN_ID = "0b6f3a2e-1c4d-4e5f-8a9b-0c1d2e3f4a5b";
 const OK: PlanResult = { estado: "ok", planId: PLAN_ID, cambio: true, avisos: [], vigenteDesde: null };
@@ -42,7 +42,7 @@ function montarCrear(enviar = vi.fn().mockResolvedValue(OK)) {
       inicioCicloPorDefecto="2026-10-30"
       rangoInicioCiclo={{ hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" }}
       rangoFechaDeEfecto={{ hoy: "2026-10-29", min: "2026-10-29", max: "2027-10-29" }}
-      enviar={enviar}
+      {...conBorrador(enviar)}
       previsualizar={vi.fn().mockResolvedValue({ estado: "ok", avisos: [] })}
       onGuardado={vi.fn()}
     />,
@@ -151,7 +151,7 @@ describe("SLT-83 R20 — el modo del costo por orden", () => {
 
   it("R20: al editar un plan porcentual abre en «Porcentual» con sus valores", async () => {
     const user = userEvent.setup();
-    render(<PlanForm modo="editar" plan={PLAN_PORCENTUAL} enviar={vi.fn()} onGuardado={vi.fn()} />);
+    render(<PlanForm modo="editar" plan={PLAN_PORCENTUAL} {...conBorradorDeCambio(vi.fn())} onGuardado={vi.fn()} />);
     await avanzarHasta(user, "Cobro por orden");
     expect(screen.getByRole("radio", { name: "Porcentual" })).toBeChecked();
     expect(screen.getByRole("textbox", { name: "Porcentaje" })).toHaveValue("2.50");
@@ -160,7 +160,7 @@ describe("SLT-83 R20 — el modo del costo por orden", () => {
 
   it("R20: al editar un plan fijo abre en «Fijo»", async () => {
     const user = userEvent.setup();
-    render(<PlanForm modo="editar" plan={PLAN_FIJO} enviar={vi.fn()} onGuardado={vi.fn()} />);
+    render(<PlanForm modo="editar" plan={PLAN_FIJO} {...conBorradorDeCambio(vi.fn())} onGuardado={vi.fn()} />);
     await avanzarHasta(user, "Cobro por orden");
     expect(screen.getByRole("radio", { name: "Fijo" })).toBeChecked();
     expect(screen.getByLabelText("Costo por orden")).toHaveValue("100");
@@ -174,8 +174,8 @@ describe("SLT-83 R20 — el modo del costo por orden", () => {
     await avanzarHasta(user, "Cobro por orden");
     await user.click(screen.getByRole("radio", { name: "Porcentual" }));
     await user.type(screen.getByRole("textbox", { name: "Porcentaje" }), "100.01");
-    // SLT-130 (R18): «Siguiente» valida el paso con el mismo esquema que la action.
-    await user.click(screen.getByRole("button", { name: "Siguiente" }));
+    // SLT-130 (R18): «Guardar y continuar» valida el paso con el mismo esquema que la action.
+    await user.click(screen.getByRole("button", { name: "Guardar y continuar" }));
 
     const campo = screen.getByRole("textbox", { name: "Porcentaje" });
     await waitFor(() => expect(campo).toHaveAttribute("aria-invalid", "true"));
@@ -194,7 +194,7 @@ describe("SLT-83 R20 — el modo del costo por orden", () => {
       },
     } satisfies PlanResult);
     const onGuardado = vi.fn();
-    render(<PlanForm modo="editar" plan={PLAN_PORCENTUAL} enviar={enviar} onGuardado={onGuardado} />);
+    render(<PlanForm modo="editar" plan={PLAN_PORCENTUAL} {...conBorradorDeCambio(enviar)} onGuardado={onGuardado} />);
 
     await avanzarHasta(user, "Cobro por orden");
     await user.clear(screen.getByRole("textbox", { name: "Porcentaje" }));

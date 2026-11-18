@@ -14,7 +14,7 @@ import userEvent from "@testing-library/user-event";
 import { PlanForm, type EmpresaParaCustom } from "@/app/(app)/plataforma/planes/_components/PlanForm";
 import type { CrearPlanInput, EditarPlanInput, PlanDTO, PlanResult } from "@/lib/types/planes";
 
-import { avanzarHasta, terminar } from "./plan-form-pasos";
+import { avanzarHasta, terminar, conBorrador, conBorradorDeCambio, botonDeLaLista } from "./plan-form-pasos";
 
 const PLAN_ID = "0b6f3a2e-1c4d-4e5f-8a9b-0c1d2e3f4a5b";
 const CON_PLAN = "7a1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f61";
@@ -56,7 +56,7 @@ function montarCrear(enviar = vi.fn<Crear>().mockResolvedValue(OK)) {
       inicioCicloPorDefecto={MANANA}
       rangoInicioCiclo={RANGO}
       rangoFechaDeEfecto={RANGO_EFECTO}
-      enviar={enviar}
+      {...conBorrador(enviar)}
       previsualizar={vi.fn().mockResolvedValue({ estado: "ok", avisos: [] })}
       onGuardado={vi.fn()}
     />,
@@ -65,7 +65,7 @@ function montarCrear(enviar = vi.fn<Crear>().mockResolvedValue(OK)) {
 }
 
 function montarEditar(enviar = vi.fn<Editar>().mockResolvedValue(OK), plan: PlanDTO = PLAN) {
-  render(<PlanForm modo="editar" plan={plan} precioDesdePorDefecto={MANANA} enviar={enviar} onGuardado={vi.fn()} />);
+  render(<PlanForm modo="editar" plan={plan} precioDesdePorDefecto={MANANA} {...conBorradorDeCambio(enviar)} onGuardado={vi.fn()} />);
   return enviar;
 }
 
@@ -275,7 +275,7 @@ describe("SLT-86 R10, R23 — los errores de un descuento van junto a su línea"
     await user.click(agregar());
     await user.click(agregar());
     await escribir(user, "bimestral", "150");
-    await user.click(screen.getByRole("button", { name: "Siguiente" }));
+    await user.click(screen.getByRole("button", { name: "Guardar y continuar" }));
 
     const campo = valorDe("bimestral");
     await waitFor(() => expect(campo).toHaveAttribute("aria-invalid", "true"));
@@ -410,7 +410,7 @@ describe("SLT-86 R22, R23 — «Rige desde» al editar el precio", () => {
     const fecha = screen.getByLabelText("Rige desde");
     await waitFor(() => expect(fecha).toHaveAttribute("aria-invalid", "true"));
     expect(fecha).toHaveAccessibleDescription(expect.stringContaining("La fecha de efecto no puede ser anterior a hoy."));
-    await user.click(within(screen.getByRole("navigation", { name: "Pasos" })).getByRole("button", { name: PRECIO }));
+    await user.click(botonDeLaLista(PRECIO));
     expect(screen.getByLabelText("Costo base mensual")).toHaveValue("60000");
   });
 });
@@ -426,7 +426,7 @@ describe("SLT-86 R16, R25 — el custom para una empresa que ya tiene plan", () 
     await user.click(screen.getByRole("radio", { name: "Con monto" }));
     await user.type(screen.getByLabelText("Costo base mensual"), mensual);
     await preparar?.();
-    await user.click(within(screen.getByRole("navigation", { name: "Pasos" })).getByRole("button", { name: "General" }));
+    await user.click(botonDeLaLista("General"));
   }
 
   const tipoDeCobro = (tipo: string) =>

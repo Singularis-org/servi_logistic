@@ -43,6 +43,7 @@ function doble() {
     editar: vi.fn<IPlanesRepository["editar"]>(),
     archivar: vi.fn<IPlanesRepository["archivar"]>(),
     asignar: vi.fn<IPlanesRepository["asignar"]>(),
+    vistaPreviaCambio: vi.fn<IPlanesRepository["vistaPreviaCambio"]>(),
     vistaPreviaAsignacion: vi.fn<IPlanesRepository["vistaPreviaAsignacion"]>(),
     vistaPreviaConTopes: vi.fn<IPlanesRepository["vistaPreviaConTopes"]>(async () => ({ avisos: [] })),
     cambiarTipoCobro: vi.fn<IPlanesRepository["cambiarTipoCobro"]>(async () => ({ estado: "ok", cambio: true, pendiente: true, vigenteDesde: "2026-11-01" })),

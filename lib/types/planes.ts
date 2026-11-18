@@ -331,6 +331,14 @@ export const previsualizarCustomSchema = z
  * los asignables y el actual. El tope solo acota la lectura; ningún catálogo real se le acerca.
  */
 export const preciosQueRigenSchema = z.object({ planIds: z.array(z.uuid()).max(500) }).strict();
+/**
+ * SLT-144 (design §3.1; R17–R22): la fecha en que cada empresa recibiría el cambio y los topes que ya pasa,
+ * antes de programarlo. `vigenteDesde: null` es «De inmediato»: solo avisos, sin fechas. El rango de la
+ * fecha no se mira aquí: lo decide confirmar (SLT-129 R19).
+ */
+export const previsualizarCambioSchema = z
+  .object({ planId: z.uuid(), vigenteDesde: fechaSchema.nullable(), topes: topesPlanSchema })
+  .strict();
 
 export type CrearPlanInput = z.infer<typeof crearPlanSchema>;
 export type EditarPlanInput = z.infer<typeof editarPlanSchema>;
@@ -558,6 +566,16 @@ export type CancelarCambioEmpresaResult =
  */
 export type VistaPreviaCustomResult =
   | { estado: "ok"; avisos: TopeExcedido[] }
+  | { estado: "forbidden" }
+  | { estado: "validation_error"; fieldErrors: Record<string, string[]> }
+  | { estado: "not_found" };
+
+/** SLT-144 (R17, R21): una empresa del plan y el día (`AAAA-MM-DD`) en que recibiría el cambio; `null` sin F. */
+export type FechaDeEmpresa = { empresaId: string; empresa: string; tipoCobro: TipoCobro; recibeEl: string | null };
+
+/** SLT-144 (design §3.1; R21, R22): lo mismo que dejaría programar el cambio con esa F y esos topes. */
+export type VistaPreviaCambioResult =
+  | { estado: "ok"; empresas: FechaDeEmpresa[]; avisos: TopeExcedido[] }
   | { estado: "forbidden" }
   | { estado: "validation_error"; fieldErrors: Record<string, string[]> }
   | { estado: "not_found" };

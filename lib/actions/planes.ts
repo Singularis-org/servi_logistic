@@ -12,6 +12,7 @@ import type {
   ListarPlanesAsignablesResult,
   PlanResult,
   VistaPreviaAsignacionResult,
+  VistaPreviaCambioResult,
   VistaPreviaCustomResult,
 } from "@/lib/types/planes";
 
@@ -19,7 +20,8 @@ import type {
 // sesión y la autorización la decide el servicio (R5), antes de tocar la base. Es de plataforma, así
 // que no lleva puerta de módulo: va al núcleo en `lib/modulos/reparto.ts`. Las usan las pantallas de
 // SLT-58: «Planes» del superadmin y el plan en el detalle de la empresa. Los planes públicos (R7)
-// NO se exponen aquí: son una lectura de servidor para SL-25.
+// NO se exponen aquí: son una lectura de servidor para SL-25. SLT-144 (R29): crear y editar un plan no
+// tienen action propia: la pantalla confirma por `lib/actions/plan-borrador.ts`.
 
 /** Inyección para los tests del borde. */
 export interface PlanesDeps {
@@ -36,24 +38,6 @@ function construirPlanesService(): IPlanesService {
 async function conServicio<T>(deps: PlanesDeps, fn: (s: IPlanesService, actor: Actor | null) => Promise<T>): Promise<T> {
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   return fn(deps.service ?? construirPlanesService(), actor);
-}
-
-/**
- * Crea un plan público o custom (R1–R3). Ajuste planes-custom (D2, D4, D6): un custom se asigna a su
- * empresa en la misma operación, con `tipoCobro` obligatorio e `inicioCiclo` opcional (solo si la empresa
- * no tiene plan). Si la asignación se rechaza, no se crea nada y vuelve el rechazo de `asignarPlanAction`.
- */
-export async function crearPlanAction(input: unknown, deps: PlanesDeps = {}): Promise<PlanResult> {
-  return conServicio(deps, (s, actor) => s.crear(actor, input));
-}
-
-/**
- * Edita un plan: de inmediato con `vigenteDesde: null` (R15–R17), o programado con una fecha (R37).
- * SLT-86 (R22): si cambia el costo base o un descuento, `vigenteDesde` es obligatoria y `≥ hoy`; con la de
- * hoy se aplica en el acto.
- */
-export async function editarPlanAction(input: unknown, deps: PlanesDeps = {}): Promise<PlanResult> {
-  return conServicio(deps, (s, actor) => s.editar(actor, input));
 }
 
 /**
@@ -92,6 +76,15 @@ export async function previsualizarAsignacionPlanAction(
  */
 export async function previsualizarCustomAction(input: unknown, deps: PlanesDeps = {}): Promise<VistaPreviaCustomResult> {
   return conServicio(deps, (s, actor) => s.previsualizarCustom(actor, input));
+}
+
+/**
+ * SLT-144 (design §3.1; R17–R22): «Cuándo rige» del formulario de editar. `{ planId, vigenteDesde, topes }`: la
+ * fecha en que cada empresa del plan recibiría el cambio y los topes que ya pasa, como los dejaría programar.
+ * Solo lee.
+ */
+export async function previsualizarCambioPlanAction(input: unknown, deps: PlanesDeps = {}): Promise<VistaPreviaCambioResult> {
+  return conServicio(deps, (s, actor) => s.previsualizarCambio(actor, input));
 }
 
 /**

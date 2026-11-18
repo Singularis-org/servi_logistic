@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import type { PlanDTO } from "@/lib/types/planes";
 
 import { versionDe, type PropsDelPaso } from "./estado";
+import { FechasPorEmpresa, type FechasDelCambio } from "./FechasPorEmpresa";
 import { ListaDelPrimerPeriodo } from "./PasoGeneral";
 import { filasDeRevision, haySoloExtras, type FilaDeRevision } from "./revision";
 import { TEXTOS_PLAN_FORM } from "./textos";
@@ -27,12 +28,25 @@ export type PasoRevisarProps = PropsDelPaso & {
   /** Id del motivo del bloqueo, para que el botón final lo enlace con `aria-describedby`. */
   idMotivo: string;
   onIrATopes: () => void;
+  /**
+   * SLT-144 (R8): los títulos, en orden, de los pasos que faltan por guardar o están «Sin guardar». Con
+   * alguno, el botón final está deshabilitado y aquí se dice por qué, con un enlace al primero.
+   */
+  faltan: readonly string[];
+  /** Id del motivo de `faltan`, para el `aria-describedby` del botón final. */
+  idFaltan: string;
+  onIrAlPrimeroQueFalta: () => void;
+  /** SLT-144 (R17–R20): al editar, la fecha de cada empresa; `null` al crear o sin una entrada válida. */
+  fechas: FechasDelCambio | null;
+  onReintentarFechas: () => void;
 };
 
 /**
  * SLT-130 (R22, R23, R26, R28) — el último paso. Al crear lista los valores finales; al editar, solo lo
  * que cambia («antes → después») y cuándo rige. No valida: lo hace el botón final. Debajo, el aviso
  * general y, si la vista previa del custom bloquea el botón, el motivo con un enlace al paso Topes.
+ * SLT-144 (R8): y, si faltan pasos por guardar, cuáles, con un enlace al primero. Al editar (R17–R20), la fecha
+ * en que cada empresa recibe el cambio y los topes que ya pasa.
  */
 export function PasoRevisar({
   modo,
@@ -47,6 +61,11 @@ export function PasoRevisar({
   bloqueo,
   idMotivo,
   onIrATopes,
+  faltan,
+  idFaltan,
+  onIrAlPrimeroQueFalta,
+  fechas,
+  onReintentarFechas,
 }: PasoRevisarProps) {
   const despues: PlanDTO =
     plan !== null
@@ -69,6 +88,8 @@ export function PasoRevisar({
           </div>
         ))}
       </dl>
+      {/* SLT-144 (design §5.3): al editar, debajo de la fila de cuándo rige (la última), la fecha de cada empresa. */}
+      {modo === "editar" ? <FechasPorEmpresa fechas={fechas} onReintentar={onReintentarFechas} /> : null}
       {/* R22 (design §6): al crear un custom, el primer período que abre, como en General. */}
       {modo === "crear" && lineasDelPrimerPeriodo.length > 0 ? (
         <ListaDelPrimerPeriodo lineas={lineasDelPrimerPeriodo} />
@@ -88,6 +109,16 @@ export function PasoRevisar({
             ))}
           </AlertDescription>
         </Alert>
+      ) : null}
+
+      {/* SLT-144 (R8): sin todos los pasos guardados no se confirma; aquí, cuáles faltan y un enlace al primero. */}
+      {faltan.length > 0 ? (
+        <div id={idFaltan} className="flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
+          <span>{TEXTOS_PLAN_FORM.faltanPasos(faltan.join(", "))}</span>
+          <Button type="button" variant="link" size="sm" className="h-auto px-0" onClick={onIrAlPrimeroQueFalta}>
+            {TEXTOS_PLAN_FORM.irAPaso(faltan[0]!)}
+          </Button>
+        </div>
       ) : null}
 
       {/* R28: el botón final no se puede pulsar sin la vista previa del custom; aquí, por qué y adónde ir. */}

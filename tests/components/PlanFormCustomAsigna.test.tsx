@@ -12,7 +12,7 @@ import userEvent from "@testing-library/user-event";
 import { PlanForm, type EmpresaParaCustom } from "@/app/(app)/plataforma/planes/_components/PlanForm";
 import type { CrearPlanInput, PlanResult, PrevisualizarCustomInput, VistaPreviaCustomResult } from "@/lib/types/planes";
 
-import { avanzarHasta } from "./plan-form-pasos";
+import { avanzarHasta, conBorrador, botonDeLaLista } from "./plan-form-pasos";
 
 const SIN_PLAN = "6f1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f60";
 const CON_PLAN = "7a1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f61";
@@ -54,7 +54,7 @@ function montar(
       inicioCicloPorDefecto={MANANA}
       rangoInicioCiclo={RANGO}
       rangoFechaDeEfecto={RANGO_EFECTO}
-      enviar={enviar}
+      {...conBorrador(enviar)}
       previsualizar={previsualizar}
       onGuardado={onGuardado}
     />,
@@ -93,7 +93,7 @@ async function crear(user: Usuario) {
 
 /** SLT-130 (R5): salta a un paso ya visitado desde la lista de pasos. */
 async function irAlPaso(user: Usuario, titulo: string) {
-  await user.click(within(screen.getByRole("navigation", { name: "Pasos" })).getByRole("button", { name: titulo }));
+  await user.click(botonDeLaLista(titulo));
 }
 
 const campoInicio = () => screen.queryByLabelText("Inicio del período");

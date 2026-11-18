@@ -17,6 +17,7 @@ import {
 } from "@/lib/planes/ciclo";
 import { tipoCobroDelHistorial } from "@/lib/planes/cobro";
 import { noAplicadasDelDetalle, pendienteDelDetalle, planConConsumo } from "@/lib/planes/consumo";
+import { fechaDeRecepcion } from "@/lib/planes/recepcion";
 import { cambiaElPrecio, diferenciasDelPlan } from "@/lib/planes/rastro";
 import {
   FECHA_DE_EFECTO_OBLIGATORIA,
@@ -39,10 +40,12 @@ import {
   planIdSchema,
   preciosQueRigenSchema,
   previsualizarAsignacionSchema,
+  previsualizarCambioSchema,
   previsualizarCustomSchema,
   type CambiarTipoCobroResult,
   type CancelarCambioEmpresaResult,
   type VistaPreviaAsignacionResult,
+  type VistaPreviaCambioResult,
   type VistaPreviaCustomResult,
   type CatalogoResult,
   type DetallePlanResult,
@@ -357,6 +360,31 @@ export class PlanesService implements IPlanesService {
     const leida = await this.repo.vistaPreviaConTopes(organizacionId, topes);
     if (leida === null) return { estado: "not_found" };
     return { estado: "ok", avisos: leida.avisos };
+  }
+
+  /**
+   * SLT-144 (design §3.1; R21, R22): la fecha de cada empresa y los topes pasados antes de programar el cambio.
+   * Quién → zod → el plan existe. F pasa a instante como en `editar` y cada fecha sale de `fechaDeRecepcion`, la
+   * misma que escribe `programarCambio`. No mira el rango de F: una F que confirmar rechazará también se muestra.
+   */
+  async previsualizarCambio(actor: Actor | null, input: unknown): Promise<VistaPreviaCambioResult> {
+    if (!esSuperadmin(actor)) return FORBIDDEN;
+    const parsed = previsualizarCambioSchema.safeParse(input);
+    if (!parsed.success) return { estado: "validation_error", fieldErrors: erroresDeCampo(parsed.error) };
+    const { planId, vigenteDesde, topes } = parsed.data;
+    const leida = await this.repo.vistaPreviaCambio(planId, topes);
+    if (leida === null) return { estado: "not_found" };
+    const desde = vigenteDesde === null ? null : inicioDelDiaPlataforma(vigenteDesde);
+    return {
+      estado: "ok",
+      empresas: leida.empresas.map((e) => ({
+        empresaId: e.id,
+        empresa: e.nombre,
+        tipoCobro: e.tipoCobro,
+        recibeEl: desde === null ? null : fechaCalendarioPlataforma(fechaDeRecepcion(e.tipoCobro, desde)),
+      })),
+      avisos: leida.avisos,
+    };
   }
 
   /**

@@ -176,11 +176,12 @@ async function abrirCon(
 }
 
 /**
- * SLT-130 (design §4): pulsa «Siguiente» y espera a que el paso `proximo` esté en pantalla (su título es
- * el `h3` del paso). «Siguiente» valida solo el paso actual; si no avanza, el `expect` lo dice.
+ * SLT-130 (design §4): pulsa «Guardar y continuar» y espera a que el paso `proximo` esté en pantalla (su
+ * título es el `h3` del paso). Valida solo el paso actual y lo guarda en el borrador del servidor (SLT-144
+ * R1); si no avanza, el `expect` lo dice.
  */
 async function siguiente(form: Locator, proximo: string): Promise<void> {
-  await form.getByRole("button", { name: "Siguiente", exact: true }).click();
+  await form.getByRole("button", { name: "Guardar y continuar", exact: true }).click();
   await expect(form.getByRole("heading", { level: 3, name: proximo, exact: true })).toBeVisible({ timeout: 30_000 });
 }
 

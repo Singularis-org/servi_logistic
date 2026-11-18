@@ -73,6 +73,7 @@ function doble() {
       pendiente: true,
       vigenteDesde: efecto.fecha,
     })),
+    vistaPreviaCambio: vi.fn<IPlanesRepository["vistaPreviaCambio"]>(),
     vistaPreviaAsignacion: vi.fn<IPlanesRepository["vistaPreviaAsignacion"]>(async () => ({ avisos: [] })),
     vistaPreviaConTopes: vi.fn<IPlanesRepository["vistaPreviaConTopes"]>(async () => ({ avisos: [] })),
     cambiarTipoCobro: vi.fn<IPlanesRepository["cambiarTipoCobro"]>(async (_o, _t, efecto) => ({

@@ -11,8 +11,8 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 // montara el servicio con otro repositorio, o con ninguno, el cliente falso no vería las llamadas.
 //
 // SLT-86 (R10, R15, R16, R19): la fila del plan trae sus descuentos por período y no el anual ni el tope
-// de órdenes; crear siembra el historial de precio; «Cambiar tipo de cobro» lleva fecha de efecto, y entra
-// la action «Cancelar cambio» de una empresa.
+// de órdenes; «Cambiar tipo de cobro» lleva fecha de efecto, y entra la action «Cancelar cambio» de una
+// empresa. SLT-144 (R29): crear y editar ya no tienen action aquí (van por `lib/actions/plan-borrador.ts`).
 
 const SUPERADMIN: Actor = { usuarioId: "u-sa", rol: "superadmin", organizacionId: null };
 const MAESTRO: Actor = { usuarioId: "u-m", rol: "maestro", organizacionId: "org-a" };
@@ -104,55 +104,15 @@ describe("SL-24 — el composition root de planes pasa PlanesRepository", () => 
     );
   });
 
-  it("crearPlanAction, sin deps.service, crea por el repositorio real con su fila de plan_rastro", async () => {
-    const r = await acciones.crearPlanAction(
-      {
-        nombre: "Básico",
-        visibilidad: "publico",
-        organizacionId: null,
-        topes: { porRol: { adminTienda: 3 }, apiKeys: null },
-        modulos: ["ranking"],
-        precio: { tipo: "sin_precio" },
-        costoPorOrden: null, // SLT-66 R8: costo por orden obligatorio; aquí, vacío.
-        costoPorOrdenPorcentual: null, // SLT-83 R1, R2: también obligatorio; null = no es porcentual.
-      },
-      { getActor: async () => SUPERADMIN },
-    );
-    expect(r).toMatchObject({ estado: "ok", planId: PLAN, cambio: true });
-    expect(transaction).toHaveBeenCalledTimes(1);
-    expect(txPlanCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          nombre: "Básico",
-          precioMensual: null, // D1 (ajuste planes-custom): «sin precio», sin columna «negociable».
-          topesPorRol: { create: [{ rol: "adminTienda", maximo: 3 }] },
-          modulos: { create: [{ modulo: "ranking" }] },
-        }),
-      }),
-    );
-    expect(txRastroCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ planId: PLAN, accion: "creado", actorUsuarioId: "u-sa", actorNombre: "Sara Admin" }),
-      }),
-    );
-    // SLT-86 (R11, R15): «sin precio» deja el plan sin descuentos y siembra su fila del historial de precio.
-    expect(txDescuentosDeleteMany).toHaveBeenCalledWith({ where: { planId: PLAN } });
-    expect(txExecuteRaw).toHaveBeenCalledTimes(1);
-    // `$executeRaw` es una plantilla etiquetada: su primer argumento son los trozos de texto del SQL.
-    expect((txExecuteRaw.mock.calls[0] as unknown as [readonly string[]])[0].join("?")).toContain("plan_precio_historial");
-  });
-
-  it("las seis actions existen y un maestro recibe forbidden en todas sin tocar el cliente", async () => {
+  it("las cuatro actions existen y un maestro recibe forbidden en todas sin tocar el cliente", async () => {
     const deps = { getActor: async () => MAESTRO };
     const resultados = await Promise.all([
-      acciones.crearPlanAction({}, deps),
-      acciones.editarPlanAction({}, deps),
       acciones.archivarPlanAction({}, deps),
       acciones.asignarPlanAction({}, deps),
       acciones.listarPlanesAsignablesAction({}, deps),
       acciones.cancelarCambioPlanAction({}, deps),
     ]);
-    expect(resultados).toEqual(Array(6).fill({ estado: "forbidden" }));
+    expect(resultados).toEqual(Array(4).fill({ estado: "forbidden" }));
     expect(organizacionFindUnique).not.toHaveBeenCalled();
     expect(planFindMany).not.toHaveBeenCalled();
     expect(transaction).not.toHaveBeenCalled();
@@ -195,24 +155,6 @@ describe("SL-24 — el composition root de planes pasa PlanesRepository", () => 
     );
     expect(r).toEqual({ estado: "validation_error", fieldErrors: { inicioCiclo: [expect.any(String)] } });
     expect(organizacionFindUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { id: EMPRESA } }));
-    expect(transaction).not.toHaveBeenCalled();
-  });
-
-  it("editarPlanAction acepta vigenteDesde: una fecha pasada llega al servicio y es validation_error", async () => {
-    const r = await acciones.editarPlanAction(
-      {
-        planId: PLAN,
-        nombre: "Básico",
-        topes: { porRol: {}, apiKeys: null },
-        modulos: [],
-        precio: { tipo: "sin_precio" },
-        costoPorOrden: null, // SLT-66 R8: costo por orden obligatorio; aquí, vacío.
-        costoPorOrdenPorcentual: null, // SLT-83 R1, R2: también obligatorio; null = no es porcentual.
-        vigenteDesde: "2020-01-01",
-      },
-      { getActor: async () => SUPERADMIN },
-    );
-    expect(r).toEqual({ estado: "validation_error", fieldErrors: { vigenteDesde: [expect.any(String)] } });
     expect(transaction).not.toHaveBeenCalled();
   });
 
