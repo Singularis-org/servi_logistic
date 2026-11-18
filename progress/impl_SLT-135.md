@@ -5,7 +5,7 @@ Bitácora consolidada del implementer (2026-11-18). El detalle y la salida compl
 
 PR: https://github.com/Singularis-org/servi_logistic/pull/224, contra `dev`, montado sobre #209 (SLT-144).
 
-**Estado: hechas T1–T6. T7.1 tiene el código pero falta correrlo. T8 sigue abierta.** Hay dos bloqueos, abajo.
+**Estado: hechas T1–T7 (T7.1 escrita, verificación en CI). T8 al cierre.** Los dos bloqueos están resueltos (abajo).
 
 ## Commits
 - `e8718e75` T1–T3: contrato, servicio, sin `PlanesRepository.editar`, tests unitarios.
@@ -54,7 +54,7 @@ PR: https://github.com/Singularis-org/servi_logistic/pull/224, contra `dev`, mon
 | R20 | `tests/components/PlanDetalle.test.tsx` «R20: programar avisa con la fecha» |
 | R21 | `tests/unit/services/email/plantilla-cambio-plan.test.ts`, el caso existente con `vigenteDesde: null`, sin cambios |
 | R22 | `tests/unit/services/planes-service.test.ts` «forbidden» de editar, ahora con fecha; `tests/unit/services/planes-previsualizar-cambio.test.ts` «R22» |
-| R23 | `e2e/planes-costo-porcentual.spec.ts` «el superadmin programa por pantalla el plan en «Porcentual» con fecha de hoy (R23)»: **escrito, sin correr** (bloqueo 2) |
+| R23 | `e2e/planes-costo-porcentual.spec.ts` «el superadmin programa por pantalla el plan en «Porcentual» con fecha de hoy (R23)»: escrito, **verificación en CI** (jobs e2e de `gate-completo` en #224) |
 
 ## Salida real (local, `NODE_OPTIONS=--max-old-space-size=8192`)
 - `pnpm run typecheck`, tras el último merge: 0 errores.
@@ -63,32 +63,28 @@ PR: https://github.com/Singularis-org/servi_logistic/pull/224, contra `dev`, mon
 - Unitarios de T3, 10 archivos: `Test Files 10 passed (10)`, `Tests 396 passed (396)`.
 - T6, 8 archivos (componentes y `tests/unit/planes`): `Test Files 8 passed (8)`, `Tests 139 passed (139)`.
 - Integración, en la base `servi_logistic_slt135`, con `--no-file-parallelism`:
-  - T4.1: por-empresa 18/18 y cambio-programado 14/14. **plan-precio-historial: 8 passed, 1 failed** (bloqueo 1).
+  - T4.1, tras «Gana el último»: `461 passed (461)` (bloqueo 1).
   - T4.2–T4.3: 11 archivos, `128 passed (128)` y 0 skipped.
-- E2E: **sin correr** (bloqueo 2).
+- E2E: en CI (bloqueo 2).
 - `./init.sh`: sin correr.
 - Bases: las dos se crearon con DROP/CREATE, `prisma migrate deploy` y `db:seed` con el árbol de dev #223:
   - `servi_logistic_slt135` (integración);
   - `servi_logistic_slt135_e2e` (E2E).
 
-## Bloqueos
-1. **`escribirPrecioDelCambio` y dos precios el mismo día con F = hoy.** Es una decisión de producción y design §2
-   no la cubre.
-   - **Qué pasa:** `lib/repositories/PlanesRepository.ts > escribirPrecioDelCambio` escribe con
-     `escribirPrecioDelHistorial(…, "dejar")`, es decir, `ON CONFLICT DO NOTHING`.
-   - **Por qué ahora:** con F = hoy, dos cambios de precio el mismo día, cada uno ya aplicado por la cola, caen en
-     el mismo `desde_at`. El segundo no pisa la fila: el plan queda en el precio nuevo y el historial sigue con el
-     viejo, y el período que empieza hoy se cobraría mal.
-   - **Antes:** `repo.editar` escribía con `"pisar"`.
-   - **Rojo que lo muestra:** «dos ediciones del mismo día dejan la última…», en
-     `tests/integration/db/plan-precio-historial.test.ts`.
-   - **Arreglo que propone backend_dev:** dejar la fila solo si la escribió el mismo cambio (la recepción de otra
-     empresa) y pisarla si es de un cambio anterior.
-   - Lo decide el leader o el humano. Es dinero.
-2. **E2E sin correr en local.** Claude Code paró `next build` por falta de memoria del sistema y no lo relancé.
-   - **Falta:** `planes-costo-porcentual` dos veces seguidas, `planes-borrador`, `planes-superadmin`,
-     `planes-costeo`, `mi-plan-cambiar-plan`, el grupo `dinero` y `dos-empresas-humo`.
-   - **Base:** `servi_logistic_slt135_e2e`, con `NEXT_PUBLIC_APP_URL=http://localhost:3044` y `E2E_PUERTO=3044`.
+## Bloqueos (resueltos 2026-11-18)
+1. **Dos precios el mismo día con F = hoy:** decisión humana «Gana el último».
+   - Nota fechada en `design.md > §2` y fila en `requirements.md > Decisiones cerradas`.
+   - **Mecanismo:** `escribirPrecioDelCambio` sale sin escribir si el historial en F ya da el precio del cambio,
+     porque entonces la fila la dejó el mismo cambio (un pendiente no cambia de precio). Si no, sobrescribe:
+     `escribirPrecioDelHistorial` hace siempre `ON CONFLICT DO UPDATE`, y se quita el modo «dejar».
+   - **Sin migración.** Detalle en `impl_SLT-135-T4.md > Gana el último`.
+   - **Tests:** «dos ediciones del mismo día dejan la última…» ya pasa, y hay uno nuevo, «R6 (Gana el último): el
+     mismo cambio recibido o aplicado dos veces (reintento de la cola) no cambia la fila ni añade otra».
+   - **Salida:** 15 archivos (integración de T4.1 y los `planes-service*` unitarios), `461 passed (461)`, 0 skipped.
+   - **Abierto para el leader:** `specs/SLT-128-planes-cambios-por-periodo/design.md §3.2` todavía dice
+     `ON CONFLICT DO NOTHING`. Es un spec cerrado y no lo toqué.
+2. **E2E (T7.1):** escrito; la verificación va en CI. El leader lo decidió: el `next build` local murió por
+   memoria, y los E2E corren en los jobs `e2e (aislamiento|dinero|reparto)` de `gate-completo` del PR #224.
 
 ## Para el reviewer
 - «De inmediato» todavía aparece en `tests/`: en los nombres de `it` que pide el spec (p. ej. R14) y en aserciones

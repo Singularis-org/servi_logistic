@@ -58,7 +58,7 @@
 
 Base desechable (`docs/verification.md`). Depende de T2.
 
-- [ ] **T4.1** Los requisitos nuevos:
+- [x] **T4.1** Los requisitos nuevos:
   - `tests/integration/db/planes-cambio-por-empresa.test.ts`: R4 y R8 (el test de R8 sustituye al de SLT-128
     R16);
   - `tests/integration/db/planes-cambio-programado.test.ts`: R5;
@@ -122,7 +122,7 @@ Depende de T5.
 
 ## T7 · E2E — frontend_dev
 
-- [ ] **T7.1** `e2e/planes-costo-porcentual.spec.ts` (R23), con `correrCron` de `e2e/_escenarios/crons.ts`:
+- [x] **T7.1** `e2e/planes-costo-porcentual.spec.ts` (R23), con `correrCron` de `e2e/_escenarios/crons.ts`:
   1. Poner «A partir de» = hoy (`fechaCalendarioCR`).
   2. Pulsar «Programar cambio» y esperar «Cambio programado desde <hoy>.».
   3. Correr `procesar-jobs` hasta que el plan quede porcentual. Esperar la condición, nunca `waitForTimeout`.

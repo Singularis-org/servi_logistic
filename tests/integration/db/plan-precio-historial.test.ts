@@ -365,6 +365,43 @@ describeSiHayBase("SLT-86 — el historial de precio de un plan (R15, R22)", () 
     expect(r.vigente?.precio).toEqual({ tipo: "monto", mensual: ultima.mensual, descuentos: ultima.descuentos });
   });
 
+  // SLT-135 (design §2, «Gana el último»; R6): la fila en F que dejó ESTE MISMO cambio no se toca. Se mira el
+  // `ctid` de la fila: un UPDATE (aunque fuera con los mismos valores) dejaría otra versión de la fila.
+  it("R6 (Gana el último): el mismo cambio recibido o aplicado dos veces (reintento de la cola) no cambia la fila ni añade otra", async () => {
+    const r = await revertida(base, async (tx) => {
+      const planId = await crearPlan(new PlanesService(planesEnTx(tx)));
+      const quincenal = await conPlan(tx, planId, "quincenal", "2026-01-01 06:00:00");
+      const mensual = await conPlan(tx, planId, "mensual", "2026-01-01 06:00:00");
+      const conDescuento: PrecioPlan = { tipo: "monto", mensual: "35000", descuentos: { bimestral: { tipo: "porcentaje", porcentaje: "5" } } };
+      const { cambioId } = await programar(tx, planId, "2026-11-16", new Date("2026-11-16T15:00:00.000Z"), version(conDescuento));
+      const repo = planesEnTx(tx);
+      const fila = async () =>
+        tx.$queryRawUnsafe<{ ctid: string; mensual: string | null; descuentos: unknown }[]>(
+          `SELECT "ctid"::text AS ctid, "precio_mensual"::text AS mensual, "descuentos"
+             FROM "plan_precio_historial" WHERE "plan_id" = $1 AND "desde_at" = $2::timestamp`,
+          planId,
+          a0000("2026-11-16"),
+        );
+      const recibe = [await repo.recibirCambio({ planId, cambioId }, quincenal, new Date("2026-11-16T15:01:00.000Z"))];
+      const trasPrimera = { filas: await historial(tx, planId), fila: await fila() };
+      // Reintento del mismo trabajo de la quincenal; luego la mensual recibe el mismo cambio (y lo promueve).
+      recibe.push(await repo.recibirCambio({ planId, cambioId }, quincenal, new Date("2026-11-16T15:02:00.000Z")));
+      recibe.push(await repo.recibirCambio({ planId, cambioId }, mensual, new Date("2026-12-01T06:01:00.000Z")));
+      // Reintento del trabajo que promueve, ya promovido.
+      const reintento = await repo.aplicarCambioProgramado({ planId, cambioId }, new Date("2026-12-01T06:02:00.000Z"));
+      return { recibe, reintento, trasPrimera, filas: await historial(tx, planId), fila: await fila() };
+    });
+    expect(r.recibe).toEqual([{ estado: "aplicado" }, { estado: "sin_pendiente" }, { estado: "aplicado" }]);
+    expect(r.reintento).toMatchObject({ estado: "sin_pendiente" });
+    expect(r.trasPrimera.filas).toEqual([
+      { desde: "-infinity", mensual: "31000.00", descuentos: {} },
+      { desde: a0000("2026-11-16"), mensual: "35000.00", descuentos: { bimestral: { tipo: "porcentaje", porcentaje: "5.00" } } },
+    ]);
+    expect(r.trasPrimera.fila).toHaveLength(1);
+    expect(r.filas).toEqual(r.trasPrimera.filas);
+    expect(r.fila).toEqual(r.trasPrimera.fila);
+  });
+
   it("R22 (SLT-135 R1, R2): cambiar el precio sin fecha o con una pasada es validation_error en vigenteDesde y no escribe nada", async () => {
     const r = await revertida(base, async (tx) => {
       const servicio = new PlanesService(planesEnTx(tx));

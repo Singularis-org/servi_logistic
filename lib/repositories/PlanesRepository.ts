@@ -236,11 +236,6 @@ async function escribirPrecioDelHistorial(
   planId: string,
   desde: Date | "siempre",
   precio: PrecioPlan,
-  /**
-   * SLT-128 (design §3.2, §3.3; R3): `"dejar"` = si ya hay fila en `desde`, se queda. La recepción de la primera
-   * empresa la escribe y ni las siguientes ni la promoción la tocan.
-   */
-  siYaEsta: "pisar" | "dejar" = "pisar",
 ): Promise<void> {
   const mensual = precio.tipo === "monto" ? precio.mensual : null;
   // Con dos decimales, como los lee `plan_descuento_periodo`: «10» y «10.00» son el mismo descuento.
@@ -257,14 +252,11 @@ async function escribirPrecioDelHistorial(
   }
   const descuentos = JSON.stringify(canonicos);
   const desdeAt = desde === "siempre" ? Prisma.sql`'-infinity'::timestamp` : Prisma.sql`${comoTimestamp(desde)}::timestamp`;
-  const alChocar =
-    siYaEsta === "dejar"
-      ? Prisma.sql`DO NOTHING`
-      : Prisma.sql`DO UPDATE SET "precio_mensual" = EXCLUDED."precio_mensual", "descuentos" = EXCLUDED."descuentos"`;
   await tx.$executeRaw`
     INSERT INTO "plan_precio_historial" ("plan_id", "desde_at", "precio_mensual", "descuentos")
     VALUES (${planId}, ${desdeAt}, ${mensual}::numeric, ${descuentos}::jsonb)
-    ON CONFLICT ("plan_id", "desde_at") ${alChocar}`;
+    ON CONFLICT ("plan_id", "desde_at")
+    DO UPDATE SET "precio_mensual" = EXCLUDED."precio_mensual", "descuentos" = EXCLUDED."descuentos"`;
 }
 
 /** SLT-83 (R1, R4): las dos columnas del modo porcentual; `null` las vacía (el plan pasa a fijo o vacío). */
@@ -884,8 +876,15 @@ async function fijarRecepciones(
 /**
  * R3: la fila del historial con `desde_at = F` si el precio del cambio no es el que el historial ya da en F. Se
  * compara con el historial y no con la fila del plan: tras un reemplazo (R13) el historial puede llevar ya el
- * precio de un cambio anterior que alguna empresa recibió. Si la fila ya está (la escribió otra recepción), se
- * queda.
+ * precio de un cambio anterior que alguna empresa recibió.
+ *
+ * SLT-135 (design §2, «Gana el último»; R6): si ya hay fila en F, ESTE MISMO cambio la deja como está y la de un
+ * cambio ANTERIOR se sobrescribe. Se distinguen por el precio, sin columna nueva: el precio de un pendiente no
+ * cambia (un reemplazo es otro pendiente, y los trabajos del viejo terminan en `sin_pendiente`), así que una fila
+ * en F con el precio de este cambio la dejó él (otra recepción, la promoción o un reintento de la cola) y el
+ * `return` de abajo no la toca. Con otro precio solo pudo dejarla un cambio anterior, p. ej. dos precios con
+ * F = hoy guardados el mismo día; la pisa, y la última fila sigue siendo el precio vigente (SLT-86 §1.2). Antes
+ * era `ON CONFLICT DO NOTHING` y el historial se quedaba con el primero.
  */
 async function escribirPrecioDelCambio(tx: Tx, plan: PlanDTO, desde: Date, precio: PrecioPlan): Promise<void> {
   const [fila] = await tx.$queryRaw<{ precio_mensual: string | null; descuentos: unknown }[]>`
@@ -895,7 +894,7 @@ async function escribirPrecioDelCambio(tx: Tx, plan: PlanDTO, desde: Date, preci
      ORDER BY "desde_at" DESC LIMIT 1`;
   const rige = fila === undefined ? plan.precio : precioDelHistorial(fila.precio_mensual, fila.descuentos);
   if (!cambiaElPrecio(diferenciasDelPlan({ ...plan, precio: rige }, { ...plan, precio }))) return;
-  await escribirPrecioDelHistorial(tx, plan.id, desde, precio, "dejar");
+  await escribirPrecioDelHistorial(tx, plan.id, desde, precio);
 }
 
 /**

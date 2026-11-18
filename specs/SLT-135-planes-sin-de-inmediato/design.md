@@ -84,6 +84,17 @@ pasó.
 Con el precio, F = hoy hace lo mismo que la edición inmediata de SLT-86 R22 para la empresa que empieza período
 hoy. Las demás lo pagan desde su recepción, que es lo que decide SLT-128 R3 (R6).
 
+**Nota 2026-11-18 (decisión humana, «Gana el último»). Dos precios el mismo día.** Con F = hoy, dos cambios de
+precio guardados el mismo día y aplicados por la cola caen en la misma fila de `plan_precio_historial`
+(`desde_at` = las 00:00 de hoy). Hasta ahora `escribirPrecioDelCambio` escribía con «dejar» (`ON CONFLICT DO
+NOTHING`), así que el historial se quedaba con el primer precio aunque el plan ya tuviera el segundo. La regla
+nueva:
+- si la fila de ese `desde_at` la dejó un cambio **anterior**, `escribirPrecioDelCambio` la **sobrescribe**;
+- si la dejó **este mismo** cambio (un reintento de la cola o la recepción de otra empresa), no la toca.
+
+Así se mantiene que la última fila del historial es el precio vigente (SLT-86 §1.2). Esto sí toca
+`programarCambio` y la cola, en contra de lo que dice el título de arriba. Lo encontró T4.1.
+
 **Ventana visible.** Entre guardar y la siguiente pasada de la cola (en torno a un minuto), el detalle del plan
 muestra «Cambio programado desde <hoy>» con «0 de N empresas ya lo recibieron». Es el comportamiento de SLT-128
 con una fecha que ya llegó, y se acepta. Una empresa que entra al plan ese mismo día entra ya con la versión

@@ -238,3 +238,4 @@ Ninguna. P1 y P2 las cerró el humano el 2026-11-18 (filas de «Decisiones cerra
 | 2026-11-17 | ¿Ruta? | Completa: dinero y cambio de comportamiento del servicio de planes. |
 | 2026-11-18 | P1 · Tamaño (~48 archivos, por encima de los 40 del tope) | **«Un PR sobre el tope»** (humano): una sola ficha, sin corte, como SLT-144. Nota de tamaño aceptado en `tasks.md`. |
 | 2026-11-18 | P2 · Fecha por defecto de «A partir de» al editar | **Mañana** (humano): el campo abre en mañana, cambie el precio o no. |
+| 2026-11-18 | Dos cambios de precio el mismo día con F = hoy (salió en T4.1) | **«Gana el último»** (humano): `escribirPrecioDelCambio` sobrescribe la fila de ese `desde_at` si la dejó un cambio anterior; si la dejó este mismo cambio (un reintento de la cola), no la toca. Lo cubre R6. Tests en `tests/integration/db/plan-precio-historial.test.ts`: «dos ediciones del mismo día dejan la última…» y el del reintento idempotente. Nota en `design.md > §2`. |

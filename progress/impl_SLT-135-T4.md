@@ -109,3 +109,55 @@ pnpm run test:guardias                 2 archivos rojos, 5 tests; ninguno es de 
 
 **Veredicto T4.2–T4.3:** los 11 archivos en verde (128/128, 0 saltados), con typecheck y lint limpios. Queda
 abierto el rojo de superficie de SLT-144 y el fallo escalado de T4.1.
+
+## Gana el último (backend_dev, 2026-11-18)
+
+Decisión humana del 2026-11-18 (`requirements.md > Decisiones cerradas`, `design.md §2`). Resuelve el «Bloqueo» de T4.1.
+
+### Mecanismo (sin migración ni cambio de `db/schema.prisma`)
+
+`escribirPrecioDelCambio` ya comparaba el precio del cambio con el que el historial da en F (la fila con el mayor
+`desde_at ≤ F`) y salía sin escribir si era el mismo. El cambio que distingue los dos casos es el precio:
+- **El mismo cambio** (otra recepción, la promoción o un reintento de la cola): un pendiente no cambia de precio. Un
+  reemplazo es otro pendiente, y los trabajos del viejo terminan en `sin_pendiente`. Por eso la fila en F que dejó
+  este cambio tiene su mismo precio, y el `return` temprano no la toca: no hay ni UPDATE.
+- **Un cambio anterior**: si la fila en F tiene otro precio, solo pudo dejarla un cambio anterior; ahora se pisa
+  (`ON CONFLICT DO UPDATE`).
+
+Antes era `"dejar"` (`DO NOTHING`). Como ningún otro llamador usaba `"dejar"`, quité el parámetro `siYaEsta` de
+`escribirPrecioDelHistorial`, que queda siempre en «pisar».
+
+Reemplazo (SLT-128 R13/R29): el pendiente viejo y el nuevo tienen F distintas, así que sus filas no chocan. Si
+tuvieran la misma F (posible ahora con F = hoy), es justo el caso «gana el último». Sus tests siguen verdes.
+
+Pendiente fuera de mi alcance: `specs/SLT-128-planes-cambios-por-periodo/design.md §3.2` todavía dice
+`ON CONFLICT DO NOTHING`. Si se quiere tocar un spec ya cerrado, lo decide el leader.
+
+### Archivos
+
+- `lib/repositories/PlanesRepository.ts`: `escribirPrecioDelHistorial` siempre pisa y ya no tiene `siYaEsta`;
+  `escribirPrecioDelCambio` lleva el comentario SLT-135 «Gana el último».
+- `tests/integration/db/plan-precio-historial.test.ts`: nuevo `it` «R6 (Gana el último): el mismo cambio recibido
+  o aplicado dos veces (reintento de la cola) no cambia la fila ni añade otra». Hace un reintento de la recepción
+  de la quincenal, una recepción de la mensual que promueve y un reintento de la promoción. Comprueba las filas y
+  el `ctid` de la fila en F, que no cambia: no hubo UPDATE. «Dos ediciones del mismo día…» no lo toqué.
+
+### Mapa
+
+| R | Archivo | it |
+|---|---|---|
+| R6 (pisar la de un cambio anterior) | plan-precio-historial.test.ts | «dos ediciones del mismo día dejan la última; …» |
+| R6 (no tocar la del mismo cambio) | plan-precio-historial.test.ts | «R6 (Gana el último): el mismo cambio recibido o aplicado dos veces …» |
+
+### Salida real (base `servi_logistic_slt135`, `--no-file-parallelism`)
+
+```
+vitest run plan-precio-historial, planes-cambio-por-empresa, planes-cambio-programado, plan-descuento-periodo,
+           planes-costeo-escritura, plan-costo-porcentual-escritura, tests/unit/services/planes-service*.test.ts
+ Test Files  15 passed (15)
+      Tests  461 passed (461)          (0 skipped)
+pnpm exec tsc --noEmit -p .            exit 0
+pnpm exec eslint <los 2 archivos>      exit 0, sin avisos
+```
+
+**Veredicto «Gana el último»:** implementado sin migración. T4.1 en verde (15 archivos, 461/461).
