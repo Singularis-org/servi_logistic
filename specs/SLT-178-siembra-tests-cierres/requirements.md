@@ -143,36 +143,36 @@ parte sin su OK.
 
 ## Tasks
 
-- [ ] **T1 — Punto de partida** (R1000, R1007). Worktree al día con `origin/dev`; `.env` copiado al
+- [x] **T1 — Punto de partida** (R1000, R1007). Worktree al día con `origin/dev`; `.env` copiado al
   worktree (sin leerlo); base desechable de `## Cómo se verifica`. Correr los 17 archivos tal cual y
   anotar p/f/s en `progress/impl_SLT-178.md`. Si alguno ya pasa, o ya no está en el baseline, se anota y
   sale del alcance. *Hecho:* tabla «antes» con 17 filas.
-- [ ] **T2 — Aprobación y segundo cierre** (R1000-R1005): `cierre-aprobacion-libera-solo-lo-suyo`,
+- [x] **T2 — Aprobación y segundo cierre** (R1000-R1005): `cierre-aprobacion-libera-solo-lo-suyo`,
   `cierre-aprobar-el-mas-viejo-desbloquea`, `cierre-segundo-vincula-solo-lo-suyo`,
   `corte-diario-segundo-cierre-sql-real`, `cierre-bloqueo-nv-sql-real`. Quitar `fksDeOrden` del
   `beforeAll`; sembrar con `crearFksDeOrden`/`crearUsuarioDePrueba` dentro de la tx de cada caso;
   control positivo. *Hecho:* los 5 verdes en la base de R1000, 0 saltados.
-- [ ] **T3 [P con T2] — Rechazos** (R1000-R1005): `cierre-rechazado-aviso-dedupe`,
+- [x] **T3 [P con T2] — Rechazos** (R1000-R1005): `cierre-rechazado-aviso-dedupe`,
   `cierre-rechazado-jornada-sql-real`, `cierre-rechazo-tienda-aprobacion`,
   `cierre-rechazo-tienda-sql-real`, `cierre-rechazo-tienda-totales`. *Hecho:* ídem, 5 archivos.
-- [ ] **T4 [P con T2] — Descargas, gestiones y listados** (R1000-R1005):
+- [x] **T4 [P con T2] — Descargas, gestiones y listados** (R1000-R1005):
   `cierre-descarga-fechas-sql-real`, `cierre-descarga-intentos-entrega-sql-real`,
   `cierre-excluye-gestiones-de-escritorio`, `cierre-sin-gestion-sql-real`,
   `cierre-sin-gestion-tope-sql-real`, `cierres-admin-retornables-sql-real`,
   `cierres-filtro-estado-sql-real`. *Hecho:* ídem, 7 archivos.
-- [ ] **T5 — Base con datos ajenos** (R1001, R1003, R1009). Depende de T2-T4. Repetir los 17 con la
+- [x] **T5 — Base con datos ajenos** (R1001, R1003, R1009). Depende de T2-T4. Repetir los 17 con la
   empresa ajena confirmada; si el código hace una lectura global (zona central), sembrar la central en
   la empresa del caso y correr como `servi_app` (patrón `comoApp`). *Hecho:* 17/17 iguales que en R1000;
   0 filas propias tras cada archivo con siembra confirmada.
-- [ ] **T6 — Mutaciones** (R1006). Depende de T5. Una por archivo. *Hecho:* tabla mutación → caso
+- [x] **T6 — Mutaciones** (R1006). Depende de T5. Una por archivo. *Hecho:* tabla mutación → caso
   rojo → restaurado en `progress/impl_SLT-178.md`; `git status` limpio de mutaciones.
-- [ ] **T7 — Baseline** (R1007, R1008). Borrar las entradas de los verdes; reescribir el motivo de los
+- [x] **T7 — Baseline** (R1007, R1008). Borrar las entradas de los verdes; reescribir el motivo de los
   que sigan rojos por otra causa (o parar, R1008). *Hecho:* `git diff tests/baseline-rojos.json` solo
   quita claves del alcance o reescribe sus motivos.
-- [ ] **T8 — Cierre** (R1009-R1012). `pnpm run typecheck`, `pnpm run lint`, `./init.sh` en verde;
+- [x] **T8 — Cierre** (R1009-R1012). `pnpm run typecheck`, `pnpm run lint`, `./init.sh` en verde;
   `git diff --name-only origin/dev -- lib/ app/ components/ hooks/ db/ scripts/ .github/ package.json`
   vacío; `node scripts/tamano-pr.mjs` bajo el tope. En `progress/impl_SLT-178.md`: mapa R → test, salidas
-  y, tras el PR, el run de CI con «sin rojos nuevos» y 0 «por limpiar». *Hecho:* todo lo anterior escrito.
+  y, tras el PR, el run de CI con «sin rojos nuevos» y 0 «por limpiar». *Hecho:* todo lo anterior escrito. CI del PR pendiente (R1011).
 
 **Trazabilidad prevista:**
 

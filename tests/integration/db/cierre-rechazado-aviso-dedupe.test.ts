@@ -104,6 +104,8 @@ describeSiHayBase("412/R7-R10 · la dedupe del aviso de rechazo, contra Postgres
         (await prisma.usuario.count({ where: { id: { in: usuarios } } })) +
         (await prisma.cierreDia.count({ where: { mensajeroId: { in: usuarios } } })) +
         (await prisma.notificacion.count({ where: { destinatarioUsuarioId: { in: usuarios } } })) +
+        (await prisma.notificacionLectura.count({ where: { notificacionId: { in: suyas.map((n) => n.id) } } })) +
+        (fks ? await prisma.zona.count({ where: { id: fks.zonaId } }) : 0) +
         (await prisma.organizacion.count({ where: { id: organizacionId } }));
       if (quedan !== 0) throw new Error(`la siembra confirmada dejo ${quedan} filas en la base`);
     } finally {
