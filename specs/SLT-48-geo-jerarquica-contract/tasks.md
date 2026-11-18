@@ -155,12 +155,14 @@
 
 ## T5 — Tests que escriben tablas viejas (backend_dev) · depende de T1.8
 
-- [ ] **T5.1** Pasar a nodos o a las vistas cada test de integración de la lista de `## Archivos esperados >
+- [x] **T5.1** Pasar a nodos o a las vistas cada test de integración de la lista de `## Archivos esperados >
   Tests existentes` (design §9). Los de idas y vueltas usan `sin-slt48.ts`.
   **Hecho:** todos verdes. Ningún test se borra ni pierde aserciones sin autorización del humano; si uno
   queda sin objeto (por ejemplo `slt46-nodo-copia-vieja`), se para y se pregunta.
   > 2026-11-17 (backend_dev): hecha salvo 17 casos sin objeto, parados sin tocar y pendientes de decisión humana
   > (lista en `progress/impl_SLT-48.md` › T5 › «Sin objeto»). Por eso sigue sin marcar.
+  > 2026-11-18 (backend_dev): el humano autorizó retirar los 17 casos; retirados (`progress/impl_SLT-48.md` ›
+  > «T5.1 retiros», con qué cubre cada regla que sigue viva). Typecheck en 0.
 
 ## T6 — E2E (frontend_dev) · depende de T4 y T5
 
@@ -179,7 +181,7 @@
   y `geo:explain-*`, y además la ida y vuelta del `down.sql`. Pega la salida en el PR. Ningún agente toca
   producción ni su copia.
   **Hecho:** todo sale con 0 y nada empeora más del 20 % (R30, R33).
-- [ ] **T7.2** `docs/architecture.md`: actualizar los párrafos de geografía que quedan falsos (sincronía,
+- [x] **T7.2** `docs/architecture.md`: actualizar los párrafos de geografía que quedan falsos (sincronía,
   trigger de `orden`, ruta hasta nivel 3, orden sin distrito «hasta SLT-48») y añadir las vistas, la
   regla de hoja y mover nodos.
   **Hecho:** el reviewer lo comprueba.

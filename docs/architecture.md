@@ -134,18 +134,19 @@ esta bien hecha, no solo si "funciona".
   nombres de nivel, la regla de código opcional y `disponible`) guarda solo los países dados de alta;
   el catálogo para elegirlos es fijo, en `lib/constants/paises-iso-3166-1.ts` (no se calcula en
   runtime). Cada empresa tiene `organizacion.pais_id` (`DEFAULT 'CR'`), que no cambia: el trigger
-  `organizacion_pais_inmutable` lo rechaza con `SQLSTATE 'SL020'` (`PaisInmutable`). Provincia, cantón
-  y distrito llevan `pais_id`; el cantón y el distrito lo heredan de su padre (FK compuestas
-  `ON UPDATE RESTRICT`). Un país con `disponible = false` no se ofrece ni se acepta en el alta de
-  empresa, y sus empresas siguen igual.
-  - **RLS por país:** las políticas `provincia_del_pais`, `canton_del_pais` y `distrito_del_pais` dejan
-    a `servi_app` leer solo la geografía del país de su empresa. En plataforma no hay RLS y el
-    superadmin filtra por `paisId`.
+  `organizacion_pais_inmutable` lo rechaza con `SQLSTATE 'SL020'` (`PaisInmutable`). Cada nodo lleva
+  `pais_id` y un hijo está en el país de su padre (FK compuesta `(padre_id, pais_id)` de
+  `nodo_geografico`, `ON UPDATE RESTRICT`). Un país con `disponible = false` no se ofrece ni se acepta
+  en el alta de empresa, y sus empresas siguen igual.
+  - **RLS por país:** la política `nodo_geografico_del_pais` deja a `servi_app` leer solo la geografía
+    del país de su empresa; las vistas `provincia`, `canton` y `distrito` la heredan (SLT-48, abajo). En
+    plataforma no hay RLS y el superadmin filtra por `paisId`.
   - **Trigger `geografia_del_pais_de_la_empresa`** en `orden`, `zona_distrito` y
     `distrito_zona_especial`: una fila no puede apuntar a geografía de otro país (`SQLSTATE 'SL021'`,
-    `GeografiaDeOtroPais`). Los dos errores se traducen en `lib/db/errores-pais.ts`.
+    `GeografiaDeOtroPais`). Desde SLT-48 lee el nodo de la fila y salta también al cambiarlo. Los dos
+    errores se traducen en `lib/db/errores-pais.ts`.
   - **Historial de plataforma:** las acciones del superadmin sobre países y geografía (alta de país,
-    disponibilidad, carga CSV, alta, renombre, retiro y reactivación de nodos) se registran en
+    disponibilidad, carga CSV, alta, renombre, retiro, reactivación y movimiento de nodos) se registran en
     `historial_plataforma` con `appendAccionPlataforma` (`lib/repositories/registrar-accion-plataforma.ts`),
     dentro de la transacción del cambio, no en `historial_accion`. La tabla tiene RLS sin políticas y
     `REVOKE ALL` para `servi_app`.
@@ -161,16 +162,40 @@ esta bien hecha, no solo si "funciona".
     no hay ciclos), con RLS de lectura por país y `REVOKE`
     de escritura para `servi_app`. Desde SLT-46 la app escribe el nodo: solo `GeoRepository` escribe
     `nodo_geografico` y solo `PaisRepository` escribe `tipo_nivel_geografico`
-    (`nodo-geografico-escritor-unico.guardia`, SLT-46 R43), y un trigger `AFTER` en `nodo_geografico`
-    copia los nodos de profundidad 1–3 a `provincia`, `canton` y `distrito`, que ningún código de la
-    app escribe ya (`geografia-vieja-sin-escritor.guardia`, SLT-46 R1). La sincronía vieja → nodo de
-    SLT-43 (triggers `AFTER` en `pais`, `provincia`, `canton` y `distrito`) sigue para el SQL a mano, y
-    triggers `BEFORE` rellenan `nodo_geografico_id` en `orden`, `zona_distrito` y
-    `distrito_zona_especial`. Las filas
+    (`nodo-geografico-escritor-unico.guardia`, SLT-46 R43). Desde SLT-48 no queda sincronía en ningún
+    sentido entre las tablas viejas y el nodo: las tablas viejas son vistas del nodo (abajo). Triggers
+    `BEFORE` rellenan `nodo_geografico_id` en `zona_distrito` y `distrito_zona_especial` desde su
+    `distrito_id`, y en `orden` el de SLT-48 (abajo). Las filas
     anteriores y el `cierre_detail.ubicacion_snapshot` de los cierres anteriores a SLT-125 las llena `pnpm geo:backfill`
     (`scripts/geo-backfill-nodo.ts`: por lotes, reanudable, `--aplicar` y `--validar` exigen
     `--base` y `--destino`, el project-ref de Supabase o el host); en producción lo corre una persona tras el ensayo sobre una copia, nunca un agente
     (design §6 de SLT-43).
+  - **Modelo viejo retirado (SLT-48, deploy 1).** `provincia`, `canton` y `distrito` son vistas de
+    solo lectura sobre los nodos de profundidad 1, 2 y 3, con los nombres y columnas de antes
+    (migración `20261117120100_slt48_geografia_vieja_a_vistas`).
+    - **Vistas:** `WITH (security_invoker = true)`, así la RLS `nodo_geografico_del_pais` se aplica a
+      quien consulta. Un trigger `INSTEAD OF` rechaza `INSERT`, `UPDATE` y `DELETE` con `SL048`, que
+      nombra `nodo_geografico` (lo ve el dueño de la base y los scripts); `servi_app` solo tiene
+      `SELECT` y recibe `42501`. Se escribe siempre el nodo.
+    - **Sin FK viejas:** se quitaron las 3 FK de `orden` y las de `zona_distrito.distrito_id` y
+      `distrito_zona_especial.distrito_id`, y el NOT NULL de `orden.provincia_id`/`canton_id`. Ninguna
+      columna se borró: eso, y borrar las vistas, es de SLT-196 «Geografía jerárquica: borrar el modelo
+      viejo». El `down.sql` devuelve las tablas, y aborta si hay órdenes en un nodo de profundidad 1 o
+      de 4 o más (P5).
+    - **Regla de hoja (P2):** una orden nueva o corregida va a una hoja, un nodo **sin hijos activos**
+      (`esHoja` en `lib/services/geo-ubicacion.ts`), en países de 2 a 10 niveles. Un nodo con hijos
+      activos se rechaza con «ubicacion incompleta», que nombra el tipo que falta. Un cantón cuyos
+      distritos están todos retirados vuelve a ser hoja. La API v1, que nombra 3 niveles, sigue la misma
+      regla.
+    - **Mover un nodo (SLT-48 R34–R41):** solo el superadmin, desde `/plataforma/geografia`
+      (`moverNodoAction`/`vistaPreviaMoverNodoAction` → `GeografiaService` → `GeoRepository.mover`).
+      Mover cambia solo `padre_id`, bajo otro padre del mismo país y la misma profundidad. Lleva el
+      «antes» del modal (`padreIdAnterior`; si cambió, `cambio_concurrente`) y deja
+      `nodo_geografico_movido` en el historial de plataforma, en la misma transacción. Destino
+      retirado, aunque sea por un antepasado: se rechaza (P4). Si alguna orden abierta del subárbol
+      cambiaría de grupo de tarifas o de marca de zona especial heredados, la vista previa lo muestra
+      por empresa y `mover` se bloquea (P1). Las órdenes no se reescriben: su ruta cambia porque se lee
+      del árbol, y la zona y el precio ya guardados se quedan.
   - **Lecturas sobre el árbol (SLT-44).** Las reglas del árbol viven en un dominio puro,
     `lib/services/geografia-dominio.ts` (sin Prisma: ancestros, descendientes, activo en cascada,
     zona heredada y marca especial sobre el catálogo en memoria). El catálogo del país y las
@@ -184,12 +209,10 @@ esta bien hecha, no solo si "funciona".
       `OrdenRepository` (`findAllProvincias`, `findCantonesByProvinciaIds`,
       `findDistritosByCantonIds`, `findDistritoParaCorreccion`) y `CoberturaRepository.listDistritos`.
       Interfaces y DTO no cambian.
-    - Siguen en las tablas viejas hasta SLT-65: el resto de lecturas de órdenes (marca de una orden
-      ya creada, cobro de devolución, conteos por FK), cierres, `ZonaRepository.update` y el SQL
-      crudo de los repositorios. Las escrituras siguen en las tablas viejas (SLT-46).
-    - El lugar de una orden, de una asignación de zona y de una marca se lee de las FK viejas
-      (`distrito_id`), nunca de `nodo_geografico_id` (R12): el resultado no depende de que haya
-      corrido el backfill.
+    - Desde SLT-48 el lugar de una orden es su nodo (`nodo_geografico_id`) en toda superficie, filtro,
+      conteo, cierre y tarifa; ningún archivo de producción lee ni escribe las 3 FK de la orden
+      (`orden-fk-geo-sin-uso.guardia`, SLT-48 R29). Una orden nueva o corregida guarda el nodo con las
+      3 FK en NULL; las órdenes viejas conservan sus FK sin reescribirse.
     - `pnpm geo:equivalencia-dinero` (`scripts/geo-equivalencia-dinero.ts`) compara, por empresa y con
       una conexión de solo lectura, la lectura de antes (congelada en
       `scripts/geo-equivalencia/lecturas-de-hoy.ts`) con la nueva: distritos (zona, central, marca,
@@ -213,14 +236,15 @@ esta bien hecha, no solo si "funciona".
       diferencia, normaliza los miembros de grupo y reconcilia las órdenes pendientes con el mismo plan
       que el aviso de impacto (`impactoAsignacionZona`, transacción de solo lectura). El historial deja
       `zona_distrito_cambiado` por distrito, como SLT-76, y `zona_nodo_cambiado` por el resto.
-    - **Trigger de `orden`.** `orden_nodo_geografico` conserva un `nodo_geografico_id` que cuelga del
-      lugar de la orden (`COALESCE(distrito_id, canton_id)`) y pone el lugar en cualquier otro caso;
-      con las escrituras de hoy (sin nodo o igual al lugar) da lo mismo que SLT-43. Ninguna escritura
-      de la app manda todavía un nodo más profundo (regla de guardado de SLT-45).
+    - **Trigger de `orden` (SLT-48 R9).** `orden_nodo_geografico` conserva el nodo que trae la fila;
+      sin nodo, pone el lugar de sus FK (`COALESCE(distrito_id, canton_id)`), para el SQL a mano y los
+      fixtures. Un `UPDATE` que solo cambia las FK mueve el nodo con ellas. No hace consultas
+      (tope de 1 ms por fila, R10).
   - **Presentación sobre el árbol (SLT-125).** Toda presentación de un lugar sale de la ruta del
     catálogo (`CatalogoGeograficoRepository`, cargado una vez por instancia y nunca por fila) y se
     adapta a los niveles del país de la empresa. Costa Rica se ve y se descarga igual que antes.
-    Hasta SLT-48, la ruta de una orden llega como mucho al nivel 3; los niveles más hondos salen vacíos (P1).
+    Desde SLT-48 la ruta de una orden llega al nivel de su nodo (en un país de 4 niveles, la cuarta
+    columna sale llena).
     - **Núcleo puro:** `lib/utils/ubicacion-presentacion.ts`. Tiene las columnas por nivel
       (`columnasDeNivel`, con el singular del tipo o `nivel_<k>` si chocan), la línea «Ubicación»
       con toda la ruta (`lineaDeUbicacion`, con el separador de hoy de cada superficie) y los dos
@@ -378,8 +402,9 @@ Decisión del humano (plan-saas, 2026-10-20/21): una sola base compartida, datos
   - `grupo_distritos_nodo` no tiene FK a la asignación (la cobertura heredada no es una fila): la
     coherencia la mantiene la aplicación al escribir el grupo y al guardar la zona, que saca del grupo
     lo que deja de estar cubierto, con su fila de historial.
-  - El grupo de una orden con distrito es el del miembro más cercano subiendo desde su distrito; una
-    orden sin distrito sigue sin grupo (hasta SLT-48). El resolver suma una consulta fija por lote
+  - El grupo de una orden se busca subiendo desde su nodo, y solo si el nodo está en el nivel 3 o
+    más hondo (SLT-48 P3, `distritoDeTarifa` en `lib/services/geografia-dominio.ts`); más arriba (en
+    Costa Rica, una orden sin distrito) va sin grupo, con la tarifa base. El resolver suma una consulta fija por lote
     (`grupo_distritos_nodo`) y solo carga el catálogo si la empresa tiene miembros en esa tabla.
   - Renombrar, cambiar miembros y borrar un grupo exigen el «antes» que el modal mostró
     (`nombreAnterior` / `antes`) y responden `conflict`/`cambio_concurrente` si la base ya no lo es,

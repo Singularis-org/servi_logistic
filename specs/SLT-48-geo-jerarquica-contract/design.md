@@ -281,8 +281,12 @@ cuando no: la función devuelve lo mismo que hoy (R32). La equivalencia la cierr
 - **Servicio** (`GeografiaService.moverNodo`, `vistaPreviaMoverNodo`; interfaz `IGeografiaService`).
 - **Acción** (`lib/actions/geografia-plataforma.ts`): `moverNodoGeografico` y
   `vistaPreviaMoverNodoGeografico` con `comoPlataforma` (solo superadmin; si no, `forbidden`, R34).
-- **Historial**: el valor de enum (migración 1), `HistorialPlataformaAccion` en `schema.prisma` y la
-  etiqueta en `lib/types/historial-accion.ts`.
+- **Historial**: el valor de enum (migración 1) y `HistorialPlataformaAccion` en `schema.prisma`. Sigue el
+  criterio actual del historial de plataforma, el de los registros de geografía de SLT-46
+  (`nodo_geografico_creado`): `appendAccionPlataforma` con `entidadTipo: "nodo_geografico"`, la etiqueta
+  de la cadena del nodo (`etiquetaDeNodo`), `paisId` y el actor. Sin catálogo nuevo de etiquetas:
+  `lib/types/historial-accion.ts` es el catálogo del historial de EMPRESA y no lista acciones de
+  plataforma (decisión del humano del 2026-11-18).
 
 ### 7.2 Las órdenes ya creadas (R39–R41)
 
@@ -333,6 +337,7 @@ Con vistas de solo lectura, todo test que escribe `provincia`, `canton` o `distr
   `slt46-nodo-copia-vieja`, `geografia-por-pais` en su parte de FK compuestas): prueban triggers que ya
   no existen. Se reescriben contra las vistas (R1–R3, R5) o contra el nodo. Ninguno se borra sin
   autorización del humano: si uno queda sin objeto, el implementer para y pregunta.
+  <!-- T5.1 (decisión del humano del 2026-11-18): se retiraron los 17 casos sin objeto (sincronía, copia vieja, DEFAULT 'CR', borrado y FK de las tablas viejas); la lista y qué cubre cada regla viva está en progress/impl_SLT-48.md › «T5.1 retiros». Ningún archivo quedó vacío, así que no hay `@test-desaparecido`: la nota va en el design de SL-20, SLT-43 y SLT-46. -->
 - **Ida y vuelta de migraciones viejas** (`migracion-sl20`, `-sl38`, `-slt43`, `-slt46`,
   `geografia-dta-2026-migration`, `tarifas-flexibles-migration`): aplican el `down.sql` de su migración
   sobre la base actual. Con SLT-48 aplicada, ese `down.sql` encuentra vistas. Un helper nuevo,
