@@ -1415,3 +1415,34 @@ R sin test automatizado: **ninguna**. R30 y R33 dependen por diseño de la corri
 - T7.3 queda sin `[x]`: falta `./init.sh` en verde, que depende del cupo, y el check `gate-completo` de CI.
 
 - 2026-11-18 (frontend_dev) 57c6309c: un solo mensaje en corregir ubicación; «Ubicación incompleta» reemplaza a «Falta completar: <nivel>.» en todos los países (decisión del humano). 4 aserciones de `CorregirUbicacionNNiveles.test.tsx` cambiadas con la cita; 6 archivos de tests, 108 passed; typecheck y eslint de los tocados, 0 errores.
+
+## Review vuelta 1 (backend_dev, 2026-11-18)
+
+Arreglados los hallazgos 5 (carrera P1) y 6 (`down.sql` sin el mensaje de P5) de `progress/review_SLT-48.md`. Base: `servi_logistic_slt48_gate`, local y limpia. No se usó el grafo: los cambios son de esta tanda y bastaron Grep y Read.
+
+### 1. Carrera P1 en `mover`
+- `lib/repositories/GeoRepository.ts`: `bloquearNodos` hace `SELECT … ORDER BY id FOR UPDATE` de los nodos del subárbol. `evaluarMovimiento` recibe un `bloquearSubarbol` opcional, que solo pasa `mover`, y lo llama antes de contar. La vista previa no bloquea.
+- Por qué basta: la FK `orden_nodo_geografico_id_fkey` ya toma `FOR KEY SHARE` del nodo en cada escritura de `orden` que pone nodo (alta, carga masiva y corrección), y eso choca con `FOR UPDATE`. Una orden en vuelo hace esperar a `mover` y entra en el conteo, que es otra sentencia con otra foto en READ COMMITTED. Una orden que llega después espera a que `mover` termine. **Ni el trigger ni la escritura de `orden` cambian, y no hay migración nueva.** La carga masiva (R10) no paga nada nuevo: solo espera si coincide con un `mover` en ese subárbol.
+- Medido: en el nodo movido no había hueco. El `UPDATE` de `padre_id` toca el único `(padre_id, nombre_normalizado)` y ya tomaba `FOR UPDATE`. La carrera estaba en los descendientes, y el test va por ahí.
+- Riesgo que queda: si una transacción larga de carga masiva tiene ya un nodo del subárbol y pide otro que `mover` bloqueó, Postgres ve un deadlock. Aborta al que esperó primero, que es `mover` (40P01, 500 al superadmin, que reintenta). La carga no se ve afectada.
+- Test nuevo: `tests/integration/db/geografia-mover-nodo-carrera.test.ts`, con dos conexiones y el país `XM` commiteado bajo el lock de escrituras reales y borrado en el `finally`. La transacción A escribe una orden abierta en Centro, que hereda la marca de Norte, y no confirma. `mover` intenta llevar Alto, el padre de Centro, de Norte a Sur, con `lock_timeout` 1500 ms en su conexión.
+  - **Rojo sin el arreglo** (lib revertido): `expected { estado: 'movido' } to deeply equal { error: '55P03' }`. Se movía con la orden en vuelo, que quedaba fuera de P1.
+  - **Verde con el arreglo**: el primer `mover` espera y acaba en 55P03 sin mover. Al confirmar A, el segundo devuelve `bloqueado` con 1 orden y su empresa.
+
+### 2. `down.sql` de `20261117120100` y P5
+- La precondición cuenta también las órdenes que quedarían sin provincia o sin cantón tras el paso 3: sin nodo ni FK, o con las FK a medias. El mensaje da el total y el desglose: `SLT-48 down: N ordenes no caben en la geografia vieja: X estan en un nodo que no sabe guardar … y Y no tienen nodo ni provincia y canton`. El test R12 de antes (`/SLT-48 down: 1 ordenes/`) sigue igual y en verde.
+- Guardia: ningún guard ni test de `tests/unit` fija el contenido o el hash de este `down.sql`. `slt48-migraciones-declaradas` sigue verde.
+- Caso nuevo en `migracion-slt48-ida-y-vuelta.test.ts`: «R12 (P5): una orden sin nodo ni FK…».
+  - **Rojo sin el arreglo** (`down.sql` revertido): `la columna «provincia_id» de la relación «orden» contiene valores null — en «ALTER TABLE "orden" ALTER COLUMN "provincia_id" SET NOT NULL»` (23502). Los dos R11 siguientes caen en cascada.
+  - **Verde con el arreglo**: 7/7.
+
+### Salida
+- `pnpm run typecheck`: 0 errores. `eslint` de los 3 archivos tocados: 0.
+- `vitest run tests/integration/db/geografia-mover-nodo` (con `-carrera` y `-ordenes`): 3 archivos, 11 tests en verde.
+- `vitest run migracion-slt48-ida-y-vuelta` + `tests/unit/db/slt48-migraciones-declaradas`: 2 archivos, 16 tests en verde.
+- `pnpm run test:guardias`: 338/339 archivos. El único rojo es `dependencias-declaradas-presentes` (4 tests), que está en el baseline, como en la review.
+- No toqué el trigger de `orden`, así que no corrí `slt48-triggers-orden-pais` ni `slt48-trigger-orden-rendimiento`.
+
+Mapa R → test: P1/R40 suma `geografia-mover-nodo-carrera.test.ts`; R12 suma «R12 (P5): una orden sin nodo ni FK…».
+
+Veredicto: hallazgos 5 y 6 arreglados, los dos con evidencia de rojo a verde.
