@@ -8,9 +8,9 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 
 /**
  * FEATURE 271 (T5.3, R35/R37) — **M7**: APROBAR UN CIERRE LIBERA SOLO LAS ORDENES DE **ESE** CIERRE.
@@ -54,20 +54,10 @@ function dineroNoOp() {
 
 describeSiHayBase("271/T5.3 · M7 — aprobar libera SOLO las ordenes de su cierre", () => {
   let prisma: PrismaClient;
-  let fks: NonNullable<Awaited<ReturnType<typeof fksDeOrden>>>;
   let estatus: Map<string, string>;
-  let usuarios: { id: string }[];
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const encontradas = await fksDeOrden(prisma);
-    if (encontradas === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar. " +
-          "Corre `pnpm run db:seed` antes de esta suite.",
-      );
-    }
-    fks = encontradas;
     const catalogo = await prisma.orderStatus.findMany({
       // FEATURE 276 (T9): `rechazada` entra en el catalogo que esta suite resuelve, porque la
       // config de la liberacion ahora lleva el destino del rechazo por tope.
@@ -85,8 +75,6 @@ describeSiHayBase("271/T5.3 · M7 — aprobar libera SOLO las ordenes de su cier
         );
       }
     }
-    usuarios = await prisma.usuario.findMany({ select: { id: true }, take: 2 });
-    if (usuarios.length < 2) throw new Error("hacen falta al menos DOS usuarios en la base.");
   });
 
   afterAll(async () => {
@@ -103,7 +91,13 @@ describeSiHayBase("271/T5.3 · M7 — aprobar libera SOLO las ordenes de su cier
   async function aprobarElPrimero(sinGestionRegistrado: boolean) {
     return enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const [mensajero, admin] = usuarios;
+      // SLT-178: tienda, zona, mensajero y admin se crean AQUI, dentro de la tx que se revierte.
+      const fks = await crearFksDeOrden(tx);
+      const mensajero = await crearUsuarioDePrueba(tx, "mensajero");
+      const admin = await crearUsuarioDePrueba(tx, "maestro");
+      const sembrados = [fks.tiendaId, mensajero.id, admin.id];
+      expect(await tx.usuario.count({ where: { id: { in: sembrados } } }), "usuarios sembrados (tienda, mensajero, admin)").toBe(3);
+      expect(await tx.zona.count({ where: { id: fks.zonaId } }), "zona sembrada").toBe(1);
       const sinGestionar = estatus.get("novedad_interna") as string;
 
       const nuevoCierre = () =>
