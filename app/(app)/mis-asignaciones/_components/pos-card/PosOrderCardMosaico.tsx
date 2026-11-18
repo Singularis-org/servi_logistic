@@ -98,28 +98,28 @@ export function PosOrderCardMosaico({
           {mostrarRuta ? (
             <span
               aria-hidden="true"
-              className="flex size-6 shrink-0 items-center justify-center rounded-md bg-navy text-xs font-black text-white"
+              className="flex size-6 shrink-0 items-center justify-center rounded-md bg-navy text-[11px] font-black text-white max-md:text-xs"
             >
               {textoParada(orden)}
             </span>
           ) : conPosicion ? (
             /* SLT-190 (R855, R856): la posición en la lista, con nombre accesible propio; no es
                una parada. */
-            <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-navy text-xs font-black text-white">
+            <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-navy text-[11px] font-black text-white max-md:text-xs">
               <span className="sr-only">{`Orden ${posicion} de ${total}`}</span>
               <span aria-hidden="true">{posicion}</span>
             </span>
           ) : null}
           <div className="min-w-0 leading-none">
-            {/* SLT-200: en el teléfono la tarjeta se leía con lupa. Lo principal (identificador,
-                destinatario, monto) va a 14 px y lo secundario a 12 px como mínimo; el
-                identificador deja la mono pequeña. Misma estructura que antes. */}
-            <p className={`text-sm font-bold tabular-nums text-foreground ${TEXTO_ENTERO}`}>
+            {/* SLT-200: en el teléfono (`max-md:`) la tarjeta se leía con lupa. Ahí lo principal
+                (identificador, destinatario, monto) va a 14 px y lo secundario a 12 px como mínimo,
+                y el identificador deja la mono. Desde md, los tamaños de siempre (escritorio = prod). */}
+            <p className={`font-mono text-xs font-bold tracking-wide text-foreground max-md:font-sans max-md:text-sm ${TEXTO_ENTERO}`}>
               {orden.numRemision}
             </p>
             {/* R28: posición en la ruta + peso, mismo texto que la cabecera de la card
                 completa (`PosCardHeader`) para no perder la señal al compactar. */}
-            <p className="mt-1 text-xs font-semibold text-muted-foreground">
+            <p className="mt-1 text-[11px] font-semibold text-muted-foreground max-md:text-xs">
               {mostrarRuta ? (
                 <>
                   {orden.secuenciaRuta !== null ? (
@@ -146,17 +146,17 @@ export function PosOrderCardMosaico({
           <EstadoConInfo
             codigo={orden.estatusValue}
             className={CLASE_INFO_TACTIL}
-            chipClassName={`rounded-full px-2 py-1 text-xs font-bold tracking-wide ${claseChipEstado(orden.estatusValue)}`}
+            chipClassName={`rounded-full px-2 py-1 text-[10px] font-bold tracking-wide max-md:text-xs ${claseChipEstado(orden.estatusValue)}`}
           />
           {marcas.map((m) => (
-            <span key={m.texto} className={`rounded-full px-2 py-1 text-xs font-bold tracking-wide ${m.clase}`}>
+            <span key={m.texto} className={`rounded-full px-2 py-1 text-[10px] font-bold tracking-wide max-md:text-xs ${m.clase}`}>
               {m.texto}
             </span>
           ))}
           {notaAyuda ? (
             <NotaAyudaConInfo
               className={CLASE_INFO_TACTIL}
-              chipClassName={`rounded-full px-2 py-1 text-xs font-bold tracking-wide ${CLASE_NOTA_AYUDA}`}
+              chipClassName={`rounded-full px-2 py-1 text-[10px] font-bold tracking-wide max-md:text-xs ${CLASE_NOTA_AYUDA}`}
             />
           ) : null}
         </div>
@@ -168,14 +168,14 @@ export function PosOrderCardMosaico({
         <p className={`text-sm font-bold text-foreground ${TEXTO_ENTERO}`}>
           {orden.destinatario}
         </p>
-        <p className="flex min-w-0 items-start gap-1 text-xs text-muted-foreground">
-          <Package className="size-3.5 shrink-0 text-brand" aria-hidden="true" />
+        <p className="flex min-w-0 items-start gap-1 font-mono text-[11px] text-muted-foreground max-md:font-sans max-md:text-xs">
+          <Package className="size-3 shrink-0 text-brand max-md:size-3.5" aria-hidden="true" />
           <span className={TEXTO_ENTERO}>{orden.producto}</span>
         </p>
         {/* Feature 160/R19: los intentos son un DATO de la orden, siempre visible (`0` incluido)
             en las superficies que los tienen; la 196 permite apagarlos donde no existen. */}
         {verIntentos ? (
-          <p className="mt-1 text-xs font-semibold text-muted-foreground">
+          <p className="mt-1 text-[11px] font-semibold text-muted-foreground max-md:text-xs">
             <IntentosDato intentos={valorIntentos(orden)} />
           </p>
         ) : null}
@@ -183,7 +183,7 @@ export function PosOrderCardMosaico({
             producto e intentos: es un dato de la orden, no una marca de excepción. Envuelve como
             sus hermanos (SLT-156): un nombre largo baja de línea, no ensancha la card. */}
         {mensajero !== undefined ? (
-          <p className={`mt-1 text-xs font-semibold text-muted-foreground ${TEXTO_ENTERO}`}>
+          <p className={`mt-1 text-[11px] font-semibold text-muted-foreground max-md:text-xs ${TEXTO_ENTERO}`}>
             {textoMensajero(mensajero)}
           </p>
         ) : null}
@@ -210,7 +210,7 @@ export function PosOrderCardMosaico({
               ) : null}
             </span>
             {orden.direccion ? (
-              <span className={`block text-xs text-white/70 ${TEXTO_ENTERO}`}>
+              <span className={`block text-[0.6875rem] text-white/70 max-md:text-xs ${TEXTO_ENTERO}`}>
                 {orden.direccion}
               </span>
             ) : null}
@@ -262,14 +262,14 @@ export function PosOrderCardMosaico({
           que devuelve el servidor al rechazar y la misma que lee la tienda. La fecha llega YA
           RESUELTA en `fechaRepartoISO` (R14): aquí no se construye ningún `Date`. */}
       {orden.esParaManana ? (
-        <p role="note" className="text-xs font-semibold text-muted-foreground">
+        <p role="note" className="text-[11px] font-semibold text-muted-foreground max-md:text-xs">
           {avisoReservaParaOtroDia(orden.fechaRepartoISO)}
         </p>
       ) : null}
 
       {verCobro ? (
         <div className="flex items-center justify-between border-t border-dashed border-border pt-2">
-          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground max-md:text-xs">
             Cobrar
           </span>
           <span className={`text-right font-mono text-sm font-bold text-foreground ${COLUMNA_FIJA}`}>
@@ -289,7 +289,7 @@ export function PosOrderCardMosaico({
           onOpenChange={setDetalleAbierto}
           className="group/detalle rounded-lg border border-border bg-muted/40 px-3 py-2"
         >
-          <CollapsibleTrigger className="flex min-h-11 w-full cursor-pointer items-center justify-between gap-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+          <CollapsibleTrigger className="flex min-h-11 w-full cursor-pointer items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground max-md:text-xs">
             Ver detalle completo
             <ChevronDown
               aria-hidden="true"

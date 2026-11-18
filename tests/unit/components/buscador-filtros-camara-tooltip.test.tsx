@@ -5,7 +5,7 @@
 // la lista; no cambia nada). Mismo patrón que `ContactoButtons`: el disparador es el botón y el
 // `aria-label` se conserva letra por letra.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 vi.mock("@/hooks/useToast", () => ({
   useToast: () => ({
@@ -38,19 +38,22 @@ afterEach(cleanup);
 
 describe("SLT-200 — tooltip del botón de cámara del buscador", () => {
   // Por FOCO y no por hover: el hover de base-ui no se activa en jsdom (ver `ContactoButtons.test`).
-  it("al enfocar la cámara sale «Buscar escaneando la guía»", async () => {
+  // El texto está una vez desde el principio (la descripción oculta del botón, review m2); al
+  // enfocar sale una segunda vez: el tooltip visible.
+  it("al enfocar la cámara sale el tooltip «Buscar escaneando la guía»", async () => {
     render(<BuscadorFiltros onChange={vi.fn()} leerDeUrl={false} escaneo />);
-    expect(screen.queryByText("Buscar escaneando la guía")).toBeNull();
+    expect(screen.getAllByText("Buscar escaneando la guía")).toHaveLength(1);
 
     fireEvent.focus(screen.getByRole("button", { name: "Escanear con cámara" }));
 
-    expect(await screen.findByText("Buscar escaneando la guía")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByText("Buscar escaneando la guía")).toHaveLength(2));
   });
 
-  it("el tooltip no reemplaza el nombre accesible del botón", () => {
+  it("el tooltip no reemplaza el nombre accesible y llega al lector como descripción", () => {
     render(<BuscadorFiltros onChange={vi.fn()} leerDeUrl={false} escaneo />);
     const camara = screen.getByRole("button", { name: "Escanear con cámara" });
     expect(camara).toHaveAttribute("aria-label", "Escanear con cámara");
+    expect(camara).toHaveAccessibleDescription("Buscar escaneando la guía");
   });
 
   it("sin `escaneo` no hay cámara ni tooltip", () => {

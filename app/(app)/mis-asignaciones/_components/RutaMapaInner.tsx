@@ -163,7 +163,7 @@ function LeyendaMapa() {
   return (
     <ul aria-label="Leyenda del mapa" className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
       {LEYENDA_MAPA.map(({ tipo, texto }) => (
-        <li key={tipo} className="flex items-center gap-2">
+        <li key={tipo} className="flex items-center gap-1 max-md:gap-2">
           {/* SLT-200: el anillo `ring-foreground` contrasta con el fondo en los dos temas, sea cual
               sea el relleno (en oscuro el punto «Pendiente», negro, medía 1.00:1; en claro el
               amarillo de «Siguiente», 1.37:1). */}

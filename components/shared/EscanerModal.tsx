@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type ReactNode } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 import { Camera, ScanLine, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -116,6 +116,7 @@ export function EscanerModal({
   const [abierto, setAbierto] = useState(false);
   const punteroFino = usePunteroFino();
   const popupRef = useRef<HTMLDivElement>(null);
+  const idAyuda = useId();
 
   /** El campo de la tarjeta con puntero fino; si no, el foco inicial por defecto del Dialog. */
   function focoInicial(): HTMLElement | true {
@@ -164,6 +165,7 @@ export function EscanerModal({
         variant="outline"
         size="icon"
         aria-label={label}
+        aria-describedby={ayuda ? idAyuda : undefined}
         className={className}
         onClick={() => setAbierto(true)}
       >
@@ -176,6 +178,11 @@ export function EscanerModal({
           <Tooltip>
             <TooltipTrigger render={boton} />
             <TooltipContent>{ayuda}</TooltipContent>
+            {/* El tooltip de Base UI no se enlaza solo con `aria-describedby`: la misma ayuda,
+                oculta a la vista, describe el botón para el lector de pantalla (review m2). */}
+            <span id={idAyuda} className="sr-only">
+              {ayuda}
+            </span>
           </Tooltip>
         ) : (
           boton

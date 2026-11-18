@@ -17,8 +17,8 @@ import { cn } from "@/lib/utils";
  * el rótulo, no el número.
  *
  * SLT-200: en el móvil la cifra vuelve a los 20 px del canvas (D8); SLT-163 la había bajado a 14 px.
- * Medido con Archivo 600 a 20 px: «₡12.345.678» ocupa 119 px y la tarjeta de 360 px deja 126 de
- * contenido. Solo una cifra de más de 11 caracteres (nueve dígitos o con decimales) se achica, por
+ * Medido con Archivo 600 a 20 px: un importe de 8 dígitos con separadores y símbolo (11 caracteres)
+ * ocupa 119 px y la tarjeta de 360 px deja 126 de contenido. Solo una cifra de más de 11 caracteres (nueve dígitos o con decimales) se achica, por
  * escalones y nunca por debajo de 14 px.
  */
 export const CIFRA_KPI = `${COLUMNA_FIJA} md:text-2xl`;
@@ -33,8 +33,8 @@ export function tamanoCifraKpi(texto: string): string {
 
 /**
  * SLT-200 (canvas D8): caracteres que caben a 20 px AL LADO del icono en el móvil. A 360 px quedan
- * ~82 px junto al icono de 36 px; «₡99.999» (7) mide 78. Con más, la cifra baja a la fila de abajo, a
- * todo el ancho.
+ * ~82 px junto al icono de 36 px; un importe de 5 dígitos con separador y símbolo (7 caracteres)
+ * mide 78. Con más, la cifra baja a la fila de abajo, a todo el ancho.
  */
 export const MAX_CARACTERES_AL_LADO = 7;
 

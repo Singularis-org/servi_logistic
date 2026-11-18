@@ -163,8 +163,8 @@ function rejillaDe(texto: string): HTMLElement {
 // SLT-200 «PWA Reparto: buscador, KPI, tarjeta y leyenda del mapa tras Preview» (punto 2). En Preview
 // la cifra medía 14 px y caía en una fila propia bajo el icono. El canvas (D8) la pone a 20 px a la
 // DERECHA del icono, bajo el rótulo. A 360 px una tarjeta deja ~126 px de contenido y ~82 al lado del
-// icono: cabe «₡99.999» (7 caracteres) a 20 px, no un importe de ocho cifras (119 px a 20 px, medido
-// con Archivo 600). Por eso la cifra va al lado del icono cuando cabe, y si no, baja a la fila de
+// icono: cabe un importe de 5 dígitos con separador y símbolo (7 caracteres) a 20 px, no uno de ocho
+// cifras (119 px a 20 px, medido con Archivo 600). Por eso la cifra va al lado del icono cuando cabe, y si no, baja a la fila de
 // abajo a todo el ancho, SIN achicarse hasta los 12 caracteres. Las dos tarjetas de una fila deciden
 // juntas, para que sus cifras queden a la misma altura. La medida real a 360 px es del E2E.
 describe("KpisMensajero — cifra de 20 px a la derecha del icono (SLT-200, canvas D8)", () => {
@@ -183,7 +183,7 @@ describe("KpisMensajero — cifra de 20 px a la derecha del icono (SLT-200, canv
     }
   });
 
-  it("un importe de ocho cifras (₡12.345.678) baja bajo el icono, a todo el ancho y a 20 px; su vecina baja con él", () => {
+  it("un importe de ocho cifras (11 caracteres) baja bajo el icono, a todo el ancho y a 20 px; su vecina baja con él", () => {
     render(<KpisMensajero kpis={{ pendientes: 2, entregadas: 0, porCobrar: 12_345_678, totalACobrar: 5000 }} />);
     const largo = norm(formatMonto(12_345_678));
     const corto = norm(formatMonto(5000));
