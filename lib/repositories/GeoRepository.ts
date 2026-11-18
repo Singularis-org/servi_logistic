@@ -119,8 +119,13 @@ interface MovimientoEvaluado {
   subarbol: string[];
   antes: CatalogoGeografico;
   despues: CatalogoGeografico;
-  /** Las ordenes abiertas del subarbol que P1 ya miro, sin bloqueos. */
-  abiertasVistas: ReadonlySet<string>;
+  /** Las ordenes abiertas del subarbol que P1 ya miro, sin bloqueos, con su `firmaDeOrden`. */
+  abiertasVistas: ReadonlyMap<string, string>;
+  /**
+   * El destino y sus antepasados, del destino a la raiz, con el padre que tenian en la primera fase.
+   * Todos activos (P4). `mover` los vuelve a mirar con los bloqueos (`destinoSigueIgual`).
+   */
+  cadenaDelDestino: ReadonlyArray<{ id: string; padreId: string | null }>;
 }
 
 type EvaluacionDeMover =
@@ -141,19 +146,20 @@ type EvaluacionDeMover =
  *   - `statement_timeout`: lo que dura cualquier sentencia con los bloqueos ya tomados (57014);
  *   - el `timeout` de Prisma de la transaccion, el doble, para que la espera y lo que sigue quepan.
  * Una escritura que llega mientras `mover` espera su bloqueo tambien hace cola detras de el, asi que
- * el `lock_timeout` la protege igual. En el peor caso teorico una escritura de empresa espera el
- * `timeout` de la transaccion mas una sentencia en vuelo (~6 s); en la practica, lo que tardan esas
- * sentencias. Nunca los 30 s que podia durar P1 en un nodo alto cuando se calculaba con los bloqueos.
+ * el `lock_timeout` la protege igual. Nunca espera los 30 s que podia durar P1 en un nodo alto cuando
+ * se calculaba con los bloqueos.
  *
- * Por que 2 s: con los bloqueos, `mover` hace unas 10 sentencias pequeñas que en local tardan
- * milisegundos, asi que 2 s deja margen a una base lenta sin que el superadmin tenga que reintentar
- * por nada. Y el `timeout` de la transaccion (4 s) queda por debajo de los 5 s del de Prisma por
- * defecto, el de cada chunk de la carga masiva: en los casos medidos (`geografia-mover-nodo-cede`:
- * ~2 s con una sentencia lenta, ~4 s con la transaccion parada) un chunk que coincide con `mover`
- * termina en vez de caer en P2028. Si no alcanza, `mover` falla sin escribir (rollback, sin fila de
- * historial) y la action responde `ocupado`: «intenta de nuevo» (`esMoverOcupado`).
+ * Por que 1 s (review vuelta 3, decision del humano «tope corto»). El peor caso teorico de una
+ * escritura de empresa es el `timeout` de la transaccion (2 s) mas una sentencia en vuelo, que corta
+ * el `statement_timeout` (1 s): ~3 s. Cada chunk de la carga masiva corre con el `timeout` de Prisma
+ * por defecto, 5 s (`OrdenRepository`, la carga por chunks), y ademas hace su propio trabajo (insert,
+ * guia, historial): con 2 s de margen, un chunk que coincide con `mover` termina en vez de caer en
+ * P2028. Con el tope de 2 s de la vuelta 2 el peor caso era ~6 s, por encima de esos 5 s. En la
+ * practica la espera es la del `lock_timeout` mas milisegundos: con los bloqueos, `mover` hace unas
+ * 10 sentencias pequeñas. Si no alcanza, `mover` falla sin escribir (rollback, sin fila de historial)
+ * y la action responde `ocupado`: «intenta de nuevo» (`esMoverOcupado`); cede el superadmin.
  */
-export const TOPE_MOVER_MS = 2_000;
+export const TOPE_MOVER_MS = 1_000;
 export const TIMEOUT_TRANSACCION_MOVER_MS = 2 * TOPE_MOVER_MS;
 
 type GeoTx = Pick<GeoPrismaClient, "nodoGeografico">;
@@ -398,29 +404,35 @@ async function tarifaYMarcaPorEmpresa(
   return porEmpresa;
 }
 
+/** Lo que decide P1 de una orden: su empresa, su zona y su nodo. Si cambia, P1 la vuelve a mirar. */
+function firmaDeOrden(o: OrdenAbiertaEnElArbol): string {
+  return `${o.organizacionId}|${o.zonaId}|${o.nodoId}`;
+}
+
 /**
  * P1: cuantas ordenes abiertas cambiarian de grupo o de marca, y de que empresas (`null` si ninguna),
- * y que ordenes abiertas miro. Con `yaVistas`, solo mira las que no estan ahi: es la segunda pasada de
- * `mover`, con los bloqueos, que no repite lo ya calculado.
+ * y que ordenes abiertas miro, con su firma. Con `yaVistas`, salta las que estan ahi con la MISMA
+ * firma: es la segunda pasada de `mover`, con los bloqueos, que no repite lo ya calculado pero si
+ * mira una orden ya vista a la que una correccion le cambio el nodo o la zona entre las dos fases.
  */
 async function bloqueoDeMover(
   db: LecturasDeMover,
   antes: CatalogoGeografico,
   despues: CatalogoGeografico,
   subarbol: readonly string[],
-  yaVistas: ReadonlySet<string> = new Set(),
-): Promise<{ bloqueo: BloqueoDeMoverDTO | null; abiertas: ReadonlySet<string> }> {
+  yaVistas: ReadonlyMap<string, string> = new Map(),
+): Promise<{ bloqueo: BloqueoDeMoverDTO | null; abiertas: ReadonlyMap<string, string> }> {
   // Abierta = sin cierre (su precio no esta congelado) y sin borrar.
   const filas = await db.orden.findMany({
     where: { nodoGeograficoId: { in: [...subarbol] }, deletedAt: null, cierreDetalles: { none: {} } },
     select: { id: true, organizacionId: true, zonaId: true, nodoGeograficoId: true },
   });
-  const abiertas: OrdenAbiertaEnElArbol[] = filas.flatMap((o) =>
-    o.nodoGeograficoId === null || yaVistas.has(o.id)
-      ? []
-      : [{ id: o.id, organizacionId: o.organizacionId, zonaId: o.zonaId, nodoId: o.nodoGeograficoId }],
-  );
-  const vistas = new Set(abiertas.map((o) => o.id));
+  const abiertas: OrdenAbiertaEnElArbol[] = filas.flatMap((o) => {
+    if (o.nodoGeograficoId === null) return [];
+    const orden = { id: o.id, organizacionId: o.organizacionId, zonaId: o.zonaId, nodoId: o.nodoGeograficoId };
+    return yaVistas.get(o.id) === firmaDeOrden(orden) ? [] : [orden];
+  });
+  const vistas = new Map(abiertas.map((o) => [o.id, firmaDeOrden(o)]));
   if (abiertas.length === 0) return { bloqueo: null, abiertas: vistas };
 
   const datos = await tarifaYMarcaPorEmpresa(db, [...new Set(abiertas.map((o) => o.organizacionId))], subarbol);
@@ -475,7 +487,8 @@ async function evaluarMovimiento(
   const antes = await catalogoDe(nodoLeido.paisId);
   const nodo = antes.porId.get(id);
   const padreAnterior = antes.porId.get(nodoLeido.padreId);
-  if (nodo === undefined || padreAnterior === undefined || !antes.porId.has(padreIdNuevo)) {
+  const destinoEnCatalogo = antes.porId.get(padreIdNuevo);
+  if (nodo === undefined || padreAnterior === undefined || destinoEnCatalogo === undefined) {
     throw new Error(`mover: el nodo ${id} o sus padres no estan en el catalogo de ${nodoLeido.paisId}`);
   }
   // P4: retirado en cascada. Un destino bajo un antepasado retirado tampoco esta disponible.
@@ -514,6 +527,7 @@ async function evaluarMovimiento(
       antes,
       despues,
       abiertasVistas: p1.abiertas,
+      cadenaDelDestino: [destinoEnCatalogo, ...ancestros(antes, padreIdNuevo)].map((n) => ({ id: n.id, padreId: n.padreId })),
     },
   };
 }
@@ -524,13 +538,19 @@ async function evaluarMovimiento(
  *   - que el subarbol ganara un nodo (un alta o un `mover` que trajo uno): sus ordenes no se miraron.
  *     Es `cambio_concurrente`, como cualquier otro cambio del arbol desde que se leyo (R37). Con el
  *     subarbol bloqueado ya no puede pasar: colgar un hijo toma `FOR KEY SHARE` del padre;
- *   - que apareciera una orden abierta en el subarbol: solo esas pasan por P1. Las de la primera pasada
- *     ya dieron `null`, asi que el bloqueo de estas es el bloqueo entero.
+ *   - que el destino o un antepasado suyo se retirara o cambiara de padre (review vuelta 3): P4 y P1
+ *     se calcularon sobre otro arbol. Es `cambio_concurrente`. Ya estan bloqueados con el subarbol;
+ *   - que apareciera una orden abierta en el subarbol, o que a una ya vista una correccion le cambiara
+ *     el nodo o la zona (review vuelta 3): solo esas pasan por P1. El resto de la primera pasada ya
+ *     dio `null` y sigue igual, asi que el bloqueo de estas es el bloqueo entero. Mirar las cambiadas
+ *     no cuesta una consulta mas: la de las nuevas ya trae todas las abiertas del subarbol con su nodo
+ *     y su zona, y se comparan en memoria con la firma de la primera pasada.
  */
 async function confirmarP1(
   tx: LecturasDeMover,
   m: MovimientoEvaluado,
 ): Promise<{ estado: "ok" } | { estado: "cambio_concurrente" } | { estado: "bloqueado"; bloqueo: BloqueoDeMoverDTO }> {
+  if (!(await destinoSigueIgual(tx, m.cadenaDelDestino))) return { estado: "cambio_concurrente" };
   const nuevo = await tx.nodoGeografico.findFirst({
     where: { padreId: { in: m.subarbol }, id: { notIn: m.subarbol } },
     select: { id: true },
@@ -541,8 +561,31 @@ async function confirmarP1(
 }
 
 /**
+ * SLT-48 (P4, P1; review vuelta 3) — el destino y sus antepasados siguen como en la primera fase:
+ * todos existen, activos y con el mismo padre. Se llama con ellos ya bloqueados.
+ */
+async function destinoSigueIgual(
+  tx: LecturasDeMover,
+  cadena: MovimientoEvaluado["cadenaDelDestino"],
+): Promise<boolean> {
+  const filas = await tx.nodoGeografico.findMany({
+    where: { id: { in: cadena.map((n) => n.id) } },
+    select: { ...SELECT_FLAG_PROPIO, id: true, padreId: true },
+  });
+  const hoy = new Map(filas.map((f) => [f.id, f]));
+  return cadena.every((n) => {
+    const f = hoy.get(n.id);
+    return f !== undefined && f.activo && f.padreId === n.padreId;
+  });
+}
+
+/**
  * SLT-48 (P1, review vuelta 1) — `FOR UPDATE` de los nodos del subarbol, en orden de id (dos `mover`
- * que se pisan esperan en el mismo orden y no se cruzan).
+ * que se pisan esperan en el mismo orden y no se cruzan). Desde la review vuelta 3, en la misma
+ * sentencia van el destino y sus antepasados: un solo `ORDER BY id` para todos, asi `mover` nunca
+ * toma unos y espera otros en un orden distinto al de otro `mover` (sin interbloqueos). Bloquearlos
+ * impide que se retiren o cambien de padre hasta que `mover` termine (`destinoSigueIgual`); a cambio,
+ * una orden o un hijo nuevo que apunte a uno de ellos tambien espera, con el mismo tope.
  *
  * POR QUE BASTA. Toda escritura de `orden` que pone `nodo_geografico_id` (alta, carga masiva,
  * correccion) pasa por la FK `orden_nodo_geografico_id_fkey`, y su comprobacion toma `FOR KEY SHARE`
@@ -994,8 +1037,9 @@ export class GeoRepository implements IGeoRepository {
    *   1. SIN bloqueos: el padre de hoy contra el que mostro el modal (si ya es otro,
    *      `cambio_concurrente`, R37), las validaciones de R35 y el calculo caro de P1;
    *   2. en UNA transaccion corta, con `lock_timeout` y `statement_timeout` = `TOPE_MOVER_MS`:
-   *      - el subarbol bloqueado `FOR UPDATE` (`bloquearNodos`);
-   *      - la segunda pasada de P1, solo con lo nuevo (`confirmarP1`);
+   *      - el subarbol, el destino y sus antepasados bloqueados `FOR UPDATE` (`bloquearNodos`);
+   *      - el destino y sus antepasados igual que en la fase 1 (P4) y la segunda pasada de P1, solo
+   *        con lo nuevo o lo cambiado (`confirmarP1`);
    *      - el `updateMany` con `padre_id = padreIdAnterior` en el `where`, la UNICA escritura, y solo
    *        de `padre_id`: si otra persona lo movio desde la lectura, toca 0 filas → `cambio_concurrente`.
    *        El trigger de invariantes de SLT-43 vuelve a comprobar la profundidad;
@@ -1024,7 +1068,7 @@ export class GeoRepository implements IGeoRepository {
         // El `statement_timeout`, despues de bloquear: antes, cortaria la espera del bloqueo como 57014
         // en vez de dejar que la cierre el `lock_timeout` con su 55P03.
         await tx.$executeRawUnsafe(`SET LOCAL lock_timeout = '${TOPE_MOVER_MS}ms'`);
-        await bloquearNodos(tx, movimiento.subarbol);
+        await bloquearNodos(tx, [...movimiento.subarbol, ...movimiento.cadenaDelDestino.map((n) => n.id)]);
         await tx.$executeRawUnsafe(`SET LOCAL statement_timeout = '${TOPE_MOVER_MS}ms'`);
         const confirmado = await confirmarP1(tx, movimiento);
         if (confirmado.estado !== "ok") return confirmado;
