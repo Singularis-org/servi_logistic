@@ -29,11 +29,19 @@
   README. Va antes, en orden.
 
 ## Decisiones
-(ninguna del humano todavía; las del spec son D1–D7, pendientes de aprobación)
+- (Carlos, 2026-11-18, «aprobado») Spec aprobado con D1–D7 y las propuestas del leader:
+  - P1: el asistente lee la guía entera (sí).
+  - P2: tamaño del PR aceptado (conversión mecánica de la guía + ~850 líneas de código).
+  - P3: la colección de Postman se descarga con sesión de maestro/admin (no pública).
+  - P4: la API v2 de SLT-45 se documenta cuando SLT-45 entre en dev (requisito condicional R1316).
+- (Carlos, 2026-11-18) Enlaces desde Integraciones y `/configuracion/api` a la guía y a la descarga; PDF con
+  la marca Servi Logistic.
+- La implementación arranca cuando SLT-201 (PR #228) esté en dev.
+
+<!-- tamano-pr-aceptado: 2026-11-18 · ~1.760 líneas de conversión mecánica de la guía a Ayuda + ~850 de código; P2 del spec · Carlos: «aprobado» -->
 
 ## Preguntas abiertas
-Ver `specs/SLT-80-guia-api-en-ayuda/requirements.md > Preguntas abiertas`. Las cuatro las cierra
-Carlos; P4, con Camilo.
+(cerradas el 2026-11-18; ver Decisiones)
 
 ## Tandas
 
