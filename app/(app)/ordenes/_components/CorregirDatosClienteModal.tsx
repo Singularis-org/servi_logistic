@@ -231,6 +231,16 @@ export function corregirFaltaNivel(tipoSingular: string): string {
 }
 export const CORREGIR_FALTA_PESO = "el peso (mayor que cero)";
 
+/**
+ * SLT-48 (decisión del humano 2026-11-18, maqueta «no se llegó a la hoja») — el lugar elegido tiene
+ * hijos: se dice ANTES de guardar, junto al selector que falta, y «Guardar cambios» sigue apagado. El
+ * rechazo del servidor (R17, design §4.1) queda como red de seguridad. Nombra el lugar y el plural del
+ * nivel de debajo con los nombres del país (R47).
+ */
+export function corregirUbicacionIncompleta(lugar: string, tipoPluralDebajo: string): string {
+  return `Ubicación incompleta: «${lugar}» tiene ${tipoPluralDebajo.toLocaleLowerCase("es")} debajo; elige el último nivel.`;
+}
+
 export const CORREGIR_EXITO = "Datos corregidos.";
 /** 312/R4 — el servidor no escribió nada porque no había nada que cambiar. No es un error. */
 export const CORREGIR_SIN_CAMBIOS = "No había nada que cambiar: los datos ya eran esos.";
@@ -450,6 +460,15 @@ export function CorregirDatosClienteModal({
   const niveles = estadosDeNiveles(arbol, seleccion);
   const nodoElegido = geografia ? hojaElegida(arbol, seleccion) : (seleccion.at(-1) ?? null);
   const nivelFaltante = geografia ? nivelQueFalta(arbol, seleccion) : null;
+  // SLT-48 (maqueta, «no se llegó a la hoja»): ya se eligió un lugar y tiene hijos. Sin nada elegido
+  // no hay lugar que nombrar: basta «Falta completar».
+  const lugarAMedias = nivelFaltante !== null && seleccion.length > 0
+    ? (arbol.lugares.find((l) => l.id === seleccion.at(-1))?.nombre ?? null)
+    : null;
+  const ubicacionIncompleta =
+    ubicacionEditable && lugarAMedias !== null && nivelFaltante !== null
+      ? corregirUbicacionIncompleta(lugarAMedias, nivelFaltante.plural)
+      : null;
 
   // Lo que falta para poder enviar, en el orden del formulario. `trim()` porque una linea de
   // espacios no es un destinatario, y porque es lo mismo que hace el servidor antes de comparar:
@@ -727,6 +746,9 @@ export function CorregirDatosClienteModal({
           {niveles.map((estado, i) => {
             const selectId = `${nivelSelectId}-${i}`;
             const conError = lugarError !== undefined && i === nivelConError;
+            // El aviso previo va en el selector que falta; si el servidor ya rechazó, manda su texto.
+            const conIncompleta = !conError && ubicacionIncompleta !== null && i === seleccion.length;
+            const incompletaId = `${selectId}-incompleta`;
             return (
               <div key={estado.nivel.profundidad} className="flex min-w-0 flex-col gap-1.5">
                 <Label htmlFor={selectId}>{estado.nivel.singular}</Label>
@@ -742,7 +764,8 @@ export function CorregirDatosClienteModal({
                     estado.modo !== "abierto" ||
                     estado.opciones.length === 0
                   }
-                  aria-invalid={conError ? true : undefined}
+                  aria-invalid={conError || conIncompleta ? true : undefined}
+                  aria-describedby={conIncompleta ? incompletaId : undefined}
                   onValueChange={(next) =>
                     alCambiarUbicacion(() => setSeleccion((previa) => elegirEnNivel(previa, i, next)))
                   }
@@ -750,6 +773,11 @@ export function CorregirDatosClienteModal({
                 {conError ? (
                   <p role="alert" className="text-sm text-destructive">
                     {lugarError}
+                  </p>
+                ) : null}
+                {conIncompleta ? (
+                  <p id={incompletaId} className="text-sm text-destructive">
+                    {ubicacionIncompleta}
                   </p>
                 ) : null}
               </div>

@@ -20,6 +20,7 @@ import {
   CORREGIR_UBICACION_CARGANDO,
   corregirElegirNivel,
   corregirSinNivel,
+  corregirUbicacionIncompleta,
 } from "@/app/(app)/ordenes/_components/CorregirDatosClienteModal";
 import {
   AVISO_TITULO,
@@ -279,6 +280,66 @@ describe("SLT-48 / R43 — un selector por nivel del país, hasta una hoja", () 
     await abrir();
     expect(screen.queryByRole("combobox", { name: "Provincia" })).toBeNull();
     expect(screen.queryByRole("combobox", { name: "Distrito" })).toBeNull();
+  });
+});
+
+// --- «Ubicación incompleta» antes de guardar (decisión del humano 2026-11-18, f) ---------------------
+//
+// Como en la maqueta «País de 4 niveles · no se llegó a la hoja»: el aviso sale junto al selector que
+// falta, ANTES de guardar, y «Guardar cambios» sigue apagado hasta llegar a la hoja. El rechazo del
+// servidor (R17) queda como red de seguridad: lo cubre «327/R34» en `CorregirDatosCliente.ordenes`.
+
+describe("SLT-48 / R43, R17 — «Ubicación incompleta» antes de guardar", () => {
+  it("país de 4 niveles: «Viña» tiene barrios debajo; el aviso va en el barrio y Guardar se apaga hasta la hoja", async () => {
+    preparar(NIVELES_XA, LUGARES_4, "vina");
+    const { user, corregir } = await abrir();
+    const texto = "Ubicación incompleta: «Viña» tiene barrios debajo; elige el último nivel.";
+    expect(corregirUbicacionIncompleta("Viña", "Barrios")).toBe(texto);
+    expect(screen.getByText(texto)).toBeInTheDocument();
+    expect(combo("Barrio")).toHaveAttribute("aria-invalid", "true");
+    expect(combo("Barrio")).toHaveAccessibleDescription(texto);
+    expect(combo("Comuna")).not.toHaveAttribute("aria-invalid");
+    expect(guardar()).toBeDisabled();
+    expect(corregir).not.toHaveBeenCalled();
+
+    await elegir(user, "Barrio", "Belloto");
+    expect(screen.queryByText(/Ubicación incompleta/)).toBeNull();
+    expect(combo("Barrio")).not.toHaveAttribute("aria-invalid");
+    expect(guardar()).toBeEnabled();
+  });
+
+  it("país de 4 niveles: elegir otra comuna desde una hoja vuelve a pedir el barrio", async () => {
+    preparar(NIVELES_XA, LUGARES_4, "miraflores");
+    const { user } = await abrir();
+    expect(screen.queryByText(/Ubicación incompleta/)).toBeNull();
+    await elegir(user, "Comuna", "Viña");
+    expect(screen.getByText(corregirUbicacionIncompleta("Viña", "Barrios"))).toBeInTheDocument();
+    expect(guardar()).toBeDisabled();
+  });
+
+  it("Costa Rica: un cantón con distritos dice «Escazú» tiene distritos debajo; el distrito lo resuelve", async () => {
+    preparar(NIVELES_CR, LUGARES_CR, "escazu");
+    const { user, corregir } = await abrir();
+    const texto = corregirUbicacionIncompleta("Escazú", "Distritos");
+    expect(texto).toBe("Ubicación incompleta: «Escazú» tiene distritos debajo; elige el último nivel.");
+    expect(screen.getByText(texto)).toBeInTheDocument();
+    expect(combo("Distrito")).toHaveAccessibleDescription(texto);
+    // Lo de hoy sigue igual: el texto de lo que falta y el botón apagado.
+    expect(screen.getByText("Falta completar: distrito.")).toBeInTheDocument();
+    expect(guardar()).toBeDisabled();
+
+    await elegir(user, "Distrito", "San Antonio");
+    expect(screen.queryByText(/Ubicación incompleta/)).toBeNull();
+    await user.click(guardar());
+    await waitFor(() => expect(corregir).toHaveBeenCalledTimes(1));
+    expect(corregir.mock.calls[0][0].nodoId).toBe("san-antonio");
+  });
+
+  it("Costa Rica: un cantón sin distritos es hoja y no lleva el aviso", async () => {
+    preparar(NIVELES_CR, LUGARES_CR, "isla");
+    await abrir();
+    expect(screen.queryByText(/Ubicación incompleta/)).toBeNull();
+    expect(guardar()).toBeEnabled();
   });
 });
 
