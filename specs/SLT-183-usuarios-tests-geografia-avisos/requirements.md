@@ -150,34 +150,34 @@ al leader; no se parte sin su OK.
 
 ## Tasks
 
-- [ ] **T1 — Punto de partida** (R1100, R1107). Worktree al día con `origin/dev`; `.env` copiado al
+- [x] **T1 — Punto de partida** (R1100, R1107). Worktree al día con `origin/dev`; `.env` copiado al
   worktree (sin leerlo); base desechable de `## Cómo se verifica`. Correr los 15 archivos tal cual y
   anotar p/f/s en `progress/impl_SLT-183.md`. Si alguno ya pasa, o ya no está en el baseline, se anota y
   sale del alcance. *Hecho:* tabla «antes» con 15 filas.
-- [ ] **T2 — Geografía** (R1100-R1105, R1103): `geografia-cascada-reversible`,
+- [x] **T2 — Geografía** (R1100-R1105, R1103): `geografia-cascada-reversible`,
   `geografia-registro-accion`, `geografia-renombrado`, `cobertura-repository`. Cambiar la lectura del
   actor por `crearUsuarioDePrueba` (o el camino de `superadmin-32` si el actor es superadmin) dentro de
   la tx; control positivo. *Hecho:* los 4 verdes en la base de R1100, 0 saltados.
-- [ ] **T3 [P con T2] — Avisos y migraciones de eventos** (R1100-R1105, R1103):
+- [x] **T3 [P con T2] — Avisos y migraciones de eventos** (R1100-R1105, R1103):
   `notificacion-evento-cierre-rechazado-migration`, `notificacion-evento-geocodificacion-caida-migration`,
   `notificacion-evento-reparto-manana-migration`, `notificacion-evento-traspaso-migration`,
   `reparto-manana-aviso-dedupe`, `whatsapp-envio-idempotencia-programado`,
   `webhook-suscripcion-circuito-migracion`. *Hecho:* ídem, 7 archivos.
-- [ ] **T4 [P con T2] — Usuarios, API keys y vistas** (R1100-R1105): `api-key-eliminar`,
+- [x] **T4 [P con T2] — Usuarios, API keys y vistas** (R1100-R1105): `api-key-eliminar`,
   `asistente-uso-diario.int`, `usuario-contar-adminsatelites`, `vista-filtro`. *Hecho:* ídem, 4 archivos.
-- [ ] **T5 — Base con datos ajenos** (R1101, R1103, R1109). Depende de T2-T4. Repetir los 15 con la
+- [x] **T5 — Base con datos ajenos** (R1101, R1103, R1109). Depende de T2-T4. Repetir los 15 con la
   empresa ajena confirmada; si el código hace una lectura global, sembrar lo que lee en la empresa del
   caso y correr como `servi_app` (patrón `comoApp`). *Hecho:* 15/15 iguales que en R1100; 0 filas
   propias tras cada archivo con siembra confirmada.
-- [ ] **T6 — Mutaciones** (R1106). Depende de T5. Una por archivo. *Hecho:* tabla mutación → caso
+- [x] **T6 — Mutaciones** (R1106). Depende de T5. Una por archivo. *Hecho:* tabla mutación → caso
   rojo → restaurado en `progress/impl_SLT-183.md`; árbol limpio de mutaciones.
-- [ ] **T7 — Baseline** (R1107, R1108). Borrar las entradas de los verdes; reescribir el motivo de los
+- [x] **T7 — Baseline** (R1107, R1108). Borrar las entradas de los verdes; reescribir el motivo de los
   que sigan rojos por otra causa (o parar, R1108). *Hecho:* `git diff tests/baseline-rojos.json` solo
   quita claves del alcance o reescribe sus motivos.
-- [ ] **T8 — Cierre** (R1109-R1112). `pnpm run typecheck`, `pnpm run lint`, `./init.sh` en verde;
+- [x] **T8 — Cierre** (R1109-R1112). `pnpm run typecheck`, `pnpm run lint`, `./init.sh` en verde;
   `git diff --name-only origin/dev -- lib/ app/ components/ hooks/ db/ scripts/ .github/ package.json`
   vacío; `node scripts/tamano-pr.mjs` bajo el tope. En `progress/impl_SLT-183.md`: mapa R → test, salidas
-  y, tras el PR, el run de CI con «sin rojos nuevos» y 0 «por limpiar». *Hecho:* todo lo anterior escrito.
+  y, tras el PR, el run de CI con «sin rojos nuevos» y 0 «por limpiar». *Hecho:* todo lo anterior escrito. (CI del PR pendiente.)
 
 **Trazabilidad prevista:**
 
