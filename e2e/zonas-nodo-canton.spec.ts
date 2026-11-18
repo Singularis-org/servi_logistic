@@ -226,6 +226,17 @@ function casillaDelCanton(page: Page) {
 
 test("(1) A asigna el cantón entero: ve el aviso de impacto, confirma y queda en `zona_nodo`", async ({ browser }) => {
   test.setTimeout(300_000);
+  // Precondición: nadie más tiene el cantón. Si un test posterior falla, Playwright reintenta el describe
+  // serial entero y el `beforeAll` siembra empresas nuevas; la asignación del intento anterior (de una
+  // empresa de E2E, `humo-…`) seguiría en `zona_nodo` y la lectura de abajo vería una fila de más.
+  // Se borran solo las de empresas de E2E que no son las de este intento.
+  await base().zonaNodo.deleteMany({
+    where: {
+      nodoGeograficoId: elegido().id,
+      organizacionId: { notIn: [de("A").empresa.organizacionId, de("B").empresa.organizacionId] },
+      organizacion: { slug: { startsWith: "humo-" } },
+    },
+  });
   const page = await comoMaestro(browser, "A");
   await editarZona(page, "A");
 
@@ -274,9 +285,11 @@ test("(2) una orden nueva en un distrito del cantón sale con la zona de A y el 
 
   const orden = await base().orden.findFirstOrThrow({
     where: { numRemision: rem },
-    select: { zonaId: true, distritoId: true, organizacionId: true },
+    select: { zonaId: true, nodoGeograficoId: true, organizacionId: true },
   });
-  expect(orden).toEqual({ zonaId: de("A").zonaId, distritoId: distrito.id, organizacionId: de("A").empresa.organizacionId });
+  // SLT-48 R15: la orden guarda solo su nodo; las FK viejas quedan en NULL
+  // (el id de la vista `distrito` es el del nodo de profundidad 3).
+  expect(orden).toEqual({ zonaId: de("A").zonaId, nodoGeograficoId: distrito.id, organizacionId: de("A").empresa.organizacionId });
 
   // R41: el precio de ese distrito es el de la tarifa de la zona de A (flete + su IVA).
   const cot = await cotizar("A", distrito);

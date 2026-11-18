@@ -1562,3 +1562,39 @@ Medido en `geografia-mover-nodo-cede`, con una escritura temporal a un archivo d
 Mapa: P4/R35 y P1/R40 suman `geografia-mover-nodo-entre-fases.test.ts` (4 casos). P1, el tope, sigue en `geografia-mover-nodo-cede.test.ts`.
 
 Veredicto: tope de 1 s / 2 s (peor caso ~3 s; medido ~1 s y ~2 s). La fase 2 bloquea y vuelve a comprobar el destino y su cadena, y vuelve a pasar por P1 las órdenes corregidas entre fases, sin coste extra.
+
+## CI PR #225 — zonas-nodo-canton (frontend_dev, 2026-11-18)
+
+Rojo de `e2e (aislamiento)` en `e2e/zonas-nodo-canton.spec.ts` (de SLT-89). Archivo tocado: solo ese spec.
+
+**(2) :261 — rojo de verdad, por R15.** La orden nueva ya no escribe las FK viejas.
+- Antes: `select { zonaId, distritoId, organizacionId }` y `toEqual({ zonaId, distritoId: distrito.id, organizacionId })`.
+- Después: `select { zonaId, nodoGeograficoId, organizacionId }` y `toEqual({ zonaId, nodoGeograficoId: distrito.id, organizacionId })`,
+  con `// SLT-48 R15: la orden guarda solo su nodo; las FK viejas quedan en NULL`.
+- `distrito.id` sale de la vista `distrito`, que es `SELECT n.id ... FROM nodo_geografico n WHERE n.profundidad = 3`
+  (migración `20261117120100_slt48_geografia_vieja_a_vistas`): su id es el del nodo.
+
+**(1) :227 — no idempotente (anterior a SLT-48).** El describe es `serial`: al fallar (2), Playwright reintenta el
+bloque entero; el `beforeAll` siembra empresas nuevas, pero la fila de `zona_nodo` que (1) creó para la zona de A
+del intento anterior sigue ahí, y la lectura de :258 ve una fila de más. Arreglo, sin tocar aserciones: al empezar,
+(1) borra las filas de `zona_nodo` de ese cantón de empresas de E2E (`slug` `humo-…`) que no son las A y B de este intento.
+
+**Resto de `e2e/`:** sin más aserciones sobre `provinciaId`/`cantonId`/`distritoId` de una orden nueva. Los usos que
+quedan son siembras de órdenes por fixture (`_dos-empresas-fixture`, `_wallet-iva-sl39-siembra`, `cobro-plataforma-sl40`,
+`pago-plataforma-sl45`), lecturas de vistas o de `zona_distrito`, no aserciones.
+
+**Salida local** (`servi_logistic_slt48`, `E2E_PUERTO=3048`, `E2E_SERVIDOR=dev`,
+`pnpm exec playwright test e2e/zonas-nodo-canton.spec.ts --project aislamiento --no-deps --retries=0`):
+```
+[1/3] (1) A asigna el cantón entero ... queda en `zona_nodo`
+[2/3] (2) una orden nueva en un distrito del cantón sale con la zona de A y el precio de su tarifa
+[3/3] (3) B no ve la zona de A ni tiene cobertura en el cantón
+  3 passed (23.0s)
+```
+Nota: sin `--project aislamiento --no-deps`, el comando corre antes su dependencia `plataforma-vacia`, que en local
+falla en `superadmin-empresas.spec.ts:224` (el `.env` local trae correo a medias: «El correo no está configurado» no
+aparece) y deja los 3 sin correr. Es del entorno local, no de este cambio.
+
+`NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck` → `tsc --noEmit`, exit 0. `eslint` del spec: limpio.
+
+Veredicto: (2) afirma el nodo (R15) y (1) es idempotente ante el reintento del describe serial; verde en local.
