@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { randomUUID } from "node:crypto";
 import { Prisma, type PrismaClient } from "@prisma/client";
 
 import { anularMovimientoAction } from "@/lib/actions/wallet-anulacion";
 import { RechazoTiendaCobroRepository } from "@/lib/repositories/RechazoTiendaCobroRepository";
 
-import { HAY_BASE_DE_DATOS, crearPrismaDeTest, fksDeOrden, type FksDeOrden } from "./_postgres-real";
+import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
 import { conCandado459, limpiar459, sembrarPersonas459, type Personas459 } from "./_fixtures/escrituras-459";
 
 // SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
@@ -32,13 +33,19 @@ const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
 describeSiHayBase("458-B/TB.9 — R67: dos anulaciones a la vez dejan UN solo juego de contra-asientos (Postgres real)", () => {
   let prisma: PrismaClient;
-  let fks: FksDeOrden;
+  /** SLT-181 — solo catalogo y geografia, por clave: la zona la siembra el caso que la usa. */
+  let catalogo: { estatusId: string; provinciaId: string; cantonId: string };
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const f = await fksDeOrden(prisma);
-    if (f === null) throw new Error("hay DATABASE_URL pero la tabla `orden` esta vacia: corre `pnpm run db:seed`");
-    fks = f;
+    const estatus = await prisma.orderStatus.findUnique({ where: { value: "en_preparacion" }, select: { id: true } });
+    if (estatus === null) throw new Error("falta el estado «en_preparacion»: corre `pnpm run db:seed`");
+    const canton = await prisma.canton.findFirst({
+      where: { nombre: "Cartago", provincia: { nombre: "Cartago" } },
+      select: { id: true, provinciaId: true },
+    });
+    if (canton === null) throw new Error("falta la geografia Cartago/Cartago: aplica las migraciones");
+    catalogo = { estatusId: estatus.id, provinciaId: canton.provinciaId, cantonId: canton.id };
   });
 
   afterAll(async () => {
@@ -89,10 +96,29 @@ describeSiHayBase("458-B/TB.9 — R67: dos anulaciones a la vez dejan UN solo ju
       let ordenId: string | null = null;
       let gestionId: string | null = null;
       let cobroId: string | null = null;
+      let zonaId: string | null = null;
       try {
+        // SLT-181 (R1063) — la zona del caso, COMMITEADA en la empresa de las personas, con clave
+        // unica; se borra en el `finally`, antes de que `limpiar459` borre la empresa.
+        const zona = await prisma.zona.create({
+          data: {
+            nombre: `Zona 458C ${randomUUID()}`,
+            sinpeNumero: "80000000",
+            sinpeNombre: "Titular de Prueba",
+            organizacionId: p.organizacionId,
+          },
+          select: { id: true },
+        });
+        zonaId = zona.id;
+        expect(
+          await prisma.zona.count({ where: { id: zonaId, organizacionId: p.organizacionId } }),
+          "SLT-181: la zona commiteada no esta en la base",
+        ).toBe(1);
+        const fks = { ...catalogo, zonaId };
         const orden = await prisma.orden.create({
           data: {
             numRemision: `R458C-${Date.now().toString(36)}`,
+            organizacionId: p.organizacionId,
             destinatario: "Dest",
             telefonoDest: "88880000",
             producto: "Prod",
@@ -106,7 +132,13 @@ describeSiHayBase("458-B/TB.9 — R67: dos anulaciones a la vez dejan UN solo ju
         });
         ordenId = orden.id;
         const gestion = await prisma.gestionOrden.create({
-          data: { ordenId, mensajeroId: p.mensajero.usuarioId, resultado: "devolucion_a_origen_por_rechazo", cierreId: null },
+          data: {
+            ordenId,
+            mensajeroId: p.mensajero.usuarioId,
+            resultado: "devolucion_a_origen_por_rechazo",
+            cierreId: null,
+            organizacionId: p.organizacionId,
+          },
           select: { id: true },
         });
         gestionId = gestion.id;
@@ -164,6 +196,7 @@ describeSiHayBase("458-B/TB.9 — R67: dos anulaciones a la vez dejan UN solo ju
           await prisma.gestionOrden.deleteMany({ where: { id: gestionId } });
         }
         if (ordenId !== null) await prisma.orden.deleteMany({ where: { id: ordenId } });
+        if (zonaId !== null) await prisma.zona.deleteMany({ where: { id: zonaId } });
       }
     });
   }, 120_000);
