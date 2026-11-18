@@ -525,6 +525,8 @@ Unit e integración, sin E2E nuevo (decisión «E2E»). La integración corre co
 | R36 | `tests/unit/actions/geografia-plataforma-action.test.ts` |
 | R37 | `tests/unit/services/geografia-service.test.ts`, `tests/unit/services/pais-service.test.ts` |
 
+<!-- SLT-48 «Geografía jerárquica: retirar modelo viejo» T5.1 (autorizado por el humano el 2026-11-18): se retiraron de tests/integration/db/geografia-por-pais.test.ts «R10: una provincia creada sin país queda en CR» y «R11: el cantón y el distrito heredan el país del padre aunque se pida otro». SLT-48 retira las tablas viejas (son vistas, SLT-48 R1): el DEFAULT 'CR' de provincia y el trigger geografia_pais_del_padre ya no existen; el nodo exige su país y la FK compuesta (padre_id, pais_id) rechaza otro, que sigue probando el mismo archivo («R11: un nodo en otro país que su padre…»). Por eso no lleva `@test-desaparecido`. -->
+
 Requisitos de la enmienda 2026-10-26:
 
 | R | Test |

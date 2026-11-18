@@ -16,8 +16,9 @@ import { crearNodoDeNivel } from "@/tests/fabricas/paises";
 //   · R21: las dos tablas de zona apuntan a su `distrito_id`, igual.
 //   · Lo que estos triggers pueden tumbar (regla 6 de la épica), dejado a la vista: la orden sin cantón
 //     falla como antes (NOT NULL, no el trigger); una orden previa al script (nodo NULL) sigue
-//     escribiéndose; borrar un distrito con orden no falla; y la única forma de que la FK nueva rechace
-//     una escritura es un distrito sin nodo, que solo existe con la sincronía apagada a mano.
+//     escribiéndose. (SLT-48 T5.1 retiró «borrar un distrito con orden no falla» y «la FK nueva solo
+//     rechaza un distrito sin nodo»: el borrado por la tabla vieja es `SL048` y esa FK ya no existe,
+//     SLT-48 R2 y R4.)
 //   · `cierre_detail` no tiene trigger (R40) y las tres FK nacen sin validar (R24).
 //
 // Todo dentro de una transacción del dueño que siempre se revierte, sobre el escenario `XA` de
@@ -168,40 +169,6 @@ describeSiHayBase("SLT-43 — nodo de la orden y de las zonas (R20, R21)", () =>
     expect(r.otraColumna).toBeNull();
     expect(r.trasOtraColumna).toBeNull();
     expect(r.trasGeografia).toBe(r.e.geo.distritoId);
-  });
-
-  it("borrar un distrito con orden no falla: la orden pasa a su cantón antes de que caiga el nodo", async () => {
-    const r = await conEscenario(async (tx, e) => {
-      const estado = await intentar(tx, `DELETE FROM distrito WHERE id = $1`, e.geo.distritoId);
-      const [orden] = await tx.$queryRawUnsafe<{ distrito_id: string | null; nodo_geografico_id: string | null }[]>(
-        `SELECT distrito_id, nodo_geografico_id FROM orden WHERE id = $1`,
-        e.ordenConDistritoId,
-      );
-      const zonas = await tx.zonaDistrito.count({ where: { id: e.zonaDistritoId } });
-      return { e, estado, orden, zonas };
-    });
-    expect(r.estado).toBeNull();
-    expect(r.orden).toEqual({ distrito_id: null, nodo_geografico_id: r.e.geo.cantonId });
-    expect(r.zonas).toBe(0);
-  });
-
-  it("la FK nueva solo rechaza un distrito SIN nodo (sincronía apagada a mano): 23503 en orden y zonas", async () => {
-    const r = await conEscenario(async (tx, e) => {
-      await tx.$executeRawUnsafe(`ALTER TABLE distrito DISABLE TRIGGER distrito_sincroniza_nodo_geografico`);
-      const huerfano = await crearNodoDeNivel(tx, 3, { nombre: `Barrio sin nodo ${randomUUID().slice(0, 8)}`, padreId: e.geo.cantonId });
-      await tx.$executeRawUnsafe(`ALTER TABLE distrito ENABLE TRIGGER distrito_sincroniza_nodo_geografico`);
-      return {
-        orden: await intentar(tx, `UPDATE orden SET distrito_id = $2 WHERE id = $1`, e.ordenSinDistritoId, huerfano.id),
-        zona: await intentar(tx, `UPDATE zona_distrito SET distrito_id = $2 WHERE id = $1`, e.zonaDistritoId, huerfano.id),
-        especial: await intentar(
-          tx,
-          `UPDATE distrito_zona_especial SET distrito_id = $2 WHERE id = $1`,
-          e.distritoZonaEspecialId,
-          huerfano.id,
-        ),
-      };
-    });
-    expect(r).toEqual({ orden: "23503", zona: "23503", especial: "23503" });
   });
 
   it("R21: `zona_distrito` y `distrito_zona_especial` apuntan a su distrito al crear y al cambiarlo; a mano se pisa", async () => {

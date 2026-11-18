@@ -667,6 +667,8 @@ migraciones usa base propia (prefijo `slt46_`, molde `base-propia-43.ts`).
 | R62 | `GeografiaPlataformaAltaPais.test.tsx` (título «Niveles 2 (máximo 10)» con 2 filas y «Niveles 10 (máximo 10)» con 10; con 2 filas no se puede quitar; con 10 no se puede agregar) |
 | R63 | `tests/unit/types/pais-schemas.test.ts` (acepta `disponible` true/false, opcional, rechaza no booleanos), `tests/integration/db/pais-alta-tipos.test.ts` (país con `disponible=false`, `true` y sin él → false, true, true en el `RETURNING` del mismo insert y en la base; historial = R37; historial caído → no queda el país) y `GeografiaPlataformaAltaPais.test.tsx` (casilla desmarcada; resumen «Disponibilidad»; la action recibe `disponible`; aviso con 2 y 4 niveles, no con 3) |
 
+<!-- SLT-48 «Geografía jerárquica: retirar modelo viejo» T5.1 (autorizado por el humano el 2026-11-18): se retiraron los casos R4, R5 y R6 de tests/integration/db/slt46-nodo-copia-vieja.test.ts y los 4 casos R13 que desviaban una fila vieja de tests/integration/db/geo-equivalencia-geografia.test.ts. SLT-48 retira la sincronía y la copia vieja: la copia nodo → tabla vieja ya no existe (SLT-48 R5) y las tablas viejas son vistas del nodo (SLT-48 R1), así que no hay bucle, ni único viejo que choque, ni fila vieja que pueda diferir del nodo. El archivo sigue existiendo con R2, R3, R7 y R44 (y R13 con sus casos «iguales»), por eso no lleva `@test-desaparecido`. Lo que sigue vivo lo cubre tests/integration/db/slt48-vistas-geografia.test.ts (R1–R3, R5 de SLT-48). -->
+
 ## 12. Alternativas descartadas
 
 1. **Dejar elegir el tipo de cada nodo** (decisión 2 de la épica al pie de la letra). Un nodo de

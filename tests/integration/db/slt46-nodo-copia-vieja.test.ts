@@ -5,21 +5,18 @@ import path from "node:path";
 import type { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { SQLSTATE_NODO_CAMBIA_DE_TABLA_VIEJA } from "@/lib/db/sqlstate";
 import { crearPaisDePrueba } from "@/tests/fabricas/paises";
-import { SQL_INSERTAR_NODO, argumentosDeNodo, insertarNodo, tiposDeNivel, type TiposDeNivel } from "./_fixtures/geo-43";
+import { insertarNodo, tiposDeNivel, type TiposDeNivel } from "./_fixtures/geo-43";
 import { MIGRACIONES } from "./_fixtures/ida-y-vuelta-32";
-import { intentar, revertida } from "./_fixtures/pais-20";
+import { revertida } from "./_fixtures/pais-20";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
 
 // SLT-46 (T2.2; design §2.2) — la copia nodo → geografía vieja (`20261106120100`), contra Postgres.
 //   · R2: alta, renombre, código, retiro y reactivación de nodos de profundidad 1, 2 y 3 dejan la
 //     fila de provincia/cantón/distrito con el mismo id, nombre, código, `activo`, padre y país.
 //   · R3: un nodo de profundidad 4 no crea ni cambia ninguna fila vieja.
-//   · R4: sin bucle (la sentencia termina, `pg_trigger_depth` ≤ 3), una fila por id a cada lado y el
-//     nodo que originó la escritura intacto; en la otra dirección (SQL sobre `provincia`) igual.
-//   · R5: un único de la tabla vieja tumba la escritura del nodo entera (23505), sin nodo ni fila vieja.
-//   · R6: cambiar la profundidad de una hoja de 1–3 (o hacia 1–3) → `SLT46`, sin escribir.
+//   · R4, R5 y R6 (sin bucle, el único de la tabla vieja y el cambio de profundidad) se retiraron en
+//     SLT-48 T5.1: la copia nodo → tabla vieja ya no existe (SLT-48 R5) y las tablas viejas son vistas.
 //   · R7: borrar físicamente un nodo de 1–3 borra su fila vieja.
 //   · R44: el trigger de `orden` y los de las zonas siguen con el cuerpo de SLT-43, y las zonas
 //     siguen apuntando a `distrito`.
@@ -27,11 +24,6 @@ import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres
 // Los nodos se escriben por SQL como DUEÑO dentro de una transacción que siempre se revierte (la
 // misma escritura que hará `GeoRepository` en T3, sin depender de él). País de prueba `XA`: códigos
 // libres, sin regla de dígitos.
-//
-// R5 sin apagar triggers (design §11 proponía crear la fila vieja con la sincronía apagada, lo que
-// pide base propia): un nodo de profundidad 1 escrito a mano con OTRO tipo del país pasa el único del
-// nodo (país, tipo, código) pero no el de `provincia` (país, código). Es el caso que el comentario de
-// la migración describe como «solo por SQL a mano», y basta para ver que la copia arrastra la sentencia.
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
@@ -70,7 +62,7 @@ async function filasViejas(tx: TxDeTest, id: string): Promise<(Fila & { tabla: s
 
 const TABLA = { 1: "provincia", 2: "canton", 3: "distrito" } as const;
 
-/** R2/R4: exactamente una fila vieja con ese id, en la tabla de su profundidad, igual al nodo. */
+/** R2: exactamente una fila vieja con ese id, en la tabla de su profundidad, igual al nodo. */
 async function esperarCopiaIgual(tx: TxDeTest, id: string): Promise<void> {
   const nodo = await filaDelNodo(tx, id);
   expect(nodo, `sin nodo ${id}`).toBeDefined();
@@ -114,7 +106,7 @@ async function conRama<T>(
   });
 }
 
-describeSiHayBase("SLT-46 — copia del nodo a la geografía vieja (R2–R7, R44)", () => {
+describeSiHayBase("SLT-46 — copia del nodo a la geografía vieja (R2, R3, R7, R44)", () => {
   beforeAll(() => {
     base = crearPrismaDeTest();
   });
@@ -176,103 +168,6 @@ describeSiHayBase("SLT-46 — copia del nodo a la geografía vieja (R2–R7, R44
     expect(r.despues).toBe(r.antes);
     expect(r.viejas).toEqual([]);
     expect(r.distrito).toHaveLength(1);
-  });
-
-  it("R4: escribir el nodo termina sin bucle (pg_trigger_depth ≤ 3), con una fila por id y el nodo intacto; y lo mismo desde la provincia por SQL", async () => {
-    const r = await revertida(base, async (tx) => {
-      // Un trigger de medida en las cuatro tablas, dentro de la transacción revertida (el DDL se va con ella).
-      await tx.$executeRawUnsafe(`CREATE TEMP TABLE profundidades (d int) ON COMMIT DROP`);
-      await tx.$executeRawUnsafe(`CREATE FUNCTION slt46_medir_profundidad() RETURNS trigger LANGUAGE plpgsql AS $$
-        BEGIN INSERT INTO profundidades VALUES (pg_trigger_depth()); RETURN NULL; END $$`);
-      for (const tabla of ["nodo_geografico", "provincia", "canton", "distrito"]) {
-        await tx.$executeRawUnsafe(
-          `CREATE TRIGGER slt46_medir AFTER INSERT OR UPDATE OR DELETE ON ${tabla} FOR EACH ROW EXECUTE FUNCTION slt46_medir_profundidad()`,
-        );
-      }
-      await crearPaisDePrueba(tx, "XA");
-      const t = await tiposDeNivel(tx, "XA");
-      const s = sufijo();
-      const p = await insertarNodo(tx, { paisId: "XA", tipoId: t.nivel1, padreId: null, profundidad: 1, nombre: `Región ${s}` });
-      const c = await insertarNodo(tx, { paisId: "XA", tipoId: t.nivel2, padreId: p, profundidad: 2, nombre: `Comuna ${s}` });
-      await tx.$executeRawUnsafe(`UPDATE nodo_geografico SET nombre = $2, activo = false WHERE id = $1`, c, `Comuna nueva ${s}`);
-      for (const id of [p, c]) await esperarCopiaIgual(tx, id);
-      const [nodoC] = await tx.$queryRawUnsafe<{ tipo_id: string; nombre: string; nombre_normalizado: string; activo: boolean }[]>(
-        `SELECT tipo_id, nombre, nombre_normalizado, activo FROM nodo_geografico WHERE id = $1`,
-        c,
-      );
-
-      // La otra dirección: SQL sobre la provincia → la sincronía de SLT-43 → la copia, que no reescribe.
-      await tx.$executeRawUnsafe(`UPDATE provincia SET nombre = $2, codigo_dta = 'P9' WHERE id = $1`, p, `Región por SQL ${s}`);
-      await esperarCopiaIgual(tx, p);
-      const [prov] = await tx.$queryRawUnsafe<{ nombre: string; codigo: string }[]>(
-        `SELECT nombre, codigo_dta AS codigo FROM provincia WHERE id = $1`,
-        p,
-      );
-      const [maxima] = await tx.$queryRawUnsafe<{ d: number; n: number }[]>(`SELECT max(d)::int AS d, count(*)::int AS n FROM profundidades`);
-      return { s, t, nodoC, prov, maxima };
-    });
-    expect(r.nodoC).toEqual({
-      tipo_id: r.t.nivel2,
-      nombre: `Comuna nueva ${r.s}`,
-      nombre_normalizado: `comuna nueva ${r.s}`,
-      activo: false,
-    });
-    expect(r.prov).toEqual({ nombre: `Región por SQL ${r.s}`, codigo: "P9" });
-    // Control: el trigger de medida corrió, y los ecos sí llegaron a la segunda tabla.
-    expect(r.maxima.n).toBeGreaterThan(4);
-    expect(r.maxima.d).toBeGreaterThanOrEqual(2);
-    expect(r.maxima.d).toBeLessThanOrEqual(3);
-  });
-
-  it("R5: si la copia choca con un único de la tabla vieja, falla la sentencia entera con 23505 y no queda ni el nodo ni la fila vieja", async () => {
-    const r = await conRama(async ({ tx, s }) => {
-      // Otro tipo del país: el único del nodo (país, tipo, código) no ve el «R1» de la provincia.
-      const otroTipo = await crearTipo(tx, "XA", "region_especial");
-      const id = randomUUID();
-      const antes = await contarViejas(tx);
-      const [historial] = await tx.$queryRawUnsafe<{ n: number }[]>(`SELECT count(*)::int AS n FROM historial_plataforma`);
-      const error = await intentar(
-        tx,
-        SQL_INSERTAR_NODO,
-        ...argumentosDeNodo({ id, paisId: "XA", tipoId: otroTipo, padreId: null, profundidad: 1, nombre: `Especial ${s}`, codigoOficial: "R1" }),
-      );
-      const [historialDespues] = await tx.$queryRawUnsafe<{ n: number }[]>(`SELECT count(*)::int AS n FROM historial_plataforma`);
-      return { error, nodo: await filaDelNodo(tx, id), viejas: await filasViejas(tx, id), antes, despues: await contarViejas(tx), historial: historial.n, historialDespues: historialDespues.n };
-    });
-    expect(r.error).toBe("23505");
-    expect(r.nodo).toBeUndefined();
-    expect(r.viejas).toEqual([]);
-    expect(r.despues).toBe(r.antes);
-    expect(r.historialDespues).toBe(r.historial);
-  });
-
-  it("R6: cambiar la profundidad de una hoja de 1–3, o llevar una de 4 a 3, se rechaza con SLT46 sin escribir nada", async () => {
-    const r = await conRama(async ({ tx, t, s, p, c, d }) => {
-      const tipo4 = await crearTipo(tx, "XA", "nivel_4");
-      const otroDistrito = await insertarNodo(tx, { paisId: "XA", tipoId: t.nivel3, padreId: c, profundidad: 3, nombre: `Hoja ${s}` });
-      const hoja2 = await insertarNodo(tx, { paisId: "XA", tipoId: t.nivel2, padreId: p, profundidad: 2, nombre: `Hoja 2 ${s}` });
-      const hoja4 = await insertarNodo(tx, { paisId: "XA", tipoId: tipo4, padreId: d, profundidad: 4, nombre: `Sector ${s}` });
-      const antes = { otro: await filasViejas(tx, otroDistrito), nodo: await filaDelNodo(tx, otroDistrito), viejas: await contarViejas(tx) };
-      const errores = {
-        // El invariante de SLT-43 lo deja pasar (hoja, padre de profundidad 3 → 4): lo frena la copia.
-        de3a4: await intentar(tx, `UPDATE nodo_geografico SET padre_id = $2, profundidad = 4 WHERE id = $1`, otroDistrito, d),
-        de4a3: await intentar(tx, `UPDATE nodo_geografico SET padre_id = $2, profundidad = 3 WHERE id = $1`, hoja4, c),
-        // Una hoja de profundidad 2 que pasaría a raíz.
-        de2a1: await intentar(tx, `UPDATE nodo_geografico SET padre_id = NULL, profundidad = 1 WHERE id = $1`, hoja2),
-      };
-      return {
-        errores,
-        antes,
-        despues: { otro: await filasViejas(tx, otroDistrito), nodo: await filaDelNodo(tx, otroDistrito) },
-        hoja4: await filaDelNodo(tx, hoja4),
-        viejasHoja4: await filasViejas(tx, hoja4),
-      };
-    });
-    expect(SQLSTATE_NODO_CAMBIA_DE_TABLA_VIEJA).toBe("SLT46");
-    expect(r.errores).toEqual({ de3a4: "SLT46", de4a3: "SLT46", de2a1: "SLT46" });
-    expect(r.despues).toEqual({ otro: r.antes.otro, nodo: r.antes.nodo });
-    expect(r.hoja4?.profundidad).toBe(4);
-    expect(r.viejasHoja4).toEqual([]);
   });
 
   it("R7: borrar físicamente un nodo de profundidad 3 (y luego su cantón y su provincia) borra su fila vieja en la misma sentencia", async () => {

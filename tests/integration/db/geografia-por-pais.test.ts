@@ -15,8 +15,9 @@ import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type FksDeOrden, type TxDeTest } 
 
 // SL-20 (T1.2, T1.4, T1.7; design §2.3–§2.5) — la geografía cuelga del país, contra Postgres real.
 //   · R2: los 585 nodos de Costa Rica están en `CR`, y cada cantón y distrito en el país de su padre.
-//   · R11: el país del cantón y del distrito lo pone el trigger desde el padre; la FK compuesta
-//     rechaza un hijo en otro país, también si alguien cambia el país del padre (ON UPDATE RESTRICT).
+//   · R11: la FK compuesta rechaza un hijo en otro país, también si alguien cambia el país del padre
+//     (ON UPDATE RESTRICT). (SLT-48 T5.1 retiró «R10: … queda en CR» y «R11: … heredan el país del
+//     padre»: el `DEFAULT 'CR'` y el trigger `geografia_pais_del_padre` ya no existen.)
 //   · R15/R16: nombre de provincia y código únicos POR PAÍS; dos países pueden repetirlos.
 //   · R12: con la RLS, una empresa solo ve la geografía de su país.
 //   · R13/R38: una orden, una zona–distrito o una marca de zona especial con geografía de otro país
@@ -95,36 +96,6 @@ describeSiHayBase("SL-20 — geografía por país", () => {
       huerfanos: 0,
       desalineados: 0,
     });
-  });
-
-  it("R10: una provincia creada sin país queda en CR", async () => {
-    const pais = await revertida(base, async (tx) => {
-      const p = await tx.provincia.create({ data: { nombre: `Sin país ${randomUUID()}` }, select: { paisId: true } });
-      return p.paisId;
-    });
-    expect(pais).toBe("CR");
-  });
-
-  it("R11: el cantón y el distrito heredan el país del padre aunque se pida otro", async () => {
-    const r = await revertida(base, async (tx) => {
-      const xa = await paisXA(tx);
-      const cr = await geografiaCR(tx);
-      // Se pide CR para un cantón de una provincia de XA: el trigger lo pisa con XA.
-      const canton = randomUUID();
-      await tx.$executeRawUnsafe(
-        `INSERT INTO canton (id, nombre, provincia_id, pais_id) VALUES ($1, $2, $3, 'CR')`,
-        canton,
-        `Cantón ${canton}`,
-        xa.provinciaId,
-      );
-      return {
-        canton: await paisDe(tx, "canton", xa.cantonId),
-        distrito: await paisDe(tx, "distrito", xa.distritoId),
-        pedidoCR: await paisDe(tx, "canton", canton),
-        distritoCR: await paisDe(tx, "distrito", cr.distritoId),
-      };
-    });
-    expect(r).toEqual({ canton: "XA", distrito: "XA", pedidoCR: "XA", distritoCR: "CR" });
   });
 
   // SLT-48 (design §9): las tablas viejas son vistas; la FK compuesta `(padre_id, pais_id)` que se mide
