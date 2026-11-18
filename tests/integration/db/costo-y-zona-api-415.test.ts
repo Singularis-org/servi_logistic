@@ -11,9 +11,9 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTestConEspia,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 
 /**
  * ⏳ 2026-09-10 — FEATURE 415 (T7): `zona` Y EL COSTO, EJECUTADOS CONTRA POSTGRES.
@@ -120,41 +120,12 @@ const T = {
 describeSiHayBase("ficha 415 — zona y costo por orden, contra Postgres real", () => {
   let prisma: PrismaClient;
   let eventos: { query: string }[];
-  let fks: NonNullable<Awaited<ReturnType<typeof fksDeOrden>>>;
-  let usuarios: { id: string }[];
-  let zonas: { id: string; nombre: string; esCentral: boolean }[];
   let estatusId: string;
 
   beforeAll(async () => {
     const espia = crearPrismaDeTestConEspia();
     prisma = espia.prisma;
     eventos = espia.eventos;
-
-    const encontradas = await fksDeOrden(prisma);
-    if (encontradas === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar. " +
-          "Corre `pnpm run db:seed` antes de esta suite.",
-      );
-    }
-    fks = encontradas;
-
-    usuarios = await prisma.usuario.findMany({ select: { id: true }, take: 2 });
-    if (usuarios.length < 2) {
-      throw new Error(
-        "hacen falta al menos DOS usuarios: uno es la tienda duena y el otro la tienda ajena " +
-          "que demuestra que el `tienda_id` CONGELADO acota (R33).",
-      );
-    }
-
-    zonas = await prisma.zona.findMany({
-      select: { id: true, nombre: true, esCentral: true },
-      take: 2,
-      orderBy: { nombre: "asc" },
-    });
-    if (zonas.length < 2) {
-      throw new Error("hacen falta al menos DOS zonas en el catalogo: corre `pnpm run db:seed`.");
-    }
 
     const est = await prisma.orderStatus.findFirst({
       where: { value: "en_bodega_central" },
@@ -199,7 +170,31 @@ describeSiHayBase("ficha 415 — zona y costo por orden, contra Postgres real", 
   async function escenario() {
     return enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const [tiendaPropia, tiendaAjena] = usuarios;
+      // SLT-181 — las DOS tiendas (la duena y la ajena que demuestra que el `tienda_id` CONGELADO
+      // acota, R33) y las DOS zonas nacen en ESTA tx: nada se lee de la base salvo catalogos.
+      const fks = await crearFksDeOrden(tx);
+      const tiendaAjena = await crearUsuarioDePrueba(tx, "adminTienda");
+      // La zona A es la CENTRAL: la aritmetica de `COSTO_REAL_ESPERADO` es la de `esCentral: true`.
+      for (const [letra, esCentral] of [["A", true], ["B", false]] as const) {
+        await tx.zona.create({
+          data: {
+            nombre: `Zona fixture 415-${letra} ${SUFIJO}`,
+            sinpeNumero: "80000000",
+            sinpeNombre: "Titular de Prueba",
+            esCentral,
+          },
+        });
+      }
+      const tiendaPropia = { id: fks.tiendaId };
+      // Control positivo: lo sembrado esta en la base, o el caso cae nombrando la fila.
+      const usuarios = await tx.usuario.count({ where: { id: { in: [tiendaPropia.id, tiendaAjena.id] } } });
+      expect(usuarios, "SLT-181: las dos tiendas sembradas no estan en la base").toBe(2);
+      const zonas = await tx.zona.findMany({
+        where: { nombre: { in: [`Zona fixture 415-A ${SUFIJO}`, `Zona fixture 415-B ${SUFIJO}`] } },
+        select: { id: true, nombre: true, esCentral: true },
+        orderBy: { nombre: "asc" },
+      });
+      expect(zonas, "SLT-181: las dos zonas sembradas no estan en la base").toHaveLength(2);
       const [zonaA, zonaB] = zonas;
 
       // ⭑ UNA FILA DE `tarifas` PARA EL PAR (tienda propia, zona A): es la VIGENTE con la que se
