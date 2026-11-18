@@ -237,3 +237,54 @@ Ninguna:
 
 ### Veredicto vuelta 3
 **OK con menores.** No hay bloqueantes ni mayores. Recomiendo, sin bloquear, bajar el tope (hallazgo 2) y bloquear y volver a comprobar el destino en la fase 2 (hallazgo 1).
+
+## Vuelta 4 (acotada a b4c957c5..40f83ad8)
+
+Alcance: 648f7eb9 (tope y segunda fase), b7115aa2 (test nuevo) y 40f83ad8 (bitácora).
+
+### Verificación ejecutada
+- Base limpia propia `servi_logistic_slt48_review` (`prisma migrate deploy`), borrada al terminar.
+- `pnpm run typecheck`: 0 errores. `eslint` de `GeoRepository.ts` y del test nuevo: 0 errores.
+- `vitest` de 7 archivos, 71 tests, todos verdes:
+  - `geografia-mover-nodo-entre-fases` (nuevo, 4 casos);
+  - `-cede`, `-carrera`, `geografia-mover-nodo` y `-ordenes`;
+  - `geografia-plataforma.mover` y `MoverNodoDialog`.
+
+### Tope
+- `TOPE_MOVER_MS` = 1 s (`lock_timeout` y `statement_timeout`) y `TIMEOUT_TRANSACCION_MOVER_MS` = 2 s.
+- Peor caso teórico para una empresa: los 2 s de transacción más una sentencia en vuelo de 1 s, unos 3 s. Deja unos 2 s de margen bajo los 5 s de cada tanda de la carga masiva.
+- `docs/architecture.md` y el comentario de `GeoRepository.ts` dicen lo mismo, con los valores medidos (~1 s y ~2 s).
+- Hallazgo 2 de la vuelta 3: cerrado.
+
+### Segunda fase
+- **Bloqueo:** `bloquearNodos` recibe el subárbol más `cadenaDelDestino` (el destino y sus antepasados).
+  - Va en una sola sentencia `… ORDER BY id FOR UPDATE`, así que los bloqueos se toman en orden de id y dos `mover` no se cruzan.
+  - El destino y sus antepasados no pueden estar en el subárbol, porque son de menos profundidad. Si se repitiera un id, `ANY` lo absorbe.
+- **Revisión:** `destinoSigueIgual` comprueba, con los bloqueos tomados, que cada nodo de la cadena existe, está activo y tiene el mismo padre (P4 y el árbol de P1). Si no, `cambio_concurrente`.
+- **Órdenes ya vistas:** `firmaDeOrden` (empresa, zona y nodo). Una orden vista cuya firma cambió vuelve a pasar por P1. Las nuevas siguen pasando. No cuesta una consulta más.
+- **Coste:** las altas de orden o de hijos que apunten a un antepasado del destino también esperan, con el mismo tope.
+- Hallazgo 1 de la vuelta 3: cerrado.
+
+### Test nuevo
+`geografia-mover-nodo-entre-fases`, 4 casos, verdes:
+- el destino se retira;
+- un antepasado se retira;
+- el destino cambia de padre;
+- una orden vista cambia de nodo y queda afectada.
+
+Los tres primeros dan `cambio_concurrente` sin escribir. El cuarto da `bloqueado` (P1).
+
+### Límites anotados en la bitácora: ¿pesan?
+- **Cambio de tarifas o marcas de una empresa entre las dos fases: no pesa.**
+  - Hace falta que el maestro de una empresa edite grupos o marcas de ese subárbol justo durante la fase 1 de un `mover` de plataforma, que es una operación rara.
+  - El efecto posible es un movimiento que P1 habría bloqueado con las tarifas nuevas. No hay pérdida de datos: es el mismo efecto que esa edición de tarifas tendría por sí sola sobre las órdenes abiertas.
+  - Basta con dejarlo anotado.
+- **Cambio de zona sin test propio: no pesa.**
+  - La zona entra en la misma `firmaDeOrden` que el nodo, y la compara la misma línea (`yaVistas.get(o.id) === firmaDeOrden(orden)`).
+  - El caso del nodo ya ejercita ese camino.
+
+### Regresiones
+Ninguna. La vista previa no cambia, y los tests de mover de las vueltas 1 a 3 siguen en verde.
+
+### Veredicto vuelta 4
+**OK.** No quedan bloqueantes, mayores ni menores de código. Para pasar a `done` solo quedan T7.1, T7.3 y T7.4, que hacen una persona y el CI: equivalencia y `explain` sobre la copia de producción, `gate-completo` en verde y backup.
