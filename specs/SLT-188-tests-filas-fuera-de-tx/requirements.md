@@ -124,7 +124,7 @@ Dos clases de fuga, que la ficha separa:
 
 ## Tasks
 
-- [ ] **T1 — Comprobación** (R1170, R1171, R1175, R1176, R1189). Script de foto/comparación + sus
+- [x] **T1 — Comprobación** (R1170, R1171, R1175, R1176, R1189). Script de foto/comparación + sus
   fixtures. Medir la foto de una base nueva. *Hecho:* fixtures 0/1/0 en verde; foto de base nueva
   anotada.
 - [ ] **T2 — Enganche en CI** (R1172-R1174). Pasos en `gate.yml` (foto antes y después en cada shard;

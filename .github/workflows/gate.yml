@@ -218,6 +218,15 @@ jobs:
           pnpm exec prisma migrate deploy
           pnpm run db:seed
 
+      # SLT-188 (R1171, R1172): foto de la base YA migrada y sembrada, ANTES de la suite: lo que traen
+      # migraciones y catalogos no cuenta como fuga. Va FUERA del checkout (las guardias barren el arbol).
+      # `continue-on-error`: si la foto falla, la suite corre igual y `comparar` deja un informe en
+      # `error` que `gate-completo` cuenta como fallo (falla cerrado, R1174).
+      - name: Foto de la base antes de la suite (SLT-188)
+        continue-on-error: true
+        shell: bash
+        run: pnpm exec tsx scripts/filas-fuera-de-tx.ts foto "$RUNNER_TEMP/filas-antes.json"
+
       - name: GATE_SHARD=${{ matrix.shard }}/3 ./init.sh --completo
         shell: bash
         run: |
@@ -229,6 +238,16 @@ jobs:
           # `sin-nombre-heredado` cayo por `init-shard.log:2653`).
           set -o pipefail
           GATE_SHARD=${{ matrix.shard }}/3 bash ./init.sh --completo 2>&1 | tee "$RUNNER_TEMP/init-shard.log"
+
+      # SLT-188 (R1170, R1172): lo que la suite dejo confirmado respecto a la foto. Solo lee. Sale 1 si
+      # hay filas, pero el shard no da veredicto: el informe sube con el artefacto y lo juzga
+      # `gate-completo`. Se escribe en el workspace DESPUES de la suite (las guardias ya corrieron).
+      - name: Filas fuera de su transaccion (SLT-188)
+        if: always()
+        shell: bash
+        run: |
+          pnpm exec tsx scripts/filas-fuera-de-tx.ts comparar "$RUNNER_TEMP/filas-antes.json" filas-fuera-de-tx.json \
+            || echo "comparacion de filas fuera de tx: codigo $? (lo juzga gate-completo)"
 
       - name: Log del shard al workspace (solo para subirlo)
         if: always()
@@ -248,6 +267,7 @@ jobs:
             .vitest-rojos.json
             .vitest-codigo
             init-shard.log
+            filas-fuera-de-tx.json
           if-no-files-found: warn
           retention-days: 14
 
@@ -311,6 +331,28 @@ jobs:
           set -o pipefail
           bash ./init.sh --unir informes 3 2>&1 | tee init-completo.log
 
+      # SLT-188 (R1173, R1174): filas que cada shard dejo fuera de su transaccion. Nombra shard,
+      # organizacion, tabla y conteo, o dice «0 filas fuera de su transacción». Un shard sin informe
+      # cuenta como fallo. Node puro (Node 24 ejecuta el `.ts` quitandole los tipos; sin pnpm).
+      # MODO INFORME (T2): mide sin poner rojo. Pasa a `rojo` en T6 solo si el informe queda en 0.
+      - name: Filas fuera de su transaccion (SLT-188)
+        if: always() && needs.cambios.outputs.solo_docs != 'true'
+        shell: bash
+        env:
+          MODO_FILAS: informe
+        run: |
+          ESTADO=0
+          node --no-warnings scripts/filas-fuera-de-tx.ts unir informes 3 --modo "$MODO_FILAS" > filas-fuera-de-tx.log 2>&1 || ESTADO=$?
+          cat filas-fuera-de-tx.log
+          {
+            echo "## Filas fuera de su transacción (SLT-188, modo $MODO_FILAS)"
+            echo
+            echo '```'
+            cat filas-fuera-de-tx.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$ESTADO"
+
       - name: Resumen (poda del baseline de rojos)
         if: always() && needs.cambios.outputs.solo_docs != 'true'
         shell: bash
@@ -332,6 +374,7 @@ jobs:
           include-hidden-files: true
           path: |
             init-completo.log
+            filas-fuera-de-tx.log
             .vitest-rojos.json
           if-no-files-found: ignore
           retention-days: 14
