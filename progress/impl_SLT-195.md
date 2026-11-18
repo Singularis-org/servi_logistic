@@ -199,3 +199,4 @@ Veredicto: 21 de 22 archivos recuperados y fuera del baseline, sin tocar producc
 - `wallet-458-migration` entero en `servi_slt195_desechable` (con `migrate deploy` tras el merge):
   **8/8 en verde**, 0 saltados. Sale del baseline, con su línea en la poda de `_lee_esto`. Quedan 20 entradas.
 - La tabla de mutaciones se arregló: ya no tiene filas sueltas fuera de la tabla (menor de la review).
+- Gate rápido tras el merge de la vuelta 3: `== init OK ==`, **INIT_EXIT=0**.
