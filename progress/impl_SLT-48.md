@@ -1505,3 +1505,60 @@ Medido con un log temporal, que se quitó después:
 Mapa: P1/R40 (el tope de mover) suma `geografia-mover-nodo-cede.test.ts` (3 casos), «SLT-48 P1, review vuelta 2 — `mover` cede…» en `geografia-plataforma.mover.test.ts` y «P1, review vuelta 2 — mover cedió…» en `MoverNodoDialog.test.tsx`.
 
 Veredicto: `mover` cede siempre ante las escrituras de una empresa, con un tope de 2 s (4 s por transacción), y falla limpio con `ocupado`. P1 sigue cerrado.
+
+## Review vuelta 3 (backend_dev, 2026-11-18)
+
+Los dos menores de `progress/review_SLT-48.md > Vuelta 3`, que hacen cumplir decisiones del humano (tope corto, P4 y P1). Base: `servi_logistic_slt48_gate`, local y limpia (`prisma migrate deploy`: sin pendientes). No se usó el grafo: bastaron Grep y Read sobre lo de esta feature.
+
+### 1. Tope: 1 s y 2 s (hallazgo 2)
+- `TOPE_MOVER_MS` = 1 000 ms y `TIMEOUT_TRANSACCION_MOVER_MS` = 2 × tope = 2 000 ms (`lib/repositories/GeoRepository.ts`).
+- Justificación en el comentario de las constantes. El peor caso teórico de una escritura de empresa es el `timeout` de la transacción (2 s) más una sentencia en vuelo cortada por el `statement_timeout` (1 s): **~3 s**. Queda lejos de los 5 s de cada chunk de la carga masiva. Con el tope de la vuelta 2 eran ~6 s.
+- Tests: `geografia-mover-nodo-cede` ya leía las constantes exportadas, así que no cambió. Ninguna otra prueba de mover usa cifras del tope. `-carrera` pone su propio `lock_timeout` de 1,5 s, pero `mover` lo pisa con su `SET LOCAL` de 1 s, y sigue esperando `{ error: "55P03" }`. **Ninguna aserción numérica cambió.**
+- `docs/architecture.md`, bloque de mover un nodo: tope de 1 s, transacción de 2 s, peor caso de ~3 s y las cifras medidas nuevas.
+
+Medido en `geografia-mover-nodo-cede`, con una escritura temporal a un archivo del scratchpad que se quitó después:
+
+| Caso | Vuelta 2 (tope 2 s) | Vuelta 3 (tope 1 s) |
+|---|---|---|
+| 1. Una sentencia lenta con los bloqueos tomados: lo que espera la orden | 2 037 ms | **1 056 ms** |
+| 2. `mover` parado con los bloqueos: lo que espera la orden (`timeout` de Prisma) | 4 016 ms | **2 023 ms** |
+| 3. Una orden en vuelo: lo que espera `mover` (`lock_timeout`) | 2 108 ms | **1 101 ms** |
+
+### 2. El destino en la segunda fase (hallazgo 1)
+- **Bloqueo.** `bloquearNodos` recibe el subárbol más el destino y sus antepasados (`cadenaDelDestino`, nueva en `MovimientoEvaluado`), y los bloquea en **una sola sentencia** `FOR UPDATE` con `ORDER BY id`. El orden es el mismo para todos, así no hay interbloqueos con otro `mover`. El destino nunca está en el subárbol: R35 exige que tenga la profundidad del padre.
+  - El coste: mientras dura la fase 2, una orden o un hijo nuevo que apunte al destino o a un antepasado suyo también espera, con el mismo tope. Está anotado en el comentario de `bloquearNodos` y en `docs/architecture.md`.
+- **Comprobación.** `confirmarP1` empieza con `destinoSigueIgual`: cada nodo de la cadena existe, sigue activo (P4) y tiene el mismo `padre_id` que en la fase 1. Si no, devuelve `cambio_concurrente` antes de escribir nada.
+  - Usa `SELECT_FLAG_PROPIO` por la guardia `geografia-predicado-unico`. La primera versión llevaba un `activo: true` literal y la guardia la puso en rojo.
+- **Órdenes ya vistas que cambian.** `abiertasVistas` pasa de `Set<id>` a `Map<id, firma>`, con firma = `organizacionId|zonaId|nodoId` (`firmaDeOrden`). En la segunda pasada, `bloqueoDeMover` salta solo las órdenes con la misma firma; una orden a la que una corrección le cambió el nodo o la zona vuelve a pasar por P1.
+  - **Es gratis**: la consulta de la segunda pasada ya traía todas las órdenes abiertas del subárbol con `organizacionId`, `zonaId` y `nodoGeograficoId`. La comparación se hace en memoria, O(n) sobre esas filas. No hay consulta ni columna nueva, y no hace falta `updatedAt`.
+  - Una orden que se fue del subárbol deja de aparecer, y está bien: con el árbol nuevo ya no cuelga del nodo movido. Una que entró ya se miraba antes (no estaba en `yaVistas`).
+  - **Límite:** los cambios de tarifas (grupos o marcas de la empresa) entre fases no se vuelven a mirar. No estaban en el alcance del hallazgo.
+
+### Tests nuevos: `tests/integration/db/geografia-mover-nodo-entre-fases.test.ts` (país `XJ`, 4 casos)
+- El gancho entre fases usa el mismo proxy de `-cede`. Justo antes del `SET LOCAL lock_timeout` con el que empieza la fase 2, con la transacción abierta y sin bloqueos, otra conexión (`base`) escribe y confirma el cambio. El código de `mover` es el real. Sin sleeps; un cliente propio para `mover`, desconectado en `finally`, y el `afterAll` exige 0 residuos de `XJ`.
+- Árbol: Norte › Alto › {Centro, Oeste}; Sur › Bajo; Este. Marca de zona especial en Norte (Centro la hereda) y en Oeste (propia).
+
+| Caso | Cambio entre fases | Esperado |
+|---|---|---|
+| destino retirado | Alto → Sur; Sur pasa a `activo = false` | `cambio_concurrente`, `padre_id` igual, 0 filas de historial |
+| antepasado del destino retirado | Centro → Bajo; Sur (padre de Bajo) pasa a `activo = false` | ídem |
+| destino cambia de padre | Centro → Bajo; Bajo pasa de Sur a Este | ídem |
+| orden ya vista cambia de nodo | Alto → Sur con una orden en Oeste (no afectada; la vista previa da `bloqueo: null`). La corrección la pasa a Centro, que perdería la marca | `bloqueado` con 1 orden de la empresa, sin escribir |
+
+- **Rojo sin el arreglo**: con `lib` sin las tres piezas (sin la cadena en `bloquearNodos`, sin `destinoSigueIgual`, y saltando por id como antes), los 4 casos fallan con `{ estado: "movido" }`. Es decir: se colgaba el nodo de un padre retirado o de una cadena distinta, y la orden corregida quedaba fuera de P1.
+- El caso de zona no tiene test propio: la firma la incluye igual que el nodo, por el mismo camino de código.
+
+### Archivos
+- `lib/repositories/GeoRepository.ts`: constantes y su comentario, `firmaDeOrden`, `bloqueoDeMover` con `Map`, `cadenaDelDestino`, `destinoSigueIgual`, `confirmarP1` y `bloquearNodos` con la cadena del destino.
+- `docs/architecture.md`, bloque «Mover un nodo».
+- `tests/integration/db/geografia-mover-nodo-entre-fases.test.ts` (nuevo).
+
+### Salida (`NODE_OPTIONS=--max-old-space-size=8192`)
+- `pnpm run typecheck`: 0 errores.
+- `eslint` de `GeoRepository.ts` y del test nuevo: 0 problemas.
+- `vitest run tests/integration/db/geografia-mover-nodo* tests/unit/actions/geografia-plataforma.mover.test.ts tests/components/MoverNodoDialog.test.tsx` (más la guardia `geografia-predicado-unico`): **8 archivos, 82 tests, todos verdes**. Incluye `-carrera` (1), `-cede` (3), `-entre-fases` (4), `geografia-mover-nodo` y `-ordenes`.
+- `pnpm run test:guardias`: el único rojo que queda es `dependencias-declaradas-presentes` (4 tests), que está en el baseline como en vueltas anteriores. `geografia-predicado-unico` salió en rojo con la primera versión y quedó verde tras usar `SELECT_FLAG_PROPIO`.
+
+Mapa: P4/R35 y P1/R40 suman `geografia-mover-nodo-entre-fases.test.ts` (4 casos). P1, el tope, sigue en `geografia-mover-nodo-cede.test.ts`.
+
+Veredicto: tope de 1 s / 2 s (peor caso ~3 s; medido ~1 s y ~2 s). La fase 2 bloquea y vuelve a comprobar el destino y su cadena, y vuelve a pasar por P1 las órdenes corregidas entre fases, sin coste extra.
