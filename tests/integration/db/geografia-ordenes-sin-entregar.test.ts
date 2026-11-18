@@ -10,6 +10,7 @@ import {
   enTransaccionRevertida,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 
 /**
  * FICHA 374 (R60/R61) — **CUANTAS ORDENES SIN ENTREGAR CUELGAN DE UN NODO.** Contra Postgres.
@@ -47,22 +48,12 @@ interface Sembrado {
 
 describeSiHayBase("374/R61 — el conteo de ordenes sin entregar (Postgres real)", () => {
   let prisma: PrismaClient;
-  let tiendaId: string;
-  let zonaId: string;
   let estatusPorValor: Map<string, string>;
 
+  // SLT-184 (R1122): `tienda_id` y `zona_id` ya no salen de «la primera orden» de la base: se
+  // SIEMBRAN en la tx de cada caso con `crearFksDeOrden`. De la base solo se lee el catalogo.
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-
-    const fila = await prisma.orden.findFirst({ select: { tiendaId: true, zonaId: true } });
-    if (!fila) {
-      throw new Error(
-        "hay DATABASE_URL pero `orden` esta vacia: sin una fila de la que tomar `tienda_id` y " +
-          "`zona_id` no se puede sembrar el corpus. Este archivo NO debe pasar en verde asi.",
-      );
-    }
-    tiendaId = fila.tiendaId;
-    zonaId = fila.zonaId;
 
     const estatus = await prisma.orderStatus.findMany({ select: { id: true, value: true } });
     estatusPorValor = new Map(estatus.map((e) => [e.value, e.id]));
@@ -89,6 +80,10 @@ describeSiHayBase("374/R61 — el conteo de ordenes sin entregar (Postgres real)
   ): Promise<T> {
     return enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      const { tiendaId, zonaId } = await crearFksDeOrden(tx);
+      // SLT-184 (R1124): control positivo de lo sembrado.
+      expect(await tx.usuario.count({ where: { id: tiendaId } }), "SLT-184: la tienda sembrada no esta en la base").toBe(1);
+      expect(await tx.zona.count({ where: { id: zonaId } }), "SLT-184: la zona sembrada no esta en la base").toBe(1);
 
       const provincia = (
         await tx.provincia.create({ data: { nombre: `Prov cnt ${SUFIJO}` }, select: { id: true } })

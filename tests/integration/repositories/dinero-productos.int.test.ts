@@ -8,7 +8,9 @@ import {
   crearPrismaDeTest,
   enTransaccionRevertida,
   serializarEscriturasReales,
+  type FksDeOrden,
 } from "../db/_postgres-real";
+import { crearFksDeOrden } from "../db/_fixtures/orden-minima";
 import { prepararConsultaProductos } from "@/lib/analytics/productos-consulta";
 import type { ConsultaProductos } from "@/lib/analytics/productos-consulta";
 import { DineroProductosRepository } from "@/lib/repositories/DineroProductosRepository";
@@ -137,6 +139,9 @@ interface CifrasSql {
 describeSiHayBase("347 / B3.3 — DineroProductosRepository contra Postgres real", () => {
   let prisma: PrismaClient;
   let m: Medicion;
+  // SLT-184 (R1122): las FK de las ordenes (zona, estatus, geografia) sembradas en la tx de
+  // `medir`. Antes `crearOrden` tomaba «la primera zona» de la base: vacia no habia ninguna.
+  let fksSembradas: FksDeOrden | null = null;
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
@@ -162,6 +167,12 @@ describeSiHayBase("347 / B3.3 — DineroProductosRepository contra Postgres real
     // otros que corren en paralelo. Sin serializar, los locks de FK se toman en distinto orden
     // y Postgres mata a uno con `40P01`.
     await serializarEscriturasReales(tx);
+    fksSembradas = await crearFksDeOrden(tx);
+    // SLT-184 (R1124): control positivo de la zona sembrada.
+    expect(
+      await tx.zona.count({ where: { id: fksSembradas.zonaId } }),
+      "SLT-184: la zona sembrada no esta en la base",
+    ).toBe(1);
 
     const tiendaA = await crearUsuario(tx, "Tienda A del test 347");
     const tiendaB = await crearUsuario(tx, "Tienda B del test 347");
@@ -786,7 +797,8 @@ describeSiHayBase("347 / B3.3 — DineroProductosRepository contra Postgres real
   }
 
   async function crearCierre(tx: Tx, mensajeroId: string, estado: string): Promise<string> {
-    const zona = await tx.zona.findFirst({ select: { id: true } });
+    // SLT-184 (R1122): el destino es la zona SEMBRADA en `medir`, no «la primera» de la base.
+    const zona = fksSembradas === null ? null : { id: fksSembradas.zonaId };
     if (!zona) throw new Error("sin `zona` sembrada no se puede crear el cierre del test");
     const { id } = await tx.cierreDia.create({
       data: {
@@ -801,26 +813,19 @@ describeSiHayBase("347 / B3.3 — DineroProductosRepository contra Postgres real
   }
 
   async function crearOrden(tx: Tx, tiendaId: string, producto: string): Promise<string> {
-    const canton = await tx.canton.findFirst({ select: { id: true, provinciaId: true } });
-    const zona = await tx.zona.findFirst({ select: { id: true } });
-    const estatus = await tx.orderStatus.findFirst({ select: { id: true } });
-    if (!canton || !zona || !estatus) {
-      throw new Error(
-        "La base de pruebas no tiene catalogos de geografia/estatus sembrados: corre " +
-          "`pnpm db:seed`. Este test NO se salta en ese caso a proposito.",
-      );
-    }
+    const fks = fksSembradas;
+    if (fks === null) throw new Error("SLT-184: falta sembrar las FK de orden (`crearFksDeOrden`) en `medir`");
     const sufijo = randomUUID().slice(0, 12);
     const { id } = await tx.orden.create({
       data: {
         numRemision: `t347-${sufijo}`,
-        estatusId: estatus.id,
+        estatusId: fks.estatusId,
         destinatario: "Destinatario de prueba",
         telefonoDest: "00000000",
         tiendaId,
-        zonaId: zona.id,
-        provinciaId: canton.provinciaId,
-        cantonId: canton.id,
+        zonaId: fks.zonaId,
+        provinciaId: fks.provinciaId,
+        cantonId: fks.cantonId,
         producto,
       },
       select: { id: true },
