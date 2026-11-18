@@ -104,3 +104,13 @@ PR: https://github.com/Singularis-org/servi_logistic/pull/224, contra `dev`, mon
 ## Tamaño
 51 archivos: 17 de producción y 34 de tests. El humano aceptó ~48 (marcador `tamano-pr-aceptado`). Las 3 de más
 son tests que el cambio rompía; están anotados en `tasks.md`.
+
+## Review vuelta 1: m2 y m3 (2026-11-18)
+- m2: el JSDoc de `aplicarVersion` queda en una sola versión: solo lo usa la promoción, y la fila del historial la
+  escribe `escribirPrecioDelCambio` («Gana el último»).
+- m3: salen la rama muerta `escribirPrecio`, el valor por defecto de `opciones` y el parámetro `precioDesde`. El
+  llamador ahora es `aplicarVersion(tx, antes, version, ACTOR_SISTEMA, { sincronizarModulos: false })`.
+- Salida: `typecheck` 0 errores; eslint del archivo, exit 0. Con `--no-file-parallelism` en `servi_logistic_slt135`,
+  sobre `planes-cambio-programado`, `planes-cambio-por-empresa`, `plan-precio-historial`, `plan-descuento-periodo`,
+  `planes-edicion-en-uso` y `tests/unit/repositories/planes-repository-tipo-cobro`: `Test Files 6 passed (6)`,
+  `Tests 63 passed (63)`, 0 skipped.

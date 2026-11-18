@@ -454,24 +454,21 @@ async function escribirRastro(
 
 /**
  * Aplica una versión del plan (§5.3, §16.3): columnas, topes por rol, módulos incluidos y la
- * diferencia de módulos en cada empresa que tiene el plan EN ESTE MOMENTO (R17). Solo enciende lo
- * La usa el aplicador del cambio programado (T11); SLT-135 quitó la edición inmediata. El ciclo de las
- * La comparten la edición inmediata y el aplicador del cambio programado (T11). El ciclo de las
- * empresas no se toca (R38): no escribe `plan_ciclo_ancla_at`. SLT-86 (R15): tampoco su entrada, tipo ni
- * período; el precio nuevo les llega por el historial, desde su primer período que empiece en `precioDesde`.
+ * diferencia de módulos en cada empresa que tiene el plan EN ESTE MOMENTO (R17). Solo la usa la promoción
+ * del cambio programado (T11): SLT-135 quitó la edición inmediata. No escribe la fila del historial de
+ * precios: la escribe aparte `escribirPrecioDelCambio`, que decide con «Gana el último» (SLT-135 R6). El ciclo de las empresas no
+ * se toca (R38): no escribe `plan_ciclo_ancla_at`. SLT-86 (R15): tampoco su entrada, tipo ni período.
  */
 async function aplicarVersion(
   tx: Tx,
   antes: PlanDTO,
   version: VersionPlan,
   actor: ActorCongelado,
-  /** SLT-86 (§1.2; R15): desde cuándo rige el precio nuevo, si la versión lo cambia. */
-  precioDesde: Date,
   /**
    * SLT-128 (design §3.2; R10): al promover, cada empresa ya recibió sus módulos: repetirlos borraría las
-   * excepciones de R4. El precio lo escribe aparte `escribirPrecioDelCambio`, como al recibir.
+   * excepciones de R4.
    */
-  opciones: { sincronizarModulos: boolean; escribirPrecio: boolean } = { sincronizarModulos: true, escribirPrecio: true },
+  opciones: { sincronizarModulos: boolean },
 ): Promise<void> {
   await tx.plan.update({
     where: { id: antes.id },
@@ -487,11 +484,6 @@ async function aplicarVersion(
     },
   });
   await guardarDescuentos(tx, antes.id, version.precio);
-  // R15: el precio vigente y su fila del historial cambian juntos; sin cambio de precio, ninguna fila.
-  if (opciones.escribirPrecio && cambiaElPrecio(diferenciasDelPlan(antes, { ...antes, ...version }))) {
-    const vigente = (await leerPlan(tx, antes.id)) as PlanDTO;
-    await escribirPrecioDelHistorial(tx, antes.id, precioDesde, vigente.precio);
-  }
   await tx.planTopeRol.deleteMany({ where: { planId: antes.id } });
   await tx.planTopeRol.createMany({ data: filasDeTopes(version.topes).map((t) => ({ planId: antes.id, ...t })) });
   await tx.planModulo.deleteMany({ where: { planId: antes.id } });
@@ -926,10 +918,7 @@ async function promoverEnTx(tx: Tx, pendiente: PendienteCompleto): Promise<void>
   }
   const cambios = diferenciasDelPlan(antes, { ...antes, ...version });
   if (hayCambios(cambios)) {
-    await aplicarVersion(tx, antes, version, ACTOR_SISTEMA, pendiente.vigenteDesde, {
-      sincronizarModulos: false,
-      escribirPrecio: false,
-    });
+    await aplicarVersion(tx, antes, version, ACTOR_SISTEMA, { sincronizarModulos: false });
     await escribirPrecioDelCambio(tx, antes, pendiente.vigenteDesde, version.precio);
   }
   // R28: antes de borrar las versiones propias del plan, cada no aplicada se queda con la que tenía (su fila propia
