@@ -184,6 +184,29 @@ Veredicto (punto 5): hecho. La tarjeta del mensajero-reposo trae parada, peso y 
     un conteo. Ahora espera el texto visible (`findByText` con `:not(.sr-only)`).
   - 2.ª pasada: `INIT_EXIT=0`.
 
+## CI rojo del #226 (run 44405827100, sobre `b9bd54de`): la guía oculta en «Recoger en bodega»
+
+- **Síntoma:** cinco tests de `e2e (reparto)` fallan con la guía de la tarjeta `hidden`: `asignacion-satelite:45` y
+  `mis-asignaciones:119/140/157/175`.
+- **Causa medida:** la cabecera de la tarjeta Mosaico era `flex` sin `wrap`. La columna de los chips es `shrink-0` y
+  la de la guía, `min-w-0`. Con los chips a 12 px (versión `d8bf6e62`, en todos los anchos), en la tarjeta estrecha de
+  Recoger (1280 px, escritorio) los chips se comían la fila y la guía quedaba en 0 px de ancho. No había ningún nodo
+  duplicado.
+- **Comprobación (con `next build` en cada paso):**
+  - con la tarjeta de `d8bf6e62` tal cual, `mis-asignaciones` + `asignacion-satelite` dan **rojo**: `Received: hidden`
+    ×3 en el resumen y `E2E=1`;
+  - con la misma tarjeta más solo `flex-wrap` en la cabecera, `5 passed`. La causa es esa.
+- **Arreglo:** la cabecera lleva `flex flex-wrap` (`PosOrderCardMosaico.tsx`). Si los chips no caben, bajan de línea y
+  la guía conserva su ancho. Con eso queda protegido también el móvil, donde los chips siguen a 12 px (`max-md:`).
+  Desde md, la tarjeta ya volvía a los tamaños de dev (B1).
+- **Test:** `PosOrderCardMosaicoLegible.test.tsx` «la cabecera de la tarjeta envuelve…», que exige además un solo nodo
+  con la guía. Resultado: `8 passed`.
+- **E2E en HEAD**, tras `next build`, `npx playwright test --project=reparto`: `48 passed (2.0m)`, `E2E=0`. Incluye
+  `mis-asignaciones` 4/4, `asignacion-satelite` 1/1, `pwa-mensajero-botones-44` 5/5, `-reparto` 5,
+  `-recoger-recoleccion` 8, `-mapa` 3 y `-ranking` 6, más los demás specs del proyecto.
+
+Gate rápido tras el arreglo: `INIT_EXIT=0`.
+
 ## No verificado
 
 - El aspecto real en modo oscuro (captura). Las medidas salen del E2E (tamaños, disposición, desborde) y el contraste

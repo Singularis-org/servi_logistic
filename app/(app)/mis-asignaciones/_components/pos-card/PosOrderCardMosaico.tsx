@@ -93,7 +93,10 @@ export function PosOrderCardMosaico({
           : ""
       }`}
     >
-      <header className="flex items-start justify-between gap-2">
+      {/* SLT-200: `flex-wrap`. Si los chips no caben junto a la guía, bajan de línea. Sin él, la columna
+          de los chips (`shrink-0`) estrujaba la de la guía (`min-w-0`) hasta 0 px y la guía quedaba
+          oculta (CI del #226: «Recoger en bodega», guía `hidden` con los chips a 12 px). */}
+      <header className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           {mostrarRuta ? (
             <span

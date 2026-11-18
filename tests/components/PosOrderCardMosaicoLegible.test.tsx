@@ -156,3 +156,17 @@ describe("SLT-200 — desde md, la tarjeta Mosaico como antes", () => {
     expect(clases(icono)).toEqual(expect.arrayContaining(["size-3", "max-md:size-3.5"]));
   });
 });
+
+// SLT-200 (CI del #226): con los chips más grandes, la columna de los chips (`shrink-0`) estrujaba la de
+// la guía (`min-w-0`) hasta 0 px y la guía quedaba oculta en «Recoger en bodega». La cabecera envuelve:
+// si los chips no caben, bajan de línea y la guía conserva su ancho. La medida es del E2E
+// `mis-asignaciones` (la guía visible en «Recoger en bodega»).
+describe("SLT-200 — la guía no se queda sin ancho por los chips", () => {
+  it("la cabecera de la tarjeta envuelve (`flex-wrap`) en vez de estrujar la guía", () => {
+    const { container } = montar();
+    const cabecera = container.querySelector("article > header")!;
+    expect(clases(cabecera)).toEqual(expect.arrayContaining(["flex", "flex-wrap"]));
+    // Un solo nodo con la guía en la cabecera.
+    expect(Array.from(cabecera.querySelectorAll("p")).filter((p) => p.textContent === "REM-QX-7")).toHaveLength(1);
+  });
+});
