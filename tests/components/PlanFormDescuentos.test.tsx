@@ -330,15 +330,15 @@ describe("SLT-86 R10, R23 — los errores de un descuento van junto a su línea"
 });
 
 describe("SLT-86 R22, R23 — «Rige desde» al editar el precio", () => {
-  it("R23: sin tocar el precio sigue «Aplicar» (SLT-58) y no se pide «Rige desde»", async () => {
+  it("R23: sin tocar el precio sigue «A partir de» (SLT-58; SLT-135 R14) y no se pide «Rige desde»", async () => {
     const user = userEvent.setup();
     montarEditar();
     await avanzarHasta(user, VIGENCIA);
-    expect(screen.getByRole("radiogroup", { name: "Aplicar" })).toBeInTheDocument();
+    expect(screen.getByLabelText("A partir de")).toBeInTheDocument();
     expect(screen.queryByLabelText("Rige desde")).toBeNull();
   });
 
-  it("R23: cambiar el costo base pide «Rige desde» con mañana por defecto y su ayuda, en lugar de «Aplicar»", async () => {
+  it("R23: cambiar el costo base pide «Rige desde» con mañana por defecto y su ayuda, en lugar de «A partir de»", async () => {
     const user = userEvent.setup();
     const enviar = montarEditar();
     await avanzarHasta(user, PRECIO);
@@ -353,7 +353,7 @@ describe("SLT-86 R22, R23 — «Rige desde» al editar el precio", () => {
     expect(fecha).toHaveAccessibleDescription(
       "Cada empresa paga el precio nuevo desde su primer período que empiece en esa fecha o después.",
     );
-    expect(screen.queryByRole("radiogroup", { name: "Aplicar" })).toBeNull();
+    expect(screen.queryByLabelText("A partir de")).toBeNull();
 
     await terminar(user);
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
@@ -389,7 +389,7 @@ describe("SLT-86 R22, R23 — «Rige desde» al editar el precio", () => {
     await escribir(user, "anual", "10");
     await avanzarHasta(user, VIGENCIA);
     expect(screen.queryByLabelText("Rige desde")).toBeNull();
-    expect(screen.getByRole("radiogroup", { name: "Aplicar" })).toBeInTheDocument();
+    expect(screen.getByLabelText("A partir de")).toBeInTheDocument();
   });
 
   it("R22, R23: un validation_error de `vigenteDesde` va junto a «Rige desde» y conserva el precio escrito", async () => {

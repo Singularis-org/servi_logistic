@@ -83,6 +83,8 @@ const DETALLE: DetallePlan = {
 };
 
 const OK: PlanResult = { estado: "ok", planId: PLAN_ID, cambio: true, avisos: [], vigenteDesde: null };
+/** SLT-135 (R9): editar siempre programa; su `ok` con cambio lleva la fecha elegida. */
+const PROGRAMADO: PlanResult = { ...OK, vigenteDesde: "2030-02-01" };
 
 /** Una action inyectada que responde `r`. */
 const accion = (r: PlanResult) => vi.fn<(input: unknown) => Promise<PlanResult>>().mockResolvedValue(r);
@@ -93,7 +95,7 @@ function montar(
   acciones: Partial<Record<"editarPlan" | "archivarPlan" | "cancelarCambio", Accion>> = {},
   { abrirEditar = false }: { abrirEditar?: boolean } = {},
 ) {
-  const editarPlan = acciones.editarPlan ?? accion(OK);
+  const editarPlan = acciones.editarPlan ?? accion(PROGRAMADO);
   const archivarPlan = acciones.archivarPlan ?? accion(OK);
   const cancelarCambio = acciones.cancelarCambio ?? accion(OK);
   // SLT-144: confirmar el borrador en memoria llama a `editarPlan` con la petición de editar de hoy.
@@ -325,7 +327,7 @@ describe("SLT-58 R15 — editar y los avisos de topes pasados", () => {
   it("R15: tras guardar, muestra cada empresa que ya pasa un tope nuevo con el tope, su uso y el tope nuevo", async () => {
     const user = userEvent.setup();
     const editarPlan = accion({
-      ...OK,
+      ...PROGRAMADO,
       avisos: [
         { organizacionId: ORG, empresa: "Envíos Norte", tope: "mensajero", usados: 7, maximo: 5 },
         { organizacionId: ORG, empresa: "Envíos Norte", tope: "api_keys", usados: 3, maximo: 2 },
@@ -337,8 +339,9 @@ describe("SLT-58 R15 — editar y los avisos de topes pasados", () => {
     await terminar(user);
 
     await waitFor(() => expect(editarPlan).toHaveBeenCalledTimes(1));
-    expect(editarPlan.mock.calls[0][0]).toMatchObject({ planId: PLAN_ID, vigenteDesde: null });
-    expect(await screen.findByRole("status")).toHaveTextContent("Cambios guardados.");
+    // SLT-135 (R16): sin tocar la fecha, viaja la de por defecto (mañana), nunca `null`.
+    expect(editarPlan.mock.calls[0][0]).toMatchObject({ planId: PLAN_ID, vigenteDesde: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) });
+    expect(await screen.findByRole("status")).toHaveTextContent("Cambio programado desde 2030-02-01.");
     expect(
       screen.getByText("Envíos Norte ya tiene 7 usuarios activos con el rol Mensajero y el plan permite 5."),
     ).toBeInTheDocument();
@@ -353,12 +356,38 @@ describe("SLT-58 R15 — editar y los avisos de topes pasados", () => {
 
     const panel = await abrirEdicion(user);
     await avanzarHasta(user, "Cuándo rige");
-    await user.click(within(panel).getByRole("radio", { name: "A partir de" }));
-    await user.type(within(panel).getByLabelText("Fecha"), "2030-02-01");
+    await user.clear(within(panel).getByLabelText("A partir de"));
+    await user.type(within(panel).getByLabelText("A partir de"), "2030-02-01");
     await avanzarHasta(user, "Revisar y programar");
     await user.click(within(panel).getByRole("button", { name: "Programar cambio" }));
 
     expect(await screen.findByRole("status")).toHaveTextContent("Cambio programado desde 2030-02-01.");
+  });
+
+  it("R20: programar avisa con la fecha", async () => {
+    const user = userEvent.setup();
+    const editarPlan = accion({ ...OK, vigenteDesde: "2030-03-01" } satisfies PlanResult);
+    montar(DETALLE, { editarPlan });
+
+    const panel = await abrirEdicion(user);
+    await avanzarHasta(user, "Cuándo rige");
+    await user.clear(within(panel).getByLabelText("A partir de"));
+    await user.type(within(panel).getByLabelText("A partir de"), "2030-03-01");
+    await avanzarHasta(user, "Revisar y programar");
+    await user.click(within(panel).getByRole("button", { name: "Programar cambio" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Cambio programado desde 2030-03-01.");
+    expect(screen.queryByText("Cambios guardados.")).toBeNull();
+    expect(editarPlan.mock.calls[0][0]).toMatchObject({ planId: PLAN_ID, vigenteDesde: "2030-03-01" });
+
+    // Sin cambio: «No había nada que cambiar.».
+    cleanup();
+    const sinCambio = accion({ ...OK, cambio: false } satisfies PlanResult);
+    montar(DETALLE, { editarPlan: sinCambio });
+    await abrirEdicion(user);
+    await terminar(user);
+    expect(await screen.findByRole("status")).toHaveTextContent("No había nada que cambiar.");
+    expect(screen.queryByText("Cambios guardados.")).toBeNull();
   });
 
   it("R6: el panel abre el formulario por pasos", async () => {
@@ -576,7 +605,7 @@ describe("SLT-144 R13 — cerrar la edición con el borrador guardado", () => {
     await abrirEdicion(user);
     await terminar(user);
 
-    expect(await screen.findByRole("status")).toHaveTextContent("Cambios guardados.");
+    expect(await screen.findByRole("status")).toHaveTextContent("Cambio programado desde 2030-02-01.");
     expect(screen.queryByText("El borrador queda guardado. Puedes retomarlo luego.")).toBeNull();
   });
 });

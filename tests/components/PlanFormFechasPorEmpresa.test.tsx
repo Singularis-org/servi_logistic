@@ -100,10 +100,9 @@ async function guardarHasta(user: UserEvent, titulo: string) {
   expect(pasoActual()).toBe(titulo);
 }
 
-/** En «Cuándo rige», «A partir de» con esa fecha. */
-async function programarEl(user: UserEvent, fecha: string) {
-  await user.click(screen.getByRole("radio", { name: "A partir de" }));
-  fireEvent.change(screen.getByLabelText("Fecha"), { target: { value: fecha } });
+/** En «Cuándo rige», «A partir de» con esa fecha. SLT-135 (R14): el campo ya está, sin elegir nada antes. */
+async function programarEl(_user: UserEvent, fecha: string) {
+  fireEvent.change(screen.getByLabelText("A partir de"), { target: { value: fecha } });
 }
 
 /** Las filas de la tabla, sin la cabecera, como texto por celda. */
@@ -145,16 +144,24 @@ describe("R17 — la fecha en que cada empresa recibe el cambio", () => {
     ]);
   });
 
-  it("R17: De inmediato no muestra la tabla", async () => {
+  // SLT-135 (R19): sustituye «R17: De inmediato no muestra la tabla»; sin tocar nada, la fecha es mañana.
+  it("R19: con la fecha por defecto se pide y se muestra la tabla", async () => {
     const user = userEvent.setup();
-    const previsualizar: Previsualizar = vi.fn().mockResolvedValue(ok(EMPRESAS.map((e) => ({ ...e, recibeEl: null }))));
+    const previsualizar: Previsualizar = vi.fn().mockResolvedValue(ok(EMPRESAS));
     montar(previsualizar);
     await guardarHasta(user, "Cuándo rige");
-    expect(screen.getByRole("radio", { name: "De inmediato" })).toBeChecked();
+    expect(screen.getByLabelText("A partir de")).toHaveValue(MANANA);
 
-    await waitFor(() => expect(previsualizar).toHaveBeenCalledWith(expect.objectContaining({ vigenteDesde: null })));
-    await waitFor(() => expect(screen.queryByText("Calculando la fecha de cada empresa…")).not.toBeInTheDocument());
-    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument());
+    expect(previsualizar).toHaveBeenCalledWith({ planId: PLAN_ID, vigenteDesde: MANANA, topes: PLAN.topes });
+    expect(filas()).toEqual([
+      ["Acme", "Mensual", "2026-12-01"],
+      ["Beta", "Quincenal", "2026-12-16"],
+    ]);
+
+    // «Revisar y programar» también la pinta.
+    await guardarHasta(user, "Revisar y programar");
+    await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument());
   });
 
   it("R17: los pasos de antes no piden la fecha", async () => {
@@ -269,7 +276,7 @@ describe("R20 — cargando, error y respuestas viejas", () => {
     await programarEl(user, "2026-12-01");
     await waitFor(() => expect(previsualizar).toHaveBeenCalledTimes(1));
 
-    fireEvent.change(screen.getByLabelText("Fecha"), { target: { value: "2026-12-05" } });
+    fireEvent.change(screen.getByLabelText("A partir de"), { target: { value: "2026-12-05" } });
     await waitFor(() => expect(previsualizar).toHaveBeenCalledTimes(2));
     nueva.resolver(ok([{ ...EMPRESAS[0]!, recibeEl: "2026-12-05" }]));
     await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument());

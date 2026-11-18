@@ -87,10 +87,10 @@ Base desechable (`docs/verification.md`). Depende de T2.
 
 Depende de T1 (tipos).
 
-- [ ] **T5.1** `plan-form/estado.ts`, `plan-form/borrador.ts` y `plan-form/revision.ts` (§5): sin `aplicar`;
+- [x] **T5.1** `plan-form/estado.ts`, `plan-form/borrador.ts` y `plan-form/revision.ts` (§5): sin `aplicar`;
   `vigenteDesde` con mañana al editar; `camposEnOrden`, `valoresDelPaso`, `conVigencia` y `filaDeVigencia`.
   *Hecho:* typecheck verde en `plan-form/`.
-- [ ] **T5.2** `PasoCuandoRige.tsx`, `PlanForm.tsx`, `textos.ts` y `FechasPorEmpresa.tsx`:
+- [x] **T5.2** `PasoCuandoRige.tsx`, `PlanForm.tsx`, `textos.ts` y `FechasPorEmpresa.tsx`:
   - un solo campo de fecha;
   - «Programar cambio» siempre;
   - la fecha que viaja;
@@ -100,17 +100,17 @@ Depende de T1 (tipos).
   Depende de T5.1.
   *Hecho:* en pantalla, editar un plan muestra «A partir de» con mañana, la tabla de fechas y «Programar
   cambio»; ninguna cadena «De inmediato» en `app/`.
-- [ ] **T5.3 [P]** `PlanDetalle.tsx` (R20) y `PlanEmpresa.tsx` (`cambio_a_medias` → genérico).
+- [x] **T5.3 [P]** `PlanDetalle.tsx` (R20) y `PlanEmpresa.tsx` (`cambio_a_medias` → genérico).
   *Hecho:* typecheck y lint verdes.
 
 ## T6 · Tests del formulario — frontend_dev
 
 Depende de T5.
 
-- [ ] **T6.1 [P]** `tests/unit/planes/plan-form-borrador.test.ts` (R15) y `tests/unit/planes/plan-form-revision.test.ts`
+- [x] **T6.1 [P]** `tests/unit/planes/plan-form-borrador.test.ts` (R15) y `tests/unit/planes/plan-form-revision.test.ts`
   (R18).
   *Hecho:* verdes.
-- [ ] **T6.2 [P]** Los tests de componentes:
+- [x] **T6.2 [P]** Los tests de componentes:
   - `tests/components/PlanForm.test.tsx`: R14–R17. Fuera los de «De inmediato» y «vuelve a Guardar»;
   - `tests/components/PlanFormRevisar.test.tsx`: R18;
   - `tests/components/PlanFormFechasPorEmpresa.test.tsx`: R19;
@@ -168,7 +168,7 @@ Producción (17):
 - `app/(app)/plataforma/planes/[planId]/_components/PlanDetalle.tsx`
 - `app/(app)/plataforma/empresas/[organizacionId]/_components/PlanEmpresa.tsx`
 
-Tests (31):
+Tests (32):
 - `tests/unit/services/planes-service.test.ts`
 - `tests/unit/services/planes-service-periodo.test.ts`
 - `tests/unit/services/planes-service-costeo.test.ts`
@@ -185,6 +185,7 @@ Tests (31):
 - `tests/components/PlanFormFechasPorEmpresa.test.tsx`
 - `tests/components/PlanFormBorrador.test.tsx`
 - `tests/components/PlanDetalle.test.tsx`
+- `tests/components/PlanFormDescuentos.test.tsx` (añadido en T6.2: buscaba el grupo «Aplicar»)
 - `tests/integration/db/planes-cambio-por-empresa.test.ts`
 - `tests/integration/db/planes-cambio-programado.test.ts`
 - `tests/integration/db/plan-precio-historial.test.ts`
@@ -201,4 +202,4 @@ Tests (31):
 - `tests/integration/db/cobro-plataforma-plan.test.ts`
 - `e2e/planes-costo-porcentual.spec.ts`
 
-Total: 48 (tamaño aceptado por el humano el 2026-11-18, `tamano-pr-aceptado`).
+Total: 49 (tamaño aceptado por el humano el 2026-11-18, `tamano-pr-aceptado`).

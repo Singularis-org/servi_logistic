@@ -124,20 +124,20 @@ describe("SLT-130 R23 — «Revisar y programar»", () => {
     await avanzarHasta(user, "Revisar y programar");
 
     expect(
-      screen.getByText("Esto es lo que cambia. Nada se aplica hasta que pulses «Guardar»."),
+      screen.getByText("Esto es lo que cambia. Nada se aplica hasta que pulses «Programar cambio»."),
     ).toBeInTheDocument();
+    // SLT-135 (R15, R18): sin tocar la fecha, «A partir de» con mañana.
     expect(filas()).toEqual([
       ["Nombre", "Básico → Básico Plus"],
       ["Tope de Mensajero", "5 → 8"],
-      ["Aplicar", "De inmediato"],
+      ["A partir de", MANANA],
     ]);
     clavesEnNegrita();
     expect(screen.queryByText("Sin cambios.")).toBeNull();
 
-    // Con «A partir de», la fila de cuándo rige lleva su fecha y el botón pasa a «Programar cambio».
+    // Con otra fecha, la fila de cuándo rige la lleva.
     await user.click(botonDeLaLista("Cuándo rige"));
-    await user.click(screen.getByRole("radio", { name: "A partir de" }));
-    const fecha = screen.getByLabelText("Fecha");
+    const fecha = screen.getByLabelText("A partir de");
     await user.clear(fecha);
     await user.type(fecha, "2026-12-01");
     await avanzarHasta(user, "Revisar y programar");
@@ -158,7 +158,24 @@ describe("SLT-130 R23 — «Revisar y programar»", () => {
 
     expect(screen.getByText("Sin cambios.")).toBeInTheDocument();
     // La fila de cuándo rige se conserva.
-    expect(filas()).toEqual([["Aplicar", "De inmediato"]]);
+    expect(filas()).toEqual([["A partir de", MANANA]]);
     clavesEnNegrita();
+  });
+});
+
+describe("SLT-135 R18 — la fila de la fecha en «Revisar y programar»", () => {
+  it("R18: Revisar muestra A partir de", async () => {
+    const user = userEvent.setup();
+    montarEditar();
+    await avanzarHasta(user, "Cuándo rige");
+    const fecha = screen.getByLabelText("A partir de");
+    await user.clear(fecha);
+    await user.type(fecha, "2026-12-10");
+    await avanzarHasta(user, "Revisar y programar");
+
+    expect(filas()).toEqual([["A partir de", "2026-12-10"]]);
+    expect(screen.queryByText("Aplicar")).toBeNull();
+    expect(screen.queryByText("De inmediato")).toBeNull();
+    expect(screen.getByRole("button", { name: "Programar cambio" })).toBeInTheDocument();
   });
 });

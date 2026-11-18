@@ -162,8 +162,12 @@ describe("SLT-144 — valoresDelPaso y formDelBorrador", () => {
     });
   });
 
-  it("R2: los tres casos de vigencia", () => {
+  // SLT-135 (R15): sin «De inmediato», la vigencia siempre es una fecha; al editar abre con mañana.
+  it("R15: vigencia ida y vuelta con fecha, cambie o no el precio", () => {
     const base = baseDe("editar");
+    expect(base).toMatchObject({ precioDesde: "2026-11-18", vigenteDesde: "2026-11-18" });
+    expect(inicial(null, "2026-12-01", "2026-11-18").vigenteDesde).toBe("");
+
     const conPrecio = idaYVuelta(
       "editar",
       "vigencia",
@@ -172,13 +176,14 @@ describe("SLT-144 — valoresDelPaso y formDelBorrador", () => {
     );
     expect(conPrecio.ida).toEqual({ vigenteDesde: "2026-12-01" });
 
-    const programado = idaYVuelta("editar", "vigencia", { ...base, aplicar: "programado", vigenteDesde: "2026-12-15" });
-    expect(programado.ida).toEqual({ vigenteDesde: "2026-12-15" });
-    expect(programado.cargado).toMatchObject({ aplicar: "programado", vigenteDesde: "2026-12-15" });
+    expect(conPrecio.cargado).toMatchObject({ precioDesde: "2026-12-01", vigenteDesde: "2026-12-01" });
 
-    const inmediato = idaYVuelta("editar", "vigencia", { ...base, aplicar: "inmediato" });
-    expect(inmediato.ida).toEqual({ vigenteDesde: null });
-    expect(inmediato.cargado.aplicar).toBe("inmediato");
+    const sinPrecio = idaYVuelta("editar", "vigencia", { ...base, vigenteDesde: "2026-12-15" });
+    expect(sinPrecio.ida).toEqual({ vigenteDesde: "2026-12-15" });
+    expect(sinPrecio.cargado).toMatchObject({ precioDesde: "2026-12-15", vigenteDesde: "2026-12-15" });
+
+    // Sin tocar la fecha viaja la de por defecto, mañana.
+    expect(valoresDelPaso("editar", "vigencia", base, SIN_EXTRAS)).toEqual({ vigenteDesde: "2026-11-18" });
   });
 
   it("R2: un paso sin guardar deja la base y los guardados van encima", () => {

@@ -39,10 +39,8 @@ export const TEXTOS_PLAN_FORM = {
   minimoPorOrden: "Mínimo",
   /** SLT-118 (R35): la periodicidad de las facturas de órdenes del plan; las opciones, las del tipo de cobro. */
   periodicidadOrdenes: "Facturación de órdenes",
-  aplicar: "Aplicar",
-  inmediato: "De inmediato",
+  /** SLT-135 (R14): la etiqueta del campo de fecha de «Cuándo rige» cuando no cambia el precio. */
   programado: "A partir de",
-  fecha: "Fecha",
   fechaAyuda: "Rige desde las 00:00 de ese día, hora de la plataforma.",
   guardar: "Guardar",
   programar: "Programar cambio",

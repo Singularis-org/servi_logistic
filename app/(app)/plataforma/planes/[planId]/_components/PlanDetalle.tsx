@@ -102,7 +102,6 @@ const TEXTOS = {
   confirmarCancelarTexto: (fecha: string) => `El cambio previsto para ${fecha} no se aplicará; el plan sigue igual.`,
   confirmarCancelarBoton: "Cancelar cambio",
   volverAtras: "Volver",
-  guardadoInmediato: "Cambios guardados.",
   guardadoProgramado: (fecha: string) => `${textoCambioProgramado(fecha)}.`,
   sinCambios: "No había nada que cambiar.",
   archivado: "Plan archivado.",
@@ -251,12 +250,9 @@ export function PlanDetalle({
   function alEditar(r: Extract<PlanResult, { estado: "ok" }>) {
     guardadoEnElPanel.current = false;
     setEditando(false);
+    // SLT-135 (R20): editar siempre programa; sin cambio, «No había nada que cambiar.».
     const mensaje =
-      r.vigenteDesde !== null
-        ? TEXTOS.guardadoProgramado(r.vigenteDesde)
-        : r.cambio
-          ? TEXTOS.guardadoInmediato
-          : TEXTOS.sinCambios;
+      r.cambio && r.vigenteDesde !== null ? TEXTOS.guardadoProgramado(r.vigenteDesde) : TEXTOS.sinCambios;
     setDesenlace({ tipo: "ok", mensaje, avisos: r.avisos });
     router.refresh();
   }

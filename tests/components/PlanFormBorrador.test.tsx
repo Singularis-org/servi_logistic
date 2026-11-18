@@ -398,7 +398,9 @@ describe("R8, R9 — confirmar", () => {
     await user.clear(mensual);
     await user.type(mensual, "12");
     await guardarHasta(user, "Revisar y programar");
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    // SLT-135 (R16): con cambio de precio, el botón final también es «Programar cambio».
+    expect(screen.queryByRole("button", { name: "Guardar" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Programar cambio" }));
 
     await waitFor(() => expect(pasoActual()).toBe("Cuándo rige"));
     expect(screen.getByText("La fecha no puede ser anterior a hoy.")).toBeInTheDocument();

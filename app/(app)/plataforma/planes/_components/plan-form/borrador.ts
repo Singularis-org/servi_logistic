@@ -52,13 +52,8 @@ export function valoresDelPaso(
     case "modulos":
       return { modulos: version.modulos };
     case "vigencia":
-      return {
-        vigenteDesde: visibles.cambiaPrecio
-          ? form.precioDesde
-          : form.aplicar === "inmediato"
-            ? null
-            : form.vigenteDesde,
-      };
+      // SLT-135 (R15, R16): siempre la fecha del campo que se ve.
+      return { vigenteDesde: visibles.cambiaPrecio ? form.precioDesde : form.vigenteDesde };
   }
 }
 
@@ -150,12 +145,11 @@ function conTopes(f: Formulario, { topes }: ValoresDeTopes): Formulario {
 }
 
 /**
- * Con fecha, la misma en «Rige desde» y en «A partir de», en «programado»: sirve cambie o no el precio, que se
- * decide al comparar con el plan. Sin fecha es «De inmediato».
+ * La fecha guardada, la misma en «Rige desde» y en «A partir de»: sirve cambie o no el precio, que se decide al
+ * comparar con el plan. SLT-135 (R15): siempre hay fecha.
  */
 function conVigencia(f: Formulario, { vigenteDesde }: ValoresDeVigencia): Formulario {
-  if (vigenteDesde === null) return { ...f, aplicar: "inmediato" };
-  return { ...f, aplicar: "programado", precioDesde: vigenteDesde, vigenteDesde };
+  return { ...f, precioDesde: vigenteDesde, vigenteDesde };
 }
 
 /** R15: al retomar, el primer paso sin guardar; con todos guardados, «Revisar». */
