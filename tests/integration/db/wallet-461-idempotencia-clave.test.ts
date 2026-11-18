@@ -6,6 +6,7 @@ import { HAY_BASE_DE_DATOS, crearPrismaDeTest, enTransaccionRevertida, serializa
 import { cargarCatalogo459, montarServicios459 } from "./_fixtures/caja-459";
 import { sembrarPersonas461, type Personas461 } from "./_fixtures/personas-461";
 import { sqlstateDe } from "./_fixtures/sqlstate-461";
+import { crearOrganizacion } from "../../fabricas/organizaciones";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FICHA 461 / R66, R67, R68 (auditoria de la wallet, D2) — LA CLAVE DE IDEMPOTENCIA, contra Postgres.
@@ -176,9 +177,93 @@ describeSiHayBase("461/R66–R68 — la clave de idempotencia de los tres regist
     expect(m.caja).toEqual(["ACEPTADO", "23505"]);
     expect(m.tienda).toEqual(["ACEPTADO", "23505"]);
     expect(m.indices).toEqual([
-      'wallet_movimiento_clave_idempotencia_key: CREATE UNIQUE INDEX wallet_movimiento_clave_idempotencia_key ON public.wallet_movimiento USING btree (clave_idempotencia)',
-      'wallet_tienda_movimiento_clave_idempotencia_key: CREATE UNIQUE INDEX wallet_tienda_movimiento_clave_idempotencia_key ON public.wallet_tienda_movimiento USING btree (clave_idempotencia)',
+      'wallet_movimiento_clave_idempotencia_key: CREATE UNIQUE INDEX wallet_movimiento_clave_idempotencia_key ON public.wallet_movimiento USING btree (organizacion_id, clave_idempotencia)',
+      'wallet_tienda_movimiento_clave_idempotencia_key: CREATE UNIQUE INDEX wallet_tienda_movimiento_clave_idempotencia_key ON public.wallet_tienda_movimiento USING btree (organizacion_id, clave_idempotencia)',
     ]);
+  });
+
+  it("R67 · SLT-187: la MISMA clave en OTRA empresa NO choca: el unico es por (organizacion_id, clave_idempotencia)", async () => {
+    // `20261023090000_unicos_por_empresa` (SL-17) rehizo los dos unicos sobre la empresa: la clave
+    // la genera el cliente, y dos empresas no deben poder bloquearse entre si con ella.
+    const m = await conPersonas(async (tx, p) => {
+      const clave = randomUUID();
+      const otra = await crearOrganizacion(tx);
+      // Usuarios de la OTRA empresa (los triggers `verificar_misma_empresa` exigen que
+      // `registrado_por` y `tienda_id` sean de la empresa de la fila).
+      const usuarioDe = async (org: string, rol: string): Promise<string> => {
+        const id = randomUUID();
+        const sufijo = id.replace(/-/g, "").slice(0, 12);
+        await tx.$executeRawUnsafe(
+          `INSERT INTO "usuario"
+             ("id","nombre","email","telefono","password_hash","cedula","tipo_identificacion_id","rol_id","organizacion_id","updated_at")
+           VALUES ($1, $2, $3, '00000000', 'x', $4,
+                   (SELECT "id" FROM "tipo_identificacion" WHERE "value" = 'cedula'),
+                   (SELECT "id" FROM "rol" WHERE "value" = $5::"rol_value"), $6, CURRENT_TIMESTAMP)`,
+          id,
+          `SLT-187 ${rol}`,
+          `slt187-${sufijo}@example.test`,
+          `187${sufijo}`,
+          rol,
+          org,
+        );
+        return id;
+      };
+      const otroMaestro = await usuarioDe(otra.id, "maestro");
+      const otraTienda = await usuarioDe(otra.id, "Admin Tienda");
+      const insertarCaja = (org: string | null, registradoPor: string) =>
+        tx.$executeRawUnsafe(
+          `INSERT INTO "wallet_movimiento" ("id","tipo","categoria","monto","origen_tipo","origen_id","registrado_por","clave_idempotencia","organizacion_id")
+           VALUES ($1, 'egreso', 'egreso_ajuste', 1, 'manual', NULL, $2, $3,
+                   COALESCE($4, NULLIF(current_setting('app.organizacion_id', true), '')))`,
+          randomUUID(),
+          registradoPor,
+          clave,
+          org,
+        );
+      const insertarTienda = (org: string | null, tiendaId: string, registradoPor: string) =>
+        tx.$executeRawUnsafe(
+          `INSERT INTO "wallet_tienda_movimiento" ("id","tienda_id","tipo","categoria","monto","origen_tipo","origen_id","registrado_por","clave_idempotencia","organizacion_id")
+           VALUES ($1, $2, 'debito', 'cobro_manual', 1, 'manual', NULL, $3, $4,
+                   COALESCE($5, NULLIF(current_setting('app.organizacion_id', true), '')))`,
+          randomUUID(),
+          tiendaId,
+          registradoPor,
+          clave,
+          org,
+        );
+      const codigoDe = async (fn: () => Promise<unknown>): Promise<string> => {
+        const punto = `sp_${randomUUID().replace(/-/g, "")}`;
+        await tx.$executeRawUnsafe(`SAVEPOINT ${punto}`);
+        try {
+          await fn();
+          await tx.$executeRawUnsafe(`RELEASE SAVEPOINT ${punto}`);
+          return "ACEPTADO";
+        } catch (e) {
+          await tx.$executeRawUnsafe(`ROLLBACK TO SAVEPOINT ${punto}`);
+          return sqlstateDe(e);
+        }
+      };
+      const caja = [
+        await codigoDe(() => insertarCaja(null, p.maestro.usuarioId)),
+        await codigoDe(() => insertarCaja(otra.id, otroMaestro)),
+        // Control: en la MISMA empresa la clave repetida sigue chocando.
+        await codigoDe(() => insertarCaja(null, p.maestro.usuarioId)),
+      ];
+      const tienda = [
+        await codigoDe(() => insertarTienda(null, p.tiendaId, p.maestro.usuarioId)),
+        await codigoDe(() => insertarTienda(otra.id, otraTienda, otroMaestro)),
+        await codigoDe(() => insertarTienda(null, p.tiendaId, p.maestro.usuarioId)),
+      ];
+      // Control positivo: la clave quedo en DOS empresas distintas, una fila en cada una.
+      const empresas = await tx.$queryRawUnsafe<{ n: bigint }[]>(
+        `SELECT count(DISTINCT "organizacion_id") AS n FROM "wallet_movimiento" WHERE "clave_idempotencia" = $1`,
+        clave,
+      );
+      return { caja, tienda, empresas: Number(empresas[0].n) };
+    });
+    expect(m.caja).toEqual(["ACEPTADO", "ACEPTADO", "23505"]);
+    expect(m.tienda).toEqual(["ACEPTADO", "ACEPTADO", "23505"]);
+    expect(m.empresas, "SLT-187: la misma clave vive en dos empresas").toBe(2);
   });
 
   it("R67 · los NULL no chocan entre si: los asientos automaticos siguen entrando sin clave, tantos como haga falta", async () => {

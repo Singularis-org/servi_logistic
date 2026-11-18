@@ -9,6 +9,7 @@ import {
   enTransaccionRevertida,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import { SUPERFICIES_VISTA, superficieVistaSchema } from "@/lib/types/vista-filtro";
 
 // FICHA 453 (T1.4 — R1, R4, R11, R35 y la RLS) — LA MIGRACION DE `vista_filtro` Y SU `down.sql`.
@@ -147,12 +148,25 @@ describe("453 · el `down.sql` revierte EXACTAMENTE lo que el `up` crea", () => 
   });
 
   it("⭑ ningun `down.sql` ANTERIOR fue tocado: son fotos de su rama", () => {
-    const anteriores = fs
+    // SLT-187: solo las ANTERIORES (por orden de nombre = orden de aplicacion). Las POSTERIORES si
+    // pueden nombrar `vista_filtro`: `20261022130100_organizacion_id_en_negocio` (SL-17) le anadio
+    // la empresa y su `down.sql` la quita.
+    const carpetas = fs
       .readdirSync(MIGRACIONES, { withFileTypes: true })
-      .filter((e) => e.isDirectory() && e.name !== CARPETA)
+      .filter((e) => e.isDirectory())
       .map((e) => e.name);
+    const anteriores = carpetas.filter((nombre) => nombre < CARPETA);
     // AUTOCOMPROBACION: si el recorrido no encontrara carpetas, el barrido seria verde por vacio.
     expect(anteriores.length).toBeGreaterThan(150);
+    // CONTROL del filtro: una carpeta POSTERIOR conocida, que SI nombra `vista_filtro` en su down,
+    // queda fuera del barrido. Sin el filtro, el bucle de abajo la recorreria y se pondria rojo.
+    const posteriorConocida = "20261022130100_organizacion_id_en_negocio";
+    expect(carpetas, "SLT-187: la posterior de control existe").toContain(posteriorConocida);
+    expect(
+      fs.readFileSync(path.join(MIGRACIONES, posteriorConocida, "down.sql"), "utf8"),
+      "SLT-187: la posterior de control nombra vista_filtro",
+    ).toContain("vista_filtro");
+    expect(anteriores, "SLT-187: el barrido no incluye posteriores").not.toContain(posteriorConocida);
     for (const carpeta of anteriores) {
       const archivo = path.join(MIGRACIONES, carpeta, "down.sql");
       if (!fs.existsSync(archivo)) continue;
@@ -191,6 +205,8 @@ describeSiHayBase("453 · y lo que SOLO sabe el motor: la base tiene lo que la m
       "version",
       "created_at",
       "updated_at",
+      // SLT-187: la empresa, anadida por SL-17 (`20261022130100_organizacion_id_en_negocio`).
+      "organizacion_id",
     ]);
     const porNombre = new Map(columnas.map((c) => [c.column_name, c]));
     // R6/R8: el filtro es un DOCUMENTO jsonb, no un texto serializado a mano. Un `text` aqui seria
@@ -209,7 +225,7 @@ describeSiHayBase("453 · y lo que SOLO sabe el motor: la base tiene lo que la m
     expect(largoNombre[0].character_maximum_length).toBe(60);
   });
 
-  it("⭑ R11/R35: el indice del grano es UNICO, y es el unico ademas de la PK", async () => {
+  it("⭑ R11/R35: el indice del grano es UNICO, y solo lo acompanan la PK y el de la empresa", async () => {
     const indices = await prisma.$queryRawUnsafe<{ indexname: string; indexdef: string }[]>(
       `SELECT indexname, indexdef FROM pg_indexes
         WHERE schemaname = 'public' AND tablename = 'vista_filtro'
@@ -217,8 +233,13 @@ describeSiHayBase("453 · y lo que SOLO sabe el motor: la base tiene lo que la m
     );
     expect(indices.map((i) => i.indexname).sort()).toEqual([
       "vista_filtro_dueno_superficie_nombre_key",
+      // SLT-187: el indice de la empresa, anadido por SL-17.
+      "vista_filtro_organizacion_id_idx",
       "vista_filtro_pkey",
     ]);
+    expect(indices.find((i) => i.indexname === "vista_filtro_organizacion_id_idx")!.indexdef).toBe(
+      "CREATE INDEX vista_filtro_organizacion_id_idx ON public.vista_filtro USING btree (organizacion_id)",
+    );
     const unico = indices.find(
       (i) => i.indexname === "vista_filtro_dueno_superficie_nombre_key",
     )!;
@@ -232,21 +253,25 @@ describeSiHayBase("453 · y lo que SOLO sabe el motor: la base tiene lo que la m
   });
 
   it("⭑ R4: la FK a `usuario` es CASCADE en la base, no solo en el `.sql`", async () => {
-    const filas = await prisma.$queryRawUnsafe<{ delete_rule: string }[]>(
-      `SELECT rc.delete_rule
+    const filas = await prisma.$queryRawUnsafe<{ constraint_name: string; delete_rule: string }[]>(
+      `SELECT tc.constraint_name, rc.delete_rule
          FROM information_schema.table_constraints tc
          JOIN information_schema.referential_constraints rc
            ON rc.constraint_name = tc.constraint_name
           AND rc.constraint_schema = tc.constraint_schema
         WHERE tc.constraint_type = 'FOREIGN KEY'
           AND tc.table_schema = 'public'
-          AND tc.table_name = 'vista_filtro'`,
+          AND tc.table_name = 'vista_filtro'
+        ORDER BY tc.constraint_name`,
     );
-    expect(filas).toHaveLength(1);
-    expect(filas[0].delete_rule).toBe("CASCADE");
+    // SLT-187: la segunda FK es la de la empresa (SL-17), RESTRICT; la del dueno sigue CASCADE.
+    expect(filas).toEqual([
+      { constraint_name: "vista_filtro_organizacion_id_fkey", delete_rule: "RESTRICT" },
+      { constraint_name: "vista_filtro_usuario_id_fkey", delete_rule: "CASCADE" },
+    ]);
   });
 
-  it("⭑ la RLS esta habilitada, y sin policies (patron `usuario_preferencia` / `jobs`)", async () => {
+  it("⭑ la RLS esta habilitada, y su UNICA policy es la de aislamiento por empresa (SL-17)", async () => {
     // La RLS es una propiedad del CATALOGO: ninguna regex sobre el `.sql` demuestra que este
     // aplicada. Sin policies porque este repo no usa Supabase Auth y una policy no tendria a quien
     // preguntar; lo que garantiza es que a estas filas no se llega salvo por el servidor.
@@ -259,11 +284,25 @@ describeSiHayBase("453 · y lo que SOLO sabe el motor: la base tiene lo que la m
     expect(filas.map((f) => f.relname)).toEqual(["vista_filtro"]);
     expect(filas[0].relrowsecurity).toBe(true);
 
-    const policies = await prisma.$queryRawUnsafe<{ n: bigint }[]>(
-      `SELECT COUNT(*)::bigint AS n FROM pg_policies
+    // SLT-187: SL-17 (`20261022130100_organizacion_id_en_negocio`) anadio, a proposito,
+    // `vista_filtro_por_empresa`. Ninguna policy para otro rol: la autorizacion sigue en el servidor.
+    const policies = await prisma.$queryRawUnsafe<
+      { policyname: string; cmd: string; roles: string; qual: string; with_check: string }[]
+    >(
+      `SELECT policyname, cmd, roles::text AS roles, qual, with_check FROM pg_policies
         WHERE schemaname = 'public' AND tablename = 'vista_filtro'`,
     );
-    expect(Number(policies[0].n)).toBe(0);
+    const porEmpresa =
+      "(organizacion_id = NULLIF(current_setting('app.organizacion_id'::text, true), ''::text))";
+    expect(policies, "SLT-187: vista_filtro debe tener exactamente la policy por empresa").toEqual([
+      {
+        policyname: "vista_filtro_por_empresa",
+        cmd: "ALL",
+        roles: "{servi_app}",
+        qual: porEmpresa,
+        with_check: porEmpresa,
+      },
+    ]);
   });
 });
 
@@ -562,23 +601,10 @@ describeSiHayBase("453/R32 · `superficie` es TEXT en la base, y la lista vive S
 
     const guardada = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const modelo = await tx.$queryRawUnsafe<{ id: string }[]>(
-        `SELECT "id" FROM "usuario" LIMIT 1`,
-      );
-      // ⚠️ FALLA RUIDOSAMENTE con la base vacia: un `if (!modelo) return` reportaria `passed`.
-      expect(modelo.length, "la tabla `usuario` esta vacia: el caso no se puede medir").toBe(1);
-      const usuarioId = randomUUID();
-      await tx.$executeRawUnsafe(
-        `INSERT INTO "usuario"
-           ("id","nombre","email","telefono","password_hash","cedula","tipo_identificacion_id","rol_id","updated_at")
-         SELECT $1, '453 R32', $2, '00000000', 'x', $3,
-                u."tipo_identificacion_id", u."rol_id", CURRENT_TIMESTAMP
-           FROM "usuario" u WHERE u."id" = $4`,
-        usuarioId,
-        `453-r32-${usuarioId}@test.local`,
-        `453r32-${usuarioId.slice(0, 10)}`,
-        modelo[0].id,
-      );
+      // SLT-187: el usuario se CREA en la tx revertida (antes se clonaba uno leido de la base, y
+      // una base migrada vacia no trae ninguno). Control positivo: se lee de vuelta, exactamente uno.
+      const { id: usuarioId } = await crearUsuarioDePrueba(tx, "maestro");
+      expect(await tx.usuario.count({ where: { id: usuarioId } }), "SLT-187: usuario sembrado").toBe(1);
       await tx.$executeRawUnsafe(
         `INSERT INTO "vista_filtro" ("id","usuario_id","superficie","nombre","filtro")
            VALUES ($1,$2,$3,'La de la pantalla nueva',$4::jsonb)`,

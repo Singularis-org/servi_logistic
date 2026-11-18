@@ -104,12 +104,10 @@ Script: `mutar.sh` del scratchpad.
 | M7 | `WalletMensajeroFeedService.ts:81` sin `!cierre.pagoIndependienteEfectivo` (vuelve min(P, E)) | caja-caracterizacion-459 (3 casos) | R94 cuenta por pagar `{ devengado: '10500.00', … }` |
 | M8 | `LiquidacionService.imputablesDe` siempre `[]` | los 13 del escenario 459 (114 casos) | «escenario 459: el paso «repartoMensajero» respondio {"status":"sin_saldo"}» (R1199) |
 | M9 | `WalletService` composición con `filas.slice(1)` | libro-caja-filtro-a-quien | R54/R59 «tiendaA: expected { ingresos … } to deeply equal …» |
-
 | B1 | `LibroCajaAutoriaService.ts:135` `por:` del cierre → el nombre que empieza por «Maestro» (mutación de la review) | libro-caja-a-quien | R57 `expected { nombre: null, automatico: { …(2) } } to deeply equal …` (antes del arreglo B1: 7/7 en verde) |
 | F461 | `LiquidacionService` reverso al mensajero con `fechaMovimiento` + 1 día | liquidacion-fechas-cr-461 | «escenario entero…»: `expected [ '2026-11-18T06:00:00.000Z', …(1) ] to deeply equal [ '2026-11-18T06:00:00.000Z' ]` |
 | WCA | `WalletComprobanteService.ts:155` `no_anulable` no responde `no_admite` | wallet-comprobante-alcance (7 casos) | el escenario del archivo cae con `AppErrorCode inesperado INTERNAL` (cae, pero por error, no por aserción) |
 | WCA2 | `WalletComprobanteService.ts:157` `en_su_documento` → `no_admite` | wallet-comprobante-alcance | D6 `expected { status: 'no_admite', … } to deeply equal …` |
-
 | GAN5 | IVA de vuelta en la ganancia: `egreso_reverso_iva_flete_devolucion` en `categorias` de `ganancia_empresa` (`lib/analytics/metrics.ts`) **y** fuera de `esCategoriaIva` (`lib/utils/caja-tesoreria.ts`), juntas | analitica-anulacion-rechazo-458 | «la ganancia cuadra»: `expected '1130.00' to be '1000.00'` |
 
 (GAN, GAN2 y GAN3 —cada mitad sola, o con la categoría de ingreso en vez de la del reverso— no
@@ -194,3 +192,10 @@ Veredicto: 21 de 22 archivos recuperados y fuera del baseline, sin tocar producc
 - Los 22 archivos tras el merge, en la desechable: 155/155 en verde, 0 saltados.
 - `git diff -- lib app db` y `git diff origin/dev...HEAD -- lib app db`: vacíos.
 - Gate rápido tras el merge: `== init OK ==`, **INIT_EXIT=0**.
+
+## Vuelta 3 — sincronización con dev (SLT-187 mergeada, #220)
+- `git merge origin/dev`: el único conflicto fue el baseline. Lo fusioné por clave: base 56, ours 34,
+  theirs 43 → 21. `wallet-458-migration` lo cambiaban los dos lados.
+- `wallet-458-migration` entero en `servi_slt195_desechable` (con `migrate deploy` tras el merge):
+  **8/8 en verde**, 0 saltados. Sale del baseline, con su línea en la poda de `_lee_esto`. Quedan 20 entradas.
+- La tabla de mutaciones se arregló: ya no tiene filas sueltas fuera de la tabla (menor de la review).

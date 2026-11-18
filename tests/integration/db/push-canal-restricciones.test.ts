@@ -345,11 +345,28 @@ describeSiHayBase("410/R47 — las dos tablas tienen RLS habilitada", () => {
     }
   });
 
-  it("y no tienen policies, igual que sus hermanas de solo servicio", async () => {
-    const filas = await prisma.$queryRawUnsafe<{ n: bigint }[]>(
-      `SELECT COUNT(*)::bigint AS n FROM pg_policies
-        WHERE schemaname = 'public' AND tablename IN ('push_suscripcion','push_envio_dia')`,
+  it("y su UNICA policy es la de aislamiento por empresa (SL-17), solo para `servi_app`", async () => {
+    // SLT-187: SL-17 (`20261022130100_organizacion_id_en_negocio`) anadio, a proposito, una policy
+    // `<tabla>_por_empresa` a cada una. La intencion de R47 se conserva: ninguna policy para otro
+    // rol, y la autorizacion de negocio sigue en la Server Action.
+    const filas = await prisma.$queryRawUnsafe<
+      { tablename: string; policyname: string; cmd: string; roles: string; qual: string; with_check: string }[]
+    >(
+      `SELECT tablename, policyname, cmd, roles::text AS roles, qual, with_check FROM pg_policies
+        WHERE schemaname = 'public' AND tablename IN ('push_suscripcion','push_envio_dia')
+        ORDER BY tablename`,
     );
-    expect(Number(filas[0].n)).toBe(0);
+    const porEmpresa =
+      "(organizacion_id = NULLIF(current_setting('app.organizacion_id'::text, true), ''::text))";
+    expect(filas, "SLT-187: cada tabla tiene exactamente la policy por empresa").toEqual(
+      ["push_envio_dia", "push_suscripcion"].map((tabla) => ({
+        tablename: tabla,
+        policyname: `${tabla}_por_empresa`,
+        cmd: "ALL",
+        roles: "{servi_app}",
+        qual: porEmpresa,
+        with_check: porEmpresa,
+      })),
+    );
   });
 });
