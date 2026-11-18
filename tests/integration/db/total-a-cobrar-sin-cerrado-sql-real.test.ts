@@ -65,18 +65,22 @@ async function mundoPropio(prisma: PrismaClient, tx: TxDeTest): Promise<Mundo> {
   for (const v of ["en_reparto", "entregado"] satisfies (typeof ESTATUS_454)[number][]) {
     if (!estatus.has(v)) throw new Error(`falta el estatus «${v}»: aplica las migraciones.`);
   }
-  const existente = await tx.zona.findFirst({ where: { esCentral: true }, select: { id: true } });
-  const central =
-    existente ??
-    (await tx.zona.create({
-      data: {
-        nombre: `Central SLT-151 ${randomUUID().slice(0, 8)}`,
-        sinpeNumero: "80000000",
-        sinpeNombre: "Titular de Prueba",
-        esCentral: true,
-      },
-      select: { id: true },
-    }));
+  // SLT-188 (R1180): la central se CREA siempre en la empresa de la tx. Antes se leia la primera
+  // central de la base sin acotar (`findFirst({ esCentral: true })`): con una central de OTRA empresa
+  // confirmada, la orden apuntaba a ella y el trigger SL017 la rechazaba («referencia a otra empresa»).
+  const central = await tx.zona.create({
+    data: {
+      nombre: `Central SLT-151 ${randomUUID().slice(0, 8)}`,
+      sinpeNumero: "80000000",
+      sinpeNombre: "Titular de Prueba",
+      esCentral: true,
+    },
+    select: { id: true, organizacionId: true },
+  });
+  const centrales = await tx.zona.count({ where: { esCentral: true, organizacionId: central.organizacionId } });
+  if (centrales !== 1) {
+    throw new Error(`SLT-188: la empresa de la tx tiene que tener 1 zona central (la sembrada), tiene ${centrales}`);
+  }
   return {
     prisma,
     fks: { tiendaId: fks.tiendaId, zonaId: fks.zonaId, provinciaId: fks.provinciaId, cantonId: fks.cantonId },
