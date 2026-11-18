@@ -17,6 +17,9 @@ import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, crearPrismaDeTest } from ".
 // bloqueo, una orden escrita a la vez en el subarbol se colaba entre el conteo y el movimiento: quedaba
 // abierta, con la marca cambiada, sin haber entrado en P1. El arreglo (`bloquearNodos`) bloquea el
 // subarbol `FOR UPDATE` antes de contar; la FK de la orden toma `FOR KEY SHARE` del nodo y choca.
+// Desde la review vuelta 2, `mover` calcula P1 sin bloqueos y, ya con ellos, vuelve a mirar solo las
+// ordenes nuevas (`confirmarP1`); la espera la corta su propio `lock_timeout` (`TOPE_MOVER_MS`), y
+// `geografia-mover-nodo-cede.test.ts` prueba ese tope.
 //
 // La carrera es con un DESCENDIENTE del nodo que se mueve. En el propio nodo ya no habia hueco: el
 // `UPDATE` de `padre_id` cambia una columna del unico `(padre_id, nombre_normalizado)`, asi que toma

@@ -281,6 +281,29 @@ describe("R37 — cambio concurrente", () => {
   });
 });
 
+describe("P1, review vuelta 2 — mover cedió ante las escrituras de una empresa (`ocupado`)", () => {
+  it("avisa «intenta de nuevo», no cierra ni refresca y deja «Sí, mover» para reintentar", async () => {
+    vistaPreviaMock.mockResolvedValue({ status: "ok", vista: vistaCR() });
+    moverMock.mockResolvedValueOnce({ status: "conflict", motivo: "ocupado" });
+    const { user, onCerrar } = montar();
+    await elegirYVer(user, /^Santa Ana/);
+    await user.click(await screen.findByRole("button", { name: "Sí, mover" }));
+
+    await waitFor(() =>
+      expect(toastMock.error).toHaveBeenCalledWith("Se están guardando órdenes en ese lugar. Intenta de nuevo en unos segundos."),
+    );
+    expect(onCerrar).not.toHaveBeenCalled();
+    expect(routerMock.refresh).not.toHaveBeenCalled();
+    // No es el rechazo por un hermano con ese nombre (el otro `conflict`).
+    expect(screen.queryByText(/ya tiene un lugar llamado/)).not.toBeInTheDocument();
+
+    moverMock.mockResolvedValueOnce({ status: "ok", id: "sanrafael", padreId: "santaana" });
+    await user.click(screen.getByRole("button", { name: "Sí, mover" }));
+    await waitFor(() => expect(onCerrar).toHaveBeenCalledTimes(1));
+    expect(moverMock).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe("R40, P1 — bloqueado por órdenes abiertas", () => {
   const bloqueo = {
     ordenes: 37,

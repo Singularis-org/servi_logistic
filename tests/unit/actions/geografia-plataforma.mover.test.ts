@@ -120,6 +120,33 @@ describe("SLT-48 — el borde: `.strict()` y los fallos de la base", () => {
   });
 });
 
+describe("SLT-48 P1, review vuelta 2 — `mover` cede: el borde lo dice como `ocupado`, sin log", () => {
+  const ocupados: [string, unknown][] = [
+    ["55P03 (lock_timeout), con la forma del driver adapter", Object.assign(new Error("lock"), { cause: { originalCode: "55P03" } })],
+    ["57014 (statement_timeout), en el mensaje de un SQL a mano", new Prisma.PrismaClientKnownRequestError("Raw query failed. Code: `57014`. Message: `canceling statement due to statement timeout`", { code: "P2010", clientVersion: "7" })],
+    ["40P01 (interbloqueo), anidado en meta", Object.assign(new Error("deadlock"), { meta: { driverAdapterError: { cause: { originalCode: "40P01" } } } })],
+    ["P2028 (timeout de la transaccion de Prisma)", new Prisma.PrismaClientKnownRequestError("Transaction already closed", { code: "P2028", clientVersion: "7" })],
+    ["P2034 (conflicto o interbloqueo, forma de Prisma)", new Prisma.PrismaClientKnownRequestError("Transaction failed due to a write conflict or a deadlock", { code: "P2034", clientVersion: "7" })],
+  ];
+
+  it.each(ocupados)("%s es `conflict` con motivo `ocupado`, sin `console.error`", async (_caso, error) => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const deps = { getActor: async () => SUPERADMIN, geografiaService: { moverNodo: vi.fn(async () => Promise.reject(error)) } as unknown as IGeografiaService };
+    expect(await moverNodoAction(MOVER, deps)).toEqual({ status: "conflict", motivo: "ocupado" });
+    expect(log).not.toHaveBeenCalled();
+    log.mockRestore();
+  });
+
+  it("un SQLSTATE que no es de ceder (23503, FK) sigue siendo `error` con log", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const fk = Object.assign(new Error("fk"), { cause: { originalCode: "23503" } });
+    const deps = { getActor: async () => SUPERADMIN, geografiaService: { moverNodo: vi.fn(async () => Promise.reject(fk)) } as unknown as IGeografiaService };
+    expect(await moverNodoAction(MOVER, deps)).toEqual({ status: "error" });
+    expect(log).toHaveBeenCalledTimes(1);
+    log.mockRestore();
+  });
+});
+
 describe("SLT-48 R35–R37, R40 — el servicio traduce cada desenlace del repositorio", () => {
   const bloqueo = { ordenes: 3, empresas: [{ id: "e1", nombre: "Tienda Uno", ordenes: 2 }, { id: "e2", nombre: "Tienda Dos", ordenes: 1 }] };
 
