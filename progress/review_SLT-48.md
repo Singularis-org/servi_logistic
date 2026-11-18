@@ -177,4 +177,4 @@ Alcance: el tamaño y los commits 970a142e, c85ed6b3 y ab9b1a0d (más 2c33e82a y
 Ninguna. El trigger de `orden` y la ida de la migración no cambian, y R10 sigue en verde.
 
 ### Veredicto vuelta 2
-**OK con menores.** No quedan bloqueantes ni mayores. Quedan como menores la espera de las cargas mientras dura `mover` (arriba), la carrera pequeña en P5 de la vuelta 1 y T7.1, T7.3 y T7.4 pendientes de persona y CI, que son condición para `done`.
+**OK con menores.** No quedan bloqueantes ni mayores. Quedan como menores la espera de las cargas mientras dura `mover` (arriba) y T7.1, T7.3 y T7.4 pendientes de persona y CI, que son condición para `done`.
