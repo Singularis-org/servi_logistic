@@ -133,3 +133,48 @@ Confirmado:
 ## Veredicto
 
 **RECHAZADO**, solo por el hallazgo 1, que es de proceso: el tamaño real del PR supera lo que aceptó el humano y falta la línea `tamano-pr-aceptado`. El código, las migraciones, la trazabilidad y las decisiones pasan la revisión. Basta que el humano acepte las cifras reales y el leader escriba la marca. Después, una vuelta 2 acotada a ese commit puede cerrar en OK con menores.
+
+## Vuelta 2 (acotada a 36f3e2d3..d8c07742)
+
+Alcance: el tamaño y los commits 970a142e, c85ed6b3 y ab9b1a0d (más 2c33e82a y d8c07742, que son bitácora). El aviso con el formulario vacío no se reabre: el humano decidió que siga «Falta completar: <nivel>.».
+
+### Verificación ejecutada
+- Base limpia propia `servi_logistic_slt48_review` con `prisma migrate deploy`, borrada al terminar.
+- `pnpm run typecheck`: 0 errores. `eslint` de `GeoRepository.ts` y de los dos tests tocados: 0 errores.
+- `vitest` (8 archivos, 43 tests), todos verdes:
+  - `geografia-mover-nodo-carrera` (nuevo), `geografia-mover-nodo` y `geografia-mover-nodo-ordenes`;
+  - `migracion-slt48-ida-y-vuelta` (con el caso nuevo de R12) y `slt48-migraciones-declaradas`;
+  - `geografia-ordenes-sin-entregar` (fuera del baseline), `slt48-trigger-orden-rendimiento` (R10, sigue ≤ 1 ms/fila) y `gate-cableado-arnes-v2` (forma del baseline).
+
+### Hallazgos de la vuelta 1
+- **H1 (BLOQUEANTE), tamaño: cerrado.** `progress/features/SLT-48.md:40` tiene `<!-- tamano-pr-aceptado: 2026-11-18 · 233 archivos (57 prod / 176 tests) · aceptado por el humano -->`, que coincide con lo que medí.
+- **H2, R25: cerrado.** El texto de R25 ahora dice lo que hace el código: los 2 últimos niveles del país, y la columna que falta vacía (decisión del humano del 2026-11-18). El código no cambia.
+- **H3, baseline: cerrado.** `geografia-ordenes-sin-entregar` sale de `tests/baseline-rojos.json` y en base limpia está verde. `corregir-datos-cliente.repo` sigue en el baseline, con R16 cubierto por `orden-nodo-escritura`.
+- **H4, aviso con el formulario vacío: cerrado** por decisión del humano.
+- **H5, carrera P1: cerrado.**
+  - `bloquearNodos` hace `SELECT … ORDER BY id FOR UPDATE` del subárbol antes de contar (`GeoRepository.ts`, en `evaluarMovimiento` solo cuando la llama `mover`; la vista previa no bloquea).
+  - El razonamiento es correcto. La comprobación de la FK `orden_nodo_geografico_id` toma `FOR KEY SHARE` del nodo, que choca con `FOR UPDATE`. En READ COMMITTED el conteo posterior es otra sentencia y ve lo confirmado.
+  - Los `UPDATE` de órdenes que no cambian el nodo no comprueban la FK y no se bloquean.
+  - El test de dos conexiones es real: el implementer documenta el rojo sin el arreglo y yo lo vi en verde con él.
+- **H6, `down.sql` y P5: cerrado.**
+  - La precondición cuenta también las órdenes sin nodo ni FK y las que tienen FK a medias.
+  - Revisé la lógica de `sin_lugar`. Una orden con nodo y las 3 FK en NULL la rellena el paso 3, o la cuenta `en_nodo_que_no_cabe`. Una orden vieja con provincia y cantón no cuenta. Un nodo NULL en el `LEFT JOIN` no cuenta en el `FILTER`.
+  - Hay un test nuevo que prueba el mensaje, que no sale 23502 y que el esquema no cambia.
+- **H7, tareas T7: sigue** como estaba (persona y CI).
+
+### Riesgo de interbloqueo: mover contra una carga masiva (pedido por el leader)
+- **Deadlock.** Es posible cuando una transacción de carga ya tiene `FOR KEY SHARE` de un nodo del subárbol y luego pide otro que `mover` ya bloqueó. El orden por id de `mover` no lo evita, porque la carga toma sus locks en el orden de sus filas.
+  - Postgres aborta al proceso que primero corre el detector, es decir, al que empezó a esperar antes. Ese es `mover`: espera a la carga antes de que la carga le espere a él.
+  - Así que en el caso normal cae `mover` (40P01). `moverNodoAction` lo devuelve como `error` genérico con log, el superadmin reintenta y no se escribe nada.
+  - La conclusión de la bitácora es correcta en eso.
+- **menor (nuevo), no es deadlock sino espera larga.** La bitácora dice «la carga no se ve afectada», y no es del todo cierto.
+  - Mientras dura la transacción de `mover`, toda escritura de orden que ponga un nodo del subárbol espera. Eso incluye cada chunk de `createManyOrdenesConGuia` (`OrdenRepository.ts:3235`, `$transaction` sin `timeout`, el de Prisma por defecto) y las altas sueltas.
+  - `mover` bloquea **antes** de calcular P1, que es la parte cara: su `TIMEOUT_MOVER_MS` es de 30 s porque un nodo alto puede arrastrar miles de órdenes abiertas.
+  - Si `mover` tarda más que el `timeout` de la transacción de la carga, el chunk falla con P2028. Es atómico y se puede reintentar, y no corrompe nada, pero el usuario ve un error.
+  - Sugerencia, no bloqueante: mover el `FOR UPDATE` a justo antes del conteo de P1 no ayuda, porque el conteo es lo caro. Las opciones son poner un `lock_timeout` corto en `mover` y anotar en `docs/architecture.md` que mover un nodo alto bloquea las altas en ese subárbol mientras dura, o dejar esa nota sola, porque es una operación rara de superadmin.
+
+### Regresiones
+Ninguna. El trigger de `orden` y la ida de la migración no cambian, y R10 sigue en verde.
+
+### Veredicto vuelta 2
+**OK con menores.** No quedan bloqueantes ni mayores. Quedan como menores la espera de las cargas mientras dura `mover` (arriba), la carrera pequeña en P5 de la vuelta 1 y T7.1, T7.3 y T7.4 pendientes de persona y CI, que son condición para `done`.
