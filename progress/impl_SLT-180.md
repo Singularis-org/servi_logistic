@@ -129,7 +129,12 @@ entrada cambia.
 - `./init.sh` en la base A: ver `## Gate`.
 
 ## Gate
-(pendiente; se rellena al cerrar)
+`./init.sh` en la base A (log `scratchpad/gate-180.log`): **INIT_EXIT=0** a la primera. Tandas de
+vitest 100/100, 100/100, 100/100 y 82/82 archivos en verde; `vitest related` corrió los archivos
+del alcance (p. ej. `api-key-eliminabilidad`, `historial-accion-lectura`, `emisor-relaciones-anidadas`,
+`tarifa-zona-borrado-fk-real`, `notificacion-bloqueo-otro-cierre-avisa`) y pasaron. Tamaño en el gate:
+16/40 archivos, 0/1000 producción, 759/3000 tests.
 
 ## Veredicto
-(pendiente)
+14 de 15 verdes en base vacía y con empresa ajena y fuera del baseline; `orden-traspaso-migration`
+sembrado (13/2/0) y en el baseline por SL-17 → SLT-187 «Tests de migración desfasados tras SL-17».
