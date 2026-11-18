@@ -8,10 +8,10 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 
 // FICHA 427 (T3, design §4.1/§4.2) — LA FORMA DE `orden_traspaso_mensajero`, CONTRA POSTGRES.
 //
@@ -202,18 +202,12 @@ describeSiHayBase("427/T3 — la tabla, tal y como Postgres la tiene", () => {
   let ROL_MENSAJERO: string;
   let ROL_MAESTRO: string;
   let TIPO_IDENT: string;
+  // SLT-180 (R1042): tienda y zona se SIEMBRAN en la tx del caso (en `sembrarOrden`); ya no se lee
+  // «la primera orden» de la base.
   let FKS: { estatusId: string; tiendaId: string; zonaId: string; provinciaId: string; cantonId: string };
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const fks = await fksDeOrden(prisma);
-    if (fks === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar la fila " +
-          "con la que se miden el CHECK y los RESTRICT. Corre `pnpm run db:seed`.",
-      );
-    }
-    FKS = fks;
     const roles = await prisma.rol.findMany({
       where: { value: { in: ["mensajero", "maestro"] } },
       select: { id: true, value: true },
@@ -223,8 +217,12 @@ describeSiHayBase("427/T3 — la tabla, tal y como Postgres la tiene", () => {
     if (!ROL_MENSAJERO || !ROL_MAESTRO) {
       throw new Error("faltan los roles `mensajero`/`maestro` en el catalogo: corre el seed.");
     }
-    const tipo = await prisma.tipoIdentificacion.findFirst({ select: { id: true } });
-    if (!tipo) throw new Error("no hay `tipo_identificacion` en la base: corre el seed.");
+    // SLT-180: el catalogo se lee por su clave, no «el primero que salga».
+    const tipo = await prisma.tipoIdentificacion.findUnique({
+      where: { value: "cedula" },
+      select: { id: true },
+    });
+    if (!tipo) throw new Error("no hay `tipo_identificacion` «cedula» en la base: corre el seed.");
     TIPO_IDENT = tipo.id;
   });
 
@@ -250,6 +248,17 @@ describeSiHayBase("427/T3 — la tabla, tal y como Postgres la tiene", () => {
   }
 
   async function sembrarOrden(tx: TxDeTest): Promise<string> {
+    // SLT-180 (R1044): la fila con la que se miden el CHECK y los RESTRICT cuelga de una tienda y
+    // una zona sembradas aqui; control positivo que nombra la fila si la siembra no llega.
+    FKS = await crearFksDeOrden(tx);
+    expect(
+      await tx.usuario.count({ where: { id: FKS.tiendaId } }),
+      "SLT-180: la tienda sembrada no esta en la base",
+    ).toBe(1);
+    expect(
+      await tx.zona.count({ where: { id: FKS.zonaId } }),
+      "SLT-180: la zona sembrada no esta en la base",
+    ).toBe(1);
     const o = await tx.orden.create({
       data: {
         numGuia: 950_000_000 + Math.floor(Math.random() * 40_000_000),
