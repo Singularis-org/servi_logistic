@@ -127,7 +127,7 @@ Efectos que el arreglo tiene que vigilar:
   restaurar desde copia. Correr todos los usuarios de los helpers tocados. *Hecho:* tabla de
   mutaciones y lista de usuarios verdes en la bitácora.
 - [x] **T7 — Baseline** (R1149). Retirar las entradas verdes; reescribir el motivo de las que queden.
-- [ ] **T8 — Cierre.** `pnpm run typecheck`, `pnpm run lint`, `pnpm run test:guardias`,
+- [x] **T8 — Cierre.** `pnpm run typecheck`, `pnpm run lint`, `pnpm run test:guardias`,
   `git diff --name-only origin/dev -- lib app components hooks db scripts` vacío,
   `node scripts/tamano-pr.mjs`, mapa R → test en `progress/impl_SLT-185.md`, `./init.sh` (leader) y CI
   del PR con `gate-completo` verde.
