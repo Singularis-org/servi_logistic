@@ -87,7 +87,8 @@ describeSiHayBase("⭑ 312/B3 — corregirDatosCliente contra Postgres real", ()
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
 
-    const valores = ["en_reparto", "novedad", "ayuda_tienda", ...ESTADOS_SIN_CORRECCION];
+    // SLT-186: `ayuda_tienda` salio de esta lista: la 454 lo retiro del catalogo y ningun caso lo usa.
+    const valores = ["en_reparto", "novedad", ...ESTADOS_SIN_CORRECCION];
     const estados = await prisma.orderStatus.findMany({
       where: { value: { in: valores } },
       select: { id: true, value: true },
