@@ -135,3 +135,9 @@ añadidas). Las 5 rojas, intactas (ver parada).
 ## Veredicto
 10 de 15 verdes en base vacía y con empresa ajena y fuera del baseline; 5 sembrados pero rojos por
 estados retirados en 454 → parada R1028, a la espera de que el leader asigne ficha.
+
+## Decisión del leader (2026-11-17) sobre los 5 parados
+Van a SLT-186 «Tests con estados retirados del catálogo», que amplía su alcance a «tests desfasados
+tras 454» con las causas de segundo nivel medidas. En `tests/baseline-rojos.json` se reescriben sus 5
+motivos (primera causa + lo que viene detrás, citando SLT-186), con `desde` intacto. Tasks T1-T8
+marcadas en el spec; T8 con «CI del PR pendiente».

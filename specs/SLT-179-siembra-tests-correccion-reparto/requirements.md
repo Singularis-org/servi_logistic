@@ -141,31 +141,31 @@ al leader; no se parte sin su OK.
 
 ## Tasks
 
-- [ ] **T1 — Punto de partida** (R1020, R1027). Worktree al día con `origin/dev`; `.env` copiado al
+- [x] **T1 — Punto de partida** (R1020, R1027). Worktree al día con `origin/dev`; `.env` copiado al
   worktree (sin leerlo); base desechable de `## Cómo se verifica`. Correr los 15 archivos tal cual y
   anotar p/f/s en `progress/impl_SLT-179.md`. Si alguno ya pasa, o ya no está en el baseline, se anota y
   sale del alcance. *Hecho:* tabla «antes» con 15 filas.
-- [ ] **T2 — Correcciones** (R1020-R1025): `correccion-dia-reparto-efectos.int`,
+- [x] **T2 — Correcciones** (R1020-R1025): `correccion-dia-reparto-efectos.int`,
   `correccion-dia-reparto-historial.int`, `correccion-dia-reparto.int`,
   `correccion-fecha-reprogramacion.int`, `correccion-resultado-gestion.int`, `corregir-datos-cliente.repo`,
   `corregir-ubicacion-geocode`. Quitar `fksDeOrden`; sembrar con `crearFksDeOrden`/`crearUsuarioDePrueba`
   dentro de la tx de cada caso; control positivo. *Hecho:* los 7 verdes en la base de R1020, 0 saltados.
-- [ ] **T3 [P con T2] — Gestiones y reservas** (R1020-R1025): `deshacer-asignacion-zona-satelite.int`,
+- [x] **T3 [P con T2] — Gestiones y reservas** (R1020-R1025): `deshacer-asignacion-zona-satelite.int`,
   `deshacer-gestion-conserva-reserva.int`, `gestion-desde-ayuda-dia-reserva.int`,
   `recoger-lote-dia-reserva.int`, `gestiones-detalle-api-405`, `novedades-sin-gestionar-aviso-dedupe`.
   *Hecho:* ídem, 6 archivos.
-- [ ] **T4 [P con T2] — Reparto y traspaso** (R1020-R1025): `reparto-manana-repository`,
+- [x] **T4 [P con T2] — Reparto y traspaso** (R1020-R1025): `reparto-manana-repository`,
   `traspaso-mensajero.int` (incluye leer `cedula` por clave en vez de `findFirst`). *Hecho:* ídem, 2 archivos.
-- [ ] **T5 — Base con datos ajenos** (R1021, R1023, R1029). Depende de T2-T4. Repetir los 15 con la
+- [x] **T5 — Base con datos ajenos** (R1021, R1023, R1029). Depende de T2-T4. Repetir los 15 con la
   empresa ajena confirmada; si el código hace una lectura global, sembrar lo que lee en la empresa del
   caso y correr como `servi_app` (patrón `comoApp`). *Hecho:* 15/15 iguales que en R1020; 0 filas
   propias tras cada archivo con siembra confirmada.
-- [ ] **T6 — Mutaciones** (R1026). Depende de T5. Una por archivo. *Hecho:* tabla mutación → caso
+- [x] **T6 — Mutaciones** (R1026). Depende de T5. Una por archivo. *Hecho:* tabla mutación → caso
   rojo → restaurado en `progress/impl_SLT-179.md`; árbol limpio de mutaciones.
-- [ ] **T7 — Baseline** (R1027, R1028). Borrar las entradas de los verdes; reescribir el motivo de los
+- [x] **T7 — Baseline** (R1027, R1028). Borrar las entradas de los verdes; reescribir el motivo de los
   que sigan rojos por otra causa (o parar, R1028). *Hecho:* `git diff tests/baseline-rojos.json` solo
   quita claves del alcance o reescribe sus motivos.
-- [ ] **T8 — Cierre** (R1029-R1032). `pnpm run typecheck`, `pnpm run lint`, `./init.sh` en verde;
+- [x] **T8 — Cierre** (R1029-R1032). (CI del PR pendiente) `pnpm run typecheck`, `pnpm run lint`, `./init.sh` en verde;
   `git diff --name-only origin/dev -- lib/ app/ components/ hooks/ db/ scripts/ .github/ package.json`
   vacío; `node scripts/tamano-pr.mjs` bajo el tope. En `progress/impl_SLT-179.md`: mapa R → test, salidas
   y, tras el PR, el run de CI con «sin rojos nuevos» y 0 «por limpiar». *Hecho:* todo lo anterior escrito.

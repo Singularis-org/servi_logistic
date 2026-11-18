@@ -254,11 +254,11 @@
       "desde": "2026-10-22"
     },
     "tests/integration/db/correccion-dia-reparto-efectos.int.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/correccion-dia-reparto-efectos.int.test.ts:89 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' (y las semillas de. La retira SLT-179 (siembra propia en la transaccion).",
+      "motivo": "Test desfasado tras 454, ya sembrado (SLT-179). Medido en local el 2026-11-17 (Postgres 18, migrate deploy + db:seed): Error: el catalogo `order_status` no tiene ayuda_tienda (tests/integration/db/correccion-dia-reparto-efectos.int.test.ts:97, beforeAll, estado retirado en 454); detras, R26 espera que `orden_dia_reparto_cambio` no tenga policies y desde SL-17 las tiene. La retira SLT-186.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/correccion-dia-reparto.int.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/correccion-dia-reparto.int.test.ts:69 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' (y las semillas de. La retira SLT-179 (siembra propia en la transaccion).",
+      "motivo": "Test desfasado tras 454, ya sembrado (SLT-179). Medido en local el 2026-11-17 (Postgres 18, migrate deploy + db:seed): Error: el catalogo `order_status` no tiene ayuda_tienda (tests/integration/db/correccion-dia-reparto.int.test.ts:85, beforeAll, estado retirado en 454); detras, R23 espera 7 columnas en el rastro y hay 8. La retira SLT-186.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/corregir-conciliacion.int.test.ts": {
@@ -270,7 +270,7 @@
       "desde": "2026-10-22"
     },
     "tests/integration/db/corregir-datos-cliente.repo.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/corregir-datos-cliente.repo.test.ts:90 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' (y las semillas de. La retira SLT-179 (siembra propia en la transaccion).",
+      "motivo": "Test desfasado tras 454, ya sembrado (SLT-179). Medido en local el 2026-11-17 (Postgres 18, migrate deploy + db:seed): Error: el catalogo `order_status` no tiene ayuda_tienda (tests/integration/db/corregir-datos-cliente.repo.test.ts:97, beforeAll, estado retirado en 454); sin ese estado en la lista pasa 22/22. La retira SLT-186.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/corte-diario-segundo-cierre-sql-real.test.ts": {
@@ -330,7 +330,7 @@
       "desde": "2026-10-22"
     },
     "tests/integration/db/gestiones-detalle-api-405.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/gestiones-detalle-api-405.test.ts:136 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' antes de esta suit. La retira SLT-179 (siembra propia en la transaccion).",
+      "motivo": "Test desfasado tras 454, ya sembrado (SLT-179). Medido en local el 2026-11-17 (Postgres 18, migrate deploy + db:seed): Error: falta el estado `devolucion_por_confirmar` en el catalogo `order_status` (tests/integration/db/gestiones-detalle-api-405.test.ts:166, beforeAll, estado retirado en 454); detras, R19 mide 15 consultas en el detalle y el contrato dice 14. La retira SLT-186.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/habilitacion-api-migration.test.ts": {
@@ -474,7 +474,7 @@
       "desde": "2026-10-22"
     },
     "tests/integration/db/traspaso-mensajero.int.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/traspaso-mensajero.int.test.ts:72 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' (y las semillas de. La retira SLT-179 (siembra propia en la transaccion).",
+      "motivo": "Test desfasado tras 454, ya sembrado (SLT-179). Medido en local el 2026-11-17 (Postgres 18, migrate deploy + db:seed): Error: el catalogo `order_status` no tiene ayuda_tienda (tests/integration/db/traspaso-mensajero.int.test.ts:88, beforeAll, estado retirado en 454); detras, R4 traspasa `ayuda_tienda` (inexistente) y en T9.9 el job lleva `origen` ademas de `mensajeroId`. La retira SLT-186.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/usuario-preferencia.test.ts": {
