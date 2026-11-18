@@ -156,14 +156,16 @@ describeSiHayBase("descarga detallada — los intentos de entrega vigentes (fich
     fksUsuario = { tipoIdentificacionId: tipo.id, rolId: rol.id };
     // El `estatus_destino_id` de las filas de historial que respaldan un intento. Cualquier
     // estado real sirve —el predicado NO mira el destino, mira `origen_tipo`—, pero la columna
-    // es NOT NULL con FK, asi que tiene que existir de verdad.
+    // es NOT NULL con FK, asi que tiene que existir de verdad. SLT-186: era `devolucion_por_confirmar`,
+    // que la 454 saco del catalogo (una base nueva no lo trae); `novedad` es su equivalente vigente
+    // (`ESTADO_RETIRADO`) y esta en el seed.
     const destino = await prisma.orderStatus.findFirst({
-      where: { value: "devolucion_por_confirmar" },
+      where: { value: "novedad" },
       select: { id: true },
     });
     if (destino === null) {
       throw new Error(
-        "falta el estatus «devolucion_por_confirmar» en `order_status`. Corre `pnpm run db:seed`: " +
+        "falta el estatus «novedad» en `order_status`. Corre `pnpm run db:seed`: " +
           "sin el, este archivo no puede sembrar el historial y NO debe pasar en verde.",
       );
     }

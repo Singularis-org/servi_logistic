@@ -90,7 +90,7 @@ describeSiHayBase("271/T10.3 — el corte diario, sembrado contra Postgres", () 
   // SLT-178: `fks` y `zonaCentralId` se SIEMBRAN en cada caso (`sembrarBaseDelCaso`), dentro de su
   // transaccion revertida; nunca se leen de la base.
   let fks: Awaited<ReturnType<typeof crearFksDeOrden>>;
-  let catalogo: { enReparto: string; ayuda: string; sinGestionar: string };
+  let catalogo: { enReparto: string; sinGestionar: string };
   let zonaCentralId: string;
   let rolMensajeroId: string;
   let tipoIdentificacionId: string;
@@ -98,12 +98,14 @@ describeSiHayBase("271/T10.3 — el corte diario, sembrado contra Postgres", () 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
 
+    // SLT-186: `ayuda_tienda` salia de aqui; la 454 lo retiro del catalogo (la ayuda es un evento, no
+    // un estado) y el corte barre desde entonces un solo origen, `en_reparto` (CierreDiaRepository).
     const estatus = await prisma.orderStatus.findMany({
-      where: { value: { in: ["en_reparto", "ayuda_tienda", "novedad_interna"] } },
+      where: { value: { in: ["en_reparto", "novedad_interna"] } },
       select: { id: true, value: true },
     });
     const porValue = new Map(estatus.map((e) => [e.value, e.id]));
-    for (const v of ["en_reparto", "ayuda_tienda", "novedad_interna"]) {
+    for (const v of ["en_reparto", "novedad_interna"]) {
       if (!porValue.has(v)) {
         throw new Error(
           `falta el estatus «${v}» en el catalogo \`order_status\`. Corre \`pnpm run db:seed\`: ` +
@@ -113,7 +115,6 @@ describeSiHayBase("271/T10.3 — el corte diario, sembrado contra Postgres", () 
     }
     catalogo = {
       enReparto: porValue.get("en_reparto") as string,
-      ayuda: porValue.get("ayuda_tienda") as string,
       sinGestionar: porValue.get("novedad_interna") as string,
     };
 
@@ -276,7 +277,7 @@ describeSiHayBase("271/T10.3 — el corte diario, sembrado contra Postgres", () 
    * corrida podria reventar dentro de `crearCierre` de un mensajero ajeno por datos que este test
    * no controla. Se apartan **dentro de la misma transaccion revertida** las dos fuentes que el
    * corte lee: las gestiones sueltas previas (se les pone el cierre de cuarentena) y las ordenes
-   * previas en `en_reparto`/`ayuda_tienda` (se les quita el mensajero asignado).
+   * previas en `en_reparto` (se les quita el mensajero asignado; SLT-186: `ayuda_tienda` ya no existe).
    *
    * NO toca ni una fila sembrada por este test: se ejecuta ANTES de sembrar.
    */
@@ -288,7 +289,7 @@ describeSiHayBase("271/T10.3 — el corte diario, sembrado contra Postgres", () 
     await tx.orden.updateMany({
       where: {
         deletedAt: null,
-        estatusId: { in: [catalogo.enReparto, catalogo.ayuda] },
+        estatusId: { in: [catalogo.enReparto] },
         mensajeroAsignadoId: { not: null },
       },
       data: { mensajeroAsignadoId: null },
@@ -347,7 +348,7 @@ describeSiHayBase("271/T10.3 — el corte diario, sembrado contra Postgres", () 
       where: {
         mensajeroAsignadoId: { in: mensajeros },
         deletedAt: null,
-        estatusId: { in: [catalogo.enReparto, catalogo.ayuda] },
+        estatusId: { in: [catalogo.enReparto] },
       },
     });
     const cierres = await tx.cierreDia.count({ where: { mensajeroId: { in: mensajeros } } });

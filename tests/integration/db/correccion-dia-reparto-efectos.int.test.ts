@@ -86,7 +86,9 @@ describeSiHayBase("262/B13 — las ausencias y las consecuencias, contra Postgre
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
 
-    const valores = ["mensajero_recogiendo_en_bodega", "en_reparto", "ayuda_tienda"];
+    // SLT-186: `ayuda_tienda` salio de esta lista: la 454 lo retiro del catalogo y el servicio admite
+    // solo estos dos (`ESTADOS_CON_DIA_DE_REPARTO_VIVO`, lib/services/CorreccionDiaRepartoService.ts).
+    const valores = ["mensajero_recogiendo_en_bodega", "en_reparto"];
     const estados = await prisma.orderStatus.findMany({
       where: { value: { in: valores } },
       select: { id: true, value: true },
@@ -137,7 +139,7 @@ describeSiHayBase("262/B13 — las ausencias y las consecuencias, contra Postgre
   }
 
   function estatusIdsAdmitidos(): string[] {
-    return [ESTATUS.mensajero_recogiendo_en_bodega, ESTATUS.en_reparto, ESTATUS.ayuda_tienda];
+    return [ESTATUS.mensajero_recogiendo_en_bodega, ESTATUS.en_reparto];
   }
 
   /** Siembra UNA orden asignada con `fechaReparto` y ejecuta `fn`. Todo se revierte. */
@@ -242,15 +244,22 @@ describeSiHayBase("262/B13 — las ausencias y las consecuencias, contra Postgre
     expect(filas[0].relrowsecurity).toBe(true);
   });
 
-  it("R26: y NO tiene policies — este repo no usa Supabase Auth, la autorizacion vive en el service", async () => {
+  it("R26: su UNICA policy es la de empresa para `servi_app` — sin Supabase Auth, la autorizacion vive en el service", async () => {
     // Patrón `orden_nota` / `plantilla_mensaje` / `notificacion` / `orden_historial_estado`. Una
-    // policy no tendría a quién preguntar (no hay `auth.uid()`); lo que la RLS garantiza es lo que
-    // R26 pide: a estas filas no se llega si no es por el servidor de la aplicación.
-    const filas = await prisma.$queryRawUnsafe<{ policyname: string }[]>(
-      `SELECT policyname FROM pg_policies
+    // policy por usuario no tendría a quién preguntar (no hay `auth.uid()`); lo que la RLS garantiza
+    // es lo que R26 pide: a estas filas no se llega si no es por el servidor de la aplicación.
+    // SLT-186: hasta SL-17 la tabla no tenia NINGUNA policy; la multiempresa le puso UNA, la que
+    // recorta por `app.organizacion_id` al rol de la app. Se afirma esa y solo esa, y que no mira
+    // a ningun usuario autenticado.
+    const filas = await prisma.$queryRawUnsafe<{ policyname: string; roles: string; qual: string }[]>(
+      `SELECT policyname, roles::text AS roles, qual FROM pg_policies
         WHERE schemaname = 'public' AND tablename = 'orden_dia_reparto_cambio'`,
     );
-    expect(filas).toEqual([]);
+    expect(filas.map((f) => ({ policyname: f.policyname, roles: f.roles }))).toEqual([
+      { policyname: "orden_dia_reparto_cambio_por_empresa", roles: "{servi_app}" },
+    ]);
+    expect(filas[0].qual).toContain("app.organizacion_id");
+    expect(filas[0].qual).not.toContain("auth.");
   });
 
   it("R26: la RLS de la tabla del rastro es la MISMA postura que la del historial de estados", async () => {
