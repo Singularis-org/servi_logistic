@@ -1285,3 +1285,76 @@ $ pnpm exec vitest run sin-estados-retirados.guardia test-citado-desaparecido.gu
 
 **Veredicto:** T5.1 cerrada (17 casos retirados, cada regla viva con su test). Design §7.1 corregido sin tocar código.
 T7.2 hecha y el checklist de T7.1/T7.4 listo para la persona.
+
+## Ajustes tras T6 (2026-11-18, frontend_dev)
+
+Decisiones del humano del 2026-11-18 (d) y (f) de `progress/features/SLT-48.md`, y T6.2 repetida. Ninguna dependencia nueva.
+
+### Commits
+
+| Punto | Commit | Qué |
+|---|---|---|
+| (d) | 761b6e67 | `gruposUnicidad(lugar, femenino)`: «Una comuna» / «Un distrito», con `esFemenino` de SLT-47 (`lib/utils/filtro-ubicacion.ts`, sin tocarlo) |
+| (f) | bc247c47 | «Ubicación incompleta: «<lugar>» tiene <plural de debajo> debajo; elige el último nivel.» antes de guardar, junto al selector que falta |
+| T6.2 | (este commit de docs) | `mis-asignaciones` y `dos-empresas-humo` verdes; T6.2 `[x]` |
+
+### Archivos
+
+- `app/(app)/configuracion/tarifas/_components/tarifas-textos.ts` — `gruposUnicidad` recibe el género.
+- `app/(app)/configuracion/tarifas/_components/TarifasGrupos.tsx` — pasa `esFemenino(singular del nivel 3)`.
+- `app/(app)/ordenes/_components/CorregirDatosClienteModal.tsx` — `corregirUbicacionIncompleta(lugar, plural)`; el texto
+  sale en el selector del nivel que falta (con `aria-invalid` y `aria-describedby`) solo si ya se eligió un lugar con
+  hijos. Sin `role="alert"` (no es la respuesta a una acción; no se anuncia en cada cambio). Si el servidor rechaza,
+  su texto manda en ese selector y el previo no se duplica. «Guardar cambios» ya estaba apagado mientras faltara un nivel
+  (`nivelQueFalta`); el rechazo del servidor (R17) sigue de red de seguridad.
+- `tests/components/TarifasGruposNNiveles.test.tsx`, `tests/components/CorregirUbicacionNNiveles.test.tsx` — tests nuevos.
+- `specs/SLT-48-geo-jerarquica-contract/tasks.md` — T6.2 `[x]`.
+
+Desvíos: ninguno. `esFemenino` vive en `lib/` y se reutiliza sin cambiarlo. En CR el aviso nuevo sale también
+(«Escazú» tiene distritos debajo), como pide la decisión; la maqueta solo lo dibuja en el caso de 4 niveles. Ninguna
+aserción existente cambió (CR incluida).
+
+### Mapa R → test
+
+| R | Test |
+|---|---|
+| R45 (decisión d) | `TarifasGruposNNiveles.test.tsx` › «Un <tipo>» concuerda con el género del tipo (Comuna → «Una», Distrito → «Un») |
+| R43, R17 (decisión f) | `CorregirUbicacionNNiveles.test.tsx` › «Ubicación incompleta» antes de guardar: 4 niveles (precargada en la comuna, y elegida desde una hoja), CR con cantón con distritos, CR con cantón sin distritos |
+| R49 | `e2e/mis-asignaciones.spec.ts`, `e2e/dos-empresas-humo.spec.ts` (abajo) |
+
+### Salida real (`NODE_OPTIONS=--max-old-space-size=8192`)
+
+```
+$ pnpm exec vitest run tests/components/TarifasGruposNNiveles.test.tsx tests/components/TarifasGrupos.test.tsx
+ Test Files  2 passed (2) · Tests  41 passed (41)
+$ pnpm exec vitest run CorregirUbicacionNNiveles CorregirDatosCliente.{ordenes,novedades} corregir-ubicacion-inactivos
+    etiquetas-geograficas-sin-literal.guardia corregir-datos-sin-rastro.guardia
+ Test Files  6 passed (6) · Tests  108 passed (108)
+$ pnpm run typecheck       → exit 0, 0 errores
+$ pnpm run lint            → exit 0: 0 errors, 246 warnings (los mismos de T4; ninguno en archivos tocados)
+$ pnpm run test:guardias   → Test Files 1 failed | 335 passed | 3 skipped · Tests 4 failed | 4735 passed
+    - dependencias-declaradas-presentes (4): el mismo rojo del arnés de T4 (init.sh sin el paso 2 de la ficha 420);
+      ajeno a SLT-48.
+```
+
+E2E, una vez cada uno, contra SOLO `localhost:5432/servi_logistic_slt48` (`DATABASE_URL`/`DIRECT_URL` armadas desde el
+`.env` del repo cambiando solo el nombre de la base; el script aborta si no es esa). `E2E_PUERTO=3044`; servidores
+levantados por la `webServer` de Playwright con el `next build` de T6 (18:13 del 2026-11-17, posterior a todo el código
+de producción salvo los dos commits de UI de arriba, que no tocan estos flujos). Sin bucles ni esperas en la shell.
+Al terminar, ningún proceso node del worktree vivo y los puertos 3044/54329 libres.
+
+```
+$ pnpm exec playwright test e2e/mis-asignaciones.spec.ts --reporter=list
+  ✓ (a) recoger por guía → Entregar con un método y foto (11.0s)
+  ✓ (b) recoger por guía → Rechazar con foto y motivo (6.2s)
+  ✓ (c) recoger por guía → Reprogramar para mañana con motivo (5.8s)
+  ✓ (d) entrega MIXTA 8.000 = 5.000 efectivo + 3.000 transferencia → totales del cierre (5.9s)
+  4 passed (43.4s)
+$ pnpm exec playwright test e2e/dos-empresas-humo.spec.ts --reporter=list
+  18 passed (2.2m)   (plataforma-vacia + aislamiento; «B recorre su menú» ✓ 23.4s)
+```
+
+Los timeouts de T6 eran de la máquina cargada, no regresiones.
+
+**Veredicto:** decisiones (d) y (f) hechas con sus tests; T6.2 cerrada en local (14 de 14 specs de R49 verdes, sin
+cambiar aserciones).

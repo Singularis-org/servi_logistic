@@ -169,10 +169,12 @@
 - [x] **T6.1** `e2e/_planes-fixture.ts`, `e2e/_zona-especial-fixture.ts` y
   `e2e/geo-presentacion-4-niveles.spec.ts` a nodos. La cuarta columna sale llena.
   **Hecho:** `pnpm exec playwright test e2e/geo-presentacion-4-niveles.spec.ts` verde (R26).
-- [ ] **T6.2** Correr los E2E de flujos críticos de R49.
+- [x] **T6.2** Correr los E2E de flujos críticos de R49.
   **Hecho:** verdes sin cambiar aserciones, en local o en CI (R49).
   > 2026-11-17 (frontend_dev): en local, 12 de 14 specs verdes; `mis-asignaciones` (3 timeouts de 30 s) y
   > `dos-empresas-humo` (corrida cortada por falta de recursos de la máquina) quedan para CI o para otra corrida.
+  > 2026-11-18 (frontend_dev): repetidos una vez cada uno contra `servi_logistic_slt48`: `mis-asignaciones` 4 passed,
+  > `dos-empresas-humo` 18 passed. Los 14 specs de R49, verdes sin cambiar aserciones.
   > Ninguna aserción cambiada. Detalle en `progress/impl_SLT-48.md` › T6.
 
 ## T7 — Cierre (leader, persona, CI y reviewer)
