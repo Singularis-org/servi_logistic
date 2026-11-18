@@ -9,9 +9,9 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 /**
@@ -50,32 +50,32 @@ const CR_22_0003 = new Date("2026-08-22T06:03:15.000Z");
 
 describeSiHayBase("271 · la regla N/V contra Postgres real", () => {
   let prisma: PrismaClient;
-  let fks: NonNullable<Awaited<ReturnType<typeof fksDeOrden>>>;
+  // SLT-178: los asigna `sembrarBaseDelCaso` en cada caso, dentro de su transaccion revertida.
+  let fks: Awaited<ReturnType<typeof crearFksDeOrden>>;
   let usuarios: { id: string }[];
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const encontradas = await fksDeOrden(prisma);
-    // Fallo RUIDOSO, no `return` silencioso: con base alcanzable y sin catalogo este archivo no
-    // puede comprobar nada, y un `passed` en esas condiciones es peor que no tener el test.
-    if (encontradas === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar. " +
-          "Corre `pnpm run db:seed` (y las semillas de zonas) antes de esta suite.",
-      );
-    }
-    fks = encontradas;
-    usuarios = await prisma.usuario.findMany({ select: { id: true }, take: 3 });
-    if (usuarios.length < 3) {
-      throw new Error(
-        "hacen falta al menos TRES usuarios en la base para separar a los mensajeros del corpus.",
-      );
-    }
   });
 
   afterAll(async () => {
     await prisma.$disconnect();
   });
+
+  /**
+   * SLT-178: tienda, zona y usuarios (mensajero, mensajero, mensajero) creados en la transaccion revertida del
+   * caso; nada de negocio se lee de la base.
+   */
+  async function sembrarBaseDelCaso(tx: Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0]): Promise<void> {
+    fks = await crearFksDeOrden(tx);
+    usuarios = [];
+    for (const rol of ["mensajero", "mensajero", "mensajero"] as const) usuarios.push(await crearUsuarioDePrueba(tx, rol));
+    const ids = [fks.tiendaId, ...usuarios.map((u) => u.id)];
+    expect(await tx.usuario.count({ where: { id: { in: ids } } }), "usuarios sembrados (tienda + 3)").toBe(
+      4,
+    );
+    expect(await tx.zona.count({ where: { id: fks.zonaId } }), "zona sembrada").toBe(1);
+  }
 
   /** Crea un `cierre_dia` del mensajero con el estado y el `solicitado_at` que se le pidan. */
   async function sembrarCierre(
@@ -142,6 +142,7 @@ describeSiHayBase("271 · la regla N/V contra Postgres real", () => {
   it("T10.1/R1-R8: las SIETE filas de la tabla de verdad, contadas por Postgres", async () => {
     await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const [m] = usuarios;
 
       // Un solo mensajero por corrida (los usuarios reales son pocos): se siembra un CASO, se
@@ -222,6 +223,7 @@ describeSiHayBase("271 · la regla N/V contra Postgres real", () => {
   it("T10.1/R34: el conteo separa a DOS mensajeros en la MISMA consulta", async () => {
     await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const [m1, m2, m3] = usuarios;
 
       await sembrarCierre(tx, m1.id, "solicitado");
@@ -246,6 +248,7 @@ describeSiHayBase("271 · la regla N/V contra Postgres real", () => {
   it("T10.2/R11: `findBloqueoDetalle` elige el MAS VIEJO por `solicitado_at`, no el primero insertado", async () => {
     await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const [m] = usuarios;
 
       // Se insertan en orden INVERSO al de su `solicitado_at`: si el repositorio ordenara por
@@ -270,6 +273,7 @@ describeSiHayBase("271 · la regla N/V contra Postgres real", () => {
   it("T10.2/R11: con `solicitado_at` IDENTICO el desempate por `id` es ESTABLE entre dos llamadas", async () => {
     await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const [m] = usuarios;
 
       // El corte crea cierres en bucle dentro del mismo segundo: este es ese caso.
@@ -291,6 +295,7 @@ describeSiHayBase("271 · la regla N/V contra Postgres real", () => {
   it("T10.2/R18: `findCierreResolicitableMasViejo` elige por EDAD, no por estado", async () => {
     await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const [m] = usuarios;
 
       // ⚠️ EL CASO QUE EL CODIGO VIEJO RESOLVIA AL REVES: un `rechazado` VIEJO y un `vencido`
@@ -331,6 +336,7 @@ describeSiHayBase("271 · la regla N/V contra Postgres real", () => {
   it("R18/R16 (CASO 6): `aReenviarPrimero` es el `vencido`, no el `solicitado` mas viejo", async () => {
     await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const [m] = usuarios;
 
       // El caso 5 que dicto el humano: solicito el primero (dia 20) y dejo vencer el segundo
@@ -369,6 +375,7 @@ describeSiHayBase("271 · la regla N/V contra Postgres real", () => {
   it("R18: el re-solicitable expuesto es el MAS VIEJO de los re-solicitables, no el mas nuevo", async () => {
     await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const [m] = usuarios;
 
       // Tres abiertos: el mas viejo de TODOS es un `solicitado` (dia 19) que el no puede tocar, y
@@ -418,6 +425,7 @@ describeSiHayBase("271 · la regla N/V contra Postgres real", () => {
   it("R18: con V=0 (dos `solicitado`) NO hay nada que reenviar -> `aReenviarPrimero` es null", async () => {
     await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const [m] = usuarios;
 
       // Caso 4: bloqueado por ACUMULAR, pero la pelota es entera de la administracion. Si el campo
@@ -438,6 +446,7 @@ describeSiHayBase("271 · la regla N/V contra Postgres real", () => {
   it("R18 (casos 5 y 7): si el mas viejo YA es re-solicitable, los dos campos son el MISMO cierre", async () => {
     await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const [m] = usuarios;
 
       // Caso 7: dos `rechazado`. Los re-solicitables son un SUBCONJUNTO de los abiertos y el orden
@@ -460,6 +469,7 @@ describeSiHayBase("271 · la regla N/V contra Postgres real", () => {
   it("R57/R61 (CASO 6): la jornada de `aReenviarPrimero` sale de SUS gestiones, no de las del otro", async () => {
     await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const [m] = usuarios;
 
       // DOS cierres con jornadas DISTINTAS y ambas derivables. Aqui hay conversion de zona horaria
@@ -500,6 +510,7 @@ describeSiHayBase("271 · la regla N/V contra Postgres real", () => {
   it("R58/R61 (CASO 6): el re-solicitable SIN gestiones cae al mismo fallback (`created_at` CR −1)", async () => {
     await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const [m] = usuarios;
 
       // El `vencido` money-neutral del corte, que es como nacen los vencidos sin gestiones. Su
@@ -529,6 +540,7 @@ describeSiHayBase("271 · la regla N/V contra Postgres real", () => {
   it("T2.4/R19 (M2): con DOS `rechazado`, la re-solicitud mueve UNO — el mas viejo — y reporta EXITO", async () => {
     await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const [m] = usuarios;
 
       // LOS CUATRO PASOS DEL RECHAZO, que es la unica via alcanzable a dos re-solicitables:
@@ -577,6 +589,7 @@ describeSiHayBase("271 · la regla N/V contra Postgres real", () => {
   it("T2.4/R19: la guarda anti-TOCTOU se conserva — con el estado ya movido, `false` y SIN escribir", async () => {
     await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const [m] = usuarios;
 
       const c = await sembrarCierre(tx, m.id, "solicitado");
@@ -600,6 +613,7 @@ describeSiHayBase("271 · la regla N/V contra Postgres real", () => {
   it("T2.6/R20: la re-solicitud NO toca ni un total, ni `resuelto_*`, ni `solicitado_at`", async () => {
     await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const [m, admin] = usuarios;
 
       const c = await tx.cierreDia.create({
@@ -655,6 +669,7 @@ describeSiHayBase("271 · la regla N/V contra Postgres real", () => {
   it("T6.10/R57: 3 gestiones del 21 en un cierre nacido el 22 -> la jornada es el 21", async () => {
     await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const [m] = usuarios;
 
       const cierre = await sembrarCierre(tx, m.id, "vencido", CR_22_0003, CR_22_0003);
@@ -701,6 +716,7 @@ describeSiHayBase("271 · la regla N/V contra Postgres real", () => {
   it("T6.10/R58: un cierre SIN gestiones (money-neutral del corte) -> `created_at` CR menos un dia", async () => {
     await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const [m] = usuarios;
 
       await sembrarCierre(tx, m.id, "vencido", CR_22_0003, CR_22_0003);
@@ -715,6 +731,7 @@ describeSiHayBase("271 · la regla N/V contra Postgres real", () => {
   it("T6.10/R60: gestiones en DOS dias de Costa Rica -> jornada `null` (el texto omite la fecha)", async () => {
     await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const [m] = usuarios;
 
       const cierre = await sembrarCierre(tx, m.id, "vencido", CR_22_0003, CR_22_0003);
@@ -755,6 +772,7 @@ describeSiHayBase("271 · la regla N/V contra Postgres real", () => {
   it("T6.10/R57: una gestion ANULADA no cuenta como jornada trabajada", async () => {
     await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const [m] = usuarios;
 
       const cierre = await sembrarCierre(tx, m.id, "vencido", CR_22_0003, CR_22_0003);

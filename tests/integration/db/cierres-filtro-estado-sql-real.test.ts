@@ -10,9 +10,9 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 import { filtrosConLimites, type FiltrosCierres } from "@/lib/types/filtros-cierres";
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
@@ -73,35 +73,33 @@ type Tx = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0];
 
 describeSiHayBase("FICHA 386 — filtrar por estado DENTRO de cada lista de cierres (SQL real)", () => {
   let prisma: PrismaClient;
-  let fks: NonNullable<Awaited<ReturnType<typeof fksDeOrden>>>;
+  // SLT-178: lo asigna `sembrarBaseDelCaso` en cada caso, dentro de su transaccion revertida.
+  let fks: Awaited<ReturnType<typeof crearFksDeOrden>>;
   let fksUsuario: { tipoIdentificacionId: string; rolId: string };
   let n = 0;
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const encontradas = await fksDeOrden(prisma);
-    if (encontradas === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar. " +
-          "Corre `pnpm run db:seed` (y las semillas de zonas) antes de esta suite.",
-      );
+    // SLT-178: las FK de catalogo del usuario se leen POR SU CLAVE (rol `mensajero`, tipo `cedula`),
+    // nunca de un usuario que ya este en la base.
+    const rol = await prisma.rol.findUnique({ where: { value: "mensajero" }, select: { id: true } });
+    const tipo = await prisma.tipoIdentificacion.findUnique({ where: { value: "cedula" }, select: { id: true } });
+    if (rol === null || tipo === null) {
+      throw new Error("falta el rol `mensajero` o el tipo de identificacion `cedula`: aplica las migraciones y `pnpm run db:seed`.");
     }
-    fks = encontradas;
-    const usuario = await prisma.usuario.findFirst({
-      select: { tipoIdentificacionId: true, rolId: true },
-    });
-    if (usuario === null) {
-      throw new Error(
-        "hace falta al menos UN usuario en la base: de el se toman prestadas las FKs de catalogo " +
-          "(tipo de identificacion y rol) para crear el mensajero limpio de estos casos.",
-      );
-    }
-    fksUsuario = usuario;
+    fksUsuario = { tipoIdentificacionId: tipo.id, rolId: rol.id };
   });
 
   afterAll(async () => {
     await prisma.$disconnect();
   });
+
+  /** SLT-178: tienda y zona del caso (`crearFksDeOrden`), creadas en su transaccion revertida. */
+  async function sembrarBaseDelCaso(tx: Tx): Promise<void> {
+    fks = await crearFksDeOrden(tx);
+    expect(await tx.usuario.count({ where: { id: fks.tiendaId } }), "tienda sembrada").toBe(1);
+    expect(await tx.zona.count({ where: { id: fks.zonaId } }), "zona sembrada").toBe(1);
+  }
 
   /** Un mensajero SIN historia: es lo que permite afirmar conjuntos EXACTOS. */
   async function crearMensajero(tx: Tx): Promise<string> {
@@ -149,6 +147,7 @@ describeSiHayBase("FICHA 386 — filtrar por estado DENTRO de cada lista de cier
   ): Promise<T> {
     return enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const mensajeroId = await crearMensajero(tx);
 
       const idPorEstado = {} as Record<CierreEstado, string>;
