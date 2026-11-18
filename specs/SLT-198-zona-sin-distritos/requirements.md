@@ -113,9 +113,11 @@ lo contrario, se cambia al aprobar el spec; el resto de la ficha no depende de e
 - **R1224** — MIENTRAS una zona no tiene distritos, ninguna orden nueva DEBE resolverse a esa zona: un
   distrito que salió de ella y no está en otra zona DEBE resolver «sin zona», y uno que ya está en otra
   zona DEBE resolver esa otra. (D2)
-- **R1225** — CUANDO se vacía una zona, el sistema NO DEBE cambiar la zona de ninguna de sus órdenes,
-  y DEBE informar en la respuesta del guardado cuántas de ellas están en el estante
-  (`en_bodega_satelite`) como «retenidas en el estante de una satélite». (D2, D4)
+- **R1225** — CUANDO se vacía una zona, el sistema NO DEBE cambiar la zona de ninguna de sus órdenes
+  (`ordenesReconciliadas = 0`). (D2, D4) *Corregido por el leader 2026-11-17 tras la implementación: el
+  guardado no informa «retenidas» al vaciar, porque con el criterio de la ficha 377 «retenida» es una
+  orden que el guardado HABRÍA movido y al vaciar no se movería ninguna; el conteo de retenidas aparece
+  en el guardado de la zona que recibe el distrito (R1226).*
 - **R1226** — CUANDO, con esa zona ya vacía, se guarda otra zona que añade uno de sus antiguos
   distritos, el sistema DEBE aceptar el guardado (sin «el distrito ya está en otra zona»), DEBE pasar a
   la nueva zona las órdenes elegibles de ese distrito que no están en el estante, y DEBE dejar con su
@@ -158,7 +160,7 @@ Integración con Postgres real en base **desechable** (`con-desechable.cjs` + `p
 | R1222 | `tests/unit/types/zona-schema.test.ts` (`esCentral: true` + `[]` rechazado) + `tests/unit/services/zona-service.test.ts` (estado del repo → `validation_error` con el literal del mensaje) + `zona-sin-distritos.test.ts` (central con `esCentral` ausente + `[]` → rechazo y nada escrito, contando filas de `zona_distrito` y de historial) | unit + integración |
 | R1223 | `zona-sin-distritos.test.ts` (una fila de historial por distrito quitado) | integración |
 | R1224 | `zona-sin-distritos.test.ts` (`OrdenRepository.findDistritosByCantonIds` y `findDistritoParaCorreccion` devuelven `zonaId: null` tras vaciar y el id de GAM tras guardarla con el distrito) | integración |
-| R1225 | `zona-sin-distritos.test.ts` (órdenes de Cartago: `zona_id` intacto en todas; `ordenesRetenidasEnBodegaSatelite` = las del estante) | integración |
+| R1225 | `zona-sin-distritos.test.ts` (órdenes de Cartago: `zona_id` intacto en todas; `ordenesReconciliadas = 0`) | integración |
 | R1226 | `zona-sin-distritos.test.ts` (guardar GAM con Quebradilla → `ok`; en tránsito pasan a GAM; las del estante siguen en Cartago y se cuentan) | integración |
 | R1227 | `zona-sin-distritos.test.ts` (retiro de SLT-197 sobre una orden del estante de Cartago vacía → `en_ruta_bodega_central`) | integración |
 | R1228 | `zona-sin-distritos.test.ts` (orden recibida en `en_bodega_central` con zona Cartago; re-guardar GAM → `zona_id` = GAM, no retenida) | integración |
