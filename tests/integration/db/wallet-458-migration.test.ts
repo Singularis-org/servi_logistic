@@ -87,7 +87,7 @@ describeSiHayBase("458-B/TB.2–TB.3 — las migraciones de la wallet contra Pos
     await prisma?.$disconnect();
   });
 
-  it("(a) los catalogos son EXACTAMENTE los seeds, con los seis valores de la 458 AL FINAL, valor a valor", async () => {
+  it("(a) los catalogos son EXACTAMENTE los seeds, con los seis valores de la 458 en las posiciones que les dio la 458-B", async () => {
     const caja = await etiquetasDeEnum(prisma, "wallet_movimiento_categoria");
     const tienda = await etiquetasDeEnum(prisma, "wallet_tienda_movimiento_categoria");
     const origen = await etiquetasDeEnum(prisma, "wallet_origen_tipo");
@@ -98,11 +98,28 @@ describeSiHayBase("458-B/TB.2–TB.3 — las migraciones de la wallet contra Pos
     expect([...origen].sort()).toEqual([...WALLET_ORIGEN_TIPO_SEED].sort());
     expect([...tipos].sort()).toEqual([...HISTORIAL_ACCION_TIPOS].sort());
     expect([...entidades].sort()).toEqual([...HISTORIAL_ACCION_ENTIDADES].sort());
-    expect(caja.slice(-2)).toEqual([...VALORES_458.wallet_movimiento_categoria]);
-    expect(tienda.slice(-2)).toEqual([...VALORES_458.wallet_tienda_movimiento_categoria]);
-    expect(tipos.slice(-2)).toEqual([...VALORES_458.historial_accion_tipo]);
     // Antes (457): 25 / 16 / 14 / 63 / 24. Despues (458-B): 27 / 18 / 14 / 65 / 24.
-    expect([caja.length, tienda.length, origen.length, tipos.length, entidades.length]).toEqual([27, 18, 14, 65, 24]);
+    // SLT-187: migraciones POSTERIORES anadieron valores al FINAL (p. ej. `egreso_reverso_fulfillment`),
+    // asi que la huella de la 458 ya no es «lo ultimo del enum»: es que sus dos valores son los dos
+    // ultimos de los primeros 27 / 18 / 65. Si una migracion posterior insertara un valor ANTES
+    // (`ADD VALUE ... BEFORE`), estas posiciones se correrian y el caso se pondria rojo.
+    expect(caja.slice(25, 27), "SLT-187: posiciones 26-27 de wallet_movimiento_categoria").toEqual([
+      ...VALORES_458.wallet_movimiento_categoria,
+    ]);
+    expect(tienda.slice(16, 18), "SLT-187: posiciones 17-18 de wallet_tienda_movimiento_categoria").toEqual([
+      ...VALORES_458.wallet_tienda_movimiento_categoria,
+    ]);
+    expect(tipos.slice(63, 65), "SLT-187: posiciones 64-65 de historial_accion_tipo").toEqual([
+      ...VALORES_458.historial_accion_tipo,
+    ]);
+    // Y los dos enums que la 458 NO toca no recibieron ninguno de sus seis valores.
+    const seis: string[] = Object.values(VALORES_458).flat();
+    expect(origen.filter((v) => seis.includes(v)), "wallet_origen_tipo no los recibe").toEqual([]);
+    expect(entidades.filter((v) => seis.includes(v)), "historial_accion_entidad no los recibe").toEqual([]);
+    // Los tamanos ya no son los de la 458-B (crecen con cada migracion posterior): solo no bajan.
+    expect(caja.length).toBeGreaterThanOrEqual(27);
+    expect(tienda.length).toBeGreaterThanOrEqual(18);
+    expect(tipos.length).toBeGreaterThanOrEqual(65);
     const up1 = soloEjecutable(UP_1);
     expect(up1.match(/ADD VALUE IF NOT EXISTS/g)).toHaveLength(6);
     expect(up1).not.toMatch(/CHECK|CREATE TABLE|UPDATE|DELETE|INSERT/);

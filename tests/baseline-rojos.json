@@ -65,10 +65,6 @@
       "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
       "desde": "2026-10-22"
     },
-    "tests/integration/db/busqueda-usa-indice.test.ts": {
-      "motivo": "Otra causa (test desfasado por una migracion posterior). Medido el 2026-11-17 en base desechable migrada con catalogos (db:seed), ya sembrado por SLT-181: AssertionError en «el findMany se resuelve por orden_busqueda_texto_trgm_idx» (tests/integration/db/busqueda-usa-indice.test.ts:211): en una base recien creada el plan usa Bitmap Index Scan on orden_organizacion_id_created_at_vivas_idx, el indice parcial (WHERE deleted_at IS NULL) que anadio SL-24 (db/migrations/20261028130000_plan/migration.sql:129), aun con enable_seqscan = off y la pending list vaciada. Inestable por coste: base nueva 12/2 la 1a corrida y 14/0 la 2a; base reusada 13/1 y luego 14/0; con datos de otra empresa 13/1. No se forzo el plan. La retira SLT-187.",
-      "desde": "2026-10-22"
-    },
     "tests/integration/db/caja-caracterizacion-459.test.ts": {
       "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
       "desde": "2026-10-22"
@@ -83,14 +79,6 @@
     },
     "tests/integration/db/efecto-movimiento-predice.test.ts": {
       "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/habilitacion-api-migration.test.ts": {
-      "motivo": "Otra causa. Medido en local el 2026-11-18 (Postgres 18.2, migrate deploy + db:seed, base vacia y con empresa ajena), ya sembrado por SLT-184: 20/1/0. AssertionError: expected [ 'actor_usuario_id', ...(7) ] to deeply equal [ 'actor_usuario_id', ...(6) ] (tests/integration/db/habilitacion-api-migration.test.ts:293): el modelo Prisma de orden_habilitacion_api tiene 8 columnas y el CREATE TABLE de su migracion 7; SL-17 anadio organizacion_id (20261022130100_organizacion_id_en_negocio/migration.sql:203). La retira SLT-187.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/historial-accion-migration.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): AssertionError: expected [ Array(1) ] to deeply equal []; R8 espera 0 policies en 'historial_accion' y hay 1 (expected [ Array(1) ] to deeply equal [], :90): la RLS por empresa de SL-17 anadio policies. La retira SLT-187.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/libro-caja-a-quien.test.ts": {
@@ -117,36 +105,8 @@
       "motivo": "Otra causa. Medido en local el 2026-11-17 tras sembrar sus usuarios en SLT-182 (base desechable migrada + db:seed, Postgres 18.2; igual con una empresa ajena confirmada): 5 de 8 verdes; los 3 que revierten una marca con diferencia fallan con AssertionError: expected 'con_asientos' to be 'updated' (tests/integration/db/marca-conciliacion.int.test.ts:272): desde SLT-73 (D11) revertir una marca que ya asento dinero responde con_asientos; los casos esperan la reversion anterior. La retira SLT-195.",
       "desde": "2026-10-22"
     },
-    "tests/integration/db/orden-traspaso-migration.test.ts": {
-      "motivo": "Otra causa. Medido en local el 2026-11-17 (Postgres 18.2, migrate deploy + db:seed, base vacia y con empresa ajena), ya sembrado por SLT-180: 13/2/0. AssertionError: expected [ ...(136) ] to deeply equal [ ...(33) ] (tests/integration/db/orden-traspaso-migration.test.ts:114): la lista de migraciones posteriores a la 427 acaba en 20261021120000 y ya hay detras las de SL-17 (20261022130100_organizacion_id_en_negocio) y siguientes; y (a) espera 9 columnas y hay 10 (expected [ 'actor_rol', ...(9) ] to deeply equal [ 'actor_rol', ...(8) ], :294): SL-17 anadio organizacion_id a orden_traspaso_mensajero. La retira SLT-187.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/postulacion-recurso-migration.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): AssertionError: expected 1 to be +0 // Object.is equality; R22 espera 0 policies en 'postulacion_recurso' y hay 1 (expected 1 to be +0, :261): la RLS por empresa de SL-17 anadio policies. La retira SLT-187.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/premio-ranking-devengo-migration.test.ts": {
-      "motivo": "Otra causa. Medido en local el 2026-11-17 tras sembrar sus usuarios en SLT-182 (base desechable migrada + db:seed, Postgres 18.2; igual con una empresa ajena confirmada): 31 de 32 verdes; el caso estatico de origenes falla con AssertionError: expected [ 'cierre_dia', 'gestion_orden', ...(8) ] to have a length of 8 but got 10 (tests/integration/db/premio-ranking-devengo-migration.test.ts:117): AGREGADOS_DESPUES no lista conciliacion_bodega_ajuste (SLT-73) ni orden_fulfillment (SLT-94) del enum de origenes de wallet. La retira SLT-187.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/push-canal-restricciones.test.ts": {
-      "motivo": "Otra causa (RLS tras SL-17). Medido el 2026-11-17 en base desechable migrada con catalogos (db:seed), ya sembrado por SLT-181: 6/7; AssertionError: expected 2 to be +0 en «y no tienen policies» (tests/integration/db/push-canal-restricciones.test.ts:353). La migracion 20261022130100_organizacion_id_en_negocio de SL-17 creo las policies push_suscripcion_por_empresa y push_envio_dia_por_empresa; el test aun espera cero. Igual con datos de otra empresa. La retira SLT-187.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/ranking-snapshot-migration.test.ts": {
-      "motivo": "Otra causa. Medido en local el 2026-11-17 tras sembrar sus usuarios en SLT-182 (base desechable migrada + db:seed, Postgres 18.2; igual con una empresa ajena confirmada): 48 de 49 verdes; R12 falla con AssertionError: expected false to be true (tests/integration/db/ranking-snapshot-migration.test.ts:992): el create de modelo sobre el esquema temporal con el DDL de la 196 da P2022 (falta la columna organizacion_id que SL-17 anadio al modelo), no P2002. La retira SLT-187.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/vista-filtro-migration.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): AssertionError: 20261022130100_organizacion_id_en_negocio fue tocado: expected '-- DOWN (SL-17 M2) — revierte; '20261022130100_organizacion_id_en_negocio/down.sql' contiene 'vista_filtro' y el test exige que ningun down.sql anterior lo nombre (:159). La retira SLT-187.",
-      "desde": "2026-10-22"
-    },
     "tests/integration/db/wallet-458-migration.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): AssertionError: expected [ 'egreso_reverso_fulfillment', …(1) ] to deeply equal [ …(2) ]; el orden de etiquetas de 'wallet_movimiento_categoria' ya no termina en los dos valores de la 458 (deep equal, :101): migraciones posteriores anadieron valores. La retira SLT-187.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/wallet-461-idempotencia-clave.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: R67 espera los indices unicos de `clave_idempotencia` sin empresa y hoy son `(organizacion_id, clave_idempotencia)` (SL-17). La retira SLT-187.",
+      "motivo": "Otra causa. Medido en base desechable migrada con catalogos el 2026-11-18 (SLT-187): el caso (a) del enum de la 458 ya pasa; queda rojo SOLO el caso (c) R92/R66, por el escenario 459: su paso «repartoMensajero» responde sin_saldo (tests/integration/db/_fixtures/caja-459.ts:773, D64). La retira SLT-195 (PR #219).",
       "desde": "2026-10-22"
     },
     "tests/integration/db/wallet-anulacion-458.test.ts": {
@@ -163,14 +123,6 @@
     },
     "tests/integration/db/wallet-registro-comprobante-458.test.ts": {
       "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/webhook-suscripcion-circuito-migracion.test.ts": {
-      "motivo": "Otra causa. Medido en local el 2026-11-17 tras sembrar sus usuarios en SLT-183 (base desechable migrada + db:seed, Postgres 18.2; igual con una empresa ajena confirmada): 16 de 17 verdes; el caso del DOWN falla con AssertionError: expected [ 'activa', 'created_at', 'id', …(5) ] to deeply equal [ 'activa', 'created_at', 'id', …(4) ] (tests/integration/db/webhook-suscripcion-circuito-migracion.test.ts:288): la lista de columnas que deja el down no cuenta organizacion_id, que añadio SL-17 (20261022130100_organizacion_id_en_negocio). La retira SLT-187.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/orden-evento-migration.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: tabla 'orden' vacia: corre 'pnpm run db:seed'. en tests/integration/db/454/_escenario.ts:133. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: la lista de columnas de `orden_evento` tiene una mas que la esperada (expected [ actor_rol, …(12) ] to deeply equal [ actor_rol, …(11) ]). La retira SLT-187.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/454/registro-gestion-sin-transicion-sql-real.test.ts": {
@@ -207,10 +159,6 @@
     },
     "tests/integration/db/wallet-461-migration.test.ts": {
       "motivo": "Postgres 17 (CI) frente a 18 (local): el DELETE de un usuario referenciado por una FK RESTRICT y por otra NO ACTION da 23503 en PG 17.11 y 23001 en PG 18.2 (medido el 2026-10-22 sobre base nueva migrada en los dos; en PG 18 pasa). No es falta de datos: la fixture crea sus usuarios. Lee db/migrations, asi que la retira SL-28; la version de Postgres de CI sigue ABIERTA en gate.yml.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/454/retiro-estados-migration.test.ts": {
-      "motivo": "Otra causa (depende del estado de la base). Medido el 2026-11-16 en base desechable migrada con catalogos y datos de otra empresa (y en la base local de dev del leader): el bloque «M3 contra Postgres real» aplica la migracion 20260923120200_retiro_estados_454 sobre TODA la base y falla con P0001 «migracion 454: 1 orden(es) en ayuda_tienda sin fila de solicitud con actor» por una orden ajena; en base vacia pasa 13/13. Test de migracion que solo vale en base sin ordenes retiradas ajenas. La retira SLT-187. En CI pasa (base vacia) y el gate avisa «ya pasa»: es esperado y se queda hasta SLT-187, porque en local con datos ajenos sigue rojo (anotado el 2026-11-17 al cerrar SLT-60).",
       "desde": "2026-10-22"
     }
   }

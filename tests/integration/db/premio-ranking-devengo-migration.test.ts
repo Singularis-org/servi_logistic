@@ -113,6 +113,9 @@ describe("T1.5 — los dos SEED tipados ganan su valor y conservan los previos",
       "cobro_tienda_completado",
       "abono_tienda",
       "incentivo_mensajero", // SLT-68: el incentivo manual a un mensajero
+      // SLT-187: los dos que llegaron despues sin declararse aqui (el archivo estaba en el baseline).
+      "conciliacion_bodega_ajuste", // SLT-73: `20261031140000_slt73_diferencia_satelite_enums`
+      "orden_fulfillment", // SLT-94: `20261108120000_slt94_fulfillment_enums`
     ];
     expect(WALLET_ORIGEN_TIPO_SEED.filter((v) => !AGREGADOS_DESPUES.includes(v))).toHaveLength(8);
     for (const previo of [
