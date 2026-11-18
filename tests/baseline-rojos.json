@@ -52,9 +52,9 @@
     "91 archivos que el lote de SLT-177 siembra con datos propios y quedan verdes con 0 saltados; las",
     "que se quedan llevan la causa medida y la ficha SLT-178..SLT-187 o SLT-195 que las retira.",
     "",
-    "PODA DEL 2026-11-18 (SLT-195): salen 21 archivos (los 20 de la ficha y `marca-conciliacion.int`), verdes con",
+    "PODA DEL 2026-11-18 (SLT-195): salen 22 archivos (los 21 de la ficha y `marca-conciliacion.int`), verdes con",
     "0 saltados en base desechable migrada y sembrada. Pruebas desactualizadas por SLT-73/79/122/123/139; sin fallo",
-    "de produccion. Se queda `analitica-anulacion-rechazo-458` por R1203 (SL-39 R11, pregunta en progress/impl_SLT-195.md)."
+    "de produccion. `analitica-anulacion-rechazo-458` sale tras la decision de Carlos (2026-11-18): ganancia sin IVA, SL-39 R11."
   ],
   "archivos": {
     "tests/unit/guards/dependencias-declaradas-presentes.guardia.test.ts": {
@@ -71,10 +71,6 @@
     },
     "tests/integration/db/ajuste-caja-anulacion-461.test.ts": {
       "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: la action `registrarMovimientoManualAction` corre sin empresa: `EmpresaNoResuelta: Sin empresa en contexto para WalletMovimiento.createMany` -> INTERNAL. La retira SLT-185.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/analitica-anulacion-rechazo-458.test.ts": {
-      "motivo": "Otra causa (R1203 de SLT-195). Medido el 2026-11-18 en base desechable migrada y sembrada: con el escenario 459 al dia (SLT-195) y la zona del pais inyectada, 3 de 4 casos pasan; «la ganancia cuadra» espera que la ganancia baje 1130.00 (flete 1000 + IVA 130) y baja 1000.00. SL-39 R11 saco el IVA de `ganancia_empresa`; el caso no encaja en las decisiones D1-D6 de SLT-195 y el literal no se ajusta sin Carlos (pregunta en progress/impl_SLT-195.md). La retira la ficha que resuelva esa pregunta.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/analytics-daily-job.test.ts": {

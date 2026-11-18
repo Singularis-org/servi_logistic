@@ -110,6 +110,13 @@ Script: `mutar.sh` del scratchpad.
 | WCA | `WalletComprobanteService.ts:155` `no_anulable` no responde `no_admite` | wallet-comprobante-alcance (7 casos) | el escenario del archivo cae con `AppErrorCode inesperado INTERNAL` (cae, pero por error, no por aserción) |
 | WCA2 | `WalletComprobanteService.ts:157` `en_su_documento` → `no_admite` | wallet-comprobante-alcance | D6 `expected { status: 'no_admite', … } to deeply equal …` |
 
+| GAN5 | IVA de vuelta en la ganancia: `egreso_reverso_iva_flete_devolucion` en `categorias` de `ganancia_empresa` (`lib/analytics/metrics.ts`) **y** fuera de `esCategoriaIva` (`lib/utils/caja-tesoreria.ts`), juntas | analitica-anulacion-rechazo-458 | «la ganancia cuadra»: `expected '1130.00' to be '1000.00'` |
+
+(GAN, GAN2 y GAN3 —cada mitad sola, o con la categoría de ingreso en vez de la del reverso— no
+mordían: el IVA queda fuera dos veces, por la lista de la métrica y por `esCategoriaIva`, y la
+diferencia la mueve el reverso. Se descartaron y se usó GAN5. GAN4, `ganancia × 2`, rompe la
+consulta, no la aserción.)
+
 (M6 —`if (delta.isZero() && false)`— cayó por el `CHECK` de la tabla, no por una aserción; se
 descartó y se usó M6b.)
 
@@ -167,3 +174,15 @@ Veredicto: 21 de 22 archivos recuperados y fuera del baseline, sin tocar producc
   con este cambio, pasa 7/8; los dos casos (c), que usan `sembrarEscenario459`, pasan. Solo cae (a)
   («los catálogos son EXACTAMENTE los seeds…»), por el orden de etiquetas del enum, que es causa de SLT-187.
   La entrada se queda en el baseline con ese motivo, re-medido.
+
+## Vuelta 2 (cont.) — R1203 resuelto por Carlos
+- Decisión de Carlos, 2026-11-18 («dale del todo», vía el leader): en `analitica-anulacion-rechazo-458`,
+  caso «la ganancia cuadra», el esperado pasa de 1130.00 a **1000.00** (literal, no calculado con la
+  app), con el comentario «flete 1000; el IVA 130 no cuenta en la ganancia (SL-39 R11); aprobado por
+  Carlos 2026-11-18». La segunda aserción (ganancia − flete = IVA) ya no vale con SL-39: ahora afirma
+  que la ganancia baja lo mismo que el flete y que el IVA sí se movió (`"130.00"`). Cabecera del archivo
+  al día.
+- En la desechable: 4/4 en verde. Control positivo GAN5 (tabla de arriba): ROJO, restaurado con
+  `git checkout --`, `git diff --name-only -- lib` vacío.
+- Baseline: sale también esta entrada. Ya no queda ninguna de SLT-195 por R1203. La línea de poda de
+  `_lee_esto` dice 22 archivos.

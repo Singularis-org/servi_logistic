@@ -35,7 +35,8 @@ vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabric
 //   · «Ingreso por flete» e «Ingreso por IVA» vuelven, en NETO, a su valor ANTES del cobro: tras la
 //     anulacion valen lo mismo que antes menos 1 000,00 y 130,00 (literales escritos a mano).
 //   · El BRUTO sube (volumen movido: el cobro y su reverso son dos movimientos), como en `egresos`.
-//   · «Ganancia de la empresa» baja 1 130,00 = lo que bajan flete + IVA: la ganancia cuadra.
+//   · «Ganancia de la empresa» baja 1 000,00 = lo que baja el flete; el IVA no cuenta en la ganancia
+//     (SL-39 R11; SLT-195, aprobado por Carlos 2026-11-18. Antes: 1 130,00 = flete + IVA).
 //
 // Sin la B2 (el reverso fuera de la definicion) el neto de flete e IVA no se movia y la ganancia
 // si: la mutacion de la bitacora quita el reverso del catalogo y este test cae.
@@ -174,12 +175,15 @@ describeSiHayBase("⭑ 458-B/B2 — la anulacion del cobro por devolución a ori
     expect(menos(trasAnulacion.iva.bruto, trasCobro.iva.bruto)).toBe("130.00");
   });
 
-  it("la ganancia cuadra: baja 1 130,00, exactamente lo que bajan flete + IVA", () => {
+  it("la ganancia cuadra: baja 1 000,00, exactamente lo que baja el flete (el IVA no cuenta)", () => {
     const { trasCobro, trasAnulacion } = m();
     const bajaGanancia = menos(trasCobro.ganancia.neto, trasAnulacion.ganancia.neto);
-    expect(bajaGanancia).toBe("1130.00");
+    // flete 1000; el IVA 130 no cuenta en la ganancia (SL-39 R11); aprobado por Carlos 2026-11-18
+    expect(bajaGanancia).toBe("1000.00");
     const bajaFlete = menos(trasCobro.flete.neto, trasAnulacion.flete.neto);
     const bajaIva = menos(trasCobro.iva.neto, trasAnulacion.iva.neto);
-    expect(menos(bajaGanancia, bajaFlete)).toBe(bajaIva);
+    // La ganancia baja lo mismo que el flete, y el IVA si se movio (130,00) sin tocarla.
+    expect(bajaGanancia).toBe(bajaFlete);
+    expect(bajaIva).toBe("130.00");
   });
 });
