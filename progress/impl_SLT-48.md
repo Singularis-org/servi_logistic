@@ -1358,3 +1358,58 @@ Los timeouts de T6 eran de la máquina cargada, no regresiones.
 
 **Veredicto:** decisiones (d) y (f) hechas con sus tests; T6.2 cerrada en local (14 de 14 specs de R49 verdes, sin
 cambiar aserciones).
+
+## T7.3 — Mapa R → test final (implementer, 2026-11-18)
+
+Parte del mapa de design §13; aquí se anotan solo los cambios respecto de él. Todas las rutas existen en la rama.
+
+| R | Test |
+|---|---|
+| R1, R3 | `tests/integration/db/slt48-vistas-geografia.test.ts` |
+| R2 | `slt48-vistas-geografia.test.ts` › «R2: …el dueño recibe SL048…, servi_app 42501 (solo SELECT)» (texto de R2 corregido el 2026-11-17) |
+| R4, R6, R11, R12, R20 | `tests/integration/db/migracion-slt48-ida-y-vuelta.test.ts` |
+| R5 | `slt48-vistas-geografia.test.ts` (los casos de sincronía de `geo-sincronia-*` se retiraron en T5.1, ver «T5.1 retiros») |
+| R7, R8, R9 | `tests/integration/db/slt48-triggers-orden-pais.test.ts`; R9 también `orden-nodo-mas-profundo.test.ts` (aserción de SLT-89 cambiada, autorizada) |
+| R10 | `tests/integration/db/slt48-trigger-orden-rendimiento.test.ts` |
+| R13, R14, R48 | `tests/unit/db/slt48-migraciones-declaradas.test.ts` (+ diff para el reviewer en R48) |
+| R15 | `tests/integration/db/orden-nodo-escritura.test.ts` |
+| R16 | `tests/integration/db/corregir-datos-cliente.repo.test.ts` (en el baseline: lo corre CI), `tests/unit/services/corregir-datos-cliente-service.test.ts`, `tests/components/CorregirDatosCliente.ordenes.test.tsx` y `.novedades.test.tsx` |
+| R17, R18 | `tests/unit/services/geo-ubicacion.test.ts`, `bulk-orden-service.n-niveles.test.ts`, `bulk-orden-service.forma-pais.test.ts`, `tests/integration/api/v2-paises-de-prueba.route.test.ts` |
+| R19 + decisión «v1 y el cantón sin distritos» | `tests/unit/services/geo-resolucion-v1-mensajes.test.ts` (3 tests nuevos: por v1 se rechaza, por v2 entra) |
+| R21 | `tests/components/GeografiaPlataformaSinAviso.test.tsx`, `GeografiaPlataformaAltaPais.test.tsx` |
+| R22 | `tests/unit/repositories/lugar-orden.test.ts`, `tests/unit/services/ruta-del-lugar.test.ts`, `tests/integration/db/orden-lugar-owner.test.ts` |
+| R23 | `tests/unit/repositories/lugares-del-filtro.test.ts`, `orden-repository-filtros.test.ts`, `tests/integration/db/slt48-filtro-orden-nueva.test.ts` |
+| R24 | `tests/integration/db/geografia-ordenes-sin-entregar.test.ts`, `zona-reconciliacion-ordenes.test.ts` |
+| R25 | `tests/unit/utils/ubicacion-presentacion.test.ts`, `tests/integration/db/informe-transito-nodo.test.ts` |
+| R26 | `e2e/geo-presentacion-4-niveles.spec.ts` |
+| R27 | `tests/integration/db/cierre-dia-snapshot-nodo.test.ts`, `e2e/geo-presentacion-4-niveles.spec.ts` (cierre de 4 niveles) |
+| R28 | `tests/integration/api/v1-ordenes-lugar.route.test.ts` (misma respuesta con y sin las 3 FK; texto de R28 corregido) |
+| R29 | `tests/unit/guards/orden-fk-geo-sin-uso.guardia.test.ts` |
+| R30, R33 | **Persona, T7.1:** salida de `geo:explain-*` y `geo:equivalencia-*` pegada en el PR (checklist en esta bitácora) |
+| R31, R32 | `tests/unit/services/geografia-dominio.distrito-de-tarifa.test.ts`, `tests/integration/db/tarifas-flexibles-resolver.test.ts`, `slt89-equivalencia-cr.test.ts`, `slt48-tarifas-equivalencia.test.ts` |
+| R34, R35, R37, R38 | `tests/integration/db/geografia-mover-nodo.test.ts`, `tests/unit/actions/geografia-plataforma.mover.test.ts`, `geografia-plataforma-action.test.ts` |
+| R36 | `geografia-mover-nodo.test.ts` (vista previa con desglose por nivel), `tests/components/MoverNodoDialog.test.tsx` |
+| R39, R40, R41 | `tests/integration/db/geografia-mover-nodo-ordenes.test.ts` |
+| R42 | Esta bitácora, sección T0 (maqueta aprobada el 2026-11-17): la revisa el reviewer |
+| R43 + «Ubicación incompleta» antes de guardar | `tests/components/CorregirUbicacionNNiveles.test.tsx` |
+| R44 | `tests/unit/types/historial-accion-etiquetas-ruta.test.ts` |
+| R45 + «Un/Una <tipo>» | `tests/components/TarifasGruposNNiveles.test.tsx`, `tests/components/ZonasNNiveles.test.tsx`, `geografia-arbol-n-niveles.test.tsx` |
+| R46 | `tests/integration/db/carga-masiva-4-niveles.test.ts` |
+| R47 | `tests/unit/guards/etiquetas-geograficas-sin-literal.guardia.test.ts` |
+| R49 | 14 specs E2E de flujos críticos, 14/14 en verde en local (sección «Ajustes tras T6»); además CI del PR a `prod` |
+
+R sin test automatizado: **ninguna**. R30 y R33 dependen por diseño de la corrida de una persona (T7.1), y R42 de la aprobación anotada.
+
+### T7.3 — Gate local (2026-11-18)
+
+- `NODE_OPTIONS=--max-old-space-size=8192 ./init.sh`: **ROJO en el paso del validador de features**, antes de llegar al typecheck:
+  `✗ feature_list.json invalido: zona fullstack: SLT-46, SLT-47, SLT-48, SLT-81, SLT-89, SLT-125, SLT-136, SLT-144 (8 in_progress, max 3)`.
+  Es el cupo del board, no el código de esta rama; lo resuelve el leader. Además, `feature_list.json` no existe en el worktree.
+- Lo sustituí por lo que permite el encargo, con `NODE_OPTIONS=--max-old-space-size=8192`:
+  - `pnpm run typecheck`: **0 errores**.
+  - `pnpm run lint`: **0 errores** (246 avisos).
+  - `pnpm run test:guardias`: 338/339 archivos y 4759/4764 tests en verde. El único rojo es `dependencias-declaradas-presentes` (4 tests), que está en el baseline y viene del arnés (`init.sh` no tiene el paso 2 de la ficha 420).
+  - `vitest run` de los 158 archivos de test que toca la rama, en 6 tandas de 30 contra `servi_logistic_slt48`: 2.193 verdes. Rojos:
+    - 5 del baseline (`cobertura-repository`, `corregir-datos-cliente.repo`, `corregir-ubicacion-geocode`, `emisor-relaciones-anidadas`, `orden-remision-borrada-libera-numero`): necesitan una base sembrada y los ve CI.
+    - 6 fuera del baseline (`carga-division`, `geografia-alta`, `geografia-catalogo-activo`, `geografia-dos-paises`, `geografia-mover-nodo`, `geografia-mover-nodo-ordenes`). Fallaban por datos que dejaron el seed y el E2E en `servi_logistic_slt48` (`23505 usuario_un_solo_superadmin` y únicos repetidos). En una base limpia nueva, `servi_logistic_slt48_gate` (`prisma migrate deploy`), salen **59/59 en verde** (15+15+16+5+7+3).
+- T7.3 queda sin `[x]`: falta `./init.sh` en verde, que depende del cupo, y el check `gate-completo` de CI.
