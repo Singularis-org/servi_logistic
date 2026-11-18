@@ -28,8 +28,8 @@ export type OpcionesDeBorrador = { borradorId: string };
 export interface IPlanesService {
   crear(actor: Actor | null, input: unknown, opciones?: OpcionesDeBorrador): Promise<PlanResult>;
   /**
-   * De inmediato (`vigenteDesde: null`) o programada (R37, T11). SLT-86 (R22): un cambio de costo base o de
-   * descuento lleva fecha `≥ hoy`; la de hoy se aplica en el acto.
+   * SLT-135 (R1–R9): siempre programada (SLT-128) con `vigenteDesde` obligatoria y `≥ hoy`, cambie el precio
+   * o no; con la de hoy, cada empresa que empieza período hoy lo recibe en la siguiente pasada de la cola.
    */
   editar(actor: Actor | null, input: unknown, opciones?: OpcionesDeBorrador): Promise<PlanResult>;
   archivar(actor: Actor | null, input: unknown): Promise<PlanResult>;

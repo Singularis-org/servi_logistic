@@ -40,7 +40,6 @@ function doble() {
     plan: vi.fn<IPlanesRepository["plan"]>(async () => null),
     crear: vi.fn<IPlanesRepository["crear"]>(),
     crearYAsignar: vi.fn<IPlanesRepository["crearYAsignar"]>(),
-    editar: vi.fn<IPlanesRepository["editar"]>(),
     archivar: vi.fn<IPlanesRepository["archivar"]>(),
     asignar: vi.fn<IPlanesRepository["asignar"]>(),
     vistaPreviaCambio: vi.fn<IPlanesRepository["vistaPreviaCambio"]>(),

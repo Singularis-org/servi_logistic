@@ -7,7 +7,7 @@
 
 ## T1 · Contrato — backend_dev
 
-- [ ] **T1.1** `lib/types/planes.ts` (§1):
+- [x] **T1.1** `lib/types/planes.ts` (§1):
   - `editarPlanSchema.vigenteDesde` obligatoria; ausente o `null` lleva `FECHA_DE_EFECTO_OBLIGATORIA`, que se
     mueve aquí;
   - `previsualizarCambioSchema.vigenteDesde` sin `null`;
@@ -21,32 +21,32 @@
 
 ## T2 · Servicio y repositorio — backend_dev
 
-- [ ] **T2.1** `PlanesService.editar` según §2: sin `editarYa`, sin la rama del precio y sin «posterior a hoy»;
+- [x] **T2.1** `PlanesService.editar` según §2: sin `editarYa`, sin la rama del precio y sin «posterior a hoy»;
   F ≥ hoy → `programarCambio`. `previsualizarCambio` con `recibeEl` siempre fecha. Depende de T1.
   *Hecho:* typecheck verde en `lib/services/`; ningún `vigenteDesde === null` en `editar`.
-- [ ] **T2.2** Quitar `PlanesRepository.editar`, y `editar` y `ResultadoEdicion` de `IPlanesRepository` (§3).
+- [x] **T2.2** Quitar `PlanesRepository.editar`, y `editar` y `ResultadoEdicion` de `IPlanesRepository` (§3).
   Comentarios de `IPlanesService` y de `editarPlanAction` (`lib/actions/planes.ts`). Depende de T2.1.
   *Hecho:* `grep -n "editar(" lib/repositories/PlanesRepository.ts` no devuelve el método; `planPartido` sigue
   usado por `cancelarCambio`.
 
 ## T3 · Tests unitarios del servidor — backend_dev
 
-- [ ] **T3.1 [P]** `tests/unit/services/planes-service.test.ts`: R1, R7, R9 y R22 con fecha. Fuera los casos de
+- [x] **T3.1 [P]** `tests/unit/services/planes-service.test.ts`: R1, R7, R9 y R22 con fecha. Fuera los casos de
   «editar de inmediato» y el de R16 (`cambio_a_medias` en editar). Depende de T2.
   *Hecho:* verde; los nombres de los `it` llevan su `R<n>`.
-- [ ] **T3.2 [P]** `tests/unit/services/planes-service-periodo.test.ts`: R2 y R3; «hoy en el acto» pasa a «hoy
+- [x] **T3.2 [P]** `tests/unit/services/planes-service-periodo.test.ts`: R2 y R3; «hoy en el acto» pasa a «hoy
   programa con las 00:00 de hoy».
   *Hecho:* verde.
-- [ ] **T3.3 [P]** Los dos tests del costo por orden. Las mismas aserciones, con fecha (`programarCambio` en lugar
+- [x] **T3.3 [P]** Los dos tests del costo por orden. Las mismas aserciones, con fecha (`programarCambio` en lugar
   de `editar`):
   - `tests/unit/services/planes-service-costeo.test.ts`;
   - `tests/unit/services/planes-service-costo-porcentual.test.ts`.
 
   *Hecho:* verdes.
-- [ ] **T3.4 [P]** `tests/unit/services/planes-previsualizar-cambio.test.ts`: R13; las entradas inválidas llevan
+- [x] **T3.4 [P]** `tests/unit/services/planes-previsualizar-cambio.test.ts`: R13; las entradas inválidas llevan
   fecha.
   *Hecho:* verde.
-- [ ] **T3.5 [P]** Los esquemas: R1 y R10. Las entradas válidas llevan fecha.
+- [x] **T3.5 [P]** Los esquemas: R1 y R10. Las entradas válidas llevan fecha.
   - `tests/unit/types/planes-schema.test.ts`;
   - `tests/unit/types/planes-schema-costeo.test.ts`;
   - `tests/unit/types/planes-schema-costo-porcentual.test.ts`;

@@ -56,7 +56,6 @@ function doble() {
     empresa: vi.fn<IPlanesRepository["empresa"]>(async (id) => ({ id, nombre: "Mensajería Uno", planId: null })),
     plan: vi.fn<IPlanesRepository["plan"]>(async () => plan()),
     crear: vi.fn<IPlanesRepository["crear"]>(async () => PLAN),
-    editar: vi.fn<IPlanesRepository["editar"]>(async () => ({ estado: "not_found" })),
     archivar: vi.fn<IPlanesRepository["archivar"]>(async () => ({ estado: "not_found" })),
     asignar: vi.fn<IPlanesRepository["asignar"]>(async () => ({ estado: "ok", cambio: true, avisos: [], pendiente: false })),
     crearYAsignar: vi.fn<IPlanesRepository["crearYAsignar"]>(async () => ({ estado: "ok", planId: PLAN, avisos: [], pendiente: false })),

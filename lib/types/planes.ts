@@ -45,6 +45,13 @@ export const periodicidadOrdenesSchema = z.enum(PERIODICIDADES_ORDENES);
 export const TIPO_QUINCENAL_CON_ORDENES_MENSUALES =
   "Un plan con facturación de órdenes mensual no admite el tipo de cobro quincenal: la cuota del 16 no tendría factura que la emita.";
 
+/**
+ * SLT-86 (R16): error del campo `vigenteDesde` cuando falta en un cambio a una empresa con plan. SLT-135 (R1):
+ * también cuando falta al editar un plan. Vive aquí, y `lib/planes/mensajes.ts` la reexporta, porque la usa
+ * `editarPlanSchema` y ese módulo importa valores de este.
+ */
+export const FECHA_DE_EFECTO_OBLIGATORIA = "Elige desde qué fecha rige el cambio.";
+
 /** SLT-86 (R10): el descuento de UN período, en porcentaje o en monto fijo; nunca los dos. */
 export type DescuentoPeriodo = { tipo: "porcentaje"; porcentaje: string } | { tipo: "monto"; monto: string };
 
@@ -267,10 +274,9 @@ const edicionDelPlan = z
     // SLT-118 (R35): ausente = sin cambio. La hereda `versionPlanSchema`, así que una versión programada
     // guardada antes, sin ella, sigue validando.
     periodicidadOrdenes: periodicidadOrdenesSchema.optional(),
-    // null = de inmediato (R15); una fecha = programado (R37, T11). SLT-86 (R22): si cambia el precio o
-    // un descuento es obligatoria y `≥ hoy`, y hoy se aplica en el acto; lo mira el servicio, que sabe
-    // qué cambió y qué día es.
-    vigenteDesde: fechaSchema.nullable(),
+    // SLT-135 (R1): obligatoria, cambie el precio o no; toda edición se programa (SLT-128). Ausente o
+    // `null` lleva `FECHA_DE_EFECTO_OBLIGATORIA`. El `≥ hoy` (R2) lo mira el servicio, que tiene el reloj.
+    vigenteDesde: z.string({ error: FECHA_DE_EFECTO_OBLIGATORIA }).pipe(fechaSchema),
   })
   .strict();
 
@@ -333,11 +339,11 @@ export const previsualizarCustomSchema = z
 export const preciosQueRigenSchema = z.object({ planIds: z.array(z.uuid()).max(500) }).strict();
 /**
  * SLT-144 (design §3.1; R17–R22): la fecha en que cada empresa recibiría el cambio y los topes que ya pasa,
- * antes de programarlo. `vigenteDesde: null` es «De inmediato»: solo avisos, sin fechas. El rango de la
- * fecha no se mira aquí: lo decide confirmar (SLT-129 R19).
+ * antes de programarlo. SLT-135 (R13): `vigenteDesde` es obligatoria. El rango de la fecha no se mira aquí:
+ * lo decide confirmar (SLT-129 R19).
  */
 export const previsualizarCambioSchema = z
-  .object({ planId: z.uuid(), vigenteDesde: fechaSchema.nullable(), topes: topesPlanSchema })
+  .object({ planId: z.uuid(), vigenteDesde: fechaSchema, topes: topesPlanSchema })
   .strict();
 
 export type CrearPlanInput = z.infer<typeof crearPlanSchema>;
@@ -404,8 +410,8 @@ export type PlanResult =
   | { estado: "custom_de_otra_empresa" }
   | { estado: "tope_excedido"; excedidos: TopeExcedido[]; mensaje: string }
   | { estado: "sin_cambio_programado" }
-  // SLT-128 (R14–R16): cancelar, archivar o editar «De inmediato» con el cambio programado a medias. El texto
-  // lo elige la pantalla según la acción (`lib/planes/mensajes.ts`). Nada se escribió.
+  // SLT-128 (R14, R15): cancelar o archivar con el cambio programado a medias. El texto lo elige la pantalla
+  // según la acción (`lib/planes/mensajes.ts`). Nada se escribió. SLT-135 (R8): editar ya no lo devuelve.
   | { estado: "cambio_a_medias" };
 
 /**
@@ -570,8 +576,8 @@ export type VistaPreviaCustomResult =
   | { estado: "validation_error"; fieldErrors: Record<string, string[]> }
   | { estado: "not_found" };
 
-/** SLT-144 (R17, R21): una empresa del plan y el día (`AAAA-MM-DD`) en que recibiría el cambio; `null` sin F. */
-export type FechaDeEmpresa = { empresaId: string; empresa: string; tipoCobro: TipoCobro; recibeEl: string | null };
+/** SLT-144 (R17, R21): una empresa del plan y el día (`AAAA-MM-DD`) en que recibiría el cambio (SLT-135 R13). */
+export type FechaDeEmpresa = { empresaId: string; empresa: string; tipoCobro: TipoCobro; recibeEl: string };
 
 /** SLT-144 (design §3.1; R21, R22): lo mismo que dejaría programar el cambio con esa F y esos topes. */
 export type VistaPreviaCambioResult =

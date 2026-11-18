@@ -41,7 +41,6 @@ import type {
   ResultadoCancelarCambioDelPlan,
   ResultadoCancelarDelMaestro,
   ResultadoCrearYAsignar,
-  ResultadoEdicion,
   ResultadoProgramar,
   ResultadoRecibir,
   ResultadoRecordatorio,
@@ -464,7 +463,7 @@ async function escribirRastro(
 /**
  * Aplica una versión del plan (§5.3, §16.3): columnas, topes por rol, módulos incluidos y la
  * diferencia de módulos en cada empresa que tiene el plan EN ESTE MOMENTO (R17). Solo enciende lo
- * añadido y apaga lo quitado: las excepciones de cada empresa en los demás módulos no se tocan (P3).
+ * La usa el aplicador del cambio programado (T11); SLT-135 quitó la edición inmediata. El ciclo de las
  * La comparten la edición inmediata y el aplicador del cambio programado (T11). El ciclo de las
  * empresas no se toca (R38): no escribe `plan_ciclo_ancla_at`. SLT-86 (R15): tampoco su entrada, tipo ni
  * período; el precio nuevo les llega por el historial, desde su primer período que empiece en `precioDesde`.
@@ -1390,58 +1389,6 @@ export class PlanesRepository
         }));
         return r.id;
       }),
-    );
-  }
-
-  editar(
-    planId: string,
-    version: VersionPlan,
-    actorUsuarioId: string,
-    precioDesde: Date,
-    borradorId?: string,
-  ): Promise<ResultadoEdicion> {
-    return comoPlataforma("SL-24", "editar un plan del catálogo de inmediato (superadmin)", () =>
-      this.prisma.$transaction((tx) => consumirBorrador(tx, borradorId, async (): Promise<ResultadoEdicion> => {
-        if (!(await bloquearPlanParaEscribir(tx, planId))) return { estado: "not_found" };
-        const antes = (await leerPlan(tx, planId)) as PlanDTO;
-        if (antes.archivado) return { estado: "archivado" };
-        // SLT-128 (R16, P7): con el plan partido, aplicar «a todas en el acto» dejaría a cada empresa en una
-        // versión que nadie programó. Se pide programarlo con fecha.
-        if (await planPartido(tx, planId)) return { estado: "cambio_a_medias" };
-        const cambios = diferenciasDelPlan(antes, { ...antes, ...version });
-        if (!hayCambios(cambios)) return { estado: "ok", cambio: false, avisos: [] };
-        // SLT-118 (R37): a mensual con alguna empresa quincenal, se rechaza sin escribir.
-        const quincenales = await empresasQuincenalesSiPasaAMensual(tx, antes, version);
-        if (quincenales > 0) return { estado: "periodicidad_incompatible", empresas: quincenales };
-
-        // R16 (revisado el 2026-10-28): ya no se rechaza. Se guarda y se avisa de quién ya pasa un
-        // tope; desde ahora sus altas que pasen el tope las rechazan los triggers.
-        const empresas = await empresasDelPlan(tx, planId);
-        const avisos = await excedidosDe(tx, empresas, version.topes);
-        const actor = await resolverActorCongelado(tx, actorUsuarioId);
-        await aplicarVersion(tx, antes, version, actor, precioDesde);
-        const editId = await escribirRastro(tx, { id: planId, nombre: version.nombre }, "editado", cambios, actorUsuarioId, actor);
-        // R41 (§16.4): un correo de guardado por empresa del plan, en esta transacción. La clave lleva
-        // el id de la fila `editado` de `plan_rastro` (no hay programación).
-        await encolarAvisos(
-          tx,
-          empresas.map((e) => ({
-            organizacionId: e.id,
-            dedupeKey: dedupeAviso(editId, "guardado", e.id),
-            payload: {
-              cambioId: null,
-              planId,
-              planNombre: antes.nombre,
-              tipo: "guardado",
-              cambios,
-              vigenteDesde: null,
-              reemplazaA: null,
-              topesPasados: topesDeLaEmpresa(avisos, e.id),
-            },
-          })),
-        );
-        return { estado: "ok", cambio: true, avisos };
-      })),
     );
   }
 

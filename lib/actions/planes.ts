@@ -49,9 +49,8 @@ export async function crearPlanAction(input: unknown, deps: PlanesDeps = {}): Pr
 }
 
 /**
- * Edita un plan: de inmediato con `vigenteDesde: null` (R15–R17), o programado con una fecha (R37).
- * SLT-86 (R22): si cambia el costo base o un descuento, `vigenteDesde` es obligatoria y `≥ hoy`; con la de
- * hoy se aplica en el acto.
+ * Edita un plan programando el cambio (R37; SLT-128). SLT-135 (R1–R9): `vigenteDesde` es obligatoria y
+ * `≥ hoy`, cambie el precio o no; ya no hay edición inmediata.
  */
 export async function editarPlanAction(input: unknown, deps: PlanesDeps = {}): Promise<PlanResult> {
   return conServicio(deps, (s, actor) => s.editar(actor, input));
