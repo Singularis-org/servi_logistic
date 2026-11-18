@@ -562,3 +562,39 @@ describe("SLT-75 — ZonaService: un distrito en otra zona es un error de valida
     expect(await service.crear(crearInput(), MAESTRO)).toEqual(esperado);
   });
 });
+
+// SLT-198 (R1222) — el desenlace `central_sin_distritos` del repositorio. Como en el bloque de la
+// 376, aqui solo se mide la TRADUCCION; la guarda se mide contra Postgres real en
+// `tests/integration/db/zona-sin-distritos.test.ts`.
+describe("SLT-198 — el desenlace `central_sin_distritos`", () => {
+  it("R1222: -> validation_error en `distritoIds` con el literal del mensaje", async () => {
+    repo = buildRepo({ update: vi.fn().mockResolvedValue({ estado: "central_sin_distritos" }) });
+    service = new ZonaService(repo);
+
+    const { esCentral: _omitida, ...sinMarca } = crearInput({ distritoIds: [] });
+    void _omitida;
+    const r = await service.actualizar("z1", sinMarca as ActualizarZonaInput, MAESTRO);
+    expect(r.status).toBe("validation_error");
+    if (r.status === "validation_error") {
+      expect(Object.keys(r.fieldErrors)).toEqual(["distritoIds"]);
+      // LITERAL: es el contrato con quien guarda (dice que hacer).
+      expect(r.fieldErrors.distritoIds).toEqual([
+        "La zona de bodega principal necesita al menos un distrito. Para vaciarla, marca primero otra zona como bodega principal.",
+      ]);
+    }
+  });
+
+  it("R1220: una lista vacia llega al repositorio tal cual (el service no la rechaza)", async () => {
+    repo = buildRepo();
+    service = new ZonaService(repo);
+    const { esCentral: _omitida, ...sinMarca } = crearInput({ distritoIds: [] });
+    void _omitida;
+    const r = await service.actualizar("z1", sinMarca as ActualizarZonaInput, MAESTRO);
+    expect(r.status).toBe("ok");
+    expect(repo.update).toHaveBeenCalledWith(
+      "z1",
+      expect.objectContaining({ distritoIds: [] }),
+      MAESTRO.usuarioId,
+    );
+  });
+});
