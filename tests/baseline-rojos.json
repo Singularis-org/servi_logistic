@@ -134,7 +134,7 @@
       "desde": "2026-10-22"
     },
     "tests/integration/db/busqueda-usa-indice.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/busqueda-usa-indice.test.ts:186 al leer una fila de negocio que la base migrada no trae: AssertionError: expected null not to be null. La retira SLT-181 (siembra propia en la transaccion).",
+      "motivo": "Otra causa (test desfasado por una migracion posterior). Medido el 2026-11-17 en base desechable migrada con catalogos (db:seed), ya sembrado por SLT-181: AssertionError en «el findMany se resuelve por orden_busqueda_texto_trgm_idx» (tests/integration/db/busqueda-usa-indice.test.ts:211): en una base recien creada el plan usa Bitmap Index Scan on orden_organizacion_id_created_at_vivas_idx, el indice parcial (WHERE deleted_at IS NULL) que anadio SL-24 (db/migrations/20261028130000_plan/migration.sql:129), aun con enable_seqscan = off y la pending list vaciada. Inestable por coste: base nueva 12/2 la 1a corrida y 14/0 la 2a; base reusada 13/1 y luego 14/0; con datos de otra empresa 13/1. No se forzo el plan. La retira SLT-187.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/caja-caracterizacion-459.test.ts": {
@@ -206,7 +206,7 @@
       "desde": "2026-10-22"
     },
     "tests/integration/db/costo-y-zona-api-415.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/costo-y-zona-api-415.test.ts:135 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' antes de esta suit. La retira SLT-181 (siembra propia en la transaccion).",
+      "motivo": "Otra causa (test desfasado). Medido el 2026-11-17 en base desechable migrada con catalogos (db:seed), ya sembrado por SLT-181: 3/8; los importes coinciden pero el contrato cambio: costoReal/costoEstimado traen ademas ivaFulfillment \"0.00\" (tests/integration/db/costo-y-zona-api-415.test.ts:495), el detalle emite 15 consultas frente a las 14 del literal (+cierre_detail_concepto, :605) y el listado 11 frente a 9 (+cierre_detail_concepto, +tarifa_activacion, :613). Gemelo de gestiones-detalle-api-405. Igual con datos de otra empresa. La retira SLT-186.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/efecto-movimiento-predice.test.ts": {

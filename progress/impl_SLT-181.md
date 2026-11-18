@@ -88,6 +88,15 @@ Ninguno apunta a un fallo de producción: el código de producción espera la em
 Sus entradas del baseline siguen con el motivo «base vacía» de SLT-181 hasta que el leader decida; la siembra sí
 queda hecha y commiteada.
 
+### Decisión del leader (2026-11-17) sobre la parada
+- `busqueda-usa-indice` → SLT-187 «Tests de migración desfasados tras SL-17», que amplía su alcance a «tests
+  desfasados por migraciones posteriores». Motivo reescrito: `:211`, índice de SL-24, inestable 12/2 → 14/0, plan
+  sin forzar.
+- `costo-y-zona-api-415` → SLT-186 «Tests con estados retirados del catálogo», cuyo alcance ya es «tests
+  desfasados»; es gemelo de `gestiones-detalle-api-405`. Motivo reescrito: `ivaFulfillment` (`:495`), 15 frente a
+  14 consultas (`:605`) y 11 frente a 9 (`:613`).
+En los dos, `desde` queda intacto.
+
 ## T6 — mutaciones (base A, una a una, `git checkout --` tras cada una; árbol limpio al final)
 La fila sembrada se sustituye por un uuid que nadie sembró (`…0000aa`), salvo en paridad (se deja de sembrar una orden).
 
@@ -134,5 +143,5 @@ como saltados con el archivo en rojo; se sustituyó por la de la orden, que pone
 - `./init.sh` (base A): ver «Gate» abajo.
 
 ## Veredicto
-8 de 14 verdes en base vacía y con empresa ajena y fuera del baseline; 4 rojos por otra causa con motivo medido
-(SLT-185 ×3, SLT-187); 2 (`busqueda-usa-indice`, `costo-y-zona-api-415`) en PARADA a la espera de ficha.
+8 de 14 verdes en base vacía y con empresa ajena y fuera del baseline; 6 rojos por otra causa con motivo medido
+(SLT-185 ×3, SLT-187 ×2, SLT-186 ×1; los 2 de la parada, asignados por el leader).
