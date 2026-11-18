@@ -12,7 +12,8 @@ import { FacturaPlataformaRepository } from "@/lib/repositories/FacturaPlataform
 //   · `factura_plataforma_cerrar`: recurrente cada hora a los :10, sin empresa, UNA vez en plataforma. Para
 //     cada empresa, `factura_plataforma_cerrar(empresa, ahora)` en su transacción. Los :10 dejan atrás el
 //     margen de cierre de 5 minutos (§4.3) de una emisión a las 00:00 y la cola del cambio de plan, que
-//     aplica a las 00:00 (§4.4). Sin correos ni avisos (R25).
+//     aplica a las 00:00 (§4.4). Este manejador no envía nada: los avisos los encola `cerrar` en su
+//     transacción, SLT-136 R21 (enmienda de R25; el trabajo `factura_plataforma_aviso`).
 
 /* -------------------------------------------------------------------------- */
 /* Composition root                                                           */

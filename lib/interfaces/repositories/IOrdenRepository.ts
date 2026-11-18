@@ -1949,6 +1949,19 @@ export interface IOrdenRepository {
     historial: HistorialContexto,
   ): Promise<number>;
 
+  /**
+   * SLT-197 (R971-R974): retira un lote de `en_bodega_satelite` a `destinoEstatusId`
+   * (`en_ruta_bodega_central`), todo o nada. La guarda de estado (ids, no borrada,
+   * `en_bodega_satelite`) va en el `WHERE`; si el conteo no es exacto revierte y devuelve
+   * `"conflicto"` sin cambios ni historial. Limpia mensajero, `asignado_at` y dia de reparto;
+   * conserva la zona. Un historial por orden con `historial.origenTipo` (`ajuste_estado`).
+   */
+  retirarSateliteLote(
+    ordenIds: string[],
+    destinoEstatusId: string,
+    historial: HistorialContexto,
+  ): Promise<"ok" | "conflicto">;
+
   // --- Feature 32: etiqueta de guia (READ derivado, R1/R3) ---
 
   /**

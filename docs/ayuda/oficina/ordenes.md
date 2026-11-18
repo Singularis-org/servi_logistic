@@ -3,10 +3,11 @@ titulo: Órdenes
 modulo: ordenes
 pantalla: /ordenes
 roles: [maestro, admin]
-actualizado: 2026-09-25
+actualizado: 2026-11-17
 fuentes:
   - app/(app)/ordenes/page.tsx
   - app/(app)/ordenes/_components/OrdenesListado.tsx
+  - app/(app)/ordenes/_components/RetirarACentralModal.tsx
   - app/(app)/ordenes/_components/NotaGestionPendiente.tsx
   - app/(app)/ordenes/_components/HistorialOrdenTimeline.tsx
   - components/shared/EstadoInfo.tsx
@@ -64,6 +65,21 @@ una vez. Al asignar se elige el día de reparto — hoy o mañana.
 > **Si elegís mañana, el mensajero no va a poder recogerla ni gestionarla hasta ese día.** La va a ver
 > marcada en su lista, pero el sistema no lo deja adelantarse. Es a propósito: se puso después de que
 > un paquete reservado se entregara antes de tiempo.
+
+### Retirar a bodega central
+
+Cuando una bodega satélite deja de operar y en su zona no hay quien entregue, seleccioná las órdenes
+que siguen en su estante (filtrá por estado **En bodega satélite** y por la zona) y usá **Retirar a
+bodega central**. Pasan a **En ruta a bodega central**, sin mensajero, y podés descargar el manifiesto
+del lote para que viaje con la carga. El traslado no cobra ni paga nada.
+
+Cuando llegan, recibilas con el **escáner de recepción** de la central: quedan **En bodega central**
+con su zona de siempre. Cuando la zona vuelva a tener cobertura, salen otra vez con **Rutear a bodega
+satélite**. Si las querés repartir desde la central, primero pasá su distrito a la zona central en la
+configuración de zonas.
+
+Si alguna orden del lote ya no está en el estante (por ejemplo, la satélite la acaba de asignar), no se
+retira ninguna: el diálogo te dice cuál y podés actualizar la lista y volver a intentarlo.
 
 ## Acciones por orden
 

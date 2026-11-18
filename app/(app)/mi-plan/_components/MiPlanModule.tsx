@@ -1,4 +1,5 @@
 import { ConsumoDelPlan } from "@/components/shared/ConsumoDelPlan";
+import type { DescargarFacturaFn } from "@/components/shared/facturas/DescargarFactura";
 import type { CargarDetalleFactura } from "@/components/shared/facturas/DetalleDeFactura";
 import { FacturasDeLaEmpresa } from "@/components/shared/facturas/FacturasDeLaEmpresa";
 import type { FacturaPlataformaDTO } from "@/lib/types/factura-plataforma";
@@ -26,17 +27,20 @@ export interface MiPlanModuleProps {
    * SLT-119 (design §6.2; R1, R17): las facturas de la empresa (`lista: null` = no se pudieron leer) y la lectura
    * del detalle. La página siempre las pasa; si faltan, la sección se pinta igual con el aviso de fallo (R17)
    * en vez de desaparecer en silencio.
+   * SLT-136 (design §6; R19): `descargar` es la lectura de la descarga de una factura cerrada.
    */
   readonly facturas?: {
     readonly lista: FacturaPlataformaDTO[] | null;
     readonly cargarDetalle: CargarDetalleFactura;
+    readonly descargar: DescargarFacturaFn;
   };
 }
 
-/** Sin la prop `facturas`: la lista no se pudo leer (R17). Sin filas no hay detalle que abrir; no se llama. */
+/** Sin la prop `facturas`: la lista no se pudo leer (R17). Sin filas no hay detalle que abrir ni descarga; no se llaman. */
 const FACTURAS_NO_RECIBIDAS: NonNullable<MiPlanModuleProps["facturas"]> = {
   lista: null,
   cargarDetalle: async () => ({ estado: "not_found" }),
+  descargar: async () => ({ estado: "not_found" }),
 };
 
 /**
@@ -59,7 +63,11 @@ export function MiPlanModule({
       {plan !== null && <PlanActivo plan={plan} />}
       <ConsumoDelPlan plan={plan} textoSinPlan={MI_PLAN_TEXTOS.sinPlan} pendienteSinPlan={pendienteSinPlan} />
       <CambioDePlan planes={planes} plan={plan} pendiente={pendiente} />
-      <FacturasDeLaEmpresa facturas={facturas.lista} cargarDetalle={facturas.cargarDetalle} />
+      <FacturasDeLaEmpresa
+        facturas={facturas.lista}
+        cargarDetalle={facturas.cargarDetalle}
+        descargar={facturas.descargar}
+      />
     </div>
   );
 }

@@ -43,6 +43,7 @@ describe("R21 — registro en el drenador", () => {
     expect([...handlers.keys()].sort()).toEqual([
       "analitica_invalidacion_cache", // feature 128: PUNTUAL, no va en buildRecurrencias
       "analitica_rollup_diario", // feature 124
+      "factura_plataforma_aviso", // SLT-136 (design §7.2, R30): el aviso de UNA factura cerrada (PUNTUAL, con empresa)
       "factura_plataforma_cerrar", // SLT-118 (design §4.2): el cierre horario (HH:10) de las facturas de la plataforma (RECURRENTE)
       "geocodificacion",
       "liberar_reprogramadas",
@@ -97,6 +98,11 @@ describe("R21 — registro en el drenador", () => {
       "plan_cambios_vencidos", // SL-24: barrido horario de cambios de plan vencidos
       "whatsapp_envio_mantenimiento", // ficha 474: mantenimiento diario 03:30 CR
     ]);
+  });
+
+  it("SLT-136/R30 — `factura_plataforma_aviso` tiene handler y NO es recurrente (lo encola el cierre)", () => {
+    expect(buildHandlers(() => AHORA).has("factura_plataforma_aviso")).toBe(true);
+    expect(buildRecurrencias().has("factura_plataforma_aviso")).toBe(false);
   });
 
   it("R36 (124) — `analitica_rollup_diario` esta en AMBOS mapas y su recurrencia es a las 06:30 UTC", () => {

@@ -8,10 +8,13 @@ import { PagoPorCuentaTiendaRepository } from "@/lib/repositories/PagoPorCuentaT
 import { WalletMovimientoRepository } from "@/lib/repositories/WalletMovimientoRepository";
 import { WalletService } from "@/lib/services/WalletService";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { contextoActual } from "@/lib/db/contexto-empresa";
 
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
 import {
+  clienteConEmpresa459,
   conCandado459,
+  conEmpresa459,
   formData459,
   limpiar459,
   sembrarPersonas459,
@@ -53,9 +56,14 @@ const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
 describeSiHayBase("459/T B.12 — saldo inicial o aporte de capital por la action (Postgres real)", () => {
   let prisma: PrismaClient;
+  // SLT-185 (R1142): las lecturas que deciden el resultado (saldo inicial vigente, primer dia de la
+  // caja, estado) van por un cliente con la envoltura de produccion: con la empresa del test en
+  // contexto solo ven SUS filas, y los datos de otra empresa en la base no cambian el resultado.
+  let db: PrismaClient;
 
   beforeAll(() => {
     prisma = crearPrismaDeTest();
+    db = clienteConEmpresa459(prisma);
   });
 
   afterAll(async () => {
@@ -67,7 +75,15 @@ describeSiHayBase("459/T B.12 — saldo inicial o aporte de capital por la actio
       let p: Personas459 | null = null;
       try {
         p = await sembrarPersonas459(prisma);
-        await cuerpo(p);
+        const sembradas = p;
+        // SLT-185 (R1141/R1146): la action corre con la empresa sembrada en contexto, como en una
+        // peticion; sin ella falla cerrado (`EmpresaNoResuelta` → `INTERNAL`) y el test no mide nada.
+        expect(await prisma.organizacion.count({ where: { id: sembradas.organizacionId } }), "SLT-185: empresa sembrada").toBe(1);
+        await conEmpresa459(sembradas, async () => {
+          const ctx = contextoActual();
+          expect(ctx?.tipo === "empresa" ? ctx.organizacionId : null, "SLT-185: empresa en contexto").toBe(sembradas.organizacionId);
+          await cuerpo(sembradas);
+        });
       } finally {
         await limpiar459(prisma, p);
       }
@@ -78,7 +94,7 @@ describeSiHayBase("459/T B.12 — saldo inicial o aporte de capital por la actio
 
   /** El ultimo dia admitido para un saldo inicial HOY en esta base (R71), o hoy si la caja esta vacia. */
   async function diaDelSaldoInicial(): Promise<string> {
-    const primer = await new WalletMovimientoRepository(prisma).primerDiaDeLaCaja({ zonaHoraria: ZONA_DE_CR, excluirCapital: true });
+    const primer = await new WalletMovimientoRepository(db).primerDiaDeLaCaja({ zonaHoraria: ZONA_DE_CR, excluirCapital: true });
     return primer ?? fechaCalendarioCR(new Date());
   }
 
@@ -94,9 +110,9 @@ describeSiHayBase("459/T B.12 — saldo inicial o aporte de capital por la actio
   }
 
   async function estadoDeLaCaja(p: Personas459): Promise<string> {
-    const svc = new WalletService(new WalletMovimientoRepository(prisma), prisma, new AporteCapitalRepository(prisma), {
-      pagosPorCuenta: new PagoPorCuentaTiendaRepository(prisma),
-      aportes: new AporteCapitalRepository(prisma),
+    const svc = new WalletService(new WalletMovimientoRepository(db), db, new AporteCapitalRepository(db), {
+      pagosPorCuenta: new PagoPorCuentaTiendaRepository(db),
+      aportes: new AporteCapitalRepository(db),
       cobros: { estadoDeDocumentos: async () => [] }, ajustes: { estadoDeDocumentos: async () => [] }, // ficha 461: lo exige `LectoresDocumentosCaja`; esta suite no lee cobros
       abonos: { estadoDeDocumentos: async () => [] }, // ficha 457: lo exige `LectoresDocumentosCaja`; esta suite no lee pagos de una tienda a la empresa
       egresos: { estadoDeDocumentos: async () => [] }, indemnizaciones: { estadoDeDocumentos: async () => [] }, rechazos: { estadoDeDocumentos: async () => [] }, pagosATienda: { estadoDeDocumentos: async () => [] }, premios: { estadoDeDocumentos: async () => [] }, incentivos: { estadoDeDocumentos: async () => [] }, // ficha 458-B: lo exige `LectoresDocumentosCaja`
@@ -121,7 +137,7 @@ describeSiHayBase("459/T B.12 — saldo inicial o aporte de capital por la actio
 
   it("R14/R21/R68/R78: registrar el saldo inicial pone la caja en «saldo»; anularlo la devuelve a «flujo»", async () => {
     await conPersonas(async (p) => {
-      expect(await new AporteCapitalRepository(prisma).haySaldoInicialVigente()).toBe(false);
+      expect(await new AporteCapitalRepository(db).haySaldoInicialVigente()).toBe(false);
       expect(await estadoDeLaCaja(p)).toBe("flujo");
 
       const dia = await diaDelSaldoInicial();
@@ -164,7 +180,7 @@ describeSiHayBase("459/T B.12 — saldo inicial o aporte de capital por la actio
       const a = await anularAporteCapitalAction({ aporteId: doc.id, motivo: "Cifra equivocada" }, deps(p.admin));
       expect(a).toEqual({ status: "ok" });
       expect(await estadoDeLaCaja(p)).toBe("flujo");
-      expect(await new AporteCapitalRepository(prisma).haySaldoInicialVigente()).toBe(false);
+      expect(await new AporteCapitalRepository(db).haySaldoInicialVigente()).toBe(false);
 
       const trasAnular = await prisma.walletMovimiento.findMany({ where: { origenId: doc.id }, orderBy: { createdAt: "asc" } });
       expect(trasAnular.map((c) => [c.tipo, c.categoria, c.monto.toFixed(2)])).toEqual([
@@ -185,7 +201,7 @@ describeSiHayBase("459/T B.12 — saldo inicial o aporte de capital por la actio
     await conPersonas(async (p) => {
       const r = await registrarAporteCapitalAction(entrada({ clase: "aporte" }), deps(p.maestro));
       expect(r.status).toBe("ok");
-      expect(await new AporteCapitalRepository(prisma).haySaldoInicialVigente()).toBe(false);
+      expect(await new AporteCapitalRepository(db).haySaldoInicialVigente()).toBe(false);
       expect(await estadoDeLaCaja(p)).toBe("flujo");
       const caja = await prisma.walletMovimiento.findMany({ where: { registradoPor: p.maestro.usuarioId } });
       expect(caja.map((c) => [c.categoria, c.monto.toFixed(2)])).toEqual([["ingreso_aporte_capital", "250000.50"]]);
@@ -228,8 +244,28 @@ describeSiHayBase("459/T B.12 — saldo inicial o aporte de capital por la actio
 
   it("R71: un saldo inicial POSTERIOR al primer dia de la caja (sin capital) -> rechazado con el ultimo dia admitido", async () => {
     await conPersonas(async (p) => {
-      const primer = await new WalletMovimientoRepository(prisma).primerDiaDeLaCaja({ zonaHoraria: ZONA_DE_CR, excluirCapital: true });
+      // SLT-185 (R1143): el movimiento de caja anterior a hoy lo siembra el caso, en SU empresa (un
+      // ajuste manual de hace 3 dias, registrado por el admin: lo borra `limpiar459`). Control positivo.
+      const haceTres = new Date(Date.now() - 3 * 24 * 3600 * 1000);
+      await prisma.walletMovimiento.create({
+        data: {
+          organizacionId: p.organizacionId,
+          tipo: "ingreso",
+          categoria: "ingreso_ajuste",
+          origenTipo: "manual",
+          descripcion: "SLT-185 movimiento previo",
+          monto: "1.00",
+          registradoPor: p.admin.usuarioId,
+          fechaMovimiento: haceTres,
+        },
+      });
+      expect(
+        await prisma.walletMovimiento.count({ where: { organizacionId: p.organizacionId, fechaMovimiento: haceTres } }),
+        "SLT-185: movimiento previo sembrado",
+      ).toBe(1);
+      const primer = await new WalletMovimientoRepository(db).primerDiaDeLaCaja({ zonaHoraria: ZONA_DE_CR, excluirCapital: true });
       const hoy = fechaCalendarioCR(new Date());
+      expect(primer, "SLT-185: el primer dia es el del movimiento sembrado").toBe(fechaCalendarioCR(haceTres));
       // Sin un dia intermedio entre el primero y hoy no hay nada que rechazar: se dice en rojo.
       expect(primer, "la base de pruebas necesita movimientos de caja anteriores a hoy").not.toBeNull();
       expect(primer! < hoy).toBe(true);
@@ -245,7 +281,8 @@ describeSiHayBase("459/T B.12 — saldo inicial o aporte de capital por la actio
         ),
       );
       expect(mensaje).not.toContain(primer!);
-      expect(await huella(p)).toEqual({ aportes: 0, caja: 0, historial: 0, tienda: 0 });
+      // `caja: 1` es el movimiento previo sembrado arriba: el rechazo no escribe nada mas.
+      expect(await huella(p)).toEqual({ aportes: 0, caja: 1, historial: 0, tienda: 0 });
     });
   }, 120_000);
 

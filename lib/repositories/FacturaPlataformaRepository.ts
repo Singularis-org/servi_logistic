@@ -3,11 +3,15 @@ import { z } from "zod";
 
 import { comoPlataforma, conEmpresa } from "@/lib/db/contexto-empresa";
 import type { IFacturaPlataformaRepository } from "@/lib/interfaces/repositories/IFacturaPlataformaRepository";
+import { encolarEnEmpresas } from "@/lib/repositories/_shared/encolar-en-empresas";
+import { JobRepository } from "@/lib/repositories/JobRepository";
 import type {
   CuotaDeLaFactura,
+  DatosDescargaFactura,
   DetalleDeFactura,
   FacturaPlataformaDTO,
   LineaDeFactura,
+  MovimientoDeFactura,
   PaginaDeLineas,
 } from "@/lib/types/factura-plataforma";
 import { ESTADOS_FACTURA, LINEAS_POR_PAGINA, PERIODICIDADES_FACTURA } from "@/lib/types/factura-plataforma";
@@ -16,7 +20,8 @@ import { tipoCobroSchema } from "@/lib/types/planes";
 // SLT-118 (design §2.5, §3, §4) — las facturas de la plataforma. Ningún método escribe la tabla: el cierre
 // lo hace `factura_plataforma_cerrar`, del dueño, con `REVOKE EXECUTE … FROM PUBLIC`. Por eso corre como
 // plataforma (sin `servi_app`), igual que el cambio de plan que llama a `factura_plataforma_tomar_cambio`.
-// `FichaJira` no admite `SLT` (deuda D29): lleva `SL-24`, la ficha de los planes.
+// `FichaJira` no admite `SLT` (deuda D29): lleva `SL-24`, la ficha de los planes. SLT-136 (§7.1): `cerrar`
+// encola además, en su misma transacción, el aviso `factura_plataforma_aviso` de cada factura que cerró.
 //
 // `deLaEmpresa` (design §2.6; R21, R24) es lo contrario: corre en la empresa de la sesión, como `servi_app`,
 // sin `comoPlataforma`. Las cerradas las filtra la RLS además del `WHERE`; las no cerradas solo salen por
@@ -29,10 +34,46 @@ import { tipoCobroSchema } from "@/lib/types/planes";
 // SLT-119 (design §2): las líneas del detalle salen de la traza de SLT-85 (`cobroPlataformaTraza`), con la página
 // y su total en una transacción `repeatable read`. `$transaction` es opcional porque el tipo del cliente de una
 // transacción (`Prisma.TransactionClient`) no lo declara; sin él, ya se está dentro de una.
-type FacturaPlataformaPrismaClient = Pick<PrismaClient, "$queryRaw" | "organizacion" | "cobroPlataformaTraza"> & {
+type FacturaPlataformaPrismaClient = Pick<
+  PrismaClient,
+  "$queryRaw" | "$executeRaw" | "organizacion" | "cobroPlataformaTraza"
+> & {
   $transaction?: PrismaClient["$transaction"];
 };
 type LectorDeTraza = Pick<PrismaClient, "cobroPlataformaTraza">;
+type LectorDeDescarga = Pick<PrismaClient, "cobroPlataformaTraza" | "$queryRaw">;
+type ClienteDelCierre = Pick<PrismaClient, "$queryRaw" | "$executeRaw">;
+
+/** `dedupe_key` del aviso de una factura cerrada (SLT-136 §7.1): un trabajo por factura, aunque se encole dos veces. */
+export function dedupeAvisoFactura(facturaId: string): string {
+  return `factura_plataforma_aviso:${facturaId}`;
+}
+
+/**
+ * SLT-136 (§7.1, R21): cierra y, en la MISMA transacción, encola el aviso de cada factura que cerró esta llamada.
+ * La función del dueño fija `cerrada_at = p_ahora`, así que las de esta llamada son las cerradas con ese instante.
+ * Si el cierre no se confirma, no queda ningún trabajo; si se repite, la `dedupe_key` no duplica nada.
+ */
+async function cerrarYEncolarAvisos(c: ClienteDelCierre, organizacionId: string, ahora: Date): Promise<number> {
+  // La función toma la empresa en FOR UPDATE y el candado dura hasta el commit: dos cierres, o un cierre y un
+  // cambio de plan, de la misma empresa se serializan (SLT-118 R11).
+  const [fila] = await c.$queryRaw<{ cerradas: number }[]>`
+    SELECT factura_plataforma_cerrar(${organizacionId}, ${comoTimestamp(ahora)}::timestamp) AS "cerradas"`;
+  const cerradas = await c.$queryRaw<{ id: string }[]>`
+    SELECT "id" FROM "factura_plataforma"
+     WHERE "organizacion_id" = ${organizacionId} AND "estado" = 'cerrada'
+       AND "cerrada_at" = ${comoTimestamp(ahora)}::timestamp
+     ORDER BY "numero"`;
+  const jobs = new JobRepository(c);
+  await encolarEnEmpresas(
+    c,
+    cerradas.map(({ id }) => ({
+      organizacionId,
+      encolar: () => jobs.enqueue("factura_plataforma_aviso", { facturaId: id }, { dedupeKey: dedupeAvisoFactura(id) }, c),
+    })),
+  );
+  return fila?.cerradas ?? 0;
+}
 
 /** El instante como `TIMESTAMP` sin zona en UTC, como lo guarda la base (la forma de `PlanesRepository`). */
 function comoTimestamp(instante: Date): string {
@@ -204,6 +245,40 @@ async function paginaDeLineas(c: LectorDeTraza, desde: Date, hasta: Date, pagina
   return { lineas, pagina, porPagina: LINEAS_POR_PAGINA, total };
 }
 
+/* -------------------------------------------------------------------------- */
+/* SLT-136: los datos de la descarga                                           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * R1, R6 (design §2.2): todos los movimientos de `[desde, hasta)` por `(cobrado_at, id)`, con la remisión de su
+ * orden, y el nombre de la empresa del contexto. La remisión sale por la relación: el borrado de una orden es
+ * lógico (`deleted_at`) y ni la extensión ni la RLS de `orden` lo filtran, así que la de una orden eliminada
+ * también sale (lo prueba `factura-plataforma-descarga.test.ts`).
+ */
+async function leerDescarga(
+  c: LectorDeDescarga,
+  desde: Date,
+  hasta: Date,
+): Promise<{ empresaNombre: string | null; movimientos: MovimientoDeFactura[] }> {
+  const filas = await c.cobroPlataformaTraza.findMany({
+    where: { cobradoAt: { gte: desde, lt: hasta } },
+    orderBy: [{ cobradoAt: "asc" }, { id: "asc" }],
+    select: { ...SELECT_LINEA, orden: { select: { numRemision: true } } },
+  });
+  // El `WHERE` por la empresa del contexto además de la RLS de `organizacion` (la de `CERRADAS_JSON`).
+  const [empresa] = await c.$queryRaw<{ nombre: string }[]>`
+    SELECT "nombre" FROM "organizacion" WHERE "id" = current_setting('app.organizacion_id', true)`;
+  const movimientos: MovimientoDeFactura[] = filas.map((f) => ({
+    id: f.id,
+    instante: f.cobradoAt,
+    numGuia: f.numGuia,
+    numRemision: f.orden.numRemision,
+    tipo: f.tipoMovimiento,
+    valor: f.valorCobrado.toFixed(2),
+  }));
+  return { empresaNombre: empresa?.nombre ?? null, movimientos };
+}
+
 export class FacturaPlataformaRepository implements IFacturaPlataformaRepository {
   constructor(private readonly prisma: FacturaPlataformaPrismaClient) {}
 
@@ -215,13 +290,12 @@ export class FacturaPlataformaRepository implements IFacturaPlataformaRepository
   }
 
   cerrar(organizacionId: string, ahora: Date): Promise<number> {
-    return comoPlataforma("SL-24", "SLT-118: cerrar las facturas de la plataforma de una empresa (R3, R11)", async () => {
-      // Una sola sentencia: su propia transacción. La función toma la empresa en FOR UPDATE, así que dos
-      // cierres, o un cierre y un cambio de plan, de la misma empresa se serializan (R11).
-      const [fila] = await this.prisma.$queryRaw<{ cerradas: number }[]>`
-        SELECT factura_plataforma_cerrar(${organizacionId}, ${comoTimestamp(ahora)}::timestamp) AS "cerradas"`;
-      return fila?.cerradas ?? 0;
-    });
+    return comoPlataforma("SL-24", "SLT-118: cerrar las facturas de la plataforma de una empresa (R3, R11)", () =>
+      // SLT-136 R21: cierre y avisos se confirman o se pierden juntos. Sin `$transaction`, ya se está en una.
+      this.prisma.$transaction === undefined
+        ? cerrarYEncolarAvisos(this.prisma, organizacionId, ahora)
+        : this.prisma.$transaction((tx) => cerrarYEncolarAvisos(tx, organizacionId, ahora)),
+    );
   }
 
   async deLaEmpresa(): Promise<FacturaPlataformaDTO[]> {
@@ -281,5 +355,29 @@ export class FacturaPlataformaRepository implements IFacturaPlataformaRepository
   detalleParaPlataforma(organizacionId: string, facturaId: string, pagina: number): Promise<DetalleDeFactura | null> {
     // El camino de `deEmpresaParaPlataforma`: `servi_app` con esa empresa fijada, sin `comoPlataforma`.
     return conEmpresa(organizacionId, () => this.detalleDeLaEmpresa(facturaId, pagina));
+  }
+
+  async datosDescargaDeLaEmpresa(facturaId: string): Promise<DatosDescargaFactura | null> {
+    // La cabecera, de la misma lectura que la lista (R1). Otra empresa no la ve (RLS y `WHERE` de
+    // `CERRADAS_JSON`); en curso o por cerrar no se descarga (R4).
+    const factura = (await this.deLaEmpresa()).find((f) => f.id === facturaId);
+    if (factura === undefined || factura.estado !== "cerrada") return null;
+    // Movimientos y empresa de la misma foto (`repeatable read`). Sin `$transaction`, ya se está en una.
+    // La cabecera de arriba (`deLaEmpresa()`) se lee FUERA de esa foto. Es inocuo: la factura ya está cerrada,
+    // así que ni ella ni su traza en `[desde, hasta)` cambian entre las dos lecturas, y si algo descuadrara, la
+    // conciliación de R15 lo detectaría al armar el archivo.
+    const leer = (c: LectorDeDescarga) => leerDescarga(c, factura.desde, factura.hasta);
+    const leido =
+      this.prisma.$transaction === undefined
+        ? await leer(this.prisma)
+        : await this.prisma.$transaction((tx) => leer(tx), { isolationLevel: "RepeatableRead" });
+    // Sin empresa visible en el contexto tampoco se habría visto la factura; por si acaso, `null`.
+    if (leido.empresaNombre === null) return null;
+    return { factura, empresaNombre: leido.empresaNombre, movimientos: leido.movimientos };
+  }
+
+  datosDescargaParaPlataforma(organizacionId: string, facturaId: string): Promise<DatosDescargaFactura | null> {
+    // El camino de `detalleParaPlataforma`: `servi_app` con esa empresa fijada, sin `comoPlataforma` (R2).
+    return conEmpresa(organizacionId, () => this.datosDescargaDeLaEmpresa(facturaId));
   }
 }

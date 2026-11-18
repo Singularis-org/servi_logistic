@@ -2,7 +2,7 @@
 // escribe la tabla: la escriben solo las funciones del dueño en la base (R22), y esto solo las llama.
 // Lo vigila `tests/unit/guards/cobro-plataforma-solo-por-trigger.guardia.test.ts`.
 
-import type { DetalleDeFactura, FacturaPlataformaDTO } from "@/lib/types/factura-plataforma";
+import type { DatosDescargaFactura, DetalleDeFactura, FacturaPlataformaDTO } from "@/lib/types/factura-plataforma";
 
 export interface IFacturaPlataformaRepository {
   /**
@@ -48,4 +48,14 @@ export interface IFacturaPlataformaRepository {
    * como `deEmpresaParaPlataforma`. `null` si la factura no es de esa empresa.
    */
   detalleParaPlataforma(organizacionId: string, facturaId: string, pagina: number): Promise<DetalleDeFactura | null>;
+
+  /**
+   * SLT-136 (design §2.2; R1, R4, R6): la factura cerrada `facturaId` de la empresa del contexto (cabecera de
+   * `deLaEmpresa()`), el nombre de la empresa y TODOS sus movimientos, sin paginar, por `(cobrado_at, id)`, con
+   * la remisión de su orden aunque esté eliminada. `null` si no existe, es de otra empresa o no está cerrada.
+   */
+  datosDescargaDeLaEmpresa(facturaId: string): Promise<DatosDescargaFactura | null>;
+
+  /** SLT-136 (R2, R4): lo mismo para el superadmin, de la empresa `organizacionId` fijada con `conEmpresa`. */
+  datosDescargaParaPlataforma(organizacionId: string, facturaId: string): Promise<DatosDescargaFactura | null>;
 }

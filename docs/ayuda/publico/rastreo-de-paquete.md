@@ -3,7 +3,7 @@ titulo: Rastrear un paquete
 modulo: paquete
 pantalla: /paquete/[numGuia]
 roles: [publico]
-actualizado: 2026-10-22
+actualizado: 2026-11-17
 fuentes:
   - app/paquete/[numGuia]/page.tsx
   - app/_landing/RastreoDialog.tsx
@@ -50,7 +50,7 @@ Son los textos del botón **(i)**:
 | --- | --- |
 | **Por recolectar en tienda** | El paquete está en la tienda y todavía no hay un mensajero asignado para recogerlo. |
 | **Recolectando** | Ya hay un mensajero asignado y va camino a la tienda a recoger el paquete. |
-| **En ruta a bodega central** | El mensajero recogió el paquete en la tienda y lo lleva a la bodega central. |
+| **En ruta a bodega central** | El paquete va camino a la bodega central. |
 | **En preparación** | El paquete ya está en nuestra bodega y se está preparando su guía para despacharlo. |
 | **En bodega central** | El paquete está en la bodega central, listo para asignarse a un mensajero o enviarse a una bodega satélite. |
 | **En ruta a bodega satélite** | El paquete viaja desde la bodega central hacia la bodega satélite de su zona. |

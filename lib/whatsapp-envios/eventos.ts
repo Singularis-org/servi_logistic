@@ -153,6 +153,11 @@ export const EVENTOS_ENVIO_WHATSAPP = {
     porQue:
       "Solo existe acotado a una tienda (adminTienda + tiendaId) y su texto no la nombra: seria un mensaje por tienda y por dia sin decir de cual.",
   },
+  // SLT-136 (design §7.3): los envios por WhatsApp no son parte del alcance.
+  factura_plataforma_emitida: {
+    disponible: false,
+    porQue: "Aviso del dinero de la empresa con la plataforma, solo para su maestro; ya le llega por correo.",
+  },
 } as const satisfies Record<NotificacionEvento, PerfilEventoEnvio>;
 
 /** Un evento declarado DISPONIBLE como disparo. */

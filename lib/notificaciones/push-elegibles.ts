@@ -172,6 +172,10 @@ export const PUSH_ELEGIBLE = {
   // 2026-09-25); incluir al maestro es UNA linea alli, y su test.
   reprogramadas_esperan_cierre: { push: "si", roles: reprogramadasRetenidasConfig.ROLES_PUSH },
 
+  // SOLO EL MAESTRO (SLT-136, R23, R24). Se cerro una factura de la plataforma: es DINERO que la empresa
+  // debe y su maestro es el unico que la ve («Mi plan», SLT-91). Una vez por factura, nunca repetido.
+  factura_plataforma_emitida: { push: "si", roles: ["maestro"] },
+
   // -------------------------------------------------------------------------------------------
   // NO ELEGIBLES — y esta escrito para que la ausencia sea DECISION y no olvido (R3)
   // -------------------------------------------------------------------------------------------

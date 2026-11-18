@@ -129,6 +129,8 @@ export type UpdateZonaResult =
   | { estado: "not_found" }
   /** 376/R5: se pidio EXPLICITAMENTE quitar la marca a la zona que hoy es la central. */
   | { estado: "sin_zona_central" }
+  /** SLT-198 R1222: el guardado dejaria sin distritos a la zona central. No se escribio nada. */
+  | { estado: "central_sin_distritos" }
   /** SLT-75 R2/R8: algun distrito pedido ya esta en OTRA zona de la empresa. No se escribio nada. */
   | { estado: "distrito_en_otra_zona"; conflictos: DistritoEnOtraZona[] | null };
 

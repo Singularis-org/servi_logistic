@@ -329,6 +329,18 @@ describe("R8/R9 — origen, destino y responsable por flujo (design.md §4)", ()
     expect(fila.responsable).toBe(ACTOR_NOMBRE);
   });
 
+  // SLT-197 R982 (D1): el retiro de una satelite va de su zona a la central, sin mensajero, y
+  // responde quien retiro. Literales a mano.
+  it("SLT-197 R982 retiro_satelite: ZONA -> CENTRAL, responsable quien retiro", async () => {
+    const fila = await unaFila(
+      "retiro_satelite",
+      row({ zonaNombre: "Cartago", mensajeroAsignadoNombre: null }),
+    );
+    expect(fila.origen).toBe("Cartago");
+    expect(fila.destino).toBe("Bodega Central GAM");
+    expect(fila.responsable).toBe("Ana Maestra");
+  });
+
   it("envio_tienda: CENTRAL -> TIENDA, responsable el actor", async () => {
     const fila = await unaFila("envio_tienda", row({ tiendaNombre: "Tienda Uno" }));
     expect(fila.origen).toBe(CENTRAL_NOMBRE);

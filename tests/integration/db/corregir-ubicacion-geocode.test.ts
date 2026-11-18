@@ -30,9 +30,10 @@ import {
   clienteConTransaccionAnidada,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
+  type TxDeTest,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 
 /**
  * ⭑ FICHA 327 / B6 — LA PRUEBA DE QUE EL GUARD DE RE-GEOCODIFICACION SE ACTIVA DE VERDAD.
@@ -111,14 +112,6 @@ describeSiHayBase("⭑ 327/B6 — el guard de re-geocodificacion, contra Postgre
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const fks = await fksDeOrden(prisma);
-    if (fks === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar. Corre " +
-          "`pnpm run db:seed` (y las semillas de zonas) antes de esta suite.",
-      );
-    }
-    FKS = fks;
     const valores = ["en_reparto", ...ESTADOS_SIN_CORRECCION];
     const estados = await prisma.orderStatus.findMany({
       where: { value: { in: valores } },
@@ -138,6 +131,19 @@ describeSiHayBase("⭑ 327/B6 — el guard de re-geocodificacion, contra Postgre
   });
 
   /**
+   * SLT-179 — la tienda y la zona del caso nacen en SU transaccion (nada de leer la primera orden de
+   * la base). Control positivo: si la siembra no llega, el caso cae nombrando la fila.
+   */
+  async function sembrarFks(tx: TxDeTest): Promise<void> {
+    const fks = await crearFksDeOrden(tx);
+    const tiendas = await tx.usuario.count({ where: { id: fks.tiendaId } });
+    const zonas = await tx.zona.count({ where: { id: fks.zonaId } });
+    expect(tiendas, "SLT-179: la tienda sembrada no esta en la base").toBe(1);
+    expect(zonas, "SLT-179: la zona sembrada no esta en la base").toBe(1);
+    FKS = fks;
+  }
+
+  /**
    * Siembra UNA orden con `DIRECCION_VIEJA` y ejecuta `fn`. Si `cola` viene, el repositorio la usa
    * en vez del `JobRepository` real: sirve para observar los ARGUMENTOS del encolado. Si no viene,
    * se usa el real y lo que se observa son las FILAS de `jobs`.
@@ -148,6 +154,7 @@ describeSiHayBase("⭑ 327/B6 — el guard de re-geocodificacion, contra Postgre
   ): Promise<T> {
     return enTransaccionRevertida(prisma, async (txCrudo) => {
       await serializarEscriturasReales(txCrudo);
+      await sembrarFks(txCrudo);
       const tx = clienteConTransaccionAnidada(txCrudo);
       const orden = await tx.orden.create({
         data: {
@@ -229,10 +236,10 @@ describeSiHayBase("⭑ 327/B6 — el guard de re-geocodificacion, contra Postgre
     // solo mirase `!== undefined`, cada guardado sin tocar la direccion pagaria una llamada al
     // proveedor de geocodificacion.
     //
-    // La carga se construye con una funcion, y no como valor de la tabla, porque `FKS` se resuelve
-    // en el `beforeAll`: en el momento en que `it.each` evalua la tabla todavia es `undefined`.
-    const carga = construir();
+    // La carga se construye con una funcion, y no como valor de la tabla, porque `FKS` se siembra
+    // en la transaccion del caso (SLT-179): al evaluar la tabla todavia es `undefined`.
     const r = await conOrden({}, async (ctx) => {
+      const carga = construir();
       const antes = await ctx.tx.job.count({ where: { tipo: "geocodificacion" } });
       const resultado = await ctx.repo.corregirDatosCliente(
         ctx.ordenId,

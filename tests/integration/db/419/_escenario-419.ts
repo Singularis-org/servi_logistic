@@ -326,7 +326,7 @@ export async function conEscenario419<T>(
 /** Borra, en orden de FKs, todo lo que un escenario CONFIRMADO pudo dejar. */
 export async function limpiar419(
   prisma: PrismaClient,
-  s: { usuarios: string[]; ordenIds: string[] },
+  s: { usuarios: string[]; ordenIds: string[]; organizacionId?: string },
 ): Promise<void> {
   const comprobantes = (
     await prisma.devolucionTiendaComprobante.findMany({
@@ -347,4 +347,7 @@ export async function limpiar419(
   });
   await prisma.usuario.deleteMany({ where: { id: { in: s.usuarios } } });
   await prisma.zona.deleteMany({ where: { id: { in: zonasCreadas419 } } });
+  // SLT-185 (R1145): la empresa de un escenario CONFIRMADO, la ULTIMA: las tablas de negocio la
+  // referencian con RESTRICT, asi que una fila olvidada hace fallar el borrado en vez de quedar muda.
+  if (s.organizacionId) await prisma.organizacion.delete({ where: { id: s.organizacionId } });
 }

@@ -3,7 +3,7 @@ titulo: En bodega
 modulo: recepcion-satelite
 pantalla: /recepcion-satelite/en-bodega
 roles: [adminSatelite]
-actualizado: 2026-09-25
+actualizado: 2026-11-17
 fuentes:
   - app/(app)/ordenes/_components/NotaGestionPendiente.tsx
   - components/shared/EstadoInfo.tsx
@@ -69,6 +69,11 @@ entregar, no para pararte.
 
 > Antes esto sí te frenaba: mientras la central no aprobara tu cierre de bodega, no podías repartir
 > trabajo nuevo. **Eso se quitó**, porque dejaba a la bodega parada esperando una firma.
+
+**Una orden desapareció de tu listado sin que la asignaras.** Si tu bodega deja de operar, la central
+puede **retirar a la bodega central** lo que tenés en el estante. Desde que la retira deja de salirte
+aquí; lo que pasó queda en la línea de tiempo de la orden. Cuando tu zona vuelva a tener cobertura, la
+central te la vuelve a enviar.
 
 **Un mensajero no aparece en la lista.** Solo salen los mensajeros de tu zona. Si falta alguno, hay que
 revisar a qué zona está asignado — eso lo hace la oficina.
