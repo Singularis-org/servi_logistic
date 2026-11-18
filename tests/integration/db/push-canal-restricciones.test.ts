@@ -6,10 +6,11 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
+  type FksDeOrden,
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 
 // FICHA 410 (T1.4) — LAS RESTRICCIONES DEL CANAL, MEDIDAS CONTRA POSTGRES.
 //
@@ -27,6 +28,23 @@ import {
 // proceso muere a mitad, no queda ni una fila en la base compartida.
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
+
+/**
+ * SLT-181 — tienda (usuario modelo) y zona nacen en la tx del caso: nada de leer la primera orden de
+ * la base. Control positivo: si la siembra no llega, el caso cae nombrando la fila.
+ */
+async function sembrarFks(tx: TxDeTest): Promise<FksDeOrden> {
+  const fks = await crearFksDeOrden(tx);
+  expect(
+    await tx.usuario.count({ where: { id: fks.tiendaId } }),
+    "SLT-181: la tienda sembrada no esta en la base",
+  ).toBe(1);
+  expect(
+    await tx.zona.count({ where: { id: fks.zonaId } }),
+    "SLT-181: la zona sembrada no esta en la base",
+  ).toBe(1);
+  return fks;
+}
 
 const ENDPOINT = (n: string) => `https://fcm.googleapis.com/fcm/send/410-${n}`;
 
@@ -71,14 +89,13 @@ describeSiHayBase("410/R16-R18 — la identidad de una suscripcion es su `endpoi
   });
 
   it("⭑ R17: el MISMO dispositivo dos veces deja UNA fila, con las claves renovadas", async () => {
-    const fks = await fksDeOrden(prisma);
-    // ⚠️ FALLA RUIDOSAMENTE si la base esta vacia: sin un usuario del que clonar la identidad el
-    // caso no se puede medir, y un `return` temprano lo reportaria `passed` sin comprobar nada.
-    expect(fks, "la tabla `orden` esta vacia: el caso no se puede medir").not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const usuario = await crearUsuario(tx, fks!.tiendaId);
+      const fks = await sembrarFks(tx);
+      // ⚠️ FALLA RUIDOSAMENTE si la base esta vacia: sin un usuario del que clonar la identidad el
+      // caso no se puede medir, y un `return` temprano lo reportaria `passed` sin comprobar nada.
+      expect(fks, "la tabla `orden` esta vacia: el caso no se puede medir").not.toBeNull();
+      const usuario = await crearUsuario(tx, fks.tiendaId);
       const repo = new PushSuscripcionRepository(tx as unknown as PrismaClient);
       const endpoint = ENDPOINT(randomUUID());
 
@@ -94,13 +111,12 @@ describeSiHayBase("410/R16-R18 — la identidad de una suscripcion es su `endpoi
   });
 
   it("⭑ R18: otra persona inicia sesion en el mismo telefono y la suscripcion CAMBIA de dueno", async () => {
-    const fks = await fksDeOrden(prisma);
-    expect(fks).not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const ana = await crearUsuario(tx, fks!.tiendaId);
-      const beto = await crearUsuario(tx, fks!.tiendaId);
+      const fks = await sembrarFks(tx);
+      expect(fks).not.toBeNull();
+      const ana = await crearUsuario(tx, fks.tiendaId);
+      const beto = await crearUsuario(tx, fks.tiendaId);
       const repo = new PushSuscripcionRepository(tx as unknown as PrismaClient);
       const endpoint = ENDPOINT(randomUUID());
 
@@ -128,13 +144,12 @@ describeSiHayBase("410/R16-R18 — la identidad de una suscripcion es su `endpoi
     // Se reproduce a pelo contra el motor lo que pasaria si `endpoint` NO fuera unico: dos
     // `INSERT` con el mismo endpoint y distinto usuario. El indice REAL lo impide; aqui se mide
     // que lo impide de verdad y no por una rama de codigo.
-    const fks = await fksDeOrden(prisma);
-    expect(fks).not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const ana = await crearUsuario(tx, fks!.tiendaId);
-      const beto = await crearUsuario(tx, fks!.tiendaId);
+      const fks = await sembrarFks(tx);
+      expect(fks).not.toBeNull();
+      const ana = await crearUsuario(tx, fks.tiendaId);
+      const beto = await crearUsuario(tx, fks.tiendaId);
       const endpoint = ENDPOINT(randomUUID());
 
       await tx.$executeRawUnsafe(
@@ -183,12 +198,11 @@ describeSiHayBase("410/R22 — borrar el usuario se lleva sus suscripciones Y su
   });
 
   it("⭑ CASCADE en las dos tablas, ejercitado contra el motor", async () => {
-    const fks = await fksDeOrden(prisma);
-    expect(fks).not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const usuario = await crearUsuario(tx, fks!.tiendaId);
+      const fks = await sembrarFks(tx);
+      expect(fks).not.toBeNull();
+      const usuario = await crearUsuario(tx, fks.tiendaId);
       const repo = new PushSuscripcionRepository(tx as unknown as PrismaClient);
       const endpoint = ENDPOINT(randomUUID());
 
@@ -241,12 +255,11 @@ describeSiHayBase("410/R6 — el cupo del dia rechaza el SEGUNDO insert del mism
   });
 
   it("⭑ el primero gana, el segundo devuelve `false` y no crea fila", async () => {
-    const fks = await fksDeOrden(prisma);
-    expect(fks).not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const usuario = await crearUsuario(tx, fks!.tiendaId);
+      const fks = await sembrarFks(tx);
+      expect(fks).not.toBeNull();
+      const usuario = await crearUsuario(tx, fks.tiendaId);
       const repo = new PushSuscripcionRepository(tx as unknown as PrismaClient);
       const base = { usuarioId: usuario, evento: "cierre_dia_vencido" as const, diaCr: "2091-07-01" };
 
