@@ -20,6 +20,7 @@ import type {
   ListarZonasInput,
   TarifaZonaMensajeroInput,
 } from "@/lib/types/zona";
+import { MENSAJE_CENTRAL_SIN_DISTRITOS } from "@/lib/types/zona";
 import { rechazoDeNombreDeEtiqueta } from "@/lib/utils/nombre-imprimible-etiqueta";
 
 /**
@@ -229,6 +230,13 @@ export class ZonaService implements IZonaService {
     // el motivo colgado del CAMPO de la marca para que la pantalla lo pinte junto a la casilla.
     if (res.estado === "sin_zona_central") {
       return { status: "validation_error", fieldErrors: { esCentral: [MSG_SIN_ZONA_CENTRAL] } };
+    }
+    // SLT-198 (R1222): la central no se vacia; el motivo cuelga de `distritoIds`.
+    if (res.estado === "central_sin_distritos") {
+      return {
+        status: "validation_error",
+        fieldErrors: { distritoIds: [MENSAJE_CENTRAL_SIN_DISTRITOS] },
+      };
     }
     // SLT-75 (R2/R3/R8): mismo camino que `sin_zona_central`, colgado de `distritoIds`.
     if (res.estado === "distrito_en_otra_zona") {

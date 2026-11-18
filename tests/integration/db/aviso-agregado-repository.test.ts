@@ -7,10 +7,11 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
+  type FksDeOrden,
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 
 // FICHA 409 (T4.1) — LAS DOS CONSULTAS DE LA FICHA, CONTRA POSTGRES DE VERDAD.
 //
@@ -35,6 +36,23 @@ const ESTATUS_REPRESADA = "por_devolver_a_bodega_central";
 const ESTATUS_EN_TRANSITO = "devolviendo_a_tienda";
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
+
+/**
+ * SLT-181 — tienda (usuario modelo) y zona nacen en la tx del caso: nada de leer la primera orden de
+ * la base. Control positivo: si la siembra no llega, el caso cae nombrando la fila.
+ */
+async function sembrarFks(tx: TxDeTest): Promise<FksDeOrden> {
+  const fks = await crearFksDeOrden(tx);
+  expect(
+    await tx.usuario.count({ where: { id: fks.tiendaId } }),
+    "SLT-181: la tienda sembrada no esta en la base",
+  ).toBe(1);
+  expect(
+    await tx.zona.count({ where: { id: fks.zonaId } }),
+    "SLT-181: la zona sembrada no esta en la base",
+  ).toBe(1);
+  return fks;
+}
 
 function hace(dias: number): Date {
   return new Date(AHORA.getTime() - dias * DIA_MS);
@@ -147,21 +165,20 @@ describeSiHayBase("409/T4.1 — el resumen de NOVEDADES por tienda", () => {
   });
 
   it("⭑ (a) el conteo COINCIDE con el del listado de `/novedades` de esa tienda", async () => {
-    const fks = await fksDeOrden(prisma);
-    // ⚠️ FALLA RUIDOSAMENTE si la base esta vacia: un `if (!fks) return` reportaria `passed` sin
-    // haber comprobado nada.
-    expect(fks, "la tabla `orden` esta vacia: el caso no se puede medir").not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      const fks = await sembrarFks(tx);
+      // ⚠️ FALLA RUIDOSAMENTE si la base esta vacia: un `if (!fks) return` reportaria `passed` sin
+      // haber comprobado nada.
+      expect(fks, "la tabla `orden` esta vacia: el caso no se puede medir").not.toBeNull();
       const zona = await crearZona(tx, "nov");
-      const tienda = await crearTienda(tx, fks!.tiendaId);
+      const tienda = await crearTienda(tx, fks.tiendaId);
       const devuelta = await estatusIdDe(tx, ESTATUS_NOVEDAD);
       const base = {
         tiendaId: tienda,
         zonaId: zona,
-        provinciaId: fks!.provinciaId,
-        cantonId: fks!.cantonId,
+        provinciaId: fks.provinciaId,
+        cantonId: fks.cantonId,
         estatusId: devuelta,
       };
       for (const dias of [2, 5, 9]) {
@@ -184,19 +201,18 @@ describeSiHayBase("409/T4.1 — el resumen de NOVEDADES por tienda", () => {
   });
 
   it("⭑ (b) una orden de OTRA tienda no entra en el resumen de esta", async () => {
-    const fks = await fksDeOrden(prisma);
-    expect(fks).not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      const fks = await sembrarFks(tx);
+      expect(fks).not.toBeNull();
       const zona = await crearZona(tx, "nov-b");
-      const tiendaA = await crearTienda(tx, fks!.tiendaId);
-      const tiendaB = await crearTienda(tx, fks!.tiendaId);
+      const tiendaA = await crearTienda(tx, fks.tiendaId);
+      const tiendaB = await crearTienda(tx, fks.tiendaId);
       const devuelta = await estatusIdDe(tx, ESTATUS_NOVEDAD);
       const base = {
         zonaId: zona,
-        provinciaId: fks!.provinciaId,
-        cantonId: fks!.cantonId,
+        provinciaId: fks.provinciaId,
+        cantonId: fks.cantonId,
         estatusId: devuelta,
         creadaAt: hace(4),
       };
@@ -219,19 +235,18 @@ describeSiHayBase("409/T4.1 — el resumen de NOVEDADES por tienda", () => {
   });
 
   it("⭑ (c) una orden BORRADA no entra", async () => {
-    const fks = await fksDeOrden(prisma);
-    expect(fks).not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      const fks = await sembrarFks(tx);
+      expect(fks).not.toBeNull();
       const zona = await crearZona(tx, "nov-c");
-      const tienda = await crearTienda(tx, fks!.tiendaId);
+      const tienda = await crearTienda(tx, fks.tiendaId);
       const devuelta = await estatusIdDe(tx, ESTATUS_NOVEDAD);
       const base = {
         tiendaId: tienda,
         zonaId: zona,
-        provinciaId: fks!.provinciaId,
-        cantonId: fks!.cantonId,
+        provinciaId: fks.provinciaId,
+        cantonId: fks.cantonId,
         estatusId: devuelta,
         creadaAt: hace(4),
       };
@@ -256,20 +271,19 @@ describeSiHayBase("409/T4.1 — el resumen de NOVEDADES por tienda", () => {
   });
 
   it("⭑ (d) R38: `masAntiguaAt` es el `anclaje_devolucion`, NO el `created_at` de la orden", async () => {
-    const fks = await fksDeOrden(prisma);
-    expect(fks).not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      const fks = await sembrarFks(tx);
+      expect(fks).not.toBeNull();
       const zona = await crearZona(tx, "nov-d");
-      const tienda = await crearTienda(tx, fks!.tiendaId);
+      const tienda = await crearTienda(tx, fks.tiendaId);
       const devuelta = await estatusIdDe(tx, ESTATUS_NOVEDAD);
       // La orden NACIO hace 40 dias y se ANCLO hace 3: son numeros muy distintos a proposito.
       const orden = await sembrarOrden(tx, {
         tiendaId: tienda,
         zonaId: zona,
-        provinciaId: fks!.provinciaId,
-        cantonId: fks!.cantonId,
+        provinciaId: fks.provinciaId,
+        cantonId: fks.cantonId,
         estatusId: devuelta,
         creadaAt: hace(40),
       });
@@ -291,19 +305,18 @@ describeSiHayBase("409/T4.1 — el resumen de NOVEDADES por tienda", () => {
   });
 
   it("⭑ (d bis) gana el anclaje MAS RECIENTE si la orden dio la vuelta y volvio", async () => {
-    const fks = await fksDeOrden(prisma);
-    expect(fks).not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      const fks = await sembrarFks(tx);
+      expect(fks).not.toBeNull();
       const zona = await crearZona(tx, "nov-dbis");
-      const tienda = await crearTienda(tx, fks!.tiendaId);
+      const tienda = await crearTienda(tx, fks.tiendaId);
       const devuelta = await estatusIdDe(tx, ESTATUS_NOVEDAD);
       const orden = await sembrarOrden(tx, {
         tiendaId: tienda,
         zonaId: zona,
-        provinciaId: fks!.provinciaId,
-        cantonId: fks!.cantonId,
+        provinciaId: fks.provinciaId,
+        cantonId: fks.cantonId,
         estatusId: devuelta,
         creadaAt: hace(40),
       });
@@ -317,19 +330,18 @@ describeSiHayBase("409/T4.1 — el resumen de NOVEDADES por tienda", () => {
   });
 
   it("la CAUSA de cada orden viaja en el resumen (insumo de la homogeneidad de plazos)", async () => {
-    const fks = await fksDeOrden(prisma);
-    expect(fks).not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      const fks = await sembrarFks(tx);
+      expect(fks).not.toBeNull();
       const zona = await crearZona(tx, "nov-causa");
-      const tienda = await crearTienda(tx, fks!.tiendaId);
+      const tienda = await crearTienda(tx, fks.tiendaId);
       const devuelta = await estatusIdDe(tx, ESTATUS_NOVEDAD);
       const orden = await sembrarOrden(tx, {
         tiendaId: tienda,
         zonaId: zona,
-        provinciaId: fks!.provinciaId,
-        cantonId: fks!.cantonId,
+        provinciaId: fks.provinciaId,
+        cantonId: fks.cantonId,
         estatusId: devuelta,
         creadaAt: hace(5),
       });
@@ -340,7 +352,7 @@ describeSiHayBase("409/T4.1 — el resumen de NOVEDADES por tienda", () => {
          VALUES ($1, $2, $3, 'novedad'::"gestion_resultado", 'wrong_address'::"gestion_causa_devolucion", $4)`,
         randomUUID(),
         orden,
-        fks!.tiendaId, // cualquier usuario sirve de actor para el FK
+        fks.tiendaId, // cualquier usuario sirve de actor para el FK
         hace(4),
       );
       const resumen = await repoDe(tx).resumenNovedadesPorTienda();
@@ -362,18 +374,17 @@ describeSiHayBase("409/T4.1 — el predicado de REPRESADAS (R45/R46)", () => {
   });
 
   it("⭑ (e) R45: con umbral 3, la de 2 dias NO entra y la de 4 dias SI", async () => {
-    const fks = await fksDeOrden(prisma);
-    expect(fks, "la tabla `orden` esta vacia: el caso no se puede medir").not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      const fks = await sembrarFks(tx);
+      expect(fks, "la tabla `orden` esta vacia: el caso no se puede medir").not.toBeNull();
       const zona = await crearZona(tx, "rep-e");
       const porDevolver = await estatusIdDe(tx, ESTATUS_REPRESADA);
       const base = {
-        tiendaId: fks!.tiendaId,
+        tiendaId: fks.tiendaId,
         zonaId: zona,
-        provinciaId: fks!.provinciaId,
-        cantonId: fks!.cantonId,
+        provinciaId: fks.provinciaId,
+        cantonId: fks.cantonId,
         estatusId: porDevolver,
         creadaAt: hace(30),
       };
@@ -401,19 +412,18 @@ describeSiHayBase("409/T4.1 — el predicado de REPRESADAS (R45/R46)", () => {
   });
 
   it("⭑ (f) R46: una orden en `devolviendo_a_tienda` con NUEVE dias NO entra", async () => {
-    const fks = await fksDeOrden(prisma);
-    expect(fks).not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      const fks = await sembrarFks(tx);
+      expect(fks).not.toBeNull();
       const zona = await crearZona(tx, "rep-f");
       const porDevolver = await estatusIdDe(tx, ESTATUS_REPRESADA);
       const enTransito = await estatusIdDe(tx, ESTATUS_EN_TRANSITO);
       const base = {
-        tiendaId: fks!.tiendaId,
+        tiendaId: fks.tiendaId,
         zonaId: zona,
-        provinciaId: fks!.provinciaId,
-        cantonId: fks!.cantonId,
+        provinciaId: fks.provinciaId,
+        cantonId: fks.cantonId,
         creadaAt: hace(30),
       };
       // ⚠️ LA QUE NO DEBE ENTRAR, y con la antiguedad mas alta del par a proposito: si el
@@ -440,18 +450,17 @@ describeSiHayBase("409/T4.1 — el predicado de REPRESADAS (R45/R46)", () => {
   });
 
   it("una orden BORRADA no entra, aunque lleve represada un mes", async () => {
-    const fks = await fksDeOrden(prisma);
-    expect(fks).not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      const fks = await sembrarFks(tx);
+      expect(fks).not.toBeNull();
       const zona = await crearZona(tx, "rep-borrada");
       const porDevolver = await estatusIdDe(tx, ESTATUS_REPRESADA);
       const base = {
-        tiendaId: fks!.tiendaId,
+        tiendaId: fks.tiendaId,
         zonaId: zona,
-        provinciaId: fks!.provinciaId,
-        cantonId: fks!.cantonId,
+        provinciaId: fks.provinciaId,
+        cantonId: fks.cantonId,
         estatusId: porDevolver,
         creadaAt: hace(30),
       };
@@ -474,18 +483,17 @@ describeSiHayBase("409/T4.1 — el predicado de REPRESADAS (R45/R46)", () => {
     // Una orden que salio de `por_devolver` y volvio a entrar HOY no es una represada de hace
     // semanas. Con un `where` sobre la relacion —«existe ALGUNA transicion antigua»— entraria; con
     // la ULTIMA, no. Es la diferencia entre avisar de un atasco real y avisar de uno resuelto.
-    const fks = await fksDeOrden(prisma);
-    expect(fks).not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      const fks = await sembrarFks(tx);
+      expect(fks).not.toBeNull();
       const zona = await crearZona(tx, "rep-ultima");
       const porDevolver = await estatusIdDe(tx, ESTATUS_REPRESADA);
       const orden = await sembrarOrden(tx, {
-        tiendaId: fks!.tiendaId,
+        tiendaId: fks.tiendaId,
         zonaId: zona,
-        provinciaId: fks!.provinciaId,
-        cantonId: fks!.cantonId,
+        provinciaId: fks.provinciaId,
+        cantonId: fks.cantonId,
         estatusId: porDevolver,
         creadaAt: hace(60),
       });
@@ -504,18 +512,17 @@ describeSiHayBase("409/T4.1 — el predicado de REPRESADAS (R45/R46)", () => {
   });
 
   it("⭑ R48/R49: el resumen global CUBRE lo de todas las zonas, y cada zona lleva LO SUYO", async () => {
-    const fks = await fksDeOrden(prisma);
-    expect(fks).not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      const fks = await sembrarFks(tx);
+      expect(fks).not.toBeNull();
       const zonaA = await crearZona(tx, "rep-a");
       const zonaB = await crearZona(tx, "rep-b");
       const porDevolver = await estatusIdDe(tx, ESTATUS_REPRESADA);
       const base = {
-        tiendaId: fks!.tiendaId,
-        provinciaId: fks!.provinciaId,
-        cantonId: fks!.cantonId,
+        tiendaId: fks.tiendaId,
+        provinciaId: fks.provinciaId,
+        cantonId: fks.cantonId,
         estatusId: porDevolver,
         creadaAt: hace(30),
       };

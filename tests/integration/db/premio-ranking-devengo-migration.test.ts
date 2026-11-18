@@ -15,6 +15,7 @@ import {
   enTransaccionRevertida,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 
 // Feature 293 (T1.4, design §10) — cobertura de la migracion `*_premio_ranking_devengo`, en DOS
 // niveles:
@@ -435,22 +436,9 @@ const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
 describeSiHayBase("T1.4 [PG] — los dos CHECK, ejercidos contra Postgres", () => {
   let prisma: PrismaClient;
-  let catalogo: { tipoIdentificacionId: string; rolId: string } | null = null;
 
-  beforeAll(async () => {
+  beforeAll(() => {
     prisma = crearPrismaDeTest();
-    const u = await prisma.usuario.findFirst({
-      where: { rol: { value: RolValue.mensajero } },
-      select: { tipoIdentificacionId: true, rolId: true },
-    });
-    if (u === null) {
-      throw new Error(
-        "hay DATABASE_URL pero no hay ningun usuario `mensajero`: sin catalogo no se puede " +
-          "sembrar el mensajero de prueba. Esta suite necesita crear su usuario en el " +
-          "test (SL-31).",
-      );
-    }
-    catalogo = u;
   });
 
   afterAll(async () => {
@@ -476,22 +464,14 @@ describeSiHayBase("T1.4 [PG] — los dos CHECK, ejercidos contra Postgres", () =
     categoria: PagoMensajeroMovimientoCategoria;
     premioDia: Date | null;
   }): Promise<Rechazo | null> {
-    const cat = catalogo as { tipoIdentificacionId: string; rolId: string };
     return enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const sufijo = randomUUID();
-      const mensajero = await tx.usuario.create({
-        data: {
-          nombre: "T1.4",
-          email: `t14-${sufijo}@example.test`,
-          telefono: "88880000",
-          passwordHash: "x",
-          cedula: `t14-${sufijo}`,
-          tipoIdentificacionId: cat.tipoIdentificacionId,
-          rolId: cat.rolId,
-        },
-        select: { id: true },
-      });
+      // SLT-182: rol y `cedula` por CLAVE (`crearUsuarioDePrueba` lanza nombrandolos si faltan);
+      // antes se copiaban del «primer mensajero» de la base, y la base recien migrada no tiene.
+      const mensajero = await crearUsuarioDePrueba(tx, RolValue.mensajero);
+      // Control positivo (R1084): FUERA del `try`, para que no se confunda con un rechazo del motor.
+      const sembrados = await tx.usuario.count({ where: { id: mensajero.id } });
+      if (sembrados !== 1) throw new Error("SLT-182: el mensajero sembrado no esta en la base");
       try {
         await tx.pagoMensajeroMovimiento.create({
           data: {

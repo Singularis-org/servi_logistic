@@ -18,14 +18,21 @@ export const tarifaZonaMensajeroInputSchema = z
   .strict();
 export type TarifaZonaMensajeroInput = z.infer<typeof tarifaZonaMensajeroInputSchema>;
 
-// Campos de una zona COMUNES a crear y a actualizar: datos propios + distritos (N:M) + tarifas
-// por mensajero. La marca de zona central NO esta aqui: es el UNICO campo cuya semantica difiere
+// Campos de una zona COMUNES a crear y a actualizar: datos propios + tarifas
+// por mensajero. La marca de zona central y los distritos NO estan aqui: su semantica difiere
 // entre las dos operaciones (ficha 376/R1-R3, ver abajo).
 const zonaFieldsComunes = {
   nombre: nombreSchema,
-  // distritoIds: conjunto de distritos que componen la zona (N:M). Al menos uno.
-  distritoIds: z.array(idSchema).min(1),
 };
+
+// distritoIds: conjunto de distritos que componen la zona (N:M). SLT-198: al CREAR, al menos uno;
+// al ACTUALIZAR puede quedar vacio, para cerrar una bodega satelite y pasar sus distritos a otra
+// zona (el distrito es unico por empresa). La central nunca queda vacia (R1222, abajo y en el repo).
+const distritoIdsSchema = z.array(idSchema);
+
+// Literal de R1222: lo comparten este zod y la traduccion del servicio.
+export const MENSAJE_CENTRAL_SIN_DISTRITOS =
+  "La zona de bodega principal necesita al menos un distrito. Para vaciarla, marca primero otra zona como bodega principal.";
 
 const tarifasArraySchema = z.array(tarifaZonaMensajeroInputSchema);
 
@@ -109,6 +116,7 @@ function applyTarifaRules(
 export const crearZonaSchema = z
   .object({
     ...zonaFieldsComunes,
+    distritoIds: distritoIdsSchema.min(1),
     // SLT-51 (R5): el formulario de zona ya no manda costos. Al CREAR, ausente es «zona sin pagos»,
     // asi que el default materializa exactamente eso; `applyTarifaRules` pasa con `false` + `[]`.
     cobroVehiculo: z.boolean().default(false),
@@ -144,6 +152,7 @@ export type CrearZonaInput = z.infer<typeof crearZonaSchema>;
 export const actualizarZonaSchema = z
   .object({
     ...zonaFieldsComunes,
+    distritoIds: distritoIdsSchema,
     // SLT-51 (R7): mismo criterio que `esCentral`. SIN default a proposito: un `[]` materializado
     // aqui haria que el repositorio borrara los pagos de la zona en cada guardado de distritos.
     cobroVehiculo: z.boolean().optional(),
@@ -154,6 +163,15 @@ export const actualizarZonaSchema = z
   })
   .strict()
   .superRefine((data, ctx) => {
+    // SLT-198 (R1222): marcarla central y vaciarla en el mismo guardado. El caso «ya es central y
+    // llega sin la marca» solo lo ve el repositorio, que conoce el estado guardado.
+    if (data.esCentral === true && data.distritoIds.length === 0) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["distritoIds"],
+        message: MENSAJE_CENTRAL_SIN_DISTRITOS,
+      });
+    }
     const { cobroVehiculo, tarifas } = data;
     // R7: ninguno de los dos = «no toques el pago al mensajero».
     if (cobroVehiculo === undefined && tarifas === undefined) return;

@@ -8,10 +8,11 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
+  type FksDeOrden,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // ⭑ FICHA 362 / Q1 — D4 DE LA 312, REABIERTA POR EL HUMANO EL 2026-09-02. MEDIDO EN POSTGRES.
@@ -67,20 +68,15 @@ function clienteConSavepoint(tx: TxDeTest): PrismaClient {
 
 describeSiHayBase("362/Q1 — la correccion de la UBICACION deja rastro, y SOLO el hecho", () => {
   let prisma: PrismaClient;
-  let FKS: Awaited<ReturnType<typeof fksDeOrden>>;
+  // SLT-180 (R1042): tienda y zona se SIEMBRAN en la tx de cada caso (en `sembrar`); ya no se lee
+  // «la primera orden» de la base.
+  let FKS: FksDeOrden | null = null;
   /** Un estado que NO esta en `ESTADOS_SIN_CORRECCION`: si la orden naciera bloqueada, todos los
    * casos darian `conflict` por un motivo que no tiene nada que ver con lo que miden. */
   let ESTATUS_CORREGIBLE: string;
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    FKS = await fksDeOrden(prisma);
-    if (FKS === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar. Corre " +
-          "`pnpm run db:seed` antes de esta suite.",
-      );
-    }
     const corregible = await prisma.orderStatus.findFirst({
       where: { value: { notIn: [...ESTADOS_SIN_CORRECCION] } },
       select: { id: true },
@@ -101,6 +97,16 @@ describeSiHayBase("362/Q1 — la correccion de la UBICACION deja rastro, y SOLO 
   }
 
   async function sembrar(tx: TxDeTest, marca: string): Promise<Escenario> {
+    // SLT-180 (R1044): siembra propia del caso + control positivo que nombra la fila.
+    FKS = await crearFksDeOrden(tx);
+    expect(
+      await tx.usuario.count({ where: { id: FKS.tiendaId } }),
+      "SLT-180: la tienda sembrada no esta en la base",
+    ).toBe(1);
+    expect(
+      await tx.zona.count({ where: { id: FKS.zonaId } }),
+      "SLT-180: la zona sembrada no esta en la base",
+    ).toBe(1);
     const orden = await tx.orden.create({
       data: {
         numRemision: `R-${SUFIJO}-${marca}`,
