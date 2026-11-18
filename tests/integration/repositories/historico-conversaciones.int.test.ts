@@ -7,7 +7,9 @@ import {
   crearPrismaDeTest,
   enTransaccionRevertida,
   serializarEscriturasReales,
+  type FksDeOrden,
 } from "../db/_postgres-real";
+import { crearFksDeOrden } from "../db/_fixtures/orden-minima";
 import {
   HistoricoConversacionesRepository,
   construirConsultaListarHilos,
@@ -112,6 +114,10 @@ interface Medicion {
 describeSiHayBase("321 / bloque 3 — HistoricoConversacionesRepository contra Postgres real", () => {
   let prisma: PrismaClient;
   let m: Medicion;
+  // SLT-184 (R1122): las FK de las ordenes (zona, estatus, geografia) sembradas en la tx de
+  // `medir`. Antes `crearOrden` tomaba «la primera zona» de la base: vacia no habia ninguna, y
+  // con otra empresa en la base era la de ELLA y el trigger de SL-17 rechazaba la orden.
+  let fksSembradas: FksDeOrden | null = null;
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
@@ -134,6 +140,12 @@ describeSiHayBase("321 / bloque 3 — HistoricoConversacionesRepository contra P
 
     const repo = new HistoricoConversacionesRepository(tx as unknown as HistoricoPrismaClient);
     const tienda = await crearUsuario(tx, "Tienda", "321");
+    fksSembradas = await crearFksDeOrden(tx);
+    // SLT-184 (R1124): control positivo de la zona sembrada.
+    expect(
+      await tx.zona.count({ where: { id: fksSembradas.zonaId } }),
+      "SLT-184: la zona sembrada no esta en la base",
+    ).toBe(1);
 
     // ---- Escenario BASE: tres mensajeros, tres hilos + un hilo de orden BORRADA -------------
     const m1 = await crearUsuario(tx, "Ana", "Zulúaga");
@@ -632,28 +644,20 @@ describeSiHayBase("321 / bloque 3 — HistoricoConversacionesRepository contra P
     mensajeroId: string,
     opciones: { destinatario?: string; numGuia?: number; deletedAt?: Date },
   ): Promise<string> {
-    const canton = await tx.canton.findFirst({ select: { id: true, provinciaId: true } });
-    const zona = await tx.zona.findFirst({ select: { id: true } });
-    const estatus = await tx.orderStatus.findFirst({ select: { id: true } });
-    if (!canton || !zona || !estatus) {
-      throw new Error(
-        "La base de pruebas no tiene catalogos de geografia/estatus sembrados: sin ellos no se " +
-          "puede crear la orden propia del test (y sin orden no hay hilo que medir). Corre " +
-          "`pnpm db:seed`. Este test NO se salta en ese caso a proposito.",
-      );
-    }
+    const fks = fksSembradas;
+    if (fks === null) throw new Error("SLT-184: falta sembrar las FK de orden (`crearFksDeOrden`) en `medir`");
     const sufijo = randomUUID().slice(0, 12);
     const { id } = await tx.orden.create({
       data: {
         numRemision: `rem-321-${sufijo}`,
         numGuia: opciones.numGuia ?? null,
-        estatusId: estatus.id,
+        estatusId: fks.estatusId,
         destinatario: opciones.destinatario ?? "Destinatario de prueba",
         telefonoDest: "00000000",
         tiendaId,
-        zonaId: zona.id,
-        provinciaId: canton.provinciaId,
-        cantonId: canton.id,
+        zonaId: fks.zonaId,
+        provinciaId: fks.provinciaId,
+        cantonId: fks.cantonId,
         producto: "Producto",
         mensajeroAsignadoId: mensajeroId,
         deletedAt: opciones.deletedAt ?? null,
