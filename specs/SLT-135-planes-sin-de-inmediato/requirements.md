@@ -18,11 +18,96 @@
 
 ## Requisitos (EARS)
 
-_Pendiente: los escribe spec_author (F1.2)._
+_Pendiente: spec_author paró en F1.2 por tamaño (P1). Se escriben cuando el humano elija el corte o acepte el
+tamaño._
 
 ## Preguntas abiertas
 
-Ninguna.
+### P1 · Tamaño: no cabe en un PR (spec_author, 2026-11-18)
+
+**Medición.** Se midió sobre el código con SLT-144 «Planes: formulario por pasos conectado al borrador y a la
+fecha de cada empresa» mergeada en la rama. Quitar «De inmediato» toca unos **48 archivos**: 17 de producción y
+unos 31 de tests. El tope es `gate.tamano_pr` = 40 archivos (80 % = 32). Las líneas sí caben: unas 250 de
+producción y entre 800 y 1 200 de tests.
+
+Casi todo el exceso son tests. Hoy hay 26 archivos de tests (unitarios, de integración y E2E) que editan con
+`vigenteDesde: null`, que llaman a `PlanesRepository.editar` o que esperan el precio «hoy, en el acto».
+
+**Producción (17).**
+- Servidor:
+  - `lib/types/planes.ts`
+  - `lib/services/PlanesService.ts`
+  - `lib/interfaces/services/IPlanesService.ts`
+  - `lib/interfaces/repositories/IPlanesRepository.ts`
+  - `lib/repositories/PlanesRepository.ts`
+  - `lib/actions/planes.ts`
+  - `lib/planes/mensajes.ts`
+- Formulario, en `app/(app)/plataforma/planes/_components/`:
+  - `PlanForm.tsx`
+  - en `plan-form/`: `PasoCuandoRige.tsx`, `estado.ts`, `borrador.ts`, `revision.ts`, `textos.ts` y
+    `FechasPorEmpresa.tsx`
+- Pantallas:
+  - `app/(app)/plataforma/planes/[planId]/_components/PlanDetalle.tsx`
+  - `app/(app)/plataforma/empresas/[organizacionId]/_components/PlanEmpresa.tsx`
+
+**Tests (unos 31).**
+- Unitarios (11), en `tests/unit/`:
+  - `services/`: `planes-service`, `-periodo`, `-costeo`, `-costo-porcentual` y `planes-previsualizar-cambio`
+  - `types/`: `planes-schema`, `-costeo`, `-costo-porcentual` y `plan-borrador-schema`
+  - `planes/`: `plan-form-borrador` y `plan-form-revision`
+- Componentes (5), en `tests/components/`: `PlanForm`, `PlanFormRevisar`, `PlanFormFechasPorEmpresa`,
+  `PlanDetalle` y `PlanFormBorrador`.
+- Integración (13), en `tests/integration/db/`:
+  - `plan-precio-historial`, `plan-descuento-periodo`, `planes-historial` y `planes-cambio-correos`
+  - `planes-cambio-por-empresa`, `plan-borrador-confirmar` y `planes-edicion-en-uso`
+  - `plan-costo-porcentual-escritura`, `planes-costeo-escritura` y `planes-periodicidad-ordenes`
+  - `factura-plataforma-cambio-plan`, `planes-asignacion` y `cobro-plataforma-plan`
+- E2E (1): `e2e/planes-costo-porcentual.spec.ts`.
+
+**Propuesta de corte: tres rebanadas verticales.** Cada una se mergea sola y deja el producto funcionando.
+
+- **A · «Editar con la fecha de hoy llega a cada empresa por su período».** SLT-135 se queda con esta
+  rebanada.
+  - Qué hace: una edición con «A partir de» = hoy deja de rechazarse si no cambia el precio. Ya no se aplica
+    en el acto a todas si cambia el precio: va por el mecanismo de SLT-128 «Planes: el cambio programado del
+    plan llega a cada empresa al inicio de su período».
+  - Cumple la decisión «≥ hoy por empresa». «De inmediato» sigue en esta rebanada.
+  - Archivos (unos 9): `PlanesService.ts`, `lib/types/planes.ts` (comentarios) y el texto de ayuda de la fecha.
+    Tests: `planes-service-periodo`, `planes-service`, `plan-precio-historial`, `plan-descuento-periodo` y
+    `planes-historial`.
+- **B · «El formulario ya no ofrece «De inmediato»».** Ficha nueva; depende de A.
+  - Qué hace en el formulario:
+    - «Cuándo rige» pide solo la fecha «A partir de».
+    - El botón final dice siempre «Programar cambio».
+    - «Revisar» deja de mostrar «Aplicar: De inmediato».
+    - La tabla con la fecha de cada empresa sale siempre.
+  - Qué cambia fuera del formulario:
+    - Un borrador que se guardó con «De inmediato» se reabre con «Cuándo rige» sin guardar.
+    - El detalle del plan deja de decir «Cambios guardados.».
+    - La vista previa (`previsualizarCambio`) exige la fecha.
+    - El E2E programa con la fecha de hoy y corre `procesar-jobs`.
+  - Archivos (unos 20): 10 de producción, 9 de tests y el E2E.
+- **C · «El servidor ya no acepta editar sin fecha».** Ficha nueva; depende de B.
+  - Qué hace:
+    - `editarPlanSchema` y el paso `vigencia` del borrador exigen la fecha.
+    - El servicio pierde `editarYa`, y el repositorio y su interfaz pierden `editar`.
+    - Se retira SLT-128 R16 y su mensaje `MENSAJE_EDITAR_CAMBIO_A_MEDIAS`.
+    - Se ajustan los textos de rechazo de `PlanForm` y `PlanEmpresa`.
+  - Archivos (unos 29): 9 de producción y unos 20 de tests (los de integración y los de esquemas).
+
+**Alternativa sin cortar:** aceptar unos 48 archivos en una sola ficha, como se aceptó en SLT-144 (47
+archivos, marcador `tamano-pr-aceptado`).
+
+**Pendiente del humano:** elegir el corte A/B/C (y crear las dos fichas con `/afinar-feature`) o aceptar el
+tamaño. Después, spec_author escribe los requisitos, `design.md` y `tasks.md` de la ficha que corresponda.
+
+### P2 · Fecha por defecto de «A partir de» al editar (para cuando se escriba el spec)
+
+- Hoy: sin cambio de precio, el formulario abre en «De inmediato» con la fecha vacía. Con cambio de precio,
+  «Rige desde» abre con mañana (`precioDesdePorDefecto`).
+- Al quitar «De inmediato» hay que elegir con qué fecha abre el campo.
+- Propuesta: mañana en los dos casos, por coherencia con el precio de hoy. La alternativa es hoy, lo más
+  parecido al antiguo «De inmediato».
 
 ## Decisiones cerradas (no reabrir)
 
