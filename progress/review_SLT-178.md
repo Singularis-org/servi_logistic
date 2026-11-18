@@ -82,3 +82,15 @@ Ruta **ligera** (solo `requirements.md`). MCP del grafo no usado: el diff es sol
 tests, siembra dentro de la tx o confirmada con limpieza contada, controles positivos que fallan de
 verdad, ningún `it`/`expect` quitado, baseline correcto. Con B1 arreglado (y m1 si se quiere), OK sin
 nueva revisión de fondo.
+
+## Vuelta 2 (acotada a 92e43a11..c24397ac)
+
+- [x] **B1 resuelto.** `requirements.md > ## Tasks`: T1–T8 marcadas `[x]`; 0 casillas `[ ]`.
+- [x] **m1 resuelto.** `cierre-rechazado-aviso-dedupe.test.ts > afterAll`: `quedan` suma ahora
+  `notificacionLectura.count` (por los ids de las notificaciones propias) y `zona.count` de la zona
+  sembrada (con guarda `fks ?`). Sin otros cambios en `tests/`.
+- [x] **Sin regresión.** El archivo corrido en `servi_slt178b_desechable`: 6/6 passed, 0 saltados, y el
+  `afterAll` no lanzó (0 filas propias).
+- Resto del diff: `progress/impl_SLT-178.md` (bitácora) y las casillas del spec. Ningún hallazgo nuevo.
+
+**Veredicto vuelta 2: OK.** R1011 sigue pendiente del `gate-completo` del PR.
