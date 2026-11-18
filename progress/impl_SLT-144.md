@@ -114,4 +114,8 @@ Textos de §9: todos en `plan-form/textos.ts`, salvo `pasoGuardado`/`marcaSinGua
 ## Pendiente
 1. R29/T5.4: decidir qué hacer con `crearPlanAction` y `editarPlanAction`, que quedaron sin superficie (pregunta al leader).
    design §4 suponía que «siguen teniendo superficie por la API y las demás pantallas»; la guardia dice que no.
-2. T8.1: `./init.sh` y `gate-completo` en CI; no puede quedar verde mientras R29 siga abierta.
+2. T8.1: `./init.sh` (2026-11-18) para en el validador del board: «zona fullstack: SLT-46, SLT-47, SLT-48, SLT-81,
+   SLT-89, SLT-125, SLT-136, SLT-144 (8 in_progress, max 7)» (`feature_list.json` del worktree principal; es del
+   leader). Fuera de ese paso, `pnpm run test:guardias`: 2 files failed | 354 passed; 5 tests failed | 5289 passed:
+   `dependencias-declaradas-presentes` (baseline) y `superficie-de-uso` R-A (R29, arriba). `gate-completo` en CI no
+   puede quedar verde mientras R29 siga abierta.
