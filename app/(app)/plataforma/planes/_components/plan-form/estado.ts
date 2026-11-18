@@ -235,6 +235,16 @@ export function pasosDe(modo: ModoDelPlanForm): PasoDelPlan[] {
   ];
 }
 
+/** SLT-144 (design §4.2): los pasos que se guardan en el borrador; «Revisar» no guarda, confirma. */
+export type IdPasoGuardable = Exclude<IdPaso, "revisar">;
+
+/** SLT-144 (R7, R8): los pasos del modo que se guardan, en el orden del formulario. */
+export function PASOS_QUE_SE_GUARDAN(modo: ModoDelPlanForm): IdPasoGuardable[] {
+  return pasosDe(modo)
+    .map((p) => p.id)
+    .filter((id): id is IdPasoGuardable => id !== "revisar");
+}
+
 const CLAVES_DE_GENERAL = new Set(["nombre", "visibilidad", "organizacionId", "tipoCobro", "inicioCiclo"]);
 
 const empiezaPor = (clave: string, raiz: string) => clave === raiz || clave.startsWith(`${raiz}.`);

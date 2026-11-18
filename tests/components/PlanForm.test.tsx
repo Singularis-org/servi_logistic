@@ -11,7 +11,7 @@ import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { PlanForm } from "@/app/(app)/plataforma/planes/_components/PlanForm";
 import type { PlanDTO, PlanResult } from "@/lib/types/planes";
 
-import { avanzarHasta, terminar } from "./plan-form-pasos";
+import { avanzarHasta, terminar, conBorrador, conBorradorDeCambio, botonDeLaLista } from "./plan-form-pasos";
 
 const ORG = "6f1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f60";
 const PLAN_ID = "0b6f3a2e-1c4d-4e5f-8a9b-0c1d2e3f4a5b";
@@ -51,7 +51,7 @@ function montarCrear(enviar = vi.fn().mockResolvedValue(OK), onGuardado = vi.fn(
       inicioCicloPorDefecto={MANANA}
       rangoInicioCiclo={RANGO}
       rangoFechaDeEfecto={RANGO_EFECTO}
-      enviar={enviar}
+      {...conBorrador(enviar)}
       previsualizar={vi.fn().mockResolvedValue({ estado: "ok", avisos: [] })}
       onGuardado={onGuardado}
     />,
@@ -60,7 +60,7 @@ function montarCrear(enviar = vi.fn().mockResolvedValue(OK), onGuardado = vi.fn(
 }
 
 function montarEditar(enviar = vi.fn().mockResolvedValue(OK), onGuardado = vi.fn()) {
-  render(<PlanForm modo="editar" plan={PLAN} enviar={enviar} onGuardado={onGuardado} />);
+  render(<PlanForm modo="editar" plan={PLAN} {...conBorradorDeCambio(enviar)} onGuardado={onGuardado} />);
   return { enviar, onGuardado };
 }
 
@@ -159,8 +159,8 @@ describe("SLT-58 R14 — crear un plan", () => {
 
     await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Plan Norte");
     await user.click(screen.getByRole("radio", { name: "Custom" }));
-    // SLT-130 (R18): «Siguiente» valida General con el esquema de la action y no deja pasar.
-    await user.click(screen.getByRole("button", { name: "Siguiente" }));
+    // SLT-130 (R18): «Guardar y continuar» valida General con el esquema de la action y no deja pasar.
+    await user.click(screen.getByRole("button", { name: "Guardar y continuar" }));
 
     expect(enviar).not.toHaveBeenCalled();
     expect(screen.getByRole("combobox", { name: "Empresa" })).toHaveAttribute("aria-invalid", "true");
@@ -177,7 +177,9 @@ describe("SLT-58 R14 — crear un plan", () => {
 
     await waitFor(() => expect(screen.getByRole("button", { name: /Crear plan/ })).toBeDisabled());
     resolver(OK);
-    await waitFor(() => expect(screen.getByRole("button", { name: /Crear plan/ })).toBeEnabled());
+    // SLT-144 (design §4.4): tras el `ok` el panel se cierra y el formulario se desmonta; hasta entonces
+    // sigue en vuelo y «Crear plan» no se vuelve a habilitar.
+    await waitFor(() => expect(screen.getByRole("button", { name: /Crear plan/ })).toBeDisabled());
   });
 });
 
@@ -238,7 +240,7 @@ describe("SLT-58 R15 — editar: de inmediato o a partir de una fecha", () => {
       ...PLAN,
       precio: { tipo: "monto", mensual: "500.00", descuentos: { anual: { tipo: "monto", monto: "5000.00" } } },
     };
-    render(<PlanForm modo="editar" plan={plan} enviar={enviar} onGuardado={vi.fn()} />);
+    render(<PlanForm modo="editar" plan={plan} {...conBorradorDeCambio(enviar)} onGuardado={vi.fn()} />);
 
     await avanzarHasta(user, "Precio y descuentos");
     // SLT-66 R9: el rótulo «Monto mensual» pasa a «Costo base mensual».
@@ -298,8 +300,7 @@ describe("SLT-58 R18 — los rechazos se explican y no dan el cambio por hecho",
     expect(errorMensajero).toHaveTextContent("Tope inválido.");
 
     // La fecha conserva su error en su paso, «Cuándo rige».
-    const nav = screen.getByRole("navigation", { name: "Pasos" });
-    await user.click(within(nav).getByRole("button", { name: "Cuándo rige" }));
+    await user.click(botonDeLaLista("Cuándo rige"));
     const fecha = screen.getByLabelText("Fecha");
     expect(fecha).toHaveAttribute("aria-invalid", "true");
     const errorFecha = document.getElementById(fecha.getAttribute("aria-describedby")!.split(" ").at(-1)!);
@@ -364,8 +365,8 @@ describe("SLT-58 — revisión de diseño del formulario", () => {
     const { enviar } = montarCrear();
 
     await user.click(screen.getByRole("radio", { name: "Custom" }));
-    // SLT-130 (R18): la validación del cliente corre al pulsar «Siguiente» en General.
-    await user.click(screen.getByRole("button", { name: "Siguiente" }));
+    // SLT-130 (R18): la validación del cliente corre al pulsar «Guardar y continuar» en General.
+    await user.click(screen.getByRole("button", { name: "Guardar y continuar" }));
 
     expect(enviar).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.getByRole("textbox", { name: "Nombre" })).toHaveFocus());
@@ -405,7 +406,7 @@ describe("SLT-58 — revisión de diseño del formulario", () => {
         inicioCicloPorDefecto={MANANA}
         rangoInicioCiclo={RANGO}
         rangoFechaDeEfecto={RANGO_EFECTO}
-        enviar={vi.fn()}
+        {...conBorrador(vi.fn())}
         previsualizar={vi.fn().mockResolvedValue({ estado: "ok", avisos: [] })}
         onGuardado={vi.fn()}
       />,

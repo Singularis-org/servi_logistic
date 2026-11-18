@@ -3,7 +3,13 @@ import { notFound } from "next/navigation";
 import { AppPage } from "@/components/shared/AppPage";
 import { listarEmpresasPlataforma } from "@/lib/actions/_shared/empresas-plataforma";
 import { verDetalleDePlan } from "@/lib/actions/_shared/planes-plataforma";
-import { archivarPlanAction, cancelarCambioPlanAction, editarPlanAction } from "@/lib/actions/planes";
+import {
+  confirmarBorradorAction,
+  descartarBorradorAction,
+  guardarPasoBorradorAction,
+  leerBorradorAction,
+} from "@/lib/actions/plan-borrador";
+import { archivarPlanAction, cancelarCambioPlanAction, previsualizarCambioPlanAction } from "@/lib/actions/planes";
 import { esPlataforma } from "@/lib/auth/plataforma";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
@@ -36,12 +42,25 @@ async function leerEmpresasCandidatas(actor: Actor, plan: PlanDTO): Promise<{ id
  * Component). Cualquier rol de empresa, o sin sesión, recibe `notFound()` ANTES de leer nada. Un
  * `planId` que no es uuid o que no existe responde lo mismo: «no encontrado». Las escrituras son las
  * actions de SL-24, que bajan por props sin cambios (R25).
+ *
+ * SLT-144 (design §6; R26, R28): editar guarda por pasos en el borrador de cambio del plan y lo confirma, con las
+ * actions de `lib/actions/plan-borrador.ts`; `editarPlanAction` ya no baja. La página no lee el borrador: lo lee el
+ * panel al abrirse, así que antes del `notFound()` no se lee nada. `?editar=1` (Retomar un borrador de cambio en la
+ * lista) abre el panel de editar al cargar.
  */
-export default async function PlanDetallePage({ params }: { params: Promise<{ planId: string }> }) {
+export default async function PlanDetallePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ planId: string }>;
+  // Opcional: los tests de integración de SLT-58 llaman a la página solo con `params`.
+  searchParams?: Promise<{ [clave: string]: string | string[] | undefined }>;
+}) {
   const actor = await resolveActorFromSession();
   if (!actor || !esPlataforma(actor.rol)) notFound();
 
   const { planId } = await params;
+  const editar = (await searchParams)?.editar;
   const r = await verDetalleDePlan(actor, { planId });
   if (r.estado !== "ok") notFound();
   // Solo se ofrecen si el plan se puede asignar (no archivado): si no, ni se leen. SLT-99 (decisión del
@@ -54,7 +73,14 @@ export default async function PlanDetallePage({ params }: { params: Promise<{ pl
     <AppPage title={r.detalle.plan.nombre}>
       <PlanDetalle
         detalle={r.detalle}
-        editarPlan={editarPlanAction}
+        borrador={{
+          guardarPaso: guardarPasoBorradorAction,
+          leer: leerBorradorAction,
+          descartar: descartarBorradorAction,
+          confirmar: confirmarBorradorAction,
+        }}
+        previsualizarCambio={previsualizarCambioPlanAction}
+        abrirEditar={editar === "1"}
         archivarPlan={archivarPlanAction}
         cancelarCambio={cancelarCambioPlanAction}
         empresasCandidatas={empresasCandidatas}

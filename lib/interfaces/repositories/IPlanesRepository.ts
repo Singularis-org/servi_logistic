@@ -147,6 +147,15 @@ export interface VistaPreviaLeida {
   avisos: TopeExcedido[];
 }
 
+/**
+ * SLT-144 (design §3.1; R21): las empresas que HOY tienen el plan, por nombre, con su tipo de cobro, y los topes
+ * nuevos que ya pasan. El servicio calcula con el tipo la fecha de cada una.
+ */
+export interface VistaPreviaCambioLeida {
+  empresas: { id: string; nombre: string; tipoCobro: TipoCobro }[];
+  avisos: TopeExcedido[];
+}
+
 export type ResultadoCancelarCambio =
   | { estado: "ok" }
   | { estado: "not_found" }
@@ -355,6 +364,11 @@ export interface PlanDeEmpresaLeida {
   asignaciones: AsignacionLeida[];
 }
 
+/*
+ * SLT-129 (design §5.4; R17–R20): `borradorId` opcional en crear, crearYAsignar, editar y programarCambio. Con él,
+ * la transacción toma el borrador al empezar (sin él, lanza `BorradorNoEncontrado`) y lo borra si termina en `ok`;
+ * el plan creado toma su id.
+ */
 export interface IPlanesRepository {
   /** SLT-58 R13: todos los planes, también los archivados. */
   catalogo(): Promise<PlanDelCatalogoLeido[]>;
@@ -365,14 +379,20 @@ export interface IPlanesRepository {
   empresa(organizacionId: string): Promise<EmpresaDePlanes | null>;
   plan(planId: string): Promise<PlanDTO | null>;
   /** Crea el plan, sus topes y sus módulos, con su fila `creado` de `plan_rastro` (R1, R29). */
-  crear(input: CrearPlanInput, actorUsuarioId: string): Promise<string>;
+  crear(input: CrearPlanInput, actorUsuarioId: string, borradorId?: string): Promise<string>;
   /**
    * Edición inmediata (§5.3): aplica la versión a todas las empresas del plan y devuelve las que ya
    * pasan algún tope nuevo, sin rechazar (R15–R17). Sin cambios reales no escribe nada. SLT-86 (§5.4;
    * R15, R22): si cambia el costo base o un descuento, añade la fila del historial de precio desde
    * `precioDesde` (las 00:00 de hoy) y no toca a ninguna empresa.
    */
-  editar(planId: string, version: VersionPlan, actorUsuarioId: string, precioDesde: Date): Promise<ResultadoEdicion>;
+  editar(
+    planId: string,
+    version: VersionPlan,
+    actorUsuarioId: string,
+    precioDesde: Date,
+    borradorId?: string,
+  ): Promise<ResultadoEdicion>;
   /**
    * Archiva y cancela el cambio pendiente en la misma transacción (R6, R40). SLT-86 (R21): también los
    * cambios de empresa pendientes hacia ese plan, primeras asignaciones incluidas, cada uno con su fila de
@@ -404,6 +424,7 @@ export interface IPlanesRepository {
     actorUsuarioId: string,
     asignacion: AsignacionAlCrear,
     ahora: Date,
+    borradorId?: string,
   ): Promise<ResultadoCrearYAsignar>;
   /**
    * SLT-58 (§11.4; R37): los topes de usuarios y API keys del plan que la empresa ya pasa, con el mismo
@@ -415,6 +436,11 @@ export interface IPlanesRepository {
    * en el form del custom (el plan aún no existe). Solo lee. `null` si la empresa no existe.
    */
   vistaPreviaConTopes(organizacionId: string, topes: TopesPlan): Promise<VistaPreviaLeida | null>;
+  /**
+   * SLT-144 (design §3.1; R21): las empresas del plan y los topes que pasarían con `topes`, con las mismas piezas
+   * que `programarCambio` (`excedidosDe`). Solo lee. `null` si el plan no existe.
+   */
+  vistaPreviaCambio(planId: string, topes: TopesPlan): Promise<VistaPreviaCambioLeida | null>;
   /**
    * Ajuste planes-custom (D10, D16) y SLT-86 (R16–R19): el tipo de cobro del plan que la empresa YA tiene,
    * con fecha de efecto, por el mismo camino que `asignar` con ese plan. No toca `plan_id` ni los módulos.
@@ -457,6 +483,7 @@ export interface IPlanesRepository {
     vigenteDesde: Date,
     actorUsuarioId: string,
     ahora: Date,
+    borradorId?: string,
   ): Promise<ResultadoProgramar>;
   /**
    * `plan_recordatorio_cambio` (§16.4): si ESA programación sigue pendiente, encola un

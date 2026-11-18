@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { RadioGroup } from "@/components/ui/radio-group";
 
 import type { PropsDelPaso } from "./estado";
+import { FechasPorEmpresa, type FechasDelCambio } from "./FechasPorEmpresa";
 import { TEXTOS_PLAN_FORM } from "./textos";
 
 export type PasoCuandoRigeProps = PropsDelPaso & {
@@ -55,5 +56,24 @@ export function PasoCuandoRige({ form, cambiar, idDe, errorDe, cambiaPrecio }: P
         </FormField>
       ) : null}
     </fieldset>
+  );
+}
+
+export type PasoCuandoRigeConFechasProps = PasoCuandoRigeProps & {
+  /** SLT-144 (R17–R20): la lectura de la fecha de cada empresa que guarda `PlanForm`. */
+  fechas: FechasDelCambio | null;
+  onReintentarFechas: () => void;
+};
+
+/**
+ * SLT-144 (design §5.3) — «Cuándo rige» con la fecha de cada empresa debajo de los controles de hoy. Va aparte
+ * para no tocar esos controles (los cambia SLT-135).
+ */
+export function PasoCuandoRigeConFechas({ fechas, onReintentarFechas, ...paso }: PasoCuandoRigeConFechasProps) {
+  return (
+    <div className="flex flex-col gap-4">
+      <PasoCuandoRige {...paso} />
+      <FechasPorEmpresa fechas={fechas} onReintentar={onReintentarFechas} />
+    </div>
   );
 }
