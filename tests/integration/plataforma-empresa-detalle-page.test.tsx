@@ -76,19 +76,27 @@ vi.mock("@/lib/actions/pagos-plataforma", () => ({
 }));
 
 // SLT-119 (R12, R17): las facturas de la empresa y el detalle de una, como dobles.
-const { verFacturasMock, verDetalleFacturaMock } = vi.hoisted(() => ({
+// SLT-136 (R2, R19): y la descarga de una cerrada, ligada a la empresa como el detalle.
+const { verFacturasMock, verDetalleFacturaMock, descargarFacturaMock } = vi.hoisted(() => ({
   verFacturasMock: vi.fn(),
   verDetalleFacturaMock: vi.fn(),
+  descargarFacturaMock: vi.fn(),
 }));
 vi.mock("@/lib/actions/_shared/facturas-plataforma", () => ({
   verFacturasDeEmpresa: (...a: unknown[]) => verFacturasMock(...a),
 }));
 vi.mock("@/lib/actions/facturas-plataforma", () => ({
   verDetalleFacturaEmpresaAction: (...a: unknown[]) => verDetalleFacturaMock(...a),
+  descargarFacturaEmpresaAction: (...a: unknown[]) => descargarFacturaMock(...a),
 }));
 
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
-import type { DetalleFacturaResult, FacturaPlataformaDTO, FacturasResult } from "@/lib/types/factura-plataforma";
+import type {
+  DescargaFacturaResult,
+  DetalleFacturaResult,
+  FacturaPlataformaDTO,
+  FacturasResult,
+} from "@/lib/types/factura-plataforma";
 import { ToastProvider } from "@/providers/ToastProvider";
 import EmpresaDetallePage from "@/app/(app)/plataforma/empresas/[organizacionId]/page";
 
@@ -671,6 +679,27 @@ describe("SLT-119 (R12, R17) — las pestañas «Empresa» y «Facturación»", 
 
     expect(await screen.findByRole("dialog", { name: "Factura N.º 1" })).toBeInTheDocument();
     expect(verDetalleFacturaMock).toHaveBeenCalledWith(ORG, { facturaId: CERRADA.id, pagina: 1 });
+  });
+
+  it("SLT-136 R2, R19: el detalle de una cerrada lleva las dos descargas; la pide la action ligada a la empresa de la URL", async () => {
+    actorMock.mockResolvedValue(superadmin);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    verFacturasMock.mockResolvedValue({ estado: "ok", facturas: [CERRADA] } satisfies FacturasResult);
+    verDetalleFacturaMock.mockResolvedValue({
+      estado: "ok",
+      detalle: { factura: CERRADA, lineas: { lineas: [], pagina: 1, porPagina: 100, total: 0 } },
+    } satisfies DetalleFacturaResult);
+    descargarFacturaMock.mockResolvedValue({ estado: "forbidden" } satisfies DescargaFacturaResult);
+
+    const user = await abrirFacturacion();
+    await user.click(screen.getByRole("button", { name: /Ver detalle de la factura/ }));
+    const panel = await screen.findByRole("dialog", { name: "Factura N.º 1" });
+    expect(within(panel).getByRole("button", { name: "Descargar Excel" })).toBeInTheDocument();
+    await user.click(within(panel).getByRole("button", { name: "Descargar PDF" }));
+
+    expect(descargarFacturaMock).toHaveBeenCalledWith(ORG, { facturaId: CERRADA.id });
+    // R20: el fallo se dice dentro del panel, que sigue abierto.
+    expect(await within(panel).findByRole("alert")).toHaveTextContent("No se pudo descargar la factura");
   });
 
   it.each<[string, () => void]>([

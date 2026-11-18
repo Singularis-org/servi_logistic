@@ -134,3 +134,42 @@ export type DetalleFacturaEmpresaInput = z.infer<typeof detalleFacturaEmpresaSch
 
 /** R12, R15: la lista que pide el superadmin, de la empresa que nombra. */
 export const facturasDeEmpresaSchema = z.object({ organizacionId: z.uuid() });
+
+/* -------------------------------------------------------------------------- */
+/* SLT-136 (design §2.1) — los datos de la descarga de una factura cerrada      */
+/* -------------------------------------------------------------------------- */
+
+/** R1, R6: un movimiento de la factura, entero (sin paginar), con la remisión de su orden (también eliminada). */
+export interface MovimientoDeFactura {
+  id: string;
+  /** `cobrado_at`: el instante del movimiento. */
+  instante: Date;
+  /** `null` si la traza no lo guardó. */
+  numGuia: number | null;
+  numRemision: string;
+  tipo: TipoLineaFactura;
+  /** Con signo y dos decimales, el de la base. */
+  valor: string;
+}
+
+/** R1, R2: la cabecera (la misma lectura que la lista), el nombre de la empresa y todos sus movimientos. */
+export interface DatosDescargaFactura {
+  factura: FacturaPlataformaDTO;
+  empresaNombre: string;
+  /** Por instante y, a igual instante, por id. */
+  movimientos: MovimientoDeFactura[];
+}
+
+export type DescargaFacturaResult =
+  | { estado: "ok"; datos: DatosDescargaFactura }
+  | { estado: "forbidden" }
+  | { estado: "not_found" }
+  | { estado: "validation_error"; errores: Record<string, string> };
+
+/** R1, R5: la descarga que pide el maestro (la empresa es la de la sesión). */
+export const descargaFacturaSchema = z.object({ facturaId: z.uuid() });
+export type DescargaFacturaInput = z.infer<typeof descargaFacturaSchema>;
+
+/** R2, R5: la descarga que pide el superadmin, de la empresa que liga la página. */
+export const descargaFacturaEmpresaSchema = descargaFacturaSchema.extend({ organizacionId: z.uuid() });
+export type DescargaFacturaEmpresaInput = z.infer<typeof descargaFacturaEmpresaSchema>;

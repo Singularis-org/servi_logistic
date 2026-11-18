@@ -3786,6 +3786,10 @@ enum JobTipo {
   plan_aplicar_cambio_empresa
   /// SLT-118 (design §4): RECURRENTE cada hora a los :10, sin empresa; cierra las facturas de la plataforma vencidas. Núcleo
   factura_plataforma_cerrar
+  /// SLT-136 (design §7.1-§7.2, R21/R30): avisa a los maestros de UNA factura recién cerrada (campanita, push y correo).
+  /// PUNTUAL, con empresa; lo encola `FacturaPlataformaRepository.cerrar` en su transacción. Payload { facturaId },
+  /// dedupe `factura_plataforma_aviso:<facturaId>`. Núcleo
+  factura_plataforma_aviso
 
   @@map("job_tipo")
 }
@@ -4049,6 +4053,10 @@ enum NotificacionEvento {
   // ⚠️ Su entidad es `${ambito}:${dia_CR}` con `ambito = 'central' | <zona_id>`: ver
   // `reprogramadas_esperan_cierre_dia` mas abajo. La regla 276 NO cambia: esto solo AVISA.
   reprogramadas_esperan_cierre
+  // SLT-136 (design §7.3, R22-R24) - se cerró una factura de la plataforma de la empresa. Una fila
+  // `alert` al rol `maestro` y a nadie más (ni admin ni superadmin); texto con número y período, SIN
+  // montos. PUSH: solo `maestro`. Lo emite el job `factura_plataforma_aviso`.
+  factura_plataforma_emitida
 
   @@map("notificacion_evento")
 }
@@ -4184,6 +4192,9 @@ enum NotificacionEntidadTipo {
   // Es `'central'` y NO `'global'` a proposito: maestro y admin NO cuentan el total del sistema
   // sino los cierres con destino `bodega_central`, que es lo que ven en `/cierres-admin`.
   reprogramadas_esperan_cierre_dia
+  // SLT-136 (design §7.3) - la entidad es la fila de `factura_plataforma`. Una factura se cierra una
+  // sola vez, así que `notificacion_dedupe_key` da UN aviso por factura para siempre (R22, R27).
+  factura_plataforma
 
   @@map("notificacion_entidad_tipo")
 }

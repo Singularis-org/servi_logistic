@@ -3,26 +3,38 @@
 //
 // El panel pide el detalle al abrirse y al paginar con la función que le pasa la pantalla (la action del maestro o
 // la del superadmin ligada a su empresa). Aquí esa función es un doble: se mide qué pide y cómo pinta la respuesta.
+//
+// SLT-136 (design §6; R19, R20): una cerrada lleva además «Descargar PDF» y «Descargar Excel»; una no cerrada, no. Lo
+// que hacen los botones lo prueba `DescargarFactura.test.tsx`; aquí, dónde salen y que un fallo no cierra el panel.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { DetalleDeFactura } from "@/components/shared/facturas/DetalleDeFactura";
 import { FacturasDeLaEmpresa } from "@/components/shared/facturas/FacturasDeLaEmpresa";
-import type { DetalleFacturaResult, FacturaPlataformaDTO, LineaDeFactura } from "@/lib/types/factura-plataforma";
+import type {
+  DescargaFacturaResult,
+  DetalleFacturaResult,
+  FacturaPlataformaDTO,
+  LineaDeFactura,
+} from "@/lib/types/factura-plataforma";
 
 import { cuota, detalle, enPlataforma, factura, linea } from "./_facturas-plataforma";
 
 afterEach(() => cleanup());
 
 type Cargar = (i: { facturaId: string; pagina: number }) => Promise<DetalleFacturaResult>;
+type Descargar = (i: { facturaId: string }) => Promise<DescargaFacturaResult>;
+
+/** SLT-136: las pruebas de SLT-119 no descargan. */
+const descargarNoUsada = vi.fn<Descargar>();
 
 function respondeCon(f: FacturaPlataformaDTO, lineas: LineaDeFactura[] = [], extra: { total?: number } = {}) {
   return vi.fn<Cargar>(async ({ pagina }) => ({ estado: "ok", detalle: detalle(f, lineas, { pagina, ...extra }) }));
 }
 
-async function abrir(f: FacturaPlataformaDTO, cargar: Cargar) {
-  render(<DetalleDeFactura factura={f} onCerrar={vi.fn()} cargarDetalle={cargar} />);
+async function abrir(f: FacturaPlataformaDTO, cargar: Cargar, descargar: Descargar = descargarNoUsada) {
+  render(<DetalleDeFactura factura={f} onCerrar={vi.fn()} cargarDetalle={cargar} descargar={descargar} />);
   const panel = await screen.findByRole("dialog");
   await within(panel).findByRole("region", { name: "Resumen de órdenes" });
   return panel;
@@ -192,12 +204,70 @@ describe("SLT-119 R10 — páginas de 100 con anterior, siguiente y el total de 
   });
 });
 
-describe("SLT-119 R16 — solo lectura", () => {
-  it("R16: los únicos botones del panel son cerrar y paginar", async () => {
+describe("SLT-119 R16 — solo lectura (SLT-136 R19 añade las dos descargas a una cerrada)", () => {
+  it("R16, R19: en una cerrada los botones son las dos descargas, paginar y cerrar; ninguno escribe", async () => {
     const panel = await abrir(CERRADA_DOS_CUOTAS, respondeCon(CERRADA_DOS_CUOTAS, [linea()]));
 
-    expect(within(panel).getAllByRole("button").map((b) => b.textContent)).toEqual(["Anterior", "Siguiente", "Cerrar"]);
+    expect(within(panel).getAllByRole("button").map((b) => b.textContent)).toEqual([
+      "Descargar PDF",
+      "Descargar Excel",
+      "Anterior",
+      "Siguiente",
+      "Cerrar",
+    ]);
     expect(within(panel).queryByRole("link")).toBeNull();
+  });
+
+  it("R16: en una no cerrada los únicos botones son cerrar y paginar", async () => {
+    const f = factura({ estado: "en_curso", numero: null, hastaPrevisto: true, cerradaAt: null });
+    const panel = await abrir(f, respondeCon(f, [linea()]));
+
+    expect(within(panel).getAllByRole("button").map((b) => b.textContent)).toEqual(["Anterior", "Siguiente", "Cerrar"]);
+  });
+});
+
+describe("SLT-136 R19 — «Descargar PDF» y «Descargar Excel» solo en una factura cerrada", () => {
+  it("R19: una cerrada muestra los dos botones bajo la cabecera, antes de las cuotas, y piden su factura", async () => {
+    const user = userEvent.setup();
+    const descargar = vi.fn<Descargar>().mockResolvedValue({ estado: "not_found" });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const panel = await abrir(CERRADA_DOS_CUOTAS, respondeCon(CERRADA_DOS_CUOTAS), descargar);
+
+    const grupo = within(panel).getByRole("group", { name: "Descargar la factura" });
+    const pdf = within(grupo).getByRole("button", { name: "Descargar PDF" });
+    expect(within(grupo).getByRole("button", { name: "Descargar Excel" })).toBeEnabled();
+    const cuotas = within(panel).getByRole("region", { name: "Cuotas" });
+    expect(grupo.compareDocumentPosition(cuotas) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    await user.click(pdf);
+
+    expect(descargar).toHaveBeenCalledWith({ facturaId: CERRADA_DOS_CUOTAS.id });
+  });
+
+  it.each(["en_curso", "por_cerrar"] as const)("R19: una %s no muestra los botones de descarga", async (estado) => {
+    const f = factura({ estado, numero: null, hastaPrevisto: true, cerradaAt: null });
+    const panel = await abrir(f, respondeCon(f));
+
+    expect(within(panel).queryByRole("button", { name: "Descargar PDF" })).toBeNull();
+    expect(within(panel).queryByRole("button", { name: "Descargar Excel" })).toBeNull();
+    expect(within(panel).queryByRole("group", { name: "Descargar la factura" })).toBeNull();
+  });
+
+  it("R20: si la descarga falla, el aviso sale dentro del panel, que sigue abierto con su detalle", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const descargar = vi.fn<Descargar>().mockRejectedValue(new Error("db caída"));
+    const f = factura();
+    render(<FacturasDeLaEmpresa facturas={[f]} cargarDetalle={respondeCon(f)} descargar={descargar} />);
+    await user.click(screen.getByRole("button", { name: /Ver detalle de la factura/ }));
+    const panel = await screen.findByRole("dialog");
+    await within(panel).findByRole("region", { name: "Resumen de órdenes" });
+
+    await user.click(within(panel).getByRole("button", { name: "Descargar Excel" }));
+
+    expect(await within(panel).findByRole("alert")).toHaveTextContent("No se pudo descargar la factura");
+    expect(screen.getByRole("dialog")).toBe(panel);
+    expect(within(panel).getByRole("region", { name: "Resumen de órdenes" })).toBeInTheDocument();
   });
 });
 
@@ -210,7 +280,7 @@ describe("SLT-119 R17 — si la lectura del detalle falla", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const user = userEvent.setup();
     const f = factura();
-    render(<FacturasDeLaEmpresa facturas={[f]} cargarDetalle={crear()} />);
+    render(<FacturasDeLaEmpresa facturas={[f]} cargarDetalle={crear()} descargar={descargarNoUsada} />);
 
     await user.click(screen.getByRole("button", { name: /Ver detalle de la factura/ }));
 

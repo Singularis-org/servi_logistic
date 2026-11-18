@@ -30,7 +30,8 @@ import {
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
-const M_ANTERIOR = "20261116120000_pago_plataforma_confirmacion";
+// Mismo timestamp que M; el orden alfabético de carpetas la pone justo delante ("factura_" < "plan_").
+const M_ANTERIOR = "20261117120000_factura_plataforma_aviso_enums";
 const M = "20261117120000_plan_borrador";
 const BASE = `slt129_iv_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 

@@ -281,6 +281,7 @@ describe("262 / D7 — el enum Prisma y el tipo de TypeScript no quedan a la der
       "traspaso_ordenes_recibido",
       "traspaso_ordenes_cedido",
       "reprogramadas_esperan_cierre", // ficha 462 (2026-09-25): el cuarto agregado
+      "factura_plataforma_emitida", // SLT-136 (2026-11-17): factura de la plataforma emitida, al maestro
     ]);
   });
 
@@ -328,6 +329,7 @@ describe("262 / D7 — el enum Prisma y el tipo de TypeScript no quedan a la der
       // el SEGUNDO traspaso del dia a la misma persona no avisaria NUNCA, en silencio.
       "orden_traspaso_lote",
       "reprogramadas_esperan_cierre_dia", // ficha 462 (2026-09-25): `${ambito}:${diaCR}`, ambito central|zona
+      "factura_plataforma", // SLT-136 (2026-11-17): la entidad es la factura
     ]);
   });
 
@@ -409,6 +411,7 @@ describeSiHayBase("262 / D7 — la base aplicada, y el DOWN ejercitado de verdad
       "traspaso_ordenes_recibido",
       "traspaso_ordenes_cedido",
       "reprogramadas_esperan_cierre", // ficha 462 (2026-09-25): el cuarto agregado
+      "factura_plataforma_emitida", // SLT-136 (2026-11-17): factura de la plataforma emitida, al maestro
     ]);
   });
 
@@ -446,6 +449,7 @@ describeSiHayBase("262 / D7 — la base aplicada, y el DOWN ejercitado de verdad
       // el SEGUNDO traspaso del dia a la misma persona no avisaria NUNCA, en silencio.
       "orden_traspaso_lote",
       "reprogramadas_esperan_cierre_dia", // ficha 462 (2026-09-25): `${ambito}:${diaCR}`, ambito central|zona
+      "factura_plataforma", // SLT-136 (2026-11-17): la entidad es la factura
     ]);
   });
 

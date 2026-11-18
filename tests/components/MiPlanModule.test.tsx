@@ -289,13 +289,14 @@ describe("Ajuste planes-custom D9, SLT-86 R27 — «Mi plan» muestra el tipo, e
 
 describe("SLT-119 R1, R17 — «Facturas de la empresa» al final de «Mi plan»", () => {
   const cargarDetalle = vi.fn();
+  const descargar = vi.fn();
 
   it("R1: con las facturas de la página, la sección va después del cambio de plan y lista las de la empresa", () => {
     render(
       <MiPlanModule
         plan={plan()}
         planes={planesDeMiPlan()}
-        facturas={{ lista: [factura({ plan: null })], cargarDetalle }}
+        facturas={{ lista: [factura({ plan: null })], cargarDetalle, descargar }}
       />,
     );
 
@@ -305,10 +306,11 @@ describe("SLT-119 R1, R17 — «Facturas de la empresa» al final de «Mi plan»
     const planes = screen.getByRole("heading", { name: "Planes disponibles" });
     expect(planes.compareDocumentPosition(seccion) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(cargarDetalle).not.toHaveBeenCalled();
+    expect(descargar).not.toHaveBeenCalled();
   });
 
   it("R17: con la lista `null`, la sección dice «No se pudieron cargar las facturas» y el plan se pinta igual", () => {
-    render(<MiPlanModule plan={plan()} planes={planesDeMiPlan()} facturas={{ lista: null, cargarDetalle }} />);
+    render(<MiPlanModule plan={plan()} planes={planesDeMiPlan()} facturas={{ lista: null, cargarDetalle, descargar }} />);
 
     expect(
       within(screen.getByRole("region", { name: "Facturas de la empresa" })).getByRole("alert"),
@@ -323,5 +325,30 @@ describe("SLT-119 R1, R17 — «Facturas de la empresa» al final de «Mi plan»
       within(screen.getByRole("region", { name: "Facturas de la empresa" })).getByRole("alert"),
     ).toHaveTextContent("No se pudieron cargar las facturas");
     expect(screen.queryByRole("button", { name: /Ver detalle de la factura/ })).toBeNull();
+  });
+
+  it("SLT-136 R19: el maestro ve «Descargar PDF» y «Descargar Excel» en el detalle de una cerrada, con la descarga de la página", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const cerrada = factura({ plan: null });
+    const cargar = vi.fn(async () => ({
+      estado: "ok" as const,
+      detalle: { factura: cerrada, lineas: { lineas: [], pagina: 1, porPagina: 100, total: 0 } },
+    }));
+    const descargarDeLaPagina = vi.fn(async () => ({ estado: "not_found" as const }));
+    render(
+      <MiPlanModule
+        plan={plan()}
+        planes={planesDeMiPlan()}
+        facturas={{ lista: [cerrada], cargarDetalle: cargar, descargar: descargarDeLaPagina }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /Ver detalle de la factura/ }));
+    const panel = await screen.findByRole("dialog");
+    expect(within(panel).getByRole("button", { name: "Descargar Excel" })).toBeInTheDocument();
+    await user.click(within(panel).getByRole("button", { name: "Descargar PDF" }));
+
+    expect(descargarDeLaPagina).toHaveBeenCalledWith({ facturaId: cerrada.id });
   });
 });

@@ -9,7 +9,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { FacturasDeLaEmpresa } from "@/components/shared/facturas/FacturasDeLaEmpresa";
-import type { DetalleFacturaResult } from "@/lib/types/factura-plataforma";
+import type { DescargaFacturaResult, DetalleFacturaResult } from "@/lib/types/factura-plataforma";
 
 import { cuota, detalle, enPlataforma, factura } from "./_facturas-plataforma";
 
@@ -51,6 +51,8 @@ const SIN_PLAN = factura({
 });
 
 const cargarNoUsada = vi.fn<(i: { facturaId: string; pagina: number }) => Promise<DetalleFacturaResult>>();
+/** SLT-136: estas pruebas no descargan. */
+const descargarNoUsada = vi.fn<(i: { facturaId: string }) => Promise<DescargaFacturaResult>>();
 
 function filas() {
   const [, ...cuerpo] = screen.getAllByRole("row");
@@ -59,7 +61,7 @@ function filas() {
 
 describe("SLT-119 R1 — todas las facturas de la empresa, por empresa y no por plan", () => {
   it("R1: una sin plan, una con el plan anterior y la en curso con el actual salen las tres, de la más reciente a la más antigua", () => {
-    render(<FacturasDeLaEmpresa facturas={[EN_CURSO, CON_PLAN_ANTERIOR, SIN_PLAN]} cargarDetalle={cargarNoUsada} />);
+    render(<FacturasDeLaEmpresa facturas={[EN_CURSO, CON_PLAN_ANTERIOR, SIN_PLAN]} cargarDetalle={cargarNoUsada} descargar={descargarNoUsada} />);
 
     expect(screen.getByRole("heading", { level: 2, name: "Facturas de la empresa" })).toBeInTheDocument();
     expect(screen.getAllByRole("columnheader").map((c) => c.textContent)).toEqual([
@@ -80,7 +82,7 @@ describe("SLT-119 R1 — todas las facturas de la empresa, por empresa y no por 
   });
 
   it("R1: ningún texto presenta las facturas como de un plan", () => {
-    render(<FacturasDeLaEmpresa facturas={[EN_CURSO, SIN_PLAN]} cargarDetalle={cargarNoUsada} />);
+    render(<FacturasDeLaEmpresa facturas={[EN_CURSO, SIN_PLAN]} cargarDetalle={cargarNoUsada} descargar={descargarNoUsada} />);
 
     const seccion = screen.getByRole("region", { name: "Facturas de la empresa" });
     expect(within(seccion).getByText("Todas las facturas de la empresa, de cualquier plan o sin plan.")).toBeInTheDocument();
@@ -90,7 +92,7 @@ describe("SLT-119 R1 — todas las facturas de la empresa, por empresa y no por 
 
 describe("SLT-119 R2 — la no cerrada: «En curso», sin número, total parcial y cuotas «prevista»", () => {
   it.each(["en_curso", "por_cerrar"] as const)("R2: una %s se muestra igual", (estado) => {
-    render(<FacturasDeLaEmpresa facturas={[{ ...EN_CURSO, estado }]} cargarDetalle={cargarNoUsada} />);
+    render(<FacturasDeLaEmpresa facturas={[{ ...EN_CURSO, estado }]} cargarDetalle={cargarNoUsada} descargar={descargarNoUsada} />);
 
     const [fila] = filas();
     expect(fila[0]).toBe("—");
@@ -105,7 +107,7 @@ describe("SLT-119 R5 — los importes de la base, sin recalcular", () => {
   it("R5: importes con céntimos que un redondeo cambiaría se pintan tal cual (total que no es la suma de lo visible)", () => {
     // El total de la base no se recompone en pantalla: aunque no cuadre con las columnas, se pinta el suyo.
     const f = factura({ totalOrdenes: "1234.56", cuota: cuota({ cuota: "0.45" }), total: "1235.01" });
-    render(<FacturasDeLaEmpresa facturas={[f]} cargarDetalle={cargarNoUsada} />);
+    render(<FacturasDeLaEmpresa facturas={[f]} cargarDetalle={cargarNoUsada} descargar={descargarNoUsada} />);
 
     const [fila] = filas();
     expect(fila[3]).toBe("₡1.234,56");
@@ -116,7 +118,7 @@ describe("SLT-119 R5 — los importes de la base, sin recalcular", () => {
 
 describe("SLT-119 R16 — solo lectura", () => {
   it("R16: los únicos botones abren el detalle; nada de editar, pagar, anular, enviar ni descargar", () => {
-    render(<FacturasDeLaEmpresa facturas={[EN_CURSO, CON_PLAN_ANTERIOR, SIN_PLAN]} cargarDetalle={cargarNoUsada} />);
+    render(<FacturasDeLaEmpresa facturas={[EN_CURSO, CON_PLAN_ANTERIOR, SIN_PLAN]} cargarDetalle={cargarNoUsada} descargar={descargarNoUsada} />);
 
     const botones = screen.getAllByRole("button");
     expect(botones.map((b) => b.textContent)).toEqual(["Ver detalle", "Ver detalle", "Ver detalle"]);
@@ -129,7 +131,7 @@ describe("SLT-119 R16 — solo lectura", () => {
       .fn<(i: { facturaId: string; pagina: number }) => Promise<DetalleFacturaResult>>()
       .mockResolvedValue({ estado: "ok", detalle: detalle(CON_PLAN_ANTERIOR, []) });
     const user = userEvent.setup();
-    render(<FacturasDeLaEmpresa facturas={[EN_CURSO, CON_PLAN_ANTERIOR]} cargarDetalle={cargar} />);
+    render(<FacturasDeLaEmpresa facturas={[EN_CURSO, CON_PLAN_ANTERIOR]} cargarDetalle={cargar} descargar={descargarNoUsada} />);
 
     await user.click(screen.getByRole("button", { name: "Ver detalle de la factura 16 nov 2026 – 30 nov 2026" }));
 
@@ -140,7 +142,7 @@ describe("SLT-119 R16 — solo lectura", () => {
 
 describe("SLT-119 R17, R18 — fallo y vacío", () => {
   it("R17: si la lectura falló (`null`), la sección dice «No se pudieron cargar las facturas»", () => {
-    render(<FacturasDeLaEmpresa facturas={null} cargarDetalle={cargarNoUsada} />);
+    render(<FacturasDeLaEmpresa facturas={null} cargarDetalle={cargarNoUsada} descargar={descargarNoUsada} />);
 
     expect(screen.getByRole("heading", { name: "Facturas de la empresa" })).toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent("No se pudieron cargar las facturas");
@@ -148,7 +150,7 @@ describe("SLT-119 R17, R18 — fallo y vacío", () => {
   });
 
   it("R18: sin facturas, «Aún no hay facturas de la empresa»", () => {
-    render(<FacturasDeLaEmpresa facturas={[]} cargarDetalle={cargarNoUsada} />);
+    render(<FacturasDeLaEmpresa facturas={[]} cargarDetalle={cargarNoUsada} descargar={descargarNoUsada} />);
 
     expect(screen.getByText("Aún no hay facturas de la empresa")).toBeInTheDocument();
     expect(screen.queryByRole("table")).toBeNull();

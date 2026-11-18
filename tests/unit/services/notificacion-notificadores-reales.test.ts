@@ -1000,3 +1000,27 @@ describe("guardia derivada: ningun notificador REAL puede quedarse sin compositi
     expect(muertos).toEqual([]);
   });
 });
+
+describe("SLT-136/R23 — `emitirFacturaEmitidaReal` hereda el push por `repoReal()`", () => {
+  const fuente = fs.readFileSync(path.join(ROOT, "lib", "notificaciones", "notificadores.ts"), "utf8");
+  /** El cuerpo del binding: desde su `export const` hasta el `export` siguiente (o el final). */
+  function cuerpo(nombre: string): string {
+    const i = fuente.indexOf(`export const ${nombre}`);
+    expect(i, `no se encontro ${nombre}`).toBeGreaterThan(-1);
+    const siguiente = fuente.indexOf("\nexport ", i + 1);
+    return fuente.slice(i, siguiente === -1 ? fuente.length : siguiente);
+  }
+
+  it("⭑ resuelve su repositorio por `repoReal()` y no construye uno propio", () => {
+    const c = cuerpo("emitirFacturaEmitidaReal");
+    expect(c).toContain("emitirFacturaEmitida(repoReal(), ctx)");
+    expect(c).not.toContain("new NotificacionRepository(");
+    // No es best-effort: el job debe fallar si el aviso no se creó (design §7.2).
+    expect(c).not.toContain("emitirBestEffort");
+  });
+
+  it("⭑ el composition root del job lo cablea", () => {
+    const job = fs.readFileSync(path.join(ROOT, "lib", "planes", "jobs-factura-aviso.ts"), "utf8");
+    expect(job).toMatch(/emitirAviso:\s*emitirFacturaEmitidaReal/);
+  });
+});

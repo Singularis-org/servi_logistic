@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { verFacturasDeEmpresa } from "@/lib/actions/_shared/facturas-plataforma";
 import { verModulosEmpresa } from "@/lib/actions/_shared/modulos-empresa";
 import { verDetalleDePlan, verPlanDeEmpresa, verPreciosQueRigen } from "@/lib/actions/_shared/planes-plataforma";
-import { verDetalleFacturaEmpresaAction } from "@/lib/actions/facturas-plataforma";
+import { descargarFacturaEmpresaAction, verDetalleFacturaEmpresaAction } from "@/lib/actions/facturas-plataforma";
 import { fijarModuloEmpresaAction } from "@/lib/actions/modulos-empresa";
 import {
   confirmarPagoPlataformaAction,
@@ -270,6 +270,8 @@ export default async function EmpresaDetallePage({
               facturas={facturas}
               // R12: la empresa la liga el servidor; el panel solo manda la factura y la página.
               cargarDetalle={verDetalleFacturaEmpresaAction.bind(null, empresa.organizacionId)}
+              // SLT-136 (R2, R19): la descarga, también con la empresa ligada en el servidor.
+              descargar={descargarFacturaEmpresaAction.bind(null, empresa.organizacionId)}
             />
           </TabsContent>
         </Tabs>
