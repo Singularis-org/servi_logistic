@@ -68,7 +68,7 @@
 - [x] **T5.2 [P]** `PlanDetalle.tsx` y `[planId]/page.tsx`: `AbrirPlanForm` con `{ planId }`, `?editar=1`, las
   actions del borrador, `previsualizarCambioPlanAction` y el aviso al cerrar. Depende de T3.3 y T4.1.
   *Hecho:* `tests/components/PlanDetalle.test.tsx` verde (R13, R26, más los casos de hoy y el «N de M» de SLT-128 R11).
-- [ ] **T5.3** La página no lee borradores sin superadmin. Depende de T5.1.
+- [x] **T5.3** La página no lee borradores sin superadmin. Depende de T5.1.
   *Hecho:* `tests/integration/plataforma-planes-page.test.tsx` verde, con el caso de R28.
 - [ ] **T5.4** Quitar los cuatro `@sin-superficie` de `lib/actions/plan-borrador.ts`. Depende de T5.1 y T5.2.
   *Hecho:* `pnpm run test:guardias` verde (R29). `crearPlanAction` y `editarPlanAction` siguen sin pedir anotación.
