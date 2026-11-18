@@ -121,3 +121,12 @@ reescrito y `desde` intacto. Ninguna entrada ajena cambia (comprobado por script
 | R1091 | CI del PR (pendiente) |
 
 ## Cierre (T8)
+- `pnpm run typecheck`: exit 0. `pnpm exec eslint <15 archivos>`: exit 0.
+- `git diff --name-only origin/dev -- lib/ app/ components/ hooks/ db/ scripts/ .github/ package.json`: vacío.
+- `node scripts/tamano-pr.mjs`: 16/40 archivos, 0/1000 líneas de producción, 541/3000 de tests.
+- `./init.sh` (rápido, base A): `== init OK ==`, `INIT_EXIT=0`; 373 archivos de test seleccionados
+  (15 relacionados por imports), todos verdes; «117 rojo(s) heredado(s) del baseline».
+- CI del PR (`gate-completo`): pendiente.
+
+**Veredicto:** 11 de 15 archivos verdes con usuarios propios y fuera del baseline; 4 siguen rojos por otra
+causa medida (SLT-185, SLT-195, SLT-187 ×2), dos de ellas a confirmar por el leader.
