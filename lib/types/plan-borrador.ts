@@ -29,7 +29,7 @@ import {
 
 // SLT-129 (design §3, §4; R3, R6, R7) — el borde del borrador de planes: qué valores admite cada paso al
 // guardarlo y qué devuelven las operaciones. Cada paso se arma con las piezas de `lib/types/planes.ts`, no con
-// copias, y sus errores salen con las mismas claves de campo que `crearPlanAction` y `editarPlanAction`, para
+// copias, y sus errores salen con las mismas claves de campo que `PlanesService.crear` y `.editar`, para
 // que `pasoDeLaClave` de SLT-130 lleve cada uno a su paso.
 //
 // Al guardar se miran solo las reglas del paso. Las que cruzan pasos o necesitan la base o el reloj (la empresa

@@ -70,8 +70,9 @@
   *Hecho:* `tests/components/PlanDetalle.test.tsx` verde (R13, R26, más los casos de hoy y el «N de M» de SLT-128 R11).
 - [x] **T5.3** La página no lee borradores sin superadmin. Depende de T5.1.
   *Hecho:* `tests/integration/plataforma-planes-page.test.tsx` verde, con el caso de R28.
-- [ ] **T5.4** Quitar los cuatro `@sin-superficie` de `lib/actions/plan-borrador.ts`. Depende de T5.1 y T5.2.
-  *Hecho:* `pnpm run test:guardias` verde (R29). `crearPlanAction` y `editarPlanAction` siguen sin pedir anotación.
+- [x] **T5.4** Quitar los cuatro `@sin-superficie` de `lib/actions/plan-borrador.ts`. Depende de T5.1 y T5.2.
+  *Hecho:* `pnpm run test:guardias` verde (R29). 2026-11-18 (humano): crearPlanAction y editarPlanAction se borran; deja sin
+  efecto SLT-129 R21 en ese punto.
 
 ## T6 · E2E — frontend_dev
 

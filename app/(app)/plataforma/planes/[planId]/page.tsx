@@ -44,7 +44,7 @@ async function leerEmpresasCandidatas(actor: Actor, plan: PlanDTO): Promise<{ id
  * actions de SL-24, que bajan por props sin cambios (R25).
  *
  * SLT-144 (design §6; R26, R28): editar guarda por pasos en el borrador de cambio del plan y lo confirma, con las
- * actions de `lib/actions/plan-borrador.ts`; `editarPlanAction` ya no baja. La página no lee el borrador: lo lee el
+ * actions de `lib/actions/plan-borrador.ts`; no hay action de editar. La página no lee el borrador: lo lee el
  * panel al abrirse, así que antes del `notFound()` no se lee nada. `?editar=1` (Retomar un borrador de cambio en la
  * lista) abre el panel de editar al cargar.
  */

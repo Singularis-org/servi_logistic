@@ -269,6 +269,8 @@ Se añaden:
 (SLT-129 R21). Siguen teniendo superficie por la API y las demás pantallas que ya la tienen: la guardia de superficie
 se comprueba en T8.
 
+2026-11-18 (humano): crearPlanAction y editarPlanAction se borran; deja sin efecto SLT-129 R21 en ese punto.
+
 ## 5. Cliente: fecha de cada empresa (`plan-form/FechasPorEmpresa.tsx`)
 
 ### 5.1 Cuándo se pide

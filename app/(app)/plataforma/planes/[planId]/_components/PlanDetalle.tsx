@@ -156,7 +156,7 @@ export interface PlanDetalleProps {
   detalle: DetallePlan;
   /**
    * SLT-144 (design §4.7, §6): las actions de `lib/actions/plan-borrador.ts`. Editar guarda por pasos en el
-   * borrador de cambio del plan y lo confirma; `editarPlanAction` ya no baja a la pantalla.
+   * borrador de cambio del plan y lo confirma; no hay action de editar aparte.
    */
   borrador: AccionesDelBorrador;
   /** SLT-144 (design §3.1): `previsualizarCambioPlanAction`, la fecha en que cada empresa recibe el cambio. */

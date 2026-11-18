@@ -38,7 +38,7 @@ const GUARDADO_AT = "2026-11-17T15:30:00.000Z";
 
 // ── Las actions del borrador ─────────────────────────────────────────────────────────────────────────
 
-/** La action de hoy que recibe la petición confirmada (`crearPlanAction` o `editarPlanAction`). */
+/** La action de hoy que recibe la petición confirmada (la que llega a `PlanesService.crear` o `.editar`). */
 export type Enviar = (input: never) => Promise<PlanResult>;
 
 type Memoria = {
