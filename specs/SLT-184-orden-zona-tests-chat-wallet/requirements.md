@@ -156,34 +156,34 @@ al leader; no se parte sin su OK.
 
 ## Tasks
 
-- [ ] **T1 — Punto de partida** (R1120, R1127). Worktree al día con `origin/dev`; `.env` copiado al
+- [x] **T1 — Punto de partida** (R1120, R1127). Worktree al día con `origin/dev`; `.env` copiado al
   worktree (sin leerlo); base desechable de `## Cómo se verifica`. Correr los 18 archivos tal cual y
   anotar p/f/s en `progress/impl_SLT-184.md`. Si alguno ya pasa, o ya no está en el baseline, se anota y
   sale del alcance. *Hecho:* tabla «antes» con 18 filas.
-- [ ] **T2 — Chat** (R1120-R1125): `chat-entrante-telefono-cr`, `corregir-datos-cliente.chat`,
+- [x] **T2 — Chat** (R1120-R1125): `chat-entrante-telefono-cr`, `corregir-datos-cliente.chat`,
   `repositories/chat-media-autorizada.int`, `repositories/chat-media-historico.int`,
   `repositories/historico-conversaciones.int`. Sembrar orden y zona con `crearFksDeOrden` dentro de la
   tx; control positivo. *Hecho:* los 5 verdes en la base de R1120, 0 saltados.
-- [ ] **T3 [P con T2] — Notas y migraciones** (R1120-R1125, R1123): `orden-nota-migration`,
+- [x] **T3 [P con T2] — Notas y migraciones** (R1120-R1125, R1123): `orden-nota-migration`,
   `orden-mensajero-meta-drop-nota-migration`, `repositories/orden-nota.int`,
   `habilitacion-api-migration`, `confirmacion-fisica-migration` (sembrar las gestiones que comprueba).
   *Hecho:* ídem, 5 archivos.
-- [ ] **T4 [P con T2] — Geografía y productos** (R1120-R1125): `geografia-historico-intacto`,
+- [x] **T4 [P con T2] — Geografía y productos** (R1120-R1125): `geografia-historico-intacto`,
   `geografia-ordenes-sin-entregar`, `repositories/conteo-productos.int`,
   `repositories/dinero-productos.int`, `455/caracterizacion/api-lectura` (distrito asociado a una zona
   sembrada en `e.tx`, sin tocar `454/_escenario.ts`). *Hecho:* ídem, 5 archivos.
-- [ ] **T5 [P con T2] — Wallet** (R1120-R1125): `wallet-cierres-selector`,
+- [x] **T5 [P con T2] — Wallet** (R1120-R1125): `wallet-cierres-selector`,
   `wallet-etiqueta-historial-458`, `wallet-origen-legible`. *Hecho:* ídem, 3 archivos.
-- [ ] **T6 — Base con datos ajenos** (R1121, R1123, R1129). Depende de T2-T5. Repetir los 18 con la
+- [x] **T6 — Base con datos ajenos** (R1121, R1123, R1129). Depende de T2-T5. Repetir los 18 con la
   empresa ajena confirmada; si el código hace una lectura global, sembrar lo que lee en la empresa del
   caso y correr como `servi_app` (patrón `comoApp`). *Hecho:* 18/18 iguales que en R1120; 0 filas
   propias tras cada archivo con siembra confirmada.
-- [ ] **T7 — Mutaciones** (R1126). Depende de T6. Una por archivo. *Hecho:* tabla mutación → caso
+- [x] **T7 — Mutaciones** (R1126). Depende de T6. Una por archivo. *Hecho:* tabla mutación → caso
   rojo → restaurado en `progress/impl_SLT-184.md`; árbol limpio de mutaciones.
-- [ ] **T8 — Baseline** (R1127, R1128). Borrar las entradas de los verdes; reescribir el motivo de los
+- [x] **T8 — Baseline** (R1127, R1128). Borrar las entradas de los verdes; reescribir el motivo de los
   que sigan rojos por otra causa (o parar, R1128). *Hecho:* `git diff tests/baseline-rojos.json` solo
   quita claves del alcance o reescribe sus motivos.
-- [ ] **T9 — Cierre** (R1129-R1132). `pnpm run typecheck`, `pnpm run lint`, `./init.sh` en verde;
+- [x] **T9 — Cierre** (R1129-R1132). CI del PR pendiente. `pnpm run typecheck`, `pnpm run lint`, `./init.sh` en verde;
   `git diff --name-only origin/dev -- lib/ app/ components/ hooks/ db/ scripts/ .github/ package.json`
   vacío; `node scripts/tamano-pr.mjs` bajo el tope. En `progress/impl_SLT-184.md`: mapa R → test, salidas
   y, tras el PR, el run de CI con «sin rojos nuevos» y 0 «por limpiar». *Hecho:* todo lo anterior escrito.
