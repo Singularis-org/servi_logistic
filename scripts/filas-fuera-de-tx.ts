@@ -29,7 +29,7 @@ import { pathToFileURL } from "node:url";
 
 import type { PrismaClient } from "@prisma/client";
 
-export const VERSION_FOTO = 1;
+export const VERSION_FOTO = 2;
 export const NOMBRE_INFORME = "filas-fuera-de-tx.json";
 export const LINEA_CERO = "0 filas fuera de su transacción";
 export const MAX_MUESTRAS = 5;
@@ -45,6 +45,12 @@ export interface Foto {
   organizaciones: string[];
   orderStatus: string[];
   conteos: Record<string, number>;
+  /**
+   * Control de ceguera: filas insertadas en `organizacion` desde que existe la base (contador de
+   * `pg_stat_user_tables`, que cuenta tambien las de transacciones revertidas). Si la suite corrio
+   * contra ESTA base, despues tiene que ser mayor: toda tx revertida de un test crea su empresa.
+   */
+  insercionesOrganizacion: number;
 }
 
 /** Una organizacion que no estaba en la foto y sigue en la base, con lo que cuelga de ella. */
@@ -62,6 +68,19 @@ export interface OrganizacionSobrante {
 export interface Estado {
   organizaciones: OrganizacionSobrante[];
   orderStatus: string[];
+  /** Tablas con `organizacion_id` vistas al comparar. */
+  tablas: number;
+  /** El mismo contador que `Foto.insercionesOrganizacion`, despues de la suite. */
+  insercionesOrganizacion: number;
+}
+
+/** Lo que demuestra que la comprobacion miro la base de la suite (sale en el resumen). */
+export interface Control {
+  tablasAntes: number;
+  tablasDespues: number;
+  organizacionesAntes: number;
+  filasDeEmpresaAntes: number;
+  insercionesDuranteLaSuite: number;
 }
 
 export interface Informe {
@@ -72,6 +91,7 @@ export interface Informe {
   organizaciones: OrganizacionSobrante[];
   orderStatusNuevos: string[];
   totalFilas: number;
+  control?: Control;
 }
 
 // ── Lectura de la base ────────────────────────────────────────────────────────────────────────
@@ -117,7 +137,17 @@ export async function leerFoto(c: ClienteDeLectura): Promise<Foto> {
     organizaciones: orgs.map((o) => o.id),
     orderStatus: estados.map((e) => e.value),
     conteos,
+    insercionesOrganizacion: await insercionesEnOrganizacion(c),
   };
+}
+
+/** `n_tup_ins` de `public.organizacion` (0 si las estadisticas no la conocen todavia). */
+export async function insercionesEnOrganizacion(c: ClienteDeLectura): Promise<number> {
+  const [fila] = await c.$queryRawUnsafe<{ n: number }[]>(
+    `SELECT COALESCE((SELECT n_tup_ins FROM pg_stat_user_tables
+                       WHERE schemaname = 'public' AND relname = 'organizacion'), 0)::int AS n`,
+  );
+  return fila?.n ?? 0;
 }
 
 /** Columna legible por tabla para la muestra (R1170). */
@@ -134,12 +164,13 @@ export async function leerEstado(c: ClienteDeLectura, antes: Foto): Promise<Esta
     `SELECT id::text AS id, nombre, slug FROM "organizacion" ORDER BY nombre, id`,
   );
   const nuevas = todas.filter((o) => !yaEstaban.has(o.id));
+  const tablas = await tablasDeEmpresa(c);
   const porId = new Map<string, OrganizacionSobrante>(
     nuevas.map((o) => [o.id, { ...o, filas: { organizacion: 1 }, muestras: {} }]),
   );
   if (nuevas.length > 0) {
     const ids = nuevas.map((o) => o.id);
-    for (const t of await tablasDeEmpresa(c)) {
+    for (const t of tablas) {
       const etiqueta = etiquetaDeTabla(t);
       const conteos = await c.$queryRawUnsafe<{ org: string; n: number }[]>(
         `SELECT organizacion_id::text AS org, count(*)::int AS n
@@ -176,6 +207,8 @@ export async function leerEstado(c: ClienteDeLectura, antes: Foto): Promise<Esta
   return {
     organizaciones: [...porId.values()],
     orderStatus: estados.map((e) => e.value).filter((v) => !estadosAntes.has(v)),
+    tablas: tablas.length,
+    insercionesOrganizacion: await insercionesEnOrganizacion(c),
   };
 }
 
@@ -185,7 +218,33 @@ export async function leerEstado(c: ClienteDeLectura, antes: Foto): Promise<Esta
  * R1170/R1176: el informe. Se vuelve a filtrar por `antes` aunque `leerEstado` ya lo haga: asi la
  * regla «lo que ya estaba no cuenta» vive en una funcion pura que los fixtures prueban sin base.
  */
-export function comparar(antes: Foto, despues: Estado): Informe {
+export function comparar(antes: Foto, despues: Estado, opciones?: { exigirSuite?: boolean }): Informe {
+  const control: Control = {
+    tablasAntes: Object.keys(antes.conteos).length,
+    tablasDespues: despues.tablas,
+    organizacionesAntes: antes.organizaciones.length,
+    filasDeEmpresaAntes: Object.values(antes.conteos).reduce((a, n) => a + n, 0),
+    insercionesDuranteLaSuite: despues.insercionesOrganizacion - antes.insercionesOrganizacion,
+  };
+  // Comprobacion CIEGA = falla (R1174): sin tablas de empresa no hay nada que contar, y si la suite
+  // no inserto ni una empresa en esta base es que corrio contra OTRA (o no corrio).
+  const ciega =
+    control.tablasAntes === 0 || control.tablasDespues === 0
+      ? "0 tablas con organizacion_id: la foto o la comparacion no miraron una base migrada"
+      : opciones?.exigirSuite && control.insercionesDuranteLaSuite <= 0
+        ? "la suite no inserto ninguna organizacion en esta base: la comprobacion miro otra base o la suite no corrio"
+        : undefined;
+  if (ciega !== undefined) {
+    return {
+      version: VERSION_FOTO,
+      estado: "error",
+      motivo: `comprobacion ciega: ${ciega}`,
+      organizaciones: [],
+      orderStatusNuevos: [],
+      totalFilas: 0,
+      control,
+    };
+  }
   const orgsAntes = new Set(antes.organizaciones);
   const estadosAntes = new Set(antes.orderStatus);
   const organizaciones = despues.organizaciones.filter((o) => !orgsAntes.has(o.id));
@@ -193,7 +252,7 @@ export function comparar(antes: Foto, despues: Estado): Informe {
   const totalFilas =
     organizaciones.reduce((s, o) => s + Object.values(o.filas).reduce((a, n) => a + n, 0), 0) +
     orderStatusNuevos.length;
-  return { version: VERSION_FOTO, estado: "ok", organizaciones, orderStatusNuevos, totalFilas };
+  return { version: VERSION_FOTO, estado: "ok", organizaciones, orderStatusNuevos, totalFilas, control };
 }
 
 /** R1176: 1 si hay filas fuera de su transaccion (o no se pudo medir), 0 si no. */
@@ -204,9 +263,20 @@ export function codigoDeSalida(informe: Informe): 0 | 1 {
 
 /** Lineas legibles de un informe; `prefijo` nombra el shard en `unir` (R1173). */
 export function lineasDeInforme(informe: Informe, prefijo = ""): string[] {
-  if (informe.estado !== "ok") return [`${prefijo}no se pudo comparar: ${informe.motivo ?? "sin motivo"}`];
-  if (codigoDeSalida(informe) === 0) return [`${prefijo}${LINEA_CERO}`];
-  const lineas: string[] = [];
+  const c = informe.control;
+  const lineaDeControl =
+    c === undefined
+      ? []
+      : [
+          `${prefijo}control: ${c.tablasAntes} tablas con organizacion_id antes / ${c.tablasDespues} despues; ` +
+            `foto con ${c.organizacionesAntes} organizacion(es) y ${c.filasDeEmpresaAntes} fila(s) en esas tablas; ` +
+            `${c.insercionesDuranteLaSuite} insercion(es) en organizacion durante la suite`,
+        ];
+  if (informe.estado !== "ok") {
+    return [`${prefijo}no se pudo comparar: ${informe.motivo ?? "sin motivo"}`, ...lineaDeControl];
+  }
+  if (codigoDeSalida(informe) === 0) return [`${prefijo}${LINEA_CERO}`, ...lineaDeControl];
+  const lineas: string[] = [...lineaDeControl];
   for (const o of informe.organizaciones) {
     const filas = Object.entries(o.filas)
       .map(([t, n]) => `${t}: ${n}`)
@@ -322,7 +392,8 @@ function resumenDeFoto(f: Foto): string[] {
   const conFilas = Object.entries(f.conteos).filter(([, n]) => n > 0);
   return [
     `foto: ${f.organizaciones.length} organizacion(es), ${f.orderStatus.length} order_status, ` +
-      `${Object.keys(f.conteos).length} tablas con organizacion_id (${conFilas.length} con filas)`,
+      `${Object.keys(f.conteos).length} tablas con organizacion_id (${conFilas.length} con filas), ` +
+      `${f.insercionesOrganizacion} insercion(es) historicas en organizacion`,
     ...conFilas.map(([t, n]) => `    ${t}: ${n}`),
   ];
 }
@@ -346,7 +417,7 @@ async function main(argv: string[]): Promise<number> {
       if (!existsSync(args[0])) throw new ErrorSinUrl("no hay foto «antes» (el paso de la foto no corrio o fallo)");
       const antes = JSON.parse(readFileSync(args[0], "utf8")) as Foto;
       if (antes.version !== VERSION_FOTO) throw new ErrorSinUrl(`foto con version ${antes.version}, se espera ${VERSION_FOTO}`);
-      informe = comparar(antes, await conBase((c) => leerEstado(c, antes)));
+      informe = comparar(antes, await conBase((c) => leerEstado(c, antes)), { exigirSuite: true });
     } catch (e) {
       informe = {
         version: VERSION_FOTO,

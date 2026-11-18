@@ -35,7 +35,18 @@ const ORG_NUEVA = "org-nueva-slt188-x9w4";
 const REMISION = "R-SLT188-FIXTURE-Q7Z";
 const ZONA = "Zona SLT188 fixture Q7Z";
 
-const ANTES: Foto = { version: 1, organizaciones: [ORG_PREVIA], orderStatus: ["en_preparacion"], conteos: {} };
+const ANTES: Foto = {
+  version: 2,
+  organizaciones: [ORG_PREVIA],
+  orderStatus: ["en_preparacion"],
+  conteos: { orden: 0, zona: 0, usuario: 0 },
+  insercionesOrganizacion: 7,
+};
+
+/** Un «despues» sin filas nuevas sobre una base con 3 tablas de empresa y 40 inserciones de la suite. */
+function limpio(orderStatus: string[] = ["en_preparacion"]): Estado {
+  return { organizaciones: [], orderStatus, tablas: 3, insercionesOrganizacion: 47 };
+}
 
 function estadoConFuga(): Estado {
   return {
@@ -49,6 +60,8 @@ function estadoConFuga(): Estado {
       },
     ],
     orderStatus: ["en_preparacion"],
+    tablas: 3,
+    insercionesOrganizacion: 47,
   };
 }
 
@@ -67,10 +80,13 @@ describe("SLT-188 R1170/R1176 — comparar: la regla, con fixtures", () => {
   });
 
   it("R1176: sin filas nuevas -> salida 0 y la linea «0 filas fuera de su transacción»", () => {
-    const informe = comparar(ANTES, { organizaciones: [], orderStatus: ["en_preparacion"] });
+    const informe = comparar(ANTES, limpio());
     expect(codigoDeSalida(informe)).toBe(0);
     expect(informe.totalFilas).toBe(0);
-    expect(lineasDeInforme(informe)).toEqual(["0 filas fuera de su transacción"]);
+    expect(lineasDeInforme(informe)).toEqual([
+      "0 filas fuera de su transacción",
+      "control: 3 tablas con organizacion_id antes / 3 despues; foto con 1 organizacion(es) y 0 fila(s) en esas tablas; 40 insercion(es) en organizacion durante la suite",
+    ]);
   });
 
   it("R1176: filas de una organizacion que ya estaba en la foto «antes» -> salida 0", () => {
@@ -82,7 +98,7 @@ describe("SLT-188 R1170/R1176 — comparar: la regla, con fixtures", () => {
   });
 
   it("R1170: un `value` de order_status que no estaba -> salida 1 y se nombra", () => {
-    const informe = comparar(ANTES, { organizaciones: [], orderStatus: ["en_preparacion", "estado_slt188_q7z"] });
+    const informe = comparar(ANTES, limpio(["en_preparacion", "estado_slt188_q7z"]));
     expect(informe.orderStatusNuevos).toEqual(["estado_slt188_q7z"]);
     expect(codigoDeSalida(informe)).toBe(1);
     expect(lineasDeInforme(informe).join("\n")).toContain("estado_slt188_q7z");
@@ -90,7 +106,7 @@ describe("SLT-188 R1170/R1176 — comparar: la regla, con fixtures", () => {
 
   it("R1174: un informe que no pudo comparar cuenta como fallo (salida 1)", () => {
     const informe: Informe = {
-      version: 1,
+      version: 2,
       estado: "error",
       motivo: "no hay foto «antes»",
       organizaciones: [],
@@ -98,6 +114,31 @@ describe("SLT-188 R1170/R1176 — comparar: la regla, con fixtures", () => {
       totalFilas: 0,
     };
     expect(codigoDeSalida(informe)).toBe(1);
+  });
+});
+
+describe("SLT-188 R1174 — una comprobacion CIEGA no da 0: da fallo", () => {
+  it("0 tablas con organizacion_id (base sin migrar o equivocada) -> error y salida 1", () => {
+    const informe = comparar({ ...ANTES, conteos: {} }, { ...limpio(), tablas: 0 });
+    expect(informe.estado).toBe("error");
+    expect(informe.motivo).toContain("comprobacion ciega");
+    expect(codigoDeSalida(informe)).toBe(1);
+  });
+
+  it("con exigirSuite: si la suite no inserto ninguna organizacion en ESTA base -> error y salida 1", () => {
+    const informe = comparar(ANTES, { ...limpio(), insercionesOrganizacion: 7 }, { exigirSuite: true });
+    expect(informe.estado).toBe("error");
+    expect(informe.motivo).toContain("no inserto ninguna organizacion");
+    expect(informe.control?.insercionesDuranteLaSuite).toBe(0);
+    expect(codigoDeSalida(informe)).toBe(1);
+    expect(lineasDeInforme(informe, "shard 1/3: ")[1]).toContain("0 insercion(es) en organizacion durante la suite");
+  });
+
+  it("con exigirSuite y escrituras de la suite -> ok, 0, y el control lo cuenta", () => {
+    const informe = comparar(ANTES, limpio(), { exigirSuite: true });
+    expect(informe.estado).toBe("ok");
+    expect(informe.control?.insercionesDuranteLaSuite).toBe(40);
+    expect(codigoDeSalida(informe)).toBe(0);
   });
 });
 
@@ -120,7 +161,7 @@ describe("SLT-188 R1173/R1174 — unir: el veredicto de los shards", () => {
 
   it("R1173: los tres en 0 -> salida 0 y el total dice «0 filas fuera de su transacción»", () => {
     const base = join(dir, "todo-cero");
-    const cero = comparar(ANTES, { organizaciones: [], orderStatus: [] });
+    const cero = comparar(ANTES, limpio([]));
     for (const i of [1, 2, 3]) shard(base, i, cero);
     const r = unir(base, 3, "rojo");
     expect(r.codigo).toBe(0);
@@ -129,9 +170,9 @@ describe("SLT-188 R1173/R1174 — unir: el veredicto de los shards", () => {
 
   it("R1173: un shard con filas -> rojo, nombrando shard, organizacion, tabla y conteo", () => {
     const base = join(dir, "con-fuga");
-    shard(base, 1, comparar(ANTES, { organizaciones: [], orderStatus: [] }));
+    shard(base, 1, comparar(ANTES, limpio([])));
     shard(base, 2, comparar(ANTES, estadoConFuga()));
-    shard(base, 3, comparar(ANTES, { organizaciones: [], orderStatus: [] }));
+    shard(base, 3, comparar(ANTES, limpio([])));
     const r = unir(base, 3, "rojo");
     expect(r.codigo).toBe(1);
     const linea = r.lineas.find((l) => l.startsWith("shard 2/3: organizacion"));
@@ -143,7 +184,7 @@ describe("SLT-188 R1173/R1174 — unir: el veredicto de los shards", () => {
 
   it("R1174: falta el informe de un shard -> rojo (falla cerrado); JSON roto, tambien", () => {
     const base = join(dir, "falta");
-    shard(base, 1, comparar(ANTES, { organizaciones: [], orderStatus: [] }));
+    shard(base, 1, comparar(ANTES, limpio([])));
     shard(base, 2, "{ no es json");
     const r = unir(base, 3, "rojo");
     expect(r.codigo).toBe(1);
