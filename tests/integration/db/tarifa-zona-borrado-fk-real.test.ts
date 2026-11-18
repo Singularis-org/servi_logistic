@@ -4,6 +4,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 
 import { TarifaRepository } from "@/lib/repositories/TarifaRepository";
 import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
+import { esViolacionDeClaveForanea } from "@/lib/repositories/_shared/prisma-fk";
 import { TarifaService } from "@/lib/services/TarifaService";
 import { ZonaService } from "@/lib/services/ZonaService";
 import type { Actor } from "@/lib/interfaces/services/IZonaService";
@@ -347,9 +348,25 @@ describeSiHayBase("borrar tarifa/zona EN USO: la FK real, no la fabricada", () =
   // LA CICATRIZ, MEDIDA: por que la comprobacion ingenua no vale
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
-  it("⭑ el error REAL de la FK no es un `P2003`: la comprobacion ingenua NO lo caza", async () => {
+  // ⏳ 2026-11-18 (SLT-186): LA FORMA DEL ERROR DEPENDE DE LA VERSION DE POSTGRES. En CI (Postgres 17,
+  // run 44235155028) este caso salia rojo con «la comprobacion ingenua ahora SI caza el error»; en
+  // local (18.2) pasaba. Causa, medida en la desechable de SLT-186 y leida en el adapter:
+  //   - Postgres 18 reporta la violacion de una FK `ON DELETE RESTRICT` (`orden_zona_id_fkey`,
+  //     `confdeltype = 'r'`) con SQLSTATE `23001` y el texto «violates RESTRICT setting of foreign
+  //     key constraint»; la misma FK con NO ACTION da `23503` (medido en 18.2 con dos tablas temp).
+  //   - Hasta Postgres 17 (hipotesis coherente con el rojo de CI, no medida aqui: no hay un 17 local)
+  //     la RESTRICT se reportaba como cualquier FK, `23503`.
+  //   - `@prisma/adapter-pg` 7.8.0 solo traduce `23503` a `ForeignKeyConstraintViolation` (=> `P2003`,
+  //     `PrismaClientKnownRequestError`); `23001` sale como `DriverAdapterError` sin `code`.
+  // Asi que la cicatriz (el `P2003` a secas no basta) es real en 18 y no se ve en 17. Lo que NO
+  // depende de la version, y es lo que de verdad protege al maestro, es que el detector del codigo
+  // (`esViolacionDeClaveForanea`) caza las DOS formas: eso se afirma siempre.
+  it("⭑ el error REAL de la FK depende de Postgres: en 18 no es un `P2003` y la ingenua NO lo caza; el detector SI, siempre", async () => {
     const crudo = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      const [{ version }] = await tx.$queryRawUnsafe<{ version: number }[]>(
+        `SELECT current_setting('server_version_num')::int AS version`,
+      );
       await sembrar(tx);
       const zonaId = await sembrarZona(tx, "crudo");
       await sembrarOrdenEnZona(tx, zonaId);
@@ -364,6 +381,8 @@ describeSiHayBase("borrar tarifa/zona EN USO: la FK real, no la fabricada", () =
       } catch (e) {
         const err = e as { name?: string; code?: unknown; cause?: { code?: unknown } };
         return {
+          version,
+          detectado: esViolacionDeClaveForanea(e),
           ctor: (e as object).constructor.name,
           name: err.name,
           code: err.code,
@@ -377,13 +396,24 @@ describeSiHayBase("borrar tarifa/zona EN USO: la FK real, no la fabricada", () =
     });
 
     expect(crudo, "el DELETE no fallo: la FK RESTRICT no esta puesta").not.toBeNull();
-    // Si algun dia Prisma vuelve a traducirlo, ESTE test se pone rojo. Es deliberado: seria la
-    // señal de que la cicatriz cerro y de que este comentario hay que reescribirlo, no un fallo.
-    expect(crudo!.cazadoPorLaIngenua, "la comprobacion ingenua ahora SI caza el error").toBe(false);
-    expect(crudo!.esConocido).toBe(false);
-    expect(crudo!.ctor).toBe("DriverAdapterError");
-    expect(crudo!.code).toBeUndefined();
-    // `23001` = restrict_violation. Es el SQLSTATE que `esViolacionDeClaveForanea` reconoce.
-    expect(crudo!.sqlstate).toBe("23001");
+    // LO QUE VALE EN CUALQUIER VERSION: el detector del codigo reconoce el error como FK.
+    expect(crudo!.detectado, "esViolacionDeClaveForanea no reconoce el error REAL").toBe(true);
+    if (crudo!.version >= 180000) {
+      // Postgres 18+: la cicatriz. Si algun dia Prisma vuelve a traducirlo, ESTE brazo se pone rojo.
+      // Es deliberado: seria la señal de que la cicatriz cerro y de que este comentario hay que
+      // reescribirlo, no un fallo.
+      expect(crudo!.cazadoPorLaIngenua, "la comprobacion ingenua ahora SI caza el error").toBe(false);
+      expect(crudo!.esConocido).toBe(false);
+      expect(crudo!.ctor).toBe("DriverAdapterError");
+      expect(crudo!.code).toBeUndefined();
+      // `23001` = restrict_violation. Es el SQLSTATE que `esViolacionDeClaveForanea` reconoce.
+      expect(crudo!.sqlstate).toBe("23001");
+    } else {
+      // Postgres <= 17 (el de CI): la RESTRICT llega como `23503` y el adapter la traduce a `P2003`.
+      // Si este brazo se pone rojo, el supuesto de arriba sobre el 17 era falso: medir y reescribir.
+      expect(crudo!.esConocido, "en Postgres <= 17 se esperaba un P2003 traducido").toBe(true);
+      expect(crudo!.code).toBe("P2003");
+      expect(crudo!.cazadoPorLaIngenua).toBe(true);
+    }
   }, 60_000);
 });

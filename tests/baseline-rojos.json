@@ -61,10 +61,6 @@
       "motivo": "Otra causa. Medido en local el 2026-11-17 tras sembrar sus usuarios en SLT-182 (base desechable migrada + db:seed, Postgres 18.2; igual con una empresa ajena confirmada): 2 de 15 verdes; los 13 que llaman a la action fallan con EmpresaNoResuelta: Sin empresa en contexto para Pais.zonaHoraria (tests/integration/actions/analitica-financiera-action.test.ts:325, desde lib/actions/analitica-financiera.ts:106 -> ReglasPaisEmpresaService.ts:89): la action resuelve el pais de la empresa con el cliente global, que no ve la empresa de la transaccion del test. La retira SLT-185.",
       "desde": "2026-10-22"
     },
-    "tests/integration/repositories/dinero-productos.int.test.ts": {
-      "motivo": "Otra causa (contrato desfasado). Medido en local el 2026-11-18 (Postgres 18.2, migrate deploy + db:seed, base vacia y con empresa ajena), ya sembrado por SLT-184: 21/1/0. (k) R22: AssertionError: modelo: expected 'viejo' to match /^-?\\d+\\.\\d{2}$/ (tests/integration/repositories/dinero-productos.int.test.ts:759): el caso recorre `congelada.tarifa` esperando solo importes, y desde SLT-52 esa tarifa es la union { modelo: 'viejo' | 'nuevo', ... } (lib/types/tarifa-flexible.ts:64). La retira SLT-186.",
-      "desde": "2026-10-22"
-    },
     "tests/integration/db/477-aprobacion-tras-correccion-sql-real.test.ts": {
       "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: tabla 'orden' vacia: corre 'pnpm run db:seed'. en tests/integration/db/454/_escenario.ts:133. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: falla una asercion de dinero o estado del cierre de satelite: expected [] to deeply equal [ cod_recaudado|4000.00, …(1) ]. La retira SLT-195.",
       "desde": "2026-10-22"
@@ -75,10 +71,6 @@
     },
     "tests/integration/db/analitica-anulacion-rechazo-458.test.ts": {
       "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/analytics-daily-job.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): Error: el catalogo local no tiene el estatus \"el estado de fulfillment retirado por la 155\"; usa el estatus 'el estado de fulfillment retirado por la 155', retirado del catalogo por la 155: una base nueva no lo tiene (_semilla-rollup.ts:85). La retira SLT-186.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/aporte-capital.test.ts": {
@@ -101,44 +93,12 @@
       "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
       "desde": "2026-10-22"
     },
-    "tests/integration/db/cierre-descarga-intentos-entrega-sql-real.test.ts": {
-      "motivo": "Otra causa (estado retirado del catalogo). Medido el 2026-11-17 en base desechable migrada con catalogos (db:seed), ya sembrado por SLT-178: Error: falta el estatus «devolucion_por_confirmar» en `order_status` (tests/integration/db/cierre-descarga-intentos-entrega-sql-real.test.ts:165); el estado lo retiro la 454 y una base nueva no lo trae. Con el estatus anadido a mano en una desechable pasa 4/4, tambien con datos de otra empresa. La retira SLT-186.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/cierre-sin-gestion-tope-sql-real.test.ts": {
-      "motivo": "Otra causa (estado retirado del catalogo). Medido el 2026-11-17 en base desechable migrada con catalogos (db:seed), ya sembrado por SLT-178: Error: falta el estatus «devolucion_por_confirmar» en `order_status` (tests/integration/db/cierre-sin-gestion-tope-sql-real.test.ts:182); el estado lo retiro la 454 y una base nueva no lo trae. Con el estatus anadido a mano en una desechable pasa 9/9, tambien con datos de otra empresa. La retira SLT-186.",
-      "desde": "2026-10-22"
-    },
     "tests/integration/db/como-quedo.test.ts": {
       "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
       "desde": "2026-10-22"
     },
-    "tests/integration/db/correccion-dia-reparto-efectos.int.test.ts": {
-      "motivo": "Test desfasado tras 454, ya sembrado (SLT-179). Medido en local el 2026-11-17 (Postgres 18, migrate deploy + db:seed): Error: el catalogo `order_status` no tiene ayuda_tienda (tests/integration/db/correccion-dia-reparto-efectos.int.test.ts:97, beforeAll, estado retirado en 454); detras, R26 espera que `orden_dia_reparto_cambio` no tenga policies y desde SL-17 las tiene. La retira SLT-186.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/correccion-dia-reparto.int.test.ts": {
-      "motivo": "Test desfasado tras 454, ya sembrado (SLT-179). Medido en local el 2026-11-17 (Postgres 18, migrate deploy + db:seed): Error: el catalogo `order_status` no tiene ayuda_tienda (tests/integration/db/correccion-dia-reparto.int.test.ts:85, beforeAll, estado retirado en 454); detras, R23 espera 7 columnas en el rastro y hay 8. La retira SLT-186.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/corregir-datos-cliente.repo.test.ts": {
-      "motivo": "Test desfasado tras 454, ya sembrado (SLT-179). Medido en local el 2026-11-17 (Postgres 18, migrate deploy + db:seed): Error: el catalogo `order_status` no tiene ayuda_tienda (tests/integration/db/corregir-datos-cliente.repo.test.ts:97, beforeAll, estado retirado en 454); sin ese estado en la lista pasa 22/22. La retira SLT-186.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/corte-diario-segundo-cierre-sql-real.test.ts": {
-      "motivo": "Otra causa (estado retirado del catalogo). Medido el 2026-11-17 en base desechable migrada con catalogos (db:seed), ya sembrado por SLT-178: Error: falta el estatus «ayuda_tienda» en `order_status` (tests/integration/db/corte-diario-segundo-cierre-sql-real.test.ts:108); el estado lo retiro la 454 y una base nueva no lo trae. Con el estatus anadido a mano en una desechable pasa 4/4, tambien con datos de otra empresa. La retira SLT-186.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/costo-y-zona-api-415.test.ts": {
-      "motivo": "Otra causa (test desfasado). Medido el 2026-11-17 en base desechable migrada con catalogos (db:seed), ya sembrado por SLT-181: 3/8; los importes coinciden pero el contrato cambio: costoReal/costoEstimado traen ademas ivaFulfillment \"0.00\" (tests/integration/db/costo-y-zona-api-415.test.ts:495), el detalle emite 15 consultas frente a las 14 del literal (+cierre_detail_concepto, :605) y el listado 11 frente a 9 (+cierre_detail_concepto, +tarifa_activacion, :613). Gemelo de gestiones-detalle-api-405. Igual con datos de otra empresa. La retira SLT-186.",
-      "desde": "2026-10-22"
-    },
     "tests/integration/db/efecto-movimiento-predice.test.ts": {
       "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): primer error Error: hay DATABASE_URL pero faltan la zona central, el tipo 'cedula' o una orden de la que tomar provincia y canton: esta suite n en tests/integration/db/_fixtures/caja-459.ts:173. Tras sembrar su helper en SLT-177, medido de nuevo el 2026-11-16 en base desechable migrada con catalogos: el escenario 459 cae en su paso «repartoMensajero» con sin_saldo (_fixtures/caja-459.ts:773, ver D64). La retira SLT-195.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/gestiones-detalle-api-405.test.ts": {
-      "motivo": "Test desfasado tras 454, ya sembrado (SLT-179). Medido en local el 2026-11-17 (Postgres 18, migrate deploy + db:seed): Error: falta el estado `devolucion_por_confirmar` en el catalogo `order_status` (tests/integration/db/gestiones-detalle-api-405.test.ts:166, beforeAll, estado retirado en 454); detras, R19 mide 15 consultas en el detalle y el contrato dice 14. La retira SLT-186.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/habilitacion-api-migration.test.ts": {
@@ -207,18 +167,6 @@
     },
     "tests/integration/db/reparto-manana-aviso-dedupe.test.ts": {
       "motivo": "Otra causa. Medido en local el 2026-11-17 tras sembrar sus usuarios en SLT-183 (base desechable migrada + db:seed, Postgres 18.2; igual con una empresa ajena confirmada): 7 de 8 verdes; R24 (dos emisiones concurrentes sobre conexiones crudas, fuera de una tx) falla con SL017 «referencia a otra empresa: notificacion.destinatario_usuario_id -> usuario» (tests/integration/db/reparto-manana-aviso-dedupe.test.ts:307, emitirRepartoManana por clienteA): las conexiones crudas escriben sin empresa en contexto. La retira SLT-185.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/satelite-bodega-alcance-real.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): Error: el catalogo local no tiene el estatus ayuda_tienda; usa el estatus 'ayuda_tienda', retirado del catalogo por la 454 ('ORDER_STATUS_RETIRADOS'): una base nueva no lo tiene (:178). La retira SLT-186.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/tarifa-zona-borrado-fk-real.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-18 (run 44235155028, PR #213, Postgres 17), ya sembrado por SLT-180: el caso 'el error REAL de la FK no es un P2003: la comprobacion ingenua NO lo caza' falla en tests/integration/db/tarifa-zona-borrado-fk-real.test.ts:382 con 'la comprobacion ingenua ahora SI caza el error: expected true to be false'; en local (Postgres 18.2, migrate deploy + db:seed, base vacia y con empresa ajena) el archivo pasa 9/0/0. Test-cicatriz desfasado cuyo resultado depende del entorno. La retira SLT-186.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/traspaso-mensajero.int.test.ts": {
-      "motivo": "Test desfasado tras 454, ya sembrado (SLT-179). Medido en local el 2026-11-17 (Postgres 18, migrate deploy + db:seed): Error: el catalogo `order_status` no tiene ayuda_tienda (tests/integration/db/traspaso-mensajero.int.test.ts:88, beforeAll, estado retirado en 454); detras, R4 traspasa `ayuda_tienda` (inexistente) y en T9.9 el job lleva `origen` ademas de `mensajeroId`. La retira SLT-186.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/usuario-preferencia.test.ts": {

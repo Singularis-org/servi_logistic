@@ -77,15 +77,15 @@ Buscado `ayuda_tienda`, `en_fulfillment`, `ESTATUS_RETIRADOS_454`, `asegurarReti
 
 ## Tasks
 
-- [ ] **T1 — Medir** (R1150, R1157). Correr los 2 archivos en la desechable; anotar el primer error y,
+- [x] **T1 — Medir** (R1150, R1157). Correr los 2 archivos en la desechable; anotar el primer error y,
   con un arreglo provisional, si aparecen errores de segundo nivel. *Hecho:* tabla en
   `progress/impl_SLT-186.md`.
-- [ ] **T2 — `analytics-daily-job`** (R1151-R1153, R1156). Siembra en la tx + control positivo.
+- [x] **T2 — `analytics-daily-job`** (R1151-R1153, R1156). Siembra en la tx + control positivo.
   *Hecho:* verde en (a) y (b); mutación de R1153 roja.
-- [ ] **T3 — `satelite-bodega-alcance-real`** (R1154-R1156). Elegir el estado vigente leyendo el filtro
+- [x] **T3 — `satelite-bodega-alcance-real`** (R1154-R1156). Elegir el estado vigente leyendo el filtro
   del listado; justificar en el test. *Hecho:* verde en (a) y (b); mutación de R1155 roja.
-- [ ] **T4 — Baseline** (R1158). Retirar las entradas verdes.
-- [ ] **T5 — Cierre.** typecheck, lint, `pnpm run test:guardias` (el censo de estados incluido),
+- [x] **T4 — Baseline** (R1158). Retirar las entradas verdes.
+- [x] **T5 — Cierre.** typecheck, lint, `pnpm run test:guardias` (el censo de estados incluido),
   diff de producción vacío, `node scripts/tamano-pr.mjs`, mapa R → test en la bitácora, `./init.sh`
   (leader) y `gate-completo` verde en el PR.
 
