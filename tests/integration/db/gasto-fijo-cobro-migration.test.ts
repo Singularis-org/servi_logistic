@@ -8,6 +8,7 @@ import {
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 
 // FICHA 333 (A7) — la migracion `20260829120000_gasto_fijo_cobro`, medida CONTRA POSTGRES.
 //
@@ -62,18 +63,19 @@ async function insertarCobroPendiente(
   );
 }
 
-/** Un usuario REAL de la base: `decidido_por` es una FK `RESTRICT` contra `usuario`. */
-async function idDeUnUsuario(prisma: PrismaClient): Promise<string> {
-  const fila = await prisma.usuario.findFirst({ select: { id: true } });
-  if (fila === null) {
-    // NO se salta el test: se rompe. Un `return` silencioso aqui es exactamente el modo de
-    // fallo que este repo ya tiene medido —«passed» sin haber comprobado nada—.
-    throw new Error(
-      "La base no tiene ni un `usuario`: esta suite necesita crear su usuario en el test " +
-        "(SL-31). Sin usuario no se puede ejercer la FK `decidido_por`.",
-    );
-  }
-  return fila.id;
+/**
+ * Un usuario REAL en la base: `decidido_por` es una FK `RESTRICT` contra `usuario`.
+ *
+ * SLT-182: se SIEMBRA (un maestro) en la tx revertida del caso; antes se leia «el primer usuario»
+ * de la base con el cliente de fuera de la tx, y la base recien migrada no tiene ninguno.
+ * NO se salta el test si no llega: se rompe —un `return` silencioso reportaria «passed»—.
+ */
+async function idDeUnUsuario(tx: TxDeTest): Promise<string> {
+  const { id } = await crearUsuarioDePrueba(tx, "maestro");
+  // Control positivo (R1084): la siembra llego a la base.
+  const sembrados = await tx.usuario.count({ where: { id } });
+  if (sembrados !== 1) throw new Error("SLT-182: el maestro sembrado no esta en la base");
+  return id;
 }
 
 describeSiHayBase("333/A7 — R50: la tabla nueva nace con RLS habilitada", () => {
@@ -197,7 +199,7 @@ describeSiHayBase("333/A7 — R46: una plantilla NO desaparece dejando pendiente
   it("⭑ TRAS CANCELARLO, el MISMO borrado funciona y el cobro cancelado sobrevive", async () => {
     const resultado = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const actorId = await idDeUnUsuario(prisma);
+      const actorId = await idDeUnUsuario(tx);
       const plantillaId = randomUUID();
       const cobroId = randomUUID();
       await insertarPlantilla(tx, plantillaId);
@@ -251,7 +253,7 @@ describeSiHayBase("333/A7 — R47: lo ya decidido y lo ya escrito en el libro so
   it("⭑ borrada la plantilla, el cobro APROBADO conserva concepto, monto, periodo y decisión, y su movimiento sigue intacto", async () => {
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const actorId = await idDeUnUsuario(prisma);
+      const actorId = await idDeUnUsuario(tx);
       const plantillaId = randomUUID();
       const cobroId = randomUUID();
       const movimientoId = randomUUID();

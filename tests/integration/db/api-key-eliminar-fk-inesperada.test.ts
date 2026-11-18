@@ -11,10 +11,11 @@ import {
   clienteConSavepoint,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
+  type FksDeOrden,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FICHA 373 / C5 (R16) — LA RED DE ABAJO: UNA FK QUE EL GUARD **NO** MIRA.
@@ -44,22 +45,29 @@ const SUFIJO = `373-fk-${Date.now().toString(36)}`;
 
 describeSiHayBase("373/C5 — una FK inesperada bloquea sin romper nada (Postgres real)", () => {
   let prisma: PrismaClient;
-  let FKS: Awaited<ReturnType<typeof fksDeOrden>>;
+  // SLT-180 (R1042): tienda, zona y maestro se SIEMBRAN en la tx de cada caso (`sembrar`); ya no
+  // se leen «la primera orden» ni «el primer maestro» de la base.
+  let FKS: FksDeOrden | null = null;
   let MAESTRO: Actor;
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    FKS = await fksDeOrden(prisma);
-    if (FKS === null) {
-      throw new Error("hay DATABASE_URL pero `orden` esta vacia: corre `pnpm run db:seed` antes.");
-    }
-    const maestro = await prisma.usuario.findFirst({
-      where: { rol: { value: "maestro" } },
-      select: { id: true },
-    });
-    if (maestro === null) throw new Error("no hay usuario con rol `maestro` en esta base");
-    MAESTRO = { usuarioId: maestro.id, rol: "maestro" };
   });
+
+  /** SLT-180 (R1044): siembra propia del caso + control positivo que nombra la fila. */
+  async function sembrar(tx: TxDeTest): Promise<void> {
+    FKS = await crearFksDeOrden(tx);
+    const maestro = await crearUsuarioDePrueba(tx, "maestro");
+    MAESTRO = { usuarioId: maestro.id, rol: "maestro" };
+    expect(
+      await tx.usuario.count({ where: { id: { in: [FKS.tiendaId, maestro.id] } } }),
+      "SLT-180: la tienda y el maestro sembrados no estan en la base",
+    ).toBe(2);
+    expect(
+      await tx.zona.count({ where: { id: FKS.zonaId } }),
+      "SLT-180: la zona sembrada no esta en la base",
+    ).toBe(1);
+  }
 
   afterAll(async () => {
     await prisma?.$disconnect();
@@ -76,6 +84,7 @@ describeSiHayBase("373/C5 — una FK inesperada bloquea sin romper nada (Postgre
   it("⭑ R16: `bloqueada` con `otros_datos`, y NI UNA fila borrada", async () => {
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrar(tx);
       const apiKey = await generarKey(tx, "fk");
       await tx.webhookSuscripcion.create({
         data: {
@@ -158,6 +167,7 @@ describeSiHayBase("373/C5 — una FK inesperada bloquea sin romper nada (Postgre
   it("⭑ el servicio traduce esa respuesta a `otros_datos`, el unico motivo que la produce", async () => {
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrar(tx);
       const apiKey = await generarKey(tx, "svc");
       await tx.apiKey.update({ where: { id: apiKey.id }, data: { estado: "inactiva" } });
       const orden = await tx.orden.create({
@@ -202,6 +212,7 @@ describeSiHayBase("373/C5 — una FK inesperada bloquea sin romper nada (Postgre
     // is aborted». Este caso comprueba que el fallo esta CONTENIDO.
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrar(tx);
       const bloqueada = await generarKey(tx, "contenida");
       await tx.apiKey.update({ where: { id: bloqueada.id }, data: { estado: "inactiva" } });
       const orden = await tx.orden.create({

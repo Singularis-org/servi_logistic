@@ -8,9 +8,9 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 
 /**
  * FEATURE 271 (T2.2, R14) — EL SEGUNDO CIERRE SE LLEVA **SOLO LO QUE AUN NO ESTA EN NINGUN
@@ -50,26 +50,9 @@ const SUFIJO = `271t22-${Date.now().toString(36)}`;
 
 describeSiHayBase("271/T2.2 · R14 — el 2.º cierre vincula SOLO las gestiones sin cierre", () => {
   let prisma: PrismaClient;
-  let fks: NonNullable<Awaited<ReturnType<typeof fksDeOrden>>>;
-  let usuarios: { id: string }[];
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const encontradas = await fksDeOrden(prisma);
-    if (encontradas === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar. " +
-          "Corre `pnpm run db:seed` antes de esta suite.",
-      );
-    }
-    fks = encontradas;
-    usuarios = await prisma.usuario.findMany({ select: { id: true }, take: 2 });
-    if (usuarios.length < 2) {
-      throw new Error(
-        "hacen falta al menos DOS usuarios en la base: uno es el mensajero que cierra y el otro " +
-          "el señuelo que demuestra que el `where` filtra por mensajero.",
-      );
-    }
   });
 
   afterAll(async () => {
@@ -79,7 +62,15 @@ describeSiHayBase("271/T2.2 · R14 — el 2.º cierre vincula SOLO las gestiones
   it("R14: el cierre B se lleva EXACTAMENTE las 2 sueltas y NO toca ni una del cierre A", async () => {
     const medido = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const [mensajero, otroMensajero] = usuarios;
+      // SLT-178: tienda, zona y los dos mensajeros se crean AQUI, dentro de la tx que se revierte.
+      const fks = await crearFksDeOrden(tx);
+      const mensajero = await crearUsuarioDePrueba(tx, "mensajero");
+      const otroMensajero = await crearUsuarioDePrueba(tx, "mensajero");
+      expect(
+        await tx.usuario.count({ where: { id: { in: [fks.tiendaId, mensajero.id, otroMensajero.id] } } }),
+        "usuarios sembrados (tienda, mensajero, otro mensajero)",
+      ).toBe(3);
+      expect(await tx.zona.count({ where: { id: fks.zonaId } }), "zona sembrada").toBe(1);
 
       const sembrarOrden = async (clave: string) =>
         (

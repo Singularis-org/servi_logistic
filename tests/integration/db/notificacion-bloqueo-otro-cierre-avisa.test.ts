@@ -9,9 +9,9 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 /**
@@ -52,51 +52,8 @@ const FILAS_POR_AVISO = 4;
 
 describeSiHayBase("271/T6.3 · R44 — otro cierre es otro hecho: DOS avisos, no uno", () => {
   let prisma: PrismaClient;
-  let fks: NonNullable<Awaited<ReturnType<typeof fksDeOrden>>>;
-  let mensajeroId: string;
-
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const encontradas = await fksDeOrden(prisma);
-    if (encontradas === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar. " +
-          "Corre `pnpm run db:seed` antes de esta suite.",
-      );
-    }
-    fks = encontradas;
-    const usuarios = await prisma.usuario.findMany({ select: { id: true }, take: 10 });
-    if (usuarios.length < 1) throw new Error("hacen falta usuarios en la base.");
-    // El mensajero del caso parte de CERO avisos de este evento y CERO cierres abiertos: contar
-    // filas sobre alguien que ya arrastra las suyas mediria otra cosa. Si no hay ninguno limpio,
-    // se falla RUIDOSAMENTE (nunca un `return` silencioso que reporte `passed`).
-    const conAviso = await prisma.notificacion.findMany({
-      where: {
-        evento: "mensajero_bloqueado_por_cierres",
-        destinatarioUsuarioId: { in: usuarios.map((u) => u.id) },
-      },
-      select: { destinatarioUsuarioId: true },
-    });
-    const conCierre = await prisma.cierreDia.groupBy({
-      by: ["mensajeroId"],
-      where: {
-        mensajeroId: { in: usuarios.map((u) => u.id) },
-        estado: { in: ["solicitado", "vencido", "rechazado"] },
-      },
-      _count: { _all: true },
-    });
-    const sucios = new Set<string | null>([
-      ...conAviso.map((n) => n.destinatarioUsuarioId),
-      ...conCierre.map((c) => c.mensajeroId),
-    ]);
-    const limpio = usuarios.find((u) => !sucios.has(u.id));
-    if (limpio === undefined) {
-      throw new Error(
-        "todos los usuarios de la base arrastran avisos de bloqueo o cierres abiertos: este caso " +
-          "necesita uno limpio para poder contar filas.",
-      );
-    }
-    mensajeroId = limpio.id;
   });
 
   afterAll(async () => {
@@ -106,6 +63,25 @@ describeSiHayBase("271/T6.3 · R44 — otro cierre es otro hecho: DOS avisos, no
   it("R44: el MISMO cierre dos veces deja UNA fila; OTRO cierre del mismo mensajero deja DOS", async () => {
     const medido = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      // SLT-180 (R1042): zona y mensajero se SIEMBRAN aqui; ya no se buscan «la primera orden» ni
+      // un usuario «limpio» entre los de la base. El mensajero parte de CERO avisos de este evento
+      // y CERO cierres abiertos por construccion, y el control positivo lo comprueba (R1044):
+      // contar filas sobre alguien que ya arrastra las suyas mediria otra cosa.
+      const fks = await crearFksDeOrden(tx);
+      const mensajeroId = (await crearUsuarioDePrueba(tx, "mensajero")).id;
+      expect(
+        {
+          mensajero: await tx.usuario.count({ where: { id: mensajeroId } }),
+          zona: await tx.zona.count({ where: { id: fks.zonaId } }),
+          avisosPrevios: await tx.notificacion.count({
+            where: { evento: "mensajero_bloqueado_por_cierres", destinatarioUsuarioId: mensajeroId },
+          }),
+          cierresAbiertos: await tx.cierreDia.count({
+            where: { mensajeroId, estado: { in: ["solicitado", "vencido", "rechazado"] } },
+          }),
+        },
+        "SLT-180: el mensajero y la zona sembrados no estan en la base (o el mensajero no esta limpio)",
+      ).toEqual({ mensajero: 1, zona: 1, avisosPrevios: 0, cierresAbiertos: 0 });
 
       const sembrarCierre = async (solicitadoAt: Date) =>
         tx.cierreDia.create({

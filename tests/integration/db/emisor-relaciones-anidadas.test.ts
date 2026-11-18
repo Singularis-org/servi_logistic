@@ -12,14 +12,19 @@ import {
   esZonaEspecialDeLaEmpresa,
 } from "@/lib/repositories/_shared/zona-especial";
 
+import { crearOrganizacion, fijarEmpresa } from "../../fabricas/organizaciones";
+
 import {
   HAY_BASE_DE_DATOS,
+  bajoLockDeEscrituraReal,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
+  type FksDeOrden,
 } from "./_postgres-real";
 import { crearPrismaContado, resumenDeLaSonda, type PrismaContado } from "./_consultas-en-vuelo";
+import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
+import { limpiarEmpresas } from "./_fixtures/fulfillment-94";
 
 /**
  * FICHA 450 — EL EMISOR: COMO SE CAZO (T2) Y LA PRUEBA DE QUE SE ARREGLO (T2.7).
@@ -100,53 +105,78 @@ const SNAPSHOT_SELECT_DE_ANTES = {
 describeSiHayBase("FICHA 450 · el emisor de la tercera consulta", () => {
   let contado: PrismaContado;
   let semilla: PrismaClient;
-  let fks: Awaited<ReturnType<typeof fksDeOrden>>;
-  let mensajeroId: string;
+  /**
+   * SLT-180 (R1043): el paso 4 lee por el POOL, fuera de toda transaccion, asi que necesita UNA
+   * gestion CONFIRMADA. Se siembra en una empresa propia (clave unica) y el `afterAll` borra esa
+   * empresa entera y cuenta que no quedo ni una fila. Ya no se lee «la primera orden» de la base.
+   */
+  let empresaConfirmada: string | undefined;
+  let gestionConfirmada: string;
 
   beforeAll(async () => {
     contado = crearPrismaContado();
     await contado.prisma.$queryRawUnsafe("SELECT 1");
     semilla = crearPrismaDeTest();
 
-    fks = await fksDeOrden(semilla);
-    // ⚠️ LANZA, no `return`. Un `if (!fks) return;` reporta `passed` sin comprobar NADA, y este
-    // repo ya se comio esa mentira una vez. Sin filas, la expansion de relaciones no ocurre
-    // (Prisma no pide las relaciones de cero filas) y el caso central no mediria nada.
-    if (fks === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar la " +
-          "gestion que este test necesita. Corre `pnpm run db:seed` (y `pnpm exec tsx " +
-          "scripts/seed-zonas.ts`) antes de esta suite.",
-      );
-    }
-    const mensajero = await semilla.usuario.findFirst({ select: { id: true } });
-    if (mensajero === null) throw new Error("la tabla `usuario` esta vacia");
-    mensajeroId = mensajero.id;
+    await bajoLockDeEscrituraReal(async () => {
+      const org = (await crearOrganizacion(semilla, { nombre: `SLT180 emisor ${randomUUID()}` })).id;
+      empresaConfirmada = org;
+      gestionConfirmada = await semilla.$transaction(async (tx) => {
+        await fijarEmpresa(tx, org);
+        return sembrarOrdenYGestion(tx);
+      });
+    });
+    // ⚠️ LANZA, no `return`: sin la fila, la expansion de relaciones no ocurre (Prisma no pide las
+    // relaciones de cero filas) y el paso 4 no mediria nada (R1044).
+    expect(
+      await semilla.gestionOrden.count({ where: { id: gestionConfirmada } }),
+      "SLT-180: la gestion CONFIRMADA sembrada no esta en la base",
+    ).toBe(1);
 
     contado.sonda.limpiar();
   });
 
   afterAll(async () => {
+    if (empresaConfirmada !== undefined) {
+      const org = empresaConfirmada;
+      await bajoLockDeEscrituraReal(() => limpiarEmpresas(semilla, [org]));
+      // R1043: no queda ni una fila de la siembra confirmada.
+      const quedan = {
+        organizacion: await semilla.organizacion.count({ where: { id: org } }),
+        usuario: await semilla.usuario.count({ where: { organizacionId: org } }),
+        orden: await semilla.orden.count({ where: { organizacionId: org } }),
+        gestion: await semilla.gestionOrden.count({ where: { id: gestionConfirmada } }),
+      };
+      expect(quedan).toEqual({ organizacion: 0, usuario: 0, orden: 0, gestion: 0 });
+    }
     await contado?.cerrar();
     await semilla?.$disconnect();
   });
 
   /**
-   * Siembra UNA orden y UNA gestion vinculadas a un cierre ficticio, dentro de la transaccion que
-   * el test revierte. Reusa las FKs de una fila existente: no crea catalogos ni toca nada que
-   * sobreviva al rollback (la base local es compartida entre worktrees).
+   * SLT-180 (R1042/R1044): tienda, zona y mensajero PROPIOS, luego UNA orden y UNA gestion. Corre
+   * en la tx que le pasen (la revertida del caso, o la confirmada del `beforeAll`).
    */
-  async function sembrarGestion(
+  async function sembrarOrdenYGestion(
     tx: Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0],
   ): Promise<string> {
-    await serializarEscriturasReales(tx); // PRIMERA sentencia: evita el deadlock 40P01
+    const fks: FksDeOrden = await crearFksDeOrden(tx);
+    const mensajeroId = (await crearUsuarioDePrueba(tx, "mensajero")).id;
+    expect(
+      await tx.usuario.count({ where: { id: { in: [fks.tiendaId, mensajeroId] } } }),
+      "SLT-180: la tienda y el mensajero sembrados no estan en la base",
+    ).toBe(2);
+    expect(
+      await tx.zona.count({ where: { id: fks.zonaId } }),
+      "SLT-180: la zona sembrada no esta en la base",
+    ).toBe(1);
     const orden = await tx.orden.create({
       data: {
-        estatusId: fks!.estatusId,
-        tiendaId: fks!.tiendaId,
-        zonaId: fks!.zonaId,
-        provinciaId: fks!.provinciaId,
-        cantonId: fks!.cantonId,
+        estatusId: fks.estatusId,
+        tiendaId: fks.tiendaId,
+        zonaId: fks.zonaId,
+        provinciaId: fks.provinciaId,
+        cantonId: fks.cantonId,
         numRemision: `450-${randomUUID().slice(0, 8)}`,
         destinatario: "sonda 450",
         telefonoDest: "00000000",
@@ -161,6 +191,18 @@ describeSiHayBase("FICHA 450 · el emisor de la tercera consulta", () => {
     return gestion.id;
   }
 
+  /**
+   * Siembra UNA orden y UNA gestion vinculadas a un cierre ficticio, dentro de la transaccion que
+   * el test revierte. Desde SLT-180 sus FKs tambien se crean ahi (`sembrarOrdenYGestion`): no toca
+   * nada que sobreviva al rollback (la base local es compartida entre worktrees).
+   */
+  async function sembrarGestion(
+    tx: Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0],
+  ): Promise<string> {
+    await serializarEscriturasReales(tx); // PRIMERA sentencia: evita el deadlock 40P01
+    return sembrarOrdenYGestion(tx);
+  }
+
   // El paso 2 del itinerario (`$transaction([…])` en array, los conteos publicos de la landing)
   // se midio aqui hasta que SL-17 (R43) retiro ese repositorio: no reproducia el aviso (1 en vuelo).
 
@@ -169,9 +211,10 @@ describeSiHayBase("FICHA 450 · el emisor de la tercera consulta", () => {
       contado.sonda.bloque = "paso4-pool";
       contado.sonda.limpiar();
 
-      // Sin filas no hay expansion; por eso se mide con el dato sembrado en el caso de abajo y
-      // aqui se usa el universo entero acotado a 1 fila, que si existe (lo garantiza `fksDeOrden`).
+      // Sin filas no hay expansion; por eso se lee la gestion CONFIRMADA del `beforeAll` (SLT-180:
+      // antes era «el universo entero acotado a 1 fila», que en una base vacia no existe).
       const filas = await contado.prisma.gestionOrden.findMany({
+        where: { id: gestionConfirmada },
         take: 1,
         select: SNAPSHOT_SELECT_DE_ANTES,
       });
@@ -305,7 +348,7 @@ describeSiHayBase("FICHA 450 · el emisor de la tercera consulta", () => {
         };
       });
 
-      // ANTI-VACIO: los nombres son de una fila real de la base, no cadenas vacias.
+      // ANTI-VACIO: los nombres son de la fila sembrada en la base, no cadenas vacias.
       expect(viejo.zonaNombre.length).toBeGreaterThan(0);
       expect(viejo.tiendaNombre.length).toBeGreaterThan(0);
       expect(nuevo).toEqual(viejo);

@@ -11,10 +11,11 @@ import {
   clienteConSavepoint,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
+  type FksDeOrden,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FICHA 373 / C4 (R5) — LA TIENDA DESTINO NO SE TOCA.
@@ -36,21 +37,15 @@ const SUFIJO = `373-td-${Date.now().toString(36)}`;
 
 describeSiHayBase("373/C4 — eliminar una key con tienda destino (Postgres real)", () => {
   let prisma: PrismaClient;
-  let FKS: Awaited<ReturnType<typeof fksDeOrden>>;
+  // SLT-180 (R1042): zona y maestro se SIEMBRAN en la tx de cada caso (`sembrar`); ya no se leen
+  // «la primera orden» ni «el primer maestro» de la base.
+  let FKS: FksDeOrden | null = null;
   let MAESTRO: Actor;
   let ROL_ADMIN_TIENDA: string;
   let TIPO_CEDULA: string;
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    FKS = await fksDeOrden(prisma);
-    if (FKS === null) {
-      throw new Error("hay DATABASE_URL pero `orden` esta vacia: corre `pnpm run db:seed` antes.");
-    }
-    const maestro = await prisma.usuario.findFirst({
-      where: { rol: { value: "maestro" } },
-      select: { id: true },
-    });
     const rol = await prisma.rol.findUnique({
       where: { value: "adminTienda" },
       select: { id: true },
@@ -59,10 +54,9 @@ describeSiHayBase("373/C4 — eliminar una key con tienda destino (Postgres real
       where: { value: "cedula" },
       select: { id: true },
     });
-    if (maestro === null || rol === null || tipo === null) {
-      throw new Error("faltan el maestro o los catalogos `rol.adminTienda` / `cedula`");
+    if (rol === null || tipo === null) {
+      throw new Error("faltan los catalogos `rol.adminTienda` / `cedula`");
     }
-    MAESTRO = { usuarioId: maestro.id, rol: "maestro" };
     ROL_ADMIN_TIENDA = rol.id;
     TIPO_CEDULA = tipo.id;
   });
@@ -70,6 +64,21 @@ describeSiHayBase("373/C4 — eliminar una key con tienda destino (Postgres real
   afterAll(async () => {
     await prisma?.$disconnect();
   });
+
+  /** SLT-180 (R1044): siembra propia del caso + control positivo que nombra la fila. */
+  async function sembrar(tx: TxDeTest): Promise<void> {
+    FKS = await crearFksDeOrden(tx);
+    const maestro = await crearUsuarioDePrueba(tx, "maestro");
+    MAESTRO = { usuarioId: maestro.id, rol: "maestro" };
+    expect(
+      await tx.usuario.count({ where: { id: maestro.id } }),
+      "SLT-180: el maestro sembrado no esta en la base",
+    ).toBe(1);
+    expect(
+      await tx.zona.count({ where: { id: FKS.zonaId } }),
+      "SLT-180: la zona sembrada no esta en la base",
+    ).toBe(1);
+  }
 
   /** Una TIENDA de verdad (`adminTienda`, activa), que es lo que `generar` exige como destino. */
   async function sembrarTienda(tx: TxDeTest, marca: string): Promise<string> {
@@ -95,6 +104,7 @@ describeSiHayBase("373/C4 — eliminar una key con tienda destino (Postgres real
   it("⭑ R5: se borra la key y su cuenta dedicada; la TIENDA, sus ordenes y su webhook siguen", async () => {
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrar(tx);
       const tiendaId = await sembrarTienda(tx, "destino");
 
       // La key apunta a la tienda: sus ordenes seran de ELLA (feature 302).
@@ -181,6 +191,7 @@ describeSiHayBase("373/C4 — eliminar una key con tienda destino (Postgres real
     // propias. Es exactamente lo que se midio en produccion el 2026-09-04.
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrar(tx);
       const tiendaId = await sembrarTienda(tx, "sin-propias");
       const servicio = new ApiKeyService(new ApiKeyRepository(clienteConSavepoint(tx)));
       const generada = await servicio.generar(

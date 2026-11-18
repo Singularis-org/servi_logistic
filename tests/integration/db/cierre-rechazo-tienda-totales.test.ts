@@ -18,10 +18,10 @@ import {
   clienteConTransaccionAnidada,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
@@ -96,7 +96,8 @@ interface Medida {
 
 describeSiHayBase("425/B6 — los totales del cierre no se mueven cuando entra un rechazo de tienda", () => {
   let prisma: PrismaClient;
-  let fks: NonNullable<Awaited<ReturnType<typeof fksDeOrden>>>;
+  // SLT-178: lo asigna `sembrarBaseDelCaso` en cada medicion, dentro de su transaccion revertida.
+  let fks: Awaited<ReturnType<typeof crearFksDeOrden>>;
   let fksUsuario: { tipoIdentificacionId: string; rolId: string };
   let estatus: Map<string, string>;
   let n = 0;
@@ -109,6 +110,13 @@ describeSiHayBase("425/B6 — los totales del cierre no se mueven cuando entra u
     const id = estatus.get(value);
     if (id === undefined) throw new Error(`falta el estatus «${value}» en \`order_status\``);
     return id;
+  }
+
+  /** SLT-178: tienda y zona del caso (`crearFksDeOrden`), creadas en su transaccion revertida. */
+  async function sembrarBaseDelCaso(tx: TxDeTest): Promise<void> {
+    fks = await crearFksDeOrden(tx);
+    expect(await tx.usuario.count({ where: { id: fks.tiendaId } }), "tienda sembrada").toBe(1);
+    expect(await tx.zona.count({ where: { id: fks.zonaId } }), "zona sembrada").toBe(1);
   }
 
   async function sembrarMensajeroConTarifa(tx: TxDeTest): Promise<string> {
@@ -289,6 +297,7 @@ describeSiHayBase("425/B6 — los totales del cierre no se mueven cuando entra u
   function medir(conRechazoDeTienda: boolean): Promise<Medida> {
     return enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const mensajeroId = await sembrarMensajeroConTarifa(tx);
       await sembrarGestion(tx, mensajeroId, "gestion", "entregado");
       await sembrarGestion(tx, mensajeroId, "gestion", "devolucion_a_origen_por_rechazo");
@@ -307,6 +316,7 @@ describeSiHayBase("425/B6 — los totales del cierre no se mueven cuando entra u
   function medirSoloRechazos() {
     return enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const mensajeroId = await sembrarMensajeroConTarifa(tx);
       const ids: string[] = [];
       for (let i = 0; i < 3; i += 1) {
@@ -331,16 +341,14 @@ describeSiHayBase("425/B6 — los totales del cierre no se mueven cuando entra u
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const encontradas = await fksDeOrden(prisma);
-    if (encontradas === null) {
-      throw new Error("hay DATABASE_URL pero la tabla `orden` esta vacia: corre `pnpm run db:seed`.");
+    // SLT-178: las FK de catalogo del usuario se leen POR SU CLAVE (rol `mensajero`, tipo `cedula`),
+    // nunca de un usuario que ya este en la base.
+    const rol = await prisma.rol.findUnique({ where: { value: "mensajero" }, select: { id: true } });
+    const tipo = await prisma.tipoIdentificacion.findUnique({ where: { value: "cedula" }, select: { id: true } });
+    if (rol === null || tipo === null) {
+      throw new Error("falta el rol `mensajero` o el tipo de identificacion `cedula`: aplica las migraciones y `pnpm run db:seed`.");
     }
-    fks = encontradas;
-    const usuario = await prisma.usuario.findFirst({
-      select: { tipoIdentificacionId: true, rolId: true },
-    });
-    if (usuario === null) throw new Error("hace falta al menos UN usuario en la base.");
-    fksUsuario = usuario;
+    fksUsuario = { tipoIdentificacionId: tipo.id, rolId: rol.id };
     const catalogo = await prisma.orderStatus.findMany({
       where: { value: { in: ["entregado", "devolucion_a_origen_por_rechazo"] } },
       select: { id: true, value: true },

@@ -5,11 +5,11 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTestConEspia,
   enTransaccionRevertida,
-  fksDeOrden,
   parametrosDe,
   type EventoSqlDeTest,
   type FksDeOrden,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 
 /**
  * Feature 169 / T4.2 — R31: la busqueda se resuelve POR INDICE, no recorriendo `orden`.
@@ -66,12 +66,13 @@ interface Contexto {
   tx: PrismaClient;
   repo: OrdenRepository;
   eventos: EventoSqlDeTest[];
+  /** SLT-181 — las FKs sembradas en la tx (solo `conCorpus`). */
+  fks?: FksDeOrden;
 }
 
 describeSiHayBase("R31 — la busqueda usa el indice y no recorre `orden`", () => {
   let prisma: PrismaClient;
   let eventos: EventoSqlDeTest[];
-  let fks: FksDeOrden | null;
   let conCorpus: <T>(fn: (ctx: Contexto) => Promise<T>) => Promise<T>;
   /** Sin sembrar nada: para los casos que solo miran el SQL EMITIDO, que no depende de
    *  cuantas filas haya. Sembrar ahi solo costaria tiempo de suite y bloat. */
@@ -81,12 +82,20 @@ describeSiHayBase("R31 — la busqueda usa el indice y no recorre `orden`", () =
     const espia = crearPrismaDeTestConEspia();
     prisma = espia.prisma;
     eventos = espia.eventos;
-    fks = await fksDeOrden(prisma);
-    if (!fks) return;
-    const base = fks;
     conCorpus = (fn) =>
       enTransaccionRevertida(prisma, async (tx) => {
         const cliente = tx as unknown as PrismaClient;
+        // SLT-181 — tienda y zona nacen en ESTA transaccion (nada de leer la primera orden de la
+        // base). Control positivo: si la siembra no llega, el caso cae nombrando la fila.
+        const base = await crearFksDeOrden(tx);
+        expect(
+          await tx.usuario.count({ where: { id: base.tiendaId } }),
+          "SLT-181: la tienda sembrada no esta en la base",
+        ).toBe(1);
+        expect(
+          await tx.zona.count({ where: { id: base.zonaId } }),
+          "SLT-181: la zona sembrada no esta en la base",
+        ).toBe(1);
         await cliente.$executeRawUnsafe(
           `INSERT INTO orden (
              id, num_guia, num_remision, estatus_id, destinatario, telefono_dest,
@@ -108,7 +117,7 @@ describeSiHayBase("R31 — la busqueda usa el indice y no recorre `orden`", () =
         // antes del INSERT y EXPLAIN no dice nada util.
         await cliente.$executeRawUnsafe("ANALYZE orden");
         eventos.length = 0;
-        return fn({ tx: cliente, repo: new OrdenRepository(cliente), eventos });
+        return fn({ tx: cliente, repo: new OrdenRepository(cliente), eventos, fks: base });
       });
     sinCorpus = (fn) =>
       enTransaccionRevertida(prisma, async (tx) => {
@@ -182,13 +191,19 @@ describeSiHayBase("R31 — la busqueda usa el indice y no recorre `orden`", () =
     return filas.map((f) => Object.values(f)[0]).join("\n");
   }
 
-  it("hay ordenes de las que tomar las FKs", () => {
-    expect(fks).not.toBeNull();
+  it("hay ordenes de las que tomar las FKs", async () => {
+    // SLT-181 — las FKs y el corpus se siembran en la tx del caso; aqui se cuentan.
+    const sembrado = await conCorpus(async (ctx) => ({
+      fks: ctx.fks,
+      ordenes: await ctx.tx.orden.count({ where: { tiendaId: ctx.fks?.tiendaId } }),
+    }));
+    expect(sembrado.fks).not.toBeNull();
+    expect(sembrado.fks, "SLT-181: conCorpus no devolvio las FKs sembradas").toBeDefined();
+    expect(sembrado.ordenes, "SLT-181: el corpus sembrado no esta completo").toBe(FILAS);
   });
 
   describe("el indice trigram SIRVE para la consulta REAL del listado (R31)", () => {
     it("el findMany se resuelve por `orden_busqueda_texto_trgm_idx`, no recorriendo la tabla", async () => {
-      if (!fks) return;
       const plan = await conCorpus(async (ctx) => {
         const { findMany } = await sqlDeLaBusqueda(ctx, { busqueda: RARO });
         return explicar(ctx, findMany, { forzarIndice: true });
@@ -200,7 +215,6 @@ describeSiHayBase("R31 — la busqueda usa el indice y no recorre `orden`", () =
     it("el CONTEO de la paginacion se resuelve por el MISMO indice", async () => {
       // R15 dice que el conteo usa el mismo criterio; R31 exige ademas que lo pague igual de
       // barato. Si el `count` recorriera la tabla, la mitad del coste seguiria ahi.
-      if (!fks) return;
       const plan = await conCorpus(async (ctx) => {
         const { count } = await sqlDeLaBusqueda(ctx, { busqueda: RARO });
         return explicar(ctx, count, { forzarIndice: true });
@@ -213,7 +227,6 @@ describeSiHayBase("R31 — la busqueda usa el indice y no recorre `orden`", () =
       // Un indice que se usa pero devuelve de menos es peor que no tenerlo: la busqueda "no
       // encuentra" y nada peta. Se compara el resultado del plan indexado contra el del
       // recorrido completo, en la MISMA transaccion y sobre el MISMO corpus.
-      if (!fks) return;
       const { conIndice, sinIndice } = await conCorpus(async (ctx) => {
         const filasCon = await ctx.tx.$queryRawUnsafe<{ n: bigint }[]>(
           `SELECT count(*) n FROM orden WHERE deleted_at IS NULL AND busqueda_texto LIKE '%${RARO}%'`,
@@ -244,7 +257,6 @@ describeSiHayBase("R31 — la busqueda usa el indice y no recorre `orden`", () =
     const TEL_PELADO = "80000007";
 
     it("el findMany usa un BitmapOr de DOS Bitmap Index Scan sobre el MISMO indice", async () => {
-      if (!fks) return;
       const plan = await conCorpus(async (ctx) => {
         const { findMany } = await sqlDeLaBusqueda(ctx, {
           busqueda: TEL_CON_GUION,
@@ -258,7 +270,6 @@ describeSiHayBase("R31 — la busqueda usa el indice y no recorre `orden`", () =
     });
 
     it("el CONTEO paga lo mismo: el mismo OR por el mismo indice", async () => {
-      if (!fks) return;
       const plan = await conCorpus(async (ctx) => {
         const { count } = await sqlDeLaBusqueda(ctx, {
           busqueda: TEL_CON_GUION,
@@ -275,7 +286,6 @@ describeSiHayBase("R31 — la busqueda usa el indice y no recorre `orden`", () =
       // La forma del SQL es la garantia de alcance: `... AND (busqueda_texto LIKE $1 OR
       // busqueda_texto LIKE $2)`. El `AND` de fuera es donde vive el acotamiento por rol; si
       // el OR se hubiera abierto a otra columna, el rol dejaria de acotar.
-      if (!fks) return;
       const { sql, params } = await sinCorpus(async (ctx) => {
         const { findMany } = await sqlDeLaBusqueda(ctx, {
           busqueda: TEL_CON_GUION,
@@ -293,7 +303,6 @@ describeSiHayBase("R31 — la busqueda usa el indice y no recorre `orden`", () =
     });
 
     it("una sola forma sigue emitiendo UNA condicion (sin OR): el plan medido en T4.1 no cambia", async () => {
-      if (!fks) return;
       const sql = await sinCorpus(async (ctx) => {
         const { findMany } = await sqlDeLaBusqueda(ctx, { busqueda: RARO });
         return findMany.query;
@@ -306,7 +315,6 @@ describeSiHayBase("R31 — la busqueda usa el indice y no recorre `orden`", () =
     it("usa LIKE (`~~`) y NO ILIKE: la columna ya viene plegada", async () => {
       // `mode: "insensitive"` colado en el repositorio cambiaria el operador a `~~*` y
       // obligaria a plegar caja en cada recheck, para nada (design §4.3).
-      if (!fks) return;
       const plan = await conCorpus(async (ctx) => {
         const { findMany } = await sqlDeLaBusqueda(ctx, { busqueda: RARO });
         return explicar(ctx, findMany, { forzarIndice: true });
@@ -316,7 +324,6 @@ describeSiHayBase("R31 — la busqueda usa el indice y no recorre `orden`", () =
     });
 
     it("el termino viaja como PARAMETRO y el patron es `%valor%`", async () => {
-      if (!fks) return;
       const { sql, params } = await sinCorpus(async (ctx) => {
         const { findMany } = await sqlDeLaBusqueda(ctx, { busqueda: RARO });
         return { sql: findMany.query, params: findMany.params };
@@ -330,7 +337,6 @@ describeSiHayBase("R31 — la busqueda usa el indice y no recorre `orden`", () =
     });
 
     it("los comodines del termino llegan ESCAPADOS al patron (R7)", async () => {
-      if (!fks) return;
       const params = await sinCorpus(async (ctx) => {
         const { findMany } = await sqlDeLaBusqueda(ctx, { busqueda: "100%_a\\b" });
         return JSON.parse(findMany.params) as unknown[];
@@ -350,7 +356,6 @@ describeSiHayBase("R31 — la busqueda usa el indice y no recorre `orden`", () =
     // R31 exige; asertar el nodo convertiria este caso en un generador de rojos falsos. En el
     // banco de T4.1, con 50 000 filas y sin bloat, sale `Index Scan using orden_num_guia_key`.
     it("un termino que es una guia se resuelve por `orden_num_guia_key`, SIN forzar nada", async () => {
-      if (!fks) return;
       const plan = await conCorpus(async (ctx) => {
         const { findMany } = await sqlDeLaBusqueda(ctx, { numGuia: GUIA_BASE + 7 });
         return explicar(ctx, findMany);
@@ -362,7 +367,6 @@ describeSiHayBase("R31 — la busqueda usa el indice y no recorre `orden`", () =
     });
 
     it("el conteo de la ruta rapida tambien usa el indice unico", async () => {
-      if (!fks) return;
       const plan = await conCorpus(async (ctx) => {
         const { count } = await sqlDeLaBusqueda(ctx, { numGuia: GUIA_BASE + 7 });
         return explicar(ctx, count);
@@ -374,7 +378,6 @@ describeSiHayBase("R31 — la busqueda usa el indice y no recorre `orden`", () =
 
   describe("el indice existe y es el que se cree que es", () => {
     it("es un GIN sobre `busqueda_texto` con el opclass de trigramas", async () => {
-      if (!fks) return;
       const filas = (await prisma.$queryRawUnsafe(
         `SELECT indexdef FROM pg_indexes
           WHERE schemaname = 'public' AND indexname = 'orden_busqueda_texto_trgm_idx'`,
