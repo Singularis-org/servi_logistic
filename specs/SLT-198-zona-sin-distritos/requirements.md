@@ -172,39 +172,39 @@ Integración con Postgres real en base **desechable** (`con-desechable.cjs` + `p
 
 ## Tasks
 
-- [ ] **T1 — Separar el zod (R1220, R1221, R1222).** En `lib/types/zona.ts`, `distritoIds` sale de
+- [x] **T1 — Separar el zod (R1220, R1221, R1222).** En `lib/types/zona.ts`, `distritoIds` sale de
   `zonaFieldsComunes`: `crearZonaSchema` conserva `.min(1)`; `actualizarZonaSchema` acepta `[]`, y su
   `superRefine` añade el rechazo de `esCentral === true` con `distritoIds` vacío (issue en
   `distritoIds`, el mensaje de R1222). Comentario corto con el porqué (SLT-198). *Hecho:* tests de
   `tests/unit/types/zona-schema.test.ts` en verde (actualizar acepta `[]`; crear sigue rechazando;
   `esCentral: true` + `[]` rechazado), y el caso existente de crear sin distritos intacto.
-- [ ] **T2 — Guarda de la central en el repositorio (R1222).** `UpdateZonaResult` gana el estado
+- [x] **T2 — Guarda de la central en el repositorio (R1222).** `UpdateZonaResult` gana el estado
   `central_sin_distritos` (`lib/interfaces/repositories/IZonaRepository.ts`). En
   `ZonaRepository.update`, junto al rechazo de `sin_zona_central` y antes de la primera escritura:
   si `data.distritoIds` está vacío y (`exists.esCentral` y `data.esCentral !== false`, o
   `data.esCentral === true`), devolver ese estado. `ZonaService.actualizar` lo traduce a
   `validation_error` en `distritoIds` con el literal de R1222. *Hecho:* caso nuevo en
   `tests/unit/services/zona-service.test.ts` y el de integración de R1222 en verde. Depende de T1.
-- [ ] **T3 — Integración del flujo (R1220, R1222–R1229, R1232).** Nuevo
+- [x] **T3 — Integración del flujo (R1220, R1222–R1229, R1232).** Nuevo
   `tests/integration/db/zona-sin-distritos.test.ts` sobre base desechable: monta Cartago (satélite,
   1 distrito) y GAM (central), órdenes de Quebradilla en `en_bodega_satelite` y en
   `en_ruta_bodega_satelite`, y recorre el flujo de D4 con las aserciones de la tabla de trazabilidad.
   Cada aserción de «no cambió» compara contra un valor leído antes, no contra la función que lo
   produce. *Hecho:* verde, y una mutación de la guarda de T2 (quitarla) lo pone rojo. Depende de T2.
-- [ ] **T4 [P] — Marca «Sin distritos» en el listado (R1230).** En `ZonasModule.tsx` (`ZonasList`),
+- [x] **T4 [P] — Marca «Sin distritos» en el listado (R1230).** En `ZonasModule.tsx` (`ZonasList`),
   con `distritosCount === 0` se pinta `<Badge variant="secondary">Sin distritos</Badge>` (mismo
   componente y variante que «Zona de bodega principal») en lugar de «0 distritos». Sin estilos ni
   componentes nuevos. *Hecho:* casos nuevos en `tests/components/ZonasModuleListado.test.tsx` en verde.
-- [ ] **T5 [P] — Formulario (R1231).** Verificar que `CrearZonaForm` no valida los distritos por su
+- [x] **T5 [P] — Formulario (R1231).** Verificar que `CrearZonaForm` no valida los distritos por su
   cuenta (hoy usa el esquema de la acción, `CrearZonaForm.tsx:148-152`); solo se toca si el test lo
   pide. *Hecho:* `tests/components/ZonaFormSinDistritos.test.tsx` en verde. Depende de T1.
-- [ ] **T6 — E2E corto (R1233).** `e2e/zona-sin-distritos.spec.ts`: maestro edita una satélite de un
+- [x] **T6 — E2E corto (R1233).** `e2e/zona-sin-distritos.spec.ts`: maestro edita una satélite de un
   solo distrito y la deja vacía → ve «Sin distritos» → edita la central, añade ese distrito y guarda
   sin error. Esperas por condición, nunca `waitForTimeout`. Correrlo en local con base desechable
   nueva y `next build` antes del PR (`docs/perfil-agentes.md > Todos los agentes`); también
   `e2e/zonas-crear-sin-costos.spec.ts`, que toca la misma pantalla. *Hecho:* los dos en verde en local.
   Depende de T1, T4.
-- [ ] **T7 — Cierre.** `./init.sh` en verde (con `.env` copiado al worktree, para que la integración no
+- [x] **T7 — Cierre.** `./init.sh` en verde (con `.env` copiado al worktree, para que la integración no
   se salte), mapa `R1220–R1233 → test` y evidencia (salidas del gate, del test de integración, de la
   mutación de T3 y de los E2E) en `progress/impl_SLT-198.md`. *Hecho:* el archivo existe con cada R
   mapeado y el gate verde. Depende de T1–T6.

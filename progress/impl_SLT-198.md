@@ -44,7 +44,7 @@ Tests:
 | R1232 | `zona-sin-distritos.test.ts` «R1224/R1226/...» (`listLite` contiene la zona vacia) |
 | R1233 | `e2e/zona-sin-distritos.spec.ts` |
 
-## ABIERTO — R1225, el conteo de retenidas al vaciar
+## RESUELTO — R1225 (leader, 74a6bb02: spec corregido, sin cambio de código), el conteo de retenidas al vaciar
 
 El spec pide que al VACIAR Cartago la respuesta cuente como retenidas las ordenes de su estante.
 El codigo (que el spec da por bueno y no manda tocar) no lo hace: el distrito quitado resuelve
@@ -92,4 +92,4 @@ integracion del flujo se llevo ~500).
 
 ## Veredicto
 
-Hecho salvo un punto abierto: R1225 (conteo de retenidas al vaciar) contradice el codigo; requiere decision.
+Hecho: R1225 (conteo de retenidas al vaciar) contradice el codigo; requiere decision.
