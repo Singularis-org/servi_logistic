@@ -246,9 +246,16 @@ function ZonasList({
               ) : null}
             </span>
             {/* Sin «· cobro por vehículo»: Zonas no muestra costos (R3). */}
-            <span className="text-xs text-muted-foreground">
-              {z.distritosCount} distrito{z.distritosCount === 1 ? "" : "s"}
-            </span>
+            {/* SLT-198 (R1230): una bodega cerrada se ve como tal, con la misma marca que la central. */}
+            {z.distritosCount === 0 ? (
+              <span>
+                <Badge variant="secondary">Sin distritos</Badge>
+              </span>
+            ) : (
+              <span className="text-xs text-muted-foreground">
+                {z.distritosCount} distrito{z.distritosCount === 1 ? "" : "s"}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <Button

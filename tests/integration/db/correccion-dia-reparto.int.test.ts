@@ -9,9 +9,10 @@ import {
   crearPrismaDeTest,
   crearPrismaDeTestConEspia,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
+  type TxDeTest,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 
 /**
  * ⭑⭑ FEATURE 262 (B12, R1/R8/R9/R12/R20-R24/R27) — LA ESCRITURA GUARDADA Y SU RASTRO, CONTRA
@@ -64,15 +65,6 @@ describeSiHayBase("262/B12 — corregir el dia de reparto, contra Postgres real"
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const fks = await fksDeOrden(prisma);
-    if (fks === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar. Corre " +
-          "`pnpm run db:seed` (y las semillas de zonas) antes de esta suite.",
-      );
-    }
-    FKS = fks;
-    ACTOR = fks.tiendaId;
 
     const valores = ["mensajero_recogiendo_en_bodega", "en_reparto", "ayuda_tienda", "entregado"];
     const estados = await prisma.orderStatus.findMany({
@@ -87,27 +79,42 @@ describeSiHayBase("262/B12 — corregir el dia de reparto, contra Postgres real"
           `estado que medir. Corre el seed del catalogo.`,
       );
     }
-
-    const zonas = await prisma.zona.findMany({ select: { id: true }, take: 5 });
-    const ajena = zonas.find((z) => z.id !== fks.zonaId);
-    if (!ajena) {
-      throw new Error(
-        "solo hay UNA zona en la base: el caso del `adminSatelite` (R12) no se puede medir. " +
-          "Corre `pnpm exec tsx scripts/seed-zonas.ts`.",
-      );
-    }
-    ZONA_AJENA = ajena.id;
   });
 
   afterAll(async () => {
     await prisma?.$disconnect();
   });
 
+  /**
+   * SLT-179 — la tienda, la zona del caso y una zona AJENA (R12) nacen en SU transaccion: nada de
+   * leer la primera orden ni las zonas que haya en la base. Control positivo: si la siembra no
+   * llega, el caso cae nombrando la fila.
+   */
+  async function sembrarFks(tx: TxDeTest): Promise<void> {
+    const fks = await crearFksDeOrden(tx);
+    const ajena = await tx.zona.create({
+      data: {
+        nombre: `Zona ajena ${SUFIJO}-${Math.random().toString(36).slice(2, 8)}`,
+        sinpeNumero: "80000000",
+        sinpeNombre: "Titular de Prueba",
+      },
+      select: { id: true },
+    });
+    const tiendas = await tx.usuario.count({ where: { id: fks.tiendaId } });
+    const zonas = await tx.zona.count({ where: { id: { in: [fks.zonaId, ajena.id] } } });
+    expect(tiendas, "SLT-179: la tienda sembrada no esta en la base").toBe(1);
+    expect(zonas, "SLT-179: la zona del caso y la ajena sembradas no estan en la base").toBe(2);
+    FKS = fks;
+    ACTOR = fks.tiendaId;
+    ZONA_AJENA = ajena.id;
+  }
+
   interface Semilla {
     estatusValue?: string;
     fechaReparto?: Date | null;
     conMensajero?: boolean;
-    zonaId?: string;
+    /** La orden va a la zona AJENA sembrada en la tx (se resuelve dentro, no al llamar). */
+    zonaAjena?: boolean;
     borrada?: boolean;
   }
 
@@ -125,6 +132,7 @@ describeSiHayBase("262/B12 — corregir el dia de reparto, contra Postgres real"
   ): Promise<T> {
     return enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarFks(tx);
       const ids: string[] = [];
       let n = 0;
       for (const s of semillas) {
@@ -138,7 +146,7 @@ describeSiHayBase("262/B12 — corregir el dia de reparto, contra Postgres real"
             producto: "caja",
             estatusId: ESTATUS[s.estatusValue ?? "mensajero_recogiendo_en_bodega"],
             tiendaId: FKS.tiendaId,
-            zonaId: s.zonaId ?? FKS.zonaId,
+            zonaId: s.zonaAjena ? ZONA_AJENA : FKS.zonaId,
             provinciaId: FKS.provinciaId,
             cantonId: FKS.cantonId,
             mensajeroAsignadoId: s.conMensajero === false ? null : ACTOR,
@@ -466,7 +474,7 @@ describeSiHayBase("262/B12 — corregir el dia de reparto, contra Postgres real"
 
   it("⭑ R12 (M-i): con `zonaId`, una orden de OTRA zona no se corrige aunque venga en `ordenIds`", async () => {
     const resultado = await conOrdenes(
-      [{ zonaId: undefined }, { zonaId: ZONA_AJENA }],
+      [{ zonaAjena: false }, { zonaAjena: true }],
       async (ctx) => {
         let lanzo: unknown = null;
         try {
@@ -505,7 +513,7 @@ describeSiHayBase("262/B12 — corregir el dia de reparto, contra Postgres real"
 
   it("R12: con `zonaId = null` (acceso total) esa MISMA orden de otra zona SI se corrige", async () => {
     // El control positivo. Sin el, «no se corrige» podria deberse a cualquier otra cosa.
-    const dia = await conOrdenes([{ zonaId: ZONA_AJENA }], async (ctx) => {
+    const dia = await conOrdenes([{ zonaAjena: true }], async (ctx) => {
       await ctx.repo.corregirDiaRepartoLote(ctx.ids, HOY, estatusIdsAdmitidos(), null, {
         actorUsuarioId: ACTOR,
         motivo: MOTIVO,
@@ -602,6 +610,7 @@ describeSiHayBase("262/B12 — corregir el dia de reparto, contra Postgres real"
     try {
       await enTransaccionRevertida(espia, async (tx) => {
         await serializarEscriturasReales(tx);
+        await sembrarFks(tx);
         const orden = await tx.orden.create({
           data: {
             numGuia: GUIA_BASE + 999_002,
@@ -687,6 +696,7 @@ describeSiHayBase("262/B12 — corregir el dia de reparto, contra Postgres real"
     // La tercera y ultima red. Se intenta escribir a mano una fila con las dos fechas iguales.
     const resultado = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarFks(tx);
       const orden = await tx.orden.create({
         data: {
           numGuia: GUIA_BASE + 999_001,
