@@ -133,3 +133,10 @@ Tipo «mensajero»: el primer `crearUsuarioDePrueba(tx, "mensajero")` se cambia 
 ## Veredicto
 14 de 17 fuera del baseline, verdes en base vacía y con empresa ajena; 3 se quedan por estado retirado
 citando SLT-186 (a confirmar por el leader); 17/17 mutaciones rojas; gate local verde.
+
+## Tanda review (2026-11-17, `progress/review_SLT-178.md`)
+- B1: `requirements.md > ## Tasks` con T1–T8 en [x]; T8 con «CI del PR pendiente (R1011)».
+- m1: el `afterAll` de `cierre-rechazado-aviso-dedupe` suma al recuento que debe quedar en 0 la zona sembrada (`zona.count({ id: fks.zonaId })`) y las `notificacion_lectura` de sus avisos.
+  - En `servi_slt178b_desechable` (con la empresa ajena): 6/6 verdes; conteos de la base iguales antes y después (1 org, 5 usuarios, 2 zonas, 2 cierres, 4 gestiones, 40 órdenes).
+  - Mutación: sin borrar la zona (y por eso sin poder borrar la organización: FK RESTRICT `zona_organizacion_id_fkey`) → archivo rojo en el `afterAll`: «la siembra confirmada dejo 2 filas en la base» (zona + organización). Restaurado con `git checkout --`; las 2 filas que dejó la mutación se borraron a mano en la desechable.
+  - Primera prueba de la mutación (solo sin borrar la zona) cayó antes del recuento, en el borrado de la organización por la misma FK: también rojo, pero no ejercía el recuento; por eso la mutación final deja las dos.
