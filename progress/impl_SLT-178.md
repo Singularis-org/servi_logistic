@@ -118,4 +118,18 @@ Tipo «mensajero»: el primer `crearUsuarioDePrueba(tx, "mensajero")` se cambia 
 | R1012 | `scripts/tamano-pr.mjs` (ver Salidas) |
 
 ## Salidas
-(ver sección «Gate» al final)
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec tsc --noEmit -p .` → exit 0, 0 errores.
+- `pnpm exec eslint <17 archivos>` → exit 0, sin avisos.
+- `git diff --name-only origin/dev -- lib/ app/ components/ hooks/ db/ scripts/ .github/ package.json` → vacío.
+- `node scripts/tamano-pr.mjs` → 18/40 archivos, 0/1000 producción, 798/3000 tests.
+
+## Gate (`./init.sh` sobre `servi_slt178_desechable`)
+- 1.ª corrida: `INIT_EXIT=1`. Único rojo: `tests/unit/guards/otp-debug-solo-en-pruebas.guardia.test.ts`
+  «Test timed out in 20000ms» (29 s) con otro gate en paralelo en la máquina. Solo: 11/11 en 3,5 s. No lo
+  toca este diff (barre el árbol versionado).
+- 2.ª corrida: **`INIT_EXIT=0`**. typecheck y lint verdes (lint: 0 errores, 248 avisos previos), 384
+  archivos del rápido verdes, 138 heredados del baseline, tamaño 18/40 · 0/1000 · 798/3000.
+
+## Veredicto
+14 de 17 fuera del baseline, verdes en base vacía y con empresa ajena; 3 se quedan por estado retirado
+citando SLT-186 (a confirmar por el leader); 17/17 mutaciones rojas; gate local verde.
