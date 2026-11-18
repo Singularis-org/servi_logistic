@@ -1056,3 +1056,91 @@ $ pnpm run test:guardias → Test Files 3 failed | 333 passed | 3 skipped · Tes
 
 **Veredicto T4.1:** modal «Mover» y aviso quitado, verdes como la maqueta; 2 aserciones de SLT-46 cambiadas bajo la
 autorización general, pendientes de que el leader lo confirme.
+
+## T6 — E2E (frontend_dev, 2026-11-17)
+
+Base: SOLO `servi_logistic_slt48` en el Postgres local (`localhost:5432`), ya migrada (`prisma migrate status`: «Database
+schema is up to date!») y sembrada desde T1. `DATABASE_URL`/`DIRECT_URL` exportados a ella en cada corrida (la URL se armó
+con las credenciales locales del `.env` del repo cambiando solo el nombre de la base, y el script aborta si no es
+`localhost:5432/servi_logistic_slt48`). El worktree no tiene `.env`, así que ni `next build` ni `next start` leyeron otra
+cosa. Nada remoto, ni producción ni Ordenex. `next build` con `NEXT_PUBLIC_APP_URL=http://localhost:3044` (exit 0) y
+Playwright con `E2E_PUERTO=3044`, Storage falso en 54329. La base NO se recreó (la orden era usar esa base y no otra):
+los specs crean sus propios datos.
+
+### Commits
+
+| Task | Commit | Qué |
+|---|---|---|
+| T6.1 | e1924880 | `geo-presentacion-4-niveles` a nodos con la orden en el nivel 4; `_planes-fixture` y `_zona-especial-fixture` leen y escriben el nodo |
+
+### Archivos
+
+- `e2e/geo-presentacion-4-niveles.spec.ts` — la geografía de `XB` se crea en `nodo_geografico` (región, comuna, dos
+  barrios y un sector bajo el barrio central); las dos órdenes van al SECTOR (nivel 4) con `nodo_geografico_id` y las 3
+  FK en NULL (R15). Las zonas siguen sobre los barrios.
+- `e2e/_planes-fixture.ts` — `crearOrdenesDirectas` guarda el nodo (el cantón, lo que antes ponía el trigger desde la
+  FK) sin las 3 FK; `enlazarDistritoDeLaPlantilla` busca el lugar en el árbol.
+- `e2e/_zona-especial-fixture.ts` — `elegirDistritos` lee `nodo_geografico` (niveles 1 a 3) en vez de las vistas.
+
+### Expectativas que cambian en `geo-presentacion-4-niveles` (decisión «Nivel 4 de la orden», R26)
+
+La decisión dice que la expectativa de este spec cambia. Con la orden en el nivel 4, la ruta llega al sector en las
+tres superficies del spec, no solo en la descarga. Cada cambio lleva `// SLT-48 R26…` en el spec. **Para confirmar por
+el leader**, porque la orden de T6.1 nombraba solo la cuarta columna:
+
+| Test | Antes → después | R |
+|---|---|---|
+| «1. la descarga…» | `[[...ruta de 3, ""]]` («Sector» vacía) → `[[...ruta de 4]]` («Sector» llena) | R26 |
+| «2. la etiqueta de guía…» | «zona / región / comuna / barrio» → «… / barrio / sector» (misma expresión, `ruta` de 4) | R26 |
+| «3. el cierre…» | «zona · región · comuna · barrio» → «… · sector»; `ubicacion_snapshot` de 3 niveles → 4 (gana `{ profundidad: 4, tipo: "Sector", … }`) | R26, R27 |
+
+### Mapa R → test
+
+| R | Test |
+|---|---|
+| R26 | `e2e/geo-presentacion-4-niveles.spec.ts` › «1. … con «Sector» llena» (y 2 y 3) |
+| R49 | los 14 specs de abajo, sin cambiar aserciones |
+
+### Salida real (resumida)
+
+```
+$ pnpm run typecheck  → 6 errores, 0 en e2e/ (antes 3 en geo-presentacion-4-niveles): geo-sincronia-geografia (4),
+                        geografia-por-pais (1), geo-equivalencia (1), los casos «sin objeto» parados de T5
+$ pnpm exec eslint e2e/geo-presentacion-4-niveles.spec.ts e2e/_planes-fixture.ts e2e/_zona-especial-fixture.ts → sin salida
+
+T6.1 — pnpm exec playwright test e2e/geo-presentacion-4-niveles.spec.ts --reporter=list
+  corrida 1:  ✓ 1. la descarga … «Sector» llena (21.9s) · ✓ 2. la etiqueta … (7.7s) · ✓ 3. el cierre … (7.8s)
+              3 passed (2.0m)
+  corrida 2 (misma base, seguida):  3 passed (58.9s)
+
+T6.2 — un spec por corrida (R49; la lista de flujos críticos de docs/checkpoints-proyecto.md que nombra R49)
+  mis-asignaciones            3 failed | 1 passed (2.8m)   ← ver abajo
+  asignacion-satelite         1 passed (46.8s)
+  recepcion-satelite          1 passed (39.2s)
+  cierre-dia                  2 passed (54.7s)
+  cierres-admin               3 passed (1.2m)
+  cierres-admin-rechazos-sla  1 passed (49.1s)
+  cierre-bodega-satelite      3 passed (57.9s)
+  reglas-bloqueos-cierre      5 passed (1.1m)
+  wallet                      4 passed (1.1m)
+  wallet-mensajeros           3 passed (1.0m)
+  mi-wallet                   3 passed (56.7s)
+  wallet-iva-aparte-sl39     14 passed (2.3m)
+  devolucion-origen           2 passed (1.5m)
+  dos-empresas-humo           plataforma-vacia 10/10 ✓, «A recorre su menú» ✓ (41.9s), «B recorre su menú» ✘ (30.0s),
+                              5 sin correr: la corrida se cortó (abajo)
+```
+
+### Lo que queda abierto en T6.2
+
+- **`mis-asignaciones`** (a), (b) y (c): «Test timeout of 30000ms exceeded» esperando un control del formulario de
+  gestión (`combobox «Método de pago línea 1»`, `«Foto de evidencia del rechazo»`, `«Nueva fecha de reprogramación»`)
+  después de recoger y verificar la guía; (d), que usa el mismo formulario, pasó en 13.6 s. Ninguno es un `expect` de
+  lugar ni de geografía, y ninguna aserción se tocó. No pude repetirlo para separar lentitud de regresión (abajo).
+- **`dos-empresas-humo`**: la corrida murió a medias. Mis bucles de espera en la shell agotaron los procesos de la
+  máquina (`fork: Resource temporarily unavailable`) y desde ahí la shell no volvió a arrancar (`Exit code 107` incluso
+  en `echo`). El ✘ de «B recorre su menú» es un timeout de 30 s en esa misma ventana.
+- Los dos quedan para CI (`e2e` en el PR) o para otra corrida local. Ninguna aserción E2E pide autorización.
+
+**Veredicto T6:** T6.1 verde dos veces en local; T6.2 con 12 de 14 specs verdes y 2 sin cerrar por tiempo y recursos
+de la máquina, sin cambiar aserciones.
