@@ -26,6 +26,7 @@ Ninguna.
 
 ## Tandas
 - 2026-11-18 · test rojo + arreglo · commit fix(SLT-93) · gate rápido INIT_EXIT=0.
+- 2026-11-18 · review 38a22385: caso unit P2002 de otra restricción (mutación «todo P2002» en rojo) · gate rápido INIT_EXIT=0.
 
 ## Modelos (overrides)
 Ninguno.

@@ -45,9 +45,14 @@ AssertionError: expected 500 to be 409 // Object.is equality
 1. Arreglo revertido (`git checkout -- lib/repositories/carga-lote.ts`): 2 rojos (salida de «Rojo» arriba). Reaplicado.
 2. Nombre del índice cambiado a `zzz_indice_mutado` en el arreglo: 3 rojos (repositorio, 409 y otra key → 500). Restaurado con `git checkout` + reaplicar.
 3. Test «otra key» con la key B sustituida por la A: `expected 409 to be 200`, 1 rojo. Restaurado → `Tests 4 passed (4)`.
+4. (Review 38a22385) `esNombreDuplicado` devolviendo `true` para CUALQUIER P2002: el caso nuevo de
+   `tests/unit/repositories/carga-lote.test.ts` «SLT-93: un P2002 de OTRA restriccion (carga_pkey) sale tal cual…»
+   (formas adapter `carga_pkey` y nativa `["id"]`) se pone ROJO:
+   `Tests 1 failed | 15 passed (16)` — `expected CargaNombreDuplicadoError … to be PrismaClientKnownRequestError`.
+   Restaurado con `git checkout -- lib/repositories/carga-lote.ts` → unit + integración `Tests 20 passed (20)`.
 
 ## Gate
-Ver «INIT_EXIT» abajo (log completo en el scratchpad de la sesión, `init-SLT-93.log`).
+Tanda 2 (review 38a22385): gate rápido `✓ typecheck paso`, `✓ lint paso`, `✓ test:rapido paso` (4 rojos heredados del baseline), `== init OK ==`, `INIT_EXIT=0`. Tanda 1 abajo.
 
 `bash ./init.sh` (rápido) vía `con-desechable … servi_slt93_desechable`, log completo con `INIT_EXIT` dentro:
 ```
