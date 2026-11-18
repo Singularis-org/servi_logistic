@@ -165,18 +165,6 @@
       "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/chat-entrante-telefono-cr.test.ts:154 al leer una fila de negocio que la base migrada no trae: AssertionError: expected null not to be null. La retira SLT-184 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
-    "tests/integration/db/cierre-aprobacion-libera-solo-lo-suyo.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/cierre-aprobacion-libera-solo-lo-suyo.test.ts:65 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' antes de esta suit. La retira SLT-178 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/cierre-aprobar-el-mas-viejo-desbloquea.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): DriverAdapterError: referencia a otra empresa: cierre_dia.destino_zona_id -> zona; 'fksDeOrden' (:122) devolvio una orden de OTRA empresa; el trigger misma-empresa (SL017) rechaza 'cierre_dia.destino_zona_id'. La retira SLT-178.",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/cierre-bloqueo-nv-sql-real.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/cierre-bloqueo-nv-sql-real.test.ts:62 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' (y las semillas de. La retira SLT-178 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
     "tests/integration/db/cierre-bodega-conciliacion.int.test.ts": {
       "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/cierre-bodega-conciliacion.int.test.ts:178 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'usuario' esta vacia: sin FK no se puede sembrar un cierre_bodega. Corre 'pnpm run db:seed'. La retira SLT-182 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
@@ -185,56 +173,12 @@
       "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/cierre-bodega-resumen-pendientes.test.ts:137 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'usuario' esta vacia: sin FK no se puede sembrar un cierre_dia. Corre 'pnpm run db:seed' ant. La retira SLT-182 (siembra propia en la transaccion).",
       "desde": "2026-10-22"
     },
-    "tests/integration/db/cierre-descarga-fechas-sql-real.test.ts": {
-      "motivo": "Otra causa. Medido en CI el 2026-11-16 (run 43973243440): DriverAdapterError: referencia a otra empresa: cierre_dia.destino_zona_id -> zona; 'fksDeOrden' (:77) devolvio una orden de OTRA empresa; el trigger misma-empresa (SL017) rechaza 'cierre_dia.destino_zona_id'. La retira SLT-178.",
-      "desde": "2026-10-22"
-    },
     "tests/integration/db/cierre-descarga-intentos-entrega-sql-real.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/cierre-descarga-intentos-entrega-sql-real.test.ts:150 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' (y las semillas de. La retira SLT-178 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/cierre-excluye-gestiones-de-escritorio.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/cierre-excluye-gestiones-de-escritorio.test.ts:91 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' antes de esta suit. La retira SLT-178 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/cierre-rechazado-aviso-dedupe.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/cierre-rechazado-aviso-dedupe.test.ts:65 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' antes de esta suit. La retira SLT-178 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/cierre-rechazado-jornada-sql-real.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/cierre-rechazado-jornada-sql-real.test.ts:65 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' antes de esta suit. La retira SLT-178 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/cierre-rechazo-tienda-aprobacion.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/cierre-rechazo-tienda-aprobacion.test.ts:762 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: corre 'pnpm run db:seed'.. La retira SLT-178 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/cierre-rechazo-tienda-sql-real.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/cierre-rechazo-tienda-sql-real.test.ts:78 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' antes de esta suit. La retira SLT-178 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/cierre-rechazo-tienda-totales.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/cierre-rechazo-tienda-totales.test.ts (su beforeAll) al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: corre 'pnpm run db:seed'.. La retira SLT-178 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/cierre-segundo-vincula-solo-lo-suyo.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/cierre-segundo-vincula-solo-lo-suyo.test.ts:60 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' antes de esta suit. La retira SLT-178 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/cierre-sin-gestion-sql-real.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/cierre-sin-gestion-sql-real.test.ts:97 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar el corpus. Corre 'pnpm run db:seed' (y las s. La retira SLT-178 (siembra propia en la transaccion).",
+      "motivo": "Otra causa (estado retirado del catalogo). Medido el 2026-11-17 en base desechable migrada con catalogos (db:seed), ya sembrado por SLT-178: Error: falta el estatus «devolucion_por_confirmar» en `order_status` (tests/integration/db/cierre-descarga-intentos-entrega-sql-real.test.ts:165); el estado lo retiro la 454 y una base nueva no lo trae. Con el estatus anadido a mano en una desechable pasa 4/4, tambien con datos de otra empresa. La retira SLT-186.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/cierre-sin-gestion-tope-sql-real.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/cierre-sin-gestion-tope-sql-real.test.ts:166 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar el corpus. Corre 'pnpm run db:seed' (y las s. La retira SLT-178 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/cierres-admin-retornables-sql-real.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/cierres-admin-retornables-sql-real.test.ts:88 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar el corpus. Corre 'pnpm run db:seed' (y las s. La retira SLT-178 (siembra propia en la transaccion).",
-      "desde": "2026-10-22"
-    },
-    "tests/integration/db/cierres-filtro-estado-sql-real.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/cierres-filtro-estado-sql-real.test.ts:84 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar. Corre 'pnpm run db:seed' (y las semillas de. La retira SLT-178 (siembra propia en la transaccion).",
+      "motivo": "Otra causa (estado retirado del catalogo). Medido el 2026-11-17 en base desechable migrada con catalogos (db:seed), ya sembrado por SLT-178: Error: falta el estatus «devolucion_por_confirmar» en `order_status` (tests/integration/db/cierre-sin-gestion-tope-sql-real.test.ts:182); el estado lo retiro la 454 y una base nueva no lo trae. Con el estatus anadido a mano en una desechable pasa 9/9, tambien con datos de otra empresa. La retira SLT-186.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/cobertura-repository.test.ts": {
@@ -290,7 +234,7 @@
       "desde": "2026-10-22"
     },
     "tests/integration/db/corte-diario-segundo-cierre-sql-real.test.ts": {
-      "motivo": "Base vacia. Medido en CI el 2026-11-16 (run 43973243440): el primer error nace en tests/integration/db/corte-diario-segundo-cierre-sql-real.test.ts:102 al leer una fila de negocio que la base migrada no trae: Error: hay DATABASE_URL pero la tabla 'orden' esta vacia: sin FKs no se puede sembrar el corpus. Corre 'pnpm run db:seed' (y las s. La retira SLT-178 (siembra propia en la transaccion).",
+      "motivo": "Otra causa (estado retirado del catalogo). Medido el 2026-11-17 en base desechable migrada con catalogos (db:seed), ya sembrado por SLT-178: Error: falta el estatus «ayuda_tienda» en `order_status` (tests/integration/db/corte-diario-segundo-cierre-sql-real.test.ts:108); el estado lo retiro la 454 y una base nueva no lo trae. Con el estatus anadido a mano en una desechable pasa 4/4, tambien con datos de otra empresa. La retira SLT-186.",
       "desde": "2026-10-22"
     },
     "tests/integration/db/costo-y-zona-api-415.test.ts": {
