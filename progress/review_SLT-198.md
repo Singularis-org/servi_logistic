@@ -74,3 +74,18 @@ Ruta ligera, fullstack, complexity low. Spec: `specs/SLT-198-zona-sin-distritos/
 
 **RECHAZADO** por B1 (solo trámite: marcar T1–T7 `[x]`). El código, los tests y la evidencia están
 correctos. Con B1 resuelto, el veredicto pasa a OK sin más revisión de código.
+
+## Vuelta 2 (acotada a 207e8a33..fa5f2772)
+
+Solo docs (`requirements.md`, `impl_SLT-198.md`, `features/SLT-198.md`); el diff no toca `lib/`, `app/`,
+`tests/` ni `e2e/`.
+
+- [x] **B1** — `## Tasks`: T1–T7 en `[x]`. Resuelto.
+- [~] **m1** — la sección pasó a «RESUELTO — R1225» y el mapa R→test dice «resuelto». Pero la línea final
+      `## Veredicto` de `progress/impl_SLT-198.md` todavía dice «R1225 … contradice el codigo; requiere
+      decision», y eso choca con la sección de arriba. **menor**, no bloquea.
+- [x] **m2** — `## Estado` al día y `## Preguntas abiertas`: «Ninguna». Resuelto.
+
+Sin regresiones: la vuelta no cambia código.
+
+**Veredicto vuelta 2: OK.**
