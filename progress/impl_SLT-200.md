@@ -50,8 +50,10 @@ Tests:
    - insignia, «Sin posición · peso», producto (mono), «Intentos», mensajero, aviso y dirección a 11 px;
    - chips, «COBRAR» y «VER DETALLE COMPLETO» a 10 px.
 
-   Después, la guía va a `text-sm font-bold` (sans) y todo lo demás a `text-xs`, con el producto en sans. Destinatario
-   y monto siguen en `text-sm`. La estructura es la misma.
+   Después, **solo por debajo de md** (`max-md:`; vuelta 2, review B1), la guía va a `max-md:text-sm max-md:font-sans`
+   y todo lo demás a `max-md:text-xs`, con el producto en sans y su icono en `max-md:size-3.5`. Destinatario y monto
+   siguen en `text-sm`. **Desde md, las clases de dev** (`8dad4167`) siguen intactas: escritorio = prod, también en
+   Novedades. La estructura es la misma.
 4. **Leyenda del mapa.**
    - Antes:
      - «Pendiente» medía 1.00:1 en oscuro;
@@ -60,7 +62,8 @@ Tests:
      - «Gestionada» salía sin que el mapa la dibujara;
      - el texto «Tú» del marcador era blanco sobre verde (2.54:1).
    - Después, cada punto lleva `ring-2 ring-foreground` (el test mide ≥ 3:1 contra el fondo en los dos temas),
-     «Gestionada» sale de la leyenda y el «Tú» va en Negro Servi (≥ 4.5:1, medido en el test).
+     «Gestionada» sale de la leyenda y el «Tú» va en Negro Servi (≥ 4.5:1, medido en el test). El hueco entre punto y
+     texto queda en `gap-1` como en dev; en el móvil, `max-md:gap-2` (review m1).
 6. **Recolección sin cámara.** Se quita `escaneo`. **Ojo:** Enter = «buscar ya» y la normalización de la URL del QR o
    de `#n` dependen de `escaneo` (`BuscadorFiltros`, `onKeyDown`). Sin él, lo tecleado o lo que la pistola escribe
    filtra igual, al momento (`debounceMs={0}`). Pero una URL de QR leída por pistola ya no se reduce al número, y
@@ -68,6 +71,9 @@ Tests:
 7. **Tooltip de la cámara.** El texto es «Buscar escaneando la guía». Usa el `Tooltip` de la app con el patrón de
    `ContactoButtons` (el disparador es el botón) y el `aria-label` «Escanear con cámara» no cambia.
    - Afecta a todas las pantallas con `escaneo`.
+   - Vuelta 2 (review m2): Base UI no enlaza el tooltip con `aria-describedby`. El botón lleva ahora
+     `aria-describedby` hacia un `sr-only` con el mismo texto (`useId`, sin dependencias), así que el lector de
+     pantalla oye «Escanear con cámara, Buscar escaneando la guía».
    - **Límite:** el Tooltip de Base UI se abre con hover o foco, no al tocar. En el teléfono la ayuda visible sigue
      siendo la línea bajo el campo, que ya nombra la cámara.
 
@@ -77,10 +83,11 @@ Tests:
 |---|---|
 | 1 | `RepartoMovil.test.tsx` «SLT-200: en el móvil el conmutador…»; idem en `RecogerModule.test.tsx` y `RecoleccionModule.test.tsx`; E2E `campoConAnchoUtil` en reparto (a) a 360/414, en Recolección a 360 y en Recoger a 360 |
 | 2 | `KpisMensajero.test.tsx` (3 casos «SLT-200» + R492 ajustado); E2E reparto (a) y (d) |
-| 3 | `PosOrderCardMosaicoLegible.test.tsx` (4 casos) |
+| 3 | `PosOrderCardMosaicoLegible.test.tsx`: 4 casos del móvil (tamaño efectivo = `max-md:` o base) y 3 de «desde md, como antes» (guía mono 12 px, 10-11 px, sin `md:` de tamaño, icono `size-3`); E2E `pwa-mensajero-botones-44` |
 | 4 | `RutaMapaInner.test.tsx` (leyenda sin «Gestionada» + anillo y contraste); `ruta-mapa-iconos.test.ts` («Tú» ≥ 4.5:1); E2E mapa (a) |
+| 5 | `tests/integration/db/demo-qa.test.ts` «SLT-200 (punto 5): las órdenes en reparto del mensajero-reposo llegan a su tarjeta con parada, peso y monto» |
 | 6 | `buscadores-con-escaneo.guardia.test.ts` («SLT-200: `/recoleccion` … sin `escaneo`»); `RecoleccionModule.test.tsx` bloque «SLT-200 — Recolección: el buscador sin cámara»; E2E «SLT-200 Recolección a 360 px» |
-| 7 | `buscador-filtros-camara-tooltip.test.tsx` (3 casos) |
+| 7 | `buscador-filtros-camara-tooltip.test.tsx` (3 casos, uno con la descripción accesible) |
 
 ## Salida
 
@@ -153,6 +160,29 @@ Lotes de 1453, 1683, 1699 y 1017 tests en verde (1 skipped). `demo-qa.test.ts` n
 lo cubre la corrida dirigida de arriba.
 
 Veredicto (punto 5): hecho. La tarjeta del mensajero-reposo trae parada, peso y cobro, por los servicios de la app.
+
+## Vuelta 2 (review `progress/review_SLT-200.md`: B1, B2, m1-m4)
+
+- B1: ver el punto 3. Rojo contra la versión anterior de la tarjeta (`d8bf6e62`):
+  `vitest run PosOrderCardMosaicoLegible` → `Tests 5 failed | 2 passed (7)`. Fallan los 3 casos de escritorio y los 2
+  que piden `max-md:`. Verde con el arreglo, junto con el tooltip, `RutaMapaInner` y `KpisMensajero`:
+  `Tests 36 passed (36)`.
+- B2: tras `next build` (base desechable, puerto 3047), `npx playwright test --project=reparto` →
+  `48 passed (2.0m)`, `E2E_EXIT=0`. Por spec:
+  - `pwa-mensajero-botones-44` 5;
+  - `pwa-mensajero-reparto` 5, `-recoger-recoleccion` 8, `-mapa` 3, `-ranking` 6;
+  - `mis-asignaciones` 4, `retiro-satelite-central` 3, `reprogramacion-liberacion` 3;
+  - `devolucion-origen`, `historial-orden`, `recibir-paquetes` y `reintentos-escalado` 2 cada uno;
+  - `asignacion-satelite`, `recepcion-satelite` y `etiquetas-lote-tienda` 1 cada uno.
+- m1: la leyenda va en `gap-1 max-md:gap-2`.
+- m2: la descripción accesible del tooltip, ver el punto 7.
+- m3: los comentarios ya no llevan el símbolo de moneda.
+- m4: la fila del punto 5 está en la tabla.
+- `git merge origin/dev`: «Already up to date». SLT-144 (#209, `ede99e23`) ya estaba en la rama.
+- Gate rápido (`con-desechable`, base `servi_slt200_desechable`):
+  - 1.ª pasada: `INIT_EXIT=1`. La guardia `ancla-de-carga` rechazó un `waitFor` del test del tooltip anclado solo a
+    un conteo. Ahora espera el texto visible (`findByText` con `:not(.sr-only)`).
+  - 2.ª pasada: `INIT_EXIT=0`.
 
 ## No verificado
 

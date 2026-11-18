@@ -5,7 +5,7 @@
 // la lista; no cambia nada). Mismo patrón que `ContactoButtons`: el disparador es el botón y el
 // `aria-label` se conserva letra por letra.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 vi.mock("@/hooks/useToast", () => ({
   useToast: () => ({
@@ -46,7 +46,9 @@ describe("SLT-200 — tooltip del botón de cámara del buscador", () => {
 
     fireEvent.focus(screen.getByRole("button", { name: "Escanear con cámara" }));
 
-    await waitFor(() => expect(screen.getAllByText("Buscar escaneando la guía")).toHaveLength(2));
+    expect(
+      await screen.findByText("Buscar escaneando la guía", { selector: ":not(.sr-only)" }),
+    ).toBeInTheDocument();
   });
 
   it("el tooltip no reemplaza el nombre accesible y llega al lector como descripción", () => {
