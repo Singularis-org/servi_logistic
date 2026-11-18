@@ -334,12 +334,13 @@ jobs:
       # SLT-188 (R1173, R1174): filas que cada shard dejo fuera de su transaccion. Nombra shard,
       # organizacion, tabla y conteo, o dice «0 filas fuera de su transacción». Un shard sin informe
       # cuenta como fallo. Node puro (Node 24 ejecuta el `.ts` quitandole los tipos; sin pnpm).
-      # MODO INFORME (T2): mide sin poner rojo. Pasa a `rojo` en T6 solo si el informe queda en 0.
+      # MODO ROJO (T6, activado tras medir 0 en los 3 shards del PR #222, run 44359606182): una fila
+      # fuera de su transaccion, un shard sin informe o una comprobacion ciega ponen `gate-completo` en rojo.
       - name: Filas fuera de su transaccion (SLT-188)
         if: always() && needs.cambios.outputs.solo_docs != 'true'
         shell: bash
         env:
-          MODO_FILAS: informe
+          MODO_FILAS: rojo
         run: |
           ESTADO=0
           node --no-warnings scripts/filas-fuera-de-tx.ts unir informes 3 --modo "$MODO_FILAS" > filas-fuera-de-tx.log 2>&1 || ESTADO=$?
