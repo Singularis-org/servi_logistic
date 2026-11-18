@@ -13,10 +13,11 @@ import {
   clienteConSavepoint,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
+  type FksDeOrden,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // BORRAR UNA TARIFA / UNA ZONA EN USO: LA FK TIENE QUE LLEGAR COMO «esta en uso», NO COMO UN 500.
@@ -70,25 +71,32 @@ function datosDeTarifa(zonaId: string) {
 
 describeSiHayBase("borrar tarifa/zona EN USO: la FK real, no la fabricada", () => {
   let prisma: PrismaClient;
-  let FKS: Awaited<ReturnType<typeof fksDeOrden>>;
+  // SLT-180 (R1042): tienda, zona y maestro se SIEMBRAN en la tx de cada caso (`sembrar`); ya no
+  // se leen «la primera orden» ni «el primer maestro» de la base.
+  let FKS: FksDeOrden | null = null;
   let MAESTRO: Actor;
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    FKS = await fksDeOrden(prisma);
-    // ⚠️ SIN `if (!FKS) return;`. Un test de integracion que se rinde en silencio reporta
-    // `passed` sin haber comprobado nada, y eso ya paso en este repo. Si no hay con que sembrar,
-    // esto REVIENTA y se ve.
-    if (FKS === null) {
-      throw new Error("hay DATABASE_URL pero `orden` esta vacia: corre `pnpm run db:seed` antes.");
-    }
-    const maestro = await prisma.usuario.findFirst({
-      where: { rol: { value: "maestro" } },
-      select: { id: true },
-    });
-    if (maestro === null) throw new Error("no hay usuario con rol `maestro` en esta base");
-    MAESTRO = { usuarioId: maestro.id, rol: "maestro" };
   });
+
+  /**
+   * SLT-180 (R1044): siembra propia del caso + control positivo que nombra la fila. Sin
+   * `if (!FKS) return;`: si la siembra no llega, el caso REVIENTA aqui y se ve.
+   */
+  async function sembrar(tx: TxDeTest): Promise<void> {
+    FKS = await crearFksDeOrden(tx);
+    const maestro = await crearUsuarioDePrueba(tx, "maestro");
+    MAESTRO = { usuarioId: maestro.id, rol: "maestro" };
+    expect(
+      await tx.usuario.count({ where: { id: { in: [FKS.tiendaId, maestro.id] } } }),
+      "SLT-180: la tienda y el maestro sembrados no estan en la base",
+    ).toBe(2);
+    expect(
+      await tx.zona.count({ where: { id: FKS.zonaId } }),
+      "SLT-180: la zona sembrada no esta en la base",
+    ).toBe(1);
+  }
 
   afterAll(async () => {
     await prisma?.$disconnect();
@@ -124,13 +132,12 @@ describeSiHayBase("borrar tarifa/zona EN USO: la FK real, no la fabricada", () =
 
   /**
    * `cierre_detail` apuntando a `tarifaId`: es la FK `cierre_detail_tarifa_id_fkey` (RESTRICT),
-   * la tarifa CONGELADA en un cierre. Todo lo demas (cierre, orden) cuelga de filas ya
-   * existentes en la base, y todo revierte con la transaccion del test.
+   * la tarifa CONGELADA en un cierre. Todo lo demas (cierre, orden, mensajero) cuelga de filas
+   * sembradas en la tx del caso (SLT-180), y todo revierte con la transaccion del test.
    */
   async function congelarTarifaEnCierre(tx: TxDeTest, tarifaId: string): Promise<void> {
     const ordenId = await sembrarOrdenEnZona(tx, FKS!.zonaId);
-    const mensajero = await tx.usuario.findFirst({ select: { id: true } });
-    if (mensajero === null) throw new Error("no hay ni un usuario en esta base");
+    const mensajero = await crearUsuarioDePrueba(tx, "mensajero");
     const cierre = await tx.cierreDia.create({
       data: {
         mensajeroId: mensajero.id,
@@ -167,6 +174,7 @@ describeSiHayBase("borrar tarifa/zona EN USO: la FK real, no la fabricada", () =
   it("⭑ ZONA con una orden: `referenced`, la zona SIGUE y no hay registro de un borrado que no ocurrio", async () => {
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrar(tx);
       const zonaId = await sembrarZona(tx, "usada");
       await sembrarOrdenEnZona(tx, zonaId);
 
@@ -192,6 +200,7 @@ describeSiHayBase("borrar tarifa/zona EN USO: la FK real, no la fabricada", () =
   it("⭑ ZONA: el service lo traduce a `conflict` (lo que la pantalla lee como «esta en uso»)", async () => {
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrar(tx);
       const zonaId = await sembrarZona(tx, "svc");
       await sembrarOrdenEnZona(tx, zonaId);
 
@@ -212,6 +221,7 @@ describeSiHayBase("borrar tarifa/zona EN USO: la FK real, no la fabricada", () =
   it("ZONA LIBRE: sigue borrandose (`ok`) — el arreglo no convirtio todo en `referenced`", async () => {
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrar(tx);
       const zonaId = await sembrarZona(tx, "libre");
 
       const repo = new ZonaRepository(clienteConSavepoint(tx));
@@ -232,6 +242,7 @@ describeSiHayBase("borrar tarifa/zona EN USO: la FK real, no la fabricada", () =
   it("ZONA inexistente -> `not_found` (y NO `referenced`)", async () => {
     const salida = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrar(tx);
       const repo = new ZonaRepository(clienteConSavepoint(tx));
       return repo.hardDelete(randomUUID(), MAESTRO.usuarioId);
     });
@@ -245,6 +256,7 @@ describeSiHayBase("borrar tarifa/zona EN USO: la FK real, no la fabricada", () =
   it("⭑ TARIFA congelada en un cierre: `referenced`, la tarifa SIGUE y no hay registro", async () => {
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrar(tx);
       const zonaId = await sembrarZona(tx, "tar");
       const tarifa = await tx.tarifa.create({
         data: datosDeTarifa(zonaId),
@@ -272,6 +284,7 @@ describeSiHayBase("borrar tarifa/zona EN USO: la FK real, no la fabricada", () =
   it("⭑ TARIFA: el service lo traduce a `conflict`", async () => {
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrar(tx);
       const zonaId = await sembrarZona(tx, "tarsvc");
       const tarifa = await tx.tarifa.create({
         data: datosDeTarifa(zonaId),
@@ -293,6 +306,7 @@ describeSiHayBase("borrar tarifa/zona EN USO: la FK real, no la fabricada", () =
   it("TARIFA LIBRE: sigue borrandose (`ok`) — el arreglo no convirtio todo en `referenced`", async () => {
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrar(tx);
       const zonaId = await sembrarZona(tx, "tarlibre");
       const tarifa = await tx.tarifa.create({
         data: datosDeTarifa(zonaId),
@@ -322,6 +336,7 @@ describeSiHayBase("borrar tarifa/zona EN USO: la FK real, no la fabricada", () =
   it("TARIFA inexistente -> `not_found` (el P2025 SI sobrevive al adapter)", async () => {
     const salida = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrar(tx);
       const repo = new TarifaRepository(clienteConSavepoint(tx));
       return repo.hardDelete(randomUUID(), MAESTRO.usuarioId);
     });
@@ -335,6 +350,7 @@ describeSiHayBase("borrar tarifa/zona EN USO: la FK real, no la fabricada", () =
   it("⭑ el error REAL de la FK no es un `P2003`: la comprobacion ingenua NO lo caza", async () => {
     const crudo = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrar(tx);
       const zonaId = await sembrarZona(tx, "crudo");
       await sembrarOrdenEnZona(tx, zonaId);
 

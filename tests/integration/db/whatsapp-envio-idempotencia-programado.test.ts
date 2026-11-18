@@ -2,7 +2,16 @@ import { randomUUID } from "node:crypto";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 import { WhatsappEjecucionRepository } from "@/lib/repositories/WhatsappEjecucionRepository";
-import { HAY_BASE_DE_DATOS, crearPrismaDeTest, enTransaccionRevertida, serializarEscriturasReales } from "./_postgres-real";
+import {
+  HAY_BASE_DE_DATOS,
+  bajoLockDeEscrituraReal,
+  crearPrismaDeTest,
+  enTransaccionRevertida,
+  serializarEscriturasReales,
+  type TxDeTest,
+} from "./_postgres-real";
+import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
+import { datosDeOrganizacionDePrueba, fijarEmpresa } from "@/tests/fabricas/organizaciones";
 import { crearEnvio, crearPlantilla } from "./_whatsapp-envios-474";
 
 // Ficha 474 (T6.2, R23) — COMO MUCHO UN mensaje por (dia CR, destinatario, envio), TAMBIEN con
@@ -15,35 +24,53 @@ const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 describeSiHayBase("474/R23 — idempotencia de la ejecucion programada", () => {
   let a: PrismaClient;
   let b: PrismaClient;
-  const sembrado: { envioId?: string; plantillaId?: string; usuarios: string[] } = { usuarios: [] };
+  const sembrado: { envioId?: string; plantillaId?: string; empresaId?: string; usuarios: string[] } = {
+    usuarios: [],
+  };
 
   beforeAll(async () => {
     a = crearPrismaDeTest();
     b = crearPrismaDeTest();
-    // Siembra COMMITEADA (la ven las dos conexiones). Los destinatarios son DOS usuarios QUE YA
-    // EXISTEN (los mas antiguos): crear y borrar usuarios commiteados abre una carrera con los
-    // archivos que eligen «cualquier usuario» en su `beforeAll` (p. ej. `cierre-bloqueo-nv-sql-real`
-    // toma `usuario.findMany({ take: 3 })`): si eligen uno de estos y este archivo lo borra, su FK
-    // revienta. Aqui solo se commitean y se borran filas de tablas de la 474.
-    const existentes = await a.$queryRawUnsafe<{ id: string }[]>(
-      `SELECT "id" FROM "usuario" ORDER BY "created_at", "id" LIMIT 2`,
-    );
-    if (existentes.length < 2) throw new Error("474: hacen falta dos usuarios en la base de test");
-    sembrado.usuarios = existentes.map((u) => u.id);
+    // Siembra COMMITEADA (la ven las dos conexiones). SLT-183: los destinatarios son DOS usuarios
+    // SEMBRADOS aqui, con su empresa (R1103); antes eran «los dos mas antiguos» de la base, y la
+    // recien migrada no tiene ninguno. Son nuevos y con claves propias: ningun otro archivo los
+    // elige, asi que borrarlos en el `afterAll` no le revienta una FK a nadie.
+    // La empresa se crea DESPUES del lock de la 227: un INSERT de `organizacion` antes de el choca
+    // con el DDL de otro archivo (40P01, medido).
     await a.$transaction(async (tx) => {
       await serializarEscriturasReales(tx);
+      const empresa = await tx.organizacion.create({ data: datosDeOrganizacionDePrueba(), select: { id: true } });
+      sembrado.empresaId = empresa.id;
+      await fijarEmpresa(tx, empresa.id);
+      for (let i = 0; i < 2; i++) {
+        sembrado.usuarios.push((await crearUsuarioDePrueba(tx as unknown as TxDeTest, "mensajero")).id);
+      }
       const p = await crearPlantilla(tx);
       sembrado.plantillaId = p.id;
       sembrado.envioId = await crearEnvio(tx, { plantillaId: p.id, nombre: `474 R23 ${randomUUID()}`, usuarioIds: sembrado.usuarios });
     });
+    // Control positivo (R1104): los dos destinatarios sembrados llegaron a la base.
+    if ((await a.usuario.count({ where: { id: { in: sembrado.usuarios } } })) !== 2) {
+      throw new Error("SLT-183: los dos destinatarios sembrados no estan en la base");
+    }
   });
 
   afterAll(async () => {
     await a.$executeRawUnsafe(`DELETE FROM "whatsapp_envio_ejecucion" WHERE "envio_id" = $1`, sembrado.envioId);
     await a.$executeRawUnsafe(`DELETE FROM "whatsapp_envio" WHERE "id" = $1`, sembrado.envioId);
     await a.$executeRawUnsafe(`DELETE FROM "plantilla_mensaje" WHERE "id" = $1`, sembrado.plantillaId);
+    // SLT-183 (R1103): los usuarios y la empresa sembrados commiteados se van; se comprueba contando.
+    // Bajo el lock de la 227, como la siembra.
+    await bajoLockDeEscrituraReal(async () => {
+      await a.usuario.deleteMany({ where: { id: { in: sembrado.usuarios } } });
+      if (sembrado.empresaId !== undefined) await a.organizacion.deleteMany({ where: { id: sembrado.empresaId } });
+    });
+    const quedan =
+      (await a.usuario.count({ where: { id: { in: sembrado.usuarios } } })) +
+      (sembrado.empresaId === undefined ? 0 : await a.organizacion.count({ where: { id: sembrado.empresaId } }));
     await a.$disconnect();
     await b.$disconnect();
+    if (quedan !== 0) throw new Error(`SLT-183: ${quedan} filas sembradas siguen en la base`);
   });
 
   it("⭑ dos ejecuciones CONCURRENTES del mismo dia -> 1 ejecucion y 1 entrega por usuario", async () => {

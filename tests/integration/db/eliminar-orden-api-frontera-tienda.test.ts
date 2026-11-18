@@ -8,9 +8,9 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 
 /**
  * FICHA 320 — LA FRONTERA MULTI-TENANT DEL BORRADO POR API KEY, EJECUTADA CONTRA POSTGRES.
@@ -43,28 +43,12 @@ const SUFIJO = `320-${Date.now().toString(36)}`;
 
 describeSiHayBase("ficha 320 — una API key NO puede borrar ordenes de otra tienda", () => {
   let prisma: PrismaClient;
-  let fks: NonNullable<Awaited<ReturnType<typeof fksDeOrden>>>;
-  let tiendas: { id: string }[];
   let estatus: { eliminable: string; noEliminable: string };
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const encontradas = await fksDeOrden(prisma);
-    if (encontradas === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar. " +
-          "Corre `pnpm run db:seed` antes de esta suite.",
-      );
-    }
-    fks = encontradas;
-
-    tiendas = await prisma.usuario.findMany({ select: { id: true }, take: 2 });
-    if (tiendas.length < 2) {
-      throw new Error(
-        "hacen falta al menos DOS usuarios en la base: uno es la tienda dueña de la key y el " +
-          "otro la tienda ajena que demuestra que el `where` filtra por tienda.",
-      );
-    }
+    // SLT-180 (R1042): las DOS tiendas y la zona se SIEMBRAN en la tx del caso; ya no se leen
+    // «la primera orden» ni «los dos primeros usuarios» de la base.
 
     // `en_bodega_central` es el estado que la ficha 319 hizo eliminable (el que deja la
     // generacion de guia); `en_reparto` es el NO eliminable mas claro: el paquete va con el
@@ -93,7 +77,19 @@ describeSiHayBase("ficha 320 — una API key NO puede borrar ordenes de otra tie
   it("R3/R4/R7: borra SOLO la propia y eliminable; la ajena y la `en_reparto` siguen vivas", async () => {
     const medido = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const [tiendaPropia, tiendaAjena] = tiendas;
+      // SLT-180 (R1044): una es la tienda dueña de la key y la otra la tienda ajena que demuestra
+      // que el `where` filtra por tienda. Control positivo: las dos y la zona estan en la base.
+      const fks = await crearFksDeOrden(tx);
+      const tiendaPropia = { id: fks.tiendaId };
+      const tiendaAjena = { id: (await crearUsuarioDePrueba(tx, "adminTienda")).id };
+      expect(
+        await tx.usuario.count({ where: { id: { in: [tiendaPropia.id, tiendaAjena.id] } } }),
+        "SLT-180: las dos tiendas sembradas no estan en la base",
+      ).toBe(2);
+      expect(
+        await tx.zona.count({ where: { id: fks.zonaId } }),
+        "SLT-180: la zona sembrada no esta en la base",
+      ).toBe(1);
 
       const sembrar = async (clave: string, tiendaId: string, estatusId: string) =>
         (

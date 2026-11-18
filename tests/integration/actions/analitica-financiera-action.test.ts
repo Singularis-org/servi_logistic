@@ -21,9 +21,10 @@ import {
 } from "@/lib/types/analitica-financiera";
 import {
   crearPrismaDeTest,
-  enTransaccionRevertida,
+  enTransaccionRevertida as enTransaccionRevertidaSinContexto,
   HAY_BASE_DE_DATOS,
 } from "../db/_postgres-real";
+import { crearUsuarioDePrueba } from "../db/_fixtures/orden-minima";
 
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
@@ -86,7 +87,7 @@ const TIENDA: Actor = { usuarioId: "u-tienda", rol: "adminTienda", zonaId: null 
 
 type Tx = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0];
 
-/** Ids reales de la base: solo se usan para satisfacer las FKs de las cinco tablas. */
+/** Ids sembrados en la tx del caso: solo se usan para satisfacer las FKs de las cinco tablas. */
 interface Contexto {
   readonly tiendaId: string;
   readonly mensajeroId: string;
@@ -258,12 +259,39 @@ async function sembrarCierreDia(
 beforeAll(async () => {
   if (!HAY_BASE_DE_DATOS) return;
   prisma = crearPrismaDeTest();
-  const usuarios = await prisma.usuario.findMany({ take: 2, select: { id: true } });
-  const zona = await prisma.zona.findFirst({ select: { id: true } });
-  if (usuarios.length >= 2 && zona) {
-    contexto = { tiendaId: usuarios[0].id, mensajeroId: usuarios[1].id, zonaId: zona.id };
-  }
 });
+
+/**
+ * SLT-182: la tienda, el mensajero y la zona del contexto se SIEMBRAN en la tx revertida de CADA
+ * caso; antes se leian «los dos primeros usuarios» y «la primera zona» de la base, y la base recien
+ * migrada no tiene ninguno. Lanza si la siembra no llega a la base (control positivo, R1084).
+ */
+async function sembrarContexto(tx: Tx): Promise<Contexto> {
+  const tienda = await crearUsuarioDePrueba(tx, "adminTienda");
+  const mensajero = await crearUsuarioDePrueba(tx, "mensajero");
+  const zona = await tx.zona.create({
+    data: { nombre: `Zona SLT-182 ${tienda.id}`, sinpeNumero: "80000000", sinpeNombre: "Titular de Prueba" },
+    select: { id: true },
+  });
+  const usuarios = await tx.usuario.count({ where: { id: { in: [tienda.id, mensajero.id] } } });
+  const zonas = await tx.zona.count({ where: { id: zona.id } });
+  if (usuarios !== 2 || zonas !== 1) {
+    throw new Error(`SLT-182: la siembra del contexto no esta en la base (usuarios ${usuarios}/2, zona ${zonas}/1)`);
+  }
+  return { tiendaId: tienda.id, mensajeroId: mensajero.id, zonaId: zona.id };
+}
+
+/** `enTransaccionRevertida` con el contexto del caso sembrado DENTRO de la tx (y retirado al salir). */
+function enTransaccionRevertida<T>(cliente: PrismaClient, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  return enTransaccionRevertidaSinContexto(cliente, async (tx) => {
+    contexto = await sembrarContexto(tx);
+    try {
+      return await fn(tx);
+    } finally {
+      contexto = null;
+    }
+  });
+}
 
 afterAll(async () => {
   if (prisma) await prisma.$disconnect();
@@ -279,9 +307,11 @@ function ctx(): Contexto {
 }
 
 describe.skipIf(!HAY_BASE_DE_DATOS)("F.1-F.6 · la 127 contra Postgres, sin mocks de Prisma", () => {
-  it("la base de test trae el contexto minimo (dos usuarios y una zona)", () => {
-    expect(contexto).not.toBeNull();
-    expect(ctx().tiendaId).not.toBe(ctx().mensajeroId);
+  it("la base de test trae el contexto minimo (dos usuarios y una zona)", async () => {
+    await enTransaccionRevertida(prisma, async () => {
+      expect(contexto).not.toBeNull();
+      expect(ctx().tiendaId).not.toBe(ctx().mensajeroId);
+    });
   });
 
   /* ---------------------------------------------------------------------- */

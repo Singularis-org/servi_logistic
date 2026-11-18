@@ -13,6 +13,7 @@ import type { CierresDeLaCuentaResult } from "@/lib/types/wallet-filtros";
 import { ORIGENES_FALSOS } from "@/tests/fixtures/origenes-falsos";
 
 import { sembrarPersonas461 } from "./_fixtures/personas-461";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
@@ -54,10 +55,13 @@ vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabric
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
 async function crearMensajero(tx: TxDeTest, nombre: string, apellido: string, segundo: string | null = null) {
-  const plantilla = await tx.usuario.findFirstOrThrow({
-    where: { rol: { value: "mensajero" } },
-    select: { rolId: true, tipoIdentificacionId: true },
-  });
+  // SLT-184 (R1122): rol y tipo de identificacion por su clave; antes se copiaban de «el primer
+  // mensajero» de la base.
+  const rol = await tx.rol.findUnique({ where: { value: "mensajero" }, select: { id: true } });
+  if (rol === null) throw new Error("falta el rol «mensajero» en el catalogo: aplica las migraciones");
+  const tipo = await tx.tipoIdentificacion.findUnique({ where: { value: "cedula" }, select: { id: true } });
+  if (tipo === null) throw new Error("falta el tipo de identificacion «cedula»: aplica las migraciones");
+  const plantilla = { rolId: rol.id, tipoIdentificacionId: tipo.id };
   const sufijo = Math.random().toString(36).slice(2, 10);
   return tx.usuario.create({
     data: {
@@ -78,7 +82,9 @@ async function crearMensajero(tx: TxDeTest, nombre: string, apellido: string, se
 
 async function sembrar(tx: TxDeTest) {
   const p = await sembrarPersonas461(tx);
-  const zona = await tx.zona.findFirstOrThrow({ select: { id: true } });
+  // SLT-184 (R1122/R1124): zona propia, sembrada en la tx (antes «la primera zona» de la base).
+  const zona = { id: (await crearFksDeOrden(tx)).zonaId };
+  expect(await tx.zona.count({ where: { id: zona.id } }), "SLT-184: la zona sembrada no esta en la base").toBe(1);
   // Con segundo apellido, como 11 de los 22 mensajeros de produccion: el rotulo lo lleva entero.
   const ana = await crearMensajero(tx, "Anacleta", "Zúñiga458", "Mora458");
   const beto = await crearMensajero(tx, "Bertoldo", "Quirós458");
@@ -114,7 +120,7 @@ async function sembrar(tx: TxDeTest) {
       { mensajeroId: beto.id, tipo: "devengo", categoria: "pago_devengado", monto: "2000.00", origenTipo: "cierre_dia", origenId: cB.id },
     ],
   });
-  return { p, ana, beto, cA, cB };
+  return { p, ana, beto, cA, cB, zonaId: zona.id };
 }
 
 function filtros(tx: TxDeTest, actor: unknown) {
@@ -192,7 +198,7 @@ describeSiHayBase("458-A R10–R12 — el selector de cierre y el WHERE con la c
   it("m4: 33.000 cierres que casan la búsqueda no rompen el selector (tienda y mensajero)", async () => {
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       const e = await sembrar(tx);
-      const zona = await tx.zona.findFirstOrThrow({ select: { id: true } });
+      const zona = { id: e.zonaId }; // SLT-184: la zona sembrada por `sembrar`
       await tx.$executeRaw`
         INSERT INTO "cierre_dia" ("id", "mensajero_id", "estado", "destino_tipo", "destino_zona_id", "solicitado_at", "updated_at")
         SELECT gen_random_uuid()::text, ${e.ana.id}, 'aprobado'::"cierre_estado", 'bodega_satelite'::"cierre_destino_tipo",

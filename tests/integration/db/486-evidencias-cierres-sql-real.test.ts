@@ -12,10 +12,10 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTestConEspia,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
   type EventoSqlDeTest,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 /**
@@ -79,17 +79,16 @@ describeSiHayBase("486 — evidencias de una gestion en los cierres, contra Post
   beforeAll(async () => {
     ({ prisma, eventos } = crearPrismaDeTestConEspia());
 
-    const fks = await fksDeOrden(prisma);
-    if (fks === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar el corpus. " +
-          "Corre `pnpm run db:seed` antes de esta suite.",
-      );
+    // SLT-180 (R1042): ya no se leen «la primera orden» ni «el primer usuario» de la base. De la
+    // base solo se leen catalogos por su clave; zona, tienda y mensajero se siembran en la tx.
+    const catalogo = {
+      cedula: await prisma.tipoIdentificacion.findUnique({ where: { value: "cedula" }, select: { id: true } }),
+      adminTienda: await prisma.rol.findUnique({ where: { value: "adminTienda" }, select: { id: true } }),
+      mensajero: await prisma.rol.findUnique({ where: { value: "mensajero" }, select: { id: true } }),
+    };
+    for (const [clave, fila] of Object.entries(catalogo)) {
+      if (fila === null) throw new Error(`falta «${clave}» en el catalogo: corre \`pnpm run db:seed\`.`);
     }
-    const plantilla = await prisma.usuario.findFirst({
-      select: { tipoIdentificacionId: true, rolId: true, passwordHash: true },
-    });
-    if (plantilla === null) throw new Error("la tabla `usuario` esta vacia: corre las semillas.");
     const estatus = await prisma.orderStatus.findFirst({
       where: { value: "en_reparto" },
       select: { id: true },
@@ -99,25 +98,35 @@ describeSiHayBase("486 — evidencias de una gestion en los cierres, contra Post
     conCorpus = (fn) =>
       enTransaccionRevertida(prisma, async (tx) => {
         await serializarEscriturasReales(tx);
+        // SLT-180 (R1044): siembra propia + control positivo que nombra la fila.
+        const fks = await crearFksDeOrden(tx);
+        expect(
+          await tx.zona.count({ where: { id: fks.zonaId } }),
+          "SLT-180: la zona sembrada no esta en la base",
+        ).toBe(1);
 
-        const nuevoUsuario = async (clave: string, nombre: string) =>
+        const nuevoUsuario = async (clave: string, nombre: string, rolId: string) =>
           (
             await tx.usuario.create({
               data: {
                 nombre,
                 email: `u-${clave}-${SUFIJO}@ejemplo.test`,
                 telefono: "88880000",
-                passwordHash: plantilla.passwordHash,
+                passwordHash: "x",
                 cedula: `C-${clave}-${SUFIJO}`,
-                tipoIdentificacionId: plantilla.tipoIdentificacionId,
-                rolId: plantilla.rolId,
+                tipoIdentificacionId: catalogo.cedula!.id,
+                rolId,
               },
               select: { id: true },
             })
           ).id;
 
-        const tienda = await nuevoUsuario("tienda", "Tienda 486");
-        const mensajero = await nuevoUsuario("mensajero", "Mensajero 486");
+        const tienda = await nuevoUsuario("tienda", "Tienda 486", catalogo.adminTienda!.id);
+        const mensajero = await nuevoUsuario("mensajero", "Mensajero 486", catalogo.mensajero!.id);
+        expect(
+          await tx.usuario.count({ where: { id: { in: [tienda, mensajero] } } }),
+          "SLT-180: la tienda y el mensajero sembrados no estan en la base",
+        ).toBe(2);
 
         const tarifa = await tx.tarifa.create({
           data: {

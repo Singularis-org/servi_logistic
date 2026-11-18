@@ -8,7 +8,9 @@ import {
   enTransaccionRevertida,
   serializarEscriturasReales,
   type FksDeOrden,
+  type TxDeTest,
 } from "./_postgres-real";
+import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 
 // REGRESION — los entrantes de WhatsApp desde Costa Rica se perdian en silencio.
 //
@@ -81,26 +83,8 @@ const CASOS: Caso[] = [
 
 describeSiHayBase("resolucion del entrante de WhatsApp por telefono (Postgres real)", () => {
   let prisma: PrismaClient;
-  let fks: FksDeOrden | null;
-  let mensajeroId: string | null;
-  let organizacionId: string | null;
-
-  beforeAll(async () => {
+  beforeAll(() => {
     prisma = crearPrismaDeTest();
-    // SLT-42: las FKs, el mensajero y la empresa de la transaccion salen de LA MISMA empresa. Con
-    // las FKs de cualquier orden + «el primer usuario» y la empresa nueva que crea `enTransaccionRevertida`, una
-    // base con mas de una empresa cae en «referencia a otra empresa» (trigger de SL-17) antes de
-    // llegar al SQL que este archivo prueba.
-    const orden = await prisma.orden.findFirst({
-      select: { organizacionId: true, estatusId: true, tiendaId: true, zonaId: true, provinciaId: true, cantonId: true },
-    });
-    organizacionId = orden?.organizacionId ?? null;
-    fks = orden;
-    const usuario =
-      organizacionId === null
-        ? null
-        : await prisma.usuario.findFirst({ where: { organizacionId }, select: { id: true } });
-    mensajeroId = usuario?.id ?? null;
   });
 
   afterAll(async () => {
@@ -108,21 +92,37 @@ describeSiHayBase("resolucion del entrante de WhatsApp por telefono (Postgres re
   });
 
   /**
+   * SLT-184 (R1122/R1124): tienda, zona y mensajero propios, creados en la tx del caso y en SU
+   * empresa (la que crea `enTransaccionRevertida`), con su control positivo. Antes salian de «la
+   * primera orden» y «el primer usuario» de la base: con la base vacia no habia de donde, y con
+   * otra empresa en la base las FK podian ser de ella (trigger de SL-17).
+   */
+  async function sembrarFks(tx: TxDeTest): Promise<{ base: FksDeOrden; men: string }> {
+    const base = await crearFksDeOrden(tx);
+    const men = (await crearUsuarioDePrueba(tx, "mensajero")).id;
+    expect(
+      await tx.usuario.count({ where: { id: { in: [base.tiendaId, men] } } }),
+      "SLT-184: la tienda o el mensajero sembrados no estan en la base",
+    ).toBe(2);
+    expect(
+      await tx.zona.count({ where: { id: base.zonaId } }),
+      "SLT-184: la zona sembrada no esta en la base",
+    ).toBe(1);
+    return { base, men };
+  }
+
+  /**
    * Siembra UNA orden con el telefono dado y resuelve el entrante contra el repositorio REAL.
-   * Devuelve el id sembrado y lo que resolvio la consulta, y revierte todo al salir.
+   * Devuelve el id sembrado, el mensajero sembrado y lo que resolvio la consulta; revierte todo al salir.
    */
   async function sembrarYResolver(
     guardado: string,
     entrante: string,
     opciones: { borrada?: boolean; sinMensajero?: boolean; reglas?: ReglasTelefono } = {},
   ) {
-    const base = fks;
-    const men = mensajeroId;
-    const empresa = organizacionId;
-    if (base === null || men === null || empresa === null) throw new Error("faltan FKs de orden o usuario");
-
     return enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      const { base, men } = await sembrarFks(tx);
       const creada = await tx.orden.create({
         data: {
           numGuia: null, // nullable y @unique: dejarlo null evita chocar con guias reales
@@ -144,20 +144,25 @@ describeSiHayBase("resolucion del entrante de WhatsApp por telefono (Postgres re
 
       const repo = new ChatConversacionRepository(tx as unknown as PrismaClient);
       const resolucion = await repo.resolverOrdenActivaPorNumero(entrante, opciones.reglas ?? TEL_CR);
-      return { ordenId: creada.id, resolucion };
-    }, { organizacionId: empresa });
+      return { ordenId: creada.id, resolucion, mensajeroId: men };
+    });
   }
 
-  it("hay FKs de orden y un usuario del que colgar el mensajero", () => {
+  it("hay FKs de orden y un usuario del que colgar el mensajero", async () => {
     // Contrapeso de todo el archivo: sin esto, `sembrarYResolver` lanzaria y los casos de abajo
-    // fallarian por el motivo equivocado. Si la base esta vacia hay que sembrarla, no ignorarlo.
-    expect(fks).not.toBeNull();
-    expect(mensajeroId).not.toBeNull();
+    // fallarian por el motivo equivocado. SLT-184: se siembran en la tx y se CUENTAN.
+    const sembradas = await enTransaccionRevertida(prisma, async (tx) => {
+      await serializarEscriturasReales(tx);
+      const { base, men } = await sembrarFks(tx);
+      return { base, men };
+    });
+    expect(sembradas.base).not.toBeNull();
+    expect(sembradas.men).not.toBeNull();
   });
 
   for (const caso of CASOS) {
     it(`resuelve la orden con el telefono guardado como ${caso.nombre} (${caso.guardado})`, async () => {
-      const { ordenId, resolucion } = await sembrarYResolver(caso.guardado, caso.entrante, {
+      const { ordenId, resolucion, mensajeroId } = await sembrarYResolver(caso.guardado, caso.entrante, {
         reglas: caso.reglas,
       });
 
