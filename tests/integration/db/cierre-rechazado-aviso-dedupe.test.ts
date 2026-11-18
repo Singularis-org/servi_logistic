@@ -5,14 +5,17 @@ import { NotificacionRepository } from "@/lib/repositories/NotificacionRepositor
 import { CierreDiaRepository } from "@/lib/repositories/CierreDiaRepository";
 import type { ITarifaVigenteRepository } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
 import { emitirCierreDiaRechazado } from "@/lib/notificaciones/emitir";
+import { conEmpresa } from "@/lib/db/contexto-empresa";
+import { conAislamientoPorEmpresa } from "@/lib/db/extension-empresa";
+import { crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones";
 
 import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 
 /**
  * FICHA 412 (T7.1, R7-R10) — **DOS RECHAZOS SON DOS AVISOS, Y EL MISMO RECHAZO ES UNO.**
@@ -54,46 +57,58 @@ const RECHAZO_0940 = "2026-08-22T15:40:00.000Z";
 
 describeSiHayBase("412/R7-R10 · la dedupe del aviso de rechazo, contra Postgres real", () => {
   let prisma: PrismaClient;
-  let fks: NonNullable<Awaited<ReturnType<typeof fksDeOrden>>>;
+  let fks: Awaited<ReturnType<typeof crearFksDeOrden>>;
   let mensajeroA: string;
   let mensajeroB: string;
+  let organizacionId: string;
 
+  /**
+   * SLT-178 (R1003): la siembra de este archivo es CONFIRMADA, no de una tx revertida, porque R9
+   * escribe con dos conexiones concurrentes y la AUTOCOMPROBACION lee fuera de una transaccion. Es
+   * una empresa propia con su tienda, su zona y los dos mensajeros, creados aqui (nunca leidos de la
+   * base), y `afterAll` la borra entera y cuenta que no quede ni una fila. Los casos con
+   * `enTransaccionRevertida` corren con ESTA empresa (`{ organizacionId }`).
+   */
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const encontradas = await fksDeOrden(prisma);
-    if (encontradas === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar. " +
-          "Corre `pnpm run db:seed` antes de esta suite.",
-      );
-    }
-    fks = encontradas;
-    const usuarios = await prisma.usuario.findMany({ select: { id: true }, take: 10 });
-    if (usuarios.length < 2) {
-      throw new Error("hacen falta al menos DOS usuarios en la base para el caso de R10.");
-    }
-    // Los mensajeros del caso parten de CERO avisos de este evento: contar filas sobre alguien que
-    // ya arrastra las suyas mediria otra cosa. Si no hay dos limpios, se falla RUIDOSAMENTE.
-    const conAviso = await prisma.notificacion.findMany({
-      where: {
-        evento: "cierre_dia_rechazado",
-        destinatarioUsuarioId: { in: usuarios.map((u) => u.id) },
-      },
-      select: { destinatarioUsuarioId: true },
+    organizacionId = (await crearOrganizacion(prisma, { nombre: "SLT-178 412 dedupe" })).id;
+    await prisma.$transaction(async (tx) => {
+      await fijarEmpresa(tx, organizacionId);
+      fks = await crearFksDeOrden(tx);
+      mensajeroA = (await crearUsuarioDePrueba(tx, "mensajero")).id;
+      mensajeroB = (await crearUsuarioDePrueba(tx, "mensajero")).id;
     });
-    const sucios = new Set<string | null>(conAviso.map((n) => n.destinatarioUsuarioId));
-    const limpios = usuarios.filter((u) => !sucios.has(u.id));
-    if (limpios.length < 2) {
-      throw new Error(
-        "hacen falta DOS usuarios sin avisos previos de `cierre_dia_rechazado` para poder contar filas.",
-      );
-    }
-    mensajeroA = limpios[0].id;
-    mensajeroB = limpios[1].id;
+    const usuarios = await prisma.usuario.count({
+      where: { id: { in: [fks.tiendaId, mensajeroA, mensajeroB] }, organizacionId },
+    });
+    if (usuarios !== 3) throw new Error(`la siembra confirmada dejo ${usuarios} usuarios (tienda, A, B), no 3`);
+    const zonas = await prisma.zona.count({ where: { id: fks.zonaId, organizacionId } });
+    if (zonas !== 1) throw new Error(`la zona sembrada no esta en la base (${zonas})`);
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    try {
+      const usuarios = [fks?.tiendaId, mensajeroA, mensajeroB].filter((u): u is string => !!u);
+      const suyas = await prisma.notificacion.findMany({
+        where: { destinatarioUsuarioId: { in: usuarios } },
+        select: { id: true },
+      });
+      await prisma.notificacionLectura.deleteMany({ where: { notificacionId: { in: suyas.map((n) => n.id) } } });
+      await prisma.notificacion.deleteMany({ where: { id: { in: suyas.map((n) => n.id) } } });
+      await prisma.cierreDia.deleteMany({ where: { mensajeroId: { in: usuarios } } });
+      await prisma.usuario.deleteMany({ where: { id: { in: usuarios } } });
+      if (fks) await prisma.zona.deleteMany({ where: { id: fks.zonaId } });
+      if (organizacionId) await prisma.organizacion.deleteMany({ where: { id: organizacionId } });
+      // R1003: ni una fila de la siembra confirmada sobrevive al archivo.
+      const quedan =
+        (await prisma.usuario.count({ where: { id: { in: usuarios } } })) +
+        (await prisma.cierreDia.count({ where: { mensajeroId: { in: usuarios } } })) +
+        (await prisma.notificacion.count({ where: { destinatarioUsuarioId: { in: usuarios } } })) +
+        (await prisma.organizacion.count({ where: { id: organizacionId } }));
+      if (quedan !== 0) throw new Error(`la siembra confirmada dejo ${quedan} filas en la base`);
+    } finally {
+      await prisma.$disconnect();
+    }
   });
 
   type Tx = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0];
@@ -194,7 +209,7 @@ describeSiHayBase("412/R7-R10 · la dedupe del aviso de rechazo, contra Postgres
         lecturas,
         instantes: [primerInstante, segundoInstante],
       };
-    });
+    }, { organizacionId });
 
     // El escenario es el que se dice que es: la re-solicitud funciono y REUSO la fila.
     expect(medido.reenviado).toBe(true);
@@ -252,7 +267,7 @@ describeSiHayBase("412/R7-R10 · la dedupe del aviso de rechazo, contra Postgres
         where: { evento: "cierre_dia_rechazado", destinatarioUsuarioId: mensajeroA },
       });
       return { primera, repetida, filas };
-    });
+    }, { organizacionId });
 
     expect(medido.primera).toBe(1);
     expect(medido.repetida).toBe(0);
@@ -270,8 +285,12 @@ describeSiHayBase("412/R7-R10 · la dedupe del aviso de rechazo, contra Postgres
     // `P2002` dentro de una transaccion la ABORTA entera en Postgres, asi que no se puede medir
     // desde dentro de una. Se escribe de verdad, sobre dos clientes distintos, y se LIMPIA en el
     // `finally` pase lo que pase.
-    const clienteA = crearPrismaDeTest();
-    const clienteB = crearPrismaDeTest();
+    // SLT-178: los dos clientes son los de la app (extension de empresa + `conEmpresa`), como en
+    // produccion: sin empresa en contexto la fila del aviso no tendria `organizacion_id`.
+    const baseA = crearPrismaDeTest();
+    const baseB = crearPrismaDeTest();
+    const clienteA = conAislamientoPorEmpresa(baseA, async () => null);
+    const clienteB = conAislamientoPorEmpresa(baseB, async () => null);
     let cierreId: string | null = null;
     try {
       const cierre = await prisma.cierreDia.create({
@@ -282,6 +301,7 @@ describeSiHayBase("412/R7-R10 · la dedupe del aviso de rechazo, contra Postgres
           destinoZonaId: fks.zonaId,
           resueltoAt: new Date(RECHAZO_0900),
           motivoRechazo: "Faltan evidencias.",
+          organizacionId,
         },
         select: { id: true, resueltoAt: true },
       });
@@ -297,8 +317,8 @@ describeSiHayBase("412/R7-R10 · la dedupe del aviso de rechazo, contra Postgres
 
       // Ninguna de las dos propaga: el `P2002` lo absorbe `crear` devolviendo `null`.
       const creadas = await Promise.all([
-        emitirCierreDiaRechazado(new NotificacionRepository(clienteA), ctx),
-        emitirCierreDiaRechazado(new NotificacionRepository(clienteB), ctx),
+        conEmpresa(organizacionId, () => emitirCierreDiaRechazado(new NotificacionRepository(clienteA), ctx)),
+        conEmpresa(organizacionId, () => emitirCierreDiaRechazado(new NotificacionRepository(clienteB), ctx)),
       ]);
 
       const filas = await prisma.notificacion.count({
@@ -311,8 +331,8 @@ describeSiHayBase("412/R7-R10 · la dedupe del aviso de rechazo, contra Postgres
       // ⭑ Y EN LA TABLA: UNA sola fila. Lo decidio el indice, no un `if`.
       expect(filas).toBe(1);
     } finally {
-      await clienteA.$disconnect();
-      await clienteB.$disconnect();
+      await baseA.$disconnect();
+      await baseB.$disconnect();
       if (cierreId !== null) {
         // Limpieza EXPLICITA: esta es la unica parte del archivo que escribe fuera de una
         // transaccion revertida, y la base local es COMPARTIDA entre worktrees. Una tabla que
@@ -375,7 +395,7 @@ describeSiHayBase("412/R7-R10 · la dedupe del aviso de rechazo, contra Postgres
         select: { destinatarioUsuarioId: true, entidadId: true },
       });
       return { filas, cierreA: cierreA.id, cierreB: cierreB.id };
-    });
+    }, { organizacionId });
 
     expect(medido.filas).toHaveLength(2);
     expect(medido.filas.map((f) => f.destinatarioUsuarioId).sort()).toEqual(
@@ -400,7 +420,7 @@ describeSiHayBase("412/R7-R10 · la dedupe del aviso de rechazo, contra Postgres
       return tx.notificacion.count({
         where: { evento: "cierre_dia_rechazado", destinatarioUsuarioId: mensajeroA },
       });
-    });
+    }, { organizacionId });
 
     expect(vacio).toBe(0);
   });
