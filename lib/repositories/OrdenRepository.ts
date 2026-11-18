@@ -959,6 +959,9 @@ const SELECT_CIERRE_A_RESOLVER = {
 // (y cualquiera nuevo) no puedan divergir.
 const NUM_GUIA_GENERATOR = "siguiente_num_guia()";
 
+// SLT-197 (R974): senal interna para revertir la transaccion del retiro cuando el lote no cuadra.
+class RetiroSateliteConflicto extends Error {}
+
 // Feature 33/R11/R18: estado de ORIGEN de la recepcion en satelite. La escritura
 // guardada (`recibirEnSatelite`) solo transiciona una orden que sigue en este
 // estado (guardia por estado de origen en el propio UPDATE, patron feature 17/36).
@@ -4109,6 +4112,63 @@ export class OrdenRepository implements IOrdenRepository {
       );
       return ordenIds.length;
     });
+  }
+
+  /**
+   * SLT-197 (R971-R974, arista #73): retira un lote de ordenes del estante de una satelite a la
+   * central (`en_bodega_satelite -> en_ruta_bodega_central`), todo o nada.
+   *
+   * La guarda de estado vive en el `WHERE` (lectura y `updateMany` con el mismo filtro): si alguna
+   * orden ya no esta en `en_bodega_satelite` o esta borrada, el conteo no cuadra, la transaccion se
+   * revierte y se devuelve `"conflicto"` sin filas cambiadas ni historial (R974). La orden queda sin
+   * mensajero, sin `asignado_at` y sin dia de reparto (R972), y conserva zona, tienda, guia, remision
+   * y monto: no se tocan.
+   */
+  async retirarSateliteLote(
+    ordenIds: string[],
+    destinoEstatusId: string,
+    historial: HistorialContexto,
+  ): Promise<"ok" | "conflicto"> {
+    if (ordenIds.length === 0) return "ok";
+    const where = {
+      id: { in: ordenIds },
+      deletedAt: null,
+      estatus: { value: "en_bodega_satelite" },
+    };
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        const origenRows = await tx.orden.findMany({
+          where,
+          select: { id: true, estatusId: true },
+        });
+        const result = await tx.orden.updateMany({
+          where,
+          data: {
+            estatusId: destinoEstatusId,
+            mensajeroAsignadoId: null,
+            asignadoAt: null,
+            fechaReparto: null,
+          },
+        });
+        if (origenRows.length !== ordenIds.length || result.count !== ordenIds.length) {
+          throw new RetiroSateliteConflicto();
+        }
+        await appendCambioEstado(
+          tx,
+          origenRows.map((r) => ({
+            ordenId: r.id,
+            estatusOrigenId: r.estatusId,
+            estatusDestinoId: destinoEstatusId,
+            actorUsuarioId: historial.actorUsuarioId,
+            origenTipo: historial.origenTipo, // ajuste_estado
+          })),
+        );
+      });
+      return "ok";
+    } catch (e) {
+      if (e instanceof RetiroSateliteConflicto) return "conflicto";
+      throw e;
+    }
   }
 
   // --- Feature 32: etiqueta de guia (READ derivado, R1/R3) ---

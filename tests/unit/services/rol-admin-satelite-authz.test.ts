@@ -118,6 +118,7 @@ function buildOrdenRepo(overrides: Partial<IOrdenRepository> = {}): IOrdenReposi
     findMensajerosNoAsignablesPorEstado: vi.fn(async () => new Set<string>()),
     findMensajeroIdsValidosByZona: vi.fn().mockResolvedValue(new Set()),
     rutearBodegaSateliteLote: vi.fn().mockResolvedValue(0),
+    retirarSateliteLote: vi.fn().mockResolvedValue("ok"),
     // Feature 41: bloqueo derivado (por defecto nadie bloqueado / bodega libre).
     findMensajerosBloqueadosPorCierres: vi.fn(async (): Promise<Set<string>> => new Set()),
     // Feature 271: el contador N/V y el detalle del bloqueo son parte del puerto.
