@@ -3,6 +3,7 @@
 import { LayoutGrid, Rows3 } from "lucide-react";
 
 import { SegmentedToggle } from "@/components/shared/SegmentedToggle";
+import { cn } from "@/lib/utils";
 
 // Rama ux (pedido humano): conmutador de la VISTA de las cards de "En reparto / por
 // gestionar". Dos presentaciones de los MISMOS datos, sin filtrar ni reordenar nada:
@@ -21,6 +22,8 @@ export type VistaCards = "mosaico" | "detalle";
 export interface VistaCardsToggleProps {
   vista: VistaCards;
   onVistaChange: (vista: VistaCards) => void;
+  /** Clases extra del grupo, para que cada pantalla lo coloque en su fila (SLT-200: Reparto). */
+  className?: string;
 }
 
 /**
@@ -30,19 +33,27 @@ export interface VistaCardsToggleProps {
  */
 export const VISTA_TOGGLE_TACTIL = "max-md:[&>button]:h-11 max-md:[&>button]:px-4";
 
+/**
+ * SLT-200: cuando el conmutador va DENTRO de la barra de `BuscadorFiltros` (`trasFiltros`: Reparto,
+ * Recoger, Recolección), en el móvil baja a su propia línea y sus dos botones se reparten el ancho.
+ * Si no, «Filtros» y el conmutador se comían la fila y el campo se quedaba en la lupa: su
+ * `flex-1 min-w-0` nunca fuerza el salto de línea. Desde md, como antes.
+ */
+export const CONMUTADOR_EN_SU_LINEA_MOVIL = "max-md:basis-full max-md:[&>button]:flex-1";
+
 const OPCIONES = [
   { valor: "mosaico" as const, etiqueta: "Mosaico", Icono: LayoutGrid },
   { valor: "detalle" as const, etiqueta: "Detalle", Icono: Rows3 },
 ];
 
-export function VistaCardsToggle({ vista, onVistaChange }: VistaCardsToggleProps) {
+export function VistaCardsToggle({ vista, onVistaChange, className }: VistaCardsToggleProps) {
   return (
     <SegmentedToggle
       options={OPCIONES}
       valor={vista}
       onChange={onVistaChange}
       ariaLabel="Vista de las órdenes"
-      className={VISTA_TOGGLE_TACTIL}
+      className={cn(VISTA_TOGGLE_TACTIL, className)}
     />
   );
 }

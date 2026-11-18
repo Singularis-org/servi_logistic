@@ -210,3 +210,25 @@ export async function tactil(control: Locator): Promise<void> {
   expect(caja!.width).toBeGreaterThanOrEqual(44);
   expect(caja!.height).toBeGreaterThanOrEqual(44);
 }
+
+/** SLT-200: ancho mínimo útil del campo de búsqueda en el móvil (una guía de 8 cifras y la lupa, holgado). */
+export const ANCHO_UTIL_CAMPO = 160;
+
+/**
+ * SLT-200 «PWA Reparto: buscador, KPI, tarjeta y leyenda del mapa tras Preview» (punto 1): en el
+ * móvil el campo de búsqueda se quedaba en la lupa (Preview, 2026-11-18) porque «Filtros» y el
+ * conmutador Mosaico/Detalle se comían la fila. El campo de la barra mide un ancho útil y el
+ * conmutador va en otra línea, debajo, sin dejar la barra.
+ */
+export async function campoConAnchoUtil(page: Page): Promise<void> {
+  const barra = page
+    .locator(".sticky")
+    .filter({ has: page.getByRole("searchbox", { name: "Buscar guías" }) })
+    .last();
+  const campo = await barra.getByRole("searchbox", { name: "Buscar guías" }).boundingBox();
+  const conmutador = await barra.getByRole("group", { name: "Vista de las órdenes" }).boundingBox();
+  expect(campo, "el campo no tiene caja (¿está visible?)").not.toBeNull();
+  expect(conmutador, "el conmutador no tiene caja (¿está visible?)").not.toBeNull();
+  expect(campo!.width, `ancho del campo: ${campo!.width}`).toBeGreaterThanOrEqual(ANCHO_UTIL_CAMPO);
+  expect(conmutador!.y).toBeGreaterThanOrEqual(campo!.y + campo!.height);
+}

@@ -127,15 +127,15 @@ describe("KpisMensajero — 2 × 2 en el móvil (SLT-156 R502)", () => {
     expect(clases).not.toContain("grid-cols-1");
   });
 
-  it("cada cifra va en una sola línea (R492): columna fija, 14 px en el móvil y 24 desde md", () => {
+  it("cada cifra va en una sola línea (R492): columna fija, 20 px en el móvil y 24 desde md", () => {
     montar();
     for (const cifra of ["3", "7", norm(formatMonto(12500)), norm(formatMonto(48000))]) {
-      const clases = screen.getByText(cifra).closest("span.col-span-2")?.className.split(/\s+/) ?? [];
-      // SLT-163 (R492): un importe no se parte; para que quepa en la tarjeta del móvil se achica.
+      const clases = celdaCifra(cifra).className.split(/\s+/);
+      // SLT-163 (R492): un importe no se parte. SLT-200: la cifra vuelve a los 20 px del canvas (D8).
       expect(clases).toEqual(
-        expect.arrayContaining(["shrink-0", "whitespace-nowrap", "tabular-nums", "text-sm", "md:text-2xl"]),
+        expect.arrayContaining(["shrink-0", "whitespace-nowrap", "tabular-nums", "text-xl", "md:text-2xl"]),
       );
-      for (const parte of ["wrap-anywhere", "whitespace-normal", "text-base", "text-xl", "truncate"]) {
+      for (const parte of ["wrap-anywhere", "whitespace-normal", "text-sm", "truncate"]) {
         expect(clases).not.toContain(parte);
       }
     }
@@ -144,6 +144,68 @@ describe("KpisMensajero — 2 × 2 en el móvil (SLT-156 R502)", () => {
       const propias = screen.getByText(importe).className.split(/\s+/);
       expect(propias).toContain("whitespace-nowrap");
       expect(propias).not.toContain("whitespace-normal");
+    }
+  });
+});
+
+/** La celda de la rejilla que lleva la cifra (el `span` con la columna fija que envuelve al contador). */
+function celdaCifra(texto: string): HTMLElement {
+  const celda = screen.getByText(texto).closest<HTMLElement>("[data-kpi-cifra]");
+  if (!celda) throw new Error(`«${texto}» no está en una celda de cifra`);
+  return celda;
+}
+
+/** El contenido de la tarjeta (la rejilla icono · rótulo · cifra) de la cifra dada. */
+function rejillaDe(texto: string): HTMLElement {
+  return celdaCifra(texto).parentElement as HTMLElement;
+}
+
+// SLT-200 «PWA Reparto: buscador, KPI, tarjeta y leyenda del mapa tras Preview» (punto 2). En Preview
+// la cifra medía 14 px y caía en una fila propia bajo el icono. El canvas (D8) la pone a 20 px a la
+// DERECHA del icono, bajo el rótulo. A 360 px una tarjeta deja ~126 px de contenido y ~82 al lado del
+// icono: cabe «₡99.999» (7 caracteres) a 20 px, no un importe de ocho cifras (119 px a 20 px, medido
+// con Archivo 600). Por eso la cifra va al lado del icono cuando cabe, y si no, baja a la fila de
+// abajo a todo el ancho, SIN achicarse hasta los 12 caracteres. Las dos tarjetas de una fila deciden
+// juntas, para que sus cifras queden a la misma altura. La medida real a 360 px es del E2E.
+describe("KpisMensajero — cifra de 20 px a la derecha del icono (SLT-200, canvas D8)", () => {
+  it("con cifras cortas, el icono abarca las dos filas y la cifra va bajo el rótulo, a su derecha", () => {
+    montar();
+    for (const cifra of ["3", "7", norm(formatMonto(12500)), norm(formatMonto(48000))]) {
+      const rejilla = rejillaDe(cifra);
+      expect(rejilla.dataset.disposicion).toBe("al-lado");
+      const [icono, rotulo, celda] = Array.from(rejilla.children) as HTMLElement[];
+      expect(icono!.className.split(/\s+/)).toContain("row-span-2");
+      expect(rotulo!.className.split(/\s+/)).toContain("self-end");
+      const clases = celda!.className.split(/\s+/);
+      expect(clases).toContain("col-start-2");
+      expect(clases).not.toContain("col-span-2");
+      expect(clases).toContain("text-xl");
+    }
+  });
+
+  it("un importe de ocho cifras (₡12.345.678) baja bajo el icono, a todo el ancho y a 20 px; su vecina baja con él", () => {
+    render(<KpisMensajero kpis={{ pendientes: 2, entregadas: 0, porCobrar: 12_345_678, totalACobrar: 5000 }} />);
+    const largo = norm(formatMonto(12_345_678));
+    const corto = norm(formatMonto(5000));
+    for (const cifra of [largo, corto]) {
+      expect(rejillaDe(cifra).dataset.disposicion).toBe("apilada");
+      const clases = celdaCifra(cifra).className.split(/\s+/);
+      expect(clases).toEqual(expect.arrayContaining(["col-span-2", "text-xl", "md:col-start-2", "md:text-2xl"]));
+    }
+    // La otra fila (conteos) no se entera: sigue al lado del icono.
+    expect(rejillaDe("2").dataset.disposicion).toBe("al-lado");
+  });
+
+  it("solo por encima de 11 caracteres la cifra se achica, y nunca por debajo de 14 px", () => {
+    render(
+      <KpisMensajero kpis={{ pendientes: 2, entregadas: 0, porCobrar: 100_003_999, totalACobrar: 100_003_999.5 }} />,
+    );
+    expect(celdaCifra(norm(formatMonto(100_003_999))).className.split(/\s+/)).toContain("text-lg");
+    expect(celdaCifra(norm(formatMonto(100_003_999.5))).className.split(/\s+/)).toContain("text-sm");
+    for (const cifra of [norm(formatMonto(100_003_999)), norm(formatMonto(100_003_999.5))]) {
+      for (const menor of ["text-xs", "text-[10px]", "text-[11px]"]) {
+        expect(celdaCifra(cifra).className.split(/\s+/)).not.toContain(menor);
+      }
     }
   });
 });
