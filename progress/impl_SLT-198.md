@@ -92,4 +92,4 @@ integracion del flujo se llevo ~500).
 
 ## Veredicto
 
-Hecho: R1225 (conteo de retenidas al vaciar) contradice el codigo; requiere decision.
+Hecho. R1225 resuelto por el leader (74a6bb02): al vaciar no hay «retenidas»; el test comprueba `ordenesReconciliadas = 0`.
