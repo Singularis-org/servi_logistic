@@ -7,6 +7,8 @@ import {
   enTransaccionRevertida,
   serializarEscriturasReales,
 } from "../db/_postgres-real";
+import { crearFksDeOrden } from "../db/_fixtures/orden-minima";
+import type { FksDeOrden } from "../db/_postgres-real";
 import { ChatMensajeRepository } from "@/lib/repositories/ChatMensajeRepository";
 import type { ChatMediaAutorizada } from "@/lib/interfaces/repositories/IChatMensajeRepository";
 
@@ -70,8 +72,11 @@ describeSiHayBase("321 / R29-R12 — findMediaParaLectorHistorico contra Postgre
     const otroMensajero = await crearUsuario(tx, "Mensajero ajeno 321");
 
     // La orden es del PRIMER mensajero. El lector del histórico no es ninguno de los dos.
-    const ordenAjenaId = await crearOrden(tx, tienda, mensajeroDuenio, null);
-    const ordenBorradaId = await crearOrden(tx, tienda, mensajeroDuenio, new Date());
+    // SLT-184 (R1122/R1124): zona propia, sembrada en la tx, con su control positivo.
+    const fks = await crearFksDeOrden(tx);
+    expect(await tx.zona.count({ where: { id: fks.zonaId } }), "SLT-184: la zona sembrada no esta en la base").toBe(1);
+    const ordenAjenaId = await crearOrden(tx, fks, tienda, mensajeroDuenio, null);
+    const ordenBorradaId = await crearOrden(tx, fks, tienda, mensajeroDuenio, new Date());
 
     const mediaIdSembrado = `wamid.media.${randomUUID()}`;
     const mensajeId = await sembrarMensajeConAdjunto(
@@ -154,34 +159,28 @@ describeSiHayBase("321 / R29-R12 — findMediaParaLectorHistorico contra Postgre
     return id;
   }
 
-  /** Una orden NUEVA del test, con las FK obligatorias tomadas de los catalogos. */
+  /**
+   * Una orden NUEVA del test. SLT-184 (R1122): sus FK (zona, estatus, geografia) son las que
+   * `crearFksDeOrden` sembro en la tx; antes salian de «la primera zona» de la base.
+   */
   async function crearOrden(
     tx: Tx,
+    fks: FksDeOrden,
     tiendaId: string,
     mensajeroId: string,
     deletedAt: Date | null,
   ): Promise<string> {
-    const canton = await tx.canton.findFirst({ select: { id: true, provinciaId: true } });
-    const zona = await tx.zona.findFirst({ select: { id: true } });
-    const estatus = await tx.orderStatus.findFirst({ select: { id: true } });
-    if (!canton || !zona || !estatus) {
-      throw new Error(
-        "La base de pruebas no tiene catalogos de geografia/estatus sembrados: sin ellos no se " +
-          "puede crear la orden propia del test (y sin orden no hay hilo ni adjunto que medir). " +
-          "Corre `pnpm db:seed`. Este test NO se salta en ese caso a proposito.",
-      );
-    }
     const sufijo = randomUUID().slice(0, 12);
     const { id } = await tx.orden.create({
       data: {
         numRemision: `t321-${sufijo}`,
-        estatusId: estatus.id,
+        estatusId: fks.estatusId,
         destinatario: "Destinatario de prueba",
         telefonoDest: "00000000",
         tiendaId,
-        zonaId: zona.id,
-        provinciaId: canton.provinciaId,
-        cantonId: canton.id,
+        zonaId: fks.zonaId,
+        provinciaId: fks.provinciaId,
+        cantonId: fks.cantonId,
         producto: "Producto",
         mensajeroAsignadoId: mensajeroId,
         deletedAt,

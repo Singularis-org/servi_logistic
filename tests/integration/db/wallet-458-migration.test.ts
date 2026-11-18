@@ -16,6 +16,7 @@ import {
   enTransaccionRevertida,
   etiquetasDeEnum,
   serializarEscriturasReales,
+  type TxDeTest,
 } from "./_postgres-real";
 import { sembrarPersonas461 } from "./_fixtures/personas-461";
 import { soloEjecutable } from "./_fixtures/sql-ejecutable";
@@ -76,6 +77,19 @@ const VALORES_458 = {
   historial_accion_tipo: ["cobro_rechazo_tienda_anulado", "egreso_caja_anulado"],
 } as const;
 
+/**
+ * SLT-195 (mismo patron que `tarifa-zona-borrado-fk-real.test.ts`, SLT-186): el SQLSTATE de un borrado
+ * bloqueado por una FK `ON DELETE RESTRICT` depende de la version de Postgres. En 18+ es `23001`
+ * (restrict_violation); en <= 17 —el de CI— la RESTRICT se reporta como cualquier FK, `23503`.
+ */
+async function versionDePostgres(tx: TxDeTest): Promise<number> {
+  const [{ version }] = await tx.$queryRawUnsafe<{ version: number }[]>(
+    `SELECT current_setting('server_version_num')::int AS version`,
+  );
+  return version;
+}
+const sqlstateRestrict = (version: number): string => (version >= 180000 ? "23001" : "23503");
+
 describeSiHayBase("458-B/TB.2–TB.3 — las migraciones de la wallet contra Postgres", () => {
   let prisma: PrismaClient;
 
@@ -87,7 +101,7 @@ describeSiHayBase("458-B/TB.2–TB.3 — las migraciones de la wallet contra Pos
     await prisma?.$disconnect();
   });
 
-  it("(a) los catalogos son EXACTAMENTE los seeds, con los seis valores de la 458 AL FINAL, valor a valor", async () => {
+  it("(a) los catalogos son EXACTAMENTE los seeds, con los seis valores de la 458 en las posiciones que les dio la 458-B", async () => {
     const caja = await etiquetasDeEnum(prisma, "wallet_movimiento_categoria");
     const tienda = await etiquetasDeEnum(prisma, "wallet_tienda_movimiento_categoria");
     const origen = await etiquetasDeEnum(prisma, "wallet_origen_tipo");
@@ -98,11 +112,28 @@ describeSiHayBase("458-B/TB.2–TB.3 — las migraciones de la wallet contra Pos
     expect([...origen].sort()).toEqual([...WALLET_ORIGEN_TIPO_SEED].sort());
     expect([...tipos].sort()).toEqual([...HISTORIAL_ACCION_TIPOS].sort());
     expect([...entidades].sort()).toEqual([...HISTORIAL_ACCION_ENTIDADES].sort());
-    expect(caja.slice(-2)).toEqual([...VALORES_458.wallet_movimiento_categoria]);
-    expect(tienda.slice(-2)).toEqual([...VALORES_458.wallet_tienda_movimiento_categoria]);
-    expect(tipos.slice(-2)).toEqual([...VALORES_458.historial_accion_tipo]);
     // Antes (457): 25 / 16 / 14 / 63 / 24. Despues (458-B): 27 / 18 / 14 / 65 / 24.
-    expect([caja.length, tienda.length, origen.length, tipos.length, entidades.length]).toEqual([27, 18, 14, 65, 24]);
+    // SLT-187: migraciones POSTERIORES anadieron valores al FINAL (p. ej. `egreso_reverso_fulfillment`),
+    // asi que la huella de la 458 ya no es «lo ultimo del enum»: es que sus dos valores son los dos
+    // ultimos de los primeros 27 / 18 / 65. Si una migracion posterior insertara un valor ANTES
+    // (`ADD VALUE ... BEFORE`), estas posiciones se correrian y el caso se pondria rojo.
+    expect(caja.slice(25, 27), "SLT-187: posiciones 26-27 de wallet_movimiento_categoria").toEqual([
+      ...VALORES_458.wallet_movimiento_categoria,
+    ]);
+    expect(tienda.slice(16, 18), "SLT-187: posiciones 17-18 de wallet_tienda_movimiento_categoria").toEqual([
+      ...VALORES_458.wallet_tienda_movimiento_categoria,
+    ]);
+    expect(tipos.slice(63, 65), "SLT-187: posiciones 64-65 de historial_accion_tipo").toEqual([
+      ...VALORES_458.historial_accion_tipo,
+    ]);
+    // Y los dos enums que la 458 NO toca no recibieron ninguno de sus seis valores.
+    const seis: string[] = Object.values(VALORES_458).flat();
+    expect(origen.filter((v) => seis.includes(v)), "wallet_origen_tipo no los recibe").toEqual([]);
+    expect(entidades.filter((v) => seis.includes(v)), "historial_accion_entidad no los recibe").toEqual([]);
+    // Los tamanos ya no son los de la 458-B (crecen con cada migracion posterior): solo no bajan.
+    expect(caja.length).toBeGreaterThanOrEqual(27);
+    expect(tienda.length).toBeGreaterThanOrEqual(18);
+    expect(tipos.length).toBeGreaterThanOrEqual(65);
     const up1 = soloEjecutable(UP_1);
     expect(up1.match(/ADD VALUE IF NOT EXISTS/g)).toHaveLength(6);
     expect(up1).not.toMatch(/CHECK|CREATE TABLE|UPDATE|DELETE|INSERT/);
@@ -212,6 +243,7 @@ describeSiHayBase("458-B/TB.2–TB.3 — las migraciones de la wallet contra Pos
       const borrarMovAnotado = await intentar(tx, `DELETE FROM "wallet_movimiento" WHERE "id" = $1`, mov.id);
       const borrarMovConComprobante = await intentar(tx, `DELETE FROM "wallet_movimiento" WHERE "id" = $1`, mov2.id);
       const borrarSubidor = await intentar(tx, `DELETE FROM "usuario" WHERE "id" = $1`, p.maestro.usuarioId);
+      const version = await versionDePostgres(tx);
       const unicosComprobante = await tx.$queryRawUnsafe<{ indexname: string }[]>(
         `SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'wallet_comprobante'
            AND indexdef LIKE 'CREATE UNIQUE INDEX%' ORDER BY 1`,
@@ -232,6 +264,7 @@ describeSiHayBase("458-B/TB.2–TB.3 — las migraciones de la wallet contra Pos
         borrarMovAnotado,
         borrarMovConComprobante,
         borrarSubidor,
+        version,
         unicosComprobante: unicosComprobante.map((u) => u.indexname),
       };
     });
@@ -247,7 +280,9 @@ describeSiHayBase("458-B/TB.2–TB.3 — las migraciones de la wallet contra Pos
     expect(m.primero).toBeNull();
     expect(m.segundo).toBe("23505"); // R79: ni se reemplaza ni se suma otro
     expect(m.deLaTienda).toBeNull();
-    expect([m.borrarMovAnotado, m.borrarMovConComprobante, m.borrarSubidor]).toEqual(["23001", "23001", "23001"]);
+    // FK RESTRICT: `23001` en Postgres 18+, `23503` en <= 17 (CI). Ver `sqlstateRestrict`.
+    const restrict = sqlstateRestrict(m.version);
+    expect([m.borrarMovAnotado, m.borrarMovConComprobante, m.borrarSubidor]).toEqual([restrict, restrict, restrict]);
     expect(m.unicosComprobante).toEqual([
       "wallet_comprobante_caja_movimiento_id_key",
       "wallet_comprobante_liquidacion_pago_id_key",
@@ -283,12 +318,14 @@ describeSiHayBase("458-B/TB.2–TB.3 — las migraciones de la wallet contra Pos
       const borrarCobro = await intentar(tx, `DELETE FROM "rechazo_tienda_cobro" WHERE "id" = $1`, cobro.id);
       const borrarAnulador = await intentar(tx, `DELETE FROM "usuario" WHERE "id" = $1`, esc.maestro.usuarioId);
       const estado = await tx.rechazoTiendaCobro.findUniqueOrThrow({ where: { id: cobro.id }, select: { estado: true } });
-      return { vacia, primera, segunda, borrarCobro, borrarAnulador, estado: estado.estado };
+      return { vacia, primera, segunda, borrarCobro, borrarAnulador, estado: estado.estado, version: await versionDePostgres(tx) };
     });
     expect(m.vacia).toBe("23514");
     expect(m.primera).toBeNull();
     expect(m.segunda).toBe("23505");
-    expect([m.borrarCobro, m.borrarAnulador]).toEqual(["23001", "23001"]);
+    // FK RESTRICT: `23001` en Postgres 18+, `23503` en <= 17 (CI). Ver `sqlstateRestrict`.
+    const restrict = sqlstateRestrict(m.version);
+    expect([m.borrarCobro, m.borrarAnulador]).toEqual([restrict, restrict]);
     // R73: la constancia no toca el cobro; su estado sigue `aprobado`.
     expect(m.estado).toBe("aprobado");
   }, 300_000);

@@ -116,7 +116,16 @@ describeSiHayBase("454/R29 — señales de gestion pendiente y ayuda en los lect
       await e.tx.orden.update({ where: { id: ids.I }, data: { estatusId: e.id("entregado") } });
 
       // El escenario HERMANO: otra tienda, otra zona, con su propia gestion pendiente.
-      const otro = await crearEscenario(e.mundo, e.tx, e.cliente);
+      // SLT-185: el hermano vive en la MISMA empresa (la de la tx), que solo admite UNA zona central
+      // (`(organizacion_id, es_central)` unico): reusa la del escenario en vez de sembrar otra.
+      const centralDelEscenario = e.mundo.centralZonaId;
+      const otro = await crearEscenario(
+        { ...e.mundo, sembrarCentral: false, centralZonaId: centralDelEscenario },
+        e.tx,
+        e.cliente,
+      );
+      // Control positivo (R1146): una sola central en la empresa del escenario, la sembrada.
+      expect(await e.tx.zona.count({ where: { esCentral: true } }), "SLT-185: una central en la empresa").toBe(1);
       const ajena = await sembrar(otro);
       await otro.gestionarOk(ajena, "novedad");
 

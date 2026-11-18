@@ -10,6 +10,7 @@ import {
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -67,15 +68,15 @@ describeSiHayBase("473/T2 — corregir la recepcion de una satelite (Postgres re
   }
 
   /** Dos usuarios DISTINTOS: quien marco y quien corrige. Sin dos, R2 no se puede afirmar. */
+  // SLT-182: los dos se SIEMBRAN en la tx del caso; antes se leian «los dos primeros usuarios» de la
+  // base, y la base recien migrada no tiene ninguno.
   async function dosUsuarios(tx: TxDeTest): Promise<[string, string]> {
-    const filas = await tx.usuario.findMany({ select: { id: true }, take: 2, orderBy: { id: "asc" } });
-    if (filas.length < 2) {
-      throw new Error(
-        "hay DATABASE_URL pero `usuario` tiene menos de 2 filas: R2 necesita a quien marco y a " +
-          "quien corrige. Corre `pnpm run db:seed` antes de esta suite.",
-      );
-    }
-    return [filas[0].id, filas[1].id];
+    const marcador = await crearUsuarioDePrueba(tx, "maestro");
+    const corrector = await crearUsuarioDePrueba(tx, "admin");
+    // Control positivo (R1084): los dos llegaron a la base y son distintos.
+    const sembrados = await tx.usuario.count({ where: { id: { in: [marcador.id, corrector.id] } } });
+    if (sembrados !== 2) throw new Error("SLT-182: quien marca y quien corrige, sembrados, no estan en la base");
+    return [marcador.id, corrector.id];
   }
 
   async function sembrarConsolidacion(

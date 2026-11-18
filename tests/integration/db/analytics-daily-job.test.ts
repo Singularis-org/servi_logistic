@@ -28,6 +28,7 @@ import {
 } from "./_semilla-rollup";
 
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { ORDER_STATUS_SEED } from "@/lib/types/order-status";
 /**
  * Feature 124 / T6 — la suite de INTEGRACION del job de agregacion diaria contra el Postgres
  * local (`localhost:5432/servi_logistic`). Cubre R1, R7, R10-R20, R22-R31, R34, R35, R45, R46 y R49.
@@ -319,7 +320,32 @@ describeSiHayBase("job de agregacion diaria contra Postgres (feature 124)", () =
     });
 
     it("el estatus HUERFANO del catalogo no descarta la orden ni hace fallar la corrida (R45)", async () => {
-      await conBase(async (tx, base) => {
+      await conBase(async (tx, baseSinHuerfano) => {
+        // SLT-186: la migracion de la 155 solo borra la fila si nadie la referencia, asi que una base
+        // con historial la conserva huerfana y una base NUEVA (la de CI) no la tiene. El caso siembra
+        // la fila dentro de ESTA transaccion revertida si falta (patron `asegurarRetirados` de la 454)
+        // y nunca la confirma: el resultado no depende de si existia antes de empezar.
+        const HUERFANO = "en_fulfillment";
+        await tx.$executeRaw`INSERT INTO "order_status" ("id", "value")
+          SELECT gen_random_uuid()::text, ${HUERFANO}
+           WHERE NOT EXISTS (SELECT 1 FROM "order_status" WHERE "value" = ${HUERFANO})`;
+        const filaHuerfana = await tx.orderStatus.findUnique({
+          where: { value: HUERFANO },
+          select: { id: true },
+        });
+        // Control positivo (R1153): la fila EXISTE en `order_status` y NO esta en el seed vigente.
+        expect(filaHuerfana, "SLT-186: la fila huerfana debe existir en order_status").not.toBeNull();
+        expect(
+          ORDER_STATUS_SEED as readonly string[],
+          "SLT-186: el estado del caso debe estar FUERA del seed vigente",
+        ).not.toContain(HUERFANO);
+        const idHuerfano = filaHuerfana!.id;
+        const base: BaseSembrada = {
+          ...baseSinHuerfano,
+          estatus: new Map([...baseSinHuerfano.estatus, [HUERFANO, idHuerfano]]),
+          etiqueta: new Map([...baseSinHuerfano.etiqueta, [idHuerfano, HUERFANO]]),
+        };
+
         const nacida = instanteCR(FECHA_D, "08:00:00");
         const o = await crearOrden(tx, base, {
           clave: "huerfano",
