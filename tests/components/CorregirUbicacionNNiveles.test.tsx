@@ -217,7 +217,9 @@ describe("SLT-48 / R43 — un selector por nivel del país, hasta una hoja", () 
     await abrir();
     expect(combo("Distrito")).toBeEnabled();
     expect(combo("Distrito").textContent).toContain(corregirElegirNivel("Distrito"));
-    expect(screen.getByText("Falta completar: distrito.")).toBeInTheDocument();
+    // SLT-48: decisión del humano del 2026-11-18, un solo mensaje: «Ubicación incompleta» reemplaza a «Falta completar: <nivel>.»
+    expect(screen.getByText(corregirUbicacionIncompleta("Escazú", "Distritos"))).toBeInTheDocument();
+    expect(screen.queryByText(/Falta completar/)).toBeNull();
     expect(guardar()).toBeDisabled();
   });
 
@@ -241,10 +243,13 @@ describe("SLT-48 / R43 — un selector por nivel del país, hasta una hoja", () 
     const { user, corregir } = await abrir();
     expect(combos()).toHaveLength(4);
     expect(combo("Barrio").textContent).toContain(corregirElegirNivel("Barrio"));
-    expect(screen.getByText("Falta completar: barrio.")).toBeInTheDocument();
+    // SLT-48: decisión del humano del 2026-11-18, un solo mensaje: «Ubicación incompleta» reemplaza a «Falta completar: <nivel>.»
+    expect(screen.getByText(corregirUbicacionIncompleta("Viña", "Barrios"))).toBeInTheDocument();
+    expect(screen.queryByText(/Falta completar/)).toBeNull();
     expect(guardar()).toBeDisabled();
 
     await elegir(user, "Barrio", "Miraflores");
+    expect(screen.queryByText(/Ubicación incompleta/)).toBeNull();
     expect(screen.queryByText(/Falta completar/)).toBeNull();
     await user.click(guardar());
     await waitFor(() => expect(corregir).toHaveBeenCalledTimes(1));
@@ -272,7 +277,9 @@ describe("SLT-48 / R43 — un selector por nivel del país, hasta una hoja", () 
     await elegir(user, "Barrio", "El Mirador");
     expect(combo("Manzana")).toBeEnabled();
     expect(combo("Lote")).toBeDisabled();
-    expect(screen.getByText("Falta completar: manzana.")).toBeInTheDocument();
+    // SLT-48: decisión del humano del 2026-11-18, un solo mensaje: «Ubicación incompleta» reemplaza a «Falta completar: <nivel>.»
+    expect(screen.getByText(corregirUbicacionIncompleta("El Mirador", "Manzanas"))).toBeInTheDocument();
+    expect(screen.queryByText(/Falta completar/)).toBeNull();
   });
 
   it("ningún nombre de nivel sale de un literal: un país con otros tipos no muestra los de Costa Rica (R47)", async () => {
@@ -324,8 +331,8 @@ describe("SLT-48 / R43, R17 — «Ubicación incompleta» antes de guardar", () 
     expect(texto).toBe("Ubicación incompleta: «Escazú» tiene distritos debajo; elige el último nivel.");
     expect(screen.getByText(texto)).toBeInTheDocument();
     expect(combo("Distrito")).toHaveAccessibleDescription(texto);
-    // Lo de hoy sigue igual: el texto de lo que falta y el botón apagado.
-    expect(screen.getByText("Falta completar: distrito.")).toBeInTheDocument();
+    // SLT-48: decisión del humano del 2026-11-18, un solo mensaje: «Ubicación incompleta» reemplaza a «Falta completar: <nivel>.»
+    expect(screen.queryByText(/Falta completar/)).toBeNull();
     expect(guardar()).toBeDisabled();
 
     await elegir(user, "Distrito", "San Antonio");

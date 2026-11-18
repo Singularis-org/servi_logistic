@@ -485,10 +485,15 @@ export function CorregirDatosClienteModal({
   if (producto.trim() === "") faltantes.push(CORREGIR_FALTA_PRODUCTO);
   if (ubicacionEditable) {
     if (direccion.trim() === "") faltantes.push(CORREGIR_FALTA_DIRECCION);
-    if (nivelFaltante !== null) faltantes.push(corregirFaltaNivel(nivelFaltante.singular));
+    // Decisión del humano del 2026-11-18: un solo mensaje. Si ya se eligió un lugar con hijos, lo dice
+    // «Ubicación incompleta» junto al selector; «Falta completar» solo nombra el nivel cuando no hay
+    // ningún lugar elegido. El botón se apaga igual en los dos casos (`ubicacionIncompleta` cuenta).
+    if (nivelFaltante !== null && ubicacionIncompleta === null) {
+      faltantes.push(corregirFaltaNivel(nivelFaltante.singular));
+    }
     if (pesoValor === null) faltantes.push(CORREGIR_FALTA_PESO);
   }
-  const completo = faltantes.length === 0;
+  const completo = faltantes.length === 0 && ubicacionIncompleta === null;
 
   // 312/R28 — ¿el telefono cambio respecto del precargado? Se compara recortado, con el mismo
   // criterio con el que el servidor decide si hay cambio: asi el aviso no aparece por un espacio.
@@ -862,7 +867,7 @@ export function CorregirDatosClienteModal({
           </p>
         ) : null}
 
-        {completo ? null : (
+        {faltantes.length === 0 ? null : (
           <p role="note" className="text-sm text-muted-foreground">
             {`${CORREGIR_FALTAN_CAMPOS_PREFIJO} ${faltantes.join(", ")}.`}
           </p>
