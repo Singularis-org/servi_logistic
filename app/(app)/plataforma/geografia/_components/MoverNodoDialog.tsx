@@ -89,6 +89,7 @@ export interface TextosMoverNodo {
   confirmar: string;
   exito: (nodo: string, destino: string) => string;
   avisoConcurrente: string;
+  avisoOcupado: string;
   errorSesion: string;
   errorPermiso: string;
   errorGenerico: string;
@@ -132,6 +133,8 @@ export const TEXTOS_MOVER_NODO: TextosMoverNodo = {
   confirmar: "Sí, mover",
   exito: (nodo, destino) => `Se movió «${nodo}» a ${destino}.`,
   avisoConcurrente: "Este dato cambió mientras tanto; revisa el valor actual.",
+  // Review vuelta 2: `mover` cede ante las órdenes que se están guardando en ese lugar.
+  avisoOcupado: "Se están guardando órdenes en ese lugar. Intenta de nuevo en unos segundos.",
   errorSesion: "Tu sesión expiró.",
   errorPermiso: "No tienes permiso para esta acción.",
   errorGenerico: "No se pudo completar la acción.",
@@ -341,6 +344,12 @@ export function MoverNodoDialog({
       setConcurrente(true);
       cerrar();
       router.refresh();
+      return;
+    }
+    // Review vuelta 2: `mover` cedió ante escrituras de una empresa y no escribió nada. El modal sigue
+    // en el paso 2 para que «Sí, mover» se pueda pulsar otra vez.
+    if (res.status === "conflict" && "motivo" in res && res.motivo === "ocupado") {
+      toast.error(t.avisoOcupado);
       return;
     }
     // P1 en carrera: el bloqueo apareció entre la vista previa y el «Sí»; el modal lo enseña y se apaga.

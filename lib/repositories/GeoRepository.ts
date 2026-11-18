@@ -115,6 +115,12 @@ interface MovimientoEvaluado {
   /** Nombres de la cadena del padre de hoy, de la hoja a la raiz: el «antes» del historial (R38). */
   cadenaDelPadreAnterior: string[];
   paisId: string;
+  /** Lo que `mover` necesita para la segunda comprobacion de P1, ya con los bloqueos (`confirmarP1`). */
+  subarbol: string[];
+  antes: CatalogoGeografico;
+  despues: CatalogoGeografico;
+  /** Las ordenes abiertas del subarbol que P1 ya miro, sin bloqueos. */
+  abiertasVistas: ReadonlySet<string>;
 }
 
 type EvaluacionDeMover =
@@ -123,9 +129,32 @@ type EvaluacionDeMover =
   | { estado: "conflict" }
   | { estado: "ok"; movimiento: MovimientoEvaluado };
 
-// Un nodo de las primeras profundidades puede arrastrar miles de ordenes abiertas: P1 las lee todas y
-// el limite por defecto de 5 s de una transaccion interactiva no da margen.
-const TIMEOUT_MOVER_MS = 30_000;
+/**
+ * SLT-48 (P1; review vuelta 2, decision del humano «tope corto a mover») — CUANTO PUEDE `mover` HACER
+ * ESPERAR A UNA EMPRESA. El que cede siempre es el superadmin: mientras `mover` tiene el subarbol
+ * bloqueado `FOR UPDATE`, toda escritura de `orden` que ponga un nodo de ese subarbol (un alta, un chunk
+ * de la carga masiva) espera. Por eso el calculo caro de P1 va SIN bloqueos y, con ellos, solo queda
+ * una comprobacion acotada (`confirmarP1`), el `UPDATE` y el historial.
+ *
+ * El tope se aplica en tres sitios de la transaccion de `mover`:
+ *   - `lock_timeout`: lo que `mover` espera a una escritura en vuelo antes de rendirse (55P03);
+ *   - `statement_timeout`: lo que dura cualquier sentencia con los bloqueos ya tomados (57014);
+ *   - el `timeout` de Prisma de la transaccion, el doble, para que la espera y lo que sigue quepan.
+ * Una escritura que llega mientras `mover` espera su bloqueo tambien hace cola detras de el, asi que
+ * el `lock_timeout` la protege igual. En el peor caso teorico una escritura de empresa espera el
+ * `timeout` de la transaccion mas una sentencia en vuelo (~6 s); en la practica, lo que tardan esas
+ * sentencias. Nunca los 30 s que podia durar P1 en un nodo alto cuando se calculaba con los bloqueos.
+ *
+ * Por que 2 s: con los bloqueos, `mover` hace unas 10 sentencias pequeñas que en local tardan
+ * milisegundos, asi que 2 s deja margen a una base lenta sin que el superadmin tenga que reintentar
+ * por nada. Y el `timeout` de la transaccion (4 s) queda por debajo de los 5 s del de Prisma por
+ * defecto, el de cada chunk de la carga masiva: en los casos medidos (`geografia-mover-nodo-cede`:
+ * ~2 s con una sentencia lenta, ~4 s con la transaccion parada) un chunk que coincide con `mover`
+ * termina en vez de caer en P2028. Si no alcanza, `mover` falla sin escribir (rollback, sin fila de
+ * historial) y la action responde `ocupado`: «intenta de nuevo» (`esMoverOcupado`).
+ */
+export const TOPE_MOVER_MS = 2_000;
+export const TIMEOUT_TRANSACCION_MOVER_MS = 2 * TOPE_MOVER_MS;
 
 type GeoTx = Pick<GeoPrismaClient, "nodoGeografico">;
 
@@ -369,26 +398,34 @@ async function tarifaYMarcaPorEmpresa(
   return porEmpresa;
 }
 
-/** P1: cuantas ordenes abiertas cambiarian de grupo o de marca, y de que empresas. `null` si ninguna. */
+/**
+ * P1: cuantas ordenes abiertas cambiarian de grupo o de marca, y de que empresas (`null` si ninguna),
+ * y que ordenes abiertas miro. Con `yaVistas`, solo mira las que no estan ahi: es la segunda pasada de
+ * `mover`, con los bloqueos, que no repite lo ya calculado.
+ */
 async function bloqueoDeMover(
   db: LecturasDeMover,
   antes: CatalogoGeografico,
   despues: CatalogoGeografico,
   subarbol: readonly string[],
-): Promise<BloqueoDeMoverDTO | null> {
+  yaVistas: ReadonlySet<string> = new Set(),
+): Promise<{ bloqueo: BloqueoDeMoverDTO | null; abiertas: ReadonlySet<string> }> {
   // Abierta = sin cierre (su precio no esta congelado) y sin borrar.
   const filas = await db.orden.findMany({
     where: { nodoGeograficoId: { in: [...subarbol] }, deletedAt: null, cierreDetalles: { none: {} } },
     select: { id: true, organizacionId: true, zonaId: true, nodoGeograficoId: true },
   });
   const abiertas: OrdenAbiertaEnElArbol[] = filas.flatMap((o) =>
-    o.nodoGeograficoId === null ? [] : [{ id: o.id, organizacionId: o.organizacionId, zonaId: o.zonaId, nodoId: o.nodoGeograficoId }],
+    o.nodoGeograficoId === null || yaVistas.has(o.id)
+      ? []
+      : [{ id: o.id, organizacionId: o.organizacionId, zonaId: o.zonaId, nodoId: o.nodoGeograficoId }],
   );
-  if (abiertas.length === 0) return null;
+  const vistas = new Set(abiertas.map((o) => o.id));
+  if (abiertas.length === 0) return { bloqueo: null, abiertas: vistas };
 
   const datos = await tarifaYMarcaPorEmpresa(db, [...new Set(abiertas.map((o) => o.organizacionId))], subarbol);
   const afectadas = ordenesQueCambiarianAlMover(antes, despues, abiertas, (id) => datos.get(id));
-  if (afectadas.length === 0) return null;
+  if (afectadas.length === 0) return { bloqueo: null, abiertas: vistas };
 
   const porEmpresa = new Map<string, number>();
   for (const o of afectadas) porEmpresa.set(o.organizacionId, (porEmpresa.get(o.organizacionId) ?? 0) + 1);
@@ -397,12 +434,13 @@ async function bloqueoDeMover(
     select: { id: true, nombre: true },
   });
   const nombreDe = new Map(nombres.map((o) => [o.id, o.nombre]));
-  return {
+  const bloqueo = {
     ordenes: afectadas.length,
     empresas: [...porEmpresa.entries()]
       .map(([id, ordenes]) => ({ id, nombre: nombreDe.get(id) ?? id, ordenes }))
       .sort((a, b) => b.ordenes - a.ordenes || a.nombre.localeCompare(b.nombre)),
   };
+  return { bloqueo, abiertas: vistas };
 }
 
 /**
@@ -415,8 +453,6 @@ async function evaluarMovimiento(
   id: string,
   padreIdNuevo: string,
   catalogoDe: (paisId: string) => Promise<CatalogoGeografico>,
-  /** Solo `mover`: bloquea el subarbol antes de contar sus ordenes (P1). La vista previa no bloquea. */
-  bloquearSubarbol?: (subarbol: readonly string[]) => Promise<void>,
 ): Promise<EvaluacionDeMover> {
   const nodoLeido = await db.nodoGeografico.findUnique({
     where: { id },
@@ -452,11 +488,11 @@ async function evaluarMovimiento(
 
   const debajo = nodosBajo(antes, id);
   const subarbol = [id, ...debajo.map((n) => n.id)];
-  if (bloquearSubarbol !== undefined) await bloquearSubarbol(subarbol);
   const despues = catalogoConPadre(antes, id, padreIdNuevo);
   const tipo = antes.tipos.find((t) => t.id === nodo.tipoId);
   if (tipo === undefined) throw new Error(`mover: el tipo del nodo ${id} no esta en el catalogo`);
 
+  const p1 = await bloqueoDeMover(db, antes, despues, subarbol);
   const vista: VistaPreviaMoverNodoDTO = {
     nodo: { id, nombre: nodo.nombre, profundidad: nodo.profundidad, tipoSingular: tipo.nombreSingular },
     padreIdAnterior: padreAnterior.id,
@@ -466,7 +502,7 @@ async function evaluarMovimiento(
     ordenesQueCambianDeNombre: await db.orden.count({
       where: { nodoGeograficoId: { in: subarbol }, deletedAt: null },
     }),
-    bloqueo: await bloqueoDeMover(db, antes, despues, subarbol),
+    bloqueo: p1.bloqueo,
   };
   return {
     estado: "ok",
@@ -474,8 +510,34 @@ async function evaluarMovimiento(
       vista,
       cadenaDelPadreAnterior: [padreAnterior, ...ancestros(antes, padreAnterior.id)].map((n) => n.nombre),
       paisId: nodoLeido.paisId,
+      subarbol,
+      antes,
+      despues,
+      abiertasVistas: p1.abiertas,
     },
   };
+}
+
+/**
+ * SLT-48 (P1; review vuelta 2) — la segunda pasada de P1, ya con el subarbol bloqueado, barata y
+ * acotada: el calculo caro se hizo antes, sin bloqueos. Entre los dos pudo pasar:
+ *   - que el subarbol ganara un nodo (un alta o un `mover` que trajo uno): sus ordenes no se miraron.
+ *     Es `cambio_concurrente`, como cualquier otro cambio del arbol desde que se leyo (R37). Con el
+ *     subarbol bloqueado ya no puede pasar: colgar un hijo toma `FOR KEY SHARE` del padre;
+ *   - que apareciera una orden abierta en el subarbol: solo esas pasan por P1. Las de la primera pasada
+ *     ya dieron `null`, asi que el bloqueo de estas es el bloqueo entero.
+ */
+async function confirmarP1(
+  tx: LecturasDeMover,
+  m: MovimientoEvaluado,
+): Promise<{ estado: "ok" } | { estado: "cambio_concurrente" } | { estado: "bloqueado"; bloqueo: BloqueoDeMoverDTO }> {
+  const nuevo = await tx.nodoGeografico.findFirst({
+    where: { padreId: { in: m.subarbol }, id: { notIn: m.subarbol } },
+    select: { id: true },
+  });
+  if (nuevo !== null) return { estado: "cambio_concurrente" };
+  const { bloqueo } = await bloqueoDeMover(tx, m.antes, m.despues, m.subarbol, m.abiertasVistas);
+  return bloqueo === null ? { estado: "ok" } : { estado: "bloqueado", bloqueo };
 }
 
 /**
@@ -486,12 +548,13 @@ async function evaluarMovimiento(
  * correccion) pasa por la FK `orden_nodo_geografico_id_fkey`, y su comprobacion toma `FOR KEY SHARE`
  * del nodo, que choca con `FOR UPDATE` (no con el `FOR NO KEY UPDATE` del `updateMany` de `mover`:
  * por eso antes se colaba). Asi, una orden que se escribe a la vez en el subarbol:
- *   - si llego antes, `mover` espera a que confirme y el conteo, que va despues (otra sentencia, otra
- *     foto en READ COMMITTED), ya la ve: entra en P1;
+ *   - si llego antes, `mover` espera a que confirme (como mucho `TOPE_MOVER_MS`, su `lock_timeout`) y
+ *     la segunda pasada de P1 (`confirmarP1`), que va despues (otra sentencia, otra foto en READ
+ *     COMMITTED), ya la ve;
  *   - si llega despues, espera a que `mover` termine y queda escrita con el arbol nuevo (R41).
  * La escritura de la orden no cambia: la FK ya tomaba ese `FOR KEY SHARE`, y la carga masiva (R10)
- * no paga nada nuevo. Solo espera si coincide con un `mover` en ese subarbol, lo que dure su
- * transaccion.
+ * no paga nada nuevo. Solo espera si coincide con un `mover` en ese subarbol, y como mucho lo que el
+ * tope deja a la transaccion de `mover` (review vuelta 2: cede el superadmin).
  */
 async function bloquearNodos(tx: Pick<PrismaClient, "$queryRaw">, ids: readonly string[]): Promise<void> {
   await tx.$queryRaw`SELECT "id" FROM "nodo_geografico" WHERE "id" = ANY(${[...ids]}::text[]) ORDER BY "id" FOR UPDATE`;
@@ -926,36 +989,45 @@ export class GeoRepository implements IGeoRepository {
   }
 
   /**
-   * SLT-48 (R34–R40) — mueve el nodo en UNA transaccion:
-   *   1. el padre de hoy contra el que mostro el modal: si ya es otro, `cambio_concurrente` (R37);
-   *   2. las validaciones de R35 y el bloqueo de P1, con el catalogo de esta misma transaccion y el
-   *      subarbol bloqueado `FOR UPDATE` antes de contar (`bloquearNodos`);
-   *   3. el `updateMany` con `padre_id = padreIdAnterior` en el `where`, la UNICA escritura, y solo
-   *      de `padre_id`: si otra persona lo movio entre la lectura y aqui, toca 0 filas →
-   *      `cambio_concurrente`. El trigger de invariantes de SLT-43 vuelve a comprobar la profundidad;
-   *   4. `nodo_geografico_movido` con las rutas de los dos padres (R38).
+   * SLT-48 (R34–R40; review vuelta 2) — mueve el nodo en dos tiempos, para que el que ceda sea el
+   * superadmin y no una empresa (`TOPE_MOVER_MS`):
+   *   1. SIN bloqueos: el padre de hoy contra el que mostro el modal (si ya es otro,
+   *      `cambio_concurrente`, R37), las validaciones de R35 y el calculo caro de P1;
+   *   2. en UNA transaccion corta, con `lock_timeout` y `statement_timeout` = `TOPE_MOVER_MS`:
+   *      - el subarbol bloqueado `FOR UPDATE` (`bloquearNodos`);
+   *      - la segunda pasada de P1, solo con lo nuevo (`confirmarP1`);
+   *      - el `updateMany` con `padre_id = padreIdAnterior` en el `where`, la UNICA escritura, y solo
+   *        de `padre_id`: si otra persona lo movio desde la lectura, toca 0 filas → `cambio_concurrente`.
+   *        El trigger de invariantes de SLT-43 vuelve a comprobar la profundidad;
+   *      - `nodo_geografico_movido` con las rutas de los dos padres (R38).
+   * Si el tope no alcanza, la transaccion entera se revierte y el error de Postgres o de Prisma sube
+   * tal cual (55P03, 57014, P2028): la action lo traduce a `ocupado` con `esMoverOcupado`.
    * Ninguna fila de `orden` se escribe (R39): su ruta se lee del arbol y su zona esta guardada.
    */
   async mover(datos: DatosDeMover, actorUsuarioId: string | null): Promise<DesenlaceDeMover> {
+    const previo = await this.prisma.nodoGeografico.findUnique({ where: { id: datos.id }, select: { padreId: true } });
+    if (previo === null) return { estado: "no_existe" };
+    if (previo.padreId === null) return { estado: "invalido", motivo: "es_raiz" };
+    if (previo.padreId !== datos.padreIdAnterior) return { estado: "cambio_concurrente" };
+
+    const r = await evaluarMovimiento(this.prisma, datos.id, datos.padreIdNuevo, (paisId) =>
+      this.catalogo().dePais(paisId),
+    );
+    if (r.estado !== "ok") return r;
+    const movimiento = r.movimiento;
+    const { vista, cadenaDelPadreAnterior, paisId } = movimiento;
+    if (vista.bloqueo !== null) return { estado: "bloqueado", bloqueo: vista.bloqueo };
+
     return this.prisma.$transaction(
       async (tx): Promise<DesenlaceDeMover> => {
-        const previo = await tx.nodoGeografico.findUnique({ where: { id: datos.id }, select: { padreId: true } });
-        if (previo === null) return { estado: "no_existe" };
-        if (previo.padreId === null) return { estado: "invalido", motivo: "es_raiz" };
-        if (previo.padreId !== datos.padreIdAnterior) return { estado: "cambio_concurrente" };
-
-        const catalogo = new CatalogoGeograficoRepository(tx);
-        // P1: el subarbol queda bloqueado antes de contar sus ordenes (`bloquearNodos`).
-        const r = await evaluarMovimiento(
-          tx,
-          datos.id,
-          datos.padreIdNuevo,
-          (paisId) => catalogo.dePais(paisId),
-          (subarbol) => bloquearNodos(tx, subarbol),
-        );
-        if (r.estado !== "ok") return r;
-        const { vista, cadenaDelPadreAnterior, paisId } = r.movimiento;
-        if (vista.bloqueo !== null) return { estado: "bloqueado", bloqueo: vista.bloqueo };
+        // `SET LOCAL` no admite parametros; el valor es una constante numerica del modulo.
+        // El `statement_timeout`, despues de bloquear: antes, cortaria la espera del bloqueo como 57014
+        // en vez de dejar que la cierre el `lock_timeout` con su 55P03.
+        await tx.$executeRawUnsafe(`SET LOCAL lock_timeout = '${TOPE_MOVER_MS}ms'`);
+        await bloquearNodos(tx, movimiento.subarbol);
+        await tx.$executeRawUnsafe(`SET LOCAL statement_timeout = '${TOPE_MOVER_MS}ms'`);
+        const confirmado = await confirmarP1(tx, movimiento);
+        if (confirmado.estado !== "ok") return confirmado;
 
         const { count } = await tx.nodoGeografico.updateMany({
           where: { id: datos.id, padreId: datos.padreIdAnterior },
@@ -981,7 +1053,7 @@ export class GeoRepository implements IGeoRepository {
         ]);
         return { estado: "movido" };
       },
-      { timeout: TIMEOUT_MOVER_MS },
+      { timeout: TIMEOUT_TRANSACCION_MOVER_MS },
     );
   }
 

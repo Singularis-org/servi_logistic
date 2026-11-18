@@ -31,6 +31,7 @@ import type {
   ReordenarTiposServiceResult,
 } from "@/lib/interfaces/services/IPaisService";
 import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
+import { esMoverOcupado } from "@/lib/repositories/_shared/prisma-ocupado";
 import { esViolacionDeUnico } from "@/lib/repositories/_shared/prisma-unique";
 import { GeoRepository } from "@/lib/repositories/GeoRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
@@ -431,12 +432,26 @@ export async function vistaPreviaMoverNodoAction(
   }
 }
 
-export type MoverNodoActionResult = MoverNodoServiceResult | ErrorDeValidacion | SinPermiso | ErrorInterno;
+/**
+ * SLT-48 (review vuelta 2, «tope corto a mover»): `mover` cedió ante escrituras de una empresa en ese
+ * subárbol (`TOPE_MOVER_MS`) y no escribió nada. Es un `conflict` con motivo, como
+ * `cambio_concurrente`; la pantalla dice «intenta de nuevo» y deja el modal abierto para reintentar.
+ */
+export type MoverOcupadoResult = { status: "conflict"; motivo: "ocupado" };
+
+export type MoverNodoActionResult =
+  | MoverNodoServiceResult
+  | MoverOcupadoResult
+  | ErrorDeValidacion
+  | SinPermiso
+  | ErrorInterno;
 
 /**
  * SLT-48 (R34–R40): mueve un nodo a otro padre. Solo superadmin (`puerta`); el servicio lo vuelve a
  * mirar. Un hermano con el mismo nombre creado en carrera lo para el único de la base: `conflict`,
- * como el alta y el renombre. Cualquier otro fallo es `error` con log.
+ * como el alta y el renombre. Si `mover` cedió por su tope (bloqueo, sentencia o transacción que no
+ * alcanzan, o un interbloqueo), `ocupado`, sin log: no es un fallo, es el comportamiento pedido.
+ * Cualquier otro fallo es `error` con log.
  */
 export async function moverNodoAction(
   input: unknown,
@@ -451,6 +466,7 @@ export async function moverNodoAction(
     return await enPlataforma(() => servicio.moverNodo(parsed.data, p.actor));
   } catch (error) {
     if (esViolacionDeUnico(error)) return { status: "conflict" };
+    if (esMoverOcupado(error)) return { status: "conflict", motivo: "ocupado" };
     return registrarFallo("mover nodo", `nodo=${parsed.data.id}`, error);
   }
 }
