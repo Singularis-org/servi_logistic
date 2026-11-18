@@ -8,6 +8,7 @@ import {
   enTransaccionRevertida,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 
 /**
  * FICHA 335 (A12) — EL ALCANCE POR TIENDA DE `listarCierresDeTienda`, CONTRA POSTGRES DE VERDAD.
@@ -36,22 +37,9 @@ const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
 describeSiHayBase("335/A12 — los cierres del libro de UNA tienda, contra Postgres", () => {
   let prisma: PrismaClient;
-  let catalogo: { tipoIdentificacionId: string; rolId: string };
 
-  beforeAll(async () => {
+  beforeAll(() => {
     prisma = crearPrismaDeTest();
-    const u = await prisma.usuario.findFirst({
-      select: { tipoIdentificacionId: true, rolId: true },
-    });
-    if (u === null) {
-      // Con base pero sin catalogo se falla RUIDOSAMENTE: un skip aqui escondería que la
-      // evidencia de R2 y R6 no se ejecuto.
-      throw new Error(
-        "hay DATABASE_URL pero no hay ningun usuario: falta el catalogo (rol / tipo de " +
-          "identificacion) que las FK de `usuario` exigen. Corre `pnpm run db:seed`.",
-      );
-    }
-    catalogo = u;
   });
 
   afterAll(async () => {
@@ -73,26 +61,15 @@ describeSiHayBase("335/A12 — los cierres del libro de UNA tienda, contra Postg
    */
   async function sembrar(tx: Tx) {
     await serializarEscriturasReales(tx);
-    const sufijo = randomUUID();
 
-    const crearTienda = async (etiqueta: string) =>
-      (
-        await tx.usuario.create({
-          data: {
-            nombre: `335-${etiqueta}`,
-            email: `335-${etiqueta}-${sufijo}@example.test`,
-            telefono: "88880000",
-            passwordHash: "x",
-            cedula: `335-${etiqueta}-${sufijo}`,
-            tipoIdentificacionId: catalogo.tipoIdentificacionId,
-            rolId: catalogo.rolId,
-          },
-          select: { id: true },
-        })
-      ).id;
-
-    const tiendaA = await crearTienda("tienda-a");
-    const tiendaB = await crearTienda("tienda-b");
+    // SLT-182: las tiendas se siembran con su rol y el catalogo por CLAVE (`crearUsuarioDePrueba`
+    // lanza nombrando el rol o `cedula` si faltan). Antes el catalogo se copiaba del «primer
+    // usuario» de la base, y la base recien migrada no tiene ninguno.
+    const tiendaA = (await crearUsuarioDePrueba(tx, "adminTienda")).id;
+    const tiendaB = (await crearUsuarioDePrueba(tx, "adminTienda")).id;
+    // Control positivo (R1084): las dos tiendas sembradas llegaron a la base.
+    const tiendasSembradas = await tx.usuario.count({ where: { id: { in: [tiendaA, tiendaB] } } });
+    if (tiendasSembradas !== 2) throw new Error("SLT-182: las dos tiendas sembradas no estan en la base");
 
     const cierreCompartido = randomUUID();
     const cierreSoloA = randomUUID();
