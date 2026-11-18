@@ -254,3 +254,41 @@ describe("listarZonasSchema — clamp de pageSize (R24)", () => {
     expect(r.pageSize).toBeLessThanOrEqual(100);
   });
 });
+
+// SLT-198 — cerrar una bodega satelite: al ACTUALIZAR la zona puede quedar sin distritos; al CREAR no;
+// y la central nunca (R1222, la parte que el borde puede ver: marcarla en el mismo guardado).
+describe("SLT-198 — zona sin distritos", () => {
+  const MENSAJE =
+    "La zona de bodega principal necesita al menos un distrito. Para vaciarla, marca primero otra zona como bodega principal.";
+
+  it("R1220: actualizar acepta `distritoIds: []` y lo entrega vacio", () => {
+    const r = actualizarZonaSchema.safeParse({ ...validActualizar, distritoIds: [] });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.distritoIds).toEqual([]);
+    // Sin marca ni pagos, tambien: es el payload minimo del formulario.
+    expect(actualizarZonaSchema.safeParse({ nombre: "Cartago", distritoIds: [] }).success).toBe(true);
+    // Y con `esCentral: false` explicito (la satelite que se cierra).
+    expect(
+      actualizarZonaSchema.safeParse({ ...validActualizar, distritoIds: [], esCentral: false }).success,
+    ).toBe(true);
+  });
+
+  it("R1221: crear sigue rechazando `distritoIds: []`, con el issue en `distritoIds`", () => {
+    const r = crearZonaSchema.safeParse({ ...validCrear, distritoIds: [] });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.issues.map((i) => i.path[0])).toContain("distritoIds");
+  });
+
+  it("R1222: actualizar con `esCentral: true` y `distritoIds: []` se rechaza en `distritoIds` con el literal", () => {
+    const r = actualizarZonaSchema.safeParse({ ...validActualizar, distritoIds: [], esCentral: true });
+    expect(r.success).toBe(false);
+    if (!r.success) {
+      const issue = r.error.issues.find((i) => i.path[0] === "distritoIds");
+      expect(issue?.message).toBe(MENSAJE);
+    }
+    // Con un distrito, la misma marca pasa.
+    expect(
+      actualizarZonaSchema.safeParse({ ...validActualizar, distritoIds: ["d1"], esCentral: true }).success,
+    ).toBe(true);
+  });
+});
