@@ -123,4 +123,15 @@ añadidas). Las 5 rojas, intactas (ver parada).
 | R1031 | pendiente del CI del PR |
 
 ## Salidas
-(ver «Salidas finales» abajo)
+- `pnpm run typecheck`: exit 0. `eslint` sobre los archivos tocados: 0 errores (1 aviso: el JSON del
+  baseline no tiene config de eslint).
+- `node scripts/tamano-pr.mjs`: 16/40 archivos, 0/1000 producción, 707/3000 tests.
+- `./init.sh` en la base A (log `scratchpad/gate-179.log`): **INIT_EXIT=0** a la tercera. Las dos
+  primeras dieron 1 por un timeout de 20 s en una guardia distinta cada vez
+  (`backfills-retirados.guardia`, luego `otp-debug-solo-en-pruebas.guardia`), con la máquina cargada;
+  aisladas pasan en 2,5 s y 7 s. No tocan nada de este diff. En el gate, `novedades`,
+  `correccion-fecha-reprogramacion` y `reparto-manana-repository` corrieron y pasaron.
+
+## Veredicto
+10 de 15 verdes en base vacía y con empresa ajena y fuera del baseline; 5 sembrados pero rojos por
+estados retirados en 454 → parada R1028, a la espera de que el leader asigne ficha.
