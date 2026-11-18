@@ -122,7 +122,8 @@ como saltados con el archivo en rojo; se sustituyó por la de la orden, que pone
 
 ## T7 — baseline
 `tests/baseline-rojos.json`: 128 → 120 claves; se borran las 8 de los verdes y se reescribe el `motivo` de 4
-(`desde` intacto). Las 2 de la parada, intactas.
+(`desde` intacto). Las 2 de la parada se reescribieron después, con la decisión del leader (commit 4cb3531e):
+6 motivos reescritos en total, `desde` intacto. *(Actualizado por el reviewer.)*
 
 ## Mapa R → evidencia
 | R | evidencia |
@@ -131,8 +132,8 @@ como saltados con el archivo en rojo; se sustituyó por la de la orden, que pone
 | R1061 | los mismos en B, conteo de B igual antes/después |
 | R1063 | `rechazo-tienda-cobro.int` y `wallet-anulacion-concurrencia`: 0 filas propias tras el archivo (A) |
 | R1066 | tabla T6 |
-| R1067 | diff del baseline: −8 claves del alcance, 4 motivos reescritos, nada más |
-| R1068 | 4 motivos reescritos (SLT-185 ×3, SLT-187 ×1); 2 en PARADA |
+| R1067 | diff del baseline: −8 claves del alcance, 6 motivos reescritos, nada más |
+| R1068 | 6 motivos reescritos (SLT-185 ×3, SLT-187 ×2, SLT-186 ×1); la PARADA la resolvió el leader |
 | R1069 | no se tocó ningún helper compartido |
 | R1070, R1072 | `git diff --name-only origin/dev` solo `tests/`, `specs/`, `progress/`; tamaño abajo |
 | R1071 | pendiente del CI del PR |
@@ -140,7 +141,8 @@ como saltados con el archivo en rojo; se sustituyó por la de la orden, que pone
 ## Salidas
 - `pnpm run typecheck`: exit 0. `pnpm exec eslint` sobre los 14 archivos tocados: exit 0.
 - `node scripts/tamano-pr.mjs`: 15/40 archivos, 0/1000 producción, 851/3000 tests.
-- `./init.sh` (base A): ver «Gate» abajo.
+- `./init.sh` (base A): no quedó anotado aquí; lo corrió el reviewer en HEAD 4cb3531e contra
+  `servi_slt181_desechable`: `INIT_EXIT=0` (ver `progress/review_SLT-181.md`).
 
 ## Veredicto
 8 de 14 verdes en base vacía y con empresa ajena y fuera del baseline; 6 rojos por otra causa con motivo medido
