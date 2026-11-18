@@ -484,7 +484,12 @@ describeSiHayBase("458-E/TE.2 — filtro «A quién» del libro de la caja (Post
   it("R54/R59: las tarjetas (cifras y composicion) suman EXACTAMENTE las filas del libro filtrado", () => {
     for (const [k, l] of Object.entries(m().lecturas)) {
       expect(l.resumen, k).toEqual(l.resumenDeLasFilas);
-      expect(l.composicion, k).toEqual(l.composicionDeLasFilas);
+      // SLT-195 (D39, commit 011d4af3): la composicion trae ademas `categoriasConModeloNuevo`, el
+      // ROTULO de cada fila (no es dinero, no sale de las filas). Se compara solo el dinero; el rotulo
+      // lo vigilan las pruebas de D39. Lo tapaba el escenario 459, que caia antes.
+      const dineroDeLaComposicion = { ...(l.composicion as Record<string, unknown>) };
+      delete dineroDeLaComposicion.categoriasConModeloNuevo;
+      expect(dineroDeLaComposicion, k).toEqual(l.composicionDeLasFilas);
       expect((l.resumen as { periodoFiltrado: boolean }).periodoFiltrado, k).toBe(true);
     }
     // No es trivial: con la tienda A hay dinero en las tarjetas.

@@ -113,6 +113,10 @@ describeSiHayBase("⭑ 458-B/B2 — la anulacion del cobro por devolución a ori
         service: analitica,
         getActor: async () => actor,
         logger: { logError: () => {} },
+        // SLT-195 (SLT-42 R22, R28): la accion lee la zona horaria del pais de la empresa con el
+        // cliente global, que no ve la empresa de la tx revertida (`EmpresaNoResuelta`). Se inyecta
+        // la de CR, como el servicio de arriba. Lo tapaba el escenario 459, que caia antes.
+        reglasPais: reglasPaisFijas(),
       });
       if (r.status !== "ok" || r.datos.tipo !== "vistas") {
         throw new Error(`${id}: la analitica no respondio vistas: ${JSON.stringify(r)}`);
