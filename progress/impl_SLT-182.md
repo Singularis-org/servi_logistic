@@ -82,7 +82,7 @@ pago_mensajero_movimiento 1, cierre_bodega 1`); en A, 0 en todas tras la suite y
 - `premio-ranking-devengo-migration` → **SLT-187**: caso ESTÁTICO (`:117`), sin base: `AGREGADOS_DESPUES`
   no lista `conciliacion_bodega_ajuste` (SLT-73) ni `orden_fulfillment` (SLT-94) del enum de orígenes de
   wallet. SLT-187 cubre «orden del enum de wallet» en tests de migración, pero su causa no es SL-17:
-  **a confirmar por el leader**.
+  **confirmado por el leader (2026-11-17)**.
 
 ## T6 — mutaciones (R1086), una a una en la base A, restauradas con `git checkout`
 | archivo | mutación (siembra quitada) | p/f/s | primer caso rojo | mensaje |
@@ -129,4 +129,4 @@ reescrito y `desde` intacto. Ninguna entrada ajena cambia (comprobado por script
 - CI del PR (`gate-completo`): pendiente.
 
 **Veredicto:** 11 de 15 archivos verdes con usuarios propios y fuera del baseline; 4 siguen rojos por otra
-causa medida (SLT-185, SLT-195, SLT-187 ×2), dos de ellas a confirmar por el leader.
+causa medida (SLT-185, SLT-195, SLT-187 ×2), dos de ellas confirmado por el leader (2026-11-17).
