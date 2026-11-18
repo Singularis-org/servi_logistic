@@ -52,7 +52,7 @@ import { useSeguimientoUbicacion } from "./useSeguimientoUbicacion";
 import { SincronizarRutaButton } from "./SincronizarRutaButton";
 import { CarruselCards } from "@/components/shared/CarruselCards";
 
-import { VistaCardsToggle, type VistaCards } from "./VistaCardsToggle";
+import { CONMUTADOR_EN_SU_LINEA_MOVIL, VistaCardsToggle, type VistaCards } from "./VistaCardsToggle";
 import { CLASE_FASE, useTransicionVista } from "./useTransicionVista";
 import { useSeccionColapsable } from "@/hooks/useSeccionColapsable";
 import type {
@@ -884,7 +884,11 @@ export function RepartoModule({
             tactil
             // SLT-189 (R795, DS3): el conmutador Mosaico/Detalle va en la barra fija, tras «Filtros».
             trasFiltros={
-              <VistaCardsToggle vista={vistaCardsPedida} onVistaChange={cambiarVista} />
+              <VistaCardsToggle
+                vista={vistaCardsPedida}
+                onVistaChange={cambiarVista}
+                className={CONMUTADOR_EN_SU_LINEA_MOVIL}
+              />
             }
           >
             {/* Feature 117: elegir cantón resetea el distrito (R5) y el distrito va

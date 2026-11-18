@@ -26,6 +26,7 @@ import { CarruselCards } from "@/components/shared/CarruselCards";
 import { PosOrderCardDetalle } from "@/app/(app)/mis-asignaciones/_components/pos-card/PosOrderCardDetalle";
 import { PosOrderCardMosaico } from "@/app/(app)/mis-asignaciones/_components/pos-card/PosOrderCardMosaico";
 import {
+  CONMUTADOR_EN_SU_LINEA_MOVIL,
   VistaCardsToggle,
   type VistaCards,
 } from "@/app/(app)/mis-asignaciones/_components/VistaCardsToggle";
@@ -293,13 +294,17 @@ export function RecoleccionModule({
         hayFiltrosAplicados={tienda !== "" || filtrosPuestos.length > 0}
         fija
         tactil
-        // SLT-194 (R940-R944, D2): la pistola (Enter) y la cámara del buscador SOLO filtran las dos
-        // listas; recolectar sigue siendo «Escanear o escribir guía». Va también bloqueado: no mueve nada.
-        escaneo
+        // SLT-200 (punto 6; Carlos, 2026-11-18, «quitar la camarita»): sin `escaneo`. SLT-194 (R940)
+        // le había puesto cámara al buscador; el único escáner de la pantalla es «Escanear o
+        // escribir guía», el que recolecta. Lo escrito sigue filtrando las dos listas al momento.
         // SLT-190 (R860, DS4): el ÚNICO conmutador del apartado, en la barra tras «Filtros» y
         // siempre visible (también con «Por recolectar» vacía); gobierna las dos listas.
         trasFiltros={
-          <VistaCardsToggle vista={vistaCardsPedida} onVistaChange={cambiarVista} />
+          <VistaCardsToggle
+            vista={vistaCardsPedida}
+            onVistaChange={cambiarVista}
+            className={CONMUTADOR_EN_SU_LINEA_MOVIL}
+          />
         }
       >
         {filtrosPuestos.includes(FILTRO_TIENDA) ? (

@@ -18,6 +18,7 @@ import {
   IMPORTE_LARGO,
   PRODUCTO_LARGO,
   TIENDA_LARGA,
+  campoConAnchoUtil,
   sinDesborde,
   sinElipsis,
   tactil,
@@ -98,6 +99,17 @@ async function kpiQueNoCaben(page: Page): Promise<string[]> {
   });
 }
 
+/** SLT-200: cada cifra de los KPI con su tamaño de letra calculado y su disposición en la tarjeta. */
+async function cifrasKpi(page: Page): Promise<{ texto: string; px: number; disposicion: string }[]> {
+  return page.getByRole("region", { name: "Indicadores de mis asignaciones" }).evaluate((sec) =>
+    Array.from(sec.querySelectorAll<HTMLElement>("[data-kpi-cifra]")).map((el) => ({
+      texto: (el.textContent ?? "").trim().replace(/\s/g, " "),
+      px: Number.parseFloat(getComputedStyle(el).fontSize),
+      disposicion: el.parentElement?.dataset.disposicion ?? "",
+    })),
+  );
+}
+
 /** La barra fija de `BuscadorFiltros` (su raíz `sticky`), por su campo de búsqueda. */
 function barra(page: Page): Locator {
   return page.locator(".sticky").filter({ has: page.getByRole("searchbox", { name: "Buscar guías" }) }).last();
@@ -126,8 +138,23 @@ test.describe("SLT-163 — Reparto en el móvil", () => {
       // R502: cuatro KPI, dos columnas, dos filas.
       await expect(page.getByRole("region", { name: "Indicadores de mis asignaciones" })).toBeVisible();
       expect(await rejillaKpi(page)).toEqual({ total: 4, columnas: 2, filas: 2 });
+      // SLT-200 (canvas D8): los conteos, a 20 px y al lado del icono. Las cifras cuentan desde 0:
+      // se espera a que aterricen antes de medir (si no, se mide un fotograma más corto).
+      await expect
+        .poll(() => cifrasKpi(page))
+        .toEqual(
+          expect.arrayContaining([
+            { texto: "2", px: 20, disposicion: "al-lado" },
+            { texto: "0", px: 20, disposicion: "al-lado" },
+            // ₡100.003.999 (12 caracteres): bajo el icono y un escalón más chica, a 18 px.
+            { texto: "₡100.003.999", px: 18, disposicion: "apilada" },
+          ]),
+        );
       // Y cada cifra cabe en su tarjeta (la primitiva `Card` recorta lo que se le sale).
       expect(await kpiQueNoCaben(page)).toEqual([]);
+
+      // SLT-200: el campo conserva un ancho útil; el conmutador baja a su propia línea.
+      await campoConAnchoUtil(page);
 
       // R507: Mosaico de entrada; la tarjeta larga, entera.
       const tarjeta = page.locator("article").filter({ hasText: DESTINATARIO_LARGO }).first();
@@ -164,6 +191,22 @@ test.describe("SLT-163 — Reparto en el móvil", () => {
       await sinElipsis(page.locator("article"));
     });
   }
+
+  test("(d) SLT-200: a 360 px un importe de ocho cifras (₡12.345.678) va a 20 px y cabe en su KPI", async ({ browser }) => {
+    const m = await crearMensajero(r, "satelite");
+    await enReparto(m, { destinatario: "Beto Ruiz", montoCobrar: 12_345_678 });
+
+    const page = await paginaDe(browser, m, { viewport: { width: 360, height: ALTO_MOVIL } });
+    await page.goto(REPARTO);
+    await expect(page.getByRole("region", { name: "Indicadores de mis asignaciones" })).toBeVisible();
+    // El contador anima hasta el valor final: se espera a que aterrice. «Por cobrar» y «Total a cobrar»
+    // valen lo mismo (una sola orden, en reparto).
+    const importe = { texto: "₡12.345.678", px: 20, disposicion: "apilada" };
+    await expect.poll(() => cifrasKpi(page)).toEqual(expect.arrayContaining([importe, importe]));
+    expect((await cifrasKpi(page)).filter((c) => c.texto === importe.texto)).toHaveLength(2);
+    expect(await kpiQueNoCaben(page)).toEqual([]);
+    await sinDesborde(page);
+  });
 
   test("(b) R493, R510-R512: botones de 44 px y Gestionar → foco → Confirmar guía → resultado", async ({ browser }) => {
     const m = await crearMensajero(r, "satelite");

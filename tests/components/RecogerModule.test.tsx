@@ -2151,6 +2151,19 @@ describe("SLT-190 — Recoger en bodega según el canvas", () => {
     expect(await within(panelActivo()).findByText("Orden 1 de 1")).toBeInTheDocument();
   });
 
+  // SLT-200 «PWA Reparto: buscador, KPI, tarjeta y leyenda del mapa tras Preview» (punto 1): el mismo
+  // arreglo que Reparto. En el móvil el conmutador baja a su propia línea de la barra para que el
+  // campo no se quede en la lupa. El ancho útil del campo lo mide el E2E de Reparto.
+  it("SLT-200: en el móvil el conmutador ocupa su propia línea y deja la primera al campo y a «Filtros»", () => {
+    renderModule({ porRecoger: TRES });
+    const conmutador = screen.getByRole("group", { name: "Vista de las órdenes" });
+    expect(barra().contains(conmutador)).toBe(true);
+    const clases = conmutador.className.split(/\s+/);
+    expect(clases).toEqual(expect.arrayContaining(["max-md:basis-full", "max-md:[&>button]:flex-1"]));
+    expect(clases).not.toContain("basis-full");
+    expect(clases).not.toContain("w-full");
+  });
+
   it("R859: el conmutador va en la barra, tras el campo y «Filtros»; la fila de pestañas no lleva ninguno", () => {
     renderModule({ porRecoger: TRES });
     const conmutador = screen.getByRole("group", { name: "Vista de las órdenes" });
