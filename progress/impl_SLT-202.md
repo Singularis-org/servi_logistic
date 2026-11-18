@@ -3,7 +3,7 @@
 Ruta directa. frontend_dev, 2026-11-18. Regla: desde `md` las clases EXACTAS de origin/prod; por debajo
 de `md` (PWA en el teléfono), los 44 px de dev con `max-md:`.
 
-**Estado: PARADO en el gate por `tamano-pr` (62/40 archivos). SIN commit ni push**, como pide el brief.
+**Estado:** `tamano-pr` en rojo (62/40 archivos); el leader pidió commitear y pedir a Carlos que acepte el tamaño.
 
 ## Puntos (antes → después)
 
@@ -48,14 +48,14 @@ sola entrada (la continua). Guardias: `lectura-guia-unica` (las 3 recepciones de
 `escaner-un-solo-cierre` (montajes 7 → 5: Órdenes y satélite ya no montan `EscanerModal`).
 
 ## Mapa R → test
-- Barra 32 px alineada a 1280 / 44 px a 360 / un solo «Recibir paquete»: `e2e/escritorio-igual-a-prod.spec.ts` (**NO CORRIDO**, ver abajo).
+- Barra 32 px alineada a 1280 / 44 px a 360 / un solo «Recibir paquete»: `e2e/escritorio-igual-a-prod.spec.ts` (verde, ver E2E).
 - R771/R600 clases: `tests/unit/components/buscador-filtros-escaneo.test.tsx`, `WalletCajaBarra467`, `EstadoCuentaBarra467`.
 - PWA: `tests/components/escritorio-igual-a-prod.test.tsx` (constantes, «Gestionar» y confirmación), `RepartoMovil`,
   `RepartoModoFoco`, `RecogerModule`, `RecoleccionModule`, `EscanerGuiaReparto`, `RecogerPaqueteCard`, `EscanerModal`.
 - Mosaico (R910): `botones-44-pwa-mensajero.test.tsx`. Reparto gap y texto: `RepartoMapa.test.tsx`.
 - Un solo disparador: `EscanerRecepcion.test.tsx`, `RecibirPaquetesEntrada.test.tsx`, `OrdenesPage.test.tsx`,
   `PorRecibirModule.test.tsx`, `RecepcionSateliteModule.test.tsx`; E2E `recepcion-satelite.spec.ts` y
-  `recibir-paquetes.spec.ts` ajustados (no corridos).
+  `recibir-paquetes.spec.ts` ajustados (verdes).
 
 ## Salida real
 ROJO (tests nuevos y ajustados contra el código de antes; fuentes en `git stash`, base `servi_slt202_desechable`):
@@ -87,5 +87,18 @@ INIT_EXIT=1
 Desglose: SLT-202 sola = 46 archivos, 584 líneas de producción, 1473 de tests (≈1000 son borrado de las pruebas de la
 guía suelta). Lo traído de SLT-200 (merge `d016b9c9`, aún no en dev) = 25 archivos, 295 / 651; 9 archivos en común.
 
+## E2E (base `servi_slt202_desechable` sembrada, `next build` BEXIT=0, `E2E_PUERTO=3044`)
+`pnpm exec playwright test --project=reparto` (incluye los tres specs de la ficha):
+```
+  x  37 [reparto] › e2e\pwa-mensajero-reparto.spec.ts:130:9 › SLT-163 — Reparto en el móvil › (a) ... (0ms)
+    Error: worker process exited unexpectedly (code=3221226505, signal=null)
+  1 failed
+  50 passed (2.9m)
+```
+- `escritorio-igual-a-prod.spec.ts`: 3/3 ok (1280 px a 32 px y alineada; 360 px a 44; un solo «Recibir paquete»).
+- `recepcion-satelite.spec.ts` 1/1 ok; `recibir-paquetes.spec.ts` 2/2 ok.
+- El único rojo es la caída del proceso worker de Windows (0xC0000409) a los 0 ms, antes de que el test arrancara.
+  Volví a correr solo ese spec: `pnpm exec playwright test e2e/pwa-mensajero-reparto.spec.ts` → `5 passed (28.1s)`, EEXIT=0.
+
 ## Veredicto
-Implementado y verde en vitest/typecheck/lint; parado en `tamano-pr` (46 archivos propios > 40) sin commit, push ni E2E.
+Implementado. Verde en vitest, typecheck, lint y el proyecto E2E `reparto` (el único rojo fue la caída del worker, verde al repetir); `tamano-pr` sigue en rojo, a la espera de que Carlos acepte el tamaño.
