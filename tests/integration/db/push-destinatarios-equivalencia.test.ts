@@ -8,10 +8,11 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
+  type FksDeOrden,
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 
 // FICHA 410 (T3.3, R24/R25) — A QUIEN LE LLEGA EL PUSH ES **EXACTAMENTE** QUIEN VE EL AVISO.
 //
@@ -31,6 +32,23 @@ import {
 // proceso muere a mitad, no queda ni una fila en la base compartida.
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
+
+/**
+ * SLT-181 — tienda (usuario modelo) y zona nacen en la tx del caso: nada de leer la primera orden de
+ * la base. Control positivo: si la siembra no llega, el caso cae nombrando la fila.
+ */
+async function sembrarFks(tx: TxDeTest): Promise<FksDeOrden> {
+  const fks = await crearFksDeOrden(tx);
+  expect(
+    await tx.usuario.count({ where: { id: fks.tiendaId } }),
+    "SLT-181: la tienda sembrada no esta en la base",
+  ).toBe(1);
+  expect(
+    await tx.zona.count({ where: { id: fks.zonaId } }),
+    "SLT-181: la zona sembrada no esta en la base",
+  ).toBe(1);
+  return fks;
+}
 
 interface UsuarioSembrado {
   id: string;
@@ -160,14 +178,13 @@ describeSiHayBase("410/R24-R25 — conjunto contra conjunto, con cuatro formas d
   });
 
   it("⭑ los cuatro alcances dan EXACTAMENTE el mismo conjunto por las dos vias", async () => {
-    const fks = await fksDeOrden(prisma);
-    // ⚠️ FALLA RUIDOSAMENTE si la base esta vacia: sin fila modelo el caso no se puede medir y un
-    // `return` temprano lo reportaria `passed` sin comprobar nada.
-    expect(fks, "la tabla `orden` esta vacia: el caso no se puede medir").not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const zonaA = fks!.zonaId;
+      const fks = await sembrarFks(tx);
+      // ⚠️ FALLA RUIDOSAMENTE si la base esta vacia: sin fila modelo el caso no se puede medir y un
+      // `return` temprano lo reportaria `passed` sin comprobar nada.
+      expect(fks, "la tabla `orden` esta vacia: el caso no se puede medir").not.toBeNull();
+      const zonaA = fks.zonaId;
       // Una segunda zona: sin ella, la rama de zona del predicado no se ejercita de verdad.
       const zonaB = randomUUID();
       await tx.$executeRawUnsafe(
@@ -177,12 +194,12 @@ describeSiHayBase("410/R24-R25 — conjunto contra conjunto, con cuatro formas d
         `410 zona de prueba ${zonaB.slice(0, 8)}`,
       );
 
-      const tienda1 = await crearUsuario(tx, fks!.tiendaId, "adminTienda", null);
-      const tienda2 = await crearUsuario(tx, fks!.tiendaId, "adminTienda", null);
-      const admin = await crearUsuario(tx, fks!.tiendaId, "admin", null);
-      const sateliteA = await crearUsuario(tx, fks!.tiendaId, "adminSatelite", zonaA);
-      const sateliteB = await crearUsuario(tx, fks!.tiendaId, "adminSatelite", zonaB);
-      const mensajero = await crearUsuario(tx, fks!.tiendaId, "mensajero", zonaA);
+      const tienda1 = await crearUsuario(tx, fks.tiendaId, "adminTienda", null);
+      const tienda2 = await crearUsuario(tx, fks.tiendaId, "adminTienda", null);
+      const admin = await crearUsuario(tx, fks.tiendaId, "admin", null);
+      const sateliteA = await crearUsuario(tx, fks.tiendaId, "adminSatelite", zonaA);
+      const sateliteB = await crearUsuario(tx, fks.tiendaId, "adminSatelite", zonaB);
+      const mensajero = await crearUsuario(tx, fks.tiendaId, "mensajero", zonaA);
       const sembrados = [tienda1, tienda2, admin, sateliteA, sateliteB, mensajero];
 
       const repo = new NotificacionRepository(tx);
@@ -258,12 +275,11 @@ describeSiHayBase("410/R24-R25 — conjunto contra conjunto, con cuatro formas d
     // Mutacion 4 del design §15, reproducida A PELO contra el motor: se consulta a los usuarios
     // del rol IGNORANDO la zona de la fila, que es exactamente lo que hace quitar esa rama del
     // predicado. El resultado es un push en el telefono de una bodega que no ve ese aviso.
-    const fks = await fksDeOrden(prisma);
-    expect(fks).not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const zonaA = fks!.zonaId;
+      const fks = await sembrarFks(tx);
+      expect(fks).not.toBeNull();
+      const zonaA = fks.zonaId;
       const zonaB = randomUUID();
       await tx.$executeRawUnsafe(
         `INSERT INTO "zona" ("id","nombre","sinpe_numero","sinpe_nombre")
@@ -271,8 +287,8 @@ describeSiHayBase("410/R24-R25 — conjunto contra conjunto, con cuatro formas d
         zonaB,
         `410 zona mutacion ${zonaB.slice(0, 8)}`,
       );
-      const sateliteA = await crearUsuario(tx, fks!.tiendaId, "adminSatelite", zonaA);
-      const sateliteB = await crearUsuario(tx, fks!.tiendaId, "adminSatelite", zonaB);
+      const sateliteA = await crearUsuario(tx, fks.tiendaId, "adminSatelite", zonaA);
+      const sateliteB = await crearUsuario(tx, fks.tiendaId, "adminSatelite", zonaB);
 
       const repo = new NotificacionRepository(tx);
       const id = await repo.crear(
@@ -325,13 +341,12 @@ describeSiHayBase("410/R21 — quien no esta `activo` no recibe push, aunque vea
   });
 
   it("⭑ un `adminTienda` inactivo queda fuera del conjunto de push", async () => {
-    const fks = await fksDeOrden(prisma);
-    expect(fks).not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const activo = await crearUsuario(tx, fks!.tiendaId, "adminTienda", null, "activo");
-      const inactivo = await crearUsuario(tx, fks!.tiendaId, "adminTienda", null, "inactivo");
+      const fks = await sembrarFks(tx);
+      expect(fks).not.toBeNull();
+      const activo = await crearUsuario(tx, fks.tiendaId, "adminTienda", null, "activo");
+      const inactivo = await crearUsuario(tx, fks.tiendaId, "adminTienda", null, "inactivo");
 
       const repo = new NotificacionRepository(tx);
       const id = await repo.crear(
@@ -371,14 +386,13 @@ describeSiHayBase("410/R8 — quien ya lo leyo o ya lo descarto sale del conjunt
   });
 
   it("⭑ de tres admins, el que leyo y el que descarto quedan fuera; el tercero sigue dentro", async () => {
-    const fks = await fksDeOrden(prisma);
-    expect(fks).not.toBeNull();
-
     const r = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const leyo = await crearUsuario(tx, fks!.tiendaId, "admin", null);
-      const descarto = await crearUsuario(tx, fks!.tiendaId, "admin", null);
-      const pendiente = await crearUsuario(tx, fks!.tiendaId, "admin", null);
+      const fks = await sembrarFks(tx);
+      expect(fks).not.toBeNull();
+      const leyo = await crearUsuario(tx, fks.tiendaId, "admin", null);
+      const descarto = await crearUsuario(tx, fks.tiendaId, "admin", null);
+      const pendiente = await crearUsuario(tx, fks.tiendaId, "admin", null);
 
       const repo = new NotificacionRepository(tx);
       const id = await repo.crear(
