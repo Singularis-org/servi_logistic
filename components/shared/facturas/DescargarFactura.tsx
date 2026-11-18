@@ -53,12 +53,14 @@ async function generar(facturaId: string, descargar: DescargarFacturaFn, formato
     const logo = await cargarLogo();
     const { construirPdfFactura } = await import("@/lib/facturas-plataforma/pdf");
     const bytes = construirPdfFactura(datos, resumen, logo);
-    descargarBlob(bytes, MIME_PDF, nombreArchivoFactura(numero, datos.empresaNombre, "pdf"));
+    descargarBlob(bytes, MIME_PDF, nombreArchivoFactura(numero, datos.empresaNombre, "factura"));
     return;
   }
   const { construirExcelFactura } = await import("@/lib/facturas-plataforma/excel");
   const bytes = await construirExcelFactura(datos);
-  descargarBlob(bytes, XLSX_MIME, nombreArchivoFactura(numero, datos.empresaNombre, "xlsx"));
+  // Hasta que el anexo sustituya al Excel (SLT-199 T4.1), el nombre de la factura con la extensión del Excel.
+  const nombre = nombreArchivoFactura(numero, datos.empresaNombre, "factura").replace(/\.pdf$/, ".xlsx");
+  descargarBlob(bytes, XLSX_MIME, nombre);
 }
 
 export function DescargarFactura({ facturaId, descargar }: DescargarFacturaProps) {
