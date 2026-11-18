@@ -87,7 +87,7 @@
 
 ## T7 · Revisión de textos y maqueta
 
-- [ ] **T7.1** Comparar con `specs/SLT-130-planes-form-pasos/maqueta/formulario-planes-c.html`: el estado «Borrador · n
+- [x] **T7.1** Comparar con `specs/SLT-130-planes-form-pasos/maqueta/formulario-planes-c.html`: el estado «Borrador · n
   de m», «Guardar y continuar», el aviso de borrador y la tabla de «Cuándo rige». Comprobar que todos los textos de
   `design.md §9` están en `textos.ts` o en los `TEXTOS` de los hosts.
   *Hecho:* captura de crear y de editar en `progress/impl_SLT-144.md`, y ningún literal de §9 fuera de esos objetos.

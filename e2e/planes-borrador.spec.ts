@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
+import path from "node:path";
 
-import { test, expect, type BrowserContext, type Locator, type Page } from "@playwright/test";
+import { test, expect, type BrowserContext, type Locator, type Page, type TestInfo } from "@playwright/test";
 import type { PrismaClient } from "@prisma/client";
 
 import { ORDEN_MODULOS, nombreDelModulo } from "../lib/modulos/catalogo";
@@ -46,6 +47,15 @@ import {
  */
 
 test.describe.configure({ mode: "serial" });
+
+/**
+ * SLT-144 T7.1: dónde guardar una captura. Con `SLT144_CAPTURAS`, en esa carpeta (las de la bitácora); sin ella, en
+ * la salida del test (como `cobro-plataforma-sl40`).
+ */
+function capturaEn(info: TestInfo, nombre: string): string {
+  const carpeta = process.env.SLT144_CAPTURAS;
+  return carpeta ? path.join(carpeta, nombre) : info.outputPath(nombre);
+}
 
 const sufijo = randomBytes(4).toString("hex");
 /** El plan que se crea por pasos (R30.1, R30.2). */
@@ -230,6 +240,7 @@ test("R30: crear y editar un plan por pasos con borrador — crear, cerrar, reto
   for (const paso of ["General", "Precio y descuentos", "Cobro por orden"]) {
     await expect(botonDelPaso(retomado, TEXTO.guardado(paso))).toBeVisible();
   }
+  await page.screenshot({ path: capturaEn(test.info(), "crear-retomado-topes.png"), fullPage: true });
   await irAlPaso(retomado, TEXTO.guardado("General"), "General");
   await expect(retomado.getByRole("textbox", { name: /^Nombre/ })).toHaveValue(nombreNuevo);
   await expect(retomado.getByRole("radio", { name: "Público", exact: true })).toBeChecked();
@@ -316,6 +327,7 @@ test("R30: crear y editar un plan por pasos con borrador — editar con empresas
   await expect(filaM).toHaveCount(1, { timeout: 60_000 });
   await expect(filaM.getByRole("cell")).toHaveText([nombreM, "Mensual", f]);
   await expect(filaN.getByRole("cell")).toHaveText([nombreN, "Anual", primeroDeEneroDesde(f)]);
+  await page.screenshot({ path: capturaEn(test.info(), "editar-cuando-rige.png"), fullPage: true });
 
   // R30.5: programar.
   await guardarYContinuar(retomado, "Revisar y programar");
