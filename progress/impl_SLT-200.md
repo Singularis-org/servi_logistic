@@ -2,7 +2,7 @@
 
 Ruta directa, frontend_dev, 2026-11-18. Rama `feature/SLT-200-pwa-reparto-ajustes-preview` (sale de dev `8dad4167`).
 Alcance: puntos 1-4 del leader, más el 1 ampliado (Recoger y Recolección), el 6 (Recolección sin cámara) y el 7
-(tooltip de la cámara). El 5 (siembra demo QA) no es de esta tanda.
+(tooltip de la cámara). El 5 (siembra demo QA) va en su sección, al final (T2).
 
 ## Archivos
 
@@ -106,6 +106,53 @@ Verde:
 Gate rápido (`bash ./init.sh` vía `con-desechable`, base `servi_slt200_desechable`):
 - 1.ª pasada: `INIT_EXIT=1`. La guardia `pwa-mensajero-sin-recorte` (escala de 4 px, R494) rechazó `gap-1.5` en la leyenda y `mt-0.5` en el icono del producto. Pasan a `gap-2` y sin margen.
 - 2.ª pasada: `INIT_EXIT=0`, con lotes de 1453, 1683, 1699 y 1017 tests en verde (1 skipped). Ese cambio de clases llegó después del E2E; no mueve medidas que el E2E compruebe.
+
+## Punto 5 — demo QA: órdenes en reparto completas (backend_dev, 2026-11-18)
+
+Causa (`progress/investigacion-SLT-200.md`, punto 3): las 2 órdenes en reparto del `mensajero-reposo` nacían por la
+carga masiva (sin peso, feature 15/R4), sin monto y sin ruta calculada → «·», «Sin posición · —» y «–» en COBRAR.
+
+Archivos:
+- `scripts/demo-qa/receta.ts`:
+  - `enReparto`: la 1.ª con `MONTO_A_COBRAR` (8000), las demás sin cobro. El mensajero no entrega: no mueve saldos.
+  - `ponerPeso`: `CorregirDatosClienteService.corregir` como admin (montado como en
+    `lib/actions/corregir-datos-cliente.ts`, mismo `schema.parse`), con `PESOS_EN_REPARTO` = 1.5 y 0.8 kg.
+    Corregir el peso no deja rastro (312/D4).
+  - `sincronizarRuta`: la secuencia NO se escribe a mano. `buildOptimizacionRutaService().ejecutar(m, { motivo: "manual" })`,
+    la misma fábrica que «Sincronizar ruta» (`lib/actions/ruta-mensajero.ts`). La demo no tiene integración de rutas:
+    el servicio cae solo a Haversine, sin red.
+  - Orden en `enReposo`: peso → reparto → sincronizar → asignar las «por recoger». Si se asignaran antes, la guarda
+    SLT-79 (80 % recogido para la 1.ª ruta del día) omitiría el cálculo. Ni asignar ni recoger encolan
+    `optimizacion_ruta` (solo gestión y traspaso), así que el «0 jobs de ruta» de R22 sigue en pie.
+  - Coordenadas: ya venían (`ubicar`, R20 de SL-43). No se tocan.
+- `tests/integration/db/demo-qa.test.ts`: caso nuevo «SLT-200 (punto 5)…», y el comentario de R22 al día.
+
+E2E: ningún test de `tests/` ni `e2e/` usa las guías `DEMO-A-0xx` ni el `mensajero-reposo` de la demo (grep). Los
+recuentos por estado (`ORDENES_POR_ESTADO`) no cambian.
+
+Test (punto 5 → test): `demo-qa.test.ts` «SLT-200 (punto 5): las órdenes en reparto del mensajero-reposo llegan a su
+tarjeta con parada, peso y monto». Lee por `MisAsignacionesService.listarMisAsignaciones` con el actor del mensajero,
+que es lo que pinta la tarjeta. En A y en B fija: 2 tarjetas (control positivo); `secuenciaRuta` [1, 2]; 0 paradas
+sin optimizar; ruta `vigente`; peso {0.8, 1.5}; montos {0, 8000}; KPI `porCobrar` 8000; coordenadas.
+
+Salida (`vitest run tests/integration/db/demo-qa.test.ts -t "(primera ejecución|SLT-200)"`, base desechable):
+- Rojo, receta de dev: `Tests 1 failed | 1 passed | 12 skipped` — `posición en la ruta: expected [ null, null ] to deeply equal [ 1, 2 ]`.
+- Verde: `Tests 2 passed | 12 skipped`, `EXIT=0`.
+- Mutación 1 (sin `ponerPeso`): `1 failed` — `peso: expected [ null, null ] to deeply equal [ 0.8, 1.5 ]`.
+- Mutación 2 (`enReparto: plan("central", n)`): `1 failed` — `montos: expected [ +0, +0 ] to deeply equal [ +0, 8000 ]`.
+- Receta restaurada (diff contra la copia del cambio: idéntica).
+
+La siembra completa corrió en la desechable dentro de ese test: «la primera ejecución» es `ejecutarDemo` con
+`cargarPasosReales`, A y B completas, `codigo 0`. Va contra el Storage falso del test. `pnpm demo:qa` a pelo habría
+subido evidencias al Supabase del `.env`, que no es desechable.
+
+`npx tsc --noEmit` → sin salida (exit 0).
+
+Gate rápido (`bash ./init.sh` vía `con-desechable`, `servi_slt200_desechable`): `INIT_EXIT=0`. typecheck y lint pasan.
+Lotes de 1453, 1683, 1699 y 1017 tests en verde (1 skipped). `demo-qa.test.ts` no entró en el `related` del gate;
+lo cubre la corrida dirigida de arriba.
+
+Veredicto (punto 5): hecho. La tarjeta del mensajero-reposo trae parada, peso y cobro, por los servicios de la app.
 
 ## No verificado
 
