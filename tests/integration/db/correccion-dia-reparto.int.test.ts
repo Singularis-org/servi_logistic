@@ -66,7 +66,9 @@ describeSiHayBase("262/B12 — corregir el dia de reparto, contra Postgres real"
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
 
-    const valores = ["mensajero_recogiendo_en_bodega", "en_reparto", "ayuda_tienda", "entregado"];
+    // SLT-186: `ayuda_tienda` salio de esta lista: la 454 lo retiro del catalogo y el servicio admite
+    // solo dos estados (`ESTADOS_CON_DIA_DE_REPARTO_VIVO`, lib/services/CorreccionDiaRepartoService.ts).
+    const valores = ["mensajero_recogiendo_en_bodega", "en_reparto", "entregado"];
     const estados = await prisma.orderStatus.findMany({
       where: { value: { in: valores } },
       select: { id: true, value: true },
@@ -165,7 +167,7 @@ describeSiHayBase("262/B12 — corregir el dia de reparto, contra Postgres real"
 
   /** Los tres estados admitidos, ya resueltos a id. */
   function estatusIdsAdmitidos(): string[] {
-    return [ESTATUS.mensajero_recogiendo_en_bodega, ESTATUS.en_reparto, ESTATUS.ayuda_tienda];
+    return [ESTATUS.mensajero_recogiendo_en_bodega, ESTATUS.en_reparto];
   }
 
   /* ------------------------------------------------------------------------ */
@@ -221,12 +223,13 @@ describeSiHayBase("262/B12 — corregir el dia de reparto, contra Postgres real"
     expect(aplicadas[0].fechaNueva).toEqual(HOY);
   });
 
-  it("R6: los TRES estados admitidos se corrigen (`mensajero_recogiendo_en_bodega`, `en_reparto`, `ayuda_tienda`)", async () => {
+  // SLT-186: eran TRES; desde la 454 `ayuda_tienda` no es un estado (la ayuda es un evento) y el
+  // servicio admite solo estos dos.
+  it("R6: los DOS estados admitidos se corrigen (`mensajero_recogiendo_en_bodega`, `en_reparto`)", async () => {
     const dias = await conOrdenes(
       [
         { estatusValue: "mensajero_recogiendo_en_bodega" },
         { estatusValue: "en_reparto" },
-        { estatusValue: "ayuda_tienda" },
       ],
       async (ctx) => {
         await ctx.repo.corregirDiaRepartoLote(ctx.ids, HOY, estatusIdsAdmitidos(), null, {
@@ -240,7 +243,7 @@ describeSiHayBase("262/B12 — corregir el dia de reparto, contra Postgres real"
         return filas.map((f) => f.fechaReparto);
       },
     );
-    expect(dias).toEqual([HOY, HOY, HOY]);
+    expect(dias).toEqual([HOY, HOY]);
   });
 
   /* ------------------------------------------------------------------------ */
@@ -681,6 +684,8 @@ describeSiHayBase("262/B12 — corregir el dia de reparto, contra Postgres real"
     expect(nombres.length, "la tabla del rastro no existe en la base").toBeGreaterThan(0);
     expect(nombres).not.toContain("updated_at");
     expect(nombres).not.toContain("deleted_at");
+    // SLT-186: SL-17 (multiempresa) anadio `organizacion_id`, la columna que lee la policy de
+    // empresa; sigue sin haber `updated_at` ni `deleted_at`.
     expect(nombres.sort()).toEqual([
       "actor_usuario_id",
       "created_at",
@@ -689,6 +694,7 @@ describeSiHayBase("262/B12 — corregir el dia de reparto, contra Postgres real"
       "id",
       "motivo",
       "orden_id",
+      "organizacion_id",
     ]);
   });
 
