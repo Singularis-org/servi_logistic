@@ -7,9 +7,9 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTestConEspia,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 
 /**
  * ⏳ 2026-09-10 — FEATURE 405 (T8): `gestiones[]` EJECUTADO CONTRA POSTGRES.
@@ -121,37 +121,12 @@ const T = {
 describeSiHayBase("ficha 405 — el detalle por API key publica las gestiones VIGENTES de la orden", () => {
   let prisma: PrismaClient;
   let eventos: { query: string }[];
-  let fks: NonNullable<Awaited<ReturnType<typeof fksDeOrden>>>;
-  let tiendas: { id: string }[];
-  let mensajeros: { id: string; nombre: string }[];
   let estatus: Map<string, string>;
 
   beforeAll(async () => {
     const espia = crearPrismaDeTestConEspia();
     prisma = espia.prisma;
     eventos = espia.eventos;
-
-    const encontradas = await fksDeOrden(prisma);
-    if (encontradas === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar. " +
-          "Corre `pnpm run db:seed` antes de esta suite.",
-      );
-    }
-    fks = encontradas;
-
-    tiendas = await prisma.usuario.findMany({ select: { id: true }, take: 2 });
-    if (tiendas.length < 2) {
-      throw new Error(
-        "hacen falta al menos DOS usuarios: uno es la tienda dueña de la key y el otro la tienda " +
-          "ajena que demuestra que el `where` filtra por tienda (R13).",
-      );
-    }
-
-    mensajeros = await prisma.usuario.findMany({ select: { id: true, nombre: true }, take: 2 });
-    if (mensajeros.length < 2) {
-      throw new Error("hacen falta al menos DOS usuarios para atribuir gestiones distintas.");
-    }
 
     const filas = await prisma.orderStatus.findMany({
       where: {
@@ -180,6 +155,25 @@ describeSiHayBase("ficha 405 — el detalle por API key publica las gestiones VI
   async function escenario() {
     return enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      // SLT-179 — las DOS tiendas (la dueña de la key y la ajena de R13), los DOS mensajeros y la
+      // zona nacen en ESTA transaccion: nada de leer la primera orden ni los primeros usuarios de la
+      // base. Control positivo: cuatro usuarios y una zona sembrados, o el caso cae.
+      const fks = await crearFksDeOrden(tx);
+      const tiendas = [{ id: fks.tiendaId }, await crearUsuarioDePrueba(tx, "adminTienda")];
+      const mensajeros = [
+        await crearUsuarioDePrueba(tx, "mensajero"),
+        await crearUsuarioDePrueba(tx, "mensajero"),
+      ];
+      expect(
+        await tx.usuario.count({
+          where: { id: { in: [...tiendas, ...mensajeros].map((u) => u.id) } },
+        }),
+        "SLT-179: las dos tiendas y los dos mensajeros sembrados no estan en la base",
+      ).toBe(4);
+      expect(
+        await tx.zona.count({ where: { id: fks.zonaId } }),
+        "SLT-179: la zona sembrada no esta en la base",
+      ).toBe(1);
       const [tiendaPropia, tiendaAjena] = tiendas;
       const [mensajeroA, mensajeroB] = mensajeros;
 

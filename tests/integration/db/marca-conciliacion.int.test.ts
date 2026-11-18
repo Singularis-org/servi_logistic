@@ -9,6 +9,7 @@ import {
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -62,15 +63,16 @@ describeSiHayBase("431/T7 — la marca de conciliacion (Postgres real)", () => {
     return fila.id;
   }
 
+  /**
+   * El usuario que solicita y marca, SEMBRADO en la tx del caso (SLT-182): antes se leia «el primer
+   * usuario» de la base, y la base recien migrada no tiene.
+   */
   async function algunUsuarioId(tx: TxDeTest): Promise<string> {
-    const fila = await tx.usuario.findFirst({ select: { id: true } });
-    if (!fila) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `usuario` esta vacia: sin FK no se puede sembrar un " +
-          "cierre_bodega. Corre `pnpm run db:seed` antes de esta suite.",
-      );
-    }
-    return fila.id;
+    const { id } = await crearUsuarioDePrueba(tx, "maestro");
+    // Control positivo (R1084): la siembra llego a la base.
+    const sembrados = await tx.usuario.count({ where: { id } });
+    if (sembrados !== 1) throw new Error("SLT-182: el usuario que marca, sembrado, no esta en la base");
+    return id;
   }
 
   async function sembrarConsolidacion(
