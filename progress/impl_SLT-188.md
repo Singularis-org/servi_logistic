@@ -94,3 +94,104 @@ shards del CI del PR (lo trae el leader para T3).
 - `tests/baseline-rojos.json`: sin cambios (ninguna entrada cita SLT-188; R1188).
 
 Veredicto tanda 1: T1 hecha y verde; T2 enganchada en modo informe, a falta del informe de los 3 shards del CI.
+
+## Tanda 2 — T2 (cierre) a T8 (2026-11-18)
+
+### T2 — informe del CI del PR #222 (run 44359606182, sobre d5f3a414)
+
+Los 3 shards: `{"estado":"ok","organizaciones":[],"orderStatusNuevos":[],"totalFilas":0}`. `gate-completo`:
+`shard 1/3 .. 3/3: 0 filas fuera de su transacción` · `total: 0 filas fuera de su transacción` (modo informe).
+
+### ¿Es ciega? Evidencia de que no
+
+- **Misma base:** `DATABASE_URL` y `DIRECT_URL` se fijan en el `env:` del workflow (`gate.yml:38-43`), y ningún
+  paso del shard los cambia. `Base del shard` migra y siembra (`gate.yml:213-219`); la `Foto` corre después
+  (`:225-228`) y antes de `init.sh --completo` (`:230-240`); `comparar` corre detrás (`:246-250`). Los tres
+  `init-shard.log` dicen «DATABASE_URL viene del entorno; no se carga el .env», y el shard 1 corrió
+  `filas-fuera-de-tx.guardia.test.ts (13 tests)` sin saltos: sus 3 casos de Postgres usan esa misma URL.
+- **Pero** la foto imprimía su resumen solo en el log del paso, no en el artefacto. Por eso el informe gana ahora un
+  **control** que sale en el resumen de `gate-completo`: tablas con `organizacion_id` antes y después, organizaciones
+  y filas de la foto, y **las inserciones en `organizacion` durante la suite** (`pg_stat_user_tables.n_tup_ins`, que
+  cuenta también las de tx revertidas). En CI (`comparar` con `exigirSuite`), un control con 0 tablas o con 0
+  inserciones es **comprobación ciega**: el informe sale en `error` y `gate-completo` va a rojo (R1174).
+- Local, en la desechable: foto y `comparar` SIN suite en medio -> `comprobacion ciega: la suite no inserto ninguna
+  organizacion en esta base`, salida 1. Con la guardia entre medias -> `0 filas`, control con `1 insercion(es)`,
+  salida 0. Con los 39 archivos -> `440 insercion(es)`.
+
+### T3 — atribución (R1177, R1181, R1182)
+
+- Clase (a): **tabla vacía** en CI: los 3 shards dieron 0, así que no hay archivo que atribuir. R1181: la ficha
+  cierra con la detección y R1180, sin inventar arreglos.
+- Clase (b): 39 archivos commitean una `organizacion` (`grep` de `crearOrganizacion(prisma|base|…)`,
+  `prisma.organizacion.create` y la lista del spec). 35 escriben el motivo en el archivo (p. ej.
+  `aislamiento-ordenes.test.ts:34`, «los repositorios abren su propia `$transaction`»). 4 no lo escriben:
+  `integracion-migracion.test.ts:127`, `para-cada-empresa-modulo.test.ts:25`,
+  `premio-ranking-idempotencia.test.ts:1080` y `419/_escenario-419.ts`. Los cuatro limpian. Van a la deuda
+  **D79**, sin tocarlos: sin fuga medida (R1181) y con la decisión del leader sobre 419.
+
+### T4 — escritores
+
+Nada que arreglar: 0 filas en CI. El hallazgo de T7 (abajo) va a la deuda D80.
+
+### T5 — `total-a-cobrar-sin-cerrado-sql-real` (R1180)
+
+La central se crea siempre en la empresa de la tx, con control positivo (`count === 1` de centrales de esa empresa).
+- ANTES del arreglo, con una central de otra empresa confirmada en la desechable: **4 failed (4)**,
+  `DriverAdapterError: referencia a otra empresa: orden.zona_id -> zona` (SL017).
+- DESPUÉS, con la central ajena: **4 passed (4)**. Base vacía (ajena borrada): **4 passed (4)**.
+- Mutación del control (`!== 1` -> `!== 99`): **4 failed (4)**; restaurada con `git checkout --`.
+
+### T6 — rojo activado y mutación (R1173, R1185)
+
+`gate.yml`: `MODO_FILAS: rojo`. Mutación R1185 sobre un archivo que limpia (`para-cada-empresa-modulo.test.ts`,
+sin el `deleteMany` del `afterAll`; restaurado con `git checkout --`):
+
+```
+organizacion «SL-23 con monitoreo» (prueba-1961478b68e7, e88403c5-…) — organizacion: 1, organizacion_modulo: 1
+organizacion «SL-23 sin monitoreo» (prueba-20a92f2a466b, 5d1d891e-…) — organizacion: 1, organizacion_modulo: 1
+4 filas fuera de su transacción
+R1185_EXIT=1
+unir … --modo rojo -> total: 4 filas fuera de su transacción; 0 shard(s) sin informe valido · UNIR_ROJO=1
+```
+Las 2 organizaciones se borraron de la desechable después.
+
+### T7 — doble corrida (R1184)
+
+Los 39 archivos de la clase (b), más `419/`, `454/`, `total-a-cobrar` y la guardia (88 archivos, 610 tests), dos veces
+seguidas sobre `servi_slt188_desechable`, con foto y `comparar` en cada una:
+- **Intento 1:** corrida 1 con 610 passed y `0 filas`. En la corrida 2 el worker de vitest **murió** en
+  `454/caracterizacion/corte-concurrencia.test.ts` («Worker exited unexpectedly»; 2 casos sin correr) y la
+  comprobación dio **12 filas**, salida 1: el escenario de `sembrarComprometido` (orden `R-454…`, «Central 454 …»,
+  5 usuarios). Purgado de la desechable. El archivo solo: 3 de 3 verdes y `0 filas`. Va a la deuda **D80**.
+- **Intento 2:** corrida 1 con 610 passed y `0 filas` (control: 440 inserciones); corrida 2 con 610 passed y `0 filas`
+  (control: 440 inserciones). Salidas 0 y 0.
+
+### T8 — cierre
+
+- `git diff --name-only origin/dev -- lib app components hooks db`: vacío.
+- `node scripts/tamano-pr.mjs`: `4/40 archivos, 96/1000 lineas de produccion, 87/3000 de tests`.
+- `tests/baseline-rojos.json`: sin cambios (R1188).
+- Gate rápido en la desechable, tras `git merge origin/dev` (con #222 dentro): typecheck ✓, lint ✓, test:rapido
+  1250 + 1735 + 1595 (1 skipped) + 719 verdes, `== init OK ==`, **INIT_EXIT=0**.
+- Queda para el leader: `gate-completo` del PR nuevo, que ya corre en modo rojo, tiene que decir
+  «0 filas fuera de su transacción» en los 3 shards (R1183).
+
+### Mapa R -> test (completo)
+
+| R | Test / evidencia |
+|---|---|
+| R1170, R1175, R1176, R1189 | `filas-fuera-de-tx.guardia.test.ts` (tanda 1) |
+| R1171 | foto de base nueva (tanda 1) + `gate.yml:225-228` |
+| R1172 | `gate.yml:225-228` y `:246-250`; informe de los 3 shards del run 44359606182 |
+| R1173 | «R1173: …» de la guardia; `MODO_FILAS: rojo`; T6 `UNIR_ROJO=1` |
+| R1174 | «R1174: falta el informe…», «una comprobacion CIEGA no da 0: da fallo» (3 casos) |
+| R1177, R1181 | T3: CI con 0 filas, tabla de atribución vacía |
+| R1178, R1179, R1186, R1187 | sin escritores que arreglar (0 filas); nada en `lib/` |
+| R1180 | `total-a-cobrar-sin-cerrado-sql-real.test.ts` (4 casos; con datos ajenos y en base vacía) |
+| R1182 | inventario T3 -> D79 |
+| R1183 | `gate-completo` del PR de la tanda 2 (pendiente del CI) |
+| R1184 | T7 intento 2: 0 y 0 |
+| R1185 | T6: mutación de `para-cada-empresa-modulo` -> salida 1 nombrando «SL-23 …» |
+| R1188 | baseline sin cambios |
+
+Veredicto tanda 2: T2-T8 hechas; rojo de CI activo; falta ver `gate-completo` del PR nuevo.

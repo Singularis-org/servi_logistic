@@ -332,7 +332,7 @@ export function unir(dir: string, shards: number, modo: Modo): { lineas: string[
   }
   if (!rojo) lineas.push(`total: ${LINEA_CERO}`);
   else lineas.push(`total: ${total} filas fuera de su transacción; ${sinInforme} shard(s) sin informe valido`);
-  if (modo === "informe") lineas.push("modo informe (SLT-188 T2): se mide sin poner el gate en rojo");
+  if (modo === "informe") lineas.push("modo informe: se mide sin poner el gate en rojo");
   return { lineas, codigo: modo === "rojo" && rojo ? 1 : 0 };
 }
 

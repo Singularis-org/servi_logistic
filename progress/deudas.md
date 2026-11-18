@@ -461,3 +461,13 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** SLT-129 (2026-11-17, review m3). Guardar o confirmar un borrador mientras se borra el plan en cascada (R22) puede cruzar bloqueos; Postgres corta uno con `40P01` y el error llega sin traducir.
 - **Qué falta:** traducir `40P01` a un error de dominio reintentable, o fijar el orden de bloqueos también en el borrado.
 - **Dueño:** Camilo.
+
+### D79 — Tests que commitean filas de negocio sin el motivo escrito
+- **Origen:** SLT-188 «Tests que dejan filas fuera de su transacción», T3 (R1182, 2026-11-18). De los 39 archivos que commitean una `organizacion` (y lo que cuelga de ella), 35 dicen en el propio archivo por qué no van en una tx revertida; 4 no: `integracion-migracion.test.ts`, `para-cada-empresa-modulo.test.ts`, `premio-ranking-idempotencia.test.ts` y `419/_escenario-419.ts`. Los cuatro limpian (`afterAll`/`finally`) y el CI del PR #222 midió 0 filas fuera de su transacción: no hay fuga permanente, solo la ventana de la clase (b).
+- **Qué falta:** pasarlos a una tx revertida si caben, o escribir el motivo en el archivo. No se hizo en SLT-188: sin fuga medida, R1181 pide no inventar arreglos, y el leader dejó `419/_escenario-419.ts` fuera salvo evidencia.
+- **Dueño:** Carlos Restrepo (decidir si va a ficha).
+
+### D80 — `454/caracterizacion/corte-concurrencia` deja su escenario si el worker muere
+- **Origen:** SLT-188 «Tests que dejan filas fuera de su transacción», T7 (2026-11-18). En la segunda de dos corridas seguidas sobre la misma desechable, el worker de vitest murió («Worker exited unexpectedly») en el `beforeAll` de ese archivo. Quedó confirmado un escenario de `sembrarComprometido`: 1 organización, 1 orden (`R-454…`), 2 zonas («Central 454 …»), 5 usuarios y su cobro (12 filas). La comprobación de SLT-188 lo cazó con salida 1. Solo, el archivo pasó 3 de 3 sin fuga, y la doble corrida repetida dio 0 y 0.
+- **Qué falta:** que el archivo barra al empezar los restos de corridas anteriores (por sus identificadores `454…`), o saber por qué muere el worker. Un `finally` no basta si muere el proceso.
+- **Dueño:** Carlos Restrepo (decidir si va a ficha).

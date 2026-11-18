@@ -127,18 +127,18 @@ Dos clases de fuga, que la ficha separa:
 - [x] **T1 — Comprobación** (R1170, R1171, R1175, R1176, R1189). Script de foto/comparación + sus
   fixtures. Medir la foto de una base nueva. *Hecho:* fixtures 0/1/0 en verde; foto de base nueva
   anotada.
-- [ ] **T2 — Enganche en CI** (R1172-R1174). Pasos en `gate.yml` (foto antes y después en cada shard;
+- [x] **T2 — Enganche en CI** (R1172-R1174). Pasos en `gate.yml` (foto antes y después en cada shard;
   lectura en `gate-completo`). Primero en modo informe en un push del PR para medir, sin rojo. *Hecho:*
   informe de los 3 shards descargado.
-- [ ] **T3 — Atribución** (R1177, R1181, R1182). Mapear cada fila a su archivo; inventario de clase (b).
+- [x] **T3 — Atribución** (R1177, R1181, R1182). Mapear cada fila a su archivo; inventario de clase (b).
   *Hecho:* tabla en `progress/impl_SLT-188.md`. Si la tabla pasa del tope del PR, parar y proponer corte.
-- [ ] **T4 — Arreglar escritores** (R1178, R1179, R1186, R1187). *Hecho:* cada archivo verde y sin filas.
-- [ ] **T5 — `total-a-cobrar-sin-cerrado-sql-real`** (R1180). *Hecho:* verde en base vacía y con datos
+- [x] **T4 — Arreglar escritores** (R1178, R1179, R1186, R1187). *Hecho:* cada archivo verde y sin filas.
+- [x] **T5 — `total-a-cobrar-sin-cerrado-sql-real`** (R1180). *Hecho:* verde en base vacía y con datos
   ajenos.
-- [ ] **T6 — Rojo activado y mutación** (R1173, R1185). Quitar el modo informe; mutación de limpieza →
+- [x] **T6 — Rojo activado y mutación** (R1173, R1185). Quitar el modo informe; mutación de limpieza →
   rojo; restaurar. *Hecho:* evidencia en la bitácora.
-- [ ] **T7 — Doble corrida** (R1184). *Hecho:* dos corridas sobre la misma desechable, 0 y 0.
-- [ ] **T8 — Cierre** (R1183, R1188). typecheck, lint, `pnpm run test:guardias`, `git diff --name-only
+- [x] **T7 — Doble corrida** (R1184). *Hecho:* dos corridas sobre la misma desechable, 0 y 0.
+- [x] **T8 — Cierre** (R1183, R1188). typecheck, lint, `pnpm run test:guardias`, `git diff --name-only
   origin/dev -- lib app components hooks db` vacío, `node scripts/tamano-pr.mjs`, deudas, mapa R → test,
   `./init.sh` (leader) y `gate-completo` verde con «0 filas fuera de su transacción».
 
