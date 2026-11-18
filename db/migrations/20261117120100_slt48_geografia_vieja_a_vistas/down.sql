@@ -16,16 +16,33 @@
 BEGIN;
 
 -- ── 1. Precondición (R12) ────────────────────────────────────────────────────────────────────────
+-- Dos casos impiden la vuelta, y se cuentan juntos para decirlo todo de una vez (P5):
+--   · la orden está en un nodo de profundidad 1, o 4 o más: las 3 FK no lo saben expresar;
+--   · la orden se queda sin provincia o sin cantón después del paso 3: sin nodo ni FK (una fila
+--     escrita a mano tras el deploy), o con las FK a medias, que el paso 3 no toca. Sin esta cuenta
+--     abortaría igual, pero en el `SET NOT NULL` del paso 4 y con un error que no dice cuántas son
+--     (review SLT-48, vuelta 1).
 DO $$
 DECLARE
   v_ordenes bigint;
+  v_profundidad bigint;
+  v_sin_lugar bigint;
 BEGIN
-  SELECT count(*) INTO v_ordenes
-    FROM orden o JOIN nodo_geografico n ON n.id = o.nodo_geografico_id
-   WHERE n.profundidad NOT IN (2, 3);
+  WITH impiden AS (
+    SELECT n.profundidad NOT IN (2, 3) AS en_nodo_que_no_cabe,
+           (o.provincia_id IS NULL OR o.canton_id IS NULL)
+             AND NOT (o.nodo_geografico_id IS NOT NULL
+                      AND o.provincia_id IS NULL AND o.canton_id IS NULL AND o.distrito_id IS NULL) AS sin_lugar
+      FROM orden o LEFT JOIN nodo_geografico n ON n.id = o.nodo_geografico_id
+  )
+  SELECT count(*) FILTER (WHERE en_nodo_que_no_cabe OR sin_lugar),
+         count(*) FILTER (WHERE en_nodo_que_no_cabe),
+         count(*) FILTER (WHERE sin_lugar)
+    INTO v_ordenes, v_profundidad, v_sin_lugar
+    FROM impiden;
   IF v_ordenes > 0 THEN
-    RAISE EXCEPTION 'SLT-48 down: % ordenes estan en un nodo que la geografia vieja no sabe guardar (profundidad 1, o 4 o mas); decide antes que hacer con ellas',
-      v_ordenes;
+    RAISE EXCEPTION 'SLT-48 down: % ordenes no caben en la geografia vieja: % estan en un nodo que no sabe guardar (profundidad 1, o 4 o mas) y % no tienen nodo ni provincia y canton; decide antes que hacer con ellas',
+      v_ordenes, v_profundidad, v_sin_lugar;
   END IF;
 END $$;
 

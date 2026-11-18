@@ -327,6 +327,21 @@ describeSiHayBase("SLT-48 — geografía vieja a vistas, de ida y vuelta", () =>
     await db.query(`DELETE FROM orden WHERE id = $1`, [enProvincia]);
   }, 120_000);
 
+  it("R12 (P5): una orden sin nodo ni FK, escrita a mano tras la ida, aborta la vuelta con la cuenta y sin cambiar nada", async () => {
+    // Review SLT-48 vuelta 1: antes moría en el `SET NOT NULL` con un error que no decía cuántas eran.
+    const sinLugar = await orden({ provinciaId: null, cantonId: null, distritoId: null, nodoId: null });
+    expect(
+      await uno(`SELECT row(nodo_geografico_id, provincia_id, canton_id, distrito_id)::text FROM orden WHERE id = $1`, [sinLugar]),
+    ).toBe("(,,,)");
+
+    const mensaje = await fallo(M_VISTAS, "down.sql");
+    expect(mensaje).toMatch(/SLT-48 down: 1 ordenes no caben en la geografia vieja: 0 estan en un nodo .* y 1 no tienen nodo ni provincia y canton/);
+    expect(mensaje).not.toMatch(/null value|not-null|23502/i);
+    expect(diferencias(await esquema(), con)).toEqual([]);
+
+    await db.query(`DELETE FROM orden WHERE id = $1`, [sinLugar]);
+  }, 120_000);
+
   it("R11: la vuelta deja el esquema como antes, rellena las FK de las órdenes nuevas y la sincronía vuelve", async () => {
     await orden({ id: nuevas.enDistrito, provinciaId: null, cantonId: null, distritoId: null, nodoId: e.distritoId });
     await orden({ id: nuevas.enCanton, provinciaId: null, cantonId: null, distritoId: null, nodoId: e.cantonId });
