@@ -204,3 +204,24 @@ Veredicto: 21 de 22 archivos recuperados y fuera del baseline, sin tocar producc
     (un worker de vitest murió, 99/100 archivos). Fallo de infraestructura.
   - 2.ª corrida, con el árbol sin cambios: `== init OK ==`, sin errores no capturados, **INIT_EXIT=0**.
   - Corrección: un commit anterior anotó INIT_EXIT=0 antes de leer la 1.ª corrida.
+
+## Vuelta 4 — CI rojo en `wallet-458-migration` (run 44340689296)
+- **Causa:** CI corre Postgres 17, que devuelve `23503` en un borrado bloqueado por una FK RESTRICT.
+  Postgres 18 (local) devuelve `23001`. Los dos casos (c) fijaban `23001`.
+- **Arreglo:** el patrón de `tarifa-zona-borrado-fk-real.test.ts` (SLT-186): se lee
+  `server_version_num` en la misma tx y se espera `23001` si es >= 180000 y `23503` si no
+  (`sqlstateRestrict`). No hay un helper compartido de versión; el patrón se copia en el archivo.
+- **Grep de `23001` en tests/:** de los archivos de mi diff y de los que esta ficha sacó del baseline,
+  el único con ese literal es `wallet-458-migration`. Los otros archivos con `23001` no son de esta
+  ficha:
+  - en el baseline: `abono-tienda-457-migration`, `cobro-tienda-461-migration`, `wallet-461-migration`;
+  - fuera del baseline: `cobro-plataforma-cargos`, `demo-qa-borrado`, `geografia-por-pais`, `_fixtures/sqlstate-461`, unit.
+- **Local (PG18):** 8/8 en verde. **Mutación** de la rama 18 (umbral 180000 → 190000, que manda PG18 a la
+  rama de <= 17): los dos casos (c) en ROJO (`expected [ '23001', '23001', '23001' ] to deeply equal
+  [ '23503', … ]` y `expected [ '23001', '23001' ] to deeply equal [ '23503', '23503' ]`). Restaurado;
+  vuelve a verde. La rama de PG17 la confirma el CI.
+- **Gate rápido:**
+  - 1.ª corrida: INIT_EXIT=1, por timeout de 20 s en cuatro guardias que barren el árbol
+    (`factura-contraste`, `fuera-datos-ordenex`, `gestion-aprobada-retirada`, `otp-debug`). Hay carga
+    de otros worktrees. Ninguna toca este archivo.
+  - 2.ª corrida, con el árbol sin cambios: sin timeouts, **INIT_EXIT=0**.
