@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
+import { ESTADOS_TRASPASABLES } from "@/lib/services/TraspasoMensajeroService";
 import { TraspasoMensajeroConflictoError } from "@/lib/interfaces/repositories/IOrdenRepository";
 
 import {
@@ -67,7 +68,8 @@ describeSiHayBase("427/T9 — el traspaso entre mensajeros, contra Postgres real
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
 
-    const valores = ["en_reparto", "ayuda_tienda", "entregado", "mensajero_recogiendo_en_bodega"];
+    // SLT-186: `ayuda_tienda` salio de esta lista: la 454 lo retiro del catalogo (una base nueva no lo trae).
+    const valores = ["en_reparto", "entregado", "mensajero_recogiendo_en_bodega"];
     const estados = await prisma.orderStatus.findMany({
       where: { value: { in: valores } },
       select: { id: true, value: true },
@@ -494,10 +496,15 @@ describeSiHayBase("427/T9 — el traspaso entre mensajeros, contra Postgres real
     expect(dia.fila.mensajeroAsignadoId).toBe(dia.destinoId);
   });
 
-  it("R4: `ayuda_tienda` se traspasa igual que `en_reparto` (D4)", async () => {
-    const r = await conEscenario([{ estatusValue: "ayuda_tienda" }], async (ctx) => {
+  // SLT-186: hasta la 454 este caso traspasaba una orden en `ayuda_tienda`. La 454 retiro ese estado
+  // (la ayuda es un evento y la orden sigue `en_reparto`): `ESTADOS_TRASPASABLES` queda en UNO
+  // (lib/services/TraspasoMensajeroService.ts:82), y «la orden con ayuda abierta se traspasa y la ayuda
+  // sigue abierta» lo mide `tests/integration/db/454/ayuda-evento-sql-real.test.ts` (R28).
+  it("R4: `en_reparto` es el UNICO estado traspasable y el traspaso no le cambia el estado (D4, tras la 454)", async () => {
+    expect(ESTADOS_TRASPASABLES).toEqual(["en_reparto"]);
+    const r = await conEscenario([{ estatusValue: "en_reparto" }], async (ctx) => {
       const aplicado = await ctx.repo.traspasarMensajeroLote(
-        loteDe(ctx, ctx.ids, "ayuda_tienda"),
+        loteDe(ctx, ctx.ids, "en_reparto"),
       );
       const fila = await ctx.crudo.orden.findUniqueOrThrow({
         where: { id: ctx.ids[0] },
@@ -507,7 +514,7 @@ describeSiHayBase("427/T9 — el traspaso entre mensajeros, contra Postgres real
     });
     expect(r.aplicado.movidas).toBe(1);
     expect(r.fila.mensajeroAsignadoId).toBe(r.destinoId);
-    expect(r.fila.estatusId).toBe(ESTATUS.ayuda_tienda);
+    expect(r.fila.estatusId).toBe(ESTATUS.en_reparto);
   });
 
   /* ---------------------------------------------------------------------------------------- */
@@ -883,8 +890,10 @@ describeSiHayBase("427/T9 — el traspaso entre mensajeros, contra Postgres real
       expect(job.runAfter.getTime()).toBeGreaterThan(AHORA.getTime());
     }
     // Y el payload lleva SOLO el mensajero: ni coordenadas ni direcciones (regla de PII de la 91).
+    // SLT-186: desde SLT-59 (D28) lleva ademas el `origen` del evento, que aqui es el traspaso.
     for (const job of nuevos) {
-      expect(Object.keys(job.payload as object)).toEqual(["mensajeroId"]);
+      expect(Object.keys(job.payload as object).sort()).toEqual(["mensajeroId", "origen"]);
+      expect((job.payload as { origen: string }).origen).toBe("traspaso");
     }
   });
 

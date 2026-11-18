@@ -169,7 +169,6 @@ describeSiHayBase("276/T9 — el rechazo por tope al aprobar el cierre (Postgres
       "devolucion_a_origen_por_rechazo",
       "por_devolver_a_bodega_central",
       "por_devolver_a_tienda",
-      "devolucion_por_confirmar",
       "novedad",
     ];
     const catalogo = await prisma.orderStatus.findMany({
@@ -283,7 +282,9 @@ describeSiHayBase("276/T9 — el rechazo por tope al aprobar el cierre (Postgres
             await tx.ordenHistorialEstado.create({
               data: {
                 ordenId: orden.id,
-                estatusDestinoId: estatus.get("devolucion_por_confirmar") as string,
+                // SLT-186: era `devolucion_por_confirmar`, retirado del catalogo por la 454 (una base
+                // nueva no lo trae). La visita real de una gestion `novedad` lleva hoy a `novedad`.
+                estatusDestinoId: estatus.get("novedad") as string,
                 origenTipo: "gestion", // VISITA REAL
                 gestionOrdenId: gestion.id,
               },

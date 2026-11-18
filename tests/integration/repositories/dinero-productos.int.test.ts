@@ -738,10 +738,17 @@ describeSiHayBase("347 / B3.3 — DineroProductosRepository contra Postgres real
   it("(449-h) ⚠ el fulfillment NO entra en la tarifa congelada de ninguna fila", () => {
     // `tarifaDe` reconstruye las ENTRADAS DE LA FORMULA, y meterlo ahi lo pondria al alcance de
     // `derivarIngresoOrden`. Se comprueba sobre las filas REALES, no sobre un fixture.
+    // SLT-186: desde SLT-52 `congelada.tarifa` es el sobre `{ modelo, tarifa | valores }`
+    // (`TarifaCongelada`, lib/utils/cierre-detalle.ts). Mirar las claves del SOBRE dejaba este caso
+    // verde sin mirar nada; se miran las de la `TarifaVigente` de dentro. Este archivo siembra solo
+    // tarifas del modelo VIEJO (en el nuevo el fulfillment ES un concepto, por diseño de SLT-52).
     const conTarifa = m.global.filter((f) => f.congelada?.tarifa != null);
     expect(conTarifa.length, "ninguna fila trajo tarifa congelada").toBeGreaterThan(0);
     for (const f of conTarifa) {
-      const claves = Object.keys(f.congelada!.tarifa as object);
+      const sobre = f.congelada!.tarifa as { modelo: string; tarifa?: object };
+      expect(sobre.modelo, f.guia).toBe("viejo");
+      const claves = Object.keys(sobre.tarifa as object);
+      expect(claves, f.guia).toContain("valorFlete"); // control: son las claves de la formula
       expect(claves.filter((k) => /fulfillment/i.test(k)), f.guia).toEqual([]);
     }
     // ANTI-VACIO: alguna de esas filas SI trae la bodega, en su campo propio.
@@ -753,10 +760,25 @@ describeSiHayBase("347 / B3.3 — DineroProductosRepository contra Postgres real
       if (f.montoRecibido !== null) expect(f.montoRecibido).toMatch(/^-?\d+\.\d{2}$/);
       // FICHA 449 — la bodega cruza la frontera con la MISMA regla: STRING escala 2 o `null`.
       if (f.fulfillment !== null) expect(f.fulfillment).toMatch(/^-?\d+\.\d{2}$/);
-      const tarifa = f.congelada?.tarifa;
-      if (tarifa) {
-        for (const [k, v] of Object.entries(tarifa)) {
-          if (v !== null) expect(v as string, k).toMatch(/^-?\d+\.\d{2}$/);
+      // SLT-186: desde SLT-52 la tarifa congelada es el sobre `{ modelo, tarifa | valores }`
+      // (`TarifaCongelada`): los importes viven DENTRO, no en el sobre (`modelo` es un discriminante).
+      const sobre = f.congelada?.tarifa as
+        | { modelo: "viejo"; tarifa: Record<string, string | null> }
+        | { modelo: "nuevo"; valores: Record<string, { valor: string; ivaPct: string }> }
+        | null
+        | undefined;
+      if (sobre) {
+        if (sobre.modelo === "viejo") {
+          const importes = Object.entries(sobre.tarifa);
+          expect(importes.length, f.guia).toBeGreaterThan(0);
+          for (const [k, v] of importes) {
+            if (v !== null) expect(v, k).toMatch(/^-?\d+\.\d{2}$/);
+          }
+        } else {
+          for (const [k, v] of Object.entries(sobre.valores)) {
+            expect(v.valor, k).toMatch(/^-?\d+\.\d{2}$/);
+            expect(v.ivaPct, k).toMatch(/^-?\d+\.\d{2}$/);
+          }
         }
       }
     }
