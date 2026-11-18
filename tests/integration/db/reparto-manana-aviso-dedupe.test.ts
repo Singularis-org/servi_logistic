@@ -14,6 +14,7 @@ import {
 } from "./_postgres-real";
 import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import { datosDeOrganizacionDePrueba, fijarEmpresa } from "@/tests/fabricas/organizaciones";
+import { conAislamientoPorEmpresa } from "@/lib/db/extension-empresa";
 
 /**
  * FICHA 413 (T7.1, R7/R14/R22/R23/R24) — **DOS NOCHES SON DOS AVISOS, Y LA MISMA NOCHE ES UNO. Y
@@ -297,8 +298,14 @@ describeSiHayBase("413/R7-R24 · la dedupe del aviso de reparto, contra Postgres
     //
     // ES R24 LITERAL: la unicidad es ESTRUCTURAL —una propiedad de la clave de los datos— y no el
     // resultado de una comprobación previa que una carrera o un reintento puedan burlar.
-    const clienteA = crearPrismaDeTest();
-    const clienteB = crearPrismaDeTest();
+    // SLT-185 (R1141): las dos conexiones escriben como en produccion: con la envoltura de
+    // `getPrismaClient()` y la empresa que resolveria la sesion (la de los mensajeros sembrados). Sin
+    // ella, el aviso nace con `organizacion_id` NULL y el trigger de misma empresa lo rechaza (SL017).
+    const baseA = crearPrismaDeTest();
+    const baseB = crearPrismaDeTest();
+    const empresaDeLaSesion = async () => empresaId ?? null;
+    const clienteA = conAislamientoPorEmpresa(baseA, empresaDeLaSesion);
+    const clienteB = conAislamientoPorEmpresa(baseB, empresaDeLaSesion);
     try {
       const ctx = { mensajeroUsuarioId: mensajeroA, diaAnunciadoISO: DIA_12 };
 
@@ -321,9 +328,16 @@ describeSiHayBase("413/R7-R24 · la dedupe del aviso de reparto, contra Postgres
       expect(creadas.filter((n) => n === 0)).toHaveLength(1);
       // ⭑ Y EN LA TABLA: UNA sola fila. Lo decidió el índice, no un `if`.
       expect(filas).toBe(1);
+      // SLT-185 (R1146): y es de la empresa de la sesion.
+      expect(
+        await prisma.notificacion.count({
+          where: { evento: "reparto_manana", entidadId: DIA_12, destinatarioUsuarioId: mensajeroA, organizacionId: empresaId },
+        }),
+        "SLT-185: empresa en contexto",
+      ).toBe(1);
     } finally {
-      await clienteA.$disconnect();
-      await clienteB.$disconnect();
+      await baseA.$disconnect();
+      await baseB.$disconnect();
       // Limpieza EXPLÍCITA: ésta es la única parte del archivo que escribe fuera de una
       // transacción revertida, y la base local es COMPARTIDA entre worktrees. Una tabla que crece
       // rompe tests ajenos, y en este repo ya pasó.

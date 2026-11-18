@@ -111,11 +111,29 @@ function servicioSobre(tx: Tx) {
   );
 }
 
+/**
+ * SLT-185 (R1141): la zona del pais se inyecta en la action. Sin `reglasPais`, `zonaDelBordeConActor`
+ * la lee de la empresa en curso con el cliente global, y este test (tx revertida, sin sesion) no tiene
+ * empresa en contexto: `EmpresaNoResuelta: Pais.zonaHoraria`. La zona por pais la miden `hora-por-pais-*`.
+ * `zonasPedidas` es el control positivo (R1146) de que la action la pide a ESTAS reglas.
+ */
+let zonasPedidas = 0;
+function reglasPaisContadas(): AnaliticaFinancieraActionDeps["reglasPais"] {
+  const reglas = reglasPaisFijas();
+  return {
+    zonaHoraria: () => {
+      zonasPedidas += 1;
+      return reglas.zonaHoraria();
+    },
+  };
+}
+
 function depsDe(tx: Tx, actor: Actor, logger?: ErrorLogger): AnaliticaFinancieraActionDeps {
   return {
     service: servicioSobre(tx),
     getActor: async () => actor,
     logger: logger ?? { logError: () => {} },
+    reglasPais: reglasPaisContadas(),
   };
 }
 
@@ -321,10 +339,12 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("F.1-F.6 · la 127 contra Postgres, sin mock
   it("F.1 · un maestro recibe `ok` en las DIEZ metricas, contra la base real", async () => {
     await enTransaccionRevertida(prisma, async (tx) => {
       const estados: Record<string, string> = {};
+      zonasPedidas = 0;
       for (const metricaId of IDS_FINANCIERAS_SERVIDAS) {
         estados[metricaId] = (await consultarDia(tx, metricaId, DIA_A)).status;
       }
       expect(estados).toEqual(Object.fromEntries(IDS_FINANCIERAS_SERVIDAS.map((m) => [m, "ok"])));
+      expect(zonasPedidas, "SLT-185: una zona por consulta, de las reglas inyectadas").toBe(10);
       // 8 de la 127 + `dinero_en_caja` y `ganancia_empresa` (173, P4): las dos tambien
       // responden contra Postgres de verdad, no solo contra dobles.
       expect(Object.keys(estados)).toHaveLength(10);

@@ -17,7 +17,14 @@ import {
   type FksDeOrden,
 } from "./_postgres-real";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
-import { conCandado459, limpiar459, sembrarPersonas459, type Personas459 } from "./_fixtures/escrituras-459";
+import {
+  clienteConEmpresa459,
+  conCandado459,
+  limpiar459,
+  sembrarPersonas459,
+  type Personas459,
+} from "./_fixtures/escrituras-459";
+import { conEmpresa, contextoActual } from "@/lib/db/contexto-empresa";
 
 /**
  * 💰 FICHA 337 (segunda mitad, 2026-08-31) — EL COBRO POR RECHAZO DESDE NOVEDADES, EJECUTADO
@@ -363,7 +370,12 @@ describeSiHayBase("💰 337 — el cobro por devolución a origen desde novedade
       const actor: Actor = { usuarioId, rol: "maestro" };
       // Clientes INDEPENDIENTES: cada uno con su pool, que es lo que hace que las cuatro
       // transacciones sean de verdad simultaneas y no cuatro turnos de la misma conexion.
-      const clientes = Array.from({ length: PARALELAS }, () => crearPrismaDeTest());
+      // SLT-185 (R1141): con la envoltura de `getPrismaClient()` y la empresa sembrada en contexto, como
+      // en produccion. Sin ella, el cobro y la caja se escriben con `organizacion_id` NULL y el trigger
+      // de misma empresa los rechaza (SL017: `rechazo_tienda_cobro.gestion_id -> gestion_orden`).
+      const bases = Array.from({ length: PARALELAS }, () => crearPrismaDeTest());
+      const clientes = bases.map((b) => clienteConEmpresa459(b));
+      const deLaApp = clienteConEmpresa459(prisma);
 
       let ordenId = "";
       let gestionId = "";
@@ -391,18 +403,19 @@ describeSiHayBase("💰 337 — el cobro por devolución a origen desde novedade
         });
         gestionId = gestion.id;
 
-        await new RechazoTiendaCobroRepository(prisma).crearPendiente(
-          prisma,
-          inputCobro({ ordenId, gestionId }),
-        );
+        await conEmpresa(empresaId, async () => {
+          const ctx = contextoActual();
+          expect(ctx?.tipo === "empresa" ? ctx.organizacionId : null, "SLT-185: empresa en contexto").toBe(empresaId);
+          await new RechazoTiendaCobroRepository(deLaApp).crearPendiente(deLaApp, inputCobro({ ordenId, gestionId }));
+        });
         const cobro = await prisma.rechazoTiendaCobro.findFirstOrThrow({
           where: { gestionId },
           select: { id: true },
         });
 
         // ── las cuatro aprobaciones, a la vez ────────────────────────────────────────────
-        const resultados = await Promise.all(
-          clientes.map((c) => servicioCon(c).aprobar({ id: cobro.id }, actor, new Date())),
+        const resultados = await conEmpresa(empresaId, () =>
+          Promise.all(clientes.map((c) => servicioCon(c).aprobar({ id: cobro.id }, actor, new Date()))),
         );
 
         const oks = resultados.filter((r) => r.status === "ok");
@@ -467,7 +480,7 @@ describeSiHayBase("💰 337 — el cobro por devolución a origen desde novedade
         expect(final.decididoPor).toBe(usuarioId);
         expect(final.decididoAt).not.toBeNull();
       } finally {
-        await Promise.all(clientes.map((c) => c.$disconnect()));
+        await Promise.all(bases.map((c) => c.$disconnect()));
         if (gestionId !== "") {
           await prisma.walletTiendaMovimiento.deleteMany({
             where: { origenTipo: "gestion_orden", origenId: gestionId },

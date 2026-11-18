@@ -4,6 +4,8 @@ import type { PrismaClient } from "@prisma/client";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "../_postgres-real";
 import {
   entradaGestion,
+  clienteDeLaApp454,
+  enEmpresaDe,
   limpiarComprometido,
   montarServicios,
   prepararMundo,
@@ -48,6 +50,12 @@ describeSiHayBase("454/T1.4 — registro concurrente: exactamente uno (Postgres 
       return { ordenIds: [o.ordenId] };
     });
     sembrados.push(s);
+    // SLT-185 (R1146): control positivo: la empresa y la central propias del escenario estan confirmadas.
+    expect(await mundo.prisma.organizacion.count({ where: { id: s.organizacionId } }), "SLT-185: empresa sembrada").toBe(1);
+    expect(
+      await mundo.prisma.zona.count({ where: { id: s.centralZonaId ?? "-", esCentral: true, organizacionId: s.organizacionId } }),
+      "SLT-185: central sembrada",
+    ).toBe(1);
     return s;
   }
 
@@ -64,7 +72,7 @@ describeSiHayBase("454/T1.4 — registro concurrente: exactamente uno (Postgres 
   }
 
   const desdeAyuda = (cliente: PrismaClient, s: Comprometido) =>
-    montarServicios(cliente)
+    montarServicios(clienteDeLaApp454(cliente))
       .gestionDesdeAyuda.gestionar(
         { ordenId: s.ordenIds[0], resultado: "devolucion_a_origen_por_rechazo", motivo: "El cliente no la quiere", evidencias: FOTO } as never,
         s.actorTienda,
@@ -77,22 +85,26 @@ describeSiHayBase("454/T1.4 — registro concurrente: exactamente uno (Postgres 
     c2 = crearPrismaDeTest();
     for (let i = 0; i < REPETICIONES; i++) {
       const a = await sembrarConAyuda();
-      const estadosA = await Promise.all([desdeAyuda(c1, a), desdeAyuda(c2, a)]);
+      const estadosA = await enEmpresaDe(a, () => Promise.all([desdeAyuda(c1, a), desdeAyuda(c2, a)]));
       dobleTienda.push(await medir(a.ordenIds[0], estadosA));
 
       const b = await sembrarConAyuda();
       const mensajero = async () => {
-        const svc = montarServicios(c2);
+        const svc = montarServicios(clienteDeLaApp454(c2));
         await svc.solicitudAyuda.recuperar({ ordenId: b.ordenIds[0] }, b.actorMensajero);
         return (await svc.misAsignaciones.gestionar(entradaGestion(b.ordenIds[0], "novedad"), b.actorMensajero)).status;
       };
-      const estadosB = await Promise.all([desdeAyuda(c1, b), mensajero()]);
+      const estadosB = await enEmpresaDe(b, () => Promise.all([desdeAyuda(c1, b), mensajero()]));
       mensajeroYTienda.push(await medir(b.ordenIds[0], estadosB));
     }
   }, 300_000);
 
   afterAll(async () => {
     for (const s of sembrados) await limpiarComprometido(mundo.prisma, s);
+    // SLT-185 (R1145): tras limpiar no queda ni la empresa ni sus zonas (central incluida).
+    const empresas = sembrados.map((s) => s.organizacionId);
+    expect(await mundo.prisma.organizacion.count({ where: { id: { in: empresas } } }), "SLT-185: empresas borradas").toBe(0);
+    expect(await mundo.prisma.zona.count({ where: { organizacionId: { in: empresas } } }), "SLT-185: zonas borradas").toBe(0);
     await c1?.$disconnect();
     await c2?.$disconnect();
     await mundo?.prisma.$disconnect();
