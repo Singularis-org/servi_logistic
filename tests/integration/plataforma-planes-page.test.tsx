@@ -53,9 +53,7 @@ vi.mock("@/lib/actions/_shared/empresas-plataforma", () => ({
   listarEmpresasPlataforma: (...a: unknown[]) => empresasMock(...a),
 }));
 vi.mock("@/lib/actions/planes", () => ({
-  crearPlanAction: vi.fn(),
   previsualizarCustomAction: vi.fn(),
-  editarPlanAction: vi.fn(),
   previsualizarCambioPlanAction: vi.fn(),
   archivarPlanAction: vi.fn(),
   cancelarCambioPlanAction: vi.fn(),

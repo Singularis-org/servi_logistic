@@ -3,7 +3,7 @@
 Bitácora consolidada del implementer. Detalle y salida completa por tanda en `progress/impl_SLT-144-T1.md`,
 `-T2.1-T3.1.md`, `-T3.2-T3.3.md`, `-T3.4.md`, `-T4.md`, `-T5.1.md`, `-T5.2.md`, `-T5.3-T5.4.md` y `-T6.md`.
 
-**Estado (2026-11-18): T1–T7 hechas salvo T5.4, abierta por R29** (pregunta al leader abajo). La shell volvió a
+**Estado (2026-11-18): T1–T8 hechas.** R29 resuelta por decisión humana (opción B: se borran `crearPlanAction` y `editarPlanAction`). La shell volvió a
 funcionar tras matar los indexadores; se retomó y se verificó todo lo que estaba sin commit.
 
 PR: https://github.com/Singularis-org/servi_logistic/pull/209 (listo, no draft).
@@ -19,7 +19,8 @@ Base de integración: `servi_logistic_slt144`. Base E2E: `servi_logistic_slt144_
 - `0446e7f4` merge de origin/dev (`0711fe33`): trae `ade528fa`, que arregla el rojo de
   `migracion-plan-borrador-ida-y-vuelta` (la migración `factura_plataforma_aviso_enums` tiene el mismo timestamp).
 - `0a1a8f86` T6.1 (`e2e/planes-borrador.spec.ts`, R30) y T6.2 («Guardar y continuar» en los E2E de planes).
-- T7.1 (capturas, ver abajo) en el commit siguiente.
+- `4362e2cc` T7.1 (capturas, ver abajo). `bc22ea49` bitácora de T8.
+- `eaa798e6` T5.4: borra `crearPlanAction` y `editarPlanAction` y sus tests (decisión humana R29; detalle en `impl_SLT-144-T5.4.md`).
 
 ## Archivos tocados (todos)
 Producción: `lib/types/planes.ts`, `lib/interfaces/repositories/IPlanesRepository.ts`, `lib/repositories/PlanesRepository.ts`,
@@ -66,7 +67,7 @@ Tests: los 24 de «Archivos esperados» más, fuera de la lista, solo montaje o 
 | R26 | `PlanesModule.test.tsx` «R26: retomar una creación abre el panel con su id»; `PlanDetalle.test.tsx` «R26: con editar en la dirección abre el formulario» (+2) |
 | R27 | `PlanesModule.test.tsx` «R27: descartar con confirmación», «R27: ya no existe», «R27: un fallo deja la fila» |
 | R28 | `tests/integration/plataforma-planes-page.test.tsx` «R28: %s → notFound() en «Planes» y en el detalle, sin leer borradores», «R28: sin sesión…», «R28: el superadmin sí los lee…» |
-| R29 | `tests/unit/guards/superficie-de-uso.guardia.test.ts` — EN ROJO (R-A) por `crearPlanAction` y `editarPlanAction`, pregunta abierta |
+| R29 | `tests/unit/guards/superficie-de-uso.guardia.test.ts` (R-A y «caducadas») — verde, 18/18, tras borrar `crearPlanAction` y `editarPlanAction` (T5.4) |
 | R30 | `e2e/planes-borrador.spec.ts` (2 casos) — verde, dos corridas |
 
 ## Salida real (resumen; completa en cada bitácora)
@@ -111,11 +112,16 @@ Textos de §9: todos en `plan-form/textos.ts`, salvo `pasoGuardado`/`marcaSinGua
 - `PlanDetalle.test.tsx` «R18: validation_error»: «sin aviso de éxito» se mira fuera del panel (el panel ya tiene su `role="status"` de R7).
 - El resto de decisiones de cada subagente está en su bitácora.
 
+## T8.1 · Gate
+- Decisión humana 2026-11-18 (R29, opción B): se borran `crearPlanAction` y `editarPlanAction`; deja sin efecto SLT-129
+  R21 en ese punto (anotado en design §4 y en el «Hecho» de T5.4). `PlanesService.crear/editar` se quedan: los usa
+  `PlanBorradorService.confirmar`.
+- `./init.sh` con una copia temporal de `arnes.config.json` (`fullstack: 8`, exceso aceptado por la geo en pausa; sin
+  commitear, restaurada con `git checkout`):
+  - intento 1: 5 guardias rojas por timeout (hook 60 s / test 20 s) bajo carga; las 5 solas: 5 files / 112 passed;
+  - intento 2: solo `filtros-url-r25` (timeout del `beforeAll` que arranca ESLint);
+  - intento 3: `== init OK ==` (exit 0).
+- Sin procesos de vitest/tsc/next/playwright vivos al terminar.
+
 ## Pendiente
-1. R29/T5.4: decidir qué hacer con `crearPlanAction` y `editarPlanAction`, que quedaron sin superficie (pregunta al leader).
-   design §4 suponía que «siguen teniendo superficie por la API y las demás pantallas»; la guardia dice que no.
-2. T8.1: `./init.sh` (2026-11-18) para en el validador del board: «zona fullstack: SLT-46, SLT-47, SLT-48, SLT-81,
-   SLT-89, SLT-125, SLT-136, SLT-144 (8 in_progress, max 7)» (`feature_list.json` del worktree principal; es del
-   leader). Fuera de ese paso, `pnpm run test:guardias`: 2 files failed | 354 passed; 5 tests failed | 5289 passed:
-   `dependencias-declaradas-presentes` (baseline) y `superficie-de-uso` R-A (R29, arriba). `gate-completo` en CI no
-   puede quedar verde mientras R29 siga abierta.
+- `gate-completo` en CI sobre el push de este commit.

@@ -15,7 +15,7 @@ import { MENSAJE_MONTO_COBRO_INVALIDO } from "@/lib/types/cobro-plataforma";
 import { crearPlanSchema } from "@/lib/types/planes";
 
 // SLT-129 (design §3; R3, R6, R7) — el esquema de cada paso del borrador. Cada error sale con la clave de campo
-// de `crearPlanAction` / `editarPlanAction` (la forma de `erroresDeCampo` de `PlanesService`) y con el mensaje
+// de `PlanesService.crear` / `.editar` (la forma de `erroresDeCampo` de `PlanesService`) y con el mensaje
 // de hoy. Lo que cruza pasos o necesita la base o el reloj NO se mira al guardar un paso (R6).
 
 const EMPRESA = randomUUID();

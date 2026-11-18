@@ -20,7 +20,8 @@ import type {
 // sesión y la autorización la decide el servicio (R5), antes de tocar la base. Es de plataforma, así
 // que no lleva puerta de módulo: va al núcleo en `lib/modulos/reparto.ts`. Las usan las pantallas de
 // SLT-58: «Planes» del superadmin y el plan en el detalle de la empresa. Los planes públicos (R7)
-// NO se exponen aquí: son una lectura de servidor para SL-25.
+// NO se exponen aquí: son una lectura de servidor para SL-25. SLT-144 (R29): crear y editar un plan no
+// tienen action propia: la pantalla confirma por `lib/actions/plan-borrador.ts`.
 
 /** Inyección para los tests del borde. */
 export interface PlanesDeps {
@@ -37,23 +38,6 @@ function construirPlanesService(): IPlanesService {
 async function conServicio<T>(deps: PlanesDeps, fn: (s: IPlanesService, actor: Actor | null) => Promise<T>): Promise<T> {
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   return fn(deps.service ?? construirPlanesService(), actor);
-}
-
-/**
- * Crea un plan público o custom (R1–R3). Ajuste planes-custom (D2, D4, D6): un custom se asigna a su
- * empresa en la misma operación, con `tipoCobro` obligatorio e `inicioCiclo` opcional (solo si la empresa
- * no tiene plan). Si la asignación se rechaza, no se crea nada y vuelve el rechazo de `asignarPlanAction`.
- */
-export async function crearPlanAction(input: unknown, deps: PlanesDeps = {}): Promise<PlanResult> {
-  return conServicio(deps, (s, actor) => s.crear(actor, input));
-}
-
-/**
- * Edita un plan programando el cambio (R37; SLT-128). SLT-135 (R1–R9): `vigenteDesde` es obligatoria y
- * `≥ hoy`, cambie el precio o no; ya no hay edición inmediata.
- */
-export async function editarPlanAction(input: unknown, deps: PlanesDeps = {}): Promise<PlanResult> {
-  return conServicio(deps, (s, actor) => s.editar(actor, input));
 }
 
 /**
