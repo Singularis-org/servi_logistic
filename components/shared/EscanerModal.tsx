@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef, useState, type ReactNode } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 import { Camera, ScanLine, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Dialog,
   DialogClose,
@@ -85,6 +86,12 @@ export interface EscanerModalProps {
    */
   soloIcono?: boolean;
   /**
+   * SLT-200 (punto 7, pedido de Carlos 2026-11-18): con `soloIcono`, el texto del tooltip que dice qué
+   * hace el icono. Mismo patrón que `ContactoButtons`: el disparador es EL BOTÓN y el `aria-label`
+   * (`label`) se conserva; el tooltip es la ayuda VISUAL de quien ve el icono y no lo reconoce.
+   */
+  ayuda?: string;
+  /**
    * SLT-190 (R867-R869, DS7) y SLT-193 (R925, R927): título VISIBLE del diálogo, en una barra arriba
    * con el único «Cerrar» de 44 × 44 px. Obligatorio: es el único título del diálogo (la tarjeta de
    * dentro va sin encabezado, `sinEncabezado`) y también su nombre accesible.
@@ -102,12 +109,14 @@ export function EscanerModal({
   children,
   tactil = false,
   soloIcono = false,
+  ayuda,
   titulo,
   className,
 }: Readonly<EscanerModalProps>) {
   const [abierto, setAbierto] = useState(false);
   const punteroFino = usePunteroFino();
   const popupRef = useRef<HTMLDivElement>(null);
+  const idAyuda = useId();
 
   /** El campo de la tarjeta con puntero fino; si no, el foco inicial por defecto del Dialog. */
   function focoInicial(): HTMLElement | true {
@@ -150,18 +159,34 @@ export function EscanerModal({
   );
 
   if (soloIcono) {
+    const boton = (
+      <Button
+        type="button"
+        variant="outline"
+        size="icon"
+        aria-label={label}
+        aria-describedby={ayuda ? idAyuda : undefined}
+        className={className}
+        onClick={() => setAbierto(true)}
+      >
+        <Camera className="size-5" aria-hidden="true" />
+      </Button>
+    );
     return (
       <>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          aria-label={label}
-          className={className}
-          onClick={() => setAbierto(true)}
-        >
-          <Camera className="size-5" aria-hidden="true" />
-        </Button>
+        {ayuda ? (
+          <Tooltip>
+            <TooltipTrigger render={boton} />
+            <TooltipContent>{ayuda}</TooltipContent>
+            {/* El tooltip de Base UI no se enlaza solo con `aria-describedby`: la misma ayuda,
+                oculta a la vista, describe el botón para el lector de pantalla (review m2). */}
+            <span id={idAyuda} className="sr-only">
+              {ayuda}
+            </span>
+          </Tooltip>
+        ) : (
+          boton
+        )}
         {dialogo}
       </>
     );

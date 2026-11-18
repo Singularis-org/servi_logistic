@@ -21,11 +21,18 @@ const CON_ESCANEO = [
   "app/(app)/historico/acciones/_components/HistorialAccionesFiltrosBar.tsx", // B5
   "app/(app)/wallet/_components/LibroCajaBarra.tsx", // B6
   "components/shared/estado-cuenta/EstadoCuenta.tsx", // B7 y B8
-  "app/(app)/recoleccion/_components/RecoleccionModule.tsx", // SLT-194 (R940): Recolección
   "app/(app)/novedades/_components/RechazosSlaModule.tsx", // SLT-194 (R949): Rechazos por plazo vencido
 ];
 
 const CIERRES_ADMIN = "app/(app)/cierres-admin/_components/FiltrosCierresBarra.tsx";
+
+/**
+ * SLT-200 «PWA Reparto: buscador, KPI, tarjeta y leyenda del mapa tras Preview», punto 6: Recolección
+ * deja de llevar cámara en el buscador (decisión de Carlos, 2026-11-18, «quitar la camarita»). SLT-194
+ * (R940) se la había puesto. El único escáner de la pantalla es «Escanear o escribir guía», el que
+ * recolecta.
+ */
+const RECOLECCION = "app/(app)/recoleccion/_components/RecoleccionModule.tsx";
 
 /** Las etiquetas de apertura `<BuscadorFiltros …>` de una fuente, contando llaves (`=>` va dentro). */
 function aperturasDeBuscador(fuente: string): string[] {
@@ -82,6 +89,12 @@ describe("SLT-160 — guardia: buscadores con `escaneo` (R609)", () => {
 
   it("`/cierres-admin` monta `BuscadorFiltros` sin `escaneo`", () => {
     const fuente = leer(CIERRES_ADMIN);
+    expect(aperturasDeBuscador(fuente).length).toBeGreaterThan(0); // no vacuidad
+    expect(pasaEscaneo(fuente)).toBe(false);
+  });
+
+  it("SLT-200: `/recoleccion` monta `BuscadorFiltros` sin `escaneo` (sin cámara en el buscador)", () => {
+    const fuente = leer(RECOLECCION);
     expect(aperturasDeBuscador(fuente).length).toBeGreaterThan(0); // no vacuidad
     expect(pasaEscaneo(fuente)).toBe(false);
   });

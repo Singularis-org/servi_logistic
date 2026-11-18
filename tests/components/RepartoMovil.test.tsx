@@ -375,6 +375,20 @@ describe("SLT-189 R795-R797 — el conmutador Mosaico/Detalle va en la barra fij
     );
     expect(conmutador().parentElement!.className.split(/\s+/)).toContain("flex-wrap");
   });
+
+  // SLT-200 «PWA Reparto: buscador, KPI, tarjeta y leyenda del mapa tras Preview» (punto 1): en el
+  // móvil el campo (`flex-1 min-w-0`) se quedaba en la lupa porque «Filtros» y el conmutador se comían
+  // la línea. El conmutador baja a su propia línea por debajo de `md` (`basis-full`) y sus dos botones
+  // se reparten el ancho. Sin tocar `BuscadorFiltros`: la clase la pone Reparto. El ancho útil del
+  // campo a 360/414 px lo mide el E2E.
+  it("SLT-200: en el móvil el conmutador ocupa su propia línea y deja la primera al campo y a «Filtros»", () => {
+    montar();
+    const clases = conmutador().className.split(/\s+/);
+    expect(clases).toEqual(expect.arrayContaining(["max-md:basis-full", "max-md:[&>button]:flex-1"]));
+    // Desde md sigue en la misma línea: ninguna clase de ancho completo sin prefijo.
+    expect(clases).not.toContain("basis-full");
+    expect(clases).not.toContain("w-full");
+  });
 });
 
 describe("SLT-189 R802 — «Escanear o escribir guía» se queda", () => {

@@ -22,6 +22,7 @@ import {
   IMPORTE_LARGO,
   PRODUCTO_LARGO,
   TIENDA_LARGA,
+  campoConAnchoUtil,
   sinDesborde,
   sinElipsis,
   tactil,
@@ -446,10 +447,11 @@ test.describe("SLT-164 — Recoger en bodega y Recolección en el móvil", () =>
     });
   }
 
-  // SLT-194 «Buscar escaneando en recolección, devoluciones y rechazos» (R945, R941, D2): a 360 px la
-  // barra con la cámara del buscador no desborda y «Escanear con cámara» mide 44 × 44; lo leído por
-  // la pistola (Enter) filtra y no recolecta.
-  test("SLT-194 Recolección a 360 px: la barra con la cámara no desborda, cámara de 44 × 44 y Enter solo filtra", async ({ browser }) => {
+  // SLT-194 «Buscar escaneando en recolección, devoluciones y rechazos» (R945) le puso cámara al
+  // buscador; SLT-200 «PWA Reparto: buscador, KPI, tarjeta y leyenda del mapa tras Preview» (punto 6,
+  // Carlos 2026-11-18) se la quita. A 360 px: sin cámara en la barra, el campo con ancho útil y el
+  // conmutador en su propia línea (punto 1); lo escrito filtra y no recolecta.
+  test("SLT-200 Recolección a 360 px: buscador sin cámara, campo con ancho útil y lo escrito solo filtra", async ({ browser }) => {
     const m = await crearMensajero(r, "satelite");
     const buscada = await porRecolectar(m, { destinatario: "Lidia Soto", montoCobrar: 3000 });
     await porRecolectar(m, { destinatario: "Mario Brenes", montoCobrar: 3000 });
@@ -459,20 +461,14 @@ test.describe("SLT-164 — Recoger en bodega y Recolección en el móvil", () =>
     const seccionPor = page.getByRole("region", { name: "Por recolectar en tienda", exact: true });
     await expect(seccionPor.getByText("2 paquetes por recolectar en tienda.")).toBeVisible();
 
-    // R945: la barra no desborda en horizontal y la cámara mide al menos 44 × 44.
-    const camara = barra(page).getByRole("button", { name: "Escanear con cámara" });
-    await expect(camara).toBeVisible();
-    const caja = await cajaDe(camara);
-    expect(caja.width).toBeGreaterThanOrEqual(44);
-    expect(caja.height).toBeGreaterThanOrEqual(44);
+    await expect(barra(page).getByRole("button", { name: "Escanear con cámara" })).toHaveCount(0);
+    await campoConAnchoUtil(page);
     const medidas = await barra(page).evaluate((el) => ({ scroll: el.scrollWidth, cliente: el.clientWidth }));
     expect(medidas.scroll).toBeLessThanOrEqual(medidas.cliente);
     await sinDesborde(page);
 
-    // R941, D2: la guía + Enter filtra «Por recolectar» y la orden sigue sin recolectar.
     const campo = barra(page).getByRole("searchbox", { name: "Buscar guías" });
     await campo.fill(String(buscada.numGuia));
-    await campo.press("Enter");
     await expect(campo).toHaveValue(String(buscada.numGuia));
     await expect(seccionPor.getByText("Mario Brenes")).toHaveCount(0);
     // La card pinta el destinatario dos veces (cabecera y detalle): se comprueba la TARJETA, que es
@@ -494,6 +490,8 @@ test.describe("SLT-164 — Recoger en bodega y Recolección en el móvil", () =>
     // R859: el conmutador está en la barra; la fila de las pestañas no lleva ninguno.
     await expect(page.getByRole("group", { name: "Vista de las órdenes" })).toHaveCount(1);
     await expect(barra(page).getByRole("group", { name: "Vista de las órdenes" })).toBeVisible();
+    // SLT-200 (punto 1): el campo conserva un ancho útil; el conmutador baja a su propia línea.
+    await campoConAnchoUtil(page);
     await sinDesborde(page);
 
     // R867, R869: la barra del diálogo y un solo «Cerrar» de 44 × 44.

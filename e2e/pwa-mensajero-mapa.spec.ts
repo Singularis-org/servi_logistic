@@ -119,7 +119,10 @@ test.describe("SLT-166 — mapa de ruta en el móvil", () => {
       await expect(marcadores).toHaveCount(1);
       await expect(page.getByRole("article", { name: new RegExp(`Orden ${sinCoordenadas.numRemision}`) })).toHaveCount(1);
 
-      await expect(grupo.getByRole("list", { name: "Leyenda del mapa" })).toHaveText(/Siguiente.*Pendiente.*Gestionada.*Tú/);
+      // SLT-200: sin «Gestionada», que el mapa no dibuja.
+      const leyenda = grupo.getByRole("list", { name: "Leyenda del mapa" });
+      await expect(leyenda).toHaveText(/Siguiente.*Pendiente.*Tú/);
+      await expect(leyenda).not.toContainText("Gestionada");
 
       // R501: con el mapa abierto, nada se sale.
       await sinDesborde(page);

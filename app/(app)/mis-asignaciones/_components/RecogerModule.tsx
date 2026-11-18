@@ -48,7 +48,7 @@ import {
 import { RecogerPaqueteCard } from "./RecogerPaqueteCard";
 import { PosOrderCardDetalle } from "./pos-card/PosOrderCardDetalle";
 import { PosOrderCardMosaico } from "./pos-card/PosOrderCardMosaico";
-import { VistaCardsToggle, type VistaCards } from "./VistaCardsToggle";
+import { CONMUTADOR_EN_SU_LINEA_MOVIL, VistaCardsToggle, type VistaCards } from "./VistaCardsToggle";
 import { CLASE_FASE, useTransicionVista } from "./useTransicionVista";
 
 // 2026-07-31 (decisión del humano) — pantalla POR RECOGER del mensajero. Es la mitad que
@@ -374,7 +374,11 @@ export function RecogerModule({
           tactil
           // SLT-190 (R859): el conmutador Mosaico/Detalle va en la barra fija, tras «Filtros».
           trasFiltros={
-            <VistaCardsToggle vista={vistaCardsPedida} onVistaChange={cambiarVista} />
+            <VistaCardsToggle
+              vista={vistaCardsPedida}
+              onVistaChange={cambiarVista}
+              className={CONMUTADOR_EN_SU_LINEA_MOVIL}
+            />
           }
         >
           {filtrosPuestos.includes(FILTRO_TIENDA) ? (
