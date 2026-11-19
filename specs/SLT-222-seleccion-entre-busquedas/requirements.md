@@ -165,7 +165,7 @@ listado (p. ej. por un incidente o una transición) DEBE retirarse.
 
 ## Tasks
 
-- [ ] **T1 — `/ordenes`: la selección no se vacía por filtro.** En `OrdenesModule`: quitar
+- [x] **T1 — `/ordenes`: la selección no se vacía por filtro.** En `OrdenesModule`: quitar
   `setSeleccion(new Map())` del reset por `filterKey` (`:353-358`; la vuelta a la página 1 se
   queda); la barra se muestra con `seleccion.size > 0` cuando la pantalla admite selección
   (`selectable !== false`), no con `selectable(items)`; contador total + «M fuera de esta
@@ -176,13 +176,13 @@ listado (p. ej. por un incidente o una transición) DEBE retirarse.
   «juan», cambiar a «pedro», la marca sigue, el contador dice total y fuera de vista, la barra
   sigue con resultado vacío, la acción recibe las dos filas). Los tests `R38` y `R60` existentes
   se reescriben al comportamiento nuevo (no se borran).
-- [ ] **T2 — `/ordenes`: quién vacía.** En `OrdenesListado`: `handleSuccess` de la recepción
+- [x] **T2 — `/ordenes`: quién vacía.** En `OrdenesListado`: `handleSuccess` de la recepción
   (`:1429`) revalida sin subir `resetSeleccion` (separar «revalidar» de «revalidar y vaciar»); el
   cambio de `verEliminadas` sube `resetSeleccion`. *Hecho:* R1507, R1508 (incluido que el
   encadenado guía → etiquetas recibe el lote), R1510, R1511 con tests de componente;
   `tests/unit/components/recuperar-orden.ui.test.tsx` sigue verde (su helper depende de que
   «Eliminadas» vacíe).
-- [ ] **T3 — Satélite: mismo modelo.** En `SateliteOrdenesListado`: `Set` → `Map id -> fila`;
+- [x] **T3 — Satélite: mismo modelo.** En `SateliteOrdenesListado`: `Set` → `Map id -> fila`;
   `emitir()` y `limpiarFiltros()` dejan de vaciar; `seleccionadas` = todas las marcadas (página
   fresca + guardadas, como `OrdenesModule`) para botones, `hayEstado` y estado común; contador
   total + fuera de vista; fuera el aviso Q-K7; botón «Limpiar»; prop `resetSeleccion` (contador)
@@ -194,11 +194,13 @@ listado (p. ej. por un incidente o una transición) DEBE retirarse.
   `tests/components/SateliteOrdenesListado.seleccion-entre-busquedas.test.tsx`; se reescriben al
   comportamiento nuevo los casos de `SateliteSeleccionOtrasPaginas.test.tsx` (R27 de la 188, aviso
   Q-K7) y los de `SatelitePaginacion.test.tsx` que dependan de que filtrar vacíe.
-- [ ] **T4 — E2E.** Un escenario por pantalla: buscar A, marcar, buscar B, marcar, la barra dice
+- [x] **T4 — E2E.** Un escenario por pantalla: buscar A, marcar, buscar B, marcar, la barra dice
   2 y la acción las recibe a las dos. *Hecho:* verde en local con base desechable
   (`docs/perfil-agentes.md > E2E en local antes del PR`), junto con los E2E existentes que cubren
   `/ordenes` y `e2e/recepcion-satelite.spec.ts`.
-- [ ] **T5 — Specs anteriores.** Anotar en `specs/144-filtros-ordenes/requirements.md` (R60),
+  *Estado (implementer, 2026-11-19):* `e2e/seleccion-entre-busquedas.spec.ts` escrito; NO corrido
+  en local (pide build + base desechable). Pendiente de verde en local antes del PR.
+- [x] **T5 — Specs anteriores.** Anotar en `specs/144-filtros-ordenes/requirements.md` (R60),
   `specs/170-export-todas-las-tablas/requirements.md` (R47) y
   `specs/188-deuda-170-listados-completos/requirements.md` (R19, R25, R27) «sustituido por SLT-222
   R15xx», sin borrar el texto. *Hecho:* las tres notas en el diff.
