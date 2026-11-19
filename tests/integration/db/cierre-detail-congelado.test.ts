@@ -158,6 +158,8 @@ function makeDb() {
     provinciaId: "p1",
     cantonId: "ct1",
     distritoId: "d1",
+    // SLT-48 (R22, R27, R31): el lugar de la orden es su nodo. Cambio de entrada.
+    nodoGeograficoId: "d1",
     zona: { nombre: zonas[o.zonaId].nombre, esCentral: zonas[o.zonaId].esCentral },
     tienda: { nombre: usuarios[o.tiendaId].nombre },
     provincia: { nombre: "Cartago" },
@@ -228,9 +230,10 @@ function makeDb() {
     // nombres para los FK de `joinOrden`, y sin marcas, como el `zonasEspeciales: []` de antes.
     ...delegadosDelCatalogo({
       nodos: [
+        // SLT-48 (R27): los niveles salen de la ruta del nodo, asi que el doble siembra la cadena.
         { id: "p1", nombre: "Cartago" },
-        { id: "ct1", nombre: "Central" },
-        { id: "d1", nombre: "Oriental" },
+        { id: "ct1", padreId: "p1", nombre: "Central" },
+        { id: "d1", padreId: "ct1", nombre: "Oriental" },
       ],
     }),
     gestionOrden: {

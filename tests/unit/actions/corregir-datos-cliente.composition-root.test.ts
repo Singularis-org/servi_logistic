@@ -38,6 +38,8 @@ const filaOrden = {
   provinciaId: "p-1",
   cantonId: "c-1",
   distritoId: "d-1",
+  // SLT-48 (R16, R22): el lugar de la orden es su nodo. Cambio de entrada.
+  nodoGeograficoId: "d-1",
   estatus: { value: "en_reparto" },
   zona: { id: "z-1", nombre: "Zona Uno", esCentral: false },
   distrito: { nombre: "Distrito Uno", zonasEspeciales: [] as { id: string }[] },
@@ -114,7 +116,8 @@ const { corregirDatosCliente } = await import("@/lib/actions/corregir-datos-clie
 describe("327/D1 — el composition root PASA el repositorio de tarifas, no solo lo importa", () => {
   it("la accion real, sin `deps.service`, produce el aviso con sus importes", async () => {
     const r = await corregirDatosCliente(
-      { ordenId: ORDEN_ID, provinciaId: "p-1", cantonId: "c-1", distritoId: "d-2" },
+      // SLT-48 R16: la ubicacion viaja como el nodo elegido; antes la terna `provinciaId/cantonId/distritoId`.
+      { ordenId: ORDEN_ID, nodoId: "d-2" },
       { getActor: async () => MAESTRO },
     );
 

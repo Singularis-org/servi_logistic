@@ -502,3 +502,40 @@ Tests:
 - `tests/integration/db/geo-consultas-ordenes.test.ts`
 - `tests/integration/db/geo-lecturas-catalogo.test.ts`
 - `tests/integration/db/geografia-dos-paises.test.ts`
+
+### Añadidos tras el CI del PR #225
+
+Tests (rojos del `gate-completo`, corrida 44402471148; detalle en `progress/impl_SLT-48.md`):
+
+- `tests/components/AsignacionDetalle-niveles.test.tsx`
+- `tests/components/pos-satelite-chat-niveles.test.tsx`
+- `tests/integration/asimetria-sin-tarifa.test.ts`
+- `tests/integration/db/cierre-detail-congelado.test.ts`
+- `tests/integration/db/distrito-zona-especial-migration.test.ts`
+- `tests/integration/db/geo-lecturas-sin-backfill.test.ts`
+- `tests/integration/db/migracion-slt89-ida-y-vuelta.test.ts`
+- `tests/integration/db/provincia-schema-drift.test.ts`
+- `tests/integration/db/slt46-equivalencia-geografia.test.ts`
+- `tests/unit/actions/corregir-datos-cliente.composition-root.test.ts`
+- `tests/unit/analytics/ciclo-vida.test.ts`
+- `tests/unit/analytics/conteo-cargadas-servicio.test.ts`
+- `tests/unit/analytics/conteo-devoluciones.test.ts`
+- `tests/unit/analytics/conteo-por-status-sql.test.ts`
+- `tests/unit/api/openapi-geografia-sin-cambios.test.ts`
+- `tests/unit/repositories/cierre-dia-repository.test.ts`
+- `tests/unit/repositories/cierre-pago-congelado.test.ts`
+- `tests/unit/repositories/cierres-admin-corregir-resultado-where.test.ts`
+- `tests/unit/repositories/convergencia-tarifa-listado-cierre.test.ts`
+- `tests/unit/repositories/gestion-desde-ayuda-cierre.test.ts`
+- `tests/unit/repositories/orden-repository.api-lectura.test.ts`
+- `tests/unit/repositories/orden-repository.no-regresion-106.test.ts`
+- `tests/unit/repositories/orden-repository.novedades.test.ts`
+- `tests/unit/repositories/orden-repository.recepcion-satelite.test.ts`
+- `tests/unit/repositories/orden-repository.test.ts`
+- `tests/unit/repositories/ruta-sin-consulta-por-fila.test.ts`
+- `tests/unit/repositories/satelite-paginado-where.test.ts`
+- `tests/unit/types/correccion-datos-cliente.test.ts`
+- `tests/unit/utils/filtro-ubicacion-rendimiento.test.ts`
+- `tests/unit/utils/tarifa-especial-por-distrito.test.ts`
+- `tests/unit/whatsapp-envios/informe-transito-composicion.test.ts`
+- `tests/unit/whatsapp-envios/transito-pdf-niveles.test.ts`

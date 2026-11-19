@@ -114,14 +114,16 @@ const SELECT_DETALLE_106 = {
   zonaId: true,
   // SLT-52 (R16/R18): el distrito completa el par con el que se resuelve la tarifa (decide el grupo
   // de distritos en el modelo nuevo). Entra en el costeo y NO se publica, como `zonaId`.
-  distritoId: true,
+  // SLT-48 R29, R31: ese lugar sale ahora del nodo de la orden (`distritoDeTarifa`); antes
+  // `distritoId: true` y `cantonId: true`, hoy solo `nodoGeograficoId: true`.
+  nodoGeograficoId: true,
   cobraComision: true,
   // `esCentral` se lee pero NO se publica: elige la columna de flete (GAM vs estandar).
   zona: { select: { id: true, nombre: true, esCentral: true } },
   // SLT-65 (design §3; decision humana 2026-10-31, «Sí, actualizar los literales»): la marca de la
   // empresa ya no viaja en la relacion `distrito`; sale del catalogo sobre el lugar de la orden, y
   // aqui solo van las dos FK que lo definen (`distritoId` ya va arriba, por SLT-52). Ni nombres ni geografia publicada (415/R5).
-  cantonId: true,
+  // SLT-48 R29: las dos FK pasan a ser el nodo de arriba.
   // La fila congelada elegible MAS RECIENTE. El `where` lleva las DOS mitades y las dos son
   // load-bearing: `tiendaId` es el tienda_id CONGELADO (415/R33) y `cierre.estado` impide que
   // `costoReal` cambie hacia atras cuando haya un cierre solicitado o rechazado (415/R26).

@@ -94,19 +94,22 @@ const CASOS = [
     chat: "San Rafael · Escazú",
   },
   {
-    pais: "4 niveles (la ruta llega al nivel 3 hasta SLT-48)",
+    // SLT-48 R18, R25, R26: la orden de un pais de 4 niveles esta en su hoja (nivel 4) y los dos
+    // lugares son los 2 ultimos niveles del pais (D = P). Antes la ruta llegaba al nivel 3 y se
+    // pintaban los niveles 2·3 («Litoral · Viña»); ahora los niveles 3·4 («Viña · Recreo»).
+    pais: "4 niveles (la orden en su hoja de nivel 4, SLT-48)",
     niveles: NIVELES_XA,
     orden: makeOrden({
       direccion: "Av. Libertad 99",
       provinciaNombre: "Costa",
       cantonNombre: "Litoral",
       distritoNombre: "Viña",
-      lugarRuta: ruta("Costa", "Litoral", "Viña"),
+      lugarRuta: ruta("Costa", "Litoral", "Viña", "Recreo"),
     }),
-    tarjeta: "Litoral · Viña",
-    arriba: "Litoral",
-    abajo: "Viña",
-    chat: "Viña · Litoral",
+    tarjeta: "Viña · Recreo",
+    arriba: "Viña",
+    abajo: "Recreo",
+    chat: "Recreo · Viña",
   },
 ] as const;
 
@@ -188,7 +191,8 @@ describe("R11 — los dos lugares más hondos de la ruta de la orden, por país"
   it("sin dirección, el nombre accesible del enlace al mapa nombra el lugar de arriba", () => {
     const orden = { ...CASOS[2].orden, direccion: null };
     render(<PosNavBlock orden={orden} />, { wrapper: conNiveles(NIVELES_XA) });
-    expect(screen.getByRole("button", { name: "Ver en el mapa la ruta hasta Litoral" })).toBeTruthy();
+    // SLT-48 R25: el lugar de arriba es el nivel 3 (D = P = 4); antes «Litoral», el nivel 2.
+    expect(screen.getByRole("button", { name: "Ver en el mapa la ruta hasta Viña" })).toBeTruthy();
   });
 });
 

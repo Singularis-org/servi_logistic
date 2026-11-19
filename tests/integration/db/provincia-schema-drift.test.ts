@@ -13,8 +13,9 @@ const ROOT = path.join(__dirname, "..", "..", "..");
 const schema = fs.readFileSync(path.join(ROOT, "db", "schema.prisma"), "utf8");
 
 // Extrae el bloque `model <Name> { ... }` del schema.prisma.
+// SLT-48 R1: `provincia`, `canton` y `distrito` son vistas (`view <Name> { ... }`); antes solo `model`.
 function modelBlock(name: string): string {
-  const re = new RegExp(`model\\s+${name}\\s*\\{([\\s\\S]*?)\\n\\}`, "m");
+  const re = new RegExp(`(?:model|view)\\s+${name}\\s*\\{([\\s\\S]*?)\\n\\}`, "m");
   const m = schema.match(re);
   if (!m) throw new Error(`No se encontro el modelo ${name} en schema.prisma`);
   return m[1];

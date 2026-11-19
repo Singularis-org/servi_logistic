@@ -34,8 +34,9 @@ describe("migracion distrito_zona_especial — forma en disco", () => {
   it("SL-38 (R6): el modelo Distrito de Prisma ya no declara el campo: la marca es de la empresa", () => {
     const schema = fs.readFileSync(path.join(process.cwd(), "db", "schema.prisma"), "utf8");
     // El bloque del modelo, sin comentarios: un comentario que cite la columna vieja no cuenta.
-    const distrito = /\nmodel Distrito \{([\s\S]*?)\n\}/.exec(schema)?.[1];
-    expect(distrito, "no se encontro `model Distrito` en el schema").toBeDefined();
+    // SLT-48 R1: `distrito` es una vista (`view Distrito`); antes `model Distrito`.
+    const distrito = /\nview Distrito \{([\s\S]*?)\n\}/.exec(schema)?.[1];
+    expect(distrito, "no se encontro `view Distrito` en el schema").toBeDefined();
     const codigo = distrito!
       .split("\n")
       .map((l) => l.replace(/\/\/.*$/, ""))

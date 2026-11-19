@@ -22,6 +22,7 @@ import {
   type Conexion,
   type Foto,
 } from "./_fixtures/ida-y-vuelta-32";
+import { M_SLT48_VISTAS } from "./_fixtures/sin-slt48";
 
 /**
  * SLT-89 (T1.4; design §2.5) — las dos migraciones de SLT-89, de ida y vuelta, contra Postgres (R33).
@@ -50,6 +51,12 @@ const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 const M_TABLAS = "20261110130000_slt89_zona_nodo";
 const M_ENUM = "20261110130100_slt89_historial_zona_nodo";
 const DE_SLT89 = [M_TABLAS, M_ENUM];
+/**
+ * SLT-48 (design §9): posterior que reemplaza el cuerpo de `orden_nodo_geografico` que SLT-89 cambia
+ * (R9) y borra la sincronía vieja: fuera de esta base, como `SOBRE_SLT46` en la ida y vuelta de SLT-46.
+ * Con ella puesta, el cuerpo «de antes» ya no sería el de SLT-43. Cambio de entrada.
+ */
+const SOBRE_SLT89 = [M_SLT48_VISTAS];
 
 const BASE = `slt89_iv_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 
@@ -160,7 +167,7 @@ describeSiHayBase("SLT-89 — zonas sobre el nodo, de ida y vuelta (R33)", () =>
     await admin.query(`CREATE DATABASE "${BASE}"`);
     db = await conectar(urlDe(BASE));
     await db.query(CREAR_TABLA_DE_CONTROL);
-    await aplicarMigracionesHasta(db, "99999999999999", DE_SLT89);
+    await aplicarMigracionesHasta(db, "99999999999999", [...DE_SLT89, ...SOBRE_SLT89]);
     prisma = new PrismaClient({
       adapter: new PrismaPg({ connectionString: urlDe(BASE), max: 1 }),
     }) as unknown as PrismaClient;

@@ -76,6 +76,8 @@ function snapshotRow(ordenId: string) {
       provinciaId: "p1",
       cantonId: "ct1",
       distritoId: "d1",
+      // SLT-48 (R22, R27): el lugar de la orden es su nodo; las FK ya no lo deciden. Cambio de entrada.
+      nodoGeograficoId: "d1",
     },
   };
 }
@@ -165,9 +167,10 @@ function txCrear(opts: { vinculadas?: string[] } = {}) {
     // (`leerDescriptivosDeOrdenes`), con los mismos nombres para los FK de `snapshotRow` y sin marcas.
     ...delegadosDelCatalogo({
       nodos: [
+        // SLT-48 (R27): los niveles salen de la ruta del nodo, asi que el doble siembra la cadena.
         { id: "p1", nombre: "Cartago" },
-        { id: "ct1", nombre: "Central" },
-        { id: "d1", nombre: "Oriental" },
+        { id: "ct1", padreId: "p1", nombre: "Central" },
+        { id: "d1", padreId: "ct1", nombre: "Oriental" },
       ],
     }),
   };
@@ -346,6 +349,8 @@ function txResolicitud() {
       return texto.includes("FOR UPDATE") ? [] : [{ orden_id: "o1", cierre_id: "c-rech" }];
     }),
     cierreDia: { updateMany: vi.fn(async () => ({ count: 1 })) },
+    // SLT-48 (R31, P3): el catalogo de la empresa, para el lugar del grupo de la orden (nivel 3).
+    ...delegadosDelCatalogo({ nodos: ["d-norte"] }),
     gestionOrden: {
       findMany: vi.fn(async (args: { select: Record<string, unknown> }) => {
         if ("orden" in args.select) {
@@ -356,6 +361,8 @@ function txResolicitud() {
               resultado: "entregado",
               orden: {
                 distritoId: "d-norte",
+                // SLT-48 (R31, P3): el lugar del grupo sale del nodo de la orden. Cambio de entrada.
+                nodoGeograficoId: "d-norte",
                 tiendaId: "t1",
                 zonaId: "z-orden",
                 montoCobrar: new Prisma.Decimal("25000.00"),
@@ -452,6 +459,8 @@ describe("SLT-52 R33/R40 — la re-solicitud de un rechazado paga y congela cada
 
 function txCorreccion() {
   const tx = {
+    // SLT-48 (R31, P3): el catalogo de la empresa, para el lugar del grupo de la orden (nivel 3).
+    ...delegadosDelCatalogo({ nodos: ["d-sur"] }),
     gestionOrden: {
       findFirst: vi.fn(async () => ({
         cierreId: "c-1",
@@ -462,6 +471,8 @@ function txCorreccion() {
           numGuia: 1,
           numRemision: "REM-1",
           distritoId: "d-sur",
+          // SLT-48 (R31, P3): el lugar del grupo sale del nodo de la orden. Cambio de entrada.
+          nodoGeograficoId: "d-sur",
           tiendaId: "t1",
           zonaId: "z-orden",
           montoCobrar: null,

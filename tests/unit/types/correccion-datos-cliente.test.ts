@@ -24,7 +24,7 @@ const MENSAJERO: RolValue = "mensajero";
 const ADMIN_SATELITE: RolValue = "adminSatelite";
 const API_KEY: RolValue = "apiKey";
 
-describe("312/A1 + 327/D1 — los campos corregibles son EXACTAMENTE nueve", () => {
+describe("312/A1 + 327/D1 — los campos corregibles son EXACTAMENTE siete (nueve hasta SLT-48)", () => {
   it("la lista es la del alcance cerrado, sin zona ni estatus ni monto", () => {
     // R1. Este `toEqual` literal ES el contrato (312/D1 + 327/D1), no una copia de su fuente: si
     // alguien añade un campo, esta linea es la que le pregunta si de verdad quiso reabrir el
@@ -48,9 +48,8 @@ describe("312/A1 + 327/D1 — los campos corregibles son EXACTAMENTE nueve", () 
       "notas",
       // 327
       "direccion",
-      "provinciaId",
-      "cantonId",
-      "distritoId",
+      // SLT-48 R16: la ubicacion es el nodo elegido; antes `provinciaId`, `cantonId`, `distritoId`.
+      "nodoId",
       "peso",
     ]);
   });

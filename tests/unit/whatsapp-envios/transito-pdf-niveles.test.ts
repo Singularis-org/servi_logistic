@@ -71,7 +71,9 @@ describe("SLT-125 R15 — Costa Rica: el PDF de transito se ve como hoy", () => 
 });
 
 describe("SLT-125 R13 — el titulo y la celda salen de los niveles del pais", () => {
-  it("pais de 4 niveles: «COMUNA · BARRIO» y los niveles 2·3 de la ruta (hasta SLT-48)", () => {
+  // SLT-48 R25: las dos columnas son los 2 ULTIMOS niveles del pais (D = P). Antes, en un pais de 4
+  // niveles, «COMUNA · BARRIO» y los niveles 2·3; ahora «BARRIO · MANZANA» y los niveles 3·4.
+  it("pais de 4 niveles: «BARRIO · MANZANA» y los niveles 3·4 de la ruta (SLT-48 R25)", () => {
     const niveles: NivelDelPais[] = [
       { profundidad: 1, singular: "Región" },
       { profundidad: 2, singular: "Comuna" },
@@ -79,9 +81,11 @@ describe("SLT-125 R13 — el titulo y la celda salen de los niveles del pais", (
       { profundidad: 4, singular: "Manzana" },
     ];
     const todo = textoDelPdf([fila("P4-1", [paso("Metropolitana"), paso("Ñuñoa"), paso("Villa Olímpica")], niveles)]);
-    expect(todo).toContain("COMUNA · BARRIO");
+    expect(todo).toContain("BARRIO · MANZANA");
+    expect(todo).not.toContain("COMUNA · BARRIO");
     expect(todo).not.toContain("CANTÓN · DISTRITO");
-    expect(celdaDeLugar(todo, "P4-1")).toBe("Ñuñoa · Villa Olímpica");
+    // La ruta termina en el nivel 3: la columna del nivel 4 sale vacia (R25).
+    expect(celdaDeLugar(todo, "P4-1")).toBe("Villa Olímpica");
   });
 
   it("pais de 2 niveles: los tipos y los nombres de los niveles 1·2", () => {
@@ -106,14 +110,17 @@ describe("SLT-125 R13 — el titulo y la celda salen de los niveles del pais", (
     expect(celdaDeLugar(todo, "P3-1")).toBe("Zapopan · Centro");
   });
 
-  it("una orden cuya ruta no llega al nivel mas hondo pinta solo el que tiene (P7 opcion a)", () => {
+  it("una orden cuya ruta no llega a los 2 ultimos niveles deja la celda vacia (SLT-48 R25; antes P7 opcion a)", () => {
     const niveles: NivelDelPais[] = [
       { profundidad: 1, singular: "Región" },
       { profundidad: 2, singular: "Comuna" },
       { profundidad: 3, singular: "Barrio" },
       { profundidad: 4, singular: "Manzana" },
     ];
+    // SLT-48 R25: con D = P = 4, una ruta que termina en el nivel 2 no llega a ninguna de las dos
+    // columnas (3 y 4): la celda sale vacia (antes pintaba «Ñuñoa», el nivel 2).
     const todo = textoDelPdf([fila("P4-2", [paso("Metropolitana"), paso("Ñuñoa")], niveles)]);
-    expect(celdaDeLugar(todo, "P4-2")).toBe("Ñuñoa");
+    expect(todo).not.toContain("Ñuñoa");
+    expect(todo).not.toContain("Metropolitana");
   });
 });

@@ -28,7 +28,8 @@ import { HAY_BASE_DE_DATOS, clienteConSavepoint, crearPrismaDeTest, type TxDeTes
 //     prefijo): la secuencia toca nodos sembrados y nodos nuevos, y se compara el país ENTERO.
 //   · `XP`, el país de prueba de 4 niveles: además, ningún nodo de profundidad 4 tiene fila vieja.
 // La contraprueba apaga la copia en la transacción revertida y ve la diferencia: la comparación no es
-// vacía por construcción.
+// vacía por construcción. SLT-48 R5: la copia ya no existe (las tablas viejas son vistas del nodo); la
+// contraprueba afirma ahora que el trigger no está y que el renombre se ve en la vista.
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
@@ -242,29 +243,31 @@ describeSiHayBase("SLT-46 T5.2 — R11/R12: nodos 1–3 = geografía vieja tras 
     expect(r.profundos).toBe(0);
   });
 
-  it("CONTRAPRUEBA: con la copia apagada en la transacción, un renombre por el service SÍ deja una diferencia", async () => {
+  // SLT-48 R5: la copia nodo → tabla vieja (`nodo_geografico_copia_a_geografia_vieja`) ya no existe y
+  // `canton` es una vista del nodo. Antes: con la copia APAGADA, un renombre dejaba una diferencia (el
+  // nodo con el nombre nuevo, la fila vieja con el de antes). Ahora no hay copia que apagar: el trigger
+  // no existe y el renombre se ve en la vista en la misma transaccion, sin ninguna diferencia.
+  it("CONTRAPRUEBA (SLT-48 R5): sin copia que apagar, un renombre por el service se ve en la vista en la misma transacción", async () => {
     const r = await revertida(base, (tx) =>
       conServicios(tx, async ({ geografia, actor }) => {
         const { nodoPorRuta } = await sembrarPaisDePruebaGeo(tx, PAIS_CUATRO_NIVELES);
         const id = nodoPorRuta.get(claveDeRuta(["Valparaíso", "Marga Marga"])) ?? "";
-        await tx.$executeRawUnsafe(`ALTER TABLE "nodo_geografico" DISABLE TRIGGER "${TRIGGER_DE_COPIA}"`);
         exigirOk("renombre", await geografia.renombrar({ id, nombre: "Marga Marga Norte", nombreAnterior: "Marga Marga" }, actor));
         const d = await diferencias(tx, "XP");
-        await tx.$executeRawUnsafe(`ALTER TABLE "nodo_geografico" ENABLE TRIGGER "${TRIGGER_DE_COPIA}"`);
-        return { id, d };
+        const [vista] = await tx.$queryRawUnsafe<{ nombre: string }[]>(`SELECT nombre FROM canton WHERE id = $1`, id);
+        return { id, d, vista };
       }),
     );
 
-    expect(r.d.distintas).toHaveLength(1);
-    expect(r.d.distintas[0]).toMatchObject({ id: r.id });
-    expect(r.d.distintas[0].nodo).toContain("Marga Marga Norte");
-    expect(r.d.distintas[0].vieja).not.toContain("Marga Marga Norte");
-    // La transacción se revirtió: el trigger sigue encendido.
-    const [trigger] = await base.$queryRawUnsafe<{ tgenabled: string }[]>(
-      `SELECT t."tgenabled"::text AS "tgenabled" FROM "pg_trigger" t JOIN "pg_class" c ON c."oid" = t."tgrelid" JOIN "pg_namespace" n ON n."oid" = c."relnamespace"
-        WHERE t."tgname" = $1 AND c."relname" = 'nodo_geografico' AND n."nspname" = 'public'`,
+    expect(r.id).not.toBe("");
+    expect(r.d.comparadas).toBeGreaterThan(0);
+    expect(r.d.distintas).toEqual([]);
+    expect(r.vista?.nombre).toBe("Marga Marga Norte");
+    const [{ n }] = await base.$queryRawUnsafe<{ n: number }[]>(
+      `SELECT count(*)::int AS n FROM "pg_trigger" t JOIN "pg_class" c ON c."oid" = t."tgrelid" JOIN "pg_namespace" ns ON ns."oid" = c."relnamespace"
+        WHERE t."tgname" = $1 AND c."relname" = 'nodo_geografico' AND ns."nspname" = 'public'`,
       TRIGGER_DE_COPIA,
     );
-    expect(trigger?.tgenabled).toBe("O");
+    expect(n).toBe(0);
   });
 });

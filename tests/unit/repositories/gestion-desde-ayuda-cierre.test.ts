@@ -95,6 +95,8 @@ function proyectar(f: FilaGestion) {
       cobraComision: true,
       zonaId: "z1",
       tiendaId: "t1",
+      // SLT-48 (R22, R27, R31): el lugar de la orden es su nodo; las FK ya no lo deciden. Cambio de entrada.
+      nodoGeograficoId: "d1",
       // FICHA 450: los FK de las tres geografias; los nombres los resuelven los catalogos.
       provinciaId: "p1",
       cantonId: "ct1",
@@ -262,9 +264,10 @@ function buildStore(filas: FilaGestion[]) {
     // mismos nombres para los FK de las gestiones y sin marcas.
     ...delegadosDelCatalogo({
       nodos: [
+        // SLT-48 (R27): los niveles salen de la ruta del nodo, asi que el doble siembra la cadena.
         { id: "p1", nombre: "Provincia" },
-        { id: "ct1", nombre: "Canton" },
-        { id: "d1", nombre: "Distrito" },
+        { id: "ct1", padreId: "p1", nombre: "Canton" },
+        { id: "d1", padreId: "ct1", nombre: "Distrito" },
       ],
     }),
     cierreDetail: {

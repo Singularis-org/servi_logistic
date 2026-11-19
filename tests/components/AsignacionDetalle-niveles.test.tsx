@@ -107,7 +107,9 @@ describe("R12 — un campo por nivel del país, rotulado con su tipo", () => {
       lugarRuta: ruta("Costa", "Litoral", "Viña"),
     });
     render(<AsignacionDetalle orden={orden} />, { wrapper: conPais(NIVELES_XA) });
-    expect(lineaBajoLaDireccion()).toBe("Viña, Litoral");
+    // SLT-48 R25: la linea son los 2 ultimos niveles del pais (D = P = 4): el 4 no llega y sale solo
+    // el 3. Antes «Viña, Litoral» (niveles 3 y 2, con D = min(P, 3)).
+    expect(lineaBajoLaDireccion()).toBe("Viña");
     expect(camposDeLugar()).toEqual([
       ["Región", "Costa"],
       ["Provincia", "Litoral"],

@@ -1667,6 +1667,8 @@ function snapshotRow(overrides: { ordenId?: string; orden?: Record<string, unkno
       provinciaId: "p1",
       cantonId: "ct1",
       distritoId: "d1",
+      // SLT-48 (R22, R27): el lugar de la orden es su nodo; las FK ya no lo deciden. Cambio de entrada.
+      nodoGeograficoId: "d1",
       ...(overrides.orden ?? {}),
     },
   };
@@ -1713,9 +1715,10 @@ function buildSnapshotTx(
     // nombres para los FK de `snapshotRow`, y sin marcas, como el `zonasEspeciales: []` de antes.
     ...delegadosDelCatalogo({
       nodos: [
+        // SLT-48 (R27): los niveles salen de la ruta del nodo, asi que el doble siembra la cadena.
         { id: "p1", nombre: "Cartago" },
-        { id: "ct1", nombre: "Central" },
-        { id: "d1", nombre: "Oriental" },
+        { id: "ct1", padreId: "p1", nombre: "Central" },
+        { id: "d1", padreId: "ct1", nombre: "Oriental" },
       ],
     }),
     ...overrides,
@@ -1876,7 +1879,7 @@ describe("Feature 69 — crearCierre puebla cierre_detail (R3-R9/R11)", () => {
   });
 
   it("R7: distrito nulo (unico FK nullable de la orden) => distritoNombre null", async () => {
-    const tx = buildSnapshotTx([snapshotRow({ orden: { distritoId: null } })]);
+    const tx = buildSnapshotTx([snapshotRow({ orden: { distritoId: null, nodoGeograficoId: "ct1" } }) /* SLT-48 R22: sin distrito, el nodo es el canton */]);
     const prisma = buildPrisma({
       $transaction: vi.fn(async (cb: (t: typeof tx) => unknown) => cb(tx)),
     });

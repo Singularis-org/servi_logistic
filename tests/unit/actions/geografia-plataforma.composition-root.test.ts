@@ -87,7 +87,9 @@ describe("SL-20 — cada action del superadmin, sin servicio inyectado, llega al
     // SLT-65 (design §5, `whereLugarEn`): el `cantonId` del canton pedido sigue en el `where`, ahora
     // como lugar ∈ {c-1} ∪ nodosBajo(c-1), con el distrito incluido.
     expect(ordenCount.mock.calls[0][0].where).toMatchObject({
-      OR: [{ distritoId: { in: ["c-1", "d-1"] } }, { distritoId: null, cantonId: { in: ["c-1", "d-1"] } }],
+      // SLT-48 R23, R24: el lugar es el nodo de la orden; antes
+      // `OR: [{ distritoId: { in } }, { distritoId: null, cantonId: { in } }]`.
+      nodoGeograficoId: { in: ["c-1", "d-1"] },
       deletedAt: null,
     });
   });

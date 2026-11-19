@@ -150,16 +150,21 @@ describeSiHayBase("SLT-44 R12 — las lecturas no leen `nodo_geografico_id` (bas
   // SLT-65 (T7.2; R19; design §14) — LAS LECTURAS 1–7 DE SLT-65 (design §2.1) TAMPOCO DEPENDEN DEL
   // BACKFILL. Mismo metodo, sobre el escenario de `geo-65.ts`, y ahora tambien con
   // `orden.nodo_geografico_id`: llena, en NULL (triggers apagados) y desviada a otro nodo.
-  describe("SLT-65 R19 — las lecturas 1–7 dan lo mismo con `nodo_geografico_id` en NULL o desviado", () => {
+  //
+  // SLT-48 R22, R29: desde SLT-48 el lugar de la orden ES su nodo, asi que en `orden` se mide lo
+  // contrario: las lecturas no leen sus 3 FK viejas. Antes se vaciaba y desviaba
+  // `orden.nodo_geografico_id`; ahora se vacian y desvian `provincia_id`, `canton_id` y `distrito_id`
+  // con el nodo intacto. En `zona_distrito` y `distrito_zona_especial` sigue igual que antes.
+  describe("SLT-65 R19 / SLT-48 R29 — las lecturas 1–7 dan lo mismo con las 3 FK de la orden en NULL o desviadas", () => {
     it("API, listado, cobro, correccion, conteo, cierre y zona: llena = en NULL = desviada", async () => {
       const base: PrismaClient = propia!.prisma;
       const r = await revertida(base, async (tx) => {
         const e = await crearEscenarioGeo65(tx);
         const antes = await estadoDeLas3Columnas(tx);
+        const fkAntes = await estadoDeLasFkDeOrden(tx);
         const llena = await leerLas7(tx, e);
 
         await vaciarColumnasNuevas(tx, {
-          orden: await idsDe65(tx, "orden"),
           zonaDistrito: await idsDe65(tx, "zona_distrito"),
           distritoZonaEspecial: await idsDe65(tx, "distrito_zona_especial"),
         });
@@ -168,17 +173,22 @@ describeSiHayBase("SLT-44 R12 — las lecturas no leen `nodo_geografico_id` (bas
         for (const { tabla, trigger } of TRIGGERS_DE_COLUMNAS_NUEVAS) {
           await tx.$executeRawUnsafe(`ALTER TABLE ${tabla} DISABLE TRIGGER ${trigger}`);
         }
+        // SLT-48 R29: las 3 FK de la orden en NULL (con el trigger de `orden` apagado, el nodo no cambia).
+        await vaciarFkDeOrden(tx);
         const trasVaciar = await estadoDeLas3Columnas(tx);
+        const fkTrasVaciar = await estadoDeLasFkDeOrden(tx);
         const enNull = await leerLas7(tx, e);
 
-        // Desviada: cada orden del fixture apunta al canton retirado de su empresa, y cada asignacion
-        // y cada marca al distrito «sin zona». Si una lectura usara la columna, la marca, la zona, el
-        // conteo y el congelado cambiarian.
+        // Desviada: las 3 FK de cada orden del fixture apuntan al canton retirado de su empresa y al
+        // distrito «sin zona» (SLT-48: antes era su nodo), y cada asignacion y cada marca al distrito
+        // «sin zona». Si una lectura usara la columna, la marca, la zona, el conteo y el congelado
+        // cambiarian.
         for (const empresa of [e.cr, e.xa]) {
           const g = empresa.base.geo;
           await tx.$executeRawUnsafe(
-            `UPDATE orden SET nodo_geografico_id = $1 WHERE id = ANY($2::text[])`,
+            `UPDATE orden SET provincia_id = NULL, canton_id = $1, distrito_id = $2 WHERE id = ANY($3::text[])`,
             g.cantonRetiradoId,
+            g.distritoSinZonaId,
             Object.values(empresa.ordenes),
           );
           await tx.$executeRawUnsafe(
@@ -193,14 +203,18 @@ describeSiHayBase("SLT-44 R12 — las lecturas no leen `nodo_geografico_id` (bas
           );
         }
         const desviada = await leerLas7(tx, e);
-        return { e, antes, trasVaciar, llena, enNull, desviada };
+        return { e, antes, trasVaciar, fkAntes, fkTrasVaciar, llena, enNull, desviada };
       });
 
-      // Anti-vacuidad: las tres columnas estaban llenas y despues ninguna; y cada lectura lee algo.
+      // Anti-vacuidad: las columnas estaban llenas y despues ninguna; y cada lectura lee algo.
+      // SLT-48 R29: en `orden` lo que se vacia son las 3 FK; su nodo sigue lleno.
       expect(r.antes.orden.llenas).toBeGreaterThanOrEqual(22);
+      expect(r.fkAntes.conFk).toBeGreaterThanOrEqual(22);
+      expect(r.fkTrasVaciar).toEqual({ conFk: 0, sinFk: r.fkAntes.conFk + r.fkAntes.sinFk });
+      expect(r.trasVaciar.orden).toEqual(r.antes.orden);
       expect(r.antes.zonaDistrito.llenas).toBeGreaterThan(0);
       expect(r.antes.distritoZonaEspecial.llenas).toBeGreaterThan(0);
-      for (const tabla of ["orden", "zonaDistrito", "distritoZonaEspecial"] as const) {
+      for (const tabla of ["zonaDistrito", "distritoZonaEspecial"] as const) {
         expect(r.trasVaciar[tabla], tabla).toEqual({ llenas: 0, vacias: r.antes[tabla].llenas + r.antes[tabla].vacias });
       }
       for (const empresa of ["cr", "xa"] as const) {
@@ -232,42 +246,53 @@ describeSiHayBase("SLT-44 R12 — las lecturas no leen `nodo_geografico_id` (bas
   // COMPARTEN SU RECORTE Y LAS FILAS EN ALERTA DE TRANSITO TAMPOCO DEPENDEN DEL BACKFILL. Mismo metodo,
   // sobre el escenario de `geo-71.ts`: `orden.nodo_geografico_id` llena, en NULL (triggers apagados) y
   // desviada al canton retirado.
-  describe("SLT-71 R14 — analitica con faceta y transito dan lo mismo con `nodo_geografico_id` en NULL o desviado", () => {
+  //
+  // SLT-48 R23, R25, R29: la faceta y el transito leen ahora el NODO de la orden, asi que se mide lo
+  // contrario: no leen sus 3 FK viejas. Antes se vaciaba y desviaba `orden.nodo_geografico_id`; ahora
+  // se vacian y desvian `provincia_id`, `canton_id` y `distrito_id`, con el nodo intacto.
+  describe("SLT-71 R14 / SLT-48 R29 — analitica con faceta y transito dan lo mismo con las 3 FK de la orden en NULL o desviadas", () => {
     it("las nueve lecturas de analitica por provincia, canton, distrito y combinacion, y transito: llena = en NULL = desviada", async () => {
       const base: PrismaClient = propia!.prisma;
       const r = await revertida(base, async (tx) => {
         const e = await crearEscenarioGeo71(tx);
         const antes = await estadoDeLas3Columnas(tx);
+        const fkAntes = await estadoDeLasFkDeOrden(tx);
         const ahora = new Date();
         const llena = await leerLasDe71(tx, e, ahora);
 
         await vaciarColumnasNuevas(tx, {
-          orden: await idsDe65(tx, "orden"),
           zonaDistrito: await idsDe65(tx, "zona_distrito"),
           distritoZonaEspecial: await idsDe65(tx, "distrito_zona_especial"),
         });
         for (const { tabla, trigger } of TRIGGERS_DE_COLUMNAS_NUEVAS) {
           await tx.$executeRawUnsafe(`ALTER TABLE ${tabla} DISABLE TRIGGER ${trigger}`);
         }
+        // SLT-48 R29: las 3 FK de la orden en NULL (con el trigger de `orden` apagado, el nodo no cambia).
+        await vaciarFkDeOrden(tx);
         const trasVaciar = await estadoDeLas3Columnas(tx);
+        const fkTrasVaciar = await estadoDeLasFkDeOrden(tx);
         const enNull = await leerLasDe71(tx, e, ahora);
 
-        // Desviada: cada orden de cada empresa apunta al canton retirado de su empresa. Si una lectura
-        // filtrara o nombrara por la columna, las facetas y los nombres de transito cambiarian.
+        // Desviada: las 3 FK de cada orden de cada empresa apuntan al canton retirado de su empresa
+        // (SLT-48: antes era su nodo). Si una lectura filtrara o nombrara por ellas, las facetas y los
+        // nombres de transito cambiarian.
         for (const empresa of [e.cr, e.xa]) {
           await tx.$executeRawUnsafe(
-            `UPDATE orden SET nodo_geografico_id = $1 WHERE organizacion_id = $2`,
+            `UPDATE orden SET provincia_id = NULL, canton_id = $1, distrito_id = NULL WHERE organizacion_id = $2`,
             empresa.base.base.geo.cantonRetiradoId,
             empresa.base.base.empresaId,
           );
         }
         const desviada = await leerLasDe71(tx, e, ahora);
-        return { antes, trasVaciar, llena, enNull, desviada };
+        return { antes, trasVaciar, fkAntes, fkTrasVaciar, llena, enNull, desviada };
       });
 
-      // Anti-vacuidad: la columna de `orden` estaba llena y despues no; cada empresa lee algo.
+      // Anti-vacuidad: las 3 FK de `orden` estaban llenas y despues no (SLT-48 R29: antes, su nodo);
+      // el nodo sigue lleno; cada empresa lee algo.
       expect(r.antes.orden.llenas).toBeGreaterThanOrEqual(30);
-      expect(r.trasVaciar.orden).toEqual({ llenas: 0, vacias: r.antes.orden.llenas + r.antes.orden.vacias });
+      expect(r.fkAntes.conFk).toBeGreaterThanOrEqual(30);
+      expect(r.fkTrasVaciar).toEqual({ conFk: 0, sinFk: r.fkAntes.conFk + r.fkAntes.sinFk });
+      expect(r.trasVaciar.orden).toEqual(r.antes.orden);
       for (const empresa of ["cr", "xa"] as const) {
         const l = r.llena[empresa];
         expect(l.transito, `${empresa}: transito`).toHaveLength(2);
@@ -281,6 +306,22 @@ describeSiHayBase("SLT-44 R12 — las lecturas no leen `nodo_geografico_id` (bas
     }, 300_000);
   });
 });
+
+/** SLT-48 R29: cuantas ordenes tienen alguna de sus 3 FK viejas llena y cuantas las tienen todas en NULL. */
+async function estadoDeLasFkDeOrden(tx: TxDeTest): Promise<{ conFk: number; sinFk: number }> {
+  const [f] = await tx.$queryRawUnsafe<{ conFk: number; sinFk: number }[]>(
+    `SELECT count(*) FILTER (WHERE num_nonnulls(provincia_id, canton_id, distrito_id) > 0)::int AS "conFk",
+            count(*) FILTER (WHERE num_nonnulls(provincia_id, canton_id, distrito_id) = 0)::int AS "sinFk"
+       FROM orden`,
+  );
+  return f;
+}
+
+/** SLT-48 R29: las 3 FK viejas de todas las ordenes en NULL, con el trigger de `orden` apagado. */
+async function vaciarFkDeOrden(tx: TxDeTest): Promise<void> {
+  await tx.$executeRawUnsafe(`ALTER TABLE orden DISABLE TRIGGER orden_nodo_geografico`);
+  await tx.$executeRawUnsafe(`UPDATE orden SET provincia_id = NULL, canton_id = NULL, distrito_id = NULL`);
+}
 
 /** Cuantas filas de cada tabla tienen la columna llena y cuantas en NULL. */
 async function estadoDeLas3Columnas(tx: TxDeTest) {

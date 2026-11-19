@@ -39,7 +39,8 @@ describe("R18 — el contrato publico conserva provincia/canton/distrito", () =>
   it("anti-vacuidad: los artefactos se leyeron", () => {
     expect(JSON.stringify(openApiSpec).length).toBeGreaterThan(10_000);
     expect(yaml.length).toBeGreaterThan(10_000);
-    expect(schema).toMatch(/^model Provincia \{/m);
+    // SLT-48 R1: `provincia` es una vista de solo lectura sobre `nodo_geografico` (antes `model Provincia`).
+    expect(schema).toMatch(/^view Provincia \{/m);
   });
 
   it("CargaRow (objeto TS) exige y declara la terna con esos nombres", () => {
@@ -78,8 +79,10 @@ describe("R18 — la base y el codigo conservan los nombres", () => {
   it("la orden sigue apuntando a la geografia con provincia_id, canton_id y distrito_id", () => {
     const orden = schema.slice(schema.indexOf("\nmodel Orden {"));
     const cuerpo = orden.slice(0, orden.indexOf("\n}"));
-    expect(cuerpo).toMatch(/provinciaId\s+String\s+@map\("provincia_id"\)/);
-    expect(cuerpo).toMatch(/cantonId\s+String\s+@map\("canton_id"\)/);
+    // SLT-48 R4: los nombres no cambian, pero `provincia_id` y `canton_id` pierden el NOT NULL
+    // (antes `String`, ahora `String?`).
+    expect(cuerpo).toMatch(/provinciaId\s+String\?\s+@map\("provincia_id"\)/);
+    expect(cuerpo).toMatch(/cantonId\s+String\?\s+@map\("canton_id"\)/);
     expect(cuerpo).toMatch(/distritoId\s+String\?\s+@map\("distrito_id"\)/);
   });
 });

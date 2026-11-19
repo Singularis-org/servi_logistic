@@ -184,6 +184,8 @@ function ordenListRow() {
     provinciaId: "p1",
     cantonId: "c1",
     distritoId: null,
+    // SLT-48 (R22, R27): el lugar de la orden es su nodo (sin distrito, el canton). Cambio de entrada.
+    nodoGeograficoId: "c1",
     producto: "Caja",
     peso: new Prisma.Decimal("1.500"),
     notas: null,
@@ -262,6 +264,8 @@ function snapshotRow() {
       provinciaId: "p1",
       cantonId: "c1",
       distritoId: null,
+      // SLT-48 (R22, R27): el lugar de la orden es su nodo (sin distrito, el canton). Cambio de entrada.
+      nodoGeograficoId: "c1",
       zona: { nombre: "Limón", esCentral: false },
       tienda: { nombre: "Tienda X" },
       provincia: { nombre: "Limón" },
@@ -315,8 +319,9 @@ async function porElCierre(filas: readonly FilaTarifa[]) {
     // mismos nombres para los FK de `snapshotRow` (sin distrito) y sin marcas.
     ...delegadosDelCatalogo({
       nodos: [
+        // SLT-48 (R27): los niveles salen de la ruta del nodo, asi que el doble siembra la cadena.
         { id: "p1", nombre: "Limón" },
-        { id: "c1", nombre: "Central" },
+        { id: "c1", padreId: "p1", nombre: "Central" },
       ],
     }),
     ...prismaTarifas(filas),
