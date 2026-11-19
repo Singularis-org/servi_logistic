@@ -399,14 +399,15 @@ export function RecogerModule({
           value={grupoActivo}
           onValueChange={(siguiente) => setGrupoActivo(siguiente as Grupo)}
         >
-          {/* Las pestañas, a 44 px (R493). SLT-190 (R859): el conmutador de vista ya no va en esta
+          {/* Las pestañas, a 44 px en el móvil (R493); desde `md`, el alto de prod (SLT-202, Carlos
+              2026-11-18). SLT-190 (R859): el conmutador de vista ya no va en esta
               fila, sino en la barra fija. */}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <TabsList aria-label={TABLIST_LABEL} className="w-auto flex-wrap">
-              <TabsTrigger value="hoy" className="min-h-11">
+              <TabsTrigger value="hoy" className="max-md:min-h-11">
                 {`${PESTANA_PARA_RECOGER_HOY} (${grupos.hoy.length})`}
               </TabsTrigger>
-              <TabsTrigger value="otro-dia" className="min-h-11">
+              <TabsTrigger value="otro-dia" className="max-md:min-h-11">
                 {`${PESTANA_PARA_OTRO_DIA} (${grupos.otroDia.length})`}
               </TabsTrigger>
             </TabsList>

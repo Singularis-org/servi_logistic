@@ -586,9 +586,12 @@ describe("OrdenesPage", () => {
       // 2026-08-10 (pedido humano: esa pantalla también acepta el número tecleado), y el
       // test pasó a fallar por un motivo que nada tenía que ver con lo que afirma. La
       // región es un discriminador que no depende de qué controles ofrezca cada una.
+      // SLT-202 «Escritorio igual a prod: tamaños de controles y un solo botón de recibir» (Carlos,
+      // 2026-11-18): «Recibir paquete» es el único disparador y abre la recepción continua (en
+      // jsdom, táctil: el diálogo). La región de la continua de la bodega central es la que manda.
       await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
       expect(
-        screen.getByRole("region", { name: "Recepción en bodega central" }),
+        await screen.findByRole("region", { name: "Recepción continua en bodega central" }),
       ).toBeInTheDocument();
       expect(screen.getByLabelText("Número de guía")).toBeInTheDocument();
       expect(
@@ -624,12 +627,11 @@ describe("OrdenesPage", () => {
     await renderPage();
     await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
     expect(
-      screen.queryByRole("region", { name: "Recepción en bodega central" }),
+      screen.queryByRole("region", { name: "Recepción continua en bodega central" }),
     ).toBeNull();
     expect(
-      screen.getByRole("region", { name: "Recepción en tienda por escaneo" }),
+      await screen.findByRole("region", { name: "Recepción continua en tienda" }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Recibir" })).toBeNull();
     cleanup();
 
     // Sin sesión (actor null): ni siquiera se ofrece el receptor.
@@ -642,7 +644,10 @@ describe("OrdenesPage", () => {
     expect(screen.queryByRole("button", { name: "Recibir" })).toBeNull();
   });
 
-  it("SLT-159 (R611): maestro con puntero fino ve el enlace «Recibir paquetes» y «Recibir paquete» sigue suelto", async () => {
+  // SLT-202 «Escritorio igual a prod: tamaños de controles y un solo botón de recibir» (Carlos,
+  // 2026-11-18): un solo disparador, «Recibir paquete», que con puntero fino es el enlace a la
+  // recepción continua. Enmienda R611 y R594 de SLT-159 (las dos entradas, una junto a otra).
+  it("SLT-202: maestro con puntero fino ve un solo «Recibir paquete», el enlace a la recepción continua", async () => {
     listarOrdenesMock.mockResolvedValue({ status: "ok", items: [], page: 1, pageSize: 25, total: 0 });
     const matchMediaOriginal = window.matchMedia;
     window.matchMedia = ((consulta: string) => ({
@@ -652,17 +657,15 @@ describe("OrdenesPage", () => {
       removeEventListener: () => {},
     })) as unknown as typeof window.matchMedia;
     try {
-      const user = userEvent.setup();
       resolveActorMock.mockResolvedValueOnce({ usuarioId: "u", rol: RolValue.maestro });
       await renderPage();
 
-      expect(screen.getByRole("link", { name: "Recibir paquetes" })).toHaveAttribute(
+      expect(screen.getByRole("link", { name: "Recibir paquete" })).toHaveAttribute(
         "href",
         "/ordenes/recibir",
       );
-      await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
-      expect(screen.getByRole("region", { name: "Recepción en bodega central" })).toBeInTheDocument();
-      expect(screen.queryByRole("log", { name: "Lecturas" })).toBeNull();
+      expect(screen.getAllByRole("link", { name: /Recibir paquete/ })).toHaveLength(1);
+      expect(screen.queryByRole("button", { name: /Recibir paquete/ })).toBeNull();
     } finally {
       window.matchMedia = matchMediaOriginal;
     }
@@ -672,7 +675,7 @@ describe("OrdenesPage", () => {
     [RolValue.maestro, "central"],
     [RolValue.adminTienda, "origen"],
   ] as const)(
-    "SLT-159 (m1, R580): %s, táctil, abre «Recibir paquetes» y la lectura llega a la recepción de su rol",
+    "SLT-159 (m1, R580) y SLT-202: %s, táctil, un solo «Recibir paquete» abre la continua y la lectura llega a la recepción de su rol",
     async (rol, destino) => {
       listarOrdenesMock.mockResolvedValue({ status: "ok", items: [], page: 1, pageSize: 25, total: 0 });
       const central = vi.mocked(recibirEnBodegaCentralPorQr);
@@ -683,7 +686,8 @@ describe("OrdenesPage", () => {
       resolveActorMock.mockResolvedValueOnce({ usuarioId: "u", rol });
       await renderPage();
 
-      await user.click(screen.getByRole("button", { name: "Recibir paquetes" }));
+      expect(screen.getAllByRole("button", { name: /Recibir paquete/ })).toHaveLength(1);
+      await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
       await user.type(screen.getByLabelText("Número de guía"), "1024{Enter}");
 
       const [esperada, otra] = destino === "central" ? [central, origen] : [origen, central];

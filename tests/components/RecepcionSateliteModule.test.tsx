@@ -412,14 +412,17 @@ describe("RecepcionSateliteModule", () => {
 
     // La tarjeta arranca plegada (la cámara no se enciende sola): el acceso está y al
     // abrirlo aparecen los dos caminos.
+    // SLT-202 «Escritorio igual a prod: tamaños de controles y un solo botón de recibir» (Carlos,
+    // 2026-11-18): «Recibir paquete» es el único disparador y abre la recepción continua (en jsdom,
+    // táctil: el diálogo), con los mismos dos caminos.
     await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
-    const region = screen.getByRole("region", {
-      name: "Recibir por número de guía o escaneo",
+    const region = await screen.findByRole("region", {
+      name: "Recepción continua en bodega satélite",
     });
     expect(
       within(region).getByRole("button", { name: "Escanear con cámara" }),
     ).toBeInTheDocument();
-    expect(within(region).getByRole("textbox")).toBeInTheDocument();
+    expect(within(region).getByLabelText("Número de guía")).toBeInTheDocument();
   });
 
   // Feature 279 (T4.1d, R42/R43) — ESTE CASO AFIRMABA LO CONTRARIO, y cambia de sentido

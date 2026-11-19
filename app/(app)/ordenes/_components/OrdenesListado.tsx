@@ -18,7 +18,6 @@ import type { OrderStatusLiteRow } from "@/lib/interfaces/repositories/IOrdenRep
 import { listarOrderStatus } from "@/lib/actions/order-status";
 import { listarMensajerosParaAsignacion } from "@/lib/actions/ordenes-guia";
 import type { Column } from "@/components/shared/DataTable";
-import { EscanerModal } from "@/components/shared/EscanerModal";
 import { RecibirPaquetesEntrada } from "@/components/shared/RecibirPaquetesEntrada";
 import { BUSQUEDA_MIN_CHARS, type OrdenListItemDTO } from "@/lib/types/orden";
 import type { FechasDiaReparto } from "@/lib/utils/dia-reparto-textos";
@@ -1414,42 +1413,30 @@ export function OrdenesListado({
   // filtro): son acciones independientes del estado. La carga masiva y la recepción en
   // origen se ofrecen al adminTienda (feature 26); la recepción en bodega central
   // (feature 138) al maestro/admin. `onRecibida={handleSuccess}` revalida el listado
-  // (R14), de modo que la orden recibida refleja su nuevo estado.
-  //
-  // El receptor es una TARJETA (cámara + número de guía), demasiado alta para vivir
-  // desplegada encima de la tabla: se abre desde la barra de acciones EN MODAL y se
-  // cierra igual. Quien no puede recibir no ve ni el botón.
-  // El disparador vive a la IZQUIERDA, donde empieza la lectura de la pagina; la carga
-  // masiva sigue a la derecha de la misma fila. Abrir monta la tarjeta y cerrar la
-  // desmonta (apaga la camara): el mismo `EscanerModal` compartido que usan las demás
-  // superficies de escaneo. El label es el suyo por defecto ("Recibir paquete").
+  // (R14) al cerrar la sesión continua (SLT-159 R592), de modo que lo recibido refleja su
+  // nuevo estado. Quien no puede recibir no ve ni el botón. El disparador vive a la
+  // IZQUIERDA, donde empieza la lectura de la página; la carga masiva, a la derecha.
   const header =
     puedeCargarMasiva || puedeEscanearQr || puedeRecibirBodegaCentral ? (
       puedeEscanearQr || puedeRecibirBodegaCentral ? (
-        <EscanerModal
-          // SLT-193 (R925, R927; P7 de Carlos): un solo título para el diálogo, en su barra.
-          titulo="Recibir paquete"
-          acciones={
-            <>
-              {/* SLT-159 (R611): la recepción continua, junto a la guía suelta. */}
-              <RecibirPaquetesEntrada href="/ordenes/recibir">
-                {puedeRecibirBodegaCentral ? (
-                  <EscanerRecepcionBodegaCentral modo="continua" onRecibida={handleSuccess} />
-                ) : (
-                  <EscanerRecepcionOrigen modo="continua" onRecibida={handleSuccess} />
-                )}
-              </RecibirPaquetesEntrada>
-              {puedeCargarMasiva ? <OrdenesCargaMasivaButton /> : null}
-            </>
-          }
-        >
-          {puedeRecibirBodegaCentral ? (
-            <EscanerRecepcionBodegaCentral onRecibida={handleSuccess} />
+        // SLT-202 (Carlos, 2026-11-18): un solo disparador de recibir, «Recibir paquete», a la izquierda
+        // como en prod; abre la recepción continua de SLT-159 (página con puntero fino, diálogo con
+        // táctil). La guía suelta se quitó: la continua la cubre (misma acción, campo y cámara). La
+        // carga masiva sigue a la derecha de la misma fila, como en prod.
+        <div className="flex w-full flex-wrap items-center gap-2">
+          <RecibirPaquetesEntrada href="/ordenes/recibir">
+            {puedeRecibirBodegaCentral ? (
+              <EscanerRecepcionBodegaCentral modo="continua" onRecibida={handleSuccess} />
+            ) : (
+              <EscanerRecepcionOrigen modo="continua" onRecibida={handleSuccess} />
+            )}
+          </RecibirPaquetesEntrada>
+          {puedeCargarMasiva ? (
+            <div className="ms-auto flex gap-2">
+              <OrdenesCargaMasivaButton />
+            </div>
           ) : null}
-          {puedeEscanearQr ? (
-            <EscanerRecepcionOrigen onRecibida={handleSuccess} />
-          ) : null}
-        </EscanerModal>
+        </div>
       ) : (
         <div className="flex flex-wrap items-center justify-end gap-2">
           <OrdenesCargaMasivaButton />

@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { DentroDeEscanerContext, SELECTOR_CAMPO_ESCANER } from "@/components/shared/EscanerGuiaCard";
+import { BOTON_TACTIL_MOVIL, ICONO_TACTIL_MOVIL } from "@/components/shared/texto-entero";
 import { usePunteroFino } from "@/hooks/useEntradaEscaneo";
 import { cn } from "@/lib/utils";
 
@@ -45,7 +46,8 @@ import { cn } from "@/lib/utils";
 // acto («Recoger paquete», «Recolectar en tienda»).
 //
 // SLT-193 (R925-R928, decisión de Carlos del 2026-11-17): el escáner es UN solo componente. La
-// barra con el título visible y el único «Cerrar» de 44 × 44 px son de aquí, para TODOS los usos
+// barra con el título visible y el único «Cerrar» (44 × 44 px en el móvil y el `icon-sm` de prod en
+// escritorio, SLT-202) son de aquí, para TODOS los usos
 // y cualquier disparador; la X pequeña del `Dialog` no se pinta y ninguna pantalla pinta su
 // propio cierre (lo vigila `tests/unit/guards/escaner-un-solo-cierre.guardia.test.ts`). Cada
 // pantalla pasa `titulo` (obligatorio) y monta su tarjeta sin encabezado propio.
@@ -93,7 +95,7 @@ export interface EscanerModalProps {
   ayuda?: string;
   /**
    * SLT-190 (R867-R869, DS7) y SLT-193 (R925, R927): título VISIBLE del diálogo, en una barra arriba
-   * con el único «Cerrar» de 44 × 44 px. Obligatorio: es el único título del diálogo (la tarjeta de
+   * con el único «Cerrar» (44 × 44 px en el móvil, SLT-202). Obligatorio: es el único título del diálogo (la tarjeta de
    * dentro va sin encabezado, `sinEncabezado`) y también su nombre accesible.
    */
   titulo: string;
@@ -143,9 +145,13 @@ export function EscanerModal({
           <DialogTitle className="text-lg leading-tight font-semibold text-balance text-card-foreground">
             {titulo}
           </DialogTitle>
+          {/* SLT-202 (Carlos, 2026-11-18): desde `md`, el `icon-sm` del «Cerrar» de prod (el de
+              `DialogContent`); en el móvil, los 44 × 44 de SLT-193 (R925). */}
           <DialogClose
             aria-label={ESCANER_CERRAR_LABEL}
-            render={<Button type="button" variant="ghost" size="icon-touch" />}
+            render={
+              <Button type="button" variant="ghost" size="icon-sm" className={ICONO_TACTIL_MOVIL} />
+            }
           >
             <X className="size-5" aria-hidden="true" />
           </DialogClose>
@@ -197,8 +203,9 @@ export function EscanerModal({
       <Button
         type="button"
         variant="outline"
-        size={tactil ? "touch" : "default"}
-        className={tactil ? "w-full" : undefined}
+        // SLT-202 (Carlos, 2026-11-18): con `tactil`, 44 px y todo el ancho SOLO en el móvil (SLT-156,
+        // R493); desde `md`, el botón de prod.
+        className={tactil ? `${BOTON_TACTIL_MOVIL} max-md:w-full` : undefined}
         onClick={() => setAbierto(true)}
       >
         <ScanLine aria-hidden="true" />

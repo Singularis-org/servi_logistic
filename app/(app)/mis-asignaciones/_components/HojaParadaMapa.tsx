@@ -11,7 +11,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { EstadoConInfo } from "@/components/shared/EstadoInfo";
-import { CLASE_INFO_TACTIL, TEXTO_ENTERO } from "@/components/shared/texto-entero";
+import { BOTON_TACTIL_MOVIL, CLASE_INFO_TACTIL, TEXTO_ENTERO } from "@/components/shared/texto-entero";
 import type { MiAsignacionDTO } from "@/lib/interfaces/services/IMisAsignacionesService";
 
 import { AbrirEnAppNavegacion } from "./AbrirEnAppNavegacion";
@@ -111,12 +111,14 @@ function ContenidoHoja({
       data-ampliada={ampliada ? "true" : "false"}
       className={`gap-3 overflow-y-auto rounded-t-2xl px-4 pb-6 ${ampliada ? "max-h-[90dvh]" : "max-h-[60dvh]"}`}
     >
+      {/* SLT-202 (Carlos, 2026-11-18): la hoja no existe en prod; desde `md` el asa y «Navegar» van al
+          alto por defecto de la casa (32 px) y en el móvil conservan los 44 px de SLT-166 (R540). */}
       <div className="flex justify-center">
         <button
           type="button"
           aria-label={ASA_HOJA}
           aria-expanded={ampliada}
-          className="flex h-11 w-24 touch-none items-center justify-center rounded-full text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex h-8 w-24 touch-none items-center justify-center rounded-full text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:h-11"
           onClick={() => {
             if (fueArrastre.current) {
               fueArrastre.current = false;
@@ -166,7 +168,7 @@ function ContenidoHoja({
       <div className="flex flex-wrap items-center gap-3">
         <Button
           type="button"
-          size="touch"
+          className={BOTON_TACTIL_MOVIL}
           aria-expanded={navegar}
           onClick={() => setNavegar((v) => !v)}
         >

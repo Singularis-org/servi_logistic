@@ -28,6 +28,7 @@ import {
 } from "react-leaflet";
 
 import { Button } from "@/components/ui/button";
+import { BOTON_TACTIL_MOVIL, ICONO_TACTIL_MOVIL } from "@/components/shared/texto-entero";
 import { decodificarPolilinea } from "@/lib/geo/polilinea";
 import { PAIS_DE_OPERACION } from "@/lib/config/pais";
 
@@ -149,9 +150,11 @@ function BotonCentrar({ origen }: { origen: RutaMapaOrigen | null | undefined })
       }}
       type="button"
       variant="outline"
-      size="icon-touch"
+      // SLT-202 (Carlos, 2026-11-18): sin par en prod; desde `md` el icono por defecto (32 px) y en
+      // el móvil los 44 px de SLT-166 (R541).
+      size="icon"
       aria-label={CENTRAR_EN_MI_UBICACION}
-      className="absolute right-4 bottom-4 z-[1000] bg-background shadow-md"
+      className={`absolute right-4 bottom-4 z-[1000] bg-background shadow-md ${ICONO_TACTIL_MOVIL}`}
       onClick={centrar}
     >
       <LocateFixed aria-hidden="true" />
@@ -306,7 +309,8 @@ export function RutaMapaInner({
     >
       {completo ? (
         <div className="flex items-center justify-between gap-3 border-b bg-background px-4 py-2">
-          <Button type="button" variant="outline" size="touch" onClick={() => setCompleto(false)}>
+          {/* SLT-202 (Carlos, 2026-11-18): sin par en prod; 32 px desde `md`, 44 en el móvil (R541). */}
+          <Button type="button" variant="outline" className={BOTON_TACTIL_MOVIL} onClick={() => setCompleto(false)}>
             <X aria-hidden="true" />
             {CERRAR_MAPA_COMPLETO}
           </Button>
@@ -394,14 +398,14 @@ export function RutaMapaInner({
         </p>
       )}
 
-      {/* SLT-192 (R880, R886): «Ver mapa completo» y «Ocultar mapa» juntos bajo el mapa. */}
+      {/* SLT-192 (R880, R886): «Ver mapa completo» y «Ocultar mapa» juntos bajo el mapa. SLT-202 (Carlos,
+          2026-11-18): sin par en prod; 32 px desde `md`, 44 en el móvil. */}
       {completo ? null : (
         <div className="flex flex-wrap gap-2">
           <Button
             type="button"
             variant="outline"
-            size="touch"
-            className="flex-1"
+            className={`flex-1 ${BOTON_TACTIL_MOVIL}`}
             onClick={() => setCompleto(true)}
           >
             <Maximize2 aria-hidden="true" />
@@ -411,8 +415,7 @@ export function RutaMapaInner({
             <Button
               type="button"
               variant="ghost"
-              size="touch"
-              className="flex-1"
+              className={`flex-1 ${BOTON_TACTIL_MOVIL}`}
               aria-expanded={true}
               onClick={onOcultar}
             >

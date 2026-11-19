@@ -9,7 +9,8 @@ import { EscanerModal } from "@/components/shared/EscanerModal";
 import { cn } from "@/lib/utils";
 
 // SLT-159 «Escaneo continuo en recepciones y recogidas» (R611, DC5) — la entrada a la recepción
-// continua, junto al «Recibir paquete» de guía suelta. Con puntero fino (escritorio, pistola) es
+// continua. SLT-202 (Carlos, 2026-11-18): es el único disparador de recibir, «Recibir paquete», en el
+// sitio del de prod; la guía suelta se quitó. Con puntero fino (escritorio, pistola) es
 // un enlace a la página «Recibir paquetes»; con táctil, un botón que abre la sesión continua en
 // el diálogo de siempre, sin cambiar de página.
 //
@@ -19,6 +20,13 @@ import { cn } from "@/lib/utils";
 // ventana había dos botones cuyo nombre contenía «Recibir paquete».
 
 export const RECIBIR_PAQUETES = "Recibir paquetes";
+
+/**
+ * SLT-202 (Carlos, 2026-11-18): el texto del disparador. Es el ÚNICO de recibir de la pantalla y dice
+ * lo que decía el de prod; abre la recepción continua (la página o el diálogo, que se siguen llamando
+ * «Recibir paquetes»).
+ */
+export const RECIBIR_PAQUETE = "Recibir paquete";
 
 const CONSULTA_PUNTERO_FINO = "(pointer: fine)";
 
@@ -51,12 +59,12 @@ export function RecibirPaquetesEntrada({ href, children }: Readonly<RecibirPaque
     return (
       <Link href={href} className={cn(buttonVariants({ variant: "outline" }))}>
         <ScanLine aria-hidden="true" />
-        {RECIBIR_PAQUETES}
+        {RECIBIR_PAQUETE}
       </Link>
     );
   }
   return (
-    <EscanerModal label={RECIBIR_PAQUETES} titulo={RECIBIR_PAQUETES} className="w-auto">
+    <EscanerModal label={RECIBIR_PAQUETE} titulo={RECIBIR_PAQUETES} className="w-auto">
       {children}
     </EscanerModal>
   );

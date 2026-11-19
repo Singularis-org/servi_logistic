@@ -1922,13 +1922,17 @@ describe("SLT-156 rebanada C — Recoger en bodega en el móvil (R500, R506, R51
     expect(antes(screen.getByRole("alert"), buscador())).toBe(true);
   });
 
-  it("R493: el disparador mide 44 px y va a todo el ancho; las pestañas, 44 px", () => {
+  // SLT-202 «Escritorio igual a prod: tamaños de controles y un solo botón de recibir» (decisión de
+  // Carlos del 2026-11-18): los 44 px y el ancho completo de R493, solo en el móvil (`max-md:`); en
+  // escritorio, el tamaño de prod. La medida real a 360 px es de `pwa-mensajero-recoger-recoleccion`.
+  it("R493: el disparador mide 44 px y va a todo el ancho en el móvil; las pestañas, 44 px en el móvil", () => {
     renderModule({ porRecoger: [HOY_1] });
-    expect(accesoRecogida()!.className.split(/\s+/)).toEqual(
-      expect.arrayContaining(["h-11", "w-full"]),
-    );
+    const disparador = accesoRecogida()!.className.split(/\s+/);
+    expect(disparador).toEqual(expect.arrayContaining(["max-md:h-11", "max-md:w-full", "h-8"]));
+    expect(disparador).not.toContain("h-11");
     for (const pestana of screen.getAllByRole("tab")) {
-      expect(pestana.className.split(/\s+/)).toContain("min-h-11");
+      expect(pestana.className.split(/\s+/)).toContain("max-md:min-h-11");
+      expect(pestana.className.split(/\s+/)).not.toContain("min-h-11");
     }
   });
 
