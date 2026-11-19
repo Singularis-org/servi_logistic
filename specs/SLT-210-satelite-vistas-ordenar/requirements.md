@@ -127,7 +127,7 @@ DEBEN medir 32 px de alto, como en prod; por debajo de `md` (móvil) DEBEN medir
 
 ## Tasks
 
-- [ ] **T1 — Orden en el servidor.** `sortBy`/`sortDir` en el borde de la satélite con
+- [x] **T1 — Orden en el servidor.** `sortBy`/`sortDir` en el borde de la satélite con
   `esquemaOrdenamiento(["created_at","num_remision"], "created_at", "desc")` sobre la base de
   `listarOrdenesBodegaPaginadoSchema` (la descarga lo hereda; la vigencia lo omite: el orden no
   cambia la pertenencia). `RecepcionSateliteFiltro` lleva el orden; `ordenBodegaSatelite(orden)`
@@ -136,20 +136,23 @@ DEBEN medir 32 px de alto, como en prod; por debajo de `md` (móvil) DEBEN medir
   cliente. *Hecho:* R1401 (por defecto idéntico), R1403, R1405 y R1406 con tests unitarios del
   borde y del servicio, y R1404 con un test de integración contra la base real que siembra órdenes
   de dos zonas y comprueba ids, orden y total por cada combinación.
-- [ ] **T2 — Superficie de vistas.** Añadir la superficie de la satélite (`"ordenes-bodega-satelite"`)
+- [x] **T2 — Superficie de vistas.** Añadir la superficie de la satélite (`"ordenes-bodega-satelite"`)
   a `SUPERFICIES_VISTA`. *Hecho:* la guardia `vistas-superficies-declaradas` en verde (la
   superficie está montada) y R1411/R1412 probados en el servicio o la acción con la superficie
   nueva. Depende de T3 para que la guardia pase (van en el mismo commit).
-- [ ] **T3 — Barra de la satélite.** En `SateliteOrdenesListado`: los dos `SegmentedToggle`
+- [x] **T3 — Barra de la satélite.** En `SateliteOrdenesListado`: los dos `SegmentedToggle`
   (opciones importadas de `ordenamiento-ordenes.ts`) y la prop `vistas` + `siembra` de
   `BuscadorFiltros`/`FilterComponent`, con `aplicarVista`, `vistaPuestaId` y `catalogoVistas` como
   en `OrdenesListado`. El listado emite el orden al módulo; `RecepcionSateliteModule` lo mete en la
   clave de SWR (`claveDeOrden`), vuelve a la página 1, no usa la página pre-cargada con otro orden y
   pasa el orden a la descarga. *Hecho:* R1400, R1402, R1407-R1410 y R1414 con tests de componente.
-- [ ] **T4 — Tamaño en móvil.** «Vistas» y los conmutadores de la barra a `h-8 max-md:h-11`
+- [x] **T4 — Tamaño en móvil.** «Vistas» y los conmutadores de la barra a `h-8 max-md:h-11`
   (32/44), sin tocar los otros usos de `SegmentedToggle` (portal del mensajero, cierres, histórico).
   *Hecho:* R1413 con test de componente sobre las clases en las dos barras. Espera a P3.
-- [ ] **T5 — E2E.** Ampliar `e2e/recepcion-satelite.spec.ts`: invertir el orden, guardar y
+  **Resuelta por P3 (2026-11-19):** mismo tamaño que hoy en `/ordenes` (`h-8`/`size-8`), sin tocar
+  los componentes compartidos; no hay cambio de código y R1413 se prueba como «mismo alto que
+  `/ordenes`, sin el alto táctil».
+- [x] **T5 — E2E.** Ampliar `e2e/recepcion-satelite.spec.ts`: invertir el orden, guardar y
   aplicar una vista en la satélite. *Hecho:* verde en local con base desechable
   (`docs/perfil-agentes.md > E2E en local antes del PR`).
 
