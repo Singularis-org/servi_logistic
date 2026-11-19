@@ -79,7 +79,7 @@ const SPREADS_VERIFICADOS: Record<string, { archivo: string; tipo: string; orige
   barraTienda: {
     archivo: "app/(app)/mis-asignaciones/_components/useFiltroTienda.tsx",
     tipo: "BarraFiltroTienda",
-    origen: /\bbarra:\s*barraTienda\b[\s\S]*?=\s*useFiltroTienda\(/,
+    origen: /\bbarra:\s*barraTienda\b[^;]*?=\s*useFiltroTienda\(/,
   },
 };
 
@@ -376,8 +376,11 @@ describe("SLT-160 — guardia: buscadores con `escaneo` (R609)", () => {
     expect(ningunoEscanea(`<BuscadorFiltros {...barraTienda} onChange={f} />`)).toBe(true);
   });
 
-  // SLT-206 «filtro Tienda compartido» reparte `{...barraTienda}` sobre dos excepciones; se acepta
-  // porque su tipo se lee aquí y no tiene `escaneo` (TypeScript impide que el hook devuelva más).
+  // SLT-206 «filtro Tienda compartido» reparte `{...barraTienda}` sobre dos excepciones. Se acepta
+  // porque su tipo se lee aquí y no tiene `escaneo`, y porque el archivo del hook no la nombra en
+  // ningún sitio. Leer solo el tipo NO basta: TypeScript solo rechaza la prop de más en un literal
+  // directo; un objeto armado en una variable intermedia con `escaneo: true` pasa `tsc` (m3 de la
+  // review vuelta 3).
   it.each(Object.entries(SPREADS_VERIFICADOS))(
     "SLT-205: spread verificado `{...%s}`: su tipo no lleva `escaneo` y sale de donde dice",
     (nombre, { archivo, tipo, origen }) => {
@@ -388,6 +391,7 @@ describe("SLT-160 — guardia: buscadores con `escaneo` (R609)", () => {
       const cuerpo = codigo.slice(llave + 1, finDeLlaves(codigo, llave));
       expect(cuerpo, `${tipo} vacío`).toMatch(/\w+\s*:/); // no vacuidad
       expect(cuerpo, `${tipo} lleva escaneo: el spread ya no se puede aceptar`).not.toMatch(/\bescaneo\b/);
+      expect(codigo, `${archivo} nombra escaneo: el spread ya no se puede aceptar`).not.toMatch(/\bescaneo\b/);
 
       const usuarios = [...fuentesTsx(path.join(RAIZ, "app")), ...fuentesTsx(path.join(RAIZ, "components"))].filter(
         (ruta) =>
@@ -401,4 +405,12 @@ describe("SLT-160 — guardia: buscadores con `escaneo` (R609)", () => {
       }
     },
   );
+
+  // m4 de la review vuelta 3: el origen se busca en la MISMA sentencia, no en todo el archivo.
+  it("SLT-205: el origen de `{...barraTienda}` va en la misma sentencia que `useFiltroTienda(`", () => {
+    const { origen } = SPREADS_VERIFICADOS.barraTienda;
+    expect("const { tienda, barra: barraTienda, control } = useFiltroTienda(lista);").toMatch(origen);
+    expect("const {\n  tienda,\n  barra: barraTienda,\n} = useFiltroTienda(lista, otra);").toMatch(origen);
+    expect("const { barra: barraTienda } = otroHookZq7();\nconst f = useFiltroTienda(lista);").not.toMatch(origen);
+  });
 });

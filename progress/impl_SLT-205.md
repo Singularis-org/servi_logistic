@@ -178,6 +178,17 @@ Mutaciones de la vuelta 2:
 | M10 | `useFiltroTienda.tsx`: `escaneo: boolean;` en `BarraFiltroTienda` | ROJO, 1 failed: «BarraFiltroTienda lleva escaneo» |
 | M11 | `RecoleccionModule.tsx:165` `barra: barraOtraZq7,` | ROJO, 1 failed: «{...barraTienda} no sale de …useFiltroTienda.tsx» |
 
+### Vuelta 5 — m3 y m4 de la review vuelta 3 (3ebb813b)
+
+- **m3**: el test «spread verificado» exige además que `useFiltroTienda.tsx`, sin comentarios, no contenga `\bescaneo\b`. Se corrigió el comentario: TypeScript solo rechaza la prop de más en un literal directo.
+- **m4**: `origen` pasa de `[\s\S]*?` a `[^;]*?`, así que queda acotado a la sentencia. Caso nuevo: «el origen de `{...barraTienda}` va en la misma sentencia que `useFiltroTienda(`».
+  - Con la regex vieja da ROJO: `Tests 1 failed | 33 passed (34)`, `expected 'const { barra: barraTienda } = otroHo…' not to match`.
+  - Tras el arreglo, verde: `Tests 34 passed (34)`.
+
+| # | mutación | resultado |
+|---|---|---|
+| M12 | `useFiltroTienda.tsx`: `barra` armado en `const barraZq7 = { …, escaneo: true }` | `tsc`: 0 errores. Guardia ROJA, 1 failed: «useFiltroTienda.tsx nombra escaneo» |
+
 ## Mapa requisito → test (ruta directa, sin `requirements.md`)
 
 | requisito de la ficha | test |
