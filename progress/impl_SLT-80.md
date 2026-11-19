@@ -421,3 +421,13 @@ leader (`feature_list.json` no se versiona); el implementer no lo toca.
 - R1307: sin cookie, `middleware.ts` redirige a `/login` antes del handler (igual que la página); con sesión y rol no permitido, 404 con `notFound()`.
 - `ErrorCaracterNoImprimible` reutiliza el mensaje de etiquetas («La etiqueta de …»).
 - Tamaño: 34 archivos fuera de `specs/` y `progress/` (dos guardias ajustadas fuera de «Archivos esperados» y `playwright.config.ts`), sobre el aviso del 80%; tamaño aceptado por Carlos (P2).
+
+### Gate tras corregir la ficha y fusionar origin/dev (SLT-201, SLT-202, SLT-207) — 2026-11-18
+
+- 1.ª corrida: rojo NUEVO en `asistente-sin-frontmatter.guardia` (recuento 37→38 que faltaba en T9, y la
+  fuente `docs/api/CHANGELOG.md` que el cuerpo nombra). Arreglo: recuento a 38 con su motivo, y
+  `docs/api/CHANGELOG.md` fuera de `fuentes` (el integrador debe seguir leyendo su ruta).
+- 2.ª corrida: rojo NUEVO en `marca-estaticos.guardia` (literal «Servi Logistic» en `lib/pdf/guia-api-pdf.ts`).
+  Arreglo: `MARCA.nombre`; `guia-api-pdf.test.ts` sigue verde contra el literal del spec.
+- 3.ª corrida: `Test Files 100/100 · 100/100 · 100/100 · 71/71` y **`INIT_EXIT=0`**.
+  Aviso: tamaño 34/40 archivos, aceptado por Carlos (P2).

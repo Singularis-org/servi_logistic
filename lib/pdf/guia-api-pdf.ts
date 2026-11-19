@@ -24,10 +24,11 @@ import {
   exigirCobertura,
   registrarFuente,
 } from "@/lib/pdf/etiquetas-fuente-registro";
+import { MARCA } from "@/lib/config/marca";
 import { fuenteGuiaBold, fuenteGuiaRegular } from "@/lib/pdf/guia-fuente";
 
 /** Título de la portada y del pie (R1310). */
-export const TITULO_PDF_GUIA_API = "Guía de integración — API de Servi Logistic";
+export const TITULO_PDF_GUIA_API = `Guía de integración — API de ${MARCA.nombre}`;
 
 /** El pie de cada página menos la portada (R1310). */
 export function pieGuiaApi(pagina: number, total: number): string {
@@ -40,7 +41,7 @@ export function versionGuiaApi(actualizado: string): string {
 }
 
 /** Lo que la portada escribe si el logo no se puede dibujar (R1310). */
-export const NOMBRE_SIN_LOGO = "Servi Logistic";
+export const NOMBRE_SIN_LOGO = MARCA.nombre;
 
 /** Quién «es» la guía en el mensaje de `ErrorCaracterNoImprimible` (que habla de «la guia <x>»). */
 const IDENTIDAD_EN_ERROR = "de integración por API";

@@ -4,7 +4,6 @@ modulo: configuracion
 roles: [maestro, admin]
 actualizado: 2026-11-18
 fuentes:
-  - docs/api/CHANGELOG.md
   - app/api/ordenes/api-key/
   - lib/api/openapi-spec.ts
   - lib/types/api-orden.ts

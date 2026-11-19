@@ -253,7 +253,7 @@ Preview.
     - un path ficticio añadido a una copia de `openApiSpec.paths` pone rojo R1303;
     - un `json` roto pone rojo R1302.
   - **Hecho:** guardia en verde sobre la guía real y en rojo en las dos mutaciones.
-- [ ] **T11 — E2E y gate.**
+- [x] **T11 — E2E y gate.**
   - `e2e/ayuda-guia-api.spec.ts`:
     - un maestro abre la guía desde `/configuracion/api`;
     - descarga el PDF y recibe 200 `application/pdf`;
@@ -261,7 +261,7 @@ Preview.
   - Correr en local con base desechable los E2E de `/ayuda` (`grep -rl "/ayuda" e2e/`).
   - **Hecho:** `./init.sh` verde y los E2E en verde, anotados.
   - [x] Parte E2E: `e2e/ayuda-guia-api.spec.ts` 3/3 en local, mutación en rojo (`progress/impl_SLT-80.md > T11 E2E`).
-  - [ ] `./init.sh` verde: bloqueado por el nombre de la ficha en feature_list.json (ver impl_SLT-80.md > Gate).
+  - [x] `./init.sh` verde (INIT_EXIT=0, tras el merge de origin/dev con SLT-201, SLT-202 y SLT-207).
 
 ## Archivos esperados
 
