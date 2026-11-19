@@ -746,6 +746,17 @@ describe("SLT-165 B3 de la review — el panel de la página entre 768 y 1023 px
   });
 });
 
+describe("SLT-209 — el panel del modal no deja franja sobre la barra fija de «Gestiones»", () => {
+  it("en el teléfono el hueco de arriba es margen y no relleno; desde `md`, `pt-4` como siempre", async () => {
+    mensajero("central", "decidir");
+    await screen.findByRole("tablist", { name: "Secciones del cierre" });
+    const panel = screen.getByRole("tabpanel");
+    // Un `sticky top-0` se pega al borde del CONTENIDO del que desplaza: con relleno arriba, la barra
+    // queda por debajo del borde visible y las tarjetas asoman por esa franja.
+    expect(clases(panel)).toEqual(expect.arrayContaining(["overflow-auto", "max-md:pt-0", "max-md:mt-4", "pt-4"]));
+  });
+});
+
 describe("SLT-165 R534 — la barra publica su alto para los flotantes", () => {
   it("en el teléfono, `--alto-barra-inferior` en `<html>`; se quita al desmontar", () => {
     movil.valor = true;

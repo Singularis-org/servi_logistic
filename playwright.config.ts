@@ -186,6 +186,8 @@ export default defineConfig({
         "pwa-mensajero-base",
         // SLT-165, rebanada D de SLT-156 · R523-R537: /cierre-dia a 360/414 px, tarjetas, barra fija y «Ver».
         "pwa-mensajero-cierre-dia",
+        // SLT-209: la barra de «Gestiones» del cierre no flota sobre la lista a 360 px, en la página y en «Ver».
+        "pwa-mensajero-cierre-barra-fija",
       ),
     },
   ],

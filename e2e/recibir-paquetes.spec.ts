@@ -97,7 +97,21 @@ test.describe.serial("Recibir paquetes — escaneo continuo en la página", () =
     await expect(fila.getByText(central.destinatario)).toBeVisible();
     await expect(fila.getByText(NOMBRE_TIENDA)).toBeVisible();
 
-    await page.getByRole("button", { name: "Terminar recepción (0)" }).click();
+    // SLT-209 (Carlos, 2026-11-18): «Terminar recepción» va debajo de los contadores, a todo el
+    // ancho de esa columna, y no en el encabezado junto al título; 32 px en escritorio.
+    const terminar = page.getByRole("button", { name: "Terminar recepción (0)" });
+    await expect(page.locator("header").getByRole("button", { name: /^Terminar recepción/ })).toHaveCount(0);
+    const columna = page.locator("[data-columna-resumen]");
+    await expect(columna.getByRole("button", { name: "Terminar recepción (0)" })).toBeVisible();
+    const noEncontradas = await columna.getByText("No encontradas", { exact: true }).boundingBox();
+    const cajaTerminar = await terminar.boundingBox();
+    const cajaColumna = await columna.boundingBox();
+    expect(noEncontradas && cajaTerminar && cajaColumna, "cajas de la columna del resumen").toBeTruthy();
+    expect(cajaTerminar!.y).toBeGreaterThan(noEncontradas!.y);
+    expect(Math.round(cajaTerminar!.width)).toBe(Math.round(cajaColumna!.width));
+    expect(Math.round(cajaTerminar!.height)).toBe(32);
+
+    await terminar.click();
     await expect(page).toHaveURL(/\/ordenes$/);
   });
 });

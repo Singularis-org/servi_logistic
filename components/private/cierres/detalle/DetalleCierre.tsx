@@ -305,6 +305,14 @@ export const VARIABLE_ALTO_BARRA = "--alto-barra-inferior";
 /** El panel de la pestaña en el marco página: sin scroll en el teléfono, de lado en tableta, entero desde `lg`. */
 export const PANEL_PAGINA = "md:overflow-x-auto lg:overflow-auto";
 
+/**
+ * El panel de la pestaña en el modal: es el que desplaza. SLT-209: en el teléfono el hueco de arriba
+ * es MARGEN y no relleno. Un `sticky top-0` se pega al borde del contenido de quien desplaza, así
+ * que con `pt-4` la barra fija de «Gestiones» quedaba 16 px por debajo del borde visible y las
+ * tarjetas asomaban por encima de ella. Desde `md`, el de siempre (ahí no hay barra fija).
+ */
+export const PANEL_MODAL = "overflow-auto max-md:mt-4 max-md:pt-0";
+
 function usePublicarAltoBarra(ref: RefObject<HTMLElement | null>, activa: boolean) {
   useEffect(() => {
     const el = ref.current;
@@ -427,7 +435,7 @@ function Cuerpo({
           <TabsContent
             key={p.id}
             value={p.id}
-            className={cn("mt-0 min-h-0 flex-1 pt-4", enPagina ? PANEL_PAGINA : "overflow-auto")}
+            className={cn("mt-0 min-h-0 flex-1 pt-4", enPagina ? PANEL_PAGINA : PANEL_MODAL)}
           >
             {m.slots[p.id] ?? null}
           </TabsContent>
