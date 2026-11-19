@@ -132,6 +132,20 @@ T2 — guardias:
 7. **Botón — distritos al helper**: se pasan los distritos de TODAS las órdenes con zona errada (no solo de las no
    saltadas); el `WHERE` del helper decide igual. Equivalente y sin inyectar el clasificador en el repositorio.
 
+## Ronda 2 (2026-11-19): merge de dev, E2E local y entrega en dos PR
+
+- **Entrega:** dos PR de la misma ficha. PR 1 = T1-T6 y T8 (actions con `@sin-superficie`); PR 2 = T9, tras el merge del PR 1 (anotado en `tasks.md`).
+- **Merge de `origin/dev`** (SLT-222 #248, SLT-220 #246): un conflicto, en `tests/integration/db/orden-traspaso-migration.test.ts` (censo de migraciones): se conservan las dos entradas.
+- **Migración renombrada** a `20261121120000_slt224_zona_de_ordenes_en_central`: dev trajo `20261120120000_plan_beneficio` y SLT-221 (PR abierto) lleva `20261120120000_slt221_historial_correo_cedula`; la de SLT-224 compartía la marca `20261120120000`. Ahora es posterior a las dos por marca de tiempo. Solo estaba aplicada en bases desechables.
+- **E2E local** (base desechable nueva `servi_slt224_e2e`: `migrate deploy` + seed; `next build` con `NEXT_PUBLIC_APP_URL`/`APP_BASE_URL` del puerto propio; `E2E_PUERTO=3061`, `E2E_STORAGE_PUERTO=54361`): **16 passed, 0 failed, 0 flaky** (exit 0).
+  - `e2e/retiro-satelite-central.spec.ts`: 3/3 passed.
+  - `e2e/recibir-paquetes.spec.ts`: 2/2 passed.
+  - `e2e/zona-sin-distritos.spec.ts`: 1/1 passed.
+  - Los 10 restantes son los de `plataforma-vacia` (dependencia de los proyectos): passed.
+- El gate (`scripts/gate-proyecto.sh`) corre `prisma generate` en cada `init.sh`: con `node_modules` compartido, el cliente queda con el schema del último worktree que pasó el gate.
+
+- `./init.sh` tras el merge (base `servi_slt224_e2e` exportada): **INIT_EXIT=0**.
+
 ## Veredicto
 
 VERDE: backend de SLT-224 «Retiro a central: recalcular la zona de la orden» hecho (T1-T6, T8), init.sh exit 0; falta T9 (pantalla) y T0/T7 del leader.

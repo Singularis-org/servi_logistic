@@ -87,6 +87,10 @@
 
 ## T9 — «Actualizar zonas»: pantalla (R1713, R1715, R1716, R1718) — depende de T8
 
+> **Entrega (leader, 2026-11-19):** SLT-224 sale en DOS PR de la misma ficha. El PR 1 lleva T1-T6 y
+> T8, con las dos Server Actions aún anotadas `@sin-superficie`. Esta tarea, T9, va en el **PR 2**,
+> después del merge del PR 1; al montar el botón se quita la anotación.
+
 - [ ] `app/(app)/ordenes/_components/ActualizarZonasButton.tsx` (botón + `Modal` compartido,
   `design.md §3b.4`).
 - [ ] `OrdenesListado.tsx`: prop `puedeActualizarZonas` y el botón a la derecha de
