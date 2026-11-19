@@ -3,7 +3,12 @@ import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 import { codigoSinComentarios } from "../../fixtures/sin-comentarios";
-import { HISTORIAL_ACCION_TIPOS } from "@/lib/types/historial-accion";
+import {
+  ACCION_LABELS,
+  CATEGORIA_POR_ACCION,
+  HISTORIAL_ACCION_TIPOS,
+  accionesDeCategoria,
+} from "@/lib/types/historial-accion";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FICHA 362 / T7.1 (R9/R16) — LA GUARDIA QUE SOSTIENE «NO PUEDE HABER UNA SIN LA OTRA».
@@ -518,8 +523,13 @@ const CENSO: EntradaCenso[] = [
   {
     // ⭑ Q2 comparte punto de escritura con el rol y la zona: es el MISMO formulario, y las N filas
     // salen con el MISMO `lote_id`. SLT-94 (R8): la marca «se recoge en tienda» sustituye al
-    // `fulfillment` (que pasa a `SIN_ESCRITOR_DESDE`).
-    tipos: ["usuario_rol_cambiado", "usuario_zona_cambiada", "usuario_se_recoge_en_tienda_cambiado"],
+    // `fulfillment` (que pasa a `SIN_ESCRITOR_DESDE`). SLT-221 (R1604): la cedula, en el mismo lote.
+    tipos: [
+      "usuario_rol_cambiado",
+      "usuario_zona_cambiada",
+      "usuario_se_recoge_en_tienda_cambiado",
+      "usuario_cedula_cambiada",
+    ],
     archivo: "lib/repositories/UserRepository.ts",
     metodo: "update",
     forma: "abre_tx",
@@ -828,7 +838,11 @@ interface TiposConEscritorPendiente {
 }
 
 // SLT-52 T6.2 y SLT-77 T2.2 ya escriben sus tipos (ver el censo).
-const ESCRITOR_PENDIENTE_EN_CURSO: TiposConEscritorPendiente[] = [];
+const ESCRITOR_PENDIENTE_EN_CURSO: TiposConEscritorPendiente[] = [
+  // SLT-221: el enum gana los dos tipos en el PR 1 (una sola migracion de enum); el correo lo escribe
+  // `UserRepository.aplicarCambioCorreo` en el PR 2, que vacia esta entrada.
+  { tipos: ["usuario_email_cambiado"], ficha: "SLT-221", tarea: "T2.4" },
+];
 
 /** Los archivos `.ts` de `lib/`, relativos a la raiz. */
 function archivosDeLib(dir = "lib"): string[] {
@@ -1267,7 +1281,22 @@ describe("362/R16 — cada tipo del catalogo tiene al menos un punto de escritur
     // 84 desde SLT-77 (`tope_intentos_cambiado`, de `TopeIntentosRepository.guardar`).
     // 85 desde SLT-94 (`usuario_se_recoge_en_tienda_cambiado`, de `UserRepository.update`).
     // 86 desde SLT-211 (`ordenes_retiradas_a_central`, de `OrdenRepository.retirarSateliteLote`).
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(86);
+    // 88 desde SLT-221 (`usuario_cedula_cambiada`, de `UserRepository.update`, y
+    // `usuario_email_cambiado`, con escritor pendiente hasta el PR 2).
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(88);
+  });
+});
+
+describe("SLT-221 R1609 — la cedula y el correo de un usuario, en el catalogo del Historico", () => {
+  it("R1609: los dos tipos estan en «Cambia quien puede hacer que» con su etiqueta de pantalla y descarga", () => {
+    expect(CATEGORIA_POR_ACCION.usuario_cedula_cambiada).toBe("cambia_permisos");
+    expect(CATEGORIA_POR_ACCION.usuario_email_cambiado).toBe("cambia_permisos");
+    expect(accionesDeCategoria("cambia_permisos")).toEqual(
+      expect.arrayContaining(["usuario_cedula_cambiada", "usuario_email_cambiado"]),
+    );
+    // Literales a proposito: son el texto que pidio el spec, no una derivacion del codigo.
+    expect(ACCION_LABELS.usuario_cedula_cambiada).toBe("Cambió la cédula de un usuario");
+    expect(ACCION_LABELS.usuario_email_cambiado).toBe("Cambió el correo de un usuario");
   });
 });
 
