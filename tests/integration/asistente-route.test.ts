@@ -95,9 +95,14 @@ describe("R7 — el rol sale de la SESIÓN", () => {
     expect(proveedor.llamadas[0].documentos).toHaveLength(8);
     expect(proveedor.textoEnviado).not.toContain("oficina/wallet-caja");
     expect(proveedor.textoEnviado).not.toContain("Wallet · Caja");
+    // SLT-80 (P1, R1307): la guía de integración es solo de maestro/admin; el mensajero sigue en 8.
+    expect(proveedor.llamadas[0].documentos.map((d) => d.slug)).not.toContain(
+      "oficina/guia-integracion-api",
+    );
+    expect(proveedor.textoEnviado).not.toContain("Guía de integración por API");
   });
 
-  it("⭑ y un maestro, con EL MISMO cuerpo, recibe los 37", async () => {
+  it("⭑ y un maestro, con EL MISMO cuerpo, recibe los 38", async () => {
     // Las dos mitades del mismo hecho: lo único que cambia entre esta llamada y la de arriba es
     // quién devuelve `getActor`. Si el rol saliera del cuerpo, las dos darían lo mismo.
     const { proveedor } = await llamar(MAESTRO, CUERPO_VALIDO);
@@ -105,8 +110,12 @@ describe("R7 — el rol sale de la SESIÓN", () => {
     // SL-20 (decisión 9): 38→37, se retira configuracion-geografia.
     // SLT-51: 37→38, entra configuracion-zonas.
     // SL-42 (R19): 38→37, se retira configuracion-vehiculos.
-    expect(proveedor.llamadas[0].documentos).toHaveLength(37);
+    // SLT-80 (P1 de Carlos): 37→38, entra la guía de integración por API (solo maestro/admin).
+    expect(proveedor.llamadas[0].documentos).toHaveLength(38);
     expect(proveedor.textoEnviado).toContain("oficina/wallet-caja");
+    expect(proveedor.llamadas[0].documentos.map((d) => d.slug)).toContain(
+      "oficina/guia-integracion-api",
+    );
   });
 
   it("el `inicio` del stream anuncia ese mismo conjunto, con su href", async () => {
