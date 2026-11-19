@@ -24,6 +24,7 @@ import {
   enTransaccionRevertida,
 } from "./db/_postgres-real";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 192 (B8.4) — R57, R58, R60, R61.
 //
 // EL SEGUNDO CAMINO DE "ASIGNADA HOY" (decision humana del 2026-08-08, opcion C). La feature
@@ -45,7 +46,7 @@ import {
 // por el historial y la agrupa por el mensajero ACTUAL: aparece hoy en la tarjeta de BETO, en
 // `sinRecoger`. La acusacion de «trabajo parado» sobre quien ni fue a recoger.
 const MANANA_CR = "2001-06-16";
-const VENTANA_MANANA = ventanaDelDiaEnCursoCR(instanteCR(MANANA_CR, "19:00"));
+const VENTANA_MANANA = ventanaDelDiaEnCursoCR(instanteCR(MANANA_CR, "19:00"), ZONA_CR);
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 

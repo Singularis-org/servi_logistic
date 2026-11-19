@@ -13,6 +13,8 @@ import {
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { AgregadoDiarioCajaRow } from "@/lib/interfaces/repositories/IFinanzasDiarioRepository";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, enTransaccionRevertida } from "./_postgres-real";
+import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
+import { reglasPaisFijas, ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 /**
  * Ficha 334 — la fecha elegida, contra **Postgres de verdad**.
@@ -56,16 +58,16 @@ type Tx = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0];
 /**
  * El actor que registra. Tiene que ser un usuario REAL: `wallet_movimiento.registrado_por` es
  * una FK, y con un id inventado el INSERT lo rechaza el motor.
+ *
+ * SLT-182: se SIEMBRA (un maestro) en la tx revertida del caso; antes se leia «el primer usuario»
+ * de la base, y la base recien migrada no tiene ninguno.
  */
 async function actorDeLaBase(tx: Tx): Promise<Actor> {
-  const usuario = await tx.usuario.findFirst({ select: { id: true } });
-  if (usuario === null) {
-    throw new Error(
-      "la base de desarrollo no tiene ningun usuario y `registrado_por` es una FK: " +
-        "sembrá al menos uno antes de correr esta suite (no se salta a proposito)",
-    );
-  }
-  return { usuarioId: usuario.id, rol: "maestro" };
+  const { id } = await crearUsuarioDePrueba(tx, "maestro");
+  // Control positivo (R1084): la siembra llego a la base.
+  const sembrados = await tx.usuario.count({ where: { id } });
+  if (sembrados !== 1) throw new Error("SLT-182: el maestro sembrado (actor) no esta en la base");
+  return { usuarioId: id, rol: "maestro" };
 }
 
 function repoDe(tx: Tx): WalletMovimientoRepository {
@@ -102,7 +104,7 @@ describeSiHayBase("ficha 334 — la fecha elegida contra Postgres (R22/R24/R25/R
   it("R22/R24: un gasto fechado AYER se guarda a las 06:00Z de ayer, y `created_at` es el presente", async () => {
     await enTransaccionRevertida(prisma, async (tx) => {
       const actor = await actorDeLaBase(tx);
-      const svc = new WalletEgresoService(repoDe(tx), tx as unknown as PrismaClient);
+      const svc = new WalletEgresoService(repoDe(tx), tx as unknown as PrismaClient, undefined, undefined, reglasPaisFijas());
 
       const r = await svc.registrarEgreso(
         {
@@ -147,11 +149,14 @@ describeSiHayBase("ficha 334 — la fecha elegida contra Postgres (R22/R24/R25/R
 
       // Se mide el DELTA y no el total: la base de desarrollo puede traer filas propias en esa
       // ventana, y un total absoluto seria una asercion sobre datos ajenos.
-      const antes = await diario.sumarPorDia(desde, hasta);
+      const antes = await diario.sumarPorDia(desde, hasta, ZONA_DE_CR);
 
       const r = await new WalletEgresoService(
         repoDe(tx),
         tx as unknown as PrismaClient,
+        undefined,
+        undefined,
+        reglasPaisFijas(),
       ).registrarEgreso(
         {
           claveIdempotencia: randomUUID(),
@@ -164,7 +169,7 @@ describeSiHayBase("ficha 334 — la fecha elegida contra Postgres (R22/R24/R25/R
       );
       expect(r.status).toBe("ok");
 
-      const despues = await diario.sumarPorDia(desde, hasta);
+      const despues = await diario.sumarPorDia(desde, hasta, ZONA_DE_CR);
       const delta = (fecha: string) =>
         new Prisma.Decimal(totalDelDia(despues, fecha, "egreso_gasto_variable"))
           .minus(totalDelDia(antes, fecha, "egreso_gasto_variable"))
@@ -187,6 +192,9 @@ describeSiHayBase("ficha 334 — la fecha elegida contra Postgres (R22/R24/R25/R
       const r = await new WalletEgresoService(
         repo,
         tx as unknown as PrismaClient,
+        undefined,
+        undefined,
+        reglasPaisFijas(),
       ).registrarEgreso(
         {
           claveIdempotencia: randomUUID(),
@@ -220,7 +228,7 @@ describeSiHayBase("ficha 334 — la fecha elegida contra Postgres (R22/R24/R25/R
     await enTransaccionRevertida(prisma, async (tx) => {
       const actor = await actorDeLaBase(tx);
       const repo = repoDe(tx);
-      const svc = new WalletService(repo, tx as unknown as PrismaClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459);
+      const svc = new WalletService(repo, tx as unknown as PrismaClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459, undefined, undefined, reglasPaisFijas());
 
       // El rango se cierra sobre UN SOLO instante: son exactamente las filas que comparten
       // `fecha_movimiento`, que es donde vive el empate. Ficha 461 (R72): `hasta` es EXCLUSIVO en el

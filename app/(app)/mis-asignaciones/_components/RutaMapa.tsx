@@ -9,6 +9,7 @@
 // tests del módulo mockeen `./RutaMapa` sin tocar Leaflet ni `next/dynamic` (jsdom no pinta
 // canvas). `RutaMapa` es un componente de cliente (`"use client"`), condición necesaria para
 // poder usar `{ ssr: false }`.
+import type { ReactNode } from "react";
 import dynamic from "next/dynamic";
 
 import type { RutaMapaParada, RutaMapaOrigen, RutaMapaTrazado } from "./ruta-mapa-tipos";
@@ -35,15 +36,18 @@ export interface RutaMapaProps {
   trazado?: RutaMapaTrazado | null;
   /** Polilinea codificada del tramo a la SIGUIENTE parada, resaltado sobre el resto. */
   tramoSiguiente?: string | null;
+  /** SLT-166 (R542): la parada de la tarjeta a la vista en el carrusel; se pinta como activa. */
+  paradaActivaId?: string | null;
+  /** SLT-166 (R540): el mensajero tocó el marcador de esa parada. */
+  onSeleccionarParada?: (id: string) => void;
+  /** SLT-166 (R541): paradas de la lista, con y sin coordenadas. */
+  totalParadas?: number;
+  /** SLT-192 (R880-R882): pliega el mapa; con ella, «Ocultar mapa» va en el pie del mapa. */
+  onOcultar?: () => void;
+  /** SLT-192 (R885): nota bajo la leyenda (el punto de partida aproximado). */
+  nota?: ReactNode;
 }
 
-export function RutaMapa({ paradas, origen, trazado, tramoSiguiente }: RutaMapaProps) {
-  return (
-    <RutaMapaInner
-      paradas={paradas}
-      origen={origen}
-      trazado={trazado}
-      tramoSiguiente={tramoSiguiente}
-    />
-  );
+export function RutaMapa(props: RutaMapaProps) {
+  return <RutaMapaInner {...props} />;
 }

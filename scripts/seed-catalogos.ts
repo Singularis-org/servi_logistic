@@ -5,21 +5,9 @@ import { CODIGO_VIGENTE_DE_ANTERIOR, ORDER_STATUS_SEED } from "@/lib/types/order
 import { VEHICULOS_SEED } from "@/lib/types/vehiculos";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 
-const TIPOS_IDENTIFICACION = ["cedula", "ruc", "pasaporte"] as const;
-
-// Siembra idempotente de los tipos de identificacion. Recibe el cliente Prisma
-// por parametro para poder testear la logica sin instanciar la conexion real.
-export async function seedTiposIdentificacion(
-  prisma: Pick<PrismaClient, "tipoIdentificacion">
-): Promise<void> {
-  for (const value of TIPOS_IDENTIFICACION) {
-    await prisma.tipoIdentificacion.upsert({
-      where: { value },
-      update: {},
-      create: { value },
-    });
-  }
-}
+// SLT-42 (decision humana 2026-11-04): los tipos de documento NO se siembran aqui. Son por pais y
+// los crea solo la migracion 20261107120100_slt42_tipo_documento_por_pais (los cinco de CR, con su
+// regla). Una segunda fuente de filas podria divergir de la migracion.
 
 // Siembra idempotente de los roles. Itera `ROLES_SEED` (fuente unica de verdad
 // derivada del enum `RolValue`), sin lista literal duplicada y sin sembrar
@@ -98,12 +86,11 @@ async function main(): Promise<void> {
 
   const prisma = getPrismaClient();
   try {
-    await seedTiposIdentificacion(prisma);
     await seedRoles(prisma);
     await seedOrderStatus(prisma);
     await seedVehiculos(prisma);
     console.log(
-      "Seed de catalogos completado (tipo_identificacion, rol, order_status, vehiculos)."
+      "Seed de catalogos completado (rol, order_status, vehiculos)."
     );
   } finally {
     await prisma.$disconnect();

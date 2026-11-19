@@ -64,6 +64,11 @@ export interface EscalarDevueltaSlaInput {
   estatusRechazadaId: string;
   mensajeroId: string; // R22: mensajero de la gestion `devuelta` vigente -> ingreso de bodega
   motivo: string; // motivo de la gestion sintetica ("escalado SLA <causa>")
+  /**
+   * SLT-77 (design §6.1, R35): solo si el rechazo se debe al tope. Una ventana vencida de `wrong_*`
+   * escala igual, sin importar el tope, y no lo lleva.
+   */
+  vetoPorTope?: { intentos: number };
 }
 
 export interface IDevolucionSlaRepository {
@@ -101,6 +106,9 @@ export interface IDevolucionSlaRepository {
    * lo cobre el snapshot de la 56 sin codigo monetario nuevo; el append
    * (`origen_tipo = escalado_devuelta_sla`, actor NULL) enlaza esa gestion. Reejecucion ->
    * count 0 -> no crea 2.ª gestion (R21). Devuelve `true` si escalo; `false` si ya salio.
+   *
+   * SLT-77 (R35): con `vetoPorTope`, tambien `false` y sin efectos si el tope vigente deja a la orden
+   * por debajo. El servicio lo cuenta como omitida, y la corrida siguiente decide.
    */
   escalarDevueltaSla(input: EscalarDevueltaSlaInput): Promise<boolean>;
 }

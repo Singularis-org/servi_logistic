@@ -8,7 +8,7 @@ import { TarifasErrorCarga, TarifasModule, type PantallaOk } from "@/app/(app)/c
 import { ETIQUETAS_NEUTRAS } from "@/lib/types/pais";
 import { EtiquetasGeograficasProvider } from "@/providers/EtiquetasGeograficasProvider";
 
-import { referenciaUniforme, valor, zonaOk, zonaResumen } from "../fixtures/tarifas-pantalla";
+import { mensajeroPantalla, referenciaUniforme, valor, valorPropio, zonaOk, zonaResumen } from "../fixtures/tarifas-pantalla";
 
 const { cargarZonaMock, guardarMock, activarMock, refreshMock, toast } = vi.hoisted(() => ({
   cargarZonaMock: vi.fn(),
@@ -21,6 +21,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: refreshMock }) 
 vi.mock("@/lib/actions/tarifas", () => ({
   cargarZonaTarifas: (i: unknown) => cargarZonaMock(i),
   guardarValoresTarifa: (i: unknown) => guardarMock(i),
+  guardarTopeIntentos: vi.fn(),
   activarTarifasNuevas: (i: unknown) => activarMock(i),
   crearGrupoDistritos: vi.fn(),
   renombrarGrupoDistritos: vi.fn(),
@@ -47,6 +48,9 @@ const PANTALLA: PantallaOk = {
   vehiculos: [],
   tiendas: [{ id: "t1", nombre: "Tienda Uno" }],
   preciosTienda: [],
+  mensajeros: [],
+  valoresMensajero: [],
+  topeIntentos: 3,
   puedeEscribir: true,
 };
 
@@ -64,6 +68,35 @@ beforeEach(() => {
   cargarZonaMock.mockResolvedValue(zonaOk({ referencia: REF }));
 });
 afterEach(() => cleanup());
+
+describe("SLT-77 — la sección del tope en el módulo", () => {
+  const seccion = () => screen.getByRole("region", { name: "Intentos de entrega" });
+
+  it("R12: la empresa con zonas ve el valor que da la pantalla", () => {
+    montar({ topeIntentos: 7 });
+    expect(within(seccion()).getByRole("combobox", { name: "Intentos de entrega" })).toHaveTextContent("7");
+  });
+
+  it("R12: una empresa sin zonas también la ve: el tope no depende de ellas", () => {
+    montar({ zonas: [], topeIntentos: 4 });
+    expect(screen.getByText("Aún no hay zonas")).toBeInTheDocument();
+    expect(within(seccion()).getByRole("combobox", { name: "Intentos de entrega" })).toHaveTextContent("4");
+  });
+
+  it("R12: con la zona abierta borrada en otra sesión, también", () => {
+    const zonas = [zonaResumen({ id: "z9", nombre: "Otra" })];
+    render(<TarifasModule pantalla={{ ...PANTALLA, zonas, topeIntentos: 5 }} zonaInicialId="borrada" zonaInicial={null} nombresDeGrupo={{}} />);
+    expect(screen.getByText("No se pudieron cargar los valores de esta zona.")).toBeInTheDocument();
+    expect(within(seccion()).getByRole("combobox", { name: "Intentos de entrega" })).toHaveTextContent("5");
+  });
+
+  it("R13: `puedeEscribir` falso llega a la sección: solo lectura, sin control ni botón", () => {
+    montar({ topeIntentos: 6, puedeEscribir: false });
+    expect(within(seccion()).getByText("6")).toBeInTheDocument();
+    expect(within(seccion()).queryByRole("combobox")).toBeNull();
+    expect(within(seccion()).queryByRole("button")).toBeNull();
+  });
+});
 
 describe("SLT-54 — estados de zona", () => {
   it("R17: «Completa», «Faltan N», «Sin empezar» y «M de T zonas completas» con esos mismos estados", () => {
@@ -387,5 +420,73 @@ describe("SLT-54 — selector de nivel", () => {
     await waitFor(() => expect(cargarZonaMock).toHaveBeenCalledWith({ zonaId: "z1" }));
     expect(refreshMock).toHaveBeenCalled();
     expect(screen.queryByTestId("tarifas-esqueleto")).toBeNull();
+  });
+});
+
+describe("SLT-55 — la sección de valor propio dentro del módulo", () => {
+  const CON_PROPIO: Partial<PantallaOk> = {
+    mensajeros: [mensajeroPantalla()],
+    valoresMensajero: [valorPropio("mensajero_entregado", "m1", { valor: "2900.00" })],
+  };
+  const seccion = () => screen.getByRole("region", { name: "Mensajeros con valor propio" });
+
+  it("R27: enseña lo que da la lectura", () => {
+    montar(CON_PROPIO);
+    expect(within(seccion()).getByRole("row", { name: /Ana Torres/ })).toHaveTextContent("₡2.900");
+  });
+
+  it("R23: un valor propio no mueve «M de T zonas completas»", () => {
+    montar(CON_PROPIO);
+    expect(screen.getByText("1 de 3 zonas completas")).toBeInTheDocument();
+  });
+
+  it("R29: guarda con `mensajeroId`, sin `ivaPct` ni zona, y recarga sin esqueleto", async () => {
+    guardarMock.mockResolvedValue({ status: "ok", resultados: [{ clave: "mensajero_novedad:todos", status: "ok" }] });
+    const u = userEvent.setup();
+    montar(CON_PROPIO);
+    await u.click(within(seccion()).getByRole("button", { name: "Editar valor propio de Ana Torres" }));
+    const d = await screen.findByRole("dialog");
+    await u.type(within(d).getByRole("textbox", { name: "Valor de Por novedad" }), "500");
+    await u.click(within(d).getByRole("button", { name: "Guardar borrador" }));
+
+    await waitFor(() => expect(guardarMock).toHaveBeenCalledTimes(1));
+    expect(guardarMock.mock.calls[0]?.[0]).toEqual({
+      cambios: [
+        {
+          accion: "fijar",
+          clave: "mensajero_novedad:todos",
+          datos: {
+            concepto: "mensajero_novedad",
+            modo: "monto",
+            valor: "500",
+            zonaId: null,
+            grupoId: null,
+            tiendaId: null,
+            vehiculoId: null,
+            mensajeroId: "m1",
+          },
+        },
+      ],
+    });
+    await waitFor(() => expect(refreshMock).toHaveBeenCalled());
+    expect(screen.queryByTestId("tarifas-esqueleto")).toBeNull();
+  });
+
+  it("R35: con `puedeEscribir` falso, el módulo la pinta sin controles", () => {
+    montar({ ...CON_PROPIO, puedeEscribir: false });
+    expect(within(seccion()).getByRole("row", { name: /Ana Torres/ })).toHaveTextContent("₡2.900");
+    expect(within(seccion()).queryAllByRole("button")).toEqual([]);
+  });
+
+  it("design §7.2: sin zonas no sale: esa rama enseña a crearlas", () => {
+    montar({ ...CON_PROPIO, zonas: [] });
+    expect(screen.getByText("Aún no hay zonas")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Mensajeros con valor propio" })).toBeNull();
+  });
+
+  it("Si la zona no carga, la sección sigue: sus datos no dependen de esa lectura", () => {
+    montar(CON_PROPIO, { status: "error" });
+    expect(screen.getByText("No se pudieron cargar los valores de esta zona.")).toBeInTheDocument();
+    expect(within(seccion()).getByRole("row", { name: /Ana Torres/ })).toBeInTheDocument();
   });
 });

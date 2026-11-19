@@ -8,7 +8,8 @@ import { MENSAJE_MONTO_COBRO_INVALIDO } from "@/lib/types/cobro-plataforma";
 
 // SL-40 T5 — la configuración del cobro por orden con un repositorio doble (R4–R7). El servicio usa
 // el `esPlataforma` REAL: es lo que se prueba en R6. El SQL (que la escritura toca una sola empresa)
-// lo prueba `tests/integration/db/empresas-plataforma-cobro.test.ts`.
+// lo prueba `tests/integration/db/empresas-plataforma-cobro.test.ts`. SLT-126 R2: solo quedan las dos
+// operaciones del valor global.
 
 const SUPERADMIN: Actor = { usuarioId: "u-sa", rol: "superadmin", organizacionId: null };
 
@@ -17,30 +18,26 @@ const ROLES_DE_EMPRESA = (Object.values(RolValue) as RolValue[]).filter((rol) =>
 
 const ORG = "00000000-0000-4000-8000-000000000040";
 
-function repoDoble(opciones: { global?: string | null; existe?: boolean; escribe?: boolean } = {}) {
+function repoDoble(opciones: { global?: string | null } = {}) {
   const leerGlobal = vi.fn<ICobroPlataformaTarifaRepository["leerGlobal"]>(async () => opciones.global ?? null);
   const fijarGlobal = vi.fn<ICobroPlataformaTarifaRepository["fijarGlobal"]>(async () => {});
-  const existeEmpresa = vi.fn<ICobroPlataformaTarifaRepository["existeEmpresa"]>(async () => opciones.existe ?? true);
-  const fijarDeEmpresa = vi.fn<ICobroPlataformaTarifaRepository["fijarDeEmpresa"]>(async () => opciones.escribe ?? true);
-  const repo: ICobroPlataformaTarifaRepository = { leerGlobal, fijarGlobal, existeEmpresa, fijarDeEmpresa };
-  const llamadas = () =>
-    leerGlobal.mock.calls.length + fijarGlobal.mock.calls.length + existeEmpresa.mock.calls.length + fijarDeEmpresa.mock.calls.length;
-  return { repo, leerGlobal, fijarGlobal, existeEmpresa, fijarDeEmpresa, llamadas };
+  const repo: ICobroPlataformaTarifaRepository = { leerGlobal, fijarGlobal };
+  const llamadas = () => leerGlobal.mock.calls.length + fijarGlobal.mock.calls.length;
+  return { repo, leerGlobal, fijarGlobal, llamadas };
 }
 
-describe("SL-40 R6 — solo el superadmin, y el rechazo va antes de la base", () => {
+describe("SL-40 R6 / SLT-126 R2 — solo el superadmin, y el rechazo va antes de la base", () => {
   it("el censo de roles de empresa no está vacío (si lo estuviera, el it.each no probaría nada)", () => {
     expect(ROLES_DE_EMPRESA.length).toBeGreaterThanOrEqual(6);
   });
 
-  it.each(ROLES_DE_EMPRESA)("el rol %s recibe forbidden en las tres operaciones sin ninguna llamada al repositorio", async (rol) => {
+  it.each(ROLES_DE_EMPRESA)("el rol %s recibe forbidden en las dos operaciones sin ninguna llamada al repositorio", async (rol) => {
     const d = repoDoble();
     const s = new CobroPlataformaService(d.repo);
     const actor: Actor = { usuarioId: "u-1", rol, organizacionId: ORG };
 
     expect(await s.verGlobal(actor)).toEqual({ status: "forbidden" });
     expect(await s.fijarGlobal(actor, { monto: "500.00" })).toEqual({ status: "forbidden" });
-    expect(await s.fijarDeEmpresa(actor, { organizacionId: ORG, monto: "1.00" })).toEqual({ status: "forbidden" });
     expect(d.llamadas()).toBe(0);
   });
 
@@ -50,7 +47,6 @@ describe("SL-40 R6 — solo el superadmin, y el rechazo va antes de la base", ()
 
     expect(await s.verGlobal(null)).toEqual({ status: "forbidden" });
     expect(await s.fijarGlobal(null, { monto: "500.00" })).toEqual({ status: "forbidden" });
-    expect(await s.fijarDeEmpresa(null, { organizacionId: ORG, monto: null })).toEqual({ status: "forbidden" });
     expect(d.llamadas()).toBe(0);
   });
 
@@ -102,53 +98,15 @@ describe("SL-40 R4 — validation_error con el campo, sin escribir nada", () => 
     expect(r.status).toBe("validation_error");
     expect(d.llamadas()).toBe(0);
   });
-
-  it("la excepción inválida no consulta si la empresa existe ni escribe", async () => {
-    const d = repoDoble();
-    const r = await new CobroPlataformaService(d.repo).fijarDeEmpresa(SUPERADMIN, { organizacionId: ORG, monto: "-0.01" });
-
-    expect(r).toEqual({ status: "validation_error", fieldErrors: { monto: [MENSAJE_MONTO_COBRO_INVALIDO] } });
-    expect(d.llamadas()).toBe(0);
-  });
-
-  it("sin empresa: validation_error por organizacionId", async () => {
-    const d = repoDoble();
-    const r = await new CobroPlataformaService(d.repo).fijarDeEmpresa(SUPERADMIN, { monto: "1.00" });
-    expect(r.status).toBe("validation_error");
-    expect(r.status === "validation_error" && Object.keys(r.fieldErrors)).toEqual(["organizacionId"]);
-    expect(d.llamadas()).toBe(0);
-  });
 });
 
-describe("SL-40 R2/R5/R7 — la excepción de una empresa", () => {
-  it("R2: fija la excepción de esa empresa", async () => {
-    const d = repoDoble();
-    const r = await new CobroPlataformaService(d.repo).fijarDeEmpresa(SUPERADMIN, { organizacionId: ORG, monto: "300.00" });
+describe("SLT-126 R2 — no hay operación que fije o quite el cobro por orden de una empresa", () => {
+  it("el servicio expone solo verGlobal y fijarGlobal", () => {
+    const s = new CobroPlataformaService(repoDoble().repo);
+    const metodos = Object.getOwnPropertyNames(CobroPlataformaService.prototype).filter((n) => n !== "constructor");
 
-    expect(r).toEqual({ status: "ok" });
-    expect(d.existeEmpresa).toHaveBeenCalledExactlyOnceWith(ORG);
-    expect(d.fijarDeEmpresa).toHaveBeenCalledExactlyOnceWith(ORG, "300.00");
+    expect(metodos.sort()).toEqual(["fijarGlobal", "verGlobal"]);
+    expect("fijarDeEmpresa" in s).toBe(false);
   });
 
-  it("R5: monto null la quita (pasa null al repositorio, no 0)", async () => {
-    const d = repoDoble();
-    const r = await new CobroPlataformaService(d.repo).fijarDeEmpresa(SUPERADMIN, { organizacionId: ORG, monto: null });
-
-    expect(r).toEqual({ status: "ok" });
-    expect(d.fijarDeEmpresa).toHaveBeenCalledExactlyOnceWith(ORG, null);
-  });
-
-  it("R7: una empresa que no existe es not_found y no se escribe", async () => {
-    const d = repoDoble({ existe: false });
-    const r = await new CobroPlataformaService(d.repo).fijarDeEmpresa(SUPERADMIN, { organizacionId: ORG, monto: "300.00" });
-
-    expect(r).toEqual({ status: "not_found" });
-    expect(d.fijarDeEmpresa).not.toHaveBeenCalled();
-  });
-
-  it("R7: si desaparece entre la comprobación y la escritura (0 filas), también es not_found", async () => {
-    const d = repoDoble({ existe: true, escribe: false });
-    const r = await new CobroPlataformaService(d.repo).fijarDeEmpresa(SUPERADMIN, { organizacionId: ORG, monto: null });
-    expect(r).toEqual({ status: "not_found" });
-  });
 });

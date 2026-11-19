@@ -25,6 +25,7 @@ import type {
   LiquidacionTxRunner,
 } from "@/lib/interfaces/services/ILiquidacionService";
 import { quitarComentarios } from "../../fixtures/money-safe";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * Feature 205 / T3.4 — LA GUARDIA DE LOS CANDADOS Y DEL ALCANCE (R21, R22, R26, R52, R55).
@@ -53,6 +54,7 @@ function fuente(ruta: string): string {
 
 function cierre(id: string, pendiente: string, solicitadoAt: string): CierreImputableDTO {
   return {
+    pagoIndependienteEfectivo: false, // SLT-123: la marca es obligatoria en la fila del repositorio
     id,
     mensajeroId: MENSAJERO,
     estado: CierreEstado.aprobado,
@@ -144,7 +146,8 @@ function montar(
       };
       return { status: "creado" as const, pago };
     }),
-    listarCierresImputables: vi.fn(async () => {
+    // SLT-122: el reparto lee los imputables CON alcance (SLT-147, D63: es la unica lectura).
+    listarCierresImputablesEnAlcance: vi.fn(async () => {
       log.push("leer:imputables");
       return opciones.cierres ?? cincoDesordenados();
     }),
@@ -158,6 +161,7 @@ function montar(
       return opciones.pagosDelReparto ?? [];
     }),
     obtenerCierreParaPago: vi.fn(async () => null),
+    obtenerCierreParaPagoEnAlcance: vi.fn(async () => null),
     // Feature 206: `anularReparto` empieza leyendo EL PAGO para derivar su reparto. El doble
     // devuelve el primero de la lista, que es el que los casos piden por id.
     obtenerPorId: vi.fn(async () => {
@@ -179,6 +183,7 @@ function montar(
     }),
     obtenerPorClave: vi.fn(async () => null),
     sumarVigentesPorTienda: vi.fn(async () => "0.00"),
+    sumarVigentesDelMensajeroEnRango: vi.fn(async () => ({ monto: "0.00", conteo: 0 })),
     listarPorCierre: vi.fn(async () => []),
     listarPorTienda: vi.fn(async () => []),
   };
@@ -244,6 +249,8 @@ function montar(
     repartoRepo,
     () => new Date("2026-07-30T15:04:05.000Z"),
     opciones.tope ?? 50,
+    undefined,
+    reglasPaisFijas(),
   );
 
   return { service, log, bloqueos, pagos, movimientos, tx, pagoRepo };

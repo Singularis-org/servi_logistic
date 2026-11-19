@@ -97,6 +97,11 @@ real de supabase-js lo prueba `tests/unit/e2e/storage-falso.test.ts`. `lib/stora
 - Una base desechable propia, migrada y con catálogos: `DROP`/`CREATE`, `pnpm exec prisma migrate
   deploy` y `pnpm run db:seed`, con `DATABASE_URL` apuntando a ella. Nunca la de desarrollo.
 - `next build` antes, si cambió el código de la app: el lanzador sirve el `.next` construido.
+- `NEXT_PUBLIC_APP_URL` en el entorno de ese `next build`, con el origen local de la app, igual que
+  `gate.yml`. Next la incrusta al compilar: ponerla solo al arrancar no sirve. Sin ella ni
+  `NEXT_PUBLIC_SITE_URL` (`lib/config/app-url.ts`) no hay enlace de bienvenida ni de recuperación, y
+  `superadmin-empresas`, de `plataforma-vacia`, cae al leerlo. El E2E no compara el puerto con
+  `E2E_PUERTO`: del correo solo lee lo que va detrás de `#enlace=`.
 - `E2E_PUERTO=3044 pnpm exec playwright test --project=<grupo> --reporter=list`. Playwright levanta
   el doble de Storage y la app; no se arranca nada a mano. `E2E_PUERTO` evita el 3000 de otra
   sesión. El puerto del doble también tiene que estar libre.

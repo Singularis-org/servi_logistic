@@ -97,7 +97,9 @@ import {
   primeraRutaPendiente as primeraRutaPendienteDelDia,
   type OrigenJobRuta,
 } from "@/lib/services/jobs/optimizacion-ruta-encolado";
-import { fechaCalendarioCR, inicioDelDiaCREnUtc, startOfDayCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendario, inicioDelDiaComoFecha, inicioDelDiaEnUtc } from "@/lib/utils/calendario-zona";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaPerezosa, type ZonaDeLaOperacion } from "@/lib/services/zona-de-la-empresa";
 import { minimoRecogida } from "@/lib/utils/aviso-recogida-insuficiente";
 
 /** Fuente de las paradas. `Pick` para que los dobles de test no implementen 40 metodos. */
@@ -269,11 +271,11 @@ export function disparoDe(motivo: MotivoOptimizacion): DisparoRuta {
 
 /**
  * Instante en que empieza el dia en curso, para compararlo con columnas `timestamp`
- * (`calculada_at`, `origen_at`). Es `inicioDelDiaCREnUtc` y NO `startOfDayCR`, que es para
- * columnas `date` (ficha 166).
+ * (`calculada_at`, `origen_at`). Es `inicioDelDiaEnUtc` y NO `inicioDelDiaComoFecha`, que es para
+ * columnas `date` (ficha 166). SLT-42 (R22, R23): en la zona del pais de la empresa.
  */
-function inicioDelDiaEnCurso(ahora: Date): Date {
-  return inicioDelDiaCREnUtc(fechaCalendarioCR(ahora));
+function inicioDelDiaEnCurso(ahora: Date, zona: string): Date {
+  return inicioDelDiaEnUtc(fechaCalendario(ahora, zona), zona);
 }
 
 /**
@@ -288,8 +290,10 @@ function inicioDelDiaEnCurso(ahora: Date): Date {
 export function primeraRutaPendiente(
   ruta: Pick<RutaOptimizadaDTO, "calculadaAt"> | null,
   ahora: Date,
+  /** SLT-42 (R22): la zona del pais de la empresa, de la que sale «el dia en curso». */
+  zona: string,
 ): boolean {
-  return primeraRutaPendienteDelDia(ruta?.calculadaAt ?? null, fechaCalendarioCR(ahora));
+  return primeraRutaPendienteDelDia(ruta?.calculadaAt ?? null, inicioDelDiaEnCurso(ahora, zona));
 }
 
 // SLT-79: aqui vivia `puntoDeRecogida` (SLT-59 R62/R63), el punto contra el que la pantalla y el
@@ -357,13 +361,15 @@ export function decidirGuardaRuta(input: {
   umbralM: number;
   disparo: DisparoRuta;
   ahora: Date;
+  /** SLT-42 (R22): la zona del pais de la empresa. */
+  zona: string;
   enfriamientoMin: number;
 }): DecisionGuardaRuta {
-  const { ruta, paradas, posicion, umbralM, disparo, ahora, enfriamientoMin } = input;
+  const { ruta, paradas, posicion, umbralM, disparo, ahora, zona, enfriamientoMin } = input;
   if (ruta === null) return { tipo: "reoptimizar", motivo: "sin_ruta" };
   // [2026-10-31, SLT-59, D23/D25, R59] Va antes que todo: con la primera ruta pendiente no hay
   // secuencia de hoy que conservar ni reducir.
-  if (primeraRutaPendiente(ruta, ahora)) return { tipo: "reoptimizar", motivo: "primera_del_dia" };
+  if (primeraRutaPendiente(ruta, ahora, zona)) return { tipo: "reoptimizar", motivo: "primera_del_dia" };
   // [2026-10-31, SLT-59, D21] Solo los automaticos siguen R7 tal cual. El boton pasa por el
   // enfriamiento de R53 cuando no hay nada nuevo que justifique pagar.
   if (ruta.estado !== "vigente" && disparo !== "manual") {
@@ -516,13 +522,21 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
      * tumbar una optimizacion que ya salio bien (ver `trazar`).
      */
     private readonly routes: IRoutesClient | null = null,
+    /** SLT-42 (R22, R28): la zona del pais de la empresa, de la que sale «el dia en curso». */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
+
+  /** SLT-42 (R22, R28, R30): la zona de UNA operacion, leida como mucho una vez y solo si hace falta. */
+  private zonaDeLaOperacion(operacion: string): ZonaDeLaOperacion {
+    return zonaPerezosa(this.reglasPais, `OptimizacionRutaService.${operacion}`);
+  }
 
   async ejecutar(
     mensajeroId: string,
     opts: EjecutarOptimizacionOpts,
   ): Promise<EjecutarOptimizacionResult> {
     const ahora = this.now();
+    const zona = this.zonaDeLaOperacion("ejecutar"); // SLT-42 (R22, R28)
     optlog("service — ENTRADA", {
       mensajeroId,
       motivo: opts.motivo,
@@ -597,7 +611,7 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
     // ni la recogida ni la primera gestion encolan, y el traspaso nunca encolaba con ella pendiente.
     // Aun asi un job puede llegar aqui con ella pendiente (uno encolado antes del despliegue, o uno
     // de ayer que corre pasada la medianoche); se completa sin leer paradas ni llamar a nadie.
-    if (opts.motivo !== "manual" && primeraRutaPendiente(ruta, ahora)) {
+    if (opts.motivo !== "manual" && primeraRutaPendiente(ruta, ahora, await zona())) {
       optlog("service — SLT-79: primera ruta pendiente en automatico, 0 llamadas facturadas");
       return { status: "omitida", razon: "primera_ruta_pendiente" };
     }
@@ -611,15 +625,15 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
     //   b) recogidas >= 1 y pasaron RUTA_PRIMERA_DEBOUNCE_MIN minutos desde la ULTIMA recogida del
     //      dia. Sin recogida en el historial de hoy no hay carga en curso que esperar: se cumple.
     // Era el job de debounce de la recogida (SLT-59 R76); ahora es una condicion, sin cola.
-    if (opts.motivo === "manual" && primeraRutaPendiente(ruta, ahora)) {
+    if (opts.motivo === "manual" && primeraRutaPendiente(ruta, ahora, await zona())) {
       const { asignadas, recogidas } = await this.paradasRepo.contarAsignadasDelDia(
         mensajeroId,
-        startOfDayCR(ahora),
+        inicioDelDiaComoFecha(ahora, await zona()), // SLT-42 (R22): columna `date`, dia de la empresa
       );
       const minimo = minimoRecogida(asignadas, this.config.RUTA_PRIMERA_MIN_RECOGIDO_PCT);
       if (recogidas < minimo) {
         const esperaMs =
-          recogidas >= 1 ? await this.esperaDesdeUltimaRecogida(mensajeroId, ahora) : undefined;
+          recogidas >= 1 ? await this.esperaDesdeUltimaRecogida(mensajeroId, ahora, await zona()) : undefined;
         if (esperaMs === undefined || esperaMs > 0) {
           optlog("service — guarda R64 (SLT-79): recogida insuficiente, 0 llamadas facturadas", {
             recogidas,
@@ -685,7 +699,7 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
           [unica],
           origen,
           "sin_paradas",
-          { disparo: disparoDe(opts.motivo), ahora },
+          { disparo: disparoDe(opts.motivo), ahora, zona: await zona() },
         );
         if ("desenlace" in guarda) return guarda.desenlace;
         recalculo = guarda.reoptimizar;
@@ -783,7 +797,7 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
       paradas,
       origen,
       "sin_cambios",
-      { disparo: disparoDe(opts.motivo), ahora },
+      { disparo: disparoDe(opts.motivo), ahora, zona: await zona() },
     );
     if ("desenlace" in guarda) return guarda.desenlace;
     // SLT-59 (D27, §13.1): el `optimizeTours` y el `computeRoutes` de este recalculo, mismo motivo.
@@ -921,6 +935,7 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
       // primera ruta pendiente la decision es recalcular, asi que aqui no se hace nada.
       disparo: "automatico",
       ahora,
+      zona: await this.zonaDeLaOperacion("reducirSinLlamadas")(),
       enfriamientoMin: this.config.RUTA_RECUPERACION_ENFRIAMIENTO_MIN,
     });
     optlog("service — reduccion en la peticion: decision", { decision: decision.tipo });
@@ -930,13 +945,13 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
 
   /**
    * SLT-79 — ms que faltan para cumplir `RUTA_PRIMERA_DEBOUNCE_MIN` desde la ultima recogida del
-   * dia de Costa Rica. `<= 0` = ya paso (el minuto justo cuenta como cumplido). Sin recogida en el
+   * dia de la empresa. `<= 0` = ya paso (el minuto justo cuenta como cumplido). Sin recogida en el
    * historial de hoy devuelve `0`: no hay carga en curso que esperar.
    */
-  private async esperaDesdeUltimaRecogida(mensajeroId: string, ahora: Date): Promise<number> {
+  private async esperaDesdeUltimaRecogida(mensajeroId: string, ahora: Date, zona: string): Promise<number> {
     const ultima = await this.paradasRepo.ultimaRecogidaDelDia(
       mensajeroId,
-      inicioDelDiaEnCurso(ahora),
+      inicioDelDiaEnCurso(ahora, zona),
     );
     if (ultima === null) return 0;
     const esperaTotalMs = this.config.RUTA_PRIMERA_DEBOUNCE_MIN * 60_000;
@@ -955,7 +970,7 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
     paradas: ParadaConCoordenadas[],
     origen: { lat: number; lng: number; fuente: OrigenFuente } | null,
     razonOmitir: "sin_cambios" | "sin_paradas",
-    contexto: { disparo: DisparoRuta; ahora: Date },
+    contexto: { disparo: DisparoRuta; ahora: Date; zona: string },
   ): Promise<{ desenlace: EjecutarOptimizacionResult } | { reoptimizar: MotivoReoptimizar }> {
     const decision = decidirGuardaRuta({
       ruta,
@@ -964,6 +979,7 @@ export class OptimizacionRutaService implements IOptimizacionRutaService {
       umbralM: this.config.RUTA_REOPT_DISTANCIA_M,
       disparo: contexto.disparo,
       ahora: contexto.ahora,
+      zona: contexto.zona,
       enfriamientoMin: this.config.RUTA_RECUPERACION_ENFRIAMIENTO_MIN,
     });
     const enfriamiento = "motivo" in decision && decision.motivo === "enfriamiento";

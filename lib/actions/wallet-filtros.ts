@@ -1,5 +1,8 @@
 "use server";
 
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
+import { zonaDelBorde } from "@/lib/actions/_shared/zona-del-borde";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { isAppErrorShape, UnauthenticatedError, withErrorHandler } from "@/lib/errors";
@@ -25,10 +28,16 @@ import {
 export interface FiltrosWalletDeps {
   service?: IFiltrosWalletService;
   getActor?: () => Promise<Actor | null>;
+  /** SLT-42 (R22, R28): la zona del pais de la empresa; en produccion, la real (`zonaDelBorde`). */
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
 }
 
 function buildService(): IFiltrosWalletService {
-  return new FiltrosWalletService(new FiltrosWalletRepository(getPrismaClient()));
+  return new FiltrosWalletService(
+    new FiltrosWalletRepository(getPrismaClient()),
+    undefined, // los topes por defecto
+    construirReglasPaisEmpresa(getPrismaClient()), // SLT-42 (R22, R28): la zona horaria del pais de la empresa.
+  );
 }
 
 function toError(
@@ -70,7 +79,9 @@ export async function conceptosConMovimientosAction(
   const r = await withErrorHandler(async () => {
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
-    const data = conceptosConMovimientosSchema.parse(input);
+    // SLT-42 (R22, R28): «hoy» en la zona del pais de la empresa; sin zona, falla sin tocar nada.
+    const zona = await zonaDelBorde(deps.reglasPais);
+    const data = conceptosConMovimientosSchema(zona).parse(input);
     return (deps.service ?? buildService()).conceptosConMovimientos(data, actor);
   });
   return isAppErrorShape(r) ? toError(r) : r;
@@ -112,7 +123,9 @@ export async function quienesDelLibroCajaAction(
   const r = await withErrorHandler(async () => {
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
-    const data = quienesDelLibroCajaSchema.parse(input ?? {});
+    // SLT-42 (R22, R28): «hoy» en la zona del pais de la empresa; sin zona, falla sin tocar nada.
+    const zona = await zonaDelBorde(deps.reglasPais);
+    const data = quienesDelLibroCajaSchema(zona).parse(input ?? {});
     return (deps.service ?? buildService()).quienesDelLibroCaja(data, actor);
   });
   return isAppErrorShape(r) ? toError(r) : r;

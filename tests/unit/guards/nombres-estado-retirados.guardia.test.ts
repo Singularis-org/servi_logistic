@@ -100,8 +100,9 @@ const EXCEPCIONES: Record<string, { textos: readonly string[]; motivo: string }>
   "app/(app)/cierres-admin/_components/cierre-labels.ts": {
     textos: ["entregadas"],
     motivo:
-      "SLT-54 (R65, design §11): «Flete de gestiones no entregadas» es el rótulo aprobado de un GRUPO de " +
-      "gestiones, en negativo; no nombra el estado (R6)",
+      "SLT-54 (R65, design §11): «Flete de gestiones no entregadas» (`FLETE_NO_ENTREGADAS_LABEL`) es el " +
+      "rótulo aprobado de un GRUPO de gestiones, en negativo; no nombra el estado (R6). SLT-172 retiró la " +
+      "del desglose por tienda y SLT-174 las dos notas `_MODELO_NUEVO` que repetían la frase, sin uso",
   },
   "lib/constants/wallet-rotulos.ts": {
     textos: ["entregadas", "entregadas"],

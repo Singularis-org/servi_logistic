@@ -14,11 +14,12 @@
 //
 // ─── LA FRONTERA DEL DIA: UNA SOLA DEFINICION, Y VIAJA COMO PARAMETRO ───────────────────
 //
-// En este SQL no hay ni una zona horaria: ni `AT TIME ZONE`, ni `America/Costa_Rica`, ni
-// `date_trunc` con zona, ni `interval '6 hours'`. Cualquiera de esas seria una SEGUNDA
-// definicion del dia operativo fuera del alcance de `lib/utils/fecha-cr.ts`. El desfase se
-// DERIVA alli y entra como parametro, igual que en `ConteoCargadasPorDiaRepository` — y por eso
-// los dias de esta serie y los de aquella empiezan y acaban en el mismo instante.
+// En este SQL no se ESCRIBE ninguna zona: ni `America/Costa_Rica`, ni `date_trunc` con zona
+// escrita, ni `interval '6 hours'`. SLT-42 (R22, R23; decision del humano del 2026-11-06): el
+// dia se calcula con `AT TIME ZONE $n`, con la zona IANA del pais de la empresa como PARAMETRO
+// —la misma con la que el servicio resolvio la ventana—, igual que en
+// `ConteoCargadasPorDiaRepository`. Por eso los dias de esta serie y los de aquella empiezan y
+// acaban en el mismo instante, tambien en los dias de 23 y 25 horas.
 //
 // ─── NO SE CLASIFICA NADA AQUI ──────────────────────────────────────────────────────────
 //
@@ -30,7 +31,6 @@
 import { Prisma } from "@prisma/client";
 import type { PrismaClient } from "@prisma/client";
 
-import { inicioDelDiaCREnUtc } from "@/lib/utils/fecha-cr";
 import type {
   AgregadoDiarioCajaRow,
   IFinanzasDiarioRepository,
@@ -41,26 +41,23 @@ import type { WalletMovimientoCategoria, WalletMovimientoTipo } from "@/lib/type
 type FinanzasDiarioPrismaClient = Pick<PrismaClient, "$queryRaw">;
 
 /**
- * Segundos que hay que RESTAR a un instante UTC para leer el reloj de pared de Costa Rica.
- * DERIVADO de `fecha-cr.ts`, no escrito: este archivo no contiene ninguna constante temporal
- * propia, asi que si Costa Rica adoptara horario de verano no habria que tocarlo.
- */
-const FECHA_ANCLA = "2000-01-01";
-const DESFASE_CR_SEGUNDOS =
-  (inicioDelDiaCREnUtc(FECHA_ANCLA).getTime() - Date.parse(`${FECHA_ANCLA}T00:00:00.000Z`)) / 1000;
-
-/**
- * El dia calendario CR de `fecha_movimiento`, como TEXTO `YYYY-MM-DD`.
+ * El dia calendario de `fecha_movimiento` en la zona `zona`, como TEXTO `YYYY-MM-DD`.
  *
- * Texto y no `date` porque una columna `date` vuelve del driver como un `Date` de JavaScript y
- * cada consumidor tendria que volver a elegir huso para leerla — que es como se reintroduce el
- * off-by-one. El cast del desfase a `double precision` no es decorativo: sin el, Postgres no
- * puede inferir el tipo del parametro dentro de la multiplicacion y responde `42P18`.
+ * `fecha_movimiento` es `timestamp` SIN zona con el reloj de pared UTC: `AT TIME ZONE 'UTC'` lo
+ * vuelve el instante y `AT TIME ZONE $zona` da el reloj de pared de esa zona, con su horario de
+ * verano (R23). La zona es un PARAMETRO (`$n::text`; el cast evita el `42P18`), nunca
+ * interpolada. Texto y no `date` porque una columna `date` vuelve del driver como un `Date` de
+ * JavaScript y cada consumidor tendria que volver a elegir huso para leerla.
+ *
+ * Exportado solo para que el test de integracion lo ejecute contra Postgres sobre filas
+ * sinteticas (alias `m`).
  */
-const DIA_CR = Prisma.sql`to_char(
-  (m."fecha_movimiento" - ${DESFASE_CR_SEGUNDOS}::double precision * interval '1 second')::date,
+export function diaDelMovimientoEnZona(zona: string): Prisma.Sql {
+  return Prisma.sql`to_char(
+  ((m."fecha_movimiento" AT TIME ZONE 'UTC') AT TIME ZONE ${zona}::text)::date,
   'YYYY-MM-DD'
 )`;
+}
 
 /**
  * La fila cruda tal como la entrega `$queryRaw`. `SUM(monto)` es `numeric` y llega como
@@ -80,7 +77,7 @@ interface FilaCruda {
 export class FinanzasDiarioRepository implements IFinanzasDiarioRepository {
   constructor(private readonly prisma: FinanzasDiarioPrismaClient) {}
 
-  async sumarPorDia(desde: Date, hasta: Date): Promise<readonly AgregadoDiarioCajaRow[]> {
+  async sumarPorDia(desde: Date, hasta: Date, zona: string): Promise<readonly AgregadoDiarioCajaRow[]> {
     // ⚠ EL CAST ES `::timestamp`, NO `::timestamptz`, y esto se midio contra Postgres en la
     // feature 180: `fecha_movimiento` es `timestamp` SIN zona y guarda el reloj de pared UTC.
     // Con `::timestamptz`, Postgres interpretaria el texto en el huso de la SESION —el del
@@ -92,7 +89,7 @@ export class FinanzasDiarioRepository implements IFinanzasDiarioRepository {
     // La tabla es APPEND-ONLY y sin soft delete (`db/schema.prisma`), asi que aqui no hay
     // ningun `deleted_at IS NULL` que poner: no es un olvido, es que no existe esa columna.
     const filas = await this.prisma.$queryRaw<FilaCruda[]>`
-      SELECT ${DIA_CR}                  AS fecha,
+      SELECT ${diaDelMovimientoEnZona(zona)} AS fecha,
              m."categoria"              AS categoria,
              m."tipo"                   AS tipo,
              SUM(m."monto")             AS total

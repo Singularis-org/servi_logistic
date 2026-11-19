@@ -197,8 +197,9 @@ async function sembrar(tx: TxDeTest): Promise<Escenario> {
   await s("cOtraTiendaGrupo", { concepto: FE, valor: "9007.00", tiendaId: T2, zonaId: Z, grupoId: G1 });
   // R23: un cero escrito (reprogramado) frente a un concepto sin fila (novedad).
   await s("cCero", { concepto: "tienda_flete_reprogramado", valor: "0.00", zonaId: Z });
-  // R16: otro concepto que solo tiene valor de zona (la eleccion es por concepto).
-  await s("cFulfillment", { concepto: "tienda_fulfillment", valor: "450.25", zonaId: Z });
+  // R16: otro concepto con un solo nivel (la eleccion es por concepto). SLT-94 (R10/R12): el
+  // fulfillment solo existe como precio propio de la tienda, asi que ese es su unico nivel.
+  await s("cFulfillment", { concepto: "tienda_fulfillment", valor: "450.25", tiendaId: T });
   // R28: flete por rechazo en porcentaje del pedido, base del pago por rechazo.
   await s("cRechazo", { concepto: "tienda_flete_rechazo", modo: "porcentaje", valor: "2.50", zonaId: Z });
 
@@ -309,6 +310,69 @@ function conEscenario(fn: (tx: TxDeTest, e: Escenario) => Promise<void>) {
 }
 
 // --------------------------------------------------------------------------------------------
+// SLT-94 (R14, T3.2) — un fulfillment guardado ANTES del despliegue en zona, grupo, tienda en una
+// zona o grupo, o en porcentaje, queda inerte: no se resuelve y no se borra. El CHECK de R12
+// (`tarifa_valor_fulfillment_solo_tienda_monto`) ya no deja insertarlas, asi que el caso lo SUELTA
+// dentro de su transaccion revertida, siembra las filas viejas y lo repone `NOT VALID` (como en la
+// migracion): nada sale de la transaccion.
+// --------------------------------------------------------------------------------------------
+
+const CHECK_R12 = "tarifa_valor_fulfillment_solo_tienda_monto";
+
+async function conFilasAnterioresAlDespliegue(tx: TxDeTest, fn: () => Promise<void>): Promise<void> {
+  await tx.$executeRawUnsafe(`ALTER TABLE "tarifa_valor" DROP CONSTRAINT "${CHECK_R12}"`);
+  await fn();
+  await tx.$executeRawUnsafe(
+    `ALTER TABLE "tarifa_valor" ADD CONSTRAINT "${CHECK_R12}" CHECK ("concepto" <> 'tienda_fulfillment' OR ("tienda_id" IS NOT NULL AND "zona_id" IS NULL AND "grupo_id" IS NULL AND "modo" = 'monto')) NOT VALID`,
+  );
+}
+
+describeSiHayBase("SLT-94 resolver · el fulfillment de otro nivel o en % no se resuelve (R14)", () => {
+  it("SLT-94 R14: con filas de zona, grupo, tienda en zona y tienda en grupo, gana el precio propio (rango 3), no las de rango 1 y 2", async () => {
+    await conEscenario(async (tx, e) => {
+      const FUL: TarifaConcepto = "tienda_fulfillment";
+      await conFilasAnterioresAlDespliegue(tx, async () => {
+        await sembrarValor(tx, { concepto: FUL, valor: "7001.00", zonaId: e.Z });
+        await sembrarValor(tx, { concepto: FUL, valor: "7002.00", zonaId: e.Z, grupoId: e.G1 });
+        await sembrarValor(tx, { concepto: FUL, valor: "7003.00", tiendaId: e.T, zonaId: e.Z });
+        await sembrarValor(tx, { concepto: FUL, valor: "7004.00", tiendaId: e.T, zonaId: e.Z, grupoId: e.G1 });
+      });
+      const valores = await cobroDe(tx, e, { tiendaId: e.T, zonaId: e.Z, distritoId: e.d1 });
+      expect(valores.tienda_fulfillment).toEqual({
+        concepto: "tienda_fulfillment",
+        modo: "monto",
+        valor: "450.25",
+        ivaPct: "13.00",
+        nivel: "tienda_general",
+        tarifaValorId: e.v.cFulfillment,
+      });
+      // No se borra nada: las cuatro filas inertes siguen ahi, junto a la valida.
+      expect(await tx.tarifaValor.count({ where: { organizacionId: e.A, concepto: FUL } })).toBe(5);
+    });
+  });
+
+  it("SLT-94 R14: sin precio propio en monto (solo uno en % y filas de zona y grupo) el fulfillment queda AUSENTE", async () => {
+    await conEscenario(async (tx, e) => {
+      const FUL: TarifaConcepto = "tienda_fulfillment";
+      await borrar(tx, [e.v.cFulfillment!]);
+      await conFilasAnterioresAlDespliegue(tx, async () => {
+        await sembrarValor(tx, { concepto: FUL, modo: "porcentaje", valor: "5.00", tiendaId: e.T });
+        await sembrarValor(tx, { concepto: FUL, valor: "7001.00", zonaId: e.Z });
+        await sembrarValor(tx, { concepto: FUL, valor: "7002.00", zonaId: e.Z, grupoId: e.G1 });
+      });
+      const valores = await cobroDe(tx, e, { tiendaId: e.T, zonaId: e.Z, distritoId: e.d1 });
+      expect(valores.tienda_fulfillment).toBeUndefined();
+      // Control positivo del mismo par: el flete sigue resolviendo (el par no se quedo sin tarifa).
+      expect(valores.tienda_flete_entregado?.valor).toBe("1001.00");
+      // Otra tienda de la zona (T2): tampoco toma la fila de zona.
+      const t2 = await cobroDe(tx, e, { tiendaId: e.T2, zonaId: e.Z, distritoId: e.d1 });
+      expect(t2.tienda_fulfillment).toBeUndefined();
+      expect(await tx.tarifaValor.count({ where: { organizacionId: e.A, concepto: FUL } })).toBe(3);
+    });
+  });
+});
+
+// --------------------------------------------------------------------------------------------
 // Cobro a la tienda (R16, R17, R18, R23)
 // --------------------------------------------------------------------------------------------
 
@@ -383,7 +447,7 @@ describeSiHayBase("SLT-52 resolver · cobro a la tienda en Postgres (R16-R18, R2
     });
   });
 
-  it("R16: la eleccion es por concepto (fulfillment solo tiene zona y la toma; el flete, su tienda+grupo)", async () => {
+  it("R16: la eleccion es por concepto (fulfillment solo tiene el precio propio y lo toma; el flete, su tienda+grupo)", async () => {
     await conEscenario(async (tx, e) => {
       const valores = await cobroDe(tx, e, { tiendaId: e.T, zonaId: e.Z, distritoId: e.d1 });
       expect(valores.tienda_flete_entregado?.valor).toBe("1001.00");
@@ -392,7 +456,7 @@ describeSiHayBase("SLT-52 resolver · cobro a la tienda en Postgres (R16-R18, R2
         modo: "monto",
         valor: "450.25",
         ivaPct: "13.00",
-        nivel: "zona",
+        nivel: "tienda_general",
         tarifaValorId: e.v.cFulfillment,
       });
     });

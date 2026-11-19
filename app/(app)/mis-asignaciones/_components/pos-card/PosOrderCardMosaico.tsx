@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ChevronDown, MapPin, Navigation, Package } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { CLASE_INFO_TACTIL, COLUMNA_FIJA, TEXTO_ENTERO } from "@/components/shared/texto-entero";
 import {
   Collapsible,
   CollapsibleContent,
@@ -51,7 +52,10 @@ export function PosOrderCardMosaico({
   secciones,
   acciones,
   mensajero,
+  posicion,
 }: PosOrderCardProps) {
+  // SLT-190 (DS3): la posición en la lista visible solo se pinta donde no hay ruta.
+  const conPosicion = !mostrarRuta && posicion !== undefined;
   // Estado del desplegable del detalle: UI efímera, de un solo consumidor.
   const [detalleAbierto, setDetalleAbierto] = useState(false);
   // FICHA 455 (R7/R8): el chip es el estado de la orden; activa/detalle/nota van en marcas aparte.
@@ -81,7 +85,7 @@ export function PosOrderCardMosaico({
           ? `Gestionar orden ${orden.numRemision} · ${orden.destinatario}`
           : `Orden ${orden.numRemision} · ${orden.destinatario}`
       }
-      className={`flex flex-col gap-2.5 rounded-xl border bg-card p-3 shadow-sm transition-all ${
+      className={`flex flex-col gap-3 rounded-xl border bg-card p-3 shadow-sm transition-all ${
         esDetalle ? "border-brand ring-1 ring-brand" : "border-border"
       } ${
         seleccionable
@@ -89,23 +93,36 @@ export function PosOrderCardMosaico({
           : ""
       }`}
     >
-      <header className="flex items-start justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-1.5">
+      {/* SLT-200: `max-md:flex-wrap`. En el móvil (chips a 12 px), si los chips no caben junto a la
+          guía, bajan de línea. Sin él, la columna de los chips (`shrink-0`) estrujaba la de la guía
+          (`min-w-0`) hasta 0 px y la guía quedaba oculta (CI del #226). Desde md, como en dev. */}
+      <header className="flex items-start justify-between gap-2 max-md:flex-wrap">
+        <div className="flex min-w-0 items-center gap-2">
           {mostrarRuta ? (
             <span
               aria-hidden="true"
-              className="flex size-6 shrink-0 items-center justify-center rounded-md bg-navy text-[11px] font-black text-white"
+              className="flex size-6 shrink-0 items-center justify-center rounded-md bg-navy text-[11px] font-black text-white max-md:text-xs"
             >
               {textoParada(orden)}
             </span>
+          ) : conPosicion ? (
+            /* SLT-190 (R855, R856): la posición en la lista, con nombre accesible propio; no es
+               una parada. */
+            <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-navy text-[11px] font-black text-white max-md:text-xs">
+              <span className="sr-only">{`Orden ${posicion} de ${total}`}</span>
+              <span aria-hidden="true">{posicion}</span>
+            </span>
           ) : null}
           <div className="min-w-0 leading-none">
-            <p className="truncate font-mono text-xs font-bold tracking-wide text-foreground">
+            {/* SLT-200: en el teléfono (`max-md:`) la tarjeta se leía con lupa. Ahí lo principal
+                (identificador, destinatario, monto) va a 14 px y lo secundario a 12 px como mínimo,
+                y el identificador deja la mono. Desde md, los tamaños de siempre (escritorio = prod). */}
+            <p className={`font-mono text-xs font-bold tracking-wide text-foreground max-md:font-sans max-md:text-sm ${TEXTO_ENTERO}`}>
               {orden.numRemision}
             </p>
             {/* R28: posición en la ruta + peso, mismo texto que la cabecera de la card
                 completa (`PosCardHeader`) para no perder la señal al compactar. */}
-            <p className="mt-0.5 text-[11px] font-semibold text-muted-foreground">
+            <p className="mt-1 text-[11px] font-semibold text-muted-foreground max-md:text-xs">
               {mostrarRuta ? (
                 <>
                   {orden.secuenciaRuta !== null ? (
@@ -118,6 +135,10 @@ export function PosOrderCardMosaico({
                   )}{" "}
                   ·{" "}
                 </>
+              ) : conPosicion ? (
+                /* SLT-190 (R855): «{posición} de {total} · {peso}». El número ya se anuncia en la
+                   insignia de al lado; aquí se oculta para no leerlo dos veces. */
+                <span aria-hidden="true">{`${posicion} de ${total} · `}</span>
               ) : null}
               {formatPeso(orden.peso)}
             </p>
@@ -127,41 +148,45 @@ export function PosOrderCardMosaico({
           {/* FICHA 456 (T3.6, R9): el chip con su botón de información (nombre calculado dentro). */}
           <EstadoConInfo
             codigo={orden.estatusValue}
-            chipClassName={`rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide ${claseChipEstado(orden.estatusValue)}`}
+            className={CLASE_INFO_TACTIL}
+            chipClassName={`rounded-full px-2 py-1 text-[10px] font-bold tracking-wide max-md:text-xs ${claseChipEstado(orden.estatusValue)}`}
           />
           {marcas.map((m) => (
-            <span key={m.texto} className={`rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide ${m.clase}`}>
+            <span key={m.texto} className={`rounded-full px-2 py-1 text-[10px] font-bold tracking-wide max-md:text-xs ${m.clase}`}>
               {m.texto}
             </span>
           ))}
           {notaAyuda ? (
             <NotaAyudaConInfo
-              chipClassName={`rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide ${CLASE_NOTA_AYUDA}`}
+              className={CLASE_INFO_TACTIL}
+              chipClassName={`rounded-full px-2 py-1 text-[10px] font-bold tracking-wide max-md:text-xs ${CLASE_NOTA_AYUDA}`}
             />
           ) : null}
         </div>
       </header>
 
       <div className="min-w-0">
-        <p className="truncate text-sm font-bold text-foreground">
+        {/* SLT-156 (R490): destinatario, producto y mensajero enteros, en varias líneas si no
+            caben (sin «…»: en el móvil no hay tooltip). */}
+        <p className={`text-sm font-bold text-foreground ${TEXTO_ENTERO}`}>
           {orden.destinatario}
         </p>
-        <p className="flex items-center gap-1 truncate font-mono text-[11px] text-muted-foreground">
-          <Package className="size-3 shrink-0 text-brand" aria-hidden="true" />
-          {orden.producto}
+        <p className="flex min-w-0 items-start gap-1 font-mono text-[11px] text-muted-foreground max-md:font-sans max-md:text-xs">
+          <Package className="size-3 shrink-0 text-brand max-md:size-3.5" aria-hidden="true" />
+          <span className={TEXTO_ENTERO}>{orden.producto}</span>
         </p>
         {/* Feature 160/R19: los intentos son un DATO de la orden, siempre visible (`0` incluido)
             en las superficies que los tienen; la 196 permite apagarlos donde no existen. */}
         {verIntentos ? (
-          <p className="mt-0.5 text-[11px] font-semibold text-muted-foreground">
+          <p className="mt-1 text-[11px] font-semibold text-muted-foreground max-md:text-xs">
             <IntentosDato intentos={valorIntentos(orden)} />
           </p>
         ) : null}
         {/* FICHA 296 — quién lleva esta orden, en el MISMO bloque de campos que destinatario,
-            producto e intentos: es un dato de la orden, no una marca de excepción. `truncate`
-            como sus hermanos, para que un nombre largo no ensanche la card del mosaico. */}
+            producto e intentos: es un dato de la orden, no una marca de excepción. Envuelve como
+            sus hermanos (SLT-156): un nombre largo baja de línea, no ensancha la card. */}
         {mensajero !== undefined ? (
-          <p className="mt-0.5 truncate text-[11px] font-semibold text-muted-foreground">
+          <p className={`mt-1 text-[11px] font-semibold text-muted-foreground max-md:text-xs ${TEXTO_ENTERO}`}>
             {textoMensajero(mensajero)}
           </p>
         ) : null}
@@ -175,20 +200,20 @@ export function PosOrderCardMosaico({
         <UbicacionTrigger
           orden={orden}
           ariaLabel={`Ver en el mapa la ruta hasta ${orden.direccion ?? orden.cantonNombre}`}
-          className="flex w-full items-center gap-2 rounded-lg bg-navy px-2 py-1.5 text-left text-white transition-colors hover:bg-navy-deep"
+          className="flex w-full items-center gap-2 rounded-lg bg-navy px-2 py-2 text-left text-white transition-colors hover:bg-navy-deep"
         >
           <MapPin className="size-3.5 shrink-0 text-brand" aria-hidden="true" />
-          {/* `min-w-0` en el contenedor + `truncate` en cada línea: una dirección larga se
-              corta con elipsis en vez de ensanchar la card del mosaico. */}
+          {/* `min-w-0` en el contenedor + texto que envuelve (SLT-156, R490): una dirección larga
+              baja de línea, entera, en vez de cortarse con «…» o ensanchar la card. */}
           <div className="min-w-0 flex-1">
-            <span className="block truncate text-xs font-semibold">
+            <span className={`block text-xs font-semibold ${TEXTO_ENTERO}`}>
               {orden.cantonNombre}
               {orden.distritoNombre ? (
                 <span className="text-white/60"> · {orden.distritoNombre}</span>
               ) : null}
             </span>
             {orden.direccion ? (
-              <span className="block truncate text-[0.6875rem] text-white/70">
+              <span className={`block text-[0.6875rem] text-white/70 max-md:text-xs ${TEXTO_ENTERO}`}>
                 {orden.direccion}
               </span>
             ) : null}
@@ -202,7 +227,7 @@ export function PosOrderCardMosaico({
       {(mostrarRuta && orden.secuenciaRuta === null) ||
       orden.marcarLuego ||
       orden.esParaManana ? (
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-2">
           {mostrarRuta && orden.secuenciaRuta === null ? (
             <Badge variant="outline" className="w-fit">
               Pendiente de optimizar
@@ -240,17 +265,17 @@ export function PosOrderCardMosaico({
           que devuelve el servidor al rechazar y la misma que lee la tienda. La fecha llega YA
           RESUELTA en `fechaRepartoISO` (R14): aquí no se construye ningún `Date`. */}
       {orden.esParaManana ? (
-        <p role="note" className="text-[11px] font-semibold text-muted-foreground">
+        <p role="note" className="text-[11px] font-semibold text-muted-foreground max-md:text-xs">
           {avisoReservaParaOtroDia(orden.fechaRepartoISO)}
         </p>
       ) : null}
 
       {verCobro ? (
         <div className="flex items-center justify-between border-t border-dashed border-border pt-2">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground max-md:text-xs">
             Cobrar
           </span>
-          <span className="font-mono text-sm font-bold tabular-nums text-foreground">
+          <span className={`text-right font-mono text-sm font-bold text-foreground ${COLUMNA_FIJA}`}>
             {formatMonto(orden.montoCobrar)}
           </span>
         </div>
@@ -265,9 +290,11 @@ export function PosOrderCardMosaico({
         <Collapsible
           open={detalleAbierto}
           onOpenChange={setDetalleAbierto}
-          className="group/detalle rounded-lg border border-border bg-muted/40 px-2.5 py-1.5"
+          className="group/detalle rounded-lg border border-border bg-muted/40 px-3 py-2"
         >
-          <CollapsibleTrigger className="flex w-full cursor-pointer items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+          {/* SLT-202 (Carlos, 2026-11-18): 44 px solo en el móvil (SLT-193, R910); desde `md`, como
+              prod. La tarjeta también se monta en `/novedades` de escritorio. */}
+          <CollapsibleTrigger className="flex w-full max-md:min-h-11 cursor-pointer items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground max-md:text-xs">
             Ver detalle completo
             <ChevronDown
               aria-hidden="true"

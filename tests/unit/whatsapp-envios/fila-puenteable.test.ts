@@ -34,8 +34,9 @@ function fila(evento: NotificacionEvento, extra: Partial<CrearNotificacionInput>
 describe("474/R50 — filaPuenteable", () => {
   const todos = Object.values(NotificacionEventoPrisma) as NotificacionEvento[];
 
-  it("las 18: fila a rol central sin alcance pasa SOLO si el evento esta disponible", () => {
-    expect(todos).toHaveLength(18);
+  // SLT-136: 19 con `factura_plataforma_emitida` (no disponible).
+  it("las 19: fila a rol central sin alcance pasa SOLO si el evento esta disponible", () => {
+    expect(todos).toHaveLength(19);
     for (const e of todos) {
       expect(filaPuenteable(fila(e))).toBe(DISPONIBLES.has(e));
     }

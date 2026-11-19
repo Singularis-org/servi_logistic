@@ -89,7 +89,7 @@ const USUARIO_SATELITE: UsuarioPublico = {
   cedula: "1712345678",
   tipoIdentificacionId: "t1",
   rolId: "rol-admin-satelite",
-  fulfillment: false,
+  seRecogeEnTienda: true,
   zonaId: "z-puntarenas",
   createdAt: new Date("2026-01-01T00:00:00Z"),
   updatedAt: new Date("2026-01-01T00:00:00Z"),

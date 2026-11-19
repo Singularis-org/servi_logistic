@@ -1,4 +1,5 @@
 import { whereTieneRegistroDeCalle } from "@/lib/repositories/gestion-pendiente";
+import { leerTopeIntentosDeLaEmpresa } from "@/lib/repositories/_shared/tope-intentos-empresa";
 import { senalesGestionDe, SIN_SENALES_GESTION } from "@/lib/repositories/ayuda-abierta";
 import type { SenalesGestionDTO } from "@/lib/types/orden";
 import { Prisma, type PrismaClient } from "@prisma/client";
@@ -330,6 +331,10 @@ export class OrdenHistorialRepository implements IOrdenHistorialRepository {
       actorRol: fila.actorRol, // 427/R26: el CONGELADO de la fila
       createdAt: fila.createdAt,
     }));
+  }
+
+  leerTopeIntentos(): Promise<number> {
+    return leerTopeIntentosDeLaEmpresa(this.prisma);
   }
 
   /**

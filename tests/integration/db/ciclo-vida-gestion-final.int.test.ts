@@ -8,6 +8,7 @@ import { CierresAdminRepository } from "@/lib/repositories/CierresAdminRepositor
 import { ConteoPorStatusRepository } from "@/lib/repositories/ConteoPorStatusRepository";
 
 import { comoApp, crearOrganizacion, fijarEmpresa } from "../../fabricas/organizaciones";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 import { D, D_MAS_1, D_MENOS_1, consultaDe, describeSiHayBase, rangoDe } from "./_cohorte-carga";
 import {
   clienteConSavepoint,
@@ -413,6 +414,7 @@ describeSiHayBase("SLT-64 — el ciclo de vida lee la gestion final (Postgres re
         expect(antes).toEqual({ segundosAcum: TESTIGO_SEGUNDOS + 14400, n: 2 });
 
         const salida = await repositorioDeCierres(tx).resolverCierre({
+          zonaHoraria: ZONA_DE_CR,
           cierreId,
           alcance: ALCANCE_CENTRAL,
           nuevoEstado: "aprobado",

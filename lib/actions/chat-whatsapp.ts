@@ -11,6 +11,7 @@ import { OrdenEnvioReader } from "@/lib/repositories/OrdenEnvioReader";
 import { ChatConversacionRepository } from "@/lib/repositories/ChatConversacionRepository";
 import { ChatMensajeRepository } from "@/lib/repositories/ChatMensajeRepository";
 import { ChatWhatsappService } from "@/lib/services/ChatWhatsappService";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { crearEncolarReintentoChatEnvio } from "@/lib/services/jobs/whatsapp-chat-envio-encolado";
 import { JobRepository } from "@/lib/repositories/JobRepository";
 import { PlantillaMensajeRepository } from "@/lib/repositories/PlantillaMensajeRepository";
@@ -20,9 +21,10 @@ import { idiomaPlantillasWhatsapp } from "@/lib/config/whatsapp";
 import { whatsappDeLaEmpresaOpcional } from "@/lib/services/whatsapp/whatsapp-de-la-empresa";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { construirComponentsEnvio } from "@/lib/utils/whatsapp-template";
-import { resolverValoresPlantilla } from "@/lib/types/plantilla-datos";
+import { necesitaZona, resolverValoresPlantilla } from "@/lib/types/plantilla-datos";
 import { renderPlantilla } from "@/lib/utils/plantilla-mensaje";
-import { fechaCalendarioCR, inicioDelDiaCREnUtc } from "@/lib/utils/fecha-cr";
+import { fechaCalendario, inicioDelDiaEnUtc } from "@/lib/utils/calendario-zona";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IOrdenEnvioReader } from "@/lib/repositories/OrdenEnvioReader";
 import type { IChatConversacionRepository } from "@/lib/interfaces/repositories/IChatConversacionRepository";
@@ -57,6 +59,11 @@ export interface ChatWhatsappDeps {
   /** Idioma por defecto si el template local no trae idioma sincronizado. */
   idiomaPorDefecto?: string;
   now?: () => Date;
+  /**
+   * SLT-42 (R22, R28; decisión del humano tras T5.5): el país de la empresa de la sesión, para el
+   * corte de «hoy» del hilo. Sin él, la real (`construirReglasPaisEmpresa`).
+   */
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
 }
 
 /**
@@ -71,6 +78,8 @@ async function buildEnvioService(): Promise<ChatWhatsappService | null> {
   return new ChatWhatsappService({
     conversacionRepo: new ChatConversacionRepository(prisma),
     mensajeRepo: new ChatMensajeRepository(prisma),
+    // SLT-42 (R18): el telefono del cliente se normaliza con el pais de la empresa.
+    reglasPais: construirReglasPaisEmpresa(prisma),
     client: new WhatsappCloudClient({ config, logger: consoleLogger, fetchImpl }),
     // Feature 316: cliente de SUBIDA aparte del de envio (design 3.1). Sin el, `enviarMedia`
     // del service falla claro en vez de a medias.
@@ -276,7 +285,12 @@ export async function enviarPlantillaChat(
 
   // Mapeo variables->orden y construccion de componentes: MISMA logica que el envio server-side
   // de la feature 107 (no se reinventa). El cuerpo renderizado se persiste para el historial.
-  const valores = resolverValoresPlantilla(plantilla.variables, datos);
+  // SLT-42 (R22, R28): las fechas con hora, en la zona del pais de la empresa. Solo se lee si la
+  // plantilla pinta alguna; sin zona en el pais, falla antes de enviar nada.
+  const zona = necesitaZona(plantilla.variables)
+    ? await (deps.reglasPais ?? construirReglasPaisEmpresa(prisma)).zonaHoraria()
+    : undefined;
+  const valores = resolverValoresPlantilla(plantilla.variables, datos, zona);
   const componentes = construirComponentsEnvio(plantilla.variables, valores);
   const cuerpoRenderizado = renderPlantilla(plantilla.cuerpo, valores);
   const idioma =
@@ -354,10 +368,12 @@ export async function listarHiloChat(
   // corte un saliente de ayer dejaba el chat mudo para siempre (ver `ListarHiloChatResult`).
   // El HISTORIAL que se devuelve no se toca: se sigue viendo completo.
   //
-  // La cota es `inicioDelDiaCREnUtc` (06:00Z del dia CR), NO `startOfDayCR`: aqui se compara
-  // contra `ocurrido_at`, que es un `timestamp`, y confundirlas es el off-by-one de seis horas
-  // que documenta `lib/utils/fecha-cr.ts:27-29`.
-  const inicioDelDia = inicioDelDiaCREnUtc(fechaCalendarioCR(ahoraDate)).getTime();
+  // La cota es `inicioDelDiaEnUtc` (las 00:00 locales como instante), NO la medianoche UTC de la
+  // fecha: aqui se compara contra `ocurrido_at`, que es un `timestamp`, y confundirlas es el
+  // off-by-one del desfase de la zona.
+  // SLT-42 (R22, R28): «hoy» es el de la zona del pais de la empresa de la sesion.
+  const zona = await (deps.reglasPais ?? construirReglasPaisEmpresa(prisma)).zonaHoraria();
+  const inicioDelDia = inicioDelDiaEnUtc(fechaCalendario(ahoraDate, zona), zona).getTime();
   const deHoy = mensajes.filter((m) => m.ocurridoAt.getTime() >= inicioDelDia);
   const hayEntranteHoy = deHoy.some((m) => m.direccion === "entrante");
   const haySalienteHoy = deHoy.some((m) => m.direccion === "saliente");
@@ -369,7 +385,7 @@ export async function listarHiloChat(
     // Cualquier saliente de hoy cuenta, no solo una plantilla: un texto libre —o la
     // bienvenida automatica— tambien deja la conversacion esperando respuesta del cliente.
     plantillaBloqueada: haySalienteHoy && !hayEntranteHoy,
-    // `&& ventanaAbierta` es un cinturon, no un caso real: el inicio del dia CR esta como
+    // `&& ventanaAbierta` es un cinturon, no un caso real: el inicio del dia local esta como
     // mucho a 24 h de `now`, asi que un entrante de hoy implica ventana abierta. Se deja
     // explicito para que la UI no prometa nunca un envio que `enviarMensajeChat` rechazaria.
     textoLibreHabilitado: hayEntranteHoy && ventanaAbierta,

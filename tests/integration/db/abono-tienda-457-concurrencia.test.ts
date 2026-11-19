@@ -37,6 +37,18 @@ import {
   sembrarPersonas459,
   type Personas459,
 } from "./_fixtures/escrituras-459";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+
+// SLT-42 (T5.4): la zona del pais de la empresa es la de CR, como antes. Las reglas reales leen el pais
+// de la empresa en curso con el cliente global, que no ve la empresa de una transaccion revertida ni
+// tiene empresa fuera de `conEmpresa`; la zona por pais la miden `hora-por-pais-wallet` y `demo-qa`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
 
 // SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
 vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
@@ -141,6 +153,9 @@ describeSiHayBase("457/T5.2 — concurrencia del pago de una tienda a la empresa
       URLS_NO_USADAS,
       ((fn: (tx: never) => Promise<unknown>) =>
         cliente.$transaction((tx) => fn(tx as never), { timeout: 30_000 })) as unknown as AbonoTiendaTxRunner,
+        undefined,
+        undefined,
+        reglasPaisFijas(),
     );
   }
 
@@ -220,6 +235,10 @@ describeSiHayBase("457/T5.2 — concurrencia del pago de una tienda a la empresa
         (fn) => clienteB.$transaction((tx) => fn(tx as never), { timeout: 30_000 }),
         new CajaPagoTiendaFeedService(new WalletMovimientoRepository(clienteB)),
         new LiquidacionRepartoRepository(clienteB),
+        undefined,
+        undefined,
+        undefined,
+        reglasPaisFijas(),
       );
       let termino = false;
       const pagoTienda = liquidacion
@@ -255,6 +274,9 @@ describeSiHayBase("457/T5.2 — concurrencia del pago de una tienda a la empresa
         URLS_NO_USADAS,
         ((fn: (tx: never) => Promise<unknown>) =>
           clienteB.$transaction((tx) => fn(tx as never), { timeout: 30_000 })) as unknown as PagoPorCuentaTxRunner,
+          undefined,
+          undefined,
+          reglasPaisFijas(),
       );
       let termino = false;
       const gasto = pagoPorCuenta
@@ -335,6 +357,9 @@ describeSiHayBase("457/T5.2 — concurrencia del pago de una tienda a la empresa
         URLS_NO_USADAS,
         ((fn: (tx: never) => Promise<unknown>) =>
           clienteA.$transaction((tx) => fn(tx as never), { timeout: 30_000 })) as unknown as AbonoTiendaTxRunner,
+          undefined,
+          undefined,
+          reglasPaisFijas(),
       );
       const promesaAnular = anulador.anular({ abonoId: previo.abono.id, motivo: "se registro dos veces" }, p.maestro);
       await dentro.p;
@@ -388,6 +413,9 @@ describeSiHayBase("457/T5.2 — concurrencia del pago de una tienda a la empresa
           URLS_NO_USADAS,
           ((fn: (tx: never) => Promise<unknown>) =>
             clienteUno.$transaction((tx) => fn(tx as never), { timeout: 10_000 })) as unknown as AbonoTiendaTxRunner,
+            undefined,
+            undefined,
+            reglasPaisFijas(),
         );
         const r = await svc.registrar(abonoDe(p, "4000.00"), null, p.maestro);
         expect(r.status).toBe("ok");

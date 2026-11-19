@@ -134,8 +134,9 @@ Al terminar cada pasada devuelve SOLO las rutas y una linea de veredicto.
   cambio, la estructura de un modulo) usa primero el grafo: `search_graph`, `trace_path`,
   `get_code_snippet`, `search_code`. Grep/Read para lo que no es codigo (docs, specs, JSON,
   configs, textos de UI) y para leer un archivo antes de editarlo.
-- Tu proyecto es el del arbol principal (`list_projects`, `root_path` = raiz del repo):
-  no extraes de `.worktrees/`.
+- Tu proyecto es el del arbol principal: la ruta absoluta de la raiz del repo con `:/` y `/`
+  cambiados por `-`. Confirma con `index_status`; no uses `list_projects` (tarda 5-15 s). No
+  extraes de `.worktrees/`.
 - No indexas: el indice lo mantiene el leader. Lo que tocaste en esta tanda puede no estar
   todavia; ahi usa Grep/Read.
 - Si el MCP no responde, sigue con Grep/Read y anotalo en tu informe. No pares.

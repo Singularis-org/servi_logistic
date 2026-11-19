@@ -43,6 +43,10 @@ const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
 interface Fotografia {
   pasos: Record<string, string>;
+  /** SLT-195 (R1198): el cierre del dia del escenario, y quien deberia haberlo aprobado. */
+  cierreDelDia: { destinoTipo: string; resueltoPor: string | null; pagoIndependienteEfectivo: boolean };
+  maestroId: string;
+  aprobadorId: string;
   antes: LecturaCaja459;
   despues: LecturaCaja459;
   filas: Awaited<ReturnType<typeof filasDelEscenario>>;
@@ -112,6 +116,12 @@ describeSiHayBase("⭑ 459/FASE 0 — la fotografia de lo que no puede cambiar (
         tiendaA: await leerTienda(s, esc.maestro, esc.tiendaA),
         tiendaB: await leerTienda(s, esc.maestro, esc.tiendaB),
         mensajero: await leerMensajero(s, esc.maestro, esc.mensajeroId),
+        cierreDelDia: await tx.cierreDia.findUniqueOrThrow({
+          where: { id: esc.cierreId },
+          select: { destinoTipo: true, resueltoPor: true, pagoIndependienteEfectivo: true },
+        }),
+        maestroId: esc.maestro.usuarioId,
+        aprobadorId: esc.aprobador.usuarioId,
       };
       // FICHA 458-B — SOLO DESPUES de la foto: anular el cobro por devolución a origen aprobado del escenario.
       const cobro = await tx.rechazoTiendaCobro.findFirstOrThrow({
@@ -159,6 +169,16 @@ describeSiHayBase("⭑ 459/FASE 0 — la fotografia de lo que no puede cambiar (
       aprobarGastoFijo: "ok",
       registrarPremio: "ok",
       anularPremio: "ok",
+    });
+  });
+
+  it("SLT-195 R1198: el cierre del dia es de la CENTRAL, nuevo, y lo aprobo el aprobador (acceso total)", () => {
+    // Review B1: el aprobador NO es el maestro que registra y lee el resto.
+    expect(foto().aprobadorId, "SLT-195 B1: aprobador y maestro son la misma persona").not.toBe(foto().maestroId);
+    expect(foto().cierreDelDia).toEqual({
+      destinoTipo: "bodega_central",
+      resueltoPor: foto().aprobadorId,
+      pagoIndependienteEfectivo: true,
     });
   });
 
@@ -311,18 +331,21 @@ describeSiHayBase("⭑ 459/FASE 0 — la fotografia de lo que no puede cambiar (
   // R94 — cuenta por pagar y libro del mensajero
   // ───────────────────────────────────────────────────────────────────────────────────────────
   //
-  // P = 3 entregadas × 1 500,00 = 4 500,00 ; E = 2 000,00 (solo O1 en efectivo) → pagado al
-  // aprobar min(P, E) = 2 000,00 ; pendiente 2 500,00.
+  // P = 3 entregadas × 1 500,00 = 4 500,00 ; E = 2 000,00 (solo O1 en efectivo).
+  // SLT-195 (SLT-123 R313, R321): el mensajero es de la CENTRAL y su cierre es NUEVO (marca
+  // `pago_independiente_efectivo`): aprobar solo devenga P; el efectivo ya NO se descuenta como pago.
+  // Antes (mensajero de satelite, regla vieja): pagado al aprobar min(P, E) = 2 000,00.
   // Reparto 1 000,00 → su pago anulado (contraasiento `ajuste_devengo` 1 000,00) → pago 664,00.
   // Premio 5 000,00 devengado y anulado (`ajuste_pago` 5 000,00).
-  // devengado = 4 500 + 5 000 + 1 000 = 10 500,00 ; pagado = 2 000 + 1 000 + 664 + 5 000 = 8 664,00
-  // cuenta por pagar = 1 836,00 (= 2 500 − 664)
+  // devengado = 4 500 + 5 000 + 1 000 = 10 500,00 ; pagado = 1 000 + 664 + 5 000 = 6 664,00
+  // (antes 8 664,00, con los 2 000 del efectivo)
+  // cuenta por pagar = 10 500 − 6 664 = 3 836,00 (antes 1 836,00; sube los 2 000 del efectivo)
 
   it("R94: cuenta por pagar del mensajero (listado y libro coinciden)", () => {
     const cuenta = {
       devengado: "10500.00",
-      pagado: "8664.00",
-      cuentaPorPagar: "1836.00",
+      pagado: "6664.00", // SLT-195: 1 000 + 664 + 5 000 (SLT-123 R313: sin el pago_efectivo de 2 000)
+      cuentaPorPagar: "3836.00", // SLT-195: 10 500 − 6 664 (SLT-123 R321)
       signo: "positivo",
     };
     expect(foto().mensajero).toEqual({ ...cuenta, cuentaDelLibro: cuenta });
@@ -402,7 +425,8 @@ describeSiHayBase("⭑ 459/FASE 0 — la fotografia de lo que no puede cambiar (
       "cierre_dia|devengo|pago_devengado|4500.00",
       "cierre_dia|devengo|premio_ranking|5000.00",
       "cierre_dia|pago|ajuste_pago|5000.00",
-      "cierre_dia|pago|pago_efectivo|2000.00",
+      // SLT-195 (SLT-123 R313, R1200): cierre NUEVO de la central → solo `pago_devengado = P`; ya no
+      // hay `cierre_dia|pago|pago_efectivo|2000.00` (min(P = 4 500, E = 2 000)) de la regla vieja.
       "pago_mensajero|devengo|ajuste_devengo|1000.00",
       "pago_mensajero|pago|liquidacion|1000.00",
       "pago_mensajero|pago|liquidacion|664.00",
@@ -506,7 +530,8 @@ describeSiHayBase("⭑ 459/FASE 0 — la fotografia de lo que no puede cambiar (
       expect(delta(foto(), (l) => l.resumen.enCaja)).toBe("-74328.52");
       expect(delta(foto(), (l) => l.resumen.capital)).toBe("0.00");
       expect(foto().tiendaB.saldo).toBe("5515.12");
-      expect(foto().mensajero.cuentaPorPagar).toBe("1836.00");
+      // SLT-195 (SLT-123 R321): 10 500 − 6 664 = 3 836,00 (antes 1 836,00, con el pago_efectivo de 2 000).
+      expect(foto().mensajero.cuentaPorPagar).toBe("3836.00");
     });
   });
 

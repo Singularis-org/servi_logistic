@@ -19,6 +19,7 @@ import {
 } from "./wallet-mensajeros-labels";
 import { fechaDiaMovimientoCR } from "@/lib/utils/fecha-dia-iso";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 205 (T5.2/T6.2, design §6/§8) — la PREVISUALIZACIÓN del reparto, dentro del
 // formulario de pago.
 //
@@ -222,6 +223,7 @@ function ImputacionesPrevistas({
       </p>
     );
   }
+  // SLT-81: la UI sigue en la zona de CR
   return (
     <ul className="flex flex-col gap-2">
       {imputaciones.map((imputacion) => (
@@ -233,7 +235,7 @@ function ImputacionesPrevistas({
             <span className="text-sm font-medium">
               {/* El cierre se nombra por el día TRABAJADO, que es la antigüedad que ordena
                   el reparto (R8). La hora no aporta nada acá. */}
-              {REPARTO_PREVISUALIZACION.cierre(fechaDiaMovimientoCR(imputacion.solicitadoAt))}
+              {REPARTO_PREVISUALIZACION.cierre(fechaDiaMovimientoCR(imputacion.solicitadoAt, ZONA_CR))}
             </span>
             {/* R33: la parcial va MARCADA. Solo la última puede serlo. */}
             {imputacion.parcial ? (
@@ -241,7 +243,7 @@ function ImputacionesPrevistas({
             ) : null}
             <EnlaceCierre
               cierreId={imputacion.cierreId}
-              nombre={CIERRE_ENLACE.delDia(fechaDiaMovimientoCR(imputacion.solicitadoAt), mensajero)}
+              nombre={CIERRE_ENLACE.delDia(fechaDiaMovimientoCR(imputacion.solicitadoAt, ZONA_CR), mensajero)}
             />
           </div>
           <p className="text-sm font-medium text-warning-strong">

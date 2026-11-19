@@ -4,7 +4,6 @@ import type { ReactNode } from "react";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Modal } from "@/components/shared/Modal";
 import type { Column } from "@/components/shared/DataTable";
 import { money, moneyTope } from "@/lib/config/moneda";
 import { EMPRESA } from "@/lib/config/marca";
@@ -43,7 +42,6 @@ import {
   COMISION_CON_IVA_LABEL,
   FLETE_DEV_CON_IVA_LABEL,
   FLETE_NO_ENTREGADAS_CON_IVA_LABEL,
-  FLETE_NO_ENTREGADAS_NOTA,
   fleteDevConIvaDeGestion,
   fleteNoEntregaLabel,
   fulfillmentDeIngreso,
@@ -53,16 +51,14 @@ import {
   INGRESO_TOTAL_COL,
   CAUSA_INCIDENTE_COL,
   INDEMNIZACION_COL,
-  // Feature 393 (C1) — los trece rotulos de las DOS CASCADAS del cierre de bodega. Se importan
-  // aqui SOLO para re-exportarlos: este archivo es la puerta por la que los modulos de cierre
-  // piden sus etiquetas desde la tanda E de la 170, y `CascadaDinero` / `CierresBodegaAdminModule`
-  // no tienen por que saber que hoy viven un archivo mas alla.
-  CASCADA_DUENO_TITULO,
+  // Feature 393 (C1) — los doce rotulos vivos de las DOS CASCADAS del cierre de bodega. Se
+  // importan aqui SOLO para re-exportarlos: este archivo es la puerta por la que los modulos de
+  // cierre piden sus etiquetas desde la tanda E de la 170, y `CierresBodegaAdminModule` no tiene
+  // por que saber que hoy viven un archivo mas alla.
   CASCADA_CENTRAL_TITULO,
   PARA_LA_TIENDA_LABEL,
   PARA_LA_CENTRAL_LABEL,
   NETO_EMPRESA_LABEL,
-  COBRADO_SOBRE_RECAUDADO_LABEL,
   FACTURADO_EMPRESA_LABEL,
   GANA_BODEGA_SATELITE_LABEL,
   PARA_LA_CENTRAL_NOTA,
@@ -71,26 +67,8 @@ import {
   EFECTIVO_NO_CUBRE_NOTA,
   GANA_BODEGA_SATELITE_NOTA,
   GANA_BODEGA_SATELITE_NOTA_MODELO_NUEVO,
-  FLETE_RECHAZO_NO_DEDUCIBLE_NOTA,
-  // FICHA 395 — los rotulos y las notas de las TRES cascadas del cierre de MENSAJERO. Mismo
-  // camino y mismo motivo que los de la 393: el texto vive en el modulo PURO y las pantallas lo
-  // piden por esta puerta, que es donde ya piden el resto.
-  GANA_LA_TIENDA_LABEL,
-  GANA_LA_TIENDA_NOTA,
-  GANA_LA_TIENDA_NEGATIVO_NOTA,
-  PAGO_TIENDA_HOY_NOTA,
-  COBRADO_SOBRE_RECAUDADO_NOTA,
-  NETO_EMPRESA_NOTA,
-  NETO_EMPRESA_NOTA_MODELO_NUEVO,
-  NETO_EMPRESA_NEGATIVO_NOTA,
-  FLETE_RECHAZO_YA_COBRADO_NOTA,
-  FLETE_RECHAZO_AUN_NO_COBRADO_NOTA,
-  FLETE_RECHAZO_NO_SE_COBRARA_NOTA,
-  CASCADA_FACTURA_TIENDA_TITULO,
-  CASCADA_NETO_EMPRESA_TITULO,
-  // SL-39 (R24) — la línea «IVA facturado» de las cascadas «Lo que le queda a la empresa».
+  // SL-39 (R24) — la línea «IVA facturado» del bloque «Liquidación» del detalle.
   IVA_FACTURADO_LABEL,
-  IVA_FACTURADO_NOTA,
   // FICHA 408 — el traductor del motivo de un rechazo automatico. Vive en el modulo PURO
   // porque lo leen tambien las tres descargas, que no pueden arrastrar `Card`/`Badge`.
   MOTIVO_RECHAZO_AUTOMATICO_COLA,
@@ -138,7 +116,6 @@ export {
   COMISION_CON_IVA_LABEL,
   FLETE_DEV_CON_IVA_LABEL,
   FLETE_NO_ENTREGADAS_CON_IVA_LABEL,
-  FLETE_NO_ENTREGADAS_NOTA,
   fleteDevConIvaDeGestion,
   fleteNoEntregaLabel,
   fulfillmentDeIngreso,
@@ -146,15 +123,13 @@ export {
   INGRESO_TOTAL_COL,
   CAUSA_INCIDENTE_COL,
   INDEMNIZACION_COL,
-  // Feature 393 (C1/R33) — las trece de las dos cascadas, por el mismo camino y por el mismo
+  // Feature 393 (C1/R33) — las doce vivas de las dos cascadas, por el mismo camino y por el mismo
   // motivo: el texto vive en el modulo PURO (lo necesita el archivo de la descarga, que no puede
   // arrastrar `Card`/`Badge`/`DataTable`) y las pantallas lo piden aqui, donde ya piden el resto.
-  CASCADA_DUENO_TITULO,
   CASCADA_CENTRAL_TITULO,
   PARA_LA_TIENDA_LABEL,
   PARA_LA_CENTRAL_LABEL,
   NETO_EMPRESA_LABEL,
-  COBRADO_SOBRE_RECAUDADO_LABEL,
   FACTURADO_EMPRESA_LABEL,
   GANA_BODEGA_SATELITE_LABEL,
   PARA_LA_CENTRAL_NOTA,
@@ -163,24 +138,8 @@ export {
   EFECTIVO_NO_CUBRE_NOTA,
   GANA_BODEGA_SATELITE_NOTA,
   GANA_BODEGA_SATELITE_NOTA_MODELO_NUEVO,
-  FLETE_RECHAZO_NO_DEDUCIBLE_NOTA,
-  // FICHA 395 — las doce de las tres cascadas del cierre de MENSAJERO, por el mismo camino.
-  GANA_LA_TIENDA_LABEL,
-  GANA_LA_TIENDA_NOTA,
-  GANA_LA_TIENDA_NEGATIVO_NOTA,
-  PAGO_TIENDA_HOY_NOTA,
-  COBRADO_SOBRE_RECAUDADO_NOTA,
-  NETO_EMPRESA_NOTA,
-  NETO_EMPRESA_NOTA_MODELO_NUEVO,
-  NETO_EMPRESA_NEGATIVO_NOTA,
-  FLETE_RECHAZO_YA_COBRADO_NOTA,
-  FLETE_RECHAZO_AUN_NO_COBRADO_NOTA,
-  FLETE_RECHAZO_NO_SE_COBRARA_NOTA,
-  CASCADA_FACTURA_TIENDA_TITULO,
-  CASCADA_NETO_EMPRESA_TITULO,
-  // SL-39 (R24) — por el mismo camino: las dos cascadas que lo pintan lo piden por esta puerta.
+  // SL-39 (R24) — por el mismo camino: el bloque «Liquidación» de `cierre-factura` lo pide por esta puerta.
   IVA_FACTURADO_LABEL,
-  IVA_FACTURADO_NOTA,
   // FICHA 408 — por el mismo camino y por el mismo motivo: el traductor del motivo vive en el
   // modulo PURO (lo necesitan las tres descargas) y las pantallas lo piden por esta puerta,
   // que es donde ya piden el resto. `cierre-factura` es quien lo lee de aqui.
@@ -200,12 +159,18 @@ export {
 // `vencido` (generado por el corte diario: dinero sin conciliar mas alla del plazo)
 // del `solicitado` en la misma cola de pendientes. `vencido` -> destructive (rojo,
 // atencion); `solicitado` -> secondary (neutro). Los resueltos conservan su color.
+//
+// SLT-102 «Cola de cierres única: mensajeros (central y satélite)» (decisión de Carlos 2026-11-10,
+// fiel al canvas `ColaCierres.dc.html`): las pastillas toman los colores del canvas — «Solicitado»
+// ámbar (`warning`: #fef3c7 / #92400e), «Aprobado» verde (`success`: #d1fae5 / #047857),
+// «Rechazado» y «Vencido» rojo (`destructive` = par `danger`: #fee2e2 / #b91c1c). Un solo
+// componente: el detalle hereda los mismos colores.
 export const ESTADO_BADGE_VARIANT: Record<
   CierreEstado,
-  "default" | "secondary" | "destructive" | "outline"
+  "warning" | "success" | "destructive"
 > = {
-  solicitado: "secondary",
-  aprobado: "outline",
+  solicitado: "warning",
+  aprobado: "success",
   rechazado: "destructive",
   vencido: "destructive",
 };
@@ -590,18 +555,13 @@ export function esMontoNegativo(value: string | null): boolean {
 }
 
 /**
- * ¿El monto (STRING money-safe) es cero? Comparación TEXTUAL ("0", "0.00", "-0.00"), no
- * aritmética: nada de `Number`/`parseFloat` (R13), igual que `esMontoNegativo`.
+ * ¿El monto (STRING money-safe) es cero? Comparación TEXTUAL, no aritmética (R13).
  *
- * FICHA 395 — vivía privada dentro de `cierre-factura.tsx`, donde apaga el renglón de un
- * concepto que no se cobró. La necesita también el detalle del cierre de mensajero, para decidir
- * si hay un flete por rechazo del que hablar antes de escribir su tiempo verbal. Se MUEVE aquí
- * en vez de copiarse: dos lectores del cero que se separen es la misma plata leída distinta
- * según por qué pantalla se entre.
+ * SLT-96 — PROMOVIDA a `components/shared/monto-cliente.ts`, porque también la lee el diálogo
+ * compartido de «Marcar recibido». Se re-exporta aquí para que sus lectores de `app/(app)/`
+ * (`cierre-factura`, `SaldosSatelitesTable`) no cambien de import.
  */
-export function esMontoCero(monto: string): boolean {
-  return /^-?0(\.0+)?$/.test(monto.trim());
-}
+export { esMontoCero } from "@/components/shared/monto-cliente";
 
 /** Une la jerarquía geográfica en una línea legible (omite los vacíos). */
 export function ubicacion(g: CierreDetalleGestion): string {
@@ -1292,39 +1252,5 @@ export function TotalesIngresoPanel({
         </CardContent>
       </Card>
     </section>
-  );
-}
-
-/**
- * Visor de la evidencia fotográfica (URL FIRMADA, R12): nunca el storage_path
- * crudo. `url === null` → cerrado. Modal reutilizable entre módulos.
- */
-export function VisorEvidencia({
-  url,
-  onClose,
-}: {
-  url: string | null;
-  onClose: () => void;
-}) {
-  return (
-    <Modal
-      open={url !== null}
-      onOpenChange={(next) => {
-        if (!next) onClose();
-      }}
-      title="Evidencia de la gestión"
-      confirmLabel="Cerrar"
-      hideCancel
-      onConfirm={onClose}
-    >
-      {url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={url}
-          alt="Evidencia fotográfica de la gestión"
-          className="max-h-[60vh] w-full rounded-md object-contain"
-        />
-      ) : null}
-    </Modal>
   );
 }

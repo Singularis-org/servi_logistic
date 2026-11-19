@@ -9,10 +9,13 @@ import type { DeudaPlataformaDTO } from "@/lib/types/cobro-plataforma";
 //
 // SL-45 (design §3, R13, R14): resta también los pagos vigentes y decide el estado aquí, en el
 // servidor, para que la pantalla no compare importes.
+//
+// SLT-118 (design §5; R18): las cuotas de las facturas cerradas llegan como el tipo `cuota` y suman
+// como un cargo. Solo `reverso` resta.
 
 /**
- * Σ cargo − Σ reverso − pagos vigentes, con su estado y su importe en positivo. Un tipo ausente
- * aporta 0. `pagosVigentes` es la Σ de los pagos sin anular, como texto.
+ * Σ cargo − Σ reverso + Σ cuota − pagos vigentes, con su estado y su importe en positivo. Un tipo
+ * ausente aporta 0. `pagosVigentes` es la Σ de los pagos sin anular, como texto.
  */
 export function derivarDeudaPlataforma(
   sumas: readonly SumaCobroPlataformaPorTipo[],
@@ -21,7 +24,7 @@ export function derivarDeudaPlataforma(
   let deuda = new Prisma.Decimal(0);
   for (const s of sumas) {
     const monto = new Prisma.Decimal(s.monto);
-    deuda = s.tipo === "cargo" ? deuda.add(monto) : deuda.sub(monto);
+    deuda = s.tipo === "reverso" ? deuda.sub(monto) : deuda.add(monto);
   }
   deuda = deuda.sub(new Prisma.Decimal(pagosVigentes));
   // Un cero con signo (`-0`) se pintaría «-0.00»: el cero es siempre «al día» y sin signo.

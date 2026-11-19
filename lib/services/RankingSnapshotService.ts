@@ -22,6 +22,8 @@ import {
   type AgregadoOrdenable,
 } from "@/lib/ranking/orden-ranking";
 import { fechaComoDate, fechaObjetivo, ventanaDelDia } from "@/lib/ranking/snapshot-dia";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 
 // Feature 196 (design §4.1) — logica de negocio del snapshot diario del ranking. No conoce
 // HTTP ni Prisma: repos por inyeccion, instante por parametro, config inyectable.
@@ -58,6 +60,8 @@ export class RankingSnapshotService implements IRankingSnapshotService {
     private readonly userRepo: IUserRepository,
     private readonly premioRepo: IPremioRankingRepository,
     config?: RankingConfig,
+    /** SLT-42 (R22, R24, R28): la zona del pais de la empresa, de la que sale el dia que cerro. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {
     this.config = config ?? loadRankingConfig();
   }
@@ -88,8 +92,9 @@ export class RankingSnapshotService implements IRankingSnapshotService {
    * intactos: la renumeracion no reordena nada.
    */
   async congelar(now: Date): Promise<CongelarResult> {
-    const fecha = fechaObjetivo(now);
-    const { desde, hasta } = ventanaDelDia(fecha);
+    const zona = await zonaDeLaEmpresa(this.reglasPais, "RankingSnapshotService.congelar"); // SLT-42 (R24, R28)
+    const fecha = fechaObjetivo(now, zona);
+    const { desde, hasta } = ventanaDelDia(fecha, zona);
 
     // Feature 246 (T6.3, R41/R46) — el dia congelado, en la convencion `@db.Date`. Es EXACTAMENTE
     // el valor que ya se le pasa a `crearSnapshot` como `fecha` (mas abajo): no hay helper nuevo

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Prisma } from "@prisma/client";
 
 import { UsuarioService } from "@/lib/services/UsuarioService";
+import { CR, reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 import type { IUserRepository, UsuarioPublico } from "@/lib/interfaces/repositories/IUserRepository";
 import type { Actor, IUsuarioService } from "@/lib/interfaces/services/IUsuarioService";
 import { cambiarEstadoUsuario } from "@/lib/actions/usuarios";
@@ -43,12 +44,12 @@ function usuario(overrides: Partial<UsuarioPublico> = {}): UsuarioPublico {
     id: "usr-1",
     nombre: "Ana Torres",
     email: "ana@example.com",
-    telefono: "099",
+    telefono: "88880000",
     estado: "inactivo",
-    cedula: "1710034065",
-    tipoIdentificacionId: "tipo-1",
+    cedula: "171003406",
+    tipoIdentificacionId: "tipo-cr-cedula",
     rolId: "rol-tienda",
-    fulfillment: false,
+    seRecogeEnTienda: true,
     createdAt: new Date("2026-01-01"),
     updatedAt: new Date("2026-01-01"),
     ...overrides,
@@ -72,9 +73,9 @@ function buildRepo(overrides: Partial<IUserRepository> = {}): IUserRepository {
 const altaTienda = {
   nombre: "Ana Torres",
   email: "ana@example.com",
-  telefono: "099",
-  tipoIdentificacionId: "tipo-1",
-  cedula: "1710034065",
+  telefono: "88880000",
+  tipoIdentificacionId: "tipo-cr-cedula",
+  cedula: "171003406",
   rolId: "rol-tienda",
   passwordMode: "manual" as const,
   password: "Abcdef1!",
@@ -86,13 +87,13 @@ let service: UsuarioService;
 beforeEach(() => {
   vi.clearAllMocks();
   repo = buildRepo();
-  service = new UsuarioService(repo);
+  service = new UsuarioService(repo, undefined, undefined, undefined, undefined, reglasPaisFijas(CR));
 });
 
 describe("SL-24 R27 — UsuarioService.crear con el tope del rol lleno", () => {
   it("devuelve el mensaje bajo `rolId` (la clave del campo de rol en UsuarioForm)", async () => {
     repo = buildRepo({ create: vi.fn().mockRejectedValue(errorDelTrigger()) });
-    service = new UsuarioService(repo);
+    service = new UsuarioService(repo, undefined, undefined, undefined, undefined, reglasPaisFijas(CR));
 
     const r = await service.crear(altaTienda, MAESTRO);
 
@@ -101,7 +102,7 @@ describe("SL-24 R27 — UsuarioService.crear con el tope del rol lleno", () => {
 
   it("también desde SQL a mano (P2010)", async () => {
     repo = buildRepo({ create: vi.fn().mockRejectedValue(errorDelTriggerP2010()) });
-    service = new UsuarioService(repo);
+    service = new UsuarioService(repo, undefined, undefined, undefined, undefined, reglasPaisFijas(CR));
 
     expect(await service.crear(altaTienda, MAESTRO)).toEqual({
       status: "validation_error",
@@ -112,7 +113,7 @@ describe("SL-24 R27 — UsuarioService.crear con el tope del rol lleno", () => {
   it("un error que no es del tope sigue saliendo tal cual (no se disfraza de tope)", async () => {
     const otro = new Error("conexion caida");
     repo = buildRepo({ create: vi.fn().mockRejectedValue(otro) });
-    service = new UsuarioService(repo);
+    service = new UsuarioService(repo, undefined, undefined, undefined, undefined, reglasPaisFijas(CR));
 
     await expect(service.crear(altaTienda, MAESTRO)).rejects.toBe(otro);
   });
@@ -120,7 +121,7 @@ describe("SL-24 R27 — UsuarioService.crear con el tope del rol lleno", () => {
   it("un SL024 sin el JSON del tope no es un tope: sale tal cual", async () => {
     const roto = errorDelTrigger("tope_plan sin json");
     repo = buildRepo({ create: vi.fn().mockRejectedValue(roto) });
-    service = new UsuarioService(repo);
+    service = new UsuarioService(repo, undefined, undefined, undefined, undefined, reglasPaisFijas(CR));
 
     await expect(service.crear(altaTienda, MAESTRO)).rejects.toBe(roto);
   });
@@ -132,7 +133,7 @@ describe("SL-24 R27 — UsuarioService.actualizar al cambiar a un rol con el top
       findById: vi.fn().mockResolvedValue(usuario({ estado: "activo", rolId: "rol-admin" })),
       update: vi.fn().mockRejectedValue(errorDelTrigger()),
     });
-    service = new UsuarioService(repo);
+    service = new UsuarioService(repo, undefined, undefined, undefined, undefined, reglasPaisFijas(CR));
 
     const r = await service.actualizar("usr-1", { rolId: "rol-tienda" }, MAESTRO);
 
@@ -143,7 +144,7 @@ describe("SL-24 R27 — UsuarioService.actualizar al cambiar a un rol con el top
 describe("SL-24 R27 — UsuarioService.cambiarEstado al activar con el tope lleno", () => {
   it("activar desde `inactivo` devuelve `tope_plan` con el mensaje", async () => {
     repo = buildRepo({ setEstado: vi.fn().mockRejectedValue(errorDelTrigger()) });
-    service = new UsuarioService(repo);
+    service = new UsuarioService(repo, undefined, undefined, undefined, undefined, reglasPaisFijas(CR));
 
     const r = await service.cambiarEstado("usr-1", { estado: "activo" }, MAESTRO);
 
@@ -155,7 +156,7 @@ describe("SL-24 R27 — UsuarioService.cambiarEstado al activar con el tope llen
       findById: vi.fn().mockResolvedValue(usuario({ estado: "bloqueado" })),
       setEstado: vi.fn().mockRejectedValue(errorDelTrigger()),
     });
-    service = new UsuarioService(repo);
+    service = new UsuarioService(repo, undefined, undefined, undefined, undefined, reglasPaisFijas(CR));
 
     expect(await service.cambiarEstado("usr-1", { estado: "activo" }, MAESTRO)).toEqual({
       status: "tope_plan",
@@ -166,7 +167,7 @@ describe("SL-24 R27 — UsuarioService.cambiarEstado al activar con el tope llen
   it("un error que no es del tope sigue saliendo tal cual", async () => {
     const otro = new Error("conexion caida");
     repo = buildRepo({ setEstado: vi.fn().mockRejectedValue(otro) });
-    service = new UsuarioService(repo);
+    service = new UsuarioService(repo, undefined, undefined, undefined, undefined, reglasPaisFijas(CR));
 
     await expect(service.cambiarEstado("usr-1", { estado: "activo" }, MAESTRO)).rejects.toBe(otro);
   });
@@ -180,7 +181,7 @@ describe("SL-24 R27 — UsuarioService.cambiarEstado al activar con el tope llen
 describe("SL-24 R28 — la action entrega `tope_plan` a la pantalla sin transformarlo", () => {
   it("cambiarEstadoUsuario devuelve { status: 'tope_plan', mensaje }", async () => {
     repo = buildRepo({ setEstado: vi.fn().mockRejectedValue(errorDelTrigger()) });
-    const usuarioService: IUsuarioService = new UsuarioService(repo);
+    const usuarioService: IUsuarioService = new UsuarioService(repo, undefined, undefined, undefined, undefined, reglasPaisFijas(CR));
 
     const r = await cambiarEstadoUsuario("usr-1", { estado: "activo" }, {
       usuarioService,

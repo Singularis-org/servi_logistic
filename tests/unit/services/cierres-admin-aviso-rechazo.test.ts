@@ -17,6 +17,9 @@ import { liberarAlAprobarCierreNoOp } from "@/lib/services/liberacion-al-aprobar
 import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
 import { bloqueoDe } from "@/tests/fixtures/bloqueo-cierre";
 import { sinRetenidas } from "@/tests/fixtures/retenidas-doble";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { dobleCierresAdmin } from "@/tests/fixtures/dobles/cierres-admin-repository";
 
 /**
  * FEATURE 271 (T6.6, R42) + **FICHA 412 (T5.2, R1/R3/R4/R5/R17)** — QUÉ AVISA UN RECHAZO.
@@ -59,6 +62,7 @@ const JORNADA = "2026-08-21";
 
 function resumenRow(overrides: Partial<CierreAdminResumenRow> = {}): CierreAdminResumenRow {
   return {
+    pagoIndependienteEfectivo: false, // SLT-123: la marca es obligatoria en la fila del repositorio
     cierreId: "c-rechazado",
     mensajeroId: "men-1",
     mensajeroNombre: "Ana Mensajera",
@@ -82,12 +86,7 @@ type Repo = ICierresAdminRepository;
 type Traza = string[];
 
 function fakeRepo(traza: Traza, overrides: Partial<Repo> = {}): Repo {
-  return {
-    findCierresByAlcance: vi.fn(async () => []),
-    findHistoricoPaginado: vi.fn(async () => ({ items: [], total: 0 })),
-    findColaPaginada: vi.fn(async () => ({ items: [], total: 0 })),
-    findHistoricoCompleto: vi.fn(async () => []),
-    findColaCompleta: vi.fn(async () => []),
+  return dobleCierresAdmin({
     findCierreByIdEnAlcance: vi.fn(async () => {
       traza.push("findCierreByIdEnAlcance");
       return { cierre: resumenRow(), gestiones: [], sinGestion: [], sinGestionRegistrado: true, rechazosDeTienda: [] };
@@ -96,21 +95,8 @@ function fakeRepo(traza: Traza, overrides: Partial<Repo> = {}): Repo {
       traza.push("resolverCierre");
       return "updated" as const;
     }),
-    forzarSolicitudVencido: vi.fn(async () => "updated" as const),
-    findGestionesIncidenteDelCierre: vi.fn(async () => []),
-    findGestionesRetornablesDelCierre: vi.fn(async () => []),
-    // Ficha 451 / SLT-72 (T2.1): las barridas del cierre. Doble VACIO: sin barridas, el camino de esta suite queda intacto.
-    findBarridasDelCierre: vi.fn(async () => []),
-    findGestionesPorAlcanceCompleto: vi.fn(async () => []),
-    findCatalogoFiltros: vi.fn(async () => ({ zonas: [], mensajeros: [], mensajerosFiltro: [] })),
-    findGestionEditableEnCierre: vi.fn(async () => null),
-    actualizarPagosGestion: vi.fn(async () => ({ status: "conflict" as const })),
-    // FICHA 398: la correccion en sitio del resultado. Doble MUDO: este archivo no la ejercita,
-    // y devolver `conflict` deja constancia de que nadie la esta midiendo aqui.
-    corregirResultadoGestionEnCierre: vi.fn(async () => ({ status: "conflict" as const })),
-    ajustarPagoMensajeroEnCierre: vi.fn(async () => ({ status: "conflict" as const })),
     ...overrides,
-  };
+  });
 }
 
 function newService(
@@ -178,7 +164,7 @@ function newService(
       traza.push("notificarRechazo");
     }) as CierreRechazadoNotificador);
   const service = opts.sinNotificador
-    ? new CierresAdminService(repo, zonaRepo, ordenRepo, signedUrls, liquidacionRepo, premiosRepo, sinRetenidas())
+    ? new CierresAdminService(repo, zonaRepo, ordenRepo, signedUrls, liquidacionRepo, premiosRepo, sinRetenidas(), undefined, undefined, undefined, undefined, reglasPaisFijas())
     : new CierresAdminService(
         repo,
         zonaRepo,
@@ -190,6 +176,8 @@ function newService(
         notificar,
         liberarAlAprobarCierreNoOp,
         notificarRechazo,
+        undefined,
+        reglasPaisFijas(),
       );
   return {
     service,
@@ -275,7 +263,7 @@ describe("412/R1 — un rechazo confirmado avisa al mensajero, lo deje bloqueado
 
     await service.rechazarCierre("c-rechazado", MOTIVO, MAESTRO);
 
-    expect(findJornadaDeCierre).toHaveBeenCalledWith("c-rechazado");
+    expect(findJornadaDeCierre).toHaveBeenCalledWith("c-rechazado", ZONA_CR);
     expect(mockDe(notificarRechazo).mock.calls[0][0].jornadaCR).toBe("2026-08-21");
   });
 
@@ -448,7 +436,8 @@ describe("412/R4 — los avisos van DESPUÉS de la escritura, FUERA de su transa
 
     const input = (repo.resolverCierre as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(Object.keys(input).sort()).toEqual(
-      ["alcance", "cierreId", "motivoRechazo", "nuevoEstado", "resueltoPor"].sort(),
+      // SLT-42 (R22): + la zona del pais, para el dia del cierre en el historial.
+      ["alcance", "cierreId", "motivoRechazo", "nuevoEstado", "resueltoPor", "zonaHoraria"].sort(),
     );
     expect(input).toMatchObject({ nuevoEstado: "rechazado", motivoRechazo: MOTIVO });
   });
@@ -460,7 +449,7 @@ describe("412/R4 — los avisos van DESPUÉS de la escritura, FUERA de su transa
     await service.rechazarCierre("c-rechazado", MOTIVO, MAESTRO);
 
     expect(traza.indexOf("findBloqueoDetalle")).toBeGreaterThan(traza.indexOf("resolverCierre"));
-    expect(findBloqueoDetalle).toHaveBeenCalledWith("men-1");
+    expect(findBloqueoDetalle).toHaveBeenCalledWith("men-1", ZONA_CR);
   });
 
   it("⭑ R4(a): el aviso del RECHAZO lanza -> el rechazo sigue siendo `ok`, y queda REGISTRADO", async () => {

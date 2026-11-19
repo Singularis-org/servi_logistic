@@ -6,6 +6,7 @@ import { obtenerRankingHistoricoAction } from "@/lib/actions/ranking-historico";
 import { esAccesoTotal } from "@/lib/auth/acceso-total";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { fechaObjetivo } from "@/lib/ranking/snapshot-dia";
+import { zonaDelBorde } from "@/lib/actions/_shared/zona-del-borde";
 
 import { RankingHistoricoModule } from "./_components/RankingHistoricoModule";
 import { RANKING_HISTORICO_LABELS } from "./_components/ranking-historico-labels";
@@ -29,19 +30,20 @@ import { RANKING_HISTORICO_LABELS } from "./_components/ranking-historico-labels
 const PARAM_FECHA = "fecha";
 
 /**
- * La fecha consultada. Sin `?fecha`, el día D−1 en calendario de COSTA RICA, que es el
- * último que el cron pudo congelar (`fechaObjetivo`, design §3).
+ * La fecha consultada. Sin `?fecha`, el día D−1 en el calendario del país de la empresa (SLT-42,
+ * R22), que es el último que el cron pudo congelar (`fechaObjetivo`, design §3).
  *
- * ⛔ Nada de `toISOString()` para esto: emitiría la fecha en UTC y a partir de las 18:00 CR
- * ya devolvería el día siguiente. `fechaObjetivo` es el único camino, y se apoya en
- * `lib/utils/fecha-cr.ts`.
+ * ⛔ Nada de `toISOString()` para esto: emitiría la fecha en UTC y por la tarde ya devolvería
+ * el día siguiente. `fechaObjetivo` es el único camino, y se apoya en
+ * `lib/utils/calendario-zona.ts`.
  *
  * Un parámetro repetido (`?fecha=a&fecha=b`) llega como array; se toma el primero en vez de
  * fallar: es una URL malformada, no un ataque, y el borde de la acción sigue validando.
  */
-function fechaSolicitada(valor: string | string[] | undefined): string {
-  if (Array.isArray(valor)) return valor[0] ?? fechaObjetivo(new Date());
-  return valor ?? fechaObjetivo(new Date());
+async function fechaSolicitada(valor: string | string[] | undefined): Promise<string> {
+  const pedida = Array.isArray(valor) ? valor[0] : valor;
+  if (pedida !== undefined) return pedida;
+  return fechaObjetivo(new Date(), await zonaDelBorde()); // SLT-42 (R22, R28)
 }
 
 export default async function RankingHistoricoPage(props: {
@@ -56,7 +58,7 @@ export default async function RankingHistoricoPage(props: {
   }
 
   const searchParams = await props.searchParams;
-  const fecha = fechaSolicitada(searchParams[PARAM_FECHA]);
+  const fecha = await fechaSolicitada(searchParams[PARAM_FECHA]);
 
   const result = await obtenerRankingHistoricoAction({ fecha });
 

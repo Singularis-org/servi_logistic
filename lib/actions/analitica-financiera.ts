@@ -1,6 +1,9 @@
 "use server";
 
 import { prepararConsultaAnalitica } from "@/lib/analytics/consulta";
+import { zonaDelBordeConActor } from "@/lib/actions/_shared/zona-del-borde";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import { describirDenegado } from "@/lib/analytics/auditoria";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { getPrismaClient } from "@/lib/db/prisma-client";
@@ -63,6 +66,8 @@ export interface AnaliticaFinancieraActionDeps {
   readonly logger?: ErrorLogger;
   /** `now` inyectable (patron de `resolverRango`): sin el, el rango dependeria del reloj. */
   readonly now?: Date;
+  /** SLT-42 (R22, R28): la zona del pais de la empresa; en produccion, la real (`zonaDelBorde`). */
+  readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
 }
 
 function construirServicio(logger: ErrorLogger): IAnaliticaFinancieraService {
@@ -73,6 +78,8 @@ function construirServicio(logger: ErrorLogger): IAnaliticaFinancieraService {
     new CuentasPorPagarAnaliticaRepository(prisma),
     new ConciliacionCierresAnaliticaRepository(prisma),
     logger,
+    undefined,
+    construirReglasPaisEmpresa(prisma), // SLT-42 (R22, R28): la zona horaria del pais de la empresa.
   );
 }
 
@@ -96,7 +103,8 @@ export async function consultarMetricaFinanciera(
   const logger = deps.logger ?? defaultLogger;
   const actor = await (deps.getActor ?? resolveActorFromSession)();
 
-  const preparacion = prepararConsultaAnalitica(filtroRaw, actor, metricaId, deps.now);
+  const zona = await zonaDelBordeConActor(actor, deps.reglasPais); // SLT-42 (R22, R28)
+  const preparacion = prepararConsultaAnalitica(filtroRaw, actor, metricaId, zona, deps.now);
 
   // (1) R13 — 400 y NADA de auditoria.
   if (preparacion.status === "validation_error") {

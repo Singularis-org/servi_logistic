@@ -23,18 +23,23 @@ rama rompe a las otras features que corren en paralelo.
   `docs/architecture.md`), migraciones, autorizacion y los bordes de entrada
 
 ## Proceso
-1. Lee `tasks.md`. Clasifica cada task como `[FRONT]`, `[BACK]` o `[BOTH]`.
+1. Lee las tasks: `tasks.md` (ruta completa) o `## Tasks` del `requirements.md` (ruta ligera). En
+   la ruta directa no hay spec: la tarea es la description de la ficha, y empiezas por un test
+   que reproduce el fallo y sale rojo. Clasifica cada task como `[FRONT]`, `[BACK]` o `[BOTH]`.
 2. Lanza `frontend_dev` para tasks `[FRONT]` y `backend_dev` para tasks `[BACK]`.
 3. Para `[BOTH]`: primero `backend_dev` (contratos, logica y datos), luego `frontend_dev`.
 4. Al completar cada task, marcarla `[x]` en `tasks.md`.
 4b. Al cerrar cada tanda: commit y **`git push`**. Una rama sin publicar es invisible para el
    resto del equipo y rompe su validacion de conflicto (`docs/equipo.md`).
 5. Si un subagente reporta un bloqueo, notifica al leader. No improvises.
+6. **Tamaño del PR.** Si `./init.sh` avisa de que el PR se acerca al máximo (80%) o da rojo por
+   tamaño, cierra la tanda en curso y para: devuelve al leader qué falta para que proponga partirlo
+   (`docs/specs.md > Partir una feature`). No sigas añadiendo archivos a la misma rama.
 
 ## Verificacion
 Al finalizar todas las tasks:
 1. Corre typecheck y lint (comandos: `docs/perfil-agentes.md > Todos los agentes`).
-2. Corre **solo los tests que tu cambio toca** (`docs/verification.md > El gate tiene DOS
+2. Corre **solo los tests que tu cambio toca** (`docs/gate.md > El gate tiene DOS
    niveles`). **NO corras la suite completa**: ningun
    subagente la corre (`AGENTS.md > Quién corre qué`).
    No es una preferencia de estilo: en una sesion del 2026-08-02 cinco subagentes
@@ -58,7 +63,8 @@ aplicalas a la base de la feature antes de verificar (`docs/verification.md`). L
 No te autoapruebas: al terminar, devuelve solo la ficha como `<key> «<title>»`, la ruta de la
 bitacora y un veredicto de una linea. El reviewer decide si esta bien.
 
-**Un rojo del baseline no es un hallazgo.** `./init.sh` (rapido) **NO** consulta
-`tests/baseline-rojos.json` —solo lo hace el modo completo—, asi que un archivo con deuda ajena
-ya listada sale rojo ahi igual. Antes de tratarlo como bloqueante, mira si el archivo esta en esa
-lista. El 2026-09-18 costo una vuelta entera y una decision que no existia.
+**Un rojo del baseline no es un hallazgo.** Un archivo listado en `tests/baseline-rojos.json` es
+deuda ajena ya registrada: `./init.sh` lo tolera (`docs/gate.md > Rojos heredados`), pero un
+`vitest` corrido a mano lo muestra en rojo igual. Antes de tratar un rojo como bloqueante, mira si
+el archivo esta en esa lista. Confundirlos costo una vuelta entera de review en el proyecto de
+origen del arnes.

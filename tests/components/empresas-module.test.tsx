@@ -38,13 +38,13 @@ const EMPRESAS: EmpresaListada[] = [
       { nombre: "Ana Pérez", email: "ana@norte.test" },
       { nombre: "Luis Gómez", email: "luis@norte.test" },
     ],
-    cobroPorOrden: null,
     // SLT-66 R31/R32: campos nuevos del listado; no son de este test.
     cobroVigente: { modo: "fijo", monto: "0.00", fuente: "sin_configurar" },
     plan: null,
     // SL-45 (R28): el Record del listado exige la deuda; aquí, al día.
     deudaPlataforma: { deuda: "0.00", estado: "al_dia", importe: "0.00" },
     pagadoPlataforma: "0.00",
+    pagosPorConfirmar: 0,
     pais: { id: "CR", nombre: "Costa Rica" },
   },
   {
@@ -53,13 +53,13 @@ const EMPRESAS: EmpresaListada[] = [
     slug: "reparto-sur",
     creadaEn: new Date("2026-09-05T12:00:00Z"),
     maestros: [],
-    cobroPorOrden: null,
     // SLT-66 R31/R32: campos nuevos del listado; no son de este test.
     cobroVigente: { modo: "fijo", monto: "0.00", fuente: "sin_configurar" },
     plan: null,
     // SL-45 (R28): el Record del listado exige la deuda; aquí, al día.
     deudaPlataforma: { deuda: "0.00", estado: "al_dia", importe: "0.00" },
     pagadoPlataforma: "0.00",
+    pagosPorConfirmar: 0,
     // SL-20 (R45, R46): un país ya apagado, que el `Select` del alta no ofrece.
     pais: { id: "XA", nombre: "País Apagado" },
   },
@@ -96,7 +96,6 @@ function montar(
       bienvenidaPendiente={bienvenidaPendiente}
       cobroGlobal={{ monto: null }}
       fijarCobroGlobal={vi.fn()}
-      fijarCobroEmpresa={vi.fn()}
     />,
   );
   return { ...utils, altaEmpresa, reenviarBienvenida };
@@ -221,6 +220,37 @@ describe("EmpresasModule — listado (R29)", () => {
       screen.getByText("Aún no hay empresas. Crea la primera con el formulario."),
     ).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  });
+});
+
+describe("SLT-60 — el contador de pagos por confirmar en la columna Plataforma (R27)", () => {
+  function conContador(norte: number, sur: number): EmpresaListada[] {
+    return [
+      { ...EMPRESAS[0], pagosPorConfirmar: norte },
+      { ...EMPRESAS[1], pagosPorConfirmar: sur },
+    ];
+  }
+
+  it("con 0 no muestra nada: ni el texto ni la marca", () => {
+    const { container } = montar(vi.fn(), conContador(0, 0));
+    expect(screen.queryByText(/por confirmar/)).not.toBeInTheDocument();
+    expect(container.querySelector("[data-pagos-por-confirmar]")).toBeNull();
+  });
+
+  it("con 1 dice «1 pago por confirmar» en la fila de esa empresa, y en la otra nada", () => {
+    montar(vi.fn(), conContador(1, 0));
+    const [norte, sur] = screen.getAllByRole("row").slice(1);
+    const aviso = within(norte).getByText("1 pago por confirmar");
+    expect(aviso).toHaveAttribute("data-pagos-por-confirmar", "1");
+    expect(within(sur).queryByText(/por confirmar/)).not.toBeInTheDocument();
+  });
+
+  it("con 3 dice «3 pagos por confirmar», en plural", () => {
+    montar(vi.fn(), conContador(0, 3));
+    const [norte, sur] = screen.getAllByRole("row").slice(1);
+    const aviso = within(sur).getByText("3 pagos por confirmar");
+    expect(aviso).toHaveAttribute("data-pagos-por-confirmar", "3");
+    expect(within(norte).queryByText(/por confirmar/)).not.toBeInTheDocument();
   });
 });
 

@@ -11,6 +11,11 @@ import type { WhatsappMediaSubidaOutcome } from "@/lib/clients/whatsapp-media-up
 import { SIN_CAMPOS_311 } from "@/tests/fixtures/chat-mensaje";
 import { readFileSync } from "fs";
 import { join as joinPath } from "path";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import type { ReglasTelefono } from "@/lib/utils/telefono-pais";
+
+// SLT-42 (R18): el servicio pasa al repositorio las reglas del pais (aqui, `reglasPaisFijas()` = CR).
+const TEL_CR: ReglasTelefono = { prefijo: "506", digitosNacionales: 8 };
 
 // Feature 109 — D1.T. Logica pura del service SIN DB ni HTTP (repos y cliente fakeados).
 // Cubre R6 (registra entrantes), R7 (aplica statuses), R8 (dedupe), R18/R19 (ventana 24 h,
@@ -97,6 +102,7 @@ describe("ingerirEventos (R6/R7/R8/R25)", () => {
     const conv = fakeConversacionRepo();
     const msg = fakeMensajeRepo();
     const service = new ChatWhatsappService({
+      reglasPais: reglasPaisFijas(),
       conversacionRepo: conv,
       mensajeRepo: msg,
       now: () => AHORA,
@@ -124,7 +130,7 @@ describe("ingerirEventos (R6/R7/R8/R25)", () => {
   it("R8: un entrante ya registrado (dedupe) no re-sella la ventana", async () => {
     const conv = fakeConversacionRepo();
     const msg = fakeMensajeRepo({ insertarEntranteIdempotente: vi.fn(async () => false) });
-    const service = new ChatWhatsappService({ conversacionRepo: conv, mensajeRepo: msg });
+    const service = new ChatWhatsappService({ reglasPais: reglasPaisFijas(), conversacionRepo: conv, mensajeRepo: msg });
 
     const resumen = await service.ingerirEventos(
       eventos({
@@ -141,6 +147,7 @@ describe("ingerirEventos (R6/R7/R8/R25)", () => {
   it("R7: actualiza el estado del saliente por wa_message_id", async () => {
     const msg = fakeMensajeRepo();
     const service = new ChatWhatsappService({
+      reglasPais: reglasPaisFijas(),
       conversacionRepo: fakeConversacionRepo(),
       mensajeRepo: msg,
     });
@@ -166,7 +173,7 @@ describe("ingerirEventos (R6/R7/R8/R25)", () => {
       resolverOrdenActivaPorNumero: vi.fn(async () => null),
     });
     const msg = fakeMensajeRepo();
-    const service = new ChatWhatsappService({ conversacionRepo: conv, mensajeRepo: msg });
+    const service = new ChatWhatsappService({ reglasPais: reglasPaisFijas(), conversacionRepo: conv, mensajeRepo: msg });
 
     const resumen = await service.ingerirEventos(
       eventos({
@@ -215,6 +222,7 @@ describe("enviarTexto (R18/R19/R20/R21)", () => {
     });
     const client = fakeClient({ status: "ok", mensajeId: "wamid.OUT9" });
     const service = new ChatWhatsappService({
+      reglasPais: reglasPaisFijas(),
       conversacionRepo: conv,
       mensajeRepo: msg,
       client,
@@ -247,6 +255,7 @@ describe("enviarTexto (R18/R19/R20/R21)", () => {
     });
     const client = fakeClient({ status: "ok", mensajeId: "no-deberia" });
     const service = new ChatWhatsappService({
+      reglasPais: reglasPaisFijas(),
       conversacionRepo: conv,
       // La ventana la decide el ULTIMO ENTRANTE real del hilo (contrato nuevo): hace 25 h -> fuera.
       mensajeRepo: fakeMensajeRepo({
@@ -278,6 +287,7 @@ describe("enviarTexto (R18/R19/R20/R21)", () => {
       })),
     });
     const service = new ChatWhatsappService({
+      reglasPais: reglasPaisFijas(),
       conversacionRepo: conv,
       // Sin ningun entrante en el hilo -> ultimoEntranteAt null -> fuera de ventana (bloquea).
       mensajeRepo: fakeMensajeRepo({ ultimoEntranteAt: vi.fn(async () => null) }),
@@ -326,6 +336,7 @@ describe("enviarTexto (R18/R19/R20/R21)", () => {
     });
     const encolarReintento = vi.fn(async () => {});
     const service = new ChatWhatsappService({
+      reglasPais: reglasPaisFijas(),
       conversacionRepo: conv,
       mensajeRepo: msg,
       client: fakeClient({ status: "transitorio", detalle: "enviar mensaje de whatsapp: HTTP 503" }),
@@ -385,6 +396,7 @@ describe("enviarPlantilla (envio + persistencia tipo plantilla)", () => {
     });
     const client = fakeClient({ status: "ok", mensajeId: "wamid.PLT1" });
     const service = new ChatWhatsappService({
+      reglasPais: reglasPaisFijas(),
       conversacionRepo: conv,
       mensajeRepo: msg,
       client,
@@ -423,6 +435,7 @@ describe("enviarPlantilla (envio + persistencia tipo plantilla)", () => {
     });
     const client = fakeClient({ status: "ok", mensajeId: "wamid.PLT2" });
     const service = new ChatWhatsappService({
+      reglasPais: reglasPaisFijas(),
       conversacionRepo: conv,
       mensajeRepo: fakeMensajeRepo(),
       client,
@@ -447,6 +460,7 @@ describe("enviarPlantilla (envio + persistencia tipo plantilla)", () => {
     });
     const client = fakeClient({ status: "ok", mensajeId: "wamid.PLT3" });
     const service = new ChatWhatsappService({
+      reglasPais: reglasPaisFijas(),
       conversacionRepo: conv,
       mensajeRepo: fakeMensajeRepo(),
       client,
@@ -480,6 +494,7 @@ describe("enviarPlantilla (envio + persistencia tipo plantilla)", () => {
     });
     const encolarReintento = vi.fn(async () => {});
     const service = new ChatWhatsappService({
+      reglasPais: reglasPaisFijas(),
       conversacionRepo: fakeConversacionRepo(),
       mensajeRepo: msg,
       client: fakeClient({ status: "transitorio", detalle: "enviar mensaje de whatsapp: HTTP 503" }),
@@ -529,6 +544,7 @@ describe("reintentarEnvio (D1/F3)", () => {
       })),
     });
     const service = new ChatWhatsappService({
+      reglasPais: reglasPaisFijas(),
       conversacionRepo: conv,
       mensajeRepo: msg,
       client: fakeClient({ status: "ok", mensajeId: "wamid.RETRY" }),
@@ -570,6 +586,7 @@ describe("reintentarEnvio (D1/F3)", () => {
       })),
     });
     const service = new ChatWhatsappService({
+      reglasPais: reglasPaisFijas(),
       conversacionRepo: conv,
       mensajeRepo: msg,
       client: fakeClient({ status: "transitorio", detalle: "enviar mensaje de whatsapp: HTTP 503" }),
@@ -606,7 +623,7 @@ describe("Feature 311 · ingesta de los tipos nuevos (R1/R2/R4/R5/R7/R12)", () =
   it("R1/R2: un entrante de imagen llega al repo con su mediaId y el caption como cuerpo", async () => {
     const conv = fakeConversacionRepo();
     const msg = fakeMensajeRepo();
-    const service = new ChatWhatsappService({ conversacionRepo: conv, mensajeRepo: msg });
+    const service = new ChatWhatsappService({ reglasPais: reglasPaisFijas(), conversacionRepo: conv, mensajeRepo: msg });
 
     await service.ingerirEventos(
       eventos({
@@ -641,7 +658,7 @@ describe("Feature 311 · ingesta de los tipos nuevos (R1/R2/R4/R5/R7/R12)", () =
   it("R4: una reaccion llega con su objetivo y su emoji", async () => {
     const conv = fakeConversacionRepo();
     const msg = fakeMensajeRepo();
-    const service = new ChatWhatsappService({ conversacionRepo: conv, mensajeRepo: msg });
+    const service = new ChatWhatsappService({ reglasPais: reglasPaisFijas(), conversacionRepo: conv, mensajeRepo: msg });
 
     await service.ingerirEventos(
       eventos({
@@ -669,7 +686,7 @@ describe("Feature 311 · ingesta de los tipos nuevos (R1/R2/R4/R5/R7/R12)", () =
   it("R5: una reaccion RETIRADA llega con emoji null (no con cadena vacia)", async () => {
     const conv = fakeConversacionRepo();
     const msg = fakeMensajeRepo();
-    const service = new ChatWhatsappService({ conversacionRepo: conv, mensajeRepo: msg });
+    const service = new ChatWhatsappService({ reglasPais: reglasPaisFijas(), conversacionRepo: conv, mensajeRepo: msg });
 
     await service.ingerirEventos(
       eventos({
@@ -694,7 +711,7 @@ describe("Feature 311 · ingesta de los tipos nuevos (R1/R2/R4/R5/R7/R12)", () =
   it("R7: los contactos llegan TIPADOS al repo, no como Json suelto", async () => {
     const conv = fakeConversacionRepo();
     const msg = fakeMensajeRepo();
-    const service = new ChatWhatsappService({ conversacionRepo: conv, mensajeRepo: msg });
+    const service = new ChatWhatsappService({ reglasPais: reglasPaisFijas(), conversacionRepo: conv, mensajeRepo: msg });
 
     await service.ingerirEventos(
       eventos({
@@ -717,7 +734,7 @@ describe("Feature 311 · ingesta de los tipos nuevos (R1/R2/R4/R5/R7/R12)", () =
   it("R12: un entrante de media ya registrado no se duplica ni re-sella la ventana", async () => {
     const conv = fakeConversacionRepo();
     const msg = fakeMensajeRepo({ insertarEntranteIdempotente: vi.fn(async () => false) });
-    const service = new ChatWhatsappService({ conversacionRepo: conv, mensajeRepo: msg });
+    const service = new ChatWhatsappService({ reglasPais: reglasPaisFijas(), conversacionRepo: conv, mensajeRepo: msg });
 
     const resumen = await service.ingerirEventos(
       eventos({
@@ -752,7 +769,7 @@ describe("Feature 311 · ingesta de los tipos nuevos (R1/R2/R4/R5/R7/R12)", () =
         return n === 1; // el primero entra, el segundo lo omite el dedupe
       }),
     });
-    const service = new ChatWhatsappService({ conversacionRepo: conv, mensajeRepo: msg });
+    const service = new ChatWhatsappService({ reglasPais: reglasPaisFijas(), conversacionRepo: conv, mensajeRepo: msg });
 
     const resumen = await service.ingerirEventos(
       eventos({
@@ -788,11 +805,11 @@ describe("Feature 311 · cambio de numero del cliente (R16/R17/R18)", () => {
   it("R16: llama migrarTelefono(anterior, nuevo) y lo cuenta en el resumen", async () => {
     const conv = fakeConversacionRepo();
     const msg = fakeMensajeRepo();
-    const service = new ChatWhatsappService({ conversacionRepo: conv, mensajeRepo: msg });
+    const service = new ChatWhatsappService({ reglasPais: reglasPaisFijas(), conversacionRepo: conv, mensajeRepo: msg });
 
     const resumen = await service.ingerirEventos(eventoCambioNumero());
 
-    expect(conv.migrarTelefono).toHaveBeenCalledWith("50688887777", "50699996666");
+    expect(conv.migrarTelefono).toHaveBeenCalledWith("50688887777", "50699996666", TEL_CR);
     expect(resumen.hilosMigrados).toBe(1);
   });
 
@@ -815,7 +832,7 @@ describe("Feature 311 · cambio de numero del cliente (R16/R17/R18)", () => {
       }),
     });
     const msg = fakeMensajeRepo();
-    const service = new ChatWhatsappService({ conversacionRepo: conv, mensajeRepo: msg });
+    const service = new ChatWhatsappService({ reglasPais: reglasPaisFijas(), conversacionRepo: conv, mensajeRepo: msg });
 
     await service.ingerirEventos(eventoCambioNumero());
 
@@ -823,14 +840,14 @@ describe("Feature 311 · cambio de numero del cliente (R16/R17/R18)", () => {
     // El upsert usa el numero NUEVO: si usara el viejo, crearia un hilo vacio en paralelo y la
     // evidencia caeria fuera del hilo que el mensajero mira.
     expect(conv.upsertParaOrden).toHaveBeenCalledWith(
-      expect.objectContaining({ telefonoE164: "50699996666" }),
+      expect.objectContaining({ telefonoE164: "50699996666" }), TEL_CR,
     );
   });
 
   it("R18: deja evidencia PERSISTENTE con AMBOS numeros", async () => {
     const conv = fakeConversacionRepo();
     const msg = fakeMensajeRepo();
-    const service = new ChatWhatsappService({ conversacionRepo: conv, mensajeRepo: msg });
+    const service = new ChatWhatsappService({ reglasPais: reglasPaisFijas(), conversacionRepo: conv, mensajeRepo: msg });
 
     await service.ingerirEventos(eventoCambioNumero());
 
@@ -847,7 +864,7 @@ describe("Feature 311 · cambio de numero del cliente (R16/R17/R18)", () => {
     const conv = fakeConversacionRepo();
     // Meta reenvia el evento: el dedupe del insert lo omite.
     const msg = fakeMensajeRepo({ insertarEntranteIdempotente: vi.fn(async () => false) });
-    const service = new ChatWhatsappService({ conversacionRepo: conv, mensajeRepo: msg });
+    const service = new ChatWhatsappService({ reglasPais: reglasPaisFijas(), conversacionRepo: conv, mensajeRepo: msg });
 
     const resumen = await service.ingerirEventos(eventoCambioNumero());
 
@@ -859,7 +876,7 @@ describe("Feature 311 · cambio de numero del cliente (R16/R17/R18)", () => {
   it("R18/P5: si el hilo destino ya existe (0 migradas) la ingesta NO se rompe", async () => {
     const conv = fakeConversacionRepo({ migrarTelefono: vi.fn(async () => 0) });
     const msg = fakeMensajeRepo();
-    const service = new ChatWhatsappService({ conversacionRepo: conv, mensajeRepo: msg });
+    const service = new ChatWhatsappService({ reglasPais: reglasPaisFijas(), conversacionRepo: conv, mensajeRepo: msg });
 
     const resumen = await service.ingerirEventos(eventoCambioNumero());
 
@@ -872,7 +889,7 @@ describe("Feature 311 · cambio de numero del cliente (R16/R17/R18)", () => {
   it("R17: al migrar el hilo NO se escribe fuera de chat_conversacion/chat_mensaje", async () => {
     const conv = fakeConversacionRepo();
     const msg = fakeMensajeRepo();
-    const service = new ChatWhatsappService({ conversacionRepo: conv, mensajeRepo: msg });
+    const service = new ChatWhatsappService({ reglasPais: reglasPaisFijas(), conversacionRepo: conv, mensajeRepo: msg });
 
     await service.ingerirEventos(eventoCambioNumero());
 
@@ -933,12 +950,12 @@ describe("Feature 311 · cambio de numero del cliente (R16/R17/R18)", () => {
       ),
     });
     const msg = fakeMensajeRepo();
-    const service = new ChatWhatsappService({ conversacionRepo: conv, mensajeRepo: msg });
+    const service = new ChatWhatsappService({ reglasPais: reglasPaisFijas(), conversacionRepo: conv, mensajeRepo: msg });
 
     // 1) Llega el evento de cambio de numero: el hilo SI se migra (R16) y queda la evidencia.
     const migracion = await service.ingerirEventos(eventoCambioNumero());
     expect(migracion.hilosMigrados).toBe(1);
-    expect(conv.migrarTelefono).toHaveBeenCalledWith(ANTERIOR, NUEVO);
+    expect(conv.migrarTelefono).toHaveBeenCalledWith(ANTERIOR, NUEVO, TEL_CR);
 
     // 2) El cliente escribe DESDE EL NUMERO NUEVO. Aqui es donde se rompe la continuidad.
     const posterior = await service.ingerirEventos(
@@ -955,7 +972,7 @@ describe("Feature 311 · cambio de numero del cliente (R16/R17/R18)", () => {
       }),
     );
 
-    expect(conv.resolverOrdenActivaPorNumero).toHaveBeenLastCalledWith(NUEVO);
+    expect(conv.resolverOrdenActivaPorNumero).toHaveBeenLastCalledWith(NUEVO, TEL_CR);
     expect(posterior).toMatchObject({ mensajesRegistrados: 0, sinResolver: 1 });
     // El mensaje no cae en el hilo migrado: no se inserta nada por este entrante (la unica
     // llamada al insert es la evidencia del paso 1).
@@ -969,7 +986,7 @@ describe("Feature 311 · cambio de numero del cliente (R16/R17/R18)", () => {
   it("un entrante NORMAL no dispara ninguna migracion de hilo", async () => {
     const conv = fakeConversacionRepo();
     const msg = fakeMensajeRepo();
-    const service = new ChatWhatsappService({ conversacionRepo: conv, mensajeRepo: msg });
+    const service = new ChatWhatsappService({ reglasPais: reglasPaisFijas(), conversacionRepo: conv, mensajeRepo: msg });
 
     const resumen = await service.ingerirEventos(
       eventos({
@@ -998,9 +1015,10 @@ describe("Feature 311 · PII en los logs de la ingesta (R35)", () => {
     const conv = fakeConversacionRepo();
     const msg = fakeMensajeRepo();
     const service = new ChatWhatsappService({
+      reglasPais: reglasPaisFijas(),
       conversacionRepo: conv,
       mensajeRepo: msg,
-      logger: { warn },
+      logger: { warn, error: vi.fn() },
     });
 
     await service.ingerirEventos(
@@ -1117,6 +1135,7 @@ describe("Feature 316 · enviarMedia (R3/R11/R17/R18/R19/R20)", () => {
     const subidor = over.subidor ?? fakeSubidor();
     const client = over.client ?? fakeClientMedia({ status: "ok", mensajeId: "wamid.MEDIA" });
     const service = new ChatWhatsappService({
+      reglasPais: reglasPaisFijas(),
       conversacionRepo: fakeConversacionRepo(),
       mensajeRepo: msg,
       client,
@@ -1166,7 +1185,23 @@ describe("Feature 316 · enviarMedia (R3/R11/R17/R18/R19/R20)", () => {
       adjunto: adjuntoFake({ bytes: 6 * 1024 * 1024 }),
     });
 
-    expect(res).toEqual({ status: "demasiado_grande", limiteBytes: 5 * 1024 * 1024 });
+    expect(res).toEqual({ status: "demasiado_grande", limiteBytes: 4_194_304 });
+    expect(subidor.subir).not.toHaveBeenCalled();
+    expect(msg.insertarSaliente).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["video de 5 MB", "clip.mp4", "video/mp4"],
+    ["PDF de 5 MB", "factura.pdf", "application/pdf"],
+  ])("SLT-88 R6: %s es demasiado_grande con 4 MB, sin subir", async (_c, nombre, mime) => {
+    const { service, msg, subidor } = servicio();
+
+    const res = await service.enviarMedia({
+      ...INPUT_BASE,
+      adjunto: adjuntoFake({ mime, nombre, bytes: 5 * 1024 * 1024 }),
+    });
+
+    expect(res).toEqual({ status: "demasiado_grande", limiteBytes: 4_194_304 });
     expect(subidor.subir).not.toHaveBeenCalled();
     expect(msg.insertarSaliente).not.toHaveBeenCalled();
   });
@@ -1350,6 +1385,7 @@ describe("Feature 316 · C2: la guarda de reintentarEnvio (R21)", () => {
     });
     const client = fakeClientMedia({ status: "ok", mensajeId: "wamid.RETRY" });
     const service = new ChatWhatsappService({
+      reglasPais: reglasPaisFijas(),
       conversacionRepo: conv,
       mensajeRepo: msg,
       client,

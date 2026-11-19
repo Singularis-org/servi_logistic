@@ -7,21 +7,12 @@ import { quitarComentarios } from "../../fixtures/sin-comentarios";
 import { LLAMADAS_PROHIBIDAS_EN_DINERO } from "../../fixtures/money-safe";
 import {
   CASCADA_CENTRAL_TITULO,
-  CASCADA_DUENO_TITULO,
-  CASCADA_FACTURA_TIENDA_TITULO,
-  CASCADA_NETO_EMPRESA_TITULO,
-  COBRADO_SOBRE_RECAUDADO_LABEL,
   EFECTIVO_NO_CUBRE_NOTA,
   FACTURADO_EMPRESA_LABEL,
-  FLETE_RECHAZO_NO_DEDUCIBLE_NOTA,
   GANA_BODEGA_SATELITE_LABEL,
   GANA_BODEGA_SATELITE_NOTA,
-  GANA_LA_TIENDA_NEGATIVO_NOTA,
-  GANA_LA_TIENDA_NOTA,
   INGRESO_TOTAL_COL,
   NETO_EMPRESA_LABEL,
-  NETO_EMPRESA_NEGATIVO_NOTA,
-  NETO_EMPRESA_NOTA,
   PARA_LA_CENTRAL_LABEL,
   PARA_LA_CENTRAL_NEGATIVO_NOTA,
   PARA_LA_CENTRAL_NOTA,
@@ -114,10 +105,21 @@ const HOJA = path.join(COMPONENTES, "cierre-factura.tsx");
 /** Los archivos que son ENTEROS una superficie del cierre de bodega. */
 const SUPERFICIES_ENTERAS = [
   "CierresBodegaAdminModule.tsx",
-  "CierresBodegaSolicitadosLista.tsx",
-  "CierresBodegaResueltosLista.tsx",
-  "CascadaDinero.tsx",
+  // SLT-115 «Retirar los componentes de cierre sustituidos»: salen las dos listas de bodega, borradas.
+  // SLT-174 «Quitar el alias ganaLaTienda y los restos de la cascada del mensajero» (R659): sale
+  // `CascadaDinero.tsx`, borrado.
 ] as const;
+
+/**
+ * SLT-104 «Detalle de cierre de bodega en el detalle único (central)» — el detalle de bodega ya no
+ * vive en el módulo: es el detalle único de SLT-95 (`components/private/cierres/detalle/`). Sus dos
+ * pestañas nuevas son ENTERAS de bodega y se censan enteras. `detalle-cierre-vista.ts` NO entra entero
+ * (trae «Aprobado» / «Rechazado» del detalle de MENSAJERO, D3 de la 431): se cortan sus dos trozos de
+ * bodega (`trozosDeBodegaEnLaVista`).
+ */
+const DETALLE = path.join(RAIZ, "components", "private", "cierres", "detalle");
+const SUPERFICIES_DETALLE = ["MensajerosCierreBodega.tsx", "ConciliacionCierreBodega.tsx"] as const;
+const VISTA = path.join(DETALLE, "detalle-cierre-vista.ts");
 
 /** Un trozo de código censado, con el nombre por el que se reporta un hallazgo. */
 interface Superficie {
@@ -183,6 +185,28 @@ function trozosDeBodegaEnLaHoja(fuente: string): Superficie[] {
   return trozos;
 }
 
+/**
+ * SLT-104 — los dos trozos de bodega de `detalle-cierre-vista.ts`: la cuenta «Lo que va a la central»
+ * (`cuentaCentral`, donde viven los rótulos de la cascada de la 393) y la sección de S6 (Mensajeros y
+ * Conciliación), que va del marcador hasta el final del archivo.
+ */
+function trozosDeBodegaEnLaVista(fuente: string): Superficie[] {
+  const trozos: Superficie[] = [];
+  const inicioCuenta = fuente.indexOf("function cuentaCentral(");
+  if (inicioCuenta !== -1) {
+    const fin = fuente.indexOf("\nexport function lineasDinero", inicioCuenta);
+    trozos.push({
+      nombre: "detalle-cierre-vista.ts › cuentaCentral",
+      codigo: fuente.slice(inicioCuenta, fin === -1 ? inicioCuenta : fin),
+    });
+  }
+  const inicioS6 = fuente.indexOf("type CierreDelDiaDeBodega");
+  if (inicioS6 !== -1) {
+    trozos.push({ nombre: "detalle-cierre-vista.ts › Mensajeros y Conciliación", codigo: fuente.slice(inicioS6) });
+  }
+  return trozos;
+}
+
 /** El código de un componente de `cierres-admin`, ya sin comentarios. */
 function leer(archivo: string): string {
   return quitarComentarios(readFileSync(path.join(COMPONENTES, archivo), "utf8"));
@@ -190,12 +214,23 @@ function leer(archivo: string): string {
 
 /** Los cuatro archivos que son ENTEROS del cierre de bodega, ya leídos. */
 function superficiesEnteras(): Superficie[] {
-  return SUPERFICIES_ENTERAS.map((archivo) => ({ nombre: archivo, codigo: leer(archivo) }));
+  return [
+    ...SUPERFICIES_ENTERAS.map((archivo) => ({ nombre: archivo, codigo: leer(archivo) })),
+    // SLT-104: las dos pestañas del detalle único que son enteras de bodega.
+    ...SUPERFICIES_DETALLE.map((archivo) => ({
+      nombre: archivo,
+      codigo: quitarComentarios(readFileSync(path.join(DETALLE, archivo), "utf8")),
+    })),
+  ];
 }
 
 /** El censo del VOCABULARIO: los cuatro archivos completos + los dos trozos del comprobante. */
 function superficies(): Superficie[] {
-  return [...superficiesEnteras(), ...trozosDeBodegaEnLaHoja(quitarComentarios(readFileSync(HOJA, "utf8")))];
+  return [
+    ...superficiesEnteras(),
+    ...trozosDeBodegaEnLaHoja(quitarComentarios(readFileSync(HOJA, "utf8"))),
+    ...trozosDeBodegaEnLaVista(quitarComentarios(readFileSync(VISTA, "utf8"))),
+  ];
 }
 
 /**
@@ -304,6 +339,11 @@ describe("393 — autocomprobación del censo (una guardia estática rota no fal
       ).toBe(true);
     }
     expect(existsSync(HOJA)).toBe(true);
+    // SLT-104: las dos pestañas del detalle único y la vista de la que se cortan los trozos.
+    for (const archivo of SUPERFICIES_DETALLE) {
+      expect(existsSync(path.join(DETALLE, archivo)), `${archivo} no existe`).toBe(true);
+    }
+    expect(existsSync(VISTA)).toBe(true);
     // El 2026-09-08 había 31 fuentes en `cierres-admin`. El umbral es holgado a propósito: mide
     // que el recorrido FUNCIONA, no cuántos componentes tiene la pantalla.
     expect(fuentesDeCierresAdmin().length).toBeGreaterThan(15);
@@ -348,6 +388,21 @@ describe("393 — autocomprobación del censo (una guardia estática rota no fal
     expect(hoja?.codigo.length ?? 0).toBeGreaterThan(recortado * 2);
   });
 
+  it("SLT-104: los dos trozos de bodega de la vista se cortaron de verdad, y son de bodega", () => {
+    const trozos = trozosDeBodegaEnLaVista(quitarComentarios(readFileSync(VISTA, "utf8")));
+    expect(trozos.map((t) => t.nombre)).toEqual([
+      "detalle-cierre-vista.ts › cuentaCentral",
+      "detalle-cierre-vista.ts › Mensajeros y Conciliación",
+    ]);
+    for (const trozo of trozos) expect(trozo.codigo.length, `${trozo.nombre} salió cortado a nada`).toBeGreaterThan(200);
+    expect(trozos[0]!.codigo).toMatch(/lineasCascadaCentral/);
+    expect(trozos[0]!.codigo).not.toMatch(/export function lineasDinero/);
+    expect(trozos[1]!.codigo).toMatch(/export function filasMensajeros/);
+    expect(trozos[1]!.codigo).toMatch(/export function cuentaConciliacion/);
+    // Y ninguno arrastra el detalle de MENSAJERO, que sí dice «Aprobado» (D3 de la 431).
+    for (const trozo of trozos) expect(trozo.codigo).not.toMatch(/FECHA_APROBADO|ACCION_APROBAR/);
+  });
+
   it("el MISMO extractor encuentra los rótulos NUEVOS: sí lee código, y el cambio está puesto", () => {
     // Si esto sale vacío, el censo de abajo no prueba nada: o el barrido no lee, o las cascadas
     // no están montadas. En cualquiera de los dos casos, el verde de abajo es falso.
@@ -355,9 +410,10 @@ describe("393 — autocomprobación del censo (una guardia estática rota no fal
     expect(nuevos.length, "los rótulos de las cascadas no aparecen en ninguna superficie").toBeGreaterThan(
       4,
     );
-    // Y aparecen en el comprobante Y en el detalle: las dos superficies, no una.
+    // Y aparecen en el comprobante Y en el detalle: las dos superficies, no una. SLT-104: el detalle
+    // pinta la cascada de la central con `cuentaCentral` de la vista, no en el módulo.
     const donde = new Set(nuevos.map((h) => h.split(":")[0]));
-    expect([...donde]).toContain("CierresBodegaAdminModule.tsx");
+    expect([...donde]).toContain("detalle-cierre-vista.ts › cuentaCentral");
     expect([...donde].some((n) => n.startsWith("cierre-factura.tsx"))).toBe(true);
   });
 
@@ -383,8 +439,10 @@ describe("393 — autocomprobación del censo (una guardia estática rota no fal
         "partes. Con una sola, este caso pasaría leyendo un archivo y dando los otros cinco por " +
         "buenos.",
     ).toBeGreaterThan(1);
-    // Y son EXACTAMENTE esas dos, nombradas: la cola del maestro y el comprobante de bodega.
+    // Y son EXACTAMENTE esas, nombradas: la cola del maestro (el pie del detalle monta
+    // `ConciliacionAcciones`), el comprobante de bodega y, desde SLT-104, la cuenta de «Conciliación».
     expect([...donde]).toContain("CierresBodegaAdminModule.tsx");
+    expect([...donde]).toContain("detalle-cierre-vista.ts › Mensajeros y Conciliación");
     expect([...donde].some((n) => n.startsWith("cierre-factura.tsx"))).toBe(true);
   });
 
@@ -521,12 +579,10 @@ describe("393 — censo: el vocabulario del cierre de bodega (R23/R24/R34/R35)",
  */
 describe("393 — el VALOR de los rótulos y las notas, escrito a mano (R19/R23/R25/R33)", () => {
   it.each([
-    ["CASCADA_DUENO_TITULO", CASCADA_DUENO_TITULO, "De quién es el dinero"],
     ["CASCADA_CENTRAL_TITULO", CASCADA_CENTRAL_TITULO, "Lo que va a la central"],
     ["PARA_LA_TIENDA_LABEL", PARA_LA_TIENDA_LABEL, "Para la tienda"],
     ["PARA_LA_CENTRAL_LABEL", PARA_LA_CENTRAL_LABEL, "Para la central"],
     ["NETO_EMPRESA_LABEL", NETO_EMPRESA_LABEL, "Neto de la empresa"],
-    ["COBRADO_SOBRE_RECAUDADO_LABEL", COBRADO_SOBRE_RECAUDADO_LABEL, "Cobrado sobre lo recaudado"],
     ["FACTURADO_EMPRESA_LABEL", FACTURADO_EMPRESA_LABEL, "Lo que la empresa facturó"],
     ["GANA_BODEGA_SATELITE_LABEL", GANA_BODEGA_SATELITE_LABEL, "Gana la bodega satélite"],
   ])("%s dice exactamente lo aprobado", (_nombre, constante, literal) => {
@@ -538,7 +594,7 @@ describe("393 — el VALOR de los rótulos y las notas, escrito a mano (R19/R23/
   // Es el vocabulario que el humano decidió el 2026-09-16 al cerrar Q5, y el que la pantalla de
   // la satélite y la de la central usan a la vez. Anclarlo aquí cuesta un cambio visible y a
   // propósito el día que se quiera cambiar, que es exactamente lo que se quiere que pase —el
-  // mismo criterio, palabra por palabra, que los ocho de arriba.
+  // mismo criterio, palabra por palabra, que los de arriba.
   //
   // ⚠️ NO se comparan contra sí mismos ni contra `ESTADO_CONCILIACION_LABEL`, que es el mapa que
   // los reúne: una aserción contra su propia fuente está siempre verde y dejaría pasar cualquier
@@ -607,11 +663,6 @@ describe("393 — el VALOR de los rótulos y las notas, escrito a mano (R19/R23/
       GANA_BODEGA_SATELITE_NOTA,
       "Lo que se le reconoce a la bodega satélite por las devoluciones a origen. No es un movimiento de caja registrado.",
     ],
-    [
-      "FLETE_RECHAZO_NO_DEDUCIBLE_NOTA",
-      FLETE_RECHAZO_NO_DEDUCIBLE_NOTA,
-      "Se le factura a la tienda, pero no sale de lo recaudado: una devolución a origen no cobra contra entrega.",
-    ],
   ])("%s dice exactamente lo aprobado", (_nombre, constante, literal) => {
     // Las notas son la mitad del requisito, no adorno: R26 pide que se diga de qué resta sale
     // el número, R36 qué significa el negativo y R37 por qué el efectivo puede no alcanzar.
@@ -668,28 +719,6 @@ describe("SL-15 R3 — el cierre nombra a «la empresa», escrito a mano", () =>
       INGRESO_BRUTO_NOTA,
       "Todo lo que facturó la empresa en el cierre (flete + IVA + comisión + IVA), sin descontar nada.",
     ],
-    [
-      "GANA_LA_TIENDA_NOTA",
-      GANA_LA_TIENDA_NOTA,
-      "Lo recaudado menos todo lo que la empresa le factura, incluido el flete por devolución a origen. No es lo que se le paga hoy.",
-    ],
-    [
-      "GANA_LA_TIENDA_NEGATIVO_NOTA",
-      GANA_LA_TIENDA_NEGATIVO_NOTA,
-      "La empresa le factura más de lo que se recaudó en este cierre: a la tienda no le queda nada y pasa a deber la diferencia.",
-    ],
-    [
-      "NETO_EMPRESA_NOTA",
-      NETO_EMPRESA_NOTA,
-      "Lo que la empresa facturó, sin el IVA, menos el pago al mensajero y menos el ingreso de bodega por devoluciones a origen.", // SL-39 (R23): dice «sin el IVA».
-    ],
-    [
-      "NETO_EMPRESA_NEGATIVO_NOTA",
-      NETO_EMPRESA_NEGATIVO_NOTA,
-      "La empresa pagó más de lo que facturó en este cierre: ese neto es una pérdida, no una ganancia.",
-    ],
-    ["CASCADA_FACTURA_TIENDA_TITULO", CASCADA_FACTURA_TIENDA_TITULO, "Lo que la empresa le factura a la tienda"],
-    ["CASCADA_NETO_EMPRESA_TITULO", CASCADA_NETO_EMPRESA_TITULO, "Lo que le queda a la empresa"],
   ])("%s dice exactamente lo que se lee", (_nombre, constante, literal) => {
     expect(constante).toBe(literal);
   });

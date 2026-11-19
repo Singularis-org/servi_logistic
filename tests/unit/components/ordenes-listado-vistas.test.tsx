@@ -125,7 +125,7 @@ function ultimaLlamada(): {
 }
 
 function campoBuscar(): HTMLInputElement {
-  return screen.getByRole("searchbox", { name: "Buscar" }) as HTMLInputElement;
+  return screen.getByRole("searchbox", { name: "Buscar órdenes" }) as HTMLInputElement;
 }
 
 async function abrirVistas(user: ReturnType<typeof userEvent.setup>) {

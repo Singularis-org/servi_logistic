@@ -116,12 +116,21 @@ describeSiHayBase("455/C12 — API por API key: listado, detalle y carga (Postgr
 
       // Carga: la remision de la orden en `C.entregado` vuelve como duplicada; una nueva se crea.
       const remEntregado = [...remision].find(([, k]) => k === "entregado")?.[0] ?? "";
-      // La geografia se valida ANTES que el duplicado: se toma un distrito activo con zona de la base.
+      // La geografia se valida ANTES que el duplicado: hace falta un distrito activo con zona.
+      // SLT-184 (R1122/R1124): el distrito se lee por su canton (Cartago/Cartago, geografia por
+      // clave) y se ASOCIA en la tx a la zona satelite del escenario; antes se tomaba «un distrito
+      // activo con zona» de la base, y la base de CI no trae ninguna asociacion.
       const distrito = await e.tx.distrito.findFirst({
-        where: { activo: true, zonas: { some: {} }, canton: { activo: true, provincia: { activo: true } } },
-        select: { nombre: true, canton: { select: { nombre: true, provincia: { select: { nombre: true } } } } },
+        where: { activo: true, canton: { nombre: "Cartago", activo: true, provincia: { nombre: "Cartago", activo: true } } },
+        orderBy: { nombre: "asc" },
+        select: { id: true, nombre: true, canton: { select: { nombre: true, provincia: { select: { nombre: true } } } } },
       });
-      if (distrito === null) throw new Error("la base no tiene un distrito activo con zona: corre seed-zonas");
+      if (distrito === null) throw new Error("falta un distrito activo de Cartago/Cartago: aplica las migraciones");
+      await e.tx.zonaDistrito.create({ data: { zonaId: e.zonaSateliteId, distritoId: distrito.id } });
+      expect(
+        await e.tx.zonaDistrito.count({ where: { zonaId: e.zonaSateliteId, distritoId: distrito.id } }),
+        "SLT-184: la asociacion zona-distrito sembrada no esta en la base",
+      ).toBe(1);
       const geo = {
         provincia: distrito.canton.provincia.nombre,
         canton: distrito.canton.nombre,

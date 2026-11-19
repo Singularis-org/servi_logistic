@@ -25,6 +25,7 @@ import { construirDescarga } from "@/lib/utils/descarga-dataset";
 import type { DescargaCelda } from "@/lib/types/descarga";
 import type { OrdenListItemDTO } from "@/lib/types/orden";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /** Nº de filas del dataset: si algo truncara por página, aquí se vería. */
 const TOTAL_FILAS = 60;
 
@@ -176,7 +177,7 @@ describe("Descarga de dataset — round-trip desde el listado de órdenes", () =
   it("el xlsx generado a partir de filas del listado se relee con las mismas cabeceras y el mismo número de filas", async () => {
     const archivo = await construirDescarga(
       { titulo: TITULO, columnas: COLUMNAS_DESCARGA_ORDENES, filas: FILAS },
-      new Date("2026-07-29T12:00:00Z"),
+      ZONA_CR, new Date("2026-07-29T12:00:00Z"),
     );
 
     expect(archivo.nombreArchivo.endsWith(".xlsx")).toBe(true);
@@ -226,7 +227,7 @@ describe("Descarga de dataset — round-trip desde el listado de órdenes", () =
         columnas: COLUMNAS_DESCARGA_ORDENES,
         filas: FILAS,
       },
-      new Date("2026-07-29T12:00:00Z"),
+      ZONA_CR, new Date("2026-07-29T12:00:00Z"),
     );
 
     expect(archivo.nombreArchivo.endsWith(".csv")).toBe(true);

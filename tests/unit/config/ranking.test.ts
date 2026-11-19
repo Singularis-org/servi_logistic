@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { loadRankingConfig } from "@/lib/config/ranking";
 
 // Feature 76 (R7/R22): umbral minimo de muestra para el podio, configurable por entorno con
-// readPositiveInt (espejo de lib/config/reintentos.ts). Se invoca loadRankingConfig() tras
+// readPositiveInt. Se invoca loadRankingConfig() tras
 // setear/limpiar el env, NO se depende del `rankingConfig` congelado en import.
 const ENV_KEY = "RANKING_MIN_ASIGNADAS";
 

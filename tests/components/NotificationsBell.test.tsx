@@ -1018,3 +1018,33 @@ describe("NotificationsBell — el tono sigue el mismo criterio que la campana (
     expect(screen.getByText("2 por hacer")).toBeInTheDocument();
   });
 });
+
+// ---------------------------------------------------------------------------
+// SLT-193 «Botones de 44 px pendientes en la PWA del mensajero» (R911, R913): la campana mide
+// 44 × 44 en móvil, con y sin pendientes, para cualquier rol; en escritorio no cambia. jsdom no
+// aplica Tailwind: se afirman las clases (toda clase de tamaño nueva va con `max-md:`).
+// ---------------------------------------------------------------------------
+describe("NotificationsBell — área táctil en móvil (SLT-193)", () => {
+  function clases(): string[] {
+    return trigger().className.split(/\s+/);
+  }
+
+  it("R911: sin pendientes, el disparador lleva 44 × 44 en móvil", async () => {
+    renderBell();
+    await waitFor(() => expect(listarMock).toHaveBeenCalled());
+    expect(clases()).toEqual(expect.arrayContaining(["max-md:min-h-11", "max-md:min-w-11"]));
+  });
+
+  it("R911: con pendientes (la píldora), sigue con 44 × 44 en móvil", async () => {
+    listarMock.mockResolvedValue(ok([accionable({ id: "a", read: false })]));
+    renderBell();
+    expect(await screen.findByText("1 por hacer")).toBeInTheDocument();
+    expect(clases()).toEqual(expect.arrayContaining(["max-md:min-h-11", "max-md:min-w-11"]));
+  });
+
+  it("R913: ninguna clase de alto o ancho mínimo sin el prefijo `max-md:` (escritorio igual)", async () => {
+    renderBell();
+    await waitFor(() => expect(listarMock).toHaveBeenCalled());
+    expect(clases().filter((c) => /^min-[hw]-/.test(c))).toEqual([]);
+  });
+});

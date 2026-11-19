@@ -16,6 +16,7 @@ import {
 } from "./_postgres-real";
 import { tomarExclusionDemoQa, type ExclusionDemoQa } from "./_exclusion-demo-qa";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // FICHA 403 (T2, design §1.2/§4) — la migracion que anade el aviso a los DOS enums de
 // `notificacion`, MAS **R12 medido contra Postgres**: una racha, un aviso; una racha nueva, otro.
 //
@@ -298,6 +299,7 @@ describeSiHayBase("403/T2 — la base aplicada, y el DOWN ejercitado de verdad",
       "traspaso_ordenes_recibido",
       "traspaso_ordenes_cedido",
       "reprogramadas_esperan_cierre", // ficha 462 (2026-09-25): el cuarto agregado
+      "factura_plataforma_emitida", // SLT-136 (2026-11-17): factura de la plataforma emitida, al maestro
     ]);
     expect(await valoresDe("notificacion_entidad_tipo")).toEqual([
       ...ENTIDADES_PREVIAS,
@@ -324,6 +326,7 @@ describeSiHayBase("403/T2 — la base aplicada, y el DOWN ejercitado de verdad",
       // SEGUNDO traspaso del dia a la misma persona no avisaria NUNCA.
       "orden_traspaso_lote",
       "reprogramadas_esperan_cierre_dia", // ficha 462 (2026-09-25): `${ambito}:${diaCR}`, ambito central|zona
+      "factura_plataforma", // SLT-136 (2026-11-17): la entidad es la factura
     ]);
   });
 
@@ -510,7 +513,7 @@ describeSiHayBase("403/R12 — una racha produce UN solo aviso, por muchos fallo
           await emitirWebhookSuscripcionPausada(
             repo,
             { ownerUsuarioId: OWNER, sinExitoDesde: racha },
-            tx,
+            ZONA_DE_CR, tx,
           ),
         );
       }
@@ -533,12 +536,12 @@ describeSiHayBase("403/R12 — una racha produce UN solo aviso, por muchos fallo
       const primera = await emitirWebhookSuscripcionPausada(
         repo,
         { ownerUsuarioId: OWNER, sinExitoDesde: racha1 },
-        tx,
+        ZONA_DE_CR, tx,
       );
       const segunda = await emitirWebhookSuscripcionPausada(
         repo,
         { ownerUsuarioId: OWNER, sinExitoDesde: racha2 },
-        tx,
+        ZONA_DE_CR, tx,
       );
       return {
         primera,
@@ -616,7 +619,7 @@ describeSiHayBase("403/R12 — una racha produce UN solo aviso, por muchos fallo
       await emitirWebhookSuscripcionPausada(
         new NotificacionRepository(tx),
         { ownerUsuarioId: OWNER, sinExitoDesde: racha },
-        tx,
+        ZONA_DE_CR, tx,
       );
       const filas = await tx.$queryRawUnsafe<
         {

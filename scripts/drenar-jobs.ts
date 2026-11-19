@@ -34,6 +34,7 @@ import type { JobHandler, RecurrenciaSpec } from "@/lib/interfaces/services/IJob
 import type { JobTipo } from "@prisma/client";
 import { JobQueueService } from "@/lib/services/JobQueueService";
 import { JobRepository, type JobConEmpresa } from "@/lib/repositories/JobRepository";
+import { PaisRepository } from "@/lib/repositories/PaisRepository";
 import { comoPlataforma } from "@/lib/db/contexto-empresa";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { loadJobsConfig } from "@/lib/config/jobs";
@@ -294,6 +295,9 @@ async function main(): Promise<void> {
       recurrencias,
       config,
       now,
+      undefined,
+      // SLT-42 (design §6.1; R25): las zonas con empresas, para agendar los diarios por zona.
+      () => new PaisRepository(prisma).zonasConEmpresas(),
     );
 
     console.log(`Drenando ${opts.tipos.join(", ")} — lote ${lote}, max ${opts.vueltas} vueltas\n`);

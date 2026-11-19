@@ -1,8 +1,8 @@
 import {
-  inicioDeUltimosNDiasCREnUtc,
-  inicioDelDiaCREnUtc,
-  inicioDelDiaSiguienteCREnUtc,
-} from "@/lib/utils/fecha-cr";
+  inicioDeUltimosNDiasEnUtc,
+  inicioDelDiaEnUtc,
+  inicioDelDiaSiguienteEnUtc,
+} from "@/lib/utils/calendario-zona";
 import {
   normalizarTerminoBusqueda,
   soloDigitosSiPareceNumero,
@@ -17,7 +17,7 @@ import type { SalioAReparto } from "@/lib/interfaces/repositories/IOrdenReposito
  *
  * Por que aqui y no copiadas en cada servicio: las dos convierten una entrada PUBLICA (un
  * atajo de antiguedad, un termino tecleado) en algo que toca la base, y las dos tienen una
- * regla que no se ve en el resultado — el huso de Costa Rica en una, la paridad con la
+ * regla que no se ve en el resultado — el huso de la empresa en una, la paridad con la
  * expresion de la columna generada en la otra—. Dos copias divergen sin que nada falle: la
  * bodega satelite empezaria a cortar el dia a medianoche UTC, o a «no encontrar» lo que
  * `/ordenes` encuentra. Modulo PURO: sin Prisma, sin React, sin acceso a datos.
@@ -40,12 +40,12 @@ export interface FiltroCreacionInput {
 
 /**
  * Feature 144 (R41/R42/R43) — bordes temporales del filtro de creacion, calculados
- * SERVER-SIDE en horario de Costa Rica (UTC-6 fijo). Nunca se aceptan instantes del reloj del
- * cliente: solo fechas calendario o un atajo de dominio cerrado.
+ * SERVER-SIDE en la zona horaria `zona` (la del pais de la empresa, SLT-42). Nunca se aceptan
+ * instantes del reloj del cliente: solo fechas calendario o un atajo de dominio cerrado.
  *
- *   - atajo "Nd"  -> `gte` = 00:00 CR de hace N-1 dias (N dias calendario incl. hoy).
- *   - `desde: D`  -> `gte` = 00:00 CR de D.
- *   - `hasta: H`  -> `lt`  = 00:00 CR del dia SIGUIENTE a H  => H es INCLUSIVO.
+ *   - atajo "Nd"  -> `gte` = 00:00 locales de hace N-1 dias (N dias calendario incl. hoy).
+ *   - `desde: D`  -> `gte` = 00:00 locales de D.
+ *   - `hasta: H`  -> `lt`  = 00:00 locales del dia SIGUIENTE a H  => H es INCLUSIVO.
  *   - un solo extremo -> rango abierto por el otro lado.
  *
  * Atajo y rango no pueden coexistir: el borde lo rechaza antes (R40, `conRefinesDeCreacion`).
@@ -54,14 +54,15 @@ export interface FiltroCreacionInput {
 export function rangoCreacion(
   filtro: FiltroCreacionInput | undefined,
   ahora: Date,
+  zona: string,
 ): { gte?: Date; lt?: Date } | undefined {
   if (!filtro) return undefined;
   if (filtro.created_preset) {
-    return { gte: inicioDeUltimosNDiasCREnUtc(PRESET_DIAS[filtro.created_preset], ahora) };
+    return { gte: inicioDeUltimosNDiasEnUtc(PRESET_DIAS[filtro.created_preset], ahora, zona) };
   }
   const rango: { gte?: Date; lt?: Date } = {};
-  if (filtro.created_desde) rango.gte = inicioDelDiaCREnUtc(filtro.created_desde);
-  if (filtro.created_hasta) rango.lt = inicioDelDiaSiguienteCREnUtc(filtro.created_hasta);
+  if (filtro.created_desde) rango.gte = inicioDelDiaEnUtc(filtro.created_desde, zona);
+  if (filtro.created_hasta) rango.lt = inicioDelDiaSiguienteEnUtc(filtro.created_hasta, zona);
   return rango.gte || rango.lt ? rango : undefined;
 }
 

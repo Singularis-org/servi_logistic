@@ -7,6 +7,7 @@ import type { CierreDetalleGestion } from "@/lib/interfaces/services/ICierreDiaS
 import { LLAMADAS_PROHIBIDAS_EN_DINERO } from "../../fixtures/money-safe";
 import { quitarComentarios } from "../../fixtures/sin-comentarios";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /**
  * Feature 213 / T13 — GUARDIA DE LA CAPTURA. Cuatro propiedades DURADERAS del frontend del
  * pago múltiple, cada una con CONTRAPRUEBA y con control de NO-VACUIDAD:
@@ -274,7 +275,11 @@ describe("R19 — el bundle del panel no arrastra runtime de servidor", () => {
  * basta con que no lean el escalar, tienen que leer el desglose.
  */
 const SITIOS_DE_PRESENTACION: { ruta: string; ancla: string }[] = [
-  { ruta: "app/(app)/cierre-dia/_components/CierreDiaModule.tsx", ancla: "desglosePantalla" },
+  // SLT-109 «/cierre-dia: el cierre de hoy, rechazado o vencido como página» (R242): el cierre del
+  // día del mensajero ya no pinta la columna «Método» (`desglosePantalla` en `CierreDiaModule.tsx`);
+  // su lista es la fila única, que pinta el desglose en la tarjeta «Recibió el mensajero» desde
+  // `g.pagos`. Se sigue al sitio de presentación a su archivo.
+  { ruta: "components/private/cierres/fila/fila-gestion-vista.ts", ancla: "g.pagos" },
   // FICHA 482 (2026-10-15): aquí estaba `cierre-detalle-shared.tsx` (ancla `montoPorMetodo`),
   // por las tablas del detalle con una columna por medio de pago. Esas tablas (`DetalleSecciones`)
   // se borraron: el archivo ya no pinta ningún pago y el detalle de admin lo pinta
@@ -328,11 +333,12 @@ const MODULO_DE_CAPTURA = "app/(app)/mis-asignaciones/_components/desglose-captu
 // detalle de un cierre, retiradas con `DetalleSecciones`) y `medios-pago-descarga-columnas.ts`
 // (su declaración de columnas por medio, mudada a la hoja fundida, su único consumidor; la
 // proyección `celdasMediosPago` solo la llamaban las cinco).
+//
+// SLT-115 «Retirar los componentes de cierre sustituidos» (R405): sale
+// `cierre-dia-descarga-columnas.ts`. Sus cinco catálogos por resultado —los únicos que llamaban a
+// `desgloseDescarga(`— se retiraron con esa función; lo que queda del módulo (el histórico de
+// cierres) no proyecta desglose. La descarga del mensajero ya no lleva pagos por esa vía.
 const MODULOS_DE_DESCARGA: { ruta: string; ancla: string }[] = [
-  {
-    ruta: "app/(app)/cierre-dia/_components/cierre-dia-descarga-columnas.ts",
-    ancla: "desgloseDescarga(",
-  },
   {
     ruta: "app/(app)/cierres-admin/_components/cierres-gestiones-fundida-descarga-columnas.ts",
     ancla: "montoPorMetodo(",
@@ -491,7 +497,7 @@ describe("R32 — el borde de escritura sigue aceptando `metodoPago` escalar", (
   };
 
   it("EJECUTABLE: una entrega con SOLO el escalar (sin `pagos`) sigue siendo válida", () => {
-    const r = gestionarSchema.safeParse(entregaConEscalar);
+    const r = gestionarSchema(ZONA_CR).safeParse(entregaConEscalar);
 
     expect(r.success, "el borde dejó de aceptar la forma escalar: eso es la ficha 214").toBe(true);
     if (r.success && r.data.resultado === "entregado") {
@@ -509,17 +515,17 @@ describe("R32 — el borde de escritura sigue aceptando `metodoPago` escalar", (
 
   it("CONTROL DE NO-VACUIDAD: el mismo schema rechaza lo que SÍ tiene que rechazar", () => {
     // Sin esto, un `gestionarSchema` que aceptara CUALQUIER COSA daría verde el caso de arriba.
-    const sinComo = gestionarSchema.safeParse({ ...entregaConEscalar, metodoPago: undefined });
+    const sinComo = gestionarSchema(ZONA_CR).safeParse({ ...entregaConEscalar, metodoPago: undefined });
     expect(sinComo.success, "el borde acepta un cobro sin decir cómo se cobró").toBe(false);
 
-    const inventado = gestionarSchema.safeParse({ ...entregaConEscalar, metodoPago: "cripto" });
+    const inventado = gestionarSchema(ZONA_CR).safeParse({ ...entregaConEscalar, metodoPago: "cripto" });
     expect(inventado.success, "el borde acepta un método fuera del catálogo").toBe(false);
   });
 
   it("la forma PURA de la 213 y la escalar de antes conviven: las DOS son válidas", () => {
     // R32 dicho como convivencia, que es lo que esta ficha necesita para poder mergearse sin
     // romper a nadie que aún envíe el escalar.
-    const conDesglose = gestionarSchema.safeParse({
+    const conDesglose = gestionarSchema(ZONA_CR).safeParse({
       ...entregaConEscalar,
       metodoPago: undefined,
       pagos: [
@@ -529,6 +535,6 @@ describe("R32 — el borde de escritura sigue aceptando `metodoPago` escalar", (
     });
 
     expect(conDesglose.success).toBe(true);
-    expect(gestionarSchema.safeParse(entregaConEscalar).success).toBe(true);
+    expect(gestionarSchema(ZONA_CR).safeParse(entregaConEscalar).success).toBe(true);
   });
 });

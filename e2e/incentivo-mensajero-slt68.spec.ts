@@ -18,9 +18,11 @@ import { baseReparto, paginaDe } from "./_escenarios/reparto";
  * incentivo, Q1). Nada se escribe a mano.
  *
  * CIFRAS, escritas a mano a partir del escenario (ver `wallet-mensajeros.spec.ts` y `wallet.spec.ts`):
- *   - cuenta por pagar antes = 3.000 devengado − 1.000 pagado del efectivo = 2.000;
- *   - ganancia de la empresa antes = 1.000;
- *   - incentivo M = 700 ⇒ cuenta por pagar 2.700 y ganancia 300; tras anularlo, 2.000 y 1.000.
+ *   - cuenta por pagar antes = 3.000 devengado − 0 pagado = 3.000. Desde SLT-123 «Pago al mensajero
+ *     independiente del efectivo» (R313) el cierre de la central ya no se da por pagado con el
+ *     efectivo (antes: − 1.000 pagado del efectivo = 2.000);
+ *   - ganancia de la empresa antes = 1.000 (la caja no cambia con SLT-123, R314);
+ *   - incentivo M = 700 ⇒ cuenta por pagar 3.700 y ganancia 300; tras anularlo, 3.000 y 1.000.
  */
 
 const MONTO = "700";
@@ -87,9 +89,9 @@ test.describe.serial("SLT-68 — incentivo manual a un mensajero: registrar, ver
     c = await crearEscenarioCaja("incentivo-slt68");
   });
 
-  test("antes: la cuenta por pagar del mensajero es 2.000 y la ganancia 1.000", async ({ browser }) => {
+  test("antes: la cuenta por pagar del mensajero es 3.000 y la ganancia 1.000", async ({ browser }) => {
     const page = await paginaDe(browser, c.r.empresa.maestro);
-    await expect(await cuentaPorPagar(page)).toHaveText(importe(2000));
+    await expect(await cuentaPorPagar(page)).toHaveText(importe(3000));
     await page.goto("/wallet");
     await expect(ganancia(page)).toContainText(importe(1000));
     expect(await incentivosEnLaBase()).toEqual([]);
@@ -126,9 +128,9 @@ test.describe.serial("SLT-68 — incentivo manual a un mensajero: registrar, ver
     ]);
   });
 
-  test("en /wallet/mensajeros la cuenta por pagar sube a 2.700 y su libro lo rotula «Incentivo»", async ({ browser }) => {
+  test("en /wallet/mensajeros la cuenta por pagar sube a 3.700 y su libro lo rotula «Incentivo»", async ({ browser }) => {
     const page = await paginaDe(browser, c.r.empresa.maestro);
-    await expect(await cuentaPorPagar(page)).toHaveText(importe(2700));
+    await expect(await cuentaPorPagar(page)).toHaveText(importe(3700));
 
     const libro = await libroDelMensajero(page);
     const incentivo = filasDeConcepto(libro, "Incentivo");
@@ -159,8 +161,8 @@ test.describe.serial("SLT-68 — incentivo manual a un mensajero: registrar, ver
 
     // R14: la ganancia vuelve a 1.000.
     await expect(ganancia(page)).toContainText(importe(1000), { timeout: 30_000 });
-    // R14: la cuenta por pagar vuelve a 2.000.
-    await expect(await cuentaPorPagar(page)).toHaveText(importe(2000));
+    // R14: la cuenta por pagar vuelve a 3.000.
+    await expect(await cuentaPorPagar(page)).toHaveText(importe(3000));
 
     // R13/R18: el incentivo sigue en el libro y se suma su contraasiento.
     const libro = await libroDelMensajero(page);

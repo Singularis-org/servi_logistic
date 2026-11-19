@@ -156,13 +156,12 @@ export interface IBulkOrdenService {
    * autorizacion (devuelve `forbidden`). Devuelve el summary extendido con `numGuia` por
    * creada + el bloque plano `ordenes` (R10). No hay `dryRun`: el integrador carga en firme.
    *
-   * Feature 155/R19/R20/R22 + FULFILLMENT (2026-08-25): el estado inicial DEJA de ser fijo, y
-   * desde hoy se decide POR ORDEN. Se sigue resolviendo con el MISMO punto de decision que la
-   * via sesion (`resolverDestinoCreacion`), pero el predicado de ESTA via no es el flag
-   * `Usuario.fulfillment` —que para un usuario de rol `apiKey` vale siempre `false`, y por eso
-   * la rama (a) llevaba desde la 155 declarada como inalcanzable— sino el MONTO de fulfillment
-   * de la tarifa que le resuelve a cada orden: `> 0` -> `en_preparacion` SIN guia; si no, la
-   * rama (b) de siempre, `por_recolectar_en_tienda` con `num_guia` en el acto.
+   * Feature 155/R19/R20/R22 + SLT-94 (R5/R6): el estado inicial lo decide el MISMO punto que la
+   * via sesion (`resolverDestinoCreacion`) con la marca «se recoge en tienda» de la tienda dueña,
+   * UNA vez por lote: «no» -> `en_preparacion` SIN guia; «si» -> `por_recolectar_en_tienda` con
+   * `num_guia` en el acto. Ningun valor de fulfillment de la tarifa interviene (del 2026-08-25 a
+   * SLT-94 lo decidia el monto de fulfillment de cada orden). Dueño que no resuelve -> cada fila
+   * en `error` con `tienda` (SL-17 D15), como la via sesion.
    *
    * Feature 141 (R20/R21/R30-R33): `options.name` es el nombre OPCIONAL del lote; el id del
    * lote lo genera SIEMPRE el servidor (una peticion = un lote). Puede lanzar

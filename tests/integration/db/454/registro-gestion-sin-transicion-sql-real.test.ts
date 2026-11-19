@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 
 import { HAY_BASE_DE_DATOS } from "../_postgres-real";
-import { conEscenario, prepararMundo, type Mundo } from "./_escenario";
+import { conEscenario, prepararMundo, type Escenario, type Mundo } from "./_escenario";
 
 /**
  * FICHA 454 (T1.4, design §5/§6; R1, R2, R5) — REGISTRAR UNA GESTION NO TRANSICIONA LA ORDEN, contra
@@ -22,10 +22,33 @@ describeSiHayBase("454/T1.4 — registrar una gestion sin transicion (Postgres r
   let mundo: Mundo;
   let r: Awaited<ReturnType<typeof correr>>;
 
+  /**
+   * SLT-195 (R1196, R1197; SLT-79 «todo manual»): la gestion solo encola la reoptimizacion si la
+   * orden tiene coordenadas Y la ruta del mensajero ya se calculo HOY. Se siembran las dos cosas en
+   * la tx revertida: coordenadas en la orden y una `ruta_optimizada` del mensajero con la
+   * `organizacion_id` de la orden (la sub-consulta de la gestion filtra por empresa).
+   */
+  async function prepararRuta(e: Escenario, ordenId: string, calculadaAt: Date) {
+    const o = await e.tx.orden.update({
+      where: { id: ordenId },
+      data: { latitud: "9.9281000", longitud: "-84.0907000" },
+      select: { organizacionId: true },
+    });
+    await e.tx.rutaOptimizada.create({
+      data: { mensajeroId: e.mensajeroId, calculadaAt, organizacionId: o.organizacionId },
+    });
+  }
+  const contarJobs = (e: Escenario) =>
+    e.tx.job.count({
+      where: { tipo: "optimizacion_ruta", payload: { path: ["mensajeroId"], equals: e.mensajeroId } },
+    });
+
   function correr() {
     return conEscenario(mundo, async (e) => {
       const entregada = await e.sembrarOrden({ estatus: "en_reparto", montoCobrar: 8000 });
       const devuelta = await e.sembrarOrden({ estatus: "en_reparto" });
+      // R1196: ruta del dia ya calculada (ahora) y la orden con coordenadas.
+      await prepararRuta(e, entregada.ordenId, new Date());
 
       await e.s.misAsignaciones.escogerParaGestion(entregada.ordenId, e.actorMensajero);
       const punteroAntes = await e.s.gestionRepo.getOrdenEnGestion(e.mensajeroId);
@@ -104,9 +127,25 @@ describeSiHayBase("454/T1.4 — registrar una gestion sin transicion (Postgres r
     });
   }
 
+  /** SLT-195 R1197: misma gestion, con coordenadas, pero la ultima ruta se calculo hace 3 dias. */
+  function correrSinRutaHoy() {
+    return conEscenario(mundo, async (e) => {
+      const orden = await e.sembrarOrden({ estatus: "en_reparto", montoCobrar: 8000 });
+      await prepararRuta(e, orden.ordenId, new Date(Date.now() - 3 * 24 * 60 * 60 * 1000));
+      const jobsAntes = await contarJobs(e);
+      const rG = await e.gestionar(orden.ordenId, "entregado", {
+        monto: 8000,
+        pagos: [{ metodo: "efectivo", monto: 8000 }],
+      });
+      return { rG: rG.status, jobsNuevos: (await contarJobs(e)) - jobsAntes };
+    });
+  }
+  let sinRutaHoy: Awaited<ReturnType<typeof correrSinRutaHoy>>;
+
   beforeAll(async () => {
     mundo = await prepararMundo();
     r = await correr();
+    sinRutaHoy = await correrSinRutaHoy();
   }, 120_000);
   afterAll(async () => {
     await mundo.prisma.$disconnect();
@@ -162,6 +201,12 @@ describeSiHayBase("454/T1.4 — registrar una gestion sin transicion (Postgres r
 
   it("R5: el puntero de gestion en curso queda liberado y se encola la reoptimizacion inmediata", () => {
     expect(r.punteroDespues).toBeNull();
-    expect(r.jobsNuevos).toBe(1);
+    // SLT-195 R1196: con coordenadas y la ruta de hoy ya calculada, exactamente un job.
+    expect(r.jobsNuevos, "SLT-195 R1196: jobs de reoptimizacion encolados").toBe(1);
+  });
+
+  it("SLT-195 R1197: con la primera ruta del dia pendiente, la gestion NO encola reoptimizacion", () => {
+    expect(sinRutaHoy.rG, "SLT-195 R1197: la gestion no se registro").toBe("ok");
+    expect(sinRutaHoy.jobsNuevos).toBe(0);
   });
 });

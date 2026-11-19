@@ -4,6 +4,7 @@ import type { ConsultaConteoEntregas } from "@/lib/analytics/entregas-conteo";
 import { consultarConteoEntregas } from "@/lib/actions/conteo-entregas";
 import type { ConteoEntregasDTO } from "@/lib/types/conteo-entregas";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 const AHORA = new Date("2026-08-17T12:00:00.000Z");
 
 const DATOS: ConteoEntregasDTO = {
@@ -16,7 +17,7 @@ function deps(actor: unknown) {
   const service = { consultar: vi.fn(async (_consulta: ConsultaConteoEntregas) => DATOS) };
   const logger = { logError: vi.fn() };
   return {
-    deps: {
+    deps: { reglasPais: reglasPaisFijas(),
       service,
       logger,
       getActor: async () => actor as never,

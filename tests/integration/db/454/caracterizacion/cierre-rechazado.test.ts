@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 
 import { HAY_BASE_DE_DATOS } from "../../_postgres-real";
+import { asentarCierreDia } from "@/lib/repositories/_shared/asientos-cierre-dia";
 import { conEscenario, prepararMundo, type Mundo } from "../_escenario";
 
 /**
@@ -42,6 +43,10 @@ describeSiHayBase("454/C17 — cierre rechazado, re-solicitado y aprobado (Postg
       };
       const resolicitud = await e.solicitarCierre();
       const aprobacion = await e.aprobar(cierreId);
+      // SLT-195 (R1190, R1191; SLT-73 R1): el cierre es de SATELITE y aprobarlo no escribe dinero.
+      // Se cuenta aqui y luego se asienta con el escritor de la conciliacion (SLT-73 R10).
+      const alAprobar = { dinero: await dinero() };
+      await asentarCierreDia(e.tx, cierreId);
       const trasAprobar = {
         dinero: await dinero(),
         historial: await historial(),
@@ -56,6 +61,7 @@ describeSiHayBase("454/C17 — cierre rechazado, re-solicitado y aprobado (Postg
         trasRechazo,
         resolicitud,
         aprobacion: aprobacion.status,
+        alAprobar,
         trasAprobar,
         reaprobacion: reaprobacion.status,
         trasReaprobar,
@@ -84,6 +90,8 @@ describeSiHayBase("454/C17 — cierre rechazado, re-solicitado y aprobado (Postg
   it("re-solicitar y aprobar emite el dinero y aplica la devolucion de la rechazada", () => {
     expect(r.resolicitud).toEqual({ status: "ok", via: "resolicitado" });
     expect(r.aprobacion).toBe("ok");
+    // SLT-195 R1190: aprobar la satelite no escribe dinero; R1191: asentarla si.
+    expect(r.alAprobar.dinero, "SLT-195 R1190: dinero escrito al aprobar una satelite").toBe(0);
     expect(r.trasAprobar.dinero).toBeGreaterThan(0);
     expect(r.trasAprobar.rec).toBe("por_devolver_a_tienda");
     expect(r.trasAprobar.ent).toBe("entregado");

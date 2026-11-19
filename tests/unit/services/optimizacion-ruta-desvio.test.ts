@@ -20,6 +20,7 @@ import {
   distanciaMinimaAPolilineaM,
 } from "@/lib/geo/polilinea";
 
+import { ZONA_DE_CR, reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // SLT-59 T6.1 (R42): `decodificarPolilinea` se envuelve en un espia que CONSERVA su
 // comportamiento, para poder afirmar que la rama «fuera de orden» no decodifica la polilinea.
 vi.mock("@/lib/geo/polilinea", async (original) => {
@@ -91,7 +92,7 @@ function decidir(input: {
   umbralM: number;
   disparo?: DisparoRuta;
 }) {
-  return decidirGuardaRuta({ ...input, disparo: input.disparo ?? "manual", ahora: T0, enfriamientoMin: 5 });
+  return decidirGuardaRuta({ zona: ZONA_DE_CR, ...input, disparo: input.disparo ?? "manual", ahora: T0, enfriamientoMin: 5 });
 }
 
 /** Un punto desplazado hacia el ESTE de `base` los metros pedidos (a lo largo del paralelo). */
@@ -520,7 +521,7 @@ function build(opts: { ruta: RutaOptimizadaDTO | null; paradas: ParadaRutaRow[] 
     CONFIG,
     () => T0,
     undefined,
-    routes as unknown as IRoutesClient,
+    routes as unknown as IRoutesClient, reglasPaisFijas(),
   );
   /** Toda escritura posible del repositorio: ninguna debe ocurrir al omitir (R6). */
   const escrituras = () =>

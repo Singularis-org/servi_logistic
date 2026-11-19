@@ -27,6 +27,7 @@ import {
   PAGO_MENSAJERO_COL,
 } from "./cierre-labels";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /**
  * Destino legible: tipo + zona, EXACTAMENTE como lo compone la columna de pantalla — porque es
  * LA MISMA función que usa la pantalla (feature 170, T I.2). Antes era una copia con el mismo
@@ -68,7 +69,8 @@ export function filaDescargaCierrePendiente(cierre: CierreAdminResumen): Descarg
   return {
     estado: ESTADO_LABEL[cierre.estado] ?? cierre.estado,
     mensajero: cierre.mensajeroNombre,
-    fecha: fechaDiaInstanteCR(cierre.solicitadoAt),
+    // SLT-81: la UI sigue en la zona de CR
+    fecha: fechaDiaInstanteCR(cierre.solicitadoAt, ZONA_CR),
     destino: destino(cierre),
     general: cierre.totales.general, // STRING tal cual (money-safe)
     pagoMensajero: cierre.totalPagoMensajero,
@@ -101,7 +103,8 @@ export function filaDescargaCierreHistorico(cierre: CierreAdminResumen): Descarg
   return {
     estado: ESTADO_LABEL[cierre.estado] ?? cierre.estado,
     mensajero: cierre.mensajeroNombre,
-    fechaResuelta: cierre.resueltoAt === null ? null : fechaDiaInstanteCR(cierre.resueltoAt),
+    // SLT-81: la UI sigue en la zona de CR
+    fechaResuelta: cierre.resueltoAt === null ? null : fechaDiaInstanteCR(cierre.resueltoAt, ZONA_CR),
     destino: destino(cierre),
     general: cierre.totales.general, // STRING tal cual (money-safe)
     pagoMensajero: cierre.totalPagoMensajero,

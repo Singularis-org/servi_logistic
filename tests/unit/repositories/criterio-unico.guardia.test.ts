@@ -510,14 +510,33 @@ describe("R16 — el criterio de cada par esta declarado UNA sola vez", () => {
     ).toBeGreaterThanOrEqual(5);
   });
 
+  // SLT-122 (T1): la declaracion se MUDO a `lib/repositories/alcance-cierre-where.ts` para que el pago
+  // al mensajero (`LiquidacionPagoRepository`) filtre con el MISMO WHERE. La regla no se afloja: sigue
+  // habiendo UNA declaracion y UNA huella, ahora en el modulo compartido, y CERO en sus consumidores.
   it("`alcanceWhere` de los cierres del dia tambien es unica, y su huella no se repite", () => {
-    const codigo = leer("lib/repositories/CierresAdminRepository.ts");
-    expect(ocurrencias(codigo, /\bfunction\s+alcanceWhere\b/)).toBe(1);
-    expect(
-      ocurrencias(codigo, /destinoTipo:\s*alcance\.destinoTipo/),
-      "volvio a escribirse a mano el acotamiento por destino: es la segunda declaracion",
-    ).toBe(1);
-    expect(ocurrencias(codigo, /\balcanceWhere\(/)).toBeGreaterThanOrEqual(5);
+    const modulo = leer("lib/repositories/alcance-cierre-where.ts");
+    expect(ocurrencias(modulo, /\bfunction\s+alcanceWhere\b/)).toBe(1);
+    expect(ocurrencias(modulo, /destinoTipo:\s*alcance\.destinoTipo/)).toBe(1);
+
+    for (const consumidor of [
+      "lib/repositories/CierresAdminRepository.ts",
+      "lib/repositories/LiquidacionPagoRepository.ts",
+      // SLT-124 (R5): el cierre del dia del premio filtra el destino con el MISMO WHERE.
+      "lib/repositories/CierreDelDiaRepository.ts",
+    ]) {
+      const codigo = leer(consumidor);
+      expect(ocurrencias(codigo, /\bfunction\s+alcanceWhere\b/), `${consumidor} redeclara alcanceWhere`).toBe(0);
+      expect(
+        ocurrencias(codigo, /destinoTipo:\s*alcance\.destinoTipo/),
+        `${consumidor}: volvio a escribirse a mano el acotamiento por destino: es la segunda declaracion`,
+      ).toBe(0);
+      expect(codigo).toMatch(/import\s*\{\s*alcanceWhere\s*\}\s*from\s*"@\/lib\/repositories\/alcance-cierre-where"/);
+    }
+    expect(ocurrencias(leer("lib/repositories/CierresAdminRepository.ts"), /\balcanceWhere\(/)).toBeGreaterThanOrEqual(5);
+    // SLT-122 (R6/R9): el pago directo, los imputables del reparto y su conteo.
+    expect(ocurrencias(leer("lib/repositories/LiquidacionPagoRepository.ts"), /\balcanceWhere\(/)).toBe(3);
+    // SLT-124 (R1-R5): la resolucion del cierre del dia del premio, una sola llamada.
+    expect(ocurrencias(leer("lib/repositories/CierreDelDiaRepository.ts"), /\balcanceWhere\(/)).toBe(1);
   });
 });
 
@@ -579,7 +598,8 @@ describe("R16 — el detector se pone ROJO ante la segunda declaracion", () => {
     // cierres de otro mensajero.
     const real = leer(PAR_MENSAJERO.archivo);
     const mutado = mutar(real, [
-      [/const where = cierresDeMensajeroWhere\(mensajeroId\);/, "const where = { mensajeroId };"],
+      // SLT-138: la declaracion gano `filtros` e `idsPorFolio`; la mutacion la sustituye entera.
+      [/const where = cierresDeMensajeroWhere\([^)]*\);/, "const where = { mensajeroId };"],
     ]);
     const fallos = violaciones(mutado, PAR_MENSAJERO);
     expect(fallos.join(" | "), "la guardia NO ve el where reescrito").toMatch(
@@ -598,7 +618,8 @@ describe("R16 — el detector se pone ROJO ante la segunda declaracion", () => {
     const mutado = mutar(real, [
       // `(\s*)` y no `\n`: los archivos de este repo estan en CRLF y un `\n` literal no casa.
       [
-        /\$\{ordenBodegaSatelite\(\)\}(\s*)LIMIT/,
+        // SLT-210: la llamada lleva ahora el orden pedido (`ordenBodegaSatelite(filtro.orden)`).
+        /\$\{ordenBodegaSatelite\(filtro\.orden\)\}(\s*)LIMIT/,
         'ORDER BY o."prioridad" DESC, o."id" ASC$1LIMIT',
       ],
     ]);

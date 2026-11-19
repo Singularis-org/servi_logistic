@@ -1,5 +1,6 @@
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { RechazoSlaTiendaDTO } from "@/lib/types/rechazo-sla-tienda";
+import type { TerminoBusqueda } from "@/lib/utils/filtros-listado-ordenes";
 
 // Feature 102 (T8, design §5.2) — contrato del servicio de RECHAZOS POR SLA de la tienda: lista
 // paginada de solo-lectura de las ordenes que el cron SLA (99) escalo a `rechazada`, acotada a la
@@ -10,6 +11,11 @@ import type { RechazoSlaTiendaDTO } from "@/lib/types/rechazo-sla-tienda";
 export interface ListarRechazosSlaTiendaInput {
   page: number;
   pageSize: number;
+  /**
+   * SLT-194 (D3, R953/R956): el termino ya validado en el borde y pasado por `terminoDeBusqueda`
+   * (el criterio de `/ordenes`). Ausente = la lista de siempre (R957).
+   */
+  busqueda?: TerminoBusqueda;
 }
 
 // R12/R14: respuesta paginada `{ items, total, page, pageSize }` (shape identico al de novedades /

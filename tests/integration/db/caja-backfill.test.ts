@@ -8,6 +8,7 @@ import { CajaCodFeedService } from "@/lib/services/CajaCodFeedService";
 import { CajaPagoTiendaFeedService } from "@/lib/services/CajaPagoTiendaFeedService";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, enTransaccionRevertida } from "./_postgres-real";
 import { tomarExclusionDemoQa, type ExclusionDemoQa } from "./_exclusion-demo-qa";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * Feature 173 / T E.3 (R39, y de paso R36/R37/R38/R41/R42 contra el motor) — la idempotencia
@@ -53,6 +54,7 @@ type Tx = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0];
 
 function backfillReal(tx: Tx) {
   return new CajaBackfillTesoreriaService({
+    reglasPais: reglasPaisFijas(), // SLT-42 (R22): la zona de CR
     cliente: tx as unknown as CajaBackfillClient,
     // Los emisores REALES: las filas que aqui llegan a Postgres son las del camino vivo.
     codFeed: new CajaCodFeedService(),

@@ -9,10 +9,12 @@ import type { IPremioRankingRepository } from "@/lib/interfaces/repositories/IPr
 import type { IUserRepository } from "@/lib/interfaces/repositories/IUserRepository";
 import type { EditarPremioInput, RankingRowDTO } from "@/lib/types/ranking";
 import {
-  fechaCalendarioCR,
-  inicioDelDiaCREnUtc,
-  inicioDelDiaSiguienteCREnUtc,
-} from "@/lib/utils/fecha-cr";
+  fechaCalendario,
+  inicioDelDiaEnUtc,
+  inicioDelDiaSiguienteEnUtc,
+} from "@/lib/utils/calendario-zona";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 import { loadRankingConfig, type RankingConfig } from "@/lib/config/ranking";
 import { esAccesoTotal } from "@/lib/auth/acceso-total";
 import {
@@ -47,6 +49,8 @@ export class RankingService implements IRankingService {
     private readonly userRepo: IUserRepository,
     private readonly premioRepo: IPremioRankingRepository,
     config?: RankingConfig,
+    /** SLT-42 (R22, R28): la zona del pais de la empresa, de la que sale «hoy». */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {
     this.config = config ?? loadRankingConfig();
   }
@@ -70,9 +74,13 @@ export class RankingService implements IRankingService {
     // convencion la ventana resultante `[00:00Z, 24:00Z)` es en realidad 18:00-18:00 hora
     // CR: una entrega de las 19:00 CR contaba para el dia SIGUIENTE. Ese era el defecto que
     // cerro la ficha 166; volver a `startOfDayCR` (o sumarle 6 h a mano) lo reintroduce.
-    const hoyCR = fechaCalendarioCR(now);
-    const desde = inicioDelDiaCREnUtc(hoyCR);
-    const hasta = inicioDelDiaSiguienteCREnUtc(hoyCR);
+    //
+    // SLT-42 (R22, R23, R28) — el dia es el de la zona del pais de la empresa (`inicioDelDiaEnUtc`,
+    // `inicioDelDiaSiguienteEnUtc`): las 00:00 de pared reales, tambien con horario de verano.
+    const zona = await zonaDeLaEmpresa(this.reglasPais, "RankingService.obtenerRanking");
+    const hoy = fechaCalendario(now, zona);
+    const desde = inicioDelDiaEnUtc(hoy, zona);
+    const hasta = inicioDelDiaSiguienteEnUtc(hoy, zona);
 
     // Feature 246 (T6.3, D7) — LA TERCERA FECHA, CON SU PROPIA CONVENCION, Y AQUI CONVIVEN LAS DOS.
     //
@@ -88,7 +96,7 @@ export class RankingService implements IRankingService {
     // se cumple por construccion y no por disciplina; (2) mantiene `startOfDayCR` fuera de este
     // archivo, donde la guardia `ranking-ventana-dia.guardia.test.ts` la prohibe desde la 166 — y
     // esa prohibicion se conserva ENTERA en vez de relajarse para hacer sitio a esta ficha.
-    const diaReparto = fechaComoDate(hoyCR);
+    const diaReparto = fechaComoDate(hoy);
 
     const [mensajeros, entregadas, asignadas, premios] = await Promise.all([
       this.userRepo.listMensajeros(),

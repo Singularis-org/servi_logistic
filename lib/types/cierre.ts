@@ -3,10 +3,12 @@ import type { CierreEstado as PrismaCierreEstado, CierreDestinoTipo as PrismaCie
 import { cierreConfig } from "@/lib/config/cierre";
 import type { ListarPaginadoResult } from "@/lib/types/listado-paginado";
 import type { ListarCompletoResult } from "@/lib/types/descarga-listado";
+import { filtrosColaPropiaSchema } from "@/lib/types/filtros-cierres";
 import type {
   CierrePasadoDTO,
   DeshacerGestionServiceResult,
   ListarCierreDiaServiceResult,
+  ResumenGananciaServiceResult,
   SolicitarCierreServiceResult,
   VerCierrePasadoServiceResult,
 } from "@/lib/interfaces/services/ICierreDiaService";
@@ -54,6 +56,14 @@ void _destinoExhaustive;
 // los *Result de recepcion-satelite/mis-asignaciones.
 export type ListarCierreDiaResult = ListarCierreDiaServiceResult | { status: "unauthenticated" };
 export type SolicitarCierreResult = SolicitarCierreServiceResult | { status: "unauthenticated" };
+/**
+ * SLT-112 (R357) — las cifras de «Cierres solicitados» tal como llegan a la pagina. `error` = una
+ * lectura fallo: la pagina carga igual, sin tarjetas y sin ceros en su lugar.
+ */
+export type ResumenGananciaResult =
+  | ResumenGananciaServiceResult
+  | { status: "unauthenticated" }
+  | { status: "error" };
 
 // Feature 67/R10 — validacion de BORDE del deshacer. El input del cliente es el
 // `gestion_orden.id` (uuid, ver `GestionOrden.id @default(uuid())` en schema.prisma); un valor
@@ -85,8 +95,11 @@ export type VerCierrePasadoResult =
 
 /**
  * Feature 170 — FASE 2 (T I.1, R40) — entrada del listado paginado «Cierres solicitados» del
- * mensajero. Sin filtros (design §11.3, riesgo BAJO) y sin alcance: el `mensajero_id` sale del
- * actor de la sesion.
+ * mensajero. Sin alcance: el `mensajero_id` sale del actor de la sesion.
+ *
+ * SLT-138 (R168): gana el bloque `filtros` (`desde`, `hasta`, `estados`, `folio`), opcional.
+ * Sin el, la entrada es la de antes y el listado tambien (R173). El bloque es un RECORTE, no un
+ * alcance: no tiene ninguna clave de mensajero y su propio `.strict()` las rechaza.
  *
  * `.strict()` para que un `mensajeroId` colado muera en el BORDE. Aqui no seria solo higiene:
  * es el unico listado de los siete cuyo alcance ES el propio usuario, y una clave que el
@@ -102,6 +115,7 @@ export const listarCierresPasadosSchema = z
       .positive()
       .default(cierreConfig.DEFAULT_PAGE_SIZE)
       .transform((n) => Math.min(n, cierreConfig.MAX_PAGE_SIZE)),
+    filtros: filtrosColaPropiaSchema.optional(),
   })
   .strict();
 
@@ -112,10 +126,11 @@ export type ListarCierresPasadosInput = z.infer<typeof listarCierresPasadosSchem
  *
  * Se DERIVA del schema de su pagina quitando `page`/`pageSize`, igual que los `…CompletoSchema`
  * de la 170 y los de la tanda B: la tabla y el archivo no pueden entender cosas distintas por
- * «entrada». Como este listado no tiene filtros, lo que queda es una lista blanca de CERO claves,
- * que aqui es exactamente lo correcto — y no es higiene: es el UNICO listado del Anexo A cuyo
- * alcance es el propio usuario, asi que un `mensajeroId` colado que el servicio llegara a leer
- * algun dia abriria el historico de dinero de otro mensajero. Muere aqui, sin tocar el servicio.
+ * «entrada». Lo que queda es una lista blanca de UNA clave, `filtros` (SLT-138, R168): el archivo
+ * acepta el MISMO bloque que la pagina por construccion. Y no es higiene: es el UNICO listado del
+ * Anexo A cuyo alcance es el propio usuario, asi que un `mensajeroId` colado que el servicio
+ * llegara a leer algun dia abriria el historico de dinero de otro mensajero. Muere aqui, sin tocar
+ * el servicio.
  *
  * `.strict()` se reescribe aunque `.omit()` lo herede: la barrera es de ESTE listado y no debe
  * depender de que el schema base nunca se afloje.

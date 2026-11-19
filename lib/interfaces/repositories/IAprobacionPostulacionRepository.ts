@@ -21,6 +21,15 @@ export interface PostulacionRow {
 }
 
 /** Estado minimo de un mensajero para decidir not_found/conflict (R13/R14). */
+/** SLT-42: lo que se valida con la regla del pais al aprobar (R10, R11, R14). */
+export interface PersonaDePostulacion {
+  telefono: string;
+  cedula: string;
+  tipoIdentificacionId: string;
+  /** SLT-42: cuando se recibio. Marca si la postulacion es previa a la validacion por pais. */
+  createdAt: Date;
+}
+
 export interface MensajeroEstado {
   id: string;
   estado: string;
@@ -50,6 +59,11 @@ export interface IAprobacionPostulacionRepository {
    * Solo se usa para distinguir not_found de conflict cuando el update no aplica.
    */
   findMensajeroById(id: string): Promise<MensajeroEstado | null>;
+  /**
+   * SLT-42 (R10, R11, R14): telefono, documento y tipo del usuario si es `mensajero` y sigue
+   * `pendiente`; null en otro caso (ese caso lo decide `actualizarEstadoSiPendiente`).
+   */
+  personaPendiente(id: string): Promise<PersonaDePostulacion | null>;
   /**
    * R12/R14/R16/R18: transicion atomica y anti-carrera. Actualiza `estado` solo
    * si el usuario es `mensajero` y sigue `pendiente`. Devuelve el numero de filas

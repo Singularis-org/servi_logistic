@@ -377,6 +377,8 @@ describe("agregarPorCategoriaYTipo (R8/R47)", () => {
     expect(metodos).toEqual([
       "agregarPorCategoria",
       "agregarPorCategoriaYTipo",
+      // D39: LECTURA de que rotulo lleva cada fila de la tarjeta. Sin importes y no es una mutacion.
+      "categoriasConModeloNuevo",
       "crearMovimientoRegistrado",
       "crearMovimientos",
       "listar",

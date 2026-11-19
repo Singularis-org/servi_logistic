@@ -38,6 +38,11 @@ export interface IOrigenLegibleRepository {
   cierres(ids: readonly string[]): Promise<CierreDeOrigen[]>;
   gestiones(ids: readonly string[]): Promise<OrdenDeOrigen[]>;
   incidentes(ids: readonly string[]): Promise<OrdenDeOrigen[]>;
+  /**
+   * SLT-94 (R36): la orden de cada movimiento de fulfillment (`orden_fulfillment_movimiento.id`, el
+   * `origen_id` de las filas con origen `orden_fulfillment`), con su guia o su remision.
+   */
+  movimientosFulfillment(ids: readonly string[]): Promise<OrdenDeOrigen[]>;
   pagos(ids: readonly string[]): Promise<PagoDeOrigen[]>;
   podios(ids: readonly string[]): Promise<PodioDeOrigen[]>;
   pagosPorCuenta(ids: readonly string[]): Promise<PagoPorCuentaDeOrigen[]>;

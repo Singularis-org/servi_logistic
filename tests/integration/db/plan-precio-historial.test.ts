@@ -1,0 +1,427 @@
+import { randomUUID } from "node:crypto";
+
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { PrismaClient } from "@prisma/client";
+
+import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { inicioDelDiaPlataforma } from "@/lib/planes/ciclo";
+import { PlanesService } from "@/lib/services/PlanesService";
+import type { PrecioPlan, TipoCobro, VersionPlan } from "@/lib/types/planes";
+import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones";
+
+import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
+import { entradaAsignable, planesEnTx, revertida } from "./_fixtures/planes";
+
+// SLT-86 · T9 (design §1.2, §5.4; R15, R22) — el historial de precio de un plan contra Postgres, con
+// `PlanesService` y `PlanesRepository` REALES. Todo en una transacción que se revierte.
+//
+// R15: el costo de un período o tramo usa el precio vigente cuando ESE período empieza: la fila del
+// historial con el mayor `desde_at` que no pase de su inicio. Dos formas de medirlo:
+//   · por `plan_de_la_empresa`, que lee la empresa con el reloj real de la base (el «hoy» del caso);
+//   · con fechas fijas (el ejemplo de R15: precio con fecha el 5, la quincenal lo ve desde el 16 y la anual
+//     desde el 1 de enero), evaluando la misma regla que `plan_de_la_empresa` — `desde_at <=
+//     plan_inicio_ciclo_de(entrada, tipo, ahora)` — porque dentro de la transacción `now()` no se mueve.
+// `desde_at` se lee como texto: la fila de alta es `-infinity`, que no cabe en un `Date`.
+//
+// SLT-128 (design §3.3; R3): un precio programado lo escribe en el historial, con `desde_at = F`, la primera
+// empresa que lo recibe; el plan cambia su precio vigente con la última (R10).
+
+const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
+
+const SUPERADMIN: Actor = { usuarioId: randomUUID(), rol: "superadmin", organizacionId: null };
+const UN_DIA_MS = 24 * 60 * 60 * 1000;
+const dia = (dias: number) => fechaCalendarioCR(new Date(Date.now() + dias * UN_DIA_MS));
+const a0000 = (fecha: string) => `${fecha} 06:00:00`;
+
+const P31: PrecioPlan = { tipo: "monto", mensual: "31000.00", descuentos: {} };
+const P35: PrecioPlan = { tipo: "monto", mensual: "35000.00", descuentos: {} };
+
+let base: PrismaClient;
+
+interface FilaHistorial {
+  desde: string;
+  mensual: string | null;
+  descuentos: unknown;
+}
+
+async function historial(tx: TxDeTest, planId: string): Promise<FilaHistorial[]> {
+  return tx.$queryRawUnsafe<FilaHistorial[]>(
+    `SELECT "desde_at"::text AS desde, "precio_mensual"::text AS mensual, "descuentos"
+       FROM "plan_precio_historial" WHERE "plan_id" = $1 ORDER BY "desde_at"`,
+    planId,
+  );
+}
+
+/** La regla de `plan_de_la_empresa` (§1.2) con un «ahora» fijo: el mensual que rige al empezar ese período. */
+async function precioEn(tx: TxDeTest, planId: string, entrada: string, tipo: TipoCobro, ahora: string): Promise<string | null> {
+  const [fila] = await tx.$queryRawUnsafe<{ mensual: string | null }[]>(
+    `SELECT h."precio_mensual"::text AS mensual FROM "plan_precio_historial" h
+      WHERE h."plan_id" = $1 AND h."desde_at" <= plan_inicio_ciclo_de($2::timestamp, $3, $4::timestamp)
+      ORDER BY h."desde_at" DESC LIMIT 1`,
+    planId,
+    entrada,
+    tipo,
+    ahora,
+  );
+  return fila?.mensual ?? null;
+}
+
+async function conPlan(tx: TxDeTest, planId: string, tipo: TipoCobro, entrada: string): Promise<string> {
+  const { id } = await crearOrganizacion(tx);
+  await tx.$executeRawUnsafe(
+    `UPDATE "organizacion" SET "plan_id" = $1, "plan_tipo_cobro" = $2, "plan_ciclo_ancla_at" = $3::timestamp WHERE "id" = $4`,
+    planId,
+    tipo,
+    entrada,
+    id,
+  );
+  return id;
+}
+
+async function empresa(tx: TxDeTest, id: string) {
+  return tx.organizacion.findUniqueOrThrow({ where: { id }, select: { planId: true, planTipoCobro: true, planCicloAnclaAt: true } });
+}
+
+function version(precio: PrecioPlan, extra: Partial<VersionPlan> = {}) {
+  const e = entradaAsignable();
+  return {
+    nombre: "Plan historial",
+    topes: e.topes,
+    modulos: e.modulos,
+    precio,
+    costoPorOrden: e.costoPorOrden,
+    costoPorOrdenPorcentual: null,
+    ...extra,
+  };
+}
+
+/**
+ * SLT-135: programa `precio` con F = `fecha` guardando con el reloj `guardado` (sin empresa fijada) y devuelve el
+ * pendiente. Sustituye a la edición inmediata de `PlanesRepository.editar`, que ya no existe.
+ */
+async function programar(
+  tx: TxDeTest,
+  planId: string,
+  fecha: string,
+  guardado: Date,
+  v: ReturnType<typeof version>,
+): Promise<{ res: Awaited<ReturnType<PlanesService["editar"]>>; cambioId: string }> {
+  await fijarEmpresa(tx, "");
+  const res = await new PlanesService(planesEnTx(tx), () => guardado).editar(SUPERADMIN, { planId, ...v, vigenteDesde: fecha });
+  const { id } = await tx.planCambioProgramado.findUniqueOrThrow({ where: { planId }, select: { id: true } });
+  return { res, cambioId: id };
+}
+
+async function crearPlan(servicio: PlanesService, precio: PrecioPlan = P31): Promise<string> {
+  const r = await servicio.crear(SUPERADMIN, entradaAsignable({ nombre: "Plan historial", precio }));
+  if (r.estado !== "ok") throw new Error(`no se creó el plan: ${JSON.stringify(r)}`);
+  return r.planId;
+}
+
+describeSiHayBase("SLT-86 — el historial de precio de un plan (R15, R22)", () => {
+  beforeAll(() => {
+    base = crearPrismaDeTest();
+  });
+
+  afterAll(async () => {
+    await base?.$disconnect();
+  });
+
+  it("crear siembra la fila «desde siempre» (-infinity) con el precio de alta y sus descuentos con dos decimales", async () => {
+    const r = await revertida(base, async (tx) => {
+      const servicio = new PlanesService(planesEnTx(tx));
+      const planId = await crearPlan(servicio, { tipo: "monto", mensual: "31000", descuentos: { anual: { tipo: "porcentaje", porcentaje: "10" } } });
+      return historial(tx, planId);
+    });
+    expect(r).toEqual([{ desde: "-infinity", mensual: "31000.00", descuentos: { anual: { tipo: "porcentaje", porcentaje: "10.00" } } }]);
+  });
+
+  it("R15 (caso base): precio con fecha el 5 → la quincenal lo ve desde el 16 y la anual desde el 1 de enero; nadie se reancla", async () => {
+    const r = await revertida(base, async (tx) => {
+      const planId = await crearPlan(new PlanesService(planesEnTx(tx)));
+      const quincenal = await conPlan(tx, planId, "quincenal", "2026-01-01 06:00:00");
+      const anual = await conPlan(tx, planId, "anual", "2025-01-01 06:00:00");
+      const antes = [await empresa(tx, quincenal), await empresa(tx, anual)];
+      // SLT-135: guardado el 5 con F = 5; la quincenal lo recibe el 16 y la anual el 1 de enero, por la cola.
+      const { res: editado, cambioId } = await programar(tx, planId, "2026-11-05", new Date("2026-11-05T15:00:00.000Z"), version(P35));
+      const repo = planesEnTx(tx);
+      await repo.recibirCambio({ planId, cambioId }, quincenal, new Date("2026-11-16T06:01:00.000Z"));
+      await repo.recibirCambio({ planId, cambioId }, anual, new Date("2027-01-01T06:01:00.000Z"));
+      const q = (ahora: string) => precioEn(tx, planId, "2026-01-01 06:00:00", "quincenal", ahora);
+      const a = (ahora: string) => precioEn(tx, planId, "2025-01-01 06:00:00", "anual", ahora);
+      return {
+        editado,
+        antes,
+        despues: [await empresa(tx, quincenal), await empresa(tx, anual)],
+        filas: await historial(tx, planId),
+        quincenal: [await q("2026-11-10 12:00:00"), await q("2026-11-16 05:59:59.999"), await q("2026-11-16 06:00:00"), await q("2026-11-20 12:00:00")],
+        anual: [await a("2026-11-10 12:00:00"), await a("2026-12-31 12:00:00"), await a("2027-01-01 06:00:00")],
+      };
+    });
+    expect(r.editado).toMatchObject({ estado: "ok", cambio: true });
+    expect(r.filas.map((f) => [f.desde, f.mensual])).toEqual([
+      ["-infinity", "31000.00"],
+      ["2026-11-05 06:00:00", "35000.00"],
+    ]);
+    // La quincena del 1 al 15 empezó antes del 5: precio viejo. La del 16 empieza después: el nuevo, desde
+    // sus 00:00 exactas (06:00 UTC), no un milisegundo antes.
+    expect(r.quincenal).toEqual(["31000.00", "31000.00", "35000.00", "35000.00"]);
+    // El año empezó el 1 de enero de 2026: precio viejo todo el año; el nuevo, desde el 1 de enero de 2027.
+    expect(r.anual).toEqual(["31000.00", "31000.00", "35000.00"]);
+    // R15: editar el precio no toca la entrada, el tipo ni el período de ninguna empresa.
+    expect(r.despues).toEqual(r.antes);
+  });
+
+  it("R15: un período que empieza exactamente a las 00:00 de la fecha de efecto ya usa el precio nuevo", async () => {
+    const r = await revertida(base, async (tx) => {
+      const planId = await crearPlan(new PlanesService(planesEnTx(tx)));
+      // SLT-135: F = 16 sin empresas; lo promueve la pasada de la cola de ese día.
+      const { cambioId } = await programar(tx, planId, "2026-11-16", new Date("2026-11-16T15:00:00.000Z"), version(P35));
+      await planesEnTx(tx).aplicarCambioProgramado({ planId, cambioId }, new Date("2026-11-16T15:01:00.000Z"));
+      return {
+        quincena: await precioEn(tx, planId, "2026-01-01 06:00:00", "quincenal", "2026-11-16 06:00:00"),
+        tramo: await precioEn(tx, planId, "2026-11-16 06:00:00", "anual", "2026-11-20 12:00:00"),
+        tramoAntes: await precioEn(tx, planId, "2026-11-15 06:00:00", "anual", "2026-11-20 12:00:00"),
+      };
+    });
+    // La quincena del 16 y el tramo anual que entra el 16 empiezan en F: rige el nuevo; el que entró el 15, no.
+    expect(r).toEqual({ quincena: "35000.00", tramo: "35000.00", tramoAntes: "31000.00" });
+  });
+
+  // SLT-135 (R6): guardado el 16 de noviembre a las 15:00 con F = 16. La quincenal empieza período hoy: lo recibe
+  // en la siguiente pasada y lo paga desde las 00:00 del 16. La mensual lo recibe y lo paga desde el 1 de diciembre.
+  it("R6: precio con F hoy: la quincenal que empieza hoy lo paga desde hoy y la mensual desde el 1", async () => {
+    const r = await revertida(base, async (tx) => {
+      const planId = await crearPlan(new PlanesService(planesEnTx(tx)));
+      const quincenal = await conPlan(tx, planId, "quincenal", "2026-01-01 06:00:00");
+      const mensual = await conPlan(tx, planId, "mensual", "2026-01-01 06:00:00");
+      const antes = [await empresa(tx, quincenal), await empresa(tx, mensual)];
+      const { res, cambioId } = await programar(tx, planId, "2026-11-16", new Date("2026-11-16T21:00:00.000Z"), version(P35));
+      const trasGuardar = await historial(tx, planId);
+      const repo = planesEnTx(tx);
+      const recibeQuincenal = await repo.recibirCambio({ planId, cambioId }, quincenal, new Date("2026-11-16T21:01:00.000Z"));
+      const precioDelPlan = async () =>
+        (await tx.plan.findUniqueOrThrow({ where: { id: planId }, select: { precioMensual: true } })).precioMensual?.toFixed(2);
+      const planTrasQuincenal = await precioDelPlan();
+      const q = (ahora: string) => precioEn(tx, planId, "2026-01-01 06:00:00", "quincenal", ahora);
+      const m = (ahora: string) => precioEn(tx, planId, "2026-01-01 06:00:00", "mensual", ahora);
+      const recibeMensual = await repo.recibirCambio({ planId, cambioId }, mensual, new Date("2026-12-01T06:01:00.000Z"));
+      return {
+        res,
+        antes,
+        despues: [await empresa(tx, quincenal), await empresa(tx, mensual)],
+        trasGuardar,
+        recibeQuincenal,
+        planTrasQuincenal,
+        recibeMensual,
+        filas: await historial(tx, planId),
+        planFinal: await precioDelPlan(),
+        quincenalVe: [await q("2026-11-15 12:00:00"), await q("2026-11-16 06:00:00"), await q("2026-11-20 12:00:00")],
+        mensualVe: [await m("2026-11-20 12:00:00"), await m("2026-11-30 12:00:00"), await m("2026-12-01 06:00:00")],
+      };
+    });
+    expect(r.res).toMatchObject({ estado: "ok", cambio: true, vigenteDesde: "2026-11-16" });
+    // Programado: al guardar no hay fila nueva; la escribe la recepción de la quincenal, en F.
+    expect(r.trasGuardar.map((f) => f.desde)).toEqual(["-infinity"]);
+    expect([r.recibeQuincenal, r.recibeMensual]).toEqual([{ estado: "aplicado" }, { estado: "aplicado" }]);
+    expect(r.filas.map((f) => [f.desde, f.mensual])).toEqual([
+      ["-infinity", "31000.00"],
+      [a0000("2026-11-16"), "35000.00"],
+    ]);
+    // La quincena del 16 ya con el nuevo; la del 1 al 15, no.
+    expect(r.quincenalVe).toEqual(["31000.00", "35000.00", "35000.00"]);
+    // Noviembre de la mensual empezó el 1: el viejo hasta su recepción del 1 de diciembre. Nadie lo paga antes.
+    expect(r.mensualVe).toEqual(["31000.00", "31000.00", "35000.00"]);
+    expect(r.planTrasQuincenal).toBe("31000.00");
+    expect(r.planFinal).toBe("35000.00");
+    expect(r.despues).toEqual(r.antes);
+  });
+
+  it("R15, R22: con fecha futura queda programado sin fila; el trabajo, al aplicarlo, añade la fila desde esa fecha", async () => {
+    const futura = dia(3);
+    const r = await revertida(base, async (tx) => {
+      const servicio = new PlanesService(planesEnTx(tx));
+      const planId = await crearPlan(servicio);
+      const res = await servicio.editar(SUPERADMIN, { planId, ...version(P35), vigenteDesde: futura });
+      const trasProgramar = await historial(tx, planId);
+      const pendiente = await tx.planCambioProgramado.findUniqueOrThrow({ where: { planId }, select: { id: true } });
+      const desde = inicioDelDiaPlataforma(futura);
+      const aplicado = await planesEnTx(tx).aplicarCambioProgramado(
+        { planId, cambioId: pendiente.id },
+        new Date(desde.getTime() + 60_000),
+      );
+      return { res, trasProgramar, aplicado, filas: await historial(tx, planId) };
+    });
+    expect(r.res).toMatchObject({ estado: "ok", cambio: true, vigenteDesde: futura });
+    expect(r.trasProgramar.map((f) => f.desde)).toEqual(["-infinity"]);
+    expect(r.aplicado).toEqual({ estado: "aplicado" });
+    expect(r.filas.map((f) => [f.desde, f.mensual])).toEqual([
+      ["-infinity", "31000.00"],
+      [a0000(futura), "35000.00"],
+    ]);
+  });
+
+  it("SLT-128 R3: con F futura aplicada por la cola, la quincenal lo ve desde su recepción y la anual desde el 1 de enero; el plan cambia con la última", async () => {
+    const r = await revertida(base, async (tx) => {
+      // Guardado el 10 de noviembre con F = 20 (a mitad de quincena): la quincenal lo recibe el 1 de diciembre y
+      // la anual el 1 de enero de 2027.
+      const servicio = new PlanesService(planesEnTx(tx), () => new Date("2026-11-10T15:00:00.000Z"));
+      const planId = await crearPlan(servicio);
+      const quincenal = await conPlan(tx, planId, "quincenal", "2026-01-01 06:00:00");
+      const anual = await conPlan(tx, planId, "anual", "2025-01-01 06:00:00");
+      await fijarEmpresa(tx, "");
+      const res = await servicio.editar(SUPERADMIN, { planId, ...version(P35), vigenteDesde: "2026-11-20" });
+      const trasProgramar = await historial(tx, planId);
+      const { id: cambioId } = await tx.planCambioProgramado.findUniqueOrThrow({ where: { planId }, select: { id: true } });
+      const recepciones = await tx.planCambioRecepcion.findMany({ where: { cambioId }, select: { empresaId: true, recibeAt: true } });
+      const repo = planesEnTx(tx);
+      const recibeQuincenal = await repo.recibirCambio({ planId, cambioId }, quincenal, new Date("2026-12-01T06:00:30.000Z"));
+      const trasQuincenal = await historial(tx, planId);
+      const precioDelPlan = async () =>
+        (await tx.plan.findUniqueOrThrow({ where: { id: planId }, select: { precioMensual: true } })).precioMensual?.toFixed(2);
+      const planTrasQuincenal = await precioDelPlan();
+      const q = (ahora: string) => precioEn(tx, planId, "2026-01-01 06:00:00", "quincenal", ahora);
+      const a = (ahora: string) => precioEn(tx, planId, "2025-01-01 06:00:00", "anual", ahora);
+      const recibeAnual = await repo.recibirCambio({ planId, cambioId }, anual, new Date("2027-01-01T06:00:30.000Z"));
+      return {
+        res,
+        quincenal,
+        anual,
+        trasProgramar,
+        recepciones,
+        recibeQuincenal,
+        trasQuincenal,
+        planTrasQuincenal,
+        recibeAnual,
+        final: await historial(tx, planId),
+        planFinal: await precioDelPlan(),
+        quincenalVe: [await q("2026-11-25 12:00:00"), await q("2026-12-01 05:59:59.999"), await q("2026-12-01 06:00:00")],
+        anualVe: [await a("2026-12-31 12:00:00"), await a("2027-01-01 06:00:00")],
+      };
+    });
+    expect(r.res).toMatchObject({ estado: "ok", cambio: true, vigenteDesde: "2026-11-20" });
+    expect(r.trasProgramar.map((f) => f.desde)).toEqual(["-infinity"]);
+    expect(Object.fromEntries(r.recepciones.map((x) => [x.empresaId, x.recibeAt.toISOString()]))).toEqual({
+      [r.quincenal]: "2026-12-01T06:00:00.000Z",
+      [r.anual]: "2027-01-01T06:00:00.000Z",
+    });
+    expect([r.recibeQuincenal, r.recibeAnual]).toEqual([{ estado: "aplicado" }, { estado: "aplicado" }]);
+    // La primera recepción escribe la fila en F; la segunda (y la promoción) la dejan como está.
+    expect(r.trasQuincenal.map((f) => [f.desde, f.mensual])).toEqual([
+      ["-infinity", "31000.00"],
+      [a0000("2026-11-20"), "35000.00"],
+    ]);
+    expect(r.final).toEqual(r.trasQuincenal);
+    // R10: el precio del plan cambia con la última empresa, no antes.
+    expect(r.planTrasQuincenal).toBe("31000.00");
+    expect(r.planFinal).toBe("35000.00");
+    // Ninguna cuota con el precio nuevo antes de la recepción de cada una, ni con el viejo después.
+    expect(r.quincenalVe).toEqual(["31000.00", "31000.00", "35000.00"]);
+    expect(r.anualVe).toEqual(["31000.00", "35000.00"]);
+  });
+
+  it("R15: un cambio de precio programado y cancelado no deja fila", async () => {
+    const r = await revertida(base, async (tx) => {
+      const servicio = new PlanesService(planesEnTx(tx));
+      const planId = await crearPlan(servicio);
+      await servicio.editar(SUPERADMIN, { planId, ...version(P35), vigenteDesde: dia(5) });
+      const cancelado = await servicio.cancelarCambio(SUPERADMIN, { planId });
+      return { cancelado, filas: await historial(tx, planId) };
+    });
+    expect(r.cancelado).toMatchObject({ estado: "ok" });
+    expect(r.filas.map((f) => [f.desde, f.mensual])).toEqual([["-infinity", "31000.00"]]);
+  });
+
+  // SLT-135: las ediciones son programadas con F = hoy y cada una la promueve la cola antes de la siguiente.
+  it("dos ediciones del mismo día dejan la última; una edición sin cambio de precio no añade fila; la última fila coincide con el precio vigente", async () => {
+    const r = await revertida(base, async (tx) => {
+      const repo = planesEnTx(tx);
+      const planId = await crearPlan(new PlanesService(repo));
+      let reloj = new Date("2026-11-16T15:00:00.000Z");
+      const editarYAplicar = async (v: ReturnType<typeof version>) => {
+        const { cambioId } = await programar(tx, planId, "2026-11-16", reloj, v);
+        reloj = new Date(reloj.getTime() + 60_000);
+        const aplicado = await repo.aplicarCambioProgramado({ planId, cambioId }, reloj);
+        reloj = new Date(reloj.getTime() + 60_000);
+        return aplicado;
+      };
+      const aplicados = [await editarYAplicar(version(P35))];
+      const conDescuento: PrecioPlan = { tipo: "monto", mensual: "36000", descuentos: { bimestral: { tipo: "monto", monto: "500" } } };
+      aplicados.push(await editarYAplicar(version(conDescuento)));
+      const trasDos = await historial(tx, planId);
+      aplicados.push(await editarYAplicar(version(conDescuento, { nombre: "Solo el nombre" })));
+      const vigente = await repo.plan(planId);
+      return { aplicados, trasDos, final: await historial(tx, planId), vigente };
+    });
+    expect(r.aplicados).toEqual([{ estado: "aplicado" }, { estado: "aplicado" }, { estado: "aplicado" }]);
+    expect(r.trasDos).toEqual([
+      { desde: "-infinity", mensual: "31000.00", descuentos: {} },
+      { desde: a0000("2026-11-16"), mensual: "36000.00", descuentos: { bimestral: { tipo: "monto", monto: "500.00" } } },
+    ]);
+    expect(r.final).toEqual(r.trasDos);
+    // Coherencia (§1.2): la última fila con `desde_at ≤ now()` es el precio vigente del plan.
+    const ultima = r.final.at(-1) as FilaHistorial;
+    expect(r.vigente?.precio).toEqual({ tipo: "monto", mensual: ultima.mensual, descuentos: ultima.descuentos });
+  });
+
+  // SLT-135 (design §2, «Gana el último»; R6): la fila en F que dejó ESTE MISMO cambio no se toca. Se mira el
+  // `ctid` de la fila: un UPDATE (aunque fuera con los mismos valores) dejaría otra versión de la fila.
+  it("R6 (Gana el último): el mismo cambio recibido o aplicado dos veces (reintento de la cola) no cambia la fila ni añade otra", async () => {
+    const r = await revertida(base, async (tx) => {
+      const planId = await crearPlan(new PlanesService(planesEnTx(tx)));
+      const quincenal = await conPlan(tx, planId, "quincenal", "2026-01-01 06:00:00");
+      const mensual = await conPlan(tx, planId, "mensual", "2026-01-01 06:00:00");
+      const conDescuento: PrecioPlan = { tipo: "monto", mensual: "35000", descuentos: { bimestral: { tipo: "porcentaje", porcentaje: "5" } } };
+      const { cambioId } = await programar(tx, planId, "2026-11-16", new Date("2026-11-16T15:00:00.000Z"), version(conDescuento));
+      const repo = planesEnTx(tx);
+      const fila = async () =>
+        tx.$queryRawUnsafe<{ ctid: string; mensual: string | null; descuentos: unknown }[]>(
+          `SELECT "ctid"::text AS ctid, "precio_mensual"::text AS mensual, "descuentos"
+             FROM "plan_precio_historial" WHERE "plan_id" = $1 AND "desde_at" = $2::timestamp`,
+          planId,
+          a0000("2026-11-16"),
+        );
+      const recibe = [await repo.recibirCambio({ planId, cambioId }, quincenal, new Date("2026-11-16T15:01:00.000Z"))];
+      const trasPrimera = { filas: await historial(tx, planId), fila: await fila() };
+      // Reintento del mismo trabajo de la quincenal; luego la mensual recibe el mismo cambio (y lo promueve).
+      recibe.push(await repo.recibirCambio({ planId, cambioId }, quincenal, new Date("2026-11-16T15:02:00.000Z")));
+      recibe.push(await repo.recibirCambio({ planId, cambioId }, mensual, new Date("2026-12-01T06:01:00.000Z")));
+      // Reintento del trabajo que promueve, ya promovido.
+      const reintento = await repo.aplicarCambioProgramado({ planId, cambioId }, new Date("2026-12-01T06:02:00.000Z"));
+      return { recibe, reintento, trasPrimera, filas: await historial(tx, planId), fila: await fila() };
+    });
+    expect(r.recibe).toEqual([{ estado: "aplicado" }, { estado: "sin_pendiente" }, { estado: "aplicado" }]);
+    expect(r.reintento).toMatchObject({ estado: "sin_pendiente" });
+    expect(r.trasPrimera.filas).toEqual([
+      { desde: "-infinity", mensual: "31000.00", descuentos: {} },
+      { desde: a0000("2026-11-16"), mensual: "35000.00", descuentos: { bimestral: { tipo: "porcentaje", porcentaje: "5.00" } } },
+    ]);
+    expect(r.trasPrimera.fila).toHaveLength(1);
+    expect(r.filas).toEqual(r.trasPrimera.filas);
+    expect(r.fila).toEqual(r.trasPrimera.fila);
+  });
+
+  it("R22 (SLT-135 R1, R2): cambiar el precio sin fecha o con una pasada es validation_error en vigenteDesde y no escribe nada", async () => {
+    const r = await revertida(base, async (tx) => {
+      const servicio = new PlanesService(planesEnTx(tx));
+      const planId = await crearPlan(servicio);
+      const sinFecha = await servicio.editar(SUPERADMIN, { planId, ...version(P35) });
+      const ayer = await servicio.editar(SUPERADMIN, { planId, ...version(P35), vigenteDesde: dia(-1) });
+      return {
+        sinFecha,
+        ayer,
+        filas: await historial(tx, planId),
+        vigente: (await tx.plan.findUniqueOrThrow({ where: { id: planId }, select: { precioMensual: true } })).precioMensual?.toFixed(2),
+        pendientes: await tx.planCambioProgramado.count({ where: { planId } }),
+      };
+    });
+    for (const x of [r.sinFecha, r.ayer]) {
+      expect(x.estado).toBe("validation_error");
+      if (x.estado === "validation_error") expect(Object.keys(x.fieldErrors)).toEqual(["vigenteDesde"]);
+    }
+    expect(r.filas.map((f) => f.desde)).toEqual(["-infinity"]);
+    expect(r.vigente).toBe("31000.00");
+    expect(r.pendientes).toBe(0);
+  });
+});

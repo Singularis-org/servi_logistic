@@ -1,16 +1,16 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 import { ChatConversacionRepository } from "@/lib/repositories/ChatConversacionRepository";
-import { normalizarTelefonoWa } from "@/lib/utils/whatsapp-telefono";
-import { sqlNormalizarTelefonoCr } from "@/lib/utils/telefono-cr-sql";
+import { normalizarTelefono, sqlNormalizarTelefono, type ReglasTelefono } from "@/lib/utils/telefono-pais";
 import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
   type FksDeOrden,
+  type TxDeTest,
 } from "./_postgres-real";
+import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 
 // REGRESION — los entrantes de WhatsApp desde Costa Rica se perdian en silencio.
 //
@@ -33,6 +33,12 @@ import {
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
+// SLT-42 (R18, R19, R21): la normalizacion ya no es de Costa Rica sino del pais de la empresa. Se
+// prueba con CR (los casos de siempre, que no pueden cambiar) y con un pais de prueba con OTRO
+// prefijo y OTRO largo nacional, para que un `506` o un `8` escondidos en el SQL se pongan rojos.
+const TEL_CR: ReglasTelefono = { prefijo: "506", digitosNacionales: 8 };
+const TEL_XA: ReglasTelefono = { prefijo: "999", digitosNacionales: 7 };
+
 const SUFIJO = `wa-cr-${Date.now().toString(36)}`;
 
 /**
@@ -47,34 +53,38 @@ const ASIGNADO_FUTURO = new Date("2099-01-01T00:00:00.000Z");
 
 interface Caso {
   nombre: string;
+  /** Reglas del pais de la empresa con que se normaliza. */
+  reglas: ReglasTelefono;
   /** Como quedo guardado `telefono_dest` en la orden. */
   guardado: string;
   /** Lo que llega del webhook. */
   entrante: string;
 }
 
+/** El mismo numero improbable en el pais de prueba: 7 digitos locales y prefijo `999`. */
+const ENTRANTE_XA = "9997770001";
+
 const CASOS: Caso[] = [
   // LA REGRESION: el formato con el que se cargan de verdad las ordenes de Costa Rica.
-  { nombre: "local CR con separadores", guardado: "8999-0001", entrante: ENTRANTE },
-  { nombre: "local CR de 8 digitos", guardado: LOCAL, entrante: ENTRANTE },
-  { nombre: "local CR con espacios", guardado: "8999 0001", entrante: ENTRANTE },
+  { nombre: "local CR con separadores", reglas: TEL_CR, guardado: "8999-0001", entrante: ENTRANTE },
+  { nombre: "local CR de 8 digitos", reglas: TEL_CR, guardado: LOCAL, entrante: ENTRANTE },
+  { nombre: "local CR con espacios", reglas: TEL_CR, guardado: "8999 0001", entrante: ENTRANTE },
   // NO REGRESION: lo que ya funcionaba tiene que seguir funcionando.
-  { nombre: "ya con indicativo 506", guardado: ENTRANTE, entrante: ENTRANTE },
-  { nombre: "con + y indicativo", guardado: `+${ENTRANTE}`, entrante: ENTRANTE },
-  { nombre: "internacional no CR", guardado: "573001119999", entrante: "573001119999" },
-  { nombre: "internacional no CR con +", guardado: "+573001119999", entrante: "573001119999" },
+  { nombre: "ya con indicativo 506", reglas: TEL_CR, guardado: ENTRANTE, entrante: ENTRANTE },
+  { nombre: "con + y indicativo", reglas: TEL_CR, guardado: `+${ENTRANTE}`, entrante: ENTRANTE },
+  { nombre: "internacional no CR", reglas: TEL_CR, guardado: "573001119999", entrante: "573001119999" },
+  { nombre: "internacional no CR con +", reglas: TEL_CR, guardado: "+573001119999", entrante: "573001119999" },
+  // SLT-42: una empresa de OTRO pais. Su local (7 digitos) se prefija con SU prefijo.
+  { nombre: "local de otro pais con separadores", reglas: TEL_XA, guardado: "777-0001", entrante: ENTRANTE_XA },
+  { nombre: "local de otro pais de 7 digitos", reglas: TEL_XA, guardado: "7770001", entrante: ENTRANTE_XA },
+  { nombre: "otro pais con + y su indicativo", reglas: TEL_XA, guardado: `+${ENTRANTE_XA}`, entrante: ENTRANTE_XA },
+  { nombre: "otro pais, numero de CR con +", reglas: TEL_XA, guardado: `+${ENTRANTE}`, entrante: ENTRANTE },
 ];
 
 describeSiHayBase("resolucion del entrante de WhatsApp por telefono (Postgres real)", () => {
   let prisma: PrismaClient;
-  let fks: FksDeOrden | null;
-  let mensajeroId: string | null;
-
-  beforeAll(async () => {
+  beforeAll(() => {
     prisma = crearPrismaDeTest();
-    fks = await fksDeOrden(prisma);
-    const usuario = await prisma.usuario.findFirst({ select: { id: true } });
-    mensajeroId = usuario?.id ?? null;
   });
 
   afterAll(async () => {
@@ -82,20 +92,37 @@ describeSiHayBase("resolucion del entrante de WhatsApp por telefono (Postgres re
   });
 
   /**
+   * SLT-184 (R1122/R1124): tienda, zona y mensajero propios, creados en la tx del caso y en SU
+   * empresa (la que crea `enTransaccionRevertida`), con su control positivo. Antes salian de «la
+   * primera orden» y «el primer usuario» de la base: con la base vacia no habia de donde, y con
+   * otra empresa en la base las FK podian ser de ella (trigger de SL-17).
+   */
+  async function sembrarFks(tx: TxDeTest): Promise<{ base: FksDeOrden; men: string }> {
+    const base = await crearFksDeOrden(tx);
+    const men = (await crearUsuarioDePrueba(tx, "mensajero")).id;
+    expect(
+      await tx.usuario.count({ where: { id: { in: [base.tiendaId, men] } } }),
+      "SLT-184: la tienda o el mensajero sembrados no estan en la base",
+    ).toBe(2);
+    expect(
+      await tx.zona.count({ where: { id: base.zonaId } }),
+      "SLT-184: la zona sembrada no esta en la base",
+    ).toBe(1);
+    return { base, men };
+  }
+
+  /**
    * Siembra UNA orden con el telefono dado y resuelve el entrante contra el repositorio REAL.
-   * Devuelve el id sembrado y lo que resolvio la consulta, y revierte todo al salir.
+   * Devuelve el id sembrado, el mensajero sembrado y lo que resolvio la consulta; revierte todo al salir.
    */
   async function sembrarYResolver(
     guardado: string,
     entrante: string,
-    opciones: { borrada?: boolean; sinMensajero?: boolean } = {},
+    opciones: { borrada?: boolean; sinMensajero?: boolean; reglas?: ReglasTelefono } = {},
   ) {
-    const base = fks;
-    const men = mensajeroId;
-    if (base === null || men === null) throw new Error("faltan FKs de orden o usuario");
-
     return enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      const { base, men } = await sembrarFks(tx);
       const creada = await tx.orden.create({
         data: {
           numGuia: null, // nullable y @unique: dejarlo null evita chocar con guias reales
@@ -116,27 +143,34 @@ describeSiHayBase("resolucion del entrante de WhatsApp por telefono (Postgres re
       });
 
       const repo = new ChatConversacionRepository(tx as unknown as PrismaClient);
-      const resolucion = await repo.resolverOrdenActivaPorNumero(entrante);
-      return { ordenId: creada.id, resolucion };
+      const resolucion = await repo.resolverOrdenActivaPorNumero(entrante, opciones.reglas ?? TEL_CR);
+      return { ordenId: creada.id, resolucion, mensajeroId: men };
     });
   }
 
-  it("hay FKs de orden y un usuario del que colgar el mensajero", () => {
+  it("hay FKs de orden y un usuario del que colgar el mensajero", async () => {
     // Contrapeso de todo el archivo: sin esto, `sembrarYResolver` lanzaria y los casos de abajo
-    // fallarian por el motivo equivocado. Si la base esta vacia hay que sembrarla, no ignorarlo.
-    expect(fks).not.toBeNull();
-    expect(mensajeroId).not.toBeNull();
+    // fallarian por el motivo equivocado. SLT-184: se siembran en la tx y se CUENTAN.
+    const sembradas = await enTransaccionRevertida(prisma, async (tx) => {
+      await serializarEscriturasReales(tx);
+      const { base, men } = await sembrarFks(tx);
+      return { base, men };
+    });
+    expect(sembradas.base).not.toBeNull();
+    expect(sembradas.men).not.toBeNull();
   });
 
   for (const caso of CASOS) {
     it(`resuelve la orden con el telefono guardado como ${caso.nombre} (${caso.guardado})`, async () => {
-      const { ordenId, resolucion } = await sembrarYResolver(caso.guardado, caso.entrante);
+      const { ordenId, resolucion, mensajeroId } = await sembrarYResolver(caso.guardado, caso.entrante, {
+        reglas: caso.reglas,
+      });
 
       expect(resolucion).not.toBeNull();
       expect(resolucion?.ordenId).toBe(ordenId);
       expect(resolucion?.mensajeroId).toBe(mensajeroId);
       // El hilo se keyea con la forma canonica, no con el crudo de la columna.
-      expect(resolucion?.telefonoE164).toBe(normalizarTelefonoWa(caso.guardado));
+      expect(resolucion?.telefonoE164).toBe(normalizarTelefono(caso.guardado, caso.reglas));
       expect(resolucion?.telefonoE164).toBe(caso.entrante);
     });
   }
@@ -154,6 +188,18 @@ describeSiHayBase("resolucion del entrante de WhatsApp por telefono (Postgres re
     expect(resolucion?.ordenId).not.toBe(ordenId);
   });
 
+  it("SLT-42 R18: en una empresa de otro pais, un local de CR (8 digitos) NO se prefija con 506", async () => {
+    // Con las reglas de CR `8999-0001` casaba con `50689990001`. Con las de un pais de 7 digitos
+    // ese local no es «nacional» y se queda tal cual: si el SQL tuviera el `506` escrito, casaria.
+    const { ordenId, resolucion } = await sembrarYResolver("8999-0001", ENTRANTE, { reglas: TEL_XA });
+    expect(resolucion?.ordenId).not.toBe(ordenId);
+  });
+
+  it("SLT-42 R18: en una empresa de CR, un local de 7 digitos NO se prefija con el prefijo de otro pais", async () => {
+    const { ordenId, resolucion } = await sembrarYResolver("777-0001", ENTRANTE_XA, { reglas: TEL_CR });
+    expect(resolucion?.ordenId).not.toBe(ordenId);
+  });
+
   it("no resuelve una orden BORRADA aunque el numero case (R25/D4)", async () => {
     const { ordenId, resolucion } = await sembrarYResolver("8999-0001", ENTRANTE, {
       borrada: true,
@@ -168,7 +214,10 @@ describeSiHayBase("resolucion del entrante de WhatsApp por telefono (Postgres re
     expect(resolucion?.ordenId).not.toBe(ordenId);
   });
 
-  it("`sqlNormalizarTelefonoCr` y `normalizarTelefonoCR` producen EL MISMO texto", async () => {
+  it.each([
+    ["Costa Rica", TEL_CR],
+    ["un pais con otro prefijo y otro largo", TEL_XA],
+  ] as const)("R19: `sqlNormalizarTelefono` y `normalizarTelefono` producen EL MISMO texto (%s)", async (_pais, reglas) => {
     // La guardia de la DUPLICACION. La normalizacion existe dos veces —una en TypeScript, para
     // el entrante; otra en SQL, para la columna— y solo casan si dicen lo mismo. Este caso corre
     // LA MISMA expresion que usa el repositorio (importada, no copiada) contra Postgres real y
@@ -186,13 +235,25 @@ describeSiHayBase("resolucion del entrante de WhatsApp por telefono (Postgres re
       "(506) 8999 0001",
       "123",
       "",
+      // SLT-42: las formas del pais de prueba, y un `+` con espacios delante.
+      "777-0001",
+      "7770001",
+      "999 777 0001",
+      "+999 7770001",
+      "9997770001",
+      "999",
+      "  +12025550143",
+      "88887777x",
     ];
 
+    // El prefijo y los digitos viajan como PARAMETROS ($1, $2), igual que en el repositorio.
     const filas = await prisma.$queryRawUnsafe<{ crudo: string; sql: string }[]>(
       `
-      SELECT t.crudo, ${sqlNormalizarTelefonoCr("t.crudo")} AS sql
-      FROM unnest($1::text[]) AS t(crudo)
+      SELECT t.crudo, ${sqlNormalizarTelefono("t.crudo", 1, 2)} AS sql
+      FROM unnest($3::text[]) AS t(crudo)
       `,
+      reglas.prefijo,
+      reglas.digitosNacionales,
       crudos,
     );
 
@@ -200,7 +261,7 @@ describeSiHayBase("resolucion del entrante de WhatsApp por telefono (Postgres re
     for (const fila of filas) {
       expect({ crudo: fila.crudo, normalizado: fila.sql }).toEqual({
         crudo: fila.crudo,
-        normalizado: normalizarTelefonoWa(fila.crudo),
+        normalizado: normalizarTelefono(fila.crudo, reglas),
       });
     }
   });

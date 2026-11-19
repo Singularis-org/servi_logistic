@@ -10,16 +10,21 @@ import type {
   ResolucionOrdenEntrante,
   UpsertHiloInput,
 } from "@/lib/interfaces/repositories/IChatConversacionRepository";
-import { normalizarTelefonoWa } from "@/lib/utils/whatsapp-telefono";
-import { sqlNormalizarTelefonoCr } from "@/lib/utils/telefono-cr-sql";
+import { normalizarTelefono, sqlNormalizarTelefono, type ReglasTelefono } from "@/lib/utils/telefono-pais";
 
 // Cliente Prisma minimo consumido: la tabla del hilo, la de orden (resolucion D4), la de
-// mensajes (SLT-40: hilo del saliente citado) y el escape hatch de SQL crudo (`$queryRaw`)
-// para normalizar el telefono en el matcheo.
+// mensajes (SLT-40: hilo del saliente citado) y el escape hatch de SQL crudo para normalizar el
+// telefono en el matcheo. `$queryRawUnsafe` solo lo usa la resolucion D4: la expresion de
+// `sqlNormalizarTelefono` lleva los NUMEROS de sus parametros (`$1`, `$2`) y el template de
+// `$queryRaw` no deja fijarlos.
 type ChatConversacionPrismaClient = Pick<
   PrismaClient,
-  "chatConversacion" | "chatMensaje" | "orden" | "$queryRaw" | "$executeRaw"
+  "chatConversacion" | "chatMensaje" | "orden" | "$queryRaw" | "$queryRawUnsafe" | "$executeRaw"
 >;
+
+// SLT-42 (R19): la normalizacion de `o.telefono_dest` con el prefijo en `$1` y los digitos
+// nacionales en `$2`. La columna es un literal de este archivo; el pais viaja como parametro.
+const TELEFONO_DEST_NORMALIZADO = sqlNormalizarTelefono("o.telefono_dest", 1, 2);
 
 // Fila cruda del matcheo por telefono normalizado (columnas snake_case de la tabla `orden`).
 type OrdenResolucionRaw = {
@@ -66,6 +71,7 @@ export class ChatConversacionRepository implements IChatConversacionRepository {
 
   async resolverOrdenActivaPorNumero(
     telefonoE164: string,
+    reglas: ReglasTelefono,
   ): Promise<ResolucionOrdenEntrante | null> {
     // R25/D4: orden viva, asignada (mensajero not null), del numero, la MAS RECIENTE por
     // `asignado_at`. Empate/NULL de asignado_at -> desempata por created_at desc.
@@ -76,7 +82,8 @@ export class ChatConversacionRepository implements IChatConversacionRepository {
     // puede no ser la de la conversacion. Esta regla queda para todo entrante sin cita util.
     //
     // El match del telefono se hace NORMALIZADO EN AMBOS LADOS, y "normalizado" significa
-    // exactamente lo que hace `normalizarTelefonoCR`, no un simple quitar-separadores:
+    // exactamente lo que hace `normalizarTelefono` con las reglas del pais de la empresa (SLT-42,
+    // R18), no un simple quitar-separadores:
     //
     //   BUG QUE ARREGLA ESTO. Antes el lado de la COLUMNA solo aplicaba
     //   `regexp_replace(telefono_dest, '[^0-9]', '', 'g')` mientras el entrante venia ya
@@ -86,23 +93,27 @@ export class ChatConversacionRepository implements IChatConversacionRepository {
     //   respondia 200 y el mensaje se perdia sin dejar rastro (Meta no reintenta un 200). El
     //   caso no-CR no lo delataba porque esos numeros ya se guardan con su indicativo.
     //
-    // La expresion de la columna vive en `sqlNormalizarTelefonoCr` (una sola copia, vigilada
+    // La expresion de la columna vive en `sqlNormalizarTelefono` (una sola copia, vigilada
     // contra la funcion de TypeScript por `chat-entrante-telefono-cr.test.ts`). Prisma no puede
-    // normalizar una columna en el WHERE, por eso va raw; el numero viaja como PARAMETRO y el
-    // unico texto interpolado es un identificador literal de este archivo (sin inyeccion).
-    const normalizado = normalizarTelefonoWa(telefonoE164);
+    // normalizar una columna en el WHERE, por eso va raw. El numero, el prefijo y los digitos
+    // viajan como PARAMETROS ($3, $1, $2); el unico texto interpolado es un identificador
+    // literal de este archivo (sin inyeccion). Sin filtro de empresa a mano: lo pone la RLS
+    // (`EXCEPCIONES_SQL_A_MANO`).
+    const normalizado = normalizarTelefono(telefonoE164, reglas);
     if (normalizado === "") return null;
 
-    const telefonoNormalizado = Prisma.raw(sqlNormalizarTelefonoCr("o.telefono_dest"));
-    const rows = await this.prisma.$queryRaw<OrdenResolucionRaw[]>(Prisma.sql`
-      SELECT o.id, o.mensajero_asignado_id, o.telefono_dest
+    const rows = await this.prisma.$queryRawUnsafe<OrdenResolucionRaw[]>(
+      `SELECT o.id, o.mensajero_asignado_id, o.telefono_dest
       FROM orden o
       WHERE o.deleted_at IS NULL
         AND o.mensajero_asignado_id IS NOT NULL
-        AND ${telefonoNormalizado} = ${normalizado}
+        AND ${TELEFONO_DEST_NORMALIZADO} = $3
       ORDER BY o.asignado_at DESC NULLS LAST, o.created_at DESC
-      LIMIT 1
-    `);
+      LIMIT 1`,
+      reglas.prefijo,
+      reglas.digitosNacionales,
+      normalizado,
+    );
 
     const row = rows[0];
     if (row === undefined || row.mensajero_asignado_id === null) return null;
@@ -110,16 +121,16 @@ export class ChatConversacionRepository implements IChatConversacionRepository {
       ordenId: row.id,
       mensajeroId: row.mensajero_asignado_id,
       // El hilo se keyea SIEMPRE con el numero normalizado (clave estable).
-      telefonoE164: normalizarTelefonoWa(row.telefono_dest),
+      telefonoE164: normalizarTelefono(row.telefono_dest, reglas),
     };
   }
 
-  async upsertParaOrden(input: UpsertHiloInput): Promise<ChatConversacionDTO> {
+  async upsertParaOrden(input: UpsertHiloInput, reglas: ReglasTelefono): Promise<ChatConversacionDTO> {
     // R13: get-or-create por el unico (orden_id, telefono_e164). En update solo se refresca
     // `mensajero_id` (reasignaciones) y el `updated_at`; `ultimo_entrante_at` no se toca aqui.
     // El telefono se NORMALIZA aqui (solo digitos) para que la clave del hilo sea estable sin
     // importar el formato del caller (`+573…` vs `573…`): asi nunca se crean hilos duplicados.
-    const telefonoE164 = normalizarTelefonoWa(input.telefonoE164);
+    const telefonoE164 = normalizarTelefono(input.telefonoE164, reglas);
     const row = await this.prisma.chatConversacion.upsert({
       where: {
         ordenId_telefonoE164: {
@@ -205,7 +216,7 @@ export class ChatConversacionRepository implements IChatConversacionRepository {
     `);
   }
 
-  async migrarTelefono(anterior: string, nuevo: string): Promise<number> {
+  async migrarTelefono(anterior: string, nuevo: string, reglas: ReglasTelefono): Promise<number> {
     // Feature 311 (design §3, R16/R18): el cliente cambio de numero -> los hilos que hoy
     // tienen el numero ANTERIOR pasan a tener el NUEVO. Ambos lados se normalizan aqui por la
     // misma razon que en `upsertParaOrden`: la clave del hilo es siempre el numero canonico.
@@ -229,8 +240,8 @@ export class ChatConversacionRepository implements IChatConversacionRepository {
     // resuelve orden y se cuenta sinResolver» en
     // `tests/unit/services/chat-whatsapp-service.test.ts`. Si vienes a «arreglarlo» tocando el
     // maestro, primero reabre R16/R17 con el humano.
-    const antes = normalizarTelefonoWa(anterior);
-    const despues = normalizarTelefonoWa(nuevo);
+    const antes = normalizarTelefono(anterior, reglas);
+    const despues = normalizarTelefono(nuevo, reglas);
     // Sin numero utilizable, o con el mismo numero a ambos lados, no hay nada que migrar. Se
     // devuelve 0 (desenlace valido) en vez de lanzar: la ingesta del lote no puede romperse.
     if (antes === "" || despues === "" || antes === despues) return 0;

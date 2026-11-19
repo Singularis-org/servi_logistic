@@ -42,7 +42,7 @@ import { urlDeBaseDeDatos } from "./_postgres-real";
  * El design (§3.1) lo describia asi porque `PrismaPg` acepta `pg.Pool | pg.PoolConfig | string`.
  * Pero **`pg` no es una dependencia declarada de este repo** (entra como transitiva de
  * `@prisma/adapter-pg`): importarlo desde un test seria un import no declarado, justo lo que
- * vigila `tests/unit/guards/dependencias-declaradas-presentes.guardia.test.ts`.
+ * vigila `tests/guards/guard-dependencias-declaradas-presentes.test.ts`.
  *
  * Se instrumenta el pool que construye el propio adaptador, que es equivalente y ademas MAS fiel:
  * la configuracion del pool es la que Prisma habria usado, no una copia escrita a mano que podria

@@ -7,6 +7,7 @@ import type { RegistroDenegado } from "@/lib/analytics/auditoria";
 import { prepararConsultaAnalitica } from "@/lib/analytics/consulta";
 import type { ActorAnalitica } from "@/lib/analytics/alcance";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Feature 122 / T4.6 — R40: el intento denegado deja rastro, y lo deja el BORDE.
 //
 // D10 eligio el canal que ya existe: `ErrorLogger` (`lib/errors/logger.ts`), el mismo de
@@ -33,7 +34,7 @@ function bordeQueAudita(
   metricaId: string,
   logger: ErrorLogger,
 ): { status: number } {
-  const r = prepararConsultaAnalitica(raw, actor, metricaId, new Date("2026-07-31T15:00:00.000Z"));
+  const r = prepararConsultaAnalitica(raw, actor, metricaId, ZONA_DE_CR, new Date("2026-07-31T15:00:00.000Z"));
   if (r.status === "forbidden") {
     logger.logError(describirDenegado({ motivo: r.motivo, actor, metricaId, filtro: raw }));
     return { status: 403 };

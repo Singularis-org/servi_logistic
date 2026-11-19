@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 
 import { CorregirDatosClienteService } from "@/lib/services/CorregirDatosClienteService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type {
   DistritoResueltoRow,
@@ -102,6 +103,7 @@ function escenario(distritoFila: DistritoResueltoRow | null) {
   const service = new CorregirDatosClienteService(
     { findParaCorreccion, findDistritoParaCorreccion, corregirDatosCliente },
     { resolveTarifa },
+    reglasPaisFijas(),
   );
   return { service, findDistritoParaCorreccion, corregirDatosCliente };
 }

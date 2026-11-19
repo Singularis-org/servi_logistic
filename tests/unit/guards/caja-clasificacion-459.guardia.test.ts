@@ -148,6 +148,11 @@ function problemasDeClasificacion(t: Tablas): string[] {
     // Ficha 458-B (design §2.3): los dos reversos de cargo de la anulacion del cobro por devolución a origen.
     "egreso_reverso_flete_devolucion",
     "egreso_reverso_iva_flete_devolucion",
+    // SLT-94 (design §4, R20): el cobro de fulfillment por paquete, su IVA y sus devoluciones.
+    "ingreso_fulfillment",
+    "ingreso_iva_fulfillment",
+    "egreso_reverso_fulfillment",
+    "egreso_reverso_iva_fulfillment",
   ].sort();
   if (JSON.stringify(cargos) !== JSON.stringify(cargosEsperados)) {
     problemas.push(`cargos a tienda = ${JSON.stringify(cargos)}`);
@@ -175,7 +180,7 @@ describe("459 — guardia de la clasificacion de la caja y del libro de las tien
     ).toEqual(["ajuste_debito"]);
   });
 
-  it("(4) literal del contrato: los diez cargos a una tienda (seis del feed, el cobro y su reverso, y los dos reversos del cobro por devolución a origen de la 458-B)", () => {
+  it("(4) literal del contrato: los catorce cargos a una tienda (seis del feed, el cobro y su reverso, los dos reversos del cobro por devolución a origen de la 458-B y los cuatro del fulfillment de SLT-94)", () => {
     expect(
       WALLET_MOVIMIENTO_CATEGORIA_SEED.filter(
         (c) => LIQUIDEZ_POR_CATEGORIA[c] === "cargo_a_tienda",
@@ -183,14 +188,18 @@ describe("459 — guardia de la clasificacion de la caja y del libro de las tien
     ).toEqual([
       "egreso_reverso_cobro_tienda",
       "egreso_reverso_flete_devolucion", // ficha 458-B
+      "egreso_reverso_fulfillment", // SLT-94
       "egreso_reverso_iva_flete_devolucion", // ficha 458-B
+      "egreso_reverso_iva_fulfillment", // SLT-94
       "ingreso_cobro_tienda",
       "ingreso_comision_cod",
       "ingreso_flete",
       "ingreso_flete_devolucion",
+      "ingreso_fulfillment", // SLT-94
       "ingreso_iva_comision_cod",
       "ingreso_iva_flete",
       "ingreso_iva_flete_devolucion",
+      "ingreso_iva_fulfillment", // SLT-94
     ]);
   });
 

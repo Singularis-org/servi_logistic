@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 
 import { HAY_BASE_DE_DATOS } from "../../_postgres-real";
+import { asentarCierreDia } from "@/lib/repositories/_shared/asientos-cierre-dia";
 import { conEscenario, prepararMundo, type Mundo } from "../_escenario";
 
 /**
@@ -48,10 +49,16 @@ describeSiHayBase("454/C21 — deshacer una gestion (Postgres real)", () => {
       const deshacerEnCierre = await e.s.cierreDia.deshacerGestion(g2, e.actorMensajero);
       const g1TrasCierre = await e.tx.gestionOrden.findUniqueOrThrow({ where: { id: g1 }, select: { cierreId: true } });
       const aprobacion = await e.aprobar(cierreId);
-      const cod = await e.tx.walletTiendaMovimiento.findMany({
-        where: { origenId: cierreId, categoria: "cod_recaudado" },
-        select: { monto: true },
-      });
+      const leerCod = () =>
+        e.tx.walletTiendaMovimiento.findMany({
+          where: { origenId: cierreId, categoria: "cod_recaudado" },
+          select: { monto: true },
+        });
+      // SLT-195 (R1190, R1192; SLT-73 R1): el cierre es de SATELITE y aprobarlo no cobra nada a la
+      // tienda. Se lee aqui y luego se asienta con el escritor de la conciliacion (SLT-73 R10).
+      const codAlAprobar = await leerCod();
+      await asentarCierreDia(e.tx, cierreId);
+      const cod = await leerCod();
       return {
         deshacer1,
         trasDeshacer,
@@ -60,6 +67,7 @@ describeSiHayBase("454/C21 — deshacer una gestion (Postgres real)", () => {
         deshacerEnCierre,
         g1TrasCierre,
         aprobacion: aprobacion.status,
+        codAlAprobar: codAlAprobar.map((c) => c.monto.toFixed(2)),
         cod: cod.map((c) => c.monto.toFixed(2)),
       };
     });
@@ -83,6 +91,8 @@ describeSiHayBase("454/C21 — deshacer una gestion (Postgres real)", () => {
   it("el cierre solicitado despues NO vincula la gestion anulada y aprobar NO cobra su COD", () => {
     expect(r.g1TrasCierre.cierreId).toBeNull();
     expect(r.aprobacion).toBe("ok");
+    // SLT-195 R1190: aprobar la satelite no cobra; R1192: asentarla cobra solo la vigente.
+    expect(r.codAlAprobar, "SLT-195 R1190: COD escrito al aprobar una satelite").toEqual([]);
     expect(r.cod).toEqual(["2000.00"]);
   });
 

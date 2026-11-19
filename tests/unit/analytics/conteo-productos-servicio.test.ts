@@ -11,6 +11,7 @@ import type {
 import { cacheFalsa } from "./_cache-falsa";
 import { dineroFalso } from "./_dinero-falso";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Ficha 345 / T4.3 — LA FUSION (R18, R24, R25, R26, R31, R33, R34, R35, R37, R38, R58).
 //
 // La base agrupa por `(tienda, texto CRUDO, desenlace)`; el servicio interpreta el texto y funde.
@@ -20,7 +21,7 @@ import { dineroFalso } from "./_dinero-falso";
 const AHORA = new Date("2026-09-01T12:00:00.000Z");
 
 function consultaDe(raw: object = {}, rol = "maestro", usuarioId = "u1"): ConsultaProductos {
-  const preparada = prepararConsultaProductos(raw, { usuarioId, rol } as never, AHORA);
+  const preparada = prepararConsultaProductos(raw, { usuarioId, rol } as never, ZONA_DE_CR, AHORA);
   if (preparada.status !== "ok") throw new Error(`filtro de prueba invalido: ${preparada.status}`);
   return preparada.consulta;
 }

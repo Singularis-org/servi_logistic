@@ -10,7 +10,8 @@ import { resolverAlcanceBorradoOrden } from "@/lib/services/alcance-borrado-orde
 import { resolverAlcanceEtiquetasOrden } from "@/lib/services/alcance-etiquetas-orden";
 import { obtenerCatalogoFiltrosOrdenes } from "@/lib/actions/filtros-ordenes";
 import type { CatalogoFiltrosOrdenesDTO } from "@/lib/types/filtros-ordenes";
-import { fechaCalendarioCR, mananaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { zonaDelBorde } from "@/lib/actions/_shared/zona-del-borde";
+import { fechaCalendario, manana } from "@/lib/utils/calendario-zona";
 // FICHA 462 (T3.5, S4) — la franja de reprogramados retenidos: la lectura (Server Action de solo
 // lectura, acotada al ámbito central), su DTO y el bloque que la pinta. Las tres líneas de import,
 // `resolverRetenidasCentral` y las dos líneas del render son TODO lo que esta ficha pone en la página
@@ -203,7 +204,7 @@ export default async function OrdenesPage() {
   const incluirFiltroSalioAReparto = rol !== RolValue.adminTienda;
 
   // Feature 246 (T4.2, R5/R29): las etiquetas del selector de día se resuelven AQUÍ, en el
-  // servidor, con el día de Costa Rica. No bajan como `Date` ni como instante: bajan como las dos
+  // servidor, con el día de la empresa. No bajan como `Date` ni como instante: bajan como las dos
   // fechas calendario ya decididas, `YYYY-MM-DD`. El navegador no vuelve a interpretar nada — un
   // portátil con la hora corrida no puede etiquetar mal una opción.
   //
@@ -212,9 +213,12 @@ export default async function OrdenesPage() {
   // día al que va el lote lo decide el servidor al ENVIAR. Está medido (M1: la asignación más
   // tardía de los últimos 30 días es a las 20:00) y el escape está diseñado y NO implementado a
   // propósito. El porqué entero vive en `components/shared/SelectorDiaReparto.tsx`.
+  // SLT-42 (R22, R28): el día es el de la zona del país de la empresa de la sesión.
+  const zona = await zonaDelBorde();
+  const ahora = new Date();
   const fechasDiaReparto = {
-    hoy: fechaCalendarioCR(),
-    manana: mananaCalendarioCR(),
+    hoy: fechaCalendario(ahora, zona),
+    manana: manana(ahora, zona),
   };
 
   // FICHA 462 (T3.5, R32/R36): la franja de reprogramados retenidos se lee SOLO para acceso total

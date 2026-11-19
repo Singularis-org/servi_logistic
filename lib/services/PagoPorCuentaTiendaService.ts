@@ -37,7 +37,9 @@ import {
   descripcionPagoPorCuentaEnCaja,
   descripcionPagoPorCuentaEnTienda,
 } from "@/lib/utils/descripcion-pago-por-cuenta";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendario } from "@/lib/utils/calendario-zona";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 import { instanteDelMovimientoManual } from "@/lib/utils/fecha-movimiento-manual";
 import { derivarSaldoTienda } from "@/lib/utils/saldo-tienda";
 
@@ -110,6 +112,8 @@ export class PagoPorCuentaTiendaService implements IPagoPorCuentaTiendaService {
       WalletComprobanteConfig,
       "MAX_BYTES" | "SIGNED_URL_TTL_SECONDS"
     > = walletComprobanteConfig,
+    /** SLT-42 (R22, R28): la zona del pais de la empresa, para «hoy» y el instante del pago. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
 
   /**
@@ -139,6 +143,9 @@ export class PagoPorCuentaTiendaService implements IPagoPorCuentaTiendaService {
     if (cuenta.rol !== ROL_TIENDA) return errorDeCampo("tiendaId", MSG_TIENDA.rol);
     if (cuenta.estado !== ESTADO_TIENDA) return errorDeCampo("tiendaId", MSG_TIENDA.inactiva);
 
+    // SLT-42 (R22, R28): la zona se lee ANTES de subir el comprobante; sin zona, nada se escribe.
+    const zona = await zonaDeLaEmpresa(this.reglasPais, "PagoPorCuentaTiendaService.registrar");
+
     let ruta: string | null = null;
     if (comprobante !== null) {
       const problema = problemaDeComprobante(
@@ -164,8 +171,8 @@ export class PagoPorCuentaTiendaService implements IPagoPorCuentaTiendaService {
     // Prisma rellena `@default(now())` en el CLIENTE, fila a fila — medido contra Postgres: 4 ms de
     // diferencia entre el cargo y la salida (`pago-por-cuenta-tienda.test.ts`).
     const ahora = this.ahora();
-    const fechaMovimiento = instanteDelMovimientoManual(input.fecha, ahora) ?? ahora;
-    const fechaPago = medianocheUtcDelDia(input.fecha ?? fechaCalendarioCR(ahora));
+    const fechaMovimiento = instanteDelMovimientoManual(input.fecha, zona, ahora) ?? ahora;
+    const fechaPago = medianocheUtcDelDia(input.fecha ?? fechaCalendario(ahora, zona));
     const datosDescripcion = {
       beneficiario: input.beneficiario,
       motivo: input.motivo,

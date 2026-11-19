@@ -17,7 +17,9 @@ import type {
 import { gestionConfig } from "@/lib/config/gestion";
 import { nombreDeResultado } from "@/lib/types/gestion-resultado";
 import { nombreDeEstado } from "@/lib/types/order-status";
-import { inicioDelDiaCREnUtc, inicioDelDiaSiguienteCREnUtc } from "@/lib/utils/fecha-cr";
+import { inicioDelDiaEnUtc, inicioDelDiaSiguienteEnUtc } from "@/lib/utils/calendario-zona";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 // ⏳ 2026-09-10 (feature 415, T4): la resolucion de la tarifa VIGENTE entra por la MISMA cascada
 // y el MISMO metodo batch que ya usan el cierre de dia y la cotizacion (R19/R24). No se escribe
 // una segunda regla de resolucion.
@@ -152,6 +154,9 @@ export class ApiOrdenLecturaService implements IApiOrdenLecturaService {
     // ⏳ 2026-09-10 (feature 415, T4/T5): la tarifa VIGENTE con la que se deriva `costoEstimado`.
     // Los DOS composition roots la construyen y la PASAN; que un modulo la importe no basta.
     private readonly tarifaRepo: LecturaTarifaRepo,
+    // SLT-42 (R22, R28): la zona del pais de la empresa de la key, para los limites de `desde`/`hasta`.
+    // La real la ponen los dos composition roots; sin rango de fechas no se lee.
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
 
   /**
@@ -177,14 +182,17 @@ export class ApiOrdenLecturaService implements IApiOrdenLecturaService {
       if (!id) return { items: [], pagination: { limit, offset, total: 0 } };
       estatusId = id;
     }
-    // Feature 257 (R5/R6/R7): la decision de negocio "el dia operativo es el dia natural de Costa
-    // Rica" vive AQUI; el repo solo habla de instantes. `inicioDelDiaCREnUtc` deja ambos bordes en
-    // `...T06:00:00.000Z` y `inicioDelDiaSiguienteCREnUtc` hace `hasta` INCLUSIVO con una cota
+    // Feature 257 (R5/R6/R7): la decision de negocio "el dia operativo es el dia natural de la
+    // empresa" vive AQUI; el repo solo habla de instantes. `inicioDelDiaEnUtc` deja ambos bordes en
+    // las 00:00 locales y `inicioDelDiaSiguienteEnUtc` hace `hasta` INCLUSIVO con una cota
     // superior EXCLUSIVA. OJO con la trampa del repo: el helper de medianoche UTC de la
     // convencion `@db.Date` (feature 46) NO sirve aqui —`created_at` es `timestamp`— y devolveria
-    // la ventana 18:00-18:00 hora CR, que es el off-by-one de la ficha 166.
-    const createdAtDesde = desde ? inicioDelDiaCREnUtc(desde) : undefined;
-    const createdAtHasta = hasta ? inicioDelDiaSiguienteCREnUtc(hasta) : undefined;
+    // una ventana corrida por el desfase de la zona, que es el off-by-one de la ficha 166.
+    // SLT-42 (R22, R23, R28): la zona es la del pais de la empresa de la key; sin rango no se lee.
+    const zona =
+      desde || hasta ? await zonaDeLaEmpresa(this.reglasPais, "ApiOrdenLecturaService.listar") : null;
+    const createdAtDesde = desde && zona ? inicioDelDiaEnUtc(desde, zona) : undefined;
+    const createdAtHasta = hasta && zona ? inicioDelDiaSiguienteEnUtc(hasta, zona) : undefined;
     const { items, total } = await this.repo.listByOwner({
       ownerId: actor.usuarioId, // R4/R6/R7 (106) + R20 (257): owner = actor, forzado en el repo
       estatusId,

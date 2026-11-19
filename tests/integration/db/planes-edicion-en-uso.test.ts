@@ -5,6 +5,7 @@ import type { ModuloApagable, PrismaClient } from "@prisma/client";
 
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { TopeDelPlanAlcanzado, traducirErrorDeTope } from "@/lib/planes/tope-error";
+import { fechaCalendarioPlataforma, inicioDelDiaPlataforma } from "@/lib/planes/ciclo";
 import { PlanesService } from "@/lib/services/PlanesService";
 import type { CrearPlanInput, EditarPlanInput } from "@/lib/types/planes";
 import { crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones";
@@ -13,13 +14,18 @@ import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres
 import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import { capturar, entradaAsignable, planesEnTx, revertida, sqlstateDe, triggerActivo } from "./_fixtures/planes";
 
-// SL-24 · T4 (design §5.3, §7.2; R15, R16 revisado el 2026-10-28, R17) — editar de inmediato un plan
-// en uso, contra Postgres, con `PlanesService` y `PlanesRepository` REALES. Las altas que siguen las
-// juzgan los triggers de T3 con los topes nuevos. Todo en una transacción del dueño que se revierte.
+// SL-24 · T4 (design §5.3, §7.2; R15, R16 revisado el 2026-10-28, R17) — editar un plan en uso, contra
+// Postgres, con `PlanesService` y `PlanesRepository` REALES. Las altas que siguen las juzgan los triggers de T3
+// con los topes nuevos. Todo en una transacción del dueño que se revierte.
+//
+// SLT-135 (R3): ya no hay edición inmediata. Editar programa con F = hoy y el cambio llega a cada empresa por la
+// cola, en su recepción: `recibirTodo` hace lo que harían sus trabajos, con el reloj en cada recepción.
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
 const SUPERADMIN: Actor = { usuarioId: randomUUID(), rol: "superadmin", organizacionId: null };
+const HOY = fechaCalendarioPlataforma(new Date());
+const UN_MINUTO_MS = 60_000;
 
 let base: PrismaClient;
 
@@ -44,10 +50,39 @@ async function preparar(tx: TxDeTest, plan: Partial<CrearPlanInput>, empresas = 
       precio: entrada.precio,
       costoPorOrden: entrada.costoPorOrden, // SLT-66 R8: campo obligatorio nuevo; no cambia lo que se comprueba.
       costoPorOrdenPorcentual: null, // SLT-83: campo obligatorio nuevo; no cambia lo que se comprueba.
-      vigenteDesde: null,
+      vigenteDesde: HOY,
       ...cambio,
     });
-  return { servicio, planId: creado.planId, entrada, orgs, editar };
+  /** SLT-135: programa con F = hoy y lo recibe cada empresa por la cola; devuelve la respuesta de editar. */
+  const editarYRecibir = async (cambio: Partial<EditarPlanInput>) => {
+    await fijarEmpresa(tx, "");
+    const edicion = await editar(cambio);
+    await recibirTodo(tx, creado.planId);
+    return edicion;
+  };
+  return { servicio, planId: creado.planId, entrada, orgs, editar, editarYRecibir };
+}
+
+/**
+ * SLT-135: lo que hace la cola con el pendiente de `planId`: cada empresa lo recibe con el reloj en su recepción
+ * (`recibirCambio`) y, si no queda ninguna, el plan se promueve en F (`aplicarCambioProgramado`).
+ */
+async function recibirTodo(tx: TxDeTest, planId: string): Promise<unknown[]> {
+  const p = await tx.planCambioProgramado.findUnique({
+    where: { planId },
+    select: { id: true, vigenteDesde: true, recepciones: { orderBy: { recibeAt: "asc" }, select: { empresaId: true, recibeAt: true } } },
+  });
+  if (p === null) return [];
+  const repo = planesEnTx(tx);
+  const cambio = { planId, cambioId: p.id };
+  const resultados: unknown[] = [];
+  for (const r of p.recepciones) {
+    resultados.push(await repo.recibirCambio(cambio, r.empresaId, new Date(r.recibeAt.getTime() + UN_MINUTO_MS)));
+  }
+  if ((await tx.planCambioProgramado.count({ where: { id: p.id } })) > 0) {
+    resultados.push(await repo.aplicarCambioProgramado(cambio, new Date(p.vigenteDesde.getTime() + UN_MINUTO_MS)));
+  }
+  return resultados;
 }
 
 async function modulos(tx: TxDeTest, organizacionId: string): Promise<ModuloApagable[]> {
@@ -72,9 +107,9 @@ describeSiHayBase("SL-24 — editar un plan en uso (R15, R16, R17)", () => {
 
   it("R15: la siguiente alta de cada empresa del plan se cuenta contra el tope nuevo", async () => {
     const r = await revertida(base, async (tx) => {
-      const p = await preparar(tx, { topes: { ordenesPorCiclo: null, porRol: { adminTienda: 5 }, apiKeys: null } }, 2);
+      const p = await preparar(tx, { topes: { porRol: { adminTienda: 5 }, apiKeys: null } }, 2);
       for (const org of p.orgs) expect(await tiendaNueva(tx, org)).toBeNull();
-      const edicion = await p.editar({ topes: { ordenesPorCiclo: null, porRol: { adminTienda: 1 }, apiKeys: null } });
+      const edicion = await p.editarYRecibir({ topes: { porRol: { adminTienda: 1 }, apiKeys: null } });
       expect(await triggerActivo(tx, "plan_tope_usuario_alta", "usuario")).toBe(true);
       const rechazos = [];
       for (const org of p.orgs) rechazos.push(traducirErrorDeTope(await tiendaNueva(tx, org)));
@@ -89,13 +124,13 @@ describeSiHayBase("SL-24 — editar un plan en uso (R15, R16, R17)", () => {
 
   it("R16: con 3 tiendas activas y un tope nuevo de 2 se guarda, avisa con 3 y 2, rechaza la cuarta y entra tras inactivar dos", async () => {
     const r = await revertida(base, async (tx) => {
-      const p = await preparar(tx, { topes: { ordenesPorCiclo: null, porRol: { adminTienda: 3 }, apiKeys: null } });
+      const p = await preparar(tx, { topes: { porRol: { adminTienda: 3 }, apiKeys: null } });
       const [org] = p.orgs;
       const nombre = (await tx.organizacion.findUniqueOrThrow({ where: { id: org }, select: { nombre: true } })).nombre;
       const tiendas: string[] = [];
       await fijarEmpresa(tx, org);
       for (let i = 0; i < 3; i++) tiendas.push((await crearUsuarioDePrueba(tx, "adminTienda")).id);
-      const edicion = await p.editar({ topes: { ordenesPorCiclo: null, porRol: { adminTienda: 2 }, apiKeys: null } });
+      const edicion = await p.editarYRecibir({ topes: { porRol: { adminTienda: 2 }, apiKeys: null } });
       const tope = (await tx.planTopeRol.findMany({ where: { planId: p.planId } })).map((t) => [t.rol, t.maximo]);
       const cuarta = await tiendaNueva(tx, org);
       await tx.usuario.updateMany({ where: { id: { in: tiendas.slice(0, 2) } }, data: { estado: "inactivo" } });
@@ -107,7 +142,7 @@ describeSiHayBase("SL-24 — editar un plan en uso (R15, R16, R17)", () => {
       planId: expect.any(String),
       cambio: true,
       avisos: [{ organizacionId: r.org, empresa: r.nombre, tope: "adminTienda", usados: 3, maximo: 2 }],
-      vigenteDesde: null,
+      vigenteDesde: HOY,
     });
     // Se guardó (ya no se rechaza).
     expect(r.tope).toEqual([["adminTienda", 2]]);
@@ -117,13 +152,13 @@ describeSiHayBase("SL-24 — editar un plan en uso (R15, R16, R17)", () => {
 
   it("R16: el aviso nombra cada empresa y cada tope que pasa, en orden de empresa", async () => {
     const r = await revertida(base, async (tx) => {
-      const p = await preparar(tx, { topes: { ordenesPorCiclo: null, porRol: { adminTienda: 5, admin: 5 }, apiKeys: null } }, 2);
+      const p = await preparar(tx, { topes: { porRol: { adminTienda: 5, admin: 5 }, apiKeys: null } }, 2);
       for (const org of p.orgs) {
         await fijarEmpresa(tx, org);
         for (let i = 0; i < 2; i++) await crearUsuarioDePrueba(tx, "adminTienda");
         await crearUsuarioDePrueba(tx, "admin");
       }
-      const edicion = await p.editar({ topes: { ordenesPorCiclo: null, porRol: { adminTienda: 1, admin: 0 }, apiKeys: null } });
+      const edicion = await p.editarYRecibir({ topes: { porRol: { adminTienda: 1, admin: 0 }, apiKeys: null } });
       return { orgs: [...p.orgs].sort(), edicion };
     });
     if (r.edicion.estado !== "ok") throw new Error(r.edicion.estado);
@@ -142,7 +177,7 @@ describeSiHayBase("SL-24 — editar un plan en uso (R15, R16, R17)", () => {
       // La excepción de SL-23 en una de las dos.
       await tx.organizacionModulo.create({ data: { organizacionId: conExcepcion, modulo: "analitica" } });
       const historialAntes = await tx.historialAccion.count({ where: { organizacionId: { in: p.orgs } } });
-      const edicion = await p.editar({ modulos: ["monitoreo"] });
+      const edicion = await p.editarYRecibir({ modulos: ["monitoreo"] });
       const filas = await tx.historialAccion.findMany({
         where: { organizacionId: { in: p.orgs } },
         orderBy: { createdAt: "asc" },
@@ -179,7 +214,7 @@ describeSiHayBase("SL-24 — editar un plan en uso (R15, R16, R17)", () => {
       const [org] = p.orgs;
       await tx.organizacionModulo.create({ data: { organizacionId: org, modulo: "monitoreo" } });
       const antes = await tx.historialAccion.count({ where: { organizacionId: org } });
-      await p.editar({ modulos: ["analitica", "monitoreo"] });
+      await p.editarYRecibir({ modulos: ["analitica", "monitoreo"] });
       return { modulos: await modulos(tx, org), nuevas: (await tx.historialAccion.count({ where: { organizacionId: org } })) - antes };
     });
     expect(r.modulos).toEqual(["analitica", "monitoreo"]);
@@ -189,9 +224,9 @@ describeSiHayBase("SL-24 — editar un plan en uso (R15, R16, R17)", () => {
   it("una edición sin cambios reales no escribe nada ni toca updated_at", async () => {
     const r = await revertida(base, async (tx) => {
       const p = await preparar(tx, {
-        topes: { ordenesPorCiclo: 10, porRol: { admin: 1 }, apiKeys: 2 },
+        topes: { porRol: { admin: 1 }, apiKeys: 2 },
         modulos: ["ranking", "analitica"],
-        precio: { tipo: "monto", mensual: "100", anual: { tipo: "descuento", porcentaje: "10" } },
+        precio: { tipo: "monto", mensual: "100", descuentos: { anual: { tipo: "porcentaje", porcentaje: "10" } } },
       });
       const foto = async () => ({
         plan: await tx.plan.findUniqueOrThrow({ where: { id: p.planId }, select: { updatedAt: true, nombre: true } }),
@@ -200,12 +235,40 @@ describeSiHayBase("SL-24 — editar un plan en uso (R15, R16, R17)", () => {
       const antes = await foto();
       const edicion = await p.editar({
         modulos: ["analitica", "ranking"],
-        precio: { tipo: "monto", mensual: "100.00", anual: { tipo: "descuento", porcentaje: "10.0" } },
+        precio: { tipo: "monto", mensual: "100.00", descuentos: { anual: { tipo: "porcentaje", porcentaje: "10.0" } } },
       });
       return { antes, edicion, despues: await foto() };
     });
     expect(r.edicion).toMatchObject({ estado: "ok", cambio: false, avisos: [] });
     expect(r.despues).toEqual(r.antes);
+  });
+
+  // SLT-135 (R3): ni la empresa ni el plan cambian al guardar; los topes y los módulos llegan con la recepción.
+  it("R3: los topes y los módulos llegan por la recepción, no al guardar", async () => {
+    const r = await revertida(base, async (tx) => {
+      const p = await preparar(tx, { topes: { porRol: { adminTienda: 5 }, apiKeys: null }, modulos: ["ranking"] });
+      const [org] = p.orgs;
+      await fijarEmpresa(tx, "");
+      const edicion = await p.editar({ topes: { porRol: { adminTienda: 1 }, apiKeys: null }, modulos: ["monitoreo"] });
+      const plan = async () => ({
+        topes: (await tx.planTopeRol.findMany({ where: { planId: p.planId } })).map((t) => [t.rol, t.maximo]),
+        modulos: (await tx.planModulo.findMany({ where: { planId: p.planId } })).map((m) => m.modulo).sort(),
+      });
+      const pendientes = () => tx.planCambioProgramado.count({ where: { planId: p.planId } });
+      const alGuardar = { plan: await plan(), empresa: await modulos(tx, org), pendiente: await pendientes() };
+      // Con el tope viejo (5), dos altas entran aunque el programado diga 1.
+      const altasAlGuardar = [await tiendaNueva(tx, org), await tiendaNueva(tx, org)];
+      const recibido = await recibirTodo(tx, p.planId);
+      const despues = { plan: await plan(), empresa: await modulos(tx, org), pendiente: await pendientes() };
+      const altaDespues = traducirErrorDeTope(await tiendaNueva(tx, org));
+      return { edicion, alGuardar, altasAlGuardar, recibido, despues, altaDespues };
+    });
+    expect(r.edicion).toMatchObject({ estado: "ok", cambio: true, vigenteDesde: HOY });
+    expect(r.alGuardar).toEqual({ plan: { topes: [["adminTienda", 5]], modulos: ["ranking"] }, empresa: ["ranking"], pendiente: 1 });
+    expect(r.altasAlGuardar).toEqual([null, null]);
+    expect(r.recibido).toEqual([{ estado: "aplicado" }]);
+    expect(r.despues).toEqual({ plan: { topes: [["adminTienda", 1]], modulos: ["monitoreo"] }, empresa: ["monitoreo"], pendiente: 0 });
+    expect(r.altaDespues).toBeInstanceOf(TopeDelPlanAlcanzado);
   });
 
   it("R6: un plan archivado no se edita", async () => {
@@ -215,7 +278,13 @@ describeSiHayBase("SL-24 — editar un plan en uso (R15, R16, R17)", () => {
       return {
         porServicio: await p.editar({ nombre: "Otro" }),
         // Bajo cerrojo en el repositorio, aunque el servicio no lo hubiera visto.
-        porRepositorio: await planesEnTx(tx).editar(p.planId, { ...p.entrada, nombre: "Otro" }, SUPERADMIN.usuarioId),
+        porRepositorio: await planesEnTx(tx).programarCambio(
+          p.planId,
+          { ...p.entrada, nombre: "Otro" },
+          inicioDelDiaPlataforma(HOY),
+          SUPERADMIN.usuarioId,
+          new Date(),
+        ),
         nombre: (await tx.plan.findUniqueOrThrow({ where: { id: p.planId }, select: { nombre: true } })).nombre,
       };
     });

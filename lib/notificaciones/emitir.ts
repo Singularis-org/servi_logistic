@@ -17,10 +17,13 @@ import type { OrderStatusValue } from "@/lib/types/order-status";
 // literal: las cadenas de notificacion siguen viviendo solo en este archivo (146 §4.6). Y
 // `fechaLegible` es pura — no importa `Date` ni `Intl`.
 import { fechaLegible } from "@/lib/utils/dia-reparto-textos";
-// FICHA 403: el dia calendario de COSTA RICA. `fechaLegible` solo pone en palabras un
+// FICHA 403: el dia calendario de la zona del pais (SLT-42). `fechaLegible` solo pone en palabras un
 // `YYYY-MM-DD`; quien decide QUE dia es ese a partir de un instante es esta funcion, y por eso no
 // vale `toISOString().slice(0, 10)` (en UTC, un fallo de las 19:00 CR ya cae en el dia siguiente).
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendario } from "@/lib/utils/calendario-zona";
+// SLT-136: el período de la factura emitida, en la hora de la plataforma (la de las pantallas de SLT-119),
+// por la puerta de `ciclo.ts` y no por el envoltorio de CR (guardia de SLT-42 R29).
+import { fechaCalendarioPlataforma } from "@/lib/planes/ciclo";
 // Feature 271 (§9.2/§10.1): el aviso de bloqueo al mensajero se COMPONE con el mismo formateador
 // que la pantalla. No es una cadena importada de fuera: es la regla que CUENTA (N, V y cual toca
 // primero) escrita una sola vez, para que campana y pantalla no puedan divergir (R43/R52).
@@ -893,13 +896,14 @@ export interface WebhookSuscripcionPausadaContexto {
  * La fecha va en palabras con `fechaLegible`, el MISMO formateador que usan la asignación y el
  * portal del mensajero: lo que se importa es la conversión de fecha, no otro literal (146 §4.6).
  *
- * Y el día calendario sale de `fechaCalendarioCR`, NO de `toISOString().slice(0, 10)`: quien lee
- * este aviso está en Costa Rica, y en UTC un fallo de las 19:00 CR ya cae en el día siguiente. Un
+ * Y el día calendario sale de `fechaCalendario(instante, zona)` con la zona del país de la empresa
+ * (SLT-42, R22), NO de `toISOString().slice(0, 10)`: en UTC un fallo de la tarde ya cae en el día
+ * siguiente. Un
  * aviso que dice «desde el 10» cuando en pantalla todavía es el 9 se lee como un error del sistema.
  */
-export function textoWebhookSuscripcionPausada(sinExitoDesde: Date): string {
+export function textoWebhookSuscripcionPausada(sinExitoDesde: Date, zona: string): string {
   return (
-    `Un webhook lleva fallando desde el ${fechaLegible(fechaCalendarioCR(sinExitoDesde))} ` +
+    `Un webhook lleva fallando desde el ${fechaLegible(fechaCalendario(sinExitoDesde, zona))} ` +
     "y sus reintentos se espaciaron automáticamente para no saturar la cola de trabajo. " +
     "Se reanudarán solos en cuanto vuelva a responder. Revisa Configuración > API."
   );
@@ -924,6 +928,8 @@ export function textoWebhookSuscripcionPausada(sinExitoDesde: Date): string {
 export async function emitirWebhookSuscripcionPausada(
   repo: INotificacionRepository,
   ctx: WebhookSuscripcionPausadaContexto,
+  /** SLT-42 (R22): la zona del país de la empresa, para el día del texto. */
+  zona: string,
   tx?: NotificacionTxClient,
 ): Promise<number> {
   return emitirFilas(
@@ -932,7 +938,7 @@ export async function emitirWebhookSuscripcionPausada(
       {
         tipo: "warning",
         evento: "webhook_suscripcion_pausada",
-        descripcion: textoWebhookSuscripcionPausada(ctx.sinExitoDesde),
+        descripcion: textoWebhookSuscripcionPausada(ctx.sinExitoDesde, zona),
         anexo: null,
         entidadTipo: "webhook_suscripcion_pausa",
         // ⚠️ LA RACHA, no la suscripción. Ver el bloque de arriba.
@@ -1585,6 +1591,67 @@ export async function emitirTraspasoCedido(
         entidadTipo: "orden_traspaso_lote",
         entidadId: ctx.loteId,
         destinatario: { tipo: "usuario", usuarioId: ctx.mensajeroUsuarioId },
+      },
+    ],
+    tx,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SLT-136 §7.3 — Se cerró una factura de la plataforma. Lo emite el job `factura_plataforma_aviso`,
+// NO best-effort: si lanza, el job falla antes de enviar correos y se reintenta (R22, R27).
+//
+// LA ENTIDAD ES LA FACTURA: se cierra una sola vez, así que `notificacion_dedupe_key` da UN aviso por
+// factura para siempre, y el reintento del job no crea un segundo (R22). Sin montos (146 §4.6): van en
+// el correo.
+// ---------------------------------------------------------------------------
+
+/** Lo que el aviso necesita de la factura cerrada: su id (la entidad), su número y su intervalo `[desde, hasta)`. */
+export interface FacturaEmitidaContexto {
+  facturaId: string;
+  numero: number;
+  desde: Date;
+  hasta: Date;
+}
+
+/** `dd/mm/aaaa` del día de un instante en la hora de la plataforma (la de las pantallas de SLT-119). */
+function diaDeLaPlataforma(instante: Date): string {
+  const [anio, mes, dia] = fechaCalendarioPlataforma(instante).split("-");
+  return `${dia}/${mes}/${anio}`;
+}
+
+/**
+ * «dd/mm/aaaa al dd/mm/aaaa»: el último día es el de `hasta − 1 ms`, porque `hasta` es exclusivo. Es el mismo
+ * período que pintan el PDF y el correo (`periodoNumerico` de `lib/facturas-plataforma/resumen.ts`).
+ */
+export function periodoDeFactura(desde: Date, hasta: Date): string {
+  return `${diaDeLaPlataforma(desde)} al ${diaDeLaPlataforma(new Date(hasta.getTime() - 1))}`;
+}
+
+export function textoFacturaEmitida(numero: number, periodo: string): string {
+  return `Se emitió la factura N.º ${numero} de la plataforma, del ${periodo}.`;
+}
+
+/**
+ * R22/R24 — UNA fila `alert` dirigida al rol `maestro`, y a nadie más: ni `admin` ni ningún usuario (el
+ * superadmin no tiene empresa). `alert` y no `warning`: es dinero que la empresa debe a la plataforma.
+ */
+export async function emitirFacturaEmitida(
+  repo: INotificacionRepository,
+  ctx: FacturaEmitidaContexto,
+  tx?: NotificacionTxClient,
+): Promise<number> {
+  return emitirFilas(
+    repo,
+    [
+      {
+        tipo: "alert",
+        evento: "factura_plataforma_emitida",
+        descripcion: textoFacturaEmitida(ctx.numero, periodoDeFactura(ctx.desde, ctx.hasta)),
+        anexo: null,
+        entidadTipo: "factura_plataforma",
+        entidadId: ctx.facturaId,
+        destinatario: { tipo: "rol", rol: "maestro" },
       },
     ],
     tx,

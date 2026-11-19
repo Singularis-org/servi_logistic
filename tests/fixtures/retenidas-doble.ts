@@ -28,7 +28,7 @@ export function sinRetenidas(): RetenidasDoble {
 export function conRetenidas(marcas: Record<string, number>): RetenidasDoble {
   return {
     contarPorCierre: vi.fn<IReprogramadasRetenidasService["contarPorCierre"]>(
-      async (_hoyCR, cierreIds) =>
+      async (_hoyCR, _zona, cierreIds) =>
         new Map(
           [...cierreIds]
             .filter((id) => (marcas[id] ?? 0) > 0)

@@ -15,6 +15,9 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { HiloHistoricoDTO } from "@/lib/types/historico-conversaciones";
 import { listarMensajesHistoricoSchema } from "@/lib/types/historico-conversaciones";
 import { ROLES_HISTORICO_CONVERSACIONES } from "@/lib/auth/menu-visibility";
+import { construirConsultaListarHilos } from "@/lib/repositories/HistoricoConversacionesRepository";
+import { PaisSinZonaHoraria } from "@/lib/db/errores-pais";
+import { reglasPaisFijas, ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // Feature 321 / T3.6 — `HistoricoConversacionesService`: AUTORIZACION, NO-ESCRITURA y hilo
 // completo.
@@ -258,5 +261,54 @@ describe("321 / T3.6 — HistoricoConversacionesService", () => {
       // @ts-expect-error `$executeRaw` no forma parte del cliente que este repositorio acepta.
       expect(soloLectura.$executeRaw).toBeUndefined();
     });
+  });
+});
+
+// ==========================================================================================
+// SLT-42 (R22, R23, R28) — el rango de fechas del listado, en la zona del pais de la empresa
+// ==========================================================================================
+
+describe("SLT-42 — el rango de fechas del historico usa la zona del pais de la empresa", () => {
+  const BOGOTA = "America/Bogota";
+
+  it("R22: con fechas, la zona del pais llega al repositorio; sin fechas, no se lee", async () => {
+    const repo = crearRepoDoble();
+    const zonaHoraria = vi.fn(async () => BOGOTA);
+    const service = new HistoricoConversacionesService(repo, { zonaHoraria });
+
+    await service.listarHilos({ filtro: { fecha_desde: "2026-08-15" } }, actorDe("admin"));
+    expect(repo.listarHilos.mock.calls[0]?.[0]).toMatchObject({ zona: BOGOTA });
+
+    await service.listarHilos({}, actorDe("admin"));
+    expect(repo.listarHilos.mock.calls[1]?.[0]).not.toHaveProperty("zona");
+    expect(zonaHoraria).toHaveBeenCalledTimes(1);
+  });
+
+  it("R22/R23: las cotas del SQL son las 00:00 locales de la empresa (CR 06:00Z, Bogota 05:00Z; Madrid con horario de verano)", () => {
+    const cotas = (zona: string): unknown[] =>
+      construirConsultaListarHilos({
+        filtro: { fecha_desde: "2026-08-15", fecha_hasta: "2026-08-15" },
+        cursor: null,
+        limite: 26,
+        zona,
+      }).values;
+    expect(cotas(ZONA_DE_CR)).toEqual(expect.arrayContaining(["2026-08-15T06:00:00.000Z", "2026-08-16T06:00:00.000Z"]));
+    expect(cotas(BOGOTA)).toEqual(expect.arrayContaining(["2026-08-15T05:00:00.000Z", "2026-08-16T05:00:00.000Z"]));
+    expect(cotas("Europe/Madrid")).toEqual(expect.arrayContaining(["2026-08-14T22:00:00.000Z", "2026-08-15T22:00:00.000Z"]));
+  });
+
+  it("R28: sin zona en el pais, falla con PaisSinZonaHoraria y no consulta", async () => {
+    const repo = crearRepoDoble();
+    const service = new HistoricoConversacionesService(repo, reglasPaisFijas({ paisId: "XA", zonaHoraria: null }));
+    await expect(
+      service.listarHilos({ filtro: { fecha_hasta: "2026-08-15" } }, actorDe("admin")),
+    ).rejects.toBeInstanceOf(PaisSinZonaHoraria);
+    expect(repo.listarHilos).not.toHaveBeenCalled();
+  });
+
+  it("un rango sin zona en el repositorio falla en vez de usar una zona inventada", () => {
+    expect(() =>
+      construirConsultaListarHilos({ filtro: { fecha_desde: "2026-08-15" }, cursor: null, limite: 26 }),
+    ).toThrow(/zona horaria/);
   });
 });

@@ -285,8 +285,8 @@ export function BulkUpload({
           "relative flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-8 text-center transition-colors",
           "has-[input:focus-visible]:border-brand has-[input:focus-visible]:ring-3 has-[input:focus-visible]:ring-brand/30",
           isDragging
-            ? "border-brand bg-brand-soft"
-            : "border-border bg-muted/30 hover:border-brand/60 hover:bg-brand-soft/40",
+            ? "border-brand bg-accent"
+            : "border-border bg-muted/30 hover:border-brand/60 hover:bg-accent/40",
           busy && "pointer-events-none opacity-60",
         )}
       >

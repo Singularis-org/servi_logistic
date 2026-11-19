@@ -18,6 +18,7 @@ import { calcularSplitPago } from "@/lib/utils/cuenta-por-pagar";
 import { derivarPendienteCierre } from "@/lib/utils/pendiente-cierre";
 import { conPagos } from "@/tests/fixtures/cierre-pagos";
 import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * Feature 212 (T12, R29) — la `E` del `min(P, E)` con un cierre MIXTO.
@@ -99,6 +100,7 @@ function fakeRepo(gestiones: GestionPendienteDeCierreRow[]) {
     findCierresByMensajero: vi.fn(async () => []),
     findCierrePropioConGestiones: vi.fn(async () => null),
     findCierresByMensajeroPaginado: vi.fn(async () => ({ items: [], total: 0 })),
+    findAprobadosParaPendiente: vi.fn(async () => []),
     findGestionParaDeshacer: vi.fn(async () => null),
     findUltimaGestionNoAnuladaId: vi.fn(async () => null),
     anularGestionYDevolverAGestion: vi.fn(async () => true),
@@ -132,7 +134,7 @@ function newService(repo: ICierreDiaRepository) {
     createSignedUrl: vi.fn(async (p: string) => `https://signed/${p}`),
     createSignedUrls: vi.fn(async () => ({})),
   };
-  return new CierreDiaService(repo, zonaRepo, ordenRepo, signedUrls, tarifaZonaRepo);
+  return new CierreDiaService(repo, zonaRepo, ordenRepo, signedUrls, tarifaZonaRepo, undefined, undefined, reglasPaisFijas());
 }
 
 describe("R29 — `crearCierre` congela como `E` SOLO la parte cobrada en efectivo", () => {
@@ -219,11 +221,11 @@ describe("R29 — el `min(P, E)` del pago al mensajero se calcula con ESA `E`", 
     // Sin pagos vigentes contra el cierre todavía.
     // 293/T2.3 — NO-REGRESION: con `premiosVivos: "0.00"` las dos cifras son las de antes.
     expect(
-      derivarPendienteCierre({ pagoDebido: P, efectivo: E, premiosVivos: "0.00", pagadoVigente: "0.00" }),
+      derivarPendienteCierre({ pagoDebido: P, efectivo: E, premiosVivos: "0.00", pagadoVigente: "0.00", pagoIndependienteEfectivo: false }),
     ).toBe("1000.00");
     // Y si ya se le entregaron 400 de esos 1.000, quedan 600.
     expect(
-      derivarPendienteCierre({ pagoDebido: P, efectivo: E, premiosVivos: "0.00", pagadoVigente: "400.00" }),
+      derivarPendienteCierre({ pagoDebido: P, efectivo: E, premiosVivos: "0.00", pagadoVigente: "400.00", pagoIndependienteEfectivo: false }),
     ).toBe("600.00");
   });
 

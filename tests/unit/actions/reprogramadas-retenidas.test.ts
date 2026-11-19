@@ -4,6 +4,7 @@ import { resumenReprogramadasRetenidasCentral } from "@/lib/actions/reprogramada
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { ResumenRetenidas } from "@/lib/interfaces/services/IReprogramadasRetenidasService";
 import { codigoSinComentarios } from "../../fixtures/sin-comentarios";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // FICHA 462 (T2.10, R36/R37/R38/R44) — LA LECTURA DE LA FRANJA DE `/ordenes`, con dobles.
 //
@@ -44,7 +45,7 @@ describe("462/R36 — solo el acceso total lee la franja", () => {
   it("maestro y admin -> `ok`, y el servicio se consulta UNA vez por lectura", async () => {
     for (const actor of [MAESTRO, ADMIN]) {
       const service = servicioDoble();
-      const r = await resumenReprogramadasRetenidasCentral({ service, getActor: async () => actor, now: () => AHORA });
+      const r = await resumenReprogramadasRetenidasCentral({ service, reglasPais: reglasPaisFijas(), getActor: async () => actor, now: () => AHORA });
       expect(r.status).toBe("ok");
       expect(service.resumen).toHaveBeenCalledTimes(1);
     }
@@ -52,7 +53,7 @@ describe("462/R36 — solo el acceso total lee la franja", () => {
 
   it("⭑ adminTienda -> `forbidden` SIN consultar nada (mutacion 13: quitar `esAccesoTotal` => ROJO)", async () => {
     const service = servicioDoble();
-    const r = await resumenReprogramadasRetenidasCentral({ service, getActor: async () => TIENDA, now: () => AHORA });
+    const r = await resumenReprogramadasRetenidasCentral({ service, reglasPais: reglasPaisFijas(), getActor: async () => TIENDA, now: () => AHORA });
     expect(r).toEqual({ status: "forbidden" });
     expect(service.resumen).not.toHaveBeenCalled();
   });
@@ -60,7 +61,7 @@ describe("462/R36 — solo el acceso total lee la franja", () => {
   it("mensajero y adminSatelite tampoco ganan acceso por esta ficha: `forbidden`, sin consultar", async () => {
     for (const actor of [MENSAJERO, SATELITE]) {
       const service = servicioDoble();
-      const r = await resumenReprogramadasRetenidasCentral({ service, getActor: async () => actor, now: () => AHORA });
+      const r = await resumenReprogramadasRetenidasCentral({ service, reglasPais: reglasPaisFijas(), getActor: async () => actor, now: () => AHORA });
       expect(r).toEqual({ status: "forbidden" });
       expect(service.resumen).not.toHaveBeenCalled();
     }
@@ -68,7 +69,7 @@ describe("462/R36 — solo el acceso total lee la franja", () => {
 
   it("sin sesion -> `unauthenticated`, sin consultar", async () => {
     const service = servicioDoble();
-    const r = await resumenReprogramadasRetenidasCentral({ service, getActor: async () => null, now: () => AHORA });
+    const r = await resumenReprogramadasRetenidasCentral({ service, reglasPais: reglasPaisFijas(), getActor: async () => null, now: () => AHORA });
     expect(r).toEqual({ status: "unauthenticated" });
     expect(service.resumen).not.toHaveBeenCalled();
   });
@@ -76,7 +77,7 @@ describe("462/R36 — solo el acceso total lee la franja", () => {
 
 describe("462/R44 — el resultado viene RECORTADO al ambito central", () => {
   it("⭑ ni un cierre ni un grupo «sin cierre» de la zona satelite cruzan; el total es el del recorte", async () => {
-    const r = await resumenReprogramadasRetenidasCentral({ service: servicioDoble(), getActor: async () => ADMIN, now: () => AHORA });
+    const r = await resumenReprogramadasRetenidasCentral({ service: servicioDoble(), reglasPais: reglasPaisFijas(), getActor: async () => ADMIN, now: () => AHORA });
     if (r.status !== "ok") throw new Error("esperaba ok");
 
     expect(r.resumen.cierres.map((c) => c.cierreId)).toEqual(["c-central"]);
@@ -95,7 +96,7 @@ describe("462/R44 — el resultado viene RECORTADO al ambito central", () => {
       cierres: RESUMEN_MEZCLADO.cierres.filter((c) => c.ambito.tipo === "zona"),
       sinCierre: RESUMEN_MEZCLADO.sinCierre.filter((m) => m.ambito.tipo === "zona"),
     };
-    const r = await resumenReprogramadasRetenidasCentral({ service: servicioDoble(soloSatelite), getActor: async () => MAESTRO, now: () => AHORA });
+    const r = await resumenReprogramadasRetenidasCentral({ service: servicioDoble(soloSatelite), reglasPais: reglasPaisFijas(), getActor: async () => MAESTRO, now: () => AHORA });
     if (r.status !== "ok") throw new Error("esperaba ok");
     expect(r.resumen.total).toBe(0);
     expect(r.resumen.cierres).toEqual([]);
@@ -106,13 +107,13 @@ describe("462/R44 — el resultado viene RECORTADO al ambito central", () => {
 describe("462/R38 — el dia CR se resuelve en el SERVIDOR, en la convencion @db.Date", () => {
   it("con el reloj a las 07:00 CR del 25/09, el servicio recibe la medianoche UTC del 25/09", async () => {
     const service = servicioDoble();
-    await resumenReprogramadasRetenidasCentral({ service, getActor: async () => ADMIN, now: () => AHORA });
+    await resumenReprogramadasRetenidasCentral({ service, reglasPais: reglasPaisFijas(), getActor: async () => ADMIN, now: () => AHORA });
     expect(service.resumen.mock.calls[0][0].toISOString()).toBe("2026-09-25T00:00:00.000Z");
   });
 
   it("a las 19:00 CR del 25/09 (01:00Z del 26) sigue siendo el 25: no se usa `toISOString().slice`", async () => {
     const service = servicioDoble();
-    await resumenReprogramadasRetenidasCentral({ service, getActor: async () => ADMIN, now: () => new Date("2026-09-26T01:00:00.000Z") });
+    await resumenReprogramadasRetenidasCentral({ service, reglasPais: reglasPaisFijas(), getActor: async () => ADMIN, now: () => new Date("2026-09-26T01:00:00.000Z") });
     expect(service.resumen.mock.calls[0][0].toISOString()).toBe("2026-09-25T00:00:00.000Z");
   });
 });

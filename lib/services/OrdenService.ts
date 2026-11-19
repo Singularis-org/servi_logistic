@@ -42,6 +42,8 @@ import {
 // dos eran del camino de CREACION, que este servicio ya no tiene. Quien los usa hoy es
 // `BulkOrdenService`, que es por donde se crean las ordenes de verdad.
 import { descargaConfig } from "@/lib/config/descarga";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 
 // Roles reconocidos por las lecturas (los demas -> forbidden, R24). maestro/admin ven todo
 // (R20); adminTienda/mensajero con acotamiento (R21/R23). Se llamaba "del CRUD" cuando este
@@ -110,6 +112,11 @@ export class OrdenService implements IOrdenService {
     // superficies que come este listado; requerida, el compilador lo impide.
     private readonly historial: IntentosSvc,
     private readonly ahora: () => Date = () => new Date(),
+    /**
+     * SLT-42 (R22): la zona del pais de la empresa, con la que se leen los filtros de fecha de
+     * creacion. Solo se consulta si el listado filtra por fecha.
+     */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
 
   // BORRADO 2026-08-07 (tanda 2 del chore de deuda de superficie): aqui vivian `crear` y
@@ -184,6 +191,7 @@ export class OrdenService implements IOrdenService {
   private construirWhere(
     input: Pick<ListarOrdenesInput, "estatusId" | "filter">,
     actor: Actor,
+    zona: string | null,
     opciones?: { sinRutaRapida?: boolean },
   ): ListOrdenesWhere {
     const where: ListOrdenesWhere = {};
@@ -218,7 +226,8 @@ export class OrdenService implements IOrdenService {
     }
     // Feature 144/R41/R42/R43: los bordes temporales se calculan AQUI (server-side),
     // no llegan del cliente.
-    const createdAt = rangoCreacion(input.filter, this.ahora());
+    // SLT-42 (R22): en la zona del pais de la empresa; `null` = el listado no filtra por fecha.
+    const createdAt = zona === null ? undefined : rangoCreacion(input.filter, this.ahora(), zona);
     if (createdAt) where.createdAt = createdAt;
     // REASIGNABLES: predicado compuesto, no columna, asi que no pasa por
     // FILTER_TO_COLUMN; el repositorio lo traduce. Solo acota (nunca amplia), asi que
@@ -282,13 +291,26 @@ export class OrdenService implements IOrdenService {
     actor: Actor,
     pagina: { sortBy: SortField; sortDir: SortDir; skip: number; take: number },
   ): Promise<ListOrdenesResult> {
-    const where = this.construirWhere(input, actor);
+    // SLT-42 (R22, R28): la zona se lee una vez y solo si hay filtro de fecha de creacion.
+    const zona = await this.zonaSiFiltraPorCreacion(input.filter);
+    const where = this.construirWhere(input, actor, zona);
     const primerIntento = await this.repo.list({ where, ...pagina });
     if (primerIntento.total > 0 || where.numGuia === undefined) return primerIntento;
     return this.repo.list({
-      where: this.construirWhere(input, actor, { sinRutaRapida: true }),
+      where: this.construirWhere(input, actor, zona, { sinRutaRapida: true }),
       ...pagina,
     });
+  }
+
+  /**
+   * SLT-42 (R22, R28): la zona del pais de la empresa SOLO si el filtro trae un borde de fecha de
+   * creacion (`created_preset`, `created_desde`, `created_hasta`); sin el, `null` y no se consulta.
+   */
+  private async zonaSiFiltraPorCreacion(
+    filter: ListarOrdenesInput["filter"],
+  ): Promise<string | null> {
+    if (!filter?.created_preset && !filter?.created_desde && !filter?.created_hasta) return null;
+    return zonaDeLaEmpresa(this.reglasPais, "OrdenService.listar");
   }
 
   /**

@@ -40,7 +40,7 @@ try {
     const mias = features.filter((f) => ['spec_ready', 'in_progress'].includes(f.status) && (!yo || f.assignee?.accountId === yo));
     salida.push('', `## ${yo ? 'Mis features' : 'Features'} en vuelo (copia local del board; F0 la refresca)`);
     if (mias.length === 0) salida.push('(ninguna)');
-    for (const f of mias) salida.push(`- ${f.key ?? f.id}${f.title ? ` «${f.title}»` : ''} (${f.name}) — ${f.status}, zona ${f.zone ?? '?'} → progress/features/${f.key ?? f.id}.md`);
+    for (const f of mias) salida.push(`- ${f.key ?? f.id}${f.title ? ` «${f.title}»` : ''} (${f.name}) — ${f.status}, zona ${f.zone ?? '?'}, ruta ${f.ruta ?? 'completa'} → progress/features/${f.key ?? f.id}.md`);
   } else {
     salida.push('No hay feature_list.json en la raiz: corre F0 (AGENTS.md) antes de elegir trabajo.');
   }

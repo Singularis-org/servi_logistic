@@ -173,3 +173,84 @@ describe("RankingPodio — recorte al top y fila propia del mensajero", () => {
     expect(screen.queryByText("Tú")).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// SLT-162 «Ranking del mensajero en tarjetas en el móvil» — R758, R767 y R768 en el podio. Lo que
+// cambia en el teléfono es CSS (`max-md:`), que jsdom no aplica: aquí se afirman el orden del DOM
+// y las clases escritas a mano; las cajas y la letra calculada las mide el E2E.
+// ---------------------------------------------------------------------------------------------
+
+function clasesDe(el: Element): string[] {
+  return (el.getAttribute("class") ?? "").split(/\s+/);
+}
+
+describe("SLT-162 — fila del resto del podio en el teléfono (R767)", () => {
+  it("lugar, nombre con «Tú» al lado, conteo y porcentaje, en ese orden y sin barra", () => {
+    render(<RankingPodio ranking={RANKING} mensajeroPropioId="m3" />);
+    const caro = within(lista()).getAllByRole("listitem")[0];
+
+    const datos = Array.from(caro.querySelectorAll("[data-columna]")).map((d) =>
+      d.getAttribute("data-columna"),
+    );
+    expect(datos).toEqual(["lugar", "nombre", "conteo", "porcentaje"]);
+
+    // El chip «Tú» va al lado del nombre (mismo contenedor), no en otra línea de la fila.
+    const nombre = within(caro).getByText("Caro");
+    expect(within(nombre.parentElement as HTMLElement).getByText("Tú")).toBeInTheDocument();
+
+    // El envoltorio de nombre y conteo se disuelve en el teléfono: los cuatro en UNA línea flex.
+    expect(clasesDe(caro)).toEqual(expect.arrayContaining(["flex", "items-center", "md:grid"]));
+    expect(clasesDe(nombre.parentElement!.parentElement!)).toContain("max-md:contents");
+
+    // Sin barra de progreso en el teléfono (solo desde md).
+    const barra = caro.querySelector('[aria-hidden="true"].h-\\[7px\\]');
+    expect(barra).not.toBeNull();
+    expect(clasesDe(barra!)).toEqual(expect.arrayContaining(["hidden", "md:block"]));
+  });
+
+  it("el nombre envuelve; el conteo «x/y entregas» no se parte y el porcentaje va en columna fija", () => {
+    render(<RankingPodio ranking={RANKING} />);
+    const caro = within(lista()).getAllByRole("listitem")[0];
+    const nombre = within(caro).getByText("Caro");
+    expect(clasesDe(nombre)).toEqual(expect.arrayContaining(["min-w-0", "whitespace-normal", "wrap-anywhere"]));
+    expect(clasesDe(nombre)).not.toContain("truncate");
+    expect(clasesDe(within(caro).getByText("0/0 entregas"))).toEqual(
+      expect.arrayContaining(["shrink-0", "whitespace-nowrap"]),
+    );
+    expect(clasesDe(within(caro).getByText("—"))).toEqual(
+      expect.arrayContaining(["shrink-0", "whitespace-nowrap", "text-right"]),
+    );
+  });
+});
+
+describe("SLT-162 — el podio entero (R758, R768)", () => {
+  it("R758: los nombres de los escalones envuelven (nunca «…»)", () => {
+    render(<RankingPodio ranking={RANKING} />);
+    for (const nombre of ["Ana", "Beto"]) {
+      expect(clasesDe(within(podio()).getByText(nombre)), nombre).toEqual(
+        expect.arrayContaining(["min-w-0", "whitespace-normal", "wrap-anywhere"]),
+      );
+    }
+  });
+
+  it("R768: todo texto de 10-11 px en escritorio sube a 12 px (`max-md:text-xs`) en el teléfono", () => {
+    const { container } = render(<RankingPodio ranking={RANKING} mensajeroPropioId="m3" limite={null} />);
+    const menudos = Array.from(container.querySelectorAll<HTMLElement>("[class]")).filter((el) =>
+      clasesDe(el).some((c) => /^text-\[(?:[0-9]|1[01])px\]$/.test(c)),
+    );
+    // No vale verde vacío: hay conteos, «nº lugar», el chip «Tú»…
+    expect(menudos.length).toBeGreaterThan(5);
+    for (const el of menudos) {
+      expect(clasesDe(el), el.textContent ?? "").toContain("max-md:text-xs");
+    }
+    // El chip «Tú» y «2º lugar» entre ellos.
+    expect(clasesDe(screen.getByText("Tú"))).toContain("max-md:text-xs");
+    expect(clasesDe(screen.getByText("2º lugar"))).toContain("max-md:text-xs");
+  });
+
+  it("R768: la fila anclada «fuera del top» también sube a 12 px", () => {
+    const ranking = Array.from({ length: 14 }, (_, i) => fila(i + 1));
+    render(<RankingPodio ranking={ranking} mensajeroPropioId="m14" limite={10} />);
+    expect(clasesDe(screen.getByText("Tu posición, fuera del top 10"))).toContain("max-md:text-xs");
+  });
+});

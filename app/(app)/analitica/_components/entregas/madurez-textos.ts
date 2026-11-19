@@ -22,8 +22,8 @@
 // ─── POR QUE EL HEROE NO DICE «CERRADAS» ────────────────────────────────────────────────
 //
 // Su denominador son las ordenes CON DESENLACE DE GESTION, que no es lo que cuentan
-// `CicloVidaKpi` ni `CohorteCargaTabla` —los dos cuentan estados terminales— y sus cifras no
-// coinciden. Las tres lecturas se conservan (son tres preguntas distintas) pero no comparten
+// `CicloVidaKpi` —ordenes con gestion final— ni `CohorteCargaTabla` —estados terminales— y sus
+// cifras no coinciden. Las tres lecturas se conservan (son tres preguntas distintas) pero no comparten
 // sustantivo: el reparto esta escrito en `base-del-kpi.ts` y lo vigila
 // `tests/components/FilaKpisVocabulario.test.tsx`.
 

@@ -40,6 +40,7 @@ vi.mock("@/lib/actions/cobertura", () => ({
 
 import { DescargarCoberturaButton } from "@/app/(app)/configuracion/zonas/_components/DescargarCoberturaButton";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // SL-20 (R19): las pantallas nombran los niveles con los del país de la empresa. Estos casos son de
 // Costa Rica: el hook da sus etiquetas (sin proveedor daría las neutras, «Nivel 1»…).
 vi.mock("@/hooks/use-etiquetas-geograficas", async () => {
@@ -125,7 +126,7 @@ describe("465/R4 + R17 — lee al pulsar y nombra el archivo", () => {
   it("R17 — la fecha del nombre es el día de Costa Rica, no el del reloj UTC", () => {
     // 2026-10-02T04:30Z = 2026-10-01 22:30 en Costa Rica (UTC−6).
     expect(
-      nombreArchivoDescarga("Cobertura por distrito", "xlsx", new Date("2026-10-02T04:30:00Z")),
+      nombreArchivoDescarga("Cobertura por distrito", "xlsx", new Date("2026-10-02T04:30:00Z"), ZONA_CR),
     ).toBe("cobertura-por-distrito-2026-10-01.xlsx");
   });
 

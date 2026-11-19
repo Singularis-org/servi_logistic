@@ -11,7 +11,10 @@ import {
   crearPrismaDeTest,
   enTransaccionRevertida,
 } from "../db/_postgres-real";
+import { crearUsuarioDePrueba } from "../db/_fixtures/orden-minima";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Feature 180 / T2.4 — LA PARTICION POR CUBO, CONTRA POSTGRES DE VERDAD.
 //
 // POR QUE ESTE ARCHIVO NO ES OPCIONAL. Los tests de `tests/unit/analytics/financiera-*-cubo-repo`
@@ -66,14 +69,14 @@ function consultaDe(
   metricaId: string,
   crudo: Record<string, unknown> = { ...RANGO_CORTO },
 ): ConsultaAnalitica {
-  const r = prepararConsultaAnalitica(crudo, MAESTRO, metricaId, AHORA);
+  const r = prepararConsultaAnalitica(crudo, MAESTRO, metricaId, ZONA_DE_CR, AHORA);
   if (r.status !== "ok") throw new Error(`no se pudo preparar la consulta de ${metricaId}`);
   return r.consulta;
 }
 
 /** Los cubos SALEN de `trocear`: ni una frontera se escribe a mano en este archivo (R11). */
 function cubosDe(consulta: ConsultaAnalitica): readonly CuboTemporal[] {
-  return trocear(consulta.rango);
+  return trocear(consulta.rango, ZONA_CR);
 }
 
 /** El cliente de la transaccion, con la superficie minima que los repositorios piden. */
@@ -301,11 +304,17 @@ async function exigirLibroDeMensajerosVacio(tx: Tx, consulta: ConsultaAnalitica)
   ).toBe(0);
 }
 
-/** Un usuario cualquiera, solo para satisfacer la FK de `pago_mensajero_movimiento`. */
+/**
+ * El mensajero que satisface la FK de `pago_mensajero_movimiento`. SLT-182: se SIEMBRA en la tx
+ * revertida del caso; antes se leia «el primer usuario» de la base, y la base recien migrada no
+ * tiene ninguno.
+ */
 async function unUsuarioCualquiera(tx: Tx): Promise<string> {
-  const usuario = await tx.usuario.findFirst({ select: { id: true } });
-  if (usuario === null) throw new Error("no hay ningun usuario en la base: la FK no se puede cumplir");
-  return usuario.id;
+  const { id } = await crearUsuarioDePrueba(tx, "mensajero");
+  // Control positivo (R1084): la siembra llego a la base.
+  const sembrados = await tx.usuario.count({ where: { id } });
+  if (sembrados !== 1) throw new Error("SLT-182: el mensajero sembrado no esta en la base");
+  return id;
 }
 
 /**

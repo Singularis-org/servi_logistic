@@ -1,6 +1,9 @@
 "use server";
 
 import { getPrismaClient } from "@/lib/db/prisma-client";
+import { zonaDelBordeConActor } from "@/lib/actions/_shared/zona-del-borde";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { prepararConsultaAnalitica } from "@/lib/analytics/consulta";
 import { describirDenegado } from "@/lib/analytics/auditoria";
@@ -70,6 +73,8 @@ export interface AnaliticaOperativaDeps {
   readonly logger?: ErrorLogger;
   /** R31 — reloj inyectable: misma entrada y mismo `now` => misma salida. */
   readonly now?: () => Date;
+  /** SLT-42 (R22, R28): la zona del pais de la empresa; en produccion, la real (`zonaDelBorde`). */
+  readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
 }
 
 /**
@@ -101,6 +106,7 @@ function construirServicio(now: () => Date): IAnaliticaOperativaService {
       new OrdenTraspasoRepository(prisma),
     ),
     { now },
+    construirReglasPaisEmpresa(prisma), // SLT-42 (R22, R28): la zona horaria del pais de la empresa.
   );
 }
 
@@ -121,7 +127,8 @@ export async function consultarAnaliticaOperativa(
   const now = deps.now ?? (() => new Date());
   const actor = await (deps.getActor ?? resolveActorFromSession)();
 
-  const preparada = prepararConsultaAnalitica(entrada.raw, actor, entrada.metricaId, now());
+  const zona = await zonaDelBordeConActor(actor, deps.reglasPais); // SLT-42 (R22, R28)
+  const preparada = prepararConsultaAnalitica(entrada.raw, actor, entrada.metricaId, zona, now());
 
   if (preparada.status === "validation_error") {
     // R6 — se devuelve SIN consultar: el repositorio recibe CERO llamadas. Un filtro
@@ -186,7 +193,8 @@ export async function consultarAgregadoOperativo(
   const now = deps.now ?? (() => new Date());
   const actor = await (deps.getActor ?? resolveActorFromSession)();
 
-  const preparada = prepararConsultaAnalitica(entrada.raw, actor, entrada.metricaId, now());
+  const zona = await zonaDelBordeConActor(actor, deps.reglasPais); // SLT-42 (R22, R28)
+  const preparada = prepararConsultaAnalitica(entrada.raw, actor, entrada.metricaId, zona, now());
 
   if (preparada.status === "validation_error") {
     return { status: "validation_error", fieldErrors: preparada.fieldErrors };

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Ficha 475 (design §9, M13) — COMPOSITION ROOT: el informe que el CATALOGO registra (no uno
 // construido en el test) lee a traves del repositorio REAL sobre el cliente Prisma compartido.
 // Leccion «composition root que no inyecta»: se comprueba que alguien lo PASA, no que se importa.
@@ -46,7 +47,7 @@ describe("475/M13 — el catalogo registra el informe con el repositorio real", 
     const { INFORMES_WHATSAPP } = await import("@/lib/whatsapp-envios/informes/catalogo");
     const { PARAMETROS_POR_DEFECTO } = await import("@/lib/whatsapp-envios/informes/transito/parametros");
     const informe = INFORMES_WHATSAPP.get("transito")!;
-    const r = await informe.generar({
+    const r = await informe.generar({ zona: ZONA_DE_CR,
       parametros: PARAMETROS_POR_DEFECTO,
       ahora: new Date("2026-10-05T11:00:00.000Z"),
       conDocumento: false,

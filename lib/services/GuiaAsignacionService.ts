@@ -34,6 +34,8 @@ import type {
   GenerarGuiaInput,
   GenerarGuiaServiceResult,
   IGuiaAsignacionService,
+  RetirarSateliteInput,
+  RetirarSateliteServiceResult,
   RutearSateliteInput,
   RutearSateliteResultadoItem,
   RutearSateliteServiceResult,
@@ -52,12 +54,12 @@ import {
 } from "@/lib/services/mensajes-bloqueo";
 import type { IAsignabilidadCoordenadasService } from "@/lib/interfaces/services/IAsignabilidadCoordenadasService";
 import type { IOrdenHistorialService } from "@/lib/interfaces/services/IOrdenHistorialService";
-// FEATURE 276 (T7, R7): el umbral sale de la configuracion, nunca de un `3` escrito a mano.
-import { reintentosConfig } from "@/lib/config/reintentos";
 import { esAsignable, motivoAsignabilidad } from "@/lib/services/AsignabilidadCoordenadasService";
 import { esAccesoTotal } from "@/lib/auth/acceso-total";
 import { resolverFechaReparto } from "@/lib/utils/dia-reparto";
 
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 // Feature 156/R4 + 155/R29: UNICO estado de origen valido para "Generar guia". El estado
 // de fulfillment que la 156 ya habia sacado de esta constante quedo RETIRADO del catalogo
 // por la 155, asi que no hay forma de volver a nombrarlo aqui.
@@ -100,6 +102,9 @@ const ESTATUS_REPROGRAMADA = "reprogramado";
 const ESTATUS_EN_ESPERA_ACEPTACION = "mensajero_recogiendo_en_bodega"; // R26 (asignarDesdeBodega)
 const ESTATUS_EN_BODEGA = "en_bodega_central"; // feature 156/R3: destino UNICO de generar guia
 const ESTATUS_EN_RUTA_BODEGA_SATELITE = "en_ruta_bodega_satelite"; // feature 30/R9
+// SLT-197 (R970/R971): origen y destino UNICOS del retiro de satelite a central (#73).
+const ORIGEN_RETIRO_SATELITE = "en_bodega_satelite";
+const ESTATUS_EN_RUTA_BODEGA_CENTRAL = "en_ruta_bodega_central";
 // Feature 157 (ampliacion): destino de la asignacion de recoleccion. Que exista este estado
 // es lo que impide reasignar en bucle: al asignar, la orden SALE del monton de disponibles.
 const ESTATUS_RECOLECTANDO = "recolectando";
@@ -181,7 +186,9 @@ export class GuiaAsignacionService implements IGuiaAsignacionService {
      * para impedir. Va por `import type` + `Pick`: sin ciclo de modulos y testeable con dobles
      * (patron `MisAsignacionesService`).
      */
-    private readonly historial: Pick<IOrdenHistorialService, "contarIntentosEnLote">,
+    private readonly historial: Pick<IOrdenHistorialService, "contarIntentosEnLote" | "topeIntentos">,
+    /** SLT-42 (R22): la zona del pais de la empresa; «hoy/mañana» se resuelven en ella. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
 
   /**
@@ -496,13 +503,13 @@ export class GuiaAsignacionService implements IGuiaAsignacionService {
     // (`LiberacionReprogramadaService`), que es la raiz.
     //
     // UNA SOLA CONSULTA para todo el lote (`contarIntentosEnLote`, el metodo que la 215 creo
-    // exactamente para esto): nada de N+1. R7: el umbral sale de `reintentosConfig`.
+    // exactamente para esto): nada de N+1. SLT-77 (R20, R34): el tope sale de la empresa, y uno solo para el lote.
     //
     // TODO-O-NADA (R19): una sola orden en el umbral aborta el lote ENTERO, y el `detalle` lleva
     // UNA entrada POR ORDEN —tambien por las que si podian asignarse—, igual que las guardas
     // vecinas. Ninguna orden cambia de estado.
     const intentosPorOrden = await this.historial.contarIntentosEnLote(ordenIds);
-    const umbralIntentos = reintentosConfig.MIN_INTENTOS_ENTREGA;
+    const umbralIntentos = await this.historial.topeIntentos();
     if (ordenIds.some((id) => (intentosPorOrden.get(id) ?? 0) >= umbralIntentos)) {
       return {
         status: "conflict",
@@ -570,7 +577,9 @@ export class GuiaAsignacionService implements IGuiaAsignacionService {
     // el dia (R6). `?? "hoy"` cubre la llamada directa al servicio sin el campo, que significa
     // exactamente lo mismo que el default del schema (R4). Una asignacion, un dia de reparto (R3):
     // la fecha se calcula una vez y viaja al repositorio como parametro, sin recalcularse abajo.
-    const fechaReparto = resolverFechaReparto(input.dia ?? "hoy", now);
+    // SLT-42 (R22, R28): en la zona del pais de la empresa; sin zona falla aqui, antes de escribir.
+    const zona = await zonaDeLaEmpresa(this.reglasPais, "GuiaAsignacionService.asignarDesdeBodega");
+    const fechaReparto = resolverFechaReparto(input.dia ?? "hoy", zona, now);
 
     // R26/R5: NO reasigna num_guia, ya lo tienen de "Generar guia".
     // Feature 49/#4 (R12): actor = el maestro; destino por_recoger.
@@ -890,5 +899,75 @@ export class GuiaAsignacionService implements IGuiaAsignacionService {
       estado: ESTATUS_EN_RUTA_BODEGA_SATELITE,
     }));
     return { status: "ok", resultados };
+  }
+
+  /**
+   * SLT-197 (R971-R975, R985): la central retira paquetes del estante de una satelite
+   * (`en_bodega_satelite -> en_ruta_bodega_central`, arista #73, familia `ajuste_estado`).
+   * Inverso de `rutearABodegaSatelite`. No filtra por zona: el lote puede mezclar bodegas (D9)
+   * y cada orden conserva la suya. La guarda de estado definitiva vive en el `WHERE` del repo.
+   */
+  async retirarABodegaCentral(
+    input: RetirarSateliteInput,
+    actor: Actor,
+  ): Promise<RetirarSateliteServiceResult> {
+    // R975 (D3): solo maestro/admin, antes de leer nada.
+    if (!esAccesoTotal(actor.rol)) return { status: "forbidden" };
+
+    const ordenIds = distinct(input.ordenIds);
+    // Defensa: la action ya exige `.min(1)`.
+    if (ordenIds.length === 0) return { status: "ok", resultados: [] };
+
+    // R973: existe, no borrada y en `en_bodega_satelite`; cualquier fallo aborta el lote.
+    const ordenes = await this.repo.findByIdsForTransicion(ordenIds);
+    const ordenMap = new Map(ordenes.map((o) => [o.id, o]));
+    const detalle: DetalleConflicto[] = [];
+    for (const id of ordenIds) {
+      const orden = ordenMap.get(id);
+      if (!orden) {
+        detalle.push({ ordenId: id, motivo: "orden no existe" });
+        continue;
+      }
+      if (orden.deletedAt !== null) {
+        detalle.push({ ordenId: id, motivo: "orden borrada" });
+        continue;
+      }
+      if (orden.estatusValue !== ORIGEN_RETIRO_SATELITE) {
+        detalle.push({
+          ordenId: id,
+          motivo: `estado de origen no permitido: ${orden.estatusValue}`,
+        });
+      }
+    }
+    if (detalle.length > 0) return { status: "conflict", detalle };
+
+    const destinoId = await this.repo.findEstatusIdByValue(ESTATUS_EN_RUTA_BODEGA_CENTRAL);
+    if (destinoId === null) {
+      return {
+        status: "validation_error",
+        fieldErrors: { estatus: [`el catalogo no tiene ${ESTATUS_EN_RUTA_BODEGA_CENTRAL}`] },
+      };
+    }
+
+    // R971/R972/R974: todo o nada; si una orden cambio de estado entre la lectura y la escritura,
+    // el repo no escribe nada y devuelve "conflicto".
+    const r = await this.repo.retirarSateliteLote(ordenIds, destinoId, {
+      actorUsuarioId: actor.usuarioId,
+      origenTipo: "ajuste_estado",
+    });
+    if (r === "conflicto") {
+      return {
+        status: "conflict",
+        detalle: ordenIds.map((ordenId) => ({
+          ordenId,
+          motivo: "la orden cambió de estado; recarga",
+        })),
+      };
+    }
+
+    return {
+      status: "ok",
+      resultados: ordenIds.map((ordenId) => ({ ordenId, estado: ESTATUS_EN_RUTA_BODEGA_CENTRAL })),
+    };
   }
 }

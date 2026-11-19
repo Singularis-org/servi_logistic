@@ -29,6 +29,7 @@ import {
   idDeLaUnicaVista,
 } from "@/tests/unit/analytics/_fake-financiera-export";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 184 — analitica financiera: export de la serie (T4.4, T5.2). R24, R25 y R27.
 //
 // ⚠ AVISO DE NUMERACION: «184» en los comentarios de este arbol suele referirse a la ficha
@@ -128,7 +129,7 @@ describe("Feature 184 — analitica financiera: export de la serie (R24) · el n
     const [, , nombre] = descargarBlobMock.mock.calls[0]!;
     // No se compara contra un literal: se compara contra lo que produce la MISMA funcion del
     // patron 151. Un nombre compuesto a mano aqui divergiria de las ~25 tablas de la app.
-    expect(nombre).toBe(nombreArchivoDescarga(TITULO, "csv", new Date()));
+    expect(nombre).toBe(nombreArchivoDescarga(TITULO, "csv", new Date(), ZONA_CR));
     expect(nombre).toMatch(/^egresos-\d{4}-\d{2}-\d{2}\.csv$/);
   });
 });

@@ -379,6 +379,18 @@ const PUNTOS_DE_ESCRITURA = [
     simbolo: "corregirResultadoGestionEnCierre",
     origenTipo: "correccion_resultado_gestion",
   },
+  // #36: FICHA SLT-197 (2026-11-17) — LA CENTRAL RETIRA EL PAQUETE DEL ESTANTE DE UNA SATELITE.
+  //
+  // `en_bodega_satelite -> en_ruta_bodega_central` (arista #73), por lote, decidido por maestro/admin.
+  // Reusa `ajuste_estado` (design §3): el par es nuevo y unico, asi que la fila dice que paso sin
+  // ambiguedad y no hace falta un valor de enum nuevo (ni migracion). Por eso `ajuste_estado` pasa a
+  // tener DOS puntos (#11 y #36), declarado en `FAMILIAS_CON_VARIOS_PUNTOS`.
+  {
+    n: 36,
+    repo: "OrdenRepository",
+    simbolo: "retirarSateliteLote",
+    origenTipo: "ajuste_estado",
+  },
 ] as const;
 
 // Feature 158/PR2 — familias con MAS DE UN punto de escritura, declaradas UNA A UNA con su
@@ -391,6 +403,15 @@ const PUNTOS_DE_ESCRITURA = [
 // gane un segundo productor sin declararse aqui pone el archivo en rojo, que es exactamente lo
 // que hacia el caso viejo.
 const FAMILIAS_CON_VARIOS_PUNTOS = [
+  // FICHA SLT-197: el retiro de satelite a central (#36) reusa la familia del ajuste generico (#11).
+  {
+    origenTipo: "ajuste_estado",
+    puntos: 2,
+    razon:
+      "traslados y ajustes manuales decididos por una persona: el ajuste generico de " +
+      "`OrdenRepository.update` (#11) y el retiro de satelite a central (#36, SLT-197). El par " +
+      "`en_bodega_satelite -> en_ruta_bodega_central` solo lo produce #36.",
+  },
   {
     origenTipo: "incidente",
     puntos: 3,
@@ -473,17 +494,17 @@ const NO_ESCRIBEN_ESTADO = [
 ] as const;
 
 describe("Feature 49 · T5.2 cobertura del choke point (R6)", () => {
-  it("son EXACTAMENTE 34 puntos de escritura de estado (conjunto cerrado, design §2)", () => {
+  it("son EXACTAMENTE 32 puntos de escritura de estado (conjunto cerrado, design §2)", () => {
     // 30 - 1: el #2 se retiro el 2026-08-07. Feature 235 (2026-08-19): +2 (#29/#30, las dos
     // familias del viaje de la ayuda, con UN solo simbolo — el punto unico que R8 exige).
-    expect(PUNTOS_DE_ESCRITURA).toHaveLength(31); // 2026-08-20 (237): +#31 · 2026-08-20 (240): +#32 · 2026-08-23 (266): +#33 · 2026-08-24 (276): +#34 · 2026-09-08 (398): +#35 · 2026-09-23 (454): -#29 -#30 -#33
+    expect(PUNTOS_DE_ESCRITURA).toHaveLength(32); // 2026-08-20 (237): +#31 · 2026-08-20 (240): +#32 · 2026-08-23 (266): +#33 · 2026-08-24 (276): +#34 · 2026-09-08 (398): +#35 · 2026-09-23 (454): -#29 -#30 -#33 · 2026-11-17 (SLT-197): +#36
     // Numeracion CRECIENTE y sin duplicados, con los numeros JUBILADOS declarados uno a uno.
     // No se exige contigüidad a proposito: `n` identifica el punto, no su posicion (ver la
     // cabecera del mapa). Un hueco no declarado aqui SI rompe.
     // FICHA 454: jubilados #29, #30 y #33 (las tres familias de la ayuda como transicion).
     expect(PUNTOS_DE_ESCRITURA.map((p) => p.n)).toEqual([
       1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
-      26, 27, 28, 31, 32, 34, 35,
+      26, 27, 28, 31, 32, 34, 35, 36,
     ]);
   });
 

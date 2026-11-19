@@ -12,11 +12,13 @@ import type {
   NombreConMovimientosRow,
 } from "@/lib/interfaces/repositories/IFiltrosWalletRepository";
 import {
+  categoriasConModeloNuevoSql,
   cuentasConMovimientosSql,
   nombresConMovimientosSql,
   whereLibroCajaSql,
 } from "@/lib/repositories/libro-caja-a-quien-sql";
 import type { AQuienCuentaTipo } from "@/lib/types/libro-caja-a-quien";
+import { WALLET_CATEGORIA_ROTULO_POR_MODELO_SEED, type WalletCategoriaRotuloPorModelo } from "@/lib/types/wallet";
 import { CUENTA_USUARIO_SELECT, etiquetaDeCuenta } from "@/lib/utils/etiqueta-cuenta";
 
 type FiltrosPrismaClient = Pick<
@@ -85,6 +87,12 @@ export class FiltrosWalletRepository implements IFiltrosWalletRepository {
       _count: { _all: true },
     });
     return grupos.map((g) => ({ categoria: g.categoria, movimientos: g._count._all }));
+  }
+
+  /** D39 — ver el contrato. Con «A quién» o sin el, el WHERE del libro. */
+  async categoriasConModeloNuevoCaja(f: FiltrosConteoCaja): Promise<WalletCategoriaRotuloPorModelo[]> {
+    const filas = await this.prisma.$queryRaw<{ categoria: string }[]>(categoriasConModeloNuevoSql(f));
+    return WALLET_CATEGORIA_ROTULO_POR_MODELO_SEED.filter((c) => filas.some((x) => x.categoria === c));
   }
 
   async contarConceptosTienda(tiendaId: string, f: FiltrosConteoTienda): Promise<ConteoPorCategoria[]> {

@@ -3,6 +3,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { CorreccionDiaRepartoService } from "@/lib/services/CorreccionDiaRepartoService";
 import { HAY_BASE_DE_DATOS } from "../../_postgres-real";
 import { conEscenario, diaCR, prepararMundo, type Mundo } from "../_escenario";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FEATURE 454 — FASE 0 · C15 (R55). LA CORRECCION DEL DIA DE REPARTO, sobre el codigo de HOY.
@@ -25,7 +26,7 @@ describeSiHayBase("454/C15 — cambio de dia de reparto (Postgres real)", () => 
       const m = await e.sembrarOrden({ estatus: "en_reparto", montoCobrar: 1000, fechaReparto: hoy });
       await e.gestionarOk(g.ordenId, "entregado", { monto: 1000 });
 
-      const svc = new CorreccionDiaRepartoService(e.s.ordenRepo);
+      const svc = new CorreccionDiaRepartoService(e.s.ordenRepo, undefined, reglasPaisFijas());
       const gestionada = await svc.corregir(
         { ordenIds: [g.ordenId], dia: "manana", motivo: "se reprograma el lote" },
         e.actorMaestro,

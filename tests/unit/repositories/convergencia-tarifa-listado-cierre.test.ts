@@ -580,7 +580,7 @@ describe("SLT-52 T4.4 — modelo nuevo: listado, cierre y costo API eligen el mi
     });
   });
 
-  it("SLT-54 R66: el fulfillment en porcentaje es sobre el pedido, y sin el concepto da «0.00»", async () => {
+  it("SLT-94 R14 (era SLT-54 R66): un fulfillment en porcentaje guardado antes del despliegue se IGNORA en el listado; en monto propio se lista; sin el concepto da «0.00»", async () => {
     const listar = async (tabla: unknown[]) => {
       const prisma = {
         ...prismaNuevo(),
@@ -600,9 +600,14 @@ describe("SLT-52 T4.4 — modelo nuevo: listado, cierre y costo API eligen el mi
       });
       return res.items[0].fulfillment;
     };
-    // 1,5 % de 25000.00 = 375.00.
+    // Antes de SLT-94: 1,5 % de 25000.00 = 375.00. Desde SLT-94 (R11/R14) el % no existe para el
+    // fulfillment: la fila vieja queda inerte y el listado dice lo mismo que el cobro (nada).
     expect(
       await listar([valor({ id: "tff-pct", concepto: "tienda_fulfillment", modo: "porcentaje", valor: "1.50", tiendaId: TIENDA })]),
+    ).toBe("0.00");
+    // Control: el MISMO valor en monto, como precio propio de la tienda, si se lista.
+    expect(
+      await listar([valor({ id: "tff-monto", concepto: "tienda_fulfillment", modo: "monto", valor: "375.00", tiendaId: TIENDA })]),
     ).toBe("375.00");
     expect(await listar([])).toBe("0.00");
   });

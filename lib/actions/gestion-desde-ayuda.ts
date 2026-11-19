@@ -24,6 +24,9 @@ import {
   type GestionarDesdeAyudaResult,
 } from "@/lib/types/gestion-desde-ayuda";
 
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDelBorde } from "@/lib/actions/_shared/zona-del-borde";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 // Feature 237 (design §11, T5.4) — Server Action de la gestion que la TIENDA registra desde la
 // pestaña de ayuda.
 //
@@ -66,6 +69,8 @@ function buildService(): IGestionDesdeAyudaService {
     notaRepo: new OrdenNotaRepository(prisma),
     ordenRepo,
     gestionRepo: new GestionOrdenRepository(prisma),
+    // SLT-42 (R22): la zona horaria del pais de la empresa.
+    reglasPais: construirReglasPaisEmpresa(prisma),
     // 💰 FEATURE 276 (T5, R1/R4): EL CABLEADO DE LA PUERTA DEL TOPE. Es el MISMO servicio de
     // historial que inyectan el panel del mensajero y el cron de SLA, asi que el numero que
     // decide aqui es el mismo numero que ven las otras superficies (215/R4/R6). La dependencia
@@ -84,6 +89,8 @@ function buildService(): IGestionDesdeAyudaService {
 }
 
 export interface GestionDesdeAyudaDepsAction {
+  /** SLT-42 (R22): las reglas del pais de la empresa (su zona). Por defecto, la implementacion real. */
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
   service?: IGestionDesdeAyudaService;
   getActor?: () => Promise<Actor | null>;
 }
@@ -118,7 +125,9 @@ export async function gestionarDesdeAyuda(
     // R13: el borde REVALIDA tipo, tamaño y numero de imagenes con el mismo schema que la
     // ventana, y no depende de la interfaz para hacerlos cumplir. Un `resultado` fuera de los dos
     // literales tampoco parsea (R1). ZodError -> VALIDATION_ERROR.
-    const data = gestionarDesdeAyudaSchema.parse(rawFromFormData(formData));
+    // SLT-42 (R22, R28): «hoy» en la zona del pais de la empresa.
+    const zona = await zonaDelBorde(deps.reglasPais);
+    const data = gestionarDesdeAyudaSchema(zona).parse(rawFromFormData(formData));
     const input = {
       ...data,
       evidencias: await leerEvidencias(data.evidencias as unknown as FileLike[]),

@@ -1,7 +1,7 @@
 // Clasificacion de los modelos de `db/schema.prisma` (SL-17, design §2): la UNICA lista que leen la
 // extension de aislamiento, las guardias y el generador de migraciones.
 //
-//   · negocio    (85): llevan `organizacion_id`; la extension filtra y la RLS manda.
+//   · negocio    (92): llevan `organizacion_id`; la extension filtra y la RLS manda.
 //   · plataforma (25): catalogos, geografia, autenticacion previa a la empresa, cache tecnica, el
 //                      valor global del cobro por orden (SL-40), la marca de entorno (SL-43), los
 //                      paises y el historial de plataforma (SL-20), el catalogo de planes con su
@@ -114,6 +114,15 @@ export const MODELOS_DE_NEGOCIO: readonly ModeloClasificado[] = [
   { modelo: "CobroPlataformaMovimiento", tabla: "cobro_plataforma_movimiento" },
   // Condiciones congeladas del cobro porcentual de una orden (SLT-83): las escribe solo el trigger de alta
   { modelo: "CobroPlataformaPorcentualOrden", tabla: "cobro_plataforma_porcentual_orden" },
+  // Traza de facturación de cada movimiento del cobro de la plataforma (SLT-85): la escribe solo el trigger de `cobro_plataforma_movimiento`
+  { modelo: "CobroPlataformaTraza", tabla: "cobro_plataforma_traza" },
+  // Factura de la plataforma por empresa y período, con la cuota del plan (SLT-118): la escriben solo funciones del dueño
+  { modelo: "FacturaPlataforma", tabla: "factura_plataforma" },
+  // Confirmación del superadmin de un pago a la plataforma y su reparto entre facturas cerradas (SLT-60): las escribe solo una función del dueño
+  { modelo: "PagoPlataformaConfirmacion", tabla: "pago_plataforma_confirmacion" },
+  { modelo: "PagoPlataformaAplicacion", tabla: "pago_plataforma_aplicacion" },
+  // Cobro de fulfillment por paquete a la tienda (SLT-94): lo escriben solo los triggers de `orden` y de su bitácora
+  { modelo: "OrdenFulfillmentMovimiento", tabla: "orden_fulfillment_movimiento" },
   // Devoluciones
   { modelo: "DevolucionTiendaComprobante", tabla: "devolucion_tienda_comprobante" },
   { modelo: "DevolucionTiendaEvidencia", tabla: "devolucion_tienda_evidencia" },
@@ -170,6 +179,16 @@ export const MODELOS_DE_PLATAFORMA: readonly ModeloClasificado[] = [
   { modelo: "PlanRastro", tabla: "plan_rastro" },
   // El cambio pendiente de un plan (SL-24, enmienda del 2026-10-28): igual que el catalogo
   { modelo: "PlanCambioProgramado", tabla: "plan_cambio_programado" },
+  // Descuentos por periodo y historial de precio de un plan (SLT-86): igual que el catalogo
+  { modelo: "PlanDescuentoPeriodo", tabla: "plan_descuento_periodo" },
+  { modelo: "PlanPrecioHistorial", tabla: "plan_precio_historial" },
+  // La recepción por empresa del cambio programado y la versión propia durante un cambio a medias
+  // (SLT-128, R26): llevan la empresa en `empresa_id` (no `organizacion_id`, que esta lista reserva a los
+  // modelos de negocio), pero la empresa no las lee ni las escribe
+  { modelo: "PlanCambioRecepcion", tabla: "plan_cambio_recepcion" },
+  { modelo: "PlanVersionEmpresa", tabla: "plan_version_empresa" },
+  // El borrador del superadmin, de un plan nuevo o del cambio de uno (SLT-129): igual que el catalogo
+  { modelo: "PlanBorrador", tabla: "plan_borrador" },
   // Paises (SL-20): solo lectura para `servi_app` (R3); los da de alta el superadmin
   { modelo: "Pais", tabla: "pais" },
   // Historial del superadmin (SL-20, D15): sin acceso para `servi_app` (R34)
@@ -178,6 +197,14 @@ export const MODELOS_DE_PLATAFORMA: readonly ModeloClasificado[] = [
   // triggers de sincronia, nunca la app (R37)
   { modelo: "TipoNivelGeografico", tabla: "tipo_nivel_geografico" },
   { modelo: "NodoGeografico", tabla: "nodo_geografico" },
+  // Reportes de problema (SLT-87): sin acceso para `servi_app`; lo escribe el servidor en plataforma (SLT-87)
+  { modelo: "BugReport", tabla: "bug_report" },
+  // Historial de estado de los reportes (SLT-97): sin acceso para `servi_app`; lo escribe el servidor en plataforma (SLT-97)
+  { modelo: "BugReportStatusChange", tabla: "bug_report_status_change" },
+  // Imágenes de los reportes (SLT-98): sin acceso para `servi_app`; lo escribe el servidor en plataforma (SLT-98)
+  { modelo: "BugReportImage", tabla: "bug_report_image" },
+  // Tope diario de imágenes (SLT-98): sin acceso para `servi_app`; lo escribe el servidor en plataforma (SLT-98, tope diario)
+  { modelo: "BugReportUploadQuota", tabla: "bug_report_upload_quota" },
 ];
 
 // SL-19 (design §5.1). `organizacion_id` nulable a proposito: no entra en negocio porque la unica

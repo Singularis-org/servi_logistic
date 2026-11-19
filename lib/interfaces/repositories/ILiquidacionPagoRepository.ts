@@ -1,5 +1,7 @@
 import type { CierreEstado, PrismaClient } from "@prisma/client";
 import type { AnulacionDTO, MetodoLiquidacion } from "@/lib/types/liquidacion";
+import type { Alcance } from "@/lib/interfaces/repositories/ICierresAdminRepository";
+import type { CifraGanancia } from "@/lib/interfaces/services/ICierreDiaService";
 
 // Feature 172 (design §3.1) — contrato del repositorio del DOCUMENTO del pago. Solo queries
 // Prisma; sin logica de negocio, sin guardias de rol y sin decidir cuanto se puede pagar.
@@ -130,6 +132,13 @@ export interface CierreParaPagoDTO {
   estado: CierreEstado;
   totalPagoMensajero: string; // P — STRING 2 dec (snapshot de la 39)
   totalEfectivo: string; // E — STRING 2 dec (snapshot de la 37)
+  /**
+   * SLT-123 (R316, R321) — `cierre_dia.pago_independiente_efectivo`: la regla con la que se deriva
+   * lo pendiente de este cierre. OBLIGATORIA en el tipo (review 1, R321): si un mapeo del
+   * repositorio la olvida, no compila; antes, opcional, se leia como `false` y el reparto aplicaba
+   * la regla vieja a un cierre nuevo sin que nada lo notara.
+   */
+  pagoIndependienteEfectivo: boolean;
 }
 
 /**
@@ -252,6 +261,21 @@ export interface ILiquidacionPagoRepository {
     tx?: LiquidacionCierreTxClient,
   ): Promise<CierreParaPagoDTO | null>;
   /**
+   * SLT-122 (R1/R2/R4/R6) — el cierre contra el que se REGISTRA un pago, leido con el alcance del
+   * actor en el WHERE (`{ id, ...alcanceWhere(alcance) }`). Un cierre fuera del alcance —de
+   * satelite para el acceso total— sale `null`, igual que uno que no existe: el servicio no llega
+   * a ver su estado ni su monto.
+   *
+   * `alcance` y `tx` son OBLIGATORIOS: es la lectura de la guardia, dentro de la transaccion y bajo
+   * el candado. `obtenerCierreParaPago` sigue sin alcance para los caminos que no registran un
+   * pago al mensajero (relectura idempotente, anulacion, `/cierres-admin`, incentivos).
+   */
+  obtenerCierreParaPagoEnAlcance(
+    cierreId: string,
+    alcance: Alcance,
+    tx: LiquidacionCierreTxClient,
+  ): Promise<CierreParaPagoDTO | null>;
+  /**
    * Feature 205 (T2.2, R5/R6/R8) — los cierres `aprobado` de UN mensajero, ordenados
    * `solicitado_at ASC, id ASC`.
    *
@@ -276,9 +300,16 @@ export interface ILiquidacionPagoRepository {
    * (R23) tiene que ocurrir DENTRO de la transaccion; la previsualizacion (R35) ocurre fuera.
    *
    * SOLO LEE (R26): no existe en esta clase ningun metodo que escriba en `cierre_dia`.
+   *
+   * SLT-122 (R9/R10, PA2) — **el alcance del actor va en el WHERE**: el reparto de
+   * `/wallet/mensajeros` solo imputa a cierres de los que el actor es dueno. SLT-147 (D63): es la
+   * UNICA lectura de imputables; la version sin alcance se borro (ya no tenia consumidores y podia
+   * mezclar cierres de satelite con dinero de la central). No vuelve: lo vigila
+   * `tests/unit/guards/imputables-solo-en-alcance.guardia.test.ts`.
    */
-  listarCierresImputables(
+  listarCierresImputablesEnAlcance(
     mensajeroId: string,
+    alcance: Alcance,
     tx?: LiquidacionCierreTxClient,
   ): Promise<CierreImputableDTO[]>;
   /**
@@ -286,9 +317,9 @@ export interface ILiquidacionPagoRepository {
    * `aprobado`, agrupados por estado. Solo salen los estados que tienen al menos un cierre, y el
    * orden es por `estado` para que dos llamadas iguales pinten igual.
    *
-   * Es el complemento EXACTO de `listarCierresImputables`: aquel filtra `estado = aprobado`,
-   * este `estado != aprobado`. Los dos juntos son todos los cierres del mensajero y ninguno se
-   * cuenta dos veces — que es lo que R36 pide («que no desaparezcan en silencio»).
+   * Es el complemento EXACTO de `listarCierresImputablesEnAlcance`: aquel filtra
+   * `estado = aprobado`, este `estado != aprobado`, en el mismo alcance. Los dos juntos son todos
+   * los cierres del mensajero en ese alcance y ninguno se cuenta dos veces — que es lo que R36 pide («que no desaparezcan en silencio»).
    *
    * **El conteo lo hace la BASE, con un `groupBy`, y eso es la mitad del contrato.** Traer las
    * filas y contarlas en el proceso daria el mismo numero y dejaria intacto el problema que esta
@@ -303,6 +334,8 @@ export interface ILiquidacionPagoRepository {
    */
   contarCierresNoAprobadosPorEstado(
     mensajeroId: string,
+    /** SLT-122 (R9): el complemento se cuenta en el MISMO alcance que los imputables. */
+    alcance: Alcance,
   ): Promise<CierresNoAprobadosPorEstadoDTO[]>;
   /**
    * Feature 205 (T2.2, R28) — los pagos de UN reparto, que es como se reconstruye el resultado
@@ -338,6 +371,12 @@ export interface ILiquidacionPagoRepository {
    * distinguir «no hay» de «no lo pedi».
    */
   sumarVigentesPorCierre(cierreIds: string[]): Promise<Record<string, string>>;
+  /**
+   * SLT-112 (R352) — Σ y nº de los pagos VIGENTES del mensajero con `fecha_pago` en
+   * [desde, hasta): `desde` y `hasta` son fechas calendario a medianoche UTC (`@db.Date`). Sin
+   * filas, `{ monto: "0.00", conteo: 0 }`. Una consulta (indice `(mensajero_id, fecha_pago)`).
+   */
+  sumarVigentesDelMensajeroEnRango(mensajeroId: string, desde: Date, hasta: Date): Promise<CifraGanancia>;
   /** §5/R80: Σ de los pagos VIGENTES de una tienda (sin cierre: contra el saldo acumulado). */
   sumarVigentesPorTienda(tiendaId: string): Promise<string>;
   /** R49: los comprobantes de un cierre, anulados incluidos y marcados (R74). */

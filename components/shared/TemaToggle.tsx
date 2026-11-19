@@ -3,6 +3,8 @@
 import { Moon, Sun } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { TACTIL_MOVIL } from "@/components/shared/texto-entero";
+import { cn } from "@/lib/utils";
 import { useTema } from "@/providers/TemaProvider";
 import {
   anuncioTema,
@@ -64,7 +66,11 @@ export function TemaToggle() {
         onClick={() => establecer(siguienteTema(tema ?? resolverTemaDelSistema()))}
         aria-label={resuelto ? etiquetaAccesibleTema(tema) : ETIQUETA_TEMA_SIN_RESOLVER}
         data-tema-actual={tema ?? "sistema"}
-        className="cursor-pointer bg-transparent text-foreground hover:bg-foreground/10 hover:text-foreground"
+        // SLT-193 (R911, R913): 44 × 44 en móvil para cualquier rol; en escritorio no cambia.
+        className={cn(
+          "cursor-pointer bg-transparent text-foreground hover:bg-foreground/10 hover:text-foreground",
+          TACTIL_MOVIL,
+        )}
       >
         {resuelto ? (
           <>

@@ -8,6 +8,7 @@ import {
 } from "@/lib/whatsapp-envios/informes/transito/parametros";
 import type { FilaTransito } from "@/lib/whatsapp-envios/informes/transito/tipos";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Ficha 475 (T3.2) — R6, R7, R15, R16, R17, R20, R24-R26 sobre el calculo PURO.
 
 const UN_DIA = 24 * 60 * 60 * 1000;
@@ -44,7 +45,7 @@ const P: ParametrosTransito = PARAMETROS_POR_DEFECTO;
 
 describe("475/R17 — corte por zona ⇔ dias naturales CR >= umbral", () => {
   it("la frontera cae a las 00:00 CR (06:00 UTC), no a las 00:00 UTC", () => {
-    const [corte] = cortesPorZona([GAM], P, AHORA);
+    const [corte] = cortesPorZona([GAM], P, AHORA, ZONA_DE_CR);
     // GAM 10/2: umbral 8. Entra lo que entro el 27/09 CR o antes.
     expect(corte.corte.toISOString()).toBe("2026-09-28T06:00:00.000Z");
     const ultimoDentro = new Date("2026-09-28T05:59:00.000Z"); // 23:59 CR del 27
@@ -57,7 +58,7 @@ describe("475/R17 — corte por zona ⇔ dias naturales CR >= umbral", () => {
 
   it("equivalencia exhaustiva hora a hora en 30 dias y varios relojes de generacion", () => {
     for (const ahora of [AHORA, new Date("2026-10-06T05:59:59.999Z"), new Date("2026-10-06T06:00:00.000Z")]) {
-      const [cg, cs] = cortesPorZona([GAM, SUR], P, ahora);
+      const [cg, cs] = cortesPorZona([GAM, SUR], P, ahora, ZONA_DE_CR);
       for (let h = 0; h < 30 * 24; h++) {
         const hito = new Date(ahora.getTime() - h * 60 * 60 * 1000);
         const dias = diasNaturalesCRDesde(hito, ahora);
@@ -75,7 +76,7 @@ describe("475/R17 — corte por zona ⇔ dias naturales CR >= umbral", () => {
         { zonaId: "no-existe", plazoDias: 1, avisoDias: 0 },
       ],
     };
-    const cortes = cortesPorZona(ZONAS, p, AHORA);
+    const cortes = cortesPorZona(ZONAS, p, AHORA, ZONA_DE_CR);
     expect(cortes.map((c) => c.zonaId)).toEqual(ZONAS.map((z) => z.id));
     const porZona = new Map(cortes.map((c) => [c.zonaId, c.corte.toISOString()]));
     expect(porZona.get(SUR.id)).toBe("2026-10-03T06:00:00.000Z"); // umbral 3
@@ -91,7 +92,7 @@ describe("475/R15 — vencido / por vencer", () => {
       ZONAS,
       P,
       AHORA,
-      0,
+      ZONA_DE_CR, 0,
     );
     const porDias = new Map(m.central!.paquetes.map((p) => [p.dias, p.vencido]));
     expect([...porDias.entries()].sort((a, b) => a[0] - b[0])).toEqual([
@@ -115,7 +116,7 @@ describe("475/R16 — parado", () => {
       ZONAS,
       P,
       AHORA,
-      0,
+      ZONA_DE_CR, 0,
     );
     expect(m.central!.paquetes.map((p) => [p.diasEnEstado, p.parado]).sort()).toEqual([
       [2, false],
@@ -129,7 +130,7 @@ describe("475/R16 — parado", () => {
       ...P,
       estados: P.estados.map((e) => (e.estado === "en_reparto" ? { ...e, paradoSiMasDeDias: 0 } : e)),
     };
-    const m = clasificar([fila({ diasEnEstado: 0 }), fila({ diasEnEstado: 1 })], ZONAS, p, AHORA, 0);
+    const m = clasificar([fila({ diasEnEstado: 0 }), fila({ diasEnEstado: 1 })], ZONAS, p, AHORA, ZONA_DE_CR, 0);
     expect(m.totales.parados).toBe(1);
   });
 
@@ -139,7 +140,7 @@ describe("475/R16 — parado", () => {
       ZONAS,
       P,
       AHORA,
-      0,
+      ZONA_DE_CR, 0,
     );
     expect(m.totales.parados).toBe(0);
     expect(m.parados).toEqual([]);
@@ -160,7 +161,7 @@ describe("475/R24-R26 — orden de zonas, filas y bloque ATENCION", () => {
     fila({ estado: "en_bodega_satelite", zonaId: SUR.id, dias: 20, diasEnEstado: 9, numGuia: 60 }),
     fila({ estado: "en_bodega_satelite", zonaId: SUR.id, dias: 19, diasEnEstado: 3, numGuia: 61 }),
   ];
-  const m = clasificar(filas, ZONAS, P, AHORA, 0);
+  const m = clasificar(filas, ZONAS, P, AHORA, ZONA_DE_CR, 0);
 
   it("central primero; fuera por nº de paquetes desc, luego mayor nº de dias desc, luego nombre", () => {
     expect(m.central!.zona.id).toBe(GAM.id);
@@ -171,7 +172,7 @@ describe("475/R24-R26 — orden de zonas, filas y bloque ATENCION", () => {
       ZONAS,
       P,
       AHORA,
-      0,
+      ZONA_DE_CR, 0,
     );
     expect(empate.fuera.map((z) => z.zona.nombre)).toEqual(["FGAM El Coco", "FGAM Zona Sur"]);
     // Empate en paquetes, distinto maximo de dias.
@@ -180,7 +181,7 @@ describe("475/R24-R26 — orden de zonas, filas y bloque ATENCION", () => {
       ZONAS,
       P,
       AHORA,
-      0,
+      ZONA_DE_CR, 0,
     );
     expect(porDias.fuera.map((z) => z.zona.id)).toEqual([SUR.id, COCO.id]);
   });
@@ -212,7 +213,7 @@ describe("475/R24-R26 — orden de zonas, filas y bloque ATENCION", () => {
   });
 
   it("una fila de una zona que no se leyo es un error, no se pierde en silencio", () => {
-    expect(() => clasificar([fila({ zonaId: "fantasma" })], ZONAS, P, AHORA, 0)).toThrow(/zona desconocida/);
+    expect(() => clasificar([fila({ zonaId: "fantasma" })], ZONAS, P, AHORA, ZONA_DE_CR, 0)).toThrow(/zona desconocida/);
   });
 });
 
@@ -229,7 +230,7 @@ describe("475/R20 — variables", () => {
       ZONAS,
       P,
       AHORA,
-      3,
+      ZONA_DE_CR, 3,
     );
     expect(m.totales.porCobrar).toBe("200000018498.00");
     expect(variables(m)).toEqual({
@@ -246,12 +247,12 @@ describe("475/R20 — variables", () => {
   });
 
   it("sin paquetes: todo a 0 y por_cobrar ₡0", () => {
-    const v = variables(clasificar([], ZONAS, P, AHORA, 0));
+    const v = variables(clasificar([], ZONAS, P, AHORA, ZONA_DE_CR, 0));
     expect(v).toMatchObject({ total_en_alerta: "0", vencidos: "0", por_vencer: "0", parados: "0", por_cobrar: "₡0" });
   });
 
   it("fecha DD/MM/YYYY de Costa Rica: a las 23:30 CR sigue siendo el mismo dia", () => {
     const tarde = new Date("2026-10-06T05:30:00.000Z"); // 23:30 CR del 5
-    expect(variables(clasificar([], ZONAS, P, tarde, 0)).fecha).toBe("05/10/2026");
+    expect(variables(clasificar([], ZONAS, P, tarde, ZONA_DE_CR, 0)).fecha).toBe("05/10/2026");
   });
 });

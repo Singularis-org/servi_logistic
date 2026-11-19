@@ -20,7 +20,7 @@ import type {
   RegistrarPagoResult,
 } from "@/lib/types/liquidacion";
 import type { RegistrarRepartoResult } from "@/lib/types/liquidacion-reparto";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendarioCR, ZONA_CR } from "@/lib/utils/fecha-cr";
 
 import { nuevaClaveIdempotencia } from "./clave-idempotencia";
 import {
@@ -289,7 +289,8 @@ export function RegistrarPagoDialog({
     referenciaLimpia.length <= LIQUIDACION_REFERENCIA_MAX &&
     (!referenciaObligatoria || referenciaLimpia.length > 0);
   const notaOk = nota.length <= LIQUIDACION_NOTA_MAX;
-  const fechaOk = esFechaPagoValida(fechaPago, ahora);
+  // SLT-81: la UI sigue en la zona de CR
+  const fechaOk = esFechaPagoValida(fechaPago, ZONA_CR, ahora);
   const formularioValido = montoOk && referenciaOk && notaOk && fechaOk;
 
   /** Errores visibles al intentar enviar: se calculan aquí para no gritar mientras se teclea. */

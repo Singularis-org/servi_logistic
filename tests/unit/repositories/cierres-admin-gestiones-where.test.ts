@@ -6,7 +6,9 @@ import {
   GESTION_DESCARGA_SELECT,
 } from "@/lib/repositories/CierresAdminRepository";
 import type { Alcance } from "@/lib/interfaces/repositories/ICierresAdminRepository";
-import type { FiltrosDescargaGestiones } from "@/lib/types/filtros-cierres";
+import type { FiltrosDescargaGestionesRepo } from "@/lib/types/filtros-cierres";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { filtrosConLimites } from "@/lib/types/filtros-cierres";
 
 // Feature 230 — Tanda 2 (T2.1, R11/R14/R15/R22/R37/R41) — el WHERE, el ORDEN y la PROYECCION de
 // la lectura de gestiones de «Cierres del día».
@@ -32,7 +34,7 @@ const M1 = "11111111-1111-4111-8111-111111111111";
 const M2 = "22222222-2222-4222-8222-222222222222";
 const AJENO = "99999999-9999-4999-8999-999999999999";
 
-const FILTROS: FiltrosDescargaGestiones = { mensajeroIds: [M1, M2] };
+const FILTROS: FiltrosDescargaGestionesRepo = { mensajeroIds: [M1, M2] };
 
 interface Consulta {
   where?: Record<string, unknown>;
@@ -68,7 +70,7 @@ describe("WHERE/orden/proyección de las gestiones de «Cierres del día» (feat
   it("pone el alcance del satélite DENTRO de la relación cierre, junto a los recortes (R14/R15)", async () => {
     const prisma = prismaFalso();
 
-    await repositorio(prisma).findGestionesPorAlcanceCompleto(SATELITE, FILTROS);
+    await repositorio(prisma).findGestionesPorAlcanceCompleto(SATELITE, FILTROS, ZONA_CR);
 
     const consulta = prisma.gestionOrden.findMany.mock.calls[0]![0]!;
     // El alcance y el recorte son claves HERMANAS del mismo objeto: eso es un AND. Un `OR`, o un
@@ -89,7 +91,7 @@ describe("WHERE/orden/proyección de las gestiones de «Cierres del día» (feat
   it("el acceso total no acota por zona, pero SÍ por tipo de destino (design §2.6)", async () => {
     const prisma = prismaFalso();
 
-    await repositorio(prisma).findGestionesPorAlcanceCompleto(MAESTRO, FILTROS);
+    await repositorio(prisma).findGestionesPorAlcanceCompleto(MAESTRO, FILTROS, ZONA_CR);
 
     // `destinoZonaId` AUSENTE, no `null`: el maestro ve todos los cierres con destino central.
     // Y `destinoTipo` SIEMPRE presente: es lo que hace que este listado y el de bodega sean
@@ -104,7 +106,7 @@ describe("WHERE/orden/proyección de las gestiones de «Cierres del día» (feat
 
     await repositorio(prisma).findGestionesPorAlcanceCompleto(SATELITE, {
       mensajeroIds: [AJENO],
-    });
+    }, ZONA_CR);
 
     const where = prisma.gestionOrden.findMany.mock.calls[0]![0]!.where as {
       cierre: { destinoZonaId: string; AND: unknown[] };
@@ -119,11 +121,11 @@ describe("WHERE/orden/proyección de las gestiones de «Cierres del día» (feat
   it("el rango de fechas recorta por la fecha de solicitud del CIERRE, con `hasta` inclusivo (R31)", async () => {
     const prisma = prismaFalso();
 
-    await repositorio(prisma).findGestionesPorAlcanceCompleto(MAESTRO, {
+    await repositorio(prisma).findGestionesPorAlcanceCompleto(MAESTRO, filtrosConLimites({
       mensajeroIds: [M1],
       desde: "2026-02-01",
       hasta: "2026-02-28",
-    });
+    }, ZONA_CR), ZONA_CR);
 
     const where = prisma.gestionOrden.findMany.mock.calls[0]![0]!.where as {
       cierre: { AND: { solicitadoAt: { gte: Date; lt: Date } }[] };
@@ -139,7 +141,7 @@ describe("WHERE/orden/proyección de las gestiones de «Cierres del día» (feat
   it("sin fechas no aparece ningún predicado temporal (no se inventa un rango por defecto)", async () => {
     const prisma = prismaFalso();
 
-    await repositorio(prisma).findGestionesPorAlcanceCompleto(MAESTRO, FILTROS);
+    await repositorio(prisma).findGestionesPorAlcanceCompleto(MAESTRO, FILTROS, ZONA_CR);
 
     expect(JSON.stringify(prisma.gestionOrden.findMany.mock.calls[0]![0]!.where)).not.toContain(
       "solicitadoAt",
@@ -149,7 +151,7 @@ describe("WHERE/orden/proyección de las gestiones de «Cierres del día» (feat
   it("ordena por fecha de solicitud del cierre y luego por la gestión (R11)", async () => {
     const prisma = prismaFalso();
 
-    await repositorio(prisma).findGestionesPorAlcanceCompleto(MAESTRO, FILTROS);
+    await repositorio(prisma).findGestionesPorAlcanceCompleto(MAESTRO, FILTROS, ZONA_CR);
 
     // El valor ABSOLUTO, no una referencia a la constante: si alguien cambia el orden, este caso
     // se pone rojo aunque las dos mitades sigan leyendo la misma declaración.
@@ -162,7 +164,7 @@ describe("WHERE/orden/proyección de las gestiones de «Cierres del día» (feat
   it("la proyección NO lee evidencia_storage_path (R22/R41)", async () => {
     const prisma = prismaFalso();
 
-    await repositorio(prisma).findGestionesPorAlcanceCompleto(MAESTRO, FILTROS);
+    await repositorio(prisma).findGestionesPorAlcanceCompleto(MAESTRO, FILTROS, ZONA_CR);
 
     const select = prisma.gestionOrden.findMany.mock.calls[0]![0]!.select!;
     expect(Object.keys(select)).not.toContain("evidenciaStoragePath");
@@ -181,7 +183,7 @@ describe("WHERE/orden/proyección de las gestiones de «Cierres del día» (feat
     // fila y los intentos de un cero fijo — las dos, mentiras con formato de dato.
     const prisma = prismaFalso();
 
-    await repositorio(prisma).findGestionesPorAlcanceCompleto(MAESTRO, FILTROS);
+    await repositorio(prisma).findGestionesPorAlcanceCompleto(MAESTRO, FILTROS, ZONA_CR);
 
     const select = prisma.gestionOrden.findMany.mock.calls[0]![0]!.select!;
     expect(select.orden).toEqual({
@@ -203,11 +205,25 @@ describe("WHERE/orden/proyección de las gestiones de «Cierres del día» (feat
     // SLT-56 (2026-10-29): el detalle gana `ajustesPagoMensajero` (la marca «Ajustado» y su
     // historial, R19/R20) y la descarga NO: el spec la pide en los detalles (design §4.5) y no en
     // la hoja fundida. El pago que la hoja ya lleva es el vigente, ajustado o no.
+    //
+    // SLT-101 (2026-11-09): el detalle gana `pagosCongelados` (el pago «por tarifa» de la fila y
+    // «Sin tarifa de pago», R66/R95/R96) y la hoja fundida NO: el spec lo pide en la fila del
+    // detalle; la «Señales» de «Descargar» (R91) sale del DTO del detalle, no de esta hoja.
+    //
+    // SLT-113 (2026-11-12, design §Servidor 2): la hoja fundida gana `ajustesPagoMensajero` y
+    // `pagosCongelados` —el pago «por tarifa», su ajuste y «Sin tarifa de pago» de la hoja
+    // «Gestiones» del modelo nuevo (R374, R375)— con las MISMAS constantes que el detalle. Salen de
+    // esta lista por decision del spec; la evidencia sigue fuera.
     expect([...delDetalle].filter((k) => !deLaDescarga.has(k))).toEqual([
       "evidenciaStoragePath",
       "evidencias",
-      "ajustesPagoMensajero",
     ]);
+    // Y las dos relaciones de pago son la MISMA declaracion en las dos proyecciones (una sola
+    // fuente: el filtro `actor = mensajero` no puede quedarse en una y faltar en la otra).
+    expect(GESTION_DESCARGA_SELECT.pagosCongelados).toBe(GESTION_ADMIN_SELECT.pagosCongelados);
+    expect(GESTION_DESCARGA_SELECT.ajustesPagoMensajero).toBe(
+      GESTION_ADMIN_SELECT.ajustesPagoMensajero,
+    );
     // `cierreId` no es una celda (R42): es la clave del join contra `cierre_detail`, cuyo grano
     // es (cierre_id, orden_id). Al cruzar cierres, emparejar sólo por orden cogería la fila
     // congelada del cierre equivocado.
@@ -241,7 +257,7 @@ describe("WHERE/orden/proyección de las gestiones de «Cierres del día» (feat
   it("sin gestiones no se consulta el snapshot: cero filas es un desenlace normal (R38)", async () => {
     const prisma = prismaFalso([]);
 
-    const filas = await repositorio(prisma).findGestionesPorAlcanceCompleto(SATELITE, FILTROS);
+    const filas = await repositorio(prisma).findGestionesPorAlcanceCompleto(SATELITE, FILTROS, ZONA_CR);
 
     expect(filas).toEqual([]);
     expect(prisma.cierreDetail.findMany).not.toHaveBeenCalled();

@@ -387,3 +387,48 @@ describe("SL-15 R4 — el nombre de la empresa sale del módulo de marca", () =>
     expect(document.body.textContent).not.toMatch(/la empresa/i);
   });
 });
+
+// SLT-114 «Estado de cuenta de la satélite: conciliación en pestaña» (R234) — la prop `pestanaPrevia` es
+// opcional: sin ella (tienda, `/mi-wallet`, mensajero) no hay pestañas y el libro va suelto, como hoy.
+describe("R234 — sin pestaña de conciliación no hay tablist", () => {
+  it("tienda (oficina): ni tablist ni tabpanel; el libro y su paginación a la vista", () => {
+    montarTienda(estado());
+    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(screen.queryAllByRole("tab")).toHaveLength(0);
+    const tabla = screen.getByRole("table", { name: "Estado de cuenta de Tania Tienda" });
+    expect(tabla.closest('[role="tabpanel"]')).toBeNull();
+    expect(screen.getByRole("navigation", { name: /Paginación/ })).toBeTruthy();
+  });
+
+  it("/mi-wallet (vista tienda): tampoco hay pestañas", () => {
+    envolver(
+      <EstadoCuenta
+        descargaDeLaSuperficie={{ ambitoColumnas: "prueba-estado-cuenta" }}
+        inicial={estado()}
+        rotulos={ROTULOS_TIENDA}
+        vista="tienda"
+      />,
+    );
+    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(screen.getByRole("table", { name: "Estado de cuenta de Tania Tienda" }).closest('[role="tabpanel"]')).toBeNull();
+  });
+
+  it("control: con `pestanaPrevia` sí hay tablist y el libro queda en su pestaña", () => {
+    envolver(
+      <EstadoCuenta
+        descargaDeLaSuperficie={{ ambitoColumnas: "prueba-estado-cuenta" }}
+        inicial={estado()}
+        rotulos={ROTULOS_TIENDA}
+        pestanaPrevia={{
+          rotulo: "Pestaña previa de prueba",
+          rotuloLibro: "Libro de prueba",
+          ariaLabel: "Pestañas de prueba",
+          contenido: () => <p>Contenido previo de prueba</p>,
+        }}
+      />,
+    );
+    expect(screen.getByRole("tablist", { name: "Pestañas de prueba" })).toBeTruthy();
+    expect(screen.getByText("Contenido previo de prueba")).toBeTruthy();
+    expect(screen.queryByRole("table", { name: "Estado de cuenta de Tania Tienda" })).toBeNull();
+  });
+});

@@ -77,9 +77,36 @@ const emailOtpChallenge = {
   })),
 };
 const organizacion = { findUnique: vi.fn(async () => null) };
+// SLT-42 (R6, R10, R14): antes de escribir, el servicio lee el país elegido y su tipo de documento
+// por el `PaisRepository` real, fuera de la transacción del alta.
+const pais = {
+  findUnique: vi.fn(async () => ({
+    id: "CR",
+    disponible: true,
+    prefijoTelefonico: "506",
+    telefonoDigitosNacionales: 8,
+    zonaHoraria: "America/Costa_Rica",
+  })),
+};
+const tipoIdentificacion = {
+  findFirst: vi.fn(async () => ({ id: "ti-1" })),
+  findMany: vi.fn(async () => [
+    {
+      id: "ti-1",
+      value: "cedula",
+      paisId: "CR",
+      clave: "cedula_fisica",
+      nombre: "Cédula física",
+      caracteres: "digitos",
+      largoMin: 9,
+      largoMax: 9,
+      activo: true,
+    },
+  ]),
+};
 
 vi.mock("@/lib/db/prisma-client", () => ({
-  getPrismaClient: () => ({ $transaction, usuario, emailOtpChallenge, organizacion }),
+  getPrismaClient: () => ({ $transaction, usuario, emailOtpChallenge, organizacion, pais, tipoIdentificacion }),
   PRISMA_OMIT: {},
 }));
 
@@ -111,7 +138,7 @@ describe("SL-17 — la action pasa un OrganizacionRepository real y corre en pla
         nombre: "Envíos del Sur",
         slug: "envios-del-sur",
         paisId: "CR",
-        maestro: { nombre: "Lucía", email: "lucia@ejemplo.test", telefono: "8888", documento: "1122", tipoDocumento: "cedula" },
+        maestro: { nombre: "Lucía", email: "lucia@ejemplo.test", telefono: "88887777", documento: "112223333", tipoDocumento: "cedula" },
       },
       {
         getActor: async () => ({ usuarioId: "u-super", rol: "maestro" }),
@@ -121,7 +148,18 @@ describe("SL-17 — la action pasa un OrganizacionRepository real y corre en pla
 
     // Sin SMTP en el entorno del test, el correo pasa por el emisor y el estado es `sin_correo` (R24).
     expect(r).toEqual({ estado: "creada", organizacionId: "org-nueva", maestroId: "u-maestro", bienvenida: "sin_correo" });
-    expect($transaction).toHaveBeenCalledTimes(1);
+    // SLT-42 (punto 7 tras la tanda 2): dos transacciones. La primera es `repeticion`, una lectura
+    // previa sin cerrojo que decide `ya_existe` antes que el país (SL-20 §13); la segunda es el alta,
+    // que vuelve a mirar el slug BAJO el cerrojo y escribe todo junta. La atomicidad y la carrera
+    // entre dos altas iguales dependen solo de la segunda.
+    expect($transaction).toHaveBeenCalledTimes(2);
+    expect(tx.organizacion.findUnique).toHaveBeenCalledTimes(2);
+    const [cerrojo] = tx.$executeRaw.mock.invocationCallOrder;
+    const [lecturaPrevia, lecturaBajoCerrojo] = tx.organizacion.findUnique.mock.invocationCallOrder;
+    const [escritura] = tx.organizacion.create.mock.invocationCallOrder;
+    expect(lecturaPrevia).toBeLessThan(cerrojo);
+    expect(cerrojo).toBeLessThan(lecturaBajoCerrojo);
+    expect(lecturaBajoCerrojo).toBeLessThan(escritura);
     expect(creados).toHaveLength(2);
     // Cada SQL a mano del repositorio (cerrojo y set_config) corrió en el contexto de plataforma.
     expect(contextos.length).toBeGreaterThanOrEqual(2);

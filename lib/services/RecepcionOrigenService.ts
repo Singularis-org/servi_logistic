@@ -1,4 +1,4 @@
-import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
+import type { IOrdenRepository, ResumenRecepcion } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type {
   IRecepcionOrigenService,
@@ -20,7 +20,7 @@ const ROL_AUTORIZADO = "adminTienda";
 // como Pick para dobles de test sin DB/HTTP (patron RecepcionSateliteService).
 type RecepcionOrigenRepo = Pick<
   IOrdenRepository,
-  "findByNumGuiaForTransicion" | "findEstatusIdByValue" | "recibirEnOrigen"
+  "findByNumGuiaForTransicion" | "findEstatusIdByValue" | "recibirEnOrigen" | "resumenRecepcion"
 >;
 
 /**
@@ -51,7 +51,9 @@ export class RecepcionOrigenService implements IRecepcionOrigenService {
     if (row.tiendaId !== actor.usuarioId) return { status: "tienda_ajena" };
 
     // 4. Idempotencia: ya recibida -> no re-transiciona ni toca el historial.
-    if (row.estatusValue === ESTADO_RECIBIDA) return { status: "ya_recibida" };
+    if (row.estatusValue === ESTADO_RECIBIDA) {
+      return { status: "ya_recibida", ...(await this.conResumen(row.id)) };
+    }
 
     // 5. Guardia de estado: elegible SOLO desde `devolviendo_a_tienda`. Lleva el estado
     //    actual para que la UI pueda nombrarlo.
@@ -82,10 +84,26 @@ export class RecepcionOrigenService implements IRecepcionOrigenService {
       // Perdio la carrera: el estado cambio entre la lectura y el UPDATE. Se re-lee
       // para distinguir "otro la recibio primero" (idempotente) de un conflicto real.
       const despues = await this.repo.findByNumGuiaForTransicion(numGuia);
-      if (despues?.estatusValue === ESTADO_RECIBIDA) return { status: "ya_recibida" };
+      if (despues?.estatusValue === ESTADO_RECIBIDA) {
+        return { status: "ya_recibida", ...(await this.conResumen(row.id)) };
+      }
       return { status: "conflict" };
     }
 
-    return { status: "ok", ordenId: row.id, estado: ESTADO_RECIBIDA };
+    return { status: "ok", ordenId: row.id, estado: ESTADO_RECIBIDA, ...(await this.conResumen(row.id)) };
+  }
+
+  /**
+   * SLT-167 (R710, R711, R715): el `resumen` de la orden ya recibida, solo tras todas las guardas
+   * (`tienda_ajena` incluida). Si la lectura no da datos o falla, la respuesta sale sin `resumen`: la
+   * recepcion ya se hizo y un error haria reintentar algo hecho.
+   */
+  private async conResumen(ordenId: string): Promise<{ resumen?: ResumenRecepcion }> {
+    try {
+      const resumen = await this.repo.resumenRecepcion(ordenId);
+      return resumen ? { resumen } : {};
+    } catch {
+      return {};
+    }
   }
 }

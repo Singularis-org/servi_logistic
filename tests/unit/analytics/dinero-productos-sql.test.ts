@@ -8,6 +8,7 @@ import { condicionesDeConsulta } from "@/lib/repositories/ConteoPorStatusReposit
 import { DineroProductosRepository } from "@/lib/repositories/DineroProductosRepository";
 import { RESULTADOS_QUE_APORTAN } from "@/lib/utils/dinero-por-producto";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // FICHA 347 / B3.2 — EL `WHERE` Y LA FORMA DEL SQL DEL DINERO. Cubre R7, R24, R74, R75, R76.
 //
 // ⚠ QUE PRUEBA ESTE ARCHIVO Y QUE NO. Prueba que el recorte que el repositorio de DINERO manda a
@@ -21,7 +22,7 @@ import { RESULTADOS_QUE_APORTAN } from "@/lib/utils/dinero-por-producto";
 const AHORA = new Date("2026-09-01T12:00:00.000Z");
 
 function consultaDe(raw: object, rol = "maestro", usuarioId = "u1"): ConsultaProductos {
-  const preparada = prepararConsultaProductos(raw, { usuarioId, rol } as never, AHORA);
+  const preparada = prepararConsultaProductos(raw, { usuarioId, rol } as never, ZONA_DE_CR, AHORA);
   if (preparada.status !== "ok") throw new Error(`filtro de prueba invalido: ${preparada.status}`);
   return preparada.consulta;
 }

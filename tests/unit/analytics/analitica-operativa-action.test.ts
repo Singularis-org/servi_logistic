@@ -5,6 +5,7 @@ import type { IAnaliticaOperativaService } from "@/lib/interfaces/services/IAnal
 import { AHORA, MAESTRO, TIENDA } from "./_fake-operativa";
 import type { SerieOperativa } from "@/lib/types/analitica-operativa";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Feature 126 / T9.2 + T9.3 — R5 y R6, EN EL BORDE.
 //
 // ⚠ R5 ESPIA EL LOGGER, NO EL STATUS, y el motivo esta verificado en el codigo:
@@ -62,7 +63,7 @@ function deps(actor = MAESTRO) {
   return {
     logError,
     service,
-    opciones: {
+    opciones: { reglasPais: reglasPaisFijas(),
       service,
       logger,
       now: () => AHORA,
@@ -160,7 +161,7 @@ describe("borde · el camino feliz sigue funcionando", () => {
     const logError = vi.fn();
     const r = await consultarAnaliticaOperativa(
       { metricaId: "entregas", raw: { rango: "dia" } },
-      { service: servicioEspia(), logger: { logError }, now: () => AHORA, getActor: async () => null },
+      { reglasPais: reglasPaisFijas(), service: servicioEspia(), logger: { logError }, now: () => AHORA, getActor: async () => null },
     );
     expect(r.status).toBe("forbidden");
     expect((logError.mock.calls[0][0] as Record<string, unknown>).motivo).toBe("sin_sesion");

@@ -26,7 +26,7 @@ let base: PrismaClient;
 
 const VERSION: VersionPlan = {
   nombre: "Pendiente",
-  topes: { ordenesPorCiclo: 10, porRol: {}, apiKeys: null },
+  topes: { porRol: {}, apiKeys: null },
   modulos: [],
   precio: { tipo: "sin_precio" },
   costoPorOrden: null, // SLT-66 R7: el plan lleva costo por orden; aquí, vacío.
@@ -36,8 +36,12 @@ const VERSION: VersionPlan = {
 /** Las 00:00 de la plataforma del 2027-01-10 (−06:00). */
 const RIGE = new Date("2027-01-10T06:00:00.000Z");
 
-async function programar(tx: TxDeTest, planId: string): Promise<void> {
-  await tx.planCambioProgramado.create({
+/**
+ * El pendiente del plan en RIGE. SLT-128 (R12, R24): cada empresa de `empresas` lo recibe con su recepción sin
+ * recibir en RIGE; sin ella, la empresa no ve el pendiente.
+ */
+async function programar(tx: TxDeTest, planId: string, empresas: readonly string[] = []): Promise<void> {
+  const cambio = await tx.planCambioProgramado.create({
     data: {
       planId,
       vigenteDesde: RIGE,
@@ -47,6 +51,9 @@ async function programar(tx: TxDeTest, planId: string): Promise<void> {
       actorNombre: "Ana Pérez",
     },
   });
+  for (const empresaId of empresas) {
+    await tx.planCambioRecepcion.create({ data: { cambioId: cambio.id, empresaId, recibeAt: RIGE } });
+  }
 }
 
 async function rastro(tx: TxDeTest, planId: string, accion: "creado" | "editado" | "archivado", creadoAt: string) {
@@ -94,7 +101,8 @@ describeSiHayBase("SLT-58 — lecturas del superadmin en PlanesRepository (R13, 
       const a = (await crearOrganizacion(tx, { nombre: "Empresa A slt58" })).id;
       const b = (await crearOrganizacion(tx)).id;
       const archivado = await crearPlan(tx, { archivado: true });
-      const enUso = await crearPlan(tx, { ordenes: 100 });
+      // SLT-86 (R8): el tope que distingue al plan es el de API keys.
+      const enUso = await crearPlan(tx, { apiKeys: 100 });
       const custom = await crearPlan(tx, { custom: a });
       await asignarPlan(tx, a, enUso);
       await asignarPlan(tx, b, enUso);
@@ -110,7 +118,7 @@ describeSiHayBase("SLT-58 — lecturas del superadmin en PlanesRepository (R13, 
       vigenteDesdePendiente: null,
     });
     expect(de(r.enUso)).toMatchObject({
-      plan: { archivado: false, topes: { ordenesPorCiclo: 100 } },
+      plan: { archivado: false, topes: { apiKeys: 100 } },
       empresas: 2,
       vigenteDesdePendiente: RIGE,
     });
@@ -126,11 +134,11 @@ describeSiHayBase("SLT-58 — lecturas del superadmin en PlanesRepository (R13, 
     const r = await revertida(base, async (tx) => {
       const a = (await crearOrganizacion(tx, { nombre: "B empresa slt58" })).id;
       const b = (await crearOrganizacion(tx, { nombre: "A empresa slt58" })).id;
-      const planId = await crearPlan(tx, { ordenes: 50 });
+      const planId = await crearPlan(tx, { apiKeys: 50 });
       const otro = await crearPlan(tx);
       await asignarPlan(tx, a, planId);
       await asignarPlan(tx, b, planId);
-      await programar(tx, planId);
+      await programar(tx, planId, [a, b]);
       // Insertadas fuera de orden: el orden lo pone la lectura.
       const medio = await rastro(tx, planId, "editado", "2026-10-10T10:00:00.000Z");
       const viejo = await rastro(tx, planId, "creado", "2026-10-01T10:00:00.000Z");
@@ -143,9 +151,10 @@ describeSiHayBase("SLT-58 — lecturas del superadmin en PlanesRepository (R13, 
     expect(r.inexistente).toBeNull();
     expect(r.detalle).not.toBeNull();
     const d = r.detalle!;
-    expect(d.plan).toMatchObject({ id: r.planId, topes: { ordenesPorCiclo: 50 } });
+    expect(d.plan).toMatchObject({ id: r.planId, topes: { apiKeys: 50 } });
     expect(d.empresaNombre).toBeNull();
-    expect(d.pendiente).toEqual({ vigenteDesde: RIGE, version: VERSION });
+    // SLT-128 (R11): «0 de 2»: las dos empresas tienen su recepción y ninguna lo recibió aún.
+    expect(d.pendiente).toEqual({ vigenteDesde: RIGE, version: VERSION, recibidas: 0, total: 2 });
     expect(d.empresas).toEqual([
       { id: r.b, nombre: "A empresa slt58" },
       { id: r.a, nombre: "B empresa slt58" },
@@ -160,9 +169,9 @@ describeSiHayBase("SLT-58 — lecturas del superadmin en PlanesRepository (R13, 
       const a = (await crearOrganizacion(tx)).id;
       const b = (await crearOrganizacion(tx)).id;
       const sinPlan = (await crearOrganizacion(tx)).id;
-      const planId = await crearPlan(tx, { ordenes: 100, porRol: { mensajero: 3 } });
+      const planId = await crearPlan(tx, { apiKeys: 100, porRol: { mensajero: 3 } });
       await asignarPlan(tx, a, planId);
-      await programar(tx, planId);
+      await programar(tx, planId, [a]);
       await asignacion(tx, a, "Primero", "2026-09-01T10:00:00.000Z");
       await asignacion(tx, a, "Tercero", "2026-10-20T10:00:00.000Z");
       await asignacion(tx, a, "Segundo", "2026-10-01T10:00:00.000Z");
@@ -192,14 +201,17 @@ describeSiHayBase("SLT-58 — lecturas del superadmin en PlanesRepository (R13, 
     });
     // El plan con su uso (R19, contado por las funciones de los triggers) y su pendiente.
     expect(a.plan).not.toBeNull();
-    expect(a.plan!.dto).toMatchObject({ id: r.planId, topes: { ordenesPorCiclo: 100, porRol: { mensajero: 3 } } });
+    expect(a.plan!.dto).toMatchObject({ id: r.planId, topes: { porRol: { mensajero: 3 } } });
     expect(a.plan!.uso).toEqual({
       ordenes: 0,
       apiKeys: 0,
       porRol: { admin: 0, mensajero: 0, adminTienda: 0, adminSatelite: 0 }, // SLT-66 R5: sin uso de maestro
     });
-    expect(a.plan!.ancla).toBeInstanceOf(Date);
+    // SLT-86 (R5, R15): la entrada, el precio del período (la fila «desde siempre» del plan) y sin pendiente.
+    expect(a.plan!.entrada).toBeInstanceOf(Date);
+    expect(a.plan!.precioDelPeriodo).toEqual({ tipo: "sin_precio" });
+    expect(a.plan!.pendiente).toBeNull();
     expect(a.plan!.cambio).toEqual({ vigenteDesde: RIGE, version: VERSION });
-    expect(r.deSinPlan).toEqual({ organizacionId: expect.any(String), plan: null, asignaciones: [] });
+    expect(r.deSinPlan).toEqual({ organizacionId: expect.any(String), plan: null, pendienteSinPlan: null, asignaciones: [] });
   });
 });

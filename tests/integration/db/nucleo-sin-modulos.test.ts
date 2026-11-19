@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
 import { aprobarCierre } from "@/lib/actions/cierres-admin";
@@ -22,6 +22,18 @@ import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 import { crearOrganizacion, fijarEmpresa } from "../../fabricas/organizaciones";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, tomarLockDeEscrituraReal } from "./_postgres-real";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+
+// SLT-42 (T5.4): la zona del pais de la empresa es la de CR, como antes. Las reglas reales leen el pais
+// de la empresa en curso con el cliente global, que no ve la empresa de una transaccion revertida ni
+// tiene empresa fuera de `conEmpresa`; la zona por pais la miden `hora-por-pais-wallet` y `demo-qa`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
 
 // SL-23 · T10 (design §3, §5.4; R31) — EL NÚCLEO DE CIERRES CORRE EN UNA EMPRESA SIN NINGÚN MÓDULO.
 //
@@ -176,6 +188,8 @@ function corteDiario(): CorteDiarioService {
     new OrdenRepository(prisma),
     new TarifaZonaMensajeroRepository(prisma),
     { warn: () => {} },
+    undefined,
+    reglasPaisFijas(),
   );
 }
 
@@ -283,7 +297,15 @@ describeSiHayBase("SL-23 R31 — el núcleo de cierres en una empresa sin ningú
     expect(caja).toEqual([]);
   });
 
-  it("«Cierres del día»: registrarPagoMensajeroAction registra el pago al mensajero", async () => {
+  // SLT-122 «Pago al mensajero: solo la bodega dueña del cierre» (R1, D1): el cierre de este escenario
+  // es de la SATÉLITE, así que la central ya no lo paga: la action corre con todos los módulos
+  // apagados (no la para ninguna puerta de módulo) y responde `no_encontrado` sin escribir el pago.
+  // Antes de SLT-122 este caso afirmaba `ok`: era el hueco. Que un cierre CENTRAL se sigue pagando
+  // lo mide `pago-mensajero-bodega-duena.test.ts` (R3).
+  it("«Cierres del día»: registrarPagoMensajeroAction corre sin módulos y no paga un cierre de satélite (SLT-122)", async () => {
+    expect(
+      (await base.cierreDia.findUniqueOrThrow({ where: { id: vencidoId }, select: { estado: true, destinoTipo: true } })),
+    ).toEqual({ estado: "aprobado", destinoTipo: "bodega_satelite" });
     const r = await comoEmpresa(() =>
       registrarPagoMensajeroAction(
         {
@@ -296,9 +318,9 @@ describeSiHayBase("SL-23 R31 — el núcleo de cierres en una empresa sin ningú
         como(s!.maestro),
       ),
     );
-    expect(r.status).toBe("ok");
+    expect(r.status).toBe("no_encontrado");
     expect(
       await base.liquidacionPago.count({ where: { organizacionId: s!.organizacionId, cierreId: vencidoId } }),
-    ).toBe(1);
+    ).toBe(0);
   });
 });

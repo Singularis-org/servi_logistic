@@ -5,6 +5,7 @@ import { cargarPantallaTarifas, cargarZonaTarifas } from "@/lib/actions/tarifas"
 import type { ITarifasPantallaRepository } from "@/lib/interfaces/repositories/ITarifasPantallaRepository";
 import type { Actor } from "@/lib/interfaces/services/ITarifasPantallaService";
 import { TarifasPantallaService } from "@/lib/services/TarifasPantallaService";
+import { mensajeroPantalla, valorPropio } from "@/tests/fixtures/tarifas-pantalla";
 
 // SLT-54 T2.3 (design §7, R55) — la matriz de roles y lo que el service decide sin base. Lo que dice
 // Postgres (dos empresas, RLS, `WHERE`) esta en `tests/integration/db/tarifas-referencia.test.ts`.
@@ -25,6 +26,7 @@ type RepoDoble = { [K in keyof ITarifasPantallaRepository]: Mock };
 function repoDoble(overrides: Partial<RepoDoble> = {}): RepoDoble {
   return {
     leerActivacion: vi.fn().mockResolvedValue(null),
+    leerTopeIntentos: vi.fn().mockResolvedValue(3),
     listarZonas: vi.fn().mockResolvedValue([]),
     buscarZona: vi.fn().mockResolvedValue({ id: "z1", nombre: "Norte", esCentral: false }),
     listarGruposDeEmpresa: vi.fn().mockResolvedValue([]),
@@ -34,6 +36,8 @@ function repoDoble(overrides: Partial<RepoDoble> = {}): RepoDoble {
     preciosDeTienda: vi.fn().mockResolvedValue([]),
     listarVehiculos: vi.fn().mockResolvedValue([]),
     listarTiendas: vi.fn().mockResolvedValue([]),
+    listarMensajeros: vi.fn().mockResolvedValue([]),
+    valoresDeMensajeros: vi.fn().mockResolvedValue([]),
     distritosDeZona: vi.fn().mockResolvedValue([]),
     leerModeloViejo: vi.fn().mockResolvedValue({ cobros: new Map(), pagos: new Map() }),
     ...overrides,
@@ -79,6 +83,79 @@ describe("SLT-54 R55 — matriz de roles", () => {
     expect(await cargarZonaTarifas({ zonaId: "z1" }, deps)).toEqual({ status: "unauthenticated" });
     expect(doble.cargarPantalla).not.toHaveBeenCalled();
     expect(doble.cargarZona).not.toHaveBeenCalled();
+  });
+});
+
+describe("SLT-55 T3.1 (design §7.1) — los mensajeros y sus valores propios", () => {
+  const ANA = mensajeroPantalla({ id: "m1", nombre: "Ana Torres", elegible: true });
+  const LIA = mensajeroPantalla({ id: "m2", nombre: "Lía Campos", elegible: false });
+  const PROPIO = valorPropio("mensajero_entregado", "m2", { id: "tv-propio", valor: "2900.00" });
+
+  it.each([MAESTRO, ADMIN])("$rol recibe las dos listas tal como las da el repositorio, en su campo", async (actor) => {
+    const repo = repoDoble({
+      listarMensajeros: vi.fn().mockResolvedValue([ANA, LIA]),
+      valoresDeMensajeros: vi.fn().mockResolvedValue([PROPIO]),
+    });
+    const res = await servicio(repo).cargarPantalla(actor);
+    if (res.status !== "ok") throw new Error(res.status);
+    expect(res.mensajeros).toEqual([
+      { id: "m1", nombre: "Ana Torres", elegible: true },
+      { id: "m2", nombre: "Lía Campos", elegible: false },
+    ]);
+    expect(res.valoresMensajero.map((v) => [v.id, v.nivel, v.mensajeroId, v.zonaId, v.ivaPct, v.valor])).toEqual([
+      ["tv-propio", "mensajero", "m2", null, null, "2900.00"],
+    ]);
+    // Una consulta por lista, sin N+1, y los precios de tienda no se mezclan con los valores propios.
+    expect(repo.listarMensajeros).toHaveBeenCalledTimes(1);
+    expect(repo.valoresDeMensajeros).toHaveBeenCalledTimes(1);
+    expect(res.preciosTienda).toEqual([]);
+  });
+
+  it("los faltantes no leen ni mensajeros ni valores propios (R23)", async () => {
+    const repo = repoDoble();
+    await servicio(repo).faltantesPorZona();
+    expect(repo.listarMensajeros).not.toHaveBeenCalled();
+    expect(repo.valoresDeMensajeros).not.toHaveBeenCalled();
+  });
+});
+
+describe("SLT-77 R12-R14, R27 — el tope en la pantalla", () => {
+  it.each([MAESTRO, ADMIN])("$rol recibe el tope de su empresa, leido una vez", async (actor) => {
+    const repo = repoDoble({ leerTopeIntentos: vi.fn().mockResolvedValue(7) });
+    const res = await servicio(repo).cargarPantalla(actor);
+    if (res.status !== "ok") throw new Error(res.status);
+    expect(res.topeIntentos).toBe(7);
+    expect(repo.leerTopeIntentos).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(NO_LEEN)("R14: $rol no lo recibe ni se lee", async (actor) => {
+    const repo = repoDoble({ leerTopeIntentos: vi.fn().mockResolvedValue(7) });
+    const res = await servicio(repo).cargarPantalla(actor);
+    expect(res).toEqual({ status: "forbidden" });
+    expect(JSON.stringify(res)).not.toContain("7");
+    expect(repo.leerTopeIntentos).not.toHaveBeenCalled();
+  });
+
+  it("R14: sin sesión la action responde unauthenticated, sin el número", async () => {
+    const repo = repoDoble({ leerTopeIntentos: vi.fn().mockResolvedValue(7) });
+    const res = await cargarPantallaTarifas({ getActor: async () => null, servicio: servicio(repo) });
+    expect(res).toEqual({ status: "unauthenticated" });
+    expect(repo.leerTopeIntentos).not.toHaveBeenCalled();
+  });
+
+  it("R27: si el tope no se puede leer, la carga falla y no inventa un valor", async () => {
+    const repo = repoDoble({ leerTopeIntentos: vi.fn().mockRejectedValue(new Error("sin empresa")) });
+    await expect(servicio(repo).cargarPantalla(MAESTRO)).rejects.toThrow("sin empresa");
+    expect(await cargarPantallaTarifas({ getActor: async () => MAESTRO, servicio: servicio(repo) })).toEqual({
+      status: "error",
+    });
+  });
+
+  it("los faltantes y una zona no leen el tope: solo la carga de la pantalla", async () => {
+    const repo = repoDoble();
+    await servicio(repo).faltantesPorZona();
+    await servicio(repo).cargarZona({ zonaId: "z1" }, MAESTRO);
+    expect(repo.leerTopeIntentos).not.toHaveBeenCalled();
   });
 });
 

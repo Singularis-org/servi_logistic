@@ -23,7 +23,7 @@ import { crearOrganizacion } from "../../fabricas/organizaciones";
 // no esta aplicado y solo se puede leer como texto.
 //
 // Lo que se mide:
-//   - R8: `pg_class.relrowsecurity = true` y CERO policies (patron `orden_historial_estado`);
+//   - R8: `pg_class.relrowsecurity = true` y solo la policy por empresa de SL-17 (SLT-187);
 //   - R2: las columnas de mutacion NO existen en la tabla real;
 //   - R40: las tres consultas del modulo resuelven por INDICE y no por `Seq Scan`, sobre un
 //     corpus lo bastante grande para que el planificador prefiera el indice — y la cifra va
@@ -78,16 +78,28 @@ describeSiHayBase("362/T0.3 — la migracion del historial de acciones, contra P
     expect(filas[0].relrowsecurity).toBe(true);
   });
 
-  it("R8: y NO tiene policies — la autorizacion vive en el servicio, no en la base", async () => {
-    // Este repo NO usa Supabase Auth (sesion propia, sin `auth.uid()`): una policy no tendria a
-    // quien preguntar. Lo que la RLS garantiza es lo que R8 pide: a estas filas no se llega si no
-    // es por el servidor de la aplicacion — y en una tabla que registra quien mueve el dinero,
-    // eso es el minimo.
-    const filas = await prisma.$queryRawUnsafe<{ policyname: string }[]>(
-      `SELECT policyname FROM pg_policies
+  it("R8: su UNICA policy es la de aislamiento por empresa (SL-17), solo para `servi_app`", async () => {
+    // Este repo NO usa Supabase Auth (sesion propia, sin `auth.uid()`): no hay policy por usuario.
+    // SLT-187: SL-17 (`20261022130100_organizacion_id_en_negocio`) anadio, a proposito, la policy
+    // `historial_accion_por_empresa`, que solo filtra por la empresa de la sesion. La intencion de
+    // R8 se conserva: ninguna policy para otro rol, y la autorizacion sigue en el servidor.
+    const filas = await prisma.$queryRawUnsafe<
+      { policyname: string; cmd: string; roles: string; qual: string; with_check: string }[]
+    >(
+      `SELECT policyname, cmd, roles::text AS roles, qual, with_check FROM pg_policies
         WHERE schemaname = 'public' AND tablename = 'historial_accion'`,
     );
-    expect(filas).toEqual([]);
+    const porEmpresa =
+      "(organizacion_id = NULLIF(current_setting('app.organizacion_id'::text, true), ''::text))";
+    expect(filas, "SLT-187: historial_accion debe tener exactamente la policy por empresa").toEqual([
+      {
+        policyname: "historial_accion_por_empresa",
+        cmd: "ALL",
+        roles: "{servi_app}",
+        qual: porEmpresa,
+        with_check: porEmpresa,
+      },
+    ]);
   });
 
   it("R8: es la MISMA postura que `orden_historial_estado`, el patron que se copia", async () => {
@@ -152,14 +164,24 @@ describeSiHayBase("362/T0.3 — la migracion del historial de acciones, contra P
          JOIN pg_namespace n ON n.oid = t.relnamespace
         WHERE t.relname = 'historial_accion' AND n.nspname = 'public' AND c.contype = 'f'`,
     );
-    // UNA sola FK: `entidad_id` es OPACO a proposito (design §1.3-a). `RESTRICT` lo haria
-    // INBORRABLE y `SET NULL` vaciaria el rastro en silencio.
-    expect(filas, "la tabla tiene mas de una FK: `entidad_id` no debe tenerla").toHaveLength(1);
-    expect(filas[0].conname).toBe("historial_accion_actor_usuario_id_fkey");
-    expect(filas[0].def).toContain('FOREIGN KEY (actor_usuario_id) REFERENCES usuario(id)');
+    // DOS FK, y ninguna sobre `entidad_id`: es OPACO a proposito (design §1.3-a). `RESTRICT` lo
+    // haria INBORRABLE y `SET NULL` vaciaria el rastro en silencio.
+    // SLT-187: la segunda es la de la empresa, que anadio SL-17
+    // (`20261022130100_organizacion_id_en_negocio`). Se ordenan por nombre para comparar.
+    const ordenadas = [...filas].sort((a, b) => a.conname.localeCompare(b.conname));
+    expect(ordenadas.map((f) => f.conname), "SLT-187: las FK de historial_accion").toEqual([
+      "historial_accion_actor_usuario_id_fkey",
+      "historial_accion_organizacion_id_fkey",
+    ]);
+    expect(filas.some((f) => f.def.includes("(entidad_id)")), "`entidad_id` no lleva FK").toBe(false);
+    const actor = ordenadas[0];
+    expect(actor.def).toContain('FOREIGN KEY (actor_usuario_id) REFERENCES usuario(id)');
     // ⚠️ Lo que NO puede ser es `ON DELETE SET NULL`, que dejaria filas de auditoria sin autor.
-    expect(filas[0].def).not.toContain("ON DELETE SET NULL");
-    expect(filas[0].def).not.toContain("ON DELETE CASCADE");
+    expect(actor.def).not.toContain("ON DELETE SET NULL");
+    expect(actor.def).not.toContain("ON DELETE CASCADE");
+    expect(ordenadas[1].def).toBe(
+      "FOREIGN KEY (organizacion_id) REFERENCES organizacion(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+    );
   });
 
   it("el `down.sql` existe y revierte lo que el `migration.sql` crea", async () => {

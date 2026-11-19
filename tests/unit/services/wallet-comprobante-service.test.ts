@@ -9,6 +9,7 @@ import type { IWalletAnulacionService, RutaAnulacion } from "@/lib/interfaces/se
 import type { IWalletComprobanteService } from "@/lib/interfaces/services/IWalletComprobanteService";
 import { WalletComprobanteService } from "@/lib/services/WalletComprobanteService";
 import type { DestinoMovimiento } from "@/lib/types/wallet-anulacion";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FICHA 458-B / TB.10 (R74–R80) — `WalletComprobanteService` con dobles: tipo, tamaño, fallo de
@@ -51,7 +52,8 @@ function montar(
   const servicio = new WalletComprobanteService(repo, clasificador, storage, urls, (fn) => fn(tx), {
     MAX_BYTES: 10,
     SIGNED_URL_TTL_SECONDS: 300,
-  });
+  },
+  reglasPaisFijas(),);
   return { servicio, repo, clasificador, storage, urls };
 }
 
