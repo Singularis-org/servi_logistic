@@ -21,6 +21,44 @@
 
 ---
 
+## 2026-11-18 — Sin ruptura — La guía, Postman y el contrato apuntan a producción y se corrigen contra el código
+
+> **Sin ruptura.** El comportamiento del canal no cambia: ninguna ruta, ningún código de respuesta,
+> ningún campo. Lo que cambia es lo que la documentación decía de él, que en varios puntos no
+> coincidía con el código.
+
+**La URL base de producción es `https://www.servilogistic.co`.** La guía decía `https://app.example.com`
+y la colección de Postman `http://localhost:3000`. El contrato vuelve a declarar el bloque `servers`
+(retirado el 2026-09-01) con esa URL: Swagger UI la usa para «Try it out» y un generador de clientes
+la toma como base. Si generás tu cliente desde el `.yaml` y fijaste la base a mano, no hace falta
+cambiar nada.
+
+| Dónde | Qué decía | Qué hace el código |
+|---|---|---|
+| Carga, campos de la fila | `direccion`, `peso` y `monto_cobrar` obligatorios | Obligatorios: `num_remision`, `destinatario`, `telefono`, `producto`, `provincia`, `canton`, `distrito`. `direccion` y `monto_cobrar` son opcionales; `peso` se acepta y se ignora. `CargaRow.required` lo refleja |
+| Carga, error de fila por campo vacío | `["requerido"]` | `["<campo> es obligatorio"]`, por ejemplo `telefono es obligatorio` |
+| Dónde se genera la clave | «Configuración › API keys, personal de oficina» | Menú Configuración, opción API (`/configuracion/api`), solo el rol maestro, botón «Generar API key» |
+| Rotación | La empresa genera una key nueva y desactiva la anterior | La empresa rota la misma key: secreto nuevo, el anterior responde `401` al instante |
+| `409` | «Lea el `message`: distingue los casos» | Solo la falta de tarifa y el nombre de lote repetido traen mensaje propio; el resto lleva el genérico |
+| `403` de la analítica | Solo por métrica no publicable | También con el módulo de Analítica apagado (`details.codigo: "modulo_inactivo"`) |
+| `desde`/`hasta` del listado y la analítica | «hora CR» | Zona horaria del país de la empresa (ya lo decía la entrada del 2026-11-05) |
+| Postman, listado y habilitación | Sus tests leían `b.limit` y `b.habilitadas` | La respuesta trae `pagination.limit` y `resumen.habilitadas` |
+| Postman, cancelación | Esperaba `200` sobre una orden recién cargada | Una orden recién cargada está en la tienda: `409` hasta que llega a la bodega |
+
+**Nuevo en la guía:** ejemplos `curl` de cotización, detalle y habilitación (la habilitación ahora
+manda las tres filas de su respuesta de ejemplo), un ejemplo de firma de webhook con secreto,
+timestamp, cuerpo y firma esperada para comprobar la implementación, y una sección sobre varias
+empresas con una misma URL: la clave identifica a la empresa y a la tienda, y una orden de otra
+empresa responde `404`, igual que una inexistente. Las referencias internas se escriben «sección
+5.9». Cada `curl` de la guía y cada petición de la colección se ejecutan en un E2E contra la
+aplicación (`e2e/guia-api-ejemplos-ejecutables.spec.ts`).
+
+Contrato: `lib/api/openapi-spec.ts` y su espejo `docs/api/api-key-openapi.yaml`; guía de
+integración: `docs/ayuda/oficina/guia-integracion-api.md` (secciones 3, 4.8, 5 y 6.3, y el historial
+de la sección 9); colección: `docs/api/servi-logistic-api-key.postman_collection.json`.
+
+---
+
 ## 2026-11-18 — Sin ruptura — El contrato publica `manifiesto.filas[].intentos` de la carga
 
 > **Sin ruptura.** La respuesta de `POST /api/ordenes/api-key/carga` **ya traía** esta clave en
