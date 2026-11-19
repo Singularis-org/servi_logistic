@@ -26,6 +26,9 @@
   hora de la plataforma, −06:00; SLT-86 «Planes: período de facturación de calendario», design §3.1).
 - **Cargo vigente al cierre de un mes**: un cargo del cobro de la plataforma (SL-40 «Cobro de la plataforma por
   orden») que no tiene un reverso posterior registrado antes del fin de ese mes.
+- **Orden cancelada**: la que la tienda canceló por la API (`cancelarViaApi`, la única vía de cancelación que
+  existe). Queda en el historial de estados de la orden con el origen `cancelacion_api` y conserva su cargo
+  (SL-40 P3).
 - **Último mes cerrado** respecto de un instante: el mes anterior al mes que contiene ese instante.
 
 ## Requisitos (EARS)
@@ -107,9 +110,17 @@
 ### Órdenes efectivas
 
 - **R22.** El sistema DEBE contar como órdenes efectivas de una empresa en un tramo `[desde, hasta)` las órdenes
-  distintas de esa empresa con un cargo registrado en el tramo que sigue vigente en `hasta`. Una orden cuenta una
-  sola vez aunque tenga varios cargos en el tramo. Las órdenes anuladas y no recuperadas antes de `hasta` no
-  cuentan. Las canceladas por la API conservan su cargo (SL-40 P3) y cuentan (P3).
+  distintas de esa empresa que cumplen las dos condiciones:
+  - tienen un cargo registrado en el tramo que sigue vigente en `hasta`;
+  - no se cancelaron antes de `hasta`.
+
+  Una orden cuenta una sola vez aunque tenga varios cargos en el tramo. No cuentan:
+  - las anuladas y no recuperadas antes de `hasta`;
+  - las canceladas antes de `hasta`, aunque conserven su cargo y se hayan cobrado (P3).
+
+  Ejemplo del humano: 15 200 órdenes con cargo vigente y 300 canceladas por la API dan 14 900, que no llegan a una
+  meta de 15 000. Lo que pasa después de `hasta` (una anulación o una cancelación del mes siguiente) no cambia el
+  mes.
 - **R23.** El sistema DEBE calcular el mes con la zona del período de facturación de hoy (−06:00), la misma que usa
   `plan_inicio_periodo_calendario`, y con una sola definición, de modo que cuando SLT-90 mueva la zona el cierre la
   siga.
@@ -189,37 +200,16 @@
 | Pantalla | R7–R14, R21, R38 |
 | Tamaño | `tasks.md > Archivos esperados` |
 | Ruta | `design.md`, `tasks.md` |
+| Hora del cron (P1) | R29 |
+| Límite de niveles (P2) | R1, R5, R6, R8 |
+| Órdenes canceladas (P3) | R22 |
+| Primera asignación de plan (P4) | R33 |
+| Líneas «Esto es lo que cambia» (P5) | R20 |
+| Tamaño en líneas (P6) | `tasks.md > Archivos esperados` |
 
 ## Preguntas abiertas
 
-Las dos que venían de `/afinar-feature` (P1, P2) y las que salieron al escribir el spec (P3–P6). Cada una lleva
-la propuesta del spec, que es la que siguen los requisitos hasta que el humano diga otra cosa.
-
-- **P1. Hora del cron diario.** Propuesta: **00:20 de la plataforma (06:20 UTC)**, como trabajo recurrente de la
-  cola (design §5).
-  - Va 20 minutos después del borde del mes (00:00 −06:00), así que el día 1 cierra el mes que acaba de terminar.
-  - No coincide con las 06:00 UTC de `corte-diario` y `generar-gastos-fijos`, ni con el barrido de cambios de plan
-    (:00) ni con el cierre de facturas (:10). El resultado no depende de ese orden (R29, R31): solo reparte la
-    carga.
-  - Si falla, la cola reintenta con su backoff y, como mucho, la corrida del día siguiente lo recoge (R29).
-- **P2. Límite de niveles por plan.** Propuesta: **10**. No hay un límite técnico. Pesa la lectura: la columna de
-  R21 los pinta todos sin «Mostrar más», y la escala de «Mi plan» (SLT-216) también. Es un CHECK y una constante:
-  subirlo después es barato.
-- **P3. Órdenes canceladas por la API.** La decisión dice «sin canceladas», pero también «con cargo de plataforma
-  vigente», y SL-40 P3 cerró que la cancelación por API se cobra y no genera reverso. Propuesta: **cuentan**, porque
-  mandan el cargo vigente y lo que la plataforma cobra. Si deben quedar fuera, hay que excluirlas por su estado y
-  R22 cambia.
-- **P4. Primera asignación de un plan** (empresa sin plan). La decisión de recalcular con el último mes cerrado habla
-  de «cambiar de plan». Propuesta: en la primera asignación la empresa **empieza en el nivel 0** y cuenta desde su
-  entrada (R33), coherente con «Entrada a mitad de mes». Lo de antes de tener plan no cuenta.
-- **P5. Las líneas «Esto es lo que cambia:»** salen en «Mi plan», en el correo a los maestros, en el rastro y en el
-  detalle de empresa, y las arma una sola función. Propuesta: **una línea «Niveles por volumen: antes → después»**
-  (R20), para que una edición que solo toca niveles no deje el rastro ni el aviso vacíos. La pantalla de niveles de
-  «Mi plan» sigue siendo de SLT-216.
-- **P6. Tamaño en líneas.** Unos 52 archivos (aceptado ~50) y unas **1 100 líneas de producción**, por encima del
-  tope de 1 000: la migración pesa unas 450 (tres tablas, cuatro funciones y su `down.sql`). Propuesta: un solo PR,
-  extendiendo la aceptación del tamaño a las líneas. La alternativa es partir el cierre mensual (R22–R37) en una
-  segunda rebanada.
+Ninguna. P1–P6 las cerró el humano el 2026-11-19 y están en la tabla de abajo.
 
 ## Decisiones cerradas (no reabrir)
 | Fecha | Pregunta | Decisión |
@@ -237,3 +227,9 @@ la propuesta del spec, que es la que siguen los requisitos hasta que el humano d
 | 2026-11-19 | Pantalla | En esta ficha: paso «Niveles» en el formulario del plan (como «Beneficios» de SLT-214) y columna en la tabla. |
 | 2026-11-19 | Tamaño | ~50 archivos; un PR sobre el tope (humano). |
 | 2026-11-19 | Ruta | Completa: dinero, migración y cron. |
+| 2026-11-19 | Hora del cron (P1) | Diario a las 00:20 de la plataforma (06:20 UTC), como trabajo recurrente de la cola (humano). Cubre R29. |
+| 2026-11-19 | Límite de niveles (P2) | 10 por plan (humano). Cubren R1, R5, R6 y R8. |
+| 2026-11-19 | Órdenes canceladas (P3) | No cuentan para la meta, tampoco las canceladas por la API que conservan su cargo: 15 200 cobradas y 300 canceladas dan 14 900, que no llegan a 15 000 (humano). Cubre R22. |
+| 2026-11-19 | Primera asignación de plan (P4) | La empresa empieza en el nivel 0 y cuenta desde su entrada, sin recálculo (humano). Cubre R33. |
+| 2026-11-19 | Líneas «Esto es lo que cambia» (P5) | Una línea «Niveles por volumen: antes → después» (humano). Cubre R20. |
+| 2026-11-19 | Tamaño en líneas (P6) | Un PR con unos 52 archivos y unas 1 100 líneas de producción, sobre el tope (humano). Lo cuenta `tasks.md > Archivos esperados`. |

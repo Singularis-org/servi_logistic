@@ -135,7 +135,8 @@ corre como plataforma (§3.4, §5), igual que `factura_plataforma_cerrar`.
 ### 2.1 Órdenes efectivas (R22)
 
 ```sql
--- R22: órdenes distintas con un cargo en [p_desde, p_hasta) que sigue vigente en p_hasta.
+-- R22: órdenes distintas con un cargo en [p_desde, p_hasta) que sigue vigente en p_hasta y que no se
+-- cancelaron antes de p_hasta.
 CREATE FUNCTION plan_nivel_ordenes_efectivas(p_org text, p_desde timestamp, p_hasta timestamp)
 RETURNS integer LANGUAGE sql STABLE AS $$
   SELECT count(DISTINCT c."orden_id")::int
@@ -144,17 +145,38 @@ RETURNS integer LANGUAGE sql STABLE AS $$
      AND c."ocurrido_at" >= p_desde AND c."ocurrido_at" < p_hasta
      AND NOT EXISTS (SELECT 1 FROM "cobro_plataforma_movimiento" r
                       WHERE r."organizacion_id" = p_org AND r."orden_id" = c."orden_id" AND r."tipo" = 'reverso'
-                        AND r."secuencia" > c."secuencia" AND r."ocurrido_at" < p_hasta) $$;
+                        AND r."secuencia" > c."secuencia" AND r."ocurrido_at" < p_hasta)
+     AND NOT EXISTS (SELECT 1 FROM "orden_historial_estado" h
+                      WHERE h."organizacion_id" = p_org AND h."orden_id" = c."orden_id"
+                        AND h."origen_tipo" = 'cancelacion_api' AND h."created_at" < p_hasta) $$;
 ```
 
-- **Por qué así:** «con cargo vigente» es lo que dice la decisión. Anular deja un reverso, recuperar deja un cargo
-  nuevo (SL-40 R15, R16). Una orden creada, anulada y recuperada en el mes cuenta una vez, por su último cargo. Una
-  anulada y no recuperada antes del fin no cuenta. La cancelación por API no deja reverso (SL-40 P3), así que cuenta
-  (P3).
+- **Anuladas.** «Con cargo vigente» es lo que dice la decisión. Anular deja un reverso y recuperar deja un cargo nuevo
+  (SL-40 R15, R16). Una orden creada, anulada y recuperada en el mes cuenta una vez, por su último cargo. Una anulada y
+  no recuperada antes del fin no cuenta.
+- **Canceladas (decisión P3).** No cuentan, aunque conserven su cargo. En el modelo real, la única cancelación que
+  existe es la de la tienda por la API: `OrdenRepository.cancelarViaApi`, por `app/api/ordenes/api-key/[numGuia]/cancelar`.
+  - No borra la orden ni deja reverso (SL-40 P3). Mueve la orden de `en_bodega_central` o `en_ruta_bodega_central` a
+    `devolviendo_a_tienda` y escribe, en la misma transacción, una fila de `orden_historial_estado` con `origen_tipo =
+    'cancelacion_api'` y `motivo = 'cancelada por tienda'` (`OrdenHistorialOrigenTipo`, `db/schema.prisma`;
+    `lib/types/orden-historial.ts`).
+  - Esa fila es la marca. El estado `devolviendo_a_tienda` no sirve: también se llega a él sin cancelar.
+  - El historial es inmutable (feature 49), así que la marca no se pierde. Ninguna transición deshace una
+    cancelación (`lib/types/order-status-transiciones.ts`).
+  - En el `orden_historial_estado`, `created_at` es el instante de la transición. Una orden cancelada antes de
+    `p_hasta` no cuenta, aunque su cargo sea de ese mes.
+- **Ejemplo de la decisión:** 15 200 órdenes con cargo vigente, de las que 300 tienen fila `cancelacion_api`, dan
+  14 900.
 - **El fin cuenta y el reloj no.** Solo mira lo registrado antes de `p_hasta`, así que cerrar un mes el día 1 o el 5
-  da el mismo número (R29). Una anulación del día 2 de una orden de enero no cambia enero.
-- Usa el índice `(organizacion_id, ocurrido_at)`. El `NOT EXISTS` va por el único `(organizacion_id, orden_id,
-  secuencia)`.
+  da el mismo número (R29). Una anulación o una cancelación del día 2 de una orden de enero no cambian enero. La
+  orden tampoco cuenta en febrero, porque su cargo no es de febrero.
+- **Índices.** El cargo usa `(organizacion_id, ocurrido_at)`. El primer `NOT EXISTS` va por el único
+  `(organizacion_id, orden_id, secuencia)` y el segundo por `orden_historial_estado (orden_id, created_at)`.
+- **Permisos.** `orden_historial_estado` tiene RLS sin políticas (feature 49). La función es `SECURITY DEFINER` del
+  dueño, así que la lee igual que `cobro_plataforma_movimiento`.
+- **Si un día aparece otra forma de cancelar** (otro `origen_tipo` o un estado propio), se añade aquí. La guardia de
+  T3 lo vigila: el test lista los `origen_tipo` del enum y falla si aparece uno nuevo cuyo nombre contenga
+  `cancel` y no esté en la función.
 
 ### 2.2 Los niveles que corre una empresa
 
@@ -440,7 +462,7 @@ Se aprueban con el spec.
 | `tests/unit/planes/jobs-niveles.test.ts` (nuevo) | R29 (hora, `dedupe_key`, siembra), R30 |
 | `tests/unit/api/procesar-jobs-registro.test.ts` (se adapta) | El tipo nuevo registrado y de plataforma |
 | `tests/integration/db/plan-nivel.test.ts` (nuevo) | R1, R6 (CHECK, `servi_app` sin acceso), R15–R18, R36 (aislamiento y sin escritura) |
-| `tests/integration/db/plan-nivel-cierre.test.ts` (nuevo) | R22–R30: órdenes efectivas (anulada, recuperada, cancelada por API), entrada a mitad de mes, subir, bajar, reiniciar, nivel 0, plan sin niveles, varios meses pendientes, repetir y en paralelo |
+| `tests/integration/db/plan-nivel-cierre.test.ts` (nuevo) | R22–R30: órdenes efectivas (anulada, recuperada, cancelada por API dentro y después del mes, el ejemplo 152 − 3 = 149 contra 150, guardia de nuevas cancelaciones), entrada a mitad de mes, subir, bajar, reiniciar, nivel 0, plan sin niveles, varios meses pendientes, repetir y en paralelo |
 | `tests/integration/db/plan-nivel-recalculo.test.ts` (nuevo) | R31–R34 por `recibirCambio` y por el cambio de plan |
 | `tests/integration/db/migracion-plan-nivel-ida-y-vuelta.test.ts` (nuevo) | R37 y el `down.sql` de §2.5 |
 | `tests/integration/db/plan-borrador-confirmar.test.ts` (se amplía) | R12, R15, R16 |

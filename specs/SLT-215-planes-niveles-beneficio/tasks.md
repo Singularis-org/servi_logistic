@@ -26,8 +26,17 @@ Orden: T1 → T2 → (T3, T4, T5 [P]) → T6 → T7 → (T8, T9 [P]) → T10 →
     - `pnpm run test:guardias` en verde (`organizacion-en-modelos`, `rls-por-empresa`, `unicos-por-empresa`).
 - [ ] **T3 [P]. Cierre mensual en la base.** R22–R30. Depende de T2.
   - **Hecho:** `tests/integration/db/plan-nivel-cierre.test.ts` cubre, con `p_ahora` y `ocurrido_at` fijos:
-    - R22: una orden anulada no cuenta; anulada y recuperada en el mes, una vez; anulada el día 2 del mes siguiente
-      sigue contando en el mes; cancelada por API, cuenta;
+    - R22:
+      - una orden anulada no cuenta;
+      - una anulada y recuperada en el mes cuenta una vez;
+      - una anulada el día 2 del mes siguiente sigue contando en su mes;
+      - una cancelada por la API en el mes no cuenta aunque conserve su cargo. La cancelación es una fila de
+        `orden_historial_estado` con `origen_tipo = 'cancelacion_api'`, design §2.1;
+      - una cancelada el día 2 del mes siguiente sigue contando en su mes y no cuenta en el siguiente;
+      - el ejemplo de la decisión, a escala: con 152 órdenes de cargo vigente y 3 canceladas salen 149, que no
+        llegan a una meta de 150;
+      - la guardia: si el enum `orden_historial_origen_tipo` gana un valor que contiene `cancel` y no es
+        `cancelacion_api`, el test falla;
     - R23: un cargo a las 05:59 UTC del día 1 es del mes anterior;
     - R24: entrada el día 15, solo cuentan las de después, contra la meta completa;
     - R25: de 0 a 2 directo, con `desde_at` en el día 1 siguiente;
