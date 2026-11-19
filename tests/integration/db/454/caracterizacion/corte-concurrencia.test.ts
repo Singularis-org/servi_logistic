@@ -7,13 +7,12 @@ import {
   crearPrismaDeTest,
 } from "../../_postgres-real";
 import {
+  ESCENARIO_C02,
   clienteDeLaApp454,
   enEmpresaDe,
   entradaGestion,
   limpiarComprometido,
   montarServicios,
-  prepararMundo,
-  sembrarComprometido,
   type Comprometido,
   type Mundo,
 } from "../_escenario";
@@ -27,7 +26,7 @@ import {
  * confirma. Invariante: NUNCA a la vez una gestion vigente de O y una fila `cierre_sin_gestion` de O.
  *
  * Es el unico escenario de la fase que CONFIRMA datos (dos conexiones reales): cada repeticion siembra
- * su mundo y lo borra por id al terminar.
+ * su mundo y lo borra por id al terminar. Si el worker muere antes (D80), lo barre el arranque siguiente.
  */
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
@@ -51,7 +50,8 @@ describeSiHayBase("454/C02 — corte y gestion concurrentes (Postgres real, dos 
   }
 
   async function unaRepeticion(): Promise<(typeof resultados)[number]> {
-    const s = await sembrarComprometido(mundo, async (e) => {
+    // SLT-204 (D80): siembra con la marca de C02 (`ESCENARIO_C02`), para que un resto se reconozca.
+    const s = await ESCENARIO_C02.sembrar(mundo, async (e) => {
       const o = await e.sembrarOrden({ estatus: "en_reparto", montoCobrar: 4000 });
       return { ordenIds: [o.ordenId] };
     });
@@ -107,7 +107,9 @@ describeSiHayBase("454/C02 — corte y gestion concurrentes (Postgres real, dos 
   }
 
   beforeAll(async () => {
-    mundo = await prepararMundo();
+    // SLT-204 (D80): si una corrida anterior murio con el worker, su escenario confirmado sigue aqui
+    // (con la marca de C02 en el nombre de la empresa): `preparar` lo barre antes de sembrar el de hoy.
+    mundo = await ESCENARIO_C02.preparar();
     prismaA = clienteDeLaApp454(crearPrismaDeTest());
     prismaB = clienteDeLaApp454(crearPrismaDeTest());
     sonda = crearPrismaDeTest();

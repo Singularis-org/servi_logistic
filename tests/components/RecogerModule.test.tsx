@@ -2110,6 +2110,46 @@ describe("SLT-190 — Recoger en bodega según el canvas", () => {
     expect(await within(panelActivo()).findByText("REM-T2")).toBeInTheDocument();
   });
 
+  // SLT-206 «Filtro Tienda duplicado en Recoger y Recolección»: fija el comportamiento del filtro
+  // antes de llevarlo al hook compartido (`useFiltroTienda`). El mismo par vive en RecoleccionModule.test.
+  it("R852 (SLT-206): al volver a poner «Tienda» tras quitarlo, el control dice «Todas» y no la tienda de antes", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecoger: TRES });
+    await ponerTienda(user, "Tienda Norte");
+    await vi.waitFor(() => expect(within(panelActivo()).queryByText("REM-T1")).toBeNull());
+
+    for (let vez = 0; vez < 2; vez++) {
+      await user.click(screen.getByRole("button", { name: /^Filtros/ }));
+      const selector = await screen.findByRole("listbox", { name: "Filtros" });
+      await user.click(within(selector).getByRole("option", { name: "Tienda" }));
+      await user.keyboard("{Escape}");
+    }
+    const control = await screen.findByRole("combobox", { name: "Filtrar por tienda" });
+    await vi.waitFor(() => expect(control).toHaveTextContent("Todas"));
+    expect(control).not.toHaveTextContent("Tienda Norte");
+    for (const rem of ["REM-T1", "REM-T2", "REM-T3"]) {
+      expect(within(panelActivo()).getByText(rem)).toBeInTheDocument();
+    }
+  });
+
+  it("R852 (SLT-206): «Tienda» puesto sin valor ya ofrece «Limpiar todo», y este retira el control", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecoger: TRES });
+    expect(within(barra()).queryByRole("button", { name: "Limpiar todo" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: /^Filtros/ }));
+    const selector = await screen.findByRole("listbox", { name: "Filtros" });
+    await user.click(within(selector).getByRole("option", { name: "Tienda" }));
+    await user.keyboard("{Escape}");
+    expect(await within(barra()).findByRole("combobox", { name: "Filtrar por tienda" })).toBeInTheDocument();
+
+    await user.click(within(barra()).getByRole("button", { name: "Limpiar todo" }));
+    await vi.waitFor(() => {
+      expect(screen.queryByRole("combobox", { name: "Filtrar por tienda" })).toBeNull();
+      expect(within(barra()).queryByRole("button", { name: "Limpiar todo" })).toBeNull();
+    });
+  });
+
   it("R854: con solo el filtro, una pestaña que queda vacía dice el vacío de búsqueda y el puntero a la otra", async () => {
     const user = userEvent.setup();
     renderModule({
