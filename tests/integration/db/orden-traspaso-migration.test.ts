@@ -303,6 +303,8 @@ describe("427/T2 — el UP y el DOWN, leidos del archivo", () => {
       "20261119120000_historial_accion_ordenes_retiradas_a_central",
       // SLT-212: el instante del cobro de la plataforma en UTC (solo `CREATE OR REPLACE` de tres funciones).
       "20261119120100_cobro_plataforma_ocurrido_utc",
+      // SLT-214: la tabla `plan_beneficio`, el paso del borrador y `plan_de_la_empresa`; no toca `orden_traspaso_mensajero`.
+      "20261120120000_plan_beneficio",
     ]);
   });
 });

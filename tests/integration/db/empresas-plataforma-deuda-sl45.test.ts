@@ -23,7 +23,7 @@ import { limpiar459, sembrarPersonas459, type Personas459 } from "./_fixtures/es
 import { asignarPlan, crearPlan } from "./_fixtures/planes";
 import { tomarTarifaGlobal, type TarifaGlobalBajoLock } from "./_fixtures/cobro-plataforma-40";
 import { cerrarFacturaEnCurso } from "./_fixtures/factura-cerrada";
-import { exigirSinSuperadmin, idDeRol, insertarUsuario, tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
+import { idDeRol, insertarUsuario, obtenerOCrearSuperadmin, tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
 
 // SLT-42 (T5.4): la zona del pais de la empresa es la de CR, como antes. Las reglas reales leen el pais
 // de la empresa en curso con el cliente global, que no ve la empresa de una transaccion revertida ni
@@ -68,6 +68,8 @@ const RUN = randomUUID().replace(/-/g, "").slice(0, 10);
 const SUPERADMIN = { rol: RolValue.superadmin };
 let soltarSuperadmin: () => Promise<void> = async () => {};
 let superadminId: string | null = null;
+// En una base de desarrollo que ya tiene su superadmin, se usa ese y no se borra al acabar.
+let superadminPropio = false;
 /** Las facturas cerradas de cada empresa (SLT-60: lo único que se puede pagar). */
 const facturaDe: Record<"A" | "B", string> = { A: "", B: "" };
 /** Los pagos por su monto. */
@@ -173,14 +175,17 @@ describeSiHayBase("SL-45 — la columna «Plataforma» de «Empresas»: deuda y 
 
     // SL-32: el superadmin es único en la base; este archivo commitea el suyo con el lock tomado.
     soltarSuperadmin = await tomarLockDeSuperadmin();
-    await exigirSinSuperadmin(base);
-    superadminId = await bajoLockDeEscrituraReal(() =>
-      base.$transaction(async (tx) => {
-        const u = await insertarUsuario(tx, await idDeRol(tx, "superadmin"), null);
-        if (!u.desenlace.ok) throw new Error(`no se sembró el superadmin: ${JSON.stringify(u.desenlace)}`);
-        return u.id;
-      }),
+    const superadmin = await obtenerOCrearSuperadmin(base, () =>
+      bajoLockDeEscrituraReal(() =>
+        base.$transaction(async (tx) => {
+          const u = await insertarUsuario(tx, await idDeRol(tx, "superadmin"), null);
+          if (!u.desenlace.ok) throw new Error(`no se sembró el superadmin: ${JSON.stringify(u.desenlace)}`);
+          return u.id;
+        }),
+      ),
     );
+    superadminId = superadmin.id;
+    superadminPropio = superadmin.propio;
 
     const estatus = await base.orderStatus.findUnique({ where: { value: "por_recolectar_en_tienda" }, select: { id: true } });
     if (estatus === null) throw new Error("falta el estatus «por_recolectar_en_tienda»: corre `pnpm run db:seed`");
@@ -236,7 +241,8 @@ describeSiHayBase("SL-45 — la columna «Plataforma» de «Empresas»: deuda y 
       }
       await limpiar459(base, A?.p ?? null);
       await limpiar459(base, B?.p ?? null);
-      if (superadminId !== null) {
+      // Solo el superadmin propio: el que ya tenia la base no se borra.
+      if (superadminId !== null && superadminPropio) {
         const id = superadminId;
         await bajoLockDeEscrituraReal(() => base.$executeRawUnsafe(`DELETE FROM "usuario" WHERE "id" = $1`, id));
       }

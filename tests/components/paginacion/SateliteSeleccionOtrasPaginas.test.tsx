@@ -1,4 +1,11 @@
 // @vitest-environment jsdom
+// ⭑ SLT-222 «Tablas de órdenes: la selección se mantiene entre búsquedas y escaneos» cambió el
+// contrato que este archivo medía: la acción de lote YA SE LLEVA lo marcado fuera de la página
+// (R1505), el aviso Q-K7 desapareció y en su lugar el contador dice «N seleccionadas · M fuera
+// de esta búsqueda» (R1506); filtrar ya NO limpia (R1502, sustituye R27). La poda sigue (R18,
+// R20-R24, R26, R28) y pregunta sin filtros (R1514). Los casos se reescribieron a ese contrato;
+// la historia de abajo se conserva porque explica de dónde viene la poda.
+//
 // Chore Q-K7 (deuda de la feature 170 — FASE 2, T K.3) — el aviso de lo marcado en OTRAS
 // páginas del listado «Órdenes de la bodega» del `adminSatelite`.
 //
@@ -282,17 +289,19 @@ function barra(): HTMLElement {
   return status[status.length - 1]!;
 }
 
-/** El aviso, buscado por lo que DICE: que hay marcas fuera y que no entran. */
+/**
+ * SLT-222 (R1505/R1506): el aviso Q-K7 («…marcadas en otras páginas que no entran en esta
+ * acción») ya no existe: la acción se lleva TODAS las marcadas y el contador de la barra dice
+ * cuántas no se ven. Lo que estos casos miden —cuántas quedan fuera de la vista— se lee ahora
+ * de esa coletilla del contador.
+ */
 function avisoTexto(): string | null {
-  const nodo = within(region())
-    .queryAllByText(/marcadas en otras páginas/)
-    .at(0);
-  return nodo?.textContent?.replace(/\s+/g, " ").trim() ?? null;
+  return /\d+ fuera de esta búsqueda/.exec(barra().textContent ?? "")?.[0] ?? null;
 }
 
-/** El aviso esperado con `n` órdenes fuera de la página visible. */
+/** La coletilla esperada con `n` órdenes fuera de la página visible. */
 function aviso(n: number): string {
-  return `Tienes ${n} orden(es) marcadas en otras páginas que no entran en esta acción.`;
+  return `${n} fuera de esta búsqueda`;
 }
 
 async function irAPagina(
@@ -394,11 +403,13 @@ describe("Q-K7 · aviso de selección en otras páginas (bodega satélite)", () 
     // avisar, porque no hay ninguna marca fuera de la vista.
     await user.click(casilla(etiqueta(1)));
     await user.click(casilla(etiqueta(2)));
-    expect(barra()).toHaveTextContent("2 seleccionada(s) en esta página");
+    expect(barra()).toHaveTextContent("2 seleccionadas");
     expect(avisoTexto()).toBeNull();
+    // SLT-222 R1505: el aviso Q-K7 no vuelve a pintarse nunca.
+    expect(within(region()).queryByText(/marcadas en otras páginas/)).toBeNull();
   });
 
-  it("avisa al cambiar de página, con el número de las que quedan fuera", async () => {
+  it("SLT-222 R1503/R1505: al cambiar de página el contador dice cuántas quedan fuera, y la acción las incluye", async () => {
     const user = userEvent.setup();
     montar();
 
@@ -406,15 +417,13 @@ describe("Q-K7 · aviso de selección en otras páginas (bodega satélite)", () 
     await user.click(casilla(etiqueta(2)));
     await irAPagina(user, 2);
 
-    // Las dos marcas siguen vivas —al volver estarán ahí— pero ya no participan en nada de
-    // lo que se pulse aquí, y ESO es lo que el aviso dice, con el número delante.
+    // Las dos marcas siguen vivas y, desde SLT-222 (R1505), SÍ participan en la acción: el
+    // contador cuenta el total y cuántas no se ven, y «Asignar» se ofrece para las dos.
     expect(avisoTexto()).toBe(aviso(2));
-    // Y la barra sigue hablando del conjunto: sin nada marcado en ESTA página no hay
-    // selección sobre la que actuar.
-    expect(barra()).toHaveTextContent(`${TOTAL} órdenes`);
+    expect(barra()).toHaveTextContent("2 seleccionadas · 2 fuera de esta búsqueda");
     expect(
-      within(region()).queryByRole("button", { name: "Asignar" }),
-    ).toBeNull();
+      within(region()).getByRole("button", { name: "Asignar" }),
+    ).toBeEnabled();
 
     // Al volver, las marcas están donde se dejaron y el aviso desaparece: lo marcado vuelve
     // a estar todo a la vista.
@@ -435,17 +444,17 @@ describe("Q-K7 · aviso de selección en otras páginas (bodega satélite)", () 
     // …y una en la 2. Total marcado: TRES. Fuera de la vista: DOS.
     await user.click(casilla(etiqueta(4)));
 
-    // El caso que discrimina. Con el total, el aviso mentiría: diría que se quedan fuera
-    // tres órdenes cuando una de ellas —la de esta página— sí entra en la acción.
+    // El caso que discrimina: «fuera» son DOS (las de la página 1), no el total marcado.
     expect(avisoTexto()).toBe(aviso(2));
-    expect(avisoTexto()).not.toContain("3 orden(es)");
+    expect(avisoTexto()).not.toContain("3 fuera");
 
-    // Y el aviso concuerda con lo que dice la barra y con lo que la acción se va a llevar:
-    // UNA de esta página, que es la única marcada aquí.
-    expect(barra()).toHaveTextContent("1 seleccionada(s) en esta página");
+    // SLT-222 R1505: la barra cuenta las TRES y el estado común se mira sobre las tres —dos en
+    // bodega y una por devolver—, así que ninguna transición se habilita.
+    expect(barra()).toHaveTextContent("3 seleccionadas · 2 fuera de esta búsqueda");
+    expect(barra()).toHaveTextContent("estados mezclados");
     expect(
       within(region()).getByRole("button", { name: "Enviar a central" }),
-    ).toBeEnabled();
+    ).toBeDisabled();
 
     // Al volver a la página 1 el número se recalcula contra la NUEVA página visible: ahora
     // la que queda fuera es la de la página 2.
@@ -492,7 +501,7 @@ describe("Feature 184 · T A.5 — la poda de la selección", () => {
     await irAPagina(user, 1, etiqueta(2));
     expect(casilla(etiqueta(2))).toBeChecked();
     expect(avisoTexto()).toBeNull();
-    expect(barra()).toHaveTextContent("1 seleccionada(s) en esta página");
+    expect(barra()).toHaveTextContent("1 seleccionada");
   });
 
   it("el aviso desaparece cuando ya no queda ninguna marcada fuera (R25)", async () => {
@@ -536,7 +545,7 @@ describe("Feature 184 · T A.5 — la poda de la selección", () => {
     await irAPagina(user, 1);
     expect(casilla(etiqueta(1))).toBeChecked();
     expect(casilla(etiqueta(2))).toBeChecked();
-    expect(barra()).toHaveTextContent("2 seleccionada(s) en esta página");
+    expect(barra()).toHaveTextContent("2 seleccionadas");
 
     // R24: volver a la página 1 no deja marcas fuera, así que no cuesta comprobación alguna.
     expect(vigenciaMock).toHaveBeenCalledTimes(1);
@@ -593,10 +602,10 @@ describe("Feature 184 · T A.5 — la poda de la selección", () => {
     expect(avisoTexto()).toBe(aviso(1));
   });
 
-  it("cambiar los filtros sigue limpiando la selección ENTERA (R27)", async () => {
-    // La poda no sustituye a esto ni lo suaviza: filtrar cambia el conjunto, así que se limpia
-    // todo de una vez y sin preguntarle nada al servidor. Si la limpieza dependiera de la
-    // comprobación, un fallo de red dejaría marcas vivas bajo un filtro que no las muestra.
+  // SLT-222 R1502 sustituye R27 de la 188 («cambiar los filtros limpia la selección entera»):
+  // filtrar CONSERVA lo marcado, y tampoco le cuesta una comprobación cuando todo lo marcado
+  // vuelve a estar a la vista.
+  it("R27 + SLT-222 R1502: cambiar los filtros CONSERVA la selección", async () => {
     const user = userEvent.setup();
     montar();
 
@@ -607,18 +616,18 @@ describe("Feature 184 · T A.5 — la poda de la selección", () => {
     const llamadasAntes = vigenciaMock.mock.calls.length;
 
     // Se filtra por el estado de la página 1: el conjunto pasa a ser tres órdenes en una sola
-    // página, y la selección se va entera.
+    // página, y las dos marcadas siguen marcadas (ahora a la vista).
     await filtrarPor(user, "Estado", ETIQUETA_EN_BODEGA);
     await waitFor(() => {
       expect(remisionesVisibles()).toEqual([etiqueta(1), etiqueta(2), etiqueta(3)]);
       expect(within(tabla()).queryByRole("status")).not.toBeInTheDocument();
     });
 
-    expect(casilla(etiqueta(1))).not.toBeChecked();
-    expect(casilla(etiqueta(2))).not.toBeChecked();
+    expect(casilla(etiqueta(1))).toBeChecked();
+    expect(casilla(etiqueta(2))).toBeChecked();
     expect(avisoTexto()).toBeNull();
-    expect(barra()).toHaveTextContent("3 de 6 órdenes");
-    // Y no costó ninguna comprobación: no hay nada que podar cuando no queda nada marcado.
+    expect(barra()).toHaveTextContent("2 seleccionadas");
+    // Y no costó ninguna comprobación: todo lo marcado está a la vista.
     expect(vigenciaMock.mock.calls.length).toBe(llamadasAntes);
   });
 });

@@ -16,9 +16,8 @@ import { crearPlanPublicoConCosto } from "./_planes-fixture";
 import {
   asegurarSuperadmin,
   conCandadoDelSuperadmin,
-  entrarConOtp,
-  olvidarDispositivos,
-  SUPERADMIN_DE_PRUEBA,
+  entrarComoSuperadmin,
+  superadminDeLaBase,
 } from "./_superadmin-fixture";
 
 /**
@@ -141,10 +140,7 @@ test.beforeAll(async ({ browser }) => {
   nombreN = (await db().organizacion.findUniqueOrThrow({ where: { id: empresaN.organizacionId }, select: { nombre: true } })).nombre;
 
   await conCandadoDelSuperadmin(() => asegurarSuperadmin(db()));
-  const usuario = await db().usuario.findFirstOrThrow({
-    where: { email: SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL, rol: { value: "superadmin" } },
-    select: { id: true },
-  });
+  const usuario = await superadminDeLaBase(db());
   superadminId = usuario.id;
 
   // El plan con dos empresas de tipos de cobro distintos (R30.4).
@@ -155,8 +151,7 @@ test.beforeAll(async ({ browser }) => {
   contextoSa = await browser.newContext();
   sa = await contextoSa.newPage();
   await conCandadoDelSuperadmin(async () => {
-    await olvidarDispositivos(db(), SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL);
-    await entrarConOtp(superadmin(), SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL, SUPERADMIN_DE_PRUEBA.SUPERADMIN_PASSWORD);
+    await entrarComoSuperadmin(superadmin(), db());
   });
   await superadmin().waitForURL("**/plataforma/empresas", { timeout: 60_000 });
 });
@@ -210,7 +205,7 @@ test("R30: crear y editar un plan por pasos con borrador — crear, cerrar, reto
   const dialogo = page.getByRole("dialog", { name: "Nuevo plan" });
   const form = dialogo.getByRole("form", { name: "Crear plan" });
   await expect(form).toBeVisible({ timeout: 60_000 });
-  await expect(form).toContainText(TEXTO.estado(0, 5));
+  await expect(form).toContainText(TEXTO.estado(0, 6));
 
   // R30.1: General, Precio y Cobro por orden, cada uno con «Guardar y continuar».
   await expect(form.getByRole("heading", { level: 3, name: "General", exact: true })).toBeVisible();
@@ -222,7 +217,7 @@ test("R30: crear y editar un plan por pasos con borrador — crear, cerrar, reto
   await guardarYContinuar(form, "Cobro por orden");
   await form.getByLabel("Costo por orden", { exact: true }).fill(COSTO_POR_ORDEN);
   await guardarYContinuar(form, "Topes");
-  await expect(form).toContainText(TEXTO.estado(3, 5));
+  await expect(form).toContainText(TEXTO.estado(3, 6));
   await cerrarPanel(dialogo);
 
   // Cerrar con pasos guardados avisa (R13) y la sección «Borradores» trae el plan nuevo (R24).
@@ -236,7 +231,7 @@ test("R30: crear y editar un plan por pasos con borrador — crear, cerrar, reto
   await fila.getByRole("button", { name: TEXTO.retomar, exact: true }).click();
   const retomado = page.getByRole("dialog", { name: "Nuevo plan" }).getByRole("form", { name: "Crear plan" });
   await expect(retomado.getByRole("heading", { level: 3, name: "Topes", exact: true })).toBeVisible({ timeout: 60_000 });
-  await expect(retomado).toContainText(TEXTO.estado(3, 5));
+  await expect(retomado).toContainText(TEXTO.estado(3, 6));
   for (const paso of ["General", "Precio y descuentos", "Cobro por orden"]) {
     await expect(botonDelPaso(retomado, TEXTO.guardado(paso))).toBeVisible();
   }
@@ -256,8 +251,10 @@ test("R30: crear y editar un plan por pasos con borrador — crear, cerrar, reto
   for (const modulo of ORDEN_MODULOS) {
     await retomado.getByRole("checkbox", { name: nombreDelModulo(modulo), exact: true }).check();
   }
+  // SLT-214 «Planes: beneficios de texto con ícono» (R7, R9): «Beneficios» tras «Módulos», sin beneficios.
+  await guardarYContinuar(retomado, "Beneficios");
   await guardarYContinuar(retomado, "Revisar y crear");
-  await expect(retomado).toContainText(TEXTO.estado(5, 5));
+  await expect(retomado).toContainText(TEXTO.estado(6, 6));
   const crear = retomado.getByRole("button", { name: "Crear plan", exact: true });
   await expect(crear).toBeEnabled({ timeout: 60_000 });
   await crear.click();
@@ -290,13 +287,13 @@ test("R30: crear y editar un plan por pasos con borrador — editar con empresas
   const dialogo = page.getByRole("dialog", { name: "Editar plan" });
   const form = dialogo.getByRole("form", { name: "Guardar" });
   await expect(form.getByRole("heading", { level: 3, name: "General", exact: true })).toBeVisible({ timeout: 60_000 });
-  await expect(form).toContainText(TEXTO.estado(0, 6));
+  await expect(form).toContainText(TEXTO.estado(0, 7));
   await guardarYContinuar(form, "Precio y descuentos");
   await guardarYContinuar(form, "Cobro por orden");
   await guardarYContinuar(form, "Topes");
   await form.getByRole("textbox", { name: "Usuarios activos con el rol Mensajero" }).fill(TOPE_MENSAJEROS);
   await guardarYContinuar(form, "Módulos");
-  await expect(form).toContainText(TEXTO.estado(4, 6));
+  await expect(form).toContainText(TEXTO.estado(4, 7));
   await cerrarPanel(dialogo);
   await expect(page.getByRole("status").filter({ hasText: TEXTO.borradorQueda })).toBeVisible({ timeout: 30_000 });
 
@@ -311,10 +308,12 @@ test("R30: crear y editar un plan por pasos con borrador — editar con empresas
   const retomado = page.getByRole("dialog", { name: "Editar plan" }).getByRole("form", { name: "Guardar" });
   await expect(retomado.getByRole("heading", { level: 3, name: "Módulos", exact: true })).toBeVisible({ timeout: 60_000 });
   await expect(retomado.getByText(TEXTO.borradorDe)).toBeVisible();
-  await expect(retomado).toContainText(TEXTO.estado(4, 6));
+  await expect(retomado).toContainText(TEXTO.estado(4, 7));
   await irAlPaso(retomado, TEXTO.guardado("Topes"), "Topes");
   await expect(retomado.getByRole("textbox", { name: "Usuarios activos con el rol Mensajero" })).toHaveValue(TOPE_MENSAJEROS);
   await irAlPaso(retomado, "Módulos", "Módulos");
+  // SLT-214 (R7): al editar, «Beneficios» va entre «Módulos» y «Cuándo rige»; se guarda con los del plan.
+  await guardarYContinuar(retomado, "Beneficios");
   await guardarYContinuar(retomado, "Cuándo rige");
 
   // R30.4: «A partir de» F; la tabla dice cuándo recibe el cambio cada empresa. SLT-135 (R14): sin la
@@ -331,7 +330,7 @@ test("R30: crear y editar un plan por pasos con borrador — editar con empresas
 
   // R30.5: programar.
   await guardarYContinuar(retomado, "Revisar y programar");
-  await expect(retomado).toContainText(TEXTO.estado(6, 6));
+  await expect(retomado).toContainText(TEXTO.estado(7, 7));
   const programar = retomado.getByRole("button", { name: "Programar cambio", exact: true });
   await expect(programar).toBeEnabled({ timeout: 60_000 });
   await programar.click();

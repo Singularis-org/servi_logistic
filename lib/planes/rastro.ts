@@ -28,6 +28,7 @@ export type CampoDelPlan =
   | "nombre"
   | "topes"
   | "modulos"
+  | "beneficios"
   | "precio"
   | ClaveDeDescuento
   | "costoPorOrden"
@@ -45,6 +46,7 @@ const CAMPOS: readonly CampoDelPlan[] = [
   "nombre",
   "topes",
   "modulos",
+  "beneficios",
   "precio",
   ...TIPOS_COBRO.map(claveDeDescuento),
   "costoPorOrden",
@@ -96,6 +98,8 @@ export function planCanonico(p: PlanDTO): Record<CampoDelPlan, unknown> {
     nombre: p.nombre,
     topes: topesCanonicos(p.topes),
     modulos: ORDEN_MODULOS.filter((m) => p.modulos.includes(m)),
+    // SLT-214 (R19): el orden es dato, así que va tal cual; solo se quitan las claves de más. Ausente = ninguno.
+    beneficios: (p.beneficios ?? []).map(({ icono, texto }) => ({ icono, texto })),
     precio: precioCanonico(p.precio),
     // SLT-66 (R11): «100» y el «100.00» de la base son el mismo costo; vacío sigue siendo `null`.
     costoPorOrden: p.costoPorOrden === null ? null : importeCanonico(p.costoPorOrden),
@@ -111,6 +115,8 @@ export function planCanonico(p: PlanDTO): Record<CampoDelPlan, unknown> {
 /**
  * Los campos que cambian de `antes` a `despues`. Con `antes = null` (alta) salen todos, con
  * `antes: null`. Un objeto vacío significa «sin cambios»: no se escribe nada (§2.8).
+ *
+ * SLT-214 (design §3.6; R19): un alta sin beneficios no tiene nada que contar y omite la clave.
  */
 export function diferenciasDelPlan(antes: PlanDTO | null, despues: PlanDTO): CambiosDelPlan {
   const d = planCanonico(despues);
@@ -118,6 +124,7 @@ export function diferenciasDelPlan(antes: PlanDTO | null, despues: PlanDTO): Cam
   const cambios: CambiosDelPlan = {};
   for (const campo of CAMPOS) {
     const valorAntes = a === null ? null : a[campo];
+    if (a === null && campo === "beneficios" && JSON.stringify(d[campo]) === "[]") continue;
     if (a !== null && JSON.stringify(valorAntes) === JSON.stringify(d[campo])) continue;
     cambios[campo] = { antes: valorAntes, despues: d[campo] };
   }

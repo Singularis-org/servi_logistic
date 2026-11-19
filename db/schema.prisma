@@ -6193,6 +6193,7 @@ model Plan {
 
   topesPorRol      PlanTopeRol[]
   modulos          PlanModulo[]
+  beneficios       PlanBeneficio[] // SLT-214: en su orden, por `posicion`
   empresas         Organizacion[]         @relation("PlanAsignado")
   cambioProgramado PlanCambioProgramado?
   cambiosDeEmpresa Organizacion[]         @relation("PlanCambioEmpresa") // SLT-86: pendientes hacia este plan
@@ -6258,6 +6259,20 @@ model PlanModulo {
 
   @@id([planId, modulo])
   @@map("plan_modulo")
+}
+
+// SLT-214 (design §1.1; R1, R6) — un beneficio de texto de un plan, en su posición. De PLATAFORMA, como
+// `plan_modulo`. Viven solo en el SQL de 20261120120000: los CHECK de posición, texto e ícono, la RLS sin
+// políticas y el `REVOKE ALL … FROM servi_app`. Sin único por texto: R4 compara sin tildes y eso vive en zod.
+model PlanBeneficio {
+  planId   String @map("plan_id")
+  plan     Plan   @relation(fields: [planId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  posicion Int
+  icono    String
+  texto    String @db.VarChar(120)
+
+  @@id([planId, posicion])
+  @@map("plan_beneficio")
 }
 
 // SL-24 (design §2.8) — el rastro de plataforma de crear, editar y archivar un plan (R29). Solo se

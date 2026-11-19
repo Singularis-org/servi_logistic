@@ -25,7 +25,7 @@ import { tomarTarifaGlobal, type TarifaGlobalBajoLock } from "./_fixtures/cobro-
 import { limpiar459, sembrarPersonas459, type Personas459 } from "./_fixtures/escrituras-459";
 import { cerrarFacturaEnCurso, facturaEnCurso, type FacturaCerrada } from "./_fixtures/factura-cerrada";
 import { capturar, revertida, sqlstateDe } from "./_fixtures/planes";
-import { exigirSinSuperadmin, idDeRol, insertarUsuario, tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
+import { idDeRol, insertarUsuario, obtenerOCrearSuperadmin, tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
 
 // SLT-42 (T5.4): la zona del país de la empresa es la de CR, como antes (molde `pago-plataforma-sl45.test.ts`).
 vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
@@ -75,6 +75,8 @@ let sostenedor: PrismaClient;
 let tarifaGlobal: TarifaGlobalBajoLock | undefined;
 let soltarSuperadmin: () => Promise<void> = async () => {};
 let superadminId: string | null = null;
+// En una base de desarrollo que ya tiene su superadmin, se usa ese y no se borra al acabar.
+let superadminPropio = false;
 let geo: { provinciaId: string; cantonId: string; distritoId: string };
 let estatusInicialId: string;
 
@@ -355,14 +357,17 @@ describeSiHayBase("SLT-60 — la confirmación del pago a la plataforma (Postgre
 
     // SL-32: el superadmin es único en la base; este archivo commitea el suyo con el lock tomado.
     soltarSuperadmin = await tomarLockDeSuperadmin();
-    await exigirSinSuperadmin(base);
-    superadminId = await bajoLockDeEscrituraReal(() =>
-      base.$transaction(async (tx) => {
-        const u = await insertarUsuario(tx, await idDeRol(tx, "superadmin"), null);
-        if (!u.desenlace.ok) throw new Error(`no se sembró el superadmin: ${JSON.stringify(u.desenlace)}`);
-        return u.id;
-      }),
+    const superadmin = await obtenerOCrearSuperadmin(base, () =>
+      bajoLockDeEscrituraReal(() =>
+        base.$transaction(async (tx) => {
+          const u = await insertarUsuario(tx, await idDeRol(tx, "superadmin"), null);
+          if (!u.desenlace.ok) throw new Error(`no se sembró el superadmin: ${JSON.stringify(u.desenlace)}`);
+          return u.id;
+        }),
+      ),
     );
+    superadminId = superadmin.id;
+    superadminPropio = superadmin.propio;
 
     const estatus = await base.orderStatus.findUnique({ where: { value: "por_recolectar_en_tienda" }, select: { id: true } });
     if (estatus === null) throw new Error("falta el estatus «por_recolectar_en_tienda»: corre `pnpm run db:seed`");
@@ -418,7 +423,8 @@ describeSiHayBase("SLT-60 — la confirmación del pago a la plataforma (Postgre
       await limpiar459(base, A?.p ?? null);
       await limpiar459(base, B?.p ?? null);
       await limpiar459(base, C?.p ?? null);
-      if (superadminId !== null) {
+      // Solo el superadmin propio: el que ya tenia la base no se borra.
+      if (superadminId !== null && superadminPropio) {
         const id = superadminId;
         await bajoLockDeEscrituraReal(() => base.$executeRawUnsafe(`DELETE FROM "usuario" WHERE "id" = $1`, id));
       }

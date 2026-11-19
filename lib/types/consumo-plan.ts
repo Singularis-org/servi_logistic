@@ -1,5 +1,6 @@
 import type { ModuloApagable } from "@prisma/client";
 
+import type { Beneficio } from "@/lib/planes/beneficios";
 import type { RolConTope, TipoCobro } from "@/lib/types/planes";
 
 // SLT-58 (design §5) — lo que ve una empresa de su plan y el superadmin en el detalle de una empresa.
@@ -121,6 +122,8 @@ export type PlanConConsumo = {
   /** `textoDelPrecio`: sin moneda (D26). */
   precioTexto: string;
   modulos: { clave: ModuloApagable; nombre: string }[];
+  /** SLT-214 (R23): los de la versión que corre la empresa, en su orden; vacía = la sección no se pinta. */
+  beneficios: Beneficio[];
   filas: FilaConsumo[];
   /** SLT-86 (R7, R8): las órdenes vivas del período en curso, sin tope. */
   ordenesDelPeriodo: number;

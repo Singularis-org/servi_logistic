@@ -151,7 +151,8 @@ describe("454/R54-R55 — la fila con gestión pendiente no ofrece cambio de dí
     const { onCambiarDiaReparto } = renderListado([PENDIENTE, POR_RECOGER]);
 
     await user.click(screen.getByRole("checkbox", { name: "Seleccionar REM-pend" }));
-    expect(screen.getByText(/1 seleccionada\(s\) en esta página/)).toBeInTheDocument();
+    // SLT-222 R1506: el contador cuenta el TOTAL marcado (ya no «… en esta página»).
+    expect(screen.getByText(/1 seleccionada ·/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: CAMBIAR_DIA })).toBeNull();
 
     // Control: la misma barra SÍ la ofrece para la `por_recoger`, y lo que recibe no incluye la

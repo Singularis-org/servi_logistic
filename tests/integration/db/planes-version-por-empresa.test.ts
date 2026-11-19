@@ -5,6 +5,7 @@ import type { PrismaClient } from "@prisma/client";
 
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { PlanesService } from "@/lib/services/PlanesService";
+import type { Beneficio } from "@/lib/planes/beneficios";
 import type { TipoCobro } from "@/lib/types/planes";
 import { comoApp, crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones";
 
@@ -44,12 +45,16 @@ interface Escenario {
   inactivo: Record<"quincenal" | "mensual", string>;
 }
 
-async function escenario(tx: TxDeTest): Promise<Escenario> {
+/** SLT-214 (R16): los beneficios del plan al crearlo y los de la edición programada. Sin ellos, ni se mandan. */
+type BeneficiosDelEscenario = { delPlan: Beneficio[]; programados: Beneficio[] };
+
+async function escenario(tx: TxDeTest, beneficios?: BeneficiosDelEscenario): Promise<Escenario> {
   const servicio = new PlanesService(planesEnTx(tx), () => AHORA);
   const entrada = entradaAsignable({
     nombre: `SLT128 versión ${randomUUID().slice(0, 6)}`,
     topes: { porRol: { admin: 3 }, apiKeys: null },
     costoPorOrden: "100.00",
+    ...(beneficios && { beneficios: beneficios.delPlan }),
   });
   const creado = await servicio.crear(SUPERADMIN, entrada);
   if (creado.estado !== "ok") throw new Error(`crear: ${JSON.stringify(creado)}`);
@@ -75,6 +80,7 @@ async function escenario(tx: TxDeTest): Promise<Escenario> {
     precio: entrada.precio,
     costoPorOrden: "80.00",
     costoPorOrdenPorcentual: null,
+    ...(beneficios && { beneficios: beneficios.programados }),
     vigenteDesde: "2026-11-16",
   });
   if (programado.estado !== "ok") throw new Error(`programar: ${JSON.stringify(programado)}`);
@@ -191,6 +197,44 @@ describeSiHayBase("SLT-128 — la versión del plan por empresa (R2, R12, R26)",
       dto: { nombre: r.e.nombreViejo, costoPorOrden: "100.00", topes: { porRol: { admin: 3 } } },
       cambio: { vigenteDesde: new Date("2026-12-01T06:00:00.000Z"), version: { nombre: "SLT128 versión nueva" } },
     });
+  });
+
+  it("SLT-214 R16: con el cambio a medias, la que lo recibió ve los beneficios nuevos y la que no, los de antes; el plan no cambia", async () => {
+    const beneficios: BeneficiosDelEscenario = {
+      delPlan: [
+        { icono: "check", texto: "Soporte por correo" },
+        { icono: "camion", texto: "Envíos estándar" },
+      ],
+      programados: [
+        { icono: "soporte", texto: "Soporte 24 h" },
+        { icono: "check", texto: "Soporte por correo" },
+      ],
+    };
+    const r = await revertida(base, async (tx) => {
+      const e = await escenario(tx, beneficios);
+      await comoApp(tx, e.quincenal);
+      const miQuincenal = await miPlan(tx, e.quincenal);
+      await fijarEmpresa(tx, e.mensual);
+      const miMensual = await miPlan(tx, e.mensual);
+      await tx.$executeRawUnsafe("RESET ROLE");
+      await fijarEmpresa(tx, "");
+      const repo = planesEnTx(tx);
+      return {
+        miQuincenal,
+        miMensual,
+        detalleQuincenal: await repo.planDeEmpresa(e.quincenal),
+        detalleMensual: await repo.planDeEmpresa(e.mensual),
+        delPlan: await tx.planBeneficio.findMany({ where: { planId: e.planId }, orderBy: { posicion: "asc" }, select: { icono: true, texto: true } }),
+      };
+    });
+    expect(r.miQuincenal.beneficios).toEqual(beneficios.programados);
+    expect(r.miMensual.beneficios).toEqual(beneficios.delPlan);
+    // La mensual ve el cambio que le llega con la lista nueva.
+    expect(r.miMensual).toMatchObject({ cambio: { version: { beneficios: beneficios.programados } } });
+    expect(r.detalleQuincenal?.plan).toMatchObject({ dto: { beneficios: beneficios.programados } });
+    expect(r.detalleMensual?.plan).toMatchObject({ dto: { beneficios: beneficios.delPlan } });
+    // Programar y recibir no tocan la lista del plan: cambia al promover (R17).
+    expect(r.delPlan).toEqual(beneficios.delPlan);
   });
 
   it("R12, R28: con su recepción «no aplicada», «Mi plan» y el detalle del superadmin no muestran cambio programado y siguen con la versión de antes", async () => {

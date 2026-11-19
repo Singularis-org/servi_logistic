@@ -27,7 +27,7 @@ import {
   urlDeBaseDeDatos,
   type TxDeTest,
 } from "./_postgres-real";
-import { idDeRol, insertarUsuario, liberarHuecoDeSuperadmin, tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
+import { idDeRol, superadminDelCaso, tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
 
 // SLT-87 (design §2, §6; R11, R12, R13, R14, R19) — `bug_report` contra Postgres real.
 // SLT-97 (design §2, §4, §5; R3, R4, R5, R7–R10, R13–R18, R20, R21, R23) — el estado, el historial y las
@@ -286,25 +286,19 @@ async function cambiosDe(tx: TxDeTest, id: string): Promise<number> {
 
 /**
  * El superadmin sin empresa del caso, DENTRO de la tx revertida (mismo criterio que
- * `vehiculos-plataforma.test.ts`): si la base no tiene ninguno se siembra; si ya tiene uno, se usa ese
- * con el nombre fijado solo en esta tx, para que el congelado sea determinista.
+ * `vehiculos-plataforma.test.ts`): si la base no tiene ninguno (CI) se siembra, y su nombre congelado
+ * es el literal `NOMBRE_DEL_SUPERADMIN`. Si ya tiene uno (una base de desarrollo), se usa ese SIN
+ * tocarlo, y el nombre esperado se compone de sus columnas, leidas por SQL a mano.
  */
-async function superadminSinEmpresa(tx: TxDeTest): Promise<string> {
-  const rolSuperadmin = await idDeRol(tx, "superadmin");
-  const existente = await tx.$queryRawUnsafe<{ id: string }[]>(`SELECT "id" FROM "usuario" WHERE "rol_id" = $1`, rolSuperadmin);
-  if (existente.length === 0) {
-    await liberarHuecoDeSuperadmin(tx, rolSuperadmin);
-    const u = await insertarUsuario(tx, rolSuperadmin, null);
-    if (!u.desenlace.ok) throw new Error(`no se sembro el superadmin: ${JSON.stringify(u.desenlace)}`);
-    return u.id;
-  }
-  const id = existente[0].id;
-  await tx.$executeRawUnsafe(
-    `UPDATE "usuario" SET "nombre" = $1, "primer_apellido" = NULL, "segundo_apellido" = NULL WHERE "id" = $2`,
-    NOMBRE_DEL_SUPERADMIN,
-    id,
+async function superadminSinEmpresa(tx: TxDeTest): Promise<{ id: string; nombre: string }> {
+  const superadmin = await superadminDelCaso(tx, await idDeRol(tx, "superadmin"));
+  if (superadmin.propio) return { id: superadmin.id, nombre: NOMBRE_DEL_SUPERADMIN };
+  const [fila] = await tx.$queryRawUnsafe<{ nombre: string }[]>(
+    `SELECT concat_ws(' ', nullif(btrim("nombre"), ''), nullif(btrim("primer_apellido"), ''), nullif(btrim("segundo_apellido"), '')) AS nombre
+       FROM "usuario" WHERE "id" = $1`,
+    superadmin.id,
   );
-  return id;
+  return { id: superadmin.id, nombre: fila.nombre.slice(0, 120) };
 }
 
 describeSiHayBase("SLT-87 — bug_report en Postgres (R11–R14, R19)", () => {
@@ -561,7 +555,7 @@ describeSiHayBase("SLT-87 — bug_report en Postgres (R11–R14, R19)", () => {
             )
           )[0];
         const id = await sembrarReporte(tx);
-        const actorId = await superadminSinEmpresa(tx);
+        const { id: actorId } = await superadminSinEmpresa(tx);
         const antes = await contar();
         const s = servicioEn(tx);
         const actor = { ...SUPERADMIN, usuarioId: actorId };
@@ -835,7 +829,7 @@ describeSiHayBase("SLT-87 — bug_report en Postgres (R11–R14, R19)", () => {
     it("R20 — una nota vacía se guarda como NULL y el CHECK rechaza una de 501", async () => {
       const r = await revertida(async (tx) => {
         const id = await sembrarReporte(tx);
-        const actorId = await superadminSinEmpresa(tx);
+        const { id: actorId } = await superadminSinEmpresa(tx);
         const res = await servicioEn(tx).cambiarEstado(
           { ...SUPERADMIN, usuarioId: actorId },
           { reporteId: id, estado: "in_review", nota: "" },
@@ -878,7 +872,7 @@ describeSiHayBase("SLT-87 — bug_report en Postgres (R11–R14, R19)", () => {
     it("R21 — cambiarEstado deja una entrada con from, to, nota, actor_name del superadmin y created_at", async () => {
       const r = await revertida(async (tx) => {
         const id = await sembrarReporte(tx);
-        const actorId = await superadminSinEmpresa(tx);
+        const { id: actorId, nombre: actorNombre } = await superadminSinEmpresa(tx);
         const res = await repoEn(tx).cambiarEstado({
           reporteId: id,
           destino: "in_review",
@@ -890,7 +884,7 @@ describeSiHayBase("SLT-87 — bug_report en Postgres (R11–R14, R19)", () => {
              FROM "bug_report_status_change" WHERE "bug_report_id" = $1`,
           id,
         );
-        return { res, actorId, filas, estado: await estadoDe(tx, id) };
+        return { res, actorId, actorNombre, filas, estado: await estadoDe(tx, id) };
       });
       expect(r.res).toEqual({ resultado: "ok" });
       expect(r.estado).toBe("in_review");
@@ -900,7 +894,7 @@ describeSiHayBase("SLT-87 — bug_report en Postgres (R11–R14, R19)", () => {
         a: "in_review",
         note: "Lo miro",
         actor_user_id: r.actorId,
-        actor_name: NOMBRE_DEL_SUPERADMIN,
+        actor_name: r.actorNombre,
       });
       expect(r.filas[0].created_at).toBeInstanceOf(Date);
     });
@@ -908,7 +902,7 @@ describeSiHayBase("SLT-87 — bug_report en Postgres (R11–R14, R19)", () => {
     it("R21 — si falla la escritura del historial, el estado no cambia", async () => {
       const r = await revertida(async (tx) => {
         const id = await sembrarReporte(tx);
-        const actorId = await superadminSinEmpresa(tx);
+        const { id: actorId } = await superadminSinEmpresa(tx);
         const error = await repoEn(tx, true)
           .cambiarEstado({ reporteId: id, destino: "resolved", nota: null, actorUsuarioId: actorId })
           .then(

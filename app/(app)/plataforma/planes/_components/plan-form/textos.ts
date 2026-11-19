@@ -61,6 +61,7 @@ export const TEXTOS_PLAN_FORM = {
     orden: "Cobro por orden",
     topes: "Topes",
     modulos: "Módulos",
+    beneficios: "Beneficios",
     vigencia: "Cuándo rige",
     revisarCrear: "Revisar y crear",
     revisarEditar: "Revisar y programar",
@@ -94,6 +95,17 @@ export const TEXTOS_PLAN_FORM = {
   descuentoPorciento: "%",
   quitarDescuento: (tipo: TipoCobro) => `Quitar descuento ${tipo}`,
   agregarDescuento: "Agregar descuento",
+
+  /** SLT-214 (design §6; R8, R9, R14): el paso «Beneficios» y su fila de «Revisar». */
+  beneficios: "Beneficios",
+  agregarBeneficio: "Agregar beneficio",
+  sinBeneficiosEnElPaso: "Este plan no tiene beneficios.",
+  sinBeneficios: "Sin beneficios",
+  iconoDelBeneficio: (n: number) => `Ícono del beneficio ${n}`,
+  textoDelBeneficio: (n: number) => `Texto del beneficio ${n}`,
+  subirBeneficio: (n: number) => `Subir beneficio ${n}`,
+  bajarBeneficio: (n: number) => `Bajar beneficio ${n}`,
+  quitarBeneficio: (n: number) => `Quitar beneficio ${n}`,
 
   // SLT-144 (design §9): el borrador del servidor. `pasoGuardado` y `marcaSinGuardar` viven en
   // `TEXTOS_FORMULARIO_POR_PASOS`, porque los pinta el componente compartido.
