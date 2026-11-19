@@ -39,6 +39,7 @@ quitan.
 | 2026-11-19 | Tamaño (P1) | Un solo PR, por encima del tope: unos 47 archivos y unas 750 líneas de producción. Sin corte. | — |
 | 2026-11-19 | Fuera | Niveles por volumen (SLT-215), descuentos (SLT-216) y página pública (SLT-116). | — |
 | 2026-11-19 | Aviso cuando solo cambian íconos u orden | La línea dice «Cambian los íconos o el orden de los beneficios.» (humano, P8). | R25 |
+| 2026-11-19 | «Revisar» al editar | La fila «Beneficios» sale solo si cambian, como «antes → después», igual que las demás filas (humano). | R14 |
 
 ## Requisitos (EARS)
 
@@ -106,8 +107,9 @@ quitan.
 - **R12.** SI se confirma un borrador sin el paso «Beneficios» guardado, ENTONCES el sistema DEBE responder
   `pasos_pendientes` con `beneficios`. Es el caso, por ejemplo, de un borrador empezado antes de esta ficha.
 - **R13.** CUANDO se edita un plan sin borrador, el paso «Beneficios» DEBE abrir con los beneficios vigentes del plan.
-- **R14.** El paso «Revisar» DEBE listar los beneficios con su ícono y en orden. Sin beneficios, dice «Sin
-  beneficios».
+- **R14.** Al crear, el paso «Revisar» DEBE listar los beneficios con su ícono y en orden. Sin beneficios, dice
+  «Sin beneficios». Al editar, la fila «Beneficios» DEBE salir solo si los beneficios cambian, como «antes →
+  después», igual que las demás filas; si no cambian, no sale.
 
 ### Alta, edición y rastro
 

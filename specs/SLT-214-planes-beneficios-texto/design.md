@@ -276,7 +276,7 @@ export function ListaDeBeneficios({ beneficios, plegable, vacio }: {
 |---|---|---|
 | Listado del superadmin (`Catalogo`) | Columna «Beneficios», después de «Topes», con `plegable={3}`. Con `SOLO_DESDE_MD`, como Visibilidad, para que la tabla no se rompa en móvil | «Sin beneficios» |
 | Detalle del plan (`PlanDetalle`) | `Dato` «Beneficios» después de «Módulos incluidos», con la lista completa | «Sin beneficios» |
-| Revisar (`PasoRevisar`) | Fila «Beneficios» con la lista completa | «Sin beneficios» |
+| Revisar (`PasoRevisar`) | Al crear, fila «Beneficios» con la lista completa. Al editar, la fila sale solo si cambian, como «antes → después», igual que las demás filas | «Sin beneficios» (al crear) |
 | «Mi plan» (`PlanActivo`) | Bloque «Beneficios» después de los módulos, con la lista completa | No se pinta |
 | Tarjetas para cambiar de plan (`TarjetaDePlan`) | Después de `ListaDeModulos`, con `plegable={3}` | No se pinta |
 

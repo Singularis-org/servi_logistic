@@ -84,11 +84,11 @@ Orden: T1 → T2 → (T3, T4, T5 [P]) → T6 → (T7, T8 [P]) → T9 → T10 →
   - Pasan por «Beneficios» después de «Módulos», y el contador pasa a 6 al crear y 7 al editar.
   - **Hecho:** sus aserciones de carga útil no cambian, salvo el contador. `pnpm exec vitest related --run` sobre el
     diff, en verde.
-- [ ] **T11. E2E nuevo** (`e2e/planes-beneficios.spec.ts`). R26. Depende de T9 y T10.
+- [x] **T11. E2E nuevo** (`e2e/planes-beneficios.spec.ts`). R26. Depende de T9 y T10.
   - **Hecho:** en verde en local, sobre una base desechable nueva y con `NEXT_PUBLIC_APP_URL` como en `gate.yml`.
     Pasan también, en local, los cuatro E2E de planes adaptados y `e2e/mi-plan-cambiar-plan.spec.ts`
     (`docs/perfil-agentes.md > E2E en local antes del PR`).
-- [ ] **T12. Cierre.**
+- [x] **T12. Cierre.**
   - `./init.sh` en verde. El aviso o el rojo de tamaño queda cubierto por la aceptación.
   - El mapa `R<n> -> test` de R1 a R26 está en `progress/impl_SLT-214.md`.
   - **Tamaño aceptado:** el humano aceptó el 2026-11-19 un solo PR por encima de `gate.tamano_pr`, sin corte: unos

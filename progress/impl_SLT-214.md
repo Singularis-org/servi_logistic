@@ -302,7 +302,7 @@ Veredicto: T11 escrito, tipado, lint y guardias en verde; su ejecución queda pa
 | R11 | `plan-form-borrador.test.ts` «R11» (2); `PlanFormBorrador.test.tsx` «SLT-214 R11» |
 | R12 | `plan-borrador-confirmar.test.ts` «SLT-214 R12» |
 | R13 | `PlanFormBeneficios.test.tsx` «R13» (2); `plan-form-borrador.test.ts` «R13» |
-| R14 | `PlanFormBeneficios.test.tsx` «R14» (3); `PlanFormRevisar.test.tsx` «R22: al crear…» |
+| R14 | `PlanFormBeneficios.test.tsx` «R14» (3: crear; editar «antes → después» o sin fila; plan que se queda sin beneficios); `PlanFormRevisar.test.tsx` «R22: al crear…» |
 | R15 | `plan-beneficio.test.ts` «R15»; `plan-borrador-confirmar.test.ts` «SLT-214 R15» |
 | R16 | `plan-borrador-confirmar.test.ts` «SLT-214 R16»; `planes-version-por-empresa.test.ts` «SLT-214 R16» |
 | R17 | `plan-beneficio.test.ts` «R17» |
@@ -313,8 +313,8 @@ Veredicto: T11 escrito, tipado, lint y guardias en verde; su ejecución queda pa
 | R22 | `PlanDetalle.test.tsx` «R22» |
 | R23 | `mi-plan-repository.test.ts` (3); `MiPlanModule.test.tsx` «R23»; ida y vuelta «R18, R23» |
 | R24 | `mi-plan-cambio-service.test.ts` «SLT-214 R24»; `MiPlanCambioDePlan.test.tsx` «R24» (y «Mostrar más» no selecciona) |
-| R25 | `beneficios.test.ts` «SLT-214 R25» (con `lineasDeCambioDelPlan`); `MiPlanModule.test.tsx` «R25» |
-| R26 | `e2e/planes-beneficios.spec.ts` (2 casos) — pendiente de CI |
+| R25 | `beneficios.test.ts` «SLT-214 R25» (con `lineasDeCambioDelPlan`); `MiPlanModule.test.tsx` «R25»; `tests/unit/services/email/plantilla-cambio-plan.test.ts` «SLT-214 — beneficios en el correo…» (2); `tests/components/PlanEmpresa.test.tsx` «SLT-214 R25 — beneficios en el cambio programado…» (2) |
+| R26 | `e2e/planes-beneficios.spec.ts` (2 casos), verde en CI `e2e (aislamiento)`, run 44576322614 |
 
 Ningún R sin test.
 
@@ -339,3 +339,13 @@ Al crear sale siempre. R14 no precisa el caso de edición.
   del leader; se verifican en el CI del PR #245.
 - `next build` no corrido en local (misma razón); lo cubre CI.
 - Rojo CI `planes.composition-root.test.ts` (`TypeError ... reading 'map'`): la fila falsa de Prisma no traía `beneficios` (producción la trae siempre por el `include`). Arreglo solo en el test: `beneficios: []` en `filaPlan` y en el DTO esperado. Vitest de los 42 archivos unitarios que usan `PlanesRepository` (sin guardias estáticas): `Test Files 42 passed (42) / Tests 1056 passed (1056)`; eslint del archivo: `No issues found`.
+
+## Vuelta 2 (review): 2026-11-19
+
+Hecho en la vuelta 2: R14 precisada en el spec con la decisión del humano y design §6 ajustado. R25 tiene 4 tests directos: el correo y `PlanEmpresa`. T11 se marcó [x] con la evidencia del CI `e2e (aislamiento)`, run 44576322614. T12 se marcó [x].
+
+Salida local, con `NODE_OPTIONS=--max-old-space-size=8192`:
+- typecheck: rc 0.
+- `test:guardias`: `Test Files 357 passed | 3 skipped (360)`, `Tests 5380 passed | 28 skipped (5408)`.
+- `vitest run plantilla-cambio-plan.test.ts PlanEmpresa.test.tsx`: `Test Files 2 passed (2)`, `Tests 76 passed (76)`.
+- `./init.sh`: no se corrió entero; ese gate se cubre en CI (`gate-completo`).
