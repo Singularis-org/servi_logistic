@@ -615,3 +615,4 @@ Veredicto B1: el DTO del libro ya no lleva el id de nadie; el test lo prueba en 
 `obtenerOCrearSuperadmin`, como el test de SLT-60: solo borra el superadmin si lo creó él. Aplicada
 `20261120120000_plan_beneficio` (SLT-214, que entró antes) en las dos bases de la feature. Typecheck exit 0, lint 0;
 `pago-plataforma-por-fuera` y `migracion-slt143-ida-y-vuelta`: 27 de 27 contra servi_logistic_slt143.
+gate-completo (run 44621517717), tres rojos de la rama: `verificar-rls-despliegue` a 93 tablas / 181 `sme_*` (contrato 94/181/93); `orden-traspaso-migration` lista `20261120130000_pago_plataforma_por_fuera`; `empresas-plataforma` crea `pago_plataforma_confirmacion` y `pago_plataforma_anulacion` en su esquema desechable (T2.5). Uno tras otro contra servi_logistic_slt143: 4/4, 15/15, 5/5; tsc 0, eslint 0.

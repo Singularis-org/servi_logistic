@@ -231,11 +231,15 @@ describeSiHayBase("SL-32 — listado de empresas del superadmin contra Postgres 
       // el tipo de la columna. Vacías: aquí solo importa que existan. SLT-118 (R18): y las cuotas de
       // las facturas cerradas (`factura_plataforma`); su `estado` es texto, sin enum que copiar. SLT-60 (R7, R8):
       // y lo pagado sale de las aplicaciones de los pagos confirmados (`pago_plataforma_aplicacion`), sin enums.
+      // SLT-143 (T2.5): solo cuentan las aplicaciones cuya confirmación no tiene anulación, así que la lectura
+      // cruza `pago_plataforma_confirmacion` y `pago_plataforma_anulacion`; tampoco tienen enums.
       for (const tabla of [
         "cobro_plataforma_movimiento",
         "wallet_movimiento",
         "factura_plataforma",
         "pago_plataforma_aplicacion",
+        "pago_plataforma_confirmacion",
+        "pago_plataforma_anulacion",
       ]) {
         await prisma.$executeRawUnsafe(`CREATE TABLE "${esquema}"."${tabla}" (LIKE "public"."${tabla}")`);
       }
