@@ -143,3 +143,51 @@ Diff de la vuelta: solo `progress/features/SLT-209.md` (+6 líneas, la fuente de
 
 ### Veredicto vuelta 2
 **OK.** No queda ningún bloqueante. Siguen abiertos los menores m1 a m7, ninguno es para el merge.
+
+## Vuelta 3 (acotada a e208b17b..add55240)
+
+Arreglo del rojo de CI del E2E `pwa-mensajero-cierre-barra-fija` (proyecto dinero): en el teléfono el
+modal «Ver» desplaza entero y el pie va `sticky`.
+
+### Checklist
+- [x] **Escritorio = prod.** Script (`quitar-maxmd.cjs`: quita comentarios y todo token `max-md:*` de
+  `DetalleCierre.tsx`, normaliza espacios y compara). `origin/dev` (825d0f4c) == `origin/prod` (0891b054).
+  Contra HEAD las únicas diferencias desde `md` son: `PANEL_MODAL` queda en `"overflow-auto"` (el literal
+  que dev pasaba en línea), `TABS_MODAL`/`CABECERA_MODAL`/`PIE_MODAL` quedan vacías, y un `" " +` vacío
+  en `MARCO_MODAL`. Desde `md` las clases son idénticas a dev y prod. `tailwind-merge` no colapsa
+  nada nuevo: los tokens añadidos solo llevan `max-md:`, y no chocan con los de `md`.
+- [x] **`/cierres-admin` en el móvil** (comparte `DetalleCierre` vía `CierresAdminModule.tsx:1426`,
+  `marco="modal"`). Revisión estática: el `DialogContent` (`flex flex-col`, `max-md:h-dvh
+  max-md:overflow-y-auto`) es el que desplaza; el `footer` es hijo directo, `shrink-0`, con
+  `max-md:sticky max-md:bottom-0 max-md:z-10 max-md:bg-background`. Con poco contenido, `Tabs` (`flex-1`)
+  lo empuja abajo; con mucho, se pega al borde inferior del modal. Aprobar/rechazar siguen en el pie,
+  a la vista y sin nada `fixed` encima (el pie fijo `max-md:fixed` es solo de `PIE_PAGINA`). No hay
+  E2E que pulse esos botones a 360 px en el modal admin: no lo pude ejecutar (sin build local); queda
+  como verificación en Preview (ver m1).
+- [x] **El E2E no se aflojó; se apretó.** Se mantienen `separacion <= 1`, `asoman 0`, `ajenos 0`, alfa 1 y
+  ancho; se añade `listaVisible >= 150` y una segunda medida a 667 px. Esperar a que se oculte «Cierre
+  solicitado correctamente.» está justificado: es el `toast.success` que `CierreDiaModule.tsx:410` emite al
+  solicitar el cierre, global y pasajero, pintado por encima de todo; no es de este diff ni defecto de la
+  barra. La espera va antes de medir y no excluye nada de la medida: si la barra tuviera algo encima de
+  forma permanente, `ajenos` seguiría rojo. El `scrollTop` relativo (lista 60 px bajo el borde) sirve
+  para los dos que desplazan (panel desde md, modal en el teléfono).
+- [x] **El test de componente nuevo falla con el código anterior.** Con `DetalleCierre.tsx` de
+  `e208b17b` y el test de HEAD: `× modal: max-md:overflow-y-auto …` → `1 failed` (`expected [ 'fixed',
+  …] to deeply equal ArrayContaining`). Restaurado con `git checkout --`. Con HEAD: `46 passed`.
+- [x] Lint de los 3 archivos: 0 errores; 1 aviso `'lista' is defined but never used` (l. 51 del spec),
+  que ya estaba en e208b17b (l. 47).
+- [x] Tamaño: 14/40 archivos, 158/1000 de producción, 280/3000 de tests.
+- [ ] CI del PR #240 sobre add55240: pendiente al escribir esto (`e2e (dinero)` en curso). El leader no
+  avisa «listo para mergear» hasta que esté verde.
+
+### Hallazgos
+- **menor m1.** No hay prueba ejecutable de que en `/cierres-admin` a 360 px los botones del pie del modal
+  se ven y se pulsan; la revisión es estática (ver checklist). Comprobarlo en Preview con un admin demo en
+  el teléfono antes de promover.
+- **menor m2.** El test de componente nuevo ya no fija `pt-4` del panel desde `md` (el anterior sí). Hoy lo
+  cubre `overflow-auto` + la comparación con dev/prod de esta vuelta; si se quiere un guardián de
+  «escritorio = prod» automático, que afirme también `pt-4`, `min-h-0` y `md:p-6`.
+- **menor m3.** Aviso de lint heredado `lista` sin usar en el spec E2E.
+
+### Veredicto vuelta 3: OK
+Sin bloqueantes. Condicionado a que el CI del PR #240 sobre add55240 termine en verde.
