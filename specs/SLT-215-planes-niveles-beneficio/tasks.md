@@ -5,7 +5,7 @@ Orden: T1 → T2 → (T3, T4, T5 [P]) → T6 → T7 → (T8, T9 [P]) → T10 →
 
 ## Tasks
 
-- [ ] **T1. Esquemas y textos** (`lib/planes/niveles.ts`, `lib/types/planes.ts`). R1–R5, R18, R20, R21.
+- [x] **T1. Esquemas y textos** (`lib/planes/niveles.ts`, `lib/types/planes.ts`). R1–R5, R18, R20, R21.
   - Lleva `MAX_NIVELES`, `Nivel`, `DescuentoNivel`, `descuentoNivelSchema`, `nivelSchema`, `nivelesSchema`,
     `descuentosDelNivel`, `textoDelNivel` y `textoDeLosNiveles` (design §3.1). `SOLO_UNA_FORMA` pasa a exportarse.
   - En `lib/types/planes.ts`, `niveles` opcional en `crearPlanSchema` y `edicionDelPlan`, y en `VersionPlan`,
@@ -13,7 +13,7 @@ Orden: T1 → T2 → (T3, T4, T5 [P]) → T6 → T7 → (T8, T9 [P]) → T10 →
   - **Hecho:** `tests/unit/planes/niveles.test.ts` en verde con: meta 0, decimal y no creciente (R3); porcentaje 0,
     100,01 y 100; monto 0 y 0,01; las dos formas (R4); 11 niveles (R5); `descuentosDelNivel` del ejemplo 10 % + 10 %
     (R2); los textos de R21 en porcentaje y en monto. `pnpm run typecheck` en verde.
-- [ ] **T2. Migraciones y esquema** (`db/schema.prisma`, `db/migrations/20261121120000_plan_nivel_job_enum/`,
+- [x] **T2. Migraciones y esquema** (`db/schema.prisma`, `db/migrations/20261121120000_plan_nivel_job_enum/`,
   `db/migrations/20261121120100_plan_nivel/`, `lib/db/modelos-de-negocio.ts`). R6, R7, R22–R30, R35–R37. Depende de T1.
   - Las tres tablas de design §1 con sus CHECK, RLS, políticas y `REVOKE`; el CHECK de pasos con `niveles`; las cinco
     funciones de §2; el relleno de R37; el valor `plan_niveles_cerrar` de `job_tipo` (§2.6); los dos `down.sql`.

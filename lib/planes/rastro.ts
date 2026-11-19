@@ -1,4 +1,5 @@
 import { ORDEN_MODULOS } from "@/lib/modulos/catalogo";
+import { importeCanonico } from "@/lib/planes/importes";
 import {
   ROLES_CON_TOPE,
   TIPOS_COBRO,
@@ -55,11 +56,8 @@ const CAMPOS: readonly CampoDelPlan[] = [
   "archivado",
 ];
 
-/** Texto con dos decimales y sin ceros a la izquierda, sin pasar por `Number` («007.5» → «7.50»). */
-export function importeCanonico(texto: string): string {
-  const [entero, decimales = ""] = texto.split(".");
-  return `${entero.replace(/^0+(?=\d)/, "")}.${decimales.padEnd(2, "0")}`;
-}
+// SLT-215: vive en `importes.ts`, un módulo hoja que también usa `niveles.ts`; se reexporta con su nombre.
+export { importeCanonico };
 
 /** El costo base del rastro: solo el mensual; los descuentos van en sus claves. */
 type CostoBaseDelRastro = { tipo: "sin_precio" } | { tipo: "monto"; mensual: string };
