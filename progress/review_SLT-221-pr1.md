@@ -154,3 +154,39 @@ T1.8 pide ahí la evidencia del cierre y la comprobación de lo que el usuario v
 
 ## Para la vuelta 2
 Corregir B1 y B3, correr los E2E afectados en local (B2) y dejar sus salidas en la bitácora; marcar T1.7.
+
+## Vuelta 2 (acotada a 9b158401..58eee134)
+
+### Veredicto vuelta 2: **APROBADO** (0 bloqueantes, 1 menor nuevo)
+
+- **B1 — resuelto.** `e2e/usuario-corregir-cedula.spec.ts` siembra el tipo con `(paisId: "CR", clave: "cedula_fisica")`,
+  la clave real del catálogo. Hay constancia de que pasa en local (B2).
+- **B2 — resuelto.** La bitácora (`progress/impl_SLT-221.md`, vuelta 2) deja constancia de una base nueva
+  `servi_slt221_e2e` con deploy, seed y `next build` (`NEXT_PUBLIC_APP_URL` en el puerto del E2E), y de
+  `playwright test` con los tres specs afectados más la dependencia `plataforma-vacia`: **34 passed, 0 failed,
+  0 flaky, `E2E_EXIT=0`**. También `./init.sh` con `INIT_EXIT=0`. No volví a correr el E2E.
+- **B3 — resuelto.** `UsuarioForm.tsx` solo manda `cedula` si `form.cedula !== usuario?.cedula`. Nuevo test
+  «SLT-42 R9: sin tocar el documento, editar otro campo no manda `cedula` aunque la guardada pase de 30»
+  (cédula `APIKEY-` de 67 caracteres; edita el nombre; afirma que se envía sin `cedula` y que el campo no
+  queda inválido). **Mutación:** volví a poner `cedula: form.cedula` sin condición y ese test cae
+  (`1 failed | 37 passed`); lo revertí y el árbol quedó limpio. Sin la mutación,
+  `usuario-form.test.tsx` + `historial-acciones-descarga-columnas.test.ts` dan `56 passed`. R1606 sigue
+  cubierto: el test «el documento editado viaja en el payload» cambia la cédula y la ve enviada.
+- **m2 — resuelto.** Test de la descarga con `usuario_cedula_cambiada` pasada por `aDTO` real. Los literales
+  del contrato están escritos a mano: etiqueta, «Cambia permisos», entidad, anterior y nuevo. Además, el filtro
+  por categoría la encuentra.
+- **m3 — resuelto.** Ya existe `progress/features/SLT-221.md`.
+- **R1609:** la categoría se ajustó a la etiqueta real «Cambia permisos» (`CATEGORIA_LABELS.cambia_permisos`).
+  Es una decisión del leader anotada en el requisito y coherente con lo que muestran la pantalla y la
+  descarga. Sin objeción.
+- **m1:** sigue pendiente para el PR 2, como estaba previsto.
+
+#### m4 — menor nuevo: textos que dicen una etiqueta que la pantalla no muestra
+En `historial-acciones-descarga-columnas.test.ts`, el título del segundo `it` («el filtro por categoría
+«Cambia quién puede hacer qué» la encuentra») y el comentario de la línea 31 siguen nombrando la etiqueta
+vieja. Basta alinearlos con «Cambia permisos» en el PR 2.
+
+#### CI del nuevo head
+Cuando escribo esto, el head del PR en GitHub es `58eee134`, pero solo aparece Vercel; el run de `gate.yml`
+de este head aún no ha arrancado o no se ve. El aviso «listo para mergear» queda sujeto a que el leader vea
+`gate-completo` y los grupos `e2e` en verde sobre `58eee134`.
