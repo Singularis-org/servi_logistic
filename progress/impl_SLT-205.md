@@ -5,12 +5,19 @@ Ruta directa, aprobada por Carlos (2026-11-18). Rama `feature/SLT-205-guardias-r
 ## Archivos
 
 - `tests/unit/guards/buscadores-con-escaneo.guardia.test.ts` (modificado): punto 2.
-- `tests/baseline-rojos.json` (modificado): la entrada de `dependencias-declaradas-presentes` SE QUEDA;
-  su motivo suma el diagnóstico de SLT-205.
+- `tests/baseline-rojos.json`: SIN cambios frente a dev. El cambio de la vuelta 1 al motivo de
+  `dependencias-declaradas-presentes` se revirtió en la vuelta 2 para no chocar con la rama del arnés.
 - `progress/features/SLT-205.md` (nuevo), `progress/impl_SLT-205.md` (nuevo).
 - NO se tocó `init.sh` (archivo del arnés).
 
-## Punto 1 — `dependencias-declaradas-presentes.guardia.test.ts`: caso (b), PARADO
+## Punto 1 — `dependencias-declaradas-presentes.guardia.test.ts`: RESUELTO POR EL ARNÉS
+
+Vuelta 2, 2026-11-18, por indicación del leader: el punto 1 sale de esta ficha. Lo arregla una mejora
+del arnés en otra rama, `chore/arnes-dependencias-medidas`, que mueve la guardia y quita su entrada
+del baseline. Esta rama no toca ni la guardia ni esa entrada: `git diff origin/dev` de los dos
+archivos sale vacío. Abajo queda el diagnóstico de la vuelta 1, como antecedente.
+
+### Diagnóstico de la vuelta 1 (antecedente)
 
 De quién es cada archivo:
 
@@ -121,6 +128,32 @@ Después: `Tests  27 passed (27)`, EXIT=0.
 
 Final, sin mutaciones: `Tests  27 passed (27)`.
 
+### Vuelta 2 — review RECHAZADA (f5689c39, `progress/review_SLT-205.md`)
+
+- **B1**: en una excepción, `escaneo` tiene que faltar o ser el literal `{false}`.
+  - `apagado()` y `ningunoEscanea()` sustituyen a `!pasaEscaneo` en `/cierres-admin`, en Recolección, en las excepciones y en el inventario.
+  - Cualquier otra expresión (`escaneo={x || true}`) da rojo.
+- **B2**: el `>` de cierre se busca fuera de los literales y de las llaves (`finDeLiteral`, `finDeLlaves`).
+  - Un literal o una llave sin cerrar LANZA un error con nombre; ya no hay bucle infinito.
+  - El test lleva `timeout: 2000`. Límite declarado: un timeout no corta un bucle SÍNCRONO, porque bloquea el hilo de vitest. La protección real es el `throw`.
+- **m1, alias**: `nombresDelBuscador` lee `import { BuscadorFiltros as X }`, y `<X …>` cuenta como buscador.
+- **m1, spread**: un `{...}` en la apertura LANZA «no se puede verificar escaneo con spread». Hoy no hay ninguno: el inventario de `app/` y `components/` pasa.
+- **Resultado**: `Tests  31 passed (31)`, EXIT=0.
+
+Mutaciones de la vuelta 2:
+- las de `app/` se restauraron con `git checkout --`;
+- las de la guardia, con una copia que se comparó con `cmp` y después se borró.
+
+| # | mutación | resultado |
+|---|---|---|
+| R2 (review) | `RecoleccionModule.tsx:283` `<BuscadorFiltros escaneo={debounceActivoZq7 \|\| true}` | ROJO, 3 failed: Recolección, la excepción y el inventario |
+| R3 (review) | `RecoleccionModule.tsx:283` `<BuscadorFiltros title="guia -> tienda" escaneo` | ROJO, 3 failed; no se cuelga (corrió bajo `timeout 240`) |
+| R4 (review) | `components/zz/AliasZz.tsx` con `import { BuscadorFiltros as Caja }` y `<Caja onChange={f} />` | ROJO, 1 failed: el inventario |
+| M6 | `RecoleccionModule.tsx:283` `<BuscadorFiltros {...{}}` | ROJO, 3 failed: `Error: no se puede verificar escaneo con spread` |
+| M7 | guardia: `apagado` = `valor !== "true"` (la lógica de la vuelta 1) | ROJO, 2 failed: la contraprueba B1 y la del alias |
+| M8 | guardia: `aperturasDeBuscador` deja de saltar literales | ROJO, 1 failed: «un > dentro de un literal…» |
+| M9 | guardia: `nombresDelBuscador` ignora los alias | ROJO, 1 failed: «el import con alias se cuenta como buscador» |
+
 ## Mapa requisito → test (ruta directa, sin `requirements.md`)
 
 | requisito de la ficha | test |
@@ -130,7 +163,10 @@ Final, sin mutaciones: `Tests  27 passed (27)`.
 | P2: lista explícita de excepciones | `excepción %s: tiene buscador y ninguno escanea` |
 | P2: conservar Recolección sin cámara (SLT-200) | `SLT-200: \`/recoleccion\` monta \`BuscadorFiltros\` sin \`escaneo\`` |
 | P2: el detector no se engaña | `SLT-205: contraprueba de las formas de \`escaneo\` y del archivo con dos buscadores` |
-| P1 | sin test nuevo: caso (b), PARADO |
+| B1 (review) | «SLT-205: en una excepción, escaneo={x \|\| true} NO pasa por apagado» + «excepción %s…» |
+| B2 (review) | «SLT-205: un > dentro de un literal no corta la etiqueta ni cuelga» |
+| m1 (review) | «SLT-205: el import con alias se cuenta como buscador» + «SLT-205: un {...props} en la apertura da rojo» |
+| P1 | fuera de la ficha: lo resuelve el arnés (`chore/arnes-dependencias-medidas`) |
 
 ## Gate
 
@@ -145,6 +181,21 @@ Log completo, sin `tail`:
  ✓ tests/unit/guards/buscadores-con-escaneo.guardia.test.ts (27 tests) 386ms
  Test Files  100 passed (100) | Tests 1253 / 1768 / 1584 (+1 skipped) passed
  Test Files  57 passed (57) | Tests 719 passed (719)
+[test:rapido] 4 rojo(s) heredado(s) del baseline no cuentan en esta seleccion; el CI los compara.
+✓ test:rapido paso
+== init OK ==
+INIT_EXIT=0
+```
+
+Vuelta 2 (mismo comando):
+
+```
+✓ SLT-205: tamano del PR: 1/40 archivos, 0/1000 lineas de produccion, 278/3000 de tests
+✓ typecheck paso
+✖ 248 problems (0 errors, 248 warnings)
+✓ lint paso
+ ✓ tests/unit/guards/buscadores-con-escaneo.guardia.test.ts (31 tests) 342ms
+ Test Files 100/100/100/57 passed | Tests 1253 / 1772 / 1584 (+1 skipped) / 719 passed
 [test:rapido] 4 rojo(s) heredado(s) del baseline no cuentan en esta seleccion; el CI los compara.
 ✓ test:rapido paso
 == init OK ==

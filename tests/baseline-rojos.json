@@ -59,7 +59,7 @@
   ],
   "archivos": {
     "tests/unit/guards/dependencias-declaradas-presentes.guardia.test.ts": {
-      "motivo": "Vigila el paso 2 del init.sh del producto de origen (ficha 420: marcadores, verificar-dependencias.mjs, --frozen-lockfile); el init.sh del arnes v2 no lo tiene y es archivo del arnes. La retira SL-29, la ficha /afinar-regla que sube la mejora a la plantilla o retira la guardia. Diagnostico SLT-205 (2026-11-18): el init.sh de la plantilla NUNCA llamo al verificador (ni en 86d70bf0 ni tras el sync 2.14.0); falta en init.sh, archivo del arnes: el parche va por /afinar-regla (progress/impl_SLT-205.md).",
+      "motivo": "Vigila el paso 2 del init.sh del producto de origen (ficha 420: marcadores, verificar-dependencias.mjs, --frozen-lockfile); el init.sh del arnes v2 no lo tiene y es archivo del arnes. La retira SL-29, la ficha /afinar-regla que sube la mejora a la plantilla o retira la guardia.",
       "desde": "2026-10-21"
     },
     "tests/integration/db/abono-tienda-457-migration.test.ts": {
