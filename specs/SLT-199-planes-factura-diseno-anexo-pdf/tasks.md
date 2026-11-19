@@ -67,7 +67,7 @@
   *Hecho:* en verde `tests/components/DescargarFactura.test.tsx`, `tests/components/DetalleDeFactura.test.tsx`,
   `tests/components/MiPlanModule.test.tsx` y `tests/integration/plataforma-empresa-detalle-page.test.tsx`, ya
   ajustados (R7, R22, R23, R24).
-- [ ] **T4.2** Borrar `lib/facturas-plataforma/excel.ts`, `tests/unit/facturas-plataforma/excel.test.ts` y
+- [x] **T4.2** Borrar `lib/facturas-plataforma/excel.ts`, `tests/unit/facturas-plataforma/excel.test.ts` y
   `FACTURA_DESCARGA_TEXTOS.excel`. Depende de T4.1.
   *Hecho:*
   - Grep sin resultados de `construirExcelFactura`, `facturas-plataforma/excel` y «Descargar Excel» en `lib/`,
@@ -77,7 +77,7 @@
 
 ## Tanda 5 — Documentación, E2E y cierre
 
-- [ ] **T5.1** `[P]` `docs/architecture.md`, «Descarga (SLT-136)» (design §8).
+- [x] **T5.1** `[P]` `docs/architecture.md`, «Descarga (SLT-136)» (design §8).
   *Hecho:* el validador del perfil en verde.
 - [ ] **T5.2** `e2e/facturas-plataforma.spec.ts` (design §10). Depende de T4.2.
   - Se van el Excel y `ExcelJS`.
