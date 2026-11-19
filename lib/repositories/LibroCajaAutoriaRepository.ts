@@ -202,9 +202,12 @@ export class LibroCajaAutoriaRepository implements ILibroCajaAutoriaRepository {
 
   async anulaciones(ids: IdsDeDocumentos): Promise<Record<keyof IdsDeDocumentos, Map<string, AnulacionDeDocumento>>> {
     const CONSTANCIA = { motivo: true, createdAt: true, anulador: { select: NOMBRE_USUARIO_SELECT } } as const;
-    const leer = (f: { motivo: string; createdAt: Date; anulador: NombreUsuarioFuente }): AnulacionDeDocumento => ({
+    // SLT-143 (R36): la constancia de una anulación de la plataforma la firma el superadmin, que no tiene empresa:
+    // la RLS de `usuario` se lo esconde a la empresa y Prisma trae `null` aunque la relación sea obligatoria. Sale
+    // `por: null` y el servicio pone «la plataforma».
+    const leer = (f: { motivo: string; createdAt: Date; anulador: NombreUsuarioFuente | null }): AnulacionDeDocumento => ({
       motivo: f.motivo,
-      por: nombreCompletoUsuario(f.anulador),
+      por: nombreONulo(f.anulador),
       fecha: f.createdAt,
     });
     const lista = (xs: readonly string[]) => ({ in: [...xs] });

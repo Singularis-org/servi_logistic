@@ -257,7 +257,7 @@ describeSiHayBase("SLT-143 R33 — pago_plataforma_por_fuera de ida y vuelta", (
     expect(
       await contar(
         `SELECT count(*)::int AS n FROM information_schema.columns
-          WHERE table_name = 'pago_plataforma_confirmacion' AND column_name = 'por_fuera'`,
+          WHERE table_schema = 'public' AND table_name = 'pago_plataforma_confirmacion' AND column_name = 'por_fuera'`,
       ),
     ).toBe(0);
     expect(

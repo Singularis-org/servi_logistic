@@ -57,28 +57,28 @@
 
 ## T2 — El servidor (depende de T1)
 
-- [ ] **T2.1** `lib/db/errores-pago-plataforma.ts` (los códigos nuevos y `esTopeDelPagoSuperado`) y
+- [x] **T2.1** `lib/db/errores-pago-plataforma.ts` (los códigos nuevos y `esTopeDelPagoSuperado`) y
   `lib/types/pago-plataforma.ts` (design §4.1).
-- [ ] **T2.2** `IPagoPlataformaConfirmacionRepository` y `PagoPlataformaConfirmacionRepository`: `leer` con los
+- [x] **T2.2** `IPagoPlataformaConfirmacionRepository` y `PagoPlataformaConfirmacionRepository`: `leer` con los
   confirmados, `registrarPorFuera` y `anularConfirmado`. También el motivo en `lib/db/excepciones-aislamiento.ts`.
   **Hecho:** las guardias `plataforma-solo-en-lista` y `sql-a-mano-por-empresa` en verde.
-- [ ] **T2.3** `IPagoPlataformaConfirmacionService` y `PagoPlataformaConfirmacionService`: `registrarPorFuera`
+- [x] **T2.3** `IPagoPlataformaConfirmacionService` y `PagoPlataformaConfirmacionService`: `registrarPorFuera`
   con el comprobante dentro de `conEmpresa`, y `anularConfirmado`. Se amplía
   `tests/unit/services/pago-plataforma-confirmacion-service.test.ts`. **Hecho:** verde (R5–R7, R9, R23–R25, R31).
-- [ ] **T2.4** `lib/actions/pagos-plataforma.ts` (las dos actions y el composition root) y
+- [x] **T2.4** `lib/actions/pagos-plataforma.ts` (las dos actions y el composition root) y
   `tests/unit/actions/pagos-plataforma.test.ts`. **Hecho:** verde (R31); la guardia `modulos-reparto` en verde.
-- [ ] **T2.5** [P] `PagoPlataformaRepository.sumaPagosConfirmados` y
+- [x] **T2.5** [P] `PagoPlataformaRepository.sumaPagosConfirmados` y
   `EmpresasPlataformaRepository.cuentasConLaPlataforma` sin los anulados. Se amplía
   `tests/integration/db/empresas-plataforma-deuda-sl45.test.ts`. **Hecho:** verde (R26). Si el doble de
   `tests/unit/actions/empresas-plataforma.composition-root.test.ts` afirma los argumentos del `groupBy`, se ajusta y
   se anota.
-- [ ] **T2.6** `tests/integration/db/pago-plataforma-por-fuera.test.ts`, con la tabla de pasos de design §8 y sus
+- [x] **T2.6** `tests/integration/db/pago-plataforma-por-fuera.test.ts`, con la tabla de pasos de design §8 y sus
   cinco mutaciones medidas y revertidas. **Hecho:** verde con base. Cubre R1–R3, R5, R6, R8–R12, R14, R15,
   R21–R30 y R32.
 
 ## T3 — La marca en la wallet (depende de T1.3; [P] con T2)
 
-- [ ] **T3.1** `lib/types/estado-cuenta.ts` (`"plataforma"` y `"plataforma_anulacion"`), `ILibroCajaAutoriaRepository`
+- [x] **T3.1** `lib/types/estado-cuenta.ts` (`"plataforma"` y `"plataforma_anulacion"`), `ILibroCajaAutoriaRepository`
   y `LibroCajaAutoriaRepository` (`marcasDeLaPlataforma`), y en `LibroCajaAutoriaService`, `registro` y `anulacion`
   (design §5, §5.1).
 - [x] **T3.2** El archivo de textos, `components/shared/wallet/detalle-movimiento-panel-labels.ts`:
@@ -88,7 +88,7 @@
 
   Con `tests/unit/components/detalle-movimiento-panel-labels-plataforma.test.ts`, con los literales escritos a
   mano. **Hecho:** verde (R13, R36).
-- [ ] **T3.3** `tests/unit/services/libro-caja-autoria-plataforma.test.ts` y la ampliación de
+- [x] **T3.3** `tests/unit/services/libro-caja-autoria-plataforma.test.ts` y la ampliación de
   `tests/unit/descarga/wallet-caja-descarga-columnas.test.ts`. **Hecho:** verde (R13, R14, R36).
 
 ## T4 — Las pantallas del superadmin (depende de T2.4)

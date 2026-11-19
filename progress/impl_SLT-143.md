@@ -286,3 +286,110 @@ Salida:
   incluye `"plataforma"` ni `"plataforma_anulacion"` en `lib/types/estado-cuenta.ts`).
 
 Veredicto T3.2: textos y test hechos y verdes; el typecheck cierra cuando llegue T3.1.
+
+## T2 y T3.1/T3.3 (backend_dev, 2026-11-19)
+
+Cliente Prisma regenerado desde el worktree antes de verificar (`../../node_modules/.bin/prisma generate`; `pnpm exec`
+no encuentra el binario desde el worktree). Grafo no consultado: Grep/Read.
+
+### Archivos
+
+- **T2.1** `lib/db/errores-pago-plataforma.ts` (códigos `pago_no_confirmado` y `motivo_vacio`; `esTopeDelPagoSuperado`),
+  `lib/types/pago-plataforma.ts` (`AplicacionDeFacturaDTO`, `PagoConfirmadoDTO`, `PagosDeEmpresa.confirmados`,
+  `MONTO_MAXIMO_PAGO_POR_FUERA`, `montoPagoPorFueraSchema`, `registrarPagoPorFueraSchema`, `anularPagoConfirmadoSchema`,
+  los dos `Result`, textos).
+- **T2.2** `IPagoPlataformaConfirmacionRepository` y `PagoPlataformaConfirmacionRepository` (`leer` con `confirmados`,
+  `registrarPorFuera`, `anularConfirmado`); motivo de la excepción en `lib/db/excepciones-aislamiento.ts`.
+- **T2.3** `IPagoPlataformaConfirmacionService` y `PagoPlataformaConfirmacionService` (`registrarPorFuera`, `anularConfirmado`).
+- **T2.4** `lib/actions/pagos-plataforma.ts`: `registrarPagoPorFueraAction(organizacionId, formData)` y
+  `anularPagoConfirmadoAction(organizacionId, { pagoId, motivo })`; el root pasa `buildComprobantes(prisma)` y
+  `construirReglasPaisEmpresa(prisma)`.
+- **T2.5** `PagoPlataformaRepository.sumaPagosConfirmados` y `EmpresasPlataformaRepository.cuentasConLaPlataforma` con
+  `confirmacion: { anulaciones: { none: {} } }`.
+- **T3.1** `lib/types/estado-cuenta.ts`, `ILibroCajaAutoriaRepository` (`marcasDeLaPlataforma`, `MarcasDeLaPlataforma`),
+  `LibroCajaAutoriaRepository`, `LibroCajaAutoriaService` (`registro` y `anulacion`).
+- Tests: `tests/unit/types/pago-plataforma-monto-por-fuera.test.ts` (nuevo),
+  `tests/unit/services/pago-plataforma-confirmacion-service.test.ts`, `tests/unit/actions/pagos-plataforma.test.ts`,
+  `tests/unit/services/libro-caja-autoria-plataforma.test.ts` (nuevo), `tests/unit/descarga/wallet-caja-descarga-columnas.test.ts`,
+  `tests/integration/db/empresas-plataforma-deuda-sl45.test.ts`, `tests/integration/db/pago-plataforma-por-fuera.test.ts` (nuevo).
+- Ajustes fuera de la lista del design (necesarios):
+  - `tests/unit/actions/deuda-plataforma.composition-root.test.ts` y
+    `tests/unit/actions/empresas-plataforma.composition-root.test.ts`: afirman el `where` nuevo (T2.5 lo preveía);
+  - `confirmados: []` en los fixtures de `tests/components/PagosPorConfirmar.test.tsx` y
+    `tests/integration/plataforma-empresa-detalle-page.test.tsx` (solo el tipo, sin cambiar afirmaciones);
+  - `tests/integration/db/pago-plataforma-confirmacion.test.ts:668`: `toEqual({ pagos: [], facturas: [] })` pasa a
+    `toMatchObject`, porque la lectura gana `confirmados` (T1.6 decía «sin tocarlo»; es la única línea);
+  - `tests/integration/db/migracion-slt143-ida-y-vuelta.test.ts:259` acota `table_schema = 'public'` (la guardia
+    `catalogo-postgres-acota-esquema` lo pedía; venía de T1).
+
+### Decisiones fuera del spec
+
+1. **La fecha no se valida en el esquema de `lib/types/pago-plataforma.ts`.** Ese archivo llega a componentes cliente
+   y no importa `lib/types/wallet.ts`, que arrastra `@prisma/client`. El esquema la deja como texto opcional y el
+   servicio aplica `fechaMovimientoSchema(zona)` de `lib/types/wallet.ts` (la misma pieza, sin copiarla) dentro de
+   `conEmpresa(org)`, con la zona del país de la empresa; el error va en `fecha`. Una fecha vacía del formulario es
+   «sin fecha».
+2. **El repositorio traduce el tope a `{ estado: "tope_superado" }`**, no a `rechazado`: el tope no es `SL060`.
+3. **`esTopeDelPagoSuperado`**: `@prisma/adapter-pg` no conserva el nombre del constraint de un 23514. Se reconoce
+   por el CONSTRAINT si viene, o por el mensaje literal del trigger («supera la deuda vigente de la empresa»), siempre
+   con SQLSTATE 23514. Verificado contra la base en el paso R6 del test de integración.
+4. **Contrato del `FormData`** (para frontend_dev): `claveIdempotencia`, `monto`, `fecha` (`YYYY-MM-DD`, vacía = hoy),
+   `referencia`, `aplicaciones` como JSON `[{ "facturaId", "monto" }]` y `comprobante` opcional (un archivo de 0 bytes
+   es «sin comprobante»). Los errores van en `monto`, `fecha`, `referencia`, `comprobante`, `aplicaciones` o
+   `aplicaciones.<facturaId>`.
+5. **Un archivo no válido** lo rechaza el borde (`leerComprobanteOpcional`); a quien no es superadmin le responde
+   `forbidden`, no `validation_error` (R31).
+6. **`ya_registrado` retira el comprobante** subido en ese envío (molde 458-B: `quedo` solo con `ok`).
+7. **Hallazgo de T2.6, arreglado en `LibroCajaAutoriaRepository.anulaciones`.** La constancia de una anulación de la
+   plataforma la firma el superadmin. La RLS de `usuario` se lo esconde a la empresa, y Prisma trae `anulador: null`
+   aunque la relación sea obligatoria: `TypeError`, y la autoría del libro caía en INTERNAL. Ahora sale `por: null` y
+   el servicio pone «la plataforma». `AjusteCajaAnulacionRepository.constanciasDe` tiene el mismo patrón, pero no tiene
+   llamadores en `lib/` ni en `app/`: no se tocó.
+8. **`LibroCajaAutoriaService` importa `PLATAFORMA_ANULO`** de `components/shared/wallet/detalle-movimiento-panel-labels.ts`
+   (T3.2), como pide design §5.1.
+
+### Tests (salida resumida)
+
+- `vitest --run` de los 12 archivos tocados (unit e integración, base `servi_logistic_slt143`): **12 archivos, 247 tests
+  verdes**, 0 skipped. `pago-plataforma-por-fuera` 20/20; `pago-plataforma-confirmacion` (SLT-60) 22/22;
+  `empresas-plataforma-deuda-sl45` 8/8. Aparte: `migracion-slt143-ida-y-vuelta` + guardia de catálogo 13/13;
+  `PagosPorConfirmar` + `plataforma-empresa-detalle-page` 59/59.
+- `tsc --noEmit`: **exit 0**. `eslint` sobre los archivos tocados: **exit 0**.
+- `vitest run guard`: 5402 passed, 3 failed, 1 skipped. Tras arreglar la consulta de catálogo quedan 2 rojos:
+  - `guard-dependencias-declaradas-presentes` (conocido: `node_modules` enlazado);
+  - `superficie-de-uso`: `registrarPagoPorFueraAction` y `anularPagoConfirmadoAction` aún no las importa nadie. Las liga
+    `page.tsx` en **T4.4** (frontend_dev), y ahí se cierra.
+
+### Mutaciones de design §8 (medidas y revertidas, contra `servi_logistic_slt143`)
+
+Las SQL, con un script de una vez: `pg_get_functiondef`, reemplazo y ejecución; revertir es la definición guardada,
+comprobada idéntica. La 4, editando el archivo y restaurándolo.
+
+| # | Mutación | Rojos en `pago-plataforma-por-fuera.test.ts` |
+|---|---|---|
+| 1 | `factura_plataforma_saldos` sin el NOT EXISTS de la anulación | 2 (R21/R22/R26/R30, P5) |
+| 2 | trigger `pago_plataforma_no_anular_confirmado` sin la excepción | 7 (R21…, R28/R36, R24 ×2, R27, P5, R32) |
+| 3 | el trigger deja pasar siempre | 4 (R15, R29, R21…, R28/R36) |
+| 4 | `sumaPagosConfirmados` sin el filtro | 2 (R21/R22/R26/R30, P5) |
+| 5 | `_pago_plataforma_aplicar` sin la comprobación de la suma | 5 (R5, R8/R9, R11, R21…, R24) |
+
+Tras revertir: 20/20 verde.
+
+### Mapa R → test (T2 y T3)
+
+En `tests/integration/db/pago-plataforma-por-fuera.test.ts`, salvo donde se dice otra cosa:
+- R1, R2, R12, P6 → «R1, R2, R12, P6…»; R12 también «R12: ningún pago por fuera…».
+- R3 → «R3, R6: C con la caja en 0…». R6 → «R6: 200 000,01…» y «R3, R6».
+- R5 → «R5: un reparto…»; unit `pago-plataforma-confirmacion-service` «registrarPorFuera: la traducción».
+- R7 → unit `pago-plataforma-confirmacion-service` «R7…» y `pago-plataforma-monto-por-fuera`.
+- R8, R9 → «R8, R9…»; unit «el comprobante»; action `pagos-plataforma` «R1, R8», «R9», «R8».
+- R10 → «R10…». R11 → «R11…». R15 → «R15…». R29 → «R29…». R27 → «R27…». R32 → «R32…».
+- R13, R14 → «R13, R14…»; `libro-caja-autoria-plataforma`; `wallet-caja-descarga-columnas` «SLT-143 R13/R36».
+- R16 (la lectura) → «R1…» (`confirmados`) y action «R16».
+- R21, R22, R26, R30 → «R21, R22, R26, R30…» y «R21, P5»; `empresas-plataforma-deuda-sl45` «SLT-143 R26».
+- R23, R25 → «R23, R25…»; unit `anularConfirmado`. R24 → los dos «R24».
+- R28, R36 → «R28, R36…»; `libro-caja-autoria-plataforma`; `wallet-caja-descarga-columnas`.
+- R31 → unit y action «R31».
+
+Veredicto T2 y T3.1/T3.3: servidor y marca hechos, 247 tests verdes y 5/5 mutaciones muertas; queda rojo
+`superficie-de-uso` hasta T4.4.
