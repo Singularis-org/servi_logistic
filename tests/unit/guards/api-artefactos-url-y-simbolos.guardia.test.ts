@@ -13,14 +13,21 @@ import { URL_PRODUCCION_API } from "@/lib/api/url-produccion";
 // salen la página de Ayuda y el PDF), la colección de Postman y el contrato OpenAPI que pinta Swagger
 // en `/api-docs` (con su espejo `.yaml`). Hasta esta ficha los tres apuntaban a una URL que no es la
 // de producción (`app.example.com`, `localhost`) o a ninguna, y la guía usaba símbolos que el
-// documento no debe llevar. Tres reglas, sobre los cuatro archivos:
+// documento no debe llevar. Cuatro reglas, sobre los cuatro archivos:
 //
 // 1. Ningún dominio de prueba: ni `example.com`, ni `localhost`, ni `127.0.0.1`.
 // 2. Ningún símbolo de los vetados: `§`, `⭑`, `→`, `✔`, `⚠`, `∈`, `☐`. Las referencias van como
 //    «sección 5.9».
 // 3. La URL base es la de producción: la guía la declara, la `baseUrl` de Postman la trae y el
-//    contrato la publica en `servers`. Toda URL absoluta de los artefactos es de producción o un
-//    marcador entre `<>` (por ejemplo `https://<host-de-storage>`).
+//    contrato la publica en `servers`, detrás del relativo `/` («Este servidor», para que «Try it out»
+//    use el host donde se abrió Swagger: review H9). Toda URL absoluta de los artefactos es de
+//    producción o un marcador entre `<>` (por ejemplo `https://<host-de-storage>`).
+// 4. Ni país ni moneda escritos a mano (review H3): ni `colones`, ni `colón`, ni `Costa Rica`. Se dice
+//    «la moneda del país de la empresa» y «la zona horaria del país de la empresa». Se exceptúan las
+//    filas de historial de la guía con fecha anterior al 2026-11-18, que cuentan lo que se dijo.
+//
+// En el `.yaml` las reglas 2 y 4 miran también los comentarios (review H8): quien abre el archivo los
+// lee. Las reglas 1 y 3 los dejan fuera: los comentarios citan rutas internas y no son una URL base.
 //
 // La URL va LITERAL aquí, a mano: es el contrato. Comparar los artefactos solo contra
 // `URL_PRODUCCION_API` dejaría pasar un cambio de esa constante a cualquier otra cosa.
@@ -34,15 +41,29 @@ const leer = (rel: string): string => readFileSync(path.join(RAIZ, rel), "utf8")
 
 const DOMINIOS_DE_PRUEBA = ["example.com", "localhost", "127.0.0.1"] as const;
 const SIMBOLOS_VETADOS = ["§", "⭑", "→", "✔", "⚠", "∈", "☐"] as const;
+const PAIS_Y_MONEDA = ["colones", "colón", "costa rica"] as const;
+/** Fecha de esta revisión: las filas de historial anteriores pueden citar lo que se dijo entonces. */
+const FECHA_REVISION = "2026-11-18";
 
 /** Hosts que no son una URL base de la API pero pueden aparecer: el esquema de Postman. */
 const HOSTS_AJENOS_PERMITIDOS = new Set(["schema.getpostman.com"]);
 
-/** Quita las líneas de comentario del `.yaml`: no las lee nadie más que quien lo edita. */
+/** Quita las líneas de comentario del `.yaml`. */
 function sinComentariosYaml(texto: string): string {
   return texto
     .split(/\r?\n/)
     .filter((l) => !l.trimStart().startsWith("#"))
+    .join("\n");
+}
+
+/** Quita las filas de tabla que empiezan por una fecha anterior a la revisión (historial). */
+export function sinHistorialAnterior(texto: string): string {
+  return texto
+    .split(/\r?\n/)
+    .filter((l) => {
+      const m = /^\| (\d{4}-\d{2}-\d{2}) \|/.exec(l);
+      return !(m && m[1] < FECHA_REVISION);
+    })
     .join("\n");
 }
 
@@ -55,6 +76,12 @@ export function dominiosDePrueba(texto: string): string[] {
 /** Los símbolos vetados que aparecen en el texto. */
 export function simbolosVetados(texto: string): string[] {
   return SIMBOLOS_VETADOS.filter((s) => texto.includes(s));
+}
+
+/** Los literales de país o moneda que aparecen en el texto. */
+export function paisOMoneda(texto: string): string[] {
+  const minus = texto.toLowerCase();
+  return PAIS_Y_MONEDA.filter((s) => minus.includes(s));
 }
 
 /** Las URL absolutas cuyo origen no es el de producción ni un marcador `<...>`. */
@@ -70,7 +97,10 @@ export function urlsAjenas(texto: string): string[] {
 
 interface Artefacto {
   nombre: string;
+  /** Lo que miran las reglas 1 y 3. */
   texto: () => string;
+  /** Lo que miran las reglas 2 y 4: en el `.yaml`, también los comentarios. */
+  textoCompleto: () => string;
 }
 
 const GUIA = "docs/ayuda/oficina/guia-integracion-api.md";
@@ -78,12 +108,16 @@ const POSTMAN = "docs/api/servi-logistic-api-key.postman_collection.json";
 const YAML = "docs/api/api-key-openapi.yaml";
 
 const ARTEFACTOS: Artefacto[] = [
-  { nombre: GUIA, texto: () => leer(GUIA) },
-  { nombre: POSTMAN, texto: () => leer(POSTMAN) },
+  { nombre: GUIA, texto: () => leer(GUIA), textoCompleto: () => sinHistorialAnterior(leer(GUIA)) },
+  { nombre: POSTMAN, texto: () => leer(POSTMAN), textoCompleto: () => leer(POSTMAN) },
   // Lo que sirve `/api/docs/openapi` y pinta Swagger: el objeto serializado, no el código fuente
   // (sus comentarios no los lee el integrador).
-  { nombre: "lib/api/openapi-spec.ts (serializado)", texto: () => JSON.stringify(openApiSpec) },
-  { nombre: YAML, texto: () => sinComentariosYaml(leer(YAML)) },
+  {
+    nombre: "lib/api/openapi-spec.ts (serializado)",
+    texto: () => JSON.stringify(openApiSpec),
+    textoCompleto: () => JSON.stringify(openApiSpec),
+  },
+  { nombre: YAML, texto: () => sinComentariosYaml(leer(YAML)), textoCompleto: () => leer(YAML) },
 ];
 
 describe("SLT-208 — la constante de la URL de producción es la del contrato", () => {
@@ -92,17 +126,21 @@ describe("SLT-208 — la constante de la URL de producción es la del contrato",
   });
 });
 
-describe.each(ARTEFACTOS)("SLT-208 — $nombre", ({ nombre, texto }) => {
+describe.each(ARTEFACTOS)("SLT-208 — $nombre", ({ nombre, texto, textoCompleto }) => {
   it("regla 1: no nombra ningún dominio de prueba (example.com, localhost, 127.0.0.1)", () => {
     expect(dominiosDePrueba(texto()), `${nombre} nombra un dominio de prueba`).toEqual([]);
   });
 
   it("regla 2: no usa ninguno de los símbolos vetados (§ ⭑ → ✔ ⚠ ∈ ☐)", () => {
-    expect(simbolosVetados(texto()), `${nombre} usa un símbolo vetado`).toEqual([]);
+    expect(simbolosVetados(textoCompleto()), `${nombre} usa un símbolo vetado`).toEqual([]);
   });
 
   it("regla 3: toda URL absoluta es la de producción o un marcador <...>", () => {
     expect(urlsAjenas(texto()), `${nombre} trae una URL que no es la de producción`).toEqual([]);
+  });
+
+  it("regla 4: no escribe país ni moneda (colones, colón, Costa Rica)", () => {
+    expect(paisOMoneda(textoCompleto()), `${nombre} nombra un país o una moneda`).toEqual([]);
   });
 });
 
@@ -119,14 +157,16 @@ describe("SLT-208 regla 3 — cada artefacto declara la URL base de producción"
     expect(baseUrl?.value).toBe(URL_PRODUCCION);
   });
 
-  it("el contrato servido publica `servers` con producción como primer servidor", () => {
+  it("el contrato servido publica `servers`: primero «este servidor» y después producción", () => {
     const spec = openApiSpec as unknown as { servers?: { url: string }[] };
-    expect(spec.servers?.[0]?.url).toBe(URL_PRODUCCION);
+    expect(spec.servers?.map((s) => s.url)).toEqual(["/", URL_PRODUCCION]);
   });
 
-  it("el espejo `.yaml` publica el mismo servidor", () => {
+  it("el espejo `.yaml` publica los mismos dos servidores, en el mismo orden", () => {
     const yaml = leer(YAML);
-    expect(yaml).toMatch(/^servers:\r?\n {2}- url: "https:\/\/www\.servilogistic\.co"\r?$/m);
+    expect(yaml).toMatch(
+      /^servers:\r?\n {2}- url: \/\r?\n {4}description: Este servidor\r?\n {2}- url: "https:\/\/www\.servilogistic\.co"\r?$/m,
+    );
   });
 });
 
@@ -147,5 +187,13 @@ describe("SLT-208 — MUTACIÓN: las reglas se ponen rojas con un texto malo", (
       "https://www.servilogistic.co.otro.com/api",
     ]);
     expect(urlsAjenas(`${URL_PRODUCCION}/api y https://<host-de-storage>/x`)).toEqual([]);
+  });
+
+  it("regla 4 caza país y moneda, y deja pasar el historial anterior a la revisión", () => {
+    expect(paisOMoneda("Monto en colones")).toEqual(["colones"]);
+    expect(paisOMoneda("se redondea al colón")).toEqual(["colón"]);
+    expect(paisOMoneda("hora de Costa Rica")).toEqual(["costa rica"]);
+    expect(sinHistorialAnterior("| 2026-11-05 | hora de Costa Rica |")).toBe("");
+    expect(sinHistorialAnterior("| 2026-11-18 | hora de Costa Rica |")).toBe("| 2026-11-18 | hora de Costa Rica |");
   });
 });

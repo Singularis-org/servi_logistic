@@ -29,14 +29,16 @@
 
 **La URL base de producción es `https://www.servilogistic.co`.** La guía decía `https://app.example.com`
 y la colección de Postman `http://localhost:3000`. El contrato vuelve a declarar el bloque `servers`
-(retirado el 2026-09-01) con esa URL: Swagger UI la usa para «Try it out» y un generador de clientes
-la toma como base. Si generás tu cliente desde el `.yaml` y fijaste la base a mano, no hace falta
+(retirado el 2026-09-01) con dos entradas: primero `/` («Este servidor», el host donde se abrió Swagger,
+que es el que usa «Try it out») y después producción, que es la base que debe tomar su cliente si lo
+genera desde el contrato (`https://www.servilogistic.co/api/docs/openapi`). Si generás tu cliente desde el `.yaml` y fijaste la base a mano, no hace falta
 cambiar nada.
 
 | Dónde | Qué decía | Qué hace el código |
 |---|---|---|
 | Carga, campos de la fila | `direccion`, `peso` y `monto_cobrar` obligatorios | Obligatorios: `num_remision`, `destinatario`, `telefono`, `producto`, `provincia`, `canton`, `distrito`. `direccion` y `monto_cobrar` son opcionales; `peso` se acepta y se ignora. `CargaRow.required` lo refleja |
-| Carga, error de fila por campo vacío | `["requerido"]` | `["<campo> es obligatorio"]`, por ejemplo `telefono es obligatorio` |
+| Carga, error de fila por campo vacío o ausente | `["requerido"]` | Vacío: `["<campo> es obligatorio"]` (por ejemplo `telefono es obligatorio`); clave ausente: `["Este campo es obligatorio"]` |
+| Carga y cotización, tiempo | Nada | 60 segundos por petición; si se pasa, error de la plataforma sin la forma uniforme |
 | Dónde se genera la clave | «Configuración › API keys, personal de oficina» | Menú Configuración, opción API (`/configuracion/api`), solo el rol maestro, botón «Generar API key» |
 | Rotación | La empresa genera una key nueva y desactiva la anterior | La empresa rota la misma key: secreto nuevo, el anterior responde `401` al instante |
 | `409` | «Lea el `message`: distingue los casos» | Solo la falta de tarifa y el nombre de lote repetido traen mensaje propio; el resto lleva el genérico |

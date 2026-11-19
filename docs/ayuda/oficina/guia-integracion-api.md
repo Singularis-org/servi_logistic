@@ -28,7 +28,7 @@ fuentes:
 
 Versión del documento: 18 de noviembre de 2026. Base URL de producción: `https://www.servilogistic.co`
 
-> Todos los importes, números de guía, UUID y ejemplos de este documento son **ilustrativos**. Ninguna clave mostrada es real: siempre se usan placeholders del tipo `svl_XXXXXXXXXXXX`. El contrato completo vive en el OpenAPI del canal, que puede abrir en Swagger en `https://www.servilogistic.co/api-docs` (copia en `docs/api/api-key-openapi.yaml`). Para probar sin escribir código hay una colección de Postman (sección 4.8). Los cambios se anuncian en el changelog del canal (`docs/api/CHANGELOG.md`).
+> Todos los importes, números de guía, UUID y ejemplos de este documento son **ilustrativos**. Ninguna clave mostrada es real: siempre se usan placeholders del tipo `svl_XXXXXXXXXXXX`. El contrato completo vive en el OpenAPI del canal: se lee y se prueba en Swagger, en `https://www.servilogistic.co/api-docs`, y el mismo contrato en JSON (para generar un cliente) está en `https://www.servilogistic.co/api/docs/openapi`. Para probar sin escribir código hay una colección de Postman (sección 4.8). Los cambios del canal se resumen en la sección «Cambios» y en el historial de la sección 9; la empresa le hace llegar cada aviso de cambio.
 
 # Contenido
 
@@ -37,6 +37,7 @@ Versión del documento: 18 de noviembre de 2026. Base URL de producción: `https
 - **1. Qué resuelve esta API y qué NO**
 - Qué resuelve · Qué NO resuelve
 - **2. Requisitos previos**
+- 2.1 Primera petición: comprobar la clave
 - **3. La API key**
 - 3.1 Obtención · 3.2 Uso · 3.3 Alcance · 3.4 Rotación · 3.5 Revocación · 3.6 Custodia · 3.7 Varias empresas, una sola URL
 - **4. Convenciones**
@@ -65,7 +66,7 @@ Esta versión describe el canal tal como queda tras dos cambios de contrato que 
 
 ## **RUPTURA** Bloque A: Los estados cambian de código y ganan su nombre
 
-**Desde cuándo.** **Ya está en producción**: el canal responde con los códigos vigentes. Está publicado en el changelog del canal (entrada del 2026-09-24) y se desplegó **junto** con el bloque B.
+**Desde cuándo.** **Ya está en producción**: el canal responde con los códigos vigentes. Se avisó a los integradores el 2026-09-24 y se desplegó **junto** con el bloque B.
 
 **Qué se rompe.** Cada estado de una orden pasa a llamarse igual en todas partes (aplicación, rastreo público y este canal). Siete estados cambian de **código**; los cuatro resultados de gestión que compartían nombre con ellos cambian con ellos; y toda respuesta que lleva un código lleva ahora, **al lado**, su nombre visible.
 
@@ -114,7 +115,7 @@ Aplica a `gestiones[].resultado`, `evidencias[].resultado` y a `data.resultado` 
 
 ## **RUPTURA** Bloque B: El estado real se aplica al aprobar el cierre; la ayuda deja de ser un estado; eventos nuevos
 
-**Desde cuándo.** **Ya está en producción**, desplegado junto con el bloque A (changelog del canal, entrada del 2026-09-23).
+**Desde cuándo.** **Ya está en producción**, desplegado junto con el bloque A (aviso a los integradores del 2026-09-23).
 
 - `orden.estado_actualizado` **llega al APROBAR el cierre del mensajero, no al gestionar.** Cuando el mensajero registra una gestión en calle, la orden **sigue en** `en_reparto` con la gestión *pendiente de confirmar*; el estado real (`entregado`, `reprogramado`, `novedad`, `devolucion_a_origen_por_rechazo`, `incidente`) se aplica cuando se aprueba el cierre del día de ese mensajero, horas después de la visita (dato de referencia de la empresa: mediana 8,2 h, p90 22,1 h). Si necesita enterarse en el instante del registro, consuma `orden.gestion_registrada`.
 - **Se retiran dos estados** del vocabulario: `ayuda_tienda` (la solicitud de ayuda a la tienda deja de mover la orden: sigue `en_reparto` y la ayuda viaja como evento) y `devolucion_por_confirmar`, que nunca fue público. Ninguno vuelve a llegar en `data.estado` ni aparece en el catálogo (sección 4.7).
@@ -132,7 +133,7 @@ Aplica a `gestiones[].resultado`, `evidencias[].resultado` y a `data.resultado` 
 
 ## **YA VIGENTE** Bloque C: Cambios que entraron en producción después de la versión de agosto
 
-Todos están publicados en el changelog del canal con su fecha. Los que quitan algo van marcados.
+Cada uno se avisó a los integradores en su fecha. Los que quitan algo van marcados.
 
 | Fecha | Cambio | Sección |
 | --- | --- | --- |
@@ -183,6 +184,22 @@ Antes de escribir la primera línea de código:
 
 1. **Requiere una API key emitida por la empresa** (ver sección 3).
 2. *Opcional pero recomendado:* **un endpoint HTTPS público propio** para recibir los webhooks (ver sección 6). Sin él, su sistema solo se entera de los cambios si consulta por su cuenta.
+
+## 2.1 Primera petición: comprobar la clave
+
+Antes de cargar nada, compruebe que su clave y su cliente HTTP funcionan con una lectura que no cambia nada: el listado con una sola fila.
+
+```bash
+curl "https://www.servilogistic.co/api/ordenes/api-key?limit=1"   -H "Authorization: Bearer svl_XXXXXXXXXXXX"
+```
+
+Si todo está bien, la respuesta es `200` con las claves `items` (vacía si todavía no tiene órdenes) y `pagination`:
+
+```json
+{ "items": [], "pagination": { "limit": 1, "offset": 0, "total": 0 } }
+```
+
+Un `401` es un problema de la clave o del header (sección 3.2); un `403`, de la cuenta (hable con la empresa).
 
 # 3. La API key
 
@@ -341,7 +358,7 @@ La lista puede crecer de forma aditiva, con aviso previo. Un código anterior al
 
 ## 4.8 Probar con Postman y Swagger
 
-**Swagger.** El contrato se puede leer y probar en `https://www.servilogistic.co/api-docs`, sin iniciar sesión. El JSON del contrato está en `https://www.servilogistic.co/api/docs/openapi`. El servidor que propone es el de producción; para probar desde Swagger pulse **Authorize** y pegue la clave sola, sin la palabra `Bearer` (Swagger la añade).
+**Swagger.** El contrato se puede leer y probar en `https://www.servilogistic.co/api-docs`, sin iniciar sesión. El JSON del contrato está en `https://www.servilogistic.co/api/docs/openapi`. El contrato declara dos servidores: el primero, «Este servidor», es el mismo sitio donde abrió Swagger, y es el que usa «Try it out»; el segundo es producción, `https://www.servilogistic.co`, y es la base que debe usar su cliente (si lo genera desde el contrato, elija ese). Para probar desde Swagger pulse **Authorize** y pegue la clave sola, sin la palabra `Bearer` (Swagger la añade).
 
 **Postman.** La colección `servi-logistic-api-key.postman_collection.json` trae una petición por endpoint. La descarga la empresa desde la aplicación (Ayuda, «Guía de integración por API», botón **Colección de Postman**) y se la entrega al integrador junto con la clave. Para usarla:
 
@@ -365,11 +382,11 @@ Todos requieren `Authorization`. Todos operan únicamente sobre las órdenes del
 | Sin fulfillment | `por_recolectar_en_tienda` | Se asigna en el acto (`numGuia` entero) | Sí (el lote produce un movimiento de la tienda a la bodega) |
 | Con fulfillment | `en_preparacion` | **Ninguna todavía** (`numGuia: null`); se emite después, al preparar la orden | No |
 
-> `monto_cobrar` **no acepta decimales.** La cifra se redondea al colón más cercano (el medio sube). Si su sistema maneja centavos, redondee usted antes de enviar para que el COD que cobra el mensajero coincida con el que muestra su tienda; si no, el redondeo lo hace Servi Logistic y la fila creada lo declara en `montoAjustado: { original, aplicado }`.
+> `monto_cobrar` **no acepta decimales.** La cifra se redondea a la unidad entera más cercana de la moneda del país de la empresa (el medio sube). Si su sistema maneja centavos, redondee usted antes de enviar para que el COD que cobra el mensajero coincida con el que muestra su tienda; si no, el redondeo lo hace Servi Logistic y la fila creada lo declara en `montoAjustado: { original, aplicado }`.
 
 Cada fila es un objeto cuyos valores son **todos texto** (entre comillas, también los números). Un valor que no es texto (`26`, `null`, `true`) hace que el lote entero responda `422`.
 
-| Campo | Requerido | Error de fila si falta o viene vacío |
+| Campo | Requerido | Error de fila si viene vacío |
 | --- | --- | --- |
 | `num_remision` | Sí. Es la clave de deduplicación (única entre sus órdenes vivas) | `num_remision es obligatorio` |
 | `destinatario` | Sí | `destinatario es obligatorio` |
@@ -379,14 +396,16 @@ Cada fila es un objeto cuyos valores son **todos texto** (entre comillas, tambi�
 | `canton` | Sí. Nombre del cantón dentro de la provincia | `canton no encontrado en la provincia` |
 | `distrito` | Sí. Su zona decide la tarifa | `distrito requerido: la zona de la orden se deriva del distrito` |
 | `direccion` | No, pero sin ella el mensajero no sabe a dónde ir | |
-| `monto_cobrar` | No. Monto contra entrega en colones; vacío o ausente = no se cobra nada al destinatario | `monto_cobrar debe ser numerico y no negativo` |
+| `monto_cobrar` | No. Monto contra entrega, en la moneda del país de la empresa; vacío o ausente = no se cobra nada al destinatario | `monto_cobrar debe ser numerico y no negativo` |
 | `notas` | No | |
+
+Atención: en `num_remision`, `destinatario`, `telefono` y `producto` el mensaje depende de cómo falta el dato. Si la clave viene **vacía** (`"telefono": ""`), el error es `telefono es obligatorio`; si la clave **no viene** en la fila, el error es `Este campo es obligatorio`, bajo la misma clave (`{ "telefono": ["Este campo es obligatorio"] }`). En `provincia`, `canton` y `distrito` una clave ausente da el mismo error que una vacía.
 
 Cualquier otra clave de la fila se ignora. En particular, **`peso` no se usa**: puede mandarlo, pero no se guarda ni cambia el precio.
 
 El sobre admite además dos claves opcionales: `name` (nombre del lote, 1..120 caracteres; repetirlo dentro de la misma cuenta responde `409` con el mensaje `ya existe una carga con el nombre '<name>'` y no crea nada) y `download_type` (`consolidate`, el valor por defecto, o `individual`: una URL de etiqueta por orden en `ordenes[].downloadUrl`).
 
-**Límites del lote:** entre 1 y 5000 filas. Lote vacío: `422` con `el lote no puede estar vacío`; más de 5000: `422` con `el lote excede el máximo permitido`; cuerpo que no es JSON: `422` con `cuerpo JSON inválido`. Los tres mensajes llegan en `details.fieldErrors.ordenes`.
+**Límites del lote:** entre 1 y 5000 filas, y la petición tiene **60 segundos** para terminar. Un lote que tarda más se corta con un error de la plataforma, que no tiene la forma de la sección 4.3; si le pasa, mande lotes más pequeños (por ejemplo, de 500 filas) y consulte el listado (sección 5.3) antes de reintentar, porque las órdenes ya creadas responden `duplicada`. Lote vacío: `422` con `el lote no puede estar vacío`; más de 5000: `422` con `el lote excede el máximo permitido`; cuerpo que no es JSON: `422` con `cuerpo JSON inválido`. Los tres mensajes llegan en `details.fieldErrors.ordenes`.
 
 ### Request
 
@@ -454,7 +473,7 @@ Diferencias con `/carga`:
 
 - Solo importan `provincia`, `canton`, `distrito` (la terna decide la zona y la tarifa) y `monto_cobrar` (base de la comisión; vacío o ausente se trata como cero). `direccion` se acepta y no participa del precio.
 - `num_remision` es **opcional** acá y solo sirve para correlacionar. Si falta, la fila responde `numRemision: null`. No se deduplica.
-- Mismo tope: 1..5000 filas. El precio se calcula suponiendo que la orden cobra comisión COD.
+- Mismo tope: 1..5000 filas, y el mismo límite de 60 segundos por petición. El precio se calcula suponiendo que la orden cobra comisión COD.
 
 ### Request
 
@@ -498,7 +517,7 @@ curl -X POST https://www.servilogistic.co/api/ordenes/api-key/cotizacion \
 - **Lectura pura.** No crea órdenes, no consume números de guía, no persiste nada.
 - **Importes crudos:** texto con dos decimales y punto decimal, sin símbolo de moneda ni separador de miles (`"2500.00"`, `"-1578.00"`). Es el mismo dialecto que `costoEnvio`, `costoEstimado` y `costoReal`.
 - **Devuelve los dos escenarios:** `entregado` (siete conceptos; `total` es lo que *recibe* la tienda = monto a cobrar − los seis conceptos cobrados, y puede ser negativo) y `devuelto` (seis conceptos, sin `ivaComision`; `comision` es un cero explícito; `total` es la *deuda* de la tienda, negativo). El escenario `devuelto` es lo que se cobra cuando la orden termina en `devolucion_a_origen_por_rechazo`: una novedad que sigue viva no cobra nada por sí sola.
-- `montoCobrar` es **el valor sobre el que se cotizó**: ya redondeado al colón, igual que en la carga (`"11898.81"` se cotiza como `"11899.00"`), y `"0.00"` si la fila no traía monto.
+- `montoCobrar` es **el valor sobre el que se cotizó**: ya redondeado a la unidad entera, igual que en la carga (`"11898.81"` se cotiza como `"11899.00"`), y `"0.00"` si la fila no traía monto.
 - No hay bloque de totales del lote: la cotización es **por orden**. Si necesita un agregado, súmelo usted con la tasa de entrega real de su operación.
 - Una fila queda en `errores` por: terna ausente o vacía, distrito no encontrado o ambiguo, distrito sin zona, nivel retirado del catálogo, `monto_cobrar` con formato inválido, o (clave `tarifa`) sin tarifa vigente. `422` solo por el lote entero (vacío, por encima del tope o con valores que no son texto).
 - `409` con el mismo criterio que la carga: `{ "status": "error", "code": "CONFLICT", "message": "la tienda no tiene una tarifa vigente asociada: no se puede cotizar" }`
@@ -692,7 +711,7 @@ curl "https://www.servilogistic.co/api/ordenes/api-key/analitica?metricas=entreg
   -H "Authorization: Bearer svl_XXXXXXXXXXXX"
 ```
 
-### Response `200` (llamada hecha el 2026-09-21 a las 12:40, hora de Costa Rica)
+### Response `200` (llamada hecha el 2026-09-21 a las 12:40 en la zona horaria del país de la empresa)
 
 ```json
 {
@@ -759,7 +778,10 @@ curl -X PUT https://www.servilogistic.co/api/ordenes/api-key/100235/cancelar \
 Reactiva, por lote, órdenes detenidas: las que tienen una **ayuda a la tienda abierta** (el mensajero pidió ayuda; la orden sigue `en_reparto`) y las que están en `novedad`.
 
 ```bash
-curl -X POST https://www.servilogistic.co/api/ordenes/api-key/habilitar   -H "Authorization: Bearer svl_XXXXXXXXXXXX"   -H "Content-Type: application/json"   -d '{
+curl -X POST https://www.servilogistic.co/api/ordenes/api-key/habilitar \
+  -H "Authorization: Bearer svl_XXXXXXXXXXXX" \
+  -H "Content-Type: application/json" \
+  -d '{
     "ordenes": [
       { "num_guia": 100234, "nota": "el cliente pidió reintento mañana" },
       { "num_guia": 100235, "nota": "dirección corregida por el call center" },
@@ -1042,7 +1064,7 @@ Cinco eventos que no son un cambio de estado. Llegan al mismo callback, firmados
 | HTTP | `code` | Causa probable | Acción concreta |
 | --- | --- | --- | --- |
 | `401` | `UNAUTHORIZED` | No mandó el header, lo mandó mal formado (sin `Bearer`, con dos espacios), **o** la key no existe (eliminada o con el secreto rotado). Los casos son indistinguibles. | Revise que envía `Authorization: Bearer svl_...` en **todos** los endpoints. Verifique que el secreto llegó completo (no truncado por su gestor de config). |
-| `403` | `FORBIDDEN` | La key existe pero está **desactivada**, o su **cuenta dedicada** (o la tienda a la que apunta) no está activa. En analítica: pidió una métrica no publicable. | Si es analítica, valide sus ids contra la lista de la sección 5.8. En cualquier otro endpoint, contacte a la empresa: no es algo que se arregle desde su lado. |
+| `403` | `FORBIDDEN` | La key existe pero está **desactivada**, o su **cuenta dedicada** (o la tienda a la que apunta) no está activa. En analítica: pidió una métrica no publicable, o la empresa tiene apagado el módulo de Analítica (`message`: «El módulo Analítica no está activo para esta empresa.»). | Si es analítica, valide sus ids contra la lista de la sección 5.8. En cualquier otro endpoint, contacte a la empresa: no es algo que se arregle desde su lado. |
 | `404` | `NOT_FOUND` | Recurso inexistente, borrado, **o de otra tienda o de otra empresa**. Deliberadamente indistinguibles. También la ruta retirada `GET …/api-key/{numGuia}`. | Confirme el `numGuia`/`numRemision`/`cargaId` y la ruta (`/orden/{id}`). Si cree que la orden es suya, verifíquela con el listado (sección 5.3). |
 | `409` | `CONFLICT` | Ninguna fila resolvió tarifa; nombre de lote repetido; orden sin guía imprimible; lote sin etiquetas o por encima del tope; eliminación o cancelación desde un estado no permitido, o con intentos de entrega. | Si el `message` es el genérico (`La operacion entra en conflicto con el estado actual.`), la causa es el estado de la orden o del lote: consulte el detalle (sección 5.4) antes de reintentar. Solo la falta de tarifa y el nombre de lote repetido traen un mensaje propio; la tarifa es un tema comercial con la empresa, no de código. |
 | `422` | `VALIDATION_ERROR` | Cuerpo, path o query params mal formados; fecha inexistente; rango invertido; `estado` con un **código anterior** al cambio de nombres. | Lea `details.fieldErrors`: trae el campo y el mensaje. Si el mensaje dice «ya no existe: ahora se llama», reemplace el literal por el código vigente. |
@@ -1058,7 +1080,7 @@ Estos son los que más tiempo cuestan, porque la API responde `200`.
 | “El lote entero falló pero me dio `200`, no `409`” | El status HTTP no es el semáforo del lote. | Use `creadas` y `conError`. sección 5.1 |
 | “Filtro `filas` por `resultado: "error"` y nunca encuentro nada” | Desde el 2026-08-31 las filas con error no viajan en `filas`. | Lea `errores[]`. secciones 5.1 y 5.2 |
 | “Una fila no se creó y no entiendo por qué” | Error bajo la clave `tarifa`: sin tarifa vigente **o** sin cobertura en esa zona; o un nivel de la dirección retirado del catálogo. | Muéstreselo al usuario. sección 5.1 |
-| “El monto que cobró el mensajero no es el que mandé” | `monto_cobrar` se redondeó al colón. | Redondee usted antes de enviar; lea `montoAjustado`. sección 5.1 |
+| “El monto que cobró el mensajero no es el que mandé” | `monto_cobrar` se redondeó a la unidad entera de la moneda del país de la empresa. | Redondee usted antes de enviar; lea `montoAjustado`. sección 5.1 |
 | “Busco por `num_remision` y no aparece” | La coincidencia es **exacta**: sin prefijo, sin subcadena, distingue mayúsculas. | Compare el literal carácter por carácter. sección 5.3 |
 | “Pedí una remisión y me devolvió otra orden” | El valor casó con la **guía** de una orden y la **remisión** de otra. Se prioriza la guía. | sección 5.4 |
 | “Los enlaces de etiquetas y evidencias están rotos” | Las URLs firmadas vencen a los **300 s** (1 h la del PDF que devuelve la carga). | Descargue el archivo al recibirlo; no persista la URL. secciones 5.4 y 5.5 |

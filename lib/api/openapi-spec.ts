@@ -158,8 +158,8 @@ export const openApiSpec = {
       `URL base de producción: \`${URL_PRODUCCION_API}\`. Es la misma para todas las empresas: la API key identifica a la empresa y a la tienda, y nunca se manda el id de la empresa.`,
       "",
       "Autenticación: todos los endpoints exigen el header `Authorization: Bearer svl_...` (un solo espacio). La key la genera la empresa en la aplicación, menú Configuración, opción API.",
-      "La key identifica a un usuario dedicado que es el **dueño**",
-      "de las órdenes: cada llamada opera SIEMPRE sobre las órdenes de ese dueño y sobre ninguna",
+      "La key identifica a la empresa y al **dueño** de las órdenes: su cuenta dedicada o, si se emitió para una tienda, esa tienda;",
+      "cada llamada opera SIEMPRE sobre las órdenes de ese dueño y sobre ninguna",
       "otra. El dueño de la key **solo ve y opera sus propias órdenes**; nunca se puede ampliar el",
       "alcance (un `tiendaId`/`owner` en la query se ignora).",
       "",
@@ -178,7 +178,12 @@ export const openApiSpec = {
   // SLT-208: el contrato vuelve a declarar el servidor de PRODUCCION. Sin `servers`, un generador de
   // clientes que lee el `.yaml` no encuentra base y el integrador no sabe a que URL llamar (lo que el
   // changelog del 2026-09-01 advertia al retirarlo). Swagger UI usa este servidor para «Try it out».
-  servers: [{ url: URL_PRODUCCION_API, description: "Producción" }],
+  // SLT-208 (review H9): primero el relativo, para que «Try it out» use el host donde se abrió Swagger
+  // (Preview o local); después producción, la base que debe usar el cliente del integrador.
+  servers: [
+    { url: "/", description: "Este servidor" },
+    { url: URL_PRODUCCION_API, description: "Producción" },
+  ],
   security: [{ bearerAuth: [] }],
   tags: [
     { name: "Órdenes", description: "Carga, listado, detalle y cancelación de órdenes propias." },
@@ -1870,7 +1875,7 @@ export const openApiSpec = {
       CargaRow: {
         type: "object",
         description:
-          "Una fila de carga. Todos los valores son strings (un valor que no es texto responde `422` para el lote entero). Las requeridas se validan en el servidor; una fila inválida no aborta el lote: sale en `errores` con un mensaje por campo (`<campo> es obligatorio` para `num_remision`, `destinatario`, `telefono` y `producto`). Cualquier otra clave se ignora.",
+          "Una fila de carga. Todos los valores son strings (un valor que no es texto responde `422` para el lote entero). Las requeridas se validan en el servidor; una fila inválida no aborta el lote: sale en `errores` con un mensaje por campo. En `num_remision`, `destinatario`, `telefono` y `producto`: `<campo> es obligatorio` si la clave viene vacía y `Este campo es obligatorio` si la clave no viene. Cualquier otra clave se ignora.",
         required: [
           "num_remision",
           "destinatario",
@@ -1905,7 +1910,7 @@ export const openApiSpec = {
           monto_cobrar: {
             type: "string",
             description:
-              "Opcional. Monto contra entrega en colones, como texto (p. ej. \"25900\"); se redondea al colón. Vacío o ausente: no se cobra nada al destinatario. Un valor no numérico o negativo deja la fila en `errores` con `monto_cobrar debe ser numerico y no negativo`.",
+              "Opcional. Monto contra entrega, en la moneda del país de la empresa, como texto (p. ej. \"25900\"); se redondea a la unidad entera. Vacío o ausente: no se cobra nada al destinatario. Un valor no numérico o negativo deja la fila en `errores` con `monto_cobrar debe ser numerico y no negativo`.",
           },
           notas: { type: "string" },
         },
@@ -2342,7 +2347,7 @@ export const openApiSpec = {
           montoCobrar: {
             type: "string",
             description:
-              "EL VALOR SOBRE EL QUE SE COTIZÓ: el `monto_cobrar` que entró al cálculo, ya redondeado al colón igual que lo redondea la carga, y `\"0.00\"` si la fila no traía monto (la base que usó la comisión COD). String money-safe de escala 2, crudo, como el resto de los importes.",
+              "EL VALOR SOBRE EL QUE SE COTIZÓ: el `monto_cobrar` que entró al cálculo, ya redondeado a la unidad entera igual que lo redondea la carga, y `\"0.00\"` si la fila no traía monto (la base que usó la comisión COD). String money-safe de escala 2, crudo, como el resto de los importes.",
           },
           resultado: { type: "string", const: "cotizada" },
           costos: { $ref: "#/components/schemas/CotizacionCostos" },

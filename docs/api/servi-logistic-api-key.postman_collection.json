@@ -2,7 +2,7 @@
   "info": {
     "name": "Servi Logistic — API key (canal integradores)",
     "_postman_id": "b7d1f0a2-1770-4f2e-9a55-0177ea51a208",
-    "description": "Los 10 endpoints del canal por API key, **una petición por endpoint**. Guía completa: «Guía de integración por API» (Ayuda de la aplicación, o el PDF que entrega la empresa). Contrato: https://www.servilogistic.co/api-docs\n\n## Antes de empezar\n\n1. Pestaña **Variables** de la colección: ponga su clave en `apiKey` (la entrega la empresa; se genera en la aplicación, menú Configuración, opción API). `baseUrl` ya trae la URL de producción, `https://www.servilogistic.co`, sin barra final.\n2. Si la empresa le indicó otra URL, no edite las peticiones: cambie solo `baseUrl`, o cree un entorno de Postman (Environments) con una variable `baseUrl`, que tiene prioridad sobre la de la colección.\n3. Ejecute las peticiones en orden. **Cargar órdenes** guarda `cargaId`, `numGuia`, `numRemision` y `numRemisionDesechable`, así que el resto funciona sin tocar nada. Las remisiones llevan `{{$timestamp}}`, así que puede repetir la colección sin chocar con la carga anterior.\n\nAtención: la colección **crea órdenes reales** en la cuenta de su clave. La última petición elimina una; elimine usted las demás si no las quiere conservar.\n\n## Qué NO es esta colección\n\nNo es una batería de casos. Hay **una petición por endpoint** y cada una es el camino feliz: sirve para comprobar que el canal responde y para tenerlo a mano, no para cubrir los bordes. Los 401, 403, 404, 409 y 422 están descritos en la guía y en el contrato.\n\n## Reglas que aplican a los 10\n\n- Autenticación: header `Authorization: Bearer <su clave>` (la colección lo pone sola con `{{apiKey}}`). Sin header, con otro esquema o con la clave mal copiada responde `401`.\n- La clave identifica a su empresa y a su tienda. La URL es la misma para todas las empresas; nunca mande el id de la empresa.\n- Una orden o un lote de otro dueño, o de otra empresa, responde `404`, idéntico a inexistente.\n- Los errores tienen forma uniforme: `{ status: \"error\", code, message, details? }`, con `code` en `VALIDATION_ERROR | UNAUTHORIZED | FORBIDDEN | NOT_FOUND | CONFLICT | INTERNAL`.\n- El orden de la colección importa: las dos últimas (cancelar y eliminar) consumen las órdenes que creó la carga.",
+    "description": "Los 10 endpoints del canal por API key, **una petición por endpoint**. Guía completa: «Guía de integración por API» (Ayuda de la aplicación, o el PDF que entrega la empresa). Contrato: https://www.servilogistic.co/api-docs\n\n## Antes de empezar\n\n1. Pestaña **Variables** de la colección: ponga su clave en `apiKey` (la entrega la empresa; se genera en la aplicación, menú Configuración, opción API). `baseUrl` ya trae la URL de producción, `https://www.servilogistic.co`, sin barra final.\n2. Si la empresa le indicó otra URL, no edite las peticiones: cambie solo `baseUrl`, o cree un entorno de Postman (Environments) con una variable `baseUrl`, que tiene prioridad sobre la de la colección.\n3. Ejecute las peticiones en orden. **Cargar órdenes** guarda `cargaId`, `numGuia`, `numRemision` y `numRemisionDesechable`, así que el resto funciona sin tocar nada. Si su tienda tiene fulfillment, la orden nace sin guía: las etiquetas responden `409` hasta que se emita y 'Cancelar una orden' no se envía. Las remisiones llevan `{{$timestamp}}`, así que puede repetir la colección sin chocar con la carga anterior.\n\nAtención: la colección **crea órdenes reales** en la cuenta de su clave. La última petición elimina una; elimine usted las demás si no las quiere conservar.\n\n## Qué NO es esta colección\n\nNo es una batería de casos. Hay **una petición por endpoint** y cada una es el camino feliz: sirve para comprobar que el canal responde y para tenerlo a mano, no para cubrir los bordes. Los 401, 403, 404, 409 y 422 están descritos en la guía y en el contrato.\n\n## Reglas que aplican a los 10\n\n- Autenticación: header `Authorization: Bearer <su clave>` (la colección lo pone sola con `{{apiKey}}`). Sin header, con otro esquema o con la clave mal copiada responde `401`.\n- La clave identifica a su empresa y a su tienda. La URL es la misma para todas las empresas; nunca mande el id de la empresa.\n- Una orden o un lote de otro dueño, o de otra empresa, responde `404`, idéntico a inexistente.\n- Los errores tienen forma uniforme: `{ status: \"error\", code, message, details? }`, con `code` en `VALIDATION_ERROR | UNAUTHORIZED | FORBIDDEN | NOT_FOUND | CONFLICT | INTERNAL`.\n- El orden de la colección importa: las dos últimas (cancelar y eliminar) consumen las órdenes que creó la carga.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -29,7 +29,7 @@
     {
       "key": "numGuia",
       "value": "",
-      "description": "Primera orden creada. La rellena 'Cargar órdenes'. La consume 'Cancelar una orden'."
+      "description": "Guía de la primera orden creada. La rellena 'Cargar órdenes'. Queda vacía si su tienda tiene fulfillment (la orden nace sin guía): entonces 'Cancelar una orden' no se envía."
     },
     {
       "key": "numRemision",
@@ -39,7 +39,7 @@
     {
       "key": "numRemisionDesechable",
       "value": "",
-      "description": "Segunda orden creada, reservada para 'Eliminar una orden': ese borrado es definitivo."
+      "description": "Remisión de la segunda orden creada, reservada para 'Eliminar una orden'. El borrado es lógico: la orden desaparece del canal y su remisión queda libre."
     },
     {
       "key": "cargaId",
@@ -113,7 +113,7 @@
               "  pm.collectionVariables.set('numGuia', String(creadas[0].numGuia ?? ''));",
               "  pm.collectionVariables.set('numRemision', creadas[0].numRemision);",
               "}",
-              "// La segunda queda reservada para el DELETE del final, que es definitivo.",
+              "// La segunda queda reservada para el DELETE del final (borrado lógico).",
               "if (creadas[1]) pm.collectionVariables.set('numRemisionDesechable', creadas[1].numRemision);",
               "pm.test('los contadores cuadran: creadas + duplicadas + conError === total', () => {",
               "  pm.expect(b.creadas + b.duplicadas + b.conError).to.eql(b.total);",
@@ -162,6 +162,9 @@
               "const b = pm.response.json();",
               "pm.test('la página respeta el limit pedido', () => {",
               "  pm.expect(b.items.length).to.be.at.most(b.pagination.limit);",
+              "});",
+              "pm.test('trae la orden que creó la carga', () => {",
+              "  pm.expect(b.items.map((i) => i.numRemision)).to.include(pm.collectionVariables.get('numRemision'));",
               "});"
             ]
           }
@@ -171,7 +174,7 @@
         "method": "GET",
         "header": [],
         "url": {
-          "raw": "{{baseUrl}}/api/ordenes/api-key?limit=25&offset=0&estado=en_reparto&desde=2026-08-01&hasta=2026-08-31&num_guia={{numGuia}}&num_remision={{numRemision}}",
+          "raw": "{{baseUrl}}/api/ordenes/api-key?limit=25&offset=0&num_remision={{numRemision}}",
           "host": [
             "{{baseUrl}}"
           ],
@@ -218,12 +221,11 @@
             {
               "key": "num_remision",
               "value": "{{numRemision}}",
-              "description": "Remisión exacta. Una ajena devuelve página vacía, no 404.",
-              "disabled": true
+              "description": "Remisión exacta: la de la orden que acaba de crear 'Cargar órdenes'. Una ajena devuelve página vacía, no 404."
             }
           ]
         },
-        "description": "Los siete parámetros del listado en UNA sola petición: la paginación (`limit`, `offset`) va activa y los cinco filtros van **desactivados**; activa en Postman los que quieras probar. Combinarlos todos a la vez suele devolver una página vacía, que es la respuesta correcta y no un error."
+        "description": "Los siete parámetros del listado en UNA sola petición. Van activos la paginación (`limit`, `offset`) y `num_remision` con la orden que acaba de crear la carga, así que la respuesta trae esa orden. `estado`, `desde`, `hasta` y `num_guia` van **desactivados**: actívelos en Postman para probarlos (no los mande vacíos: un parámetro vacío responde 422). Combinarlos todos suele devolver una página vacía, que es la respuesta correcta y no un error."
       }
     },
     {
@@ -325,10 +327,15 @@
           "script": {
             "type": "text/javascript",
             "exec": [
-              "pm.test('200', () => pm.response.to.have.status(200));",
-              "const b = pm.response.json();",
-              "pm.test('devuelve una URL firmada', () => pm.expect(b.url).to.be.a('string'));",
-              "console.log('etiqueta:', b.url);"
+              "// Con fulfillment la orden nace sin guía: no hay etiqueta imprimible y la respuesta es 409.",
+              "const sinGuia = !pm.collectionVariables.get('numGuia');",
+              "pm.test(sinGuia ? '409 mientras la orden no tiene guía' : '200', () => {",
+              "  pm.expect(pm.response.code).to.eql(sinGuia ? 409 : 200);",
+              "});",
+              "if (!sinGuia) {",
+              "  const b = pm.response.json();",
+              "  pm.test('devuelve una URL firmada', () => pm.expect(b.url).to.be.a('string'));",
+              "}"
             ]
           }
         }
@@ -361,10 +368,15 @@
           "script": {
             "type": "text/javascript",
             "exec": [
-              "pm.test('200', () => pm.response.to.have.status(200));",
-              "const b = pm.response.json();",
-              "pm.test('devuelve una URL firmada', () => pm.expect(b.url).to.be.a('string'));",
-              "console.log('consolidado:', b.url);"
+              "// Con fulfillment la orden nace sin guía: no hay etiqueta imprimible y la respuesta es 409.",
+              "const sinGuia = !pm.collectionVariables.get('numGuia');",
+              "pm.test(sinGuia ? '409 mientras la orden no tiene guía' : '200', () => {",
+              "  pm.expect(pm.response.code).to.eql(sinGuia ? 409 : 200);",
+              "});",
+              "if (!sinGuia) {",
+              "  const b = pm.response.json();",
+              "  pm.test('devuelve una URL firmada', () => pm.expect(b.url).to.be.a('string'));",
+              "}"
             ]
           }
         }
@@ -441,6 +453,19 @@
       "name": "9. Cancelar una orden",
       "event": [
         {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Cancelar pide GUÍA. Con fulfillment la orden recién cargada no la tiene: no se envía la petición.",
+              "if (!pm.collectionVariables.get('numGuia')) {",
+              "  console.log('Cancelar: la orden todavía no tiene guía (fulfillment); se omite.');",
+              "  pm.execution.skipRequest();",
+              "}"
+            ]
+          }
+        },
+        {
           "listen": "test",
           "script": {
             "type": "text/javascript",
@@ -474,7 +499,7 @@
             "cancelar"
           ]
         },
-        "description": "Cancela la orden por su número de guía. Usa `{{numGuia}}`, la primera orden que creó la carga.\n\nSolo procede si la orden está en `en_bodega_central` o `en_ruta_bodega_central`: la pasa a `devolviendo_a_tienda`. Recién cargada, la orden sigue en la tienda (`por_recolectar_en_tienda`) y la respuesta es `409`: es lo esperado hasta que el paquete llegue a la bodega. Para quitar una orden que todavía no salió de la tienda, use **Eliminar una orden**.\n\nOjo: este endpoint pide GUÍA, no remisión. Con fulfillment, la orden nace sin guía y hay que esperar a que se emita."
+        "description": "Cancela la orden por su número de guía. Usa `{{numGuia}}`, la primera orden que creó la carga.\n\nSolo procede si la orden está en `en_bodega_central` o `en_ruta_bodega_central`: la pasa a `devolviendo_a_tienda`. Recién cargada, la orden sigue en la tienda (`por_recolectar_en_tienda`) y la respuesta es `409`: es lo esperado hasta que el paquete llegue a la bodega. Para quitar una orden que todavía no salió de la tienda, use **Eliminar una orden**.\n\nOjo: este endpoint pide GUÍA, no remisión. Con fulfillment la orden nace sin guía: la petición no se envía (lo decide su script previo) hasta que la guía se emita."
       }
     },
     {

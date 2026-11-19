@@ -163,3 +163,37 @@ tests/unit/ayuda + tests/unit/api + AccionesGuiaApi + intentos-no-alcance: 44 ar
 ## Veredicto
 
 Documentación del canal corregida contra el código en 20 puntos, URL de producción en los tres artefactos, 10 curl y 10 peticiones de Postman en verde contra la app real, sin fuga entre empresas; `init.sh` rojo solo por el cupo del board (zona frontend).
+
+## Vuelta 2 (2026-11-19, review rechazada: `progress/review_SLT-208.md`)
+
+| Hallazgo | Arreglo |
+|---|---|
+| H1 ruta | Spec completo en `specs/SLT-208-manual-api-conectable/` (requirements R1..R12 con su test, design con alternativas descartadas, tasks todas `[x]`). Label de Trello `ruta:directa` a `ruta:completa`: el leader pidió ligera «y, si no basta, design y tasks»; `CHECKPOINTS.md > Ruta` exige completa con integraciones externas y webhooks, así que el label dice completa |
+| H2 | Sección 5.1, `CargaRow` (`.ts` y `.yaml`) y CHANGELOG: clave vacía `<campo> es obligatorio`, clave ausente `Este campo es obligatorio`. E2E nuevo «una clave de fila ausente y una vacía…» |
+| H3 | Sin `colones`, `colón` ni `Costa Rica` en guía, spec y `.yaml` (salvo filas de historial anteriores al 2026-11-18). Guardia regla 4 |
+| H4 | Descripción de `numRemisionDesechable` (y el comentario del script de la carga): borrado lógico |
+| H5 | «3. Listar»: activos `limit`, `offset` y `num_remision={{numRemision}}`; `estado`, `desde`, `hasta` y `num_guia` desactivados; su test exige la orden creada. «9. Cancelar»: script previo que la omite sin guía (`pm.execution.skipRequest()`). «6» y «7» aceptan `409` sin guía. El E2E corre la colección con una tienda sin fulfillment y otra con fulfillment |
+| H6 | La guía ya no cita `docs/api/*`: el contrato por `https://www.servilogistic.co/api-docs` y `/api/docs/openapi`; los cambios, por la sección «Cambios» y la 9 |
+| H7 | Sección 2.1 «Primera petición» (curl ejecutado en el E2E: ahora 11 curl); 60 s en 5.1 y 5.2; 403 por módulo Analítica en la tabla 8.1; curl de habilitar con sus `\`; descripción general del OpenAPI: el dueño es la cuenta dedicada o la tienda destino |
+| H8 | `§` y `⚠` fuera de los comentarios del `.yaml`; las reglas 2 y 4 de la guardia miran el `.yaml` entero |
+| H9 | `servers`: `/` («Este servidor») y producción, en `.ts` y `.yaml`; guía 4.8, guardia y E2E ajustados |
+
+Test nuevo: `tests/unit/ayuda/guia-api-pdf-produccion-slt208.test.ts` (R10 PDF y R11 changelog/historial).
+
+### Salidas vuelta 2
+
+```
+E2E (next build + next start 3208, Storage 54308, --project aislamiento --no-deps): 8 passed, E2E_EXIT=0
+  cada curl de la guía (11) · firma 6.3 · Postman sin fulfillment (10) · Postman con fulfillment (10, Cancelar omitida)
+  clave de fila ausente y vacía · dos empresas · 401 · servers ["/", producción]
+vitest tests/unit/api + guards + ayuda + intentos-no-alcance: 301 archivos, 4461 passed | 1 skipped
+Guardia: 25 passed. PDF/changelog: 3 passed
+Mutaciones nuevas (restauradas con git checkout --):
+  M9  «colones» en un comentario del .yaml      -> guardia 1 failed
+  M10 «⚠» en un comentario del .yaml            -> guardia 1 failed
+  M11 «hora de Costa Rica» en la guía (5.8)     -> guardia 1 failed
+  M12 curl de carga con otro host               -> test del PDF 1 failed
+./init.sh (rápido): INIT_EXIT=0
+```
+
+Veredicto vuelta 2: H1 a H9 resueltos; gate y E2E en verde.

@@ -11,8 +11,8 @@ info:
     URL base de producción: `https://www.servilogistic.co`. Es la misma para todas las empresas: la API key identifica a la empresa y a la tienda, y nunca se manda el id de la empresa.
 
     Autenticación: todos los endpoints exigen el header `Authorization: Bearer svl_...` (un solo espacio). La key la genera la empresa en la aplicación, menú Configuración, opción API.
-    La key identifica a un usuario dedicado que es el **dueño**
-    de las órdenes: cada llamada opera SIEMPRE sobre las órdenes de ese dueño y sobre ninguna
+    La key identifica a la empresa y al **dueño** de las órdenes: su cuenta dedicada o, si se emitió para una tienda, esa tienda;
+    cada llamada opera SIEMPRE sobre las órdenes de ese dueño y sobre ninguna
     otra. El dueño de la key **solo ve y opera sus propias órdenes**; nunca se puede ampliar el
     alcance (un `tiendaId`/`owner` en la query se ignora).
 
@@ -25,6 +25,8 @@ info:
     `sha256=<hex>`, el HMAC-SHA256 de `<timestamp>.<cuerpo>` con el secreto del webhook, y la
     cabecera `X-Servi-Logistic-Timestamp` lleva ese `<timestamp>` en segundos unix.
 servers:
+  - url: /
+    description: Este servidor
   - url: "https://www.servilogistic.co"
     description: Producción
 security:
@@ -818,7 +820,7 @@ paths:
 #
 # ⏳ 2026-08-22 (FEATURE 268/R28/R29/R30) — AQUÍ DECÍA, y ya no es cierto:
 # «El campo `data.estado` va como `type: string` con prosa y SIN `enum` de estados a propósito
-# (design 256 §5.2)».
+# (design 256, apartado 5.2)».
 # Ahora SÍ lleva `enum`, DERIVADO de `EVENTOS_PUBLICOS` (`lib/types/webhook-eventos.ts`) y con
 # orden alfabético determinista: son los 12 values que este webhook puede emitir de verdad, un
 # SUBCONJUNTO del catálogo de `OrdenListItem.estado`. El miedo de la 256 —«sería un 5.º catálogo
@@ -1522,7 +1524,7 @@ components:
           description: "Nombre completo de la persona (nombre + apellidos). Texto para mostrar; PUEDE cambiar si se corrigen sus datos, así que no lo uses como clave."
     # ⏳ 2026-09-10 (feature 405) — UNA gestion del historial de la orden. Espejo del objeto TS.
     #
-    # ⚠️ VA DESPUES DE `Evidencia` Y ANTES DE `OrdenDetalle`, y el orden NO es cosmetico:
+    # ATENCION: VA DESPUES DE `Evidencia` Y ANTES DE `OrdenDetalle`, y el orden NO es cosmetico:
     # `openapi-contrato-en-reparto.test.ts` localiza el enum de `Evidencia.resultado` con una regex
     # posicional que toma la PRIMERA coincidencia de `resultado:` + `type: string` + `enum:` con
     # esta sangria. Mover este bloque por delante haria que aquel test midiera el enum equivocado.
@@ -1736,7 +1738,7 @@ components:
           description: "Cómo se entregan las etiquetas del lote. `consolidate` (por defecto): un solo PDF del lote, en `etiquetasPdf`. `individual`: un PDF por orden, cada URL en su `ordenes[].downloadUrl`, y `etiquetasPdf` llega `null`. Otro valor responde `422` antes de crear ninguna orden. No se guarda: vale solo para esta petición."
     CargaRow:
       type: object
-      description: "Una fila de carga. Todos los valores son strings (un valor que no es texto responde `422` para el lote entero). Las requeridas se validan en el servidor; una fila inválida no aborta el lote: sale en `errores` con un mensaje por campo (`<campo> es obligatorio` para `num_remision`, `destinatario`, `telefono` y `producto`). Cualquier otra clave se ignora."
+      description: "Una fila de carga. Todos los valores son strings (un valor que no es texto responde `422` para el lote entero). Las requeridas se validan en el servidor; una fila inválida no aborta el lote: sale en `errores` con un mensaje por campo. En `num_remision`, `destinatario`, `telefono` y `producto`: `<campo> es obligatorio` si la clave viene vacía y `Este campo es obligatorio` si la clave no viene. Cualquier otra clave se ignora."
       required:
         - num_remision
         - destinatario
@@ -1772,7 +1774,7 @@ components:
           description: "No se usa: se acepta y se ignora (no se guarda ni cambia el precio)."
         monto_cobrar:
           type: string
-          description: "Opcional. Monto contra entrega en colones, como texto (p. ej. \"25900\"); se redondea al colón. Vacío o ausente: no se cobra nada al destinatario. Un valor no numérico o negativo deja la fila en `errores` con `monto_cobrar debe ser numerico y no negativo`."
+          description: "Opcional. Monto contra entrega, en la moneda del país de la empresa, como texto (p. ej. \"25900\"); se redondea a la unidad entera. Vacío o ausente: no se cobra nada al destinatario. Un valor no numérico o negativo deja la fila en `errores` con `monto_cobrar debe ser numerico y no negativo`."
         notas:
           type: string
       additionalProperties:
@@ -2322,7 +2324,7 @@ components:
           description: "El `num_remision` que mandaste, tal cual; `null` si la fila no lo trajo."
         montoCobrar:
           type: string
-          description: "EL VALOR SOBRE EL QUE SE COTIZÓ: el `monto_cobrar` que entró al cálculo, ya redondeado al colón igual que lo redondea la carga, y `\"0.00\"` si la fila no traía monto (la base que usó la comisión COD). String money-safe de escala 2, crudo, como el resto de los importes."
+          description: "EL VALOR SOBRE EL QUE SE COTIZÓ: el `monto_cobrar` que entró al cálculo, ya redondeado a la unidad entera igual que lo redondea la carga, y `\"0.00\"` si la fila no traía monto (la base que usó la comisión COD). String money-safe de escala 2, crudo, como el resto de los importes."
         resultado:
           type: string
           const: cotizada

@@ -209,9 +209,20 @@ async function conEmpresa<T>(dueno: PrismaClient, organizacionId: string, fn: (t
 }
 
 /** Alta de una empresa con sus datos y una API key cuyo secreto conocemos. */
-async function empresaConClave(dueno: PrismaClient, letra: "A" | "B"): Promise<EmpresaConClave> {
+async function empresaConClave(
+  dueno: PrismaClient,
+  letra: "A" | "B",
+  opciones: { fulfillment?: boolean } = {},
+): Promise<EmpresaConClave> {
   const { empresa } = await altaDeEmpresa(letra, `slt208-${letra.toLowerCase()}-${randomUUID().slice(0, 8)}@example.test`);
   const datos = await sembrarDatos(dueno, empresa);
+  if (opciones.fulfillment) {
+    // SLT-94: sin la marca «se recoge en tienda», el paquete ya está en la bodega (fulfillment): la
+    // orden nace en `en_preparacion` y sin guía.
+    await conEmpresa(dueno, empresa.organizacionId, (tx) =>
+      tx.usuario.update({ where: { id: datos.tiendaId }, data: { seRecogeEnTienda: false } }),
+    );
+  }
   const clave = `svl_${randomBytes(32).toString("base64url")}`;
   await conEmpresa(dueno, empresa.organizacionId, async (tx) => {
     const n = await tx.apiKey.updateMany({
@@ -370,6 +381,8 @@ function chaiMinimo(valor: unknown) {
 }
 
 interface Corrida {
+  /** `true` si el script previo de la petición la omitió (`pm.execution.skipRequest()`). */
+  omitida: boolean;
   status: number;
   json: unknown;
   pruebas: { nombre: string; error?: string }[];
@@ -387,6 +400,18 @@ async function correrItem(
       if (!variables.has(k)) throw new Error(`variable de Postman sin definir: ${k}`);
       return variables.get(k)!;
     });
+  // Script previo (`prerequest`): puede leer variables y omitir la petición, como en Postman.
+  let omitida = false;
+  const previo = item.event?.find((e) => e.listen === "prerequest")?.script.exec.join("\n");
+  if (previo) {
+    const pmPrevio = {
+      collectionVariables: { get: (k: string) => variables.get(k) },
+      execution: { skipRequest: () => (omitida = true) },
+    };
+    new Function("pm", "console", previo)(pmPrevio, { log: () => undefined });
+  }
+  if (omitida) return { omitida, status: 0, json: null, pruebas: [] };
+
   const req = item.request;
   const host = sustituir(req.url.host.join("."));
   const ruta = req.url.path.map((p) => encodeURIComponent(sustituir(p))).join("/");
@@ -445,7 +470,7 @@ async function correrItem(
     const consola = { log: () => undefined };
     new Function("pm", "console", script)(pm, consola);
   }
-  return { status: r.status, json, pruebas };
+  return { omitida, status: r.status, json, pruebas };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -456,6 +481,8 @@ test.describe.serial("SLT-208 — la guía, Postman y el aislamiento entre empre
   let dueno: PrismaClient;
   let a: EmpresaConClave;
   let b: EmpresaConClave;
+  /** Tercera empresa, con fulfillment: la colección de Postman tiene que valerle igual. */
+  let c: EmpresaConClave;
   let base: string;
   let creadasHoyB0 = 0;
   let creadasHoyA0 = 0;
@@ -466,10 +493,13 @@ test.describe.serial("SLT-208 — la guía, Postman y el aislamiento entre empre
     dueno = clienteDueno();
     a = await empresaConClave(dueno, "A");
     b = await empresaConClave(dueno, "B");
-    await enlazarDistritos(dueno, a, [
-      ["San José", "San José", "Carmen"],
-      ["Alajuela", "Alajuela", "Alajuela"],
-    ]);
+    c = await empresaConClave(dueno, "B", { fulfillment: true });
+    for (const e of [a, c]) {
+      await enlazarDistritos(dueno, e, [
+        ["San José", "San José", "Carmen"],
+        ["Alajuela", "Alajuela", "Alajuela"],
+      ]);
+    }
     creadasHoyA0 = await ordenesCreadasHoy(base, a.clave);
     creadasHoyB0 = await ordenesCreadasHoy(base, b.clave);
   });
@@ -483,7 +513,7 @@ test.describe.serial("SLT-208 — la guía, Postman y el aislamiento entre empre
     const md = fs.readFileSync(GUIA, "utf8");
     const ejemplos = ejemplosDeLaGuia(md);
     // Control positivo: si el parser deja de ver los ejemplos, esto se pone rojo antes de dar nada por bueno.
-    expect(ejemplos.length, "SLT-208: número de curl ejecutables de la guía").toBe(10);
+    expect(ejemplos.length, "SLT-208: número de curl ejecutables de la guía").toBe(11);
     for (const ej of ejemplos) {
       expect(ej.curl.url.startsWith(`${URL_PRODUCCION}/`), `línea ${ej.linea}: la URL no es la de producción`).toBe(true);
       expect(ej.curl.headers.Authorization, `línea ${ej.linea}: sin Authorization`).toBe(`Bearer ${CLAVE_EJEMPLO}`);
@@ -566,7 +596,7 @@ test.describe.serial("SLT-208 — la guía, Postman y el aislamiento entre empre
       }
       ejecutados.push(etiqueta);
     }
-    expect(ejecutados).toHaveLength(10);
+    expect(ejecutados).toHaveLength(11);
   });
 
   test("el ejemplo de firma de la sección 6.3 sale igual con el firmador real", async () => {
@@ -586,33 +616,64 @@ test.describe.serial("SLT-208 — la guía, Postman y el aislamiento entre empre
     expect(JSON.stringify(JSON.parse(cuerpo))).toBe(cuerpo);
   });
 
-  test("cada petición de la colección de Postman responde y pasa sus propios tests", async () => {
-    test.setTimeout(240_000);
-    const coleccion = JSON.parse(fs.readFileSync(POSTMAN, "utf8")) as ColeccionPostman;
-    const variables = new Map(coleccion.variable.map((v) => [v.key, v.value]));
-    expect(variables.get("baseUrl")).toBe(URL_PRODUCCION);
-    variables.set("baseUrl", base);
-    variables.set("apiKey", a.clave);
-    const marca = String(Date.now());
-    expect(coleccion.item.length, "SLT-208: una petición por endpoint").toBe(10);
+  for (const escenario of ["sin fulfillment", "con fulfillment"] as const) {
+    test(`cada petición de la colección de Postman responde y pasa sus propios tests (tienda ${escenario})`, async () => {
+      test.setTimeout(240_000);
+      const e = escenario === "sin fulfillment" ? a : c;
+      const coleccion = JSON.parse(fs.readFileSync(POSTMAN, "utf8")) as ColeccionPostman;
+      const variables = new Map(coleccion.variable.map((v) => [v.key, v.value]));
+      expect(variables.get("baseUrl")).toBe(URL_PRODUCCION);
+      variables.set("baseUrl", base);
+      variables.set("apiKey", e.clave);
+      const marca = String(Date.now());
+      expect(coleccion.item.length, "SLT-208: una petición por endpoint").toBe(10);
 
-    const resultados: string[] = [];
-    for (const item of coleccion.item) {
-      // La cancelación necesita que el paquete esté en la bodega (sección 5.9 de la guía).
-      if (/Cancelar/.test(item.name)) {
-        await fijarEstado(dueno, a, variables.get("numRemision")!, "en_bodega_central");
+      const resultados: string[] = [];
+      for (const item of coleccion.item) {
+        // La cancelación necesita que el paquete esté en la bodega (sección 5.9 de la guía); con
+        // fulfillment la orden no tiene guía y el script previo de la colección la omite.
+        if (/Cancelar/.test(item.name) && escenario === "sin fulfillment") {
+          await fijarEstado(dueno, e, variables.get("numRemision")!, "en_bodega_central");
+        }
+        const r = await correrItem(base, coleccion, variables, item, marca);
+        if (r.omitida) {
+          expect(`${escenario}: ${item.name}`, "solo se omite la cancelación de una orden sin guía").toBe(
+            "con fulfillment: 9. Cancelar una orden",
+          );
+          resultados.push(`${item.name}: omitida`);
+          continue;
+        }
+        expect(r.pruebas.length, `«${item.name}» no ejecutó ningún test`).toBeGreaterThan(0);
+        expect(r.pruebas.filter((x) => x.error), `«${item.name}» (${r.status}): ${JSON.stringify(r.json).slice(0, 400)}`).toEqual([]);
+        if (item.name.includes("Cargar")) {
+          if (escenario === "sin fulfillment") expect(variables.get("numGuia"), "la carga deja la guía en variables").toMatch(/^\d+$/);
+          else expect(variables.get("numGuia"), "con fulfillment la orden nace sin guía").toBe("");
+          expect(variables.get("numRemisionDesechable"), "la carga deja la segunda remisión").not.toBe("");
+        }
+        if (item.name.includes("Listar")) {
+          expect((r.json as { items: unknown[] }).items.length, "el listado trae la orden recién creada").toBeGreaterThan(0);
+        }
+        if (/Cancelar/.test(item.name)) expect(r.status).toBe(200);
+        resultados.push(`${item.name}: ${r.status}`);
       }
-      const c = await correrItem(base, coleccion, variables, item, marca);
-      expect(c.pruebas.length, `«${item.name}» no ejecutó ningún test`).toBeGreaterThan(0);
-      expect(c.pruebas.filter((p) => p.error), `«${item.name}» (${c.status}): ${JSON.stringify(c.json).slice(0, 400)}`).toEqual([]);
-      if (item.name.includes("Cargar")) {
-        expect(variables.get("numGuia"), "la carga deja la guía en variables").toMatch(/^\d+$/);
-        expect(variables.get("numRemisionDesechable"), "la carga deja la segunda remisión").not.toBe("");
-      }
-      if (/Cancelar/.test(item.name)) expect(c.status).toBe(200);
-      resultados.push(`${item.name}: ${c.status}`);
-    }
-    expect(resultados).toHaveLength(10);
+      expect(resultados).toHaveLength(10);
+    });
+  }
+
+  test("una clave de fila ausente y una vacía dan los dos mensajes que documenta la sección 5.1", async () => {
+    const guia = fs.readFileSync(GUIA, "utf8");
+    expect(guia).toContain("`telefono es obligatorio`");
+    expect(guia).toContain("`Este campo es obligatorio`");
+    const fila = { num_remision: `H2-${randomUUID().slice(0, 8)}`, destinatario: "Ana", provincia: "San José", canton: "San José", distrito: "Carmen", producto: "Caja" };
+    const r = await llamar(base, "POST", "/api/ordenes/api-key/carga", a.clave, {
+      ordenes: [fila, { ...fila, num_remision: `${fila.num_remision}-b`, telefono: "" }],
+    });
+    expect(r.status, r.texto).toBe(200);
+    const errores = (r.json as { errores: { fila: number; errores: Record<string, string[]> }[] }).errores;
+    expect(errores.map((x) => [x.fila, x.errores])).toEqual([
+      [1, { telefono: ["Este campo es obligatorio"] }],
+      [2, { telefono: ["telefono es obligatorio"] }],
+    ]);
   });
 
   test("dos empresas, una URL: la clave B no ve ni toca la orden de la A, y su analítica no la cuenta", async () => {
@@ -682,9 +743,10 @@ test.describe.serial("SLT-208 — la guía, Postman y el aislamiento entre empre
     expect((await llamar(base, "GET", "/api/ordenes/api-key", a.clave)).status).toBe(200);
   });
 
-  test("el contrato que sirve /api/docs/openapi propone el servidor de producción", async () => {
+  test("el contrato que sirve /api/docs/openapi propone este servidor y producción", async () => {
     const r = await llamar(base, "GET", "/api/docs/openapi", null);
     expect(r.status).toBe(200);
-    expect((r.json as { servers: { url: string }[] }).servers[0].url).toBe(URL_PRODUCCION);
+    // Primero «este servidor» (Try it out usa el host donde se abre Swagger), después producción.
+    expect((r.json as { servers: { url: string }[] }).servers.map((s) => s.url)).toEqual(["/", URL_PRODUCCION]);
   });
 });
