@@ -160,3 +160,40 @@ Falta, para OK:
 3. **B3:** la línea `tamano-pr-aceptado` con el OK de Carlos.
 
 El resto (la regla de tamaños desde `md`, los 44 px del móvil y el E2E de alineación) está bien.
+
+## Vuelta 2 (acotada a 5f4d6eec..18e8a596)
+
+### Checklist
+- [x] **B1 resuelto.** `desenlaceBodegaCentral` devuelve `aviso: "Queda por devolver a la tienda."` cuando
+  `ok.estado === "por_devolver_a_tienda"`, y `EscaneoContinuo` lo pinta bajo «Recibida». Es la misma frase de
+  destino que el toast de prod (`EscanerRecepcionBodegaCentral.tsx:62-65` en origin/prod: «Guía N recibida; queda
+  por devolver a la tienda.»); la fila ya dice «Recibida» y la guía, así que no se repiten. `aviso` es opcional
+  y solo lo pone la central: origen y satélite no lo producen y la fila sin `aviso` se pinta igual que antes.
+  Lo fijan el unit (`desenlace-recepcion.test.ts`, caso B1 frente al «ok en bodega central, sin aviso») y el de
+  componente (`EscanerRecepcionBodegaCentral.test.tsx`, «B1: …», positivo y negativo en la misma sesión).
+  Mutación propia: anular el render del aviso en `EscaneoContinuo.tsx` pone en rojo el test B1 (1 failed).
+- [x] **B2 resuelto.** `tests/unit/components/desenlace-recepcion.test.ts` recorre cada `status` de cada `Result`
+  (contrastado con `lib/types/`): central 8 status (+ la variante B1), satélite 10, origen 9. Los textos están
+  escritos a mano y coinciden letra por letra con `git show origin/prod:` de los tres receptores (incluido
+  «Vuelve a intentar.» de la central frente a «Vuelve a escanear.» de las otras dos). No se compara la
+  función consigo misma. Mutación propia: cruzar `forbidden`↔`unauthenticated` en la central y
+  `zona_ajena`↔`sin_zona` en la satélite → 4 failed (los 4 casos cruzados). Restaurado con `git checkout --`.
+- [x] **B3 resuelto.** `progress/features/SLT-202.md > Cierre` tiene
+  `<!-- tamano-pr-aceptado: 2026-11-18 · <motivo> · Carlos: «acepto» -->`, con el formato de
+  `docs/gate.md` (fecha · motivo y frase del humano). `node scripts/tamano-pr.mjs` lo da como AVISO aceptado
+  (49/40 archivos, 691/1000 producción, 1575/3000 tests).
+- [x] **m3 resuelto.** `ModoRecepcion = "continua" | "pagina"` (sin `"suelta"`); los `Exclude<…, "suelta">`
+  pasan a `ModoRecepcion`; `grep '"suelta"'` en app/components/lib/tests/e2e: solo un test ajeno (un valor de
+  filtro). Los comentarios de `EscanerModal` y `OrdenesListado` ya dicen 44 × 44 «en el móvil» y que la guía
+  suelta se quitó.
+- [x] **m6 resuelto.** La ficha dice ahora «el `gap-6` de Reparto (dev) vuelve al `gap-8` de prod», igual que
+  la bitácora y el código.
+- [x] **Verificación:** `tsc --noEmit` (heap 8 GB, ver m7) 0 errores; eslint de los 8 archivos tocados limpio;
+  `desenlace-recepcion`, `EscanerRecepcionBodegaCentral`, `EscaneoContinuo` y `sesion-escaneo` en verde
+  (52 tests) contra la base desechable.
+
+### Hallazgos
+Ningún bloqueante y ninguna regresión en el rango. Siguen abiertos, sin cambios, los menores m1, m2, m4, m5
+y m7 de la vuelta 1 (no se pedía arreglarlos).
+
+## Veredicto vuelta 2: OK
