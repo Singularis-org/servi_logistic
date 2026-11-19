@@ -48,7 +48,8 @@ import { derivarJornada } from "@/lib/utils/jornada-cierre";
 import { NOMBRE_USUARIO_SELECT, nombreCompletoUsuario } from "@/lib/utils/nombre-usuario";
 // FICHA 352 — el constructor del orden TOTAL: exige el desempate como argumento, para que no se
 // pueda armar un `orderBy` de listado paginado sin el. Ver `DESEMPATE_UNICO` mas abajo.
-import { ordenTotal } from "@/lib/types/ordenamiento-listado";
+import { ordenTotal, type OrdenamientoListado } from "@/lib/types/ordenamiento-listado";
+import type { CampoOrdenBodegaSatelite } from "@/lib/types/recepcion-satelite";
 import { ESTADOS_USUARIO_NO_ASIGNABLES } from "@/lib/constants/estado-usuario-asignable";
 import { fechaCalendario } from "@/lib/utils/calendario-zona";
 // Feature 274 — LA REGLA de resolucion de tarifa vive en un modulo PURO, compartido con el
@@ -1789,13 +1790,24 @@ function desdeSatelite(condiciones: Prisma.Sql[]): Prisma.Sql {
  *
  * Lo comparten la pagina y el conjunto de la descarga: si divergieran, la fila N del archivo
  * dejaria de ser la fila N de la pantalla sin que nada fallara.
+ *
+ * SLT-210 (R1403) — el TERCER termino lo elige la persona: fecha de creacion o numero de remision,
+ * en la direccion pedida. El grupo de estado y la prioridad siguen DELANTE (el conmutador ordena
+ * dentro de cada grupo, decision P2) y el `id` sigue cerrando la lista con direccion fija. La
+ * columna y la direccion salen de fragmentos FIJOS de este archivo elegidos por comparacion: el
+ * texto del cliente nunca se interpola. `num_remision` ordena por `clave_remision` —la columna
+ * generada de la ficha 423, la misma de `/ordenes`—, nunca por el texto crudo. Sin orden, el de
+ * siempre (`created_at DESC`, R1401).
  */
-function ordenBodegaSatelite(): Prisma.Sql {
+function ordenBodegaSatelite(orden?: OrdenamientoListado<CampoOrdenBodegaSatelite>): Prisma.Sql {
+  const columna =
+    orden?.sortBy === "num_remision" ? Prisma.sql`o."clave_remision"` : Prisma.sql`o."created_at"`;
+  const direccion = orden?.sortDir === "asc" ? Prisma.sql`ASC` : Prisma.sql`DESC`;
   return Prisma.sql`
       ORDER BY
         array_position(ARRAY[${Prisma.join([...ESTADOS_BODEGA_SATELITE])}]::text[], os."value") ASC,
         o."prioridad" DESC,
-        o."created_at" DESC,
+        ${columna} ${direccion},
         o."id" ASC
     `;
 }
@@ -4348,7 +4360,7 @@ export class OrdenRepository implements IOrdenRepository {
     const pagina = await this.prisma.$queryRaw<PaginaSateliteIdRow[]>(Prisma.sql`
       SELECT o."id", (COUNT(*) OVER ())::int AS "total"
       ${desde}
-      ${ordenBodegaSatelite()}
+      ${ordenBodegaSatelite(filtro.orden)}
       LIMIT ${rango.take} OFFSET ${rango.skip}
     `);
 
@@ -4394,7 +4406,7 @@ export class OrdenRepository implements IOrdenRepository {
     const conjunto = await this.prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
       SELECT o."id"
       ${desdeSatelite(condicionesSatelite(filtro))}
-      ${ordenBodegaSatelite()}
+      ${ordenBodegaSatelite(filtro.orden)}
     `);
     if (conjunto.length === 0) return [];
 

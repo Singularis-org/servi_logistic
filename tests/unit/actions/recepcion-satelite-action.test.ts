@@ -174,7 +174,38 @@ describe("listarOrdenesBodegaPaginado — el borde (feature 170, T K.1)", () => 
     const r = await listarOrdenesBodegaPaginado({}, { service, getActor: actorAdmin });
     expect(r.status).toBe("ok");
     expect(service.listarOrdenesBodegaPaginado).toHaveBeenCalledWith(
-      { page: 1, pageSize: 25 }, // recepcionSateliteConfig.DEFAULT_PAGE_SIZE
+      // recepcionSateliteConfig.DEFAULT_PAGE_SIZE; SLT-210 (R1401): sin orden en la entrada, el
+      // de siempre — fecha de creacion, mas recientes primero. Literales: son el contrato.
+      { page: 1, pageSize: 25, sortBy: "created_at", sortDir: "desc" },
+      ADMIN,
+    );
+  });
+
+  it("SLT-210 (R1405): un campo o una direccion de orden fuera de la lista blanca muere en el borde", async () => {
+    for (const malo of [
+      { sortBy: "num_guia" }, // existe en `/ordenes` pero NO se ofrece aqui
+      { sortBy: "estatus_id" },
+      { sortBy: 'o."zona_id"' },
+      { sortDir: "up" },
+      { sortDir: "DESC" },
+    ]) {
+      const service = buildService();
+      const r = await listarOrdenesBodegaPaginado(malo, { service, getActor: actorAdmin });
+      expect(r.status, JSON.stringify(malo)).toBe("validation_error");
+      expect(service.listarOrdenesBodegaPaginado).not.toHaveBeenCalled();
+      const conjunto = await listarOrdenesBodegaCompleto(malo, { service, getActor: actorAdmin });
+      expect(conjunto.status, JSON.stringify(malo)).toBe("validation_error");
+      expect(service.listarOrdenesBodegaCompleto).not.toHaveBeenCalled();
+    }
+    // CONTRAPRUEBA: los dos campos y las dos direcciones de la lista blanca SI cruzan.
+    const bueno = buildService();
+    const ok = await listarOrdenesBodegaPaginado(
+      { sortBy: "num_remision", sortDir: "asc" },
+      { service: bueno, getActor: actorAdmin },
+    );
+    expect(ok.status).toBe("ok");
+    expect(bueno.listarOrdenesBodegaPaginado).toHaveBeenCalledWith(
+      { page: 1, pageSize: 25, sortBy: "num_remision", sortDir: "asc" },
       ADMIN,
     );
   });
@@ -232,6 +263,9 @@ describe("listarOrdenesBodegaPaginado — el borde (feature 170, T K.1)", () => 
         estados: ["novedad", "mensajero_recogiendo_en_bodega"],
         canton_id: ["Escazú"],
         distrito_id: ["San Rafael", "San Antonio"],
+        // SLT-210 (R1401): el orden por defecto del borde.
+        sortBy: "created_at",
+        sortDir: "desc",
       },
       ADMIN,
     );
@@ -245,7 +279,7 @@ describe("listarOrdenesBodegaPaginado — el borde (feature 170, T K.1)", () => 
     );
     expect(r.status).toBe("ok");
     expect(service.listarOrdenesBodegaPaginado).toHaveBeenCalledWith(
-      { page: 1, pageSize: 100 }, // recepcionSateliteConfig.MAX_PAGE_SIZE
+      { page: 1, pageSize: 100, sortBy: "created_at", sortDir: "desc" }, // recepcionSateliteConfig.MAX_PAGE_SIZE
       ADMIN,
     );
   });
@@ -277,7 +311,12 @@ describe("listarOrdenesBodegaCompleto — el borde del conjunto (feature 184, T 
     expect(r.status).toBe("ok");
     // La lista blanca es la de la pagina MENOS el recorte: al servicio no le llega ni un
     // `page` con default. Si llegara, el «conjunto» seria una pagina.
-    expect(service.listarOrdenesBodegaCompleto).toHaveBeenCalledWith({}, ADMIN);
+    // SLT-210 (R1401/R1406): si viaja el orden por defecto, para que el archivo salga en el
+    // mismo orden que la pantalla.
+    expect(service.listarOrdenesBodegaCompleto).toHaveBeenCalledWith(
+      { sortBy: "created_at", sortDir: "desc" },
+      ADMIN,
+    );
   });
 
   it("una clave no declarada muere con validation_error sin tocar el service (R17)", async () => {
@@ -333,6 +372,8 @@ describe("listarOrdenesBodegaCompleto — el borde del conjunto (feature 184, T 
         estados: ["novedad", "mensajero_recogiendo_en_bodega"],
         canton_id: ["Escazú"],
         distrito_id: ["San Rafael", "San Antonio"],
+        sortBy: "created_at", // SLT-210 (R1406)
+        sortDir: "desc",
       },
       ADMIN,
     );

@@ -171,8 +171,11 @@ describe("453 · los numeros y la lista de superficies que el resto de la ficha 
   });
 
   it("⭑ R33: `ordenes` es superficie declarada; cualquier otra cadena se RECHAZA", () => {
-    expect(SUPERFICIES_VISTA).toEqual(["ordenes"]);
+    // SLT-210 (R1411): la satelite tiene SU superficie, distinta de la de `/ordenes`.
+    expect(SUPERFICIES_VISTA).toEqual(["ordenes", "ordenes-bodega-satelite"]);
     expect(superficieVistaSchema.safeParse("ordenes").success).toBe(true);
+    expect(superficieVistaSchema.safeParse("ordenes-bodega-satelite").success).toBe(true);
+    expect(superficieVistaSchema.safeParse("recepcion-satelite").success).toBe(false);
     expect(superficieVistaSchema.safeParse("cierres-admin").success).toBe(false);
     expect(superficieVistaSchema.safeParse("").success).toBe(false);
   });
