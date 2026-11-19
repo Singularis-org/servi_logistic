@@ -147,3 +147,45 @@ Veredicto: Tandas 2 y 3 en verde; la factura tiene el diseño nuevo, el anexo ex
   `tests/unit/facturas-plataforma/excel.test.ts`, `e2e/facturas-plataforma.spec.ts`.
 
 Veredicto: T4.1 en verde; los botones son «Descargar factura» y «Descargar anexo», los dos en PDF.
+
+## Tanda 5 y cierre (implementer, 2026-11-18)
+
+### Archivos (consolidado)
+- Producción: `lib/facturas-plataforma/{pdf-comun,pdf,anexo,resumen}.ts`, `excel.ts` (borrado),
+  `components/shared/facturas/{DescargarFactura.tsx,facturas-vista.ts,DetalleDeFactura.tsx}`, `docs/architecture.md`.
+- Tests: `tests/unit/facturas-plataforma/{pdf-comun,pdf,anexo,resumen}.test.ts`, `_pdf-leido.ts` (lector),
+  `excel.test.ts` (borrado), `tests/components/{DescargarFactura,DetalleDeFactura,MiPlanModule}.test.tsx`,
+  `tests/integration/plataforma-empresa-detalle-page.test.tsx`, `e2e/facturas-plataforma.spec.ts`.
+- Muestras para el humano: `progress/capturas/SLT-199/factura.pdf` (2 págs.) y `anexo.pdf` (3 págs.), factura N.º 7
+  con 127 movimientos (fixture, generado con un script fuera del repo). Sin PNG: no hay rasterizador sin dependencias
+  nuevas (sin pdfjs-dist ni canvas; el visor de Chrome headless pinta en blanco).
+
+### Mapa R → test
+| R | Test |
+|---|---|
+| R1 | `pdf-comun.test.ts` (caso R1: banda, barra, cabecera de tabla y pie iguales en color, alto y x) |
+| R2, R5, R6 | `pdf-comun.test.ts`; además `pdf.test.ts` y `anexo.test.ts` |
+| R3, R4 | `resumen.test.ts` (`importeDocumento`, `cantidadVisible`); `pdf.test.ts`, `anexo.test.ts` |
+| R7 | `anexo.test.ts`, `DescargarFactura.test.tsx` |
+| R8–R14 | `pdf.test.ts` |
+| R15–R21 | `anexo.test.ts` |
+| R22 | `anexo.test.ts` (excel.ts no existe), `DetalleDeFactura.test.tsx`, `DescargarFactura.test.tsx` |
+| R23 | `DescargarFactura.test.tsx`, `DetalleDeFactura.test.tsx`, `MiPlanModule.test.tsx`, `plataforma-empresa-detalle-page.test.tsx` |
+| R24 | `resumen.test.ts`, `DescargarFactura.test.tsx`, `e2e/facturas-plataforma.spec.ts` |
+| R25 | `e2e/facturas-plataforma.spec.ts` |
+| R26 | `resumen.test.ts`, `pdf.test.ts`, `anexo.test.ts` |
+
+### Resultados
+- `vitest run tests/unit/facturas-plataforma/ tests/components/DescargarFactura.test.tsx tests/components/DetalleDeFactura.test.tsx`:
+  6 archivos, 109 pasados, 0 fallidos (backend_dev, tras T4.2). T4.1: 4 archivos de componentes/integración, 90 pasados.
+- `pnpm run typecheck` limpio (cubre `e2e/`); eslint limpio sobre lo tocado; `node scripts/check-perfil.mjs` rc=0.
+- Greps de T4.2 (`construirExcelFactura`, `facturas-plataforma/excel`, «Descargar Excel») sin resultados.
+- exceljs sigue en uso en otros módulos: `package.json` intacto.
+- Tamaño (`node scripts/tamano-pr.mjs`): 20/40 archivos, 1155/1000 líneas de producción, 1212/3000 de tests;
+  aceptado por el humano (~1300).
+
+### E2E (T5.2) — NO corrido
+- Base `servi_logistic_slt199_e2e` recreada, migrada y sembrada. El `next build` lo detuvo Claude Code por memoria
+  baja del sistema (otras sesiones). Procesos huérfanos del build terminados. No se relanzó: falta correr
+  `e2e/facturas-plataforma.spec.ts` y `--project=dinero` (script en el scratchpad del implementer:
+  base → build; spec; dinero, con `E2E_PUERTO=3044`, `E2E_STORAGE_PUERTO=54339`).
