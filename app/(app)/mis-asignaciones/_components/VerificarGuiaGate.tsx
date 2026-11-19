@@ -5,6 +5,7 @@ import { useCallback, useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { QrScanner } from "@/components/shared/QrScanner";
+import { BOTON_TACTIL_MOVIL } from "@/components/shared/texto-entero";
 import { useToast } from "@/hooks/useToast";
 import { leerGuia } from "@/lib/utils/paquete-url";
 
@@ -130,13 +131,14 @@ export function VerificarGuiaGate({
             disabled={disabled}
             onChange={(event) => setValor(event.target.value)}
             placeholder="Ej. 1024"
-            className="h-11"
+            // SLT-202 (Carlos, 2026-11-18): desde `md` el alto de prod (el del `Input`, 32 px); en
+            // el móvil, los 44 px de SLT-163 (R511).
+            className="max-md:h-11"
           />
         </div>
         <Button
           type="submit"
-          size="touch"
-          className="w-full"
+          className={`w-full ${BOTON_TACTIL_MOVIL}`}
           disabled={disabled || valor.trim() === ""}
         >
           Confirmar guía

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Truck } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { BOTON_TACTIL_MOVIL } from "@/components/shared/texto-entero";
 
 import { ConfirmarGestionDialog } from "./ConfirmarGestionDialog";
 
@@ -38,12 +39,13 @@ export function GestionarOrdenCardButton({
 
   return (
     <>
-      {/* SLT-156 (R493): 44 px; el mensajero lo pulsa en la calle, con el pulgar. */}
+      {/* SLT-156 (R493): 44 px en el móvil; el mensajero lo pulsa en la calle, con el pulgar.
+          SLT-202 (Carlos, 2026-11-18): desde `md`, el `sm` de prod. */}
       <Button
         type="button"
         variant="outline"
-        size="touch"
-        className="w-fit"
+        size="sm"
+        className={`w-fit ${BOTON_TACTIL_MOVIL}`}
         disabled={disabled}
         aria-label={`Gestionar la orden ${numRemision}`}
         onClick={() => setAbierto(true)}

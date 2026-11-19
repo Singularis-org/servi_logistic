@@ -199,13 +199,16 @@ describe("SLT-160 — R609: sin Enter, la barra de siempre", () => {
 });
 
 describe("SLT-160 — R600: el botón de cámara aparte, junto al campo (DC2)", () => {
-  it("con `escaneo` se muestra con su nombre accesible, fuera del campo y de 44 px", () => {
+  // SLT-202 «Escritorio igual a prod: tamaños de controles y un solo botón de recibir» (decisión de
+  // Carlos del 2026-11-18): los 44 px de R600/R771 valen solo en el móvil; desde `md`, 32 px.
+  it("con `escaneo` se muestra con su nombre accesible, fuera del campo; 32 px en escritorio y 44 en el móvil", () => {
     const { campo } = montar();
     const camara = screen.getByRole("button", { name: "Escanear con cámara" });
     expect(camara).toBeInTheDocument();
     // Fuera del contenedor del campo (el de la lupa, el input y la «X»).
     expect(campo.parentElement).not.toContainElement(camara);
-    expect(camara).toHaveClass("size-11");
+    expect(camara).toHaveClass("size-8", "max-md:size-11");
+    expect(camara).not.toHaveClass("size-11");
   });
 
   it("sin `escaneo` no se monta", () => {
@@ -250,15 +253,17 @@ describe("SLT-160 — la cámara del buscador", () => {
     expect(dialogo.querySelector('[data-slot="card-header"]')).toBeNull();
     const cerrar = within(dialogo).getAllByRole("button", { name: "Cerrar" });
     expect(cerrar).toHaveLength(1);
-    expect(cerrar[0]).toHaveClass("size-11");
+    // SLT-202 (Carlos, 2026-11-18): 44 × 44 solo en el móvil; en escritorio, el `icon-sm` de prod.
+    expect(cerrar[0]).toHaveClass("size-7", "max-md:size-11");
+    expect(cerrar[0]).not.toHaveClass("size-11");
   });
 
-  it("R929: el disparador sigue siendo el icono de cámara de 44 px, sin texto", () => {
+  it("R929: el disparador sigue siendo el icono de cámara (44 px en el móvil, SLT-202), sin texto", () => {
     montar();
     const camara = screen.getByRole("button", { name: "Escanear con cámara" });
     expect(camara).toHaveTextContent("");
     expect(camara.querySelector("svg")).not.toBeNull();
-    expect(camara).toHaveClass("size-11");
+    expect(camara).toHaveClass("max-md:size-11");
   });
 
   it("R604 — la URL del QR leída por la cámara queda como el número", async () => {
@@ -314,14 +319,18 @@ describe("SLT-160 — R770: la ayuda del escaneo debajo del campo (DC2)", () => 
   });
 });
 
-describe("SLT-160 — R771: 44 px de alto con `escaneo` (DC2)", () => {
-  it("con `escaneo`, el contenedor del campo mide h-11", () => {
+// SLT-202 «Escritorio igual a prod: tamaños de controles y un solo botón de recibir»: R771 pedía 44 px
+// «en todos los anchos». Por decisión de Carlos del 2026-11-18, solo en el móvil (`max-md:h-11`);
+// desde `md`, las clases de prod: el campo y «Filtros» en `h-8`, «Limpiar todo» en el `sm` (`h-7`).
+// La altura real a 1280 y a 360 px la fija `e2e/escritorio-igual-a-prod.spec.ts`.
+describe("SLT-160 — R771: 44 px de alto con `escaneo`, solo en el móvil (DC2, SLT-202)", () => {
+  it("con `escaneo`, el contenedor del campo mide h-8 y h-11 en el móvil", () => {
     const { campo } = montar();
-    expect(campo.parentElement).toHaveClass("h-11");
-    expect(campo.parentElement).not.toHaveClass("h-8");
+    expect(campo.parentElement).toHaveClass("h-8", "max-md:h-11");
+    expect(campo.parentElement).not.toHaveClass("h-11");
   });
 
-  it("con `escaneo`, «Filtros» y «Limpiar todo» miden h-11", () => {
+  it("con `escaneo`, «Filtros» y «Limpiar todo» tienen el alto de prod y h-11 en el móvil", () => {
     render(
       <BuscadorFiltros
         onChange={vi.fn()}
@@ -332,8 +341,12 @@ describe("SLT-160 — R771: 44 px de alto con `escaneo` (DC2)", () => {
         hayFiltrosAplicados
       />,
     );
-    expect(screen.getByRole("button", { name: "Filtros" })).toHaveClass("h-11");
-    expect(screen.getByRole("button", { name: "Limpiar todo" })).toHaveClass("h-11");
+    const filtros = screen.getByRole("button", { name: "Filtros" });
+    expect(filtros).toHaveClass("h-8", "max-md:h-11");
+    expect(filtros).not.toHaveClass("h-11");
+    const limpiar = screen.getByRole("button", { name: "Limpiar todo" });
+    expect(limpiar).toHaveClass("h-7", "max-md:h-11");
+    expect(limpiar).not.toHaveClass("h-11");
   });
 
   it("sin `escaneo`, el alto de siempre (h-8)", () => {

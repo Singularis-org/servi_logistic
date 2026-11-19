@@ -1,38 +1,23 @@
 "use client";
 
-import { useCallback, useState, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 
-import { EscanerModal } from "@/components/shared/EscanerModal";
-import {
-  EscanerGuiaCard,
-  type ResultadoLectura,
-} from "@/components/shared/EscanerGuiaCard";
 import { TarjetaEscaneoContinuo } from "@/components/shared/EscaneoContinuo";
 import { RecepcionContinuaPagina } from "@/components/shared/RecepcionContinuaPagina";
 import { RecibirPaquetesEntrada } from "@/components/shared/RecibirPaquetesEntrada";
-import { useToast } from "@/hooks/useToast";
 import { recibirPorQr } from "@/lib/actions/recepcion-satelite";
-import { leerGuia } from "@/lib/utils/paquete-url";
 import type { DesenlaceRecepcion, ModoRecepcion } from "@/lib/utils/sesion-escaneo";
 import type { RecibirResult } from "@/lib/types/recepcion-satelite";
 
 import { estatusLabel } from "@/app/(app)/ordenes/_components/estatus-label";
 
-// Feature 33 (T13, R12–R16, decisión F1.4 (a)): recepción por escaneo con la
-// cámara del dispositivo, delegada al componente compartido `QrScanner`, que
-// encapsula el botón, el visor y el ciclo de vida de html5-qrcode. Aquí solo
-// resolvemos el numGuia del texto decodificado y llamamos a `recibirPorQr`.
-// Feedback por ítem con useToast (un toast por resultado). Tras ok/ya_recibida se
-// dispara `onRecibida` (el módulo lo conecta a router.refresh()).
+// Feature 33 — recepción en la bodega satélite. Llama a `recibirPorQr` y traduce cada respuesta a
+// la fila de la sesión continua (`desenlaceSatelite`, SLT-159 R583), con los motivos de la guía
+// suelta de prod. Tras recibir, `onRecibida` relee el listado al cerrar la sesión (R592).
 //
-// Pedido humano (rama ux): la recepción se opera IGUAL que la recogida del mensajero
-// (`RecogerPaqueteCard`), con los DOS caminos en la misma tarjeta: cámara y número de
-// guía TECLEADO. La diferencia entre ambos es solo de parseo — la cámara entrega la URL
-// del paquete (`<origin>/paquete/<numGuia>`) y hay que extraer el número; lo tecleado ES
-// el número—, así que los dos terminan en el mismo `recibirPorQr`.
-//
-// SLT-158: cada lectura DEVUELVE su resultado a la tarjeta (acierto, o error con el mismo
-// motivo del toast). Sin guard `procesando` propio: la tarjeta encola las lecturas (R574).
+// SLT-202 «Escritorio igual a prod: tamaños de controles y un solo botón de recibir» (Carlos,
+// 2026-11-18): la tarjeta de guía suelta, con su toast por lectura, se quitó. La pantalla tiene un
+// solo «Recibir paquete», que abre la recepción continua (SLT-159).
 
 export interface EscanerRecepcionProps {
   /**
@@ -40,7 +25,10 @@ export interface EscanerRecepcionProps {
    * `continua`, una sola vez al cerrar el diálogo si hubo alguna.
    */
   onRecibida?: () => void;
-  /** SLT-159: `suelta` (lo de hoy, con su modal), `continua` (solo la tarjeta) o `pagina`. */
+  /**
+   * SLT-159: `continua` (solo la tarjeta) o `pagina`. Sin modo, el disparador «Recibir paquete» de la
+   * pantalla (SLT-202: la guía suelta ya no existe; la cubre la continua).
+   */
   modo?: ModoRecepcion;
   /** SLT-159 (R613): en `pagina`, adónde vuelve «Terminar recepción». */
   volverA?: string;
@@ -48,7 +36,7 @@ export interface EscanerRecepcionProps {
 
 const sinRefresco = () => {};
 
-/** SLT-159 (R583): la respuesta traducida a desenlace de la fila, con los motivos del toast. */
+/** SLT-159 (R583): la respuesta traducida a desenlace de la fila, con los motivos de prod. */
 export function desenlaceSatelite(result: RecibirResult): DesenlaceRecepcion {
   const noSePudo = (motivo: string): DesenlaceRecepcion => ({ tipo: "no_se_pudo", motivo });
   switch (result.status) {
@@ -95,7 +83,7 @@ function useHrefRecibirPaquetes(): string {
 
 export function EscanerRecepcion({
   onRecibida = sinRefresco,
-  modo = "suelta",
+  modo,
   volverA = "/recepcion-satelite/por-recibir",
 }: EscanerRecepcionProps) {
   if (modo === "pagina") {
@@ -117,102 +105,23 @@ export function EscanerRecepcion({
       />
     );
   }
-  return <RecepcionSateliteSuelta onRecibida={onRecibida} />;
+  return <RecepcionSateliteEntrada onRecibida={onRecibida} />;
 }
 
-function RecepcionSateliteSuelta({ onRecibida }: Readonly<{ onRecibida: () => void }>) {
+/**
+ * SLT-202 (Carlos, 2026-11-18): el ÚNICO disparador de recibir de «Por recibir» y «En bodega»,
+ * «Recibir paquete», en el sitio del de prod, y abre la recepción continua de SLT-159. Antes había
+ * dos: la guía suelta y, al lado, «Recibir paquetes». La continua cubre a la suelta: la misma acción
+ * (`recibirPorQr`), los mismos motivos (`desenlaceSatelite`), campo para teclear o la pistola y
+ * cámara; recibir una sola guía es una sesión de una lectura. Por eso la suelta se quitó.
+ */
+function RecepcionSateliteEntrada({ onRecibida }: Readonly<{ onRecibida: () => void }>) {
   const hrefRecibirPaquetes = useHrefRecibirPaquetes();
-  const toast = useToast();
-  // Confirmacion PERSISTENTE del ultimo acierto: el toast se va solo y en una tanda
-  // de escaneos seguidos el mensajero necesita ver que la anterior si entro.
-  const [ultimaRecibida, setUltimaRecibida] = useState<number | null>(null);
-
-  /** Rechazo: el toast de siempre y el mismo motivo para la tarjeta (SLT-158). */
-  const rechazar = useCallback(
-    (motivo: string): ResultadoLectura => {
-      toast.error(motivo);
-      return { tipo: "error", motivo };
-    },
-    [toast],
-  );
-
-  /**
-   * Traduce cada resultado de la acción a un toast por ítem (R12–R16). El
-   * `num_guia` es el del escaneo (el mismo con el que la acción resolvió la
-   * orden): es lo que el humano ve impreso en la etiqueta, a diferencia del
-   * `result.ordenId`, que es el UUID interno y no le dice nada.
-   */
-  const notificar = useCallback(
-    (result: RecibirResult, numGuia: number): ResultadoLectura => {
-      const desenlace = desenlaceSatelite(result);
-      switch (result.status) {
-        case "ok":
-          toast.success(`Guía ${numGuia} recibida.`);
-          setUltimaRecibida(numGuia);
-          onRecibida();
-          return { tipo: "acierto" };
-        case "ya_recibida":
-          // La lectura fue buena: el paquete ya estaba dentro. Suena como acierto.
-          toast.info(`La guía ${numGuia} ya estaba recibida.`);
-          onRecibida();
-          return { tipo: "acierto" };
-        case "no_encontrada":
-          return rechazar("Orden no encontrada.");
-        default:
-          return rechazar(desenlace.tipo === "no_se_pudo" ? desenlace.motivo : "");
-      }
-    },
-    [toast, onRecibida, rechazar],
-  );
-
-  /**
-   * Dado el texto leído (cámara, tecleo o pistola), recibe la orden. Todos lo leen con
-   * `leerGuia` (SLT-157): el QR (`<origin>/paquete/<numGuia>`) o el CODE128 (dígitos) de la
-   * etiqueta. CORTE LIMPIO: un texto que no resuelve a num_guia (p. ej. el UUID de una
-   * etiqueta vieja) se rechaza aquí con el mismo mensaje que el `validation_error` del
-   * borde, sin llamar a la acción. La cámara ya cerró el visor antes de invocarnos.
-   */
-  const procesar = useCallback(
-    async (escaneado: string): Promise<ResultadoLectura> => {
-      const numGuia = leerGuia(escaneado);
-      if (numGuia === null) return rechazar("Código inválido.");
-      const result = await recibirPorQr({ numGuia });
-      return notificar(result, numGuia);
-    },
-    [notificar, rechazar],
-  );
-
   return (
-    /* 2026-07-31 (decisión del humano): la tarjeta vive TRAS su disparador, como en el resto
-       de la app — desde el 2026-08-10, en modal. Sin él, `QrScanner` quedaba montado todo el
-       tiempo que la bodega tuviera la pantalla abierta, con la cámara encendida detrás del
-       listado. El label es el que `EscanerModal` trae por defecto. */
-    <EscanerModal
-      // SLT-193 (R925, R927): el único título del diálogo, en la barra de `EscanerModal`.
-      titulo="Recibir paquete"
-      acciones={
-        <RecibirPaquetesEntrada href={hrefRecibirPaquetes}>
-          <EscanerRecepcion modo="continua" onRecibida={onRecibida} />
-        </RecibirPaquetesEntrada>
-      }
-    >
-      <EscanerGuiaCard
-        sinEncabezado
-        ariaLabel="Recibir por número de guía o escaneo"
-        titulo="Recibir paquete"
-        descripcion="Escanea o ingresa el número de guía"
-        onDecoded={procesar}
-        mensajeErrorCamara="No se pudo abrir la cámara."
-        manual={{ onSubmit: procesar, submitLabel: "Recibir" }}
-        exito={
-          ultimaRecibida === null ? undefined : (
-            <>
-              Guía <span className="font-semibold">{ultimaRecibida}</span> recibida
-              correctamente.
-            </>
-          )
-        }
-      />
-    </EscanerModal>
+    <div className="flex w-full flex-wrap items-center gap-2">
+      <RecibirPaquetesEntrada href={hrefRecibirPaquetes}>
+        <EscanerRecepcion modo="continua" onRecibida={onRecibida} />
+      </RecibirPaquetesEntrada>
+    </div>
   );
 }

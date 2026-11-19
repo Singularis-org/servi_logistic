@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation";
 import { Clock } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { BOTON_TACTIL_MOVIL } from "@/components/shared/texto-entero";
 import { useToast } from "@/hooks/useToast";
 import { marcarGestionarLuego } from "@/lib/actions/orden-mensajero-meta";
 
@@ -75,8 +76,9 @@ export function MarcarLuegoToggle({
     <Button
       type="button"
       variant={marcada ? "secondary" : "ghost"}
-      size="touch"
-      className="w-fit"
+      // SLT-202 (Carlos, 2026-11-18): `sm` de prod desde `md`; 44 px en el móvil (SLT-156, R493).
+      size="sm"
+      className={`w-fit ${BOTON_TACTIL_MOVIL}`}
       loading={procesando}
       aria-pressed={marcada}
       aria-label={

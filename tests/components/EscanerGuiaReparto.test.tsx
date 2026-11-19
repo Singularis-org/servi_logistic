@@ -194,11 +194,13 @@ describe("SLT-156 R500/R503 — el disparador del escáner", () => {
     expect(kpis.compareDocumentPosition(barra) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
   });
 
-  it("R493: el disparador mide 44 px (`h-11`) y va a todo el ancho", () => {
+  // SLT-202 «Escritorio igual a prod: tamaños de controles y un solo botón de recibir» (Carlos, 2026-11-18): 44 px y ancho completo solo en el móvil (`max-md:`); en escritorio, el tamaño de prod.
+  it("R493: el disparador mide 44 px y va a todo el ancho en el móvil; en escritorio, el `h-8` de prod", () => {
     montar();
     const clases = disparador().className.split(/\s+/);
-    expect(clases).toEqual(expect.arrayContaining(["h-11", "w-full"]));
-    expect(clases).not.toContain("h-8");
+    expect(clases).toEqual(expect.arrayContaining(["h-8", "max-md:h-11", "max-md:w-full"]));
+    expect(clases).not.toContain("h-11");
+    expect(clases).not.toContain("w-full");
   });
 });
 
@@ -218,7 +220,8 @@ describe("SLT-193 R927 — un solo título, en la barra", () => {
     expect(within(escaner).queryByText("Escanea o ingresa el número de guía de una orden de tu reparto.")).toBeNull();
     const cerrar = within(escaner).getAllByRole("button", { name: "Cerrar" });
     expect(cerrar).toHaveLength(1);
-    expect(cerrar[0].className.split(/\s+/)).toContain("size-11");
+    // SLT-202: 44 × 44 solo en el móvil; en escritorio, el `icon-sm` de prod.
+    expect(cerrar[0].className.split(/\s+/)).toEqual(expect.arrayContaining(["size-7", "max-md:size-11"]));
     expect(within(escaner).getByRole("region", { name: "Abrir orden por guía" })).toBeInTheDocument();
     // El botón de envío no cambia.
     expect(within(escaner).getByRole("button", { name: "Abrir orden" })).toBeInTheDocument();

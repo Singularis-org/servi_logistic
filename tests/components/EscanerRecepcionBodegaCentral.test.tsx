@@ -1,10 +1,9 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup, act, within } from "@testing-library/react";
+import { render, screen, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { EscanerRecepcionBodegaCentral } from "@/app/(app)/ordenes/_components/EscanerRecepcionBodegaCentral";
-import { ORDER_STATUS_LABELS } from "@/app/(app)/ordenes/_components/EstatusBadge";
 import { recibirEnBodegaCentralPorQr } from "@/lib/actions/recepcion-bodega-central";
 import { EscanerModal } from "@/components/shared/EscanerModal";
 
@@ -49,31 +48,6 @@ vi.mock("html5-qrcode", () => ({
 
 const recibirMock = vi.mocked(recibirEnBodegaCentralPorQr);
 
-/** Abre la cámara y simula que decodifica un QR con el texto dado. */
-async function escanear(user: ReturnType<typeof userEvent.setup>, texto: string) {
-  await user.click(screen.getByRole("button", { name: "Escanear con cámara" }));
-  await vi.waitFor(() => expect(decodeCallback.current).not.toBeNull());
-  await act(async () => {
-    decodeCallback.current?.(texto);
-  });
-}
-
-/** Entrada manual: teclea el número de guía y pulsa "Recibir". */
-async function recibirManual(
-  user: ReturnType<typeof userEvent.setup>,
-  texto: string,
-) {
-  const input = screen.getByLabelText("Número de guía");
-  await user.clear(input);
-  if (texto) await user.type(input, texto);
-  await user.click(screen.getByRole("button", { name: "Recibir" }));
-}
-
-/** URL del paquete tal como la codifica el QR de la etiqueta. */
-function qrDeGuia(numGuia: number): string {
-  return `https://ejemplo.app/paquete/${numGuia}`;
-}
-
 beforeEach(() => {
   vi.clearAllMocks();
   decodeCallback.current = null;
@@ -92,280 +66,12 @@ afterEach(() => {
   cleanup();
 });
 
-describe("EscanerRecepcionBodegaCentral — dos entradas equivalentes (R12/R13)", () => {
-  it("R13: al decodificar el QR llama a la acción con el num_guia de la URL", async () => {
-    const user = userEvent.setup();
-    recibirMock.mockResolvedValue({
-      status: "ok",
-      ordenId: "o1",
-      estado: "en_bodega_central",
-    });
-    render(<EscanerRecepcionBodegaCentral onRecibida={vi.fn()} />);
+// SLT-202 «Escritorio igual a prod: tamaños de controles y un solo botón de recibir» (Carlos,
+// 2026-11-18): la guía suelta se quitó de `/ordenes` y de la recepción satélite. Sus pruebas (toast
+// por resultado, corte del código inválido, guía única, línea de error) se fueron con ella; la
+// continua las cubre en `EscaneoContinuo.test.tsx` (R580-R593) y aquí (desenlace por resultado).
 
-    await escanear(user, qrDeGuia(14));
-
-    await vi.waitFor(() =>
-      expect(recibirMock).toHaveBeenCalledWith({ numGuia: 14 }),
-    );
-  });
-
-  it("R12b: la entrada manual dispara la MISMA acción con el num_guia tecleado", async () => {
-    const user = userEvent.setup();
-    recibirMock.mockResolvedValue({
-      status: "ok",
-      ordenId: "o1",
-      estado: "en_bodega_central",
-    });
-    render(<EscanerRecepcionBodegaCentral onRecibida={vi.fn()} />);
-
-    await recibirManual(user, "27");
-
-    await vi.waitFor(() =>
-      expect(recibirMock).toHaveBeenCalledWith({ numGuia: 27 }),
-    );
-  });
-});
-
-describe("EscanerRecepcionBodegaCentral — toast por resultado (R15) + refresco (R14)", () => {
-  it("ok -> toast con la guía (no el UUID) y dispara onRecibida", async () => {
-    const user = userEvent.setup();
-    const onRecibida = vi.fn();
-    recibirMock.mockResolvedValue({
-      status: "ok",
-      ordenId: "54f84b2a-391b-4726-b8a4-358a02f2e8a6",
-      estado: "en_bodega_central",
-    });
-    render(<EscanerRecepcionBodegaCentral onRecibida={onRecibida} />);
-
-    await escanear(user, qrDeGuia(14));
-
-    await vi.waitFor(() => expect(successMock).toHaveBeenCalled());
-    expect(successMock.mock.calls[0][0]).toMatch(/14/);
-    expect(successMock.mock.calls[0][0]).toMatch(/bodega central/i);
-    expect(successMock.mock.calls[0][0]).not.toMatch(/54f84b2a/);
-    expect(onRecibida).toHaveBeenCalledTimes(1);
-  });
-
-  it("R17 (139): ok con estado por_devolver_a_tienda -> toast nombra ese destino, no 'bodega central'", async () => {
-    const user = userEvent.setup();
-    const onRecibida = vi.fn();
-    // Recepción STATE-AWARE: una orden en devolviendo_a_bodega_central queda en
-    // por_devolver_a_tienda; el toast debe reflejar ese destino (no "bodega central").
-    recibirMock.mockResolvedValue({
-      status: "ok",
-      ordenId: "o1",
-      estado: "por_devolver_a_tienda",
-    });
-    render(<EscanerRecepcionBodegaCentral onRecibida={onRecibida} />);
-
-    await escanear(user, qrDeGuia(21));
-
-    await vi.waitFor(() => expect(successMock).toHaveBeenCalled());
-    expect(successMock.mock.calls[0][0]).toMatch(/21/);
-    expect(successMock.mock.calls[0][0]).toMatch(/por devolver a la tienda/i);
-    expect(successMock.mock.calls[0][0]).not.toMatch(/bodega central/i);
-    expect(onRecibida).toHaveBeenCalledTimes(1);
-  });
-
-  it("ya_recibida -> toast info y dispara onRecibida (idempotente, R14)", async () => {
-    const user = userEvent.setup();
-    const onRecibida = vi.fn();
-    recibirMock.mockResolvedValue({ status: "ya_recibida" });
-    render(<EscanerRecepcionBodegaCentral onRecibida={onRecibida} />);
-
-    await recibirManual(user, "14");
-
-    await vi.waitFor(() => expect(infoMock).toHaveBeenCalled());
-    expect(infoMock.mock.calls[0][0]).toMatch(/ya .*recibida/i);
-    expect(onRecibida).toHaveBeenCalledTimes(1);
-  });
-
-  it("estado_invalido -> error con el estado actual en legible, sin onRecibida", async () => {
-    const user = userEvent.setup();
-    const onRecibida = vi.fn();
-    recibirMock.mockResolvedValue({
-      status: "estado_invalido",
-      estado: "en_reparto",
-    });
-    render(<EscanerRecepcionBodegaCentral onRecibida={onRecibida} />);
-
-    await escanear(user, qrDeGuia(14));
-
-    await vi.waitFor(() => expect(errorMock).toHaveBeenCalled());
-    // Legible, no el value crudo: la etiqueta sale del mapa de presentación.
-    expect(errorMock.mock.calls[0][0]).toMatch(ORDER_STATUS_LABELS.en_reparto);
-    expect(errorMock.mock.calls[0][0]).not.toMatch("en_reparto");
-    expect(onRecibida).not.toHaveBeenCalled();
-  });
-
-  it("no_encontrada -> error 'Orden no encontrada', sin onRecibida", async () => {
-    const user = userEvent.setup();
-    const onRecibida = vi.fn();
-    recibirMock.mockResolvedValue({ status: "no_encontrada" });
-    render(<EscanerRecepcionBodegaCentral onRecibida={onRecibida} />);
-
-    await recibirManual(user, "14");
-
-    await vi.waitFor(() => expect(errorMock).toHaveBeenCalled());
-    expect(errorMock.mock.calls[0][0]).toMatch(/no encontrada/i);
-    expect(onRecibida).not.toHaveBeenCalled();
-  });
-
-  it("forbidden -> error de permiso, sin onRecibida", async () => {
-    const user = userEvent.setup();
-    const onRecibida = vi.fn();
-    recibirMock.mockResolvedValue({ status: "forbidden" });
-    render(<EscanerRecepcionBodegaCentral onRecibida={onRecibida} />);
-
-    await recibirManual(user, "14");
-
-    await vi.waitFor(() => expect(errorMock).toHaveBeenCalled());
-    expect(errorMock.mock.calls[0][0]).toMatch(/permiso/i);
-    expect(onRecibida).not.toHaveBeenCalled();
-  });
-
-  it("unauthenticated -> error de sesión, sin onRecibida", async () => {
-    const user = userEvent.setup();
-    const onRecibida = vi.fn();
-    recibirMock.mockResolvedValue({ status: "unauthenticated" });
-    render(<EscanerRecepcionBodegaCentral onRecibida={onRecibida} />);
-
-    await recibirManual(user, "14");
-
-    await vi.waitFor(() => expect(errorMock).toHaveBeenCalled());
-    expect(errorMock.mock.calls[0][0]).toMatch(/sesión/i);
-    expect(onRecibida).not.toHaveBeenCalled();
-  });
-
-  it("conflict -> error de cambio de estado, sin onRecibida", async () => {
-    const user = userEvent.setup();
-    const onRecibida = vi.fn();
-    recibirMock.mockResolvedValue({ status: "conflict" });
-    render(<EscanerRecepcionBodegaCentral onRecibida={onRecibida} />);
-
-    await recibirManual(user, "14");
-
-    await vi.waitFor(() => expect(errorMock).toHaveBeenCalled());
-    expect(errorMock.mock.calls[0][0]).toMatch(/cambió de estado/i);
-    expect(onRecibida).not.toHaveBeenCalled();
-  });
-
-  it("validation_error del borde -> error 'Código inválido'", async () => {
-    const user = userEvent.setup();
-    recibirMock.mockResolvedValue({
-      status: "validation_error",
-      fieldErrors: { numGuia: ["inválido"] },
-    });
-    render(<EscanerRecepcionBodegaCentral onRecibida={vi.fn()} />);
-
-    await recibirManual(user, "14");
-
-    await vi.waitFor(() => expect(errorMock).toHaveBeenCalled());
-    expect(errorMock.mock.calls[0][0]).toMatch(/inválido/i);
-  });
-});
-
-describe("EscanerRecepcionBodegaCentral — corte en cliente del código inválido (R10)", () => {
-  it("un QR que no resuelve a num_guia no llama a la acción", async () => {
-    const user = userEvent.setup();
-    render(<EscanerRecepcionBodegaCentral onRecibida={vi.fn()} />);
-
-    await escanear(user, "https://ejemplo.app/paquete/54f84b2a-391b-4726-b8a4");
-
-    await vi.waitFor(() => expect(errorMock).toHaveBeenCalled());
-    expect(errorMock.mock.calls[0][0]).toMatch(/inválido/i);
-    expect(recibirMock).not.toHaveBeenCalled();
-  });
-
-  it("una guía manual no numérica/no positiva se corta en cliente (sin llamar a la acción)", async () => {
-    const user = userEvent.setup();
-    render(<EscanerRecepcionBodegaCentral onRecibida={vi.fn()} />);
-
-    // No entero positivo: se rechaza en el borde de cliente con "Código inválido".
-    await recibirManual(user, "0");
-
-    await vi.waitFor(() => expect(errorMock).toHaveBeenCalled());
-    expect(errorMock.mock.calls[0][0]).toMatch(/inválido/i);
-    expect(recibirMock).not.toHaveBeenCalled();
-  });
-
-  it("con el campo vacío no hay nada que enviar: el botón está inerte", async () => {
-    const user = userEvent.setup();
-    render(<EscanerRecepcionBodegaCentral onRecibida={vi.fn()} />);
-
-    // El vacío ya no llega al guard de "Código inválido": la tarjeta deshabilita el
-    // botón, que es la forma honesta de decir que aún no hay nada que recibir.
-    expect(screen.getByRole("button", { name: "Recibir" })).toBeDisabled();
-
-    await recibirManual(user, "");
-
-    expect(recibirMock).not.toHaveBeenCalled();
-    expect(errorMock).not.toHaveBeenCalled();
-  });
-});
-
-// SLT-157 «Guía única leída por cámara o pistola»: los dos caminos leen con `leerGuia`.
-describe("EscanerRecepcionBodegaCentral — guía única por cámara o pistola (SLT-157)", () => {
-  it("R565: el CODE128 por cámara y la URL del QR tecleada llegan con el mismo numGuia", async () => {
-    const user = userEvent.setup();
-    recibirMock.mockResolvedValue({
-      status: "ok",
-      ordenId: "o1",
-      estado: "en_bodega_central",
-    });
-    render(<EscanerRecepcionBodegaCentral onRecibida={vi.fn()} />);
-
-    await escanear(user, "1024");
-    await vi.waitFor(() => expect(recibirMock).toHaveBeenCalledTimes(1));
-    expect(recibirMock).toHaveBeenNthCalledWith(1, { numGuia: 1024 });
-
-    await recibirManual(user, "https://app.ejemplo.test/paquete/1024");
-    await vi.waitFor(() => expect(recibirMock).toHaveBeenCalledTimes(2));
-    expect(recibirMock).toHaveBeenNthCalledWith(2, { numGuia: 1024 });
-  });
-
-  it("R566: lo que no es guía avisa «Código inválido.» por los dos caminos y no llama a la acción", async () => {
-    const user = userEvent.setup();
-    render(<EscanerRecepcionBodegaCentral onRecibida={vi.fn()} />);
-
-    await escanear(user, "1024abc");
-    await vi.waitFor(() => expect(errorMock).toHaveBeenCalledTimes(1));
-    expect(errorMock).toHaveBeenLastCalledWith("Código inválido.");
-
-    await recibirManual(user, "1024abc");
-    await vi.waitFor(() => expect(errorMock).toHaveBeenCalledTimes(2));
-    expect(errorMock).toHaveBeenLastCalledWith("Código inválido.");
-    expect(recibirMock).not.toHaveBeenCalled();
-  });
-});
-
-// SLT-158 «Entrada de escaneo para pistola» (R576): de punta a punta, la acción rechaza y la
-// tarjeta deja escrito QUÉ se leyó y POR QUÉ falló, hasta que otra lectura acierte.
-describe("EscanerRecepcionBodegaCentral — línea de error persistente (SLT-158)", () => {
-  it("R576: no_encontrada deja «7777777» y «Orden no encontrada.» en un alert; un acierto lo quita", async () => {
-    const user = userEvent.setup();
-    recibirMock.mockResolvedValueOnce({ status: "no_encontrada" });
-    render(<EscanerRecepcionBodegaCentral onRecibida={vi.fn()} />);
-
-    await recibirManual(user, "7777777");
-
-    const alerta = await screen.findByRole("alert");
-    expect(alerta).toHaveTextContent("7777777");
-    expect(alerta).toHaveTextContent("Orden no encontrada.");
-
-    recibirMock.mockResolvedValueOnce({
-      status: "ok",
-      ordenId: "o1",
-      estado: "en_bodega_central",
-    });
-    await recibirManual(user, "1024");
-
-    await vi.waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
-  });
-});
-
-// SLT-159 «Escaneo continuo en recepciones y recogidas» — bodega central en el diálogo continuo.
-describe("EscanerRecepcionBodegaCentral — diálogo continuo (R580, R590, R592, R594)", () => {
+describe("EscanerRecepcionBodegaCentral — diálogo continuo (R580, R590, R592)", () => {
   const OK = { status: "ok", ordenId: "o1", estado: "en_bodega_central" } as const;
 
   function dialogoContinuo(onRecibida: () => void) {
@@ -409,6 +115,23 @@ describe("EscanerRecepcionBodegaCentral — diálogo continuo (R580, R590, R592,
     expect(onRecibida).toHaveBeenCalledTimes(1);
   });
 
+  // SLT-202 (review B1): sin la guía suelta, la fila es el único sitio donde la central ve que una
+  // devolución recibida queda por devolver a la tienda (feature 139 R17; en prod lo decía el toast).
+  it("B1: el ok de una devolución pinta «Queda por devolver a la tienda.»; el de bodega central no", async () => {
+    const user = userEvent.setup();
+    recibirMock
+      .mockResolvedValueOnce({ status: "ok", ordenId: "o1", estado: "por_devolver_a_tienda" })
+      .mockResolvedValueOnce(OK);
+    render(dialogoContinuo(vi.fn()));
+
+    await abrirYLeer(user, "1024", "2048");
+    await vi.waitFor(() => expect(filasDeLaSesion()).toHaveLength(2));
+    await vi.waitFor(() => expect(filasDeLaSesion()[0]).toHaveTextContent("Recibida"));
+    const [segunda, primera] = filasDeLaSesion();
+    expect(primera).toHaveTextContent("Queda por devolver a la tienda.");
+    expect(segunda).not.toHaveTextContent("Queda por devolver a la tienda.");
+  });
+
   it("R590: ni «Recibida» ni «No encontrada» sacan toast", async () => {
     const user = userEvent.setup();
     recibirMock.mockResolvedValueOnce(OK).mockResolvedValueOnce({ status: "no_encontrada" });
@@ -434,45 +157,12 @@ describe("EscanerRecepcionBodegaCentral — diálogo continuo (R580, R590, R592,
 
     expect(onRecibida).not.toHaveBeenCalled();
   });
-
-  it("R594: en el diálogo «Recibir paquete», tras leer por cámara la cámara se apaga y no hay lista", async () => {
-    const user = userEvent.setup();
-    recibirMock.mockResolvedValue(OK);
-    render(
-      <EscanerModal titulo="Recibir paquete">
-        <EscanerRecepcionBodegaCentral onRecibida={vi.fn()} />
-      </EscanerModal>,
-    );
-    await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
-
-    await escanear(user, qrDeGuia(1024));
-
-    await vi.waitFor(() => expect(stopMock).toHaveBeenCalled());
-    expect(screen.queryByRole("log", { name: "Lecturas" })).toBeNull();
-  });
 });
 
 // SLT-193 «Botones de 44 px pendientes en la PWA del mensajero» (R927; P7 de Carlos): en `/ordenes`
 // el diálogo lleva «Recibir paquete» en la barra de `EscanerModal`; las tarjetas de la bodega
-// central (suelta y continua) van sin encabezado y sus regiones conservan el nombre.
+// central van sin encabezado y sus regiones conservan el nombre.
 describe("EscanerRecepcionBodegaCentral — un solo título por diálogo (SLT-193)", () => {
-  it("R927: la guía suelta en el diálogo: un solo título, el de la barra; un solo «Cerrar»", async () => {
-    const user = userEvent.setup();
-    render(
-      <EscanerModal titulo="Recibir paquete">
-        <EscanerRecepcionBodegaCentral onRecibida={vi.fn()} />
-      </EscanerModal>,
-    );
-    await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
-    const dialogo = await screen.findByRole("dialog", { name: "Recibir paquete" });
-
-    expect(within(dialogo).getAllByRole("heading").map((h) => h.textContent)).toEqual(["Recibir paquete"]);
-    expect(within(dialogo).queryByText("Escanea o ingresa el número de guía")).toBeNull();
-    expect(within(dialogo).getByRole("region", { name: "Recepción en bodega central" })).toBeInTheDocument();
-    expect(within(dialogo).getByRole("button", { name: "Recibir" })).toBeInTheDocument();
-    expect(within(dialogo).getAllByRole("button", { name: "Cerrar" })).toHaveLength(1);
-  });
-
   it("R927: la tarjeta continua no pinta encabezado propio; la región conserva el nombre", () => {
     render(<EscanerRecepcionBodegaCentral modo="continua" onRecibida={vi.fn()} />);
     expect(screen.queryByRole("heading")).toBeNull();

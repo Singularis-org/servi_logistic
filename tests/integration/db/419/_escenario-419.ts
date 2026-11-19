@@ -22,8 +22,13 @@ import { crearOrganizacion, fijarEmpresa } from "../../../fabricas/organizacione
  *     `$transaction` como SAVEPOINT real (`clienteConSavepoint419`), asi que un `throw` dentro del
  *     repositorio revierte de verdad lo que el repositorio ya escribio (R11/R13 no pasan por
  *     accidente).
- *   - `sembrarComprometido419` + `limpiar419`: datos CONFIRMADOS para la concurrencia (R8), con
- *     dos conexiones reales; se borran por id al terminar.
+ *   - siembra CONFIRMADA + `limpiar419`: solo la concurrencia (R8, `describe` «R8 — concurrencia
+ *     real» de `confirmar-entrega-lote-sql-real.test.ts`). POR QUE COMMITEA Y NO VA EN UNA
+ *     TRANSACCION REVERTIDA (SLT-207, D79): lo que se mide son dos lotes a la vez desde DOS conexiones
+ *     reales (`c1`, `c2`) sobre la misma orden; cada una tiene que ver la orden, y la carrera la
+ *     resuelve el bloqueo de filas entre conexiones. Datos de una tx sin confirmar no los ve ninguna
+ *     de las dos. El precio es `limpiar419` en el `afterAll`: borra por id en orden de FKs y la
+ *     empresa la ULTIMA (RESTRICT: si algo queda colgando, el borrado falla en vez de callar).
  * Si falta catalogo, FALLA RUIDOSAMENTE. Sin base, la suite se salta con `describe.skip`.
  */
 
