@@ -246,6 +246,12 @@ export const EXCEPCIONES_DE_PLATAFORMA: readonly ExcepcionDeAislamiento[] = [
     motivo:
       "SLT-87 y SLT-97: guardar un reporte de problema y, para el superadmin, leerlos y cambiar su estado con su historial, en tablas de plataforma que la empresa no puede leer ni escribir (R13, R14 de SLT-87; R3 de SLT-97)",
   },
+  {
+    archivo: "scripts/geo-backfill-nodo.ts",
+    ficha: "SLT-43",
+    motivo:
+      "comando de consola por lotes: llena el nodo geográfico de las órdenes y zonas y el snapshot de los cierres de todas las empresas (R27)",
+  },
 ];
 
 /**

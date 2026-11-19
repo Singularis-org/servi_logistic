@@ -200,9 +200,15 @@ async function apagarAutovacuum(db: Conexion): Promise<void> {
  * CREATE POLICY: 40P01. SL-17 la esquiva porque su tope ES esa migracion; los tests que la aplican
  * dentro de este bucle y apagaban el autovacuum solo despues caian igual (CI de SL-23, shard 3/3).
  */
-export async function aplicarMigracionesHasta(db: Conexion, tope: string): Promise<void> {
+export async function aplicarMigracionesHasta(
+  db: Conexion,
+  tope: string,
+  /** Carpetas que NO se aplican aunque vayan antes del tope (la ida y vuelta de SLT-43). */
+  salvo: readonly string[] = [],
+): Promise<void> {
   for (const carpeta of carpetasDeMigracion()) {
     if (carpeta >= tope) break;
+    if (salvo.includes(carpeta)) continue;
     await apagarAutovacuum(db);
     await ejecutar(db, sqlDe(carpeta, "migration.sql"), carpeta);
   }
