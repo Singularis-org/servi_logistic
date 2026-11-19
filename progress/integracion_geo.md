@@ -115,3 +115,70 @@ los dos archivos solo escriben en transacciones revertidas):
 - Los 2 archivos: `Test Files 2 passed (2)`, `Tests 37 passed (37)`.
 - `tsc --noEmit`: sin errores. `eslint` sobre los dos archivos: sin salida.
 - `vitest run guard`: `Test Files 358 passed | 3 skipped (361)`, `Tests 5407 passed | 28 skipped`.
+
+## SLT-44
+
+SLT-44 «Geografía jerárquica: dominio y repositorios». Rama `feature/SLT-44-geo-jerarquica-dominio`,
+PR #55 contra `geo_jerarquica`.
+
+- Worktree limpio antes de empezar. `git fetch origin`.
+- `git merge --no-ff origin/geo_jerarquica` (`6fa51e48`, Merge PR #44): la rama iba 1871 commits
+  por detrás. Commit `67aedb2a`.
+- `git merge --no-ff origin/feature/SLT-43-geo-jerarquica-modelo` (`02bb1160`): trae los dos
+  commits de SLT-43 que no entraron en #44 (`ed186693`, marca de tamaño de SLT-43; `02bb1160`,
+  los dos censos exactos). Commit `9e9cba94`.
+
+### Conflictos y criterio
+
+**Ninguno** en los dos merges. Nada pidió decidir comportamiento.
+
+- `orden-traspaso-migration.test.ts`: las 6 migraciones de SLT-43 quedan declaradas una sola vez.
+- SLT-44 no añade migraciones, modelos, entidades del historial ni excepciones nuevas (R25): los
+  censos de migraciones, de `lib/db/modelos-de-negocio.ts` y del catálogo del historial no cambian.
+- `pnpm-lock.yaml` y `db/schema.prisma` vienen de `dev`: `pnpm install --frozen-lockfile`,
+  `prisma validate` y `prisma generate` en verde.
+
+### Tests de `dev` ajustados
+
+- `tests/integration/db/cobertura-repository.test.ts` > «SLT-54 R30 — la marca sigue en el Excel
+  tras activar, y es la de la empresa»: rojo con SLT-44 (`EmpresaNoResuelta` en
+  `CatalogoGeograficoRepository.deLaEmpresa`). El Excel de cobertura lee ahora el catálogo de la
+  empresa **del contexto** (SLT-44 R9, R20). El test fijaba la empresa solo en la base (`comoApp`);
+  el contexto seguía en la empresa por defecto de `enTransaccionRevertida`, que la RLS no deja ver
+  (R10). En producción contexto y GUC salen del mismo id.
+  - Arreglo de montaje, el mismo que `8f8ba908` en `tarifa-empresa-nueva.test.ts`: la lectura corre
+    dentro de `conEmpresa(org, …)`. Las aserciones (marca de A antes y después de activar, B sin
+    marca) no cambian.
+
+### Verificación local
+
+`NODE_OPTIONS=--max-old-space-size=6144`.
+
+- Typecheck: `tsc --noEmit` con un tsconfig temporal que excluye `.next` (artefacto viejo): `exit=0`.
+- `pnpm run lint`: `exit=0`, 0 errores (249 avisos, ya presentes).
+- `vitest run guard` (sin base): `Test Files 361 passed | 3 skipped (364)`,
+  `Tests 5426 passed | 28 skipped (5454)`.
+- `vitest related --run` sobre los fuentes de SLT-44 y los dos censos (sin base):
+  `Test Files 1 failed | 537 passed | 273 skipped (811)`, `Tests 7920 passed | 2224 skipped`.
+  El único rojo, `total-a-cobrar-sin-cerrado-sql-real.test.ts`, exige `DATABASE_URL` por diseño
+  («este test no se salta»); con base, verde (abajo).
+- Integración contra `servi_logistic_simprod` (el `.env` del checkout principal; todos los casos en
+  transacciones revertidas, sin crear ni borrar bases): `corregir-datos-cliente.repo`,
+  `geo-catalogo-repository`, `geo-equivalencia-dinero`, `geo-lecturas-catalogo`,
+  `geo-lecturas-sin-backfill`, `orden-traspaso-migration`, `tarifa-empresa-nueva`,
+  `zona-distrito-unica`, `total-a-cobrar-sin-cerrado-sql-real` y `cobertura-repository`:
+  - antes del ajuste: `Test Files 1 failed | 9 passed (10)`, `Tests 2 failed | 83 passed (85)`;
+  - `cobertura-repository` tras el ajuste: `Tests 1 failed | 4 passed (5)`. El rojo que queda,
+    «465 … listZonaIdsConTarifaGeneral (R14)», **no es de SLT-44**: sale igual en el worktree de
+    SLT-43 (`02bb1160`) contra la misma base, y en el CI de SLT-43 ese archivo pasó. Depende de los
+    datos de la base local; no se toca.
+  - `eslint` del archivo ajustado: sin salida.
+
+### Tamaño del PR
+
+`scripts/tamano-pr.mjs` lo marca en rojo. **No se añade la marca de aceptado**: decide el humano.
+
+- Contra `dev` (lo que mide el script, `ramas.integracion`): 77/40 archivos, 3309/1000 líneas de
+  producción, 5880/3000 de tests. Incluye lo de SLT-43, aún no en `dev`.
+- Contra `geo_jerarquica` (la base real de #55, mismas reglas de `medir`): 32/40 archivos,
+  **1998/1000 líneas de producción**, 2562/3000 de tests.

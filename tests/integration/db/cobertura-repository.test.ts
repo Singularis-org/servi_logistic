@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { Prisma, type PrismaClient } from "@prisma/client";
 
+import { conEmpresa } from "@/lib/db/contexto-empresa";
 import { CoberturaRepository } from "@/lib/repositories/CoberturaRepository";
 import type { DistritoCoberturaRow } from "@/lib/interfaces/repositories/ICoberturaRepository";
 
@@ -329,9 +330,15 @@ describeSiHayBase("SLT-54 R30 — el Excel de cobertura por modelo, leyendo como
   it("la marca sigue en el Excel tras activar, y es la de la empresa", async () => {
     await enTransaccionRevertida(prisma, async (tx) => {
       const e = await sembrarR30(tx);
+      // La empresa en la base (RLS, `comoApp`) y en el contexto (`conEmpresa`), como en produccion.
+      // SLT-44 R9/R20: el Excel lee el catalogo de la empresa DEL CONTEXTO; sin el `conEmpresa`
+      // quedaria la empresa por defecto de `enTransaccionRevertida`, que la RLS de `org` no deja ver
+      // (R10: EmpresaNoResuelta). Mismo montaje que `tarifa-empresa-nueva.test.ts`.
       const marcaComo = async (org: string) => {
         await comoApp(tx, org);
-        const filas = await new CoberturaRepository(tx as unknown as PrismaClient).listDistritos();
+        const filas = await conEmpresa(org, () =>
+          new CoberturaRepository(tx as unknown as PrismaClient).listDistritos(),
+        );
         await tx.$executeRawUnsafe("RESET ROLE");
         const fila = filas.find((r) => r.canton.nombre === "Cartago" && r.distrito.nombre === e.distritoMarcado.nombre);
         if (fila === undefined) throw new Error("el distrito sembrado no aparece en el Excel");
