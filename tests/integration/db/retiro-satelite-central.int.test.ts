@@ -653,4 +653,31 @@ describeSiHayBase("SLT-197 — retiro de satelite a central, contra Postgres rea
     expect(m.res.ordenesRetenidasEnBodegaSatelite).toBe(1);
     expect(m.zonas).toEqual({ enTransito: m.limon, recibida: m.limon, enEstante: m.cartago });
   });
+
+  // ─────────────────────────────────────────────────────────────────────────────────────────────
+  // SLT-224/R1705 — el retiro NO cambia la zona, aunque el distrito ya sea de otra
+  // ─────────────────────────────────────────────────────────────────────────────────────────────
+  it("SLT-224/R1705: retirar una orden cuyo distrito ya es de otra zona conserva la zona satelite (la corrige la recepcion, no el retiro)", async () => {
+    const m = await conEscenario(async (e) => {
+      const distrito = await e.tx.distrito.create({
+        data: { nombre: `224 D ${unico()}`, cantonId: e.fks.cantonId },
+        select: { id: true },
+      });
+      // El distrito se paso a Limon mientras la orden estaba en el estante de Cartago (la 377 la retuvo).
+      await e.tx.zonaDistrito.create({ data: { zonaId: e.limon.id, distritoId: distrito.id } });
+      const o = await e.crearOrden({ zonaId: e.cartago.id, estado: "en_bodega_satelite", distritoId: distrito.id });
+
+      const retiro = await e.service.retirarABodegaCentral({ ordenIds: [o.id] }, e.maestro);
+      const trasRetiro = await e.tx.orden.findUniqueOrThrow({ where: { id: o.id }, select: { zonaId: true } });
+      const reconciliadas = await e.tx.historialAccion.count({
+        where: { accion: "orden_zona_reconciliada", entidadId: o.id },
+      });
+      return { retiro: retiro.status, cartago: e.cartago.id, zona: trasRetiro.zonaId, estado: await e.estadoDe(o.id), reconciliadas };
+    });
+
+    expect(m.retiro).toBe("ok");
+    expect(m.estado).toBe("en_ruta_bodega_central");
+    expect(m.zona).toBe(m.cartago);
+    expect(m.reconciliadas).toBe(0);
+  });
 });

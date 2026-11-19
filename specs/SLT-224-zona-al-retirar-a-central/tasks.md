@@ -15,9 +15,9 @@
 
 ## T1 — Helper compartido (R1706) — sin dependencias
 
-- [ ] Crear `lib/repositories/_shared/reconciliar-zona-ordenes.ts` moviendo `whereBaseElegible` y el
+- [x] Crear `lib/repositories/_shared/reconciliar-zona-ordenes.ts` moviendo `whereBaseElegible` y el
   bloque de reconciliación de `ZonaRepository.update` (`design.md §2.1`), con `ordenIds` opcional.
-- [ ] `ZonaRepository.update` llama al helper. Se quitan de `ZonaRepository.ts` los imports que dejan
+- [x] `ZonaRepository.update` llama al helper. Se quitan de `ZonaRepository.ts` los imports que dejan
   de usarse.
 - **Hecho:** `tests/integration/db/zona-reconciliacion-ordenes.test.ts`,
   `tests/integration/db/zona-central-guarda-y-rastro.test.ts`,
@@ -27,38 +27,38 @@
 
 ## T2 — Guardias reapuntadas (R1703, R1706, R1707) — depende de T1
 
-- [ ] `historial-accion-escrituras-cubiertas.guardia.test.ts`: recortador que acepta
+- [x] `historial-accion-escrituras-cubiertas.guardia.test.ts`: recortador que acepta
   `export async function`, con su contraprueba; entrada de `orden_zona_reconciliada` →
   helper/`recibe_tx`.
-- [ ] `zona-reconciliacion-no-retarifa.guardia.test.ts`: detector sobre el cuerpo del helper; nuevas
+- [x] `zona-reconciliacion-no-retarifa.guardia.test.ts`: detector sobre el cuerpo del helper; nuevas
   aserciones de `design.md §2.3` (los tres llamadores usan el helper; la aserción del tercero entra con T8 y ningún repositorio repite el
   corte ni la acción), cada una con su contraprueba en memoria.
 - **Hecho:** `pnpm run test:guardias` verde, y cada aserción nueva cae con su cuerpo mutado.
 
 ## T3 — Recepción en la central (R1700–R1704, R1707) — depende de T1
 
-- [ ] `IOrdenRepository.recibirEnBodegaCentral`: `opciones.reconciliaZona`.
-- [ ] `RecepcionBodegaCentralService.TRANSICIONES`: `reconciliaZona` (`true` en la arista 138, `false`
+- [x] `IOrdenRepository.recibirEnBodegaCentral`: `opciones.reconciliaZona`.
+- [x] `RecepcionBodegaCentralService.TRANSICIONES`: `reconciliaZona` (`true` en la arista 138, `false`
   en la 139), pasado al repositorio.
-- [ ] `OrdenRepository.recibirEnBodegaCentral`: `distritoId` en la lectura y llamada al helper después
+- [x] `OrdenRepository.recibirEnBodegaCentral`: `distritoId` en la lectura y llamada al helper después
   de `appendCambioEstado` (`design.md §3.2`).
-- [ ] Ajustar `tests/unit/services/recepcion-bodega-central-service.test.ts` (la bandera por arista) y
+- [x] Ajustar `tests/unit/services/recepcion-bodega-central-service.test.ts` (la bandera por arista) y
   `tests/unit/repositories/orden-repository.recepcion-bodega-central.test.ts` (doble de `tx`).
-- [ ] Nuevo `tests/integration/db/recepcion-central-reconcilia-zona.int.test.ts` (`design.md §7.1`).
+- [x] Nuevo `tests/integration/db/recepcion-central-reconcilia-zona.int.test.ts` (`design.md §7.1`).
 - **Hecho:** los tres verdes, más `tests/integration/db/recoleccion-recibida-libera-mensajero.int.test.ts`
   sin cambios. Las cuatro mutaciones de `design.md §7.1` ponen la integración en rojo.
 
 ## T4 [P] — Retiro sin cambio de zona (R1705) — sin dependencias
 
-- [ ] Caso nuevo en `tests/integration/db/retiro-satelite-central.int.test.ts` (`design.md §7.3`).
+- [x] Caso nuevo en `tests/integration/db/retiro-satelite-central.int.test.ts` (`design.md §7.3`).
 - **Hecho:** verde. Si se añade una línea que cambie la zona en `retirarSateliteLote`, cae.
 
 ## T5 [P] — Corrección única (R1708–R1712) — sin dependencias de código
 
-- [ ] `db/migrations/20261120120000_slt224_zona_de_ordenes_en_central/migration.sql` y `down.sql`
+- [x] `db/migrations/20261120120000_slt224_zona_de_ordenes_en_central/migration.sql` y `down.sql`
   (`design.md §5`). Si al implementar ya hay una migración posterior en `dev`, se ajusta la marca de
   tiempo antes de mergear, nunca después de aplicada.
-- [ ] Nuevo `tests/integration/db/zona-desalineada-central-migration.test.ts` (`design.md §7.2`), con
+- [x] Nuevo `tests/integration/db/zona-desalineada-central-migration.test.ts` (`design.md §7.2`), con
   la lista de ids esperada escrita literal.
 - **Hecho:** test verde; `pnpm run db:migrate` y `pnpm run db:rollback` en la base desechable sin error;
   la corrección y su reversión dejan la base como estaba (comparación de `orden.zona_id` y conteo de
@@ -66,21 +66,21 @@
 
 ## T6 [P] — Ayuda — sin dependencias
 
-- [ ] `docs/ayuda/oficina/ordenes.md`, «Retirar a bodega central»: «quedan En bodega central con su
+- [x] `docs/ayuda/oficina/ordenes.md`, «Retirar a bodega central»: «quedan En bodega central con su
   zona de siempre» pasa a decir que, al recibirlas, toman la zona de su distrito (si el distrito se
   pasó a otra zona mientras estaban en la satélite, ya llegan con la nueva). Sin glifos ni símbolos.
-- [ ] Mismo archivo: un párrafo para «Actualizar zonas» (qué busca, qué se salta y por qué, y que deja
+- [x] Mismo archivo: un párrafo para «Actualizar zonas» (qué busca, qué se salta y por qué, y que deja
   rastro en el histórico de acciones).
 - **Hecho:** texto revisado contra R1700, R1705 y R1713–R1718.
 
 ## T8 — «Actualizar zonas»: backend (R1714, R1715, R1717–R1719) — depende de T1
 
-- [ ] `ESTADOS_DEVOLUCION_SIN_RECONCILIAR` en `lib/utils/estados-bodega-satelite.ts` y `excluirEstados`
+- [x] `ESTADOS_DEVOLUCION_SIN_RECONCILIAR` en `lib/utils/estados-bodega-satelite.ts` y `excluirEstados`
   en el helper (`design.md §2.1`).
-- [ ] `lib/types/actualizacion-zonas.ts`, `IActualizacionZonasRepository` + `ActualizacionZonasRepository`,
+- [x] `lib/types/actualizacion-zonas.ts`, `IActualizacionZonasRepository` + `ActualizacionZonasRepository`,
   `IActualizacionZonasService` + `ActualizacionZonasService`, `lib/actions/actualizacion-zonas.ts`
   (`design.md §3b.2-§3b.3`).
-- [ ] `tests/integration/db/actualizacion-zonas.int.test.ts` y
+- [x] `tests/integration/db/actualizacion-zonas.int.test.ts` y
   `tests/unit/services/actualizacion-zonas-action.test.ts` (`design.md §7.4`).
 - **Hecho:** los dos verdes; las tres mutaciones de `design.md §7.4` dan rojo; T1 sigue verde (el
   `where` del guardado de zona no cambia sin `excluirEstados`).

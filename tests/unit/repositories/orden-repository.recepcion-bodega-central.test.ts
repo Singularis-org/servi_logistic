@@ -22,6 +22,9 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
       updateMany: vi.fn(),
     },
     ordenHistorialEstado: { createMany: vi.fn() },
+    // SLT-224: la reconciliacion de zona lee el mapa `zona_distrito`. Vacio = distrito sin zona,
+    // el helper no escribe nada mas.
+    zonaDistrito: { findMany: vi.fn(async (_args: { where: unknown }) => [] as unknown[]) },
     $transaction: vi.fn(),
     ...overrides,
   };
@@ -37,8 +40,8 @@ const HIST_RECEPCION = {
 } as const;
 
 // SLT-63: el service decide; el caso 138 libera la asignacion y el 139 la conserva.
-const LIBERA = { liberaAsignacion: true } as const;
-const CONSERVA = { liberaAsignacion: false } as const;
+const LIBERA = { liberaAsignacion: true, reconciliaZona: true } as const;
+const CONSERVA = { liberaAsignacion: false, reconciliaZona: false } as const;
 
 describe("OrdenRepository.recibirEnBodegaCentral (R2/R3/R9/R18 · STATE-AWARE 138+139)", () => {
   // --- Caso 138: en_ruta_bodega_central -> en_bodega_central ---
@@ -205,5 +208,53 @@ describe("OrdenRepository.recibirEnBodegaCentral (R2/R3/R9/R18 · STATE-AWARE 13
     );
 
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  // --- SLT-224: la reconciliacion de zona (el WHERE se mide en
+  // tests/integration/db/recepcion-central-reconcilia-zona.int.test.ts) ---
+
+  it("SLT-224/R1700: con reconciliaZona y distrito, lee el mapa de ESE distrito DESPUES del historial", async () => {
+    const prisma = buildPrisma();
+    prisma.orden.findFirst.mockResolvedValue({ estatusId: idEstado("en_ruta_bodega_central"), distritoId: "d1" });
+    prisma.orden.updateMany.mockResolvedValue({ count: 1 });
+    const repo = new OrdenRepository(prisma as unknown as PrismaClient);
+
+    await repo.recibirEnBodegaCentral("o1", "en_ruta_bodega_central", idEstado("en_bodega_central"), HIST_RECEPCION, LIBERA);
+
+    expect(prisma.orden.findFirst.mock.calls[0][0].select).toEqual({ estatusId: true, distritoId: true });
+    expect(prisma.zonaDistrito.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.zonaDistrito.findMany.mock.calls[0][0].where).toEqual({ distritoId: { in: ["d1"] } });
+    expect(prisma.ordenHistorialEstado.createMany.mock.invocationCallOrder[0]).toBeLessThan(
+      prisma.zonaDistrito.findMany.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("SLT-224/R1704: sin reconciliaZona (devolucion) no lee el mapa de zonas", async () => {
+    const prisma = buildPrisma();
+    prisma.orden.findFirst.mockResolvedValue({ estatusId: idEstado("devolviendo_a_bodega_central"), distritoId: "d1" });
+    prisma.orden.updateMany.mockResolvedValue({ count: 1 });
+    const repo = new OrdenRepository(prisma as unknown as PrismaClient);
+
+    await repo.recibirEnBodegaCentral("o9", "devolviendo_a_bodega_central", idEstado("por_devolver_a_tienda"), HIST_RECEPCION, CONSERVA);
+
+    expect(prisma.zonaDistrito.findMany).not.toHaveBeenCalled();
+  });
+
+  it("SLT-224/R1702/R1703: sin distrito, o si no transiciono, no reconcilia", async () => {
+    const sinDistrito = buildPrisma();
+    sinDistrito.orden.findFirst.mockResolvedValue({ estatusId: idEstado("en_ruta_bodega_central"), distritoId: null });
+    sinDistrito.orden.updateMany.mockResolvedValue({ count: 1 });
+    await new OrdenRepository(sinDistrito as unknown as PrismaClient).recibirEnBodegaCentral(
+      "o1", "en_ruta_bodega_central", idEstado("en_bodega_central"), HIST_RECEPCION, LIBERA,
+    );
+    expect(sinDistrito.zonaDistrito.findMany).not.toHaveBeenCalled();
+
+    const carrera = buildPrisma();
+    carrera.orden.findFirst.mockResolvedValue({ estatusId: idEstado("en_ruta_bodega_central"), distritoId: "d1" });
+    carrera.orden.updateMany.mockResolvedValue({ count: 0 });
+    await new OrdenRepository(carrera as unknown as PrismaClient).recibirEnBodegaCentral(
+      "o1", "en_ruta_bodega_central", idEstado("en_bodega_central"), HIST_RECEPCION, LIBERA,
+    );
+    expect(carrera.zonaDistrito.findMany).not.toHaveBeenCalled();
   });
 });
