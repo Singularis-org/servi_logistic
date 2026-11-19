@@ -514,3 +514,22 @@ Lo comprobé con grep sobre los tests del diff `origin/dev...HEAD`. Abreviaturas
 | R36 | `porFuera` «R28, R36: …»; `autoria` «R36: el contra-asiento de una anulación de la plataforma dice «plataforma_anulacion»…», «R36: la línea de anulación del pago original la firma «la plataforma»…» y «R36: una anulación hecha por la empresa (SL-45) conserva el nombre…»; `labels` «R36 — el contra-asiento de la anulación dice «Anulado por la plataforma»…» y «R36 — la línea de anulación del pago original nombra a la plataforma»; `descarga` «SLT-143 R13/R36: …» |
 
 Veredicto T6.3: 34 de 36 requisitos tienen un test real. R34 depende del E2E de T5.1, que está en curso, y R35 no tiene test porque es texto de ayuda.
+
+## T5 — E2E (frontend_dev, 2026-11-19)
+
+Archivos:
+- `e2e/pago-plataforma-por-fuera.spec.ts` (nuevo, T5.1): design §9, serial; pasos 2–6 (maestro anota caja y
+  deuda; superadmin registra por fuera con el reparto propuesto; la wallet baja deuda y caja y marca «Registrado por
+  la plataforma» con la referencia; el maestro no lo anula; el superadmin lo anula con motivo; vuelven las cifras,
+  el contra-asiento dice «Anulado por la plataforma» y el detalle del pago anulado «por la plataforma» + el motivo).
+- `playwright.config.ts`: `pago-plataforma-por-fuera` en el proyecto `dinero`.
+
+Mapa: R34, R36 (en la wallet) → `e2e/pago-plataforma-por-fuera.spec.ts` (tests 2–6).
+
+Salida: `tsc --noEmit` exit 0; `eslint` de los dos archivos exit 0 (binarios de `../../node_modules/.bin`, tras
+`prisma generate`).
+
+E2E escrito, no corrido en local por decisión del leader (poca RAM); lo corre el CI. T5.2 (confirmación, sl45,
+wallet, grupo dinero) delegado al CI.
+
+Veredicto T5.1: E2E escrito y en `dinero`, typecheck y lint verdes; la ejecución queda al CI.

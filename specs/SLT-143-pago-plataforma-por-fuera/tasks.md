@@ -104,7 +104,7 @@
 
 ## T5 — E2E (depende de T3 y T4)
 
-- [ ] **T5.1** `e2e/pago-plataforma-por-fuera.spec.ts` (design §9) y su entrada en el proyecto `dinero` de
+- [x] **T5.1** `e2e/pago-plataforma-por-fuera.spec.ts` (design §9) y su entrada en el proyecto `dinero` de
   `playwright.config.ts`. **Hecho:** verde en local, con una base desechable nueva (R34).
 - [ ] **T5.2** Correr:
   - `e2e/pago-plataforma-confirmacion.spec.ts`;
