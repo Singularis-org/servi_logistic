@@ -56,6 +56,9 @@ para el PR. Ahora el workflow corre siempre y es el job `cambios` el que decide 
 
 - **En local corre siempre el rápido**: typecheck + lint + los tests que el grafo de imports
   (`vitest related`) relaciona con tu diff + **todas** las guardias (~1 min).
+- **El paso 2 de `init.sh` (dependencias) mide** que cada paquete declarado en `package.json` está
+  en `node_modules` (`scripts/verificar-dependencias.mjs`), no que la carpeta exista. Si falta
+  alguno, corta en rojo nombrándolo; la guardia es `tests/guards/guard-dependencias-declaradas-presentes.test.ts`.
 - **El completo (la suite entera) corre en CI**, como check del PR (`gate-completo`). Nadie
   mergea con ese check en rojo o sin terminar. Si el plan de GitHub no permite hacerlo
   obligatorio con *branch protection*, rige como convención (`docs/equipo.md > Merge sin
@@ -354,6 +357,16 @@ plan Free (2000 min/mes); a cambio, el reloj del PR baja.
 literal, no lo importaba ni se llamaba `guard*`. El rápido salió verde y el rojo apareció en
 `gate-completo`. Buscar la ruta en el texto de los tests cuesta unos cientos de ms por corrida y
 cubre ese caso sin que nadie declare nada.
+
+**El paso 2 mide las dependencias.** En servi_logistic (ficha 420, 2026-09-11) el paso 2 solo
+miraba si existía la carpeta `node_modules` e imprimía «dependencias presentes». Tras mergear una
+ficha que añadía `web-push`, el gate completo dio ese visto bueno en verde y dos pasos más tarde el
+typecheck reventó con `Cannot find module 'web-push'`: parecía un error de código y era un
+`pnpm install` que faltaba. Peor: si falta solo el paquete y siguen sus tipos en `@types/`, el
+typecheck pasa y el fallo sale en ejecución. Instalar siempre se descartó porque repara en silencio
+y nadie se entera de que el árbol estaba mal. El arreglo se hizo en el proyecto y no se subió a la
+plantilla, así que el sync del arnés 2.14.0 sobrescribió `init.sh` y perdió la llamada: la guardia
+quedó en rojo hasta que la mejora viajó a la plantilla.
 
 ## Tamaño del PR
 

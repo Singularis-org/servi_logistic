@@ -197,7 +197,11 @@ if [ -f package.json ]; then
     echo "Instalando dependencias..."
     pnpm install --frozen-lockfile || fail "pnpm install --frozen-lockfile fallo"
   fi
-  ok "dependencias presentes"
+  #    Se MIDE que cada paquete declarado en package.json esta en node_modules: que la carpeta
+  #    exista no dice nada (servi_logistic, ficha 420; docs/gate.md > El gate tiene DOS niveles).
+  DEPENDENCIAS="$(node scripts/verificar-dependencias.mjs .)" \
+    || fail "faltan dependencias declaradas en package.json (el detalle esta justo arriba): pnpm install --frozen-lockfile"
+  ok "dependencias: $DEPENDENCIAS"
 else
   warn "no hay package.json todavia (repo recien inicializado)"
 fi

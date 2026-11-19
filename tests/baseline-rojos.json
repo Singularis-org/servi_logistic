@@ -58,10 +58,6 @@
     "Con SLT-187 en dev, sale tambien `wallet-458-migration` (8/8 en base desechable, 2026-11-18): su caso (c) caia por el escenario 459."
   ],
   "archivos": {
-    "tests/unit/guards/dependencias-declaradas-presentes.guardia.test.ts": {
-      "motivo": "Vigila el paso 2 del init.sh del producto de origen (ficha 420: marcadores, verificar-dependencias.mjs, --frozen-lockfile); el init.sh del arnes v2 no lo tiene y es archivo del arnes. La retira SL-29, la ficha /afinar-regla que sube la mejora a la plantilla o retira la guardia.",
-      "desde": "2026-10-21"
-    },
     "tests/integration/db/abono-tienda-457-migration.test.ts": {
       "motivo": "Postgres 17 (CI) frente a 18 (local): el DELETE de un usuario referenciado por una FK RESTRICT y por otra NO ACTION da 23503 en PG 17.11 y 23001 en PG 18.2 (medido el 2026-10-22 sobre base nueva migrada en los dos; en PG 18 pasa). No es falta de datos: la fixture crea sus usuarios. Lee db/migrations, asi que la retira SL-28; la version de Postgres de CI sigue ABIERTA en gate.yml.",
       "desde": "2026-10-22"

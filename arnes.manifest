@@ -38,6 +38,7 @@ scripts/unir-informes-vitest.mjs
 scripts/check-perfil.mjs
 scripts/ci.mjs
 scripts/archivos-en-vuelo.mjs
+scripts/verificar-dependencias.mjs
 scripts/arnes-sync.sh
 scripts/arnes-sync.mjs
 progress/README.md
@@ -58,6 +59,7 @@ tests/guards/guard-unir-informes-vitest.test.ts
 tests/guards/guard-archivos-en-vuelo-sin-ruido.test.ts
 tests/guards/guard-hooks-anclados.test.ts
 tests/guards/guard-init-node-modules-enlazado.test.ts
+tests/guards/guard-dependencias-declaradas-presentes.test.ts
 tests/guards/guard-validador-tracker.test.ts
 tests/guards/guard-trello-cliente.test.ts
 tests/guards/guard-trello-red.test.ts
