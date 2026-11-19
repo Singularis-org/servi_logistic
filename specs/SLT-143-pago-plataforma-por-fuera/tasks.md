@@ -7,29 +7,29 @@
 
 ## T0 — Comprobaciones antes de escribir (sin código)
 
-- [ ] **T0.1** Comprobar que la última migración de `dev` sigue siendo anterior a `20261120120000`. Si no lo es,
+- [x] **T0.1** Comprobar que la última migración de `dev` sigue siendo anterior a `20261120120000`. Si no lo es,
   se renombra la carpeta antes de aplicarla en una base compartida. **Hecho:** el timestamp anotado en
   `progress/impl_SLT-143.md`.
-- [ ] **T0.2** Leer en `EgresoCajaAnulacionService`, `AjusteCajaAnulacionRepository` y `WalletMovimientoRepository`
+- [x] **T0.2** Leer en `EgresoCajaAnulacionService`, `AjusteCajaAnulacionRepository` y `WalletMovimientoRepository`
   qué escribe hoy la anulación de un egreso: las columnas de la constancia y del contra-asiento, y el único que da
   `escritas === 0`. **Hecho:** anotado; la función de design §3.4 los copia.
-- [ ] **T0.3** Confirmar dos cosas:
+- [x] **T0.3** Confirmar dos cosas:
   - ningún trigger de `wallet_movimiento` exige caja suficiente (R3);
   - el trigger de misma empresa de `wallet_movimiento.registrado_por` y de `wallet_comprobante.subido_por` deja
     pasar al superadmin.
 
   **Hecho:** anotado. Si alguno no lo deja, se para y se pregunta.
-- [ ] **T0.4** Localizar dos cosas:
+- [x] **T0.4** Localizar dos cosas:
   - los esquemas zod del monto, de la fecha y de la referencia del egreso manual (SL-45 R12), y el tope del motivo
     de 458-B;
   - el selector de fecha del diálogo de la wallet.
 
   **Hecho:** las rutas anotadas (design §4.1, §6.3).
-- [ ] **T0.5** Mirar cómo `tests/integration/db/migracion-slt60-ida-y-vuelta.test.ts` aplica su `down`. **Hecho:**
+- [x] **T0.5** Mirar cómo `tests/integration/db/migracion-slt60-ida-y-vuelta.test.ts` aplica su `down`. **Hecho:**
   anotado si T1.5 lo ajusta.
-- [ ] **T0.6** Confirmar que `libro-caja-kardex.ts` pinta la `descripcion` del pago en «Detalle», en la tabla, el
+- [x] **T0.6** Confirmar que `libro-caja-kardex.ts` pinta la `descripcion` del pago en «Detalle», en la tabla, el
   detalle y la descarga (design §5). **Hecho:** anotado.
-- [ ] **T0.7** Correr `node scripts/archivos-en-vuelo.mjs --candidata SLT-143`. **Hecho:** los choques anotados.
+- [x] **T0.7** Correr `node scripts/archivos-en-vuelo.mjs --candidata SLT-143`. **Hecho:** los choques anotados.
 
 ## T1 — La base (depende de T0)
 
