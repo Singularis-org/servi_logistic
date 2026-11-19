@@ -70,6 +70,8 @@ const titulo = (texto: string) => screen.getByRole("heading", { name: texto });
 const siguiente = () => screen.getByRole("button", { name: "Guardar y continuar" });
 const textosHoy = () => screen.queryAllByText(/^Hoy: /).map((p) => p.textContent);
 
+// SLT-214 «Planes: beneficios de texto con ícono» (R7): «Beneficios» justo después de «Módulos»; al editar, antes de
+// «Cuándo rige».
 describe("SLT-130 R7 — los pasos de cada modo", () => {
   it("R7: pasos al crear", () => {
     montarCrear();
@@ -79,10 +81,11 @@ describe("SLT-130 R7 — los pasos de cada modo", () => {
       "Cobro por orden",
       "Topes",
       "Módulos",
+      "Beneficios",
       "Revisar y crear",
     ]);
     expect(tituloDelPasoActual()).toBe("General");
-    expect(screen.getByText("Paso 1 de 6")).toBeInTheDocument();
+    expect(screen.getByText("Paso 1 de 7")).toBeInTheDocument();
     expect(titulo("General")).toBeInTheDocument();
   });
 
@@ -94,11 +97,12 @@ describe("SLT-130 R7 — los pasos de cada modo", () => {
       "Cobro por orden",
       "Topes",
       "Módulos",
+      "Beneficios",
       "Cuándo rige",
       "Revisar y programar",
     ]);
     expect(tituloDelPasoActual()).toBe("General");
-    expect(screen.getByText("Paso 1 de 7")).toBeInTheDocument();
+    expect(screen.getByText("Paso 1 de 8")).toBeInTheDocument();
   });
 });
 

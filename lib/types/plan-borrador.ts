@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { beneficiosSchema } from "@/lib/planes/beneficios";
 import { descuentosDeLaLista } from "@/lib/planes/borrador";
 import { montoCobroSchema } from "@/lib/types/cobro-plataforma";
 import {
@@ -36,9 +37,12 @@ import {
 // existe, el rango de las fechas, los topes ya pasados, tipo quincenal con órdenes mensuales) las mira confirmar
 // con las reglas de hoy (R6).
 
-/** Los pasos de SLT-130, en el orden del formulario. `vigencia` («Cuándo rige») solo en un cambio. */
-export const PASOS_DE_CREAR = ["general", "precio", "orden", "topes", "modulos"] as const;
-export const PASOS_DE_EDITAR = ["general", "precio", "orden", "topes", "modulos", "vigencia"] as const;
+/**
+ * Los pasos de SLT-130, en el orden del formulario. `vigencia` («Cuándo rige») solo en un cambio. SLT-214 (R7):
+ * `beneficios` justo después de `modulos`.
+ */
+export const PASOS_DE_CREAR = ["general", "precio", "orden", "topes", "modulos", "beneficios"] as const;
+export const PASOS_DE_EDITAR = ["general", "precio", "orden", "topes", "modulos", "beneficios", "vigencia"] as const;
 export type IdPasoDeCrear = (typeof PASOS_DE_CREAR)[number];
 export type IdPasoDeEditar = (typeof PASOS_DE_EDITAR)[number];
 export type IdPasoBorrador = IdPasoDeEditar;
@@ -126,6 +130,9 @@ const topesSchema = z.object({ topes: topesPlanSchema }).strict();
 
 const modulosDelPasoSchema = z.object({ modulos: modulosSchema }).strict();
 
+// SLT-214 (R10): R2–R4 con sus errores en `beneficios.<i>.texto`. La lista vacía vale (R9).
+const beneficiosDelPasoSchema = z.object({ beneficios: beneficiosSchema }).strict();
+
 // Lo que acepte la edición: una fecha obligatoria (SLT-135 R10). «No antes de hoy» lo mira confirmar (R6, R19).
 const vigenciaSchema = z.object({ vigenteDesde: editarPlanSchema.shape.vigenteDesde }).strict();
 
@@ -135,6 +142,7 @@ export const ESQUEMAS_DE_CREAR = {
   orden: ordenSchema,
   topes: topesSchema,
   modulos: modulosDelPasoSchema,
+  beneficios: beneficiosDelPasoSchema,
 } as const satisfies Record<IdPasoDeCrear, z.ZodType>;
 
 export const ESQUEMAS_DE_EDITAR = {
@@ -143,6 +151,7 @@ export const ESQUEMAS_DE_EDITAR = {
   orden: ordenSchema,
   topes: topesSchema,
   modulos: modulosDelPasoSchema,
+  beneficios: beneficiosDelPasoSchema,
   vigencia: vigenciaSchema,
 } as const satisfies Record<IdPasoDeEditar, z.ZodType>;
 
@@ -152,6 +161,7 @@ export type ValoresDePrecio = z.infer<typeof precioSchema>;
 export type ValoresDeOrden = z.infer<typeof ordenSchema>;
 export type ValoresDeTopes = z.infer<typeof topesSchema>;
 export type ValoresDeModulos = z.infer<typeof modulosDelPasoSchema>;
+export type ValoresDeBeneficios = z.infer<typeof beneficiosDelPasoSchema>;
 export type ValoresDeVigencia = z.infer<typeof vigenciaSchema>;
 export type ValoresDelPaso =
   | GeneralDeCrear
@@ -160,6 +170,7 @@ export type ValoresDelPaso =
   | ValoresDeOrden
   | ValoresDeTopes
   | ValoresDeModulos
+  | ValoresDeBeneficios
   | ValoresDeVigencia;
 
 /** Los pasos de un borrador de creación, ya validados, por su id. */
@@ -169,6 +180,7 @@ export type PasosDeCrear = {
   orden: ValoresDeOrden;
   topes: ValoresDeTopes;
   modulos: ValoresDeModulos;
+  beneficios: ValoresDeBeneficios;
 };
 /** Los pasos de un borrador de cambio, ya validados, por su id. */
 export type PasosDeEditar = Omit<PasosDeCrear, "general"> & { general: GeneralDeEditar; vigencia: ValoresDeVigencia };
@@ -207,6 +219,7 @@ export const guardarPasoBorradorSchema = z
       opcionDeCrear("orden"),
       opcionDeCrear("topes"),
       opcionDeCrear("modulos"),
+      opcionDeCrear("beneficios"),
     ]),
     z.discriminatedUnion("paso", [
       opcionDeEditar("general"),
@@ -214,6 +227,7 @@ export const guardarPasoBorradorSchema = z
       opcionDeEditar("orden"),
       opcionDeEditar("topes"),
       opcionDeEditar("modulos"),
+      opcionDeEditar("beneficios"),
       opcionDeEditar("vigencia"),
     ]),
   ])
