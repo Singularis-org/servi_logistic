@@ -3,6 +3,7 @@ import type {
   BorradorVista,
   GeneralDeCrear,
   GeneralDeEditar,
+  ValoresDeBeneficios,
   ValoresDeModulos,
   ValoresDeOrden,
   ValoresDePrecio,
@@ -15,6 +16,7 @@ import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 import { horaCostaRica } from "@/lib/utils/hora-cr";
 
 import {
+  beneficiosEnPantalla,
   PASOS_QUE_SE_GUARDAN,
   versionDe,
   type CamposVisibles,
@@ -51,6 +53,9 @@ export function valoresDelPaso(
       return { topes: version.topes };
     case "modulos":
       return { modulos: version.modulos };
+    case "beneficios":
+      // SLT-214 (R8): en el orden de pantalla, sin la clave local.
+      return { beneficios: version.beneficios };
     case "vigencia":
       // SLT-135 (R15, R16): siempre la fecha del campo que se ve.
       return { vigenteDesde: visibles.cambiaPrecio ? form.precioDesde : form.vigenteDesde };
@@ -93,6 +98,8 @@ export function formDelBorrador(base: Formulario, pasos: BorradorVista["pasos"])
   if (pasos.orden) f = conOrden(f, pasos.orden as ValoresDeOrden);
   if (pasos.topes) f = conTopes(f, pasos.topes as ValoresDeTopes);
   if (pasos.modulos) f = { ...f, modulos: [...(pasos.modulos as ValoresDeModulos).modulos] };
+  // SLT-214 (R11): en su orden, con su texto y su ícono, y claves locales nuevas.
+  if (pasos.beneficios) f = { ...f, beneficios: beneficiosEnPantalla((pasos.beneficios as ValoresDeBeneficios).beneficios) };
   if (pasos.vigencia) f = conVigencia(f, pasos.vigencia as ValoresDeVigencia);
   return f;
 }

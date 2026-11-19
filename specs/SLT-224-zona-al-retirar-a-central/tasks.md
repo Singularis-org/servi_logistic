@@ -55,7 +55,7 @@
 
 ## T5 [P] — Corrección única (R1708–R1712) — sin dependencias de código
 
-- [x] `db/migrations/20261120120000_slt224_zona_de_ordenes_en_central/migration.sql` y `down.sql`
+- [x] `db/migrations/20261121120000_slt224_zona_de_ordenes_en_central/migration.sql` y `down.sql`
   (`design.md §5`). Si al implementar ya hay una migración posterior en `dev`, se ajusta la marca de
   tiempo antes de mergear, nunca después de aplicada.
 - [x] Nuevo `tests/integration/db/zona-desalineada-central-migration.test.ts` (`design.md §7.2`), con
@@ -121,8 +121,8 @@
 - `lib/repositories/OrdenRepository.ts`
 - `lib/interfaces/repositories/IOrdenRepository.ts`
 - `lib/services/RecepcionBodegaCentralService.ts`
-- `db/migrations/20261120120000_slt224_zona_de_ordenes_en_central/migration.sql`
-- `db/migrations/20261120120000_slt224_zona_de_ordenes_en_central/down.sql`
+- `db/migrations/20261121120000_slt224_zona_de_ordenes_en_central/migration.sql`
+- `db/migrations/20261121120000_slt224_zona_de_ordenes_en_central/down.sql`
 - `docs/ayuda/oficina/ordenes.md`
 - `tests/integration/db/recepcion-central-reconcilia-zona.int.test.ts`
 - `tests/integration/db/zona-desalineada-central-migration.test.ts`

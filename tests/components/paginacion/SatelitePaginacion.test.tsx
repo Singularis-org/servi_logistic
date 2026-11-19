@@ -479,11 +479,10 @@ function botonDescarga(): HTMLElement {
 }
 
 /** El aviso de lo marcado en otras páginas; `null` si no se pinta. */
+// SLT-222 (R1505/R1506): el aviso Q-K7 ya no existe; cuántas marcadas quedan fuera de la vista
+// lo dice ahora la coletilla del contador («M fuera de esta búsqueda»).
 function avisoTexto(): string | null {
-  const nodo = within(region())
-    .queryAllByText(/marcadas en otras páginas/)
-    .at(0);
-  return nodo?.textContent?.replace(/\s+/g, " ").trim() ?? null;
+  return /\d+ fuera de esta búsqueda/.exec(contador().textContent ?? "")?.[0] ?? null;
 }
 
 beforeEach(() => {
@@ -560,9 +559,7 @@ describe("Riesgo ALTO · «Órdenes de la bodega» del adminSatelite (T K.3)", (
     // EXACTAMENTE las de la página: ni una menos…
     for (const remision of visibles) expect(casilla(remision)).toBeChecked();
     // …ni una más: el contador de la barra habla de 25, no de las 60 del conjunto.
-    expect(contador()).toHaveTextContent(
-      `${PAGE_SIZE} seleccionada(s) en esta página`,
-    );
+    expect(contador()).toHaveTextContent(`${PAGE_SIZE} seleccionadas`);
 
     // Y lo que no está a la vista NO queda marcado. Es la comprobación que no se puede
     // esquivar: al volver a la página 1, sus filas siguen sin marcar. Un «seleccionar todo»
@@ -572,8 +569,11 @@ describe("Riesgo ALTO · «Órdenes de la bodega» del adminSatelite (T K.3)", (
       expect(casilla(remision), `${remision} quedó marcada sin estar a la vista`).not.toBeChecked();
     }
     expect(within(tabla()).getByRole("checkbox", { name: SELECCIONAR_TODO })).not.toBeChecked();
-    // Y la barra vuelve a hablar del conjunto, no de una selección invisible.
-    expect(contador()).toHaveTextContent(`${TOTAL} órdenes`);
+    // SLT-222 R1506: la selección de la página 2 sigue viva y la barra la cuenta, diciendo que
+    // ninguna de ellas está a la vista (antes la barra volvía a hablar del conjunto, R47).
+    expect(contador()).toHaveTextContent(
+      `${PAGE_SIZE} seleccionadas · ${PAGE_SIZE} fuera de esta búsqueda`,
+    );
   });
 
   it("las acciones de lote se deciden sobre lo seleccionado, no sobre el conjunto (R48)", async () => {
@@ -746,16 +746,12 @@ describe("Riesgo ALTO · «Órdenes de la bodega» del adminSatelite (T K.3)", (
     await user.click(casilla(etiqueta(1)));
     await user.click(casilla(etiqueta(2)));
 
-    // El servidor dirá que la 01 ya NO está en el conjunto filtrado: la poda la retira.
+    // El servidor dirá que la 01 ya NO está en el listado: la poda la retira.
     vigenciaMock.mockImplementationOnce(async () => ({ status: "ok", ids: ["o-2"] }));
     await irAPagina(user, 2);
 
-    // Ancla POSITIVA de que la poda YA ocurrió: el aviso pasa a contar una sola.
-    await waitFor(() =>
-      expect(avisoTexto()).toBe(
-        "Tienes 1 orden(es) marcadas en otras páginas que no entran en esta acción.",
-      ),
-    );
+    // Ancla POSITIVA de que la poda YA ocurrió: el contador pasa a contar una sola fuera.
+    await waitFor(() => expect(avisoTexto()).toBe("1 fuera de esta búsqueda"));
     const lecturasTrasPodar = paginadoMock.mock.calls.length;
 
     // La PÁGINA sigue siendo la 2 del conjunto filtrado, con sus cinco filas.
@@ -767,9 +763,15 @@ describe("Riesgo ALTO · «Órdenes de la bodega» del adminSatelite (T K.3)", (
     expect(
       (paginadoMock.mock.calls.at(-1)?.[0] as { estados?: string[] })?.estados,
     ).toEqual(["en_bodega_satelite"]);
-    // Los CONTADORES son los del servidor y no se mueven: 30 con el filtro, 60 sin él. Un
-    // contador recalculado sobre la selección o sobre las filas restantes se delataría aquí.
-    expect(contador()).toHaveTextContent(`30 de ${TOTAL} órdenes`);
+    // SLT-222 R1506: con algo marcado la barra enseña la SELECCIÓN entera (antes, sin nada
+    // marcado en la página, volvía a los totales). Lo que podar no puede mover es la página
+    // ni los totales del servidor, que siguen mandando en la paginación: dos páginas (25 + 5).
+    expect(contador()).toHaveTextContent("1 seleccionada · 1 fuera de esta búsqueda");
+    expect(within(nav()).getByRole("button", { name: "Ir a la página 2" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(within(nav()).queryByRole("button", { name: "Ir a la página 3" })).toBeNull();
     // Y podar no relee el listado: no cuesta ni una consulta de página.
     expect(paginadoMock.mock.calls.length).toBe(lecturasTrasPodar);
   });
@@ -804,54 +806,42 @@ describe("Riesgo ALTO · «Órdenes de la bodega» del adminSatelite (T K.3)", (
     // ofrece es la de ESTA orden, no la de las marcadas que no se ven.
     await user.click(casilla(etiqueta(41)));
 
-    // ANTES de podar: la acción está ofrecida y habilitada sobre la única marca visible.
-    expect(within(region()).getByRole("button", { name: "Enviar a central" })).toBeEnabled();
-    expect(contador()).toHaveTextContent(
-      "1 seleccionada(s) en esta página",
-    );
-    expect(avisoTexto()).toBe(
-      "Tienes 2 orden(es) marcadas en otras páginas que no entran en esta acción.",
-    );
+    // ANTES de podar. SLT-222 R1505: la acción se decide sobre TODAS las marcadas —dos en
+    // bodega fuera de la vista y la 41 por devolver—, así que se ofrece pero sin habilitar
+    // (estados mezclados).
+    expect(within(region()).getByRole("button", { name: "Enviar a central" })).toBeDisabled();
+    expect(contador()).toHaveTextContent("3 seleccionadas · 2 fuera de esta búsqueda");
 
-    // La poda responde: la 01 ya NO está en el conjunto filtrado; la 02 sí.
+    // La poda responde: la 01 ya NO está en el listado; la 02 sí.
     await act(async () => {
       responderVigencia(["o-2"]);
     });
 
-    // Ancla POSITIVA de que la poda YA ocurrió: el aviso BAJA de 2 a 1. Se espera al texto
-    // nuevo, no a que el viejo desaparezca; y la afirmación de abajo sobre el botón no valdría
-    // sin esto, porque un botón que sigue ahí es exactamente lo que se vería si la poda no se
-    // hubiera ejecutado nunca.
-    await waitFor(() =>
-      expect(avisoTexto()).toBe(
-        "Tienes 1 orden(es) marcadas en otras páginas que no entran en esta acción.",
-      ),
-    );
+    // Ancla POSITIVA de que la poda YA ocurrió: «fuera» BAJA de 2 a 1. Se espera al texto
+    // nuevo, no a que el viejo desaparezca.
+    await waitFor(() => expect(avisoTexto()).toBe("1 fuera de esta búsqueda"));
 
-    // DESPUÉS de podar: la MISMA acción sigue ofrecida, habilitada y sobre la misma selección
-    // visible. La poda se llevó una marca de otra página y ni tocó ésta.
-    expect(within(region()).getByRole("button", { name: "Enviar a central" })).toBeEnabled();
-    expect(contador()).toHaveTextContent(
-      "1 seleccionada(s) en esta página",
-    );
-    // Y sigue siendo la acción de lo SELECCIONADO EN LA PÁGINA: la 02, que sobrevivió a la poda,
-    // es `en_bodega_satelite` y no trae su botón por estar marcada fuera de la vista.
-    expect(within(region()).queryByRole("button", { name: "Asignar" })).toBeNull();
+    // DESPUÉS de podar: la marca de la página visible sigue puesta y su acción sigue
+    // ofrecida. La poda se llevó una marca de otra página y ni tocó ésta.
+    expect(casilla(etiqueta(41))).toBeChecked();
+    expect(within(region()).getByRole("button", { name: "Enviar a central" })).toBeInTheDocument();
+    expect(contador()).toHaveTextContent("2 seleccionadas · 1 fuera de esta búsqueda");
 
-    // Y al pulsarla se lleva EXACTAMENTE la orden marcada en la página: ni la 02 que quedó viva
-    // en la selección, ni las nueve `por_devolver` que el conjunto tiene además de la 41.
+    // Y al quitar la 02 de la selección (desde su página), la acción queda sobre EXACTAMENTE
+    // la 41: ni la 02, ni las nueve `por_devolver` que el conjunto tiene además.
+    await irAPagina(user, 1);
+    await user.click(casilla(etiqueta(2)));
+    await irAPagina(user, 2);
     await user.click(within(region()).getByRole("button", { name: "Enviar a central" }));
     await waitFor(() => expect(enviarACentralMock).toHaveBeenCalledTimes(1));
     expect(enviarACentralMock.mock.calls.map(([arg]) => arg)).toEqual([{ ordenId: "o-41" }]);
   });
 
-  it("la comprobación de vigencia viaja con los filtros vigentes (R19)", async () => {
-    // R19: la pertenencia se decide sobre el CONJUNTO FILTRADO, no sobre «todo lo del actor».
-    // Preguntar sin los filtros daría por vigente una orden que el filtro vigente excluye, y
-    // la marca sobreviviría a un cambio que el operador sí puede ver. Es el único sitio del
-    // repo donde se puede medir: para tener marcas fuera de la vista CON un filtro puesto hace
-    // falta filtrar, marcar y navegar —filtrar limpia la selección (R27)—, y eso exige un
-    // conjunto filtrado de más de una página.
+  // SLT-222 R1514 sustituye R19 de la 188 («la vigencia viaja con los filtros vigentes»): la
+  // selección sobrevive a la búsqueda, así que la pertenencia se decide sobre el listado de la
+  // bodega SIN filtros. Con el filtro, lo marcado en una búsqueda anterior se podaría por no
+  // cumplir la actual.
+  it("R19 + SLT-222 R1514: la comprobación de vigencia viaja SIN los filtros vigentes", async () => {
     const user = userEvent.setup();
     montar();
 
@@ -864,10 +854,7 @@ describe("Riesgo ALTO · «Órdenes de la bodega» del adminSatelite (T K.3)", (
     await irAPagina(user, 2);
 
     await waitFor(() => expect(vigenciaMock).toHaveBeenCalledTimes(1));
-    expect(vigenciaMock.mock.calls[0][0]).toEqual({
-      estados: ["en_bodega_satelite"],
-      ids: ["o-1"],
-    });
+    expect(vigenciaMock.mock.calls[0][0]).toEqual({ ids: ["o-1"] });
   });
 
   it("ni la carga inicial ni la descarga consultan la vigencia (R28)", async () => {

@@ -1,4 +1,3 @@
-import { EnlacesGuiaApi } from "@/app/(app)/ayuda/_components/EnlacesGuiaApi";
 import { AppPage } from "@/components/shared/AppPage";
 import { listarIntegraciones } from "@/lib/actions/integraciones";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
@@ -46,13 +45,8 @@ export default async function IntegracionesPage() {
     );
   }
 
-  // SLT-80 (R1313, R1314): la guía de integración y su PDF, a mano desde la cabecera.
   return (
-    <AppPage
-      title={TEXTOS.titulo}
-      description={TEXTOS.descripcion}
-      actions={<EnlacesGuiaApi />}
-    >
+    <AppPage title={TEXTOS.titulo} description={TEXTOS.descripcion}>
       {res.status === "ok" ? (
         <IntegracionesModule servicios={res.servicios} />
       ) : (

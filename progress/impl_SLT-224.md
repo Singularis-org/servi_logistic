@@ -12,7 +12,7 @@ MCP del grafo: no usado (worktree sin indexar, según design.md); todo por Grep/
 
 Nuevos:
 - `lib/repositories/_shared/reconciliar-zona-ordenes.ts` — helper `reconciliarZonaDeOrdenes(tx, { distritoIds, ordenIds?, excluirEstados? }, actor)`, con `whereBaseElegible` movido sin cambios (+ `ordenIds` opcional).
-- `db/migrations/20261120120000_slt224_zona_de_ordenes_en_central/migration.sql` y `down.sql`.
+- `db/migrations/20261121120000_slt224_zona_de_ordenes_en_central/migration.sql` y `down.sql`.
 - `lib/types/actualizacion-zonas.ts`, `lib/interfaces/repositories/IActualizacionZonasRepository.ts`,
   `lib/repositories/ActualizacionZonasRepository.ts`, `lib/interfaces/services/IActualizacionZonasService.ts`,
   `lib/services/ActualizacionZonasService.ts`, `lib/actions/actualizacion-zonas.ts`.

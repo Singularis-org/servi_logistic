@@ -47,6 +47,7 @@ import type {
   VistaPreviaCambioLeida,
   VistaPreviaLeida,
 } from "@/lib/interfaces/repositories/IPlanesRepository";
+import { iconoDeBeneficioSchema } from "@/lib/planes/beneficios";
 import { BorradorNoEncontrado } from "@/lib/planes/borrador";
 import { valorDelHistorialDeAsignacion } from "@/lib/planes/cobro";
 import type { CambioDelPlanLeido } from "@/lib/planes/consumo";
@@ -137,6 +138,8 @@ type Tx = Prisma.TransactionClient;
 const INCLUIR = {
   topesPorRol: { select: { rol: true, maximo: true } },
   modulos: { select: { modulo: true } },
+  // SLT-214 (design §3.3; R1): los beneficios, en el orden que eligió el superadmin.
+  beneficios: { select: { icono: true, texto: true }, orderBy: { posicion: "asc" } },
   // SLT-86 (design §1.1; R10): el descuento vigente de cada período, una fila por período con descuento.
   descuentos: { select: { periodo: true, porcentaje: true, monto: true } },
 } as const;
@@ -183,6 +186,8 @@ function aDTO(f: FilaPlan): PlanDTO {
     organizacionId: f.organizacionExclusivaId,
     topes: { porRol, apiKeys: f.topeApiKeys },
     modulos: f.modulos.map((m) => m.modulo),
+    // SLT-214 (R1): el CHECK `plan_beneficio_icono_check` deja solo los íconos del catálogo.
+    beneficios: f.beneficios.map((b) => ({ icono: iconoDeBeneficioSchema.parse(b.icono), texto: b.texto })),
     precio: precioDe(f),
     costoPorOrden: f.costoPorOrden === null ? null : f.costoPorOrden.toFixed(2),
     // SLT-83 (R1): el modo se deriva de qué columna tiene valor; el `CHECK` impide los dos a la vez.
@@ -488,6 +493,13 @@ async function aplicarVersion(
   await tx.planTopeRol.createMany({ data: filasDeTopes(version.topes).map((t) => ({ planId: antes.id, ...t })) });
   await tx.planModulo.deleteMany({ where: { planId: antes.id } });
   await tx.planModulo.createMany({ data: version.modulos.map((modulo) => ({ planId: antes.id, modulo })) });
+  // SLT-214 (R17, R18): la lista entera, con la posición como índice. Ausente = sin cambio en los beneficios.
+  if (version.beneficios !== undefined) {
+    await tx.planBeneficio.deleteMany({ where: { planId: antes.id } });
+    await tx.planBeneficio.createMany({
+      data: version.beneficios.map((b, posicion) => ({ planId: antes.id, posicion, ...b })),
+    });
+  }
 
   const anadidos = version.modulos.filter((m) => !antes.modulos.includes(m));
   const quitados = antes.modulos.filter((m) => !version.modulos.includes(m));
@@ -726,6 +738,8 @@ function versionDelPlan(plan: PlanDTO): VersionCompleta {
     nombre: plan.nombre,
     topes: plan.topes,
     modulos: plan.modulos,
+    // SLT-214 (design §3.3): ausente en el DTO = sin beneficios.
+    beneficios: plan.beneficios ?? [],
     precio: plan.precio,
     costoPorOrden: plan.costoPorOrden,
     costoPorOrdenPorcentual: plan.costoPorOrdenPorcentual,
@@ -1164,6 +1178,8 @@ async function crearEnTx(tx: Tx, input: CrearPlanInput, actorUsuarioId: string, 
       periodicidadOrdenes: input.periodicidadOrdenes,
       topesPorRol: { create: filasDeTopes(input.topes) },
       modulos: { create: input.modulos.map((modulo) => ({ modulo })) },
+      // SLT-214 (R15): ausente = sin beneficios; la posición es el índice.
+      beneficios: { create: (input.beneficios ?? []).map((b, posicion) => ({ posicion, ...b })) },
     },
     select: { id: true },
   });
@@ -1177,6 +1193,7 @@ async function crearEnTx(tx: Tx, input: CrearPlanInput, actorUsuarioId: string, 
     organizacionId: input.organizacionId,
     topes: input.topes,
     modulos: input.modulos,
+    beneficios: input.beneficios ?? [],
     precio: input.precio,
     costoPorOrden: input.costoPorOrden,
     costoPorOrdenPorcentual: input.costoPorOrdenPorcentual,

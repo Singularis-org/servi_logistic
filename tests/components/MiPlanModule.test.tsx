@@ -352,3 +352,90 @@ describe("SLT-119 R1, R17 — «Facturas de la empresa» al final de «Mi plan»
     expect(descargarDeLaPagina).toHaveBeenCalledWith({ facturaId: cerrada.id });
   });
 });
+
+// SLT-214 «Planes: beneficios de texto con ícono» (design §4.4; R23, R25): los beneficios del plan activo y las
+// líneas del cambio programado.
+describe("SLT-214 R23 — los beneficios del plan activo", () => {
+  const BENEFICIOS = [
+    { icono: "equipo", texto: "Equipo dedicado" },
+    { icono: "soporte", texto: "Soporte prioritario" },
+    { icono: "reloj_24h", texto: "Atención 24 h" },
+    { icono: "camion", texto: "Recolección diaria" },
+  ] as const;
+
+  it("R23: todos los de la versión que corre la empresa, con su ícono, en orden y sin «Mostrar más»", () => {
+    render(<MiPlanModule plan={plan({ vigente: { ...VIGENTE, beneficios: [...BENEFICIOS] } })} planes={planesDeMiPlan()} />);
+
+    const panel = within(screen.getByRole("region", { name: "Plan activo" }));
+    expect(panel.getByRole("heading", { name: "Beneficios" })).toBeInTheDocument();
+    const lista = panel.getByRole("list", { name: "Beneficios" });
+    expect(within(lista).getAllByRole("listitem").map((li) => li.textContent)).toEqual(BENEFICIOS.map((b) => b.texto));
+    const iconos = [...lista.querySelectorAll("svg[data-icono]")];
+    expect(iconos.map((i) => i.getAttribute("data-icono"))).toEqual(BENEFICIOS.map((b) => b.icono));
+    for (const i of iconos) expect(i).toHaveAttribute("aria-hidden", "true");
+    expect(panel.queryByRole("button", { name: "Mostrar más" })).toBeNull();
+  });
+
+  it("R23: sin beneficios no hay sección (ni «Sin beneficios»)", () => {
+    render(<MiPlanModule plan={plan({ vigente: { ...VIGENTE, beneficios: [] } })} planes={planesDeMiPlan()} />);
+
+    const panel = within(screen.getByRole("region", { name: "Plan activo" }));
+    expect(panel.queryByRole("heading", { name: "Beneficios" })).toBeNull();
+    expect(panel.queryByRole("list", { name: "Beneficios" })).toBeNull();
+    expect(screen.queryByText("Sin beneficios")).toBeNull();
+  });
+
+  it("R18, R23: una versión sin la clave `beneficios` tampoco pinta la sección", () => {
+    render(<MiPlanModule plan={plan()} planes={planesDeMiPlan()} />);
+
+    expect(within(screen.getByRole("region", { name: "Plan activo" })).queryByRole("list", { name: "Beneficios" })).toBeNull();
+  });
+});
+
+describe("SLT-214 R25 — los beneficios en «Esto es lo que cambia»", () => {
+  const vigenteDesde = new Date("2026-04-01T06:00:00.000Z");
+  const ANTES = [
+    { icono: "equipo", texto: "Equipo dedicado" },
+    { icono: "soporte", texto: "Soporte prioritario" },
+  ] as const;
+
+  function lineasDelCambio(): (string | null)[] {
+    const titulo = screen.getByText(TITULO_LINEAS_DE_CAMBIO);
+    const lista = titulo.parentElement!.querySelector("ul")!;
+    return within(lista).getAllByRole("listitem").map((li) => li.textContent);
+  }
+
+  it("R25: «Se agrega: …» y «Se quita: …» por cada beneficio, comparados sin mayúsculas ni tildes", () => {
+    const vigente = { ...VIGENTE, beneficios: [...ANTES] };
+    const cambio = {
+      vigenteDesde,
+      version: {
+        ...vigente,
+        beneficios: [
+          { icono: "equipo" as const, texto: "EQUIPO DEDICADO" },
+          { icono: "rayo" as const, texto: "Alta rápida" },
+        ],
+      },
+    };
+    render(<MiPlanModule plan={plan({ vigente, cambio })} planes={planesDeMiPlan()} />);
+
+    expect(lineasDelCambio()).toEqual(["Se agrega: Alta rápida", "Se quita: Soporte prioritario"]);
+  });
+
+  it("R25: si solo cambian íconos u orden, sale una sola línea", () => {
+    const vigente = { ...VIGENTE, beneficios: [...ANTES] };
+    const cambio = {
+      vigenteDesde,
+      version: {
+        ...vigente,
+        beneficios: [
+          { icono: "check" as const, texto: "Soporte prioritario" },
+          { icono: "equipo" as const, texto: "Equipo dedicado" },
+        ],
+      },
+    };
+    render(<MiPlanModule plan={plan({ vigente, cambio })} planes={planesDeMiPlan()} />);
+
+    expect(lineasDelCambio()).toEqual(["Cambian los íconos o el orden de los beneficios."]);
+  });
+});

@@ -2,8 +2,10 @@
 
 import type { Ref } from "react";
 
+import { ListaDeBeneficios } from "@/components/shared/planes/BeneficiosDelPlan";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { diferenciasDelPlan } from "@/lib/planes/rastro";
 import type { PlanDTO } from "@/lib/types/planes";
 
 import { versionDe, type PropsDelPaso } from "./estado";
@@ -72,7 +74,22 @@ export function PasoRevisar({
       ? { ...plan, ...versionDe(form) }
       : { id: "", visibilidad: form.visibilidad, organizacionId: null, archivado: false, ...versionDe(form) };
   const filas = filasDeRevision({ modo, plan, despues, extras, escrito: form });
-  const sinCambios = modo === "editar" && haySoloExtras(filas, extras);
+  // SLT-214 (R14): la fila «Beneficios» pinta cada ícono, así que no es una fila de texto de `filasDeRevision`. Va
+  // tras las del plan (después de «Módulos»): al crear, siempre; al editar, solo si cambian, antes de cuándo rige.
+  const cambianBeneficios = plan !== null && diferenciasDelPlan(plan, despues).beneficios !== undefined;
+  const conBeneficios = modo === "crear" || plan === null || cambianBeneficios;
+  const sinCambios = modo === "editar" && haySoloExtras(filas, extras) && !cambianBeneficios;
+  // Al crear, las del plan van al final; al editar, los `extras` (cuándo rige) van al final.
+  const corte = modo === "crear" || plan === null ? filas.length : filas.length - extras.length;
+  const fila = (f: { clave: string; valor: string }) => (
+    <div key={f.clave} className="flex flex-col gap-1 px-3 py-2 text-sm sm:flex-row sm:gap-4">
+      <dt className="font-semibold sm:w-48 sm:flex-none">{f.clave}</dt>
+      <dd className="min-w-0 break-words">{f.valor}</dd>
+    </div>
+  );
+  const lista = (beneficios: PlanDTO["beneficios"]) => (
+    <ListaDeBeneficios beneficios={beneficios ?? []} vacio={TEXTOS_PLAN_FORM.sinBeneficios} />
+  );
 
   return (
     <div className="flex flex-col gap-4">
@@ -81,12 +98,25 @@ export function PasoRevisar({
       </p>
       {sinCambios ? <p className="text-sm">{TEXTOS_PLAN_FORM.sinCambios}</p> : null}
       <dl className="flex flex-col divide-y divide-border rounded-lg border border-border">
-        {filas.map((f) => (
-          <div key={f.clave} className="flex flex-col gap-1 px-3 py-2 text-sm sm:flex-row sm:gap-4">
-            <dt className="font-semibold sm:w-48 sm:flex-none">{f.clave}</dt>
-            <dd className="min-w-0 break-words">{f.valor}</dd>
+        {filas.slice(0, corte).map(fila)}
+        {conBeneficios ? (
+          <div className="flex flex-col gap-1 px-3 py-2 text-sm sm:flex-row sm:gap-4">
+            <dt className="font-semibold sm:w-48 sm:flex-none">{TEXTOS_PLAN_FORM.beneficios}</dt>
+            <dd className="min-w-0 break-words">
+              {modo === "editar" && plan !== null ? (
+                // Como las demás filas al editar: «antes → después».
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:gap-2">
+                  {lista(plan.beneficios)}
+                  <span aria-hidden="true">→</span>
+                  {lista(despues.beneficios)}
+                </div>
+              ) : (
+                lista(despues.beneficios)
+              )}
+            </dd>
           </div>
-        ))}
+        ) : null}
+        {filas.slice(corte).map(fila)}
       </dl>
       {/* SLT-144 (design §5.3): al editar, debajo de la fila de cuándo rige (la última), la fecha de cada empresa. */}
       {modo === "editar" ? <FechasPorEmpresa fechas={fechas} onReintentar={onReintentarFechas} /> : null}

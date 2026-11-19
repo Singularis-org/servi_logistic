@@ -45,6 +45,7 @@ import {
   type ModoDelPlanForm,
   type PropsDelPaso,
 } from "./plan-form/estado";
+import { PasoBeneficios } from "./plan-form/PasoBeneficios";
 import { PasoCobroPorOrden } from "./plan-form/PasoCobroPorOrden";
 import type { FechasDelCambio } from "./plan-form/FechasPorEmpresa";
 import { PasoCuandoRigeConFechas } from "./plan-form/PasoCuandoRige";
@@ -796,6 +797,9 @@ export function PlanForm(props: PlanFormProps) {
         );
       case "modulos":
         return <PasoModulos {...delPaso} />;
+      case "beneficios":
+        // SLT-214 (R8–R10): los errores de un beneficio van por su posición; mover o quitar los descarta.
+        return <PasoBeneficios {...delPaso} descartarErrores={descartarErrores} />;
       case "vigencia":
         return (
           <PasoCuandoRigeConFechas

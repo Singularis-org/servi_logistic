@@ -261,7 +261,7 @@ un intento anterior) queda **excluida** por la regla existente y se lleva a P2.
 
 ### 5.1 Vehículo: migración de datos SQL
 
-`db/migrations/20261120120000_slt224_zona_de_ordenes_en_central/` con `migration.sql` y `down.sql`. Es
+`db/migrations/20261121120000_slt224_zona_de_ordenes_en_central/` con `migration.sql` y `down.sql`. Es
 el vehículo del repo para corregir datos (SLT-63, SLT-75). La aplica el build de cada entorno
 (`scripts/migrate-deploy.ts`) y ningún agente toca la base de producción.
 

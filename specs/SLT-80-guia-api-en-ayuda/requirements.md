@@ -165,6 +165,7 @@ Preview.
   `/ayuda/descargas/guia-integracion-api` («Descargar guía en PDF»).
 - **R1314.** MIENTRAS un `maestro` está en `/configuracion/integraciones`, el sistema DEBE mostrar los
   mismos dos enlaces de R1313.
+  > Sustituido por SLT-223 (2026-11-19): los enlaces van solo en el cuerpo de Configuración › API, junto a Generar API key; Integraciones no los lleva.
 - **R1315.** Las URLs de R1308, R1313 y R1314 DEBEN salir de una sola constante, la misma que usan
   las rutas de descarga.
 

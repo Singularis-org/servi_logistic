@@ -33,7 +33,7 @@ import { sentenciasSql } from "./_fixtures/sql-ejecutable";
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
-const DIR = path.join(process.cwd(), "db", "migrations", "20261120120000_slt224_zona_de_ordenes_en_central");
+const DIR = path.join(process.cwd(), "db", "migrations", "20261121120000_slt224_zona_de_ordenes_en_central");
 const UP = fs.readFileSync(path.join(DIR, "migration.sql"), "utf8");
 const DOWN = fs.readFileSync(path.join(DIR, "down.sql"), "utf8");
 
