@@ -1,0 +1,19 @@
+-- SLT-211 — el rastro del RETIRO DE PAQUETES DE UNA SATELITE A LA CENTRAL en el historial de acciones.
+--
+-- QUE REGISTRA: que un maestro/admin retiro un lote de ordenes del estante de una bodega satelite a la
+-- central (SLT-197, `OrdenRepository.retirarSateliteLote`). Una fila POR SATELITE DEL LOTE, no una por
+-- orden: el lote puede mezclar satelites (D9 de SLT-197) y todas las filas de un mismo retiro comparten
+-- `lote_id`. El cambio de estado de cada orden ya queda en `orden_historial_estado` (`ajuste_estado`);
+-- lo que faltaba es la accion en Historico › Acciones.
+--
+-- UN TIPO NUEVO Y NINGUNA ENTIDAD NUEVA: la satelite ES una `zona`, que ya esta en
+-- `historial_accion_entidad` desde `20260902120000_historial_accion`. Aqui solo se amplia
+-- `historial_accion_tipo`. La categoria («hace desaparecer algo») se deriva en codigo, no es columna.
+--
+-- VA SOLA: Postgres prohibe USAR un valor de enum en la misma transaccion que lo añade (55P04) y
+-- Prisma Migrate corre cada `migration.sql` en su propia transaccion. Mismo patron que
+-- `20261107130000_historial_tope_intentos`.
+--
+-- ADITIVA: ni tablas, ni columnas, ni datos. `IF NOT EXISTS`: reaplicarla no falla.
+-- Escrita a mano: `db:migrate:create` falla con P3006 en este repo.
+ALTER TYPE "historial_accion_tipo" ADD VALUE IF NOT EXISTS 'ordenes_retiradas_a_central';

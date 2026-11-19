@@ -5114,6 +5114,10 @@ enum HistorialAccionTipo {
   /// orden. `valor_anterior` y `valor_nuevo` son la marca. `usuario_fulfillment_cambiado` queda para las
   /// filas históricas.
   usuario_se_recoge_en_tienda_cambiado
+  /// SLT-211: un maestro/admin retiró paquetes del estante de una satélite a la central (SLT-197). Hace
+  /// desaparecer algo: los paquetes dejan el estante de la satélite. Entidad: `zona` (la satélite), una
+  /// fila por satélite del lote con el mismo `lote_id`; la etiqueta lleva el conteo y las guías.
+  ordenes_retiradas_a_central
 
   @@map("historial_accion_tipo")
 }

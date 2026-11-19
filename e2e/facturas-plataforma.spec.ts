@@ -3,7 +3,6 @@ import { readFile } from "node:fs/promises";
 
 import { test, expect, type Browser, type BrowserContext, type Cookie, type Locator, type Page } from "@playwright/test";
 import { Prisma, type PrismaClient } from "@prisma/client";
-import ExcelJS from "exceljs";
 
 import { money } from "../lib/config/moneda";
 import { inicioDelDiaPlataforma } from "../lib/planes/ciclo";
@@ -11,6 +10,7 @@ import { PlanesRepository } from "../lib/repositories/PlanesRepository";
 import { fechaCalendarioCR } from "../lib/utils/fecha-cr";
 import { crearEmpresaE2E, crearUsuarioE2E, sesionDe, type EmpresaE2E } from "../tests/fabricas/e2e";
 import { fijarEmpresa } from "../tests/fabricas/organizaciones";
+import { fuentesDePagina, objetos, paginas, textoLegible, textosDePagina } from "../tests/unit/pdf/pdf-inspector";
 
 import { crearZonaE2E } from "./_aislamiento-datos";
 import { clienteDueno } from "./_dos-empresas-fixture";
@@ -18,10 +18,9 @@ import { crearOrdenesDirectas, crearPlanPublicoConCosto } from "./_planes-fixtur
 import {
   asegurarSuperadmin,
   conCandadoDelSuperadmin,
-  entrarConOtp,
+  entrarComoSuperadmin,
   NO_ENCONTRADO,
-  olvidarDispositivos,
-  SUPERADMIN_DE_PRUEBA,
+  superadminDeLaBase,
 } from "./_superadmin-fixture";
 
 /**
@@ -42,13 +41,14 @@ import {
  *    tres líneas.
  * 6. Admin: `/mi-plan` → 404 «no encontrado» (SLT-91), sin la sección de facturas.
  *
- * SLT-136 T8.1 (R33; también R16, R18, R19; design §9) — las descargas de la factura cerrada:
- * - en el paso 2, el detalle de la en curso no muestra «Descargar PDF» ni «Descargar Excel» (R19);
- * - en el paso 4, el maestro descarga los dos archivos (`page.waitForEvent("download")`): se llaman
- *   `factura-1-<empresa>.pdf|xlsx` (R18); el Excel se relee con exceljs: la hoja «Movimientos» con las tres filas de
- *   la factura, guías y remisiones de las dos órdenes, dos «Cobrado» de 300 y un «Reverso» de −300 (R16); el PDF
- *   pesa más de 0 bytes y empieza por `%PDF`;
- * - en el paso 5, el superadmin descarga el PDF de la misma factura desde «Facturación» (R19).
+ * Las descargas de la factura cerrada: SLT-136 T8.1 (R33), enmendado por SLT-199 T5.2 (R25; design §10), que
+ * cambia el Excel por el anexo de movimientos en PDF. Los botones son «Descargar factura» y «Descargar anexo»:
+ * - en el paso 2, el detalle de la en curso no muestra ninguno de los dos;
+ * - en el paso 4, el maestro descarga los dos PDF (`page.waitForEvent("download")`): `factura-1-<empresa>.pdf` y
+ *   `factura-1-<empresa>-anexo.pdf`, los dos con más de 0 bytes y empezando por `%PDF`; el anexo se relee con
+ *   `tests/unit/pdf/pdf-inspector.ts` (el texto con el `/ToUnicode` del propio documento): las remisiones de los
+ *   tres movimientos y «Total neto (3 movimientos)»;
+ * - en el paso 5, el superadmin descarga la factura desde «Facturación».
  * La campanita no se mira aquí: el cierre va por la función SQL, no por el repositorio (R21 está en integración).
  *
  * Al final archiva el plan público que creó: el catálogo es global.
@@ -72,16 +72,11 @@ const TEXTO = {
   pestanaFacturacion: "Facturación",
   errorLista: "No se pudieron cargar las facturas",
   errorDetalle: "No se pudo cargar la factura",
-  descargarPdf: "Descargar PDF",
-  descargarExcel: "Descargar Excel",
+  descargarFactura: "Descargar factura",
+  descargarAnexo: "Descargar anexo",
   errorDescarga: "No se pudo descargar la factura",
-  hojaExcel: "Movimientos",
-  cobrado: "Cobrado",
+  totalNetoAnexo: "Total neto (3 movimientos)",
 } as const;
-/** SLT-136 R16: las cabeceras de la hoja «Movimientos». */
-const CABECERAS_EXCEL = ["Fecha", "Guía", "Remisión", "Tipo", "Valor"] as const;
-/** SLT-136 R16: `dd/mm/aaaa HH:mm`. */
-const FECHA_EXCEL = /^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}$/;
 /** Lo que pinta `money`, escrito a mano: 300 + 300 − 300 y cada línea con su signo. */
 const PINTADO = { ordenes: "₡300", cargo: "₡300", reverso: "-₡300" } as const;
 
@@ -96,7 +91,7 @@ let planId = "";
 let guias: string[] = [];
 /** SLT-136: las remisiones de las dos órdenes, en el mismo orden que `guias`. */
 let remisiones: string[] = [];
-/** SLT-136 R18: el nombre de la empresa en la base, para los nombres de archivo. */
+/** SLT-199 R24: el nombre de la empresa en la base, para los nombres de archivo. */
 let nombreEmpresa = "";
 const sesiones: { maestro?: Cookie[]; admin?: Cookie[] } = {};
 let contextoSa: BrowserContext | undefined;
@@ -125,10 +120,7 @@ test.beforeAll(async ({ browser }) => {
 
   // El superadmin de prueba es el actor del plan y el que abre el detalle de la empresa.
   await conCandadoDelSuperadmin(() => asegurarSuperadmin(db()));
-  const fila = await db().usuario.findFirstOrThrow({
-    where: { email: SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL, rol: { value: "superadmin" } },
-    select: { id: true },
-  });
+  const fila = await superadminDeLaBase(db());
   superadminId = fila.id;
 
   // Costo base 1 000 mensual (el de la fixture) y 300,00 por orden, desde las 00:00 de hoy (SLT-86 R2).
@@ -181,8 +173,7 @@ test.beforeAll(async ({ browser }) => {
   contextoSa = await browser.newContext();
   sa = await contextoSa.newPage();
   await conCandadoDelSuperadmin(async () => {
-    await olvidarDispositivos(db(), SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL);
-    await entrarConOtp(sa!, SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL, SUPERADMIN_DE_PRUEBA.SUPERADMIN_PASSWORD);
+    await entrarComoSuperadmin(sa!, db());
   });
 });
 
@@ -245,17 +236,17 @@ async function lineasDelDetalle(page: Page, fila: Locator): Promise<{ panel: Loc
 }
 
 /**
- * SLT-136 R18, escrito aparte de `nombreArchivoFactura` para no probar la función con ella misma: el nombre de la
+ * SLT-199 R24, escrito aparte de `nombreArchivoFactura` para no probar la función con ella misma: el nombre de la
  * empresa en minúsculas, sin tildes y con guiones.
  */
-function nombreDeArchivo(ext: "pdf" | "xlsx"): string {
+function nombreDeArchivo(documento: "factura" | "anexo"): string {
   const slug = nombreEmpresa
     .normalize("NFD")
     .replace(/\p{Diacritic}/gu, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-  return `factura-1-${slug}.${ext}`;
+  return documento === "anexo" ? `factura-1-${slug}-anexo.pdf` : `factura-1-${slug}.pdf`;
 }
 
 /** SLT-136: pulsa un botón de descarga del panel y devuelve el nombre sugerido y los bytes del archivo. */
@@ -276,33 +267,21 @@ function esPdf(bytes: Buffer): void {
 }
 
 /**
- * SLT-136 R16: relee el Excel y devuelve las filas de datos como «guía · remisión · tipo · valor», ordenadas (dos
- * movimientos pueden compartir instante), tras comprobar la hoja, las cabeceras y el formato de la fecha.
+ * SLT-199 R25: todos los textos del PDF, página a página, leídos con la fuente que declara el propio documento (los
+ * de la fuente embebida, por su `/ToUnicode`).
  */
-async function filasDelExcel(bytes: Buffer): Promise<string[]> {
-  const libro = new ExcelJS.Workbook();
-  await libro.xlsx.load(bytes as unknown as Parameters<typeof libro.xlsx.load>[0]);
-  expect(libro.worksheets.map((h) => h.name)).toEqual([TEXTO.hojaExcel]);
-  const hoja = libro.worksheets[0]!;
-  const valores = (n: number): unknown[] => (hoja.getRow(n).values as unknown[]).slice(1);
-  expect(valores(1)).toEqual([...CABECERAS_EXCEL]);
-  expect(hoja.rowCount, "la hoja no tiene las tres filas de la factura").toBe(4);
-  const filasExcel: string[] = [];
-  for (let n = 2; n <= hoja.rowCount; n += 1) {
-    const [fecha, guia, remision, tipo, valor] = valores(n);
-    expect(String(fecha)).toMatch(FECHA_EXCEL);
-    expect(typeof valor, "el valor no es un número").toBe("number");
-    filasExcel.push(`${String(guia)} · ${String(remision)} · ${String(tipo)} · ${String(valor)}`);
-  }
-  return filasExcel.sort();
+function textosDelPdf(bytes: Buffer): string[] {
+  const pdf = new Uint8Array(bytes);
+  const n = paginas(objetos(pdf)).length;
+  return Array.from({ length: n }, (_, i) => {
+    const fuentes = fuentesDePagina(pdf, i);
+    return textosDePagina(pdf, i).map((t) => textoLegible(t, fuentes.get(t.fuenteRes)));
+  }).flat();
 }
 
-function filasExcelEsperadas(): string[] {
-  return [
-    `${guias[0]} · ${remisiones[0]} · ${TEXTO.cobrado} · 300`,
-    `${guias[1]} · ${remisiones[1]} · ${TEXTO.cobrado} · 300`,
-    `${guias[1]} · ${remisiones[1]} · ${TEXTO.reverso} · -300`,
-  ].sort();
+/** SLT-199 R25: las remisiones de los tres movimientos (la segunda orden tiene cargo y reverso), ordenadas. */
+function remisionesEsperadas(): string[] {
+  return [remisiones[0]!, remisiones[1]!, remisiones[1]!].sort();
 }
 
 function lineasEsperadas(): string[] {
@@ -313,7 +292,7 @@ function lineasEsperadas(): string[] {
   ].sort();
 }
 
-test("el maestro ve la factura en curso en «Mi plan» con su total parcial y sus tres líneas, sin descargas (R19; SLT-136 R33)", async ({ browser }) => {
+test("el maestro ve la factura en curso en «Mi plan» con su total parcial y sus tres líneas, sin descargas (R19; SLT-199 R25)", async ({ browser }) => {
   test.setTimeout(300_000);
   const { page, ctx, estado, errores5xx } = await abrirCon(browser, sesiones.maestro, "/mi-plan");
   try {
@@ -332,9 +311,9 @@ test("el maestro ve la factura en curso en «Mi plan» con su total parcial y su
 
     const { panel, lineas } = await lineasDelDetalle(page, enCurso);
     expect(lineas).toEqual(lineasEsperadas());
-    // SLT-136 R19, R33: la en curso no se descarga.
-    await expect(panel.getByRole("button", { name: TEXTO.descargarPdf })).toHaveCount(0);
-    await expect(panel.getByRole("button", { name: TEXTO.descargarExcel })).toHaveCount(0);
+    // SLT-199 R25: la en curso no se descarga.
+    await expect(panel.getByRole("button", { name: TEXTO.descargarFactura })).toHaveCount(0);
+    await expect(panel.getByRole("button", { name: TEXTO.descargarAnexo })).toHaveCount(0);
     expect(errores5xx).toEqual([]);
   } finally {
     await ctx.close();
@@ -348,7 +327,7 @@ interface Cerrada {
 }
 let cerrada: Cerrada | null = null;
 
-test("el cierre emite la «N.º 1»: el maestro la ve «Emitida» y descarga su PDF y su Excel (R19; SLT-136 R16, R18, R33)", async ({ browser }) => {
+test("el cierre emite la «N.º 1»: el maestro la ve «Emitida» y descarga la factura y el anexo (R19; SLT-199 R24, R25)", async ({ browser }) => {
   test.setTimeout(300_000);
   const org = laEmpresa().organizacionId;
   // ARTIFICIO ACEPTADO (design §9): el reloj del cierre, 6 minutos después del fin natural de la en curso.
@@ -389,20 +368,24 @@ test("el cierre emite la «N.º 1»: el maestro la ve «Emitida» y descarga su 
     await expect(panel.getByRole("heading", { name: `Factura ${TEXTO.numeroUno}`, exact: true })).toBeVisible();
     expect(lineas).toEqual(lineasEsperadas());
 
-    // SLT-136 R33 (R16, R18, R19): el maestro descarga los dos archivos de la «N.º 1».
-    const pdf = await descargarDesde(page, panel, TEXTO.descargarPdf);
-    expect(pdf.nombre).toBe(nombreDeArchivo("pdf"));
-    esPdf(pdf.bytes);
-    const excel = await descargarDesde(page, panel, TEXTO.descargarExcel);
-    expect(excel.nombre).toBe(nombreDeArchivo("xlsx"));
-    expect(await filasDelExcel(excel.bytes)).toEqual(filasExcelEsperadas());
+    // SLT-199 R24, R25: el maestro descarga los dos PDF de la «N.º 1».
+    const facturaPdf = await descargarDesde(page, panel, TEXTO.descargarFactura);
+    expect(facturaPdf.nombre).toBe(nombreDeArchivo("factura"));
+    esPdf(facturaPdf.bytes);
+    const anexo = await descargarDesde(page, panel, TEXTO.descargarAnexo);
+    expect(anexo.nombre).toBe(nombreDeArchivo("anexo"));
+    esPdf(anexo.bytes);
+    // El anexo se relee: una fila por movimiento con su remisión y el total neto de los tres.
+    const textosAnexo = textosDelPdf(anexo.bytes);
+    expect(textosAnexo.filter((t) => remisiones.includes(t)).sort()).toEqual(remisionesEsperadas());
+    expect(textosAnexo).toContain(TEXTO.totalNetoAnexo);
     expect(errores5xx).toEqual([]);
   } finally {
     await ctx.close();
   }
 });
 
-test("el superadmin ve la misma «N.º 1» y las mismas líneas en la pestaña «Facturación» y descarga su PDF (R19, R12; SLT-136 R33)", async () => {
+test("el superadmin ve la misma «N.º 1» y las mismas líneas en la pestaña «Facturación» y descarga la factura (R19, R12; SLT-199 R25)", async () => {
   test.setTimeout(240_000);
   expect(cerrada, "no hay fila cerrada: falló el test anterior").not.toBeNull();
   const page = sa!;
@@ -431,9 +414,9 @@ test("el superadmin ve la misma «N.º 1» y las mismas líneas en la pestaña �
   await expect(panel.getByRole("heading", { name: `Factura ${TEXTO.numeroUno}`, exact: true })).toBeVisible();
   expect(lineas).toEqual(lineasEsperadas());
 
-  // SLT-136 R33 (R18, R19): el superadmin descarga el PDF de la misma factura.
-  const pdf = await descargarDesde(page, panel, TEXTO.descargarPdf);
-  expect(pdf.nombre).toBe(nombreDeArchivo("pdf"));
+  // SLT-199 R25: el superadmin descarga la factura de la misma «N.º 1».
+  const pdf = await descargarDesde(page, panel, TEXTO.descargarFactura);
+  expect(pdf.nombre).toBe(nombreDeArchivo("factura"));
   esPdf(pdf.bytes);
 });
 

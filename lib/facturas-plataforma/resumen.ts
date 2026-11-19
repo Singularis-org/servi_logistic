@@ -5,11 +5,11 @@ import { aCentimos, aCentimosConSigno, aTexto } from "@/lib/planes/centimos";
 import { fechaCalendarioPlataforma } from "@/lib/planes/ciclo";
 import type { DatosDescargaFactura, TipoLineaFactura } from "@/lib/types/factura-plataforma";
 
-// SLT-136 (design §3) — el resumen de la descarga de una factura cerrada, sin React y sin E/S. Lo comparten el PDF,
-// el Excel y sus pruebas. Los importes son los de la base (R9, R10); lo único que se suma aquí es el importe de
+// SLT-136 (design §3) — el resumen de la descarga de una factura cerrada, sin React y sin E/S. Lo comparten la factura,
+// el anexo y sus pruebas. Los importes son los de la base (R9, R10); lo único que se suma aquí es el importe de
 // cada día del desglose (R11), en céntimos exactos, y esa suma se contrasta con los totales de la base (R15).
 
-/** Todos los literales del PDF y del Excel de la factura, en un sitio para cuando llegue la i18n. */
+/** Todos los literales de la factura y del anexo en PDF, en un sitio para cuando llegue la i18n. */
 export const FACTURA_DESCARGA_TEXTOS = {
   emisor: MARCA_FACTURA.emisor,
   titulo: "FACTURA DE PLATAFORMA",
@@ -31,6 +31,7 @@ export const FACTURA_DESCARGA_TEXTOS = {
     concepto: "Concepto",
     cantidad: "Cantidad",
     importe: "Importe",
+    tarifa: "Tarifa",
     cargos: "Cargos por orden",
     reversos: "Reversos de cargos",
     totalOrdenes: "Total órdenes",
@@ -39,6 +40,15 @@ export const FACTURA_DESCARGA_TEXTOS = {
   },
   totalAPagar: "Total a pagar",
   notaMovimientos: (movimientos: string) => `Movimientos en total: ${movimientos}.`,
+  /** R11: según la tarifa de R26; sin movimientos no se dice nada. */
+  notaTarifa: {
+    unica: (tarifa: string) => `Los cargos y reversos se cobran a ${tarifa} por orden.`,
+    varias: "Los cargos y reversos se cobran con varias tarifas por orden.",
+  },
+  /** R11 (P3): el código y el símbolo salen de la configuración, sin literal de moneda. */
+  notaMoneda: `Montos en ${monedaConfig.currency} (${monedaConfig.simbolo}).`,
+  /** R26: la celda de tarifa cuando no hay una sola. */
+  tarifa: { varias: "Varias", sin: "—" },
   desglose: {
     titulo: "Desglose por día",
     dia: "Día",
@@ -48,18 +58,32 @@ export const FACTURA_DESCARGA_TEXTOS = {
     importe: "Importe neto",
     total: "Total",
     vacio: "Sin movimientos en el período",
-    nota: "Cada cargo y cada reverso, con su guía y su remisión, va en el Excel de esta factura.",
+    /** R12: N es el `movimientos` de la base. */
+    notaAnexo: (movimientos: string, numero: number, empresa: string) =>
+      `El detalle completo de los ${movimientos} movimientos va en el anexo ` +
+      `«Factura ${numero} · ${empresa} · Detalle de movimientos».`,
   },
   pie: (numero: number, empresa: string) => `${MARCA_FACTURA.pie} · Factura N.º ${numero} · ${empresa}`,
   pagina: (n: number, de: number) => `Página ${n} de ${de}`,
-  excel: {
-    hoja: "Movimientos",
-    fecha: "Fecha",
-    guia: "Guía",
-    remision: "Remisión",
-    tipo: "Tipo",
-    valor: "Valor",
-    tipos: { cargo: "Cobrado", reverso: "Reverso" } satisfies Record<TipoLineaFactura, string>,
+  /** SLT-199 R16–R21: el anexo de movimientos. */
+  anexo: {
+    antetitulo: (n: number) => `ANEXO · FACTURA N.º ${n}`,
+    titulo: "Detalle de movimientos",
+    tarjetas: { movimientos: "Movimientos", cargos: "Cargos", reversos: "Reversos", totalNeto: "Total neto" },
+    conteoEImporte: (cantidad: string, importe: string) => `${cantidad} · ${importe}`,
+    periodo: (periodo: string) => `Periodo facturado: ${periodo}.`,
+    tarifa: {
+      unica: (tarifa: string) => `Tarifa: ${tarifa} por orden.`,
+      varias: "Tarifa: varias por orden.",
+      sin: "Tarifa: —.",
+    },
+    seccion: "Movimientos",
+    columnas: { numero: "#", fecha: "Fecha", tipo: "Tipo", guia: "Guía", remision: "Remisión", importe: "Importe" },
+    tipos: { cargo: "Cargo", reverso: "Reverso" } satisfies Record<TipoLineaFactura, string>,
+    sinGuia: "—",
+    vacio: "Sin movimientos en el período",
+    totalNeto: (movimientos: string) => `Total neto (${movimientos} movimientos)`,
+    pie: `${MARCA_FACTURA.pie} · Anexo: detalle de movimientos`,
   },
 } as const;
 
@@ -126,12 +150,46 @@ export function periodoNumerico(desde: Date, hasta: Date): string {
   return `${fechaNumerica(desde)} al ${fechaNumerica(new Date(hasta.getTime() - 1))}`;
 }
 
-/** Una cantidad entera con el separador de miles del dinero de la app («2.365», «-15»). */
+/** Las cifras en grupos de tres separados por un espacio: el formato de la referencia, no el de pantalla. */
+function agrupado(digitos: string): string {
+  return digitos.replace(/\B(?=(\d{3})+$)/g, " ");
+}
+
+/** SLT-199 R4: una cantidad entera de los PDF («2 365», «-15»). */
 export function cantidadVisible(n: number): string {
-  const digitos = String(Math.abs(n));
-  const grupos: string[] = [];
-  for (let fin = digitos.length; fin > 0; fin -= 3) grupos.unshift(digitos.slice(Math.max(0, fin - 3), fin));
-  return `${n < 0 ? "-" : ""}${grupos.join(monedaConfig.separadorMiles)}`;
+  return `${n < 0 ? "-" : ""}${agrupado(String(Math.abs(n)))}`;
+}
+
+const FORMA_DE_LA_BASE = /^(-?)(\d+)\.(\d{2})$/;
+
+/**
+ * SLT-199 R3: un importe de la base con el formato de los PDF («₡473 000,00», «-₡40 400,00»). Trabaja sobre el
+ * texto, sin pasar por `Number`, para no redondear. Vive aquí y no en `lib/config/moneda.ts`: es solo de documento
+ * y allí sería un camino público más del dinero de pantalla (guardia 359). Otra forma de entrada es un fallo.
+ */
+export function importeDocumento(valor: string): string {
+  const partes = FORMA_DE_LA_BASE.exec(valor);
+  if (partes === null) throw new Error(`importeDocumento: importe no válido: ${valor}`);
+  const [, signo, enteros, decimales] = partes;
+  // «-0.00» no es negativo: sale «₡0,00».
+  const negativo = signo === "-" && /[1-9]/.test(enteros + decimales);
+  const { simbolo, separadorDecimal } = monedaConfig;
+  return `${negativo ? "-" : ""}${simbolo}${agrupado(enteros)}${separadorDecimal}${decimales}`;
+}
+
+/** SLT-199 R26: la tarifa de la factura, sacada de sus movimientos sin leer nada nuevo. */
+export type TarifaDeLaFactura = { tipo: "unica"; importe: string } | { tipo: "varias" } | { tipo: "sin" };
+
+/** R26: un solo valor absoluto entre cargos y reversos es la tarifa; dos o más, «Varias»; ninguno, «—». */
+export function tarifaDeLaFactura(datos: DatosDescargaFactura): TarifaDeLaFactura {
+  const valores = new Set<bigint>();
+  for (const m of datos.movimientos) {
+    const centimos = aCentimosConSigno(m.valor);
+    valores.add(centimos < BigInt(0) ? -centimos : centimos);
+    if (valores.size > 1) return { tipo: "varias" };
+  }
+  const [unico] = valores;
+  return unico === undefined ? { tipo: "sin" } : { tipo: "unica", importe: aTexto(unico) };
 }
 
 /** R8: el nombre del plan o «Sin plan asignado», con «· sin cuota de plan» si la factura no lleva cuota. */
@@ -208,8 +266,9 @@ function enSlug(texto: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-/** R18: `factura-<n>-<empresa>.<ext>`. */
-export function nombreArchivoFactura(numero: number, empresa: string, ext: "pdf" | "xlsx"): string {
+/** SLT-199 R24: `factura-<n>-<empresa>.pdf` y, el anexo, `factura-<n>-<empresa>-anexo.pdf`. */
+export function nombreArchivoFactura(numero: number, empresa: string, documento: "factura" | "anexo"): string {
   const slug = enSlug(empresa);
-  return slug === "" ? `factura-${numero}.${ext}` : `factura-${numero}-${slug}.${ext}`;
+  const base = slug === "" ? `factura-${numero}` : `factura-${numero}-${slug}`;
+  return documento === "anexo" ? `${base}-anexo.pdf` : `${base}.pdf`;
 }

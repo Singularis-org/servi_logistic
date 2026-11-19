@@ -3,6 +3,8 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { ListarCompletoServiceResult } from "@/lib/types/descarga-listado";
 import type { ListarPaginadoServiceResult } from "@/lib/types/listado-paginado";
 import type { ResumenRecepcion } from "@/lib/interfaces/repositories/IOrdenRepository";
+import type { DireccionOrden } from "@/lib/types/ordenamiento-listado";
+import type { CampoOrdenBodegaSatelite } from "@/lib/types/recepcion-satelite";
 
 // Feature 33 — contrato del servicio de la bodega satelite: listar "Mis
 // asignaciones" del adminSatelite (dos grupos: por recibir / recibidas) y recibir
@@ -156,6 +158,13 @@ export interface ListarOrdenesBodegaCompletoInput {
    * listado —pagina, descarga y vigencia de la seleccion—, que miran el mismo conjunto.
    */
   salio_a_reparto?: SalioARepartoValor;
+  /**
+   * SLT-210 (R1403) — el orden dentro de cada grupo de estado, con las MISMAS claves publicas
+   * que `/ordenes`. Ausentes = fecha de creacion descendente, el orden de siempre (R1401). No
+   * filtra: la vigencia de la seleccion no lo lleva.
+   */
+  sortBy?: CampoOrdenBodegaSatelite;
+  sortDir?: DireccionOrden;
 }
 
 /**

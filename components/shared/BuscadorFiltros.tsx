@@ -264,6 +264,12 @@ export interface BuscadorFiltrosProps {
    * del campo. Sin la prop no se monta nada: los demás consumidores no cambian.
    */
   trasFiltros?: ReactNode;
+  /**
+   * SLT-209 — por debajo de 768 px el campo ocupa su propia línea y los demás controles («Filtros»,
+   * `trasFiltros`, los `children` con `order-last`) bajan a la siguiente: con dos o tres botones al
+   * lado, el campo quedaba en ~80 px. Desde `md` no cambia nada. Apagada por defecto.
+   */
+  campoLineaPropia?: boolean;
   className?: string;
 }
 
@@ -345,6 +351,7 @@ export function BuscadorFiltros({
   tactil = false,
   escaneo = false,
   trasFiltros,
+  campoLineaPropia = false,
   className,
 }: BuscadorFiltrosProps) {
   const alto = escaneo ? ALTO_CONTROL_ESCANEO : tactil ? ALTO_CONTROL_TACTIL : ALTO_CONTROL;
@@ -661,6 +668,7 @@ export function BuscadorFiltros({
         <div
           className={cn(
             "relative flex min-w-0 flex-1 items-center sm:min-w-[250px]",
+            campoLineaPropia && "max-md:basis-full",
             alto,
           )}
         >

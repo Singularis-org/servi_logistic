@@ -114,6 +114,8 @@ export default defineConfig({
         "reporte-de-bugs",
         // SLT-80 R1306, R1307, R1309, R1312, R1313: la guía de integración en Ayuda y sus descargas por rol.
         "ayuda-guia-api",
+        // SLT-208: cada curl de la guía y cada petición de Postman contra la app; dos empresas, una URL.
+        "guia-api-ejemplos-ejecutables",
       ),
     },
     {
@@ -144,6 +146,8 @@ export default defineConfig({
         "retiro-satelite-central",
         // SLT-202: Órdenes a 1280 px con la barra de 32 px alineada y a 360 px con 44; un solo «Recibir paquete».
         "escritorio-igual-a-prod",
+        // SLT-222 · R1501, R1505, R1506: la selección se mantiene entre búsquedas en /ordenes y en la satélite.
+        "seleccion-entre-busquedas",
       ),
     },
     {
@@ -186,6 +190,8 @@ export default defineConfig({
         "pwa-mensajero-base",
         // SLT-165, rebanada D de SLT-156 · R523-R537: /cierre-dia a 360/414 px, tarjetas, barra fija y «Ver».
         "pwa-mensajero-cierre-dia",
+        // SLT-209: la barra de «Gestiones» del cierre no flota sobre la lista a 360 px, en la página y en «Ver».
+        "pwa-mensajero-cierre-barra-fija",
       ),
     },
   ],

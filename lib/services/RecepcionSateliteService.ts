@@ -169,6 +169,11 @@ export class RecepcionSateliteService implements IRecepcionSateliteService {
       ...(termino ? { busqueda: termino.busqueda } : {}),
       ...(termino?.busquedaDigitos ? { busquedaDigitos: termino.busquedaDigitos } : {}),
       ...(salida ? { salioAReparto: salida } : {}),
+      // SLT-210 (R1403): el orden viaja solo si la entrada lo trae (pagina y descarga, que lo
+      // reciben del borde con sus defaults). La vigencia no lo pide: no cambia la pertenencia.
+      ...(input.sortBy || input.sortDir
+        ? { orden: { sortBy: input.sortBy ?? "created_at", sortDir: input.sortDir ?? "desc" } }
+        : {}),
     };
     return this.conGuiaExacta(filtro, input.q);
   }

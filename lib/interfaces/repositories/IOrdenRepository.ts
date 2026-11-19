@@ -21,6 +21,8 @@ import type { PaginaRepositorio, RangoPagina } from "@/lib/utils/rango-pagina";
 // alcanza. Lo puso rojo `tests/unit/guards/pagos-captura.guardia.test.ts`, y el camino entero
 // esta escrito en `lib/types/alcance-tablero.ts`.
 import type { FiltroAlcanceTablero } from "@/lib/types/alcance-tablero";
+import type { OrdenamientoListado } from "@/lib/types/ordenamiento-listado";
+import type { CampoOrdenBodegaSatelite } from "@/lib/types/recepcion-satelite";
 // Feature 236 (T2.2, R5): el grupo de novedad viaja en la firma de los dos metodos del listado.
 import type { GrupoNovedad } from "@/lib/types/novedad-grupo";
 // ⏳ 2026-09-09 (feature 404, design §D5): la forma del mensajero publico se declara UNA vez, en el
@@ -907,6 +909,13 @@ export interface RecepcionSateliteFiltro {
    * actor, lo parte en dos dentro de lo que ya puede ver. Ausente = los dos grupos.
    */
   salioAReparto?: SalioAReparto;
+  /**
+   * SLT-210 (R1403) — el orden DENTRO de cada grupo de estado. Solo mueve el termino de recencia
+   * del `ORDER BY` (`created_at` o `clave_remision`, en la direccion pedida); el grupo de estado,
+   * la prioridad y el desempate por `id` siguen delante y detras. No es un filtro: no cambia el
+   * conjunto (R1404). Ausente = fecha de creacion descendente, el orden de siempre (R1401).
+   */
+  orden?: OrdenamientoListado<CampoOrdenBodegaSatelite>;
 }
 
 // Feature 41 (R17/R18) -> 241 -> ⭑ FICHA 431 — resultado del bloqueo derivado de una bodega
@@ -1955,6 +1964,8 @@ export interface IOrdenRepository {
    * `en_bodega_satelite`) va en el `WHERE`; si el conteo no es exacto revierte y devuelve
    * `"conflicto"` sin cambios ni historial. Limpia mensajero, `asignado_at` y dia de reparto;
    * conserva la zona. Un historial por orden con `historial.origenTipo` (`ajuste_estado`).
+   * SLT-211: en la misma transaccion, una accion `ordenes_retiradas_a_central` por satelite del lote
+   * (Historico › Acciones); un conflicto no deja ninguna.
    */
   retirarSateliteLote(
     ordenIds: string[],

@@ -1,4 +1,3 @@
-import { EnlacesGuiaApi } from "@/app/(app)/ayuda/_components/EnlacesGuiaApi";
 import { AppPage } from "@/components/shared/AppPage";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { listarApiKeys } from "@/lib/actions/api-keys";
@@ -37,13 +36,9 @@ export default async function ApiPage() {
       ? { items: res.items, total: res.total, pageSize: res.pageSize }
       : { items: [], total: 0, pageSize: apiKeysConfig.DEFAULT_PAGE_SIZE };
 
-  // SLT-80 (R1313, R1314): la guía de integración y su PDF, a mano desde la cabecera.
+  // SLT-223: la guía y su PDF ya no van en la cabecera; viven en el módulo, junto a «Generar API key».
   return (
-    <AppPage
-      title="API"
-      description="Credenciales e integraciones de API"
-      actions={<EnlacesGuiaApi />}
-    >
+    <AppPage title="API" description="Credenciales e integraciones de API">
       <ApiKeysModule initialData={data} />
     </AppPage>
   );

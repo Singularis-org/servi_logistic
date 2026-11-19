@@ -60,7 +60,7 @@ describe("406/R14 — el ejemplo publicado enlaza a SU PROPIO identificador, no 
   it("TS: el enlace del ejemplo es invocable tal cual — ruta del endpoint + identificador", () => {
     const data = ejemplos[1].data as Nodo;
     // Literal a mano, no derivado del spec ni del service.
-    expect(data.evidenciasUrl).toBe("https://app.example.com/api/ordenes/api-key/orden/100235");
+    expect(data.evidenciasUrl).toBe("https://www.servilogistic.co/api/ordenes/api-key/orden/100235");
     expect(new URL(data.evidenciasUrl as string).search).toBe("");
   });
 

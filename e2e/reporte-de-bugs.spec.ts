@@ -18,10 +18,10 @@ import {
   asegurarSuperadmin,
   conCandadoDelSuperadmin,
   enlacesDelMenu,
-  entrarConOtp,
+  entrarComoSuperadmin,
   NO_ENCONTRADO,
-  olvidarDispositivos,
   SUPERADMIN_DE_PRUEBA,
+  superadminDeLaBase,
 } from "./_superadmin-fixture";
 
 /**
@@ -171,8 +171,7 @@ test.describe("SLT-87 — quién ve el botón", () => {
     try {
       await conCandadoDelSuperadmin(() => asegurarSuperadmin(db));
       await conCandadoDelSuperadmin(async () => {
-        await olvidarDispositivos(db, SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL);
-        await entrarConOtp(page, SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL, SUPERADMIN_DE_PRUEBA.SUPERADMIN_PASSWORD);
+        await entrarComoSuperadmin(page, db);
       });
     } finally {
       await db.$disconnect();
@@ -398,12 +397,15 @@ test.describe("SLT-97 — el módulo del superadmin", () => {
     try {
       const sa = await ctx.newPage();
       const db = abrirBaseE2E();
+      // El nombre que el historial congela del autor: el de prueba en CI, o el del superadmin que ya hay.
+      let nombreDelSuperadmin: string = SUPERADMIN_DE_PRUEBA.SUPERADMIN_NOMBRE;
       try {
         await conCandadoDelSuperadmin(() => asegurarSuperadmin(db));
         await conCandadoDelSuperadmin(async () => {
-          await olvidarDispositivos(db, SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL);
-          await entrarConOtp(sa, SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL, SUPERADMIN_DE_PRUEBA.SUPERADMIN_PASSWORD);
+          await entrarComoSuperadmin(sa, db);
         });
+        const elSuperadmin = await superadminDeLaBase(db);
+        if (!elSuperadmin.esDePrueba) nombreDelSuperadmin = elSuperadmin.nombre;
       } finally {
         await db.$disconnect();
       }
@@ -469,7 +471,7 @@ test.describe("SLT-97 — el módulo del superadmin", () => {
       await expect(entradas).toHaveCount(1, { timeout: 30_000 });
       await expect(entradas.nth(0)).toContainText(`${TEXTO_MODULO.nuevo} → ${TEXTO_MODULO.enRevision}`);
       await expect(entradas.nth(0)).toContainText(nota);
-      await expect(entradas.nth(0)).toContainText(SUPERADMIN_DE_PRUEBA.SUPERADMIN_NOMBRE);
+      await expect(entradas.nth(0)).toContainText(nombreDelSuperadmin);
       await expect(estado.getByText(TEXTO_MODULO.enRevision, { exact: true })).toBeVisible();
 
       // Paso 5 — segundo cambio (R17, R19, R22): «Resuelto» sin nota; el formulario se va.
@@ -693,8 +695,7 @@ test.describe("SLT-98 — imágenes", () => {
       try {
         await conCandadoDelSuperadmin(() => asegurarSuperadmin(dbSa));
         await conCandadoDelSuperadmin(async () => {
-          await olvidarDispositivos(dbSa, SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL);
-          await entrarConOtp(sa, SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL, SUPERADMIN_DE_PRUEBA.SUPERADMIN_PASSWORD);
+          await entrarComoSuperadmin(sa, dbSa);
         });
       } finally {
         await dbSa.$disconnect();

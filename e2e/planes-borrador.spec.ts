@@ -16,9 +16,8 @@ import { crearPlanPublicoConCosto } from "./_planes-fixture";
 import {
   asegurarSuperadmin,
   conCandadoDelSuperadmin,
-  entrarConOtp,
-  olvidarDispositivos,
-  SUPERADMIN_DE_PRUEBA,
+  entrarComoSuperadmin,
+  superadminDeLaBase,
 } from "./_superadmin-fixture";
 
 /**
@@ -141,10 +140,7 @@ test.beforeAll(async ({ browser }) => {
   nombreN = (await db().organizacion.findUniqueOrThrow({ where: { id: empresaN.organizacionId }, select: { nombre: true } })).nombre;
 
   await conCandadoDelSuperadmin(() => asegurarSuperadmin(db()));
-  const usuario = await db().usuario.findFirstOrThrow({
-    where: { email: SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL, rol: { value: "superadmin" } },
-    select: { id: true },
-  });
+  const usuario = await superadminDeLaBase(db());
   superadminId = usuario.id;
 
   // El plan con dos empresas de tipos de cobro distintos (R30.4).
@@ -155,8 +151,7 @@ test.beforeAll(async ({ browser }) => {
   contextoSa = await browser.newContext();
   sa = await contextoSa.newPage();
   await conCandadoDelSuperadmin(async () => {
-    await olvidarDispositivos(db(), SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL);
-    await entrarConOtp(superadmin(), SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL, SUPERADMIN_DE_PRUEBA.SUPERADMIN_PASSWORD);
+    await entrarComoSuperadmin(superadmin(), db());
   });
   await superadmin().waitForURL("**/plataforma/empresas", { timeout: 60_000 });
 });
