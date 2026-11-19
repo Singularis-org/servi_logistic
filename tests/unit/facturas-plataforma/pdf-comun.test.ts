@@ -212,6 +212,9 @@ describe("SLT-199 R1 — la factura y el anexo comparten banda, barra, cabecera 
     // Lo que viene detrás no hereda el espaciado.
     expect(espaciadoDe(factura, "Factura N.º 1")).toBe(0);
     expect(espaciadoDe(anexo, "Detalle de movimientos")).toBe(0);
+    // Las etiquetas de las tarjetas: 1 px en la referencia.
+    expect(espaciadoDe(factura, "CLIENTE")).toBeCloseTo(MEDIDAS.espaciadoEtiqueta * PT, 3);
+    expect(espaciadoDe(anexo, "MOVIMIENTOS")).toBeCloseTo(MEDIDAS.espaciadoEtiqueta * PT, 3);
   });
 });
 

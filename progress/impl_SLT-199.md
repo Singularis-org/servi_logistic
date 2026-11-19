@@ -245,3 +245,6 @@ Sin cambios de cálculo ni dependencias nuevas.
 Veredicto: m2–m6 aplicados con test; verde en lo tocado.
 
 - Gate tras los menores (implementer): `./init.sh` rc=0 (typecheck, lint, test:rapido y guardias en verde, copia temporal de cupo restaurada). Tamaño: 20/40 archivos, 1172/1000 líneas de producción (aceptado ~1300), 1273/3000 de tests.
+
+### Espaciado de las etiquetas de las tarjetas (pedido del leader tras la ronda 1)
+- `MEDIDAS.espaciadoEtiqueta = 0.26` mm (1 px de la referencia, 0,737 pt de `Tc`) en las etiquetas de `tarjetas()`, factura y anexo. Aserción en `pdf-comun.test.ts` («CLIENTE» y «MOVIMIENTOS»). Muestras regeneradas.

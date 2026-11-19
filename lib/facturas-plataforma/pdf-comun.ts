@@ -81,6 +81,8 @@ export const MEDIDAS = {
    * en su content stream es 1,5 pt de más entre glifo y glifo, también tras el último (como el `letter-spacing` CSS).
    */
   espaciadoVersal: 0.529,
+  /** Espacio entre letras de las etiquetas de las tarjetas: 1 px en la referencia. */
+  espaciadoEtiqueta: 0.26,
   filaCompacta: { alto: 4.4, letra: 7.4 },
   filaAmplia: { alto: 9.6, letra: 12 },
 } as const;
@@ -281,7 +283,11 @@ export class Lienzo {
       this.doc.setDrawColor(COLORES.bordeTarjeta[0], COLORES.bordeTarjeta[1], COLORES.bordeTarjeta[2]);
       this.doc.setFillColor(COLORES.fondoTarjeta[0], COLORES.fondoTarjeta[1], COLORES.fondoTarjeta[2]);
       this.doc.roundedRect(x, y, ancho, alto, radio, radio, "FD");
-      this.texto(etiqueta.toLocaleUpperCase("es"), x + 3.2, y + 5.7, { tamano: 7.5, color: COLORES.gris });
+      this.texto(etiqueta.toLocaleUpperCase("es"), x + 3.2, y + 5.7, {
+        tamano: 7.5,
+        color: COLORES.gris,
+        espaciado: MEDIDAS.espaciadoEtiqueta,
+      });
       this.estilo(9.5);
       this.lineas(valor, x + 3.2, y + 11, ancho - 6.4, 2, 3.8, true);
     });
