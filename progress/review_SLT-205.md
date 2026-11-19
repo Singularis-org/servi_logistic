@@ -69,3 +69,22 @@ alguna de esas pantallas pide cámara, la decisión se escribe en su entrada.
 
 **RECHAZADO** por B1 y B2. Los dos se arreglan en la guardia, con su contraprueba. El punto 1
 (dependencias) está bien diagnosticado y bien parado: no hay nada que cambiar en él.
+
+## Vuelta 2 (acotada a f5689c39..0e644ca4)
+
+Revisé solo el diff de los arreglos (`tests/unit/guards/buscadores-con-escaneo.guardia.test.ts`, `tests/baseline-rojos.json`, `progress/`) frente a B1, B2 y m1, y busqué regresiones.
+
+### Checklist
+- [x] **B1**: en una excepción, `apagado()` solo acepta que `escaneo` falte o sea el literal `{false}`. La mutación R2 repetida (`RecoleccionModule.tsx:283` `<BuscadorFiltros escaneo={debounceActivoZq7 || true}`) da **ROJO**, con 3 failed / 28 passed. El mensaje es «pasa «escaneo» distinto de «{false}»: quítalo o pásalo a CON_ESCANEO». La contraprueba unitaria cubre `{x || true}`, `{expr}`, `escaneo` suelto, `{ false }` y la ausencia.
+- [x] **B2**: con `title="guia -> tienda" escaneo` en Recolección la guardia termina **en ROJO** en segundos (3 failed). Con `title="guia -> tienda"` sin `escaneo` termina **en VERDE**: 31 passed. Las dos corridas tenían `timeout 120`. Un literal sin cerrar lanza «literal sin cerrar», no se queda en bucle. El comentario del test explica bien que el `{ timeout: 2000 }` no corta un bucle síncrono.
+- [x] **m1, alias**: un archivo nuevo `components/zz/AliasZz.tsx` con `import { BuscadorFiltros as Caja }` y `<Caja onChange={…} />` da **ROJO**: el inventario no cuadra.
+- [x] **m1, spread**: `<BuscadorFiltros {...restoZq7}` en Recolección da **ROJO** con el mensaje claro «no se puede verificar escaneo con spread: <BuscadorFiltros {...restoZq7}».
+- [x] **Punto 1 fuera de la ficha**: `git diff origin/dev...HEAD` no toca ni `tests/baseline-rojos.json` ni la guardia de dependencias. El diff contra dev son solo la guardia de escaneo y `progress/`.
+- [x] Guardia sin mutar: 31 passed. ESLint limpio. `tsc --noEmit` sin errores. Tamaño del PR: 1/40 archivos, 0/1000 líneas de producción, 278/3000 de tests.
+- [x] Árbol restaurado tras cada mutación (`git checkout --` y `rm -rf components/zz`). `git status` limpio.
+
+### Hallazgos
+- **m2, menor** (no bloquea): en `aperturasDeBuscador`, el lookahead `(?![\w$])` va dentro de un template literal. Ahí `\w` se queda en `w`, así que la regex real es `(?![w$])`. Resultado: un componente distinto cuyo nombre empiece por `BuscadorFiltros` (o por el alias) se cuenta como buscador. Lo comprobé con un archivo nuevo que monta `<BuscadorFiltrosZz onChange={…} />`: la guardia da ROJO por inventario. Falla hacia el lado seguro (falso positivo, nunca falso negativo) y hoy no existe ningún componente así en `app/` ni en `components/`. El arreglo es escribir `\w` (o `[A-Za-z0-9_$]`). Puede ir en este PR o quedar anotado.
+
+### Veredicto vuelta 2
+**OK**. B1 y B2 quedan resueltos y verificados con mutación. m1 queda resuelto. No hay regresiones. Queda abierto solo m2, que es menor.
