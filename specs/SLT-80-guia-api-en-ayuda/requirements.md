@@ -202,12 +202,12 @@ Preview.
     `tests/unit/guards/docs-marca-heredada.guardia.test.ts`.
   - **Hecho:** `grep -r "guia-integracion.html"` solo aparece en `docs/api/CHANGELOG.md` (es historia)
     y en `docs/limpieza-ordenex.md`; las dos pruebas, en verde.
-- [ ] **T3 [P tras T1] — Analizador de bloques común (D5).**
+- [x] **T3 [P tras T1] — Analizador de bloques común (D5).**
   - Extraer de `lib/ayuda/markdown.tsx` a `lib/ayuda/bloques.ts` el paso de líneas a bloques: título,
     párrafo, lista, tabla, cita y código.
   - `markdown.tsx` lo consume.
   - **Hecho:** `tests/unit/ayuda/markdown.test.tsx` en verde sin tocarlo.
-- [ ] **T4 — Fuente Archivo para PDF (D4, R1311).**
+- [x] **T4 — Fuente Archivo para PDF (D4, R1311).**
   - Subconjuntos Regular y Bold de Archivo, instanciados del variable con `fontTools`, en
     `assets/fuentes/`.
   - `lib/pdf/guia-fuente.ts` con el origen, la licencia (OFL, verificada en el origen), el sha256 y el
@@ -215,7 +215,7 @@ Preview.
   - Rangos: los mismos de la etiqueta, más los caracteres que use la guía. Medirlos sobre el `.md` de
     T1.
   - **Hecho:** el test de cobertura de R1311 pasa sobre la guía.
-- [ ] **T5 — Generador `lib/pdf/guia-api-pdf.ts` (R1309–R1311).**
+- [x] **T5 — Generador `lib/pdf/guia-api-pdf.ts` (R1309–R1311).**
   - Función pura que recibe los bloques de T3, el frontmatter y el logo, y devuelve los bytes del PDF.
   - Copia la estructura de `lib/facturas-plataforma/pdf.ts`:
     - lienzo jsPDF;
@@ -223,7 +223,7 @@ Preview.
     - paginación con pie.
   - Paleta de `docs/marca.md`.
   - **Hecho:** los tests de R1309–R1311 en verde con `pdf-inspector`.
-- [ ] **T6 — Rutas de descarga (R1307, R1309, R1312, R1315).**
+- [x] **T6 — Rutas de descarga (R1307, R1309, R1312, R1315).**
   - `lib/ayuda/guia-api.ts`: el slug y las tres URLs.
   - `app/(app)/ayuda/descargas/guia-integracion-api/route.ts` y `app/(app)/ayuda/descargas/postman/route.ts`.
   - Las dos resuelven el actor y aplican `puedeLeerDocumento` sobre el documento de la guía: 404

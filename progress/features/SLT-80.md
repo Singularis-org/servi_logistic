@@ -68,6 +68,10 @@
 - **Tanda 2** (2026-11-18, frontend_dev; T7, T8): `AccionesGuiaApi` en la pantalla de la guía (solo ese
   slug) y los dos enlaces en la cabecera de `/configuracion/api` e Integraciones (rama maestro). 33/33
   tests, 7 mutaciones en rojo, typecheck y lint en verde. T7 y T8 [x].
+- **Tanda 3** (2026-11-18, backend_dev; T3–T6): `bloques.ts` común, Archivo Regular/Bold en subconjunto
+  (google/fonts, OFL), `guia-api-pdf.ts` (27 páginas) y las dos rutas de descarga con `notFound()`. 169/169,
+  5 mutaciones en rojo, typecheck y lint en verde. A revisar: la guía cambió ∈ ☐ ⚠ ✔ (Archivo no los tiene;
+  commit `5414f62e`) y 2 guardias fuera de la lista de archivos (31 de 40). T3–T6 [x].
 
 ## Modelos (overrides)
 

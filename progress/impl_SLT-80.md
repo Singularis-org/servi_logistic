@@ -225,3 +225,94 @@ lint: `pnpm run lint` → exit 0, «0 errors, 248 warnings» (las mismas de ante
 
 ### Veredicto
 T7 y T8 hechos; tests nuevos con 7 mutaciones en rojo, typecheck y lint en verde.
+
+## Tanda 3 (T3, T4, T5, T6) — backend_dev, 2026-11-18
+
+### Archivos
+- `lib/ayuda/bloques.ts` (nuevo, T3/D5): `analizarBloques` (líneas → bloques: título, párrafo, lista,
+  tabla, cita, código, separador) y `partirInline` (negrita, cursiva, código en línea). Lo usan la
+  pantalla y el PDF.
+- `lib/ayuda/markdown.tsx`: solo pinta; el análisis sale de `bloques.ts`. `markdown.test.tsx` sin tocar, 16/16.
+- `assets/fuentes/Archivo-guia-regular-subset.ttf` y `…-bold-subset.ttf` (T4): instanciados con fontTools
+  4.63.0 (wght 400/700, wdth 100) del variable de google/fonts `ofl/archivo` en el commit
+  `6c70c829f09ea345d3590406693220ea35c6553f` (sha256 `0e094a7d…b05053`). OFL 1.1 comprobada en `OFL.txt` y
+  `METADATA.pb` de ese origen. El aviso y la licencia van dentro de cada TTF (`name` IDs 0/13/14).
+- `lib/pdf/guia-fuente.ts` (T4): origen, licencia, sha256 y comandos; base64 de los dos pesos y `COBERTURA_GUIA`.
+- `lib/pdf/guia-api-pdf.ts` (T5): `construirPdfGuiaApi(bloques, {actualizado}, logo)`.
+- `app/(app)/ayuda/descargas/guia-integracion-api/route.ts` y `…/postman/route.ts` (T6).
+- `next.config.ts`: `outputFileTracingIncludes["/ayuda/descargas/postman"]` = la colección (la lee del disco).
+  Los TTF NO hacen falta en el trazado: viajan en base64 dentro de `guia-fuente.ts`, como la etiqueta.
+- `docs/ayuda/oficina/guia-integracion-api.md`: 43 sustituciones de símbolos que Archivo no tiene (ver Decisiones).
+- Tests nuevos: `tests/unit/pdf/guia-api-pdf.test.ts`, `tests/unit/ayuda/guia-api-descargas.test.ts`.
+- **Fuera de «Archivos esperados» (2 tests de guardia que se ponían rojos):**
+  - `tests/unit/guards/etiqueta-fuente-diferida.guardia.test.ts`: exigía UN solo archivo en `assets/fuentes/`;
+    ahora nombra los tres, uno a uno.
+  - `tests/unit/guards/ayuda-md-viajan-a-produccion.guardia.test.ts`: exigía `["/**"]` como únicas claves del
+    trazado; ahora admite exactamente `/ayuda/descargas/postman` además, y `/**` sigue intacta.
+  - El PR pasa de 29 a 31 archivos (tope 40; aviso del 80% en 32).
+
+### Decisiones (para revisión)
+- **La guía cambia 4 símbolos que Archivo no tiene** (U+2208 ∈, U+2610 ☐, U+26A0 ⚠, U+2714 ✔), medidos en el
+  cmap del variable. R1311 exige que la guía vigente se genere sin error y prohíbe sustituir en silencio, y no
+  se metió otra fuente. Va en un commit aparte (`5414f62e`) para poder revertirlo si se decide otra cosa:
+  `⚠ ` → `Atención: ` (15), ` ∈ ` → ` es uno de ` (3), en la checklist `✔` → `Hecho` y `☐` → `[ ]` (25).
+- **404 de las rutas.** Usan el mismo `notFound()` que `[...slug]/page.tsx`. En un route handler Next 16 lo
+  convierte en `Response(null, {status: 404})` (`app-route/module.js:475`), y un documento inexistente pasa
+  por el mismo `notFound()`: la respuesta es idéntica en estado y cuerpo dentro de la ruta. La página de Ayuda
+  pinta además la vista 404 en HTML. Sin cookie de sesión, `middleware.ts` redirige a `/login` antes de llegar
+  al handler, igual que con la página. No se tocó `middleware.ts` (D3): con sesión deja pasar `/ayuda/*`.
+- **Código en línea en Archivo**, no en Courier: la guía lo usa con `…` (U+2026), que Courier no escribe.
+- **El mensaje de `ErrorCaracterNoImprimible`** es el de las etiquetas («La etiqueta de la guia …»). Se reutiliza
+  la clase tal cual (R1311 la nombra) con identidad «de integración por API» y campo «línea n del .md (tipo)».
+
+### Mapa R → test (esta tanda)
+| R | Test |
+|---|---|
+| R1301 | `guia-api-pdf.test.ts` «cada título del .md sale en el PDF…» (títulos sacados del cuerpo de `leerDocumentoAyuda` con regex propia) |
+| R1307 | `guia-api-descargas.test.ts` «R1307 · null/mensajero/adminTienda/adminSatelite → el mismo 404…» (×2 rutas) |
+| R1309 | `guia-api-descargas.test.ts` «R1309 · maestro/admin → 200, application/pdf, adjunto…» + `guia-api-pdf.test.ts` títulos en orden |
+| R1310 | `guia-api-pdf.test.ts`: portada (logo, #FFD000, título, versión), pie n / N en 2..N, ningún texto #FFD000, Archivo + Courier, caída sin logo (null y PNG roto) |
+| R1311 | `guia-api-pdf.test.ts`: la guía vigente se genera; U+9B31 en un párrafo y `→` en código lanzan `ErrorCaracterNoImprimible` |
+| R1312 | `guia-api-descargas.test.ts`: bytes iguales al `Buffer` del disco, adjunto `.json`, y la clave de trazado en `next.config.ts` |
+| R1315 | `guia-api-descargas.test.ts` «las rutas de descarga viven donde dicen las constantes…» |
+
+### Mutaciones (base `servi_slt80_desechable`, restauradas con `git checkout --`)
+```
+# 1a. Sin chequeo de rol en la ruta del PDF: `if (doc === null) notFound();`
+node con-desechable.cjs <wt> servi_slt80_desechable -- pnpm exec vitest run tests/unit/ayuda/guia-api-descargas.test.ts
+       × R1307 · null → el mismo 404 que un documento que no existe
+       × R1307 · mensajero → … · × adminTienda → … · × adminSatelite → …
+      Tests  4 failed | 11 passed (15)
+# 1b. Igual en la ruta de Postman: `if (guia === null) notFound();`
+      Tests  4 failed | 11 passed (15)   (los mismos cuatro)
+# 2. Pie pintado en #FFD000: `l.doc.setTextColor(0xff, 0xd0, 0x00);` tras `l.archivo(PT_PIE, …)`
+node con-desechable.cjs <wt> servi_slt80_desechable -- pnpm exec vitest run tests/unit/pdf/guia-api-pdf.test.ts
+     × R1310 · todo el texto en #111111: ningún texto en #FFD000
+      Tests  1 failed | 9 passed (10)
+# 3. Sin pie: `// pies(l);`
+     × R1310 · el pie «… · n / N» está en las páginas 2..N y no en la portada
+      Tests  1 failed | 9 passed (10)
+# 4. (extra) Sin exigir cobertura: `// exigirCoberturaDeBloques(...)`
+     × R1311 · un carácter que Archivo no cubre lanza ErrorCaracterNoImprimible nombrándolo
+     × R1311 · y en un bloque de código, un carácter que Courier no escribe también lanza
+      Tests  2 failed | 8 passed (10)
+```
+
+### Verificación (base `servi_slt80_desechable`)
+```
+pnpm exec vitest run tests/unit/ayuda/guia-api-descargas.test.ts tests/unit/pdf/guia-api-pdf.test.ts
+  tests/unit/ayuda/markdown.test.tsx tests/unit/guards/guia-api-fuente-unica.guardia.test.ts
+  tests/unit/guards/ayuda-md-viajan-a-produccion.guardia.test.ts tests/unit/guards/ayuda-pantalla-ruta-existe.guardia.test.ts
+  tests/unit/guards/ayuda-render-sin-filtracion.guardia.test.ts tests/unit/guards/docs-marca-heredada.guardia.test.ts
+  tests/unit/guards/etiqueta-fuente-diferida.guardia.test.ts tests/unit/guards/nombres-estado-retirados.guardia.test.ts
+  tests/components/AccionesGuiaApi.test.tsx tests/unit/api/openapi-466-descripciones.test.ts
+ Test Files  12 passed (12)
+      Tests  169 passed (169)
+pnpm run typecheck   → tsc --noEmit, exit 0
+pnpm run lint        → exit 0 (0 errors; 248 warnings previos, ninguno en archivos de esta tanda)
+```
+El PDF de la guía vigente: 27 páginas, ~131 KB, ~200 ms. Revisado a ojo (render con PyMuPDF): portada,
+tablas con cabecera repetida, citas y código con fondo, pie en 2..27.
+
+### Veredicto
+T3, T4, T5 y T6 hechos; 169/169, typecheck y lint en verde; 5 mutaciones en rojo. Pendiente: T11 (E2E y gate).
