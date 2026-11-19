@@ -102,11 +102,11 @@ const CIFRAS_BN: CifrasCierreBodegaDescarga = {
   totalFacturado: "7910.00",
   ivaFacturado: "910.00",
   netoEmpresa: "3500.00",
-  ganaLaTienda: "92090.00",
+  pagoTienda: "92090.00",
   pagoEntregado: "3000.00",
   partesPorTienda: [
-    { tiendaId: "t1", tiendaNombre: "Tienda Uno", recaudado: "70000.00", pagoTienda: "63220.00", ganaLaTienda: "63220.00" },
-    { tiendaId: "t2", tiendaNombre: "Tienda Dos", recaudado: "30000.00", pagoTienda: "28870.00", ganaLaTienda: "28870.00" },
+    { tiendaId: "t1", tiendaNombre: "Tienda Uno", recaudado: "70000.00", pagoTienda: "63220.00" },
+    { tiendaId: "t2", tiendaNombre: "Tienda Dos", recaudado: "30000.00", pagoTienda: "28870.00" },
   ],
 };
 const CIFRAS_BX: CifrasCierreBodegaDescarga = {
@@ -116,10 +116,10 @@ const CIFRAS_BX: CifrasCierreBodegaDescarga = {
   totalFacturado: "2260.00",
   ivaFacturado: "260.00",
   netoEmpresa: "-1250.00",
-  ganaLaTienda: "-2260.00",
+  pagoTienda: "-2260.00",
   pagoEntregado: null,
   partesPorTienda: [
-    { tiendaId: "t3", tiendaNombre: "Tienda Tres", recaudado: "0.00", pagoTienda: "-2260.00", ganaLaTienda: "-2260.00" },
+    { tiendaId: "t3", tiendaNombre: "Tienda Tres", recaudado: "0.00", pagoTienda: "-2260.00" },
   ],
 };
 
@@ -130,13 +130,46 @@ const ENCABEZADOS_CIERRES_CENTRAL = [
   "Le queda a la empresa", "Gestiones", "Pagos ajustados", "Pago entregado", "Cierres incluidos",
   "Recibido", "Falta por recibir", "Estado de conciliación", "Conciliado por", "Conciliado el",
 ];
+// SLT-161 (R485): 26 de la central − «Pago entregado» (F481) − «Se le paga a la tienda», «Total
+// facturado», «IVA facturado», «Le queda a la empresa» = 21, en el orden relativo de siempre.
 const ENCABEZADOS_CIERRES_SATELITE = [
   "Folio", "Bodega", "Destino", "Estado", "Solicitado", "Resuelto", "Efectivo", "SINPE",
-  "Transferencia", "Recaudado", "Debe llegar a la central", "Se le paga a la tienda",
-  "Pago al mensajero", "Pago a la bodega satélite", "Total facturado", "IVA facturado",
-  "Le queda a la empresa", "Gestiones", "Pagos ajustados", "Cierres incluidos",
+  "Transferencia", "Recaudado", "Debe llegar a la central", "Pago al mensajero",
+  "Pago a la bodega satélite", "Gestiones", "Pagos ajustados", "Cierres incluidos",
   "Recibido", "Falta por recibir", "Estado de conciliación", "Conciliado por", "Conciliado el",
 ];
+
+/** SLT-161 (R480): lo que el servidor le manda a la satélite, las cifras de la empresa en `null`. */
+const SIN_EMPRESA = {
+  totalFacturado: null,
+  ivaFacturado: null,
+  netoEmpresa: null,
+  pagoTienda: null,
+  partesPorTienda: null,
+};
+// Sin la clave `pagoEntregado`, como le llega a la satélite (SLT-141 R386).
+const CIFRAS_BN_SATELITE: CifrasCierreBodegaDescarga = {
+  cierreBodegaId: BN.cierreBodegaId,
+  gestiones: 3,
+  pagosAjustados: 1,
+  ...SIN_EMPRESA,
+};
+const CIFRAS_BX_SATELITE: CifrasCierreBodegaDescarga = {
+  cierreBodegaId: BX.cierreBodegaId,
+  gestiones: 1,
+  pagosAjustados: 0,
+  ...SIN_EMPRESA,
+};
+
+/** Señuelos imposibles de encontrar por casualidad en las cifras de la empresa. */
+const SENUELOS_EMPRESA: CifrasCierreBodegaDescarga = {
+  ...CIFRAS_BN,
+  totalFacturado: "846213.51",
+  ivaFacturado: "846213.52",
+  netoEmpresa: "846213.53",
+  pagoTienda: "846213.54",
+  pagoEntregado: "846213.55",
+};
 
 function libro(items: CierreBodegaResumen[], cifras: CifrasCierreBodegaDescarga[] | undefined, audiencia: "admin" | "satelite" = "admin") {
   return libroCierresBodega({
@@ -154,16 +187,24 @@ describe("SLT-141 — columnas de «Cierres» y «Por tienda» de bodega (R386)"
   it("«Cierres» de la central: 26 columnas en el orden del documento; «Se le paga a la tienda» donde iba «Gana la tienda en total» (SLT-169 R629)", () => {
     const columnas = columnasCierresBodegaModeloNuevoPara("admin");
     expect(columnas).toHaveLength(26);
-    expect(columnas[11]).toEqual({ clave: "ganaLaTienda", encabezado: "Se le paga a la tienda", formato: "monto" });
+    expect(columnas[11]).toEqual({ clave: "pagoTienda", encabezado: "Se le paga a la tienda", formato: "monto" });
     expect(columnas.map((c) => c.encabezado)).not.toContain("Gana la tienda en total");
     expect(columnas.map((c) => c.encabezado)).toEqual(ENCABEZADOS_CIERRES_CENTRAL);
     expect(COLUMNAS_CIERRES_BODEGA_MODELO_NUEVO.map((c) => c.encabezado)).toEqual(ENCABEZADOS_CIERRES_CENTRAL);
   });
 
-  it("«Cierres» de la satélite: 25 columnas, sin «Pago entregado» (F481)", () => {
+  it("R485: Cierres de bodega de la satélite, 21 columnas", () => {
     const columnas = columnasCierresBodegaModeloNuevoPara("satelite");
-    expect(columnas).toHaveLength(25);
+    expect(columnas).toHaveLength(21);
     expect(columnas.map((c) => c.encabezado)).toEqual(ENCABEZADOS_CIERRES_SATELITE);
+  });
+
+  it("R487: la central, como antes: 26 columnas en «Cierres» y la hoja «Por tienda»", () => {
+    expect(columnasCierresBodegaModeloNuevoPara("admin")).toHaveLength(26);
+    const hojas = libro([BN], [CIFRAS_BN], "admin");
+    expect(hojas?.map((h) => h.titulo)).toEqual(["Cierres", "Por tienda"]);
+    expect(hojas?.[0].columnas.map((c) => c.encabezado)).toEqual(ENCABEZADOS_CIERRES_CENTRAL);
+    expect(hojas?.[1].filas).toHaveLength(2);
   });
 
   it("los importes de «Cierres» van con `formato: \"monto\"` y nada más (R387)", () => {
@@ -206,7 +247,7 @@ describe("SLT-141 — celdas de «Cierres» y «Por tienda» (R387, R388)", () =
         transferencia: "0.00",
         recaudado: "100000.00",
         paraLaCentral: "96500.00",
-        ganaLaTienda: "92090.00",
+        pagoTienda: "92090.00",
         pagoMensajero: "3000.00",
         pagoBodega: "500.00",
         totalFacturado: "7910.00",
@@ -242,7 +283,7 @@ describe("SLT-141 — celdas de «Cierres» y «Por tienda» (R387, R388)", () =
       estado: "Pendiente de conciliar",
       resuelto: null,
       paraLaCentral: "-1250.00",
-      ganaLaTienda: "-2260.00",
+      pagoTienda: "-2260.00",
       netoEmpresa: "-1250.00",
       pagoEntregado: null,
       cierresIncluidos: 2,
@@ -261,11 +302,31 @@ describe("SLT-141 — celdas de «Cierres» y «Por tienda» (R387, R388)", () =
     expect(celdaMonto(hojas?.[1].filas[0].pagoTienda as string)).toBe(-2260);
   });
 
-  it("satélite: la fila no lleva la clave «pagoEntregado» aunque la cifra la trajera", () => {
-    const hojas = libro([BN], [CIFRAS_BN], "satelite");
+  it("R489: la fila de la satélite no lleva las claves quitadas", () => {
+    // Aunque las cifras trajeran la empresa (señuelos), la fila no lleva su clave: 21 claves, las de
+    // sus 21 columnas.
+    const hojas = libro([BN], [SENUELOS_EMPRESA], "satelite");
     expect(hojas?.[0].columnas.map((c) => c.encabezado)).toEqual(ENCABEZADOS_CIERRES_SATELITE);
-    expect(hojas?.[0].filas[0]).not.toHaveProperty("pagoEntregado");
-    expect(hojas?.[0].filas[0]).toMatchObject({ folio: "B0DE9A01", gestiones: 3 });
+    const fila = hojas?.[0].filas[0] ?? {};
+    expect(Object.keys(fila).sort()).toEqual(
+      [
+        "folio", "bodega", "destino", "estado", "solicitado", "resuelto", "efectivo", "sinpe",
+        "transferencia", "recaudado", "paraLaCentral", "pagoMensajero", "pagoBodega", "gestiones",
+        "pagosAjustados", "cierresIncluidos", "recibido", "faltaPorRecibir", "estadoConciliacion",
+        "conciliadoPor", "conciliadoEl",
+      ].sort(),
+    );
+    expect(JSON.stringify(hojas)).not.toContain("846213");
+    // Con lo que de verdad manda el servidor (R480), lo de la satélite sigue igual.
+    const real = libro([BN], [CIFRAS_BN_SATELITE], "satelite");
+    expect(real?.[0].filas[0]).toMatchObject({
+      folio: "B0DE9A01",
+      paraLaCentral: "96500.00",
+      pagoMensajero: "3000.00",
+      pagoBodega: "500.00",
+      gestiones: 3,
+      pagosAjustados: 1,
+    });
   });
 });
 
@@ -325,6 +386,22 @@ describe("SLT-141 — el libro: hojas, orden y reparto (R384, R385)", () => {
     expect(enCierres).toEqual(["Centro", "Oeste"]);
     expect(enAnterior).toEqual(["Norte", "Sur"]);
     expect(enCierres.filter((b) => enAnterior.includes(b))).toEqual([]);
+  });
+
+  it("R486: el libro de la satélite sin Por tienda (solo nuevo y mixto)", () => {
+    const soloNuevo = libro([BN, BX], [CIFRAS_BX_SATELITE, CIFRAS_BN_SATELITE], "satelite");
+    expect(soloNuevo?.map((h) => h.titulo)).toEqual(["Cierres"]);
+    expect(soloNuevo?.[0].filas.map((f) => f.folio)).toEqual(["B0DE9A01", "0000FE17"]);
+    const mixto = libro([BV, BN, BV2, BX], [CIFRAS_BN_SATELITE, CIFRAS_BX_SATELITE], "satelite");
+    expect(mixto?.map((h) => h.titulo)).toEqual(["Cierres", "Cierres modelo anterior"]);
+    // Aunque el reparto llegara, la satélite no gana hoja (R489).
+    expect(libro([BN], [CIFRAS_BN], "satelite")?.map((h) => h.titulo)).toEqual(["Cierres"]);
+  });
+
+  it("la central sin el reparto por tienda de un cierre nuevo es un error, no una hoja vacía", () => {
+    expect(() => libro([BN], [CIFRAS_BN_SATELITE], "admin")).toThrow(
+      "faltan las partes por tienda de un cierre de bodega del modelo nuevo",
+    );
   });
 
   it("un cierre nuevo sin su entrada en `cifras` → error (no se inventa una fila vacía)", () => {

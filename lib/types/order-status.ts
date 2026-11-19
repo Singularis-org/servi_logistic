@@ -291,7 +291,7 @@ export const DESCRIPCION_ESTADO = {
     "El paquete está en la tienda y todavía no hay un mensajero asignado para recogerlo.",
   recolectando: "Ya hay un mensajero asignado y va camino a la tienda a recoger el paquete.",
   en_ruta_bodega_central:
-    "El mensajero recogió el paquete en la tienda y lo lleva a la bodega central.",
+    "El paquete va camino a la bodega central.",
   en_preparacion:
     "El paquete ya está en nuestra bodega y se está preparando su guía para despacharlo.",
   en_bodega_central:

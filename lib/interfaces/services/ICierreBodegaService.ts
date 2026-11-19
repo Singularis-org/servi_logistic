@@ -178,29 +178,13 @@ export interface CierreBodegaDetalleCierre {
    */
   netoEmpresa: string | null;
   /**
-   * Ficha 396 (D1) — DERIVADO: `totales.general` − `totalesIngreso.total` de ESTE cierre_dia.
-   * LO QUE LA TIENDA GANA EN TOTAL con el dia de ESE mensajero.
-   *
-   * Desde SLT-169 es ALIAS de `pagoTienda`, con el MISMO valor: el pago tambien resta todo lo
-   * facturado. Se retira del contrato en la ficha de limpieza (P3 de SLT-169).
-   *
-   * FALTABA, y por eso lo trae esta ficha: la 395 puso `ganaLaTienda` SOLO en el detalle del
-   * cierre del mensajero, asi que el desglose por tienda de bodega sumaria hacia un total que no
-   * estaba en ninguna parte (`design.md §5.2`). Se deriva con la MISMA funcion
-   * (`ganaLaTienda`, `lib/utils/ingreso-empresa.ts`), no con una resta escrita aqui.
-   *
-   * Sale de SUS PROPIOS snapshot y desglose, nunca de los del agregado (R21). Puede ser NEGATIVO
-   * y se emite CON SU SIGNO, nunca recortado a "0.00".
-   */
-  ganaLaTienda: string | null;
-  /**
-   * 💰 Ficha 396 (R19) — DE QUIEN ES CADA PARTE de `pagoTienda` y `ganaLaTienda` DE ESTE
+   * 💰 Ficha 396 (R19) — DE QUIEN ES CADA PARTE de `pagoTienda` DE ESTE
    * `cierre_dia`, o sea del dia de ESE mensajero.
    *
    * ⚠️ **NO ES UNA CORRECCION DE DINERO.** `wallet_tienda_movimiento` lleva los movimientos
    * separados por tienda desde siempre: a nadie se le paga mal, y esta ficha no toca ni una fila
-   * del ledger; esto se AÑADE. (Desde SLT-169 `pagoTienda` resta todo lo facturado y
-   * `ganaLaTienda` es su alias; el ledger sigue igual, R631.)
+   * del ledger; esto se AÑADE. (Desde SLT-169 `pagoTienda` resta todo lo facturado; el ledger
+   * sigue igual, R631.)
    *
    * ⚠️ **SALE DE `cd.gestiones`, LAS DE ESTE MENSAJERO, y de ninguna otra.** No se deriva del
    * agregado de la bodega ni se corrige para cuadrar con el (R21). De ahi se sigue que el UMBRAL
@@ -214,11 +198,10 @@ export interface CierreBodegaDetalleCierre {
    *
    * ORDENADO POR EL SERVIDOR (R8): por `pagoTienda` descendente, desempate en `partesPorTienda`.
    *
-   * INVARIANTES de ESTE nivel (R10/R11/R12):
+   * INVARIANTES de ESTE nivel (R10/R12; R11 desaparecio con SLT-174):
    *   Σ `.pagoTienda`   === `pagoTienda`
-   *   Σ `.ganaLaTienda` === `ganaLaTienda`
    *   Σ `.recaudado`    === `totales.general`
-   * Las tres se sostienen mientras el snapshot de este `cierre_dia` sea lo que suman sus
+   * Las dos se sostienen mientras el snapshot de este `cierre_dia` sea lo que suman sus
    * gestiones. Si un dia dejara de serlo, la pantalla ensena el descuadre (R21); NO se toca el
    * agregado para forzar que cuadre.
    *
@@ -329,6 +312,9 @@ export type ListarCierresBodegaSolicitadosCompletoServiceResult = ConCifrasBodeg
  * cierre de bodega del modelo nuevo para las hojas «Cierres» y «Por tienda». Salen de
  * `cifrasAgregadasBodega`, la misma funcion que el detalle. Todo OBLIGATORIO: un campo opcional que un
  * camino no puebla se lee como «no hay». Importes: STRING de escala 2, con su signo.
+ *
+ * SLT-161 «Descargas de la satélite sin el dinero de la empresa» (R480): las cifras de la empresa
+ * admiten `null` = quien lee no tiene acceso total. La central las recibe siempre pobladas (R487).
  */
 export interface CifrasCierreBodegaDescargaDTO {
   /** Une con el item (`CierreBodegaResumen.cierreBodegaId`); nunca es columna. */
@@ -338,13 +324,14 @@ export interface CifrasCierreBodegaDescargaDTO {
   /** Numero de esas gestiones con al menos un ajuste del pago (Σ `gestionesAjustadas`). */
   pagosAjustados: number;
   /** `totalesIngreso.total` del detalle. */
-  totalFacturado: string;
-  ivaFacturado: string;
+  totalFacturado: string | null;
+  ivaFacturado: string | null;
   /** «Le queda a la empresa». */
-  netoEmpresa: string;
-  ganaLaTienda: string;
+  netoEmpresa: string | null;
+  /** «Se le paga a la tienda» (SLT-169 R629; SLT-174 R653). */
+  pagoTienda: string | null;
   /** En el orden del detalle (de mayor a menor pago a la tienda). */
-  partesPorTienda: ParteDeTienda[];
+  partesPorTienda: ParteDeTienda[] | null;
 }
 
 /**
@@ -425,20 +412,6 @@ export interface ICierreBodegaService {
     input: { page: number; pageSize: number; filtros?: FiltrosCierresBodega },
     actor: Actor,
   ): Promise<ListarConsolidablesServiceResult>;
-  /**
-   * Feature 184 — Tanda B (R1/R4/R6/R10): el CONJUNTO de «Cierres de bodega solicitados» de la
-   * zona del actor, sin recorte, para producir el archivo.
-   *
-   * Mismo guard y misma resolucion de zona que su hermana paginada. **No recibe entrada**: este
-   * listado no admite filtros, asi que su lista blanca —derivada de la de la pagina quitando
-   * `page`/`pageSize`— no deja ninguna clave, y la barrera se aplica entera en el borde (R17).
-   * El tope de filas se evalua aqui (R6): superarlo NO entrega filas ni un conjunto truncado.
-   * Sin zona -> conjunto vacio, no `forbidden`.
-   */
-  listarCierresBodegaSolicitadosCompleto(
-    actor: Actor,
-    filtros?: FiltrosCierresBodega,
-  ): Promise<ListarCierresBodegaSolicitadosCompletoServiceResult>;
   /**
    * Feature 184 — Tanda B (R1/R4/R6/R10): el CONJUNTO de «Cierres del dia a consolidar» de la
    * zona del actor, sin recorte, para producir el archivo.

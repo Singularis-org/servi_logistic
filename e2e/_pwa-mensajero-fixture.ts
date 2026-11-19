@@ -24,6 +24,15 @@ export const PRODUCTO_LARGO =
 /** Motivo de rechazo de 300 caracteres. */
 export const MOTIVO_LARGO = ("El cliente no quiso recibir el paquete porque dice que no lo pidió y que no conoce la tienda. ").repeat(4).slice(0, 300);
 /**
+ * SLT-162: nombre de mensajero de 80 caracteres con una palabra de 40 sin espacios (el ranking lo
+ * pinta en el podio, en «Ranking del día» y en el Histórico).
+ */
+export const MENSAJERO_LARGO = "Luis Fernando Solanoesquivelmontenegrocastrobarqueroch Jiménez Araya Mora Vegass";
+/** SLT-162: descripción de premio de 200 caracteres («Premios del podio» y el Histórico). */
+export const PREMIO_DESCRIPCION_LARGA =
+  "Bono por el mejor desempeño del día: tarjeta de regalo del supermercado, almuerzo pagado el " +
+  "viernes y medio día libre a elegir durante el mes siguiente, coordinado con la central de despacho y su jefe";
+/**
  * El importe más ancho que admite una orden: ₡99 999 999. El monto a cobrar es ENTERO
  * (`orden_monto_cobrar_entero_check`), y el monto recibido de una entrega tiene que cuadrar con él.
  */
@@ -82,6 +91,9 @@ export async function sinDesborde(page: Page, selector?: string): Promise<void> 
           const cs = getComputedStyle(n);
           if (cs.position === "fixed") return true;
           if (n !== el && (cs.overflowX === "auto" || cs.overflowX === "scroll")) return true;
+          // SLT-166: dentro del mapa, Leaflet monta los tiles y los marcadores fuera de la vista POR
+          // DISEÑO y los recorta su contenedor. Se mide el contenedor (no está exento), no sus tiles.
+          if (n !== el && n.classList.contains("leaflet-container")) return true;
         }
         return false;
       }
@@ -144,6 +156,9 @@ export async function sinElipsis(region: Locator): Promise<void> {
         const propio = Array.from(el.childNodes).some((n) => n.nodeType === Node.TEXT_NODE && (n.textContent ?? "").trim() !== "");
         if (!propio) continue;
         const cs = getComputedStyle(el);
+        // SLT-163: el texto SOLO para lectores de pantalla (`sr-only`: absoluto, 1 × 1 px, recortado) no
+        // es un dato visible que se recorte; es su forma de existir. Se reconoce por esa firma exacta.
+        if (cs.position === "absolute" && el.clientWidth <= 1 && el.clientHeight <= 1) continue;
         const clamp = cs.getPropertyValue("-webkit-line-clamp");
         const texto = (el.textContent ?? "").trim().slice(0, 40);
         if (cs.textOverflow === "ellipsis") out.push(`ellipsis: «${texto}»`);
@@ -194,4 +209,26 @@ export async function tactil(control: Locator): Promise<void> {
   expect(caja, "el control no tiene caja (¿está visible?)").not.toBeNull();
   expect(caja!.width).toBeGreaterThanOrEqual(44);
   expect(caja!.height).toBeGreaterThanOrEqual(44);
+}
+
+/** SLT-200: ancho mínimo útil del campo de búsqueda en el móvil (una guía de 8 cifras y la lupa, holgado). */
+export const ANCHO_UTIL_CAMPO = 160;
+
+/**
+ * SLT-200 «PWA Reparto: buscador, KPI, tarjeta y leyenda del mapa tras Preview» (punto 1): en el
+ * móvil el campo de búsqueda se quedaba en la lupa (Preview, 2026-11-18) porque «Filtros» y el
+ * conmutador Mosaico/Detalle se comían la fila. El campo de la barra mide un ancho útil y el
+ * conmutador va en otra línea, debajo, sin dejar la barra.
+ */
+export async function campoConAnchoUtil(page: Page): Promise<void> {
+  const barra = page
+    .locator(".sticky")
+    .filter({ has: page.getByRole("searchbox", { name: "Buscar guías" }) })
+    .last();
+  const campo = await barra.getByRole("searchbox", { name: "Buscar guías" }).boundingBox();
+  const conmutador = await barra.getByRole("group", { name: "Vista de las órdenes" }).boundingBox();
+  expect(campo, "el campo no tiene caja (¿está visible?)").not.toBeNull();
+  expect(conmutador, "el conmutador no tiene caja (¿está visible?)").not.toBeNull();
+  expect(campo!.width, `ancho del campo: ${campo!.width}`).toBeGreaterThanOrEqual(ANCHO_UTIL_CAMPO);
+  expect(conmutador!.y).toBeGreaterThanOrEqual(campo!.y + campo!.height);
 }

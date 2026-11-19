@@ -76,6 +76,7 @@ import {
   crearCierreFacturasHandler,
   recurrenciaCierreFacturas,
 } from "@/lib/planes/jobs-factura-plataforma";
+import { buildDepsAvisoFactura, crearFacturaAvisoHandler } from "@/lib/planes/jobs-factura-aviso";
 
 export interface ProcesarJobsDeps {
   // Secreto esperado (inyectable en tests). Por defecto, `CRON_SECRET` del entorno.
@@ -279,6 +280,9 @@ export function buildHandlers(
     "factura_plataforma_cerrar",
     crearCierreFacturasHandler(buildFacturaPlataformaRepositoryDeJobs(), now),
   );
+  // SLT-136 (design §7.2; R22, R30): el aviso de UNA factura recién cerrada. PUNTUAL y CON empresa (lo encola
+  // el cierre en su transacción, con la empresa de la factura). Las deps se construyen al correr.
+  handlers.set("factura_plataforma_aviso", crearFacturaAvisoHandler(buildDepsAvisoFactura));
   return new Map(
     [...handlers].map(([tipo, h]) => [
       tipo,

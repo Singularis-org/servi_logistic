@@ -32,6 +32,7 @@ type RepoMethods = Pick<
   | "findByNumGuiaForTransicion"
   | "findEstatusIdByValue"
   | "recibirEnSatelite"
+  | "resumenRecepcion"
 >;
 
 function transicionRow(overrides: Partial<OrdenTransicionRow> = {}): OrdenTransicionRow {
@@ -80,6 +81,8 @@ function fakeRepo(overrides: Partial<RepoMethods> = {}): RepoMethods {
     findByNumGuiaForTransicion: vi.fn(async () => transicionRow()),
     findEstatusIdByValue: vi.fn(async (v: string) => ESTATUS_ID_BY_VALUE[v] ?? null),
     recibirEnSatelite: vi.fn(async () => true),
+    // SLT-167: sin datos -> la respuesta sale sin `resumen` (R715); lo mide recepcion-resumen.test.ts.
+    resumenRecepcion: vi.fn(async () => null),
     ...overrides,
   };
 }

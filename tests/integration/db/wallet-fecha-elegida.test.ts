@@ -13,6 +13,7 @@ import {
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { AgregadoDiarioCajaRow } from "@/lib/interfaces/repositories/IFinanzasDiarioRepository";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, enTransaccionRevertida } from "./_postgres-real";
+import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import { reglasPaisFijas, ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 /**
@@ -57,16 +58,16 @@ type Tx = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0];
 /**
  * El actor que registra. Tiene que ser un usuario REAL: `wallet_movimiento.registrado_por` es
  * una FK, y con un id inventado el INSERT lo rechaza el motor.
+ *
+ * SLT-182: se SIEMBRA (un maestro) en la tx revertida del caso; antes se leia «el primer usuario»
+ * de la base, y la base recien migrada no tiene ninguno.
  */
 async function actorDeLaBase(tx: Tx): Promise<Actor> {
-  const usuario = await tx.usuario.findFirst({ select: { id: true } });
-  if (usuario === null) {
-    throw new Error(
-      "la base de desarrollo no tiene ningun usuario y `registrado_por` es una FK: " +
-        "sembrá al menos uno antes de correr esta suite (no se salta a proposito)",
-    );
-  }
-  return { usuarioId: usuario.id, rol: "maestro" };
+  const { id } = await crearUsuarioDePrueba(tx, "maestro");
+  // Control positivo (R1084): la siembra llego a la base.
+  const sembrados = await tx.usuario.count({ where: { id } });
+  if (sembrados !== 1) throw new Error("SLT-182: el maestro sembrado (actor) no esta en la base");
+  return { usuarioId: id, rol: "maestro" };
 }
 
 function repoDe(tx: Tx): WalletMovimientoRepository {

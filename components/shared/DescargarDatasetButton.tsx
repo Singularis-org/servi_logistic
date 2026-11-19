@@ -335,6 +335,9 @@ export function DescargarDatasetButton({
         aria-label={nombreAccesible} // R30
         aria-haspopup={eligeFormato ? "menu" : undefined}
         aria-expanded={eligeFormato ? menuAbierto : undefined}
+        // SLT-194 (R947, DC3, D5): 44 px solo en móvil, en todos sus usos; en escritorio, el alto
+        // por defecto del `Button`.
+        className="max-md:h-11"
       >
         {generando ? null : <Download aria-hidden="true" />}
         {generando ? TEXTO_PREPARANDO : (label ?? DEFAULT_LABEL)}

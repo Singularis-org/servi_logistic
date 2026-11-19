@@ -17,6 +17,7 @@ import type { RolValue } from "@prisma/client";
 import { MODULOS_APAGABLES, NUCLEO, ORDEN_MODULOS } from "@/lib/modulos/catalogo";
 import { planConConsumo } from "@/lib/planes/consumo";
 import type { VerModulosEmpresaResult } from "@/lib/types/modulos-empresa";
+import type { VerPagosDeEmpresaResult } from "@/lib/types/pago-plataforma";
 import type { PlanDeEmpresaResult, PlanDTO, PreciosQueRigenResult } from "@/lib/types/planes";
 
 vi.mock("next/navigation", () => ({
@@ -62,20 +63,40 @@ vi.mock("@/lib/actions/planes", () => ({
   previsualizarAsignacionPlanAction: (...a: unknown[]) => previsualizarMock(...a),
 }));
 
+// SLT-60 (design §6.2; R12, R13): la lectura de los pagos por confirmar y las dos actions de la sección.
+const { verPagosMock, confirmarPagoMock, comprobanteMock } = vi.hoisted(() => ({
+  verPagosMock: vi.fn(),
+  confirmarPagoMock: vi.fn(),
+  comprobanteMock: vi.fn(),
+}));
+vi.mock("@/lib/actions/pagos-plataforma", () => ({
+  verPagosDeEmpresaAction: (...a: unknown[]) => verPagosMock(...a),
+  confirmarPagoPlataformaAction: (...a: unknown[]) => confirmarPagoMock(...a),
+  verComprobantePagoPlataformaAction: (...a: unknown[]) => comprobanteMock(...a),
+}));
+
 // SLT-119 (R12, R17): las facturas de la empresa y el detalle de una, como dobles.
-const { verFacturasMock, verDetalleFacturaMock } = vi.hoisted(() => ({
+// SLT-136 (R2, R19): y la descarga de una cerrada, ligada a la empresa como el detalle.
+const { verFacturasMock, verDetalleFacturaMock, descargarFacturaMock } = vi.hoisted(() => ({
   verFacturasMock: vi.fn(),
   verDetalleFacturaMock: vi.fn(),
+  descargarFacturaMock: vi.fn(),
 }));
 vi.mock("@/lib/actions/_shared/facturas-plataforma", () => ({
   verFacturasDeEmpresa: (...a: unknown[]) => verFacturasMock(...a),
 }));
 vi.mock("@/lib/actions/facturas-plataforma", () => ({
   verDetalleFacturaEmpresaAction: (...a: unknown[]) => verDetalleFacturaMock(...a),
+  descargarFacturaEmpresaAction: (...a: unknown[]) => descargarFacturaMock(...a),
 }));
 
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
-import type { DetalleFacturaResult, FacturaPlataformaDTO, FacturasResult } from "@/lib/types/factura-plataforma";
+import type {
+  DescargaFacturaResult,
+  DetalleFacturaResult,
+  FacturaPlataformaDTO,
+  FacturasResult,
+} from "@/lib/types/factura-plataforma";
 import { ToastProvider } from "@/providers/ToastProvider";
 import EmpresaDetallePage from "@/app/(app)/plataforma/empresas/[organizacionId]/page";
 
@@ -118,6 +139,7 @@ beforeEach(() => {
   verPreciosMock.mockResolvedValue({ estado: "ok", precios: {} } satisfies PreciosQueRigenResult);
   previsualizarMock.mockResolvedValue({ estado: "ok", avisos: [] });
   cancelarMock.mockResolvedValue({ estado: "ok" });
+  verPagosMock.mockResolvedValue({ estado: "ok", datos: { pagos: [], facturas: [] } } satisfies VerPagosDeEmpresaResult);
   verFacturasMock.mockResolvedValue({ estado: "ok", facturas: [] } satisfies FacturasResult);
 });
 
@@ -487,6 +509,99 @@ describe("SLT-58 (R19) — el plan de la empresa en su detalle", () => {
   });
 });
 
+describe("SLT-60 (R12, R13) — «Pagos por confirmar» en el detalle de la empresa", () => {
+  const superadmin = { usuarioId: "sa-1", rol: "superadmin" as const };
+  const PAGO = "22222222-2222-4222-8222-222222222222";
+  const CON_PAGO: VerPagosDeEmpresaResult = {
+    estado: "ok",
+    datos: {
+      pagos: [
+        {
+          id: PAGO,
+          monto: "300000.00",
+          fecha: new Date("2026-11-10T15:00:00Z"),
+          referencia: "SINPE 8899",
+          registradoPor: "Ana Pérez",
+          tieneComprobante: true,
+        },
+      ],
+      facturas: [],
+    },
+  };
+
+  it("R12: lee con el actor de la sesión y la empresa de la URL; la sección va tras «Volver a Empresas» y antes del plan", async () => {
+    actorMock.mockResolvedValue(superadmin);
+    verPagosMock.mockResolvedValue(CON_PAGO);
+
+    render(<ToastProvider>{await EmpresaDetallePage({ params: params() })}</ToastProvider>);
+
+    expect(verPagosMock).toHaveBeenCalledTimes(1);
+    const [input, deps] = verPagosMock.mock.calls[0] as [unknown, { getActor: () => Promise<unknown> }];
+    expect(input).toEqual({ organizacionId: ORG });
+    await expect(deps.getActor()).resolves.toBe(superadmin);
+
+    const pagos = screen.getByRole("region", { name: "Pagos por confirmar" });
+    expect(within(pagos).getByText("SINPE 8899")).toBeInTheDocument();
+    expect(within(pagos).getByText("Ana Pérez")).toBeInTheDocument();
+    const volver = screen.getByRole("link", { name: "Volver a Empresas" });
+    const plan = screen.getByRole("region", { name: "Plan" });
+    expect(volver.compareDocumentPosition(pagos) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(pagos.compareDocumentPosition(plan) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("R12: sin pagos, la sección dice «No hay pagos por confirmar»", async () => {
+    actorMock.mockResolvedValue(superadmin);
+
+    render(<ToastProvider>{await EmpresaDetallePage({ params: params() })}</ToastProvider>);
+
+    const pagos = screen.getByRole("region", { name: "Pagos por confirmar" });
+    expect(within(pagos).getByText("No hay pagos por confirmar")).toBeInTheDocument();
+  });
+
+  it("R33: «Ver comprobante» llama a la action con la empresa ligada en el servidor y el pago", async () => {
+    actorMock.mockResolvedValue(superadmin);
+    verPagosMock.mockResolvedValue(CON_PAGO);
+    comprobanteMock.mockResolvedValue({ estado: "not_found" });
+    const pestana = { opener: {}, location: { href: "" }, close: vi.fn() };
+    const open = vi.spyOn(window, "open").mockReturnValue(pestana as unknown as Window);
+    const user = userEvent.setup();
+
+    render(<ToastProvider>{await EmpresaDetallePage({ params: params() })}</ToastProvider>);
+    const pagos = screen.getByRole("region", { name: "Pagos por confirmar" });
+    await user.click(within(pagos).getByRole("button", { name: "Ver comprobante" }));
+
+    await waitFor(() => expect(comprobanteMock).toHaveBeenCalledTimes(1));
+    expect(comprobanteMock.mock.calls[0].slice(0, 2)).toEqual([ORG, PAGO]);
+    open.mockRestore();
+  });
+
+  it.each<[string, () => void]>([
+    ["un estado distinto de ok", () => verPagosMock.mockResolvedValue({ estado: "forbidden" })],
+    ["un throw", () => verPagosMock.mockRejectedValue(new Error("caída"))],
+  ])("R13: si la lectura da %s, la sección lo dice y plan, núcleo y módulos se pintan igual", async (_caso, preparar) => {
+    actorMock.mockResolvedValue(superadmin);
+    preparar();
+    const consola = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    render(<ToastProvider>{await EmpresaDetallePage({ params: params() })}</ToastProvider>);
+
+    const pagos = screen.getByRole("region", { name: "Pagos por confirmar" });
+    expect(within(pagos).getByText("No se pudieron cargar los pagos por confirmar")).toBeInTheDocument();
+    expect(within(pagos).queryByText("No hay pagos por confirmar")).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Plan" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Núcleo (siempre activo)" })).toBeInTheDocument();
+    expect(screen.getAllByRole("switch")).toHaveLength(3);
+    consola.mockRestore();
+  });
+
+  it("R12: un rol de empresa no lee los pagos (notFound antes de leer)", async () => {
+    actorMock.mockResolvedValue({ usuarioId: "u-1", rol: "maestro" });
+
+    await expect(EmpresaDetallePage({ params: params() })).rejects.toThrow("NEXT_NOT_FOUND");
+    expect(verPagosMock).not.toHaveBeenCalled();
+  });
+});
+
 describe("SLT-119 (R12, R17) — las pestañas «Empresa» y «Facturación»", () => {
   const superadmin = { usuarioId: "sa-1", rol: "superadmin" as const };
   /** Las 00:00 de la hora de la plataforma (−06:00) del día `fecha`. */
@@ -564,6 +679,27 @@ describe("SLT-119 (R12, R17) — las pestañas «Empresa» y «Facturación»", 
 
     expect(await screen.findByRole("dialog", { name: "Factura N.º 1" })).toBeInTheDocument();
     expect(verDetalleFacturaMock).toHaveBeenCalledWith(ORG, { facturaId: CERRADA.id, pagina: 1 });
+  });
+
+  it("SLT-136 R2, R19: el detalle de una cerrada lleva las dos descargas; la pide la action ligada a la empresa de la URL", async () => {
+    actorMock.mockResolvedValue(superadmin);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    verFacturasMock.mockResolvedValue({ estado: "ok", facturas: [CERRADA] } satisfies FacturasResult);
+    verDetalleFacturaMock.mockResolvedValue({
+      estado: "ok",
+      detalle: { factura: CERRADA, lineas: { lineas: [], pagina: 1, porPagina: 100, total: 0 } },
+    } satisfies DetalleFacturaResult);
+    descargarFacturaMock.mockResolvedValue({ estado: "forbidden" } satisfies DescargaFacturaResult);
+
+    const user = await abrirFacturacion();
+    await user.click(screen.getByRole("button", { name: /Ver detalle de la factura/ }));
+    const panel = await screen.findByRole("dialog", { name: "Factura N.º 1" });
+    expect(within(panel).getByRole("button", { name: "Descargar Excel" })).toBeInTheDocument();
+    await user.click(within(panel).getByRole("button", { name: "Descargar PDF" }));
+
+    expect(descargarFacturaMock).toHaveBeenCalledWith(ORG, { facturaId: CERRADA.id });
+    // R20: el fallo se dice dentro del panel, que sigue abierto.
+    expect(await within(panel).findByRole("alert")).toHaveTextContent("No se pudo descargar la factura");
   });
 
   it.each<[string, () => void]>([

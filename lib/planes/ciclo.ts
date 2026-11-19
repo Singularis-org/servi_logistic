@@ -7,7 +7,8 @@
 // zona del proceso mueva la frontera.
 
 import type { TipoCobro } from "@/lib/types/planes";
-import { fechaCalendarioCR, inicioDelDiaCREnUtc, mananaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { horaDePared } from "@/lib/utils/calendario-zona";
+import { ZONA_CR, fechaCalendarioCR, inicioDelDiaCREnUtc, mananaCalendarioCR } from "@/lib/utils/fecha-cr";
 
 /** `fecha + meses`, como `timestamp + interval 'n months'`: si el día no existe, el último del mes. */
 function sumarMeses(fecha: Date, meses: number): Date {
@@ -198,6 +199,14 @@ export function inicioDelDiaPlataforma(fecha: string): Date {
 /** El `AAAA-MM-DD` de `instante` en la hora de la plataforma (la inversa de `inicioDelDiaPlataforma`). */
 export function fechaCalendarioPlataforma(instante: Date): string {
   return fechaCalendarioCR(instante);
+}
+
+/**
+ * SLT-136 (R16): la hora de pared «HH:mm» de `instante` en la hora de la plataforma, la de cada movimiento del Excel
+ * de una factura. Vive aquí por la misma razón que `fechaCalendarioPlataforma` y cambia con ella en SLT-90.
+ */
+export function horaDeParedPlataforma(instante: Date): string {
+  return horaDePared(instante, ZONA_CR);
 }
 
 /** El `AAAA-MM-DD` de mañana en la hora de la plataforma. */

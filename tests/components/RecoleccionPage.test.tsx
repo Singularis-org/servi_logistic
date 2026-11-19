@@ -72,7 +72,7 @@ const bloqueoMock = vi.mocked(estadoBloqueoMensajero);
  * abrirlo salga un escáner que funciona lo fija `RecoleccionModule.test.tsx`.
  */
 const escaner = () =>
-  screen.queryByRole("button", { name: "Recolectar en tienda" });
+  screen.queryByRole("button", { name: "Escanear o escribir guía" });
 
 beforeEach(() => {
   vi.clearAllMocks();

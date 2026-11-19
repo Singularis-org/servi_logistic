@@ -90,7 +90,6 @@ export const CLASE_DETALLE_BODEGA = {
   pagoTienda: "empresa",
   cobradoSobreRecaudado: "empresa",
   netoEmpresa: "empresa",
-  ganaLaTienda: "empresa",
   partesPorTienda: "empresa",
   paraLaCentral: "propio",
   efectivoCubreDescuentos: "propio",
@@ -115,7 +114,6 @@ export const CLASE_CIERRE_DEL_DIA_BODEGA = {
   pagoTienda: "empresa",
   cobradoSobreRecaudado: "empresa",
   netoEmpresa: "empresa",
-  ganaLaTienda: "empresa",
   partesPorTienda: "empresa",
   paraLaCentral: "propio",
   efectivoCubreDescuentos: "propio",
@@ -527,13 +525,6 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
           cd.resumen.totalPagoMensajero,
           cd.resumen.totalIngresoBodegaRechazos,
         ),
-        // 💰 FICHA 396 (D1) — LO QUE LA TIENDA GANA EN TOTAL con el dia de ESTE mensajero. Es la
-        // ASIMETRIA que la 395 dejo abierta: puso `ganaLaTienda` solo en el detalle del cierre del
-        // mensajero, asi que aqui el desglose de abajo sumaria hacia un total que no estaba en
-        // ninguna pantalla. MISMA funcion que alli, sobre los datos de ESTE cierre_dia.
-        //
-        // Desde SLT-169 es ALIAS de igual valor que `pagoTienda` (se retira en P3 de SLT-169).
-        ganaLaTienda: ganaLaTienda(cd.resumen.totales.general, totalesIngreso.total),
         // 💰 FICHA 396 (R19) — DE QUIEN ES CADA PARTE, en el nivel del MENSAJERO.
         //
         // MISMO argumento y MISMO sitio que `totalesIngresoEmpresa(cd.gestiones)` de arriba: las
@@ -598,7 +589,6 @@ export class CierresBodegaAdminService implements ICierresBodegaAdminService {
       cobradoSobreRecaudado: agregado.cobradoSobreRecaudado,
       netoEmpresa: agregado.netoEmpresa,
       // Ficha 396: la particion por tienda ya ORDENADA por el servidor (de mayor a menor pago).
-      ganaLaTienda: agregado.ganaLaTienda,
       partesPorTienda: agregado.partesPorTienda,
       paraLaCentral: resumen.paraLaCentral,
       efectivoCubreDescuentos: resumen.efectivoCubreDescuentos,

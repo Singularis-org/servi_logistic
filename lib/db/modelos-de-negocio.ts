@@ -1,7 +1,7 @@
 // Clasificacion de los modelos de `db/schema.prisma` (SL-17, design §2): la UNICA lista que leen la
 // extension de aislamiento, las guardias y el generador de migraciones.
 //
-//   · negocio    (80): llevan `organizacion_id`; la extension filtra y la RLS manda.
+//   · negocio    (92): llevan `organizacion_id`; la extension filtra y la RLS manda.
 //   · plataforma (23): catalogos, geografia, autenticacion previa a la empresa, cache tecnica, el
 //                      valor global del cobro por orden (SL-40), la marca de entorno (SL-43), los
 //                      paises y el historial de plataforma (SL-20) y el catalogo de planes con su
@@ -118,6 +118,9 @@ export const MODELOS_DE_NEGOCIO: readonly ModeloClasificado[] = [
   { modelo: "CobroPlataformaTraza", tabla: "cobro_plataforma_traza" },
   // Factura de la plataforma por empresa y período, con la cuota del plan (SLT-118): la escriben solo funciones del dueño
   { modelo: "FacturaPlataforma", tabla: "factura_plataforma" },
+  // Confirmación del superadmin de un pago a la plataforma y su reparto entre facturas cerradas (SLT-60): las escribe solo una función del dueño
+  { modelo: "PagoPlataformaConfirmacion", tabla: "pago_plataforma_confirmacion" },
+  { modelo: "PagoPlataformaAplicacion", tabla: "pago_plataforma_aplicacion" },
   // Cobro de fulfillment por paquete a la tienda (SLT-94): lo escriben solo los triggers de `orden` y de su bitácora
   { modelo: "OrdenFulfillmentMovimiento", tabla: "orden_fulfillment_movimiento" },
   // Devoluciones
@@ -184,6 +187,8 @@ export const MODELOS_DE_PLATAFORMA: readonly ModeloClasificado[] = [
   // modelos de negocio), pero la empresa no las lee ni las escribe
   { modelo: "PlanCambioRecepcion", tabla: "plan_cambio_recepcion" },
   { modelo: "PlanVersionEmpresa", tabla: "plan_version_empresa" },
+  // El borrador del superadmin, de un plan nuevo o del cambio de uno (SLT-129): igual que el catalogo
+  { modelo: "PlanBorrador", tabla: "plan_borrador" },
   // Paises (SL-20): solo lectura para `servi_app` (R3); los da de alta el superadmin
   { modelo: "Pais", tabla: "pais" },
   // Historial del superadmin (SL-20, D15): sin acceso para `servi_app` (R34)

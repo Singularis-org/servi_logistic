@@ -72,7 +72,7 @@ import { RUTAS_GUARDADAS } from "@/scripts/migrar-storage-a-carpetas";
 
 import { crearEmpresaE2E, crearUsuarioE2E } from "../../fabricas/e2e";
 import { comoApp } from "../../fabricas/organizaciones";
-import { escenarioReparto, type EscenarioReparto } from "../../fabricas/escenarios/reparto";
+import { escenarioReparto, servicios, type EscenarioReparto } from "../../fabricas/escenarios/reparto";
 import { tomarExclusionDemoQa, type ExclusionDemoQa } from "./_exclusion-demo-qa";
 import { borrarEmpresasDemoDeEmergencia } from "./_limpieza-demo-qa";
 import { tomarTarifaGlobal } from "./_fixtures/cobro-plataforma-40";
@@ -1048,8 +1048,9 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
           MOTIVO_CIERRE_SIN_EJECUTAR,
         ),
       ).toBe(0);
-      // SLT-79: la primera ruta del día es manual y la demo no siembra rutas calculadas, así que ni la
-      // recogida ni la gestión encolan `optimizacion_ruta`: la demo no deja ninguno, ni cerrado.
+      // SLT-79: la primera ruta del día es manual, así que ni la recogida ni la gestión encolan
+      // `optimizacion_ruta`: la demo no deja ninguno, ni cerrado. SLT-200: la del mensajero-reposo se
+      // calcula con «Sincronizar ruta» (síncrono, sin cola), y ese mensajero no gestiona después.
       expect(
         await contar(`SELECT count(*)::int AS n FROM jobs WHERE organizacion_id = $1 AND tipo = 'optimizacion_ruta'`, org),
       ).toBe(0);
@@ -1072,6 +1073,36 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
     // R24: ningún correo.
     expect(espiaConsola).not.toHaveBeenCalled();
     expect(espiaSmtp).not.toHaveBeenCalled();
+  }, 120_000);
+
+  it("SLT-200 (punto 5): las órdenes en reparto del mensajero-reposo llegan a su tarjeta con parada, peso y monto", async () => {
+    exigirCorrida1();
+    for (const { id: org, slug } of await empresasDemo()) {
+      const x = slug.slice(-1);
+      const u = await base.usuario.findFirstOrThrow({
+        where: { organizacionId: org, email: `servi-demo-qa-${x}-mensajero-reposo@${YOPMAIL}` },
+        select: { id: true, zonaId: true },
+      });
+      // Lo que lee la pantalla del mensajero: el mismo servicio, con su actor.
+      const r = await conEmpresa(org, () =>
+        servicios().misAsignaciones.listarMisAsignaciones({ usuarioId: u.id, rol: "mensajero", zonaId: u.zonaId, organizacionId: org }),
+      );
+      if (r.status !== "ok") throw new Error(`${slug}: listarMisAsignaciones no fue ok: ${r.status}`);
+      const tarjetas = r.porGestionar;
+      // Control positivo: sin órdenes en reparto, los `every` de abajo saldrían verdes sin mirar nada.
+      expect(tarjetas.length, `${slug}: órdenes en reparto del mensajero-reposo`).toBe(2);
+      // La parada: 1 y 2, no «Sin posición» (`secuenciaRuta === null`).
+      expect(tarjetas.map((t) => t.secuenciaRuta), `${slug}: posición en la ruta`).toEqual([1, 2]);
+      expect(r.ruta.paradasSinOptimizar, `${slug}: paradas sin optimizar`).toBe(0);
+      expect(r.ruta.estado, `${slug}: ruta`).toBe("vigente");
+      // El peso, de los que pone la receta (en cualquier orden: lo decide la ruta).
+      expect(tarjetas.map((t) => t.peso).sort(), `${slug}: peso`).toEqual([0.8, 1.5]);
+      // Una cobra y otra no: «COBRAR» con importe y sin él, y el KPI «Por cobrar» con cifra.
+      expect(tarjetas.map((t) => t.montoCobrar ?? 0).sort((a, b) => a - b), `${slug}: montos`).toEqual([0, 8000]);
+      expect(r.kpis.porCobrar, `${slug}: KPI por cobrar`).toBe(8000);
+      // Y con coordenadas, que es lo que el mapa pinta.
+      expect(tarjetas.every((t) => t.latitud !== null && t.longitud !== null), `${slug}: coordenadas`).toBe(true);
+    }
   }, 120_000);
 
   it("la segunda ejecución recrea y no toca la empresa real (R7, R9, R27)", async () => {

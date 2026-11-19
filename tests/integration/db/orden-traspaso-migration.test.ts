@@ -8,10 +8,10 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 
 // FICHA 427 (T3, design §4.1/§4.2) — LA FORMA DE `orden_traspaso_mensajero`, CONTRA POSTGRES.
 //
@@ -191,6 +191,116 @@ describe("427/T2 — el UP y el DOWN, leidos del archivo", () => {
       // Ficha 419 (2026-10-21): las tres tablas del comprobante de entrega central a la tienda. No
       // toca `orden_traspaso_mensajero`.
       "20261021120000_devolucion_tienda_comprobante_419",
+      // SLT-187 (2026-11-18): las 103 migraciones de SL-17 «Tabla organizacion y aislamiento por
+      // empresa» en adelante, que ninguna ficha declaro aqui mientras este archivo estaba en el
+      // baseline de rojos. Medido con grep sobre sus `.sql`: solo DOS tocan
+      // `orden_traspaso_mensajero`, y las dos son de SL-17: `organizacion_id_en_negocio` le anade
+      // `organizacion_id` (su FK, su indice y su policy por empresa) y `misma_empresa_en_fk` sus
+      // triggers de misma empresa. Las demas no la nombran.
+      "20261022130000_organizacion_y_rol_app",
+      "20261022130100_organizacion_id_en_negocio", // SL-17: SI toca `orden_traspaso_mensajero` (ver abajo)
+      "20261022130200_jobs_organizacion_id",
+      "20261022130300_misma_empresa_en_fk", // SL-17: SI toca `orden_traspaso_mensajero` (ver abajo)
+      "20261023090000_unicos_por_empresa",
+      "20261023100000_rol_superadmin",
+      "20261023100100_seed_rol_superadmin",
+      "20261023100200_usuario_empresa_o_superadmin",
+      "20261023120000_distrito_zona_especial_por_empresa",
+      "20261023120100_retirar_distrito_zona_especial",
+      "20261023130000_cobro_plataforma_tarifa",
+      "20261023130100_cobro_plataforma_movimiento",
+      "20261023130200_cobro_plataforma_triggers_orden",
+      "20261023140000_usuario_contrasena_definida_at",
+      "20261024120000_cobro_plataforma_blindaje_orden",
+      "20261024130000_pago_plataforma_categoria",
+      "20261024130100_pago_plataforma_check",
+      "20261024140000_pago_plataforma_blindaje",
+      "20261025120000_integracion",
+      "20261025120100_historial_accion_integraciones",
+      "20261025150000_jobs_por_empresa",
+      "20261025160000_organizacion_es_demo",
+      "20261025160100_entorno_marca",
+      "20261026090000_usuario_unico_por_empresa",
+      "20261026090100_indices_rutas_calientes",
+      "20261026090200_indices_ordenes_gestiones_historial",
+      "20261026120000_organizacion_modulo",
+      "20261026120100_historial_accion_modulos",
+      "20261026120200_job_estado_descartado",
+      "20261026130000_pais",
+      "20261026130100_organizacion_pais",
+      "20261026130200_geografia_por_pais",
+      "20261026130300_geografia_del_pais_de_la_empresa",
+      "20261026130400_historial_plataforma",
+      "20261026130500_pais_disponible",
+      "20261027120000_modulos_nucleo",
+      "20261028120000_modulo_wallet_nucleo",
+      "20261028130000_plan",
+      "20261028130100_historial_accion_planes",
+      "20261028130200_plan_topes_triggers",
+      "20261028130300_plan_cambio_programado",
+      "20261028130400_plan_cambio_enums",
+      "20261029120000_gestion_pago_mensajero_ajuste",
+      "20261029120000_plan_de_la_empresa",
+      "20261029120100_historial_accion_pago_mensajero_ajustado",
+      "20261029150000_plan_ciclo_inicio_elegido",
+      "20261030120000_incentivo_mensajero_enums",
+      "20261030120100_incentivo_mensajero_checks",
+      "20261031120000_liberar_recolecciones_recibidas",
+      "20261031130000_cierre_sin_gestion_confirmacion_fisica",
+      "20261031140000_plan_costeo_y_maestro_sin_tope",
+      "20261031140000_slt73_diferencia_satelite_enums",
+      "20261031140100_cobro_plataforma_fuente_plan",
+      "20261031140100_slt73_ajuste_conciliacion",
+      "20261031140200_plan_costeo_funciones",
+      "20261031140200_slt73_retirar_asientos_satelite",
+      "20261031140300_plan_desasignar_sin_costo_base",
+      "20261101090000_zona_distrito_duplicados_sin_zona",
+      "20261101090100_zona_distrito_distrito_unico_por_empresa",
+      "20261102090000_slt76_historial_zona_distrito",
+      "20261102090100_slt76_retirar_respaldos",
+      "20261103120000_tarifas_flexibles_enums",
+      "20261103120000_vehiculo_activo",
+      "20261103120100_tarifas_flexibles_tablas",
+      "20261103120100_vehiculo_rastro",
+      "20261103120200_tarifas_flexibles_misma_empresa",
+      "20261103120300_historial_tarifas_flexibles",
+      "20261103140000_rechazo_tienda_cobro_tarifa_valor",
+      "20261103140100_rechazo_tienda_cobro_tarifa_valor_misma_empresa",
+      "20261104130000_plan_sin_negociable_y_tipo_cobro",
+      "20261104130100_historial_accion_plan_tipo_cobro_cambiado",
+      "20261104140000_historial_tarifa_activacion",
+      "20261104140100_tarifa_activacion",
+      "20261104150000_plan_costo_por_orden_porcentual",
+      "20261104150100_cobro_plataforma_porcentual_orden",
+      "20261104150200_cobro_plataforma_porcentual_funciones",
+      "20261106120000_plan_periodo_facturacion",
+      "20261106130000_plan_de_la_empresa_pendiente_sin_plan",
+      "20261106140000_plan_aplicar_cambio_empresa_enum",
+      "20261106150000_historial_accion_plan_cambio_empresa_cancelado",
+      "20261107120000_slt42_pais_telefono_y_zona",
+      "20261107120100_slt42_tipo_documento_por_pais",
+      "20261107120200_slt42_usuario_documento_unico_por_tipo",
+      "20261107130000_historial_tope_intentos",
+      "20261107130100_organizacion_tope_intentos",
+      "20261108120000_slt94_fulfillment_enums",
+      "20261108120100_slt94_se_recoge_en_tienda",
+      "20261108120200_slt94_fulfillment_movimiento",
+      "20261108120300_slt94_fulfillment_triggers",
+      "20261109120000_cobro_plataforma_traza",
+      "20261110120000_bug_report",
+      "20261111120000_bug_report_status",
+      "20261111130000_factura_plataforma_job_enum",
+      "20261111130100_factura_plataforma",
+      "20261112120000_bug_report_image",
+      "20261113120000_cobro_plataforma_sin_valor_empresa",
+      "20261114120000_pago_independiente_efectivo",
+      "20261114120000_plan_cambio_por_empresa",
+      "20261115120000_pago_satelite_enum",
+      "20261115120100_pago_satelite_checks",
+      "20261116120000_pago_plataforma_confirmacion",
+      "20261117120000_factura_plataforma_aviso_enums",
+      "20261117120000_plan_borrador",
+      "20261119120000_historial_accion_ordenes_retiradas_a_central",
     ]);
   });
 });
@@ -202,18 +312,12 @@ describeSiHayBase("427/T3 — la tabla, tal y como Postgres la tiene", () => {
   let ROL_MENSAJERO: string;
   let ROL_MAESTRO: string;
   let TIPO_IDENT: string;
+  // SLT-180 (R1042): tienda y zona se SIEMBRAN en la tx del caso (en `sembrarOrden`); ya no se lee
+  // «la primera orden» de la base.
   let FKS: { estatusId: string; tiendaId: string; zonaId: string; provinciaId: string; cantonId: string };
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const fks = await fksDeOrden(prisma);
-    if (fks === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar la fila " +
-          "con la que se miden el CHECK y los RESTRICT. Corre `pnpm run db:seed`.",
-      );
-    }
-    FKS = fks;
     const roles = await prisma.rol.findMany({
       where: { value: { in: ["mensajero", "maestro"] } },
       select: { id: true, value: true },
@@ -223,8 +327,12 @@ describeSiHayBase("427/T3 — la tabla, tal y como Postgres la tiene", () => {
     if (!ROL_MENSAJERO || !ROL_MAESTRO) {
       throw new Error("faltan los roles `mensajero`/`maestro` en el catalogo: corre el seed.");
     }
-    const tipo = await prisma.tipoIdentificacion.findFirst({ select: { id: true } });
-    if (!tipo) throw new Error("no hay `tipo_identificacion` en la base: corre el seed.");
+    // SLT-180: el catalogo se lee por su clave, no «el primero que salga».
+    const tipo = await prisma.tipoIdentificacion.findUnique({
+      where: { value: "cedula" },
+      select: { id: true },
+    });
+    if (!tipo) throw new Error("no hay `tipo_identificacion` «cedula» en la base: corre el seed.");
     TIPO_IDENT = tipo.id;
   });
 
@@ -250,6 +358,17 @@ describeSiHayBase("427/T3 — la tabla, tal y como Postgres la tiene", () => {
   }
 
   async function sembrarOrden(tx: TxDeTest): Promise<string> {
+    // SLT-180 (R1044): la fila con la que se miden el CHECK y los RESTRICT cuelga de una tienda y
+    // una zona sembradas aqui; control positivo que nombra la fila si la siembra no llega.
+    FKS = await crearFksDeOrden(tx);
+    expect(
+      await tx.usuario.count({ where: { id: FKS.tiendaId } }),
+      "SLT-180: la tienda sembrada no esta en la base",
+    ).toBe(1);
+    expect(
+      await tx.zona.count({ where: { id: FKS.zonaId } }),
+      "SLT-180: la zona sembrada no esta en la base",
+    ).toBe(1);
     const o = await tx.orden.create({
       data: {
         numGuia: 950_000_000 + Math.floor(Math.random() * 40_000_000),
@@ -292,6 +411,8 @@ describeSiHayBase("427/T3 — la tabla, tal y como Postgres la tiene", () => {
       "mensajero_nuevo_id",
       "motivo",
       "orden_id",
+      // SLT-187: la empresa, anadida por SL-17 (`20261022130100_organizacion_id_en_negocio`), NOT NULL.
+      "organizacion_id",
     ]);
     // TODAS NOT NULL: no hay estado irrepresentable que admitir.
     for (const c of columnas) expect(c.is_nullable, c.column_name).toBe("NO");

@@ -7,7 +7,7 @@ import type {
   IPlanesRepository,
   ResultadoAsignar,
 } from "@/lib/interfaces/repositories/IPlanesRepository";
-import type { IPlanesService } from "@/lib/interfaces/services/IPlanesService";
+import type { IPlanesService, OpcionesDeBorrador } from "@/lib/interfaces/services/IPlanesService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import {
   fechaCalendarioPlataforma,
@@ -17,7 +17,7 @@ import {
 } from "@/lib/planes/ciclo";
 import { tipoCobroDelHistorial } from "@/lib/planes/cobro";
 import { noAplicadasDelDetalle, pendienteDelDetalle, planConConsumo } from "@/lib/planes/consumo";
-import { cambiaElPrecio, diferenciasDelPlan } from "@/lib/planes/rastro";
+import { fechaDeRecepcion } from "@/lib/planes/recepcion";
 import {
   FECHA_DE_EFECTO_OBLIGATORIA,
   FECHA_DE_EFECTO_PASADA,
@@ -39,10 +39,12 @@ import {
   planIdSchema,
   preciosQueRigenSchema,
   previsualizarAsignacionSchema,
+  previsualizarCambioSchema,
   previsualizarCustomSchema,
   type CambiarTipoCobroResult,
   type CancelarCambioEmpresaResult,
   type VistaPreviaAsignacionResult,
+  type VistaPreviaCambioResult,
   type VistaPreviaCustomResult,
   type CatalogoResult,
   type DetallePlanResult,
@@ -54,7 +56,6 @@ import {
   type PrecioDesde,
   type PreciosQueRigenResult,
   TIPO_QUINCENAL_CON_ORDENES_MENSUALES,
-  type VersionPlan,
 } from "@/lib/types/planes";
 import { fechaCalendario } from "@/lib/utils/calendario-zona";
 
@@ -84,6 +85,11 @@ function ok(planId: string, cambio: boolean, extra: Partial<Pick<Extract<PlanRes
 }
 
 const FORBIDDEN = { estado: "forbidden" } as const;
+
+/** SLT-129: el `borradorId` como último argumento del repositorio, o ninguno (las llamadas de hoy no cambian). */
+function delBorrador(opciones: OpcionesDeBorrador | undefined): [] | [string] {
+  return opciones === undefined ? [] : [opciones.borradorId];
+}
 
 /** Los rechazos que comparten `asignar` y su vista previa antes de llegar al repositorio. */
 type RechazoDeAsignar =
@@ -186,12 +192,12 @@ export class PlanesService implements IPlanesService {
     private readonly ahora: () => Date = () => new Date(),
   ) {}
 
-  async crear(actor: Actor | null, input: unknown): Promise<PlanResult> {
+  async crear(actor: Actor | null, input: unknown, opciones?: OpcionesDeBorrador): Promise<PlanResult> {
     if (!esSuperadmin(actor)) return FORBIDDEN;
     const parsed = crearPlanSchema.safeParse(input);
     if (!parsed.success) return { estado: "validation_error", fieldErrors: erroresDeCampo(parsed.error) };
     const { organizacionId, tipoCobro, inicioCiclo, vigenteDesde } = parsed.data;
-    if (organizacionId === null) return ok(await this.repo.crear(parsed.data, actor.usuarioId), true);
+    if (organizacionId === null) return ok(await this.repo.crear(parsed.data, actor.usuarioId, ...delBorrador(opciones)), true);
 
     // Ajuste planes-custom (D2): un custom se asigna a su empresa al crearlo, en UNA operación. Las
     // mismas reglas que `asignar`, en su orden: el rango de la fecha (SLT-58 R30, SLT-86 R16), la empresa
@@ -215,62 +221,43 @@ export class PlanesService implements IPlanesService {
       // El refine de `crearPlanSchema` exige el tipo en un custom.
       { efecto, tipoCobro: tipoCobro ?? "mensual" },
       ahora,
+      ...delBorrador(opciones),
     );
     // SLT-118 (R32): la fecha real del pendiente, la que dejó el repositorio (puede ser posterior a la elegida).
     if (r.estado === "ok") return ok(r.planId, true, { avisos: r.avisos, vigenteDesde: r.vigenteDesde ?? null });
     return rechazoDeAsignar(r);
   }
 
-  async editar(actor: Actor | null, input: unknown): Promise<PlanResult> {
+  async editar(actor: Actor | null, input: unknown, opciones?: OpcionesDeBorrador): Promise<PlanResult> {
     if (!esSuperadmin(actor)) return FORBIDDEN;
     const parsed = editarPlanSchema.safeParse(input);
     if (!parsed.success) return { estado: "validation_error", fieldErrors: erroresDeCampo(parsed.error) };
     const { planId, vigenteDesde, ...version } = parsed.data;
     const ahora = this.ahora();
     const hoy = fechaCalendarioPlataforma(ahora);
-    // SLT-86 (R22): ninguna fecha anterior a hoy, cambie o no el precio; se mira antes de leer nada.
-    if (vigenteDesde !== null && vigenteDesde < hoy) return errorEn("vigenteDesde", FECHA_DE_EFECTO_PASADA);
+    // SLT-86 (R22), SLT-135 (R2): ninguna fecha anterior a hoy, cambie o no el precio; antes de leer nada.
+    if (vigenteDesde < hoy) return errorEn("vigenteDesde", FECHA_DE_EFECTO_PASADA);
     const plan = await this.repo.plan(planId);
     if (plan === null) return { estado: "not_found" };
     if (plan.archivado) return { estado: "archivado" };
 
-    // SLT-86 (R15, R22): el costo base o un descuento cambian con fecha de efecto `≥ hoy`, sin edición
-    // inmediata: hoy se aplica en la misma transacción y desde sus 00:00 rige el precio nuevo; una fecha
-    // futura es el cambio programado de SLT-58. Lo demás sigue la regla de SLT-58 (R37).
-    if (cambiaElPrecio(diferenciasDelPlan(plan, { ...plan, ...version }))) {
-      if (vigenteDesde === null) return errorEn("vigenteDesde", FECHA_DE_EFECTO_OBLIGATORIA);
-      if (vigenteDesde === hoy) return this.editarYa(planId, version, actor.usuarioId, inicioDelDiaPlataforma(hoy));
-    } else if (vigenteDesde !== null && inicioDelDiaPlataforma(vigenteDesde).getTime() <= ahora.getTime()) {
-      // R37: la fecha rige a las 00:00 de la plataforma y tiene que caer después de ahora.
-      return errorEn("vigenteDesde", "La fecha de vigencia tiene que ser posterior a hoy.");
-    }
-
-    if (vigenteDesde !== null) {
-      // §16.2: programar o reemplazar el pendiente, sin tocar la versión vigente (R37, R39). R16: se
-      // guarda aunque alguna empresa ya pase un tope nuevo, y se avisa.
-      // El mismo reloj decide qué recordatorios caen después de ahora (R42).
-      const p = await this.repo.programarCambio(
-        planId,
-        version,
-        inicioDelDiaPlataforma(vigenteDesde),
-        actor.usuarioId,
-        ahora,
-      );
-      if (p.estado === "periodicidad_incompatible") return periodicidadQueNoCabe(p.empresas);
-      if (p.estado !== "ok") return p;
-      // `vigenteDesde` vuelve como la fecha elegida (`AAAA-MM-DD`, P8); null si no se programó nada.
-      return ok(planId, p.cambio, { avisos: p.avisos, vigenteDesde: p.cambio ? vigenteDesde : null });
-    }
-    return this.editarYa(planId, version, actor.usuarioId, inicioDelDiaPlataforma(hoy));
-  }
-
-  /** La edición inmediata; `precioDesde` (las 00:00 de hoy) es desde cuándo rige un precio nuevo (R15). */
-  private async editarYa(planId: string, version: VersionPlan, actorUsuarioId: string, precioDesde: Date): Promise<PlanResult> {
-    const r = await this.repo.editar(planId, version, actorUsuarioId, precioDesde);
-    if (r.estado === "periodicidad_incompatible") return periodicidadQueNoCabe(r.empresas);
-    // SLT-128 (R16): `cambio_a_medias` pasa tal cual; lo decide el repositorio bajo el cerrojo del plan.
-    if (r.estado !== "ok") return r;
-    return ok(planId, r.cambio, { avisos: r.avisos });
+    // SLT-135 (R3–R6, R8): toda edición se programa como en SLT-128, también con F = hoy (sus 00:00 ya
+    // pasaron: la empresa que empieza período hoy lo recibe en la siguiente pasada de la cola). §16.2:
+    // programar o reemplazar el pendiente, sin tocar la versión vigente. R16: se guarda aunque alguna
+    // empresa ya pase un tope nuevo, y se avisa. El mismo reloj decide qué recordatorios caen después de
+    // ahora (R42).
+    const p = await this.repo.programarCambio(
+      planId,
+      version,
+      inicioDelDiaPlataforma(vigenteDesde),
+      actor.usuarioId,
+      ahora,
+      ...delBorrador(opciones),
+    );
+    if (p.estado === "periodicidad_incompatible") return periodicidadQueNoCabe(p.empresas);
+    if (p.estado !== "ok") return p;
+    // SLT-135 (R7, R9): `vigenteDesde` vuelve como la fecha elegida (`AAAA-MM-DD`, P8); null si no cambió nada.
+    return ok(planId, p.cambio, { avisos: p.avisos, vigenteDesde: p.cambio ? vigenteDesde : null });
   }
 
   async archivar(actor: Actor | null, input: unknown): Promise<PlanResult> {
@@ -344,6 +331,32 @@ export class PlanesService implements IPlanesService {
     const leida = await this.repo.vistaPreviaConTopes(organizacionId, topes);
     if (leida === null) return { estado: "not_found" };
     return { estado: "ok", avisos: leida.avisos };
+  }
+
+  /**
+   * SLT-144 (design §3.1; R21, R22): la fecha de cada empresa y los topes pasados antes de programar el cambio.
+   * Quién → zod → el plan existe. F pasa a instante como en `editar` y cada fecha sale de `fechaDeRecepcion`, la
+   * misma que escribe `programarCambio`. No mira el rango de F: una F que confirmar rechazará también se muestra.
+   */
+  async previsualizarCambio(actor: Actor | null, input: unknown): Promise<VistaPreviaCambioResult> {
+    if (!esSuperadmin(actor)) return FORBIDDEN;
+    const parsed = previsualizarCambioSchema.safeParse(input);
+    if (!parsed.success) return { estado: "validation_error", fieldErrors: erroresDeCampo(parsed.error) };
+    const { planId, vigenteDesde, topes } = parsed.data;
+    const leida = await this.repo.vistaPreviaCambio(planId, topes);
+    if (leida === null) return { estado: "not_found" };
+    // SLT-135 (R13): F es obligatoria; cada empresa lleva siempre su fecha.
+    const desde = inicioDelDiaPlataforma(vigenteDesde);
+    return {
+      estado: "ok",
+      empresas: leida.empresas.map((e) => ({
+        empresaId: e.id,
+        empresa: e.nombre,
+        tipoCobro: e.tipoCobro,
+        recibeEl: fechaCalendarioPlataforma(fechaDeRecepcion(e.tipoCobro, desde)),
+      })),
+      avisos: leida.avisos,
+    };
   }
 
   /**

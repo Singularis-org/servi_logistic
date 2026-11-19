@@ -84,6 +84,13 @@ export const FACTURAS_TEXTOS = {
     pagina: (p: number, de: number) => `Página ${p} de ${de}`,
     etiqueta: "Páginas de líneas",
   },
+  /** SLT-136 (design §6; R19, R20): los botones de descarga de una factura cerrada y su error. */
+  descarga: {
+    etiqueta: "Descargar la factura",
+    pdf: "Descargar PDF",
+    excel: "Descargar Excel",
+    error: "No se pudo descargar la factura",
+  },
   dias: (cobrados: number, periodo: number) => `${cobrados} de ${periodo} días`,
   /** «Quincenal», «Mensual»…: las mismas etiquetas que el tipo de cobro de los planes. */
   periodicidad: TEXTOS_TIPO_COBRO.tipo satisfies Record<PeriodicidadFactura, string>,

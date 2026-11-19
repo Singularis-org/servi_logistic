@@ -39,7 +39,7 @@ import { drenarGeocodificacion } from "./crons";
  *   crearMensajero(r, "central" | "satelite") → MensajeroE2E
  *     Un mensajero de esa zona (con el vehículo por defecto del catálogo).
  *
- *   crearOrden(r, { zona, montoCobrar?, destinatario?, numRemision? }) → OrdenE2E
+ *   crearOrden(r, { zona, montoCobrar?, destinatario?, numRemision?, direccion?, producto? }) → OrdenE2E
  *     Una orden de la tienda por la carga masiva (`BulkOrdenService.cargarMasiva`), en el distrito de
  *     la zona pedida. Nace `en_preparacion`, sin guía. Siempre lleva dirección (la geocodificación
  *     se encola: ver `drenarGeocodificacion`).
@@ -144,7 +144,14 @@ export function crearMensajero(r: RepartoE2E, zona: "central" | "satelite"): Pro
 
 export function crearOrden(
   r: RepartoE2E,
-  o: { zona: "central" | "satelite"; montoCobrar?: number; destinatario?: string; numRemision?: string },
+  o: {
+    zona: "central" | "satelite";
+    montoCobrar?: number;
+    destinatario?: string;
+    numRemision?: string;
+    direccion?: string;
+    producto?: string;
+  },
 ): Promise<OrdenE2E> {
   return nucleo.crearOrden(r, o);
 }

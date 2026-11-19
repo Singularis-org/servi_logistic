@@ -2,10 +2,11 @@
 
 import { useCallback } from "react";
 
-import { useToast } from "@/hooks/useToast";
-import type { ResultadoLectura } from "@/hooks/useEntradaEscaneo";
 import { recolectarEnTiendaPorQr } from "@/lib/actions/recoleccion-tienda";
+import type { MiAsignacionDTO } from "@/lib/interfaces/services/IMisAsignacionesService";
+import type { ResumenRecepcion } from "@/lib/interfaces/repositories/IOrdenRepository";
 import { nombreDeEstado } from "@/lib/types/order-status";
+import type { DesenlaceRecepcion } from "@/lib/utils/sesion-escaneo";
 
 // Feature 157 (R21/R23) — espejo de `useRecogerPorGuia` para la RECOLECCIÓN EN TIENDA.
 // Lógica compartida por las dos vías de entrada del apartado (escáner de cámara e input de
@@ -31,46 +32,49 @@ import { nombreDeEstado } from "@/lib/types/order-status";
 // SLT-158: devuelve el resultado de la lectura (acierto, o error con el MISMO texto del toast)
 // para la tarjeta de escaneo, y ya no lleva guarda `procesando`: la tarjeta encola las
 // lecturas y las envía de a una (R574); la guarda tiraba la segunda lectura de la pistola.
+//
+// SLT-168 «Escaneo continuo en las recogidas del mensajero»: devuelve el DESENLACE de la fila
+// de la sesión continua (R596) y ya no lanza toasts (R590). `conocidas` (las dos listas
+// cargadas) solo da destinatario y tienda (R832); NO rechaza en cliente (167/R12 sigue).
 
 export interface UseRecolectarPorGuia {
   /**
-   * Confirma la recolección de la orden de ese `numGuia`. Devuelve `{ tipo: "acierto" }` SOLO
-   * si la orden quedó en ruta a la bodega central —o ya lo estaba, que para el mensajero es el
-   * mismo hecho consumado— para que el consumidor revalide; si no, el error con su motivo.
+   * Confirma la recolección de la orden de ese `numGuia`. Devuelve `recibida` si la orden quedó
+   * en ruta a la bodega central, `ya_recibida` si ya lo estaba (las dos refrescan al cerrar),
+   * `no_encontrada` si no es suya, y si no `no_se_pudo` con el motivo de siempre. Sin toasts.
    */
-  recolectar: (numGuia: number) => Promise<ResultadoLectura>;
+  recolectar: (numGuia: number) => Promise<DesenlaceRecepcion>;
 }
 
-export function useRecolectarPorGuia(): UseRecolectarPorGuia {
-  const toast = useToast();
-
+export function useRecolectarPorGuia(
+  /** Solo para el `resumen` (R832): «Por recolectar» + «Recogidos en tienda hoy» cargadas. */
+  conocidas: readonly MiAsignacionDTO[],
+): UseRecolectarPorGuia {
   const recolectar = useCallback(
-    async (numGuia: number): Promise<ResultadoLectura> => {
-      /** Rechazo: el toast de siempre y el mismo motivo para la tarjeta (SLT-158). */
-      const rechazar = (motivo: string): ResultadoLectura => {
-        toast.error(motivo);
-        return { tipo: "error", motivo };
+    async (numGuia: number): Promise<DesenlaceRecepcion> => {
+      const rechazar = (motivo: string): DesenlaceRecepcion => ({ tipo: "no_se_pudo", motivo });
+      /** R832: de la orden cargada con esa guía; si no está, sin resumen («—»). */
+      const resumen = (): ResumenRecepcion | undefined => {
+        const orden = conocidas.find((o) => o.numGuia === numGuia);
+        return orden ? { destinatario: orden.destinatario, tienda: orden.tiendaNombre } : undefined;
       };
       const result = await recolectarEnTiendaPorQr({ numGuia });
-      // Un toast DISTINTO por resultado (R13): en una recolección de decenas de paquetes,
+      // Un desenlace DISTINTO por resultado (R13): en una recolección de decenas de paquetes,
       // "ya la habías escaneado" y "esa no es tuya" piden reacciones opuestas del mensajero.
       switch (result.status) {
         case "ok":
-          toast.success(`Guía ${numGuia} recolectada. Va a la bodega central.`);
-          return { tipo: "acierto" };
+          return { tipo: "recibida", resumen: resumen() };
         case "ya_recolectada":
           // Idempotente: escanear dos veces la misma etiqueta es normal, no un error.
-          toast.info(`La guía ${numGuia} ya estaba recolectada.`);
-          return { tipo: "acierto" };
+          return { tipo: "ya_recibida", resumen: resumen() };
         case "estado_invalido":
           // FICHA 455 (2026-09-24, design §2.1; R3): el estado por su NOMBRE, nunca el código crudo.
           return rechazar(
             `La guía ${numGuia} ya no está por recolectar (está en «${nombreDeEstado(result.estado)}»).`,
           );
         case "no_encontrada":
-          // R12: este es el mensaje que ANTES daba el corte local. Ahora lo decide el
-          // servidor, que es quien sabe de quién es la orden; el mensajero lee lo mismo.
-          return rechazar(`La guía ${numGuia} no está entre tus órdenes por recolectar.`);
+          // R12: lo decide el servidor, que es quien sabe de quién es la orden (R596).
+          return { tipo: "no_encontrada" };
         case "conflict":
           return rechazar(result.motivo);
         case "forbidden":
@@ -81,7 +85,7 @@ export function useRecolectarPorGuia(): UseRecolectarPorGuia {
           return rechazar("Código inválido.");
       }
     },
-    [toast],
+    [conocidas],
   );
 
   return { recolectar };

@@ -166,11 +166,10 @@ function detalle(estado: Estado, extra: Partial<DetalleOk> = {}, cierreExtra: Pa
     desgloseIngresoBodegaRechazos: { sla: "0.00", manual: "500.00", total: "500.00" },
     ivaFacturado: "910.00",
     ganancia: "4000.00",
-    // SLT-169 (R620): 100.000 − 7.910 de todo lo facturado; `ganaLaTienda` es su alias.
+    // SLT-169 (R620): 100.000 − 7.910 de todo lo facturado.
     pagoTienda: "92090.00",
     cobradoSobreRecaudado: "5650.00",
     netoEmpresa: "3500.00",
-    ganaLaTienda: "92090.00",
     fleteRechazoYaCobradoATienda: false,
     partesPorTienda: [],
     ordenesSinGestion: [],

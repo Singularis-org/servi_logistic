@@ -6,10 +6,14 @@ import type { IFacturaPlataformaRepository } from "@/lib/interfaces/repositories
 import type { IFacturaPlataformaService } from "@/lib/interfaces/services/IFacturaPlataformaService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import {
+  type DatosDescargaFactura,
+  type DescargaFacturaResult,
   type DetalleDeFactura,
   type DetalleFacturaResult,
   type FacturaPlataformaDTO,
   type FacturasResult,
+  descargaFacturaEmpresaSchema,
+  descargaFacturaSchema,
   detalleFacturaEmpresaSchema,
   detalleFacturaSchema,
   facturasDeEmpresaSchema,
@@ -50,6 +54,11 @@ function detalle(leido: DetalleDeFactura | null): DetalleFacturaResult {
   return leido === null ? NOT_FOUND : { estado: "ok", detalle: leido };
 }
 
+/** SLT-136 (R4): el repositorio da `null` si no existe, es de otra empresa o no está cerrada. */
+function descarga(leido: DatosDescargaFactura | null): DescargaFacturaResult {
+  return leido === null ? NOT_FOUND : { estado: "ok", datos: leido };
+}
+
 export class FacturaPlataformaService implements IFacturaPlataformaService {
   constructor(private readonly repo: IFacturaPlataformaRepository) {}
 
@@ -78,5 +87,20 @@ export class FacturaPlataformaService implements IFacturaPlataformaService {
     if (!parsed.success) return { estado: "validation_error", errores: errores(parsed.error) };
     const { organizacionId, facturaId, pagina } = parsed.data;
     return detalle(await this.repo.detalleParaPlataforma(organizacionId, facturaId, pagina));
+  }
+
+  // SLT-136 (design §2.3): la descarga, con el mismo orden que el detalle (R3 → R5 → R4).
+  async descargaDeMiEmpresa(actor: Actor | null, input: unknown): Promise<DescargaFacturaResult> {
+    if (!esMaestro(actor)) return FORBIDDEN;
+    const parsed = descargaFacturaSchema.safeParse(input);
+    if (!parsed.success) return { estado: "validation_error", errores: errores(parsed.error) };
+    return descarga(await this.repo.datosDescargaDeLaEmpresa(parsed.data.facturaId));
+  }
+
+  async descargaDeEmpresa(actor: Actor | null, input: unknown): Promise<DescargaFacturaResult> {
+    if (!esSuperadmin(actor)) return FORBIDDEN;
+    const parsed = descargaFacturaEmpresaSchema.safeParse(input);
+    if (!parsed.success) return { estado: "validation_error", errores: errores(parsed.error) };
+    return descarga(await this.repo.datosDescargaParaPlataforma(parsed.data.organizacionId, parsed.data.facturaId));
   }
 }

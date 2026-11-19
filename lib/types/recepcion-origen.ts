@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ResumenRecepcion } from "@/lib/interfaces/repositories/IOrdenRepository";
 
 // Recepcion en la tienda de ORIGEN — validacion de borde (zod) y resultado tipado
 // expuesto por la Server Action. Espejo de `lib/types/recepcion-satelite.ts`.
@@ -17,10 +18,10 @@ export type RecibirEnOrigenActionInput = z.infer<typeof recibirEnOrigenSchema>;
  * `RecibirEnOrigenServiceResult` agregando `unauthenticated` (borde).
  */
 export type RecibirEnOrigenResult =
-  | { status: "ok"; ordenId: string; estado: "devuelta_a_tienda" }
+  | { status: "ok"; ordenId: string; estado: "devuelta_a_tienda"; resumen?: ResumenRecepcion } // SLT-167 (R710)
   | { status: "forbidden" }
   | { status: "tienda_ajena" }
-  | { status: "ya_recibida" }
+  | { status: "ya_recibida"; resumen?: ResumenRecepcion } // SLT-167 (R711)
   | { status: "estado_invalido"; estado: string }
   | { status: "no_encontrada" }
   | { status: "validation_error"; fieldErrors: Record<string, string[]> }

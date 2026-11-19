@@ -98,6 +98,11 @@ export interface OpcionesEntradaEscaneo {
   alTerminar?: (resultado: ResultadoLectura) => void;
   /** Motivo a mostrar si `procesar` lanza en vez de devolver un resultado. */
   motivoFalloInesperado: string;
+  /**
+   * SLT-159 (R581-R582): se llama al LLEGAR la lectura, antes de encolarla, para que la fila de
+   * la sesión nazca ya y no al salir de la cola. Opcional: sin ella, nada cambia.
+   */
+  alLlegar?: (texto: string, origen: OrigenLectura) => void;
 }
 
 export interface UseEntradaEscaneo {
@@ -126,6 +131,7 @@ export function useEntradaEscaneo({
   enfocarTrasLectura,
   alTerminar,
   motivoFalloInesperado,
+  alLlegar,
 }: OpcionesEntradaEscaneo): UseEntradaEscaneo {
   const [valor, setValor] = useState("");
   const [procesando, setProcesando] = useState(false);
@@ -140,9 +146,21 @@ export function useEntradaEscaneo({
 
   // Lo que pone la superficie se lee al momento de usarlo: una lectura en cola se procesa
   // con el `procesar` del último render, no con el del render en que llegó.
-  const opciones = useRef({ procesar, enfocarTrasLectura, alTerminar, motivoFalloInesperado });
+  const opciones = useRef({
+    procesar,
+    enfocarTrasLectura,
+    alTerminar,
+    motivoFalloInesperado,
+    alLlegar,
+  });
   useEffect(() => {
-    opciones.current = { procesar, enfocarTrasLectura, alTerminar, motivoFalloInesperado };
+    opciones.current = {
+      procesar,
+      enfocarTrasLectura,
+      alTerminar,
+      motivoFalloInesperado,
+      alLlegar,
+    };
   });
 
   useEffect(
@@ -207,6 +225,7 @@ export function useEntradaEscaneo({
 
   const recibirLectura = useCallback(
     (texto: string, origen: OrigenLectura) => {
+      opciones.current.alLlegar?.(texto, origen);
       cola.current.push({ texto, origen });
       void drenar();
     },

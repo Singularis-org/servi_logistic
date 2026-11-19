@@ -64,7 +64,6 @@ function doble() {
       pendiente: true,
       vigenteDesde: asignacion.efecto.fecha,
     })),
-    editar: vi.fn<IPlanesRepository["editar"]>(async () => ({ estado: "ok", cambio: true, avisos: [] })),
     archivar: vi.fn<IPlanesRepository["archivar"]>(async () => ({ estado: "ok", cambio: true })),
     asignar: vi.fn<IPlanesRepository["asignar"]>(async (_o, _p, _a, efecto) => ({
       estado: "ok",
@@ -73,6 +72,7 @@ function doble() {
       pendiente: true,
       vigenteDesde: efecto.fecha,
     })),
+    vistaPreviaCambio: vi.fn<IPlanesRepository["vistaPreviaCambio"]>(),
     vistaPreviaAsignacion: vi.fn<IPlanesRepository["vistaPreviaAsignacion"]>(async () => ({ avisos: [] })),
     vistaPreviaConTopes: vi.fn<IPlanesRepository["vistaPreviaConTopes"]>(async () => ({ avisos: [] })),
     cambiarTipoCobro: vi.fn<IPlanesRepository["cambiarTipoCobro"]>(async (_o, _t, efecto) => ({
@@ -235,44 +235,53 @@ describe("SLT-86 — R16: la fecha de efecto de un cambio de empresa, de hoy a h
   });
 });
 
-describe("SLT-86 — R22: editar el costo base o un descuento lleva fecha de efecto ≥ hoy", () => {
+// SLT-135 (R2, R3): toda edición lleva fecha `≥ hoy` y se programa como en SLT-128, cambie el precio o no;
+// con la de hoy, el instante son sus 00:00 (ya pasadas) y la recepción de cada empresa la hace la cola.
+describe("SLT-86, SLT-135 — R22; SLT-135 R2, R3: editar lleva fecha ≥ hoy y siempre programa", () => {
   const PRECIO_NUEVO = version({ precio: { tipo: "monto", mensual: "35000.00", descuentos: {} } });
   const DESCUENTO_NUEVO = version({ precio: { tipo: "monto", mensual: "31000.00", descuentos: { anual: { tipo: "monto", monto: "5000" } } } });
+  const SOLO_NOMBRE = version({ nombre: "Pro renombrado" });
 
   it.each([
     ["el costo base", PRECIO_NUEVO],
     ["un descuento", DESCUENTO_NUEVO],
     ["pasar a «sin precio»", version({ precio: { tipo: "sin_precio" } })],
+    ["solo el nombre", SOLO_NOMBRE],
   ])("cambiar %s sin fecha → validation_error en vigenteDesde, sin escribir", async (_c, v) => {
     expect(await servicio.editar(SUPERADMIN, { planId: PLAN, ...v, vigenteDesde: null })).toEqual({
       estado: "validation_error",
       fieldErrors: { vigenteDesde: ["Elige desde qué fecha rige el cambio."] },
     });
-    expect(repo.editar).not.toHaveBeenCalled();
-    expect(repo.programarCambio).not.toHaveBeenCalled();
-  });
-
-  it("con una fecha anterior a hoy → validation_error en vigenteDesde, sin leer el plan", async () => {
-    expect(await servicio.editar(SUPERADMIN, { planId: PLAN, ...PRECIO_NUEVO, vigenteDesde: "2026-11-04" })).toEqual({
-      estado: "validation_error",
-      fieldErrors: { vigenteDesde: ["La fecha de efecto no puede ser anterior a hoy."] },
-    });
     expect(llamadasAlRepositorio()).toBe(0);
   });
 
-  it.each([
-    ["el costo base", PRECIO_NUEVO],
-    ["un descuento", DESCUENTO_NUEVO],
-  ])("cambiar %s con la fecha de hoy se aplica en el acto, con el precio desde las 00:00 de hoy", async (_c, v) => {
-    expect(await servicio.editar(SUPERADMIN, { planId: PLAN, ...v, vigenteDesde: HOY })).toEqual({
-      estado: "ok",
-      planId: PLAN,
-      cambio: true,
-      avisos: [],
-      vigenteDesde: null,
-    });
-    expect(repo.editar).toHaveBeenCalledExactlyOnceWith(PLAN, v, "u-sa", a0000(HOY));
-    expect(repo.programarCambio).not.toHaveBeenCalled();
+  it("R2: ayer se rechaza, cambie el precio o no", async () => {
+    for (const v of [PRECIO_NUEVO, SOLO_NOMBRE]) {
+      expect(await servicio.editar(SUPERADMIN, { planId: PLAN, ...v, vigenteDesde: "2026-11-04" })).toEqual({
+        estado: "validation_error",
+        fieldErrors: { vigenteDesde: ["La fecha de efecto no puede ser anterior a hoy."] },
+      });
+    }
+    expect(llamadasAlRepositorio()).toBe(0);
+  });
+
+  it("R3: hoy, con y sin cambio de precio, programa con las 00:00 de hoy", async () => {
+    // El costo base, un descuento y solo el nombre (sin cambio de precio).
+    const versiones = [PRECIO_NUEVO, DESCUENTO_NUEVO, SOLO_NOMBRE];
+    for (const v of versiones) {
+      expect(await servicio.editar(SUPERADMIN, { planId: PLAN, ...v, vigenteDesde: HOY })).toEqual({
+        estado: "ok",
+        planId: PLAN,
+        cambio: true,
+        avisos: [],
+        vigenteDesde: HOY,
+      });
+      expect(repo.programarCambio).toHaveBeenLastCalledWith(PLAN, v, a0000(HOY), "u-sa", AHORA);
+    }
+    // `programarCambio` una vez por edición y nunca otra escritura: solo se lee el plan y se programa.
+    expect(repo.programarCambio).toHaveBeenCalledTimes(versiones.length);
+    expect(repo.plan).toHaveBeenCalledTimes(versiones.length);
+    expect(llamadasAlRepositorio()).toBe(2 * versiones.length);
   });
 
   it("cambiar el costo base con fecha futura es el cambio programado de SLT-58 (a sus 00:00, con el reloj)", async () => {
@@ -284,33 +293,14 @@ describe("SLT-86 — R22: editar el costo base o un descuento lleva fecha de efe
       vigenteDesde: "2026-11-06",
     });
     expect(repo.programarCambio).toHaveBeenCalledExactlyOnceWith(PLAN, PRECIO_NUEVO, a0000("2026-11-06"), "u-sa", AHORA);
-    expect(repo.editar).not.toHaveBeenCalled();
   });
 
-  it("«10» y «10.00» son el mismo descuento: no es un cambio de precio y sigue la regla de SLT-58 (sin fecha, inmediata)", async () => {
-    repo.plan.mockResolvedValueOnce(plan({ precio: { tipo: "monto", mensual: "31000.00", descuentos: { anual: { tipo: "porcentaje", porcentaje: "10.00" } } } }));
-    const v = version({ nombre: "Pro 2", precio: { tipo: "monto", mensual: "31000", descuentos: { anual: { tipo: "porcentaje", porcentaje: "10" } } } });
-    expect((await servicio.editar(SUPERADMIN, { planId: PLAN, ...v, vigenteDesde: null })).estado).toBe("ok");
-    expect(repo.editar).toHaveBeenCalledTimes(1);
-  });
-
-  it("una edición que no toca el precio sigue como en SLT-58: sin fecha, inmediata; con la de hoy, rechazada (R37)", async () => {
-    const soloNombre = version({ nombre: "Pro renombrado" });
-    expect((await servicio.editar(SUPERADMIN, { planId: PLAN, ...soloNombre, vigenteDesde: null })).estado).toBe("ok");
-    expect(repo.editar).toHaveBeenCalledWith(PLAN, soloNombre, "u-sa", a0000(HOY));
-    expect(await servicio.editar(SUPERADMIN, { planId: PLAN, ...soloNombre, vigenteDesde: HOY })).toEqual({
-      estado: "validation_error",
-      fieldErrors: { vigenteDesde: ["La fecha de vigencia tiene que ser posterior a hoy."] },
-    });
-    expect(repo.editar).toHaveBeenCalledTimes(1);
-  });
-
-  it("archivado o inexistente se responde antes de mirar la fecha del precio", async () => {
+  it("archivado o inexistente se responde sin programar", async () => {
     repo.plan.mockResolvedValueOnce(null);
-    expect(await servicio.editar(SUPERADMIN, { planId: PLAN, ...PRECIO_NUEVO, vigenteDesde: null })).toEqual({ estado: "not_found" });
+    expect(await servicio.editar(SUPERADMIN, { planId: PLAN, ...PRECIO_NUEVO, vigenteDesde: HOY })).toEqual({ estado: "not_found" });
     repo.plan.mockResolvedValueOnce(plan({ archivado: true }));
-    expect(await servicio.editar(SUPERADMIN, { planId: PLAN, ...PRECIO_NUEVO, vigenteDesde: null })).toEqual({ estado: "archivado" });
-    expect(repo.editar).not.toHaveBeenCalled();
+    expect(await servicio.editar(SUPERADMIN, { planId: PLAN, ...PRECIO_NUEVO, vigenteDesde: HOY })).toEqual({ estado: "archivado" });
+    expect(repo.programarCambio).not.toHaveBeenCalled();
   });
 });
 

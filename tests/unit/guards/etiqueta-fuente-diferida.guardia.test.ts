@@ -106,9 +106,16 @@ describe("R14 — el peso del artefacto, declarado y comprobado", () => {
     expect(fuenteEtiqueta.base64.length).toBeLessThanOrEqual(OBJETIVO_BASE64);
   });
 
-  it("hay UN solo archivo de fuente en el repo: ni un .woff2 ni una segunda copia", () => {
-    const fuentes = readdirSync(path.join(RAIZ, "assets", "fuentes"));
-    expect(fuentes).toEqual(["LiberationSans-etiqueta-subset.ttf"]);
+  it("hay UN solo archivo de fuente de etiqueta en el repo: ni un .woff2 ni una segunda copia", () => {
+    // SLT-80 (D4): los dos subconjuntos de Archivo son del PDF de la guía de integración
+    // (`lib/pdf/guia-fuente.ts`), no copias de la fuente de la etiqueta. Se nombran uno a uno
+    // para que cualquier otro archivo que entre aquí siga poniendo esta guardia en rojo.
+    const fuentes = readdirSync(path.join(RAIZ, "assets", "fuentes")).sort();
+    expect(fuentes).toEqual([
+      "Archivo-guia-bold-subset.ttf",
+      "Archivo-guia-regular-subset.ttf",
+      "LiberationSans-etiqueta-subset.ttf",
+    ]);
   });
 });
 

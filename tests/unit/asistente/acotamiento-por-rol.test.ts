@@ -104,7 +104,7 @@ describe("R9 — el conjunto sale del catálogo y del predicado IMPORTADO, nunca
 });
 
 describe("R10 — los cinco roles, con los conteos que mide el módulo de ayuda", () => {
-  it("⭑ 37 / 37 / 10 / 8 / 7, los mismos números que afirma AyudaLayout", async () => {
+  it("⭑ 38 / 38 / 10 / 8 / 7, los mismos números que afirma AyudaLayout", async () => {
     // ⚠️ LITERALES A MANO, medidos sobre el `roles:` de los 33 archivos, igual que
     // `tests/components/AyudaLayout.test.tsx`. Derivarlos del catálogo los dejaría verdes pase lo
     // que pase — incluido el caso que de verdad importa: un acotamiento apagado que mande 33 a
@@ -114,9 +114,10 @@ describe("R10 — los cinco roles, con los conteos que mide el módulo de ayuda"
     // SL-20 (decisión 9): 38→37 al retirar `oficina/configuracion-geografia.md` (`roles: [maestro, admin]`); la pantalla la gestionaba el maestro y ya no gestiona geografía.
     // SLT-51: 37→38 al sumar `oficina/configuracion-zonas.md` (`roles: [maestro]`); el admin la lee por la regla de lectura total de la 435. Los otros tres no se mueven.
     // SL-42 (R19): 38→37 al retirar `oficina/configuracion-vehiculos.md` (`roles: [maestro, admin]`); el catálogo de vehículos es de la plataforma y la pantalla del maestro ya no existe. Los otros tres no la declaraban y no se mueven.
+    // SLT-80 (R1317): 37→38 al sumar `oficina/guia-integracion-api.md` (`roles: [maestro, admin]`): el asistente lee la guía de integración en el contexto de maestro y admin (P1). Los otros tres no la reciben y no se mueven.
     const esperado: Record<string, number> = {
-      maestro: 37,
-      admin: 37,
+      maestro: 38,
+      admin: 38,
       adminSatelite: 10,
       mensajero: 8,
       adminTienda: 7,
@@ -175,13 +176,14 @@ describe("R11 — un mensajero no recibe NI UNA LÍNEA de la ayuda de la oficina
   /** Los 18 `.md` de `docs/ayuda/oficina/`, leídos de la carpeta y no de una lista escrita aquí. */
   const archivosOficina = readdirSync(DIR_OFICINA).filter((f) => f.endsWith(".md"));
 
-  it("CONTROL DE NO-VACUIDAD: la carpeta de oficina tiene los 22 documentos medidos", () => {
+  it("CONTROL DE NO-VACUIDAD: la carpeta de oficina tiene los 23 documentos medidos", () => {
     // Sin esto, borrar la carpeta dejaría todo lo de abajo verde por vacío.
     // SL-36: 18→23 por las cinco guías de integraciones.
     // SL-20 (decisión 9): 23→22 al retirar `oficina/configuracion-geografia.md`.
     // SLT-51: 22→23 al sumar `oficina/configuracion-zonas.md`.
     // SL-42 (R19): 23→22 al retirar `oficina/configuracion-vehiculos.md`.
-    expect(archivosOficina.length).toBe(22);
+    // SLT-80 (R1317): 22→23 al sumar `oficina/guia-integracion-api.md`.
+    expect(archivosOficina.length).toBe(23);
   });
 
   it("⭑ el texto que se le manda a un mensajero no contiene ningún slug de oficina", async () => {

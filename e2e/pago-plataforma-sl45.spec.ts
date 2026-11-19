@@ -19,19 +19,27 @@ import { CAJA_A, CAJA_B, sembrarCaja } from "./_wallet-iva-sl39-siembra";
 
 // SL-45 (T10, design §12.4) — el pago a la plataforma desde la wallet, en el navegador.
 //
-// 1. A crea dos órdenes con el global en 500,00: la región dice «₡1.000» con la pista de R1 y el
-//    botón «Registrar pago a la plataforma». El botón abre «Registrar movimiento» con «Pago a la
-//    plataforma» elegido (R4). Paga 600: la región dice «₡400» sin recargar (R5) y la cifra principal
-//    baja ₡600 (R8). Intentar pagar 500 deja el error bajo el monto (R9).
-// 2. El superadmin ve, en «Empresas», «Debe ₡400 · Pagado ₡600» en A y «Al día · Pagado ₡0» en B (R28).
-// 3. A anula el pago desde «Ver» del libro: la región vuelve a «₡1.000» sin recargar (R5, R15, R23).
-// 4. A paga los 1.000: «Al día» con la pista de R2 y sin botón. Se elimina una orden: «Saldo a favor
-//    de la empresa con la plataforma» «₡500» con la pista de R3, sin botón.
-// 5. El superadmin ve «A favor ₡500 · Pagado ₡1.000» en A (R28).
+// 1. A crea dos órdenes con el global en 500,00 y se cierra su factura en curso (total 1.000,00, leído de
+//    la fila): la región dice «₡1.000» con la pista de SLT-60 R35 y el botón «Registrar pago a la
+//    plataforma». El botón abre «Registrar movimiento» con «Pago a la plataforma» elegido y la frase de
+//    SLT-60 R37 (R4). Paga 600: la cifra principal baja ₡600 sin recargar (R5, R8) y la región sigue en
+//    «₡1.000»: desde SLT-60 la deuda baja al confirmar, no al registrar. Intentar pagar 500 (quedan 400
+//    disponibles) deja bajo el monto el mensaje de SLT-60 R36 (R9).
+// 2. El superadmin ve, en «Empresas», «Debe ₡1.000 · Pagado ₡0 · 1 pago por confirmar» en A y «Al día ·
+//    Pagado ₡0» en B (R28; SLT-60 R7, R27).
+// 3. A anula el pago por confirmar desde «Ver» del libro: la cifra principal vuelve sin recargar y la región
+//    sigue en «₡1.000» (R5, R15, R23; SLT-60 R9).
+// 4. A paga los 1.000 y la región sigue en «₡1.000»; confirmado el pago (como dueño, como los tests de
+//    integración de SLT-60 §8.1), «Al día» con la pista de R2 y sin botón. Se elimina una orden: «Saldo a
+//    favor de la empresa con la plataforma» «₡500» con la pista de R3, sin botón.
+// 5. El superadmin ve «A favor ₡500 · Pagado ₡1.000» en A, sin pagos por confirmar (R28).
 // 6. B no ve nada de A: su región dice «al día», su libro no tiene ningún pago y su caja no se movió (R20).
 //
 // Las órdenes se crean y se eliminan con el cliente dueño y la empresa fijada, como en SL-40: los
-// triggers escriben los cargos y los reversos. Los pagos y la anulación van SOLO por la pantalla.
+// triggers escriben los cargos y los reversos. La factura se cierra y el pago se confirma como dueño con
+// las funciones de la base (SLT-60 design §8.1: «los E2E, con la misma llamada SQL en línea»); la
+// confirmación del superadmin por la pantalla es de `pago-plataforma-confirmacion.spec.ts`. Los pagos y
+// la anulación van SOLO por la pantalla.
 //
 // Los textos y los importes esperados van escritos a mano: son lo que pinta `money` (omite los «,00»).
 // Derivarlos de `wallet-labels.ts` o de `money` los compararía contra su propia fuente.
@@ -48,15 +56,20 @@ test.describe.configure({ mode: "serial" });
 const TEXTO = {
   rotuloDebe: "Lo que la empresa debe a la plataforma",
   rotuloAFavor: "Saldo a favor de la empresa con la plataforma",
+  /** SLT-60 R35. */
   pistaDebe:
-    "Lo que la plataforma cobra por las órdenes de la empresa (al crearlas o, con plan porcentual, al llegar a un estado final), menos las anuladas y lo ya pagado. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja y baja esta deuda.",
+    "Lo que la plataforma cobra por las órdenes de la empresa (al crearlas o, con plan porcentual, al llegar a un estado final), menos las anuladas y los pagos ya confirmados. Cuando la empresa le pague, el pago se registra con «Registrar pago a la plataforma»: sale de la caja al registrarlo y baja esta deuda cuando la plataforma lo confirma.",
   pistaAlDia: "La empresa está al día con la plataforma. Cada orden suma su cobro aquí cuando se cobra.",
   pistaAFavor:
     "La empresa pagó más de lo que hoy debe, porque se anularon órdenes ya pagadas. Se descuenta de los próximos cobros.",
   boton: "Registrar pago a la plataforma",
   concepto: "Pago a la plataforma",
-  efecto: "Sale dinero de la empresa hacia la plataforma y baja lo que la empresa le debe; baja la ganancia.",
-  errorTope: "El pago no puede ser mayor que lo que la empresa debe a la plataforma.",
+  /** SLT-60 R37, el literal del spec. */
+  efecto:
+    "Sale dinero de la empresa hacia la plataforma; lo que la empresa le debe baja cuando la plataforma confirma el pago; baja la ganancia.",
+  /** SLT-60 R36. */
+  errorTope: "El pago no puede ser mayor que lo pendiente de las facturas cerradas, descontados los pagos por confirmar.",
+  unPagoPorConfirmar: "1 pago por confirmar",
   motivo: "SL-45 E2E: el pago se registró por error",
 } as const;
 
@@ -65,7 +78,6 @@ const PINTADO = {
   cero: "₡0",
   quinientos: "₡500",
   seiscientos: "₡600",
-  cuatrocientos: "₡400",
   mil: "₡1.000",
   /** La caja de SL-39 más el saldo inicial de 10.000,00: lo que mide el E2E de SL-40. */
   principal: "₡28.500",
@@ -87,6 +99,8 @@ let paginaA: Page | undefined;
 let contextoB: BrowserContext | undefined;
 let paginaB: Page | undefined;
 let ordenes: string[] = [];
+/** SLT-60: la factura cerrada de A (paso 1), contra la que se confirma el pago del paso 4. */
+let facturaA: { id: string; total: string } | undefined;
 let cajaInicialB: Cifras | undefined;
 /** El valor global del cobro al empezar (`null`: sin configurar), para devolverlo en el `afterAll`. */
 let globalAntes: Prisma.Decimal | null = null;
@@ -201,6 +215,60 @@ async function eliminarOrden(db: PrismaClient, e: Empresa, ordenId: string): Pro
     await fijarEmpresa(tx, e.organizacionId);
     await tx.orden.update({ where: { id: ordenId }, data: { deletedAt: new Date() } });
   });
+}
+
+/**
+ * SLT-60 (design §8.1): desde SLT-60 solo se paga lo de facturas cerradas (R3). Cierra la factura en curso de la
+ * empresa como dueño con el artificio de SLT-119 §9 (`factura_plataforma_cerrar(org, fin_natural_at + 6 min)`;
+ * el de `tests/integration/db/_fixtures/factura-cerrada.ts`, en línea). Primero un cierre con la hora de la
+ * base la abre o la alinea. Lanza si no cerró exactamente una.
+ */
+async function cerrarFacturaEnCurso(db: PrismaClient, e: Empresa): Promise<{ id: string; total: string }> {
+  await db.$queryRaw`SELECT factura_plataforma_cerrar(${e.organizacionId}, (now() AT TIME ZONE 'UTC')::timestamp)`;
+  const enCurso = await db.facturaPlataforma.findFirst({
+    where: { organizacionId: e.organizacionId, estado: "en_curso" },
+    select: { id: true },
+  });
+  if (enCurso === null) throw new Error(`SL-45: la empresa ${e.organizacionId} no tiene factura en curso`);
+  const [{ n }] = await db.$queryRaw<{ n: number }[]>`
+    SELECT factura_plataforma_cerrar(f."organizacion_id", f."fin_natural_at" + interval '6 minutes')::int AS n
+      FROM "factura_plataforma" f
+     WHERE f."id" = ${enCurso.id}`;
+  if (n !== 1) throw new Error(`SL-45: el cierre de la factura ${enCurso.id} cerró ${n}, no 1`);
+  const f = await db.facturaPlataforma.findUniqueOrThrow({
+    where: { id: enCurso.id },
+    select: { id: true, estado: true, total: true },
+  });
+  if (f.estado !== "cerrada" || f.total === null) throw new Error(`SL-45: la factura ${f.id} no quedó cerrada`);
+  return { id: f.id, total: f.total.toFixed(2) };
+}
+
+/**
+ * SLT-60 (design §8.1): confirma como dueño el único pago por confirmar de la empresa, entero contra la factura,
+ * con `pago_plataforma_confirmar`; `confirmado_por` es el maestro (la base solo exige un usuario de la empresa o
+ * sin empresa). Lanza si la base no responde `ok`.
+ */
+async function confirmarComoDueno(db: PrismaClient, e: Empresa, facturaId: string): Promise<void> {
+  const porConfirmar = await db.walletMovimiento.findMany({
+    where: {
+      organizacionId: e.organizacionId,
+      categoria: "egreso_pago_plataforma",
+      tipo: "egreso",
+      confirmacionesPagoPlataforma: { none: {} },
+      anulacionAjuste: { is: null },
+    },
+    select: { id: true, monto: true },
+  });
+  if (porConfirmar.length !== 1) throw new Error(`SL-45: se esperaba un pago por confirmar, hay ${porConfirmar.length}`);
+  const [pago] = porConfirmar;
+  const filas = await db.$queryRawUnsafe<{ r: string }[]>(
+    `SELECT pago_plataforma_confirmar($1, $2, $3::jsonb, $4, (now() AT TIME ZONE 'UTC')::timestamp) AS r`,
+    e.organizacionId,
+    pago.id,
+    JSON.stringify([{ factura_id: facturaId, monto: pago.monto.toFixed(2) }]),
+    e.maestroId,
+  );
+  if (filas[0]?.r !== "ok") throw new Error(`SL-45: la confirmación del pago ${pago.id} respondió ${JSON.stringify(filas)}`);
 }
 
 /** Los pagos a la plataforma de una empresa en su libro, leídos por detrás con el dueño. */
@@ -362,13 +430,17 @@ function resumen(c: Cifras, deuda: string): string {
   return `principal=${c.principal} entro=${c.entro} salio=${c.salio} ganancia=${c.ganancia} deuda=${deuda}`;
 }
 
-test("1. A debe ₡1.000, el botón abre el pago elegido, paga 600 y la región dice ₡400 sin recargar; 500 no pasa (R1, R4, R5, R8, R9)", async ({}, info) => {
+test("1. A debe ₡1.000 de su factura cerrada, el botón abre el pago elegido, paga 600 y la región no baja; 500 no pasa (R1, R4, R5, R8, R9; SLT-60 R1, R2, R35–R37)", async ({}, info) => {
   test.setTimeout(240_000);
   const page = paginaA!;
   // Las cifras de B antes de que A pague nada: el paso 6 las compara.
   await abrirWallet(paginaB!);
   cajaInicialB = await leerCifras(paginaB!);
   ordenes = await crearOrdenes(base(), a(), 2);
+  // SLT-60 R3: sin factura cerrada no hay nada que pagar. El total sale de la fila: las dos órdenes a 500,00.
+  facturaA = await cerrarFacturaEnCurso(base(), a());
+  console.log(`MEDIDO factura cerrada de A: total=${facturaA.total}`);
+  expect(facturaA.total).toBe("1000.00");
 
   await abrirWallet(page);
   const region = regionDeuda(page);
@@ -386,7 +458,7 @@ test("1. A debe ₡1.000, el botón abre el pago elegido, paga 600 y la región 
 
   await marcarSinRecarga(page);
 
-  // R4: el diálogo abre con el pago elegido y su frase.
+  // R4: el diálogo abre con el pago elegido y su frase (SLT-60 R37).
   const dialog = await abrirPago(page);
   await expect(dialog.getByRole("radio", { name: TEXTO.concepto })).toBeChecked();
   await expect(dialog.getByRole("radio", { name: "Gasto de la empresa" })).not.toBeChecked();
@@ -395,12 +467,14 @@ test("1. A debe ₡1.000, el botón abre el pago elegido, paga 600 y la región 
   await llenarPago(dialog, "600", "SL-45 transferencia 600");
   await expect(dialog).toBeHidden({ timeout: 30_000 });
 
-  // R5: la región dice la deuda nueva sin recargar. R8: la cifra principal baja 600, «Salió» sube 600 y
-  // la ganancia baja 600.
-  await expect(region.locator(".tabular-nums").first()).toHaveText(PINTADO.cuatrocientos, { timeout: 30_000 });
+  // R5, R8: la cifra principal baja 600 sin recargar, «Salió» sube 600 y la ganancia baja 600. SLT-60 R7: la
+  // deuda NO baja al registrar; baja al confirmar.
   await expect(tarjetaCaja(page).locator("section").first().locator(".tabular-nums").first()).toHaveText(
     PINTADO.principalTras600,
+    { timeout: 30_000 },
   );
+  await expect(region.locator(".tabular-nums").first()).toHaveText(PINTADO.mil);
+  await expect(region).toContainText(TEXTO.pistaDebe);
   const tras600 = await leerCifras(page);
   console.log(`MEDIDO A tras pagar 600: ${resumen(tras600, await primerImporte(region))}`);
   expect(tras600.principal).toBe(PINTADO.principalTras600);
@@ -408,9 +482,10 @@ test("1. A debe ₡1.000, el botón abre el pago elegido, paga 600 y la región 
   expect(tras600.ganancia).toBe(PINTADO.gananciaTras600);
   expect(await sinRecarga(page)).toBe("sin-recarga");
   expect(await pagosEnElLibro(base(), a())).toEqual(["egreso:600.00"]);
-  await page.screenshot({ path: capturaEn(info, "sl45-region-400.png"), fullPage: true });
+  await page.screenshot({ path: capturaEn(info, "sl45-region-tras-pagar.png"), fullPage: true });
 
-  // R9: 500 supera los 400 que quedan. El error va bajo el monto y no se escribe nada.
+  // R9, SLT-60 R2 y R36: lo disponible es 1.000 − 600 por confirmar = 400; 500 lo supera. El error va bajo el
+  // monto y no se escribe nada.
   const otro = await abrirPago(page);
   await llenarPago(otro, "500", "SL-45 transferencia 500");
   const monto = otro.getByLabel(/^Monto/);
@@ -420,7 +495,7 @@ test("1. A debe ₡1.000, el botón abre el pago elegido, paga 600 y la región 
   expect(await pagosEnElLibro(base(), a())).toEqual(["egreso:600.00"]);
   await page.keyboard.press("Escape");
   await expect(otro).toBeHidden();
-  await expect(region.locator(".tabular-nums").first()).toHaveText(PINTADO.cuatrocientos);
+  await expect(region.locator(".tabular-nums").first()).toHaveText(PINTADO.mil);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -431,7 +506,7 @@ function celdaPlataforma(page: Page, e: Empresa): Locator {
   return page.getByRole("table").locator("tbody tr").filter({ hasText: e.slug }).locator("[data-estado-plataforma]");
 }
 
-test("2. el superadmin ve «Debe ₡400 · Pagado ₡600» en A y «Al día · Pagado ₡0» en B (R28)", async ({}, info) => {
+test("2. el superadmin ve «Debe ₡1.000 · Pagado ₡0 · 1 pago por confirmar» en A y «Al día · Pagado ₡0» en B (R28; SLT-60 R7, R27)", async ({}, info) => {
   test.setTimeout(120_000);
   const page = sa!;
   await page.goto("/plataforma/empresas");
@@ -440,19 +515,20 @@ test("2. el superadmin ve «Debe ₡400 · Pagado ₡600» en A y «Al día · P
   const celdaB = celdaPlataforma(page, b());
   await expect(celdaA).toHaveCount(1);
   await expect(celdaA).toHaveAttribute("data-estado-plataforma", "debe");
-  await expect(celdaA).toHaveText(`Debe ${PINTADO.cuatrocientos}Pagado ${PINTADO.seiscientos}`);
+  // «Pagado» cuenta solo los confirmados; el pago de 600 sale como por confirmar.
+  await expect(celdaA).toHaveText(`Debe ${PINTADO.mil}Pagado ${PINTADO.cero}${TEXTO.unPagoPorConfirmar}`);
   await expect(celdaB).toHaveAttribute("data-estado-plataforma", "al_dia");
   await expect(celdaB).toHaveText(`Al díaPagado ${PINTADO.cero}`);
   console.log(`MEDIDO Empresas (1): A=«${await celdaA.innerText()}» B=«${await celdaB.innerText()}»`);
   await page.screenshot({ path: capturaEn(info, "sl45-empresas-debe.png"), fullPage: true });
 });
 
-test("3. A anula el pago desde el libro y la región vuelve a ₡1.000 sin recargar (R5, R15, R23)", async ({}, info) => {
+test("3. A anula el pago por confirmar desde el libro: la caja vuelve sin recargar y la región sigue en ₡1.000 (R5, R15, R23; SLT-60 R9)", async ({}, info) => {
   test.setTimeout(180_000);
   const page = paginaA!;
   await abrirWallet(page);
   const region = regionDeuda(page);
-  await expect(region.locator(".tabular-nums").first()).toHaveText(PINTADO.cuatrocientos);
+  await expect(region.locator(".tabular-nums").first()).toHaveText(PINTADO.mil);
   await marcarSinRecarga(page);
 
   // R23: el libro lo nombra «Pago a la plataforma» y su «Ver» ofrece «Anular…».
@@ -468,11 +544,13 @@ test("3. A anula el pago desde el libro y la región vuelve a ₡1.000 sin recar
   await expect(anular).toBeHidden({ timeout: 30_000 });
   await page.keyboard.press("Escape");
 
-  // R5 y R15: la deuda sube 600, y la cifra principal y la ganancia vuelven a las de antes.
-  await expect(region.locator(".tabular-nums").first()).toHaveText(PINTADO.mil, { timeout: 30_000 });
+  // R5 y R15: la cifra principal y la ganancia vuelven a las de antes sin recargar. SLT-60: el pago no estaba
+  // confirmado, así que la deuda no se movió al pagar ni se mueve al anular.
   await expect(tarjetaCaja(page).locator("section").first().locator(".tabular-nums").first()).toHaveText(
     PINTADO.principal,
+    { timeout: 30_000 },
   );
+  await expect(region.locator(".tabular-nums").first()).toHaveText(PINTADO.mil);
   const tras = await leerCifras(page);
   console.log(`MEDIDO A tras anular: ${resumen(tras, await primerImporte(region))}`);
   expect(tras.principal).toBe(PINTADO.principal);
@@ -498,20 +576,31 @@ test("3. A anula el pago desde el libro y la región vuelve a ₡1.000 sin recar
   await page.screenshot({ path: capturaEn(info, "sl45-region-anulado.png"), fullPage: true });
 });
 
-test("4. A paga los ₡1.000 y queda al día sin botón; se elimina una orden y queda ₡500 a favor (R2, R3)", async ({}, info) => {
+test("4. A paga los ₡1.000, la región no baja hasta confirmar y queda al día sin botón; se elimina una orden y queda ₡500 a favor (R2, R3; SLT-60 R7)", async ({}, info) => {
   test.setTimeout(180_000);
   const page = paginaA!;
   await abrirWallet(page);
   const region = regionDeuda(page);
   await pagar(page, "1000", "SL-45 transferencia 1000");
 
+  // La caja baja al registrar; la deuda sigue en ₡1.000 mientras el pago está por confirmar.
+  await expect(tarjetaCaja(page).locator("section").first().locator(".tabular-nums").first()).toHaveText(
+    PINTADO.principalTras1000,
+    { timeout: 30_000 },
+  );
+  await expect(region.locator(".tabular-nums").first()).toHaveText(PINTADO.mil);
+
+  // Confirmado el pago, entero contra la factura cerrada: la deuda baja a cero.
+  if (!facturaA) throw new Error("no hay factura cerrada de A: falló el paso 1");
+  await confirmarComoDueno(base(), a(), facturaA.id);
+  await abrirWallet(page);
   await expect(region.locator(".tabular-nums").first()).toHaveText(PINTADO.cero, { timeout: 30_000 });
   await expect(region).toHaveAttribute("aria-label", TEXTO.rotuloDebe);
   await expect(region).toContainText(TEXTO.pistaAlDia);
   await expect(region.getByRole("button")).toHaveCount(0);
   await expect(page.getByRole("button", { name: TEXTO.boton, exact: true })).toHaveCount(0);
   const alDia = await leerCifras(page);
-  console.log(`MEDIDO A tras pagar 1000: ${resumen(alDia, await primerImporte(region))}`);
+  console.log(`MEDIDO A tras pagar y confirmar 1000: ${resumen(alDia, await primerImporte(region))}`);
   expect(alDia.principal).toBe(PINTADO.principalTras1000);
 
   await eliminarOrden(base(), a(), ordenes[1]!);
@@ -525,14 +614,15 @@ test("4. A paga los ₡1.000 y queda al día sin botón; se elimina una orden y 
   await page.screenshot({ path: capturaEn(info, "sl45-region-a-favor.png"), fullPage: true });
 });
 
-test("5. el superadmin ve «A favor ₡500 · Pagado ₡1.000» en A (R28)", async ({}, info) => {
+test("5. el superadmin ve «A favor ₡500 · Pagado ₡1.000» en A, sin pagos por confirmar (R28; SLT-60 R27)", async ({}, info) => {
   test.setTimeout(120_000);
   const page = sa!;
   await page.goto("/plataforma/empresas");
   const celdaA = celdaPlataforma(page, a());
   await expect(celdaA).toHaveAttribute("data-estado-plataforma", "a_favor");
-  // El pago anulado no cuenta en «Pagado».
+  // El pago anulado no cuenta en «Pagado»; el confirmado sí.
   await expect(celdaA).toHaveText(`A favor ${PINTADO.quinientos}Pagado ${PINTADO.mil}`);
+  await expect(celdaA.locator("[data-pagos-por-confirmar]")).toHaveCount(0);
   await expect(celdaPlataforma(page, b())).toHaveText(`Al díaPagado ${PINTADO.cero}`);
   console.log(`MEDIDO Empresas (2): A=«${await celdaA.innerText()}»`);
   await page.screenshot({ path: capturaEn(info, "sl45-empresas-a-favor.png"), fullPage: true });

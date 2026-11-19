@@ -1,9 +1,9 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { Input } from "@/components/ui/input";
+import { BuscadorFiltros } from "@/components/shared/BuscadorFiltros";
 import {
   Tabs,
   TabsContent,
@@ -25,7 +25,11 @@ import {
 import { CarruselCards } from "@/components/shared/CarruselCards";
 import { useRefrescarAlVolver } from "@/hooks/useRefrescarAlVolver";
 
-import { filtrarAsignaciones } from "./mis-asignaciones-buscador";
+import {
+  BUSCADOR_GUIAS_LABEL,
+  BUSCADOR_GUIAS_PLACEHOLDER,
+  filtrarAsignaciones,
+} from "./mis-asignaciones-buscador";
 import {
   contadorNuevasAsignadas,
   punteroALaOtraPestana,
@@ -34,10 +38,12 @@ import {
   VACIO_GRUPO_HOY,
   VACIO_GRUPO_OTRO_DIA,
 } from "./recoger-grupos";
+import { filtrarPorTienda } from "./filtro-tienda";
+import { useFiltroTienda } from "./useFiltroTienda";
 import { RecogerPaqueteCard } from "./RecogerPaqueteCard";
 import { PosOrderCardDetalle } from "./pos-card/PosOrderCardDetalle";
 import { PosOrderCardMosaico } from "./pos-card/PosOrderCardMosaico";
-import { VistaCardsToggle, type VistaCards } from "./VistaCardsToggle";
+import { CONMUTADOR_EN_SU_LINEA_MOVIL, VistaCardsToggle, type VistaCards } from "./VistaCardsToggle";
 import { CLASE_FASE, useTransicionVista } from "./useTransicionVista";
 
 // 2026-07-31 (decisión del humano) — pantalla POR RECOGER del mensajero. Es la mitad que
@@ -101,14 +107,6 @@ export interface RecogerModuleProps {
   bloqueo: BloqueoDetalle;
 }
 
-// Feature 114: textos del buscador (separados para i18n futura, lenguaje claro). La
-// región y la etiqueta del campo son DISTINTAS a propósito: si coincidieran, el nombre
-// accesible del `searchbox` (de su `<label>`) chocaría con el de la región.
-const BUSCADOR_REGION = "Buscar guías para recoger";
-const BUSCADOR_LABEL = "Buscar guías";
-const BUSCADOR_PLACEHOLDER =
-  "Filtra por número de guía, remisión, teléfono o nombre";
-
 // Feature 277 (R28): los nombres accesibles de esta pantalla son los TRES distintos —la región
 // sigue siendo «Por recoger», el buscador conserva el suyo y el grupo de pestañas estrena el de
 // abajo—. Si coincidieran, el nombre accesible de uno chocaría con el de otro.
@@ -151,8 +149,14 @@ export function RecogerModule({
   // Feature 114: texto del buscador. Estado de UI EFÍMERO, de un solo consumidor.
   // `buscando` distingue "hay búsqueda activa" de "grupo vacío".
   const [query, setQuery] = useState("");
-  const buscarId = useId();
-  const buscando = query.trim() !== "";
+
+  // SLT-190 (R850-R854, DS1, DS2): el filtro «Tienda». Se trata como el término: filtra lo que se
+  // ve en las DOS pestañas, no toca contadores ni lo que acepta el escáner (que mira `porRecoger`
+  // completo), y cuenta como búsqueda activa para el vacío y el puntero a la otra pestaña.
+  // SLT-206: el estado y el control, compartidos con Recolección (`useFiltroTienda`).
+  const { tienda, barra: barraTienda, control: controlTienda } = useFiltroTienda(porRecoger);
+
+  const buscando = query.trim() !== "" || tienda !== "";
 
   // Feature 277 (R12/R13): la pestaña activa, tercer estado EFÍMERO de esta pantalla, con el
   // mismo criterio que los otros dos (no sube a la URL: nadie enlaza una pestaña, y un `?tab=`
@@ -170,13 +174,14 @@ export function RecogerModule({
   // destinatario (parcial, insensible a mayúsculas/acentos) y se aplica a LOS DOS grupos, no sólo
   // al que esté a la vista. Si mirara sólo el activo, teclear la guía de una orden de otro día
   // respondería «ninguna coincide» — que es falso, y el mensajero la tiene en la mano.
+  // SLT-190 (R851): y sobre su salida, la tienda (término AND tienda), también en los dos grupos.
   const hoyFiltrado = useMemo<MiAsignacionDTO[]>(
-    () => filtrarAsignaciones(grupos.hoy, query),
-    [grupos.hoy, query],
+    () => filtrarPorTienda(filtrarAsignaciones(grupos.hoy, query), tienda),
+    [grupos.hoy, query, tienda],
   );
   const otroDiaFiltrado = useMemo<MiAsignacionDTO[]>(
-    () => filtrarAsignaciones(grupos.otroDia, query),
-    [grupos.otroDia, query],
+    () => filtrarPorTienda(filtrarAsignaciones(grupos.otroDia, query), tienda),
+    [grupos.otroDia, query, tienda],
   );
 
   /**
@@ -193,14 +198,24 @@ export function RecogerModule({
     orden: MiAsignacionDTO,
     vista: VistaCards,
     total: number,
+    posicion: number,
   ) {
-    const CardVista =
-      vista === "mosaico" ? PosOrderCardMosaico : PosOrderCardDetalle;
-    return (
-      <CardVista
+    // SLT-156 (R517): en Detalle, la misma tarjeta compacta de Reparto (sin acciones).
+    // SLT-190 (R855, R857): numerada por su posición en la lista visible de su pestaña.
+    return vista === "mosaico" ? (
+      <PosOrderCardMosaico
         orden={orden}
         total={total}
         mostrarRuta={false}
+        posicion={posicion}
+      />
+    ) : (
+      <PosOrderCardDetalle
+        orden={orden}
+        total={total}
+        mostrarRuta={false}
+        posicion={posicion}
+        compacta
       />
     );
   }
@@ -254,7 +269,12 @@ export function RecogerModule({
             singular="Orden"
             plural="Órdenes"
             renderItem={(orden) =>
-              renderCardPorRecoger(orden, "mosaico", visibles.length)
+              renderCardPorRecoger(
+                orden,
+                "mosaico",
+                visibles.length,
+                visibles.indexOf(orden) + 1,
+              )
             }
           />
         </div>
@@ -269,9 +289,9 @@ export function RecogerModule({
         aria-label={listadoLabel}
         className={`flex flex-col gap-3 ${CLASE_FASE[faseVista]}`}
       >
-        {visibles.map((orden) => (
+        {visibles.map((orden, i) => (
           <li key={orden.id}>
-            {renderCardPorRecoger(orden, "detalle", visibles.length)}
+            {renderCardPorRecoger(orden, "detalle", visibles.length, i + 1)}
           </li>
         ))}
       </ul>
@@ -302,6 +322,8 @@ export function RecogerModule({
           Feature 277 (R22): COMPLETO también quiere decir LAS DOS PESTAÑAS. Con sólo órdenes de
           otro día la tarjeta se queda, y el rechazo dice el motivo real con su fecha (261/R13);
           retirarla ahí sería repetir el fallo que abrió la 167 con otro disfraz. */}
+      {/* SLT-156 (R500, R518): el disparador «Escanear o escribir guía», bajo el encabezado y
+          encima de la barra, en la misma posición que en Reparto y Recolección. */}
       {bloqueado || porRecoger.length === 0 ? null : (
         <RecogerPaqueteCard
           porRecoger={porRecoger}
@@ -314,34 +336,32 @@ export function RecogerModule({
           recoger" y repetirlo debajo sería ruido. El nombre accesible se conserva porque
           es por donde la región se identifica (y por donde la buscan los tests). */}
       <section aria-label="Recoger en bodega" className="flex flex-col gap-3">
-        {/* Buscador y conmutador de vista comparten fila: son los dos controles de la
-            lista. En pantallas angostas se apilan (`flex-col`) para que el input no se
-            estruje; desde `sm` van en la MISMA línea, el input ocupando el espacio libre
-            y el conmutador alineado a su base. Es un filtro puro de cliente, así que
-            permanece visible aunque el mensajero esté bloqueado. Y va ARRIBA de las pestañas
-            porque es UNO SOLO para los dos grupos (277/R18/R19). */}
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:gap-3">
-          <section
-            aria-label={BUSCADOR_REGION}
-            className="flex min-w-0 flex-1 flex-col gap-1"
-          >
-            <label htmlFor={buscarId} className="text-sm font-medium">
-              {BUSCADOR_LABEL}
-            </label>
-            <Input
-              id={buscarId}
-              type="search"
-              autoComplete="off"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder={BUSCADOR_PLACEHOLDER}
+        {/* SLT-156 (R495, R496, R506, R518): UNA barra, pegada arriba mientras se desplaza la
+            lista (la sección la contiene entera, así que `sticky` la acompaña hasta el final).
+            Filtro puro de cliente sobre la lista en memoria: sin debounce y sin URL, y se queda
+            aunque el mensajero esté bloqueado. Va ARRIBA de las pestañas porque es UNA SOLA para
+            los dos grupos (277/R18/R19). */}
+        <BuscadorFiltros
+          label={BUSCADOR_GUIAS_LABEL}
+          placeholder={BUSCADOR_GUIAS_PLACEHOLDER}
+          onChange={setQuery}
+          debounceMs={0}
+          leerDeUrl={false}
+          // SLT-190 (R850-R852): el filtro «Tienda» con el selector de siempre (P2).
+          {...barraTienda}
+          fija
+          tactil
+          // SLT-190 (R859): el conmutador Mosaico/Detalle va en la barra fija, tras «Filtros».
+          trasFiltros={
+            <VistaCardsToggle
+              vista={vistaCardsPedida}
+              onVistaChange={cambiarVista}
+              className={CONMUTADOR_EN_SU_LINEA_MOVIL}
             />
-          </section>
-          <VistaCardsToggle
-            vista={vistaCardsPedida}
-            onVistaChange={cambiarVista}
-          />
-        </div>
+          }
+        >
+          {controlTienda}
+        </BuscadorFiltros>
 
         {/* ---------- Los dos grupos, feature 277 ---------- */}
         {/* SIN `keepMounted` a propósito: no hay nada dentro de un panel que valga la pena
@@ -356,14 +376,19 @@ export function RecogerModule({
           value={grupoActivo}
           onValueChange={(siguiente) => setGrupoActivo(siguiente as Grupo)}
         >
-          <TabsList aria-label={TABLIST_LABEL}>
-            <TabsTrigger value="hoy">
-              {`${PESTANA_PARA_RECOGER_HOY} (${grupos.hoy.length})`}
-            </TabsTrigger>
-            <TabsTrigger value="otro-dia">
-              {`${PESTANA_PARA_OTRO_DIA} (${grupos.otroDia.length})`}
-            </TabsTrigger>
-          </TabsList>
+          {/* Las pestañas, a 44 px en el móvil (R493); desde `md`, el alto de prod (SLT-202, Carlos
+              2026-11-18). SLT-190 (R859): el conmutador de vista ya no va en esta
+              fila, sino en la barra fija. */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <TabsList aria-label={TABLIST_LABEL} className="w-auto flex-wrap">
+              <TabsTrigger value="hoy" className="max-md:min-h-11">
+                {`${PESTANA_PARA_RECOGER_HOY} (${grupos.hoy.length})`}
+              </TabsTrigger>
+              <TabsTrigger value="otro-dia" className="max-md:min-h-11">
+                {`${PESTANA_PARA_OTRO_DIA} (${grupos.otroDia.length})`}
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
           <TabsContent value="hoy" className="flex flex-col gap-3">
             {/* Banner con el contador de nuevas, DENTRO del panel que cuenta (277/R15/R17). El

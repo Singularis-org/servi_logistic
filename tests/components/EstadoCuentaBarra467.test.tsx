@@ -250,7 +250,12 @@ describe("467 R2/R4/R9/R23 — la fila", () => {
     const alto = (el: Element) => el.className.split(/\s+/).includes("h-8");
     expect(alto(screen.getByRole("combobox", { name: "Tipo de movimiento" }))).toBe(true);
     expect(alto(cierreBoton() as HTMLElement)).toBe(true);
+    // SLT-160 (R771, DC2 de Carlos): con `escaneo` el buscador mide 44 px. SLT-202 «Escritorio igual a
+    // prod: tamaños de controles y un solo botón de recibir» (Carlos, 2026-11-18): solo en el móvil; en
+    // escritorio vuelve al `h-8` de los disparadores, alineado con ellos.
     expect(alto(buscador().parentElement as HTMLElement)).toBe(true);
+    expect(buscador().parentElement).toHaveClass("max-md:h-11");
+    expect(buscador().parentElement).not.toHaveClass("h-11");
   });
 });
 

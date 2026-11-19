@@ -160,39 +160,34 @@ const SUR_ENTREGA = gestion(
 const CIERRE_DOS_TIENDAS = [NORTE_ENTREGA, NORTE_RECHAZO, SUR_ENTREGA];
 
 /**
- * Las SEIS cifras del cierre de arriba, escritas a mano una a una. Este bloque ES EL CONTRATO:
+ * Las CUATRO cifras del cierre de arriba, escritas a mano una a una. Este bloque ES EL CONTRATO:
  * si alguien lo sustituyera por la salida de `partesPorTienda`, todos los tests de abajo
  * quedarían siempre verdes y no comprobarían nada.
  *
  * Desde SLT-169 (R621) `pagoTienda` resta TODO lo facturado a la tienda, flete por rechazo
- * incluido, y `ganaLaTienda` es su alias de igual valor:
+ * incluido (SLT-174 retiró el campo que la duplicaba):
  *
  *   Norte · recaudado 100.000,00
  *           pagoTienda    100.000,00 − (6.215,00 + 1.695,00) = 92.090,00
- *           ganaLaTienda  92.090,00 (alias)
  *   Sur   · recaudado  40.000,00
  *           pagoTienda     40.000,00 − 3.616,00 = 36.384,00
- *           ganaLaTienda   36.384,00 (alias)
  *
  * (Con la definición anterior —sin el flete por rechazo— Norte daba 93.785,00.)
  */
 const NORTE_RECAUDADO = "100000.00";
 const NORTE_PAGO = "92090.00";
-const NORTE_GANA = "92090.00";
 
 const SUR_RECAUDADO = "40000.00";
 const SUR_PAGO = "36384.00";
-const SUR_GANA = "36384.00";
 
 /** Y los agregados del MISMO cierre, también a mano. */
 const AGREGADO_RECAUDADO = "140000.00"; // 100.000,00 + 40.000,00
 const AGREGADO_PAGO = "128474.00"; // 140.000,00 − 11.526,00 (SLT-169: todo lo facturado)
-const AGREGADO_GANA = "128474.00"; // 140.000,00 − 11.526,00
 
 /* -------------------------------------------------------------------------- */
 
-describe("396/R4 — dos tiendas, sus TRES cifras cada una", () => {
-  it("emite una parte por tienda con recaudado, pagoTienda y ganaLaTienda", () => {
+describe("396/R4 — dos tiendas, sus cifras cada una", () => {
+  it("emite una parte por tienda con recaudado y pagoTienda", () => {
     const partes = partesPorTienda(CIERRE_DOS_TIENDAS);
 
     expect(partes).toHaveLength(2);
@@ -202,14 +197,12 @@ describe("396/R4 — dos tiendas, sus TRES cifras cada una", () => {
         tiendaNombre: "Tienda Norte",
         recaudado: NORTE_RECAUDADO,
         pagoTienda: NORTE_PAGO,
-        ganaLaTienda: NORTE_GANA,
       },
       {
         tiendaId: "t-sur",
         tiendaNombre: "Tienda Sur",
         recaudado: SUR_RECAUDADO,
         pagoTienda: SUR_PAGO,
-        ganaLaTienda: SUR_GANA,
       },
     ]);
   });
@@ -241,7 +234,6 @@ describe("396/R4 — dos tiendas, sus TRES cifras cada una", () => {
       tiendaNombre: "Tienda Sur",
       recaudado: SUR_RECAUDADO,
       pagoTienda: SUR_PAGO,
-      ganaLaTienda: SUR_GANA,
     });
   });
 });
@@ -259,18 +251,6 @@ describe("396/R10 · SLT-169 R621 — la suma de lo que se paga a cada tienda ES
     const todas = totalesIngresoEmpresa(CIERRE_DOS_TIENDAS);
     const agregado = ganaLaTienda(computeTotales(CIERRE_DOS_TIENDAS).general, todas.total);
     expect(agregado).toBe(AGREGADO_PAGO);
-  });
-});
-
-describe("396/R11 — la suma de lo que gana cada tienda ES el agregado", () => {
-  it("Σ ganaLaTienda === «lo que gana la tienda» del cierre entero, al céntimo", () => {
-    const partes = partesPorTienda(CIERRE_DOS_TIENDAS);
-
-    expect(suma(partes.map((p) => p.ganaLaTienda))).toBe(AGREGADO_GANA);
-
-    const todas = totalesIngresoEmpresa(CIERRE_DOS_TIENDAS);
-    const agregado = ganaLaTienda(computeTotales(CIERRE_DOS_TIENDAS).general, todas.total);
-    expect(agregado).toBe(AGREGADO_GANA);
   });
 });
 
@@ -295,12 +275,6 @@ describe("SLT-169 R621 — por tienda, lo que se le paga resta SU flete por rech
     expect(norte).toBeDefined();
     expect(norte!.pagoTienda).toBe("92090.00");
     expect(norte!.pagoTienda).not.toBe("93785.00");
-  });
-
-  it("y `ganaLaTienda` es alias de igual valor en las dos tiendas", () => {
-    for (const p of partesPorTienda(CIERRE_DOS_TIENDAS)) {
-      expect(p.ganaLaTienda).toBe(p.pagoTienda);
-    }
   });
 
   it("el orden es por la cifra NUEVA: los rechazos pueden bajar a una tienda por debajo de otra", () => {
@@ -371,7 +345,6 @@ describe("396/R9 — la tienda que sólo trajo RECHAZOS entra igual, y cuenta", 
       tiendaNombre: "Tienda Este",
       recaudado: "0.00",
       pagoTienda: "-1130.00",
-      ganaLaTienda: "-1130.00",
     });
   });
 
@@ -436,12 +409,12 @@ describe("396/R8 — el orden lo fija el servidor: pagoTienda DESCENDENTE", () =
   });
 });
 
-describe("396/R5 y R16 — TRES cifras por tienda, y ni una más", () => {
-  it("cada parte tiene EXACTAMENTE cinco claves", () => {
+describe("396/R5 y R16 — dos cifras por tienda, y ni una más", () => {
+  it("SLT-174 R652: cada parte tiene EXACTAMENTE cuatro claves, sin `ganaLaTienda`", () => {
     const partes = partesPorTienda(CIERRE_DOS_TIENDAS);
     for (const parte of partes) {
+      expect(parte).not.toHaveProperty("ganaLaTienda");
       expect(Object.keys(parte).sort()).toEqual([
-        "ganaLaTienda",
         "pagoTienda",
         "recaudado",
         "tiendaId",
@@ -468,10 +441,10 @@ describe("396/R5 y R16 — TRES cifras por tienda, y ni una más", () => {
 });
 
 describe("396/R14 — money-safe: todo STRING de escala 2, con su signo", () => {
-  it("las tres cifras de cada parte son cadenas con exactamente dos decimales", () => {
+  it("las cifras de cada parte son cadenas con exactamente dos decimales", () => {
     const partes = partesPorTienda([...CIERRE_DOS_TIENDAS]);
     for (const parte of partes) {
-      for (const cifra of [parte.recaudado, parte.pagoTienda, parte.ganaLaTienda]) {
+      for (const cifra of [parte.recaudado, parte.pagoTienda]) {
         expect(typeof cifra).toBe("string");
         expect(cifra).toMatch(/^-?\d+\.\d{2}$/);
       }
@@ -498,7 +471,6 @@ describe("396 — la gestión SIN tarifa congelada (gap conocido de la feature 6
       // Sin conceptos derivados no hay nada que descontar: se le paga todo lo recaudado, y las
       // dos cifras coinciden porque tampoco hay flete por devolución a origen.
       pagoTienda: "7000.00",
-      ganaLaTienda: "7000.00",
     });
   });
 });

@@ -8,6 +8,8 @@ import userEvent from "@testing-library/user-event";
 import { PlanForm } from "@/app/(app)/plataforma/planes/_components/PlanForm";
 import type { PlanDTO, PlanResult } from "@/lib/types/planes";
 
+import { avanzarHasta, terminar, conBorrador, conBorradorDeCambio } from "./plan-form-pasos";
+
 const PLAN_ID = "0b6f3a2e-1c4d-4e5f-8a9b-0c1d2e3f4a5b";
 const RANGO = { hoy: "2026-11-10", min: "2026-10-10", max: "2026-12-10" };
 const OK: PlanResult = { estado: "ok", planId: PLAN_ID, cambio: true, avisos: [], vigenteDesde: null };
@@ -36,7 +38,7 @@ function montarCrear(enviar = vi.fn().mockResolvedValue(OK)) {
       inicioCicloPorDefecto="2026-11-11"
       rangoInicioCiclo={RANGO}
       rangoFechaDeEfecto={RANGO}
-      enviar={enviar}
+      {...conBorrador(enviar)}
       previsualizar={vi.fn().mockResolvedValue({ estado: "ok", avisos: [] })}
       onGuardado={vi.fn()}
     />,
@@ -45,15 +47,18 @@ function montarCrear(enviar = vi.fn().mockResolvedValue(OK)) {
 }
 
 function montarEditar(plan: PlanDTO = PLAN, enviar = vi.fn().mockResolvedValue(OK)) {
-  render(<PlanForm modo="editar" plan={plan} enviar={enviar} onGuardado={vi.fn()} />);
+  render(<PlanForm modo="editar" plan={plan} {...conBorradorDeCambio(enviar)} onGuardado={vi.fn()} />);
   return { enviar };
 }
 
 const grupo = () => screen.getByRole("radiogroup", { name: "Facturación de órdenes" });
 
 describe("SLT-118 R35 — «Facturación de órdenes» en el formulario del plan", () => {
-  it("R35: ofrece «Quincenal» y «Mensual», con quincenal marcada al crear", () => {
+  it("R35: ofrece «Quincenal» y «Mensual», con quincenal marcada al crear", async () => {
+    const user = userEvent.setup();
     montarCrear();
+    await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Plan Norte");
+    await avanzarHasta(user, "Cobro por orden");
     expect(within(grupo()).getAllByRole("radio").map((r) => r.closest("label")?.textContent)).toEqual([
       "Quincenal",
       "Mensual",
@@ -61,25 +66,34 @@ describe("SLT-118 R35 — «Facturación de órdenes» en el formulario del plan
     expect(within(grupo()).getByRole("radio", { name: "Quincenal" })).toBeChecked();
   });
 
-  it("R35: al crear manda quincenal si no se toca y la elegida si se cambia", async () => {
+  // SLT-144 (design §4.4): tras el `ok` el formulario queda en vuelo hasta desmontarse, así que no se puede
+  // confirmar dos veces en el mismo montaje. El caso se parte en dos montajes.
+  it("R35: al crear manda quincenal si no se toca", async () => {
     const user = userEvent.setup();
     const { enviar } = montarCrear();
     await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Plan Norte");
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+    await terminar(user);
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
     expect(enviar.mock.calls[0]![0].periodicidadOrdenes).toBe("quincenal");
+  });
 
+  it("R35: al crear manda la elegida si se cambia", async () => {
+    const user = userEvent.setup();
+    const { enviar } = montarCrear();
+    await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Plan Norte");
+    await avanzarHasta(user, "Cobro por orden");
     await user.click(within(grupo()).getByRole("radio", { name: "Mensual" }));
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
-    await waitFor(() => expect(enviar).toHaveBeenCalledTimes(2));
-    expect(enviar.mock.calls[1]![0].periodicidadOrdenes).toBe("mensual");
+    await terminar(user);
+    await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
+    expect(enviar.mock.calls[0]![0].periodicidadOrdenes).toBe("mensual");
   });
 
   it("R35: al editar marca la del plan y la manda aunque no se toque", async () => {
     const user = userEvent.setup();
     const { enviar } = montarEditar();
+    await avanzarHasta(user, "Cobro por orden");
     expect(within(grupo()).getByRole("radio", { name: "Mensual" })).toBeChecked();
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await terminar(user);
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
     expect(enviar.mock.calls[0]![0]).toMatchObject({ planId: PLAN_ID, periodicidadOrdenes: "mensual" });
   });
@@ -89,9 +103,10 @@ describe("SLT-118 R35 — «Facturación de órdenes» en el formulario del plan
     const sinPeriodicidad: PlanDTO = { ...PLAN };
     delete sinPeriodicidad.periodicidadOrdenes;
     const { enviar } = montarEditar(sinPeriodicidad);
+    await avanzarHasta(user, "Cobro por orden");
     expect(within(grupo()).getByRole("radio", { name: "Quincenal" })).toBeChecked();
     await user.click(within(grupo()).getByRole("radio", { name: "Mensual" }));
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await terminar(user);
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
     expect(enviar.mock.calls[0]![0].periodicidadOrdenes).toBe("mensual");
   });
@@ -104,7 +119,7 @@ describe("SLT-118 R35 — «Facturación de órdenes» en el formulario del plan
       fieldErrors: { periodicidadOrdenes: [mensaje] },
     } satisfies PlanResult);
     montarEditar(PLAN, enviar);
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await terminar(user);
 
     // Va junto a su campo (su `FieldError`, enlazado por `aria-describedby`), no al aviso general.
     const error = (await screen.findByText(mensaje)).closest<HTMLElement>('[role="alert"]');

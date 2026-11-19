@@ -62,30 +62,30 @@
 
 ## Rebanada B — Reparto (R500 en Reparto, R502-R516)
 
-- [ ] **B1 [P] KPI 2×2 (R502).** `MA/KpisMensajero.tsx`. *Hecho:*
+- [x] **B1 [P] KPI 2×2 (R502).** `MA/KpisMensajero.tsx`. *Hecho:*
   `tests/components/KpisMensajero.test.tsx` comprueba `grid-cols-2` sin `grid-cols-1`.
   *Mutación:* volver `grid-cols-1` → rojo.
-- [ ] **B2 [P] Botones de tarjeta a 44 px (R493).** `MA/GestionarOrdenCardButton.tsx`,
+- [x] **B2 [P] Botones de tarjeta a 44 px (R493).** `MA/GestionarOrdenCardButton.tsx`,
   `MA/MarcarLuegoToggle.tsx`, `MA/RecuperarAyudaButton.tsx`, «Conversación» en
   `MA/RepartoModule.tsx`: `size="touch"`. Extraer `MA/ConfirmarGestionDialog.tsx` (diálogo
   «¿Gestionar esta orden?» controlado). *Hecho:* test de componente con los cuatro botones `h-11`.
   *Mutación:* `size="sm"` en uno → rojo.
-- [ ] **B3 `BuscadorFiltros` en Reparto (R495, R505, R506).** Depende de A4. `MA/RepartoModule.tsx`
+- [x] **B3 `BuscadorFiltros` en Reparto (R495, R505, R506).** Depende de A4. `MA/RepartoModule.tsx`
   y `MA/FiltroCantonDistrito.tsx` como `children`. *Hecho:* `tests/components/RepartoModule.test.tsx`:
   un solo `searchbox`, placeholder «Guía, remisión, teléfono o nombre», «Filtros» ofrece «Cantón» y
   «Distrito», distrito deshabilitado sin cantón, cambiar cantón vacía distrito, búsqueda por
   teléfono filtra. *Mutación:* no resetear distrito → rojo.
-- [ ] **B4 Orden, lista primero, Mosaico, avisos en una línea (R503, R504, R507, R509).**
+- [x] **B4 Orden, lista primero, Mosaico, avisos en una línea (R503, R504, R507, R509).**
   `MA/RepartoModule.tsx`. *Hecho:* test nuevo `tests/components/RepartoMovil.test.tsx`: orden de
   secciones por `compareDocumentPosition`; sin región «Detalle de la orden» fuera de foco; vista
   inicial Mosaico; aviso de ruta en una fila con «Ver más» (`aria-expanded=false`) y descripción
   oculta hasta tocarlo.
   *Mutaciones:* volver el panel inline; vista inicial «detalle» → rojo.
-- [ ] **B5 Detalle compacto (R508).** `MA/pos-card/PosOrderCardDetalle.tsx`. *Hecho:* test con la
+- [x] **B5 Detalle compacto (R508).** `MA/pos-card/PosOrderCardDetalle.tsx`. *Hecho:* test con la
   fila principal: parada, guía, destinatario y «Valor a cobrar» con `COLUMNA_FIJA`; al tocar,
   dirección y «Gestionar más tarde» / «Gestionar».
   *Mutación:* quitar `COLUMNA_FIJA` del monto → rojo.
-- [ ] **B6 Modo foco con «Confirmar guía» (R510-R513).** Depende de B2. `MA/RepartoModule.tsx`
+- [x] **B6 Modo foco con «Confirmar guía» (R510-R513).** Depende de B2. `MA/RepartoModule.tsx`
   (`ordenEnFocoId`), `MA/GestionarOrdenPanel.tsx` (`verificacionAbierta`, sin CTA pegajoso),
   `MA/VerificarGuiaGate.tsx` («Confirmar guía»). *Hecho:* test nuevo
   `tests/components/RepartoModoFoco.test.tsx`: tras «Gestionar» + «Aceptar» solo hay el panel, el
@@ -96,13 +96,13 @@
   `RepartoModule477Correccion.test.tsx` y `ChatContactoAntesDeRecoger.test.tsx` actualizados.
   *Mutaciones:* dejar el CTA «Gestionar esta orden»; «Volver a la lista» que llama a
   `gestionarPedido` → rojo.
-- [ ] **B7 Escáner de la lista (R500, R514-R516).** Desbloqueada: decisión del leader 2026-11-14 (C1, C3). Depende de A6, B6. `MA/EscanerGuiaReparto.tsx`
+- [x] **B7 Escáner de la lista (R500, R514-R516).** Desbloqueada: decisión del leader 2026-11-14 (C1, C3). Depende de A6, B6. `MA/EscanerGuiaReparto.tsx`
   y `MA/reparto-escaner.ts` (`ordenPorGuia`). *Hecho:* `tests/unit/utils/reparto-escaner.test.ts`
   (encuentra por guía; ignora las de ayuda; `null` si no está) y
   `tests/components/EscanerGuiaReparto.test.tsx` (guía propia → diálogo → foco en «¿Cómo terminó
   la gestión?»; ajena → «La guía {n} no está en tu lista de reparto.»; bloqueado → sin
   disparador). *Mutación:* `ordenPorGuia` que incluye las de ayuda → rojo.
-- [ ] **B8 E2E de Reparto a 360 px.** Depende de B1-B7. `e2e/pwa-mensajero-reparto.spec.ts`
+- [x] **B8 E2E de Reparto a 360 px.** Depende de B1-B7. `e2e/pwa-mensajero-reparto.spec.ts`
   (KPI en 2 columnas, sin desborde ni «…» con el destinatario largo, botones ≥ 44, Gestionar →
   foco → Confirmar guía → resultado). Actualizar `e2e/mis-asignaciones.spec.ts`,
   `e2e/tope-intentos-por-empresa.spec.ts` y `e2e/reintentos-escalado.spec.ts` al flujo nuevo;
@@ -111,18 +111,18 @@
 
 ## Rebanada C — Recoger en bodega y Recolección (R500, R506, R516, R517-R522)
 
-- [ ] **C1 [P] Recoger en bodega (R517, R518, R521, R522).** `MA/RecogerModule.tsx`,
+- [x] **C1 [P] Recoger en bodega (R517, R518, R521, R522).** `MA/RecogerModule.tsx`,
   `MA/RecogerPaqueteCard.tsx` (`ESCANER_LABEL_GUIA`). *Hecho:* `tests/components/RecogerModule.test.tsx`
   (orden de secciones; un solo `BuscadorFiltros` fijo; placeholder; Mosaico inicial; vacío de
   búsqueda) y `RecogerPaqueteCard.test.tsx`, `RecogerModuleRefrescoAlVolver.test.tsx` actualizados.
   *Mutación:* escáner debajo del buscador → rojo.
-- [ ] **C2 [P] Recolección (R517, R519-R522).** `app/(app)/recoleccion/_components/RecoleccionModule.tsx`,
+- [x] **C2 [P] Recolección (R517, R519-R522).** `app/(app)/recoleccion/_components/RecoleccionModule.tsx`,
   `RecolectadasHoyLista.tsx`; reutilizar `MA/mis-asignaciones-buscador.ts` (generalizar la firma si
   hace falta). *Hecho:* `tests/components/RecoleccionModule.test.tsx`: el término filtra las dos
   listas; vacío de búsqueda distinto del vacío sin órdenes; Mosaico inicial; bloqueado sin
   disparador. `RecoleccionPage.test.tsx` actualizado. *Mutación:* filtrar solo «Por recolectar» →
   rojo.
-- [ ] **C3 E2E a 360 px.** Depende de C1-C2. `e2e/pwa-mensajero-recoger-recoleccion.spec.ts` (las dos
+- [x] **C3 E2E a 360 px.** Depende de C1-C2. `e2e/pwa-mensajero-recoger-recoleccion.spec.ts` (las dos
   pantallas con textos largos, sin desborde ni «…», búsqueda en Recolección). Añadir archivos de C
   a la guardia. *Hecho:* verde en local. *Mutación:* `truncate` en `RecolectadasHoyLista` → rojo.
 
@@ -167,22 +167,25 @@
 
 ## Rebanada E — mapa de ruta (R539-R544)
 
-- [ ] **E1 [P] Marcadores con la paleta (R539).** `MA/ruta-mapa-iconos.ts`, `MA/RutaMapaInner.tsx`.
+- [x] **E1 [P] Marcadores con la paleta (R539).** `MA/ruta-mapa-iconos.ts`, `MA/RutaMapaInner.tsx`.
   *Hecho:* `tests/unit/utils/ruta-mapa-iconos.test.ts`: el HTML usa `var(--navy)`,
   `var(--brand-light)`, `var(--success)` y ningún `#hex`. *Mutación:* `#2563eb` → rojo.
-- [ ] **E2 [P] Carrusel → mapa (R542).** `components/shared/CarruselCards.tsx` (`onIndiceChange`),
+  > Desviación aceptada (leader, 2026-11-15; ver progress/features/SLT-166.md): esas tres variables no existen en `app/globals.css`; los marcadores usan
+  > `--color-brand-light`, `--color-brand-dark`, `--color-asfalto-4`, `--color-success` y `--color-white`.
+- [x] **E2 [P] Carrusel → mapa (R542).** `components/shared/CarruselCards.tsx` (`onIndiceChange`),
   `MA/RepartoModule.tsx`, `MA/RutaMapa.tsx`. *Hecho:* `tests/components/CarruselCards.test.tsx`
   (emite el índice al cambiar) y `RutaMapaInner.test.tsx` (con `paradaActivaId` llama `panTo`).
   *Mutación:* no emitir en `select` → rojo.
-- [ ] **E3 Hoja inferior y pantalla completa (R540, R541, R543, R544).** Depende de E1.
+- [x] **E3 Hoja inferior y pantalla completa (R540, R541, R543, R544).** Depende de E1.
   `MA/HojaParadaMapa.tsx`, `MA/RutaMapaInner.tsx`, `MA/RepartoModule.tsx`. *Hecho:* test nuevo
   `tests/components/HojaParadaMapa.test.tsx` (datos de la parada, «Navegar» → «Abrir en:» y
   «Gestionar» → diálogo) y `RutaMapaInner.test.tsx` («Ver mapa completo» alterna clase y llama
   `invalidateSize`; «Cerrar» vuelve; «Centrar en mi ubicación» con `aria-label`; parada sin
   coordenadas fuera). *Mutación:* no llamar `invalidateSize` → rojo.
-- [ ] **E4 E2E a 360 px.** Depende de E1-E3. `e2e/pwa-mensajero-mapa.spec.ts` (mapa abierto sin
+- [x] **E4 E2E a 360 px.** Depende de E1-E3. `e2e/pwa-mensajero-mapa.spec.ts` (mapa abierto sin
   desborde; marcador → hoja; pantalla completa y vuelta; «Mostrar mapa» ≥ 44). Archivos de E en la
-  guardia. *Hecho:* verde en local. *Mutación:* `size="xs"` en «Mostrar mapa» → rojo.
+  guardia. *Hecho:* verde en local. *Mutación:* `size="xs"` en «Mostrar mapa» → rojo. *(SLT-166: hecho y
+  verificado; variables y desviaciones en `progress/impl_SLT-166.md`.)*
 
 ## Trazabilidad prevista (R → test)
 

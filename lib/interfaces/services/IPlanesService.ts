@@ -10,6 +10,7 @@ import type {
   PlanResult,
   PreciosQueRigenResult,
   VistaPreviaAsignacionResult,
+  VistaPreviaCambioResult,
   VistaPreviaCustomResult,
 } from "@/lib/types/planes";
 
@@ -21,13 +22,16 @@ import type {
 // servidor, que ya resolvieron el actor; no hay action de lectura. Cualquier otro rol: `forbidden` sin
 // leer nada (R22). La excepción es la vista previa de la primera asignación (§11.4), que sí tiene action.
 
+/** SLT-129 (design §5.3): confirmar un borrador; sin opciones, el comportamiento de hoy (R21). */
+export type OpcionesDeBorrador = { borradorId: string };
+
 export interface IPlanesService {
-  crear(actor: Actor | null, input: unknown): Promise<PlanResult>;
+  crear(actor: Actor | null, input: unknown, opciones?: OpcionesDeBorrador): Promise<PlanResult>;
   /**
-   * De inmediato (`vigenteDesde: null`) o programada (R37, T11). SLT-86 (R22): un cambio de costo base o de
-   * descuento lleva fecha `≥ hoy`; la de hoy se aplica en el acto.
+   * SLT-135 (R1–R9): siempre programada (SLT-128) con `vigenteDesde` obligatoria y `≥ hoy`, cambie el precio
+   * o no; con la de hoy, cada empresa que empieza período hoy lo recibe en la siguiente pasada de la cola.
    */
-  editar(actor: Actor | null, input: unknown): Promise<PlanResult>;
+  editar(actor: Actor | null, input: unknown, opciones?: OpcionesDeBorrador): Promise<PlanResult>;
   archivar(actor: Actor | null, input: unknown): Promise<PlanResult>;
   /**
    * SLT-58 (R29–R31, R36, R42): `inicioCiclo` opcional, solo en la primera asignación. SLT-86 (R16):
@@ -38,6 +42,11 @@ export interface IPlanesService {
   previsualizarAsignacion(actor: Actor | null, input: unknown): Promise<VistaPreviaAsignacionResult>;
   /** Ajuste planes-custom (D13): `{ organizacionId, inicioCiclo, topes }`; solo lee. */
   previsualizarCustom(actor: Actor | null, input: unknown): Promise<VistaPreviaCustomResult>;
+  /**
+   * SLT-144 (design §3.1; R21, R22): `{ planId, vigenteDesde, topes }`; la fecha en que cada empresa del plan
+   * recibiría el cambio y los topes que ya pasa, como los dejaría programar. Solo lee.
+   */
+  previsualizarCambio(actor: Actor | null, input: unknown): Promise<VistaPreviaCambioResult>;
   /**
    * Ajuste planes-custom (D10): `{ organizacionId, tipoCobro, vigenteDesde }`; solo el tipo de cobro del
    * plan actual, desde la fecha de efecto (SLT-86 R16, R17).

@@ -45,6 +45,13 @@ export const periodicidadOrdenesSchema = z.enum(PERIODICIDADES_ORDENES);
 export const TIPO_QUINCENAL_CON_ORDENES_MENSUALES =
   "Un plan con facturación de órdenes mensual no admite el tipo de cobro quincenal: la cuota del 16 no tendría factura que la emita.";
 
+/**
+ * SLT-86 (R16): error del campo `vigenteDesde` cuando falta en un cambio a una empresa con plan. SLT-135 (R1):
+ * también cuando falta al editar un plan. Vive aquí, y `lib/planes/mensajes.ts` la reexporta, porque la usa
+ * `editarPlanSchema` y ese módulo importa valores de este.
+ */
+export const FECHA_DE_EFECTO_OBLIGATORIA = "Elige desde qué fecha rige el cambio.";
+
 /** SLT-86 (R10): el descuento de UN período, en porcentaje o en monto fijo; nunca los dos. */
 export type DescuentoPeriodo = { tipo: "porcentaje"; porcentaje: string } | { tipo: "monto"; monto: string };
 
@@ -125,11 +132,11 @@ export type CostoPorOrdenPorcentual = z.infer<typeof costoPorOrdenPorcentualSche
  * SLT-83 (R1): fijo y porcentual a la vez es validation_error, como lo rechaza el `CHECK`
  * `plan_costo_por_orden_un_modo`. El error va en el campo porcentual: es el que el formulario añade.
  */
-const UN_SOLO_MODO = {
+export const UN_SOLO_MODO = {
   path: ["costoPorOrdenPorcentual"],
   error: "El costo por orden es fijo o porcentual, no los dos.",
 };
-function unSoloModo(p: { costoPorOrden: string | null; costoPorOrdenPorcentual: CostoPorOrdenPorcentual | null }): boolean {
+export function unSoloModo(p: { costoPorOrden: string | null; costoPorOrdenPorcentual: CostoPorOrdenPorcentual | null }): boolean {
   return p.costoPorOrden === null || p.costoPorOrdenPorcentual === null;
 }
 
@@ -142,14 +149,14 @@ export const topesPlanSchema = z
   })
   .strict();
 
-const modulosSchema = z
+export const modulosSchema = z
   .array(z.enum(ORDEN_MODULOS))
   .refine((m) => new Set(m).size === m.length, { error: "Un módulo no puede repetirse." });
 
-const nombreSchema = z.string().trim().min(1).max(80);
+export const nombreSchema = z.string().trim().min(1).max(80);
 
 /** `AAAA-MM-DD` de un día que existe. Rige a las 00:00 de la plataforma (§16.1, P8). */
-const fechaSchema = z
+export const fechaSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/)
   .refine((s) => {
@@ -162,10 +169,56 @@ const fechaSchema = z
  * SLT-86 (R2, R16): `inicioCiclo` es de la primera asignación y `vigenteDesde` de un cambio a una empresa
  * con plan; las dos a la vez no tienen sentido. Cuál toca lo decide el servicio con la empresa en la mano.
  */
-const NO_INICIO_Y_EFECTO = {
+export const NO_INICIO_Y_EFECTO = {
   path: ["vigenteDesde"],
   error: "La fecha de inicio es de la primera asignación y la fecha de efecto de un cambio: no las dos.",
 };
+export function noInicioYEfecto(p: { inicioCiclo?: string; vigenteDesde?: string | null }): boolean {
+  return p.inicioCiclo === undefined || p.vigenteDesde === undefined;
+}
+
+// SLT-129 (design §3): las reglas de `crearPlanSchema` que solo miran los campos de General, exportadas para
+// que el paso General del borrador las aplique sin copiarlas. Cada una con su `path` y su `error` de siempre.
+type CamposDeGeneral = {
+  visibilidad: "publico" | "custom";
+  organizacionId: string | null;
+  tipoCobro?: TipoCobro;
+  inicioCiclo?: string;
+  vigenteDesde?: string;
+};
+
+/** R2: un custom nombra exactamente una empresa y un público ninguna. Que exista lo mira el servicio. */
+export const CUSTOM_CON_EMPRESA = {
+  path: ["organizacionId"],
+  error: "Un plan custom nombra una empresa y uno público ninguna.",
+};
+export function customConEmpresa(p: CamposDeGeneral): boolean {
+  return (p.visibilidad === "custom") === (p.organizacionId !== null);
+}
+
+export const EMPRESA_CON_TIPO_COBRO = {
+  path: ["tipoCobro"],
+  error: "Elige el tipo de cobro de la empresa; un plan público no lo lleva.",
+};
+export function empresaConTipoCobro(p: CamposDeGeneral): boolean {
+  return (p.organizacionId !== null) === (p.tipoCobro !== undefined);
+}
+
+export const INICIO_SOLO_EN_CUSTOM = {
+  path: ["inicioCiclo"],
+  error: "Un plan público no se asigna al crearlo: no lleva inicio del período.",
+};
+export function inicioSoloEnCustom(p: CamposDeGeneral): boolean {
+  return p.organizacionId !== null || p.inicioCiclo === undefined;
+}
+
+export const EFECTO_SOLO_EN_CUSTOM = {
+  path: ["vigenteDesde"],
+  error: "Un plan público no se asigna al crearlo: no lleva fecha de efecto.",
+};
+export function efectoSoloEnCustom(p: CamposDeGeneral): boolean {
+  return p.organizacionId !== null || p.vigenteDesde === undefined;
+}
 
 export const crearPlanSchema = z
   .object({
@@ -193,24 +246,11 @@ export const crearPlanSchema = z
     periodicidadOrdenes: periodicidadOrdenesSchema.optional(),
   })
   .strict()
-  // R2: un custom nombra exactamente una empresa y un público ninguna. Que exista lo mira el servicio.
-  .refine((p) => (p.visibilidad === "custom") === (p.organizacionId !== null), {
-    path: ["organizacionId"],
-    error: "Un plan custom nombra una empresa y uno público ninguna.",
-  })
-  .refine((p) => (p.organizacionId !== null) === (p.tipoCobro !== undefined), {
-    path: ["tipoCobro"],
-    error: "Elige el tipo de cobro de la empresa; un plan público no lo lleva.",
-  })
-  .refine((p) => p.organizacionId !== null || p.inicioCiclo === undefined, {
-    path: ["inicioCiclo"],
-    error: "Un plan público no se asigna al crearlo: no lleva inicio del período.",
-  })
-  .refine((p) => p.organizacionId !== null || p.vigenteDesde === undefined, {
-    path: ["vigenteDesde"],
-    error: "Un plan público no se asigna al crearlo: no lleva fecha de efecto.",
-  })
-  .refine((p) => p.inicioCiclo === undefined || p.vigenteDesde === undefined, NO_INICIO_Y_EFECTO)
+  .refine(customConEmpresa, CUSTOM_CON_EMPRESA)
+  .refine(empresaConTipoCobro, EMPRESA_CON_TIPO_COBRO)
+  .refine(inicioSoloEnCustom, INICIO_SOLO_EN_CUSTOM)
+  .refine(efectoSoloEnCustom, EFECTO_SOLO_EN_CUSTOM)
+  .refine(noInicioYEfecto, NO_INICIO_Y_EFECTO)
   .refine(unSoloModo, UN_SOLO_MODO)
   // SLT-118 (R37, P12): el custom de una empresa con tipo quincenal no puede facturar sus órdenes por mes. El
   // repositorio lo repite bajo el cerrojo al asignar.
@@ -234,10 +274,9 @@ const edicionDelPlan = z
     // SLT-118 (R35): ausente = sin cambio. La hereda `versionPlanSchema`, así que una versión programada
     // guardada antes, sin ella, sigue validando.
     periodicidadOrdenes: periodicidadOrdenesSchema.optional(),
-    // null = de inmediato (R15); una fecha = programado (R37, T11). SLT-86 (R22): si cambia el precio o
-    // un descuento es obligatoria y `≥ hoy`, y hoy se aplica en el acto; lo mira el servicio, que sabe
-    // qué cambió y qué día es.
-    vigenteDesde: fechaSchema.nullable(),
+    // SLT-135 (R1): obligatoria, cambie el precio o no; toda edición se programa (SLT-128). Ausente o
+    // `null` lleva `FECHA_DE_EFECTO_OBLIGATORIA`. El `≥ hoy` (R2) lo mira el servicio, que tiene el reloj.
+    vigenteDesde: z.string({ error: FECHA_DE_EFECTO_OBLIGATORIA }).pipe(fechaSchema),
   })
   .strict();
 
@@ -270,7 +309,7 @@ export const asignarPlanSchema = z
     tipoCobro: tipoCobroSchema,
   })
   .strict()
-  .refine((p) => p.inicioCiclo === undefined || p.vigenteDesde === undefined, NO_INICIO_Y_EFECTO);
+  .refine(noInicioYEfecto, NO_INICIO_Y_EFECTO);
 /** SLT-58 (R37): la vista previa del modal de primera asignación; la fecha es obligatoria. */
 export const previsualizarAsignacionSchema = z
   .object({ organizacionId: z.uuid(), planId: z.uuid(), inicioCiclo: fechaSchema })
@@ -298,6 +337,14 @@ export const previsualizarCustomSchema = z
  * los asignables y el actual. El tope solo acota la lectura; ningún catálogo real se le acerca.
  */
 export const preciosQueRigenSchema = z.object({ planIds: z.array(z.uuid()).max(500) }).strict();
+/**
+ * SLT-144 (design §3.1; R17–R22): la fecha en que cada empresa recibiría el cambio y los topes que ya pasa,
+ * antes de programarlo. SLT-135 (R13): `vigenteDesde` es obligatoria. El rango de la fecha no se mira aquí:
+ * lo decide confirmar (SLT-129 R19).
+ */
+export const previsualizarCambioSchema = z
+  .object({ planId: z.uuid(), vigenteDesde: fechaSchema, topes: topesPlanSchema })
+  .strict();
 
 export type CrearPlanInput = z.infer<typeof crearPlanSchema>;
 export type EditarPlanInput = z.infer<typeof editarPlanSchema>;
@@ -363,8 +410,8 @@ export type PlanResult =
   | { estado: "custom_de_otra_empresa" }
   | { estado: "tope_excedido"; excedidos: TopeExcedido[]; mensaje: string }
   | { estado: "sin_cambio_programado" }
-  // SLT-128 (R14–R16): cancelar, archivar o editar «De inmediato» con el cambio programado a medias. El texto
-  // lo elige la pantalla según la acción (`lib/planes/mensajes.ts`). Nada se escribió.
+  // SLT-128 (R14, R15): cancelar o archivar con el cambio programado a medias. El texto lo elige la pantalla
+  // según la acción (`lib/planes/mensajes.ts`). Nada se escribió. SLT-135 (R8): editar ya no lo devuelve.
   | { estado: "cambio_a_medias" };
 
 /**
@@ -525,6 +572,16 @@ export type CancelarCambioEmpresaResult =
  */
 export type VistaPreviaCustomResult =
   | { estado: "ok"; avisos: TopeExcedido[] }
+  | { estado: "forbidden" }
+  | { estado: "validation_error"; fieldErrors: Record<string, string[]> }
+  | { estado: "not_found" };
+
+/** SLT-144 (R17, R21): una empresa del plan y el día (`AAAA-MM-DD`) en que recibiría el cambio (SLT-135 R13). */
+export type FechaDeEmpresa = { empresaId: string; empresa: string; tipoCobro: TipoCobro; recibeEl: string };
+
+/** SLT-144 (design §3.1; R21, R22): lo mismo que dejaría programar el cambio con esa F y esos topes. */
+export type VistaPreviaCambioResult =
+  | { estado: "ok"; empresas: FechaDeEmpresa[]; avisos: TopeExcedido[] }
   | { estado: "forbidden" }
   | { estado: "validation_error"; fieldErrors: Record<string, string[]> }
   | { estado: "not_found" };

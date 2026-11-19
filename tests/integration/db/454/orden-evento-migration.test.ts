@@ -153,11 +153,13 @@ describeSiHayBase("454/T1.2 — la forma de `orden_evento` y de `job_tipo`, tal 
       "mensajero_id",
       "motivo",
       "orden_id",
+      // SLT-187: la empresa, anadida por SL-17 (`20261022130100_organizacion_id_en_negocio`), NOT NULL.
+      "organizacion_id",
       "resultado",
       "resultado_anterior",
       "tipo",
     ]);
-    for (const c of ["id", "orden_id", "tipo", "actor_usuario_id", "actor_rol", "created_at"]) {
+    for (const c of ["id", "orden_id", "tipo", "actor_usuario_id", "actor_rol", "created_at", "organizacion_id"]) {
       expect(nulos[c], c).toBe("NO");
     }
   });

@@ -305,6 +305,24 @@ export const VARIABLE_ALTO_BARRA = "--alto-barra-inferior";
 /** El panel de la pestaña en el marco página: sin scroll en el teléfono, de lado en tableta, entero desde `lg`. */
 export const PANEL_PAGINA = "md:overflow-x-auto lg:overflow-auto";
 
+/**
+ * SLT-209 — el modal en el TELÉFONO desplaza entero, no solo el panel de la pestaña. Con cabecera,
+ * cifras, pestañas y pie fijos, al panel le quedaban 124-204 px de un teléfono de 700-780 px, y la
+ * barra fija de «Gestiones» (132 px) lo llenaba: la lista no se veía y la barra parecía flotar sobre
+ * ella (medido en el E2E `pwa-mensajero-cierre-barra-fija`; en CI, con otras fuentes, la barra
+ * quedaba recortada por debajo del panel). Así que en el teléfono:
+ *  · `MARCO_MODAL` es el que desplaza, sin relleno arriba ni abajo: un `sticky` se pega al borde
+ *    del CONTENIDO de quien desplaza, y con relleno la barra quedaría 16 px por debajo del borde
+ *    visible con las tarjetas asomando por esa franja. El relleno lo ponen la cabecera y el pie;
+ *  · las pestañas y el panel toman el alto de su contenido (`min-h-auto`, sin scroll propio);
+ *  · el pie va pegado abajo (`sticky bottom-0`), con fondo: sus acciones siguen a la vista.
+ * Desde `md`, el de siempre: el panel es el único scroll (R11) y no hay barra fija.
+ */
+export const PANEL_MODAL = "overflow-auto max-md:min-h-auto max-md:overflow-visible";
+const TABS_MODAL = "max-md:min-h-auto";
+const CABECERA_MODAL = "max-md:pt-4";
+const PIE_MODAL = "max-md:sticky max-md:bottom-0 max-md:z-10 max-md:bg-background max-md:pb-4";
+
 function usePublicarAltoBarra(ref: RefObject<HTMLElement | null>, activa: boolean) {
   useEffect(() => {
     const el = ref.current;
@@ -375,7 +393,13 @@ function Cuerpo({
 
   return (
     <>
-      <header className={cn("flex shrink-0 flex-col gap-2", props.marco === "modal" && !esMovil && "pr-10")}>
+      <header
+        className={cn(
+          "flex shrink-0 flex-col gap-2",
+          props.marco === "modal" && !esMovil && "pr-10",
+          props.marco === "modal" && CABECERA_MODAL,
+        )}
+      >
         {volverArriba ? (
           <Button type="button" variant="outline" size="touch" className="w-fit" onClick={props.onCerrar}>
             <ArrowLeft aria-hidden="true" />
@@ -402,7 +426,7 @@ function Cuerpo({
 
       <CifrasCierre cifras={m.cifras} totales={m.totales} />
 
-      <Tabs defaultValue={m.pestanas[0]?.id} className="flex min-h-0 flex-1 flex-col">
+      <Tabs defaultValue={m.pestanas[0]?.id} className={cn("flex min-h-0 flex-1 flex-col", !enPagina && TABS_MODAL)}>
         {/* R530: en el teléfono las pestañas pasan a otra línea antes que desbordar. */}
         <TabsList
           aria-label={L.PESTANAS_LABEL}
@@ -427,7 +451,7 @@ function Cuerpo({
           <TabsContent
             key={p.id}
             value={p.id}
-            className={cn("mt-0 min-h-0 flex-1 pt-4", enPagina ? PANEL_PAGINA : "overflow-auto")}
+            className={cn("mt-0 min-h-0 flex-1 pt-4", enPagina ? PANEL_PAGINA : PANEL_MODAL)}
           >
             {m.slots[p.id] ?? null}
           </TabsContent>
@@ -441,7 +465,7 @@ function Cuerpo({
         ref={pieRef}
         className={cn(
           "flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-border pt-3",
-          enPagina && PIE_PAGINA,
+          enPagina ? PIE_PAGINA : PIE_MODAL,
         )}
         style={enPagina ? PIE_PAGINA_ESTILO : undefined}
       >
@@ -477,6 +501,8 @@ function Cuerpo({
  */
 export const MARCO_MODAL =
   "flex max-w-none flex-col gap-4 bg-background p-4 max-md:h-dvh max-md:w-screen max-md:rounded-none max-md:border-0 " +
+  // SLT-209: en el teléfono desplaza el modal entero, sin relleno arriba ni abajo (ver `PANEL_MODAL`).
+  "max-md:overflow-y-auto max-md:py-0 " +
   "md:h-[calc(100dvh-2rem)] md:w-[75vw] md:p-6";
 
 export function DetalleCierre(props: Readonly<DetalleCierreProps>) {

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { CierreBodegaService } from "@/lib/services/CierreBodegaService";
+import { CierresBodegaSateliteDescargaService } from "@/lib/services/CierresBodegaSateliteDescargaService";
 import type {
   CierreBodegaResumenRow,
   CierreDiaConsolidableRow,
@@ -255,6 +256,14 @@ function servicio(repo: ICierreBodegaRepository) {
   return new CierreBodegaService(repo, ordenRepo, reglasPaisFijas());
 }
 
+/** SLT-176 (R705): el conjunto «seis» sale del servicio de solo lectura, con los mismos dobles. */
+function servicioSeis(repo: ICierreBodegaRepository) {
+  const ordenRepo = {
+    findUsuarioZonaId: vi.fn(async (usuarioId: string) => ZONA_POR_USUARIO[usuarioId] ?? null),
+  } as unknown as IOrdenRepository;
+  return new CierresBodegaSateliteDescargaService(repo, ordenRepo, reglasPaisFijas());
+}
+
 /** Filas planas, sin propiedades vigiladas: para los volúmenes del tope, donde solo importa el número. */
 function consolidablesPlanos(n: number): CierreDiaConsolidableRow[] {
   return Array.from({ length: n }, (_, i) => ({
@@ -305,7 +314,7 @@ describe("CierreBodegaService — los conjuntos de la descarga (feature 184, T B
     // Los cinco agregados y el reparto salen todos de `findCierresDiaConsolidables`; que no se
     // llame es la prueba estructural de que no se pueden estar calculando.
     const seis = repoEnMemoria();
-    const rSeis = await servicio(seis.repo).listarCierresBodegaSolicitadosCompleto(SAT_A);
+    const rSeis = await servicioSeis(seis.repo).listarCierresBodegaSolicitadosCompleto(SAT_A);
     const dineroSeis = [...seis.lecturasDinero];
 
     expect(seis.llamadas).toEqual(["findCierresBodegaByZona"]);
@@ -362,7 +371,7 @@ describe("CierreBodegaService — los conjuntos de la descarga (feature 184, T B
   it("un rol sin acceso recibe forbidden ANTES de tocar el repositorio (R4)", async () => {
     for (const actor of ROLES_SIN_ACCESO) {
       const seis = repoEnMemoria();
-      const rSeis = await servicio(seis.repo).listarCierresBodegaSolicitadosCompleto(actor);
+      const rSeis = await servicioSeis(seis.repo).listarCierresBodegaSolicitadosCompleto(actor);
       const siete = repoEnMemoria();
       const rSiete = await servicio(siete.repo).listarConsolidablesCompleto(actor);
 
@@ -383,9 +392,9 @@ describe("CierreBodegaService — los conjuntos de la descarga (feature 184, T B
 
   it("el alcance sale del ACTOR, no de la entrada: cada bodega descarga la SUYA (R4)", async () => {
     const a = repoEnMemoria();
-    const seisDeA = await servicio(a.repo).listarCierresBodegaSolicitadosCompleto(SAT_A);
+    const seisDeA = await servicioSeis(a.repo).listarCierresBodegaSolicitadosCompleto(SAT_A);
     const b = repoEnMemoria();
-    const seisDeB = await servicio(b.repo).listarCierresBodegaSolicitadosCompleto(SAT_B);
+    const seisDeB = await servicioSeis(b.repo).listarCierresBodegaSolicitadosCompleto(SAT_B);
     if (seisDeA.status !== "ok" || seisDeB.status !== "ok") throw new Error("no ok");
 
     expect(idsCierres(seisDeA.items)).toEqual(["ba-5", "ba-4", "ba-3", "ba-2", "ba-1"]);
@@ -417,7 +426,7 @@ describe("CierreBodegaService — los conjuntos de la descarga (feature 184, T B
     // recorrido no coincidiría.
     const seis = repoEnMemoria();
     const svcSeis = servicio(seis.repo);
-    const conjuntoSeis = await svcSeis.listarCierresBodegaSolicitadosCompleto(SAT_A);
+    const conjuntoSeis = await servicioSeis(seis.repo).listarCierresBodegaSolicitadosCompleto(SAT_A);
     if (conjuntoSeis.status !== "ok") throw new Error("no ok");
 
     const recorridoSeis: string[] = [];
@@ -457,7 +466,7 @@ describe("CierreBodegaService — los conjuntos de la descarga (feature 184, T B
     // importes para el mismo cierre, y el que decide si se cierra la bodega es el de la pantalla.
     // Se afirma por IDENTIDAD: el servicio entrega lo que el repositorio le dio, sin remapear.
     const seis = repoEnMemoria();
-    const svcSeis = servicio(seis.repo);
+    const svcSeis = servicioSeis(seis.repo);
     const conjuntoSeis = await svcSeis.listarCierresBodegaSolicitadosCompleto(SAT_A);
     const delRepoSeis = await seis.findCierresBodegaByZona.mock.results[0]!.value;
     if (conjuntoSeis.status !== "ok") throw new Error("no ok");
@@ -486,7 +495,7 @@ describe("CierreBodegaService — los conjuntos de la descarga (feature 184, T B
 
     // El borde EXACTO por abajo: `MAX_FILAS` cabe entero.
     const justoSeis = repoEnMemoria({ cierres: cierresPlanos(limite) });
-    const okSeis = await servicio(justoSeis.repo).listarCierresBodegaSolicitadosCompleto(SAT_A);
+    const okSeis = await servicioSeis(justoSeis.repo).listarCierresBodegaSolicitadosCompleto(SAT_A);
     if (okSeis.status !== "ok") throw new Error(`esperaba ok, vino ${okSeis.status}`);
     expect(okSeis.items).toHaveLength(limite);
     expect(okSeis.total).toBe(limite);
@@ -494,7 +503,7 @@ describe("CierreBodegaService — los conjuntos de la descarga (feature 184, T B
     // Y por arriba: con UNA más no hay archivo, ni truncado ni parcial. Solo los conteos.
     const pasadoSeis = repoEnMemoria({ cierres: cierresPlanos(limite + 1) });
     const excedidoSeis =
-      await servicio(pasadoSeis.repo).listarCierresBodegaSolicitadosCompleto(SAT_A);
+      await servicioSeis(pasadoSeis.repo).listarCierresBodegaSolicitadosCompleto(SAT_A);
     expect(excedidoSeis).toEqual({ status: "limite_excedido", total: limite + 1, limite });
     expect(excedidoSeis).not.toHaveProperty("items");
 
@@ -512,7 +521,7 @@ describe("CierreBodegaService — los conjuntos de la descarga (feature 184, T B
 
   it("el adminSatelite SIN zona recibe un conjunto vacío y no consulta el listado", async () => {
     const seis = repoEnMemoria();
-    const rSeis = await servicio(seis.repo).listarCierresBodegaSolicitadosCompleto(SAT_SIN_ZONA);
+    const rSeis = await servicioSeis(seis.repo).listarCierresBodegaSolicitadosCompleto(SAT_SIN_ZONA);
     const siete = repoEnMemoria();
     const rSiete = await servicio(siete.repo).listarConsolidablesCompleto(SAT_SIN_ZONA);
 

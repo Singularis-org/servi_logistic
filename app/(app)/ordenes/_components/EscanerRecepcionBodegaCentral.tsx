@@ -1,128 +1,102 @@
 "use client";
 
-import { useCallback, useState } from "react";
-
-import {
-  EscanerGuiaCard,
-  type ResultadoLectura,
-} from "@/components/shared/EscanerGuiaCard";
-import { useToast } from "@/hooks/useToast";
+import { TarjetaEscaneoContinuo } from "@/components/shared/EscaneoContinuo";
+import { RecepcionContinuaPagina } from "@/components/shared/RecepcionContinuaPagina";
 import { recibirEnBodegaCentralPorQr } from "@/lib/actions/recepcion-bodega-central";
-import { leerGuia } from "@/lib/utils/paquete-url";
+import type { DesenlaceRecepcion, ModoRecepcion } from "@/lib/utils/sesion-escaneo";
 import type { RecibirEnBodegaCentralResult } from "@/lib/types/recepcion-bodega-central";
 
 import { estatusLabel } from "./estatus-label";
 
-// Feature 138 — Receptor en `/ordenes` (encabezado, solo maestro/admin): cierra el
-// callejón de `en_ruta_bodega_central`. Espejo de `EscanerRecepcionOrigen`, con DOS
-// entradas equivalentes (R12): (a) escaneo de QR por cámara y (b) entrada manual del
-// número de guía. Ambas funelan a la MISMA Server Action `recibirEnBodegaCentralPorQr`
-// y traducen el resultado a un toast por estado (R15). Tras `ok`/`ya_recibida` invoca
-// `onRecibida` para refrescar el listado (R14).
+// Feature 138 — Receptor de la BODEGA CENTRAL en `/ordenes` (solo maestro/admin): cierra el
+// callejón de `en_ruta_bodega_central`. Llama a `recibirEnBodegaCentralPorQr` y traduce cada
+// respuesta a la fila de la sesión continua (`desenlaceBodegaCentral`, SLT-159 R583), con los
+// motivos de la guía suelta de prod.
 //
-// SLT-158: cada lectura DEVUELVE su resultado a la tarjeta (acierto, o error con el mismo
-// motivo del toast) para el tono, la marca y la línea de error. Sin guard `procesando`
-// propio: la tarjeta encola las lecturas y las envía de a una (R574); el guard tiraba la
-// segunda lectura de la pistola.
+// SLT-202 «Escritorio igual a prod: tamaños de controles y un solo botón de recibir» (Carlos,
+// 2026-11-18): la guía suelta (tarjeta y toast por lectura) se quitó; queda la recepción continua,
+// en diálogo (`continua`) o en página (`pagina`).
 //
 // El rol (maestro/admin) NO se decide aquí: el padre (OrdenesListado) solo monta este
 // control cuando `puedeRecibirBodegaCentral`, y el service revalida server-side (R16).
 
 export interface EscanerRecepcionBodegaCentralProps {
-  /** Se invoca tras una recepción efectiva o idempotente (ok/ya_recibida). */
-  onRecibida: () => void;
+  /**
+   * Se invoca tras una recepción efectiva o idempotente (ok/ya_recibida). SLT-159 (R592): en
+   * `continua`, una sola vez al cerrar el diálogo si hubo alguna.
+   */
+  onRecibida?: () => void;
+  /**
+   * SLT-159: `continua` (el diálogo con lista) o `pagina`. SLT-202: la guía `suelta` se quitó (la
+   * cubre la continua).
+   */
+  modo: ModoRecepcion;
+  /** SLT-159 (R613): en `pagina`, adónde vuelve «Terminar recepción». */
+  volverA?: string;
+}
+
+const sinRefresco = () => {};
+
+/** Feature 139 (R17), SLT-202 (review B1): el destino de una devolución recibida en la central. */
+export const AVISO_POR_DEVOLVER_A_TIENDA = "Queda por devolver a la tienda.";
+
+/**
+ * SLT-159 (R583): la respuesta de la acción traducida a desenlace de la fila. Los motivos son
+ * los textos de prod.
+ */
+export function desenlaceBodegaCentral(result: RecibirEnBodegaCentralResult): DesenlaceRecepcion {
+  const noSePudo = (motivo: string): DesenlaceRecepcion => ({ tipo: "no_se_pudo", motivo });
+  switch (result.status) {
+    case "ok":
+      // Feature 139 (R17): la recepción central es STATE-AWARE. Si la orden volvía de una devolución
+      // (`devolviendo_a_bodega_central`), queda en `por_devolver_a_tienda`, no en la bodega: la fila
+      // lo dice, como el toast de prod (SLT-202, review B1).
+      return result.estado === "por_devolver_a_tienda"
+        ? { tipo: "recibida", resumen: result.resumen, aviso: AVISO_POR_DEVOLVER_A_TIENDA }
+        : { tipo: "recibida", resumen: result.resumen };
+    case "ya_recibida":
+      return { tipo: "ya_recibida", resumen: result.resumen };
+    case "no_encontrada":
+      return { tipo: "no_encontrada" };
+    case "estado_invalido":
+      return noSePudo(`No se puede recibir: la orden está en "${estatusLabel(result.estado)}".`);
+    case "validation_error":
+      return noSePudo("Código inválido.");
+    case "forbidden":
+      return noSePudo("No tienes permiso para recibir órdenes.");
+    case "unauthenticated":
+      return noSePudo("Tu sesión expiró. Inicia sesión de nuevo.");
+    case "conflict":
+      return noSePudo("La orden cambió de estado. Vuelve a intentar.");
+  }
+}
+
+async function recibirBodegaCentral(numGuia: number): Promise<DesenlaceRecepcion> {
+  return desenlaceBodegaCentral(await recibirEnBodegaCentralPorQr({ numGuia }));
 }
 
 export function EscanerRecepcionBodegaCentral({
-  onRecibida,
+  onRecibida = sinRefresco,
+  modo,
+  volverA = "/ordenes",
 }: Readonly<EscanerRecepcionBodegaCentralProps>) {
-  const toast = useToast();
-  // Confirmacion PERSISTENTE del ultimo acierto: el toast se va solo y quien recibe
-  // una tanda seguida necesita ver que la anterior si entro.
-  const [ultimaRecibida, setUltimaRecibida] = useState<number | null>(null);
-
-  /** Rechazo: el toast de siempre y el mismo motivo para la tarjeta (SLT-158). */
-  const rechazar = useCallback(
-    (motivo: string): ResultadoLectura => {
-      toast.error(motivo);
-      return { tipo: "error", motivo };
-    },
-    [toast],
-  );
-
-  /** Traduce cada resultado de la acción a un toast (R15, los 8 estados). */
-  const notificar = useCallback(
-    (result: RecibirEnBodegaCentralResult, numGuia: number): ResultadoLectura => {
-      switch (result.status) {
-        case "ok":
-          // Feature 139/T3.5: la recepción central es STATE-AWARE. Si la orden venía
-          // en `devolviendo_a_bodega_central`, la acción la deja en `por_devolver_a_tienda`
-          // (no en bodega central): el toast nombra ese destino real. El caso 138
-          // (`en_bodega_central`) conserva su mensaje.
-          toast.success(
-            result.estado === "por_devolver_a_tienda"
-              ? `Guía ${numGuia} recibida; queda por devolver a la tienda.`
-              : `Guía ${numGuia} recibida en bodega central.`,
-          );
-          setUltimaRecibida(numGuia);
-          onRecibida();
-          return { tipo: "acierto" };
-        case "ya_recibida":
-          // La lectura fue buena: el paquete ya estaba dentro. Suena como acierto.
-          toast.info(`La guía ${numGuia} ya estaba recibida.`);
-          onRecibida();
-          return { tipo: "acierto" };
-        case "estado_invalido":
-          return rechazar(
-            `No se puede recibir: la orden está en "${estatusLabel(result.estado)}".`,
-          );
-        case "no_encontrada":
-          return rechazar("Orden no encontrada.");
-        case "validation_error":
-          return rechazar("Código inválido.");
-        case "forbidden":
-          return rechazar("No tienes permiso para recibir órdenes.");
-        case "unauthenticated":
-          return rechazar("Tu sesión expiró. Inicia sesión de nuevo.");
-        case "conflict":
-          return rechazar("La orden cambió de estado. Vuelve a intentar.");
-      }
-    },
-    [toast, onRecibida, rechazar],
-  );
-
-  /**
-   * Cámara, tecleo o pistola: el QR (`<origin>/paquete/<numGuia>`) o el CODE128 (dígitos) de
-   * la etiqueta, los dos por `leerGuia` (SLT-157), así la pistola 2D que teclea la URL del QR
-   * también vale. Un texto que no resuelve a num_guia (p. ej. el UUID de una etiqueta vieja)
-   * se rechaza aquí con "Código inválido", sin llamar a la acción (R10).
-   */
-  const procesar = useCallback(
-    async (escaneado: string): Promise<ResultadoLectura> => {
-      const numGuia = leerGuia(escaneado);
-      if (numGuia === null) return rechazar("Código inválido.");
-      const result = await recibirEnBodegaCentralPorQr({ numGuia });
-      return notificar(result, numGuia);
-    },
-    [notificar, rechazar],
-  );
-
+  if (modo === "pagina") {
+    return (
+      <RecepcionContinuaPagina recibir={recibirBodegaCentral} volverA={volverA} nombreRecepcion="Bodega central" />
+    );
+  }
+  // SLT-202 (Carlos, 2026-11-18): la guía suelta se quitó; `/ordenes` tiene un solo «Recibir paquete»,
+  // que abre la continua (SLT-159). Fuera de `pagina`, la tarjeta continua.
   return (
-    <EscanerGuiaCard
-      ariaLabel="Recepción en bodega central"
-      titulo="Recibir paquete"
-      descripcion="Escanea o ingresa el número de guía"
-      onDecoded={procesar}
-      mensajeErrorCamara="No se pudo abrir la cámara."
-      manual={{ onSubmit: procesar, submitLabel: "Recibir" }}
-      exito={
-        ultimaRecibida === null ? undefined : (
-          <>
-            Guía <span className="font-semibold">{ultimaRecibida}</span> recibida
-            correctamente.
-          </>
-        )
-      }
+    // SLT-193 (R927): vive en el diálogo de `RecibirPaquetesEntrada`, que lleva el título en su barra.
+    <TarjetaEscaneoContinuo
+      sinEncabezado
+      recibir={recibirBodegaCentral}
+      alCerrarConRecepcion={onRecibida}
+      ariaLabel="Recepción continua en bodega central"
+      titulo="Recibir paquetes"
+      descripcion="Escanea las guías una tras otra"
+      submitLabel="Recibir"
     />
   );
 }

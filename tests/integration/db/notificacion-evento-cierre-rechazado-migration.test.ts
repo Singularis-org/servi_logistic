@@ -10,7 +10,21 @@ import {
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import { tomarExclusionDemoQa, type ExclusionDemoQa } from "./_exclusion-demo-qa";
+
+/**
+ * SLT-183: el destinatario del aviso, SEMBRADO (un mensajero) en la tx revertida del caso. Antes se leia
+ * `(SELECT "id" FROM "usuario" LIMIT 1)`, y la base recien migrada no tiene ninguno.
+ */
+async function destinatarioSembrado(tx: TxDeTest): Promise<string> {
+  const { id } = await crearUsuarioDePrueba(tx, "mensajero");
+  // Control positivo (R1104): la siembra llego a la base. LANZA, no `return`.
+  if ((await tx.usuario.count({ where: { id } })) !== 1) {
+    throw new Error("SLT-183: el mensajero sembrado (destinatario del aviso) no esta en la base");
+  }
+  return id;
+}
 
 // FICHA 412 (T2.4, R24/R25) — la migración que añade el aviso de «tu cierre fue rechazado» a los
 // DOS enums de `notificacion`, y las propiedades que dependen de ella.
@@ -456,10 +470,11 @@ describeSiHayBase("412/T2.5 — el DOWN ejercitado de verdad, con su precondici�
            VALUES ($1, 'alert'::"notificacion_tipo", $2::"notificacion_evento",
                    'aviso sin leer', $3::"notificacion_entidad_tipo",
                    'c-x:2091-05-01T00:00:00.000Z',
-                   (SELECT "id" FROM "usuario" LIMIT 1))`,
+                   $4)`,
           randomUUID(),
           "cierre_dia_rechazado",
           "cierre_dia_rechazo",
+          await destinatarioSembrado(tx),
         );
 
         for (const sentencia of sentenciasDelDown()) await tx.$executeRawUnsafe(sentencia);
@@ -480,8 +495,9 @@ describeSiHayBase("412/T2.5 — el DOWN ejercitado de verdad, con su precondici�
            ("id","tipo","evento","descripcion","entidad_tipo","entidad_id","destinatario_usuario_id")
          VALUES ($1, 'alert'::"notificacion_tipo", 'cierre_dia_rechazado'::"notificacion_evento",
                  'aviso sin leer', 'cierre_dia_rechazo'::"notificacion_entidad_tipo",
-                 'c-y:2091-05-01T00:00:00.000Z', (SELECT "id" FROM "usuario" LIMIT 1))`,
+                 'c-y:2091-05-01T00:00:00.000Z', $2)`,
         id,
+        await destinatarioSembrado(tx),
       );
       // El `down` se intenta dentro de un SAVEPOINT: su fallo no se lleva la transacción entera,
       // y así se puede volver a consultar después.

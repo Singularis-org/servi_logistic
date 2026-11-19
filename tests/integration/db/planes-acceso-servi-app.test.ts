@@ -30,6 +30,9 @@ import {
 // T3b (design §16.1): la misma regla para `plan_cambio_programado`, el cambio pendiente de un plan.
 // La siembra le añade una fila, programada sobre el custom de A.
 //
+// SLT-129 (R23): y el borrador del superadmin, `plan_borrador`. La siembra le añade el borrador del cambio del
+// custom de A, que cae con él (CASCADE).
+//
 // Lo que queda para T3: `plan_cupo_ordenes` con la empresa de otro (`42501`) se prueba cuando exista la
 // función (design §4.2).
 
@@ -115,7 +118,11 @@ async function foto(c: PrismaClient | TxDeTest) {
     orderBy: { id: "asc" },
     select: { id: true, planId: true, planCicloAnclaAt: true },
   });
-  return { planes, rastro, cambios, empresas };
+  const borradores = await c.planBorrador.findMany({
+    where: { planId: { in: [planA, planB] } },
+    select: { id: true, planId: true, pasos: true, updatedAt: true },
+  });
+  return { planes, rastro, cambios, empresas, borradores };
 }
 
 // SLT-86 (R32): y las dos tablas nuevas del plan, también cerradas a `servi_app`.
@@ -177,6 +184,14 @@ describeSiHayBase("SL-24 — planes sin acceso para servi_app; asignación de so
           actorNombre: "Superadmin de prueba",
         },
       });
+      await base.planBorrador.create({
+        data: {
+          planId: planA,
+          pasos: { general: { nombre: "custom A v3" } },
+          iniciadoPorUsuarioId: randomUUID(),
+          iniciadoPorNombre: "Superadmin de prueba",
+        },
+      });
       const ancla = new Date("2026-10-15T12:00:00.000Z");
       await base.organizacion.update({ where: { id: A }, data: { planId: planA, planCicloAnclaAt: ancla } });
       await base.organizacion.update({ where: { id: B }, data: { planId: planB, planCicloAnclaAt: ancla } });
@@ -185,6 +200,7 @@ describeSiHayBase("SL-24 — planes sin acceso para servi_app; asignación de so
     expect(antes.planes).toHaveLength(2);
     expect(antes.rastro).toBe(1);
     expect(antes.cambios.map((c) => c.planId)).toEqual([planA]);
+    expect(antes.borradores.map((b) => b.planId)).toEqual([planA]);
     expect(antes.empresas.map((e) => e.planId).sort()).toEqual([planA, planB].sort());
     expect(antes.planes.find((p) => p.id === planA)?.topesPorRol).toEqual([{ rol: "adminTienda", maximo: 3 }]);
     expect(antes.planes.find((p) => p.id === planA)?.modulos).toEqual([{ modulo: "analitica" }]);
@@ -314,6 +330,34 @@ describeSiHayBase("SL-24 — planes sin acceso para servi_app; asignación de so
     await expect(
       conEmpresa(A, () => app.organizacion.update({ where: { id: A }, data: { planId: planB } })),
     ).rejects.toThrow(rechazo);
+    expect(await foto(base)).toEqual(antes);
+  });
+
+  it("R23 — servi_app no lee ni escribe plan_borrador", async () => {
+    const control = await revertida((tx) => intentar(tx, `SELECT 1 FROM "plan_borrador" LIMIT 1`));
+    expect(control, "el dueño sí lee la tabla").toBeNull();
+
+    const r = await revertida(async (tx) => {
+      await comoApp(tx, A);
+      return {
+        select: await intentar(tx, `SELECT * FROM "plan_borrador"`),
+        selectPropio: await intentar(tx, `SELECT * FROM "plan_borrador" WHERE "plan_id" = $1`, planA),
+        insert: await intentar(
+          tx,
+          `INSERT INTO "plan_borrador" ("id", "plan_id", "pasos", "iniciado_por_usuario_id", "iniciado_por_nombre")
+           VALUES ($1, $2, '{}'::jsonb, 'x', 'x')`,
+          randomUUID(),
+          planB,
+        ),
+        update: await intentar(tx, `UPDATE "plan_borrador" SET "pasos" = '{}'::jsonb WHERE "plan_id" = $1`, planA),
+        delete: await intentar(tx, `DELETE FROM "plan_borrador" WHERE "plan_id" = $1`, planA),
+      };
+    });
+    for (const [caso, sqlstate] of Object.entries(r)) expect(sqlstate, caso).toBe("42501");
+
+    const rechazo = /42501|permiso denegado|permission denied/;
+    await expect(conEmpresa(A, () => app.planBorrador.findMany())).rejects.toThrow(rechazo);
+    await expect(conEmpresa(A, () => app.planBorrador.deleteMany({ where: { planId: planA } }))).rejects.toThrow(rechazo);
     expect(await foto(base)).toEqual(antes);
   });
 

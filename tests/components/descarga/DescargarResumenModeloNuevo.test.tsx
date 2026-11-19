@@ -103,14 +103,13 @@ const V1 = cierre({
 const VP = cierre({ ...V1, cierreId: "00000000-0000-4000-8000-0000cafe0004", estado: "solicitado", resueltoAt: null });
 
 const PARTES = [
-  { tiendaNombre: "Tienda Norte", recaudado: "100000.00", pagoTienda: "94350.00", ganaLaTienda: "94350.00" },
-  { tiendaNombre: "Tienda Sur", recaudado: "0.00", pagoTienda: "-2260.00", ganaLaTienda: "-2260.00" },
+  { tiendaNombre: "Tienda Norte", recaudado: "100000.00", pagoTienda: "94350.00" },
+  { tiendaNombre: "Tienda Sur", recaudado: "0.00", pagoTienda: "-2260.00" },
 ];
 const CIFRAS_N1: CifrasCierreDescargaDTO = {
   cierreId: N1.cierreId,
-  // SLT-169 (R620): 100.000 − 7.910 de todo lo facturado; `ganaLaTienda` es su alias.
+  // SLT-169 (R620): 100.000 − 7.910 de todo lo facturado.
   pagoTienda: "92090.00",
-  ganaLaTienda: "92090.00",
   totalFacturado: "7910.00",
   ivaFacturado: "910.00",
   netoEmpresa: "3500.00",
@@ -155,11 +154,17 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-const ENCABEZADOS_CIERRES_SATELITE = [
+const ENCABEZADOS_CIERRES_CENTRAL = [
   "Folio", "Mensajero", "Destino", "Estado", "Solicitado", "Resuelto", "Efectivo", "SINPE",
   "Transferencia", "Recaudado", "Se le paga a la tienda",
   "Pago al mensajero", "Pago a la bodega satélite", "Total facturado", "IVA facturado",
-  "Le queda a la empresa", "Gestiones", "Pagos ajustados",
+  "Le queda a la empresa", "Gestiones", "Pagos ajustados", "Pago entregado",
+];
+// SLT-161 (R485): 19 − «Pago entregado» − las cuatro de la empresa = 14.
+const ENCABEZADOS_CIERRES_SATELITE = [
+  "Folio", "Mensajero", "Destino", "Estado", "Solicitado", "Resuelto", "Efectivo", "SINPE",
+  "Transferencia", "Recaudado", "Pago al mensajero", "Pago a la bodega satélite", "Gestiones",
+  "Pagos ajustados",
 ];
 
 describe("SLT-140 — el «Resumen» de cierres con el libro del modelo nuevo (T4.2)", () => {
@@ -269,7 +274,7 @@ describe("SLT-140 — el «Resumen» de cierres con el libro del modelo nuevo (T
     const config = await descargarResumen(resumenDe("pendientes", "admin"), "admin");
     expect(config.titulo).toBe("Cierres pendientes de decisión");
     expect(config.tituloHoja).toBe("Cierres");
-    expect(config.columnas.map((c) => c.encabezado)).toEqual([...ENCABEZADOS_CIERRES_SATELITE, "Pago entregado"]);
+    expect(config.columnas.map((c) => c.encabezado)).toEqual(ENCABEZADOS_CIERRES_CENTRAL);
     expect(config.filas.map((f) => [f.folio, f.estado, f.resuelto, f.pagoEntregado])).toEqual([
       ["BEEF0002", "Solicitado", null, null],
     ]);
@@ -301,11 +306,29 @@ describe("SLT-140 — el «Resumen» de cierres con el libro del modelo nuevo (T
     expect(anterior?.filas.map((f) => f.mensajero)).toEqual(["Rosa Mensajera"]);
   });
 
-  it("(d) satélite: «Cierres» con 18 columnas, sin «Pago entregado» (R382; SLT-169 R634)", async () => {
-    H.datos.mockResolvedValue(respuesta([N1], [{ ...CIFRAS_N1, pagoEntregado: null }]));
+  it("(d) satélite: «Cierres» con 14 columnas y sin «Por tienda» (R382; SLT-169 R634; SLT-161 R485, R486)", async () => {
+    H.datos.mockResolvedValue(
+      respuesta([N1], [
+        {
+          ...CIFRAS_N1,
+          pagoTienda: null,
+          totalFacturado: null,
+          ivaFacturado: null,
+          netoEmpresa: null,
+          pagoEntregado: null,
+          partesPorTienda: null,
+        },
+      ]),
+    );
     const config = await descargarResumen(resumenDe("resueltos", "satelite"), "satelite");
     expect(config.columnas.map((c) => c.encabezado)).toEqual(ENCABEZADOS_CIERRES_SATELITE);
-    expect(config.filas[0]).not.toHaveProperty("pagoEntregado");
+    expect(config.hojasAdicionales ?? []).toEqual([]);
+    expect(Object.keys(config.filas[0]).sort()).toEqual(
+      [
+        "folio", "mensajero", "destino", "estado", "solicitado", "resuelto", "efectivo", "sinpe",
+        "transferencia", "recaudado", "pagoMensajero", "pagoBodega", "gestiones", "pagosAjustados",
+      ].sort(),
+    );
   });
 
   it("(e) un «Resumen» sin `obtenerFilasConColumnas` (bodega): la llamada de siempre, sin argumentos", async () => {

@@ -213,10 +213,14 @@ describe("SLT-118 — registro y recurrencia del cierre de facturas (R25)", () =
     expect(siembra?.script).toBe("lib/planes/jobs-factura-plataforma.ts");
   });
 
-  it("R25: el cierre no envía correos ni avisos: su módulo no importa ningún emisor", () => {
+  it("R25 (enmendado por SLT-136 R21): el manejador del cierre no envía nada; los avisos salen por la cola", () => {
     const fuente = readFileSync(path.resolve(__dirname, "../../../lib/planes/jobs-factura-plataforma.ts"), "utf8");
     const importaciones = [...fuente.matchAll(/^import[^;]*from\s+"([^"]+)"/gm)].map((m) => m[1]);
     expect(importaciones.length).toBeGreaterThan(0);
     expect(importaciones.filter((i) => /correo|email|mail|notific|aviso|push|whatsapp/i.test(i))).toEqual([]);
+  });
+
+  it("SLT-136 R21: el aviso de cada factura cerrada tiene su propio trabajo registrado en la cola", () => {
+    expect(buildHandlers(() => AHORA).has("factura_plataforma_aviso")).toBe(true);
   });
 });

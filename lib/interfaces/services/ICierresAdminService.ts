@@ -213,7 +213,6 @@ export interface ParteDeTiendaDescargaDTO {
   tiendaNombre: string;
   recaudado: string;
   pagoTienda: string;
-  ganaLaTienda: string;
 }
 
 /**
@@ -221,22 +220,24 @@ export interface ParteDeTiendaDescargaDTO {
  * del modelo nuevo para la hoja «Cierres», derivadas con `cifrasDelCierre` (las mismas del detalle).
  * Todo OBLIGATORIO (lección de SLT-123): un campo opcional que un camino no puebla se lee como «no hay».
  * Importes: STRING de escala 2, con su signo.
+ *
+ * SLT-161 «Descargas de la satélite sin el dinero de la empresa» (R481): las cifras de la empresa
+ * admiten `null` = quien lee no tiene acceso total. Siguen OBLIGATORIAS (nullables, nunca opcionales).
  */
 export interface CifrasCierreDescargaDTO {
   /** Une con el item (`CierreAdminResumen.cierreId`); nunca es columna. */
   cierreId: string;
-  pagoTienda: string;
-  ganaLaTienda: string;
+  pagoTienda: string | null;
   /** `totalesIngreso.total` del detalle. */
-  totalFacturado: string;
-  ivaFacturado: string;
-  netoEmpresa: string;
+  totalFacturado: string | null;
+  ivaFacturado: string | null;
+  netoEmpresa: string | null;
   /** Numero de gestiones del cierre (Σ de los grupos del detalle). */
   gestiones: number;
   /** `(P + premios vivos) − pendiente`; `null` si el cierre no esta aprobado o el actor no es central (R382). */
   pagoEntregado: string | null;
-  /** En el orden del detalle (de mayor a menor pago a la tienda). */
-  partesPorTienda: ParteDeTiendaDescargaDTO[];
+  /** En el orden del detalle (de mayor a menor pago a la tienda); `null` sin acceso total (R481). */
+  partesPorTienda: ParteDeTiendaDescargaDTO[] | null;
 }
 
 /** SLT-140 (R378): lo que la rama `ok` del «Resumen» de cierres lleva ademas de las filas. */
@@ -427,6 +428,13 @@ export interface CierreGestionDescargaDTO {
   tarifaFaltante?: boolean;
   /** Dia calendario (zona de la empresa) del cargo vigente de fulfillment; solo central (F481). */
   fulfillmentCargadoDia?: string | null;
+  // --- SLT-161 (R482): solo los pone el recorte de quien no tiene acceso total, que deja
+  // `ingresoEmpresa` en `null` y saca aparte estos dos con el valor que tenian dentro del bloque.
+  // Aditivos y opcionales (como los de SLT-113): la central los lee de `ingresoEmpresa`.
+  /** El COD a recaudar de la gestion (P2 de SLT-154: dato de la satelite). */
+  montoCobrar?: string | null;
+  /** El modelo de tarifa de la gestion, para poblar las celdas de la satelite del modelo nuevo. */
+  tarifaModelo?: "viejo" | "nuevo" | null;
 }
 
 /**
@@ -552,19 +560,6 @@ export type CierreDetalleAdminServiceResult =
        */
       netoEmpresa: string | null;
       /**
-       * Feature 395 — DERIVADO: `cierre.totales.general` − `totalesIngreso.total`. LO QUE LA
-       * TIENDA GANA EN TOTAL con este cierre.
-       *
-       * Desde SLT-169 es ALIAS de `pagoTienda`, con el MISMO valor: el pago tambien resta todo lo
-       * facturado. Se retira del contrato en la ficha de limpieza (P3 de SLT-169).
-       *
-       * Cierra la identidad que la pantalla tiene que hacer evidente:
-       * `ganaLaTienda + totalesIngreso.total === cierre.totales.general`.
-       *
-       * Puede ser NEGATIVO y se emite CON SU SIGNO, nunca recortado a "0.00".
-       */
-      ganaLaTienda: string | null;
-      /**
        * Feature 395 — ¿el flete por rechazo YA esta cobrado en la wallet de la tienda?
        *
        * MEDIDO en el codigo y contra produccion (2026-09-08): el cargo lo emite
@@ -582,7 +577,7 @@ export type CierreDetalleAdminServiceResult =
        */
       fleteRechazoYaCobradoATienda: boolean | null;
       /**
-       * 💰 Ficha 396 — DE QUIEN ES CADA PARTE de `pagoTienda` y de `ganaLaTienda`.
+       * 💰 Ficha 396 — DE QUIEN ES CADA PARTE de `pagoTienda`.
        *
        * **El cierre es del MENSAJERO, no de la tienda.** Un mensajero reparte para quien le
        * toque ese dia, asi que un cierre puede llevar ordenes de varias tiendas — medido en
@@ -592,11 +587,10 @@ export type CierreDetalleAdminServiceResult =
        * ⚠️ **NO ES UNA CORRECCION DE DINERO.** `wallet_tienda_movimiento` lleva los movimientos
        * separados por tienda desde siempre, con sus propias cifras: a nadie se le paga mal, y
        * esta ficha no emite, borra ni corrige ni una fila del ledger. (Desde SLT-169 `pagoTienda`
-       * resta todo lo facturado y `ganaLaTienda` es su alias de igual valor; sigue sin tocar el
-       * ledger, R631.)
+       * resta todo lo facturado; sigue sin tocar el ledger, R631.)
        *
-       * TRES cifras por tienda, y ni una mas: la tercera (`ganaLaTienda`) entro el 2026-09-08 por
-       * firma explicita del humano (Q7 del spec); la cuarta necesitara otra firma.
+       * `recaudado` y `pagoTienda` por tienda, y ni una cifra mas: SLT-174 (R652) retiro la que
+       * valia lo mismo que `pagoTienda`. Otra cifra necesitara otra firma.
        *
        * SE EMITE SIEMPRE, tambien con UNA sola tienda —un elemento, cuyas cifras son iguales a
        * las agregadas—. El UMBRAL de «ensenarlo solo con dos o mas» es de PRESENTACION y vive en
@@ -609,10 +603,8 @@ export type CierreDetalleAdminServiceResult =
        *
        * INVARIANTES, ciertas por construccion y con test propio:
        *   Σ `.pagoTienda`   === `pagoTienda`               (R10, SLT-169 R621)
-       *   Σ `.ganaLaTienda` === `ganaLaTienda`             (R11)
        *   Σ `.recaudado`    === `cierre.totales.general`   (R12)
-       * y, POR TIENDA, `.pagoTienda === .ganaLaTienda` desde SLT-169 (la antigua cuarta identidad,
-       * que daba el flete por rechazo, desaparece al fundirse las dos cifras).
+       * (R11 y la antigua cuarta identidad desaparecieron con SLT-169 y SLT-174.)
        *
        * LO QUE NO SE REPARTE (R16): el pago al mensajero y el ingreso de bodega por rechazos son
        * del cierre ENTERO y se quedan agregados. Repartirlos exigiria inventar un criterio que

@@ -8,6 +8,7 @@ import { PagoMensajeroMovimientoRepository } from "@/lib/repositories/PagoMensaj
 import { WalletTiendaMovimientoRepository } from "@/lib/repositories/WalletTiendaMovimientoRepository";
 
 import { sembrarPersonas461 } from "./_fixtures/personas-461";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
@@ -99,8 +100,9 @@ describeSiHayBase("458-A R33 — historial y tabla nombran la misma cuenta igual
         where: { id: p.mensajeroId },
         data: { nombre: "Juan", primerApellido: "Pérez", segundoApellido: "Mora" },
       });
-      const zona = await tx.zona.findFirst({ select: { id: true } });
-      if (zona === null) throw new Error("base sin sembrar: falta una zona");
+      // SLT-184 (R1122/R1124): zona propia, sembrada en la tx (antes «la primera zona» de la base).
+      const zona = { id: (await crearFksDeOrden(tx)).zonaId };
+      expect(await tx.zona.count({ where: { id: zona.id } }), "SLT-184: la zona sembrada no esta en la base").toBe(1);
       const cierre = await tx.cierreDia.create({
         data: {
           mensajeroId: p.mensajeroId,

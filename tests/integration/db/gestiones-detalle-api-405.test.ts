@@ -7,9 +7,9 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTestConEspia,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 
 /**
  * ⏳ 2026-09-10 — FEATURE 405 (T8): `gestiones[]` EJECUTADO CONTRA POSTGRES.
@@ -97,6 +97,10 @@ const CONSULTAS_DEL_DETALLE = [
   //   resuelve con su propia consulta (UNA para la orden, take 1). MEDIDO con este mismo espia en
   //   `sl38_base` (progress/impl_SL-38.md, T7): el detalle pasa de TRECE a CATORCE.
   "distrito_zona_especial",
+  // ⭑ 9c. SLT-52 (tarifas flexibles): `cierreDetail.conceptos` — el cobro congelado por concepto de
+  //   la fila del cierre aprobado (R40/R43). Una relacion anidada mas, UNA consulta. MEDIDO con este
+  //   mismo espia en una base desechable (SLT-186, progress/impl_SLT-186.md): de CATORCE a QUINCE.
+  "cierre_detail_concepto",
   "usuario", //  10. 405: `gestiones.mensajero` (R9)
   // ⭑ 11b. FICHA 454 (R32, 2026-09-23): `gestiones.eventos` — el evento de registro de CALLE de
   //   cada gestion (take 1), que deriva `pendienteConfirmacion`. UNA consulta para todas las
@@ -121,9 +125,6 @@ const T = {
 describeSiHayBase("ficha 405 — el detalle por API key publica las gestiones VIGENTES de la orden", () => {
   let prisma: PrismaClient;
   let eventos: { query: string }[];
-  let fks: NonNullable<Awaited<ReturnType<typeof fksDeOrden>>>;
-  let tiendas: { id: string }[];
-  let mensajeros: { id: string; nombre: string }[];
   let estatus: Map<string, string>;
 
   beforeAll(async () => {
@@ -131,36 +132,17 @@ describeSiHayBase("ficha 405 — el detalle por API key publica las gestiones VI
     prisma = espia.prisma;
     eventos = espia.eventos;
 
-    const encontradas = await fksDeOrden(prisma);
-    if (encontradas === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar. " +
-          "Corre `pnpm run db:seed` antes de esta suite.",
-      );
-    }
-    fks = encontradas;
-
-    tiendas = await prisma.usuario.findMany({ select: { id: true }, take: 2 });
-    if (tiendas.length < 2) {
-      throw new Error(
-        "hacen falta al menos DOS usuarios: uno es la tienda dueña de la key y el otro la tienda " +
-          "ajena que demuestra que el `where` filtra por tienda (R13).",
-      );
-    }
-
-    mensajeros = await prisma.usuario.findMany({ select: { id: true, nombre: true }, take: 2 });
-    if (mensajeros.length < 2) {
-      throw new Error("hacen falta al menos DOS usuarios para atribuir gestiones distintas.");
-    }
-
+    // SLT-186: `devolucion_por_confirmar` (el pre-estado de la 239) salio de esta lista: la 454 lo retiro
+    // del catalogo y una base nueva no lo trae. Lo sustituye `novedad`, su equivalente vigente
+    // (`ESTADO_RETIRADO`), que sigue siendo DISTINTO del `entregado` de la segunda transicion.
     const filas = await prisma.orderStatus.findMany({
       where: {
-        value: { in: ["en_bodega_central", "reprogramado", "devolucion_por_confirmar", "entregado"] },
+        value: { in: ["en_bodega_central", "reprogramado", "novedad", "entregado"] },
       },
       select: { id: true, value: true },
     });
     estatus = new Map(filas.map((f) => [f.value, f.id]));
-    for (const value of ["en_bodega_central", "reprogramado", "devolucion_por_confirmar", "entregado"]) {
+    for (const value of ["en_bodega_central", "reprogramado", "novedad", "entregado"]) {
       if (!estatus.has(value)) {
         throw new Error(
           `falta el estado \`${value}\` en el catalogo \`order_status\`: corre \`pnpm run db:seed\`.`,
@@ -180,6 +162,25 @@ describeSiHayBase("ficha 405 — el detalle por API key publica las gestiones VI
   async function escenario() {
     return enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      // SLT-179 — las DOS tiendas (la dueña de la key y la ajena de R13), los DOS mensajeros y la
+      // zona nacen en ESTA transaccion: nada de leer la primera orden ni los primeros usuarios de la
+      // base. Control positivo: cuatro usuarios y una zona sembrados, o el caso cae.
+      const fks = await crearFksDeOrden(tx);
+      const tiendas = [{ id: fks.tiendaId }, await crearUsuarioDePrueba(tx, "adminTienda")];
+      const mensajeros = [
+        await crearUsuarioDePrueba(tx, "mensajero"),
+        await crearUsuarioDePrueba(tx, "mensajero"),
+      ];
+      expect(
+        await tx.usuario.count({
+          where: { id: { in: [...tiendas, ...mensajeros].map((u) => u.id) } },
+        }),
+        "SLT-179: las dos tiendas y los dos mensajeros sembrados no estan en la base",
+      ).toBe(4);
+      expect(
+        await tx.zona.count({ where: { id: fks.zonaId } }),
+        "SLT-179: la zona sembrada no esta en la base",
+      ).toBe(1);
       const [tiendaPropia, tiendaAjena] = tiendas;
       const [mensajeroA, mensajeroB] = mensajeros;
 
@@ -288,7 +289,7 @@ describeSiHayBase("ficha 405 — el detalle por API key publica las gestiones VI
         //   escenario imposible no prueba nada. La segunda fila que hace letal la mutacion.
         evidenciaStoragePath: `ordenes/${SUFIJO}/devuelta-con-foto.jpg`,
       });
-      await crearTransicion(propia, gDevuelta, "devolucion_por_confirmar", T.novedad);
+      await crearTransicion(propia, gDevuelta, "novedad", T.novedad);
       await crearTransicion(
         propia,
         gDevuelta,
@@ -310,7 +311,7 @@ describeSiHayBase("ficha 405 — el detalle por API key publica las gestiones VI
         causaDevolucion: "not_found",
         motivo: "TEXTO-LIBRE-de-la-gestion-ANULADA",
       });
-      await crearTransicion(propia, gAnulada, "devolucion_por_confirmar", T.anulada);
+      await crearTransicion(propia, gAnulada, "novedad", T.anulada);
 
       // (3b) ANULADA **CON FOTO**: esta SI la devuelve la consulta, porque casa con la PRIMERA
       //      rama del `OR` (la de `evidencias[]`, que desde la 268 no filtra anuladas a
@@ -529,9 +530,9 @@ describeSiHayBase("ficha 405 — el detalle por API key publica las gestiones VI
 
     expect(reprogramada.estadoResultante).toBe("reprogramado");
     // ⭑ EL CASO DISCRIMINANTE: esta gestion origino DOS transiciones. La primera fue al
-    // pre-estado de la 239; la segunda, un minuto despues, a `entregada`. Si el mapeo se quedara
+    // pre-estado de la 239 (desde la 454, `novedad`: SLT-186); la segunda, un minuto despues, a `entregada`. Si el mapeo se quedara
     // con la ULTIMA —o con «cualquiera»—, aqui saldria `entregada`.
-    expect(devuelta.estadoResultante).toBe("devolucion_por_confirmar");
+    expect(devuelta.estadoResultante).toBe("novedad");
     // R7: la legada no tiene fila de historial -> `null`, con la clave presente.
     expect("estadoResultante" in legada).toBe(true);
     expect(legada.estadoResultante).toBeNull();
@@ -594,7 +595,7 @@ describeSiHayBase("ficha 405 — el detalle por API key publica las gestiones VI
   //
   // El requisito se reescribió con el número MEDIDO y aquí se CONGELA. Las dos mitades se afirman
   // por separado, porque protegen cosas distintas.
-  it("R19/R19-b (+415, +454): el detalle emite EXACTAMENTE 14 consultas, y son estas catorce", async () => {
+  it("R19/R19-b (+415, +454, +SLT-52): el detalle emite EXACTAMENTE 15 consultas, y son estas quince", async () => {
     const m = await escenario();
 
     // ⭑ EL NUMERO, CON NOMBRE Y APELLIDOS. Un `toEqual` de la lista entera: si mañana alguien
@@ -603,7 +604,8 @@ describeSiHayBase("ficha 405 — el detalle por API key publica las gestiones VI
     // ⏳ 2026-09-10 (feature 415): NUEVE -> DOCE, medido con este mismo espia.
     // ⏳ 2026-09-23 (ficha 454): DOCE -> TRECE (`orden_evento`, R32), medido igual.
     // ⏳ 2026-10-23 (SL-38): TRECE -> CATORCE (`distrito_zona_especial`, la marca de la empresa).
-    expect(m.tablasConGestiones).toHaveLength(14);
+    // ⏳ 2026-11-18 (SLT-186, medido): CATORCE -> QUINCE (`cierre_detail_concepto`, SLT-52).
+    expect(m.tablasConGestiones).toHaveLength(15);
     // Y el espía está midiendo de verdad: una lista vacía significaría que el `log: query` no
     // llegó y que este caso lleva pasando en falso.
     expect(m.tablasConGestiones.length).toBeGreaterThan(0);
@@ -617,7 +619,7 @@ describeSiHayBase("ficha 405 — el detalle por API key publica las gestiones VI
     // La segunda mitad del requisito, y la que de verdad importa para el coste: si alguien
     // resolviera `estadoResultante` con una consulta por gestión, aquí habría tres de más.
     expect(m.tablasConGestiones).toHaveLength(m.tablasSinGestiones.length);
-    // Ojo con el matiz: una orden SIN gestiones emite las mismas 14. Prisma pide la relación
+    // Ojo con el matiz: una orden SIN gestiones emite las mismas 15. Prisma pide la relación
     // igualmente, y por eso el conteo no se mueve.
     expect(m.tablasSinGestiones).toEqual(CONSULTAS_DEL_DETALLE);
   });

@@ -28,10 +28,11 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Qué falta:** que `scripts/test-rapido.mjs` caiga a la rama local de integración o falle con aviso (arnés: `/afinar-regla` y subir a la plantilla).
 - **Dueño:** leader.
 
-### D6 — El YAML de la API no nombra las cabeceras de firma del webhook
+### D6 — El YAML de la API no nombra las cabeceras de firma del webhook — RESUELTA (2026-11-18)
 - **Origen:** SL-15 (2026-10-22), visto en la review de SL-16 (H3). `openApiSpec.info.description` (`lib/api/openapi-spec.ts`) lleva el párrafo «Webhooks: cada entrega va firmada…» con las dos cabeceras `X-Servi-Logistic-*`; el `info.description` de `docs/api/api-key-openapi.yaml` no lo tiene. Es la única divergencia TS↔YAML del contrato.
 - **Qué falta:** llevar ese párrafo al YAML con las mismas palabras, y que un test de paridad lo cubra.
-- **Dueño:** Carlos Restrepo (ficha propia o la próxima que toque el contrato).
+- **Cerrada en SLT-201 «Manual de la API al día: Swagger/Postman con la carga completa y guía PDF actualizada» (2026-11-18):** el `info.description` del YAML lleva el párrafo con `X-Servi-Logistic-Signature` y `X-Servi-Logistic-Timestamp`, y `tests/unit/guards/openapi-carga-claves-reales.guardia.test.ts` compara el párrafo del YAML con el del objeto TS (que sale de `lib/crypto/webhook-firma.ts`).
+- **Dueño:** cerrada.
 
 ### D7 — ¿Quién retira una provincia: la empresa o la plataforma? — RESUELTA (2026-10-22)
 - **Origen:** SL-16 (2026-10-22), review H4. La ayuda decía que lo hacía la empresa, siguiendo el código de SL-15; `docs/plan-saas.md` decisión 5 apuntaba a la plataforma.
@@ -40,8 +41,8 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 
 ### D8 — La suite de integración necesita datos que la app vacía ya no siembra
 - **Origen:** SL-11 (app vacía), medido en el gate completo de `dev` tras SL-16 (2026-10-22): 245 archivos de `tests/integration/` en `tests/baseline-rojos.json`, todos por base sin órdenes, usuarios ni zonas.
-- **Qué falta:** SL-31 (tests con datos propios y CI migrada); al cerrarla, el baseline vuelve a su única entrada de SL-29.
-- **Dueño:** quien tome SL-31.
+- **Qué falta:** SLT-177 midió las 239 entradas de SL-31 en CI (run 43973243440: 227 base vacía, 12 otra causa) y sacó 91 con siembra propia. Las que quedan llevan su causa y su ficha: SLT-178…SLT-184 (siembra), SLT-185 (sin empresa en contexto), SLT-186 (estados retirados), SLT-187 (migraciones tras SL-17) SLT-188 (filas fuera de la transacción) y SLT-195 (21 de cierre de satélite, ver D64). Ningún motivo cita ya SL-31 (guardia R743).
+- **Dueño:** las fichas SLT-178…SLT-188.
 
 ### D9 — Docs del perfil que nombran la app de origen
 - **Origen:** verificación previa al push (2026-10-22). `docs/architecture.md`, `checkpoints-proyecto.md`, `dependencias.md`, `limpieza-ordenex.md`, `perfil-agentes.md`, `plan-saas.md` y `verification.md` la nombran para fijar reglas e historia, no como marca de la app.
@@ -227,10 +228,10 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Qué falta:** buscar la causa si vuelve a aparecer. Si aparece en `next start`, deja de ser menor.
 - **Dueño:** Carlos Restrepo (decidir si va a ficha).
 
-### D37 — `detalle-movimiento-cierre-postgres` y `detalle-en-lote-464` ciegos, también en CI
+### D37 — `detalle-movimiento-cierre-postgres` y `detalle-en-lote-464` ciegos, también en CI — CERRADA
 - **Origen:** review de SLT-54 (2026-11-05, `progress/review_SLT-54.md`, menor 4). Fallan por su siembra (14 fallan y 6 se saltan) y `tests/baseline-rojos.json` los tapa también en `gate-completo`. No hay regresión: con copias temporales que crean sus FK en la transacción, 20 de 20 en verde. Pero son un `WHERE` de dinero sin vigilancia en CI.
-- **Qué falta:** portar los dos a `crearFksDeOrden` (SL-31) y sacarlos del baseline.
-- **Dueño:** Carlos Restrepo (decidir si va a ficha).
+- **Resolución:** SLT-177 (2026-11-16) los siembra con `crearFksDeOrden` y una tarifa propia en la transacción; 14/14 y 6/6 verdes con 0 saltados en base migrada con catálogos, y fuera del baseline.
+- **Dueño:** cerrada.
 
 ### D38 — El libro de la tienda sigue diciendo «devolución a origen» en el cobro del modelo nuevo — CERRADA
 - **Origen:** tandas H1 y H2 de SLT-54 (2026-11-05, `progress/impl_SLT-54.md`).
@@ -371,8 +372,10 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 
 ### D64 — Fixture `caja-459`: premio movido a cierre central sin medir
 - **Origen:** SLT-124 (2026-11-11, review m2 y m3). El cierre del premio pasó de `bodega_satelite` a `bodega_central` porque con R1 la siembra daría `sin_cierre`. Los 15 tests del fixture y la integración de R6 (`premio-ranking-idempotencia`) están en el baseline por SL-31 (app vacía) y hoy no corren. El mensajero del fixture sigue en zona satélite con un cierre central.
-- **Qué falta:** cuando SL-31 saque esos tests del baseline, comprobar que pasan y que R6 sigue vigilado; ajustar la zona del mensajero si choca con R12.
-- **Dueño:** ArqDev / quien cierre SL-31.
+- **Medido en SLT-177 (2026-11-16):** con la zona central sembrada, `sembrarEscenario459` cae en su paso `repartoMensajero` con `sin_saldo` (`_fixtures/caja-459.ts:773`): 14 archivos del fixture siguen rojos. `premio-ranking-idempotencia` queda 16/17 (el que falla es la action sin empresa, SLT-185). Siete casos de `454/` con cierre de satélite fallan en aserciones de dinero.
+- **Qué falta:** SLT-195 «Cierre de la satélite: pruebas de dinero que no cuadran (D64)» (decisión de Carlos, 2026-11-16) para esos 21 archivos; ajustar la zona del mensajero si choca con R12.
+- **Cerrada en SLT-195 (2026-11-18):** el mensajero del escenario 459 pasa a la central y aprueba el `maestro` (sin `asentarCierreDia` aparte); los 7 de `454/455/477` siguen SLT-73/79/139. Sin fallo de producción. Los 21 y `marca-conciliacion.int` salen del baseline, verdes en base desechable y con control positivo (`progress/impl_SLT-195.md`). En `analitica-anulacion-rechazo-458` la ganancia baja 1000 y no 1130 (SL-39 R11); Carlos aprobó el cambio el 2026-11-18.
+- **Dueño:** cerrada.
 
 ### D65 — Guardias de diálogos y visor de cierres con huecos conocidos
 - **Origen:** SLT-103 (2026-11-11, review m1-m3 en `progress/review_SLT-103.md`). `cierres-dialogos-modal.guardia.test.ts`:
@@ -449,3 +452,24 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Origen:** SLT-153 «Cabecera del detalle del cierre con rótulos y folio buscable» (2026-11-13, review m1 en `progress/review_SLT-153.md`). Con un trozo de folio corto (1-2 caracteres), `idsPorFolio` puede devolver miles de ids que luego entran en un `IN` del `where` de las colas.
 - **Qué falta:** medir con volumen real; si crece, filtrar por folio en la misma consulta (subconsulta o `right(id, 8) ILIKE`) en vez de la lista de ids, o exigir un mínimo de caracteres.
 - **Dueño:** ArqDev.
+
+### D77 — `CURRENT_TIMESTAMP` en una escritura de planes anterior a SLT-129
+- **Origen:** SLT-129 «Planes: borrador del plan guardado en el servidor por pasos» (2026-11-17, review m5 en `progress/review_SLT-129.md`). `PlanesRepository.ts:834` guarda con `CURRENT_TIMESTAMP`, que toma la zona de la sesión de Postgres; en local sale 5 h atrás. En CI no se ve porque su Postgres está en UTC.
+- **Qué falta:** pasarla a `now() AT TIME ZONE 'UTC'` (`docs/architecture.md > Ciclo en UTC`), con su test.
+- **Dueño:** Camilo.
+
+### D78 — Deadlock poco probable entre el borrador y el borrado en cascada del plan
+- **Origen:** SLT-129 (2026-11-17, review m3). Guardar o confirmar un borrador mientras se borra el plan en cascada (R22) puede cruzar bloqueos; Postgres corta uno con `40P01` y el error llega sin traducir.
+- **Qué falta:** traducir `40P01` a un error de dominio reintentable, o fijar el orden de bloqueos también en el borrado.
+- **Dueño:** Camilo.
+
+### D79 — Tests que commitean filas de negocio sin el motivo escrito — RESUELTA (2026-11-18)
+- **Origen:** SLT-188 «Tests que dejan filas fuera de su transacción», T3 (R1182, 2026-11-18). De los 39 archivos que commitean una `organizacion` (y lo que cuelga de ella), 35 dicen en el propio archivo por qué no van en una tx revertida; 4 no: `integracion-migracion.test.ts`, `para-cada-empresa-modulo.test.ts`, `premio-ranking-idempotencia.test.ts` y `419/_escenario-419.ts`. Los cuatro limpian (`afterAll`/`finally`) y el CI del PR #222 midió 0 filas fuera de su transacción: no hay fuga permanente, solo la ventana de la clase (b).
+- **Qué falta:** pasarlos a una tx revertida si caben, o escribir el motivo en el archivo. No se hizo en SLT-188: sin fuga medida, R1181 pide no inventar arreglos, y el leader dejó `419/_escenario-419.ts` fuera salvo evidencia.
+- **Cerrada en SLT-207 «D79: tests que confirman filas de negocio sin el motivo escrito» (2026-11-18):** `integracion-migracion.test.ts` siembra sus dos empresas dentro de cada tx revertida, con control positivo y un `afterAll` que comprueba que no queda ninguna. Los otros tres siguen confirmando porque los lee otra conexión (`getPrismaClient()` en `para-cada-empresa-modulo` y en la action de `premio-ranking-idempotencia`; `c1`/`c2` de la concurrencia R8 en `419/confirmar-entrega-lote-sql-real.test.ts`): el motivo va escrito junto a la escritura y la limpieza desconecta en `finally`. Mutación por archivo (sin limpieza / sin rollback): la comprobación de SLT-188 da salida 1 en los cuatro. Detalle en `progress/impl_SLT-207.md`.
+- **Dueño:** cerrada.
+
+### D80 — `454/caracterizacion/corte-concurrencia` deja su escenario si el worker muere
+- **Origen:** SLT-188 «Tests que dejan filas fuera de su transacción», T7 (2026-11-18). En la segunda de dos corridas seguidas sobre la misma desechable, el worker de vitest murió («Worker exited unexpectedly») en el `beforeAll` de ese archivo. Quedó confirmado un escenario de `sembrarComprometido`: 1 organización, 1 orden (`R-454…`), 2 zonas («Central 454 …»), 5 usuarios y su cobro (12 filas). La comprobación de SLT-188 lo cazó con salida 1. Solo, el archivo pasó 3 de 3 sin fuga, y la doble corrida repetida dio 0 y 0.
+- **Qué falta:** que el archivo barra al empezar los restos de corridas anteriores (por sus identificadores `454…`), o saber por qué muere el worker. Un `finally` no basta si muere el proceso.
+- **Dueño:** Carlos Restrepo (decidir si va a ficha).

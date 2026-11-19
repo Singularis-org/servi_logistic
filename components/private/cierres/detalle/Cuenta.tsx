@@ -13,7 +13,7 @@ import type { LineaCuenta } from "./detalle-cierre-vista";
 // suma, subtotal con raya punteada y total en negrita con raya continua.
 //
 // No calcula nada (R71): cada importe es el STRING del servidor pasado por `money()`. El operador
-// vive en el rótulo y no pegado al importe (a diferencia de `CascadaDinero`), así que cada línea
+// vive en el rótulo y no pegado al importe, así que cada línea
 // lleva `data-signo` y `data-tipo`: es lo que lee `DineroIdentidadesEnPantalla.test.tsx` para
 // comprobar que la cuenta que se ve cierra al céntimo.
 //

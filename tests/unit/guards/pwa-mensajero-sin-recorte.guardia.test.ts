@@ -80,6 +80,39 @@ const ARCHIVOS_PWA_MENSAJERO: readonly ArchivoVigilado[] = [
     reglas: ["recorte", "escala", "oculta"],
     nota: "Solo el componente: los helpers de arriba no pintan.",
   },
+  // Rebanada B — Reparto (SLT-163; m7 de la review de A: también «oculta»).
+  { archivo: "app/(app)/mis-asignaciones/_components/RepartoModule.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "app/(app)/mis-asignaciones/_components/KpisMensajero.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "app/(app)/mis-asignaciones/_components/ConfirmarGestionDialog.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "app/(app)/mis-asignaciones/_components/GestionarOrdenCardButton.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "app/(app)/mis-asignaciones/_components/MarcarLuegoToggle.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "app/(app)/mis-asignaciones/_components/RecuperarAyudaButton.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "app/(app)/mis-asignaciones/_components/FiltroCantonDistrito.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "app/(app)/mis-asignaciones/_components/AvisoRutaLinea.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "app/(app)/mis-asignaciones/_components/VerificarGuiaGate.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "app/(app)/mis-asignaciones/_components/EscanerGuiaReparto.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "app/(app)/mis-asignaciones/_components/reparto-escaner.ts", reglas: ["recorte", "escala", "oculta"] },
+  // Rebanada C — Recoger en bodega y Recolección (SLT-164).
+  { archivo: "app/(app)/mis-asignaciones/_components/RecogerModule.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "app/(app)/mis-asignaciones/_components/RecogerPaqueteCard.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "app/(app)/mis-asignaciones/_components/mis-asignaciones-buscador.ts", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "app/(app)/recoleccion/_components/RecoleccionModule.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "app/(app)/recoleccion/_components/RecolectadasHoyLista.tsx", reglas: ["recorte", "escala", "oculta"] },
+  // Rebanada E — mapa de ruta (SLT-166).
+  { archivo: "app/(app)/mis-asignaciones/_components/ruta-mapa-iconos.ts", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "app/(app)/mis-asignaciones/_components/RutaMapaInner.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "app/(app)/mis-asignaciones/_components/RutaMapa.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "app/(app)/mis-asignaciones/_components/HojaParadaMapa.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "components/shared/CarruselCards.tsx", reglas: ["recorte", "escala", "oculta"] },
+  // Ranking (SLT-162 «Ranking del mensajero en tarjetas en el móvil»; R758, R765).
+  { archivo: "app/(app)/ranking/_components/RankingModule.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "app/(app)/ranking/_components/PremioInputRow.tsx", reglas: ["recorte", "escala", "oculta"] },
+  { archivo: "app/(app)/ranking/historico/_components/RankingHistoricoModule.tsx", reglas: ["recorte", "escala", "oculta"] },
+  {
+    archivo: "app/(app)/ranking/_components/RankingPodio.tsx",
+    reglas: ["recorte", "escala"],
+    nota: "Su `overflow-hidden` es la barra de progreso de la fila (decorativa, `aria-hidden`), no un dato.",
+  },
   {
     archivo: "components/shared/BuscadorFiltros.tsx",
     reglas: ["escala"],
@@ -212,6 +245,31 @@ describe("SLT-156 — la guardia detecta lo que dice (autocomprobación)", () =>
     }
     for (const bueno of ['"size-3.5"', '"left-2.5"', '"text-[13px]"', '"min-w-[250px]"', '"gap-2 p-3 px-(--card-spacing)"', '"[&>button]:h-11"']) {
       expect(hallazgos(bueno, ["escala"]), bueno).toEqual([]);
+    }
+  });
+
+  it("SLT-162: caza lo que la ficha retiró del ranking (contraprueba sobre sus formas reales)", () => {
+    // Las formas EXACTAS que había antes en `RankingPodio`, `RankingHistoricoModule` y la fila del
+    // resto: si alguien las devuelve, la guardia las ve.
+    for (const malo of [
+      '<span className={`truncate text-[13px] ${esPropio ? "a" : "b"}`}>',
+      '<div className="flex flex-col gap-1.5 pt-2">',
+      'className="mx-auto mb-0.5 text-hivis"',
+      'className="my-3.5 h-1 rounded-full bg-muted"',
+      '"grid grid-cols-[28px_1fr_52px] items-center gap-2.5 border-b border-border px-1.5 py-2"',
+      '"shrink-0 rounded-full bg-brand px-1.5 py-0.5 text-[10px]"',
+    ]) {
+      expect(hallazgos(malo, ["recorte", "escala"]), malo).not.toEqual([]);
+    }
+    // Lo que la ficha usa en su lugar pasa: el selector de la tabla de derecha a izquierda, la rejilla
+    // de la tarjeta de premios y la letra de 15 px no son espaciado.
+    for (const bueno of [
+      '"max-md:[&_table]:[direction:rtl] max-md:[&_td]:align-top"',
+      '"max-md:grid-cols-[auto_minmax(0,1fr)_auto] max-md:gap-x-1 max-md:p-4"',
+      '"max-md:text-[15px] md:grid-cols-[28px_1fr_120px_52px]"',
+      '"max-md:[&_div:has(>[data-slot=button][aria-label^=Descargar])]:w-full"',
+    ]) {
+      expect(hallazgos(bueno, ["recorte", "escala", "oculta"]), bueno).toEqual([]);
     }
   });
 

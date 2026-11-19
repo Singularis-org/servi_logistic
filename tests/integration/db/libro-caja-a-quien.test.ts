@@ -41,7 +41,7 @@ const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
 interface Medida {
   porOrigen: Record<string, AutoriaDeFilaDTO[]>;
-  nombres: Record<"tiendaA" | "tiendaB" | "mensajero" | "maestro" | "adminSat", string>;
+  nombres: Record<"tiendaA" | "tiendaB" | "mensajero" | "maestro" | "aprobador", string>;
   ids: { tiendaA: string; tiendaB: string; mensajero: string };
   sueldoId: string;
   gastoId: string;
@@ -102,7 +102,7 @@ describeSiHayBase("458-B/TB.7 — «A quien» y «Registro» del libro de la caj
         for (const f of r.filas) (porOrigen[origenDe.get(f.movimientoId) as string] ??= []).push(f);
 
         const nombreDe = async (id: string) => (await tx.usuario.findUniqueOrThrow({ where: { id }, select: { nombre: true } })).nombre;
-        const adminSat = await tx.cierreDia.findUniqueOrThrow({ where: { id: esc.cierreId }, select: { resueltoPor: true } });
+        const aprobador = await tx.cierreDia.findUniqueOrThrow({ where: { id: esc.cierreId }, select: { resueltoPor: true } });
         return {
           porOrigen,
           nombres: {
@@ -110,7 +110,7 @@ describeSiHayBase("458-B/TB.7 — «A quien» y «Registro» del libro de la caj
             tiendaB: await nombreDe(esc.tiendaB),
             mensajero: await nombreDe(esc.mensajeroId),
             maestro: await nombreDe(esc.maestro.usuarioId),
-            adminSat: await nombreDe(adminSat.resueltoPor as string),
+            aprobador: await nombreDe(aprobador.resueltoPor as string),
           },
           ids: { tiendaA: esc.tiendaA, tiendaB: esc.tiendaB, mensajero: esc.mensajeroId },
           sueldoId: sueldo.id,
@@ -146,9 +146,12 @@ describeSiHayBase("458-B/TB.7 — «A quien» y «Registro» del libro de la caj
   });
 
   it("R56: el cierre → su MENSAJERO (con enlace); R57: automatico, «aprobacion del cierre» por quien lo aprobo", () => {
+    // SLT-195 (review B1): el aprobador es otra persona que el maestro que lee y registra el resto;
+    // si fueran la misma, «por quien lo aprobo» no distinguiria nada.
+    expect(m().nombres.aprobador, "SLT-195 B1: aprobador == maestro").not.toBe(m().nombres.maestro);
     for (const f of m().porOrigen.cierre_dia) {
       expect(f.aQuien).toEqual({ nombre: m().nombres.mensajero, beneficiario: null, cuenta: { tipo: "mensajero", id: m().ids.mensajero }, esEmpresa: false });
-      expect(f.registro).toEqual({ nombre: null, automatico: { accion: "aprobacion_cierre", por: m().nombres.adminSat } });
+      expect(f.registro).toEqual({ nombre: null, automatico: { accion: "aprobacion_cierre", por: m().nombres.aprobador } });
     }
   });
 

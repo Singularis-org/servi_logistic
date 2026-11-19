@@ -34,6 +34,8 @@ import type {
   GenerarGuiaInput,
   GenerarGuiaServiceResult,
   IGuiaAsignacionService,
+  RetirarSateliteInput,
+  RetirarSateliteServiceResult,
   RutearSateliteInput,
   RutearSateliteResultadoItem,
   RutearSateliteServiceResult,
@@ -100,6 +102,9 @@ const ESTATUS_REPROGRAMADA = "reprogramado";
 const ESTATUS_EN_ESPERA_ACEPTACION = "mensajero_recogiendo_en_bodega"; // R26 (asignarDesdeBodega)
 const ESTATUS_EN_BODEGA = "en_bodega_central"; // feature 156/R3: destino UNICO de generar guia
 const ESTATUS_EN_RUTA_BODEGA_SATELITE = "en_ruta_bodega_satelite"; // feature 30/R9
+// SLT-197 (R970/R971): origen y destino UNICOS del retiro de satelite a central (#73).
+const ORIGEN_RETIRO_SATELITE = "en_bodega_satelite";
+const ESTATUS_EN_RUTA_BODEGA_CENTRAL = "en_ruta_bodega_central";
 // Feature 157 (ampliacion): destino de la asignacion de recoleccion. Que exista este estado
 // es lo que impide reasignar en bucle: al asignar, la orden SALE del monton de disponibles.
 const ESTATUS_RECOLECTANDO = "recolectando";
@@ -894,5 +899,75 @@ export class GuiaAsignacionService implements IGuiaAsignacionService {
       estado: ESTATUS_EN_RUTA_BODEGA_SATELITE,
     }));
     return { status: "ok", resultados };
+  }
+
+  /**
+   * SLT-197 (R971-R975, R985): la central retira paquetes del estante de una satelite
+   * (`en_bodega_satelite -> en_ruta_bodega_central`, arista #73, familia `ajuste_estado`).
+   * Inverso de `rutearABodegaSatelite`. No filtra por zona: el lote puede mezclar bodegas (D9)
+   * y cada orden conserva la suya. La guarda de estado definitiva vive en el `WHERE` del repo.
+   */
+  async retirarABodegaCentral(
+    input: RetirarSateliteInput,
+    actor: Actor,
+  ): Promise<RetirarSateliteServiceResult> {
+    // R975 (D3): solo maestro/admin, antes de leer nada.
+    if (!esAccesoTotal(actor.rol)) return { status: "forbidden" };
+
+    const ordenIds = distinct(input.ordenIds);
+    // Defensa: la action ya exige `.min(1)`.
+    if (ordenIds.length === 0) return { status: "ok", resultados: [] };
+
+    // R973: existe, no borrada y en `en_bodega_satelite`; cualquier fallo aborta el lote.
+    const ordenes = await this.repo.findByIdsForTransicion(ordenIds);
+    const ordenMap = new Map(ordenes.map((o) => [o.id, o]));
+    const detalle: DetalleConflicto[] = [];
+    for (const id of ordenIds) {
+      const orden = ordenMap.get(id);
+      if (!orden) {
+        detalle.push({ ordenId: id, motivo: "orden no existe" });
+        continue;
+      }
+      if (orden.deletedAt !== null) {
+        detalle.push({ ordenId: id, motivo: "orden borrada" });
+        continue;
+      }
+      if (orden.estatusValue !== ORIGEN_RETIRO_SATELITE) {
+        detalle.push({
+          ordenId: id,
+          motivo: `estado de origen no permitido: ${orden.estatusValue}`,
+        });
+      }
+    }
+    if (detalle.length > 0) return { status: "conflict", detalle };
+
+    const destinoId = await this.repo.findEstatusIdByValue(ESTATUS_EN_RUTA_BODEGA_CENTRAL);
+    if (destinoId === null) {
+      return {
+        status: "validation_error",
+        fieldErrors: { estatus: [`el catalogo no tiene ${ESTATUS_EN_RUTA_BODEGA_CENTRAL}`] },
+      };
+    }
+
+    // R971/R972/R974: todo o nada; si una orden cambio de estado entre la lectura y la escritura,
+    // el repo no escribe nada y devuelve "conflicto".
+    const r = await this.repo.retirarSateliteLote(ordenIds, destinoId, {
+      actorUsuarioId: actor.usuarioId,
+      origenTipo: "ajuste_estado",
+    });
+    if (r === "conflicto") {
+      return {
+        status: "conflict",
+        detalle: ordenIds.map((ordenId) => ({
+          ordenId,
+          motivo: "la orden cambió de estado; recarga",
+        })),
+      };
+    }
+
+    return {
+      status: "ok",
+      resultados: ordenIds.map((ordenId) => ({ ordenId, estado: ESTATUS_EN_RUTA_BODEGA_CENTRAL })),
+    };
   }
 }

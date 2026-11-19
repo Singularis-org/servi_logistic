@@ -11,7 +11,7 @@ import type { PlanDTO } from "@/lib/types/planes";
 
 // SLT-66 (design §4.2, §5; R1, R8, R11) — el costo por orden por el servicio de planes, con un
 // repositorio doble: solo el superadmin lo escribe, la entrada inválida no llega al repositorio y la
-// válida llega entera (crear, editar de inmediato y programar).
+// válida llega entera (crear y programar). SLT-135: editar siempre programa; la fecha de hoy también.
 
 const SUPERADMIN: Actor = { usuarioId: "u-sa", rol: "superadmin", organizacionId: null };
 const EMPRESA = randomUUID();
@@ -60,7 +60,6 @@ function doble() {
     empresa: vi.fn<IPlanesRepository["empresa"]>(async (id) => ({ id, nombre: "Mensajería Uno", planId: null })),
     plan: vi.fn<IPlanesRepository["plan"]>(async () => PLAN_DTO),
     crear: vi.fn<IPlanesRepository["crear"]>(async () => PLAN),
-    editar: vi.fn<IPlanesRepository["editar"]>(async () => ({ estado: "ok", cambio: true, avisos: [] })),
     archivar: vi.fn<IPlanesRepository["archivar"]>(),
     asignar: vi.fn<IPlanesRepository["asignar"]>(),
     crearYAsignar: vi.fn<IPlanesRepository["crearYAsignar"]>(),
@@ -86,6 +85,7 @@ function doble() {
     cancelarCambioEmpresa: vi.fn<IPlanesRepository["cancelarCambioEmpresa"]>(),
     aplicarCambioDeEmpresa: vi.fn<IPlanesRepository["aplicarCambioDeEmpresa"]>(),
     cambiosDeEmpresaVencidos: vi.fn<IPlanesRepository["cambiosDeEmpresaVencidos"]>(),
+    vistaPreviaCambio: vi.fn<IPlanesRepository["vistaPreviaCambio"]>(),
     vistaPreviaAsignacion: vi.fn<IPlanesRepository["vistaPreviaAsignacion"]>(),
   };
 }
@@ -104,7 +104,7 @@ beforeEach(() => {
 
 const OPERACIONES: [string, (s: PlanesService, a: Actor | null, extra?: Record<string, unknown>) => Promise<unknown>][] = [
   ["crear", (s, a, extra = {}) => s.crear(a, { ...CREAR, ...extra })],
-  ["editar de inmediato", (s, a, extra = {}) => s.editar(a, { planId: PLAN, ...VERSION, vigenteDesde: null, ...extra })],
+  ["editar con la fecha de hoy", (s, a, extra = {}) => s.editar(a, { planId: PLAN, ...VERSION, vigenteDesde: "2026-10-31", ...extra })],
   [
     "programar un cambio",
     (s, a, extra = {}) => s.editar(a, { planId: PLAN, ...VERSION, vigenteDesde: "2026-12-01", ...extra }),
@@ -149,10 +149,10 @@ describe("SLT-66 R11 — el costo por orden llega al repositorio con la versión
     expect(repo.crear).toHaveBeenCalledWith(expect.objectContaining({ costoPorOrden: "100" }), "u-sa");
   });
 
-  it("editar de inmediato, también para vaciarlo", async () => {
-    await servicio.editar(SUPERADMIN, { planId: PLAN, ...VERSION, vigenteDesde: null });
-    await servicio.editar(SUPERADMIN, { planId: PLAN, ...VERSION, costoPorOrden: null, vigenteDesde: null });
-    expect(repo.editar.mock.calls.map((c) => c[1].costoPorOrden)).toEqual(["150.50", null]);
+  it("editar con la fecha de hoy, también para vaciarlo (SLT-135: se programa)", async () => {
+    await servicio.editar(SUPERADMIN, { planId: PLAN, ...VERSION, vigenteDesde: "2026-10-31" });
+    await servicio.editar(SUPERADMIN, { planId: PLAN, ...VERSION, costoPorOrden: null, vigenteDesde: "2026-10-31" });
+    expect(repo.programarCambio.mock.calls.map((c) => c[1].costoPorOrden)).toEqual(["150.50", null]);
   });
 
   it("programar un cambio", async () => {

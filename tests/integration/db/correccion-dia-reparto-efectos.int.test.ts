@@ -24,9 +24,10 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
+  type TxDeTest,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
@@ -84,17 +85,10 @@ describeSiHayBase("262/B13 — las ausencias y las consecuencias, contra Postgre
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const fks = await fksDeOrden(prisma);
-    if (fks === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar. Corre " +
-          "`pnpm run db:seed` (y las semillas de zonas) antes de esta suite.",
-      );
-    }
-    FKS = fks;
-    ACTOR = fks.tiendaId;
 
-    const valores = ["mensajero_recogiendo_en_bodega", "en_reparto", "ayuda_tienda"];
+    // SLT-186: `ayuda_tienda` salio de esta lista: la 454 lo retiro del catalogo y el servicio admite
+    // solo estos dos (`ESTADOS_CON_DIA_DE_REPARTO_VIVO`, lib/services/CorreccionDiaRepartoService.ts).
+    const valores = ["mensajero_recogiendo_en_bodega", "en_reparto"];
     const estados = await prisma.orderStatus.findMany({
       where: { value: { in: valores } },
       select: { id: true, value: true },
@@ -111,7 +105,7 @@ describeSiHayBase("262/B13 — las ausencias y las consecuencias, contra Postgre
     // ruidoso si faltan los catálogos: sin ellos el bloque R32 no puede sembrar nada, y un test
     // que no siembra nada mide cero y se pone verde.
     const [tipoIdentificacion, rolMensajero] = await Promise.all([
-      prisma.tipoIdentificacion.findFirst({ select: { id: true } }),
+      prisma.tipoIdentificacion.findUnique({ where: { value: "cedula" }, select: { id: true } }),
       prisma.rol.findFirst({ where: { value: "mensajero" }, select: { id: true } }),
     ]);
     if (tipoIdentificacion === null || rolMensajero === null) {
@@ -128,8 +122,24 @@ describeSiHayBase("262/B13 — las ausencias y las consecuencias, contra Postgre
     await prisma?.$disconnect();
   });
 
+  /**
+   * SLT-179 — la tienda y la zona del caso nacen en SU transaccion (nada de leer la primera orden de
+   * la base). Control positivo: si la siembra no llega, el caso cae nombrando la fila.
+   */
+  async function sembrarFks(tx: TxDeTest): Promise<void> {
+    const fks = await crearFksDeOrden(tx);
+    const [tiendas, zonas] = await Promise.all([
+      tx.usuario.count({ where: { id: fks.tiendaId } }),
+      tx.zona.count({ where: { id: fks.zonaId } }),
+    ]);
+    expect(tiendas, "SLT-179: la tienda sembrada no esta en la base").toBe(1);
+    expect(zonas, "SLT-179: la zona sembrada no esta en la base").toBe(1);
+    FKS = fks;
+    ACTOR = fks.tiendaId;
+  }
+
   function estatusIdsAdmitidos(): string[] {
-    return [ESTATUS.mensajero_recogiendo_en_bodega, ESTATUS.en_reparto, ESTATUS.ayuda_tienda];
+    return [ESTATUS.mensajero_recogiendo_en_bodega, ESTATUS.en_reparto];
   }
 
   /** Siembra UNA orden asignada con `fechaReparto` y ejecuta `fn`. Todo se revierte. */
@@ -140,6 +150,7 @@ describeSiHayBase("262/B13 — las ausencias y las consecuencias, contra Postgre
   ): Promise<T> {
     return enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarFks(tx);
       const orden = await tx.orden.create({
         data: {
           numGuia: GUIA_BASE + Math.floor(Math.random() * 1_000_000),
@@ -233,15 +244,22 @@ describeSiHayBase("262/B13 — las ausencias y las consecuencias, contra Postgre
     expect(filas[0].relrowsecurity).toBe(true);
   });
 
-  it("R26: y NO tiene policies — este repo no usa Supabase Auth, la autorizacion vive en el service", async () => {
+  it("R26: su UNICA policy es la de empresa para `servi_app` — sin Supabase Auth, la autorizacion vive en el service", async () => {
     // Patrón `orden_nota` / `plantilla_mensaje` / `notificacion` / `orden_historial_estado`. Una
-    // policy no tendría a quién preguntar (no hay `auth.uid()`); lo que la RLS garantiza es lo que
-    // R26 pide: a estas filas no se llega si no es por el servidor de la aplicación.
-    const filas = await prisma.$queryRawUnsafe<{ policyname: string }[]>(
-      `SELECT policyname FROM pg_policies
+    // policy por usuario no tendría a quién preguntar (no hay `auth.uid()`); lo que la RLS garantiza
+    // es lo que R26 pide: a estas filas no se llega si no es por el servidor de la aplicación.
+    // SLT-186: hasta SL-17 la tabla no tenia NINGUNA policy; la multiempresa le puso UNA, la que
+    // recorta por `app.organizacion_id` al rol de la app. Se afirma esa y solo esa, y que no mira
+    // a ningun usuario autenticado.
+    const filas = await prisma.$queryRawUnsafe<{ policyname: string; roles: string; qual: string }[]>(
+      `SELECT policyname, roles::text AS roles, qual FROM pg_policies
         WHERE schemaname = 'public' AND tablename = 'orden_dia_reparto_cambio'`,
     );
-    expect(filas).toEqual([]);
+    expect(filas.map((f) => ({ policyname: f.policyname, roles: f.roles }))).toEqual([
+      { policyname: "orden_dia_reparto_cambio_por_empresa", roles: "{servi_app}" },
+    ]);
+    expect(filas[0].qual).toContain("app.organizacion_id");
+    expect(filas[0].qual).not.toContain("auth.");
   });
 
   it("R26: la RLS de la tabla del rastro es la MISMA postura que la del historial de estados", async () => {
@@ -479,6 +497,7 @@ describeSiHayBase("262/B13 — las ausencias y las consecuencias, contra Postgre
   ): Promise<T> {
     return enTransaccionRevertida(prisma, async (txRaw) => {
       await serializarEscriturasReales(txRaw);
+      await sembrarFks(txRaw);
       const tx = txRaw as unknown as PrismaClient;
       const marca = `${SUFIJO}-${Math.random().toString(36).slice(2, 10)}`;
 

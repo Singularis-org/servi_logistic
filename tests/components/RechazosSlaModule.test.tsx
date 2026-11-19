@@ -377,3 +377,148 @@ describe("RechazosSlaModule — el monto de la bodega no se le muestra a la tien
     ).toBeInTheDocument();
   });
 });
+
+// SLT-194 «Buscar escaneando en recolección, devoluciones y rechazos» (R949-R952, R957, DC1, D4): la
+// pestaña monta el MISMO `BuscadorFiltros` con `escaneo`, sin filtros; el término viaja como `q` a la
+// acción en cada petición de página. Literales a mano; guías imposibles por casualidad (`91024`).
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: vi.fn(), push: vi.fn(), refresh: vi.fn() }),
+  usePathname: () => "/novedades",
+  useSearchParams: () => new URLSearchParams(""),
+}));
+
+// Sin cámara en jsdom: el visor se sustituye por un botón que dispara el MISMO `onDecoded`.
+vi.mock("@/components/shared/QrScanner", () => ({
+  QrScanner: ({ onDecoded }: { onDecoded: (texto: string) => void }) => (
+    <button type="button" onClick={() => onDecoded("https://app.ejemplo.test/paquete/91024")}>
+      Simular escaneo
+    </button>
+  ),
+}));
+
+describe("SLT-194 — buscador con escaneo en Rechazos (R949-R952, R957)", () => {
+  const NOMBRE = "Buscar entre las órdenes con devolución a origen por plazo vencido";
+  const buscador = () => screen.getByRole("searchbox", { name: NOMBRE }) as HTMLInputElement;
+  const lista = () =>
+    screen.getByRole("list", { name: "Órdenes con devolución a origen por plazo vencido" });
+
+  const PAGINA_1 = [
+    rechazo({ id: "o1", numGuia: 95555, numRemision: "REM-INI", destinatario: "Inés Inicial" }),
+  ];
+  const ENCONTRADO = rechazo({
+    id: "o9",
+    numGuia: 91024,
+    numRemision: "REM-HALLADA",
+    destinatario: "Hugo Hallado",
+  });
+
+  function montar(total = 15) {
+    render(<RechazosSlaModule items={PAGINA_1} total={total} page={1} pageSize={10} />);
+  }
+
+  async function buscarConEnter(user: ReturnType<typeof userEvent.setup>, texto: string) {
+    await user.click(buscador());
+    await user.paste(texto);
+    await user.keyboard("{Enter}");
+  }
+
+  it("R949: buscador con su nombre, el placeholder de /ordenes, la cámara y la ayuda; sin selector de filtros", () => {
+    montar();
+    expect(buscador()).toHaveAttribute(
+      "placeholder",
+      "Guía, remisión, teléfono, destinatario o producto",
+    );
+    expect(buscador()).toHaveAccessibleDescription(
+      "Escanea o escribe la guía y pulsa Enter. Lo leído por la pistola o por la cámara (QR o código de barras) se busca igual.",
+    );
+    expect(screen.getByRole("button", { name: "Escanear con cámara" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Filtros/ })).toBeNull();
+  });
+
+  it("R949: el mínimo es de 3 caracteres — con 2, aviso y ninguna petición", async () => {
+    const user = userEvent.setup();
+    montar();
+    await buscarConEnter(user, "91");
+    expect(await screen.findByText(/3 caracteres/)).toBeInTheDocument();
+    expect(listarMock).not.toHaveBeenCalled();
+  });
+
+  it("R950: escribir 91024 + Enter pide la página 1 con `q` y pinta lo devuelto con su total", async () => {
+    const user = userEvent.setup();
+    listarMock.mockResolvedValue({ status: "ok", items: [ENCONTRADO], total: 12, page: 1, pageSize: 10 });
+    montar();
+
+    await buscarConEnter(user, "91024");
+
+    await vi.waitFor(() => expect(listarMock).toHaveBeenCalledWith({ page: 1, q: "91024" }));
+    expect(listarMock).toHaveBeenCalledTimes(1);
+    expect(await within(lista()).findByText("Hugo Hallado")).toBeInTheDocument();
+    expect(within(lista()).queryByText("Inés Inicial")).toBeNull();
+    expect(screen.getByText("1-10 de 12")).toBeInTheDocument();
+  });
+
+  it("R950: la cámara del buscador lee una guía → pide la página 1 con ese número", async () => {
+    const user = userEvent.setup();
+    listarMock.mockResolvedValue({ status: "ok", items: [ENCONTRADO], total: 1, page: 1, pageSize: 10 });
+    montar();
+
+    await user.click(screen.getByRole("button", { name: "Escanear con cámara" }));
+    await user.click(await screen.findByRole("button", { name: "Simular escaneo" }));
+
+    await vi.waitFor(() => expect(listarMock).toHaveBeenCalledWith({ page: 1, q: "91024" }));
+    expect(buscador().value).toBe("91024");
+    expect(await within(lista()).findByText("Hugo Hallado")).toBeInTheDocument();
+  });
+
+  it("R951: con término, «Página siguiente» lo lleva; la X vuelve a la página 1 sin `q`", async () => {
+    const user = userEvent.setup();
+    listarMock.mockResolvedValue({ status: "ok", items: [ENCONTRADO], total: 15, page: 1, pageSize: 10 });
+    montar();
+
+    await buscarConEnter(user, "91024");
+    await vi.waitFor(() => expect(listarMock).toHaveBeenCalledWith({ page: 1, q: "91024" }));
+    await within(lista()).findByText("Hugo Hallado");
+
+    await user.click(screen.getByRole("button", { name: "Página siguiente" }));
+    await vi.waitFor(() => expect(listarMock).toHaveBeenCalledWith({ page: 2, q: "91024" }));
+
+    listarMock.mockClear();
+    await user.click(screen.getByRole("button", { name: `Limpiar ${NOMBRE}` }));
+    await vi.waitFor(() => expect(listarMock).toHaveBeenCalledWith({ page: 1 }));
+    expect(listarMock.mock.calls.at(-1)?.[0]).toStrictEqual({ page: 1 });
+  });
+
+  it("R952: con término y sin coincidencias, «Ninguna orden coincide…» con la barra y «Limpiar la búsqueda» que la vacía", async () => {
+    const user = userEvent.setup();
+    listarMock.mockResolvedValueOnce({ status: "ok", items: [], total: 0, page: 1, pageSize: 10 });
+    montar();
+
+    await buscarConEnter(user, "91024");
+
+    expect(await screen.findByText("Ninguna orden coincide con lo que buscaste")).toBeInTheDocument();
+    expect(buscador()).toBeInTheDocument();
+    expect(screen.queryByText("No tenés órdenes con devolución a origen por plazo vencido")).toBeNull();
+
+    listarMock.mockResolvedValueOnce({ status: "ok", items: PAGINA_1, total: 15, page: 1, pageSize: 10 });
+    await user.click(screen.getByRole("button", { name: "Limpiar la búsqueda" }));
+
+    await vi.waitFor(() => expect(listarMock).toHaveBeenLastCalledWith({ page: 1 }));
+    expect(await within(lista()).findByText("Inés Inicial")).toBeInTheDocument();
+    expect(buscador().value).toBe("");
+  });
+
+  it("R952: sin término y sin rechazos, el vacío de hoy y SIN barra", () => {
+    render(<RechazosSlaModule items={[]} total={0} page={1} pageSize={10} />);
+    expect(screen.getByText("No tenés órdenes con devolución a origen por plazo vencido")).toBeInTheDocument();
+    expect(screen.queryByRole("searchbox")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Escanear con cámara" })).toBeNull();
+  });
+
+  it("R957: al montar no se pide nada (la página 1 llega precargada)", async () => {
+    montar();
+    expect(within(lista()).getByText("Inés Inicial")).toBeInTheDocument();
+    // Más que el debounce por defecto (500 ms): una emisión al montar ya habría llegado.
+    await new Promise((r) => setTimeout(r, 700));
+    expect(listarMock).not.toHaveBeenCalled();
+  });
+});

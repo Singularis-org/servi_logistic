@@ -17,8 +17,8 @@ import type {
 afterEach(cleanup);
 
 const PARTES_DOS_TIENDAS = [
-  { tiendaId: "t-norte", tiendaNombre: "Tienda Norte", recaudado: "60000.00", pagoTienda: "55480.00", ganaLaTienda: "55480.00" },
-  { tiendaId: "t-sur", tiendaNombre: "Tienda Sur", recaudado: "40000.00", pagoTienda: "36610.00", ganaLaTienda: "36610.00" },
+  { tiendaId: "t-norte", tiendaNombre: "Tienda Norte", recaudado: "60000.00", pagoTienda: "55480.00" },
+  { tiendaId: "t-sur", tiendaNombre: "Tienda Sur", recaudado: "40000.00", pagoTienda: "36610.00" },
 ];
 
 const MENSAJERO: DetalleMensajeroVista = {
@@ -34,10 +34,9 @@ const MENSAJERO: DetalleMensajeroVista = {
   totales: { efectivo: "70000.00", simpe: "30000.00", transferencia: "0.00", general: "100000.00" },
   totalPagoMensajero: "3000.00",
   empresa: {
-    // SLT-169 (R620): 100.000 − 7.910 de todo lo facturado; `ganaLaTienda` es su alias.
+    // SLT-169 (R620): 100.000 − 7.910 de todo lo facturado.
     pagoTienda: "92090.00",
     cobradoSobreRecaudado: "5650.00",
-    ganaLaTienda: "92090.00",
     totalIngresoBodegaRechazos: "500.00",
     ivaFacturado: "910.00",
     netoEmpresa: "3500.00",
@@ -226,8 +225,8 @@ describe("mensajero · «Dinero»: reparto, dos cuentas y por tienda (R14, R15)"
 // rechazos sale negativa; su celda va en rojo y con «(la tienda debe)», la positiva no.
 describe("SLT-169 — «Por tienda» con una tienda que debe (R627)", () => {
   const CON_DEUDA = [
-    { tiendaId: "t-norte", tiendaNombre: "Tienda Norte", recaudado: "100000.00", pagoTienda: "105295.05", ganaLaTienda: "105295.05" },
-    { tiendaId: "t-sur", tiendaNombre: "Tienda Sur", recaudado: "0.00", pagoTienda: "-13205.05", ganaLaTienda: "-13205.05" },
+    { tiendaId: "t-norte", tiendaNombre: "Tienda Norte", recaudado: "100000.00", pagoTienda: "105295.05" },
+    { tiendaId: "t-sur", tiendaNombre: "Tienda Sur", recaudado: "0.00", pagoTienda: "-13205.05" },
   ];
   function celdasHoy(): HTMLElement[] {
     const porTienda = screen.getByRole("region", { name: "Por tienda" });

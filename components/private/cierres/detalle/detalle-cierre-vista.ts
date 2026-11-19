@@ -46,7 +46,7 @@ import {
 import { money } from "@/lib/config/moneda";
 import { hrefDetalleCierre } from "@/lib/utils/cierre-enlace";
 import { lineasCascadaCentral } from "@/app/(app)/cierres-admin/_components/cascadas-bodega";
-import { marcaDeVariasTiendas } from "@/app/(app)/cierres-admin/_components/DesglosePorTienda";
+import { marcaDeVariasTiendas } from "@/app/(app)/cierres-admin/_components/cierre-labels";
 
 import { NOTA_DEBE_LLEGAR, NOTA_GANA_BODEGA_VIEJO, TARJETA_GANA_BODEGA, pagosAjustados } from "../cola/cola-cierres-labels";
 // SLT-154 (D8): ciclo entre dos módulos de funciones (este exporta `fechaHora`/`folioDe` a aquel); ninguno
@@ -81,7 +81,6 @@ export interface ConteosMensajero {
 export interface DineroEmpresaMensajero {
   pagoTienda: string;
   cobradoSobreRecaudado: string;
-  ganaLaTienda: string;
   totalIngresoBodegaRechazos: string;
   ivaFacturado: string;
   netoEmpresa: string;
@@ -977,11 +976,10 @@ export function vistaMensajeroDesdeAdmin(r: DetalleAdminOk): DetalleMensajeroVis
  * en `null` (quien mira no es la central), `null` entero y la pantalla no pinta nada de la empresa.
  */
 function empresaDe(r: DetalleAdminOk, modeloNuevo: boolean): DineroEmpresaMensajero | null {
-  const { pagoTienda, cobradoSobreRecaudado, ganaLaTienda, ivaFacturado, netoEmpresa, totalesIngreso, partesPorTienda } = r;
+  const { pagoTienda, cobradoSobreRecaudado, ivaFacturado, netoEmpresa, totalesIngreso, partesPorTienda } = r;
   if (
     pagoTienda === null ||
     cobradoSobreRecaudado === null ||
-    ganaLaTienda === null ||
     ivaFacturado === null ||
     netoEmpresa === null ||
     totalesIngreso === null ||
@@ -992,7 +990,6 @@ function empresaDe(r: DetalleAdminOk, modeloNuevo: boolean): DineroEmpresaMensaj
   return {
     pagoTienda,
     cobradoSobreRecaudado,
-    ganaLaTienda,
     totalIngresoBodegaRechazos: r.cierre.totalIngresoBodegaRechazos,
     ivaFacturado,
     netoEmpresa,

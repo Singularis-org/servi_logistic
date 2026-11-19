@@ -428,3 +428,38 @@ describe("la cola no se detiene por una lectura mal resuelta", () => {
     expect(procesar.mock.calls.map((c) => c[0])).toEqual(["1024", "2048"]);
   });
 });
+
+// SLT-190 «Recoger y Recolección según el canvas» (R867, R871, DS7) — `sinEncabezado` quita icono,
+// título y descripción (los pone la barra de `EscanerModal`); sin la prop, la tarjeta de siempre.
+describe("SLT-190 — encabezado de la tarjeta", () => {
+  function conIcono(sinEncabezado?: boolean) {
+    return render(
+      <EscanerGuiaCard
+        titulo="Recibir paquete"
+        descripcion="Escanea o ingresa el número de guía"
+        ariaLabel="Recibir por número de guía o escaneo"
+        onDecoded={() => ACIERTO}
+        manual={{ onSubmit: () => ACIERTO, submitLabel: "Recibir" }}
+        sinEncabezado={sinEncabezado}
+      />,
+    );
+  }
+
+  it("R871: sin la prop, icono, título y descripción siguen", () => {
+    const { container } = conIcono();
+    expect(screen.getByRole("heading", { name: "Recibir paquete" })).toBeInTheDocument();
+    expect(screen.getByText("Escanea o ingresa el número de guía")).toBeInTheDocument();
+    expect(container.querySelector("section svg.lucide-package")).not.toBeNull();
+  });
+
+  it("R867: con `sinEncabezado`, ni icono, ni título, ni descripción; el campo, la cámara y el nombre de la región siguen", () => {
+    const { container } = conIcono(true);
+    expect(screen.queryByRole("heading")).toBeNull();
+    expect(screen.queryByText("Recibir paquete")).toBeNull();
+    expect(screen.queryByText("Escanea o ingresa el número de guía")).toBeNull();
+    expect(container.querySelector("section svg.lucide-package")).toBeNull();
+    expect(screen.getByRole("region", { name: "Recibir por número de guía o escaneo" })).toBeInTheDocument();
+    expect(campo()).toBeInTheDocument();
+    expect(botonCamara()).toBeInTheDocument();
+  });
+});

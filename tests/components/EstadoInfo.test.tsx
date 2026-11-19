@@ -22,6 +22,7 @@ import {
   TEXTOS_APROBADOS_ESTADOS,
   textoAprobadoDe,
 } from "../fixtures/textos-aprobados-456";
+import { CLASE_INFO_TACTIL, CLASE_INFO_TACTIL_MOVIL } from "@/components/shared/texto-entero";
 
 afterEach(() => {
   cleanup();
@@ -253,5 +254,33 @@ describe("456 · LeyendaEstadosConInfo e InfosEstado (R10, R14)", () => {
       "Qué significa «Entregado»",
       "Qué significa «Reprogramado»",
     ]);
+  });
+});
+
+// SLT-193 «Botones de 44 px pendientes en la PWA del mensajero» (R920): el área de 44 × 44 la pone
+// cada uso del mensajero en su envoltorio (`CLASE_INFO_TACTIL`). La pieza compartida NO cambia:
+// sin `className`, el (i) de la landing, el rastreo, admin, satélite y tienda sigue en 24 × 24.
+describe("SLT-193 · R920 — los demás usos siguen en 24 × 24", () => {
+  const TACTILES = [CLASE_INFO_TACTIL, CLASE_INFO_TACTIL_MOVIL];
+
+  it("R920: `CLASES_BOTON_INFO` sigue con `after:-inset-1` y sin `-inset-3.5`", () => {
+    const clases = CLASES_BOTON_INFO.split(/\s+/);
+    expect(clases).toContain("after:-inset-1");
+    expect(CLASES_BOTON_INFO).not.toContain("-inset-3.5");
+  });
+
+  it.each([
+    ["EstadoConInfo", () => <EstadoConInfo codigo="entregado" />, "Entregado"],
+    ["EstadoConInfo flotante", () => <EstadoConInfo botonFlotante codigo="entregado" />, "Entregado"],
+    ["NotaAyudaConInfo", () => <NotaAyudaConInfo />, "Ayuda solicitada a la tienda"],
+    ["SenalPendienteConInfo", () => <SenalPendienteConInfo resultado="entregado" />, "pendiente de confirmación"],
+    ["InfoEstado", () => <div data-testid="padre"><InfoEstado codigo="entregado" /></div>, "Entregado"],
+  ] as const)("R920: %s sin `className` no lleva el área táctil en ningún envoltorio", (_caso, pieza, nombre) => {
+    const { container } = render(pieza());
+    const btn = boton(nombre);
+    expect(btn.className.split(/\s+/)).toContain("after:-inset-1");
+    for (let el: HTMLElement | null = btn.parentElement; el && el !== container; el = el.parentElement) {
+      for (const t of TACTILES) expect(el.classList.contains(t), el.outerHTML.slice(0, 80)).toBe(false);
+    }
   });
 });

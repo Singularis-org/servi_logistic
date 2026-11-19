@@ -23,6 +23,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DataTable, type Column } from "@/components/shared/DataTable";
+import { BARRA_FIJA } from "@/components/shared/BuscadorFiltros";
+import { DESPLEGABLE_TACTIL } from "@/components/shared/texto-entero";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { money } from "@/lib/config/moneda";
 import type { CierreAdminResumen } from "@/lib/interfaces/services/ICierresAdminService";
@@ -233,9 +235,6 @@ interface TablaComun {
   vacio: string;
 }
 
-/** SLT-165 (R493): el botón de desplegar de la `DataTable` de la cola propia, a 44 px en el teléfono. */
-export const DESPLEGABLE_TACTIL = "max-md:[&_button[aria-expanded]]:min-h-11 max-md:[&_button[aria-expanded]]:min-w-11";
-
 /** La ÚNICA tabla de la cola (una sola en el censo), genérica en el tipo de fila. */
 function TablaCola<T>({
   region,
@@ -306,8 +305,13 @@ export function ColaCierres(props: Readonly<ColaCierresTodasProps>) {
           ))}
         </TabsList>
 
-        {/* La barra va FUERA de los paneles: cambiar de pestaña no la desmonta (R99, R100). */}
-        <div className="flex flex-wrap items-start gap-2">
+        {/* La barra va FUERA de los paneles: cambiar de pestaña no la desmonta (R99, R100). SLT-191
+            (R822, R823; DS6): en «Cierres solicitados» del teléfono, barra y «Descargar» quedan fijos
+            arriba al desplazar, como «Gestiones» (R527); las colas de la administración, no. */}
+        <div
+          className={cn("flex flex-wrap items-start gap-2", props.tipo === "propios" && esMovil && BARRA_FIJA)}
+          data-barra-cola=""
+        >
           <div className="min-w-[min(100%,18rem)] flex-1">{barra}</div>
           <div className="shrink-0">{descargar}</div>
         </div>
@@ -337,9 +341,9 @@ export function ColaCierres(props: Readonly<ColaCierresTodasProps>) {
                 <TablaCola
                   {...comun}
                   filas={props.filas}
-                  columns={esMovil ? columnasTablaPropiaMovil(props.acciones) : columnasTablaPropia(props.acciones)}
+                  columns={esMovil ? columnasTablaPropiaMovil() : columnasTablaPropia(props.acciones)}
                   rowKey="cierreId"
-                  renderExpanded={esMovil ? detallePropioMovil : undefined}
+                  renderExpanded={esMovil ? (c: CierrePasadoDTO) => detallePropioMovil(c, props.acciones) : undefined}
                   expandAriaLabel={esMovil ? masDatosPropio : undefined}
                 />
               ) : props.tipo === "bodega" ? (

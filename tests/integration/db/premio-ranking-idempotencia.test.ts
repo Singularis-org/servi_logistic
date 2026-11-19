@@ -21,10 +21,13 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
+  type FksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
+import { crearOrganizacion } from "@/tests/fabricas/organizaciones";
+import { conEmpresa, contextoActual } from "@/lib/db/contexto-empresa";
 
 /**
  * FEATURE 293 (T4.4, design §3.3/§3.4/§5) — LA GUARDA DE LA BASE Y EL CICLO COMPLETO, CONTRA
@@ -75,22 +78,20 @@ const ventanaDe = (f: string) => ({
 
 describeSiHayBase("293/T4.4 — el premio del ranking, contra Postgres", () => {
   let prisma: PrismaClient;
-  let fks: NonNullable<Awaited<ReturnType<typeof fksDeOrden>>>;
+  // SLT-177 (R737): las FK de orden (tienda, zona) se crean en la tx de cada caso (`sembrar`); en CI
+  // «la primera orden» de la base era de OTRA empresa y el trigger SL017 rechazaba el cierre.
+  let fks: FksDeOrden;
   let catalogo: { tipoIdentificacionId: string; rolId: string };
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const encontradas = await fksDeOrden(prisma);
-    if (encontradas === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se pueden sembrar las " +
-          "gestiones que atan el dia al cierre. Corre `pnpm run db:seed` antes de esta suite.",
-      );
+    // Del `beforeAll` solo se leen catalogos, por su clave.
+    const tipo = await prisma.tipoIdentificacion.findUnique({ where: { value: "cedula" }, select: { id: true } });
+    const rol = await prisma.rol.findUnique({ where: { value: RolValue.mensajero }, select: { id: true } });
+    if (tipo === null || rol === null) {
+      throw new Error("falta el tipo `cedula` o el rol `mensajero`: aplica las migraciones.");
     }
-    fks = encontradas;
-    const u = await prisma.usuario.findFirst({ select: { tipoIdentificacionId: true, rolId: true } });
-    if (u === null) throw new Error("hay DATABASE_URL pero no hay ningun usuario: falta el catalogo.");
-    catalogo = u;
+    catalogo = { tipoIdentificacionId: tipo.id, rolId: rol.id };
   });
 
   afterAll(async () => {
@@ -129,6 +130,10 @@ describeSiHayBase("293/T4.4 — el premio del ranking, contra Postgres", () => {
   ) {
     await serializarEscriturasReales(tx);
     const sufijo = randomUUID();
+    fks = await crearFksDeOrden(tx);
+    // Control positivo (R739): la zona y la tienda sembradas estan en la base, una de cada.
+    expect(await tx.zona.count({ where: { id: fks.zonaId } })).toBe(1);
+    expect(await tx.usuario.count({ where: { id: fks.tiendaId } })).toBe(1);
 
     const crearUsuario = async (etiqueta: string) =>
       (
@@ -978,6 +983,9 @@ describeSiHayBase("293/T4.4 — el premio del ranking, contra Postgres", () => {
   it("§4.2: una gestion ANULADA o de OTRO dia no arrastra su cierre", async () => {
     const medido = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      // SLT-177: este caso no pasa por `sembrar`; siembra sus propias FK de orden en su tx.
+      fks = await crearFksDeOrden(tx);
+      expect(await tx.zona.count({ where: { id: fks.zonaId } })).toBe(1);
       const sufijo = randomUUID();
       const mensajeroId = (
         await tx.usuario.create({
@@ -1065,10 +1073,26 @@ describeSiHayBase("293/T2.5 — la action construida DE VERDAD usa el repositori
       "@/lib/repositories/PagoMensajeroMovimientoRepository"
     );
     const espia = vi.spyOn(Repo.prototype, "sumarPremiosVivosPorCierre");
+    // SLT-185 (R1141): la action corre con una empresa en contexto, como en una peticion. Sin ella, el
+    // cliente global falla cerrado (`EmpresaNoResuelta` en `CierreDia.findMany` → `unauthenticated`).
+    // La empresa es propia del caso, sin filas de negocio (lista vacia), y se borra al final.
+    //
+    // POR QUE COMMITEA Y NO VA EN UNA TRANSACCION REVERTIDA (SLT-207, D79): lo que se mide es el
+    // composition root de la action, que arma su repositorio sobre `getPrismaClient()`, OTRA conexion
+    // del pool. Una empresa sembrada en una tx del test no existe para esa conexion, y pasarle la tx
+    // seria inyectar el cliente, justo lo que este caso no debe hacer. El precio es el `finally` de
+    // abajo: borra la empresa aunque falle una asercion, y desconecta aunque falle el borrado.
+    const prisma = crearPrismaDeTest();
+    const empresa = await crearOrganizacion(prisma);
 
     try {
-      const r = await listarCierresAdmin({
-        getActor: async () => ({ usuarioId: "u-maestro", rol: RolValue.maestro }),
+      expect(await prisma.organizacion.count({ where: { id: empresa.id } }), "SLT-185: empresa sembrada").toBe(1);
+      const r = await conEmpresa(empresa.id, async () => {
+        const ctx = contextoActual();
+        expect(ctx?.tipo === "empresa" ? ctx.organizacionId : null, "SLT-185: empresa en contexto").toBe(empresa.id);
+        return listarCierresAdmin({
+          getActor: async () => ({ usuarioId: "u-maestro", rol: RolValue.maestro }),
+        });
       });
 
       expect(r.status).toBe("ok");
@@ -1077,6 +1101,13 @@ describeSiHayBase("293/T2.5 — la action construida DE VERDAD usa el repositori
       expect(espia).toHaveBeenCalledTimes(1);
     } finally {
       espia.mockRestore();
+      // La organizacion, la ultima y sola: si la action hubiera dejado algo de esta empresa, el
+      // borrado falla (RESTRICT) en vez de dejar basura muda (R1145).
+      try {
+        await prisma.organizacion.delete({ where: { id: empresa.id } });
+      } finally {
+        await prisma.$disconnect();
+      }
     }
   });
 });

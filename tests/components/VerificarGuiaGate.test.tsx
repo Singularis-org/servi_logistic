@@ -11,10 +11,11 @@ import { VerificarGuiaGate } from "@/app/(app)/mis-asignaciones/_components/Veri
 // el doble captura el callback de decodificación que `start` recibe para simular
 // un escaneo, igual que en EscanerRecoger.test. El resto del gate (input, branch
 // null) usa el componente REAL + `leerGuia` real.
-const { successMock, errorMock, startMock, decodeCallback } = vi.hoisted(() => ({
+const { successMock, errorMock, startMock, stopMock, decodeCallback } = vi.hoisted(() => ({
   successMock: vi.fn(),
   errorMock: vi.fn(),
   startMock: vi.fn(),
+  stopMock: vi.fn().mockResolvedValue(undefined),
   decodeCallback: { current: null as ((texto: string) => void) | null },
 }));
 
@@ -32,7 +33,7 @@ vi.mock("@/hooks/useToast", () => ({
 vi.mock("html5-qrcode", () => ({
   Html5Qrcode: class {
     start = startMock;
-    stop = vi.fn().mockResolvedValue(undefined);
+    stop = stopMock;
     clear = vi.fn();
   },
 }));
@@ -79,7 +80,7 @@ describe("VerificarGuiaGate (feature 98)", () => {
     render(<VerificarGuiaGate numGuiaEsperado={1001} onVerificado={onVerificado} />);
 
     await user.type(screen.getByLabelText("Número de guía"), "1001");
-    await user.click(screen.getByRole("button", { name: "Gestionar" }));
+    await user.click(screen.getByRole("button", { name: "Confirmar guía" }));
 
     expect(onVerificado).toHaveBeenCalledTimes(1);
     expect(errorMock).not.toHaveBeenCalled();
@@ -91,7 +92,7 @@ describe("VerificarGuiaGate (feature 98)", () => {
     render(<VerificarGuiaGate numGuiaEsperado={1001} onVerificado={onVerificado} />);
 
     await user.type(screen.getByLabelText("Número de guía"), "2002");
-    await user.click(screen.getByRole("button", { name: "Gestionar" }));
+    await user.click(screen.getByRole("button", { name: "Confirmar guía" }));
 
     expect(onVerificado).not.toHaveBeenCalled();
     expect(errorMock).toHaveBeenCalled();
@@ -105,7 +106,7 @@ describe("VerificarGuiaGate (feature 98)", () => {
     render(<VerificarGuiaGate numGuiaEsperado={1001} onVerificado={onVerificado} />);
 
     await user.type(screen.getByLabelText("Número de guía"), "abc");
-    await user.click(screen.getByRole("button", { name: "Gestionar" }));
+    await user.click(screen.getByRole("button", { name: "Confirmar guía" }));
 
     expect(onVerificado).not.toHaveBeenCalled();
     expect(errorMock).toHaveBeenCalledWith("Código inválido.");
@@ -192,5 +193,19 @@ describe("VerificarGuiaGate — guía única por cámara o pistola (SLT-157)", (
     expect(errorMock).toHaveBeenCalledTimes(2);
     expect(errorMock).toHaveBeenLastCalledWith("Código inválido.");
     expect(onVerificado).not.toHaveBeenCalled();
+  });
+});
+
+// SLT-159 «Escaneo continuo en recepciones y recogidas» (R594): verificar sigue en guía suelta.
+describe("VerificarGuiaGate — sigue en guía suelta (SLT-159, R594)", () => {
+  it("tras leer por cámara, la cámara se apaga y no hay lista de sesión", async () => {
+    const user = userEvent.setup();
+    render(<VerificarGuiaGate numGuiaEsperado={1001} onVerificado={vi.fn()} />);
+
+    await escanear(user, qrDeGuia(2002));
+
+    await vi.waitFor(() => expect(stopMock).toHaveBeenCalled());
+    expect(screen.queryByRole("region", { name: "Visor de cámara QR" })).toBeNull();
+    expect(screen.queryByRole("log", { name: "Lecturas" })).toBeNull();
   });
 });

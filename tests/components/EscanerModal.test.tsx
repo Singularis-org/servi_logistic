@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { useEffect } from "react";
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { ESCANER_LABEL_GUIA, EscanerModal } from "@/components/shared/EscanerModal";
@@ -36,7 +36,7 @@ describe("EscanerModal", () => {
   it("R500: con la etiqueta «Escanear o escribir guía» arranca cerrado y abre al pulsar", async () => {
     const user = userEvent.setup();
     render(
-      <EscanerModal label={ESCANER_LABEL_GUIA}>
+      <EscanerModal label={ESCANER_LABEL_GUIA} titulo="Abrir orden por guía">
         <p>tarjeta de escaneo</p>
       </EscanerModal>,
     );
@@ -46,32 +46,49 @@ describe("EscanerModal", () => {
     expect(screen.queryByText("tarjeta de escaneo")).toBeNull();
 
     await user.click(disparador);
-    expect(screen.getByRole("dialog", { name: "Escanear o escribir guía" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Abrir orden por guía" })).toBeInTheDocument();
     expect(screen.getByText("tarjeta de escaneo")).toBeInTheDocument();
   });
 
   it("arranca cerrado: el contenido no está montado", () => {
     render(
-      <EscanerModal>
+      <EscanerModal titulo="Recibir paquete">
         <p>tarjeta de escaneo</p>
       </EscanerModal>,
     );
 
     expect(
-      screen.getByRole("button", { name: /Recibir paquete/ }),
+      screen.getByRole("button", { name: "Recibir paquete" }),
     ).toBeInTheDocument();
     expect(screen.queryByText("tarjeta de escaneo")).toBeNull();
+  });
+
+  it("SLT-160 (R604): con `soloIcono` el disparador es un icono con `label` de nombre; abre igual", async () => {
+    const user = userEvent.setup();
+    render(
+      <EscanerModal label="Escanear con cámara" titulo="Escanear con cámara" soloIcono>
+        <p>tarjeta de escaneo</p>
+      </EscanerModal>,
+    );
+
+    const boton = screen.getByRole("button", { name: "Escanear con cámara" });
+    expect(boton).toHaveTextContent("");
+    expect(screen.queryByText("tarjeta de escaneo")).toBeNull();
+
+    await user.click(boton);
+    expect(await screen.findByRole("dialog")).toHaveAccessibleName("Escanear con cámara");
+    expect(screen.getByText("tarjeta de escaneo")).toBeInTheDocument();
   });
 
   it("al pulsar abre el modal con el contenido dentro", async () => {
     const user = userEvent.setup();
     render(
-      <EscanerModal>
+      <EscanerModal titulo="Recibir paquete">
         <p>tarjeta de escaneo</p>
       </EscanerModal>,
     );
 
-    await user.click(screen.getByRole("button", { name: /Recibir paquete/ }));
+    await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
 
     const modal = await screen.findByRole("dialog");
     expect(modal).toHaveAccessibleName("Recibir paquete");
@@ -81,7 +98,7 @@ describe("EscanerModal", () => {
   it("cada superficie puede nombrar su propio acto en el disparador", async () => {
     const user = userEvent.setup();
     render(
-      <EscanerModal label="Recolectar en tienda">
+      <EscanerModal label="Recolectar en tienda" titulo="Recolectar en tienda">
         <p>tarjeta de escaneo</p>
       </EscanerModal>,
     );
@@ -100,7 +117,7 @@ describe("EscanerModal", () => {
 
   it("las acciones acompañan al disparador y no dependen de que esté abierto", () => {
     render(
-      <EscanerModal acciones={<button type="button">Carga masiva</button>}>
+      <EscanerModal titulo="Recibir paquete" acciones={<button type="button">Carga masiva</button>}>
         <p>tarjeta de escaneo</p>
       </EscanerModal>,
     );
@@ -113,12 +130,12 @@ describe("EscanerModal", () => {
   it("al cerrar, el contenido se DESMONTA (no queda oculto con la cámara viva)", async () => {
     const user = userEvent.setup();
     render(
-      <EscanerModal>
+      <EscanerModal titulo="Recibir paquete">
         <p>tarjeta de escaneo</p>
       </EscanerModal>,
     );
 
-    await user.click(screen.getByRole("button", { name: /Recibir paquete/ }));
+    await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
     expect(await screen.findByText("tarjeta de escaneo")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /Cerrar/ }));
@@ -141,7 +158,7 @@ describe("EscanerModal", () => {
     }
 
     render(
-      <EscanerModal>
+      <EscanerModal titulo="Recibir paquete">
         <CamaraFalsa />
       </EscanerModal>,
     );
@@ -149,7 +166,7 @@ describe("EscanerModal", () => {
     // Cerrado de entrada: la cámara ni siquiera llegó a montarse.
     expect(screen.queryByText("cámara")).toBeNull();
 
-    await user.click(screen.getByRole("button", { name: /Recibir paquete/ }));
+    await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
     expect(await screen.findByText("cámara")).toBeInTheDocument();
     expect(apagarCamara).not.toHaveBeenCalled();
 
@@ -195,9 +212,9 @@ describe("EscanerModal — foco inicial según el puntero (SLT-158)", () => {
   it("R571: con puntero fino, al abrir el foco queda en el campo «Número de guía»", async () => {
     conPuntero(true);
     const user = userEvent.setup();
-    render(<EscanerModal>{tarjeta}</EscanerModal>);
+    render(<EscanerModal titulo="Recibir paquete">{tarjeta}</EscanerModal>);
 
-    await user.click(screen.getByRole("button", { name: /Recibir paquete/ }));
+    await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
 
     const campo = await screen.findByLabelText("Número de guía");
     await vi.waitFor(() => expect(document.activeElement).toBe(campo));
@@ -209,7 +226,7 @@ describe("EscanerModal — foco inicial según el puntero (SLT-158)", () => {
     conPuntero(true);
     const user = userEvent.setup();
     render(
-      <EscanerModal>
+      <EscanerModal titulo="Recibir paquete">
         {/* Un tabulable ANTES de la tarjeta: sin él, el campo sería el primero y el foco por
             defecto del Dialog ya caería ahí, con o sin la marca. */}
         <button type="button">Antes de la tarjeta</button>
@@ -222,7 +239,7 @@ describe("EscanerModal — foco inicial según el puntero (SLT-158)", () => {
       </EscanerModal>,
     );
 
-    await user.click(screen.getByRole("button", { name: /Recibir paquete/ }));
+    await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
 
     const campo = await screen.findByLabelText("Número de guía");
     await vi.waitFor(() => expect(document.activeElement).toBe(campo));
@@ -231,9 +248,9 @@ describe("EscanerModal — foco inicial según el puntero (SLT-158)", () => {
   it("R571: con puntero táctil, al abrir el foco NO va al campo", async () => {
     conPuntero(false);
     const user = userEvent.setup();
-    render(<EscanerModal>{tarjeta}</EscanerModal>);
+    render(<EscanerModal titulo="Recibir paquete">{tarjeta}</EscanerModal>);
 
-    await user.click(screen.getByRole("button", { name: /Recibir paquete/ }));
+    await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
 
     const campo = await screen.findByLabelText("Número de guía");
     // Se espera a que el Dialog asiente su foco inicial antes de afirmar dónde NO está.
@@ -241,5 +258,92 @@ describe("EscanerModal — foco inicial según el puntero (SLT-158)", () => {
       expect(screen.getByRole("dialog").contains(document.activeElement)).toBe(true),
     );
     expect(document.activeElement).not.toBe(campo);
+  });
+});
+
+// SLT-193 «Botones de 44 px pendientes en la PWA del mensajero» (R925, R926, R929; sustituye el R871
+// de SLT-190 «Recoger y Recolección según el canvas»): el escáner es UN solo componente. Sea cual sea
+// el disparador, el diálogo pinta arriba la barra con el título VISIBLE y un único «Cerrar» de 44 × 44
+// px; la X pequeña del `Dialog` no aparece. jsdom no aplica Tailwind: se afirman las clases.
+const DISPARADORES = [
+  { caso: "tactil", props: { tactil: true }, nombre: ESCANER_LABEL_GUIA },
+  { caso: "soloIcono", props: { soloIcono: true }, nombre: ESCANER_LABEL_GUIA },
+  { caso: "por defecto", props: {}, nombre: ESCANER_LABEL_GUIA },
+] as const;
+
+// SLT-202 «Escritorio igual a prod: tamaños de controles y un solo botón de recibir»: R925 y R929
+// pedían 44 px «en todos los anchos». Por decisión de Carlos del 2026-11-18, solo en el móvil
+// (`max-md:`); desde `md`, el tamaño de prod: «Cerrar» en `icon-sm` (el de `DialogContent`) y el
+// disparador `tactil` en el botón por defecto (`h-8`, sin el ancho completo).
+describe("SLT-193 — la barra con título y «Cerrar» (44 px en el móvil) es de EscanerModal, para todos", () => {
+  it.each(DISPARADORES)(
+    "R925/R926: con el disparador $caso, un solo «Cerrar» (`size-7`, `max-md:size-11`) en la barra con el título visible; cierra y desmonta",
+    async ({ props, nombre }) => {
+      const user = userEvent.setup();
+      render(
+        <EscanerModal label={nombre} titulo="Recoger paquete" {...props}>
+          <p>tarjeta de escaneo</p>
+        </EscanerModal>,
+      );
+      await user.click(screen.getByRole("button", { name: nombre }));
+
+      const dialogo = screen.getByRole("dialog", { name: "Recoger paquete" });
+      const titulo = within(dialogo).getByText("Recoger paquete");
+      expect(titulo).not.toHaveClass("sr-only");
+      const cerrar = within(dialogo).getAllByRole("button", { name: "Cerrar" });
+      expect(cerrar).toHaveLength(1);
+      expect(cerrar[0].className.split(/\s+/)).toEqual(expect.arrayContaining(["size-7", "max-md:size-11"]));
+      expect(cerrar[0].className.split(/\s+/)).not.toContain("size-11");
+      // Ninguna X del `Dialog` (la de `showCloseButton`, `icon-sm`): la única es la de la barra.
+      const xDelDialog = [...dialogo.querySelectorAll('[data-slot="dialog-close"]')].filter(
+        (el) => el !== cerrar[0],
+      );
+      expect(xDelDialog).toHaveLength(0);
+      // Título y «Cerrar» en la misma barra, encima del contenido.
+      expect(titulo.parentElement).toBe(cerrar[0].parentElement);
+      const contenido = within(dialogo).getByText("tarjeta de escaneo");
+      expect(titulo.compareDocumentPosition(contenido) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+
+      await user.click(cerrar[0]);
+      await vi.waitFor(() => expect(screen.queryByText("tarjeta de escaneo")).toBeNull());
+      expect(screen.queryByRole("dialog")).toBeNull();
+    },
+  );
+
+  // R929: los disparadores no cambian (`tactil` 44 px a todo el ancho; `soloIcono` icono de
+  // cámara; por defecto, el `h-8` de `size="default"`).
+  it("R929: `tactil` es de 44 px a todo el ancho solo en el móvil; en escritorio, el `h-8` de prod", () => {
+    render(
+      <EscanerModal label={ESCANER_LABEL_GUIA} titulo="Recoger paquete" tactil>
+        <p>x</p>
+      </EscanerModal>,
+    );
+    const clases = screen.getByRole("button", { name: ESCANER_LABEL_GUIA }).className.split(/\s+/);
+    expect(clases).toEqual(expect.arrayContaining(["h-8", "max-md:h-11", "max-md:w-full"]));
+    expect(clases).not.toContain("h-11");
+    expect(clases).not.toContain("w-full");
+  });
+
+  it("R929: `soloIcono` es un icono sin texto, con `label` de nombre", () => {
+    render(
+      <EscanerModal label="Escanear con cámara" titulo="Escanear con cámara" soloIcono className="size-11">
+        <p>x</p>
+      </EscanerModal>,
+    );
+    const boton = screen.getByRole("button", { name: "Escanear con cámara" });
+    expect(boton).toHaveTextContent("");
+    expect(boton.querySelector("svg")).not.toBeNull();
+  });
+
+  it("R929: el disparador por defecto sigue en `h-8`, sin el ancho completo", () => {
+    render(
+      <EscanerModal titulo="Recibir paquete">
+        <p>x</p>
+      </EscanerModal>,
+    );
+    const clases = screen.getByRole("button", { name: "Recibir paquete" }).className.split(/\s+/);
+    expect(clases).toContain("h-8");
+    expect(clases).not.toContain("h-11");
+    expect(clases).not.toContain("w-full");
   });
 });

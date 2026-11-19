@@ -20,6 +20,7 @@ import type { DescargaFila } from "@/lib/types/descarga";
 import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, crearPrismaDeTest } from "./_postgres-real";
 import { limpiar459, sembrarPersonas459, type Personas459 } from "./_fixtures/escrituras-459";
 import { tomarTarifaGlobal, type TarifaGlobalBajoLock } from "./_fixtures/cobro-plataforma-40";
+import { cerrarFacturaEnCurso } from "./_fixtures/factura-cerrada";
 
 // SLT-42 (T5.4): la zona del pais de la empresa es la de CR, como antes. Las reglas reales leen el pais
 // de la empresa en curso con el cliente global, que no ve la empresa de una transaccion revertida ni
@@ -172,6 +173,8 @@ describeSiHayBase("SL-45 R26/R17 — el pago a la plataforma en la descarga del 
       ),
     );
     if (r.inserted !== 2) throw new Error(`siembra: órdenes ${JSON.stringify(r.omitidas)}`);
+    // SLT-60 (R3): solo se paga lo de facturas cerradas; la de las dos órdenes se cierra antes del pago.
+    await cerrarFacturaEnCurso(base, org());
 
     const pago = await conEmpresa(org(), () =>
       registrarEgresoAdministrativoAction(

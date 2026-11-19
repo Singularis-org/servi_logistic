@@ -9,6 +9,7 @@ import type {
   CierreBodegaResumen,
   CifrasCierreBodegaDescargaDTO,
 } from "@/lib/interfaces/services/ICierreBodegaService";
+import type { ClasificacionDinero } from "@/lib/services/CierresAdminService";
 import { cifrasAgregadasBodega } from "@/lib/utils/cifras-cierre-bodega";
 import {
   derivarPagoEntregadoCierre,
@@ -39,6 +40,22 @@ export class LecturaCifrasBodegaAusenteError extends Error {
     this.name = "LecturaCifrasBodegaAusenteError";
   }
 }
+
+/**
+ * SLT-161 «Descargas de la satélite sin el dinero de la empresa» (R480, D3) — de quien es cada campo
+ * de las cifras de un cierre de bodega para descargar. Las `"empresa"` llegan en `null` a quien no
+ * tiene acceso total (`anularEmpresaSiNoCentral`); un campo nuevo sin clasificar no compila.
+ */
+export const CLASE_CIFRAS_BODEGA_DESCARGA = {
+  cierreBodegaId: "propio",
+  gestiones: "propio",
+  pagosAjustados: "propio",
+  totalFacturado: "empresa",
+  ivaFacturado: "empresa",
+  netoEmpresa: "empresa",
+  pagoTienda: "empresa",
+  partesPorTienda: "empresa",
+} as const satisfies ClasificacionDinero<CifrasCierreBodegaDescargaDTO>;
 
 /** Los cierres de bodega del modelo nuevo del conjunto, en el orden de `items` (D40). */
 export function cierresBodegaModeloNuevo(items: readonly CierreBodegaResumen[]): CierreBodegaResumen[] {
@@ -78,7 +95,7 @@ export function cifrasBodegaDescarga(
       totalFacturado: cifras.totalesIngreso.total,
       ivaFacturado: cifras.ivaFacturado,
       netoEmpresa: cifras.netoEmpresa,
-      ganaLaTienda: cifras.ganaLaTienda,
+      pagoTienda: cifras.pagoTienda,
       partesPorTienda: cifras.partesPorTienda,
     };
   });

@@ -11,7 +11,8 @@ import { CifrasBodegaLoteRepository } from "@/lib/repositories/CifrasBodegaLoteR
 import { LiquidacionPagoRepository } from "@/lib/repositories/LiquidacionPagoRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { PagoMensajeroMovimientoRepository } from "@/lib/repositories/PagoMensajeroMovimientoRepository";
-import { CierreBodegaService } from "@/lib/services/CierreBodegaService";
+// SLT-176 (R705): la descarga de la satélite vive en su servicio de solo lectura.
+import { CierresBodegaSateliteDescargaService } from "@/lib/services/CierresBodegaSateliteDescargaService";
 import { CierresBodegaAdminService } from "@/lib/services/CierresBodegaAdminService";
 import { cifrasAgregadasBodega } from "@/lib/utils/cifras-cierre-bodega";
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
@@ -83,7 +84,7 @@ type ClaveBodega = "BN" | "BV" | "BZ" | "B2" | "B3";
 
 interface Corpus {
   svc: CierresBodegaAdminService;
-  svcSatelite: CierreBodegaService;
+  svcSatelite: CierresBodegaSateliteDescargaService;
   lote: CifrasBodegaLoteRepository;
   maestro: Actor;
   satelite: Actor;
@@ -99,8 +100,8 @@ interface Corpus {
  */
 function partesBN(t: Corpus["tienda"]) {
   return [
-    { tiendaId: t.T1, tiendaNombre: "Tienda Uno", recaudado: "70000.00", pagoTienda: "63220.00", ganaLaTienda: "63220.00" },
-    { tiendaId: t.T2, tiendaNombre: "Tienda Dos", recaudado: "30000.00", pagoTienda: "28870.00", ganaLaTienda: "28870.00" },
+    { tiendaId: t.T1, tiendaNombre: "Tienda Uno", recaudado: "70000.00", pagoTienda: "63220.00" },
+    { tiendaId: t.T2, tiendaNombre: "Tienda Dos", recaudado: "30000.00", pagoTienda: "28870.00" },
   ];
 }
 
@@ -116,7 +117,7 @@ function cifrasBN(c: Corpus) {
     totalFacturado: "7910.00",
     ivaFacturado: "910.00",
     netoEmpresa: "3500.00",
-    ganaLaTienda: "92090.00",
+    pagoTienda: "92090.00",
     partesPorTienda: partesBN(c.tienda),
   };
 }
@@ -134,9 +135,9 @@ function cifrasB2(c: Corpus) {
     totalFacturado: "1130.00",
     ivaFacturado: "130.00",
     netoEmpresa: "200.00",
-    ganaLaTienda: "10870.00",
+    pagoTienda: "10870.00",
     partesPorTienda: [
-      { tiendaId: c.tienda.T1, tiendaNombre: "Tienda Uno", recaudado: "10000.00", pagoTienda: "8870.00", ganaLaTienda: "8870.00" },
+      { tiendaId: c.tienda.T1, tiendaNombre: "Tienda Uno", recaudado: "10000.00", pagoTienda: "8870.00" },
     ],
     pagoEntregado: "600.00",
   };
@@ -151,9 +152,9 @@ function cifrasB3(c: Corpus) {
     totalFacturado: "1130.00",
     ivaFacturado: "130.00",
     netoEmpresa: "1000.00",
-    ganaLaTienda: "8870.00",
+    pagoTienda: "8870.00",
     partesPorTienda: [
-      { tiendaId: c.tienda.T2, tiendaNombre: "Tienda Dos", recaudado: "10000.00", pagoTienda: "8870.00", ganaLaTienda: "8870.00" },
+      { tiendaId: c.tienda.T2, tiendaNombre: "Tienda Dos", recaudado: "10000.00", pagoTienda: "8870.00" },
     ],
     pagoEntregado: "0.00",
   };
@@ -492,11 +493,10 @@ async function sembrar(tx: TxDeTest): Promise<Corpus> {
     lote,
     { liquidaciones: new LiquidacionPagoRepository(c), premios: new PagoMensajeroMovimientoRepository(c) },
   );
-  const svcSatelite = new CierreBodegaService(
+  const svcSatelite = new CierresBodegaSateliteDescargaService(
     new CierreBodegaRepository(c),
     new OrdenRepository(c),
     reglasPaisFijas(),
-    undefined,
     lote,
   );
   return {
@@ -580,7 +580,6 @@ describeSiHayBase("SLT-141 — cifras de la hoja «Cierres» de bodega del model
           pagoTienda: central.pagoTienda,
           cobradoSobreRecaudado: central.cobradoSobreRecaudado,
           netoEmpresa: central.netoEmpresa,
-          ganaLaTienda: central.ganaLaTienda,
           partesPorTienda: central.partesPorTienda,
         });
         expect(d.cierres.reduce((s, cd) => s + Object.values(cd.grupos).reduce((t, g) => t + g.length, 0), 0)).toBe(3);
@@ -589,7 +588,7 @@ describeSiHayBase("SLT-141 — cifras de la hoja «Cierres» de bodega del model
       // 63 220 + 28 870 = 92 090 = 100 000 − 7 910).
       expect(central.pagoTienda).toBe("92090.00");
       expect(central.netoEmpresa).toBe("3500.00");
-      expect(central.ganaLaTienda).toBe("92090.00");
+      expect(central).not.toHaveProperty("ganaLaTienda"); // SLT-174 (R651)
       expect(central.partesPorTienda).toEqual(partesBN(c.tienda));
       // SLT-154 (R460): S recibe en `null` las ocho cifras de la empresa del detalle.
       const sat = await c.svc.verCierreBodegaDetalle(c.bodega.BN, c.satelite);
@@ -601,7 +600,6 @@ describeSiHayBase("SLT-141 — cifras de la hoja «Cierres» de bodega del model
         pagoTienda: sat.pagoTienda,
         cobradoSobreRecaudado: sat.cobradoSobreRecaudado,
         netoEmpresa: sat.netoEmpresa,
-        ganaLaTienda: sat.ganaLaTienda,
         partesPorTienda: sat.partesPorTienda,
       }).toEqual({
         totalesIngreso: null,
@@ -610,18 +608,30 @@ describeSiHayBase("SLT-141 — cifras de la hoja «Cierres» de bodega del model
         pagoTienda: null,
         cobradoSobreRecaudado: null,
         netoEmpresa: null,
-        ganaLaTienda: null,
         partesPorTienda: null,
       });
     });
   });
 
-  it("R386/R389: «Solicitados» de S (mixto BN + BV): solo BN con cifras, sin `pagoEntregado`; nunca BZ", async () => {
+  it("R480: «Solicitados» de S: BN sin las cifras de la empresa, con gestiones y pagos ajustados", async () => {
+    // SLT-161 «Descargas de la satélite sin el dinero de la empresa». Sigue R386/R389: mixto BN + BV,
+    // solo BN con cifras, sin la clave `pagoEntregado`, nunca BZ (otra zona).
     await conCorpus(async (c) => {
       const r = await c.svcSatelite.listarCierresBodegaSolicitadosCompleto(c.satelite);
       if (r.status !== "ok") throw new Error(`status ${r.status}`);
       expect(r.items.map((i) => i.cierreBodegaId).sort()).toEqual([c.bodega.BN, c.bodega.BV].sort());
-      expect(r.cifrasModeloNuevo).toEqual([cifrasBN(c)]);
+      expect(r.cifrasModeloNuevo).toEqual([
+        {
+          cierreBodegaId: c.bodega.BN,
+          gestiones: 3, // las tres gestiones de D1
+          pagosAjustados: 1, // el ajuste de pago de D1
+          totalFacturado: null,
+          ivaFacturado: null,
+          netoEmpresa: null,
+          pagoTienda: null,
+          partesPorTienda: null,
+        },
+      ]);
       for (const cifras of r.cifrasModeloNuevo ?? []) expect("pagoEntregado" in cifras).toBe(false);
     });
   });

@@ -41,7 +41,7 @@ function editar(extra: Record<string, unknown> = {}) {
     precio: PRECIO,
     costoPorOrden: null,
     costoPorOrdenPorcentual: { porcentaje: "2", minimo: "500" },
-    vigenteDesde: null,
+    vigenteDesde: "2026-12-01", // SLT-135 (R1): obligatoria.
     ...extra,
   };
 }
@@ -53,7 +53,7 @@ function version(extra: Record<string, unknown> = {}) {
   return v;
 }
 
-/** Las tres entradas que escriben una versión: crear, editar (inmediato o programado) y la versión guardada. */
+/** Las tres entradas que escriben una versión: crear, editar (siempre con fecha, SLT-135) y la versión guardada. */
 function lasTres(extra: Record<string, unknown>) {
   return [
     ["crear", crearPlanSchema.safeParse(crear(extra))],

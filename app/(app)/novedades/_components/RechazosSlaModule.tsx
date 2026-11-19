@@ -1,13 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
+import { BuscadorFiltros } from "@/components/shared/BuscadorFiltros";
 import { IntentosDato, valorIntentos } from "@/components/shared/intentos-entrega";
 import { Pagination } from "@/components/shared/Pagination";
+import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/useToast";
 import { listarRechazosSlaTiendaAction } from "@/lib/actions/rechazos-sla-tienda";
 import type { RechazoSlaTiendaDTO } from "@/lib/types/rechazo-sla-tienda";
 import { NOMBRE_ESTADO } from "@/lib/types/order-status";
+import { BUSQUEDA_MAX_CHARS, BUSQUEDA_MIN_CHARS } from "@/lib/types/orden";
+import { PLACEHOLDER_BUSQUEDA } from "@/app/(app)/ordenes/_components/ordenes-filtros-def";
+import { LIMPIAR_BUSQUEDA, SIN_COINCIDENCIAS_TITULO } from "./NovedadesModule";
 
 // Feature 102 (T12, design §6.2) — sección/pestaña de solo-lectura "Rechazadas por SLA" DENTRO
 // de `/novedades` (Q3 default: pantalla que la tienda YA visita, sin ítem de menú nuevo). Es la
@@ -45,6 +50,8 @@ const VACIO_DETALLE =
   `Cuando una de tus órdenes en ${NOMBRE_ESTADO.novedad} pase a ` +
   `${NOMBRE_ESTADO.devolucion_a_origen_por_rechazo} por vencerse el plazo, aparecerá acá.`;
 const PAGINACION_ARIA_LABEL = "Paginación de órdenes con devolución a origen por plazo vencido";
+/** SLT-194 (R949): nombre accesible del buscador de la pestaña. */
+const BUSCADOR_LABEL = "Buscar entre las órdenes con devolución a origen por plazo vencido";
 
 export interface RechazosSlaModuleProps {
   items: RechazoSlaTiendaDTO[];
@@ -65,12 +72,28 @@ export function RechazosSlaModule({
   const [total, setTotal] = useState(initialTotal);
   const [page, setPage] = useState(initialPage);
   const [loading, setLoading] = useState(false);
+  // SLT-194 (R950, R951, D4): el término aplicado. No se lee de la URL: la página 1 la precarga el
+  // servidor sin término (R957), y leerlo mostraría un término que no se aplicó.
+  const [termino, setTermino] = useState("");
+  // Remonta la barra al «Limpiar la búsqueda»: su campo es estado interno de `BuscadorFiltros`
+  // (el mismo gesto que `NovedadesFiltrosBarra`).
+  const [resetBarra, setResetBarra] = useState(0);
+  // Solo vale la respuesta de la última petición: un término nuevo no puede verse pisado por la
+  // respuesta tardía del anterior.
+  const ultimaPeticion = useRef(0);
 
-  /** Re-fetch de la página pedida por Server Action. Errores → toast, sin romper la vista. */
-  async function cambiarPagina(nextPage: number) {
+  /**
+   * Re-fetch de la página pedida por Server Action, con el término puesto (R951). Errores → toast,
+   * sin romper la vista.
+   */
+  async function cargar(nextPage: number, q: string) {
+    const peticion = ++ultimaPeticion.current;
     setLoading(true);
     try {
-      const res = await listarRechazosSlaTiendaAction({ page: nextPage });
+      const res = await listarRechazosSlaTiendaAction(
+        q === "" ? { page: nextPage } : { page: nextPage, q },
+      );
+      if (peticion !== ultimaPeticion.current) return;
       if (res.status !== "ok") {
         if (res.status === "forbidden") {
           toast.error("No tenés permiso para ver las órdenes con devolución a origen por plazo vencido.");
@@ -85,11 +108,27 @@ export function RechazosSlaModule({
       setTotal(res.total);
       setPage(res.page);
     } finally {
-      setLoading(false);
+      if (peticion === ultimaPeticion.current) setLoading(false);
     }
   }
 
-  if (items.length === 0) {
+  function cambiarPagina(nextPage: number) {
+    void cargar(nextPage, termino);
+  }
+
+  /** R950/R951: un término nuevo (o el campo vacío) pide la página 1. */
+  function buscar(nuevo: string) {
+    setTermino(nuevo);
+    void cargar(1, nuevo);
+  }
+
+  function limpiarBusqueda() {
+    setResetBarra((n) => n + 1);
+    buscar("");
+  }
+
+  // R952: sin término y sin rechazos, el vacío de hoy, sin barra.
+  if (items.length === 0 && termino === "") {
     // Estado vacío legible en vez de una lista sin filas.
     return (
       <div
@@ -104,6 +143,31 @@ export function RechazosSlaModule({
 
   return (
     <div className="flex flex-col gap-4">
+      {/* SLT-194 (R949, DC1, D4): el MISMO buscador con `escaneo` de Devoluciones (B3), sin filtros. */}
+      <BuscadorFiltros
+        key={resetBarra}
+        escaneo
+        label={BUSCADOR_LABEL}
+        placeholder={PLACEHOLDER_BUSQUEDA}
+        minChars={BUSQUEDA_MIN_CHARS}
+        maxLength={BUSQUEDA_MAX_CHARS}
+        leerDeUrl={false}
+        onChange={buscar}
+      />
+
+      {items.length === 0 ? (
+        // R952: con término y sin coincidencias, se dice y se ofrece deshacerlo.
+        <div
+          className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-muted/20 p-10 text-center"
+          role="status"
+        >
+          <p className="text-base font-medium text-foreground">{SIN_COINCIDENCIAS_TITULO}</p>
+          <Button type="button" variant="outline" size="sm" onClick={limpiarBusqueda}>
+            {LIMPIAR_BUSQUEDA}
+          </Button>
+        </div>
+      ) : (
+      <>
       <ul aria-label={LISTA_ARIA_LABEL} className="flex flex-col gap-3">
         {items.map((rechazo) => (
           <li
@@ -144,6 +208,8 @@ export function RechazosSlaModule({
         disabled={loading}
         ariaLabel={PAGINACION_ARIA_LABEL}
       />
+      </>
+      )}
     </div>
   );
 }

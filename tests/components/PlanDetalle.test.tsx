@@ -5,10 +5,16 @@
 // empresas, rastro del más reciente al más antiguo) y se mide qué sale hacia las actions inyectadas:
 // cancelar y archivar no llaman sin confirmar, un archivado no ofrece controles, los avisos de una
 // edición se ven y un rechazo se explica sin dar el cambio por hecho.
+//
+// SLT-144 «Planes: formulario por pasos conectado al borrador y a la fecha de cada empresa» (design §6; R13, R26):
+// editar guarda por pasos en el borrador de cambio y lo confirma. Las cuatro actions son un borrador en memoria
+// (`accionesFalsas`) que, al confirmar, pasa la petición de editar de hoy a `editarPlan`, el doble de la action de
+// hoy: los casos de SLT-58 siguen midiendo la misma carga útil.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
+import { TEXTOS_PLAN_FORM } from "@/app/(app)/plataforma/planes/_components/plan-form/textos";
 import type { DetallePlan, PlanResult } from "@/lib/types/planes";
 
 const { refreshMock } = vi.hoisted(() => ({ refreshMock: vi.fn() }));
@@ -17,6 +23,14 @@ vi.mock("next/navigation", () => ({
 }));
 
 import { PlanDetalle } from "@/app/(app)/plataforma/planes/[planId]/_components/PlanDetalle";
+
+import {
+  accionesFalsas,
+  avanzarHasta,
+  previsualizarCambioFalso,
+  terminar,
+  tituloDelPasoActual,
+} from "./plan-form-pasos";
 
 const PLAN_ID = "0b6f3a2e-1c4d-4e5f-8a9b-0c1d2e3f4a5b";
 const ORG = "6f1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f60";
@@ -69,6 +83,8 @@ const DETALLE: DetallePlan = {
 };
 
 const OK: PlanResult = { estado: "ok", planId: PLAN_ID, cambio: true, avisos: [], vigenteDesde: null };
+/** SLT-135 (R9): editar siempre programa; su `ok` con cambio lleva la fecha elegida. */
+const PROGRAMADO: PlanResult = { ...OK, vigenteDesde: "2030-02-01" };
 
 /** Una action inyectada que responde `r`. */
 const accion = (r: PlanResult) => vi.fn<(input: unknown) => Promise<PlanResult>>().mockResolvedValue(r);
@@ -77,17 +93,36 @@ type Accion = ReturnType<typeof accion>;
 function montar(
   detalle: DetallePlan = DETALLE,
   acciones: Partial<Record<"editarPlan" | "archivarPlan" | "cancelarCambio", Accion>> = {},
+  { abrirEditar = false }: { abrirEditar?: boolean } = {},
 ) {
-  const editarPlan = acciones.editarPlan ?? accion(OK);
+  const editarPlan = acciones.editarPlan ?? accion(PROGRAMADO);
   const archivarPlan = acciones.archivarPlan ?? accion(OK);
   const cancelarCambio = acciones.cancelarCambio ?? accion(OK);
+  // SLT-144: confirmar el borrador en memoria llama a `editarPlan` con la petición de editar de hoy.
+  const borrador = accionesFalsas(editarPlan);
+  const previsualizarCambio = previsualizarCambioFalso();
   const pintar = (d: DetallePlan) => (
-    <PlanDetalle detalle={d} editarPlan={editarPlan} archivarPlan={archivarPlan} cancelarCambio={cancelarCambio} />
+    <PlanDetalle
+      detalle={d}
+      borrador={borrador}
+      previsualizarCambio={previsualizarCambio}
+      abrirEditar={abrirEditar}
+      archivarPlan={archivarPlan}
+      cancelarCambio={cancelarCambio}
+    />
   );
   const { rerender } = render(pintar(detalle));
   /** Lo que hace `router.refresh()` en la app: la página baja el `DetallePlan` releído. */
   const releer = (d: DetallePlan) => rerender(pintar(d));
-  return { editarPlan, archivarPlan, cancelarCambio, releer };
+  return { editarPlan, archivarPlan, cancelarCambio, borrador, releer };
+}
+
+/** Pulsa «Editar» y espera a que el panel lea el borrador (SLT-144 R14) y pinte el formulario. Devuelve el panel. */
+async function abrirEdicion(user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> {
+  await user.click(screen.getByRole("button", { name: "Editar" }));
+  const panel = await screen.findByRole("dialog", { name: "Editar plan" });
+  await within(panel).findByRole("navigation", { name: "Pasos" });
+  return panel;
 }
 
 const seccion = (nombre: string) => screen.getByRole("region", { name: nombre });
@@ -292,7 +327,7 @@ describe("SLT-58 R15 — editar y los avisos de topes pasados", () => {
   it("R15: tras guardar, muestra cada empresa que ya pasa un tope nuevo con el tope, su uso y el tope nuevo", async () => {
     const user = userEvent.setup();
     const editarPlan = accion({
-      ...OK,
+      ...PROGRAMADO,
       avisos: [
         { organizacionId: ORG, empresa: "Envíos Norte", tope: "mensajero", usados: 7, maximo: 5 },
         { organizacionId: ORG, empresa: "Envíos Norte", tope: "api_keys", usados: 3, maximo: 2 },
@@ -300,13 +335,13 @@ describe("SLT-58 R15 — editar y los avisos de topes pasados", () => {
     } satisfies PlanResult);
     montar(DETALLE, { editarPlan });
 
-    await user.click(screen.getByRole("button", { name: "Editar" }));
-    const panel = await screen.findByRole("dialog", { name: "Editar plan" });
-    await user.click(within(panel).getByRole("button", { name: "Guardar" }));
+    await abrirEdicion(user);
+    await terminar(user);
 
     await waitFor(() => expect(editarPlan).toHaveBeenCalledTimes(1));
-    expect(editarPlan.mock.calls[0][0]).toMatchObject({ planId: PLAN_ID, vigenteDesde: null });
-    expect(await screen.findByRole("status")).toHaveTextContent("Cambios guardados.");
+    // SLT-135 (R16): sin tocar la fecha, viaja la de por defecto (mañana), nunca `null`.
+    expect(editarPlan.mock.calls[0][0]).toMatchObject({ planId: PLAN_ID, vigenteDesde: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) });
+    expect(await screen.findByRole("status")).toHaveTextContent("Cambio programado desde 2030-02-01.");
     expect(
       screen.getByText("Envíos Norte ya tiene 7 usuarios activos con el rol Mensajero y el plan permite 5."),
     ).toBeInTheDocument();
@@ -319,13 +354,65 @@ describe("SLT-58 R15 — editar y los avisos de topes pasados", () => {
     const editarPlan = accion({ ...OK, vigenteDesde: "2030-02-01" } satisfies PlanResult);
     montar(DETALLE, { editarPlan });
 
-    await user.click(screen.getByRole("button", { name: "Editar" }));
-    const panel = await screen.findByRole("dialog", { name: "Editar plan" });
-    await user.click(within(panel).getByRole("radio", { name: "A partir de" }));
-    await user.type(within(panel).getByLabelText("Fecha"), "2030-02-01");
+    const panel = await abrirEdicion(user);
+    await avanzarHasta(user, "Cuándo rige");
+    await user.clear(within(panel).getByLabelText("A partir de"));
+    await user.type(within(panel).getByLabelText("A partir de"), "2030-02-01");
+    await avanzarHasta(user, "Revisar y programar");
     await user.click(within(panel).getByRole("button", { name: "Programar cambio" }));
 
     expect(await screen.findByRole("status")).toHaveTextContent("Cambio programado desde 2030-02-01.");
+  });
+
+  it("R20: programar avisa con la fecha", async () => {
+    const user = userEvent.setup();
+    const editarPlan = accion({ ...OK, vigenteDesde: "2030-03-01" } satisfies PlanResult);
+    montar(DETALLE, { editarPlan });
+
+    const panel = await abrirEdicion(user);
+    await avanzarHasta(user, "Cuándo rige");
+    await user.clear(within(panel).getByLabelText("A partir de"));
+    await user.type(within(panel).getByLabelText("A partir de"), "2030-03-01");
+    await avanzarHasta(user, "Revisar y programar");
+    await user.click(within(panel).getByRole("button", { name: "Programar cambio" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Cambio programado desde 2030-03-01.");
+    expect(screen.queryByText("Cambios guardados.")).toBeNull();
+    expect(editarPlan.mock.calls[0][0]).toMatchObject({ planId: PLAN_ID, vigenteDesde: "2030-03-01" });
+
+    // Sin cambio: «No había nada que cambiar.».
+    cleanup();
+    const sinCambio = accion({ ...OK, cambio: false } satisfies PlanResult);
+    montar(DETALLE, { editarPlan: sinCambio });
+    await abrirEdicion(user);
+    await terminar(user);
+    expect(await screen.findByRole("status")).toHaveTextContent("No había nada que cambiar.");
+    expect(screen.queryByText("Cambios guardados.")).toBeNull();
+  });
+
+  it("R6: el panel abre el formulario por pasos", async () => {
+    const user = userEvent.setup();
+    montar(DETALLE);
+
+    const panel = await abrirEdicion(user);
+    // El Sheet ancho de la maqueta (design §7), sin el tope de ancho por defecto. jsdom descarta el
+    // `width: min(…)`, así que se mide el `maxWidth` que lo acompaña.
+    expect(panel.style.maxWidth).toBe("none");
+    // El mismo componente de pasos que al crear, con los pasos de editar, abierto en General.
+    const pasos = within(panel).getByRole("navigation", { name: "Pasos" });
+    expect(within(pasos).getAllByRole("button").map((b) => b.textContent?.replace(/^\d+/, ""))).toEqual([
+      "General",
+      "Precio y descuentos",
+      "Cobro por orden",
+      "Topes",
+      "Módulos",
+      "Cuándo rige",
+      "Revisar y programar",
+    ]);
+    expect(tituloDelPasoActual()).toBe("General");
+    expect(within(panel).getByText("Paso 1 de 7")).toBeInTheDocument();
+    // SLT-144 (R1): el botón del pie guarda el paso en el borrador antes de avanzar.
+    expect(within(panel).getByRole("button", { name: TEXTOS_PLAN_FORM.guardarYContinuar })).toBeInTheDocument();
   });
 
   it("SLT-83 (texto aprobado 2026-11-04): el panel «Editar plan» explica cuándo se cobra el costo por orden fijo y el porcentual", async () => {
@@ -378,14 +465,15 @@ describe("SLT-58 R18 — un rechazo se explica y no da el cambio por hecho", () 
     } satisfies PlanResult);
     montar(DETALLE, { editarPlan });
 
-    await user.click(screen.getByRole("button", { name: "Editar" }));
-    const panel = await screen.findByRole("dialog", { name: "Editar plan" });
-    await user.click(within(panel).getByRole("button", { name: "Guardar" }));
+    const panel = await abrirEdicion(user);
+    await terminar(user);
 
-    const nombre = within(panel).getByRole("textbox", { name: "Nombre" });
+    // SLT-130 (R25): el error del nombre lleva de vuelta a General.
+    const nombre = await within(panel).findByRole("textbox", { name: "Nombre" });
     await waitFor(() => expect(nombre).toHaveAttribute("aria-invalid", "true"));
     expect(within(panel).getByText("Ya hay un plan con ese nombre.")).toBeInTheDocument();
-    expect(screen.queryByRole("status")).toBeNull();
+    // Ningún aviso de éxito en la pantalla. SLT-144 (R7): el único `status` es la hora del borrador, dentro del panel.
+    expect(screen.queryAllByRole("status").filter((s) => !panel.contains(s))).toEqual([]);
     expect(refreshMock).not.toHaveBeenCalled();
   });
 });
@@ -483,5 +571,65 @@ describe("SLT-128 R28 — las empresas que no recibieron el cambio", () => {
     cleanup();
     montar({ ...DETALLE, pendiente: null });
     expect(screen.queryByText(/no recibió el cambio/)).toBeNull();
+  });
+});
+
+describe("SLT-144 R13 — cerrar la edición con el borrador guardado", () => {
+  it("R13: cerrar la edición con un paso guardado avisa", async () => {
+    const user = userEvent.setup();
+    const { borrador, editarPlan } = montar();
+
+    // Sin guardar nada, cerrar no avisa.
+    await abrirEdicion(user);
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.queryByRole("status")).toBeNull();
+
+    const panel = await abrirEdicion(user);
+    await avanzarHasta(user, "Precio y descuentos");
+    expect(borrador.guardarPaso).toHaveBeenCalledTimes(1);
+    expect(borrador.guardarPaso.mock.calls[0][0]).toMatchObject({ modo: "editar", planId: PLAN_ID, paso: "general" });
+
+    await user.click(within(panel).getByRole("button", { name: "Cerrar" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.getByRole("status")).toHaveTextContent("El borrador queda guardado. Puedes retomarlo luego.");
+    expect(borrador.confirmar).not.toHaveBeenCalled();
+    expect(editarPlan).not.toHaveBeenCalled();
+  });
+
+  it("R13: tras confirmar no avisa de un borrador guardado", async () => {
+    const user = userEvent.setup();
+    montar();
+
+    await abrirEdicion(user);
+    await terminar(user);
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Cambio programado desde 2030-02-01.");
+    expect(screen.queryByText("El borrador queda guardado. Puedes retomarlo luego.")).toBeNull();
+  });
+});
+
+describe("SLT-144 R26 — retomar un borrador de cambio abre la edición", () => {
+  it("R26: con editar en la dirección abre el formulario", async () => {
+    const { borrador } = montar(DETALLE, {}, { abrirEditar: true });
+
+    // Abierto al cargar, sin pulsar «Editar»: lee el borrador de cambio del plan y monta el formulario.
+    const panel = await screen.findByRole("dialog", { name: "Editar plan" });
+    await within(panel).findByRole("navigation", { name: "Pasos" });
+    expect(borrador.leer).toHaveBeenCalledWith({ planId: PLAN_ID });
+    expect(tituloDelPasoActual()).toBe("General");
+  });
+
+  it("R26: sin editar en la dirección el panel no se abre ni lee el borrador", () => {
+    const { borrador } = montar();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(borrador.leer).not.toHaveBeenCalled();
+  });
+
+  it("R26: un plan archivado no abre la edición aunque la dirección lo pida", () => {
+    const { borrador } = montar({ ...DETALLE, plan: { ...DETALLE.plan, archivado: true } }, {}, { abrirEditar: true });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(borrador.leer).not.toHaveBeenCalled();
   });
 });

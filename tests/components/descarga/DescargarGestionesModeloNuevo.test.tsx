@@ -307,11 +307,19 @@ describe("SLT-113 — el «Detalle» de cierres con el libro del modelo nuevo (T
     expect(anterior?.filas.map((f) => f.numGuia)).toEqual([503]);
   });
 
-  it("(d) satélite: «Gestiones» sin las columnas de fulfillment; la central, con ellas (R376)", async () => {
+  it("(d) satélite: «Gestiones» sin las columnas de fulfillment ni las del cobro a la tienda; la central, con ellas (R376; SLT-161 R484)", async () => {
     const satelite = await descargarDetalle(accion([NUEVA], []), "satelite");
     const encabezadosSatelite = satelite.columnas.map((c) => c.encabezado);
-    expect(encabezadosSatelite).toHaveLength(32);
-    for (const ausente of ["Fulfillment", "IVA de fulfillment", "Fulfillment cargado el"]) {
+    expect(encabezadosSatelite).toHaveLength(21);
+    for (const ausente of [
+      "Fulfillment",
+      "IVA de fulfillment",
+      "Fulfillment cargado el",
+      "Flete por entregado",
+      "Comisión COD",
+      "Se le cobra a la tienda",
+      "De eso, IVA",
+    ]) {
       expect(encabezadosSatelite).not.toContain(ausente);
     }
     cleanup();

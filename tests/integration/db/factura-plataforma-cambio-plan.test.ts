@@ -27,7 +27,8 @@ import { crearPlan, planesEnTx, revertida, sqlstateDe } from "./_fixtures/planes
 // `organizacion.plan_cambio_*` y los aplica la cola real.
 //
 // R30 por P9 (T11.2): un cambio a un tipo más largo guardado por `PlanesService` con su reloj fijo.
-// T15.3: R36 (la periodicidad de órdenes del plan editada en los dos sentidos, por `PlanesService`) y R38 (un
+// T15.3: R36 (la periodicidad de órdenes del plan cambiada en los dos sentidos; desde SLT-135, a mano, porque
+// editar ya no la cambia en el acto) y R38 (un
 // cambio a un plan de órdenes mensuales con efecto en un corte; el caso «R16: un plan con órdenes mensuales
 // tomado por una factura quincenal…» es el mismo con tipo quincenal → mensual). R33 queda fuera de este archivo.
 // Review m4 (R39, humano 2026-11-11): el cierre espera también a una edición programada de la periodicidad del
@@ -204,14 +205,24 @@ async function asignar(
 }
 
 /**
- * R36: el superadmin edita en el acto la periodicidad de órdenes del plan el 10 de noviembre por `PlanesService`
- * (con el repositorio real), mandando el resto del plan tal cual.
+ * R36: la periodicidad de órdenes del plan cambia el 10 de noviembre, con la factura en curso ya abierta. SLT-135:
+ * editar ya no la cambia en el acto (programa, y cada empresa la recibe en su período siguiente); aquí lo que se
+ * mide es el cierre de la factura con el plan ya cambiado, así que el cambio se escribe a mano, como dueño.
+ */
+async function periodicidadDelPlanAMano(tx: TxDeTest, planId: string, periodicidadOrdenes: "quincenal" | "mensual"): Promise<void> {
+  const n = await tx.$executeRawUnsafe(`UPDATE "plan" SET "periodicidad_ordenes" = $2 WHERE "id" = $1`, planId, periodicidadOrdenes);
+  if (n !== 1) throw new Error(`no existe el plan ${planId}`);
+}
+
+/**
+ * El superadmin programa la periodicidad de órdenes del plan el 10 de noviembre por `PlanesService` (con el
+ * repositorio real), mandando el resto del plan tal cual.
  */
 async function editarPeriodicidad(
   tx: TxDeTest,
   planId: string,
   periodicidadOrdenes: "quincenal" | "mensual",
-  programada: { vigenteDesde: string; nombre?: string } | null = null,
+  programada: { vigenteDesde: string; nombre?: string },
 ) {
   const plan = await planesEnTx(tx).plan(planId);
   if (plan === null) throw new Error(`no existe el plan ${planId}`);
@@ -219,14 +230,14 @@ async function editarPeriodicidad(
   const servicio = new PlanesService(planesEnTx(tx), () => new Date("2026-11-10T15:00:00.000Z"));
   return servicio.editar(SUPERADMIN, {
     planId,
-    nombre: programada?.nombre ?? plan.nombre,
+    nombre: programada.nombre ?? plan.nombre,
     topes: plan.topes,
     modulos: plan.modulos,
     precio: plan.precio,
     costoPorOrden: plan.costoPorOrden,
     costoPorOrdenPorcentual: plan.costoPorOrdenPorcentual,
     periodicidadOrdenes,
-    vigenteDesde: programada?.vigenteDesde ?? null,
+    vigenteDesde: programada.vigenteDesde,
   });
 }
 
@@ -563,7 +574,7 @@ describeSiHayBase("SLT-118 — las facturas de la plataforma cuando cambia el pl
       const e = await empresa(tx, cero("2026-11-01"), { id: plan, tipo: "mensual" });
       await cerrar(tx, e.id, "2026-11-10T14:00:00.000Z");
       const antesDeEditar = await fotoDeFilas(tx, e.id);
-      const editado = await editarPeriodicidad(tx, plan, "mensual");
+      await periodicidadDelPlanAMano(tx, plan, "mensual");
       const trasEditar = await fotoDeFilas(tx, e.id);
       const emitidas = [
         await cerrar(tx, e.id, corrida("2026-11-16")),
@@ -571,10 +582,9 @@ describeSiHayBase("SLT-118 — las facturas de la plataforma cuando cambia el pl
         await cerrar(tx, e.id, corrida("2026-12-16")),
         await cerrar(tx, e.id, corrida("2027-01-01")),
       ];
-      return { plan, editado, antesDeEditar, trasEditar, emitidas, lista: await facturas(tx, e.id) };
+      return { plan, antesDeEditar, trasEditar, emitidas, lista: await facturas(tx, e.id) };
     });
-    expect(r.editado).toMatchObject({ estado: "ok", cambio: true });
-    // Editar no toca la factura en curso: sigue quincenal desde el 1.
+    // Cambiar el plan no toca la factura en curso: sigue quincenal desde el 1.
     expect(r.trasEditar).toEqual(r.antesDeEditar);
     expect(r.emitidas).toEqual([1, 1, 0, 1]);
     expect(r.lista.map((f) => [f.estado, f.desde, f.hasta, f.periodicidad, f.plan_id])).toEqual([
@@ -592,16 +602,15 @@ describeSiHayBase("SLT-118 — las facturas de la plataforma cuando cambia el pl
       const e = await empresa(tx, cero("2026-11-01"), { id: plan, tipo: "mensual" });
       await cerrar(tx, e.id, "2026-11-10T14:00:00.000Z");
       const antesDeEditar = await fotoDeFilas(tx, e.id);
-      const editado = await editarPeriodicidad(tx, plan, "quincenal");
+      await periodicidadDelPlanAMano(tx, plan, "quincenal");
       const trasEditar = await fotoDeFilas(tx, e.id);
       const emitidas = [
         await cerrar(tx, e.id, corrida("2026-11-16")),
         await cerrar(tx, e.id, corrida("2026-12-01")),
         await cerrar(tx, e.id, corrida("2026-12-16")),
       ];
-      return { plan, editado, antesDeEditar, trasEditar, emitidas, lista: await facturas(tx, e.id) };
+      return { plan, antesDeEditar, trasEditar, emitidas, lista: await facturas(tx, e.id) };
     });
-    expect(r.editado).toMatchObject({ estado: "ok", cambio: true });
     expect(r.trasEditar).toEqual(r.antesDeEditar);
     // El 16 de noviembre no hay corte: la de noviembre se abrió mensual.
     expect(r.emitidas).toEqual([0, 1, 1]);
@@ -787,7 +796,7 @@ describeSiHayBase("SLT-118 — las facturas de la plataforma cuando cambia el pl
       const e = await empresa(tx, cero("2026-11-01"), { id: plan, tipo: "mensual" });
       await cerrar(tx, e.id, "2026-11-10T14:00:00.000Z");
       const antes = await fines(tx, e.id);
-      await editarPeriodicidad(tx, plan, "mensual");
+      await periodicidadDelPlanAMano(tx, plan, "mensual");
       const trasEditar = await fines(tx, e.id);
       // Antes del 16 nada se fija: el fin que manda es el guardado, no uno recalculado con la periodicidad nueva.
       const el15 = await cerrar(tx, e.id, corrida("2026-11-15"));

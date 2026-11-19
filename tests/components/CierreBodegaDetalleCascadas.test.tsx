@@ -211,7 +211,6 @@ const DIA_ANA: CierreBodegaDetalleCierre = {
   netoEmpresa: "8750.55",
   // Ficha 396 (D1) — el agregado que le faltaba a este nivel: 80.000,10 - 18.001,10. Difiere
   // de `pagoTienda` en exactamente su flete por devolución a origen (500,75), que es el dia CON rechazo.
-  ganaLaTienda: "61999.00",
   // Ficha 396 — este bloque es de la 393 y no pinta el desglose; el campo va porque el DTO lo
   // declara REQUERIDO. Los casos del desglose viven en su propio archivo.
   partesPorTienda: [],
@@ -247,7 +246,6 @@ const DIA_BETO: CierreBodegaDetalleCierre = {
   cobradoSobreRecaudado: "9634.48",
   netoEmpresa: "4634.23",
   // Ficha 396 (D1): 46.089,07 - 9.634,48. Sin rechazos, COINCIDE con `pagoTienda`.
-  ganaLaTienda: "36454.59",
   partesPorTienda: [],
   paraLaCentral: "41088.82",
   efectivoCubreDescuentos: true,
@@ -271,7 +269,6 @@ const DETALLE_OK = {
   cobradoSobreRecaudado: "27134.83",
   netoEmpresa: "13384.78",
   // Ficha 396 (D1) — el agregado que le faltaba a este contrato: 126.089,17 - 27.635,58.
-  ganaLaTienda: "98453.59",
   partesPorTienda: [],
   paraLaCentral: "111838.37",
   efectivoCubreDescuentos: true,
@@ -655,7 +652,6 @@ describe("SL-39 — el IVA facturado en el detalle del cierre de bodega (R24, R2
     pagoTienda: "16384.00",
     cobradoSobreRecaudado: "3616.00",
     netoEmpresa: "1600.00",
-    ganaLaTienda: "14124.00",
     paraLaCentral: "16400.00",
     ...marcaSinConciliar("20000.00"),
   };

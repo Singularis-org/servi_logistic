@@ -271,6 +271,9 @@ múltiplos de 4 y la guardia no se endurece (C7).
   (`var(--navy)` parada, `var(--brand-light)` activa, `var(--success)` origen; texto
   `var(--card)`), en lugar de `#2563eb`/`#16a34a` (`RutaMapaInner.tsx:38-50`). El `divIcon` vive en
   el DOM, así que las variables y el tema oscuro aplican.
+  > Desviación aceptada (leader, 2026-11-15; ver progress/features/SLT-166.md): `--navy`, `--brand-light` y `--success` no existen en `app/globals.css`;
+  > se usan las variables reales `--color-brand-light`, `--color-brand-dark`, `--color-asfalto-4`,
+  > `--color-success` y `--color-white`.
 - **Colores en el canvas v35 (RepartoMapa):** siguiente parada `#FFD000` con número negro y anillo;
   pendientes `#111111` con número blanco; gestionadas `#a8a29e` con check; origen «Tú» (círculo con
   borde blanco y etiqueta «Tú»). Leyenda bajo el mapa: «Siguiente · Pendiente · Gestionada · Tú».

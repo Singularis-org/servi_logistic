@@ -48,7 +48,8 @@ import { derivarJornada } from "@/lib/utils/jornada-cierre";
 import { NOMBRE_USUARIO_SELECT, nombreCompletoUsuario } from "@/lib/utils/nombre-usuario";
 // FICHA 352 — el constructor del orden TOTAL: exige el desempate como argumento, para que no se
 // pueda armar un `orderBy` de listado paginado sin el. Ver `DESEMPATE_UNICO` mas abajo.
-import { ordenTotal } from "@/lib/types/ordenamiento-listado";
+import { ordenTotal, type OrdenamientoListado } from "@/lib/types/ordenamiento-listado";
+import type { CampoOrdenBodegaSatelite } from "@/lib/types/recepcion-satelite";
 import { ESTADOS_USUARIO_NO_ASIGNABLES } from "@/lib/constants/estado-usuario-asignable";
 import { fechaCalendario } from "@/lib/utils/calendario-zona";
 // Feature 274 — LA REGLA de resolucion de tarifa vive en un modulo PURO, compartido con el
@@ -117,7 +118,7 @@ import type { NivelGeografico } from "@/lib/types/geografia-nodo";
 // etiqueta congelada. Los cuatro escritores de esta clase que registran accion lo llaman DENTRO
 // de su propia `$transaction`.
 import { appendAccion, resolverActorCongelado } from "@/lib/repositories/registrar-accion";
-import { etiquetaDeEntidad } from "@/lib/types/historial-accion-etiquetas";
+import { etiquetaDeEntidad, etiquetaDeRetiroSatelite } from "@/lib/types/historial-accion-etiquetas";
 import type { IJobRepository, JobTxClient } from "@/lib/interfaces/repositories/IJobRepository";
 import { JobRepository } from "@/lib/repositories/JobRepository";
 import {
@@ -150,6 +151,7 @@ import {
   type OrdenBaseCobroDevolucionRow,
   type OrdenParaCorreccionRow,
   type OrdenTransicionRow,
+  type ResumenRecepcion,
   type OrderStatusLiteRow,
   type ProvinciaRow,
   type RecepcionSateliteFiltro,
@@ -157,6 +159,7 @@ import {
   // FICHA 370: «¿ya salio a reparto?», el MISMO tipo para las dos rutas de consulta.
   type SalioAReparto,
   type RechazoSlaTiendaRow,
+  type BusquedaRechazosSla,
   type UpdateOrdenData,
   type ApiOrdenListResult,
   type ApiOrdenDetalleRow,
@@ -957,6 +960,9 @@ const SELECT_CIERRE_A_RESOLVER = {
 // (y cualquiera nuevo) no puedan divergir.
 const NUM_GUIA_GENERATOR = "siguiente_num_guia()";
 
+// SLT-197 (R974): senal interna para revertir la transaccion del retiro cuando el lote no cuadra.
+class RetiroSateliteConflicto extends Error {}
+
 // Feature 33/R11/R18: estado de ORIGEN de la recepcion en satelite. La escritura
 // guardada (`recibirEnSatelite`) solo transiciona una orden que sigue en este
 // estado (guardia por estado de origen en el propio UPDATE, patron feature 17/36).
@@ -1724,6 +1730,10 @@ function condicionesSatelite(filtro: RecepcionSateliteFiltro): Prisma.Sql[] {
   if (filtro.busqueda) {
     condiciones.push(condicionBusquedaSatelite(filtro.busqueda, filtro.busquedaDigitos));
   }
+  // SLT-160 (R606-R608): guia exacta, hermana del acotamiento en el AND (nunca en un `OR`).
+  if (filtro.numGuia !== undefined) {
+    condiciones.push(Prisma.sql`o."num_guia" = ${filtro.numGuia}`);
+  }
   return condiciones;
 }
 
@@ -1780,13 +1790,24 @@ function desdeSatelite(condiciones: Prisma.Sql[]): Prisma.Sql {
  *
  * Lo comparten la pagina y el conjunto de la descarga: si divergieran, la fila N del archivo
  * dejaria de ser la fila N de la pantalla sin que nada fallara.
+ *
+ * SLT-210 (R1403) — el TERCER termino lo elige la persona: fecha de creacion o numero de remision,
+ * en la direccion pedida. El grupo de estado y la prioridad siguen DELANTE (el conmutador ordena
+ * dentro de cada grupo, decision P2) y el `id` sigue cerrando la lista con direccion fija. La
+ * columna y la direccion salen de fragmentos FIJOS de este archivo elegidos por comparacion: el
+ * texto del cliente nunca se interpola. `num_remision` ordena por `clave_remision` —la columna
+ * generada de la ficha 423, la misma de `/ordenes`—, nunca por el texto crudo. Sin orden, el de
+ * siempre (`created_at DESC`, R1401).
  */
-function ordenBodegaSatelite(): Prisma.Sql {
+function ordenBodegaSatelite(orden?: OrdenamientoListado<CampoOrdenBodegaSatelite>): Prisma.Sql {
+  const columna =
+    orden?.sortBy === "num_remision" ? Prisma.sql`o."clave_remision"` : Prisma.sql`o."created_at"`;
+  const direccion = orden?.sortDir === "asc" ? Prisma.sql`ASC` : Prisma.sql`DESC`;
   return Prisma.sql`
       ORDER BY
         array_position(ARRAY[${Prisma.join([...ESTADOS_BODEGA_SATELITE])}]::text[], os."value") ASC,
         o."prioridad" DESC,
-        o."created_at" DESC,
+        ${columna} ${direccion},
         o."id" ASC
     `;
 }
@@ -3484,6 +3505,27 @@ export class OrdenRepository implements IOrdenRepository {
     };
   }
 
+  /**
+   * SLT-167 (R713, R714): destinatario y nombre de la tienda de una orden, para la respuesta de la
+   * recepcion por guia. Solo esas dos columnas (privacidad).
+   *
+   * Va en SQL a mano para que el acotado por empresa quede ESCRITO y se pueda medir: la RLS de la
+   * envoltura ya esconde las filas de otra empresa, pero el `organizacion_id` explicito es la segunda
+   * barrera (mismo criterio que `CierresBodegaAdminRepository.idsRecibidosIncompletos`).
+   */
+  async resumenRecepcion(ordenId: string): Promise<ResumenRecepcion | null> {
+    const [fila] = await this.prisma.$queryRaw<ResumenRecepcion[]>`
+      SELECT o."destinatario" AS "destinatario", t."nombre" AS "tienda"
+        FROM "orden" o
+        JOIN "usuario" t ON t."id" = o."tienda_id"
+       WHERE o."id" = ${ordenId}
+         AND o."organizacion_id" = NULLIF(current_setting('app.organizacion_id', true), '')
+       LIMIT 1`;
+    // R713: las dos claves, ambas texto. Una fila que no las trae como texto no es un resumen.
+    if (typeof fila?.destinatario !== "string" || typeof fila.tienda !== "string") return null;
+    return { destinatario: fila.destinatario, tienda: fila.tienda };
+  }
+
   // --- Feature 106: canal integrador de lectura/cancelacion por API key ---
 
   /**
@@ -4084,6 +4126,95 @@ export class OrdenRepository implements IOrdenRepository {
     });
   }
 
+  /**
+   * SLT-197 (R971-R974, arista #73): retira un lote de ordenes del estante de una satelite a la
+   * central (`en_bodega_satelite -> en_ruta_bodega_central`), todo o nada.
+   *
+   * La guarda de estado vive en el `WHERE` (lectura y `updateMany` con el mismo filtro): si alguna
+   * orden ya no esta en `en_bodega_satelite` o esta borrada, el conteo no cuadra, la transaccion se
+   * revierte y se devuelve `"conflicto"` sin filas cambiadas ni historial (R974). La orden queda sin
+   * mensajero, sin `asignado_at` y sin dia de reparto (R972), y conserva zona, tienda, guia, remision
+   * y monto: no se tocan.
+   *
+   * SLT-211: deja ademas su accion en `historial_accion` (una por satelite del lote, mismo `lote_id`).
+   */
+  async retirarSateliteLote(
+    ordenIds: string[],
+    destinoEstatusId: string,
+    historial: HistorialContexto,
+  ): Promise<"ok" | "conflicto"> {
+    if (ordenIds.length === 0) return "ok";
+    const where = {
+      id: { in: ordenIds },
+      deletedAt: null,
+      estatus: { value: "en_bodega_satelite" },
+    };
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        const origenRows = await tx.orden.findMany({
+          where,
+          // SLT-211: zona, guia y remision, para la accion de Historico › Acciones.
+          select: {
+            id: true,
+            estatusId: true,
+            zonaId: true,
+            numGuia: true,
+            numRemision: true,
+            zona: { select: { nombre: true } },
+          },
+        });
+        const result = await tx.orden.updateMany({
+          where,
+          data: {
+            estatusId: destinoEstatusId,
+            mensajeroAsignadoId: null,
+            asignadoAt: null,
+            fechaReparto: null,
+          },
+        });
+        if (origenRows.length !== ordenIds.length || result.count !== ordenIds.length) {
+          throw new RetiroSateliteConflicto();
+        }
+        await appendCambioEstado(
+          tx,
+          origenRows.map((r) => ({
+            ordenId: r.id,
+            estatusOrigenId: r.estatusId,
+            estatusDestinoId: destinoEstatusId,
+            actorUsuarioId: historial.actorUsuarioId,
+            origenTipo: historial.origenTipo, // ajuste_estado
+          })),
+        );
+
+        // SLT-211: la accion en Historico › Acciones, en esta MISMA transaccion y DESPUES de la
+        // guarda de conflicto (un conflicto no deja fila). Una por satelite del lote, todas con el
+        // mismo `lote_id` (una sola llamada): el lote puede mezclar satelites (D9 de SLT-197).
+        const porZona = new Map<string, { nombre: string | null; envios: typeof origenRows }>();
+        for (const r of origenRows) {
+          if (r.zonaId === null) continue; // una orden en estante de satelite siempre tiene zona
+          const grupo = porZona.get(r.zonaId) ?? { nombre: r.zona?.nombre ?? null, envios: [] };
+          grupo.envios.push(r);
+          porZona.set(r.zonaId, grupo);
+        }
+        const actor = await resolverActorCongelado(tx, historial.actorUsuarioId);
+        await appendAccion(
+          tx,
+          [...porZona].map(([zonaId, grupo]) => ({
+            accion: "ordenes_retiradas_a_central" as const,
+            entidadTipo: "zona" as const,
+            entidadId: zonaId,
+            entidadEtiqueta: etiquetaDeRetiroSatelite(grupo.nombre ?? "", grupo.envios),
+            ...actor,
+          })),
+        );
+      });
+      return "ok";
+    } catch (e) {
+      if (e instanceof RetiroSateliteConflicto) return "conflicto";
+      throw e;
+    }
+  }
+
   // --- Feature 32: etiqueta de guia (READ derivado, R1/R3) ---
 
   /**
@@ -4261,7 +4392,7 @@ export class OrdenRepository implements IOrdenRepository {
     const pagina = await this.prisma.$queryRaw<PaginaSateliteIdRow[]>(Prisma.sql`
       SELECT o."id", (COUNT(*) OVER ())::int AS "total"
       ${desde}
-      ${ordenBodegaSatelite()}
+      ${ordenBodegaSatelite(filtro.orden)}
       LIMIT ${rango.take} OFFSET ${rango.skip}
     `);
 
@@ -4307,7 +4438,7 @@ export class OrdenRepository implements IOrdenRepository {
     const conjunto = await this.prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
       SELECT o."id"
       ${desdeSatelite(condicionesSatelite(filtro))}
-      ${ordenBodegaSatelite()}
+      ${ordenBodegaSatelite(filtro.orden)}
     `);
     if (conjunto.length === 0) return [];
 
@@ -4348,6 +4479,23 @@ export class OrdenRepository implements IOrdenRepository {
       ${desdeSatelite(condiciones)}
     `);
     return filas.map((fila) => fila.id);
+  }
+
+  /**
+   * SLT-160 (R606, R608) — ¿la guia es de una orden del listado? El MISMO `condicionesSatelite`
+   * que la pagina, la descarga y la vigencia (con `numGuia` en su AND): una guia de otra zona,
+   * otra empresa o fuera de los filtros no activa la busqueda exacta.
+   */
+  async existeGuiaEnBodega(
+    filtro: RecepcionSateliteFiltro & { numGuia: number },
+  ): Promise<boolean> {
+    if (filtro.estatusValues.length === 0) return false;
+    const filas = await this.prisma.$queryRaw<{ existe: number }[]>(Prisma.sql`
+      SELECT 1 AS "existe"
+      ${desdeSatelite(condicionesSatelite(filtro))}
+      LIMIT 1
+    `);
+    return filas.length > 0;
   }
 
   /**
@@ -5989,19 +6137,31 @@ export class OrdenRepository implements IOrdenRepository {
    * (R15), su estatus ACTUAL es `rechazada` Y tiene AL MENOS una transicion del cron SLA en su
    * historial (`origen_tipo = escalado_devuelta_sla`, feature 99). Un rechazo MANUAL del mensajero
    * (sin esa transicion) NO entra. Al salir de `rechazada` o al borrarse, deja de casar (R15).
+   *
+   * SLT-194 (D3, R953/R954/R957): `busqueda` opcional, el MISMO criterio de `/ordenes` y de la
+   * satelite (`criterioBusqueda`). Va como clave HERMANA de las cuatro de arriba (AND): el termino
+   * solo estrecha, nunca ensancha el alcance por tienda. Sin termino, `criterioBusqueda` devuelve
+   * `{}` y el `where` es el de antes, clave por clave.
    */
-  private rechazoSlaWhere(tiendaId: string): Prisma.OrdenWhereInput {
+  private rechazoSlaWhere(
+    tiendaId: string,
+    busqueda?: BusquedaRechazosSla,
+  ): Prisma.OrdenWhereInput {
     return {
       tiendaId, // R13: acotada a la tienda del actor
       deletedAt: null, // R15: excluye borradas
       estatus: { value: ESTATUS_RECHAZADA }, // R12/R15: solo mientras REPOSE en `rechazada`
       historialEstados: { some: { origenTipo: ORIGEN_TIPO_RECHAZO_SLA } }, // R12: alcanzada por el cron SLA
+      ...OrdenRepository.criterioBusqueda(busqueda?.busqueda, busqueda?.busquedaDigitos), // SLT-194/R953
     };
   }
 
   /** Feature 102/R12/R13/R15: cuenta los rechazos por SLA de `tiendaId` (mismo `where` que find). */
-  async countRechazadasSlaByTienda(tiendaId: string): Promise<number> {
-    return this.prisma.orden.count({ where: this.rechazoSlaWhere(tiendaId) });
+  async countRechazadasSlaByTienda(
+    tiendaId: string,
+    busqueda?: BusquedaRechazosSla,
+  ): Promise<number> {
+    return this.prisma.orden.count({ where: this.rechazoSlaWhere(tiendaId, busqueda) });
   }
 
   /**
@@ -6014,9 +6174,10 @@ export class OrdenRepository implements IOrdenRepository {
   async findRechazadasSlaByTienda(
     tiendaId: string,
     pagination: { skip: number; take: number },
+    busqueda?: BusquedaRechazosSla,
   ): Promise<RechazoSlaTiendaRow[]> {
     const rows = await this.prisma.orden.findMany({
-      where: this.rechazoSlaWhere(tiendaId),
+      where: this.rechazoSlaWhere(tiendaId, busqueda), // SLT-194/R953: el mismo filtro que el total
       orderBy: { createdAt: "desc" },
       skip: pagination.skip,
       take: pagination.take,

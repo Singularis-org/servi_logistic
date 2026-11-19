@@ -50,7 +50,7 @@ import { esFechaCalendarioValida } from "@/lib/utils/calendario-zona";
 // saldo con el que la central lo persigue. El motivo de cada uno esta escrito a su lado.
 
 /**
- * Los 84 tipos de accion. El ORDEN de esta tupla es el del Anexo A (dinero, desaparicion,
+ * Los 86 tipos de accion. El ORDEN de esta tupla es el del Anexo A (dinero, desaparicion,
  * permisos) mas las integraciones de SL-36, los modulos de SL-23 y el plan de SL-24 (y su tipo de cobro, D16, y
  * el cambio cancelado, SLT-86) y el tope de intentos de SLT-77, y es el que consume el selector de filtros: no se
  * reordena por gusto.
@@ -284,7 +284,7 @@ export const HISTORIAL_ACCION_TIPOS = [
   // rechazos, y un rechazo genera cobro. `valor_anterior`/`valor_nuevo` llevan los dos numeros y nada mas (R41).
   "tope_intentos_cambiado", // TopeIntentosRepository.guardar
 
-  // --- A.2 · hace desaparecer algo (11) ---
+  // --- A.2 · hace desaparecer algo (12) ---
   // ⭑ FICHA 371 — la fecha de una reprogramacion ya registrada, corregida por un coordinador.
   // ENTRA AQUI, EN «hace desaparecer algo», PORQUE LA ORDEN PUEDE DEJAR DE ESTAR DONDE ESTABA:
   // corregir la fecha a HOY dispara la liberacion en el mismo acto (desenlace `liberada`), asi que
@@ -316,6 +316,13 @@ export const HISTORIAL_ACCION_TIPOS = [
   // pantalla las etiqueta. Solo se lee.
   "vehiculo_borrado",
   "plantilla_eliminada", // plantillas.eliminarPlantilla
+  // ⭑ SLT-211 — la central retiro paquetes del estante de una satelite (SLT-197). ENTRA AQUI, en
+  // «hace desaparecer algo», por el mismo motivo que `gestion_fecha_reprogramacion_corregida`: los
+  // paquetes DEJAN DE ESTAR donde la satelite los tenia y desaparecen de su pantalla. No es dinero
+  // (el retiro no toca ninguna tabla de dinero ni cierre, R983 de SLT-197) ni permisos.
+  // Entidad `zona` (la satelite), una fila por satelite del lote con el MISMO `lote_id`; la etiqueta
+  // lleva la satelite, el conteo y las guias (`etiquetaDeRetiroSatelite`).
+  "ordenes_retiradas_a_central", // GuiaAsignacionService.retirarABodegaCentral -> OrdenRepository.retirarSateliteLote
   // ⭑ FICHA 374 — retirar (y devolver) un nodo del catalogo geografico: provincia, canton o
   // distrito. ENTRAN LOS DOS AQUI, en «hace desaparecer algo», y no es una excepcion: es el
   // precedente LITERAL de `orden_eliminada` y `orden_recuperada`, que estan las dos en esta
@@ -589,6 +596,8 @@ export const CATEGORIA_POR_ACCION: Record<HistorialAccionTipo, CategoriaAccion> 
   grupo_distritos_borrado: "hace_desaparecer",
   vehiculo_borrado: "hace_desaparecer",
   plantilla_eliminada: "hace_desaparecer",
+  // SLT-211: los paquetes salen del estante de la satelite; el retiro no mueve dinero.
+  ordenes_retiradas_a_central: "hace_desaparecer",
   // FICHA 374: los DOS en la misma categoria, igual que `orden_eliminada`/`orden_recuperada`.
   nodo_geografico_desactivado: "hace_desaparecer",
   nodo_geografico_activado: "hace_desaparecer",
@@ -687,6 +696,8 @@ export const ACCION_LABELS: Record<HistorialAccionTipo, string> = {
   grupo_distritos_borrado: "Borró un grupo de distritos",
   vehiculo_borrado: "Borró un vehículo",
   plantilla_eliminada: "Eliminó una plantilla",
+  // SLT-211: verbo en pasado con la persona como sujeto, como el resto del catálogo.
+  ordenes_retiradas_a_central: "Retiró paquetes de una satélite a la central",
   nodo_geografico_desactivado: "Retiró un nodo del catálogo geográfico",
   nodo_geografico_activado: "Devolvió un nodo al catálogo geográfico",
   nodo_geografico_renombrado: "Renombró un nodo del catálogo geográfico",

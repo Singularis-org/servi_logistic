@@ -150,7 +150,8 @@ describe("SL-45 R17 — el libro de la caja, y con él el pago a la plataforma, 
     // Control de no vacuidad: el recorte del contrato encuentra sus métodos de verdad.
     expect(libro).toContain("crearMovimientoRegistrado");
     expect(libro).toContain("listar");
-    expect(pago).toContain("sumaPagosVigentes");
+    // SLT-60 (design §4.1): el método de lectura de la deuda es ahora `sumaPagosConfirmados`.
+    expect(pago).toContain("sumaPagosConfirmados");
     expect([...libro, ...pago].filter((m) => NOMBRE_DE_MUTACION.test(m))).toEqual([]);
   });
 });

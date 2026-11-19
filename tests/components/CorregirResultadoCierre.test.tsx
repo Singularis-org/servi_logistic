@@ -335,7 +335,6 @@ async function abrirDetalleDelModulo(opciones: {
     pagoTienda: "0.00",
     cobradoSobreRecaudado: "0.00",
     netoEmpresa: "0.00",
-    ganaLaTienda: "0.00",
     fleteRechazoYaCobradoATienda: false,
     // Ficha 396: el desglose por tienda viaja SIEMPRE en el DTO, tambien con una sola
     // tienda. Estas pruebas no lo miran, asi que aqui va vacio; las suyas estan en
@@ -452,7 +451,6 @@ describe("R16 — la corrección se ofrece únicamente desde el detalle de un ci
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
       ordenesSinGestion: [],

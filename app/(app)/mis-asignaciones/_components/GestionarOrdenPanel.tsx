@@ -1,16 +1,13 @@
 "use client";
 
 import {
-  useEffect,
   useId,
   useMemo,
-  useRef,
   useState,
   type ChangeEvent,
 } from "react";
 import useSWR from "swr";
 import {
-  ChevronUp,
   LifeBuoy,
   MapPinOff,
   MessageCircle,
@@ -20,7 +17,6 @@ import {
   QrCode,
   RotateCcw,
   ShieldAlert,
-  Truck,
   Undo2,
   XCircle,
 } from "lucide-react";
@@ -67,6 +63,7 @@ import {
 import { mananaCalendarioCR, ZONA_CR } from "@/lib/utils/fecha-cr";
 import { estatusLabel } from "@/app/(app)/ordenes/_components/estatus-label";
 import { EstadoConInfo } from "@/components/shared/EstadoInfo";
+import { CLASE_INFO_TACTIL } from "@/components/shared/texto-entero";
 import type { CausaDevolucion } from "@/lib/types/causa-devolucion";
 import type { CausaIncidente } from "@/lib/types/causa-incidente";
 import type { MiAsignacionDTO } from "@/lib/interfaces/services/IMisAsignacionesService";
@@ -92,7 +89,6 @@ import {
 } from "@/components/shared/DesglosePagoField";
 import { VerificarGuiaGate } from "./VerificarGuiaGate";
 import { UbicacionTrigger } from "./UbicacionTrigger";
-import { useSeccionColapsable } from "@/hooks/useSeccionColapsable";
 
 // Feature 193 (R19) — el permiso de ubicación está DENEGADO y por eso la gestión no sale.
 //
@@ -356,13 +352,6 @@ export function GestionarOrdenPanel({
   onAbrirChat,
 }: Readonly<GestionarOrdenPanelProps>) {
   const toast = useToast();
-  // Ancla del bloque "Gestionar esta orden": el CTA fijo de abajo lo ABRE y lleva hasta él
-  // (no lo sustituye — la guía se sigue verificando antes de habilitar la gestión, feature 98).
-  const guiaRef = useRef<HTMLDivElement>(null);
-  // Pedido humano (ux): la sección arranca CERRADA y se abre desde el CTA "Gestionar esta
-  // orden"; ahí aparece el escáner QR. Sin guía asignada arranca ABIERTA: el bloque no trae
-  // escáner sino el aviso de que la orden no se puede gestionar, y eso hay que verlo.
-  const gestion = useSeccionColapsable(orden.numGuia === null);
 
   // Feature 227 (T3.4, design §5.2) — HILO de notas con la tienda, montado JUSTO donde
   // estaba el editor de la nota privada de la 116 (retirada por esta misma feature).
@@ -390,20 +379,6 @@ export function GestionarOrdenPanel({
   );
 
   const hiloOk = hilo?.status === "ok" ? hilo : null;
-
-  // Contador de "llévame al bloque": sube en cada pulsación del CTA. El scroll y el foco se
-  // hacen en un efecto, DESPUÉS del render que monta la sección (en el handler el nodo aún
-  // no existe la primera vez).
-  const [irAGestion, setIrAGestion] = useState(0);
-  useEffect(() => {
-    if (irAGestion === 0) return;
-    const bloque = guiaRef.current;
-    if (!bloque) return;
-    // `scrollIntoView` no existe en jsdom (y en un navegador viejo tampoco es seguro):
-    // el foco es lo que de verdad importa, el scroll es cortesía.
-    bloque.scrollIntoView?.({ block: "center" });
-    bloque.querySelector("input")?.focus();
-  }, [irAGestion]);
 
   // El padre remonta este panel (`key={orden.id}`) al cambiar de orden, por lo
   // que el estado interno arranca limpio: si la orden ya está activa, directo en
@@ -877,7 +852,7 @@ export function GestionarOrdenPanel({
         {/* FICHA 456 (T3.6, R9): el estado en la cabecera del panel, con su botón de información. */}
         <EstadoConInfo
           codigo={orden.estatusValue}
-          className="shrink-0"
+          className={`shrink-0 ${CLASE_INFO_TACTIL}`}
           chipClassName="rounded-full bg-warning/15 px-3 py-1 text-xs font-bold uppercase tracking-wide text-warning-strong"
         />
       </header>
@@ -999,32 +974,16 @@ export function GestionarOrdenPanel({
           </p>
         )}
 
-        {/* Paso 1: verificar la guía antes de gestionar. La sección se revela al pulsar
-            "Gestionar esta orden" (CTA fijo abajo); cerrada, el detalle se lee de un tirón. */}
-        {paso === "detalle" && gestion.montada ? (
-          <div
-            ref={guiaRef}
-            className={`scroll-mt-20 rounded-2xl border border-border bg-card p-4 ${gestion.clase}`}
-          >
+        {/* Paso 1: verificar la guía antes de gestionar. SLT-156 (R510, R511): el panel solo se monta
+            en modo foco, y ahí el bloque YA está abierto y es la acción: sin CTA fijo «Gestionar esta
+            orden» que lo abra ni control para ocultarlo (eran un segundo botón para lo mismo). */}
+        {paso === "detalle" ? (
+          <div className="rounded-2xl border border-border bg-card p-4">
             <div className="mb-3 flex items-center gap-2">
               <QrCode className="size-5 shrink-0 text-brand" aria-hidden="true" />
               <h3 className="flex-1 text-sm font-bold text-foreground">
                 Gestionar esta orden
               </h3>
-              {/* Se puede volver a ocultar: abrirla no deja al
-                  mensajero atrapado con el escáner ocupando la pantalla. Sin guía asignada no
-                  hay nada que ocultar —el bloque es solo el aviso—, así que no se ofrece. */}
-              {orden.numGuia !== null ? (
-                <button
-                  type="button"
-                  onClick={gestion.cerrar}
-                  aria-expanded
-                  aria-label="Ocultar gestión de la orden"
-                  className="rounded-md p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                >
-                  <ChevronUp className="size-4" aria-hidden="true" />
-                </button>
-              ) : null}
             </div>
             {/* Feature 98: gate de verificación. Antes de fijar el puntero y avanzar
                 a los 4 botones, el mensajero DEBE confirmar la guía del paquete
@@ -1304,31 +1263,6 @@ export function GestionarOrdenPanel({
       ) : null}
       </div>
 
-      {/* CTA fijo abajo mientras se lee el detalle. NO salta el gate de la feature 98: ABRE
-          el bloque "Gestionar esta orden" (escáner QR + número de guía) y pone el foco en su
-          input, que es donde arranca la gestión de verdad. Con la gestión ya en curso
-          (resultados/formulario) desaparece: el CTA de ese paso es "Guardar gestión". */}
-      {paso === "detalle" && orden.numGuia !== null ? (
-        <div className="sticky bottom-0 z-10 rounded-b-2xl border-t border-border bg-card/90 p-4 backdrop-blur-md">
-          <button
-            type="button"
-            aria-expanded={gestion.abierta}
-            onClick={() => {
-              // Acordeón: el mismo control abre y cierra.
-              if (gestion.abierta) {
-                gestion.cerrar();
-                return;
-              }
-              gestion.abrir();
-              setIrAGestion((n) => n + 1);
-            }}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary py-4 text-base font-bold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-          >
-            <Truck className="size-5" aria-hidden="true" />
-            Gestionar esta orden
-          </button>
-        </div>
-      ) : null}
     </section>
   );
 }

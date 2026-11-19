@@ -152,6 +152,8 @@ export function GestionesCierre({
         <BuscadorFiltros
           fija
           tactil
+          // SLT-209: el campo, en su línea; «Filtros» y «Descargar» debajo (la captura lo dejaba en ~80 px).
+          campoLineaPropia
           leerDeUrl={false}
           label={BUSCAR_GESTION_LABEL}
           placeholder={BUSCAR_GESTION_PLACEHOLDER}
@@ -207,6 +209,8 @@ export function GestionesCierre({
               onVerEvidencia={onVerEvidencia}
               columnaMensajero={columnaMensajero}
               enVuelo={enVuelo}
+              // SLT-191 (R810-R814, DS1): la tarjeta del canvas, solo para el propio mensajero en el teléfono.
+              tarjetaMensajero={esMovil && audiencia === "mensajero"}
             />
           ))
         )}

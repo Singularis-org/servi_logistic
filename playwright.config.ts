@@ -89,6 +89,8 @@ export default defineConfig({
         "dos-empresas-humo",
         "zona-especial-dos-empresas",
         "zonas-crear-sin-costos",
+        // SLT-198 R1233: el maestro vacía una zona satélite y pasa su distrito a la principal.
+        "zona-sin-distritos",
         "wallet-iva-aparte-sl39",
         "marca",
         "auth",
@@ -104,10 +106,16 @@ export default defineConfig({
         "mi-plan-cambiar-plan",
         // SLT-66 R26: costo por orden del plan; toca el global del cobro y lo devuelve al terminar.
         "planes-costeo",
+        // SLT-144 R30: crear y editar un plan por pasos con borrador; archiva al final los planes públicos que crea.
+        "planes-borrador",
         // SLT-54 R54, R59, R60, R70: toca el catálogo de vehículos, global, y lo devuelve al terminar.
         "tarifas-maqueta",
         // SLT-87 R1, R2, R13: el botón de reportar un problema; toca la sesión y una tabla de plataforma.
         "reporte-de-bugs",
+        // SLT-80 R1306, R1307, R1309, R1312, R1313: la guía de integración en Ayuda y sus descargas por rol.
+        "ayuda-guia-api",
+        // SLT-208: cada curl de la guía y cada petición de Postman contra la app; dos empresas, una URL.
+        "guia-api-ejemplos-ejecutables",
       ),
     },
     {
@@ -122,6 +130,22 @@ export default defineConfig({
         "reintentos-escalado",
         "reprogramacion-liberacion",
         "etiquetas-lote-tienda",
+        // SLT-163, rebanada B de SLT-156 · R493, R496, R500-R513: Reparto a 360/414 px, KPI 2 × 2 y modo foco.
+        "pwa-mensajero-reparto",
+        // SLT-164, rebanada C de SLT-156 · R500, R517-R522: Recoger en bodega y Recolección a 360/414 px.
+        "pwa-mensajero-recoger-recoleccion",
+        // SLT-166, rebanada E de SLT-156 · R539-R544: el mapa de ruta a 360/414 px, su hoja y la pantalla completa.
+        "pwa-mensajero-mapa",
+        // SLT-162 · R753, R757-R761, R766-R769: /ranking y /ranking/historico en tarjetas a 360/414 px.
+        "pwa-mensajero-ranking",
+        // SLT-159 · R580, R581, R610, R613: la página «Recibir paquetes» con la pistola, satélite y central.
+        "recibir-paquetes",
+        // SLT-193 · R910-R917, R919, R925: botones de 44 px en la PWA del mensajero: encabezado, menú, info y escáner.
+        "pwa-mensajero-botones-44",
+        // SLT-197 · R980, R971, R977, R978: retirar del estante de la satélite, recibir en la central y volver a rutear.
+        "retiro-satelite-central",
+        // SLT-202: Órdenes a 1280 px con la barra de 32 px alineada y a 360 px con 44; un solo «Recibir paquete».
+        "escritorio-igual-a-prod",
       ),
     },
     {
@@ -154,6 +178,9 @@ export default defineConfig({
         "fulfillment-cobro-por-paquete",
         // SLT-100 R77: lo que ven la central y la satélite en el detalle único, modelos viejo y nuevo.
         "cierres-rediseno",
+        // SLT-60 R30: la empresa paga una factura cerrada y el superadmin confirma el pago. Usa el superadmin
+        // de prueba y un plan con costo por orden; no toca el global del cobro.
+        "pago-plataforma-confirmacion",
         // SLT-119 R19: las facturas de la plataforma en «Mi plan» y en la pestaña «Facturación»; cierra una
         // factura de su empresa con la función de cierre de la base y usa el superadmin de prueba.
         "facturas-plataforma",
@@ -161,6 +188,8 @@ export default defineConfig({
         "pwa-mensajero-base",
         // SLT-165, rebanada D de SLT-156 · R523-R537: /cierre-dia a 360/414 px, tarjetas, barra fija y «Ver».
         "pwa-mensajero-cierre-dia",
+        // SLT-209: la barra de «Gestiones» del cierre no flota sobre la lista a 360 px, en la página y en «Ver».
+        "pwa-mensajero-cierre-barra-fija",
       ),
     },
   ],

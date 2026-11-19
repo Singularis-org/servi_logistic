@@ -30,7 +30,6 @@ import type { IReprogramadasRetenidasService } from "@/lib/interfaces/services/I
 import type {
   CierreDetalleGestion,
   CierreGrupos,
-  IngresoEmpresaDTO,
 } from "@/lib/interfaces/services/ICierreDiaService";
 import type {
   ActualizarPagosGestionInput,
@@ -45,6 +44,7 @@ import type {
   CorregirResultadoGestionServiceResult,
   CierreAdminResumen,
   CifrasCierreDescargaDTO,
+  CierreGestionDescargaDTO,
   CierreDetalleAdminServiceResult,
   ForzarSolicitudVencidoServiceResult,
   ICierresAdminService,
@@ -131,43 +131,6 @@ function alcanceDeLectura(actor: Actor, alcance: Alcance): AlcanceLecturaDetalle
 }
 
 /**
- * FICHA 481 (2026-10-15, «solo lo debe ver la central») — el fulfillment congelado de la fila
- * (`ingresoEmpresa.tarifa.fulfillment`) es dato de la CENTRAL: es el servicio de su bodega, no
- * de la satelite. Para un actor sin acceso total sale ANULADO (`null`), no omitido: el tipo
- * (`TarifaSnapshotDTO.fulfillment: string | null`) no admite la ausencia, y `null` es su
- * «no hay dato que mostrar». Nunca "0.00": eso afirmaria que no se cobro.
- *
- * Falla CERRADO: el criterio es «NO es acceso total», no «es adminSatelite», asi que un rol que
- * un dia llegue aqui sin estar previsto tampoco lo recibe. Solo toca la tarifa: ningun total se
- * recalcula (el fulfillment no entra en `ingresoEmpresa.total`, ver `TarifaSnapshotDTO`).
- */
-export function ocultarFulfillmentSiNoCentral<T extends { ingresoEmpresa?: IngresoEmpresaDTO | null }>(
-  fila: T,
-  actor: Actor,
-): T {
-  if (esAccesoTotal(actor.rol)) return fila;
-  const ingreso = fila.ingresoEmpresa;
-  if (ingreso === undefined || ingreso === null) return fila;
-  // SLT-52 (R46): el fulfillment de la fila y su IVA son el mismo dato de la central; se anulan
-  // con el de la tarifa. En el modelo nuevo `tarifa` es `null` y estos dos son los unicos.
-  return {
-    ...fila,
-    ingresoEmpresa: {
-      ...ingreso,
-      fulfillment: null,
-      ivaFulfillment: null,
-      tarifa: ingreso.tarifa === null ? null : { ...ingreso.tarifa, fulfillment: null },
-      // SLT-101 (R94): los tres campos nuevos del fulfillment («Se cobró», su % de IVA y la fecha
-      // del cargo) son el mismo dato de la central. Se anulan si vienen; si no vienen no hay nada
-      // que filtrar, y no se añade la clave (los campos son aditivos).
-      ...(ingreso.fulfillmentConIva !== undefined ? { fulfillmentConIva: null } : {}),
-      ...(ingreso.ivaPctFulfillment !== undefined ? { ivaPctFulfillment: null } : {}),
-      ...(ingreso.fulfillmentCargadoAt !== undefined ? { fulfillmentCargadoAt: null } : {}),
-    },
-  };
-}
-
-/**
  * SLT-154 «Vista de la bodega satélite: solo lo suyo» (R463, D1) — en los DOS detalles, todo el
  * bloque `ingresoEmpresa` de la gestion es cobro a la tienda (importes, IVA, tarifas, fulfillment):
  * dato de la central. Para quien no tiene acceso total sale ENTERO en `null` y solo el modelo de
@@ -175,12 +138,37 @@ export function ocultarFulfillmentSiNoCentral<T extends { ingresoEmpresa?: Ingre
  * campo a campo falla cerrado: un concepto de la tienda que se añada mañana tampoco llega.
  *
  * Mismo criterio que F481: «NO es acceso total», nunca «es adminSatelite» (R464). Para la central
- * devuelve la fila tal cual, asi que su fulfillment sigue entero. Las descargas de la lista siguen
- * con `ocultarFulfillmentSiNoCentral` (SLT-161).
+ * devuelve la fila tal cual, asi que su fulfillment sigue entero. Las descargas de la lista usan su
+ * gemela `ocultarDineroEmpresaDescargaSiNoCentral` (SLT-161).
  */
 export function ocultarDineroEmpresaSiNoCentral<T extends CierreDetalleGestion>(fila: T, actor: Actor): T {
   if (esAccesoTotal(actor.rol)) return fila;
   return { ...fila, ingresoEmpresa: null, tarifaModelo: fila.ingresoEmpresa?.tarifaModelo ?? null };
+}
+
+/**
+ * SLT-161 «Descargas de la satélite sin el dinero de la empresa» (R482, R488, D1) — la gemela de la de
+ * arriba para la gestion de la hoja «Detalle»: el bloque `ingresoEmpresa` ENTERO en `null` (importes,
+ * IVA, tarifas, total y fulfillment) y aparte el monto a cobrar (P2 de SLT-154: dato de la satelite) y
+ * el modelo de tarifa, con el valor que tenian dentro del bloque. El dia del cargo de fulfillment
+ * (SLT-113 R376) tambien es de la central: se anula si viene y no se añade si no viene.
+ *
+ * Criterio de F481: «NO es acceso total». Lo demas (lo recibido, los pagos, el pago al mensajero, lo
+ * que gana la bodega, la indemnizacion, el folio, el modelo del cierre) viaja sin cambio.
+ */
+export function ocultarDineroEmpresaDescargaSiNoCentral<T extends CierreGestionDescargaDTO>(
+  fila: T,
+  actor: Actor,
+): T {
+  if (esAccesoTotal(actor.rol)) return fila;
+  const ingreso = fila.ingresoEmpresa;
+  return {
+    ...fila,
+    ingresoEmpresa: null,
+    montoCobrar: ingreso?.montoCobrar ?? null,
+    tarifaModelo: ingreso?.tarifaModelo ?? null,
+    ...(fila.fulfillmentCargadoDia !== undefined ? { fulfillmentCargadoDia: null } : {}),
+  };
 }
 
 /**
@@ -215,6 +203,21 @@ export function anularEmpresa<T extends object>(r: T, clase: ClasificacionDinero
   return anulado as T;
 }
 
+/**
+ * SLT-161 (R481, R488, D3) — de quien es cada campo de las cifras del «Resumen» de cierres de
+ * mensajeros. `pagoEntregado` es `"empresa"`: para la satelite ya era `null` (SLT-140 R382).
+ */
+export const CLASE_CIFRAS_DESCARGA_CIERRE = {
+  cierreId: "propio",
+  gestiones: "propio",
+  pagoTienda: "empresa",
+  totalFacturado: "empresa",
+  ivaFacturado: "empresa",
+  netoEmpresa: "empresa",
+  partesPorTienda: "empresa",
+  pagoEntregado: "empresa",
+} as const satisfies ClasificacionDinero<CifrasCierreDescargaDTO>;
+
 type CierreDetalleAdminOk = Extract<CierreDetalleAdminServiceResult, { status: "ok" }>;
 
 /**
@@ -231,7 +234,6 @@ export const CLASE_DETALLE_MENSAJERO = {
   pagoTienda: "empresa",
   cobradoSobreRecaudado: "empresa",
   netoEmpresa: "empresa",
-  ganaLaTienda: "empresa",
   fleteRechazoYaCobradoATienda: "empresa",
   partesPorTienda: "empresa",
   ordenesSinGestion: "propio",
@@ -899,11 +901,16 @@ export class CierresAdminService implements ICierresAdminService {
       status: "ok",
       items,
       total,
+      // SLT-161 (R481, R488): el calculo no cambia; sin acceso total, las cifras de la empresa en `null`.
       cifrasModeloNuevo: nuevos.map((c) =>
-        toCifrasDescarga(
-          c,
-          gestiones.get(c.cierreId) ?? [],
-          central ? (entregado.get(c.cierreId) ?? null) : null,
+        anularEmpresaSiNoCentral(
+          toCifrasDescarga(
+            c,
+            gestiones.get(c.cierreId) ?? [],
+            central ? (entregado.get(c.cierreId) ?? null) : null,
+          ),
+          CLASE_CIFRAS_DESCARGA_CIERRE,
+          actor,
         ),
       ),
     };
@@ -971,18 +978,10 @@ export class CierresAdminService implements ICierresAdminService {
       return { status: "limite_excedido", total: conjunto.length, limite };
     }
 
-    // FICHA 481: la hoja «Detalle» de la satelite no lleva el fulfillment de la central.
-    // SLT-113 (R376): tampoco el dia en que se cargo a la tienda. Falla cerrado como la 481: el
-    // criterio es «NO es acceso total». El repositorio emite siempre la clave; si no viene, no se
-    // añade (mismo trato que los campos aditivos de `ocultarFulfillmentSiNoCentral`).
-    const items = conjunto.map((fila) =>
-      ocultarFulfillmentSiNoCentral(
-        esAccesoTotal(actor.rol) || fila.fulfillmentCargadoDia === undefined
-          ? fila
-          : { ...fila, fulfillmentCargadoDia: null },
-        actor,
-      ),
-    );
+    // SLT-161 (R482, R488): la hoja «Detalle» de la satelite no lleva el cobro a la tienda: el bloque
+    // `ingresoEmpresa` entero en `null` (incluye el fulfillment de la 481 y, con SLT-113 R376, el dia
+    // del cargo), con el monto a cobrar y el modelo de tarifa aparte. Criterio: «NO es acceso total».
+    const items = conjunto.map((fila) => ocultarDineroEmpresaDescargaSiNoCentral(fila, actor));
     // SLT-113 (R372): la hoja de rechazos solo existe si algun cierre del conjunto es del modelo
     // nuevo. Sin ninguno (todo el historico de hoy, D19) no se consulta nada y la clave no va.
     if (!conjunto.some((fila) => fila.cierreModelo === "nuevo")) {
@@ -1078,15 +1077,13 @@ export class CierresAdminService implements ICierresAdminService {
     // que usa el Excel del «Resumen» (`listar…Completo`). El bloque que vivia aqui se movio tal cual:
     //  - totales por concepto desde el MISMO desglose por orden que ve el admin en las tablas;
     //  - ganancia y neto desde lo facturado SIN IVA (SL-39); los snapshots del `resumen` (R4);
-    //  - pago a la tienda = recibido − TODO lo facturado (SLT-169 R620); la linea puente y
-    //    `ganaLaTienda`, alias de igual valor que el pago hasta P3 de SLT-169;
+    //  - pago a la tienda = recibido − TODO lo facturado (SLT-169 R620) y la linea puente;
     //  - la particion por tienda (396), que SE EMITE SIEMPRE, tambien con una sola tienda: el umbral
     //    de «solo con dos o mas» es de presentacion y vive en la pantalla (264).
     const cifras = cifrasDelCierre(resumen, found.gestiones);
     const { totalesIngreso, ganancia, pagoTienda, partesPorTienda: partesDeLasTiendas } = cifras;
     const cobradoSobreLoRecaudado = cifras.cobradoSobreRecaudado;
     const neto = cifras.netoEmpresa;
-    const ganaTienda = cifras.ganaLaTienda;
 
     // ¿Ese flete por rechazo YA esta cobrado, o se cobrara? El cargo a la wallet de la tienda
     // lo emite `WalletTiendaFeedService` DENTRO de la transaccion de aprobacion
@@ -1133,9 +1130,8 @@ export class CierresAdminService implements ICierresAdminService {
       // dice en que TIEMPO VERBAL se puede hablar del cargo del flete por rechazo.
       cobradoSobreRecaudado: cobradoSobreLoRecaudado,
       netoEmpresa: neto,
-      ganaLaTienda: ganaTienda,
       fleteRechazoYaCobradoATienda,
-      // Ficha 396: la particion de `pagoTienda` (y su alias `ganaLaTienda`) por tienda, ORDENADA por el
+      // Ficha 396: la particion de `pagoTienda` por tienda, ORDENADA por el
       // servidor (por lo que se le paga, de mayor a menor). La pantalla pinta en el orden que
       // recibe y no hace ni una operacion aritmetica.
       partesPorTienda: partesDeLasTiendas,
@@ -2060,7 +2056,6 @@ function toCifrasDescarga(
   return {
     cierreId: c.cierreId,
     pagoTienda: cifras.pagoTienda,
-    ganaLaTienda: cifras.ganaLaTienda,
     totalFacturado: cifras.totalesIngreso.total,
     ivaFacturado: cifras.ivaFacturado,
     netoEmpresa: cifras.netoEmpresa,
@@ -2070,7 +2065,6 @@ function toCifrasDescarga(
       tiendaNombre: p.tiendaNombre,
       recaudado: p.recaudado,
       pagoTienda: p.pagoTienda,
-      ganaLaTienda: p.ganaLaTienda,
     })),
   };
 }

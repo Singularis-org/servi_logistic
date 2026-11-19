@@ -9,8 +9,11 @@ import {
   puedeLeerDocumento,
 } from "@/lib/ayuda/documento";
 import type { ResumenDocumento } from "@/lib/ayuda/documento";
+import { SLUG_GUIA_API } from "@/lib/ayuda/guia-api";
 import { renderizarMarkdown } from "@/lib/ayuda/markdown";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
+
+import { AccionesGuiaApi } from "../_components/AccionesGuiaApi";
 
 /**
  * ⭑ FICHA 433 — `/ayuda/<slug>`: un documento, renderizado desde su `.md`.
@@ -50,6 +53,9 @@ export default async function AyudaDocumentoPage({
 
   return (
     <article className="min-w-0">
+      {/* SLT-80 (R1308): la guía de integración es el único documento que trae descargas;
+          ningún otro las lleva. */}
+      {doc.slug === SLUG_GUIA_API ? <AccionesGuiaApi /> : null}
       {/* PROSA 65–75ch (`DESIGN.md`). Es un módulo de LECTURA: sin el tope, en un monitor
           ancho la línea llega a 140 caracteres y el ojo pierde el renglón al saltar. El tope
           va aquí y no en cada bloque para que tablas y bloques de código, que sí pueden ser

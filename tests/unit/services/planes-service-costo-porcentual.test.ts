@@ -65,7 +65,6 @@ function doble() {
     empresa: vi.fn<IPlanesRepository["empresa"]>(async (id) => ({ id, nombre: "Mensajería Uno", planId: null })),
     plan: vi.fn<IPlanesRepository["plan"]>(async () => plan()),
     crear: vi.fn<IPlanesRepository["crear"]>(async () => PLAN),
-    editar: vi.fn<IPlanesRepository["editar"]>(async () => ({ estado: "ok", cambio: true, avisos: [] })),
     archivar: vi.fn<IPlanesRepository["archivar"]>(async () => ({ estado: "ok", cambio: true })),
     asignar: vi.fn<IPlanesRepository["asignar"]>(async () => ({ estado: "ok", cambio: true, avisos: [], pendiente: false })),
     crearYAsignar: vi.fn<IPlanesRepository["crearYAsignar"]>(async () => ({ estado: "ok", planId: PLAN, avisos: [], pendiente: false })),
@@ -74,6 +73,7 @@ function doble() {
     cancelarCambioEmpresa: vi.fn<IPlanesRepository["cancelarCambioEmpresa"]>(),
     aplicarCambioDeEmpresa: vi.fn<IPlanesRepository["aplicarCambioDeEmpresa"]>(),
     cambiosDeEmpresaVencidos: vi.fn<IPlanesRepository["cambiosDeEmpresaVencidos"]>(),
+    vistaPreviaCambio: vi.fn<IPlanesRepository["vistaPreviaCambio"]>(),
     vistaPreviaAsignacion: vi.fn<IPlanesRepository["vistaPreviaAsignacion"]>(async () => ({ avisos: [] })),
     cancelarCambio: vi.fn<IPlanesRepository["cancelarCambio"]>(async () => ({ estado: "ok" })),
     programarCambio: vi.fn<IPlanesRepository["programarCambio"]>(async () => ({
@@ -127,9 +127,9 @@ describe("SLT-83 R3 — solo el superadmin configura el modo porcentual", () => 
     sinRepositorio();
   });
 
-  it.each(ACTORES)("%s: editar de inmediato o programar el porcentual → forbidden sin llamar al repositorio", async (_caso, actor) => {
+  it.each(ACTORES)("%s: editar el porcentual con la fecha de hoy o una futura → forbidden sin llamar al repositorio", async (_caso, actor) => {
     const v = version({ costoPorOrdenPorcentual: { porcentaje: "5", minimo: null } });
-    expect(await servicio.editar(actor, { planId: PLAN, ...v, vigenteDesde: null })).toEqual({ estado: "forbidden" });
+    expect(await servicio.editar(actor, { planId: PLAN, ...v, vigenteDesde: HOY })).toEqual({ estado: "forbidden" });
     expect(await servicio.editar(actor, { planId: PLAN, ...v, vigenteDesde: "2026-12-01" })).toEqual({ estado: "forbidden" });
     sinRepositorio();
   });
@@ -148,10 +148,11 @@ describe("SLT-83 R3 — solo el superadmin configura el modo porcentual", () => 
       "u-sa",
     );
     const v = version({ costoPorOrdenPorcentual: { porcentaje: "5", minimo: null } });
-    expect((await servicio.editar(SUPERADMIN, { planId: PLAN, ...v, vigenteDesde: null })).estado).toBe("ok");
-    expect(repo.editar).toHaveBeenCalledWith(PLAN, v, "u-sa", new Date("2026-10-29T06:00:00.000Z"));
+    // SLT-135: con la fecha de hoy también se programa, desde sus 00:00.
+    expect((await servicio.editar(SUPERADMIN, { planId: PLAN, ...v, vigenteDesde: HOY })).estado).toBe("ok");
+    expect(repo.programarCambio).toHaveBeenCalledWith(PLAN, v, new Date("2026-10-29T06:00:00.000Z"), "u-sa", AHORA);
     expect((await servicio.editar(SUPERADMIN, { planId: PLAN, ...v, vigenteDesde: "2026-12-01" })).estado).toBe("ok");
-    expect(repo.programarCambio.mock.calls[0]?.[1]).toEqual(v);
+    expect(repo.programarCambio.mock.calls[1]?.[1]).toEqual(v);
   });
 });
 
@@ -163,7 +164,7 @@ describe("SLT-83 R1, R2 — el borde del servicio, antes de leer nada", () => {
     ["mínimo negativo", { costoPorOrdenPorcentual: { porcentaje: "2", minimo: "-1" } }, "costoPorOrdenPorcentual.minimo"],
   ])("%s → validation_error en %s, al crear y al editar, sin llamar al repositorio", async (_caso, extra, campo) => {
     const creado = await servicio.crear(SUPERADMIN, { ...CREAR, ...extra });
-    const editado = await servicio.editar(SUPERADMIN, { planId: PLAN, ...version(), ...extra, vigenteDesde: null });
+    const editado = await servicio.editar(SUPERADMIN, { planId: PLAN, ...version(), ...extra, vigenteDesde: HOY });
     for (const r of [creado, editado]) {
       expect(r).toMatchObject({ estado: "validation_error", fieldErrors: { [campo]: expect.any(Array) } });
     }

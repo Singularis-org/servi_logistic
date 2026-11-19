@@ -7,9 +7,9 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 /**
@@ -55,22 +55,12 @@ const CR_22_0003 = new Date("2026-08-22T06:03:15.000Z");
 
 describeSiHayBase("412/R11 · la jornada del cierre rechazado, contra Postgres real", () => {
   let prisma: PrismaClient;
-  let fks: NonNullable<Awaited<ReturnType<typeof fksDeOrden>>>;
+  // SLT-178: los asigna `sembrarBaseDelCaso` en cada caso, dentro de su transaccion revertida.
+  let fks: Awaited<ReturnType<typeof crearFksDeOrden>>;
   let mensajeroId: string;
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const encontradas = await fksDeOrden(prisma);
-    if (encontradas === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar. " +
-          "Corre `pnpm run db:seed` antes de esta suite.",
-      );
-    }
-    fks = encontradas;
-    const usuarios = await prisma.usuario.findMany({ select: { id: true }, take: 1 });
-    if (usuarios.length < 1) throw new Error("hacen falta usuarios en la base.");
-    mensajeroId = usuarios[0].id;
   });
 
   afterAll(async () => {
@@ -78,6 +68,17 @@ describeSiHayBase("412/R11 · la jornada del cierre rechazado, contra Postgres r
   });
 
   type Tx = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0];
+
+  /** SLT-178: tienda, zona y mensajero del caso, creados en su transaccion revertida. */
+  async function sembrarBaseDelCaso(tx: Tx): Promise<void> {
+    fks = await crearFksDeOrden(tx);
+    mensajeroId = (await crearUsuarioDePrueba(tx, "mensajero")).id;
+    expect(
+      await tx.usuario.count({ where: { id: { in: [fks.tiendaId, mensajeroId] } } }),
+      "usuarios sembrados (tienda, mensajero)",
+    ).toBe(2);
+    expect(await tx.zona.count({ where: { id: fks.zonaId } }), "zona sembrada").toBe(1);
+  }
 
   async function sembrarCierre(tx: Tx, createdAt: Date) {
     return tx.cierreDia.create({
@@ -131,6 +132,7 @@ describeSiHayBase("412/R11 · la jornada del cierre rechazado, contra Postgres r
   it("⭑ R11: cierre NACIDO el 22 con gestiones del 21 -> la jornada es el 21, no el 22", async () => {
     const medido = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const cierre = await sembrarCierre(tx, CR_22_0003);
       await sembrarGestion(tx, cierre.id, CR_21_1656, "A");
       await sembrarGestion(tx, cierre.id, CR_21_1710, "B");
@@ -158,6 +160,7 @@ describeSiHayBase("412/R11 · la jornada del cierre rechazado, contra Postgres r
     // `where` la excluyo de verdad.
     const jornada = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const cierre = await sembrarCierre(tx, CR_22_0003);
       await sembrarGestion(tx, cierre.id, CR_21_1656, "C");
       await sembrarGestion(tx, cierre.id, CR_20_1400, "D", true); // ANULADA, de otro dia
@@ -174,6 +177,7 @@ describeSiHayBase("412/R11 · la jornada del cierre rechazado, contra Postgres r
     // dias le estamos nombrando. El aviso se queda en «Tu cierre del dia fue rechazado».
     const jornada = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const cierre = await sembrarCierre(tx, CR_22_0003);
       await sembrarGestion(tx, cierre.id, CR_21_1656, "E");
       await sembrarGestion(tx, cierre.id, CR_20_1400, "F");
@@ -191,6 +195,7 @@ describeSiHayBase("412/R11 · la jornada del cierre rechazado, contra Postgres r
     // 22 -> cierra el 21.
     const medido = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const cierre = await sembrarCierre(tx, CR_22_0003);
 
       const repo = new OrdenRepository(tx as unknown as PrismaClient);
@@ -213,6 +218,7 @@ describeSiHayBase("412/R11 · la jornada del cierre rechazado, contra Postgres r
     // repo prohibe— la jornada saldria «2026-08-22», que es el off-by-one de la ficha 166.
     const jornada = await enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const cierre = await sembrarCierre(tx, CR_22_0003);
       await sembrarGestion(tx, cierre.id, new Date("2026-08-22T05:30:00.000Z"), "G");
 

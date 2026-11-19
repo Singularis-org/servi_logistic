@@ -230,6 +230,9 @@ export const CLASIFICACION_FK_USUARIO: Record<string, ClasificacionFk> = {
   "CobroTiendaAnulacion.anulador": { categoria: "no_alcanzable", motivo: SOLO_OPERADOR },
   // Ficha 461 (R69): quien anulo una correccion de caja. Solo el acceso total anula.
   "AjusteCajaAnulacion.anulador": { categoria: "no_alcanzable", motivo: SOLO_OPERADOR },
+  // SLT-60 (2026-11-13): quien confirmo un pago a la plataforma. Solo el superadmin confirma
+  // (`esPlataforma`), con sesion; la cuenta dedicada de una key no llega a esa accion. FK `Restrict`.
+  "PagoPlataformaConfirmacion.confirmador": { categoria: "no_alcanzable", motivo: SOLO_OPERADOR },
   "AporteCapital.registrador": { categoria: "no_alcanzable", motivo: SOLO_OPERADOR },
   "AporteCapitalAnulacion.anulador": { categoria: "no_alcanzable", motivo: SOLO_OPERADOR },
   // ⭑ FICHA 457 — el pago de una tienda a la empresa. La tienda la valida `AbonoTiendaService` (R10):
