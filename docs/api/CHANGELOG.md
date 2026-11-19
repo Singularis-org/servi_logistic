@@ -21,6 +21,25 @@
 
 ---
 
+## 2026-11-18 — Sin ruptura — El contrato publica `manifiesto.filas[].intentos` de la carga
+
+> **Sin ruptura.** La respuesta de `POST /api/ordenes/api-key/carga` **ya traía** esta clave en
+> cada fila del manifiesto; lo que cambia es que el contrato ahora la declara. Ningún valor, ruta ni
+> código de respuesta cambia. Si validás con un esquema cerrado o generado, regeneralo: `intentos`
+> pasa a ser una propiedad **obligatoria** de `ManifiestoFila`.
+
+| Dónde | Clave | Qué es |
+|---|---|---|
+| `POST /api/ordenes/api-key/carga` → `manifiesto.filas[]` (`ManifiestoFila`) | `intentos` | Entero ≥ 0, nunca `null`. Intentos de entrega de la orden: visitas de entrega sin entrega, contadas una por cierre aprobado con al menos una gestión no anulada de resultado `novedad`, `reprogramado` o `devolucion_a_origen_por_rechazo`. Sin intentos vale `0`; en la respuesta de la carga las órdenes acaban de crearse, así que vale `0`. |
+
+**Lo que NO cambia:** ningún otro endpoint gana el conteo (listado, detalle, webhook y el resto de
+la carga siguen sin él).
+
+Contrato: `lib/api/openapi-spec.ts` y su espejo `docs/api/api-key-openapi.yaml`; guía de
+integración: `docs/ayuda/oficina/guia-integracion-api.md` (§5.1).
+
+---
+
 ## 2026-11-05 — Sin ruptura — Las fechas de calendario se miden en la zona horaria del país de tu empresa
 
 > **Sin ruptura para las empresas de Costa Rica.** Solo cambian **textos de descripción** del
@@ -103,9 +122,7 @@ que se pide y se recibe por este canal es el mismo).
 
 ## 2026-09-24 — ⚠️ RUPTURA — Los estados cambian de código y ganan su nombre
 
-> **Fecha de despliegue: PENDIENTE — se avisará con antelación y se escribirá aquí.** Este cambio
-> **rompe** a quien compare códigos de estado o de resultado: hasta ese día el canal sigue
-> respondiendo con los códigos anteriores.
+> **Fecha de despliegue: en producción desde el primer despliegue de la plataforma (2026-10-22).**
 
 **Qué cambia, en una frase:** cada estado de una orden se llama igual en todas partes —en la
 aplicación, en el rastreo público y en este canal—. Siete estados cambian de **código**, los cuatro

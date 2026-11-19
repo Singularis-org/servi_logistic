@@ -123,6 +123,7 @@ paths:
                           zona: "San José Centro"
                           producto: Camiseta talla M
                           monto: 25.9
+                          intentos: 0
                           origen: Mi Tienda
                           destino: Bodega central
                           responsable: "Integración Mi Tienda"
@@ -172,6 +173,7 @@ paths:
                           zona: "San José Centro"
                           producto: Camiseta talla M
                           monto: 25.9
+                          intentos: 0
                           origen: Mi Tienda
                           destino: Bodega central
                           responsable: "Integración Mi Tienda"
@@ -824,8 +826,9 @@ paths:
 # El bloque `data` gana además la clave OPCIONAL `evidenciasUrl` (R24) y `motivo` amplía su enum
 # con las tres causas de incidente, en español (R20).
 #
-# La prosa evita la subcadena «intentos» a proposito: `tests/unit/types/intentos-no-alcance.test.ts`
-# (160/R31) la prohibe en todo el contrato.
+# «intentos» solo aparece en `ManifiestoFila` (SLT-203, 2026-11-18: Carlos enmienda 160/R31 para
+# `manifiesto.filas[].intentos` de la carga). En el resto del contrato sigue prohibida:
+# `tests/unit/types/intentos-no-alcance.test.ts`.
 components:
   securitySchemes:
     bearerAuth:
@@ -2007,6 +2010,7 @@ components:
         - zona
         - producto
         - monto
+        - intentos
         - origen
         - destino
         - responsable
@@ -2037,6 +2041,10 @@ components:
             - number
             - "null"
           description: "Monto a cobrar (COD) de la orden."
+        intentos:
+          type: integer
+          minimum: 0
+          description: "Intentos de entrega de la orden: visitas de entrega sin entrega, contadas una por cierre aprobado con al menos una gestión no anulada de resultado `novedad`, `reprogramado` o `devolucion_a_origen_por_rechazo`; una gestión anulada o cuyo cierre no se aprobó no cuenta. Nunca `null`: sin intentos vale `0`. En la respuesta de la carga las órdenes acaban de crearse, así que vale `0`."
         origen:
           type: string
           description: "De dónde sale el paquete en este traslado (tu tienda)."

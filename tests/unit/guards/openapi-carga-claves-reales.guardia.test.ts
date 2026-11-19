@@ -279,14 +279,6 @@ async function llamar(
 
 const claves = (o: unknown): string[] => ordenar(Object.keys(o as object));
 
-/**
- * Única excepción DECLARADA: la fila real del manifiesto trae el conteo de reintentos de entrega,
- * y el contrato no lo publica porque 160/R31 (QA5) lo deja fuera (`intentos-no-alcance.test.ts`).
- * Si alguien lo publica o la ruta deja de enviarlo, el test de abajo lo dice.
- */
-const FUERA_DEL_CONTRATO_FILA_MANIFIESTO = ["intentos"];
-const sinExcepciones = (xs: string[]): string[] => xs.filter((x) => !FUERA_DEL_CONTRATO_FILA_MANIFIESTO.includes(x));
-
 /** La variante objeto de un `oneOf` cuyas `properties` incluyen `clave`. */
 function variante(schema: string, clave: string): string[] {
   const v = S[schema]?.oneOf?.find((x) => x.properties && clave in x.properties);
@@ -366,13 +358,15 @@ describe("SLT-201 R2 — la respuesta REAL de la ruta tiene las claves que publi
 
     const manifiesto = json.manifiesto as { filas: unknown[]; omitidas: unknown[] };
     expect(claves(manifiesto)).toEqual(variante("CargaManifiesto", "filas"));
+    // SLT-203 (2026-11-18, decisión de Carlos): sin excepciones. La fila real trae `intentos` y el
+    // contrato lo publica; antes era la única clave excluida (160/R31, ahora enmendado).
     const fila = claves(manifiesto.filas[0]);
-    expect(sinExcepciones(fila)).toEqual(props("ManifiestoFila"));
-    // La excepción sigue siendo real (si la fila deja de traerla, sobra) y sigue sin publicarse.
-    for (const x of FUERA_DEL_CONTRATO_FILA_MANIFIESTO) {
-      expect(fila, `SLT-201: la fila ya no trae ${x}; quita la excepción`).toContain(x);
-      expect(props("ManifiestoFila")).not.toContain(x);
-    }
+    expect(fila, "SLT-203: control, la fila real trae `intentos`").toContain("intentos");
+    expect(fila).toEqual(props("ManifiestoFila"));
+    expect(ordenar(S.ManifiestoFila.required ?? []), "SLT-203: `intentos` es obligatorio (nunca se omite)").toContain(
+      "intentos",
+    );
+    expect(S.ManifiestoFila.properties!.intentos?.type, "SLT-203: `intentos` es un entero").toBe("integer");
     expect(claves(manifiesto.omitidas[0])).toEqual(props("ManifiestoOmitida"));
   });
 
