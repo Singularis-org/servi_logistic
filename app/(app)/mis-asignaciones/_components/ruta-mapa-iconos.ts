@@ -21,8 +21,8 @@ export const COLOR_MARCADOR: Record<TipoMarcador, { fondo: string; texto: string
   pendiente: { fondo: "var(--color-brand-dark)", texto: "var(--color-white)" },
   // Gestionadas: gris cálido de la paleta con check.
   gestionada: { fondo: "var(--color-asfalto-4)", texto: "var(--color-white)" },
-  // Origen «Tú».
-  origen: { fondo: "var(--color-success)", texto: "var(--color-white)" },
+  // Origen «Tú». SLT-200: el texto en Negro Servi; blanco sobre este verde medía 2.54:1.
+  origen: { fondo: "var(--color-success)", texto: "var(--color-brand-dark)" },
 };
 
 /** Lado del área que se toca: 44 px (R493), aunque el círculo dibujado sea más chico. */

@@ -63,6 +63,13 @@ export const BARRA_FIJA = "sticky top-0 z-20 bg-background py-2";
 /** SLT-160 (R600): nombre accesible del botón de cámara del buscador y título de su visor. */
 export const ESCANEAR_CON_CAMARA = "Escanear con cámara";
 
+/**
+ * SLT-200 (punto 7, pedido de Carlos 2026-11-18): el tooltip del botón de cámara, que dice qué hace: la
+ * cámara lee el código y FILTRA la lista; no cambia nada. El nombre accesible sigue siendo
+ * `ESCANEAR_CON_CAMARA`.
+ */
+export const AYUDA_CAMARA_BUSCADOR = "Buscar escaneando la guía";
+
 /** SLT-160 (R770, DC2): la ayuda que va debajo de un buscador con `escaneo`, la del canvas. */
 export const AYUDA_ESCANEO =
   "Escanea o escribe la guía y pulsa Enter. Lo leído por la pistola o por la cámara (QR o código de barras) se busca igual.";
@@ -712,6 +719,7 @@ export function BuscadorFiltros({
             label={ESCANEAR_CON_CAMARA}
             titulo={ESCANEAR_CON_CAMARA}
             soloIcono
+            ayuda={AYUDA_CAMARA_BUSCADOR}
             className="size-11 shrink-0"
           >
             {(cerrar) => (

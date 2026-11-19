@@ -9,6 +9,8 @@ import {
   type TipoMarcador,
 } from "@/app/(app)/mis-asignaciones/_components/ruta-mapa-iconos";
 
+import { contraste, paleta } from "../../fixtures/contraste";
+
 // SLT-166 «PWA del mensajero: mapa de ruta» (R539, design §11) — el HTML de los marcadores.
 //
 // Dos cosas que el ojo no ve en un test de componente: que no quede ningún hex (los de antes,
@@ -68,6 +70,17 @@ describe("SLT-166 R539 — htmlMarcador", () => {
     const html = htmlMarcador("origen");
     expect(html).toContain("border:3px solid var(--color-white)");
     expect(html).toContain(">Tú<");
+  });
+
+  // SLT-200 «PWA Reparto: buscador, KPI, tarjeta y leyenda del mapa tras Preview» (punto 4): el «Tú»
+  // (11 px, 700) iba blanco sobre el verde de éxito, 2.54:1. En Negro Servi sobre ese verde pasa 4.5:1.
+  it("origen: «Tú» en Negro Servi sobre el verde, legible (≥ 4.5:1)", () => {
+    const html = htmlMarcador("origen");
+    const etiqueta = /<span aria-hidden="true" style="([^"]*)">Tú<\/span>/.exec(html)?.[1] ?? "";
+    expect(etiqueta).toContain("background:var(--color-success)");
+    expect(etiqueta).toContain("color:var(--color-brand-dark)");
+    expect(etiqueta).not.toContain("color:var(--color-white)");
+    expect(contraste(paleta("brand-dark"), paleta("success"))).toBeGreaterThanOrEqual(4.5);
   });
 
   it("las paradas ocupan 44 × 44 px de área táctil", () => {

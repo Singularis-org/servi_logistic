@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { Prisma } from "@prisma/client";
 import { ensureCargaEnTx, type CargaTxClient } from "@/lib/repositories/carga-lote";
 import {
   CargaLoteAjenoError,
@@ -233,6 +234,46 @@ describe("ensureCargaEnTx — nombre duplicado (R24/R25/R10)", () => {
         name: "enero",
       }),
     ).rejects.toBeInstanceOf(CargaNombreDuplicadoError);
+  });
+
+  // SLT-93 (review): solo el unico (usuario_carga, name) es «nombre repetido». Un P2002 de OTRA
+  // restriccion sale tal cual, en las dos formas: adapter (target sin columnas, indice en
+  // `driverAdapterError`) y motor nativo (target con columnas).
+  it("SLT-93: un P2002 de OTRA restriccion (carga_pkey) sale tal cual, no como CargaNombreDuplicadoError", async () => {
+    const formas = [
+      new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+        code: "P2002",
+        clientVersion: "7.8.0",
+        meta: {
+          target: "(not available)",
+          driverAdapterError: {
+            cause: {
+              originalMessage: 'duplicate key value violates unique constraint "carga_pkey"',
+            },
+          },
+        },
+      }),
+      new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+        code: "P2002",
+        clientVersion: "7.8.0",
+        meta: { target: ["id"] },
+      }),
+    ];
+    for (const original of formas) {
+      const carga = buildCargaDelegate();
+      carga.create.mockRejectedValueOnce(original);
+      const recibido = await ensureCargaEnTx(tx(carga), {
+        id: null,
+        usuarioCargaId: "tienda-1",
+        totalFiles: 1,
+        name: "enero",
+      }).then(
+        () => null,
+        (e: unknown) => e,
+      );
+      expect(recibido, "SLT-93: el P2002 ajeno debe propagarse").toBe(original);
+      expect(recibido).not.toBeInstanceOf(CargaNombreDuplicadoError);
+    }
   });
 
   it("un error que NO es de unicidad se propaga tal cual (no se disfraza de 409)", async () => {

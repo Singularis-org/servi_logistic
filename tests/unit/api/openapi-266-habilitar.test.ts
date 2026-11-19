@@ -71,7 +71,7 @@ describe("266/R28 — el noveno endpoint del canal existe en el objeto TS y en e
     const post = spec.paths[PATH_HABILITAR].post as unknown as {
       responses: Record<string, { content?: Record<string, { schema: unknown }> }>;
     };
-    expect(Object.keys(post.responses)).toEqual(["200", "401", "403", "422"]);
+    expect(Object.keys(post.responses)).toEqual(["200", "401", "403", "422", "500"]); // SLT-201: + 500
     expect(post.responses["200"].content?.["application/json"].schema).toEqual({
       $ref: "#/components/schemas/HabilitacionResponse",
     });

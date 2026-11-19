@@ -2,6 +2,9 @@ import { ORDER_STATUS_SEED } from "@/lib/types/order-status";
 import { EMPRESA, MARCA } from "@/lib/config/marca";
 import { WEBHOOK_SIGNATURE_HEADER, WEBHOOK_TIMESTAMP_HEADER } from "@/lib/crypto/webhook-firma";
 import { MSG_CARGA_SIN_TARIFA, MSG_FILA_SIN_TARIFA } from "@/lib/services/mensajes-tarifa";
+import { MSG } from "@/lib/errors/codes";
+import type { ManifiestoFilaDTO } from "@/lib/types/manifiesto";
+import { CargaNombreDuplicadoError } from "@/lib/interfaces/repositories/IOrdenRepository";
 import { EVENTOS_PUBLICOS } from "@/lib/types/webhook-eventos";
 import { METRICAS_API_KEY, METRICAS_TODAS } from "@/lib/analytics/publicacion-api-key";
 import { TOPE_FILAS_HABILITAR } from "@/lib/config/habilitacion-api";
@@ -121,6 +124,27 @@ const DESC_IVA_FULFILLMENT =
 // Tope duro de filas por lote de carga (cargaMasivaConfig.MAX_CHUNK_ROWS, default 5000).
 const MAX_CARGA_ROWS = 5000;
 
+// SLT-201 — nombre de lote de los ejemplos de `POST carga` (peticion y 409 por nombre repetido).
+export const EJEMPLO_NOMBRE_LOTE = "Pedidos del 18 de noviembre";
+
+// SLT-201 — una fila del bloque `manifiesto` de los ejemplos de `POST carga`. Valores
+// ilustrativos con la forma de `ManifiestoFilaDTO` (`lib/types/manifiesto.ts`), MENOS el conteo de
+// reintentos de entrega: 160/R31 (QA5) lo deja fuera del contrato publico (ver `ManifiestoFila`).
+const EJEMPLO_FILA_MANIFIESTO = {
+  numGuia: 100234,
+  numRemision: "REM-0001",
+  destinatario: "Juan Pérez",
+  telefono: "88887777",
+  direccion: "Av. Central, 200m norte del parque",
+  zona: "San José Centro",
+  producto: "Camiseta talla M",
+  monto: 25.9,
+  origen: "Mi Tienda",
+  destino: "Bodega central",
+  responsable: "Integración Mi Tienda",
+  fecha: "2026-11-18",
+} as const satisfies Omit<ManifiestoFilaDTO, "intentos">;
+
 export const openApiSpec = {
   openapi: "3.1.0",
   info: {
@@ -197,6 +221,8 @@ export const openApiSpec = {
                         notas: "",
                       },
                     ],
+                    name: EJEMPLO_NOMBRE_LOTE,
+                    download_type: "consolidate",
                   },
                 },
               },
@@ -211,7 +237,7 @@ export const openApiSpec = {
                 schema: { $ref: "#/components/schemas/CargaResponse" },
                 examples: {
                   resumen: {
-                    summary: "Una creada, una con error",
+                    summary: "Una creada, una con error (`download_type` por defecto: `consolidate`)",
                     value: {
                       cargaId: "9c2b7f10-5d3a-4e21-9a4b-77c8e0f1a2b3",
                       total: 2,
@@ -233,12 +259,19 @@ export const openApiSpec = {
                           costoEnvio: "3.39",
                           fulfillment: "0.00",
                           ivaFulfillment: "0.00",
+                          downloadUrl: null,
                         },
                       ],
+                      downloadType: "consolidate",
+                      etiquetasPdf: {
+                        url: "https://<host-de-storage>/object/sign/etiquetas/lote-9c2b7f10.pdf?token=...",
+                        expiraEnSegundos: 3600,
+                      },
+                      manifiesto: { filas: [EJEMPLO_FILA_MANIFIESTO], omitidas: [] },
                     },
                   },
                   filaSinTarifa: {
-                    summary: "Una creada y una degradada por falta de tarifa",
+                    summary: "Una creada y una degradada por falta de tarifa (con `download_type: individual`)",
                     value: {
                       cargaId: "9c2b7f10-5d3a-4e21-9a4b-77c8e0f1a2b3",
                       total: 2,
@@ -260,8 +293,12 @@ export const openApiSpec = {
                           costoEnvio: "3.39",
                           fulfillment: "0.00",
                           ivaFulfillment: "0.00",
+                          downloadUrl: "https://<host-de-storage>/object/sign/etiquetas/orden-6f1c2d3e.pdf?token=...",
                         },
                       ],
+                      downloadType: "individual",
+                      etiquetasPdf: null,
+                      manifiesto: { filas: [EJEMPLO_FILA_MANIFIESTO], omitidas: [] },
                     },
                   },
                 },
@@ -274,21 +311,39 @@ export const openApiSpec = {
           // porque el ejemplo publicado tiene que ser LA CONSTANTE que el service emite: dos
           // cadenas (una aqui y otra en `lib/services/mensajes-tarifa.ts`) divergen a la primera
           // errata, y R38 pide exactamente lo contrario.
+          //
+          // SLT-201 — el SEGUNDO motivo del 409: un `name` de lote repetido (feature 141, R24).
+          // Su ejemplo sale de la clase de error del repositorio, por la misma razon. El bug que
+          // hoy lo convierte en 500 en la base real es SLT-93; aqui se publica el contrato.
           "409": {
             description:
-              "Ninguna de las filas que llegaron a la resolución de tarifa la resolvió: no se creó ninguna orden ni fila de carga.",
+              "Dos motivos, y en los dos no se creó ninguna orden ni lote: (1) ninguna de las filas que llegaron a la resolución de tarifa la resolvió; (2) el `name` del lote ya lo usó antes esta misma cuenta.",
             content: {
               "application/json": {
                 schema: { $ref: "#/components/schemas/Error" },
-                example: {
-                  status: "error",
-                  code: "CONFLICT",
-                  message: MSG_CARGA_SIN_TARIFA,
+                examples: {
+                  sinTarifa: {
+                    summary: "Ninguna fila resolvió tarifa",
+                    value: {
+                      status: "error",
+                      code: "CONFLICT",
+                      message: MSG_CARGA_SIN_TARIFA,
+                    },
+                  },
+                  nombreRepetido: {
+                    summary: "Nombre de lote repetido",
+                    value: {
+                      status: "error",
+                      code: "CONFLICT",
+                      message: new CargaNombreDuplicadoError(EJEMPLO_NOMBRE_LOTE).message,
+                    },
+                  },
                 },
               },
             },
           },
           "422": { $ref: "#/components/responses/ValidationError" },
+          "500": { $ref: "#/components/responses/InternalError" },
         },
       },
     },
@@ -386,6 +441,7 @@ export const openApiSpec = {
           "401": { $ref: "#/components/responses/Unauthorized" },
           "403": { $ref: "#/components/responses/Forbidden" },
           "422": { $ref: "#/components/responses/ValidationError" },
+          "500": { $ref: "#/components/responses/InternalError" },
         },
       },
     },
@@ -427,6 +483,7 @@ export const openApiSpec = {
           "404": { $ref: "#/components/responses/NotFound" },
           "409": { $ref: "#/components/responses/Conflict" },
           "422": { $ref: "#/components/responses/ValidationError" },
+          "500": { $ref: "#/components/responses/InternalError" },
         },
       },
     },
@@ -484,6 +541,7 @@ export const openApiSpec = {
           "403": { $ref: "#/components/responses/Forbidden" },
           "404": { $ref: "#/components/responses/NotFound" },
           "422": { $ref: "#/components/responses/ValidationError" },
+          "500": { $ref: "#/components/responses/InternalError" },
         },
       },
       // FICHA 320 — el PRIMER `DELETE` del canal. Va en ESTE path (mismo recurso, otro verbo) y no
@@ -522,6 +580,7 @@ export const openApiSpec = {
           "404": { $ref: "#/components/responses/NotFound" },
           "409": { $ref: "#/components/responses/Conflict" },
           "422": { $ref: "#/components/responses/ValidationError" },
+          "500": { $ref: "#/components/responses/InternalError" },
         },
       },
     },
@@ -570,6 +629,7 @@ export const openApiSpec = {
           "404": { $ref: "#/components/responses/NotFound" },
           "409": { $ref: "#/components/responses/Conflict" },
           "422": { $ref: "#/components/responses/ValidationError" },
+          "500": { $ref: "#/components/responses/InternalError" },
         },
       },
     },
@@ -611,6 +671,7 @@ export const openApiSpec = {
           "404": { $ref: "#/components/responses/NotFound" },
           "409": { $ref: "#/components/responses/Conflict" },
           "422": { $ref: "#/components/responses/ValidationError" },
+          "500": { $ref: "#/components/responses/InternalError" },
         },
       },
     },
@@ -739,6 +800,7 @@ export const openApiSpec = {
             },
           },
           "422": { $ref: "#/components/responses/ValidationError" },
+          "500": { $ref: "#/components/responses/InternalError" },
         },
       },
     },
@@ -797,7 +859,7 @@ export const openApiSpec = {
                 examples: {
                   serie: {
                     summary:
-                      "Dos métricas; se pidieron tres días y el tercero (hoy) no viene: no está cerrado",
+                      "Dos métricas; se pidieron tres días y el tercero (hoy) viene marcado `parcial: true`: aún no está cerrado",
                     value: {
                       rango: { desde: "2026-08-19", hasta: "2026-08-21" },
                       metricas: [
@@ -807,7 +869,9 @@ export const openApiSpec = {
                           data: [
                             { fecha: "2026-08-19", valor: 41 },
                             { fecha: "2026-08-20", valor: 37 },
+                            { fecha: "2026-08-21", valor: 12, parcial: true, corteAt: "2026-08-21T18:40:00.000Z" },
                           ],
+                          cobertura: { fechasNoComparables: [], penumbra: PENUMBRA },
                         },
                         {
                           metrica: "tasa_entrega",
@@ -815,7 +879,9 @@ export const openApiSpec = {
                           data: [
                             { fecha: "2026-08-19", valor: 0.93 },
                             { fecha: "2026-08-20", valor: null },
+                            { fecha: "2026-08-21", valor: 0.8, parcial: true, corteAt: "2026-08-21T18:40:00.000Z" },
                           ],
+                          cobertura: { fechasNoComparables: [], penumbra: PENUMBRA },
                         },
                       ],
                     },
@@ -827,6 +893,7 @@ export const openApiSpec = {
           "401": { $ref: "#/components/responses/Unauthorized" },
           "403": { $ref: "#/components/responses/Forbidden" },
           "422": { $ref: "#/components/responses/ValidationError" },
+          "500": { $ref: "#/components/responses/InternalError" },
         },
       },
     },
@@ -910,6 +977,7 @@ export const openApiSpec = {
           "401": { $ref: "#/components/responses/Unauthorized" },
           "403": { $ref: "#/components/responses/Forbidden" },
           "422": { $ref: "#/components/responses/ValidationError" },
+          "500": { $ref: "#/components/responses/InternalError" },
         },
       },
     },
@@ -1777,6 +1845,23 @@ export const openApiSpec = {
             description: `Filas a cargar (1..${MAX_CARGA_ROWS}). Todos los valores son texto.`,
             items: { $ref: "#/components/schemas/CargaRow" },
           },
+          // SLT-201 — las dos claves opcionales de la feature 141 (R20-R24, R42-R45). Las lee
+          // `cargaApiBodySchema` en `app/api/ordenes/api-key/carga/route.ts`; la guardia
+          // `openapi-carga-claves-reales.guardia.test.ts` compara las dos listas.
+          name: {
+            type: "string",
+            minLength: 1,
+            maxLength: 120,
+            description:
+              "Nombre OPCIONAL del lote, de 1 a 120 caracteres (se recortan los espacios de los extremos). Si esta misma cuenta ya usó ese nombre, la carga responde `409` y no crea nada: ni lote ni órdenes. El id del lote (`cargaId`) lo genera siempre el servidor.",
+          },
+          download_type: {
+            type: "string",
+            enum: ["consolidate", "individual"],
+            default: "consolidate",
+            description:
+              "Cómo se entregan las etiquetas del lote. `consolidate` (por defecto): un solo PDF del lote, en `etiquetasPdf`. `individual`: un PDF por orden, cada URL en su `ordenes[].downloadUrl`, y `etiquetasPdf` llega `null`. Otro valor responde `422` antes de crear ninguna orden. No se guarda: vale solo para esta petición.",
+          },
         },
       },
       CargaRow: {
@@ -1868,7 +1953,7 @@ export const openApiSpec = {
       CargaOrden: {
         type: "object",
         description: "Una orden efectivamente creada (bloque plano listo para consumir).",
-        required: ["id", "numRemision", "numGuia", "estado", "estadoNombre", "costoEnvio", "fulfillment", "ivaFulfillment"],
+        required: ["id", "numRemision", "numGuia", "estado", "estadoNombre", "costoEnvio", "fulfillment", "ivaFulfillment", "downloadUrl"],
         properties: {
           id: { type: "string", format: "uuid", description: "Id interno de la orden creada." },
           numRemision: { type: "string" },
@@ -1890,11 +1975,18 @@ export const openApiSpec = {
               "Cuánto de `costoEnvio` es el servicio de bodega, string escala 2. `\"0.00\"` si tu tarifa no tiene fulfillment — y entonces `costoEnvio` es solo flete + IVA. Nunca `null`.",
           },
           ivaFulfillment: { type: "string", description: DESC_IVA_FULFILLMENT },
+          // SLT-201 — feature 141 (R48, R54): la URL del PDF individual de la orden.
+          downloadUrl: {
+            type: ["string", "null"],
+            format: "uri",
+            description:
+              "URL firmada y temporal del PDF de etiqueta de ESTA orden. Solo con `download_type: individual`. Es `null` en `consolidate`, si la orden no tiene etiqueta imprimible o si la generación falló (la carga no se revierte). Para volver a obtenerla usa `POST /api/ordenes/api-key/orden/{id}/generate`.",
+          },
         },
       },
       CargaResponse: {
         type: "object",
-        required: ["total", "creadas", "duplicadas", "conError", "filas", "errores", "ordenes"],
+        required: ["total", "creadas", "duplicadas", "conError", "filas", "errores", "ordenes", "downloadType", "etiquetasPdf", "manifiesto"],
         properties: {
           // Feature 177/R45: el integrador necesita este id para llamar a
           // `POST /api/ordenes/api-key/carga/{cargaId}/generate`. Es `null` cuando el lote no
@@ -1922,6 +2014,110 @@ export const openApiSpec = {
             items: { $ref: "#/components/schemas/CargaFilaError" },
           },
           ordenes: { type: "array", items: { $ref: "#/components/schemas/CargaOrden" } },
+          // SLT-201 — los tres bloques que la ruta añade al resumen (features 136, 141 y 155).
+          downloadType: {
+            type: "string",
+            enum: ["consolidate", "individual"],
+            description: "El modo de descarga aplicado: el `download_type` que mandaste, o `consolidate` si no lo mandaste.",
+          },
+          etiquetasPdf: { $ref: "#/components/schemas/CargaEtiquetasPdf" },
+          manifiesto: { $ref: "#/components/schemas/CargaManifiesto" },
+        },
+      },
+      // SLT-201 — bloque `etiquetasPdf` (feature 136, R10-R14; feature 141, R53). Best-effort:
+      // la carga ya esta guardada y nunca se revierte por el PDF.
+      CargaEtiquetasPdf: {
+        description:
+          "PDF consolidado de etiquetas del lote. Es best-effort: si no se pudo generar, la carga NO se revierte y el bloque llega como `{ error }` con HTTP 200. Llega `null` cuando no había nada que generar (ninguna orden creada o ninguna etiqueta imprimible) y siempre en `download_type: individual`, salvo que falle todo el lote. Un lote por encima del tope de etiquetas por PDF también llega como `{ error }`: las órdenes sí se crearon.",
+        oneOf: [
+          {
+            type: "object",
+            required: ["url", "expiraEnSegundos"],
+            properties: {
+              url: { type: "string", format: "uri", description: "URL firmada del PDF del lote." },
+              expiraEnSegundos: {
+                type: "integer",
+                description: "Segundos de validez de la URL. Para volver a obtenerla usa `POST /api/ordenes/api-key/carga/{cargaId}/generate`.",
+              },
+            },
+          },
+          {
+            type: "object",
+            required: ["error"],
+            properties: { error: { type: "string", description: "Por qué no se generó. Sin datos de las órdenes." } },
+          },
+          { type: "null" },
+        ],
+      },
+      // SLT-201 — bloque `manifiesto` (feature 155, R23-R26). Mismo criterio best-effort.
+      CargaManifiesto: {
+        description:
+          "Manifiesto del traslado de las órdenes creadas desde tu tienda a la bodega central. Es best-effort: si no se pudo armar, la carga NO se revierte y el bloque llega como `{ error }` con HTTP 200. Llega `null` cuando no hay traslado que documentar: no se creó ninguna orden, o ninguna de las creadas sale de tu tienda.",
+        oneOf: [
+          {
+            type: "object",
+            required: ["filas", "omitidas"],
+            properties: {
+              filas: { type: "array", items: { $ref: "#/components/schemas/ManifiestoFila" } },
+              omitidas: {
+                type: "array",
+                description: "Órdenes pedidas que no produjeron fila. Normalmente vacío.",
+                items: { $ref: "#/components/schemas/ManifiestoOmitida" },
+              },
+            },
+          },
+          {
+            type: "object",
+            required: ["error"],
+            properties: { error: { type: "string" } },
+          },
+          { type: "null" },
+        ],
+      },
+      // `ManifiestoFilaDTO` (`lib/types/manifiesto.ts`). Su conjunto de columnas es ABIERTO
+      // (feature 160, R28): crece cuando la orden expone un dato nuevo. ⚠️ La fila real trae
+      // ademas el conteo de reintentos de entrega, y aqui NO se publica: 160/R31 (QA5) lo deja
+      // fuera del contrato y `intentos-no-alcance.test.ts` lo vigila. La guardia de SLT-201 lo
+      // tiene como unica excepcion declarada. Abierto para Carlos (`progress/impl_SLT-201.md`).
+      ManifiestoFila: {
+        type: "object",
+        description:
+          "Una orden del manifiesto. El conjunto de columnas puede crecer cuando la orden gana un dato nuevo: ignora las claves que no conozcas.",
+        required: [
+          "numGuia",
+          "numRemision",
+          "destinatario",
+          "telefono",
+          "direccion",
+          "zona",
+          "producto",
+          "monto",
+          "origen",
+          "destino",
+          "responsable",
+          "fecha",
+        ],
+        properties: {
+          numGuia: { type: ["integer", "null"] },
+          numRemision: { type: "string" },
+          destinatario: { type: "string" },
+          telefono: { type: "string", description: "Teléfono del destinatario." },
+          direccion: { type: ["string", "null"] },
+          zona: { type: "string", description: "Nombre de la zona de destino." },
+          producto: { type: "string" },
+          monto: { type: ["number", "null"], description: "Monto a cobrar (COD) de la orden." },
+          origen: { type: "string", description: "De dónde sale el paquete en este traslado (tu tienda)." },
+          destino: { type: "string", description: "A dónde llega (la bodega central)." },
+          responsable: { type: "string" },
+          fecha: { type: "string", format: "date", description: "Fecha de la operación, `YYYY-MM-DD`." },
+        },
+      },
+      ManifiestoOmitida: {
+        type: "object",
+        required: ["ref", "motivo"],
+        properties: {
+          ref: { type: "string", description: "La referencia pedida, tal como llegó." },
+          motivo: { type: "string", const: "no_encontrada" },
         },
       },
       CancelacionResponse: {
@@ -2400,7 +2596,12 @@ export const openApiSpec = {
         },
       },
       Forbidden: {
-        description: "El usuario dueño de la key no está activo.",
+        // SLT-201 (D5 de la auditoria del 2026-11-18): las causas salen de
+        // `ApiKeyAuthService.autenticar` (usuario no activo, key desactivada, cuenta que no es de
+        // integracion, tienda destino de baja o inactiva) y de la ruta de analitica (modulo
+        // apagado, consulta fuera de alcance). La respuesta no dice cual aplica, a proposito.
+        description:
+          "La key existe pero no puede operar: su usuario dedicado no está activo, la key está desactivada, la cuenta de la key no es una cuenta de integración, o la tienda a la que apunta la key está dada de baja o inactiva. La respuesta no dice cuál de estas causas aplica. En `GET /api/ordenes/api-key/analitica`, además: el módulo de Analítica de tu empresa está apagado (`details.codigo: \"modulo_inactivo\"`), o la consulta cae fuera del alcance de la key.",
         content: {
           "application/json": {
             schema: { $ref: "#/components/schemas/Error" },
@@ -2448,6 +2649,22 @@ export const openApiSpec = {
               code: "VALIDATION_ERROR",
               message: "Los datos enviados no son validos.",
               details: { fieldErrors: { limit: ["Number must be less than or equal to 100"] } },
+            },
+          },
+        },
+      },
+      // SLT-201 (D6 de la auditoria): el 500 generico del manejador global
+      // (`lib/errors/normalize.ts`). El mensaje es `MSG.INTERNAL`; nunca lleva el detalle original.
+      InternalError: {
+        description:
+          "Fallo del lado del servidor. El cuerpo es siempre el mismo y no lleva el detalle del error. Reintenta con espera creciente; si persiste, repórtalo con el `cargaId` o la guía involucrada.",
+        content: {
+          "application/json": {
+            schema: { $ref: "#/components/schemas/Error" },
+            example: {
+              status: "error",
+              code: "INTERNAL",
+              message: MSG.INTERNAL,
             },
           },
         },
