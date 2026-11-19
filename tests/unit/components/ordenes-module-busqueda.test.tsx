@@ -150,7 +150,9 @@ describe("OrdenesModule — reset ante el cambio de termino (R38)", () => {
     });
   });
 
-  it("R38: cambiar el termino limpia la seleccion de filas", async () => {
+  // SLT-222 R1501 sustituye la mitad de R38 que vaciaba la seleccion: cambiar el termino
+  // vuelve a la pagina 1 (arriba) pero CONSERVA lo marcado.
+  it("R38 + SLT-222 R1501: cambiar el termino conserva la seleccion de filas", async () => {
     const user = userEvent.setup();
     const { rerender } = renderModule(
       <OrdenesModule filter={{ q: "juan" }} selectable acciones={[]} />,
@@ -165,9 +167,15 @@ describe("OrdenesModule — reset ante el cambio de termino (R38)", () => {
     rerender(envolver(<OrdenesModule filter={{ q: "pedro" }} selectable acciones={[]} />));
 
     await waitFor(() =>
+      expect(listarOrdenesMock).toHaveBeenCalledWith(
+        expect.objectContaining({ filter: { q: "pedro" } }),
+      ),
+    );
+    // El mock devuelve las mismas filas para «pedro»: la o1 vuelve a la vista y sigue marcada.
+    await waitFor(() =>
       expect(
         screen.getByRole("checkbox", { name: /Seleccionar orden REM-o1/ }),
-      ).not.toBeChecked(),
+      ).toBeChecked(),
     );
   });
 
