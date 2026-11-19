@@ -509,11 +509,11 @@ Lo comprobé con grep sobre los tests del diff `origin/dev...HEAD`. Abreviaturas
 | R31 | `servicio` «R31: el rol %s recibe forbidden al registrar y al anular, sin leer ni escribir» y «R31: sin sesión, forbidden aunque la entrada sea inválida»; `pagina` «R31: un rol de empresa no lee la zona ni los pagos (notFound antes de leer)» |
 | R32 | `porFuera` «R32: B lee solo sus anulaciones de la plataforma; otra empresa no ve nada; no puede escribirlas (42501); y ni el dueño las cambia (SL060)» |
 | R33 | `migracion` «R33: no inserta datos», «R33: el pago confirmado sigue confirmado, sin la marca y sin anulación», «R33: el down.sql aborta sin tocar nada si hay una anulación de la plataforma» y «R33: sin anulaciones, el down.sql deja el esquema como antes y repone las funciones de SLT-60» |
-| R34 | `e2e/pago-plataforma-por-fuera.spec.ts` (escenarios de design §9). Lo escribe T5.1 en paralelo; al cerrar T6.3 el archivo todavía no existía |
+| R34 | `e2e/pago-plataforma-por-fuera.spec.ts` (escenarios de design §9, tests 2–6; escrito en T5.1, corre en el CI, proyecto `dinero`) |
 | R35 | `tests/unit/ayuda/wallet-caja-slt143-r35.test.ts`: «R35: el pago registrado por la plataforma lleva marca, baja la caja y la deuda, y la empresa no lo anula», «R35: la plataforma puede anular un pago confirmado; el monto vuelve a la caja y la deuda sube» y «R35: el frontmatter dice `actualizado:`…». Mutación comprobada: quitar «Registrado por la plataforma» de la ayuda lo pone rojo |
 | R36 | `porFuera` «R28, R36: …»; `autoria` «R36: el contra-asiento de una anulación de la plataforma dice «plataforma_anulacion»…», «R36: la línea de anulación del pago original la firma «la plataforma»…» y «R36: una anulación hecha por la empresa (SL-45) conserva el nombre…»; `labels` «R36 — el contra-asiento de la anulación dice «Anulado por la plataforma»…» y «R36 — la línea de anulación del pago original nombra a la plataforma»; `descarga` «SLT-143 R13/R36: …» |
 
-Veredicto T6.3: 34 de 36 requisitos tienen un test real. R34 depende del E2E de T5.1, que está en curso, y R35 no tiene test porque es texto de ayuda.
+Veredicto T6.3: los 36 requisitos tienen un test real (R34 en `e2e/pago-plataforma-por-fuera.spec.ts`, R35 en `tests/unit/ayuda/wallet-caja-slt143-r35.test.ts`).
 
 ## T5 — E2E (frontend_dev, 2026-11-19)
 
