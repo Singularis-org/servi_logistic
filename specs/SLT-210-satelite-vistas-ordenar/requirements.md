@@ -44,10 +44,10 @@ traer órdenes de otra zona. R1404 lo deja probado contra la base real.
 
 - La nota «Las órdenes prioritarias se muestran primero…» y el aviso de agrupación por serie que
   pinta `/ordenes` (`notaPrioridad`, `NOTA_AGRUPACION_SERIE`): la satélite no los tiene hoy y no
-  se piden. Si con P2 se elige otra cosa, se revisa.
+  se piden. P2 se cerró manteniendo el agrupado por estado, así que siguen fuera.
 - Guardar el ORDEN dentro de una vista (decisión P1 de la 453: el orden no entra en la vista).
-- Publicar o compartir vistas entre personas (decisión 7 de la 453), salvo que P1 de abajo diga
-  otra cosa.
+- Publicar o compartir vistas entre personas (decisión 7 de la 453); P1 lo confirmó: son de cada
+  usuario.
 - Ordenar por otros campos (guía, estado…): solo los dos que ofrece `/ordenes`.
 - «Por recibir» y las demás secciones de `/recepcion-satelite`: solo «Órdenes de la bodega».
 
@@ -56,9 +56,11 @@ traer órdenes de otra zona. R1404 lo deja probado contra la base real.
 | # | Decisión | Quién / cuándo | Requisitos |
 |---|---|---|---|
 | D1 | Se REUSAN los componentes, tipos y persistencia de `/ordenes`; mismo flujo en dos roles = un componente con props, sin diseño nuevo | Leader, pedido de Carlos 2026-11-19 | R1400, R1401, R1409 |
-| D2 | Tamaño de los controles: escritorio (≥ `md`) 32 px como prod; móvil 44 px, como la barra tras SLT-202 | Leader 2026-11-19 | R1413 |
+| D2 | Tamaño de los controles: el MISMO que tienen hoy «Vistas» y los conmutadores en `/ordenes` (32 px, `h-8`/`size-8`), sin cambiar los componentes compartidos (P3) | Leader 2026-11-19 (P3) | R1413 |
 | D3 | Orden y vistas actúan SOLO sobre las órdenes de la satélite (alcance por zona/bodega del actor) | Leader 2026-11-19 | R1404, R1405 |
 | D4 | No es regresión; va en esta release | Carlos 2026-11-19 | (alcance) |
+| D5 | Las vistas son de cada usuario, como en `/ordenes` (P1) | Carlos 2026-11-19 | R1412 |
+| D6 | Se mantiene el agrupado por estado; el orden elegido manda dentro de cada grupo y el orden por defecto queda igual que hoy (P2) | Carlos 2026-11-19 | R1401, R1403 |
 
 ## Requisitos (EARS)
 
@@ -81,8 +83,8 @@ como si respondiera al orden nuevo.
 (`ESTADOS_BODEGA_SATELITE`), `prioridad` descendente, el campo elegido en la dirección elegida
 (fecha de creación, o la clave de remisión `clave_remision` para «número de remisión») y el `id`
 ascendente como desempate; sin campo ni dirección en la entrada, DEBE aplicar fecha de creación
-descendente. *(Pendiente de P2: es la opción recomendada; si Carlos elige la otra, cambia este
-requisito antes de implementar.)*
+descendente. El agrupado por estado se mantiene delante: el orden elegido manda DENTRO de cada
+grupo (P2 / D6, Carlos 2026-11-19).
 
 **R1404** (Ubicuo). Para cualquier combinación de campo y dirección, el conjunto de órdenes y el
 total que devuelve el servidor DEBEN ser los mismos que sin orden explícito: solo órdenes de la
@@ -115,12 +117,13 @@ pulsa «Limpiar todo», el sistema DEBE dejar de marcar esa vista como puesta.
 las vistas guardadas en `/ordenes` NO DEBEN aparecer en la satélite, ni al revés.
 
 **R1412** (Ubicuo). Las vistas DEBEN ser **de cada usuario**: un `adminSatelite` NO DEBE ver,
-aplicar, renombrar ni borrar las vistas de otro usuario. *(Pendiente de P1; es la opción
-recomendada y la que ya aplica `/ordenes`.)*
+aplicar, renombrar ni borrar las vistas de otro usuario, igual que en `/ordenes` (P1 / D5, Carlos
+2026-11-19).
 
-**R1413** (Ubicuo). Desde `md` (escritorio), «Vistas» y los cuatro botones de los conmutadores
-DEBEN medir 32 px de alto, como en prod; por debajo de `md` (móvil) DEBEN medir 44 px, en
-«Órdenes de la bodega» y en `/ordenes` por igual. *(Ver P3.)*
+**R1413** (Ubicuo). En «Órdenes de la bodega», «Vistas» y los cuatro botones de los conmutadores
+DEBEN tener el MISMO tamaño que tienen hoy en `/ordenes` (32 px en todas las anchuras: `h-8` y
+`size-8`), y el sistema NO DEBE cambiar los componentes compartidos (`VistasFiltro`,
+`SegmentedToggle`) para ello (P3 / D2, 2026-11-19).
 
 **R1414** (De estado). MIENTRAS el catálogo geográfico o el de estados no haya cargado, el control
 «Vistas» NO DEBE presentar ninguna vista como incompleta (mismo criterio que R29 de la 453).
@@ -185,7 +188,15 @@ Orden: T1 ∥ (T2+T3) [P]; T4 tras P3; T5 al final.
 19 archivos (tope 40; 80% = 32). Producción estimada ~250 líneas (tope 1000); tests ~700 líneas
 (tope 3000). Cabe en un PR.
 
-## Preguntas abiertas
+## Preguntas (cerradas el 2026-11-19)
+
+- **P1** → por usuario, como `/ordenes` (Carlos). D5, R1412.
+- **P2** → opción (a): se mantiene el agrupado por estado y el orden manda dentro de cada grupo; el
+  orden por defecto no cambia (Carlos). D6, R1403.
+- **P3** → mismo tamaño que hoy en `/ordenes`, sin tocar los componentes compartidos (leader: es
+  pantalla de oficina; los 44 px son de la PWA del mensajero). D2, R1413.
+
+El planteamiento original de cada pregunta, por registro:
 
 **P1 — ¿Las vistas de la satélite son de cada usuario o compartidas por la empresa?** (Carlos)
 Hoy en `/ordenes` son **de cada usuario**: la tabla `vista_filtro` cuelga de `usuario_id` (sin

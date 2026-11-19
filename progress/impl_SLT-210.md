@@ -72,7 +72,7 @@ Corridas con `vitest run` sobre la base `servi_slt210_desechable`; cada una se p
 | Mutación | Rojo |
 |---|---|
 | M1 `clave_remision` → `num_remision` (repo) | 3 (SQL unitario ×2, Postgres: `num_remision:desc`) |
-| M2 dirección siempre `DESC` (repo) | 1 (Postgres) |
+| M2 dirección siempre `DESC` (repo) | 3 (SQL unitario ×2: R1403 y R1406; Postgres) — re-medido el 2026-11-19 con los dos archivos: `Tests 3 failed \| 17 passed (20)` |
 | M3 el servicio no pasa `orden` | 3 (servicio ×2, Postgres) |
 | M4 `fallbackData` también con otro orden (módulo) | 1 (R1402) |
 | M5 descarga sin `...orden` (módulo) | 1 (R1406) |
