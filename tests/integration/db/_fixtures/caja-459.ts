@@ -67,7 +67,7 @@ import { sinRetenidas } from "@/tests/fixtures/retenidas-doble";
 
 import { clienteConSavepoint, serializarEscriturasReales, type TxDeTest } from "../_postgres-real";
 import { conEmpresa } from "@/lib/db/contexto-empresa";
-import { crearOrganizacion, fijarEmpresa } from "../../../fabricas/organizaciones";
+import { comoApp, crearOrganizacion, fijarEmpresa } from "../../../fabricas/organizaciones";
 import { busquedaPorGuiaDe } from "./busqueda-469";
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
@@ -681,6 +681,18 @@ export async function sembrarEscenario459(
   const g5 = await sembrarGestion({ ordenId: o5.ordenId, resultado: "incidente" });
 
   // ── El cierre: solicitar (mensajero) y aprobar (maestro, la central) ───────────────────────
+  // SLT-212: los dos pasos corren con el rol de la app (`servi_app`, sin BYPASSRLS) y la empresa de la tx,
+  // como en producción (molde de SLT-177 en `454/_escenario.ts`). `solicitarCierre` decide central o satélite
+  // con `ZonaRepository.findCentralZonaId`, un `findFirst({ esCentral })` que acota la RLS. Como dueño veía las
+  // centrales de TODAS las empresas: con otra commiteada en la base (la demo de QA mientras corre en paralelo)
+  // podía devolver la ajena, el cierre salía `bodega_satelite` y la aprobación de la central rechazaba la
+  // gestión de O4 con «Esta gestión no pertenece a lo que vuelve en este cierre». Lo que sigue vuelve a sembrar
+  // como dueño.
+  const [{ org: orgDelCierre }] = await tx.$queryRawUnsafe<{ org: string | null }[]>(
+    `SELECT current_setting('app.organizacion_id', true) AS org`,
+  );
+  if (!orgDelCierre) throw new Error("escenario 459: la transaccion no tiene empresa fijada para el cierre");
+  await comoApp(tx, orgDelCierre);
   const solicitud = await s.cierreMensajero.solicitarCierre(actorMensajero);
   if (solicitud.status !== "ok" || solicitud.cierreId === undefined) {
     throw new Error(`escenario 459: solicitarCierre respondio ${JSON.stringify(solicitud)}`);
@@ -697,6 +709,7 @@ export async function sembrarEscenario459(
     [{ origen: "gestion" as const, gestionId: g4, numGuia: o4.numGuia }],
   );
   afirmarOk(pasos, "aprobarCierre", aprobacion);
+  await tx.$executeRawUnsafe(`SET LOCAL ROLE NONE`);
 
   // ── Cobro por devolución a origen de tienda (337), fuera de todo cierre ───────────────────────────────
   const o6 = await sembrarOrden({
