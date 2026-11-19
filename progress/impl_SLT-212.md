@@ -83,8 +83,51 @@ la migración ya está aplicada cuando siembra. En Preview la base es UTC: el va
 `bash ./init.sh` (rápido) sobre la base c: typecheck ✓, lint ✓, `test:rapido` 64 archivos / 779 tests ✓ (3 heredados del baseline no cuentan), todas las migraciones con `down.sql` ✓, tamaño del PR 5/40 archivos. **INIT_EXIT=0**. Baseline: ninguna entrada quitada ni añadida (demo-qa y 459 no estaban en él).
 
 ## Abierto
-- `caja-invariante-tiendas.test.ts` y `planes-crear-custom-asigna.test.ts` caen en la base a tras una corrida cortada (restos commiteados; «cobro completado» escribe 2) con y
+- `caja-invariante-tiendas.test.ts` y `planes-crear-custom-asigna.test.ts` caen en la base a (restos de una corrida cortada; la base a no sirve para medir) tras una corrida cortada (restos commiteados; «cobro completado» escribe 2) con y
   sin el cambio del fixture; verde en b y en una base nueva (c). No es de esta ficha.
 - Otros archivos con dueño + lectura global (`findCentralZonaId`) pueden tener el mismo fallo latente que el 459; SLT-177 ya movió el 454.
 
 Veredicto: A arreglado en la app (migración de reloj UTC, sin cambio de regla de dinero) y B en el fixture (cierre con el rol de la app); suite de integración verde salvo baseline, INIT_EXIT=0.
+
+## Tanda 2 (2026-11-19, tras la review rechazada `cb87c369`)
+
+- **B1:** `git merge origin/dev` (merge `9fc1bc3e`). Conflicto en `orden-traspaso-migration.test.ts` resuelto con el orden de
+  `readdirSync().sort()`: `…_plan_borrador`, `20261119120000_historial_accion_ordenes_retiradas_a_central`,
+  `20261119120100_cobro_plataforma_ocurrido_utc`.
+- **m1:** migración renombrada a `20261119120100_cobro_plataforma_ocurrido_utc` (`git mv`); comentario del test nuevo y esta
+  bitácora al día. Base nueva `servi_slt212d_desechable`: `prisma migrate deploy` → «All migrations have been successfully applied»
+  (las dos de 2026-11-19 en orden: `…120000_historial…` y luego `…120100_cobro…`), `migrate status` → «Database schema is up to date!».
+  En d: `orden-traspaso-migration`, `cobro-plataforma-ocurrido-utc`, `demo-qa`, `libro-caja-revision-458e` y `como-quedo` →
+  `Test Files 5 passed (5)`, `Tests 45 passed (45)` (02:56 Bogotá, dentro de la ventana de A).
+- **m3:** la mutación del fixture 459 da entre 8 y 14 rojos de 14 según la central que devuelva `findFirst`; el veredicto (rojo sin
+  el arreglo) no cambia. La base a quedó con restos de una corrida cortada (ver Abierto).
+- **B3:** ruta subida a completa. Spec en `specs/SLT-212-rojos-dev-demo-459/` (requirements EARS R1–R6 con su test, design con
+  «Lo que ya existe» y cuatro alternativas descartadas, tasks). Trello: `node scripts/trello.mjs editar SLT-212 --labels-menos
+  "ruta:directa|complexity:low" --labels-mas "ruta:completa|complexity:medium"` → `SLT-212: +ruta:completa, -ruta:directa`
+  (`complexity:medium` ya estaba). Espera la aprobación de Carlos.
+
+### B2 — E2E en local (base d, `next start` en el puerto 3044, Storage falso en 54344)
+
+**Build.** `next build` de la rama fusionada cae en el typecheck: el cliente de Prisma del `node_modules` compartido no tiene el valor
+`ordenes_retiradas_a_central` que trae dev (SLT-211) y la regla del arnés prohíbe `prisma generate` ahí. Los E2E se corrieron con el
+build de `d474bacf` (el arreglo antes del merge: mismas funciones y mismo fixture; el schema de Prisma sin el enum nuevo) en un
+worktree auxiliar ya retirado, contra la base d, que tiene aplicadas TODAS las migraciones, también `20261119120100`.
+→ `BUILD_EXIT=0`. Hay que regenerar el cliente compartido (el leader) antes del `gate-completo` y del E2E de CI.
+
+| Corrida | Resultado |
+|---|---|
+| `playwright test e2e/cobro-plataforma-sl40.spec.ts e2e/facturas-plataforma.spec.ts e2e/pago-plataforma-confirmacion.spec.ts e2e/pago-plataforma-sl45.spec.ts` | `1 failed, 14 did not run, 11 passed`. El rojo es la DEPENDENCIA `[plataforma-vacia] superadmin-empresas.spec.ts:215` (texto del aviso de bienvenida; el servidor dice `[bienvenida] no se envio: falta NEXT_PUBLIC_APP_URL`): del entorno local, ajeno a esta ficha. |
+| lo mismo con `--no-deps` | **`16 passed (34.2s)`**, `E2E_C_EXIT=0`. Incluye `MEDIDO tras confirmar: deuda ₡1.000 → ₡100`. |
+| `playwright test --project=dinero` | `1 failed, 125 passed (6.3m)`. El rojo: `ajuste-pago-mensajero-cierre.spec.ts:143`, `worker process exited unexpectedly (code=3221226505)` (caída del proceso en Windows, no una aserción). |
+| `playwright test --project=dinero e2e/ajuste-pago-mensajero-cierre.spec.ts` | **`2 passed (15.6s)`**, `E2E_D_EXIT=0`. |
+
+Resultado: los 4 E2E de cobro, factura y pago de la plataforma y el proyecto `dinero` entero (126) verdes en local, con el Postgres en
+America/Bogota y dentro de la ventana roja de A.
+
+### Gate de la tanda 2
+- En la base d (con los datos que dejaron los E2E): `test:rapido` cae en `ajuste-caja-anulacion-461` y `caja-invariante-tiendas`
+  (restos commiteados, como en la base a). En una base nueva `servi_slt212e_desechable` los dos dan `13 passed (13)`.
+- `bash ./init.sh` sobre la base e: typecheck ✓, lint ✓, cliente de Prisma al día ✓, `test:rapido` en 7 tandas todas verdes
+  (la mayor `100 passed (100)` / `1790 passed`), migraciones con `down.sql` ✓. **INIT_EXIT=0**.
+
+Veredicto de la tanda 2: B1 y m1 resueltos, B2 con los E2E verdes en local, B3 con spec y ruta completa; espera la aprobación de Carlos.
