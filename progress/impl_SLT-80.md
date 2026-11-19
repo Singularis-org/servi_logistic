@@ -463,3 +463,11 @@ leader (`feature_list.json` no se versiona); el implementer no lo toca.
 ### m6 — frontend_dev, 2026-11-18
 - Un solo `EnlacesGuiaApi` en `app/(app)/ayuda/_components/EnlacesGuiaApi.tsx` (mismo markup, `Link` a `RUTA_GUIA_API` y `<a>` a `RUTA_DESCARGA_GUIA_API_PDF`); `configuracion/api/page.tsx` y `configuracion/integraciones/page.tsx` lo importan. Ninguna regla de `docs/conventions.md` ni guardia pide otra ubicación; `grep "function EnlacesGuiaApi"` → 1 sola definición.
 - `vitest run` enlaces-guia-api-configuracion + ConfiguracionApiPage + AccionesGuiaApi → `3 passed (3) · 14 passed (14) · EXIT=0`; `tsc --noEmit` → 0; `eslint` de los 3 archivos → 0.
+
+### Arreglos de review: verificación (2026-11-18)
+
+- B1: `tests/integration/asistente-route.test.ts` 37→38 (P1), con un negativo: el mensajero no recibe `oficina/guia-integracion-api`. 29/29.
+- m1 (texto de R1307), m3 (README sin `⚠`) y un disparador nuevo en `arnes.config.json`: `docs/ayuda/**` y `lib/ayuda/**` disparan los tests del asistente y de Ayuda. `node scripts/test-rapido.mjs --comprobar tests/integration/asistente-route.test.ts` → «entra».
+- m4 sin tocar (pendiente de Carlos). Fusión de origin/dev sin conflictos.
+- Gate: `INIT_EXIT=0`; asistente-route corrió dentro del rápido (29 tests). el PR pasa del tamano (38/40 archivos, 3406/1000 lineas de produccion, 1358/3000 de tests).
+- E2E (`servi_slt80_e2e_desechable`: migrate deploy + `next build`): `DEPLOY_EXIT=0 · BUILD_EXIT=0 · 3 passed (22.8s) · E2E_EXIT=0`.
