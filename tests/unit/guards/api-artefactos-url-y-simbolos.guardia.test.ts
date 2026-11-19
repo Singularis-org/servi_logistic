@@ -1,0 +1,151 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
+import { describe, expect, it } from "vitest";
+
+import { openApiSpec } from "@/lib/api/openapi-spec";
+import { URL_PRODUCCION_API } from "@/lib/api/url-produccion";
+
+// GUARDIA — SLT-208 «Manual, Postman y Swagger de la API: revisión completa para que un integrador
+// se conecte».
+//
+// Lo que un integrador recibe para conectarse son tres artefactos: la guía de integración (de ella
+// salen la página de Ayuda y el PDF), la colección de Postman y el contrato OpenAPI que pinta Swagger
+// en `/api-docs` (con su espejo `.yaml`). Hasta esta ficha los tres apuntaban a una URL que no es la
+// de producción (`app.example.com`, `localhost`) o a ninguna, y la guía usaba símbolos que el
+// documento no debe llevar. Tres reglas, sobre los cuatro archivos:
+//
+// 1. Ningún dominio de prueba: ni `example.com`, ni `localhost`, ni `127.0.0.1`.
+// 2. Ningún símbolo de los vetados: `§`, `⭑`, `→`, `✔`, `⚠`, `∈`, `☐`. Las referencias van como
+//    «sección 5.9».
+// 3. La URL base es la de producción: la guía la declara, la `baseUrl` de Postman la trae y el
+//    contrato la publica en `servers`. Toda URL absoluta de los artefactos es de producción o un
+//    marcador entre `<>` (por ejemplo `https://<host-de-storage>`).
+//
+// La URL va LITERAL aquí, a mano: es el contrato. Comparar los artefactos solo contra
+// `URL_PRODUCCION_API` dejaría pasar un cambio de esa constante a cualquier otra cosa.
+//
+// Se declara como guardia porque lee archivos del disco: ningún grafo de imports la seleccionaría.
+
+const URL_PRODUCCION = "https://www.servilogistic.co";
+
+const RAIZ = process.cwd();
+const leer = (rel: string): string => readFileSync(path.join(RAIZ, rel), "utf8");
+
+const DOMINIOS_DE_PRUEBA = ["example.com", "localhost", "127.0.0.1"] as const;
+const SIMBOLOS_VETADOS = ["§", "⭑", "→", "✔", "⚠", "∈", "☐"] as const;
+
+/** Hosts que no son una URL base de la API pero pueden aparecer: el esquema de Postman. */
+const HOSTS_AJENOS_PERMITIDOS = new Set(["schema.getpostman.com"]);
+
+/** Quita las líneas de comentario del `.yaml`: no las lee nadie más que quien lo edita. */
+function sinComentariosYaml(texto: string): string {
+  return texto
+    .split(/\r?\n/)
+    .filter((l) => !l.trimStart().startsWith("#"))
+    .join("\n");
+}
+
+/** Los dominios de prueba que aparecen en el texto. */
+export function dominiosDePrueba(texto: string): string[] {
+  const minus = texto.toLowerCase();
+  return DOMINIOS_DE_PRUEBA.filter((d) => minus.includes(d));
+}
+
+/** Los símbolos vetados que aparecen en el texto. */
+export function simbolosVetados(texto: string): string[] {
+  return SIMBOLOS_VETADOS.filter((s) => texto.includes(s));
+}
+
+/** Las URL absolutas cuyo origen no es el de producción ni un marcador `<...>`. */
+export function urlsAjenas(texto: string): string[] {
+  const urls = texto.match(/https?:\/\/[^\s"'`)\\]+/g) ?? [];
+  return urls.filter((u) => {
+    if (u === URL_PRODUCCION || u.startsWith(`${URL_PRODUCCION}/`)) return false;
+    const host = u.replace(/^https?:\/\//, "").split("/")[0];
+    if (host.includes("<")) return false;
+    return !HOSTS_AJENOS_PERMITIDOS.has(host);
+  });
+}
+
+interface Artefacto {
+  nombre: string;
+  texto: () => string;
+}
+
+const GUIA = "docs/ayuda/oficina/guia-integracion-api.md";
+const POSTMAN = "docs/api/servi-logistic-api-key.postman_collection.json";
+const YAML = "docs/api/api-key-openapi.yaml";
+
+const ARTEFACTOS: Artefacto[] = [
+  { nombre: GUIA, texto: () => leer(GUIA) },
+  { nombre: POSTMAN, texto: () => leer(POSTMAN) },
+  // Lo que sirve `/api/docs/openapi` y pinta Swagger: el objeto serializado, no el código fuente
+  // (sus comentarios no los lee el integrador).
+  { nombre: "lib/api/openapi-spec.ts (serializado)", texto: () => JSON.stringify(openApiSpec) },
+  { nombre: YAML, texto: () => sinComentariosYaml(leer(YAML)) },
+];
+
+describe("SLT-208 — la constante de la URL de producción es la del contrato", () => {
+  it("URL_PRODUCCION_API vale la URL de producción literal", () => {
+    expect(URL_PRODUCCION_API).toBe(URL_PRODUCCION);
+  });
+});
+
+describe.each(ARTEFACTOS)("SLT-208 — $nombre", ({ nombre, texto }) => {
+  it("regla 1: no nombra ningún dominio de prueba (example.com, localhost, 127.0.0.1)", () => {
+    expect(dominiosDePrueba(texto()), `${nombre} nombra un dominio de prueba`).toEqual([]);
+  });
+
+  it("regla 2: no usa ninguno de los símbolos vetados (§ ⭑ → ✔ ⚠ ∈ ☐)", () => {
+    expect(simbolosVetados(texto()), `${nombre} usa un símbolo vetado`).toEqual([]);
+  });
+
+  it("regla 3: toda URL absoluta es la de producción o un marcador <...>", () => {
+    expect(urlsAjenas(texto()), `${nombre} trae una URL que no es la de producción`).toEqual([]);
+  });
+});
+
+describe("SLT-208 regla 3 — cada artefacto declara la URL base de producción", () => {
+  it("la guía la declara al comienzo y en la tabla de la sección 4.1", () => {
+    const guia = leer(GUIA);
+    expect(guia).toContain(`Base URL de producción: \`${URL_PRODUCCION}\``);
+    expect(guia).toContain(`| Producción | \`${URL_PRODUCCION}\` |`);
+  });
+
+  it("la `baseUrl` de la colección de Postman es la de producción", () => {
+    const coleccion = JSON.parse(leer(POSTMAN)) as { variable: { key: string; value: string }[] };
+    const baseUrl = coleccion.variable.find((v) => v.key === "baseUrl");
+    expect(baseUrl?.value).toBe(URL_PRODUCCION);
+  });
+
+  it("el contrato servido publica `servers` con producción como primer servidor", () => {
+    const spec = openApiSpec as unknown as { servers?: { url: string }[] };
+    expect(spec.servers?.[0]?.url).toBe(URL_PRODUCCION);
+  });
+
+  it("el espejo `.yaml` publica el mismo servidor", () => {
+    const yaml = leer(YAML);
+    expect(yaml).toMatch(/^servers:\r?\n {2}- url: "https:\/\/www\.servilogistic\.co"\r?$/m);
+  });
+});
+
+describe("SLT-208 — MUTACIÓN: las reglas se ponen rojas con un texto malo", () => {
+  it("regla 1 caza cada dominio de prueba", () => {
+    expect(dominiosDePrueba("curl https://app.example.com/api")).toEqual(["example.com"]);
+    expect(dominiosDePrueba("http://localhost:3000")).toEqual(["localhost"]);
+    expect(dominiosDePrueba("http://127.0.0.1:3000")).toEqual(["127.0.0.1"]);
+  });
+
+  it("regla 2 caza cada símbolo vetado", () => {
+    for (const s of SIMBOLOS_VETADOS) expect(simbolosVetados(`ver ${s}5.9`)).toEqual([s]);
+  });
+
+  it("regla 3 caza una URL de otro host y deja pasar producción y marcadores", () => {
+    expect(urlsAjenas("https://servilogistic.co/api")).toEqual(["https://servilogistic.co/api"]);
+    expect(urlsAjenas("https://www.servilogistic.co.otro.com/api")).toEqual([
+      "https://www.servilogistic.co.otro.com/api",
+    ]);
+    expect(urlsAjenas(`${URL_PRODUCCION}/api y https://<host-de-storage>/x`)).toEqual([]);
+  });
+});

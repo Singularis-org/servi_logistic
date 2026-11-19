@@ -320,8 +320,8 @@ const FRASES_OPERADOR: readonly FraseOperador[] = [
     "(avise a la empresa)",
     "se puede desactivar, solicitándolo a la empresa. Sin suscripción activa, los",
     "consultar con la empresa",
-    "ids contra la lista de §5.8. En cualquier otro endpoint, contacte a la empresa",
-    "los casos. Si es de tarifa, es un tema comercial con la empresa, no de código",
+    "ids contra la lista de la sección 5.8. En cualquier otro endpoint, contacte a la empresa", // SLT-208: sin «§»
+    "la tarifa es un tema comercial con la empresa, no de código", // SLT-208: el 409 genérico se explica antes
   ]),
   ...enArchivo("docs/ayuda/compartido/analitica.md", [
     "qué cobró la empresa, cómo se compone la ganancia y la conciliación de los",
@@ -556,7 +556,7 @@ const FRASES_PLATAFORMA: readonly FrasePlataforma[] = [
     // SLT-201: «Servi Logistic la avisará con antelación» se fue con el aviso de despliegue
     // pendiente del bloque A: el renombrado de estados ya está en producción.
     "La API de Servi Logistic le permite a su sistema",
-    "Se genera desde la aplicación de Servi Logistic",
+    "en la aplicación de Servi Logistic: menú", // SLT-208: pantalla y rol reales
     "una tienda ya registrada en Servi Logistic, esa tienda",
     "el redondeo lo hace Servi Logistic y la fila creada lo declara",
     "contador de intentos de entrega de Servi Logistic",
