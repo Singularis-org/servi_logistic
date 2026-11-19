@@ -1598,3 +1598,147 @@ aparece) y deja los 3 sin correr. Es del entorno local, no de este cambio.
 `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck` → `tsc --noEmit`, exit 0. `eslint` del spec: limpio.
 
 Veredicto: (2) afirma el nodo (R15) y (1) es idempotente ante el reintento del describe serial; verde en local.
+
+## CI PR #225 — 34 rojos del gate-completo (backend_dev, 2026-11-18)
+
+Corrida `gate-completo` 44402471148: 34 archivos de test en rojo fuera de `tests/baseline-rojos.json` (408 tests). La
+rama solo se había verificado en local sobre los 158 archivos que tocaba; estos no entraron. Reproducidos en local
+(unit) y contra una base local limpia `servi_logistic_slt48_gate` (`prisma migrate deploy` + `db:seed`; nunca
+producción ni su copia). Ninguna dependencia, ningún archivo de producción, nada en el baseline. El MCP del grafo no se
+usó (Grep/Read).
+
+### Causa (agrupada)
+
+1. **Dobles y fixtures sin el nodo de la orden** (16 archivos, la mayoría de los 408): desde SLT-48 `lugarDeLaOrden` es
+   `nodoGeograficoId` y la ruta, los nombres, la marca y el lugar del grupo de tarifas (`distritoDeTarifa`) salen de él
+   y de la cadena del catálogo. Los dobles daban solo las 3 FK: el cierre lanzaba «falta la fila de `nodo_geografico`
+   con id (sin nodo)», el tránsito `CatalogoGeograficoInconsistente`, los listados salían sin nombres, y
+   `resolicitarCierreRechazado`/la corrección de un resultado leían un catálogo que el doble no tenía (`findMany` de
+   `undefined`). Arreglo de ENTRADA: `nodoGeograficoId` en la fila, `padreId` en los nodos del doble, los delegados del
+   catálogo en la `tx`.
+2. **Aserciones de lo que SLT-48 quita a propósito** (autorizadas, cada una con su `// SLT-48 R<n>`): SQL y `where` por
+   `distrito_id`/`canton_id` con dos ramas (R23), las FK en el `select` y en el DTO (R15, R22, R29), `D = min(P,3)` en las
+   tarjetas y el PDF de tránsito (R25), la terna en la corrección (R16), `model` → `view` y el NOT NULL de las FK (R1,
+   R4), la copia nodo → tabla vieja (R5) y «las lecturas no leen el nodo de la orden» (R22, R29).
+3. **Ida y vuelta de SLT-89** construida con SLT-48 puesta: el cuerpo «de antes» de `orden_nodo_geografico` era ya el de
+   SLT-48 (R9). Arreglo de entrada, como `migracion-slt43`/`-slt46` en T5: la base propia se construye sin
+   `20261117120100_slt48_geografia_vieja_a_vistas`.
+
+Ningún rojo destapó un bug de producción (d) y ninguno afloja otra regla (c). `openapi-geografia-sin-cambios`: las
+aserciones del contrato público (CargaRow, CotizacionRow, yaml, sin `nivel_N`) pasaban; las dos rojas leían
+`schema.prisma` (`model Provincia` y `String` sin `?`), no la API v1.
+
+### Clasificación
+
+| Archivo | Rojos | Clase | Qué cambió |
+|---|---|---|---|
+| `tests/unit/repositories/cierre-dia-repository.test.ts` | 18 | (a) | `snapshotRow` con `nodoGeograficoId: "d1"`; cadena `p1 › ct1 › d1` en el doble; la fila sin distrito pasa a nodo `ct1` |
+| `tests/unit/repositories/cierre-pago-congelado.test.ts` | 11 | (a) | nodo en la fila del snapshot, de la resolicitud y de la corrección; cadena en el doble; delegados del catálogo en `txResolicitud` y `txCorreccion` |
+| `tests/unit/repositories/cierres-admin-corregir-resultado-where.test.ts` | 16 | (a) | nodo en la orden y delegados del catálogo en la `tx` |
+| `tests/unit/repositories/convergencia-tarifa-listado-cierre.test.ts` | 8 | (a) | nodo en `ordenListRow` (`c1`) y en `snapshotRow`; `DISTRITO` como nodo en el listado; cadena en el doble |
+| `tests/unit/repositories/gestion-desde-ayuda-cierre.test.ts` | 9 | (a) | nodo en la fila; cadena en el doble |
+| `tests/integration/asimetria-sin-tarifa.test.ts` | 3 | (a) | nodo `c1` en las dos filas; cadena en el doble |
+| `tests/integration/db/cierre-detail-congelado.test.ts` | 7 | (a) | nodo en `joinOrden`; cadena en el doble |
+| `tests/unit/repositories/orden-repository.test.ts` | 1 | (a) | nodo en `ordenRow` (`c1`) y en la fila con distrito (`d1`) |
+| `tests/unit/repositories/ruta-sin-consulta-por-fila.test.ts` | 7 | (a) | nodo en `filaListado` y `filaGestion` |
+| `tests/unit/utils/tarifa-especial-por-distrito.test.ts` | 2 | (a) | nodo en la fila (`d1`, o `c1` sin distrito) |
+| `tests/unit/whatsapp-envios/informe-transito-composicion.test.ts` | 1 | (a) | la fila cruda trae `nodo_geografico_id` en vez de `canton_id`/`distrito_id` |
+| `tests/integration/db/migracion-slt89-ida-y-vuelta.test.ts` | suite | (a) | base propia sin la migración de vistas de SLT-48 (`SOBRE_SLT89`) |
+| `tests/unit/repositories/orden-repository.api-lectura.test.ts` | 2 | (a)+(b) | nodo en las filas; aserción del `select` (abajo) |
+| `tests/unit/repositories/orden-repository.novedades.test.ts` | 2 | (a)+(b) | nodo en la fila; aserción del `select` (abajo) |
+| `tests/unit/repositories/orden-repository.recepcion-satelite.test.ts` | 1 | (a)+(b) | nodo en la fila; aserción del DTO (abajo) |
+| `tests/unit/actions/corregir-datos-cliente.composition-root.test.ts` | 1 | (a)+(b) | nodo en la orden; la entrada pasa a `nodoId` (abajo) |
+| los 18 restantes | 28 + 1 suite | (b) | ver la tabla de aserciones |
+
+### Aserciones cambiadas (autorizadas: contradicen una decisión cerrada; cada una con su `// SLT-48 R<n>`)
+
+| Archivo › test | Antes → después | R |
+|---|---|---|
+| `orden-repository.api-lectura` › «415/R1: el `select` pide `id`, `nombre` y `esCentral`…» | `select.distritoId`/`cantonId` `true` → `select.nodoGeograficoId` `true` y las 3 FK `undefined` | R29 |
+| `orden-repository.no-regresion-106` › «envia a Prisma exactamente la misma proyeccion…» | literal con `distritoId: true` y `cantonId: true` → `nodoGeograficoId: true` | R29, R31 |
+| `orden-repository.novedades` › «where del grupo, orderBy…» | `select` con `cantonId`/`distritoId` → `nodoGeograficoId` | R22, R29 |
+| `orden-repository.recepcion-satelite` › «R6/R8: filtra zona + estatus…» | la fila trae `provinciaId/cantonId/distritoId` → `nodoGeograficoId` | R15, R22 |
+| `satelite-paginado-where` › «la geografía se cruza en AND…» y «la provincia filtra por id…» | `(o."distrito_id" = ANY OR (o."distrito_id" IS NULL AND o."canton_id" = ANY))` con dos parámetros → `o."nodo_geografico_id" = ANY(?)` con uno | R23 |
+| `zona-repository` › «⭑ R5: la segunda lectura de la N:M…» | lugares leídos de `where.OR[0].distritoId.in` → de `where.nodoGeograficoId.in` | R23, R24 |
+| idem › «⭑ R2/R9: las dos consultas comparten el `where` base…» | `OR: [{distritoId: {in}}, {distritoId: null, cantonId: {in}}]` → `nodoGeograficoId: { in: ["d1"] }` | R23, R24 |
+| `geografia-plataforma.composition-root` › «R31: el conteo usa el repositorio de órdenes…» | ídem, `["c-1","d-1"]` | R23, R24 |
+| `ciclo-vida`, `conteo-cargadas-servicio`, `conteo-devoluciones`, `conteo-por-status-sql` › la faceta de lugar | una `o."distrito_id" = ANY(` → una `o."nodo_geografico_id" = ANY(` | R23 |
+| `conteo-por-status-sql` › «todos los ids viajan como parámetros, en orden» | el array del lugar dos veces → una | R23 |
+| `filtro-ubicacion-rendimiento` › «la consulta lleva todos los ids en un solo parametro…» | `[[...ids], [...ids]]` → `[[...ids]]` | R23 |
+| `correccion-datos-cliente` › «la lista es la del alcance cerrado…» (describe renombrado «…siete (nueve hasta SLT-48)») | `provinciaId, cantonId, distritoId` → `nodoId` | R16 |
+| `corregir-datos-cliente.composition-root` › «la accion real, sin `deps.service`…» | entrada con la terna → `nodoId: "d-2"` (con la terna el schema estricto daba `validation_error`) | R16 |
+| `transito-pdf-niveles` › «pais de 4 niveles…» (renombrado «BARRIO · MANZANA y los niveles 3·4») | título `COMUNA · BARRIO`, celda «Ñuñoa · Villa Olímpica» → `BARRIO · MANZANA`, celda «Villa Olímpica» (el nivel 4 vacío) | R25 |
+| idem › «una orden cuya ruta no llega…» (renombrado «…a los 2 ultimos niveles deja la celda vacia») | celda «Ñuñoa» → ni «Ñuñoa» ni «Metropolitana» en el PDF | R25 |
+| `pos-satelite-chat-niveles` › caso «4 niveles» (5 superficies + el enlace al mapa) | ruta hasta el nivel 3, «Litoral · Viña» / chat «Viña · Litoral» / mapa «hasta Litoral» → la orden en su hoja de nivel 4, «Viña · Recreo» / «Recreo · Viña» / «hasta Viña» | R18, R25, R26 |
+| `AsignacionDetalle-niveles` › «país de 4 niveles: cuatro campos…» | línea bajo la dirección «Viña, Litoral» → «Viña» (los 4 campos no cambian) | R25 |
+| `openapi-geografia-sin-cambios` › «anti-vacuidad: los artefactos se leyeron» | `/^model Provincia \{/m` → `/^view Provincia \{/m` | R1 |
+| idem › «la orden sigue apuntando a la geografia con provincia_id…» | `provinciaId`/`cantonId` `String` → `String?` (mismos nombres) | R4 |
+| `provincia-schema-drift` › los 5 (suite) | `modelBlock` busca `model <X>` → `(model\|view) <X>`; ninguna otra aserción cambia | R1 |
+| `distrito-zona-especial-migration` › «SL-38 (R6): el modelo Distrito…» | `model Distrito` → `view Distrito` | R1 |
+| `slt46-equivalencia-geografia` › «CONTRAPRUEBA: con la copia apagada…» (renombrado «CONTRAPRUEBA (SLT-48 R5): sin copia que apagar…») | apagar `nodo_geografico_copia_a_geografia_vieja` y ver 1 diferencia → el trigger no existe, el renombre se ve en `canton` en la misma transacción y 0 diferencias | R5 |
+| `geo-lecturas-sin-backfill` › describe «SLT-65 R19…» (renombrado «… / SLT-48 R29 — … con las 3 FK de la orden en NULL o desviadas») | se vaciaba y desviaba `orden.nodo_geografico_id` → se vacían y desvían `provincia_id`/`canton_id`/`distrito_id` con el nodo intacto (`zona_distrito` y `distrito_zona_especial` como antes); anti-vacuidad sobre las FK | R22, R29 |
+| idem › describe «SLT-71 R14…» (renombrado igual) | ídem para la analítica con faceta y el tránsito | R23, R25, R29 |
+
+Nota sobre `pos-satelite-chat-niveles` y `AsignacionDetalle-niveles`: son pantallas, pero el cambio sale de la misma
+regla `D = P` de `ubicacion-presentacion.ts` (design §5, R25) cuyas aserciones ya autorizó el humano (`ubicacion-presentacion.test.ts`,
+tabla «Aserciones autorizadas»). En Costa Rica no cambia nada (los casos de CR y de 2 niveles pasan sin tocar), y antes
+de SLT-48 ningún país de 4 niveles tenía órdenes («país aún no habilitado»), así que ninguna orden de producción cambia
+lo que muestra.
+
+### (c) parados
+
+Ninguno.
+
+### Gate rápido: `test-rapido --comprobar` sobre `18ff2e95` (antes del arreglo)
+
+El `scripts/test-rapido.mjs` de la rama es anterior y no tiene `--comprobar` (corre `vitest related` con los 703 archivos
+de código del diff). Se corrió el del repo principal (`../../scripts/test-rapido.mjs --comprobar <los 34>`) con el
+worktree en `18ff2e95` sin cambios:
+
+```
+[test:rapido] 842 archivo(s) cambiados vs origin/dev.
+[test:rapido] relacionados por imports: 1928 -> FUERA (presupuesto 150)
+[test:rapido] gate.siempre (guard): 338
+[test:rapido] disparadores: 0
+[test:rapido] nombran un archivo cambiado: 253
+entra:    ciclo-vida, cierre-pago-congelado, zona-repository (por «nombran un archivo cambiado»)
+NO entra: los otros 31
+```
+
+- **Por qué no entraron:** los 31 importan algo que la rama cambia (`OrdenRepository`, `CierreDiaRepository`,
+  `_shared/lugar-orden`, `ubicacion-presentacion`, `correccion-datos-cliente`, `InformeTransitoRepository`…), así que
+  son «relacionados»; pero el diff de la pila geo contra `dev` es de 842 archivos y 1928 relacionados, muy por encima del
+  presupuesto (150): el grupo entero queda FUERA. Y el `arnes.config.json` de la rama no tiene `gate.disparadores`.
+- **Con los disparadores del repo principal** (evaluados aparte con `scripts/disparadores.mjs` sobre el mismo diff):
+  entrarían 3 por el de `db/schema.prisma`/`db/migrations/**` (`distrito-zona-especial-migration`,
+  `migracion-slt89-ida-y-vuelta`, `provincia-schema-drift`); los otros 31 seguirían fuera.
+- **Disparadores que faltarían (propuesta; lo decide el leader, no se tocó `arnes.config.json`):**
+
+| `si_cambia` | `corre` | Habría cogido |
+|---|---|---|
+| `db/schema.prisma` (añadir al existente) | `openapi-geografia-sin-cambios` | el test que lee `schema.prisma` sin importarlo |
+| `db/migrations/**` (añadir al existente) | `slt46-equivalencia-geografia`, `geo-lecturas-sin-backfill` | integración que depende de triggers y vistas |
+| `lib/repositories/_shared/lugar-orden.ts`, `lib/repositories/_shared/ruta-del-lugar.ts` | `tests/unit/analytics/`, `satelite-paginado-where`, `filtro-ubicacion-rendimiento`, `zona-repository`, `geografia-plataforma.composition-root`, `ruta-sin-consulta-por-fila`, `geo-lecturas-sin-backfill` | el SQL/`where` del lugar |
+| `lib/repositories/CierreDiaRepository.ts`, `lib/repositories/CierresAdminRepository.ts` | `cierre-dia-repository`, `cierre-pago-congelado`, `cierres-admin-corregir`, `convergencia-tarifa-listado-cierre`, `gestion-desde-ayuda-cierre`, `asimetria-sin-tarifa`, `cierre-detail-congelado` | dinero del cierre con dobles de catálogo |
+| `lib/repositories/OrdenRepository.ts` | `tests/unit/repositories/orden-repository`, `tarifa-especial-por-distrito`, `convergencia-tarifa-listado-cierre` | proyecciones literales del `select` y DTO |
+| `lib/utils/ubicacion-presentacion.ts` | `-niveles.test`, `informe-transito` | tarjetas, chat y PDF por niveles |
+| `lib/types/correccion-datos-cliente.ts` | `correccion-datos-cliente`, `corregir-datos-cliente` | el alcance cerrado de la corrección |
+
+  Los disparadores no cuentan contra el presupuesto, así que en una pila grande como esta son lo único que los habría
+  traído al rápido.
+
+### Salida real (`NODE_OPTIONS=--max-old-space-size=8192`, base `servi_logistic_slt48_gate`)
+
+```
+$ vitest run <los 34, en dos tandas de 17>
+ Test Files  17 passed (17)  ·  Tests  294 passed (294)
+ Test Files  17 passed (17)  ·  Tests  338 passed (338)
+$ pnpm run typecheck      → tsc --noEmit, exit 0
+$ pnpm run test:guardias  → Test Files 3 failed | 336 passed (339) · Tests 6 failed | 4757 passed | 1 skipped
+    - dependencias-declaradas-presentes (4): en tests/baseline-rojos.json
+    - descargas-por-registro y sin-estados-retirados (1 y 1): «Test timed out in 20000ms» con la máquina cargada;
+      solos: Test Files 2 passed (2) · Tests 15 passed (15)
+$ eslint <los 34>         → 0 errores, 4 avisos previos (`_c`, `_args` sin usar; no son de este cambio)
+```
+
+Veredicto: los 34 en verde; 16 por entradas sin el nodo (4 con alguna aserción además) y 18 solo por aserciones autorizadas de SLT-48; sin (c), sin bug de producción.
