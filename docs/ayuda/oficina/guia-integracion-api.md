@@ -262,7 +262,7 @@ Todos los errores comparten esta forma (`details` es opcional; en un `422` trae 
 
 | Código | Significado |
 | --- | --- |
-| `401` | No mandó key (header ausente, esquema distinto de `Bearer` o token vacío), **o** la key no existe. ⚠ Los dos casos son indistinguibles a propósito. |
+| `401` | No mandó key (header ausente, esquema distinto de `Bearer` o token vacío), **o** la key no existe. Atención: Los dos casos son indistinguibles a propósito. |
 | `403` | La key existe, pero está desactivada, **o** su cuenta dedicada no está activa, **o** la tienda a la que apunta fue dada de baja. En analítica, además: pidió una métrica no publicable (§5.8). |
 
 Consecuencia práctica: un `401` es problema de su cliente HTTP o de su secreto; un `403` requiere hablar con la empresa (salvo el de analítica).
@@ -397,9 +397,9 @@ curl -X POST https://app.example.com/api/ordenes/api-key/carga \
 - **Dos listas.** `filas` trae solo lo que entró (`creada` y `duplicada`; en una duplicada, `estado` es el de la orden que ya ocupa esa remisión); `errores` trae solo lo que no se creó, con el detalle por campo. Los contadores se calculan sobre el lote completo: `conError === errores.length`. La pregunta «¿falló algo?» se responde con `errores.length`.
 - `cargaId` **es** `null` **si no se creó ninguna orden.** Se necesita para el PDF consolidado del lote (§5.6): guárdelo cuando no sea nulo.
 - `costoEnvio` es flete + IVA + fulfillment + IVA del fulfillment de la tarifa vigente del par (tienda, zona), en texto de dos decimales; `fulfillment` es la parte de ese total que corresponde al servicio de bodega y `ivaFulfillment` su IVA (los dos `"0.00"` si su tienda no lo tiene). Es distinto del COD.
-- ⚠ **Una fila puede no crear orden por un problema de tarifa o de cobertura.** Vuelve en `errores` con la clave `tarifa`, que agrupa dos causas distintas: (1) no hay tarifa vigente para el par (tienda, zona del distrito de la fila); (2) la zona no tiene cobertura de la empresa. En ambos casos el mensaje es el mismo: `{ "tarifa": ["no hay tarifa vigente para la zona de esta fila"] }`. Es un tema comercial con la empresa, no de código.
+- Atención: **Una fila puede no crear orden por un problema de tarifa o de cobertura.** Vuelve en `errores` con la clave `tarifa`, que agrupa dos causas distintas: (1) no hay tarifa vigente para el par (tienda, zona del distrito de la fila); (2) la zona no tiene cobertura de la empresa. En ambos casos el mensaje es el mismo: `{ "tarifa": ["no hay tarifa vigente para la zona de esta fila"] }`. Es un tema comercial con la empresa, no de código.
 - Una provincia, un cantón o un distrito **retirados del catálogo** producen un error de fila propio, bajo la clave del nivel afectado: `la provincia esta retirada del catalogo`, `el canton esta retirado del catalogo`, `el distrito '<nombre>' esta retirado del catalogo`. Un nodo retirado no vuelve solo: corrija la dirección o pida a la empresa reactivarlo.
-- ⚠ `409` **si NINGUNA de las filas que llegaron a la resolución de tarifa la resolvió.** En ese caso no se persiste nada: ni órdenes, ni lote, ni notificación. `{ "status": "error", "code": "CONFLICT", "message": "la tienda no tiene una tarifa vigente asociada: no se pueden crear órdenes" }`
+- Atención: `409` **si NINGUNA de las filas que llegaron a la resolución de tarifa la resolvió.** En ese caso no se persiste nada: ni órdenes, ni lote, ni notificación. `{ "status": "error", "code": "CONFLICT", "message": "la tienda no tiene una tarifa vigente asociada: no se pueden crear órdenes" }`
 - Una fila creada puede traer además `montoAjustado` (si se redondeó el COD) y `textoNormalizado` (lista de `{ campo, original, aplicado }` con los textos que hubo que reparar para poder imprimir la etiqueta). Ambos se omiten cuando no hubo ajuste.
 - `etiquetasPdf`, `manifiesto` y `ordenes[].downloadUrl` son *best-effort*: si el PDF o el manifiesto no se pudo armar, la carga **no se revierte** y el bloque llega como `{ "error": "…" }`; `null` significa que no había nada que generar. La URL del PDF de la carga vence en 1 hora (`expiraEnSegundos: 3600`); para volver a obtenerla use §5.6. Estos tres bloques están en el contrato OpenAPI publicado (`CargaResponse`, `CargaOrden.downloadUrl`).
 
@@ -455,7 +455,7 @@ Todos los query params son **opcionales**, se combinan en **AND**, y solo **acot
 | `estado` | string | Valor **exacto** del catálogo (§4.7, uno de los 20). Un código anterior al cambio de nombres responde `422` nombrando el vigente; cualquier otro valor, `422` genérico. |
 | `desde` / `hasta` | `YYYY-MM-DD` | Fecha de creación, **inclusivas**, hora CR. `desde > hasta` es `422` (en `fieldErrors.hasta`). |
 | `num_guia` | entero | Guía exacta. Excluye las órdenes que aún no tienen guía. |
-| `num_remision` | string | ⚠ Coincidencia **exacta**: sin prefijo, sin subcadena, distingue mayúsculas. |
+| `num_remision` | string | Atención: Coincidencia **exacta**: sin prefijo, sin subcadena, distingue mayúsculas. |
 
 ### Request
 
@@ -542,8 +542,8 @@ Devuelve el mismo objeto del listado, más `evidencias[]` (URLs firmadas de cort
 
 ### Comportamientos que debe manejar
 
-- `evidencias[].resultado` ∈ `entregado` | `devolucion_a_origen_por_rechazo` | `incidente`; `contentType` puede ser `null`.
-- ⚠ **Las URLs firmadas vencen a los 5 minutos (300 s).** **Descargue el archivo, no guarde la URL.** Si persiste la URL en su base de datos, sus enlaces van a estar rotos antes de que alguien los abra.
+- `evidencias[].resultado` es uno de `entregado` | `devolucion_a_origen_por_rechazo` | `incidente`; `contentType` puede ser `null`.
+- Atención: **Las URLs firmadas vencen a los 5 minutos (300 s).** **Descargue el archivo, no guarde la URL.** Si persiste la URL en su base de datos, sus enlaces van a estar rotos antes de que alguien los abra.
 - `gestiones[]` va de la más antigua a la más reciente, completo y sin paginar. Las ocho claves de cada elemento están siempre presentes. No incluye las gestiones anuladas ni los incidentes que reporta el personal de bodega (sus fotos sí están en `evidencias[]`).
 - `pendienteConfirmacion: true` = la gestión se registró pero su estado todavía no se aplicó: la orden sigue `en_reparto` y `estadoResultante` es `null`. Al aprobarse el cierre del mensajero pasa a `false` y `estadoResultante` trae el estado aplicado. Es la misma señal que la aplicación muestra como «`<resultado>` · *pendiente de confirmación*».
 - `estadoResultante` **no se deduce del** `resultado`: es el estado al que esa gestión llevó la orden, leído del historial. Puede ser `null` en gestiones antiguas y, en gestiones anteriores al 2026-09-23, una `novedad` puede mostrar un estado ya retirado del catálogo. Se publica sin lista cerrada: trate un valor desconocido como texto.
@@ -564,7 +564,7 @@ curl -X POST https://app.example.com/api/ordenes/api-key/orden/100234/generate \
 { "url": "https://<host-de-storage>/object/sign/etiquetas/...", "expiraEnSegundos": 300 }
 ```
 
-- ⚠ No compare URLs para detectar cambios, y no las cachee: la URL cambia en cada llamada y vence a los 300 s, igual que las evidencias.
+- Atención: No compare URLs para detectar cambios, y no las cachee: la URL cambia en cada llamada y vence a los 300 s, igual que las evidencias.
 - Orden sin guía imprimible (todavía sin `numGuia`, típico de fulfillment recién cargado) → `409`.
 - Orden inexistente o de otro dueño → el mismo `404`.
 
@@ -591,7 +591,7 @@ curl -X POST https://app.example.com/api/ordenes/api-key/carga/9c2b7f10-5d3a-4e2
 Solo procede si se cumplen **las dos condiciones** a la vez:
 
 1. El estado actual es uno de estos siete: `en_preparacion`, `por_recolectar_en_tienda`, `recolectando`, `en_bodega_central`, `en_ruta_bodega_central`, `en_ruta_bodega_satelite`, `mensajero_recogiendo_en_bodega`. Es decir: el paquete no ha salido hacia el cliente. Haber generado la etiqueta **no** impide eliminar.
-2. ⚠ **La orden no tiene ningún intento de entrega** (cierres aprobados con una gestión vigente de novedad, reprogramación o rechazo). Una orden con un intento deja de ser eliminable aunque el estado vuelva a estar en la lista.
+2. Atención: **La orden no tiene ningún intento de entrega** (cierres aprobados con una gestión vigente de novedad, reprogramación o rechazo). Una orden con un intento deja de ser eliminable aunque el estado vuelva a estar en la lista.
 
 ```bash
 curl -X DELETE https://app.example.com/api/ordenes/api-key/orden/REM-0001 \
@@ -603,7 +603,7 @@ curl -X DELETE https://app.example.com/api/ordenes/api-key/orden/REM-0001 \
 ```
 
 - `estado` es el que la orden **tenía** al eliminarla (eliminar no transiciona). `numGuia` es `null` si aún no tenía guía.
-- ⚠ Propia y viva pero en un estado no permitido, o con un intento de entrega → `409`, sin distinguir cuál de las dos condiciones falló. Consulte el estado antes de intentar eliminar, o maneje el `409` como resultado esperado. Para una orden que ya va camino del cliente no hay eliminación: la salida es cancelar (§5.9), y solo desde bodega.
+- Atención: Propia y viva pero en un estado no permitido, o con un intento de entrega → `409`, sin distinguir cuál de las dos condiciones falló. Consulte el estado antes de intentar eliminar, o maneje el `409` como resultado esperado. Para una orden que ya va camino del cliente no hay eliminación: la salida es cancelar (§5.9), y solo desde bodega.
 - Es un **borrado lógico**: la orden desaparece del canal (un `GET` posterior responde `404`, y repetir el `DELETE` también) y **libera su** `num_remision` para volver a cargarla.
 
 ## 5.8 **GET** `/api/ordenes/api-key/analitica` — Estadísticas de gestión
@@ -648,12 +648,12 @@ curl "https://app.example.com/api/ordenes/api-key/analitica?metricas=entregas,ta
 
 ### Comportamientos que debe manejar
 
-- ⚠ **El lote es todo o nada.** Si *una* métrica pedida no está en la lista publicable, la llamada *entera* responde `403` — idéntico al `403` de una métrica que no existe, a propósito. No hay respuesta parcial. Valide su lista de ids contra la lista publicable antes de llamar.
-- ⚠ **El día en curso viene marcado, no cerrado.** Su punto trae `parcial: true` y `corteAt` (el instante hasta el que se contó). Se lee más bajo que un día completo y no es comparable: si suma `data` para un total del periodo, descarte primero los puntos con `parcial: true`. Un día cerrado trae solo `fecha` y `valor`; `parcial` nunca llega como `false`.
-- ⚠ **No rellene huecos con ceros.** Un día puede faltar en `data` (sin dato), y los días del rango que caen por debajo del horizonte del histórico vienen listados en `cobertura.fechasNoComparables`: ahí un cero es falta de *datos*, no falta de operación. `penumbra` es una limitación permanente del histórico (las órdenes vivas cuando nació el historial y que nunca volvieron a cambiar de estado no entran en ningún día).
+- Atención: **El lote es todo o nada.** Si *una* métrica pedida no está en la lista publicable, la llamada *entera* responde `403` — idéntico al `403` de una métrica que no existe, a propósito. No hay respuesta parcial. Valide su lista de ids contra la lista publicable antes de llamar.
+- Atención: **El día en curso viene marcado, no cerrado.** Su punto trae `parcial: true` y `corteAt` (el instante hasta el que se contó). Se lee más bajo que un día completo y no es comparable: si suma `data` para un total del periodo, descarte primero los puntos con `parcial: true`. Un día cerrado trae solo `fecha` y `valor`; `parcial` nunca llega como `false`.
+- Atención: **No rellene huecos con ceros.** Un día puede faltar en `data` (sin dato), y los días del rango que caen por debajo del horizonte del histórico vienen listados en `cobertura.fechasNoComparables`: ahí un cero es falta de *datos*, no falta de operación. `penumbra` es una limitación permanente del histórico (las órdenes vivas cuando nació el historial y que nunca volvieron a cambiar de estado no entran en ningún día).
 - `data` vacío es un `200` correcto; `rango` es el eco exacto de lo pedido (o de lo resuelto por defecto), sin recortar. No lo use para deducir hasta dónde hay datos.
-- ⚠ `valor: null` **no es** `0`**.** Significa «no se sabe» (por ejemplo, una tasa con denominador cero). Ese día *sí* aparece en `data`. Distinga en su gráfico: día con número, día con `null`, día parcial y día ausente.
-- `unidad` ∈ `conteo` | `porcentaje` | `segundos` (`tiempo_ciclo`).
+- Atención: `valor: null` **no es** `0`**.** Significa «no se sabe» (por ejemplo, una tasa con denominador cero). Ese día *sí* aparece en `data`. Distinga en su gráfico: día con número, día con `null`, día parcial y día ausente.
+- `unidad` es uno de `conteo` | `porcentaje` | `segundos` (`tiempo_ciclo`).
 - Sin `desde`, `data` crece un punto por día de operación: este endpoint no pagina.
 
 > **No todas las métricas cuentan lo mismo:**
@@ -785,7 +785,7 @@ Hay una **séptima clave opcional**, `evidenciasUrl`, que se **omite** salvo en 
 
 **Procedimiento de verificación:**
 
-1. ⚠ Tome el **cuerpo crudo, byte a byte**, tal como llegó.
+1. Atención: Tome el **cuerpo crudo, byte a byte**, tal como llegó.
 2. Arme la cadena `${timestamp}.${cuerpo}`.
 3. Calcule HMAC-SHA256 con el secreto (en hexadecimal).
 4. **Compare en tiempo constante** contra el valor de `X-Servi-Logistic-Signature`.
@@ -816,8 +816,8 @@ Es un **subconjunto** del catálogo REST (§4.7): solo los estados públicos del
 | 2 | `en_preparacion` | Evento de nacimiento — tiendas **con** fulfillment (§5.1). Llega con `numGuia: null`, una sola vez por orden. |
 | 3 | `en_ruta_bodega_central` | |
 | 4 | `en_bodega_central` | Con fulfillment, es el primer evento que trae la guía. |
-| 5 | `en_reparto` | ⚠ Puede llegar **más de una vez** sobre la misma orden (por ejemplo, una orden en `reprogramado` que vuelve a salir a reparto). Son cambios reales, con `eventoId` distinto. |
-| 6 | `entregado` | ⚠ Cuando el resultado lo registra el mensajero en calle, el evento llega **al aprobar su cierre del día**, no al gestionar: horas después de lo que ve el mensajero. Para enterarse al instante, use `orden.gestion_registrada` (§6.7). Una reprogramación o un rechazo que registra la propia tienda desde la aplicación, o el escalado automático de una novedad, llegan en el instante en que ocurren. |
+| 5 | `en_reparto` | Atención: Puede llegar **más de una vez** sobre la misma orden (por ejemplo, una orden en `reprogramado` que vuelve a salir a reparto). Son cambios reales, con `eventoId` distinto. |
+| 6 | `entregado` | Atención: Cuando el resultado lo registra el mensajero en calle, el evento llega **al aprobar su cierre del día**, no al gestionar: horas después de lo que ve el mensajero. Para enterarse al instante, use `orden.gestion_registrada` (§6.7). Una reprogramación o un rechazo que registra la propia tienda desde la aplicación, o el escalado automático de una novedad, llegan en el instante en que ocurren. |
 | 7 | `reprogramado` |
 | 8 | `novedad` |
 | 9 | `devolucion_a_origen_por_rechazo` |
@@ -851,7 +851,7 @@ Cinco eventos que no son un cambio de estado. Llegan al mismo callback, firmados
 | `orden.gestion_anulada` | El mensajero deshizo esa gestión pendiente antes de que entrara en un cierre. La orden vuelve a ser gestionable. | `gestionId`, `resultado`, `resultadoNombre` |
 | `orden.gestion_corregida` | Se corrigió el resultado de una gestión pendiente dentro de un cierre abierto (`resultadoAnterior` → `resultado`). | `gestionId`, `resultado`, `resultadoNombre`, `resultadoAnterior`, `resultadoAnteriorNombre`, `pendienteConfirmacion: true` |
 | `orden.ayuda_solicitada` | El mensajero pidió ayuda a la tienda. La orden sigue `en_reparto`. | — |
-| `orden.ayuda_resuelta` | La ayuda se cerró: por el mensajero («Recuperar»), por la tienda («Habilitar» en la aplicación) o por este canal (§5.10). | `via` ∈ `mensajero`, `tienda` o `api` |
+| `orden.ayuda_resuelta` | La ayuda se cerró: por el mensajero («Recuperar»), por la tienda («Habilitar» en la aplicación) o por este canal (§5.10). | `via` es uno de `mensajero`, `tienda` o `api` |
 
 `data` lleva **siempre** `numGuia`, `numRemision`, `motivo` (la causa tipificada de la gestión, con los mismos valores de §6.6; `null` en los eventos de ayuda) y `mensajero` (el atribuido al hecho, o `null`). Las demás claves **se omiten** cuando el evento no las lleva. `resultado` usa los cinco códigos de resultado (§4.7). `eventoId` es `webhook_evento:<id>`, único por hecho.
 
@@ -889,32 +889,32 @@ Cinco eventos que no son un cambio de estado. Llegan al mismo callback, firmados
 
 # 7. Checklist de puesta en producción
 
-| ✔ | Punto | Por qué |
+| Hecho | Punto | Por qué |
 | --- | --- | --- |
-| ☐ | La API key vive en un **gestor de secretos** o variable de entorno — nunca en frontend, repo ni logs | §3.6 |
-| ☐ | Puede **cambiar el secreto sin recompilar** | §3.4 |
-| ☐ | Compara **códigos** de estado y muestra los **nombres** (`…Nombre`); no mantiene una traducción propia | §4.7 |
-| ☐ | No queda ningún literal de los **once códigos anteriores** (tabla de cambios A.1 y A.2) | Cambios |
-| ☐ | En `/carga`, lee `errores[]` y usa `creadas` y `conError` como semáforo del lote, no el status HTTP | §5.1 |
-| ☐ | Guarda `cargaId` cuando no es `null`, para el PDF del lote | §5.1, §5.6 |
-| ☐ | Maneja el error de clave `tarifa` (sin tarifa o sin cobertura) y los de catálogo retirado como casos de negocio | §5.1 |
-| ☐ | Contempla los dos estados iniciales posibles según fulfillment, y `numGuia: null` en el segundo | §5.1 |
-| ☐ | Parsea los importes como texto crudo (`"2500.00"`); no le aplica un parser de miles/coma | §5.2 |
-| ☐ | Tiene presente que la guía se prioriza sobre la remisión en `/orden/{id}` | §5.4 |
-| ☐ | **Descarga** los archivos de URLs firmadas de inmediato; no persiste la URL (300 s) | §5.4, §5.5 |
-| ☐ | Lee `pendienteConfirmacion` en `gestiones[]` y no deduce el estado del `resultado` | §5.4 |
-| ☐ | Archiva `costoReal`, no `costoEstimado`; agrupa por `id` de zona y mensajero, nunca por `nombre` | §5.3 |
-| ☐ | Verifica el **HMAC sobre el cuerpo crudo**, en tiempo constante, antes de parsear | §6.3 |
-| ☐ | La ruta del webhook recibe el cuerpo **sin parsear** por el framework | §6.3 |
-| ☐ | Deduplica por `eventoId` y ordena por `ocurridoAt` | §6.4 |
-| ☐ | Responde `2xx` siempre que recibe el evento, incluso si lo ignora; su endpoint responde en menos de 10 s | §6.4 |
-| ☐ | Interpreta `motivo` según `estado`, contra literales exactos | §6.6 |
-| ☐ | Trata **estados y eventos desconocidos como «ignorar»**, nunca como error | §6.5, §6.7 |
-| ☐ | Sabe que el estado final de una gestión en calle llega **al aprobar el cierre**; usa `orden.gestion_registrada` si necesita el instante | §6.5, §6.7 |
-| ☐ | No rellena huecos de analítica con ceros, descarta los puntos `parcial` al sumar, y distingue `null` de `0` | §5.8 |
-| ☐ | Valida los ids de métricas antes de llamar (el lote es todo o nada) | §5.8 |
-| ☐ | Maneja fechas de calendario en la **zona horaria del país de la empresa (hoy Costa Rica, UTC-6)** y timestamps en **UTC** | §4.5 |
-| ☐ | Si valida el esquema en estricto, su modelo está regenerado contra el contrato vigente | Cambios |
+| [ ] | La API key vive en un **gestor de secretos** o variable de entorno — nunca en frontend, repo ni logs | §3.6 |
+| [ ] | Puede **cambiar el secreto sin recompilar** | §3.4 |
+| [ ] | Compara **códigos** de estado y muestra los **nombres** (`…Nombre`); no mantiene una traducción propia | §4.7 |
+| [ ] | No queda ningún literal de los **once códigos anteriores** (tabla de cambios A.1 y A.2) | Cambios |
+| [ ] | En `/carga`, lee `errores[]` y usa `creadas` y `conError` como semáforo del lote, no el status HTTP | §5.1 |
+| [ ] | Guarda `cargaId` cuando no es `null`, para el PDF del lote | §5.1, §5.6 |
+| [ ] | Maneja el error de clave `tarifa` (sin tarifa o sin cobertura) y los de catálogo retirado como casos de negocio | §5.1 |
+| [ ] | Contempla los dos estados iniciales posibles según fulfillment, y `numGuia: null` en el segundo | §5.1 |
+| [ ] | Parsea los importes como texto crudo (`"2500.00"`); no le aplica un parser de miles/coma | §5.2 |
+| [ ] | Tiene presente que la guía se prioriza sobre la remisión en `/orden/{id}` | §5.4 |
+| [ ] | **Descarga** los archivos de URLs firmadas de inmediato; no persiste la URL (300 s) | §5.4, §5.5 |
+| [ ] | Lee `pendienteConfirmacion` en `gestiones[]` y no deduce el estado del `resultado` | §5.4 |
+| [ ] | Archiva `costoReal`, no `costoEstimado`; agrupa por `id` de zona y mensajero, nunca por `nombre` | §5.3 |
+| [ ] | Verifica el **HMAC sobre el cuerpo crudo**, en tiempo constante, antes de parsear | §6.3 |
+| [ ] | La ruta del webhook recibe el cuerpo **sin parsear** por el framework | §6.3 |
+| [ ] | Deduplica por `eventoId` y ordena por `ocurridoAt` | §6.4 |
+| [ ] | Responde `2xx` siempre que recibe el evento, incluso si lo ignora; su endpoint responde en menos de 10 s | §6.4 |
+| [ ] | Interpreta `motivo` según `estado`, contra literales exactos | §6.6 |
+| [ ] | Trata **estados y eventos desconocidos como «ignorar»**, nunca como error | §6.5, §6.7 |
+| [ ] | Sabe que el estado final de una gestión en calle llega **al aprobar el cierre**; usa `orden.gestion_registrada` si necesita el instante | §6.5, §6.7 |
+| [ ] | No rellena huecos de analítica con ceros, descarta los puntos `parcial` al sumar, y distingue `null` de `0` | §5.8 |
+| [ ] | Valida los ids de métricas antes de llamar (el lote es todo o nada) | §5.8 |
+| [ ] | Maneja fechas de calendario en la **zona horaria del país de la empresa (hoy Costa Rica, UTC-6)** y timestamps en **UTC** | §4.5 |
+| [ ] | Si valida el esquema en estricto, su modelo está regenerado contra el contrato vigente | Cambios |
 
 # 8. Errores frecuentes y cómo diagnosticarlos
 
