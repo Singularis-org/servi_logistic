@@ -307,7 +307,8 @@ describeSiHayBase("SLT-215 — subir, bajar y volver a subir", () => {
       Object.keys(VERSION).sort(),
     );
     expect(await lista(`SELECT e.enumlabel AS k FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
-                         WHERE t.typname = 'job_tipo' AND e.enumlabel = 'plan_niveles_cerrar'`)).toEqual([]);
+                         JOIN pg_namespace n ON n.oid = t.typnamespace
+                         WHERE n.nspname = 'public' AND t.typname = 'job_tipo' AND e.enumlabel = 'plan_niveles_cerrar'`)).toEqual([]);
     // El CHECK de pasos vuelve a sus siete pasos.
     expect(
       await intento(`UPDATE "plan_borrador" SET "pasos" = "pasos" || '{"niveles": {"niveles": []}}'::jsonb WHERE "id" = $1`, [

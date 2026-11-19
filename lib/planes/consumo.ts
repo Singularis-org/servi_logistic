@@ -117,7 +117,11 @@ function comoPlanDTO(version: VersionPlan): PlanDTO {
 /** R7, R16, R19: la fecha (hora de la plataforma) y las mismas líneas de «qué cambia» que el correo de SL-24. */
 export function cambioPendienteDelPlan(vigente: VersionPlan, cambio: CambioDelPlanLeido): CambioPendienteVista {
   const antes = comoPlanDTO(vigente);
-  const diferencias = diferenciasDelPlan(antes, { ...antes, ...cambio.version });
+  // SLT-215 (R20): `plan_de_la_empresa` («Mi plan») no trae los niveles (son de SLT-216). Sin ellos en la vigente no
+  // se comparan: si no, cada versión con niveles saldría como «Sin niveles → …» aunque no los cambie.
+  const despues: PlanDTO = { ...antes, ...cambio.version };
+  if (vigente.niveles === undefined) delete despues.niveles;
+  const diferencias = diferenciasDelPlan(antes, despues);
   return {
     vigenteDesde: fechaCalendarioCR(cambio.vigenteDesde),
     // Mismo molde que el job del correo: `diferenciasDelPlan` deja `{ antes, despues }` como `unknown`.

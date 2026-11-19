@@ -24,7 +24,7 @@ Orden: T1 → T2 → (T3, T4, T5 [P]) → T6 → T7 → (T8, T9 [P]) → T10 →
     - `tests/integration/db/plan-nivel.test.ts` cubre R6 (cada CHECK rechaza; `servi_app` no lee ni escribe
       `plan_nivel`) y R36 (con `servi_app`, A no ve el nivel ni el historial de B, y nadie inserta, cambia ni borra);
     - `pnpm run test:guardias` en verde (`organizacion-en-modelos`, `rls-por-empresa`, `unicos-por-empresa`).
-- [ ] **T3 [P]. Cierre mensual en la base.** R22–R30. Depende de T2.
+- [x] **T3 [P]. Cierre mensual en la base.** R22–R30. Depende de T2.
   - **Hecho:** `tests/integration/db/plan-nivel-cierre.test.ts` cubre, con `p_ahora` y `ocurrido_at` fijos:
     - R22:
       - una orden anulada no cuenta;
@@ -44,13 +44,13 @@ Orden: T1 → T2 → (T3, T4, T5 [P]) → T6 → T7 → (T8, T9 [P]) → T10 →
     - R28: nivel 0 no baja; un plan sin niveles no deja historial;
     - R29: tres meses pendientes se cierran en orden; correr dos veces, y dos a la vez, deja lo mismo; cerrar el día 5
       da el mismo resultado y el mismo `desde_at` que el día 1.
-- [ ] **T4 [P]. Lista de niveles del plan y rastro** (`PlanesRepository.ts`: `INCLUIR`, `aDTO`, `crearEnTx`,
+- [x] **T4 [P]. Lista de niveles del plan y rastro** (`PlanesRepository.ts`: `INCLUIR`, `aDTO`, `crearEnTx`,
   `aplicarVersion`, `versionDelPlan`; `lib/planes/rastro.ts`; `lib/planes/mensajes.ts`). R15, R17–R20. Depende de T2.
   - **Hecho:** `plan-nivel.test.ts` cubre R15 (crear con 3 niveles los lee en orden), R17 (promover deja los de la
     versión) y R18 (una versión sin `niveles` conserva los del plan). `tests/unit/planes/rastro.test.ts` cubre R19
     (alta sin niveles sin clave, alta con niveles, edición) y R20 (la línea «Niveles por volumen: … → …»). Los tests de
     rastro que ya existen siguen en verde sin cambios.
-- [ ] **T5 [P]. Borrador del servidor** (`lib/types/plan-borrador.ts`, `lib/planes/borrador.ts`). R7, R10, R12, R15,
+- [x] **T5 [P]. Borrador del servidor** (`lib/types/plan-borrador.ts`, `lib/planes/borrador.ts`). R7, R10, R12, R15,
   R16. Depende de T2.
   - **Hecho:** `tests/unit/types/plan-borrador-schema.test.ts` cubre el paso `niveles` en los dos modos con las claves
     de error de R3–R5. `tests/integration/db/plan-borrador-confirmar.test.ts` cubre R12 (sin el paso:

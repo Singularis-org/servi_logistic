@@ -49,6 +49,7 @@ import type {
 } from "@/lib/interfaces/repositories/IPlanesRepository";
 import { iconoDeBeneficioSchema } from "@/lib/planes/beneficios";
 import { BorradorNoEncontrado } from "@/lib/planes/borrador";
+import type { Nivel } from "@/lib/planes/niveles";
 import { valorDelHistorialDeAsignacion } from "@/lib/planes/cobro";
 import type { CambioDelPlanLeido } from "@/lib/planes/consumo";
 import { costoVigenteDeLaTarifa, type TarifaLeida } from "@/lib/planes/costeo";
@@ -140,6 +141,8 @@ const INCLUIR = {
   modulos: { select: { modulo: true } },
   // SLT-214 (design §3.3; R1): los beneficios, en el orden que eligió el superadmin.
   beneficios: { select: { icono: true, texto: true }, orderBy: { posicion: "asc" } },
+  // SLT-215 (design §3.3; R1): los niveles por volumen, en orden de nivel.
+  niveles: { select: { meta: true, descuentoPct: true, descuentoMonto: true }, orderBy: { nivel: "asc" } },
   // SLT-86 (design §1.1; R10): el descuento vigente de cada período, una fila por período con descuento.
   descuentos: { select: { periodo: true, porcentaje: true, monto: true } },
 } as const;
@@ -176,6 +179,30 @@ function precioDe(f: FilaPlan): PrecioPlan {
   return { tipo: "monto", mensual: f.precioMensual.toFixed(2), descuentos };
 }
 
+/**
+ * SLT-215 (R1): un nivel desde sus dos columnas de descuento. El CHECK `plan_nivel_una_forma` deja exactamente
+ * una; `toFixed(2)`, como los descuentos del período.
+ */
+function nivelDe(n: FilaPlan["niveles"][number]): Nivel {
+  return {
+    meta: n.meta,
+    descuento:
+      n.descuentoPct !== null
+        ? { tipo: "porcentaje", porcentaje: n.descuentoPct.toFixed(2) }
+        : { tipo: "monto", monto: (n.descuentoMonto as Prisma.Decimal).toFixed(2) },
+  };
+}
+
+/** SLT-215 (R1, R15, R17): la fila de `plan_nivel` de un nivel; el número es la posición + 1. */
+function filaDelNivel(numero: number, n: Nivel) {
+  return {
+    nivel: numero,
+    meta: n.meta,
+    descuentoPct: n.descuento.tipo === "porcentaje" ? n.descuento.porcentaje : null,
+    descuentoMonto: n.descuento.tipo === "monto" ? n.descuento.monto : null,
+  };
+}
+
 function aDTO(f: FilaPlan): PlanDTO {
   const porRol: TopesPlan["porRol"] = {};
   for (const t of f.topesPorRol) if (ROLES.has(t.rol)) porRol[t.rol as RolConTope] = t.maximo;
@@ -188,6 +215,7 @@ function aDTO(f: FilaPlan): PlanDTO {
     modulos: f.modulos.map((m) => m.modulo),
     // SLT-214 (R1): el CHECK `plan_beneficio_icono_check` deja solo los íconos del catálogo.
     beneficios: f.beneficios.map((b) => ({ icono: iconoDeBeneficioSchema.parse(b.icono), texto: b.texto })),
+    niveles: f.niveles.map(nivelDe),
     precio: precioDe(f),
     costoPorOrden: f.costoPorOrden === null ? null : f.costoPorOrden.toFixed(2),
     // SLT-83 (R1): el modo se deriva de qué columna tiene valor; el `CHECK` impide los dos a la vez.
@@ -500,6 +528,13 @@ async function aplicarVersion(
       data: version.beneficios.map((b, posicion) => ({ planId: antes.id, posicion, ...b })),
     });
   }
+  // SLT-215 (R17, R18): lo mismo con los niveles. Ausente = sin cambio en los niveles.
+  if (version.niveles !== undefined) {
+    await tx.planNivel.deleteMany({ where: { planId: antes.id } });
+    await tx.planNivel.createMany({
+      data: version.niveles.map((n, i) => ({ planId: antes.id, ...filaDelNivel(i + 1, n) })),
+    });
+  }
 
   const anadidos = version.modulos.filter((m) => !antes.modulos.includes(m));
   const quitados = antes.modulos.filter((m) => !version.modulos.includes(m));
@@ -740,6 +775,8 @@ function versionDelPlan(plan: PlanDTO): VersionCompleta {
     modulos: plan.modulos,
     // SLT-214 (design §3.3): ausente en el DTO = sin beneficios.
     beneficios: plan.beneficios ?? [],
+    // SLT-215 (design §3.3): ausente en el DTO = sin niveles.
+    niveles: plan.niveles ?? [],
     precio: plan.precio,
     costoPorOrden: plan.costoPorOrden,
     costoPorOrdenPorcentual: plan.costoPorOrdenPorcentual,
@@ -1180,6 +1217,8 @@ async function crearEnTx(tx: Tx, input: CrearPlanInput, actorUsuarioId: string, 
       modulos: { create: input.modulos.map((modulo) => ({ modulo })) },
       // SLT-214 (R15): ausente = sin beneficios; la posición es el índice.
       beneficios: { create: (input.beneficios ?? []).map((b, posicion) => ({ posicion, ...b })) },
+      // SLT-215 (R15): ausente = sin niveles; el número es la posición + 1.
+      niveles: { create: (input.niveles ?? []).map((n, i) => filaDelNivel(i + 1, n)) },
     },
     select: { id: true },
   });
@@ -1194,6 +1233,7 @@ async function crearEnTx(tx: Tx, input: CrearPlanInput, actorUsuarioId: string, 
     topes: input.topes,
     modulos: input.modulos,
     beneficios: input.beneficios ?? [],
+    niveles: input.niveles ?? [],
     precio: input.precio,
     costoPorOrden: input.costoPorOrden,
     costoPorOrdenPorcentual: input.costoPorOrdenPorcentual,
@@ -2522,6 +2562,8 @@ export class PlanesRepository
               nombre: dto.nombre,
               topes: dto.topes,
               modulos: dto.modulos,
+              // SLT-215 (R20): los que corre la empresa, para que el cambio pendiente compare sus niveles.
+              niveles: dto.niveles ?? [],
               precio: dto.precio,
               costoPorOrden: dto.costoPorOrden,
               costoPorOrdenPorcentual: dto.costoPorOrdenPorcentual,
