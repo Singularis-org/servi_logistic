@@ -114,6 +114,8 @@ export default defineConfig({
         "reporte-de-bugs",
         // SLT-80 R1306, R1307, R1309, R1312, R1313: la guía de integración en Ayuda y sus descargas por rol.
         "ayuda-guia-api",
+        // SLT-208: cada curl de la guía y cada petición de Postman contra la app; dos empresas, una URL.
+        "guia-api-ejemplos-ejecutables",
       ),
     },
     {
