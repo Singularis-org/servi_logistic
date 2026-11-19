@@ -338,3 +338,4 @@ Al crear sale siempre. R14 no precisa el caso de edición.
 - E2E (`planes-beneficios` y los cuatro de planes adaptados): NO corridos en local por falta de memoria, por orden
   del leader; se verifican en el CI del PR #245.
 - `next build` no corrido en local (misma razón); lo cubre CI.
+- Rojo CI `planes.composition-root.test.ts` (`TypeError ... reading 'map'`): la fila falsa de Prisma no traía `beneficios` (producción la trae siempre por el `include`). Arreglo solo en el test: `beneficios: []` en `filaPlan` y en el DTO esperado. Vitest de los 42 archivos unitarios que usan `PlanesRepository` (sin guardias estáticas): `Test Files 42 passed (42) / Tests 1056 passed (1056)`; eslint del archivo: `No issues found`.
