@@ -162,6 +162,22 @@ Mutaciones de la vuelta 2:
   - Con el código anterior, ROJO: `Tests 1 failed | 31 passed (32)`, `AssertionError: expected [ Array(1) ] to have a length of +0 but got 1`.
   - Tras el arreglo, verde: `Tests 32 passed (32)`.
 
+### Vuelta 4 — merge de origin/dev (arreglo de `EscaneoContinuo` R580, #234)
+
+- Tras el merge, el gate rápido dio **INIT_EXIT=1**: 4 failed en esta guardia, todos con `Error: no se puede verificar escaneo con spread`.
+- La causa vino de dev, no de esta rama: SLT-206 «filtro Tienda compartido» (ab83e7b9) reparte `{...barraTienda}` sobre `BuscadorFiltros` en Recolección y en Recoger en bodega. Las dos pantallas son excepciones.
+- El m1 («todo spread, rojo») se escribió cuando no había ninguno. Decisión técnica: mantener la puerta cerrada con una lista explícita, `SPREADS_VERIFICADOS`. Solo vale `{...nombre}` suelto, con nombre de esa lista. Para cada entrada, el test «spread verificado» comprueba tres cosas:
+  1. el tipo declarado, `BarraFiltroTienda` en `useFiltroTienda.tsx`, existe, no está vacío y no tiene `escaneo`;
+  2. todo archivo que reparte el spread lo saca de `barra: barraTienda … = useFiltroTienda(`;
+  3. hay al menos un archivo que lo usa.
+- Cualquier otro spread sigue lanzando `CON_SPREAD`. Contraprueba: `{...resto}`, `{...barraTiendaZq7}` y `{...{ ...barraTienda, escaneo: true }}`.
+- Resultado: `Tests  33 passed (33)`.
+
+| # | mutación | resultado |
+|---|---|---|
+| M10 | `useFiltroTienda.tsx`: `escaneo: boolean;` en `BarraFiltroTienda` | ROJO, 1 failed: «BarraFiltroTienda lleva escaneo» |
+| M11 | `RecoleccionModule.tsx:165` `barra: barraOtraZq7,` | ROJO, 1 failed: «{...barraTienda} no sale de …useFiltroTienda.tsx» |
+
 ## Mapa requisito → test (ruta directa, sin `requirements.md`)
 
 | requisito de la ficha | test |

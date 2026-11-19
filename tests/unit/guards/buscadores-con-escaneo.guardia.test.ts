@@ -69,6 +69,21 @@ const SIN_ESCANEO: Record<string, string> = {
 const CON_SPREAD = "no se puede verificar escaneo con spread";
 
 /**
+ * Los ÚNICOS spreads que la guardia acepta en una apertura: `{...nombre}` suelto, con el tipo de
+ * ese objeto declarado aquí. El test «spread verificado» comprueba que el tipo no tiene `escaneo` y que
+ * cada archivo que lo reparte lo saca de donde dice. SLT-206 «filtro Tienda compartido» reparte
+ * `{...barraTienda}` (el `barra` de `useFiltroTienda`) en Recoger en bodega y en Recolección.
+ * Cualquier otro spread sigue lanzando `CON_SPREAD`.
+ */
+const SPREADS_VERIFICADOS: Record<string, { archivo: string; tipo: string; origen: RegExp }> = {
+  barraTienda: {
+    archivo: "app/(app)/mis-asignaciones/_components/useFiltroTienda.tsx",
+    tipo: "BarraFiltroTienda",
+    origen: /\bbarra:\s*barraTienda\b[\s\S]*?=\s*useFiltroTienda\(/,
+  },
+};
+
+/**
  * Los nombres con los que la fuente monta `BuscadorFiltros`: el propio y los alias de
  * `import { BuscadorFiltros as X }` (m1 de la review de SLT-205).
  */
@@ -140,7 +155,16 @@ function propsDeApertura(apertura: string): Map<string, string> {
       i++;
       continue;
     }
-    if (c === "{") throw new Error(`${CON_SPREAD}: ${apertura.slice(0, 80)}`);
+    if (c === "{") {
+      const fin = finDeLlaves(cuerpo, i);
+      const spread = /^\.\.\.\s*([A-Za-z_$][\w$]*)$/.exec(cuerpo.slice(i + 1, fin).trim());
+      if (!spread || !(spread[1] in SPREADS_VERIFICADOS)) {
+        throw new Error(`${CON_SPREAD}: ${apertura.slice(0, 80)}`);
+      }
+      props.set(`...${spread[1]}`, "spread");
+      i = fin + 1;
+      continue;
+    }
     const nombre = /^[A-Za-z_$][\w$-]*/.exec(cuerpo.slice(i));
     if (!nombre) throw new Error(`prop ilegible en la etiqueta: ${cuerpo.slice(i, i + 60)}`);
     i += nombre[0].length;
@@ -346,5 +370,35 @@ describe("SLT-160 — guardia: buscadores con `escaneo` (R609)", () => {
   it("SLT-205: un `{...props}` en la apertura da rojo: no se puede verificar", () => {
     expect(() => pasaEscaneo(`<BuscadorFiltros {...resto} onChange={f} />`)).toThrow(CON_SPREAD);
     expect(() => buscadores(`<BuscadorFiltros onChange={f} {...{ escaneo: true }} />`)).toThrow(CON_SPREAD);
+    expect(() => buscadores(`<BuscadorFiltros {...barraTiendaZq7} />`)).toThrow(CON_SPREAD);
+    expect(() => buscadores(`<BuscadorFiltros {...{ ...barraTienda, escaneo: true }} />`)).toThrow(CON_SPREAD);
+    // El verificado se acepta solo si va suelto, y no cuenta como escaneo.
+    expect(ningunoEscanea(`<BuscadorFiltros {...barraTienda} onChange={f} />`)).toBe(true);
   });
+
+  // SLT-206 «filtro Tienda compartido» reparte `{...barraTienda}` sobre dos excepciones; se acepta
+  // porque su tipo se lee aquí y no tiene `escaneo` (TypeScript impide que el hook devuelva más).
+  it.each(Object.entries(SPREADS_VERIFICADOS))(
+    "SLT-205: spread verificado `{...%s}`: su tipo no lleva `escaneo` y sale de donde dice",
+    (nombre, { archivo, tipo, origen }) => {
+      const codigo = quitarComentarios(leer(archivo));
+      const inicio = codigo.search(new RegExp(`\\binterface\\s+${tipo}\\s*\\{`));
+      expect(inicio, `${archivo} ya no declara ${tipo}`).toBeGreaterThanOrEqual(0);
+      const llave = codigo.indexOf("{", inicio);
+      const cuerpo = codigo.slice(llave + 1, finDeLlaves(codigo, llave));
+      expect(cuerpo, `${tipo} vacío`).toMatch(/\w+\s*:/); // no vacuidad
+      expect(cuerpo, `${tipo} lleva escaneo: el spread ya no se puede aceptar`).not.toMatch(/\bescaneo\b/);
+
+      const usuarios = [...fuentesTsx(path.join(RAIZ, "app")), ...fuentesTsx(path.join(RAIZ, "components"))].filter(
+        (ruta) =>
+          buscadores(readFileSync(ruta, "utf8")).some((apertura) => propsDeApertura(apertura).has(`...${nombre}`)),
+      );
+      expect(usuarios.length, `nadie reparte {...${nombre}}: sácalo de SPREADS_VERIFICADOS`).toBeGreaterThan(0);
+      for (const ruta of usuarios) {
+        expect(quitarComentarios(readFileSync(ruta, "utf8")), `${ruta}: {...${nombre}} no sale de ${archivo}`).toMatch(
+          origen,
+        );
+      }
+    },
+  );
 });
