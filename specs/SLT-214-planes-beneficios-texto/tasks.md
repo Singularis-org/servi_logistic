@@ -52,7 +52,7 @@ Orden: T1 → T2 → (T3, T4, T5 [P]) → T6 → (T7, T8 [P]) → T9 → T10 →
   - `lineasDeCambioDelPlan` con `beneficios`.
   - **Hecho:** un test en `tests/unit/planes/beneficios.test.ts` pasa `diferenciasDelPlan` por
     `lineasDeCambioDelPlan` y obtiene «Se agrega: …», «Se quita: …» o la línea de solo íconos u orden.
-- [ ] **T7 [P]. Componente compartido** (`components/shared/planes/BeneficiosDelPlan.tsx`). R5, R21. Depende de T1.
+- [x] **T7 [P]. Componente compartido** (`components/shared/planes/BeneficiosDelPlan.tsx`). R5, R21. Depende de T1.
   - **Hecho:** `tests/components/BeneficiosDelPlan.test.tsx` cubre:
     - el ícono `aria-hidden` y el texto visible;
     - con 3 beneficios, sin botón;
