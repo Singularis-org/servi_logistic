@@ -5,6 +5,7 @@ import type {
   CuentaNombrada,
   IdsDeDocumentos,
   ILibroCajaAutoriaRepository,
+  MarcasDeLaPlataforma,
   MovimientoDeCajaParaAutoria,
 } from "@/lib/interfaces/repositories/ILibroCajaAutoriaRepository";
 import type { ComoDTO } from "@/lib/types/libro-caja-autoria";
@@ -32,6 +33,7 @@ type Cliente = Pick<
   | "cobroTiendaAnulacion"
   | "rechazoTiendaCobroAnulacion"
   | "ajusteCajaAnulacion"
+  | "pagoPlataformaConfirmacion" // SLT-143 (design §5.1): la marca de la plataforma
 >;
 
 const PERSONA = { select: { id: true, ...NOMBRE_USUARIO_SELECT } } as const;
@@ -284,6 +286,23 @@ export class LibroCajaAutoriaRepository implements ILibroCajaAutoriaRepository {
             : [[f.origenId, { motivo: f.descripcion, por: nombreONulo(f.registrador), fecha: f.createdAt }] as const],
         ),
       ),
+    };
+  }
+
+  async marcasDeLaPlataforma(pagoIds: readonly string[]): Promise<MarcasDeLaPlataforma> {
+    if (pagoIds.length === 0) return { registrados: new Set(), anulados: new Set() };
+    // Una sola lectura para las dos marcas: la confirmación dice si fue por fuera y si su anulación existe.
+    // Solo se leen los ids: ni quién confirmó ni quién anuló llegan a la empresa (R13, R36).
+    const cs = await this.prisma.pagoPlataformaConfirmacion.findMany({
+      where: {
+        pagoId: { in: [...pagoIds] },
+        OR: [{ porFuera: true }, { anulaciones: { some: {} } }],
+      },
+      select: { pagoId: true, porFuera: true, anulaciones: { select: { id: true } } },
+    });
+    return {
+      registrados: new Set(cs.filter((c) => c.porFuera).map((c) => c.pagoId)),
+      anulados: new Set(cs.filter((c) => c.anulaciones.length > 0).map((c) => c.pagoId)),
     };
   }
 }

@@ -178,4 +178,48 @@ describe("columnas de descarga del libro de caja", () => {
     expect(sin.aQuien).toBe("—");
     expect(sin.registro).toBe("—");
   });
+
+  // SLT-143 (design §5, §5.1; R13, R36) — la marca de la plataforma llega a la descarga por `textoRegistro`, con
+  // el literal de la decisión del humano y sin el prefijo «Automático · ». Los textos van escritos a mano.
+  it("SLT-143 R13/R36: «Registró» dice «Registrado por la plataforma» o «Anulado por la plataforma», sin nombre ni id", () => {
+    const PAGO: WalletMovimientoDTO = {
+      ...MOV,
+      categoria: "egreso_pago_plataforma",
+      origenId: null,
+      descripcion: "Transferencia del día",
+      registradoPor: "5a5a5a5a-1111-4222-8333-444444444444",
+      dueno: "propio",
+    };
+    const autoria = (accion: "plataforma" | "plataforma_anulacion"): AutoriaDeFilaDTO => ({
+      movimientoId: PAGO.id,
+      aQuien: { nombre: null, beneficiario: null, cuenta: null, esEmpresa: false },
+      registro: { nombre: null, automatico: { accion, por: null } },
+      registradoEl: { fecha: "2026-11-19", hora: "10:30" },
+      como: null,
+      anulacion: null,
+    });
+
+    const registrado = filaDescargaMovimientoCaja(PAGO, autoria("plataforma"));
+    expect(registrado.registro).toBe("Registrado por la plataforma");
+    // R13: la referencia del superadmin, en «Detalle», como la de un pago desde la wallet.
+    expect(String(registrado.detalle)).toContain("Transferencia del día");
+
+    const contra: WalletMovimientoDTO = {
+      ...PAGO,
+      tipo: "ingreso",
+      categoria: "ingreso_ajuste",
+      origenId: "0a000000-0000-4000-8000-000000000001",
+      descripcion: "Anulación de: Transferencia del día",
+    };
+    expect(filaDescargaMovimientoCaja(contra, autoria("plataforma_anulacion")).registro).toBe("Anulado por la plataforma");
+
+    for (const fila of [registrado, filaDescargaMovimientoCaja(contra, autoria("plataforma_anulacion"))]) {
+      for (const celda of Object.values(fila)) {
+        if (typeof celda === "string") {
+          expect(celda).not.toContain("Automático");
+          expect(celda).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+        }
+      }
+    }
+  });
 });
