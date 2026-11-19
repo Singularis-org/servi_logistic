@@ -73,6 +73,7 @@ vi.mock("@/hooks/use-etiquetas-geograficas", async () => {
 
 import { listarOrderStatusOk } from "@/tests/fixtures/order-status-catalogo";
 import { RecepcionSateliteModule } from "@/app/(app)/recepcion-satelite/_components/RecepcionSateliteModule";
+import { listarOrderStatus } from "@/lib/actions/order-status";
 
 function makeOrden(id: string, numRemision: string): RecepcionSateliteDTO {
   return {
@@ -153,6 +154,7 @@ async function abrirVistas(user: ReturnType<typeof userEvent.setup>) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(listarOrderStatus).mockImplementation(async () => listarOrderStatusOk());
   paginadoMock.mockImplementation(async (input: Llamada) => ({
     status: "ok",
     items: input.sortBy === "num_remision" ? POR_REMISION : PRECARGADA,
@@ -366,6 +368,17 @@ describe("SLT-210 · R1414 — sin catálogo no se presenta ninguna vista como i
   it("con la geografía caída el botón no aplica y no sale «Incompleta»", async () => {
     const user = userEvent.setup();
     renderModulo(null);
+    await abrirVistas(user);
+
+    expect(await screen.findByRole("button", { name: "Aplicar «Por devolver de hoy»" })).toBeDisabled();
+    expect(screen.queryByText("Incompleta")).toBeNull();
+  });
+
+  it("y con el catálogo de ESTADOS vacío tampoco (la lectura falló): no aplica y no sale «Incompleta»", async () => {
+    const user = userEvent.setup();
+    // El fetcher de la satélite degrada cualquier respuesta que no sea `ok` a lista vacía.
+    vi.mocked(listarOrderStatus).mockResolvedValue({ status: "forbidden" } as never);
+    renderModulo();
     await abrirVistas(user);
 
     expect(await screen.findByRole("button", { name: "Aplicar «Por devolver de hoy»" })).toBeDisabled();
