@@ -607,3 +607,11 @@ Verificación (`NODE_OPTIONS=--max-old-space-size=8192`, tras `pnpm exec prisma 
   `servi_logistic_slt143`: 21/21, 0 skipped.
 
 Veredicto B1: el DTO del libro ya no lleva el id de nadie; el test lo prueba en las cinco lecturas y mata la mutación.
+
+## CI de #250 — merge con dev (2026-11-19)
+
+`estatico` salía rojo en el merge con `dev`: 19e8ed10 («reutilizar el superadmin existente») quitó
+`exigirSinSuperadmin`. Se mezcló `origin/dev` y `pago-plataforma-por-fuera.test.ts` pasa a usar
+`obtenerOCrearSuperadmin`, como el test de SLT-60: solo borra el superadmin si lo creó él. Aplicada
+`20261120120000_plan_beneficio` (SLT-214, que entró antes) en las dos bases de la feature. Typecheck exit 0, lint 0;
+`pago-plataforma-por-fuera` y `migracion-slt143-ida-y-vuelta`: 27 de 27 contra servi_logistic_slt143.

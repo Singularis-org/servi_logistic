@@ -39,7 +39,7 @@ import { tomarTarifaGlobal, type TarifaGlobalBajoLock } from "./_fixtures/cobro-
 import { limpiar459, sembrarPersonas459, type Personas459 } from "./_fixtures/escrituras-459";
 import { cerrarFacturaEnCurso, facturaEnCurso, type FacturaCerrada } from "./_fixtures/factura-cerrada";
 import { capturar, revertida, sqlstateDe } from "./_fixtures/planes";
-import { exigirSinSuperadmin, idDeRol, insertarUsuario, tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
+import { idDeRol, insertarUsuario, obtenerOCrearSuperadmin, tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
 
 // SLT-42 (T5.4): la zona del país de la empresa es la de CR, como antes (molde `pago-plataforma-confirmacion.test.ts`).
 vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
@@ -89,6 +89,8 @@ let sostenedor: PrismaClient;
 let tarifaGlobal: TarifaGlobalBajoLock | undefined;
 let soltarSuperadmin: () => Promise<void> = async () => {};
 let superadminId: string | null = null;
+// En una base de desarrollo que ya tiene su superadmin, se usa ese y no se borra al acabar.
+let superadminPropio = false;
 let nombreSuperadmin = "";
 let geo: { provinciaId: string; cantonId: string; distritoId: string };
 let estatusInicialId: string;
@@ -360,14 +362,17 @@ describeSiHayBase("SLT-143 — el pago hecho por fuera y la anulación de un pag
     app = conAislamientoPorEmpresa(base, async () => null);
 
     soltarSuperadmin = await tomarLockDeSuperadmin();
-    await exigirSinSuperadmin(base);
-    superadminId = await bajoLockDeEscrituraReal(() =>
-      base.$transaction(async (tx) => {
-        const u = await insertarUsuario(tx, await idDeRol(tx, "superadmin"), null);
-        if (!u.desenlace.ok) throw new Error(`no se sembró el superadmin: ${JSON.stringify(u.desenlace)}`);
-        return u.id;
-      }),
+    const superadminDelCaso = await obtenerOCrearSuperadmin(base, () =>
+      bajoLockDeEscrituraReal(() =>
+        base.$transaction(async (tx) => {
+          const u = await insertarUsuario(tx, await idDeRol(tx, "superadmin"), null);
+          if (!u.desenlace.ok) throw new Error(`no se sembró el superadmin: ${JSON.stringify(u.desenlace)}`);
+          return u.id;
+        }),
+      ),
     );
+    superadminId = superadminDelCaso.id;
+    superadminPropio = superadminDelCaso.propio;
     nombreSuperadmin = nombreCompletoUsuario(
       await base.usuario.findUniqueOrThrow({ where: { id: superadminId }, select: NOMBRE_USUARIO_SELECT }),
     );
@@ -427,7 +432,8 @@ describeSiHayBase("SLT-143 — el pago hecho por fuera y la anulación de un pag
       await limpiar459(base, A?.p ?? null);
       await limpiar459(base, B?.p ?? null);
       await limpiar459(base, C?.p ?? null);
-      if (superadminId !== null) {
+      // Solo el superadmin propio: el que ya tenia la base no se borra.
+      if (superadminId !== null && superadminPropio) {
         const id = superadminId;
         await bajoLockDeEscrituraReal(() => base.$executeRawUnsafe(`DELETE FROM "usuario" WHERE "id" = $1`, id));
       }
