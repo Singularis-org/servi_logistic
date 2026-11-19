@@ -103,3 +103,50 @@ anotarlo en el comentario de `barrerComprometidosHuerfanos`.
 con M3. Las otras dos partes están bien: el aviso de CI usa señales que el artefacto trae de verdad (comprobado con
 una caída real), mantiene el rojo y no cambia nada sin caída. Conviene resolver m1 en la misma vuelta, porque es
 barato y afecta justo a quien toque este script.
+
+## Vuelta 2 (acotada a e96fb6f5..389d50d7)
+
+### Checklist
+- [x] **B1 resuelto.** Las dos cosas que conectan C02 con el barrido viven en `_escenario.ts`:
+  `escenarioConfirmadoDe(marca)` (con `preparar` = `prepararMundo` + barrido, y `sembrar` con la marca) y
+  `ESCENARIO_C02`. Las prueba `corte-concurrencia-restos.test.ts` con una marca propia, que nunca siembra con
+  `MARCA_C02`. C02 queda atado por una guardia de texto sobre su código sin comentarios, más el control
+  `ESCENARIO_C02.marca === MARCA_C02`. Repetí las mutaciones yo mismo contra `servi_slt204_desechable`, restaurando
+  con `git checkout --`:
+  - M3a: el `beforeAll` de C02 usa `prepararMundo()` (sin barrido). Resultado: `2 failed | 4 passed`, por las dos guardias de texto.
+  - M3b: C02 siembra con `sembrarComprometido(mundo, …)` sin marca. Resultado: `2 failed | 4 passed`.
+  - M3c: `preparar` sin `barrerComprometidosHuerfanos`. Resultado: `2 failed | 4 passed`, por «el preparar SIGUIENTE barre…» y el conteo.
+  - M3d: `sembrar` sin `{ marca }`. Resultado: `2 failed | 4 passed`.
+  Las cuatro dan rojo. La línea base en HEAD da `Test Files 3 passed (3)`, `Tests 32 passed (32)`, sin skips.
+- [x] **m1 resuelto.** `TRAZA_DE_CAIDA` va anclada al principio de línea (`/m`), admite ANSI o sangría delante y
+  exige `(Caused by: )?Error: `. En la guardia hay un caso negativo: la frase dentro de un AssertionError o de un diff,
+  «Service Worker», `[vitest-pool]: Worker forks started` y la frase a media línea. Hay también un positivo con ANSI.
+  **Reproducción real:** un archivo temporal compara el aviso de `lineaDeCaida` de cinco formas con vitest 4.1.10:
+  `toBe`, `toContain`, `toEqual` con diff, `throw new Error(aviso)` y `console.log`. El log trae la frase 5 veces,
+  y `unir` da `codigo=0` y «total: 0 filas fuera de su transacción». Lo borré después y `git status` quedó limpio.
+  **Positivo real:** los dos logs de caída reales que ya tenía son la reproducción SIGKILL de la vuelta 1 y el run 2
+  de T7 de SLT-188. Pasados por `unir` solo con el log (sin JSON), siguen detectando: `codigo=1`, y las líneas
+  `Error: [vitest-pool]: Worker forks emitted error.` y `Caused by: Error: Worker exited unexpectedly` casan con el ancla.
+  No repetí una caída SIGKILL nueva porque el clasificador de permisos denegó el archivo temporal con
+  `process.kill`. Los dos logs reales cubren el formato.
+- [x] **m2 resuelto.** Con caída y 0 filas, la línea del shard dice «0 filas sueltas, pero el shard quedó incompleto:
+  ese 0 no mide». El test «worker caido con 0 filas» comprueba que aparece esa línea y que no aparece la de siempre.
+- [x] **m4 resuelto.** La bitácora dice ahora «medido con vitest 4.1.10 en local, T7 de SLT-188, y reproducido por la review».
+- [x] `tsc --noEmit` y eslint sobre los 5 archivos tocados: limpios. `tamano-pr`: 6/40 archivos, 126/1000 de
+  producción, 399/3000 de tests.
+- [x] Sin regresiones en el rango: el resto del diff es la bitácora y la ficha.
+
+### Hallazgos
+- **menor (n1):** la conexión de C02 se vigila con una guardia de texto, no por comportamiento. Era una de las dos vías
+  aceptadas en B1 y muere con M3a y M3b. Si alguien renombra la variable `mundo` en C02, la guardia da rojo: es un
+  falso rojo, ruidoso y no silencioso, así que vale.
+- **menor (n2):** un test que lance a propósito `new Error("Worker exited unexpectedly")` sin capturarlo imprimiría
+  `Error: Worker exited unexpectedly` a principio de línea y contaría como caída. Es teórico: hoy ningún test lo hace.
+  Lo anoto, no pide cambio.
+- **operativo:** mi M3d sembró empresas sin marca en `servi_slt204_desechable`, y el barrido no las recoge. Antes de
+  reutilizar esa base, hay que purgarla o recrearla (el implementer la había dejado con `organizaciones=0`).
+- m3 y m5 de la vuelta 1 siguen como estaban (son menores y opcionales). m3 queda en parte cubierto: el comentario
+  fija ahora «Medido con vitest 4.1.10».
+
+### Veredicto
+**OK.** B1, m1, m2 y m4 están resueltos y lo verifiqué ejecutando las mutaciones y la reproducción. No hay bloqueantes.
