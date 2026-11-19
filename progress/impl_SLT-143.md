@@ -393,3 +393,68 @@ En `tests/integration/db/pago-plataforma-por-fuera.test.ts`, salvo donde se dice
 
 Veredicto T2 y T3.1/T3.3: servidor y marca hechos, 247 tests verdes y 5/5 mutaciones muertas; queda rojo
 `superficie-de-uso` hasta T4.4.
+
+## T4 — Las pantallas del superadmin (frontend_dev, 2026-11-19)
+
+### Archivos
+
+- `app/(app)/plataforma/empresas/[organizacionId]/_components/RepartoEntreFacturas.tsx` (nuevo, T4.1): la tabla del
+  reparto y su pie, sacados de `PagosPorConfirmar.tsx`. Recibe los errores ya mezclados (cliente + servidor).
+- `.../_components/PagosPorConfirmar.tsx` (T4.1, T4.3): usa `RepartoEntreFacturas`; exporta `Comprobante` (con
+  `Pick<…, "id" | "tieneComprobante">`) para que «Pagos confirmados» abra el comprobante igual (R20).
+- `.../_components/RegistrarPagoPorFuera.tsx` (nuevo, T4.2) y `.../_components/PagosConfirmados.tsx` (nuevo, T4.3).
+- `.../page.tsx` (T4.4): `<PagosConfirmados>` debajo de `<PagosPorConfirmar>`, con `registrarPagoPorFueraAction`,
+  `anularPagoConfirmadoAction` y `verComprobantePagoPlataformaAction` ligadas con `.bind(null, organizacionId)`.
+  Cierra la guardia `superficie-de-uso`.
+- Tests: `tests/components/RegistrarPagoPorFuera.test.tsx` (nuevo), `tests/components/PagosConfirmados.test.tsx`
+  (nuevo), `tests/integration/plataforma-empresa-detalle-page.test.tsx` (ampliado). `PagosPorConfirmar.test.tsx`
+  sin tocar.
+
+### Decisiones fuera del spec
+
+1. **La zona de la empresa (P5) en `page.tsx`:** `leerZona` = `conEmpresa(organizacionId, () => zonaDelBorde())`,
+   las dos piezas que ya existen en `lib/` (sin tocar `lib/`), en el mismo `Promise.all` y aislada como las otras
+   lecturas. Si falla, `zona = null`: el campo de fecha va vacío y sin `min`/`max`, y la fecha la decide el servidor
+   (vacía = hoy). El test de la página comprueba que la zona se lee dentro del contexto de la empresa de la URL.
+2. **Fecha en el cliente:** con zona, la ventana `{ min, max }` se congela al abrir con
+   `primerDiaMovimientoAdmisible(zona)` y `fechaCalendario(ahora, zona)`, el valor inicial es hoy en esa zona y al
+   enviar se valida con `problemaDeFechaMovimiento(fecha, zona)` (los mismos textos que el servidor). El campo no
+   lleva `required`: el contrato admite fecha vacía.
+3. **Monto en el cliente:** `montoPagoPorFueraSchema` de `lib/types/pago-plataforma.ts` (la misma pieza que el
+   servidor); el reparto solo se pinta y se propone con un monto válido. «Registrar pago» se deshabilita sin monto
+   válido o con el reparto inválido (R5). La referencia vacía se avisa al enviar, sin llamar a la action.
+4. **El placeholder de la referencia** es el de SL-45 (`DESCRIPCION_EGRESO_PLACEHOLDER.pago_plataforma` de
+   `wallet-labels.ts`), importado, no copiado. El comprobante usa `ComprobanteCampo` de la wallet (mismo `accept` y
+   tope).
+5. **El reparto que viaja:** las facturas con monto escrito (también `"0.00"`; el servicio quita los ceros), como
+   al confirmar en SLT-60.
+6. **«Registrar pago hecho por fuera…» no se ofrece si la lectura falló** (`datos = null`): no hay facturas que
+   repartir. Con `validation_error` sin clave `motivo`, el diálogo de anular pone el primer error bajo «Motivo».
+
+### Tests (salida resumida)
+
+- `vitest --run` de los 4 archivos de T4 (`RegistrarPagoPorFuera` 17, `PagosConfirmados` 18,
+  `PagosPorConfirmar` 20, `plataforma-empresa-detalle-page` 46): **4 archivos, 101 tests verdes**.
+- `eslint` sobre los 8 archivos tocados: exit 0. `tsc --noEmit` (tras `prisma generate` y `next typegen`): exit 0.
+- `vitest run guard`: 5402 passed, 3 failed, 1 skipped. `superficie-de-uso` ya en verde (T4.4 liga las dos
+  actions). Los 3 rojos:
+  - `guard-dependencias-declaradas-presentes` (conocido del entorno: `node_modules` enlazado);
+  - `descargas-por-registro` «ninguna pantalla usa directamente…» y `sin-estados-retirados`: **timeout de 20 s** del
+    entorno (recorren el árbol entero). Solos: `sin-estados-retirados` verde; `descargas-por-registro` verde con
+    `--testTimeout=120000` (9/9). No son del cambio.
+
+Veredicto T4: las dos pantallas del superadmin hechas y ligadas en la página, 101 tests de T4 verdes.
+
+### Mapa R → test (T4)
+
+- R4 → `RegistrarPagoPorFuera` «SLT-143 R4 …» (propuesta y recálculo); `PagosConfirmados` «R17 … abre el formulario».
+- R5 → `RegistrarPagoPorFuera` «SLT-143 R5 …» (botón deshabilitado; errores del servidor por factura y del pie).
+- R7 → `RegistrarPagoPorFuera` «SLT-143 R7 …» (monto, referencia, errores de servidor por campo, ventana P5).
+- R8, R10 → `RegistrarPagoPorFuera` «R1, R8, R10, R19 — el envío» (FormData, comprobante, misma clave).
+- R16 → `PagosConfirmados` «SLT-143 R16 …»; página «R16: la sección va justo debajo…», «R16: sin confirmados…».
+- R17 → `PagosConfirmados` «SLT-143 R17 …»; `RegistrarPagoPorFuera` «SLT-143 R17 …»; página «R17, P5 …».
+- R18 → `PagosConfirmados` «SLT-143 R18 …»; página «R18: si la lectura da …».
+- R19 → `RegistrarPagoPorFuera` «manda el FormData … refresca tras `ok`» y «dos envíos …» (`ya_registrado`);
+  `PagosConfirmados` «con motivo … refresca tras `ok`» y los tres avisos.
+- R20 → `PagosConfirmados` «SLT-143 R20 …».
+- R21, R23–R25 (pantalla) → `PagosConfirmados` «SLT-143 R19, R21, R23–R25 — anular»; página «R21: «Anular…» …».

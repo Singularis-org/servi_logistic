@@ -93,13 +93,13 @@
 
 ## T4 — Las pantallas del superadmin (depende de T2.4)
 
-- [ ] **T4.1** `RepartoEntreFacturas.tsx`, sacado de `PagosPorConfirmar.tsx`. **Hecho:**
+- [x] **T4.1** `RepartoEntreFacturas.tsx`, sacado de `PagosPorConfirmar.tsx`. **Hecho:**
   `tests/components/PagosPorConfirmar.test.tsx` en verde, sin cambiar sus afirmaciones.
-- [ ] **T4.2** [P] `RegistrarPagoPorFuera.tsx` y `tests/components/RegistrarPagoPorFuera.test.tsx`. **Hecho:**
+- [x] **T4.2** [P] `RegistrarPagoPorFuera.tsx` y `tests/components/RegistrarPagoPorFuera.test.tsx`. **Hecho:**
   verde (R4, R5, R7, R17, R19).
-- [ ] **T4.3** [P] `PagosConfirmados.tsx` y `tests/components/PagosConfirmados.test.tsx`. **Hecho:** verde
+- [x] **T4.3** [P] `PagosConfirmados.tsx` y `tests/components/PagosConfirmados.test.tsx`. **Hecho:** verde
   (R16–R20).
-- [ ] **T4.4** `page.tsx`: `<PagosConfirmados>` debajo de `<PagosPorConfirmar>`, con las actions ligadas. Se amplía
+- [x] **T4.4** `page.tsx`: `<PagosConfirmados>` debajo de `<PagosPorConfirmar>`, con las actions ligadas. Se amplía
   `tests/integration/plataforma-empresa-detalle-page.test.tsx`. **Hecho:** verde (R16, R18).
 
 ## T5 — E2E (depende de T3 y T4)
