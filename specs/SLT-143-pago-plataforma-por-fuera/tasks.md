@@ -81,7 +81,7 @@
 - [ ] **T3.1** `lib/types/estado-cuenta.ts` (`"plataforma"` y `"plataforma_anulacion"`), `ILibroCajaAutoriaRepository`
   y `LibroCajaAutoriaRepository` (`marcasDeLaPlataforma`), y en `LibroCajaAutoriaService`, `registro` y `anulacion`
   (design §5, §5.1).
-- [ ] **T3.2** El archivo de textos, `components/shared/wallet/detalle-movimiento-panel-labels.ts`:
+- [x] **T3.2** El archivo de textos, `components/shared/wallet/detalle-movimiento-panel-labels.ts`:
   - las dos entradas de `ACCION_AUTOMATICA_LABEL`, «Registrado por la plataforma» y «Anulado por la plataforma»;
   - `textoRegistro` sin «Automático» para las dos;
   - la constante `PLATAFORMA_ANULO = "la plataforma"`.

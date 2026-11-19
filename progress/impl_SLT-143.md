@@ -265,3 +265,24 @@ resuelve.
 
 Veredicto T1: la base está hecha y probada (migración, down, ida y vuelta, SLT-60 intacta); typecheck y 3
 guardias quedan rojos por el cliente Prisma compartido y la falta de `node_modules`, no por T1.
+
+## T3.2 — textos de la plataforma en la wallet (frontend_dev, 2026-11-19)
+
+Archivos:
+- `components/shared/wallet/detalle-movimiento-panel-labels.ts` (modificado): `ACCION_AUTOMATICA_LABEL.plataforma`
+  «Registrado por la plataforma», `.plataforma_anulacion` «Anulado por la plataforma»; `textoRegistro` sin
+  «Automático · » para las dos; `PLATAFORMA_ANULO = "la plataforma"`.
+- `tests/unit/components/detalle-movimiento-panel-labels-plataforma.test.ts` (nuevo).
+
+Mapa:
+- R13 → `detalle-movimiento-panel-labels-plataforma.test.ts` «R13 — un pago registrado por fuera…»
+- R36 → mismo archivo, «R36 — el contra-asiento…» y «R36 — la línea de anulación del pago original…»
+
+Salida:
+- `eslint` de los dos archivos: exit 0.
+- `vitest --run` del test nuevo + DetalleMovimientoPanel, WalletLibroCaja458E, rechazo-nombre-466-app,
+  wallet-labels, rechazo-nombre-466.guardia: **6 archivos, 93 passed**.
+- Typecheck: depende de T3.1 (el `Record` está tipado por `RegistroDTO["automatico"]["accion"]`, que aún no
+  incluye `"plataforma"` ni `"plataforma_anulacion"` en `lib/types/estado-cuenta.ts`).
+
+Veredicto T3.2: textos y test hechos y verdes; el typecheck cierra cuando llegue T3.1.
