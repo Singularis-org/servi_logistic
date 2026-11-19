@@ -47,9 +47,10 @@ test.beforeAll(async ({ browser }) => {
 
   empresa = await sembrarEmpresa(dueno, "A", userAgent, [distritos[0]]);
 
-  // El usuario cuya cédula se corrige: rol `admin` (no pide zona ni vehículo), tipo «cedula» de CR.
+  // El usuario cuya cédula se corrige: rol `admin` (no pide zona ni vehículo), tipo «Cédula física» de CR (9 dígitos).
   const tipo = await dueno.tipoIdentificacion.findFirstOrThrow({
-    where: { paisId: "CR", clave: "cedula" },
+    // La clave del catálogo por país (SLT-42): `cedula` es el `value` heredado; la clave es `cedula_fisica`.
+    where: { paisId: "CR", clave: "cedula_fisica" },
     select: { id: true },
   });
   const rol = await dueno.rol.findUniqueOrThrow({ where: { value: "admin" }, select: { id: true } });
