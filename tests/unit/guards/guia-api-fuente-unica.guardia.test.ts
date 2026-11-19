@@ -118,6 +118,47 @@ export function sinSeccionDeCambios(markdown: string): string {
   return [...lineas.slice(0, propio.linea), ...lineas.slice(siguiente ? siguiente.linea : lineas.length)].join("\n");
 }
 
+/**
+ * R1304: los estados de la TABLA de §6.5 «Estados que este webhook puede emitir». Por fila, la
+ * primera celda que es solo código (`` `en_reparto` ``); la columna «#» no cuenta. Se acota a la
+ * tabla a propósito: los 20 estados ya salen entre backticks en §4.7 y en la nota de §6.5, así que
+ * buscar en toda la guía no vería nunca un estado existente promovido a evento (review B2).
+ */
+export function eventosDeLaTabla65(markdown: string): { filas: number; eventos: string[] } {
+  const lineas = markdown.split(/\r?\n/);
+  const titulos = titulosDe(lineas);
+  const i = titulos.findIndex((t) => /^6\.5\s/.test(t.texto));
+  if (i === -1) return { filas: 0, eventos: [] };
+  const propio = titulos[i];
+  const siguiente = titulos.slice(i + 1).find((t) => t.nivel <= propio.nivel);
+  const seccion = lineas.slice(propio.linea + 1, siguiente ? siguiente.linea : lineas.length);
+
+  const filasTabla = seccion.filter((l) => l.trimStart().startsWith("|"));
+  // Fuera la cabecera (la primera fila) y la línea separadora `| --- |`.
+  const datos = filasTabla.slice(1).filter((l) => !/^\s*\|(\s*:?-+:?\s*\|)+\s*$/.test(l));
+  const eventos = datos.flatMap((fila) => {
+    const celdas = fila.split("|").slice(1).map((c) => c.trim());
+    const codigo = celdas.map((c) => /^`([^`]+)`$/.exec(c)).find((m) => m !== null);
+    return codigo ? [codigo[1]] : [];
+  });
+  return { filas: datos.length, eventos };
+}
+
+/** R1304: la diferencia en los DOS sentidos entre la tabla de §6.5 y la lista de eventos públicos. */
+export function desfaseTabla65(
+  markdown: string,
+  publicos: Iterable<string>,
+): { filas: number; faltanEnTabla: string[]; sobranEnTabla: string[] } {
+  const { filas, eventos } = eventosDeLaTabla65(markdown);
+  const enTabla = new Set(eventos);
+  const lista = new Set(publicos);
+  return {
+    filas,
+    faltanEnTabla: [...lista].filter((e) => !enTabla.has(e)).sort(),
+    sobranEnTabla: [...enTabla].filter((e) => !lista.has(e)).sort(),
+  };
+}
+
 /** Una ruta concreta (`/api/ordenes/api-key/orden/123`) casa con una plantilla (`.../orden/{id}`). */
 function casaConPlantilla(ruta: string, plantilla: string): boolean {
   if (ruta === plantilla) return true;
@@ -319,14 +360,46 @@ describe("R1303 / R1316 — la guía nombra cada operación de la spec, y ningun
   });
 });
 
-describe("R1304 — la guía nombra cada evento de `EVENTOS_PUBLICOS`", () => {
-  it("CONTROL DE NO-VACUIDAD: hay al menos un evento", () => {
+describe("R1304 — la tabla de §6.5 es exactamente `EVENTOS_PUBLICOS`", () => {
+  it("CONTROL DE NO-VACUIDAD: hay eventos, y la tabla de §6.5 tiene filas con estado", async () => {
     expect(EVENTOS_PUBLICOS.size).toBeGreaterThanOrEqual(1);
+    const { filas, eventos } = eventosDeLaTabla65(await cuerpoGuia());
+    expect(filas).toBeGreaterThanOrEqual(1);
+    expect(eventos.length).toBeGreaterThanOrEqual(1);
+    // Cada fila de la tabla aporta su estado: si una fila no se leyera, el conjunto se encogería.
+    expect(eventos).toHaveLength(filas);
   });
 
-  it("cada uno aparece como código en la guía", async () => {
-    const cuerpo = await cuerpoGuia();
-    expect([...EVENTOS_PUBLICOS].filter((evento) => !cuerpo.includes(`\`${evento}\``))).toEqual([]);
+  it("ninguno falta en la tabla y la tabla no trae ninguno de más", async () => {
+    const { faltanEnTabla, sobranEnTabla } = desfaseTabla65(await cuerpoGuia(), EVENTOS_PUBLICOS);
+    expect({ faltanEnTabla, sobranEnTabla }).toEqual({ faltanEnTabla: [], sobranEnTabla: [] });
+  });
+
+  it("MUTACION: un estado existente promovido a evento (`en_bodega_satelite`) pone rojo el caso", async () => {
+    const promovida = [...EVENTOS_PUBLICOS, "en_bodega_satelite"];
+    expect(desfaseTabla65(await cuerpoGuia(), promovida).faltanEnTabla).toEqual(["en_bodega_satelite"]);
+  });
+
+  it("MUTACION: una fila de más en la tabla de §6.5 pone rojo el caso", () => {
+    const tabla = [
+      "## 6.5 Estados que este webhook puede emitir",
+      "",
+      "| # | Estado | Nota |",
+      "| --- | --- | --- |",
+      "| 1 | `entregado` | |",
+      "| 2 | `recolectando` | |",
+      "",
+      "## 6.6 Otra cosa",
+      "",
+      "| # | Estado |",
+      "| --- | --- |",
+      "| 1 | `novedad` |",
+    ].join("\n");
+    expect(desfaseTabla65(tabla, ["entregado"])).toEqual({
+      filas: 2,
+      faltanEnTabla: [],
+      sobranEnTabla: ["recolectando"],
+    });
   });
 });
 

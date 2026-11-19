@@ -431,3 +431,31 @@ leader (`feature_list.json` no se versiona); el implementer no lo toca.
   Arreglo: `MARCA.nombre`; `guia-api-pdf.test.ts` sigue verde contra el literal del spec.
 - 3.ª corrida: `Test Files 100/100 · 100/100 · 100/100 · 71/71` y **`INIT_EXIT=0`**.
   Aviso: tamaño 34/40 archivos, aceptado por Carlos (P2).
+
+## Arreglos de review
+
+### B2 — backend_dev, 2026-11-18
+
+- **Archivo:** `tests/unit/guards/guia-api-fuente-unica.guardia.test.ts` (solo este).
+- **Cambio:** R1304 ya no busca cada evento entre backticks en toda la guía. Dos funciones puras:
+  - `eventosDeLaTabla65(texto)`: filas de la tabla de §6.5 (sin cabecera ni separador) y, por fila, la primera celda que es solo código;
+  - `desfaseTabla65(texto, publicos)`: `faltanEnTabla` y `sobranEnTabla`.
+- **Casos R1304 (4):**
+  - no-vacuidad: `EVENTOS_PUBLICOS` ≥ 1, la tabla tiene ≥ 1 fila, el conjunto extraído no está vacío y cada fila aporta su estado (12/12);
+  - igualdad en los dos sentidos contra `EVENTOS_PUBLICOS`;
+  - MUTACION (a): la lista con `en_bodega_satelite` añadido → `faltanEnTabla = ["en_bodega_satelite"]`;
+  - MUTACION (b): una tabla inyectada con `recolectando` de más → `sobranEnTabla = ["recolectando"]` (y la tabla de §6.6 no se cuela).
+- **Verde:** `con-desechable … servi_slt80_desechable -- pnpm exec vitest run tests/unit/guards/guia-api-fuente-unica.guardia.test.ts`
+  → `Test Files 1 passed (1) · Tests 20 passed (20) · EXIT=0`.
+- **Mutación real, a mano:** `sed -i '91i\  "en_bodega_satelite",' lib/types/webhook-eventos.ts` y la misma guardia:
+  ```
+  Test Files  1 failed (1)
+       Tests  1 failed | 19 passed (20)
+  FAIL ... R1304 — la tabla de §6.5 es exactamente `EVENTOS_PUBLICOS` > ninguno falta en la tabla y la tabla no trae ninguno de más
+  +   "faltanEnTabla": [
+  +     "en_bodega_satelite",
+  EXIT=1
+  ```
+  Restaurado con `git checkout -- lib/types/webhook-eventos.ts`; `git status --short lib/` vacío.
+- **Typecheck:** `pnpm run typecheck` → `TC_EXIT=0`. **Lint:** `pnpm exec eslint <guardia>` → `LINT_EXIT=0`.
+- **Veredicto:** B2 cerrado; la guardia de R1304 se pone roja con un estado existente promovido a evento.
