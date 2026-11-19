@@ -38,7 +38,7 @@ arreglo se hace en los dos dueños de la selección, con el MISMO modelo (el de 
   la página visible. Si la búsqueda nueva no trae ninguna fila accionable (o trae cero), la barra
   desaparece aunque haya órdenes marcadas de búsquedas anteriores.
 - `OrdenesModule.tsx:432-434`: desmarcar el «seleccionar todo» del encabezado vacía la selección
-  ENTERA (asimetría pedida por un humano). Ver P1.
+  ENTERA (asimetría pedida por un humano). Cambia por D6.
 - `OrdenesListado.tsx:1429` + `:628-631` + `:599-606`: la recepción por escaneo («Recibir paquete»)
   termina en `handleSuccess` → `revalidarTablas` → `resetSeleccion`, o sea que recibir un paquete
   también vacía lo marcado, aunque no es una acción sobre la selección.
@@ -83,7 +83,7 @@ desde fuera, `listarIdsVigentesBodega` (sin cambios de servidor: hoy acepta llam
 ### Lo que NO entra
 
 - Guardar la selección al salir de la pantalla o recargar: vive en memoria de la pantalla.
-- Una lista o panel para VER cuáles son las marcadas que no están a la vista (ver P2).
+- Una lista o panel para VER cuáles son las marcadas que no están a la vista (D7).
 - Cambiar cómo informa cada modal una orden que el servidor rechaza.
 - Tablas que no son de órdenes, y las pantallas sin casilla del inventario.
 - Cambios de servidor, esquema o permisos.
@@ -97,6 +97,9 @@ desde fuera, `listarIdsVigentesBodega` (sin cambios de servidor: hoy acepta llam
 | D3 | Se vacía con «Limpiar» y tras una acción en lote con éxito | Leader, 2026-11-19 | R1507, R1508 |
 | D4 | «Recibir paquete» no es una acción sobre la selección: revalida sin vaciar | spec_author, 2026-11-19 (del código: `OrdenesListado.tsx:1429`) | R1510 |
 | D5 | El interruptor «Eliminadas» SÍ vacía la selección: cambia el universo y la barra ofrecería «Recuperar» sobre órdenes vivas (`OrdenesListado.tsx:1336`) | spec_author, 2026-11-19 | R1511 |
+| D6 (P1) | Desmarcar «seleccionar todo» del encabezado en `/ordenes` solo quita lo visible; el borrado total queda en «Limpiar». Sustituye la asimetría anterior (`OrdenesModule.tsx:426-434`; el test `ordenes-module.test.tsx:263` se reescribe) | Carlos, 2026-11-19 («si es solo aprobar pues aprueb», con la recomendación del spec) | R1507, R1513 |
+| D7 (P2) | En esta ficha NO se muestra la lista de las marcadas fuera de la vista; solo su número | Carlos, 2026-11-19 | R1506 |
+| D8 (P3) | Texto del contador: «N seleccionadas · M fuera de esta búsqueda» | Carlos, 2026-11-19 | R1506 |
 
 ## Requisitos (EARS)
 
@@ -128,7 +131,7 @@ esta acción» DEBE dejar de mostrarse.
 **R1506** — MIENTRAS haya al menos una orden marcada, el sistema DEBE mostrar la barra de selección
 con el número TOTAL de marcadas, aunque el resultado visible esté vacío o no tenga ninguna fila
 seleccionable. SI alguna de las marcadas no está en el resultado visible, ENTONCES el contador DEBE
-decir además cuántas no se ven (texto propuesto: «5 seleccionadas · 3 fuera de esta búsqueda»).
+decir además cuántas no se ven, con el texto «N seleccionadas · M fuera de esta búsqueda» (D8).
 
 **R1507** — CUANDO el usuario pulse «Limpiar» en la barra de selección, el sistema DEBE desmarcar
 todas las órdenes, visibles o no. La satélite DEBE ofrecer ese botón, como `/ordenes`.
@@ -152,8 +155,8 @@ añadir a la selección solo las filas seleccionables del resultado visible y DE
 marcadas fuera de él.
 
 **R1513** — CUANDO el usuario desmarque la casilla «seleccionar todo» del encabezado, el sistema
-DEBE desmarcar las filas del resultado visible y NO DEBE desmarcar las que estén fuera de él.
-*(Pendiente de P1: en `/ordenes` invierte una decisión humana anterior.)*
+DEBE desmarcar las filas del resultado visible y NO DEBE desmarcar las que estén fuera de él;
+desmarcar todo, visible o no, es solo «Limpiar» (D6).
 
 **R1514** — En la satélite, la comprobación de vigencia de las marcadas fuera de la vista DEBE
 hacerse contra el listado de la bodega del actor SIN filtros ni búsqueda: una orden marcada en una
@@ -168,7 +171,7 @@ listado (p. ej. por un incidente o una transición) DEBE retirarse.
   (`selectable !== false`), no con `selectable(items)`; contador total + «M fuera de esta
   búsqueda»; al recibir `items`, refrescar en el `Map` las filas marcadas presentes (R1509, patrón
   «ajustar estado durante el render» o derivado, sin efecto que encadene renders); encabezado según
-  R1512/R1513 (tras P1). *Hecho:* R1500-R1506, R1509, R1512, R1513 con tests de componente en
+  R1512/R1513 (D6). *Hecho:* R1500-R1506, R1509, R1512, R1513 con tests de componente en
   `tests/unit/components/ordenes-module-seleccion-entre-busquedas.test.tsx` (marcar con `q`
   «juan», cambiar a «pedro», la marca sigue, el contador dice total y fuera de vista, la barra
   sigue con resultado vacío, la acción recibe las dos filas). Los tests `R38` y `R60` existentes
@@ -200,7 +203,7 @@ listado (p. ej. por un incidente o una transición) DEBE retirarse.
   `specs/188-deuda-170-listados-completos/requirements.md` (R19, R25, R27) «sustituido por SLT-222
   R15xx», sin borrar el texto. *Hecho:* las tres notas en el diff.
 
-Orden: T1 ∥ T3 [P]; T2 tras T1 (mismo `resetSeleccion`); T4 y T5 al final. R1513 espera a P1.
+Orden: T1 ∥ T3 [P]; T2 tras T1 (mismo `resetSeleccion`); T4 y T5 al final.
 
 ## Archivos esperados
 
@@ -232,20 +235,4 @@ con menos parámetros (ya los admite opcionales).
 
 ## Preguntas abiertas
 
-**P1 — Desmarcar «seleccionar todo» del encabezado en `/ordenes`.** (Carlos) Hoy, por un pedido
-humano anterior (`OrdenesModule.tsx:426-434`), desmarcarlo vacía TODA la selección, también lo
-marcado en otras páginas; el motivo era no dejar marcas invisibles sin forma de quitarlas. Con la
-selección acumulada entre búsquedas eso significa: buscas 3 órdenes, las marcas, haces una búsqueda
-de 20, marcas y desmarcas el encabezado, y pierdes también las 3 anteriores. **Recomendación:** que
-actúe solo sobre lo visible (R1513, como ya hace la satélite) y que el vaciado total quede en
-«Limpiar», que ahora estará siempre en la barra mientras haya algo marcado (R1506, R1507).
-Si Carlos prefiere mantener la asimetría, R1513 se reescribe para `/ordenes` y el test
-`ordenes-module.test.tsx:263` se queda como está.
-
-**P2 — ¿Hace falta ver cuáles son las marcadas que no están a la vista?** (Carlos) Con R1506 el
-contador dice cuántas hay fuera («3 fuera de esta búsqueda»), pero no cuáles. Si se escanean 30
-paquetes, puede querer revisar la lista antes de la acción. No entra en esta ficha; si lo quiere,
-es una ficha aparte (probablemente un desplegable en la barra con las remisiones marcadas).
-
-**P3 — Texto del contador.** (Carlos, en Preview) Propuesto «N seleccionadas · M fuera de esta
-búsqueda». Se ajusta sin cambiar requisitos.
+Ninguna. P1, P2 y P3 se cerraron el 2026-11-19 (D6, D7, D8).
