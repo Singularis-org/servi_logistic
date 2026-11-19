@@ -127,3 +127,43 @@ implementado es la lista `anulaciones` con `none: {}` y `some: {}`, porque el ú
 Lo demás (SQL, dinero, reparto, autorización, RLS, down, marca y tests) está bien y verificado. Tras arreglar B1,
 la vuelta 2 puede acotarse a ese diff. El merge queda condicionado además a `gate-completo` y `e2e (dinero)` en
 verde (m1).
+
+## Vuelta 2 (acotada a 3dbf86d8..bc0bd6d4)
+
+Commits: `caba3ec3` (B1), `dc01c3c7` (m2), `bc0bd6d4` (m3).
+
+### Verificación ejecutada
+| Qué | Resultado |
+|---|---|
+| `tsc --noEmit` | exit 0: no queda ningún lector de `WalletMovimientoDTO.registradoPor` |
+| `vitest` de los 31 archivos de test tocados, más `libro-caja-autoria-plataforma.test.ts` (incluye integración con base `pago-plataforma-por-fuera` y `libro-caja-filtro-a-quien`, y la guardia `wallet-sin-uuid`) | 33/33 archivos, 552/552 |
+| `eslint` de los archivos tocados | 0 errores; 6 avisos `no-unused-vars` en `wallet-detalle-movimiento.test.ts:82-89`, que ya estaban (el diff de ese archivo solo quita una línea) |
+
+### B1: cerrado
+- `registradoPor` sale del tipo `WalletMovimientoDTO` y de `toDTO`. Al quitarlo del tipo, el compilador impide que
+  otra proyección o un componente lo vuelva a mandar al cliente. Es más fuerte que anularlo para el superadmin.
+- «Registró» no se rompe: `LibroCajaAutoriaService` lee `registrado_por` con su propia consulta
+  (`LibroCajaAutoriaRepository`, `select … registradoPor`), no del DTO. Los tests de autoría, de `WalletLibroCaja458E`,
+  de la descarga y de la indemnización siguen verdes.
+- Test nuevo «R13, R36 (B1)» en `tests/integration/db/pago-plataforma-por-fuera.test.ts`:
+  - toma la respuesta JSON entera de listado, kardex, kardex con detalle, detalle del pago, detalle del
+    contra-asiento y «quiénes» como maestro de A;
+  - afirma que en ninguna está el id ni el nombre del superadmin;
+  - no es vacío: comprueba que ninguna respuesta es un error y que el pago y el contra-asiento están dentro del
+    listado y de los dos kardex.
+
+  Con la proyección de antes, el id estaría en el listado y el test caería.
+- Guardia `wallet-sin-uuid`: solo pierde el campo `registradoPor: USUARIO` del fixture, que ya no existe en el
+  tipo. Sus afirmaciones no cambian: 0 uuids en pantalla, no vacuidad (≥ 10 superficies y ≥ 3 `href` con uuid) y
+  las dos contrapruebas. No se debilita: ese uuid ya no puede llegar al cliente por tipo.
+- Los 30 fixtures ajustados solo quitan la línea `registradoPor` y no cambian ninguna afirmación.
+
+### m2 y m3: cerrados
+La bitácora (veredicto T6.3 y la fila R34) y el design (§1.1/§4.5, la lista `anulaciones` con `none`/`some`) ya
+coinciden con el código.
+
+### Pendiente (m1, sin cambios)
+Condición de merge: `gate-completo` y `e2e (dinero)` en verde en el CI del PR #250.
+
+### Veredicto vuelta 2
+**OK**: sin bloqueantes. El merge sigue condicionado a m1, el CI en verde.
