@@ -49,7 +49,8 @@ export type ActualizarUsuarioServiceResult =
   | { status: "ok"; usuario: UsuarioPublico }
   | { status: "validation_error"; fieldErrors: Record<string, string[]> } // R18: catalogo
   | { status: "forbidden" }
-  | { status: "not_found" }; // R17
+  | { status: "not_found" } // R17
+  | { status: "conflict"; campo: "email" | "cedula" }; // SLT-221 R1603: el documento ya es de otro
 
 // SL-24 (R27): activar desde `inactivo` o `bloqueado` es un alta; con el tope del rol lleno,
 // `tope_plan`. Crear y actualizar no lo necesitan: lo devuelven como `fieldErrors.rolId`.

@@ -511,102 +511,121 @@ export class UserRepository implements IUserRepository {
       if (!rol) throw new CatalogoInvalidoError("rolId", data.rolId);
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      // ═══════════════════════════════════════════════════════════════════════════════════════
-      // FICHA 362 (R7/R9) — EL ESTADO PREVIO, LEIDO ANTES DEL `UPDATE` Y DENTRO DE LA MISMA
-      // TRANSACCION.
-      //
-      // Este formulario edita a la vez el rol, la zona, la marca «se recoge en tienda» y media docena de datos
-      // personales. El registro solo se escribe para los TRES que cambian lo que la persona puede
-      // hacer o lo que se le cobra, y SOLO SI CAMBIAN DE VERDAD: editar el telefono no deja fila
-      // (el caso (b) de T3.1). Sin esta lectura previa no se puede distinguir «se mando el mismo
-      // rol otra vez» de «se cambio el rol», y la diferencia es la que hace util al registro.
-      // ═══════════════════════════════════════════════════════════════════════════════════════
-      const previo = await tx.usuario.findUnique({
-        where: { id },
-        select: {
-          rolId: true,
-          zonaId: true,
-          seRecogeEnTienda: true,
-          rol: { select: { value: true } },
-          zona: { select: { nombre: true } },
-        },
-      });
-
-      const result = await tx.usuario.updateMany({
-        where: { id },
-        data: this.toUpdateData(data), // R16: solo campos editables
-      });
-      if (result.count === 0) return null; // R17
-
-      const usuario = await tx.usuario.findUnique({ where: { id }, select: PUBLIC_SELECT });
-
-      if (previo !== null) {
-        const despues = await tx.usuario.findUnique({
+    // SLT-221 (R1603): corregir la cedula puede chocar con `usuario_cedula_key`; se traduce como en el alta.
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        // ═══════════════════════════════════════════════════════════════════════════════════════
+        // FICHA 362 (R7/R9) — EL ESTADO PREVIO, LEIDO ANTES DEL `UPDATE` Y DENTRO DE LA MISMA
+        // TRANSACCION.
+        //
+        // Este formulario edita a la vez el rol, la zona, la marca «se recoge en tienda» y media docena de datos
+        // personales. El registro solo se escribe para los TRES que cambian lo que la persona puede
+        // hacer o lo que se le cobra, y SOLO SI CAMBIAN DE VERDAD: editar el telefono no deja fila
+        // (el caso (b) de T3.1). Sin esta lectura previa no se puede distinguir «se mando el mismo
+        // rol otra vez» de «se cambio el rol», y la diferencia es la que hace util al registro.
+        // ═══════════════════════════════════════════════════════════════════════════════════════
+        const previo = await tx.usuario.findUnique({
           where: { id },
           select: {
-            nombre: true,
-            primerApellido: true,
+            rolId: true,
+            zonaId: true,
             seRecogeEnTienda: true,
+            cedula: true, // SLT-221 R1604
             rol: { select: { value: true } },
             zona: { select: { nombre: true } },
           },
         });
-        const etiqueta = etiquetaDeEntidad("usuario", {
-          nombre: despues?.nombre ?? "",
-          primerApellido: despues?.primerApellido ?? null,
+
+        const result = await tx.usuario.updateMany({
+          where: { id },
+          data: this.toUpdateData(data), // R16: solo campos editables
         });
-        const base = { entidadTipo: "usuario" as const, entidadId: id, entidadEtiqueta: etiqueta };
-        const entradas: EntradaAccion[] = [];
-        const actor = await resolverActorCongelado(tx, actorUsuarioId);
+        if (result.count === 0) return null; // R17
 
-        // (1) EL ROL. `valorAnterior`/`valorNuevo` llevan el `RolValue` —vocabulario CERRADO de
-        // un enum del dominio—, nunca texto libre (design §1.3-e).
-        if (data.rolId !== undefined && data.rolId !== previo.rolId) {
-          entradas.push({
-            accion: "usuario_rol_cambiado",
-            ...base,
-            ...actor,
-            valorAnterior: previo.rol?.value ?? null,
-            valorNuevo: despues?.rol?.value ?? null,
+        const usuario = await tx.usuario.findUnique({ where: { id }, select: PUBLIC_SELECT });
+
+        if (previo !== null) {
+          const despues = await tx.usuario.findUnique({
+            where: { id },
+            select: {
+              nombre: true,
+              primerApellido: true,
+              seRecogeEnTienda: true,
+              cedula: true, // SLT-221 R1604
+              rol: { select: { value: true } },
+              zona: { select: { nombre: true } },
+            },
           });
-        }
-        // (2) LA ZONA. Aqui el valor es el NOMBRE de la zona, que es un catalogo cerrado de la
-        // casa, no un dato de ninguna persona.
-        if (data.zonaId !== undefined && data.zonaId !== previo.zonaId) {
-          entradas.push({
-            accion: "usuario_zona_cambiada",
-            ...base,
-            ...actor,
-            valorAnterior: previo.zona?.nombre ?? null,
-            valorNuevo: despues?.zona?.nombre ?? null,
+          const etiqueta = etiquetaDeEntidad("usuario", {
+            nombre: despues?.nombre ?? "",
+            primerApellido: despues?.primerApellido ?? null,
           });
-        }
-        // (3) SLT-94 (R8): la marca «se recoge en tienda». Hereda la decision de la Q2 de la 362
-        // (2026-09-02) sobre el `fulfillment` al que sustituye: entra al catalogo como «mueve
-        // dinero» porque decide donde nace la orden. La accion vieja
-        // `usuario_fulfillment_cambiado` queda en el enum solo para las filas historicas.
-        if (
-          data.seRecogeEnTienda !== undefined &&
-          data.seRecogeEnTienda !== previo.seRecogeEnTienda
-        ) {
-          entradas.push({
-            accion: "usuario_se_recoge_en_tienda_cambiado",
-            ...base,
-            ...actor,
-            valorAnterior: previo.seRecogeEnTienda ? "true" : "false",
-            valorNuevo: despues?.seRecogeEnTienda ? "true" : "false",
-          });
+          const base = { entidadTipo: "usuario" as const, entidadId: id, entidadEtiqueta: etiqueta };
+          const entradas: EntradaAccion[] = [];
+          const actor = await resolverActorCongelado(tx, actorUsuarioId);
+
+          // (1) EL ROL. `valorAnterior`/`valorNuevo` llevan el `RolValue` —vocabulario CERRADO de
+          // un enum del dominio—, nunca texto libre (design §1.3-e).
+          if (data.rolId !== undefined && data.rolId !== previo.rolId) {
+            entradas.push({
+              accion: "usuario_rol_cambiado",
+              ...base,
+              ...actor,
+              valorAnterior: previo.rol?.value ?? null,
+              valorNuevo: despues?.rol?.value ?? null,
+            });
+          }
+          // (2) LA ZONA. Aqui el valor es el NOMBRE de la zona, que es un catalogo cerrado de la
+          // casa, no un dato de ninguna persona.
+          if (data.zonaId !== undefined && data.zonaId !== previo.zonaId) {
+            entradas.push({
+              accion: "usuario_zona_cambiada",
+              ...base,
+              ...actor,
+              valorAnterior: previo.zona?.nombre ?? null,
+              valorNuevo: despues?.zona?.nombre ?? null,
+            });
+          }
+          // (3) SLT-94 (R8): la marca «se recoge en tienda». Hereda la decision de la Q2 de la 362
+          // (2026-09-02) sobre el `fulfillment` al que sustituye: entra al catalogo como «mueve
+          // dinero» porque decide donde nace la orden. La accion vieja
+          // `usuario_fulfillment_cambiado` queda en el enum solo para las filas historicas.
+          if (
+            data.seRecogeEnTienda !== undefined &&
+            data.seRecogeEnTienda !== previo.seRecogeEnTienda
+          ) {
+            entradas.push({
+              accion: "usuario_se_recoge_en_tienda_cambiado",
+              ...base,
+              ...actor,
+              valorAnterior: previo.seRecogeEnTienda ? "true" : "false",
+              valorNuevo: despues?.seRecogeEnTienda ? "true" : "false",
+            });
+          }
+          // (4) SLT-221 (R1604, R1605): la cedula. Excepcion DECLARADA a «ningun dato de persona en la
+          // fila» (D10): Carlos pidio el valor anterior y el nuevo. La vigila
+          // `historial-accion-sin-datos-cliente` (EXCEPCIONES_DECLARADAS).
+          if (data.cedula !== undefined && despues !== null && despues.cedula !== previo.cedula) {
+            entradas.push({
+              accion: "usuario_cedula_cambiada",
+              ...base,
+              ...actor,
+              valorAnterior: previo.cedula,
+              valorNuevo: despues.cedula,
+            });
+          }
+
+          // UNA sola llamada con las N entradas: comparten `lote_id` (R7), asi que cambiar rol y
+          // zona a la vez se lee como UN acto de dos efectos y no como dos actos sueltos.
+          // `entradas` vacio es no-op: editar solo el telefono no escribe nada.
+          await appendAccion(tx, entradas);
         }
 
-        // UNA sola llamada con las N entradas: comparten `lote_id` (R7), asi que cambiar rol y
-        // zona a la vez se lee como UN acto de dos efectos y no como dos actos sueltos.
-        // `entradas` vacio es no-op: editar solo el telefono no escribe nada.
-        await appendAccion(tx, entradas);
-      }
-
-      return usuario;
-    });
+        return usuario;
+      });
+    } catch (error) {
+      throw mapDuplicadoError(error);
+    }
   }
 
   /**
@@ -682,6 +701,7 @@ export class UserRepository implements IUserRepository {
     if (data.tipoIdentificacionId !== undefined) {
       out.tipoIdentificacionId = data.tipoIdentificacionId;
     }
+    if (data.cedula !== undefined) out.cedula = data.cedula; // SLT-221 R1601
     if (data.seRecogeEnTienda !== undefined) out.seRecogeEnTienda = data.seRecogeEnTienda; // SLT-94 R4
     if (data.zonaId !== undefined) out.zonaId = data.zonaId; // feature 24/R27
     if (data.vehiculoId !== undefined) out.vehiculoId = data.vehiculoId; // feature 21
