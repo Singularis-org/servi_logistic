@@ -34,10 +34,13 @@ import { CambiarDiaRepartoSateliteModal } from "./CambiarDiaRepartoSateliteModal
 import { filaDescargaSatelite } from "./satelite-descarga-columnas";
 import {
   FILTRO_SATELITE_VACIO,
+  ORDEN_BODEGA_INICIAL,
   filtroSinResultados,
   serializarFiltroSatelite,
   type FiltroBodegaSatelite,
+  type OrdenBodega,
 } from "./satelite-ordenes-filtros";
+import { claveDeOrden } from "@/lib/types/ordenamiento-listado";
 import {
   BODEGA_BLOQUEADA_TITULO,
   BODEGA_CIERRES_ABIERTOS_DETALLE,
@@ -117,11 +120,12 @@ export interface OrdenesBodegaPagina {
  */
 async function leerPagina(
   filtro: FiltroBodegaSatelite,
+  orden: OrdenBodega,
   page: number,
   pageSize: number,
 ): Promise<OrdenesBodegaPagina> {
   if (filtroSinResultados(filtro)) return { items: [], total: 0, pageSize };
-  const res = await listarOrdenesBodegaPaginado({ ...filtro, page, pageSize });
+  const res = await listarOrdenesBodegaPaginado({ ...filtro, ...orden, page, pageSize });
   if (res.status !== "ok") throw new Error(res.status);
   return { items: res.items, total: res.total, pageSize: res.pageSize };
 }
@@ -262,19 +266,28 @@ export function RecepcionSateliteModule({
   const [filtro, setFiltro] = useState<FiltroBodegaSatelite>({});
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(ordenesBodega.pageSize);
+  // SLT-210 (R1401/R1402): el orden vigente. Arranca en el de siempre, que es el que resolvió
+  // el Server Component para la página pre-cargada.
+  const [orden, setOrden] = useState<OrdenBodega>(ORDEN_BODEGA_INICIAL);
 
   // R45/R61: la clave de SWR lleva el filtro serializado a un ESCALAR estable, para que la
   // caché sea por combinación de filtros y dos selecciones equivalentes no refetcheen.
+  // SLT-210 (R1402): y el orden, con `claveDeOrden`: sin él, la caché serviría la página de un
+  // orden como respuesta al otro.
   const filtroKey = serializarFiltroSatelite(filtro);
+  const ordenKey = claveDeOrden(orden);
   const { data, error, mutate } = useSWR(
-    ["satelite:bodega", filtroKey, page, pageSize],
-    () => leerPagina(filtro, page, pageSize),
+    ["satelite:bodega", filtroKey, ordenKey, page, pageSize],
+    () => leerPagina(filtro, orden, page, pageSize),
     {
-      // Lo que el Server Component ya resolvió: página 1, sin filtros, tamaño de origen.
+      // Lo que el Server Component ya resolvió: página 1, sin filtros, tamaño de origen y el
+      // orden por defecto. Con otro orden NO se usa (R1402): pintaría filas en el orden viejo
+      // como si respondieran al nuevo.
       fallbackData:
         page === 1 &&
         pageSize === ordenesBodega.pageSize &&
-        filtroKey === FILTRO_SATELITE_VACIO
+        filtroKey === FILTRO_SATELITE_VACIO &&
+        ordenKey === claveDeOrden(ORDEN_BODEGA_INICIAL)
           ? ordenesBodega
           : undefined,
     },
@@ -288,6 +301,12 @@ export function RecepcionSateliteModule({
 
   function cambiarFiltro(nuevo: FiltroBodegaSatelite) {
     setFiltro(nuevo);
+    setPage(1);
+  }
+
+  /** SLT-210 (R1402): otro orden es otra secuencia del mismo conjunto: vuelve a la página 1. */
+  function cambiarOrden(nuevo: OrdenBodega) {
+    setOrden(nuevo);
     setPage(1);
   }
 
@@ -571,6 +590,7 @@ export function RecepcionSateliteModule({
           totalSinFiltros={ordenesBodega.total}
           catalogo={catalogoFiltros}
           onFiltroChange={cambiarFiltro}
+          onOrdenChange={cambiarOrden}
           cargando={cargando}
           errorCarga={error ? ERROR_CARGA : null}
           /**
@@ -609,7 +629,8 @@ export function RecepcionSateliteModule({
                     items: [],
                     total: 0,
                   })
-                : descargarDatos("listarOrdenesBodegaCompleto", { ...filtro }),
+                : // SLT-210 (R1406): el archivo sale en el orden vigente en pantalla.
+                  descargarDatos("listarOrdenesBodegaCompleto", { ...filtro, ...orden }),
               filaDescargaSatelite,
             )
           }

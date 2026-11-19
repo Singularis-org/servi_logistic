@@ -122,6 +122,16 @@ describe("SLT-165 R526 — de 25 en 25 en el teléfono", () => {
   });
 });
 
+describe("SLT-209 — el campo de la barra fija tiene su propia línea en el teléfono", () => {
+  it("el contenedor del campo lleva `max-md:basis-full`: «Filtros» y «Descargar» bajan a la siguiente", () => {
+    montar();
+    const campo = screen.getByRole("searchbox", { name: "Buscar gestión" });
+    const contenedor = campo.closest(".relative.flex");
+    expect(contenedor, "sin el contenedor del campo").not.toBeNull();
+    expect(contenedor!.className.split(/\s+/)).toContain("max-md:basis-full");
+  });
+});
+
 describe("SLT-165 R527 — barra fija con buscador, «Filtros» y «Descargar»", () => {
   it("fija arriba, con el placeholder «Guía, remisión o nombre» y «Descargar» dentro de la barra", () => {
     montar();

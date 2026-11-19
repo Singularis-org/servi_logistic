@@ -5,6 +5,7 @@ import { useState } from "react";
 import useSWR from "swr";
 
 import { Badge } from "@/components/ui/badge";
+import { InfoConTexto } from "@/components/shared/EstadoInfo";
 import { DataTable, type Column } from "@/components/shared/DataTable";
 import { Pagination } from "@/components/shared/Pagination";
 import { SegmentedToggle } from "@/components/shared/SegmentedToggle";
@@ -30,10 +31,6 @@ import {
   SALDOS_SATELITES_NOMBRE,
   SALDOS_SATELITES_VACIO_CON_PENDIENTE,
   SALDOS_SATELITES_VACIO_TODAS,
-  SALDO_NO_ES_CAJA_NOTA_A,
-  SALDO_NO_ES_CAJA_NOTA_B,
-  SALDO_NO_ES_CAJA_NOTA_DESTACADO,
-  SALDO_NO_ES_CAJA_TITULO,
   SIN_CONSOLIDAR,
   SIN_DATO,
   ULTIMA_RECIBIDA,
@@ -115,8 +112,11 @@ function TarjetaResumen({
   valor,
   detalle,
   tono,
+  info,
 }: Readonly<{
   rotulo: string;
+  /** SLT-209: la explicación del (i) junto al rótulo. Ausente = sin (i). */
+  info?: string;
   /** STRING del servidor. `null` = aún no cargado: se pinta «—», nunca un cero falso. */
   valor: string | null;
   detalle: string;
@@ -130,8 +130,15 @@ function TarjetaResumen({
         ? "text-warning-strong"
         : "text-foreground";
   return (
-    <div className="flex flex-1 flex-col gap-1 rounded-lg border border-border bg-card p-4">
-      <span className="text-sm text-muted-foreground">{rotulo}</span>
+    <div data-tarjeta-resumen className="flex flex-1 flex-col gap-1 rounded-lg border border-border bg-card p-4">
+      {info ? (
+        <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <span>{rotulo}</span>
+          <InfoConTexto nombre={rotulo} texto={info} />
+        </span>
+      ) : (
+        <span className="text-sm text-muted-foreground">{rotulo}</span>
+      )}
       <span className={`text-2xl font-semibold tabular-nums ${color}`}>
         {valor === null ? SIN_DATO : money(valor)}
       </span>
@@ -291,6 +298,8 @@ export function SaldosSatelitesTable({ initialData, resumen }: Readonly<SaldosSa
       <div className="flex flex-col gap-4 md:flex-row">
         <TarjetaResumen
           rotulo={RESUMEN_SATELITES.pendienteRotulo}
+          // ⚠️ La nota que impide contar dos veces: este saldo no es caja (SLT-209, antes al pie).
+          info={RESUMEN_SATELITES.pendienteInfo}
           valor={resumen?.pendienteTotal ?? null}
           detalle={
             resumen === null
@@ -391,21 +400,6 @@ export function SaldosSatelitesTable({ initialData, resumen }: Readonly<SaldosSa
         }}
         pageSizeOptions={PAGE_SIZE_OPTIONS}
       />
-
-      {/*
-        ⚠️ LA NOTA QUE IMPIDE CONTAR DOS VECES. Va aquí, bajo la tabla y sin desplegable: un
-        número de siete cifras llamado «pendiente» dentro del módulo Wallet se lee como plata por
-        cobrar, y quien lo sume al balance la habrá contado dos veces. Ese dinero entra a la caja
-        al CONCILIAR la consolidación de la bodega, no al aprobar el cierre del mensajero (SLT-73).
-      */}
-      <p role="note" className="text-xs leading-relaxed text-muted-foreground">
-        <strong className="font-semibold text-foreground">{SALDO_NO_ES_CAJA_TITULO}</strong>{" "}
-        {SALDO_NO_ES_CAJA_NOTA_A}{" "}
-        <strong className="font-semibold text-foreground">
-          {SALDO_NO_ES_CAJA_NOTA_DESTACADO}
-        </strong>
-        {SALDO_NO_ES_CAJA_NOTA_B}
-      </p>
     </div>
   );
 }

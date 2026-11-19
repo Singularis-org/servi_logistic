@@ -84,18 +84,6 @@ export function RecepcionContinuaPagina({
     <AppPage
       title="Recibir paquetes"
       description={nombreRecepcion}
-      actions={
-        <Button
-          type="button"
-          size="touch"
-          onClick={() => {
-            router.push(volverA);
-            router.refresh();
-          }}
-        >
-          Terminar recepción ({recibidas})
-        </Button>
-      }
     >
       <div className="grid gap-4 lg:grid-cols-3">
         <section
@@ -159,7 +147,22 @@ export function RecepcionContinuaPagina({
             />
           ) : null}
         </section>
-        <ContadoresEscaneo contadores={sesion.contadores} apilado />
+        {/* SLT-209 (Carlos, 2026-11-18): «Terminar recepción (n)» va DEBAJO de los contadores, a todo
+            el ancho de la columna derecha, y no en el encabezado. En el móvil queda al final del
+            resumen. 32 px desde `md` (el tamaño de escritorio de la app) y 44 px en el móvil. */}
+        <div data-columna-resumen className="flex flex-col gap-3">
+          <ContadoresEscaneo contadores={sesion.contadores} apilado />
+          <Button
+            type="button"
+            className="w-full max-md:h-11"
+            onClick={() => {
+              router.push(volverA);
+              router.refresh();
+            }}
+          >
+            Terminar recepción ({recibidas})
+          </Button>
+        </div>
       </div>
       <LecturasEscaneo variante="tabla" filas={sesion.filas} onReintentar={sesion.reintentar} />
     </AppPage>

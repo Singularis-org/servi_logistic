@@ -4,7 +4,11 @@ import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepos
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IOrdenHistorialService } from "@/lib/interfaces/services/IOrdenHistorialService";
 import { descargaConfig } from "@/lib/config/descarga";
-import { listarOrdenesBodegaPaginadoSchema } from "@/lib/types/recepcion-satelite";
+import {
+  listarIdsVigentesBodegaSchema,
+  listarOrdenesBodegaCompletoSchema,
+  listarOrdenesBodegaPaginadoSchema,
+} from "@/lib/types/recepcion-satelite";
 import {
   ALMACEN_SATELITE,
   filaSatelite,
@@ -313,5 +317,45 @@ describe("RecepcionSateliteService.listarOrdenesBodegaCompleto (feature 184, T A
     ]);
     // Un solo argumento: la firma no lleva rango y la llamada tampoco.
     expect(findRecepcionSateliteCompleta.mock.calls[0]).toHaveLength(1);
+  });
+});
+
+describe("SLT-210 · el orden viaja a la página y a la descarga, y no a la vigencia", () => {
+  it("R1401: sin orden en la entrada, el repositorio recibe fecha de creación descendente", async () => {
+    const { repo, filtros } = repoSateliteEnMemoria();
+    await servicio(repo).listarOrdenesBodegaPaginado(listarOrdenesBodegaPaginadoSchema.parse({}), SAT_A);
+    expect(filtros.map((f) => f.filtro.orden)).toEqual([{ sortBy: "created_at", sortDir: "desc" }]);
+  });
+
+  it("R1403/R1406: la página y la descarga reciben EL MISMO orden pedido", async () => {
+    for (const orden of [
+      { sortBy: "num_remision", sortDir: "asc" },
+      { sortBy: "created_at", sortDir: "asc" },
+      { sortBy: "num_remision", sortDir: "desc" },
+    ] as const) {
+      const { repo, filtros } = repoSateliteEnMemoria();
+      const svc = servicio(repo);
+      await svc.listarOrdenesBodegaPaginado(
+        listarOrdenesBodegaPaginadoSchema.parse({ ...orden, page: 1, pageSize: 3 }),
+        SAT_A,
+      );
+      await svc.listarOrdenesBodegaCompleto(listarOrdenesBodegaCompletoSchema.parse(orden), SAT_A);
+      expect(
+        filtros.map((f) => [f.metodo, f.filtro.orden]),
+        JSON.stringify(orden),
+      ).toEqual([
+        ["paginada", orden],
+        ["completa", orden],
+      ]);
+    }
+  });
+
+  it("la vigencia de la selección NO lleva orden (no cambia la pertenencia), y el borde no lo admite", async () => {
+    const { repo, filtros } = repoSateliteEnMemoria();
+    const ids = ["3f1c7c2e-9a1a-4f0e-9d4a-000000000001"];
+    await servicio(repo).listarIdsVigentesBodega(listarIdsVigentesBodegaSchema.parse({ ids }), SAT_A);
+    expect(filtros).toHaveLength(1);
+    expect(filtros[0]!.filtro).not.toHaveProperty("orden");
+    expect(listarIdsVigentesBodegaSchema.safeParse({ ids, sortBy: "created_at" }).success).toBe(false);
   });
 });

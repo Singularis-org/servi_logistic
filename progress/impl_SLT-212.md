@@ -8,11 +8,11 @@ El Postgres local tiene `TimeZone = America/Bogota` (`SHOW TimeZone`, medido); e
 
 | Archivo | Cambio |
 |---|---|
-| `db/migrations/20261119120000_cobro_plataforma_ocurrido_utc/migration.sql` (nuevo) | `CREATE OR REPLACE` de `cobro_plataforma_porcentual_conciliar`, `cobro_plataforma_al_crear_orden` y `cobro_plataforma_al_cambiar_borrado`, copiadas literales de 20261104150200; solo cambia `now()` → `(now() AT TIME ZONE 'UTC')` en los 4 `INSERT` con reloj. |
-| `db/migrations/20261119120000_cobro_plataforma_ocurrido_utc/down.sql` (nuevo) | Las tres definiciones de 20261104150200 tal cual. |
+| `db/migrations/20261119120100_cobro_plataforma_ocurrido_utc/migration.sql` (nuevo) | `CREATE OR REPLACE` de `cobro_plataforma_porcentual_conciliar`, `cobro_plataforma_al_crear_orden` y `cobro_plataforma_al_cambiar_borrado`, copiadas literales de 20261104150200; solo cambia `now()` → `(now() AT TIME ZONE 'UTC')` en los 4 `INSERT` con reloj. |
+| `db/migrations/20261119120100_cobro_plataforma_ocurrido_utc/down.sql` (nuevo) | Las tres definiciones de 20261104150200 tal cual. |
 | `tests/integration/db/cobro-plataforma-ocurrido-utc.test.ts` (nuevo) | Fija la migración: `SET LOCAL TimeZone = 'Pacific/Kiritimati'` (+14 h) y `ocurrido_at - now() AT TIME ZONE 'UTC'` debe ser 0 en cargo de alta, reverso y re-cobro (fija) y cargo y reverso de la conciliación (porcentual). Control positivo de los tipos de movimiento. |
 | `tests/integration/db/_fixtures/caja-459.ts` | `solicitarCierre` y `aprobarCierre` del escenario 459 corren con `comoApp` (rol `servi_app` + empresa de la tx, molde de SLT-177 en `454/_escenario.ts`); después `SET LOCAL ROLE NONE` y la siembra sigue como dueño. |
-| `tests/integration/db/orden-traspaso-migration.test.ts` | Lista de migraciones posteriores: + `20261119120000_cobro_plataforma_ocurrido_utc`. |
+| `tests/integration/db/orden-traspaso-migration.test.ts` | Lista de migraciones posteriores: + `20261119120100_cobro_plataforma_ocurrido_utc`. |
 | `progress/features/SLT-212.md` (nuevo), esta bitácora | — |
 
 ## A — demo-qa: `validation_error (monto)` en `registrarEgreso(pago_plataforma)`
@@ -33,7 +33,7 @@ También rojo en `2d926eaf` (dev ANTES de #224, #232, #233 y #237, cuyo CI pasó
 (01:00–06:00 Bogotá), cuando el cargo desplazado cae antes del inicio del día. Con TimeZone UTC (CI, Supabase, Preview) no ocurre. El
 mismo defecto ya estaba documentado y arreglado en otras funciones (20261028130200, 20261108120300: `now() AT TIME ZONE 'UTC'`).
 
-**Arreglo (app, sin regla de dinero nueva):** migración 20261119120000. Mismos importes, fuentes, secuencias y condiciones; en una
+**Arreglo (app, sin regla de dinero nueva):** migración 20261119120100. Mismos importes, fuentes, secuencias y condiciones; en una
 base UTC el valor escrito es idéntico, así que no hay datos que corregir.
 
 **Después (base a con la migración, 02:19 Bogotá, dentro de la ventana):** `demo-qa.test.ts` 14/14 verde (`corrida 1: código 0`).

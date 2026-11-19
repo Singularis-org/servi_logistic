@@ -408,6 +408,127 @@ describeSiHayBase("SLT-197 — retiro de satelite a central, contra Postgres rea
   });
 
   // ─────────────────────────────────────────────────────────────────────────────────────────────
+  // SLT-211 — el retiro deja su rastro en Historico › Acciones (`historial_accion`)
+  // ─────────────────────────────────────────────────────────────────────────────────────────────
+
+  /** Las filas de `historial_accion` que escribio ESTE maestro (usuario recien sembrado). */
+  async function accionesDe(e: Escenario) {
+    return e.tx.historialAccion.findMany({
+      where: { actorUsuarioId: e.maestro.usuarioId },
+      select: {
+        accion: true,
+        entidadTipo: true,
+        entidadId: true,
+        entidadEtiqueta: true,
+        actorUsuarioId: true,
+        actorNombre: true,
+        actorRol: true,
+        monto: true,
+        valorAnterior: true,
+        valorNuevo: true,
+        loteId: true,
+      },
+      orderBy: { entidadEtiqueta: "asc" },
+    });
+  }
+
+  it("SLT-211: un retiro de 3 ordenes de una satelite deja EXACTAMENTE 1 accion, con actor, satelite y conteo", async () => {
+    const m = await conEscenario(async (e) => {
+      const ordenes = [
+        await e.crearOrden({ zonaId: e.cartago.id, estado: "en_bodega_satelite" }),
+        await e.crearOrden({ zonaId: e.cartago.id, estado: "en_bodega_satelite" }),
+        await e.crearOrden({ zonaId: e.cartago.id, estado: "en_bodega_satelite" }),
+      ];
+      const antes = await accionesDe(e);
+      const r = await e.service.retirarABodegaCentral({ ordenIds: ordenes.map((o) => o.id) }, e.maestro);
+      const usuario = await e.tx.usuario.findUniqueOrThrow({
+        where: { id: e.maestro.usuarioId },
+        select: { nombre: true, primerApellido: true },
+      });
+      return { r, antes, despues: await accionesDe(e), ordenes, cartago: e.cartago, maestro: e.maestro, usuario };
+    });
+
+    expect(m.r.status).toBe("ok");
+    // Control: el maestro es nuevo, no tenia ninguna accion antes.
+    expect(m.antes, "SLT-211: el maestro sembrado no trae acciones previas").toEqual([]);
+    expect(m.despues, "SLT-211: un lote de una satelite = una sola accion").toHaveLength(1);
+    const fila = m.despues[0]!;
+    const guias = m.ordenes.map((o) => o.numGuia).sort((x, y) => x - y);
+    expect(fila).toMatchObject({
+      accion: "ordenes_retiradas_a_central",
+      entidadTipo: "zona",
+      entidadId: m.cartago.id,
+      actorUsuarioId: m.maestro.usuarioId,
+      actorRol: "maestro",
+      monto: null,
+      valorAnterior: null,
+      valorNuevo: null,
+    });
+    // El nombre congelado es el del usuario tal como esta en la base, no uno compuesto por el test.
+    expect(fila.actorNombre).toBe(
+      [m.usuario.nombre, m.usuario.primerApellido].filter((p) => p != null && p !== "").join(" "),
+    );
+    // Satelite de origen, conteo y las tres guias, en orden.
+    expect(fila.entidadEtiqueta).toBe(`${m.cartago.nombre} · 3 paquetes: ${guias.join(", ")}`);
+  });
+
+  it("SLT-211: un lote que mezcla dos satelites deja una fila por satelite, con el MISMO lote_id", async () => {
+    const m = await conEscenario(async (e) => {
+      const c1 = await e.crearOrden({ zonaId: e.cartago.id, estado: "en_bodega_satelite" });
+      const c2 = await e.crearOrden({ zonaId: e.cartago.id, estado: "en_bodega_satelite" });
+      const l1 = await e.crearOrden({ zonaId: e.limon.id, estado: "en_bodega_satelite" });
+      const r = await e.service.retirarABodegaCentral({ ordenIds: [c1.id, l1.id, c2.id] }, e.maestro);
+      return { r, acciones: await accionesDe(e), c1, c2, l1, cartago: e.cartago, limon: e.limon };
+    });
+    expect(m.r.status).toBe("ok");
+    expect(m.acciones).toHaveLength(2);
+    expect(new Set(m.acciones.map((a) => a.loteId)).size, "SLT-211: un acto, un lote_id").toBe(1);
+    const porZona = new Map(m.acciones.map((a) => [a.entidadId, a.entidadEtiqueta]));
+    const guiasCartago = [m.c1.numGuia, m.c2.numGuia].sort((x, y) => x - y);
+    expect(porZona.get(m.cartago.id)).toBe(`${m.cartago.nombre} · 2 paquetes: ${guiasCartago.join(", ")}`);
+    expect(porZona.get(m.limon.id)).toBe(`${m.limon.nombre} · 1 paquete: ${m.l1.numGuia}`);
+  });
+
+  it("SLT-211: un retiro en conflicto (carrera en el WHERE) NO deja ninguna accion", async () => {
+    const m = await conEscenario(async (e) => {
+      const a = await e.crearOrden({ zonaId: e.cartago.id, estado: "en_bodega_satelite" });
+      const b = await e.crearOrden({ zonaId: e.cartago.id, estado: "en_bodega_satelite" });
+      const recogiendo = await e.idEstado("mensajero_recogiendo_en_bodega");
+      const lecturaOriginal = e.repo.findByIdsForTransicion.bind(e.repo);
+      e.repo.findByIdsForTransicion = async (ids: string[]) => {
+        const filas = await lecturaOriginal(ids);
+        await e.tx.orden.update({ where: { id: b.id }, data: { estatusId: recogiendo } });
+        return filas;
+      };
+      const r = await e.service.retirarABodegaCentral({ ordenIds: [a.id, b.id] }, e.maestro);
+      // Control positivo en la MISMA siembra: un retiro valido despues si escribe (el detector ve filas).
+      const c = await e.crearOrden({ zonaId: e.cartago.id, estado: "en_bodega_satelite" });
+      const accionesTrasConflicto = await accionesDe(e);
+      e.repo.findByIdsForTransicion = lecturaOriginal;
+      const ok = await e.service.retirarABodegaCentral({ ordenIds: [c.id] }, e.maestro);
+      return { r, accionesTrasConflicto, ok, accionesTrasOk: await accionesDe(e) };
+    });
+    expect(m.r.status).toBe("conflict");
+    expect(m.accionesTrasConflicto, "SLT-211: conflicto = cero acciones").toEqual([]);
+    expect(m.ok.status).toBe("ok");
+    expect(m.accionesTrasOk, "SLT-211: control positivo, el retiro valido si deja su fila").toHaveLength(1);
+  });
+
+  it("SLT-211: el repo en conflicto (orden fuera de en_bodega_satelite) no deja ninguna accion", async () => {
+    const m = await conEscenario(async (e) => {
+      const ok = await e.crearOrden({ zonaId: e.cartago.id, estado: "en_bodega_satelite" });
+      const otra = await e.crearOrden({ zonaId: e.cartago.id, estado: "mensajero_recogiendo_en_bodega" });
+      const r = await e.repo.retirarSateliteLote([ok.id, otra.id], await e.idEstado("en_ruta_bodega_central"), {
+        actorUsuarioId: e.maestro.usuarioId,
+        origenTipo: "ajuste_estado",
+      });
+      return { r, acciones: await accionesDe(e) };
+    });
+    expect(m.r).toBe("conflicto");
+    expect(m.acciones).toEqual([]);
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────────────────────
   // R977 / R978 / R979 / R983 — recepcion en la central, de vuelta a la ruta y lo que ve la satelite
   // ─────────────────────────────────────────────────────────────────────────────────────────────
   it("R977/R978/R979/R983: recibir en la central, no asignable desde ahi, rutear de nuevo; la satelite no la ve; sin dinero", async () => {

@@ -539,6 +539,16 @@ const CENSO: EntradaCenso[] = [
     mutacion: /UPDATE "gestion_orden"[\s\S]*RETURNING/,
   },
   {
+    // SLT-211 — el retiro de paquetes de una satelite a la central (SLT-197). El `updateMany` y el
+    // `appendAccion` van en la MISMA `$transaction`, y el registro va DESPUES de la guarda de conteo:
+    // un conflicto revierte sin dejar fila.
+    tipos: ["ordenes_retiradas_a_central"],
+    archivo: "lib/repositories/OrdenRepository.ts",
+    metodo: "retirarSateliteLote",
+    forma: "abre_tx",
+    mutacion: /tx\.orden\.updateMany\(/,
+  },
+  {
     tipos: ["orden_eliminada"],
     archivo: "lib/repositories/OrdenRepository.ts",
     metodo: "softDelete",
@@ -1256,7 +1266,8 @@ describe("362/R16 — cada tipo del catalogo tiene al menos un punto de escritur
     // 83 desde SLT-86 (`plan_cambio_empresa_cancelado`, de `PlanesRepository.cancelarPendienteDeEmpresaEnTx`).
     // 84 desde SLT-77 (`tope_intentos_cambiado`, de `TopeIntentosRepository.guardar`).
     // 85 desde SLT-94 (`usuario_se_recoge_en_tienda_cambiado`, de `UserRepository.update`).
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(85);
+    // 86 desde SLT-211 (`ordenes_retiradas_a_central`, de `OrdenRepository.retirarSateliteLote`).
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(86);
   });
 });
 

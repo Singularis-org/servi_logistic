@@ -96,6 +96,22 @@ describe("RecepcionContinuaPagina — la página de C1 (R610)", () => {
   });
 });
 
+describe("RecepcionContinuaPagina — SLT-209: «Terminar recepción» debajo de los contadores", () => {
+  it("el botón va en la columna del resumen, después de «No encontradas», y no en el encabezado", () => {
+    render(<EscanerRecepcionBodegaCentral modo="pagina" />);
+    const boton = screen.getByRole("button", { name: "Terminar recepción (0)" });
+    expect(boton.closest("header"), "SLT-209: el botón no va en el encabezado").toBeNull();
+    const columna = boton.closest("[data-columna-resumen]");
+    expect(columna, "SLT-209: el botón va en la columna de los contadores").not.toBeNull();
+    const resumen = screen.getByRole("region", { name: "Resumen" });
+    expect(columna!.contains(resumen)).toBe(true);
+    // Después de los contadores en el orden del documento (debajo; en el móvil, al final del resumen).
+    expect(resumen.compareDocumentPosition(boton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // A todo el ancho de la columna; 32 px desde `md` (`h-8` del tamaño por defecto) y 44 en el móvil.
+    expect(boton).toHaveClass("w-full", "h-8", "max-md:h-11");
+  });
+});
+
 describe("RecepcionContinuaPagina — línea de estado (R615)", () => {
   it("«Recibida» con resumen nombra al destinatario", async () => {
     const user = userEvent.setup();

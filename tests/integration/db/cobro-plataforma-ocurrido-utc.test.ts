@@ -18,7 +18,7 @@ import { asignarPlan, crearPlan, revertida } from "./_fixtures/planes";
 // defecto, cada `ocurrido_at` sale 14 h por delante de `now() AT TIME ZONE 'UTC'`, una diferencia que ningún
 // reloj produce por casualidad. Dentro de una transacción `now()` es fijo, así que el valor esperado es exacto.
 //
-// Cubre los cuatro `INSERT` con reloj de 20261119120000: el cargo de alta fijo, el re-cobro al restaurar una
+// Cubre los cuatro `INSERT` con reloj de 20261119120100: el cargo de alta fijo, el re-cobro al restaurar una
 // orden fija, y el cargo y el reverso de la conciliación porcentual.
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;

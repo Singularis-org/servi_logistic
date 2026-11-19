@@ -618,7 +618,8 @@ describe("R16 — el detector se pone ROJO ante la segunda declaracion", () => {
     const mutado = mutar(real, [
       // `(\s*)` y no `\n`: los archivos de este repo estan en CRLF y un `\n` literal no casa.
       [
-        /\$\{ordenBodegaSatelite\(\)\}(\s*)LIMIT/,
+        // SLT-210: la llamada lleva ahora el orden pedido (`ordenBodegaSatelite(filtro.orden)`).
+        /\$\{ordenBodegaSatelite\(filtro\.orden\)\}(\s*)LIMIT/,
         'ORDER BY o."prioridad" DESC, o."id" ASC$1LIMIT',
       ],
     ]);
