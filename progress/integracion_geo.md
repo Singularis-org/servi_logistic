@@ -86,3 +86,32 @@ Todo con `NODE_OPTIONS=--max-old-space-size=8192`, sin `DATABASE_URL`: los tests
 - `gate.yml` lanzado a mano con `workflow_dispatch` sobre la rama:
   https://github.com/Singularis-org/servi_logistic/actions/runs/44539511540 (no se esperó el
   resultado).
+
+## SLT-43 — rojos CI 44608687001
+
+`gate-completo` encontró dos archivos en rojo fuera del baseline. Los dos son censos de igualdad
+EXACTA escritos en `dev` antes de que existiera lo de SLT-43 «Geografía jerárquica: modelo y
+migración»; el código de SLT-43 y el de `dev` están bien. Error sacado del log de los shards.
+
+- `tests/integration/db/orden-traspaso-migration.test.ts` > «su timestamp es POSTERIOR…»: la
+  lista de migraciones posteriores a `orden_traspaso_mensajero` recibió 144 y esperaba 138. Las 6
+  de más son las de SLT-43 (`20261104120000` … `20261104120500`), que el censo no declaraba.
+  - Arreglo: se declaran en su sitio por orden de nombre, con su ficha y su motivo (R19, R34), igual
+    que las demás entradas. La igualdad exacta se queda: una migración no declarada sigue en rojo.
+  - Grep sobre sus `.sql`: ninguna nombra `orden_traspaso_mensajero`.
+  - El caso avisa justo de esto: un timestamp anterior a migraciones de `dev` ya aplicadas. Ya
+    estaba analizado arriba («Migraciones: orden de aplicación»). Sigue pendiente la prueba
+    empírica sobre una base con las de `dev` ya aplicadas.
+- `tests/integration/db/corregir-datos-cliente.repo.test.ts` > «327 caso 3+4 (R1/R22)»: tras
+  corregir el distrito, cambia también `nodoGeograficoId`. Lo hace el trigger `orden_nodo_geografico`
+  de SLT-43 (R20: el nodo de la orden sigue a su distrito), a propósito.
+  - Arreglo: `nodoGeograficoId` entra en el conjunto de columnas que cambian, y se fija su valor
+    (`= distritoId`, el id del nodo de un distrito). Las coordenadas (R22 de esa ficha) siguen
+    afirmadas igual.
+
+Verificación local (`NODE_OPTIONS=--max-old-space-size=6144`, contra `servi_logistic_simprod`;
+los dos archivos solo escriben en transacciones revertidas):
+
+- Los 2 archivos: `Test Files 2 passed (2)`, `Tests 37 passed (37)`.
+- `tsc --noEmit`: sin errores. `eslint` sobre los dos archivos: sin salida.
+- `vitest run guard`: `Test Files 358 passed | 3 skipped (361)`, `Tests 5407 passed | 28 skipped`.

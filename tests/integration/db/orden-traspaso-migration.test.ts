@@ -266,6 +266,17 @@ describe("427/T2 — el UP y el DOWN, leidos del archivo", () => {
       "20261103120300_historial_tarifas_flexibles",
       "20261103140000_rechazo_tienda_cobro_tarifa_valor",
       "20261103140100_rechazo_tienda_cobro_tarifa_valor_misma_empresa",
+      // SLT-43 «Geografía jerárquica: modelo y migración» (R19, R34): los enums, las dos tablas del
+      // modelo nuevo, la sincronía con provincia/canton/distrito, las columnas `nodo_geografico_id`
+      // y sus índices. Ninguna toca `orden_traspaso_mensajero` (medido con grep sobre sus `.sql`).
+      // Su timestamp es ANTERIOR a migraciones de `dev` ya aplicadas: se integró tarde. Lo que eso
+      // supone para `prisma migrate deploy` está en `progress/integracion_geo.md`.
+      "20261104120000_geo_enums_nodo_geografico",
+      "20261104120100_tipo_nivel_geografico",
+      "20261104120200_nodo_geografico",
+      "20261104120300_nodo_geografico_sincronia",
+      "20261104120400_columnas_nodo_geografico",
+      "20261104120500_indices_nodo_geografico",
       "20261104130000_plan_sin_negociable_y_tipo_cobro",
       "20261104130100_historial_accion_plan_tipo_cobro_cambiado",
       "20261104140000_historial_tarifa_activacion",
