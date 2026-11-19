@@ -24,7 +24,7 @@
 // lista a mano que mantener. Las particiones se cuentan por su tabla madre.
 
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import type { PrismaClient } from "@prisma/client";
@@ -33,6 +33,9 @@ export const VERSION_FOTO = 2;
 export const NOMBRE_INFORME = "filas-fuera-de-tx.json";
 export const LINEA_CERO = "0 filas fuera de su transacción";
 export const MAX_MUESTRAS = 5;
+/** SLT-204: lo que sube el artefacto de cada shard junto al informe (`gate.yml`, paso «Informe del shard»). */
+export const NOMBRE_LOG_SHARD = "init-shard.log";
+export const NOMBRE_JSON_VITEST = ".vitest-rojos.json";
 
 /** Lo unico que la comprobacion pide de un cliente: SQL crudo de lectura. Vale un `tx` de Prisma. */
 export interface ClienteDeLectura {
@@ -261,8 +264,11 @@ export function codigoDeSalida(informe: Informe): 0 | 1 {
   return informe.organizaciones.length > 0 || informe.orderStatusNuevos.length > 0 ? 1 : 0;
 }
 
-/** Lineas legibles de un informe; `prefijo` nombra el shard en `unir` (R1173). */
-export function lineasDeInforme(informe: Informe, prefijo = ""): string[] {
+/**
+ * Lineas legibles de un informe; `prefijo` nombra el shard en `unir` (R1173). Con `trasCaida`
+ * (SLT-204) el cierre no presenta las filas como fuga: el worker murio y pueden ser del archivo que corria.
+ */
+export function lineasDeInforme(informe: Informe, prefijo = "", opciones?: { trasCaida?: boolean }): string[] {
   const c = informe.control;
   const lineaDeControl =
     c === undefined
@@ -289,8 +295,84 @@ export function lineasDeInforme(informe: Informe, prefijo = ""): string[] {
   if (informe.orderStatusNuevos.length > 0) {
     lineas.push(`${prefijo}order_status nuevos: ${informe.orderStatusNuevos.join(", ")}`);
   }
-  lineas.push(`${prefijo}${informe.totalFilas} filas fuera de su transacción`);
+  lineas.push(
+    opciones?.trasCaida
+      ? `${prefijo}${informe.totalFilas} filas sueltas tras la caída del worker: no se atribuyen al PR`
+      : `${prefijo}${informe.totalFilas} filas fuera de su transacción`,
+  );
   return lineas;
+}
+
+// ── Worker de vitest caido (SLT-204) ──────────────────────────────────────────────────────────
+
+/**
+ * La traza que deja vitest 4 cuando un worker muere a mitad del shard: el pool rechaza la tarea con
+ * «[vitest-pool]: Worker forks emitted error.» y la causa «Worker exited unexpectedly». Va al log
+ * (errores no manejados); el JSON de vitest no la trae.
+ */
+const TRAZA_DE_CAIDA = /Worker exited unexpectedly|\[vitest-pool\]: Worker \S+ emitted error/;
+
+export interface CaidaDeWorker {
+  /** Archivos con casos sin terminar (`pending` en el JSON de vitest), en ruta relativa al repo. */
+  archivos: string[];
+  /** De donde sale la evidencia. */
+  fuentes: ("log" | "json")[];
+}
+
+function leerSiExiste(ruta: string): string | undefined {
+  try {
+    return existsSync(ruta) ? readFileSync(ruta, "utf8") : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** La ruta de vitest en el runner es absoluta: se da relativa al checkout (o desde `tests/`). */
+function rutaDeRepo(ruta: string): string {
+  const conBarras = (p: string) => p.split("\\").join("/");
+  const rel = conBarras(isAbsolute(ruta) ? relative(process.cwd(), ruta) : ruta);
+  if (!rel.startsWith("../") && !isAbsolute(rel)) return rel;
+  const absoluta = conBarras(ruta);
+  const i = absoluta.indexOf("/tests/");
+  return i >= 0 ? absoluta.slice(i + 1) : absoluta;
+}
+
+/**
+ * SLT-204: ¿murio un worker de vitest en este shard? Lo dicen el log del shard (la traza de arriba) o
+ * el JSON de vitest (casos que quedaron `pending`: en vitest 4 es el estado `run`/`queued` de un caso
+ * que no termino; el repo no usa `.only`). Sin ninguno de los dos archivos, no hay evidencia: undefined.
+ */
+export function workerCaido(dirShard: string): CaidaDeWorker | undefined {
+  const fuentes: CaidaDeWorker["fuentes"] = [];
+  const log = leerSiExiste(join(dirShard, NOMBRE_LOG_SHARD));
+  if (log !== undefined && TRAZA_DE_CAIDA.test(log)) fuentes.push("log");
+  const archivos: string[] = [];
+  const json = leerSiExiste(join(dirShard, NOMBRE_JSON_VITEST));
+  if (json !== undefined) {
+    try {
+      const r = JSON.parse(json) as { testResults?: { name?: string; assertionResults?: { status?: string }[] }[] };
+      for (const f of r.testResults ?? []) {
+        if (typeof f.name === "string" && (f.assertionResults ?? []).some((a) => a.status === "pending")) {
+          archivos.push(rutaDeRepo(f.name));
+        }
+      }
+    } catch {
+      // JSON roto: ya lo juzga `--unir` de init.sh; aqui solo falta esa evidencia
+    }
+  }
+  if (archivos.length > 0) fuentes.push("json");
+  return fuentes.length > 0 ? { archivos, fuentes } : undefined;
+}
+
+/** La linea del resumen: dice que se cayo el worker, donde, y que hacer. */
+export function lineaDeCaida(caida: CaidaDeWorker, prefijo: string): string {
+  const donde = caida.archivos.length > 0 ? ` en ${caida.archivos.join(", ")}` : "";
+  const deQuien = caida.archivos.length > 0 ? "de ese archivo" : "del archivo que corria";
+  const traza = caida.fuentes.includes("log") ? "«Worker exited unexpectedly»" : "casos sin terminar en el JSON de vitest";
+  return (
+    `${prefijo}se cayó un worker de vitest (${traza}${donde}): el shard quedó incompleto ` +
+    `y las filas sueltas pueden ser ${deQuien}, no de tu PR; relanza el shard (Re-run failed jobs)`
+  );
 }
 
 // ── Union de los shards (R1173, R1174) ────────────────────────────────────────────────────────
@@ -301,15 +383,26 @@ export type Modo = "informe" | "rojo";
  * Lee `<dir>/informe-shard-<i>/filas-fuera-de-tx.json` de cada shard. Un informe que falta o no
  * parsea cuenta como fallo (falla cerrado, R1174). En modo `informe` (T2, para medir) el codigo es 0
  * pase lo que pase; en modo `rojo`, 1 si algun shard deja filas o no dejo informe.
+ *
+ * SLT-204: si en un shard murio un worker de vitest (`workerCaido`, sobre el log y el JSON del mismo
+ * artefacto), el resumen lo dice antes de sus filas y el total pide relanzar en vez de culpar al PR. El
+ * rojo se mantiene aunque el shard diga 0: con el shard incompleto, ese 0 no mide nada.
  */
 export function unir(dir: string, shards: number, modo: Modo): { lineas: string[]; codigo: 0 | 1 } {
   const lineas: string[] = [];
   let rojo = false;
   let total = 0;
   let sinInforme = 0;
+  const caidos: number[] = [];
   for (let i = 1; i <= shards; i++) {
     const ruta = join(dir, `informe-shard-${i}`, NOMBRE_INFORME);
     const prefijo = `shard ${i}/${shards}: `;
+    const caida = workerCaido(join(dir, `informe-shard-${i}`));
+    if (caida !== undefined) {
+      lineas.push(lineaDeCaida(caida, prefijo));
+      caidos.push(i);
+      rojo = true;
+    }
     if (!existsSync(ruta)) {
       lineas.push(`${prefijo}falta el informe de filas fuera de su transacción (${NOMBRE_INFORME})`);
       rojo = true;
@@ -325,13 +418,18 @@ export function unir(dir: string, shards: number, modo: Modo): { lineas: string[
       sinInforme++;
       continue;
     }
-    lineas.push(...lineasDeInforme(informe, prefijo));
+    lineas.push(...lineasDeInforme(informe, prefijo, { trasCaida: caida !== undefined }));
     if (codigoDeSalida(informe) !== 0) rojo = true;
     if (informe.estado !== "ok") sinInforme++;
     total += informe.estado === "ok" ? informe.totalFilas : 0;
   }
   if (!rojo) lineas.push(`total: ${LINEA_CERO}`);
-  else lineas.push(`total: ${total} filas fuera de su transacción; ${sinInforme} shard(s) sin informe valido`);
+  else if (caidos.length > 0) {
+    lineas.push(
+      `total: ${total} filas sueltas con un worker de vitest caído en el shard ${caidos.join(", ")}: ` +
+        `relanza ese shard antes de buscar la fuga en el PR; ${sinInforme} shard(s) sin informe valido`,
+    );
+  } else lineas.push(`total: ${total} filas fuera de su transacción; ${sinInforme} shard(s) sin informe valido`);
   if (modo === "informe") lineas.push("modo informe: se mide sin poner el gate en rojo");
   return { lineas, codigo: modo === "rojo" && rojo ? 1 : 0 };
 }

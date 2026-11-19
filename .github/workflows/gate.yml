@@ -336,6 +336,9 @@ jobs:
       # cuenta como fallo. Node puro (Node 24 ejecuta el `.ts` quitandole los tipos; sin pnpm).
       # MODO ROJO (T6, activado tras medir 0 en los 3 shards del PR #222, run 44359606182): una fila
       # fuera de su transaccion, un shard sin informe o una comprobacion ciega ponen `gate-completo` en rojo.
+      # SLT-204: `unir` lee tambien `init-shard.log` y `.vitest-rojos.json` del mismo artefacto. Si un worker
+      # de vitest murio en el shard, lo dice («se cayó un worker de vitest... relanza el shard») en vez de
+      # presentar las filas como fuga del PR. Sigue en rojo: el shard quedo incompleto.
       - name: Filas fuera de su transaccion (SLT-188)
         if: always() && needs.cambios.outputs.solo_docs != 'true'
         shell: bash

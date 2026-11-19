@@ -202,6 +202,144 @@ describe("SLT-188 R1173/R1174 — unir: el veredicto de los shards", () => {
   });
 });
 
+// SLT-204 «CI: avisar "se cayó un worker" en vez de culpar al PR de filas fuera de su transacción».
+// Lo que de verdad dejo el run de T7 de SLT-188: el worker murio en el `beforeAll` de C02, sus casos
+// quedaron sin correr y la comprobacion conto 12 filas. El artefacto del shard trae, junto al informe
+// de filas, el log (`init-shard.log`) y el JSON de vitest (`.vitest-rojos.json`).
+describe("SLT-204 — unir: un worker de vitest caido no se presenta como fuga del PR", () => {
+  let dir: string;
+
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), "slt204-unir-"));
+  });
+
+  afterAll(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  // Ruta como la escribe vitest en CI (absoluta en el runner); el resumen la da relativa.
+  const ARCHIVO_CAIDO = "/home/runner/work/x/x/tests/integration/db/454/caracterizacion/corte-concurrencia.test.ts";
+  const ARCHIVO_SANO = "/home/runner/work/x/x/tests/unit/guards/otro-slt204-q8m.test.ts";
+
+  /** Extracto del log del shard con la caida, tal como la imprime vitest 4 (pool `forks`). */
+  const LOG_CON_CAIDA = [
+    " ✓ tests/unit/guards/otro-slt204-q8m.test.ts (3 tests) 12ms",
+    "⎯⎯⎯⎯⎯⎯ Unhandled Errors ⎯⎯⎯⎯⎯⎯",
+    "Vitest caught 1 unhandled error during the test run.",
+    "⎯⎯⎯⎯ Unhandled Error ⎯⎯⎯⎯",
+    "Error: [vitest-pool]: Worker forks emitted error.",
+    " ❯ EventEmitter.onTaskError node_modules/vitest/dist/chunks/cli-api.js:3456:21",
+    "Caused by: Error: Worker exited unexpectedly",
+  ].join("\n");
+  const LOG_SIN_CAIDA = " ✓ tests/unit/guards/otro-slt204-q8m.test.ts (3 tests) 12ms\n Test Files  1 passed (1)\n";
+
+  /** JSON de vitest: con `caido`, los casos de C02 quedan `pending` (estado `run`/`queued` al morir). */
+  function jsonVitest(caido: boolean): string {
+    const testResults = [
+      {
+        name: ARCHIVO_SANO,
+        status: "passed",
+        message: "",
+        assertionResults: [{ status: "passed", title: "a" }],
+      },
+    ];
+    if (caido) {
+      testResults.push({
+        name: ARCHIVO_CAIDO,
+        status: "passed",
+        message: "",
+        assertionResults: [
+          { status: "pending", title: "precondicion" },
+          { status: "pending", title: "invariante" },
+        ],
+      });
+    }
+    return JSON.stringify({ success: !caido, numPendingTests: caido ? 2 : 0, testResults });
+  }
+
+  function shardCompleto(
+    base: string,
+    i: number,
+    informe: Informe,
+    extra: { log?: string; json?: string },
+  ): void {
+    const d = join(base, `informe-shard-${i}`);
+    mkdirSync(d, { recursive: true });
+    writeFileSync(join(d, NOMBRE_INFORME), JSON.stringify(informe));
+    if (extra.log !== undefined) writeFileSync(join(d, "init-shard.log"), extra.log);
+    if (extra.json !== undefined) writeFileSync(join(d, ".vitest-rojos.json"), extra.json);
+  }
+
+  it("con un worker caido (log + JSON) y filas sueltas: dice que se cayo el worker, nombra el archivo y pide relanzar; sigue en rojo", () => {
+    const base = join(dir, "caido");
+    shardCompleto(base, 1, comparar(ANTES, limpio([])), { log: LOG_SIN_CAIDA, json: jsonVitest(false) });
+    shardCompleto(base, 2, comparar(ANTES, estadoConFuga()), { log: LOG_CON_CAIDA, json: jsonVitest(true) });
+    shardCompleto(base, 3, comparar(ANTES, limpio([])), { log: LOG_SIN_CAIDA, json: jsonVitest(false) });
+    const r = unir(base, 3, "rojo");
+    expect(r.codigo, "SLT-204: el shard quedo incompleto: el rojo se mantiene").toBe(1);
+    const aviso = r.lineas.find((l) => l.startsWith("shard 2/3: se cayó un worker de vitest"));
+    expect(aviso, `SLT-204: falta el aviso del worker caido en:\n${r.lineas.join("\n")}`).toBeDefined();
+    expect(aviso).toContain("tests/integration/db/454/caracterizacion/corte-concurrencia.test.ts");
+    expect(aviso).not.toContain("/home/runner");
+    expect(aviso).toContain("relanza el shard");
+    // Las filas se siguen listando (sirven para limpiar), pero el cierre del shard y el total no las
+    // presentan como fuga del PR.
+    expect(r.lineas.some((l) => l.startsWith("shard 2/3: organizacion") && l.includes(ORG_NUEVA))).toBe(true);
+    expect(r.lineas).not.toContain("shard 2/3: 3 filas fuera de su transacción");
+    expect(r.lineas).toContain("shard 2/3: 3 filas sueltas tras la caída del worker: no se atribuyen al PR");
+    const total = r.lineas.find((l) => l.startsWith("total:"));
+    expect(total).toContain("worker de vitest caído en el shard 2");
+    expect(total).toContain("relanza");
+    expect(total).not.toContain("filas fuera de su transacción");
+    // Los shards sanos no llevan aviso.
+    expect(r.lineas.some((l) => /^shard [13]\/3: .*worker/.test(l))).toBe(false);
+  });
+
+  it("solo con el log (sin JSON de vitest, que no se escribio): avisa igual, sin nombrar archivo", () => {
+    const base = join(dir, "solo-log");
+    shardCompleto(base, 1, comparar(ANTES, estadoConFuga()), { log: LOG_CON_CAIDA });
+    const r = unir(base, 1, "rojo");
+    expect(r.codigo).toBe(1);
+    expect(r.lineas.some((l) => l.startsWith("shard 1/1: se cayó un worker de vitest"))).toBe(true);
+  });
+
+  it("solo con el JSON (casos `pending` sin terminar) y log sin la traza: avisa igual", () => {
+    const base = join(dir, "solo-json");
+    shardCompleto(base, 1, comparar(ANTES, estadoConFuga()), { log: LOG_SIN_CAIDA, json: jsonVitest(true) });
+    const r = unir(base, 1, "rojo");
+    const aviso = r.lineas.find((l) => l.startsWith("shard 1/1: se cayó un worker de vitest"));
+    expect(aviso).toBeDefined();
+    expect(aviso).toContain("454/caracterizacion/corte-concurrencia.test.ts");
+  });
+
+  it("worker caido con 0 filas: rojo igualmente (el 0 de un shard incompleto no vale) y lo dice", () => {
+    const base = join(dir, "caido-cero");
+    shardCompleto(base, 1, comparar(ANTES, limpio([])), { log: LOG_CON_CAIDA, json: jsonVitest(true) });
+    const r = unir(base, 1, "rojo");
+    expect(r.codigo).toBe(1);
+    expect(r.lineas.some((l) => l.startsWith("shard 1/1: se cayó un worker de vitest"))).toBe(true);
+    expect(r.lineas).not.toContain("total: 0 filas fuera de su transacción");
+  });
+
+  it("sin caida (log y JSON sanos) y con filas: el mensaje de siempre, sin hablar de workers", () => {
+    const base = join(dir, "sin-caida");
+    shardCompleto(base, 1, comparar(ANTES, estadoConFuga()), { log: LOG_SIN_CAIDA, json: jsonVitest(false) });
+    const r = unir(base, 1, "rojo");
+    expect(r.codigo).toBe(1);
+    expect(r.lineas).toContain("shard 1/1: 3 filas fuera de su transacción");
+    expect(r.lineas).toContain("total: 3 filas fuera de su transacción; 0 shard(s) sin informe valido");
+    expect(r.lineas.some((l) => /worker/i.test(l))).toBe(false);
+  });
+
+  it("sin caida y sin filas: «0 filas fuera de su transacción», salida 0", () => {
+    const base = join(dir, "sin-caida-cero");
+    shardCompleto(base, 1, comparar(ANTES, limpio([])), { log: LOG_SIN_CAIDA, json: jsonVitest(false) });
+    const r = unir(base, 1, "rojo");
+    expect(r.codigo).toBe(0);
+    expect(r.lineas).toContain("total: 0 filas fuera de su transacción");
+  });
+});
+
 describe("SLT-188 R1189 — el motivo de un error no lleva la URL", () => {
   it("de un error del driver solo sale la clase y el codigo", () => {
     const e = Object.assign(new Error("connect failed: host db-slt188-q7z.invalid, credencial secreto-slt188"), {

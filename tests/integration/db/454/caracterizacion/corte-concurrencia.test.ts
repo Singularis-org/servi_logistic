@@ -7,6 +7,8 @@ import {
   crearPrismaDeTest,
 } from "../../_postgres-real";
 import {
+  MARCA_C02,
+  barrerComprometidosHuerfanos,
   clienteDeLaApp454,
   enEmpresaDe,
   entradaGestion,
@@ -27,7 +29,7 @@ import {
  * confirma. Invariante: NUNCA a la vez una gestion vigente de O y una fila `cierre_sin_gestion` de O.
  *
  * Es el unico escenario de la fase que CONFIRMA datos (dos conexiones reales): cada repeticion siembra
- * su mundo y lo borra por id al terminar.
+ * su mundo y lo borra por id al terminar. Si el worker muere antes (D80), lo barre el arranque siguiente.
  */
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
@@ -54,7 +56,7 @@ describeSiHayBase("454/C02 — corte y gestion concurrentes (Postgres real, dos 
     const s = await sembrarComprometido(mundo, async (e) => {
       const o = await e.sembrarOrden({ estatus: "en_reparto", montoCobrar: 4000 });
       return { ordenIds: [o.ordenId] };
-    });
+    }, { marca: MARCA_C02 });
     sembrados.push(s);
     // SLT-185 (R1146): control positivo: la empresa y la central propias del escenario estan confirmadas.
     expect(await mundo.prisma.organizacion.count({ where: { id: s.organizacionId } }), "SLT-185: empresa sembrada").toBe(1);
@@ -108,6 +110,9 @@ describeSiHayBase("454/C02 — corte y gestion concurrentes (Postgres real, dos 
 
   beforeAll(async () => {
     mundo = await prepararMundo();
+    // SLT-204 (D80): si una corrida anterior murio con el worker, su escenario confirmado sigue aqui
+    // (con `MARCA_C02` en el nombre de la empresa): se barre antes de sembrar el de esta corrida.
+    await barrerComprometidosHuerfanos(mundo.prisma, MARCA_C02);
     prismaA = clienteDeLaApp454(crearPrismaDeTest());
     prismaB = clienteDeLaApp454(crearPrismaDeTest());
     sonda = crearPrismaDeTest();
