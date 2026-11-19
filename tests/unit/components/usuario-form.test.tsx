@@ -1142,11 +1142,44 @@ describe("UsuarioForm — SLT-221: corregir el número de documento", () => {
   // Un maestro: su rol no pide zona ni vehículo, así la validación de cliente no frena el envío.
   const USUARIO_MAESTRO: UsuarioPublico = { ...USUARIO, rolId: "rol-maestro" };
 
-  async function renderEdicion(ref: RefObject<UsuarioFormHandle | null>) {
-    renderIsolated(<UsuarioForm ref={ref} mode="editar" usuario={USUARIO_MAESTRO} />);
+  async function renderEdicion(
+    ref: RefObject<UsuarioFormHandle | null>,
+    usuario: UsuarioPublico = USUARIO_MAESTRO,
+  ) {
+    renderIsolated(<UsuarioForm ref={ref} mode="editar" usuario={usuario} />);
     const rolTrigger = screen.getByRole("combobox", { name: "Rol" });
     await waitFor(() => expect(rolTrigger).toHaveTextContent("maestro"));
   }
+
+  it("SLT-42 R9: sin tocar el documento, editar otro campo no manda `cedula` aunque la guardada pase de 30", async () => {
+    const user = userEvent.setup();
+    // 67 caracteres: el tope de una cuenta `APIKEY-<slug>` o una cédula anterior a SLT-42.
+    const cedulaLarga = `APIKEY-${"x".repeat(60)}`;
+    expect(cedulaLarga).toHaveLength(67);
+    const conCedulaLarga: UsuarioPublico = { ...USUARIO_MAESTRO, cedula: cedulaLarga };
+    actualizarUsuarioMock.mockResolvedValue({
+      status: "ok",
+      usuario: { ...conCedulaLarga, nombre: "Ana Renombrada" },
+    });
+    const ref = createRef<UsuarioFormHandle>();
+    await renderEdicion(ref, conCedulaLarga);
+
+    const nombre = screen.getByLabelText("Nombre");
+    await user.clear(nombre);
+    await user.type(nombre, "Ana Renombrada");
+
+    let res: unknown;
+    await act(async () => {
+      res = await ref.current!.submit();
+    });
+
+    expect(res).toMatchObject({ status: "ok" });
+    expect(actualizarUsuarioMock).toHaveBeenCalledTimes(1);
+    const enviado = actualizarUsuarioMock.mock.calls[0][1] as Record<string, unknown>;
+    expect(enviado.nombre).toBe("Ana Renombrada");
+    expect(enviado).not.toHaveProperty("cedula");
+    expect(screen.getByLabelText("Número de documento")).not.toHaveAttribute("aria-invalid");
+  }, 15000);
 
   it("R1606: el documento editado viaja en el payload de edición, sin email ni password", async () => {
     const user = userEvent.setup();

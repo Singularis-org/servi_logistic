@@ -302,9 +302,10 @@ export const UsuarioForm = forwardRef<UsuarioFormHandle, UsuarioFormProps>(
           telefono: form.telefono,
           rolId: form.rolId,
           tipoIdentificacionId: form.tipoIdentificacionId,
-          // SLT-221 (R1601/R1606): el documento se corrige aquí; el service lo normaliza y, si
-          // es el mismo que el guardado, no deja rastro en el Histórico (R1605).
-          cedula: form.cedula,
+          // SLT-221 (R1601/R1606): el documento se corrige aquí y el service lo normaliza. Solo
+          // viaja si cambió: uno guardado sin tocar no se valida, así una cédula previa a SLT-42 o
+          // una `APIKEY-<slug>` de más de 30 no bloquea editar otro campo (SLT-42 R9).
+          ...(form.cedula !== usuario?.cedula ? { cedula: form.cedula } : {}),
           // SLT-94 (R4/R9): solo se envía cuando el rol es `adminTienda`; el backend
           // fuerza «sí» para otros roles.
           ...(esAdminTienda ? { seRecogeEnTienda: form.seRecogeEnTienda } : {}),
