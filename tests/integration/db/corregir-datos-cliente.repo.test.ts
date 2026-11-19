@@ -627,9 +627,14 @@ describeSiHayBase("⭑ 312/B3 — corregirDatosCliente contra Postgres real", ()
         JSON.stringify((r.antes as Record<string, unknown>)[k]) !==
         JSON.stringify((r.despues as Record<string, unknown>)[k]),
     );
+    // SLT-43 «Geografía jerárquica: modelo y migración» (R20): el trigger `orden_nodo_geografico`
+    // deja `nodo_geografico_id` en el distrito de la orden cuando este cambia. Es la sincronía del
+    // modelo nuevo, no una columna que escriba esta ficha: se declara aquí y se fija su valor abajo.
     expect(diferentes.sort()).toEqual(
-      ["direccion", "distritoId", "peso", "updatedAt", "zonaId"].sort(),
+      ["direccion", "distritoId", "nodoGeograficoId", "peso", "updatedAt", "zonaId"].sort(),
     );
+    // El nodo de un distrito comparte su id (`COALESCE(NEW.distrito_id, NEW.canton_id)`).
+    expect(r.despues.nodoGeograficoId).toBe(r.despues.distritoId);
 
     // R22 — las escribe el trabajo de geocodificacion, no esta ficha. Se afirma aparte del
     // conjunto de arriba porque es EL requisito que un `latitud: null` «por limpiar» romperia.
