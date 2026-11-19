@@ -182,3 +182,10 @@ PR #55 contra `geo_jerarquica`.
   producción, 5880/3000 de tests. Incluye lo de SLT-43, aún no en `dev`.
 - Contra `geo_jerarquica` (la base real de #55, mismas reglas de `medir`): 32/40 archivos,
   **1998/1000 líneas de producción**, 2562/3000 de tests.
+
+### CI
+
+- Commit `e2f3f59a` (sobre los merges `67aedb2a` y `9e9cba94`), publicado con `git push` normal.
+- `gate.yml` lanzado a mano con `workflow_dispatch` sobre la rama:
+  https://github.com/Singularis-org/servi_logistic/actions/runs/44639642504 (no se esperó el
+  resultado).
