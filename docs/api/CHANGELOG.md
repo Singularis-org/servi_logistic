@@ -122,9 +122,8 @@ que se pide y se recibe por este canal es el mismo).
 
 ## 2026-09-24 — ⚠️ RUPTURA — Los estados cambian de código y ganan su nombre
 
-> **Fecha de despliegue: PENDIENTE — se avisará con antelación y se escribirá aquí.** Este cambio
-> **rompe** a quien compare códigos de estado o de resultado: hasta ese día el canal sigue
-> respondiendo con los códigos anteriores.
+> **Fecha de despliegue: en producción desde el primer despliegue de la plataforma (2026-10-22).**
+> Este cambio **rompe** a quien compare códigos de estado o de resultado con los códigos anteriores.
 
 **Qué cambia, en una frase:** cada estado de una orden se llama igual en todas partes —en la
 aplicación, en el rastreo público y en este canal—. Siete estados cambian de **código**, los cuatro

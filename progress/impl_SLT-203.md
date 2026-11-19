@@ -77,3 +77,9 @@ Ver el final de este archivo.
 - `== init OK ==` · **INIT_EXIT=0**.
 
 Veredicto: contrato y docs publican `manifiesto.filas[].intentos`; guardias rojas sin la documentación y verdes con ella.
+
+## Paso 6, resuelto (indicación del leader, 2026-11-18)
+Para esta plataforma el renombrado está en producción desde su primer commit en `origin/prod`,
+`86d70bf0` (2026-10-22); la entrada 2026-09-24 es anterior a la plataforma. El CHANGELOG pasa de
+«PENDIENTE» a «en producción desde el primer despliegue de la plataforma (2026-10-22)». La guía
+(§ bloque A: «Ya está en producción») no contradice y no se toca.
