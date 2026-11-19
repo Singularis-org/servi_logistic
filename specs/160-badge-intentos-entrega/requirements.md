@@ -235,6 +235,10 @@ apunta el QR ni en la etiqueta de guía imprimible.
 agregar el conteo de intentos a los DTO ni a la documentación de la API por llave
 de integración.
 
+> **Nota (2026-11-18, SLT-203):** enmendado para `manifiesto.filas[].intentos` de
+> `POST /api/ordenes/api-key/carga`, decisión de Carlos. Ese campo se publica en el contrato
+> (`ManifiestoFila`); el resto de DTO del canal (`ApiOrden*`) sigue sin el conteo.
+
 **R32 — Sin regresión de los listados.** Todas las superficies afectadas DEBEN
 conservar su paginación, su orden, su selección por lote y el resto de su
 contenido sin cambios observables más allá del dato nuevo.
@@ -279,7 +283,7 @@ frontend, en `progress/impl_160_frontend.md §2`. Ningún requisito queda sin du
 | R28 | `tests/unit/utils/manifiesto-xlsx.test.ts` ("R28a…", "R28b…"); `tests/unit/services/manifiesto-service.test.ts` |
 | R29 | `tests/unit/types/intentos-no-alcance.test.ts` (`sortBy` y `filter` rechazados) |
 | R30 | `intentos-no-alcance.test.ts` (contrato `EtiquetaGuiaDTO`); `tests/components/EtiquetaGuia.test.tsx` ("R30: no expone el conteo"); `EtiquetasGuiaModal.test.tsx`; `tests/unit/components/intentos-no-alcance-ui.test.ts` (guarda de fuente de la vista del paquete, la etiqueta y el PDF) |
-| R31 | `intentos-no-alcance.test.ts` (guarda sobre `openapi-spec` + tipos `ApiOrden*`) |
+| R31 | `intentos-no-alcance.test.ts` (guarda sobre `openapi-spec` + tipos `ApiOrden*`; desde SLT-203 permite `intentos` solo en `ManifiestoFila`) |
 | R32 | Las suites completas de las 12 superficies, verdes. Los cambios de aserción —5 en total, todos por el dato nuevo— están enumerados uno a uno en `progress/impl_160_frontend.md §3` |
 
 ## Preguntas abiertas

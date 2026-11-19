@@ -21,6 +21,25 @@
 
 ---
 
+## 2026-11-18 — Sin ruptura — El contrato publica `manifiesto.filas[].intentos` de la carga
+
+> **Sin ruptura.** La respuesta de `POST /api/ordenes/api-key/carga` **ya traía** esta clave en
+> cada fila del manifiesto; lo que cambia es que el contrato ahora la declara. Ningún valor, ruta ni
+> código de respuesta cambia. Si validás con un esquema cerrado o generado, regeneralo: `intentos`
+> pasa a ser una propiedad **obligatoria** de `ManifiestoFila`.
+
+| Dónde | Clave | Qué es |
+|---|---|---|
+| `POST /api/ordenes/api-key/carga` → `manifiesto.filas[]` (`ManifiestoFila`) | `intentos` | Entero ≥ 0, nunca `null`. Intentos de entrega de la orden: visitas del mensajero que no terminaron en entrega (`novedad`, `reprogramado` o `devolucion_a_origen_por_rechazo`), contadas una por cierre aprobado. Sin intentos vale `0`; en la respuesta de la carga las órdenes acaban de crearse, así que vale `0`. |
+
+**Lo que NO cambia:** ningún otro endpoint gana el conteo (listado, detalle, webhook y el resto de
+la carga siguen sin él).
+
+Contrato: `lib/api/openapi-spec.ts` y su espejo `docs/api/api-key-openapi.yaml`; guía de
+integración: `docs/ayuda/oficina/guia-integracion-api.md` (§5.1).
+
+---
+
 ## 2026-11-05 — Sin ruptura — Las fechas de calendario se miden en la zona horaria del país de tu empresa
 
 > **Sin ruptura para las empresas de Costa Rica.** Solo cambian **textos de descripción** del

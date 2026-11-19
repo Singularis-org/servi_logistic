@@ -128,8 +128,8 @@ const MAX_CARGA_ROWS = 5000;
 export const EJEMPLO_NOMBRE_LOTE = "Pedidos del 18 de noviembre";
 
 // SLT-201 — una fila del bloque `manifiesto` de los ejemplos de `POST carga`. Valores
-// ilustrativos con la forma de `ManifiestoFilaDTO` (`lib/types/manifiesto.ts`), MENOS el conteo de
-// reintentos de entrega: 160/R31 (QA5) lo deja fuera del contrato publico (ver `ManifiestoFila`).
+// ilustrativos con la forma COMPLETA de `ManifiestoFilaDTO` (`lib/types/manifiesto.ts`). SLT-203:
+// `intentos` entra (vale 0: la orden acaba de crearse); 160/R31 queda enmendado para este campo.
 const EJEMPLO_FILA_MANIFIESTO = {
   numGuia: 100234,
   numRemision: "REM-0001",
@@ -139,11 +139,12 @@ const EJEMPLO_FILA_MANIFIESTO = {
   zona: "San José Centro",
   producto: "Camiseta talla M",
   monto: 25.9,
+  intentos: 0,
   origen: "Mi Tienda",
   destino: "Bodega central",
   responsable: "Integración Mi Tienda",
   fecha: "2026-11-18",
-} as const satisfies Omit<ManifiestoFilaDTO, "intentos">;
+} as const satisfies ManifiestoFilaDTO;
 
 export const openApiSpec = {
   openapi: "3.1.0",
@@ -1025,8 +1026,8 @@ export const openApiSpec = {
   // afecta al recuento. La 268 lo AMPLIA con las tres causas de incidente.
   //
   // ⚠️ Ojo tambien con la PROSA: `tests/unit/types/intentos-no-alcance.test.ts` (160/R31) prohibe
-  // la subcadena «intentos» en TODO el spec serializado. Por eso aqui se habla de «reintento», en
-  // singular: no lo «corrijas» al plural.
+  // la subcadena «intentos» en todo el spec serializado FUERA de `ManifiestoFila` (SLT-203). Por
+  // eso aqui se habla de «reintento», en singular: no lo «corrijas» al plural.
   components: {
     securitySchemes: {
       bearerAuth: {
@@ -2075,10 +2076,11 @@ export const openApiSpec = {
         ],
       },
       // `ManifiestoFilaDTO` (`lib/types/manifiesto.ts`). Su conjunto de columnas es ABIERTO
-      // (feature 160, R28): crece cuando la orden expone un dato nuevo. ⚠️ La fila real trae
-      // ademas el conteo de reintentos de entrega, y aqui NO se publica: 160/R31 (QA5) lo deja
-      // fuera del contrato y `intentos-no-alcance.test.ts` lo vigila. La guardia de SLT-201 lo
-      // tiene como unica excepcion declarada. Abierto para Carlos (`progress/impl_SLT-201.md`).
+      // (feature 160, R28): crece cuando la orden expone un dato nuevo.
+      // SLT-203 (2026-11-18, decision de Carlos): `intentos` SE PUBLICA aqui. 160/R31 (QA5) queda
+      // enmendado SOLO para `manifiesto.filas[].intentos` de la carga; el resto de DTO del canal
+      // (`ApiOrden*`) sigue sin el conteo (`intentos-no-alcance.test.ts`). La guardia de SLT-201
+      // compara la fila real con este schema sin excepciones.
       ManifiestoFila: {
         type: "object",
         description:
@@ -2092,6 +2094,7 @@ export const openApiSpec = {
           "zona",
           "producto",
           "monto",
+          "intentos",
           "origen",
           "destino",
           "responsable",
@@ -2106,6 +2109,12 @@ export const openApiSpec = {
           zona: { type: "string", description: "Nombre de la zona de destino." },
           producto: { type: "string" },
           monto: { type: ["number", "null"], description: "Monto a cobrar (COD) de la orden." },
+          intentos: {
+            type: "integer",
+            minimum: 0,
+            description:
+              "Intentos de entrega de la orden: visitas del mensajero que no terminaron en entrega (`novedad`, `reprogramado` o `devolucion_a_origen_por_rechazo`), contadas una por cierre aprobado; una gestión anulada o cuyo cierre no se aprobó no cuenta. Nunca `null`: sin intentos vale `0`. En la respuesta de la carga las órdenes acaban de crearse, así que vale `0`.",
+          },
           origen: { type: "string", description: "De dónde sale el paquete en este traslado (tu tienda)." },
           destino: { type: "string", description: "A dónde llega (la bodega central)." },
           responsable: { type: "string" },
