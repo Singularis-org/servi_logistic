@@ -59,7 +59,7 @@ Tests modificados:
 | R1606 | `usuario-form.test.tsx` (campo habilitado en edición; la cédula viaja en el payload sin email ni password) + `e2e/usuario-corregir-cedula.spec.ts` |
 | R1607 | `usuario-schema.test.ts` (email y password siguen rechazados) + `tests/unit/actions/usuarios.test.ts` (el borde: email o password → `validation_error` sin llamar al service) |
 | R1608 | `usuario-cedula-corregida.test.ts` (254 cabe; 255 aborta la transacción entera) |
-| R1609 | `historial-accion-escrituras-cubiertas.guardia.test.ts` (categoría y etiquetas) + `e2e/usuario-corregir-cedula.spec.ts` (fila «Cambió la cédula de un usuario» con anterior y nuevo; escrito, NO corrido en local) |
+| R1609 | `historial-accion-escrituras-cubiertas.guardia.test.ts` (categoría y etiquetas) + `historial-acciones-descarga-columnas.test.ts` (descarga: etiqueta, categoría, anterior y nuevo) + `e2e/usuario-corregir-cedula.spec.ts` (fila en pantalla; verde en local, vuelta 2) |
 
 ## Mutaciones (cada una mató al menos un test, y se revirtió)
 
@@ -161,3 +161,47 @@ Mutación: quitar `cedula: form.cedula` del payload → rojo «R1606: el documen
 ## Veredicto
 
 T1.6 y T1.7 hechas (E2E sin correr en local); gate local verde, `INIT_EXIT=0`.
+
+---
+
+# Vuelta 2 tras la review del PR 1 (`progress/review_SLT-221-pr1.md`)
+
+## Arreglos
+
+- **B1** — `e2e/usuario-corregir-cedula.spec.ts` buscaba el tipo con `clave: "cedula"`; la clave del
+  catálogo por país es `cedula_fisica` (`cedula` es el `value` heredado; migración
+  `20261107120100_slt42_tipo_documento_por_pais`).
+- **B3** — `UsuarioForm.tsx`: `cedula` solo viaja si difiere de la guardada, así que una guardada sin
+  tocar no pasa por la validación de cliente ni del borde (SLT-42 R9). Test nuevo en
+  `usuario-form.test.tsx`: con una cédula de 67 caracteres (`APIKEY-` + 60), editar el nombre da
+  `ok` y el payload no lleva `cedula`. **Primero salió rojo** (`validation_error`) y luego verde.
+- **m2** — `tests/unit/components/historial-acciones-descarga-columnas.test.ts`: la fila
+  `usuario_cedula_cambiada` pasada por `aDTO` sale en la descarga con «Cambió la cédula de un usuario»,
+  la categoría, el anterior y el nuevo; el filtro `cambia_permisos` la encuentra.
+
+## Salidas
+
+- `usuario-form.test.tsx`: 38/38. `historial-acciones-descarga-columnas.test.ts`: 18/18.
+- `pnpm run typecheck`: exit 0. `eslint` sobre los 4 archivos: «No issues found».
+- **B2, E2E en local.** Base desechable NUEVA `servi_slt221_e2e`: `prisma migrate deploy` (exit 0),
+  `pnpm run db:seed` (exit 0) y `next build` con `NODE_OPTIONS=--max-old-space-size=8192` y
+  `NEXT_PUBLIC_APP_URL`/`APP_BASE_URL` en el puerto del E2E (exit 0).
+  `E2E_PUERTO=3221 E2E_STORAGE_PUERTO=54421 pnpm exec playwright test e2e/usuario-corregir-cedula.spec.ts
+  e2e/tope-intentos-por-empresa.spec.ts e2e/tarifas-valor-propio-mensajero.spec.ts`:
+  **34 passed (1.9m), 0 failed, 0 flaky, `E2E_EXIT=0`**. Por spec:
+  - `[aislamiento] usuario-corregir-cedula`: 1 passed;
+  - `[dinero] tope-intentos-por-empresa`: 12 passed;
+  - `[dinero] tarifas-valor-propio-mensajero`: 11 passed;
+  - dependencia `[plataforma-vacia]` (`superadmin-arranque` 3, `superadmin-empresas` 7): 10 passed.
+
+## Observación
+
+- R1609 nombra la categoría «Cambia quién puede hacer qué»; la etiqueta que sale en pantalla y en el
+  archivo es «Cambia permisos» (`CATEGORIA_LABELS.cambia_permisos`). El test afirma la etiqueta real; no
+  cambié la UI. Lo decide el leader.
+- `NODE_OPTIONS=--max-old-space-size=8192 ./init.sh` (base desechable exportada): `== init OK ==`, `INIT_EXIT=0`;
+  tamaño `31/40 archivos, 510/1000 líneas de producción, 1065/3000 de tests`.
+
+## Veredicto (vuelta 2)
+
+B1, B2, B3 y m2 resueltos; los 3 E2E afectados en verde en local y el gate local en verde.

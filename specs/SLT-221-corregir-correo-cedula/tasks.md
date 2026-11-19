@@ -67,14 +67,14 @@ En PR 2 el margen de líneas de producción es corto: comentarios breves y nada 
   ya se pinta bajo el campo. **Hecho:** `tests/unit/components/usuario-form.test.tsx` actualizado
   (antes afirmaba que el campo estaba deshabilitado) cubre R1606 y el mensaje de R1603, y
   `tests/unit/actions/usuarios.test.ts` el borde.
-- [ ] **T1.7 — E2E** (depende de T1.6).
+- [x] **T1.7 — E2E** (depende de T1.6).
   `e2e/usuario-corregir-cedula.spec.ts`: el maestro corrige la cédula de un usuario, la ve guardada
   y ve la fila «Cambió la cédula de un usuario» con el valor anterior y el nuevo en el Histórico de
   acciones. **Hecho:** verde en local con base desechable y build (`NEXT_PUBLIC_APP_URL` como en
   `gate.yml`).
-  **Estado:** spec escrito y registrado en el proyecto `aislamiento` de `playwright.config.ts`;
-  typecheck y lint verdes. **NO corrido en local** (pedido del leader: lo corre el CI). Queda
-  abierto el «verde en local» de este «Hecho».
+  **Estado:** registrado en el proyecto `aislamiento`. Vuelta 2 de la review: verde en local
+  (base desechable nueva `servi_slt221_e2e` + `migrate deploy` + seed + `next build`), junto con
+  `tope-intentos-por-empresa` y `tarifas-valor-propio-mensajero`: 34 passed, 0 failed, 0 flaky.
 - [ ] **T1.8 — Cierre de PR 1.** `./init.sh` verde. Evidencia en
   `progress/features/SLT-221.md`, con la comprobación de lo que el usuario ve. Reviewer. El PR lo
   abre el leader.
