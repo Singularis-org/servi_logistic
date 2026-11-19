@@ -37,8 +37,14 @@ const RAIZ = path.resolve(__dirname, "../../..");
 /** Los árboles de PRODUCCIÓN donde puede vivir un control montado. */
 const ARBOLES = ["app", "components"] as const;
 
-/** El único archivo que hoy enciende las vistas. Lista literal: añadir uno es decidirlo. */
-const MONTAJES_ESPERADOS = ["app/(app)/ordenes/_components/OrdenesListado.tsx"];
+/**
+ * Los archivos que hoy encienden las vistas. Lista literal: añadir uno es decidirlo.
+ * SLT-210 (2026-11-19, Carlos): «Órdenes de la bodega» de la satélite, superficie propia.
+ */
+const MONTAJES_ESPERADOS = [
+  "app/(app)/ordenes/_components/OrdenesListado.tsx",
+  "app/(app)/recepcion-satelite/_components/SateliteOrdenesListado.tsx",
+];
 
 function listarFuentes(dir: string, acc: string[] = []): string[] {
   for (const entrada of readdirSync(dir, { withFileTypes: true })) {
@@ -85,6 +91,13 @@ describe("GUARDIA · el detector se prueba a sí mismo antes de afirmar nada", (
 
   it("CONTROL POSITIVO — encuentra «ordenes» montada en el árbol real", () => {
     expect(SUPERFICIES_MONTADAS.has("ordenes")).toBe(true);
+  });
+
+  it("SLT-210 (R1411) — la satélite monta SU superficie, en su listado y no en el de `/ordenes`", () => {
+    expect(
+      MONTAJES.get("app/(app)/recepcion-satelite/_components/SateliteOrdenesListado.tsx"),
+    ).toEqual(["ordenes-bodega-satelite"]);
+    expect(MONTAJES.get("app/(app)/ordenes/_components/OrdenesListado.tsx")).toEqual(["ordenes"]);
   });
 
   it("CONTROL NEGATIVO — una superficie inventada NO aparece montada", () => {

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 import { VistaFiltroRepository } from "@/lib/repositories/VistaFiltroRepository";
+import { VistaFiltroService } from "@/lib/services/VistaFiltroService";
 import { VISTA_FILTRO_VERSION, type VistaFiltroPayload } from "@/lib/types/vista-filtro";
 import {
   HAY_BASE_DE_DATOS,
@@ -283,5 +284,48 @@ describeSiHayBase("453/T1.5 · el repositorio de vistas contra Postgres real", (
     expect(r.renombrar.estado).toBe("sin_coincidencia");
     expect(r.actualizar.estado).toBe("sin_coincidencia");
     expect(r.eliminar).toBe(0);
+  });
+  it("⭑ SLT-210 (R1411/R1412): las vistas de la satélite son de SU superficie y de SU dueño", async () => {
+    const r = await enTransaccionRevertida(prisma, async (tx) => {
+      await serializarEscriturasReales(tx);
+      const sara = await crearUsuario(tx, "sara");
+      const otra = await crearUsuario(tx, "otra");
+      const servicio = new VistaFiltroService(repoDe(tx));
+      const enSatelite = await servicio.guardar(sara, {
+        superficie: "ordenes-bodega-satelite",
+        nombre: "Por devolver",
+        filtro: PAYLOAD,
+      });
+      const enOrdenes = await servicio.guardar(sara, {
+        superficie: "ordenes",
+        nombre: "Solo en ordenes",
+        filtro: OTRO_PAYLOAD,
+      });
+      const id = enSatelite.status === "ok" ? enSatelite.vista.id : "";
+      // Control positivo: la siembra existe; sin ella los «no la ve» de abajo serian verdes solos.
+      expect(id, "SLT-210: la vista de la satelite no se guardo").not.toBe("");
+      expect(enOrdenes.status).toBe("ok");
+      return {
+        saraSatelite: await servicio.listar(sara, "ordenes-bodega-satelite"),
+        saraOrdenes: await servicio.listar(sara, "ordenes"),
+        otraSatelite: await servicio.listar(otra, "ordenes-bodega-satelite"),
+        otraRenombra: await servicio.renombrar(otra, { id, nombre: "Mia" }),
+        otraActualiza: await servicio.actualizar(otra, { id, filtro: OTRO_PAYLOAD }),
+        otraBorra: await servicio.eliminar(otra, id),
+        trasLosIntentos: await servicio.listar(sara, "ordenes-bodega-satelite"),
+      };
+    });
+
+    const nombres = (l: typeof r.saraSatelite) => (l.status === "ok" ? l.vistas.map((v) => v.nombre) : null);
+    // R1411: cada superficie trae SOLO lo suyo, en las dos direcciones.
+    expect(nombres(r.saraSatelite)).toEqual(["Por devolver"]);
+    expect(nombres(r.saraOrdenes)).toEqual(["Solo en ordenes"]);
+    // R1412: otra persona no la ve, no la renombra, no la actualiza y no la borra.
+    expect(nombres(r.otraSatelite)).toEqual([]);
+    expect(r.otraRenombra.status).toBe("not_found");
+    expect(r.otraActualiza.status).toBe("not_found");
+    expect(r.otraBorra.status).toBe("not_found");
+    const intacta = r.trasLosIntentos.status === "ok" ? r.trasLosIntentos.vistas : [];
+    expect(intacta.map((v) => [v.nombre, v.filtro])).toEqual([["Por devolver", PAYLOAD]]);
   });
 });

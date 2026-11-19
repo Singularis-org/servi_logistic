@@ -6,6 +6,7 @@ import { recepcionSateliteConfig } from "@/lib/config/recepcion-satelite";
 import type { ListarCompletoResult } from "@/lib/types/descarga-listado";
 import type { ListarPaginadoResult } from "@/lib/types/listado-paginado";
 import { paginaInputSchema } from "@/lib/types/pagina-input";
+import { esquemaOrdenamiento } from "@/lib/types/ordenamiento-listado";
 import { conRefinesDeCreacion, ordenFilterBase } from "@/lib/types/orden";
 import { ESTADOS_BODEGA_SATELITE } from "@/lib/utils/estados-bodega-satelite";
 import type { ResumenRecepcion } from "@/lib/interfaces/repositories/IOrdenRepository";
@@ -77,6 +78,15 @@ const FILTROS_COMPARTIDOS = ordenFilterBase.pick({
 }).shape;
 
 /**
+ * SLT-210 (R1403/R1405) — los campos por los que se puede ordenar «Órdenes de la bodega»: los
+ * MISMOS dos que ofrece `/ordenes` (`CampoOrdenOfrecido`), y ninguno mas. Son claves PUBLICAS:
+ * el repositorio las traduce a su columna (`num_remision` -> `clave_remision`, ficha 423) y el
+ * nombre de columna no cruza nunca la frontera.
+ */
+export const CAMPOS_ORDEN_BODEGA_SATELITE = ["created_at", "num_remision"] as const;
+export type CampoOrdenBodegaSatelite = (typeof CAMPOS_ORDEN_BODEGA_SATELITE)[number];
+
+/**
  * Base SIN los `refine` del tiempo: `.omit()`/`.extend()` solo existen sobre un `ZodObject`,
  * y de esta base cuelgan el schema del conjunto y el de la vigencia. Los dos `refine` se
  * aplican al final, uno por schema (`conRefinesDeCreacion`).
@@ -85,6 +95,11 @@ const listarOrdenesBodegaPaginadoBase = paginaInputSchema(recepcionSateliteConfi
   .extend({
     estados: z.array(z.enum(ESTADOS_BODEGA_SATELITE)).optional(),
     ...FILTROS_COMPARTIDOS,
+    // SLT-210 (R1401/R1405): el orden, con el fragmento comun de los listados. Sin campo ni
+    // direccion queda el de siempre (fecha de creacion, mas recientes primero); un valor fuera
+    // de la lista blanca muere aqui con `validation_error`. La descarga lo hereda (la fila N
+    // del archivo es la fila N de la pantalla, R1406); la vigencia lo omite, mas abajo.
+    ...esquemaOrdenamiento(CAMPOS_ORDEN_BODEGA_SATELITE, "created_at", "desc"),
   })
   .strict();
 
@@ -130,6 +145,8 @@ export type ListarOrdenesBodegaCompletoActionInput = z.infer<
  */
 export const listarIdsVigentesBodegaSchema = conRefinesDeCreacion(
   listarOrdenesBodegaCompletoBase
+    // SLT-210: el orden no cambia la PERTENENCIA al conjunto, asi que la vigencia no lo pide.
+    .omit({ sortBy: true, sortDir: true })
     .extend({
       ids: z
         .array(z.string().uuid())

@@ -27,7 +27,9 @@ import type { ActionError } from "@/lib/types/orden";
  * es una guardia (`vistas-superficies-declaradas.guardia.test.ts`, R34): una superficie declarada
  * que nadie monta pone el arbol en rojo, para que no quede un mecanismo que nadie puede disparar.
  */
-export const SUPERFICIES_VISTA = ["ordenes"] as const;
+// SLT-210 (R1411): «Órdenes de la bodega» de la satelite es una superficie PROPIA: sus vistas no
+// aparecen en `/ordenes` ni al reves, aunque compartan formato y barra.
+export const SUPERFICIES_VISTA = ["ordenes", "ordenes-bodega-satelite"] as const;
 
 export type SuperficieVista = (typeof SUPERFICIES_VISTA)[number];
 
