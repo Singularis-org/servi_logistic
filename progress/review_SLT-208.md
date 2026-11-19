@@ -338,3 +338,45 @@ menor). Quedan dos bloqueantes nuevos, los dos en el spec que exige la ruta comp
 
 Los dos se arreglan con documentación y una regla de guardia, sin tocar la API ni los artefactos.
 Conviene resolver V2-3 en la misma vuelta.
+
+## Vuelta 3 (acotada a 9dbc6b0a..e010eaa5)
+
+Revisé solo el diff de los arreglos (6 archivos) contra V2-1 a V2-5, y volví a recorrer la trazabilidad
+R1..R12.
+
+### Checklist
+- [x] `git pull`: la rama está al día (HEAD e010eaa5).
+- [x] V2-1: `design.md` abre con `## Lo que ya existe`, en el formato de `docs/specs.md`. Da los términos
+      buscados en el board y en el grafo, qué apareció (SLT-80, SLT-201, SLT-203, SLT-45 y símbolos) y
+      qué se reutiliza o no, con el porqué. Dice «url de producción: nada en el board».
+- [x] V2-2: la regla 5 de la guardia (`referenciasAlRepositorio`) busca `docs/`, `lib/`, `app/`, `.yaml`
+      y `CHANGELOG.md` en el cuerpo de la guía. Excluye el front matter y el literal del `422`
+      (`Ver docs/api/CHANGELOG.md.`, que aparece 1 vez). Las rutas de URL detrás de `/` no cuentan. R9
+      ahora incluye R8, y la tabla de trazabilidad mapea R8 a la regla 5.
+- [x] Mutaciones sobre la guía real, restauradas con `git checkout --` (`git status` limpio):
+  - «(ver lib/api/openapi-spec.ts)» en 4.8, paso 4: la regla 5 da rojo con `["lib/"]` (1 failed).
+  - «(ver CHANGELOG.md)» en 4.8, paso 2: la regla 5 da rojo (1 failed).
+  - El bloque MUTACIÓN también prueba la función con el front matter, el 422 y `/api/docs/openapi`.
+- [x] V2-3: en 4.8 hay un paso 5 nuevo para fulfillment: «6» y «7» responden `409`, y «9. Cancelar» no se
+      envía. Cuadra con la colección.
+- [x] V2-4: el curl de 2.1 está partido con `\`, como el resto.
+- [x] V2-5: el test del PDF titula «SLT-208 R10» y «SLT-208 R11», y la tabla cita esos nombres.
+- [x] Trazabilidad: R1 a R12 tienen cada uno un test (guardia, test del PDF o E2E). Ninguno queda como
+      «sin test».
+- [x] Tasks: ninguna `[ ]` en `tasks.md`.
+- [x] Con la base desechable: la guardia y el test del PDF dan 2 archivos y 30 tests en verde. `eslint`
+      no reporta problemas en los dos `.ts`. `tsc --noEmit` sale con 0.
+- [x] Tamaño: 12/40 archivos, 979/1000 líneas de producción y 1044/3000 de tests. Solo es un AVISO,
+      igual que en la vuelta 2.
+
+### Hallazgos nuevos
+- **V3-1 · menor:** la excepción del 422 quita del cuerpo **toda** aparición de `Ver docs/api/CHANGELOG.md.`,
+  no solo la del ejemplo del `422`. Si alguien copiara esa frase en otro párrafo, la guardia no lo
+  vería. Es un riesgo bajo: la frase es muy concreta. No bloquea.
+- **Nota (no es hallazgo):** el tamaño está a 21 líneas de producción del máximo. Si hay otra vuelta,
+  cualquier añadido puede pasarlo.
+
+### Veredicto vuelta 3
+
+**OK.** V2-1 y V2-2, los dos bloqueantes, están resueltos, y también los menores V2-3, V2-4 y V2-5. No hay
+regresiones en el rango. Queda un menor (V3-1) que no bloquea.
