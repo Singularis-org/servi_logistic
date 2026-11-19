@@ -380,3 +380,65 @@ R1..R12.
 
 **OK.** V2-1 y V2-2, los dos bloqueantes, están resueltos, y también los menores V2-3, V2-4 y V2-5. No hay
 regresiones en el rango. Queda un menor (V3-1) que no bloquea.
+
+## Vuelta 4 (acotada a 0434fc59..890d24e6)
+
+Un commit: `890d24e6 fix(SLT-208)`. Toca `lib/types/carga-masiva.ts` (+5/-1), un test nuevo y la bitácora.
+
+### Checklist
+
+- [x] El cambio es mínimo: una línea de código (`z.string({ error: (iss) => iss.input === undefined ?
+      MENSAJE_OBLIGATORIO : undefined })`) más el import de la constante que ya existía en `zod-es.ts`
+      (no se duplica el texto). Para cualquier otra entrada que no sea string (número, null, objeto) el
+      `error` devuelve `undefined` y zod baja al mapa global, como antes. La clave vacía sigue cayendo en
+      `.min(1, "<campo> es obligatorio")`, sin cambios. El trim y el resto del esquema no se tocan.
+- [x] Carga masiva por sesión: el único consumidor es `BulkOrdenService` (línea 776), que comparten la
+      sesión y la API. Cuando una clave falta, en la sesión solo cambia el texto. Antes salía de
+      `localeError` («Este campo es obligatorio», si el mapa llegaba) y ahora lo pone el esquema, con el
+      mismo texto. Además, en la sesión las cabeceras que faltan las corta antes `findMissingHeaders`.
+- [x] El test nuevo `tests/unit/types/carga-fila-clave-ausente-slt208.test.ts` pone `localeError` a
+      `undefined` en cada caso, así que el texto no puede salir del mapa global, y lo restaura en `afterEach`.
+      Comprueba la clave ausente y la vacía en los 4 campos, y un control positivo.
+- [x] **Mutación repetida:** devolví la línea a `.string()` y el test dio **4 failed | 5 passed**, justo los
+      4 casos de clave ausente. Restauré con `git checkout --` y el árbol quedó limpio.
+- [x] Tests relacionados con la base `servi_slt208_desechable`: 9 archivos y **165 passed** (el test nuevo,
+      `carga-masiva`, `bulk-orden-service.carga-api`, `openapi-carga-row-paridad`, la integración
+      `ordenes-carga-masiva-chunk.route`, los round-trip de errores y de plantilla, y `OrdenesCargaUpload`
+      y `CargaMasivaChunks`). Ninguno salió como skipped.
+- [x] `tsc --noEmit` y eslint sobre los dos archivos dan 0.
+- [x] Tamaño: 14/40 archivos, 986/1000 líneas de producción y 1091/3000 de tests. Sigue por debajo del
+      máximo, pero solo quedan 14 líneas de margen.
+
+### Hallazgos
+
+- **V4-1 (menor, para una ficha aparte, no es de esta release).** Hay que diagnosticar por qué la config
+  global en español no llega a todas las rutas. La sospecha de la segunda copia de zod (3.25.76) **no
+  se sostiene**. Esa copia solo la usan `@modelcontextprotocol/sdk` y `zod-to-json-schema`, que son
+  transitivas y nada de `app/` ni de `lib/` las importa. Además guarda su `globalConfig` en una variable
+  del módulo y no toca `globalThis`. La causa probable es otra. En zod 4.4.3, `v4/classic/external.js:10`
+  ejecuta `config(en())` cada vez que se **evalúa** una instancia del módulo, y `config` hace
+  `Object.assign` sobre el `globalThis.__zod_globalConfig` compartido. El build de Next en el worktree
+  tiene al menos tres chunks de zod (`.next/server/chunks/1a7c_zod_v4_classic_external_1_*.js`, que es
+  la capa de route handlers, y dos más en `chunks/ssr/`), además de un chunk propio para `zod-es`. Si una
+  instancia de zod se evalúa DESPUÉS de `register()`, deja otra vez el mapa en inglés **para todo el
+  proceso**. Eso pasa cuando la primera petición a una ruta o action carga su chunk. El comentario de
+  `instrumentation.ts` («vale para todas las copias de zod del proceso») acierta en que el ajuste es
+  compartido, pero no tiene en cuenta que cada copia lo sobrescribe al cargarse. Es una hipótesis
+  apoyada en el código de zod y en los chunks del build, y cuadra con el síntoma de CI. No la reproduje
+  en `next start`.
+  - **Qué podría verse en inglés en prod:** cualquier mensaje que zod saque de su mapa por defecto, es
+    decir, un esquema sin mensaje propio. Ejemplos: claves ausentes (`invalid_type`), `min`/`max` sin
+    texto, `enum`, `email`, `uuid` y `number` sin mensaje. Afecta a las rutas `/api/v1/*` (los 422 que
+    ve el integrador) y a los errores de campo de las server actions (`normalizeError`). Ocurriría según
+    el orden de carga y la instancia de Vercel: tras un arranque en frío, en cuanto se carga el primer
+    chunk con su propia zod. Los esquemas con mensaje propio, como esta fila desde la vuelta 4, no se
+    ven afectados. En el cliente (`ZodEnEspanol.tsx`) puede pasar lo mismo si hay más de un chunk de zod
+    en el navegador. No lo comprobé.
+  - Arreglos posibles para esa ficha, sin decidir: volver a aplicar `configurarZodEnEspanol()` en el
+    módulo que comparten los esquemas, o dejar zod fuera del bundle (`serverExternalPackages`) para que
+    haya una sola instancia. Hace falta un test que cargue dos instancias.
+
+### Veredicto vuelta 4
+
+**OK.** El arreglo es mínimo y solo afecta a la clave ausente. El test falla sin el arreglo: lo comprobé
+con una mutación. No hay regresiones en la carga masiva. V4-1 es menor y va a una ficha aparte.
