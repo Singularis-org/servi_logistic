@@ -37,8 +37,8 @@ import {
 // SLT-119 (design §6.1; R6–R11, R16, R17) — el detalle de una factura en un panel lateral de la misma pantalla
 // (P4), sin ruta nueva. Lo pide al abrirse y al paginar con la función que le pasa la pantalla: la action del
 // maestro o la del superadmin ligada a su empresa.
-// SLT-136 (design §6; R19, R20): una factura cerrada lleva además «Descargar PDF» y «Descargar Excel» bajo la
-// cabecera. Sigue siendo de solo lectura: las descargas leen y arman el archivo en el navegador, no escriben nada;
+// SLT-136 (design §6; R19, R20) y SLT-199 (R23): una factura cerrada lleva además «Descargar factura» y «Descargar
+// anexo» bajo la cabecera. Sigue siendo de solo lectura: las descargas leen y arman el archivo en el navegador, no escriben nada;
 // los demás botones son cerrar y paginar (SLT-119 R16).
 
 /** La lectura del detalle: la action de «Mi plan» o la del detalle de empresa, ya ligada. */

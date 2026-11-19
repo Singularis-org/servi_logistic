@@ -231,3 +231,9 @@ Tests:
 - `tests/unit/api/procesar-jobs-registro.test.ts`
 - `tests/unit/guards/mi-plan-solo-maestro.guardia.test.ts`
 - `e2e/facturas-plataforma.spec.ts`
+
+<!-- @test-desaparecido tests/unit/facturas-plataforma/excel.test.ts: SLT-199 (2026-11-18, decisión 2 del humano)
+     retiró el Excel de la factura y enmendó R16, R17 (la parte del Excel) y R18 de esta ficha
+     (specs/SLT-199-planes-factura-diseno-anexo-pdf/design.md §9). El detalle de movimientos es ahora el anexo
+     en PDF: lo prueban tests/unit/facturas-plataforma/anexo.test.ts y e2e/facturas-plataforma.spec.ts. La parte
+     del PDF de R17 sigue en tests/unit/facturas-plataforma/pdf.test.ts. -->

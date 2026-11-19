@@ -327,7 +327,7 @@ describe("SLT-119 R1, R17 — «Facturas de la empresa» al final de «Mi plan»
     expect(screen.queryByRole("button", { name: /Ver detalle de la factura/ })).toBeNull();
   });
 
-  it("SLT-136 R19: el maestro ve «Descargar PDF» y «Descargar Excel» en el detalle de una cerrada, con la descarga de la página", async () => {
+  it("SLT-199 R23: el maestro ve «Descargar factura» y «Descargar anexo» en el detalle de una cerrada, con la descarga de la página", async () => {
     const user = userEvent.setup();
     vi.spyOn(console, "error").mockImplementation(() => {});
     const cerrada = factura({ plan: null });
@@ -346,8 +346,8 @@ describe("SLT-119 R1, R17 — «Facturas de la empresa» al final de «Mi plan»
 
     await user.click(screen.getByRole("button", { name: /Ver detalle de la factura/ }));
     const panel = await screen.findByRole("dialog");
-    expect(within(panel).getByRole("button", { name: "Descargar Excel" })).toBeInTheDocument();
-    await user.click(within(panel).getByRole("button", { name: "Descargar PDF" }));
+    expect(within(panel).getByRole("button", { name: "Descargar anexo" })).toBeInTheDocument();
+    await user.click(within(panel).getByRole("button", { name: "Descargar factura" }));
 
     expect(descargarDeLaPagina).toHaveBeenCalledWith({ facturaId: cerrada.id });
   });

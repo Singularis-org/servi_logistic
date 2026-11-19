@@ -681,7 +681,7 @@ describe("SLT-119 (R12, R17) — las pestañas «Empresa» y «Facturación»", 
     expect(verDetalleFacturaMock).toHaveBeenCalledWith(ORG, { facturaId: CERRADA.id, pagina: 1 });
   });
 
-  it("SLT-136 R2, R19: el detalle de una cerrada lleva las dos descargas; la pide la action ligada a la empresa de la URL", async () => {
+  it("SLT-136 R2, SLT-199 R23: el detalle de una cerrada lleva las dos descargas; la pide la action ligada a la empresa de la URL", async () => {
     actorMock.mockResolvedValue(superadmin);
     vi.spyOn(console, "error").mockImplementation(() => {});
     verFacturasMock.mockResolvedValue({ estado: "ok", facturas: [CERRADA] } satisfies FacturasResult);
@@ -694,8 +694,8 @@ describe("SLT-119 (R12, R17) — las pestañas «Empresa» y «Facturación»", 
     const user = await abrirFacturacion();
     await user.click(screen.getByRole("button", { name: /Ver detalle de la factura/ }));
     const panel = await screen.findByRole("dialog", { name: "Factura N.º 1" });
-    expect(within(panel).getByRole("button", { name: "Descargar Excel" })).toBeInTheDocument();
-    await user.click(within(panel).getByRole("button", { name: "Descargar PDF" }));
+    expect(within(panel).getByRole("button", { name: "Descargar anexo" })).toBeInTheDocument();
+    await user.click(within(panel).getByRole("button", { name: "Descargar factura" }));
 
     expect(descargarFacturaMock).toHaveBeenCalledWith(ORG, { facturaId: CERRADA.id });
     // R20: el fallo se dice dentro del panel, que sigue abierto.
