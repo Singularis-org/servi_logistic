@@ -59,7 +59,7 @@
 
 ## Tanda 4 — Botones y retiro del Excel
 
-- [ ] **T4.1** El segundo botón pasa a ser el del anexo (design §7). Depende de T3.1.
+- [x] **T4.1** El segundo botón pasa a ser el del anexo (design §7). Depende de T3.1.
   - `DescargarFactura.tsx`: `Documento = "factura" | "anexo"`, los dos entregan `application/pdf`, sin `XLSX_MIME`.
   - `facturas-vista.ts`: «Descargar factura» y «Descargar anexo».
   - `DetalleDeFactura.tsx`: el comentario de la línea 40.
