@@ -243,3 +243,5 @@ Sin cambios de cálculo ni dependencias nuevas.
   limpio.
 
 Veredicto: m2–m6 aplicados con test; verde en lo tocado.
+
+- Gate tras los menores (implementer): `./init.sh` rc=0 (typecheck, lint, test:rapido y guardias en verde, copia temporal de cupo restaurada). Tamaño: 20/40 archivos, 1172/1000 líneas de producción (aceptado ~1300), 1273/3000 de tests.
