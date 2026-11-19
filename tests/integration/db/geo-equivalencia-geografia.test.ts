@@ -23,9 +23,8 @@ import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres
 // (`ejecutar`, que compara todos los países) se mira solo cuando el país propio ya basta para que
 // difiera.
 //
-// Para desviar una fila sin que la copia o la sincronía la vuelvan a igualar se apagan los triggers con
-// `SET LOCAL session_replication_role = replica`: vale solo para esta transacción y no toma el
-// AccessExclusiveLock de un `DISABLE TRIGGER` (que en la base compartida bloquearía a otros archivos).
+// SLT-48 T5.1: se retiraron los 4 casos R13 que desviaban una fila de la tabla vieja a mano. Desde
+// SLT-48 la tabla vieja es una vista del nodo (SLT-48 R1) y no puede diferir de él.
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
@@ -53,13 +52,6 @@ async function conRama<T>(fn: (r: Rama) => Promise<T>): Promise<T> {
     const d = await insertarNodo(tx, { paisId: PAIS, tipoId: t.nivel3, padreId: c, profundidad: 3, nombre: `Barrio ${s}` });
     return fn({ tx, p, c, d });
   });
-}
-
-/** Desvía a mano sin triggers (ni copia ni sincronía) y los vuelve a encender. */
-async function sinTriggers(tx: TxDeTest, sql: string, ...valores: unknown[]): Promise<void> {
-  await tx.$executeRawUnsafe(`SET LOCAL session_replication_role = replica`);
-  await tx.$executeRawUnsafe(sql, ...valores);
-  await tx.$executeRawUnsafe(`SET LOCAL session_replication_role = origin`);
 }
 
 async function correrModo(tx: TxDeTest) {
@@ -97,73 +89,5 @@ describeSiHayBase("SLT-46 — equivalencia fila a fila entre la geografía vieja
     }));
     expect(r.salida.codigoDeSalida).toBe(r.resumen.iguales ? 0 : 1);
     expect(r.salida.lineas.at(-1)).toBe(r.resumen.iguales ? "Geografía equivalente." : "Geografía NO equivalente.");
-  });
-
-  it("R13: una provincia con otro nombre hace salir con código ≠ 0 y nombra el campo, sin el nombre", async () => {
-    const r = await conRama(async ({ tx, p }) => {
-      await sinTriggers(tx, `UPDATE provincia SET nombre = nombre || ' (otro)' WHERE id = $1`, p);
-      return { p, resumen: await equivalenciaGeografia(tx, { paisId: PAIS }), salida: await correrModo(tx) };
-    });
-    expect(r.resumen.diferencias).toEqual([
-      { paisId: PAIS, profundidad: 1, id: r.p, motivo: "distinta", campos: ["nombre"] },
-    ]);
-    expect(r.salida.codigoDeSalida).not.toBe(0);
-    expect(r.salida.lineas).toContain(`fila ${PAIS}/1 ${r.p}: distinta (nombre)`);
-    expect(r.salida.lineas.join("\n")).not.toContain("(otro)");
-    expect(r.salida.lineas.at(-1)).toBe("Geografía NO equivalente.");
-  });
-
-  it("R13: código, activo y padre distintos también cuentan, cada uno con su campo", async () => {
-    const r = await conRama(async ({ tx, p, c, d }) => {
-      const t = await tiposDeNivel(tx, PAIS);
-      const otraRegion = await insertarNodo(tx, { paisId: PAIS, tipoId: t.nivel1, padreId: null, profundidad: 1, nombre: `Otra ${randomUUID().slice(0, 8)}` });
-      await sinTriggers(tx, `UPDATE provincia SET codigo_dta = 'R9' WHERE id = $1`, p);
-      await sinTriggers(tx, `UPDATE canton SET provincia_id = $2 WHERE id = $1`, c, otraRegion);
-      await sinTriggers(tx, `UPDATE distrito SET activo = false WHERE id = $1`, d);
-      return { p, c, d, resumen: await equivalenciaGeografia(tx, { paisId: PAIS }) };
-    });
-    expect(r.resumen.diferencias).toEqual(
-      [
-        { paisId: PAIS, profundidad: 1, id: r.p, motivo: "distinta", campos: ["codigo"] },
-        { paisId: PAIS, profundidad: 2, id: r.c, motivo: "distinta", campos: ["padre"] },
-        { paisId: PAIS, profundidad: 3, id: r.d, motivo: "distinta", campos: ["activo"] },
-      ],
-    );
-    expect(informeDeEquivalenciaGeografia(r.resumen).codigoDeSalida).not.toBe(0);
-  });
-
-  it("R13: un nodo sin su fila vieja hace salir con código ≠ 0", async () => {
-    const r = await conRama(async ({ tx, d }) => {
-      await sinTriggers(tx, `DELETE FROM distrito WHERE id = $1`, d);
-      return { d, resumen: await equivalenciaGeografia(tx, { paisId: PAIS }), salida: await correrModo(tx) };
-    });
-    expect(r.resumen).toMatchObject({ filasViejas: 2, nodos: 3, iguales: false });
-    expect(r.resumen.diferencias).toEqual([
-      { paisId: PAIS, profundidad: 3, id: r.d, motivo: "sin_fila_vieja", campos: [] },
-    ]);
-    expect(r.salida.codigoDeSalida).not.toBe(0);
-    expect(r.salida.lineas).toContain(`geografia ${PAIS}/3: sin nodo=0 sin fila vieja=1 distintas=0`);
-  });
-
-  it("R13: una fila vieja sin su nodo hace salir con código ≠ 0", async () => {
-    const r = await conRama(async ({ tx, c }) => {
-      const id = randomUUID();
-      // Con los triggers apagados nadie pone el país del distrito: va explícito.
-      await sinTriggers(
-        tx,
-        `INSERT INTO distrito (id, nombre, canton_id, pais_id, activo) VALUES ($1, $2, $3, $4, true)`,
-        id,
-        `Barrio sin nodo ${id.slice(0, 8)}`,
-        c,
-        PAIS,
-      );
-      return { id, resumen: await equivalenciaGeografia(tx, { paisId: PAIS }), salida: await correrModo(tx) };
-    });
-    expect(r.resumen).toMatchObject({ filasViejas: 4, nodos: 3, iguales: false });
-    expect(r.resumen.diferencias).toEqual([
-      { paisId: PAIS, profundidad: 3, id: r.id, motivo: "sin_nodo", campos: [] },
-    ]);
-    expect(r.salida.codigoDeSalida).not.toBe(0);
-    expect(r.salida.lineas).toContain(`fila ${PAIS}/3 ${r.id}: sin_nodo`);
   });
 });

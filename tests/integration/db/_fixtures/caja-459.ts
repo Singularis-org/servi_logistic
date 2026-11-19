@@ -167,7 +167,11 @@ export async function cargarCatalogo459(prisma: PrismaClient): Promise<Catalogo4
     if (r === undefined) throw new Error(`falta el rol «${v}»: corre \`pnpm run db:seed\``);
     return r.id;
   };
-  const orden = await prisma.orden.findFirst({ select: { provinciaId: true, cantonId: true } });
+  // SLT-48 R4: las FK de la orden son nullable; una orden nueva solo tiene nodo. Se toma una vieja.
+  const orden = await prisma.orden.findFirst({
+    where: { provinciaId: { not: null }, cantonId: { not: null } },
+    select: { provinciaId: true, cantonId: true },
+  });
   if (central === null || tipo === null || orden === null) {
     throw new Error(
       "hay DATABASE_URL pero faltan la zona central, el tipo `cedula` o una orden de la que tomar " +
@@ -184,7 +188,7 @@ export async function cargarCatalogo459(prisma: PrismaClient): Promise<Catalogo4
       adminTienda: rolDe("adminTienda"),
       adminSatelite: rolDe("adminSatelite"),
     },
-    fks: { provinciaId: orden.provinciaId, cantonId: orden.cantonId },
+    fks: { provinciaId: orden.provinciaId!, cantonId: orden.cantonId! },
   };
 }
 

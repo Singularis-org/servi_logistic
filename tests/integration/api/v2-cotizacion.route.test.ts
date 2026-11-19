@@ -3,7 +3,7 @@ import type { PrismaClient } from "@prisma/client";
 
 import { handleCotizacionApi } from "@/app/api/ordenes/api-key/cotizacion/route";
 import type { AutenticadorApiKey } from "@/lib/api/api-key-request";
-import { MSG_PAIS_NO_HABILITADO } from "@/lib/services/geo-ubicacion";
+import { msgUbicacionIncompleta } from "@/lib/services/geo-ubicacion";
 
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "../db/_postgres-real";
 import { conEscenario, cotizacionServiceDe, post, rutaEsperada, sinUbicacion, type Contexto } from "./_v2-escenario";
@@ -170,8 +170,9 @@ describeSiHayBase("SLT-45 R19 — cotizacion de v2 (Postgres real)", () => {
       expect(r.cuerpo.filas.map((f: { fila: number }) => f.fila)).toEqual([1]);
       expect(r.cuerpo.errores.map((e: { fila: number; errores: unknown }) => [e.fila, e.errores])).toEqual([
         [2, { ubicacion: ["indica ubicacion o ubicacion_codigo, uno de los dos"] }],
-        [3, { ubicacion: [MSG_PAIS_NO_HABILITADO] }],
-        [4, { ubicacion: ["la ubicacion 'Paraíso' no tiene zona asignada"] }],
+        // SLT-48 R17: la provincia y el canton con distritos no son hoja; ninguno llega a la zona.
+        [3, { ubicacion: [msgUbicacionIncompleta("Cartago", "Cantones")] }],
+        [4, { ubicacion: ["ubicacion incompleta: 'Paraíso' tiene distritos debajo; indica el ultimo nivel"] }],
       ]);
     });
   }, 120_000);

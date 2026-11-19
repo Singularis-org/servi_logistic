@@ -142,7 +142,8 @@ describeSiHayBase("SLT-125 R34 — geo:equivalencia-presentacion sobre el fixtur
         where: { id: { in: Object.values(e.cr.ordenes) } },
         select: { provincia: { select: { nombre: true } }, canton: { select: { nombre: true } }, distrito: { select: { nombre: true } } },
       });
-      const nombres = ordenes.flatMap((o) => [o.provincia.nombre, o.canton.nombre, o.distrito?.nombre ?? null]);
+      // SLT-48 R4: las FK de la orden son nullable; las ordenes de este fixture son viejas (con FK).
+      const nombres = ordenes.flatMap((o) => [o.provincia!.nombre, o.canton!.nombre, o.distrito?.nombre ?? null]);
       return { cr, antes, despues, nombres: [...new Set(nombres.filter((n): n is string => n !== null))] };
     });
     const texto = lineasDeInforme(r.cr).join("\n");
@@ -165,7 +166,9 @@ describeSiHayBase("SLT-125 R34 — geo:equivalencia-presentacion sobre el fixtur
     const r = await revertida(base, async (tx) => {
       const e = await crearEscenarioGeo125(tx);
       await comoDueno(tx);
-      const o = await tx.orden.findUniqueOrThrow({ where: { id: e.cr.ordenes.sinDistritoId }, select: { cantonId: true } });
+      const fila = await tx.orden.findUniqueOrThrow({ where: { id: e.cr.ordenes.sinDistritoId }, select: { cantonId: true } });
+      // SLT-48 R4: las FK de la orden son nullable; las ordenes de este fixture son viejas (con FK).
+      const o = { cantonId: fila.cantonId! };
       const canton = await tx.nodoGeografico.findUniqueOrThrow({ where: { id: o.cantonId }, select: { nombre: true } });
       const cr = await comoLaEmpresa(tx, e.cr, () =>
         compararEmpresaPresentacion(conNodoRenombrado(clienteConSavepoint(tx), o.cantonId), e.cr.empresaId, {

@@ -1,12 +1,20 @@
 import type { PrismaClient } from "@prisma/client";
 
 import type { DistritoCoberturaRow } from "@/lib/interfaces/repositories/ICoberturaRepository";
-import type {
-  CantonRow,
-  DistritoResueltoRow,
-  DistritoRow,
-  ProvinciaRow,
-} from "@/lib/interfaces/repositories/IOrdenRepository";
+import type { CantonRow, DistritoRow, ProvinciaRow } from "@/lib/interfaces/repositories/IOrdenRepository";
+
+/** SLT-48: la fila de `findDistritoParaCorreccion` TAL COMO ERA (en `lib/` es `LugarResueltoRow`). */
+interface DistritoResueltoRow {
+  id: string;
+  nombre: string;
+  cantonId: string;
+  provinciaId: string;
+  zonaId: string | null;
+  zonaNombre: string | null;
+  esCentral: boolean;
+  esZonaEspecial: boolean;
+  disponible: boolean;
+}
 import type {
   GeografiaFiltrosDTO,
   OpcionCatalogo,

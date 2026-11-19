@@ -19,6 +19,7 @@ import {
   type Conexion,
   type Foto,
 } from "./_fixtures/ida-y-vuelta-32";
+import { M_SLT48_VISTAS } from "./_fixtures/sin-slt48";
 
 /**
  * SLT-46 (T2.4; design §3, §11) — las tres migraciones de SLT-46, de ida y vuelta, contra Postgres (R9).
@@ -46,6 +47,11 @@ const M_ENUMS = "20261106120000_slt46_historial_tipos_de_nivel";
 const M_COPIA = "20261106120100_slt46_nodo_copia_a_geografia_vieja";
 const M_TIPOS = "20261106120200_slt46_pais_tipos_de_nivel_opcional";
 const DE_SLT46 = [M_ENUMS, M_COPIA, M_TIPOS];
+/**
+ * SLT-48 (design §9): posterior que se apoya en SLT-46 (borra su trigger de copia, 42704 sin el): fuera
+ * de esta base, como `SOBRE_SLT43` en la ida y vuelta de SLT-43.
+ */
+const SOBRE_SLT46 = [M_SLT48_VISTAS];
 /** La última de la rama antes de SLT-46. */
 const PREVIA = "20261104150200_cobro_plataforma_porcentual_funciones";
 
@@ -178,7 +184,7 @@ describeSiHayBase("SLT-46 — copia nodo → geografía vieja y tipos opcionales
     await admin.query(`CREATE DATABASE "${BASE}"`);
     db = await conectar(urlDe(BASE));
     await db.query(CREAR_TABLA_DE_CONTROL);
-    await aplicarMigracionesHasta(db, "99999999999999", DE_SLT46);
+    await aplicarMigracionesHasta(db, "99999999999999", [...DE_SLT46, ...SOBRE_SLT46]);
 
     // Datos de ANTES de SLT-46, confirmados: un país de prueba con su geografía vieja (la sincronía
     // de SLT-43 le crea los nodos), un nodo de profundidad 4 y una fila de historial de plataforma.

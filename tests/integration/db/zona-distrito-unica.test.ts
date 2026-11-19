@@ -18,6 +18,7 @@ import {
 } from "./_postgres-real";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import { ZonaRepositoryConAntes, antesDeZona } from "./_fixtures/antes-de-zona";
+import { crearNodoDeNivel } from "@/tests/fabricas/paises";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // ⭑ SLT-75 / T5 — UN DISTRITO, A LO SUMO UNA ZONA POR EMPRESA, CONTRA POSTGRES REAL.
@@ -100,7 +101,8 @@ describeSiHayBase("SLT-75 — un distrito, a lo sumo una zona por empresa (Postg
       if (canton === null) throw new Error("falta la geografia Cartago/Cartago: aplica las migraciones");
       const crearDistrito = async (etiqueta: string): Promise<Zona> => {
         const nombre = `Distrito Sintetico ${etiqueta} ${unico()}`;
-        const d = await tx.distrito.create({ data: { nombre, cantonId: canton.id }, select: { id: true } });
+        // SLT-48 (design §9): `distrito` es una vista; el distrito de prueba es un nodo de profundidad 3.
+        const d = await crearNodoDeNivel(tx, 3, { nombre, padreId: canton.id });
         return { id: d.id, nombre };
       };
       const dOcupado = await crearDistrito("Ocupado");

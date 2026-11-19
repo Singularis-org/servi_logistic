@@ -58,6 +58,9 @@ function geografiaDoble(o: Partial<Record<keyof IGeografiaService, Espia>> = {})
     cambiarActivacion: vi.fn(async () => ({ status: "ok" as const, nivel: "distrito" as const, id: "d1", activo: false })),
     renombrar: vi.fn(async () => ({ status: "ok" as const, nivel: "distrito" as const, id: "d1", nombre: "Otro" })),
     contarOrdenesSinEntregar: vi.fn(async () => ({ status: "ok" as const, ordenes: 3 })),
+    // SLT-48 (T3.4): la interfaz gana mover un nodo y su vista previa.
+    vistaPreviaMoverNodo: vi.fn(async () => ({ status: "not_found" as const })),
+    moverNodo: vi.fn(async () => ({ status: "not_found" as const })),
     ...o,
   } satisfies Record<keyof IGeografiaService, Espia>;
 }
@@ -675,7 +678,9 @@ describe("SLT-46 R5 — un único violado en la copia a la geografía vieja es `
 });
 
 describe("SLT-46 R22, R50 — la lista de exports del borde", () => {
-  it("son exactamente estas actions: ninguna mueve un nodo de padre ni quita un tipo o un nivel", () => {
+  // SLT-48 R34: mover un nodo de padre entra en SLT-48 (decision heredada de SLT-46 «Mover nodos»),
+  // con su vista previa (R36). Quitar un tipo o un nivel sigue sin action.
+  it("son exactamente estas actions: mover un nodo (SLT-48 R34) sí; ninguna quita un tipo o un nivel", () => {
     expect(Object.keys(accionesDelModulo).sort()).toEqual([
       "agregarNivelPaisAction",
       "arbolDePaisAction",
@@ -686,12 +691,15 @@ describe("SLT-46 R22, R50 — la lista de exports del borde", () => {
       "crearNodoAction",
       "crearPaisAction",
       "listarPaisesAction",
+      "moverNodoAction",
       "renombrarNodoAction",
       "renombrarTipoNivelAction",
       "reordenarTiposAction",
+      "vistaPreviaMoverNodoAction",
     ]);
     for (const nombre of Object.keys(accionesDelModulo)) {
-      expect(nombre, nombre).not.toMatch(/mover|padre|quitar|borrar|eliminar|retirarNivel|retirarTipo/i);
+      // SLT-48 R34: `mover` sale de la lista prohibida; `padre` y el resto se quedan.
+      expect(nombre, nombre).not.toMatch(/padre|quitar|borrar|eliminar|retirarNivel|retirarTipo/i);
     }
   });
 

@@ -44,23 +44,19 @@ export const CAMPOS_CORREGIBLES = [
   "telefonoDest",
   "producto",
   "notas",
-  // Ficha 327
+  // Ficha 327 (SLT-48: la ubicacion es el nodo, no la terna provincia/canton/distrito)
   "direccion",
-  "provinciaId",
-  "cantonId",
-  "distritoId",
+  "nodoId",
   "peso",
 ] as const;
 export type CampoCorregible = (typeof CAMPOS_CORREGIBLES)[number];
 
 /**
- * FICHA 327 (R3) — LOS TRES QUE VIAJAN JUNTOS O NO VIAJAN.
- *
- * No es una preferencia de forma: el servidor comprueba la CADENA provincia -> canton -> distrito
- * (R6) y deriva la zona del distrito (R5). Con una geografia parcial no hay cadena que comprobar,
- * y aceptarla dejaria la fila con un canton que no pertenece a su provincia sin que nada lo note.
+ * FICHA 327 (R3), SLT-48 (design §4.2, R16) — la geografia de la correccion. Hasta SLT-48 eran los
+ * tres ids que viajaban juntos para comprobar la cadena provincia -> canton -> distrito; desde
+ * SLT-48 es UN nodo, la hoja elegida, y la cadena la da el arbol.
  */
-export const CAMPOS_GEOGRAFIA = ["provinciaId", "cantonId", "distritoId"] as const;
+export const CAMPOS_GEOGRAFIA = ["nodoId"] as const;
 export type CampoGeografia = (typeof CAMPOS_GEOGRAFIA)[number];
 
 /**
@@ -192,11 +188,9 @@ export const corregirDatosClienteSchema = actualizarOrdenSchema
     telefonoDest: true,
     producto: true,
     notas: true,
-    // 327 — la ubicacion. `zonaId` NO se escoge: la deriva el servidor (R5).
+    // 327 — la ubicacion. `zonaId` NO se escoge: la deriva el servidor (R5). SLT-48: el nodo.
     direccion: true,
-    provinciaId: true,
-    cantonId: true,
-    distritoId: true,
+    nodoId: true,
     peso: true,
   })
   .strict()
@@ -220,23 +214,8 @@ export const corregirDatosClienteSchema = actualizarOrdenSchema
     // default) y contarla dejaria pasar una peticion que no corrige nada.
     message: "Indica al menos un campo a corregir",
   })
-  .refine(
-    (d) => {
-      // 327/R3 — los tres, o ninguno.
-      const presentes = CAMPOS_GEOGRAFIA.filter((campo) => d[campo] !== undefined).length;
-      return presentes === 0 || presentes === CAMPOS_GEOGRAFIA.length;
-    },
-    {
-      path: ["distritoId"],
-      message: "Indica provincia, canton y distrito juntos",
-    },
-  )
-  .refine((d) => d.distritoId !== null, {
-    // 327/R4 — el origen declara `distritoId` como `.nullable()` (es el unico FK nullable de
-    // `orden`), pero desde esta superficie no se puede vaciar: la zona se deriva del distrito y
-    // `orden.zona_id` es NOT NULL. La cadena vacia ya la rechaza el `min(1)` heredado.
-    path: ["distritoId"],
-    message: "El distrito es obligatorio",
-  });
+  // SLT-48 (R16): sin los refines de 327/R3 (los tres juntos) y R4 (distrito no nulo). El nodo
+  // es un solo campo y `min(1)` ya rechaza el vacio; la regla de hoja la aplica el servicio.
+  ;
 
 export type CorregirDatosClienteEntrada = z.infer<typeof corregirDatosClienteSchema>;

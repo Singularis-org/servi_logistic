@@ -6,11 +6,12 @@ import { handleCotizacionApi } from "@/app/api/ordenes/api-key/cotizacion/route"
 import { handleGeografiaApi } from "@/app/api/v2/geografia/route";
 import { handleCrearOrdenV2 } from "@/app/api/v2/ordenes/route";
 import {
-  MSG_PAIS_NO_HABILITADO,
   msgCodigoNoEncontrado,
   msgCodigoRetirado,
   msgNivelNoEncontrado,
   msgNivelRetirado,
+  msgSinZona,
+  msgUbicacionIncompleta,
 } from "@/lib/services/geo-ubicacion";
 import {
   PAISES_DE_PRUEBA_GEO,
@@ -45,6 +46,10 @@ import {
 // codigo que no encuentra, o que esta retirado, da OTRO mensaje. Por eso cada lote lleva, junto a los
 // nodos validos, sus contrapruebas (nombre inexistente en cada nivel, codigo inexistente, retirados),
 // y se exige el mensaje exacto de cada una.
+//
+// SLT-48 (R17, R18): «pais no habilitado» desaparece. Ahora se sabe que el motor ENCONTRO el nodo
+// porque dice «ubicacion incompleta» (no es hoja) o «sin zona» (es hoja; los paises de prueba no
+// tienen zonas), mensajes que solo salen despues de resolverlo.
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
@@ -114,6 +119,24 @@ const enUbicacion = (mensaje: string) => ({ ubicacion: [mensaje] });
 const desnormalizado = (nombre: string): string =>
   nombre.normalize("NFD").replace(/\p{Mn}/gu, "").toUpperCase().replace(/ /g, "  ");
 
+/**
+ * SLT-48 R17/R18 — lo que el motor dice de un nodo ACTIVO de un pais de prueba, que no tiene zonas: si
+ * es hoja (sin hijos activos, P2), «sin zona»; si no, «ubicacion incompleta» con el tipo plural de
+ * sus hijos. Nunca «pais no habilitado».
+ */
+function mensajeDeNodoActivo(def: PaisDePruebaGeo, ruta: readonly string[]): string {
+  const nombre = ruta[ruta.length - 1];
+  const hijosActivos = def.nodos.filter(
+    (x) =>
+      x.ruta.length === ruta.length + 1 &&
+      claveDeRuta(x.ruta.slice(0, ruta.length)) === claveDeRuta(ruta) &&
+      activoEnCascada(def, x.ruta),
+  );
+  return hijosActivos.length === 0
+    ? msgSinZona(nombre)
+    : msgUbicacionIncompleta(nombre, def.tipos[ruta.length].nombrePlural);
+}
+
 /** El nodo mas profundo y activo del pais (el primero que aparece). */
 function masProfundo(def: PaisDePruebaGeo): string[] {
   const activos = def.nodos.filter((n) => activoEnCascada(def, n.ruta));
@@ -172,7 +195,9 @@ describeSiHayBase("SLT-45 R5, R15, R22, R33 — paises de prueba de 2 y 4 nivele
       });
     }, 120_000);
 
-    it(`R33/R15 (${def.id}): por nombre y por codigo se encuentran nodos de TODA profundidad, y cada uno da «pais no habilitado»; sin crear nada`, async () => {
+    // SLT-48 R17/R18: «pais no habilitado» ya no sale; cada nodo encontrado pasa la regla de hoja y, sin
+    // zonas en el pais de prueba, la hoja cae en «sin zona» y el que no es hoja en «ubicacion incompleta».
+    it(`R33/R15 (${def.id}): por nombre y por codigo se encuentran nodos de TODA profundidad (SLT-48 R17/R18: hoja → «sin zona», no hoja → «incompleta»); sin crear nada`, async () => {
       await conPaisDePrueba(base, def, async (c) => {
         const filas: Fila[] = [];
         const esperado: unknown[] = [];
@@ -184,15 +209,19 @@ describeSiHayBase("SLT-45 R5, R15, R22, R33 — paises de prueba de 2 y 4 nivele
         // Cada nodo activo, por nombre y por codigo.
         const activos = def.nodos.filter((n) => activoEnCascada(def, n.ruta));
         for (const n of activos) {
-          agregar({ ubicacion: n.ruta }, MSG_PAIS_NO_HABILITADO);
-          if (n.codigoOficial !== null) agregar({ ubicacion_codigo: n.codigoOficial }, MSG_PAIS_NO_HABILITADO);
+          agregar({ ubicacion: n.ruta }, mensajeDeNodoActivo(def, n.ruta));
+          if (n.codigoOficial !== null) agregar({ ubicacion_codigo: n.codigoOficial }, mensajeDeNodoActivo(def, n.ruta));
         }
+        // SLT-48 R18: los dos mensajes salen en los dos paises (hay hojas y hay nodos con hijos).
+        const mensajesDeActivos = esperado.map((e) => (e as { ubicacion: string[] }).ubicacion[0]);
+        expect(mensajesDeActivos.some((m) => m.startsWith("ubicacion incompleta"))).toBe(true);
+        expect(mensajesDeActivos.some((m) => m.endsWith("no tiene zona asignada"))).toBe(true);
         const profundo = masProfundo(def);
         expect(profundo).toHaveLength(def.niveles);
-        // Normalizado nivel a nivel (mayusculas, sin tildes, dobles espacios).
-        agregar({ ubicacion: profundo.map(desnormalizado) }, MSG_PAIS_NO_HABILITADO);
+        // Normalizado nivel a nivel (mayusculas, sin tildes, dobles espacios). La hoja mas profunda.
+        agregar({ ubicacion: profundo.map(desnormalizado) }, msgSinZona(profundo[profundo.length - 1]));
 
-        // Contrapruebas: lo que no existe o esta retirado NO dice «pais no habilitado».
+        // Contrapruebas: lo que no existe o esta retirado no llega a la regla de hoja ni a la zona.
         for (let n = 1; n <= profundo.length; n++) {
           const ruta = [...profundo.slice(0, n - 1), "No Existe"];
           agregar({ ubicacion: ruta }, msgNivelNoEncontrado(n, "No Existe", n === 1 ? null : profundo[n - 2]));
@@ -208,11 +237,14 @@ describeSiHayBase("SLT-45 R5, R15, R22, R33 — paises de prueba de 2 y 4 nivele
         expect(r.status).toBe(200);
         expect(r.cuerpo).toMatchObject({ total: filas.length, creadas: 0, duplicadas: 0, conError: filas.length, ordenes: [], filas: [] });
         expect(errores(r)).toEqual(esperado);
+        expect(JSON.stringify(r.cuerpo)).not.toMatch(/no habilitado/);
         expect(await creado(c)).toEqual({ ordenes: 0, cargas: 0 });
       });
     }, 120_000);
 
-    it(`R15/R33 (${def.id}): crear, lote y cotizacion de v2 responden «pais no habilitado» para cada orden y no crean ninguna`, async () => {
+    // SLT-48 R17/R18: sin «pais no habilitado». La hoja mas profunda llega hasta la zona (y el pais de
+    // prueba no tiene: «sin zona»); la raiz, por nombre o por codigo, no es hoja.
+    it(`R15/R33 (${def.id}): crear, lote y cotizacion de v2 (SLT-48 R17/R18): la hoja llega a «sin zona», la raiz es «incompleta»; no crean ninguna`, async () => {
       await conPaisDePrueba(base, def, async (c) => {
         const profundo = masProfundo(def);
         const raiz = def.nodos[0];
@@ -223,22 +255,27 @@ describeSiHayBase("SLT-45 R5, R15, R22, R33 — paises de prueba de 2 y 4 nivele
         const rCot = await cotizar(c, "v2", filas());
         for (const r of [rCrear, rLote, rCot]) expect(r.status).toBe(200);
 
+        const hoja = enUbicacion(msgSinZona(profundo[profundo.length - 1]));
+        const raizIncompleta = enUbicacion(mensajeDeNodoActivo(def, raiz.ruta));
+        expect(raizIncompleta.ubicacion[0]).toMatch(/^ubicacion incompleta/);
         expect(rCrear.cuerpo).toMatchObject({ total: 1, creadas: 0, conError: 1, ordenes: [], cargaId: null });
-        expect(errores(rCrear)).toEqual([enUbicacion(MSG_PAIS_NO_HABILITADO)]);
+        expect(errores(rCrear)).toEqual([hoja]);
         expect(rLote.cuerpo).toMatchObject({ total: 3, creadas: 0, conError: 3, ordenes: [], cargaId: null });
-        expect(errores(rLote)).toEqual(Array(3).fill(enUbicacion(MSG_PAIS_NO_HABILITADO)));
+        expect(errores(rLote)).toEqual([hoja, raizIncompleta, raizIncompleta]);
         expect(rCot.cuerpo).toMatchObject({ total: 3, cotizadas: 0, conError: 3, filas: [] });
-        expect(errores(rCot)).toEqual(Array(3).fill(enUbicacion(MSG_PAIS_NO_HABILITADO)));
+        expect(errores(rCot)).toEqual([hoja, raizIncompleta, raizIncompleta]);
 
         expect(await creado(c)).toEqual({ ordenes: 0, cargas: 0 });
       });
     }, 120_000);
 
-    it(`R5 (${def.id}): la carga y la cotizacion de v1 rechazan cada fila con «pais no habilitado» bajo \`ubicacion\`, sin crear nada`, async () => {
+    // SLT-48 R18/R19 y decision «API v1 y el canton sin distritos»: la forma del pais ya no se comprueba;
+    // v1 resuelve la terna contra las vistas y aplica la regla de hoja. En el pais de 2 niveles no hay
+    // distritos (v1 sigue exigiendolo); en el de 4, el distrito que nombra v1 tiene sectores debajo.
+    it(`R5 (${def.id}): la carga y la cotizacion de v1 (SLT-48 R18/R19) rechazan cada fila por la terna, sin «pais no habilitado» ni crear nada`, async () => {
       await conPaisDePrueba(base, def, async (c) => {
         const profundo = masProfundo(def);
-        // La terna de v1 con nombres reales del pais (los que haya) y con nombres que no existen: la
-        // forma del pais se comprueba antes de resolver, asi que las dos dan lo mismo.
+        // La terna de v1 con nombres reales del pais (los que haya) y con nombres que no existen.
         const filas = () => [
           fila({ provincia: profundo[0], canton: profundo[1], distrito: profundo[2] ?? profundo[1] }),
           fila({ provincia: "No Existe", canton: "No Existe", distrito: "No Existe" }),
@@ -248,14 +285,20 @@ describeSiHayBase("SLT-45 R5, R15, R22, R33 — paises de prueba de 2 y 4 nivele
         const rCot = await cotizar(c, "v1", filas());
         for (const r of [rCarga, rCot]) expect(r.status).toBe(200);
 
+        // SLT-48 R19: la primera fila, con nombres reales, falla por la regla de hoja (4 niveles, bajo
+        // `ubicacion`) o porque un pais de 2 niveles no tiene distrito que nombrar (bajo `distrito`); la
+        // segunda, por la provincia que no existe, con el mensaje de v1 de siempre.
+        const primera =
+          def.niveles > 3
+            ? enUbicacion(msgUbicacionIncompleta(profundo[2], def.tipos[3].nombrePlural))
+            : { distrito: ["distrito no encontrado en el canton"] };
+        const esperados = [primera, { provincia: ["provincia no encontrada"] }];
         expect(rCarga.cuerpo).toMatchObject({ total: 2, creadas: 0, duplicadas: 0, conError: 2, ordenes: [], filas: [], cargaId: null });
-        expect(errores(rCarga)).toEqual(Array(2).fill(enUbicacion(MSG_PAIS_NO_HABILITADO)));
+        expect(errores(rCarga)).toEqual(esperados);
         expect(rCot.cuerpo).toMatchObject({ total: 2, cotizadas: 0, conError: 2, filas: [] });
-        expect(errores(rCot)).toEqual(Array(2).fill(enUbicacion(MSG_PAIS_NO_HABILITADO)));
-        // Ni `provincia`, ni `canton`, ni `distrito`: la clave es `ubicacion`.
-        for (const r of [rCarga, rCot]) {
-          for (const e of r.cuerpo.errores) expect(Object.keys(e.errores)).toEqual(["ubicacion"]);
-        }
+        expect(errores(rCot)).toEqual(esperados);
+        // SLT-48 R18: «pais no habilitado» no sale en ninguna de las dos vias.
+        for (const r of [rCarga, rCot]) expect(JSON.stringify(r.cuerpo)).not.toMatch(/no habilitado/);
 
         expect(await creado(c)).toEqual({ ordenes: 0, cargas: 0 });
       });

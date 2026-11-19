@@ -184,9 +184,7 @@ describeSiHayBase("294 — el unico PARCIAL de num_remision, contra Postgres rea
       telefonoDest: "88880000",
       tiendaId,
       zonaId: fks.zonaId,
-      provinciaId: fks.provinciaId,
-      cantonId: fks.cantonId,
-      distritoId: null,
+      // SLT-48 R15: `CreateOrdenData` ya no lleva las 3 FK; la orden se crea con su nodo.
       nodoGeograficoId: fks.cantonId,
       producto: "Caja",
       peso: null,

@@ -44,8 +44,8 @@ vi.mock("@/lib/db/prisma-client", async (original) => {
           estado: "en_reparto",
           zona_id: "z1",
           destinatario: "Cliente",
-          canton_id: "k1",
-          distrito_id: null,
+          // SLT-48 (R25): el informe lee el lugar del nodo de la orden; antes `canton_id`/`distrito_id`.
+          nodo_geografico_id: "k1",
           monto_cobrar: "1000.00",
           hito_at: new Date(ahora - 9 * 86_400_000),
           ultima_at: null,

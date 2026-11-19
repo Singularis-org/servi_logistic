@@ -721,10 +721,9 @@ describe("366/T4 — ZonaRepository.update reconcilia la zona de las ordenes", (
       null,
     );
 
+    // SLT-48 R23, R24: `whereLugarEn` es ahora `{ nodoGeograficoId: { in } }` (antes `OR[0].distritoId.in`).
     const lugaresLeidos = tx.orden.count.mock.calls.flatMap(
-      (c) =>
-        (c[0] as { where: { OR: [{ distritoId: { in: string[] } }, unknown] } }).where.OR[0]
-          .distritoId.in,
+      (c) => (c[0] as { where: { nodoGeograficoId: { in: string[] } } }).where.nodoGeograficoId.in,
     );
     expect(new Set(lugaresLeidos)).toEqual(new Set(["dViejo", "dQueSigue", "dNuevo"]));
     // Y sin repetidos: `dQueSigue` esta en las dos listas y entra UNA vez.
@@ -792,7 +791,9 @@ describe("377/T4 — el corte por estado y el conteo de retenidas", () => {
   // SLT-65 (design §6.1, decision humana 2026-11-03): la orden entra por su LUGAR (`whereLugarEn`),
   // escrito LITERAL aqui por el mismo motivo que el resto: el distrito, o el canton sin distrito.
   const BASE_D1_ZA = {
-    OR: [{ distritoId: { in: ["d1"] } }, { distritoId: null, cantonId: { in: ["d1"] } }],
+    // SLT-48 R23, R24: el lugar es el nodo de la orden; antes
+    // `OR: [{ distritoId: { in } }, { distritoId: null, cantonId: { in } }]`.
+    nodoGeograficoId: { in: ["d1"] },
     zonaId: { not: "zA" },
     deletedAt: null,
     cierreDetalles: { none: {} },

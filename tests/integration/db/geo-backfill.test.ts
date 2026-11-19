@@ -19,6 +19,7 @@ import { crearEscenarioGeo43, crearOrdenGeo43, vaciarColumnasNuevas, type Escena
 import { crearBasePropia43, type BasePropia43 } from "./_fixtures/base-propia-43";
 import { comoDueno, revertida } from "./_fixtures/pais-20";
 import { HAY_BASE_DE_DATOS, type TxDeTest } from "./_postgres-real";
+import { crearNodoDeNivel } from "@/tests/fabricas/paises";
 
 // SLT-43 (T5.2; design §4) — `scripts/geo-backfill-nodo.ts` contra Postgres real.
 //   · R24: las tres FK nacen sin validar; `--validar` no valida con filas pendientes y sí tras `--aplicar`.
@@ -222,22 +223,10 @@ describeSiHayBase("SLT-43 — script de datos geo:backfill (R24–R31, R33, R40)
       const nombre = await nombreDeLaBase(tx);
       // Otra rama de la geografía de `XA`: un cantón con su distrito y otra provincia con su cantón.
       const sufijo = randomUUID().slice(0, 8);
-      const canton2 = await tx.canton.create({
-        data: { nombre: `Comuna B ${sufijo}`, provinciaId: e.geo.provinciaId },
-        select: { id: true },
-      });
-      const distrito2 = await tx.distrito.create({
-        data: { nombre: `Barrio B ${sufijo}`, cantonId: canton2.id },
-        select: { id: true },
-      });
-      const provincia2 = await tx.provincia.create({
-        data: { nombre: `Región B ${sufijo}`, paisId: e.paisId },
-        select: { id: true },
-      });
-      const canton3 = await tx.canton.create({
-        data: { nombre: `Comuna C ${sufijo}`, provinciaId: provincia2.id },
-        select: { id: true },
-      });
+      const canton2 = await crearNodoDeNivel(tx, 2, { nombre: `Comuna B ${sufijo}`, padreId: e.geo.provinciaId });
+      const distrito2 = await crearNodoDeNivel(tx, 3, { nombre: `Barrio B ${sufijo}`, padreId: canton2.id });
+      const provincia2 = await crearNodoDeNivel(tx, 1, { nombre: `Región B ${sufijo}`, paisId: e.paisId });
+      const canton3 = await crearNodoDeNivel(tx, 2, { nombre: `Comuna C ${sufijo}`, padreId: provincia2.id });
 
       const distritoMal = await crearOrdenGeo43(tx, e, { distritoId: distrito2.id });
       const tras1 = await comprobar(tx);
@@ -359,7 +348,9 @@ describeSiHayBase("SLT-43 — script de datos geo:backfill (R24–R31, R33, R40)
       const ids = [e.cierreDetailConDistritoId, e.cierreDetailSinDistritoId];
       const antes = await snapshots(tx, ids);
       // Renombre posterior al cierre: la sincronía lo lleva al nodo; el snapshot no debe moverse.
-      await tx.$executeRawUnsafe(`UPDATE distrito SET nombre = nombre || ' renombrado' WHERE id = $1`, e.geo.distritoId);
+      // SLT-48 (design §9): `distrito` es una vista; el renombre se escribe en el nodo, que es lo que la vista
+      // enseña. Lo que se mide no cambia: el snapshot congelado no se mueve.
+      await tx.$executeRawUnsafe(`UPDATE nodo_geografico SET nombre = nombre || ' renombrado' WHERE id = $1`, e.geo.distritoId);
       await aplicar(tx);
       const tipos = await tx.$queryRawUnsafe<{ clave: string; nombre_singular: string }[]>(
         `SELECT clave, nombre_singular FROM tipo_nivel_geografico WHERE pais_id = $1`,

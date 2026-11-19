@@ -18,7 +18,7 @@ import {
 //
 // COMO NO SE ENSUCIA LA BASE. Todo vive en un ESQUEMA DESECHABLE (`DROP SCHEMA ... CASCADE` al
 // final): una tabla `prueba (id, org, nombre)` con RLS para los puntos 1, 3, 4 y 5, y un clon
-// estructural de `provincia` (`LIKE ... INCLUDING ALL`) para el punto 2 y la medida de coste, al
+// estructural de `nodo_geografico` (`LIKE ... INCLUDING ALL`; hasta SLT-48, de `provincia`) para el punto 2 y la medida de coste, al
 // que se llega por la API de modelo con `crearPrismaDeTestEnEsquema`. Nada toca `public`.
 //
 // EL ROL ES DEL CLUSTER, NO DE LA BASE. `sl17_spike_app` tiene nombre propio para no confundirse
@@ -100,7 +100,7 @@ describeSiHayBase("SL-17 T1.1 — mecanismo de aislamiento (design §6.5)", () =
       `CREATE TABLE ${T} (id text PRIMARY KEY, org text NOT NULL, nombre text NOT NULL)`,
     );
     await duenoCliente.$executeRawUnsafe(
-      `CREATE TABLE "${ESQUEMA}"."provincia" (LIKE public."provincia" INCLUDING ALL)`,
+      `CREATE TABLE "${ESQUEMA}"."nodo_geografico" (LIKE public."nodo_geografico" INCLUDING ALL)`,
     );
     await duenoCliente.$executeRawUnsafe(`
       DO $$ BEGIN
@@ -112,7 +112,7 @@ describeSiHayBase("SL-17 T1.1 — mecanismo de aislamiento (design §6.5)", () =
     await duenoCliente.$executeRawUnsafe(`GRANT USAGE ON SCHEMA "${ESQUEMA}" TO ${ROL}`);
     await duenoCliente.$executeRawUnsafe(`GRANT SELECT, INSERT, UPDATE, DELETE ON ${T} TO ${ROL}`);
     await duenoCliente.$executeRawUnsafe(
-      `GRANT SELECT, INSERT, UPDATE, DELETE ON "${ESQUEMA}"."provincia" TO ${ROL}`,
+      `GRANT SELECT, INSERT, UPDATE, DELETE ON "${ESQUEMA}"."nodo_geografico" TO ${ROL}`,
     );
     await duenoCliente.$executeRawUnsafe(`ALTER TABLE ${T} ENABLE ROW LEVEL SECURITY`);
     await duenoCliente.$executeRawUnsafe(
@@ -124,7 +124,20 @@ describeSiHayBase("SL-17 T1.1 — mecanismo de aislamiento (design §6.5)", () =
       `INSERT INTO ${T} (id, org, nombre) VALUES ('a1', '${ORG_A}', 'uno de A'), ('a2', '${ORG_A}', 'dos de A'), ('b1', '${ORG_B}', 'uno de B')`,
     );
 
-    const p = await enEsquema.provincia.create({ data: { id: randomUUID(), nombre: "Provincia del spike", activo: true } });
+    // SLT-48 (design §9): `provincia` es una vista, sin `create`/`update`/`delete` en el cliente. El
+    // clon pasa a ser el de `nodo_geografico`, que tiene los mismos `id`, `nombre` y `activo` (sin las
+    // FK ni los triggers: el clon no los copia, y el punto 2 mide a Prisma, no a la geografia).
+    const p = await enEsquema.nodoGeografico.create({
+      data: {
+        id: randomUUID(),
+        nombre: "Provincia del spike",
+        activo: true,
+        paisId: "CR",
+        tipoId: "tipo-del-spike",
+        profundidad: 1,
+        nombreNormalizado: "provincia del spike",
+      },
+    });
     provinciaId = p.id;
   }, 60_000);
 
@@ -211,27 +224,27 @@ describeSiHayBase("SL-17 T1.1 — mecanismo de aislamiento (design §6.5)", () =
   // -------------------------------------------------------------------------------------------
   it("2. findUnique/update/delete aceptan un campo no unico extra en el where unico y lo aplican", async () => {
     // Control: con el valor que casa, la fila aparece. Sin esto, un `null` abajo no probaria nada.
-    const casa = await enEsquema.provincia.findUnique({ where: { id: provinciaId, activo: true } });
+    const casa = await enEsquema.nodoGeografico.findUnique({ where: { id: provinciaId, activo: true } });
     expect(casa?.nombre).toBe("Provincia del spike");
 
-    expect(await enEsquema.provincia.findUnique({ where: { id: provinciaId, activo: false } })).toBeNull();
+    expect(await enEsquema.nodoGeografico.findUnique({ where: { id: provinciaId, activo: false } })).toBeNull();
 
     await expect(
-      enEsquema.provincia.findUniqueOrThrow({ where: { id: provinciaId, activo: false } }),
+      enEsquema.nodoGeografico.findUniqueOrThrow({ where: { id: provinciaId, activo: false } }),
     ).rejects.toMatchObject({ code: "P2025" });
     await expect(
-      enEsquema.provincia.update({ where: { id: provinciaId, activo: false }, data: { nombre: "pisada" } }),
+      enEsquema.nodoGeografico.update({ where: { id: provinciaId, activo: false }, data: { nombre: "pisada" } }),
     ).rejects.toMatchObject({ code: "P2025" });
     await expect(
-      enEsquema.provincia.delete({ where: { id: provinciaId, activo: false } }),
+      enEsquema.nodoGeografico.delete({ where: { id: provinciaId, activo: false } }),
     ).rejects.toMatchObject({ code: "P2025" });
 
     // La fila sigue intacta: ni el update ni el delete la tocaron.
-    const despues = await enEsquema.provincia.findUnique({ where: { id: provinciaId } });
+    const despues = await enEsquema.nodoGeografico.findUnique({ where: { id: provinciaId } });
     expect(despues?.nombre).toBe("Provincia del spike");
 
     // Y con el valor que casa, update sí escribe.
-    const actualizada = await enEsquema.provincia.update({
+    const actualizada = await enEsquema.nodoGeografico.update({
       where: { id: provinciaId, activo: true },
       data: { nombre: "Provincia del spike" },
     });
@@ -312,7 +325,7 @@ describeSiHayBase("SL-17 T1.1 — mecanismo de aislamiento (design §6.5)", () =
     const interactiva = await conProxy.$transaction(async (tx) => {
       const [fila] = await tx.$queryRaw<{ org: string; usuario: string }[]>`
         SELECT current_setting('app.organizacion_id', true) AS org, current_user::text AS usuario`;
-      const prov = await tx.provincia.findUnique({ where: { id: provinciaId } });
+      const prov = await tx.nodoGeografico.findUnique({ where: { id: provinciaId } });
       const filas = await tx.$queryRawUnsafe<Fila[]>(`SELECT * FROM ${T} ORDER BY id`);
       return { ...fila, nombre: prov?.nombre, ids: filas.map((f) => f.id) };
     });
@@ -320,7 +333,7 @@ describeSiHayBase("SL-17 T1.1 — mecanismo de aislamiento (design §6.5)", () =
 
     // En lote: el primer elemento (set_config) se quita del resultado; los tipos se conservan.
     const lote = await conProxy.$transaction([
-      conProxy.provincia.findFirst({ where: { id: provinciaId } }),
+      conProxy.nodoGeografico.findFirst({ where: { id: provinciaId } }),
       conProxy.$queryRaw<{ org: string }[]>`SELECT current_setting('app.organizacion_id', true) AS org`,
     ]);
     const [prov, [{ org }]] = lote;
@@ -329,7 +342,7 @@ describeSiHayBase("SL-17 T1.1 — mecanismo de aislamiento (design §6.5)", () =
     expect(lote).toHaveLength(2);
 
     // Lo demas sigue funcionando por el Proxy, con su `this`.
-    expect(await conProxy.provincia.count({ where: { id: provinciaId } })).toBe(1);
+    expect(await conProxy.nodoGeografico.count({ where: { id: provinciaId } })).toBe(1);
     const [{ uno }] = await conProxy.$queryRaw<{ uno: number }[]>`SELECT 1::int AS uno`;
     expect(uno).toBe(1);
     expect(await conProxy.$executeRawUnsafe(`UPDATE ${T} SET nombre = nombre WHERE id = $1`, "a1")).toBe(1);
@@ -380,7 +393,7 @@ describeSiHayBase("SL-17 T1.1 — mecanismo de aislamiento (design §6.5)", () =
   it("6. coste de la envoltura [set_config, query] frente a la operacion suelta (100 repeticiones)", async () => {
     const REPS = 100;
     const CALENTAMIENTO = 10;
-    const suelta = () => enEsquema.provincia.findFirst({ where: { id: provinciaId } });
+    const suelta = () => enEsquema.nodoGeografico.findFirst({ where: { id: provinciaId } });
     const envuelta = () => enEsquema.$transaction([fijarEmpresa(enEsquema, ORG_A), suelta()]).then(([, r]) => r);
 
     for (let i = 0; i < CALENTAMIENTO; i++) {

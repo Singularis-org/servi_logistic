@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 import { CorregirDatosClienteService } from "@/lib/services/CorregirDatosClienteService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type {
-  DistritoResueltoRow,
+  LugarResueltoRow,
   OrdenParaCorreccionRow,
 } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { TarifaVigente } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
@@ -42,9 +42,7 @@ const MAESTRO: Actor = { usuarioId: "u-maestro", rol: "maestro" };
 
 /** El cambio de UBICACION completo hacia `d-2`. Confirmado, para pasar el gate del dinero. */
 const MUDANZA = {
-  provinciaId: "p-1",
-  cantonId: "c-1",
-  distritoId: "d-2",
+  nodoId: "d-2",
   confirmaCambioDeUbicacion: true,
 } as const;
 
@@ -62,9 +60,9 @@ function orden(estatusValue: OrderStatusValue): OrdenParaCorreccionRow {
     peso: 1.5,
     montoCobrar: "15000.00",
     cobraComision: true,
-    provinciaId: "p-1",
-    cantonId: "c-1",
-    distritoId: "d-1",
+    nodoId: "d-1",
+    ruta: [{ id: "p-1", nombre: "P" }, { id: "c-1", nombre: "C" }, { id: "d-1", nombre: "D" }],
+    distritoTarifaId: "d-1",
     distritoNombre: "Distrito Uno",
     // La orden esta en la bodega de `z-1`: es la zona que dice QUE bodega tiene el paquete.
     zonaId: "z-1",
@@ -77,12 +75,12 @@ function orden(estatusValue: OrderStatusValue): OrdenParaCorreccionRow {
 }
 
 /** Por defecto, un distrito de OTRA zona (`z-2`): el cambio que moveria la orden de bodega. */
-function distrito(overrides: Partial<DistritoResueltoRow> = {}): DistritoResueltoRow {
+function distrito(overrides: Partial<LugarResueltoRow> = {}): LugarResueltoRow {
   return {
     id: "d-2",
     nombre: "Distrito Dos",
-    cantonId: "c-1",
-    provinciaId: "p-1",
+    tipoHijosActivos: null,
+    distritoTarifaId: "d-2",
     zonaId: "z-2",
     zonaNombre: "Zona Dos",
     esCentral: false,
@@ -106,9 +104,9 @@ function tarifa(): TarifaVigente {
   };
 }
 
-function escenario(estatusValue: OrderStatusValue, distritoFila: DistritoResueltoRow = distrito()) {
+function escenario(estatusValue: OrderStatusValue, distritoFila: LugarResueltoRow = distrito()) {
   const findParaCorreccion = vi.fn(async () => orden(estatusValue));
-  const findDistritoParaCorreccion = vi.fn(async () => distritoFila);
+  const findLugarParaCorreccion = vi.fn(async () => distritoFila);
   const corregirDatosCliente = vi.fn(
     async (
       _ordenId: string,
@@ -117,10 +115,10 @@ function escenario(estatusValue: OrderStatusValue, distritoFila: DistritoResuelt
     ) => "ok" as const,
   );
   const service = new CorregirDatosClienteService(
-    { findParaCorreccion, findDistritoParaCorreccion, corregirDatosCliente },
+    { findParaCorreccion, findLugarParaCorreccion, corregirDatosCliente },
     { resolveTarifa: vi.fn(async () => tarifaViejaDeFormula(tarifa())) },
   );
-  return { service, corregirDatosCliente, findDistritoParaCorreccion };
+  return { service, corregirDatosCliente, findLugarParaCorreccion };
 }
 
 /** El texto del rechazo, sea cual sea la forma del resultado. Falla RUIDOSAMENTE si no lo hay. */
@@ -151,7 +149,7 @@ describe("377/R15 — con el paquete en el estante, la correccion NO puede cambi
     const { service, corregirDatosCliente } = escenario("en_bodega_satelite");
 
     const r = await service.corregir(
-      { ordenId: ORDEN_ID, provinciaId: "p-1", cantonId: "c-1", distritoId: "d-2" },
+      { ordenId: ORDEN_ID, nodoId: "d-2" },
       MAESTRO,
     );
 
@@ -206,8 +204,9 @@ describe("377/R16 — lo que el gate NO bloquea, y por eso no se toco `ESTADOS_S
 
     expect(r.status).toBe("ok");
     expect(corregirDatosCliente).toHaveBeenCalledTimes(1);
+    // SLT-48 R16: se escribe el nodo nuevo, no la FK `distritoId`.
     expect(corregirDatosCliente.mock.calls[0][1]).toMatchObject({
-      distritoId: "d-2",
+      nodoGeograficoId: "d-2",
       zonaId: "z-1",
     });
   });
@@ -216,7 +215,7 @@ describe("377/R16 — lo que el gate NO bloquea, y por eso no se toco `ESTADOS_S
     // Es la razon de NO haber metido `en_bodega_satelite` en `ESTADOS_SIN_CORRECCION`: eso habria
     // bloqueado tambien estos datos, que no mueven la orden de bodega y son justo lo que hace
     // falta para poder despacharla.
-    const { service, corregirDatosCliente, findDistritoParaCorreccion } =
+    const { service, corregirDatosCliente, findLugarParaCorreccion } =
       escenario("en_bodega_satelite");
 
     const r = await service.corregir(
@@ -226,7 +225,7 @@ describe("377/R16 — lo que el gate NO bloquea, y por eso no se toco `ESTADOS_S
 
     expect(r.status).toBe("ok");
     // Ni siquiera consulta el catalogo de distritos: no hay ubicacion que revalidar.
-    expect(findDistritoParaCorreccion).not.toHaveBeenCalled();
+    expect(findLugarParaCorreccion).not.toHaveBeenCalled();
     expect(corregirDatosCliente).toHaveBeenCalledTimes(1);
   });
 
@@ -250,7 +249,7 @@ describe("377/R16 — lo que el gate NO bloquea, y por eso no se toco `ESTADOS_S
     //     de R15 puede morder.
     //   · meter `en_bodega_satelite` en `ESTADOS_SIN_CORRECCION` —la «solucion facil» que R16
     //     existe para prohibir— -> 6 de los 8 casos de este archivo, este incluido.
-    const { service, corregirDatosCliente, findDistritoParaCorreccion } =
+    const { service, corregirDatosCliente, findLugarParaCorreccion } =
       escenario("en_bodega_satelite");
 
     const r = await service.corregir(
@@ -260,7 +259,7 @@ describe("377/R16 — lo que el gate NO bloquea, y por eso no se toco `ESTADOS_S
 
     expect(r.status).toBe("ok");
     // Ni consulta el catalogo de distritos: no hay ubicacion que re-derivar.
-    expect(findDistritoParaCorreccion).not.toHaveBeenCalled();
+    expect(findLugarParaCorreccion).not.toHaveBeenCalled();
     expect(corregirDatosCliente).toHaveBeenCalledTimes(1);
     // Y lo que se escribe es la direccion Y NADA MAS. El `toEqual` es literal a proposito:
     // `zona_id` es el campo por el que la orden se quedaria sin dueño, y aqui no puede aparecer.

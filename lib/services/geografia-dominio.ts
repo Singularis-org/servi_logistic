@@ -258,6 +258,101 @@ export function grupoDelLugar(
   return null;
 }
 
+/** SLT-48 (P3): el grupo de tarifas se busca desde el nivel 3; mas arriba la orden va sin grupo. */
+export const PROFUNDIDAD_MINIMA_DEL_GRUPO = 3;
+
+/**
+ * SLT-48 (design §6, R31, P3) — el lugar con el que se busca el grupo de tarifas de una orden
+ * (`ParTarifa.distritoId`, nombre interno heredado): el propio nodo si esta en el nivel 3 o mas
+ * hondo; si no, `null` (sin grupo, tarifa base: SLT-89 R20).
+ *
+ * Para una orden vieja de Costa Rica da lo mismo que leer `orden.distrito_id`: su nodo es el
+ * distrito (profundidad 3) o, sin distrito, el canton (profundidad 2 → `null`). Un nodo que no
+ * esta en el catalogo tambien da `null`: no se inventa un grupo.
+ */
+export function distritoDeTarifa(cat: CatalogoGeografico, nodoId: string | null): string | null {
+  if (nodoId === null) return null;
+  const n = cat.porId.get(nodoId);
+  return distritoDeTarifaDelNodo(n ?? null);
+}
+
+/** La misma regla, cuando ya se tiene el nodo (o su profundidad) sin el catalogo. */
+export function distritoDeTarifaDelNodo(n: { id: string; profundidad: number } | null): string | null {
+  if (n === null) return null;
+  return n.profundidad >= PROFUNDIDAD_MINIMA_DEL_GRUPO ? n.id : null;
+}
+
+// ── SLT-48 (design §7.2; R39–R41, P1) — mover un nodo ───────────────────────────────────────────
+
+/**
+ * El catalogo tal como quedaria si el nodo `id` colgara de `padreNuevo`. Solo cambia el `padreId` de
+ * ESE nodo: sus descendientes lo siguen y su profundidad no cambia (el destino esta a la altura del
+ * padre de hoy). Sirve para preguntar «que grupo y que marca tendria esta orden despues» sin escribir.
+ */
+export function catalogoConPadre(cat: CatalogoGeografico, id: string, padreNuevo: string): CatalogoGeografico {
+  return crearCatalogo(
+    cat.paisId,
+    cat.tipos,
+    cat.nodos.map((n) => (n.id === id ? { ...n, padreId: padreNuevo } : n)),
+  );
+}
+
+/** Una orden abierta (sin cierre, sin borrar) que cuelga del nodo que se mueve. */
+export interface OrdenAbiertaEnElArbol {
+  id: string;
+  organizacionId: string;
+  zonaId: string;
+  nodoId: string;
+}
+
+/**
+ * Lo que decide el grupo de tarifas y la marca de las ordenes de UNA empresa:
+ *  - `gruposPorDistrito`: `zona|distrito` -> grupo, de `grupo_distritos_distrito`. Solo cuenta para el
+ *    lugar EXACTO de la orden, igual que en `gruposDeDistritos`, asi que mover no lo cambia nunca;
+ *  - `miembrosPorZona`: zona -> (nodo -> grupo), de `grupo_distritos_nodo`, que si se hereda;
+ *  - `marcas`: los nodos con `distrito_zona_especial` de la empresa, que tambien se heredan.
+ */
+export interface TarifaYMarcaDeLaEmpresa {
+  gruposPorDistrito: ReadonlyMap<string, string>;
+  miembrosPorZona: ReadonlyMap<string, ReadonlyMap<string, string>>;
+  marcas: ReadonlySet<string>;
+}
+
+/** El grupo y la marca de una orden con un catalogo dado (la misma regla que la tarifa, design §6). */
+export function grupoYMarcaDeOrden(
+  cat: CatalogoGeografico,
+  o: OrdenAbiertaEnElArbol,
+  empresa: TarifaYMarcaDeLaEmpresa,
+): { grupo: string | null; marca: boolean } {
+  const lugar = distritoDeTarifa(cat, o.nodoId);
+  const exacto = lugar === null ? undefined : empresa.gruposPorDistrito.get(`${o.zonaId}|${lugar}`);
+  const miembros = empresa.miembrosPorZona.get(o.zonaId);
+  const grupo = exacto ?? (miembros === undefined ? null : grupoDelLugar(cat, miembros, lugar));
+  const marca = esZonaEspecial(cat, crearAsignaciones([], empresa.marcas), o.nodoId);
+  return { grupo, marca };
+}
+
+/**
+ * P1 — las ordenes abiertas cuyo grupo de tarifas o marca de zona especial cambiarian al pasar del
+ * catalogo `antes` al `despues`. Con alguna, mover se bloquea: una orden abierta no tiene el precio
+ * congelado y lo resolveria con el padre nuevo (decision «Mover un nodo»). Una empresa sin datos de
+ * grupo ni marca no puede cambiar nada.
+ */
+export function ordenesQueCambiarianAlMover(
+  antes: CatalogoGeografico,
+  despues: CatalogoGeografico,
+  ordenes: readonly OrdenAbiertaEnElArbol[],
+  deLaEmpresa: (organizacionId: string) => TarifaYMarcaDeLaEmpresa | undefined,
+): OrdenAbiertaEnElArbol[] {
+  return ordenes.filter((o) => {
+    const empresa = deLaEmpresa(o.organizacionId);
+    if (empresa === undefined) return false;
+    const a = grupoYMarcaDeOrden(antes, o, empresa);
+    const d = grupoYMarcaDeOrden(despues, o, empresa);
+    return a.grupo !== d.grupo || a.marca !== d.marca;
+  });
+}
+
 /**
  * SLT-89 (R16, R43, R45; design §5.4) — `true` si las dos listas tienen los mismos elementos, sin
  * importar el orden ni los repetidos. Compara el «antes» que mostro la pantalla con lo que hay en la

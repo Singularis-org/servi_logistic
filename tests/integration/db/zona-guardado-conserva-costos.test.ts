@@ -17,6 +17,7 @@ import {
 } from "./_postgres-real";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import { ZonaRepositoryConAntes, antesDeZona } from "./_fixtures/antes-de-zona";
+import { crearNodoDeNivel } from "@/tests/fabricas/paises";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // SLT-51 / T3 — GUARDAR UNA ZONA DESDE «ZONAS» NO TOCA SUS COSTOS (Postgres real).
@@ -132,13 +133,8 @@ describeSiHayBase("SLT-51/T3 — guardar una zona conserva sus costos (Postgres 
         repo,
         usuarioId: maestro.id,
         deps: { zonaService: new ZonaService(repo), getActor: async () => actor },
-        crearDistrito: async () =>
-          (
-            await tx.distrito.create({
-              data: { nombre: `SLT51 D ${unico()}`, cantonId: FKS.cantonId },
-              select: { id: true },
-            })
-          ).id,
+        // SLT-48 (design §9): `distrito` es una vista; el distrito de prueba es un nodo de profundidad 3.
+        crearDistrito: async () => (await crearNodoDeNivel(tx, 3, { nombre: `SLT51 D ${unico()}`, padreId: FKS.cantonId })).id,
       });
     });
   }

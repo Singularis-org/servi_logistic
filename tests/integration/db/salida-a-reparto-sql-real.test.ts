@@ -20,7 +20,7 @@ import {
   listarOrdenesBodegaPaginadoSchema,
 } from "@/lib/types/recepcion-satelite";
 
-import { crearPaisDePrueba } from "@/tests/fabricas/paises";
+import { crearPaisDePrueba, crearNodoDeNivel } from "@/tests/fabricas/paises";
 
 import {
   HAY_BASE_DE_DATOS,
@@ -693,14 +693,19 @@ describeSiHayBase("FICHA 370 · «ya salio a reparto» decide sobre filas reales
       await serializarEscriturasReales(tx);
       // Una geografia de un pais de prueba con ids que ordenan ANTES que cualquier uuid de la base.
       await crearPaisDePrueba(tx, "XR");
-      const provinciaAjena = await tx.provincia.create({
-        data: { id: "00000000-0000-0000-0000-000000000001", nombre: "Provincia ajena SLT-76", paisId: "XR" },
-        select: { id: true },
+      // SLT-48 (design §9): las tablas viejas son vistas; la geografia ajena se escribe en nodos, con
+      // los mismos ids. El pais del canton es el de su padre, como antes.
+      const provinciaAjena = await crearNodoDeNivel(tx, 1, {
+        id: "00000000-0000-0000-0000-000000000001",
+        nombre: "Provincia ajena SLT-76",
+        paisId: "XR",
       });
-      const cantonAjeno = await tx.canton.create({
-        data: { id: "00000000-0000-0000-0000-000000000000", nombre: "Canton ajeno SLT-76", provinciaId: provinciaAjena.id },
-        select: { id: true, paisId: true },
+      const { id: cantonAjenoId } = await crearNodoDeNivel(tx, 2, {
+        id: "00000000-0000-0000-0000-000000000000",
+        nombre: "Canton ajeno SLT-76",
+        padreId: provinciaAjena.id,
       });
+      const cantonAjeno = await tx.canton.findUniqueOrThrow({ where: { id: cantonAjenoId }, select: { id: true, paisId: true } });
       // Precondicion que hace decisivo el caso: SIN filtro de pais, ESTE seria el primer canton.
       const primeroSinFiltro = await tx.canton.findFirst({ orderBy: { id: "asc" }, select: { id: true } });
 
@@ -718,8 +723,9 @@ describeSiHayBase("FICHA 370 · «ya salio a reparto» decide sobre filas reales
         primeroSinFiltro: primeroSinFiltro?.id,
         paisEmpresa: empresa?.paisId,
         ordenes: geografias.length,
-        paisesDeLasOrdenes: [...new Set(geografias.map((o) => o.canton.paisId))],
-        usaElAjeno: geografias.some((o) => o.canton.id === cantonAjeno.id),
+        // SLT-48 R4: las FK de la orden son nullable; las de este escenario se siembran con canton.
+        paisesDeLasOrdenes: [...new Set(geografias.map((o) => o.canton!.paisId))],
+        usaElAjeno: geografias.some((o) => o.canton!.id === cantonAjeno.id),
       };
     });
 

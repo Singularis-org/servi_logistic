@@ -29,7 +29,7 @@ import {
 } from "@/app/(app)/ordenes/_components/CorregirDatosClienteModal";
 import type { OrdenListItemDTO } from "@/lib/types/orden";
 
-import { ETIQUETAS_CR } from "../../fabricas/etiquetas-geograficas";
+import { ETIQUETAS_CR, NIVELES_CR } from "../../fabricas/etiquetas-geograficas";
 
 // SL-20 (R19): las pantallas nombran los niveles con los del país de la empresa. Estos casos son de
 // Costa Rica: el hook da sus etiquetas (sin proveedor daría las neutras, «Nivel 1»…).
@@ -94,12 +94,23 @@ const ORDEN = {
  */
 function catalogo(todoDisponible: boolean) {
   const retirado = todoDisponible;
+  // SLT-48 (design §8): la ventana lee el árbol de lugares; es la misma geografía que las listas.
+  const lugares = [
+    { id: "prov-sj", nombre: "San José", padreId: null, profundidad: 1, disponible: true },
+    { id: "prov-li", nombre: "Limón", padreId: null, profundidad: 1, disponible: retirado },
+    { id: "can-escazu", nombre: "Escazú", padreId: "prov-sj", profundidad: 2, disponible: true },
+    { id: "can-osa", nombre: "Osa", padreId: "prov-sj", profundidad: 2, disponible: retirado },
+    { id: "dis-san-rafael", nombre: "San Rafael", padreId: "can-escazu", profundidad: 3, disponible: true },
+    { id: "dis-san-antonio", nombre: "San Antonio", padreId: "can-escazu", profundidad: 3, disponible: retirado },
+  ];
   return {
     status: "ok" as const,
     catalogo: {
       zonas: [],
       tiendas: [],
       mensajeros: [],
+      niveles: NIVELES_CR,
+      lugares,
       provincias: [
         { id: "prov-sj", nombre: "San José", disponible: true },
         { id: "prov-li", nombre: "Limón", disponible: retirado },
@@ -136,6 +147,13 @@ const UBICACION = {
     notas: null,
     direccion: "Av. Central 120",
     peso: 1.5,
+    // SLT-48 (R16, R43): el lugar es el nodo, con su ruta de la raíz a la hoja.
+    nodoId: "dis-san-rafael",
+    ruta: [
+      { id: "prov-sj", nombre: "San José" },
+      { id: "can-escazu", nombre: "Escazú" },
+      { id: "dis-san-rafael", nombre: "San Rafael" },
+    ],
     provinciaId: "prov-sj",
     cantonId: "can-escazu",
     distritoId: "dis-san-rafael",

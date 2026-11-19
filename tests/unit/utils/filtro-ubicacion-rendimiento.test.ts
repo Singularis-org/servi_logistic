@@ -89,6 +89,7 @@ describe("SLT-47 R32 — 10 niveles y ~20.000 nodos", () => {
   it("la consulta lleva todos los ids en un solo parametro de lista (por rama)", () => {
     const ids = resolverLugar(cat, ["r0"]);
     const sql = sqlLugarEn(ids);
-    expect(sql.values).toEqual([[...ids], [...ids]]);
+    // SLT-48 R23: una sola rama (el nodo de la orden), asi que un solo parametro (antes dos).
+    expect(sql.values).toEqual([[...ids]]);
   });
 });

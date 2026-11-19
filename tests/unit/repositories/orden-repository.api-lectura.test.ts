@@ -53,6 +53,8 @@ function ordenSelectRow(overrides: Record<string, unknown> = {}) {
     // SLT-65: el lugar de la orden, del que sale la marca. Por DEFECTO, sin distrito.
     distritoId: null,
     cantonId: "canton-1",
+    // SLT-48 (R22): el lugar de la orden es su nodo (sin distrito, el canton). Cambio de entrada.
+    nodoGeograficoId: "canton-1",
     cierreDetalles: [],
     ...overrides,
   };
@@ -539,8 +541,11 @@ describe("OrdenRepository — zona y costo del canal (feature 415)", () => {
     // lugar de la orden: la relacion `distrito` ya no viaja, solo las dos FK del lugar. Literal a
     // proposito: es el contrato de lo que viaja.
     expect(select.distrito).toBeUndefined();
-    expect(select.distritoId).toBe(true);
-    expect(select.cantonId).toBe(true);
+    // SLT-48 R29: el lugar viaja como el nodo de la orden; ninguna de las 3 FK viejas se lee.
+    expect(select.nodoGeograficoId).toBe(true);
+    expect(select.distritoId).toBeUndefined();
+    expect(select.cantonId).toBeUndefined();
+    expect(select.provinciaId).toBeUndefined();
   });
 
   it("415/R21: distrito SIN marca de la empresa y orden SIN distrito dan los DOS `false`", async () => {
@@ -549,7 +554,7 @@ describe("OrdenRepository — zona y costo del canal (feature 415)", () => {
     const prisma = buildPrisma({
       orden: {
         findMany: vi.fn().mockResolvedValue([
-          ordenSelectRow({ distrito: { zonasEspeciales: [] }, distritoId: "d-sin-marca" }),
+          ordenSelectRow({ distrito: { zonasEspeciales: [] }, distritoId: "d-sin-marca", nodoGeograficoId: "d-sin-marca" }),
           ordenSelectRow({ numRemision: "REM-2", distrito: null }),
           // Y el contraste: con marca SI es `true`, para que el caso de arriba no salga verde por
           // vacio (un mapeo que devolviera siempre `false` moriria aqui).
@@ -557,6 +562,7 @@ describe("OrdenRepository — zona y costo del canal (feature 415)", () => {
             numRemision: "REM-3",
             distrito: { zonasEspeciales: [{ id: "m-1" }] },
             distritoId: "d-con-marca",
+            nodoGeograficoId: "d-con-marca", // SLT-48 (R22): el lugar es el nodo. Cambio de entrada.
           }),
         ]),
         count: vi.fn().mockResolvedValue(3),

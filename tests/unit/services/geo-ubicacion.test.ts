@@ -2,16 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import { crearAsignaciones, nodo, type CatalogoGeografico, type ZonaAsignada } from "@/lib/services/geografia-dominio";
 import {
-  MSG_PAIS_NO_HABILITADO,
   MSG_UBICACION_UNA_DE_LAS_DOS,
-  admiteGuardado,
-  esPaisDeTresNiveles,
-  fksDeNodo,
   resolverUbicacion,
   rutaPublica,
   type EntradaUbicacion,
   type ResultadoUbicacion,
 } from "@/lib/services/geo-ubicacion";
+import { esHoja, msgUbicacionIncompleta } from "@/lib/services/geo-ubicacion";
 import { catalogoEnMemoria } from "../../fixtures/doble-catalogo-geografico";
 
 // SLT-45 (T2.1; design §2.2, §3.1, §5) — el motor de N niveles, sin base. Cubre R13–R16, R21 y la
@@ -216,46 +213,69 @@ describe("R14 — un codigo oficial se resuelve contra los nodos del pais", () =
 // =================================================================================================
 
 describe("R15/R33 — forma del pais y regla de guardado", () => {
-  it("es de 3 niveles solo si la profundidad maxima es 3", () => {
-    expect(esPaisDeTresNiveles(DOS)).toBe(false);
-    expect(esPaisDeTresNiveles(TRES)).toBe(true);
-    expect(esPaisDeTresNiveles(CUATRO)).toBe(false);
-    expect(esPaisDeTresNiveles(catalogoEnMemoria([]))).toBe(false);
+  // SLT-48 R18: `esPaisDeTresNiveles` sale con T2.1; la forma del pais ya no decide nada. Lo que se
+  // pregunta ahora es si el nodo es hoja (R17, P2).
+  it("SLT-48 R18: la forma del pais ya no decide; en cualquier pais solo la hoja se guarda", () => {
+    expect(esHoja(DOS, nodoDe(DOS, "A1"))).toBe(true);
+    expect(esHoja(TRES, nodoDe(TRES, "D1"))).toBe(true);
+    expect(esHoja(CUATRO, nodoDe(CUATRO, "X3"))).toBe(true);
+    expect(esHoja(CUATRO, nodoDe(CUATRO, "X2"))).toBe(false);
   });
 
-  it("en un pais de 3 niveles admite las profundidades 2 y 3, no la 1", () => {
-    expect(admiteGuardado(TRES, nodoDe(TRES, "R1"))).toBe(false);
-    expect(admiteGuardado(TRES, nodoDe(TRES, "C1"))).toBe(true);
-    expect(admiteGuardado(TRES, nodoDe(TRES, "D1"))).toBe(true);
+  // SLT-48 R17: antes `admiteGuardado` admitia las profundidades 2 y 3; ahora se admite la hoja, sea
+  // un distrito o un canton sin distritos, y no un canton con distritos.
+  it("en un pais de 3 niveles admite la hoja (distrito o canton sin distritos), no la raiz ni un canton con distritos", () => {
+    expect(esHoja(TRES, nodoDe(TRES, "R1"))).toBe(false);
+    expect(esHoja(TRES, nodoDe(TRES, "C1"))).toBe(false);
+    expect(esHoja(TRES, nodoDe(TRES, "C4"))).toBe(true);
+    expect(esHoja(TRES, nodoDe(TRES, "D1"))).toBe(true);
   });
 
-  it("en paises de 2 y 4 niveles no admite ninguna profundidad (1 a 4)", () => {
-    expect(["A", "A1"].map((id) => admiteGuardado(DOS, nodoDe(DOS, id)))).toEqual([false, false]);
-    expect(["X", "X1", "X2", "X3"].map((id) => admiteGuardado(CUATRO, nodoDe(CUATRO, id)))).toEqual([
+  // SLT-48 R18: los paises de 2 y 4 niveles se habilitan con la misma regla de hoja.
+  it("en paises de 2 y 4 niveles admite solo la hoja", () => {
+    expect(["A", "A1"].map((id) => esHoja(DOS, nodoDe(DOS, id)))).toEqual([false, true]);
+    expect(["X", "X1", "X2", "X3"].map((id) => esHoja(CUATRO, nodoDe(CUATRO, id)))).toEqual([
       false,
       false,
       false,
-      false,
+      true,
     ]);
   });
 
-  it("una raiz de un pais de 3 niveles da «pais no habilitado», aunque ademas no tenga zona", () => {
-    expect(error(resolverUbicacion(ruta("Montaña"), TRES, ASIG))).toEqual({ ubicacion: [MSG_PAIS_NO_HABILITADO] });
-    expect(error(resolverUbicacion(codigo("1"), TRES, ASIG))).toEqual({ ubicacion: [MSG_PAIS_NO_HABILITADO] });
+  // SLT-48 R17/R18: la raiz no es hoja; el mensaje es «ubicacion incompleta», nunca «pais no habilitado».
+  it("una raiz de un pais de 3 niveles da «ubicacion incompleta», aunque ademas no tenga zona", () => {
+    expect(error(resolverUbicacion(ruta("Montaña"), TRES, ASIG))).toEqual({
+      ubicacion: [msgUbicacionIncompleta("Montaña", "Niveles 2")],
+    });
+    expect(error(resolverUbicacion(codigo("1"), TRES, ASIG))).toEqual({
+      ubicacion: [msgUbicacionIncompleta("Montaña", "Niveles 2")],
+    });
   });
 
-  it("R33: en un pais de 2 niveles encuentra nodos de cualquier profundidad, por nombre y por codigo, y no los admite", () => {
-    for (const entrada of [ruta("Alfa"), ruta("alfa", "uno"), codigo("A"), codigo("A1")]) {
-      expect(error(resolverUbicacion(entrada, DOS, TODO_CON_ZONA))).toEqual({ ubicacion: [MSG_PAIS_NO_HABILITADO] });
+  // SLT-48 R18: en un pais de 2 niveles el nodo de nivel 2 entra; la raiz pide el nivel 2.
+  it("R33: en un pais de 2 niveles encuentra nodos de cualquier profundidad, por nombre y por codigo, y admite la hoja", () => {
+    for (const entrada of [ruta("Alfa"), codigo("A")]) {
+      expect(error(resolverUbicacion(entrada, DOS, TODO_CON_ZONA))).toEqual({
+        ubicacion: [msgUbicacionIncompleta("Alfa", "Niveles 2")],
+      });
+    }
+    for (const entrada of [ruta("alfa", "uno"), codigo("A1")]) {
+      expect(resuelto(resolverUbicacion(entrada, DOS, TODO_CON_ZONA)).nodo.id).toBe("A1");
     }
   });
 
-  it("R33: en un pais de 4 niveles llega hasta la profundidad 4, y no admite ninguna", () => {
+  // SLT-48 R18: en un pais de 4 niveles la hoja de nivel 4 entra; un nivel con hijos pide el siguiente.
+  it("R33: en un pais de 4 niveles llega hasta la profundidad 4, y admite solo la hoja", () => {
     expect(error(resolverUbicacion(ruta("Equis", "Uno", "Dos", "Tres", "Cuatro"), CUATRO, TODO_CON_ZONA))).toEqual({
       ubicacion: ["nivel 5: 'Cuatro' no encontrado en 'Tres'"],
     });
-    for (const entrada of [ruta("Equis", "Uno", "Dos", "Tres"), ruta("Equis", "Uno", "Dos"), codigo("X3"), codigo("X2")]) {
-      expect(error(resolverUbicacion(entrada, CUATRO, TODO_CON_ZONA))).toEqual({ ubicacion: [MSG_PAIS_NO_HABILITADO] });
+    for (const entrada of [ruta("Equis", "Uno", "Dos", "Tres"), codigo("X3")]) {
+      expect(resuelto(resolverUbicacion(entrada, CUATRO, TODO_CON_ZONA)).nodo.id).toBe("X3");
+    }
+    for (const entrada of [ruta("Equis", "Uno", "Dos"), codigo("X2")]) {
+      expect(error(resolverUbicacion(entrada, CUATRO, TODO_CON_ZONA))).toEqual({
+        ubicacion: [msgUbicacionIncompleta("Dos", "Niveles 4")],
+      });
     }
   });
 
@@ -309,7 +329,9 @@ describe("R16 — la zona que cubre la ubicacion", () => {
     const u = resuelto(resolverUbicacion(codigo("202"), TRES, ASIG));
     expect(u.nodo.id).toBe("C5");
     expect(u.zona).toEqual(Z.centro);
-    expect(u.fks).toEqual({ provinciaId: "R2", cantonId: "C5", distritoId: null });
+    // SLT-48 R15: la orden guarda solo su nodo; la resolucion ya no trae FK, trae la ruta del nodo.
+    expect(u.ruta.map((n) => n.id)).toEqual(["R2", "C5"]);
+    expect(u).not.toHaveProperty("fks");
   });
 
   it("un retirado sin zona dice «retirado», no «sin zona»", () => {
@@ -323,24 +345,30 @@ describe("R16 — la zona que cubre la ubicacion", () => {
 // R25 (parte pura) — las tres FK viejas
 // =================================================================================================
 
-describe("R25 — las tres FK se derivan de la ruta del nodo", () => {
+describe("R25 — las tres FK se derivan de la ruta del nodo (SLT-48 R15: ya no hay FK, queda la ruta)", () => {
+  // SLT-48 R15: `fksDeNodo` sale con T2.1. Lo que la orden puede leer de su nodo es la ruta del arbol.
   it("profundidad 3: abuelo, padre y el nodo", () => {
-    expect(fksDeNodo(TRES, nodoDe(TRES, "D1"))).toEqual({ provinciaId: "R1", cantonId: "C1", distritoId: "D1" });
+    expect(rutaPublica(TRES, "D1").map((e) => e.id)).toEqual(["R1", "C1", "D1"]);
   });
 
-  it("profundidad 2: padre, el nodo y distrito vacio", () => {
-    expect(fksDeNodo(TRES, nodoDe(TRES, "C4"))).toEqual({ provinciaId: "R2", cantonId: "C4", distritoId: null });
+  // SLT-48 R15: la ruta de un canton termina en el canton; no hay «distrito vacio» que escribir.
+  it("profundidad 2: padre y el nodo", () => {
+    expect(rutaPublica(TRES, "C4").map((e) => e.id)).toEqual(["R2", "C4"]);
   });
 
-  it("sin regla de guardado no hay FK: raiz, y paises de 2 y 4 niveles", () => {
-    expect(fksDeNodo(TRES, nodoDe(TRES, "R1"))).toBeNull();
-    expect(fksDeNodo(DOS, nodoDe(DOS, "A1"))).toBeNull();
-    expect(fksDeNodo(CUATRO, nodoDe(CUATRO, "X2"))).toBeNull();
+  // SLT-48 R17/R18: lo que no se guarda ya no es «sin FK» sino «no es hoja»; y los paises de 2 y 4
+  // niveles guardan su hoja.
+  it("la raiz no se guarda; en paises de 2 y 4 niveles, la hoja si y un nivel con hijos no", () => {
+    expect(esHoja(TRES, nodoDe(TRES, "R1"))).toBe(false);
+    expect(esHoja(DOS, nodoDe(DOS, "A1"))).toBe(true);
+    expect(esHoja(CUATRO, nodoDe(CUATRO, "X2"))).toBe(false);
   });
 
-  it("la resolucion completa trae las FK del nodo resuelto", () => {
+  // SLT-48 R15: la resolucion completa trae el nodo y su ruta, y ninguna FK.
+  it("la resolucion completa trae la ruta del nodo resuelto, sin FK", () => {
     const u = resuelto(resolverUbicacion(ruta("Montaña", "Río Claro", "Peñas"), TRES, ASIG));
-    expect(u.fks).toEqual({ provinciaId: "R1", cantonId: "C1", distritoId: "D1" });
+    expect(u.ruta.map((n) => n.id)).toEqual(["R1", "C1", "D1"]);
+    expect(u).not.toHaveProperty("fks");
   });
 });
 
@@ -381,5 +409,105 @@ describe("R21 — `rutaPublica` de la raiz al nodo", () => {
       [3, "nivel_3"],
       [4, "nivel_4"],
     ]);
+  });
+});
+
+// =================================================================================================
+// SLT-48 R17, R18 — regla de hoja (P2: hoja = sin hijos activos)
+// =================================================================================================
+
+describe("SLT-48 R17/R18 — la orden apunta a una hoja activa, en paises de 2 a 10 niveles", () => {
+  const sinZonaQueFalle = (ids: string[]) =>
+    crearAsignaciones(
+      ids.map((nodoId) => ({ nodoId, zona: Z.norte })),
+      [],
+    );
+
+  // Forma de Costa Rica: provincia › canton › distrito; un canton sin distritos es hoja.
+  const CR = catalogoEnMemoria([
+    { id: "SJ", nombre: "San José", codigoOficial: "1" },
+    { id: "ESC", padreId: "SJ", nombre: "Escazú", codigoOficial: "102" },
+    { id: "SR", padreId: "ESC", nombre: "San Rafael", codigoOficial: "10203" },
+    { id: "SOLO", padreId: "SJ", nombre: "Solitario", codigoOficial: "199" },
+    { id: "RET", padreId: "SJ", nombre: "Retirados", codigoOficial: "198" },
+    { id: "RET1", padreId: "RET", nombre: "Viejo", codigoOficial: "19801", activo: false },
+  ]);
+  const ASIG_CR = sinZonaQueFalle(["SJ"]);
+
+  it("CR: un canton con distritos se rechaza con un mensaje que nombra el lugar y pide el distrito", () => {
+    expect(error(resolverUbicacion(ruta("San José", "Escazú"), CR, ASIG_CR))).toEqual({
+      ubicacion: [msgUbicacionIncompleta("Escazú", "Niveles 3")],
+    });
+    expect(error(resolverUbicacion(codigo("102"), CR, ASIG_CR))).toEqual({
+      ubicacion: ["ubicacion incompleta: 'Escazú' tiene niveles 3 debajo; indica el ultimo nivel"],
+    });
+  });
+
+  it("CR: el distrito entra, y un canton sin distritos tambien", () => {
+    expect(resuelto(resolverUbicacion(ruta("San José", "Escazú", "San Rafael"), CR, ASIG_CR)).nodo.id).toBe("SR");
+    expect(resuelto(resolverUbicacion(ruta("San José", "Solitario"), CR, ASIG_CR)).nodo.id).toBe("SOLO");
+  });
+
+  it("P2: un canton con todos sus hijos retirados es hoja y entra", () => {
+    expect(esHoja(CR, nodoDe(CR, "RET"))).toBe(true);
+    expect(resuelto(resolverUbicacion(codigo("198"), CR, ASIG_CR)).nodo.id).toBe("RET");
+  });
+
+  it("una raiz con hijos no es hoja: el mensaje pide el nivel de sus hijos", () => {
+    expect(esHoja(CR, nodoDe(CR, "SJ"))).toBe(false);
+    expect(error(resolverUbicacion(ruta("San José"), CR, ASIG_CR))).toEqual({
+      ubicacion: [msgUbicacionIncompleta("San José", "Niveles 2")],
+    });
+  });
+
+  it("pais de 2 niveles: el nodo de nivel 2 entra; la raiz pide el nivel 2", () => {
+    expect(resuelto(resolverUbicacion(ruta("Alfa", "Uno"), DOS, TODO_CON_ZONA)).nodo.id).toBe("A1");
+    expect(resuelto(resolverUbicacion(codigo("A1"), DOS, TODO_CON_ZONA)).ruta.map((n) => n.id)).toEqual(["A", "A1"]);
+    expect(error(resolverUbicacion(ruta("Alfa"), DOS, TODO_CON_ZONA))).toEqual({
+      ubicacion: [msgUbicacionIncompleta("Alfa", "Niveles 2")],
+    });
+  });
+
+  it("pais de 4 niveles: el nodo de nivel 4 entra; el de nivel 3 pide el nivel 4", () => {
+    const u = resuelto(resolverUbicacion(ruta("Equis", "Uno", "Dos", "Tres"), CUATRO, TODO_CON_ZONA));
+    expect(u.nodo.id).toBe("X3");
+    expect(u.ruta.map((n) => n.id)).toEqual(["X", "X1", "X2", "X3"]);
+    expect(error(resolverUbicacion(codigo("X2"), CUATRO, TODO_CON_ZONA))).toEqual({
+      ubicacion: [msgUbicacionIncompleta("Dos", "Niveles 4")],
+    });
+  });
+
+  it("pais de 10 niveles: la hoja de nivel 10 entra con su ruta entera; el nivel 9 no", () => {
+    const nodos = Array.from({ length: 10 }, (_, i) => ({
+      id: `N${i + 1}`,
+      padreId: i === 0 ? undefined : `N${i}`,
+      nombre: `Lugar ${i + 1}`,
+      codigoOficial: `c${i + 1}`,
+    }));
+    const DIEZ = catalogoEnMemoria(nodos);
+    const asig = sinZonaQueFalle(["N1"]);
+    const u = resuelto(resolverUbicacion(ruta(...nodos.map((n) => n.nombre)), DIEZ, asig));
+    expect(u.nodo.id).toBe("N10");
+    expect(u.nodo.profundidad).toBe(10);
+    expect(u.ruta).toHaveLength(10);
+    expect(error(resolverUbicacion(codigo("c9"), DIEZ, asig))).toEqual({
+      ubicacion: [msgUbicacionIncompleta("Lugar 9", "Niveles 10")],
+    });
+  });
+
+  it("la regla de hoja va antes que la zona: un nodo sin hoja y sin zona dice «incompleta»", () => {
+    expect(error(resolverUbicacion(ruta("San José", "Escazú"), CR, sinZonaQueFalle([])))).toEqual({
+      ubicacion: [msgUbicacionIncompleta("Escazú", "Niveles 3")],
+    });
+  });
+
+  it("R18: el mensaje «pais aun no habilitado» no sale en ningun pais", () => {
+    const mensajes = [
+      resolverUbicacion(ruta("Alfa"), DOS, TODO_CON_ZONA),
+      resolverUbicacion(ruta("Equis", "Uno"), CUATRO, TODO_CON_ZONA),
+      resolverUbicacion(ruta("Montaña"), TRES, ASIG),
+    ].flatMap((r) => (r.ok ? [] : Object.values(r.fieldErrors).flat()));
+    expect(mensajes.length).toBeGreaterThan(0);
+    for (const m of mensajes) expect(m).not.toMatch(/no habilitado/);
   });
 });

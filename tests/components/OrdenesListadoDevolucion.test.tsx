@@ -58,9 +58,6 @@ function makeOrden(ref: string, estatusValue: string): OrdenListItemDTO {
     tiendaNombre: "Tienda X",
     zonaId: "zona-1",
     zonaEsGam: false, // orden de zona SATÉLITE ya recibida en central: igual elegible
-    provinciaId: "prov-1",
-    cantonId: "canton-1",
-    distritoId: null,
     producto: "Producto",
     peso: 1,
     notas: null,

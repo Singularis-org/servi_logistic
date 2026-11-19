@@ -97,9 +97,7 @@ function filaDe(e: Empresa, numRemision: string): CreateOrdenData {
     telefonoDest: "88887777",
     tiendaId: e.p.tiendaId,
     zonaId: e.zonaId,
-    provinciaId: geo.provinciaId,
-    cantonId: geo.cantonId,
-    distritoId: geo.distritoId,
+    // SLT-48 R15: `CreateOrdenData` ya no lleva las 3 FK; la orden se crea con su nodo.
     nodoGeograficoId: geo.distritoId,
     producto: "Caja",
     peso: null,

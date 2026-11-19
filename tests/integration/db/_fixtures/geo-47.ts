@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { fijarEmpresa } from "@/tests/fabricas/organizaciones";
+import { crearNodoDeNivel } from "@/tests/fabricas/paises";
 import type { TxDeTest } from "../_postgres-real";
 import { insertarNodo } from "./geo-43";
 import { crearEscenarioGeo65, DATOS_PERSONALES_GEO65, type EmpresaGeo65, type EscenarioGeo65 } from "./geo-65";
@@ -97,16 +98,13 @@ export async function sembrarEmpresaGeo47(tx: TxDeTest, e: EmpresaGeo65): Promis
   const sufijo = randomUUID().replace(/-/g, "").slice(0, 10);
   const nombreCentral = `Central SLT47 ${sufijo}`;
   const nombreSanRafael = `San Rafael SLT47 ${sufijo}`;
-  const id = { select: { id: true } } as const;
 
-  const provinciaCentral = await tx.provincia.create({ data: { nombre: nombreCentral, paisId: e.base.paisId }, ...id });
-  const cantonCentral1 = await tx.canton.create({
-    data: { nombre: nombreCentral, provinciaId: e.base.geo.provinciaId },
-    ...id,
-  });
-  const cantonCentral2 = await tx.canton.create({ data: { nombre: nombreCentral, provinciaId: provinciaCentral.id }, ...id });
-  const sanRafael1 = await tx.distrito.create({ data: { nombre: nombreSanRafael, cantonId: cantonCentral1.id }, ...id });
-  const sanRafael2 = await tx.distrito.create({ data: { nombre: nombreSanRafael, cantonId: cantonCentral2.id }, ...id });
+  // SLT-48: la geografía se escribe en `nodo_geografico`; `provincia`/`canton`/`distrito` son vistas.
+  const provinciaCentral = await crearNodoDeNivel(tx, 1, { nombre: nombreCentral, paisId: e.base.paisId });
+  const cantonCentral1 = await crearNodoDeNivel(tx, 2, { nombre: nombreCentral, padreId: e.base.geo.provinciaId });
+  const cantonCentral2 = await crearNodoDeNivel(tx, 2, { nombre: nombreCentral, padreId: provinciaCentral.id });
+  const sanRafael1 = await crearNodoDeNivel(tx, 3, { nombre: nombreSanRafael, padreId: cantonCentral1.id });
+  const sanRafael2 = await crearNodoDeNivel(tx, 3, { nombre: nombreSanRafael, padreId: cantonCentral2.id });
 
   const estado = await idDeEstado(tx, "en_preparacion");
   const [destinatario, telefono, direccion] = DATOS_PERSONALES_GEO65;
@@ -175,10 +173,7 @@ async function sembrarCuartoNivel(tx: TxDeTest, e: EmpresaGeo65): Promise<Cuarto
     );
   }
 
-  const distrito = await tx.distrito.create({
-    data: { nombre: `Con sector SLT47 ${sufijo}`, cantonId: geo.cantonId },
-    select: { id: true },
-  });
+  const distrito = await crearNodoDeNivel(tx, 3, { nombre: `Con sector SLT47 ${sufijo}`, padreId: geo.cantonId });
   await tx.zonaDistrito.create({ data: { zonaId: zonas.norteId, distritoId: distrito.id } });
   const sector = (nombre: string) =>
     insertarNodo(tx, { paisId, tipoId: tipoNivel4Id, padreId: distrito.id, profundidad: 4, nombre: `${nombre} SLT47 ${sufijo}` });

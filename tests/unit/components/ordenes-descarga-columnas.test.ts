@@ -21,9 +21,6 @@ function makeOrden(overrides: Partial<OrdenListItemDTO> = {}): OrdenListItemDTO 
     tiendaId: "tienda-uuid",
     tiendaNombre: "Tienda X",
     zonaId: "zona-uuid",
-    provinciaId: "prov-uuid",
-    cantonId: "canton-uuid",
-    distritoId: "distrito-uuid",
     producto: "Camiseta",
     peso: 1.5,
     notas: null,
@@ -134,14 +131,13 @@ describe("columnas de descarga del listado de órdenes", () => {
     expect(escalares.zona).toBe("Zona Sur");
     expect(escalares.estatus).toBe("Entregado");
 
-    const orden = makeOrden();
+    // SLT-48 R15/R22: el DTO ya no trae las 3 FK; el id de lugar que no debe salir es el del nodo.
+    const orden = makeOrden({ nodoGeograficoId: "nodo-uuid" });
     const ids = [
       orden.id,
       orden.tiendaId,
       orden.zonaId,
-      orden.provinciaId,
-      orden.cantonId,
-      orden.distritoId,
+      orden.nodoGeograficoId,
       orden.estatusId,
       "mens-uuid",
     ];

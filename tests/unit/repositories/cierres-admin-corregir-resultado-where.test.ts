@@ -3,6 +3,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 
 import { CierresAdminRepository } from "@/lib/repositories/CierresAdminRepository";
 import type { Alcance } from "@/lib/interfaces/repositories/ICierresAdminRepository";
+import { delegadosDelCatalogo } from "@/tests/fixtures/doble-catalogo-geografico";
 
 // 💰 FICHA 398 — LA TRANSACCION DE LA CORRECCION EN SITIO, ahí donde de verdad vive: en el WHERE
 // de cada escritura y en el ORDEN de los pasos.
@@ -57,6 +58,8 @@ function clienteFalso(
   };
 
   const tx = {
+    // SLT-48 (R31, P3): el catalogo de la empresa, para el lugar del grupo de la orden (nivel 3).
+    ...delegadosDelCatalogo({ nodos: ["d-1"] }),
     gestionOrden: {
       findFirst: vi.fn(async (args: Record<string, unknown>) => {
         registrar("gestionOrden", "findFirst")(args);
@@ -68,6 +71,8 @@ function clienteFalso(
             numRemision: "REM-1",
             // SLT-52 (T5.1): lo que la orden aporta al contexto del pago.
             distritoId: "d-1",
+            // SLT-48 (R31, P3): el lugar del grupo sale del nodo de la orden. Cambio de entrada.
+            nodoGeograficoId: "d-1",
             tiendaId: "t-1",
             zonaId: "z-orden",
             montoCobrar: new Prisma.Decimal("25000.00"),

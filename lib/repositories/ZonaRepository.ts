@@ -24,6 +24,7 @@ import {
 } from "@/lib/repositories/_shared/zona-nodo";
 import {
   conAsignacionesDeZona,
+  distritoDeTarifa,
   grupoDelLugar,
   mismoConjunto,
   nodo as nodoDelCatalogo,
@@ -767,7 +768,8 @@ async function contarCambiosDeTarifa(
   if (lugares.size === 0) return 0;
   const pendientes = await tx.orden.findMany({
     where: { ...whereLugarEn([...lugares]), deletedAt: null, cierreDetalles: { none: {} } },
-    select: { id: true, zonaId: true, distritoId: true },
+    // SLT-48 (design §6, P3): el nodo de la orden; el lugar del grupo sale de el (`distritoDeTarifa`).
+    select: { id: true, zonaId: true, nodoGeograficoId: true },
   });
   const zonas = [...new Set([...pendientes.map((o) => o.zonaId), ...movidas.values()])];
   const filas = await miembrosPorZona(tx, zonas);
@@ -779,7 +781,8 @@ async function contarCambiosDeTarifa(
   let cambian = 0;
   for (const o of pendientes) {
     const zonaDespues = movidas.get(o.id) ?? o.zonaId;
-    if (zonaDespues !== o.zonaId || grupo(antes, o.zonaId, o.distritoId) !== grupo(despues, zonaDespues, o.distritoId)) {
+    const lugarDelGrupo = distritoDeTarifa(catalogo, o.nodoGeograficoId);
+    if (zonaDespues !== o.zonaId || grupo(antes, o.zonaId, lugarDelGrupo) !== grupo(despues, zonaDespues, lugarDelGrupo)) {
       cambian += 1;
     }
   }

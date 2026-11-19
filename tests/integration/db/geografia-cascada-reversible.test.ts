@@ -14,6 +14,7 @@ import {
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearNodoDeNivel } from "@/tests/fabricas/paises";
 
 /**
  * FICHA 374 — **LA CASCADA SE EVALUA Y NO SE MATERIALIZA: POR ESO REACTIVAR ES REVERSIBLE.**
@@ -89,20 +90,14 @@ describeSiHayBase("374 — la cascada es reversible (Postgres real)", () => {
         await tx.zona.create({ data: { sinpeNumero: "80000000", sinpeNombre: "Titular de Prueba", nombre: `Zona ${SUFIJO}` }, select: { id: true } })
       ).id;
       const provincia = (
-        await tx.provincia.create({ data: { nombre: `Prov ${SUFIJO}` }, select: { id: true } })
+        await crearNodoDeNivel(tx, 1, { nombre: `Prov ${SUFIJO}` })
       ).id;
       const canton = (
-        await tx.canton.create({
-          data: { nombre: `Canton ${SUFIJO}`, provinciaId: provincia },
-          select: { id: true },
-        })
+        await crearNodoDeNivel(tx, 2, { nombre: `Canton ${SUFIJO}`, padreId: provincia })
       ).id;
 
       const crear = async (nombre: string, activo: boolean): Promise<string> => {
-        const fila = await tx.distrito.create({
-          data: { nombre: `${nombre} ${SUFIJO}`, cantonId: canton, activo },
-          select: { id: true },
-        });
+        const fila = await crearNodoDeNivel(tx, 3, { nombre: `${nombre} ${SUFIJO}`, padreId: canton, activo });
         await tx.zonaDistrito.create({ data: { zonaId: zona, distritoId: fila.id } });
         return fila.id;
       };

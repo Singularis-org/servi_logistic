@@ -36,6 +36,7 @@ import {
 } from "@/app/(app)/configuracion/_shared/filtrar-arbol-geografico";
 
 import { ConfirmarCambio, type FilaDeCambio } from "./ConfirmarCambio";
+import { MoverNodoDialog, type NodoAMover } from "./MoverNodoDialog";
 
 // SL-20 (design §8) → SLT-46 (design §6; R14, R20–R22, R52, R58, R59, R61) — EL PANEL «LUGARES»
 // DEL SUPERADMIN: el árbol de un país a cualquier profundidad, según la maqueta T0.2 (versión 7).
@@ -43,7 +44,8 @@ import { ConfirmarCambio, type FilaDeCambio } from "./ConfirmarCambio";
 //   - Cada fila dice su nombre, el singular del tipo de su profundidad, su código y si está retirada.
 //   - «+ <tipo siguiente>» solo si el país tiene tipo para la profundidad siguiente y el lugar no está
 //     retirado (R21). El tipo del lugar nuevo es el de su profundidad: no se elige (R14).
-//   - No hay control para mover un lugar a otro padre (R22).
+//   - SLT-48 (R34, design §7.3): todo lugar que no es raíz ofrece «Mover», que abre `MoverNodoDialog`.
+//     Reemplaza la regla de SLT-46 R22 («no hay mover»; decisión heredada «Mover nodos: va en SLT-48»).
 //   - SIN zonas: son de cada empresa, y en plataforma esa lectura mezclaría las de todas.
 //
 // CONFIRMACIÓN ANTES DE ESCRIBIR (decisión del 2026-11-09, design §6). Toda escritura —alta,
@@ -169,6 +171,7 @@ export function GeografiaAdminModule({
   const [errors, setErrors] = useState<FieldErrors>({});
 
   const [renombrado, setRenombrado] = useState<NodoObjetivo | null>(null);
+  const [movido, setMovido] = useState<NodoAMover | null>(null);
   const [nombreNuevo, setNombreNuevo] = useState("");
   const [erroresRenombrado, setErroresRenombrado] = useState<FieldErrors>({});
 
@@ -453,6 +456,8 @@ export function GeografiaAdminModule({
             expandido={expandido}
             onExpandir={() => alternarExpansion(n.id)}
             onRenombrar={() => abrirRenombrado(nodo)}
+            // Una raíz no tiene padre: no se mueve (R35).
+            onMover={n.profundidad > 1 ? () => setMovido(nodo) : null}
             onRetirar={() => pedirActivacion(nodo, false)}
             onReactivar={() => pedirActivacion(nodo, true)}
             agregarHijo={
@@ -506,6 +511,14 @@ export function GeografiaAdminModule({
           <AlertDescription>No se pudo cargar la división del país.</AlertDescription>
         </Alert>
       ) : null}
+
+      <MoverNodoDialog
+        nodo={movido}
+        onCerrar={() => setMovido(null)}
+        paisNombre={paisNombre}
+        tipos={tipos}
+        raices={raices}
+      />
 
       {/* Un `<form>` con nombre: Enter pide guardar y el lector de pantalla lo anuncia como región.
           La `key` lo vuelve a montar al abrirlo desde otra fila, para que el foco salte otra vez. */}
@@ -656,7 +669,7 @@ export function GeografiaAdminModule({
   );
 }
 
-/** Una fila del árbol: nombre, tipo, código, estado y sus acciones. Sin «mover» (R22). */
+/** Una fila del árbol: nombre, tipo, código, estado y sus acciones. «Mover» solo fuera de la raíz (SLT-48 R34). */
 function FilaNodo({
   nodo,
   tipo,
@@ -665,6 +678,7 @@ function FilaNodo({
   expandido,
   onExpandir,
   onRenombrar,
+  onMover,
   onRetirar,
   onReactivar,
   agregarHijo,
@@ -679,6 +693,8 @@ function FilaNodo({
   expandido?: boolean;
   onExpandir: () => void;
   onRenombrar: () => void;
+  /** `null` en una raíz: no se mueve. */
+  onMover: (() => void) | null;
   onRetirar: () => void;
   onReactivar: () => void;
   agregarHijo: { texto: string; etiqueta: string; onClick: () => void } | null;
@@ -746,6 +762,19 @@ function FilaNodo({
         >
           Renombrar
         </Button>
+
+        {onMover === null ? null : (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className={tactil}
+            aria-label={`Mover ${nombre}`}
+            onClick={onMover}
+          >
+            Mover
+          </Button>
+        )}
 
         {nodo.activo ? (
           <Button

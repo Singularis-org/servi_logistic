@@ -4,7 +4,7 @@ import { CorregirDatosClienteService } from "@/lib/services/CorregirDatosCliente
 import type { CorregirDatosClienteInput } from "@/lib/interfaces/services/ICorregirDatosClienteService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type {
-  DistritoResueltoRow,
+  LugarResueltoRow,
   OrdenParaCorreccionRow,
 } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { TarifaVigente } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
@@ -48,9 +48,9 @@ function orden(overrides: Partial<OrdenParaCorreccionRow> = {}): OrdenParaCorrec
     peso: 1.5,
     montoCobrar: "15000.00",
     cobraComision: true,
-    provinciaId: "p-1",
-    cantonId: "c-1",
-    distritoId: "d-1",
+    nodoId: "d-1",
+    ruta: [{ id: "p-1", nombre: "P" }, { id: "c-1", nombre: "C" }, { id: "d-1", nombre: "D" }],
+    distritoTarifaId: "d-1",
     distritoNombre: "Distrito Uno",
     zonaId: "z-1",
     zonaNombre: "Zona Uno",
@@ -63,12 +63,12 @@ function orden(overrides: Partial<OrdenParaCorreccionRow> = {}): OrdenParaCorrec
 }
 
 /** El distrito PROPUESTO: `d-2`, en la zona `z-2`. Coherente con `p-1`/`c-1` salvo que se diga. */
-function distrito(overrides: Partial<DistritoResueltoRow> = {}): DistritoResueltoRow {
+function distrito(overrides: Partial<LugarResueltoRow> = {}): LugarResueltoRow {
   return {
     id: "d-2",
     nombre: "Distrito Dos",
-    cantonId: "c-1",
-    provinciaId: "p-1",
+    tipoHijosActivos: null,
+    distritoTarifaId: "d-2",
     zonaId: "z-2",
     zonaNombre: "Zona Dos",
     esCentral: false,
@@ -102,7 +102,7 @@ function tarifa(overrides: Partial<TarifaVigente> = {}): TarifaVigente {
 function escenario(
   opciones: {
     ordenFila?: OrdenParaCorreccionRow | null;
-    distritoFila?: DistritoResueltoRow | null;
+    distritoFila?: LugarResueltoRow | null;
     escritura?: "ok" | "conflict";
     tarifaFila?: TarifaVigente | null;
   } = {},
@@ -110,7 +110,7 @@ function escenario(
   const findParaCorreccion = vi.fn(async () =>
     opciones.ordenFila === undefined ? orden() : opciones.ordenFila,
   );
-  const findDistritoParaCorreccion = vi.fn(async () =>
+  const findLugarParaCorreccion = vi.fn(async () =>
     opciones.distritoFila === undefined ? distrito() : opciones.distritoFila,
   );
   // Los parametros se DECLARAN (aunque no se usen) para que `mock.calls[0][1]` tenga tipo: sin
@@ -127,13 +127,13 @@ function escenario(
     tarifaViejaDeFormula(opciones.tarifaFila === undefined ? tarifa() : opciones.tarifaFila),
   );
   const service = new CorregirDatosClienteService(
-    { findParaCorreccion, findDistritoParaCorreccion, corregirDatosCliente },
+    { findParaCorreccion, findLugarParaCorreccion, corregirDatosCliente },
     { resolveTarifa },
   );
   return {
     service,
     findParaCorreccion,
-    findDistritoParaCorreccion,
+    findLugarParaCorreccion,
     corregirDatosCliente,
     resolveTarifa,
   };
@@ -146,7 +146,7 @@ function entrada(extra: Partial<CorregirDatosClienteInput> = {}): CorregirDatosC
 }
 
 /** El cambio de UBICACION completo hacia `d-2`, que es lo que dispara el gate del dinero. */
-const MUDANZA = { provinciaId: "p-1", cantonId: "c-1", distritoId: "d-2" } as const;
+const MUDANZA = { nodoId: "d-2" } as const;
 
 describe("312/C2 — R10: los roles que no corrigen nunca", () => {
   it.each([
@@ -254,7 +254,8 @@ describe("312/C2 — R9: adminTienda", () => {
       { ordenId: ORDEN_ID, ...MUDANZA, confirmaCambioDeUbicacion: true },
       ADMIN_TIENDA,
     );
-    expect(r).toEqual({ status: "ok", cambios: ["distritoId"] });
+    // SLT-48 R16: la geografia corregida es el nodo (`nodoId`), no la FK `distritoId`.
+    expect(r).toEqual({ status: "ok", cambios: ["nodoId"] });
   });
 });
 
@@ -295,7 +296,7 @@ describe("312/C2 — R11: la ventana de estado", () => {
     async (estatusValue) => {
       // La ventana no se ensancha ni se estrecha por los cinco campos que la 327 añade: es la
       // misma regla, sobre mas datos.
-      const { service, corregirDatosCliente, findDistritoParaCorreccion } = escenario({
+      const { service, corregirDatosCliente, findLugarParaCorreccion } = escenario({
         ordenFila: orden({ estatusValue }),
       });
 
@@ -307,7 +308,7 @@ describe("312/C2 — R11: la ventana de estado", () => {
       expect(r).toEqual({ status: "forbidden" });
       expect(corregirDatosCliente).not.toHaveBeenCalled();
       // Ni siquiera se consulta el catalogo: la puerta se cierra antes.
-      expect(findDistritoParaCorreccion).not.toHaveBeenCalled();
+      expect(findLugarParaCorreccion).not.toHaveBeenCalled();
     },
   );
 
@@ -334,7 +335,7 @@ describe("312/C2 + 327/R29 — el conflicto que devuelve el repositorio", () => 
 describe("312/C2 + 327/R10 — sin cambios, sin escritura", () => {
   it("los NUEVE valores identicos a los almacenados: ok con `cambios` vacio y CERO escrituras", async () => {
     const fila = orden();
-    const { service, corregirDatosCliente, findDistritoParaCorreccion } = escenario({
+    const { service, corregirDatosCliente, findLugarParaCorreccion } = escenario({
       ordenFila: fila,
     });
 
@@ -346,9 +347,8 @@ describe("312/C2 + 327/R10 — sin cambios, sin escritura", () => {
         producto: fila.producto,
         notas: fila.notas,
         direccion: fila.direccion ?? undefined,
-        provinciaId: fila.provinciaId,
-        cantonId: fila.cantonId,
-        distritoId: fila.distritoId ?? undefined,
+        // SLT-48 R16: la geografia de la entrada es el nodo (entrada, no asercion).
+        nodoId: fila.nodoId ?? undefined,
         peso: fila.peso ?? undefined,
       },
       MAESTRO,
@@ -357,7 +357,7 @@ describe("312/C2 + 327/R10 — sin cambios, sin escritura", () => {
     expect(r).toEqual({ status: "ok", cambios: [] });
     expect(corregirDatosCliente).not.toHaveBeenCalled();
     // Y no se paga la consulta del catalogo: si nada cambia, no hay geografia que resolver.
-    expect(findDistritoParaCorreccion).not.toHaveBeenCalled();
+    expect(findLugarParaCorreccion).not.toHaveBeenCalled();
   });
 
   it("los que solo difieren en ESPACIOS tampoco son un cambio (incluida la direccion)", async () => {
@@ -497,26 +497,31 @@ describe("327/C2 — R9: el peso, revalidado en el servidor", () => {
 });
 
 describe("327/C2 — R6: la cadena provincia -> canton -> distrito", () => {
-  it("el distrito no pertenece al CANTON recibido: validation_error, sin escribir", async () => {
-    const { service, corregirDatosCliente } = escenario({
-      distritoFila: distrito({ cantonId: "c-9" }),
-    });
+  // SLT-48 R16 (design §4.2): la correccion manda UN nodo y la cadena la da el arbol. Ya no hay
+  // provincia ni canton recibidos que puedan no casar con el distrito: el lugar se busca por el nodo.
+  it("SLT-48 R16: con un solo nodo no hay cadena que pueda no casar; el lugar se busca por el nodo", async () => {
+    const { service, corregirDatosCliente, findLugarParaCorreccion } = escenario();
 
     const r = await service.corregir({ ordenId: ORDEN_ID, ...MUDANZA }, MAESTRO);
 
-    expect(r).toMatchObject({ status: "validation_error" });
-    expect(r).toHaveProperty("fieldErrors.distritoId");
+    expect(findLugarParaCorreccion).toHaveBeenCalledTimes(1);
+    expect(findLugarParaCorreccion).toHaveBeenCalledWith("d-2");
+    expect(r).toMatchObject({ status: "confirmacion_requerida" });
     expect(corregirDatosCliente).not.toHaveBeenCalled();
   });
 
-  it("el canton no pertenece a la PROVINCIA recibida: validation_error, sin escribir", async () => {
+  // SLT-48 R17: lo que hoy hace invalido un lugar es no ser hoja; validation_error, sin escribir.
+  it("SLT-48 R17: un nodo que no es hoja: validation_error que nombra el lugar, sin escribir", async () => {
     const { service, corregirDatosCliente } = escenario({
-      distritoFila: distrito({ provinciaId: "p-9" }),
+      distritoFila: distrito({ nombre: "Escazu", tipoHijosActivos: "Distritos" }),
     });
 
     const r = await service.corregir({ ordenId: ORDEN_ID, ...MUDANZA }, MAESTRO);
 
     expect(r).toMatchObject({ status: "validation_error" });
+    expect(r).toHaveProperty("fieldErrors.distritoId", [
+      "ubicacion incompleta: 'Escazu' tiene distritos debajo; indica el ultimo nivel",
+    ]);
     expect(corregirDatosCliente).not.toHaveBeenCalled();
   });
 
@@ -623,11 +628,12 @@ describe("327/C2 — R11: EL GATE DEL DINERO", () => {
       MAESTRO,
     );
 
-    expect(r).toEqual({ status: "ok", cambios: ["distritoId"] });
+    // SLT-48 R16: el cambio es el nodo y lo que se escribe es el nodo, no la FK `distritoId`.
+    expect(r).toEqual({ status: "ok", cambios: ["nodoId"] });
     expect(corregirDatosCliente).toHaveBeenCalledWith(
       ORDEN_ID,
-      // `z-2` sale del DISTRITO resuelto; `p-1`/`c-1` no viajan porque no cambian.
-      { distritoId: "d-2", zonaId: "z-2", nodoGeograficoId: "d-2" },
+      // `z-2` sale del lugar resuelto; SLT-48 R16: solo viaja el nodo (las 3 FK las vacia el repositorio).
+      { zonaId: "z-2", nodoGeograficoId: "d-2" },
       ESTADOS_SIN_CORRECCION,
       // ⭑ FICHA 362 / Q1 — el RASTRO. `ubicacionCorregida` decide si se escribe la fila del
       // registro; el actor es QUIEN la escribe. Ni la direccion ni el distrito viajan aqui.
@@ -655,9 +661,10 @@ describe("327/C2 — R11: EL GATE DEL DINERO", () => {
     expect(data.zonaId).not.toBe("z-inventada");
   });
 
-  it("mover los TRES ids escribe los tres mas la zona derivada", async () => {
+  // SLT-48 R16: ya no hay tres ids que mover; un nodo nuevo escribe el nodo y la zona derivada.
+  it("mover el lugar escribe el nodo mas la zona derivada (SLT-48 R16; antes, los TRES ids)", async () => {
     const { service, corregirDatosCliente } = escenario({
-      ordenFila: orden({ provinciaId: "p-0", cantonId: "c-0", distritoId: "d-0" }),
+      ordenFila: orden({ nodoId: "d-0" }),
     });
 
     const r = await service.corregir(
@@ -665,10 +672,10 @@ describe("327/C2 — R11: EL GATE DEL DINERO", () => {
       MAESTRO,
     );
 
-    expect(r).toEqual({ status: "ok", cambios: ["provinciaId", "cantonId", "distritoId"] });
+    expect(r).toEqual({ status: "ok", cambios: ["nodoId"] });
     expect(corregirDatosCliente).toHaveBeenCalledWith(
       ORDEN_ID,
-      { provinciaId: "p-1", cantonId: "c-1", distritoId: "d-2", zonaId: "z-2", nodoGeograficoId: "d-2" },
+      { zonaId: "z-2", nodoGeograficoId: "d-2" },
       ESTADOS_SIN_CORRECCION,
       // ⭑ FICHA 362 / Q1 — el RASTRO. `ubicacionCorregida` decide si se escribe la fila del
       // registro; el actor es QUIEN la escribe. Ni la direccion ni el distrito viajan aqui.
@@ -777,7 +784,8 @@ describe("327/C2 — R16: la orden que ya entro en un cierre", () => {
       MAESTRO,
     );
 
-    expect(r).toEqual({ status: "ok", cambios: ["distritoId"] });
+    // SLT-48 R16: el cambio de lugar es `nodoId`.
+    expect(r).toEqual({ status: "ok", cambios: ["nodoId"] });
     expect(corregirDatosCliente).toHaveBeenCalledTimes(1);
   });
 });
@@ -860,6 +868,13 @@ describe("327/C2 — R18/R31: la precarga cruza LA MISMA puerta", () => {
         provinciaId: "p-1",
         cantonId: "c-1",
         distritoId: "d-1",
+        // SLT-48 R16/R43: la precarga trae tambien el nodo y su ruta, para el modal de N niveles.
+        nodoId: "d-1",
+        ruta: [
+          { id: "p-1", nombre: "P" },
+          { id: "c-1", nombre: "C" },
+          { id: "d-1", nombre: "D" },
+        ],
         zonaNombre: "Zona Uno",
         distritoNombre: "Distrito Uno",
         numGuia: 8123,

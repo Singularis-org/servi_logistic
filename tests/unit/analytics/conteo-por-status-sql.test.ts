@@ -108,16 +108,17 @@ describe("Las seis dimensiones de recorte", () => {
     // SLT-71 (design §11.1): zona y tienda siguen con `IN`; cada faceta geografica es una
     // condicion de lugar con `= ANY` (dos ramas por faceta: provincia, canton y distrito).
     for (const columna of ["zona_id", "tienda_id"]) expect(sql, columna).toContain(`o."${columna}" IN (`);
-    expect(sql.match(/o\."distrito_id" = ANY\(/g)).toHaveLength(1) /* SLT-47: una condicion de lugar */;
+    // SLT-48 R23: la condicion de lugar es sobre el nodo de la orden (antes `o."distrito_id" = ANY(`).
+    expect(sql.match(/o\."nodo_geografico_id" = ANY\(/g)).toHaveLength(1) /* SLT-47: una condicion de lugar */;
   });
 
   it("todos los ids viajan como parámetros, en orden", () => {
     // SLT-71 (decision del humano, 2026-11-04): una faceta geografica viaja como el array de ids
     // resueltos (el canton y sus distritos), una vez por rama del lugar.
+    // SLT-48 R23: una sola rama (el nodo de la orden), asi que el array viaja una vez (antes dos).
     expect(parametrosDe(consultaDe({ zona_id: ["z1", "z2"], lugar_id: ["c1"] }))).toEqual([
       "z1",
       "z2",
-      ["c1", "d1"],
       ["c1", "d1"],
     ]);
   });

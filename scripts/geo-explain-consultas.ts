@@ -7,7 +7,7 @@ import { conConsultasEnSeriePorTransaccion } from "@/lib/db/consultas-en-serie";
 import { comoPlataforma, conEmpresa } from "@/lib/db/contexto-empresa";
 import { conAislamientoPorEmpresa } from "@/lib/db/extension-empresa";
 import { PRISMA_OMIT } from "@/lib/db/prisma-client";
-import { leerDescriptivosDeOrdenes, SNAPSHOT_SELECT } from "@/lib/repositories/CierreDiaRepository";
+import { leerDescriptivosDeOrdenes } from "@/lib/repositories/CierreDiaRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { planificarReconciliacion } from "@/lib/repositories/ZonaRepository";
 import { sinTransaccionAnidada } from "@/lib/repositories/_shared/sin-transaccion-anidada";
@@ -138,7 +138,8 @@ export interface Objetivos {
 }
 
 async function leerFilasDelCierre(cliente: PrismaClient, cierreId: string) {
-  return cliente.gestionOrden.findMany({ where: { cierreId }, select: SNAPSHOT_SELECT, orderBy: { id: "asc" } });
+  // SLT-48: el `select` de hoy (el de `lib/` mas las FK viejas), para medir las dos lecturas sobre las mismas filas.
+  return cliente.gestionOrden.findMany({ where: { cierreId }, select: hoy.SNAPSHOT_SELECT_DE_HOY, orderBy: { id: "asc" } });
 }
 
 /** Elige, dentro de la empresa, sobre que se mide cada lectura. */

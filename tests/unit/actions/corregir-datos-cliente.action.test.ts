@@ -158,7 +158,8 @@ describe("312/D2 — R25: delega con el actor de la SESION", () => {
     );
   });
 
-  it("327/R1: los NUEVE campos y la confirmacion llegan al service tal cual", async () => {
+  // SLT-48 R16: la geografia de la correccion es UN `nodoId`; la terna ya no viaja al servicio.
+  it("327/R1: todos los campos y la confirmacion llegan al service tal cual (SLT-48 R16: `nodoId`)", async () => {
     const { d, corregir } = deps();
 
     await corregirDatosCliente(
@@ -169,9 +170,7 @@ describe("312/D2 — R25: delega con el actor de la SESION", () => {
         producto: "caja",
         notas: null,
         direccion: "avenida siempre viva 742",
-        provinciaId: "p-1",
-        cantonId: "c-1",
-        distritoId: "d-1",
+        nodoId: "d-1",
         peso: 2.5,
         confirmaCambioDeUbicacion: true,
       },
@@ -186,9 +185,7 @@ describe("312/D2 — R25: delega con el actor de la SESION", () => {
         producto: "caja",
         notas: null,
         direccion: "avenida siempre viva 742",
-        provinciaId: "p-1",
-        cantonId: "c-1",
-        distritoId: "d-1",
+        nodoId: "d-1",
         peso: 2.5,
         confirmaCambioDeUbicacion: true,
       },
@@ -246,7 +243,8 @@ describe("327/D2 — `confirmacion_requerida` se propaga sin reinterpretarse", (
     d.service.corregir = vi.fn(async () => ({ status: "confirmacion_requerida", aviso }) as never);
 
     const r = await corregirDatosCliente(
-      { ordenId: ORDEN_ID, provinciaId: "p-1", cantonId: "c-1", distritoId: "d-2" },
+      // SLT-48 R16: la geografia llega como `nodoId`; con la terna el borde la rechazaria antes.
+      { ordenId: ORDEN_ID, nodoId: "d-2" },
       d,
     );
 

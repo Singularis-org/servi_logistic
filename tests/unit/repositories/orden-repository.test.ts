@@ -24,6 +24,8 @@ function ordenRow(overrides: Record<string, unknown> = {}) {
     provinciaId: "p1",
     cantonId: "c1",
     distritoId: null,
+    // SLT-48 (R22): el lugar de la orden es su nodo (sin distrito, el canton). Cambio de entrada.
+    nodoGeograficoId: "c1",
     producto: "Caja",
     peso: new Prisma.Decimal("1.500"),
     notas: null,
@@ -370,6 +372,7 @@ describe("OrdenRepository.list (R30/R31/R34)", () => {
     prisma.orden.findMany.mockResolvedValue([
       ordenListRow({
         distritoId: "d1", // SLT-125: el distrito por su FK; el nombre sale del catalogo
+        nodoGeograficoId: "d1", // SLT-48 (R22): el lugar es el nodo. Cambio de entrada.
         mensajeroAsignado: { id: "msj-1", nombre: "Luis" },
       }),
     ]);

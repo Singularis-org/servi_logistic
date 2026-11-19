@@ -151,7 +151,7 @@ function buildRepo(overrides: Partial<IOrdenRepository> = {}): IOrdenRepository 
     // arriba: ningun servicio de este archivo las invoca, el doble esta para satisfacer el
     // contrato completo del repo.
     findParaCorreccion: vi.fn().mockResolvedValue(null),
-    findDistritoParaCorreccion: vi.fn().mockResolvedValue(null),
+    findLugarParaCorreccion: vi.fn().mockResolvedValue(null),
     // Ficha 337: la lectura que CONGELA las entradas del cobro por devolución a origen desde novedades.
     // Mismo motivo que las dos de arriba: ningun servicio de este archivo la invoca, el doble
     // esta para satisfacer el contrato completo del repo.
@@ -739,11 +739,12 @@ describe("cargarViaApi — no-regresión del contrato 88 frente a las plantillas
       expect(r.summary.filas[0]).toMatchObject({ resultado: "creada", numGuia: 1000 });
     }
     // La geografia se deriva de las 4 columnas separadas, no de ninguna columna unificada.
+    // SLT-48 R15: la orden guarda solo su nodo (el distrito); las 3 FK ya no se escriben.
+    const fks = conGuiaArg(repo)[0] as unknown as Record<string, unknown>;
+    expect([fks.provinciaId, fks.cantonId, fks.distritoId]).toEqual([undefined, undefined, undefined]);
     expect(conGuiaArg(repo)[0]).toMatchObject({
       numRemision: "REM-88",
-      provinciaId: "p1",
-      cantonId: "c1",
-      distritoId: "d1",
+      nodoGeograficoId: "d1",
       zonaId: "z1",
       direccion: "Avenida Principal N33-12",
     });

@@ -222,7 +222,8 @@ describeSiHayBase("⭑ 327/B6 — el guard de re-geocodificacion, contra Postgre
   it.each([
     ["solo el destinatario", () => ({ destinatario: "Ana Perez" })],
     ["solo el peso", () => ({ peso: 4.25 })],
-    ["solo la geografia", () => ({ cantonId: FKS.cantonId })],
+    // SLT-48 R16: la geografia de la correccion es el nodo (entrada).
+    ["solo la geografia", () => ({ nodoGeograficoId: FKS.cantonId })],
     ["la MISMA direccion que ya tenia", () => ({ direccion: DIRECCION_VIEJA })],
   ])("⭑ R20: corregir %s NO encola nada", async (_nombre, construir) => {
     // El ultimo caso es el que mas importa: la direccion VIENE INFORMADA y no cambia. Si el guard

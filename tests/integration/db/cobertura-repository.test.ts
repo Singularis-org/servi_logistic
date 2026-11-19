@@ -14,6 +14,7 @@ import {
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearNodoDeNivel } from "@/tests/fabricas/paises";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FICHA 465 (T3) — LAS DOS LECTURAS DEL EXCEL DE COBERTURA, CONTRA POSTGRES REAL.
@@ -116,18 +117,13 @@ describeSiHayBase("465 — CoberturaRepository contra Postgres real", () => {
       await tx.tarifa.create({ data: datosDeTarifa(null, null) });
     }
 
-    // Catalogo: provincia activa con un canton activo y otro retirado.
-    const provincia = await tx.provincia.create({ data: { nombre: `${SUFIJO}-Provincia` }, select: { id: true } });
-    const cantonVivo = await tx.canton.create({
-      data: { nombre: "Cantón Vivo", provinciaId: provincia.id },
-      select: { id: true },
-    });
-    const cantonRetirado = await tx.canton.create({
-      data: { nombre: "Cantón Retirado", provinciaId: provincia.id, activo: false },
-      select: { id: true },
-    });
+    // Catalogo: provincia activa con un canton activo y otro retirado. SLT-48 (design §9): en nodos, porque
+    // `provincia`, `canton` y `distrito` son vistas.
+    const provincia = await crearNodoDeNivel(tx, 1, { nombre: `${SUFIJO}-Provincia` });
+    const cantonVivo = await crearNodoDeNivel(tx, 2, { nombre: "Cantón Vivo", padreId: provincia.id });
+    const cantonRetirado = await crearNodoDeNivel(tx, 2, { nombre: "Cantón Retirado", padreId: provincia.id, activo: false });
     const distrito = async (nombre: string, cantonId: string, extra: Partial<{ activo: boolean }> = {}) =>
-      (await tx.distrito.create({ data: { nombre, cantonId, ...extra }, select: { id: true } })).id;
+      (await crearNodoDeNivel(tx, 3, { nombre, padreId: cantonId, ...extra })).id;
 
     const dCero = await distrito("Cero Zonas", cantonVivo.id);
     const dUna = await distrito("Una Zona", cantonVivo.id);

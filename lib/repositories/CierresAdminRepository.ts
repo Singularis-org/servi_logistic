@@ -128,6 +128,9 @@ import { rebasarConElCobroCongelado } from "@/lib/utils/cobro-congelado";
 // el `Pick` de este. Desde SLT-52 es el resolver UNICO (`resolverPagosCon`): decide el modelo de
 // la empresa y, en el viejo, corre el mismo cuerpo de la 39 (`resolvePagoTarifaCon`).
 import { resolverPagosCon } from "@/lib/repositories/_shared/resolver-tarifas";
+import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograficoRepository";
+import { sinTransaccionAnidada } from "@/lib/repositories/_shared/sin-transaccion-anidada";
+import { distritoDeTarifa } from "@/lib/services/geografia-dominio";
 import {
   CONTEO_DETALLE_MODELO_NUEVO,
   incluyeModeloNuevoDe,
@@ -1737,7 +1740,8 @@ export class CierresAdminRepository implements ICierresAdminRepository {
               id: true,
               numGuia: true,
               numRemision: true,
-              distritoId: true,
+              // SLT-48 (design §6, P3): el nodo, del que sale el lugar del grupo de la orden.
+              nodoGeograficoId: true,
               tiendaId: true,
               zonaId: true,
               montoCobrar: true,
@@ -1787,6 +1791,9 @@ export class CierresAdminRepository implements ICierresAdminRepository {
       // SLT-52 (T5.1, R19/R20/R33): con el resolver UNICO y por GESTION —la misma zona y el mismo
       // vehiculo de siempre, mas el distrito de la orden—. En el modelo nuevo el mensajero tambien
       // puede cobrar por un rechazo (R32), asi que el "0.00" de arriba es solo del viejo.
+      // SLT-48 (design §6, P3): el lugar del grupo, desde el nodo de la orden y el catalogo de la
+      // empresa leido en ESTA transaccion.
+      const { catalogo } = await new CatalogoGeograficoRepository(sinTransaccionAnidada(tx)).deLaEmpresa();
       const tarifas = await resolverPagosCon(tx, [
         {
           gestionId,
@@ -1794,7 +1801,7 @@ export class CierresAdminRepository implements ICierresAdminRepository {
           mensajeroId: previa.mensajeroId,
           zonaId: previa.cierre.destinoZonaId,
           vehiculoId: previa.cierre.mensajero.vehiculoId,
-          distritoId: previa.orden.distritoId,
+          distritoId: distritoDeTarifa(catalogo, previa.orden.nodoGeograficoId),
           tiendaId: previa.orden.tiendaId,
           zonaOrdenId: previa.orden.zonaId,
           montoCobrar:

@@ -10,6 +10,7 @@ import { cargaMasivaConfig } from "@/lib/config/carga-masiva";
 import type { CargaViaApiOrden, CargaViaApiSummary } from "@/lib/interfaces/services/IBulkOrdenService";
 import type { RawRow } from "@/lib/parsers/spreadsheet";
 import type { ResolvedGeo } from "@/lib/services/geo-resolucion";
+import { distritoDeTarifaDelNodo } from "@/lib/services/geografia-dominio";
 import {
   CLAVE_UBICACION,
   MSG_UBICACION_UNA_DE_LAS_DOS,
@@ -129,13 +130,12 @@ export function extraerUbicacionV2(
 
 /**
  * La ubicacion resuelta por el motor, en la forma que ya consumen la tarifa y la creacion
- * (`ResolvedGeo`): las 3 FK de `fksDeNodo` y la zona y marca del motor.
+ * (`ResolvedGeo`): el nodo, el lugar del grupo de tarifas (SLT-48 P3) y la zona y marca del motor.
  */
 export function geoDeUbicacion(u: UbicacionResuelta): ResolvedGeo {
   return {
-    provinciaId: u.fks.provinciaId,
-    cantonId: u.fks.cantonId,
-    distritoId: u.fks.distritoId,
+    nodoId: u.nodo.id,
+    distritoId: distritoDeTarifaDelNodo(u.nodo),
     zonaId: u.zona.id,
     esCentral: u.zona.esCentral,
     esZonaEspecial: u.esZonaEspecial,

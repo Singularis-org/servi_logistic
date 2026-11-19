@@ -13,6 +13,7 @@ import {
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearNodoDeNivel } from "@/tests/fabricas/paises";
 
 /**
  * FICHA 374 (R35) — **EL HISTORICO NO SE TOCA: LAS ORDENES DE UN NODO RETIRADO SIGUEN AHI Y SIGUEN
@@ -80,19 +81,13 @@ describeSiHayBase("374/R35 — el historico de un nodo retirado (Postgres real)"
       await sembrarFks(tx);
 
       const provincia = (
-        await tx.provincia.create({ data: { nombre: `Prov hist ${SUFIJO}` }, select: { id: true } })
+        await crearNodoDeNivel(tx, 1, { nombre: `Prov hist ${SUFIJO}` })
       ).id;
       const canton = (
-        await tx.canton.create({
-          data: { nombre: `Canton hist ${SUFIJO}`, provinciaId: provincia },
-          select: { id: true },
-        })
+        await crearNodoDeNivel(tx, 2, { nombre: `Canton hist ${SUFIJO}`, padreId: provincia })
       ).id;
       const distrito = (
-        await tx.distrito.create({
-          data: { nombre: `Distrito hist ${SUFIJO}`, cantonId: canton },
-          select: { id: true },
-        })
+        await crearNodoDeNivel(tx, 3, { nombre: `Distrito hist ${SUFIJO}`, padreId: canton })
       ).id;
 
       // LA ORDEN HISTORICA: su terna geografica esta CONGELADA en la fila.
@@ -115,9 +110,9 @@ describeSiHayBase("374/R35 — el historico de un nodo retirado (Postgres real)"
       ).id;
 
       // Y AHORA SE RETIRA TODA LA CADENA: distrito, canton y provincia.
-      await tx.distrito.update({ where: { id: distrito }, data: { activo: false } });
-      await tx.canton.update({ where: { id: canton }, data: { activo: false } });
-      await tx.provincia.update({ where: { id: provincia }, data: { activo: false } });
+      await tx.nodoGeografico.update({ where: { id: distrito }, data: { activo: false } });
+      await tx.nodoGeografico.update({ where: { id: canton }, data: { activo: false } });
+      await tx.nodoGeografico.update({ where: { id: provincia }, data: { activo: false } });
 
       return fn({
         s: { provincia, canton, distrito, orden },
@@ -182,7 +177,8 @@ describeSiHayBase("374/R35 — el historico de un nodo retirado (Postgres real)"
       return { item: listado.items[0], s };
     });
     expect(medido.item).toBeDefined();
-    expect(medido.item.distritoId).toBe(medido.s.distrito);
+    // SLT-48 R15/R22: el DTO ya no lleva la terna; el lugar de la orden es su nodo (el distrito).
+    expect(medido.item.nodoGeograficoId).toBe(medido.s.distrito);
     // El nombre del distrito RETIRADO sigue resolviendose por la relacion: la fila no se queda
     // muda ni pinta un uuid. Si el join escondiera los retirados, esto seria `null`.
     expect(medido.item.relaciones?.distrito?.nombre).toBe(`Distrito hist ${SUFIJO}`);

@@ -5,8 +5,11 @@ import type {
   ArbolDePais,
   ContextoDeAltaDeNodo,
   DatosDeAltaDeNodo,
+  DatosDeMover,
   DesenlaceDeActivacion,
+  DesenlaceDeMover,
   DesenlaceDeRenombre,
+  DesenlaceDeVistaPreviaMover,
   DestinoDeAlta,
   DivisionPorProfundidadDePais,
   IGeoRepository,
@@ -22,12 +25,17 @@ import type {
 import {
   GEO_NOMBRE_MAX,
   type ArbolDeZonasDTO,
+  type BloqueoDeMoverDTO,
   type CantonArbolDTO,
+  type DescendientesDeNivelDTO,
   type DistritoArbolDTO,
+  type MotivoDeNoMover,
   type NodoArbolPlataformaDTO,
   type NodoDeZonasDTO,
+  type PasoDeRuta,
   type ProvinciaArbolDTO,
   type TipoNivelDTO,
+  type VistaPreviaMoverNodoDTO,
 } from "@/lib/types/geografia-nodo";
 import type {
   NodoExistenteConProfundidad,
@@ -37,14 +45,18 @@ import type {
 } from "@/lib/types/division-csv";
 import { PAIS_NIVELES_MAX } from "@/lib/types/pais";
 import { SELECT_FLAG_PROPIO } from "@/lib/repositories/_shared/geografia-activa";
-import type { ClienteDeMarcas } from "@/lib/repositories/_shared/zona-especial";
+import { leerNodosConMarcaPorEmpresa, type ClienteDeMarcas } from "@/lib/repositories/_shared/zona-especial";
 import { zonaUnicaDeDistrito } from "@/lib/repositories/_shared/zona-colapso";
 import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograficoRepository";
 import {
   ancestros,
+  catalogoConPadre,
   esZonaEspecial,
   estaActivo,
   nodosBajo,
+  ordenesQueCambiarianAlMover,
+  type OrdenAbiertaEnElArbol,
+  type TarifaYMarcaDeLaEmpresa,
   nodosDeProfundidad,
   tiposDelPais,
   zonaQueCubre,
@@ -59,7 +71,7 @@ import {
   appendAccionPlataforma,
   type ActorPlataformaCongelado,
 } from "@/lib/repositories/registrar-accion-plataforma";
-import { etiquetaDeEntidad } from "@/lib/types/historial-accion-etiquetas";
+import { etiquetaDeEntidad, rutaDeHojaARaiz } from "@/lib/types/historial-accion-etiquetas";
 
 // FICHA 374: el `Pick` gana `$transaction` y `usuario` porque las escrituras registran su accion en
 // la MISMA transaccion del cambio — igual que `VehiculoPrismaClient` en la ficha 362.
@@ -82,8 +94,73 @@ type GeoPrismaClient = Pick<
   | "zonaDistrito"
   | "zonaNodo" // SLT-89: el cargador del catalogo lee tambien `zona_nodo`
   | "organizacion"
+  // SLT-48 (design §7.1, §7.2): mover un nodo cuenta las ordenes del subarbol y, por P1, lee el grupo
+  // y la marca de las abiertas. Solo lectura: mover no escribe ninguna fila de `orden` (R39).
+  | "orden"
+  | "grupoDistritosDistrito"
+  | "grupoDistritosNodo"
 > &
   ClienteDeMarcas;
+
+/** Lo que la evaluacion de un movimiento lee, sea del cliente o de la transaccion de `mover`. */
+type LecturasDeMover = Pick<
+  GeoPrismaClient,
+  "nodoGeografico" | "orden" | "organizacion" | "grupoDistritosDistrito" | "grupoDistritosNodo"
+> &
+  ClienteDeMarcas;
+
+/** El movimiento ya validado (R35) y medido (R36, P1). */
+interface MovimientoEvaluado {
+  vista: VistaPreviaMoverNodoDTO;
+  /** Nombres de la cadena del padre de hoy, de la hoja a la raiz: el «antes» del historial (R38). */
+  cadenaDelPadreAnterior: string[];
+  paisId: string;
+  /** Lo que `mover` necesita para la segunda comprobacion de P1, ya con los bloqueos (`confirmarP1`). */
+  subarbol: string[];
+  antes: CatalogoGeografico;
+  despues: CatalogoGeografico;
+  /** Las ordenes abiertas del subarbol que P1 ya miro, sin bloqueos, con su `firmaDeOrden`. */
+  abiertasVistas: ReadonlyMap<string, string>;
+  /**
+   * El destino y sus antepasados, del destino a la raiz, con el padre que tenian en la primera fase.
+   * Todos activos (P4). `mover` los vuelve a mirar con los bloqueos (`destinoSigueIgual`).
+   */
+  cadenaDelDestino: ReadonlyArray<{ id: string; padreId: string | null }>;
+}
+
+type EvaluacionDeMover =
+  | { estado: "no_existe" }
+  | { estado: "invalido"; motivo: MotivoDeNoMover }
+  | { estado: "conflict" }
+  | { estado: "ok"; movimiento: MovimientoEvaluado };
+
+/**
+ * SLT-48 (P1; review vuelta 2, decision del humano «tope corto a mover») — CUANTO PUEDE `mover` HACER
+ * ESPERAR A UNA EMPRESA. El que cede siempre es el superadmin: mientras `mover` tiene el subarbol
+ * bloqueado `FOR UPDATE`, toda escritura de `orden` que ponga un nodo de ese subarbol (un alta, un chunk
+ * de la carga masiva) espera. Por eso el calculo caro de P1 va SIN bloqueos y, con ellos, solo queda
+ * una comprobacion acotada (`confirmarP1`), el `UPDATE` y el historial.
+ *
+ * El tope se aplica en tres sitios de la transaccion de `mover`:
+ *   - `lock_timeout`: lo que `mover` espera a una escritura en vuelo antes de rendirse (55P03);
+ *   - `statement_timeout`: lo que dura cualquier sentencia con los bloqueos ya tomados (57014);
+ *   - el `timeout` de Prisma de la transaccion, el doble, para que la espera y lo que sigue quepan.
+ * Una escritura que llega mientras `mover` espera su bloqueo tambien hace cola detras de el, asi que
+ * el `lock_timeout` la protege igual. Nunca espera los 30 s que podia durar P1 en un nodo alto cuando
+ * se calculaba con los bloqueos.
+ *
+ * Por que 1 s (review vuelta 3, decision del humano «tope corto»). El peor caso teorico de una
+ * escritura de empresa es el `timeout` de la transaccion (2 s) mas una sentencia en vuelo, que corta
+ * el `statement_timeout` (1 s): ~3 s. Cada chunk de la carga masiva corre con el `timeout` de Prisma
+ * por defecto, 5 s (`OrdenRepository`, la carga por chunks), y ademas hace su propio trabajo (insert,
+ * guia, historial): con 2 s de margen, un chunk que coincide con `mover` termina en vez de caer en
+ * P2028. Con el tope de 2 s de la vuelta 2 el peor caso era ~6 s, por encima de esos 5 s. En la
+ * practica la espera es la del `lock_timeout` mas milisegundos: con los bloqueos, `mover` hace unas
+ * 10 sentencias pequeñas. Si no alcanza, `mover` falla sin escribir (rollback, sin fila de historial)
+ * y la action responde `ocupado`: «intenta de nuevo» (`esMoverOcupado`); cede el superadmin.
+ */
+export const TOPE_MOVER_MS = 1_000;
+export const TIMEOUT_TRANSACCION_MOVER_MS = 2 * TOPE_MOVER_MS;
 
 type GeoTx = Pick<GeoPrismaClient, "nodoGeografico">;
 
@@ -253,6 +330,277 @@ function nodoDeZonas(cat: CatalogoGeografico, asig: AsignacionesDeLaEmpresa, n: 
         : { zonaId: heredada.id, zonaNombre: heredada.nombre, nodoId: nodoDelQueHereda.id, nodoNombre: nodoDelQueHereda.nombre },
     hijos: (cat.hijos.get(n.id) ?? []).map((h) => nodoDeZonas(cat, asig, h)),
   };
+}
+
+// --- SLT-48 (design §7): mover un nodo ---
+
+/** De la raiz al nodo, con el nombre del catalogo dado. */
+function rutaEnCatalogo(cat: CatalogoGeografico, n: NodoDelCatalogo): PasoDeRuta[] {
+  return [...ancestros(cat, n.id).reverse(), n].map((p) => ({ id: p.id, nombre: p.nombre }));
+}
+
+/** Los descendientes agrupados por nivel, de arriba abajo, con el tipo de cada nivel (regla 1 de la maqueta). */
+function descendientesPorNivel(cat: CatalogoGeografico, debajo: readonly NodoDelCatalogo[]): DescendientesDeNivelDTO[] {
+  const porTipo = new Map<string, { profundidad: number; cantidad: number }>();
+  for (const n of debajo) {
+    const actual = porTipo.get(n.tipoId);
+    if (actual) actual.cantidad += 1;
+    else porTipo.set(n.tipoId, { profundidad: n.profundidad, cantidad: 1 });
+  }
+  return [...porTipo.entries()]
+    .map(([tipoId, { profundidad, cantidad }]) => {
+      const tipo = cat.tipos.find((t) => t.id === tipoId);
+      if (tipo === undefined) throw new Error(`mover: el tipo ${tipoId} no esta en el catalogo del pais`);
+      return { profundidad, tipoSingular: tipo.nombreSingular, tipoPlural: tipo.nombrePlural, cantidad };
+    })
+    .sort((a, b) => a.profundidad - b.profundidad);
+}
+
+/**
+ * P1 (design §7.2): lo que decide el grupo y la marca de las ordenes abiertas, por empresa. Plataforma
+ * (sin empresa en el contexto): se filtra a mano por las empresas que tienen ordenes en el subarbol.
+ * `grupo_distritos_distrito` solo cuenta para el lugar exacto, asi que basta el del subarbol;
+ * `grupo_distritos_nodo` y las marcas se heredan, asi que van enteros.
+ */
+async function tarifaYMarcaPorEmpresa(
+  db: LecturasDeMover,
+  organizacionIds: readonly string[],
+  subarbol: readonly string[],
+): Promise<Map<string, TarifaYMarcaDeLaEmpresa>> {
+  const porEmpresa = new Map<
+    string,
+    { gruposPorDistrito: Map<string, string>; miembrosPorZona: Map<string, Map<string, string>>; marcas: Set<string> }
+  >();
+  const de = (organizacionId: string) => {
+    let e = porEmpresa.get(organizacionId);
+    if (e === undefined) {
+      e = { gruposPorDistrito: new Map(), miembrosPorZona: new Map(), marcas: new Set() };
+      porEmpresa.set(organizacionId, e);
+    }
+    return e;
+  };
+  for (const id of organizacionIds) de(id);
+  const empresas = { in: [...organizacionIds] };
+
+  const exactos = await db.grupoDistritosDistrito.findMany({
+    where: { organizacionId: empresas, distritoId: { in: [...subarbol] } },
+    select: { organizacionId: true, zonaId: true, distritoId: true, grupoId: true },
+  });
+  for (const f of exactos) de(f.organizacionId).gruposPorDistrito.set(`${f.zonaId}|${f.distritoId}`, f.grupoId);
+
+  const heredables = await db.grupoDistritosNodo.findMany({
+    where: { organizacionId: empresas },
+    select: { organizacionId: true, zonaId: true, nodoGeograficoId: true, grupoId: true },
+  });
+  for (const f of heredables) {
+    const miembros = de(f.organizacionId).miembrosPorZona;
+    const deLaZona = miembros.get(f.zonaId) ?? new Map<string, string>();
+    deLaZona.set(f.nodoGeograficoId, f.grupoId);
+    miembros.set(f.zonaId, deLaZona);
+  }
+
+  for (const f of await leerNodosConMarcaPorEmpresa(db, organizacionIds)) de(f.organizacionId).marcas.add(f.nodoId);
+
+  return porEmpresa;
+}
+
+/** Lo que decide P1 de una orden: su empresa, su zona y su nodo. Si cambia, P1 la vuelve a mirar. */
+function firmaDeOrden(o: OrdenAbiertaEnElArbol): string {
+  return `${o.organizacionId}|${o.zonaId}|${o.nodoId}`;
+}
+
+/**
+ * P1: cuantas ordenes abiertas cambiarian de grupo o de marca, y de que empresas (`null` si ninguna),
+ * y que ordenes abiertas miro, con su firma. Con `yaVistas`, salta las que estan ahi con la MISMA
+ * firma: es la segunda pasada de `mover`, con los bloqueos, que no repite lo ya calculado pero si
+ * mira una orden ya vista a la que una correccion le cambio el nodo o la zona entre las dos fases.
+ */
+async function bloqueoDeMover(
+  db: LecturasDeMover,
+  antes: CatalogoGeografico,
+  despues: CatalogoGeografico,
+  subarbol: readonly string[],
+  yaVistas: ReadonlyMap<string, string> = new Map(),
+): Promise<{ bloqueo: BloqueoDeMoverDTO | null; abiertas: ReadonlyMap<string, string> }> {
+  // Abierta = sin cierre (su precio no esta congelado) y sin borrar.
+  const filas = await db.orden.findMany({
+    where: { nodoGeograficoId: { in: [...subarbol] }, deletedAt: null, cierreDetalles: { none: {} } },
+    select: { id: true, organizacionId: true, zonaId: true, nodoGeograficoId: true },
+  });
+  const abiertas: OrdenAbiertaEnElArbol[] = filas.flatMap((o) => {
+    if (o.nodoGeograficoId === null) return [];
+    const orden = { id: o.id, organizacionId: o.organizacionId, zonaId: o.zonaId, nodoId: o.nodoGeograficoId };
+    return yaVistas.get(o.id) === firmaDeOrden(orden) ? [] : [orden];
+  });
+  const vistas = new Map(abiertas.map((o) => [o.id, firmaDeOrden(o)]));
+  if (abiertas.length === 0) return { bloqueo: null, abiertas: vistas };
+
+  const datos = await tarifaYMarcaPorEmpresa(db, [...new Set(abiertas.map((o) => o.organizacionId))], subarbol);
+  const afectadas = ordenesQueCambiarianAlMover(antes, despues, abiertas, (id) => datos.get(id));
+  if (afectadas.length === 0) return { bloqueo: null, abiertas: vistas };
+
+  const porEmpresa = new Map<string, number>();
+  for (const o of afectadas) porEmpresa.set(o.organizacionId, (porEmpresa.get(o.organizacionId) ?? 0) + 1);
+  const nombres = await db.organizacion.findMany({
+    where: { id: { in: [...porEmpresa.keys()] } },
+    select: { id: true, nombre: true },
+  });
+  const nombreDe = new Map(nombres.map((o) => [o.id, o.nombre]));
+  const bloqueo = {
+    ordenes: afectadas.length,
+    empresas: [...porEmpresa.entries()]
+      .map(([id, ordenes]) => ({ id, nombre: nombreDe.get(id) ?? id, ordenes }))
+      .sort((a, b) => b.ordenes - a.ordenes || a.nombre.localeCompare(b.nombre)),
+  };
+  return { bloqueo, abiertas: vistas };
+}
+
+/**
+ * SLT-48 (R35, R36, P1, P4) — lo comun a la vista previa y a `mover`, sin escribir. El catalogo lo da
+ * quien llama: la vista previa lee el suyo y `mover` el de su transaccion. Los descendientes salen del
+ * catalogo en memoria (sin CTE recursiva, guardia `geografia-sin-cte-recursiva`).
+ */
+async function evaluarMovimiento(
+  db: LecturasDeMover,
+  id: string,
+  padreIdNuevo: string,
+  catalogoDe: (paisId: string) => Promise<CatalogoGeografico>,
+): Promise<EvaluacionDeMover> {
+  const nodoLeido = await db.nodoGeografico.findUnique({
+    where: { id },
+    select: { paisId: true, padreId: true, profundidad: true },
+  });
+  if (nodoLeido === null) return { estado: "no_existe" };
+  if (nodoLeido.padreId === null) return { estado: "invalido", motivo: "es_raiz" };
+
+  const destino = await db.nodoGeografico.findUnique({
+    where: { id: padreIdNuevo },
+    select: { paisId: true, profundidad: true },
+  });
+  if (destino === null) return { estado: "invalido", motivo: "destino_no_existe" };
+  if (destino.paisId !== nodoLeido.paisId) return { estado: "invalido", motivo: "destino_de_otro_pais" };
+  if (destino.profundidad !== nodoLeido.profundidad - 1) {
+    return { estado: "invalido", motivo: "destino_de_otra_profundidad" };
+  }
+  if (padreIdNuevo === nodoLeido.padreId) return { estado: "invalido", motivo: "destino_es_el_padre_actual" };
+
+  const antes = await catalogoDe(nodoLeido.paisId);
+  const nodo = antes.porId.get(id);
+  const padreAnterior = antes.porId.get(nodoLeido.padreId);
+  const destinoEnCatalogo = antes.porId.get(padreIdNuevo);
+  if (nodo === undefined || padreAnterior === undefined || destinoEnCatalogo === undefined) {
+    throw new Error(`mover: el nodo ${id} o sus padres no estan en el catalogo de ${nodoLeido.paisId}`);
+  }
+  // P4: retirado en cascada. Un destino bajo un antepasado retirado tampoco esta disponible.
+  if (estaActivo(antes, padreIdNuevo) !== true) return { estado: "invalido", motivo: "destino_retirado" };
+  // El unico de la base es `(padre_id, nombre_normalizado)`: se mira antes de escribir para decirlo
+  // en el modal (R36); si otra persona crea el hermano despues, lo para la base.
+  if ((antes.hijos.get(padreIdNuevo) ?? []).some((h) => h.nombreNormalizado === nodo.nombreNormalizado)) {
+    return { estado: "conflict" };
+  }
+
+  const debajo = nodosBajo(antes, id);
+  const subarbol = [id, ...debajo.map((n) => n.id)];
+  const despues = catalogoConPadre(antes, id, padreIdNuevo);
+  const tipo = antes.tipos.find((t) => t.id === nodo.tipoId);
+  if (tipo === undefined) throw new Error(`mover: el tipo del nodo ${id} no esta en el catalogo`);
+
+  const p1 = await bloqueoDeMover(db, antes, despues, subarbol);
+  const vista: VistaPreviaMoverNodoDTO = {
+    nodo: { id, nombre: nodo.nombre, profundidad: nodo.profundidad, tipoSingular: tipo.nombreSingular },
+    padreIdAnterior: padreAnterior.id,
+    rutaActual: rutaEnCatalogo(antes, nodo),
+    rutaNueva: rutaEnCatalogo(despues, nodo),
+    descendientes: { total: debajo.length, porNivel: descendientesPorNivel(antes, debajo) },
+    ordenesQueCambianDeNombre: await db.orden.count({
+      where: { nodoGeograficoId: { in: subarbol }, deletedAt: null },
+    }),
+    bloqueo: p1.bloqueo,
+  };
+  return {
+    estado: "ok",
+    movimiento: {
+      vista,
+      cadenaDelPadreAnterior: [padreAnterior, ...ancestros(antes, padreAnterior.id)].map((n) => n.nombre),
+      paisId: nodoLeido.paisId,
+      subarbol,
+      antes,
+      despues,
+      abiertasVistas: p1.abiertas,
+      cadenaDelDestino: [destinoEnCatalogo, ...ancestros(antes, padreIdNuevo)].map((n) => ({ id: n.id, padreId: n.padreId })),
+    },
+  };
+}
+
+/**
+ * SLT-48 (P1; review vuelta 2) — la segunda pasada de P1, ya con el subarbol bloqueado, barata y
+ * acotada: el calculo caro se hizo antes, sin bloqueos. Entre los dos pudo pasar:
+ *   - que el subarbol ganara un nodo (un alta o un `mover` que trajo uno): sus ordenes no se miraron.
+ *     Es `cambio_concurrente`, como cualquier otro cambio del arbol desde que se leyo (R37). Con el
+ *     subarbol bloqueado ya no puede pasar: colgar un hijo toma `FOR KEY SHARE` del padre;
+ *   - que el destino o un antepasado suyo se retirara o cambiara de padre (review vuelta 3): P4 y P1
+ *     se calcularon sobre otro arbol. Es `cambio_concurrente`. Ya estan bloqueados con el subarbol;
+ *   - que apareciera una orden abierta en el subarbol, o que a una ya vista una correccion le cambiara
+ *     el nodo o la zona (review vuelta 3): solo esas pasan por P1. El resto de la primera pasada ya
+ *     dio `null` y sigue igual, asi que el bloqueo de estas es el bloqueo entero. Mirar las cambiadas
+ *     no cuesta una consulta mas: la de las nuevas ya trae todas las abiertas del subarbol con su nodo
+ *     y su zona, y se comparan en memoria con la firma de la primera pasada.
+ */
+async function confirmarP1(
+  tx: LecturasDeMover,
+  m: MovimientoEvaluado,
+): Promise<{ estado: "ok" } | { estado: "cambio_concurrente" } | { estado: "bloqueado"; bloqueo: BloqueoDeMoverDTO }> {
+  if (!(await destinoSigueIgual(tx, m.cadenaDelDestino))) return { estado: "cambio_concurrente" };
+  const nuevo = await tx.nodoGeografico.findFirst({
+    where: { padreId: { in: m.subarbol }, id: { notIn: m.subarbol } },
+    select: { id: true },
+  });
+  if (nuevo !== null) return { estado: "cambio_concurrente" };
+  const { bloqueo } = await bloqueoDeMover(tx, m.antes, m.despues, m.subarbol, m.abiertasVistas);
+  return bloqueo === null ? { estado: "ok" } : { estado: "bloqueado", bloqueo };
+}
+
+/**
+ * SLT-48 (P4, P1; review vuelta 3) — el destino y sus antepasados siguen como en la primera fase:
+ * todos existen, activos y con el mismo padre. Se llama con ellos ya bloqueados.
+ */
+async function destinoSigueIgual(
+  tx: LecturasDeMover,
+  cadena: MovimientoEvaluado["cadenaDelDestino"],
+): Promise<boolean> {
+  const filas = await tx.nodoGeografico.findMany({
+    where: { id: { in: cadena.map((n) => n.id) } },
+    select: { ...SELECT_FLAG_PROPIO, id: true, padreId: true },
+  });
+  const hoy = new Map(filas.map((f) => [f.id, f]));
+  return cadena.every((n) => {
+    const f = hoy.get(n.id);
+    return f !== undefined && f.activo && f.padreId === n.padreId;
+  });
+}
+
+/**
+ * SLT-48 (P1, review vuelta 1) — `FOR UPDATE` de los nodos del subarbol, en orden de id (dos `mover`
+ * que se pisan esperan en el mismo orden y no se cruzan). Desde la review vuelta 3, en la misma
+ * sentencia van el destino y sus antepasados: un solo `ORDER BY id` para todos, asi `mover` nunca
+ * toma unos y espera otros en un orden distinto al de otro `mover` (sin interbloqueos). Bloquearlos
+ * impide que se retiren o cambien de padre hasta que `mover` termine (`destinoSigueIgual`); a cambio,
+ * una orden o un hijo nuevo que apunte a uno de ellos tambien espera, con el mismo tope.
+ *
+ * POR QUE BASTA. Toda escritura de `orden` que pone `nodo_geografico_id` (alta, carga masiva,
+ * correccion) pasa por la FK `orden_nodo_geografico_id_fkey`, y su comprobacion toma `FOR KEY SHARE`
+ * del nodo, que choca con `FOR UPDATE` (no con el `FOR NO KEY UPDATE` del `updateMany` de `mover`:
+ * por eso antes se colaba). Asi, una orden que se escribe a la vez en el subarbol:
+ *   - si llego antes, `mover` espera a que confirme (como mucho `TOPE_MOVER_MS`, su `lock_timeout`) y
+ *     la segunda pasada de P1 (`confirmarP1`), que va despues (otra sentencia, otra foto en READ
+ *     COMMITTED), ya la ve;
+ *   - si llega despues, espera a que `mover` termine y queda escrita con el arbol nuevo (R41).
+ * La escritura de la orden no cambia: la FK ya tomaba ese `FOR KEY SHARE`, y la carga masiva (R10)
+ * no paga nada nuevo. Solo espera si coincide con un `mover` en ese subarbol, y como mucho lo que el
+ * tope deja a la transaccion de `mover` (review vuelta 2: cede el superadmin).
+ */
+async function bloquearNodos(tx: Pick<PrismaClient, "$queryRaw">, ids: readonly string[]): Promise<void> {
+  await tx.$queryRaw`SELECT "id" FROM "nodo_geografico" WHERE "id" = ANY(${[...ids]}::text[]) ORDER BY "id" FOR UPDATE`;
 }
 
 /** Las claves del plan traducidas a los ids que se generan al escribir. */
@@ -672,6 +1020,85 @@ export class GeoRepository implements IGeoRepository {
       ]);
       return "cambiado";
     });
+  }
+
+  /**
+   * SLT-48 (R36) — la vista previa del modal, solo lectura. El catalogo es el del pais del nodo (no el
+   * de una empresa: es plataforma), leido en su propia foto.
+   */
+  async vistaPreviaMover(id: string, padreIdNuevo: string): Promise<DesenlaceDeVistaPreviaMover> {
+    const r = await evaluarMovimiento(this.prisma, id, padreIdNuevo, (paisId) => this.catalogo().dePais(paisId));
+    return r.estado === "ok" ? { estado: "ok", vista: r.movimiento.vista } : r;
+  }
+
+  /**
+   * SLT-48 (R34–R40; review vuelta 2) — mueve el nodo en dos tiempos, para que el que ceda sea el
+   * superadmin y no una empresa (`TOPE_MOVER_MS`):
+   *   1. SIN bloqueos: el padre de hoy contra el que mostro el modal (si ya es otro,
+   *      `cambio_concurrente`, R37), las validaciones de R35 y el calculo caro de P1;
+   *   2. en UNA transaccion corta, con `lock_timeout` y `statement_timeout` = `TOPE_MOVER_MS`:
+   *      - el subarbol, el destino y sus antepasados bloqueados `FOR UPDATE` (`bloquearNodos`);
+   *      - el destino y sus antepasados igual que en la fase 1 (P4) y la segunda pasada de P1, solo
+   *        con lo nuevo o lo cambiado (`confirmarP1`);
+   *      - el `updateMany` con `padre_id = padreIdAnterior` en el `where`, la UNICA escritura, y solo
+   *        de `padre_id`: si otra persona lo movio desde la lectura, toca 0 filas → `cambio_concurrente`.
+   *        El trigger de invariantes de SLT-43 vuelve a comprobar la profundidad;
+   *      - `nodo_geografico_movido` con las rutas de los dos padres (R38).
+   * Si el tope no alcanza, la transaccion entera se revierte y el error de Postgres o de Prisma sube
+   * tal cual (55P03, 57014, P2028): la action lo traduce a `ocupado` con `esMoverOcupado`.
+   * Ninguna fila de `orden` se escribe (R39): su ruta se lee del arbol y su zona esta guardada.
+   */
+  async mover(datos: DatosDeMover, actorUsuarioId: string | null): Promise<DesenlaceDeMover> {
+    const previo = await this.prisma.nodoGeografico.findUnique({ where: { id: datos.id }, select: { padreId: true } });
+    if (previo === null) return { estado: "no_existe" };
+    if (previo.padreId === null) return { estado: "invalido", motivo: "es_raiz" };
+    if (previo.padreId !== datos.padreIdAnterior) return { estado: "cambio_concurrente" };
+
+    const r = await evaluarMovimiento(this.prisma, datos.id, datos.padreIdNuevo, (paisId) =>
+      this.catalogo().dePais(paisId),
+    );
+    if (r.estado !== "ok") return r;
+    const movimiento = r.movimiento;
+    const { vista, cadenaDelPadreAnterior, paisId } = movimiento;
+    if (vista.bloqueo !== null) return { estado: "bloqueado", bloqueo: vista.bloqueo };
+
+    return this.prisma.$transaction(
+      async (tx): Promise<DesenlaceDeMover> => {
+        // `SET LOCAL` no admite parametros; el valor es una constante numerica del modulo.
+        // El `statement_timeout`, despues de bloquear: antes, cortaria la espera del bloqueo como 57014
+        // en vez de dejar que la cierre el `lock_timeout` con su 55P03.
+        await tx.$executeRawUnsafe(`SET LOCAL lock_timeout = '${TOPE_MOVER_MS}ms'`);
+        await bloquearNodos(tx, [...movimiento.subarbol, ...movimiento.cadenaDelDestino.map((n) => n.id)]);
+        await tx.$executeRawUnsafe(`SET LOCAL statement_timeout = '${TOPE_MOVER_MS}ms'`);
+        const confirmado = await confirmarP1(tx, movimiento);
+        if (confirmado.estado !== "ok") return confirmado;
+
+        const { count } = await tx.nodoGeografico.updateMany({
+          where: { id: datos.id, padreId: datos.padreIdAnterior },
+          data: { padreId: datos.padreIdNuevo },
+        });
+        if (count === 0) return { estado: "cambio_concurrente" };
+
+        const nombres = await cadenaDeNombres(tx, vista.nodo.nombre, datos.padreIdNuevo);
+        const actor = await actorDePlataforma(tx, actorUsuarioId);
+        await appendAccionPlataforma(tx, [
+          {
+            accion: "nodo_geografico_movido",
+            entidadTipo: "nodo_geografico",
+            entidadId: datos.id,
+            entidadEtiqueta: etiquetaDeNodo(nombres),
+            paisId,
+            ...actor,
+            // Las rutas de los padres, de la hoja a la raiz como la etiqueta. Las columnas miden
+            // GEO_NOMBRE_MAX y Postgres no trunca: aborta. Por eso se recortan aqui.
+            valorAnterior: rutaDeHojaARaiz(cadenaDelPadreAnterior).slice(0, GEO_NOMBRE_MAX),
+            valorNuevo: rutaDeHojaARaiz(nombres.slice(1)).slice(0, GEO_NOMBRE_MAX),
+          },
+        ]);
+        return { estado: "movido" };
+      },
+      { timeout: TIMEOUT_TRANSACCION_MOVER_MS },
+    );
   }
 
   async profundidadDeNodo(id: string): Promise<number | null> {

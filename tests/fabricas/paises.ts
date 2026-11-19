@@ -48,27 +48,121 @@ export interface GeografiaDePrueba {
   distritoId: string;
 }
 
+type ClienteDeSql = Pick<Prisma.TransactionClient, "$executeRawUnsafe" | "$queryRawUnsafe">;
+
+/**
+ * `true` si `provincia` es todavia una TABLA: una base sin SLT-48 (las idas y vueltas de migraciones
+ * anteriores, o tras el `down.sql` de SLT-48 con `sin-slt48.ts`). Ahi no siempre existe
+ * `nodo_geografico` (antes de SLT-43) y, si existe, la sincronia de entonces lo rellena desde la tabla.
+ */
+async function geografiaViejaEsTabla(tx: ClienteDeSql): Promise<boolean> {
+  const filas = await tx.$queryRawUnsafe<{ relkind: string }[]>(
+    `SELECT c.relkind::text AS relkind FROM pg_class c JOIN pg_namespace s ON s.oid = c.relnamespace
+      WHERE s.nspname = current_schema() AND c.relname = 'provincia'`,
+  );
+  return filas[0]?.relkind === "r";
+}
+
+const TABLA_VIEJA = { 1: "provincia", 2: "canton", 3: "distrito" } as const;
+const COLUMNA_PADRE = { 2: "provincia_id", 3: "canton_id" } as const;
+
+/** El `create` de antes de SLT-48, en la tabla vieja: el pais de un hijo lo pone su trigger desde el padre. */
+async function crearEnLaTablaVieja(
+  tx: ClienteDeSql,
+  profundidad: 1 | 2 | 3,
+  id: string,
+  n: NodoDeNivel,
+): Promise<{ id: string }> {
+  const columnas = ["id", "nombre", "codigo_dta", "activo"];
+  const valores: unknown[] = [id, n.nombre, n.codigoDta ?? null, n.activo ?? true];
+  if (profundidad === 1) {
+    columnas.push("pais_id");
+    valores.push(n.paisId ?? "CR");
+  } else {
+    columnas.push(COLUMNA_PADRE[profundidad]);
+    valores.push(n.padreId);
+  }
+  await tx.$executeRawUnsafe(
+    `INSERT INTO ${TABLA_VIEJA[profundidad]} (${columnas.join(", ")}) VALUES (${valores.map((_, i) => `$${i + 1}`).join(", ")})`,
+    ...valores,
+  );
+  return { id };
+}
+
+/** Un nodo de los tres primeros niveles, con los campos que tenían `provincia`, `canton` y `distrito`. */
+export interface NodoDeNivel {
+  /** Sin `id`, uno nuevo (como el `@default(uuid())` de las tablas viejas). */
+  id?: string;
+  nombre: string;
+  /** Solo cuenta en el nivel 1; sin él, `CR` (el `DEFAULT` de `provincia.pais_id`). */
+  paisId?: string;
+  /** El nodo padre; obligatorio en los niveles 2 y 3. */
+  padreId?: string;
+  codigoDta?: string | null;
+  activo?: boolean;
+}
+
+/**
+ * SLT-48 (design §9) — desde que `provincia`, `canton` y `distrito` son vistas de solo lectura, la
+ * geografía de un test se escribe en `nodo_geografico`, que es lo que la vista enseña. Mismo contrato
+ * que el `create` de antes: en los niveles 2 y 3 el país es el del padre (lo hacía
+ * `geografia_pais_del_padre`) y el tipo es el `nivel_N` del país. Como dueño: `servi_app` no escribe
+ * geografía. `nombre_normalizado` lo pone el trigger de invariantes.
+ */
+export async function crearNodoDeNivel(
+  tx: ClienteDeSql,
+  profundidad: 1 | 2 | 3,
+  n: NodoDeNivel,
+): Promise<{ id: string }> {
+  if (profundidad > 1 && n.padreId === undefined) {
+    throw new Error(`crearNodoDeNivel: un nodo de profundidad ${profundidad} necesita padre`);
+  }
+  const id = n.id ?? randomUUID();
+  if (await geografiaViejaEsTabla(tx)) return crearEnLaTablaVieja(tx, profundidad, id, n);
+  const filas = await tx.$executeRawUnsafe(
+    `INSERT INTO nodo_geografico
+         (id, pais_id, tipo_id, padre_id, profundidad, nombre, nombre_normalizado, codigo_oficial, activo)
+       SELECT $1, p.pais_id, t.id, $3, $4::int, $5, '', $6, $7
+         FROM (SELECT COALESCE((SELECT padre.pais_id FROM nodo_geografico padre WHERE padre.id = $3), $2) AS pais_id) p
+         JOIN tipo_nivel_geografico t ON t.pais_id = p.pais_id AND t.clave = 'nivel_' || $4::text`,
+    id,
+    n.paisId ?? "CR",
+    n.padreId ?? null,
+    profundidad,
+    n.nombre,
+    n.codigoDta ?? null,
+    n.activo ?? true,
+  );
+  if (filas !== 1) {
+    throw new Error(`crearNodoDeNivel: el país del nodo «${n.nombre}» no tiene el tipo nivel_${profundidad}`);
+  }
+  return { id };
+}
+
 /**
  * Una provincia, un cantón y un distrito en `paisId`, con nombres únicos. El país del cantón y del
- * distrito no se pasa: lo pone el trigger `geografia_pais_del_padre`, como en la app.
+ * distrito no se pasa: es el de su padre, como en la app.
  */
 export async function crearGeografiaDePrueba(
-  tx: Pick<Prisma.TransactionClient, "provincia" | "canton" | "distrito">,
+  tx: ClienteDeSql,
   paisId: string,
   o?: { codigos?: { provincia?: string; canton?: string; distrito?: string } },
 ): Promise<GeografiaDePrueba> {
   const sufijo = randomUUID().replace(/-/g, "").slice(0, 10);
-  const provincia = await tx.provincia.create({
-    data: { nombre: `Provincia ${sufijo}`, paisId, codigoDta: o?.codigos?.provincia ?? null },
-    select: { id: true },
+  const provincia = await crearNodoDeNivel(tx, 1, {
+    nombre: `Provincia ${sufijo}`,
+    paisId,
+    codigoDta: o?.codigos?.provincia ?? null,
   });
-  const canton = await tx.canton.create({
-    data: { nombre: `Cantón ${sufijo}`, provinciaId: provincia.id, codigoDta: o?.codigos?.canton ?? null },
-    select: { id: true },
+  const canton = await crearNodoDeNivel(tx, 2, {
+    nombre: `Cantón ${sufijo}`,
+    padreId: provincia.id,
+    codigoDta: o?.codigos?.canton ?? null,
   });
-  const distrito = await tx.distrito.create({
-    data: { nombre: `Distrito ${sufijo}`, cantonId: canton.id, codigoDta: o?.codigos?.distrito ?? null },
-    select: { id: true },
+  const distrito = await crearNodoDeNivel(tx, 3, {
+    nombre: `Distrito ${sufijo}`,
+    padreId: canton.id,
+    codigoDta: o?.codigos?.distrito ?? null,
   });
   return { provinciaId: provincia.id, cantonId: canton.id, distritoId: distrito.id };
 }

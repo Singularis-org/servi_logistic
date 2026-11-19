@@ -133,9 +133,10 @@ async function loQueVe(tx: TxDeTest, empresaId: string, m: Mundo) {
   const cantonesOrden = await orden.findCantonesByProvinciaIds(todos.map((g) => g.provinciaId));
   const distritosOrden = await orden.findDistritosByCantonIds(todos.map((g) => g.cantonId));
   const paraCorreccion = {
-    A: (await orden.findDistritoParaCorreccion(m.geoA.distritoId))?.id ?? null,
-    B: (await orden.findDistritoParaCorreccion(m.geoB.distritoId))?.id ?? null,
-    CR: (await orden.findDistritoParaCorreccion(m.geoCR.distritoId))?.id ?? null,
+    // SLT-48 (T2.3): `findDistritoParaCorreccion` pasa a `findLugarParaCorreccion(nodoId)`.
+    A: (await orden.findLugarParaCorreccion(m.geoA.distritoId))?.id ?? null,
+    B: (await orden.findLugarParaCorreccion(m.geoB.distritoId))?.id ?? null,
+    CR: (await orden.findLugarParaCorreccion(m.geoCR.distritoId))?.id ?? null,
   };
   // La resolución de la carga y la cotización: los mismos índices que `CotizacionOrdenService`.
   const provincias = await orden.findAllProvincias();
@@ -344,7 +345,8 @@ describeSiHayBase("SL-20 T6.1 — dos empresas en dos países, con los repositor
         const error = await errorEnSavepoint(tx, async () => {
           salida = await repo.corregirDatosCliente(
             orden.id,
-            { provinciaId: g.provinciaId, cantonId: g.cantonId, distritoId: g.distritoId },
+            // SLT-48 R16: la correccion escribe el nodo (entrada).
+            { nodoGeograficoId: g.distritoId },
             [],
             rastro,
           );

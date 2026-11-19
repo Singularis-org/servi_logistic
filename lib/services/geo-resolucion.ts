@@ -19,7 +19,12 @@ import type {
   ProvinciaRow,
 } from "@/lib/interfaces/repositories/IOrdenRepository";
 import { normalizeName } from "@/lib/utils/normalize";
-import { CLAVE_UBICACION, msgNivelVacio, type EntradaUbicacion } from "@/lib/services/geo-ubicacion";
+import {
+  CLAVE_UBICACION,
+  msgNivelVacio,
+  msgUbicacionIncompleta,
+  type EntradaUbicacion,
+} from "@/lib/services/geo-ubicacion";
 import type { ColumnaGeoDePlantilla } from "@/lib/utils/plantilla-geo";
 
 // La resolucion geografica compara nombres del archivo contra los de la DB con el
@@ -65,10 +70,18 @@ function lookup<T>(index: Map<string, T[]>, key: string): LookupResult<T> {
 }
 
 export interface ResolvedGeo {
-  provinciaId: string;
-  zonaId: string;
-  cantonId: string;
+  /**
+   * SLT-48 (design §4.2, R15): el nodo resuelto, una hoja. La orden guarda solo este; las 3 FK
+   * viejas quedan en NULL.
+   */
+  nodoId: string;
+  /**
+   * SLT-48 (design §6, P3): el lugar con el que se busca el grupo de tarifas. Conserva el nombre
+   * interno de `ParTarifa.distritoId` (decision heredada); lo calcula `distritoDeTarifa`. `null` =
+   * sin grupo, tarifa base. Ya no es una FK de la orden.
+   */
   distritoId: string | null;
+  zonaId: string;
   // Feature 98/R2: flag de la zona resuelta del distrito, para elegir la columna del flete al
   // tarifar la carga por API. La via sesion lo ignora (R9).
   esCentral: boolean;
@@ -184,6 +197,16 @@ export function resolveGeo(
   if (!distrito.disponible) {
     return { ok: false, fieldErrors: { distrito: [msgDistritoRetirado(raw.distrito.trim())] } };
   }
+  // SLT-48 (R19): la regla de hoja de la orden nueva. En un pais de mas de 3 niveles el distrito
+  // que nombra v1 tiene hijos y no es hoja. Va antes de la zona por lo mismo que «retirado»: decir
+  // «sin zona» de algo que no se puede guardar manda a pedir una zona inutil. La clave es
+  // `ubicacion`, la del mensaje de R17 en el motor.
+  if (distrito.tipoHijosActivos != null) {
+    return {
+      ok: false,
+      fieldErrors: { [CLAVE_UBICACION]: [msgUbicacionIncompleta(distrito.nombre, distrito.tipoHijosActivos)] },
+    };
+  }
   // Feature 24/R4/R11 (reconciliacion feature 54): la zona de la orden se deriva
   // del DISTRITO (orden.zona_id es NOT NULL). Un distrito sin zona -> error de fila.
   if (distrito.zonaId === null) {
@@ -196,10 +219,10 @@ export function resolveGeo(
   return {
     ok: true,
     geo: {
-      provinciaId: provincia.id,
-      zonaId: distrito.zonaId,
-      cantonId: canton.id,
+      nodoId: distrito.id,
+      // Un distrito es profundidad 3: `distritoDeTarifa` lo devuelve a el mismo (P3).
       distritoId: distrito.id,
+      zonaId: distrito.zonaId,
       esCentral: distrito.esCentral, // feature 98/R2: flag de la zona del distrito.
       esZonaEspecial: distrito.esZonaEspecial, // marca del distrito, no de su zona.
     },

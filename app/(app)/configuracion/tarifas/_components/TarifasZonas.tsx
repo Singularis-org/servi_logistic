@@ -3,10 +3,12 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
+import { useNivelesGeograficos } from "@/hooks/use-niveles-geograficos";
 import type { GrupoDeZonaResumen, ZonaResumen } from "@/lib/interfaces/services/ITarifasPantallaService";
-import type { EtiquetasGeograficas } from "@/lib/types/pais";
+import type { EtiquetaDeNivel } from "@/lib/types/pais";
 import { cn } from "@/lib/utils";
 
+import { nivelDelGrupo } from "@/app/(app)/configuracion/_shared/nivel-del-grupo";
 import { textoEstadoZona, TEXTOS } from "./tarifas-textos";
 
 export interface TarifasZonasProps {
@@ -24,7 +26,7 @@ export interface TarifasZonasProps {
 function detalle(
   zona: ZonaResumen,
   grupos: readonly GrupoDeZonaResumen[],
-  distrito: EtiquetasGeograficas["distrito"],
+  distrito: EtiquetaDeNivel,
 ): string {
   if (zona.esCentral) return TEXTOS.bodegaPrincipal;
   if (grupos.length === 0) return TEXTOS.sinGrupos;
@@ -41,7 +43,10 @@ function detalle(
 
 /** R17, R33: la lista de zonas con su estado. Bajo el ancho de dos columnas, va encima del panel (R59). */
 export function TarifasZonas({ zonas, seleccionada, gruposPorZona, onElegir }: Readonly<TarifasZonasProps>) {
-  const { distrito } = useEtiquetasGeograficas();
+  // SLT-48 (R45, P3): el grupo se cuenta por el nivel 3 del país. Sin nivel 3 (2 niveles) no hay grupos
+  // que nombrar; la etiqueta de siempre solo cubre el caso imposible.
+  const etiquetas = useEtiquetasGeograficas();
+  const distrito = nivelDelGrupo(useNivelesGeograficos(), etiquetas) ?? etiquetas.distrito;
   return (
     <section
       aria-label={TEXTOS.zonas}

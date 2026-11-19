@@ -68,10 +68,10 @@ export interface OpcionesDePresentacion {
 interface FilaDeOrden {
   id: string;
   direccion: string | null;
-  cantonId: string;
-  distritoId: string | null;
-  provincia: { nombre: string };
-  canton: { nombre: string };
+  /** SLT-48 (R22): el lado nuevo lee el nodo de la orden; el de hoy, las relaciones viejas. */
+  nodoGeograficoId: string | null;
+  provincia: { nombre: string } | null;
+  canton: { nombre: string } | null;
   distrito: { nombre: string } | null;
 }
 
@@ -114,8 +114,7 @@ export async function compararEmpresaPresentacion(
         select: {
           id: true,
           direccion: true,
-          cantonId: true,
-          distritoId: true,
+          nodoGeograficoId: true,
           provincia: { select: { nombre: true } },
           canton: { select: { nombre: true } },
           distrito: { select: { nombre: true } },
@@ -125,14 +124,15 @@ export async function compararEmpresaPresentacion(
       for (const o of lote) {
         informe.ordenes++;
         const ruta = rutaDelLugar(catalogo, o).map((p) => p.nombre);
-        const deHoy = [o.provincia.nombre, o.canton.nombre, ...(o.distrito === null ? [] : [o.distrito.nombre])];
+        // SLT-48: una orden nueva no tiene FK viejas; «hoy» no la sabe nombrar y sale distinta.
+        const deHoy = [o.provincia?.nombre ?? "", o.canton?.nombre ?? "", ...(o.distrito === null ? [] : [o.distrito.nombre])];
         if (!mismosNombres(ruta, deHoy)) informe.nombresDistintos.push(o.id);
 
         const qHoy = consultaDeHoy({
           direccion: o.direccion,
           distritoNombre: o.distrito?.nombre ?? null,
-          cantonNombre: o.canton.nombre,
-          provinciaNombre: o.provincia.nombre,
+          cantonNombre: o.canton?.nombre ?? "",
+          provinciaNombre: o.provincia?.nombre ?? "",
         });
         const qNueva = construirQueryDireccion({ direccion: o.direccion, ruta, paisNombre });
         if (qHoy === null && qNueva === null) continue;

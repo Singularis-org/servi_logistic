@@ -4,8 +4,8 @@ import { BulkOrdenService } from "@/lib/services/BulkOrdenService";
 import { CotizacionOrdenService } from "@/lib/services/CotizacionOrdenService";
 import {
   MSG_MOTOR_SIN_CATALOGO,
-  MSG_PAIS_NO_HABILITADO,
   MSG_UBICACION_UNA_DE_LAS_DOS,
+  msgUbicacionIncompleta,
   msgCodigoNoEncontrado,
   msgNivelNoEncontrado,
   msgNivelVacio,
@@ -238,7 +238,10 @@ describe("cargarViaApiV2", () => {
     expect(v2.manifiestoOrdenIds).toEqual(v1.manifiestoOrdenIds);
 
     const [creadas, , , lote] = vi.mocked(repo.createManyOrdenesConGuia).mock.calls[0];
-    expect(creadas[0]).toMatchObject({ provinciaId: "p1", cantonId: "c1", distritoId: "d1", nodoGeograficoId: "d1", zonaId: "z1" });
+    // SLT-48 R15: la orden guarda solo su nodo; las 3 FK ya no se escriben.
+    expect(creadas[0]).toMatchObject({ nodoGeograficoId: "d1", zonaId: "z1" });
+    const fks = creadas[0] as unknown as Record<string, unknown>;
+    expect([fks.provinciaId, fks.cantonId, fks.distritoId]).toEqual([undefined, undefined, undefined]);
     expect(lote).toMatchObject({ name: "Lote", totalFiles: 1 });
   });
 
@@ -260,9 +263,9 @@ describe("cargarViaApiV2", () => {
         filaV2("R-4", { ubicacion: ["Alta", " "] }),
         filaV2("R-5", { ubicacion_codigo: "000" }),
         filaV2("R-6", { ubicacion: ["Alta", "Media", "Sin Zona"] }),
-        // Un canton (profundidad 2) pasa la regla de guardado y cae en «sin zona» (design §2.2).
+        // Un canton sin distritos es hoja (SLT-48 R17), pasa la regla y cae en «sin zona» (design §2.2).
         filaV2("R-7", { ubicacion: ["Alta", "Sola"] }),
-        // Una provincia (profundidad 1) no se puede guardar (R15).
+        // Una provincia (profundidad 1) con cantones no es hoja y no se puede guardar (SLT-48 R17).
         filaV2("R-8", { ubicacion_codigo: "1" }),
       ],
       APIKEY,
@@ -279,23 +282,22 @@ describe("cargarViaApiV2", () => {
       ["R-5", { ubicacion: [msgCodigoNoEncontrado("000")] }],
       ["R-6", { ubicacion: [msgSinZona("Sin Zona")] }],
       ["R-7", { ubicacion: [msgSinZona("Sola")] }],
-      ["R-8", { ubicacion: [MSG_PAIS_NO_HABILITADO] }],
+      // SLT-48 R17: la regla de hoja reemplaza a la de SLT-45; el mensaje nombra el lugar.
+      ["R-8", { ubicacion: [msgUbicacionIncompleta("Alta", "Niveles 2")] }],
     ]);
     expect(vi.mocked(repo.createManyOrdenesConGuia).mock.calls[0][0]).toHaveLength(1);
   });
 
-  it("R15 — pais de 2 niveles: «pais no habilitado» y no se crea nada", async () => {
+  // SLT-48 R18: los paises de 2 niveles se habilitan; la hoja de nivel 2 se crea.
+  it("R15 — pais de 2 niveles (SLT-48 R18): la hoja de nivel 2 se crea, sin «pais no habilitado»", async () => {
     const repo = buildRepo();
     const r = await bulk(repo, tarifaRepo(), catalogoRepo(DOS, [{ nodoId: "A1", zona: ZONA }])).cargarViaApiV2(
       [filaV2("R-1", { ubicacion: ["Alfa", "Uno"] }), filaV2("R-2", { ubicacion_codigo: "91" })],
       APIKEY,
     );
-    expect(r.status === "ok" && r.summary.errores.map((e) => e.errores)).toEqual([
-      { ubicacion: [MSG_PAIS_NO_HABILITADO] },
-      { ubicacion: [MSG_PAIS_NO_HABILITADO] },
-    ]);
-    expect(r.status === "ok" && r.summary.cargaId).toBeNull();
-    expect(repo.createManyOrdenesConGuia).not.toHaveBeenCalled();
+    expect(r.status === "ok" && r.summary.errores.map((e) => e.errores)).toEqual([]);
+    expect(r.status === "ok" && r.summary.cargaId).not.toBeNull();
+    expect(vi.mocked(repo.createManyOrdenesConGuia).mock.calls[0][0].map((c) => c.nodoGeograficoId)).toEqual(["A1", "A1"]);
   });
 
   it("R17 — los campos de v1 se validan igual (destinatario obligatorio) y los duplicados del lote tambien", async () => {
@@ -382,7 +384,8 @@ describe("cotizarV2", () => {
     expect(r.resumen.errores).toEqual([
       { fila: 2, numRemision: null, resultado: "error", errores: { ubicacion: [MSG_UBICACION_UNA_DE_LAS_DOS] } },
       { fila: 3, numRemision: "R-3", resultado: "error", errores: { ubicacion: [msgNivelNoEncontrado(1, "Nada", null)] } },
-      { fila: 4, numRemision: "R-4", resultado: "error", errores: { ubicacion: [MSG_PAIS_NO_HABILITADO] } },
+      // SLT-48 R17: la provincia con cantones no es hoja; el mensaje nombra el lugar y el nivel que falta.
+      { fila: 4, numRemision: "R-4", resultado: "error", errores: { ubicacion: [msgUbicacionIncompleta("Alta", "Niveles 2")] } },
       { fila: 5, numRemision: "R-5", resultado: "error", errores: { ubicacion: [msgSinZona("Sin Zona")] } },
     ]);
   });

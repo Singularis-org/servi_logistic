@@ -18,6 +18,7 @@ import {
 } from "./_postgres-real";
 import { errorEnSavepoint, revertida } from "./_fixtures/pais-20";
 import { exigirSinSuperadmin, idDeRol, insertarUsuario, tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
+import { crearNodoDeNivel } from "@/tests/fabricas/paises";
 
 /**
  * SL-20 (design §6; R24, R25, R26, R33, R35) — LA CARGA DE LA DIVISION DE UN PAIS, CONTRA POSTGRES.
@@ -243,10 +244,7 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
 
     it("a un nodo sin codigo se le pone el de la fila; su nombre, su estado y sus hijos no cambian", async () => {
       await conPais(async ({ tx, service }) => {
-        const p = await tx.provincia.create({
-          data: { nombre: "Región", paisId: "XA", activo: false },
-          select: { id: true },
-        });
+        const p = await crearNodoDeNivel(tx, 1, { nombre: "Región", paisId: "XA", activo: false });
 
         const r = await service.cargar("XA", archivo("REGION,R9,Comuna,,,"), actor);
         expect(r).toMatchObject({
@@ -270,10 +268,7 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
 
     it("decision 4: un alta bajo un padre RETIRADO se permite y el hijo nace activo", async () => {
       await conPais(async ({ tx, service }) => {
-        const p = await tx.provincia.create({
-          data: { nombre: "Retirada", paisId: "XA", activo: false },
-          select: { id: true },
-        });
+        const p = await crearNodoDeNivel(tx, 1, { nombre: "Retirada", paisId: "XA", activo: false });
         await service.cargar("XA", archivo("Retirada,,Comuna nueva,,,"), actor);
 
         const hijo = await tx.canton.findFirst({
@@ -317,7 +312,7 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
       // escritura choca con el UNIQUE en el segundo `createMany`. Las provincias del primero ya
       // estaban escritas: tienen que desaparecer con el resto.
       await conPais(async ({ tx, geo }) => {
-        const p = await tx.provincia.create({ data: { nombre: "Existente", paisId: "XA" }, select: { id: true } });
+        const p = await crearNodoDeNivel(tx, 1, { nombre: "Existente", paisId: "XA" });
         const division = await geo.leerDivisionDePais("XA");
         const plan = planificarDivision(
           // SLT-46 T5: la forma por profundidad (`niveles`, `nodos`, `tipos`); las mismas dos filas.
@@ -329,7 +324,7 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
           division!.tipos,
         );
         if (!("plan" in plan)) throw new Error("el plan de prueba tenia errores");
-        await tx.canton.create({ data: { nombre: "Choque", provinciaId: p.id } });
+        await crearNodoDeNivel(tx, 2, { nombre: "Choque", padreId: p.id });
 
         const error = await errorEnSavepoint(tx, () => geo.importarDivision("XA", plan.plan, actor.usuarioId));
         expect(error, "la carrera no llego a fallar").not.toBeNull();
@@ -342,7 +337,7 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
 
     it("CONTRAPRUEBA: el mismo plan SIN la carrera si escribe", async () => {
       await conPais(async ({ tx, geo }) => {
-        await tx.provincia.create({ data: { nombre: "Existente", paisId: "XA" } });
+        await crearNodoDeNivel(tx, 1, { nombre: "Existente", paisId: "XA" });
         const division = await geo.leerDivisionDePais("XA");
         const plan = planificarDivision(
           // SLT-46 T5: la forma por profundidad; la misma fila.
@@ -421,9 +416,11 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
    * La version fisica de la fila. Todo pasa en UNA transaccion, asi que `xmin` no distinguiria una
    * fila escrita de una actualizada; `ctid` si: un UPDATE (tambien uno HOT) deja una tupla nueva.
    */
+  // SLT-48 (design §9): `provincia` es una vista (sin `ctid`); la tupla que se mide es la del nodo, y
+  // la geografia de prueba se escribe con `crearNodoDeNivel`.
   async function ctidDe(tx: TxDeTest, id: string): Promise<string> {
     const [fila] = await tx.$queryRawUnsafe<{ ctid: string }[]>(
-      `SELECT ctid::text AS ctid FROM "provincia" WHERE "id" = $1`,
+      `SELECT ctid::text AS ctid FROM "nodo_geografico" WHERE "id" = $1`,
       id,
     );
     return fila.ctid;
@@ -460,8 +457,8 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
     it("retirar uno ya retirado y reactivar uno activo: `ok`, misma tupla y cero filas de historial", async () => {
       await conPais(async ({ tx }) => {
         const servicio = geografia(tx);
-        const retirada = await tx.provincia.create({ data: { nombre: "Retirada", paisId: "XA", activo: false }, select: { id: true } });
-        const activa = await tx.provincia.create({ data: { nombre: "Activa", paisId: "XA" }, select: { id: true } });
+        const retirada = await crearNodoDeNivel(tx, 1, { nombre: "Retirada", paisId: "XA", activo: false });
+        const activa = await crearNodoDeNivel(tx, 1, { nombre: "Activa", paisId: "XA" });
         const ctidRetirada = await ctidDe(tx, retirada.id);
         const ctidActiva = await ctidDe(tx, activa.id);
         const accionAntes = await tx.historialAccion.count();
@@ -482,7 +479,7 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
 
     it("CONTRAPRUEBA de la medida: un cambio de verdad SI cambia la tupla y deja su fila", async () => {
       await conPais(async ({ tx }) => {
-        const activa = await tx.provincia.create({ data: { nombre: "Activa", paisId: "XA" }, select: { id: true } });
+        const activa = await crearNodoDeNivel(tx, 1, { nombre: "Activa", paisId: "XA" });
         const ctid = await ctidDe(tx, activa.id);
 
         const r = await geografia(tx).cambiarActivacion({ id: activa.id, activo: false }, actor);

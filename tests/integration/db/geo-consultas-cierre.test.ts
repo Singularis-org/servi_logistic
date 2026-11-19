@@ -120,9 +120,10 @@ describeSiHayBase("SLT-65 T3.2 — el cierre congela nombres y marca del catalog
         const leido = await comoLaEmpresa(tx, empresa, async () => {
           const cliente = clienteConSavepoint(tx);
           // Lo de hoy se lee antes del cierre, en la misma foto: las gestiones aun no tienen cierre.
+          // SLT-48: con el `select` de hoy (el de `lib/` ya no trae las FK viejas que lee la copia).
           const filas = await cliente.gestionOrden.findMany({
             where: { id: { in: empresa.gestionesSinCierreIds } },
-            select: SNAPSHOT_SELECT,
+            select: hoy.SNAPSHOT_SELECT_DE_HOY,
           });
           const descriptivos = await hoy.leerDescriptivosDeOrdenes(filas, cliente);
           const deHoy = new Map(filas.map((f) => [f.ordenId, hoy.congeladoDeHoy(f, descriptivos)]));
@@ -194,7 +195,8 @@ describeSiHayBase("SLT-65 T3.2 — el cierre congela nombres y marca del catalog
 
     expect(r.intento.cierreId).toBeNull();
     expect(r.intento.error).toBeInstanceOf(Error);
-    expect((r.intento.error as Error).message).toMatch(/falta la fila de `(canton|distrito)`/);
+    // SLT-48 R27: el cierre lee el lugar del nodo de la orden; la fila que falta es la de `nodo_geografico`.
+    expect((r.intento.error as Error).message).toMatch(/falta la fila de `nodo_geografico`/);
     // Solo queda el cierre que ya traia el fixture; ninguna gestion vinculada ni fila de detalle nueva.
     expect(r.cierres).toEqual([{ id: r.cierreDelFixture }]);
     expect(r.vinculadas).toBe(0);

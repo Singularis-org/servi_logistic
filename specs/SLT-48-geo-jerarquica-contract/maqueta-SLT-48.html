@@ -1,0 +1,614 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maqueta SLT-48 geografía</title>
+<style>
+/* Maqueta T0.1 de SLT-48: tableros apilados por pantalla; cada uno compara Costa Rica (igual que hoy) con países de 2, 4 y 10 niveles. Autónoma: sin fuentes ni scripts externos. */
+:root{
+  --bg:#ECEAE6; --lienzo:#F7F7F5; --card:#FFFFFF; --fg:#151514; --muted:#57534E;
+  --line:#E2DFDA; --sel:#F2F1EE; --nuevo-bg:#FFF6D6; --nuevo-fg:#6B4A0E; --nuevo-line:#F1D98A;
+  --prov-fg:#7A2E8C; --prov-line:#B77AC6; --prov-bg:#F7EEF9;
+  --abierto-bg:#E8F0FB; --abierto-fg:#1F4A86; --abierto-line:#9DBBE6;
+  --peligro:#B42318; --peligro-bg:#FDECEA; --peligro-line:#F3B4AD;
+  --ambar-bg:#FBF3E0; --ambar-line:#E8C77A;
+  --vacio:#A8A29E; --papel:#FFFFFF; --primario:#151514; --primario-fg:#FFFFFF;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"Cascadia Mono","SFMono-Regular",Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#121211; --lienzo:#1B1B1A; --card:#232321; --fg:#EDEBE7; --muted:#A8A39C;
+    --line:#34322F; --sel:#2C2B29; --nuevo-bg:#3A3015; --nuevo-fg:#F3D98C; --nuevo-line:#5C4B1E;
+    --prov-fg:#E2B6EC; --prov-line:#8E5A9B; --prov-bg:#33233A;
+    --abierto-bg:#1C2A3D; --abierto-fg:#AFCBF2; --abierto-line:#3D5E8C;
+    --peligro:#F59A8F; --peligro-bg:#3A1D1A; --peligro-line:#6E2F28;
+    --ambar-bg:#3A3015; --ambar-line:#6B5520;
+    --vacio:#77726B; --papel:#F4F3F0; --primario:#EDEBE7; --primario-fg:#151514; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#121211; --lienzo:#1B1B1A; --card:#232321; --fg:#EDEBE7; --muted:#A8A39C;
+  --line:#34322F; --sel:#2C2B29; --nuevo-bg:#3A3015; --nuevo-fg:#F3D98C; --nuevo-line:#5C4B1E;
+  --prov-fg:#E2B6EC; --prov-line:#8E5A9B; --prov-bg:#33233A;
+  --abierto-bg:#1C2A3D; --abierto-fg:#AFCBF2; --abierto-line:#3D5E8C;
+  --peligro:#F59A8F; --peligro-bg:#3A1D1A; --peligro-line:#6E2F28;
+  --ambar-bg:#3A3015; --ambar-line:#6B5520;
+  --vacio:#77726B; --papel:#F4F3F0; --primario:#EDEBE7; --primario-fg:#151514; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:14px;line-height:1.45;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.envoltura{max-width:1200px;margin:0 auto;padding-block:28px 56px;display:flex;flex-direction:column;gap:32px}
+h1{margin:0;font-size:26px;text-wrap:balance}
+h2{margin:0 0 10px;font-size:17px;font-weight:600;text-wrap:balance}
+h3{margin:0;font-size:14px;font-weight:600}
+p{margin:0}
+ul{margin:0}
+.intro{display:flex;flex-direction:column;gap:8px;max-width:78ch;color:var(--muted)}
+.intro strong{color:var(--fg)}
+.leyenda{display:flex;flex-wrap:wrap;gap:10px 18px;font-size:13px;color:var(--muted);align-items:center}
+.lienzo{background:var(--lienzo);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:14px}
+.fila{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.tarjeta{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.tarjeta.cr{border:2px solid var(--fg)}
+.etq{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.nota{font-size:13px;color:var(--muted)}
+.nuevo{display:inline-block;font-size:11px;padding:1px 8px;border-radius:999px;background:var(--nuevo-bg);color:var(--nuevo-fg);border:1px solid var(--nuevo-line);margin-left:6px;vertical-align:1px;white-space:nowrap}
+.prov{border-bottom:2px dashed var(--prov-line);background:var(--prov-bg);border-radius:2px;padding:0 2px}
+.prov::after{content:"texto provisional";font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--prov-fg);margin-left:6px;vertical-align:2px;white-space:nowrap}
+.prov.sin-marca::after{content:none}
+.marca-prov{display:inline-block;font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--prov-fg);border:1px dashed var(--prov-line);background:var(--prov-bg);border-radius:4px;padding:0 6px}
+.abierto{border:1px solid var(--abierto-line);background:var(--abierto-bg);color:var(--abierto-fg);border-radius:8px;padding:8px 10px;font-size:13px}
+.abierto b{font-weight:600}
+.desliza{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+th,td{padding:7px 10px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+.nw th,.nw td{white-space:nowrap}
+th{font-weight:600;background:var(--sel)}
+tbody th{background:transparent;font-weight:400;color:var(--muted)}
+tr:last-child td,tr:last-child th{border-bottom:0}
+.vacio{color:var(--vacio)}
+code,.mono{font-family:var(--mono);font-size:12px}
+code{background:var(--sel);border-radius:4px;padding:1px 4px}
+/* controles tipo shadcn */
+.btn{display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:6px;font-size:12.5px;font-weight:500;border:1px solid transparent;background:transparent;color:var(--fg);font-family:inherit;white-space:nowrap}
+.btn.outline{border-color:var(--line);background:var(--card)}
+.btn.ghost{}
+.btn.primario{background:var(--primario);color:var(--primario-fg)}
+.btn.peligro{background:var(--peligro);color:#fff}
+.btn[disabled]{opacity:.45}
+.badge{display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:999px;font-size:11px;border:1px solid var(--line);color:var(--fg);white-space:nowrap}
+.badge.sec{background:var(--sel);border-color:transparent;color:var(--muted)}
+.input,.select{display:flex;align-items:center;justify-content:space-between;gap:8px;height:34px;padding:0 10px;border:1px solid var(--line);border-radius:6px;background:var(--card);font-size:13px;min-width:0}
+.select::after{content:"⌄";color:var(--muted);font-size:13px;line-height:1;margin-top:-6px}
+.select.ph{color:var(--muted)}
+.select.off{opacity:.5;background:var(--sel)}
+.select.inval{border-color:var(--peligro)}
+.campo{display:flex;flex-direction:column;gap:5px;min-width:0}
+.campo label{font-size:13px;font-weight:500}
+.rejilla3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+@media (max-width:640px){.rejilla3{grid-template-columns:1fr}}
+.error{font-size:12.5px;color:var(--peligro)}
+.modal{background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.08);display:flex;flex-direction:column;max-width:640px;width:100%}
+.modal .cab{padding:16px 18px 10px;display:flex;flex-direction:column;gap:4px}
+.modal .cab h3{font-size:16px}
+.modal .cab p{font-size:13px;color:var(--muted)}
+.modal .cuerpo{padding:4px 18px 14px;display:flex;flex-direction:column;gap:12px}
+.modal .pie{display:flex;justify-content:flex-end;gap:8px;padding:12px 18px;border-top:1px solid var(--line)}
+.modal .pie .btn{height:36px;padding:0 14px}
+.alerta{border:1px solid var(--peligro-line);background:var(--peligro-bg);border-radius:8px;padding:10px 12px;font-size:13px;display:flex;flex-direction:column;gap:6px}
+.alerta.neutra{border-color:var(--line);background:var(--sel)}
+.ambar{border:1px solid var(--ambar-line);background:var(--ambar-bg);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:10px}
+.arbol{border:1px solid var(--line);border-radius:8px;display:flex;flex-direction:column}
+.nodo{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:5px 8px;border-bottom:1px solid var(--line);font-size:13px}
+.nodo:last-child{border-bottom:0}
+.nodo .chev{width:18px;color:var(--muted);text-align:center;flex:none}
+.nodo .acciones{margin-left:auto;display:flex;gap:4px;flex-wrap:wrap}
+.nodo .nom{font-weight:500}
+.nodo .det{font-size:12px;color:var(--muted)}
+.chip{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:999px;background:var(--sel);color:var(--muted);font-size:11.5px;white-space:nowrap}
+.check{width:15px;height:15px;border:1.5px solid var(--muted);border-radius:4px;display:inline-block;flex:none;position:relative}
+.check.on{background:var(--primario);border-color:var(--primario)}
+.check.on::after{content:"";position:absolute;left:4px;top:1px;width:4px;height:8px;border:solid var(--primario-fg);border-width:0 2px 2px 0;transform:rotate(45deg)}
+.radio{width:15px;height:15px;border:1.5px solid var(--muted);border-radius:50%;display:inline-block;flex:none;position:relative}
+.radio.on::after{content:"";position:absolute;inset:3px;border-radius:50%;background:var(--fg)}
+.opcion{display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid var(--line);font-size:13px;flex-wrap:wrap}
+.opcion:last-child{border-bottom:0}
+.opcion.off{opacity:.55}
+.opcion .ruta{color:var(--muted);font-size:12px}
+.ruta-txt{overflow-wrap:anywhere}
+.flecha{color:var(--muted)}
+.dos{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;align-items:start}
+.paso{font-size:12px;font-weight:600;color:var(--muted)}
+.tachado{text-decoration:line-through;color:var(--muted)}
+.lista-guion{padding-left:18px;display:flex;flex-direction:column;gap:2px}
+.indice{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px}
+.indice a{color:var(--fg)}
+</style>
+</head>
+<body>
+<div class="envoltura">
+
+<header class="intro">
+  <h1>SLT-48 «Geografía jerárquica: retirar modelo viejo» · maqueta T0.1</h1>
+  <p>Maqueta para aprobar antes de tocar pantallas (R42). Cubre mover un nodo y las pantallas que hoy tienen 3 niveles fijos (R43–R46), en países de 2, 3 (Costa Rica), 4 y 10 niveles. <strong>Costa Rica (marco grueso) se ve igual que hoy.</strong></p>
+  <p>Versión estática: los nombres, las guías, las empresas y los números son de ejemplo. Países de ejemplo, los mismos que en la maqueta de SLT-125 «Lugares en pantallas y exportes»: Costa Rica (Provincia, Cantón, Distrito), uno de 2 (Departamento, Municipio), uno de 4 (Región, Provincia, Comuna, Barrio) y uno de 10 (Región, Subregión, Provincia, Departamento, Municipio, Comuna, Sector, Barrio, Manzana, Lote).</p>
+  <div class="leyenda">
+    <span><span class="nuevo" style="margin-left:0">nuevo</span> no existe hoy</span>
+    <span><span class="prov sin-marca">texto</span> <span class="marca-prov">texto provisional</span> el spec no fija el texto; se propone uno</span>
+    <span><span class="abierto" style="padding:1px 8px">abierto</span> el spec no lo define; lo decide el humano</span>
+  </div>
+  <nav class="indice" aria-label="Secciones">
+    <a href="#s1">1 · Mover un nodo</a><a href="#s2">2 · Corregir ubicación</a><a href="#s3">3 · Historial</a><a href="#s4">4 · Tarifas y zonas</a><a href="#s5">5 · Carga masiva</a>
+  </nav>
+</header>
+
+<!-- =============================================================== 1 -->
+<section id="s1">
+<h2>1 · /plataforma/geografia: acción «Mover» (R34–R38, P1, P4)</h2>
+<div class="lienzo">
+
+  <div class="tarjeta cr">
+    <p class="etq">Costa Rica · el árbol, con la acción nueva</p>
+    <div class="arbol">
+      <div class="nodo"><span class="chev">›</span><span class="nom">San José</span><span class="badge">Provincia</span><span class="mono det">1</span><span class="det">(20 cantones)</span>
+        <span class="acciones"><span class="btn outline">+ Cantón</span><span class="btn">Renombrar</span><span class="btn">Retirar</span></span></div>
+      <div class="nodo" style="padding-left:32px"><span class="chev">⌄</span><span class="nom">Escazú</span><span class="badge">Cantón</span><span class="mono det">102</span><span class="det">(3 distritos)</span>
+        <span class="acciones"><span class="btn outline">+ Distrito</span><span class="btn">Renombrar</span><span class="btn outline">Mover<span class="nuevo">nuevo</span></span><span class="btn">Retirar</span></span></div>
+      <div class="nodo" style="padding-left:56px"><span class="chev"></span><span class="nom">San Rafael</span><span class="badge">Distrito</span><span class="mono det">10203</span>
+        <span class="acciones"><span class="btn">Renombrar</span><span class="btn outline">Mover<span class="nuevo">nuevo</span></span><span class="btn">Retirar</span></span></div>
+    </div>
+    <p class="nota">«Mover» sale en todo nodo que no es raíz (una provincia no se mueve). Lo demás de la fila no cambia. Solo lo ve el superadmin; cualquier otro rol recibe <code>forbidden</code> (R34).</p>
+  </div>
+
+  <div class="dos">
+    <div class="tarjeta cr">
+      <p class="etq">Costa Rica · paso 1: elegir el padre nuevo</p>
+      <div class="modal">
+        <div class="cab"><h3><span class="prov">Mover «San Rafael»</span></h3><p><span class="prov">Elige el cantón al que pasa. Solo se ofrecen cantones de Costa Rica.</span></p></div>
+        <div class="cuerpo">
+          <div class="campo"><label><span class="prov">Cantón nuevo</span></label>
+            <div class="input"><span class="vacio">Buscar por nombre…</span></div></div>
+          <div class="arbol">
+            <div class="opcion off"><span class="radio"></span>Escazú <span class="ruta">· San José</span><span class="badge sec"><span class="prov sin-marca">Padre actual</span></span></div>
+            <div class="opcion"><span class="radio on"></span><b>Santa Ana</b> <span class="ruta">· San José</span></div>
+            <div class="opcion"><span class="radio"></span>Mora <span class="ruta">· San José</span></div>
+            <div class="opcion"><span class="radio"></span>Alajuela <span class="ruta">· Alajuela</span></div>
+            <div class="opcion"><span class="radio"></span>Tibás <span class="ruta">· San José</span><span class="badge sec">Retirado</span></div>
+          </div>
+          <p class="nota">Solo nodos de la profundidad del padre actual (aquí, cantones), de todo el país. Un distrito o una provincia nunca aparecen.</p>
+        </div>
+        <div class="pie"><span class="btn outline">Cancelar</span><span class="btn primario"><span class="prov sin-marca">Ver el cambio</span></span></div>
+      </div>
+      <p class="nota">El retirado sale en la lista con su insignia, pero al elegirlo la vista previa lo rechaza (abajo, P4).</p>
+    </div>
+
+    <div class="tarjeta cr">
+      <p class="etq">Costa Rica · paso 2: antes → después</p>
+      <div class="modal">
+        <div class="cab"><h3><span class="prov">¿Mover «San Rafael» a Santa Ana?</span></h3><p><span class="prov">Sus órdenes ya creadas solo cambian el nombre del lugar: conservan su zona y su precio. Las nuevas usan la zona y el precio de la posición nueva.</span></p></div>
+        <div class="cuerpo">
+          <div class="desliza"><table>
+            <thead><tr><th>Dato</th><th>Antes</th><th>Después</th></tr></thead>
+            <tbody>
+              <tr><th><span class="prov sin-marca">Ruta</span></th><td class="ruta-txt">San José › Escazú › San Rafael</td><td class="ruta-txt"><b>San José › Santa Ana › San Rafael</b></td></tr>
+              <tr><th>Cantón</th><td>Escazú</td><td><b>Santa Ana</b></td></tr>
+            </tbody>
+          </table></div>
+          <ul class="lista-guion">
+            <li><span class="prov">Lugares que cuelgan de él: 0.</span></li>
+            <li><span class="prov">Órdenes que cambian el nombre del lugar que muestran, de todas las empresas: 1.284.</span></li>
+          </ul>
+        </div>
+        <div class="pie"><span class="btn outline">Volver</span><span class="btn primario"><span class="prov sin-marca">Sí, mover</span></span></div>
+      </div>
+      <p class="nota">Misma tabla «Dato · Antes · Después» y mismos botones «Volver» / «Sí, …» que las confirmaciones de hoy de esta pantalla. Si al confirmar el padre ya no es Escazú, sale el aviso de hoy: «Este dato cambió mientras tanto; revisa el valor actual.» (R37).</p>
+    </div>
+  </div>
+
+  <div class="dos">
+    <div class="tarjeta cr">
+      <p class="etq">Costa Rica · rechazo: el padre destino está retirado (P4)</p>
+      <div class="modal">
+        <div class="cab"><h3><span class="prov sin-marca">¿Mover «San Rafael» a Tibás?</span></h3></div>
+        <div class="cuerpo">
+          <div class="alerta"><b><span class="prov">No se puede mover aquí.</span></b><span><span class="prov">Tibás está retirado. Reactívalo o elige otro cantón.</span></span></div>
+        </div>
+        <div class="pie"><span class="btn outline">Volver</span><span class="btn primario" disabled><span class="prov sin-marca">Sí, mover</span></span></div>
+      </div>
+      <p class="nota">Se valida al abrir el antes → después, no solo al guardar (R36). Los otros motivos de R35 salen en el mismo sitio, con su propio texto:</p>
+      <ul class="lista-guion nota">
+        <li><span class="prov">«Santa Ana» ya tiene un distrito «San Rafael».</span> (<code>conflict</code>)</li>
+        <li><span class="prov">«Escazú» ya es su cantón.</span></li>
+        <li><span class="prov">El lugar de destino ya no existe.</span></li>
+      </ul>
+    </div>
+
+    <div class="tarjeta">
+      <p class="etq">País de 4 niveles · bloqueado por órdenes abiertas (P1)</p>
+      <div class="modal">
+        <div class="cab"><h3><span class="prov sin-marca">¿Mover «Recreo» a Quilpué?</span></h3></div>
+        <div class="cuerpo">
+          <div class="desliza"><table>
+            <thead><tr><th>Dato</th><th>Antes</th><th>Después</th></tr></thead>
+            <tbody>
+              <tr><th><span class="prov sin-marca">Ruta</span></th><td class="ruta-txt">Costa › Litoral › Viña › Recreo</td><td class="ruta-txt"><b>Costa › Marga Marga › Quilpué › Recreo</b></td></tr>
+              <tr><th>Comuna</th><td>Viña</td><td><b>Quilpué</b></td></tr>
+            </tbody>
+          </table></div>
+          <ul class="lista-guion">
+            <li><span class="prov sin-marca">Lugares que cuelgan de él: 0.</span></li>
+            <li><span class="prov sin-marca">Órdenes que cambian el nombre del lugar que muestran, de todas las empresas: 214.</span></li>
+          </ul>
+          <div class="alerta">
+            <b><span class="prov">No se puede mover mientras haya órdenes abiertas a las que les cambiaría el grupo de tarifas o la marca de zona especial.</span></b>
+            <span><span class="prov">37 órdenes abiertas, de 2 empresas:</span></span>
+            <ul class="lista-guion"><li>Tienda Andes SpA: 29</li><li>Mercado Sur Ltda.: 8</li></ul>
+            <span class="nota"><span class="prov">Se podrá mover cuando esas órdenes entren en un cierre.</span></span>
+          </div>
+        </div>
+        <div class="pie"><span class="btn outline">Volver</span><span class="btn primario" disabled><span class="prov sin-marca">Sí, mover</span></span></div>
+      </div>
+      <p class="nota">Ejemplo: Recreo no tiene grupo propio; hereda el grupo «Viña centro» de su comuna. Bajo Quilpué quedaría sin ese grupo, y el precio de sus órdenes abiertas cambiaría. «Confirmar» queda deshabilitado y se dice por qué (design §7.3).</p>
+    </div>
+  </div>
+
+  <div class="fila">
+    <div class="tarjeta">
+      <p class="etq">País de 2 niveles · antes → después</p>
+      <div class="desliza"><table>
+        <thead><tr><th>Dato</th><th>Antes</th><th>Después</th></tr></thead>
+        <tbody>
+          <tr><th>Ruta</th><td>Bolívar › Turbaco</td><td><b>Sucre › Turbaco</b></td></tr>
+          <tr><th>Departamento</th><td>Bolívar</td><td><b>Sucre</b></td></tr>
+        </tbody>
+      </table></div>
+      <p class="nota">Cuelgan 0 · cambian de nombre 46 órdenes. Solo se mueven municipios (los departamentos son raíz).</p>
+    </div>
+    <div class="tarjeta">
+      <p class="etq">País de 4 niveles · un nodo con descendientes</p>
+      <div class="desliza"><table>
+        <thead><tr><th>Dato</th><th>Antes</th><th>Después</th></tr></thead>
+        <tbody>
+          <tr><th>Ruta</th><td>Costa › Litoral › Viña</td><td><b>Costa › Marga Marga › Viña</b></td></tr>
+          <tr><th>Provincia</th><td>Litoral</td><td><b>Marga Marga</b></td></tr>
+        </tbody>
+      </table></div>
+      <p class="nota">Cuelgan 12 lugares (12 barrios) · cambian de nombre 3.410 órdenes. Viña tiene grupo propio, así que no bloquea.</p>
+    </div>
+  </div>
+  <div class="tarjeta">
+    <p class="etq">País de 10 niveles · rutas largas: se parten en varias líneas, la tabla no se desliza</p>
+    <div class="desliza"><table>
+      <thead><tr><th>Dato</th><th>Antes</th><th>Después</th></tr></thead>
+      <tbody>
+        <tr><th>Ruta</th><td class="ruta-txt">Norte › Alto Norte › Andina › Cordillera › San Pedro › La Loma › Sector 4 › El Mirador</td><td class="ruta-txt"><b>Norte › Alto Norte › Andina › Cordillera › San Pedro › La Loma › Sector 5 › El Mirador</b></td></tr>
+        <tr><th>Sector</th><td>Sector 4</td><td><b>Sector 5</b></td></tr>
+      </tbody>
+    </table></div>
+    <p class="nota">Cuelgan 38 lugares (6 manzanas y 32 lotes) · cambian de nombre 812 órdenes. El destino se elige solo entre sectores.</p>
+    <p class="abierto"><b>Abierto:</b> el spec pide «cuántos nodos cuelgan»; ¿basta el total o se desglosa por nivel como aquí («6 manzanas y 32 lotes»)?</p>
+  </div>
+
+  <div class="tarjeta">
+    <p class="etq">Alta de país · se quita el aviso de «aún no habilitado» (R21)</p>
+    <p><span class="check on"></span> Disponible para crear empresas</p>
+    <p class="nota tachado">Con 4 niveles, sus empresas verán «país aún no habilitado» al crear órdenes hasta SLT-48.</p>
+    <p class="nota">Esa línea desaparece: los países de 2 a 10 niveles ya crean órdenes (R18).</p>
+  </div>
+</div>
+</section>
+
+<!-- =============================================================== 2 -->
+<section id="s2">
+<h2>2 · Corregir ubicación: modal y aviso (R43, R17)</h2>
+<div class="lienzo">
+
+  <div class="dos">
+    <div class="tarjeta cr">
+      <p class="etq">Costa Rica · igual que hoy</p>
+      <div class="modal">
+        <div class="cab"><h3>Corregir los datos del cliente</h3><p>Orden SL-104882</p></div>
+        <div class="cuerpo">
+          <p class="nota">El monto a cobrar, el estado, la tienda y el mensajero asignado no se cambian desde aquí. La zona se calcula a partir del distrito.</p>
+          <p class="nota">… destinatario, teléfono, producto, dirección …</p>
+          <div class="rejilla3">
+            <div class="campo"><label>Provincia</label><div class="select">San José</div></div>
+            <div class="campo"><label>Cantón</label><div class="select">Escazú</div></div>
+            <div class="campo"><label>Distrito</label><div class="select">San Rafael</div></div>
+          </div>
+          <p class="nota">… peso, notas …</p>
+        </div>
+        <div class="pie"><span class="btn outline">Cancelar</span><span class="btn primario">Guardar cambios</span></div>
+      </div>
+    </div>
+
+    <div class="tarjeta cr">
+      <p class="etq">Costa Rica · un cantón con distritos exige distrito</p>
+      <div class="modal">
+        <div class="cab"><h3>Corregir los datos del cliente</h3><p>Orden SL-104883</p></div>
+        <div class="cuerpo">
+          <div class="rejilla3">
+            <div class="campo"><label>Provincia</label><div class="select">San José</div></div>
+            <div class="campo"><label>Cantón</label><div class="select">Escazú</div></div>
+            <div class="campo"><label>Distrito</label><div class="select ph inval">Elige un distrito</div></div>
+          </div>
+          <p class="nota">Falta completar: el distrito.</p>
+        </div>
+        <div class="pie"><span class="btn outline">Cancelar</span><span class="btn primario" disabled>Guardar cambios</span></div>
+      </div>
+      <p class="nota">Lo que cambia en CR: una orden vieja guardada en Escazú sin distrito ya no se puede re-guardar así; hay que elegir el distrito. Si el servidor lo recibiera igual, lo rechaza con el mensaje de «ubicación incompleta» (abajo).</p>
+      <p class="nota">Un cantón <b>sin</b> distritos sí se acepta: el selector de Distrito queda apagado con <span class="prov">Sin distritos</span> y se puede guardar.</p>
+    </div>
+  </div>
+
+  <div class="dos">
+    <div class="tarjeta">
+      <p class="etq">País de 2 niveles</p>
+      <div class="rejilla3">
+        <div class="campo"><label>Departamento</label><div class="select">Bolívar</div></div>
+        <div class="campo"><label>Municipio</label><div class="select">Turbaco</div></div>
+      </div>
+      <p class="nota"><span class="prov">La zona se calcula a partir del lugar.</span> (hoy dice «a partir del distrito», que este país no tiene)</p>
+    </div>
+
+    <div class="tarjeta">
+      <p class="etq">País de 4 niveles · no se llegó a la hoja</p>
+      <div class="rejilla3">
+        <div class="campo"><label>Región</label><div class="select">Costa</div></div>
+        <div class="campo"><label>Provincia</label><div class="select">Litoral</div></div>
+        <div class="campo"><label>Comuna</label><div class="select">Viña</div></div>
+        <div class="campo"><label>Barrio</label><div class="select ph inval"><span class="prov sin-marca">Elige barrio</span></div>
+          <p class="error"><span class="prov">Ubicación incompleta: «Viña» tiene barrios debajo; elige el último nivel.</span></p></div>
+      </div>
+      <p class="nota"><span class="prov">Falta completar: barrio.</span> «Guardar cambios» apagado, como hoy con el distrito.</p>
+      <p class="nota">Base del texto: el mensaje del servidor de design §4.1, <code>ubicacion incompleta: 'Viña' tiene barrios debajo; indica el ultimo nivel</code> (sin tildes, como los de la API v1).</p>
+    </div>
+  </div>
+
+  <div class="tarjeta">
+    <p class="etq">País de 10 niveles · un selector por nivel, hasta la hoja de su rama</p>
+    <div class="rejilla3">
+      <div class="campo"><label>Región</label><div class="select">Norte</div></div>
+      <div class="campo"><label>Subregión</label><div class="select">Alto Norte</div></div>
+      <div class="campo"><label>Provincia</label><div class="select">Andina</div></div>
+      <div class="campo"><label>Departamento</label><div class="select">Cordillera</div></div>
+      <div class="campo"><label>Municipio</label><div class="select">San Pedro</div></div>
+      <div class="campo"><label>Comuna</label><div class="select">La Loma</div></div>
+      <div class="campo"><label>Sector</label><div class="select">Sector 5</div></div>
+      <div class="campo"><label>Barrio</label><div class="select">Las Acacias</div></div>
+      <div class="campo"><label>Manzana</label><div class="select off"><span class="prov sin-marca">Sin manzanas</span></div></div>
+      <div class="campo"><label>Lote</label><div class="select off">—</div></div>
+    </div>
+    <p class="nota">«Las Acacias» no tiene manzanas activas: es la hoja de su rama (P2), así que la orden se puede guardar en el nivel 8. Los selectores de más abajo quedan apagados.</p>
+    <p class="abierto"><b>Abierto:</b> los selectores que sobran tras la hoja, ¿se ven apagados (como aquí, el formulario no salta) o se ocultan?</p>
+  </div>
+
+  <h3>El aviso «Confirma el cambio de ubicación» (cuando el cambio mueve la zona)</h3>
+  <div class="fila">
+    <div class="tarjeta cr">
+      <p class="etq">Costa Rica · igual que hoy</p>
+      <div class="ambar">
+        <h3>Confirma el cambio de ubicación</h3>
+        <p class="nota">Al cambiar el distrito, la orden pasa a la zona que le corresponde y con ella cambia lo que se factura. Compara las dos columnas antes de confirmar.</p>
+        <table>
+          <thead><tr><th>Concepto</th><th>Ahora</th><th>Con el cambio</th></tr></thead>
+          <tbody>
+            <tr><th>Zona</th><td>GAM Oeste</td><td><b>GAM Sur</b></td></tr>
+            <tr><th>Distrito</th><td>San Rafael</td><td><b>Hatillo</b></td></tr>
+            <tr><th>Flete + IVA</th><td>₡2.825</td><td><b>₡3.390</b></td></tr>
+            <tr><th>Comisión + IVA</th><td>₡565</td><td><b>₡678</b></td></tr>
+          </tbody>
+        </table>
+        <div style="display:flex;justify-content:flex-end"><span class="btn primario" style="height:34px">Confirmar el cambio</span></div>
+      </div>
+    </div>
+    <div class="tarjeta">
+      <p class="etq">País de 4 niveles</p>
+      <div class="ambar">
+        <h3>Confirma el cambio de ubicación</h3>
+        <p class="nota"><span class="prov">Al cambiar el lugar, la orden pasa a la zona que le corresponde y con ella cambia lo que se factura. Compara las dos columnas antes de confirmar.</span></p>
+        <table>
+          <thead><tr><th>Concepto</th><th>Ahora</th><th>Con el cambio</th></tr></thead>
+          <tbody>
+            <tr><th>Zona</th><td>Costa Norte</td><td><b>Interior</b></td></tr>
+            <tr><th>Barrio</th><td>Miraflores</td><td><b>Belloto</b></td></tr>
+            <tr><th>Flete + IVA</th><td>$4.200</td><td><b>$5.100</b></td></tr>
+            <tr><th>Comisión + IVA</th><td>$840</td><td><b>$1.020</b></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="nota">La fila del lugar se rotula con el tipo del último nivel del país, como hoy «Distrito» en CR. En 2 niveles: «Municipio»; en 10: «Lote».</p>
+      <p class="abierto"><b>Abierto:</b> si la hoja está más arriba que el último nivel (en 10 niveles, «Las Acacias», nivel 8), hoy CR pinta «Sin distrito». ¿Se pinta <span class="prov sin-marca">Sin lote</span>, o la fila pasa a mostrar la hoja con su tipo (Barrio: Las Acacias)?</p>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- =============================================================== 3 -->
+<section id="s3">
+<h2>3 · Etiquetas de lugar del historial de acciones (R44, R38)</h2>
+<div class="lienzo">
+  <p class="nota">Columna «Sobre qué» del «Registro de acciones»: la ruta entera, de la hoja a la raíz, con el separador de hoy (« · »). Otras columnas (Rol, Categoría, Tipo, Importe) no cambian y se omiten aquí.</p>
+  <div class="tarjeta cr">
+    <p class="etq">Costa Rica · igual que hoy</p>
+    <div class="desliza"><table class="nw">
+      <thead><tr><th>Cuándo</th><th>Quién</th><th>Qué</th><th>Sobre qué</th><th>Valor anterior</th><th>Valor nuevo</th></tr></thead>
+      <tbody>
+        <tr><td>17/11/2026 09:12</td><td>Marta Solís</td><td>Renombró un nodo del catálogo geográfico</td><td>San Rafael · Escazú · San José</td><td>San Rafel</td><td>San Rafael</td></tr>
+        <tr><td>17/11/2026 09:40</td><td>Marta Solís</td><td><span class="prov">Movió un nodo del catálogo geográfico</span><span class="nuevo">nuevo</span></td><td>San Rafael · Santa Ana · San José</td><td><span class="prov sin-marca">Escazú · San José</span></td><td><span class="prov sin-marca">Santa Ana · San José</span></td></tr>
+      </tbody>
+    </table></div>
+    <p class="nota">La acción nueva «nodo movido» guarda la ruta del padre anterior y la del nuevo (R38). Las filas ya escritas con la forma vieja (provincia, cantón, distrito) se leen igual que hoy.</p>
+  </div>
+  <div class="tarjeta">
+    <p class="etq">Países de 2, 4 y 10 niveles</p>
+    <div class="desliza"><table>
+      <thead><tr><th>País</th><th>Qué</th><th>Sobre qué</th></tr></thead>
+      <tbody>
+        <tr><td class="nw">2 niveles</td><td>Retiró un nodo del catálogo geográfico</td><td class="ruta-txt">Turbaco · Bolívar</td></tr>
+        <tr><td class="nw">4 niveles</td><td>Renombró un nodo del catálogo geográfico</td><td class="ruta-txt">Miraflores · Viña · Litoral · Costa</td></tr>
+        <tr><td class="nw">10 niveles</td><td>Devolvió un nodo al catálogo geográfico</td><td class="ruta-txt">Lote 7 · Manzana 12 · El Mirador · Sector 4 · La Loma · San Pedro · Cordillera · Andina · Alto Norte · Norte</td></tr>
+      </tbody>
+    </table></div>
+    <p class="nota">En 10 niveles la etiqueta se parte en líneas dentro de la celda. Cada nombre se recorta a 80 caracteres como hoy.</p>
+  </div>
+</div>
+</section>
+
+<!-- =============================================================== 4 -->
+<section id="s4">
+<h2>4 · Tarifas (grupos) y zonas: el árbol hasta el último nivel del país (R45)</h2>
+<div class="lienzo">
+
+  <div class="dos">
+    <div class="tarjeta cr">
+      <p class="etq">Costa Rica · grupos de tarifas · igual que hoy</p>
+      <h3 style="font-size:16px">GAM Oeste: grupos de distritos</h3>
+      <p class="nota">Un distrito está en un solo grupo por zona. Lo que no definas en el grupo usa el valor de la zona.</p>
+      <div class="arbol" style="padding:10px 12px;gap:4px">
+        <b>Escazú centro</b>
+        <span class="nota">3 distritos: San Rafael, San Antonio, Escazú</span>
+        <span style="display:flex;gap:6px;flex-wrap:wrap"><span class="btn outline">Renombrar…</span><span class="btn outline">Editar lugares…</span><span class="btn outline" style="color:var(--peligro)">Borrar…</span></span>
+      </div>
+      <p class="etq" style="margin-top:4px">Modal «Editar lugares»</p>
+      <div class="arbol">
+        <div class="nodo"><span class="check"></span>San José <span class="chip">Provincia</span></div>
+        <div class="nodo" style="padding-left:24px"><span class="check"></span>Escazú <span class="chip">Cantón</span></div>
+        <div class="nodo" style="padding-left:40px"><span class="check on"></span>San Rafael <span class="chip">Distrito</span></div>
+        <div class="nodo" style="padding-left:40px"><span class="check on"></span>San Antonio <span class="chip">Distrito</span></div>
+      </div>
+    </div>
+
+    <div class="tarjeta">
+      <p class="etq">País de 4 niveles · grupos de tarifas</p>
+      <h3 style="font-size:16px"><span class="prov">Costa Norte: grupos de comunas</span></h3>
+      <p class="nota"><span class="prov sin-marca">Una comuna está en un solo grupo por zona.</span> Lo que no definas en el grupo usa el valor de la zona.</p>
+      <div class="arbol" style="padding:10px 12px;gap:4px">
+        <b>Viña centro</b>
+        <span class="nota">2 comunas: Viña, Concón</span>
+        <span class="nota">Otros lugares: Miraflores (Barrio)</span>
+      </div>
+      <p class="etq" style="margin-top:4px">Modal «Editar lugares» · hasta Barrio<span class="nuevo">nuevo</span></p>
+      <div class="arbol">
+        <div class="nodo"><span class="check"></span>Costa <span class="chip">Región</span></div>
+        <div class="nodo" style="padding-left:24px"><span class="check"></span>Litoral <span class="chip">Provincia</span></div>
+        <div class="nodo" style="padding-left:40px"><span class="check on"></span>Viña <span class="chip">Comuna</span></div>
+        <div class="nodo" style="padding-left:56px"><span class="check on"></span>Miraflores <span class="chip">Barrio</span></div>
+        <div class="nodo" style="padding-left:56px"><span class="check"></span>Recreo <span class="chip">Barrio</span></div>
+      </div>
+      <p class="nota">Por P3 el grupo cuenta desde el nivel 3 (aquí, Comuna): el encabezado usa el tipo del nivel 3 del país, como hoy usa «distritos». Los niveles salen de los tipos del país, no escritos a mano (R47).</p>
+    </div>
+  </div>
+
+  <div class="fila">
+    <div class="tarjeta">
+      <p class="etq">País de 10 niveles · grupos de tarifas</p>
+      <h3><span class="prov sin-marca">Norte: grupos de provincias</span></h3>
+      <div class="arbol">
+        <div class="nodo"><span class="check"></span>Norte <span class="chip">Región</span></div>
+        <div class="nodo" style="padding-left:24px"><span class="check"></span>Alto Norte <span class="chip">Subregión</span></div>
+        <div class="nodo" style="padding-left:40px"><span class="check on"></span>Andina <span class="chip">Provincia</span></div>
+        <div class="nodo" style="padding-left:56px"><span class="check on"></span>Cordillera <span class="chip">Departamento</span></div>
+        <div class="nodo" style="padding-left:72px"><span class="check on"></span>San Pedro <span class="chip">Municipio</span></div>
+        <div class="nodo" style="padding-left:88px"><span class="check on"></span>La Loma <span class="chip">Comuna</span></div>
+        <div class="nodo" style="padding-left:104px"><span class="check on"></span>Sector 4 <span class="chip">Sector</span></div>
+        <div class="nodo" style="padding-left:120px"><span class="check on"></span>El Mirador <span class="chip">Barrio</span></div>
+        <div class="nodo" style="padding-left:136px"><span class="check on"></span>Manzana 12 <span class="chip">Manzana</span></div>
+        <div class="nodo" style="padding-left:152px"><span class="check on"></span>Lote 7 <span class="chip">Lote</span></div>
+      </div>
+      <p class="nota">16 px de sangría por nivel, como hoy. En un teléfono el nivel 10 queda a 144 px del borde: el nombre se parte en líneas, la página no se desliza.</p>
+    </div>
+    <div class="tarjeta">
+      <p class="etq">País de 2 niveles · grupos de tarifas</p>
+      <p class="abierto"><b>Abierto:</b> en un país de 2 niveles ninguna orden llega al nivel 3, así que por P3 ninguna orden usa grupo (tarifa base). El spec no dice qué muestra la sección de grupos: ¿se oculta, o se ve vacía con una explicación (p. ej. <span class="prov sin-marca">Este país no tiene nivel 3: sus órdenes usan el valor de la zona</span>)?</p>
+      <p class="etq" style="margin-top:6px">Lista de zonas de Tarifas (TarifasZonas)</p>
+      <p class="nota">Sin cambio visual: cada zona sigue con «Sin grupos», «1 grupo» o «N grupos».</p>
+    </div>
+  </div>
+
+  <h3>Zonas: crear y editar zona (selector del catálogo)</h3>
+  <div class="dos">
+    <div class="tarjeta cr">
+      <p class="etq">Costa Rica · igual que hoy</p>
+      <div class="input"><span class="vacio">Buscar provincia, cantón, distrito…</span></div>
+      <p class="nota">1 lugar elegido: Escazú (cantón, 3 distritos).</p>
+      <div class="arbol">
+        <div class="nodo"><span class="chev">›</span><span class="check"></span><b>San José</b><span class="chip">Provincia · 20 cantones</span></div>
+        <div class="nodo" style="padding-left:24px"><span class="chev">⌄</span><span class="check on"></span><b>Escazú</b><span class="chip">Cantón · 3 distritos</span></div>
+        <div class="nodo" style="padding-left:40px"><span class="chev"></span><span class="check on"></span><b>San Rafael</b><span class="chip">Distrito</span><span class="det">↳ hereda de Escazú</span></div>
+      </div>
+    </div>
+    <div class="tarjeta">
+      <p class="etq">País de 4 niveles</p>
+      <div class="input"><span class="vacio"><span class="prov sin-marca">Buscar región, provincia, comuna, barrio…</span></span></div>
+      <p class="nota"><span class="prov">1 lugar elegido: Viña (comuna, 12 barrios).</span></p>
+      <div class="arbol">
+        <div class="nodo"><span class="chev">›</span><span class="check"></span><b>Costa</b><span class="chip">Región · 3 provincias</span></div>
+        <div class="nodo" style="padding-left:24px"><span class="chev">›</span><span class="check"></span><b>Litoral</b><span class="chip">Provincia · 4 comunas</span></div>
+        <div class="nodo" style="padding-left:40px"><span class="chev">⌄</span><span class="check on"></span><b>Viña</b><span class="chip">Comuna · 12 barrios</span></div>
+        <div class="nodo" style="padding-left:56px"><span class="chev"></span><span class="check on"></span><b>Miraflores</b><span class="chip">Barrio</span><span class="det">↳ hereda de Viña</span></div>
+      </div>
+      <p class="nota">Hoy el buscador nombra los 3 primeros niveles y el resumen cuenta distritos (nivel 3). Se propone nombrar todos los niveles hasta P y contar los del último nivel.</p>
+    </div>
+  </div>
+  <div class="fila">
+    <div class="tarjeta">
+      <p class="etq">País de 2 niveles</p>
+      <div class="input"><span class="vacio">Buscar departamento, municipio…</span></div>
+      <div class="arbol">
+        <div class="nodo"><span class="chev">⌄</span><span class="check on"></span><b>Bolívar</b><span class="chip">Departamento · 46 municipios</span></div>
+        <div class="nodo" style="padding-left:24px"><span class="chev"></span><span class="check on"></span><b>Turbaco</b><span class="chip">Municipio</span><span class="det">↳ hereda de Bolívar</span></div>
+      </div>
+      <p class="nota"><span class="prov">1 lugar elegido: Bolívar (departamento, 46 municipios).</span></p>
+    </div>
+    <div class="tarjeta">
+      <p class="etq">País de 10 niveles</p>
+      <div class="input"><span class="vacio"><span class="prov sin-marca">Buscar región, subregión, provincia…</span></span></div>
+      <div class="arbol">
+        <div class="nodo" style="padding-left:104px"><span class="chev">⌄</span><span class="check on"></span><b>Sector 4</b><span class="chip">Sector · 6 barrios</span></div>
+        <div class="nodo" style="padding-left:120px"><span class="chev">⌄</span><span class="check on"></span><b>El Mirador</b><span class="chip">Barrio · 6 manzanas</span></div>
+        <div class="nodo" style="padding-left:136px"><span class="chev">⌄</span><span class="check on"></span><b>Manzana 12</b><span class="chip">Manzana · 5 lotes</span></div>
+        <div class="nodo" style="padding-left:152px"><span class="chev"></span><span class="check on"></span><b>Lote 7</b><span class="chip">Lote</span></div>
+      </div>
+      <p class="abierto"><b>Abierto:</b> con 10 niveles, ¿el buscador nombra los 10 tipos o los 3 primeros y «…»?</p>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- =============================================================== 5 -->
+<section id="s5">
+<h2>5 · Plantilla de carga masiva de un país de 4 niveles (R46)</h2>
+<div class="lienzo">
+  <div class="tarjeta">
+    <p class="etq">País de 4 niveles · sin cambio visual</p>
+    <p class="nota">La geografía va en una columna por nivel, de mayor a menor: <code>region</code>, <code>provincia</code>, <code>comuna</code>, <code>barrio</code>. Llénalas desde el primer nivel y sin huecos: si un nivel queda vacío, los siguientes también. La dirección va en <code>direccion</code>. …</p>
+    <div class="desliza"><table class="nw">
+      <thead><tr><th>destinatario</th><th>telefono</th><th>region</th><th>provincia</th><th>comuna</th><th>barrio</th><th>direccion</th><th>monto_cobrar</th><th>producto</th><th>num_remision</th><th>peso</th><th>notas</th></tr></thead>
+      <tbody><tr><td>Rosa Pérez</td><td>987654321</td><td>Costa</td><td>Litoral</td><td>Viña</td><td>Miraflores</td><td>Av. Libertad 1120</td><td>25.90</td><td>Camiseta talla M</td><td>REM-0001</td><td>1.5</td><td>Entregar en la tarde</td></tr></tbody>
+    </table></div>
+    <p class="nota">La plantilla ya traía las 4 columnas desde SLT-45; no cambia. Cambia el resultado: <b>esta fila crea la orden en Miraflores (nivel 4)</b>. Hasta hoy, el guardado la rechazaba con «país aún no habilitado».</p>
+    <p class="etq" style="margin-top:6px">Una fila que se queda en la comuna</p>
+    <div class="desliza"><table>
+      <thead><tr><th>Fila</th><th>Error</th></tr></thead>
+      <tbody><tr><td>3</td><td class="ruta-txt"><code>ubicacion incompleta: 'Viña' tiene barrios debajo; indica el ultimo nivel</code></td></tr></tbody>
+    </table></div>
+    <p class="nota">Texto de design §4.1. La tabla de errores es la de hoy; aquí va esquemática.</p>
+  </div>
+  <div class="tarjeta cr">
+    <p class="etq">Costa Rica · igual que hoy</p>
+    <div class="desliza"><table class="nw">
+      <thead><tr><th>destinatario</th><th>telefono</th><th>provincia</th><th>canton_distrito</th><th>direccion</th><th>…</th></tr></thead>
+      <tbody><tr><td>Juan Pérez</td><td>88887777</td><td>Cartago</td><td>Cartago (Occidental)</td><td>Frente gasolinera JSM, 200m sur</td><td>…</td></tr></tbody>
+    </table></div>
+    <p class="nota">Formato «Cantón (Distrito)». Una fila con un cantón que tiene distritos y sin distrito pasa a rechazarse con el mensaje de «ubicación incompleta» (R17).</p>
+  </div>
+</div>
+</section>
+
+</div>
+</body>
+</html>

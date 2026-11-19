@@ -2,6 +2,7 @@
 
 import { useId } from "react";
 import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
+import type { NivelDeFiltroDTO } from "@/lib/types/filtros-ordenes";
 
 import { Button } from "@/components/ui/button";
 import { money } from "@/lib/config/moneda";
@@ -9,6 +10,8 @@ import type {
   AvisoCambioUbicacion,
   UbicacionConCostos,
 } from "@/lib/interfaces/services/ICorregirDatosClienteService";
+
+import type { LugarDelAviso } from "./corregir-ubicacion-arbol";
 
 // =================================================================================================
 // FICHA 327 (E1, design §4 y §10.1) — EL AVISO DEL IMPORTE, ANTES DE GUARDAR.
@@ -49,7 +52,7 @@ export const AVISO_TITULO = "Confirma el cambio de ubicación";
  * se puede comprobar.
  */
 export const AVISO_EXPLICACION =
-  "Al cambiar el distrito, la orden pasa a la zona que le corresponde y con ella cambia lo que se factura. Compara las dos columnas antes de confirmar.";
+  "Al cambiar el lugar, la orden pasa a la zona que le corresponde y con ella cambia lo que se factura. Compara las dos columnas antes de confirmar.";
 
 export const AVISO_TABLA_CAPTION =
   "Comparación entre la ubicación actual de la orden y la propuesta, con sus importes";
@@ -61,8 +64,21 @@ export const AVISO_FILA_ZONA = "Zona";
 export const AVISO_FILA_FLETE = "Flete + IVA";
 export const AVISO_FILA_COMISION = "Comisión + IVA";
 
-/** Cuando la orden no tiene distrito guardado (solo puede pasar en la columna «Ahora»). */
-export const AVISO_SIN_DISTRITO = "Sin distrito";
+/**
+ * SLT-48 (regla 3 de la maqueta) — la orden quedó a medias (su lugar tiene hijos activos) o no tiene
+ * lugar: «Sin <nivel que falta>». Solo puede pasar en la columna «Ahora». El nivel sale del país (R47).
+ */
+export function avisoSinNivel(tipoSingular: string): string {
+  return `Sin ${tipoSingular.toLocaleLowerCase("es")}`;
+}
+
+/**
+ * SLT-48 (regla 3 de la maqueta) — la hoja está más arriba que el último nivel del país: se pinta con
+ * su tipo («Barrio: Las Acacias»), porque la fila se rotula con el tipo del último nivel.
+ */
+export function avisoLugarConTipo(tipoSingular: string, nombre: string): string {
+  return `${tipoSingular}: ${nombre}`;
+}
 
 /**
  * R13 — LO QUE SE PINTA EN LUGAR DE UN IMPORTE cuando el par (tienda, zona) no tiene tarifa.
@@ -80,7 +96,7 @@ export const AVISO_SIN_TARIFA = "Sin tarifa configurada";
  * distinguir «cobra la normal porque le toca» de «cobra la normal porque falta configurar el pacto».
  */
 export function avisoEspecialSinPacto(columna: string): string {
-  return `${columna}: el distrito está marcado como especial pero no tiene monto pactado, así que se cobra la tarifa normal.`;
+  return `${columna}: el lugar está marcado como especial pero no tiene monto pactado, así que se cobra la tarifa normal.`;
 }
 
 /**
@@ -100,6 +116,13 @@ export interface CorregirUbicacionAvisoProps {
   enviando?: boolean;
   /** Reenvía la corrección con la confirmación explícita del cambio de ubicación. */
   onConfirmar: () => void;
+  /**
+   * SLT-48 (R43) — los niveles del país (1 a P). La fila del lugar se rotula con el tipo del último.
+   * Sin niveles (montaje suelto), se rotula con la etiqueta del nivel 3 y pinta `distritoNombre`.
+   */
+  niveles?: readonly NivelDeFiltroDTO[];
+  /** SLT-48 (R43) — el lugar actual y el propuesto, con su profundidad y si son hoja. */
+  lugares?: { actual: LugarDelAviso; propuesta: LugarDelAviso };
 }
 
 /**
@@ -114,9 +137,19 @@ function importe(u: UbicacionConCostos, campo: "fleteConIva" | "comisionConIva")
   return money(u[campo]);
 }
 
-/** El nombre del distrito, o el marcador de ausencia. La orden puede no tener distrito guardado. */
-function distrito(u: UbicacionConCostos): string {
-  return u.distritoNombre ?? AVISO_SIN_DISTRITO;
+/**
+ * SLT-48 (R43, regla 3 de la maqueta) — la celda del lugar:
+ * - la hoja en el último nivel: su nombre, como hoy;
+ * - la hoja más arriba: con su tipo («Barrio: Las Acacias»);
+ * - a medias (el lugar tiene hijos activos) o sin lugar: «Sin <nivel que falta>».
+ */
+function celdaDeLugar(lugar: LugarDelAviso, niveles: readonly NivelDeFiltroDTO[]): string {
+  const ultimo = niveles.at(-1);
+  if (ultimo === undefined) return lugar?.nombre ?? "";
+  if (lugar === null) return avisoSinNivel(niveles[0]?.singular ?? ultimo.singular);
+  if (!lugar.hoja) return avisoSinNivel(niveles[lugar.profundidad]?.singular ?? ultimo.singular);
+  if (lugar.profundidad >= niveles.length) return lugar.nombre;
+  return avisoLugarConTipo(niveles[lugar.profundidad - 1]?.singular ?? "", lugar.nombre);
 }
 
 /**
@@ -136,11 +169,20 @@ export function CorregirUbicacionAviso({
   aviso,
   enviando = false,
   onConfirmar,
+  niveles = [],
+  lugares,
 }: Readonly<CorregirUbicacionAvisoProps>) {
   const tituloId = useId();
-  // SL-20 (design §7; R19): la fila del nivel 3 se rotula con el nombre del país de la empresa
-  // (antes `AVISO_FILA_DISTRITO`, con el de Costa Rica).
+  // SL-20 (design §7; R19): la fila del lugar se rotula con el nombre del país de la empresa
+  // (antes `AVISO_FILA_DISTRITO`, con el de Costa Rica). SLT-48 (R43): con los niveles del país, la
+  // rotula el tipo del último nivel («Distrito» en Costa Rica, «Lote» en un país de 10).
   const etiquetas = useEtiquetasGeograficas();
+  const conNiveles = niveles.length > 0 && lugares !== undefined;
+  const rotuloLugar = conNiveles ? (niveles.at(-1)?.singular ?? "") : etiquetas.distrito.singular;
+  const lugar = (columna: "actual" | "propuesta"): string =>
+    conNiveles
+      ? celdaDeLugar(lugares[columna], niveles)
+      : (aviso[columna].distritoNombre ?? avisoSinNivel(etiquetas.distrito.singular));
 
   return (
     <section
@@ -181,10 +223,10 @@ export function CorregirUbicacionAviso({
           </tr>
           <tr>
             <th scope="row" className="py-1 text-left font-normal text-muted-foreground">
-              {etiquetas.distrito.singular}
+              {rotuloLugar}
             </th>
-            <td className="py-1">{distrito(aviso.actual)}</td>
-            <td className="py-1 font-medium">{distrito(aviso.propuesta)}</td>
+            <td className="py-1 break-words">{lugar("actual")}</td>
+            <td className="py-1 break-words font-medium">{lugar("propuesta")}</td>
           </tr>
           <tr>
             <th scope="row" className="py-1 text-left font-normal text-muted-foreground">

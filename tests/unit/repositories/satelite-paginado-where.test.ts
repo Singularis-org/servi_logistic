@@ -172,21 +172,22 @@ describe("SQL de la página de la bodega satélite (T K.1)", () => {
 
     const sql = texto(consultas[0]!);
     // SLT-47 (R11): una sola condicion de lugar, con los ids en UN parametro de lista por rama.
-    expect(sql).toContain('(o."distrito_id" = ANY(?::text[]) OR (o."distrito_id" IS NULL AND o."canton_id" = ANY(?::text[])))');
+    // SLT-48 R23: el lugar es el nodo de la orden; antes `(distrito_id = ANY OR (distrito_id IS NULL
+    // AND canton_id = ANY))` con dos parametros, ahora `nodo_geografico_id = ANY` con uno.
+    expect(sql).toContain('o."nodo_geografico_id" = ANY(?::text[])');
     // Hermanas con AND: cruzarlas NO puede ser un OR (mostraria mas de lo que hoy ve).
     // FICHA 357: la clausula de alcance queda EN MEDIO y ENTRE PARENTESIS. Que su `OR` interno
     // este cerrado es lo que impide que se coma el `AND` de la zona — el modo exacto en que
     // este cambio podria haber ensanchado el alcance de todos a la vez.
     expect(sql).toMatch(
-      /o\."zona_id" = \? AND o\."deleted_at" IS NULL AND \( os\."value" IN \(\?,\?\) OR EXISTS \([^)]*\)[^)]*\) \) AND os\."value" IN \(\?,\?\) AND \(o\."distrito_id" = ANY\(\?::text\[\]\) OR \(o\."distrito_id" IS NULL AND o\."canton_id" = ANY\(\?::text\[\]\)\)\)/,
+      /o\."zona_id" = \? AND o\."deleted_at" IS NULL AND \( os\."value" IN \(\?,\?\) OR EXISTS \([^)]*\)[^)]*\) \) AND os\."value" IN \(\?,\?\) AND o\."nodo_geografico_id" = ANY\(\?::text\[\]\)/,
     );
-    expect(consultas[0]!.values.slice(0, PARAMS_ALCANCE + 4)).toEqual([
+    expect(consultas[0]!.values.slice(0, PARAMS_ALCANCE + 3)).toEqual([
       "z-a",
       ...ESTADOS_CUSTODIA_SATELITE,
       ...ESTADOS_CUSTODIA_SATELITE,
       "en_bodega_satelite",
       "novedad",
-      ["d1"],
       ["d1"],
     ]);
   });
@@ -248,13 +249,13 @@ describe("SQL de la página de la bodega satélite (T K.1)", () => {
     // Pedido humano (2026-08-19): por ID y contra las columnas de `orden`. Comparando NOMBRES
     // —como hasta hoy— «Central» casaba en cuatro provincias y la cadena provincia -> canton
     // no podia declararse; con ids, el desplegable encadenado dice la verdad.
-    expect(sql).toContain('(o."distrito_id" = ANY(?::text[]) OR (o."distrito_id" IS NULL AND o."canton_id" = ANY(?::text[])))');
-    expect(consultas[0]!.values.slice(0, PARAMS_ALCANCE + 3)).toEqual([
+    // SLT-48 R23: una condicion sobre el nodo de la orden y un parametro (antes dos ramas y dos).
+    expect(sql).toContain('o."nodo_geografico_id" = ANY(?::text[])');
+    expect(consultas[0]!.values.slice(0, PARAMS_ALCANCE + 2)).toEqual([
       "z-a",
       ...ESTADOS_CUSTODIA_SATELITE,
       ...ESTADOS_CUSTODIA_SATELITE,
       "en_bodega_satelite",
-      ["c1", "d1", "p1"],
       ["c1", "d1", "p1"],
     ]);
   });

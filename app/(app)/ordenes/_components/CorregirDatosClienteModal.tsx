@@ -6,10 +6,10 @@ import useSWR from "swr";
 import { Modal } from "@/components/shared/Modal";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, type SelectOption } from "@/components/ui/select";
+import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/useToast";
-import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
+import { useNivelesGeograficos } from "@/hooks/use-niveles-geograficos";
 import type { CorregirDatosClienteActionResult } from "@/lib/actions/corregir-datos-cliente";
 import { obtenerUbicacionOrden } from "@/lib/actions/corregir-datos-cliente";
 import { obtenerCatalogoFiltrosOrdenes } from "@/lib/actions/filtros-ordenes";
@@ -18,13 +18,19 @@ import {
   corregirDatosClienteSchema,
   type CorregirDatosClienteEntrada,
 } from "@/lib/types/correccion-datos-cliente";
-import type {
-  GeografiaFiltrosDTO,
-  OpcionGeograficaConPadre,
-} from "@/lib/types/filtros-ordenes";
 
 import { corregirDatosClienteErrorMessage } from "./corregir-datos-cliente-error-messages";
 import { CorregirUbicacionAviso } from "./CorregirUbicacionAviso";
+import {
+  elegirEnNivel,
+  estadosDeNiveles,
+  hojaElegida,
+  lugarDeRuta,
+  nivelQueFalta,
+  rutaDeSeleccion,
+  type ArbolDeCorreccion,
+  type EstadoDeNivel,
+} from "./corregir-ubicacion-arbol";
 
 // =================================================================================================
 // FICHA 312 (E1) + FICHA 327 (E2) — LA VENTANA CON LA QUE SE CORRIGEN LOS DATOS DE UNA ORDEN.
@@ -41,7 +47,8 @@ import { CorregirUbicacionAviso } from "./CorregirUbicacionAviso";
 // que es literalmente 327/R32.
 //
 // **NUEVE CAMPOS** (312/D1 + 327/D1): `destinatario`, `telefonoDest`, `producto`, `notas` —los
-// cuatro de la 312— mas `direccion`, `provinciaId`, `cantonId`, `distritoId` y `peso`. La direccion
+// cuatro de la 312— mas `direccion`, el lugar (`nodoId` desde SLT-48; antes la terna provincia,
+// canton y distrito) y `peso`. La direccion
 // habia quedado fuera A SABIENDAS de que era el error de carga mas caro (312/D1) y el humano reabrio
 // esa decision el 2026-08-28. Siguen fuera `montoCobrar`, `numRemision`, `cobraComision`,
 // `estatusId`, `mensajeroAsignadoId`, `tiendaId` y `numGuia` (327/D2).
@@ -142,7 +149,7 @@ export const CORREGIR_CONFIRMAR = "Guardar cambios";
  * desde hoy, asi que dejarlo habria sido una pantalla mintiendo sobre su propio alcance.
  */
 export const CORREGIR_ALCANCE =
-  "El monto a cobrar, el estado, la tienda y el mensajero asignado no se cambian desde aquí. La zona se calcula a partir del distrito.";
+  "El monto a cobrar, el estado, la tienda y el mensajero asignado no se cambian desde aquí. La zona se calcula a partir del lugar.";
 
 export const CORREGIR_DESTINATARIO_LABEL = "Destinatario";
 export const CORREGIR_TELEFONO_LABEL = "Teléfono del destinatario";
@@ -155,9 +162,24 @@ export const CORREGIR_NOTAS_AYUDA = "Se puede dejar vacío.";
 export const CORREGIR_DIRECCION_LABEL = "Dirección";
 export const CORREGIR_PESO_LABEL = "Peso (kg)";
 
-export const CORREGIR_PROVINCIA_PLACEHOLDER = "Elige una provincia";
-export const CORREGIR_CANTON_PLACEHOLDER = "Elige un cantón";
-export const CORREGIR_DISTRITO_PLACEHOLDER = "Elige un distrito";
+/**
+ * SLT-48 (R43, R47) — los textos de cada selector de nivel. El nivel sale del país de la empresa, no de
+ * un literal; por eso van sin artículo («Elige barrio»): el tipo no trae su género. Textos de la maqueta.
+ */
+export function corregirElegirNivel(tipoSingular: string): string {
+  return `Elige ${tipoSingular.toLocaleLowerCase("es")}`;
+}
+
+/** SLT-48 (R43, P2) — el selector justo debajo de una hoja: ese lugar no tiene hijos activos. */
+export function corregirSinNivel(tipoPlural: string): string {
+  return `Sin ${tipoPlural.toLocaleLowerCase("es")}`;
+}
+
+/** SLT-48 (regla 2 de la maqueta) — los selectores que sobran tras la hoja se ven apagados, no ocultos. */
+export const CORREGIR_NIVEL_SOBRANTE = "—";
+
+/** Rótulo del grupo de selectores, para quien navega con lector de pantalla. */
+export const CORREGIR_UBICACION_GRUPO = "Lugar de entrega";
 
 /** Mientras la lectura de precarga esta en vuelo, los controles de ubicacion van deshabilitados. */
 export const CORREGIR_UBICACION_CARGANDO = "Cargando la ubicación actual de la orden…";
@@ -171,8 +193,7 @@ export const CORREGIR_UBICACION_FALLO =
   "No se pudo cargar la ubicación de esta orden, así que ahora no se puede corregir. El resto de los datos sí. Cierra y vuelve a abrir esta ventana para reintentarlo.";
 
 /** El catalogo geografico no llego: sin el no hay opciones que ofrecer en los tres desplegables. */
-export const CORREGIR_GEOGRAFIA_FALLO =
-  "No se pudo cargar el catálogo de provincias, cantones y distritos.";
+export const CORREGIR_GEOGRAFIA_FALLO = "No se pudo cargar el catálogo de lugares.";
 
 /**
  * R36 — EL AVISO DE LA ETIQUETA, solo cuando la orden YA tiene guia. El papel pegado al paquete se
@@ -204,8 +225,21 @@ export const CORREGIR_FALTA_DESTINATARIO = "el destinatario";
 export const CORREGIR_FALTA_TELEFONO = "el teléfono";
 export const CORREGIR_FALTA_PRODUCTO = "el producto";
 export const CORREGIR_FALTA_DIRECCION = "la dirección";
-export const CORREGIR_FALTA_DISTRITO = "el distrito";
+/** SLT-48 (R43) — el nivel que falta para llegar a una hoja, con el nombre del país («barrio»). */
+export function corregirFaltaNivel(tipoSingular: string): string {
+  return tipoSingular.toLocaleLowerCase("es");
+}
 export const CORREGIR_FALTA_PESO = "el peso (mayor que cero)";
+
+/**
+ * SLT-48 (decisión del humano 2026-11-18, maqueta «no se llegó a la hoja») — el lugar elegido tiene
+ * hijos: se dice ANTES de guardar, junto al selector que falta, y «Guardar cambios» sigue apagado. El
+ * rechazo del servidor (R17, design §4.1) queda como red de seguridad. Nombra el lugar y el plural del
+ * nivel de debajo con los nombres del país (R47).
+ */
+export function corregirUbicacionIncompleta(lugar: string, tipoPluralDebajo: string): string {
+  return `Ubicación incompleta: «${lugar}» tiene ${tipoPluralDebajo.toLocaleLowerCase("es")} debajo; elige el último nivel.`;
+}
 
 export const CORREGIR_EXITO = "Datos corregidos.";
 /** 312/R4 — el servidor no escribió nada porque no había nada que cambiar. No es un error. */
@@ -221,7 +255,8 @@ export const CORREGIR_SIN_CAMBIOS = "No había nada que cambiar: los datos ya er
 export const CLAVE_GEOGRAFIA_CORRECCION = "correccion:geografia";
 
 /**
- * Las tres listas planas de provincias, cantones y distritos. Se piden desde EL CLIENTE —igual que
+ * SLT-48 (design §8) — los niveles del pais y sus lugares a cualquier profundidad (`niveles` y
+ * `lugares` del catalogo, SLT-47), no las listas planas de tres niveles. Se piden desde EL CLIENTE —igual que
  * la barra de `/dashboard` (`FiltrosEntregas`) y la de analitica— y NO por props desde cada pagina,
  * y hay una razon MEDIDA para ello (2026-08-29):
  *
@@ -236,15 +271,11 @@ export const CLAVE_GEOGRAFIA_CORRECCION = "correccion:geografia";
  * `null` cuando no se pudo cargar: los desplegables quedan deshabilitados y la ventana lo dice. No
  * lanza — un catalogo caido no puede tumbar la correccion de los otros campos.
  */
-async function geografiaFetcher(): Promise<GeografiaFiltrosDTO | null> {
+async function geografiaFetcher(): Promise<ArbolDeCorreccion | null> {
   try {
     const res = await obtenerCatalogoFiltrosOrdenes();
     if (res.status !== "ok") return null;
-    return {
-      provincias: res.catalogo.provincias,
-      cantones: res.catalogo.cantones,
-      distritos: res.catalogo.distritos,
-    };
+    return { niveles: res.catalogo.niveles ?? [], lugares: res.catalogo.lugares ?? [] };
   } catch {
     return null;
   }
@@ -254,23 +285,16 @@ async function geografiaFetcher(): Promise<GeografiaFiltrosDTO | null> {
 type EstadoPrecarga = "cargando" | "listo" | "fallo";
 
 /**
- * Opciones de un nivel geografico, acotadas a su padre. Lista PLANA + `padreId`: para eso existe.
+ * SLT-48 (R43, P2; regla 2 de la maqueta) — el texto vacío de un selector de nivel: «Elige <tipo>»
+ * mientras se puede elegir, «Sin <plural>» justo debajo de una hoja y «—» en los que sobran.
  *
- * ⚠️ FICHA 374 (R29) — AQUI SE RECORTA LO RETIRADO, y es de los POCOS sitios donde eso es lo
- * correcto. El catalogo de filtros sigue trayendo los nodos retirados a proposito (R28): sin ellos,
- * las ordenes historicas de un distrito retirado dejarian de poder filtrarse, porque en geografia
- * NADIE TECLEA UN UUID. Pero corregir la ubicacion de una orden es un ALTA ENCUBIERTA —crea
- * futuro, no consulta pasado—, asi que un nodo que ya no se puede usar no debe ofrecerse.
- *
- * Y este filtro es COMODIDAD, no la puerta: `CorregirDatosClienteService` rechaza en el servidor
- * una correccion hacia un distrito retirado (R30), asi que quien reenvie la peticion a mano
- * tampoco entra.
+ * ⚠️ FICHA 374 (R29) — las opciones ya llegan sin lo retirado (`hijosOfrecibles`): corregir una
+ * ubicacion es un ALTA ENCUBIERTA y un nodo que ya no se puede usar no se ofrece. El servidor lo
+ * rechaza igual (R30): el filtro es comodidad, no la puerta.
  */
-function hijosDe(opciones: readonly OpcionGeograficaConPadre[], padreId: string): SelectOption[] {
-  if (padreId === "") return [];
-  return opciones
-    .filter((o) => o.padreId === padreId && o.disponible)
-    .map((o) => ({ value: o.id, label: o.nombre }));
+function placeholderDeNivel(estado: EstadoDeNivel): string {
+  if (estado.modo !== "tras-la-hoja") return corregirElegirNivel(estado.nivel.singular);
+  return estado.primeroTrasLaHoja ? corregirSinNivel(estado.nivel.plural) : CORREGIR_NIVEL_SOBRANTE;
 }
 
 /** Primer mensaje del campo, si el borde marcó ese campo. */
@@ -319,17 +343,15 @@ export function CorregirDatosClienteModal({
   onSuccess,
 }: Readonly<CorregirDatosClienteModalProps>) {
   const toast = useToast();
-  // SL-20 (design §7; R19): los rótulos de los tres desplegables son los nombres de nivel del país
-  // de la empresa. Antes eran `CORREGIR_PROVINCIA_LABEL` y sus dos hermanas, con los de Costa Rica.
-  const etiquetas = useEtiquetasGeograficas();
+  // SLT-48 (R43): un selector por nivel del país, rotulado con su tipo. Los niveles llegan con el
+  // catálogo; mientras tanto, los del país de la sesión (`layout.tsx`).
+  const nivelesDeLaSesion = useNivelesGeograficos();
   const destinatarioId = useId();
   const telefonoId = useId();
   const productoId = useId();
   const notasId = useId();
   const direccionId = useId();
-  const provinciaSelectId = useId();
-  const cantonSelectId = useId();
-  const distritoSelectId = useId();
+  const nivelSelectId = useId();
   const pesoId = useId();
 
   // 312/R26 — LOS CUATRO CAMPOS PRECARGADOS con los valores actuales de ESTA orden.
@@ -340,9 +362,9 @@ export function CorregirDatosClienteModal({
 
   // 327/R31 — LOS CINCO DE LA UBICACION, que llegan de la lectura de precarga.
   const [direccion, setDireccion] = useState("");
-  const [provincia, setProvincia] = useState("");
-  const [canton, setCanton] = useState("");
-  const [distrito, setDistrito] = useState("");
+  // SLT-48 (R43): lo elegido en cada nivel, de la raíz hacia abajo, y la ruta que trajo la precarga.
+  const [seleccion, setSeleccion] = useState<readonly string[]>([]);
+  const [rutaPrecargada, setRutaPrecargada] = useState<readonly { id: string; nombre: string }[]>([]);
   const [peso, setPeso] = useState("");
   const [estadoPrecarga, setEstadoPrecarga] = useState<EstadoPrecarga>("cargando");
   const [guiaPrecargada, setGuiaPrecargada] = useState<number | null>(null);
@@ -379,9 +401,8 @@ export function CorregirDatosClienteModal({
       setProducto(orden.producto);
       setNotas(orden.notas ?? "");
       setDireccion("");
-      setProvincia("");
-      setCanton("");
-      setDistrito("");
+      setSeleccion([]);
+      setRutaPrecargada([]);
       setPeso("");
       setEstadoPrecarga("cargando");
       setGuiaPrecargada(null);
@@ -414,9 +435,8 @@ export function CorregirDatosClienteModal({
           return;
         }
         setDireccion(res.orden.direccion ?? "");
-        setProvincia(res.orden.provinciaId);
-        setCanton(res.orden.cantonId);
-        setDistrito(res.orden.distritoId ?? "");
+        setSeleccion(res.orden.ruta.map((paso) => paso.id));
+        setRutaPrecargada(res.orden.ruta);
         setPeso(res.orden.peso === null ? "" : String(res.orden.peso));
         setGuiaPrecargada(res.orden.numGuia);
         setEstadoPrecarga("listo");
@@ -433,6 +453,23 @@ export function CorregirDatosClienteModal({
   const ubicacionEditable = estadoPrecarga === "listo";
   const pesoValor = pesoNumerico(peso);
 
+  // SLT-48 (R43): el árbol del país. Sin catálogo (`null`) no se puede elegir otro lugar: viaja el de
+  // la precarga tal cual (el servidor no ve cambio), como hoy viajaba la terna precargada.
+  const arbol: ArbolDeCorreccion = geografia ?? { niveles: nivelesDeLaSesion, lugares: [] };
+  const catalogoCargando = geografia === undefined;
+  const niveles = estadosDeNiveles(arbol, seleccion);
+  const nodoElegido = geografia ? hojaElegida(arbol, seleccion) : (seleccion.at(-1) ?? null);
+  const nivelFaltante = geografia ? nivelQueFalta(arbol, seleccion) : null;
+  // SLT-48 (maqueta, «no se llegó a la hoja»): ya se eligió un lugar y tiene hijos. Sin nada elegido
+  // no hay lugar que nombrar: basta «Falta completar».
+  const lugarAMedias = nivelFaltante !== null && seleccion.length > 0
+    ? (arbol.lugares.find((l) => l.id === seleccion.at(-1))?.nombre ?? null)
+    : null;
+  const ubicacionIncompleta =
+    ubicacionEditable && lugarAMedias !== null && nivelFaltante !== null
+      ? corregirUbicacionIncompleta(lugarAMedias, nivelFaltante.plural)
+      : null;
+
   // Lo que falta para poder enviar, en el orden del formulario. `trim()` porque una linea de
   // espacios no es un destinatario, y porque es lo mismo que hace el servidor antes de comparar:
   // dos reglas distintas sobre el mismo campo dejarian un boton encendido que la accion rechaza.
@@ -448,10 +485,15 @@ export function CorregirDatosClienteModal({
   if (producto.trim() === "") faltantes.push(CORREGIR_FALTA_PRODUCTO);
   if (ubicacionEditable) {
     if (direccion.trim() === "") faltantes.push(CORREGIR_FALTA_DIRECCION);
-    if (distrito === "") faltantes.push(CORREGIR_FALTA_DISTRITO);
+    // Decisión del humano del 2026-11-18: un solo mensaje. Si ya se eligió un lugar con hijos, lo dice
+    // «Ubicación incompleta» junto al selector; «Falta completar» solo nombra el nivel cuando no hay
+    // ningún lugar elegido. El botón se apaga igual en los dos casos (`ubicacionIncompleta` cuenta).
+    if (nivelFaltante !== null && ubicacionIncompleta === null) {
+      faltantes.push(corregirFaltaNivel(nivelFaltante.singular));
+    }
     if (pesoValor === null) faltantes.push(CORREGIR_FALTA_PESO);
   }
-  const completo = faltantes.length === 0;
+  const completo = faltantes.length === 0 && ubicacionIncompleta === null;
 
   // 312/R28 — ¿el telefono cambio respecto del precargado? Se compara recortado, con el mismo
   // criterio con el que el servidor decide si hay cambio: asi el aviso no aparece por un espacio.
@@ -461,12 +503,11 @@ export function CorregirDatosClienteModal({
   // hasta entonces vale lo que trajo la fila. `null` = sin guia = sin aviso.
   const guiaImpresa = guiaPrecargada ?? orden.numGuia ?? null;
 
-  // FICHA 374 (R29): los tres desplegables ofrecen SOLO nodos disponibles. Ver `hijosDe`.
-  const provincias: SelectOption[] = (geografia?.provincias ?? [])
-    .filter((p) => p.disponible)
-    .map((p) => ({ value: p.id, label: p.nombre }));
-  const cantones = hijosDe(geografia?.cantones ?? [], provincia);
-  const distritos = hijosDe(geografia?.distritos ?? [], canton);
+  // SLT-48 (R43): el lugar actual y el propuesto, para la fila del lugar del aviso del importe.
+  const lugaresDelAviso = {
+    actual: lugarDeRuta(arbol.lugares, rutaPrecargada),
+    propuesta: lugarDeRuta(arbol.lugares, rutaDeSeleccion(arbol.lugares, seleccion)),
+  };
 
   /**
    * Tocar la ubicacion INVALIDA el aviso que hubiera en pantalla. Sin esto, alguien podria leer los
@@ -500,14 +541,12 @@ export function CorregirDatosClienteModal({
       producto,
       // "" es «vaciar las notas»: el servidor lo normaliza a `null`, igual que la carga masiva.
       notas,
-      // 327/R3 — los tres de geografia viajan JUNTOS o no viajan. Con la precarga caida no viaja
-      // ninguno de los cinco, y el servidor los deja como estaban.
+      // SLT-48 (R16, R43): el lugar es UN nodo, la hoja elegida. Con la precarga caida no viaja
+      // ninguno de los de la ubicacion, y el servidor los deja como estaban.
       ...(ubicacionEditable
         ? {
             direccion,
-            provinciaId: provincia,
-            cantonId: canton,
-            distritoId: distrito,
+            nodoId: nodoElegido ?? undefined,
             peso: pesoValor ?? undefined,
           }
         : {}),
@@ -566,7 +605,14 @@ export function CorregirDatosClienteModal({
   const productoError = primerError(fieldErrors, "producto");
   const notasError = primerError(fieldErrors, "notas");
   const direccionError = primerError(fieldErrors, "direccion");
-  const distritoError = primerError(fieldErrors, "distritoId");
+  // SLT-48: los rechazos de ubicacion del servidor siguen colgados de `distritoId` (design §9.2 de la
+  // 327); el schema del borde los cuelga de `nodoId`. Los dos se pintan junto al selector del lugar.
+  const lugarError = primerError(fieldErrors, "nodoId") ?? primerError(fieldErrors, "distritoId");
+  // El selector que recibe el error: el del lugar elegido más hondo, o el primero que falta.
+  const nivelConError = Math.min(
+    nodoElegido === null ? seleccion.length : seleccion.length - 1,
+    niveles.length - 1,
+  );
   const pesoError = primerError(fieldErrors, "peso");
   const ordenIdError = primerError(fieldErrors, "ordenId");
 
@@ -577,7 +623,7 @@ export function CorregirDatosClienteModal({
       title={CORREGIR_TITULO}
       description={`Orden ${orden.numRemision}`}
       confirmLabel={CORREGIR_CONFIRMAR}
-      confirmDisabled={!completo || enviando || estadoPrecarga === "cargando"}
+      confirmDisabled={!completo || enviando || estadoPrecarga === "cargando" || catalogoCargando}
       // ⚠️ SIEMPRE sin confirmar (design §4.1). Este boton NO puede saltarse el aviso del importe.
       onConfirm={() => enviar(false)}
       // No se cierra al confirmar: lo hace el padre cuando el servidor dijo `ok` (312/R29-R30).
@@ -661,7 +707,7 @@ export function CorregirDatosClienteModal({
 
         {/* ── FICHA 327 — LA UBICACION ────────────────────────────────────────────────────────── */}
 
-        {estadoPrecarga === "cargando" ? (
+        {estadoPrecarga === "cargando" || catalogoCargando ? (
           <p role="status" className="text-sm text-muted-foreground">
             {CORREGIR_UBICACION_CARGANDO}
           </p>
@@ -694,66 +740,55 @@ export function CorregirDatosClienteModal({
           ) : null}
         </div>
 
-        {/* Tres selectores ENCADENADOS por `padreId` (design §10.1). Elegir provincia limpia el
-            canton y el distrito, y elegir canton limpia el distrito: dejar colgado un distrito de
-            otra provincia produciria justo la geografia incoherente que el servidor rechaza (R6). */}
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor={provinciaSelectId}>{etiquetas.provincia.singular}</Label>
-            <Select
-              id={provinciaSelectId}
-              aria-label={etiquetas.provincia.singular}
-              value={provincia}
-              options={provincias}
-              placeholder={CORREGIR_PROVINCIA_PLACEHOLDER}
-              disabled={!ubicacionEditable || provincias.length === 0}
-              onValueChange={(next) =>
-                alCambiarUbicacion(() => {
-                  setProvincia(next);
-                  setCanton("");
-                  setDistrito("");
-                })
-              }
-            />
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor={cantonSelectId}>{etiquetas.canton.singular}</Label>
-            <Select
-              id={cantonSelectId}
-              aria-label={etiquetas.canton.singular}
-              value={canton}
-              options={cantones}
-              placeholder={CORREGIR_CANTON_PLACEHOLDER}
-              disabled={!ubicacionEditable || provincia === ""}
-              onValueChange={(next) =>
-                alCambiarUbicacion(() => {
-                  setCanton(next);
-                  setDistrito("");
-                })
-              }
-            />
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor={distritoSelectId}>{etiquetas.distrito.singular}</Label>
-            <Select
-              id={distritoSelectId}
-              aria-label={etiquetas.distrito.singular}
-              value={distrito}
-              options={distritos}
-              placeholder={CORREGIR_DISTRITO_PLACEHOLDER}
-              disabled={!ubicacionEditable || canton === ""}
-              aria-invalid={distritoError ? true : undefined}
-              onValueChange={(next) => alCambiarUbicacion(() => setDistrito(next))}
-            />
-            {distritoError ? (
-              <p role="alert" className="text-sm text-destructive">
-                {distritoError}
-              </p>
-            ) : null}
-          </div>
-        </div>
+        {/* SLT-48 (R43) — UN SELECTOR POR NIVEL DEL PAÍS, encadenados por `padreId` (design §8). Elegir
+            un lugar limpia todo lo de debajo: dejar colgado un lugar de otra rama guardaría una
+            ubicación que el árbol no tiene. Los que sobran tras la hoja se ven apagados, no ocultos
+            (regla 2 de la maqueta): el formulario no salta al cambiar de rama. */}
+        <fieldset className="grid gap-3 sm:grid-cols-3">
+          <legend className="sr-only">
+            {CORREGIR_UBICACION_GRUPO}
+          </legend>
+          {niveles.map((estado, i) => {
+            const selectId = `${nivelSelectId}-${i}`;
+            const conError = lugarError !== undefined && i === nivelConError;
+            // El aviso previo va en el selector que falta; si el servidor ya rechazó, manda su texto.
+            const conIncompleta = !conError && ubicacionIncompleta !== null && i === seleccion.length;
+            const incompletaId = `${selectId}-incompleta`;
+            return (
+              <div key={estado.nivel.profundidad} className="flex min-w-0 flex-col gap-1.5">
+                <Label htmlFor={selectId}>{estado.nivel.singular}</Label>
+                <Select
+                  id={selectId}
+                  aria-label={estado.nivel.singular}
+                  value={estado.valor}
+                  options={estado.opciones.map((l) => ({ value: l.id, label: l.nombre }))}
+                  placeholder={placeholderDeNivel(estado)}
+                  disabled={
+                    !ubicacionEditable ||
+                    geografia == null ||
+                    estado.modo !== "abierto" ||
+                    estado.opciones.length === 0
+                  }
+                  aria-invalid={conError || conIncompleta ? true : undefined}
+                  aria-describedby={conIncompleta ? incompletaId : undefined}
+                  onValueChange={(next) =>
+                    alCambiarUbicacion(() => setSeleccion((previa) => elegirEnNivel(previa, i, next)))
+                  }
+                />
+                {conError ? (
+                  <p role="alert" className="text-sm text-destructive">
+                    {lugarError}
+                  </p>
+                ) : null}
+                {conIncompleta ? (
+                  <p id={incompletaId} className="text-sm text-destructive">
+                    {ubicacionIncompleta}
+                  </p>
+                ) : null}
+              </div>
+            );
+          })}
+        </fieldset>
 
         {ubicacionEditable && geografia === null ? (
           <p role="note" className="text-sm text-muted-foreground">
@@ -815,6 +850,8 @@ export function CorregirDatosClienteModal({
         {aviso ? (
           <CorregirUbicacionAviso
             aviso={aviso}
+            niveles={arbol.niveles}
+            lugares={lugaresDelAviso}
             enviando={enviando}
             onConfirmar={() => void enviar(true)}
           />
@@ -830,7 +867,7 @@ export function CorregirDatosClienteModal({
           </p>
         ) : null}
 
-        {completo ? null : (
+        {faltantes.length === 0 ? null : (
           <p role="note" className="text-sm text-muted-foreground">
             {`${CORREGIR_FALTAN_CAMPOS_PREFIJO} ${faltantes.join(", ")}.`}
           </p>

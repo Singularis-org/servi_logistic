@@ -65,3 +65,21 @@ export async function leerNodosConMarcaDeLaEmpresa(tx: ClienteDeMarcas): Promise
   });
   return filas.map((f) => f.distritoId);
 }
+
+/**
+ * SLT-48 (design §7.2; P1) — los nodos marcados por CADA una de esas empresas. Solo para la plataforma
+ * (mover un nodo), que corre sin empresa en el contexto: el filtro por empresa va aqui, explicito,
+ * porque no lo pone la extension. Vive en el punto unico para que la marca se siga leyendo en un solo
+ * sitio (guardia `zona-especial-punto-unico`).
+ */
+export async function leerNodosConMarcaPorEmpresa(
+  tx: ClienteDeMarcas,
+  organizacionIds: readonly string[],
+): Promise<{ organizacionId: string; nodoId: string }[]> {
+  const filas = await tx.distritoZonaEspecial.findMany({
+    where: { organizacionId: { in: [...organizacionIds] } },
+    select: { organizacionId: true, distritoId: true },
+    orderBy: [{ organizacionId: "asc" }, { distritoId: "asc" }],
+  });
+  return filas.map((f) => ({ organizacionId: f.organizacionId, nodoId: f.distritoId }));
+}

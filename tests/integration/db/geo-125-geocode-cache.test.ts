@@ -55,8 +55,9 @@ async function huellaDeHoy(tx: TxDeTest, ordenId: string): Promise<string> {
   const q = consultaDeHoy({
     direccion: o.direccion,
     distritoNombre: o.distrito?.nombre ?? null,
-    cantonNombre: o.canton.nombre,
-    provinciaNombre: o.provincia.nombre,
+    // SLT-48 R4: las FK de la orden son nullable; las ordenes de este fixture son viejas (con FK).
+    cantonNombre: o.canton!.nombre,
+    provinciaNombre: o.provincia!.nombre,
   });
   if (q === null) throw new Error("la orden del fixture debe tener direccion");
   return hashDireccion(q);

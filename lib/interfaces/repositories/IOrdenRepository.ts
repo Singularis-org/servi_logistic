@@ -57,13 +57,9 @@ export interface CreateOrdenData {
   telefonoDest: string;
   tiendaId: string;
   zonaId: string;
-  provinciaId: string;
-  cantonId: string;
-  distritoId?: string | null;
   /**
-   * SLT-45 (design §3.1, R25): la ubicacion resuelta, igual a `distritoId ?? cantonId`. Hoy el
-   * trigger `orden_nodo_geografico` de SLT-43 la pisa con ese mismo valor; la app la manda para
-   * que SLT-46 pueda cambiar el trigger sin tocar este camino.
+   * SLT-48 (design §4.2, R15): la ubicacion resuelta, una hoja. Es lo unico de geografia que
+   * guarda la orden: las 3 FK viejas (`provincia_id`, `canton_id`, `distrito_id`) quedan en NULL.
    */
   nodoGeograficoId: string;
   producto: string;
@@ -110,13 +106,13 @@ export interface CorregirDatosClienteData {
   // ── FICHA 327 (D1) — la ubicacion: los cinco de entrada mas la zona que deriva el servidor. ──
   /** Sin `| null`: la orden no se puede quedar sin direccion desde esta superficie (327/R8). */
   direccion?: string;
-  provinciaId?: string;
-  cantonId?: string;
-  /** Sin `| null`: `orden.zona_id` se deriva del distrito, asi que no se puede vaciar (327/R4). */
-  distritoId?: string;
-  /** DERIVADA del distrito por el servidor, jamas tomada de la entrada (327/R5). */
+  /** DERIVADA del lugar por el servidor, jamas tomada de la entrada (327/R5). */
   zonaId?: string;
-  /** SLT-45 (design §3.2, R26): el distrito nuevo, en la misma escritura que las 3 FK. */
+  /**
+   * SLT-48 (design §4.2, R16): el lugar nuevo, una hoja. Sin `| null`: la orden no se queda sin
+   * lugar. Con el, el repositorio pone las 3 FK viejas en NULL en la misma escritura, tambien en
+   * una orden vieja.
+   */
   nodoGeograficoId?: string;
   /** Sin `| null` y `> 0`: no se deja la orden sin peso desde esta superficie (327/R9). */
   peso?: number;
@@ -146,10 +142,14 @@ export interface OrdenParaCorreccionRow {
   peso: number | null;
   montoCobrar: string | null;
   cobraComision: boolean;
-  provinciaId: string;
-  cantonId: string;
-  distritoId: string | null;
+  /** SLT-48 (R16, R22): el lugar de la orden; `null` solo en una orden de SQL a mano. */
+  nodoId: string | null;
+  /** SLT-48 (R22): la ruta del lugar, de la raiz al nodo. `[]` si el nodo no esta en el catalogo. */
+  ruta: { id: string; nombre: string }[];
+  /** El nivel 3 de la ruta (el distrito en Costa Rica); `null` si la ruta no llega. */
   distritoNombre: string | null;
+  /** SLT-48 (design §6, P3): el lugar del grupo de tarifas de la ubicacion actual. */
+  distritoTarifaId: string | null;
   zonaId: string;
   zonaNombre: string;
   /** De la ZONA: elige la columna GAM del flete. */
@@ -208,16 +208,18 @@ export interface OrdenBaseCobroDevolucionRow {
 }
 
 /**
- * FICHA 327 (design §9.4) — el distrito propuesto, con su cadena geografica y su zona ya
- * colapsada. `provinciaId` viene por `canton.provinciaId` para poder comprobar la cadena de R6 en
- * UNA sola consulta.
+ * FICHA 327 (design §9.4), SLT-48 (design §4.2) — el lugar propuesto para la correccion, con su zona
+ * ya colapsada. Desde SLT-48 es cualquier nodo del pais, no solo un distrito: la cadena la da el
+ * arbol y la regla es la de hoja (R17).
  */
-export interface DistritoResueltoRow {
+export interface LugarResueltoRow {
   id: string;
   nombre: string;
-  cantonId: string;
-  provinciaId: string;
-  /** `null` = el distrito NO resuelve exactamente una zona (0 o >1). No se inventa una (R7). */
+  /** SLT-48 (R17, P2): el tipo plural de sus hijos activos si no es hoja; `null` = es hoja. */
+  tipoHijosActivos: string | null;
+  /** SLT-48 (design §6, P3): el lugar del grupo de tarifas; `null` = sin grupo. */
+  distritoTarifaId: string | null;
+  /** `null` = el lugar NO resuelve exactamente una zona (0 o >1). No se inventa una (R7). */
   zonaId: string | null;
   zonaNombre: string | null;
   esCentral: boolean;
@@ -239,9 +241,6 @@ export interface UpdateOrdenData {
   telefonoDest?: string;
   tiendaId?: string;
   zonaId?: string;
-  provinciaId?: string;
-  cantonId?: string;
-  distritoId?: string | null;
   producto?: string;
   peso?: number | null;
   notas?: string | null;
@@ -737,6 +736,11 @@ export interface DistritoRow {
   // QUE MONTO es el flete al tarifar la carga y la cotizacion, sin N+1. Se resuelve en el
   // repositorio con `esZonaEspecialDeLaEmpresa`.
   esZonaEspecial: boolean;
+  /**
+   * SLT-48 (R19, P2): el tipo plural de los hijos ACTIVOS del distrito, si los tiene (no es hoja);
+   * ausente o `null` = es hoja. En un pais de 3 niveles siempre es hoja.
+   */
+  tipoHijosActivos?: string | null;
 }
 
 // Feature 32 — fila proyectada para armar la etiqueta de guia (R1). Trae los
@@ -1558,10 +1562,11 @@ export interface IOrdenRepository {
    */
   findBaseCobroDevolucion(ordenId: string): Promise<OrdenBaseCobroDevolucionRow | null>;
   /**
-   * FICHA 327 (design §9.4) — resuelve UN distrito: su cadena geografica (para R6) y su zona
-   * unica (para R5/R7), en una sola consulta. `null` = ese distrito no existe.
+   * FICHA 327 (design §9.4), SLT-48 (design §4.2) — resuelve UN lugar del catalogo de la empresa:
+   * su zona unica (para R5/R7), si es hoja (R17) y su lugar de tarifa. `null` = ese lugar no existe
+   * en el pais de la empresa.
    */
-  findDistritoParaCorreccion(distritoId: string): Promise<DistritoResueltoRow | null>;
+  findLugarParaCorreccion(nodoId: string): Promise<LugarResueltoRow | null>;
   // BORRADO 2026-08-07 (tanda 2): `existsEstatus`. Para comprobar que un estatus existe, lo
   // vivo es `findEstatusIdByValue`, que es lo que usan los servicios de dominio.
   //

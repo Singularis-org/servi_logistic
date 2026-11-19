@@ -305,10 +305,9 @@ const WITH_ASIGNACION = {
     // SINPE, no a la fila de `usuario`, que lleva `password_hash` y el telefono de una persona.
     zona: { select: { nombre: true, sinpeNumero: true, sinpeNombre: true } },
     mensajeroAsignado: { select: { zona: { select: { sinpeNumero: true, sinpeNombre: true } } } },
-    // SLT-47 (R16): las FK del lugar, para la ruta del catalogo (`lugarDeLaOrden`). SLT-125 (design
-    // §4.2; R16): de esa ruta salen tambien los tres nombres; ya no se seleccionan las relaciones.
-    cantonId: true,
-    distritoId: true,
+    // SLT-47 (R16): el lugar, para la ruta del catalogo (`lugarDeLaOrden`). SLT-125 (design §4.2;
+    // R16): de esa ruta salen tambien los tres nombres. SLT-48 (R22): el lugar es el nodo.
+    nodoGeograficoId: true,
   },
 } as const;
 

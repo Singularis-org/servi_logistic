@@ -336,6 +336,8 @@ describe("el LISTADO cobra el pacto y senala el hueco", () => {
       cantonId: "c1",
       // SLT-65: el lugar de la orden, del que sale la marca. Sin distrito, la FK va en NULL.
       distritoId: marcas === null ? null : "d1",
+      // SLT-48 (R22, R31): el lugar de la orden es su nodo (sin distrito, el canton). Cambio de entrada.
+      nodoGeograficoId: marcas === null ? "c1" : "d1",
       producto: "Caja",
       peso: new Prisma.Decimal("1.500"),
       notas: null,

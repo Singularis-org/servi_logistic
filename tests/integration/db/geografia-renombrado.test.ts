@@ -16,6 +16,7 @@ import {
   enTransaccionRevertida,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearNodoDeNivel } from "@/tests/fabricas/paises";
 
 /**
  * FICHA 375 — **RENOMBRAR UN NODO DEL CATALOGO GEOGRAFICO.** Contra Postgres.
@@ -111,28 +112,16 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
       await sembrarActor(tx);
 
       const provincia = (
-        await tx.provincia.create({
-          data: { nombre: PROVINCIA, codigoDta: CODIGO_PROVINCIA },
-          select: { id: true },
-        })
+        await crearNodoDeNivel(tx, 1, { nombre: PROVINCIA, codigoDta: CODIGO_PROVINCIA })
       ).id;
       const canton = (
-        await tx.canton.create({
-          data: { nombre: CANTON, provinciaId: provincia, codigoDta: CODIGO_CANTON },
-          select: { id: true },
-        })
+        await crearNodoDeNivel(tx, 2, { nombre: CANTON, padreId: provincia, codigoDta: CODIGO_CANTON })
       ).id;
       const distrito = (
-        await tx.distrito.create({
-          data: { nombre: DISTRITO, cantonId: canton, codigoDta: CODIGO_DISTRITO },
-          select: { id: true },
-        })
+        await crearNodoDeNivel(tx, 3, { nombre: DISTRITO, padreId: canton, codigoDta: CODIGO_DISTRITO })
       ).id;
       const hermano = (
-        await tx.distrito.create({
-          data: { nombre: HERMANO, cantonId: canton },
-          select: { id: true },
-        })
+        await crearNodoDeNivel(tx, 3, { nombre: HERMANO, padreId: canton })
       ).id;
 
       const registro = async (entidadId: string): Promise<FilaRegistro[]> =>
@@ -338,16 +327,10 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
     it("el mismo nombre bajo OTRO padre entra sin problema", async () => {
       await conCorpus(async ({ s, geo, tx }) => {
         const otroCanton = (
-          await tx.canton.create({
-            data: { nombre: `Osa ${SUFIJO}`, provinciaId: s.provincia },
-            select: { id: true },
-          })
+          await crearNodoDeNivel(tx, 2, { nombre: `Osa ${SUFIJO}`, padreId: s.provincia })
         ).id;
         const ajeno = (
-          await tx.distrito.create({
-            data: { nombre: `Palmar ${SUFIJO}`, cantonId: otroCanton },
-            select: { id: true },
-          })
+          await crearNodoDeNivel(tx, 3, { nombre: `Palmar ${SUFIJO}`, padreId: otroCanton })
         ).id;
         // `Cabagra` y `Palmar` viven en cantones distintos: renombrar uno al otro es legal.
         expect(await geo.renombrar(ajeno, DISTRITO, `Palmar ${SUFIJO}`, actorUsuarioId)).toBe("renombrado");
@@ -371,7 +354,7 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
 
     it("trae tambien los INACTIVOS: un nombre ocupado por un retirado sigue ocupado", async () => {
       await conCorpus(async ({ s, geo, tx }) => {
-        await tx.distrito.update({ where: { id: s.hermano }, data: { activo: false } });
+        await tx.nodoGeografico.update({ where: { id: s.hermano }, data: { activo: false } });
         const hermanos = await geo.hermanosDeNodo(s.distrito);
         expect(hermanos!.map((h) => h.id)).toContain(s.hermano);
       });
@@ -389,13 +372,10 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
     it("para un canton devuelve los cantones de SU provincia, no los de todas", async () => {
       await conCorpus(async ({ s, geo, tx }) => {
         const otraProvincia = (
-          await tx.provincia.create({ data: { nombre: `Limon ${SUFIJO}` }, select: { id: true } })
+          await crearNodoDeNivel(tx, 1, { nombre: `Limon ${SUFIJO}` })
         ).id;
         const cantonAjeno = (
-          await tx.canton.create({
-            data: { nombre: `Matina ${SUFIJO}`, provinciaId: otraProvincia },
-            select: { id: true },
-          })
+          await crearNodoDeNivel(tx, 2, { nombre: `Matina ${SUFIJO}`, padreId: otraProvincia })
         ).id;
 
         const hermanos = await geo.hermanosDeNodo(s.canton);
@@ -408,10 +388,7 @@ describeSiHayBase("375 — renombrar un nodo del catalogo geografico (Postgres r
       await conCorpus(async ({ s, geo, tx }) => {
         await crearPaisDePrueba(tx, "XA");
         const ajena = (
-          await tx.provincia.create({
-            data: { nombre: `Región ${SUFIJO}`, paisId: "XA" },
-            select: { id: true },
-          })
+          await crearNodoDeNivel(tx, 1, { nombre: `Región ${SUFIJO}`, paisId: "XA" })
         ).id;
 
         const deCR = (await geo.hermanosDeNodo(s.provincia))!.map((h) => h.id);

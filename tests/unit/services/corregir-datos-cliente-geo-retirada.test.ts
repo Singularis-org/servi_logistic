@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 import { CorregirDatosClienteService } from "@/lib/services/CorregirDatosClienteService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type {
-  DistritoResueltoRow,
+  LugarResueltoRow,
   OrdenParaCorreccionRow,
 } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { TarifaVigente } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
@@ -26,9 +26,7 @@ const MAESTRO: Actor = { usuarioId: "u-maestro", rol: "maestro" };
 
 /** El cambio de UBICACION completo hacia `d-2`. Confirmado, para pasar el gate del dinero. */
 const MUDANZA = {
-  provinciaId: "p-1",
-  cantonId: "c-1",
-  distritoId: "d-2",
+  nodoId: "d-2",
   confirmaCambioDeUbicacion: true,
 } as const;
 
@@ -46,9 +44,9 @@ function orden(): OrdenParaCorreccionRow {
     peso: 1.5,
     montoCobrar: "15000.00",
     cobraComision: true,
-    provinciaId: "p-1",
-    cantonId: "c-1",
-    distritoId: "d-1",
+    nodoId: "d-1",
+    ruta: [{ id: "p-1", nombre: "P" }, { id: "c-1", nombre: "C" }, { id: "d-1", nombre: "D" }],
+    distritoTarifaId: "d-1",
     distritoNombre: "Distrito Uno",
     zonaId: "z-1",
     zonaNombre: "Zona Uno",
@@ -59,12 +57,12 @@ function orden(): OrdenParaCorreccionRow {
   };
 }
 
-function distrito(overrides: Partial<DistritoResueltoRow> = {}): DistritoResueltoRow {
+function distrito(overrides: Partial<LugarResueltoRow> = {}): LugarResueltoRow {
   return {
     id: "d-2",
     nombre: "Distrito Dos",
-    cantonId: "c-1",
-    provinciaId: "p-1",
+    tipoHijosActivos: null,
+    distritoTarifaId: "d-2",
     zonaId: "z-2",
     zonaNombre: "Zona Dos",
     esCentral: false,
@@ -88,9 +86,9 @@ function tarifa(): TarifaVigente {
   };
 }
 
-function escenario(distritoFila: DistritoResueltoRow | null) {
+function escenario(distritoFila: LugarResueltoRow | null) {
   const findParaCorreccion = vi.fn(async () => orden());
-  const findDistritoParaCorreccion = vi.fn(async () => distritoFila);
+  const findLugarParaCorreccion = vi.fn(async () => distritoFila);
   const corregirDatosCliente = vi.fn(
     async (
       _ordenId: string,
@@ -100,10 +98,10 @@ function escenario(distritoFila: DistritoResueltoRow | null) {
   );
   const resolveTarifa = vi.fn(async () => tarifaViejaDeFormula(tarifa()));
   const service = new CorregirDatosClienteService(
-    { findParaCorreccion, findDistritoParaCorreccion, corregirDatosCliente },
+    { findParaCorreccion, findLugarParaCorreccion, corregirDatosCliente },
     { resolveTarifa },
   );
-  return { service, findDistritoParaCorreccion, corregirDatosCliente };
+  return { service, findLugarParaCorreccion, corregirDatosCliente };
 }
 
 /** El texto del rechazo, sea cual sea la forma del resultado. */
@@ -168,7 +166,7 @@ describe("374/R30 — corregir hacia un distrito RETIRADO se rechaza, y NO se es
   });
 
   it("una correccion que NO toca la ubicacion no consulta el distrito ni se ve afectada", async () => {
-    const { service, findDistritoParaCorreccion, corregirDatosCliente } = escenario(
+    const { service, findLugarParaCorreccion, corregirDatosCliente } = escenario(
       distrito({ disponible: false }),
     );
     const r = await service.corregir(
@@ -176,7 +174,7 @@ describe("374/R30 — corregir hacia un distrito RETIRADO se rechaza, y NO se es
       MAESTRO,
     );
     expect(r.status).toBe("ok");
-    expect(findDistritoParaCorreccion).not.toHaveBeenCalled();
+    expect(findLugarParaCorreccion).not.toHaveBeenCalled();
     expect(corregirDatosCliente).toHaveBeenCalledTimes(1);
   });
 });

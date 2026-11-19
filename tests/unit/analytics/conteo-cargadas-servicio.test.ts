@@ -205,7 +205,8 @@ describe("Las seis facetas y el soft delete, idénticos a las otras dos lecturas
     // SLT-71 (design §11.1): zona y tienda con `IN`; cada faceta geografica, una condicion de lugar
     // con `= ANY` cuyo parametro es el array de ids resueltos (decision del humano, 2026-11-04).
     for (const columna of ["zona_id", "tienda_id"]) expect(sql).toContain(`o."${columna}" IN (`);
-    expect(sql.match(/o\."distrito_id" = ANY\(/g)).toHaveLength(1) /* SLT-47: una condicion de lugar */;
+    // SLT-48 R23: la condicion de lugar es sobre el nodo de la orden (antes `o."distrito_id" = ANY(`).
+    expect(sql.match(/o\."nodo_geografico_id" = ANY\(/g)).toHaveLength(1) /* SLT-47: una condicion de lugar */;
     expect(parametrosDe(consulta)).toEqual(
       expect.arrayContaining(["z1", ["d1"], "t1"]), // SLT-47: un solo lugar, sus ids resueltos
     );

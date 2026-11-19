@@ -121,12 +121,10 @@ describe("SLT-47 — condicionesDeLugar (R11, R12)", () => {
     expect(condicionesDeLugar(SIN_LUGAR)).toEqual([]);
   });
 
-  it("R11: un parametro de array por rama, nunca uno por id", () => {
+  // SLT-48 R23: el filtro lee el nodo de la orden; queda una sola rama y un solo parametro de array.
+  it("R11: un parametro de array por rama (SLT-48 R23: una rama, el nodo), nunca uno por id", () => {
     const where = Prisma.join(condicionesDeLugar({ lugar: ["a", "b", "c"] }), " AND ");
-    expect(where.values).toEqual([
-      ["a", "b", "c"],
-      ["a", "b", "c"],
-    ]);
+    expect(where.values).toEqual([["a", "b", "c"]]);
   });
 });
 

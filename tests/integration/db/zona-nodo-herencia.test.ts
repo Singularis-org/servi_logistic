@@ -14,7 +14,7 @@ import { BulkOrdenService } from "@/lib/services/BulkOrdenService";
 import { CotizacionOrdenService } from "@/lib/services/CotizacionOrdenService";
 import { distinct, indexBy, normalize, resolveGeo } from "@/lib/services/geo-resolucion";
 import { esZonaEspecial, zonaQueCubre } from "@/lib/services/geografia-dominio";
-import { MSG_PAIS_NO_HABILITADO, msgSinZona, resolverUbicacion } from "@/lib/services/geo-ubicacion";
+import { msgSinZona, msgUbicacionIncompleta, resolverUbicacion } from "@/lib/services/geo-ubicacion";
 import { comoApp, fijarEmpresa } from "@/tests/fabricas/organizaciones";
 
 import { insertarNodo } from "./_fixtures/geo-43";
@@ -149,7 +149,9 @@ describeSiHayBase("SLT-89 · R6/R7/R8/R9 — las lecturas heredan la zona de un 
     expect(r.conCanton[g.distritoSinZonaId]).toBe(r.e.cr.zonas.surId);
   });
 
-  it("v2: el distrito y el cantón como lugar heredan; la provincia cubierta sigue sin admitir guardado (SLT-45)", async () => {
+  // SLT-48 R15/R17: la regla de guardado es la de hoja; el canton con distritos y la provincia no lo son,
+  // aunque tengan zona. La resolucion ya no trae FK: trae la ruta del nodo.
+  it("v2: el distrito como lugar hereda; el canton con distritos y la provincia cubierta no son hoja (SLT-48 R17)", async () => {
     const r = await conEscenario(async (tx, e) => {
       const g = e.cr.geo;
       const [provincia, canton, sinZona] = await nombres(tx, [g.provinciaId, g.cantonId, g.distritoSinZonaId]);
@@ -172,13 +174,16 @@ describeSiHayBase("SLT-89 · R6/R7/R8/R9 — las lecturas heredan la zona de un 
       };
     });
     const g = r.e.cr.geo;
-    // R7: sin zona que cubra el lugar, el error de siempre.
-    expect(r.cantonAntes).toEqual({ ok: false, fieldErrors: { ubicacion: [msgSinZona(r.canton)] } });
+    // SLT-48 R17: el canton tiene distritos: no es hoja, y la regla de hoja va antes que la zona (R7).
+    const incompletoCanton = { ok: false, fieldErrors: { ubicacion: [msgUbicacionIncompleta(r.canton, "Distritos")] } };
+    expect(r.cantonAntes).toEqual(incompletoCanton);
+    expect(r.cantonAntes).not.toEqual({ ok: false, fieldErrors: { ubicacion: [msgSinZona(r.canton)] } });
     expect(r.distrito.ok && r.distrito.u.zona.id).toBe(r.e.cr.zonas.surId);
-    expect(r.distrito.ok && r.distrito.u.fks).toEqual({ provinciaId: g.provinciaId, cantonId: g.cantonId, distritoId: g.distritoSinZonaId });
-    expect(r.cantonDespues.ok && r.cantonDespues.u.zona.id).toBe(r.e.cr.zonas.surId);
-    expect(r.cantonDespues.ok && r.cantonDespues.u.fks).toEqual({ provinciaId: g.provinciaId, cantonId: g.cantonId, distritoId: null });
-    expect(r.provincia).toEqual({ ok: false, fieldErrors: { ubicacion: [MSG_PAIS_NO_HABILITADO] } });
+    // SLT-48 R15: sin FK; la ruta del nodo resuelto.
+    expect(r.distrito.ok && r.distrito.u.ruta.map((n) => n.id)).toEqual([g.provinciaId, g.cantonId, g.distritoSinZonaId]);
+    // SLT-48 R17: con zona propia el canton sigue sin ser hoja.
+    expect(r.cantonDespues).toEqual(incompletoCanton);
+    expect(r.provincia).toMatchObject({ ok: false, fieldErrors: { ubicacion: [expect.stringMatching(/^ubicacion incompleta/)] } });
   });
 
   it("carga masiva v1: la orden del distrito heredado se crea con la zona del cantón", async () => {
@@ -206,12 +211,13 @@ describeSiHayBase("SLT-89 · R6/R7/R8/R9 — las lecturas heredan la zona de un 
       const sinAsignar = await cargar();
       await asignar(tx, e.cr, e.cr.zonas.surId, g.cantonId);
       const asignado = await cargar();
-      const orden = await tx.orden.findFirst({ where: { numRemision }, select: { zonaId: true, distritoId: true } });
+      const orden = await tx.orden.findFirst({ where: { numRemision }, select: { zonaId: true, nodoGeograficoId: true, distritoId: true } });
       return { sinAsignar, asignado, orden, sinZona, e };
     });
     expect(r.sinAsignar.status === "ok" && r.sinAsignar.summary.filas[0]).toMatchObject({ resultado: "error" });
     expect(r.asignado.status === "ok" && r.asignado.summary.filas[0]).toMatchObject({ resultado: "creada" });
-    expect(r.orden).toEqual({ zonaId: r.e.cr.zonas.surId, distritoId: r.e.cr.geo.distritoSinZonaId });
+    // SLT-48 R15: la orden guarda el distrito como nodo; la FK `distrito_id` queda en NULL.
+    expect(r.orden).toEqual({ zonaId: r.e.cr.zonas.surId, nodoGeograficoId: r.e.cr.geo.distritoSinZonaId, distritoId: null });
   });
 
   it("cotización v1 y v2: el distrito heredado deja de ser «sin zona» y se cotiza", async () => {

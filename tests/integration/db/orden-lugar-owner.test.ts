@@ -5,7 +5,7 @@ import type { PrismaClient } from "@prisma/client";
 import { conEmpresa } from "@/lib/db/contexto-empresa";
 import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograficoRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
-import { fksDeNodo, type FksDeNodo } from "@/lib/services/geo-ubicacion";
+import { ancestros, type CatalogoGeografico, type NodoDelCatalogo } from "@/lib/services/geografia-dominio";
 import { comoApp, datosDeOrganizacionDePrueba, fijarEmpresa } from "@/tests/fabricas/organizaciones";
 
 import {
@@ -67,6 +67,21 @@ async function sembrarEmpresa(tx: TxDeTest): Promise<Empresa> {
     otraTiendaId: await crearTienda(tx, rol.id, tipo.id),
     zonaId: zona.id,
   };
+}
+
+// SLT-48: `fksDeNodo` salio de `geo-ubicacion` (la orden ya no guarda la terna). Esta copia local arma la
+// misma terna de entrada para el fixture: abuelo, padre y nodo (profundidad 3) o padre y nodo (2).
+interface FksDeNodo {
+  provinciaId: string;
+  cantonId: string;
+  distritoId: string | null;
+}
+
+function fksDeNodo(catalogo: CatalogoGeografico, n: NodoDelCatalogo): FksDeNodo | null {
+  const [padre, abuelo] = ancestros(catalogo, n.id);
+  if (n.profundidad === 3) return { provinciaId: abuelo.id, cantonId: padre.id, distritoId: n.id };
+  if (n.profundidad === 2) return { provinciaId: padre.id, cantonId: n.id, distritoId: null };
+  return null;
 }
 
 /** Las FK de un nodo del catalogo de la empresa en curso, por profundidad (el primero que admita guardado). */

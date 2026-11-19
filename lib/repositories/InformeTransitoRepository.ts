@@ -31,6 +31,7 @@ import {
 } from "@/lib/repositories/CatalogoGeograficoRepository";
 import { nivelesDelCatalogo, rutaDelLugar } from "@/lib/repositories/_shared/ruta-del-lugar";
 import { CatalogoGeograficoInconsistente, nodo } from "@/lib/services/geografia-dominio";
+import { dosMasHondos } from "@/lib/utils/ubicacion-presentacion";
 import type { Hito } from "@/lib/whatsapp-envios/informes/transito/parametros";
 import type {
   ConsultaTransito,
@@ -79,7 +80,7 @@ const FRAGMENTO_HITO: Record<Hito, Prisma.Sql> = {
 function candidatas(consulta: ConsultaTransito): Prisma.Sql {
   return Prisma.sql`
     SELECT o."id", o."zona_id", o."num_remision", o."num_guia", o."destinatario",
-           o."monto_cobrar", o."created_at", o."canton_id", o."distrito_id", s."value" AS "estado"
+           o."monto_cobrar", o."created_at", o."nodo_geografico_id", s."value" AS "estado"
       FROM "orden" o
       JOIN "order_status" s ON s."id" = o."estatus_id"
      WHERE o."deleted_at" IS NULL
@@ -101,8 +102,7 @@ interface FilaCruda {
   estado: string;
   zona_id: string;
   destinatario: string;
-  canton_id: string;
-  distrito_id: string | null;
+  nodo_geografico_id: string | null;
   monto_cobrar: string | null;
   hito_at: Date;
   ultima_at: Date | null;
@@ -135,7 +135,7 @@ export class InformeTransitoRepository implements IInformeTransitoRepository {
       "cand" AS (${candidatas(consulta)})
       SELECT c."id" AS "orden_id", c."num_remision", c."num_guia", c."estado", c."zona_id",
              c."destinatario", c."monto_cobrar"::text AS "monto_cobrar",
-             c."canton_id", c."distrito_id",
+             c."nodo_geografico_id",
              hito."at" AS "hito_at", ult."at" AS "ultima_at"
         FROM "cand" c
         JOIN "cortes" z ON z."zona_id" = c."zona_id"
@@ -152,20 +152,24 @@ export class InformeTransitoRepository implements IInformeTransitoRepository {
     // R11: sin filas en alerta no se carga el catalogo.
     if (filas.length === 0) return [];
     const { catalogo } = await this.catalogoGeografico().deLaEmpresa();
-    const nombreDe = (id: string): string | null => nodo(catalogo, id)?.nombre ?? null;
     // Iguales para todas las filas: un pais por empresa.
     const niveles = nivelesDelCatalogo(catalogo);
 
     // R12: se recorren TODAS las filas antes de fallar, para que el log nombre cada nodo ausente.
+    // SLT-48 (design §5, R25): el lugar es el nodo de la orden; sus dos nombres son los de los dos
+    // niveles mas hondos del pais (`dosMasHondos`), como la tarjeta. En Costa Rica, canton y distrito.
     const ausentes = new Set<string>();
     const ordenesAfectadas = new Set<string>();
     const nombradas = filas.map((f) => {
-      const canton = nombreDe(f.canton_id);
-      const distrito = f.distrito_id === null ? null : nombreDe(f.distrito_id);
-      if (canton === null) ausentes.add(f.canton_id);
-      if (f.distrito_id !== null && distrito === null) ausentes.add(f.distrito_id);
-      if (canton === null || (f.distrito_id !== null && distrito === null)) ordenesAfectadas.add(f.orden_id);
-      return { f, canton: canton ?? "", distrito };
+      const lugar = f.nodo_geografico_id === null ? null : nodo(catalogo, f.nodo_geografico_id);
+      if (lugar === null) {
+        ausentes.add(f.nodo_geografico_id ?? "(sin nodo)");
+        ordenesAfectadas.add(f.orden_id);
+        return { f, canton: "", distrito: null, ruta: [] };
+      }
+      const ruta = rutaDelLugar(catalogo, { nodoGeograficoId: lugar.id });
+      const { arriba, abajo } = dosMasHondos(ruta, niveles.length);
+      return { f, canton: arriba ?? "", distrito: abajo, ruta };
     });
     if (ausentes.size > 0) {
       const nodos = [...ausentes].sort();
@@ -177,7 +181,7 @@ export class InformeTransitoRepository implements IInformeTransitoRepository {
       throw new CatalogoGeograficoInconsistente(nodos[0], "nodo de una orden en tránsito ausente del catálogo");
     }
 
-    return nombradas.map(({ f, canton, distrito }) => ({
+    return nombradas.map(({ f, canton, distrito, ruta }) => ({
       ordenId: f.orden_id,
       numRemision: f.num_remision,
       numGuia: f.num_guia === null ? null : Number(f.num_guia),
@@ -187,7 +191,7 @@ export class InformeTransitoRepository implements IInformeTransitoRepository {
       canton,
       distrito,
       // El lugar ya se comprobo arriba (un nodo ausente falla antes), asi que la ruta no sale vacia.
-      ruta: rutaDelLugar(catalogo, { cantonId: f.canton_id, distritoId: f.distrito_id }),
+      ruta,
       niveles,
       montoCobrar: f.monto_cobrar,
       hitoAt: f.hito_at,

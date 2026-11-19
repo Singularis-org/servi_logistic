@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
@@ -87,25 +85,5 @@ describeSiHayBase("SLT-43 — equivalencia entre la geografía vieja y la nueva 
     expect(r.resumen.niveles).toEqual([]);
     expect(r.salida.codigoDeSalida).not.toBe(0);
     expect(r.salida.lineas).toContain("ordenes sin nodo=1");
-  }, 60_000);
-
-  it("R32: un distrito sin nodo descuadra el conteo del nivel 3 de su país y sale con código ≠ 0", async () => {
-    const r = await revertida(base, async (tx) => {
-      const e = await escenarioAplicado(tx);
-      // Solo se llega aquí con la sincronía apagada a mano: la app no puede crear un distrito sin nodo.
-      await tx.$executeRawUnsafe(`ALTER TABLE distrito DISABLE TRIGGER distrito_sincroniza_nodo_geografico`);
-      await tx.distrito.create({
-        data: { nombre: `Barrio sin nodo ${randomUUID().slice(0, 8)}`, cantonId: e.geo.cantonId },
-        select: { id: true },
-      });
-      await tx.$executeRawUnsafe(`ALTER TABLE distrito ENABLE TRIGGER distrito_sincroniza_nodo_geografico`);
-      return { e, ...(await correr(tx)) };
-    });
-    expect(r.resumen.niveles).toEqual([
-      expect.objectContaining({ paisId: r.e.paisId, profundidad: 3 }),
-    ]);
-    const [n] = r.resumen.niveles;
-    expect(n.vieja - n.nueva).toBe(1);
-    expect(r.salida.codigoDeSalida).not.toBe(0);
   }, 60_000);
 });

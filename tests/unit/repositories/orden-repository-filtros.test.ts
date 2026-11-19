@@ -118,10 +118,10 @@ describe("orden con distrito NULL bajo el filtro de distrito (decision (f))", ()
     // SLT-47 (R27): el lugar de la orden es `COALESCE(distrito_id, canton_id)`. Una orden sin
     // distrito solo entra si su CANTON es uno de los ids elegidos; con un distrito elegido (d1, una
     // hoja), la rama `distritoId: null` exige `cantonId IN [d1]`, que ningun canton cumple.
+    // SLT-48 R23: el lugar de la orden es su nodo. Una orden en un canton tiene el canton como nodo,
+    // asi que el `in` sobre el nodo con un distrito elegido (d1) no la selecciona.
     const { findMany } = await whereDe({ lugarIds: ["d1"] });
-    expect(findMany.AND).toEqual([
-      { OR: [{ distritoId: { in: ["d1"] } }, { distritoId: null, cantonId: { in: ["d1"] } }] },
-    ]);
+    expect(findMany.AND).toEqual([{ nodoGeograficoId: { in: ["d1"] } }]);
     // Ni una clausula suelta que lo cuele fuera del `AND`.
     expect(findMany.distritoId).toBeUndefined();
     expect(findMany.OR).toBeUndefined();

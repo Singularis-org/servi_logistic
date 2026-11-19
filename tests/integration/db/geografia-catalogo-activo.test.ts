@@ -10,6 +10,7 @@ import {
   enTransaccionRevertida,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearNodoDeNivel } from "@/tests/fabricas/paises";
 
 /**
  * FICHA 374 — **HAY UN CATALOGO, NO DOS: LAS LECTURAS PROYECTAN LA DISPONIBILIDAD, NO RECORTAN.**
@@ -86,33 +87,21 @@ describeSiHayBase("374 — el catalogo geografico proyecta la disponibilidad (Po
         .id;
 
       const provinciaOk = (
-        await tx.provincia.create({ data: { nombre: `Prov OK ${SUFIJO}` }, select: { id: true } })
+        await crearNodoDeNivel(tx, 1, { nombre: `Prov OK ${SUFIJO}` })
       ).id;
       const provinciaOff = (
-        await tx.provincia.create({
-          data: { nombre: `Prov OFF ${SUFIJO}`, activo: false },
-          select: { id: true },
-        })
+        await crearNodoDeNivel(tx, 1, { nombre: `Prov OFF ${SUFIJO}`, activo: false })
       ).id;
 
       const cantonOk = (
-        await tx.canton.create({
-          data: { nombre: `Canton OK ${SUFIJO}`, provinciaId: provinciaOk },
-          select: { id: true },
-        })
+        await crearNodoDeNivel(tx, 2, { nombre: `Canton OK ${SUFIJO}`, padreId: provinciaOk })
       ).id;
       const cantonOff = (
-        await tx.canton.create({
-          data: { nombre: `Canton OFF ${SUFIJO}`, provinciaId: provinciaOk, activo: false },
-          select: { id: true },
-        })
+        await crearNodoDeNivel(tx, 2, { nombre: `Canton OFF ${SUFIJO}`, padreId: provinciaOk, activo: false })
       ).id;
       // Canton ACTIVO bajo la provincia INACTIVA: heredado en el segundo nivel.
       const cantonBajoProvinciaOff = (
-        await tx.canton.create({
-          data: { nombre: `Canton bajo prov off ${SUFIJO}`, provinciaId: provinciaOff },
-          select: { id: true },
-        })
+        await crearNodoDeNivel(tx, 2, { nombre: `Canton bajo prov off ${SUFIJO}`, padreId: provinciaOff })
       ).id;
 
       const crearDistrito = async (
@@ -121,10 +110,7 @@ describeSiHayBase("374 — el catalogo geografico proyecta la disponibilidad (Po
         activo: boolean,
         zonas: string[],
       ): Promise<string> => {
-        const fila = await tx.distrito.create({
-          data: { nombre: `${nombre} ${SUFIJO}`, cantonId, activo },
-          select: { id: true },
-        });
+        const fila = await crearNodoDeNivel(tx, 3, { nombre: `${nombre} ${SUFIJO}`, padreId: cantonId, activo });
         for (const zonaId of zonas) {
           await tx.zonaDistrito.create({ data: { zonaId, distritoId: fila.id } });
         }
@@ -361,15 +347,17 @@ describeSiHayBase("374 — el catalogo geografico proyecta la disponibilidad (Po
       });
     });
 
-    it("`findDistritoParaCorreccion` devuelve el retirado con su disponibilidad, no `null`", async () => {
+    // SLT-48 (T2.3): `findDistritoParaCorreccion` pasa a `findLugarParaCorreccion(nodoId)`.
+    it("`findLugarParaCorreccion` devuelve el retirado con su disponibilidad, no `null`", async () => {
       await conCorpus(async ({ s, ordenes }) => {
-        const fila = await ordenes.findDistritoParaCorreccion(s.distritoOff);
+        const fila = await ordenes.findLugarParaCorreccion(s.distritoOff);
         expect(fila, "un distrito retirado se devolvio como INEXISTENTE: son cosas distintas").not.toBeNull();
         expect(fila?.disponible).toBe(false);
-        expect(fila?.cantonId).toBe(s.cantonOk);
-        expect(fila?.provinciaId).toBe(s.provinciaOk);
+        // SLT-48 R16: la fila ya no trae la cadena provincia -> canton (la da el arbol); trae el lugar.
+        expect(fila?.id).toBe(s.distritoOff);
+        expect(fila?.tipoHijosActivos).toBeNull();
 
-        const vivo = await ordenes.findDistritoParaCorreccion(s.distritoOk);
+        const vivo = await ordenes.findLugarParaCorreccion(s.distritoOk);
         expect(vivo?.disponible).toBe(true);
       });
     });

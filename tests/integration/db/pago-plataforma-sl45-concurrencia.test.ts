@@ -74,9 +74,7 @@ describeSiHayBase("SL-45 — concurrencia del pago a la plataforma (Postgres rea
             telefonoDest: "88887777",
             tiendaId: personas.tiendaId,
             zonaId,
-            provinciaId: geo.provinciaId,
-            cantonId: geo.cantonId,
-            distritoId: geo.distritoId,
+            // SLT-48 R15: `CreateOrdenData` ya no lleva las 3 FK; la orden se crea con su nodo.
             nodoGeograficoId: geo.distritoId,
             producto: "Caja",
             peso: null,

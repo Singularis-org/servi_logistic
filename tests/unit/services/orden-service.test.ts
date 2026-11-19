@@ -27,9 +27,6 @@ function dto(overrides: Partial<OrdenDTO> = {}): OrdenDTO {
     telefonoDest: "0991234567",
     tiendaId: "store1",
     zonaId: "z1",
-    provinciaId: "p1",
-    cantonId: "c1",
-    distritoId: null,
     producto: "Caja",
     peso: 1.5,
     notas: null,
@@ -61,7 +58,7 @@ function buildRepo(overrides: Partial<IOrdenRepository> = {}): IOrdenRepository 
     // arriba: ningun servicio de este archivo las invoca, el doble esta para satisfacer el
     // contrato completo del repo.
     findParaCorreccion: vi.fn().mockResolvedValue(null),
-    findDistritoParaCorreccion: vi.fn().mockResolvedValue(null),
+    findLugarParaCorreccion: vi.fn().mockResolvedValue(null),
     // Ficha 337: la lectura que CONGELA las entradas del cobro por devolución a origen desde novedades.
     // Mismo motivo que las dos de arriba: ningun servicio de este archivo la invoca, el doble
     // esta para satisfacer el contrato completo del repo.

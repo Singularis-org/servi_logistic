@@ -85,6 +85,8 @@ function ordenListRow() {
     provinciaId: "p1",
     cantonId: "c1",
     distritoId: null,
+    // SLT-48 (R22, R27, R31): el lugar de la orden es su nodo; las FK ya no lo deciden. Cambio de entrada.
+    nodoGeograficoId: "c1",
     producto: "Caja",
     peso: new Prisma.Decimal("1.500"),
     notas: null,
@@ -175,6 +177,8 @@ function snapshotRow() {
       provinciaId: "p1",
       cantonId: "c1",
       distritoId: null,
+      // SLT-48 (R22, R27, R31): el lugar de la orden es su nodo; las FK ya no lo deciden. Cambio de entrada.
+      nodoGeograficoId: "c1",
       zona: { nombre: "Limón", esCentral: false },
       tienda: { nombre: "Tienda X" },
       provincia: { nombre: "Limón" },
@@ -242,8 +246,9 @@ async function resolverPorCierre(filas: readonly FilaTarifa[]): Promise<Resuelto
     // mismos nombres para los FK de `snapshotRow` (sin distrito) y sin marcas.
     ...delegadosDelCatalogo({
       nodos: [
+        // SLT-48 (R27): los niveles salen de la ruta del nodo, asi que el doble siembra la cadena.
         { id: "p1", nombre: "Limón" },
-        { id: "c1", nombre: "Central" },
+        { id: "c1", padreId: "p1", nombre: "Central" },
       ],
     }),
   };
@@ -548,7 +553,7 @@ describe("SLT-52 T4.4 — modelo nuevo: listado, cierre y costo API eligen el mi
       // (`marcasDeOrdenes`); el distrito de la fila es un nodo sin marca.
       ...delegadosDelCatalogo({ nodos: [DISTRITO] }),
       orden: {
-        findMany: vi.fn(async () => [{ ...ordenListRow(), distritoId: DISTRITO }]),
+        findMany: vi.fn(async () => [{ ...ordenListRow(), distritoId: DISTRITO, nodoGeograficoId: DISTRITO /* SLT-48 R31 */ }]),
         count: vi.fn(async () => 1),
       },
       $queryRaw: vi.fn(async () => []),
@@ -601,7 +606,7 @@ describe("SLT-52 T4.4 — modelo nuevo: listado, cierre y costo API eligen el mi
         ...delegadosDelCatalogo({ nodos: [DISTRITO] }),
         tarifaValor: { findMany: vi.fn(async () => tabla) },
         orden: {
-          findMany: vi.fn(async () => [{ ...ordenListRow(), distritoId: DISTRITO }]),
+          findMany: vi.fn(async () => [{ ...ordenListRow(), distritoId: DISTRITO, nodoGeograficoId: DISTRITO /* SLT-48 R31 */ }]),
           count: vi.fn(async () => 1),
         },
         $queryRaw: vi.fn(async () => []),

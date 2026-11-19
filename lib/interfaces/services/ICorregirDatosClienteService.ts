@@ -34,10 +34,8 @@ export interface CorregirDatosClienteInput {
   notas?: string | null;
   // ── Ficha 327 — la ubicacion ──
   direccion?: string;
-  /** Los tres viajan JUNTOS o no viajan (327/R3); el borde ya lo exige. */
-  provinciaId?: string;
-  cantonId?: string;
-  distritoId?: string;
+  /** SLT-48 (design §4.2, R16): el lugar nuevo de la orden, una hoja del pais de la empresa. */
+  nodoId?: string;
   peso?: number;
   /**
    * FICHA 327 (design §4.1) — EL GATE DEL DINERO, en la MISMA peticion que escribe.
@@ -128,6 +126,14 @@ export interface OrdenParaCorreccionDTO {
   notas: string | null;
   direccion: string | null;
   peso: number | null;
+  /** SLT-48 (R16): el lugar actual de la orden; `null` solo en una orden de SQL a mano. */
+  nodoId: string | null;
+  /** SLT-48 (R22, R43): la ruta del lugar, de la raiz al nodo. */
+  ruta: { id: string; nombre: string }[];
+  /**
+   * Los ids de los niveles 1, 2 y 3 de `ruta` (`""`/`null` donde no llega). Salen de la ruta del
+   * nodo, no de las FK viejas (SLT-48 R29); los lee el modal de 3 niveles hasta SLT-48 T4.
+   */
   provinciaId: string;
   cantonId: string;
   distritoId: string | null;

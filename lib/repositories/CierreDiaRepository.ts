@@ -42,10 +42,20 @@ import {
   type CatalogoPrismaClient,
 } from "@/lib/repositories/CatalogoGeograficoRepository";
 import { sinTransaccionAnidada } from "@/lib/repositories/_shared/sin-transaccion-anidada";
-import { esZonaEspecial, nodo, type CatalogoGeografico } from "@/lib/services/geografia-dominio";
+import {
+  distritoDeTarifa,
+  esZonaEspecial,
+  nodo,
+  type CatalogoGeografico,
+} from "@/lib/services/geografia-dominio";
 // SLT-125 (design §4.3): la ruta del lugar con sus tipos, para el `ubicacion_snapshot` del cierre.
 import { lugarDeLaOrden } from "@/lib/repositories/_shared/lugar-orden";
-import { nombresDeLaRuta, rutaConTipos, rutaDelLugar } from "@/lib/repositories/_shared/ruta-del-lugar";
+import {
+  nombresDeLaRuta,
+  rutaConTipos,
+  rutaDelLugar,
+  type PasoDeRuta,
+} from "@/lib/repositories/_shared/ruta-del-lugar";
 import type { UbicacionSnapshotV1 } from "@/lib/types/ubicacion-snapshot";
 import {
   SELECT_REGISTRO_DE_CALLE,
@@ -353,12 +363,9 @@ export const SNAPSHOT_SELECT = {
       destinatario: true,
       direccion: true,
       producto: true,
-      // FICHA 450: los FK de las tres geografias. Antes no hacia falta nombrarlos porque la
-      // relacion anidada los traia de rebote; ahora son la clave con la que se leen los nombres
-      // en consultas propias. `distritoId` es el UNICO FK nullable de `orden`.
-      provinciaId: true,
-      cantonId: true,
-      distritoId: true,
+      // FICHA 450, SLT-48 (design §5, R27): el lugar de la orden. De su ruta en el catalogo salen
+      // los tres nombres, la marca y el `ubicacion_snapshot`; las FK viejas ya no se leen.
+      nodoGeograficoId: true,
     },
   },
 } as const;
@@ -388,6 +395,12 @@ export interface DescriptivosDeOrden {
   /** `zonaEspecial`: la marca de la EMPRESA de la transaccion (SL-38), ya resuelta a dos valores. */
   distritos: Map<string, { nombre: string; zonaEspecial: boolean }>;
   /**
+   * SLT-48 (design §5, R27): el lugar de cada orden (su nodo, de cualquier nivel) con la marca de la
+   * EMPRESA. Es la marca que se congela; en Costa Rica coincide con la del distrito o, sin distrito,
+   * la del canton.
+   */
+  lugares: Map<string, { zonaEspecial: boolean }>;
+  /**
    * SLT-125 (design §4.3): el catalogo ya cargado arriba, en esta misma transaccion. El snapshot de la
    * ubicacion arma con el la ruta y sus tipos sin volver a la base: es la misma foto que dio los nombres.
    */
@@ -410,9 +423,6 @@ export async function leerDescriptivosDeOrdenes(
   ];
   const zonaIds = unicos(filas.map((f) => f.orden.zonaId));
   const tiendaIds = unicos(filas.map((f) => f.orden.tiendaId));
-  const provinciaIds = unicos(filas.map((f) => f.orden.provinciaId));
-  const cantonIds = unicos(filas.map((f) => f.orden.cantonId));
-  const distritoIds = unicos(filas.map((f) => f.orden.distritoId));
 
   // ⚠️ UNA CONSULTA A LA VEZ (R3). Un `Promise.all` aqui reproduciria EXACTAMENTE el defecto que
   // esta ficha vino a cerrar: cinco consultas de golpe sobre la UNICA conexion de la transaccion.
@@ -434,6 +444,16 @@ export async function leerDescriptivosDeOrdenes(
     sinTransaccionAnidada(tx),
   ).deLaEmpresa();
 
+  // SLT-48 (design §5, R27): los niveles 1, 2 y 3 salen de la ruta del nodo de cada orden, no de sus
+  // FK viejas. Para una orden vieja de Costa Rica son los mismos ids (su nodo es su distrito o su
+  // canton).
+  const rutas = filas.map((f) => rutaDelLugar(catalogo, f.orden));
+  const delNivel = (k: number) => unicos(rutas.map((r) => r[k - 1]?.id ?? null));
+  const provinciaIds = delNivel(1);
+  const cantonIds = delNivel(2);
+  const distritoIds = delNivel(3);
+  const lugarIds = unicos(filas.map((f) => lugarDeLaOrden(f.orden)));
+
   // Solo los ids de las filas, como cuando se leian por `in`: un id ausente del catalogo no entra en
   // el mapa y `descriptivoDe` lanza, de modo que el cierre se revierte entero (R6).
   const enCatalogo = (ids: string[]) =>
@@ -450,6 +470,9 @@ export async function leerDescriptivosDeOrdenes(
     provincias: new Map(enCatalogo(provinciaIds).map((p) => [p.id, { nombre: p.nombre }])),
     cantones: new Map(enCatalogo(cantonIds).map(conMarca)),
     distritos: new Map(enCatalogo(distritoIds).map(conMarca)),
+    lugares: new Map(
+      enCatalogo(lugarIds).map((n) => [n.id, { zonaEspecial: esZonaEspecial(catalogo, asignaciones, n.id) }]),
+    ),
     catalogo,
   };
 }
@@ -480,10 +503,10 @@ function faltaDescriptivo(tabla: string, id: string): Error {
  * `canton_nombre` y `distrito_nombre`. Una ruta vacia (lugar fuera del catalogo) lanza el mismo error
  * que un nombre ausente, y el cierre entero se revierte (R23).
  */
-function ubicacionDeLaFila(f: SnapshotRow, catalogo: CatalogoGeografico): UbicacionSnapshotV1 {
+function rutaDeLaFila(f: SnapshotRow, catalogo: CatalogoGeografico): PasoDeRuta[] {
   const ruta = rutaDelLugar(catalogo, f.orden);
-  if (ruta.length === 0) throw faltaDescriptivo("nodo_geografico", lugarDeLaOrden(f.orden));
-  return { v: 1, niveles: rutaConTipos(catalogo, ruta) };
+  if (ruta.length === 0) throw faltaDescriptivo("nodo_geografico", lugarDeLaOrden(f.orden) ?? "(sin nodo)");
+  return ruta;
 }
 
 /** La marca y los nombres que `crearCierre` congela en `cierre_detail` para una fila. */
@@ -505,26 +528,23 @@ export interface CongeladoDeLaFila {
  * Un descriptivo ausente lanza (`descriptivoDe`), igual que dentro de la transaccion.
  */
 export function congeladoDeLaFila(f: SnapshotRow, descriptivos: DescriptivosDeOrden): CongeladoDeLaFila {
+  // SLT-48 (design §5, R27): todo lo geografico sale de la ruta del nodo de la orden. Una ruta vacia
+  // (lugar fuera del catalogo) lanza y el cierre entero se revierte, como un nombre ausente (R23).
+  const ruta = rutaDeLaFila(f, descriptivos.catalogo);
+  const lugarId = ruta[ruta.length - 1].id;
   return {
     esCentral: descriptivoDe(descriptivos.zonas, f.orden.zonaId, "zona").esCentral,
     // R20 (SL-38): congela la marca de la EMPRESA en este instante; desmarcar despues
-    // no mueve esta fila. SLT-65 (R5): es la marca del LUGAR de la orden, su distrito o,
-    // sin distrito (el unico FK nullable de `orden`), su canton. Con marcas solo en
-    // distritos la del canton es `false`, lo mismo que se congelaba antes.
-    esZonaEspecial:
-      f.orden.distritoId === null
-        ? descriptivoDe(descriptivos.cantones, f.orden.cantonId, "canton").zonaEspecial
-        : descriptivoDe(descriptivos.distritos, f.orden.distritoId, "distrito").zonaEspecial,
+    // no mueve esta fila. SLT-65 (R5): es la marca del LUGAR de la orden (su nodo; en Costa
+    // Rica, su distrito o, sin distrito, su canton).
+    esZonaEspecial: descriptivoDe(descriptivos.lugares, lugarId, "nodo_geografico").zonaEspecial,
     // descriptivos (R7).
     tiendaNombre: descriptivoDe(descriptivos.tiendas, f.orden.tiendaId, "usuario").nombre,
     zonaNombre: descriptivoDe(descriptivos.zonas, f.orden.zonaId, "zona").nombre,
-    provinciaNombre: descriptivoDe(descriptivos.provincias, f.orden.provinciaId, "provincia").nombre,
-    cantonNombre: descriptivoDe(descriptivos.cantones, f.orden.cantonId, "canton").nombre,
-    distritoNombre:
-      f.orden.distritoId === null
-        ? null
-        : descriptivoDe(descriptivos.distritos, f.orden.distritoId, "distrito").nombre,
-    ubicacionSnapshot: ubicacionDeLaFila(f, descriptivos.catalogo),
+    // R27: los niveles 1, 2 y 3 de la ruta a las 3 columnas de nombre (historia congelada).
+    ...nombresDeLaRuta(ruta),
+    // R27: los ids del snapshot, de la misma ruta.
+    ubicacionSnapshot: { v: 1, niveles: rutaConTipos(descriptivos.catalogo, ruta) },
   };
 }
 
@@ -617,11 +637,10 @@ export const WITH_DETALLE = {
         tiendaId: true,
         tienda: { select: { nombre: true } },
         zona: { select: { nombre: true } },
-        // SLT-125 (design §4.2; R16, R19): las FK del lugar (`lugarDeLaOrden`) y no las relaciones a las
-        // tablas viejas. Los nombres salen de la ruta del catalogo de la empresa (`toPendienteRow`).
-        // Ademas, una relacion hermana menos que Prisma lanzaria en paralelo (ficha 450).
-        cantonId: true,
-        distritoId: true,
+        // SLT-125 (design §4.2; R16, R19), SLT-48 (R22): el nodo de la orden (`lugarDeLaOrden`). Los
+        // nombres salen de la ruta del catalogo de la empresa (`toPendienteRow`). Ademas, una relacion
+        // hermana menos que Prisma lanzaria en paralelo (ficha 450).
+        nodoGeograficoId: true,
       },
     },
   },
@@ -713,7 +732,6 @@ export const WITH_DETALLE_PENDIENTE = {
     orden: {
       select: {
         ...WITH_DETALLE.select.orden.select,
-        distritoId: true,
         zonaId: true,
         montoCobrar: true,
         cobraComision: true,
@@ -731,7 +749,8 @@ function toPendienteDeCierreRow(
 ): GestionPendienteDeCierreRow {
   return {
     ...toPendienteRow(row, desdeAyudaTienda, catalogo),
-    distritoId: row.orden.distritoId,
+    // SLT-48 (design §6, P3): el lugar del grupo sale del nodo de la orden, no de su FK vieja.
+    distritoId: distritoDeTarifa(catalogo, row.orden.nodoGeograficoId),
     zonaOrdenId: row.orden.zonaId,
     montoCobrar: decimalToString(row.orden.montoCobrar),
     cobraComision: row.orden.cobraComision,
@@ -1029,7 +1048,8 @@ const GESTION_VINCULADA_SELECT = {
   resultado: true,
   orden: {
     select: {
-      distritoId: true,
+      // SLT-48 (design §6, P3): el nodo, del que sale el lugar del grupo (`distritoDeTarifa`).
+      nodoGeograficoId: true,
       tiendaId: true,
       zonaId: true,
       montoCobrar: true,
@@ -1606,28 +1626,24 @@ export class CierreDiaRepository implements ICierreDiaRepository {
           // `null` para un par sin tarifa = gap R9/R23: las 9 columnas quedan NULL y el cierre
           // se crea igual (decision (c) + R39: el gap NO bloquea, y el 409 de las APIs por key
           // NO llega hasta aqui).
-          // SLT-52 (R16/R18): el distrito de la ORDEN viaja en el par; decide su grupo de distritos.
-          const pares = filas.map((f): ParTarifa => ({
+          // FICHA 450 (T2.7): los descriptivos que antes traia la relacion anidada, leidos en
+          // SERIE sobre la conexion de esta transaccion. Mismas tablas, mismos ids, mismos valores.
+          // SLT-48: van ANTES de la tarifa porque traen el catalogo del que sale su lugar de grupo.
+          const descriptivos = await leerDescriptivosDeOrdenes(filas, tx);
+          // SLT-52 (R16/R18), SLT-48 (design §6, P3): el lugar del grupo de la ORDEN viaja en el par,
+          // calculado desde su nodo. Para una orden vieja de Costa Rica es su distrito, como antes.
+          const parDe = (f: SnapshotRow): ParTarifa => ({
             tiendaId: f.orden.tiendaId,
             zonaId: f.orden.zonaId,
-            distritoId: f.orden.distritoId,
-          }));
+            distritoId: distritoDeTarifa(descriptivos.catalogo, f.orden.nodoGeograficoId),
+          });
+          const pares = filas.map(parDe);
           const tarifas = await this.tarifaRepo.resolveTarifas(pares, tx);
-          const tarifaDe = (f: SnapshotRow): TarifaTienda | null =>
-            tarifas.get(
-              clavePar({
-                tiendaId: f.orden.tiendaId,
-                zonaId: f.orden.zonaId,
-                distritoId: f.orden.distritoId,
-              }),
-            ) ?? null;
+          const tarifaDe = (f: SnapshotRow): TarifaTienda | null => tarifas.get(clavePar(parDe(f))) ?? null;
           // El resolver decide el modelo UNA vez por llamada (R37): todas las no nulas son del mismo.
           // Todas nulas = viejo sin tarifa (el nuevo nunca devuelve `null`).
           const modelo = filas.map(tarifaDe).find((t) => t !== null)?.modelo ?? "viejo";
           modeloCobro = modelo;
-          // FICHA 450 (T2.7): los descriptivos que antes traia la relacion anidada, leidos en
-          // SERIE sobre la conexion de esta transaccion. Mismas tablas, mismos ids, mismos valores.
-          const descriptivos = await leerDescriptivosDeOrdenes(filas, tx);
           const detalles = filas.map((f) => {
             const tarifa = tarifaDe(f);
             return {
@@ -2142,6 +2158,12 @@ export class CierreDiaRepository implements ICierreDiaRepository {
         // gestiones se vincularon. Y (T5.2, R40) se re-congela: se borra lo que tuvieran y, en el
         // modelo nuevo, se escribe su fila de `gestion_pago_congelado`.
         const filasVinculadas = vinculadas.map((g) => ({ gestionId: g.id, resultado: g.resultado }));
+        // SLT-48 (design §6, P3): el catalogo de la empresa, en ESTA transaccion y solo si hay
+        // vinculadas, para el lugar del grupo de cada orden.
+        const catalogoVinculadas =
+          vinculadas.length === 0
+            ? null
+            : (await new CatalogoGeograficoRepository(sinTransaccionAnidada(tx)).deLaEmpresa()).catalogo;
         const tarifasVivas = await resolverPagosCon(
           tx,
           vinculadas.map((g) => ({
@@ -2150,7 +2172,8 @@ export class CierreDiaRepository implements ICierreDiaRepository {
             mensajeroId,
             zonaId,
             vehiculoId,
-            distritoId: g.orden.distritoId,
+            distritoId:
+              catalogoVinculadas === null ? null : distritoDeTarifa(catalogoVinculadas, g.orden.nodoGeograficoId),
             tiendaId: g.orden.tiendaId,
             zonaOrdenId: g.orden.zonaId,
             montoCobrar: g.orden.montoCobrar === null ? null : g.orden.montoCobrar.toFixed(2),

@@ -157,9 +157,6 @@ function makeOrden(
     zonaId: "zona-satelite-1",
     // NO-GAM: es la orden que SÍ se rutea a una bodega satélite (R13).
     zonaEsGam: false,
-    provinciaId: "prov-1",
-    cantonId: "canton-1",
-    distritoId: null,
     producto: "Producto",
     peso: 1,
     notas: null,

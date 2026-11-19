@@ -96,6 +96,8 @@ function filaListado(i: number) {
     provinciaId: "p1",
     cantonId: "c1",
     distritoId: `d${i}`,
+    // SLT-48 (R22): el lugar de la orden es su nodo; la ruta sale de el. Cambio de entrada.
+    nodoGeograficoId: `d${i}`,
     producto: "Caja",
     peso: null,
     notas: null,
@@ -145,6 +147,7 @@ function filaGestion(i: number) {
       zona: { nombre: "GAM" },
       cantonId: "c1",
       distritoId: `d${i}`,
+      nodoGeograficoId: `d${i}`, // SLT-48 (R22): el lugar es el nodo. Cambio de entrada.
       zonaId: "z1",
       montoCobrar: null,
       cobraComision: false,

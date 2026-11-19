@@ -44,6 +44,33 @@ export function valorDeCatalogo(texto: string): string {
   return texto.trim().replace(/\s+/g, " ").slice(0, VALOR_MAX_CHARS);
 }
 
+/** El separador de la casa entre los nombres de una cadena («Cabagra · Buenos Aires · Puntarenas»). */
+export const SEPARADOR_DE_RUTA = " · ";
+
+/**
+ * SLT-48 (R44) — la RUTA de un lugar de cualquier profundidad, de la HOJA A LA RAIZ, con el separador
+ * de la casa. `nombres` llega en ese orden (el de `nodo_geografico`): «Lote 7 · Manzana 12 · … · Norte».
+ * Es la forma que ya tenian `distrito` y `nodo_geografico`; en un pais de 3 niveles sale igual que hoy.
+ *
+ * Se salta los nombres vacios, como `unir`. Sin recorte: quien la escriba recorta a su columna
+ * (`etiquetaDeEntidad` a `ETIQUETA_MAX_CHARS`, `valorDeRuta` a `VALOR_MAX_CHARS`).
+ */
+export function rutaDeHojaARaiz(nombres: readonly (string | null | undefined)[]): string {
+  return nombres
+    .map((n) => (n ?? "").trim().replace(/\s+/g, " "))
+    .filter((n) => n !== "")
+    .join(SEPARADOR_DE_RUTA);
+}
+
+/**
+ * SLT-48 (R38, R44) — la ruta de un lugar como VALOR anterior o nuevo de una accion (la del padre de
+ * un nodo movido: «Escazú · San José» → «Santa Ana · San José»). Recortada a `VALOR_MAX_CHARS`: Postgres
+ * no trunca y un valor mas largo abortaria la accion entera.
+ */
+export function valorDeRuta(nombres: readonly (string | null | undefined)[]): string {
+  return valorDeCatalogo(rutaDeHojaARaiz(nombres));
+}
+
 /** Lo que se pinta cuando una orden no tiene ni guia ni remision. Nunca cadena vacia. */
 export const ETIQUETA_ORDEN_SIN_GUIA = "(sin guía)";
 
@@ -199,7 +226,7 @@ function limpiar(texto: string | null | undefined): string {
 
 /** Une las partes que existen con el separador de la casa, saltandose las vacias. */
 function unir(...partes: (string | null | undefined)[]): string {
-  return limpiar(partes.filter((p): p is string => p != null && p.trim() !== "").join(" · "));
+  return limpiar(partes.filter((p): p is string => p != null && p.trim() !== "").join(SEPARADOR_DE_RUTA));
 }
 
 /** Guia, y si no hay, remision, y si no hay ninguna, el respaldo declarado. */
@@ -269,8 +296,10 @@ const CONSTRUCTORES: {
   },
   tarifa_valor: (f) => unir(f?.concepto, f?.nivel),
   grupo_distritos: (f) => unir(f?.nombre, f?.zonaNombre),
-  // SLT-43 — el criterio de la 374 (`distrito`), para una cadena de largo variable.
-  nodo_geografico: (f) => unir(...(f?.nombres ?? [])),
+  // SLT-43 — el criterio de la 374 (`distrito`), para una cadena de largo variable. SLT-48 (R44): es la
+  // etiqueta de un lugar de CUALQUIER profundidad (2 a 10 niveles), la ruta entera de la hoja a la raiz.
+  // `provincia`/`canton`/`distrito` quedan para leer las filas ya escritas con la forma vieja.
+  nodo_geografico: (f) => limpiar(rutaDeHojaARaiz(f?.nombres ?? [])),
   tarifa_activacion: () => "Tarifas nuevas",
 };
 

@@ -347,11 +347,12 @@ describeSiHayBase("SL-38 T8 — dos empresas de punta a punta: cada una solo ve 
     expect(r).toEqual(ESPERADO);
   });
 
-  it("R17: OrdenRepository.findDistritoParaCorreccion marca el distrito propuesto por empresa", async () => {
+  // SLT-48 (T2.3): `findDistritoParaCorreccion` pasa a `findLugarParaCorreccion(nodoId)`.
+  it("R17: OrdenRepository.findLugarParaCorreccion marca el distrito propuesto por empresa", async () => {
     const repo = new OrdenRepository(app);
     const r = await enLasDos(async () => {
       const marca = async (id: string) => {
-        const d = await repo.findDistritoParaCorreccion(id);
+        const d = await repo.findLugarParaCorreccion(id);
         if (d === null) throw new Error(`no vino el distrito ${id}`);
         return d.esZonaEspecial;
       };
@@ -423,7 +424,8 @@ describeSiHayBase("SL-38 T8 — dos empresas de punta a punta: cada una solo ve 
       });
       if (filas.length !== 1) throw new Error(`la empresa ${e} no ve su gestion`);
       // La misma fila con el distrito cambiado a D2, para leer las dos marcas en una llamada.
-      const conD2 = { ...filas[0], orden: { ...filas[0].orden, distritoId: s.D2 } };
+      // SLT-48 R27: el cierre lee el lugar del nodo de la orden, no de `distritoId` (entrada).
+      const conD2 = { ...filas[0], orden: { ...filas[0].orden, nodoGeograficoId: s.D2 } };
       const { distritos } = await leerDescriptivosDeOrdenes([filas[0], conD2], app);
       const marca = (id: string) => {
         const d = distritos.get(id);

@@ -14,25 +14,28 @@ import { fijarEmpresa } from "../tests/fabricas/organizaciones";
 /**
  * E2E — Un país de 4 niveles en la descarga, la etiqueta y el cierre (SLT-125 T4.1; R43, design §10).
  *
- * El país `XB` tiene cuatro niveles: «Región», «Comuna», «Barrio» y «Sector». Las dos órdenes están en
- * un barrio (nivel 3: hasta SLT-48 una orden no baja al 4). Se comprueba:
+ * El país `XB` tiene cuatro niveles: «Región», «Comuna», «Barrio» y «Sector». SLT-48 (R26, decisión
+ * «Nivel 4 de la orden»): las dos órdenes están en un SECTOR (nivel 4), la hoja de su rama; hasta SLT-48
+ * una orden no bajaba al 4 y estaban en un barrio. Se comprueba:
  *  1. la descarga de `/ordenes`: las cabeceras «Región», «Comuna», «Barrio» y «Sector» en el sitio de
- *     las tres de lugar de hoy, y en cada orden la ruta en las tres primeras y «Sector» vacía;
- *  2. la etiqueta de guía de cada orden: la línea «zona / región / comuna / barrio»;
- *  3. el cierre del día: el admin lee «zona · región · comuna · barrio» en la fila de cada orden, y el
- *     `ubicacion_snapshot` de las dos filas de `cierre_detail` lleva 3 niveles con sus tipos y nombres.
+ *     las tres de lugar de hoy, y en cada orden la ruta en las cuatro, «Sector» LLENA (R26);
+ *  2. la etiqueta de guía de cada orden: la línea «zona / región / comuna / barrio / sector»;
+ *  3. el cierre del día: el admin lee «zona · región · comuna · barrio · sector» en la fila de cada orden,
+ *     y el `ubicacion_snapshot` de las dos filas de `cierre_detail` lleva los 4 niveles de la ruta del
+ *     nodo (R27), con sus tipos y nombres.
  *
- * DATOS. Las órdenes NO salen de la carga masiva: la regla de guardado de SLT-45 no deja crear órdenes
- * en un país de 4 niveles (design §10). Se siembra así, con el cliente dueño del E2E:
+ * DATOS. Las órdenes NO salen de la carga masiva (eso lo prueba `carga-masiva-4-niveles.test.ts`, R46). Se
+ * siembra así, con el cliente dueño del E2E:
  *  - el país `XB` por upsert: la base del E2E persiste entre corridas y el país se reutiliza. El trigger
  *    `pais_tipos_de_nivel` crea `nivel_1`..`nivel_3` desde la fila `pais`; `nivel_4` se inserta aparte
  *    (como `tests/integration/db/_fixtures/geo-47.ts`), también idempotente;
- *  - la geografía (una región, una comuna y dos barrios) en las tablas viejas, con sufijo aleatorio por
- *    corrida: la sincronía de SLT-43 crea sus nodos con el mismo id;
- *  - la empresa, sus zonas, la tienda y el mensajero por los servicios del escenario de reparto
- *    (`escenarioReparto`), con la empresa dada de alta en `XB` (`crearEmpresaE2E(…, { paisId })`);
- *  - las dos órdenes por SQL, en `en_preparacion`, con `provincia_id`, `canton_id` y `distrito_id`, y
- *    CON coordenadas: así la asignación las acepta sin pasar por la cola de geocodificación (no hay
+ *  - la geografía (una región, una comuna, dos barrios y un sector bajo el barrio central) en
+ *    `nodo_geografico`, con sufijo aleatorio por corrida. SLT-48: `provincia`, `canton` y `distrito` son
+ *    vistas de solo lectura sobre los nodos (design §9);
+ *  - la empresa, sus zonas (una por barrio), la tienda y el mensajero por los servicios del escenario de
+ *    reparto (`escenarioReparto`), con la empresa dada de alta en `XB` (`crearEmpresaE2E(…, { paisId })`);
+ *  - las dos órdenes por SQL, en `en_preparacion`, con su nodo (el sector) y las 3 FK viejas en NULL
+ *    (R15), y CON coordenadas: así la asignación las acepta sin pasar por la cola de geocodificación (no hay
  *    job que drenar para una orden que no entró por la carga). Desde ahí, guía, asignación, recogida,
  *    gestión y cierre van por los servicios reales (`llevarVariasA`, `gestionar`, `solicitarCierre`).
  */
@@ -84,34 +87,62 @@ async function sembrarPais(): Promise<void> {
   );
 }
 
-/** Una región, una comuna y dos barrios de `XB`, con nombres únicos de esta corrida. */
-async function sembrarGeografia(): Promise<{ central: GeoE2E; satelite: GeoE2E; provinciaId: string; cantonId: string }> {
-  const db = baseReparto();
-  const s = sufijo();
-  const id = { select: { id: true } } as const;
-  const region = { nombre: `Región XB ${s}` };
-  const comuna = { nombre: `Comuna XB ${s}` };
-  const provincia = await db.provincia.create({ data: { nombre: region.nombre, paisId: PAIS }, ...id });
-  const canton = await db.canton.create({ data: { nombre: comuna.nombre, provinciaId: provincia.id }, ...id });
-  const barrio = async (nombre: string): Promise<GeoE2E> => {
-    const d = await db.distrito.create({ data: { nombre, cantonId: canton.id }, ...id });
-    return { distritoId: d.id, provincia: region.nombre, canton: comuna.nombre, distrito: nombre };
-  };
-  return {
-    central: await barrio(`Barrio XB ${s}`),
-    satelite: await barrio(`Barrio satélite XB ${s}`),
-    provinciaId: provincia.id,
-    cantonId: canton.id,
-  };
+/**
+ * Un nodo de `XB` en `nodo_geografico`, con el tipo `nivel_<profundidad>` del país. `nombre_normalizado`
+ * lo pone el trigger de invariantes (como `tests/fabricas/paises.ts > crearNodoDeNivel`).
+ */
+async function crearNodo(profundidad: 1 | 2 | 3 | 4, nombre: string, padreId: string | null): Promise<string> {
+  const id = randomUUID();
+  const filas = await baseReparto().$executeRawUnsafe(
+    `INSERT INTO nodo_geografico (id, pais_id, tipo_id, padre_id, profundidad, nombre, nombre_normalizado, activo)
+     SELECT $1, $2, t.id, $3, $4::int, $5, '', true
+       FROM tipo_nivel_geografico t WHERE t.pais_id = $2 AND t.clave = 'nivel_' || $4::text`,
+    id,
+    PAIS,
+    padreId,
+    profundidad,
+    nombre,
+  );
+  if (filas !== 1) throw new Error(`geo-presentacion-4-niveles: ${PAIS} no tiene el tipo nivel_${profundidad}`);
+  return id;
 }
 
-const INSERTAR_ORDEN = `INSERT INTO orden (id, num_remision, estatus_id, destinatario, telefono_dest, direccion, tienda_id,
-    zona_id, provincia_id, canton_id, distrito_id, producto, latitud, longitud, created_at, updated_at)
-  VALUES ($1, $2, $3, $4, '88880000', '100 m norte de la iglesia', $5, $6, $7, $8, $9, 'Caja E2E',
-    $10::numeric, $11::numeric, now(), now())`;
+/**
+ * Una región, una comuna, dos barrios (uno por zona) y un sector bajo el barrio central, con nombres
+ * únicos de esta corrida. La ruta de las órdenes es la del sector: los 4 niveles.
+ */
+async function sembrarGeografia(): Promise<{
+  central: GeoE2E;
+  satelite: GeoE2E;
+  sectorId: string;
+  ruta: [string, string, string, string];
+}> {
+  const s = sufijo();
+  const region = `Región XB ${s}`;
+  const comuna = `Comuna XB ${s}`;
+  const regionId = await crearNodo(1, region, null);
+  const comunaId = await crearNodo(2, comuna, regionId);
+  const barrio = async (nombre: string): Promise<GeoE2E> => ({
+    distritoId: await crearNodo(3, nombre, comunaId),
+    provincia: region,
+    canton: comuna,
+    distrito: nombre,
+  });
+  const central = await barrio(`Barrio XB ${s}`);
+  const satelite = await barrio(`Barrio satélite XB ${s}`);
+  const sector = `Sector XB ${s}`;
+  const sectorId = await crearNodo(4, sector, central.distritoId);
+  return { central, satelite, sectorId, ruta: [region, comuna, central.distrito, sector] };
+}
 
-/** Dos órdenes de la tienda en el barrio de la zona central, `en_preparacion`, con coordenadas. */
-async function sembrarOrdenes(r: RepartoE2E, provinciaId: string, cantonId: string): Promise<OrdenE2E[]> {
+// SLT-48 (R15): la orden guarda solo su nodo; las 3 FK viejas quedan en NULL.
+const INSERTAR_ORDEN = `INSERT INTO orden (id, num_remision, estatus_id, destinatario, telefono_dest, direccion, tienda_id,
+    zona_id, nodo_geografico_id, producto, latitud, longitud, created_at, updated_at)
+  VALUES ($1, $2, $3, $4, '88880000', '100 m norte de la iglesia', $5, $6, $7, 'Caja E2E',
+    $8::numeric, $9::numeric, now(), now())`;
+
+/** Dos órdenes de la tienda en el sector (nivel 4) de la zona central, `en_preparacion`, con coordenadas. */
+async function sembrarOrdenes(r: RepartoE2E, sectorId: string): Promise<OrdenE2E[]> {
   const db = baseReparto();
   const estado = await db.orderStatus.findUniqueOrThrow({ where: { value: "en_preparacion" }, select: { id: true } });
   const ordenes: OrdenE2E[] = [];
@@ -134,9 +165,7 @@ async function sembrarOrdenes(r: RepartoE2E, provinciaId: string, cantonId: stri
         o.destinatario,
         r.tienda.id,
         r.zonaCentral.id,
-        provinciaId,
-        cantonId,
-        r.zonaCentral.geo.distritoId,
+        sectorId,
         "-33.0245000",
         "-71.5518000",
       );
@@ -163,7 +192,7 @@ async function abrirOrdenes(page: Page, ordenes: readonly OrdenE2E[]): Promise<v
 let r: RepartoE2E;
 let m: MensajeroE2E;
 let ordenes: OrdenE2E[];
-let ruta: [string, string, string];
+let ruta: [string, string, string, string];
 
 test.describe.serial("Geografía de 4 niveles — descarga, etiqueta y cierre (R43)", () => {
   test.beforeAll(async () => {
@@ -173,12 +202,12 @@ test.describe.serial("Geografía de 4 niveles — descarga, etiqueta y cierre (R
       distritos: { central: geo.central, satelite: geo.satelite },
     });
     m = await nucleo.crearMensajero(r, "central");
-    ruta = [geo.central.provincia, geo.central.canton, geo.central.distrito];
-    const sembradas = await sembrarOrdenes(r, geo.provinciaId, geo.cantonId);
+    ruta = geo.ruta;
+    const sembradas = await sembrarOrdenes(r, geo.sectorId);
     ordenes = await nucleo.llevarVariasA(r, sembradas, "mensajero_recogiendo_en_bodega", { mensajero: m });
   });
 
-  test("1. la descarga de /ordenes lleva una columna por nivel, con «Sector» vacía", async ({ browser }) => {
+  test("1. la descarga de /ordenes lleva una columna por nivel, con «Sector» llena", async ({ browser }) => {
     const page = await paginaDe(browser, r.empresa.maestro);
     await abrirOrdenes(page, ordenes);
 
@@ -206,11 +235,12 @@ test.describe.serial("Geografía de 4 niveles — descarga, etiqueta y cierre (R
           filas.push([1, 2, 3, 4].map((k) => fila.getCell(zona + 1 + k).text));
         }
       });
-      expect(filas, `la orden ${o.numRemision} sale una vez, con su ruta y «Sector» vacía`).toEqual([[...ruta, ""]]);
+      // SLT-48 R26 (decisión «Nivel 4 de la orden»): la cuarta columna sale llena. Antes: `[[...ruta de 3, ""]]`.
+      expect(filas, `la orden ${o.numRemision} sale una vez, con su ruta y «Sector» llena`).toEqual([[...ruta]]);
     }
   });
 
-  test("2. la etiqueta de guía de cada orden lleva «zona / región / comuna / barrio»", async ({ browser }) => {
+  test("2. la etiqueta de guía de cada orden lleva «zona / región / comuna / barrio / sector»", async ({ browser }) => {
     const page = await paginaDe(browser, r.empresa.maestro);
     await abrirOrdenes(page, ordenes);
     for (const o of ordenes) await page.getByRole("checkbox", { name: `Seleccionar orden ${o.numRemision}` }).check();
@@ -218,6 +248,7 @@ test.describe.serial("Geografía de 4 niveles — descarga, etiqueta y cierre (R
 
     const dialogo = page.getByRole("dialog", { name: "Imprimir etiquetas" });
     await expect(dialogo).toBeVisible();
+    // SLT-48 R26: la ruta llega al nivel del nodo (el sector). Antes, con la orden en el barrio, 3 niveles.
     const linea = [r.zonaCentral.nombre, ...ruta].join(" / ");
     for (const o of ordenes) {
       const etiqueta = dialogo.getByRole("article", { name: `Etiqueta de la orden ${o.numRemision}` });
@@ -233,7 +264,7 @@ test.describe.serial("Geografía de 4 niveles — descarga, etiqueta y cierre (R
     expect(await descarga.failure()).toBeNull();
   });
 
-  test("3. el cierre muestra «zona · región · comuna · barrio» y congela 3 niveles en el snapshot", async ({ browser }) => {
+  test("3. el cierre muestra «zona · región · comuna · barrio · sector» y congela 4 niveles en el snapshot", async ({ browser }) => {
     ordenes = await nucleo.llevarVariasA(r, ordenes, "en_reparto", { mensajero: m });
     for (const o of ordenes) await nucleo.gestionar(r, o, m, { resultado: "entregado" });
     const cierreId = await solicitarCierre(r, m);
@@ -253,7 +284,8 @@ test.describe.serial("Geografía de 4 niveles — descarga, etiqueta y cierre (R
     const ubicacion = [r.zonaCentral.nombre, ...ruta].join(" · ");
     await expect(filas.getByText(ubicacion, { exact: true })).toHaveCount(ordenes.length);
 
-    // El snapshot de cada fila: 3 niveles, con el tipo de cada uno en el país y su nombre.
+    // El snapshot de cada fila: los niveles de la ruta del nodo, con el tipo de cada uno en el país y su
+    // nombre. SLT-48 R26, R27: la orden está en el nivel 4, así que son 4. Antes, 3 (la orden en el barrio).
     const detalles = await baseReparto().cierreDetail.findMany({
       where: { cierreId },
       select: { ordenId: true, ubicacionSnapshot: true },
@@ -266,6 +298,7 @@ test.describe.serial("Geografía de 4 niveles — descarga, etiqueta y cierre (R
         { profundidad: 1, tipo: TIPOS[0], nombre: ruta[0] },
         { profundidad: 2, tipo: TIPOS[1], nombre: ruta[1] },
         { profundidad: 3, tipo: TIPOS[2], nombre: ruta[2] },
+        { profundidad: 4, tipo: TIPOS[3], nombre: ruta[3] },
       ]);
     }
   });

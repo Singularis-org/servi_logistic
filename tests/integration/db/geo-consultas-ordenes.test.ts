@@ -256,7 +256,20 @@ describeSiHayBase("SLT-65 T2.4 — la marca de las lecturas de ordenes sale del 
           expect(f.cobroHoy).not.toBeNull();
           expect(f.cobroNuevo).toEqual(f.cobroHoy);
           expect(f.correccionHoy).not.toBeNull();
-          expect(f.correccionNueva).toEqual(f.correccionHoy);
+          // SLT-48 R16/R22: la fila de correccion cambia de forma a proposito: el lugar es el nodo
+          // (`nodoId`), la ruta sale del arbol y el lugar de tarifa es `distritoTarifaId` (P3), en vez
+          // de las 3 FK. El resto de la fila es la de hoy, y lo nuevo equivale a las FK viejas.
+          if (f.correccionHoy === null) continue;
+          const { provinciaId, cantonId, distritoId, ...resto } = f.correccionHoy;
+          expect(f.correccionNueva).toEqual({
+            ...resto,
+            nodoId: distritoId ?? cantonId,
+            distritoTarifaId: distritoId,
+            ruta: expect.any(Array),
+          });
+          expect(f.correccionNueva?.ruta.map((n) => n.id)).toEqual(
+            [provinciaId, cantonId, distritoId].filter((id) => id !== null),
+          );
         }
         // Las dos marcas y los dos casos del nombre del distrito estan cubiertos.
         expect(filas.filter((f) => f.cobroNuevo?.esZonaEspecial)).toHaveLength(5);

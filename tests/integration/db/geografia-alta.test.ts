@@ -17,6 +17,7 @@ import {
   enTransaccionRevertida,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearNodoDeNivel } from "@/tests/fabricas/paises";
 
 /**
  * FICHA 374 (R12/R13/R15/R16/R18) — **EL ALTA, CONTRA POSTGRES.**
@@ -67,19 +68,13 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
       await serializarEscriturasReales(tx);
 
       const provincia = (
-        await tx.provincia.create({ data: { nombre: `Prov ${SUFIJO}` }, select: { id: true } })
+        await crearNodoDeNivel(tx, 1, { nombre: `Prov ${SUFIJO}` })
       ).id;
       const canton = (
-        await tx.canton.create({
-          data: { nombre: `Canton ${SUFIJO}`, provinciaId: provincia },
-          select: { id: true },
-        })
+        await crearNodoDeNivel(tx, 2, { nombre: `Canton ${SUFIJO}`, padreId: provincia })
       ).id;
       const cantonOff = (
-        await tx.canton.create({
-          data: { nombre: `Canton retirado ${SUFIJO}`, provinciaId: provincia, activo: false },
-          select: { id: true },
-        })
+        await crearNodoDeNivel(tx, 2, { nombre: `Canton retirado ${SUFIJO}`, padreId: provincia, activo: false })
       ).id;
 
       const cliente = clienteConSavepoint(tx);
@@ -216,7 +211,7 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
     it("un hermano RETIRADO tambien ocupa el nombre", async () => {
       await conCorpus(async ({ s, geo, service, tx }) => {
         const id = await altaPorNivel(geo, "distrito", `Cabagra ${SUFIJO}`, s.canton, ALTA_CR, null);
-        await tx.distrito.update({ where: { id }, data: { activo: false } });
+        await tx.nodoGeografico.update({ where: { id }, data: { activo: false } });
 
         const r = await service.crear(
           { padreId: s.canton, nombre: `CABAGRA ${SUFIJO}` },
@@ -364,10 +359,7 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
     it("un cantón dado de alta bajo una provincia de XA queda en XA (trigger) y registra XA", async () => {
       await conCorpus(async ({ service, tx }) => {
         await crearPaisDePrueba(tx, "XA");
-        const p = await tx.provincia.create({
-          data: { nombre: `Región ${SUFIJO}`, paisId: "XA" },
-          select: { id: true },
-        });
+        const p = await crearNodoDeNivel(tx, 1, { nombre: `Región ${SUFIJO}`, paisId: "XA" });
         const r = await service.crear(
           { padreId: p.id, nombre: `Comuna ${SUFIJO}` },
           SUPERADMIN,
@@ -401,13 +393,10 @@ describeSiHayBase("374 — el alta del catalogo geografico (Postgres real)", () 
   describe("SL-20/R16, R17, R29 — el codigo del alta a mano", () => {
     it("CR: un codigo que cumple la regla (prefijo del padre) se guarda", async () => {
       await conCorpus(async ({ service, tx }) => {
-        const p = await tx.provincia.create({
-          data: { nombre: `Prov cod ${SUFIJO}`, codigoDta: null },
-          select: { id: true },
-        });
+        const p = await crearNodoDeNivel(tx, 1, { nombre: `Prov cod ${SUFIJO}`, codigoDta: null });
         // Un padre sin codigo no admite hijos con codigo (R17): se le pone uno libre de la base.
         const libre = await codigoLibreDeProvincia(tx);
-        await tx.provincia.update({ where: { id: p.id }, data: { codigoDta: libre } });
+        await tx.nodoGeografico.update({ where: { id: p.id }, data: { codigoOficial: libre } });
 
         const r = await service.crear(
           { padreId: p.id, nombre: `Canton cod ${SUFIJO}`, codigo: `${libre}01` },

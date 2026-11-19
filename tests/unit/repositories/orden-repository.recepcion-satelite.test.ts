@@ -93,6 +93,8 @@ describe("OrdenRepository.findRecepcionSateliteByZona (R6/R8/R9)", () => {
       provinciaId: "p-1",
       cantonId: "c-1",
       distritoId: "d-1",
+      // SLT-48 (R22): el lugar de la orden es su nodo; la ruta sale de el. Cambio de entrada.
+      nodoGeograficoId: "d-1",
       direccion: "calle 1",
       producto: "caja",
       peso: null,
@@ -119,7 +121,7 @@ describe("OrdenRepository.findRecepcionSateliteByZona (R6/R8/R9)", () => {
     const prisma = buildPrisma();
     prisma.orden.findMany.mockResolvedValue([
       ordenRow({ prioridad: true }),
-      ordenRow({ id: "o2", estatus: { value: "en_bodega_satelite" }, distritoId: null, montoCobrar: null }),
+      ordenRow({ id: "o2", estatus: { value: "en_bodega_satelite" }, distritoId: null, nodoGeograficoId: "c-1", montoCobrar: null }),
     ]);
     const repo = new OrdenRepository(prisma as unknown as PrismaClient);
 
@@ -159,9 +161,8 @@ describe("OrdenRepository.findRecepcionSateliteByZona (R6/R8/R9)", () => {
       telefonoDest: "099",
       tiendaId: "t-1",
       zonaId: "z-limon",
-      provinciaId: "p-1",
-      cantonId: "c-1",
-      distritoId: "d-1",
+      // SLT-48 R15, R22: la fila lleva el nodo de la orden; antes `provinciaId`/`cantonId`/`distritoId`.
+      nodoGeograficoId: "d-1",
       producto: "caja",
       peso: null,
       notas: null,

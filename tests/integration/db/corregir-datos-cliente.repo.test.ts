@@ -24,6 +24,7 @@ import {
   fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearNodoDeNivel } from "@/tests/fabricas/paises";
 
 /**
  * ⭑ FICHA 312 (B3 + G3) — LA CORRECCION DE LOS DATOS DEL CLIENTE, CONTRA POSTGRES REAL.
@@ -449,14 +450,10 @@ describeSiHayBase("⭑ 312/B3 — corregirDatosCliente contra Postgres real", ()
       zonas: string[],
       zonaEspecial = false,
     ): Promise<string> => {
-      const d = await tx.distrito.create({
-        data: {
-          nombre: `${nombre}-${sufijo}`,
-          cantonId: FKS.cantonId,
-          zonas: { create: zonas.map((zonaId) => ({ zonaId })) },
-        },
-        select: { id: true },
-      });
+      // SLT-48 (design §9): `distrito` es una vista; el distrito de prueba es un nodo de profundidad 3
+      // y sus zonas, filas de `zona_distrito`.
+      const d = await crearNodoDeNivel(tx, 3, { nombre: `${nombre}-${sufijo}`, padreId: FKS.cantonId });
+      if (zonas.length > 0) await tx.zonaDistrito.createMany({ data: zonas.map((zonaId) => ({ zonaId, distritoId: d.id })) });
       // SL-38: la marca es de la empresa. Sin `organizacion_id` en los datos: la pone el DEFAULT con
       // la empresa que fija `enTransaccionRevertida`, que es la de la orden.
       if (zonaEspecial) await tx.distritoZonaEspecial.create({ data: { distritoId: d.id } });
@@ -546,9 +543,8 @@ describeSiHayBase("⭑ 312/B3 — corregirDatosCliente contra Postgres real", ()
           producto: " caja de botas ",
           notas: "  llamar antes  ",
           direccion: "   calle nueva 10   ",
-          provinciaId: FKS.provinciaId,
-          cantonId: FKS.cantonId,
-          distritoId: ctx.geo.unaZona,
+          // SLT-48 R16: la geografia de la correccion es un nodo (entrada).
+          nodoId: ctx.geo.unaZona,
           peso: 4.25,
           confirmaCambioDeUbicacion: true,
         },
@@ -566,6 +562,7 @@ describeSiHayBase("⭑ 312/B3 — corregirDatosCliente contra Postgres real", ()
           provinciaId: true,
           cantonId: true,
           distritoId: true,
+          nodoGeograficoId: true,
           zonaId: true,
         },
       });
@@ -580,7 +577,9 @@ describeSiHayBase("⭑ 312/B3 — corregirDatosCliente contra Postgres real", ()
     expect(r.fila.producto).toBe("caja de botas");
     expect(r.fila.notas).toBe("llamar antes");
     expect(r.fila.peso?.toString()).toBe("4.25");
-    expect(r.fila.distritoId).toBe(r.geo.unaZona);
+    // SLT-48 R16: la orden corregida guarda el nodo nuevo y deja las 3 FK en NULL.
+    expect(r.fila.nodoGeograficoId).toBe(r.geo.unaZona);
+    expect([r.fila.provinciaId, r.fila.cantonId, r.fila.distritoId]).toEqual([null, null, null]);
     // R5/R15 — LA ZONA ES LA DERIVADA DEL DISTRITO, no la anterior ni ninguna venida de fuera.
     expect(r.fila.zonaId).toBe(r.geo.zonaDestinoId);
     expect(r.fila.zonaId).not.toBe(FKS.zonaId);
@@ -597,7 +596,8 @@ describeSiHayBase("⭑ 312/B3 — corregirDatosCliente contra Postgres real", ()
         ctx.ordenId,
         {
           direccion: "calle nueva 10",
-          distritoId: ctx.geo.unaZona,
+          // SLT-48 R16: el repositorio recibe el nodo (entrada).
+          nodoGeograficoId: ctx.geo.unaZona,
           zonaId: ctx.geo.zonaDestinoId,
           peso: 4.25,
         },
@@ -618,8 +618,10 @@ describeSiHayBase("⭑ 312/B3 — corregirDatosCliente contra Postgres real", ()
         JSON.stringify((r.antes as Record<string, unknown>)[k]) !==
         JSON.stringify((r.despues as Record<string, unknown>)[k]),
     );
+    // SLT-48 R16: cambia el nodo y las 3 FK pasan a NULL en la misma escritura (antes cambiaba solo
+    // `distritoId`).
     expect(diferentes.sort()).toEqual(
-      ["direccion", "distritoId", "peso", "updatedAt", "zonaId"].sort(),
+      ["cantonId", "direccion", "distritoId", "nodoGeograficoId", "peso", "provinciaId", "updatedAt", "zonaId"].sort(),
     );
 
     // R22 — las escribe el trabajo de geocodificacion, no esta ficha. Se afirma aparte del
@@ -679,7 +681,8 @@ describeSiHayBase("⭑ 312/B3 — corregirDatosCliente contra Postgres real", ()
 
       const resultado = await ctx.repo.corregirDatosCliente(
         ctx.ordenId,
-        { direccion: "calle nueva 10", distritoId: ctx.geo.unaZona, zonaId: ctx.geo.zonaDestinoId },
+        // SLT-48 R16: el repositorio recibe el nodo (entrada).
+        { direccion: "calle nueva 10", nodoGeograficoId: ctx.geo.unaZona, zonaId: ctx.geo.zonaDestinoId },
         ESTADOS_SIN_CORRECCION,
         RASTRO_362,
       );
@@ -720,7 +723,8 @@ describeSiHayBase("⭑ 312/B3 — corregirDatosCliente contra Postgres real", ()
           ctx.ordenId,
           {
             direccion: "calle nueva 10",
-            distritoId: ctx.geo.unaZona,
+            // SLT-48 R16: el repositorio recibe el nodo (entrada).
+            nodoGeograficoId: ctx.geo.unaZona,
             zonaId: ctx.geo.zonaDestinoId,
             peso: 4.25,
           },
@@ -742,7 +746,8 @@ describeSiHayBase("⭑ 312/B3 — corregirDatosCliente contra Postgres real", ()
       const antes = await ctx.tx.orden.findUniqueOrThrow({ where: { id: ctx.ordenId } });
       const resultado = await ctx.repo.corregirDatosCliente(
         ctx.ordenId,
-        { direccion: "calle nueva 10", distritoId: ctx.geo.unaZona, zonaId: ctx.geo.zonaDestinoId },
+        // SLT-48 R16: el repositorio recibe el nodo (entrada).
+        { direccion: "calle nueva 10", nodoGeograficoId: ctx.geo.unaZona, zonaId: ctx.geo.zonaDestinoId },
         ESTADOS_SIN_CORRECCION,
         RASTRO_362,
       );
@@ -764,11 +769,12 @@ describeSiHayBase("⭑ 312/B3 — corregirDatosCliente contra Postgres real", ()
     // `(organizacion_id, distrito_id)`); «nunca `zonas[0]`» queda en el unit del servicio.
     const r = await conOrdenUbicada({}, async (ctx) => ({
       geo: ctx.geo,
-      una: await ctx.repo.findDistritoParaCorreccion(ctx.geo.unaZona),
-      sin: await ctx.repo.findDistritoParaCorreccion(ctx.geo.sinZona),
-      especial: await ctx.repo.findDistritoParaCorreccion(ctx.geo.especial),
-      central: await ctx.repo.findDistritoParaCorreccion(ctx.geo.enZonaCentral),
-      inexistente: await ctx.repo.findDistritoParaCorreccion(
+      // SLT-48 (T2.3): `findDistritoParaCorreccion` pasa a `findLugarParaCorreccion(nodoId)`.
+      una: await ctx.repo.findLugarParaCorreccion(ctx.geo.unaZona),
+      sin: await ctx.repo.findLugarParaCorreccion(ctx.geo.sinZona),
+      especial: await ctx.repo.findLugarParaCorreccion(ctx.geo.especial),
+      central: await ctx.repo.findLugarParaCorreccion(ctx.geo.enZonaCentral),
+      inexistente: await ctx.repo.findLugarParaCorreccion(
         "00000000-0000-4000-8000-000000000000",
       ),
     }));
@@ -783,9 +789,11 @@ describeSiHayBase("⭑ 312/B3 — corregirDatosCliente contra Postgres real", ()
     // tipo de distrito, colgado de la zona central, sale con `true`.
     expect(r.central?.esCentral).toBe(true);
     expect(r.central?.esZonaEspecial).toBe(false);
-    // La cadena para R6 sale de la relacion, no de un segundo viaje.
-    expect(r.una?.cantonId).toBe(FKS.cantonId);
-    expect(r.una?.provinciaId).toBe(FKS.provinciaId);
+    // SLT-48 R16/R17: ya no hay cadena provincia -> canton que comprobar (la da el arbol); lo que
+    // viaja es el propio lugar, si es hoja y su lugar de tarifa (P3).
+    expect(r.una?.id).toBe(r.geo.unaZona);
+    expect(r.una?.tipoHijosActivos).toBeNull();
+    expect(r.una?.distritoTarifaId).toBe(r.geo.unaZona);
 
     // CERO zonas -> `null`, y `esCentral` cae a `false` (no hay zona de la que sacarlo).
     expect(r.sin?.zonaId).toBeNull();
@@ -820,7 +828,8 @@ describeSiHayBase("⭑ 312/B3 — corregirDatosCliente contra Postgres real", ()
     expect(viva.fila?.direccion).toBe("avenida siempre viva 742");
     expect(viva.fila?.montoCobrar).toBeNull(); // la fila se siembra sin monto
     expect(viva.fila?.zonaId).toBe(FKS.zonaId);
-    expect(viva.fila?.distritoId).toBe(viva.geo.origen);
+    // SLT-48 R16/R22: el lugar de la orden es su nodo (la orden vieja lo tiene por el trigger, R9).
+    expect(viva.fila?.nodoId).toBe(viva.geo.origen);
     expect(viva.fila?.yaEnUnCierre).toBe(false);
     expect(viva.fila?.peso).toBe(1.5);
 

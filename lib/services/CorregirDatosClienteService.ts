@@ -1,7 +1,7 @@
 import type {
   CorregirDatosClienteData,
-  DistritoResueltoRow,
   IOrdenRepository,
+  LugarResueltoRow,
   OrdenParaCorreccionRow,
 } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { ITarifaVigenteRepository } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
@@ -22,6 +22,8 @@ import {
   rolAdmiteCorreccion,
   type CampoCorregible,
 } from "@/lib/types/correccion-datos-cliente";
+import { msgUbicacionIncompleta } from "@/lib/services/geo-ubicacion";
+import { tresPrimerosNiveles } from "@/lib/repositories/_shared/ruta-del-lugar";
 import { paqueteEnEstanteSatelite } from "@/lib/utils/estados-bodega-satelite";
 import { costosListadoOrden, fleteEntregadoSinTarifa } from "@/lib/utils/ingreso-empresa";
 import {
@@ -91,7 +93,7 @@ import { normalizarTelefonoWa } from "@/lib/utils/whatsapp-telefono";
  */
 export type CorregirDatosClienteRepo = Pick<
   IOrdenRepository,
-  "findParaCorreccion" | "findDistritoParaCorreccion" | "corregirDatosCliente"
+  "findParaCorreccion" | "findLugarParaCorreccion" | "corregirDatosCliente"
 >;
 
 /**
@@ -131,7 +133,7 @@ const CAMPOS_TEXTO_ETIQUETA = ["destinatario", "telefonoDest", "producto", "dire
  * Valores normalizados de una orden, en la forma en que se comparan y se guardan. Es
  * `CorregirDatosClienteData` MENOS `zonaId`: la zona no se recibe, se deriva (R5).
  */
-type ValoresNormalizados = Omit<CorregirDatosClienteData, "zonaId">;
+type ValoresNormalizados = Omit<CorregirDatosClienteData, "zonaId" | "nodoGeograficoId"> & { nodoId?: string };
 
 /**
  * 312/§10 — LA NORMALIZACION, que es la MISMA que aplica la carga masiva y por eso se escribe una
@@ -150,7 +152,7 @@ type ValoresNormalizados = Omit<CorregirDatosClienteData, "zonaId">;
  * (`BulkOrdenService:83`, `(raw.direccion ?? "").trim()`) — 327/R8. Lo que aqui NO puede pasar es
  * acabar en `null` como alli: la direccion vacia se rechaza antes de llegar a la columna.
  *
- * Los tres ids de geografia y el peso NO se normalizan: son un uuid de catalogo y un numero.
+ * El nodo (SLT-48) y el peso NO se normalizan: son un id de catalogo y un numero.
  * Fingir una normalizacion sobre ellos solo escondería un valor mal formado.
  */
 function normalizar(input: CorregirDatosClienteInput): ValoresNormalizados {
@@ -163,9 +165,7 @@ function normalizar(input: CorregirDatosClienteInput): ValoresNormalizados {
     salida.notas = recortada === "" ? null : recortada;
   }
   if (input.direccion !== undefined) salida.direccion = input.direccion.trim();
-  if (input.provinciaId !== undefined) salida.provinciaId = input.provinciaId;
-  if (input.cantonId !== undefined) salida.cantonId = input.cantonId;
-  if (input.distritoId !== undefined) salida.distritoId = input.distritoId;
+  if (input.nodoId !== undefined) salida.nodoId = input.nodoId;
   if (input.peso !== undefined) salida.peso = input.peso;
   return salida;
 }
@@ -173,6 +173,16 @@ function normalizar(input: CorregirDatosClienteInput): ValoresNormalizados {
 /** El valor almacenado de un campo corregible, en la forma en que se compara con el normalizado. */
 function almacenado(orden: OrdenParaCorreccionRow, campo: CampoCorregible): string | number | null {
   return orden[campo];
+}
+
+/** Los ids de los niveles 1-3 de una ruta, con la forma del DTO de la 327. */
+function idsDeTresNiveles(ruta: readonly { id: string; nombre: string }[]): {
+  provinciaId: string;
+  cantonId: string;
+  distritoId: string | null;
+} {
+  const { provincia, canton, distrito } = tresPrimerosNiveles(ruta);
+  return { provinciaId: provincia?.id ?? "", cantonId: canton?.id ?? "", distritoId: distrito?.id ?? null };
 }
 
 export class CorregirDatosClienteService implements ICorregirDatosClienteService {
@@ -321,45 +331,43 @@ export class CorregirDatosClienteService implements ICorregirDatosClienteService
     }
     if (Object.keys(fieldErrors).length > 0) return { status: "validation_error", fieldErrors };
 
-    // 6. LA GEOGRAFIA (327/R3, R5, R6, R7). Solo si alguno de los tres cambia: una correccion que
+    // 6. LA GEOGRAFIA (327/R5, R7; SLT-48 R16, R17). Solo si el lugar cambia: una correccion que
     //    no toca la ubicacion no paga una consulta de catalogo.
     const data: CorregirDatosClienteData = this.proyectar(valores, cambios);
-    let distritoPropuesto: DistritoResueltoRow | null = null;
+    let lugarPropuesto: LugarResueltoRow | null = null;
 
     if (CAMPOS_GEOGRAFIA.some((campo) => cambios.includes(campo))) {
-      const { provinciaId, cantonId, distritoId } = valores;
-      // R3, revalidado en el servidor. El schema del borde ya lo exige, pero la segunda puerta no
-      // puede DEPENDER de la primera (R28): sin los tres no hay cadena que comprobar.
-      if (provinciaId === undefined || cantonId === undefined || distritoId === undefined) {
-        return this.rechazoDeUbicacion("Indica provincia, canton y distrito juntos");
+      const { nodoId } = valores;
+      // La segunda puerta no puede DEPENDER de la primera (R28): sin lugar no hay nada que validar.
+      if (nodoId === undefined) {
+        return this.rechazoDeUbicacion("Indica el lugar de la orden");
       }
-      const distrito = await this.repo.findDistritoParaCorreccion(distritoId);
+      const distrito = await this.repo.findLugarParaCorreccion(nodoId);
       if (distrito === null) {
         return this.rechazoDeUbicacion("El distrito indicado no existe");
       }
-      // FICHA 374/R30 — LA PUERTA REAL contra un distrito RETIRADO del catalogo.
+      // FICHA 374/R30 — LA PUERTA REAL contra un lugar RETIRADO del catalogo.
       //
       // El filtro del desplegable es comodidad; sin este rechazo, cualquiera que reenvie la
-      // peticion mete la orden en un distrito retirado. Corregir una orden hacia un distrito es un
-      // ALTA ENCUBIERTA —crea futuro, no consulta pasado—, asi que aqui SI se recorta, al reves
-      // que en las lecturas del catalogo.
+      // peticion mete la orden en un lugar retirado. Corregir una orden hacia un lugar es un ALTA
+      // ENCUBIERTA —crea futuro, no consulta pasado—, asi que aqui SI se recorta, al reves que en
+      // las lecturas del catalogo.
       //
       // ⚠️ EL MOTIVO ES PROPIO Y DISTINTO del de arriba a proposito: «no existe» y «fue retirado»
-      // son dos cosas distintas, y confundirlas manda a quien corrige a buscar una errata en un
-      // distrito que esta escrito bien.
+      // son dos cosas distintas. Los textos son los de la 327/374 (en Costa Rica el lugar de una
+      // correccion es un distrito); el modal de N niveles los revisa en SLT-48 T4.
       if (!distrito.disponible) {
         return this.rechazoDeUbicacion(
           "Ese distrito fue retirado del catalogo: elige otro o pide que lo reactiven",
         );
       }
-      // R6 — LA CADENA, en sus dos eslabones. Sin esto la fila puede quedar con un canton que no
-      // pertenece a su provincia: nada rompe, y las lecturas por jerarquia dejan de encontrarla.
-      if (distrito.cantonId !== cantonId || distrito.provinciaId !== provinciaId) {
-        return this.rechazoDeUbicacion(
-          "El distrito no pertenece al canton y la provincia elegidos",
-        );
+      // SLT-48 (R17, P2) — la regla de hoja, la misma que al crear: un lugar con hijos activos no
+      // se acepta. Sustituye a la cadena provincia -> canton -> distrito de la 327 (R6): con un solo
+      // nodo, la cadena la da el arbol.
+      if (distrito.tipoHijosActivos !== null) {
+        return this.rechazoDeUbicacion(msgUbicacionIncompleta(distrito.nombre, distrito.tipoHijosActivos));
       }
-      // R7 — la zona se deriva del distrito, y solo si resuelve EXACTAMENTE una. Con 0 o con >1 se
+      // R7 — la zona se deriva del lugar, y solo si resuelve EXACTAMENTE una. Con 0 o con >1 se
       // rechaza NOMBRANDO el motivo: `orden.zona_id` es NOT NULL y elegir una de varias seria
       // inventar la tarifa.
       if (distrito.zonaId === null) {
@@ -395,7 +403,7 @@ export class CorregirDatosClienteService implements ICorregirDatosClienteService
       // QUE CAMBIA. Corregir el distrito DENTRO de la misma zona sigue permitido (R16), porque no
       // le quita la orden a nadie; el gate del dinero de abajo lo sigue cubriendo.
       //
-      // ⚠️ Se compara la zona DERIVADA contra la ESTAMPADA, no `cambios.includes("distritoId")`:
+      // ⚠️ Se compara la zona DERIVADA contra la ESTAMPADA, no `cambios.includes("nodoId")`:
       // el distrito puede ser el mismo y resolver hoy otra zona (es literalmente el escenario de
       // la 366), y ese caso escribe `zona_id` igual.
       if (paqueteEnEstanteSatelite(orden.estatusValue) && distrito.zonaId !== orden.zonaId) {
@@ -410,10 +418,9 @@ export class CorregirDatosClienteService implements ICorregirDatosClienteService
       // R5 — LA ZONA LA ESCRIBE EL SERVIDOR. Nunca sale del input: el schema del borde ni siquiera
       // la admite.
       data.zonaId = distrito.zonaId;
-      // SLT-45 R26 — el nodo va en la MISMA escritura que las 3 FK. La correccion siempre llega
-      // con distrito (R3 de arriba), asi que el nodo es ese distrito (design §3.2).
-      data.nodoGeograficoId = distritoId;
-      distritoPropuesto = distrito;
+      // SLT-48 (R16) — el nodo; el repositorio vacia las 3 FK viejas en la misma escritura.
+      data.nodoGeograficoId = nodoId;
+      lugarPropuesto = distrito;
     }
 
     // 7. EL GATE DEL DINERO (R11/R15). Se dispara con el cambio de DISTRITO —no de zona—: la marca
@@ -421,14 +428,14 @@ export class CorregirDatosClienteService implements ICorregirDatosClienteService
     //    dentro de la MISMA zona tambien puede mover el flete. Fail-closed: sin `confirmaCambioDeUbicacion === true` no se
     //    escribe NADA y se devuelve el aviso con las dos columnas de importes.
     if (
-      distritoPropuesto !== null &&
-      distritoPropuesto.zonaId !== null &&
-      cambios.includes("distritoId") &&
+      lugarPropuesto !== null &&
+      lugarPropuesto.zonaId !== null &&
+      cambios.includes("nodoId") &&
       input.confirmaCambioDeUbicacion !== true
     ) {
       return {
         status: "confirmacion_requerida",
-        aviso: await this.componerAviso(orden, distritoPropuesto, distritoPropuesto.zonaId),
+        aviso: await this.componerAviso(orden, lugarPropuesto, lugarPropuesto.zonaId),
       };
     }
 
@@ -469,9 +476,11 @@ export class CorregirDatosClienteService implements ICorregirDatosClienteService
         notas: orden.notas,
         direccion: orden.direccion,
         peso: orden.peso,
-        provinciaId: orden.provinciaId,
-        cantonId: orden.cantonId,
-        distritoId: orden.distritoId,
+        // SLT-48 (R16, R22): el lugar y su ruta. Los ids de los niveles 1-3 salen de la ruta, no de
+        // las FK viejas; los lee el modal de 3 niveles hasta que T4 lo pase a N niveles.
+        nodoId: orden.nodoId,
+        ruta: orden.ruta,
+        ...idsDeTresNiveles(orden.ruta),
         zonaNombre: orden.zonaNombre,
         distritoNombre: orden.distritoNombre,
         numGuia: orden.numGuia,
@@ -497,17 +506,16 @@ export class CorregirDatosClienteService implements ICorregirDatosClienteService
       else if (campo === "producto") data.producto = valores.producto;
       else if (campo === "notas") data.notas = valores.notas;
       else if (campo === "direccion") data.direccion = valores.direccion;
-      else if (campo === "provinciaId") data.provinciaId = valores.provinciaId;
-      else if (campo === "cantonId") data.cantonId = valores.cantonId;
-      else if (campo === "distritoId") data.distritoId = valores.distritoId;
+      else if (campo === "nodoId") data.nodoGeograficoId = valores.nodoId;
       else data.peso = valores.peso;
     }
     return data;
   }
 
   /**
-   * Los rechazos de ubicacion se cuelgan TODOS de `distritoId` (design §9.2): es el campo que el
-   * humano acaba de elegir y junto al que el modal ya sabe pintar un motivo. Un estado propio por
+   * Los rechazos de ubicacion se cuelgan TODOS de `distritoId` (design §9.2): es el campo junto al
+   * que el modal ya sabe pintar un motivo. SLT-48 conserva la clave: el modal de N niveles (T4)
+   * decide si la mueve. Un estado propio por
    * cada motivo de rechazo seria superficie sin ganancia.
    */
   private rechazoDeUbicacion(motivo: string): CorregirDatosClienteServiceResult {
@@ -523,21 +531,21 @@ export class CorregirDatosClienteService implements ICorregirDatosClienteService
    */
   private async componerAviso(
     orden: OrdenParaCorreccionRow,
-    distrito: DistritoResueltoRow,
+    distrito: LugarResueltoRow,
     zonaId: string,
   ): Promise<AvisoCambioUbicacion> {
     // SECUENCIAL y no `Promise.all`: son dos consultas del mismo cliente, y este servicio se
     // ejercita tambien con un cliente TRANSACCIONAL en los tests contra Postgres, donde dos
     // consultas concurrentes sobre la misma conexion no estan definidas. El aviso es un camino
     // raro (solo al cambiar de distrito): dos viajes en serie no son un coste que valga el riesgo.
-    const actual = await this.ubicacionConCostos(orden, orden.distritoId, {
+    const actual = await this.ubicacionConCostos(orden, orden.distritoTarifaId, {
       zonaId: orden.zonaId,
       zonaNombre: orden.zonaNombre,
       distritoNombre: orden.distritoNombre,
       esCentral: orden.esCentral,
       esZonaEspecial: orden.esZonaEspecial,
     });
-    const propuesta = await this.ubicacionConCostos(orden, distrito.id, {
+    const propuesta = await this.ubicacionConCostos(orden, distrito.distritoTarifaId, {
       zonaId,
       zonaNombre: distrito.zonaNombre ?? "",
       distritoNombre: distrito.nombre,
@@ -565,8 +573,8 @@ export class CorregirDatosClienteService implements ICorregirDatosClienteService
    */
   private async ubicacionConCostos(
     orden: Pick<OrdenParaCorreccionRow, "tiendaId" | "montoCobrar" | "cobraComision">,
-    // SLT-52 (R16/R18): el distrito de ESA ubicacion (la actual o la propuesta), que decide su
-    // grupo en el modelo nuevo. No va dentro de `ubicacion` porque esa forma es la del DTO.
+    // SLT-52 (R16/R18), SLT-48 (P3): el lugar del grupo de ESA ubicacion (la actual o la propuesta),
+    // que decide su grupo en el modelo nuevo. No va dentro de `ubicacion` porque esa forma es la del DTO.
     distritoId: string | null,
     ubicacion: Omit<
       UbicacionConCostos,

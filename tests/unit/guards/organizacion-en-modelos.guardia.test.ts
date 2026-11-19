@@ -35,7 +35,9 @@ type ModeloDelEsquema = { modelo: string; tabla: string; cuerpo: string };
 
 function modelosDelEsquema(esquema: string): ModeloDelEsquema[] {
   const salida: ModeloDelEsquema[] = [];
-  for (const m of esquema.matchAll(/^model\s+(\w+)\s*\{([\s\S]*?)^\}/gm)) {
+  // SLT-48: `provincia`, `canton` y `distrito` son `view` de Prisma; el cliente las sigue exponiendo como
+  // modelos (`prisma.distrito`), así que se clasifican igual.
+  for (const m of esquema.matchAll(/^(?:model|view)\s+(\w+)\s*\{([\s\S]*?)^\}/gm)) {
     const [, modelo, cuerpo] = m;
     const map = /@@map\(\s*"([^"]+)"\s*\)/.exec(cuerpo);
     salida.push({ modelo, tabla: map ? map[1] : modelo, cuerpo });

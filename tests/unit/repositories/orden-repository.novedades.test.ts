@@ -168,6 +168,8 @@ function prismaRow(overrides: Record<string, unknown> = {}) {
     // (`CADENA_DEL_LUGAR`). Cambio de entrada: los nombres son los de antes.
     cantonId: "c-central",
     distritoId: "d-carmen",
+    // SLT-48 (R22): el lugar de la orden es su nodo; la ruta sale de el. Cambio de entrada.
+    nodoGeograficoId: "d-carmen",
     // FICHA 296: la relacion del mensajero tal como la devuelve Prisma —objeto anidado, no un
     // nombre ya plano—. Es NULLABLE (`mensajero_asignado_id` lo es), asi que el doble tiene que
     // poder darla como `null` sin que el repo reviente.
@@ -442,8 +444,8 @@ describe("OrdenRepository.findNovedadesByTienda (R4/R10)", () => {
       // el numero de consultas no.
       zona: { select: { nombre: true, sinpeNumero: true, sinpeNombre: true } },
       // SLT-47 (R16, autorizado por el humano): las FK del lugar, para la ruta del catalogo.
-      cantonId: true,
-      distritoId: true,
+      // SLT-48 R22, R29: antes `cantonId: true, distritoId: true`; ahora el nodo de la orden.
+      nodoGeograficoId: true,
       // FICHA 296: el join del mensajero, ACOTADO A SU IDENTIDAD (nombre y apellidos). Este
       // `toEqual` ES el contrato del `select` (por eso es literal y no se deriva de nada):
       // quitar una de estas claves lo pone rojo, y ampliarla a `true` —que arrastraria `email`,
@@ -604,6 +606,7 @@ describe("OrdenRepository.findNovedadesByTienda (R4/R10)", () => {
         longitud: null,
         notas: null,
         distritoId: null, // `distrito_id` es el UNICO FK geografico nullable
+        nodoGeograficoId: "c-central", // SLT-48 (R22): sin distrito, el nodo es el canton
       }),
     ]);
     const repo = new OrdenRepository(prisma as unknown as PrismaClient);
