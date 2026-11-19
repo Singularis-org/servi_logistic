@@ -60,3 +60,62 @@ Veredicto: Tanda 1 en verde; el presupuesto de 1 000 líneas no alcanza para T2�
 - El `git mv` no ahorra: `pdf.ts` sigue existiendo, así que `pdf-comun.ts` cuenta +387 y `pdf.ts` +66 −307.
 - Proyección con T2.1, T3.1, T4.x y T5.1: ~1 300 líneas de producción. Pasa claramente del tope.
 - Parado antes de la Tanda 2, como pide el leader. Corte de reserva: `design.md §12` (rebanada A / B).
+
+## Tandas 2 y 3 (T2.1, T3.1, T3.2) — backend_dev, 2026-11-18
+
+### Commits y archivos (+/−)
+- `c53dd394` T2.1: `pdf.ts` +75 −48 (rediseño, firma igual); `pdf-comun.ts` +20 −8 (`celdaImporte` y `Celda.abarca`);
+  `resumen.ts` −1 (`desglose.nota` del Excel, sin uso: typecheck limpio); `tests/.../pdf.test.ts` reescrito +150 −109;
+  `tests/.../_pdf-leido.ts` nuevo +80 (lectura de texto con color, rectángulos, `tras`).
+- `8ab6ba59` T3.1: `lib/facturas-plataforma/anexo.ts` nuevo +101; `tests/.../anexo.test.ts` nuevo +217.
+- `5979ae77` T3.2: `pdf-comun.test.ts` +55 −23 (caso R1; sus lectores locales pasan a `_pdf-leido.ts`);
+  `_pdf-leido.ts` +34 (`figurasRellenas`: también los trazados redondeados, que jsPDF no dibuja con `re`).
+- `node scripts/tamano-pr.mjs`: 10/40 archivos, 1042/1000 líneas de producción (aceptado ~1300), 872/3000 de tests.
+
+### «Periodo» y «Período» (texto literal de `requirements.md`)
+- Factura, tarjeta: «Período facturado», con tilde. R9: «“Período facturado” y “Fecha de emisión (cierre)”».
+- Anexo, línea bajo las tarjetas: «Periodo facturado: …», sin tilde. R17: «la línea “Periodo facturado: <primer día>
+  al <último día>.”». Es la grafía de la referencia del anexo; no se unifica.
+
+### Medición del anexo con 3 000 movimientos (T3.1)
+`anexo.test.ts` «volumen: 3 000 movimientos», en Node (vitest, este equipo), tres corridas: 1 074, 1 631 y 1 381 ms
+para `construirPdfAnexo`; 258 817 bytes (≈253 KiB); 52 páginas. El test fija techos holgados (10 s, 2 MiB). No está
+medido en el navegador.
+
+### Decisiones fuera del spec
+- Anchos de columna de las tres tablas sacados de la referencia (px del content stream) y llevados al ancho útil A4.
+  Las dos tablas de la factura usan la fila amplia (9,6 mm, 12 pt), como la referencia.
+- `Celda.abarca` en el módulo común: «Total neto (N movimientos)» ocupa de «#» a «Remisión»; en «#» sola se cortaba.
+- «#» del anexo sin espacio de miles («2563», como la referencia): es un ordinal, no una cantidad de R4.
+- La nota de la factura (R11) es un solo párrafo con las tres frases, como la referencia.
+- En «Reversos de cargos» solo el importe va en rojo (R10); antes iba la fila entera. Las órdenes netas negativas del
+  desglose ya no van en rojo: R12 solo pide el importe neto.
+- Las cinco decisiones de la Tanda 1 siguen igual.
+
+### Mapa R → test (Tandas 2 y 3)
+| R | Test |
+|---|---|
+| R1 | `pdf-comun.test.ts` «SLT-199 R1 — la factura y el anexo comparten banda, barra, cabecera de tabla y pie» |
+| R4 | `pdf.test.ts` «R4: las cantidades de la fila Total con espacio de miles («2 365»)» |
+| R5 | `pdf.test.ts` «SLT-199 R5, R13 — paginación y pie»; `anexo.test.ts` «SLT-199 R19, R21 — tabla partida…» |
+| R6 | `pdf.test.ts` «R6: sin logo…»; `anexo.test.ts` «R6: sin logo, «Singularis» en texto» |
+| R7 | `anexo.test.ts` «SLT-199 R7 — un descuadre no genera el anexo» |
+| R8 | `pdf.test.ts` «SLT-199 R8 — A4 vertical, banda con logo y barra degradada» |
+| R9 | `pdf.test.ts` «SLT-199 R9 — seis tarjetas en dos columnas y tres filas» |
+| R10, R11, R14, R26 | `pdf.test.ts` «SLT-199 R10, R11, R14, R26 — Resumen con tarifa, TOTAL A PAGAR y la nota» |
+| R12 | `pdf.test.ts` «SLT-199 R12 — el desglose por día en página nueva» |
+| R13 | `pdf.test.ts` «R13: cada página lleva…» |
+| R15, R16 | `anexo.test.ts` «SLT-199 R15, R16 — A4 vertical y la cabecera solo en la primera página» |
+| R17, R26 | `anexo.test.ts` «SLT-199 R17 — cuatro tarjetas y la línea del período» |
+| R18 | `anexo.test.ts` «SLT-199 R18 — la tabla «Movimientos»» |
+| R19, R21 | `anexo.test.ts` «SLT-199 R19, R21 — tabla partida, total neto y pie» |
+| R20 | `anexo.test.ts` «SLT-199 R20 — sin movimientos» |
+| R22 | pendiente: el caso «excel.ts no existe» de `anexo.test.ts` entra con T4.2 |
+
+### Salida
+- `pnpm exec vitest run tests/unit/facturas-plataforma/ tests/components/DescargarFactura.test.tsx`: 6 archivos,
+  95 tests, 0 fallos.
+- `pnpm run typecheck`: limpio. `pnpm exec eslint lib/facturas-plataforma tests/unit/facturas-plataforma`: limpio.
+- No se corrieron `./init.sh` ni las guardias (lo pidió el leader).
+
+Veredicto: Tandas 2 y 3 en verde; la factura tiene el diseño nuevo, el anexo existe y R1 se comprueba entre los dos.
