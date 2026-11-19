@@ -197,3 +197,9 @@ Veredicto: T4.1 en verde; los botones son «Descargar factura» y «Descargar an
   Se añadió al final de ese `tasks.md` la anotación `<!-- @test-desaparecido … -->` con el motivo (enmienda de
   SLT-199, design §9). Choca con «los archivos de specs/SLT-136 no se tocan» (design §9), pero la guardia solo admite
   arreglarlo en ese archivo; es un comentario HTML, sin tocar requisitos. Lo decide el reviewer/leader.
+
+### Gate local
+- `./init.sh` (rápido, con copia temporal de `arnes.config.json` con cupo fullstack 9, restaurada): rc=0.
+  typecheck y lint pasan; `test:rapido` 100 + 100 + 87 archivos en verde; todas las guardias en verde.
+  Primera corrida: dos rojos nuevos (nombre heredado y test citado desaparecido), corregidos en `96fe896d`.
+- T5.2 y T5.3 quedan sin marcar: falta el E2E local (`e2e/facturas-plataforma.spec.ts` y `--project=dinero`).
