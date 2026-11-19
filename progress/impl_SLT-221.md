@@ -53,13 +53,13 @@ Tests modificados:
 |---|---|
 | R1601 | `usuario-service-cedula.test.ts` (normaliza, par tipo+cédula) + `usuario-cedula-corregida.test.ts` (UPDATE real) + `usuario-schema.test.ts` (borde) |
 | R1602 | `usuario-service-cedula.test.ts` (tipo guardado, tipo nuevo, sin empresa) |
-| R1603 | `usuario-service-cedula.test.ts` (conflict) + `usuario-cedula-corregida.test.ts` (índice real; otra empresa no choca) |
+| R1603 | `usuario-service-cedula.test.ts` (conflict) + `usuario-cedula-corregida.test.ts` (índice real; otra empresa no choca) + `usuario-form.test.tsx` (mensaje bajo «Número de documento») + `usuarios.test.ts` (propaga el conflict) |
 | R1604 | `usuario-cedula-corregida.test.ts` (fila con anterior, nuevo, usuario, maestro, empresa; mismo lote con el rol) |
 | R1605 | `usuario-cedula-corregida.test.ts` (mismo documento, sin fila) + `usuario-service-cedula.test.ts` (no revalida) |
-| R1606 | pendiente T1.6 (`usuario-form.test.tsx`, frontend) |
-| R1607 | `usuario-schema.test.ts` (email y password siguen rechazados); `tests/unit/actions/usuarios.test.ts` es de T1.6 |
+| R1606 | `usuario-form.test.tsx` (campo habilitado en edición; la cédula viaja en el payload sin email ni password) + `e2e/usuario-corregir-cedula.spec.ts` |
+| R1607 | `usuario-schema.test.ts` (email y password siguen rechazados) + `tests/unit/actions/usuarios.test.ts` (el borde: email o password → `validation_error` sin llamar al service) |
 | R1608 | `usuario-cedula-corregida.test.ts` (254 cabe; 255 aborta la transacción entera) |
-| R1609 | `historial-accion-escrituras-cubiertas.guardia.test.ts` (categoría y etiquetas); la fila visible, E2E de T1.7 |
+| R1609 | `historial-accion-escrituras-cubiertas.guardia.test.ts` (categoría y etiquetas) + `e2e/usuario-corregir-cedula.spec.ts` (fila «Cambió la cédula de un usuario» con anterior y nuevo; escrito, NO corrido en local) |
 
 ## Mutaciones (cada una mató al menos un test, y se revirtió)
 
@@ -119,3 +119,45 @@ Todas con `DATABASE_URL`/`DIRECT_URL` = `servi_slt221_desechable` y `NODE_OPTION
 
 Tanda 1 backend (T1.1-T1.5) hecha: cédula editable en servicio y repositorio con su fila del Histórico,
 migración ida y vuelta probada, gate local verde (`INIT_EXIT=0`). Faltan T1.6 (formulario), T1.7 (E2E) y T1.8.
+
+---
+
+# Tanda 1 — T1.6 (formulario) y T1.7 (E2E), frontend_dev
+
+## Archivos
+
+- `app/(app)/configuracion/_components/UsuarioForm.tsx` — «Número de documento» editable en edición
+  (fuera `disabled={isEditar}`) y `cedula` en el payload de `actualizarUsuario`. El `conflict` y el
+  `validation_error` ya se pintaban por campo; no hubo que tocarlos.
+- `tests/unit/components/usuario-form.test.tsx` — el caso de R16 ahora afirma que la cédula está
+  habilitada; bloque nuevo SLT-221: payload (R1606/R1607), conflict (R1603), validation_error (R1602).
+- `tests/unit/actions/usuarios.test.ts` — el borde: cédula entra, email/password rechazados, conflict y
+  validation_error del service propagados.
+- `e2e/usuario-corregir-cedula.spec.ts` — maestro edita la cédula de un `admin` sembrado, la ve al
+  reabrir y ve la fila del Histórico con anterior y nuevo; comprueba el UPDATE por detrás.
+- `playwright.config.ts` — el spec, en el proyecto `aislamiento` (junto a `zona-sin-distritos`).
+- `specs/SLT-221-corregir-correo-cedula/tasks.md` — T1.6 [x]; T1.7 con su estado real.
+
+## Primero rojo
+
+Antes del cambio en el formulario: 4 rojos en `usuario-form.test.tsx` (campo deshabilitado y los tres
+casos nuevos). Los de `usuarios.test.ts` salieron verdes de entrada: el borde ya lo dejó T1.3.
+Mutación: quitar `cedula: form.cedula` del payload → rojo «R1606: el documento editado viaja…»; revertida.
+
+## Salidas
+
+- `npx vitest run tests/unit/components/usuario-form.test.tsx tests/unit/actions/usuarios.test.ts`:
+  `Test Files 2 passed (2) · Tests 74 passed (74)`.
+- `pnpm run typecheck`: exit 0, 0 errores. `eslint` sobre los 5 archivos: «No issues found».
+- `NODE_OPTIONS=--max-old-space-size=8192 ./init.sh` (base desechable exportada): `== init OK ==`,
+  `INIT_EXIT=0`; tamaño `30/40 archivos, 509/1000 líneas de producción, 999/3000 de tests`.
+- E2E: **no corrido en local** (lo corre el CI, por indicación del leader).
+
+## Desvíos
+
+1. `playwright.config.ts` no está en `## Archivos esperados — PR 1`; la guardia `e2e-sin-saltos` lo exige.
+2. El «Hecho» de T1.7 pide verde en local; queda abierto hasta el CI.
+
+## Veredicto
+
+T1.6 y T1.7 hechas (E2E sin correr en local); gate local verde, `INIT_EXIT=0`.

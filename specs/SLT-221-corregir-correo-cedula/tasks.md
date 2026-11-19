@@ -62,7 +62,7 @@ En PR 2 el margen de líneas de producción es corto: comentarios breves y nada 
 
   **Hecho:** `pnpm run test:guardias` verde, y meter `email` en el bloque de `usuario_rol_cambiado`
   la pone roja.
-- [ ] **T1.6 — Formulario** (depende de T1.4).
+- [x] **T1.6 — Formulario** (depende de T1.4).
   `UsuarioForm.tsx`: «Número de documento» editable en edición y `cedula` en el payload. El conflict
   ya se pinta bajo el campo. **Hecho:** `tests/unit/components/usuario-form.test.tsx` actualizado
   (antes afirmaba que el campo estaba deshabilitado) cubre R1606 y el mensaje de R1603, y
@@ -72,6 +72,9 @@ En PR 2 el margen de líneas de producción es corto: comentarios breves y nada 
   y ve la fila «Cambió la cédula de un usuario» con el valor anterior y el nuevo en el Histórico de
   acciones. **Hecho:** verde en local con base desechable y build (`NEXT_PUBLIC_APP_URL` como en
   `gate.yml`).
+  **Estado:** spec escrito y registrado en el proyecto `aislamiento` de `playwright.config.ts`;
+  typecheck y lint verdes. **NO corrido en local** (pedido del leader: lo corre el CI). Queda
+  abierto el «verde en local» de este «Hecho».
 - [ ] **T1.8 — Cierre de PR 1.** `./init.sh` verde. Evidencia en
   `progress/features/SLT-221.md`, con la comprobación de lo que el usuario ve. Reviewer. El PR lo
   abre el leader.
