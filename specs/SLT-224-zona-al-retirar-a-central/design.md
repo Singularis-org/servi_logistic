@@ -365,6 +365,15 @@ orden, actor sistema y un lote. El respaldo (id, zona vieja, zona nueva) está e
 `progress/respaldo-zonas-prod-2026-11-19.json` del checkout principal, fuera de la base. Quedaron **18**
 desalineadas excluidas por cierre o gestión (P2), que se informan y no se tocan.
 
+**Actualización (leader, 2026-11-19, noche).** Carlos decidió sobre P2: «si son ordenes que aún se
+pueden gestionar si se deben mover a la nueva para que las gestionen desde allá, pero las ordenes que
+ya llegaron a un fin no es necesario». El leader corrigió entonces también las **18** de P2 (todas
+vivas, en central o en ruta a central; respaldo `progress/respaldo-zonas-prod-2026-11-19-b18.json`).
+T0 re-medido después: 1 sola desalineada, `en_ruta_bodega_central` con cierre previo (a_corregir 0),
+aparecida tras la corrección; queda para corregir a mano con OK de Carlos. La decisión de Carlos sobre
+P2 (las vivas se mueven aunque tengan un cierre anterior) cambia el corte del helper: va en el **PR 2**
+de esta ficha, junto al botón, con su propio requisito; el PR 1 mantiene el corte de la 366.
+
 Consecuencia: en producción la migración solo encontrará lo que haya aparecido desde entonces. Sigue
 siendo genérica porque la necesitan Preview, las demás bases y lo que surja entre hoy y el despliegue.
 Su `down.sql` solo revierte lo que **ella** corrigió (su respaldo propio); las 73 de hoy se revierten,
