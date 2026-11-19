@@ -116,10 +116,10 @@
 
 ## T6 — Documentación (depende de T1–T4)
 
-- [ ] **T6.1** `docs/architecture.md`, en «Facturas de la plataforma»: el pago por fuera, la anulación de la
+- [x] **T6.1** `docs/architecture.md`, en «Facturas de la plataforma»: el pago por fuera, la anulación de la
   plataforma, la tabla nueva, la columna `por_fuera` y el trigger con su excepción. **Hecho:** la guardia del
   perfil en verde.
-- [ ] **T6.2** `docs/ayuda/oficina/wallet-caja.md`: los dos párrafos de R35, con `actualizado:`. **Hecho:** los
+- [x] **T6.2** `docs/ayuda/oficina/wallet-caja.md`: los dos párrafos de R35, con `actualizado:`. **Hecho:** los
   tests que dispara `docs/ayuda/**` en verde, y un `grep` encuentra «Registrado por la plataforma» en la ayuda.
 - [ ] **T6.3** `progress/impl_SLT-143.md` con el mapa `R<n> → test` de R1 a R36.
 
