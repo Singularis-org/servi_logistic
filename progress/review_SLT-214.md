@@ -145,3 +145,28 @@ Ruta completa (fullstack / medium, toca `db/`): correcta.
 **RECHAZADO (CAMBIOS)**, por un único bloqueante mecánico: marcar T11 y T12 con su evidencia. Además, el humano
 tiene que decidir el hallazgo 2 (R14 al editar). El código, la migración y la trazabilidad R1–R26 están bien.
 Corregido eso, sale OK en una vuelta acotada.
+
+## Vuelta 2 (acotada a ac4edfa7..10df89ef)
+
+Este rango solo toca `specs/`, `progress/` y `tests/`; no cambia código de producción.
+
+- **Hallazgo 1 (BLOQUEANTE): cerrado.**
+  - `tasks.md` marca T11 y T12 en `[x]`, y la evidencia está en `progress/impl_SLT-214.md > Vuelta 2`.
+  - T11 queda cubierta por el CI: `e2e (aislamiento)`, run 44576322614.
+  - Para T12 se corrieron en local typecheck y guardias, según la memoria «gate en CI, no local». El `gate-completo`
+    lo comprueba el leader.
+- **Hallazgo 2 (menor, R14): cerrado.**
+  - R14 está precisada en `requirements.md`, con su fila en «Decisiones cerradas» atribuida al humano, y design §6
+    queda alineado.
+  - El test `PlanFormBeneficios.test.tsx` «R14: al editar, si cambian, «antes → después»; si no, no hay fila» ya
+    prueba exactamente el texto nuevo.
+- **Hallazgo 5 (menor, R25): cerrado.** Hay cuatro tests directos con literales del spec, sin derivarlos del código:
+  - `tests/unit/services/email/plantilla-cambio-plan.test.ts`: dos casos, «Se agrega» y «Se quita» en texto y
+    HTML, la regla de R4 por mayúsculas, y la línea única de solo íconos u orden;
+  - `tests/components/PlanEmpresa.test.tsx`: dos casos sobre la tarjeta «Cambio programado» del detalle de
+    empresa, construidos con `planConConsumo`.
+- Corrido por el reviewer: `vitest run` de esos dos archivos, `Test Files 2 passed (2)` y `Tests 76 passed (76)`.
+- No hay regresiones: el rango no cambia código de producción.
+- Los hallazgos 3 (tamaño) y 4 (E2E solo en CI) siguen como menores informativos para el leader.
+
+Veredicto vuelta 2: **OK**
