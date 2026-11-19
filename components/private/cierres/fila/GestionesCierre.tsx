@@ -152,6 +152,8 @@ export function GestionesCierre({
         <BuscadorFiltros
           fija
           tactil
+          // SLT-209: el campo, en su línea; «Filtros» y «Descargar» debajo (la captura lo dejaba en ~80 px).
+          campoLineaPropia
           leerDeUrl={false}
           label={BUSCAR_GESTION_LABEL}
           placeholder={BUSCAR_GESTION_PLACEHOLDER}
