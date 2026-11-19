@@ -122,3 +122,24 @@ Ruta directa con revisión completa (toca componentes compartidos). Diff: `git d
 **RECHAZADO**, solo por B1. El resto (barra, ancho del campo, `/cierres-admin`, escritorio = prod, Wallet › Satélites,
 rojo-antes/verde-después y E2E afectados) está verificado y en verde. Si el leader confirma la decisión de los 32 px
 (B1-b), el veredicto pasa a OK sin cambios de código.
+
+## Vuelta 2 (acotada a 287ee157..b79aefcb)
+
+Diff de la vuelta: solo `progress/features/SLT-209.md` (+6 líneas, la fuente de B1). No toca código ni tests.
+
+- [x] **B1, levantado (salida b).** La ficha anota la fuente de los 32 px de escritorio: la regla general de Carlos
+  del 2026-11-18 («necesito que esté igual a como están en producción en tamaño»; «en pwa está bien el tamaño»).
+  - Es coherente con `origin/dev:progress/features/SLT-202.md > Decisiones`, línea 18: «Escritorio = tamaños de
+    prod. La PWA del mensajero en móvil conserva los 44 px (`max-md:`)».
+  - «Terminar recepción» no existe en `origin/prod`: `git grep` no da resultados, porque nace con el modo continuo
+    de SLT-159.
+  - El tamaño `default` de `components/ui/button.tsx` en `origin/prod` es `h-8`, 32 px. Es el que usa ahora el
+    botón desde `md`, y en el móvil sigue `max-md:h-11`. El E2E `toBe(32)` fija justo eso.
+- **m1, sigue abierto (menor).** `e2e/pwa-mensajero-cierre-barra-fija.spec.ts:47`: el parámetro `lista` de `medir`
+  sigue sin usarse. No lo cambio: el reviewer no edita tests. Lo puede quitar el implementer o quedar como menor.
+- **m7, nuevo y menor.** La nota de B1 quedó bajo `## Cierre`, después de «Pendiente.», y no bajo `## Decisiones`.
+  El contenido vale; solo está en otra sección.
+- **Sin regresiones:** el diff no toca código, así que no hay nada que volver a correr.
+
+### Veredicto vuelta 2
+**OK.** No queda ningún bloqueante. Siguen abiertos los menores m1 a m7, ninguno es para el merge.
