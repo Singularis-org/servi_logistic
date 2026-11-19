@@ -358,15 +358,15 @@ literal, no lo importaba ni se llamaba `guard*`. El rápido salió verde y el ro
 `gate-completo`. Buscar la ruta en el texto de los tests cuesta unos cientos de ms por corrida y
 cubre ese caso sin que nadie declare nada.
 
-**El paso 2 mide las dependencias.** En servi_logistic (ficha 420, 2026-09-11) el paso 2 solo
-miraba si existía la carpeta `node_modules` e imprimía «dependencias presentes». Tras mergear una
-ficha que añadía `web-push`, el gate completo dio ese visto bueno en verde y dos pasos más tarde el
+**El paso 2 mide las dependencias.** En el proyecto de origen del arnés (ficha 420, 2026-09-11)
+el paso 2 solo miraba si existía la carpeta `node_modules` e imprimía «dependencias presentes».
+Tras mergear una ficha que añadía `web-push`, el gate completo dio ese visto bueno en verde y dos pasos más tarde el
 typecheck reventó con `Cannot find module 'web-push'`: parecía un error de código y era un
 `pnpm install` que faltaba. Peor: si falta solo el paquete y siguen sus tipos en `@types/`, el
 typecheck pasa y el fallo sale en ejecución. Instalar siempre se descartó porque repara en silencio
-y nadie se entera de que el árbol estaba mal. El arreglo se hizo en el proyecto y no se subió a la
-plantilla, así que el sync del arnés 2.14.0 sobrescribió `init.sh` y perdió la llamada: la guardia
-quedó en rojo hasta que la mejora viajó a la plantilla.
+y nadie se entera de que el árbol estaba mal. El arreglo se hizo en ese proyecto y nunca llegó a la
+plantilla: el `init.sh` del arnés no traía la llamada, y en los proyectos que heredaron la guardia
+esta vivió en el baseline de rojos desde el primer día, hasta que la mejora viajó a la plantilla.
 
 ## Tamaño del PR
 

@@ -1,13 +1,15 @@
 // Guardia: el paso 2 de `init.sh` MIDE las dependencias declaradas, no que exista la carpeta.
 //
-// Existe por el incidente del 2026-09-11 (servi_logistic, ficha 420): el paso 2 preguntaba si
-// existia el DIRECTORIO `node_modules` y, si existia, imprimia «dependencias presentes» sin abrir
-// `package.json`. Tras mergear una ficha que anadia `web-push` el gate completo dio ese visto
+// Existe por el incidente del 2026-09-11 (proyecto de origen del arnes, ficha 420): el paso 2
+// preguntaba si existia el DIRECTORIO `node_modules` y, si existia, imprimia «dependencias
+// presentes» sin abrir `package.json`. Tras mergear una ficha que anadia `web-push` el gate completo dio ese visto
 // bueno EN VERDE y dos pasos mas tarde reventaba con `Cannot find module 'web-push'`. Parecia un
 // error de codigo y era un `pnpm install` que faltaba. Y si falta SOLO el paquete de runtime pero
 // siguen sus tipos en `node_modules/@types/`, el typecheck pasa en verde y el fallo sale en
-// ejecucion: este paso es la unica red. El arreglo se perdio una vez en el sync del arnes 2.14.0,
-// porque no se habia subido a la plantilla (`docs/gate.md > El gate tiene DOS niveles > Por que`).
+// ejecucion: este paso es la unica red. El arreglo se hizo en ese proyecto y nunca llego a la
+// plantilla: el `init.sh` del arnes no traia la llamada y, en los proyectos que heredaron esta
+// guardia, vivio en el baseline de rojos desde el primer dia (`docs/gate.md`, parrafo «El paso 2
+// mide las dependencias»).
 //
 // Tres bloques:
 // - el verificador (`scripts/verificar-dependencias.mjs`) contra arboles FALSOS en un temporal:
@@ -260,7 +262,7 @@ describe('guardia: el gate llama al verificador', () => {
   const init = readFileSync(INIT_SH, 'utf8')
 
   it('init.sh invoca scripts/verificar-dependencias.mjs', () => {
-    // Que el script exista no prueba nada si nadie lo llama: es lo que perdio el sync 2.14.0.
+    // Que el script exista no prueba nada si nadie lo llama: es lo que le faltaba al init.sh del arnes.
     expect(init).toContain('scripts/verificar-dependencias.mjs')
   })
 

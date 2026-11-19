@@ -1,8 +1,8 @@
 // Comprueba que TODAS las dependencias declaradas en `package.json` estan de verdad en el arbol.
 //
-// EL DEFECTO QUE CIERRA (servi_logistic, ficha 420, medido el 2026-09-11). El paso 2 de
-// `init.sh` preguntaba si existia el DIRECTORIO `node_modules` y, si existia, imprimia `✓ dependencias presentes` sin
-// haber abierto `package.json`. Esa condicion es verdadera en cuanto se ha instalado UNA vez,
+// EL DEFECTO QUE CIERRA (proyecto de origen del arnes, ficha 420, medido el 2026-09-11). El
+// paso 2 de `init.sh` preguntaba si existia el DIRECTORIO `node_modules` y, si existia, imprimia
+// `✓ dependencias presentes` sin haber abierto `package.json`. Esa condicion es verdadera en cuanto se ha instalado UNA vez,
 // para siempre. Tras mergear una ficha -que anadia `web-push` y `@types/web-push`- el gate
 // completo sobre `dev` dio ese visto bueno EN VERDE y dos pasos mas tarde:
 //
@@ -19,7 +19,7 @@
 // de seguridad de esto: solo lo caza cuando faltan los dos. Este paso es estrictamente mas fuerte.
 //
 // POR QUE NO SE INSTALA Y YA (alternativa descartada CON medicion; ver
-// `docs/gate.md > El gate tiene DOS niveles > Por que`). `pnpm install --frozen-lockfile` es
+// `docs/gate.md`, parrafo «El paso 2 mide las dependencias»). `pnpm install --frozen-lockfile` es
 // idempotente y cuesta 1,6-1,8 s sobre arbol completo (3 corridas medidas), asi que el precio no
 // era el problema. Se descarto porque REPARA en silencio: el paso saldria verde y nadie llegaria
 // a enterarse de que el arbol estaba mal -cambiar un fallo mudo por otro mas callado todavia-. Y
@@ -123,7 +123,6 @@ function veredicto(resultado) {
     for (const nombre of resultado.faltantes) salida.push(`    - ${nombre}`);
   }
   salida.push(`  Reparalo con: ${COMANDO_DE_REPARACION}`);
-  salida.push("  (medido el 2026-09-11: ~1,7 s sobre un arbol ya instalado)");
   return { ok: false, salida };
 }
 
