@@ -204,3 +204,137 @@ y no deberían pasarlo.
 
 H2 y H3 son arreglos pequeños de documentación más una aserción del E2E. Los menores (H4 a H9)
 conviene resolverlos en la misma vuelta, porque son lo que de verdad le estorba a un integrador.
+
+## Vuelta 2 (acotada a b3fb5ded..1c0cdd86)
+
+Revisé solo el diff de los arreglos (13 archivos) contra H1 a H9. Como la ficha subió a ruta completa,
+también revisé la trazabilidad R -> test del spec nuevo.
+
+### Checklist
+- [x] `git pull`: la rama está al día con `origin/feature/SLT-208-manual-api-conectable` (HEAD 1c0cdd86).
+- [x] Spec completo:
+  - `requirements.md`: R1 a R12 en EARS y cita la decisión de Carlos del 2026-11-18.
+  - `design.md`: D1 a D5, cada una con su alternativa descartada.
+  - `tasks.md`: T1 a T11, todas `[x]`.
+- [ ] `design.md` abre con `## Lo que ya existe`: **falta** (V2-1).
+- [ ] Trazabilidad: R8 no tiene test (V2-2). Las demás R apuntan a tests que existen y que comprueban lo
+      que el requisito dice.
+- [x] Tamaño: `node scripts/tamano-pr.mjs` da 12/40 archivos, 977/1000 líneas de producción y 1016/3000
+      de tests. Solo es un AVISO.
+- [x] `eslint` sobre los 4 `.ts` tocados: sin problemas. `tsc --noEmit`: sin errores.
+- [x] vitest con la base desechable: la guardia, el test del PDF, `docs-marca-heredada` y
+      `openapi-406-evidencias-url` dan 4 archivos y 79 tests en verde.
+- [x] Mutaciones repetidas y restauradas con `git checkout --`:
+  - «# monto en colones» en un comentario del `.yaml`: la regla 4 da rojo (1 failed).
+  - «se redondea al colón» en `CargaRow.monto_cobrar` de `openapi-spec.ts`: la regla 4 da rojo (1 failed).
+- [ ] E2E: no lo corrí (necesita `next build`; lo corre el CI). Leí el código: la variante con fulfillment
+      se ejecuta de verdad (ver H5). Según el implementer, 8 passed.
+
+### Hallazgos de la vuelta 1
+- **H1 · la ruta queda resuelta.** El spec existe y el label quedó en `ruta:completa`. La decisión está
+  en `progress/features/SLT-208.md > Decisiones`, y la de Carlos se cita en el «Origen» de
+  `requirements.md`. El spec nuevo deja dos huecos (V2-1 y V2-2).
+- **H2 · resuelto.**
+  - La sección 5.1 trae un párrafo «Atención» con los dos mensajes: si la clave viene vacía,
+    `<campo> es obligatorio`; si no viene, `Este campo es obligatorio`. La columna de la tabla pasó a
+    decir «si viene vacío».
+  - `CargaRow` lo dice en el `.ts` y en el `.yaml`, y el CHANGELOG también.
+  - El E2E nuevo manda una fila sin `telefono` y otra con `telefono: ""`, y compara literalmente con
+    `[[1,{telefono:["Este campo es obligatorio"]}],[2,{telefono:["telefono es obligatorio"]}]]`.
+  - La guía dice que en `provincia`, `canton` y `distrito` una clave ausente da lo mismo que una vacía.
+    Cuadra con `filaCargaSchema`, que usa `optional().default("")`.
+- **H3 · resuelto.**
+  - Ni `colones`, ni `colón`, ni `Costa Rica` en la guía, en `openapi-spec.ts` (tampoco en sus
+    comentarios), en el `.yaml` ni en la colección. Solo queda la fila de historial del 2026-11-05 de la
+    guía, que es la excepción prevista.
+  - La regla 4 de la guardia lo prohíbe, y en el `.yaml` mira también los comentarios. Las dos
+    mutaciones la ponen en rojo.
+  - En `requirements.md`, R7 solo nombra las palabras vetadas. Eso es correcto.
+- **H4 · resuelto.** La variable `numRemisionDesechable` y el comentario de la carga hablan de borrado
+  lógico.
+- **H5 · resuelto en la colección; en la guía, a medias (V2-3).**
+  - «3. Listar» deja activos solo `limit`, `offset` y `num_remision={{numRemision}}`, y su test exige
+    que venga la orden creada.
+  - «6» y «7» aceptan `409` si no hay guía.
+  - «9. Cancelar» lleva un script previo con `pm.execution.skipRequest()`.
+  - El E2E corre la colección dos veces, sin fulfillment y con él. La tienda «c» tiene
+    `seRecogeEnTienda: false`, y tras la carga el test exige `numGuia === ""`: eso prueba que la variante
+    con fulfillment está activa. El único item que puede omitirse es `con fulfillment: 9. Cancelar una
+    orden`; sin fulfillment, «Cancelar» tiene que dar `200`.
+  - Omitir la cancelación está justificado (design D3): sin guía no hay cancelación posible, y leer antes
+    el detalle no la daría. Está documentado en la descripción de la colección y en la de `numGuia`.
+- **H6 · resuelto.** La guía ya no remite a `docs/api/*`. Solo queda una mención, en la l.108, dentro
+  del ejemplo literal del `422` que da `lib/types/order-status.ts:248`, y por R2 la guía tiene que
+  copiarlo tal cual. Que el mensaje de la API mande a un archivo del repo es una deuda del código, fuera
+  de esta ficha.
+- **H7 · resuelto.**
+  - La sección 2.1 «Primera petición» es nueva y el E2E la ejecuta (ahora son 11 curl).
+  - El límite de 60 s está en 5.1 y en 5.2.
+  - La tabla 8.1 trae el `403` por el módulo de Analítica.
+  - El curl de habilitar tiene sus `\`.
+  - La descripción general del OpenAPI describe bien al dueño.
+  - Queda un detalle menor (V2-4).
+- **H8 · resuelto.** El `.yaml` ya no tiene `§` ni `⚠️`, y las reglas 2 y 4 de la guardia miran el
+  `.yaml` entero.
+- **H9 · resuelto.**
+  - `servers` es `["/", "https://www.servilogistic.co"]` en el `.ts` y en el `.yaml`.
+  - La guardia lo comprueba en el `.yaml`, con un regex que fija el orden, y el E2E en
+    `/api/docs/openapi`.
+  - `/api-docs` carga el contrato con `url: "/api/docs/openapi"`, que es relativa. Por eso, con `/`,
+    «Try it out» usa el host desde el que se abrió.
+  - La guía 4.8 y el CHANGELOG lo explican.
+
+### Hallazgos nuevos
+
+#### V2-1 · BLOQUEANTE · `design.md` no abre con `## Lo que ya existe`
+`CHECKPOINTS.md > Ruta > Completa` y `docs/specs.md > Antes de especificar: lo que ya existe` lo exigen
+en todo spec escrito desde el 2026-10-06. Este spec es del 2026-11-19. Una sección ausente es
+bloqueante.
+
+**Qué falta:** abrir `design.md` con `## Lo que ya existe`, con tres cosas: los términos buscados (en el
+board y en el grafo), qué apareció y qué se reutiliza. Lo que se reutiliza en este caso:
+- `lib/api/url-produccion.ts`;
+- el armado del PDF de la guía;
+- `altaDeEmpresa` y el doble de Storage del E2E;
+- las guardias `docs-marca-heredada` y `openapi-406-evidencias-url`.
+
+Si una búsqueda no encontró nada, se escribe «Buscado `<términos>`: nada».
+
+#### V2-2 · BLOQUEANTE · R8 no tiene test (regla 4 del arnés)
+La tabla de trazabilidad dice, para R8, «sin test automático: es redacción». Pero la regla del arnés
+es que cada `R<n>` tiene su test, y si falta uno es bloqueante. Además, R8 sí se puede comprobar. Hoy el
+cuerpo de la guía no remite a `docs/`, `lib/` ni `app/`, salvo en dos sitios: el front matter
+`fuentes:` y el mensaje literal de la l.108 (ver H6).
+
+**Qué falta.** Una de estas dos salidas:
+- Añadir a la guardia una regla que busque en el cuerpo de la guía `docs/`, `lib/`, `app/`, `.yaml` y
+  `CHANGELOG.md`, con su mutación. Las dos únicas excepciones son el front matter y el mensaje literal
+  que viene de `order-status.ts`.
+- O reformular R8 para que no sea un requisito verificable. Por ejemplo, pasarlo a una decisión de
+  `design.md`.
+
+#### V2-3 · menor · La guía no dice qué pasa en Postman con fulfillment
+El paso 4 de la sección 4.8 dice «Ejecute las peticiones en el orden en que vienen». No dice que, con
+fulfillment, «6» y «7» responden `409` y que «9. Cancelar» no se envía. La descripción de la colección sí
+lo dice; la guía, no. Era la segunda mitad de la sugerencia de H5.
+
+**Qué falta:** una frase en 4.8, paso 4, como el punto 3 de la descripción de la colección.
+
+#### V2-4 · menor · El curl de la sección 2.1 va en una sola línea con espacios
+`curl "https://www.servilogistic.co/api/ordenes/api-key?limit=1"   -H "Authorization: ..."`. Es el
+mismo defecto que se corrigió en el curl de habilitar (H7): funciona, pero no se lee como el resto.
+
+#### V2-5 · menor · El test del PDF numera distinto que el spec
+`tests/unit/ayuda/guia-api-pdf-produccion-slt208.test.ts` titula sus bloques «R6» y «R7»; en el spec
+son R10 y R11. La tabla de trazabilidad lo aclara («R6 del archivo»), pero quien busque R10 por número no
+lo encuentra.
+
+### Veredicto vuelta 2
+
+**RECHAZADO.** Los hallazgos H1 a H9 están resueltos, salvo la parte de H5 que toca la guía (V2-3,
+menor). Quedan dos bloqueantes nuevos, los dos en el spec que exige la ruta completa:
+- V2-1: falta `## Lo que ya existe` en `design.md`.
+- V2-2: R8 no tiene test.
+
+Los dos se arreglan con documentación y una regla de guardia, sin tocar la API ni los artefactos.
+Conviene resolver V2-3 en la misma vuelta.
