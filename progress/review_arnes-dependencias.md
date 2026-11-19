@@ -113,3 +113,57 @@ Pero un `--aplicar` antes del merge del #35 revertiría la mejora. No es un defe
 
 Lo que falla es el relato del `docs/gate.md` y de los comentarios, que atribuye el incidente a
 servi_logistic y la pérdida al sync 2.14.0 contra lo que dice el historial.
+
+## Vuelta 2 (acotada a c9493766..HEAD)
+
+HEAD revisado: `816a9b95`. Commits: `b7262982` (relato) y `816a9b95` (lock tras subir el #36).
+Plantilla: #35 (`main` <- `...-0220`) y #36 (`...-0220` <- `...-0236`, head `04b2ee4c`), los dos abiertos.
+
+### Checklist
+
+- [x] **B1, atribución.** Ningún texto atribuye ya la ficha 420 a servi_logistic. Las 4 menciones
+  dicen «proyecto de origen del arnés» (`docs/gate.md:361`, `init.sh:203`,
+  `scripts/verificar-dependencias.mjs:3` y la guardia, línea 3). Las menciones de servi_logistic que
+  quedan en `docs/gate.md:355`, `:396` e `init.sh:191` son anteriores al rango y hablan de incidentes
+  propios (SLT-140/141, 2026-10-21). No las toca este diff.
+- [x] **B1, relato.** Ya no se habla del «sync 2.14.0» en ninguno de los archivos. El texto nuevo
+  dice lo que muestra el historial: «el arreglo se hizo en ese proyecto y nunca llegó a la
+  plantilla: el `init.sh` del arnés no traía la llamada, y en los proyectos que heredaron la guardia
+  esta vivió en el baseline de rojos desde el primer día». Lo mismo dicen la cabecera de la guardia
+  y el comentario de la línea 265 («es lo que le faltaba al init.sh del arnes»).
+- [x] **B1, sin nombres ajenos.** `grep -i ordenex` sobre los 4 archivos tocados no da nada, y
+  tampoco aparece ningún otro producto ni cliente.
+- [x] **m1.** Se ha quitado la línea impresa `(medido el 2026-09-11: ~1,7 s …)` de `veredicto()`.
+  Ningún test la asertaba: las guardias siguen en verde.
+- [x] **m2.** El comentario del marcador `# >>> PASO 2` nombra ya las DOS guardias. La cadena del
+  marcador no cambia: las guardias, que recortan por ella, pasan.
+- [x] **m3.** Las referencias `docs/gate.md > El gate tiene DOS niveles > Por que` se sustituyen
+  por «`docs/gate.md`, párrafo «El paso 2 mide las dependencias»», que es único (línea 361). No queda
+  ninguna referencia antigua en los 3 archivos.
+- [x] **#36 frente al worktree.** `gh pr view 36`: 4 archivos (`docs/gate.md`, `init.sh`,
+  `scripts/verificar-dependencias.mjs` y la guardia nueva). He bajado los archivos en el head
+  `04b2ee4c` y comparado `git hash-object` con los del worktree: los 4 son blobs idénticos.
+- [x] **#35 + #36 = los 6 archivos.** `compare main...04b2ee4c` da exactamente `arnes.manifest`,
+  `docs/gate.md`, `init.sh`, `scripts/verificar-dependencias.mjs`,
+  `guard-dependencias-declaradas-presentes.test.ts` y `guard-init-node-modules-enlazado.test.ts`.
+  Los 6 son blobs idénticos a los del worktree. El sha256 (sin CR) coincide con los hashes de
+  `arnes.lock.json`, y la entrada `subidos` del #36 lista los 4.
+- [x] **`./scripts/arnes-sync.sh --estado`**: «#35 (6 archivos)» y «#36 (4 archivos)» constan como
+  subidos y pendientes de merge. Ninguna línea dice «sin subir». El dry-run da
+  `0 mejora(s) local(es)`.
+- [x] **Las 2 guardias** (base desechable, con `con-desechable.cjs`): 2 archivos, 22/22.
+  `bash -n init.sh`: OK.
+
+### Hallazgos
+
+- B1, m1, m2 y m3: **resueltos**.
+- **m5 — menor, estilo.** El reflujo dejó líneas largas en `docs/gate.md:363` (119 columnas),
+  `scripts/verificar-dependencias.mjs:64` y la guardia, línea 97. Es cosmético y no bloquea.
+- **m6 — menor, operativo.** El #36 apunta a la rama del #35, no a `main`. Hay que mergear primero
+  el #35. Si al mergearlo no se borra su rama, GitHub no re-apunta el #36 a `main`, y mergear el #36
+  lo metería en una rama muerta. O se borra la rama del #35 al mergear, o se cambia la base del #36
+  a `main` antes de mergearlo. Sigue en pie m4: nada de `--aplicar` hasta mergear los dos.
+
+### Veredicto vuelta 2
+
+**OK.** No hay bloqueantes.
