@@ -218,8 +218,11 @@ describe("SLT-193 · R928 — el escáner pinta un solo cierre, el de EscanerMod
   const visitas = codigoDentroDelEscaner();
 
   it("la guardia no está vacía: llega a los montajes y a las tarjetas de dentro", () => {
-    // Reparto, Recoger, Recolección, satélite, Órdenes, recepción continua y cámara del buscador.
-    expect(MONTAJES.length).toBeGreaterThanOrEqual(7);
+    // Reparto, Recoger, Recolección, recepción continua y cámara del buscador. SLT-202 «Escritorio
+    // igual a prod: tamaños de controles y un solo botón de recibir» (Carlos, 2026-11-18): Órdenes y la
+    // satélite ya no montan `EscanerModal` (la guía suelta se quitó); su único disparador es
+    // `RecibirPaquetesEntrada`, que la guardia sigue recorriendo como envoltorio (abajo).
+    expect(MONTAJES.length).toBeGreaterThanOrEqual(5);
     const alcanzados = new Set(visitas.map((v) => v.donde));
     for (const pieza of [
       "EscanerGuiaCard",
@@ -253,7 +256,8 @@ describe("SLT-193 · R928 — el escáner pinta un solo cierre, el de EscanerMod
         if (!/\btitulo=/.test(etiquetaDeApertura(codigo, m.index))) fallos.push(relativa(archivo));
       }
     }
-    expect(total).toBeGreaterThanOrEqual(7);
+    // SLT-202: cinco montajes (ver arriba).
+    expect(total).toBeGreaterThanOrEqual(5);
     expect(fallos).toEqual([]);
   });
 });

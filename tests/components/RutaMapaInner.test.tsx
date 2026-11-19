@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, cleanup, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { contraste, token } from "../fixtures/contraste";
 
 // Feature 265 (R43) — LA TERCERA SEÑAL, LA QUE NO ES UN TEXTO.
 //
@@ -191,15 +192,36 @@ describe("SLT-166 R539 — marcadores con la paleta de la app y leyenda", () => 
     expect(tres).not.toContain("--color-brand-light");
   });
 
-  it("bajo el mapa, la leyenda «Siguiente · Pendiente · Gestionada · Tú»", () => {
-    render(<RutaMapaInner paradas={TRES} />);
+  // SLT-200 «PWA Reparto: buscador, KPI, tarjeta y leyenda del mapa tras Preview» (punto 4): el mapa
+  // solo dibuja «siguiente», «pendiente» y el origen; anunciar «Gestionada» confundía la lectura.
+  it("bajo el mapa, la leyenda «Siguiente · Pendiente · Tú», sin «Gestionada» (el mapa no la dibuja)", () => {
+    render(<RutaMapaInner paradas={TRES} origen={{ lat: 9.92, lng: -84.08 }} />);
     const leyenda = screen.getByRole("list", { name: "Leyenda del mapa" });
     expect(Array.from(leyenda.querySelectorAll("li")).map((li) => li.textContent)).toEqual([
       "Siguiente",
       "Pendiente",
-      "Gestionada",
       "Tú",
     ]);
+    expect(leyenda).not.toHaveTextContent("Gestionada");
+    // Y ningún marcador del mapa es una gestionada (la leyenda no anuncia lo que no se pinta).
+    for (const html of htmlDeMarcadores()) expect(html).not.toContain("--color-asfalto-4");
+  });
+
+  // SLT-200 (punto 4): en oscuro el punto «Pendiente» (Negro Servi) medía 1.00:1 contra el fondo, y en
+  // claro «Siguiente» 1.37:1 y «Tú» 2.36:1. Cada punto lleva ahora un anillo del color del texto
+  // (`ring-foreground`), que contrasta con el fondo en los dos temas, sea cual sea su relleno.
+  it("cada punto de la leyenda lleva un anillo `ring-foreground` que mide ≥ 3:1 contra el fondo en claro y en oscuro", () => {
+    render(<RutaMapaInner paradas={TRES} />);
+    const leyenda = screen.getByRole("list", { name: "Leyenda del mapa" });
+    const puntos = Array.from(leyenda.querySelectorAll("li > span[aria-hidden='true']"));
+    expect(puntos).toHaveLength(3);
+    for (const punto of puntos) {
+      const clases = (punto.getAttribute("class") ?? "").split(/\s+/);
+      expect(clases).toEqual(expect.arrayContaining(["ring-2", "ring-foreground"]));
+    }
+    for (const tema of ["claro", "oscuro"] as const) {
+      expect(contraste(token(tema, "foreground"), token(tema, "background")), tema).toBeGreaterThanOrEqual(3);
+    }
   });
 });
 

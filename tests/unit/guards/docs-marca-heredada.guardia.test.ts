@@ -552,7 +552,8 @@ const FRASES_PLATAFORMA: readonly FrasePlataforma[] = [
     "@bottom-left { content: \"Guía de integración — API de Servi Logistic\";",
     "<div class=\"title\">Guía de integración<br>API de Servi Logistic</div>",
     "<h1>Guía de integración — API de Servi Logistic</h1>",
-    "Servi Logistic la avisará con antelación",
+    // SLT-201: «Servi Logistic la avisará con antelación» se fue con el aviso de despliegue
+    // pendiente del bloque A: el renombrado de estados ya está en producción.
     "<p>La API de Servi Logistic le permite a su sistema",
     "Se genera desde la aplicación de Servi Logistic",
     "una tienda ya registrada en Servi Logistic, esa tienda",

@@ -749,13 +749,14 @@ describe("SLT-190 — barra del diálogo de Recoger", () => {
     expect(dialogo.querySelector("svg.lucide-package-check")).toBeNull();
   });
 
-  it("R869: un solo «Cerrar», de 44 × 44 px (`size-11`); al pulsarlo se cierra y la cámara se apaga", async () => {
+  // SLT-202 «Escritorio igual a prod: tamaños de controles y un solo botón de recibir» (Carlos, 2026-11-18): 44 px solo en el móvil; en escritorio, el tamaño de prod.
+  it("R869: un solo «Cerrar», de 44 × 44 px en el móvil (`max-md:size-11`); al pulsarlo se cierra y la cámara se apaga", async () => {
     const user = userEvent.setup();
     await renderAbierta(user);
 
     const cerrar = screen.getAllByRole("button", { name: "Cerrar" });
     expect(cerrar).toHaveLength(1);
-    expect(cerrar[0].className.split(/\s+/)).toContain("size-11");
+    expect(cerrar[0].className.split(/\s+/)).toEqual(expect.arrayContaining(["size-7", "max-md:size-11"]));
 
     await user.click(cerrar[0]);
     await vi.waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());

@@ -54,14 +54,28 @@ const ALTO_CONTROL = "h-8";
  */
 const ALTO_CONTROL_TACTIL = "h-8 max-md:h-11";
 
-/** SLT-160 (R771, DC2): con `escaneo`, el campo y los controles de la barra miden 44 px, como el canvas. */
-const ALTO_CONTROL_ESCANEO = "h-11";
+/**
+ * SLT-160 (R771, DC2): con `escaneo`, el campo y los controles de la barra miden 44 px, como el canvas.
+ * SLT-202 (Carlos, 2026-11-18: «escritorio = prod»): solo en el móvil. Desde `md` vuelven al `h-8` de
+ * prod y la barra queda alineada con «Vistas», los conmutadores y «Descargar», que nunca crecieron.
+ */
+const ALTO_CONTROL_ESCANEO = "h-8 max-md:h-11";
+
+/** SLT-202: la cámara del buscador, 32 × 32 desde `md` (el `icon` de la casa) y 44 × 44 en el móvil. */
+const TAMANO_CAMARA_ESCANEO = "shrink-0 max-md:size-11";
 
 /** SLT-156 (R496): con `fija`, la barra queda pegada arriba mientras se desplaza la lista. */
 export const BARRA_FIJA = "sticky top-0 z-20 bg-background py-2";
 
 /** SLT-160 (R600): nombre accesible del botón de cámara del buscador y título de su visor. */
 export const ESCANEAR_CON_CAMARA = "Escanear con cámara";
+
+/**
+ * SLT-200 (punto 7, pedido de Carlos 2026-11-18): el tooltip del botón de cámara, que dice qué hace: la
+ * cámara lee el código y FILTRA la lista; no cambia nada. El nombre accesible sigue siendo
+ * `ESCANEAR_CON_CAMARA`.
+ */
+export const AYUDA_CAMARA_BUSCADOR = "Buscar escaneando la guía";
 
 /** SLT-160 (R770, DC2): la ayuda que va debajo de un buscador con `escaneo`, la del canvas. */
 export const AYUDA_ESCANEO =
@@ -705,14 +719,15 @@ export function BuscadorFiltros({
         </div>
         ) : null}
 
-        {/* SLT-160 (R600, R604, DC2): la cámara es un botón APARTE de 44 px, pegado al campo y fuera
-            de él, como en el canvas. Abre el visor de hoy ya encendido. */}
+        {/* SLT-160 (R600, R604, DC2): la cámara es un botón APARTE, pegado al campo y fuera de él, como
+            en el canvas. Abre el visor de hoy ya encendido. Mide lo que el campo (SLT-202). */}
         {buscador && escaneo ? (
           <EscanerModal
             label={ESCANEAR_CON_CAMARA}
             titulo={ESCANEAR_CON_CAMARA}
             soloIcono
-            className="size-11 shrink-0"
+            ayuda={AYUDA_CAMARA_BUSCADOR}
+            className={TAMANO_CAMARA_ESCANEO}
           >
             {(cerrar) => (
               <CamaraDelBuscador cerrar={cerrar} onGuia={(guia) => buscarYa(String(guia))} />
@@ -808,7 +823,9 @@ export function BuscadorFiltros({
             variant="outline"
             size="sm"
             disabled={disabled}
-            className={cn("shrink-0", tactil && "max-md:h-11", escaneo && ALTO_CONTROL_ESCANEO)}
+            // SLT-202 (Carlos, 2026-11-18): desde `md`, las clases de prod (`sm`, 28 px); el 44 de SLT-160
+            // (R771) y de SLT-156 (R493) queda solo en el móvil.
+            className={cn("shrink-0", (tactil || escaneo) && "max-md:h-11")}
             onClick={limpiarTodo}
           >
             Limpiar todo

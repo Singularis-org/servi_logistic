@@ -6,9 +6,16 @@ import { leerGuia } from "@/lib/utils/paquete-url";
 // desenlace de su propia guía (R587). La lista vive en memoria mientras el modal o la página
 // están montados (R591). Genérica a propósito: SLT-168 la reutiliza en las recogidas.
 
+/**
+ * SLT-202 «Escritorio igual a prod: tamaños de controles y un solo botón de recibir» (review B1): el
+ * destino de una recepción que no es la bodega de quien recibe (feature 139, R17: «queda por devolver
+ * a la tienda»). Se pinta bajo «Recibida»; sin él, la fila es la de siempre.
+ */
+type Aviso = { aviso?: string };
+
 export type EstadoFila =
   | { tipo: "recibiendo" }
-  | { tipo: "recibida"; resumen?: ResumenRecepcion }
+  | ({ tipo: "recibida"; resumen?: ResumenRecepcion } & Aviso)
   | { tipo: "ya_recibida"; resumen?: ResumenRecepcion }
   /** R585: la guía ya estaba en la sesión; no se llamó a la acción. Se pinta «Ya recibida». */
   | { tipo: "repetida_en_sesion"; resumen?: ResumenRecepcion }
@@ -27,13 +34,16 @@ export interface FilaLectura {
 
 /** Lo que cada superficie traduce desde la respuesta de su acción. */
 export type DesenlaceRecepcion =
-  | { tipo: "recibida"; resumen?: ResumenRecepcion }
+  | ({ tipo: "recibida"; resumen?: ResumenRecepcion } & Aviso)
   | { tipo: "ya_recibida"; resumen?: ResumenRecepcion }
   | { tipo: "no_encontrada" }
   | { tipo: "no_se_pudo"; motivo: string };
 
-/** Cómo se monta una recepción: guía suelta (lo de siempre), diálogo continuo o página (DC5). */
-export type ModoRecepcion = "suelta" | "continua" | "pagina";
+/**
+ * Cómo se monta una recepción: diálogo continuo o página (DC5). SLT-202: la guía suelta se quitó; la
+ * continua la cubre.
+ */
+export type ModoRecepcion = "continua" | "pagina";
 
 export interface ContadoresSesion {
   recibidas: number;

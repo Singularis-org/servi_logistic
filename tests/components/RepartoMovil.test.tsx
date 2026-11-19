@@ -290,10 +290,12 @@ describe("SLT-156 R509 — avisos de ruta en una línea", () => {
   });
 });
 
-describe("SLT-156 R493 — los botones de las tarjetas de Reparto miden 44 px", () => {
-  const ALTO_TACTIL = "h-11";
+// SLT-202 «Escritorio igual a prod: tamaños de controles y un solo botón de recibir» (Carlos, 2026-11-18): 44 px solo en el móvil (`max-md:`); en escritorio, el tamaño de prod.
+// En escritorio estos cuatro vuelven al `sm` de prod (h-7) y la confirmación, al botón por defecto (h-8).
+describe("SLT-156 R493 — los botones de las tarjetas de Reparto miden 44 px en el móvil", () => {
+  const ALTO_TACTIL = "max-md:h-11";
 
-  it("«Gestionar», «Gestionar más tarde», «Recuperar» y «Conversación» llevan `h-11`", async () => {
+  it("«Gestionar», «Gestionar más tarde», «Recuperar» y «Conversación» llevan `max-md:h-11` y el `h-7` de prod", async () => {
     const user = userEvent.setup();
     montar({
       porGestionar: [orden({ id: "g1", numRemision: "REM-G1" })],
@@ -312,20 +314,22 @@ describe("SLT-156 R493 — los botones de las tarjetas de Reparto miden 44 px", 
       }),
     ];
     for (const boton of botones) {
-      expect(boton.className.split(/\s+/)).toContain(ALTO_TACTIL);
+      const cl = boton.className.split(/\s+/);
+      expect(cl).toEqual(expect.arrayContaining([ALTO_TACTIL, "h-7"]));
+      expect(cl).not.toContain("h-11");
     }
   });
 
-  it("el diálogo «¿Gestionar esta orden?» (ConfirmarGestionDialog): «Cancelar» y «Aceptar» de 44 px", async () => {
+  it("el diálogo «¿Gestionar esta orden?» (ConfirmarGestionDialog): «Cancelar» y «Aceptar» de 44 px en el móvil", async () => {
     const user = userEvent.setup();
     montar();
 
     await user.click(screen.getByRole("button", { name: "Gestionar la orden REM-G1" }));
     const dialogo = await screen.findByRole("dialog", { name: "¿Gestionar esta orden?" });
     for (const nombre of ["Cancelar", "Aceptar"]) {
-      expect(within(dialogo).getByRole("button", { name: nombre }).className.split(/\s+/)).toContain(
-        ALTO_TACTIL,
-      );
+      const cl = within(dialogo).getByRole("button", { name: nombre }).className.split(/\s+/);
+      expect(cl).toEqual(expect.arrayContaining([ALTO_TACTIL, "h-8"]));
+      expect(cl).not.toContain("h-11");
     }
   });
 });
@@ -374,6 +378,20 @@ describe("SLT-189 R795-R797 — el conmutador Mosaico/Detalle va en la barra fij
       expect.arrayContaining(["max-md:[&>button]:h-11"]),
     );
     expect(conmutador().parentElement!.className.split(/\s+/)).toContain("flex-wrap");
+  });
+
+  // SLT-200 «PWA Reparto: buscador, KPI, tarjeta y leyenda del mapa tras Preview» (punto 1): en el
+  // móvil el campo (`flex-1 min-w-0`) se quedaba en la lupa porque «Filtros» y el conmutador se comían
+  // la línea. El conmutador baja a su propia línea por debajo de `md` (`basis-full`) y sus dos botones
+  // se reparten el ancho. Sin tocar `BuscadorFiltros`: la clase la pone Reparto. El ancho útil del
+  // campo a 360/414 px lo mide el E2E.
+  it("SLT-200: en el móvil el conmutador ocupa su propia línea y deja la primera al campo y a «Filtros»", () => {
+    montar();
+    const clases = conmutador().className.split(/\s+/);
+    expect(clases).toEqual(expect.arrayContaining(["max-md:basis-full", "max-md:[&>button]:flex-1"]));
+    // Desde md sigue en la misma línea: ninguna clase de ancho completo sin prefijo.
+    expect(clases).not.toContain("basis-full");
+    expect(clases).not.toContain("w-full");
   });
 });
 

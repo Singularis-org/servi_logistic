@@ -187,9 +187,16 @@ afterEach(cleanup);
 describe("SLT-166 R542 — el carrusel manda la parada activa del mapa", () => {
   it("en Mosaico, al deslizar a otra tarjeta su parada pasa a ser la activa", async () => {
     const user = userEvent.setup();
-    montar();
+    const { container } = montar();
     expect(ultimasPropsDelMapa().paradaActivaId).toBe("g1");
-    expect(screen.getByText("El mapa se centra en la orden del carrusel.")).toBeInTheDocument();
+    // SLT-202: la separación del módulo vuelve al `gap-8` de prod (SLT-163 la bajó a `gap-6` sin R).
+    expect(container.firstElementChild).toHaveClass("gap-8");
+    expect(container.firstElementChild).not.toHaveClass("gap-6");
+    // SLT-202 «Escritorio igual a prod: tamaños de controles y un solo botón de recibir» (Carlos,
+    // 2026-11-18): el texto bajo el carrusel no lo pedía ningún R y prod no lo tiene; se quitó. El
+    // mapa sigue el carrusel igual (lo de abajo).
+    expect(screen.queryByText(/El mapa se centra en la orden del carrusel/)).toBeNull();
+    expect(screen.getByRole("button", { name: "deslizar a la tarjeta 1" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "deslizar a la tarjeta 1" }));
 

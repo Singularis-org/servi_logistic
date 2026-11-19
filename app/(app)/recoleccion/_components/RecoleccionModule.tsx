@@ -26,16 +26,12 @@ import { CarruselCards } from "@/components/shared/CarruselCards";
 import { PosOrderCardDetalle } from "@/app/(app)/mis-asignaciones/_components/pos-card/PosOrderCardDetalle";
 import { PosOrderCardMosaico } from "@/app/(app)/mis-asignaciones/_components/pos-card/PosOrderCardMosaico";
 import {
+  CONMUTADOR_EN_SU_LINEA_MOVIL,
   VistaCardsToggle,
   type VistaCards,
 } from "@/app/(app)/mis-asignaciones/_components/VistaCardsToggle";
-import { FiltroTienda } from "@/app/(app)/mis-asignaciones/_components/FiltroTienda";
-import {
-  ETIQUETA_FILTRO_TIENDA,
-  FILTRO_TIENDA,
-  filtrarPorTienda,
-  opcionesTienda,
-} from "@/app/(app)/mis-asignaciones/_components/filtro-tienda";
+import { filtrarPorTienda } from "@/app/(app)/mis-asignaciones/_components/filtro-tienda";
+import { useFiltroTienda } from "@/app/(app)/mis-asignaciones/_components/useFiltroTienda";
 import {
   CLASE_FASE,
   useTransicionVista,
@@ -163,23 +159,12 @@ export function RecoleccionModule({
   // SLT-190 (R850-R854, DS1, DS2): el filtro «Tienda», tratado como el término: filtra las DOS
   // listas, no toca los contadores de las cabeceras ni lo que acepta el escáner (`conocidas`, la
   // lista completa) y cuenta como búsqueda activa para el vacío.
-  const [tienda, setTienda] = useState("");
-  const [filtrosPuestos, setFiltrosPuestos] = useState<string[]>([]);
-  const tiendas = useMemo(
-    () => opcionesTienda(porRecolectar, recolectadasHoy),
-    [porRecolectar, recolectadasHoy],
-  );
-  const filtrosOfrecidos = [{ key: FILTRO_TIENDA, label: ETIQUETA_FILTRO_TIENDA }];
-  // Quitar el filtro de «Filtros» vacía su valor: un filtro que ya no se ve no puede seguir filtrando.
-  function cambiarFiltrosPuestos(siguientes: string[]) {
-    if (!siguientes.includes(FILTRO_TIENDA)) setTienda("");
-    setFiltrosPuestos(siguientes);
-  }
-  // «Limpiar todo»: la barra vacía su campo y emite `""`; aquí se quita el filtro.
-  function limpiarTodo() {
-    setTienda("");
-    setFiltrosPuestos([]);
-  }
+  // SLT-206: el estado y el control, compartidos con Recoger en bodega (`useFiltroTienda`).
+  const {
+    tienda,
+    barra: barraTienda,
+    control: controlTienda,
+  } = useFiltroTienda(porRecolectar, recolectadasHoy);
 
   const buscando = query.trim() !== "" || tienda !== "";
   const porRecolectarVisibles = useMemo(
@@ -286,25 +271,23 @@ export function RecoleccionModule({
         debounceMs={0}
         leerDeUrl={false}
         // SLT-190 (R850-R852): el filtro «Tienda» con el selector de siempre (P2).
-        filtros={filtrosOfrecidos}
-        activos={filtrosPuestos}
-        onActivosChange={cambiarFiltrosPuestos}
-        onLimpiarTodo={limpiarTodo}
-        hayFiltrosAplicados={tienda !== "" || filtrosPuestos.length > 0}
+        {...barraTienda}
         fija
         tactil
-        // SLT-194 (R940-R944, D2): la pistola (Enter) y la cámara del buscador SOLO filtran las dos
-        // listas; recolectar sigue siendo «Escanear o escribir guía». Va también bloqueado: no mueve nada.
-        escaneo
+        // SLT-200 (punto 6; Carlos, 2026-11-18, «quitar la camarita»): sin `escaneo`. SLT-194 (R940)
+        // le había puesto cámara al buscador; el único escáner de la pantalla es «Escanear o
+        // escribir guía», el que recolecta. Lo escrito sigue filtrando las dos listas al momento.
         // SLT-190 (R860, DS4): el ÚNICO conmutador del apartado, en la barra tras «Filtros» y
         // siempre visible (también con «Por recolectar» vacía); gobierna las dos listas.
         trasFiltros={
-          <VistaCardsToggle vista={vistaCardsPedida} onVistaChange={cambiarVista} />
+          <VistaCardsToggle
+            vista={vistaCardsPedida}
+            onVistaChange={cambiarVista}
+            className={CONMUTADOR_EN_SU_LINEA_MOVIL}
+          />
         }
       >
-        {filtrosPuestos.includes(FILTRO_TIENDA) ? (
-          <FiltroTienda tienda={tienda} tiendas={tiendas} onTiendaChange={setTienda} />
-        ) : null}
+        {controlTienda}
       </BuscadorFiltros>
 
       <section aria-label={TITULO} className="flex flex-col gap-4">

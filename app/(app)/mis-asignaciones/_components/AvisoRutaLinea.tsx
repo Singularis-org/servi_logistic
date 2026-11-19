@@ -5,7 +5,7 @@ import { ChevronDown } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { TEXTO_ENTERO } from "@/components/shared/texto-entero";
+import { BOTON_TACTIL_MOVIL, TEXTO_ENTERO } from "@/components/shared/texto-entero";
 import { cn } from "@/lib/utils";
 
 // SLT-156 (R509, canvas v35: RepartoMejorado) — un aviso de ruta en UNA línea. Abiertos, los dos
@@ -42,8 +42,9 @@ export function AvisoRutaLinea({
         <Button
           type="button"
           variant="ghost"
-          size="touch"
-          className="px-2"
+          // SLT-202 (Carlos, 2026-11-18): control nuevo, sin par en prod: desde `md`, el tamaño por
+          // defecto de la casa; en el móvil, los 44 px de SLT-156 (R509), con su `px-2`.
+          className={cn(BOTON_TACTIL_MOVIL, "px-2 max-md:px-2")}
           aria-expanded={abierto}
           aria-controls={abierto ? idDescripcion : undefined}
           // Con dos avisos a la vez habría dos «Ver más» iguales para el lector de pantalla: el

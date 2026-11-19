@@ -38,17 +38,12 @@ import {
   VACIO_GRUPO_HOY,
   VACIO_GRUPO_OTRO_DIA,
 } from "./recoger-grupos";
-import { FiltroTienda } from "./FiltroTienda";
-import {
-  ETIQUETA_FILTRO_TIENDA,
-  FILTRO_TIENDA,
-  filtrarPorTienda,
-  opcionesTienda,
-} from "./filtro-tienda";
+import { filtrarPorTienda } from "./filtro-tienda";
+import { useFiltroTienda } from "./useFiltroTienda";
 import { RecogerPaqueteCard } from "./RecogerPaqueteCard";
 import { PosOrderCardDetalle } from "./pos-card/PosOrderCardDetalle";
 import { PosOrderCardMosaico } from "./pos-card/PosOrderCardMosaico";
-import { VistaCardsToggle, type VistaCards } from "./VistaCardsToggle";
+import { CONMUTADOR_EN_SU_LINEA_MOVIL, VistaCardsToggle, type VistaCards } from "./VistaCardsToggle";
 import { CLASE_FASE, useTransicionVista } from "./useTransicionVista";
 
 // 2026-07-31 (decisión del humano) — pantalla POR RECOGER del mensajero. Es la mitad que
@@ -158,20 +153,8 @@ export function RecogerModule({
   // SLT-190 (R850-R854, DS1, DS2): el filtro «Tienda». Se trata como el término: filtra lo que se
   // ve en las DOS pestañas, no toca contadores ni lo que acepta el escáner (que mira `porRecoger`
   // completo), y cuenta como búsqueda activa para el vacío y el puntero a la otra pestaña.
-  const [tienda, setTienda] = useState("");
-  const [filtrosPuestos, setFiltrosPuestos] = useState<string[]>([]);
-  const tiendas = useMemo(() => opcionesTienda(porRecoger), [porRecoger]);
-  const filtrosOfrecidos = [{ key: FILTRO_TIENDA, label: ETIQUETA_FILTRO_TIENDA }];
-  // Quitar el filtro de «Filtros» vacía su valor: un filtro que ya no se ve no puede seguir filtrando.
-  function cambiarFiltrosPuestos(siguientes: string[]) {
-    if (!siguientes.includes(FILTRO_TIENDA)) setTienda("");
-    setFiltrosPuestos(siguientes);
-  }
-  // «Limpiar todo»: la barra vacía su campo y emite `""`; aquí se quita el filtro.
-  function limpiarTodo() {
-    setTienda("");
-    setFiltrosPuestos([]);
-  }
+  // SLT-206: el estado y el control, compartidos con Recolección (`useFiltroTienda`).
+  const { tienda, barra: barraTienda, control: controlTienda } = useFiltroTienda(porRecoger);
 
   const buscando = query.trim() !== "" || tienda !== "";
 
@@ -365,21 +348,19 @@ export function RecogerModule({
           debounceMs={0}
           leerDeUrl={false}
           // SLT-190 (R850-R852): el filtro «Tienda» con el selector de siempre (P2).
-          filtros={filtrosOfrecidos}
-          activos={filtrosPuestos}
-          onActivosChange={cambiarFiltrosPuestos}
-          onLimpiarTodo={limpiarTodo}
-          hayFiltrosAplicados={tienda !== "" || filtrosPuestos.length > 0}
+          {...barraTienda}
           fija
           tactil
           // SLT-190 (R859): el conmutador Mosaico/Detalle va en la barra fija, tras «Filtros».
           trasFiltros={
-            <VistaCardsToggle vista={vistaCardsPedida} onVistaChange={cambiarVista} />
+            <VistaCardsToggle
+              vista={vistaCardsPedida}
+              onVistaChange={cambiarVista}
+              className={CONMUTADOR_EN_SU_LINEA_MOVIL}
+            />
           }
         >
-          {filtrosPuestos.includes(FILTRO_TIENDA) ? (
-            <FiltroTienda tienda={tienda} tiendas={tiendas} onTiendaChange={setTienda} />
-          ) : null}
+          {controlTienda}
         </BuscadorFiltros>
 
         {/* ---------- Los dos grupos, feature 277 ---------- */}
@@ -395,14 +376,15 @@ export function RecogerModule({
           value={grupoActivo}
           onValueChange={(siguiente) => setGrupoActivo(siguiente as Grupo)}
         >
-          {/* Las pestañas, a 44 px (R493). SLT-190 (R859): el conmutador de vista ya no va en esta
+          {/* Las pestañas, a 44 px en el móvil (R493); desde `md`, el alto de prod (SLT-202, Carlos
+              2026-11-18). SLT-190 (R859): el conmutador de vista ya no va en esta
               fila, sino en la barra fija. */}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <TabsList aria-label={TABLIST_LABEL} className="w-auto flex-wrap">
-              <TabsTrigger value="hoy" className="min-h-11">
+              <TabsTrigger value="hoy" className="max-md:min-h-11">
                 {`${PESTANA_PARA_RECOGER_HOY} (${grupos.hoy.length})`}
               </TabsTrigger>
-              <TabsTrigger value="otro-dia" className="min-h-11">
+              <TabsTrigger value="otro-dia" className="max-md:min-h-11">
                 {`${PESTANA_PARA_OTRO_DIA} (${grupos.otroDia.length})`}
               </TabsTrigger>
             </TabsList>

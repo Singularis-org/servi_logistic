@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
 import { BuscadorFiltros } from "@/components/shared/BuscadorFiltros";
+import { BOTON_TACTIL_MOVIL } from "@/components/shared/texto-entero";
 import { Button } from "@/components/ui/button";
 import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
 import { useToast } from "@/hooks/useToast";
@@ -52,7 +53,7 @@ import { useSeguimientoUbicacion } from "./useSeguimientoUbicacion";
 import { SincronizarRutaButton } from "./SincronizarRutaButton";
 import { CarruselCards } from "@/components/shared/CarruselCards";
 
-import { VistaCardsToggle, type VistaCards } from "./VistaCardsToggle";
+import { CONMUTADOR_EN_SU_LINEA_MOVIL, VistaCardsToggle, type VistaCards } from "./VistaCardsToggle";
 import { CLASE_FASE, useTransicionVista } from "./useTransicionVista";
 import { useSeccionColapsable } from "@/hooks/useSeccionColapsable";
 import type {
@@ -170,8 +171,9 @@ const AYUDA_ACCION_HILO = "Conversación";
 // FICHA 455 (2026-09-24, R7/R8/R6; design §2.1): aquí vivía `AYUDA_CARD_ESTADO = «En ayuda»`, un
 // rótulo que SUSTITUÍA al chip de estado de la card de ayuda. La orden está `en_reparto` y el chip
 // lo dice; la ayuda de la 454 va como NOTA aparte (`NOTA_AYUDA_SOLICITADA`, texto de la 456).
-// SLT-166 (R542, canvas v35: RepartoMapa): bajo el carrusel, con el mapa abierto.
-const MAPA_SIGUE_AL_CARRUSEL = "El mapa se centra en la orden del carrusel.";
+// SLT-202 (Carlos, 2026-11-18): aquí vivía `MAPA_SIGUE_AL_CARRUSEL` («El mapa se centra en la orden del
+// carrusel.»), un texto bajo el carrusel que no pedía ningún R (solo design §11 de SLT-166) y que
+// prod no tiene. El mapa sigue centrándose en la orden del carrusel (R542); el texto se quitó.
 
 const SIN_PENDIENTES_TODAS_CON_AYUDA =
   "Todas tus órdenes en reparto tienen ayuda solicitada; están abajo.";
@@ -730,11 +732,13 @@ export function RepartoModule({
               numRemision={orden.numRemision}
               onRecuperada={() => router.refresh()}
             />
-            {/* SLT-156 (R493): 44 px, como todos los botones de las tarjetas del mensajero. */}
+            {/* SLT-156 (R493): 44 px en el móvil, como todos los botones de las tarjetas del mensajero.
+                SLT-202 (Carlos, 2026-11-18): desde `md`, el `sm` de prod. */}
             <Button
               type="button"
               variant="secondary"
-              size="touch"
+              size="sm"
+              className={BOTON_TACTIL_MOVIL}
               onClick={() => setHiloOrden(orden)}
             >
               {AYUDA_ACCION_HILO}
@@ -766,8 +770,10 @@ export function RepartoModule({
     <Button
       type="button"
       variant="ghost"
-      // SLT-166 (R544): 44 px; era `xs` (24 px) y el mensajero lo pulsa con el pulgar.
-      size="touch"
+      // SLT-166 (R544): 44 px en el móvil; era `xs` (24 px) y el mensajero lo pulsa con el pulgar.
+      // SLT-202 (Carlos, 2026-11-18): desde `md`, el `xs` de prod.
+      size="xs"
+      className={BOTON_TACTIL_MOVIL}
       ref={botonMostrarMapa}
       aria-expanded={false}
       onClick={mapa.abrir}
@@ -790,7 +796,8 @@ export function RepartoModule({
     paradaHojaId === null ? null : (porGestionar.find((o) => o.id === paradaHojaId) ?? null);
 
   return (
-    <div className="flex flex-col gap-6">
+    // SLT-202 (Carlos, 2026-11-18): el `gap-8` de prod; SLT-163 lo había bajado a `gap-6` sin R.
+    <div className="flex flex-col gap-8">
       {/* ---------- Aviso de BLOQUEO TOTAL del mensajero (feature 111/R12) ---------- */}
       {/* Precede a todo y tiene precedencia sobre el modo foco (feature 113/R12): un
           mensajero BLOQUEADO no colapsa a foco; ve el aviso, la lista y las cards
@@ -824,8 +831,9 @@ export function RepartoModule({
             <Button
               type="button"
               variant="outline"
-              size="touch"
-              className="w-full"
+              // SLT-202 (Carlos, 2026-11-18): botón nuevo, sin par en prod: desde `md`, el tamaño por
+              // defecto de la casa; en el móvil, los 44 px de SLT-156 (R513).
+              className={`w-full ${BOTON_TACTIL_MOVIL}`}
               onClick={() => setOrdenEnFocoId(null)}
             >
               <ArrowLeft aria-hidden="true" />
@@ -884,7 +892,11 @@ export function RepartoModule({
             tactil
             // SLT-189 (R795, DS3): el conmutador Mosaico/Detalle va en la barra fija, tras «Filtros».
             trasFiltros={
-              <VistaCardsToggle vista={vistaCardsPedida} onVistaChange={cambiarVista} />
+              <VistaCardsToggle
+                vista={vistaCardsPedida}
+                onVistaChange={cambiarVista}
+                className={CONMUTADOR_EN_SU_LINEA_MOVIL}
+              />
             }
           >
             {/* Feature 117: elegir cantón resetea el distrito (R5) y el distrito va
@@ -1003,11 +1015,6 @@ export function RepartoModule({
                   renderItem={(orden) => renderCardEnReparto(orden, "mosaico")}
                   onIndiceChange={setIndiceCarrusel}
                 />
-                {hayMapa && mapa.abierta ? (
-                  <p className="mt-2 text-center text-xs text-muted-foreground">
-                    {MAPA_SIGUE_AL_CARRUSEL}
-                  </p>
-                ) : null}
               </div>
             ) : (
               /* La clase de fase anima la lista ENTERA como bloque (bajar+desvanecer /

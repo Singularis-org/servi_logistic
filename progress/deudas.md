@@ -28,10 +28,11 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Qué falta:** que `scripts/test-rapido.mjs` caiga a la rama local de integración o falle con aviso (arnés: `/afinar-regla` y subir a la plantilla).
 - **Dueño:** leader.
 
-### D6 — El YAML de la API no nombra las cabeceras de firma del webhook
+### D6 — El YAML de la API no nombra las cabeceras de firma del webhook — RESUELTA (2026-11-18)
 - **Origen:** SL-15 (2026-10-22), visto en la review de SL-16 (H3). `openApiSpec.info.description` (`lib/api/openapi-spec.ts`) lleva el párrafo «Webhooks: cada entrega va firmada…» con las dos cabeceras `X-Servi-Logistic-*`; el `info.description` de `docs/api/api-key-openapi.yaml` no lo tiene. Es la única divergencia TS↔YAML del contrato.
 - **Qué falta:** llevar ese párrafo al YAML con las mismas palabras, y que un test de paridad lo cubra.
-- **Dueño:** Carlos Restrepo (ficha propia o la próxima que toque el contrato).
+- **Cerrada en SLT-201 «Manual de la API al día: Swagger/Postman con la carga completa y guía PDF actualizada» (2026-11-18):** el `info.description` del YAML lleva el párrafo con `X-Servi-Logistic-Signature` y `X-Servi-Logistic-Timestamp`, y `tests/unit/guards/openapi-carga-claves-reales.guardia.test.ts` compara el párrafo del YAML con el del objeto TS (que sale de `lib/crypto/webhook-firma.ts`).
+- **Dueño:** cerrada.
 
 ### D7 — ¿Quién retira una provincia: la empresa o la plataforma? — RESUELTA (2026-10-22)
 - **Origen:** SL-16 (2026-10-22), review H4. La ayuda decía que lo hacía la empresa, siguiendo el código de SL-15; `docs/plan-saas.md` decisión 5 apuntaba a la plataforma.
@@ -462,10 +463,11 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Qué falta:** traducir `40P01` a un error de dominio reintentable, o fijar el orden de bloqueos también en el borrado.
 - **Dueño:** Camilo.
 
-### D79 — Tests que commitean filas de negocio sin el motivo escrito
+### D79 — Tests que commitean filas de negocio sin el motivo escrito — RESUELTA (2026-11-18)
 - **Origen:** SLT-188 «Tests que dejan filas fuera de su transacción», T3 (R1182, 2026-11-18). De los 39 archivos que commitean una `organizacion` (y lo que cuelga de ella), 35 dicen en el propio archivo por qué no van en una tx revertida; 4 no: `integracion-migracion.test.ts`, `para-cada-empresa-modulo.test.ts`, `premio-ranking-idempotencia.test.ts` y `419/_escenario-419.ts`. Los cuatro limpian (`afterAll`/`finally`) y el CI del PR #222 midió 0 filas fuera de su transacción: no hay fuga permanente, solo la ventana de la clase (b).
 - **Qué falta:** pasarlos a una tx revertida si caben, o escribir el motivo en el archivo. No se hizo en SLT-188: sin fuga medida, R1181 pide no inventar arreglos, y el leader dejó `419/_escenario-419.ts` fuera salvo evidencia.
-- **Dueño:** Carlos Restrepo (decidir si va a ficha).
+- **Cerrada en SLT-207 «D79: tests que confirman filas de negocio sin el motivo escrito» (2026-11-18):** `integracion-migracion.test.ts` siembra sus dos empresas dentro de cada tx revertida, con control positivo y un `afterAll` que comprueba que no queda ninguna. Los otros tres siguen confirmando porque los lee otra conexión (`getPrismaClient()` en `para-cada-empresa-modulo` y en la action de `premio-ranking-idempotencia`; `c1`/`c2` de la concurrencia R8 en `419/confirmar-entrega-lote-sql-real.test.ts`): el motivo va escrito junto a la escritura y la limpieza desconecta en `finally`. Mutación por archivo (sin limpieza / sin rollback): la comprobación de SLT-188 da salida 1 en los cuatro. Detalle en `progress/impl_SLT-207.md`.
+- **Dueño:** cerrada.
 
 ### D80 — `454/caracterizacion/corte-concurrencia` deja su escenario si el worker muere
 - **Origen:** SLT-188 «Tests que dejan filas fuera de su transacción», T7 (2026-11-18). En la segunda de dos corridas seguidas sobre la misma desechable, el worker de vitest murió («Worker exited unexpectedly») en el `beforeAll` de ese archivo. Quedó confirmado un escenario de `sembrarComprometido`: 1 organización, 1 orden (`R-454…`), 2 zonas («Central 454 …»), 5 usuarios y su cobro (12 filas). La comprobación de SLT-188 lo cazó con salida 1. Solo, el archivo pasó 3 de 3 sin fuga, y la doble corrida repetida dio 0 y 0.

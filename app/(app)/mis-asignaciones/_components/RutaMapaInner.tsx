@@ -28,6 +28,7 @@ import {
 } from "react-leaflet";
 
 import { Button } from "@/components/ui/button";
+import { BOTON_TACTIL_MOVIL, ICONO_TACTIL_MOVIL } from "@/components/shared/texto-entero";
 import { decodificarPolilinea } from "@/lib/geo/polilinea";
 import { PAIS_DE_OPERACION } from "@/lib/config/pais";
 
@@ -48,10 +49,11 @@ export const VER_MAPA_COMPLETO = "Ver mapa completo";
 export const CERRAR_MAPA_COMPLETO = "Cerrar";
 export const CENTRAR_EN_MI_UBICACION = "Centrar en mi ubicación";
 export const OCULTAR_MAPA = "Ocultar mapa";
+// SLT-200: sin «Gestionada». El mapa solo dibuja la siguiente, las pendientes y el origen (las
+// gestionadas, M1, siguen siendo deuda); anunciar un tipo que no se pinta confundía la lectura.
 export const LEYENDA_MAPA: { tipo: TipoMarcador; texto: string }[] = [
   { tipo: "siguiente", texto: "Siguiente" },
   { tipo: "pendiente", texto: "Pendiente" },
-  { tipo: "gestionada", texto: "Gestionada" },
   { tipo: "origen", texto: "Tú" },
 ];
 
@@ -148,9 +150,11 @@ function BotonCentrar({ origen }: { origen: RutaMapaOrigen | null | undefined })
       }}
       type="button"
       variant="outline"
-      size="icon-touch"
+      // SLT-202 (Carlos, 2026-11-18): sin par en prod; desde `md` el icono por defecto (32 px) y en
+      // el móvil los 44 px de SLT-166 (R541).
+      size="icon"
       aria-label={CENTRAR_EN_MI_UBICACION}
-      className="absolute right-4 bottom-4 z-[1000] bg-background shadow-md"
+      className={`absolute right-4 bottom-4 z-[1000] bg-background shadow-md ${ICONO_TACTIL_MOVIL}`}
       onClick={centrar}
     >
       <LocateFixed aria-hidden="true" />
@@ -162,10 +166,13 @@ function LeyendaMapa() {
   return (
     <ul aria-label="Leyenda del mapa" className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
       {LEYENDA_MAPA.map(({ tipo, texto }) => (
-        <li key={tipo} className="flex items-center gap-1">
+        <li key={tipo} className="flex items-center gap-1 max-md:gap-2">
+          {/* SLT-200: el anillo `ring-foreground` contrasta con el fondo en los dos temas, sea cual
+              sea el relleno (en oscuro el punto «Pendiente», negro, medía 1.00:1; en claro el
+              amarillo de «Siguiente», 1.37:1). */}
           <span
             aria-hidden="true"
-            className="inline-block size-3 rounded-full"
+            className="inline-block size-3 rounded-full ring-2 ring-foreground"
             style={{ background: COLOR_MARCADOR[tipo].fondo }}
           />
           {texto}
@@ -302,7 +309,8 @@ export function RutaMapaInner({
     >
       {completo ? (
         <div className="flex items-center justify-between gap-3 border-b bg-background px-4 py-2">
-          <Button type="button" variant="outline" size="touch" onClick={() => setCompleto(false)}>
+          {/* SLT-202 (Carlos, 2026-11-18): sin par en prod; 32 px desde `md`, 44 en el móvil (R541). */}
+          <Button type="button" variant="outline" className={BOTON_TACTIL_MOVIL} onClick={() => setCompleto(false)}>
             <X aria-hidden="true" />
             {CERRAR_MAPA_COMPLETO}
           </Button>
@@ -390,14 +398,14 @@ export function RutaMapaInner({
         </p>
       )}
 
-      {/* SLT-192 (R880, R886): «Ver mapa completo» y «Ocultar mapa» juntos bajo el mapa. */}
+      {/* SLT-192 (R880, R886): «Ver mapa completo» y «Ocultar mapa» juntos bajo el mapa. SLT-202 (Carlos,
+          2026-11-18): sin par en prod; 32 px desde `md`, 44 en el móvil. */}
       {completo ? null : (
         <div className="flex flex-wrap gap-2">
           <Button
             type="button"
             variant="outline"
-            size="touch"
-            className="flex-1"
+            className={`flex-1 ${BOTON_TACTIL_MOVIL}`}
             onClick={() => setCompleto(true)}
           >
             <Maximize2 aria-hidden="true" />
@@ -407,8 +415,7 @@ export function RutaMapaInner({
             <Button
               type="button"
               variant="ghost"
-              size="touch"
-              className="flex-1"
+              className={`flex-1 ${BOTON_TACTIL_MOVIL}`}
               aria-expanded={true}
               onClick={onOcultar}
             >

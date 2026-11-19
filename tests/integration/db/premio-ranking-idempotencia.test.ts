@@ -1076,6 +1076,12 @@ describeSiHayBase("293/T2.5 — la action construida DE VERDAD usa el repositori
     // SLT-185 (R1141): la action corre con una empresa en contexto, como en una peticion. Sin ella, el
     // cliente global falla cerrado (`EmpresaNoResuelta` en `CierreDia.findMany` → `unauthenticated`).
     // La empresa es propia del caso, sin filas de negocio (lista vacia), y se borra al final.
+    //
+    // POR QUE COMMITEA Y NO VA EN UNA TRANSACCION REVERTIDA (SLT-207, D79): lo que se mide es el
+    // composition root de la action, que arma su repositorio sobre `getPrismaClient()`, OTRA conexion
+    // del pool. Una empresa sembrada en una tx del test no existe para esa conexion, y pasarle la tx
+    // seria inyectar el cliente, justo lo que este caso no debe hacer. El precio es el `finally` de
+    // abajo: borra la empresa aunque falle una asercion, y desconecta aunque falle el borrado.
     const prisma = crearPrismaDeTest();
     const empresa = await crearOrganizacion(prisma);
 
@@ -1097,8 +1103,11 @@ describeSiHayBase("293/T2.5 — la action construida DE VERDAD usa el repositori
       espia.mockRestore();
       // La organizacion, la ultima y sola: si la action hubiera dejado algo de esta empresa, el
       // borrado falla (RESTRICT) en vez de dejar basura muda (R1145).
-      await prisma.organizacion.delete({ where: { id: empresa.id } });
-      await prisma.$disconnect();
+      try {
+        await prisma.organizacion.delete({ where: { id: empresa.id } });
+      } finally {
+        await prisma.$disconnect();
+      }
     }
   });
 });

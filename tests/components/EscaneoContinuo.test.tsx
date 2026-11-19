@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup, within, act } from "@testing-library/react";
+import { render, screen, cleanup, within, act, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { EscanerModal } from "@/components/shared/EscanerModal";
@@ -149,6 +149,9 @@ describe("EscaneoContinuo — lecturas seguidas (R580-R582, R584)", () => {
     const recibir = vi.fn(async (): Promise<DesenlaceRecepcion> => ({ tipo: "recibida" }));
     render(dialogo(recibir));
     await abrir(user);
+    // SLT-206: `keyboard` escribe donde esté el foco, y el diálogo lo lleva al campo DESPUÉS de abrir
+    // (`initialFocus`). En CI se perdió el «10» de 1024 por teclear antes: se espera al foco.
+    await waitFor(() => expect(screen.getByLabelText("Número de guía")).toHaveFocus());
 
     await user.keyboard("1024{Enter}2048{Enter}4096{Enter}8192{Enter}16384{Enter}");
 

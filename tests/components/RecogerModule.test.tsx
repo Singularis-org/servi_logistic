@@ -1922,13 +1922,17 @@ describe("SLT-156 rebanada C — Recoger en bodega en el móvil (R500, R506, R51
     expect(antes(screen.getByRole("alert"), buscador())).toBe(true);
   });
 
-  it("R493: el disparador mide 44 px y va a todo el ancho; las pestañas, 44 px", () => {
+  // SLT-202 «Escritorio igual a prod: tamaños de controles y un solo botón de recibir» (decisión de
+  // Carlos del 2026-11-18): los 44 px y el ancho completo de R493, solo en el móvil (`max-md:`); en
+  // escritorio, el tamaño de prod. La medida real a 360 px es de `pwa-mensajero-recoger-recoleccion`.
+  it("R493: el disparador mide 44 px y va a todo el ancho en el móvil; las pestañas, 44 px en el móvil", () => {
     renderModule({ porRecoger: [HOY_1] });
-    expect(accesoRecogida()!.className.split(/\s+/)).toEqual(
-      expect.arrayContaining(["h-11", "w-full"]),
-    );
+    const disparador = accesoRecogida()!.className.split(/\s+/);
+    expect(disparador).toEqual(expect.arrayContaining(["max-md:h-11", "max-md:w-full", "h-8"]));
+    expect(disparador).not.toContain("h-11");
     for (const pestana of screen.getAllByRole("tab")) {
-      expect(pestana.className.split(/\s+/)).toContain("min-h-11");
+      expect(pestana.className.split(/\s+/)).toContain("max-md:min-h-11");
+      expect(pestana.className.split(/\s+/)).not.toContain("min-h-11");
     }
   });
 
@@ -2106,6 +2110,46 @@ describe("SLT-190 — Recoger en bodega según el canvas", () => {
     expect(await within(panelActivo()).findByText("REM-T2")).toBeInTheDocument();
   });
 
+  // SLT-206 «Filtro Tienda duplicado en Recoger y Recolección»: fija el comportamiento del filtro
+  // antes de llevarlo al hook compartido (`useFiltroTienda`). El mismo par vive en RecoleccionModule.test.
+  it("R852 (SLT-206): al volver a poner «Tienda» tras quitarlo, el control dice «Todas» y no la tienda de antes", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecoger: TRES });
+    await ponerTienda(user, "Tienda Norte");
+    await vi.waitFor(() => expect(within(panelActivo()).queryByText("REM-T1")).toBeNull());
+
+    for (let vez = 0; vez < 2; vez++) {
+      await user.click(screen.getByRole("button", { name: /^Filtros/ }));
+      const selector = await screen.findByRole("listbox", { name: "Filtros" });
+      await user.click(within(selector).getByRole("option", { name: "Tienda" }));
+      await user.keyboard("{Escape}");
+    }
+    const control = await screen.findByRole("combobox", { name: "Filtrar por tienda" });
+    await vi.waitFor(() => expect(control).toHaveTextContent("Todas"));
+    expect(control).not.toHaveTextContent("Tienda Norte");
+    for (const rem of ["REM-T1", "REM-T2", "REM-T3"]) {
+      expect(within(panelActivo()).getByText(rem)).toBeInTheDocument();
+    }
+  });
+
+  it("R852 (SLT-206): «Tienda» puesto sin valor ya ofrece «Limpiar todo», y este retira el control", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecoger: TRES });
+    expect(within(barra()).queryByRole("button", { name: "Limpiar todo" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: /^Filtros/ }));
+    const selector = await screen.findByRole("listbox", { name: "Filtros" });
+    await user.click(within(selector).getByRole("option", { name: "Tienda" }));
+    await user.keyboard("{Escape}");
+    expect(await within(barra()).findByRole("combobox", { name: "Filtrar por tienda" })).toBeInTheDocument();
+
+    await user.click(within(barra()).getByRole("button", { name: "Limpiar todo" }));
+    await vi.waitFor(() => {
+      expect(screen.queryByRole("combobox", { name: "Filtrar por tienda" })).toBeNull();
+      expect(within(barra()).queryByRole("button", { name: "Limpiar todo" })).toBeNull();
+    });
+  });
+
   it("R854: con solo el filtro, una pestaña que queda vacía dice el vacío de búsqueda y el puntero a la otra", async () => {
     const user = userEvent.setup();
     renderModule({
@@ -2149,6 +2193,19 @@ describe("SLT-190 — Recoger en bodega según el canvas", () => {
     // Y en la otra pestaña, por separado.
     await irAOtroDia(user);
     expect(await within(panelActivo()).findByText("Orden 1 de 1")).toBeInTheDocument();
+  });
+
+  // SLT-200 «PWA Reparto: buscador, KPI, tarjeta y leyenda del mapa tras Preview» (punto 1): el mismo
+  // arreglo que Reparto. En el móvil el conmutador baja a su propia línea de la barra para que el
+  // campo no se quede en la lupa. El ancho útil del campo lo mide el E2E de Reparto.
+  it("SLT-200: en el móvil el conmutador ocupa su propia línea y deja la primera al campo y a «Filtros»", () => {
+    renderModule({ porRecoger: TRES });
+    const conmutador = screen.getByRole("group", { name: "Vista de las órdenes" });
+    expect(barra().contains(conmutador)).toBe(true);
+    const clases = conmutador.className.split(/\s+/);
+    expect(clases).toEqual(expect.arrayContaining(["max-md:basis-full", "max-md:[&>button]:flex-1"]));
+    expect(clases).not.toContain("basis-full");
+    expect(clases).not.toContain("w-full");
   });
 
   it("R859: el conmutador va en la barra, tras el campo y «Filtros»; la fila de pestañas no lleva ninguno", () => {
