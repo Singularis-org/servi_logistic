@@ -229,12 +229,12 @@ Preview.
   - Las dos resuelven el actor y aplican `puedeLeerDocumento` sobre el documento de la guía: 404
     idéntico al de `[...slug]`.
   - **Hecho:** tests de handler en verde, también los de sin sesión y los roles no permitidos.
-- [ ] **T7 — Acciones en la pantalla (R1306, R1308).**
+- [x] **T7 — Acciones en la pantalla (R1306, R1308).**
   - `app/(app)/ayuda/_components/AccionesGuiaApi.tsx`, que `[...slug]/page.tsx` pinta solo cuando
     `doc.slug` es el de la guía.
   - **Hecho:** test de componente en verde, con el control negativo: otro documento no lleva las
     acciones.
-- [ ] **T8 [P tras T6] — Enlaces en configuración (R1313, R1314).**
+- [x] **T8 [P tras T6] — Enlaces en configuración (R1313, R1314).**
   - Añadir los dos enlaces a `actions` de `AppPage` en `configuracion/api/page.tsx` y en
     `configuracion/integraciones/page.tsx`, en la rama del `maestro`.
   - **Hecho:** test de componente en verde, y los enlaces no aparecen en la rama «sin permiso».

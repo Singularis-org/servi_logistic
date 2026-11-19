@@ -65,6 +65,9 @@
 - **Tanda 1b** (2026-11-18, backend_dev): los 5 rojos resueltos con las decisiones del implementer
   (arriba). 11 tests de la tanda 165/165 en verde; mutación nueva de §8.1 en rojo. T1 y T10 [x];
   `lib/ayuda/guia-api.ts` adelantado de T6.
+- **Tanda 2** (2026-11-18, frontend_dev; T7, T8): `AccionesGuiaApi` en la pantalla de la guía (solo ese
+  slug) y los dos enlaces en la cabecera de `/configuracion/api` e Integraciones (rama maestro). 33/33
+  tests, 7 mutaciones en rojo, typecheck y lint en verde. T7 y T8 [x].
 
 ## Modelos (overrides)
 

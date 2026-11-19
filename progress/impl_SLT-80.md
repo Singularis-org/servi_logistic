@@ -193,3 +193,35 @@ lint: `pnpm run lint` → exit 0, «0 errors, 248 warnings» (las mismas que la 
 ### Veredicto
 
 T1 y T10 hechos y en verde; los 11 tests de la tanda, typecheck y lint en verde.
+
+## Tanda 2 (T7, T8) — frontend_dev, 2026-11-18
+
+### Archivos
+- `app/(app)/ayuda/_components/AccionesGuiaApi.tsx` (nuevo): tres `<a href>` (no `next/link`: son descargas GET, D2/D3) en un `<nav aria-label>`; Swagger con `target="_blank" rel="noopener noreferrer"` y aviso `sr-only`. URLs de `lib/ayuda/guia-api.ts` (R1315); `/api-docs` es constante local (ruta existente, no de esta ficha).
+- `app/(app)/ayuda/[...slug]/page.tsx`: pinta `<AccionesGuiaApi />` solo si `doc.slug === SLUG_GUIA_API`.
+- `app/(app)/configuracion/api/page.tsx`, `app/(app)/configuracion/integraciones/page.tsx`: `actions={<EnlacesGuiaApi />}` solo en el `AppPage` de la rama del maestro. «Guía de integración» con `Link` (es página), «Descargar guía en PDF» con `<a>` (descarga).
+- `tests/components/AccionesGuiaApi.test.tsx`, `tests/components/enlaces-guia-api-configuracion.test.tsx` (nuevos).
+
+### Mapa R → test (esta tanda)
+- R1306, R1301 (pantalla) → `AccionesGuiaApi.test.tsx > «%s abre la guía: el cuerpo del .md y las tres acciones»` (maestro y admin, página real con el catálogo real).
+- R1308 → `AccionesGuiaApi.test.tsx > «Descargar PDF», «Swagger» y «Postman» con sus rutas exactas` + `control negativo: otro documento de Ayuda NO lleva las acciones`.
+- R1313 / R1314 → `enlaces-guia-api-configuracion.test.tsx > «$ruta: Guía de integración y Descargar guía en PDF»` (las dos pantallas) + `la rama «sin permiso» no los lleva` (null, admin, adminTienda, adminSatelite, mensajero).
+- R1315 (parcial, UI) → los href se comparan contra literales del spec; M4/M7 cambian la constante y ponen rojo.
+
+### Mutaciones
+Script `mut80.sh` (sed + `con-desechable ... -- pnpm exec vitest run <test>` + `git checkout -- <archivo>`; antes, commit WIP para que el checkout restaure lo de esta tanda). `git status -s` vacío al final.
+- M1 quitar la condición del slug (acciones en todo documento) → exit=1, 1 failed | 4 passed (5)
+- M2 no pintar nunca las acciones → exit=1, 2 failed | 3 passed (5)
+- M3 quitar `target="_blank"` del Swagger → exit=1, 1 failed | 4 passed (5)
+- M4 `RUTA_DESCARGA_POSTMAN` → `/ayuda/descargas/postman.json` → exit=1, 1 failed | 4 passed (5)
+- M5 quitar `actions` de integraciones → exit=1, 1 failed | 3 passed (4)
+- M6 poner los enlaces en la rama «sin permiso» de `/configuracion/api` → exit=1, 1 failed | 3 passed (4)
+- M7 `RUTA_DESCARGA_GUIA_API_PDF` → `/ayuda/descargas/guia-api` → exit=1, 2 failed | 2 passed (4)
+
+### Verificación (base `servi_slt80_desechable`)
+`con-desechable ... -- pnpm exec vitest run tests/components/{AccionesGuiaApi,enlaces-guia-api-configuracion,ConfiguracionApiPage,AyudaDocumentoPage,AyudaLayout}.test.tsx` → EXIT=0, «Test Files 5 passed (5) · Tests 33 passed (33)». No hay test previo de `configuracion/integraciones/page.tsx`.
+typecheck: `pnpm run typecheck` → exit 0.
+lint: `pnpm run lint` → exit 0, «0 errors, 248 warnings» (las mismas de antes), ninguno en archivos de esta tanda.
+
+### Veredicto
+T7 y T8 hechos; tests nuevos con 7 mutaciones en rojo, typecheck y lint en verde.
