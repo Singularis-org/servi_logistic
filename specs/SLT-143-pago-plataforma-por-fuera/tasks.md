@@ -33,7 +33,7 @@
 
 ## T1 — La base (depende de T0)
 
-- [ ] **T1.1** `db/migrations/20261120130000_pago_plataforma_por_fuera/migration.sql` (design §3):
+- [x] **T1.1** `db/migrations/20261120130000_pago_plataforma_por_fuera/migration.sql` (design §3):
   - la tabla `pago_plataforma_anulacion`, con RLS, política, `REVOKE` y los triggers sin cambio de empresa,
     inmutable y de misma empresa (generados con `--faltantes`);
   - la columna `por_fuera`;
@@ -44,15 +44,15 @@
   - ningún `INSERT` de datos.
 
   **Hecho:** aplica en una base desechable.
-- [ ] **T1.2** `down.sql` (design §3.7): aborta si hay anulaciones, y si no, repone los cuerpos literales de
+- [x] **T1.2** `down.sql` (design §3.7): aborta si hay anulaciones, y si no, repone los cuerpos literales de
   `20261116120000`. **Hecho:** `pnpm run db:rollback` y la migración otra vez, sin error.
-- [ ] **T1.3** `db/schema.prisma` (el modelo, la columna y las relaciones) y `lib/db/modelos-de-negocio.ts`.
+- [x] **T1.3** `db/schema.prisma` (el modelo, la columna y las relaciones) y `lib/db/modelos-de-negocio.ts`.
   **Hecho:** `pnpm run typecheck` en verde.
-- [ ] **T1.4** [P] `scripts/verificar-rls-despliegue.ts` (`TRIGGERS_MISMA_EMPRESA` = 181, con su comentario) y
+- [x] **T1.4** [P] `scripts/verificar-rls-despliegue.ts` (`TRIGGERS_MISMA_EMPRESA` = 181, con su comentario) y
   `tests/unit/guards/rls-por-empresa.guardia.test.ts` (93). **Hecho:** `pnpm run test:guardias` en verde.
-- [ ] **T1.5** [P] `tests/integration/db/migracion-slt143-ida-y-vuelta.test.ts` y, si T0.5 lo pidió,
+- [x] **T1.5** [P] `tests/integration/db/migracion-slt143-ida-y-vuelta.test.ts` y, si T0.5 lo pidió,
   `tests/integration/db/migracion-slt60-ida-y-vuelta.test.ts`. **Hecho:** verde con base (R33).
-- [ ] **T1.6** `tests/integration/db/pago-plataforma-confirmacion.test.ts` (SLT-60), sin tocarlo. **Hecho:** verde
+- [x] **T1.6** `tests/integration/db/pago-plataforma-confirmacion.test.ts` (SLT-60), sin tocarlo. **Hecho:** verde
   con base: el reparto sacado a la función interna no cambió nada.
 
 ## T2 — El servidor (depende de T1)

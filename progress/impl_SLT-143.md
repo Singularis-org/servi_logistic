@@ -179,3 +179,89 @@ recogen:
 
 Choque con SLT-55, SLT-61 y SLT-77: aceptado por el humano. Si alguna entra antes a `dev`, se mezcla `dev` y se
 resuelve.
+
+## T1 — La base (backend_dev, 2026-11-19)
+
+### Archivos
+
+- `db/migrations/20261120130000_pago_plataforma_por_fuera/migration.sql` (nuevo): tabla `pago_plataforma_anulacion`
+  (RLS, política, `REVOKE` a `servi_app`, `…_inmutable`, `…_sin_cambio_de_empresa` y los dos `sme_*` generados con
+  `tsx scripts/generar-misma-empresa.ts --faltantes`, pegados literales), columna `por_fuera`,
+  `factura_plataforma_saldos` sin los anulados, `_pago_plataforma_aplicar`, `pago_plataforma_confirmar` sobre ella,
+  `pago_plataforma_registrar_por_fuera`, `pago_plataforma_anular_confirmado` y el trigger
+  `pago_plataforma_no_anular_confirmado` con la excepción. Sin `INSERT` de datos.
+- `db/migrations/20261120130000_pago_plataforma_por_fuera/down.sql` (nuevo, a mano): aborta si
+  `pago_plataforma_anulacion` tiene filas; repone los tres cuerpos copiados por `sed` de las líneas de
+  `20261116120000` (literales); `DROP` de las tres funciones nuevas, de la tabla y de la columna.
+- `db/schema.prisma`: modelo `PagoPlataformaAnulacion`, `porFuera` y las relaciones inversas en
+  `PagoPlataformaConfirmacion`, `Organizacion` y `Usuario` (`@relation("PagoPlataformaAnulador")`).
+- `lib/db/modelos-de-negocio.ts`: `PagoPlataformaAnulacion` en `MODELOS_DE_NEGOCIO`.
+- `scripts/verificar-rls-despliegue.ts`: `TRIGGERS_MISMA_EMPRESA` 179 → 181, con su comentario.
+- `tests/unit/guards/rls-por-empresa.guardia.test.ts`: 92 → 93 tablas.
+- `tests/fixtures/api-key-dependencias-usuario.ts`: `PagoPlataformaAnulacion.anulador` como `no_alcanzable`
+  (`SOLO_OPERADOR`), igual que `PagoPlataformaConfirmacion.confirmador`. Lo pidió la guardia
+  `api-key-dependencias-usuario` (censo de FK a `usuario`); no estaba en la lista de archivos del design.
+- `tests/integration/db/migracion-slt143-ida-y-vuelta.test.ts` (nuevo, R33).
+- `tests/integration/db/migracion-slt60-ida-y-vuelta.test.ts`: **sin cambios** (T0.5; corrido en verde).
+
+### Decisiones fuera del spec
+
+1. **`anulaciones PagoPlataformaAnulacion[]` (lista), no `anulacion PagoPlataformaAnulacion?`** (design §1.1). Prisma
+   solo admite un 1 a 1 sobre un único de una columna, y el único es `(organizacion_id, confirmacion_id)`; es el
+   mismo motivo por el que SLT-60 dejó `WalletMovimiento.confirmacionesPagoPlataforma` como lista. Efecto en T2/T3:
+   los filtros de design §4.5 y §5.1 se escriben `confirmacion: { anulaciones: { none: {} } }` y
+   `confirmacion: { anulaciones: { some: {} } }` (mismo significado).
+2. **`organizacion_id = p_org` explícito** en `wallet_movimiento`, `wallet_comprobante`, `ajuste_caja_anulacion`,
+   `pago_plataforma_confirmacion`, `pago_plataforma_aplicacion` y `pago_plataforma_anulacion` (hallazgo T0.2).
+   Los `id` de `wallet_comprobante`, `ajuste_caja_anulacion` y del contra-asiento salen de `gen_random_uuid()`:
+   esas columnas no tienen `DEFAULT`. El del pago es `p_pago_id` (lo genera el servicio).
+3. **`created_at = now() AT TIME ZONE 'UTC'` explícito** en las cuatro filas que escriben las funciones, en vez
+   del `DEFAULT CURRENT_TIMESTAMP` (dependería del TimeZone de la sesión; la base local está en
+   `America/Bogota`). Mismo arreglo que 20261119120100.
+4. **La constancia guarda `btrim(p_motivo)`**: el servicio ya manda el motivo recortado por zod; así el SQL a mano
+   da lo mismo.
+5. **Sin `prisma generate`.** El cliente generado vive en el `node_modules` compartido del checkout principal
+   (`node_modules/.pnpm/@prisma+client@7.10.1_…/node_modules/.prisma/client`), y lo regeneró otra sesión hoy a las
+   10:48 desde **otro** esquema (no tiene `PagoPlataformaConfirmacion`). Regenerarlo desde aquí pisaría el de los
+   demás worktrees. **Bloquea T2/T3**: el repositorio necesita los tipos de `PagoPlataformaAnulacion` y `porFuera`.
+   Lo decide el leader.
+
+### Bases
+
+- `servi_logistic_slt143`: `prisma migrate deploy` → `tsx scripts/db-rollback.ts` (el `down.sql`, sin error) →
+  `prisma migrate deploy` otra vez, sin error. Queda aplicada.
+- `servi_logistic_slt143_e2e`: `prisma migrate deploy`, aplicada.
+- Humo a mano en `servi_logistic_slt143`, dentro de una transacción con `ROLLBACK` final (no quedó nada): con una
+  factura cerrada de 300 000, registrar por fuera 100 000 con reparto que suma 99 999 → `SL060 suma_distinta` y 0
+  movimientos; con 100 000 → `ok` (1 movimiento, 1 comprobante, `por_fuera = true`, disponible 200 000, 0 por
+  confirmar); misma clave → `ya_registrado`; 200 000,01 → 23514 `wallet_movimiento_tope_pago_plataforma`;
+  contra-asiento a mano como dueño → `SL060 pago_confirmado`; motivo «  » → `SL060 motivo_vacio`; anular →
+  `ok` (2 movimientos, 1 constancia, 1 anulación, disponible y saldo 300 000); otra vez → `ya_anulado`; confirmar
+  el anulado → `SL060 pago_no_encontrado`; `UPDATE` de la anulación como dueño → `SL060 inmutable`.
+
+### Verificación
+
+- `pnpm exec vitest --run tests/integration/db/migracion-slt143-ida-y-vuelta.test.ts` (con base): **1 archivo,
+  6 passed**, 0 skipped.
+- `pnpm exec vitest --run tests/integration/db/pago-plataforma-confirmacion.test.ts
+  tests/integration/db/migracion-slt60-ida-y-vuelta.test.ts` (con base, T1.6 sin tocar el archivo): **2 archivos,
+  26 passed**, 0 skipped.
+- `eslint` sobre los archivos TS tocados: exit 0, sin avisos.
+- `prisma validate`: válido.
+- `pnpm run test:guardias`: **357 archivos verdes, 3 rojos, ninguno mío** (5392 passed, 13 failed, 1 skipped):
+  - `tests/guards/guard-dependencias-declaradas-presentes.test.ts`: «faltan 56 de las 56» porque el worktree no
+    tiene `node_modules` propio;
+  - `tests/integration/db/zona-central-guarda-y-rastro.test.ts` (11) y
+    `tests/integration/db/zona-guardado-conserva-costos.test.ts` (1): «The column `(not available)` does not exist»
+    en `zonaDistrito.create` / `distritoZonaEspecial.create`, el cliente Prisma compartido generado desde otro
+    esquema (punto 5).
+  - Antes de tocar `tests/fixtures/api-key-dependencias-usuario.ts` también caía
+    `api-key-dependencias-usuario.guardia.test.ts` (6) por la FK nueva a `usuario`: arreglado, verde.
+- `pnpm run typecheck` (`tsc --noEmit`): **exit 2** con errores solo en archivos que T1 no toca
+  (`lib/repositories/HistorialAccionRepository.ts:149,159`, `lib/types/historial-accion.ts:799`,
+  `tests/integration/db/454/correccion-ramas-sql-real.test.ts:54`,
+  `tests/integration/db/477-resolicitud-rechazado-sql-real.test.ts:103`): tipos del mismo cliente Prisma ajeno.
+  El único cambio TS de producción de T1 es una entrada en un arreglo de `modelos-de-negocio.ts`.
+
+Veredicto T1: la base está hecha y probada (migración, down, ida y vuelta, SLT-60 intacta); typecheck y 3
+guardias quedan rojos por el cliente Prisma compartido y la falta de `node_modules`, no por T1.
