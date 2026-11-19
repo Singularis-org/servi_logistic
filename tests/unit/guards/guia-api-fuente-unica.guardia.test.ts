@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { openApiSpec } from "@/lib/api/openapi-spec";
 import { leerDocumentoAyuda } from "@/lib/ayuda/catalogo";
+import { SLUG_GUIA_API } from "@/lib/ayuda/guia-api";
 import { EVENTOS_PUBLICOS } from "@/lib/types/webhook-eventos";
 
 // GUARDIA — SLT-80 «Guía de integración por API en la ayuda» (R1300-R1305, R1312, R1316).
@@ -31,7 +32,7 @@ import { EVENTOS_PUBLICOS } from "@/lib/types/webhook-eventos";
 // Se declara como guardia porque lee archivos del disco: ningún grafo de imports la seleccionaría.
 
 const RAIZ = process.cwd();
-const SLUG_GUIA = "oficina/guia-integracion-api";
+const SLUG_GUIA = SLUG_GUIA_API;
 const ARCHIVO_GUIA = `docs/ayuda/${SLUG_GUIA}.md`;
 const POSTMAN = "docs/api/servi-logistic-api-key.postman_collection.json";
 
@@ -156,18 +157,68 @@ export function operacionesQueLaSpecNoTiene(markdown: string, paths: PathsSpec):
     .sort();
 }
 
-/** R1305: por operación, si su sección no trae un bloque de código o no nombra un código no-2xx. */
+/** Si un texto nombra un código HTTP como número suelto (`404`, no `4040`). */
+const nombraCodigo = (texto: string, codigo: string) => new RegExp(`(?<!\\d)${codigo}(?!\\d)`).test(texto);
+
+/**
+ * La sección general de errores: §8.1 «Por código», la tabla de los códigos comunes a todo el canal.
+ * `null` si la guía no la tiene.
+ */
+export function seccionGeneralDeErrores(markdown: string): string | null {
+  const lineas = markdown.split(/\r?\n/);
+  const titulos = titulosDe(lineas);
+  const i = titulos.findIndex((t) => /^8\.1\s+Por código\b/.test(t.texto));
+  if (i === -1) return null;
+  const propio = titulos[i];
+  const siguiente = titulos.slice(i + 1).find((t) => t.nivel <= propio.nivel);
+  return lineas.slice(propio.linea, siguiente ? siguiente.linea : lineas.length).join("\n");
+}
+
+/** Los códigos no-2xx que declaran TODAS las operaciones (hoy 401, 403, 422, 500): los de §8.1. */
+export function codigosComunes(paths: PathsSpec): string[] {
+  const ops = operacionesDe(paths);
+  if (ops.length === 0) return [];
+  return ops[0].codigosNo2xx.filter((c) => ops.every((op) => op.codigosNo2xx.includes(c))).sort();
+}
+
+/**
+ * R1305: por operación, si su sección no trae un bloque de código o no nombra un código no-2xx.
+ *
+ * Decisión del implementer (2026-11-18): un código cuenta como nombrado si aparece en la sección de
+ * la operación O en §8.1, la tabla general de códigos. Repetir 401/403/422/500 en las diez secciones
+ * sería ruido para el integrador. Para que §8.1 no sea una vía libre vacía, se exige que exista y que
+ * nombre cada código común a todas las operaciones.
+ *
+ * §8.1 cubre SOLO los códigos comunes. Los propios de una operación (un `404`, un `409`) se exigen en
+ * su sección aunque §8.1 también los liste: si no, la tabla general taparía cualquier hueco y la
+ * comprobación por operación no vería nada (el `404` que le faltaba a §5.5 pasaba en verde).
+ */
 export function huecosPorOperacion(markdown: string, paths: PathsSpec): string[] {
-  return operacionesDe(paths).flatMap((op) => {
-    const seccion = seccionDeOperacion(markdown, op);
-    if (seccion === null) return [`${marcaDeOperacion(op)}: sin sección`];
-    const huecos: string[] = [];
-    if (!/^```/m.test(seccion)) huecos.push(`${marcaDeOperacion(op)}: sin ejemplo (bloque de código)`);
-    for (const codigo of op.codigosNo2xx) {
-      if (!new RegExp(`(?<!\\d)${codigo}(?!\\d)`).test(seccion)) huecos.push(`${marcaDeOperacion(op)}: no nombra ${codigo}`);
-    }
-    return huecos;
-  });
+  const general = seccionGeneralDeErrores(markdown);
+  const comunes = codigosComunes(paths);
+  const huecosGenerales =
+    general === null
+      ? ["§8.1 «Por código»: no existe"]
+      : comunes
+          .filter((codigo) => !nombraCodigo(general, codigo))
+          .map((codigo) => `§8.1 «Por código»: no nombra ${codigo}`);
+
+  return [
+    ...huecosGenerales,
+    ...operacionesDe(paths).flatMap((op) => {
+      const seccion = seccionDeOperacion(markdown, op);
+      if (seccion === null) return [`${marcaDeOperacion(op)}: sin sección`];
+      const huecos: string[] = [];
+      if (!/^```/m.test(seccion)) huecos.push(`${marcaDeOperacion(op)}: sin ejemplo (bloque de código)`);
+      for (const codigo of op.codigosNo2xx) {
+        const cubiertoPorGeneral = comunes.includes(codigo) && general !== null && nombraCodigo(general, codigo);
+        if (!nombraCodigo(seccion, codigo) && !cubiertoPorGeneral) {
+          huecos.push(`${marcaDeOperacion(op)}: no nombra ${codigo}`);
+        }
+      }
+      return huecos;
+    }),
+  ];
 }
 
 /** Los bloques ```json del Markdown, tal cual. */
@@ -280,15 +331,46 @@ describe("R1304 — la guía nombra cada evento de `EVENTOS_PUBLICOS`", () => {
 });
 
 describe("R1305 — cada operación trae un ejemplo y nombra sus respuestas no-2xx", () => {
+  it("CONTROL DE NO-VACUIDAD: hay códigos comunes, y §8.1 existe en la guía", async () => {
+    // Si `codigosComunes` saliera vacío, §8.1 no estaría obligada a nada y el caso de abajo
+    // aceptaría una tabla vacía. Contrato de la spec hoy: 401, 403, 422 y 500 en todas.
+    expect(codigosComunes(PATHS)).toEqual(expect.arrayContaining(["401", "403", "422", "500"]));
+    expect(seccionGeneralDeErrores(await cuerpoGuia())).not.toBeNull();
+  });
+
   it("sin huecos en ninguna sección", async () => {
     expect(huecosPorOperacion(await cuerpoGuia(), PATHS)).toEqual([]);
   });
 
-  it("MUTACION: una sección sin ejemplo y sin su código de error se ve", () => {
-    const paths: PathsSpec = { "/api/x": { get: { responses: { "200": {}, "404": {} } } } };
-    expect(huecosPorOperacion("## 1 **GET** `/api/x`\n\nTexto.\n\n## 2 Otra\n\n404\n", paths)).toEqual([
+  it("MUTACION: una sección sin ejemplo y sin su código de error se ve, aunque §8.1 lo nombre", () => {
+    // `/api/z` no declara 404: así el 404 es propio de `/api/x`, no común, y §8.1 no lo cubre.
+    const paths: PathsSpec = {
+      "/api/x": { get: { responses: { "200": {}, "404": {} } } },
+      "/api/z": { get: { responses: { "200": {} } } },
+    };
+    const md = "## 1 **GET** `/api/x`\n\nTexto.\n\n## 2 **GET** `/api/z`\n\n```bash\ncurl\n```\n\n## 8.1 Por código\n\n404\n";
+    expect(huecosPorOperacion(md, paths)).toEqual([
       "**GET** `/api/x`: sin ejemplo (bloque de código)",
       "**GET** `/api/x`: no nombra 404",
+    ]);
+  });
+
+  it("MUTACION: §8.1 cubre un código común solo si lo nombra, y su ausencia se ve", () => {
+    const paths: PathsSpec = {
+      "/api/x": { get: { responses: { "200": {}, "401": {} } } },
+      "/api/y": { post: { responses: { "200": {}, "401": {} } } },
+    };
+    const secciones = "## 1 **GET** `/api/x`\n\n```bash\ncurl\n```\n\n## 2 **POST** `/api/y`\n\n```bash\ncurl\n```\n\n";
+    expect(huecosPorOperacion(`${secciones}## 8.1 Por código\n\n| \`401\` | x |\n`, paths)).toEqual([]);
+    expect(huecosPorOperacion(`${secciones}## 8.1 Por código\n\n| \`403\` | x |\n`, paths)).toEqual([
+      "§8.1 «Por código»: no nombra 401",
+      "**GET** `/api/x`: no nombra 401",
+      "**POST** `/api/y`: no nombra 401",
+    ]);
+    expect(huecosPorOperacion(secciones, paths)).toEqual([
+      "§8.1 «Por código»: no existe",
+      "**GET** `/api/x`: no nombra 401",
+      "**POST** `/api/y`: no nombra 401",
     ]);
   });
 });

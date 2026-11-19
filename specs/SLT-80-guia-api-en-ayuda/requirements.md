@@ -183,7 +183,7 @@ Preview.
     `docs/api/guia-integracion/guia-integracion.html`) y traerla a la rama con `git merge origin/dev`.
   - **Hecho:** el HTML de la rama es el de SLT-201. Si SLT-201 no está en `dev`, se para y se avisa
     al leader.
-- [ ] **T1 — Convertir el HTML a `docs/ayuda/oficina/guia-integracion-api.md` (R1300, R1302, R1303–R1305).**
+- [x] **T1 — Convertir el HTML a `docs/ayuda/oficina/guia-integracion-api.md` (R1300, R1302, R1303–R1305).**
   - Frontmatter: `titulo`, `modulo: configuracion`, `roles: [maestro, admin]`, `actualizado` y
     `fuentes` (las de la lista «Qué actualizar» del README actual). Sin `pantalla` (D7).
   - Solo la sintaxis que pinta el renderizador:
@@ -246,7 +246,7 @@ Preview.
     - `tests/unit/asistente/acotamiento-por-rol.test.ts`;
     - `tests/unit/asistente/contexto-documental.test.ts`.
   - **Hecho:** los cuatro en verde y ningún otro recuento de rol cambia.
-- [ ] **T10 — Guardia de fuente única y cobertura (R1300–R1305, R1316).**
+- [x] **T10 — Guardia de fuente única y cobertura (R1300–R1305, R1316).**
   - `tests/unit/guards/guia-api-fuente-unica.guardia.test.ts`.
   - Control de no-vacuidad: hay al menos 10 operaciones y al menos un evento.
   - Mutación comprobada a mano y anotada en `progress/impl_SLT-80.md`:

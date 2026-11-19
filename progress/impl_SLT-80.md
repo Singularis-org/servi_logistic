@@ -126,3 +126,70 @@ ninguno en los archivos de esta tanda.
 ### Veredicto
 
 T2 y T9 hechos y en verde; T1 y T10 hechos pero no «Hecho»: 5 rojos que piden decisión (arriba).
+
+## Tanda 1b (los 5 rojos de la tanda 1) — backend_dev, 2026-11-18
+
+Decisiones del implementer en `progress/features/SLT-80.md > Decisiones`.
+
+### Archivos
+
+- Creado `lib/ayuda/guia-api.ts` (D7/R1315, adelantado de T6): `SLUG_GUIA_API`, `RUTA_GUIA_API`,
+  `RUTA_DESCARGA_GUIA_API_PDF`, `RUTA_DESCARGA_POSTMAN`.
+- `docs/ayuda/oficina/guia-integracion-api.md`: `404` en §5.5 (texto de `NotFound` de openApiSpec);
+  curl + respuesta en §5.6 (`cargaId` de §5.1, `{ url, expiraEnSegundos }` de `PdfGenerateResponse`);
+  «Bloque A:/B:/C:»; «actualizado (…)»; «Se asigna en el acto»; `novedad_interna` reformulada.
+- `tests/unit/guards/guia-api-fuente-unica.guardia.test.ts`: R1305 con §8.1 (`seccionGeneralDeErrores`,
+  `codigosComunes`); control de no-vacuidad de §8.1; dos casos MUTACION nuevos; slug importado de
+  `lib/ayuda/guia-api.ts`.
+- `tests/unit/guards/ayuda-pantalla-ruta-existe.guardia.test.ts`: exención de la guía derivada de
+  `SLUG_GUIA_API`, con motivo (SLT-80, D7), y un caso que ancla que el documento existe.
+
+Nota sobre la regla 1: §8.1 cubre solo los códigos que declaran TODAS las operaciones. Si cubriera
+cualquier código que nombra, 404 y 409 (también en §8.1) taparían los huecos por operación: con la
+regla amplia, quitar el `404` de §5.5 seguía en verde (mutación (d) abajo lo pone rojo con la estricta).
+
+### Mutaciones
+
+Antes: `git add -A docs tests lib specs progress`.
+
+(c) Quitar la fila `500` de §8.1 (`sed -i '/^| \`500\` | \`INTERNAL\` |/d'`):
+
+```
+pnpm exec vitest run tests/unit/guards/guia-api-fuente-unica.guardia.test.ts -t R1305
+exit=1
+     × sin huecos en ninguna sección
+      Tests  1 failed | 3 passed | 14 skipped (18)
++   "§8.1 «Por código»: no nombra 500",
++   "**POST** `/api/ordenes/api-key/carga`: no nombra 500",
+    … (las 10 operaciones)
+```
+
+Restaurado: `git checkout -- docs/ayuda/oficina/guia-integracion-api.md` (`git diff --stat` vacío).
+
+(d) Quitar la línea nueva del `404` en §5.5:
+
+```
+exit=1
+     × sin huecos en ninguna sección
++   "**POST** `/api/ordenes/api-key/orden/{id}/generate`: no nombra 404",
+```
+
+Restaurado igual.
+
+### Verificación (base `servi_slt80_desechable`, los 11 de la tanda)
+
+```
+pnpm exec vitest run <guardia nueva, AyudaLayout, 2× acotamiento-por-rol, contexto-documental,
+  openapi-466-descripciones, docs-marca-heredada, ayuda-render-sin-filtracion,
+  nombres-estado-retirados, ayuda-pantalla-ruta-existe, markdown.test>
+EXIT=0
+ Test Files  11 passed (11)
+      Tests  165 passed (165)
+```
+
+typecheck: `pnpm run typecheck` → exit 0.
+lint: `pnpm run lint` → exit 0, «0 errors, 248 warnings» (las mismas que la tanda 1), ninguno en los archivos de esta tanda.
+
+### Veredicto
+
+T1 y T10 hechos y en verde; los 11 tests de la tanda, typecheck y lint en verde.

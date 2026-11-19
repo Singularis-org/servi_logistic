@@ -37,6 +37,18 @@
 - (Carlos, 2026-11-18) Enlaces desde Integraciones y `/configuracion/api` a la guía y a la descarga; PDF con
   la marca Servi Logistic.
 - La implementación arranca cuando SLT-201 (PR #228) esté en dev.
+- (implementer, 2026-11-18) Los 5 rojos de la tanda 1:
+  1. R1305: un código no-2xx cuenta como nombrado si está en la sección de la operación o en §8.1
+     «Por código»; la guardia exige que §8.1 exista y nombre los códigos comunes a todas las
+     operaciones (401/403/422/500). Al aplicarlo, backend_dev limitó la cobertura de §8.1 a esos
+     códigos comunes: si cubriera todos, la tabla general taparía el `404` que le faltaba a §5.5.
+  2. Huecos de R1305: `404` en §5.5 (texto de `NotFound` en openApiSpec) y un ejemplo curl + respuesta
+     en §5.6 (el `cargaId` de §5.1 y el `PdfGenerateResponse` de §5.5).
+  3. D7: `lib/ayuda/guia-api.ts` (slug y las tres URLs de R1315, parte de T6); la exención de
+     `ayuda-pantalla-ruta-existe` se deriva de ese slug.
+  4. «contra el contrato actualizado: …» → «… actualizado (…)» (sin `actualizado:` en la prosa).
+  5. «RUPTURA A./B.» y «YA VIGENTE C.» → «Bloque A:/B:/C:»; «Asignada en el acto» → «Se asigna en el
+     acto»; `novedad_interna` → «terminó el día con el paquete aún pendiente».
 
 <!-- tamano-pr-aceptado: 2026-11-18 · ~1.760 líneas de conversión mecánica de la guía a Ayuda + ~850 de código; P2 del spec · Carlos: «aprobado» -->
 
@@ -50,6 +62,9 @@
   T1 y T10 sin cerrar: 5 rojos piden decisión (R1305 contra la guía, `pantalla` de D7, `actualizado:`
   en la prosa, `B.`/`sin gestionar`/`Asignada` en `nombres-estado-retirados`). Detalle en
   `progress/impl_SLT-80.md > Bloqueos`.
+- **Tanda 1b** (2026-11-18, backend_dev): los 5 rojos resueltos con las decisiones del implementer
+  (arriba). 11 tests de la tanda 165/165 en verde; mutación nueva de §8.1 en rojo. T1 y T10 [x];
+  `lib/ayuda/guia-api.ts` adelantado de T6.
 
 ## Modelos (overrides)
 

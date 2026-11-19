@@ -65,7 +65,7 @@ Versión del documento: noviembre 2026. Base URL de producción: `https://app.ex
 
 Esta versión describe el canal tal como queda tras dos cambios de contrato que **rompen** integraciones existentes (bloques A y B, ya desplegados en producción) y recoge además los cambios que entraron en producción entre agosto y noviembre (bloque C). Lea primero el bloque A: es el que exige tocar código.
 
-## **RUPTURA** A. Los estados cambian de código y ganan su nombre
+## **RUPTURA** Bloque A: Los estados cambian de código y ganan su nombre
 
 **Desde cuándo.** **Ya está en producción**: el canal responde con los códigos vigentes. Está publicado en el changelog del canal (entrada del 2026-09-24) y se desplegó **junto** con el bloque B.
 
@@ -114,7 +114,7 @@ Aplica a `gestiones[].resultado`, `evidencias[].resultado` y a `data.resultado` 
 - El `enum` de estados del contrato enumera los **20 códigos vigentes** (§4.7). La versión de agosto listaba 16 y omitía cinco que una orden ya podía alcanzar.
 - **Lo que NO cambia:** los paths, la autenticación, la firma y su verificación, y el `eventoId` de `orden.estado_actualizado`: un evento encolado antes del despliegue y entregado después llega con el código vigente y el **mismo** `eventoId`. El texto firmado sí cambia (gana `estadoNombre`): verifique siempre sobre el cuerpo crudo (§6.3).
 
-## **RUPTURA** B. El estado real se aplica al aprobar el cierre; la ayuda deja de ser un estado; eventos nuevos
+## **RUPTURA** Bloque B: El estado real se aplica al aprobar el cierre; la ayuda deja de ser un estado; eventos nuevos
 
 **Desde cuándo.** **Ya está en producción**, desplegado junto con el bloque A (changelog del canal, entrada del 2026-09-23).
 
@@ -130,9 +130,9 @@ Aplica a `gestiones[].resultado`, `evidencias[].resultado` y a `data.resultado` 
 2. Si mostraba el estado con una traducción propia, use el campo `…Nombre`: es la misma cadena que ve la aplicación.
 3. Si leía `filas[].estatus` en la respuesta de la carga, lea `filas[].estado`.
 4. Si su receptor de webhooks rechaza eventos desconocidos, actualícelo: responda `2xx` e ignore lo que no conozca. Si su lógica de negocio dependía de recibir el estado final «en el momento», suscríbase a `orden.gestion_registrada` y lea `pendienteConfirmacion`.
-5. Si valida el esquema en estricto (`additionalProperties: false`, DTO generado), **regenere su modelo** contra el contrato actualizado: `…Nombre`, `pendienteConfirmacion`, `ayudaCerrada` y el schema `WebhookOrdenEvento` son nuevos.
+5. Si valida el esquema en estricto (`additionalProperties: false`, DTO generado), **regenere su modelo** contra el contrato actualizado (`…Nombre`, `pendienteConfirmacion`, `ayudaCerrada` y el schema `WebhookOrdenEvento` son nuevos).
 
-## **YA VIGENTE** C. Cambios que entraron en producción después de la versión de agosto
+## **YA VIGENTE** Bloque C: Cambios que entraron en producción después de la versión de agosto
 
 Todos están publicados en el changelog del canal con su fecha. Los que quitan algo van marcados.
 
@@ -302,7 +302,7 @@ Son **20 códigos**. Todo campo que lleva un código (`estado`, `estadoAnterior`
 | `entregado` | Entregado | El paquete fue entregado al destinatario y la bodega lo confirmó al aprobar el cierre del mensajero. | Sí |
 | `reprogramado` | Reprogramado | No se pudo entregar y se acordó una nueva fecha. El paquete vuelve a su bodega para asignarse de nuevo. | Sí |
 | `novedad` | Novedad | El mensajero no pudo entregar el paquete (cliente no localizado, número o dirección errados). La tienda debe decidir si se vuelve a intentar o se devuelve. Si no responde: con cliente no localizado, a las 24 horas vuelve a salir a reparto; con número o dirección errados, a los 5 días se devuelve a la tienda. Si ya agotó sus intentos, se devuelve antes. | Sí |
-| `novedad_interna` | Novedad interna | El mensajero terminó el día sin gestionar el paquete. Al aprobarse su cierre, el paquete vuelve a su bodega para asignarse de nuevo. | No |
+| `novedad_interna` | Novedad interna | El mensajero terminó el día con el paquete aún pendiente. Al aprobarse su cierre, el paquete vuelve a su bodega para asignarse de nuevo. | No |
 | `devolucion_a_origen_por_rechazo` | Devolución a origen por rechazo | El destinatario rechazó el paquete. Al aprobarse el cierre, empieza su regreso a la tienda. | Sí |
 | `incidente` | Incidente | El paquete se dañó, se perdió o fue robado. Quedó reportado para su revisión. | Sí |
 | `por_devolver_a_bodega_central` | Por devolver a bodega central | El paquete devuelto está en la bodega satélite, esperando ser enviado a la bodega central. | No |
@@ -325,7 +325,7 @@ Todos requieren `Authorization`. Todos operan únicamente sobre las órdenes del
 
 | Configuración de la tienda | Estado en que nace la orden | Guía | Manifiesto |
 | --- | --- | --- | --- |
-| Sin fulfillment | `por_recolectar_en_tienda` | Asignada en el acto (`numGuia` entero) | Sí (el lote produce un movimiento tienda → bodega) |
+| Sin fulfillment | `por_recolectar_en_tienda` | Se asigna en el acto (`numGuia` entero) | Sí (el lote produce un movimiento tienda → bodega) |
 | Con fulfillment | `en_preparacion` | **Ninguna todavía** (`numGuia: null`); se emite después, al preparar la orden | No |
 
 > `monto_cobrar` **no acepta decimales.** La cifra se redondea al colón más cercano (el medio sube). Si su sistema maneja centavos, redondee usted antes de enviar para que el COD que cobra el mensajero coincida con el que muestra su tienda; si no, el redondeo lo hace Servi Logistic y la fila creada lo declara en `montoAjustado: { original, aplicado }`.
@@ -566,10 +566,20 @@ curl -X POST https://app.example.com/api/ordenes/api-key/orden/100234/generate \
 
 - ⚠ No compare URLs para detectar cambios, y no las cachee: la URL cambia en cada llamada y vence a los 300 s, igual que las evidencias.
 - Orden sin guía imprimible (todavía sin `numGuia`, típico de fulfillment recién cargado) → `409`.
+- Orden inexistente o de otro dueño → el mismo `404`.
 
 ## 5.6 **POST** `/api/ordenes/api-key/carga/{cargaId}/generate` — PDF consolidado del lote
 
 `{cargaId}` es el UUID que devolvió `POST /carga` (§5.1); cualquier otra cosa es `422`. Misma forma de respuesta que §5.5, pero sobre **todas las etiquetas imprimibles del lote**, y solo de órdenes propias y vivas.
+
+```bash
+curl -X POST https://app.example.com/api/ordenes/api-key/carga/9c2b7f10-5d3a-4e21-9a4b-77c8e0f1a2b3/generate \
+  -H "Authorization: Bearer svl_XXXXXXXXXXXX"
+```
+
+```json
+{ "url": "https://<host-de-storage>/object/sign/etiquetas/...", "expiraEnSegundos": 300 }
+```
 
 - Lote **sin etiquetas imprimibles** (ninguna orden viva con guía) → `409`. Lote que excede el tope de etiquetas por PDF (300 por defecto) → `409`: imprima por guía.
 - Lote inexistente o de otro integrador → el mismo `404`.

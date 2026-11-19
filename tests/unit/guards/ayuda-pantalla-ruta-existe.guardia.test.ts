@@ -14,6 +14,7 @@ import {
   rutasDeDocumento,
 } from "@/lib/ayuda/documento";
 import { ARCHIVO_EXCLUIDO } from "@/lib/ayuda/catalogo";
+import { SLUG_GUIA_API } from "@/lib/ayuda/guia-api";
 import { CATALOGO_INTEGRACIONES } from "@/lib/types/integraciones";
 
 // ⭑ FICHA 433 — LA GUARDIA QUE MANTIENE HONESTO EL MAPEO PANTALLA↔DOCUMENTO.
@@ -122,6 +123,15 @@ const GUIAS_ENLAZADAS = new Set<string>(
   Object.values(CATALOGO_INTEGRACIONES).map((entrada) => `${entrada.guia.replace(/^\/ayuda\//, "")}.md`),
 );
 
+/**
+ * SLT-80 «Guía de integración por API en la ayuda», D7: misma razón que SL-36, otra pantalla.
+ * La guía del canal por API key no puede declarar `pantalla: /configuracion/api` (esa ruta ya es
+ * de `oficina/configuracion-api.md`, y dos candidatos rompen el «?»). Se alcanza por los enlaces
+ * de `/configuracion/api` y `/configuracion/integraciones`, que salen de `lib/ayuda/guia-api.ts`
+ * (R1315). La exención se deriva de esa constante, no de un literal: si el slug cambia, cambia aquí.
+ */
+const GUIA_API_ENLAZADA = `${SLUG_GUIA_API}.md`;
+
 describe("ayuda · el frontmatter no puede apuntar al vacío", () => {
   it("hay documentos que vigilar (si esto falla, la guardia se quedó mirando una carpeta vacía)", () => {
     // Sin este caso, borrar `docs/ayuda/**` dejaría TODOS los demás en verde sobre cero
@@ -150,7 +160,7 @@ describe("ayuda · el frontmatter no puede apuntar al vacío", () => {
   it("ningún documento queda huérfano: todos declaran pantalla, roles, título y fecha", () => {
     const incompletos = DOCUMENTOS.filter(
       (doc) =>
-        (doc.rutas.length === 0 && !GUIAS_ENLAZADAS.has(doc.relativo)) ||
+        (doc.rutas.length === 0 && !GUIAS_ENLAZADAS.has(doc.relativo) && doc.relativo !== GUIA_API_ENLAZADA) ||
         (doc.datos.roles ?? []).length === 0 ||
         !doc.datos.titulo ||
         !doc.datos.actualizado,
@@ -169,6 +179,10 @@ describe("ayuda · el frontmatter no puede apuntar al vacío", () => {
     ]);
     const relativos = new Set(DOCUMENTOS.map((doc) => doc.relativo));
     expect([...GUIAS_ENLAZADAS].filter((guia) => !relativos.has(guia))).toEqual([]);
+  });
+
+  it("SLT-80: la exención de la guía de la API apunta a un documento que existe", () => {
+    expect(DOCUMENTOS.map((doc) => doc.relativo)).toContain(GUIA_API_ENLAZADA);
   });
 
   it("los roles declarados son roles reales o los dos pseudo-roles admitidos", () => {
