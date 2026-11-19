@@ -156,6 +156,8 @@ T2 — guardias:
 - **m5** — `requirements.md`: una línea junto a la enmienda a R977 sobre el cambio en el camino de SLT-198/R1228.
 - **Sin tocar, anotados:** m3 (T0 y T7 en `tasks.md` y `progress/features/SLT-224.md` son del leader) y m6 (`e2e/dos-empresas-humo.spec.ts` lo corre el check `e2e (aislamiento)` del CI).
 
+- **Merge de `origin/dev` con SLT-221 #251** (`20261120130000_slt221_historial_correo_cedula`): un conflicto, en `orden-traspaso-migration.test.ts`, con las entradas de las dos ramas; la de SLT-224 (`20261121120000`) sigue siendo la última. `prisma generate` (el enum cambió). Base desechable NUEVA `servi_slt224_m2`, migrada desde cero + seed: tests de migraciones y del diff (163 archivos) verdes; `./init.sh` **INIT_EXIT=0** (una corrida previa a este merge dio un «Worker exited unexpectedly» de vitest, sin tests rojos; repetida, verde).
+
 ## Veredicto
 
 VERDE: backend de SLT-224 «Retiro a central: recalcular la zona de la orden» hecho (T1-T6, T8), init.sh exit 0; falta T9 (pantalla) y T0/T7 del leader.
