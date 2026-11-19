@@ -21,6 +21,9 @@ import { capturar, crearPlan, revertida, sqlstateDe } from "./_fixtures/planes";
 // SLT-86 (R10, R15, R32): el precio vigente con sus descuentos, el precio del período (la fila del
 // historial que regía al empezar el período, aquí distinta del vigente) y la entrada. El pendiente de la
 // empresa y el caso sin plan con pendiente los mide `plan-de-la-empresa-periodo.test.ts`.
+//
+// SLT-214 (design §3.4; R18, R23): los beneficios de la versión que corre la empresa, los del plan o los de su
+// versión propia (`plan_version_empresa`), con su ícono y en orden.
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
@@ -105,6 +108,7 @@ describeSiHayBase("SLT-58 — MiPlanRepository: el plan de la empresa del contex
       nombre: expect.stringMatching(/^sl24 /),
       topes: { porRol: { admin: 2, adminTienda: 5 }, apiKeys: 4 }, // SLT-66 R1
       modulos: ["analitica"],
+      beneficios: [], // SLT-214 (R23): el plan no tiene; la lista va siempre.
       precio: { tipo: "monto", mensual: "49.90", descuentos: { anual: { tipo: "monto", monto: "99.80" } } },
       costoPorOrden: null, // SLT-66 R8: el plan lleva costo por orden; aquí, vacío.
       costoPorOrdenPorcentual: null, // SLT-83: campo nuevo de la versión
@@ -158,5 +162,69 @@ describeSiHayBase("SLT-58 — MiPlanRepository: el plan de la empresa del contex
       return capturar(tx, () => new MiPlanRepository(tx).planDeLaEmpresa());
     });
     expect(String((r as Error).message)).toContain("MiPlanRepository.planDeLaEmpresa: plan_de_la_empresa devolvió una forma inesperada");
+  });
+
+  describe("SLT-214 R23, R18 — los beneficios de la versión que corre la empresa", () => {
+    const DEL_PLAN = [
+      { icono: "soporte", texto: "Soporte 24 h" },
+      { icono: "camion", texto: "Envíos prioritarios" },
+    ];
+    const PROPIOS = [
+      { icono: "rayo", texto: "Acceso anticipado" },
+      { icono: "soporte", texto: "Soporte 24 h" },
+    ];
+
+    /** El escenario con beneficios en el plan de A y, si se pide, una versión propia de A con `version`. */
+    async function conBeneficios(tx: TxDeTest, propia?: Record<string, unknown>): Promise<string> {
+      const e = await escenario(tx);
+      const { planId } = await tx.organizacion.findUniqueOrThrow({ where: { id: e.A }, select: { planId: true } });
+      if (planId === null) throw new Error("A sin plan");
+      // Al revés a propósito: el orden lo da `posicion`.
+      for (let i = DEL_PLAN.length - 1; i >= 0; i--) {
+        await tx.planBeneficio.create({ data: { planId, posicion: i, ...DEL_PLAN[i] } });
+      }
+      if (propia !== undefined) {
+        await tx.planVersionEmpresa.create({
+          data: { empresaId: e.A, planId, cambioId: randomUUID(), version: propia as object, desdeAt: new Date(ANCLA) },
+        });
+      }
+      return e.A;
+    }
+
+    it("R23: sin versión propia, los del plan, con su ícono y en orden", async () => {
+      const r = await revertida(base, async (tx) => {
+        const A = await conBeneficios(tx);
+        await comoApp(tx, A);
+        return new MiPlanRepository(tx).planDeLaEmpresa();
+      });
+      expect(conPlan(r).vigente.beneficios).toEqual(DEL_PLAN);
+    });
+
+    it("R23: con una versión propia durante un cambio a medias, los de esa versión", async () => {
+      const r = await revertida(base, async (tx) => {
+        const A = await conBeneficios(tx, { ...PENDIENTE, beneficios: PROPIOS });
+        await comoApp(tx, A);
+        return new MiPlanRepository(tx).planDeLaEmpresa();
+      });
+      expect(conPlan(r).vigente).toMatchObject({ nombre: PENDIENTE.nombre, beneficios: PROPIOS });
+    });
+
+    it("R18: una versión propia sin `beneficios` (de antes de la ficha) deja los del plan", async () => {
+      const r = await revertida(base, async (tx) => {
+        const A = await conBeneficios(tx, { ...PENDIENTE });
+        await comoApp(tx, A);
+        return new MiPlanRepository(tx).planDeLaEmpresa();
+      });
+      expect(conPlan(r).vigente).toMatchObject({ nombre: PENDIENTE.nombre, beneficios: DEL_PLAN });
+    });
+
+    it("R23: una versión propia con la lista vacía deja la empresa sin beneficios", async () => {
+      const r = await revertida(base, async (tx) => {
+        const A = await conBeneficios(tx, { ...PENDIENTE, beneficios: [] });
+        await comoApp(tx, A);
+        return new MiPlanRepository(tx).planDeLaEmpresa();
+      });
+      expect(conPlan(r).vigente.beneficios).toEqual([]);
+    });
   });
 });

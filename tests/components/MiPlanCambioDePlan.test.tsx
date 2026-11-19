@@ -10,8 +10,9 @@ import { MiPlanModule } from "@/app/(app)/mi-plan/_components/MiPlanModule";
 import { cambiarMiPlanAction, cancelarCambioMiPlanAction } from "@/lib/actions/mi-plan";
 import { planConConsumo, type PlanConUsoLeido } from "@/lib/planes/consumo";
 import type { PendienteDeEmpresa } from "@/lib/types/consumo-plan";
+import type { PlanVista } from "@/lib/types/planes";
 
-import { CUSTOM, planesDeMiPlan, planesSinPlan } from "./_mi-plan-planes";
+import { BASICO, CUSTOM, PRO, planesDeMiPlan, planesSinPlan } from "./_mi-plan-planes";
 
 const { refresh } = vi.hoisted(() => ({ refresh: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh, push: vi.fn() }) }));
@@ -206,5 +207,83 @@ describe("R20 — el texto de cada rechazo, sin mostrar un pendiente que no se g
 
     expect(await alertaDelCambio()).toHaveTextContent("Tu empresa ya no tiene un cambio pendiente.");
     expect(refresh).not.toHaveBeenCalled();
+  });
+});
+
+// SLT-214 «Planes: beneficios de texto con ícono» (design §4.2, §4.4; R21, R24): las tarjetas para cambiar de plan
+// muestran los 3 primeros beneficios y «Mostrar más», que no selecciona el plan.
+describe("SLT-214 R24 — los beneficios en las tarjetas para cambiar de plan", () => {
+  const CINCO: NonNullable<PlanVista["beneficios"]> = [
+    { icono: "equipo", texto: "Equipo dedicado" },
+    { icono: "soporte", texto: "Soporte prioritario" },
+    { icono: "reloj_24h", texto: "Atención 24 h" },
+    { icono: "rayo", texto: "Alta rápida" },
+    { icono: "estrella", texto: "Reportes premium" },
+  ];
+
+  const tarjeta = (id: string) => document.querySelector<HTMLElement>(`article[data-plan="${id}"]`)!;
+  const textos = (t: HTMLElement) =>
+    within(within(t).getByRole("list", { name: "Beneficios" }))
+      .getAllByRole("listitem")
+      .map((li) => li.textContent);
+
+  it("R24: cada tarjeta, también la del plan activo, muestra los 3 primeros en orden; sin beneficios no pinta la lista", () => {
+    const planes = planesDeMiPlan({
+      planes: [
+        { ...BASICO, beneficios: CINCO.slice(0, 2) },
+        { ...PRO, beneficios: CINCO },
+      ],
+    });
+    const sinBeneficios: PlanVista = { ...PRO, id: "libre", nombre: "Libre", beneficios: [] };
+    render(<MiPlanModule plan={plan()} planes={{ ...planes, planes: [...planes.planes, sinBeneficios] }} />);
+
+    // «Básico» es el activo (R5 de SLT-99): también lleva sus beneficios, sin botón porque son 2.
+    expect(tarjeta("basico")).toHaveAttribute("data-activo");
+    expect(textos(tarjeta("basico"))).toEqual(["Equipo dedicado", "Soporte prioritario"]);
+    expect(within(tarjeta("basico")).queryByRole("button", { name: "Mostrar más" })).toBeNull();
+
+    expect(textos(tarjeta("pro"))).toEqual(["Equipo dedicado", "Soporte prioritario", "Atención 24 h"]);
+    expect(within(tarjeta("pro")).getByRole("button", { name: "Mostrar más" })).toHaveAttribute("aria-expanded", "false");
+
+    expect(within(tarjeta("libre")).queryByRole("list", { name: "Beneficios" })).toBeNull();
+    expect(within(tarjeta("libre")).queryByText("Sin beneficios")).toBeNull();
+  });
+
+  it("R24: el custom activo también muestra sus beneficios", () => {
+    const custom: PlanVista = { ...CUSTOM, beneficios: CINCO.slice(0, 1) };
+    render(
+      <MiPlanModule
+        plan={plan()}
+        planes={planesDeMiPlan({ activoId: custom.id, customActivo: custom, activoEsCustom: true })}
+      />,
+    );
+
+    expect(textos(tarjeta(custom.id))).toEqual(["Equipo dedicado"]);
+  });
+
+  it("R21, R24: «Mostrar más» despliega la tarjeta sola y no selecciona el plan; «Mostrar menos» la pliega", async () => {
+    const planes = planesDeMiPlan({
+      planes: [
+        { ...BASICO, beneficios: CINCO },
+        { ...PRO, beneficios: CINCO },
+      ],
+    });
+    render(<MiPlanModule plan={plan()} planes={planes} />);
+
+    await userEvent.click(within(tarjeta("pro")).getByRole("button", { name: "Mostrar más" }));
+
+    expect(textos(tarjeta("pro"))).toEqual(CINCO.map((b) => b.texto));
+    expect(within(tarjeta("pro")).getByRole("button", { name: "Mostrar menos" })).toHaveAttribute("aria-expanded", "true");
+    // Cada tarjeta por su cuenta.
+    expect(textos(tarjeta("basico"))).toHaveLength(3);
+    // No selecciona: el botón del plan sigue sin pulsar y no se abre su detalle.
+    expect(within(tarjeta("pro")).getByRole("button", { name: "Pro" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByRole("region", { name: "Detalles de Pro" })).toBeNull();
+    // design §4.2: la lista va sobre el área del botón del plan, que cubre la tarjeta.
+    const contenedor = within(tarjeta("pro")).getByRole("list", { name: "Beneficios" }).parentElement!;
+    expect(contenedor).toHaveClass("relative", "z-10");
+
+    await userEvent.click(within(tarjeta("pro")).getByRole("button", { name: "Mostrar menos" }));
+    expect(textos(tarjeta("pro"))).toHaveLength(3);
   });
 });

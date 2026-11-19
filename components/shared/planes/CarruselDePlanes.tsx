@@ -3,6 +3,7 @@
 import { useId, useRef, type KeyboardEvent } from "react";
 
 import { CarruselCards } from "@/components/shared/CarruselCards";
+import { ListaDeBeneficios } from "@/components/shared/planes/BeneficiosDelPlan";
 import { IconoDelModulo } from "@/components/shared/planes/IconoDelModulo";
 import {
   precioDeLaVista,
@@ -194,6 +195,10 @@ function TarjetaDePlan({ plan, vista, esActivo, seleccionado, onSeleccionar }: T
       </dl>
 
       <ListaDeModulos incluidos={plan.modulos} />
+
+      {/* SLT-214 (design §4.2, §4.4; R21, R24): los 3 primeros y «Mostrar más». Sin beneficios no se pinta. Va sobre
+          el área del botón del plan (`relative z-10`), para que «Mostrar más» se pulse sin seleccionar el plan. */}
+      <ListaDeBeneficios beneficios={plan.beneficios ?? []} plegable={3} className="relative z-10" />
     </article>
   );
 }

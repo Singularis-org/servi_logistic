@@ -27,7 +27,7 @@ import { comoApp, fijarEmpresa } from "@/tests/fabricas/organizaciones";
 import { crearGeografiaDePrueba, crearOrganizacionEnPais, crearPaisDePrueba } from "@/tests/fabricas/paises";
 import { crearFksDeOrden } from "./_fixtures/orden-minima";
 import { comoDueno, revertida } from "./_fixtures/pais-20";
-import { exigirSinSuperadmin, idDeRol, insertarUsuario, tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
+import { idDeRol, insertarUsuario, obtenerOCrearSuperadmin, tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
 import {
   HAY_BASE_DE_DATOS,
   bajoLockDeEscrituraReal,
@@ -66,6 +66,8 @@ const CSV = [
 let base: PrismaClient;
 let app: PrismaClient;
 let superadminId: string | null = null;
+// En una base de desarrollo que ya tiene su superadmin, se usa ese y no se borra al acabar.
+let superadminPropio = false;
 // El índice `usuario_un_solo_superadmin` es GLOBAL: este archivo y `carga-division.test.ts` commitean
 // cada uno su superadmin, y en paralelo el segundo moriría con 23505. Se sostiene el lock de SL-32
 // desde antes de crearlo hasta después de borrarlo; el de la 227 va por dentro.
@@ -105,22 +107,25 @@ describeSiHayBase("SL-20/R32 — el superadmin sin empresa gestiona un país ent
     // Sin sesión de empresa: la del superadmin no resuelve ninguna.
     app = conAislamientoPorEmpresa(crearPrismaDeTest(), async () => null);
     soltarSuperadmin = await tomarLockDeSuperadmin();
-    await exigirSinSuperadmin(base);
     await limpiarPais();
-    superadminId = await bajoLockDeEscrituraReal(() =>
-      base.$transaction(async (tx) => {
-        const u = await insertarUsuario(tx, await idDeRol(tx, "superadmin"), null);
-        if (!u.desenlace.ok) throw new Error(`no se sembró el superadmin: ${JSON.stringify(u.desenlace)}`);
-        return u.id;
-      }),
+    const superadmin = await obtenerOCrearSuperadmin(base, () =>
+      bajoLockDeEscrituraReal(() =>
+        base.$transaction(async (tx) => {
+          const u = await insertarUsuario(tx, await idDeRol(tx, "superadmin"), null);
+          if (!u.desenlace.ok) throw new Error(`no se sembró el superadmin: ${JSON.stringify(u.desenlace)}`);
+          return u.id;
+        }),
+      ),
     );
+    superadminId = superadmin.id;
+    superadminPropio = superadmin.propio;
   }, 60_000);
 
   afterAll(async () => {
     try {
       if (base === undefined) return;
       await limpiarPais();
-      if (superadminId !== null) {
+      if (superadminId !== null && superadminPropio) {
         const id = superadminId;
         await bajoLockDeEscrituraReal(() => base.$executeRawUnsafe(`DELETE FROM "usuario" WHERE "id" = $1`, id));
       }

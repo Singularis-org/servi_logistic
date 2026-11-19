@@ -52,7 +52,8 @@ function erroresDeCampo(error: z.ZodError): Record<string, string[]> {
 
 function vista(p: PlanDTO): PlanVista {
   const { id, nombre, precio, costoPorOrden, costoPorOrdenPorcentual, topes, modulos } = p;
-  return { id, nombre, precio, costoPorOrden, costoPorOrdenPorcentual, topes, modulos };
+  // SLT-214 (R24): ausente en el DTO = sin beneficios.
+  return { id, nombre, precio, costoPorOrden, costoPorOrdenPorcentual, topes, modulos, beneficios: p.beneficios ?? [] };
 }
 
 /** Por plan, sus precios de menor a mayor `desde`; en un empate, el programado detrás (como `PlanesService.preciosQueRigen`). */

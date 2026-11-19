@@ -125,6 +125,57 @@ describe("SL-24 — plantillaCambioPlan (R41)", () => {
   });
 });
 
+// SLT-214 (R25): las líneas de los beneficios en el correo a los maestros. Literales del spec, a mano.
+describe("SLT-214 — beneficios en el correo del cambio de plan (R25)", () => {
+  it("R25: el correo lista «Se agrega: …» y «Se quita: …» bajo «Esto es lo que cambia:»", () => {
+    const m = correo({
+      cambios: {
+        beneficios: {
+          antes: [
+            { icono: "soporte", texto: "Soporte por correo" },
+            { icono: "equipo", texto: "Equipo dedicado" },
+          ],
+          despues: [
+            { icono: "equipo", texto: "equipo dedicado" },
+            { icono: "reloj_24h", texto: "Atención 24 horas" },
+          ],
+        },
+      },
+    });
+    expect(m.text).toContain("Esto es lo que cambia:");
+    for (const linea of ["Se agrega: Atención 24 horas", "Se quita: Soporte por correo"]) {
+      expect(m.text).toContain(linea);
+      expect(m.html).toContain(linea);
+    }
+    // R4: «Equipo dedicado» y «equipo dedicado» son el mismo beneficio: ni entra ni sale.
+    expect(m.text).not.toContain("Equipo dedicado");
+    expect(m.text).not.toContain("Cambian los íconos o el orden de los beneficios.");
+  });
+
+  it("R25: si solo cambian íconos u orden, el correo trae una sola línea «Cambian los íconos o el orden de los beneficios.»", () => {
+    const m = correo({
+      cambios: {
+        beneficios: {
+          antes: [
+            { icono: "soporte", texto: "Soporte por correo" },
+            { icono: "equipo", texto: "Equipo dedicado" },
+          ],
+          despues: [
+            { icono: "equipo", texto: "Equipo dedicado" },
+            { icono: "rayo", texto: "Soporte por correo" },
+          ],
+        },
+      },
+    });
+    expect(m.text).toContain("Esto es lo que cambia:");
+    expect(m.text).toContain("Cambian los íconos o el orden de los beneficios.");
+    expect(m.html).toContain("Cambian los íconos o el orden de los beneficios.");
+    expect(m.text.split("Cambian los íconos o el orden de los beneficios.")).toHaveLength(2);
+    expect(m.text).not.toContain("Se agrega:");
+    expect(m.text).not.toContain("Se quita:");
+  });
+});
+
 describe("SL-24 — recordatorios (R42)", () => {
   it("a 7 días", () => {
     const m = correo({ tipo: "recordatorio_7" });

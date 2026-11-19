@@ -7,13 +7,7 @@ import { Prisma, type PrismaClient, type RolValue } from "@prisma/client";
 import { fijarEmpresa } from "../tests/fabricas/organizaciones";
 
 import { altaDeEmpresa, clienteDueno, prepararAcceso, SINPE_DE_PRUEBA, type Empresa } from "./_dos-empresas-fixture";
-import {
-  asegurarSuperadmin,
-  conCandadoDelSuperadmin,
-  entrarConOtp,
-  olvidarDispositivos,
-  SUPERADMIN_DE_PRUEBA,
-} from "./_superadmin-fixture";
+import { asegurarSuperadmin, conCandadoDelSuperadmin, entrarComoSuperadmin } from "./_superadmin-fixture";
 import { abrirCon } from "./_escenarios/pulsar";
 import { CAJA_A, CAJA_B, sembrarCaja } from "./_wallet-iva-sl39-siembra";
 
@@ -323,8 +317,7 @@ test.beforeAll(async ({ browser }) => {
   contextoSa = await browser.newContext();
   sa = await contextoSa.newPage();
   await conCandadoDelSuperadmin(async () => {
-    await olvidarDispositivos(base(), SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL);
-    await entrarConOtp(sa!, SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL, SUPERADMIN_DE_PRUEBA.SUPERADMIN_PASSWORD);
+    await entrarComoSuperadmin(sa!, base());
   });
 });
 

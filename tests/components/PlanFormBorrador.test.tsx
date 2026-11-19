@@ -316,7 +316,7 @@ describe("R7 — estado del borrador", () => {
   it("R7: estado y hora tras guardar General", async () => {
     const user = userEvent.setup();
     montarCrear();
-    expect(screen.getByText("Borrador · 0 de 5 pasos guardados")).toBeInTheDocument();
+    expect(screen.getByText("Borrador · 0 de 6 pasos guardados")).toBeInTheDocument();
     expect(screen.getByText("Aún sin guardar")).toBeInTheDocument();
     expect(
       screen.getByText("Borrador: se guarda al continuar, pero no se aplica a ninguna empresa hasta el último paso."),
@@ -324,7 +324,7 @@ describe("R7 — estado del borrador", () => {
 
     await user.type(nombre(), "Pro");
     await guardarHasta(user, "Precio y descuentos");
-    expect(screen.getByText("Borrador · 1 de 5 pasos guardados")).toBeInTheDocument();
+    expect(screen.getByText("Borrador · 1 de 6 pasos guardados")).toBeInTheDocument();
     // 15:30 UTC son las 09:30 en la hora de la plataforma.
     expect(screen.getByText("Borrador guardado el 2026-11-17 09:30")).toBeInTheDocument();
     expect(screen.queryByText("Aún sin guardar")).not.toBeInTheDocument();
@@ -380,7 +380,7 @@ describe("R8, R9 — confirmar", () => {
     expect(botonDelPaso("General (guardado)")).toBeInTheDocument();
     expect(botonDelPaso("Precio y descuentos")).toBeInTheDocument();
     expect(botonDelPaso("Topes")).toBeInTheDocument();
-    expect(screen.getByText("Borrador · 3 de 5 pasos guardados")).toBeInTheDocument();
+    expect(screen.getByText("Borrador · 4 de 6 pasos guardados")).toBeInTheDocument();
   });
 
   it("R9: una fecha pasada al programar lleva a Cuándo rige", async () => {
@@ -441,7 +441,7 @@ describe("R10–R12 — guardado tardío y borrador compartido", () => {
     ).toBeInTheDocument();
     expect(botonDelPaso("General")).toBeInTheDocument();
     expect(botonDelPaso("Precio y descuentos (guardado)")).toBeInTheDocument();
-    expect(screen.getByText("Borrador · 1 de 6 pasos guardados")).toBeInTheDocument();
+    expect(screen.getByText("Borrador · 1 de 7 pasos guardados")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Descartar y empezar de nuevo" })).toBeInTheDocument();
   });
 
@@ -542,7 +542,7 @@ describe("R14, R15 — abrir y retomar", () => {
     expect(leer).toHaveBeenCalledTimes(2);
     expect(nombre()).toHaveValue("Básico");
     expect(pasoActual()).toBe("General");
-    expect(screen.getByText("Borrador · 0 de 6 pasos guardados")).toBeInTheDocument();
+    expect(screen.getByText("Borrador · 0 de 7 pasos guardados")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Descartar y empezar de nuevo" })).not.toBeInTheDocument();
   });
 
@@ -598,8 +598,42 @@ describe("R14, R15 — abrir y retomar", () => {
     expect(await screen.findByRole("form")).toBeInTheDocument();
     expect(a.leer).toHaveBeenCalledWith({ borradorId: B1 });
     expect(pasoActual()).toBe("Topes");
-    expect(screen.getByText("Borrador · 3 de 5 pasos guardados")).toBeInTheDocument();
+    expect(screen.getByText("Borrador · 3 de 6 pasos guardados")).toBeInTheDocument();
     expect(screen.getByText("Borrador de Ana, guardado el 2026-11-17 09:30")).toBeInTheDocument();
+    expect(screen.queryByText("Sin guardar")).not.toBeInTheDocument();
+  });
+
+  // SLT-214 «Planes: beneficios de texto con ícono» (R11): el paso guardado vuelve en su orden, con texto e ícono.
+  it("SLT-214 R11: retomar un cambio con el paso «Beneficios» guardado lo muestra tal cual", async () => {
+    const user = userEvent.setup();
+    const cambio: BorradorVista = {
+      id: B1,
+      modo: "editar",
+      planId: PLAN_ID,
+      pasos: {
+        general: { nombre: "Básico" },
+        beneficios: {
+          beneficios: [
+            { icono: "soporte", texto: "Soporte 24 h" },
+            { icono: "rayo", texto: "Acceso anticipado" },
+          ],
+        },
+      },
+      pasosGuardados: ["general", "beneficios"],
+      iniciadoPor: "Ana",
+      iniciadoAt: GUARDADO_AT,
+      actualizadoAt: GUARDADO_AT,
+    };
+    montarEditar(acciones(), { borradorInicial: cambio });
+
+    expect(screen.getByText("Borrador · 2 de 7 pasos guardados")).toBeInTheDocument();
+    await user.click(botonDelPaso("Beneficios (guardado)"));
+    expect(pasoActual()).toBe("Beneficios");
+    expect(screen.getByRole("textbox", { name: "Texto del beneficio 1" })).toHaveValue("Soporte 24 h");
+    expect(screen.getByRole("textbox", { name: "Texto del beneficio 2" })).toHaveValue("Acceso anticipado");
+    expect(screen.getByRole("combobox", { name: "Ícono del beneficio 1" })).toHaveTextContent("Soporte");
+    expect(screen.getByRole("combobox", { name: "Ícono del beneficio 2" })).toHaveTextContent("Rayo");
+    // Lo cargado es lo guardado: el paso no queda «Sin guardar».
     expect(screen.queryByText("Sin guardar")).not.toBeInTheDocument();
   });
 });
@@ -622,7 +656,7 @@ describe("R16 — Descartar y empezar de nuevo", () => {
     expect(a.descartar).toHaveBeenCalledWith({ borradorId: B1 });
     expect(pasoActual()).toBe("General");
     expect(nombre()).toHaveValue("Básico");
-    expect(screen.getByText("Borrador · 0 de 6 pasos guardados")).toBeInTheDocument();
+    expect(screen.getByText("Borrador · 0 de 7 pasos guardados")).toBeInTheDocument();
     expect(screen.queryByText(/Borrador de Marta/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Descartar y empezar de nuevo" })).not.toBeInTheDocument();
     expect(botonDelPaso("General")).toBeInTheDocument();
@@ -638,7 +672,7 @@ describe("R16 — Descartar y empezar de nuevo", () => {
     await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Descartar" }));
 
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    expect(screen.getByText("Borrador · 0 de 6 pasos guardados")).toBeInTheDocument();
+    expect(screen.getByText("Borrador · 0 de 7 pasos guardados")).toBeInTheDocument();
   });
 
   it("R16: un fallo al descartar no toca el formulario", async () => {
@@ -657,7 +691,7 @@ describe("R16 — Descartar y empezar de nuevo", () => {
     await user.click(within(dialogo).getByRole("button", { name: "Cancelar" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(screen.getByText("Borrador de Marta, guardado el 2026-11-16 08:00")).toBeInTheDocument();
-    expect(screen.getByText("Borrador · 2 de 6 pasos guardados")).toBeInTheDocument();
+    expect(screen.getByText("Borrador · 2 de 7 pasos guardados")).toBeInTheDocument();
     expect(pasoActual()).toBe("Cobro por orden");
   });
 });

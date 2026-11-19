@@ -158,7 +158,9 @@ describe("SLT-128 — la migración en disco", () => {
     const carpetas = carpetasDeMigracion();
     for (const { funcion, origen } of REEMPLAZADAS) {
       const posteriores = carpetas
-        .filter((c) => c > origen && c !== M)
+        // Solo entre el origen y M: una migración posterior a M (SLT-214 redefine `plan_de_la_empresa`) no
+        // cambia cuál era la última definición ANTES de M, que es lo que repone el down.sql.
+        .filter((c) => c > origen && c < M)
         .filter((c) => new RegExp(`FUNCTION ${funcion}\\(`).test(sqlDe(c, "migration.sql")));
       expect(posteriores, funcion).toEqual([]);
     }

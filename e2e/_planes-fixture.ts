@@ -10,7 +10,7 @@ import { crearPlanSchema } from "../lib/types/planes";
 import { fechaCalendarioCR } from "../lib/utils/fecha-cr";
 import { fijarEmpresa } from "../tests/fabricas/organizaciones";
 
-import { SUPERADMIN_DE_PRUEBA } from "./_superadmin-fixture";
+import { superadminDeLaBase } from "./_superadmin-fixture";
 
 // SL-24 T9 (design §11.1, R33) — lo que el caso del plan del humo de dos empresas necesita antes de
 // abrir el navegador: un plan custom asignado por el repositorio real, órdenes creadas por detrás como
@@ -25,14 +25,12 @@ export interface EmpresaConZona {
   zonaId: string;
 }
 
-/** El superadmin de prueba es el actor del plan: `PlanesRepository` congela su nombre en el rastro. */
+/**
+ * El superadmin de la base es el actor del plan: `PlanesRepository` congela su nombre en el rastro. En
+ * CI es el de prueba; en una base local con datos, el que ya hay (`asegurarSuperadmin` en el beforeAll).
+ */
 async function idDelSuperadmin(dueno: PrismaClient): Promise<string> {
-  const sa = await dueno.usuario.findFirst({
-    where: { email: SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL, rol: { value: "superadmin" } },
-    select: { id: true },
-  });
-  if (!sa) throw new Error("SL-24 T9: no está el superadmin de prueba (lo crea `asegurarSuperadmin` en el beforeAll del humo).");
-  return sa.id;
+  return (await superadminDeLaBase(dueno)).id;
 }
 
 /**

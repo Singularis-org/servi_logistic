@@ -36,7 +36,7 @@ import { intentar, revertida } from "./_fixtures/pais-20";
 import {
   idDeRol,
   insertarUsuario,
-  liberarHuecoDeSuperadmin,
+  superadminDelCaso,
   tomarLockDeSuperadmin,
 } from "./_fixtures/superadmin-32";
 
@@ -132,7 +132,7 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("SL-42 — `vehiculo_rastro` sin acceso para
 
 // T2.2 (design §2.2, §4.2; R6, R7, R21) — el repositorio contra Postgres, con un superadmin SIN
 // empresa como actor. Todo dentro de una transaccion del dueño que se revierte: el superadmin se
-// siembra en ella (apartando el que hubiera, `liberarHuecoDeSuperadmin`), asi que no queda nada. El
+// siembra en ella (o se usa, sin tocarlo, el que ya tenga la base), asi que no queda nada. El
 // repositorio corre sobre `clienteConSavepoint`, que abre un SAVEPOINT real en su `$transaction`.
 // Que el borde lo haga sin `EmpresaNoResuelta` por el cliente de la app lo prueba el bloque de T2.4.
 
@@ -159,30 +159,18 @@ const NOMBRE_DEL_SUPERADMIN = "Prueba SL-32";
 
 /**
  * El superadmin sin empresa de cada caso, DENTRO de la tx revertida. En CI la base no tiene ninguno
- * y se siembra uno (`insertarUsuario`). En una base de desarrollo el que existe suele tener filas que
- * lo referencian: no se puede borrar (23503) ni pasar a una empresa (SL017), y el indice
- * `usuario_un_solo_superadmin` no deja sembrar otro. Entonces se usa ese, con el nombre fijado solo
- * dentro de esta tx para que el congelado sea determinista. El rollback lo devuelve tal cual.
+ * y se siembra uno (`insertarUsuario`), con el nombre congelado literal `NOMBRE_DEL_SUPERADMIN`. En
+ * una base de desarrollo el que existe no es del test: se usa SIN tocarlo (ni el nombre), y el nombre
+ * esperado se compone de sus columnas (nombre y primer apellido), leidas por SQL a mano.
  */
-async function superadminSinEmpresa(tx: TxDeTest): Promise<string> {
-  const rolSuperadmin = await idDeRol(tx, "superadmin");
-  const existente = await tx.$queryRawUnsafe<{ id: string }[]>(
-    `SELECT "id" FROM "usuario" WHERE "rol_id" = $1`,
-    rolSuperadmin,
+async function superadminSinEmpresa(tx: TxDeTest): Promise<{ id: string; nombre: string }> {
+  const superadmin = await superadminDelCaso(tx, await idDeRol(tx, "superadmin"));
+  if (superadmin.propio) return { id: superadmin.id, nombre: NOMBRE_DEL_SUPERADMIN };
+  const [fila] = await tx.$queryRawUnsafe<{ nombre: string }[]>(
+    `SELECT concat_ws(' ', nullif("nombre", ''), nullif("primer_apellido", '')) AS nombre FROM "usuario" WHERE "id" = $1`,
+    superadmin.id,
   );
-  if (existente.length === 0) {
-    await liberarHuecoDeSuperadmin(tx, rolSuperadmin);
-    const u = await insertarUsuario(tx, rolSuperadmin, null);
-    if (!u.desenlace.ok) throw new Error(`no se sembro el superadmin: ${JSON.stringify(u.desenlace)}`);
-    return u.id;
-  }
-  const id = existente[0].id;
-  await tx.$executeRawUnsafe(
-    `UPDATE "usuario" SET "nombre" = $1, "primer_apellido" = NULL WHERE "id" = $2`,
-    NOMBRE_DEL_SUPERADMIN,
-    id,
-  );
-  return id;
+  return { id: superadmin.id, nombre: fila.nombre.slice(0, 120) };
 }
 
 function nombreUnico(prefijo: string): string {
@@ -208,19 +196,19 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("SL-42 — VehiculoRepository: escritura y r
 
   /** Superadmin sin empresa, sembrado en la tx revertida; y el repositorio sobre esa tx. */
   async function conSuperadmin<T>(
-    fn: (c: { tx: TxDeTest; repo: VehiculoRepository; actorId: string }) => Promise<T>,
+    fn: (c: { tx: TxDeTest; repo: VehiculoRepository; actorId: string; actorNombre: string }) => Promise<T>,
   ): Promise<T> {
     return revertida(base, async (tx) => {
-      const actorId = await superadminSinEmpresa(tx);
-      return fn({ tx, repo: new VehiculoRepository(clienteConSavepoint(tx)), actorId });
+      const { id: actorId, nombre: actorNombre } = await superadminSinEmpresa(tx);
+      return fn({ tx, repo: new VehiculoRepository(clienteConSavepoint(tx)), actorId, actorNombre });
     });
   }
 
   it("R7/R21 — el alta del superadmin sin empresa guarda el tipo activo y su rastro con el actor congelado", async () => {
-    const r = await conSuperadmin(async ({ tx, repo, actorId }) => {
+    const r = await conSuperadmin(async ({ tx, repo, actorId, actorNombre }) => {
       const sinEmpresa = await tx.usuario.findUnique({ where: { id: actorId }, select: { organizacionId: true } });
       const creado = await repo.create(nombreUnico("sl42 alta"), actorId);
-      return { sinEmpresa, creado, rastro: await rastroDe(tx, creado.id), actorId };
+      return { sinEmpresa, creado, rastro: await rastroDe(tx, creado.id), actorId, actorNombre };
     });
     expect(r.sinEmpresa?.organizacionId).toBeNull();
     expect(r.creado.activo).toBe(true);
@@ -232,18 +220,18 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("SL-42 — VehiculoRepository: escritura y r
         valor_anterior: null,
         valor_nuevo: null,
         actor_usuario_id: r.actorId,
-        actor_nombre: NOMBRE_DEL_SUPERADMIN,
+        actor_nombre: r.actorNombre,
       },
     ]);
   });
 
   it("R5/R21 — el renombre deja anterior y nuevo; renombrar a su propio nombre no escribe ni deja fila", async () => {
-    const r = await conSuperadmin(async ({ tx, repo, actorId }) => {
+    const r = await conSuperadmin(async ({ tx, repo, actorId, actorNombre }) => {
       const creado = await repo.create(nombreUnico("sl42 antes"), actorId);
       const nuevo = nombreUnico("sl42 despues");
       const renombrado = await repo.rename(creado.id, nuevo, actorId);
       const mismo = await repo.rename(creado.id, nuevo, actorId);
-      return { creado, nuevo, renombrado, mismo, rastro: await rastroDe(tx, creado.id) };
+      return { creado, nuevo, renombrado, mismo, rastro: await rastroDe(tx, creado.id), actorNombre };
     });
     expect(r.renombrado).toEqual({ id: r.creado.id, name: r.nuevo, activo: true });
     expect(r.mismo).toEqual(r.renombrado);
@@ -252,7 +240,7 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("SL-42 — VehiculoRepository: escritura y r
       vehiculo_nombre: r.nuevo,
       valor_anterior: r.creado.name,
       valor_nuevo: r.nuevo,
-      actor_nombre: NOMBRE_DEL_SUPERADMIN,
+      actor_nombre: r.actorNombre,
     });
   });
 

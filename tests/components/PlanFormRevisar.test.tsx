@@ -101,6 +101,8 @@ describe("SLT-130 R22 — «Revisar y crear»", () => {
       ["Tope de Admin satélite", "sin límite"],
       ["Tope de API keys", "sin límite"],
       ["Módulos incluidos", "Monitoreo"],
+      // SLT-214 (R14): tras «Módulos», y sin beneficios lo dice.
+      ["Beneficios", "Sin beneficios"],
     ]);
     clavesEnNegrita();
     expect(screen.queryByText("Sin cambios.")).toBeNull();
