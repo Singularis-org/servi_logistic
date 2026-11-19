@@ -406,11 +406,12 @@ describe("SLT-58 R15 — editar y los avisos de topes pasados", () => {
       "Cobro por orden",
       "Topes",
       "Módulos",
+      "Beneficios", // SLT-214 «Planes: beneficios de texto con ícono» (R7)
       "Cuándo rige",
       "Revisar y programar",
     ]);
     expect(tituloDelPasoActual()).toBe("General");
-    expect(within(panel).getByText("Paso 1 de 7")).toBeInTheDocument();
+    expect(within(panel).getByText("Paso 1 de 8")).toBeInTheDocument();
     // SLT-144 (R1): el botón del pie guarda el paso en el borrador antes de avanzar.
     expect(within(panel).getByRole("button", { name: TEXTOS_PLAN_FORM.guardarYContinuar })).toBeInTheDocument();
   });
@@ -631,5 +632,127 @@ describe("SLT-144 R26 — retomar un borrador de cambio abre la edición", () =>
     const { borrador } = montar({ ...DETALLE, plan: { ...DETALLE.plan, archivado: true } }, {}, { abrirEditar: true });
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(borrador.leer).not.toHaveBeenCalled();
+  });
+});
+
+// SLT-214 «Planes: beneficios de texto con ícono» (design §3.6, §4.4; R19, R22): el dato «Beneficios» de la versión
+// vigente y las líneas del rastro.
+describe("SLT-214 R22 — los beneficios en la versión vigente", () => {
+  it("R22: todos, con su ícono y en orden, después de «Módulos incluidos» y sin «Mostrar más»", () => {
+    const beneficios = [
+      { icono: "equipo", texto: "Equipo dedicado" },
+      { icono: "soporte", texto: "Soporte prioritario" },
+      { icono: "reloj_24h", texto: "Atención 24 h" },
+      { icono: "camion", texto: "Recolección diaria" },
+    ] as const;
+    montar({ ...DETALLE, plan: { ...DETALLE.plan, beneficios: [...beneficios] } });
+
+    const vigente = seccion("Versión vigente");
+    const terminos = within(vigente)
+      .getAllByRole("term")
+      .map((t) => t.textContent);
+    expect(terminos.indexOf("Beneficios")).toBe(terminos.indexOf("Módulos incluidos") + 1);
+    const lista = within(vigente).getByRole("list", { name: "Beneficios" });
+    expect(within(lista).getAllByRole("listitem").map((li) => li.textContent)).toEqual(beneficios.map((b) => b.texto));
+    const iconos = [...lista.querySelectorAll("svg[data-icono]")];
+    expect(iconos.map((i) => i.getAttribute("data-icono"))).toEqual(beneficios.map((b) => b.icono));
+    for (const i of iconos) expect(i).toHaveAttribute("aria-hidden", "true");
+    expect(within(vigente).queryByRole("button", { name: "Mostrar más" })).toBeNull();
+  });
+
+  it("R22: sin beneficios dice «Sin beneficios»", () => {
+    montar({ ...DETALLE, plan: { ...DETALLE.plan, beneficios: [] } });
+
+    const vigente = seccion("Versión vigente");
+    expect(within(vigente).getByText("Sin beneficios")).toBeInTheDocument();
+    expect(within(vigente).queryByRole("list", { name: "Beneficios" })).toBeNull();
+  });
+});
+
+describe("SLT-214 R19 — los beneficios en el rastro del plan", () => {
+  const filaDelRastro = (accion: "creado" | "editado", cambios: DetallePlan["rastro"][number]["cambios"]) => ({
+    id: `r-${accion}`,
+    accion,
+    cambios,
+    actorNombre: "Sofía Admin",
+    creadoAt: "2026-11-19T15:00:00.000Z",
+  });
+  const queCambio = () =>
+    within(within(seccion("Historial del plan")).getAllByRole("row")[1]!).getAllByRole("cell")[3]!;
+  const lineas = () => within(queCambio()).getAllByRole("listitem").map((li) => li.textContent);
+
+  it("R19: un alta con beneficios pinta «Beneficios: t1, t2, …» en orden", () => {
+    montar({
+      ...DETALLE,
+      rastro: [
+        filaDelRastro("creado", {
+          nombre: { antes: null, despues: "Básico" },
+          beneficios: {
+            antes: null,
+            despues: [
+              { icono: "equipo", texto: "Equipo dedicado" },
+              { icono: "soporte", texto: "Soporte prioritario" },
+            ],
+          },
+        }),
+      ],
+    });
+
+    expect(lineas()).toEqual(["Nombre del plan: Básico", "Beneficios: Equipo dedicado, Soporte prioritario"]);
+  });
+
+  it("R19: un alta sin beneficios (sin la clave) no pinta la línea", () => {
+    montar({ ...DETALLE, rastro: [filaDelRastro("creado", { nombre: { antes: null, despues: "Básico" } })] });
+
+    expect(queCambio()).not.toHaveTextContent("Beneficios");
+  });
+
+  it("R19, R25: una edición pinta «Se agrega» y «Se quita», tras los módulos", () => {
+    montar({
+      ...DETALLE,
+      rastro: [
+        filaDelRastro("editado", {
+          modulos: { antes: ["analitica"], despues: ["analitica", "ranking"] },
+          beneficios: {
+            antes: [
+              { icono: "equipo", texto: "Equipo dedicado" },
+              { icono: "soporte", texto: "Soporte prioritario" },
+            ],
+            despues: [
+              { icono: "equipo", texto: "Equipo dedicado" },
+              { icono: "rayo", texto: "Alta rápida" },
+            ],
+          },
+        }),
+      ],
+    });
+
+    expect(lineas()).toEqual([
+      "Se incluye el módulo Ranking.",
+      "Se agrega: Alta rápida",
+      "Se quita: Soporte prioritario",
+    ]);
+  });
+
+  it("R19, R25: una edición que solo cambia íconos u orden pinta una sola línea", () => {
+    montar({
+      ...DETALLE,
+      rastro: [
+        filaDelRastro("editado", {
+          beneficios: {
+            antes: [
+              { icono: "equipo", texto: "Equipo dedicado" },
+              { icono: "soporte", texto: "Soporte prioritario" },
+            ],
+            despues: [
+              { icono: "soporte", texto: "Soporte prioritario" },
+              { icono: "check", texto: "Equipo dedicado" },
+            ],
+          },
+        }),
+      ],
+    });
+
+    expect(lineas()).toEqual(["Cambian los íconos o el orden de los beneficios."]);
   });
 });

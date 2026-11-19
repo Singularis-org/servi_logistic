@@ -940,3 +940,71 @@ describe("Ajuste planes-custom D6 — el tipo de cobro se elige en el modal de a
     expect(refreshMock).not.toHaveBeenCalled();
   });
 });
+
+// SLT-214 (R25): el cambio programado del detalle de la empresa lista los beneficios que entran y salen, con
+// las mismas líneas que el correo. Literales del spec, a mano.
+describe("SLT-214 R25 — beneficios en el cambio programado de la empresa", () => {
+  /** La lectura de `LEIDO` con beneficios en la versión vigente y en la del cambio. */
+  function vistaConBeneficios(
+    antes: NonNullable<PlanConUsoLeido["vigente"]["beneficios"]>,
+    despues: NonNullable<PlanConUsoLeido["vigente"]["beneficios"]>,
+  ): PlanDeEmpresaVista {
+    const leido: PlanConUsoLeido = {
+      ...LEIDO,
+      vigente: { ...LEIDO.vigente, beneficios: antes },
+      cambio: { ...LEIDO.cambio!, version: { ...LEIDO.cambio!.version, beneficios: despues } },
+    };
+    return vista({ plan: { ...planConConsumo(leido, AHORA), planId: PLAN_ACTUAL, archivado: false } });
+  }
+
+  it("R25: el cambio programado pinta «Se agrega: …» y «Se quita: …»", () => {
+    montar({
+      v: vistaConBeneficios(
+        [
+          { icono: "soporte", texto: "Soporte por correo" },
+          { icono: "equipo", texto: "Equipo dedicado" },
+        ],
+        [
+          { icono: "equipo", texto: "Equipo dedicado" },
+          { icono: "reloj_24h", texto: "Atención 24 horas" },
+        ],
+      ),
+    });
+
+    const seccion = screen.getByRole("region", { name: "Plan" });
+    const tarjeta = within(seccion).getByRole("heading", { name: "Cambio programado desde 2026-04-01" }).closest(
+      "[data-slot='card']",
+    ) as HTMLElement;
+    expect(tarjeta).not.toBeNull();
+    expect(within(tarjeta).getByText("Esto es lo que cambia:")).toBeInTheDocument();
+    expect(within(tarjeta).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+      "Nombre del plan: Plan Crecer → Plan Crecer 2",
+      "Se agrega: Atención 24 horas",
+      "Se quita: Soporte por correo",
+    ]);
+  });
+
+  it("R25: si solo cambian íconos u orden, pinta una sola línea «Cambian los íconos o el orden de los beneficios.»", () => {
+    montar({
+      v: vistaConBeneficios(
+        [
+          { icono: "soporte", texto: "Soporte por correo" },
+          { icono: "equipo", texto: "Equipo dedicado" },
+        ],
+        [
+          { icono: "equipo", texto: "Equipo dedicado" },
+          { icono: "rayo", texto: "Soporte por correo" },
+        ],
+      ),
+    });
+
+    const seccion = screen.getByRole("region", { name: "Plan" });
+    const tarjeta = within(seccion).getByRole("heading", { name: "Cambio programado desde 2026-04-01" }).closest(
+      "[data-slot='card']",
+    ) as HTMLElement;
+    expect(within(tarjeta).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+      "Nombre del plan: Plan Crecer → Plan Crecer 2",
+      "Cambian los íconos o el orden de los beneficios.",
+    ]);
+  });
+});

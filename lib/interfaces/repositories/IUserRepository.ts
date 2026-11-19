@@ -167,7 +167,7 @@ export interface ListUsuariosResult {
 // queda.
 //
 // ALCANCE EXACTO DE LO QUE **NO** CAMBIA: este tipo (`UpdateUsuarioData`) sigue SIN
-// admitir email, cedula ni passwordHash. El RESTABLECER va por `updatePasswordHash` (ver
+// admitir email ni passwordHash (la cedula entra con SLT-221, R1601). El RESTABLECER va por `updatePasswordHash` (ver
 // mas abajo), que es un metodo distinto y una operacion propia con su confirmacion; NO
 // por `update`. Anadir la contrasena a la via de edicion habria sido revertir la Decision
 // 5 entera y convertir un campo hoy imposible de tocar por error en uno mas del
@@ -177,6 +177,9 @@ export interface UpdateUsuarioData {
   telefono?: string;
   rolId?: string;
   tipoIdentificacionId?: string;
+  // SLT-221 (R1601): ya normalizada por el service con la regla del tipo resultante. Si cambia, `update`
+  // registra `usuario_cedula_cambiada` (R1604) y un duplicado sale como `UsuarioDuplicadoError` (R1603).
+  cedula?: string;
   // SLT-94 (R4): valor efectivo ya resuelto por el service.
   seRecogeEnTienda?: boolean;
   // Feature 24/R27: zona (valor efectivo ya resuelto por el service).
@@ -323,7 +326,9 @@ export interface IUserRepository {
   /**
    * FICHA 362 (R7/R9): registra `usuario_rol_cambiado`, `usuario_zona_cambiada` y
    * `usuario_se_recoge_en_tienda_cambiado` (SLT-94 R8) SOLO cuando el campo cambia de verdad, y las N filas
-   * comparten `lote_id`. Editar el telefono no deja rastro.
+   * comparten `lote_id`. Editar el telefono no deja rastro. SLT-221 (R1604): tambien
+   * `usuario_cedula_cambiada`, en el mismo lote. Un documento o correo ya usado en la empresa lanza
+   * `UsuarioDuplicadoError` (R1603).
    */
   update(
     id: string,

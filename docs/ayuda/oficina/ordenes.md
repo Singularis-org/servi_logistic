@@ -3,7 +3,7 @@ titulo: Órdenes
 modulo: ordenes
 pantalla: /ordenes
 roles: [maestro, admin]
-actualizado: 2026-11-17
+actualizado: 2026-11-19
 fuentes:
   - app/(app)/ordenes/page.tsx
   - app/(app)/ordenes/_components/OrdenesListado.tsx
@@ -74,9 +74,12 @@ bodega central**. Pasan a **En ruta a bodega central**, sin mensajero, y podés 
 del lote para que viaje con la carga. El traslado no cobra ni paga nada.
 
 Cuando llegan, recibilas con el **escáner de recepción** de la central: quedan **En bodega central**
-con su zona de siempre. Cuando la zona vuelva a tener cobertura, salen otra vez con **Rutear a bodega
-satélite**. Si las querés repartir desde la central, primero pasá su distrito a la zona central en la
-configuración de zonas.
+y, al recibirlas, toman la zona de su distrito. Si mientras estaban en el estante de la satélite su
+distrito se pasó a otra zona, llegan ya con la nueva; si no, conservan la de la satélite. Una orden que
+ya tiene un cierre o una gestión que decidió el cobro (entregada, rechazada o con incidente) conserva
+su zona. Cuando la zona vuelva a tener cobertura, salen otra vez con **Rutear a bodega satélite**. Si
+las querés repartir desde la central, primero pasá su distrito a la zona central en la configuración
+de zonas.
 
 Si alguna orden del lote ya no está en el estante (por ejemplo, la satélite la acaba de asignar), no se
 retira ninguna: el diálogo te dice cuál y podés actualizar la lista y volver a intentarlo.

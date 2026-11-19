@@ -7,6 +7,7 @@ import { Plus } from "lucide-react";
 
 import { AvisosDeTopes, textosDeLosAvisosDeTopes } from "@/components/shared/AvisosDeTopes";
 import { EmptyState } from "@/components/shared/EmptyState";
+import { ListaDeBeneficios } from "@/components/shared/planes/BeneficiosDelPlan";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -40,6 +41,9 @@ const TEXTOS = {
   // SLT-66 (design §6.2, R24): costo base y costo por orden.
   columnaCosto: "Costo",
   columnaTopes: "Topes",
+  // SLT-214 (design §4.4; R20).
+  columnaBeneficios: "Beneficios",
+  sinBeneficios: "Sin beneficios",
   columnaEmpresas: "Empresas",
   columnaCambio: "Cambio programado",
   sinCambio: "Ninguno",
@@ -278,6 +282,7 @@ function Catalogo({
           <TableHead className={SOLO_DESDE_MD}>{TEXTOS.columnaVisibilidad}</TableHead>
           <TableHead>{TEXTOS.columnaCosto}</TableHead>
           <TableHead>{TEXTOS.columnaTopes}</TableHead>
+          <TableHead className={SOLO_DESDE_MD}>{TEXTOS.columnaBeneficios}</TableHead>
           <TableHead className="text-right">{TEXTOS.columnaEmpresas}</TableHead>
           <TableHead className={SOLO_DESDE_MD}>{TEXTOS.columnaCambio}</TableHead>
         </TableRow>
@@ -314,6 +319,10 @@ function Catalogo({
                   <li key={linea}>{linea}</li>
                 ))}
               </ul>
+            </TableCell>
+            {/* SLT-214 (R20, R21): los 3 primeros; «Mostrar más» despliega el resto en esta fila sola. */}
+            <TableCell className={SOLO_DESDE_MD}>
+              <ListaDeBeneficios beneficios={plan.beneficios ?? []} plegable={3} vacio={TEXTOS.sinBeneficios} />
             </TableCell>
             <TableCell className="text-right tabular-nums">{formatearConteo(plan.empresas)}</TableCell>
             <TableCell className={SOLO_DESDE_MD}>

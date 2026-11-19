@@ -9,7 +9,7 @@ import { PremioRankingRepository } from "@/lib/repositories/PremioRankingReposit
 import { RankingSnapshotRepository } from "@/lib/repositories/RankingSnapshotRepository";
 import { crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones";
 import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
-import { exigirSinSuperadmin, tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
+import { superadminDeLaBase, tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, tomarLockDeEscrituraReal } from "./_postgres-real";
 
 // SL-23 (R22; design §5.2) — apagar un módulo NO toca los datos de negocio de la empresa, y al
@@ -34,6 +34,8 @@ let soltarEscritura: () => Promise<void> = async () => {};
 let empresa: string;
 let mensajero: string;
 let superadmin: string;
+// El superadmin que ya tenia la base (una de desarrollo): se usa de actor y no se borra ni se toca.
+let superadminAjeno: string | null = null;
 
 /** Todo lo de Ranking de la empresa, medido como dueño: recuentos y filas completas. */
 async function fotoComoDueno(organizacionId: string) {
@@ -68,7 +70,8 @@ describeSiHayBase("SL-23 — apagar un módulo no borra ni cambia sus datos; al 
     app = conAislamientoPorEmpresa(base, async () => null);
     soltarSuperadmin = await tomarLockDeSuperadmin();
     soltarEscritura = await tomarLockDeEscrituraReal();
-    await exigirSinSuperadmin(base);
+    superadminAjeno = await superadminDeLaBase(base);
+    if (superadminAjeno !== null) console.warn(`[superadmin-32] se reutiliza el superadmin de la base (${superadminAjeno})`);
     const s = await base.$transaction(
       async (tx) => {
         const e = (await crearOrganizacion(tx, { nombre: "Empresa SL-23 R22" })).id;
@@ -107,7 +110,7 @@ describeSiHayBase("SL-23 — apagar un módulo no borra ni cambia sus datos; al 
         await tx.organizacionModulo.create({ data: { organizacionId: e, modulo: "ranking" } });
         // '' vuelve NULL el DEFAULT de `usuario.organizacion_id`: el superadmin no tiene empresa.
         await fijarEmpresa(tx, "");
-        const sa = (await crearUsuarioDePrueba(tx, "superadmin")).id;
+        const sa = superadminAjeno ?? (await crearUsuarioDePrueba(tx, "superadmin")).id;
         return { e, m, sa };
       },
       { timeout: 30_000, maxWait: 15_000 },
@@ -131,7 +134,7 @@ describeSiHayBase("SL-23 — apagar un módulo no borra ni cambia sus datos; al 
         if (mensajero) await base.usuario.deleteMany({ where: { id: mensajero } });
         await base.organizacion.deleteMany({ where: { id: empresa } });
       }
-      if (base && superadmin) await base.usuario.deleteMany({ where: { id: superadmin } });
+      if (base && superadmin && superadminAjeno === null) await base.usuario.deleteMany({ where: { id: superadmin } });
     } finally {
       await soltarEscritura();
       await soltarSuperadmin();

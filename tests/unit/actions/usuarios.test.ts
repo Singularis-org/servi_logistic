@@ -442,3 +442,69 @@ describe("379/T8 — consultarImpactoCambioUsuario: el borde", () => {
     expect(service.consultarImpactoCambio).toHaveBeenCalledWith("usr-1", {}, MAESTRO);
   });
 });
+
+/* ========================================================================== */
+/* SLT-221 (Tanda 1) — el borde de la corrección del documento                */
+/* ========================================================================== */
+
+describe("SLT-221 R1601/R1607: actualizarUsuario admite la cédula y sigue cerrando email y password", () => {
+  it("R1601: la cédula entra y llega al service tal cual (lo normaliza el service)", async () => {
+    const service = fakeService();
+    const r = await actualizarUsuario(
+      "usr-1",
+      { cedula: "0926687856" },
+      { usuarioService: service, getActor: getActor(MAESTRO) },
+    );
+    expect(r.status).toBe("ok");
+    expect(service.actualizar).toHaveBeenCalledWith("usr-1", { cedula: "0926687856" }, MAESTRO);
+  });
+
+  it("R1607: una edición con email es validation_error y no llega al service", async () => {
+    const service = fakeService();
+    const r = await actualizarUsuario(
+      "usr-1",
+      { cedula: "0926687856", email: "otro@example.com" },
+      { usuarioService: service, getActor: getActor(MAESTRO) },
+    );
+    expect(r.status).toBe("validation_error");
+    expect(service.actualizar).not.toHaveBeenCalled();
+  });
+
+  it("R1607: una edición con password es validation_error y no llega al service", async () => {
+    const service = fakeService();
+    const r = await actualizarUsuario(
+      "usr-1",
+      { nombre: "Ana", password: "Abcdef1!" },
+      { usuarioService: service, getActor: getActor(MAESTRO) },
+    );
+    expect(r.status).toBe("validation_error");
+    expect(service.actualizar).not.toHaveBeenCalled();
+  });
+
+  it("R1603: propaga el conflict en `cedula` del service", async () => {
+    const service = fakeService({
+      actualizar: vi.fn().mockResolvedValue({ status: "conflict", campo: "cedula" }),
+    });
+    const r = await actualizarUsuario(
+      "usr-1",
+      { cedula: "0926687856" },
+      { usuarioService: service, getActor: getActor(MAESTRO) },
+    );
+    expect(r).toEqual({ status: "conflict", campo: "cedula" });
+  });
+
+  it("R1602: propaga el validation_error del service en `cedula`", async () => {
+    const service = fakeService({
+      actualizar: vi
+        .fn()
+        .mockResolvedValue({ status: "validation_error", fieldErrors: { cedula: ["Motivo-SLT221"] } }),
+    });
+    const r = await actualizarUsuario(
+      "usr-1",
+      { cedula: "123" },
+      { usuarioService: service, getActor: getActor(MAESTRO) },
+    );
+    expect(r.status).toBe("validation_error");
+    if (r.status === "validation_error") expect(r.fieldErrors.cedula).toEqual(["Motivo-SLT221"]);
+  });
+});

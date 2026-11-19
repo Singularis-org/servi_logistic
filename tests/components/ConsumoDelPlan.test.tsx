@@ -20,6 +20,8 @@ const PLAN: PlanConConsumo = {
   activoDesde: "2026-01-15",
   precioTexto: "45000 al mes",
   modulos: [],
+  // SLT-214 (R23): sin beneficios.
+  beneficios: [],
   // SLT-86 (R8): las órdenes ya no son una fila con tope; van en `ordenesDelPeriodo`.
   filas: [
     fila("adminTienda", "admins de tienda", 1, 5, "normal"),

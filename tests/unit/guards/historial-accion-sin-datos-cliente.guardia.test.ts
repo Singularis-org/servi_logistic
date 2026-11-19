@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { quitarComentarios } from "../../fixtures/sin-comentarios";
+import { HISTORIAL_ACCION_TIPOS } from "@/lib/types/historial-accion";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FICHA 362 / T7.4 (R5) — NI UN DATO DE CLIENTE, NI UN TEXTO LIBRE, EN LA FILA DEL REGISTRO.
@@ -26,6 +27,15 @@ import { quitarComentarios } from "../../fixtures/sin-comentarios";
 //     direccion, y eso es su trabajo.
 //
 // EL DETECTOR SE AUTO-PRUEBA (bloque 0), porque una guardia estatica rota no falla: CALLA.
+//
+// SLT-221 (D10) — UNA EXCEPCION DECLARADA, Y NINGUNA MAS SIN PASAR POR AQUI. Carlos pidio que el
+// cambio de cedula y el de correo de un usuario queden en el Historico con el valor anterior y el
+// nuevo («es importante»). CONSECUENCIA ACEPTADA (2026-11-19): el Historico se descarga y no se purga,
+// asi que el correo y la cedula anteriores de un usuario quedan ahi PARA SIEMPRE. La excepcion es por
+// archivo y por tipo (`EXCEPCIONES_DECLARADAS`): solo se salta la entrada cuyo `accion:` esta en la
+// lista; el resto del archivo —incluidas las entradas hermanas del mismo lote— se sigue barriendo.
+// Para eso el barrido mira, ademas de los bloques `appendAccion(...)`, cada OBJETO DE ENTRADA
+// (`{ accion: "<tipo>", ... }`) aunque se arme fuera de la llamada (`entradas.push({...})`).
 //
 // La selecciona `pnpm exec vitest run guard` por el nombre del archivo.
 
@@ -98,6 +108,29 @@ const PUNTOS_DE_ESCRITURA = [
 
 const FUENTE_ETIQUETAS = "lib/types/historial-accion-etiquetas.ts";
 
+interface ExcepcionDeclarada {
+  archivo: (typeof PUNTOS_DE_ESCRITURA)[number];
+  accion: string;
+  motivo: string;
+  /** La tarea que escribira la entrada, mientras aun no exista. */
+  escritorPendiente?: string;
+}
+
+/** SLT-221 (D10): las unicas entradas que pueden llevar un dato de persona. Ver la cabecera. */
+const EXCEPCIONES_DECLARADAS: readonly ExcepcionDeclarada[] = [
+  {
+    archivo: "lib/repositories/UserRepository.ts",
+    accion: "usuario_cedula_cambiada",
+    motivo: "SLT-221 D4/D10: la cedula anterior y la nueva de un usuario de la empresa; descargable y sin purga, aceptado",
+  },
+  {
+    archivo: "lib/repositories/UserRepository.ts",
+    accion: "usuario_email_cambiado",
+    motivo: "SLT-221 D4/D10: el correo anterior y el nuevo de un usuario de la empresa; descargable y sin purga, aceptado",
+    escritorPendiente: "SLT-221 T2.4 (PR 2)",
+  },
+];
+
 function fuente(rel: string): string {
   return quitarComentarios(readFileSync(path.join(RAIZ, rel), "utf8"));
 }
@@ -122,6 +155,65 @@ export function bloquesDeAppend(codigo: string): string[] {
     desde = fin;
   }
   return salida;
+}
+
+interface BloqueDeEntrada {
+  accion: string;
+  desde: number;
+  hasta: number;
+  texto: string;
+}
+
+/**
+ * SLT-221 — los objetos de entrada del Historico de un archivo: el `{ ... }` que encierra cada
+ * `accion: "<tipo del catalogo>"`, se arme dentro de `appendAccion(...)` o fuera (`entradas.push`).
+ */
+export function bloquesDeEntrada(codigo: string): BloqueDeEntrada[] {
+  const tipos = new Set<string>(HISTORIAL_ACCION_TIPOS);
+  const salida: BloqueDeEntrada[] = [];
+  for (const m of codigo.matchAll(/\baccion:\s*"([a-z_]+)"/g)) {
+    if (!tipos.has(m[1]) || m.index === undefined) continue;
+    let desde = m.index;
+    for (let prof = 0; desde > 0; desde--) {
+      const ch = codigo[desde - 1];
+      if (ch === "}") prof++;
+      else if (ch === "{" && prof-- === 0) break;
+    }
+    desde--;
+    let hasta = desde;
+    for (let prof = 0; hasta < codigo.length; hasta++) {
+      if (codigo[hasta] === "{") prof++;
+      else if (codigo[hasta] === "}" && --prof === 0) break;
+    }
+    salida.push({ accion: m[1], desde, hasta: hasta + 1, texto: codigo.slice(desde, hasta + 1) });
+  }
+  return salida;
+}
+
+/** El codigo sin las entradas exceptuadas de ese archivo: lo demas se barre igual. */
+export function sinExcepciones(codigo: string, exceptuadas: readonly string[]): string {
+  const fuera = bloquesDeEntrada(codigo).filter((b) => exceptuadas.includes(b.accion));
+  let salida = codigo;
+  for (const b of [...fuera].sort((x, y) => y.desde - x.desde)) {
+    salida = salida.slice(0, b.desde) + "{}" + salida.slice(b.hasta);
+  }
+  return salida;
+}
+
+/** Hallazgos de un archivo: bloques `appendAccion` y objetos de entrada, sin las excepciones dadas. */
+export function hallazgosDe(rel: string, codigo: string, exceptuadas: readonly string[]): string[] {
+  const limpio = sinExcepciones(codigo, exceptuadas);
+  const deAppend = bloquesDeAppend(limpio).flatMap((bloque, i) =>
+    prohibidosEn(bloque).map((nombre) => `${rel} (llamada ${i + 1}): ${nombre}`),
+  );
+  const deEntradas = bloquesDeEntrada(limpio).flatMap((b) =>
+    prohibidosEn(b.texto).map((nombre) => `${rel} (entrada ${b.accion}): ${nombre}`),
+  );
+  return [...new Set([...deAppend, ...deEntradas])];
+}
+
+function exceptuadasDe(rel: string): string[] {
+  return EXCEPCIONES_DECLARADAS.filter((e) => e.archivo === rel).map((e) => e.accion);
 }
 
 /** Los nombres prohibidos que aparecen en un texto. */
@@ -207,10 +299,7 @@ describe("362/R5 — `etiquetaDeEntidad` no lee ni un dato de cliente", () => {
 
 describe("362/R5 — ninguna llamada a `appendAccion` mete un dato de cliente en la fila", () => {
   it.each(PUNTOS_DE_ESCRITURA)("%s", (rel) => {
-    const bloques = bloquesDeAppend(fuente(rel));
-    const hallazgos = bloques.flatMap((bloque, i) =>
-      prohibidosEn(bloque).map((nombre) => `${rel} (llamada ${i + 1}): ${nombre}`),
-    );
+    const hallazgos = hallazgosDe(rel, fuente(rel), exceptuadasDe(rel));
     expect(
       hallazgos,
       "una columna del cliente en la fila del registro reabre D4 de la 312 de verdad, y esta vez " +
@@ -230,5 +319,56 @@ describe("362/R5 — ninguna llamada a `appendAccion` mete un dato de cliente en
     expect(prohibidosEn(bloque)).toEqual([]);
     const mutado = bloque.replace("monto:", "valorNuevo: cierre?.motivoRechazo, monto:");
     expect(prohibidosEn(mutado)).toContain("motivoRechazo");
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// SLT-221 (D10) — la excepcion declarada para la cedula y el correo de un usuario
+// ---------------------------------------------------------------------------------------------
+
+describe("SLT-221/D10 — solo las entradas declaradas pueden llevar la cedula o el correo", () => {
+  const USER_REPO = "lib/repositories/UserRepository.ts";
+
+  it("CONTRAPRUEBA: el detector de entradas encuentra las del lote de `update`, armadas fuera de `appendAccion`", () => {
+    const entradas = bloquesDeEntrada(fuente(USER_REPO));
+    expect(entradas.map((b) => b.accion)).toEqual(
+      expect.arrayContaining(["usuario_rol_cambiado", "usuario_zona_cambiada", "usuario_cedula_cambiada"]),
+    );
+    const rol = entradas.find((b) => b.accion === "usuario_rol_cambiado");
+    expect(rol?.texto.startsWith("{")).toBe(true);
+    expect(rol?.texto.endsWith("}")).toBe(true);
+    expect(rol?.texto).not.toContain("usuario_zona_cambiada");
+  });
+
+  it("control positivo: la entrada exceptuada SI lleva la cedula, y sin la excepcion el archivo sale en rojo", () => {
+    const codigo = fuente(USER_REPO);
+    const cedula = bloquesDeEntrada(codigo).find((b) => b.accion === "usuario_cedula_cambiada");
+    expect(prohibidosEn(cedula?.texto ?? "")).toContain("cedula");
+    expect(hallazgosDe(USER_REPO, codigo, [])).toEqual([`${USER_REPO} (entrada usuario_cedula_cambiada): cedula`]);
+  });
+
+  it("CONTRAPRUEBA: meter `email` en la entrada de `usuario_rol_cambiado` sigue en rojo aunque haya excepcion", () => {
+    const codigo = fuente(USER_REPO);
+    expect(hallazgosDe(USER_REPO, codigo, exceptuadasDe(USER_REPO))).toEqual([]);
+    const mutado = codigo.replace(
+      'accion: "usuario_rol_cambiado",',
+      'accion: "usuario_rol_cambiado", valorNuevo: despues?.email,',
+    );
+    expect(mutado).not.toBe(codigo);
+    expect(hallazgosDe(USER_REPO, mutado, exceptuadasDe(USER_REPO))).toEqual([
+      `${USER_REPO} (entrada usuario_rol_cambiado): email`,
+    ]);
+  });
+
+  it("cada excepcion nombra un tipo del catalogo y tiene su entrada en el archivo (o su escritor pendiente)", () => {
+    const tipos = new Set<string>(HISTORIAL_ACCION_TIPOS);
+    for (const e of EXCEPCIONES_DECLARADAS) {
+      expect(tipos.has(e.accion), e.accion).toBe(true);
+      expect(e.motivo.length).toBeGreaterThan(20);
+      const tiene = bloquesDeEntrada(fuente(e.archivo)).some((b) => b.accion === e.accion);
+      expect(tiene || e.escritorPendiente !== undefined, `${e.archivo}: ${e.accion} sin entrada`).toBe(true);
+      // Una excepcion «pendiente» cuyo escritor ya existe se queda vieja: quitar `escritorPendiente`.
+      if (e.escritorPendiente !== undefined) expect(tiene, `${e.accion} ya tiene escritor`).toBe(false);
+    }
   });
 });

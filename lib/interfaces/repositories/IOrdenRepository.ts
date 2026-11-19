@@ -2179,13 +2179,18 @@ export interface IOrdenRepository {
    * `mensajeroAsignadoId`, `asignadoAt` y `fechaReparto` (la recoleccion llega con el recolector
    * puesto); la devolucion (139) pasa `false` y conserva la asignacion. Obligatorio, sin valor por
    * defecto: quien llama tiene que decidirlo.
+   *
+   * SLT-224 (R1700-R1704): con `opciones.reconciliaZona`, y SOLO si transiciono, la zona de la orden
+   * se re-deriva desde `zona_distrito` con la regla compartida (`_shared/reconciliar-zona-ordenes`),
+   * acotada a esta orden y en la MISMA tx. El caso 138 pasa `true`; la devolucion (139), `false`.
+   * Ausente = `false` (no reconcilia): es la salida segura para un llamador que no lo decide.
    */
   recibirEnBodegaCentral(
     ordenId: string,
     origenValue: string,
     destinoEstatusId: string,
     historial: HistorialContexto,
-    opciones: { liberaAsignacion: boolean },
+    opciones: { liberaAsignacion: boolean; reconciliaZona?: boolean },
   ): Promise<boolean>;
 
   // --- Feature 157: recoleccion en tienda por el mensajero (R3-R5, R26-R38) ---

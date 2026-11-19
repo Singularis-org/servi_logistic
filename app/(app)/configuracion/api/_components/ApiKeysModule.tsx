@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { KeyRound } from "lucide-react";
 import useSWR from "swr";
 
+import { EnlacesGuiaApi } from "@/app/(app)/ayuda/_components/EnlacesGuiaApi";
 import { DataTable } from "@/components/shared/DataTable";
 import { Pagination } from "@/components/shared/Pagination";
 import { Modal } from "@/components/shared/Modal";
@@ -198,7 +199,11 @@ export function ApiKeysModule({ initialData }: ApiKeysModuleProps) {
 
   return (
     <section className="flex flex-col gap-4">
-      <div className="flex justify-end">
+      {/* SLT-223: la guía de integración y su PDF, en el cuerpo y junto a «Generar API key». */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
+          <EnlacesGuiaApi />
+        </div>
         <Button type="button" onClick={abrirGenerar}>
           Generar API key
         </Button>

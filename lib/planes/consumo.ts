@@ -160,6 +160,7 @@ export function planConConsumo(leido: PlanConUsoLeido, ahora: Date): PlanConCons
       clave,
       nombre: nombreDelModulo(clave),
     })),
+    beneficios: vigente.beneficios ?? [],
     filas: filasDeConsumo(vigente.topes, leido.uso),
     ordenesDelPeriodo: leido.uso.ordenes,
     reinicio: reinicioDelCiclo(leido.tipoCobro, ahora),

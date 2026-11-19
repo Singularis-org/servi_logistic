@@ -391,13 +391,21 @@ esta bien hecha, no solo si "funciona".
     lateral, se carga al abrirlo y al paginar, y sus líneas salen de `cobro_plataforma_traza` por
     `cobrado_at` en `[desde, hasta)`, 100 por página (`detalleDeLaEmpresa` / `detalleParaPlataforma`),
     sin copiarlas. Las pantallas no escriben (SLT-119 R16 sigue en pie).
-  - **Descarga (SLT-136, 2026-11-17).** Una factura **cerrada** se descarga en PDF y en Excel desde las
-    dos pantallas, solo por el maestro (`descargarFacturaMiPlanAction`) y el superadmin
+  - **Descarga (SLT-136, 2026-11-17; SLT-199, 2026-11-18).** Una factura **cerrada** se descarga en dos
+    PDF, la factura y su anexo de movimientos (`factura-<n>-<empresa>.pdf` y `…-anexo.pdf`; sin Excel),
+    desde las dos pantallas, solo por el maestro (`descargarFacturaMiPlanAction`) y el superadmin
     (`descargarFacturaEmpresaAction`, con la empresa ligada en la página). El servidor solo devuelve los
     datos (`datosDescargaDeLaEmpresa` / `datosDescargaParaPlataforma`: cabecera y todos los movimientos,
-    sin paginar); los archivos se arman en el navegador (`lib/facturas-plataforma/{resumen,pdf,excel}.ts`,
+    sin paginar); los archivos se arman en el navegador (`lib/facturas-plataforma/{resumen,pdf,anexo}.ts`,
     `components/shared/facturas/DescargarFactura.tsx`). Si el resumen no cuadra con la base, no sale
     archivo. Una no cerrada no tiene botones.
+    - **Estilo común:** los dos PDF se dibujan con `lib/facturas-plataforma/pdf-comun.ts` (banda, barra,
+      tarjetas, tabla partida en páginas con su cabecera, pie y «Página x de y»).
+    - **Letra:** Helvetica de jsPDF; un texto con un carácter que Helvetica no tiene (p. ej. `₡`) se
+      escribe entero con la fuente embebida de respaldo (Liberation Sans, `lib/pdf/etiquetas-fuente.ts`).
+    - **Importes de documento:** `importeDocumento` y `cantidadVisible` (`resumen.ts`) dan el formato de
+      los PDF («₡473 000,00», «2 365»), sobre el texto de la base y sin redondear. Es distinto del de
+      pantalla (`formatMontoString`, `lib/config/moneda.ts`) y no se usa fuera de los documentos.
     - **Logo PROVISIONAL:** `public/brand/logo-singularis.png` (`MARCA_FACTURA` en `lib/config/marca.ts`)
       es un marcador; el humano lo reemplaza por el real con el mismo nombre.
   - **Aviso al cerrar (SLT-136).** `FacturaPlataformaRepository.cerrar` cierra y, en la **misma**

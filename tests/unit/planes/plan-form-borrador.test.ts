@@ -193,6 +193,61 @@ describe("SLT-144 — valoresDelPaso y formDelBorrador", () => {
   });
 });
 
+// SLT-214 «Planes: beneficios de texto con ícono» (design §4.3; R8, R11, R13).
+describe("SLT-214 — el paso «Beneficios»", () => {
+  const CUATRO: Formulario["beneficios"] = [
+    { clave: "a", icono: "soporte", texto: "  Soporte 24 h " },
+    { clave: "b", icono: "rayo", texto: "Acceso anticipado" },
+    { clave: "c", icono: "check", texto: "Features nuevas" },
+    { clave: "d", icono: "corazon", texto: "Equipo dedicado" },
+  ];
+
+  it("R11: ida y vuelta en los dos modos, en su orden, con texto e ícono y sin la clave local", () => {
+    for (const modo of ["crear", "editar"] as const) {
+      const { ida, cargado } = idaYVuelta(modo, "beneficios", { ...baseDe(modo), beneficios: CUATRO });
+      // R8: el orden de pantalla es el que se guarda; el texto viaja sin los espacios de los extremos (R2).
+      expect(ida).toEqual({
+        beneficios: [
+          { icono: "soporte", texto: "Soporte 24 h" },
+          { icono: "rayo", texto: "Acceso anticipado" },
+          { icono: "check", texto: "Features nuevas" },
+          { icono: "corazon", texto: "Equipo dedicado" },
+        ],
+      });
+      expect(cargado.beneficios.map(({ icono, texto }) => [icono, texto])).toEqual([
+        ["soporte", "Soporte 24 h"],
+        ["rayo", "Acceso anticipado"],
+        ["check", "Features nuevas"],
+        ["corazon", "Equipo dedicado"],
+      ]);
+      // Las claves locales son nuevas y distintas: el `key` de cada fila.
+      expect(new Set(cargado.beneficios.map((b) => b.clave)).size).toBe(4);
+    }
+  });
+
+  it("R9, R11: la lista vacía también va y vuelve", () => {
+    for (const modo of ["crear", "editar"] as const) {
+      const vacia = idaYVuelta(modo, "beneficios", { ...baseDe(modo), beneficios: [] });
+      expect(vacia.ida).toEqual({ beneficios: [] });
+      expect(vacia.cargado.beneficios).toEqual([]);
+    }
+  });
+
+  it("R11: un borrador guardado con beneficios pisa los del plan; sin el paso, quedan los del plan (R13)", () => {
+    const plan: PlanDTO = { ...PLAN, beneficios: [{ icono: "estrella", texto: "Novedades" }] };
+    const base = inicial(plan, "", "2026-11-18");
+    expect(base.beneficios.map(({ icono, texto }) => ({ icono, texto }))).toEqual(plan.beneficios);
+    expect(formDelBorrador(base, { general: { nombre: "Otro" } }).beneficios).toBe(base.beneficios);
+    const cargado = formDelBorrador(base, { beneficios: { beneficios: [{ icono: "camion", texto: "Envíos" }] } });
+    expect(cargado.beneficios.map(({ icono, texto }) => ({ icono, texto }))).toEqual([{ icono: "camion", texto: "Envíos" }]);
+  });
+
+  it("R13: al crear, sin beneficios; un plan sin la clave `beneficios` es un plan sin beneficios", () => {
+    expect(inicial(null, "2026-12-01", "").beneficios).toEqual([]);
+    expect(inicial(PLAN, "", "2026-11-18").beneficios).toEqual([]);
+  });
+});
+
 describe("SLT-144 — pasoInicial", () => {
   it("R15: el primer paso sin guardar, o Revisar con todos guardados", () => {
     expect(pasoInicial("crear", new Set())).toBe("general");
@@ -204,8 +259,17 @@ describe("SLT-144 — pasoInicial", () => {
   });
 
   it("R7: los pasos que se guardan son todos menos Revisar, con Cuándo rige solo al editar", () => {
-    expect(PASOS_QUE_SE_GUARDAN("crear")).toEqual(["general", "precio", "orden", "topes", "modulos"]);
-    expect(PASOS_QUE_SE_GUARDAN("editar")).toEqual(["general", "precio", "orden", "topes", "modulos", "vigencia"]);
+    // SLT-214 (R7): «Beneficios» justo después de «Módulos».
+    expect(PASOS_QUE_SE_GUARDAN("crear")).toEqual(["general", "precio", "orden", "topes", "modulos", "beneficios"]);
+    expect(PASOS_QUE_SE_GUARDAN("editar")).toEqual([
+      "general",
+      "precio",
+      "orden",
+      "topes",
+      "modulos",
+      "beneficios",
+      "vigencia",
+    ]);
   });
 });
 

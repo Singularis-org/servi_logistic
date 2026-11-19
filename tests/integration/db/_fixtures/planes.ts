@@ -8,7 +8,7 @@ import { fijarEmpresa } from "@/tests/fabricas/organizaciones";
 
 import { CLAVE_LOCK_ESCRITURA_REAL, RegistroCaido, clienteConSavepoint, type TxDeTest } from "../_postgres-real";
 import { crearUsuarioDePrueba } from "./orden-minima";
-import { idDeRol, liberarHuecoDeSuperadmin } from "./superadmin-32";
+import { superadminDeLaBase } from "./superadmin-32";
 
 // SL-24 — lo que comparten los tests de integración de planes y topes.
 //
@@ -207,13 +207,15 @@ export function entradaAsignable(p: Partial<CrearPlanInput> = {}): CrearPlanInpu
 
 /**
  * El superadmin del caso, dentro de su transacción revertida (SL-32: hay uno solo en toda la base).
- * El archivo tiene que sostener `tomarLockDeSuperadmin` desde su `beforeAll`. Deja la empresa del
- * contexto vacía: quien llama la vuelve a fijar si la necesita.
+ * El archivo tiene que sostener `tomarLockDeSuperadmin` desde su `beforeAll`. Si la base ya tiene uno
+ * (una de desarrollo), se usa ese sin tocarlo; si no (CI), se siembra en `tx`. Deja la empresa del
+ * contexto vacía en los dos casos: quien llama la vuelve a fijar si la necesita.
  */
 export async function superadminEnTx(tx: TxDeTest): Promise<string> {
-  await liberarHuecoDeSuperadmin(tx, await idDeRol(tx, "superadmin"));
   // '' vuelve NULL el DEFAULT de `usuario.organizacion_id`: el superadmin no tiene empresa.
   await fijarEmpresa(tx, "");
+  const existente = await superadminDeLaBase(tx);
+  if (existente !== null) return existente;
   return (await crearUsuarioDePrueba(tx, "superadmin")).id;
 }
 

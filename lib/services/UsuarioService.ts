@@ -118,6 +118,21 @@ function validarPersonaSinEmpresa(
   return { ok: true, ...input };
 }
 
+// SLT-42 (R17) y SLT-221 (R1602): sin empresa, solo lo que cambia cae en la regla generica.
+function validarCambioSinEmpresa(
+  resultantes: { telefono: string; cedula: string; tipoIdentificacionId: string },
+  cambiaTelefono: boolean,
+  cambiaCedula: boolean,
+): ValidacionDePersona {
+  const fieldErrors: Record<string, string[]> = {};
+  const motivoTelefono = cambiaTelefono ? rechazoGenerico(resultantes.telefono) : null;
+  if (motivoTelefono !== null) fieldErrors.telefono = [motivoTelefono];
+  const motivoCedula = cambiaCedula ? rechazoGenerico(resultantes.cedula) : null;
+  if (motivoCedula !== null) fieldErrors.cedula = [motivoCedula];
+  if (Object.keys(fieldErrors).length > 0) return { ok: false, fieldErrors };
+  return { ok: true, ...resultantes };
+}
+
 export class UsuarioService implements IUsuarioService {
   // Feature 24/R28: `zonaRepo` opcional para validar la existencia de la zona. Se
   // inyecta en produccion; los tests que no ejercitan zona pueden omitirlo.
@@ -398,6 +413,7 @@ export class UsuarioService implements IUsuarioService {
       if (input.tipoIdentificacionId !== undefined) {
         data.tipoIdentificacionId = persona.tipoIdentificacionId;
       }
+      if (input.cedula !== undefined) data.cedula = persona.cedula; // SLT-221 R1601: ya normalizada
     }
 
     // Feature 24/R27/R28: si se edita la zona, se valida y se aplica la invariante por rol
@@ -451,6 +467,8 @@ export class UsuarioService implements IUsuarioService {
       if (error instanceof CatalogoInvalidoError) {
         return { status: "validation_error", fieldErrors: { [error.campo]: [error.message] } }; // R18
       }
+      // SLT-221 (R1603): el indice unico por empresa es la verdad; no hay consulta previa que compita.
+      if (error instanceof UsuarioDuplicadoError) return { status: "conflict", campo: error.campo };
       // SL-24 (R27): cambiar a un rol con el tope lleno. Mismo campo que en el alta.
       const tope = traducirErrorDeTope(error);
       if (tope instanceof TopeDelPlanAlcanzado) return rechazoDeTopeEnRol(tope);
@@ -737,8 +755,8 @@ export class UsuarioService implements IUsuarioService {
 
   /**
    * SLT-42 (R11, R12): el tipo pedido, si es del pais de la empresa y esta activo, y el documento
-   * normalizado con su regla (R10). Los errores van en `campoDelDocumento`: en el alta es el documento;
-   * en la edicion, el tipo, porque el documento no se edita desde aqui (R12).
+   * normalizado con su regla (R10). Los errores van en `campoDelDocumento`: el documento si es el que se
+   * escribio (alta, o edicion que lo corrige: SLT-221); el tipo si solo cambio el tipo (R12).
    */
   private async validarTipoYDocumento(
     operacion: string,
@@ -771,7 +789,11 @@ export class UsuarioService implements IUsuarioService {
   /**
    * SLT-42 (R9, R11, R12, R14-R17): en la edicion solo se valida lo que CAMBIA, para que un telefono o
    * un documento guardados antes de esta ficha no bloqueen editar otro campo (R9, P1). `null` = no
-   * cambia ninguno de los dos y no hay nada que validar.
+   * cambia nada de la persona y no hay nada que validar.
+   *
+   * SLT-221 (R1601, R1602): la cedula tambien se corrige aqui. Si cambia la cedula o el tipo, se valida
+   * el par RESULTANTE (tipo nuevo o guardado, cedula nueva o guardada). El error del documento va a
+   * `cedula` si la cedula cambio, y al tipo si solo cambio el tipo (SLT-42 R12).
    */
   private async validarCambioDePersona(
     input: ActualizarUsuarioInput,
@@ -781,39 +803,35 @@ export class UsuarioService implements IUsuarioService {
     const cambiaTipo =
       input.tipoIdentificacionId !== undefined &&
       input.tipoIdentificacionId !== actual.tipoIdentificacionId;
-    if (!cambiaTelefono && !cambiaTipo) return null;
+    const cambiaCedula = input.cedula !== undefined && input.cedula !== actual.cedula;
+    if (!cambiaTelefono && !cambiaTipo && !cambiaCedula) return null;
 
-    const sinCambios = { telefono: actual.telefono, cedula: actual.cedula, tipoIdentificacionId: actual.tipoIdentificacionId };
+    const resultantes = {
+      telefono: input.telefono ?? actual.telefono,
+      cedula: input.cedula ?? actual.cedula,
+      tipoIdentificacionId: input.tipoIdentificacionId ?? actual.tipoIdentificacionId,
+    };
     const paisId = await this.paisDeLaEmpresa("actualizar");
-    if (paisId === null) {
-      // R17: el documento no se edita, asi que solo el telefono cae en la regla generica.
-      const motivo = cambiaTelefono ? rechazoGenerico(input.telefono ?? "") : null;
-      if (motivo !== null) return { ok: false, fieldErrors: { telefono: [motivo] } };
-      return {
-        ok: true,
-        cedula: actual.cedula,
-        telefono: input.telefono ?? actual.telefono,
-        tipoIdentificacionId: input.tipoIdentificacionId ?? actual.tipoIdentificacionId,
-      };
-    }
+    if (paisId === null) return validarCambioSinEmpresa(resultantes, cambiaTelefono, cambiaCedula);
 
     const fieldErrors: Record<string, string[]> = {};
-    const resultado = { ok: true as const, ...sinCambios };
+    const resultado = { ok: true as const, ...resultantes };
     if (cambiaTelefono) {
-      const r = validarTelefonoDePersona(input.telefono ?? "", paisId); // R14, R16
+      const r = validarTelefonoDePersona(resultantes.telefono, paisId); // R14, R16
       if (r.ok) resultado.telefono = r.nacional; // R15
       else fieldErrors.telefono = [r.mensaje];
     }
-    if (cambiaTipo) {
+    if (cambiaTipo || cambiaCedula) {
       const doc = await this.validarTipoYDocumento(
         "actualizar",
-        input.tipoIdentificacionId ?? "",
-        actual.cedula,
-        "tipoIdentificacionId",
+        resultantes.tipoIdentificacionId,
+        resultantes.cedula,
+        cambiaCedula ? "cedula" : "tipoIdentificacionId",
       );
-      // R12: el documento guardado no se reescribe; solo se comprueba contra el tipo nuevo.
-      if (doc.ok) resultado.tipoIdentificacionId = doc.tipoId;
-      else fieldErrors[doc.campo] = [doc.mensaje];
+      if (doc.ok) {
+        resultado.tipoIdentificacionId = doc.tipoId;
+        resultado.cedula = doc.cedula; // SLT-221 R1601: normalizada; si no cambio, es la misma
+      } else fieldErrors[doc.campo] = [doc.mensaje];
     }
     if (Object.keys(fieldErrors).length > 0) return { ok: false, fieldErrors };
     return resultado;

@@ -20,13 +20,7 @@ import {
   type RepartoE2E,
 } from "./_escenarios/reparto";
 import { crearPlanPublicoConCosto } from "./_planes-fixture";
-import {
-  asegurarSuperadmin,
-  conCandadoDelSuperadmin,
-  entrarConOtp,
-  olvidarDispositivos,
-  SUPERADMIN_DE_PRUEBA,
-} from "./_superadmin-fixture";
+import { asegurarSuperadmin, conCandadoDelSuperadmin, entrarComoSuperadmin } from "./_superadmin-fixture";
 
 /**
  * SLT-83 T15 (design §9.2; R28, y por el camino R6, R8, R18, R21, R22, R23) — el costo por orden
@@ -181,8 +175,7 @@ test.beforeAll(async ({ browser }) => {
   contextoSa = await browser.newContext();
   sa = await contextoSa.newPage();
   await conCandadoDelSuperadmin(async () => {
-    await olvidarDispositivos(baseReparto(), SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL);
-    await entrarConOtp(superadmin(), SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL, SUPERADMIN_DE_PRUEBA.SUPERADMIN_PASSWORD);
+    await entrarComoSuperadmin(superadmin(), baseReparto());
   });
   await superadmin().waitForURL("**/plataforma/empresas", { timeout: 60_000 });
 });
@@ -251,6 +244,8 @@ test("el superadmin programa por pantalla el plan en «Porcentual» con fecha de
   await form.getByRole("textbox", { name: TEXTO.minimo, exact: true }).fill("500");
   await siguientePaso(form, "Topes");
   await siguientePaso(form, "Módulos");
+  // SLT-214 «Planes: beneficios de texto con ícono» (R7): al editar, «Beneficios» va antes de «Cuándo rige».
+  await siguientePaso(form, "Beneficios");
   await siguientePaso(form, "Cuándo rige");
   // SLT-135 (R23): sin «De inmediato»; el precio no cambia, así que el campo es «A partir de» (por defecto
   // mañana) y se pone hoy en la hora de la plataforma.

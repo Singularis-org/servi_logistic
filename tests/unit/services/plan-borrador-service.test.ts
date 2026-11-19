@@ -28,7 +28,9 @@ const PRECIO = { precio: { tipo: "monto" as const, mensual: "50000", descuentos:
 const ORDEN = { costoPorOrden: "100", costoPorOrdenPorcentual: null, periodicidadOrdenes: "quincenal" as const };
 const TOPES = { topes: { porRol: { admin: 2 }, apiKeys: 3 } };
 const MODULOS = { modulos: ["ranking" as const] };
-const PASOS_DE_CREAR = { general: GENERAL, precio: PRECIO, orden: ORDEN, topes: TOPES, modulos: MODULOS };
+// SLT-214 (R7): el paso «Beneficios», después de «Módulos».
+const BENEFICIOS = { beneficios: [{ icono: "check" as const, texto: "Soporte por correo" }] };
+const PASOS_DE_CREAR = { general: GENERAL, precio: PRECIO, orden: ORDEN, topes: TOPES, modulos: MODULOS, beneficios: BENEFICIOS };
 
 function fila(planId: string | null, pasos: Record<string, unknown>) {
   return { id: BORRADOR, planId, pasos, iniciadoPorNombre: "Sara Admin", createdAt: ACTUALIZADO, updatedAt: ACTUALIZADO };
