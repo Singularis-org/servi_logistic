@@ -154,6 +154,14 @@ Mutaciones de la vuelta 2:
 | M8 | guardia: `aperturasDeBuscador` deja de saltar literales | ROJO, 1 failed: «un > dentro de un literal…» |
 | M9 | guardia: `nombresDelBuscador` ignora los alias | ROJO, 1 failed: «el import con alias se cuenta como buscador» |
 
+### Vuelta 3 — m2 de la review vuelta 2 (495abefd)
+
+- `aperturasDeBuscador` construía la regex con un template literal, y el lookahead `(?![\w$])` llegaba como `(?![w$])`. Con eso, `<BuscadorFiltrosZz>` contaba como buscador.
+- Arreglo: `\\w` dentro del template literal.
+- Test nuevo: «SLT-205: `<BuscadorFiltrosZz>` NO cuenta como buscador».
+  - Con el código anterior, ROJO: `Tests 1 failed | 31 passed (32)`, `AssertionError: expected [ Array(1) ] to have a length of +0 but got 1`.
+  - Tras el arreglo, verde: `Tests 32 passed (32)`.
+
 ## Mapa requisito → test (ruta directa, sin `requirements.md`)
 
 | requisito de la ficha | test |

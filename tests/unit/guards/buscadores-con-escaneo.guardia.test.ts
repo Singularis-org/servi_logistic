@@ -109,7 +109,7 @@ function finDeLlaves(texto: string, desde: number): number {
 function aperturasDeBuscador(fuente: string): string[] {
   const codigo = quitarComentarios(fuente);
   const aperturas: string[] = [];
-  const marca = new RegExp(`<(?:${nombresDelBuscador(codigo).join("|")})(?![\w$])`, "g");
+  const marca = new RegExp(`<(?:${nombresDelBuscador(codigo).join("|")})(?![\\w$])`, "g");
   let m: RegExpExecArray | null;
   while ((m = marca.exec(codigo)) !== null) {
     let i = m.index + m[0].length;
@@ -328,6 +328,13 @@ describe("SLT-160 — guardia: buscadores con `escaneo` (R609)", () => {
   });
 
   // m1 de la review: el alias se ve, y un spread pone la guardia en rojo (hoy no hay ninguno).
+  // m2 de la review vuelta 2: un componente cuyo nombre EMPIEZA por BuscadorFiltros no es el buscador.
+  it("SLT-205: `<BuscadorFiltrosZz>` NO cuenta como buscador", () => {
+    expect(buscadores(`<BuscadorFiltrosZz onChange={f} />`)).toHaveLength(0);
+    expect(buscadores(`<BuscadorFiltros$Zz onChange={f} />`)).toHaveLength(0);
+    expect(buscadores(`<BuscadorFiltros onChange={f} />`)).toHaveLength(1);
+  });
+
   it("SLT-205: el import con alias se cuenta como buscador", () => {
     const alias = `import { BuscadorFiltros as CajaZq7 } from "@/components/shared/BuscadorFiltros";
 `;
