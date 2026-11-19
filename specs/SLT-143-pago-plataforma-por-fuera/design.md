@@ -78,7 +78,10 @@ la escribe una función del dueño. Si existe su fila para la confirmación, el 
   - `TRIGGERS_MISMA_EMPRESA` pasa de 179 a **181**, y la guardia `rls-por-empresa` pasa de 92 a **93** tablas.
 - **Prisma:**
   - el modelo `PagoPlataformaAnulacion`, en `MODELOS_DE_NEGOCIO`;
-  - en `PagoPlataformaConfirmacion`, la relación `anulacion PagoPlataformaAnulacion?`;
+  - en `PagoPlataformaConfirmacion`, la relación `anulaciones PagoPlataformaAnulacion[]`. Es una **lista** y no
+    `anulacion PagoPlataformaAnulacion?` porque Prisma no admite un 1 a 1 sobre un único compuesto; en la base sigue
+    habiendo como mucho una anulación por confirmación. Los filtros son `anulaciones: { none: {} }` (sin anular) y
+    `anulaciones: { some: {} }` (anulado) (nota de la review, ronda 1);
   - las relaciones inversas en `Organizacion` y `Usuario`.
 
 ### 1.2 Columna nueva: `pago_plataforma_confirmacion.por_fuera`
@@ -305,7 +308,7 @@ empresa del contexto (SL-19). El superadmin no tiene empresa, así que se fija l
 ### 4.5 La deuda y el listado sin los anulados (R26)
 
 - `PagoPlataformaRepository.sumaPagosConfirmados`:
-  `where: { organizacionId, confirmacion: { anulacion: null } }`.
+  `where: { organizacionId, confirmacion: { anulaciones: { none: {} } } }` (la relación es una lista, §1.1).
 - `EmpresasPlataformaRepository.cuentasConLaPlataforma`: el mismo filtro en el `groupBy` de
   `pagoPlataformaAplicacion`. El contador de «por confirmar» no cambia.
 
@@ -337,7 +340,7 @@ La marca sale de la misma fuente que la del registro: la fila de `pago_plataform
 - `pagosRegistradosPorLaPlataforma` pasa a ser
   `marcasDeLaPlataforma(ids): Promise<{ registrados: Set<string>; anulados: Set<string> }>`, en una sola lectura:
   - `registrados`: los pagos con confirmación `por_fuera`;
-  - `anulados`: los pagos cuya confirmación tiene anulación (`confirmacion: { anulacion: { isNot: null } }`).
+  - `anulados`: los pagos cuya confirmación tiene anulación (`anulaciones: { some: {} }`; la relación es una lista, §1.1).
 
   La RLS deja leer a la empresa sus anulaciones (R32).
 - **El contra-asiento.** Es la fila `ingreso_ajuste` cuyo `origen_id` es un pago de `anulados`. En
