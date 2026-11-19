@@ -197,3 +197,14 @@ Mutaciones nuevas (restauradas con git checkout --):
 ```
 
 Veredicto vuelta 2: H1 a H9 resueltos; gate y E2E en verde.
+
+## Vuelta 3 (2026-11-19, review vuelta 2 rechazada solo por el spec)
+
+- V2-1: `design.md` abre con `## Lo que ya existe` (búsqueda en el board y en el grafo, qué apareció y qué se reusa).
+- V2-2: guardia regla 5: el cuerpo de la guía no cita `docs/`, `lib/`, `app/`, `.yaml` ni `CHANGELOG.md` (excepto el front matter y el literal del 422). Mutación M13 (`docs/api/api-key-openapi.yaml` en el encabezado de la guía): 1 failed. Trazabilidad de R8 actualizada.
+- V2-3: sección 4.8, punto 5: con fulfillment, «6» y «7» dan 409 y «Cancelar» no se envía.
+- V2-4: curl de la sección 2.1 en dos líneas con `\`.
+- V2-5: títulos del test del PDF a R10/R11.
+
+Salidas: guardia + PDF 30 passed; `next build` BUILD_EXIT=0; E2E 8 passed (E2E_EXIT=0); `./init.sh` INIT_EXIT=0.
+Tamaño (`scripts/tamano-pr.mjs`): 12/40 archivos, 979/1000 líneas de producción, 1044/3000 de tests: en el aviso, sin pasarse.

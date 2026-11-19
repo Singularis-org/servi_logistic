@@ -1,5 +1,37 @@
 # Diseño — SLT-208 «Manual, Postman y Swagger de la API: revisión completa para que un integrador se conecte»
 
+## Lo que ya existe
+
+Buscado en el board (`feature_list.json`, título y descripción): `postman`, `swagger`, `openapi`,
+`guía de integración`, `guia de integracion`, `manual`, `url de producción`, `api key`.
+- **SLT-80** «Guía de integración por API en la ayuda» (done): dejó la guía como fuente única en
+  `docs/ayuda/oficina/guia-integracion-api.md`, su PDF (`construirPdfGuiaApi`) y la guardia
+  `guia-api-fuente-unica`. Se reusan tal cual: esta ficha solo edita el `.md`.
+- **SLT-201** «Manual de la API al día: Swagger/Postman con la carga completa y guía PDF actualizada»
+  (done) y **SLT-203** «API: publicar los intentos de entrega en la respuesta de la carga» (done): ya
+  están en la base de la rama (dev ab489908). Esta ficha parte de su texto.
+- **SLT-45** «Geografía jerárquica: API v1/v2 y carga masiva» (in_progress): toca también el canal y
+  la guía cuando sus rutas entren en la spec. Sin choque de archivos hoy; si llega antes a dev, la
+  guardia de SLT-80 le exigirá documentar sus rutas en esta misma guía.
+- `url de producción`: nada en el board.
+
+Buscado en el grafo (`R-job-singularis-projects-servi_logistic`; el worktree no está indexado):
+`openapi servers url produccion postman guia integracion` y nombres `app_url|base_url|appUrl|
+construirPdfGuiaApi|altaDeEmpresa`.
+- `NEXT_PUBLIC_APP_URL` (SL-41, SL-14): la URL de la app por entorno. **No se reusa** para el contrato:
+  la guía y el `.yaml` son documentos estáticos que tienen que decir producción en todos los entornos;
+  por eso la constante `lib/api/url-produccion.ts` y el `servers` relativo (D1).
+- `construirPdfGuiaApi` y `analizarBloques` (SLT-80): **se reusan** para el test del PDF (R10).
+- `altaDeEmpresa`, `sembrarDatos`, `clienteDueno` y `LogDelServidor` de `e2e/_dos-empresas-fixture.ts`
+  (SL-17): **se reusan** para las tres empresas del E2E.
+- El doble de Storage del E2E (`e2e/_storage-falso/servidor.mjs`, SL-44) y el lanzador
+  `e2e/_servidor-app.mjs`: **se reusan** vía `playwright.config.ts` para los PDF de etiquetas.
+- Guardias previas: `guia-api-fuente-unica` (SLT-80), `docs-marca-heredada` (SL-16),
+  `openapi-canal-rutas-reales`. **Se conservan**; la guardia nueva cubre lo que ninguna mira (URL,
+  símbolos, país y moneda, rutas del repositorio). `docs-marca-heredada` se actualiza en tres frases.
+- Tests de dobles del aislamiento por tienda (`ordenes-api-key-tienda-destino-aislamiento.route.test.ts`,
+  feature 302): una sola empresa y dobles; el caso de dos empresas contra la app real no estaba.
+
 ## Principio
 
 El código es la fuente. La API no cambia: cada discrepancia se corrige en la documentación (guía,

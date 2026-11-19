@@ -26,6 +26,12 @@ import { URL_PRODUCCION_API } from "@/lib/api/url-produccion";
 //    «la moneda del país de la empresa» y «la zona horaria del país de la empresa». Se exceptúan las
 //    filas de historial de la guía con fecha anterior al 2026-11-18, que cuentan lo que se dijo.
 //
+// 5. La guía no remite a archivos del repositorio, que el integrador no tiene (review H6, R8 del
+//    spec): ni `docs/`, ni `lib/`, ni `app/`, ni `.yaml`, ni `CHANGELOG.md` en el cuerpo. Se exceptúan
+//    el front matter (`fuentes:` es para quien mantiene la guía) y el mensaje literal del `422` por
+//    código anterior, que es el texto que devuelve la API. Una ruta de URL (`/api/docs/openapi`) no
+//    cuenta: va detrás de `/`.
+//
 // En el `.yaml` las reglas 2 y 4 miran también los comentarios (review H8): quien abre el archivo los
 // lee. Las reglas 1 y 3 los dejan fuera: los comentarios citan rutas internas y no son una URL base.
 //
@@ -82,6 +88,15 @@ export function simbolosVetados(texto: string): string[] {
 export function paisOMoneda(texto: string): string[] {
   const minus = texto.toLowerCase();
   return PAIS_Y_MONEDA.filter((s) => minus.includes(s));
+}
+
+/** El mensaje que devuelve la API al filtrar por un código anterior: la guía lo cita tal cual. */
+const LITERAL_DEL_422 = "Ver docs/api/CHANGELOG.md.";
+
+/** Las referencias a archivos del repositorio en el cuerpo de la guía (sin front matter). */
+export function referenciasAlRepositorio(guia: string): string[] {
+  const cuerpo = guia.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "").split(LITERAL_DEL_422).join("");
+  return cuerpo.match(/(?<![\w/.-])(?:docs|lib|app)\/|\.ya?ml\b|CHANGELOG\.md/g) ?? [];
 }
 
 /** Las URL absolutas cuyo origen no es el de producción ni un marcador `<...>`. */
@@ -144,6 +159,12 @@ describe.each(ARTEFACTOS)("SLT-208 — $nombre", ({ nombre, texto, textoCompleto
   });
 });
 
+describe("SLT-208 regla 5 — la guía no remite a archivos del repositorio", () => {
+  it("el cuerpo de la guía no cita docs/, lib/, app/, .yaml ni CHANGELOG.md", () => {
+    expect(referenciasAlRepositorio(leer(GUIA))).toEqual([]);
+  });
+});
+
 describe("SLT-208 regla 3 — cada artefacto declara la URL base de producción", () => {
   it("la guía la declara al comienzo y en la tabla de la sección 4.1", () => {
     const guia = leer(GUIA);
@@ -187,6 +208,13 @@ describe("SLT-208 — MUTACIÓN: las reglas se ponen rojas con un texto malo", (
       "https://www.servilogistic.co.otro.com/api",
     ]);
     expect(urlsAjenas(`${URL_PRODUCCION}/api y https://<host-de-storage>/x`)).toEqual([]);
+  });
+
+  it("regla 5 caza las rutas del repositorio y deja pasar el front matter, el 422 y las URL", () => {
+    const frontMatter = "---\nfuentes:\n  - lib/api/openapi-spec.ts\n---\n";
+    expect(referenciasAlRepositorio(`${frontMatter}Ver \`docs/api/api-key-openapi.yaml\``)).toEqual(["docs/", ".yaml"]);
+    expect(referenciasAlRepositorio(`${frontMatter}Lea CHANGELOG.md y app/x`)).toEqual(["CHANGELOG.md", "app/"]);
+    expect(referenciasAlRepositorio(`${frontMatter}"... ${LITERAL_DEL_422}" en /api/docs/openapi`)).toEqual([]);
   });
 
   it("regla 4 caza país y moneda, y deja pasar el historial anterior a la revisión", () => {

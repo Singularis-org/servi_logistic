@@ -53,7 +53,7 @@
 - **R8 (ubicuo):** La guía NO DEBE remitir a archivos del repositorio que el integrador no tiene; el
   contrato se cita por su URL servida.
 - **R9 (ubicuo):** Una guardia DEBE poner el gate en rojo si alguno de los cuatro archivos incumple R1,
-  R6 o R7.
+  R6 o R7, o si la guía incumple R8.
 
 ## Entregables
 
@@ -79,10 +79,10 @@
 | R5 | E2E «cada petición de la colección de Postman… (tienda con fulfillment)» |
 | R6 | guardia, regla 2 |
 | R7 | guardia, regla 4 |
-| R8 | revisión de la guía (sección de cambios, encabezado); sin test automático: es redacción |
+| R8 | guardia, regla 5 («la guía no remite a archivos del repositorio») y su mutación |
 | R9 | guardia, bloque «MUTACIÓN» |
-| R10 | `tests/unit/ayuda/guia-api-pdf-produccion-slt208.test.ts` (R6 del archivo) |
-| R11 | `tests/unit/ayuda/guia-api-pdf-produccion-slt208.test.ts` (R7 del archivo) |
+| R10 | `tests/unit/ayuda/guia-api-pdf-produccion-slt208.test.ts` («SLT-208 R10») |
+| R11 | `tests/unit/ayuda/guia-api-pdf-produccion-slt208.test.ts` («SLT-208 R11») |
 | R12 | E2E «dos empresas, una URL: la clave B no ve ni toca la orden de la A, y su analítica no la cuenta» |
 
 Todos los E2E están en `e2e/guia-api-ejemplos-ejecutables.spec.ts` (proyecto `aislamiento`).

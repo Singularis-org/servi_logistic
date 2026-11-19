@@ -190,7 +190,8 @@ Antes de escribir la primera línea de código:
 Antes de cargar nada, compruebe que su clave y su cliente HTTP funcionan con una lectura que no cambia nada: el listado con una sola fila.
 
 ```bash
-curl "https://www.servilogistic.co/api/ordenes/api-key?limit=1"   -H "Authorization: Bearer svl_XXXXXXXXXXXX"
+curl "https://www.servilogistic.co/api/ordenes/api-key?limit=1" \
+  -H "Authorization: Bearer svl_XXXXXXXXXXXX"
 ```
 
 Si todo está bien, la respuesta es `200` con las claves `items` (vacía si todavía no tiene órdenes) y `pagination`:
@@ -366,6 +367,7 @@ La lista puede crecer de forma aditiva, con aviso previo. Un código anterior al
 2. Abra la colección, pestaña **Variables**, y ponga su clave en `apiKey`. La variable `baseUrl` ya viene con `https://www.servilogistic.co`, sin barra final.
 3. Si la empresa le indicó otra URL, no edite las peticiones: cambie solo `baseUrl`, o cree un entorno de Postman (Environments) con una variable `baseUrl`, que tiene prioridad sobre la de la colección.
 4. Ejecute las peticiones en el orden en que vienen. La carga guarda en variables la guía, la remisión y el lote que usan las siguientes.
+5. Si su tienda tiene **fulfillment**, la orden nace sin guía (sección 5.1). Entonces «6. PDF de etiqueta de una orden» y «7. PDF consolidado de un lote» responden `409` (no hay etiqueta imprimible todavía) y sus tests lo dan por bueno, y «9. Cancelar una orden» no aplica: no se envía, porque cancelar pide guía. Las demás funcionan igual.
 
 Atención: la colección **crea órdenes reales** en la cuenta de la clave. Elimine después las que no quiera conservar (sección 5.7).
 
