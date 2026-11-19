@@ -202,3 +202,43 @@ Lo demás está en verde:
 - E2E afectados 15/15.
 
 Para la vuelta 2 basta revisar el diff de B1 y B2.
+
+## Vuelta 2 (acotada a 895cfcc9..06273eba, sin el merge de dev)
+
+Commits revisados: fd0dc20e (B1), 0aae040c (B2), ba6ed9c5 (m1, m3, disparador), 1de8d280 (m6), 06273eba (bitácora).
+
+### Checklist
+
+- [x] **B1.** `tests/integration/asistente-route.test.ts`: el maestro espera 38, con el literal y el comentario «SLT-80 (P1 de Carlos): 37→38», y además que la lista contenga `oficina/guia-integracion-api`. El mensajero sigue en 8 (líneas 95 y 127, sin tocar) y ahora fija que no recibe ni el slug ni el título de la guía.
+  - Contra la base desechable: 29/29 en verde.
+  - Mutación del reviewer: `roles: [maestro, admin, mensajero]` en el frontmatter de la guía → 3 rojos (los tres casos del mensajero). Restaurado.
+- [x] **B2.** La guardia de R1304 lee solo las filas de la tabla de §6.5 y compara con `EVENTOS_PUBLICOS` en los dos sentidos (`faltanEnTabla` y `sobranEnTabla`). La no-vacuidad exige `eventos.length === filas`.
+  - Mutación repetida: `"en_bodega_satelite"` en `EVENTOS_PUBLICOS` (`lib/types/webhook-eventos.ts`) → **rojo**, con `faltanEnTabla: ["en_bodega_satelite"]`. En la vuelta 1 daba 18/18 en verde.
+  - Mutación del otro sentido: borrar la fila `incidente` de la tabla de §6.5 → 2 rojos. El sentido «sobra en la tabla» lo cubre el caso MUTACION sintético.
+  - Las dos restauradas con `git checkout --`; árbol limpio.
+- [x] **m1.** R1307 dice ahora que, sin sesión, `middleware.ts` responde antes con 307 a `/login`, y que el 404 aplica a quien tiene sesión con otro rol. Coincide con lo que hace el código.
+- [x] **m3.** El README pide «Atención:» y prohíbe `⚠ ✔ ☐ ∈` porque romperían la descarga (`ErrorCaracterNoImprimible`, R1311).
+- [x] **m6.** Hay un solo `EnlacesGuiaApi` en `app/(app)/ayuda/_components/`, usado por las dos páginas de configuración. Las clases (`h-11 md:h-8`, outline) y las rutas, que salen de `lib/ayuda/guia-api.ts`, no cambian. `enlaces-guia-api-configuracion` y `AccionesGuiaApi` pasan 9/9.
+- [x] **m7.** La rama va 0 commits por detrás de `origin/dev`.
+- [x] **Disparador.** `arnes.config.json > gate.disparadores` incluye `docs/ayuda/**` y `lib/ayuda/**`, que lanzan asistente-route, asistente-imagenes, `tests/unit/asistente/`, `tests/unit/ayuda/`, asistente-sin-frontmatter y AyudaLayout. Las seis rutas existen.
+  - `node scripts/test-rapido.mjs --comprobar tests/integration/asistente-route.test.ts` muestra `docs/ayuda/oficina/guia-integracion-api.md -> tests/integration/asistente-route, …` y termina en `entra`.
+- [x] `tsc --noEmit` limpio, y eslint limpio sobre los archivos tocados.
+
+### Tamaño real (3.406 líneas «de producción», 38/40 archivos)
+
+| Bloque | Líneas | Archivos |
+| --- | --- | --- |
+| Guía `.md` nueva (conversión mecánica) | 958 | `docs/ayuda/oficina/guia-integracion-api.md` |
+| Borrado del HTML y del generador viejo | 1.147 | `guia-integracion.html` (−1.036) y `generar-pdf.py` (−111) |
+| Código | 1.240 (1.082 añadidas, 158 borradas) | `guia-api-pdf.ts` 541, `markdown.tsx`→`bloques.ts` 400 (de ellas ~347 son movimiento: +53/−156 y +191), `guia-fuente.ts` 84, las dos rutas 79, los dos componentes 86, `guia-api.ts` 22 y el resto 28 |
+| README y `arnes.config.json` | 61 | docs y disparador |
+
+El aceptado decía «~1.760 de conversión + ~850 de código». La conversión real es 958 + 1.147 de borrado, y el código, 1.240 líneas brutas (unas 1.080 netas nuevas). El leader debe pasarle estos números a Carlos (m2).
+
+### Hallazgos de la vuelta 2
+
+Ninguno nuevo. Siguen abiertos, sin bloquear, los menores que no se pidió arreglar: m2 (el leader lo comunica con la tabla de arriba), m4, m5, m8, m9 y m10.
+
+### Veredicto vuelta 2
+
+**OK.** B1 y B2 están resueltos y verificados con mutación. m1, m3, m6 y m7 están cerrados, y el disparador nuevo funciona.
