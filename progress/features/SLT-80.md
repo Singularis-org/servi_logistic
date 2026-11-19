@@ -76,3 +76,4 @@
 ## Modelos (overrides)
 
 ## Cierre
+<!-- tamano-pr-aceptado: 2026-11-18 · tamaño real 38/40 archivos y 3.406 líneas de producción (guía .md convertida + HTML retirado + código) · Carlos: «acepto tamaño» -->

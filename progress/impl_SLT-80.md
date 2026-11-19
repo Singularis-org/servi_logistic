@@ -471,3 +471,12 @@ leader (`feature_list.json` no se versiona); el implementer no lo toca.
 - m4 sin tocar (pendiente de Carlos). Fusión de origin/dev sin conflictos.
 - Gate: `INIT_EXIT=0`; asistente-route corrió dentro del rápido (29 tests). el PR pasa del tamano (38/40 archivos, 3406/1000 lineas de produccion, 1358/3000 de tests).
 - E2E (`servi_slt80_e2e_desechable`: migrate deploy + `next build`): `DEPLOY_EXIT=0 · BUILD_EXIT=0 · 3 passed (22.8s) · E2E_EXIT=0`.
+
+### m4 «texto neutro» (Carlos, 2026-11-18)
+
+En `docs/ayuda/oficina/guia-integracion-api.md` (de ahí sale también el PDF; `lib/pdf/guia-api-pdf.ts` no nombra el país):
+- §portada (l. 27): «Logística de última milla — Costa Rica.» → «Logística de última milla.»
+- Cabecera (l. 31): «Logística de última milla en Costa Rica.» → «Logística de última milla.»
+- §4.5 fechas (l. 271), aviso de §4.5 (l. 274) y checklist (l. 915): se quita «(hoy Costa Rica, UTC-6)»; queda «zona horaria del país de la empresa», que es el contrato.
+- Se mantiene: la fila 2026-11-05 del historial de versiones (l. 149). Es el registro de un cambio de contrato que afectó a las empresas de Costa Rica y cita el texto antiguo («hora de Costa Rica (UTC-6)»).
+- No se tocaron formatos de contrato (teléfono, moneda). Ningún test cita esos textos.

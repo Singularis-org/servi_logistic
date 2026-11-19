@@ -24,11 +24,11 @@ fuentes:
 
 # Guía de integración — API de Servi Logistic
 
-**Documentación técnica.** Logística de última milla — Costa Rica. Para desarrolladores backend del comercio integrador.
+**Documentación técnica.** Logística de última milla. Para desarrolladores backend del comercio integrador.
 
 Versión del documento: noviembre 2026. Base URL de producción: `https://app.example.com`
 
-**Logística de última milla en Costa Rica.** Documento técnico para desarrolladores backend del comercio integrador.
+**Logística de última milla.** Documento técnico para desarrolladores backend del comercio integrador.
 
 > Todos los importes, números de guía, UUID y ejemplos de este documento son **ilustrativos**. Ninguna clave mostrada es real: siempre se usan placeholders del tipo `svl_XXXXXXXXXXXX`. El contrato completo y ejecutable vive en el OpenAPI del canal (`docs/api/api-key-openapi.yaml`) y los cambios se anuncian en su changelog (`docs/api/CHANGELOG.md`).
 
@@ -268,10 +268,10 @@ Consecuencia práctica: un `401` es problema de su cliente HTTP o de su secreto;
 
 ## 4.5 Fechas y horas
 
-- **Fechas de calendario:** `YYYY-MM-DD`, medidas en la **zona horaria del país de la empresa (hoy Costa Rica, UTC-6)**. Deben ser fechas reales: `2026-02-31` es `422`.
+- **Fechas de calendario:** `YYYY-MM-DD`, medidas en la **zona horaria del país de la empresa**. Deben ser fechas reales: `2026-02-31` es `422`.
 - **Timestamps:** ISO 8601 en UTC (`2026-09-22T14:03:11.000Z`).
 
-> Mezclar los dos sistemas es el error más común: si convierte un timestamp UTC a fecha de calendario sin pasar a la zona horaria del país de la empresa (hoy Costa Rica, UTC-6), las órdenes de la noche caen en el día siguiente y sus filtros `desde`/`hasta` no cuadran con lo que ve en la aplicación.
+> Mezclar los dos sistemas es el error más común: si convierte un timestamp UTC a fecha de calendario sin pasar a la zona horaria del país de la empresa, las órdenes de la noche caen en el día siguiente y sus filtros `desde`/`hasta` no cuadran con lo que ve en la aplicación.
 
 ## 4.6 Paginación
 
@@ -912,7 +912,7 @@ Cinco eventos que no son un cambio de estado. Llegan al mismo callback, firmados
 | [ ] | Sabe que el estado final de una gestión en calle llega **al aprobar el cierre**; usa `orden.gestion_registrada` si necesita el instante | §6.5, §6.7 |
 | [ ] | No rellena huecos de analítica con ceros, descarta los puntos `parcial` al sumar, y distingue `null` de `0` | §5.8 |
 | [ ] | Valida los ids de métricas antes de llamar (el lote es todo o nada) | §5.8 |
-| [ ] | Maneja fechas de calendario en la **zona horaria del país de la empresa (hoy Costa Rica, UTC-6)** y timestamps en **UTC** | §4.5 |
+| [ ] | Maneja fechas de calendario en la **zona horaria del país de la empresa** y timestamps en **UTC** | §4.5 |
 | [ ] | Si valida el esquema en estricto, su modelo está regenerado contra el contrato vigente | Cambios |
 
 # 8. Errores frecuentes y cómo diagnosticarlos
