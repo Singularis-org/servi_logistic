@@ -1,15 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import { MARCA_FACTURA } from "@/lib/config/marca";
+import { construirPdfAnexo } from "@/lib/facturas-plataforma/anexo";
+import { construirPdfFactura } from "@/lib/facturas-plataforma/pdf";
 import {
   COLORES,
   Lienzo,
   MEDIDAS,
-  type Color,
   type Columna,
   type Fila,
   type LogoDelPdf,
 } from "@/lib/facturas-plataforma/pdf-comun";
+import { resumirFactura } from "@/lib/facturas-plataforma/resumen";
 import {
   contenidoDePagina,
   fuentesDePagina,
@@ -18,11 +20,12 @@ import {
   textoLegible,
   textosDePagina,
 } from "../pdf/pdf-inspector";
+import { datosDescarga } from "../../components/_facturas-plataforma";
+import { PT, figurasRellenas, leerPdf, mismoColor, rectangulosConColor } from "./_pdf-leido";
 
-// SLT-199 (T1.1) — R2, R5 y R6 sobre el PDF REAL que dibuja el módulo común: el texto se lee con la fuente que
-// declara el propio documento y los colores con los operadores del content stream.
+// SLT-199 (T1.1, T3.2) — R1, R2, R5 y R6 sobre el PDF REAL que dibuja el módulo común: el texto se lee con la fuente
+// que declara el propio documento y los colores con los operadores del content stream.
 
-const PT = 72 / 25.4;
 const COLUMNAS: readonly Columna[] = [
   { titulo: "#", ancho: 30 },
   { titulo: "Remisión", ancho: MEDIDAS.util - 70 },
@@ -47,25 +50,6 @@ function documento(dibujar: (l: Lienzo) => void) {
     });
   });
   return { bytes, pags, textos: pags.map((p) => p.map((t) => t.texto)) };
-}
-
-/** Los rectángulos rellenos en orden de dibujo, con el color de relleno activo (`r g b rg`, o `g` si es gris). */
-function rectangulosConColor(contenido: string): { x: number; w: number; h: number; color: Color }[] {
-  const out: { x: number; w: number; h: number; color: Color }[] = [];
-  const re = /([\d.]+) ([\d.]+) ([\d.]+) rg|([\d.]+) g\b|(-?[\d.]+) -?[\d.]+ (-?[\d.]+) (-?[\d.]+) re\s+f/g;
-  let color: Color = [0, 0, 0];
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(contenido)) !== null) {
-    if (m[1] !== undefined) color = [m[1], m[2], m[3]].map((c) => Number(c) * 255) as unknown as Color;
-    else if (m[4] !== undefined) color = [0, 1, 2].map(() => Number(m![4]) * 255) as unknown as Color;
-    else out.push({ x: Number(m[5]), w: Number(m[6]), h: Math.abs(Number(m[7])), color });
-  }
-  return out;
-}
-
-/** jsPDF escribe cada canal con dos decimales: hasta ~2 de 255 de diferencia. */
-function mismoColor(a: Color, b: Color): boolean {
-  return a.every((c, i) => Math.abs(c - b[i]) <= 2.6);
 }
 
 describe("SLT-199 R5 — tabla partida: cabecera repetida, sin perder ni duplicar filas, fondos alternos", () => {
@@ -164,5 +148,53 @@ describe("SLT-199 R6 — cabecera y barra degradada", () => {
     centro.forEach((c, i) => expect(Math.abs(c - COLORES.degradado[1][i])).toBeLessThanOrEqual(8));
     expect(tiras[0].x).toBeCloseTo(MEDIDAS.margen * PT, 1);
     expect(tiras.at(-1)!.x + tiras.at(-1)!.w).toBeCloseTo((MEDIDAS.margen + MEDIDAS.util) * PT, 1);
+  });
+});
+
+describe("SLT-199 R1 — la factura y el anexo comparten banda, barra, cabecera de tabla y pie", () => {
+  const datos = datosDescarga();
+  const resumen = resumirFactura(datos);
+  const factura = new Uint8Array(construirPdfFactura(datos, resumen, null));
+  const anexo = new Uint8Array(construirPdfAnexo(datos, resumen, null));
+  const figuras = (bytes: Uint8Array) => figurasRellenas(contenidoDePagina(bytes, 0));
+  const alto = (h: number) => (f: { h: number }) => Math.abs(f.h - h * PT) < 0.01;
+  /** Sin la y: cada documento pone la tabla donde le toca; R1 pide color, altura y posición horizontal. */
+  const huella = (f: { x: number; w: number; h: number; color: readonly number[] }) => ({
+    x: f.x.toFixed(2),
+    w: f.w.toFixed(2),
+    h: f.h.toFixed(2),
+    color: f.color.map((c) => Math.round(c)),
+  });
+
+  it("la banda: la primera figura, oscura, del mismo tamaño y en la misma x", () => {
+    const [bandaF, bandaA] = [figuras(factura)[0], figuras(anexo)[0]];
+    expect(mismoColor(bandaF.color, COLORES.noche)).toBe(true);
+    expect(bandaF.h).toBeCloseTo((MEDIDAS.altoBanda + MEDIDAS.altoBarra) * PT, 1);
+    expect(huella(bandaA)).toEqual(huella(bandaF));
+    expect(bandaA.y).toBeCloseTo(bandaF.y, 2);
+  });
+
+  it("la barra degradada: las mismas tiras, colores y posiciones", () => {
+    const [f, a] = [factura, anexo].map((b) => figuras(b).filter(alto(MEDIDAS.altoBarra)));
+    expect(f).toHaveLength(MEDIDAS.tiras);
+    expect(a.map(huella)).toEqual(f.map(huella));
+  });
+
+  it("la cabecera de tabla: mismo color, altura, x y ancho", () => {
+    const [f, a] = [factura, anexo].map(
+      (b) => figuras(b).filter((r) => alto(MEDIDAS.altoCabeceraTabla)(r) && mismoColor(r.color, COLORES.tinta))[0],
+    );
+    expect(f).toBeDefined();
+    expect(huella(a)).toEqual(huella(f));
+  });
+
+  it("el pie: los dos textos con la misma x, línea base, cuerpo y color", () => {
+    const pie = (bytes: Uint8Array) =>
+      leerPdf(bytes)
+        .pags[0].filter((t) => Math.abs(t.y - (MEDIDAS.alto - MEDIDAS.yPie) * PT) < 0.01)
+        .map((t) => ({ x: t.x.toFixed(2), tamano: t.tamano, color: t.color.map((c) => Math.round(c)) }));
+    const [f, a] = [pie(factura), pie(anexo)];
+    expect(f).toHaveLength(2);
+    expect(a).toEqual(f);
   });
 });

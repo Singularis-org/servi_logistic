@@ -67,6 +67,40 @@ export function rectangulosConColor(contenido: string): RectanguloLeido[] {
   return out;
 }
 
+/**
+ * Toda figura rellena (`re` o un trazado `m`/`l`/`c` cerrado con `f`), con su caja y el color de relleno activo: la
+ * banda y la banda de total son rectángulos redondeados, que jsPDF dibuja como trazado y no como `re`.
+ */
+export function figurasRellenas(contenido: string): RectanguloLeido[] {
+  const limpio = contenido.replace(/\((?:\\[\s\S]|[^()\\])*\)/g, "()").replace(/<[0-9a-fA-F\s]*>/g, "<>");
+  const re =
+    /([\d.]+) ([\d.]+) ([\d.]+) rg|([\d.]+) g\b|(-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) re\b|((?:-?[\d.]+ )+)[mlc]\b|\b([fn])\b/g;
+  const out: RectanguloLeido[] = [];
+  let color: Color = [0, 0, 0];
+  let xs: number[] = [];
+  let ys: number[] = [];
+  for (const m of limpio.matchAll(re)) {
+    if (m[1] !== undefined) color = [m[1], m[2], m[3]].map((c) => Number(c) * 255) as unknown as Color;
+    else if (m[4] !== undefined) color = [0, 1, 2].map(() => Number(m[4]) * 255) as unknown as Color;
+    else if (m[5] !== undefined) {
+      const [x, y, w, h] = [m[5], m[6], m[7], m[8]].map(Number);
+      xs.push(x, x + w);
+      ys.push(y, y + h);
+    } else if (m[9] !== undefined) {
+      const n = m[9].trim().split(/\s+/).map(Number);
+      n.forEach((v, i) => (i % 2 === 0 ? xs : ys).push(v));
+    } else {
+      if (m[10] === "f" && xs.length > 0) {
+        const [x, y] = [Math.min(...xs), Math.min(...ys)];
+        out.push({ x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y, color });
+      }
+      xs = [];
+      ys = [];
+    }
+  }
+  return out;
+}
+
 /** jsPDF escribe cada canal con dos decimales: hasta ~2 de 255 de diferencia. */
 export function mismoColor(a: Color, b: Color): boolean {
   return a.every((c, i) => Math.abs(c - b[i]) <= 2.6);
