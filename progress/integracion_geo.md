@@ -82,4 +82,7 @@ Todo con `NODE_OPTIONS=--max-old-space-size=8192`, sin `DATABASE_URL`: los tests
 
 ### CI
 
-PENDIENTE_CI
+- Commit de merge `4bacc530`, publicado con `git push` normal.
+- `gate.yml` lanzado a mano con `workflow_dispatch` sobre la rama:
+  https://github.com/Singularis-org/servi_logistic/actions/runs/44539511540 (no se esperó el
+  resultado).
