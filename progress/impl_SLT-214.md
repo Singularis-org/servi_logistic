@@ -241,3 +241,36 @@ beneficios» y el caso de `md` incluye la columna nueva), `PlanDetalle.test.tsx`
 - Archivos en LF (0 `\r` en los 8). E2E no corridos (T11, por indicación del leader).
 
 Veredicto: T9 en verde (typecheck, lint, los 4 tests, related y guardias), sin archivos fuera de la lista.
+
+## Tanda 5: T11
+
+### Archivos
+
+Creados:
+- `e2e/planes-beneficios.spec.ts` (R26): dos casos en serie, con el estilo, el login por OTP, `crearEmpresaE2E`,
+  `PlanesRepository.asignar` y los ayudantes de pasos de `e2e/planes-borrador.spec.ts`. Sufijo aleatorio en todo y
+  archiva al final el plan público que crea.
+
+Modificados:
+- `playwright.config.ts`: `planes-beneficios` en el proyecto `aislamiento`, tras `planes-borrador` (cada spec debe
+  nombrarse en un proyecto; un archivo sin nombrar no corre).
+
+### R<n> → test (esta tanda)
+
+| R | Test |
+|---|---|
+| R26.1–R26.3 | `planes-beneficios.spec.ts` «R26: crear un plan con 4 beneficios, verlos en el listado con «Mostrar más» y en el detalle, en orden» |
+| R26.4 | `planes-beneficios.spec.ts` «R26: editar los beneficios programa el cambio con su fecha sin cambiar todavía los del plan» |
+
+### Salida real
+
+- `pnpm run typecheck` (tsc --noEmit): sin errores, rc 0.
+- `pnpm exec eslint e2e/planes-beneficios.spec.ts playwright.config.ts`: «No issues found», rc 0.
+- `pnpm exec playwright test --list e2e/planes-beneficios.spec.ts`: los 2 casos en `[aislamiento]`, más los 10 de
+  `plataforma-vacia` que arrastra (`Total: 12 tests in 3 files`).
+- `pnpm run test:guardias`: `Test Files  357 passed | 3 skipped (360)` / `Tests  5380 passed | 28 skipped (5408)`, rc 0.
+- Archivo en LF.
+- **El E2E NO se corrió en local**: falta de memoria, por orden del leader. Se verifica en el CI del PR. El «Hecho»
+  de T11 (en verde en local, más los cuatro E2E de planes y `mi-plan-cambiar-plan`) queda pendiente de ese CI.
+
+Veredicto: T11 escrito, tipado, lint y guardias en verde; su ejecución queda para el CI del PR.
