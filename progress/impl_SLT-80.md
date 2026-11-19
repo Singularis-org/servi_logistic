@@ -316,3 +316,62 @@ tablas con cabecera repetida, citas y código con fondo, pie en 2..27.
 
 ### Veredicto
 T3, T4, T5 y T6 hechos; 169/169, typecheck y lint en verde; 5 mutaciones en rojo. Pendiente: T11 (E2E y gate).
+
+## T11 E2E — frontend_dev, 2026-11-18
+
+Parte E2E de T11. El `./init.sh` del cierre de T11 lo corre el implementer (no corrido aquí).
+
+### Archivos
+- `e2e/ayuda-guia-api.spec.ts` (nuevo): 3 casos con sesión real (`sesionDe`), empresa propia y un mensajero de una zona satélite.
+- `playwright.config.ts`: el spec entra en el proyecto `aislamiento` (la guardia `e2e-sin-saltos` exige un proyecto por spec).
+
+### Mapa R → caso E2E
+- R1313, R1306, R1308 → «el maestro llega a la guía desde /configuracion/api y ve las tres acciones».
+- R1309, R1312 → «el maestro descarga el PDF y la colección de Postman con su sesión» (200, `application/pdf`, `%PDF`, nombre de adjunto; Postman 200 JSON con `info` e `item`).
+- R1307 → «el mensajero recibe 404 en la guía, el PDF y la colección de Postman» (`maxRedirects: 0`).
+
+`grep -rl "/ayuda" e2e/` antes de crear el spec: sin resultados; no hay otros E2E de `/ayuda`.
+
+### Comando (base desechable `servi_slt80_e2e_desechable`: crear + migrate deploy + db:seed; `next build` con `NEXT_PUBLIC_APP_URL=http://localhost:3080`)
+```
+E2E_PUERTO=3080 E2E_STORAGE_PUERTO=54380 pnpm exec playwright test e2e/ayuda-guia-api.spec.ts --no-deps --reporter=list
+```
+`--no-deps`: el spec no depende de `plataforma-vacia` (crea su empresa con la fábrica); en CI corre con su grupo.
+
+Primera corrida: 1 failed (el `#` del `.md` se pinta como `h2` bajo el `h1` «Ayuda»; ajustado el oráculo al nivel real y añadido el índice «Oficina»). Después, dos corridas seguidas sobre la misma base:
+```
+  3 passed (9.7s)
+  3 passed (9.8s)
+```
+Corrida final (tras restaurar la mutación y reconstruir):
+```
+  ok 1 [aislamiento] › e2e\ayuda-guia-api.spec.ts:61:7 › SLT-80 — guía de integración por API en Ayuda › el maestro llega a la guía desde /configuracion/api y ve las tres acciones (R1313, R1306, R1308) (1.8s)
+  ok 2 [aislamiento] › e2e\ayuda-guia-api.spec.ts:87:7 › SLT-80 — guía de integración por API en Ayuda › el maestro descarga el PDF y la colección de Postman con su sesión (R1309, R1312) (591ms)
+  ok 3 [aislamiento] › e2e\ayuda-guia-api.spec.ts:108:7 › SLT-80 — guía de integración por API en Ayuda › el mensajero recibe 404 en la guía, el PDF y la colección de Postman (R1307) (606ms)
+  3 passed (10.3s)
+E2E_EXIT=0
+```
+
+### Mutación
+`lib/ayuda/documento.ts > puedeLeerDocumento`: `return documentoVisiblePara(doc, rol);` → `return true;` + `next build`:
+```
+  x  3 [aislamiento] › ... › el mensajero recibe 404 en la guía, el PDF y la colección de Postman (R1307)
+    Error: mensajero en /ayuda/descargas/guia-integracion-api
+    Expected: 404
+    Received: 200
+  1 failed
+  2 passed (9.7s)
+E2E_EXIT=1
+```
+Restaurada con `git checkout -- lib/ayuda/documento.ts`, reconstruida y en verde (arriba).
+
+### Otros comandos
+```
+pnpm exec eslint e2e/ayuda-guia-api.spec.ts playwright.config.ts  → LINT_EXIT=0
+pnpm exec tsc --noEmit                                             → TSC_EXIT=0
+vitest run tests/unit/guards/e2e-sin-saltos.guardia.test.ts        → 38 passed (38)
+```
+Servidores parados al terminar (Playwright cierra los suyos; 3080 y 54380 sin escucha).
+
+### Veredicto
+Parte E2E de T11 en verde (3/3, dos corridas) y la mutación del permiso la pone roja; falta el `./init.sh` del implementer.
