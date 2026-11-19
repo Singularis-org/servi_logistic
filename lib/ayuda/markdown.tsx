@@ -1,5 +1,7 @@
 import { Fragment, type ReactNode } from "react";
 
+import { analizarBloques, type BloqueMarkdown } from "@/lib/ayuda/bloques";
+
 /**
  * ⭑ FICHA 433 — el renderizador de Markdown del módulo de ayuda.
  *
@@ -75,90 +77,38 @@ const CLASES_TITULO: Record<number, string> = {
   4: "mt-5 text-base font-semibold text-foreground first:mt-0",
 };
 
-/** Es la fila separadora de una tabla (`| --- | --- |`), no una fila de datos. */
-function esSeparadorDeTabla(linea: string): boolean {
-  return /^\|[\s:|-]+\|$/.test(linea.trim()) && linea.includes("-");
-}
+/** Un bloque de `bloques.ts` -> su elemento de React. */
+function pintarBloque(bloque: BloqueMarkdown): ReactNode {
+  const clave = `b${bloque.linea}`;
 
-/** `| a | b |` -> `["a","b"]`. */
-function celdas(linea: string): string[] {
-  return linea
-    .trim()
-    .replace(/^\|/, "")
-    .replace(/\|$/, "")
-    .split("|")
-    .map((celda) => celda.trim());
-}
-
-/**
- * Markdown -> elementos de React. Devuelve la lista de bloques; quien llama decide el
- * envoltorio (y con él el ancho de línea).
- */
-export function renderizarMarkdown(markdown: string): ReactNode[] {
-  const lineas = markdown.split(/\r?\n/);
-  const bloques: ReactNode[] = [];
-  let i = 0;
-
-  while (i < lineas.length) {
-    const linea = lineas[i];
-    const clave = `b${i}`;
-
-    if (linea.trim() === "") {
-      i += 1;
-      continue;
-    }
-
-    // Bloque de código: se copia TAL CUAL, sin tocar el interior.
-    const apertura = /^```\s*(\S*)\s*$/.exec(linea);
-    if (apertura) {
-      const dentro: string[] = [];
-      i += 1;
-      while (i < lineas.length && !/^```\s*$/.test(lineas[i])) {
-        dentro.push(lineas[i]);
-        i += 1;
-      }
-      i += 1; // la línea de cierre
-      bloques.push(
+  switch (bloque.tipo) {
+    case "codigo":
+      // Se copia TAL CUAL, sin tocar el interior.
+      return (
         <pre
           key={clave}
           className="mt-4 overflow-x-auto rounded-md border border-border bg-muted p-3 text-sm"
         >
-          <code className="font-mono text-foreground">{dentro.join("\n")}</code>
-        </pre>,
+          <code className="font-mono text-foreground">{bloque.texto}</code>
+        </pre>
       );
-      continue;
-    }
 
-    const titulo = /^(#{1,6})\s+(.*)$/.exec(linea);
-    if (titulo) {
+    case "titulo": {
       // +1: el `<h1>` de la página ya lo pone el `PageHeader`. Tope en 6 (no existe `<h7>`).
-      const nivel = Math.min(titulo[1].length + 1, 6);
+      const nivel = Math.min(bloque.nivel + 1, 6);
       const Etiqueta = `h${nivel}` as "h2" | "h3" | "h4" | "h5" | "h6";
-      bloques.push(
+      return (
         <Etiqueta key={clave} className={CLASES_TITULO[nivel] ?? CLASES_TITULO[4]}>
-          {renderizarInline(titulo[2], clave)}
-        </Etiqueta>,
+          {renderizarInline(bloque.texto, clave)}
+        </Etiqueta>
       );
-      i += 1;
-      continue;
     }
 
-    if (/^(-{3,}|\*{3,}|_{3,})\s*$/.test(linea)) {
-      bloques.push(<hr key={clave} className="mt-6 border-border" />);
-      i += 1;
-      continue;
-    }
+    case "separador":
+      return <hr key={clave} className="mt-6 border-border" />;
 
-    // Tabla: una fila con tuberías seguida de la fila separadora.
-    if (linea.trim().startsWith("|") && i + 1 < lineas.length && esSeparadorDeTabla(lineas[i + 1])) {
-      const cabecera = celdas(linea);
-      i += 2;
-      const filas: string[][] = [];
-      while (i < lineas.length && lineas[i].trim().startsWith("|")) {
-        filas.push(celdas(lineas[i]));
-        i += 1;
-      }
-      bloques.push(
+    case "tabla":
+      return (
         // `overflow-x-auto`: a 390px una tabla de tres columnas no cabe, y lo correcto es que
         // scrollee ELLA y no la página entera (mismo criterio que el `overflow-x-clip` del
         // portal). Sin esto, el módulo rompe el ancho del viewport en el teléfono.
@@ -166,7 +116,7 @@ export function renderizarMarkdown(markdown: string): ReactNode[] {
           <table className="w-full border-collapse text-sm">
             <thead>
               <tr className="border-b border-border">
-                {cabecera.map((celda, c) => (
+                {bloque.cabecera.map((celda, c) => (
                   <th
                     key={`${clave}-th${c}`}
                     scope="col"
@@ -178,7 +128,7 @@ export function renderizarMarkdown(markdown: string): ReactNode[] {
               </tr>
             </thead>
             <tbody>
-              {filas.map((fila, f) => (
+              {bloque.filas.map((fila, f) => (
                 <tr key={`${clave}-tr${f}`} className="border-b border-border last:border-0">
                   {fila.map((celda, c) => (
                     <td key={`${clave}-td${f}-${c}`} className="px-3 py-2 align-top">
@@ -189,99 +139,51 @@ export function renderizarMarkdown(markdown: string): ReactNode[] {
               ))}
             </tbody>
           </table>
-        </div>,
+        </div>
       );
-      continue;
-    }
 
-    // Cita: el aviso de riesgo del README («los avisos de riesgo se destacan»).
-    if (/^>\s?/.test(linea)) {
-      const dentro: string[] = [];
-      while (i < lineas.length && /^>\s?/.test(lineas[i])) {
-        dentro.push(lineas[i].replace(/^>\s?/, ""));
-        i += 1;
-      }
-      bloques.push(
+    case "cita":
+      return (
         // Barra lateral con el acento de marca y fondo `muted`: los dos giran con el tema, así
         // que no cae en el par «color fijo sobre superficie que gira» de `DESIGN.md`.
         <blockquote
           key={clave}
           className="mt-4 border-l-4 border-primary bg-muted/60 px-4 py-3 text-foreground"
         >
-          {renderizarInline(dentro.join(" "), clave)}
-        </blockquote>,
+          {renderizarInline(bloque.texto, clave)}
+        </blockquote>
       );
-      continue;
-    }
 
-    // Listas. Sin anidamiento: ningún documento lo usa (medido) y soportarlo a medias es peor.
-    const vinieta = /^\s*[-*+]\s+(.*)$/.exec(linea);
-    const numerada = /^\s*\d+\.\s+(.*)$/.exec(linea);
-    if (vinieta || numerada) {
-      const ordenada = numerada !== null;
-      const patron = ordenada ? /^\s*\d+\.\s+(.*)$/ : /^\s*[-*+]\s+(.*)$/;
-      const items: string[] = [];
-      while (i < lineas.length) {
-        const item = patron.exec(lineas[i]);
-        if (item) {
-          items.push(item[1]);
-          i += 1;
-          continue;
-        }
-        // Continuación del ítem anterior (el Markdown de la carpeta parte líneas a ~100
-        // columnas, así que casi todo ítem largo tiene una segunda línea sangrada).
-        if (items.length > 0 && /^\s+\S/.test(lineas[i]) && !/^\s*$/.test(lineas[i])) {
-          items[items.length - 1] += ` ${lineas[i].trim()}`;
-          i += 1;
-          continue;
-        }
-        break;
-      }
-      const Lista = ordenada ? "ol" : "ul";
-      bloques.push(
+    case "lista": {
+      const Lista = bloque.ordenada ? "ol" : "ul";
+      return (
         <Lista
           key={clave}
-          className={`mt-4 space-y-2 pl-6 ${ordenada ? "list-decimal" : "list-disc"}`}
+          className={`mt-4 space-y-2 pl-6 ${bloque.ordenada ? "list-decimal" : "list-disc"}`}
         >
-          {items.map((item, n) => (
+          {bloque.items.map((item, n) => (
             <li key={`${clave}-li${n}`} className="pl-1">
               {renderizarInline(item, `${clave}-li${n}`)}
             </li>
           ))}
-        </Lista>,
+        </Lista>
       );
-      continue;
     }
 
-    // Párrafo: todas las líneas seguidas hasta una en blanco o el arranque de otro bloque.
-    const parrafo: string[] = [];
-    while (i < lineas.length && lineas[i].trim() !== "" && !arrancaOtroBloque(lineas[i])) {
-      parrafo.push(lineas[i].trim());
-      i += 1;
-    }
-    if (parrafo.length > 0) {
-      bloques.push(
+    case "parrafo":
+      return (
         <p key={clave} className="mt-4 leading-relaxed text-foreground">
-          {renderizarInline(parrafo.join(" "), clave)}
-        </p>,
+          {renderizarInline(bloque.texto, clave)}
+        </p>
       );
-      continue;
-    }
-    i += 1;
   }
-
-  return bloques;
 }
 
-/** ¿Esta línea empieza un bloque distinto? Corta el párrafo en curso. */
-function arrancaOtroBloque(linea: string): boolean {
-  return (
-    /^#{1,6}\s/.test(linea) ||
-    /^>\s?/.test(linea) ||
-    /^```/.test(linea) ||
-    /^\s*[-*+]\s+/.test(linea) ||
-    /^\s*\d+\.\s+/.test(linea) ||
-    /^(-{3,}|\*{3,}|_{3,})\s*$/.test(linea) ||
-    linea.trim().startsWith("|")
-  );
+/**
+ * Markdown -> elementos de React. Devuelve la lista de bloques; quien llama decide el
+ * envoltorio (y con él el ancho de línea). El paso líneas -> bloques es el de `bloques.ts`
+ * (SLT-80, D5), el mismo que usa el PDF de la guía de integración.
+ */
+export function renderizarMarkdown(markdown: string): ReactNode[] {
+  return analizarBloques(markdown).map(pintarBloque);
 }
