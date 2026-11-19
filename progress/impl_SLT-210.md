@@ -84,6 +84,15 @@ Corridas con `vitest run` sobre la base `servi_slt210_desechable`; cada una se p
 | M11 cambiar el orden no vuelve a la página 1 | 1 (R1402) |
 | M12 «Limpiar todo» resetea el orden | 1 (R1407) |
 
+Hallazgo 2 de la review (2026-11-19): caso nuevo «R1414 … catálogo de ESTADOS vacío» en
+`SateliteOrdenesListado.vistas-orden.test.tsx` (`Tests 10 passed (10)`). Mutación M13 —quitar
+`(estatus?.length ?? 0) > 0` de `catalogoVistas`— SOBREVIVE (`Tests 10 passed (10)`): no es un
+test débil, es que la barrera es doble. `evaluarVista` (453/R29, `lib/utils/vista-filtro-aplicabilidad.ts`)
+ya abandona la evaluación con `no_comprobable` en cuanto un filtro con valores llega sin opciones,
+así que con el catálogo de estados vacío el resultado es el mismo con o sin la condición de la
+pantalla. El caso fija el comportamiento (R1414); la condición local queda como segunda barrera,
+igual que en `/ordenes`.
+
 ## Salida de los comandos
 
 Todo con `con-desechable.cjs … servi_slt210_desechable` (base local migrada + `db:seed`).
