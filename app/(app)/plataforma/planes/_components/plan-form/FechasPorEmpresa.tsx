@@ -11,12 +11,13 @@ import { TEXTOS_PLAN_FORM } from "./textos";
 
 /**
  * SLT-144 (design §5.1, §5.2) — la lectura de la fecha de cada empresa para la entrada que hay en pantalla. La
- * guarda `PlanForm`; `vigenteDesde` es la F con la que se pidió (`null`: «De inmediato»), porque R19 la pinta.
+ * guarda `PlanForm`; `vigenteDesde` es la F con la que se pidió, porque R19 la pinta. SLT-135 (R19): siempre hay
+ * F, así que con `ok` la tabla (o «Este plan no tiene empresas…») sale siempre.
  */
 export type FechasDelCambio =
   | { fase: "cargando" }
   | { fase: "fallo" }
-  | { fase: "ok"; vigenteDesde: string | null; empresas: FechaDeEmpresa[]; avisos: TopeExcedido[] };
+  | { fase: "ok"; vigenteDesde: string; empresas: FechaDeEmpresa[]; avisos: TopeExcedido[] };
 
 export type FechasPorEmpresaProps = {
   /** `null`: no hay entrada válida (F vacía o mal formada); no se pinta nada, el error sale al guardar el paso. */
@@ -66,7 +67,7 @@ export function FechasPorEmpresa({ fechas, onReintentar }: FechasPorEmpresaProps
   const { vigenteDesde, empresas, avisos } = fechas;
   return (
     <div className="flex flex-col gap-3">
-      {vigenteDesde === null ? null : empresas.length === 0 ? (
+      {empresas.length === 0 ? (
         <p className="text-sm">{TEXTOS_PLAN_FORM.sinEmpresasDelPlan(vigenteDesde)}</p>
       ) : (
         <Table>

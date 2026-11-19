@@ -3,7 +3,6 @@
 import { FormField } from "@/components/shared/FormField";
 import { TEXTOS_TIPO_COBRO } from "@/components/shared/tipo-cobro";
 import { Input } from "@/components/ui/input";
-import { RadioGroup } from "@/components/ui/radio-group";
 
 import type { PropsDelPaso } from "./estado";
 import { FechasPorEmpresa, type FechasDelCambio } from "./FechasPorEmpresa";
@@ -16,10 +15,9 @@ export type PasoCuandoRigeProps = PropsDelPaso & {
 
 /**
  * SLT-130 (R17) — paso «Cuándo rige», solo al editar: «Rige desde» si cambia el precio (SLT-86 R22/R23);
- * si no, «Aplicar», de inmediato o a partir de una fecha (SLT-58).
+ * si no, «A partir de» (SLT-58). SLT-135 (R14): un solo campo de fecha; editar ya no se aplica en el acto.
  */
 export function PasoCuandoRige({ form, cambiar, idDe, errorDe, cambiaPrecio }: PasoCuandoRigeProps) {
-  // SLT-86 (R22, R23): un cambio de precio no se aplica «de inmediato»: lleva su fecha, mañana por defecto.
   if (cambiaPrecio) {
     return (
       <FormField
@@ -34,28 +32,14 @@ export function PasoCuandoRige({ form, cambiar, idDe, errorDe, cambiaPrecio }: P
   }
 
   return (
-    <fieldset className="flex flex-col gap-4">
-      <legend className="text-sm font-medium">{TEXTOS_PLAN_FORM.aplicar}</legend>
-      <RadioGroup
-        aria-label={TEXTOS_PLAN_FORM.aplicar}
-        value={form.aplicar}
-        onValueChange={(v) => cambiar("aplicar", v === "programado" ? "programado" : "inmediato")}
-        options={[
-          { value: "inmediato", label: TEXTOS_PLAN_FORM.inmediato },
-          { value: "programado", label: TEXTOS_PLAN_FORM.programado },
-        ]}
-      />
-      {form.aplicar === "programado" ? (
-        <FormField
-          id={idDe("vigenteDesde")}
-          label={TEXTOS_PLAN_FORM.fecha}
-          hint={TEXTOS_PLAN_FORM.fechaAyuda}
-          error={errorDe("vigenteDesde")}
-        >
-          <Input type="date" value={form.vigenteDesde} onChange={(ev) => cambiar("vigenteDesde", ev.target.value)} />
-        </FormField>
-      ) : null}
-    </fieldset>
+    <FormField
+      id={idDe("vigenteDesde")}
+      label={TEXTOS_PLAN_FORM.programado}
+      hint={TEXTOS_PLAN_FORM.fechaAyuda}
+      error={errorDe("vigenteDesde")}
+    >
+      <Input type="date" value={form.vigenteDesde} onChange={(ev) => cambiar("vigenteDesde", ev.target.value)} />
+    </FormField>
   );
 }
 
@@ -67,7 +51,7 @@ export type PasoCuandoRigeConFechasProps = PasoCuandoRigeProps & {
 
 /**
  * SLT-144 (design §5.3) — «Cuándo rige» con la fecha de cada empresa debajo de los controles de hoy. Va aparte
- * para no tocar esos controles (los cambia SLT-135).
+ * para no tocar esos controles.
  */
 export function PasoCuandoRigeConFechas({ fechas, onReintentarFechas, ...paso }: PasoCuandoRigeConFechasProps) {
   return (

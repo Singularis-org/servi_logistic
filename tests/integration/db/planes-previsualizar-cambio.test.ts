@@ -138,7 +138,8 @@ describeSiHayBase("SLT-144 — la fecha de cada empresa antes de programar el ca
     });
     expect(r.ya).toMatchObject({ estado: "ok", cambio: true });
     expect(r.recepciones).toBeGreaterThan(0);
-    expect(r.vistas.map((v) => v.estado)).toEqual(["ok", "ok", "ok"]);
+    // SLT-135 (R13): sin F es validation_error, y tampoco escribe.
+    expect(r.vistas.map((v) => v.estado)).toEqual(["ok", "validation_error", "ok"]);
     expect(r.despues).toEqual(r.antes);
   });
 

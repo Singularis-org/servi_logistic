@@ -18,7 +18,6 @@ import {
 import { tipoCobroDelHistorial } from "@/lib/planes/cobro";
 import { noAplicadasDelDetalle, pendienteDelDetalle, planConConsumo } from "@/lib/planes/consumo";
 import { fechaDeRecepcion } from "@/lib/planes/recepcion";
-import { cambiaElPrecio, diferenciasDelPlan } from "@/lib/planes/rastro";
 import {
   FECHA_DE_EFECTO_OBLIGATORIA,
   FECHA_DE_EFECTO_PASADA,
@@ -57,7 +56,6 @@ import {
   type PrecioDesde,
   type PreciosQueRigenResult,
   TIPO_QUINCENAL_CON_ORDENES_MENSUALES,
-  type VersionPlan,
 } from "@/lib/types/planes";
 import { fechaCalendario } from "@/lib/utils/calendario-zona";
 
@@ -237,56 +235,29 @@ export class PlanesService implements IPlanesService {
     const { planId, vigenteDesde, ...version } = parsed.data;
     const ahora = this.ahora();
     const hoy = fechaCalendarioPlataforma(ahora);
-    // SLT-86 (R22): ninguna fecha anterior a hoy, cambie o no el precio; se mira antes de leer nada.
-    if (vigenteDesde !== null && vigenteDesde < hoy) return errorEn("vigenteDesde", FECHA_DE_EFECTO_PASADA);
+    // SLT-86 (R22), SLT-135 (R2): ninguna fecha anterior a hoy, cambie o no el precio; antes de leer nada.
+    if (vigenteDesde < hoy) return errorEn("vigenteDesde", FECHA_DE_EFECTO_PASADA);
     const plan = await this.repo.plan(planId);
     if (plan === null) return { estado: "not_found" };
     if (plan.archivado) return { estado: "archivado" };
 
-    // SLT-86 (R15, R22): el costo base o un descuento cambian con fecha de efecto `≥ hoy`, sin edición
-    // inmediata: hoy se aplica en la misma transacción y desde sus 00:00 rige el precio nuevo; una fecha
-    // futura es el cambio programado de SLT-58. Lo demás sigue la regla de SLT-58 (R37).
-    if (cambiaElPrecio(diferenciasDelPlan(plan, { ...plan, ...version }))) {
-      if (vigenteDesde === null) return errorEn("vigenteDesde", FECHA_DE_EFECTO_OBLIGATORIA);
-      if (vigenteDesde === hoy) return this.editarYa(planId, version, actor.usuarioId, inicioDelDiaPlataforma(hoy), opciones);
-    } else if (vigenteDesde !== null && inicioDelDiaPlataforma(vigenteDesde).getTime() <= ahora.getTime()) {
-      // R37: la fecha rige a las 00:00 de la plataforma y tiene que caer después de ahora.
-      return errorEn("vigenteDesde", "La fecha de vigencia tiene que ser posterior a hoy.");
-    }
-
-    if (vigenteDesde !== null) {
-      // §16.2: programar o reemplazar el pendiente, sin tocar la versión vigente (R37, R39). R16: se
-      // guarda aunque alguna empresa ya pase un tope nuevo, y se avisa.
-      // El mismo reloj decide qué recordatorios caen después de ahora (R42).
-      const p = await this.repo.programarCambio(
-        planId,
-        version,
-        inicioDelDiaPlataforma(vigenteDesde),
-        actor.usuarioId,
-        ahora,
-        ...delBorrador(opciones),
-      );
-      if (p.estado === "periodicidad_incompatible") return periodicidadQueNoCabe(p.empresas);
-      if (p.estado !== "ok") return p;
-      // `vigenteDesde` vuelve como la fecha elegida (`AAAA-MM-DD`, P8); null si no se programó nada.
-      return ok(planId, p.cambio, { avisos: p.avisos, vigenteDesde: p.cambio ? vigenteDesde : null });
-    }
-    return this.editarYa(planId, version, actor.usuarioId, inicioDelDiaPlataforma(hoy), opciones);
-  }
-
-  /** La edición inmediata; `precioDesde` (las 00:00 de hoy) es desde cuándo rige un precio nuevo (R15). */
-  private async editarYa(
-    planId: string,
-    version: VersionPlan,
-    actorUsuarioId: string,
-    precioDesde: Date,
-    opciones?: OpcionesDeBorrador,
-  ): Promise<PlanResult> {
-    const r = await this.repo.editar(planId, version, actorUsuarioId, precioDesde, ...delBorrador(opciones));
-    if (r.estado === "periodicidad_incompatible") return periodicidadQueNoCabe(r.empresas);
-    // SLT-128 (R16): `cambio_a_medias` pasa tal cual; lo decide el repositorio bajo el cerrojo del plan.
-    if (r.estado !== "ok") return r;
-    return ok(planId, r.cambio, { avisos: r.avisos });
+    // SLT-135 (R3–R6, R8): toda edición se programa como en SLT-128, también con F = hoy (sus 00:00 ya
+    // pasaron: la empresa que empieza período hoy lo recibe en la siguiente pasada de la cola). §16.2:
+    // programar o reemplazar el pendiente, sin tocar la versión vigente. R16: se guarda aunque alguna
+    // empresa ya pase un tope nuevo, y se avisa. El mismo reloj decide qué recordatorios caen después de
+    // ahora (R42).
+    const p = await this.repo.programarCambio(
+      planId,
+      version,
+      inicioDelDiaPlataforma(vigenteDesde),
+      actor.usuarioId,
+      ahora,
+      ...delBorrador(opciones),
+    );
+    if (p.estado === "periodicidad_incompatible") return periodicidadQueNoCabe(p.empresas);
+    if (p.estado !== "ok") return p;
+    // SLT-135 (R7, R9): `vigenteDesde` vuelve como la fecha elegida (`AAAA-MM-DD`, P8); null si no cambió nada.
+    return ok(planId, p.cambio, { avisos: p.avisos, vigenteDesde: p.cambio ? vigenteDesde : null });
   }
 
   async archivar(actor: Actor | null, input: unknown): Promise<PlanResult> {
@@ -374,14 +345,15 @@ export class PlanesService implements IPlanesService {
     const { planId, vigenteDesde, topes } = parsed.data;
     const leida = await this.repo.vistaPreviaCambio(planId, topes);
     if (leida === null) return { estado: "not_found" };
-    const desde = vigenteDesde === null ? null : inicioDelDiaPlataforma(vigenteDesde);
+    // SLT-135 (R13): F es obligatoria; cada empresa lleva siempre su fecha.
+    const desde = inicioDelDiaPlataforma(vigenteDesde);
     return {
       estado: "ok",
       empresas: leida.empresas.map((e) => ({
         empresaId: e.id,
         empresa: e.nombre,
         tipoCobro: e.tipoCobro,
-        recibeEl: desde === null ? null : fechaCalendarioPlataforma(fechaDeRecepcion(e.tipoCobro, desde)),
+        recibeEl: fechaCalendarioPlataforma(fechaDeRecepcion(e.tipoCobro, desde)),
       })),
       avisos: leida.avisos,
     };

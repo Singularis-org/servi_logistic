@@ -106,7 +106,7 @@ describe("SLT-130 — filasDeRevision al editar", () => {
       },
       topes: { porRol: { admin: 1, adminTienda: 3 }, apiKeys: 2 },
     };
-    const extras = [filaDeCuandoRige({ cambiaPrecio: true, aplicar: "inmediato", precioDesde: "2026-11-14", vigenteDesde: "" })];
+    const extras = [filaDeCuandoRige({ cambiaPrecio: true, precioDesde: "2026-11-14", vigenteDesde: "" })];
     const filas = filasDeRevision({ modo: "editar", plan: PLAN, despues, extras });
 
     expect(filas).toEqual([
@@ -131,7 +131,7 @@ describe("SLT-130 — filasDeRevision al editar", () => {
       periodicidadOrdenes: "mensual",
       modulos: ["analitica"],
     };
-    const extras = [filaDeCuandoRige({ cambiaPrecio: false, aplicar: "programado", precioDesde: "", vigenteDesde: "2026-12-01" })];
+    const extras = [filaDeCuandoRige({ cambiaPrecio: false, precioDesde: "", vigenteDesde: "2026-12-01" })];
     const filas = filasDeRevision({ modo: "editar", plan: PLAN, despues, extras });
 
     expect(filas).toEqual([
@@ -145,10 +145,10 @@ describe("SLT-130 — filasDeRevision al editar", () => {
   });
 
   it("R23: sin cambios — solo queda la fila de cuándo rige", () => {
-    const extras = [filaDeCuandoRige({ cambiaPrecio: false, aplicar: "inmediato", precioDesde: "", vigenteDesde: "" })];
+    const extras = [filaDeCuandoRige({ cambiaPrecio: false, precioDesde: "2026-11-18", vigenteDesde: "2026-11-19" })];
     const filas = filasDeRevision({ modo: "editar", plan: PLAN, despues: { ...PLAN }, extras });
 
-    expect(filas).toEqual([{ clave: "Aplicar", valor: "De inmediato" }]);
+    expect(filas).toEqual([{ clave: "A partir de", valor: "2026-11-19" }]);
     expect(haySoloExtras(filas, extras)).toBe(true);
   });
 });
@@ -196,5 +196,18 @@ describe("SLT-130 — textoDeHoy", () => {
     expect(textoDeHoy({ tope: 5 })).toBe("Hoy: 5");
     expect(textoDeHoy({ tope: null })).toBe("Hoy: sin límite");
     expect(textoDeHoy({ tope: undefined })).toBe("Hoy: sin límite");
+  });
+});
+
+describe("SLT-135 — la fila de la fecha", () => {
+  it("R18: la fila de la fecha", () => {
+    expect(filaDeCuandoRige({ cambiaPrecio: true, precioDesde: "2026-11-20", vigenteDesde: "2026-11-25" })).toEqual({
+      clave: "Rige desde",
+      valor: "2026-11-20",
+    });
+    const sinPrecio = filaDeCuandoRige({ cambiaPrecio: false, precioDesde: "2026-11-20", vigenteDesde: "2026-11-25" });
+    expect(sinPrecio).toEqual({ clave: "A partir de", valor: "2026-11-25" });
+    // Nunca «Aplicar: De inmediato».
+    expect(JSON.stringify(sinPrecio)).not.toMatch(/Aplicar|inmediato/);
   });
 });

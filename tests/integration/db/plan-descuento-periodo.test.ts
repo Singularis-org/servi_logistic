@@ -7,7 +7,7 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { PlanesService } from "@/lib/services/PlanesService";
 import type { PrecioPlan, VersionPlan } from "@/lib/types/planes";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
-import { comoApp } from "@/tests/fabricas/organizaciones";
+import { comoApp, crearOrganizacion } from "@/tests/fabricas/organizaciones";
 
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
 import { asignar, crearEmpresa, crearOrden, crearPlanConCosto, movimientos } from "./_fixtures/cobro-porcentual";
@@ -42,6 +42,27 @@ async function descuentos(tx: TxDeTest, planId: string) {
 
 async function rastro(tx: TxDeTest, planId: string) {
   return tx.planRastro.findMany({ where: { planId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { accion: true, cambios: true } });
+}
+
+/**
+ * SLT-135: editar ya no aplica en el acto, programa. Un plan sin empresas lo promueve la pasada de la cola en F
+ * (`aplicarCambioProgramado`); aquí, con el reloj de ahora, que ya pasó las 00:00 de hoy.
+ */
+async function aplicarPendiente(tx: TxDeTest, planId: string, ahora: Date = new Date()) {
+  const { id } = await tx.planCambioProgramado.findUniqueOrThrow({ where: { planId }, select: { id: true } });
+  return planesEnTx(tx).aplicarCambioProgramado({ planId, cambioId: id }, ahora);
+}
+
+/** Una empresa con `planId`, de tipo `tipo` y entrada el 1 de enero de 2026 (a mano: solo prepara datos). */
+async function conPlan(tx: TxDeTest, planId: string, tipo: string): Promise<string> {
+  const { id } = await crearOrganizacion(tx);
+  await tx.$executeRawUnsafe(
+    `UPDATE "organizacion" SET "plan_id" = $1, "plan_tipo_cobro" = $2, "plan_ciclo_ancla_at" = '2026-01-01 06:00:00' WHERE "id" = $3`,
+    planId,
+    tipo,
+    id,
+  );
+  return id;
 }
 
 function version(precio: PrecioPlan, extra: Partial<VersionPlan> = {}) {
@@ -126,21 +147,25 @@ describeSiHayBase("SLT-86 — descuentos por período de un plan (R10, R11, R13,
       const planId = creado.planId;
       const nuevo: PrecioPlan = { tipo: "monto", mensual: "50000", descuentos: { anual: { tipo: "monto", monto: "60000" }, quincenal: { tipo: "porcentaje", porcentaje: "5" } } };
       const editado = await servicio.editar(SUPERADMIN, { planId, ...version(nuevo), vigenteDesde: HOY });
+      // SLT-135: con F = hoy y sin empresas, lo promueve la siguiente pasada de la cola.
+      const aplicado = await aplicarPendiente(tx, planId);
       const trasEditar = await descuentos(tx, planId);
       const igual = await servicio.editar(SUPERADMIN, {
         planId,
         ...version({ tipo: "monto", mensual: "50000.00", descuentos: { anual: { tipo: "monto", monto: "60000.00" }, quincenal: { tipo: "porcentaje", porcentaje: "5.00" } } }),
-        vigenteDesde: null,
+        vigenteDesde: HOY,
       });
-      return { editado, trasEditar, igual, rastro: await rastro(tx, planId) };
+      return { editado, aplicado, trasEditar, igual, rastro: await rastro(tx, planId) };
     });
-    expect(r.editado).toMatchObject({ estado: "ok", cambio: true });
+    expect(r.editado).toMatchObject({ estado: "ok", cambio: true, vigenteDesde: HOY });
+    expect(r.aplicado).toEqual({ estado: "aplicado" });
     expect(r.trasEditar).toEqual([
       { periodo: "anual", porcentaje: null, monto: "60000.00" },
       { periodo: "quincenal", porcentaje: "5.00", monto: null },
     ]);
-    expect(r.rastro.map((f) => f.accion)).toEqual(["creado", "editado"]);
-    expect(r.rastro[1].cambios).toEqual({
+    // SLT-135: el antes y el después de los descuentos quedan en la fila `cambio_aplicado` (sin edición inmediata).
+    expect(r.rastro.map((f) => f.accion)).toEqual(["creado", "cambio_programado", "cambio_aplicado"]);
+    expect(r.rastro[2].cambios).toEqual({
       descuento_quincenal: { antes: null, despues: { tipo: "porcentaje", porcentaje: "5.00" } },
       descuento_bimestral: { antes: { tipo: "monto", monto: "5000.00" }, despues: null },
       descuento_anual: { antes: { tipo: "porcentaje", porcentaje: "10.00" }, despues: { tipo: "monto", monto: "60000.00" } },
@@ -155,11 +180,65 @@ describeSiHayBase("SLT-86 — descuentos por período de un plan (R10, R11, R13,
       const creado = await servicio.crear(SUPERADMIN, entradaAsignable({ nombre: "Plan descuentos", precio: CON_DESCUENTOS }));
       if (creado.estado !== "ok") throw new Error(creado.estado);
       const aSinPrecio = await servicio.editar(SUPERADMIN, { planId: creado.planId, ...version({ tipo: "sin_precio" }), vigenteDesde: HOY });
-      return { conDescuentoSinPrecio, aSinPrecio, descuentos: await descuentos(tx, creado.planId) };
+      const aplicado = await aplicarPendiente(tx, creado.planId);
+      return { conDescuentoSinPrecio, aSinPrecio, aplicado, descuentos: await descuentos(tx, creado.planId) };
     });
     expect(r.conDescuentoSinPrecio).toMatchObject({ estado: "validation_error", fieldErrors: { precio: expect.any(Array) } });
     expect(r.aSinPrecio).toMatchObject({ estado: "ok", cambio: true });
+    expect(r.aplicado).toEqual({ estado: "aplicado" });
     expect(r.descuentos).toEqual([]);
+  });
+
+  // SLT-135 (R6): guardado el 16 de noviembre a las 15:00 con F = 16. La quincenal empieza período hoy: lo recibe
+  // con las 00:00 del 16 y el descuento rige desde ahí en el historial. La mensual, el 1 de diciembre; hasta que la
+  // última lo recibe, los descuentos del plan no cambian.
+  it("R6: un descuento con F hoy se programa", async () => {
+    const r = await revertida(base, async (tx) => {
+      const creado = await new PlanesService(planesEnTx(tx)).crear(SUPERADMIN, entradaAsignable({ nombre: "Plan descuentos", precio: CON_DESCUENTOS }));
+      if (creado.estado !== "ok") throw new Error(creado.estado);
+      const planId = creado.planId;
+      const quincenal = await conPlan(tx, planId, "quincenal");
+      const mensual = await conPlan(tx, planId, "mensual");
+      const guardado = new Date("2026-11-16T21:00:00.000Z");
+      const nuevo: PrecioPlan = { tipo: "monto", mensual: "50000", descuentos: { mensual: { tipo: "porcentaje", porcentaje: "5" } } };
+      const res = await new PlanesService(planesEnTx(tx), () => guardado).editar(SUPERADMIN, { planId, ...version(nuevo), vigenteDesde: "2026-11-16" });
+      const trasGuardar = await descuentos(tx, planId);
+      const pendiente = await tx.planCambioProgramado.findUniqueOrThrow({
+        where: { planId },
+        select: { id: true, vigenteDesde: true, recepciones: { orderBy: { recibeAt: "asc" }, select: { empresaId: true, recibeAt: true } } },
+      });
+      const historialDescuentos = () =>
+        tx.$queryRawUnsafe<{ desde: string; descuentos: unknown }[]>(
+          `SELECT "desde_at"::text AS desde, "descuentos" FROM "plan_precio_historial" WHERE "plan_id" = $1 ORDER BY "desde_at"`,
+          planId,
+        );
+      const repo = planesEnTx(tx);
+      const cambio = { planId, cambioId: pendiente.id };
+      const recibeQuincenal = await repo.recibirCambio(cambio, quincenal, new Date("2026-11-16T21:01:00.000Z"));
+      const trasQuincenal = { descuentos: await descuentos(tx, planId), historial: await historialDescuentos() };
+      const recibeMensual = await repo.recibirCambio(cambio, mensual, new Date("2026-12-01T06:01:00.000Z"));
+      return { res, trasGuardar, pendiente, quincenal, mensual, recibeQuincenal, trasQuincenal, recibeMensual, final: await descuentos(tx, planId) };
+    });
+    expect(r.res).toMatchObject({ estado: "ok", cambio: true, vigenteDesde: "2026-11-16" });
+    // Al guardar no cambia nada: queda programado con las 00:00 de hoy.
+    expect(r.trasGuardar).toEqual([
+      { periodo: "anual", porcentaje: "10.00", monto: null },
+      { periodo: "bimestral", porcentaje: null, monto: "5000.00" },
+    ]);
+    expect(r.pendiente.vigenteDesde).toEqual(new Date("2026-11-16T06:00:00.000Z"));
+    expect(r.pendiente.recepciones).toEqual([
+      { empresaId: r.quincenal, recibeAt: new Date("2026-11-16T06:00:00.000Z") },
+      { empresaId: r.mensual, recibeAt: new Date("2026-12-01T06:00:00.000Z") },
+    ]);
+    expect([r.recibeQuincenal, r.recibeMensual]).toEqual([{ estado: "aplicado" }, { estado: "aplicado" }]);
+    // La quincenal lo recibe: el descuento rige desde las 00:00 del 16 en el historial; el plan sigue igual.
+    expect(r.trasQuincenal.historial).toEqual([
+      { desde: "-infinity", descuentos: { anual: { tipo: "porcentaje", porcentaje: "10.00" }, bimestral: { tipo: "monto", monto: "5000.00" } } },
+      { desde: "2026-11-16 06:00:00", descuentos: { mensual: { tipo: "porcentaje", porcentaje: "5.00" } } },
+    ]);
+    expect(r.trasQuincenal.descuentos).toEqual(r.trasGuardar);
+    // La última recepción promueve el plan.
+    expect(r.final).toEqual([{ periodo: "mensual", porcentaje: "5.00", monto: null }]);
   });
 
   it("R13: ni un descuento de período ni el tipo de cobro cambian el cargo de una orden", async () => {

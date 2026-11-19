@@ -41,7 +41,6 @@ import type {
   ResultadoCancelarCambioDelPlan,
   ResultadoCancelarDelMaestro,
   ResultadoCrearYAsignar,
-  ResultadoEdicion,
   ResultadoProgramar,
   ResultadoRecibir,
   ResultadoRecordatorio,
@@ -237,11 +236,6 @@ async function escribirPrecioDelHistorial(
   planId: string,
   desde: Date | "siempre",
   precio: PrecioPlan,
-  /**
-   * SLT-128 (design §3.2, §3.3; R3): `"dejar"` = si ya hay fila en `desde`, se queda. La recepción de la primera
-   * empresa la escribe y ni las siguientes ni la promoción la tocan.
-   */
-  siYaEsta: "pisar" | "dejar" = "pisar",
 ): Promise<void> {
   const mensual = precio.tipo === "monto" ? precio.mensual : null;
   // Con dos decimales, como los lee `plan_descuento_periodo`: «10» y «10.00» son el mismo descuento.
@@ -258,14 +252,11 @@ async function escribirPrecioDelHistorial(
   }
   const descuentos = JSON.stringify(canonicos);
   const desdeAt = desde === "siempre" ? Prisma.sql`'-infinity'::timestamp` : Prisma.sql`${comoTimestamp(desde)}::timestamp`;
-  const alChocar =
-    siYaEsta === "dejar"
-      ? Prisma.sql`DO NOTHING`
-      : Prisma.sql`DO UPDATE SET "precio_mensual" = EXCLUDED."precio_mensual", "descuentos" = EXCLUDED."descuentos"`;
   await tx.$executeRaw`
     INSERT INTO "plan_precio_historial" ("plan_id", "desde_at", "precio_mensual", "descuentos")
     VALUES (${planId}, ${desdeAt}, ${mensual}::numeric, ${descuentos}::jsonb)
-    ON CONFLICT ("plan_id", "desde_at") ${alChocar}`;
+    ON CONFLICT ("plan_id", "desde_at")
+    DO UPDATE SET "precio_mensual" = EXCLUDED."precio_mensual", "descuentos" = EXCLUDED."descuentos"`;
 }
 
 /** SLT-83 (R1, R4): las dos columnas del modo porcentual; `null` las vacía (el plan pasa a fijo o vacío). */
@@ -463,24 +454,21 @@ async function escribirRastro(
 
 /**
  * Aplica una versión del plan (§5.3, §16.3): columnas, topes por rol, módulos incluidos y la
- * diferencia de módulos en cada empresa que tiene el plan EN ESTE MOMENTO (R17). Solo enciende lo
- * añadido y apaga lo quitado: las excepciones de cada empresa en los demás módulos no se tocan (P3).
- * La comparten la edición inmediata y el aplicador del cambio programado (T11). El ciclo de las
- * empresas no se toca (R38): no escribe `plan_ciclo_ancla_at`. SLT-86 (R15): tampoco su entrada, tipo ni
- * período; el precio nuevo les llega por el historial, desde su primer período que empiece en `precioDesde`.
+ * diferencia de módulos en cada empresa que tiene el plan EN ESTE MOMENTO (R17). Solo la usa la promoción
+ * del cambio programado (T11): SLT-135 quitó la edición inmediata. No escribe la fila del historial de
+ * precios: la escribe aparte `escribirPrecioDelCambio`, que decide con «Gana el último» (SLT-135 R6). El ciclo de las empresas no
+ * se toca (R38): no escribe `plan_ciclo_ancla_at`. SLT-86 (R15): tampoco su entrada, tipo ni período.
  */
 async function aplicarVersion(
   tx: Tx,
   antes: PlanDTO,
   version: VersionPlan,
   actor: ActorCongelado,
-  /** SLT-86 (§1.2; R15): desde cuándo rige el precio nuevo, si la versión lo cambia. */
-  precioDesde: Date,
   /**
    * SLT-128 (design §3.2; R10): al promover, cada empresa ya recibió sus módulos: repetirlos borraría las
-   * excepciones de R4. El precio lo escribe aparte `escribirPrecioDelCambio`, como al recibir.
+   * excepciones de R4.
    */
-  opciones: { sincronizarModulos: boolean; escribirPrecio: boolean } = { sincronizarModulos: true, escribirPrecio: true },
+  opciones: { sincronizarModulos: boolean },
 ): Promise<void> {
   await tx.plan.update({
     where: { id: antes.id },
@@ -496,11 +484,6 @@ async function aplicarVersion(
     },
   });
   await guardarDescuentos(tx, antes.id, version.precio);
-  // R15: el precio vigente y su fila del historial cambian juntos; sin cambio de precio, ninguna fila.
-  if (opciones.escribirPrecio && cambiaElPrecio(diferenciasDelPlan(antes, { ...antes, ...version }))) {
-    const vigente = (await leerPlan(tx, antes.id)) as PlanDTO;
-    await escribirPrecioDelHistorial(tx, antes.id, precioDesde, vigente.precio);
-  }
   await tx.planTopeRol.deleteMany({ where: { planId: antes.id } });
   await tx.planTopeRol.createMany({ data: filasDeTopes(version.topes).map((t) => ({ planId: antes.id, ...t })) });
   await tx.planModulo.deleteMany({ where: { planId: antes.id } });
@@ -885,8 +868,15 @@ async function fijarRecepciones(
 /**
  * R3: la fila del historial con `desde_at = F` si el precio del cambio no es el que el historial ya da en F. Se
  * compara con el historial y no con la fila del plan: tras un reemplazo (R13) el historial puede llevar ya el
- * precio de un cambio anterior que alguna empresa recibió. Si la fila ya está (la escribió otra recepción), se
- * queda.
+ * precio de un cambio anterior que alguna empresa recibió.
+ *
+ * SLT-135 (design §2, «Gana el último»; R6): si ya hay fila en F, ESTE MISMO cambio la deja como está y la de un
+ * cambio ANTERIOR se sobrescribe. Se distinguen por el precio, sin columna nueva: el precio de un pendiente no
+ * cambia (un reemplazo es otro pendiente, y los trabajos del viejo terminan en `sin_pendiente`), así que una fila
+ * en F con el precio de este cambio la dejó él (otra recepción, la promoción o un reintento de la cola) y el
+ * `return` de abajo no la toca. Con otro precio solo pudo dejarla un cambio anterior, p. ej. dos precios con
+ * F = hoy guardados el mismo día; la pisa, y la última fila sigue siendo el precio vigente (SLT-86 §1.2). Antes
+ * era `ON CONFLICT DO NOTHING` y el historial se quedaba con el primero.
  */
 async function escribirPrecioDelCambio(tx: Tx, plan: PlanDTO, desde: Date, precio: PrecioPlan): Promise<void> {
   const [fila] = await tx.$queryRaw<{ precio_mensual: string | null; descuentos: unknown }[]>`
@@ -896,7 +886,7 @@ async function escribirPrecioDelCambio(tx: Tx, plan: PlanDTO, desde: Date, preci
      ORDER BY "desde_at" DESC LIMIT 1`;
   const rige = fila === undefined ? plan.precio : precioDelHistorial(fila.precio_mensual, fila.descuentos);
   if (!cambiaElPrecio(diferenciasDelPlan({ ...plan, precio: rige }, { ...plan, precio }))) return;
-  await escribirPrecioDelHistorial(tx, plan.id, desde, precio, "dejar");
+  await escribirPrecioDelHistorial(tx, plan.id, desde, precio);
 }
 
 /**
@@ -928,10 +918,7 @@ async function promoverEnTx(tx: Tx, pendiente: PendienteCompleto): Promise<void>
   }
   const cambios = diferenciasDelPlan(antes, { ...antes, ...version });
   if (hayCambios(cambios)) {
-    await aplicarVersion(tx, antes, version, ACTOR_SISTEMA, pendiente.vigenteDesde, {
-      sincronizarModulos: false,
-      escribirPrecio: false,
-    });
+    await aplicarVersion(tx, antes, version, ACTOR_SISTEMA, { sincronizarModulos: false });
     await escribirPrecioDelCambio(tx, antes, pendiente.vigenteDesde, version.precio);
   }
   // R28: antes de borrar las versiones propias del plan, cada no aplicada se queda con la que tenía (su fila propia
@@ -1390,58 +1377,6 @@ export class PlanesRepository
         }));
         return r.id;
       }),
-    );
-  }
-
-  editar(
-    planId: string,
-    version: VersionPlan,
-    actorUsuarioId: string,
-    precioDesde: Date,
-    borradorId?: string,
-  ): Promise<ResultadoEdicion> {
-    return comoPlataforma("SL-24", "editar un plan del catálogo de inmediato (superadmin)", () =>
-      this.prisma.$transaction((tx) => consumirBorrador(tx, borradorId, async (): Promise<ResultadoEdicion> => {
-        if (!(await bloquearPlanParaEscribir(tx, planId))) return { estado: "not_found" };
-        const antes = (await leerPlan(tx, planId)) as PlanDTO;
-        if (antes.archivado) return { estado: "archivado" };
-        // SLT-128 (R16, P7): con el plan partido, aplicar «a todas en el acto» dejaría a cada empresa en una
-        // versión que nadie programó. Se pide programarlo con fecha.
-        if (await planPartido(tx, planId)) return { estado: "cambio_a_medias" };
-        const cambios = diferenciasDelPlan(antes, { ...antes, ...version });
-        if (!hayCambios(cambios)) return { estado: "ok", cambio: false, avisos: [] };
-        // SLT-118 (R37): a mensual con alguna empresa quincenal, se rechaza sin escribir.
-        const quincenales = await empresasQuincenalesSiPasaAMensual(tx, antes, version);
-        if (quincenales > 0) return { estado: "periodicidad_incompatible", empresas: quincenales };
-
-        // R16 (revisado el 2026-10-28): ya no se rechaza. Se guarda y se avisa de quién ya pasa un
-        // tope; desde ahora sus altas que pasen el tope las rechazan los triggers.
-        const empresas = await empresasDelPlan(tx, planId);
-        const avisos = await excedidosDe(tx, empresas, version.topes);
-        const actor = await resolverActorCongelado(tx, actorUsuarioId);
-        await aplicarVersion(tx, antes, version, actor, precioDesde);
-        const editId = await escribirRastro(tx, { id: planId, nombre: version.nombre }, "editado", cambios, actorUsuarioId, actor);
-        // R41 (§16.4): un correo de guardado por empresa del plan, en esta transacción. La clave lleva
-        // el id de la fila `editado` de `plan_rastro` (no hay programación).
-        await encolarAvisos(
-          tx,
-          empresas.map((e) => ({
-            organizacionId: e.id,
-            dedupeKey: dedupeAviso(editId, "guardado", e.id),
-            payload: {
-              cambioId: null,
-              planId,
-              planNombre: antes.nombre,
-              tipo: "guardado",
-              cambios,
-              vigenteDesde: null,
-              reemplazaA: null,
-              topesPasados: topesDeLaEmpresa(avisos, e.id),
-            },
-          })),
-        );
-        return { estado: "ok", cambio: true, avisos };
-      })),
     );
   }
 

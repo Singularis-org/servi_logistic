@@ -122,8 +122,8 @@ export function rangoInicioCiclo(min: string, max: string): string {
 /** Error del campo `inicioCiclo` cuando la empresa ya tiene plan (R31). */
 export const SOLO_PRIMERA_ASIGNACION = "La fecha de inicio solo se elige en la primera asignación.";
 
-/** SLT-86 (R16): error del campo `vigenteDesde` cuando falta en un cambio a una empresa con plan. */
-export const FECHA_DE_EFECTO_OBLIGATORIA = "Elige desde qué fecha rige el cambio.";
+/** SLT-86 (R16), SLT-135 (R1): vive en `lib/types/planes.ts` (la usa `editarPlanSchema`); se reexporta aquí. */
+export { FECHA_DE_EFECTO_OBLIGATORIA } from "@/lib/types/planes";
 
 /** SLT-86 (R22): error del campo `vigenteDesde` con una fecha anterior a hoy. */
 export const FECHA_DE_EFECTO_PASADA = "La fecha de efecto no puede ser anterior a hoy.";
@@ -171,7 +171,8 @@ export function asuntoCambioPlan(tipo: TipoCorreoCambioPlan, planNombre: string)
 
 /**
  * La primera frase: qué plan cambia y desde cuándo (R41). `fecha` null = edición inmediata (solo con
- * `guardado`: los recordatorios siempre tienen fecha).
+ * `guardado`: los recordatorios siempre tienen fecha). SLT-135 (R21): editar ya no tiene edición inmediata;
+ * la rama queda para los correos sin fecha encolados antes del despliegue.
  */
 export function introCambioPlan(
   tipo: Exclude<TipoCorreoCambioPlan, "cancelado">,
@@ -210,10 +211,6 @@ export const MENSAJE_CANCELAR_CAMBIO_A_MEDIAS =
 /** R15: archivar con un pendiente que aún no llegó a todas sus empresas. */
 export const MENSAJE_ARCHIVAR_CAMBIO_A_MEDIAS =
   "El plan tiene un cambio programado que aún no llegó a todas sus empresas. Espera a que termine o cancélalo.";
-
-/** R16 (P7): la edición «De inmediato» con el plan partido. */
-export const MENSAJE_EDITAR_CAMBIO_A_MEDIAS =
-  "Alguna empresa ya recibió el cambio programado. Programa este cambio con una fecha.";
 
 /** R11: bajo «Cambio programado desde F» en el detalle del plan. */
 export function textoRecepcionesDelCambio(recibidas: number, total: number): string {

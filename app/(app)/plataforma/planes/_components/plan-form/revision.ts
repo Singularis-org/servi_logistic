@@ -180,17 +180,11 @@ export function extrasDeGeneral(e: {
 
 /**
  * R23: la fila de cuándo rige al editar: «Rige desde» si cambia el precio (SLT-86 R22); si no, «A partir
- * de» con su fecha o «Aplicar: De inmediato» (SLT-58).
+ * de» con su fecha. SLT-135 (R18): toda edición lleva fecha.
  */
-export function filaDeCuandoRige(e: {
-  cambiaPrecio: boolean;
-  aplicar: "inmediato" | "programado";
-  precioDesde: string;
-  vigenteDesde: string;
-}): FilaDeRevision {
+export function filaDeCuandoRige(e: { cambiaPrecio: boolean; precioDesde: string; vigenteDesde: string }): FilaDeRevision {
   if (e.cambiaPrecio) return { clave: TEXTOS_TIPO_COBRO.rigeDesde, valor: e.precioDesde };
-  if (e.aplicar === "programado") return { clave: TEXTOS_PLAN_FORM.programado, valor: e.vigenteDesde };
-  return { clave: TEXTOS_PLAN_FORM.aplicar, valor: TEXTOS_PLAN_FORM.inmediato };
+  return { clave: TEXTOS_PLAN_FORM.programado, valor: e.vigenteDesde };
 }
 
 /**

@@ -48,7 +48,6 @@ function doble() {
     empresa: vi.fn<IPlanesRepository["empresa"]>(async (id) => ({ id, nombre: "Mensajería Uno", planId: null })),
     plan: vi.fn<IPlanesRepository["plan"]>(async () => plan()),
     crear: vi.fn<IPlanesRepository["crear"]>(async () => PLAN),
-    editar: vi.fn<IPlanesRepository["editar"]>(async () => ({ estado: "ok", cambio: true, avisos: [] })),
     archivar: vi.fn<IPlanesRepository["archivar"]>(async () => ({ estado: "ok", cambio: true })),
     asignar: vi.fn<IPlanesRepository["asignar"]>(async () => ({ estado: "ok", cambio: true, avisos: [], pendiente: false })),
     cancelarCambioEmpresa: vi.fn<IPlanesRepository["cancelarCambioEmpresa"]>(async () => ({ estado: "ok" })),
@@ -221,13 +220,11 @@ describe("SLT-66 — R30: editar, programar y archivar no se frenan", () => {
     ["vaciando el costo por orden", { costoPorOrden: null }],
   ];
 
-  it.each(SIN_COSTO_VERSION)("editar de inmediato %s un plan con empresas → ok y se llama al repositorio", async (_caso, extra) => {
+  it.each(SIN_COSTO_VERSION)("editar con la fecha de hoy %s un plan con empresas → ok y se llama al repositorio", async (_caso, extra) => {
     const v = version(extra);
-    // SLT-86 (R22): pasar a «sin precio» cambia el precio, así que lleva fecha de efecto: la de hoy es inmediata.
-    // Vaciar el costo por orden no toca el precio: sigue siendo inmediata sin fecha.
-    const vigenteDesde = "precio" in extra ? HOY : null;
-    expect(await servicio.editar(SUPERADMIN, { planId: PLAN, ...v, vigenteDesde })).toMatchObject({ estado: "ok" });
-    expect(repo.editar).toHaveBeenCalledWith(PLAN, v, "u-sa", new Date(`${HOY}T06:00:00.000Z`));
+    // SLT-135 (R3): toda edición lleva fecha y se programa; con la de hoy, desde sus 00:00.
+    expect(await servicio.editar(SUPERADMIN, { planId: PLAN, ...v, vigenteDesde: HOY })).toMatchObject({ estado: "ok" });
+    expect(repo.programarCambio).toHaveBeenCalledWith(PLAN, v, new Date(`${HOY}T06:00:00.000Z`), "u-sa", AHORA);
   });
 
   it.each(SIN_COSTO_VERSION)("programar %s un plan con empresas → ok y se llama al repositorio", async (_caso, extra) => {

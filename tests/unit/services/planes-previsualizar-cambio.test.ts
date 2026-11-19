@@ -11,6 +11,7 @@ import type { TopeExcedido } from "@/lib/types/planes";
 // SLT-144 (design §3.1; R22) — la vista previa del cambio de un plan, con un repositorio doble: el orden del contrato
 // (quién → zod → el plan existe) y la fecha de cada empresa que sale de `fechaDeRecepcion`. Que esa fecha y los
 // avisos son los que deja programar se mide contra Postgres en `tests/integration/db/planes-previsualizar-cambio.test.ts`.
+// SLT-135 (R13): F es obligatoria; ya no hay vista previa «De inmediato».
 
 const SUPERADMIN: Actor = { usuarioId: "u-sa", rol: "superadmin", organizacionId: null };
 const PLAN = randomUUID();
@@ -43,7 +44,7 @@ beforeEach(() => {
   servicio = new PlanesService(repo as unknown as IPlanesRepository, () => AHORA);
 });
 
-const recibeEl = async (vigenteDesde: string | null) => {
+const recibeEl = async (vigenteDesde: string) => {
   const r = await servicio.previsualizarCambio(SUPERADMIN, { planId: PLAN, vigenteDesde, topes: TOPES });
   if (r.estado !== "ok") throw new Error(JSON.stringify(r));
   return Object.fromEntries(r.empresas.map((e) => [e.tipoCobro, e.recibeEl]));
@@ -64,11 +65,11 @@ describe("PlanesService.previsualizarCambio (SLT-144)", () => {
   });
 
   it.each([
-    ["planId no uuid", { planId: "no-uuid", vigenteDesde: null, topes: TOPES }, "planId"],
+    ["planId no uuid", { planId: "no-uuid", vigenteDesde: "2026-11-16", topes: TOPES }, "planId"],
     ["fecha imposible", { planId: PLAN, vigenteDesde: "2026-02-31", topes: TOPES }, "vigenteDesde"],
     ["sin vigenteDesde", { planId: PLAN, topes: TOPES }, "vigenteDesde"],
-    ["topes con un rol desconocido", { planId: PLAN, vigenteDesde: null, topes: { porRol: { superadmin: 1 }, apiKeys: null } }, "topes.porRol.superadmin"],
-    ["campo de más", { planId: PLAN, vigenteDesde: null, topes: TOPES, extra: 1 }, "_"],
+    ["topes con un rol desconocido", { planId: PLAN, vigenteDesde: "2026-11-16", topes: { porRol: { superadmin: 1 }, apiKeys: null } }, "topes.porRol.superadmin"],
+    ["campo de más", { planId: PLAN, vigenteDesde: "2026-11-16", topes: TOPES, extra: 1 }, "_"],
   ])("R22: entrada inválida (%s) → validation_error sin llamar al repositorio", async (_caso, input, campo) => {
     const r = await servicio.previsualizarCambio(SUPERADMIN, input);
     expect(r.estado).toBe("validation_error");
@@ -108,10 +109,19 @@ describe("PlanesService.previsualizarCambio (SLT-144)", () => {
     expect((await recibeEl("2026-12-01")).mensual).toBe("2026-12-01");
   });
 
-  it("recibeEl: con F null («De inmediato») no hay fechas, pero sí empresas y avisos", async () => {
-    const r = await servicio.previsualizarCambio(SUPERADMIN, { planId: PLAN, vigenteDesde: null, topes: TOPES });
-    expect(r.estado === "ok" && r.empresas.map((e) => e.recibeEl)).toEqual([null, null, null, null]);
-    expect(r.estado === "ok" && r.avisos).toEqual([AVISO]);
+  // SLT-135 (R13): sustituye «con F null no hay fechas»: sin F no hay vista previa y no se lee nada.
+  it("R13: sin fecha es validation_error", async () => {
+    for (const input of [{ planId: PLAN, vigenteDesde: null, topes: TOPES }, { planId: PLAN, topes: TOPES }]) {
+      const r = await servicio.previsualizarCambio(SUPERADMIN, input);
+      expect(r.estado).toBe("validation_error");
+      if (r.estado === "validation_error") expect(Object.keys(r.fieldErrors)).toEqual(["vigenteDesde"]);
+    }
+    expect(repo.vistaPreviaCambio).not.toHaveBeenCalled();
+  });
+
+  it("R13: con F, cada empresa lleva siempre una fecha", async () => {
+    const r = await servicio.previsualizarCambio(SUPERADMIN, { planId: PLAN, vigenteDesde: "2026-10-28", topes: TOPES });
+    expect(r.estado === "ok" && r.empresas.every((e) => /^\d{4}-\d{2}-\d{2}$/.test(e.recibeEl))).toBe(true);
   });
 
   it("no mira el rango de F: una F pasada también se previsualiza (lo decide confirmar)", async () => {

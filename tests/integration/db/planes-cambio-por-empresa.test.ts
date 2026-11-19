@@ -44,7 +44,7 @@ type Trabajo = JobDTO & { organizacionId: string | null };
 
 /**
  * Un plan con una empresa por cada tipo de `tipos`, asignadas el 28 de octubre por el servicio. `programar` edita
- * con fecha (o sin ella) con el reloj que se le pase; `recibir` es la cola dando ESE pendiente a una empresa.
+ * con fecha (SLT-135: siempre) con el reloj que se le pase; `recibir` es la cola dando ESE pendiente a una empresa.
  */
 async function preparar(tx: TxDeTest, plan: Partial<CrearPlanInput>, tipos: readonly TipoCobro[]) {
   const servicio = new PlanesService(planesEnTx(tx), () => AHORA);
@@ -60,7 +60,7 @@ async function preparar(tx: TxDeTest, plan: Partial<CrearPlanInput>, tipos: read
     orgs.push(id);
   }
   await fijarEmpresa(tx, "");
-  const programar = async (vigenteDesde: string | null, cambio: Partial<EditarPlanInput> = {}, ahora: Date = AHORA) => {
+  const programar = async (vigenteDesde: string, cambio: Partial<EditarPlanInput> = {}, ahora: Date = AHORA) => {
     // El superadmin no tiene empresa: lo que encola sin empresa nace con `organizacion_id` NULL.
     await fijarEmpresa(tx, "");
     return new PlanesService(planesEnTx(tx), () => ahora).editar(SUPERADMIN, {
@@ -396,7 +396,7 @@ describeSiHayBase("SLT-128 — el cambio programado llega a cada empresa en su r
       await p.programar("2026-11-16", { precio: { tipo: "monto", mensual: "41000.00", descuentos: {} } });
       const primero = await p.pendiente();
       await p.recibir(quincenal, a("2026-11-16", 1));
-      // Guardado el 20 con F = 21 (P9: un precio con fecha de hoy se aplica en el acto en esta rebanada).
+      // Guardado el 20 con F = 21.
       const reemplazo = await p.programar(
         "2026-11-21",
         { precio: { tipo: "monto", mensual: "46000.00", descuentos: {} } },
@@ -497,23 +497,101 @@ describeSiHayBase("SLT-128 — el cambio programado llega a cada empresa en su r
     expect(r.pendienteVacio).toBe(0);
   });
 
-  it("R16 (P7): «De inmediato» sigue como hoy sin el plan partido; con alguna empresa que ya lo recibió se rechaza sin escribir nada", async () => {
+  // SLT-135 (R4): guardado el 16 de noviembre a las 15:00 con F = 16. La recepción de la quincenal son las 00:00
+  // del 16, ya vencidas: su trabajo lo toma la siguiente pasada de la cola. La mensual, el 1 de diciembre.
+  it("R4: F hoy: la quincenal lo recibe en la siguiente pasada y la mensual el 1 de diciembre", async () => {
+    const guardado = new Date("2026-11-16T21:00:00.000Z"); // 15:00 en la plataforma
     const r = await revertida(base, async (tx) => {
       const p = await preparar(tx, {}, ["quincenal", "mensual"]);
-      await p.programar("2026-11-16", { nombre: "Programado" });
-      const sinPartir = await p.programar(null, { nombre: "Inmediato" });
-      const trasInmediato = await fotoDelCambio(tx, p.planId);
-      await p.recibir(p.orgs[0], a("2026-11-16", 1));
-      const antes = await fotoDelCambio(tx, p.planId);
-      const partido = await p.programar(null, { nombre: "Otra vez inmediato" }, new Date("2026-11-17T15:00:00.000Z"));
-      return { sinPartir, trasInmediato, antes, partido, despues: await fotoDelCambio(tx, p.planId) };
+      const [quincenal, mensual] = p.orgs;
+      const res = await p.programar("2026-11-16", { nombre: "Hoy mismo" }, guardado);
+      const cambio = await p.pendiente();
+      const alGuardar = { plan: (await fotoDelPlan(tx, p.planId)).nombre, recepciones: await recepciones(tx, cambio) };
+      const deEmpresa = (await trabajos(tx, "plan_aplicar_cambio", p.planId)).filter((t) => t.organizacionId !== null);
+      const recordatorios = (await trabajos(tx, "plan_recordatorio_cambio", p.planId)).map((t) => [t.organizacionId, t.payload.dias]);
+      const correos = (await trabajos(tx, "plan_aviso_correo", p.planId)).map((t) => [t.organizacionId, t.payload.tipo, t.payload.vigenteDesde]);
+      const suyo = deEmpresa.find((t) => t.organizacionId === quincenal);
+      if (suyo === undefined) throw new Error("falta la recepción de la quincenal");
+      // La siguiente pasada, un minuto después de guardar.
+      await crearPlanAplicarCambioHandler(planesEnTx(tx), () => new Date(guardado.getTime() + 60_000))(suyo);
+      const trasPasada = { recepciones: await recepciones(tx, cambio), plan: (await fotoDelPlan(tx, p.planId)).nombre };
+      const mensualAntes = await p.recibir(mensual, a("2026-11-30", 1));
+      const mensualEl1 = await p.recibir(mensual, a("2026-12-01", 1));
+      return {
+        quincenal,
+        mensual,
+        res,
+        alGuardar,
+        runAfter: Object.fromEntries(deEmpresa.map((t) => [t.organizacionId, t.runAfter.toISOString()])),
+        recordatorios,
+        correos,
+        trasPasada,
+        mensualAntes,
+        mensualEl1,
+        final: { plan: (await fotoDelPlan(tx, p.planId)).nombre, pendientes: await tx.planCambioProgramado.count({ where: { planId: p.planId } }) },
+      };
     });
-    expect(r.sinPartir).toMatchObject({ estado: "ok", cambio: true });
-    // SL-24 R15: a todas en el acto; el pendiente sigue.
-    expect(r.trasInmediato.plan.nombre).toBe("Inmediato");
-    expect(r.trasInmediato.pendiente).not.toBeNull();
-    expect(r.partido).toEqual({ estado: "cambio_a_medias" });
-    expect(r.despues).toEqual(r.antes);
+    expect(r.res).toMatchObject({ estado: "ok", cambio: true, vigenteDesde: "2026-11-16" });
+    // Programado, no en el acto.
+    expect(r.alGuardar.plan).not.toBe("Hoy mismo");
+    expect(r.alGuardar.recepciones).toEqual({
+      [r.quincenal]: ["2026-11-16T06:00:00.000Z", false],
+      [r.mensual]: ["2026-12-01T06:00:00.000Z", false],
+    });
+    expect(r.runAfter).toEqual({ [r.quincenal]: "2026-11-16T06:00:00.000Z", [r.mensual]: "2026-12-01T06:00:00.000Z" });
+    // SLT-128 R21: ningún recordatorio para la recepción de hoy; la mensual (15 días) los suyos.
+    expect(r.recordatorios.filter(([org]) => org === r.quincenal)).toEqual([]);
+    expect(r.recordatorios.filter(([org]) => org === r.mensual).map(([, dias]) => dias).sort()).toEqual([1, 7]);
+    // El correo de guardado con la recepción de cada una: hoy para la quincenal.
+    expect(r.correos).toEqual(
+      expect.arrayContaining([
+        [r.quincenal, "guardado", "2026-11-16T06:00:00.000Z"],
+        [r.mensual, "guardado", "2026-12-01T06:00:00.000Z"],
+      ]),
+    );
+    expect(r.trasPasada.recepciones[r.quincenal]).toEqual(["2026-11-16T06:00:00.000Z", true]);
+    expect(r.trasPasada.recepciones[r.mensual]).toEqual(["2026-12-01T06:00:00.000Z", false]);
+    expect(r.trasPasada.plan).not.toBe("Hoy mismo");
+    expect(r.mensualAntes).toEqual({ estado: "aun_no_rige" });
+    expect(r.mensualEl1).toEqual({ estado: "aplicado" });
+    expect(r.final).toEqual({ plan: "Hoy mismo", pendientes: 0 });
+  });
+
+  // SLT-135 (R8): sustituye SLT-128 R16 (retirado). Con alguna empresa que ya recibió el pendiente, editar con F
+  // válida programa y reemplaza (SLT-128 R13); nunca `cambio_a_medias`.
+  it("R8: con el plan partido, editar programa y reemplaza", async () => {
+    const r = await revertida(base, async (tx) => {
+      const p = await preparar(tx, {}, ["quincenal", "mensual"]);
+      const [quincenal, mensual] = p.orgs;
+      await p.programar("2026-11-16", { nombre: "Programado" });
+      const primero = await p.pendiente();
+      await p.recibir(quincenal, a("2026-11-16", 1));
+      const antes = await fotoDelCambio(tx, p.planId);
+      const partido = await p.programar("2026-11-17", { nombre: "Reemplazo" }, new Date("2026-11-17T15:00:00.000Z"));
+      const segundo = await p.pendiente();
+      return {
+        quincenal,
+        mensual,
+        primero,
+        segundo,
+        antes,
+        partido,
+        despues: await fotoDelCambio(tx, p.planId),
+        recepciones: await recepciones(tx, segundo),
+        reemplazos: await tx.planRastro.count({ where: { planId: p.planId, accion: "cambio_reemplazado" } }),
+      };
+    });
+    expect(r.antes.recepciones[r.quincenal]).toEqual(["2026-11-16T06:00:00.000Z", true]);
+    expect(r.partido).toMatchObject({ estado: "ok", cambio: true, vigenteDesde: "2026-11-17" });
+    // Un solo pendiente: el nuevo, con recepciones nuevas sin recibir; lo recibido no se deshace.
+    expect(r.segundo).not.toBe(r.primero);
+    expect(r.recepciones).toEqual({
+      [r.quincenal]: ["2026-12-01T06:00:00.000Z", false],
+      [r.mensual]: ["2026-12-01T06:00:00.000Z", false],
+    });
+    expect(r.despues.versiones).toBe(r.antes.versiones);
+    expect(r.despues.plan).toEqual(r.antes.plan);
+    expect(r.reemplazos).toBe(1);
   });
 
   it("R17 (P4, P10 b): antes de F entra con la versión del plan y su recepción (recordatorios sin correo de guardado); en F o después, con la programada; los topes se miran contra ella", async () => {

@@ -126,8 +126,7 @@ const topesSchema = z.object({ topes: topesPlanSchema }).strict();
 
 const modulosDelPasoSchema = z.object({ modulos: modulosSchema }).strict();
 
-// Solo el formato que acepte la edición de hoy. «No antes de hoy» y «posterior a ahora si no cambia el precio»
-// los mira confirmar (R6, R19).
+// Lo que acepte la edición: una fecha obligatoria (SLT-135 R10). «No antes de hoy» lo mira confirmar (R6, R19).
 const vigenciaSchema = z.object({ vigenteDesde: editarPlanSchema.shape.vigenteDesde }).strict();
 
 export const ESQUEMAS_DE_CREAR = {

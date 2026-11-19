@@ -269,19 +269,46 @@ describeSiHayBase("SL-24 — el cambio programado de un plan (R37–R40)", () =>
     expect(r.pendiente?.avisosAlProgramar).toEqual([aviso]);
   });
 
-  it("R37: una fecha que no es posterior a ahora es validation_error y no escribe nada", async () => {
+  it("R37 (SLT-135 R2): una fecha anterior a hoy es validation_error y no escribe nada", async () => {
     const r = await revertida(base, async (tx) => {
       const p = await preparar(tx, {});
-      const hoy = await p.programar("2026-10-28", { nombre: "Otro" });
+      const ayer = await p.programar("2026-10-27", { nombre: "Otro" });
       return {
-        hoy,
+        ayer,
         pendientes: await tx.planCambioProgramado.count({ where: { planId: p.planId } }),
         trabajos: (await trabajosDeAplicar(tx, p.planId)).length,
         rastro: await tx.planRastro.count({ where: { planId: p.planId } }),
       };
     });
-    expect(r.hoy.estado).toBe("validation_error");
+    expect(r.ayer.estado).toBe("validation_error");
     expect(r).toMatchObject({ pendientes: 0, trabajos: 0, rastro: 1 });
+  });
+
+  // SLT-135 (R5): sin empresas, el trabajo sin empresa nace en las 00:00 de hoy, ya vencidas: lo promueve la
+  // siguiente pasada de la cola (SLT-128 R10).
+  it("R5: plan sin empresas con F hoy: lo promueve la siguiente pasada", async () => {
+    const r = await revertida(base, async (tx) => {
+      const p = await preparar(tx, { topes: { porRol: {}, apiKeys: 100 } }, 0);
+      const antes = await fotoDelPlan(tx, p.planId);
+      const resultado = await p.programar("2026-10-28", { nombre: "Hoy sin empresas", topes: { porRol: {}, apiKeys: 40 } });
+      const alGuardar = await fotoDelPlan(tx, p.planId);
+      const trabajos = await trabajosDeAplicar(tx, p.planId);
+      await correrAplicar(tx, delPlan(trabajos), despuesDe(AHORA));
+      return {
+        antes,
+        resultado,
+        alGuardar,
+        trabajos,
+        despues: await fotoDelPlan(tx, p.planId),
+        pendientes: await tx.planCambioProgramado.count({ where: { planId: p.planId } }),
+      };
+    });
+    expect(r.resultado).toMatchObject({ estado: "ok", cambio: true, vigenteDesde: "2026-10-28" });
+    expect(r.alGuardar).toEqual(r.antes);
+    expect(r.trabajos).toHaveLength(1);
+    expect(r.trabajos[0].runAfter.toISOString()).toBe("2026-10-28T06:00:00.000Z");
+    expect(r.despues).toMatchObject({ nombre: "Hoy sin empresas", apiKeys: 40 });
+    expect(r.pendientes).toBe(0);
   });
 
   it("programar la versión vigente sin pendiente no escribe nada", async () => {

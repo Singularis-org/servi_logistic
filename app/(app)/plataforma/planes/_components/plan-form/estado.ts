@@ -22,7 +22,6 @@ import { TEXTOS_PLAN_FORM } from "./textos";
 
 export type ModoDelPlanForm = "crear" | "editar";
 
-export type Accion = "inmediato" | "programado";
 /**
  * SLT-130 (design §5; R10–R13): una línea de la lista de descuentos. Un solo `valor` por línea, para que
  * cambiar la forma no borre lo escrito (R10). Cada período tiene a lo sumo una línea (R11).
@@ -54,9 +53,9 @@ export type Formulario = {
   minimoPorOrden: string;
   /** SLT-118 (R35): quincenal al crear (P14); al editar, la del plan. Viaja siempre. */
   periodicidadOrdenes: PeriodicidadOrdenes;
-  aplicar: Accion;
   /**
-   * Al editar, la fecha de «A partir de» (SLT-58). Al crear un custom para una empresa que ya tiene plan,
+   * Al editar, la fecha de «A partir de» (SLT-58); SLT-135 (R15): mañana por defecto, como `precioDesde`.
+   * Al crear un custom para una empresa que ya tiene plan,
    * su fecha de efecto «Rige desde» (SLT-86 R16, R25).
    */
   vigenteDesde: string;
@@ -114,8 +113,9 @@ export function inicial(plan: PlanDTO | null, inicioCiclo: string, precioDesde: 
       plan?.costoPorOrdenPorcentual?.minimo == null ? "" : montoParaCampo(plan.costoPorOrdenPorcentual.minimo),
     // SLT-118 (R35): un DTO sin ella es un plan quincenal, el DEFAULT de la columna (P14).
     periodicidadOrdenes: plan?.periodicidadOrdenes ?? "quincenal",
-    aplicar: "inmediato",
-    vigenteDesde: "",
+    // SLT-135 (R15, P2): al editar, mañana (el mismo valor que `precioDesde`); al crear, la fecha de efecto
+    // del custom, vacía.
+    vigenteDesde: plan === null ? "" : precioDesde,
     precioDesde,
     tipoCobro: "mensual",
     inicioCiclo,
@@ -207,7 +207,8 @@ export function camposEnOrden(modo: ModoDelPlanForm, f: Formulario, v: CamposVis
   else claves.push("costoPorOrdenPorcentual.porcentaje", "costoPorOrdenPorcentual.minimo");
   claves.push("periodicidadOrdenes");
   claves.push(...ROLES_CON_TOPE.map((r) => `topes.porRol.${r}`), "topes.apiKeys", "modulos");
-  if (modo === "editar" && (v.cambiaPrecio || f.aplicar === "programado")) claves.push("vigenteDesde");
+  // SLT-135 (R14): al editar, «Cuándo rige» siempre tiene su campo de fecha.
+  if (modo === "editar") claves.push("vigenteDesde");
   return claves;
 }
 

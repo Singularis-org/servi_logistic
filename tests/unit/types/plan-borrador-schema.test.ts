@@ -55,7 +55,6 @@ describe("R6 — un paso válido pasa por su esquema", () => {
     ["módulos", ESQUEMAS_DE_CREAR.modulos, { modulos: ["analitica"] }],
     ["general al editar", ESQUEMAS_DE_EDITAR.general, { nombre: "Pro 2" }],
     ["vigencia con fecha", ESQUEMAS_DE_EDITAR.vigencia, { vigenteDesde: "2026-12-01" }],
-    ["vigencia de inmediato", ESQUEMAS_DE_EDITAR.vigencia, { vigenteDesde: null }],
   ] as const)("%s", (_caso, esquema, valores) => {
     expect(claves(esquema.safeParse(valores))).toEqual([]);
   });
@@ -135,6 +134,23 @@ describe("R6 — lo que cruza pasos o necesita la base o el reloj no se mira al 
   });
 
   it("una fecha de efecto pasada se acepta en Cuándo rige", () => {
+    expect(claves(ESQUEMAS_DE_EDITAR.vigencia.safeParse({ vigenteDesde: "2001-01-01" }))).toEqual([]);
+  });
+});
+
+// SLT-135 (R10): `vigencia` hereda la obligatoriedad de `editarPlanSchema`: sin fecha no se guarda. El rango (R2)
+// sigue mirándose al confirmar (SLT-129 R6).
+describe("SLT-135 — R10: el paso vigencia lleva fecha", () => {
+  it("R10: vigencia sin fecha es inválida; una fecha pasada se acepta al guardar", () => {
+    for (const valores of [{ vigenteDesde: null }, {}]) {
+      const r = ESQUEMAS_DE_EDITAR.vigencia.safeParse(valores);
+      expect(claves(r)).toEqual(["vigenteDesde"]);
+      expect(mensajes(r, "vigenteDesde")).toEqual(["Elige desde qué fecha rige el cambio."]);
+      // Por la entrada de guardar un paso: la clave lleva `valores.` (el servicio quita el prefijo).
+      const g = guardarPasoBorradorSchema.safeParse({ modo: "editar", planId: randomUUID(), paso: "vigencia", valores });
+      expect(claves(g)).toEqual(["valores.vigenteDesde"]);
+      expect(mensajes(g, "valores.vigenteDesde")).toEqual(["Elige desde qué fecha rige el cambio."]);
+    }
     expect(claves(ESQUEMAS_DE_EDITAR.vigencia.safeParse({ vigenteDesde: "2001-01-01" }))).toEqual([]);
   });
 });
@@ -244,7 +260,7 @@ describe("R3 — guardar un paso: la entrada", () => {
         modo: "crear",
         borradorId: randomUUID(),
         paso: "vigencia",
-        valores: { vigenteDesde: null },
+        valores: { vigenteDesde: "2026-12-01" },
       }).success,
     ).toBe(false);
     expect(

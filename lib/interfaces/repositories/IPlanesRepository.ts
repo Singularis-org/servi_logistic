@@ -34,19 +34,11 @@ export interface EmpresaDePlanes {
 export type PeriodicidadIncompatibleAlEditar = { estado: "periodicidad_incompatible"; empresas: number };
 
 /**
- * SLT-128 (design §3.4; R14–R16): el pendiente del plan ya llegó a alguna empresa (o el plan está partido por
+ * SLT-128 (design §3.4; R14, R15): el pendiente del plan ya llegó a alguna empresa (o el plan está partido por
  * uno anterior) y la operación dejaría empresas del mismo plan en versiones que nadie programó. Nada se
  * escribió.
  */
 export type CambioAMedias = { estado: "cambio_a_medias" };
-
-export type ResultadoEdicion =
-  | { estado: "ok"; cambio: boolean; avisos: TopeExcedido[] }
-  | { estado: "not_found" }
-  | { estado: "archivado" }
-  | PeriodicidadIncompatibleAlEditar
-  /** SLT-128 (R16, P7): edición «De inmediato» con el plan partido. */
-  | CambioAMedias;
 
 export type ResultadoArchivar =
   | { estado: "ok"; cambio: boolean }
@@ -365,7 +357,7 @@ export interface PlanDeEmpresaLeida {
 }
 
 /*
- * SLT-129 (design §5.4; R17–R20): `borradorId` opcional en crear, crearYAsignar, editar y programarCambio. Con él,
+ * SLT-129 (design §5.4; R17–R20): `borradorId` opcional en crear, crearYAsignar y programarCambio. Con él,
  * la transacción toma el borrador al empezar (sin él, lanza `BorradorNoEncontrado`) y lo borra si termina en `ok`;
  * el plan creado toma su id.
  */
@@ -380,19 +372,6 @@ export interface IPlanesRepository {
   plan(planId: string): Promise<PlanDTO | null>;
   /** Crea el plan, sus topes y sus módulos, con su fila `creado` de `plan_rastro` (R1, R29). */
   crear(input: CrearPlanInput, actorUsuarioId: string, borradorId?: string): Promise<string>;
-  /**
-   * Edición inmediata (§5.3): aplica la versión a todas las empresas del plan y devuelve las que ya
-   * pasan algún tope nuevo, sin rechazar (R15–R17). Sin cambios reales no escribe nada. SLT-86 (§5.4;
-   * R15, R22): si cambia el costo base o un descuento, añade la fila del historial de precio desde
-   * `precioDesde` (las 00:00 de hoy) y no toca a ninguna empresa.
-   */
-  editar(
-    planId: string,
-    version: VersionPlan,
-    actorUsuarioId: string,
-    precioDesde: Date,
-    borradorId?: string,
-  ): Promise<ResultadoEdicion>;
   /**
    * Archiva y cancela el cambio pendiente en la misma transacción (R6, R40). SLT-86 (R21): también los
    * cambios de empresa pendientes hacia ese plan, primeras asignaciones incluidas, cada uno con su fila de

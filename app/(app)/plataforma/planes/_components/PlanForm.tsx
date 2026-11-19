@@ -8,7 +8,6 @@ import { primerPeriodoDelCambio, TEXTOS_TIPO_COBRO, textoDelPeriodo } from "@/co
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import type { RangoDelInicioDelCiclo } from "@/lib/planes/ciclo";
-import { MENSAJE_EDITAR_CAMBIO_A_MEDIAS } from "@/lib/planes/mensajes";
 import { cambiaElPrecio, diferenciasDelPlan } from "@/lib/planes/rastro";
 import type { BorradorVista, DescartarBorradorResult } from "@/lib/types/plan-borrador";
 import {
@@ -100,8 +99,8 @@ const RECHAZOS = {
   archivado: "El plan está archivado.",
   custom_de_otra_empresa: "Ese plan es de otra empresa.",
   sin_cambio_programado: "El plan ya no tiene un cambio pendiente.",
-  // SLT-128 (R16): el texto del formulario de edición. El detalle del plan pinta el de R14 o R15 según la acción.
-  cambio_a_medias: MENSAJE_EDITAR_CAMBIO_A_MEDIAS,
+  // SLT-135 (R8): editar ya no lo devuelve (SLT-128 R16 retirado); si llegara, el genérico.
+  cambio_a_medias: "No se pudo guardar. Inténtalo de nuevo.",
   /** Ajuste planes-custom (D3): al crear un custom, el `not_found` es la empresa elegida. */
   empresa_no_existe: "Esa empresa ya no existe.",
   generico: "No se pudo guardar. Inténtalo de nuevo.",
@@ -308,6 +307,8 @@ export function PlanForm(props: PlanFormProps) {
   const errorDe = (clave: string) => errores[clave];
   const { visibles, empresaElegida } = visiblesDe(props, form);
   const { pideInicioCiclo, pideFechaDeEfecto, cambiaPrecio } = visibles;
+  // SLT-135 (R16): al editar, la fecha que viaja es siempre la del campo que se ve en «Cuándo rige».
+  const fechaDelCambio = cambiaPrecio ? form.precioDesde : form.vigenteDesde;
 
   // SLT-144 (R6, R8): un paso guardado cuyos valores ya no son los guardados queda «Sin guardar»; sin todos
   // guardados y al día no se confirma.
@@ -432,7 +433,7 @@ export function PlanForm(props: PlanFormProps) {
     if (props.modo !== "editar" || (paso !== "vigencia" && paso !== "revisar")) return null;
     const v = previsualizarCambioSchema.safeParse({
       planId: props.plan.id,
-      vigenteDesde: cambiaPrecio ? form.precioDesde : form.aplicar === "inmediato" ? null : form.vigenteDesde,
+      vigenteDesde: fechaDelCambio,
       topes: versionDe(form).topes,
     });
     return v.success ? v.data : null;
@@ -569,8 +570,9 @@ export function PlanForm(props: PlanFormProps) {
     const v = editarPlanSchema.safeParse({
       ...version,
       planId: props.plan.id,
-      // SLT-86 (R22): un cambio de precio va siempre con su «Rige desde»; lo demás, como SLT-58.
-      vigenteDesde: cambiaPrecio ? form.precioDesde : form.aplicar === "inmediato" ? null : form.vigenteDesde,
+      // SLT-86 (R22), SLT-135 (R16, R17): «Rige desde» si cambia el precio; si no, «A partir de». Vacía o
+      // inválida, el esquema marca el campo.
+      vigenteDesde: fechaDelCambio,
     });
     return v.success ? {} : erroresDeZod(v.error.issues);
   }
@@ -711,12 +713,8 @@ export function PlanForm(props: PlanFormProps) {
     .filter(([clave]) => !conCampo.has(clave))
     .flatMap(([, mensajes]) => mensajes);
 
-  const textoEnviar =
-    props.modo === "crear"
-      ? TEXTOS_PLAN_FORM.crear
-      : !cambiaPrecio && form.aplicar === "programado"
-        ? TEXTOS_PLAN_FORM.programar
-        : TEXTOS_PLAN_FORM.guardar;
+  // SLT-135 (R16): al editar, siempre «Programar cambio».
+  const textoEnviar = props.modo === "crear" ? TEXTOS_PLAN_FORM.crear : TEXTOS_PLAN_FORM.programar;
   /** SLT-86 (R25): el primer período o tramo que abre el custom y su costo base, si hay fecha y precio válidos. */
   const fechaDelCustom = pideInicioCiclo ? form.inicioCiclo : pideFechaDeEfecto ? form.vigenteDesde : "";
   const precioValido = precioPlanSchema.safeParse(precioDe(form));
@@ -746,7 +744,6 @@ export function PlanForm(props: PlanFormProps) {
       : [
           filaDeCuandoRige({
             cambiaPrecio,
-            aplicar: form.aplicar,
             precioDesde: form.precioDesde,
             vigenteDesde: form.vigenteDesde,
           }),

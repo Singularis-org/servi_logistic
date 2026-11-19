@@ -35,7 +35,7 @@ function editar(extra: Record<string, unknown> = {}) {
     topes: TOPES,
     modulos: [],
     precio: { tipo: "sin_precio" },
-    vigenteDesde: null,
+    vigenteDesde: "2026-11-15", // SLT-135 (R1): obligatoria.
     costoPorOrden: null, // SLT-66 R8: la clave es obligatoria; vacío = null.
     costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del esquema
     ...extra,
@@ -95,16 +95,25 @@ describe("SL-24 — esquema de editar un plan", () => {
     expect(editarPlanSchema.safeParse(editar({ organizacionId: EMPRESA })).success).toBe(false);
   });
 
-  it("R37: vigenteDesde es una fecha AAAA-MM-DD que existe, o null", () => {
+  it("R37: vigenteDesde es una fecha AAAA-MM-DD que existe", () => {
     expect(editarPlanSchema.safeParse(editar({ vigenteDesde: "2026-11-15" })).success).toBe(true);
     expect(editarPlanSchema.safeParse(editar({ vigenteDesde: "2028-02-29" })).success).toBe(true);
     for (const malo of ["2027-02-29", "2026-13-01", "15/11/2026", "2026-11-15T00:00:00Z", "", 20261115]) {
       expect(editarPlanSchema.safeParse(editar({ vigenteDesde: malo })).success, String(malo)).toBe(false);
     }
-    // Es obligatorio decirlo: null = de inmediato.
+  });
+
+  // SLT-135 (R1): ya no hay «De inmediato»: ausente o `null` es error en `vigenteDesde`, con su texto.
+  it("R1: editarPlanSchema exige vigenteDesde", () => {
     const sin: Record<string, unknown> = editar();
     delete sin.vigenteDesde;
-    expect(editarPlanSchema.safeParse(sin).success).toBe(false);
+    for (const entrada of [sin, editar({ vigenteDesde: null })]) {
+      const r = editarPlanSchema.safeParse(entrada);
+      expect(r.success).toBe(false);
+      expect(r.error?.issues.map((i) => [i.path.join("."), i.message])).toEqual([
+        ["vigenteDesde", "Elige desde qué fecha rige el cambio."],
+      ]);
+    }
   });
 
   it("R37/P8: la fecha rige a las 00:00 de la plataforma (−06:00), sin depender de la zona del proceso", () => {

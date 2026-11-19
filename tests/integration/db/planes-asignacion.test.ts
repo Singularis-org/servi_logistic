@@ -180,19 +180,23 @@ describeSiHayBase("SL-24 — asignar un plan a una empresa (R4, R6, R9–R13)", 
         nombre: "Con más API keys",
         topes: { porRol: {}, apiKeys: 20 },
         modulos: ["analitica"],
-        // SLT-86 (R22): el mismo precio, para que la edición siga siendo inmediata sin fecha de efecto.
         precio: { tipo: "monto", mensual: "1000.00", descuentos: {} },
         costoPorOrden: "100.00",
         costoPorOrdenPorcentual: null, // SLT-83: campo obligatorio nuevo; no cambia lo que se comprueba.
-        vigenteDesde: null,
+        // SLT-135: toda edición lleva fecha. Hoy es 1 de mes: la mensual empieza período y lo recibe hoy, en la
+        // siguiente pasada de la cola (con su reloj), que además promueve el plan.
+        vigenteDesde: HOY,
       });
+      const { id: cambioId } = await tx.planCambioProgramado.findUniqueOrThrow({ where: { planId: plan }, select: { id: true } });
+      const recibido = await planesEnTx(tx).recibirCambio({ planId: plan, cambioId }, org, new Date(AHORA.getTime() + 60_000));
       const trasEditar = await modulos(tx, org);
       await c.asignar(org, otro);
-      return { excepcion, conExcepcion, edicion, trasEditar, trasCambiar: await modulos(tx, org) };
+      return { excepcion, conExcepcion, edicion, recibido, trasEditar, trasCambiar: await modulos(tx, org) };
     });
     expect(r.excepcion).toEqual({ estado: "ok", cambio: true });
     expect(r.conExcepcion).toEqual(["analitica", "monitoreo"]);
-    expect(r.edicion).toMatchObject({ estado: "ok", cambio: true });
+    expect(r.edicion).toMatchObject({ estado: "ok", cambio: true, vigenteDesde: HOY });
+    expect(r.recibido).toEqual({ estado: "aplicado" });
     expect(r.trasEditar).toEqual(["analitica", "monitoreo"]);
     expect(r.trasCambiar).toEqual(["analitica"]);
   });
