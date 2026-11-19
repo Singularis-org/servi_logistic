@@ -15,7 +15,6 @@ const MOV: WalletMovimientoDTO = {
   origenTipo: "gasto",
   origenId: "8a7b6c5d-4e3f-4a2b-9c1d-0e9f8a7b6c5d",
   descripcion: "Alquiler de bodega",
-  registradoPor: "1b2c3d4e-5f6a-4b7c-8d9e-0f1a2b3c4d5e",
   fechaMovimiento: "2026-07-12T10:00:00.000Z",
   dueno: "propio", // feature 231 (R31): un gasto fijo es dinero de la empresa
   documento: null, // ficha 459 (design §7.3): fila sin documento
@@ -187,7 +186,6 @@ describe("columnas de descarga del libro de caja", () => {
       categoria: "egreso_pago_plataforma",
       origenId: null,
       descripcion: "Transferencia del día",
-      registradoPor: "5a5a5a5a-1111-4222-8333-444444444444",
       dueno: "propio",
     };
     const autoria = (accion: "plataforma" | "plataforma_anulacion"): AutoriaDeFilaDTO => ({

@@ -558,3 +558,52 @@ Veredicto T5.1: E2E escrito y en `dinero`, typecheck y lint verdes; la ejecució
 Delegados al CI por decisión del leader (máquina con poca RAM): `pago-plataforma-por-fuera`,
 `pago-plataforma-confirmacion`, `pago-plataforma-sl45`, `wallet` y el grupo `dinero` entero. Constancia exigida
 por `docs/perfil-agentes.md > E2E en local antes del PR`: no se corrieron en local.
+
+## Review ronda 1 (backend_dev, 2026-11-19)
+
+### B1 — el id del superadmin llegaba a la wallet de la empresa (R13, R36)
+
+Grep de los lectores de `registradoPor` del DTO de la wallet (`WalletMovimientoDTO`) en `app/`, `components/` y
+`lib/`: **nadie lo lee**. Las apariciones de `registradoPor` en `lib/services/` son de `CrearMovimientoInput`
+(escritura: `AjusteCajaService`, `EgresoCajaAnulacionService`, `WalletService`, `CajaBackfillTesoreriaService`) o
+de otros tipos (`LibroCajaAutoriaRepository`, `EstadoCuentaRepository`, feeds); en `app/(app)/wallet/` solo hay un
+comentario de `wallet-ledger-descarga-columnas.ts` que ya decía que la descarga no lo saca. «Registró» sale de
+`LibroCajaAutoriaService`, que da nombres.
+
+Arreglo elegido: **quitar `registradoPor` del DTO entero** (`lib/types/wallet.ts`) y de su proyección
+(`toDTO` en `lib/repositories/WalletMovimientoRepository.ts`). Así no viaja en ningún asiento, tampoco en los de
+usuarios de la empresa (nadie lo pintaba). El SELECT en SQL de `listar` lo sigue leyendo (el tipo de fila es el
+de Prisma), pero no sale del repositorio.
+
+Otros caminos revisados: el kardex y su versión con detalle, y el detalle de la fila (`verDetalleDeMovimientoAction`)
+proyectan el mismo DTO o no llevan autor; «A quién» (`quienesDelLibroCajaAction`) da contrapartes, no autores. El
+test nuevo los serializa todos.
+
+Archivos:
+- `lib/types/wallet.ts`, `lib/repositories/WalletMovimientoRepository.ts` (el arreglo).
+- `tests/integration/db/pago-plataforma-por-fuera.test.ts`: test nuevo «R13, R36 (B1): ni el listado, ni la
+  descarga (kardex), ni el detalle de fila llevan el id o el nombre del superadmin». Con el pago por fuera y su
+  contra-asiento ya escritos, serializa la respuesta de `listarMovimientosAction`, `libroCajaKardexAction`,
+  `libroCajaKardexConDetalleAction`, `verDetalleDeMovimientoAction` (del pago y del contra-asiento) y
+  `quienesDelLibroCajaAction`, como el maestro de A; exige que ninguna sea un error, que no contengan ni el id ni el
+  nombre del superadmin y que las dos filas estén en el listado y en los dos kardex.
+- 30 archivos de `tests/`: los fixtures pierden la línea `registradoPor` del DTO (el typecheck los marcaba como
+  propiedad desconocida). `libro-caja-filtro-a-quien.test.ts` deja de comparar ese campo, que ya no existe;
+  `wallet-movimiento-repository.test.ts` espera el DTO sin él; `wallet-sin-uuid.guardia.test.tsx` pierde la
+  constante `USUARIO`, que solo usaba ese campo.
+
+Mapa: R13, R36 → además, `porFuera` «R13, R36 (B1): …».
+
+Mutación: con `registradoPor: r.registradoPor` repuesto en `toDTO`, el test nuevo sale **rojo**
+(`expected { cual: 'listado', id: true } to deeply equal { cual: 'listado', id: false }`, 1 failed | 20 passed);
+restaurado, verde.
+
+Verificación (`NODE_OPTIONS=--max-old-space-size=8192`, tras `pnpm exec prisma generate`):
+- `pnpm run typecheck`: exit 0.
+- `eslint --max-warnings=0` de los `.ts/.tsx` tocados: exit 0, salvo `tests/unit/services/wallet-detalle-movimiento.test.ts`,
+  que ya traía 6 avisos de `no-unused-vars` en HEAD (no son de esta línea; 0 errores).
+- `vitest --run` sobre los 64 archivos afectados (los tocados, el de B1 y los de `tests/unit` que importan
+  `WalletMovimientoRepository`): 64/64 archivos, 1449/1449 tests. `pago-plataforma-por-fuera` contra
+  `servi_logistic_slt143`: 21/21, 0 skipped.
+
+Veredicto B1: el DTO del libro ya no lleva el id de nadie; el test lo prueba en las cinco lecturas y mata la mutación.

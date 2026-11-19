@@ -108,7 +108,6 @@ function fila(over: Partial<WalletMovimientoDTO>): WalletMovimientoDTO {
     origenTipo: "gasto",
     origenId: null,
     descripcion: "Sueldo de septiembre",
-    registradoPor: uuid(),
     fechaMovimiento: "2026-09-20T15:00:00.000Z",
     dueno: "propio",
     documento: null,
@@ -137,7 +136,6 @@ const DEL_CIERRE = fila({
   origenId: uuid(),
   monto: "10000.00",
   descripcion: null,
-  registradoPor: null,
   dueno: "terceros",
 });
 const APORTE = fila({
@@ -590,7 +588,6 @@ describe("458-E T E.4 — el cobro por devolución a origen anulado (R61, R73)",
     origenId: GESTION_ANULADA,
     monto: "1800.00",
     descripcion: null,
-    registradoPor: null,
     documento: doc("rechazo_tienda_cobro", { anulado: true }),
   });
   /** Otro cobro, PENDIENTE: la cola lo sigue ofreciendo. El anulado (aprobado) no está en ella. */

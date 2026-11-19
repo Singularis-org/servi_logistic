@@ -10,9 +10,17 @@ import {
   registrarPagoPorFueraAction,
   verPagosDeEmpresaAction,
 } from "@/lib/actions/pagos-plataforma";
-import { registrarMovimientoManualAction, verResumenCajaAction } from "@/lib/actions/wallet";
+import {
+  libroCajaKardexAction,
+  libroCajaKardexConDetalleAction,
+  listarMovimientosAction,
+  registrarMovimientoManualAction,
+  verDetalleDeMovimientoAction,
+  verResumenCajaAction,
+} from "@/lib/actions/wallet";
 import { anularMovimientoAction } from "@/lib/actions/wallet-anulacion";
 import { registrarEgresoAdministrativoAction } from "@/lib/actions/wallet-egresos";
+import { quienesDelLibroCajaAction } from "@/lib/actions/wallet-filtros";
 import { conEmpresa } from "@/lib/db/contexto-empresa";
 import { conAislamientoPorEmpresa } from "@/lib/db/extension-empresa";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
@@ -693,6 +701,33 @@ describeSiHayBase("SLT-143 — el pago hecho por fuera y la anulación de un pag
     const texto = JSON.stringify([...filas.values()]);
     expect(texto).not.toContain(superadminId as string);
     expect(texto).not.toContain(nombreSuperadmin);
+  });
+
+  // Review ronda 1, B1: la autoría ya estaba limpia, pero el DTO del libro llevaba `registradoPor` (el uuid
+  // de quien escribió el asiento) y viajaba en el listado y la descarga. Aquí se mira la respuesta ENTERA de
+  // cada lectura de la wallet que llega al navegador de la empresa, con el pago por fuera y su contra-asiento.
+  it("R13, R36 (B1): ni el listado, ni la descarga (kardex), ni el detalle de fila llevan el id o el nombre del superadmin", async () => {
+    const comoMaestro = deps(A.p.maestro);
+    const respuestas = await conEmpresa(org(A), async () => ({
+      listado: await listarMovimientosAction({ page: 1, pageSize: 50 }, comoMaestro),
+      kardex: await libroCajaKardexAction({}, comoMaestro),
+      kardexConDetalle: await libroCajaKardexConDetalleAction({}, comoMaestro),
+      detallePago: await verDetalleDeMovimientoAction({ movimientoId: pago.pf1 }, comoMaestro),
+      detalleContra: await verDetalleDeMovimientoAction({ movimientoId: pago.contraPf1 }, comoMaestro),
+      quienes: await quienesDelLibroCajaAction({}, comoMaestro),
+    }));
+    for (const [cual, r] of Object.entries(respuestas)) {
+      const texto = JSON.stringify(r);
+      // Que la lectura respondió de verdad: un error no lleva el id y daría un verde falso.
+      expect({ cual, error: /"status":"(unauthenticated|forbidden|validation_error|internal_error|not_found)"/.test(texto) }).toEqual({ cual, error: false });
+      expect({ cual, id: texto.includes(superadminId as string) }).toEqual({ cual, id: false });
+      expect({ cual, nombre: texto.includes(nombreSuperadmin) }).toEqual({ cual, nombre: false });
+    }
+    // Y que las dos filas de la plataforma estaban dentro de lo que se miró.
+    for (const cual of ["listado", "kardex", "kardexConDetalle"] as const) {
+      const texto = JSON.stringify(respuestas[cual]);
+      expect({ cual, pago: texto.includes(pago.pf1), contra: texto.includes(pago.contraPf1) }).toEqual({ cual, pago: true, contra: true });
+    }
   });
 
   it("R24: anular otra vez → ya_anulado, y nada escrito", async () => {

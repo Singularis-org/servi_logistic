@@ -102,7 +102,6 @@ function mov(n: number, over: Partial<WalletMovimientoDTO> = {}): WalletMovimien
     origenTipo: "gasto",
     origenId: null,
     descripcion: `Movimiento ${n}`,
-    registradoPor: "99999999-0000-4000-8000-000000000001",
     fechaMovimiento: `2026-09-2${n}T15:00:00.000Z`,
     dueno: "propio",
     documento: null,

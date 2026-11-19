@@ -358,7 +358,6 @@ describeSiHayBase("458-E/TE.2 — filtro «A quién» del libro de la caja (Post
                 o.fechaMovimiento === x.fechaMovimiento.toISOString() &&
                 o.origenTipo === x.origenTipo &&
                 o.origenId === x.origenId &&
-                o.registradoPor === x.registradoPor &&
                 o.descripcion === x.descripcion
               );
             }),

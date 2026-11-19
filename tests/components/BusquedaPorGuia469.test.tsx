@@ -438,7 +438,6 @@ describe("469 T12/T13 — la caja (`/wallet`)", () => {
       origenTipo: "cierre_dia",
       origenId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
       descripcion: null,
-      registradoPor: null,
       fechaMovimiento: `2026-09-2${n}T15:00:00.000Z`,
       dueno: "propio",
       documento: null,
