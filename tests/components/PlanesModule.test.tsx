@@ -304,10 +304,11 @@ describe("SLT-58 R13 — el catálogo de planes", () => {
       "Cobro por orden",
       "Topes",
       "Módulos",
+      "Beneficios", // SLT-214 «Planes: beneficios de texto con ícono» (R7)
       "Revisar y crear",
     ]);
     expect(tituloDelPasoActual()).toBe("General");
-    expect(within(panel).getByText("Paso 1 de 6")).toBeInTheDocument();
+    expect(within(panel).getByText("Paso 1 de 7")).toBeInTheDocument();
     // SLT-144 (R1): el botón de avance guarda el paso.
     expect(within(panel).getByRole("button", { name: "Guardar y continuar" })).toBeInTheDocument();
   });

@@ -120,3 +120,77 @@ Tests adaptados FUERA de la lista de `tasks.md` (rompían por el cambio, sin toc
 
 Veredicto: T3–T6 en verde en `lib/` y sus tests; el typecheck de `app/`, los tests del formulario y la guardia de
 superficie quedan en rojo hasta T7–T10 (frontend).
+
+## Tanda 3 (frontend_dev): T8 y T10
+
+### Archivos
+
+Producción (en la lista de `tasks.md`, todos en `app/(app)/plataforma/planes/_components/`):
+- `plan-form/PasoBeneficios.tsx` (nuevo, T8): la lista editable. Cada fila: `Select` «Ícono del beneficio n» con el
+  ícono y el nombre de R5 en cada opción, `Input` «Texto del beneficio n» con `maxLength` 120, y «Subir / Bajar /
+  Quitar beneficio n» (subir deshabilitado en la primera, bajar en la última). «Agregar beneficio» añade
+  `{ icono: "check", texto: "" }` al final y lleva el foco a su texto. Vacío: «Este plan no tiene beneficios.».
+  Mover o quitar descarta los errores `beneficios.*`, que son por posición.
+- `plan-form/estado.ts`: `Formulario.beneficios` (con `clave` local para el `key`), `inicial` desde
+  `plan.beneficios`, `versionDe` (sin la clave y con el texto recortado), `camposEnOrden` (`beneficios.<i>.icono` y
+  `.texto` tras `modulos`), `IdPaso` y `pasosDe` (tras «Módulos») y `pasoDeLaClave`.
+- `plan-form/borrador.ts`: `valoresDelPaso("beneficios")` y `formDelBorrador` con claves locales nuevas.
+- `plan-form/textos.ts`: los textos de design §6 del paso.
+- `plan-form/PasoRevisar.tsx`: fila «Beneficios» con `ListaDeBeneficios` (vacío: «Sin beneficios»). Al crear, siempre,
+  tras «Módulos»; al editar, solo si cambian, como «antes → después» y antes de la fila de cuándo rige.
+- `PlanForm.tsx`: monta `PasoBeneficios` en `case "beneficios"`. Con `IdPasoGuardable` ya con `beneficios`, los 4
+  errores de typecheck heredados (`usar-borrador.ts` 134, 140, 156 y `PlanForm.tsx` 250) desaparecen sin tocar
+  `usar-borrador.ts`.
+
+Producción FUERA de la lista:
+- `components/ui/select.tsx`: `SelectOption.icon?: ReactNode`, opcional y aditivo, que pinta un ícono decorativo
+  delante de la etiqueta en la lista. Lo pide design §4.3 («en cada opción pinta el ícono y el nombre»); sin él, la
+  opción es la de siempre (`Select.test.tsx` y los 375 archivos que la importan, en verde).
+
+Tests (en la lista): `PlanFormBeneficios.test.tsx` (nuevo), `PlanFormPasos.test.tsx`, `plan-form-borrador.test.ts`,
+`PlanFormBorrador.test.tsx` (contadores 6/7 y R11 al retomar), `plan-form-pasos.ts` (solo el comentario del tope de
+vueltas: `accionesFalsas`, `avanzarHasta` y `terminar` ya pasan por el paso nuevo con la lista vacía),
+`PlanesModule.test.tsx` y `PlanDetalle.test.tsx` (solo la lista de pasos de su «R6: el panel abre el formulario por
+pasos»), y los cuatro E2E (`planes-borrador`: pasa por «Beneficios» y contadores 0/3/6 de 6 al crear y 0/4/7 de 7 al
+editar; `planes-superadmin`, `planes-costeo` y `planes-costo-porcentual`: un `siguiente(…, "Beneficios")` tras
+«Módulos»). Ninguna aserción de carga útil de los E2E cambia.
+
+Tests FUERA de la lista (rompían solo por el paso nuevo):
+- `tests/components/PlanForm.test.tsx`: las 3 peticiones exactas llevan `beneficios: []` (el borrador lo manda
+  siempre, design §3.2 y `peticionDeCrear`/`peticionDeEditar` de T4).
+- `tests/components/PlanFormRevisar.test.tsx`: la fila `["Beneficios", "Sin beneficios"]` al final de R22.
+
+### R<n> → test (esta tanda)
+
+| R | Test |
+|---|---|
+| R5 (selector) | `PlanFormBeneficios.test.tsx` «R5: el selector ofrece los 12 íconos, en orden y con su nombre; cada ícono es decorativo» |
+| R7 | `PlanFormPasos.test.tsx` «R7: pasos al crear», «R7: pasos al editar»; `plan-form-borrador.test.ts` «R7: los pasos que se guardan…»; `PlanesModule.test.tsx` y `PlanDetalle.test.tsx` «R6: el panel abre el formulario por pasos» |
+| R8 | `PlanFormBeneficios.test.tsx` «R8: agregar al final con «Check» y el foco en el texto, escribir, elegir ícono, subir, bajar y quitar» (incluye el orden que llega a la petición confirmada) |
+| R9 | `PlanFormBeneficios.test.tsx` «R9: la lista vacía lo dice y deja guardar y continuar», «R9: quitar el último beneficio…»; `plan-form-borrador.test.ts` «R9, R11: la lista vacía también va y vuelve» |
+| R10 | `PlanFormBeneficios.test.tsx` «R10: un texto vacío y uno repetido marcan su campo y no avanzan ni guardan», «R10: un error del servidor en `beneficios.<i>.texto` va bajo su campo», «R2: el texto admite hasta 120 caracteres en el campo» |
+| R11 | `plan-form-borrador.test.ts` «R11: ida y vuelta en los dos modos…», «R11: un borrador guardado con beneficios pisa los del plan…»; `PlanFormBorrador.test.tsx` «SLT-214 R11: retomar un cambio con el paso «Beneficios» guardado lo muestra tal cual» |
+| R13 | `PlanFormBeneficios.test.tsx` «R13: el paso abre con los beneficios vigentes del plan…», «R13: sin tocarlos, se programan los mismos»; `plan-form-borrador.test.ts` «R13: al crear, sin beneficios…» |
+| R14 | `PlanFormBeneficios.test.tsx` «R14: al crear lista los beneficios en orden y con su ícono», «R14: al editar, si cambian, «antes → después»; si no, no hay fila», «R14: un plan que se queda sin beneficios dice «Sin beneficios» después»; `PlanFormRevisar.test.tsx` «R22: al crear lista los valores finales» |
+
+### Salida real
+
+- `pnpm run typecheck` (tsc --noEmit): sin errores, rc 0.
+- `pnpm exec eslint` sobre los 20 archivos tocados (incluidos los 4 E2E): «No issues found», rc 0.
+- `pnpm exec vitest run tests/components/PlanFormBeneficios.test.tsx tests/components/PlanFormBorrador.test.tsx`:
+  `Test Files  2 passed (2)` / `Tests  38 passed (38)`.
+- `pnpm exec vitest related --run` sobre los 8 archivos de producción y el ayudante (arrastra todo lo que importa
+  `components/ui/select.tsx`): `Test Files  3 failed | 375 passed | 42 skipped (420)` /
+  `Tests  3 failed | 5833 passed | 326 skipped (6162)`. Los 3 rojos:
+  - `PlanesModule.test.tsx` y `PlanDetalle.test.tsx` «R6: el panel abre el formulario por pasos»: esperaban la lista
+    de pasos sin «Beneficios»; arreglados arriba.
+  - `RecoleccionModule.test.tsx` «vista DETALLE: las mismas secciones siguen encendidas tras conmutar»: no encontró
+    «Ver en el mapa» con la máquina cargada (la corrida duró 22 min); solo, pasa.
+- Revalidación: `pnpm exec vitest run` de `RecoleccionModule`, `PlanesModule`, `PlanDetalle`, `tests/components/PlanForm*`,
+  `plan-form-borrador`, `plan-form-revision` y `Select`: `Test Files  18 passed (18)` / `Tests  334 passed (334)`.
+- `pnpm run test:guardias`: `Test Files  357 passed | 3 skipped (360)` / `Tests  5380 passed | 28 skipped (5408)`.
+  `superficie-de-uso` ya está en verde: `BeneficiosDelPlan` lo montan `PasoBeneficios` y `PasoRevisar`.
+- E2E: no se corren en local por indicación del leader; se verifican en CI.
+
+Veredicto: T8 y T10 en verde (typecheck, lint, tests del formulario y guardias); un archivo de producción fuera de
+la lista (`components/ui/select.tsx`, aditivo) y dos tests fuera de la lista ajustados solo por el paso nuevo.

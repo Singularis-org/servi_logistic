@@ -212,6 +212,8 @@ async function rellenarRestoDelPlan(form: Locator): Promise<void> {
   for (const modulo of ORDEN_MODULOS) {
     await form.getByRole("checkbox", { name: nombreDelModulo(modulo), exact: true }).check();
   }
+  // SLT-214 «Planes: beneficios de texto con ícono» (R7, R9): «Beneficios» tras «Módulos», sin beneficios.
+  await siguiente(form, "Beneficios");
   await siguiente(form, "Revisar y crear");
 }
 

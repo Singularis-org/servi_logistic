@@ -59,7 +59,7 @@ Orden: T1 → T2 → (T3, T4, T5 [P]) → T6 → (T7, T8 [P]) → T9 → T10 →
     - con 5, se ven 3 y «Mostrar más» con `aria-expanded=false`; al pulsarlo se ven 5 y «Mostrar menos»; al pulsarlo
       otra vez, 3;
     - el «Sin beneficios» opcional.
-- [ ] **T8 [P]. Paso «Beneficios»** (`PasoBeneficios.tsx`, `estado.ts`, `borrador.ts` del cliente, `textos.ts`,
+- [x] **T8 [P]. Paso «Beneficios»** (`PasoBeneficios.tsx`, `estado.ts`, `borrador.ts` del cliente, `textos.ts`,
   `PlanForm.tsx`, `PasoRevisar.tsx`). R7–R11, R13, R14. Depende de T4 y T7.
   - **Hecho:**
     - `tests/components/PlanFormBeneficios.test.tsx` cubre:
@@ -78,7 +78,7 @@ Orden: T1 → T2 → (T3, T4, T5 [P]) → T6 → (T7, T8 [P]) → T9 → T10 →
     - `tests/components/MiPlanModule.test.tsx` cubre R23 (sin beneficios no hay sección) y R25 en «Esto es lo que
       cambia»;
     - `tests/components/MiPlanCambioDePlan.test.tsx` cubre R24, y que «Mostrar más» no selecciona el plan.
-- [ ] **T10. Adaptar los tests que recorren los pasos.** Depende de T8.
+- [x] **T10. Adaptar los tests que recorren los pasos.** Depende de T8.
   - Archivos: `tests/components/plan-form-pasos.ts`, `tests/components/PlanFormBorrador.test.tsx` y los cuatro E2E
     de planes.
   - Pasan por «Beneficios» después de «Módulos», y el contador pasa a 6 al crear y 7 al editar.

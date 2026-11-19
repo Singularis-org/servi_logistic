@@ -406,11 +406,12 @@ describe("SLT-58 R15 — editar y los avisos de topes pasados", () => {
       "Cobro por orden",
       "Topes",
       "Módulos",
+      "Beneficios", // SLT-214 «Planes: beneficios de texto con ícono» (R7)
       "Cuándo rige",
       "Revisar y programar",
     ]);
     expect(tituloDelPasoActual()).toBe("General");
-    expect(within(panel).getByText("Paso 1 de 7")).toBeInTheDocument();
+    expect(within(panel).getByText("Paso 1 de 8")).toBeInTheDocument();
     // SLT-144 (R1): el botón del pie guarda el paso en el borrador antes de avanzar.
     expect(within(panel).getByRole("button", { name: TEXTOS_PLAN_FORM.guardarYContinuar })).toBeInTheDocument();
   });

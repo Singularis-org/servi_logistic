@@ -251,6 +251,8 @@ test("el superadmin programa por pantalla el plan en «Porcentual» con fecha de
   await form.getByRole("textbox", { name: TEXTO.minimo, exact: true }).fill("500");
   await siguientePaso(form, "Topes");
   await siguientePaso(form, "Módulos");
+  // SLT-214 «Planes: beneficios de texto con ícono» (R7): al editar, «Beneficios» va antes de «Cuándo rige».
+  await siguientePaso(form, "Beneficios");
   await siguientePaso(form, "Cuándo rige");
   // SLT-135 (R23): sin «De inmediato»; el precio no cambia, así que el campo es «A partir de» (por defecto
   // mañana) y se pone hoy en la hora de la plataforma.
