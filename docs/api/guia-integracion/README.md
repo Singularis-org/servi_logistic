@@ -57,4 +57,6 @@ recibía el integrador acababan siendo distintos.
   Los `curl` van en bloques `bash` y los fragmentos con marcadores angulares (`<ordenId>`,
   `<host-de-storage>`) se admiten dentro de las cadenas.
 - Los importes, guías, UUID y claves son ilustrativos; nunca datos reales.
-- Tono: «usted», frases cortas, un aviso `⚠` por cada comportamiento que suele sorprender.
+- Tono: «usted», frases cortas, un aviso «Atención:» por cada comportamiento que suele sorprender.
+  Nada de símbolos fuera de la fuente del PDF (`⚠`, `✔`, `☐`, `∈`): la descarga falla con
+  `ErrorCaracterNoImprimible` (R1311).

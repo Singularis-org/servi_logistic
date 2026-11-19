@@ -114,9 +114,10 @@ Preview.
 
 - **R1306.** CUANDO un `maestro` o un `admin` abre `/ayuda/oficina/guia-integracion-api`, el sistema
   DEBE mostrar la guía dentro del módulo de Ayuda, con el índice de la oficina a la izquierda.
-- **R1307.** SI quien pide la pantalla de la guía, su PDF o la colección de Postman no tiene sesión, o
-  su rol no es `maestro` ni `admin`, ENTONCES el sistema DEBE responder 404, la misma respuesta que da
-  a un documento que no existe.
+- **R1307.** SI quien pide la pantalla de la guía, su PDF o la colección de Postman tiene sesión y su
+  rol no es `maestro` ni `admin`, ENTONCES el sistema DEBE responder 404, la misma respuesta que da a
+  un documento que no existe. SI no tiene sesión, `middleware.ts` responde antes con la redirección a
+  `/login` (307), como en el resto de la app. (Corregido tras la review, m1.)
 - **R1308.** MIENTRAS se muestra la guía, el sistema DEBE ofrecer tres acciones:
   - «Descargar PDF», que lleva a `/ayuda/descargas/guia-integracion-api`;
   - «Referencia interactiva (Swagger)», que abre `/api-docs` en una pestaña nueva;
