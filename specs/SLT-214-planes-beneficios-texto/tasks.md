@@ -5,14 +5,14 @@ Orden: T1 → T2 → (T3, T4, T5 [P]) → T6 → (T7, T8 [P]) → T9 → T10 →
 
 ## Tasks
 
-- [ ] **T1. Catálogo y esquemas** (`lib/planes/beneficios.ts`, `lib/types/planes.ts`). R2–R5, R18.
+- [x] **T1. Catálogo y esquemas** (`lib/planes/beneficios.ts`, `lib/types/planes.ts`). R2–R5, R18.
   - Lleva `ICONOS_DE_BENEFICIO`, `NOMBRE_DEL_ICONO`, `Beneficio`, `claveDelBeneficio`, `beneficioSchema`,
     `beneficiosSchema` y `cambiosDeBeneficios` (design §3.1).
   - En `lib/types/planes.ts`, `beneficios` opcional en `crearPlanSchema` y `edicionDelPlan`, y se añade a
     `VersionPlan`, `PlanDTO` y `PlanVista`.
   - **Hecho:** `tests/unit/planes/beneficios.test.ts` en verde, cubriendo R2, R3, R4 (mayúsculas, tildes y espacios),
     R5 (orden y nombres) y las tres formas de línea de R25. `pnpm run typecheck` en verde.
-- [ ] **T2. Migración y esquema** (`db/schema.prisma`, `db/migrations/20261120120000_plan_beneficio/`). R1, R6, R7,
+- [x] **T2. Migración y esquema** (`db/schema.prisma`, `db/migrations/20261120120000_plan_beneficio/`). R1, R6, R7,
   R18, R23. Depende de T1.
   - Lleva la tabla `plan_beneficio` con sus CHECK, su RLS y el `REVOKE`; el CHECK de pasos del borrador con
     `beneficios`; y `plan_de_la_empresa` con la clave `beneficios`.
