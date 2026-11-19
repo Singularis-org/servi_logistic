@@ -75,17 +75,18 @@ export const crearUsuarioSchema = z.discriminatedUnion("passwordMode", [
 ]);
 export type CrearUsuarioInput = z.infer<typeof crearUsuarioSchema>;
 
-// R16: edicion solo de campos editables (nombre/telefono/rolId/
-// tipoIdentificacionId). NUNCA email/cedula/password. `strict` rechaza cualquier
-// otro campo (incluye intentos de tocar email/cedula/password).
+// R16: edicion solo de campos editables. NUNCA email ni password: `strict` los rechaza. SLT-221
+// (R1601, R1607): la cedula SI se corrige aqui; el correo solo cambia por su flujo de confirmacion.
 export const actualizarUsuarioSchema = z
   .object({
     nombre: z.string().min(1),
     telefono: telefonoForma,
+    // SLT-221 (R1601): misma forma que en el alta; el service la normaliza con la regla del tipo.
+    cedula: documentoForma,
     rolId: z.string().min(1),
     tipoIdentificacionId: z.string().min(1),
     // SLT-94 (R4): marca «se recoge en tienda» editable; el service recalcula la invariante
-    // segun el rol resultante. `.strict()` sigue rechazando email/cedula/password.
+    // segun el rol resultante.
     seRecogeEnTienda: z.boolean(),
     // Feature 24/R27/R28: zona editable (null la libera). El service valida
     // existencia y aplica la invariante por rol (solo mensajero/adminSatelite).

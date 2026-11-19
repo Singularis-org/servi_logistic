@@ -305,6 +305,8 @@ describe("427/T2 — el UP y el DOWN, leidos del archivo", () => {
       "20261119120100_cobro_plataforma_ocurrido_utc",
       // SLT-214: la tabla `plan_beneficio`, el paso del borrador y `plan_de_la_empresa`; no toca `orden_traspaso_mensajero`.
       "20261120120000_plan_beneficio",
+      // SLT-221: dos tipos del historial y `valor_anterior`/`valor_nuevo` a 254.
+      "20261120130000_slt221_historial_correo_cedula",
     ]);
   });
 });
