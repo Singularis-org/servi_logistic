@@ -108,6 +108,20 @@
         "corre": [
           "tests/components/ContrasteBrandSoftOscuro"
         ]
+      },
+      {
+        "si_cambia": [
+          "docs/ayuda/**",
+          "lib/ayuda/**"
+        ],
+        "corre": [
+          "tests/integration/asistente-route",
+          "tests/integration/asistente-imagenes",
+          "tests/unit/asistente/",
+          "tests/unit/ayuda/",
+          "tests/unit/guards/asistente-sin-frontmatter",
+          "tests/components/AyudaLayout"
+        ]
       }
     ]
   }

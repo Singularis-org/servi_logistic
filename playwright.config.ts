@@ -112,6 +112,8 @@ export default defineConfig({
         "tarifas-maqueta",
         // SLT-87 R1, R2, R13: el botón de reportar un problema; toca la sesión y una tabla de plataforma.
         "reporte-de-bugs",
+        // SLT-80 R1306, R1307, R1309, R1312, R1313: la guía de integración en Ayuda y sus descargas por rol.
+        "ayuda-guia-api",
       ),
     },
     {

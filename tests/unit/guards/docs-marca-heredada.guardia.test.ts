@@ -303,7 +303,8 @@ const FRASES_OPERADOR: readonly FraseOperador[] = [
   ...enArchivo("docs/api/api-key-openapi.yaml", [
     "Los SEIS conceptos que la empresa factura por una orden, en el escenario de", // SLT-52 R46: + ivaFulfillment
   ]),
-  ...enArchivo("docs/api/guia-integracion/guia-integracion.html", [
+  // SLT-80: la guía pasó del HTML a su única fuente, el `.md` de Ayuda (R1300); mismas frases.
+  ...enArchivo("docs/ayuda/oficina/guia-integracion-api.md", [
     "dato de referencia de la empresa",
     "las emite la empresa",
     "Requiere una API key emitida por la empresa",
@@ -540,32 +541,32 @@ const FRASES_PLATAFORMA: readonly FrasePlataforma[] = [
     "lo que la plataforma ENVÍA al callback del integrador",
     "Servi Logistic puede retirar una",
   ]),
+  // SLT-80: el README ya no explica cómo imprimir el HTML, sino dónde se edita el `.md` y cómo se
+  // descarga el PDF desde la app.
   ...enArchivoPlataforma("docs/api/guia-integracion/README.md", [
-    "# Guía de integración — API de Servi Logistic (fuente editable)",
-    "Guia-Integracion-API-Servi-Logistic (mes año).pdf",
-    "Servi Logistic · n / N»",
+    "# Guía de integración — API de Servi Logistic (dónde se edita)",
+    "`Guia-Integracion-API-Servi-Logistic-<actualizado>.pdf`",
+    "con la marca Servi Logistic",
   ]),
-  ...enArchivoPlataforma("docs/api/guia-integracion/guia-integracion.html", [
-    "<title>Guía de integración — API de Servi Logistic</title>",
-    "<meta name=\"author\" content=\"Servi Logistic\">",
-    "canal por API key de Servi Logistic. Versión del documento",
-    "@bottom-left { content: \"Guía de integración — API de Servi Logistic\";",
-    "<div class=\"title\">Guía de integración<br>API de Servi Logistic</div>",
-    "<h1>Guía de integración — API de Servi Logistic</h1>",
+  // SLT-80: la guía pasó del HTML a su única fuente, el `.md` de Ayuda (R1300). Las frases del
+  // marcado que el `.md` no tiene (`<title>`, `<meta>`, `@page`, la portada en `<div>`) se van con
+  // él: la portada y el pie del PDF los dibuja el generador; el título queda como `#`.
+  ...enArchivoPlataforma("docs/ayuda/oficina/guia-integracion-api.md", [
+    "# Guía de integración — API de Servi Logistic",
     // SLT-201: «Servi Logistic la avisará con antelación» se fue con el aviso de despliegue
     // pendiente del bloque A: el renombrado de estados ya está en producción.
-    "<p>La API de Servi Logistic le permite a su sistema",
+    "La API de Servi Logistic le permite a su sistema",
     "Se genera desde la aplicación de Servi Logistic",
     "una tienda ya registrada en Servi Logistic, esa tienda",
     "el redondeo lo hace Servi Logistic y la fila creada lo declara",
     "contador de intentos de entrega de Servi Logistic",
-    "<p><strong>Servi Logistic envía</strong>",
-    "Se registra en Servi Logistic, <strong>una suscripción por dueño</strong>",
+    "**Servi Logistic envía**",
+    "Se registra en Servi Logistic, **una suscripción por dueño**",
     "generado por Servi Logistic y entregado una sola vez",
-    "<tr><td><code>X-Servi-Logistic-Timestamp</code></td>",
-    "<tr><td><code>X-Servi-Logistic-Signature</code></td><td><code>sha256=",
-    "contra el valor de <code>X-Servi-Logistic-Signature</code>",
-    "Descarte entregas cuyo <code>X-Servi-Logistic-Timestamp</code>",
+    "| `X-Servi-Logistic-Timestamp` |",
+    "| `X-Servi-Logistic-Signature` | `sha256=",
+    "contra el valor de `X-Servi-Logistic-Signature`",
+    "Descarte entregas cuyo `X-Servi-Logistic-Timestamp`",
     "Servi Logistic va a reintentarlo y a contarlo como fallo del circuito",
     "Falla del lado de Servi Logistic.",
     "“Servi Logistic me reintenta un evento que no me interesa”",
@@ -816,7 +817,8 @@ describe("SL-16 — docs, contrato de la API y diseños sin el nombre heredado",
         "docs/ayuda",
         "docs/api/api-key-openapi.yaml",
         "docs/api/CHANGELOG.md",
-        "docs/api/guia-integracion/guia-integracion.html",
+        // SLT-80: la guía se conserva, pero su fuente es ahora el `.md` de Ayuda (R1300).
+        "docs/ayuda/oficina/guia-integracion-api.md",
         "docs/api/manual-metricas-por-mensajero.md",
         "DESIGN.md",
         "design-notificaciones",
@@ -894,7 +896,11 @@ describe("SL-16 — docs, contrato de la API y diseños sin el nombre heredado",
     });
 
     it("anti-vacuidad: la lista no está vacía y cubre cada raíz que tenía plataforma", () => {
-      expect(FRASES_PLATAFORMA.length).toBeGreaterThanOrEqual(50);
+      // SLT-80: 50→46. La guía pasó del HTML al `.md` de Ayuda y se fueron con el marcado las cinco
+      // frases que solo existían en él (`<title>`, `<meta>`, la línea de versión del `<meta>`, el
+      // `@page` del pie y la portada en `<div>`); su `<h1>` sigue, como `#`. Ninguna frase de texto
+      // se perdió: las demás de la guía están todas, ahora sobre el `.md`.
+      expect(FRASES_PLATAFORMA.length).toBeGreaterThanOrEqual(46);
       const sinFrases = RAICES_CON_PLATAFORMA.filter((r) => !FRASES_PLATAFORMA.some(({ archivo }) => archivo.startsWith(r)));
       expect(sinFrases).toEqual([]);
       const fueraDelAlcance = FRASES_PLATAFORMA.filter(({ archivo }) => !alcance().archivos.has(archivo)).map((f) => f.archivo);

@@ -171,9 +171,10 @@ describe("R17 (mitad positiva) — el armazón pinta el índice YA ACOTADO y el 
     // Los otros tres no la declaraban y no se mueven.
     // ⭑ SLT-51: 37→38 al sumar `oficina/configuracion-zonas.md` (`roles: [maestro]`); el admin la lee por la regla de lectura total de la 435. Los otros tres no se mueven.
     // ⭑ SL-42 (R19): 38→37 al retirar `oficina/configuracion-vehiculos.md` (`roles: [maestro, admin]`); el catálogo de vehículos es de la plataforma y la pantalla del maestro ya no existe. Los otros tres no la declaraban y no se mueven.
+    // ⭑ SLT-80 (R1317): 37→38 al sumar `oficina/guia-integracion-api.md` (`roles: [maestro, admin]`), la guía de integración por API. Los otros tres no la declaran y no se mueven.
     const esperado: Record<string, number> = {
-      maestro: 37,
-      admin: 37,
+      maestro: 38,
+      admin: 38,
       adminSatelite: 10,
       mensajero: 8,
       adminTienda: 7,
