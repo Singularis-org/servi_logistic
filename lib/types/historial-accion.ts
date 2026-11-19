@@ -354,12 +354,18 @@ export const HISTORIAL_ACCION_TIPOS = [
   // del mismo genero que el nombre de una zona: ni un dato de destinatario, ni texto libre.
   "nodo_geografico_renombrado", // GeoRepository.renombrar
 
-  // --- A.3 · cambia quien puede hacer que (12) ---
+  // --- A.3 · cambia quien puede hacer que (14) ---
   "usuario_creado", // usuarios.crearUsuario
   "usuario_rol_cambiado", // usuarios.actualizarUsuario (solo si cambia `rolId`)
   "usuario_zona_cambiada", // usuarios.actualizarUsuario (solo si cambia `zonaId`)
   "usuario_estado_cambiado", // usuarios.cambiarEstadoUsuario
   "usuario_contrasena_restablecida", // usuarios.restablecerContrasenaUsuario
+  // ⭑ SLT-221 (R1609) — la cedula es la identidad de la cuenta y el correo decide quien entra en ella:
+  // el mismo eje que el rol. Son la UNICA excepcion declarada a «ningun dato de persona en la fila»
+  // (D10): llevan el valor anterior y el nuevo, y la guardia `historial-accion-sin-datos-cliente` lo
+  // admite solo en estos dos bloques.
+  "usuario_cedula_cambiada", // usuarios.actualizarUsuario (solo si cambia `cedula`)
+  "usuario_email_cambiado", // confirmar-correo.confirmarCambioCorreo (PR 2 de SLT-221)
   "postulacion_aprobada", // aprobacion-postulaciones.aprobarPostulacion
   "postulacion_rechazada", // aprobacion-postulaciones.rechazarPostulacion
   "api_key_generada", // api-keys.generarApiKey
@@ -608,6 +614,8 @@ export const CATEGORIA_POR_ACCION: Record<HistorialAccionTipo, CategoriaAccion> 
   usuario_zona_cambiada: "cambia_permisos",
   usuario_estado_cambiado: "cambia_permisos",
   usuario_contrasena_restablecida: "cambia_permisos",
+  usuario_cedula_cambiada: "cambia_permisos", // SLT-221 R1609
+  usuario_email_cambiado: "cambia_permisos", // SLT-221 R1609
   postulacion_aprobada: "cambia_permisos",
   postulacion_rechazada: "cambia_permisos",
   api_key_generada: "cambia_permisos",
@@ -706,6 +714,8 @@ export const ACCION_LABELS: Record<HistorialAccionTipo, string> = {
   usuario_zona_cambiada: "Cambió la zona de un usuario",
   usuario_estado_cambiado: "Cambió el estado de un usuario",
   usuario_contrasena_restablecida: "Restableció la contraseña de un usuario",
+  usuario_cedula_cambiada: "Cambió la cédula de un usuario",
+  usuario_email_cambiado: "Cambió el correo de un usuario",
   postulacion_aprobada: "Aprobó una postulación",
   postulacion_rechazada: "Rechazó una postulación",
   api_key_generada: "Generó una API key",
