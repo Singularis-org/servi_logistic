@@ -113,7 +113,7 @@ que ya es `nucleo` en `lib/modulos/reparto.ts`.
 - **Períodos de las facturas:** `ZONA_CR`, como en SLT-60.
 - **Impuestos y métodos de pago:** ninguno.
 
-## 3. La base (migración `20261120130000_pago_plataforma_por_fuera`)
+## 3. La base (migración `20261121130000_pago_plataforma_por_fuera`)
 
 `BEGIN/COMMIT`, a mano (`db:migrate:create` falla con P3006). El timestamp va después de la última de `dev`
 (`20261119120100_cobro_plataforma_ocurrido_utc`); T0 lo vuelve a comprobar. Todas las funciones son del dueño

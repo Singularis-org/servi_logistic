@@ -25,9 +25,9 @@
 -- R33: NO inserta datos. Las confirmaciones que ya existan quedan con `por_fuera = false` (el DEFAULT del
 -- `ADD COLUMN`, que no dispara `…_inmutable`) y ningún pago queda anulado.
 --
--- ATOMICIDAD: BEGIN/COMMIT, a mano (`db:migrate:create` falla con P3006 en este repo). Prefijo 20261120130000:
--- después de la mayor de `dev` (20261119120100_cobro_plataforma_ocurrido_utc) y de 20261120120000_plan_beneficio
--- de SLT-214, que aún no está en `dev` (decisión del leader tras T0).
+-- ATOMICIDAD: BEGIN/COMMIT, a mano (`db:migrate:create` falla con P3006 en este repo). Prefijo 20261121130000:
+-- después de 20261121120000_slt224_zona_de_ordenes_en_central, la mayor de `dev` al mezclar (antes 20261120130000;
+-- se renombró porque `dev` trajo 20261120130000_slt221_historial_correo_cedula con el mismo prefijo).
 
 BEGIN;
 

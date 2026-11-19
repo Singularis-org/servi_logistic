@@ -38,7 +38,7 @@ const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
 /** La última de `dev` antes de SLT-143 (T0.1). */
 const PREVIA = "20261119120100_cobro_plataforma_ocurrido_utc";
-const M = "20261120130000_pago_plataforma_por_fuera";
+const M = "20261121130000_pago_plataforma_por_fuera";
 
 const TABLAS = ["pago_plataforma_anulacion"];
 const FUNCIONES_NUEVAS = [

@@ -98,6 +98,28 @@ export const ESTADOS_PAQUETE_EN_ESTANTE = [
 export type EstadoPaqueteEnEstante = (typeof ESTADOS_PAQUETE_EN_ESTANTE)[number];
 
 /**
+ * SLT-224 (design §2.1, P3) — los estados de DEVOLUCION que el boton «Actualizar zonas» no
+ * reconcilia. Son los bloques «La devolucion» y «El retorno a la tienda» de
+ * `ESTADOS_BODEGA_SATELITE`.
+ *
+ * `por_devolver_a_bodega_central` solo la puede enviar el `adminSatelite` de la zona de la orden
+ * (`EnvioDevolucionCentralService`): cambiarle la zona la dejaria sin nadie que la envie, el mismo
+ * atasco de la 377. Las demas vuelven a la tienda: su resultado ya esta decidido y la recepcion en
+ * la central no mira la zona.
+ *
+ * Solo la usa el boton. El guardado de una zona NO la pasa al helper: su comportamiento no cambia
+ * (R1706).
+ */
+export const ESTADOS_DEVOLUCION_SIN_RECONCILIAR = [
+  "por_devolver_a_bodega_central",
+  "devolviendo_a_bodega_central",
+  "novedad",
+  "por_devolver_a_tienda",
+  "devolviendo_a_tienda",
+  "devuelta_a_tienda",
+] as const satisfies readonly OrderStatusValue[];
+
+/**
  * 377/R15 — ¿el paquete de esta orden esta AHORA MISMO en el estante de una satelite?
  *
  * Fallo CERRADO al reves que `estadoAdmiteCorreccion`: `null`/`undefined` devuelve `false`

@@ -41,7 +41,7 @@ const ROL_APP = "servi_app";
 // SLT-60 (20261116120000_pago_plataforma_confirmacion) suma cuatro: las de `pago_plataforma_confirmacion` a
 // `wallet_movimiento` y a `usuario` (el superadmin), y las de `pago_plataforma_aplicacion` a la confirmación y a
 // `factura_plataforma`.
-// SLT-143 (20261120130000_pago_plataforma_por_fuera) suma dos: las de `pago_plataforma_anulacion` a la
+// SLT-143 (20261121130000_pago_plataforma_por_fuera) suma dos: las de `pago_plataforma_anulacion` a la
 // confirmación y a `usuario` (el superadmin).
 const TRIGGERS_MISMA_EMPRESA = 181;
 

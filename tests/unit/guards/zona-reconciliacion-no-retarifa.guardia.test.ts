@@ -17,15 +17,26 @@ import { codigoSinComentarios } from "../../fixtures/sin-comentarios";
  * ficha siga tocando UNA sola columna. `data: { zonaId, ... }` con un campo mas compila, pasa los
  * tests de dobles y se lleva por delante R9 en silencio.
  *
- * ⚠️ EL TIPO NO PUEDE SOSTENER ESTO. `ZonaPrismaClient` es un `Pick<PrismaClient, ...>` que NO
- * incluye `orden` ni `cierreDetail`, pero el `tx` que entrega `$transaction` es el cliente
- * COMPLETO: dentro del callback se puede escribir en cualquier tabla. Por eso la red es estatica.
+ * ⚠️ EL TIPO NO PUEDE SOSTENER ESTO. El `tx` que entrega `$transaction` es el cliente COMPLETO:
+ * dentro del callback se puede escribir en cualquier tabla. Por eso la red es estatica.
+ *
+ * SLT-224 (design §2.3): la reconciliacion se movio de `ZonaRepository.update` a un helper
+ * compartido por TRES llamadores (el guardado de zona, la recepcion en la central y el boton
+ * «Actualizar zonas»). El detector se aplica al cuerpo del helper, y dos aserciones mas vigilan que
+ * los tres lo usen y que ninguno repita el corte ni la accion (R1706).
  *
  * EL DETECTOR SE AUTO-PRUEBA: se ejerce sobre cuerpos MUTADOS EN MEMORIA, porque una guardia
  * estatica rota no falla, CALLA.
  */
 
-const ARCHIVO = "lib/repositories/ZonaRepository.ts";
+const HELPER = "lib/repositories/_shared/reconciliar-zona-ordenes.ts";
+
+/** Los tres llamadores del helper: archivo y metodo (R1706). */
+const LLAMADORES = [
+  { archivo: "lib/repositories/ZonaRepository.ts", metodo: "update" },
+  { archivo: "lib/repositories/OrdenRepository.ts", metodo: "recibirEnBodegaCentral" },
+  { archivo: "lib/repositories/ActualizacionZonasRepository.ts", metodo: "actualizar" },
+] as const;
 
 /** Las cinco escrituras que romperian una tabla de dinero. */
 const MUTACIONES = ["create", "createMany", "update", "updateMany", "delete", "deleteMany", "upsert"];
@@ -58,19 +69,25 @@ function bloqueBalanceado(codigo: string, desde: number): string | null {
   return null;
 }
 
-/** El cuerpo REAL de `async update(` en `ZonaRepository`. LANZA si no esta: no mide la nada. */
-function cuerpoDeUpdate(): string {
-  const codigo = codigoSinComentarios(ARCHIVO);
-  const encontrado = /(?:^|\n)\s*async\s+update\s*\(/.exec(codigo);
+/**
+ * El cuerpo REAL de `nombre` en `archivo`: metodo (`async nombre(`) o funcion exportada
+ * (`export async function nombre(`). LANZA si no esta: no mide la nada.
+ */
+function cuerpoDe(archivo: string, nombre: string): string {
+  const codigo = codigoSinComentarios(archivo);
+  const declaracion = new RegExp(
+    `(?:^|\\n)\\s*(?:export\\s+)?async\\s+(?:function\\s+)?${nombre}\\s*\\(`,
+  );
+  const encontrado = declaracion.exec(codigo);
   if (encontrado === null) {
     throw new Error(
-      `no se encontro \`async update(\` en ${ARCHIVO}: o se renombro o se borro, y esta guardia ` +
+      `no se encontro \`async ${nombre}(\` en ${archivo}: o se renombro o se borro, y esta guardia ` +
         "estaria midiendo la nada",
     );
   }
   const cierreFirma = codigo.indexOf(")", encontrado.index + encontrado[0].length);
   const cuerpo = bloqueBalanceado(codigo, cierreFirma);
-  if (cuerpo === null) throw new Error("el cuerpo de `update` no cierra: el recortador esta roto");
+  if (cuerpo === null) throw new Error(`el cuerpo de \`${nombre}\` no cierra: el recortador esta roto`);
   return cuerpo;
 }
 
@@ -105,6 +122,28 @@ export function fallosDeLaReconciliacion(cuerpo: string): string[] {
     }
   }
 
+  return fallos;
+}
+
+/**
+ * SLT-224/R1706 — EL DETECTOR DE LOS LLAMADORES. Un llamador usa el helper y no repite ni el corte
+ * de dinero (`cierreDetalles: { none`) ni la accion (`"orden_zona_reconciliada"`). Vacio = cumple.
+ *
+ * Se mira el CUERPO del metodo llamador y no el archivo entero: `ZonaRepository` tiene otro
+ * `cierreDetalles: { none` legitimo en `contarOrdenesVivasPorZona` (376/Q4), que cuenta ordenes
+ * y no reconcilia nada. La accion, en cambio, se vigila tambien a nivel de archivo (abajo).
+ */
+export function fallosDelLlamador(cuerpo: string): string[] {
+  const fallos: string[] = [];
+  if (!/\breconciliarZonaDeOrdenes\s*\(/.test(cuerpo)) {
+    fallos.push("no llama a `reconciliarZonaDeOrdenes(`");
+  }
+  if (/cierreDetalles:\s*\{\s*none/.test(cuerpo)) {
+    fallos.push("repite el corte `cierreDetalles: { none`");
+  }
+  if (cuerpo.includes('"orden_zona_reconciliada"')) {
+    fallos.push("registra `orden_zona_reconciliada` por su cuenta");
+  }
   return fallos;
 }
 
@@ -143,23 +182,66 @@ describe("366/T8 — el detector se prueba a si mismo", () => {
     );
   });
 
-  it("CONTRAPRUEBA: pedir el metodo cuando no existe LANZA en vez de medir vacio", () => {
-    // El recorte real se ejerce abajo; aqui se comprueba que el recortador no calla.
-    expect(cuerpoDeUpdate().length).toBeGreaterThan(400);
+  it("CONTRAPRUEBA: pedir una funcion que no existe LANZA en vez de medir vacio", () => {
+    expect(cuerpoDe(HELPER, "reconciliarZonaDeOrdenes").length).toBeGreaterThan(400);
+    expect(() => cuerpoDe(HELPER, "funcionQueNoExiste")).toThrow(/no se encontro/);
   });
 });
 
-describe("⭑ 366/R8/R9 — `ZonaRepository.update` no re-tarifa nada hacia atras", () => {
-  it("no escribe en ninguna tabla de dinero y su UPDATE de la orden toca SOLO `zonaId`", () => {
-    const cuerpo = cuerpoDeUpdate();
+describe("SLT-224/R1706 — el detector de los llamadores se prueba a si mismo", () => {
+  const SANO = `{
+    return this.prisma.$transaction(async (tx) => {
+      await tx.orden.updateMany({ where: {}, data: {} });
+      await reconciliarZonaDeOrdenes(tx, { distritoIds: [d] }, actor);
+    });
+  }`;
+
+  it("CONTRAPRUEBA: un llamador correcto NO produce fallos", () => {
+    expect(fallosDelLlamador(SANO)).toEqual([]);
+  });
+
+  it("CONTRAPRUEBA: un llamador que no usa el helper se detecta", () => {
+    const mutado = SANO.replace("await reconciliarZonaDeOrdenes(tx, { distritoIds: [d] }, actor);", "");
+    expect(fallosDelLlamador(mutado)).toEqual(["no llama a `reconciliarZonaDeOrdenes(`"]);
+  });
+
+  it("CONTRAPRUEBA: un llamador que repite el corte se detecta", () => {
+    const mutado = SANO.replace("where: {}", "where: { cierreDetalles: { none: {} } }");
+    expect(fallosDelLlamador(mutado)).toEqual(["repite el corte `cierreDetalles: { none`"]);
+  });
+
+  it("CONTRAPRUEBA: un llamador que registra la accion por su cuenta se detecta", () => {
+    const mutado = SANO.replace("data: {}", 'data: {}, accion: "orden_zona_reconciliada"');
+    expect(fallosDelLlamador(mutado)).toEqual(["registra `orden_zona_reconciliada` por su cuenta"]);
+  });
+});
+
+describe("⭑ 366/R8/R9 + SLT-224/R1707 — la reconciliacion no re-tarifa nada hacia atras", () => {
+  it("el helper no escribe en ninguna tabla de dinero y su UPDATE de la orden toca SOLO `zonaId`", () => {
+    const cuerpo = cuerpoDe(HELPER, "reconciliarZonaDeOrdenes");
     // Anti-vacuidad: el recorte trae la reconciliacion entera, no un `{}`.
     expect(cuerpo).toContain("appendAccion");
     expect(cuerpo).toContain("orden.findMany(");
 
     expect(
       fallosDeLaReconciliacion(cuerpo),
-      "esta ficha corrige la zona de una orden y NADA MAS: un `cierre_detail` ya emitido, una " +
+      "esta regla corrige la zona de una orden y NADA MAS: un `cierre_detail` ya emitido, una " +
         "wallet o un pago de mensajero no se tocan, y el UPDATE no crece de columnas",
     ).toEqual([]);
+  });
+});
+
+describe("⭑ SLT-224/R1706 — una sola implementacion de la regla", () => {
+  it.each(LLAMADORES)(
+    "$archivo#$metodo usa el helper y no repite el corte ni la accion",
+    ({ archivo, metodo }) => {
+      expect(fallosDelLlamador(cuerpoDe(archivo, metodo))).toEqual([]);
+    },
+  );
+
+  it("ningun archivo llamador registra `orden_zona_reconciliada` fuera del helper", () => {
+    for (const { archivo } of LLAMADORES) {
+      expect(codigoSinComentarios(archivo), archivo).not.toContain('"orden_zona_reconciliada"');
+    }
   });
 });

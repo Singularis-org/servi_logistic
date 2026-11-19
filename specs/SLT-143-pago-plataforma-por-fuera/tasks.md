@@ -33,7 +33,7 @@
 
 ## T1 — La base (depende de T0)
 
-- [x] **T1.1** `db/migrations/20261120130000_pago_plataforma_por_fuera/migration.sql` (design §3):
+- [x] **T1.1** `db/migrations/20261121130000_pago_plataforma_por_fuera/migration.sql` (design §3):
   - la tabla `pago_plataforma_anulacion`, con RLS, política, `REVOKE` y los triggers sin cambio de empresa,
     inmutable y de misma empresa (generados con `--faltantes`);
   - la columna `por_fuera`;
@@ -129,8 +129,8 @@
 
 ## Archivos esperados
 
-- `db/migrations/20261120130000_pago_plataforma_por_fuera/migration.sql`
-- `db/migrations/20261120130000_pago_plataforma_por_fuera/down.sql`
+- `db/migrations/20261121130000_pago_plataforma_por_fuera/migration.sql`
+- `db/migrations/20261121130000_pago_plataforma_por_fuera/down.sql`
 - `db/schema.prisma`
 - `lib/db/modelos-de-negocio.ts`
 - `lib/db/excepciones-aislamiento.ts`

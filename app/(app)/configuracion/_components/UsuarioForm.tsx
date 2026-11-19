@@ -139,7 +139,8 @@ function initialState(usuario?: UsuarioPublico | null): FormState {
  * `listarTiposIdentificacion`, R29). En creación ofrece
  * el toggle de modo de contraseña escribir/generar (R36): en modo generar oculta
  * el input; tras crear con éxito muestra la `generatedPassword` UNA vez con botón
- * copiar y aviso (R33). En edición deshabilita email y cédula (R16). Valida en
+ * copiar y aviso (R33). En edición deshabilita el email (R16); la cédula sí se
+ * corrige (SLT-221 R1606). Valida en
  * cliente reusando los schemas de `lib/types/usuario` (no duplica reglas).
  */
 export const UsuarioForm = forwardRef<UsuarioFormHandle, UsuarioFormProps>(
@@ -301,6 +302,10 @@ export const UsuarioForm = forwardRef<UsuarioFormHandle, UsuarioFormProps>(
           telefono: form.telefono,
           rolId: form.rolId,
           tipoIdentificacionId: form.tipoIdentificacionId,
+          // SLT-221 (R1601/R1606): el documento se corrige aquí y el service lo normaliza. Solo
+          // viaja si cambió: uno guardado sin tocar no se valida, así una cédula previa a SLT-42 o
+          // una `APIKEY-<slug>` de más de 30 no bloquea editar otro campo (SLT-42 R9).
+          ...(form.cedula !== usuario?.cedula ? { cedula: form.cedula } : {}),
           // SLT-94 (R4/R9): solo se envía cuando el rol es `adminTienda`; el backend
           // fuerza «sí» para otros roles.
           ...(esAdminTienda ? { seRecogeEnTienda: form.seRecogeEnTienda } : {}),
@@ -513,7 +518,6 @@ export const UsuarioForm = forwardRef<UsuarioFormHandle, UsuarioFormProps>(
         >
           <Input
             value={form.cedula}
-            disabled={isEditar}
             onChange={(e) => setField("cedula", e.target.value)}
           />
         </FormField>

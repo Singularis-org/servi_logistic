@@ -184,13 +184,13 @@ resuelve.
 
 ### Archivos
 
-- `db/migrations/20261120130000_pago_plataforma_por_fuera/migration.sql` (nuevo): tabla `pago_plataforma_anulacion`
+- `db/migrations/20261121130000_pago_plataforma_por_fuera/migration.sql` (nuevo): tabla `pago_plataforma_anulacion`
   (RLS, política, `REVOKE` a `servi_app`, `…_inmutable`, `…_sin_cambio_de_empresa` y los dos `sme_*` generados con
   `tsx scripts/generar-misma-empresa.ts --faltantes`, pegados literales), columna `por_fuera`,
   `factura_plataforma_saldos` sin los anulados, `_pago_plataforma_aplicar`, `pago_plataforma_confirmar` sobre ella,
   `pago_plataforma_registrar_por_fuera`, `pago_plataforma_anular_confirmado` y el trigger
   `pago_plataforma_no_anular_confirmado` con la excepción. Sin `INSERT` de datos.
-- `db/migrations/20261120130000_pago_plataforma_por_fuera/down.sql` (nuevo, a mano): aborta si
+- `db/migrations/20261121130000_pago_plataforma_por_fuera/down.sql` (nuevo, a mano): aborta si
   `pago_plataforma_anulacion` tiene filas; repone los tres cuerpos copiados por `sed` de las líneas de
   `20261116120000` (literales); `DROP` de las tres funciones nuevas, de la tabla y de la columna.
 - `db/schema.prisma`: modelo `PagoPlataformaAnulacion`, `porFuera` y las relaciones inversas en
@@ -616,3 +616,14 @@ Veredicto B1: el DTO del libro ya no lleva el id de nadie; el test lo prueba en 
 `20261120120000_plan_beneficio` (SLT-214, que entró antes) en las dos bases de la feature. Typecheck exit 0, lint 0;
 `pago-plataforma-por-fuera` y `migracion-slt143-ida-y-vuelta`: 27 de 27 contra servi_logistic_slt143.
 gate-completo (run 44621517717), tres rojos de la rama: `verificar-rls-despliegue` a 93 tablas / 181 `sme_*` (contrato 94/181/93); `orden-traspaso-migration` lista `20261120130000_pago_plataforma_por_fuera`; `empresas-plataforma` crea `pago_plataforma_confirmacion` y `pago_plataforma_anulacion` en su esquema desechable (T2.5). Uno tras otro contra servi_logistic_slt143: 4/4, 15/15, 5/5; tsc 0, eslint 0.
+
+## Merge con dev tras #251 y #253 (2026-11-19)
+
+`dev` trajo `20261120130000_slt221_historial_correo_cedula` (mismo prefijo que la nuestra) y
+`20261121120000_slt224_zona_de_ordenes_en_central`. Nuestra migración pasa a `20261121130000_pago_plataforma_por_fuera`
+(la última); se actualizaron el SQL, `schema.prisma`, `verificar-rls-despliegue.ts`, architecture, design, tasks, la
+bitácora y los tests (ida y vuelta, orden-traspaso con las dos listas unidas, guardia RLS). Ninguna de las dos de `dev`
+toca lo que usa la nuestra (SLT-221: `historial_accion`; SLT-224: `orden` y `respaldo_slt224`). Las bases
+`servi_logistic_slt143` y `_e2e` se recrearon desde cero (migrate deploy + seed). Typecheck exit 0; uno por uno:
+ida y vuelta 6/6, orden-traspaso 15/15, verificar-rls-despliegue 4/4, pago-plataforma-por-fuera 21/21,
+rls-por-empresa 21/21.

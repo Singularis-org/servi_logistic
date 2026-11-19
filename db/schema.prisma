@@ -5119,6 +5119,12 @@ enum HistorialAccionTipo {
   /// desaparecer algo: los paquetes dejan el estante de la satélite. Entidad: `zona` (la satélite), una
   /// fila por satélite del lote con el mismo `lote_id`; la etiqueta lleva el conteo y las guías.
   ordenes_retiradas_a_central
+  /// SLT-221 (R1604): el maestro corrigió el número de documento de un usuario. Cambia quién puede hacer
+  /// qué: la cédula es la identidad de la cuenta. `valor_anterior` y `valor_nuevo` son el documento (D10).
+  usuario_cedula_cambiada
+  /// SLT-221 (R1622): el usuario confirmó el correo nuevo que pidió el maestro. Cambia quién entra en la
+  /// cuenta. `valor_anterior` y `valor_nuevo` son el correo (D10). Su escritor llega en el PR 2.
+  usuario_email_cambiado
 
   @@map("historial_accion_tipo")
 }
@@ -5243,11 +5249,14 @@ model HistorialAccion {
   /// PUBLICO del mismo genero que el nombre de una zona. En todos los demas tipos van NULL.
   /// ⚠️ LA REGLA NO CAMBIA: aqui NO se vuelca texto libre tecleado por una persona ni un dato del
   /// destinatario de una orden. Una guardia sobre los puntos de escritura lo mantiene asi.
-  /// ⚠️ ANCHURA 60: quien escriba aqui un texto que pueda ser mas largo TIENE que recortarlo en su
-  /// origen (Postgres no trunca, ABORTA). `GeoRepository.renombrar` lo hace, igual que
-  /// `appendAccion` recorta `entidad_etiqueta` a 120.
-  valorAnterior String? @map("valor_anterior") @db.VarChar(60)
-  valorNuevo    String? @map("valor_nuevo") @db.VarChar(60)
+  /// UNICA EXCEPCION DECLARADA (SLT-221, D10): `usuario_cedula_cambiada` y `usuario_email_cambiado`
+  /// guardan el documento y el correo de un usuario de la empresa, anterior y nuevo. Se descargan y no
+  /// se purgan: consecuencia aceptada por Carlos el 2026-11-19.
+  /// ⚠️ ANCHURA 254 (SLT-221, R1608: cabe un correo entero): quien escriba aqui un texto que pueda ser
+  /// mas largo TIENE que recortarlo en su origen (Postgres no trunca, ABORTA). `GeoRepository.renombrar`
+  /// lo hace, igual que `appendAccion` recorta `entidad_etiqueta` a 120.
+  valorAnterior String? @map("valor_anterior") @db.VarChar(254)
+  valorNuevo    String? @map("valor_nuevo") @db.VarChar(254)
 
   /// uuid POR ACCION (R7), no por fila: todas las filas de un mismo acto lo comparten. Es lo que
   /// distingue «se borraron 79 ordenes de una vez» de «hubo 79 borrados».
@@ -6626,7 +6635,7 @@ model PagoPlataformaConfirmacion {
   confirmadoPor String  @map("confirmado_por")
   confirmadoAt DateTime @map("confirmado_at") @db.Timestamp(3)
   // SLT-143 (design §1.2): true solo si el pago lo registró el superadmin por fuera (R13, R14). Lo escribe solo
-  // `pago_plataforma_registrar_por_fuera`; las confirmaciones anteriores a 20261120130000 quedan en false (R33).
+  // `pago_plataforma_registrar_por_fuera`; las confirmaciones anteriores a 20261121130000 quedan en false (R33).
   porFuera     Boolean  @default(false) @map("por_fuera")
 
   pago         WalletMovimiento @relation(fields: [pagoId], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -6667,7 +6676,7 @@ model PagoPlataformaAplicacion {
 
 // SLT-143 (design §1.1) — la anulación de un pago confirmado hecha por el superadmin. De NEGOCIO. Su existencia
 // es lo que deja pasar el contra-asiento en el trigger `pago_plataforma_no_anular_confirmado` (R29): por eso la
-// escribe SOLO `pago_plataforma_anular_confirmado` (función del dueño de 20261120130000) y `servi_app` solo la lee
+// escribe SOLO `pago_plataforma_anular_confirmado` (función del dueño de 20261121130000) y `servi_app` solo la lee
 // (R32). El motivo no se duplica: vive en la constancia `ajuste_caja_anulacion` de la misma operación. Viven solo
 // en el SQL de esa migración: la política, el REVOKE, el trigger `pago_plataforma_anulacion_inmutable` y los de
 // SL-17 (`anulado_por` es el superadmin, sin empresa).

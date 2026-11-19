@@ -111,8 +111,9 @@ describe("362/T0.1 (R14/R17) — el catalogo es cerrado y sus mapas son exhausti
     // 84 desde SLT-77: `tope_intentos_cambiado` (entidad `organizacion`, 31 entidades).
     // 85 desde SLT-94: `usuario_se_recoge_en_tienda_cambiado` (entidad `usuario`, R8).
     // 86 desde SLT-211: `ordenes_retiradas_a_central` (entidad `zona`, sin entidad nueva).
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(86);
-    expect(new Set(HISTORIAL_ACCION_TIPOS).size).toBe(86);
+    // 88 desde SLT-221: `usuario_cedula_cambiada` y `usuario_email_cambiado` (entidad `usuario`).
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(88);
+    expect(new Set(HISTORIAL_ACCION_TIPOS).size).toBe(88);
     expect(HISTORIAL_ACCION_ENTIDADES).toHaveLength(31); // 31 desde SLT-77 (`organizacion`)
     expect(new Set(HISTORIAL_ACCION_ENTIDADES).size).toBe(31);
     expect(CATEGORIAS_ACCION).toHaveLength(6);
@@ -536,7 +537,8 @@ describe("362/T0.1 (R14/R17) — el catalogo es cerrado y sus mapas son exhausti
     // 11 desde SLT-52: borrar un grupo de distritos se lleva sus valores por cascada.
     // 12 desde SLT-211: retirar paquetes de una satelite los saca de su estante.
     expect(accionesDeCategoria("hace_desaparecer")).toHaveLength(12);
-    expect(accionesDeCategoria("cambia_permisos")).toHaveLength(12);
+    // 14 desde SLT-221: la cedula y el correo de un usuario (R1609).
+    expect(accionesDeCategoria("cambia_permisos")).toHaveLength(14);
     // 5 desde SL-36: la categoria nueva, solo con los cinco `integracion_*`.
     expect(accionesDeCategoria("cambia_integraciones")).toHaveLength(5);
     // 2 desde SL-23: la quinta categoria, solo con `modulo_activado` y `modulo_desactivado`.

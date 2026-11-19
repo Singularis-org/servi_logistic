@@ -378,7 +378,7 @@ esta bien hecha, no solo si "funciona".
       rol. `EgresoCajaAnulacionService` lo traduce a `forbidden`. Anular y confirmar a la vez el mismo
       pago no ganan los dos.
   - **Pago por fuera y anulación por la plataforma (SLT-143, migración
-    `20261120130000_pago_plataforma_por_fuera`).** El superadmin, desde el detalle de la empresa, registra
+    `20261121130000_pago_plataforma_por_fuera`).** El superadmin, desde el detalle de la empresa, registra
     un pago hecho por fuera y anula un pago confirmado. Las dos son funciones del dueño (`SECURITY
     DEFINER`, `EXECUTE` revocado a `PUBLIC`) bajo el candado `pago_plataforma:` de la empresa, y la app
     llega a ellas por `PagoPlataformaConfirmacionRepository` en `comoPlataforma` y
