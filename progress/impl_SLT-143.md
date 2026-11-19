@@ -458,3 +458,59 @@ Veredicto T4: las dos pantallas del superadmin hechas y ligadas en la página, 1
   `PagosConfirmados` «con motivo … refresca tras `ok`» y los tres avisos.
 - R20 → `PagosConfirmados` «SLT-143 R20 …».
 - R21, R23–R25 (pantalla) → `PagosConfirmados` «SLT-143 R19, R21, R23–R25 — anular»; página «R21: «Anular…» …».
+
+## Mapa R → test (T6.3, R1 a R36)
+
+Lo comprobé con grep sobre los tests del diff `origin/dev...HEAD`. Abreviaturas de archivo:
+
+- `porFuera` = `tests/integration/db/pago-plataforma-por-fuera.test.ts`
+- `servicio` = `tests/unit/services/pago-plataforma-confirmacion-service.test.ts`
+- `action` = `tests/unit/actions/pagos-plataforma.test.ts`
+- `pagina` = `tests/integration/plataforma-empresa-detalle-page.test.tsx`
+- `Registrar` = `tests/components/RegistrarPagoPorFuera.test.tsx`
+- `Confirmados` = `tests/components/PagosConfirmados.test.tsx`
+- `autoria` = `tests/unit/services/libro-caja-autoria-plataforma.test.ts`
+- `labels` = `tests/unit/components/detalle-movimiento-panel-labels-plataforma.test.ts`
+- `descarga` = `tests/unit/descarga/wallet-caja-descarga-columnas.test.ts`
+- `migracion` = `tests/integration/db/migracion-slt143-ida-y-vuelta.test.ts`
+
+| R | Test |
+|---|------|
+| R1 | `porFuera` «R1, R2, R12, P6: el superadmin registra por fuera 100 000 → caja 400 000, deuda 200 000…»; `servicio` «R1: con datos válidos, sin fecha ni comprobante, manda el pago normalizado…»; `action` «R1, R8: sin deps.service, sube el comprobante…»; `Registrar` describe «SLT-143 R1, R8, R10, R19 — el envío» |
+| R2 | `porFuera` «R1, R2, R12, P6: …caja 400 000, deuda 200 000, disponible 200 000…» |
+| R3 | `porFuera` «R3, R6: C con la caja en 0 registra por fuera 50 000, igual a lo disponible → ok y la caja queda en −50 000» |
+| R4 | `Registrar` describe «SLT-143 R4 — el reparto propuesto» |
+| R5 | `porFuera` «R5: un reparto que suma 99 999, la factura en curso o la de otra empresa → validation_error…»; `servicio` «R5: el monto mal formado de una factura va bajo su fila…» y «R5: los montos 0 se quitan; todo en 0 es validation_error…»; `action` «R5: un reparto que no es JSON es validation_error en aplicaciones…»; `Registrar` describe «SLT-143 R5 — el reparto tiene que cuadrar» |
+| R6 | `porFuera` «R6: 200 000,01 con 200 000 disponibles → validation_error en monto…» y «R3, R6: …»; `servicio` «R6: el tope es validation_error en monto, con el mensaje de SLT-60» |
+| R7 | `tests/unit/types/pago-plataforma-monto-por-fuera.test.ts` «R7: %s no es mayor que 0», «R7: %s no cabe en el libro», «R7: %j no tiene la forma de un importe…»; `servicio` «R7: el mayor monto que cabe en el libro pasa la validación» y describe «SLT-143 — registrarPorFuera: la fecha en la zona del país de la empresa (R7)»; `action` «R7: con fecha, la zona se lee con las reglas reales del país…»; `Registrar` describe «SLT-143 R7 — los errores de cada campo» |
+| R8 | `porFuera` «R8, R9: con comprobante queda su fila con el pago; si el reparto falla, ni el pago ni el comprobante»; `servicio` «R8: se sube y se guarda con el pago…» y «R8: un archivo que el puerto no admite…»; `action` «R8: un campo de archivo vacío y una fecha vacía…» y «R8: un archivo de un tipo no admitido…»; `Registrar` «sin comprobante no manda el campo (R8)» |
+| R9 | `porFuera` «R8, R9: …»; `servicio` «R9: si la base lanza, el archivo se retira y el error se propaga» y «R9: si el almacenamiento falla, comprobante_no_guardado…»; `action` «R9: si la base rechaza por el tope, el archivo subido se borra…» |
+| R10 | `porFuera` «R10: el mismo registro con la misma clave → ya_registrado, y nada escrito»; `servicio` «R10: ya_registrado llega tal cual»; `Registrar` «dos envíos del mismo diálogo llevan la misma clave (R10)» |
+| R11 | `porFuera` «R11: un pago desde la wallet y uno por fuera de 100 000 a la vez con 190 000 disponibles → esperan el candado…» |
+| R12 | `porFuera` «R12: ningún pago por fuera es un pago por confirmar» y «R1, R2, R12, P6: …» |
+| R13 | `porFuera` «R13, R14: en la wallet, el pago por fuera dice «plataforma» sin nombre ni id…»; `autoria` «R13: el pago registrado por la plataforma dice «plataforma» en Registró…», «R13: un pago por fuera aún vigente lleva la marca…» y «R13, R36: ninguna fila…»; `labels` «R13 — un pago registrado por fuera dice «Registrado por la plataforma»…»; `descarga` «SLT-143 R13/R36: «Registró» dice…» |
+| R14 | `porFuera` «R13, R14: …uno de la empresa confirmado, el nombre»; `autoria` «R14: un pago registrado por la empresa y confirmado conserva el nombre…» |
+| R15 | `porFuera` «R15: A intenta anular el pago por fuera → forbidden, y nada escrito» |
+| R16 | `porFuera` «R1, R2, R12, P6» (lee `confirmados`); `action` «R16: mapea los confirmados del jsonb al DTO…»; `Confirmados` describe «SLT-143 R16 — la lista de pagos confirmados»; `pagina` «R16: la sección va justo debajo de «Pagos por confirmar»…» y «R16: sin confirmados, la sección dice «No hay pagos confirmados»» |
+| R17 | `Confirmados` describe «SLT-143 R17 — «Registrar pago hecho por fuera…»»; `Registrar` describe «SLT-143 R17 — sin facturas cerradas con saldo»; `pagina` «R17, P5: el registro por fuera va ligado a la empresa…» |
+| R18 | `Confirmados` describe «SLT-143 R18 — la lectura falló»; `pagina` «R18: si la lectura da %s, las dos secciones dicen su error y el plan se pinta igual» |
+| R19 | `Registrar` describe «SLT-143 R1, R8, R10, R19 — el envío»; `Confirmados` describe «SLT-143 R19, R21, R23–R25 — anular» |
+| R20 | `Confirmados` describe «SLT-143 R20 — el comprobante» |
+| R21 | `porFuera` «R21, R22, R26, R30: el superadmin anula el pago por fuera con motivo…» y «R21, P5: anular un pago de la empresa ya confirmado → el mismo efecto…»; `servicio` «R21: pasa la empresa, el pago, el motivo recortado…»; `action` «R21: sin deps.service, llama a la función de la base…»; `Confirmados` describe «SLT-143 R19, R21, R23–R25 — anular»; `pagina` «R21: «Anular…» llama a la action con la empresa ligada…» |
+| R22 | `porFuera` «R21, R22, R26, R30: …la caja y la deuda vuelven en 100 000, lo disponible sube…» |
+| R23 | `porFuera` «R23, R25: …motivo de espacios → validation_error…»; `servicio` «R23: un motivo %s es validation_error en motivo…» y «R23: motivo_vacio de la base…»; `Confirmados` describe «SLT-143 R19, R21, R23–R25 — anular» |
+| R24 | `porFuera` «R24: anular otra vez → ya_anulado, y nada escrito» y «R24: dos anulaciones a la vez del mismo pago → esperan el candado…»; `servicio` «R24, R27: ya_anulado llega tal cual» |
+| R25 | `porFuera` «R23, R25: anular uno por confirmar → no_confirmado; de otra empresa o inexistente → not_found…»; `action` «R25: el rechazo SL060 pago_no_confirmado es no_confirmado»; `Confirmados` describe «SLT-143 R19, R21, R23–R25 — anular» |
+| R26 | `porFuera` «R21, R22, R26, R30: …»; `tests/integration/db/empresas-plataforma-deuda-sl45.test.ts` «SLT-143 R26: el superadmin anula el pago confirmado de A → «Pagado» y la deuda vuelven en 300,00…» |
+| R27 | `porFuera` «R27: confirmar el pago anulado por la plataforma → not_found, y nada escrito» y «R24: anular otra vez → ya_anulado…»; `servicio` «R24, R27: ya_anulado llega tal cual» |
+| R28 | `porFuera` «R28, R36: en la wallet, el contra-asiento dice «Anulado por la plataforma» y el pago anulado, «la plataforma» con el motivo» |
+| R29 | `porFuera` «R29: el contra-asiento del pago por fuera escrito a mano, sin la anulación de la plataforma → SL060 como dueño y como servi_app» |
+| R30 | `porFuera` «R21, R22, R26, R30: …» (las cifras, el número y el estado de la factura no cambian) |
+| R31 | `servicio` «R31: el rol %s recibe forbidden al registrar y al anular, sin leer ni escribir» y «R31: sin sesión, forbidden aunque la entrada sea inválida»; `pagina` «R31: un rol de empresa no lee la zona ni los pagos (notFound antes de leer)» |
+| R32 | `porFuera` «R32: B lee solo sus anulaciones de la plataforma; otra empresa no ve nada; no puede escribirlas (42501); y ni el dueño las cambia (SL060)» |
+| R33 | `migracion` «R33: no inserta datos», «R33: el pago confirmado sigue confirmado, sin la marca y sin anulación», «R33: el down.sql aborta sin tocar nada si hay una anulación de la plataforma» y «R33: sin anulaciones, el down.sql deja el esquema como antes y repone las funciones de SLT-60» |
+| R34 | `e2e/pago-plataforma-por-fuera.spec.ts` (escenarios de design §9). Lo escribe T5.1 en paralelo; al cerrar T6.3 el archivo todavía no existía |
+| R35 | **SIN TEST.** Es texto de ayuda (`docs/ayuda/oficina/wallet-caja.md`, T6.2). Ningún test de `tests/` ni de `e2e/` comprueba los dos párrafos nuevos |
+| R36 | `porFuera` «R28, R36: …»; `autoria` «R36: el contra-asiento de una anulación de la plataforma dice «plataforma_anulacion»…», «R36: la línea de anulación del pago original la firma «la plataforma»…» y «R36: una anulación hecha por la empresa (SL-45) conserva el nombre…»; `labels` «R36 — el contra-asiento de la anulación dice «Anulado por la plataforma»…» y «R36 — la línea de anulación del pago original nombra a la plataforma»; `descarga` «SLT-143 R13/R36: …» |
+
+Veredicto T6.3: 34 de 36 requisitos tienen un test real. R34 depende del E2E de T5.1, que está en curso, y R35 no tiene test porque es texto de ayuda.

@@ -121,7 +121,7 @@
   perfil en verde.
 - [x] **T6.2** `docs/ayuda/oficina/wallet-caja.md`: los dos párrafos de R35, con `actualizado:`. **Hecho:** los
   tests que dispara `docs/ayuda/**` en verde, y un `grep` encuentra «Registrado por la plataforma» en la ayuda.
-- [ ] **T6.3** `progress/impl_SLT-143.md` con el mapa `R<n> → test` de R1 a R36.
+- [x] **T6.3** `progress/impl_SLT-143.md` con el mapa `R<n> → test` de R1 a R36.
 
 ## T7 — Cierre (depende de todo)
 
