@@ -1,3 +1,4 @@
+import { jsPDF } from "jspdf";
 import { describe, expect, it } from "vitest";
 
 import { MARCA_FACTURA } from "@/lib/config/marca";
@@ -143,9 +144,13 @@ describe("SLT-199 R6 — cabecera y barra degradada", () => {
     expect(tiras).toHaveLength(MEDIDAS.tiras);
     expect(mismoColor(tiras[0].color, COLORES.degradado[0])).toBe(true);
     expect(mismoColor(tiras[MEDIDAS.tiras - 1].color, COLORES.degradado[2])).toBe(true);
-    // Con 60 tiras ninguna cae justo en la mitad: la del centro está a un paso del violeta.
-    const centro = tiras[MEDIDAS.tiras / 2].color;
-    centro.forEach((c, i) => expect(Math.abs(c - COLORES.degradado[1][i])).toBeLessThanOrEqual(8));
+    // El violeta cae al 45 % del ancho, como en la referencia, y no en la mitad: la tira más violeta es esa.
+    const distancia = (c: readonly number[]) => c.reduce((s, v, i) => s + Math.abs(v - COLORES.degradado[1][i]), 0);
+    const masVioleta = tiras.reduce((mejor, t, i) => (distancia(t.color) < distancia(tiras[mejor].color) ? i : mejor), 0);
+    expect(MEDIDAS.corteBarra).toBe(0.45);
+    expect(masVioleta).toBe(Math.round(MEDIDAS.corteBarra * (MEDIDAS.tiras - 1)));
+    tiras[masVioleta].color.forEach((c, i) => expect(Math.abs(c - COLORES.degradado[1][i])).toBeLessThanOrEqual(3));
+    expect(distancia(tiras[MEDIDAS.tiras / 2].color)).toBeGreaterThan(10);
     expect(tiras[0].x).toBeCloseTo(MEDIDAS.margen * PT, 1);
     expect(tiras.at(-1)!.x + tiras.at(-1)!.w).toBeCloseTo((MEDIDAS.margen + MEDIDAS.util) * PT, 1);
   });
@@ -196,5 +201,39 @@ describe("SLT-199 R1 — la factura y el anexo comparten banda, barra, cabecera 
     const [f, a] = [pie(factura), pie(anexo)];
     expect(f).toHaveLength(2);
     expect(a).toEqual(f);
+  });
+
+  it("las versalitas de la banda (antetítulo y «TOTAL A PAGAR») llevan el espaciado de la referencia, 1,5 pt", () => {
+    const tc = MEDIDAS.espaciadoVersal * PT;
+    expect(tc).toBeCloseTo(1.5, 2);
+    expect(espaciadoDe(factura, "FACTURA DE PLATAFORMA")).toBeCloseTo(tc, 3);
+    expect(espaciadoDe(anexo, "ANEXO · FACTURA N.º 1")).toBeCloseTo(tc, 3);
+    expect(espaciadoDe(factura, "TOTAL A PAGAR")).toBeCloseTo(tc, 3);
+    // Lo que viene detrás no hereda el espaciado.
+    expect(espaciadoDe(factura, "Factura N.º 1")).toBe(0);
+    expect(espaciadoDe(anexo, "Detalle de movimientos")).toBe(0);
+  });
+});
+
+/** El `Tc` activo en el bloque de texto que escribe `t` en la primera página (0 si el bloque no lo fija). */
+function espaciadoDe(bytes: Uint8Array, t: string): number {
+  const bloque = contenidoDePagina(bytes, 0)
+    .split("BT")
+    .find((b) => b.includes(`(${t}) Tj`));
+  if (bloque === undefined) throw new Error(`no está «${t}»`);
+  return Number(/(-?[\d.]+) Tc/.exec(bloque)?.[1] ?? 0);
+}
+
+describe("SLT-199 R1 — el antetítulo espaciado acaba donde la referencia", () => {
+  it("alineado a la derecha contando el espacio tras la última letra, como el `letter-spacing` de la referencia", () => {
+    const { bytes, pags } = documento((l) =>
+      l.cabecera({ logo: null, antetitulo: "ANTETÍTULO", titulo: "Título", cliente: "Cliente: X" }),
+    );
+    const medida = new jsPDF({ unit: "mm", format: "a4" });
+    medida.setFontSize(8);
+    const ancho = medida.getTextWidth("ANTETÍTULO") + MEDIDAS.espaciadoVersal * "ANTETÍTULO".length;
+    const derecha = MEDIDAS.margen + MEDIDAS.util - MEDIDAS.sangriaBanda;
+    const x = textosDePagina(bytes, 0)[pags[0].findIndex((t) => t.texto === "ANTETÍTULO")].x;
+    expect(x).toBeCloseTo((derecha - ancho) * PT, 1);
   });
 });

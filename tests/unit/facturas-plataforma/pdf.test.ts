@@ -191,7 +191,7 @@ describe("SLT-199 R12 — el desglose por día en página nueva", () => {
     expect(p2.some((t) => t.includes("Excel"))).toBe(false);
   });
 
-  it("órdenes netas negativas y el importe neto negativo en rojo", () => {
+  it("órdenes netas negativas en tinta y solo el importe neto negativo en rojo, como la referencia", () => {
     const datos = datosDescarga({
       factura: factura({ cargos: "300.00", reversos: "300.00", totalOrdenes: "0.00", movimientos: 2, total: "0.00" }),
       movimientos: [
@@ -202,6 +202,11 @@ describe("SLT-199 R12 — el desglose por día en página nueva", () => {
     const p2 = pdfDe(datos).pags[1];
     expect(tras(p2.map((t) => t.texto), "19/11/2026", 4)).toEqual(["0", "1", "-1", `-${S}300${D}00`]);
     expect(mismoColor(p2.find((t) => t.texto === `-${S}300${D}00`)!.color, COLORES.rojo)).toBe(true);
+    const fila = p2.findIndex((t) => t.texto === "19/11/2026");
+    const netas = p2[fila + 3];
+    expect(netas.texto).toBe("-1");
+    expect(mismoColor(netas.color, COLORES.rojo)).toBe(false);
+    expect(mismoColor(netas.color, COLORES.tinta)).toBe(true);
   });
 
   it("R4: las cantidades de la fila Total con espacio de miles («2 365»)", () => {

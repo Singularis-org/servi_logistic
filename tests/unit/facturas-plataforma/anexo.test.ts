@@ -20,6 +20,18 @@ const EMPRESA = "Mensajería Ñandú S.A.";
 const { simbolo: S, separadorDecimal: D } = monedaConfig;
 const COLUMNAS = ["#", "Fecha", "Tipo", "Guía", "Remisión", "Importe"];
 
+/** El grosor de trazo (pt) activo en cada figura rellena y contorneada (`B`): en el anexo, solo las tarjetas. */
+function bordesDeTarjeta(contenido: string): string[] {
+  const limpio = contenido.replace(/\((?:\\[\s\S]|[^()\\])*\)/g, "()").replace(/<[0-9a-fA-F\s]*>/g, "<>");
+  const out: string[] = [];
+  let grosor = 1;
+  for (const m of limpio.matchAll(/(-?[\d.]+) w\b|\bB\b/g)) {
+    if (m[1] !== undefined) grosor = Number(m[1]);
+    else out.push(grosor.toFixed(2));
+  }
+  return out;
+}
+
 function anexoDe(datos: DatosDescargaFactura, logo: LogoDelPdf | null = LOGO) {
   return leerPdf(construirPdfAnexo(datos, resumirFactura(datos), logo));
 }
@@ -80,6 +92,11 @@ describe("SLT-199 R17 — cuatro tarjetas y la línea del período", () => {
     expect(tras(p1, "TOTAL NETO")).toEqual([imp("300.00")]);
     const ys = ["MOVIMIENTOS", "CARGOS", "REVERSOS", "TOTAL NETO"].map((e) => pags[0].find((t) => t.texto === e)!.y);
     expect(new Set(ys.map((y) => y.toFixed(1))).size).toBe(1);
+  });
+
+  it("las cuatro tarjetas con el mismo borde de 0,26 mm, también tras un valor con el símbolo de la moneda", () => {
+    const { bytes } = anexoDe(datosDescarga());
+    expect(bordesDeTarjeta(contenidoDePagina(bytes, 0))).toEqual(Array(4).fill((0.26 * PT).toFixed(2)));
   });
 
   it("«Periodo facturado: … al … .» y la tarifa única", () => {

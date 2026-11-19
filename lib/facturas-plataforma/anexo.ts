@@ -1,5 +1,5 @@
-// SLT-199 (design §6; R15–R21) — el anexo de movimientos de una factura cerrada, con el diseño de
-// el detalle de referencia de `docs/referencias/`: cabecera solo en la primera página, cuatro tarjetas, la línea
+// SLT-199 (design §6; R15–R21) — el anexo de movimientos de una factura cerrada, con el diseño del
+// detalle de referencia de `docs/referencias/`: cabecera solo en la primera página, cuatro tarjetas, la línea
 // del período y la tarifa, y la tabla «Movimientos» con su total neto. Se compone con `pdf-comun.ts` (R1).
 //
 // Función pura sobre jsPDF, como la factura: los mismos datos y el mismo resumen (R15), sin otra lectura.

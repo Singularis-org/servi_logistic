@@ -203,3 +203,43 @@ Veredicto: T4.1 en verde; los botones son «Descargar factura» y «Descargar an
   typecheck y lint pasan; `test:rapido` 100 + 100 + 87 archivos en verde; todas las guardias en verde.
   Primera corrida: dos rojos nuevos (nombre heredado y test citado desaparecido), corregidos en `96fe896d`.
 - T5.2 y T5.3 quedan sin marcar: falta el E2E local (`e2e/facturas-plataforma.spec.ts` y `--project=dinero`).
+
+## Menores de la review (ronda 1) — backend_dev, 2026-11-18
+
+Review en `progress/review_SLT-199.md`. Aplicados m2–m6; m1 es del leader, m7 y m8 no se hacen (indicación del leader).
+Sin cambios de cálculo ni dependencias nuevas.
+
+### Qué cambió
+- **m2** `pdf-comun.ts` `tarjetas()`: `setLineWidth(0.26)` dentro del bucle, junto a `setDrawColor`. Antes las tarjetas
+  3 y 4 del anexo salían a 0,18 mm (la negrita fingida del valor con el símbolo de la moneda). Ahora las cuatro: 0,74 pt
+  (0,26 mm). Test: `anexo.test.ts` «SLT-199 R17 — … las cuatro tarjetas con el mismo borde de 0,26 mm…», que lee el
+  grosor activo en cada `B`; sin el arreglo da `0.57, 0.57, 0.51, 0.51` y falla.
+- **m3** `colorDelDegradado(t, corte)` y `MEDIDAS.corteBarra = 0.45`: la barra pone el violeta al 45 % (/P14 de la
+  referencia); el filete vertical del título sigue al 50 % (/P7). Test: `pdf-comun.test.ts` «SLT-199 R6 — … barra
+  degradada…»: la tira más violeta es la `round(0,45 × 59) = 27` (a ≤ 3 del violeta) y la del centro ya no lo es.
+- **m4** `pdf.test.ts`: el test pasa a «órdenes netas negativas en tinta y solo el importe neto negativo en rojo, como la
+  referencia» y comprueba que «-1» no es rojo y es tinta.
+- **m5** `anexo.ts:1-2`: «con el diseño del detalle de referencia».
+- **m6** espaciado entre letras (`charSpace` de jsPDF → `Tc`) en el antetítulo («FACTURA DE PLATAFORMA» / «ANEXO ·
+  FACTURA N.º n») y en «TOTAL A PAGAR»: `MEDIDAS.espaciadoVersal = 0.529` mm.
+  - Medido en las dos referencias (glifo a glifo, `Td` menos el ancho `/W` del glifo): antetítulo 10,66 px y «TOTAL A
+    PAGAR» 12 px con +2 px entre letras = 1,5 pt = 0,529 mm. La referencia no usa `Tc`: posiciona cada glifo.
+  - Como el `letter-spacing` CSS, el espacio va también tras la última letra: en la referencia el antetítulo acaba en
+    687 px y el título en 689 px. jsPDF no suma `charSpace` al ancho con el que alinea a la derecha, así que
+    `Lienzo.texto()` alinea a mano cuando hay espaciado (`x − (ancho + espaciado × letras)`).
+  - En el PDF: `1.4995 Tc` antes del antetítulo y de «TOTAL A PAGAR»; `0 Tc` en el texto siguiente.
+  - Tests: `pdf-comun.test.ts` «SLT-199 R1 — … las versalitas de la banda … 1,5 pt» (Tc en factura y anexo, y 0 en el
+    título siguiente) y «SLT-199 R1 — el antetítulo espaciado acaba donde la referencia» (x del `Td`).
+  - Observación (fuera de m6, no aplicada): en la referencia las etiquetas de las tarjetas (10 px) también llevan +1 px
+    entre letras (0,26 mm). Si el humano quiere el diseño idéntico, es el mismo `espaciado` en `tarjetas()`.
+- Muestras regeneradas: `progress/capturas/SLT-199/factura.pdf` y `anexo.pdf`.
+
+### Salida
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec vitest run tests/unit/facturas-plataforma/
+  tests/components/DescargarFactura.test.tsx tests/components/DetalleDeFactura.test.tsx
+  tests/unit/guards/sin-nombre-heredado.guardia.test.ts`: 7 archivos, 126 tests, 0 fallos.
+- `pnpm run typecheck`: limpio.
+- `pnpm exec eslint lib/facturas-plataforma/pdf-comun.ts lib/facturas-plataforma/anexo.ts tests/unit/facturas-plataforma/`:
+  limpio.
+
+Veredicto: m2–m6 aplicados con test; verde en lo tocado.

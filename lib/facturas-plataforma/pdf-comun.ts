@@ -39,7 +39,7 @@ export const COLORES = {
   linea: [237, 235, 250],
   blanco: [255, 255, 255],
   rosa: [245, 208, 254],
-  /** Cian → violeta → rosa, a tramos iguales. */
+  /** Cian → violeta → rosa; dónde cae el violeta lo dice cada uso (`MEDIDAS.corteBarra`, o la mitad). */
   degradado: [[34, 211, 238], [124, 58, 237], [236, 72, 153]],
 } as const satisfies Record<string, Color | readonly Color[]>;
 
@@ -74,6 +74,13 @@ export const MEDIDAS = {
   yPie: 297 - 6.4,
   /** Tiras de color con las que se dibuja la barra degradada (jsPDF no pinta degradados sin su API avanzada). */
   tiras: 60,
+  /** En la barra de la referencia el violeta cae al 45 % del ancho; en el filete vertical de un título, a la mitad. */
+  corteBarra: 0.45,
+  /**
+   * Espacio entre letras de las versalitas de la banda (el antetítulo y «TOTAL A PAGAR»): 2 px en la referencia, que
+   * en su content stream es 1,5 pt de más entre glifo y glifo, también tras el último (como el `letter-spacing` CSS).
+   */
+  espaciadoVersal: 0.529,
   filaCompacta: { alto: 4.4, letra: 7.4 },
   filaAmplia: { alto: 9.6, letra: 12 },
 } as const;
@@ -115,12 +122,14 @@ interface OpcionesTexto {
   ancho?: number;
   tamano?: number;
   color?: Color;
+  /** Espacio de más tras cada letra, en mm (el `Tc` del PDF). */
+  espaciado?: number;
 }
 
-/** El color en el tramo `t` ∈ [0, 1] del degradado. */
-function colorDelDegradado(t: number): Color {
-  const [a, b] = t < 0.5 ? [COLORES.degradado[0], COLORES.degradado[1]] : [COLORES.degradado[1], COLORES.degradado[2]];
-  const f = t < 0.5 ? t * 2 : (t - 0.5) * 2;
+/** El color en el tramo `t` ∈ [0, 1] del degradado, con el violeta en `corte`. */
+function colorDelDegradado(t: number, corte: number): Color {
+  const [a, b] = t < corte ? [COLORES.degradado[0], COLORES.degradado[1]] : [COLORES.degradado[1], COLORES.degradado[2]];
+  const f = t < corte ? t / corte : (t - corte) / (1 - corte);
   return [0, 1, 2].map((i) => Math.round(a[i] + (b[i] - a[i]) * f)) as unknown as Color;
 }
 
@@ -170,8 +179,14 @@ export class Lienzo {
     if (!embebida && !seguroEnFuenteEstandar(linea)) this.fuente((embebida = true), op.negrita);
     const fingida = embebida && op.negrita === true;
     if (fingida) this.doc.setLineWidth(0.18);
+    // jsPDF no suma el espaciado al ancho con el que alinea a la derecha: se alinea aquí, contando el espacio que
+    // queda tras la última letra, como la referencia.
+    const espaciado = op.espaciado ?? 0;
+    const alineada = op.derecha === true && espaciado > 0;
+    if (alineada) x -= this.doc.getTextWidth(linea) + espaciado * Array.from(linea).length;
     this.doc.text(linea, x, y, {
-      ...(op.derecha ? { align: "right" as const } : {}),
+      ...(op.derecha && !alineada ? { align: "right" as const } : {}),
+      ...(espaciado > 0 ? { charSpace: espaciado } : {}),
       ...(fingida ? { renderingMode: "fillThenStroke" as const } : {}),
     });
   }
@@ -188,9 +203,9 @@ export class Lienzo {
   }
 
   /** Tiras contiguas con el color interpolado; cada una monta un poco sobre la siguiente para no dejar rendijas. */
-  private degradado(x: number, y: number, w: number, h: number, vertical: boolean, tiras: number): void {
+  private degradado(x: number, y: number, w: number, h: number, vertical: boolean, tiras: number, corte: number): void {
     for (let i = 0; i < tiras; i++) {
-      const color = colorDelDegradado(i / (tiras - 1));
+      const color = colorDelDegradado(i / (tiras - 1), corte);
       if (vertical) this.rect(x, y + (h * i) / tiras, w, h / tiras + (i < tiras - 1 ? 0.05 : 0), color);
       else this.rect(x + (w * i) / tiras, y, w / tiras + (i < tiras - 1 ? 0.05 : 0), h, color);
     }
@@ -222,7 +237,8 @@ export class Lienzo {
       this.texto(T.emisor, MARGEN + sangriaBanda, arriba + alto / 2 + 2.2, op);
     }
     const derecha = MARGEN + UTIL - sangriaBanda;
-    this.texto(op.antetitulo, derecha, arriba + 7.7, { derecha: true, tamano: 8, color: COLORES.grisClaro });
+    const antetitulo = { derecha: true, tamano: 8, color: COLORES.grisClaro, espaciado: MEDIDAS.espaciadoVersal };
+    this.texto(op.antetitulo, derecha, arriba + 7.7, antetitulo);
     this.texto(op.titulo, derecha, arriba + 14.6, { derecha: true, negrita: true, tamano: 18, color: COLORES.blanco });
     const cliente = { derecha: true, ancho: UTIL - 60, tamano: 10, color: COLORES.rosa };
     this.texto(op.cliente, derecha, arriba + 19.6, cliente);
@@ -236,7 +252,7 @@ export class Lienzo {
   }
 
   barraDegradada(y: number): void {
-    this.degradado(MARGEN, y, UTIL, MEDIDAS.altoBarra, false, MEDIDAS.tiras);
+    this.degradado(MARGEN, y, UTIL, MEDIDAS.altoBarra, false, MEDIDAS.tiras, MEDIDAS.corteBarra);
   }
 
   /** R6: el logo configurado; `false` si no lo hay o jsPDF no lo puede pintar. */
@@ -257,10 +273,11 @@ export class Lienzo {
   tarjetas(valores: readonly (readonly [etiqueta: string, valor: string])[], columnas: number): void {
     const { altoTarjeta: alto, separacionTarjetas: sep, radioTarjeta: radio } = MEDIDAS;
     const ancho = (UTIL - sep * (columnas - 1)) / columnas;
-    this.doc.setLineWidth(0.26);
     valores.forEach(([etiqueta, valor], i) => {
       const x = MARGEN + (i % columnas) * (ancho + sep);
       const y = this.y + Math.floor(i / columnas) * (alto + sep);
+      // En cada tarjeta: un valor anterior con el símbolo de la moneda en negrita fingida deja otro grosor de trazo.
+      this.doc.setLineWidth(0.26);
       this.doc.setDrawColor(COLORES.bordeTarjeta[0], COLORES.bordeTarjeta[1], COLORES.bordeTarjeta[2]);
       this.doc.setFillColor(COLORES.fondoTarjeta[0], COLORES.fondoTarjeta[1], COLORES.fondoTarjeta[2]);
       this.doc.roundedRect(x, y, ancho, alto, radio, radio, "FD");
@@ -284,7 +301,7 @@ export class Lienzo {
   /** Título con el filete degradado vertical a su izquierda; deja aire encima también al empezar página. */
   tituloSeccion(t: string): void {
     this.y += MEDIDAS.aireTitulo;
-    this.degradado(MARGEN, this.y, 1.06, 3.7, true, 12);
+    this.degradado(MARGEN, this.y, 1.06, 3.7, true, 12, 0.5);
     this.texto(t, MARGEN + 3.2, this.y + 2.9, { negrita: true, tamano: 11, color: COLORES.tinta });
     this.y += 6.6;
   }
@@ -366,7 +383,7 @@ export class Lienzo {
     this.asegurar(3.2 + MEDIDAS.altoBandaTotal);
     this.y += 3.2;
     this.rect(MARGEN, this.y, UTIL, MEDIDAS.altoBandaTotal, COLORES.noche, MEDIDAS.radioBandaTotal);
-    this.texto(etiqueta, MARGEN + 4.2, this.y + 9, { tamano: 9, color: COLORES.rosa });
+    this.texto(etiqueta, MARGEN + 4.2, this.y + 9, { tamano: 9, color: COLORES.rosa, espaciado: MEDIDAS.espaciadoVersal });
     const op = { derecha: true, negrita: true, tamano: 18, color: COLORES.blanco };
     this.texto(importe, ANCHO - MARGEN - 4.2, this.y + 10, op);
     this.y += MEDIDAS.altoBandaTotal + 1.8;
