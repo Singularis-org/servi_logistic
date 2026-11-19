@@ -179,7 +179,9 @@ command -v node >/dev/null 2>&1 || fail "node no esta instalado"
 command -v pnpm >/dev/null 2>&1 || fail "pnpm no esta instalado. Instalalo con: npm i -g pnpm"
 ok "node $(node -v)"
 
-# >>> PASO 2: DEPENDENCIAS <<<  (lo ejecuta aislado tests/guards/guard-init-node-modules-enlazado.test.ts)
+# >>> PASO 2: DEPENDENCIAS <<<  (lo ejecutan aislado DOS guardias, que lo recortan por estos marcadores:
+#    tests/guards/guard-init-node-modules-enlazado.test.ts y
+#    tests/guards/guard-dependencias-declaradas-presentes.test.ts)
 # 2. Dependencias. Los artefactos GENERADOS del stack (cliente del ORM, tipos de ruta…) los
 #    regenera `scripts/gate-proyecto.sh` (perfil), que corre antes del typecheck.
 #    Un `node_modules` ENLAZADO (el worktree que comparte el del checkout principal,
@@ -197,7 +199,12 @@ if [ -f package.json ]; then
     echo "Instalando dependencias..."
     pnpm install --frozen-lockfile || fail "pnpm install --frozen-lockfile fallo"
   fi
-  ok "dependencias presentes"
+  #    Se MIDE que cada paquete declarado en package.json esta en node_modules: que la carpeta
+  #    exista no dice nada (ficha 420 del proyecto de origen del arnes; docs/gate.md, parrafo
+  #    «El paso 2 mide las dependencias»).
+  DEPENDENCIAS="$(node scripts/verificar-dependencias.mjs .)" \
+    || fail "faltan dependencias declaradas en package.json (el detalle esta justo arriba): pnpm install --frozen-lockfile"
+  ok "dependencias: $DEPENDENCIAS"
 else
   warn "no hay package.json todavia (repo recien inicializado)"
 fi
