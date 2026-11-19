@@ -274,3 +274,67 @@ Modificados:
   de T11 (en verde en local, más los cuatro E2E de planes y `mi-plan-cambiar-plan`) queda pendiente de ese CI.
 
 Veredicto: T11 escrito, tipado, lint y guardias en verde; su ejecución queda para el CI del PR.
+
+## T7 (frontend_dev, en paralelo a la tanda 2)
+
+- `components/shared/planes/BeneficiosDelPlan.tsx` (`IconoDeBeneficio`, `ListaDeBeneficios` con `plegable`, `vacio`
+  y `textos`; esta última no está en design §4.2, se añadió para poder sustituir los rótulos).
+- `tests/components/BeneficiosDelPlan.test.tsx`: R5 (ícono `aria-hidden`, los 12 íconos), R21 (sin botón con ≤3,
+  «Mostrar más»/«Mostrar menos» con `aria-expanded`, cada lista por su cuenta), «Sin beneficios» opcional.
+- Salida: `vitest run` 1 archivo, `Tests 7 passed (7)`; eslint rc 0; typecheck rc 0.
+
+## Cierre (implementer)
+
+### Mapa consolidado R<n> → test
+
+| R | Test(s) |
+|---|---|
+| R1 | `tests/unit/planes/beneficios.test.ts`; `tests/integration/db/plan-beneficio.test.ts` «R1» |
+| R2 | `beneficios.test.ts` (recorte, vacío, 120/121); `PlanFormBeneficios.test.tsx` «R2: 120 caracteres» |
+| R3 | `beneficios.test.ts` «R3»; `plan-borrador-schema.test.ts` (los dos modos) |
+| R4 | `beneficios.test.ts` (mayúsculas, tildes, espacios; error en `<j>.texto`) |
+| R5 | `beneficios.test.ts` (12 íconos, orden, nombres); `BeneficiosDelPlan.test.tsx` «R5»; `PlanFormBeneficios.test.tsx` «R5» |
+| R6 | `plan-beneficio.test.ts` (CHECK, `servi_app` 42501); `migracion-plan-beneficio-ida-y-vuelta.test.ts` (RLS) |
+| R7 | ida y vuelta «R7» (CHECK); `plan-borrador-schema.test.ts` «R7»; `PlanFormPasos.test.tsx` «R7»; `plan-form-borrador.test.ts` «R7» |
+| R8 | `PlanFormBeneficios.test.tsx` «R8» |
+| R9 | `PlanFormBeneficios.test.tsx` «R9» (2); `plan-form-borrador.test.ts` «R9, R11» |
+| R10 | `PlanFormBeneficios.test.tsx` «R10» (2); `plan-borrador-schema.test.ts` |
+| R11 | `plan-form-borrador.test.ts` «R11» (2); `PlanFormBorrador.test.tsx` «SLT-214 R11» |
+| R12 | `plan-borrador-confirmar.test.ts` «SLT-214 R12» |
+| R13 | `PlanFormBeneficios.test.tsx` «R13» (2); `plan-form-borrador.test.ts` «R13» |
+| R14 | `PlanFormBeneficios.test.tsx` «R14» (3); `PlanFormRevisar.test.tsx` «R22: al crear…» |
+| R15 | `plan-beneficio.test.ts` «R15»; `plan-borrador-confirmar.test.ts` «SLT-214 R15» |
+| R16 | `plan-borrador-confirmar.test.ts` «SLT-214 R16»; `planes-version-por-empresa.test.ts` «SLT-214 R16» |
+| R17 | `plan-beneficio.test.ts` «R17» |
+| R18 | `beneficios.test.ts` «R18»; `plan-beneficio.test.ts` «R18»; `mi-plan-repository.test.ts` «R18»; `rastro.test.ts`; `MiPlanModule.test.tsx` |
+| R19 | `rastro.test.ts` «SLT-214 R19»; `PlanDetalle.test.tsx` (líneas del rastro) |
+| R20 | `PlanesModule.test.tsx` «R20» |
+| R21 | `BeneficiosDelPlan.test.tsx` «R21»; `PlanesModule.test.tsx`; `MiPlanCambioDePlan.test.tsx` |
+| R22 | `PlanDetalle.test.tsx` «R22» |
+| R23 | `mi-plan-repository.test.ts` (3); `MiPlanModule.test.tsx` «R23»; ida y vuelta «R18, R23» |
+| R24 | `mi-plan-cambio-service.test.ts` «SLT-214 R24»; `MiPlanCambioDePlan.test.tsx` «R24» (y «Mostrar más» no selecciona) |
+| R25 | `beneficios.test.ts` «SLT-214 R25» (con `lineasDeCambioDelPlan`); `MiPlanModule.test.tsx` «R25» |
+| R26 | `e2e/planes-beneficios.spec.ts` (2 casos) — pendiente de CI |
+
+Ningún R sin test.
+
+### Archivos fuera de la lista de `tasks.md`
+
+- Producción: `lib/db/modelos-de-negocio.ts` (guardia `organizacion-en-modelos`), `components/ui/select.tsx`
+  (campo opcional `icon`), `playwright.config.ts` (registra el spec en `aislamiento`).
+- Tests adaptados solo por el paso o la clave nueva: `migracion-slt128-ida-y-vuelta`, `orden-traspaso-migration`,
+  `plan-de-la-empresa`, `plan-borrador`, `plan-borrador-service`, `planes-repository-tipo-cobro`,
+  `ConsumoDelPlan`, `PlanForm`, `PlanFormRevisar`.
+
+### Decisión a revisar (reviewer)
+
+En «Revisar», al editar, la fila «Beneficios» solo sale si cambian («antes → después»), igual que las demás filas.
+Al crear sale siempre. R14 no precisa el caso de edición.
+
+### Entorno y verificación
+
+- Bases desechables `servi_logistic_slt214` (integración) y `servi_logistic_slt214_e2e`, migradas y con
+  `pnpm run db:seed`. `demo-qa.test.ts` caía solo por falta de seed; tras el seed: `Tests 14 passed (14)`.
+- E2E (`planes-beneficios` y los cuatro de planes adaptados): NO corridos en local por falta de memoria, por orden
+  del leader; se verifican en el CI del PR #245.
+- `next build` no corrido en local (misma razón); lo cubre CI.
