@@ -7,7 +7,9 @@
 ## T0 — Conteo en producción (leader, solo lectura) — antes del PR
 
 - [ ] Correr la consulta de `design.md §6` contra producción (`.env.prod`, `SET default_transaction_read_only = on`).
-- **Hecho:** números anotados en `progress/features/SLT-224.md`. Si se cumple alguna de las
+- **Hecho:** números anotados en `progress/features/SLT-224.md`. Tras la corrección a mano del
+  2026-11-19 se esperan 0 candidatas elegibles en la empresa evidenciada (más lo que haya aparecido
+  desde entonces) y exactamente las 18 guías de P2 como excluidas. Si se cumple alguna de las
   condiciones de parada de `design.md §6`, se para y decide Carlos antes de abrir el PR.
 - Se repite el día del paso a producción.
 
@@ -29,7 +31,7 @@
   `export async function`, con su contraprueba; entrada de `orden_zona_reconciliada` →
   helper/`recibe_tx`.
 - [ ] `zona-reconciliacion-no-retarifa.guardia.test.ts`: detector sobre el cuerpo del helper; nuevas
-  aserciones de `design.md §2.3` (los dos llamadores usan el helper y ningún repositorio repite el
+  aserciones de `design.md §2.3` (los tres llamadores usan el helper; la aserción del tercero entra con T8 y ningún repositorio repite el
   corte ni la acción), cada una con su contraprueba en memoria.
 - **Hecho:** `pnpm run test:guardias` verde, y cada aserción nueva cae con su cuerpo mutado.
 
@@ -67,9 +69,35 @@
 - [ ] `docs/ayuda/oficina/ordenes.md`, «Retirar a bodega central»: «quedan En bodega central con su
   zona de siempre» pasa a decir que, al recibirlas, toman la zona de su distrito (si el distrito se
   pasó a otra zona mientras estaban en la satélite, ya llegan con la nueva). Sin glifos ni símbolos.
-- **Hecho:** texto revisado contra R1700 y R1705.
+- [ ] Mismo archivo: un párrafo para «Actualizar zonas» (qué busca, qué se salta y por qué, y que deja
+  rastro en el histórico de acciones).
+- **Hecho:** texto revisado contra R1700, R1705 y R1713–R1718.
 
-## T7 — Cierre — depende de T1–T6
+## T8 — «Actualizar zonas»: backend (R1714, R1715, R1717–R1719) — depende de T1
+
+- [ ] `ESTADOS_DEVOLUCION_SIN_RECONCILIAR` en `lib/utils/estados-bodega-satelite.ts` y `excluirEstados`
+  en el helper (`design.md §2.1`).
+- [ ] `lib/types/actualizacion-zonas.ts`, `IActualizacionZonasRepository` + `ActualizacionZonasRepository`,
+  `IActualizacionZonasService` + `ActualizacionZonasService`, `lib/actions/actualizacion-zonas.ts`
+  (`design.md §3b.2-§3b.3`).
+- [ ] `tests/integration/db/actualizacion-zonas.int.test.ts` y
+  `tests/unit/services/actualizacion-zonas-action.test.ts` (`design.md §7.4`).
+- **Hecho:** los dos verdes; las tres mutaciones de `design.md §7.4` dan rojo; T1 sigue verde (el
+  `where` del guardado de zona no cambia sin `excluirEstados`).
+
+## T9 — «Actualizar zonas»: pantalla (R1713, R1715, R1716, R1718) — depende de T8
+
+- [ ] `app/(app)/ordenes/_components/ActualizarZonasButton.tsx` (botón + `Modal` compartido,
+  `design.md §3b.4`).
+- [ ] `OrdenesListado.tsx`: prop `puedeActualizarZonas` y el botón a la derecha de
+  `RecibirPaquetesEntrada` en `header`, con `onSuccess={handleSuccess}`. `app/(app)/ordenes/page.tsx`:
+  `puedeActualizarZonas = esAccesoTotal(rol)`.
+- [ ] `tests/components/ActualizarZonasButton.test.tsx`.
+- **Hecho:** test de componente verde; en local, con maestro, el botón aparece junto a «Recibir
+  paquete», la vista previa coincide con la base y al confirmar el listado se refresca. Con
+  `adminSatelite` el botón no aparece.
+
+## T7 — Cierre — depende de T1–T6, T8 y T9
 
 - [ ] `./init.sh` verde. Como el diff toca `db/`, correr en local los E2E que cubren la recepción en
   la central y el retiro (`grep -rl` en `e2e/` por `recepcion` y `retirar`) con base desechable nueva.
@@ -82,7 +110,9 @@
 
 - **T11 (leader, solo lectura):** verificación de `design.md §6` tras el deploy a producción.
 - Aprobación de Carlos en Preview: una orden desalineada en `en_ruta_bodega_central` se recibe con el
-  escáner y queda con la zona de su distrito, asignable desde la central si esa zona es la central.
+  escáner y queda con la zona de su distrito, asignable desde la central si esa zona es la central; y
+  «Actualizar zonas» muestra la vista previa, salta las del estante, las devoluciones y las cerradas, y
+  actualiza las demás.
 
 ## Archivos esperados
 
@@ -102,3 +132,16 @@
 - `tests/unit/services/recepcion-bodega-central-service.test.ts`
 - `tests/unit/repositories/orden-repository.recepcion-bodega-central.test.ts`
 - `tests/unit/repositories/zona-repository.test.ts`
+- `lib/utils/estados-bodega-satelite.ts`
+- `lib/types/actualizacion-zonas.ts`
+- `lib/interfaces/repositories/IActualizacionZonasRepository.ts`
+- `lib/repositories/ActualizacionZonasRepository.ts`
+- `lib/interfaces/services/IActualizacionZonasService.ts`
+- `lib/services/ActualizacionZonasService.ts`
+- `lib/actions/actualizacion-zonas.ts`
+- `app/(app)/ordenes/_components/ActualizarZonasButton.tsx`
+- `app/(app)/ordenes/_components/OrdenesListado.tsx`
+- `app/(app)/ordenes/page.tsx`
+- `tests/integration/db/actualizacion-zonas.int.test.ts`
+- `tests/unit/services/actualizacion-zonas-action.test.ts`
+- `tests/components/ActualizarZonasButton.test.tsx`

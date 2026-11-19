@@ -72,6 +72,8 @@ export interface AlcanceReconciliacion {
   distritoIds: string[];
   /** Si viene, acota además a estas órdenes (la recepción pasa la suya). Ausente = todas las del distrito. */
   ordenIds?: string[];
+  /** Si viene, estados que además NO se mueven (el botón pasa las devoluciones, §3b). Ausente = como hoy. */
+  excluirEstados?: readonly OrderStatusValue[];
 }
 
 export interface ResultadoReconciliacion {
@@ -88,8 +90,15 @@ export async function reconciliarZonaDeOrdenes(
 
 - **Recibe la `tx`** y nunca abre la suya: la atomicidad con el guardado o con la recepción la da el
   llamador (forma `recibe_tx` de la guardia del histórico).
-- **`ordenIds`** se añade al `where` de las dos consultas (`count` y `findMany`) con `id: { in }`. Sin
-  `ordenIds`, el `where` es byte a byte el de hoy.
+- **`ordenIds`** se añade al `where` de las dos consultas (`count` y `findMany`) con `id: { in }`.
+  **`excluirEstados`** se suma al `notIn` del `findMany` de elegibles (las retenidas del estante se
+  siguen contando igual). Sin ninguno de los dos, el `where` es byte a byte el de hoy.
+- **`ESTADOS_DEVOLUCION_SIN_RECONCILIAR`** se declara en `lib/utils/estados-bodega-satelite.ts`, junto a
+  `ESTADOS_PAQUETE_EN_ESTANTE`: `por_devolver_a_bodega_central`, `devolviendo_a_bodega_central`,
+  `novedad`, `por_devolver_a_tienda`, `devolviendo_a_tienda` y `devuelta_a_tienda`. Son los bloques «La
+  devolución» y «El retorno a la tienda» de `ESTADOS_BODEGA_SATELITE`. Solo la usa el botón
+  (la migración ya acota a dos estados). El guardado de zona no la usa: su comportamiento no
+  cambia (R1706).
 - **Lote y actor.** Un `randomUUID()` por llamada (366/R11: un lote por guardado; aquí, uno por
   recepción). `resolverActorCongelado` una sola vez por llamada y solo si hay alguna zona resuelta,
   como hoy.
@@ -102,6 +111,7 @@ export async function reconciliarZonaDeOrdenes(
   Mismo orden de consultas, mismo resultado (`tests/integration/db/zona-reconciliacion-ordenes.test.ts`
   y `tests/unit/repositories/zona-repository.test.ts` verdes sin tocar expectativas).
 - `OrdenRepository.recibirEnBodegaCentral`: §3.
+- `ActualizacionZonasRepository.actualizar`: §3b.
 
 ### 2.3 Las guardias que leen el cuerpo
 
@@ -113,8 +123,9 @@ export async function reconciliarZonaDeOrdenes(
   función exportada. El total de tipos (86) no cambia.
 - `zona-reconciliacion-no-retarifa.guardia.test.ts`: el detector (`fallosDeLaReconciliacion`) se aplica
   al cuerpo del helper, no a `update`. Se añaden dos aserciones (R1706):
-  - `ZonaRepository.update` y `OrdenRepository.recibirEnBodegaCentral` llaman a `reconciliarZonaDeOrdenes(`;
-  - ni `ZonaRepository.ts` ni `OrdenRepository.ts` contienen `cierreDetalles: { none` ni el literal
+  - `ZonaRepository.update`, `OrdenRepository.recibirEnBodegaCentral` y
+    `ActualizacionZonasRepository.actualizar` llaman a `reconciliarZonaDeOrdenes(`;
+  - ni `ZonaRepository.ts`, ni `OrdenRepository.ts`, ni `ActualizacionZonasRepository.ts` contienen `cierreDetalles: { none` ni el literal
     `"orden_zona_reconciliada"`, o sea, nadie repite el corte ni la acción fuera del helper.
 
 ## 3. La recepción en la central (R1700–R1704)
@@ -159,6 +170,67 @@ Sin distrito, o con un distrito sin zona, el helper no encuentra zona resuelta y
   `zona_distrito`, `orden` y `historial_accion` a la empresa de la sesión, como en el guardado de
   zona. No hay tabla nueva de negocio.
 - País: nada depende del país (ni moneda, ni impuestos, ni geografía nueva).
+
+## 3b. El botón «Actualizar zonas» (R1713–R1719, D5)
+
+Para errores sueltos que la recepción no alcanza, por ejemplo una orden que ya estaba en la central
+antes del despliegue, o una que se quedó atrás en otro estado. No depende de la selección: el sistema
+busca en toda la empresa (Carlos, 2026-11-19).
+
+### 3b.1 Dónde queda y quién lo ve
+
+- **Dónde:** en la cabecera de `/ordenes` (`OrdenesListado.tsx`, `header`, `:1419-1445`), en la misma
+  fila y justo a la derecha de `RecibirPaquetesEntrada` («Recibir paquete», SLT-202). No va en la barra
+  de acciones por lote (`accionesPara`/`AccionLote`), porque no actúa sobre la selección.
+- **Quién lo ve:** la prop nueva `puedeActualizarZonas`. `app/(app)/ordenes/page.tsx` la calcula igual
+  que `puedeRecibirBodegaCentral` (`:97`, `esAccesoTotal(rol)`): **maestro y admin**. Son los roles que
+  ya pueden recibir en la central y los que operan zonas y retiros. El `adminSatelite`, el
+  `adminTienda` y el `mensajero` no lo ven (R1713).
+- **Validación en servidor (R1714):** las dos Server Actions comprueban `esAccesoTotal(actor.rol)` con
+  `resolveActorFromSession` antes de instanciar el servicio. Ocultar el botón no es la defensa.
+
+### 3b.2 Capas
+
+| Capa | Archivo | Qué hace |
+|---|---|---|
+| Tipos | `lib/types/actualizacion-zonas.ts` | `MotivoSaltada = "estante_satelite" \| "devolucion" \| "cierre_o_dinero"`; `VistaPreviaZonasDTO = { grupos: { zonaActual: string; zonaNueva: string; cantidad: number }[]; total: number; saltadas: { guia: string; motivo: MotivoSaltada }[] }`; `ResultadoActualizacionZonasDTO = { actualizadas: number; saltadas: ... }`. Solo nombres de zona y guía, nunca datos del destinatario. |
+| Repositorio | `lib/repositories/ActualizacionZonasRepository.ts` + `lib/interfaces/repositories/IActualizacionZonasRepository.ts` | `leerZonaErrada(tx?)`: una consulta SQL (`$queryRaw`, plantilla con parámetros) con la regla de §5.1 **sin** filtro de estado ni corte, filtrada además por `o.organizacion_id` de la empresa en contexto. Devuelve por orden: id, distrito, guía (o remisión), estado, nombre de zona actual y nueva, `con_cierre` y `con_gestion`. `actualizar(actorUsuarioId)`: §3b.3. |
+| Servicio | `lib/services/ActualizacionZonasService.ts` + `lib/interfaces/services/IActualizacionZonasService.ts` | `vistaPrevia()` y `actualizar(actor)`. La clasificación de saltadas es una función pura (`motivoDeSaltada(fila)`) con la precedencia estante → devolución → cierre o dinero, compartida por las dos. |
+| Acciones | `lib/actions/actualizacion-zonas.ts` | `vistaPreviaActualizacionZonas()` y `actualizarZonas()`, con `'use server'`, autorización y `deps` inyectables como `abono-tienda.ts`. Sin entrada del usuario: no hay nada que validar con zod. |
+| UI | `app/(app)/ordenes/_components/ActualizarZonasButton.tsx` | Botón + `Modal` de `@/components/shared/Modal` (el mismo de `RetirarACentralModal`). |
+
+### 3b.3 Escritura (R1717–R1719)
+
+`ActualizacionZonasRepository.actualizar` abre **una** `$transaction` con el cliente acotado a la empresa:
+
+1. `leerZonaErrada(tx)`; de ahí, los `distritoIds` de las filas no saltadas;
+2. `reconciliarZonaDeOrdenes(tx, { distritoIds, excluirEstados: ESTADOS_DEVOLUCION_SIN_RECONCILIAR }, actorUsuarioId)`.
+   El helper vuelve a aplicar el corte en su propio `WHERE`, así que lo que decide quién se mueve es la
+   base en ese instante, no la vista previa ni el paso 1 (R1717). Un solo lote (`randomUUID` del helper);
+3. `leerZonaErrada(tx)` otra vez: lo que sigue errado son las saltadas que se informan (R1718).
+
+Devuelve `{ actualizadas: ordenesReconciliadas, saltadas }`. Una saltada nunca hace fallar la
+transacción: simplemente no la elige el `WHERE` (R1718).
+
+Que el botón actualice las mismas órdenes que el guardado de zona (salvo devoluciones) es a propósito:
+es la misma regla de la 366 aplicada a toda la empresa en vez de a los distritos de un guardado. Eso
+incluye estados como `en_ruta_bodega_satelite` o `en_reparto`, que la 366 ya reconcilia al guardar.
+
+### 3b.4 El modal
+
+1. Al pulsar, el modal se abre en «cargando» y llama a `vistaPreviaActualizacionZonas()`.
+2. Con candidatas: título «Actualizar zonas», una línea por grupo («12 órdenes: GAM Kevin (Alajuéla) →
+   GAM»), el total, y debajo «Se saltan N» con la lista de guías y su motivo en texto llano («en el
+   estante de una satélite», «en devolución», «ya cerrada o con cobro decidido»), en un contenedor con
+   scroll. Botones «Cancelar» y «Confirmar».
+3. Sin candidatas: «No hay órdenes con la zona errada que se puedan actualizar.» (más la lista de
+   saltadas, si las hay) y solo «Cerrar» (R1716).
+4. «Confirmar» llama a `actualizarZonas()`. El resultado sale en el mismo modal: «Se actualizaron N
+   órdenes.» y las saltadas con su motivo. Un error del servidor va al canal de error del `Modal`.
+   Al cerrar, `onSuccess` → `handleSuccess` refresca el listado (R1718).
+
+No es pantalla nueva: un botón en una cabecera que ya existe y un `Modal` existente. No necesita
+`/design`.
 
 ## 4. La tarifa y el cobro (R1707)
 
@@ -285,19 +357,33 @@ FROM d GROUP BY 1, 2 ORDER BY 1, 2;
 La guía 64482571 solo aparece en la columna de comprobación. La regla de la migración no lleva ningún
 id fijo.
 
+**Ya aplicada a mano en producción (2026-11-19).** A pedido de Carlos («puedes hacer la corrección de
+las que están malas ya para que sigan trabajando?»), el leader aplicó en prod la corrección con el corte
+exacto de `whereBaseElegible`, solo en `en_bodega_central` y `en_ruta_bodega_central`: **73 órdenes**
+(68 + 5), todas de una empresa, «GAM Kevin (Alajuéla)» → «GAM», una fila `orden_zona_reconciliada` por
+orden, actor sistema y un lote. El respaldo (id, zona vieja, zona nueva) está en
+`progress/respaldo-zonas-prod-2026-11-19.json` del checkout principal, fuera de la base. Quedaron **18**
+desalineadas excluidas por cierre o gestión (P2), que se informan y no se tocan.
+
+Consecuencia: en producción la migración solo encontrará lo que haya aparecido desde entonces. Sigue
+siendo genérica porque la necesitan Preview, las demás bases y lo que surja entre hoy y el despliegue.
+Su `down.sql` solo revierte lo que **ella** corrigió (su respaldo propio); las 73 de hoy se revierten,
+si hiciera falta, con el JSON del leader.
+
 **Para, y decide Carlos, si:**
 
-- `a_corregir` no es 56 en `en_bodega_central` y 35 en `en_ruta_bodega_central` en la empresa
-  evidenciada (los números se mueven con cada retiro y cada recepción: se le pasa a Carlos el número
-  nuevo para que lo confirme);
-- aparece alguna otra empresa;
-- `excluidas_por_cierre + excluidas_por_gestion > 0`, o la guía evidenciada queda excluida (P2).
+- `a_corregir > 0` en la empresa evidenciada. Se esperan 0; si salen más, se le pasan las guías para
+  que confirme que son nuevas desde el 2026-11-19 y no un fallo de la corrección a mano;
+- aparece alguna otra empresa con `a_corregir > 0`;
+- `excluidas_por_cierre + excluidas_por_gestion` no son exactamente las 18 guías conocidas de P2
+  (`requirements.md`): una nueva en ese grupo es otra orden que el corte deja con la zona vieja.
 
 Se re-mide el día del paso a producción, no solo el del PR.
 
-**T11, después del deploy a producción.** La misma consulta da `a_corregir = 0`, el respaldo tiene
-tantas filas como `a_corregir` daba el T0 del día, hay una acción `orden_zona_reconciliada` por fila
-del respaldo, y la guía 64482571 tiene la zona de su distrito («GAM»).
+**T11, después del deploy a producción.** La misma consulta da `a_corregir = 0`, el respaldo
+`respaldo.slt224_orden_zona` tiene tantas filas como `a_corregir` daba el T0 del día (0 si no apareció
+nada), hay una acción `orden_zona_reconciliada` por fila de ese respaldo, la guía 64482571 sigue con la
+zona de su distrito («GAM») y las 18 de P2 siguen intactas.
 
 ## 7. Pruebas contra Postgres real
 
@@ -345,6 +431,26 @@ ejecuta el texto de `migration.sql` y luego el de `down.sql`:
 En `retiro-satelite-central.int.test.ts`, un caso nuevo: orden en `en_bodega_satelite` cuyo distrito ya
 pertenece a otra zona; tras `retirarSateliteLote` conserva la zona satélite.
 
+### 7.4 Botón (R1713–R1719)
+
+- `tests/integration/db/actualizacion-zonas.int.test.ts`, con el servicio y el repositorio reales y dos
+  empresas. Matriz con zona errada en: `en_bodega_central`, `en_ruta_bodega_satelite` (se actualizan);
+  `en_bodega_satelite` (saltada, estante); cada estado de devolución (saltada, devolución); con
+  `cierre_detail` y con gestión decidida (saltada, cierre o dinero); más una alineada, una de distrito sin
+  zona y una errada de la otra empresa (ni aparecen ni cambian). Comprueba:
+  - la vista previa da los grupos y las saltadas esperados, **escritos literal**, y no escribe nada (R1715);
+  - una orden que entre la vista previa y la confirmación pasa a `en_bodega_satelite` no se mueve, y
+    una que aparece errada en ese intervalo sí (R1717);
+  - una acción por orden actualizada, con el actor y un solo `lote_id` (R1717);
+  - la otra empresa sigue intacta (R1719).
+  Mutaciones que deben dar rojo: quitar `excluirEstados`; quitar el filtro de empresa del SQL; usar el
+  resultado de la vista previa en vez de releer en la transacción.
+- `tests/unit/services/actualizacion-zonas-action.test.ts`: las dos acciones rechazan sin sesión y con
+  `adminSatelite`, `adminTienda` y `mensajero` sin llamar al servicio; con maestro y admin, lo llaman (R1714).
+- `tests/components/ActualizarZonasButton.test.tsx`: visible solo con `puedeActualizarZonas`; con
+  candidatas pinta grupos, total y saltadas con motivo, y «Confirmar»; sin candidatas, el mensaje y sin
+  «Confirmar»; tras confirmar, el resultado y `onSuccess` al cerrar (R1713, R1715, R1716, R1718).
+
 ## 8. Alternativas descartadas
 
 - **A. Re-derivar la zona en el retiro (lo que decía la ficha).** El manifiesto del retiro, descargado
@@ -360,12 +466,22 @@ pertenece a otra zona; tras `retirarSateliteLote` conserva la zona satélite.
 - **D. Un script TypeScript que llame al helper contra producción.** Reutilizaría la regla tal cual,
   pero ningún agente toca la base de producción y el repo no tiene ese camino: las correcciones de
   datos van por migración (SLT-63, SLT-75), versionadas, con `down.sql` y probadas en CI.
+- **F. «Actualizar zonas» como acción por lote sobre la selección** (`accionesPara`/`AccionLote`).
+  Era la primera forma propuesta. Carlos la descartó el 2026-11-19 («¿no puede ser que el sistema busque
+  y las que encuentre con zona errada las actualice?»): obliga a encontrar a mano las órdenes erradas, que
+  es justo lo que no se ve en el listado.
+- **G. Que el botón actualice sin vista previa.** Más corto, pero el maestro no vería qué va a cambiar ni
+  qué se queda fuera, y las saltadas son las que piden una decisión humana (P2).
 - **E. Corrección sin historial** (como SLT-63). Ahí no cambiaba un dato de negocio; aquí cambia la
   zona de la que sale la tarifa, y la 366/R10 exige una fila por orden re-estampada.
 
 ## 9. Riesgos
 
-- **Órdenes con cierre de un intento anterior** quedan con la zona vieja (P2). El T0 las cuenta.
+- **Órdenes con cierre de un intento anterior** quedan con la zona vieja (P2): 18 en prod el
+  2026-11-19. El T0 las cuenta y el botón las lista como saltadas («ya cerrada o con cobro decidido»).
+- **El botón en una empresa grande.** La vista previa trae una fila por orden con zona errada, incluidas
+  las saltadas. En prod hoy son unas 200 (100 en el estante + 18 + devoluciones). No hace falta paginar;
+  si una empresa pasara de unas mil, se reconsidera.
 - **Carrera recepción contra guardado de zona.** Las dos escriben `zona_id` en transacciones distintas.
   Las dos calculan la zona desde el mismo `zona_distrito`, así que el resultado final es el mismo
   gane quien gane.
@@ -375,7 +491,9 @@ pertenece a otra zona; tras `retirarSateliteLote` conserva la zona satélite.
 ## 10. Dependencias y tamaño
 
 - Sin librerías nuevas.
-- Archivos: 16 (`tasks.md > Archivos esperados`), el 40 % de 40.
-- Producción: unas 170 líneas (helper ~110, movidas desde `ZonaRepository`, que baja otras tantas;
-  recepción ~20; servicio e interfaz ~10; migración ~60; ayuda ~3).
-- Tests: unas 650 líneas (dos integraciones nuevas ~550, guardias ~60, ajustes de unit ~40).
+- Archivos: 29 (`tasks.md > Archivos esperados`), el 72,5 % de 40. Por debajo del 80 % (32).
+- Producción: unas 520 líneas (helper ~110, movidas desde `ZonaRepository`, que baja otras tantas;
+  recepción ~20; servicio e interfaz de la recepción ~10; migración ~60; ayuda ~6; botón: repositorio
+  e interfaz ~90, servicio e interfaz ~70, acciones ~50, tipos ~25, componente ~130, cabecera y página ~10).
+- Tests: unas 1 150 líneas (tres integraciones nuevas ~850, componente ~140, acciones ~60, guardias
+  ~60, ajustes de unit ~40).
