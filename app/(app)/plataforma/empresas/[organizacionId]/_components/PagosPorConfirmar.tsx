@@ -182,14 +182,14 @@ function FilaDePago({
 /**
  * R32, R33: «Ver comprobante» abre el enlace temporal en una pestaña nueva; la ruta del archivo no llega al
  * navegador. Cualquier respuesta distinta de `ok`, o un fallo, dice «No se pudo abrir el comprobante» aquí
- * mismo. Sin comprobante, solo el texto.
+ * mismo. Sin comprobante, solo el texto. SLT-143 (design §6.2; R20): «Pagos confirmados» lo usa igual.
  */
-function Comprobante({
+export function Comprobante({
   pago,
   verComprobante,
   describedBy,
 }: {
-  pago: PagoPorConfirmarDTO;
+  pago: Pick<PagoPorConfirmarDTO, "id" | "tieneComprobante">;
   verComprobante: PagosPorConfirmarProps["verComprobante"];
   describedBy?: string;
 }) {
