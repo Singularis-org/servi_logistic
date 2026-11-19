@@ -28,10 +28,11 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Qué falta:** que `scripts/test-rapido.mjs` caiga a la rama local de integración o falle con aviso (arnés: `/afinar-regla` y subir a la plantilla).
 - **Dueño:** leader.
 
-### D6 — El YAML de la API no nombra las cabeceras de firma del webhook
+### D6 — El YAML de la API no nombra las cabeceras de firma del webhook — RESUELTA (2026-11-18)
 - **Origen:** SL-15 (2026-10-22), visto en la review de SL-16 (H3). `openApiSpec.info.description` (`lib/api/openapi-spec.ts`) lleva el párrafo «Webhooks: cada entrega va firmada…» con las dos cabeceras `X-Servi-Logistic-*`; el `info.description` de `docs/api/api-key-openapi.yaml` no lo tiene. Es la única divergencia TS↔YAML del contrato.
 - **Qué falta:** llevar ese párrafo al YAML con las mismas palabras, y que un test de paridad lo cubra.
-- **Dueño:** Carlos Restrepo (ficha propia o la próxima que toque el contrato).
+- **Cerrada en SLT-201 «Manual de la API al día: Swagger/Postman con la carga completa y guía PDF actualizada» (2026-11-18):** el `info.description` del YAML lleva el párrafo con `X-Servi-Logistic-Signature` y `X-Servi-Logistic-Timestamp`, y `tests/unit/guards/openapi-carga-claves-reales.guardia.test.ts` compara el párrafo del YAML con el del objeto TS (que sale de `lib/crypto/webhook-firma.ts`).
+- **Dueño:** cerrada.
 
 ### D7 — ¿Quién retira una provincia: la empresa o la plataforma? — RESUELTA (2026-10-22)
 - **Origen:** SL-16 (2026-10-22), review H4. La ayuda decía que lo hacía la empresa, siguiendo el código de SL-15; `docs/plan-saas.md` decisión 5 apuntaba a la plataforma.

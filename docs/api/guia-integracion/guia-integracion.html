@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Guía de integración — API de Servi Logistic</title>
 <meta name="author" content="Servi Logistic">
-<meta name="description" content="Documentación técnica de integración del canal por API key de Servi Logistic. Versión del documento: septiembre 2026.">
+<meta name="description" content="Documentación técnica de integración del canal por API key de Servi Logistic. Versión del documento: noviembre 2026.">
 <!--
   FUENTE EDITABLE de la guía de integración (canal por API key).
   El PDF se genera desde este archivo con Chrome/Edge headless: ver README.md y generar-pdf.py
@@ -176,7 +176,7 @@
     <div class="sub">Logística de última milla — Costa Rica</div>
     <div class="sub">Para desarrolladores backend del comercio integrador</div>
     <div class="meta">
-      Versión del documento: septiembre 2026<br>
+      Versión del documento: noviembre 2026<br>
       Base URL de producción: https://app.example.com
     </div>
   </div>
@@ -223,10 +223,10 @@
   <!-- ============================================================ CAMBIOS -->
   <div class="chg">
   <h1>Cambios respecto de la versión de agosto 2026</h1>
-  <p>Esta versión describe el canal tal como queda tras dos cambios de contrato que <strong>rompen</strong> integraciones existentes (bloques A y B, pendientes de despliegue) y recoge además los cambios que entraron en producción entre agosto y septiembre (bloque C). Lea primero el bloque A: es el que exige tocar código.</p>
+  <p>Esta versión describe el canal tal como queda tras dos cambios de contrato que <strong>rompen</strong> integraciones existentes (bloques A y B, ya desplegados en producción) y recoge además los cambios que entraron en producción entre agosto y noviembre (bloque C). Lea primero el bloque A: es el que exige tocar código.</p>
 
   <h2><span class="tag">RUPTURA</span>A. Los estados cambian de código y ganan su nombre</h2>
-  <p><strong>Desde cuándo.</strong> Fecha de despliegue <strong>pendiente</strong>: Servi Logistic la avisará con antelación y la escribirá en el changelog del canal (entrada del 2026-09-24). Hasta ese día el canal sigue respondiendo con los códigos anteriores. Este cambio y el del bloque B se despliegan <strong>juntos</strong>.</p>
+  <p><strong>Desde cuándo.</strong> <strong>Ya está en producción</strong>: el canal responde con los códigos vigentes. Está publicado en el changelog del canal (entrada del 2026-09-24) y se desplegó <strong>junto</strong> con el bloque B.</p>
   <p><strong>Qué se rompe.</strong> Cada estado de una orden pasa a llamarse igual en todas partes (aplicación, rastreo público y este canal). Siete estados cambian de <strong>código</strong>; los cuatro resultados de gestión que compartían nombre con ellos cambian con ellos; y toda respuesta que lleva un código lleva ahora, <strong>al lado</strong>, su nombre visible.</p>
 
   <h3>A.1 Los siete códigos de estado que cambian (el resto no cambia)</h3>
@@ -275,7 +275,7 @@
   </ul>
 
   <h2><span class="tag">RUPTURA</span>B. El estado real se aplica al aprobar el cierre; la ayuda deja de ser un estado; eventos nuevos</h2>
-  <p><strong>Desde cuándo.</strong> Se despliega junto con el bloque A (fecha pendiente, con aviso previo).</p>
+  <p><strong>Desde cuándo.</strong> <strong>Ya está en producción</strong>, desplegado junto con el bloque A (changelog del canal, entrada del 2026-09-23).</p>
   <ul>
     <li><strong><code>orden.estado_actualizado</code> llega al APROBAR el cierre del mensajero, no al gestionar.</strong> Cuando el mensajero registra una gestión en calle, la orden <strong>sigue en <code>en_reparto</code></strong> con la gestión <em>pendiente de confirmar</em>; el estado real (<code>entregado</code>, <code>reprogramado</code>, <code>novedad</code>, <code>devolucion_a_origen_por_rechazo</code>, <code>incidente</code>) se aplica cuando se aprueba el cierre del día de ese mensajero, horas después de la visita (dato de referencia de la empresa: mediana 8,2 h, p90 22,1 h). Si necesita enterarse en el instante del registro, consuma <code>orden.gestion_registrada</code>.</li>
     <li><strong>Se retiran dos estados</strong> del vocabulario: <code>ayuda_tienda</code> (la solicitud de ayuda a la tienda deja de mover la orden: sigue <code>en_reparto</code> y la ayuda viaja como evento) y <code>devolucion_por_confirmar</code>, que nunca fue público. Ninguno vuelve a llegar en <code>data.estado</code> ni aparece en el catálogo (§4.7).</li>
@@ -284,7 +284,7 @@
     <li><strong>Campo nuevo en la habilitación:</strong> <code>resultados[].ayudaCerrada</code> (§5.10). Habilitar una orden con ayuda abierta ya no cambia su estado (sigue <code>en_reparto</code>); la clave nueva dice que la ayuda quedó cerrada.</li>
   </ul>
 
-  <h3 class="keep">Qué tiene que cambiar el integrador, antes del despliegue</h3>
+  <h3 class="keep">Qué tiene que cambiar el integrador, si todavía no lo hizo</h3>
   <ol>
     <li>Busque en su código los <strong>once literales anteriores</strong> (los siete estados de A.1 y los cuatro resultados de A.2) y cámbielos por los vigentes. Ojo con <code>por_devolver</code>, que es prefijo de <code>por_devolver_a_tienda</code> y de <code>por_devolver_a_bodega_central</code>.</li>
     <li>Si mostraba el estado con una traducción propia, use el campo <code>…Nombre</code>: es la misma cadena que ve la aplicación.</li>
@@ -305,6 +305,9 @@
       <tr><td>2026-09-06</td><td>Tres mensajes nuevos de error de fila: provincia, cantón o distrito <em>retirados del catálogo</em>. Sigue siendo <code>200</code> con éxito parcial.</td><td>§5.1, §5.2</td></tr>
       <tr><td>2026-09-09</td><td>Campo nuevo <code>mensajero</code> (<code>{ id, nombre } | null</code>, siempre presente) en el listado, el detalle y <code>data</code> del webhook.</td><td>§5.3, §6.2</td></tr>
       <tr><td>2026-09-10</td><td>Campos nuevos <code>gestiones[]</code> (detalle), <code>zona</code>, <code>costoEstimado</code> y <code>costoReal</code> (listado y detalle). Arreglo de <code>evidenciasUrl</code>: el enlace del evento de incidente ahora sí resuelve (usa la guía o la remisión, no un id interno).</td><td>§5.3, §5.4, §6.2</td></tr>
+      <tr><td>2026-10-01</td><td>Sin ruptura, solo textos: el flete que se cobra cuando una orden termina en Devolución a origen por rechazo (<code>devolucion_a_origen_por_rechazo</code>) cambia de nombre: ahora se llama «Flete por devolución a origen». Ningún campo, importe ni id de métrica cambia.</td><td>§5.2, §5.3</td></tr>
+      <tr><td>2026-11-03</td><td>Campo nuevo <code>ivaFulfillment</code> (texto de dos decimales, nunca <code>null</code>; <code>"0.00"</code> si su tarifa no tiene IVA de fulfillment) en <code>ordenes[]</code> de la carga, en <code>costos.entregado</code> y <code>costos.devuelto</code> de la cotización y en <code>costoEstimado</code>/<code>costoReal</code>. <code>costoEnvio</code> y los <code>total</code> de la cotización lo incluyen. Si valida con un esquema cerrado (<code>OrdenCosto</code> lleva <code>additionalProperties: false</code>), actualícelo.</td><td>§5.1-§5.4</td></tr>
+      <tr><td>2026-11-05</td><td>Sin ruptura para empresas de Costa Rica, solo textos: <code>desde</code>/<code>hasta</code> (listado y analítica), el «hoy» por defecto y el eco <code>rango.hasta</code> se miden en la zona horaria del país de la empresa de la key, no en «hora de Costa Rica (UTC-6)».</td><td>§4.5, §5.3, §5.8</td></tr>
     </tbody>
   </table>
   <p>La versión de agosto además <strong>omitía dos endpoints que ya existían</strong> —<code>PUT …/{numGuia}/cancelar</code> y <code>POST …/habilitar</code>— y describía la eliminación con la ruta y la respuesta equivocadas. Quedan documentados en §5.7, §5.9 y §5.10.</p>
@@ -537,7 +540,7 @@
     <li>Una provincia, un cantón o un distrito <strong>retirados del catálogo</strong> producen un error de fila propio, bajo la clave del nivel afectado: <code>la provincia esta retirada del catalogo</code>, <code>el canton esta retirado del catalogo</code>, <code>el distrito '&lt;nombre&gt;' esta retirado del catalogo</code>. Un nodo retirado no vuelve solo: corrija la dirección o pida a la empresa reactivarlo.</li>
     <li><span class="w">⚠</span> <strong><code>409</code> si NINGUNA de las filas que llegaron a la resolución de tarifa la resolvió.</strong> En ese caso no se persiste nada: ni órdenes, ni lote, ni notificación. <code>{ "status": "error", "code": "CONFLICT", "message": "la tienda no tiene una tarifa vigente asociada: no se pueden crear órdenes" }</code></li>
     <li>Una fila creada puede traer además <code>montoAjustado</code> (si se redondeó el COD) y <code>textoNormalizado</code> (lista de <code>{ campo, original, aplicado }</code> con los textos que hubo que reparar para poder imprimir la etiqueta). Ambos se omiten cuando no hubo ajuste.</li>
-    <li><code>etiquetasPdf</code>, <code>manifiesto</code> y <code>ordenes[].downloadUrl</code> son <em>best-effort</em>: si el PDF o el manifiesto no se pudo armar, la carga <strong>no se revierte</strong> y el bloque llega como <code>{ "error": "…" }</code>; <code>null</code> significa que no había nada que generar. La URL del PDF de la carga vence en 1 hora (<code>expiraEnSegundos: 3600</code>); para volver a obtenerla use §5.6. Estos tres bloques no forman parte del contrato OpenAPI publicado.</li>
+    <li><code>etiquetasPdf</code>, <code>manifiesto</code> y <code>ordenes[].downloadUrl</code> son <em>best-effort</em>: si el PDF o el manifiesto no se pudo armar, la carga <strong>no se revierte</strong> y el bloque llega como <code>{ "error": "…" }</code>; <code>null</code> significa que no había nada que generar. La URL del PDF de la carga vence en 1 hora (<code>expiraEnSegundos: 3600</code>); para volver a obtenerla use §5.6. Estos tres bloques están en el contrato OpenAPI publicado (<code>CargaResponse</code>, <code>CargaOrden.downloadUrl</code>).</li>
   </ul>
 
   <!-- 5.2 -->
