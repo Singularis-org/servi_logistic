@@ -169,6 +169,9 @@ describeSiHayBase("SLT-56 — tabla de ajustes y tipo de historial, de ida y vue
       "usuario_se_recoge_en_tienda_cambiado",
       // SLT-211: `ordenes_retiradas_a_central`, de `20261119120000_historial_accion_ordenes_retiradas_a_central`.
       "ordenes_retiradas_a_central",
+      // SLT-221: los dos tipos de `20261120120000_slt221_historial_correo_cedula`.
+      "usuario_cedula_cambiada",
+      "usuario_email_cambiado",
     ];
     expect([...enLaBase].sort()).toEqual(
       HISTORIAL_ACCION_TIPOS.filter((t) => !POSTERIORES.includes(t)).sort(),

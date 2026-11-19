@@ -303,6 +303,8 @@ describe("427/T2 — el UP y el DOWN, leidos del archivo", () => {
       "20261119120000_historial_accion_ordenes_retiradas_a_central",
       // SLT-212: el instante del cobro de la plataforma en UTC (solo `CREATE OR REPLACE` de tres funciones).
       "20261119120100_cobro_plataforma_ocurrido_utc",
+      // SLT-221: dos tipos del historial y `valor_anterior`/`valor_nuevo` a 254.
+      "20261120120000_slt221_historial_correo_cedula",
     ]);
   });
 });

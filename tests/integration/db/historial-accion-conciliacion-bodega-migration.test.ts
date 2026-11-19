@@ -426,6 +426,9 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("431/T1 (b) — el down recrea la lista PREV
       "usuario_se_recoge_en_tienda_cambiado",
       // SLT-211: `ordenes_retiradas_a_central`, de `20261119120000_historial_accion_ordenes_retiradas_a_central`.
       "ordenes_retiradas_a_central",
+      // SLT-221: los dos tipos de `20261120120000_slt221_historial_correo_cedula`.
+      "usuario_cedula_cambiada",
+      "usuario_email_cambiado",
     ];
     const catalogoPrevio = HISTORIAL_ACCION_TIPOS.filter(
       (t) => !VALORES_NUEVOS.includes(t as (typeof VALORES_NUEVOS)[number]) &&
