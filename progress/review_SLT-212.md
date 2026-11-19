@@ -94,3 +94,83 @@ test que muerde con el `down.sql`, fixture más estricto sin debilitar nada, sin
 B1 resolver el conflicto con dev y tener `gate-completo` verde; B2 los E2E de cobro/factura/pago de la plataforma y el grupo
 `dinero` en local, con su salida en la bitácora; B3 subir la ruta (migración + dinero) con la decisión del humano y el spec que
 pida esa ruta.
+
+## Vuelta 2 (acotada a cb87c369..bb4310c5)
+
+Revisado el 2026-11-19 sobre `bb4310c5` (= `origin/feature/SLT-212-rojos-dev-demo-459` = head del PR #243). Ruta COMPLETA, spec
+aprobado por Carlos el 2026-11-19 (según el leader). Base desechable: `servi_slt212r_desechable` (`migrate deploy` + `db:seed`).
+
+### Hallazgos de la vuelta 1
+
+| Hallazgo | Estado | Evidencia |
+|---|---|---|
+| B1 conflicto con dev | **Resuelto** | `merge-base HEAD origin/dev` = `c760bf8c` = `origin/dev`; `git merge-tree --write-tree HEAD origin/dev` sin conflicto; `gh pr view 243`: `MERGEABLE` / `CLEAN`, `gate-completo` SUCCESS y los E2E de CI (`aislamiento`, `reparto`, `dinero`, `e2e`) SUCCESS sobre `bb4310c5`. Lista de `orden-traspaso-migration` con `…120000_historial…` y luego `…120100_cobro…` (orden de `readdirSync().sort()`). |
+| B2 E2E en local | **Resuelto** | `progress/impl_SLT-212.md > Tanda 2 > B2`: los 4 specs de cobro/factura/pago de la plataforma `16 passed` (`--no-deps`; el rojo con dependencias es `superadmin-empresas:215`, aviso de bienvenida sin `NEXT_PUBLIC_APP_URL`, ajeno) y `--project=dinero` 125 + 1 re-corrido verde (caída del worker en Windows, no aserción), en base nueva con todas las migraciones y Postgres en America/Bogota. El build es de `d474bacf` (antes del merge) porque el cliente Prisma compartido no tenía el enum de SLT-211; la diferencia con `bb4310c5` son las funciones idénticas y el enum de dev, y el E2E de CI sobre `bb4310c5` está verde. Aceptado. |
+| B3 ruta | **Resuelto** | `specs/SLT-212-rojos-dev-demo-459/{requirements,design,tasks}.md` presentes; requirements en EARS (R1–R6) con tabla de trazabilidad; design con `## Lo que ya existe` no vacía (y el diff no re-crea nada de esa lista) y alternativas descartadas. `feature_list.json`: `ruta: completa`, `complexity: medium`; `progress/features/SLT-212.md` coherente. |
+| m1 hora de migración | **Resuelto** | `20261119120100_cobro_plataforma_ocurrido_utc`; las tres últimas de `origin/dev` son `20261117120000_*` y `20261119120000_historial_accion_ordenes_retiradas_a_central`: la nueva va después de todas. |
+
+### Checklist
+
+- [x] 1. Trazabilidad R1–R6 con test real y mutación (abajo).
+- [~] 2. Tasks: T1–T7 `[x]`; T8 (aprobación de Carlos + `gate-completo`) abierta: es la puerta humana posterior a esta review (menor m4).
+- [x] 2b. Tamaño: `node scripts/tamano-pr.mjs` → `5/40 archivos, 235/1000 líneas de producción, 133/3000 de tests`.
+- [x] 3. Checkpoints (`CHECKPOINTS.md`, `docs/checkpoints-proyecto.md`): sin tabla nueva (RLS/`organizacion_id` no aplican), migración con `down.sql` y sin editar una aplicada, sin literales de país/moneda ni Ordenex, sin dependencias nuevas, comentarios de porqué.
+- [x] 4. Verificación ejecutable (abajo) e `./init.sh`.
+- [x] 5. Reglas de `docs/perfil-agentes.md > reviewer`: `down.sql` presente; E2E afectados en local con constancia (B2).
+
+### Migración `20261119120100_cobro_plataforma_ocurrido_utc`, función a función
+
+Única migración anterior que define las tres funciones por última vez: `20261104150200_cobro_plataforma_porcentual_funciones`
+(`grep` en `db/migrations`: ninguna posterior las redefine). Comparación textual de cada bloque `CREATE … END $$;` (script de diff
+línea a línea, normalizando solo `CREATE OR REPLACE` → `CREATE`):
+
+| Función | Líneas antes/después/down | Diferencias en `migration.sql` | `down.sql` == origen |
+|---|---|---|---|
+| `cobro_plataforma_porcentual_conciliar` | 41/41/41 | 2 líneas, solo `now()` → `(now() AT TIME ZONE 'UTC')` (cargo y `COALESCE(deleted_at, …)` del reverso) | idéntico |
+| `cobro_plataforma_al_crear_orden` | 30/30/30 | 1 línea, solo el reloj del `INSERT` del cargo | idéntico |
+| `cobro_plataforma_al_cambiar_borrado` | 31/31/31 | 1 línea, solo el reloj del re-cobro | idéntico |
+
+`migration.sql` solo contiene `BEGIN`, tres `CREATE OR REPLACE FUNCTION` y `COMMIT` (ni `DROP`, ni `REVOKE`/`GRANT`, ni DML).
+Firmas, `SECURITY DEFINER`, `search_path`, importes, fuentes, secuencias y condiciones: literales. `CREATE OR REPLACE` conserva dueño y ACL.
+
+### Trazabilidad con mutación (base `servi_slt212r_desechable`)
+
+| R | Test | Verde con el cambio | Mutación | Resultado mutado |
+|---|---|---|---|---|
+| R1 | `cobro-plataforma-ocurrido-utc.test.ts` | `2 passed (2)` | `down.sql` aplicado (`prisma db execute`) | `2 failed (2)`: `expected [50400, 0, 50400]` y `[50400, 50400]` (14 h exactas) |
+| R1 | ídem | — | cada uno de los 4 `AT TIME ZONE 'UTC'` devuelto a `now()` por separado (líneas 51, 56, 81, 118) | **los 4 mutantes en rojo** (`1 failed / 1 passed` cada uno); restaurada la migración → `2 passed` |
+| R2 | ídem (control de tipos y secuencias) + `cobro-plataforma-cargos`, `cobro-plataforma-porcentual` | verdes | — (el diff textual prueba que importe/fuente/secuencia no cambian) | — |
+| R3 | ídem (desfase 0 contra `now() AT TIME ZONE 'UTC'`; en sesión UTC `now()::timestamp` es el mismo valor) | verde | — | — |
+| R4 | `demo-qa.test.ts` | `14 passed (14)` (tras `db:seed`; 07:13 Bogotá, fuera de la ventana 00–05: la prueba determinista del defecto es la de R1) | — | — |
+| R5 | `libro-caja-revision-458e.test.ts` + `como-quedo.test.ts` con una empresa ajena con zona central **commiteada** | `14 passed (14)` | fixture de `origin/dev` (sin `comoApp`), restaurado con `git checkout --` (árbol limpio después) | `14 failed (14)`, 2 × «no pertenece a lo que vuelve en este cierre» |
+| R6 | los usuarios de `_fixtures/caja-459.ts` | `vitest` de CI (3 shards) verde en `bb4310c5` | — | el diff del fixture no toca aserciones ni datos sembrados (solo `comoApp` + `SET LOCAL ROLE NONE`) |
+
+La central ajena se borró después de la mutación de R5.
+
+### Hallazgos nuevos
+
+- **m4 — menor:** `tasks.md` T8 sigue `[ ]`. Es la aprobación humana del código y el `gate-completo` (ya verde); se marca cuando
+  Carlos apruebe, no la puede cerrar el implementer.
+- **m5 — menor:** el E2E local se corrió con el build de `d474bacf` (pre-merge). Compensado por el E2E de CI verde sobre `bb4310c5`;
+  el cliente Prisma compartido sigue sin el enum de SLT-211 hasta que el leader lo regenere.
+- **m6 — menor (no del diff):** la primera corrida de `./init.sh` (base `servi_slt212r_desechable`) salió `INIT_EXIT=1` con 3
+  archivos por **timeout** (120 s) en la tanda 7: `cierre-sin-gestion-confirmacion-migration` (`afterAll` y R40, el `down.sql`
+  real con `ALTER TABLE`), `cierres-gestiones-modelo-nuevo-descarga-sql-real` (8) y `estado-cuenta-concurrencia-458` (candado
+  advisory). Ninguno usa `caja-459` ni el cobro de la plataforma; los tres juntos y solos → `23 passed (23)`; la segunda corrida
+  completa → verde. Espera de candados bajo carga, no un rojo de esta ficha. Si se repite en otras ramas, pedir ficha propia.
+
+### Verificación ejecutable
+
+- `./init.sh` (rápido) contra `servi_slt212r_desechable`, con `INIT_EXIT=$?` escrito dentro del log: 1ª corrida `INIT_EXIT=1`
+  (m6, timeouts ajenos); 2ª corrida **`INIT_EXIT=0`**: typecheck ✓, lint ✓, cliente de Prisma ✓, tamaño ✓, `test:rapido` en 7
+  tandas todas verdes (`100 passed (100)` × 6 y `66 passed (66)`; la mayor `1790 passed`).
+- Lote del diff (`cobro-plataforma-ocurrido-utc`, `demo-qa`, `libro-caja-revision-458e`, `como-quedo`, `orden-traspaso-migration`,
+  `cobro-plataforma-cargos`, `cobro-plataforma-porcentual`): verdes (demo-qa tras `db:seed`).
+- PR #243 en GitHub: head `bb4310c5`, `MERGEABLE`/`CLEAN`, `gate-completo` y E2E de CI en SUCCESS.
+
+### Veredicto vuelta 2
+
+**OK.** B1, B2, B3 y m1 resueltos. Migración: solo `CREATE OR REPLACE` de las tres funciones, idénticas a `20261104150200` salvo los
+cuatro relojes; `down.sql` idéntico al origen; hora posterior a todas las de `origin/dev`. R1–R6 trazados a tests que muerden
+(los 4 relojes, uno a uno, y el fixture sin `comoApp` con central ajena commiteada). Menores m4–m6 sin bloqueo. Queda la puerta
+humana: aprobación de Carlos del cambio en funciones de cobro (T8) antes del aviso «listo para mergear».
