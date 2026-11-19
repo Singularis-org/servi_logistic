@@ -148,3 +148,38 @@ el árbol quedó limpio):
 ## Recuento
 
 B = 1, m = 6.
+
+## Vuelta 2 (acotada a 70ccb947..78f622d9)
+
+Base desechable nueva `servi_slt224_review2` (`migrate deploy` + `db:seed`; ninguna URL impresa; sin
+`prisma generate`).
+
+### Veredicto: APROBADO
+
+- **B1 cerrado.** Hay un caso nuevo en `zona-desalineada-central-migration.test.ts`: la empresa 2 mapea a
+  una zona suya el distrito de la empresa 1. Además del cambio de zona, el test afirma que la alineada no
+  cambia y que el respaldo no tiene duplicados. Repetí la mutación yo mismo (quitar
+  `zd.organizacion_id = o.organizacion_id` de la migración): **1 rojo de 6**, el caso nuevo. Lo tumba el
+  trigger SL017 «referencia a otra empresa: orden.zona_id -> zona», o sea que la propia base también
+  frena la escritura entre empresas.
+- **m1 cerrado.** Hay un caso con el mismo fixture en `actualizacion-zonas.int.test.ts`. Repetí la
+  mutación del JOIN en el SQL del botón: **1 rojo de 5**.
+- **m2 cerrado.** La ayuda ya no menciona «Actualizar zonas»; la sección pasa a T9 (PR 2).
+- **m4 cerrado.** El spec ya no nombra `respaldo.slt224`.
+- **m5 cerrado.** `requirements.md:64` declara el cambio del camino de SLT-198/R1228.
+- **m3 a medias (menor, no bloquea).** `progress/features/SLT-224.md` ya existe. Pero en `tasks.md` T0
+  y T7 siguen en `[ ]`.
+- **m6 sigue abierto (menor).** El `e2e (aislamiento)` del CI estaba en curso sobre `78f622d9` cuando
+  revisé: tiene que quedar en verde antes del aviso de merge.
+- **El merge de SLT-221 (#251) no rompe nada.**
+  - `origin/dev` es ancestro de HEAD.
+  - `git diff origin/dev HEAD` solo trae archivos de SLT-224, así que el merge no tocó nada de SLT-221.
+  - El censo de `orden-traspaso-migration.test.ts` tiene las dos entradas (`20261120130000_slt221…` y
+    `20261121120000_slt224…`), y la migración de SLT-224 sigue siendo la última.
+- **Ejecutado:**
+  - typecheck exit 0.
+  - 13 archivos, 282 tests en verde: los de SLT-224, `orden-traspaso-migration`,
+    `usuario-cedula-corregida`, `usuario-service-cedula`, `usuarios` (actions) y las guardias del
+    histórico y de la reconciliación.
+
+Recuento vuelta 2: B = 0, m = 2 (m3 a medias, m6).
