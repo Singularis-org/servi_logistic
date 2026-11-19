@@ -8,10 +8,10 @@
 ## Archivos
 
 Producción:
-- `db/migrations/20261120120000_slt221_historial_correo_cedula/migration.sql` (nuevo): dos valores del
+- `db/migrations/20261120130000_slt221_historial_correo_cedula/migration.sql` (nuevo): dos valores del
   enum `historial_accion_tipo` y `valor_anterior`/`valor_nuevo` a `varchar(254)`. `pg_depend`: ninguna
   vista depende de esas columnas.
-- `db/migrations/20261120120000_slt221_historial_correo_cedula/down.sql` (nuevo): borra las filas de
+- `db/migrations/20261120130000_slt221_historial_correo_cedula/down.sql` (nuevo): borra las filas de
   los dos tipos, quita los valores con la función dinámica del molde SLT-211 (`_slt221`) y estrecha a
   60 con `left(...)`.
 - `db/schema.prisma`: los dos valores en `HistorialAccionTipo`; `@db.VarChar(254)` y comentario (D10).
@@ -205,3 +205,19 @@ T1.6 y T1.7 hechas (E2E sin correr en local); gate local verde, `INIT_EXIT=0`.
 ## Veredicto (vuelta 2)
 
 B1, B2, B3 y m2 resueltos; los 3 E2E afectados en verde en local y el gate local en verde.
+
+---
+
+# Vuelta 3: merge de origin/dev y renombre de la migración
+
+- `git merge origin/dev`: entró SLT-214 con `20261120120000_plan_beneficio`, el mismo timestamp que la
+  nuestra. El conflicto de `orden-traspaso-migration.test.ts` se resolvió conservando las dos entradas.
+- La migración se renombró con `git mv` a `20261120130000_slt221_historial_correo_cedula`. Queda después de
+  `20261120120000_plan_beneficio` y antes de `20261121120000_slt224_zona_de_ordenes_en_central`, que es de
+  otra rama. Referencias actualizadas: 9 tests de integración, design, tasks y esta bitácora. La review
+  (`progress/review_SLT-221-pr1.md`) conserva el nombre antiguo porque es el registro de lo revisado. Es un
+  renombre seguro: Preview no migra y la migración solo se había aplicado en bases desechables locales.
+- Base desechable NUEVA `servi_slt221_v3`: `prisma generate`, `migrate deploy` y seed, todos con exit 0.
+- Tests de integración del diff (10 archivos): **124 passed**. SLT-214 (`migracion-plan-beneficio-ida-y-vuelta`,
+  `plan-beneficio`, `plan-de-la-empresa`): **23 passed**.
+- `NODE_OPTIONS=--max-old-space-size=8192 ./init.sh` sobre `servi_slt221_v3`: `== init OK ==`, `INIT_EXIT=0`; tamaño `31/40 archivos, 510/1000 líneas de producción, 1065/3000 de tests`.

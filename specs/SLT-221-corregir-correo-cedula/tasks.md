@@ -22,7 +22,7 @@ En PR 2 el margen de líneas de producción es corto: comentarios breves y nada 
 ## Tanda 1 — PR 1: cédula y base del Histórico (R1601-R1609)
 
 - [x] **T1.1 — Migración A y esquema.**
-  `20261120120000_slt221_historial_correo_cedula`: los dos valores del enum y `varchar(254)` en
+  `20261120130000_slt221_historial_correo_cedula`: los dos valores del enum y `varchar(254)` en
   `valor_anterior`/`valor_nuevo` (design §2.1). Antes, comprobar con `pg_depend` qué vistas
   dependen de esas columnas. `down.sql` con el molde de
   `20261119120000_historial_accion_ordenes_retiradas_a_central`. `db/schema.prisma` al día.
@@ -82,8 +82,8 @@ En PR 2 el margen de líneas de producción es corto: comentarios breves y nada 
 ### Archivos esperados — PR 1
 
 - `db/schema.prisma`
-- `db/migrations/20261120120000_slt221_historial_correo_cedula/migration.sql`
-- `db/migrations/20261120120000_slt221_historial_correo_cedula/down.sql`
+- `db/migrations/20261120130000_slt221_historial_correo_cedula/migration.sql`
+- `db/migrations/20261120130000_slt221_historial_correo_cedula/down.sql`
 - `lib/types/usuario.ts`
 - `lib/types/historial-accion.ts`
 - `lib/interfaces/repositories/IUserRepository.ts`
@@ -239,8 +239,8 @@ Empieza con PR 1 mergeado y la rama al día con `dev`.
 Unión de los dos PR (la lee `scripts/archivos-en-vuelo.mjs`):
 
 - `db/schema.prisma`
-- `db/migrations/20261120120000_slt221_historial_correo_cedula/migration.sql`
-- `db/migrations/20261120120000_slt221_historial_correo_cedula/down.sql`
+- `db/migrations/20261120130000_slt221_historial_correo_cedula/migration.sql`
+- `db/migrations/20261120130000_slt221_historial_correo_cedula/down.sql`
 - `db/migrations/20261120120100_slt221_usuario_cambio_correo/migration.sql`
 - `db/migrations/20261120120100_slt221_usuario_cambio_correo/down.sql`
 - `lib/db/modelos-de-negocio.ts`

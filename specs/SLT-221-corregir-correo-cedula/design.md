@@ -46,7 +46,7 @@ Buscado `cambio de correo`, `correo nuevo`, `confirmar correo`, `editar cédula`
 
 ## 2. Modelo de datos
 
-### 2.1 Migración A — PR 1: `20261120120000_slt221_historial_correo_cedula`
+### 2.1 Migración A — PR 1: `20261120130000_slt221_historial_correo_cedula`
 
 `migration.sql`:
 1. `ALTER TYPE historial_accion_tipo ADD VALUE 'usuario_cedula_cambiada';`

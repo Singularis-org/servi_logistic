@@ -172,7 +172,7 @@ describe("366/T1 — el `migration.sql` y el `down.sql`, como texto", () => {
       "usuario_se_recoge_en_tienda_cambiado",
       // SLT-211: `ordenes_retiradas_a_central`, de `20261119120000_historial_accion_ordenes_retiradas_a_central`.
       "ordenes_retiradas_a_central",
-      // SLT-221: los dos tipos de `20261120120000_slt221_historial_correo_cedula`.
+      // SLT-221: los dos tipos de `20261120130000_slt221_historial_correo_cedula`.
       "usuario_cedula_cambiada",
       "usuario_email_cambiado",
     ];
