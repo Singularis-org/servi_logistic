@@ -106,7 +106,7 @@
 
 - [x] **T5.1** `e2e/pago-plataforma-por-fuera.spec.ts` (design §9) y su entrada en el proyecto `dinero` de
   `playwright.config.ts`. **Hecho:** verde en local, con una base desechable nueva (R34).
-- [ ] **T5.2** Correr:
+- [x] **T5.2** Correr:
   - `e2e/pago-plataforma-confirmacion.spec.ts`;
   - `e2e/pago-plataforma-sl45.spec.ts`;
   - `e2e/wallet.spec.ts`;
@@ -125,7 +125,7 @@
 
 ## T7 — Cierre (depende de todo)
 
-- [ ] **T7.1** `./init.sh` en verde.
+- [x] **T7.1** `./init.sh` en verde.
 
 ## Archivos esperados
 

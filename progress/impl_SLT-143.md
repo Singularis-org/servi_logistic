@@ -533,3 +533,28 @@ E2E escrito, no corrido en local por decisión del leader (poca RAM); lo corre e
 wallet, grupo dinero) delegado al CI.
 
 Veredicto T5.1: E2E escrito y en `dinero`, typecheck y lint verdes; la ejecución queda al CI.
+
+## T7.1 — gate local (2026-11-19)
+
+`./init.sh` (rápido) con una copia temporal de `arnes.config.json` (cupo fullstack 12, restaurada con
+`git checkout`; nunca commiteada) y `NODE_OPTIONS=--max-old-space-size=8192`:
+
+- Verdes: dependencias (56/56, tras enlazar `node_modules` del worktree al del checkout principal con un junction;
+  antes tenía solo `.cache/`), validador de features, perfil 6/6, cliente de Prisma, tipos de ruta, **typecheck**,
+  **lint**.
+- Avisos: tamaño del PR (49/40 archivos, 2112/1000 de producción, 3341/3000 de tests), aceptado por el humano
+  («Un solo PR», renovado); `node_modules` enlazado con lock más nuevo.
+- **Rojo de entorno, no del cambio:** `test:rapido` → `tests/integration/db/caja-tesoreria-migration.test.ts`,
+  4 tests (R45/R46). El archivo no se toca en la rama; lo arrastra el disparador de `db/`. Causa medida: el
+  `node_modules` compartido tiene `@prisma/client` y `@prisma/adapter-pg` **7.10.1**, y `pnpm-lock.yaml` fija
+  **7.8.0**. En 7.10.1 el error de Postgres ya no viene en `error.cause.code` (llega `cause` nulo, con el 23514 solo
+  en el mensaje), y el test lee el SQLSTATE de `cause.code`. La base sí rechaza con `23514` y
+  `wallet_movimiento_tipo_categoria_check`. El CI instala con `--frozen-lockfile` (7.8.0), así que allí no
+  aplica. Sin arreglar, como pidió el leader; queda para quien reinstale el checkout principal.
+- `pnpm run test:guardias` aparte: 360 archivos, 5405 tests en verde, 1 skipped.
+
+## T5.2 — E2E
+
+Delegados al CI por decisión del leader (máquina con poca RAM): `pago-plataforma-por-fuera`,
+`pago-plataforma-confirmacion`, `pago-plataforma-sl45`, `wallet` y el grupo `dinero` entero. Constancia exigida
+por `docs/perfil-agentes.md > E2E en local antes del PR`: no se corrieron en local.
