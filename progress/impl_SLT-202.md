@@ -25,7 +25,7 @@ de `md` (PWA en el teléfono), los 44 px de dev con `max-md:`.
    - `EscanerModal`: disparador `tactil` `touch w-full` → por defecto + `BOTON_TACTIL_MOVIL max-md:w-full`;
      «Cerrar» `icon-touch` → `icon-sm` (el de `DialogContent` de prod) + `max-md:size-11`.
 3. `PosOrderCardMosaico` «Ver detalle completo»: `min-h-11` → `max-md:min-h-11` (arregla `/novedades`).
-4. `RepartoModule`: `gap-6` → `gap-8`; se quita «El mapa se centra en la orden del carrusel.» (el mapa sigue al carrusel, R542).
+4. `RepartoModule`: `gap-6` (dev) → `gap-8` (prod); se quita «El mapa se centra en la orden del carrusel.» (el mapa sigue al carrusel, R542).
 5. Un solo «Recibir paquete» en `/ordenes`, `/recepcion-satelite/por-recibir` y `/en-bodega`:
    - `RecibirPaquetesEntrada` es el único disparador; su texto pasa a «Recibir paquete» (`RECIBIR_PAQUETE`); el
      diálogo y la página siguen llamándose «Recibir paquetes». Con puntero fino, enlace a la página; con táctil,
@@ -41,6 +41,40 @@ de `md` (PWA en el teléfono), los 44 px de dev con `max-md:`.
 
 No tocado (no está en la lista): `RecepcionContinuaPagina` y «Reintentar» de `EscaneoContinuo` (`touch`, SLT-159 R610),
 `PasoModulos` (heredado de prod), `RecoleccionModule` `gap-6`.
+
+## Cambio de comportamiento (m1, para el PR)
+- En escritorio (puntero fino), «Recibir paquete» ya no abre un diálogo encima del listado: navega a la página
+  «Recibir paquetes» (`/ordenes/recibir`, `/recepcion-satelite/recibir?desde=…`). En táctil abre el diálogo continuo.
+- La guía suelta desaparece: no hay toast por lectura (R590); cada lectura queda como fila con su desenlace y su
+  motivo, y el listado se relee una vez, al terminar o cerrar (R592).
+- La central sigue viendo el destino de una devolución recibida: la fila dice «Queda por devolver a la tienda.» (B1).
+- m2: `RecibirPaquetesEntrada` no se pinta en el HTML del servidor (puntero desconocido hasta hidratar, review B1
+  de SLT-159); en prod el disparador sí venía del servidor. Hay un salto pequeño de la fila al hidratar; está
+  fijado como intencionado en `EscanerRecepcion.test.tsx > HTML del servidor`.
+- No toca dinero, permisos ni auth: los permisos de las páginas continuas son los mismos (review §2).
+
+## Review (RECHAZADA, 5f4d6eec) → arreglos
+- B1 (opción a): `desenlaceBodegaCentral` lleva `result.estado` al desenlace: con `por_devolver_a_tienda`, `aviso`
+  «Queda por devolver a la tienda.»; `EstadoFila`/`DesenlaceRecepcion` ganan `aviso?` (`lib/utils/sesion-escaneo.ts`)
+  y `EscaneoContinuo` lo pinta bajo «Recibida» (lista y tabla).
+- B2: `tests/unit/components/desenlace-recepcion.test.ts`, un `it.each` por receptor con todos sus `status` y los
+  textos de prod escritos a mano.
+- B3: línea `tamano-pr-aceptado` en la ficha (ec876a14); `tamano-pr` pasa a aviso.
+- m3: `ModoRecepcion` = `"continua" | "pagina"` (fuera `"suelta"`); comentarios viejos de `EscanerModal`,
+  `OrdenesListado` y los tres receptores, al día. m6: texto de la ficha corregido (`gap-8`, como prod).
+
+Mutaciones (en dcb4c36e, restauradas con `git checkout --`): quitar el `aviso` del `ok` y cruzar `forbidden` ↔
+`unauthenticated` en `desenlaceSatelite`:
+```
+      Tests  4 failed | 29 passed (33)
+VEXIT=1
+ FAIL  EscanerRecepcionBodegaCentral.test.tsx > … > B1: el ok de una devolución pinta «Queda por devolver a la tienda.» …
+ FAIL  desenlace-recepcion.test.ts > desenlaceBodegaCentral > B1 · ok de una devolución …
+ FAIL  desenlace-recepcion.test.ts > desenlaceSatelite > forbidden
+ FAIL  desenlace-recepcion.test.ts > desenlaceSatelite > unauthenticated
+```
+Sin mutar: 9 archivos (desenlace, los tres receptores, `EscaneoContinuo`, `sesion-escaneo`, `RecepcionContinuaPagina`,
+página `/ordenes/recibir`, `OrdenesPage`) → `113 passed`, VEXIT=0.
 
 ## Enmiendas (decisión de Carlos del 2026-11-18, citada en cada test)
 SLT-156 design §4, SLT-160 R600/R771/DC2, SLT-193 R910/R925/R929: 44 px solo en el móvil. SLT-159 R594/R611: una
@@ -100,5 +134,10 @@ guía suelta). Lo traído de SLT-200 (merge `d016b9c9`, aún no en dev) = 25 arc
 - El único rojo es la caída del proceso worker de Windows (0xC0000409) a los 0 ms, antes de que el test arrancara.
   Volví a correr solo ese spec: `pnpm exec playwright test e2e/pwa-mensajero-reparto.spec.ts` → `5 passed (28.1s)`, EEXIT=0.
 
+## Tras la review (dcb4c36e + docs)
+- Gate rápido: `INIT_EXIT=0` (`tamano-pr` en aviso, aceptado por Carlos).
+- `next build` BEXIT=0. E2E de recepción: `escritorio-igual-a-prod`, `recepcion-satelite`, `recibir-paquetes` y
+  `retiro-satelite-central` → `9 passed (23.0s)`, EEXIT=0.
+
 ## Veredicto
-Implementado. Verde en vitest, typecheck, lint y el proyecto E2E `reparto` (el único rojo fue la caída del worker, verde al repetir); `tamano-pr` sigue en rojo, a la espera de que Carlos acepte el tamaño.
+Implementado, con los arreglos de la review. Verde en vitest, typecheck, lint y el proyecto E2E `reparto` (el único rojo fue la caída del worker, verde al repetir); `tamano-pr` aceptado por Carlos; gate rápido en verde.
