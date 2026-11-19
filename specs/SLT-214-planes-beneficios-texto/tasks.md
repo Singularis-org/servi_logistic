@@ -20,7 +20,7 @@ Orden: T1 → T2 → (T3, T4, T5 [P]) → T6 → (T7, T8 [P]) → T9 → T10 →
   - **Hecho:** `tests/integration/db/migracion-plan-beneficio-ida-y-vuelta.test.ts` sube y baja la migración, y
     tras bajarla `plan_de_la_empresa` devuelve lo mismo que antes. `tests/integration/db/plan-beneficio.test.ts`
     cubre R6: los tres CHECK rechazan, y `servi_app` no puede hacer `SELECT` ni `INSERT`.
-- [ ] **T3 [P]. Repositorio de planes y rastro** (`PlanesRepository.ts`, `lib/planes/rastro.ts`). R15, R17, R18,
+- [x] **T3 [P]. Repositorio de planes y rastro** (`PlanesRepository.ts`, `lib/planes/rastro.ts`). R15, R17, R18,
   R19. Depende de T2.
   - Lleva `INCLUIR`, `aDTO`, `crearEnTx`, `aplicarVersion` y `versionDelPlan` (design §3.3), y
     `CampoDelPlan`, `planCanonico` y `diferenciasDelPlan` (§3.6).
@@ -31,7 +31,7 @@ Orden: T1 → T2 → (T3, T4, T5 [P]) → T6 → (T7, T8 [P]) → T9 → T10 →
 
     `tests/unit/planes/rastro.test.ts` cubre R19: alta sin beneficios sin clave, alta con beneficios, y edición por
     texto, por ícono y por orden. Los tests de rastro que ya existen siguen en verde sin cambios.
-- [ ] **T4 [P]. Borrador del servidor** (`lib/types/plan-borrador.ts`, `lib/planes/borrador.ts`). R7, R10, R12,
+- [x] **T4 [P]. Borrador del servidor** (`lib/types/plan-borrador.ts`, `lib/planes/borrador.ts`). R7, R10, R12,
   R15, R16. Depende de T2.
   - **Hecho:**
     - `tests/unit/types/plan-borrador-schema.test.ts` cubre el paso `beneficios` en los dos modos, con R2–R4 y las
@@ -40,7 +40,7 @@ Orden: T1 → T2 → (T3, T4, T5 [P]) → T6 → (T7, T8 [P]) → T9 → T10 →
       - R12: un borrador sin el paso da `pasos_pendientes` con `beneficios`;
       - R15: confirmar la creación deja los beneficios;
       - R16: confirmar la edición los deja en la versión programada y no en el plan.
-- [ ] **T5 [P]. «Mi plan» y la lista para cambiar de plan** (`MiPlanRepository.ts`, `lib/planes/consumo.ts`,
+- [x] **T5 [P]. «Mi plan» y la lista para cambiar de plan** (`MiPlanRepository.ts`, `lib/planes/consumo.ts`,
   `lib/types/consumo-plan.ts`, `lib/services/MiPlanCambioService.ts`). R16, R18, R23, R24. Depende de T2.
   - **Hecho:**
     - `tests/integration/db/mi-plan-repository.test.ts` cubre R23 con los del plan y con la versión propia, y R18 con
@@ -48,7 +48,7 @@ Orden: T1 → T2 → (T3, T4, T5 [P]) → T6 → (T7, T8 [P]) → T9 → T10 →
     - `tests/integration/db/planes-version-por-empresa.test.ts` cubre R16: con el cambio a medias, A, que lo
       recibió, ve la lista nueva, y B, que no, la anterior;
     - `tests/unit/services/mi-plan-cambio-service.test.ts` cubre R24 en `vista`.
-- [ ] **T6. Líneas de cambio** (`lib/planes/mensajes.ts`). R25. Depende de T1 y T3.
+- [x] **T6. Líneas de cambio** (`lib/planes/mensajes.ts`). R25. Depende de T1 y T3.
   - `lineasDeCambioDelPlan` con `beneficios`.
   - **Hecho:** un test en `tests/unit/planes/beneficios.test.ts` pasa `diferenciasDelPlan` por
     `lineasDeCambioDelPlan` y obtiene «Se agrega: …», «Se quita: …» o la línea de solo íconos u orden.

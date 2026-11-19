@@ -12,7 +12,9 @@ import {
   claveDelBeneficio,
   type Beneficio,
 } from "@/lib/planes/beneficios";
-import { crearPlanSchema, editarPlanSchema, versionPlanSchema } from "@/lib/types/planes";
+import { lineasDeCambioDelPlan, type CambioDelPlanParaCorreo } from "@/lib/planes/mensajes";
+import { diferenciasDelPlan } from "@/lib/planes/rastro";
+import { crearPlanSchema, editarPlanSchema, versionPlanSchema, type PlanDTO } from "@/lib/types/planes";
 
 // SLT-214 (design §3.1, §3.2) — el catálogo de íconos, el esquema de los beneficios y sus líneas de «qué cambia».
 
@@ -220,5 +222,49 @@ describe("SLT-214 R25 — cambiosDeBeneficios", () => {
   it("sin diferencia, ninguna línea", () => {
     expect(cambiosDeBeneficios([], [])).toEqual([]);
     expect(cambiosDeBeneficios([SOPORTE, RAYO], [{ ...SOPORTE }, { ...RAYO }])).toEqual([]);
+  });
+});
+
+// T6 (design §3.6): el camino entero de «Esto es lo que cambia:» (aviso de «Mi plan», correo, rastro y detalle de
+// empresa) pasa por `diferenciasDelPlan` y luego por `lineasDeCambioDelPlan`.
+describe("SLT-214 R25 — lineasDeCambioDelPlan con los beneficios", () => {
+  const SOPORTE: Beneficio = { icono: "soporte", texto: "Soporte 24 h" };
+  const RAYO: Beneficio = { icono: "rayo", texto: "Acceso anticipado" };
+  const ESTRELLA: Beneficio = { icono: "estrella", texto: "Features nuevas" };
+  const PLAN: PlanDTO = {
+    id: "p1",
+    nombre: "Pro",
+    visibilidad: "publico",
+    organizacionId: null,
+    topes: { porRol: {}, apiKeys: null },
+    modulos: ["analitica"],
+    beneficios: [SOPORTE, RAYO],
+    precio: { tipo: "sin_precio" },
+    costoPorOrden: null,
+    costoPorOrdenPorcentual: null,
+    archivado: false,
+  };
+
+  function lineas(despues: Partial<PlanDTO>): string[] {
+    return lineasDeCambioDelPlan(diferenciasDelPlan(PLAN, { ...PLAN, ...despues }) as CambioDelPlanParaCorreo);
+  }
+
+  it("«Se agrega: …» y «Se quita: …», después de las líneas de los módulos", () => {
+    expect(lineas({ modulos: [], beneficios: [SOPORTE, ESTRELLA] })).toEqual([
+      "Deja de incluirse el módulo Analítica.",
+      "Se agrega: Features nuevas",
+      "Se quita: Acceso anticipado",
+    ]);
+  });
+
+  it("solo íconos u orden: la línea única", () => {
+    expect(lineas({ beneficios: [RAYO, SOPORTE] })).toEqual([CAMBIAN_ICONOS_U_ORDEN]);
+    expect(lineas({ beneficios: [{ ...SOPORTE, icono: "reloj_24h" }, RAYO] })).toEqual([CAMBIAN_ICONOS_U_ORDEN]);
+  });
+
+  it("sin cambio en los beneficios, ni una línea suya; tampoco con una versión que no los trae (R18)", () => {
+    expect(lineas({ nombre: "Pro 2" })).toEqual(["Nombre del plan: Pro → Pro 2"]);
+    const { nombre, topes, modulos, precio } = PLAN;
+    expect(lineas({ nombre, topes, modulos, precio })).toEqual([]);
   });
 });

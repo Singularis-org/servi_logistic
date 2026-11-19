@@ -32,6 +32,13 @@ const PRECIO = {
 const ORDEN = { costoPorOrden: null, costoPorOrdenPorcentual: { porcentaje: "2.5", minimo: "100" }, periodicidadOrdenes: "mensual" as const };
 const TOPES = { topes: { porRol: { admin: 2, mensajero: 10 }, apiKeys: 3 } };
 const MODULOS = { modulos: ["analitica" as const, "ranking" as const] };
+// SLT-214 (R7, R15, R16): el paso «Beneficios», después de «Módulos».
+const BENEFICIOS = {
+  beneficios: [
+    { icono: "soporte" as const, texto: "Soporte prioritario" },
+    { icono: "equipo" as const, texto: "Equipo dedicado" },
+  ],
+};
 
 const DESCUENTOS_DE_HOY = {
   anual: { tipo: "porcentaje", porcentaje: "10" },
@@ -40,19 +47,19 @@ const DESCUENTOS_DE_HOY = {
 
 describe("R16 — los pasos que faltan, en el orden del formulario", () => {
   it("los pasos de cada modo", () => {
-    expect(pasosDelModo("crear")).toEqual(["general", "precio", "orden", "topes", "modulos"]);
-    expect(pasosDelModo("editar")).toEqual(["general", "precio", "orden", "topes", "modulos", "vigencia"]);
+    expect(pasosDelModo("crear")).toEqual(["general", "precio", "orden", "topes", "modulos", "beneficios"]);
+    expect(pasosDelModo("editar")).toEqual(["general", "precio", "orden", "topes", "modulos", "beneficios", "vigencia"]);
   });
 
   it("crear sin Topes y programar sin Cuándo rige", () => {
-    expect(pasosQueFaltan("crear", ["modulos", "general", "orden", "precio"])).toEqual(["topes"]);
-    expect(pasosQueFaltan("editar", ["general", "precio", "orden", "topes", "modulos"])).toEqual(["vigencia"]);
+    expect(pasosQueFaltan("crear", ["modulos", "beneficios", "general", "orden", "precio"])).toEqual(["topes"]);
+    expect(pasosQueFaltan("editar", ["general", "precio", "orden", "topes", "modulos", "beneficios"])).toEqual(["vigencia"]);
   });
 
   it("sin nada guardado faltan todos; con todos, ninguno", () => {
-    expect(pasosQueFaltan("crear", [])).toEqual(["general", "precio", "orden", "topes", "modulos"]);
-    expect(pasosQueFaltan("editar", ["vigencia", "modulos", "topes", "orden", "precio", "general"])).toEqual([]);
-    expect(pasosQueFaltan("crear", ["topes", "precio"])).toEqual(["general", "orden", "modulos"]);
+    expect(pasosQueFaltan("crear", [])).toEqual(["general", "precio", "orden", "topes", "modulos", "beneficios"]);
+    expect(pasosQueFaltan("editar", ["vigencia", "beneficios", "modulos", "topes", "orden", "precio", "general"])).toEqual([]);
+    expect(pasosQueFaltan("crear", ["topes", "precio"])).toEqual(["general", "orden", "modulos", "beneficios"]);
   });
 });
 
@@ -74,6 +81,7 @@ describe("R17 — la petición de crear armada con los cinco pasos", () => {
       orden: ORDEN,
       topes: TOPES,
       modulos: MODULOS,
+      beneficios: BENEFICIOS,
     };
     const peticion = peticionDeCrear(pasos);
 
@@ -87,6 +95,7 @@ describe("R17 — la petición de crear armada con los cinco pasos", () => {
       periodicidadOrdenes: "mensual",
       topes: TOPES.topes,
       modulos: MODULOS.modulos,
+      beneficios: BENEFICIOS.beneficios,
     });
     expect(crearPlanSchema.safeParse(peticion).success).toBe(true);
   });
@@ -98,6 +107,7 @@ describe("R17 — la petición de crear armada con los cinco pasos", () => {
       orden: { costoPorOrden: "80", costoPorOrdenPorcentual: null, periodicidadOrdenes: "quincenal" },
       topes: TOPES,
       modulos: { modulos: [] },
+      beneficios: { beneficios: [] },
     };
     const peticion = peticionDeCrear(pasos);
 
@@ -118,6 +128,7 @@ describe("R17 — la petición de crear armada con los cinco pasos", () => {
       orden: ESQUEMAS_DE_CREAR.orden.parse(ORDEN),
       topes: ESQUEMAS_DE_CREAR.topes.parse(TOPES),
       modulos: ESQUEMAS_DE_CREAR.modulos.parse(MODULOS),
+      beneficios: ESQUEMAS_DE_CREAR.beneficios.parse(BENEFICIOS),
     };
     expect(crearPlanSchema.safeParse(peticionDeCrear(pasos)).success).toBe(true);
   });
@@ -129,6 +140,7 @@ describe("R17 — la petición de crear armada con los cinco pasos", () => {
       orden: ORDEN,
       topes: TOPES,
       modulos: MODULOS,
+      beneficios: BENEFICIOS,
     };
     const r = crearPlanSchema.safeParse(peticionDeCrear(pasos));
     expect(r.success).toBe(false);
@@ -144,6 +156,7 @@ describe("R18 — la petición de editar armada con los seis pasos", () => {
       orden: ORDEN,
       topes: TOPES,
       modulos: MODULOS,
+      beneficios: BENEFICIOS,
       vigencia: { vigenteDesde: "2026-12-01" },
     };
     const peticion = peticionDeEditar(PLAN, pasos);
@@ -157,6 +170,7 @@ describe("R18 — la petición de editar armada con los seis pasos", () => {
       periodicidadOrdenes: "mensual",
       topes: TOPES.topes,
       modulos: MODULOS.modulos,
+      beneficios: BENEFICIOS.beneficios,
       vigenteDesde: "2026-12-01",
     });
     expect(editarPlanSchema.safeParse(peticion).success).toBe(true);

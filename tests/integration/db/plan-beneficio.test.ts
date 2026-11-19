@@ -3,16 +3,22 @@ import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { comoApp, crearOrganizacion } from "@/tests/fabricas/organizaciones";
+import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { inicioDelDiaPlataforma } from "@/lib/planes/ciclo";
+import { PlanesService } from "@/lib/services/PlanesService";
+import type { PlanDTO } from "@/lib/types/planes";
+import { comoApp, crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones";
 
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
-import { asignarPlan, capturar, crearPlan, revertida, sqlstateDe } from "./_fixtures/planes";
+import { asignarPlan, capturar, crearPlan, entradaDePlan, planesEnTx, revertida, sqlstateDe } from "./_fixtures/planes";
 
-// SLT-214 (design §1.1, §3.4; R1, R6) — la tabla `plan_beneficio` contra Postgres real. Todo en una transacción
-// del dueño que se revierte.
+// SLT-214 (design §1.1, §3.3, §3.4; R1, R6, R15, R17, R18) — la tabla `plan_beneficio` contra Postgres real. Todo
+// en una transacción del dueño que se revierte.
 //   · R1: guarda la lista en su orden, vacía o larga;
 //   · R6: los tres CHECK rechazan lo que llegue sin pasar por la app, y `servi_app` no lee ni escribe la tabla;
-//     la empresa solo ve los beneficios por `plan_de_la_empresa`, y solo los de su plan.
+//     la empresa solo ve los beneficios por `plan_de_la_empresa`, y solo los de su plan;
+//   · R15, R17, R18: `PlanesService` y `PlanesRepository` REALES crean, programan y promueven la lista (el
+//     repositorio abre sus transacciones como SAVEPOINT de la del caso).
 //
 // Después de un `comoApp` la transacción corre como `servi_app`; `RESET ROLE` la devuelve al dueño.
 
@@ -41,6 +47,58 @@ async function beneficiosDe(tx: TxDeTest, planId: string): Promise<{ posicion: n
 async function miPlan(tx: TxDeTest, organizacionId: string): Promise<Record<string, unknown>> {
   const [f] = await tx.$queryRawUnsafe<{ plan: unknown }[]>(`SELECT plan_de_la_empresa($1) AS plan`, organizacionId);
   return (typeof f.plan === "string" ? JSON.parse(f.plan) : f.plan) as Record<string, unknown>;
+}
+
+const SUPERADMIN: Actor = { usuarioId: randomUUID(), rol: "superadmin", organizacionId: null };
+/** 10 de noviembre de 2026, 09:00 en la plataforma; la edición rige el 20, sin empresas: promueve en F. */
+const AHORA = new Date("2026-11-10T15:00:00.000Z");
+const PROGRAMADA = "2026-11-20";
+
+const servicio = (tx: TxDeTest) => new PlanesService(planesEnTx(tx), () => AHORA);
+
+async function crearConServicio(tx: TxDeTest, beneficios: unknown): Promise<string> {
+  const r = await servicio(tx).crear(SUPERADMIN, { ...entradaDePlan(), beneficios });
+  if (r.estado !== "ok") throw new Error(`crear: ${JSON.stringify(r)}`);
+  return r.planId;
+}
+
+/** La edición que manda el formulario a partir del plan leído, con `cambio` encima; sin `beneficios` si no van. */
+async function programar(tx: TxDeTest, planId: string, cambio: Record<string, unknown>) {
+  const plan = (await planesEnTx(tx).plan(planId)) as PlanDTO;
+  await fijarEmpresa(tx, "");
+  const { id, nombre, topes, modulos, precio, costoPorOrden, costoPorOrdenPorcentual } = plan;
+  const r = await servicio(tx).editar(SUPERADMIN, {
+    planId: id,
+    nombre,
+    topes,
+    modulos,
+    precio,
+    costoPorOrden,
+    costoPorOrdenPorcentual,
+    vigenteDesde: PROGRAMADA,
+    ...cambio,
+  });
+  if (r.estado !== "ok") throw new Error(`programar: ${JSON.stringify(r)}`);
+  return r;
+}
+
+/** Lo que hace la cola en F con un plan sin empresas: promover el cambio. */
+async function promover(tx: TxDeTest, planId: string) {
+  const { id: cambioId, version } = await tx.planCambioProgramado.findUniqueOrThrow({ where: { planId }, select: { id: true, version: true } });
+  const aplicado = await planesEnTx(tx).aplicarCambioProgramado(
+    { planId, cambioId },
+    new Date(inicioDelDiaPlataforma(PROGRAMADA).getTime() + 60_000),
+  );
+  return { version, aplicado };
+}
+
+async function rastroDe(tx: TxDeTest, planId: string) {
+  const filas = await tx.planRastro.findMany({
+    where: { planId },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: { accion: true, cambios: true },
+  });
+  return filas.map((f) => ({ accion: f.accion, cambios: f.cambios as Record<string, unknown> }));
 }
 
 describeSiHayBase("SLT-214 R1, R6 — la tabla plan_beneficio", () => {
@@ -150,5 +208,91 @@ describeSiHayBase("SLT-214 R1, R6 — la tabla plan_beneficio", () => {
       { icono: "rayo", texto: "Acceso anticipado" },
     ]);
     expect(r.deOtra).toBe("42501");
+  });
+
+  it("R15: crear con 3 beneficios los guarda y los lee en su orden, recortados (R2); sin `beneficios`, el plan queda sin ninguno", async () => {
+    const r = await revertida(base, async (tx) => {
+      const con = await crearConServicio(tx, [
+        { icono: "soporte", texto: "  Soporte 24 h " },
+        { icono: "camion", texto: "Envíos prioritarios" },
+        { icono: "rayo", texto: "Acceso anticipado" },
+      ]);
+      const sin = await crearConServicio(tx, undefined);
+      const repo = planesEnTx(tx);
+      return {
+        filas: await beneficiosDe(tx, con),
+        dto: (await repo.plan(con))?.beneficios,
+        sinFilas: await beneficiosDe(tx, sin),
+        sinDto: (await repo.plan(sin))?.beneficios,
+      };
+    });
+    const esperados = [
+      { icono: "soporte", texto: "Soporte 24 h" },
+      { icono: "camion", texto: "Envíos prioritarios" },
+      { icono: "rayo", texto: "Acceso anticipado" },
+    ];
+    expect(r.filas).toEqual(esperados.map((b, posicion) => ({ posicion, ...b })));
+    expect(r.dto).toEqual(esperados);
+    expect(r.sinFilas).toEqual([]);
+    expect(r.sinDto).toEqual([]);
+  });
+
+  it("R17: promover el cambio deja la lista del plan igual a la de la versión (texto, ícono y orden), con su rastro", async () => {
+    const antes = [
+      { icono: "check", texto: "Soporte por correo" },
+      { icono: "camion", texto: "Envíos estándar" },
+      { icono: "regalo", texto: "Mes de prueba" },
+    ];
+    const despues = [
+      { icono: "camion", texto: "Envíos estándar" },
+      { icono: "soporte", texto: "Soporte 24 h" },
+    ];
+    const r = await revertida(base, async (tx) => {
+      const planId = await crearConServicio(tx, antes);
+      await programar(tx, planId, { beneficios: despues });
+      const trasProgramar = await beneficiosDe(tx, planId);
+      const { version, aplicado } = await promover(tx, planId);
+      return {
+        trasProgramar,
+        version,
+        aplicado,
+        final: await beneficiosDe(tx, planId),
+        dto: (await planesEnTx(tx).plan(planId))?.beneficios,
+        rastro: await rastroDe(tx, planId),
+      };
+    });
+    expect(r.trasProgramar.map(({ icono, texto }) => ({ icono, texto }))).toEqual(antes);
+    expect(r.version).toMatchObject({ beneficios: despues });
+    expect(r.aplicado).toEqual({ estado: "aplicado" });
+    expect(r.final).toEqual(despues.map((b, posicion) => ({ posicion, ...b })));
+    expect(r.dto).toEqual(despues);
+    const porAccion = Object.fromEntries(r.rastro.map((f) => [f.accion, f.cambios.beneficios]));
+    expect(porAccion.creado).toEqual({ antes: null, despues: antes });
+    expect(porAccion.cambio_programado).toEqual({ antes, despues });
+    expect(porAccion.cambio_aplicado).toEqual({ antes, despues });
+  });
+
+  it("R18: una versión programada sin `beneficios` (como las de antes de la ficha) deja la lista del plan como estaba", async () => {
+    const delPlan = [
+      { icono: "check", texto: "Soporte por correo" },
+      { icono: "estrella", texto: "Gestor de cuenta" },
+    ];
+    const r = await revertida(base, async (tx) => {
+      const planId = await crearConServicio(tx, delPlan);
+      // Sin la clave: así se guardaron las versiones de antes de SLT-214.
+      await programar(tx, planId, { nombre: `sin beneficios ${randomUUID().slice(0, 6)}` });
+      const { version, aplicado } = await promover(tx, planId);
+      return {
+        version,
+        aplicado,
+        final: await beneficiosDe(tx, planId),
+        rastro: await rastroDe(tx, planId),
+      };
+    });
+    expect(r.version).not.toHaveProperty("beneficios");
+    expect(r.aplicado).toEqual({ estado: "aplicado" });
+    expect(r.final).toEqual(delPlan.map((b, posicion) => ({ posicion, ...b })));
+    // Ni el programado ni el aplicado cuentan un cambio de beneficios.
+    expect(r.rastro.filter((f) => f.accion !== "creado").map((f) => "beneficios" in f.cambios)).toEqual([false, false]);
   });
 });

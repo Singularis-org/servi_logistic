@@ -52,3 +52,71 @@ Modificados:
 - La migración está aplicada con `prisma migrate deploy` en `servi_logistic_slt214` y `servi_logistic_slt214_e2e`, y el cliente está regenerado.
 
 Veredicto: T1 y T2 en verde. Un archivo de producción de más (`lib/db/modelos-de-negocio.ts`), que pide la guardia.
+
+## Tanda 2 (backend_dev): T3, T4, T5 y T6
+
+### Archivos
+
+Producción (todos en la lista de `tasks.md`):
+- `lib/repositories/PlanesRepository.ts` (T3): `INCLUIR` con `beneficios` por `posicion`; `aDTO` los valida con
+  `iconoDeBeneficioSchema`; `crearEnTx` los crea con la posición como índice y los pone en `creado`; `aplicarVersion`
+  reemplaza la lista solo si la versión trae `beneficios` (R17, R18); `versionDelPlan` los añade.
+- `lib/planes/rastro.ts` (T3): `"beneficios"` en `CampoDelPlan` y `CAMPOS` tras `modulos`; `planCanonico` los copia en
+  orden; el alta sin beneficios omite la clave.
+- `lib/planes/beneficios.ts` (T1, retocado): exporta `iconoDeBeneficioSchema` (lo usan `beneficioSchema` y `aDTO`).
+- `lib/types/plan-borrador.ts`, `lib/planes/borrador.ts` (T4): paso `beneficios` en las tuplas, esquemas, uniones,
+  `ValoresDeBeneficios`, `PasosDeCrear` y las dos peticiones.
+- `lib/repositories/MiPlanRepository.ts`, `lib/planes/consumo.ts`, `lib/types/consumo-plan.ts`,
+  `lib/services/MiPlanCambioService.ts` (T5): `beneficios` en la fila de `plan_de_la_empresa`, en `vigente`, en
+  `PlanConConsumo` y en `vista`.
+- `lib/planes/mensajes.ts` (T6): `CambioDelPlanParaCorreo.beneficios` y sus líneas tras los módulos.
+
+Tests nuevos o ampliados (en la lista): `beneficios.test.ts` (T6), `rastro.test.ts` (R19), `plan-borrador-schema.test.ts`
+(T4), `mi-plan-cambio-service.test.ts` (R24), `plan-beneficio.test.ts` (R15, R17, R18), `plan-borrador-confirmar.test.ts`
+(R12, R15, R16; sus ayudantes guardan el paso nuevo), `mi-plan-repository.test.ts` (R23, R18; `beneficios: []` en el
+`vigente` exacto), `planes-version-por-empresa.test.ts` (R16).
+
+Tests adaptados FUERA de la lista de `tasks.md` (rompían por el cambio, sin tocar lo que prueban):
+- `tests/unit/planes/plan-borrador.test.ts`: los pasos esperados y las peticiones llevan `beneficios`.
+- `tests/unit/services/plan-borrador-service.test.ts`: el borrador completo del doble lleva el paso `beneficios`.
+- `tests/unit/repositories/planes-repository-tipo-cobro.test.ts`: la fila falsa de `plan` lleva `beneficios: []`.
+- `tests/components/ConsumoDelPlan.test.tsx`: el `PlanConConsumo` del doble lleva `beneficios: []` (solo tipo).
+
+### R<n> → test (esta tanda)
+
+| R | Test |
+|---|---|
+| R7 (tuplas) | `plan-borrador-schema.test.ts` «R7: va justo después de «Módulos»…»; `plan-borrador.test.ts` «los pasos de cada modo» |
+| R10 | `plan-borrador-schema.test.ts` «R9, R10 (crear/editar)…», «R2–R4 (crear/editar): cada error en `beneficios.<i>.<campo>`…», «R3 (crear/editar)…», «R10: guardar el paso en los dos modos…» |
+| R12 | `plan-borrador-confirmar.test.ts` «SLT-214 R12: un borrador sin el paso «Beneficios» da pasos_pendientes…» |
+| R15 | `plan-beneficio.test.ts` «R15: crear con 3 beneficios los guarda y los lee en su orden…»; `plan-borrador-confirmar.test.ts` «SLT-214 R15: confirmar la creación…» |
+| R16 | `plan-borrador-confirmar.test.ts` «SLT-214 R16: confirmar la edición deja los beneficios en la versión programada…»; `planes-version-por-empresa.test.ts` «SLT-214 R16: con el cambio a medias, la que lo recibió ve los beneficios nuevos…» |
+| R17 | `plan-beneficio.test.ts` «R17: promover el cambio deja la lista del plan igual a la de la versión…» |
+| R18 | `plan-beneficio.test.ts` «R18: una versión programada sin `beneficios`…»; `mi-plan-repository.test.ts` «R18: una versión propia sin `beneficios`…»; `rastro.test.ts` «la misma lista no es un cambio, y una versión sin `beneficios`…» |
+| R19 | `rastro.test.ts` «SLT-214 R19 — los beneficios en diferenciasDelPlan» (alta sin/con, edición por texto, ícono, orden, quitar, agregar, vaciar); `plan-beneficio.test.ts` R17 (filas `creado`, `cambio_programado`, `cambio_aplicado`) |
+| R23 | `mi-plan-repository.test.ts` «R23: sin versión propia, los del plan…», «R23: con una versión propia…», «R23: una versión propia con la lista vacía…» |
+| R24 | `mi-plan-cambio-service.test.ts` «SLT-214 R24: cada plan de la lista y el custom activo llevan sus beneficios…» |
+| R25 | `beneficios.test.ts` «SLT-214 R25 — lineasDeCambioDelPlan con los beneficios» (agrega/quita tras los módulos, solo íconos u orden, sin cambio) |
+
+### Salida real
+
+- `pnpm exec tsc --noEmit`: rc 2, con 4 errores, todos en `app/` y de T8 (frontend):
+  `plan-form/usar-borrador.ts` (134, 140, 156) y `PlanForm.tsx` (250). `IdPasoGuardable` del formulario no tiene
+  `beneficios` hasta que T8 añada el paso a `estado.ts`. Ningún error en `lib/` ni en `tests/`.
+- `pnpm exec eslint` sobre los 22 archivos tocados: sin problemas, rc 0.
+- Unit tocados (`beneficios`, `rastro`, `plan-borrador`, `plan-borrador-schema`, `mi-plan-cambio-service`,
+  `plan-borrador-service`, `planes-repository-tipo-cobro`, `ConsumoDelPlan`): `Test Files  8 passed (8)` / `Tests  181 passed (181)`.
+- Integración nuevos/ampliados, `--no-file-parallelism`: `Test Files  4 passed (4)` / `Tests  34 passed (34)`.
+- Integración que importa lo tocado (63 archivos, `--no-file-parallelism`): `Test Files  1 failed | 62 passed (63)` /
+  `Tests  791 passed | 14 skipped (805)`. El rojo es `demo-qa.test.ts`: «faltan catálogos en la base (… `pnpm run
+  db:seed`): vehiculo» — la base desechable no tiene el seed; no lo toca este cambio.
+- Unit y componentes que importan lo tocado (49 archivos): tras los arreglos de arriba, el único rojo que queda es
+  `PlanesModule.test.tsx` (1), que recorre el formulario.
+- Componentes del formulario de planes: `Test Files  10 failed | 14 passed (24)` / `Tests  62 failed`
+  (`PlanForm*`, `PlanDetalle`, `PlanesModule`). Todos recorren los pasos: esperan el paso «Beneficios» que pone T8 y
+  los ayudantes de T10 (`plan-form-pasos.ts`). Son de frontend_dev.
+- `pnpm run test:guardias`: `Test Files  1 failed | 359 passed (360)`. El rojo es `superficie-de-uso`:
+  `components/shared/planes/BeneficiosDelPlan.tsx` (T7) aún no lo monta nadie; lo montan T9 o una anotación.
+
+Veredicto: T3–T6 en verde en `lib/` y sus tests; el typecheck de `app/`, los tests del formulario y la guardia de
+superficie quedan en rojo hasta T7–T10 (frontend).

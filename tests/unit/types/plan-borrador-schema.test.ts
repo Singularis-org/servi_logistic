@@ -6,11 +6,14 @@ import type { z } from "zod";
 import {
   ESQUEMAS_DE_CREAR,
   ESQUEMAS_DE_EDITAR,
+  PASOS_DE_CREAR,
+  PASOS_DE_EDITAR,
   PERIODO_REPETIDO,
   UN_PLAN_NUEVO_EMPIEZA_POR_GENERAL,
   guardarPasoBorradorSchema,
   leerBorradorSchema,
 } from "@/lib/types/plan-borrador";
+import { BENEFICIO_REPETIDO, TEXTO_LARGO, TEXTO_VACIO } from "@/lib/planes/beneficios";
 import { MENSAJE_MONTO_COBRO_INVALIDO } from "@/lib/types/cobro-plataforma";
 import { crearPlanSchema } from "@/lib/types/planes";
 
@@ -282,5 +285,72 @@ describe("R3 — guardar un paso: la entrada", () => {
     expect(leerBorradorSchema.safeParse({ borradorId: randomUUID() }).success).toBe(true);
     expect(leerBorradorSchema.safeParse({ planId: randomUUID() }).success).toBe(true);
     expect(leerBorradorSchema.safeParse({ planId: "x" }).success).toBe(false);
+  });
+});
+
+// SLT-214 (design §3.7; R7, R10, R2–R4) — el paso «Beneficios» del borrador, en los dos modos. Sus errores salen
+// en `beneficios.<i>.texto` (o `.icono`), la clave que el formulario pinta junto al campo de cada beneficio.
+describe("SLT-214 — el paso «Beneficios» del borrador", () => {
+  const MODOS = [
+    ["crear", ESQUEMAS_DE_CREAR.beneficios],
+    ["editar", ESQUEMAS_DE_EDITAR.beneficios],
+  ] as const;
+
+  it("R7: va justo después de «Módulos», y al editar antes de «Cuándo rige»", () => {
+    expect(PASOS_DE_CREAR).toEqual(["general", "precio", "orden", "topes", "modulos", "beneficios"]);
+    expect(PASOS_DE_EDITAR).toEqual(["general", "precio", "orden", "topes", "modulos", "beneficios", "vigencia"]);
+  });
+
+  it.each(MODOS)("R9, R10 (%s): la lista vacía y una lista válida pasan; el texto se guarda recortado", (_modo, esquema) => {
+    expect(claves(esquema.safeParse({ beneficios: [] }))).toEqual([]);
+    const r = esquema.safeParse({ beneficios: [{ icono: "soporte", texto: "  Soporte 24 h " }, { icono: "check", texto: "Envíos" }] });
+    expect(r.success && r.data.beneficios).toEqual([
+      { icono: "soporte", texto: "Soporte 24 h" },
+      { icono: "check", texto: "Envíos" },
+    ]);
+  });
+
+  it.each(MODOS)("R2–R4 (%s): cada error en `beneficios.<i>.<campo>` con su mensaje", (_modo, esquema) => {
+    const r = esquema.safeParse({
+      beneficios: [
+        { icono: "soporte", texto: "Soporte 24 h" },
+        { icono: "check", texto: "   " },
+        { icono: "rayo", texto: "a".repeat(121) },
+        { icono: "Users", texto: "Equipo" },
+      ],
+    });
+    expect(claves(r).sort()).toEqual(["beneficios.1.texto", "beneficios.2.texto", "beneficios.3.icono"]);
+    expect(mensajes(r, "beneficios.1.texto")).toEqual([TEXTO_VACIO]);
+    expect(mensajes(r, "beneficios.2.texto")).toEqual([TEXTO_LARGO]);
+    // R4 es un refinamiento de la lista: zod lo mira cuando cada beneficio ya es válido.
+    const repetido = esquema.safeParse({
+      beneficios: [
+        { icono: "soporte", texto: "Soporte 24 h" },
+        { icono: "estrella", texto: "SÓPORTE  24 H" },
+      ],
+    });
+    expect(claves(repetido)).toEqual(["beneficios.1.texto"]);
+    expect(mensajes(repetido, "beneficios.1.texto")).toEqual([BENEFICIO_REPETIDO]);
+  });
+
+  it.each(MODOS)("R3 (%s): sin la lista, o con claves de más, no pasa", (_modo, esquema) => {
+    expect(esquema.safeParse({}).success).toBe(false);
+    expect(esquema.safeParse({ beneficios: [], modulos: [] }).success).toBe(false);
+    expect(claves(esquema.safeParse({ beneficios: [{ icono: "check", texto: "Uno", color: "rojo" }] }))).toEqual(["beneficios.0"]);
+  });
+
+  it("R10: guardar el paso en los dos modos; sus errores salen bajo `valores.beneficios.<i>.texto`", () => {
+    const valores = { beneficios: [{ icono: "check", texto: "Uno" }] };
+    expect(guardarPasoBorradorSchema.safeParse({ modo: "crear", borradorId: randomUUID(), paso: "beneficios", valores }).success).toBe(
+      true,
+    );
+    expect(guardarPasoBorradorSchema.safeParse({ modo: "editar", planId: randomUUID(), paso: "beneficios", valores }).success).toBe(true);
+    const r = guardarPasoBorradorSchema.safeParse({
+      modo: "editar",
+      planId: randomUUID(),
+      paso: "beneficios",
+      valores: { beneficios: [{ icono: "check", texto: "Uno" }, { icono: "rayo", texto: "uno" }] },
+    });
+    expect(claves(r)).toEqual(["valores.beneficios.1.texto"]);
   });
 });

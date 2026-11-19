@@ -56,10 +56,13 @@ export function claveDelBeneficio(texto: string): string {
   return stripDiacritics(collapseSpaces(texto)).toLowerCase();
 }
 
+/** R3: un ícono del catálogo. Lo usan el esquema y la lectura de `plan_beneficio` (design §3.3). */
+export const iconoDeBeneficioSchema = z.enum(ICONOS_DE_BENEFICIO);
+
 // R2: el largo se mide ya sin los espacios de los extremos, y así se guarda; el CHECK de la base exige lo mismo.
 export const beneficioSchema = z
   .object({
-    icono: z.enum(ICONOS_DE_BENEFICIO),
+    icono: iconoDeBeneficioSchema,
     texto: z.string().trim().min(1, TEXTO_VACIO).max(120, TEXTO_LARGO),
   })
   .strict();

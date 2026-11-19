@@ -83,3 +83,46 @@ describe("SL-24 — diferenciasDelPlan", () => {
     expect(importeCanonico("10.1")).toBe("10.10");
   });
 });
+
+// SLT-214 (design §3.6; R19) — los beneficios en el rastro: el orden es dato, así que texto, ícono y orden cuentan;
+// un alta sin beneficios no añade la clave (las filas «creado» de antes siguen iguales: el caso de arriba).
+describe("SLT-214 R19 — los beneficios en diferenciasDelPlan", () => {
+  const SOPORTE = { icono: "soporte", texto: "Soporte 24 h" } as const;
+  const ENVIOS = { icono: "camion", texto: "Envíos prioritarios" } as const;
+  const CON: PlanDTO = { ...BASE, beneficios: [SOPORTE, ENVIOS] };
+
+  it("un alta sin beneficios, con la lista vacía o sin la clave, no lleva `beneficios`", () => {
+    expect(diferenciasDelPlan(null, { ...BASE, beneficios: [] })).not.toHaveProperty("beneficios");
+    expect(diferenciasDelPlan(null, BASE)).not.toHaveProperty("beneficios");
+  });
+
+  it("un alta con beneficios los lleva en su orden, con antes null, después de los módulos", () => {
+    const d = diferenciasDelPlan(null, CON);
+    expect(d.beneficios).toEqual({ antes: null, despues: [SOPORTE, ENVIOS] });
+    const claves = Object.keys(d);
+    expect(claves.indexOf("beneficios")).toBe(claves.indexOf("modulos") + 1);
+  });
+
+  it.each([
+    ["el texto", [{ ...SOPORTE, texto: "Soporte 24/7" }, ENVIOS]],
+    ["el ícono", [{ ...SOPORTE, icono: "reloj_24h" }, ENVIOS]],
+    ["el orden", [ENVIOS, SOPORTE]],
+    ["quitar uno", [SOPORTE]],
+    ["agregar uno", [SOPORTE, ENVIOS, { icono: "rayo", texto: "Acceso anticipado" }]],
+  ] as const)("una edición que cambia %s guarda solo `beneficios`, con la lista de antes y la de después", (_caso, despues) => {
+    expect(diferenciasDelPlan(CON, { ...CON, beneficios: [...despues] })).toEqual({
+      beneficios: { antes: [SOPORTE, ENVIOS], despues },
+    });
+  });
+
+  it("la misma lista no es un cambio, y una versión sin `beneficios` encima del plan tampoco (R18)", () => {
+    expect(diferenciasDelPlan(CON, { ...CON, beneficios: [{ ...SOPORTE }, { ...ENVIOS }] })).toEqual({});
+    // Como en `consumo.ts` y el repositorio: el plan con la versión encima; esta no trae la clave.
+    const { nombre, topes, modulos, precio, costoPorOrden, costoPorOrdenPorcentual } = CON;
+    expect(diferenciasDelPlan(CON, { ...CON, ...{ nombre, topes, modulos, precio, costoPorOrden, costoPorOrdenPorcentual } })).toEqual({});
+  });
+
+  it("quitar todos los beneficios en una edición sí es un cambio", () => {
+    expect(diferenciasDelPlan(CON, { ...CON, beneficios: [] })).toEqual({ beneficios: { antes: [SOPORTE, ENVIOS], despues: [] } });
+  });
+});
