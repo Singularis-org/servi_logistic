@@ -198,8 +198,9 @@ listado (p. ej. por un incidente o una transición) DEBE retirarse.
   2 y la acción las recibe a las dos. *Hecho:* verde en local con base desechable
   (`docs/perfil-agentes.md > E2E en local antes del PR`), junto con los E2E existentes que cubren
   `/ordenes` y `e2e/recepcion-satelite.spec.ts`.
-  *Estado (implementer, 2026-11-19):* `e2e/seleccion-entre-busquedas.spec.ts` escrito; NO corrido
-  en local (pide build + base desechable). Pendiente de verde en local antes del PR.
+  *Estado real (leader, 2026-11-19, review m1):* `e2e/seleccion-entre-busquedas.spec.ts` NO se
+  corrió en local. Verde en CI sobre el head 1e72cda9: `e2e (reparto)` 54 passed (los dos casos
+  nuevos y `recepcion-satelite`), `e2e (aislamiento)` y `e2e (dinero)`.
 - [x] **T5 — Specs anteriores.** Anotar en `specs/144-filtros-ordenes/requirements.md` (R60),
   `specs/170-export-todas-las-tablas/requirements.md` (R47) y
   `specs/188-deuda-170-listados-completos/requirements.md` (R19, R25, R27) «sustituido por SLT-222
