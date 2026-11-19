@@ -20,13 +20,7 @@ import {
   type RepartoE2E,
 } from "./_escenarios/reparto";
 import { crearPlanPublicoConCosto } from "./_planes-fixture";
-import {
-  asegurarSuperadmin,
-  conCandadoDelSuperadmin,
-  entrarConOtp,
-  olvidarDispositivos,
-  SUPERADMIN_DE_PRUEBA,
-} from "./_superadmin-fixture";
+import { asegurarSuperadmin, conCandadoDelSuperadmin, entrarComoSuperadmin } from "./_superadmin-fixture";
 
 /**
  * SLT-83 T15 (design §9.2; R28, y por el camino R6, R8, R18, R21, R22, R23) — el costo por orden
@@ -181,8 +175,7 @@ test.beforeAll(async ({ browser }) => {
   contextoSa = await browser.newContext();
   sa = await contextoSa.newPage();
   await conCandadoDelSuperadmin(async () => {
-    await olvidarDispositivos(baseReparto(), SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL);
-    await entrarConOtp(superadmin(), SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL, SUPERADMIN_DE_PRUEBA.SUPERADMIN_PASSWORD);
+    await entrarComoSuperadmin(superadmin(), baseReparto());
   });
   await superadmin().waitForURL("**/plataforma/empresas", { timeout: 60_000 });
 });

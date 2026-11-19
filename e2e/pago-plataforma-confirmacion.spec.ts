@@ -5,13 +5,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 
 import { altaDeEmpresa, clienteDueno, prepararAcceso, sembrarDatos, type Empresa } from "./_dos-empresas-fixture";
 import { asignarPlanCustom, crearOrdenesDirectas } from "./_planes-fixture";
-import {
-  asegurarSuperadmin,
-  conCandadoDelSuperadmin,
-  entrarConOtp,
-  olvidarDispositivos,
-  SUPERADMIN_DE_PRUEBA,
-} from "./_superadmin-fixture";
+import { asegurarSuperadmin, conCandadoDelSuperadmin, entrarComoSuperadmin } from "./_superadmin-fixture";
 import { abrirCon } from "./_escenarios/pulsar";
 
 // SLT-60 (T7.1, design §9; R30) — la confirmación del pago a la plataforma, de punta a punta:
@@ -178,8 +172,7 @@ test.beforeAll(async ({ browser }) => {
   contextoSa = await browser.newContext();
   sa = await contextoSa.newPage();
   await conCandadoDelSuperadmin(async () => {
-    await olvidarDispositivos(base(), SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL);
-    await entrarConOtp(sa!, SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL, SUPERADMIN_DE_PRUEBA.SUPERADMIN_PASSWORD);
+    await entrarComoSuperadmin(sa!, base());
   });
 });
 

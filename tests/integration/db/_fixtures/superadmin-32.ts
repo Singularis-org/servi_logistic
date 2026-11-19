@@ -78,16 +78,95 @@ export async function insertarUsuario(
   return { id, desenlace };
 }
 
+/* -------------------------------------------------------------------------- */
+/* El superadmin que la base ya tiene (una base de desarrollo)                 */
+/* -------------------------------------------------------------------------- */
+//
+// En CI la base esta recien migrada y no tiene superadmin: cada archivo crea el suyo con el lock
+// tomado. Una base de desarrollo SI suele tener el real, el del comando de arranque, con filas que lo
+// referencian. Ese no es del test: NUNCA se borra ni se modifica, ni siquiera dentro de una
+// transaccion revertida. Los casos que solo NECESITAN un superadmin (de actor) usan ese; los que
+// necesitan el hueco del indice (R27) o un superadmin con datos propios se saltan con
+// `saltarSiHaySuperadminAjeno`, nombrando el motivo.
+
+/** Lo minimo de un cliente para leer la tabla `usuario` (el base de un test, o un `tx`). */
+interface ClienteDeLectura {
+  $queryRawUnsafe<T = unknown>(sql: string, ...args: unknown[]): Promise<T>;
+}
+
 /**
- * Deja la base sin superadmin DENTRO de la transaccion del caso (el rollback lo devuelve). En una base
- * recien migrada no hay ninguno; en una de desarrollo donde ya corrio el comando de arranque, si. Sin
- * esto, «el primero se inserta bien» dependeria de la base y no de la regla. Si el existente tiene
- * filas que lo referencian, el DELETE falla y el caso lo dice en vez de seguir.
+ * El `id` del superadmin que la base ya tiene, o `null`. El indice R27 deja como mucho uno. Con el
+ * lock de `tomarLockDeSuperadmin` tomado, el que haya no es de otro archivo de test: es el de la base.
  */
-export async function liberarHuecoDeSuperadmin(tx: TxDeTest, rolSuperadmin: string): Promise<void> {
-  const r = await intentar(tx, `DELETE FROM "usuario" WHERE "rol_id" = $1`, rolSuperadmin);
-  if (!r.ok) {
-    throw new Error(`la base tiene un superadmin que no se puede apartar (${r.sqlstate}): usa una base sin el`);
+export async function superadminDeLaBase(cliente: ClienteDeLectura): Promise<string | null> {
+  const filas = await cliente.$queryRawUnsafe<{ id: string }[]>(
+    `SELECT u."id" FROM "usuario" u JOIN "rol" r ON r."id" = u."rol_id" WHERE r."value"::text = 'superadmin'`,
+  );
+  return filas[0]?.id ?? null;
+}
+
+/** El superadmin que usa un caso o un archivo, y si es suyo (y por tanto suyo para borrar). */
+export interface SuperadminDelTest {
+  id: string;
+  propio: boolean;
+}
+
+/**
+ * Para los casos en transaccion revertida que solo necesitan un superadmin de actor: el que ya tiene
+ * la base (no se toca) o, si no hay, uno sembrado en `tx` con `insertarUsuario` (el rollback lo
+ * quita). En una base vacia es exactamente la siembra de siempre.
+ */
+export async function superadminDelCaso(tx: TxDeTest, rolSuperadmin: string): Promise<SuperadminDelTest> {
+  const existente = await superadminDeLaBase(tx);
+  if (existente !== null) return { id: existente, propio: false };
+  const u = await insertarUsuario(tx, rolSuperadmin, null);
+  if (!u.desenlace.ok) throw new Error(`no se sembro el superadmin del caso: ${JSON.stringify(u.desenlace)}`);
+  return { id: u.id, propio: true };
+}
+
+/**
+ * Para los archivos que COMMITEAN su superadmin: con el lock tomado, el que ya tiene la base (ajeno:
+ * no se borra) o el que crea `crear` (propio: el archivo lo borra en su `afterAll`, y solo entonces).
+ */
+export async function obtenerOCrearSuperadmin(
+  cliente: ClienteDeLectura,
+  crear: () => Promise<string>,
+): Promise<SuperadminDelTest> {
+  const existente = await superadminDeLaBase(cliente);
+  if (existente !== null) {
+    console.warn(`[superadmin-32] se reutiliza el superadmin que ya tiene la base (${existente}); no se borra al acabar`);
+    return { id: existente, propio: false };
+  }
+  return { id: await crear(), propio: true };
+}
+
+/** Por que se salta un caso cuando la base ya tiene un superadmin que no es del test. */
+export const MOTIVO_SUPERADMIN_AJENO =
+  "la base ya tiene un superadmin que no es del test (no se borra ni se toca): este caso necesita el hueco del indice R27 o un superadmin propio; en CI (base sin el) corre";
+
+/** Lo minimo del contexto de un test de vitest para saltarlo en marcha. */
+interface ContextoSaltable {
+  skip(condicion: boolean, nota?: string): void;
+}
+
+/**
+ * Salta el caso, con el motivo a la vista, si `hayAjeno`. La condicion se conoce en el `beforeAll`
+ * (con el lock tomado), no al recolectar: por eso `ctx.skip` y no `it.skipIf`. Al recolectar, otro
+ * archivo podria tener commiteado su superadmin de un momento y el caso se saltaria en CI.
+ */
+export function saltarSiHaySuperadminAjeno(ctx: ContextoSaltable, hayAjeno: boolean): void {
+  if (hayAjeno) console.warn(`[superadmin-32] caso saltado: ${MOTIVO_SUPERADMIN_AJENO}`);
+  ctx.skip(hayAjeno, MOTIVO_SUPERADMIN_AJENO);
+}
+
+/**
+ * Para los casos que necesitan el hueco del indice R27 dentro de su transaccion revertida: en CI, con
+ * el lock tomado, la base no tiene superadmin y esto no hace nada. Si lo tiene, el caso tenia que
+ * haberse saltado con `saltarSiHaySuperadminAjeno`: lanza en vez de borrarlo.
+ */
+export async function exigirHuecoDeSuperadmin(tx: TxDeTest): Promise<void> {
+  if ((await superadminDeLaBase(tx)) !== null) {
+    throw new Error(`hay un superadmin que no es del test y no se toca: ${MOTIVO_SUPERADMIN_AJENO}`);
   }
 }
 
@@ -103,8 +182,8 @@ export async function liberarHuecoDeSuperadmin(tx: TxDeTest, rolSuperadmin: stri
  *
  * POR QUE HACE FALTA. Vitest corre un worker por archivo. Si dos archivos crean su superadmin a la
  * vez, el segundo muere con 23505 (los dos commiteados) o espera al primero dentro de su
- * transaccion hasta el timeout (uno en una transaccion revertida). Y `liberarHuecoDeSuperadmin` de
- * un archivo borraria, en su transaccion, el superadmin que otro acaba de commitear para sus casos.
+ * transaccion hasta el timeout (uno en una transaccion revertida). Y un archivo que lee «el superadmin
+ * de la base» (`superadminDeLaBase`) tomaria por ajeno el que otro acaba de commitear para sus casos.
  * Con el lock, los archivos que lo usan se turnan sin depender del orden en que vitest los reparta.
  */
 export const CLAVE_LOCK_SUPERADMIN = 32_1023_01;
@@ -129,8 +208,8 @@ interface PoolDelDriver {
  *
  * Dentro, cada archivo crea SU superadmin con el rol `superadmin` y `organizacion_id` NULL, y lo
  * borra al acabar. Si ya hay uno en la base (una base de desarrollo donde corrio el comando de
- * arranque), los archivos que commitean fallan con `exigirSinSuperadmin`, y los de transaccion
- * revertida lo apartan dentro de ella con `liberarHuecoDeSuperadmin`.
+ * arranque), se reutiliza sin tocarlo (`obtenerOCrearSuperadmin`, `superadminDelCaso`) y los casos
+ * que no lo admiten se saltan (`saltarSiHaySuperadminAjeno`).
  *
  * ORDEN DE LOCKS: este primero, y el de la 227 (`bajoLockDeEscrituraReal`,
  * `serializarEscriturasReales`) despues y por dentro. Ningun archivo puede sostener el de la 227 y
@@ -164,22 +243,4 @@ export async function tomarLockDeSuperadmin(): Promise<() => Promise<void>> {
       await cerrar();
     }
   };
-}
-
-/** Lo minimo de un cliente para contar superadmins (el base de un test, o un `tx`). */
-interface ClienteDeConteo {
-  $queryRawUnsafe<T = unknown>(sql: string, ...args: unknown[]): Promise<T>;
-}
-
-/**
- * Para los archivos que COMMITEAN su superadmin: con el lock tomado, la base no puede tener ya uno.
- * Lanza nombrando el motivo; no se borra un superadmin que no es del test.
- */
-export async function exigirSinSuperadmin(cliente: ClienteDeConteo): Promise<void> {
-  const filas = await cliente.$queryRawUnsafe<{ n: number }[]>(
-    `SELECT count(*)::int AS n FROM "usuario" u JOIN "rol" r ON r."id" = u."rol_id" WHERE r."value"::text = 'superadmin'`,
-  );
-  if (filas[0]?.n !== 0) {
-    throw new Error("la base ya tiene un superadmin que no es de este test: usa una base sin el (SL-32 R27)");
-  }
 }

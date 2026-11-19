@@ -11,13 +11,7 @@ import { crearEmpresaE2E, crearUsuarioE2E, sesionDe, type EmpresaE2E } from "../
 import { crearZonaE2E, type ZonaE2E } from "./_aislamiento-datos";
 import { altaDeEmpresa, clienteDueno, prepararAcceso, type Empresa } from "./_dos-empresas-fixture";
 import { crearPlanPublicoConCosto } from "./_planes-fixture";
-import {
-  asegurarSuperadmin,
-  conCandadoDelSuperadmin,
-  entrarConOtp,
-  olvidarDispositivos,
-  SUPERADMIN_DE_PRUEBA,
-} from "./_superadmin-fixture";
+import { asegurarSuperadmin, conCandadoDelSuperadmin, entrarComoSuperadmin } from "./_superadmin-fixture";
 import { CAJA_A, sembrarCaja } from "./_wallet-iva-sl39-siembra";
 
 /**
@@ -194,8 +188,7 @@ test.beforeAll(async ({ browser }) => {
   contextoSa = await browser.newContext();
   sa = await contextoSa.newPage();
   await conCandadoDelSuperadmin(async () => {
-    await olvidarDispositivos(base(), SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL);
-    await entrarConOtp(superadmin(), SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL, SUPERADMIN_DE_PRUEBA.SUPERADMIN_PASSWORD);
+    await entrarComoSuperadmin(superadmin(), base());
   });
   await superadmin().waitForURL("**/plataforma/empresas", { timeout: 60_000 });
 });
