@@ -66,7 +66,7 @@ desde el formulario de usuario de Configuración. Hoy los dos campos están desh
   completos hasta 254 caracteres, sin recortarlos.
 - **R1609** — THE SYSTEM SHALL mostrar en la pantalla y en la descarga del Histórico los tipos
   `usuario_cedula_cambiada` («Cambió la cédula de un usuario») y `usuario_email_cambiado`
-  («Cambió el correo de un usuario»), en la categoría «Cambia quién puede hacer qué».
+  («Cambió el correo de un usuario»), en la categoría «Cambia permisos» (`CATEGORIA_LABELS.cambia_permisos`, la etiqueta que ya muestra la pantalla y la descarga; decisión del leader 2026-11-19).
 
 ### PR 2 — Correo con confirmación
 
