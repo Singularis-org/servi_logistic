@@ -64,7 +64,7 @@ const FACTURA_2: FacturaConSaldoDTO = {
   total: "190000.00",
   saldo: "180000.00",
 };
-const DATOS: PagosDeEmpresa = { pagos: [VIEJO, NUEVO], facturas: [FACTURA_1, FACTURA_2] };
+const DATOS: PagosDeEmpresa = { pagos: [VIEJO, NUEVO], facturas: [FACTURA_1, FACTURA_2], confirmados: [] };
 
 function montar(
   datos: PagosDeEmpresa | null = DATOS,
@@ -127,7 +127,7 @@ describe("SLT-60 R12 — la lista de pagos por confirmar", () => {
   });
 
   it("sin pagos dice «No hay pagos por confirmar» y no pinta la tabla", () => {
-    montar({ pagos: [], facturas: [FACTURA_1] });
+    montar({ pagos: [], facturas: [FACTURA_1], confirmados: [] });
     expect(seccion().getByText("No hay pagos por confirmar")).toBeInTheDocument();
     expect(seccion().queryByRole("table")).not.toBeInTheDocument();
   });
@@ -226,7 +226,7 @@ describe("SLT-60 R14 — la propuesta del reparto", () => {
 
   it("sin facturas con saldo dice «La empresa no tiene facturas cerradas con saldo» y no ofrece confirmar", async () => {
     const user = userEvent.setup();
-    montar({ pagos: [VIEJO], facturas: [] });
+    montar({ pagos: [VIEJO], facturas: [], confirmados: [] });
     const dialogo = await abrirDialogo(user);
     expect(dialogo.getByText("La empresa no tiene facturas cerradas con saldo")).toBeInTheDocument();
     expect(dialogo.queryByRole("button", { name: "Confirmar pago" })).not.toBeInTheDocument();

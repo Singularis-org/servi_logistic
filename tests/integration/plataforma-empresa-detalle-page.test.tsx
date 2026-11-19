@@ -139,7 +139,7 @@ beforeEach(() => {
   verPreciosMock.mockResolvedValue({ estado: "ok", precios: {} } satisfies PreciosQueRigenResult);
   previsualizarMock.mockResolvedValue({ estado: "ok", avisos: [] });
   cancelarMock.mockResolvedValue({ estado: "ok" });
-  verPagosMock.mockResolvedValue({ estado: "ok", datos: { pagos: [], facturas: [] } } satisfies VerPagosDeEmpresaResult);
+  verPagosMock.mockResolvedValue({ estado: "ok", datos: { pagos: [], facturas: [], confirmados: [] } } satisfies VerPagosDeEmpresaResult);
   verFacturasMock.mockResolvedValue({ estado: "ok", facturas: [] } satisfies FacturasResult);
 });
 
@@ -526,6 +526,7 @@ describe("SLT-60 (R12, R13) — «Pagos por confirmar» en el detalle de la empr
         },
       ],
       facturas: [],
+      confirmados: [],
     },
   };
 

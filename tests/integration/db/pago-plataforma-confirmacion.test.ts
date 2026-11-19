@@ -665,7 +665,8 @@ describeSiHayBase("SLT-60 — la confirmación del pago a la plataforma (Postgre
     expect(await disponible(A)).toBe(saldo);
     pago.saldo = await pagarOk(A, saldo);
     expect(await confirmar(A, pago.saldo, [{ facturaId: factura.A.id, monto: saldo }])).toEqual({ estado: "ok" });
-    expect(await leer(A)).toEqual({ pagos: [], facturas: [] });
+    // SLT-143 (R16): la lectura trae además los confirmados; aquí se afirma lo de SLT-60.
+    expect(await leer(A)).toMatchObject({ pagos: [], facturas: [] });
     expect(await deuda(A)).toBe("0.00");
     expect(await disponible(A)).toBe("0.00");
     expect(await pagoRechazado(A, "0.01")).toEqual(["monto"]);

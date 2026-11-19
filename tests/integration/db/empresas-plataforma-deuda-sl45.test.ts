@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { RolValue, type PrismaClient } from "@prisma/client";
 
 import { listarEmpresasPlataforma } from "@/lib/actions/_shared/empresas-plataforma";
-import { confirmarPagoPlataformaAction } from "@/lib/actions/pagos-plataforma";
+import { anularPagoConfirmadoAction, confirmarPagoPlataformaAction } from "@/lib/actions/pagos-plataforma";
 import { anularMovimientoAction } from "@/lib/actions/wallet-anulacion";
 import { registrarEgresoAdministrativoAction } from "@/lib/actions/wallet-egresos";
 import { conEmpresa } from "@/lib/db/contexto-empresa";
@@ -216,8 +216,18 @@ describeSiHayBase("SL-45 — la columna «Plataforma» de «Empresas»: deuda y 
       if (orgs.length > 0) {
         await bajoLockDeEscrituraReal(async () => {
           // SLT-60: la FK del pago a su confirmación no tiene acción; las confirmaciones se van antes que el libro.
-          for (const tabla of ["pago_plataforma_aplicacion", "pago_plataforma_confirmacion"]) {
+          // SLT-143: la anulación de la plataforma cuelga de la confirmación, y va antes.
+          for (const tabla of ["pago_plataforma_anulacion", "pago_plataforma_aplicacion", "pago_plataforma_confirmacion"]) {
             await base.$executeRawUnsafe(`DELETE FROM "${tabla}" WHERE "organizacion_id" = ANY($1::text[])`, orgs);
+          }
+          // SLT-143: el contra-asiento de la anulación de la plataforma lo registró el superadmin, que no es de la
+          // empresa: `limpiar459` no lo ve.
+          if (superadminId !== null) {
+            await base.$executeRawUnsafe(
+              `DELETE FROM "wallet_movimiento" WHERE "organizacion_id" = ANY($1::text[]) AND "registrado_por" = $2`,
+              orgs,
+              superadminId,
+            );
           }
           for (const tabla of ["historial_accion", "orden_historial_estado", "jobs", "orden", "carga", "zona"]) {
             await base.$executeRawUnsafe(`DELETE FROM "${tabla}" WHERE "organizacion_id" = ANY($1::text[])`, orgs);
@@ -325,5 +335,23 @@ describeSiHayBase("SL-45 — la columna «Plataforma» de «Empresas»: deuda y 
 
   it("un rol de empresa no lee el listado: forbidden", async () => {
     expect(await listarEmpresasPlataforma({ rol: RolValue.maestro })).toEqual({ status: "forbidden" });
+  });
+
+  // SLT-143 (design §4.5; R26): un pago que la plataforma anula deja de contar como pagado. Va al final: los casos
+  // de arriba fijan las cifras de antes.
+  it("SLT-143 R26: el superadmin anula el pago confirmado de A → «Pagado» y la deuda vuelven en 300,00; los por confirmar y B no cambian", async () => {
+    const r = await anularPagoConfirmadoAction(
+      org(A),
+      { pagoId: pagos.a300, motivo: `Pago duplicado SLT143 ${RUN}` },
+      deps({ usuarioId: superadminId as string, rol: RolValue.superadmin, organizacionId: null }),
+    );
+    expect(r).toEqual({ estado: "ok" });
+    expect(await filasDelListado()).toEqual({
+      a: { deudaPlataforma: { deuda: "1000.00", estado: "debe", importe: "1000.00" }, pagadoPlataforma: "0.00", pagosPorConfirmar: 2 },
+      b: { deudaPlataforma: { deuda: "-300.00", estado: "a_favor", importe: "300.00" }, pagadoPlataforma: "300.00", pagosPorConfirmar: 0 },
+    });
+    // Con el cliente dueño, igual.
+    const filas = await new EmpresasPlataformaRepository(base).listar();
+    expect(filas.find((f) => f.id === org(A))?.pagadoPlataforma).toBe("0.00");
   });
 });
