@@ -110,7 +110,7 @@ que ya es `nucleo` en `lib/modulos/reparto.ts`.
 - **Períodos de las facturas:** `ZONA_CR`, como en SLT-60.
 - **Impuestos y métodos de pago:** ninguno.
 
-## 3. La base (migración `20261120120000_pago_plataforma_por_fuera`)
+## 3. La base (migración `20261120130000_pago_plataforma_por_fuera`)
 
 `BEGIN/COMMIT`, a mano (`db:migrate:create` falla con P3006). El timestamp va después de la última de `dev`
 (`20261119120100_cobro_plataforma_ocurrido_utc`); T0 lo vuelve a comprobar. Todas las funciones son del dueño
@@ -236,13 +236,13 @@ export interface PagoConfirmadoDTO {
 
 export const registrarPagoPorFueraSchema = z.object({
   organizacionId: z.uuid(), claveIdempotencia: z.uuid(),
-  monto: importeDelLibroSchema,          // > 0, 2 decimales, cabe en el libro (SL-45 R12)
+  monto: montoPagoPorFueraSchema,        // > 0, 2 decimales, tope 9 999 999 999,99 = DECIMAL(12,2) de wallet_movimiento.monto (decisión del leader, T0)
   fecha: fechaMovimientoSchema.optional(),// la del egreso manual (SL-45 R12)
-  referencia: z.string().trim().min(1).max(<el de SL-45>),
+  referencia: z.string().trim().min(1),   // sin tope, como la descripcion de SL-45 (decisión del leader, T0)
   aplicaciones: z.array(z.object({ facturaId: z.uuid(), monto: importeSchema })).min(1),
 });
 export const anularPagoConfirmadoSchema = z.object({
-  organizacionId: z.uuid(), pagoId: z.uuid(), motivo: z.string().trim().min(1).max(<el de 458-B>),
+  organizacionId: z.uuid(), pagoId: z.uuid(), motivo: z.string().trim().min(1),   // sin tope, como 458-B (decisión del leader, T0)
 });
 export type RegistrarPagoPorFueraResult = { estado: "ok" } | { estado: "ya_registrado" } | { estado: "forbidden" }
   | { estado: "comprobante_no_guardado" } | { estado: "validation_error"; errores: Record<string, string> };
@@ -250,9 +250,12 @@ export type AnularPagoConfirmadoResult = { estado: "ok" } | { estado: "ya_anulad
   | { estado: "no_confirmado" } | { estado: "forbidden" } | { estado: "validation_error"; errores: Record<string, string> };
 ```
 
-- Los esquemas del monto, de la fecha y de la referencia **se importan** de donde los define SL-45 (T0 los
-  localiza). No se copian: así R7 es la misma regla.
-- El tope del motivo es el de la anulación de 458-B.
+- El esquema de la fecha **se importa** de donde lo define SL-45 (`lib/types/wallet.ts`, T0.4); no se copia: así R7
+  es la misma regla. El del monto es nuevo en `lib/types/pago-plataforma.ts` (`montoPagoPorFueraSchema`, con test):
+  `montoPositivoSchema` no limita las cifras enteras y un monto mayor que 9 999 999 999,99 desbordaría
+  `DECIMAL(12,2)` con un 22003 sin traducir (decisión del leader tras T0).
+- La referencia no tiene tope, como la `descripcion` de SL-45 (decisión del leader tras T0).
+- El motivo no tiene tope, como en la anulación de 458-B (decisión del leader tras T0).
 - `TEXTOS_CONFIRMACION` gana `pago_no_confirmado` y `motivo_vacio`.
 
 ### 4.2 Repositorio (`PagoPlataformaConfirmacionRepository` y su interfaz)
@@ -398,8 +401,8 @@ Contenido:
 Es el diálogo que abre el botón de la cabecera. Recibe `facturas: FacturaConSaldoDTO[]` y `registrar`.
 - **Campos:**
   - Monto;
-  - Fecha, con el selector del egreso manual: el componente de fecha que usa el diálogo de la wallet (T0 lo
-    localiza);
+  - Fecha, con el `<Input type="date">` del diálogo de la wallet (`RegistrarMovimientoDialog.tsx`), pero la ventana
+    de días se calcula en la zona del país **de la empresa**, igual que el servidor, no en la de Costa Rica (decisión del leader tras T0);
   - «Referencia del pago», con el placeholder de SL-45;
   - Comprobante opcional, con el mismo `accept` y el mismo tope que la wallet;
   - `<RepartoEntreFacturas>`, precargado con `proponerReparto(monto, facturas)` cada vez que cambia el monto (R4).

@@ -165,3 +165,17 @@ El choque con SLT-61 importa por el contenido, no solo por el archivo: endurece 
 
 ## Decisiones fuera del spec
 
+Las cinco que siguen las decidió el **leader** (decisiones técnicas, tras T0, 2026-11-19); design y tasks ya las
+recogen:
+
+1. **Tope del monto (P1 a):** esquema nuevo `montoPagoPorFueraSchema` en `lib/types/pago-plataforma.ts`, tope
+   9 999 999 999,99, sacado de `wallet_movimiento.monto` `DECIMAL(12,2)`, con test.
+2. **Referencia (P2 a):** sin tope, como la `descripcion` de SL-45.
+3. **Motivo de anulación (P3 a):** sin tope, como 458-B.
+4. **Migración (P4 a):** renombrada a `20261120130000_pago_plataforma_por_fuera`, para no quedar fuera de orden si
+   `20261120120000_plan_beneficio` (SLT-214) entra antes a `dev`.
+5. **Fecha (P5 a):** el diálogo nuevo calcula la ventana de días en la zona del país de la empresa, igual que el
+   servidor (el de la wallet usa la de Costa Rica).
+
+Choque con SLT-55, SLT-61 y SLT-77: aceptado por el humano. Si alguna entra antes a `dev`, se mezcla `dev` y se
+resuelve.
