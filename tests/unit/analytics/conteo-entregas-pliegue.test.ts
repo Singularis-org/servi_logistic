@@ -9,6 +9,7 @@ import { etiquetaDeDesenlace } from "@/app/(app)/analitica/_components/entregas/
 import { BUCKET_OTROS, DESENLACES } from "@/lib/types/conteo-entregas";
 import { ORDER_STATUS_SEED } from "@/lib/types/order-status";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // El anillo es el PLIEGUE del desglose por status en seis buckets. Aquí vive esa única
 // decisión, y se comprueba sin base de datos.
 //
@@ -21,7 +22,7 @@ import { ORDER_STATUS_SEED } from "@/lib/types/order-status";
 const AHORA = new Date("2026-08-17T12:00:00.000Z");
 
 function consultaDe(raw: object = {}): ConsultaConteoEntregas {
-  const preparada = prepararConteoEntregas(raw, { usuarioId: "u1", rol: "maestro" }, AHORA);
+  const preparada = prepararConteoEntregas(raw, { usuarioId: "u1", rol: "maestro" }, ZONA_DE_CR, AHORA);
   if (preparada.status !== "ok") throw new Error("filtro de prueba inválido");
   return preparada.consulta;
 }

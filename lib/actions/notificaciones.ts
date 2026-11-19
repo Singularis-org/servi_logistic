@@ -22,6 +22,7 @@ import {
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { INotificacionService } from "@/lib/interfaces/services/INotificacionService";
 import { NotificacionService } from "@/lib/services/NotificacionService";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { NotificacionRepository } from "@/lib/repositories/NotificacionRepository";
 import { VigenciaAvisoAgregadoService } from "@/lib/services/VigenciaAvisoAgregadoService";
 import { AvisoAgregadoRepository } from "@/lib/repositories/AvisoAgregadoRepository";
@@ -74,7 +75,10 @@ function buildService(): INotificacionService {
       // muestra SIN numero (R14): nada visible se rompe, y por eso el fallo seria MUDO. Es el MISMO
       // ensamblaje que usan el cron, la marca de `/cierres-admin` y la franja de `/ordenes` (R7).
       buildReprogramadasRetenidasService(prisma),
+      construirReglasPaisEmpresa(prisma), // SLT-42 (R22, R28): la zona horaria del pais de la empresa.
     ),
+    undefined,
+    construirReglasPaisEmpresa(prisma), // SLT-42 (R22, R28): la zona horaria del pais de la empresa.
   );
 }
 

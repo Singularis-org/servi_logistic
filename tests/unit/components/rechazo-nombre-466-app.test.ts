@@ -13,10 +13,8 @@ import {
 } from "@/app/(app)/analitica/_components/entregas/analitica-productos-descarga-columnas";
 import {
   FLETE_DEV_CON_IVA_LABEL,
-  FLETE_RECHAZO_NO_DEDUCIBLE_NOTA,
   GANA_BODEGA_SATELITE_NOTA,
   MOTIVO_RECHAZO_AUTOMATICO_COLA,
-  NETO_EMPRESA_NOTA,
   ESTADO_LABEL,
 } from "@/app/(app)/cierres-admin/_components/cierre-labels";
 import {
@@ -134,12 +132,6 @@ describe("466 · R4, R5 — cierres y tarifas (C29-C35, E8-E10)", () => {
     expect(INGRESO_BODEGA_RECHAZOS_LABEL).toBe("Ingreso de bodega por devoluciones a origen");
     expect(GANA_BODEGA_SATELITE_NOTA).toBe(
       "Lo que se le reconoce a la bodega satélite por las devoluciones a origen. No es un movimiento de caja registrado.",
-    );
-    expect(FLETE_RECHAZO_NO_DEDUCIBLE_NOTA).toBe(
-      "Se le factura a la tienda, pero no sale de lo recaudado: una devolución a origen no cobra contra entrega.",
-    );
-    expect(NETO_EMPRESA_NOTA).toBe(
-      "Lo que la empresa facturó, sin el IVA, menos el pago al mensajero y menos el ingreso de bodega por devoluciones a origen.", // SL-39 (R23): dice «sin el IVA».
     );
   });
 

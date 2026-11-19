@@ -16,8 +16,20 @@ import {
   type TxDeTest,
 } from "./_postgres-real";
 import { cargarCatalogo459, leerCajaEntera, montarServicios459 } from "./_fixtures/caja-459";
-import { conCandado459, limpiar459, sembrarPersonas459, type Personas459 } from "./_fixtures/escrituras-459";
+import { conCandado459, conEmpresa459, limpiar459, sembrarPersonas459, type Personas459 } from "./_fixtures/escrituras-459";
+import { contextoActual } from "@/lib/db/contexto-empresa";
 import { sembrarPersonas461 } from "./_fixtures/personas-461";
+
+// SLT-42 (T5.4): la zona del pais de la empresa es la de CR, como antes. Las reglas reales leen el pais
+// de la empresa en curso con el cliente global, que no ve la empresa de una transaccion revertida ni
+// tiene empresa fuera de `conEmpresa`; la zona por pais la miden `hora-por-pais-wallet` y `demo-qa`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
 
 // SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
 vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
@@ -230,7 +242,15 @@ describeSiHayBase("461/R69–R71 — anular una correccion de caja (Postgres rea
       let p: Personas459 | null = null;
       try {
         p = await sembrarPersonas459(prisma);
-        await cuerpo(p);
+        const sembradas = p;
+        // SLT-185 (R1141/R1146): la action corre con la empresa sembrada en contexto, como en una
+        // peticion; sin ella falla cerrado (`EmpresaNoResuelta` → `INTERNAL`) y el test no mide nada.
+        expect(await prisma.organizacion.count({ where: { id: sembradas.organizacionId } }), "SLT-185: empresa sembrada").toBe(1);
+        await conEmpresa459(sembradas, async () => {
+          const ctx = contextoActual();
+          expect(ctx?.tipo === "empresa" ? ctx.organizacionId : null, "SLT-185: empresa en contexto").toBe(sembradas.organizacionId);
+          await cuerpo(sembradas);
+        });
       } finally {
         await limpiar459(prisma, p);
       }

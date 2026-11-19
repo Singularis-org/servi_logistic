@@ -25,6 +25,12 @@ export interface FilaValor {
   tiendaId: string | null;
   mensajeroId: string | null;
   vehiculoId: string | null;
+  /**
+   * SLT-94 (R14): el modo de la fila. Solo lo mira la regla del fulfillment (un `tienda_fulfillment`
+   * en porcentaje no aplica). Opcional para que los demas lectores no tengan que traerlo; el resolver
+   * (`resolver-tarifas.ts`) lo trae siempre de la base.
+   */
+  modo?: "monto" | "porcentaje";
 }
 
 /**
@@ -87,6 +93,7 @@ export function rangoCobro(fila: FilaValor, ctx: ContextoCobro): Rango | null {
   if (CATALOGO_CONCEPTOS[fila.concepto].actor !== "tienda") return null;
   // Los CHECK de la base ya lo impiden; se repite para que una fila mal formada nunca gane.
   if (fila.mensajeroId !== null || fila.vehiculoId !== null) return null;
+  if (fila.concepto === "tienda_fulfillment") return rangoFulfillment(fila, ctx);
 
   if (fila.tiendaId === ctx.tiendaId) {
     if (fila.zonaId === null) return fila.grupoId === null ? 3 : null;
@@ -97,6 +104,19 @@ export function rangoCobro(fila: FilaValor, ctx: ContextoCobro): Rango | null {
   if (fila.tiendaId !== null || fila.zonaId !== ctx.zonaId) return null;
   if (fila.grupoId === null) return 5;
   return mismoGrupo(fila, ctx.grupoId) ? 4 : null;
+}
+
+/**
+ * SLT-94 (R10, R14, D6): el fulfillment SOLO existe como precio propio de la tienda («tienda en todas
+ * sus zonas», rango 3) y en monto. Una fila guardada antes del despliegue en zona, grupo, tienda en
+ * una zona o grupo, o en porcentaje, se IGNORA en toda resolucion (cotizacion, costo por API, listado,
+ * cierre) como si no existiera — no se borra. Es la misma lectura que hace el trigger del cobro
+ * (`fulfillment_al_crear_orden`), asi que lo que se publica y lo que se cobra no pueden divergir (R33).
+ */
+function rangoFulfillment(fila: FilaValor, ctx: ContextoCobro): Rango | null {
+  if (fila.modo === "porcentaje") return null;
+  const propio = fila.tiendaId === ctx.tiendaId && fila.zonaId === null && fila.grupoId === null;
+  return propio ? 3 : null;
 }
 
 /**

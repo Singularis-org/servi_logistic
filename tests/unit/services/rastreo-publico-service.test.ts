@@ -9,7 +9,9 @@ import type {
   OrdenRastreoFila,
   TransicionRastreoFila,
 } from "@/lib/interfaces/repositories/IRastreoPublicoRepository";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import { RastreoPublicoService, normalizarDesfase } from "@/lib/services/RastreoPublicoService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 229 — T2.4: la proyeccion publica del envio.
 //
@@ -26,7 +28,6 @@ const CONFIG: RastreoPublicoConfig = {
   RATE_MAX: 8,
   RATE_WINDOW_MINUTES: 10,
   DIGITOS_SEGUNDO_FACTOR: 4,
-  ZONA_HORARIA: "America/Costa_Rica",
 };
 
 const ORDEN_VIVA: OrdenRastreoFila = {
@@ -59,9 +60,10 @@ function build(
   orden: OrdenRastreoFila | null,
   transiciones: readonly TransicionRastreoFila[] = [],
   config: RastreoPublicoConfig = CONFIG,
+  reglasPais: IReglasPaisEmpresa = reglasPaisFijas(),
 ) {
   const dobles = buildRepo(orden, transiciones);
-  return { ...dobles, service: new RastreoPublicoService(dobles.repo, config) };
+  return { ...dobles, service: new RastreoPublicoService(dobles.repo, config, reglasPais) };
 }
 
 const LINEA_COMPLETA: readonly TransicionRastreoFila[] = [
@@ -346,11 +348,12 @@ describe("R19 — dia y hora en el calendario del negocio", () => {
     expect(resultado.envio.linea[0].fecha).toBe("2026-08-14T20:30-06:00");
   });
 
-  it("la zona sale de la CONFIGURACION: con otra zona, el mismo instante da otra hora", async () => {
+  it("SLT-42 (R27): la zona sale del PAIS de la empresa: con otra zona, el mismo instante da otra hora", async () => {
     const { service } = build(
       ORDEN_VIVA,
       [transicion("2026-08-15T02:30:00.000Z", "entregado")],
-      { ...CONFIG, ZONA_HORARIA: "UTC" },
+      CONFIG,
+      reglasPaisFijas({ zonaHoraria: "UTC" }),
     );
     const resultado = await service.consultar(4321, "7766");
     if (resultado.estado !== "ok") throw new Error("se esperaba ok");

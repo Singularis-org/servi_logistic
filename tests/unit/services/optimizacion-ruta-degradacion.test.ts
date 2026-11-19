@@ -18,6 +18,7 @@ import type { JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
 import type { ICredencialesIntegracion } from "@/lib/interfaces/services/ICredencialesIntegracion";
 import { conEmpresa } from "@/lib/db/contexto-empresa";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Feature 265 (R9, R10, R13, R35, R48, R49) — LA CADENA ENTERA, DESDE LA RESPUESTA DEL
 // PROVEEDOR HASTA LA FILA Y EL JOB.
 //
@@ -51,6 +52,14 @@ vi.mock("@/lib/repositories/OrdenRepository", () => ({
   },
 }));
 vi.mock("@/lib/db/prisma-client", () => ({ getPrismaClient: () => ({}) }));
+// SLT-42 (T5.5): la fabrica real inyecta las reglas del pais; sin base, las de CR (como antes).
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
 
 const MENSAJERO = "m-1";
 const T0 = new Date("2026-08-22T12:00:00.000Z");
@@ -146,7 +155,7 @@ function armarCadena(body: unknown, paradas: ParadaRutaRow[] = PARADAS) {
     client,
     CONFIG,
     () => T0,
-    { warn },
+    { warn }, undefined, reglasPaisFijas(),
   );
   return { service, rutas, fetchImpl, warn, findParadasEnReparto };
 }

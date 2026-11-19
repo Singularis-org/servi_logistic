@@ -54,10 +54,10 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
   });
 }
 
-describe("UserRepository.create — fulfillment (feature 27/R3/R8/R9/R14)", () => {
-  it("create sin fulfillment persiste false (R3)", async () => {
+describe("UserRepository.create — «se recoge en tienda» (SLT-94 R1/R3/R4/R9)", () => {
+  it("SLT-94 R3: create sin la marca la persiste en «sí» (true), no null", async () => {
     const prisma = buildPrisma();
-    prisma.usuario.create = vi.fn().mockResolvedValue(usuarioRow({ fulfillment: false }));
+    prisma.usuario.create = vi.fn().mockResolvedValue(usuarioRow({ seRecogeEnTienda: true }));
     const repo = new UserRepository(prisma as unknown as PrismaClient);
 
     const dto = await repo.create({
@@ -71,14 +71,15 @@ describe("UserRepository.create — fulfillment (feature 27/R3/R8/R9/R14)", () =
     }, "actor-1");
 
     const arg = prisma.usuario.create.mock.calls[0][0];
-    expect(arg.data.fulfillment).toBe(false); // R3: ausente -> false, no null
-    expect(dto.fulfillment).toBe(false); // R14: expuesto en la forma publica
+    expect(arg.data.seRecogeEnTienda).toBe(true); // R3: ausente -> true, no null
+    expect(arg.data).not.toHaveProperty("fulfillment"); // la columna vieja no se escribe
+    expect(dto.seRecogeEnTienda).toBe(true); // R9: expuesto en la forma publica
     expect(dto).not.toHaveProperty("passwordHash"); // R14
   });
 
-  it("create con fulfillment true lo persiste (R8)", async () => {
+  it("SLT-94 R1: create con la marca en «no» la persiste", async () => {
     const prisma = buildPrisma();
-    prisma.usuario.create = vi.fn().mockResolvedValue(usuarioRow({ fulfillment: true }));
+    prisma.usuario.create = vi.fn().mockResolvedValue(usuarioRow({ seRecogeEnTienda: false }));
     const repo = new UserRepository(prisma as unknown as PrismaClient);
 
     const dto = await repo.create({
@@ -89,16 +90,16 @@ describe("UserRepository.create — fulfillment (feature 27/R3/R8/R9/R14)", () =
       cedula: "1710034065",
       tipoIdentificacionId: "tipo-1",
       rolId: "rol-1",
-      fulfillment: true,
+      seRecogeEnTienda: false,
     }, "actor-1");
 
-    expect(prisma.usuario.create.mock.calls[0][0].data.fulfillment).toBe(true);
-    expect(dto.fulfillment).toBe(true);
+    expect(prisma.usuario.create.mock.calls[0][0].data.seRecogeEnTienda).toBe(false);
+    expect(dto.seRecogeEnTienda).toBe(false);
   });
 
-  it("PUBLIC_SELECT incluye fulfillment y nunca passwordHash (R14)", async () => {
+  it("SLT-94 R9: PUBLIC_SELECT incluye la marca, no la columna vieja, y nunca passwordHash", async () => {
     const prisma = buildPrisma();
-    prisma.usuario.create = vi.fn().mockResolvedValue(usuarioRow({ fulfillment: false }));
+    prisma.usuario.create = vi.fn().mockResolvedValue(usuarioRow({ seRecogeEnTienda: true }));
     const repo = new UserRepository(prisma as unknown as PrismaClient);
 
     await repo.create({
@@ -112,20 +113,22 @@ describe("UserRepository.create — fulfillment (feature 27/R3/R8/R9/R14)", () =
     }, "actor-1");
 
     const select = prisma.usuario.create.mock.calls[0][0].select;
-    expect(select.fulfillment).toBe(true);
+    expect(select.seRecogeEnTienda).toBe(true);
+    expect(select).not.toHaveProperty("fulfillment");
+    expect(select).not.toHaveProperty("fulfillmentRetirado");
     expect(select).not.toHaveProperty("passwordHash");
   });
 
-  it("update aplica fulfillment como campo editable (R12)", async () => {
+  it("SLT-94 R4: update aplica la marca como campo editable", async () => {
     const prisma = buildPrisma();
     prisma.usuario.updateMany.mockResolvedValue({ count: 1 });
-    prisma.usuario.findUnique.mockResolvedValue(usuarioRow({ fulfillment: true }));
+    prisma.usuario.findUnique.mockResolvedValue(usuarioRow({ seRecogeEnTienda: false }));
     const repo = new UserRepository(prisma as unknown as PrismaClient);
 
-    const dto = await repo.update("usr-1", { fulfillment: true }, "actor-1");
+    const dto = await repo.update("usr-1", { seRecogeEnTienda: false }, "actor-1");
 
-    expect(prisma.usuario.updateMany.mock.calls[0][0].data).toEqual({ fulfillment: true });
-    expect(dto?.fulfillment).toBe(true);
+    expect(prisma.usuario.updateMany.mock.calls[0][0].data).toEqual({ seRecogeEnTienda: false });
+    expect(dto?.seRecogeEnTienda).toBe(false);
   });
 });
 
@@ -233,23 +236,33 @@ describe("UserRepository.setEstado (R20/R21/R22)", () => {
 });
 
 describe("UserRepository.listTiposIdentificacion (R29)", () => {
-  it("listTiposIdentificacion devuelve id/value del catalogo (R29)", async () => {
+  it("listTiposIdentificacion sin pais devuelve el catalogo entero ordenado por value (R29)", async () => {
     const prisma = buildPrisma();
-    prisma.tipoIdentificacion.findMany.mockResolvedValue([
-      { id: "tipo-1", value: "cedula" },
-      { id: "tipo-2", value: "ruc" },
-    ]);
+    const filas = [
+      { id: "tipo-1", value: "cedula", nombre: "Cédula física", clave: "cedula_fisica" },
+      { id: "tipo-2", value: "ruc", nombre: "Cédula jurídica", clave: "cedula_juridica" },
+    ];
+    prisma.tipoIdentificacion.findMany.mockResolvedValue(filas);
     const repo = new UserRepository(prisma as unknown as PrismaClient);
 
     const tipos = await repo.listTiposIdentificacion();
-    expect(tipos).toEqual([
-      { id: "tipo-1", value: "cedula" },
-      { id: "tipo-2", value: "ruc" },
-    ]);
-    expect(prisma.tipoIdentificacion.findMany.mock.calls[0][0].select).toEqual({
-      id: true,
-      value: true,
-    });
+    expect(tipos).toEqual(filas);
+    const args = prisma.tipoIdentificacion.findMany.mock.calls[0][0];
+    expect(args.select).toEqual({ id: true, value: true, nombre: true, clave: true });
+    expect(args.where).toBeUndefined();
+    expect(args.orderBy).toEqual({ value: "asc" });
+  });
+
+  // El SQL de verdad lo prueba `tests/integration/db/tipos-identificacion-por-pais.test.ts`.
+  it("SLT-42 R5: con pais, filtra por ese pais y por activo, en el orden del catalogo", async () => {
+    const prisma = buildPrisma();
+    prisma.tipoIdentificacion.findMany.mockResolvedValue([]);
+    const repo = new UserRepository(prisma as unknown as PrismaClient);
+
+    await repo.listTiposIdentificacion("CR");
+    const args = prisma.tipoIdentificacion.findMany.mock.calls[0][0];
+    expect(args.where).toEqual({ paisId: "CR", activo: true });
+    expect(args.orderBy).toEqual({ orden: "asc" });
   });
 });
 

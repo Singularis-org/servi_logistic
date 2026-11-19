@@ -10,6 +10,7 @@ import type {
   OrdenAsignabilidadRow,
 } from "@/lib/interfaces/services/IAsignabilidadCoordenadasService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 149 — T4.9 (R19): aqui vivia una ASIMETRIA DELIBERADA entre ASIGNAR y DESHACER cuando
 // el mensajero tiene un cierre de dia pendiente (Q1 CERRADA, design §8-Q1):
@@ -137,7 +138,7 @@ describe("T4.9(b) — ASIGNAR a ese MISMO mensajero SI se bloquea (feature 271, 
       evaluar: async (ordenes: OrdenAsignabilidadRow[]) =>
         new Map<string, EstadoAsignabilidad>(ordenes.map((o) => [o.id, "asignable"])),
     };
-    const service = new GuiaAsignacionService(repo, zonaRepo, gate, fakeIntentosEnLote() /* 276: la puerta del tope; 0 intentos = no interfiere */);
+    const service = new GuiaAsignacionService(repo, zonaRepo, gate, fakeIntentosEnLote() /* 276: la puerta del tope; 0 intentos = no interfiere */, reglasPaisFijas());
 
     const r = await service.asignarDesdeBodega(
       { ordenIds: ["o1"], mensajeroId: MENSAJERO_CON_CIERRE },

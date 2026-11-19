@@ -12,6 +12,7 @@ import type { CrearMovimientoTiendaInput } from "@/lib/interfaces/repositories/I
 import type { Alcance } from "@/lib/interfaces/repositories/ICierresAdminRepository";
 import { WalletIndemnizacionFeedService } from "@/lib/services/WalletIndemnizacionFeedService";
 import { APLICACION_GESTIONES } from "@/tests/fixtures/anclaje-devolucion";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // Feature 69/R17/R18 — EL CORAZON DE LA FEATURE. Los dos casos son money-critical.
 //
@@ -436,7 +437,7 @@ function aprobar(db: Db, cierreId: string) {
     // Feature 158: feed del egreso de indemnizacion (real: sin incidentes devuelve []).
     new WalletIndemnizacionFeedService(),
   );
-  return repo.resolverCierre({
+  return repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
     cierreId,
     alcance: ALCANCE,
     nuevoEstado: "aprobado",

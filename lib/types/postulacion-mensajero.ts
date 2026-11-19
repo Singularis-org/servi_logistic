@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { numericIdentifierSchema } from "@/lib/types/auth";
 import { strongPasswordSchema } from "@/lib/types/password-policy";
 import {
   POSTULACION_ALLOWED_MIME,
@@ -8,9 +7,8 @@ import {
 } from "@/lib/config/postulacion";
 
 // Feature 21 — validacion de borde de la postulacion de mensajero (zod).
-// Reutiliza la politica de contrasena fuerte (feature 20, A5), el validador
-// numerico de cedula/telefono (feature 1, R8) y el limite de tamano/tipos MIME
-// de la config. Los nombres de campo van en snake_case para casar 1:1 con los
+// Reutiliza la politica de contrasena fuerte (feature 20, A5) y el limite de
+// tamano/tipos MIME de la config. Cedula y telefono: solo forma (SLT-42, abajo). Los nombres de campo van en snake_case para casar 1:1 con los
 // campos del formulario y con las claves de fieldErrors expuestas a la UI.
 
 /** Los 5 tipos de documento exigidos (R3). Coinciden con MensajeroDocumentoTipo. */
@@ -60,6 +58,15 @@ const documentoSchema = z.custom<ArchivoLike>(
   { message: "el documento debe ser una imagen jpeg, png o webp de tamano permitido" },
 );
 
+// SLT-42 (design §4.2): el borde solo valida la FORMA del telefono y del documento. La regla depende
+// del pais de la empresa que recibe la postulacion, que el schema no conoce, y la aplica
+// `PostulacionMensajeroService` (R10, R14). El tope es el `largo_max` mas alto que admite el catalogo
+// (CHECK de `tipo_identificacion`), el mismo que en `lib/types/usuario.ts`.
+export const POSTULACION_DOCUMENTO_MAX_CHARS = 30;
+export const POSTULACION_TELEFONO_MAX_CHARS = 30;
+const telefonoForma = z.string().trim().min(1, "requerido").max(POSTULACION_TELEFONO_MAX_CHARS, "demasiado largo");
+const documentoForma = z.string().trim().min(1, "requerido").max(POSTULACION_DOCUMENTO_MAX_CHARS, "demasiado largo");
+
 /**
  * Schema de los campos de texto + los 5 documentos (R2-R11). La confirmacion de
  * contrasena se verifica con refine (R7); la placa se normaliza a trim+uppercase
@@ -75,9 +82,9 @@ export const postulacionSchema = z
       .optional()
       .transform((v) => (v && v.length > 0 ? v : undefined)),
     email: z.string().trim().toLowerCase().email("correo invalido"),
-    telefono: numericIdentifierSchema(),
+    telefono: telefonoForma,
     tipo_identificacion_id: z.string().min(1, "requerido"),
-    cedula: numericIdentifierSchema(),
+    cedula: documentoForma,
     vehiculo_id: z.string().min(1, "requerido"),
     placa: z
       .string()

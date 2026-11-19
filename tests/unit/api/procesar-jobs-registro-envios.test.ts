@@ -27,12 +27,12 @@ describe("474/R22 — registro en el drenador", () => {
     expect(r.has("whatsapp_envio_evento")).toBe(false);
     expect(r.has("whatsapp_envio_ejecucion")).toBe(false);
     expect(r.has("whatsapp_envio_reintento")).toBe(false);
-    const sig = r.get("whatsapp_envio_mantenimiento")?.siguiente(AHORA);
+    const sig = r.get("whatsapp_envio_mantenimiento")?.siguiente(AHORA, []);
     expect(sig).toEqual({
       runAfter: new Date("2026-10-06T09:30:00.000Z"),
       dedupeKey: "whatsapp_envio_mantenimiento:2026-10-06",
     });
-    expect(r.get("whatsapp_envio_mantenimiento")?.siguiente(new Date("2026-10-05T08:00:00.000Z")).runAfter).toEqual(
+    expect(r.get("whatsapp_envio_mantenimiento")?.siguiente(new Date("2026-10-05T08:00:00.000Z"), []).runAfter).toEqual(
       new Date("2026-10-05T09:30:00.000Z"),
     );
   });

@@ -27,6 +27,8 @@ import {
   MSG_YA_ES_ESE_DIA,
   msgEstadoSinDiaVivo,
 } from "@/lib/services/mensajes-correccion-dia-reparto";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 
 // Feature 262 — logica de negocio de «corregir el dia de reparto de un lote ya asignado». Servicio
 // PROPIO (design §3): `GuiaAsignacionService` es SOLO acceso total y SOLO zona GAM, y
@@ -99,6 +101,8 @@ export class CorreccionDiaRepartoService implements ICorreccionDiaRepartoService
   constructor(
     private readonly repo: CorreccionDiaRepartoRepo,
     private readonly notificar: DiaRepartoCorregidoNotificador = notificadorNoOp,
+    /** SLT-42 (R22): la zona del pais de la empresa; «hoy/mañana» se resuelven en ella. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
 
   async corregir(
@@ -132,7 +136,9 @@ export class CorreccionDiaRepartoService implements ICorreccionDiaRepartoService
     //    Y el PASADO no se prohibe con un `if`: no es expresable. El contrato solo admite dos
     //    tokens, «el dia en curso» y «el siguiente» (D3). Un `if (fecha < hoy)` seria exactamente
     //    la clase de linea que un dia alguien relaja «para un caso puntual».
-    const fecha = resolverFechaReparto(input.dia, now);
+    // SLT-42 (R22, R28): en la zona del pais de la empresa; sin zona falla aqui, antes de escribir.
+    const zona = await zonaDeLaEmpresa(this.reglasPais, "CorreccionDiaRepartoService.corregir");
+    const fecha = resolverFechaReparto(input.dia, zona, now);
     const fechaTexto = fechaRepartoComoTexto(fecha);
 
     // 4. R5/R6/R7 + R4: precarga del lote (INCLUYE borradas, para poder distinguir motivos).

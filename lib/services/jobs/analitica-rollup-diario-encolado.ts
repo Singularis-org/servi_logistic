@@ -8,8 +8,12 @@
 //
 // Este modulo NO nombra la tabla del rollup ni la consulta de ninguna forma: la unica puerta a
 // esa tabla es `lib/repositories/AnaliticaRollupRepository.ts` (guardia de frontera, R42).
+import { claveConZona } from "@/lib/services/jobs/serie-diaria-por-zona";
 
-/** Prefijo del `dedupe_key`: `analitica_rollup_diario:<YYYY-MM-DD CR objetivo>`. */
+/**
+ * Prefijo del `dedupe_key`: `analitica_rollup_diario:<zona>:<YYYY-MM-DD objetivo en esa zona>`
+ * (SLT-42, design §6.1). La clave de antes del despliegue no llevaba zona.
+ */
 export const DEDUPE_PREFIX = "analitica_rollup_diario";
 
 /**
@@ -23,8 +27,12 @@ export const DEDUPE_PREFIX = "analitica_rollup_diario";
  * agregando la misma fecha. Con la fecha objetivo, dos siembras del mismo dia colisionan y
  * dejan exactamente una fila.
  *
- * @param fecha fecha calendario CR `YYYY-MM-DD` que la corrida agregara.
+ * SLT-42 (R25): la clave lleva tambien la zona de la corrida, asi dos zonas con el mismo dia
+ * objetivo son dos corridas distintas.
+ *
+ * @param fecha fecha calendario `YYYY-MM-DD`, en `zona`, que la corrida agregara.
+ * @param zona zona horaria IANA de la corrida.
  */
-export function dedupeKeyRollup(fecha: string): string {
-  return `${DEDUPE_PREFIX}:${fecha}`;
+export function dedupeKeyRollup(fecha: string, zona: string): string {
+  return claveConZona(DEDUPE_PREFIX, zona, fecha);
 }

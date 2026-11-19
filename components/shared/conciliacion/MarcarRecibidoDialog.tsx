@@ -6,7 +6,11 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { FormField } from "@/components/shared/FormField";
 import { Modal } from "@/components/shared/Modal";
-import { montoValido } from "@/components/shared/monto-cliente";
+import {
+  esMontoCero,
+  montoValido,
+  montoValidoOCero,
+} from "@/components/shared/monto-cliente";
 import { money } from "@/lib/config/moneda";
 import type { MarcaConciliacionActionResult } from "@/lib/actions/conciliacion-satelites";
 
@@ -30,7 +34,8 @@ import {
 //
 // ── MONEY-SAFE (R20): CERO `Number(`, CERO `parseFloat` y CERO restas en este archivo.
 // El declarado entra como STRING del servidor, PREFIJA el campo tal cual y sale como STRING. La
-// única comparación de dinero es la de FORMA del monto, y la hace `montoValido` por texto.
+// única comparación de dinero es la de FORMA del monto, y la hacen `montoValido`/`montoValidoOCero`
+// por texto; `esMontoCero` lee lo declarado también como texto (SLT-96).
 //
 // ── EL MONTO NACE PRECARGADO CON LO DECLARADO, Y ES LA DECISIÓN DE DISEÑO DEL DIÁLOGO
 // El caso abrumadoramente mayoritario es que el bulto llegue entero: en producción, 32 de 32
@@ -157,16 +162,24 @@ export function MarcarRecibidoDialog({
   }
 
   const notaLimpia = nota.trim();
-  // Misma forma que revalida el borde (`montoPositivoSchema`): > 0 y hasta dos decimales. Sin
-  // tope por arriba, porque el schema compartido tampoco lo tiene: el cliente no puede ser más
-  // estricto que su propio servidor.
-  const montoOk = montoValido(monto);
+  // Misma forma que revalida el borde: hasta dos decimales y > 0. SLT-96 (R10/R11): con lo
+  // declarado en 0 el 0 también vale («0», «0.00»), porque es lo único que se pudo recibir de un
+  // bulto vacío; con lo declarado distinto de 0 se sigue exigiendo > 0, como antes. La regla la
+  // decide el SERVIDOR leyendo lo declarado de la base: aquí solo se habilita el botón. Sin tope
+  // por arriba, porque el schema del borde tampoco lo tiene: el cliente no puede ser más estricto
+  // que su propio servidor.
+  const declaradoCero = esMontoCero(declarado);
+  const montoOk = declaradoCero ? montoValidoOCero(monto) : montoValido(monto);
+  // R13 — el aviso del campo dice la regla que aplica: «de cero o más» solo cuando el 0 vale.
+  const avisoMontoInvalido = declaradoCero
+    ? MARCAR_RECIBIDO_ERROR.montoConCero
+    : MARCAR_RECIBIDO_ERROR.monto;
   const notaOk = notaLimpia.length <= CONCILIACION_NOTA_MAX;
   const formularioValido = montoOk && notaOk;
 
   async function confirmar() {
     if (!formularioValido) {
-      setErrorMonto(montoOk ? undefined : MARCAR_RECIBIDO_ERROR.monto);
+      setErrorMonto(montoOk ? undefined : avisoMontoInvalido);
       setErrorNota(notaOk ? undefined : MARCAR_RECIBIDO_ERROR.notaLarga(CONCILIACION_NOTA_MAX));
       return;
     }
@@ -194,7 +207,7 @@ export function MarcarRecibidoDialog({
       return;
     }
     if (resultado.status === "validation_error") {
-      setErrorMonto(resultado.fieldErrors.montoRecibido?.[0] ?? MARCAR_RECIBIDO_ERROR.monto);
+      setErrorMonto(resultado.fieldErrors.montoRecibido?.[0] ?? avisoMontoInvalido);
       setErrorNota(resultado.fieldErrors.nota?.[0]);
       return;
     }
@@ -259,6 +272,10 @@ export function MarcarRecibidoDialog({
                 setMonto(e.target.value);
                 setErrorMonto(undefined);
               }}
+              // SLT-96 (R13) — el aviso de forma se pinta al salir del campo. Antes solo lo ponía
+              // `confirmar`, que el `Modal` no llama con el botón deshabilitado: el aviso no se
+              // veía nunca y la persona no sabía por qué el botón estaba apagado.
+              onBlur={() => setErrorMonto(montoOk ? undefined : avisoMontoInvalido)}
               placeholder="0.00"
             />
           )}

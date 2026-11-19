@@ -5,9 +5,8 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
-  type FksDeOrden,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 
 // Feature 169 / T1.6 — PARIDAD entre la normalizacion de Postgres (la columna generada
 // `orden.busqueda_texto`) y la de Node (`normalizarTerminoBusqueda`).
@@ -183,15 +182,20 @@ const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
 describeSiHayBase("paridad SQL <-> TypeScript de la normalizacion de busqueda", () => {
   let prisma: PrismaClient;
-  let fks: FksDeOrden | null;
+  // SLT-181 — lo que la tx del `beforeAll` sembro y encontro, para el control positivo.
+  let sembrado: { tiendas: number; zonas: number; ordenes: number };
   let calculado: Map<string, string | null>;
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    fks = await fksDeOrden(prisma);
-    if (!fks) return;
-    const base = fks;
     calculado = await enTransaccionRevertida(prisma, async (tx) => {
+      // SLT-181 — tienda y zona nacen en ESTA transaccion (nada de leer la primera orden de la base).
+      const base = await crearFksDeOrden(tx);
+      sembrado = {
+        tiendas: await tx.usuario.count({ where: { id: base.tiendaId } }),
+        zonas: await tx.zona.count({ where: { id: base.zonaId } }),
+        ordenes: 0,
+      };
       const salida = new Map<string, string | null>();
       for (const { nombre, caso } of CORPUS) {
         const creada = await tx.orden.create({
@@ -218,6 +222,7 @@ describeSiHayBase("paridad SQL <-> TypeScript de la normalizacion de busqueda", 
         );
         salida.set(nombre, filas[0]?.busqueda_texto ?? null);
       }
+      sembrado.ordenes = await tx.orden.count({ where: { tiendaId: base.tiendaId } });
       return salida;
     });
   });
@@ -227,15 +232,15 @@ describeSiHayBase("paridad SQL <-> TypeScript de la normalizacion de busqueda", 
   });
 
   it("la base tiene ordenes de las que tomar las FKs (si no, no hay nada que probar)", () => {
-    expect(
-      fks,
-      "no hay ninguna fila en `orden` de la que copiar las FKs: siembra la base local",
-    ).not.toBeNull();
+    // SLT-181 — control positivo: lo sembrado en la tx del `beforeAll` estaba en la base.
+    expect(sembrado, "no hay ninguna fila en `orden` de la que copiar las FKs: siembra la base local").toBeDefined();
+    expect(sembrado.tiendas, "SLT-181: la tienda sembrada no esta en la base").toBe(1);
+    expect(sembrado.zonas, "SLT-181: la zona sembrada no esta en la base").toBe(1);
+    expect(sembrado.ordenes, "SLT-181: las ordenes del corpus no se sembraron").toBe(CORPUS.length);
   });
 
   for (const { nombre, caso } of CORPUS) {
     it(`Postgres y Node producen el MISMO texto - ${nombre}`, () => {
-      if (!fks) return;
       const enLaBase = calculado.get(nombre);
       const enNode = normalizarTerminoBusqueda(textoConcatenado(caso));
       expect(enLaBase).not.toBeNull();
@@ -244,26 +249,22 @@ describeSiHayBase("paridad SQL <-> TypeScript de la normalizacion de busqueda", 
   }
 
   it("la columna nunca es NULL, ni siquiera con la guia sin asignar", () => {
-    if (!fks) return;
     for (const { nombre } of CORPUS) expect(calculado.get(nombre)).not.toBeNull();
   });
 
   it("el texto indexado esta en minusculas y sin las tildes del mapa", () => {
-    if (!fks) return;
     const conTildes = calculado.get("tildes en minuscula y mayuscula") as string;
     expect(conTildes).toContain("jose hernandez solis");
     expect(conTildes).not.toMatch(/[áéíóúÁÉÍÓÚñÑçÇ]/);
   });
 
   it("el telefono con separadores queda TAMBIEN en forma solo-digitos (R13)", () => {
-    if (!fks) return;
     const conSeparadores = calculado.get("telefono con separadores") as string;
     expect(conSeparadores).toContain("(506) 8888-0000");
     expect(conSeparadores).toContain("50688880000");
   });
 
   it("un dato con espacios repetidos queda con espacios simples (R8)", () => {
-    if (!fks) return;
     const conEspacios = calculado.get("espacios repetidos y tabulador (R8)") as string;
     expect(conEspacios).toContain("ana maria rojas");
     expect(conEspacios).not.toContain("  ");

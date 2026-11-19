@@ -6,6 +6,8 @@
 // descartada). No conoce HTTP ni Prisma directamente (DI por constructor).
 import type { EtiquetaRow, IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 import type {
   EtiquetaPorGuiaServiceResult,
   GenerarEtiquetasInput,
@@ -50,7 +52,15 @@ function esVisiblePara(row: EtiquetaRow, alcance: AlcanceEtiquetasOrden): boolea
 }
 
 export class EtiquetaGuiaService implements IEtiquetaGuiaService {
-  constructor(private readonly repo: IOrdenRepository) {}
+  constructor(
+    private readonly repo: IOrdenRepository,
+    /** SLT-42 (R22): la zona del pais de la empresa, con la que se fecha cada etiqueta. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
+  ) {}
+
+  private zona(operacion: string): Promise<string> {
+    return zonaDeLaEmpresa(this.reglasPais, `EtiquetaGuiaService.${operacion}`);
+  }
 
   async generarEtiquetas(
     input: GenerarEtiquetasInput,
@@ -67,7 +77,11 @@ export class EtiquetaGuiaService implements IEtiquetaGuiaService {
 
     // R1/R3: filas ya sin borradas (el repo filtra deletedAt: null). SLT-49/R10: con alcance
     // `propias`, el dueño va en el `where`: la fila de otra tienda ni se lee.
-    const rows = await this.repo.findEtiquetasByIds(ordenIds, tiendaIdDelAlcance(alcance));
+    const rows = await this.repo.findEtiquetasByIds(
+      ordenIds,
+      tiendaIdDelAlcance(alcance),
+      await this.zona("generarEtiquetas"),
+    );
     const rowById = new Map<string, EtiquetaRow>(rows.map((r) => [r.id, r]));
 
     const etiquetas: EtiquetaGuiaDTO[] = [];
@@ -105,7 +119,11 @@ export class EtiquetaGuiaService implements IEtiquetaGuiaService {
     // para un `adminTienda` sale `no_encontrada` (la pagina `/paquete` la mapea a 404).
     const alcance = resolverAlcanceEtiquetasOrden(actor);
     // Ya filtra borradas (R3) y, con alcance `propias`, el dueño en el `where` (R10).
-    const row = await this.repo.findEtiquetaByNumGuia(numGuia, tiendaIdDelAlcance(alcance));
+    const row = await this.repo.findEtiquetaByNumGuia(
+      numGuia,
+      tiendaIdDelAlcance(alcance),
+      await this.zona("obtenerEtiquetaPorGuia"),
+    );
     if (!row || row.numGuia === null || !esVisiblePara(row, alcance)) {
       return { status: "no_encontrada" };
     }

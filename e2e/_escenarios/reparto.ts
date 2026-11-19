@@ -33,13 +33,13 @@ import { drenarGeocodificacion } from "./crons";
  *     (`ZonaService.crear`, un distrito propio cada una, tarifa de pago al mensajero por defecto
  *     `opts.tarifaMensajero`, por defecto 1500 entregada / 164 rechazada); SINPE de las dos
  *     confirmado (`SinpeBodegaService.confirmar`: sin él la pantalla abre «Confirmá el SINPE»);
- *     una tienda CON bodega propia (`fulfillment`: sus órdenes nacen en `en_preparacion`); su
+ *     una tienda CON bodega propia (`seRecogeEnTienda: false`: sus órdenes nacen en `en_preparacion`); su
  *     tarifa (`TarifaService.crear`, `opts.tarifa`); y el `adminSatelite` de la satélite.
  *
  *   crearMensajero(r, "central" | "satelite") → MensajeroE2E
  *     Un mensajero de esa zona (con el vehículo por defecto del catálogo).
  *
- *   crearOrden(r, { zona, montoCobrar?, destinatario?, numRemision? }) → OrdenE2E
+ *   crearOrden(r, { zona, montoCobrar?, destinatario?, numRemision?, direccion?, producto? }) → OrdenE2E
  *     Una orden de la tienda por la carga masiva (`BulkOrdenService.cargarMasiva`), en el distrito de
  *     la zona pedida. Nace `en_preparacion`, sin guía. Siempre lleva dirección (la geocodificación
  *     se encola: ver `drenarGeocodificacion`).
@@ -144,7 +144,14 @@ export function crearMensajero(r: RepartoE2E, zona: "central" | "satelite"): Pro
 
 export function crearOrden(
   r: RepartoE2E,
-  o: { zona: "central" | "satelite"; montoCobrar?: number; destinatario?: string; numRemision?: string },
+  o: {
+    zona: "central" | "satelite";
+    montoCobrar?: number;
+    destinatario?: string;
+    numRemision?: string;
+    direccion?: string;
+    producto?: string;
+  },
 ): Promise<OrdenE2E> {
   return nucleo.crearOrden(r, o);
 }

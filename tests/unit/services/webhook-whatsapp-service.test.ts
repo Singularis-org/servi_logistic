@@ -129,7 +129,7 @@ function montar(sobrescribir: Partial<WebhookWhatsappDeps> = {}) {
       }),
     },
     entregaEstado: () => ({ aplicar: vi.fn(async () => 0) }),
-    logger: { warn: (m: string) => avisos.push(m) },
+    logger: { warn: (m: string) => avisos.push(m), error: (m: string) => avisos.push(m) },
     depuracion: (m: string, d: string) => depuraciones.push(`${m} ${d}`),
     reloj: () => new Date("2026-10-25T12:00:00.000Z"),
     ...sobrescribir,

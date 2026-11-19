@@ -9,6 +9,7 @@ import { CLAVE_ESTADO } from "@/app/(app)/ordenes/_components/ordenes-filtros-de
 import { C, type ClaveEstado } from "../../../../fixtures/codigos-455";
 import { HAY_BASE_DE_DATOS } from "../../_postgres-real";
 import { conEscenario, prepararMundo, type Mundo } from "../../454/_escenario";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FEATURE 455 — FASE 0 · C01 (R21, R45). EL FILTRO POR ESTADO DE `/ordenes` Y UNA VISTA GUARDADA.
@@ -52,7 +53,7 @@ describeSiHayBase("455/C01 — filtro por estado de /ordenes y vista guardada (P
           nombre.set(o.ordenId, `${clave}#${n}`);
         }
       }
-      const servicio = new OrdenService(e.s.ordenRepo, e.s.historialService);
+      const servicio = new OrdenService(e.s.ordenRepo, e.s.historialService, undefined, reglasPaisFijas());
       const listar = async (filter: Record<string, unknown>) => {
         const input = listarOrdenesSchema.parse({
           page: 1,

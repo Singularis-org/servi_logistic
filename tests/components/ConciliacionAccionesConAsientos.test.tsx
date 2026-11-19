@@ -78,7 +78,7 @@ describe("SLT-73 R14 — revertir con asientos se rechaza con aviso propio", () 
     expect(aviso).toHaveTextContent("No se puede desmarcar.");
     expect(aviso).toHaveTextContent("Ya entró a la caja: corrige el monto en vez de revertir");
     expect(document.body.textContent ?? "").not.toContain(
-      "No se pudo completar la operación. Intentá de nuevo.",
+      "No se pudo completar la operación. Inténtalo de nuevo.",
     );
     // No cambió nada: ni se refresca la lista ni se puede volver a pulsar.
     expect(onCambio).not.toHaveBeenCalled();

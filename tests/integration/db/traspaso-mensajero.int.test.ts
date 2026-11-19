@@ -3,16 +3,18 @@ import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
+import { ESTADOS_TRASPASABLES } from "@/lib/services/TraspasoMensajeroService";
 import { TraspasoMensajeroConflictoError } from "@/lib/interfaces/repositories/IOrdenRepository";
 
 import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
+import { inicioDelDiaCR } from "@/tests/fabricas/reglas-pais";
 
 /**
  * ⭑⭑ FICHA 427 (T9) — EL TEST QUE SOSTIENE LA FICHA ENTERA: el caso real de las 31 ordenes, medido
@@ -66,16 +68,8 @@ describeSiHayBase("427/T9 — el traspaso entre mensajeros, contra Postgres real
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
 
-    const fks = await fksDeOrden(prisma);
-    if (fks === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar. Corre " +
-          "`pnpm run db:seed` (y las semillas de zonas) antes de esta suite.",
-      );
-    }
-    FKS = fks;
-
-    const valores = ["en_reparto", "ayuda_tienda", "entregado", "mensajero_recogiendo_en_bodega"];
+    // SLT-186: `ayuda_tienda` salio de esta lista: la 454 lo retiro del catalogo (una base nueva no lo trae).
+    const valores = ["en_reparto", "entregado", "mensajero_recogiendo_en_bodega"];
     const estados = await prisma.orderStatus.findMany({
       where: { value: { in: valores } },
       select: { id: true, value: true },
@@ -99,8 +93,12 @@ describeSiHayBase("427/T9 — el traspaso entre mensajeros, contra Postgres real
       throw new Error("faltan los roles `mensajero`/`maestro` en el catalogo: corre el seed.");
     }
 
-    const tipo = await prisma.tipoIdentificacion.findFirst({ select: { id: true } });
-    if (!tipo) throw new Error("no hay `tipo_identificacion` en la base: corre el seed.");
+    // SLT-179: por su clave, no «el primero que haya».
+    const tipo = await prisma.tipoIdentificacion.findUnique({
+      where: { value: "cedula" },
+      select: { id: true },
+    });
+    if (!tipo) throw new Error("no hay `tipo_identificacion` «cedula» en la base: corre el seed.");
     TIPO_IDENT = tipo.id;
   });
 
@@ -173,6 +171,18 @@ describeSiHayBase("427/T9 — el traspaso entre mensajeros, contra Postgres real
   ): Promise<T> {
     return enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+
+      // SLT-179 — tienda y zona nacen en ESTA transaccion (nada de leer la primera orden de la
+      // base). Control positivo: si la siembra no llega, el caso cae nombrando la fila.
+      FKS = await crearFksDeOrden(tx);
+      expect(
+        await tx.usuario.count({ where: { id: FKS.tiendaId } }),
+        "SLT-179: la tienda sembrada no esta en la base",
+      ).toBe(1);
+      expect(
+        await tx.zona.count({ where: { id: FKS.zonaId } }),
+        "SLT-179: la zona sembrada no esta en la base",
+      ).toBe(1);
 
       const origenId = await crearUsuario(tx, ROL_MENSAJERO, "origen");
       const destinoId = await crearUsuario(tx, ROL_MENSAJERO, "destino");
@@ -397,6 +407,7 @@ describeSiHayBase("427/T9 — el traspaso entre mensajeros, contra Postgres real
       })),
       actor: { usuarioId: ctx.actorId, rol: "maestro" as const },
       motivo: MOTIVO,
+      inicioDelDia: inicioDelDiaCR(AHORA),
     };
   }
 
@@ -485,10 +496,15 @@ describeSiHayBase("427/T9 — el traspaso entre mensajeros, contra Postgres real
     expect(dia.fila.mensajeroAsignadoId).toBe(dia.destinoId);
   });
 
-  it("R4: `ayuda_tienda` se traspasa igual que `en_reparto` (D4)", async () => {
-    const r = await conEscenario([{ estatusValue: "ayuda_tienda" }], async (ctx) => {
+  // SLT-186: hasta la 454 este caso traspasaba una orden en `ayuda_tienda`. La 454 retiro ese estado
+  // (la ayuda es un evento y la orden sigue `en_reparto`): `ESTADOS_TRASPASABLES` queda en UNO
+  // (lib/services/TraspasoMensajeroService.ts:82), y «la orden con ayuda abierta se traspasa y la ayuda
+  // sigue abierta» lo mide `tests/integration/db/454/ayuda-evento-sql-real.test.ts` (R28).
+  it("R4: `en_reparto` es el UNICO estado traspasable y el traspaso no le cambia el estado (D4, tras la 454)", async () => {
+    expect(ESTADOS_TRASPASABLES).toEqual(["en_reparto"]);
+    const r = await conEscenario([{ estatusValue: "en_reparto" }], async (ctx) => {
       const aplicado = await ctx.repo.traspasarMensajeroLote(
-        loteDe(ctx, ctx.ids, "ayuda_tienda"),
+        loteDe(ctx, ctx.ids, "en_reparto"),
       );
       const fila = await ctx.crudo.orden.findUniqueOrThrow({
         where: { id: ctx.ids[0] },
@@ -498,7 +514,7 @@ describeSiHayBase("427/T9 — el traspaso entre mensajeros, contra Postgres real
     });
     expect(r.aplicado.movidas).toBe(1);
     expect(r.fila.mensajeroAsignadoId).toBe(r.destinoId);
-    expect(r.fila.estatusId).toBe(ESTATUS.ayuda_tienda);
+    expect(r.fila.estatusId).toBe(ESTATUS.en_reparto);
   });
 
   /* ---------------------------------------------------------------------------------------- */
@@ -817,6 +833,7 @@ describeSiHayBase("427/T9 — el traspaso entre mensajeros, contra Postgres real
       });
       // Segundo acto: del destino al tercero.
       await ctx.repo.traspasarMensajeroLote({
+        inicioDelDia: inicioDelDiaCR(AHORA),
         loteId: randomUUID(),
         mensajeroOrigenId: ctx.destinoId,
         mensajeroDestinoId: ctx.terceroId,
@@ -873,8 +890,10 @@ describeSiHayBase("427/T9 — el traspaso entre mensajeros, contra Postgres real
       expect(job.runAfter.getTime()).toBeGreaterThan(AHORA.getTime());
     }
     // Y el payload lleva SOLO el mensajero: ni coordenadas ni direcciones (regla de PII de la 91).
+    // SLT-186: desde SLT-59 (D28) lleva ademas el `origen` del evento, que aqui es el traspaso.
     for (const job of nuevos) {
-      expect(Object.keys(job.payload as object)).toEqual(["mensajeroId"]);
+      expect(Object.keys(job.payload as object).sort()).toEqual(["mensajeroId", "origen"]);
+      expect((job.payload as { origen: string }).origen).toBe("traspaso");
     }
   });
 

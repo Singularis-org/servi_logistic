@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import type { DescargaColumna, DescargaHoja, DescargaTipo } from "@/lib/types/descarga";
 import type { DataTableDescarga, DataTableDescargaDetalle } from "@/components/shared/DataTable";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /**
  * Feature 151 (design.md §5) — control de descarga del dataset completo de un
  * `DataTable`.
@@ -244,12 +245,29 @@ export function DescargarDatasetButton({
       // R25 — Import DINÁMICO del generador común: mantiene `exceljs` fuera del
       // bundle inicial de todas las pantallas que montan un `DataTable`.
       const { construirDescarga } = await import("@/lib/utils/descarga-dataset");
+      if (resultado.libro !== undefined) {
+        // SLT-113 — el consumidor resolvió el libro entero: siempre xlsx, con SUS hojas, columnas y
+        // filas. El selector de columnas no se aplica aquí. El nombre de archivo sigue en `titulo`.
+        const [principal, ...demas] = resultado.libro.hojas;
+        // SLT-81: la UI sigue en la zona de CR
+        const archivo = await construirDescarga({
+          tipo: "xlsx",
+          titulo,
+          tituloHoja: principal.titulo,
+          columnas: principal.columnas,
+          filas: principal.filas,
+          hojasAdicionales: demas,
+        }, ZONA_CR);
+        descargarBlob(archivo.contenido, archivo.mime, archivo.nombreArchivo);
+        return;
+      }
       if (descargaDetalle && detalle !== undefined) {
         // Ficha 464 (R10/R36) — las dos hojas, de la MISMA respuesta. Sin filas de detalle no hay
         // archivo: una hoja vacía diría «ninguna orden» donde el consumidor no las leyó.
         if (resultado.filasDetalle === undefined) {
           throw new Error("faltan las filas de la hoja de detalle");
         }
+        // SLT-81: la UI sigue en la zona de CR
         const archivo = await construirDescarga({
           tipo: FORMATO_POR_DEFECTO,
           titulo,
@@ -259,10 +277,11 @@ export function DescargarDatasetButton({
           hojasAdicionales: [
             hojaDeDetalle(detalle, visiblesDetalle, resultado.filasDetalle, resultado.filasDestacadasDetalle),
           ],
-        });
+        }, ZONA_CR);
         descargarBlob(archivo.contenido, archivo.mime, archivo.nombreArchivo);
         return;
       }
+      // SLT-81: la UI sigue en la zona de CR
       const archivo = await construirDescarga({
         tipo,
         titulo,
@@ -272,7 +291,7 @@ export function DescargarDatasetButton({
         columnas: visibles,
         filas: resultado.filas,
         ...destacadas(resultado.filasDestacadas),
-      });
+      }, ZONA_CR);
       // R32: el archivo nace y muere en el navegador; ni subida ni almacenamiento.
       descargarBlob(archivo.contenido, archivo.mime, archivo.nombreArchivo);
     } catch (error) {
@@ -316,6 +335,9 @@ export function DescargarDatasetButton({
         aria-label={nombreAccesible} // R30
         aria-haspopup={eligeFormato ? "menu" : undefined}
         aria-expanded={eligeFormato ? menuAbierto : undefined}
+        // SLT-194 (R947, DC3, D5): 44 px solo en móvil, en todos sus usos; en escritorio, el alto
+        // por defecto del `Button`.
+        className="max-md:h-11"
       >
         {generando ? null : <Download aria-hidden="true" />}
         {generando ? TEXTO_PREPARANDO : (label ?? DEFAULT_LABEL)}

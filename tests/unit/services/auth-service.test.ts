@@ -28,7 +28,7 @@ async function buildUsuario(overrides: Partial<UsuarioDeTest> = {}): Promise<Usu
     cedula: "1710034065",
     tipoIdentificacionId: "tipo-1",
     rolId: "rol-1",
-    fulfillment: false,
+    seRecogeEnTienda: true,
     organizacionId: "org-1",
     rol: "maestro",
     empresaNombre: "Empresa A",

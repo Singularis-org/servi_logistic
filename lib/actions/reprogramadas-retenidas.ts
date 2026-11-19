@@ -10,7 +10,9 @@ import { buildReprogramadasRetenidasService } from "@/lib/services/reprogramadas
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { esAccesoTotal } from "@/lib/auth/acceso-total";
-import { startOfDayCR } from "@/lib/utils/fecha-cr";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
+import { inicioDelDiaComoFecha } from "@/lib/utils/calendario-zona";
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError, ForbiddenError } from "@/lib/errors";
 import { toActionError } from "@/lib/actions/_shared/to-action-error";
 
@@ -28,8 +30,10 @@ export type ResumenRetenidasResult =
 export interface ReprogramadasRetenidasDeps {
   service?: Pick<IReprogramadasRetenidasService, "resumen">;
   getActor?: () => Promise<Actor | null>;
-  /** Reloj inyectable (tests). El dia CR sale de el, EN EL SERVIDOR (R38). */
+  /** Reloj inyectable (tests). El dia sale de el, EN EL SERVIDOR (R38). */
   now?: () => Date;
+  /** SLT-42: las reglas del pais de la empresa (su zona horaria). Por defecto, la implementacion real. */
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
 }
 
 /**
@@ -59,8 +63,10 @@ export async function resumenReprogramadasRetenidasCentral(
     if (!actor) throw new UnauthenticatedError();
     if (!esAccesoTotal(actor.rol)) throw new ForbiddenError();
     const service = deps.service ?? buildReprogramadasRetenidasService(getPrismaClient());
-    const hoyCR = startOfDayCR((deps.now ?? (() => new Date()))());
-    const resumen = await service.resumen(hoyCR);
+    // SLT-42 (R22, R28): el dia de hoy en la zona del pais de la empresa, leida una vez.
+    const zona = await (deps.reglasPais ?? construirReglasPaisEmpresa(getPrismaClient())).zonaHoraria();
+    const hoyCR = inicioDelDiaComoFecha((deps.now ?? (() => new Date()))(), zona);
+    const resumen = await service.resumen(hoyCR, zona);
     return { status: "ok" as const, resumen: recortarPorAmbito(resumen, { tipo: "central" }) };
   });
   if (isAppErrorShape(r)) {

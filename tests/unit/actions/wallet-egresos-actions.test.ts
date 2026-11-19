@@ -12,6 +12,17 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IWalletEgresoService } from "@/lib/interfaces/services/IWalletEgresoService";
 import type { WalletMovimientoDTO } from "@/lib/types/wallet";
 
+// SLT-42 (T5.4): la zona del pais de la empresa, sin sesion ni base: la de CR, como antes. El borde
+// (`zonaDelBorde`) y los composition roots leen `construirReglasPaisEmpresa`; la zona en si la mide
+// `tests/unit/services/hora-por-pais-wallet.test.ts`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
+
 // Feature 45 (R4/R5/R11/R17/R18/R19) — tests unit de las Server Actions de egresos. Sin sesion
 // -> unauthenticated (R18); rol no autorizado -> forbidden (lo decide el service, R17); zod en
 // el borde -> validation_error (monto <=0/vacio R4, descripcion vacia R5, tipoEgreso fuera del

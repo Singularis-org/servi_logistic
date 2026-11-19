@@ -37,7 +37,7 @@ import { sqlNormalizarTextoBusqueda } from "@/lib/utils/busqueda-texto-sql";
 import { agregarReacciones, type MensajeConReaccion } from "@/lib/utils/chat-reacciones";
 import { escaparComodinesLike } from "@/lib/utils/escapar-like";
 import { terminoDeBusqueda } from "@/lib/utils/filtros-listado-ordenes";
-import { inicioDelDiaCREnUtc, inicioDelDiaSiguienteCREnUtc } from "@/lib/utils/fecha-cr";
+import { inicioDelDiaEnUtc, inicioDelDiaSiguienteEnUtc } from "@/lib/utils/calendario-zona";
 import { nombreCompletoUsuarioSql } from "@/lib/utils/nombre-usuario";
 
 /**
@@ -149,6 +149,7 @@ export interface HiloConcreto {
 function condicionesDelListado(
   filtro: ListarHilosQuery["filtro"],
   hilo: HiloConcreto | null,
+  zona: string | undefined,
 ): Prisma.Sql[] {
   const condiciones: Prisma.Sql[] = [];
 
@@ -169,10 +170,11 @@ function condicionesDelListado(
   //
   // DOS decisiones que no son de estilo:
   //
-  // 1. Las cotas salen de `inicioDelDiaCREnUtc` / `inicioDelDiaSiguienteCREnUtc`, NUNCA de
-  //    `startOfDayCR`: se compara contra `ocurrido_at`, que es un instante, y confundirlas es el
-  //    off-by-one de SEIS HORAS que documenta `lib/utils/fecha-cr.ts`. El extremo `hasta` es
-  //    INCLUSIVO y por eso el limite superior es el inicio del dia SIGUIENTE, con `<` estricto.
+  // 1. Las cotas salen de `inicioDelDiaEnUtc` / `inicioDelDiaSiguienteEnUtc` con la zona del pais
+  //    de la empresa (SLT-42, R22, R23), NUNCA de un «inicio del dia como fecha»: se compara contra
+  //    `ocurrido_at`, que es un instante, y confundirlas es el off-by-one de horas que documenta
+  //    `lib/utils/calendario-zona.ts`. El extremo `hasta` es INCLUSIVO y por eso el limite superior
+  //    es el inicio del dia SIGUIENTE, con `<` estricto.
   // 2. El `EXISTS` mira TODO EL GRUPO `(orden_id, mensajero_id)`, no solo la fila `c.id` (que es
   //    lo que insinuaba el borrador de design §2.4). Con la forma por fila, un hilo fusionado de
   //    dos numeros (R42/R43) del que solo UNO tuviera mensajes en el rango perderia la otra fila
@@ -182,13 +184,16 @@ function condicionesDelListado(
   const desde = filtro.fecha_desde;
   const hasta = filtro.fecha_hasta;
   if (desde !== undefined || hasta !== undefined) {
+    if (zona === undefined) {
+      throw new Error("listarHilos: un rango de fechas necesita la zona horaria del pais de la empresa (SLT-42)");
+    }
     const cotas: Prisma.Sql[] = [];
     if (desde !== undefined) {
-      cotas.push(Prisma.sql`m2.ocurrido_at >= ${instante(inicioDelDiaCREnUtc(desde).toISOString())}`);
+      cotas.push(Prisma.sql`m2.ocurrido_at >= ${instante(inicioDelDiaEnUtc(desde, zona).toISOString())}`);
     }
     if (hasta !== undefined) {
       cotas.push(
-        Prisma.sql`m2.ocurrido_at < ${instante(inicioDelDiaSiguienteCREnUtc(hasta).toISOString())}`,
+        Prisma.sql`m2.ocurrido_at < ${instante(inicioDelDiaSiguienteEnUtc(hasta, zona).toISOString())}`,
       );
     }
     condiciones.push(Prisma.sql`EXISTS (
@@ -303,7 +308,7 @@ export function construirConsultaListarHilos(
   query: ListarHilosQuery,
   hilo: HiloConcreto | null = null,
 ): Prisma.Sql {
-  const condiciones = condicionesDelListado(query.filtro, hilo);
+  const condiciones = condicionesDelListado(query.filtro, hilo, query.zona);
   const where =
     condiciones.length === 0
       ? Prisma.empty

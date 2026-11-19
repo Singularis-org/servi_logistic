@@ -61,7 +61,7 @@ describeDb("474 · la siembra del mantenimiento no duplica", () => {
       const primera = await seedJobWhatsappEnvioMantenimiento(repo, PRIMER_INSTANTE);
       const trasPrimera = await contarJobs(tx);
       const segunda = await seedJobWhatsappEnvioMantenimiento(repo, SEGUNDO_INSTANTE);
-      const { runAfter, dedupeKey } = recurrenciaWhatsappEnvioMantenimiento.siguiente(PRIMER_INSTANTE);
+      const { runAfter, dedupeKey } = recurrenciaWhatsappEnvioMantenimiento.siguiente(PRIMER_INSTANTE, []);
       const reencolada = await repo.enqueue(TIPO, {}, { runAfter, dedupeKey });
       const trasTodo = await contarJobs(tx);
       return { antes, trasPrimera, trasTodo, primera, segunda, reencolada };

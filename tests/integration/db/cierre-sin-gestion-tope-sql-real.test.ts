@@ -14,9 +14,10 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FEATURE 276 (T9, bloque 🔴 OBLIGATORIO) — EL RECHAZO DE LA NO GESTION, EJECUTADO CONTRA POSTGRES.
@@ -160,13 +161,6 @@ describeSiHayBase("276/T9 — el rechazo por tope al aprobar el cierre (Postgres
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const fks = await fksDeOrden(prisma);
-    if (fks === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar el " +
-          "corpus. Corre `pnpm run db:seed` (y las semillas de zonas) antes de esta suite.",
-      );
-    }
     const VALUES = [
       "en_reparto",
       "novedad_interna",
@@ -175,7 +169,6 @@ describeSiHayBase("276/T9 — el rechazo por tope al aprobar el cierre (Postgres
       "devolucion_a_origen_por_rechazo",
       "por_devolver_a_bodega_central",
       "por_devolver_a_tienda",
-      "devolucion_por_confirmar",
       "novedad",
     ];
     const catalogo = await prisma.orderStatus.findMany({
@@ -192,16 +185,20 @@ describeSiHayBase("276/T9 — el rechazo por tope al aprobar el cierre (Postgres
       }
     }
 
-    const usuarios = await prisma.usuario.findMany({ select: { id: true }, take: 2 });
-    if (usuarios.length < 2) {
-      throw new Error("hacen falta DOS usuarios: el mensajero del cierre y el admin que aprueba.");
-    }
-    const mensajeroId = usuarios[0].id;
-    const adminId = usuarios[1].id;
-
     conCorpus = (fn) =>
       enTransaccionRevertida(prisma, async (tx) => {
         await serializarEscriturasReales(tx);
+
+        // SLT-178: tienda, zona, el mensajero del cierre y el admin que aprueba se crean aqui, en la
+        // transaccion revertida; nada de negocio se lee de la base.
+        const fks = await crearFksDeOrden(tx);
+        const mensajeroId = (await crearUsuarioDePrueba(tx, "mensajero")).id;
+        const adminId = (await crearUsuarioDePrueba(tx, "maestro")).id;
+        expect(
+          await tx.usuario.count({ where: { id: { in: [fks.tiendaId, mensajeroId, adminId] } } }),
+          "usuarios sembrados (tienda, mensajero, admin)",
+        ).toBe(3);
+        expect(await tx.zona.count({ where: { id: fks.zonaId } }), "zona sembrada").toBe(1);
 
         // EL CIERRE que se va a aprobar. `solicitado` porque es el unico estado desde el que la
         // guarda del `updateMany` deja resolverlo... y `vencido`, que tambien esta en
@@ -285,7 +282,9 @@ describeSiHayBase("276/T9 — el rechazo por tope al aprobar el cierre (Postgres
             await tx.ordenHistorialEstado.create({
               data: {
                 ordenId: orden.id,
-                estatusDestinoId: estatus.get("devolucion_por_confirmar") as string,
+                // SLT-186: era `devolucion_por_confirmar`, retirado del catalogo por la 454 (una base
+                // nueva no lo trae). La visita real de una gestion `novedad` lleva hoy a `novedad`.
+                estatusDestinoId: estatus.get("novedad") as string,
                 origenTipo: "gestion", // VISITA REAL
                 gestionOrdenId: gestion.id,
               },
@@ -316,6 +315,7 @@ describeSiHayBase("276/T9 — el rechazo por tope al aprobar el cierre (Postgres
                   nuevoEstado: "aprobado",
                   resueltoPor: adminId,
                   motivoRechazo: null,
+                  zonaHoraria: ZONA_DE_CR,
                   liberacionSinGestionar: {
                     sinGestionarEstatusId: estatus.get("novedad_interna") as string,
                     enBodegaEstatusId: estatus.get("en_bodega_central") as string,
@@ -352,6 +352,7 @@ describeSiHayBase("276/T9 — el rechazo por tope al aprobar el cierre (Postgres
                   nuevoEstado: "rechazado",
                   resueltoPor: adminId,
                   motivoRechazo: "no cuadra la caja",
+                  zonaHoraria: ZONA_DE_CR,
                 },
           );
 

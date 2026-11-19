@@ -27,21 +27,26 @@ import {
  *    (decisión cerrada del spec) y lleva un `mensajero` de una zona suya; B no recibe plan; C recibe el
  *    plan público por el modal de primera asignación.
  * 2. El superadmin entra con OTP, abre «Planes» y crea desde «Nuevo plan» un custom de A con tope de
- *    órdenes y de mensajeros (los demás topes vacíos = sin límite), todos los módulos, tipo de cobro
- *    «Anual» (D6) y el «Inicio del ciclo de órdenes» que el form pide porque A no tiene plan (D4; abre en
+ *    mensajeros (los demás topes vacíos = sin límite; SLT-86 R8: ya no hay tope de órdenes, ni su
+ *    campo), todos los módulos, tipo de cobro
+ *    «Anual» (D6) y el «Inicio del período» que el form pide porque A no tiene plan (D4; abre en
  *    mañana, D5, y se pone en hoy). Crearlo lo deja asignado a A (D2).
  * 3. El detalle de A pinta el plan, su consumo, «Tipo de cobro: Anual» (D9) y la fila del historial.
  * 4. El superadmin crea por pantalla un plan PÚBLICO con costo concreto (R28): no pide empresa, tipo de
  *    cobro ni inicio del ciclo, y no se asigna a nadie.
  * 5. En el detalle de C (sin plan) elige el público y pulsa «Asignar plan»: es la PRIMERA asignación, así
  *    que se abre el modal de confirmación (decisión del 2026-10-29) con lo que tendrá la empresa, el
- *    «Inicio del ciclo de órdenes» en mañana (D5; antes, hoy) y el tipo de cobro (D6). Se pone hoy, se
+ *    «Inicio del período» en mañana (D5; antes, hoy), «El plan empieza a regir el {fecha}.»
+ *    (SLT-86 §7.1; antes, «El ciclo de órdenes empieza…») y el tipo de cobro (D6). Se pone hoy, se
  *    espera a la vista previa y se confirma.
- * 6. El maestro de A abre `/mi-plan`: el nombre, «de <tope> órdenes del ciclo», «de <tope> Mensajero» y
- *    ninguna fila de Maestro (SLT-66 R5: el maestro no tiene tope).
+ * 6. El maestro de A abre `/mi-plan`: el nombre, «Órdenes en el período: 0» (SLT-86 R7, R8: sin tope;
+ *    antes, «0 de <tope> órdenes del ciclo»), «de <tope> Mensajero» y ninguna fila de Maestro (SLT-66
+ *    R5: el maestro no tiene tope).
  * 7. El maestro de B, sin plan, ve «sin límites» y ni el nombre del plan de A ni su id en el HTML.
  * 8. El `mensajero` de A recibe «No encontramos esta página» en `/mi-plan` (R8).
- * 9. Por detrás (`clienteDueno`): el custom es de A y es el plan de A, el público es el de C; B sigue
+ * 9. SLT-91 (R3, R14): el `admin` de A recibe 404 en `/mi-plan`, sin el nombre del plan, y el menú de su
+ *    `/dashboard` no enlaza a esa ruta.
+ * 10. Por detrás (`clienteDueno`): el custom es de A y es el plan de A, el público es el de C; B sigue
  *    sin plan.
  *
  * Los textos esperados se escriben a mano a propósito (son los literales del spec): derivarlos de los
@@ -56,8 +61,11 @@ test.describe.configure({ mode: "serial" });
 
 const PANTALLA_DE_ERROR = "No pudimos cargar esta pantalla";
 const SIN_PLAN_EMPRESA = "Tu empresa no tiene plan asignado: sin límites";
-const TOPE_ORDENES = 50;
 const TOPE_MENSAJEROS = 3;
+/** SLT-86 (R7, R8; design §7.1): el conteo del período, sin tope ni barra, de una empresa que empieza hoy. */
+const ORDENES_EN_EL_PERIODO_CERO = "Órdenes en el período: 0";
+/** SLT-86 (R8): el rótulo del tope de órdenes que ya no existe, en ningún sitio. */
+const TOPE_DE_ORDENES = "Órdenes por ciclo";
 
 let dueno: PrismaClient | null = null;
 let contextoSa: BrowserContext | null = null;
@@ -72,7 +80,7 @@ let planId = "";
 /** El plan público del modal de primera asignación (ajuste planes-custom D2: un custom ya no pasa por él). */
 const nombreDelPublico = `Plan E2E publico ${randomBytes(4).toString("hex")}`;
 let publicoId = "";
-const sesiones: { maestroA?: Cookie[]; maestroB?: Cookie[]; mensajeroA?: Cookie[] } = {};
+const sesiones: { maestroA?: Cookie[]; maestroB?: Cookie[]; mensajeroA?: Cookie[]; adminA?: Cookie[] } = {};
 
 function superadmin(): Page {
   if (!sa) throw new Error("no hay página del superadmin: falló el beforeAll");
@@ -111,6 +119,7 @@ test.beforeAll(async ({ browser }) => {
   try {
     const zona = await crearZonaE2E(base, a());
     const mensajero = await crearUsuarioE2E(a(), "mensajero", { zonaId: zona.id });
+    const admin = await crearUsuarioE2E(a(), "admin");
     const org = await base.organizacion.findUniqueOrThrow({ where: { id: a().organizacionId }, select: { nombre: true } });
     nombreEmpresaA = org.nombre;
     const orgC = await base.organizacion.findUniqueOrThrow({ where: { id: c().organizacionId }, select: { nombre: true } });
@@ -118,6 +127,7 @@ test.beforeAll(async ({ browser }) => {
     sesiones.maestroA = await sesionDe(browser, a().maestro);
     sesiones.maestroB = await sesionDe(browser, b().maestro);
     sesiones.mensajeroA = await sesionDe(browser, mensajero);
+    sesiones.adminA = await sesionDe(browser, admin);
   } finally {
     await base.$disconnect();
   }
@@ -165,21 +175,44 @@ async function abrirCon(
   };
 }
 
-/** Rellena los campos comunes del form de un plan: nombre, topes, módulos y costo concreto (R28). */
-async function rellenarPlan(form: Locator, nombre: string, visibilidad: "Público" | "Custom"): Promise<void> {
+/**
+ * SLT-130 (design §4): pulsa «Guardar y continuar» y espera a que el paso `proximo` esté en pantalla (su
+ * título es el `h3` del paso). Valida solo el paso actual y lo guarda en el borrador del servidor (SLT-144
+ * R1); si no avanza, el `expect` lo dice.
+ */
+async function siguiente(form: Locator, proximo: string): Promise<void> {
+  await form.getByRole("button", { name: "Guardar y continuar", exact: true }).click();
+  await expect(form.getByRole("heading", { level: 3, name: proximo, exact: true })).toBeVisible({ timeout: 30_000 });
+}
+
+/** Paso General del form de un plan: nombre y visibilidad. Lo propio del custom lo rellena cada caso. */
+async function rellenarGeneral(form: Locator, nombre: string, visibilidad: "Público" | "Custom"): Promise<void> {
+  await expect(form.getByRole("heading", { level: 3, name: "General", exact: true })).toBeVisible();
   await form.getByRole("textbox", { name: /^Nombre/ }).fill(nombre);
   await form.getByRole("radio", { name: visibilidad, exact: true }).click();
-  // Vacío = sin límite: solo órdenes y mensajeros llevan tope.
-  await form.getByRole("textbox", { name: "Órdenes por ciclo" }).fill(String(TOPE_ORDENES));
+}
+
+/**
+ * Del paso General a «Revisar y crear»: costo concreto (R28), topes y módulos, cada uno en su paso
+ * (SLT-130). Las aserciones son las de antes; solo cambia en qué paso se buscan los campos.
+ */
+async function rellenarRestoDelPlan(form: Locator): Promise<void> {
+  // SLT-66 R28: solo se asigna un plan con costo concreto, así que se crea «Con monto» y con costo por
+  // orden (antes, «Sin precio»).
+  await siguiente(form, "Precio y descuentos");
+  await form.getByRole("radio", { name: "Con monto", exact: true }).click();
+  await form.getByLabel("Costo base mensual", { exact: true }).fill("1000");
+  await siguiente(form, "Cobro por orden");
+  await form.getByLabel("Costo por orden", { exact: true }).fill("100");
+  // Vacío = sin límite: solo mensajeros lleva tope. SLT-86 (R8, R23): el campo de órdenes ya no está.
+  await siguiente(form, "Topes");
+  await expect(form.getByRole("textbox", { name: TOPE_DE_ORDENES })).toHaveCount(0);
   await form.getByRole("textbox", { name: "Usuarios activos con el rol Mensajero" }).fill(String(TOPE_MENSAJEROS));
+  await siguiente(form, "Módulos");
   for (const modulo of ORDEN_MODULOS) {
     await form.getByRole("checkbox", { name: nombreDelModulo(modulo), exact: true }).check();
   }
-  // SLT-66 R28: solo se asigna un plan con costo concreto, así que se crea «Con monto» y con costo por
-  // orden (antes, «Sin precio»).
-  await form.getByRole("radio", { name: "Con monto", exact: true }).click();
-  await form.getByLabel("Costo base mensual", { exact: true }).fill("1000");
-  await form.getByLabel("Costo por orden", { exact: true }).fill("100");
+  await siguiente(form, "Revisar y crear");
 }
 
 async function abrirNuevoPlan(page: Page): Promise<Locator> {
@@ -195,7 +228,7 @@ test("el superadmin crea por pantalla un custom de A, que queda asignado con su 
   const page = superadmin();
   const form = await abrirNuevoPlan(page);
 
-  await rellenarPlan(form, nombreDelPlan, "Custom");
+  await rellenarGeneral(form, nombreDelPlan, "Custom");
   await form.getByRole("combobox", { name: "Empresa" }).click();
   await page.getByRole("option", { name: nombreEmpresaA, exact: true }).click();
   await expect(form.getByRole("combobox", { name: "Empresa" })).toHaveText(nombreEmpresaA);
@@ -208,10 +241,11 @@ test("el superadmin crea por pantalla un custom de A, que queda asignado con su 
 
   // D4/D5: A no tiene plan, así que el form pide el inicio del ciclo, que abre en mañana. Se pone hoy:
   // el ancla queda en el instante de la creación y el consumo de «Mi plan» empieza en 0.
-  const inicio = form.getByLabel("Inicio del ciclo de órdenes", { exact: true });
+  const inicio = form.getByLabel("Inicio del período", { exact: true });
   await expect(inicio).toHaveValue(mananaCalendarioCR(new Date()));
   const hoy = fechaCalendarioCR(new Date());
   await inicio.fill(hoy);
+  await rellenarRestoDelPlan(form);
 
   // D13/D17: «Crear plan» espera a la vista previa; empresa nueva, así que ni avisa ni falla.
   const crear = form.getByRole("button", { name: "Crear plan" });
@@ -225,28 +259,27 @@ test("el superadmin crea por pantalla un custom de A, que queda asignado con su 
   const fila = page.getByRole("row").filter({ has: page.getByRole("link", { name: `Ver el plan ${nombreDelPlan}` }) });
   await expect(fila).toHaveCount(1, { timeout: 60_000 });
   await expect(fila).toContainText(`Custom de ${nombreEmpresaA}`);
-  await expect(fila).toContainText(`Órdenes por ciclo: ${TOPE_ORDENES}`);
+  await expect(fila).not.toContainText(TOPE_DE_ORDENES);
   await expect(fila).toContainText(`Usuarios activos con el rol Mensajero: ${TOPE_MENSAJEROS}`);
 
   // Por detrás: el plan existe, es custom de A, con esos topes, y crearlo lo dejó asignado a A (D2).
   const plan = await db().plan.findFirstOrThrow({
     where: { nombre: nombreDelPlan },
-    select: { id: true, visibilidad: true, organizacionExclusivaId: true, topeOrdenesCiclo: true, topeApiKeys: true },
+    // SLT-86 (R8): la columna `tope_ordenes_ciclo` ya no existe.
+    select: { id: true, visibilidad: true, organizacionExclusivaId: true, topeApiKeys: true },
   });
   expect(plan.visibilidad).toBe("custom");
   expect(plan.organizacionExclusivaId).toBe(a().organizacionId);
-  expect(plan.topeOrdenesCiclo).toBe(TOPE_ORDENES);
   expect(plan.topeApiKeys).toBeNull();
   planId = plan.id;
   const asignada = await db().organizacion.findUniqueOrThrow({
     where: { id: a().organizacionId },
-    select: { planId: true, planTipoCobro: true, planCicloAnclaAt: true, planCicloCortoDesdeAt: true },
+    select: { planId: true, planTipoCobro: true, planCicloAnclaAt: true },
   });
   expect(asignada.planId, "crear un custom con empresa lo asigna (D2)").toBe(planId);
   expect(asignada.planTipoCobro, "el tipo de cobro elegido en el form (D6)").toBe("anual");
-  // «Hoy» ancla en el instante de la asignación (P9): sin ciclo corto (R34 solo con fecha futura).
+  // SLT-86 (P4 = a): ya no hay ciclo corto (la columna `plan_ciclo_corto_desde_at` se fue); queda el ancla.
   expect(asignada.planCicloAnclaAt, "crear y asignar no fijó el ancla").not.toBeNull();
-  expect(asignada.planCicloCortoDesdeAt, "«hoy» no abre ciclo corto").toBeNull();
 });
 
 test("el detalle de A pinta el custom asignado: consumo, tipo de cobro e historial (R28, D2, D9, D14)", async () => {
@@ -258,7 +291,8 @@ test("el detalle de A pinta el custom asignado: consumo, tipo de cobro e histori
   await expect(bloque.getByRole("heading", { name: nombreDelPlan, exact: true })).toBeVisible({ timeout: 60_000 });
   await expect(bloque).not.toContainText("Sin plan: sin límites");
   const consumo = bloque.getByRole("list", { name: "Consumo" });
-  await expect(consumo).toContainText(`0 de ${TOPE_ORDENES} órdenes del ciclo`);
+  await expect(consumo).toContainText(ORDENES_EN_EL_PERIODO_CERO);
+  await expect(consumo).not.toContainText("órdenes del ciclo");
   await expect(consumo).toContainText(`1 de ${TOPE_MENSAJEROS} Mensajero`);
   await expect(bloque.getByRole("list", { name: "Cobro del plan" })).toContainText("Tipo de cobro: Anual");
   const historial = bloque.getByRole("table", { name: "Historial de asignaciones" });
@@ -271,11 +305,13 @@ test("el superadmin crea por pantalla un plan público con costo concreto, que n
   const page = superadmin();
   const form = await abrirNuevoPlan(page);
 
-  await rellenarPlan(form, nombreDelPublico, "Público");
+  await rellenarGeneral(form, nombreDelPublico, "Público");
   // Un público no nombra empresa, ni lleva tipo de cobro ni inicio del ciclo (D2: no se asigna al crearlo).
+  // SLT-130: se mira en el paso General, que es donde los pide un custom.
   await expect(form.getByRole("combobox", { name: "Empresa" })).toHaveCount(0);
   await expect(form.getByRole("radiogroup", { name: "Tipo de cobro" })).toHaveCount(0);
-  await expect(form.getByLabel("Inicio del ciclo de órdenes", { exact: true })).toHaveCount(0);
+  await expect(form.getByLabel("Inicio del período", { exact: true })).toHaveCount(0);
+  await rellenarRestoDelPlan(form);
   await form.getByRole("button", { name: "Crear plan" }).click();
 
   await expect(page.getByRole("status").filter({ hasText: `Plan «${nombreDelPublico}» creado.` })).toBeVisible({
@@ -308,9 +344,10 @@ test("el superadmin asigna el público desde el detalle de C, pasando el modal d
   const modal = page.getByRole("dialog", { name: "¿Asignar este plan a la empresa?" });
   await expect(modal).toBeVisible({ timeout: 30_000 });
   await expect(modal).toContainText(`Asignar ${nombreDelPublico} a ${nombreEmpresaC}: desde ahora tendrá:`);
-  await expect(modal.getByRole("list", { name: "Lo que tendrá la empresa" })).toContainText(
-    `Órdenes por ciclo: ${TOPE_ORDENES}`,
-  );
+  const loQueTendra = modal.getByRole("list", { name: "Lo que tendrá la empresa" });
+  await expect(loQueTendra).toContainText(`Usuarios activos con el rol Mensajero: ${TOPE_MENSAJEROS}`);
+  // SLT-86 (R8): sin tope de órdenes en lo que tendrá la empresa.
+  await expect(loQueTendra).not.toContainText(TOPE_DE_ORDENES);
   await modal.getByRole("button", { name: "Volver" }).click();
   await expect(modal).toBeHidden();
   const trasVolver = await db().organizacion.findUniqueOrThrow({ where: { id: c().organizacionId }, select: { planId: true } });
@@ -320,14 +357,15 @@ test("el superadmin asigna el público desde el detalle de C, pasando el modal d
   await expect(modal).toBeVisible({ timeout: 30_000 });
 
   // D5 (antes SLT-58 T15, R29: «hoy»): el inicio del ciclo abre en MAÑANA (hora de la plataforma) y la
-  // frase lo repite. Se pone hoy y la frase lo sigue (R38).
+  // frase lo repite. Se pone hoy y la frase lo sigue (R38). SLT-86 (design §7.1): la frase pasó de «El
+  // ciclo de órdenes empieza el {fecha}.» a «El plan empieza a regir el {fecha}.».
   const manana = mananaCalendarioCR(new Date());
   const hoy = fechaCalendarioCR(new Date());
-  const inicio = modal.getByLabel("Inicio del ciclo de órdenes");
+  const inicio = modal.getByLabel("Inicio del período");
   await expect(inicio).toHaveValue(manana);
-  await expect(modal).toContainText(`El ciclo de órdenes empieza el ${manana}.`);
+  await expect(modal).toContainText(`El plan empieza a regir el ${manana}.`);
   await inicio.fill(hoy);
-  await expect(modal).toContainText(`El ciclo de órdenes empieza el ${hoy}.`);
+  await expect(modal).toContainText(`El plan empieza a regir el ${hoy}.`);
   // D6: el tipo de cobro de la primera asignación, «Mensual» por defecto.
   await expect(
     modal.getByRole("radiogroup", { name: "Tipo de cobro" }).getByRole("radio", { name: "Mensual", exact: true }),
@@ -343,20 +381,19 @@ test("el superadmin asigna el público desde el detalle de C, pasando el modal d
   // Tras el `refresh`, el bloque pinta el plan y su consumo; el historial, la asignación.
   await expect(bloque.getByRole("heading", { name: nombreDelPublico, exact: true })).toBeVisible({ timeout: 60_000 });
   const consumo = bloque.getByRole("list", { name: "Consumo" });
-  await expect(consumo).toContainText(`0 de ${TOPE_ORDENES} órdenes del ciclo`);
+  await expect(consumo).toContainText(ORDENES_EN_EL_PERIODO_CERO);
   await expect(consumo).toContainText(`0 de ${TOPE_MENSAJEROS} Mensajero`);
   await expect(bloque.getByRole("list", { name: "Cobro del plan" })).toContainText("Tipo de cobro: Mensual");
   await expect(bloque.getByRole("table", { name: "Historial de asignaciones" })).toContainText(nombreDelPublico);
 
   const asignada = await db().organizacion.findUniqueOrThrow({
     where: { id: c().organizacionId },
-    select: { planId: true, planTipoCobro: true, planCicloAnclaAt: true, planCicloCortoDesdeAt: true },
+    select: { planId: true, planTipoCobro: true, planCicloAnclaAt: true },
   });
   expect(asignada.planId).toBe(publicoId);
   expect(asignada.planTipoCobro).toBe("mensual");
-  // «Hoy» ancla en el instante de la asignación (P9): sin ciclo corto (R34 solo con fecha futura).
+  // SLT-86 (P4 = a): ya no hay ciclo corto (la columna `plan_ciclo_corto_desde_at` se fue); queda el ancla.
   expect(asignada.planCicloAnclaAt, "la primera asignación no fijó el ancla").not.toBeNull();
-  expect(asignada.planCicloCortoDesdeAt, "«hoy» no abre ciclo corto").toBeNull();
   // El público no tocó a A: A sigue con su custom.
   const deA = await db().organizacion.findUniqueOrThrow({ where: { id: a().organizacionId }, select: { planId: true } });
   expect(deA.planId).toBe(planId);
@@ -369,9 +406,9 @@ test("el maestro de A ve en «Mi plan» el nombre, sus topes y su consumo (R28)"
     expect(estado).toBeLessThan(400);
     expect(texto.includes(PANTALLA_DE_ERROR), "pantalla de error").toBe(false);
     expect(texto.includes(NO_ENCONTRADO), "«no encontrado» para el maestro").toBe(false);
-    await expect(page.getByRole("heading", { name: nombreDelPlan, exact: true })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Plan activo", exact: true }).getByRole("heading", { name: nombreDelPlan, exact: true })).toBeVisible();
     const consumo = page.getByRole("list", { name: "Consumo" });
-    await expect(consumo).toContainText(`0 de ${TOPE_ORDENES} órdenes del ciclo`);
+    await expect(consumo).toContainText(ORDENES_EN_EL_PERIODO_CERO);
     await expect(consumo).toContainText(`1 de ${TOPE_MENSAJEROS} Mensajero`);
     // SLT-66 R5: el maestro no tiene tope ni fila de consumo; antes, «1 Maestro · sin límite».
     await expect(consumo).not.toContainText("Maestro");
@@ -411,5 +448,30 @@ test("el mensajero de A recibe «no encontrado» en «Mi plan» (R28, R8)", asyn
     expect(html.includes(nombreDelPlan), "el mensajero ve el nombre del plan").toBe(false);
   } finally {
     await ctx.close();
+  }
+});
+
+test("el admin de A recibe 404 en «Mi plan», sin el nombre del plan, y su menú no enlaza a esa ruta (SLT-91 R3, R14)", async ({ browser }) => {
+  test.setTimeout(240_000);
+  expect(planId, "A no tiene plan: el «sin el nombre» no probaría nada").not.toBe("");
+  const ruta = await abrirCon(browser, sesiones.adminA, "/mi-plan");
+  try {
+    console.log(`[planes] /mi-plan del admin: estado HTTP ${ruta.estado}`);
+    expect(ruta.estado, "el admin no recibe un 404 HTTP").toBe(404);
+    expect(ruta.texto.includes("No encontramos esta página"), "el admin no ve «no encontrado»").toBe(true);
+    expect(ruta.html.includes(nombreDelPlan), "el admin ve el nombre del plan").toBe(false);
+  } finally {
+    await ruta.ctx.close();
+  }
+
+  const inicio = await abrirCon(browser, sesiones.adminA, "/dashboard");
+  try {
+    expect(inicio.estado).toBeLessThan(400);
+    expect(inicio.texto.includes(PANTALLA_DE_ERROR), "pantalla de error").toBe(false);
+    // El control: el menú del `admin` está pintado. Sin él, los 0 enlaces no probarían nada.
+    expect(await inicio.page.locator('a[href="/configuracion/tarifas"]').count(), "el menú del admin no se pintó").toBeGreaterThan(0);
+    await expect(inicio.page.locator('a[href^="/mi-plan"]')).toHaveCount(0);
+  } finally {
+    await inicio.ctx.close();
   }
 });

@@ -18,6 +18,10 @@ import type {
   ITarifasPantallaService,
 } from "@/lib/interfaces/services/ITarifasPantallaService";
 import type { ITarifaValorService } from "@/lib/interfaces/services/ITarifaValorService";
+import type {
+  GuardarTopeIntentosResult,
+  ITopeIntentosService,
+} from "@/lib/interfaces/services/ITopeIntentosService";
 import { serviciosDeTarifas } from "@/lib/tarifas/servicios";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
@@ -81,6 +85,26 @@ export async function activarTarifasNuevas(
     const actor = await actorDe(deps);
     const servicio = deps.servicio ?? serviciosDeTarifas(getPrismaClient()).tarifaActivacion;
     return servicio.activar(input, actor);
+  });
+  return aResultado(r);
+}
+
+export interface GuardarTopeIntentosDeps extends ConActor {
+  servicio?: ITopeIntentosService;
+}
+
+/**
+ * SLT-77 (design §4.1, R3-R5): el `maestro` fija los intentos de entrega de su empresa. El rol y la entrada
+ * los decide el servicio, en ese orden; la empresa sale de la sesion.
+ */
+export async function guardarTopeIntentos(
+  input: unknown,
+  deps: GuardarTopeIntentosDeps = {},
+): Promise<GuardarTopeIntentosResult | SinSesion | FalloInesperado> {
+  const r = await withErrorHandler(async () => {
+    const actor = await actorDe(deps);
+    const servicio = deps.servicio ?? serviciosDeTarifas(getPrismaClient()).topeIntentos;
+    return servicio.guardar(input, actor);
   });
   return aResultado(r);
 }

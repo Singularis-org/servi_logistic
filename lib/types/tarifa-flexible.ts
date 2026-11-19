@@ -141,11 +141,18 @@ const ivaPctSchema = z
   .string()
   .regex(PORCENTAJE_0_A_100, "El IVA debe ser un porcentaje entre 0 y 100 con hasta 2 decimales.");
 
-/** Los niveles; que la combinacion sea valida para el actor (R7) lo decide el service (T6.2). */
+/**
+ * Los niveles; que la combinacion sea valida para el actor (R7) lo decide el service (T6.2).
+ *
+ * SLT-55 (R6): `mensajeroId` se declara aunque la rejilla por zona no lo mande. Si zod no lo conociera, lo
+ * descartaria en silencio y un valor con mensajero y zona se guardaria como valor de la ZONA, que paga a
+ * todos sus mensajeros. Con `default` y no obligatorio: esos payloads no tienen por que empezar a mandarlo.
+ */
 const nivelSchema = {
   zonaId: idSchema.nullable(),
   grupoId: idSchema.nullable(),
   tiendaId: idSchema.nullable(),
+  mensajeroId: idSchema.nullable().default(null),
   vehiculoId: idSchema.nullable(),
 };
 
@@ -162,6 +169,19 @@ function porcentajeHasta100(dato: ConModoYValor, ctx: z.RefinementCtx): void {
   }
 }
 
+/** SLT-94 (R11): el rechazo de un fulfillment en porcentaje. */
+export const MSG_FULFILLMENT_SOLO_MONTO = "El fulfillment solo se configura como monto fijo.";
+
+/**
+ * SLT-94 (R11, D6): el fulfillment SOLO en monto fijo (+ su % de IVA, obligatorio como en todo cobro a
+ * la tienda). Mismo respaldo en la base que el nivel: el CHECK `tarifa_valor_fulfillment_solo_tienda_monto` (R12).
+ */
+function fulfillmentSoloMonto(dato: ConModoYValor & { concepto: string }, ctx: z.RefinementCtx): void {
+  if (dato.concepto === "tienda_fulfillment" && dato.modo !== "monto") {
+    ctx.addIssue({ code: "custom", path: ["modo"], message: MSG_FULFILLMENT_SOLO_MONTO });
+  }
+}
+
 /** Cobro a la tienda: `ivaPct` OBLIGATORIO (R3, R4). */
 export const escrituraCobroSchema = z
   .object({
@@ -171,7 +191,8 @@ export const escrituraCobroSchema = z
     ivaPct: ivaPctSchema,
     ...nivelSchema,
   })
-  .superRefine(porcentajeHasta100);
+  .superRefine(porcentajeHasta100)
+  .superRefine(fulfillmentSoloMonto);
 
 /**
  * Pago al mensajero o a la satelite: `ivaPct` PROHIBIDO, tambien `"0"` y `null` (R45, P4). Se
@@ -206,7 +227,7 @@ export type EscrituraValorInput = z.infer<typeof escrituraValorSchema>;
  * en cualquier concepto porque es el service quien lo valida con `escrituraValorSchema` y devuelve
  * `validation_error` en `ivaPct` cuando un pago lo trae (R45). Con el tipo estrecho del esquema, un
  * pago con `"0"` no compilaria y el rechazo no se podria ni probar ni explicar al usuario.
- * `mensajeroId` no esta: el valor propio del mensajero lo escribe SLT-55.
+ * `mensajeroId` solo lo trae el valor propio del mensajero (SLT-55); ausente equivale a `null`.
  */
 export interface FijarValorInput {
   concepto: TarifaConcepto;
@@ -216,6 +237,7 @@ export interface FijarValorInput {
   zonaId: string | null;
   grupoId: string | null;
   tiendaId: string | null;
+  mensajeroId?: string | null;
   vehiculoId: string | null;
 }
 
@@ -262,6 +284,18 @@ export type CrearGrupoInput = z.input<typeof crearGrupoSchema>;
  * una peticion que no la dice no puede confundirse con una que confirma.
  */
 export const activarTarifasSchema = z.object({ confirmaFaltantes: z.boolean() });
+
+/**
+ * SLT-77 (design §3, §4.1, R5): el rango que la empresa puede elegir. Aqui y no en `lib/types/tope-intentos.ts`:
+ * ese modulo lo importa el panel del mensajero, y el numero no le llega (R32, R33).
+ */
+export const TOPE_INTENTOS_MINIMO = 1;
+export const TOPE_INTENTOS_MAXIMO = 10;
+
+/** `strict`: la empresa sale de la sesion (R3), y una clave de mas se rechaza en vez de ignorarse. */
+export const guardarTopeIntentosSchema = z
+  .object({ tope: z.number().int().min(TOPE_INTENTOS_MINIMO).max(TOPE_INTENTOS_MAXIMO) })
+  .strict();
 
 /** SLT-54 (design §7): `tiendaId` pide ademas la referencia de esa tienda. */
 export const cargarZonaTarifasSchema = z.object({ zonaId: idSchema, tiendaId: idSchema.optional() });

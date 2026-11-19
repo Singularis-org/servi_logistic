@@ -49,6 +49,9 @@ const LISTA_BLANCA_DEL_BORDE = [
   // SL-36 (R23, R27): la clave de Anthropic es de la empresa de la sesión. Lee SOLO su integración
   // del asistente, y lo que lee es la credencial para llamar, nunca un dato que viaje al modelo.
   "@/lib/services/integraciones/asistente-de-la-empresa",
+  // SLT-42 (decisión del humano tras T5.5): la zona horaria del país de la empresa de la sesión, para
+  // el día del tope (R16). Solo sale de ahí una zona IANA; nada del país viaja al proveedor.
+  "@/lib/services/ReglasPaisEmpresaService",
 ];
 
 function listarTs(relativo: string): string[] {

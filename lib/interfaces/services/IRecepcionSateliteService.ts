@@ -2,6 +2,9 @@ import type { CreatedPreset, FilaBodegaSatelite, SalioARepartoValor } from "@/li
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { ListarCompletoServiceResult } from "@/lib/types/descarga-listado";
 import type { ListarPaginadoServiceResult } from "@/lib/types/listado-paginado";
+import type { ResumenRecepcion } from "@/lib/interfaces/repositories/IOrdenRepository";
+import type { DireccionOrden } from "@/lib/types/ordenamiento-listado";
+import type { CampoOrdenBodegaSatelite } from "@/lib/types/recepcion-satelite";
 
 // Feature 33 — contrato del servicio de la bodega satelite: listar "Mis
 // asignaciones" del adminSatelite (dos grupos: por recibir / recibidas) y recibir
@@ -155,6 +158,13 @@ export interface ListarOrdenesBodegaCompletoInput {
    * listado —pagina, descarga y vigencia de la seleccion—, que miran el mismo conjunto.
    */
   salio_a_reparto?: SalioARepartoValor;
+  /**
+   * SLT-210 (R1403) — el orden dentro de cada grupo de estado, con las MISMAS claves publicas
+   * que `/ordenes`. Ausentes = fecha de creacion descendente, el orden de siempre (R1401). No
+   * filtra: la vigencia de la seleccion no lo lleva.
+   */
+  sortBy?: CampoOrdenBodegaSatelite;
+  sortDir?: DireccionOrden;
 }
 
 /**
@@ -192,12 +202,12 @@ export type ListarIdsVigentesBodegaServiceResult =
 // carrera irresoluble (la orden se movio a un estado inesperado entre lectura y
 // escritura, R18).
 export type RecibirServiceResult =
-  | { status: "ok"; ordenId: string; estado: "en_bodega_satelite" } // R11
+  | { status: "ok"; ordenId: string; estado: "en_bodega_satelite"; resumen?: ResumenRecepcion } // R11; SLT-167 (R710)
   | { status: "forbidden" } // R17
   | { status: "sin_zona" } // R5
   | { status: "zona_ajena" } // R12
   | { status: "estado_invalido"; estado: string } // R13
-  | { status: "ya_recibida" } // R14 (idempotente)
+  | { status: "ya_recibida"; resumen?: ResumenRecepcion } // R14 (idempotente); SLT-167 (R711)
   | { status: "no_encontrada" } // R15 (inexistente o borrada)
   | { status: "validation_error"; fieldErrors: Record<string, string[]> } // catalogo incompleto
   | { status: "conflict" }; // R18 (race irresoluble)

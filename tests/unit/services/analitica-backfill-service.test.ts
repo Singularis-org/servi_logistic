@@ -1,3 +1,4 @@
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 import { describe, it, expect } from "vitest";
 import { planificarBackfill } from "@/lib/analytics/backfill-rango";
 import { FALLOS_CONSECUTIVOS_QUE_ABORTAN } from "@/lib/config/analitica-rollup";
@@ -91,7 +92,7 @@ function salidaFalsa(): SalidaFalsa & { linea(l: LineaFecha): void; falla(f: Fal
 const AHORA = new Date("2026-08-02T15:00:00.000Z");
 
 function planDe(desde: string, hasta: string) {
-  const r = planificarBackfill({ desde, hasta, ahora: AHORA });
+  const r = planificarBackfill({ desde, hasta, ahora: AHORA, zona: ZONA_CR });
   if (!r.ok) throw new Error(r.motivo);
   return r.plan;
 }

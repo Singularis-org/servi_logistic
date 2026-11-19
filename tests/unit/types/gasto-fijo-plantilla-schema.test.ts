@@ -4,6 +4,7 @@ import {
   crearGastoFijoPlantillaSchema,
 } from "@/lib/types/gasto-fijo-plantilla";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 85 (R1/R4/R5/R6) — el BORDE zod de la plantilla de gasto fijo, que es donde vive el
 // fallo que esta ficha cierra: hasta la 85, `actualizar` HEREDABA los defaults de `crear`, asi
 // que una edicion de `{id, concepto, monto}` pasaba entera y reescribia el ciclo a `meses`/`1`
@@ -36,7 +37,7 @@ describe("crearGastoFijoPlantillaSchema — defaults del ciclo (R4)", () => {
     vi.useFakeTimers();
     vi.setSystemTime(RELOJ_CONGELADO);
 
-    const data = crearGastoFijoPlantillaSchema.parse({
+    const data = crearGastoFijoPlantillaSchema(ZONA_CR).parse({
       concepto: "Alquiler",
       monto: "80000.00",
     });
@@ -49,7 +50,7 @@ describe("crearGastoFijoPlantillaSchema — defaults del ciclo (R4)", () => {
   });
 
   it("crear con periodicidad explicita NO la pisa con los defaults", () => {
-    const data = crearGastoFijoPlantillaSchema.parse({
+    const data = crearGastoFijoPlantillaSchema(ZONA_CR).parse({
       concepto: "Alquiler",
       monto: "80000.00",
       ...CICLO_VIGENTE,
@@ -99,7 +100,7 @@ describe("actualizarGastoFijoPlantillaSchema — el ciclo es OBLIGATORIO (R1)", 
 
 describe("fechaCobro — dia que EXISTE en el calendario (R5)", () => {
   it("rechaza 2026-02-31 al crear y al actualizar aunque cumpla el formato", () => {
-    const alCrear = crearGastoFijoPlantillaSchema.safeParse({
+    const alCrear = crearGastoFijoPlantillaSchema(ZONA_CR).safeParse({
       concepto: "Alquiler",
       monto: "80000.00",
       periodicidadUnidad: "meses",
@@ -123,7 +124,7 @@ describe("fechaCobro — dia que EXISTE en el calendario (R5)", () => {
 
   it("acepta el 29 de febrero de un ano BISIESTO (2028) y rechaza el de uno que no lo es", () => {
     expect(
-      crearGastoFijoPlantillaSchema.safeParse({
+      crearGastoFijoPlantillaSchema(ZONA_CR).safeParse({
         concepto: "Alquiler",
         monto: "80000.00",
         periodicidadUnidad: "meses",
@@ -133,7 +134,7 @@ describe("fechaCobro — dia que EXISTE en el calendario (R5)", () => {
     ).toBe(true);
 
     expect(
-      crearGastoFijoPlantillaSchema.safeParse({
+      crearGastoFijoPlantillaSchema(ZONA_CR).safeParse({
         concepto: "Alquiler",
         monto: "80000.00",
         periodicidadUnidad: "meses",
@@ -145,7 +146,7 @@ describe("fechaCobro — dia que EXISTE en el calendario (R5)", () => {
 
   it("rechaza una fecha con formato distinto de YYYY-MM-DD", () => {
     expect(
-      crearGastoFijoPlantillaSchema.safeParse({
+      crearGastoFijoPlantillaSchema(ZONA_CR).safeParse({
         concepto: "Alquiler",
         monto: "80000.00",
         periodicidadUnidad: "meses",
@@ -190,7 +191,7 @@ describe("periodicidad — cantidad y unidad (R6)", () => {
 
   it("la misma regla de cantidad rige al CREAR (crear no relaja lo que actualizar exige)", () => {
     expect(
-      crearGastoFijoPlantillaSchema.safeParse({
+      crearGastoFijoPlantillaSchema(ZONA_CR).safeParse({
         concepto: "Alquiler",
         monto: "80000.00",
         periodicidadUnidad: "dias",
@@ -212,7 +213,7 @@ describe("periodicidad — cantidad y unidad (R6)", () => {
 // schema: una asercion contra su propia fuente esta verde por construccion.
 describe("gasto-fijo-plantilla — el interruptor de aprobacion en el borde (ficha 333, R2)", () => {
   it("R2: crear SIN el interruptor deja la plantilla en «requiere aprobacion»", () => {
-    const data = crearGastoFijoPlantillaSchema.parse({
+    const data = crearGastoFijoPlantillaSchema(ZONA_CR).parse({
       concepto: "Alquiler",
       monto: "80000.00",
       ...CICLO_VIGENTE,
@@ -224,7 +225,7 @@ describe("gasto-fijo-plantilla — el interruptor de aprobacion en el borde (fic
   it("R1: crear CON «cobra sola» (false) NO lo pisa con el default", () => {
     // Anti-vacuidad del caso anterior: si el schema forzara `true` en vez de aplicarlo como
     // default, el primer test pasaria igual y este moriria.
-    const data = crearGastoFijoPlantillaSchema.parse({
+    const data = crearGastoFijoPlantillaSchema(ZONA_CR).parse({
       concepto: "Alquiler",
       monto: "80000.00",
       ...CICLO_VIGENTE,
@@ -235,7 +236,7 @@ describe("gasto-fijo-plantilla — el interruptor de aprobacion en el borde (fic
   });
 
   it("R1: el interruptor tiene EXACTAMENTE dos valores; nada que no sea booleano cruza el borde", () => {
-    const conTexto = crearGastoFijoPlantillaSchema.safeParse({
+    const conTexto = crearGastoFijoPlantillaSchema(ZONA_CR).safeParse({
       concepto: "Alquiler",
       monto: "80000.00",
       ...CICLO_VIGENTE,

@@ -41,7 +41,7 @@ function usuario(over: Partial<UsuarioPublico> = {}): UsuarioPublico {
     cedula: "1710034065",
     tipoIdentificacionId: "tipo-1",
     rolId: "rol-sat",
-    fulfillment: false,
+    seRecogeEnTienda: true,
     zonaId: "z1",
     createdAt: new Date("2026-01-01"),
     updatedAt: new Date("2026-01-01"),

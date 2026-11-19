@@ -2,11 +2,15 @@
 
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { CierreDiaRepository } from "@/lib/repositories/CierreDiaRepository";
+import { LiquidacionPagoRepository } from "@/lib/repositories/LiquidacionPagoRepository";
+import { PagoMensajeroMovimientoRepository } from "@/lib/repositories/PagoMensajeroMovimientoRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
 import { TarifaZonaMensajeroRepository } from "@/lib/repositories/TarifaZonaMensajeroRepository";
 import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
 import { CierreDiaService } from "@/lib/services/CierreDiaService";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import { SupabaseSignedUrlProvider } from "@/lib/storage/SupabaseSignedUrlProvider";
 import { gestionConfig } from "@/lib/config/gestion";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
@@ -24,6 +28,7 @@ import {
   type ListarCierreDiaResult,
   type ListarCierresPasadosCompletoResult,
   type ListarCierresPasadosResult,
+  type ResumenGananciaResult,
   type SolicitarCierreResult,
   type VerCierrePasadoResult,
 } from "@/lib/types/cierre";
@@ -65,6 +70,21 @@ function buildService(): ICierreDiaService {
     notificarCierreDiaPorAprobarReal,
     // FEATURE 271 (T6.5, R40/R41): COMPOSITION ROOT del aviso «quedaste bloqueado por acumular».
     notificarMensajeroBloqueadoReal,
+    // SLT-42 (R22): la zona del pais de la empresa, con la que se calcula el dia en curso.
+    construirReglasPaisEmpresa(prisma),
+    // SLT-137 (R165): sin estas dos lecturas el listado no emite el pendiente de pago y la cola
+    // del mensajero dice «Sin dato» en cada aprobado.
+    {
+      liquidaciones: new LiquidacionPagoRepository(prisma),
+      premios: new PagoMensajeroMovimientoRepository(prisma),
+    },
+    // SLT-112 (R352, R357): sin esta lectura `resumenGanancia` da `sin_dato` y la cola no pinta
+    // las tarjetas. SLT-139 (R345 -> R353): `pagadoPorSatelite` suma a «Ganancia pagada este mes»
+    // los `pago_satelite` del mes; sin ella la tarjeta omitiria lo que pago la satelite.
+    {
+      pagos: new LiquidacionPagoRepository(prisma),
+      pagadoPorSatelite: new PagoMensajeroMovimientoRepository(prisma),
+    },
   );
 }
 
@@ -79,6 +99,8 @@ export interface CierreDiaDeps {
 // bloqueo) y el actor en tests, sin tocar el service backend.
 export interface EstadoBloqueoMensajeroDeps {
   ordenRepo?: Pick<IOrdenRepository, "findBloqueoDetalle">;
+  /** SLT-42: las reglas del pais de la empresa (su zona). Por defecto, la implementacion real. */
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
   getActor?: () => Promise<Actor | null>;
 }
 
@@ -122,7 +144,9 @@ export async function estadoBloqueoMensajero(
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R1: antes de tocar el repo
     const repo = deps.ordenRepo ?? new OrdenRepository(getPrismaClient());
-    const bloqueo = await repo.findBloqueoDetalle(actor.usuarioId);
+    // SLT-42 (R22): la jornada que nombra el aviso se fecha en la zona del pais de la empresa.
+    const zona = await (deps.reglasPais ?? construirReglasPaisEmpresa(getPrismaClient())).zonaHoraria();
+    const bloqueo = await repo.findBloqueoDetalle(actor.usuarioId, zona);
     return { status: "ok" as const, bloqueo };
   });
   return isAppErrorShape(r) ? { status: "unauthenticated" as const } : r;
@@ -139,6 +163,25 @@ export async function listarCierreDia(
     return service.listarCierreDia(actor);
   });
   return isAppErrorShape(r) ? { status: "unauthenticated" as const } : r;
+}
+
+/**
+ * SLT-112 (R350-R357, R359) — «Ganancia pendiente de pago» y «Ganancia pagada este mes» del
+ * mensajero de la sesion. Sin input de negocio: el `mensajero_id` sale del actor. Un fallo de
+ * lectura devuelve `error` (no lanza): la pagina carga igual, sin tarjetas (R357). La llama
+ * `app/(app)/cierre-dia/page.tsx`.
+ */
+export async function resumenGananciaMensajero(
+  deps: CierreDiaDeps = {},
+): Promise<ResumenGananciaResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError(); // antes de tocar el service
+    const service = deps.service ?? buildService();
+    return service.resumenGanancia(actor);
+  });
+  if (!isAppErrorShape(r)) return r;
+  return r.code === "UNAUTHORIZED" ? { status: "unauthenticated" } : { status: "error" };
 }
 
 /**
@@ -168,11 +211,10 @@ export async function listarCierresPasadosPaginado(
  * traia las gestiones del dia, la tarifa por zona+vehiculo y la FIRMA en lote de las evidencias
  * fotograficas de todas ellas — de todo eso, el archivo usaba un solo campo y ninguna URL (R9).
  *
- * El `mensajero_id` no viaja en el input: lo pone el servicio desde el actor de la sesion. Y como
- * este listado no tiene filtros, la lista blanca derivada de la de su pagina no deja NINGUNA
- * clave: cualquier cosa que llegue —empezando por `mensajeroId`— muere aqui con
- * `validation_error` sin tocar el servicio (R17). El input se parsea aunque no se transporte
- * nada: parsear ES la barrera.
+ * El `mensajero_id` no viaja en el input: lo pone el servicio desde el actor de la sesion. La
+ * lista blanca derivada de la de su pagina deja una sola clave, `filtros` (SLT-138, R168): todo
+ * lo demas —empezando por `mensajeroId`— muere aqui con `validation_error` sin tocar el servicio
+ * (R17). Con filtros, el archivo lleva TODOS los cierres que los cumplen, no la pagina (R174).
  */
 export async function listarCierresPasadosCompleto(
   input: unknown = {},
@@ -181,9 +223,12 @@ export async function listarCierresPasadosCompleto(
   const r = await withErrorHandler(async () => {
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R7: antes de tocar el service
-    listarCierresPasadosCompletoSchema.parse(input); // ZodError -> VALIDATION_ERROR
+    const data = listarCierresPasadosCompletoSchema.parse(input); // ZodError -> VALIDATION_ERROR
     const service = deps.service ?? buildService();
-    return service.listarCierresPasadosCompleto(actor);
+    // SLT-138 (R173, R174): sin `filtros`, la llamada es la de antes (solo el actor).
+    return data.filtros
+      ? service.listarCierresPasadosCompleto(actor, data.filtros)
+      : service.listarCierresPasadosCompleto(actor);
   });
   return isAppErrorShape(r) ? toCierreDiaActionError(r) : r;
 }

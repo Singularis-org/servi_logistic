@@ -17,11 +17,6 @@ export type EmpresaListada = {
   /** Los usuarios de rol `maestro` de la empresa, por orden de alta. Puede venir vacio. */
   maestros: { nombre: string; email: string }[];
   /**
-   * SL-40 (R10): la excepción del cobro por orden, con dos decimales, o `null` si la empresa usa el
-   * valor global. SLT-66: la sigue usando la edición de la celda; lo que se cobra hoy es `cobroVigente`.
-   */
-  cobroPorOrden: string | null;
-  /**
    * SLT-66 (R31, design §6.4): lo que se cobraría hoy por una orden nueva y de dónde sale, con la misma
    * `cobro_plataforma_tarifa_de` que usa el trigger del cargo (§3.2). Dos decimales. SLT-83 (R22): fijo
    * o porcentual (porcentaje y mínimo, solo del plan).
@@ -30,16 +25,20 @@ export type EmpresaListada = {
   /** SLT-66 (R32): el plan asignado, o `null` sin plan. Ajuste planes-custom (D9): con su tipo de cobro. */
   plan: { id: string; nombre: string; tipoCobro: TipoCobro } | null;
   /**
-   * SL-45 (R28, design §9): la deuda vigente de la empresa con la plataforma, con la regla de R13
-   * (cargos − reversos − pagos vigentes). Es el mismo DTO que pinta la wallet: la pantalla elige
-   * «Debe», «Al día» o «A favor» por `estado` y pinta `importe`, sin comparar ni restar.
+   * SL-45 (R28, design §9): la deuda vigente de la empresa con la plataforma, con la regla de R13.
+   * SLT-60 (R7): cargos − reversos + cuotas de las facturas cerradas − pagos CONFIRMADOS. Es el mismo DTO
+   * que pinta la wallet: la pantalla elige «Debe», «Al día» o «A favor» por `estado` y pinta `importe`, sin
+   * comparar ni restar.
    */
   deudaPlataforma: DeudaPlataformaDTO;
   /**
-   * SL-45 (R28, ampliación de Carlos del 2026-10-24): lo que la empresa ha pagado a la plataforma, Σ
-   * de sus pagos vigentes (un pago anulado no cuenta), con dos decimales. "0.00" si no ha pagado.
+   * SL-45 (R28, ampliación de Carlos del 2026-10-24): lo que la empresa ha pagado a la plataforma.
+   * SLT-60 (R8): Σ de sus pagos CONFIRMADOS (uno por confirmar o anulado no cuenta), con dos decimales.
+   * "0.00" si no tiene ninguno confirmado.
    */
   pagadoPlataforma: string;
+  /** SLT-60 (R27): cuántos pagos a la plataforma de la empresa están por confirmar (ni confirmados ni anulados). */
+  pagosPorConfirmar: number;
   /** SL-20 (R9): el país de la empresa, fijado en el alta. Toda empresa tiene uno (NOT NULL). */
   pais: { id: string; nombre: string };
 };

@@ -13,6 +13,7 @@ import type { ITarifaZonaMensajeroRepository } from "@/lib/interfaces/repositori
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { CierreDiaService } from "@/lib/services/CierreDiaService";
 import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FEATURE 261 (B10) — EL RELOJ DEL DESHACER, INYECTADO. R16, R19.
@@ -96,7 +97,7 @@ function montar(repo: Repo = fakeRepo()) {
   const tarifaZonaRepo: ITarifaZonaMensajeroRepository = conResolvePagosViejo({
     resolvePagoTarifa: vi.fn(async () => null),
   });
-  const service = new CierreDiaService(repo, zonaRepo, ordenRepo, signedUrls, tarifaZonaRepo);
+  const service = new CierreDiaService(repo, zonaRepo, ordenRepo, signedUrls, tarifaZonaRepo, undefined, undefined, reglasPaisFijas());
   return { service, repo };
 }
 

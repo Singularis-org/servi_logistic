@@ -28,7 +28,8 @@ import { CAJA_A, sembrarCaja } from "./_wallet-iva-sl39-siembra";
  *    que la wallet pinte la región de la deuda), una zona y una tienda.
  * 2. El superadmin entra con OTP. En el listado de «Empresas» la fila de A dice «Sin plan» y el cobro
  *    global. Crea por `PlanForm` un custom de A «Con monto»: costo base mensual 50000, costo por orden
- *    100, tipo de cobro «Mensual» (D6) e inicio del ciclo en hoy (D4; abre en mañana, D5). Crearlo lo
+ *    100, tipo de cobro «Mensual» (D6) e inicio del ciclo el día 1 del mes en curso (D4; abre en mañana,
+ *    D5; SLT-86: el día 1 y no hoy, para que el período mensual sea completo y no un tramo). Crearlo lo
  *    deja asignado a A (ajuste planes-custom D2). De vuelta al listado, la fila de A dice el plan con
  *    «· Mensual» (D9), «Cambiar plan» y, en «Cobro por orden», «₡100» y «del plan» (R31).
  * 2b. «Asignar plan» del listado (R32) sigue existiendo para planes públicos: B, una segunda empresa sin
@@ -39,7 +40,8 @@ import { CAJA_A, sembrarCaja } from "./_wallet-iva-sl39-siembra";
  * 4. La tienda de A crea una orden con su sesión por el endpoint de la carga masiva (precedente SL-24
  *    §11.1).
  * 5. `/wallet` dice «₡100», no «₡500»: el cargo salió del plan y no del global.
- * 6. `/mi-plan` muestra el costo por orden, las órdenes del ciclo y el total estimado.
+ * 6. `/mi-plan` muestra el costo base del período, el costo por orden, las órdenes del período y el
+ *    total estimado (SLT-86 R28: «período» en lugar de «ciclo»).
  * 7. Por detrás (`clienteDueno`): un único movimiento de la orden, `cargo 100.00 plan`.
  * 8. `afterAll`: devuelve el global a lo que había.
  *
@@ -66,11 +68,26 @@ const TEXTO = {
   delPlan: "del plan",
   regionPlan: "Plan",
   modal: "¿Asignar este plan a la empresa?",
-  costoBase: "Costo base: 50000.00 al mes",
+  // SLT-86 (R12, R28; design §7.1 y decisión del 2026-11-06): «Costo base {tipo}: …» del período en curso,
+  // y «período» en lugar de «ciclo». El período es el mes de calendario completo (ver `primerDiaDelMes`).
+  costoBase: "Costo base mensual: 50000.00",
   costoPorOrden: "Costo por orden: 100.00",
-  ordenesDelCiclo: "Órdenes del ciclo: 1 × 100.00 = 100.00",
-  total: "Total estimado del ciclo: 50100.00",
+  // SLT-99 (decisión del humano del 2026-11-10): el costeo ya no lleva «Órdenes del período: n × c = s» ni
+  // «Total estimado del período»; la orden del período se lee en «Órdenes» del plan activo, sin tope.
+  ordenesDelPeriodo: /^Órdenes del período: /,
+  total: /Total estimado del período/,
+  usoOrdenes: "1 · Sin tope",
 } as const;
+
+/**
+ * SLT-86 (R5, R12): el período mensual es el mes de calendario y una entrada a mitad de mes lo hace un
+ * tramo proporcional, cuyo costo base depende del día en que corra el spec. Con la entrada el día 1 del
+ * mes en curso (hora de la plataforma; dentro del rango de SLT-58 R30, ± 1 mes) el período en curso es
+ * completo y el costo base es el mensual tal cual: las cifras de «Mi plan» quedan fijas.
+ */
+function primerDiaDelMes(): string {
+  return `${fechaCalendarioCR(new Date()).slice(0, 8)}01`;
+}
 
 /** El costo por orden del plan público de B (paso 2b): distinto del de A y del global. */
 const COSTO_POR_ORDEN_PUBLICO = "250.00";
@@ -218,6 +235,15 @@ function b(): EmpresaE2E {
   return empresaB;
 }
 
+/**
+ * SLT-130 (design §4): pulsa «Guardar y continuar» del form del plan (SLT-144 R1: guarda el paso en el
+ * borrador) y espera a que el paso `proximo` esté en pantalla (su título es el `h3` del paso).
+ */
+async function siguientePaso(form: Locator, proximo: string): Promise<void> {
+  await form.getByRole("button", { name: "Guardar y continuar", exact: true }).click();
+  await expect(form.getByRole("heading", { level: 3, name: proximo, exact: true })).toBeVisible({ timeout: 30_000 });
+}
+
 test("el superadmin crea un custom de A «Con monto» con costo por orden 100, que queda asignado (R26, D2, D4–D6)", async () => {
   test.setTimeout(240_000);
   const page = superadmin();
@@ -234,27 +260,37 @@ test("el superadmin crea un custom de A «Con monto» con costo por orden 100, q
   const form = page.getByRole("dialog").getByRole("form", { name: "Crear plan" });
   await expect(form).toBeVisible({ timeout: 60_000 });
 
+  // SLT-130 (design §4): el form va por pasos. General: nombre, custom, empresa, tipo de cobro e inicio.
+  await expect(form.getByRole("heading", { level: 3, name: "General", exact: true })).toBeVisible();
   await form.getByRole("textbox", { name: /^Nombre/ }).fill(nombreDelPlan);
   await form.getByRole("radio", { name: "Custom", exact: true }).click();
   await form.getByRole("combobox", { name: "Empresa" }).click();
   await page.getByRole("option", { name: nombreA, exact: true }).click();
   await expect(form.getByRole("combobox", { name: "Empresa" })).toHaveText(nombreA);
-  // Todos los módulos: asignar el plan no apaga la wallet que el paso 3 abre. Topes vacíos = sin límite.
-  for (const modulo of ORDEN_MODULOS) {
-    await form.getByRole("checkbox", { name: nombreDelModulo(modulo), exact: true }).check();
-  }
-  await form.getByRole("radio", { name: "Con monto", exact: true }).click();
-  await form.getByLabel("Costo base mensual", { exact: true }).fill(COSTO_BASE_MENSUAL);
-  await form.getByLabel("Costo por orden", { exact: true }).fill(COSTO_POR_ORDEN);
 
   // D6: «Mensual», el tipo por defecto, que es el que da el total mensual de «Mi plan».
   const mensual = form.getByRole("radiogroup", { name: "Tipo de cobro" }).getByRole("radio", { name: "Mensual", exact: true });
   await mensual.click();
   await expect(mensual).toBeChecked();
-  // D4/D5: abre en mañana; se pone hoy para que la orden del paso 4 caiga dentro del ciclo.
-  const inicio = form.getByLabel("Inicio del ciclo de órdenes", { exact: true });
+  // D4/D5: abre en mañana. SLT-86: se pone el día 1 del mes en curso (antes, hoy), para que la orden del
+  // paso 4 caiga dentro del período y el período sea completo (`primerDiaDelMes`).
+  const inicio = form.getByLabel("Inicio del período", { exact: true });
   await expect(inicio).toHaveValue(mananaCalendarioCR(new Date()));
-  await inicio.fill(fechaCalendarioCR(new Date()));
+  await inicio.fill(primerDiaDelMes());
+
+  await siguientePaso(form, "Precio y descuentos");
+  await form.getByRole("radio", { name: "Con monto", exact: true }).click();
+  await form.getByLabel("Costo base mensual", { exact: true }).fill(COSTO_BASE_MENSUAL);
+  await siguientePaso(form, "Cobro por orden");
+  await form.getByLabel("Costo por orden", { exact: true }).fill(COSTO_POR_ORDEN);
+  // Topes vacíos = sin límite.
+  await siguientePaso(form, "Topes");
+  // Todos los módulos: asignar el plan no apaga la wallet que el paso 3 abre.
+  await siguientePaso(form, "Módulos");
+  for (const modulo of ORDEN_MODULOS) {
+    await form.getByRole("checkbox", { name: nombreDelModulo(modulo), exact: true }).check();
+  }
+  await siguientePaso(form, "Revisar y crear");
 
   // D13/D17: «Crear plan» espera a la vista previa.
   const crear = form.getByRole("button", { name: "Crear plan" });
@@ -323,7 +359,7 @@ test("«Asignar plan» del listado lleva a B al bloque «Plan» y le asigna un p
   // el tipo de cobro se cambia a «Anual» (D6).
   const modal = page.getByRole("dialog", { name: TEXTO.modal });
   await expect(modal).toBeVisible({ timeout: 30_000 });
-  const inicio = modal.getByLabel("Inicio del ciclo de órdenes");
+  const inicio = modal.getByLabel("Inicio del período");
   await expect(inicio).toHaveValue(mananaCalendarioCR(new Date()));
   await inicio.fill(fechaCalendarioCR(new Date()));
   const anual = modal.getByRole("radiogroup", { name: "Tipo de cobro" }).getByRole("radio", { name: "Anual", exact: true });
@@ -437,15 +473,22 @@ test("A crea una orden y la wallet pasa de «₡0» a «₡100», el costo del p
   await page.screenshot({ path: info.outputPath("slt66-wallet.png"), fullPage: true });
 });
 
-test("«Mi plan» muestra el costo por orden, la orden del ciclo y el total estimado (R26)", async ({}, info) => {
+test("«Mi plan» muestra el costo por orden, la orden del período en «Órdenes» del plan activo y ya no el total (R26; SLT-86 R28; SLT-99 2026-11-10)", async ({}, info) => {
   test.setTimeout(240_000);
   expect(ordenId, "no hay orden: falló el caso anterior").not.toBe("");
   const page = maestroA();
   const r = await page.goto("/mi-plan", { waitUntil: "load", timeout: 180_000 });
   expect(r?.status()).toBeLessThan(400);
-  await expect(page.getByRole("heading", { name: nombreDelPlan, exact: true })).toBeVisible({ timeout: 60_000 });
-  for (const linea of [TEXTO.costoBase, TEXTO.costoPorOrden, TEXTO.ordenesDelCiclo, TEXTO.total]) {
+  await expect(page.getByRole("region", { name: "Plan activo", exact: true }).getByRole("heading", { name: nombreDelPlan, exact: true })).toBeVisible({ timeout: 60_000 });
+  for (const linea of [TEXTO.costoBase, TEXTO.costoPorOrden]) {
     await expect(page.getByText(linea, { exact: true })).toBeVisible();
   }
+  const ordenes = page
+    .getByRole("region", { name: "Plan activo", exact: true })
+    .getByRole("listitem")
+    .filter({ has: page.getByText("Órdenes", { exact: true }) });
+  await expect(ordenes.getByText(TEXTO.usoOrdenes, { exact: true })).toBeVisible();
+  await expect(page.getByText(TEXTO.ordenesDelPeriodo)).toHaveCount(0);
+  await expect(page.getByText(TEXTO.total)).toHaveCount(0);
   await page.screenshot({ path: info.outputPath("slt66-mi-plan.png"), fullPage: true });
 });

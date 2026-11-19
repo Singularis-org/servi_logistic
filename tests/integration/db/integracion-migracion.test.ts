@@ -8,7 +8,6 @@ import { comoApp, crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organ
 import {
   CLAVE_LOCK_ESCRITURA_REAL,
   HAY_BASE_DE_DATOS,
-  bajoLockDeEscrituraReal,
   crearPrismaDeTest,
   type TxDeTest,
 } from "./_postgres-real";
@@ -22,8 +21,11 @@ import {
 //
 // SIEMBRA OBLIGATORIA. Cada caso crea sus filas en una transaccion que se revierte y, antes de medir
 // lo que B no ve, comprueba como dueno que la fila de A esta ahi: ningun caso pasa «porque no habia
-// nada». Las dos empresas se crean en `beforeAll`, y si no hay base el archivo sale SKIPPED con
-// nombre, no en verde.
+// nada». Si no hay base el archivo sale SKIPPED con nombre, no en verde.
+//
+// SLT-207 (D79): las dos empresas nacen DENTRO de cada transaccion revertida (`revertida`), no en un
+// `beforeAll` confirmado: todo lo que se mide va por la misma conexion del dueno, asi que no hay nada
+// que deba verse desde otra. El rollback se las lleva; el `afterAll` comprueba que no queda ninguna.
 //
 // Mutaciones medidas (progress/impl_SL-36.md): sin el CHECK `integracion_secretos_cifrados` caen
 // los casos de valor en claro; sin la politica, los de `comoApp(B)`.
@@ -31,8 +33,11 @@ import {
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
 let base: PrismaClient;
+/** Las empresas del caso en curso: las fija `revertida` dentro de su transaccion. */
 let A: string;
 let B: string;
+/** Todas las empresas que nacieron en alguna `revertida`: el `afterAll` mira que no quede ninguna. */
+const empresasDelArchivo: string[] = [];
 
 /** Un valor con la forma REAL de la boveda: el CHECK y el cifrador tienen que estar de acuerdo. */
 const boveda = new BovedaIntegraciones(() => ({
@@ -46,12 +51,20 @@ class Revertir extends Error {
   }
 }
 
-/** Transaccion del dueno que siempre se revierte, bajo el lock de escritura real de la 227. */
+/**
+ * Transaccion del dueno que siempre se revierte, bajo el lock de escritura real de la 227. Siembra
+ * en ella las empresas A y B del caso (SLT-207) y comprueba que estan antes de correr `fn`.
+ */
 async function revertida<T>(fn: (tx: TxDeTest) => Promise<T>): Promise<T> {
   try {
     await base.$transaction(
       async (tx) => {
         await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${CLAVE_LOCK_ESCRITURA_REAL})`);
+        A = (await crearOrganizacion(tx, { nombre: "Empresa A SL36" })).id;
+        B = (await crearOrganizacion(tx, { nombre: "Empresa B SL36" })).id;
+        empresasDelArchivo.push(A, B);
+        // Control positivo: las dos empresas existen en la tx del caso.
+        expect(await tx.organizacion.count({ where: { id: { in: [A, B] } } }), "SLT-207: A y B sembradas").toBe(2);
         throw new Revertir(await fn(tx));
       },
       { timeout: 30_000, maxWait: 15_000 },
@@ -121,25 +134,22 @@ async function filasDeAyB(tx: TxDeTest): Promise<string[]> {
 }
 
 describeSiHayBase("SL-36 T1.3 — migracion integracion contra Postgres (RLS y CHECK)", () => {
-  beforeAll(async () => {
+  beforeAll(() => {
     base = crearPrismaDeTest();
-    await bajoLockDeEscrituraReal(async () => {
-      A = (await crearOrganizacion(base, { nombre: "Empresa A SL36" })).id;
-      B = (await crearOrganizacion(base, { nombre: "Empresa B SL36" })).id;
-    });
-    expect(await base.organizacion.count({ where: { id: { in: [A, B] } } })).toBe(2);
-  }, 60_000);
+  });
 
   afterAll(async () => {
-    if (A !== undefined && B !== undefined) {
-      await bajoLockDeEscrituraReal(async () => {
-        for (const tabla of ["integracion", "integracion_prueba_minuto"]) {
-          await base.$executeRawUnsafe(`DELETE FROM "${tabla}" WHERE organizacion_id = ANY($1::text[])`, [A, B]);
-        }
-        await base.$executeRawUnsafe(`DELETE FROM organizacion WHERE id = ANY($1::text[])`, [A, B]);
-      });
+    try {
+      // SLT-207: los casos sembraron y el rollback se lo llevo todo. Si alguna `revertida` hubiera
+      // confirmado, sus empresas seguirian aqui.
+      expect(empresasDelArchivo.length, "SLT-207: los casos sembraron empresas").toBeGreaterThan(0);
+      expect(
+        await base.organizacion.count({ where: { id: { in: empresasDelArchivo } } }),
+        "SLT-207: ninguna empresa del archivo queda confirmada",
+      ).toBe(0);
+    } finally {
+      await base?.$disconnect();
     }
-    await base?.$disconnect();
   }, 60_000);
 
   /* ------------------------------- RLS activa ------------------------------- */

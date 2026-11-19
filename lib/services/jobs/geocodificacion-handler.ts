@@ -4,6 +4,7 @@
 // Este tipo de job NO es recurrente: no se registra en `buildRecurrencias()`. Se encola
 // por EVENTO (creacion o correccion de la direccion de una orden), no por reloj.
 import type { JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import type { JobHandler } from "@/lib/interfaces/services/IJobQueueService";
 import type { ICredencialesIntegracion } from "@/lib/interfaces/services/ICredencialesIntegracion";
 import {
@@ -102,6 +103,7 @@ export function buildGeocodificacionService(
     // recuperacion no dejaba ni una linea en produccion.
     geocodeLoggerReal,
     now,
+    construirReglasPaisEmpresa(prisma), // SLT-42 (R22, R28): la zona horaria del pais de la empresa.
   );
   return new GeocodificacionService(
     new OrdenGeocodeRepository(prisma),

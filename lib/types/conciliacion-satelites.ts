@@ -207,6 +207,11 @@ export interface ConsolidacionSateliteDTO {
   nota: string | null;
   /** Cuantos `cierre_dia` componen esta consolidacion. */
   cantidadCierres: number;
+  /**
+   * D40 — ¿alguno de esos `cierre_dia` tiene una gestion congelada con el modelo nuevo? Sale de
+   * `cierre_detail.tarifa_modelo`, no del interruptor actual. Opcional en el tipo; ausente se lee como viejo.
+   */
+  incluyeModeloNuevo?: boolean;
 }
 
 // ── Schemas zod de borde ──
@@ -271,20 +276,47 @@ export type ListarConsolidacionesSateliteCompletoInput = z.infer<
 >;
 
 /**
- * R9/R10 — MARCAR RECIBIDA.
+ * SLT-96 — el 0 EXACTO, con hasta 2 decimales ("0", "0.0", "0.00"). Sin signo: "-0" no es un monto.
+ * Vive aparte de `montoPositivoSchema` porque esa pieza la comparten la wallet y los pagos de gestion,
+ * que siguen rechazando el 0 a proposito.
+ */
+const montoCeroSchema = z.string().trim().regex(/^0+(\.0{1,2})?$/);
+
+/** SLT-96 — el aviso del borde cuando el monto de marcar/corregir no tiene forma de monto >= 0. */
+export const MENSAJE_MONTO_RECIBIDO_FORMA = "El monto debe ser 0 o mayor, con hasta 2 decimales.";
+
+/**
+ * SLT-96 — el texto del desenlace `monto_cero_no_permitido`: se quiso registrar 0 en una consolidacion
+ * cuyo declarado NO es 0. Lo decide el repositorio leyendo el snapshot; vive aqui, en el modulo puro,
+ * para que el servicio lo devuelva y la pantalla lo pinte desde el MISMO sitio. Sin simbolo de moneda.
+ */
+export const MENSAJE_MONTO_CERO_CON_DECLARADO =
+  "Solo se puede registrar 0 cuando lo declarado es 0.";
+
+/**
+ * SLT-96 — el monto de marcar y corregir: mayor que 0 (la pieza compartida, intacta) o el 0 exacto.
+ * El borde NO conoce lo declarado, asi que el 0 pasa la forma y el repositorio decide si vale, dentro
+ * de la transaccion de la escritura.
+ */
+const montoRecibidoSchema = z.union([montoPositivoSchema, montoCeroSchema], {
+  error: MENSAJE_MONTO_RECIBIDO_FORMA,
+});
+
+/**
+ * R9/R10 — MARCAR RECIBIDA (y CORREGIR, que comparte el schema).
  *
- * ⚠️ `montoPositivoSchema` TAL CUAL, que exige **> 0**, y la pieza NO se reescribe relajada aqui.
- * Marcar «recibi ₡0» no es una marca: es no marcar, y para eso ya esta no hacer nada. Reescribir la
- * definicion de «cuanto dinero es valido» en este archivo seria la segunda declaracion que un dia
- * diverge (leccion de la ficha 381). Si el humano quiere admitir `0`, se cambia la pieza
- * compartida y se enteran sus otros seis consumidores, que es el punto.
+ * La 431 rechazaba el 0 («marcar recibi ₡0 no es una marca»). SLT-96 (Carlos, 2026-11-09) lo admite
+ * SOLO cuando lo declarado de la consolidacion es 0: una satelite que no tenia nada que entregar
+ * tiene que poder cerrarse. Esa condicion depende de la base, no de la entrada, asi que aqui solo se
+ * admite la forma y `montoPositivoSchema` no se toca.
  *
+ * `.strict()` es parte del contrato (R5): la peticion no puede aportar lo declarado.
  * La `nota` es opcional y se recorta: cero caracteres no es una nota, es ausencia.
  */
 export const marcarConsolidacionRecibidaSchema = z
   .object({
     cierreBodegaId: z.string().uuid(),
-    montoRecibido: montoPositivoSchema, // STRING, > 0, <= 2 decimales (R10)
+    montoRecibido: montoRecibidoSchema, // STRING, >= 0, <= 2 decimales; el 0 lo filtra el repositorio
     nota: z.string().trim().min(1).max(500).optional(),
   })
   .strict();

@@ -1,7 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
 import { Prisma, type PrismaClient } from "@prisma/client";
+import { GESTION_ADMIN_SELECT } from "@/lib/repositories/CierresAdminRepository";
 import { CierresBodegaAdminRepository } from "@/lib/repositories/CierresBodegaAdminRepository";
 import { CierreDetalleFaltanteError } from "@/lib/utils/cierre-detalle";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // Feature 40 — tests unit del CierresBodegaAdminRepository (mockea Prisma, sin DB real).
 // Cubre R15 (findCierresBodega orderBy desc + totales string), R11
@@ -52,6 +55,7 @@ function detalleCierreDbRow(overrides: Record<string, unknown> = {}) {
     totalGeneral: new Prisma.Decimal("10"),
     totalPagoMensajero: new Prisma.Decimal("5"), // feature 39/R20: snapshot del cierre_dia
     totalIngresoBodegaRechazos: new Prisma.Decimal("3"), // feature 56/R19: snapshot del cierre_dia
+    solicitadoAt: new Date("2026-07-11T15:00:00.000Z"), // SLT-104 (PA3): lo pide la proyeccion
     mensajero: { nombre: "Ana Mensajera" },
     _count: { gestiones: 0 }, // SLT-56 (R20): el conteo de gestiones ajustadas del select
     ...overrides,
@@ -62,6 +66,7 @@ function detalleCierreDbRow(overrides: Record<string, unknown> = {}) {
 // la relacion `orden`.
 function gestionDbRow(overrides: Record<string, unknown> = {}) {
   return {
+    createdAt: new Date("2026-07-15T18:00:00.000Z"),
     id: "g1",
     ordenId: "o1",
     resultado: "entregado",
@@ -81,6 +86,7 @@ function gestionDbRow(overrides: Record<string, unknown> = {}) {
     pagos: [{ metodo: "efectivo", monto: new Prisma.Decimal("10.00") }],
     historialEstados: [], // feature 102: acotado al origen SLA (vacio = rechazo NO-SLA/otro resultado)
     ajustesPagoMensajero: [], // SLT-56 (R19): la relacion que ahora lee GESTION_ADMIN_SELECT
+    pagosCongelados: [], // SLT-101 (R66): el pago congelado del mensajero (vacio = sin fila)
     ...overrides,
   };
 }
@@ -88,6 +94,7 @@ function gestionDbRow(overrides: Record<string, unknown> = {}) {
 // Feature 69/T23: la fila CONGELADA de la orden en ese cierre.
 function detalleDbRow(overrides: Record<string, unknown> = {}) {
   return {
+    cierreId: "cd1", // SLT-148: la fila congelada se busca por (cierre del dia, orden)
     ordenId: "o1",
     numGuia: 10,
     numRemision: "REM-1",
@@ -123,6 +130,7 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
   const doble = {
     cierreBodega: {
       findMany: vi.fn(),
+      findFirst: vi.fn(), // SLT-107: la cabecera del detalle (`findCierreBodegaConDetalle`)
       // FICHA 362: la resolucion lee el total y la zona para congelar la fila del registro.
       findUnique: vi.fn().mockResolvedValue({
         totalGeneral: new Prisma.Decimal("0.00"),
@@ -144,6 +152,8 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
     gestionOrden: { findMany: vi.fn() },
     // Feature 69/T23 (R15): el detalle de un cierre YA CREADO sale del SNAPSHOT.
     cierreDetail: { findMany: vi.fn().mockResolvedValue([]) },
+    // SLT-110 (R210): el cargo vigente de fulfillment de las ordenes del detalle (vacio = ninguno).
+    ordenFulfillmentMovimiento: { findMany: vi.fn().mockResolvedValue([]) },
     // Dobles de las tablas VIVAS que esta vista NO debe volver a mirar. No estan en el tipo
     // del cliente del repo: existen solo para que un `expect(...).not.toHaveBeenCalled()`
     // pueda MORDER si alguien reintroduce la lectura viva.
@@ -160,6 +170,7 @@ describe("CierresBodegaAdminRepository.findCierresBodega (R15)", () => {
   it("R15: todos, orderBy solicitadoAt desc, totales STRING + cantidadCierres del _count", async () => {
     const prisma = buildPrisma();
     prisma.cierreBodega.findMany.mockResolvedValue([bodegaDbRow()]);
+    prisma.cierreDia.findMany.mockResolvedValue([]); // D40: ningun cierre del modelo nuevo
     const repo = new CierresBodegaAdminRepository(prisma as unknown as PrismaClient);
 
     const rows = await repo.findCierresBodega();
@@ -195,6 +206,7 @@ describe("CierresBodegaAdminRepository.findCierresBodega (R15)", () => {
       conciliadoAt: null,
       conciliadoPorNombre: null,
       conciliadoNota: null,
+      incluyeModeloNuevo: false, // D40
     });
     expect(typeof rows[0].totales.general).toBe("string");
   });
@@ -203,48 +215,103 @@ describe("CierresBodegaAdminRepository.findCierresBodega (R15)", () => {
 describe("CierresBodegaAdminRepository.findCierreBodegaConDetalle (R11/R19)", () => {
   it("R19: cierre de bodega inexistente -> null, sin cargar cierre_dia ni gestiones", async () => {
     const prisma = buildPrisma();
-    prisma.cierreBodega.findUnique.mockResolvedValue(null);
+    prisma.cierreBodega.findFirst.mockResolvedValue(null);
     const repo = new CierresBodegaAdminRepository(prisma as unknown as PrismaClient);
 
-    const r = await repo.findCierreBodegaConDetalle("cb-x");
+    const r = await repo.findCierreBodegaConDetalle("cb-x", ZONA_CR, { lectura: "toda_la_empresa" });
 
     expect(r).toBeNull();
-    expect(prisma.cierreBodega.findUnique.mock.calls[0][0].where).toEqual({ id: "cb-x" });
+    expect(prisma.cierreBodega.findFirst.mock.calls[0][0].where).toEqual({ id: "cb-x" });
     expect(prisma.cierreDia.findMany).not.toHaveBeenCalled();
     expect(prisma.gestionOrden.findMany).not.toHaveBeenCalled();
     expect(prisma.cierreDetail.findMany).not.toHaveBeenCalled();
   });
 
-  it("R11: por cada cierre_dia (WHERE cierre_bodega_id=id) carga gestiones y snapshot WHERE cierre_id=cd.id y mapea", async () => {
+  // SLT-107 (R280, D-S9): el filtro de zona vive EN el `where` de la cabecera; con alcance de
+  // empresa no hay `zonaId` (la central, como hoy).
+  it("SLT-107 R280: alcance de zona -> `where` exacto { id, zonaId } en `findFirst`", async () => {
     const prisma = buildPrisma();
-    prisma.cierreBodega.findUnique.mockResolvedValue(bodegaDbRow());
-    prisma.cierreDia.findMany.mockResolvedValue([
-      detalleCierreDbRow({ id: "cd1" }),
-      detalleCierreDbRow({ id: "cd2", mensajeroId: "m2", mensajero: { nombre: "Beto" } }),
-    ]);
-    prisma.gestionOrden.findMany
-      .mockResolvedValueOnce([gestionDbRow({ id: "g1" })])
-      .mockResolvedValueOnce([gestionDbRow({ id: "g2", ordenId: "o2", resultado: "novedad", montoRecibido: null, metodoPago: null, evidenciaStoragePath: null })]);
-    prisma.cierreDetail.findMany
-      .mockResolvedValueOnce([detalleDbRow({ ordenId: "o1" })])
-      .mockResolvedValueOnce([detalleDbRow({ ordenId: "o2" })]);
+    prisma.cierreBodega.findFirst.mockResolvedValue(bodegaDbRow());
+    prisma.cierreDia.findMany.mockResolvedValue([]);
     const repo = new CierresBodegaAdminRepository(prisma as unknown as PrismaClient);
 
-    const r = await repo.findCierreBodegaConDetalle("cb1");
+    await repo.findCierreBodegaConDetalle("cb1", ZONA_CR, { lectura: "zona", zonaId: "z-cartago" });
+
+    expect(prisma.cierreBodega.findFirst).toHaveBeenCalledTimes(1);
+    expect(prisma.cierreBodega.findFirst.mock.calls[0][0].where).toEqual({ id: "cb1", zonaId: "z-cartago" });
+    expect(prisma.cierreBodega.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("SLT-107 R280: alcance de toda la empresa -> `where` exacto { id }, sin `zonaId`", async () => {
+    const prisma = buildPrisma();
+    prisma.cierreBodega.findFirst.mockResolvedValue(bodegaDbRow());
+    prisma.cierreDia.findMany.mockResolvedValue([]);
+    const repo = new CierresBodegaAdminRepository(prisma as unknown as PrismaClient);
+
+    await repo.findCierreBodegaConDetalle("cb1", ZONA_CR, { lectura: "toda_la_empresa" });
+
+    expect(prisma.cierreBodega.findFirst.mock.calls[0][0].where).toEqual({ id: "cb1" });
+  });
+
+  it("SLT-107 R281: alcance de zona y cabecera `null` (otra zona) -> null, sin ninguna lectura mas", async () => {
+    const prisma = buildPrisma();
+    prisma.cierreBodega.findFirst.mockResolvedValue(null);
+    const repo = new CierresBodegaAdminRepository(prisma as unknown as PrismaClient);
+
+    const r = await repo.findCierreBodegaConDetalle("cb1", ZONA_CR, { lectura: "zona", zonaId: "z-otra" });
+
+    expect(r).toBeNull();
+    expect(prisma.cierreDia.findMany).not.toHaveBeenCalled();
+    expect(prisma.gestionOrden.findMany).not.toHaveBeenCalled();
+    expect(prisma.cierreDetail.findMany).not.toHaveBeenCalled();
+    expect(prisma.ordenFulfillmentMovimiento.findMany).not.toHaveBeenCalled();
+  });
+
+  it("R11 / SLT-148: gestiones como relacion de los cierre_dia (proyeccion de admin) y UNA lectura de snapshot WHERE cierre_id IN", async () => {
+    const prisma = buildPrisma();
+    prisma.cierreBodega.findFirst.mockResolvedValue(bodegaDbRow());
+    // SLT-148: las gestiones llegan ya agrupadas por cierre del dia, como relacion de la misma lectura.
+    prisma.cierreDia.findMany.mockResolvedValue([
+      detalleCierreDbRow({ id: "cd1", gestiones: [gestionDbRow({ id: "g1" })] }),
+      detalleCierreDbRow({
+        id: "cd2",
+        mensajeroId: "m2",
+        mensajero: { nombre: "Beto" },
+        solicitadoAt: new Date("2026-07-12T09:30:00.000Z"),
+        gestiones: [
+          gestionDbRow({ id: "g2", ordenId: "o2", resultado: "novedad", montoRecibido: null, metodoPago: null, evidenciaStoragePath: null }),
+        ],
+      }),
+    ]);
+    prisma.cierreDetail.findMany.mockResolvedValue([
+      detalleDbRow({ ordenId: "o2", cierreId: "cd2" }),
+      detalleDbRow({ ordenId: "o1" }),
+    ]);
+    const repo = new CierresBodegaAdminRepository(prisma as unknown as PrismaClient);
+
+    const r = await repo.findCierreBodegaConDetalle("cb1", ZONA_CR, { lectura: "toda_la_empresa" });
 
     expect(r).not.toBeNull();
     // los cierre_dia se buscan por cierre_bodega_id.
     expect(prisma.cierreDia.findMany.mock.calls[0][0].where).toEqual({ cierreBodegaId: "cb1" });
-    // una llamada de gestiones por cada cierre_dia, WHERE cierre_id = cd.id.
-    expect(prisma.gestionOrden.findMany).toHaveBeenCalledTimes(2);
-    expect(prisma.gestionOrden.findMany.mock.calls[0][0].where).toEqual({ cierreId: "cd1" });
-    expect(prisma.gestionOrden.findMany.mock.calls[1][0].where).toEqual({ cierreId: "cd2" });
-    // 69/T23: y el snapshot de ESE cierre_dia, no el de otro.
-    expect(prisma.cierreDetail.findMany).toHaveBeenCalledTimes(2);
-    expect(prisma.cierreDetail.findMany.mock.calls[0][0].where).toEqual({ cierreId: "cd1" });
-    expect(prisma.cierreDetail.findMany.mock.calls[1][0].where).toEqual({ cierreId: "cd2" });
+    // SLT-148 (R420, R423): las gestiones van como relacion de esa lectura, con LA proyeccion de admin
+    // (la misma referencia, no una copia) y `createdAt desc`; ninguna lectura de gestiones aparte.
+    expect(prisma.cierreDia.findMany.mock.calls[0][0].select.gestiones.select).toBe(GESTION_ADMIN_SELECT);
+    expect(prisma.cierreDia.findMany.mock.calls[0][0].select.gestiones.orderBy).toEqual({ createdAt: "desc" });
+    expect(prisma.gestionOrden.findMany).not.toHaveBeenCalled();
+    // 69/T23: y el snapshot de ESOS cierre_dia, en UNA llamada.
+    expect(prisma.cierreDetail.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.cierreDetail.findMany.mock.calls[0][0].where).toEqual({ cierreId: { in: ["cd1", "cd2"] } });
+    // Cada gestion cae en SU cierre del dia.
+    expect(r?.cierresDia.map((cd) => cd.gestiones.map((g) => g.gestionId))).toEqual([["g1"], ["g2"]]);
     expect(r?.cierre.cierreBodegaId).toBe("cb1");
     expect(r?.cierresDia.map((cd) => cd.resumen.cierreDiaId)).toEqual(["cd1", "cd2"]);
+    // SLT-104 (PA3, R120): la proyeccion pide `solicitadoAt` y cada cierre_dia lleva el SUYO, en ISO.
+    expect(prisma.cierreDia.findMany.mock.calls[0][0].select.solicitadoAt).toBe(true);
+    expect(r?.cierresDia.map((cd) => cd.resumen.solicitadoAt)).toEqual([
+      "2026-07-11T15:00:00.000Z",
+      "2026-07-12T09:30:00.000Z",
+    ]);
     // MISMO DTO que antes de la 69: la UI no cambia.
     expect(r?.cierresDia[0].gestiones[0]).toMatchObject({
       gestionId: "g1",
@@ -260,14 +327,14 @@ describe("CierresBodegaAdminRepository.findCierreBodegaConDetalle (R11/R19)", ()
 
   it("69/R15: los descriptivos salen del SNAPSHOT, no de la orden viva", async () => {
     const prisma = buildPrisma();
-    prisma.cierreBodega.findUnique.mockResolvedValue(bodegaDbRow());
-    prisma.cierreDia.findMany.mockResolvedValue([detalleCierreDbRow({ id: "cd1" })]);
+    prisma.cierreBodega.findFirst.mockResolvedValue(bodegaDbRow());
     // El doble de `gestion_orden` SI devuelve la relacion `orden` VIVA (como haria un JOIN
     // real si alguien reintrodujera WITH_DETALLE), y dice cosas DISTINTAS del snapshot: la
     // orden fue re-apuntada de tienda/zona y re-guiada despues de cerrar. Un lector que
     // vuelva a mirar datos vivos pone este test rojo con "Tienda HOY"; el codigo correcto
     // ignora esta rama porque ni siquiera la pide en el select.
-    prisma.gestionOrden.findMany.mockResolvedValue([
+    // SLT-148: la gestion llega como relacion del cierre_dia.
+    prisma.cierreDia.findMany.mockResolvedValue([detalleCierreDbRow({ id: "cd1", gestiones: [
       gestionDbRow({
         orden: {
           numGuia: 999,
@@ -282,7 +349,7 @@ describe("CierresBodegaAdminRepository.findCierreBodegaConDetalle (R11/R19)", ()
           distrito: { nombre: "Distrito HOY" },
         },
       }),
-    ]);
+    ] })]);
     // La fila congelada dice "Tienda ORIGINAL"/"Cartago ORIGINAL". Si esta vista leyera la
     // orden VIVA mostraria lo que la orden diga HOY -> dos pantallas de admin, dos detalles
     // distintos del MISMO cierre cerrado. Eso es lo que este test impide.
@@ -291,7 +358,7 @@ describe("CierresBodegaAdminRepository.findCierreBodegaConDetalle (R11/R19)", ()
     ]);
     const repo = new CierresBodegaAdminRepository(prisma as unknown as PrismaClient);
 
-    const r = await repo.findCierreBodegaConDetalle("cb1");
+    const r = await repo.findCierreBodegaConDetalle("cb1", ZONA_CR, { lectura: "toda_la_empresa" });
 
     expect(r?.cierresDia[0].gestiones[0]).toMatchObject({
       numGuia: 77,
@@ -306,8 +373,9 @@ describe("CierresBodegaAdminRepository.findCierreBodegaConDetalle (R11/R19)", ()
       distritoNombre: "Oriental",
     });
     // El select de la gestion ya no navega la relacion `orden` (adios WITH_DETALLE).
-    expect(prisma.gestionOrden.findMany.mock.calls[0][0].select).not.toHaveProperty("orden");
-    expect(prisma.gestionOrden.findMany.mock.calls[0][0]).not.toHaveProperty("include");
+    expect(prisma.cierreDia.findMany.mock.calls[0][0].select.gestiones.select).not.toHaveProperty("orden");
+    expect(prisma.cierreDia.findMany.mock.calls[0][0].select.gestiones).not.toHaveProperty("include");
+    expect(prisma.gestionOrden.findMany).not.toHaveBeenCalled();
     // Y nada del camino VIVO se consulta en toda la operacion.
     expect(prisma.orden.findMany).not.toHaveBeenCalled();
     expect(prisma.orden.findUnique).not.toHaveBeenCalled();
@@ -321,13 +389,49 @@ describe("CierresBodegaAdminRepository.findCierreBodegaConDetalle (R11/R19)", ()
 
   it("69/R14: falta la fila congelada de una orden -> error duro (sin fallback a datos vivos)", async () => {
     const prisma = buildPrisma();
-    prisma.cierreBodega.findUnique.mockResolvedValue(bodegaDbRow());
-    prisma.cierreDia.findMany.mockResolvedValue([detalleCierreDbRow({ id: "cd1" })]);
-    prisma.gestionOrden.findMany.mockResolvedValue([gestionDbRow()]);
+    prisma.cierreBodega.findFirst.mockResolvedValue(bodegaDbRow());
+    prisma.cierreDia.findMany.mockResolvedValue([detalleCierreDbRow({ id: "cd1", gestiones: [gestionDbRow()] })]);
     prisma.cierreDetail.findMany.mockResolvedValue([]); // sin snapshot
     const repo = new CierresBodegaAdminRepository(prisma as unknown as PrismaClient);
 
-    await expect(repo.findCierreBodegaConDetalle("cb1")).rejects.toThrow(CierreDetalleFaltanteError);
+    await expect(repo.findCierreBodegaConDetalle("cb1", ZONA_CR, { lectura: "toda_la_empresa" })).rejects.toThrow(CierreDetalleFaltanteError);
+  });
+
+  it("SLT-110 R210/R216: UNA lectura de movimientos con los dos cierres del dia; el cargo vigente llega a su gestion", async () => {
+    const prisma = buildPrisma();
+    prisma.cierreBodega.findFirst.mockResolvedValue(bodegaDbRow());
+    prisma.cierreDia.findMany.mockResolvedValue([
+      detalleCierreDbRow({ id: "cd1", gestiones: [gestionDbRow({ id: "g1", ordenId: "o1" })] }),
+      detalleCierreDbRow({
+        id: "cd2",
+        mensajeroId: "m2",
+        mensajero: { nombre: "Beto" },
+        gestiones: [gestionDbRow({ id: "g2", ordenId: "o2" })],
+      }),
+    ]);
+    prisma.cierreDetail.findMany.mockResolvedValue([
+      detalleDbRow({ ordenId: "o1" }),
+      detalleDbRow({ ordenId: "o2", cierreId: "cd2" }),
+    ]);
+    // o1: su ultimo movimiento es un cargo; o2: un reverso (sin cargo vigente).
+    prisma.ordenFulfillmentMovimiento.findMany.mockResolvedValue([
+      { ordenId: "o1", tipo: "cargo", ocurridoAt: new Date("2026-11-06T15:00:00.000Z") },
+      { ordenId: "o2", tipo: "reverso", ocurridoAt: new Date("2026-11-07T16:00:00.000Z") },
+    ]);
+    const repo = new CierresBodegaAdminRepository(prisma as unknown as PrismaClient);
+
+    const r = await repo.findCierreBodegaConDetalle("cb1", ZONA_CR, { lectura: "toda_la_empresa" });
+
+    expect(prisma.ordenFulfillmentMovimiento.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.ordenFulfillmentMovimiento.findMany.mock.calls[0][0].where).toEqual({
+      orden: { cierreDetalles: { some: { cierreId: { in: ["cd1", "cd2"] } } } },
+    });
+    expect(r?.cierresDia[0].gestiones[0].ingresoEmpresa?.fulfillmentCargadoAt).toBe(
+      "2026-11-06T15:00:00.000Z",
+    );
+    expect(r?.cierresDia[1].gestiones[0].ingresoEmpresa?.fulfillmentCargadoAt).toBeNull();
+    // Con la lectura pasada, la clave `tarifaFaltante` existe (aqui modelo viejo: false).
+    expect(r?.cierresDia[0].gestiones[0]).toHaveProperty("tarifaFaltante", false);
   });
 });
 
@@ -337,7 +441,7 @@ describe("CierresBodegaAdminRepository.resolverCierreBodega (R16/R18/R19/R20/R21
     prisma.cierreBodega.updateMany.mockResolvedValue({ count: 1 });
     const repo = new CierresBodegaAdminRepository(prisma as unknown as PrismaClient);
 
-    const r = await repo.resolverCierreBodega({
+    const r = await repo.resolverCierreBodega({ zonaHoraria: ZONA_DE_CR,
       id: "cb1",
       nuevoEstado: "rechazado",
       resueltoPor: "adm-maestro",
@@ -364,7 +468,7 @@ describe("CierresBodegaAdminRepository.resolverCierreBodega (R16/R18/R19/R20/R21
     prisma.cierreBodega.updateMany.mockResolvedValue({ count: 1 });
     const repo = new CierresBodegaAdminRepository(prisma as unknown as PrismaClient);
 
-    await repo.resolverCierreBodega({
+    await repo.resolverCierreBodega({ zonaHoraria: ZONA_DE_CR,
       id: "cb1",
       nuevoEstado: "aprobado",
       resueltoPor: "adm-maestro",
@@ -382,7 +486,7 @@ describe("CierresBodegaAdminRepository.resolverCierreBodega (R16/R18/R19/R20/R21
     prisma.cierreBodega.count.mockResolvedValue(1);
     const repo = new CierresBodegaAdminRepository(prisma as unknown as PrismaClient);
 
-    const r = await repo.resolverCierreBodega({
+    const r = await repo.resolverCierreBodega({ zonaHoraria: ZONA_DE_CR,
       id: "cb1",
       nuevoEstado: "aprobado",
       resueltoPor: "adm-maestro",
@@ -399,7 +503,7 @@ describe("CierresBodegaAdminRepository.resolverCierreBodega (R16/R18/R19/R20/R21
     prisma.cierreBodega.count.mockResolvedValue(0);
     const repo = new CierresBodegaAdminRepository(prisma as unknown as PrismaClient);
 
-    const r = await repo.resolverCierreBodega({
+    const r = await repo.resolverCierreBodega({ zonaHoraria: ZONA_DE_CR,
       id: "cb-x",
       nuevoEstado: "aprobado",
       resueltoPor: "adm-maestro",

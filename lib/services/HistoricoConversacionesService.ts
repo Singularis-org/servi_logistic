@@ -25,6 +25,8 @@ import { ROLES_HISTORICO_CONVERSACIONES } from "@/lib/auth/menu-visibility";
 import type { IHistoricoConversacionesRepository } from "@/lib/interfaces/repositories/IHistoricoConversacionesRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IHistoricoConversacionesService } from "@/lib/interfaces/services/IHistoricoConversacionesService";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 import {
   HILOS_LIMITE_DEFECTO,
   MENSAJES_LIMITE_DEFECTO,
@@ -52,7 +54,14 @@ function motivoDe(error: { issues: { path: PropertyKey[]; message: string }[] })
 }
 
 export class HistoricoConversacionesService implements IHistoricoConversacionesService {
-  constructor(private readonly repo: IHistoricoConversacionesRepository) {}
+  constructor(
+    private readonly repo: IHistoricoConversacionesRepository,
+    /**
+     * SLT-42 (R22, R28): la zona del pais de la empresa, para el rango de fechas del listado. Solo
+     * se lee si el filtro trae fechas. El composition root pasa `construirReglasPaisEmpresa`.
+     */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
+  ) {}
 
   async listarHilos(
     input: ListarHilosHistoricoInput,
@@ -69,10 +78,14 @@ export class HistoricoConversacionesService implements IHistoricoConversacionesS
     if (!parsed.success) return { status: "validation_error", motivo: motivoDe(parsed.error) };
 
     const { filtro, cursor, limite } = parsed.data;
+    // SLT-42 (R22, R28): con rango de fechas, la zona del pais de la empresa; sin zona, falla.
+    const conFechas = filtro?.fecha_desde !== undefined || filtro?.fecha_hasta !== undefined;
+    const zona = conFechas ? await zonaDeLaEmpresa(this.reglasPais, "historico de conversaciones") : undefined;
     const pagina = await this.repo.listarHilos({
       filtro: filtro ?? {},
       cursor: cursor ?? null,
       limite: limite ?? HILOS_LIMITE_DEFECTO,
+      ...(zona === undefined ? {} : { zona }),
     });
 
     // R41 — la respuesta del listado no lleva ni un mensaje, y no puede llevarlo: el DTO no

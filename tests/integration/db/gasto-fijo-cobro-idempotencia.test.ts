@@ -17,6 +17,8 @@ import {
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // FICHA 333 (D8) — LA IDEMPOTENCIA DE LA CORRIDA, MEDIDA CONTRA POSTGRES: **R9** (dos corridas
 // del mismo día CR dejan UN cobro y UN egreso), **R10** (las dos escrituras son una sola
@@ -123,6 +125,8 @@ function servicioReal(tx: TxDeTest, activas: GastoFijoPlantillaDTO[]): Generacio
     new WalletMovimientoRepository(cliente),
     new GastoFijoCobroRepository(cliente),
     runnerConSavepoint(tx),
+    undefined,
+    reglasPaisFijas(),
   );
 }
 
@@ -283,6 +287,8 @@ describeSiHayBase("333/D8 — R10: las dos escrituras van en UNA transacción", 
         new WalletMovimientoRepository(cliente),
         cobroRepoQueRevienta,
         runnerConSavepoint(tx),
+        undefined,
+        reglasPaisFijas(),
       );
 
       let mensaje = "";
@@ -503,18 +509,18 @@ describeSiHayBase("333/D8 — R51: la base rechaza dos cobros con la misma clave
 });
 
 /**
- * Un usuario REAL de la base: `decidido_por` es una FK `RESTRICT` contra `usuario`.
+ * Un usuario REAL en la base: `decidido_por` es una FK `RESTRICT` contra `usuario`.
  *
- * NO se salta el test si no hay ninguno: se ROMPE. Un `return` silencioso aquí es exactamente el
+ * SLT-182: se SIEMBRA (un maestro) en la tx revertida del caso; antes se leia «el primer usuario»
+ * de la base, y la base recien migrada no tiene ninguno.
+ *
+ * NO se salta el test si no llega: se ROMPE. Un `return` silencioso aquí es exactamente el
  * modo de fallo que este repo ya tiene medido —«passed» sin haber comprobado nada—.
  */
 async function idDeUnUsuario(tx: TxDeTest): Promise<string> {
-  const filas = await tx.$queryRawUnsafe<{ id: string }[]>(`SELECT "id" FROM "usuario" LIMIT 1`);
-  if (filas.length === 0) {
-    throw new Error(
-      "La base no tiene ni un `usuario`: esta suite necesita crear su usuario en el test " +
-        "(SL-31). Sin usuario no se puede ejercer la FK `decidido_por`.",
-    );
-  }
-  return filas[0].id;
+  const { id } = await crearUsuarioDePrueba(tx, "maestro");
+  // Control positivo (R1084): la siembra llego a la base.
+  const sembrados = await tx.usuario.count({ where: { id } });
+  if (sembrados !== 1) throw new Error("SLT-182: el maestro sembrado no esta en la base");
+  return id;
 }

@@ -23,6 +23,7 @@ import type { EjecutarOptimizacionOpts } from "@/lib/interfaces/services/IOptimi
 import type { JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
 import type { OrigenJobRuta } from "@/lib/services/jobs/optimizacion-ruta-encolado";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // SLT-59 (D27, D28, D29; R70, R73, R76; design §13.1) — el motivo de cada llamada de rutas lo
 // decide el servicio con la rama de la guarda y quien disparo. Se usan los clientes REALES de
 // Google con `fetch` simulado: lo que se afirma son las líneas `[google-api]` que salen de verdad.
@@ -190,7 +191,7 @@ function build(opts: {
     CONFIG,
     () => T0,
     { warn: () => {} },
-    opts.sinRoutes === true ? null : routes,
+    opts.sinRoutes === true ? null : routes, reglasPaisFijas(),
   );
   const leidas = () =>
     lineas.map((l) => JSON.parse(l.slice(GOOGLE_API_LOG_PREFIJO.length + 1)) as Record<string, unknown>);

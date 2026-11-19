@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import { SessionRepository } from "@/lib/repositories/SessionRepository";
 // FICHA 379 (T10): el quinto cable, con el mismo riesgo estructural que el cuarto.
 import { CierreBodegaRepository } from "@/lib/repositories/CierreBodegaRepository";
+// SLT-42: el sexto cable, las reglas del pais de la empresa.
+import { ReglasPaisEmpresaService } from "@/lib/services/ReglasPaisEmpresaService";
 import type { Actor } from "@/lib/interfaces/services/IUsuarioService";
 
 /**
@@ -121,5 +123,20 @@ describe("287/T8 · `buildUsuarioService` cablea el revocador de sesiones (R20)"
     ).toBe("function");
     // El cuarto sigue siendo el suyo: nadie se ha corrido de sitio.
     expect(args[3]).toBeInstanceOf(SessionRepository);
+  });
+
+  // SLT-42: sin las reglas del pais, el alta y la edicion del telefono o del tipo LANZAN (a proposito:
+  // guardar sin validar seria peor). El sexto parametro es opcional, asi que solo esto lo delata.
+  it("SLT-42 (R10, R14): el objeto construido trae las reglas del pais en la sexta posicion", async () => {
+    argumentosCapturados.length = 0;
+    const { restablecerContrasenaUsuario } = await import("@/lib/actions/usuarios");
+
+    await restablecerContrasenaUsuario("usr-1", { getActor: async () => MAESTRO });
+
+    expect(argumentosCapturados).toHaveLength(1);
+    const args = argumentosCapturados[0];
+    expect(args.length, "SLT-42: el composition root no paso las reglas del pais").toBeGreaterThanOrEqual(6);
+    expect(args[5]).toBeInstanceOf(ReglasPaisEmpresaService);
+    expect(args[4]).toBeInstanceOf(CierreBodegaRepository);
   });
 });

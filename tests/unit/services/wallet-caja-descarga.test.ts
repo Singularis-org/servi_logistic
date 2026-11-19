@@ -12,6 +12,8 @@ import { listarMovimientosCompletoSchema, listarMovimientosSchema } from "@/lib/
 import { NATURALEZA_POR_CATEGORIA } from "@/lib/utils/caja-tesoreria";
 import { descargaConfig } from "@/lib/config/descarga";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Ficha 470 (T1.3, riesgo K6) — el tope real de la descarga es ahora el limite de Excel
 // (1.048.575 filas). Este archivo prueba la MECANICA del tope (N entra, N+1 no), que no depende
 // del valor: lo fija en 5000 para no construir un millon de filas por caso. Patron de
@@ -103,11 +105,11 @@ function soloFiltros(params: object): Record<string, unknown> {
 }
 
 function servicio(repo: IWalletMovimientoRepository) {
-  return new WalletService(repo, {} as WalletTxClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459);
+  return new WalletService(repo, {} as WalletTxClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459, undefined, undefined, reglasPaisFijas());
 }
 
 function input(extra: Record<string, unknown> = {}) {
-  return listarMovimientosCompletoSchema.parse(extra);
+  return listarMovimientosCompletoSchema(ZONA_CR).parse(extra);
 }
 
 function ids(items: WalletMovimientoDTO[]): string[] {
@@ -122,7 +124,7 @@ describe("WalletService.listarMovimientosCompleto — libro de caja sin paginaci
     const svc = servicio(repoEnMemoria(filas).repo);
 
     const paginado = await svc.listarMovimientos(
-      listarMovimientosSchema.parse({ pageSize: 20 }),
+      listarMovimientosSchema(ZONA_CR).parse({ pageSize: 20 }),
       MAESTRO,
     );
     const completo = await svc.listarMovimientosCompleto(input(), MAESTRO);
@@ -179,7 +181,7 @@ describe("WalletService.listarMovimientosCompleto — libro de caja sin paginaci
     const filtros = { tipo: "ingreso", hasta: "2026-07-31" };
 
     const paginado = await svc.listarMovimientos(
-      listarMovimientosSchema.parse({ ...filtros, pageSize: 50 }),
+      listarMovimientosSchema(ZONA_CR).parse({ ...filtros, pageSize: 50 }),
       MAESTRO,
     );
     const completo = await svc.listarMovimientosCompleto(input(filtros), MAESTRO);
@@ -202,7 +204,7 @@ describe("WalletService.listarMovimientosCompleto — libro de caja sin paginaci
     ];
     const svc = servicio(repoEnMemoria(filas).repo);
 
-    const paginado = await svc.listarMovimientos(listarMovimientosSchema.parse({}), MAESTRO);
+    const paginado = await svc.listarMovimientos(listarMovimientosSchema(ZONA_CR).parse({}), MAESTRO);
     const completo = await svc.listarMovimientosCompleto(input(), MAESTRO);
 
     expect(paginado.status).toBe("ok");

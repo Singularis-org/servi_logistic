@@ -89,7 +89,8 @@ function datosNuevos(letra: string): DatosDeAlta {
     maestroNombre: `Maestro ${letra} ${s}`,
     email: `maestro-${letra.toLowerCase()}-${s}@example.test`,
     telefono: "88880000",
-    documento: `e2e-${letra.toLowerCase()}-${s}`,
+    // SLT-42 (R10): una cédula física de CR, 9 dígitos; el servidor rechaza cualquier otra forma.
+    documento: String(parseInt(s, 16) % 1_000_000_000).padStart(9, "0"),
   };
 }
 

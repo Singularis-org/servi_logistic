@@ -40,6 +40,7 @@ import {
 } from "./wallet-labels";
 import { fechaDiaMovimientoCR } from "@/lib/utils/fecha-dia-iso";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 42 (T12, R18/R21) — libro de movimientos (tabla, más reciente primero: el
 // backend ya lo devuelve ordenado). Datos por props desde el módulo. Money-safe: la
 // columna monto renderiza el STRING tal cual con `money`, sin parseFloat/Number.
@@ -335,7 +336,8 @@ export function WalletLedger({
         id: "fecha",
         value: LIBRO_CAJA_COLUMNA.fecha,
         minWidth: "7rem",
-        render: (m) => fechaDiaMovimientoCR(m.fechaMovimiento),
+        // SLT-81: la UI sigue en la zona de CR
+        render: (m) => fechaDiaMovimientoCR(m.fechaMovimiento, ZONA_CR),
       },
       {
         id: "movimiento",
@@ -385,6 +387,7 @@ export function WalletLedger({
     [onCambio, autoria, autoriaProp],
   );
 
+  // SLT-81: la UI sigue en la zona de CR
   return (
     <div className="overflow-x-auto">
       <DataTable
@@ -413,7 +416,7 @@ export function WalletLedger({
             <DetalleMovimientoCierre
               movimientoId={m.id}
               concepto={conceptoDeMovimientoCaja(m)}
-              fecha={fechaDiaMovimientoCR(m.fechaMovimiento)}
+              fecha={fechaDiaMovimientoCR(m.fechaMovimiento, ZONA_CR)}
               resaltar={resaltar}
             />
           ) : null
@@ -424,7 +427,7 @@ export function WalletLedger({
         expandAriaLabel={(m) =>
           DETALLE_MOVIMIENTO_NOMBRE.abrir(
             conceptoDeMovimientoCaja(m),
-            fechaDiaMovimientoCR(m.fechaMovimiento),
+            fechaDiaMovimientoCR(m.fechaMovimiento, ZONA_CR),
           )
         }
         // Feature 170 (T C.4, R1/R9/R13): el control aparece solo si el módulo bajó el

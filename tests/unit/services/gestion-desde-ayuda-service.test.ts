@@ -11,6 +11,7 @@ import {
 import { ESTATUS_POR_RESULTADO } from "@/lib/types/gestion-destino";
 import { fakeIntentosEnLote } from "@/tests/fixtures/intentos-entrega";
 import { estaEnVentanaDeEscritura } from "@/lib/types/ventana-hilo-notas";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 237 (T5.3, design §6) — LAS OCHO COMPROBACIONES del servicio, una por caso.
 //
@@ -79,6 +80,7 @@ function montar(
   };
   const storage = opts.storage ?? fakeStorage();
   const service = new GestionDesdeAyudaService({
+    reglasPais: reglasPaisFijas(),
     notaRepo,
     ordenRepo,
     gestionRepo,

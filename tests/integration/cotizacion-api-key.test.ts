@@ -143,6 +143,8 @@ const METODOS_ESCRITURA = [
   "generarGuiaLote",
   "asignarBodegaLote",
   "rutearBodegaSateliteLote",
+  // SLT-197: retiro del estante de una satelite a la central.
+  "retirarSateliteLote",
   "asignarRecoleccionLote",
   "desasignarRecoleccionLote",
   "recolectarEnTienda",

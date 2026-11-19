@@ -9,6 +9,7 @@ import {
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IAprobacionPostulacionService } from "@/lib/interfaces/services/IAprobacionPostulacionService";
 import { AprobacionPostulacionService } from "@/lib/services/AprobacionPostulacionService";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { AprobacionPostulacionRepository } from "@/lib/repositories/AprobacionPostulacionRepository";
 import { SupabaseSignedUrlProvider } from "@/lib/storage/SupabaseSignedUrlProvider";
 import { getPrismaClient } from "@/lib/db/prisma-client";
@@ -26,6 +27,9 @@ function buildService(): IAprobacionPostulacionService {
   return new AprobacionPostulacionService(
     new AprobacionPostulacionRepository(prisma),
     new SupabaseSignedUrlProvider(),
+    undefined, // el TTL de las URLs firmadas, el de la config
+    // SLT-42 (R10, R11, R14, R16): aprobar valida con las reglas del pais de la empresa.
+    construirReglasPaisEmpresa(prisma),
   );
 }
 

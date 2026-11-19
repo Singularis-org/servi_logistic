@@ -387,6 +387,34 @@ describe("Feature 311 · cambio de numero del cliente (R9/R10)", () => {
     expect(conCustomer.mensajes[0].sistema?.telefonoNuevo).toBe("50633334444");
   });
 
+  it("SLT-42 R18: el parser NO normaliza por pais: entrega los numeros tal cual (recortados)", () => {
+    // La normalizacion depende del pais de la empresa, que el parser no conoce: la hace
+    // `ChatWhatsappService` con `IReglasPaisEmpresa`. Un local no se prefija aqui con ningun pais.
+    const eventos = parseWebhookEventos(
+      payloadConMensajes({
+        from: "50688887777",
+        timestamp: "1700000000",
+        id: "wamid.SYS-CRUDO",
+        type: "system",
+        system: { type: "customer_changed_number", wa_id: " 9999-6666 " },
+      }),
+    );
+    expect(eventos.mensajes[0].sistema).toEqual({ telefonoAnterior: "50688887777", telefonoNuevo: "9999-6666" });
+  });
+
+  it("SLT-42 R18: un numero nuevo sin ningun digito sigue degradando a `otro`", () => {
+    const eventos = parseWebhookEventos(
+      payloadConMensajes({
+        ...BASE,
+        id: "wamid.SYS-SIN-DIGITOS",
+        type: "system",
+        system: { type: "customer_changed_number", wa_id: "+ - ()" },
+      }),
+    );
+    expect(eventos.mensajes[0].tipo).toBe("otro");
+    expect(eventos.mensajes[0].sistema).toBeUndefined();
+  });
+
   it("R10: system sin numero nuevo degrada, no inventa numeros y no lanza", () => {
     const eventos = parseWebhookEventos(
       payloadConMensajes({

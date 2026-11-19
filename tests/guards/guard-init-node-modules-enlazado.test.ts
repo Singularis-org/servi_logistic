@@ -93,6 +93,14 @@ function correr(preparar: string): Resultado {
   writeFileSync(join(bin, 'pnpm'), `#!/usr/bin/env bash\necho "$*" >> "${aBash(log)}"\nexit 0\n`)
   writeFileSync(join(caso, 'package.json'), '{}\n')
   writeFileSync(join(caso, 'pnpm-lock.yaml'), 'lockfileVersion: 9.0\n')
+  // El paso 2 termina midiendo las dependencias con el verificador REAL
+  // (`tests/guards/guard-dependencias-declaradas-presentes.test.ts`); con `package.json` vacio
+  // mide 0 declaradas y no altera el desenlace que se prueba aqui.
+  mkdirSync(join(caso, 'scripts'), { recursive: true })
+  writeFileSync(
+    join(caso, 'scripts', 'verificar-dependencias.mjs'),
+    readFileSync(join(RAIZ, 'scripts', 'verificar-dependencias.mjs'), 'utf8'),
+  )
 
   const prep = bash(`set -e\n${ENLAZAR}\n${preparar}`, caso)
   if (prep.status !== 0) throw new Error(`no se pudo preparar el caso: ${prep.stderr}`)
@@ -115,7 +123,7 @@ function correr(preparar: string): Resultado {
 const VIEJO = '2020-01-01 00:00:00'
 const NUEVO = '2024-01-01 00:00:00'
 
-describe('guardia: init.sh no reinstala un node_modules enlazado', () => {
+describe('guardia: init.sh no reinstala un node_modules enlazado', { timeout: 30_000 }, () => {
   it('init.sh tiene los dos marcadores del paso 2', () => {
     expect(() => pasoDos()).not.toThrow()
   })

@@ -86,6 +86,9 @@ describe("R51 · las tres metricas de ingreso de la empresa no ven el dinero de 
       "ingreso_iva_flete_devolucion",
       "ingreso_iva_comision_cod",
       "egreso_reverso_iva_flete_devolucion",
+      // SLT-94 (R37): el IVA del fulfillment por paquete y su devolucion.
+      "ingreso_iva_fulfillment",
+      "egreso_reverso_iva_fulfillment",
     ]);
   });
 
@@ -455,7 +458,9 @@ describe("las listas de las dos metricas nuevas se comprueban contra el Record",
     const declaradas = [...(getMetrica("dinero_en_caja")?.definicion.categorias ?? [])].sort();
     expect(declaradas).toEqual(Object.keys(NATURALEZA_POR_CATEGORIA).sort());
     expect(declaradas).toEqual([...WALLET_MOVIMIENTO_CATEGORIA_SEED].sort());
-    expect(declaradas).toHaveLength(30); // ficha 459: 17 + 4; ficha 461 (R29): + 2; ficha 457 (R52): + 2; ficha 458-B: + 2; SL-45: + 1; SLT-73: + 2
+    expect(declaradas).toHaveLength(34); // ficha 459: 17 + 4; ficha 461 (R29): + 2; ficha 457 (R52): + 2; ficha 458-B: + 2; SL-45: + 1; SLT-73: + 2; SLT-94: + 4
+    expect(declaradas).toContain("ingreso_fulfillment"); // SLT-94
+    expect(declaradas).toContain("egreso_reverso_iva_fulfillment"); // SLT-94
     expect(declaradas).toContain("egreso_pago_plataforma"); // SL-45
     expect(declaradas).toContain("egreso_reverso_flete_devolucion"); // ficha 458-B
     expect(declaradas).toContain("egreso_reverso_iva_flete_devolucion"); // ficha 458-B
@@ -479,14 +484,17 @@ describe("las listas de las dos metricas nuevas se comprueban contra el Record",
     expect(declaradas).toEqual(propiasSinIva);
     // ficha 461 (R29): 14 + el cobro a una tienda y su reverso; ficha 458-B: + los dos reversos del
     // cobro por devolución a origen = 18; SL-39: − las cuatro de IVA = 14; SL-45 (R25): + el pago a la
-    // plataforma = 15.
-    expect(declaradas).toHaveLength(15);
+    // plataforma = 15; SLT-94 (R20/R37): + el fulfillment y su devolucion = 17 (sus dos de IVA, no).
+    expect(declaradas).toHaveLength(17);
+    expect(declaradas).toContain("ingreso_fulfillment"); // SLT-94
+    expect(declaradas).toContain("egreso_reverso_fulfillment"); // SLT-94
     expect(declaradas).toContain("egreso_pago_plataforma"); // SL-45 (R25): un egreso propio baja la ganancia
     for (const iva of WALLET_IVA_SEED) {
       expect(declaradas, `${iva} no es ganancia`).not.toContain(iva);
     }
-    // Control de no vacuidad del «menos»: el seed de IVA tiene las cuatro, y las cuatro son propias.
-    expect(WALLET_IVA_SEED).toHaveLength(4);
+    // Control de no vacuidad del «menos»: el seed de IVA tiene las seis (SLT-94: + las dos del
+    // fulfillment), y las seis son propias.
+    expect(WALLET_IVA_SEED).toHaveLength(6);
     for (const iva of WALLET_IVA_SEED) expect(NATURALEZA_POR_CATEGORIA[iva], iva).toBe("propio");
     expect(declaradas).toContain("egreso_reverso_flete_devolucion"); // ficha 458-B
     expect(declaradas).toContain("ingreso_cobro_tienda");
@@ -507,7 +515,7 @@ describe("las listas de las dos metricas nuevas se comprueban contra el Record",
     // ganancia. Ficha 457 (R52, D11): + el pago de una tienda a la empresa y su anulacion, que son de
     // TERCEROS (DH1) y por eso `ganancia_empresa` no los ve: 9 categorias. SL-39 (R11): + las cuatro
     // de IVA, que estan en la caja pero no son ganancia: 13. SLT-73: + la diferencia de la satelite
-    // (tesoreria, design §1.2): 15.
+    // (tesoreria, design §1.2): 15. SLT-94: + las dos de IVA del fulfillment (IVA, no ganancia): 17.
     expect(enCaja.filter((c) => !ganancia.has(c)).sort()).toEqual([
       "egreso_diferencia_satelite",
       "egreso_pago_por_cuenta_tienda",
@@ -515,6 +523,7 @@ describe("las listas de las dos metricas nuevas se comprueban contra el Record",
       "egreso_reverso_abono_tienda",
       "egreso_reverso_aporte_capital",
       "egreso_reverso_iva_flete_devolucion",
+      "egreso_reverso_iva_fulfillment",
       "ingreso_abono_tienda",
       "ingreso_aporte_capital",
       "ingreso_cod_recaudado",
@@ -522,6 +531,7 @@ describe("las listas de las dos metricas nuevas se comprueban contra el Record",
       "ingreso_iva_comision_cod",
       "ingreso_iva_flete",
       "ingreso_iva_flete_devolucion",
+      "ingreso_iva_fulfillment",
       "ingreso_reverso_pago_por_cuenta_tienda",
       "ingreso_reverso_pago_tienda",
     ]);

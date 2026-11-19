@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { tiempoRelativo } from "@/lib/utils/tiempo-relativo";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // FICHA 409 (T1.1, R33) — el instante relativo en palabras, con RELOJ FIJO.
 //
 // Los literales estan ESCRITOS A MANO, nunca comparados contra la funcion que los compone: un
@@ -19,25 +20,25 @@ const DIA = 24 * HORA;
 
 describe("R33 — la granularidad del contrato visual", () => {
   it("menos de un minuto no dice «hace 0 min»", () => {
-    expect(tiempoRelativo(new Date(AHORA.getTime() - 30 * 1000), AHORA)).toBe("hace un momento");
+    expect(tiempoRelativo(new Date(AHORA.getTime() - 30 * 1000), AHORA, ZONA_DE_CR)).toBe("hace un momento");
   });
 
   it("minutos", () => {
-    expect(tiempoRelativo(new Date(AHORA.getTime() - 40 * MIN), AHORA)).toBe("hace 40 min");
-    expect(tiempoRelativo(new Date(AHORA.getTime() - 15 * MIN), AHORA)).toBe("hace 15 min");
-    expect(tiempoRelativo(new Date(AHORA.getTime() - 1 * MIN), AHORA)).toBe("hace 1 min");
+    expect(tiempoRelativo(new Date(AHORA.getTime() - 40 * MIN), AHORA, ZONA_DE_CR)).toBe("hace 40 min");
+    expect(tiempoRelativo(new Date(AHORA.getTime() - 15 * MIN), AHORA, ZONA_DE_CR)).toBe("hace 15 min");
+    expect(tiempoRelativo(new Date(AHORA.getTime() - 1 * MIN), AHORA, ZONA_DE_CR)).toBe("hace 1 min");
   });
 
   it("horas", () => {
-    expect(tiempoRelativo(new Date(AHORA.getTime() - 1 * HORA), AHORA)).toBe("hace 1 h");
-    expect(tiempoRelativo(new Date(AHORA.getTime() - 2 * HORA), AHORA)).toBe("hace 2 h");
-    expect(tiempoRelativo(new Date(AHORA.getTime() - 9 * HORA), AHORA)).toBe("hace 9 h");
+    expect(tiempoRelativo(new Date(AHORA.getTime() - 1 * HORA), AHORA, ZONA_DE_CR)).toBe("hace 1 h");
+    expect(tiempoRelativo(new Date(AHORA.getTime() - 2 * HORA), AHORA, ZONA_DE_CR)).toBe("hace 2 h");
+    expect(tiempoRelativo(new Date(AHORA.getTime() - 9 * HORA), AHORA, ZONA_DE_CR)).toBe("hace 9 h");
   });
 
   it("dias", () => {
-    expect(tiempoRelativo(new Date(AHORA.getTime() - 2 * DIA), AHORA)).toBe("hace 2 d");
-    expect(tiempoRelativo(new Date(AHORA.getTime() - 3 * DIA), AHORA)).toBe("hace 3 d");
-    expect(tiempoRelativo(new Date(AHORA.getTime() - 30 * DIA), AHORA)).toBe("hace 30 d");
+    expect(tiempoRelativo(new Date(AHORA.getTime() - 2 * DIA), AHORA, ZONA_DE_CR)).toBe("hace 2 d");
+    expect(tiempoRelativo(new Date(AHORA.getTime() - 3 * DIA), AHORA, ZONA_DE_CR)).toBe("hace 3 d");
+    expect(tiempoRelativo(new Date(AHORA.getTime() - 30 * DIA), AHORA, ZONA_DE_CR)).toBe("hace 30 d");
   });
 });
 
@@ -46,7 +47,7 @@ describe("R33 — «ayer» es el dia CALENDARIO de Costa Rica anterior, no «hac
     const emitido = new Date("2026-07-27T05:59:00.000Z"); // 23:59 CR del 26 de julio
     const leidoAlMinutoSiguiente = new Date("2026-07-27T06:01:00.000Z"); // 00:01 CR del 27
 
-    expect(tiempoRelativo(emitido, leidoAlMinutoSiguiente)).toBe("ayer");
+    expect(tiempoRelativo(emitido, leidoAlMinutoSiguiente, ZONA_DE_CR)).toBe("ayer");
   });
 
   it("un aviso de hace 20 horas del MISMO dia CR sigue diciendo las horas", () => {
@@ -54,36 +55,36 @@ describe("R33 — «ayer» es el dia CALENDARIO de Costa Rica anterior, no «hac
     const ahora = new Date("2026-07-28T04:00:00.000Z");
     const emitido = new Date("2026-07-27T08:00:00.000Z"); // 02:00 CR del 27
 
-    expect(tiempoRelativo(emitido, ahora)).toBe("hace 20 h");
+    expect(tiempoRelativo(emitido, ahora, ZONA_DE_CR)).toBe("hace 20 h");
   });
 
   it("las 00:01 CR de hoy, leidas a las 00:02 CR de hoy, NO son ayer", () => {
     const emitido = new Date("2026-07-27T06:01:00.000Z"); // 00:01 CR del 27
     const ahora = new Date("2026-07-27T06:02:00.000Z"); // 00:02 CR del 27
 
-    expect(tiempoRelativo(emitido, ahora)).toBe("hace 1 min");
+    expect(tiempoRelativo(emitido, ahora, ZONA_DE_CR)).toBe("hace 1 min");
   });
 
   it("dos dias CR atras deja de ser «ayer»", () => {
     const emitido = new Date("2026-07-25T20:00:00.000Z"); // 14:00 CR del 25
     const ahora = new Date("2026-07-27T18:00:00.000Z"); // 12:00 CR del 27
 
-    expect(tiempoRelativo(emitido, ahora)).toBe("hace 2 d");
+    expect(tiempoRelativo(emitido, ahora, ZONA_DE_CR)).toBe("hace 2 d");
   });
 });
 
 describe("R33 — una fecha futura no produce negativos", () => {
   it("un aviso con fecha por delante del reloj cae en «hace un momento»", () => {
-    expect(tiempoRelativo(new Date(AHORA.getTime() + 5 * HORA), AHORA)).toBe("hace un momento");
-    expect(tiempoRelativo(new Date(AHORA.getTime() + 3 * DIA), AHORA)).toBe("hace un momento");
+    expect(tiempoRelativo(new Date(AHORA.getTime() + 5 * HORA), AHORA, ZONA_DE_CR)).toBe("hace un momento");
+    expect(tiempoRelativo(new Date(AHORA.getTime() + 3 * DIA), AHORA, ZONA_DE_CR)).toBe("hace un momento");
   });
 });
 
 describe("R32 — la funcion es PURA: no lee el reloj", () => {
   it("el mismo par de fechas da siempre el mismo texto", () => {
     const desde = new Date("2026-07-27T16:00:00.000Z");
-    const primera = tiempoRelativo(desde, AHORA);
-    const segunda = tiempoRelativo(desde, AHORA);
+    const primera = tiempoRelativo(desde, AHORA, ZONA_DE_CR);
+    const segunda = tiempoRelativo(desde, AHORA, ZONA_DE_CR);
 
     expect(primera).toBe("hace 2 h");
     expect(segunda).toBe(primera);

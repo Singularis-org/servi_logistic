@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup, within, waitFor } from "@testing-library/react";
+import { render, screen, cleanup, within, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { SWRConfig } from "swr";
@@ -146,13 +146,16 @@ const SUPERFICIES: { nombre: string; cuenta: string; casillas: string[]; montar:
     nombre: "bodega satélite",
     cuenta: "Bodega Norte",
     casillas: ["Periodo", "Tipo de movimiento"],
-    montar: () =>
+    // SLT-114 (R231): el libro de la bodega vive en la pestaña «Movimientos».
+    montar: () => {
       envolver(
         <EstadoCuentaSatelite
           inicial={estado({ tipo: "bodega", id: UUID_BODEGA, nombre: "Bodega Norte", filas: [], total: 0 })}
           puedeConciliar={false}
         />,
-      ),
+      );
+      fireEvent.click(screen.getByRole("tab", { name: "Movimientos" }));
+    },
   },
   {
     nombre: "/mi-wallet",
@@ -247,7 +250,12 @@ describe("467 R2/R4/R9/R23 — la fila", () => {
     const alto = (el: Element) => el.className.split(/\s+/).includes("h-8");
     expect(alto(screen.getByRole("combobox", { name: "Tipo de movimiento" }))).toBe(true);
     expect(alto(cierreBoton() as HTMLElement)).toBe(true);
+    // SLT-160 (R771, DC2 de Carlos): con `escaneo` el buscador mide 44 px. SLT-202 «Escritorio igual a
+    // prod: tamaños de controles y un solo botón de recibir» (Carlos, 2026-11-18): solo en el móvil; en
+    // escritorio vuelve al `h-8` de los disparadores, alineado con ellos.
     expect(alto(buscador().parentElement as HTMLElement)).toBe(true);
+    expect(buscador().parentElement).toHaveClass("max-md:h-11");
+    expect(buscador().parentElement).not.toHaveClass("h-11");
   });
 });
 

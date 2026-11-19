@@ -16,6 +16,7 @@ import type {
   CargaMasivaNotificador,
   CierreNotificador,
 } from "@/lib/notificaciones/notificadores";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 146 — B14/B15/B16 (wiring) y B17 (guardia de alcance). Verifica que cada operacion
 // de negocio DISPARA su productor y que un productor que LANZA no cambia el resultado de la
@@ -55,9 +56,10 @@ function comandoPostulacion(): PostularMensajeroCommand {
     primerApellido: "Perez",
     segundoApellido: "Gomez",
     email: "ana@example.com",
-    telefono: "0991234567",
-    tipoIdentificacionId: "tipo-1",
-    cedula: "1710034065",
+    // SLT-42: datos válidos del país de `reglasPaisFijas()` (Costa Rica).
+    telefono: "88887777",
+    tipoIdentificacionId: "tipo-cr-cedula",
+    cedula: "112223333",
     vehiculoId: "veh-1",
     placa: "ABC123",
     password: "Abcdef1!",
@@ -74,6 +76,7 @@ describe("R23 — registrar una postulacion dispara su aviso", () => {
       repoPostulacion(),
       storageFake(),
       notificar,
+      reglasPaisFijas(),
     );
 
     const r = await service.postular(comandoPostulacion());
@@ -90,6 +93,7 @@ describe("R23 — registrar una postulacion dispara su aviso", () => {
       repoPostulacion({ emailExiste: vi.fn().mockResolvedValue(true) }),
       storageFake(),
       notificar,
+      reglasPaisFijas(),
     );
 
     expect(await service.postular(comandoPostulacion())).toEqual({
@@ -107,6 +111,7 @@ describe("R23 — registrar una postulacion dispara su aviso", () => {
       }),
       storageFake(),
       notificar,
+      reglasPaisFijas(),
     );
 
     expect(await service.postular(comandoPostulacion())).toMatchObject({ status: "conflict" });
@@ -118,7 +123,7 @@ describe("R25 — un aviso que falla no tumba la postulacion", () => {
   it("la postulacion sigue devolviendo ok y no se limpian los documentos subidos", async () => {
     const notificar = vi.fn().mockRejectedValue(new Error("aviso caido"));
     const storage = storageFake();
-    const service = new PostulacionMensajeroService(repoPostulacion(), storage, notificar);
+    const service = new PostulacionMensajeroService(repoPostulacion(), storage, notificar, reglasPaisFijas());
 
     expect(await service.postular(comandoPostulacion())).toEqual({ status: "ok" });
     expect(storage.remove).not.toHaveBeenCalled(); // R24 no se dispara por un aviso
@@ -189,6 +194,8 @@ function cierreService(repo: ReturnType<typeof cierreRepo>, notificar: CierreNot
     { createSignedUrls: vi.fn().mockResolvedValue({}) } as never,
     conResolvePagosViejo({ resolvePagoTarifa: vi.fn().mockResolvedValue(null) }) as never,
     notificar,
+    undefined,
+    reglasPaisFijas(),
   );
 }
 
@@ -290,7 +297,7 @@ function bulkService(notificar: CargaMasivaNotificador) {
     findDistritosByCantonIds: vi.fn().mockResolvedValue([]),
     // Feature 155: `cargarViaApi` resuelve el estado inicial con el flag de la tienda
     // dueña de la key, asi que el doble del repositorio debe exponerlo.
-    findUsuarioFulfillment: vi.fn().mockResolvedValue(false),
+    findUsuarioSeRecogeEnTienda: vi.fn().mockResolvedValue(true),
     createManyOrdenesConGuia: vi.fn().mockResolvedValue([]),
   };
   const tarifas = { resolveTarifaPorTienda: vi.fn().mockResolvedValue(null) };
@@ -515,6 +522,7 @@ describe("R26 — la feature no introduce ningun trabajo programado", () => {
       // el inventario sigue cerrado. El CUARTO aviso AGREGADO: reprogramadas de hoy retenidas por
       // un cierre sin aprobar, UNA fila por ambito (central | zona) y por rol, a las 07:00 CR.
       "reprogramadas_esperan_cierre", // ficha 462 / design §3.1 - a maestro/admin (central) y adminSatelite (zona); push admin+satelite
+      "factura_plataforma_emitida", // SLT-136 / design §7.3 - al maestro, una vez por factura cerrada; push solo maestro
     ]);
   });
 
@@ -612,6 +620,7 @@ describe("R26 — la feature no introduce ningun trabajo programado", () => {
       // esta en `notificacion_dedupe_key`; y es "central", no "global": maestro y admin cuentan el
       // ambito central, no el total del sistema.
       "reprogramadas_esperan_cierre_dia", // ficha 462 / design DE - EL AMBITO Y EL DIA, no un cierre ni una orden
+      "factura_plataforma", // SLT-136 / design §7.3 - la factura de la plataforma: se cierra una sola vez
     ]);
   });
 });

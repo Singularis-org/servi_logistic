@@ -2,7 +2,9 @@ import { describe, it, expect, vi } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 import { CierresBodegaAdminRepository } from "@/lib/repositories/CierresBodegaAdminRepository";
 import { GESTION_DESCARGA_SELECT } from "@/lib/repositories/CierresAdminRepository";
-import type { FiltrosDescargaGestiones } from "@/lib/types/filtros-cierres";
+import type { FiltrosDescargaGestionesRepo } from "@/lib/types/filtros-cierres";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { filtrosConLimites } from "@/lib/types/filtros-cierres";
 
 // Feature 230 — Tanda 7 (T7.1, R11/R24/R26/R41) — el WHERE, el ORDEN y la PROYECCIÓN de la
 // lectura de gestiones de «Cierres de bodega».
@@ -19,7 +21,7 @@ import type { FiltrosDescargaGestiones } from "@/lib/types/filtros-cierres";
 
 const M1 = "11111111-1111-4111-8111-111111111111";
 
-const FILTROS: FiltrosDescargaGestiones = { mensajeroIds: [M1] };
+const FILTROS: FiltrosDescargaGestionesRepo = { mensajeroIds: [M1] };
 
 interface Consulta {
   where?: Record<string, unknown>;
@@ -45,7 +47,7 @@ describe("WHERE/orden/proyección de las gestiones de «Cierres de bodega» (fea
   it("sólo devuelve gestiones de cierres del día consolidados en un cierre de bodega (R24)", async () => {
     const prisma = prismaFalso();
 
-    await repositorio(prisma).findGestionesDeCierresBodegaCompleto(FILTROS);
+    await repositorio(prisma).findGestionesDeCierresBodegaCompleto(FILTROS, ZONA_CR);
 
     expect(prisma.gestionOrden.findMany.mock.calls[0]![0]!.where).toEqual({
       cierre: { cierreBodegaId: { not: null }, AND: [{ mensajeroId: { in: [M1] } }] },
@@ -55,7 +57,7 @@ describe("WHERE/orden/proyección de las gestiones de «Cierres de bodega» (fea
   it("NO acota por zona ni por tipo de destino: este listado es de acceso total (R25)", async () => {
     const prisma = prismaFalso();
 
-    await repositorio(prisma).findGestionesDeCierresBodegaCompleto(FILTROS);
+    await repositorio(prisma).findGestionesDeCierresBodegaCompleto(FILTROS, ZONA_CR);
 
     // Que no haya `destinoTipo` aquí es lo que hace de las dos pantallas particiones DISJUNTAS
     // (design §2.6): un cierre con destino `bodega_central` —la GAM— nunca llega a consolidarse,
@@ -71,11 +73,11 @@ describe("WHERE/orden/proyección de las gestiones de «Cierres de bodega» (fea
   it("aplica el rango de fechas con el MISMO criterio que el otro camino (R26/R31)", async () => {
     const prisma = prismaFalso();
 
-    await repositorio(prisma).findGestionesDeCierresBodegaCompleto({
+    await repositorio(prisma).findGestionesDeCierresBodegaCompleto(filtrosConLimites({
       mensajeroIds: [M1],
       desde: "2026-02-01",
       hasta: "2026-02-28",
-    });
+    }, ZONA_CR), ZONA_CR);
 
     // Mismos instantes UTC que el camino A porque los produce la MISMA `filtrosWhere`: es el
     // criterio compartido, no dos traducciones que hoy coinciden.
@@ -89,7 +91,7 @@ describe("WHERE/orden/proyección de las gestiones de «Cierres de bodega» (fea
   it("usa el MISMO orden que el camino de cierres del día (R11/R26)", async () => {
     const prisma = prismaFalso();
 
-    await repositorio(prisma).findGestionesDeCierresBodegaCompleto(FILTROS);
+    await repositorio(prisma).findGestionesDeCierresBodegaCompleto(FILTROS, ZONA_CR);
 
     expect(prisma.gestionOrden.findMany.mock.calls[0]![0]!.orderBy).toEqual([
       { cierre: { solicitadoAt: "desc" } },
@@ -100,7 +102,7 @@ describe("WHERE/orden/proyección de las gestiones de «Cierres de bodega» (fea
   it("usa la MISMA proyección, sin evidencia (R26/R41)", async () => {
     const prisma = prismaFalso();
 
-    await repositorio(prisma).findGestionesDeCierresBodegaCompleto(FILTROS);
+    await repositorio(prisma).findGestionesDeCierresBodegaCompleto(FILTROS, ZONA_CR);
 
     const select = prisma.gestionOrden.findMany.mock.calls[0]![0]!.select!;
     expect(select).toBe(GESTION_DESCARGA_SELECT);
@@ -110,7 +112,7 @@ describe("WHERE/orden/proyección de las gestiones de «Cierres de bodega» (fea
   it("sin gestiones no se consulta el snapshot (R38)", async () => {
     const prisma = prismaFalso([]);
 
-    const filas = await repositorio(prisma).findGestionesDeCierresBodegaCompleto(FILTROS);
+    const filas = await repositorio(prisma).findGestionesDeCierresBodegaCompleto(FILTROS, ZONA_CR);
 
     expect(filas).toEqual([]);
     expect(prisma.cierreDetail.findMany).not.toHaveBeenCalled();

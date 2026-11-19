@@ -15,6 +15,7 @@ import {
 } from "@/lib/errors";
 import type { IApiOrdenLecturaService } from "@/lib/interfaces/services/IApiOrdenLecturaService";
 import { ApiOrdenLecturaService } from "@/lib/services/ApiOrdenLecturaService";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 // ⏳ 2026-09-10 (feature 415, T5): la tarifa VIGENTE que alimenta `costoEstimado`.
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
@@ -28,7 +29,7 @@ import {
   conEmpresaDeLaKey,
   type AutenticadorApiKey,
 } from "@/lib/api/api-key-request";
-import { esFechaCalendarioValida } from "@/lib/utils/fecha-cr";
+import { esFechaCalendarioValida } from "@/lib/utils/calendario-zona";
 
 export interface ListadoApiDeps {
   autenticar?: AutenticadorApiKey;
@@ -46,6 +47,8 @@ function buildLecturaService(): IApiOrdenLecturaService {
     new OrdenRepository(prisma),
     signedUrls,
     new TarifaVigenteRepository(prisma),
+    // SLT-42 (R22, R28): `desde`/`hasta` se miden en la zona del pais de la empresa de la key.
+    construirReglasPaisEmpresa(prisma),
   );
 }
 

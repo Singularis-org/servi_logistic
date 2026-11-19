@@ -14,6 +14,8 @@ import {
   type PostularMensajeroResult,
 } from "@/lib/types/postulacion-mensajero";
 import { MIME_EXTENSION } from "@/lib/config/postulacion";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { validarPersonaDelPais, type ResultadoPersona } from "@/lib/services/validacion-documento-telefono";
 import {
   emitirBestEffort,
   notificadorNoOp,
@@ -22,6 +24,9 @@ import {
 
 /** Rol al que se asigna toda postulacion (R12). */
 const ROL_MENSAJERO = "mensajero";
+
+/** SLT-42: las claves de `fieldErrors` del formulario de postulacion (snake_case, como sus campos). */
+const CAMPOS_DE_POSTULACION = { telefono: "telefono", documento: "cedula", tipo: "tipo_identificacion_id" } as const;
 
 /**
  * Logica de negocio de la postulacion de mensajero (feature 21). Orquesta
@@ -41,6 +46,13 @@ export class PostulacionMensajeroService implements IPostulacionMensajeroService
      * documentos no puede tirarse por un aviso perdido.
      */
     private readonly notificar: PostulacionNotificador = notificadorNoOp,
+    /**
+     * SLT-42 (R10, R11, R14-R16): las reglas del pais de la empresa que recibe la postulacion.
+     * OPCIONAL EN EL CONSTRUCTOR, OBLIGATORIO EN EL USO, con la misma disciplina que en
+     * `UsuarioService`: `postular` LANZA si no esta, en vez de guardar sin validar. Que el
+     * composition root lo pasa lo prueba `postulacion-mensajero-service-pais.test.ts`.
+     */
+    private readonly reglasPais?: IReglasPaisEmpresa,
   ) {}
 
   async postular(command: PostularMensajeroCommand): Promise<PostularMensajeroResult> {
@@ -49,23 +61,25 @@ export class PostulacionMensajeroService implements IPostulacionMensajeroService
     if (!rolId) return { status: "error" };
 
     // R9: FKs de catalogo deben existir; error por campo, sin crear cuenta.
-    const fieldErrors: Record<string, string[]> = {};
-    if (!(await this.repo.tipoIdentificacionExiste(command.tipoIdentificacionId))) {
-      fieldErrors.tipo_identificacion_id = ["tipo de identificacion no valido"];
-    }
+    // SLT-42 (R10, R11, R14-R16): el tipo es el del pais de la empresa (por `id` o por `value`),
+    // y documento y telefono se miden con su regla; todo antes de subir un solo archivo.
+    const persona = await this.validarPersona(command);
+    const fieldErrors: Record<string, string[]> = persona.ok ? {} : { ...persona.fieldErrors };
     if (!(await this.repo.vehiculoExiste(command.vehiculoId))) {
       fieldErrors.vehiculo_id = ["vehiculo no valido"];
     }
-    if (Object.keys(fieldErrors).length > 0) {
+    if (!persona.ok || Object.keys(fieldErrors).length > 0) {
       return { status: "validation_error", fieldErrors };
     }
+    const { telefono, documento: cedula, tipo } = persona;
 
     // R19/R20: unicidad de aplicacion para dar error de campo limpio. El
     // constraint DB (R21) es la garantia dura ante carreras (ver abajo).
     if (await this.repo.emailExiste(command.email)) {
       return { status: "conflict", field: "email" };
     }
-    if (await this.repo.cedulaExiste(command.cedula)) {
+    // SLT-42 (R13): el documento es unico por empresa Y tipo, como el indice `usuario_cedula_key`.
+    if (await this.repo.cedulaExiste(cedula, tipo.id)) {
       return { status: "conflict", field: "cedula" };
     }
 
@@ -101,10 +115,10 @@ export class PostulacionMensajeroService implements IPostulacionMensajeroService
           primerApellido: command.primerApellido,
           segundoApellido: command.segundoApellido ?? null,
           email: command.email,
-          telefono: command.telefono,
+          telefono, // R15: el numero nacional
           passwordHash,
-          cedula: command.cedula,
-          tipoIdentificacionId: command.tipoIdentificacionId,
+          cedula,
+          tipoIdentificacionId: tipo.id,
           rolId,
           vehiculoId: command.vehiculoId,
           placa: command.placa,
@@ -137,5 +151,22 @@ export class PostulacionMensajeroService implements IPostulacionMensajeroService
       );
     }
     return { status: "ok" };
+  }
+
+  /** SLT-42 (R10, R11, R14-R16): el pais de la empresa en curso y la regla de su tipo de documento. */
+  private async validarPersona(command: PostularMensajeroCommand): Promise<ResultadoPersona> {
+    if (!this.reglasPais) {
+      throw new Error(
+        "PostulacionMensajeroService.postular requiere las reglas del pais de la empresa: sin ellas " +
+          "el telefono y el documento se guardarian sin validar (SLT-42)",
+      );
+    }
+    const { paisId } = await this.reglasPais.deLaEmpresa();
+    const tipo = await this.reglasPais.tipoDocumento(command.tipoIdentificacionId);
+    return validarPersonaDelPais(
+      paisId,
+      { telefono: command.telefono, documento: command.cedula, tipo },
+      CAMPOS_DE_POSTULACION,
+    );
   }
 }

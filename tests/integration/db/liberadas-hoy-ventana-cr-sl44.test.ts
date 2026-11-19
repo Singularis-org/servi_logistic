@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { PrismaClient } from "@prisma/client";
+import { ventanaDelDiaCR } from "@/tests/fabricas/reglas-pais";
 
 import { LiberacionReprogramadaRepository } from "@/lib/repositories/LiberacionReprogramadaRepository";
 import { startOfDayCR } from "@/lib/utils/fecha-cr";
@@ -78,7 +79,7 @@ describeSiHayBase("SL-44 — `findLiberadasHoy` usa el dia de CR (Postgres real)
       }
 
       const repo = new LiberacionReprogramadaRepository(clienteConTransaccionAnidada(tx));
-      const filas = await repo.findLiberadasHoy({ zonaId: fks.zonaId, estatusValue: ESTATUS }, startOfDayCR(RELOJ));
+      const filas = await repo.findLiberadasHoy({ zonaId: fks.zonaId, estatusValue: ESTATUS }, ventanaDelDiaCR(startOfDayCR(RELOJ)));
       return filas.map((f) => nombres.get(f.id) ?? `ajena:${f.id}`);
     });
   }, 120_000);

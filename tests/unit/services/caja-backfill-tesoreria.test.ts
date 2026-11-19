@@ -20,6 +20,7 @@ import {
   WALLET_ORIGEN_TIPO_SEED,
 } from "@/lib/types/wallet";
 import { codigoSinComentarios } from "../../fixtures/money-safe";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * Feature 173 / T E.1 (R36, R37, R38, R40, R41, R42, R43, R44) — el registro RETROACTIVO.
@@ -305,6 +306,7 @@ function repoDeCaja() {
     }),
     listar: vi.fn(),
     agregarPorCategoriaYTipo: vi.fn(),
+    categoriasConModeloNuevo: vi.fn(),
     obtenerPorId: vi.fn(),
     agregarPorCategoria: vi.fn(),
   };
@@ -315,6 +317,7 @@ function armar(mundo: Mundo) {
   const { cliente, espias } = clienteFalso(mundo);
   const { repo, espia, escrituras } = repoDeCaja();
   const servicio = new CajaBackfillTesoreriaService({
+    reglasPais: reglasPaisFijas(), // SLT-42 (R22): la zona de CR
     cliente,
     // Los emisores REALES del camino vivo: lo que aqui se mide son SUS filas.
     codFeed: new CajaCodFeedService(),
@@ -831,6 +834,7 @@ describe("el recolector no lee la base, y lo dice en alto", () => {
 
     expect(() => recolector.listar()).toThrow(/no lee la base/);
     expect(() => recolector.agregarPorCategoriaYTipo()).toThrow(/no lee la base/);
+    expect(() => recolector.categoriasConModeloNuevo()).toThrow(/no lee la base/);
     expect(() => recolector.obtenerPorId()).toThrow(/no lee la base/);
     expect(() => recolector.agregarPorCategoria()).toThrow(/no lee la base/);
   });

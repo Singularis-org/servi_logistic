@@ -6,6 +6,7 @@ import { emisorNotificacionReal, emitirOrdenRechazada } from "@/lib/notificacion
 import type { CrearNotificacionInput } from "@/lib/interfaces/repositories/INotificacionRepository";
 import type { GestionResultado } from "@prisma/client";
 import { idEstado, sembrarCatalogoEstados } from "@/tests/fixtures/catalogo-estados";
+import { inicioDelDiaCR } from "@/tests/fabricas/reglas-pais";
 
 // Feature 146 — B13. Productor TRANSACCIONAL del aviso «orden rechazada por el destinatario».
 // Cubre R18, R19, R20 y R21 de la 146.
@@ -93,6 +94,7 @@ function buildRegistro(orden: Record<string, unknown> = ORDEN, cola = colaFake()
 
 function registrar(repo: GestionOrdenRepository, resultado: GestionResultado = "devolucion_a_origen_por_rechazo") {
   return repo.registrarGestionPendiente({
+    inicioDelDia: inicioDelDiaCR(),
     ordenId: "o-1",
     mensajeroId: "men-1",
     gestion:

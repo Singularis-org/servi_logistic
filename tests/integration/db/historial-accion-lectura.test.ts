@@ -18,10 +18,12 @@ import {
   clienteConSavepoint,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
+  type FksDeOrden,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FICHA 362 / T4.2 (R29/R31) — LOS FILTROS Y LA BUSQUEDA, PROBADOS DONDE VIVEN.
@@ -73,14 +75,18 @@ describeSiHayBase("362/T4.2 — el `WHERE` del historial, contra Postgres", () =
    * de entidad y tres dias. Cada caso de abajo aisla UNA dimension.
    */
   async function sembrar(tx: TxDeTest): Promise<Corpus> {
-    const usuarios = await tx.usuario.findMany({
-      select: { id: true, nombre: true, primerApellido: true },
-      take: 2,
-      orderBy: { id: "asc" },
-    });
-    if (usuarios.length < 2) {
-      throw new Error("hacen falta al menos 2 usuarios en la base para este corpus");
-    }
+    // SLT-180 (R1042): los dos actores se SIEMBRAN aqui, en la tx del caso; ya no se leen «los dos
+    // primeros usuarios» de la base. Roles distintos a proposito: el nombre del fixture lleva el
+    // rol, asi que buscar por el nombre de A no alcanza a B (R31 lo exige).
+    const usuarios = [
+      await crearUsuarioDePrueba(tx, "maestro"),
+      await crearUsuarioDePrueba(tx, "admin"),
+    ];
+    // SLT-180 (R1044): control positivo de la siembra.
+    expect(
+      await tx.usuario.count({ where: { id: { in: usuarios.map((u) => u.id) } } }),
+      "SLT-180: los dos actores sembrados no estan en la base",
+    ).toBe(2);
     const [a, b] = usuarios;
 
     const filas = [
@@ -407,9 +413,9 @@ describeSiHayBase("362/T4.2 — el `WHERE` del historial, contra Postgres", () =
       const c = await sembrar(tx);
       const filtro = { ...sinFiltro(), actorId: [c.actorA] };
       // El tope de la descarga se MIDE con el `total` de la propia consulta en vez de fijarlo a
-      // ojo: `actorA` es un usuario REAL de la base y arrastra las filas que otras corridas le
+      // ojo: `actorA` era un usuario REAL de la base y arrastraba las filas que otras corridas le
       // dejaron —42 el 2026-09-04—, asi que un `limite` fijo acabaria truncando la descarga y el
-      // rojo no diria nada de R30. La pantalla se recorre por paginas por el mismo motivo.
+      // rojo no diria nada de R30. Desde SLT-180 es un usuario sembrado, y el tope medido se queda. La pantalla se recorre por paginas por el mismo motivo.
       const { total } = await c.repo.list({ filtro, orden: ORDEN, page: 1, pageSize: 1 });
       const descarga = await c.repo.listAll({ filtro, orden: ORDEN, limite: total + 1 });
       const mios = new Set(Object.values(c.ids));
@@ -481,21 +487,14 @@ describeSiHayBase("362/T4.2 — el `WHERE` del historial, contra Postgres", () =
 // la contrapartida: la contrapartida no la revisa el revisado. El ultimo caso lo afirma.
 describeSiHayBase("424/T8 — quien borro es consultable filtrando por accion y actor", () => {
   let prisma: PrismaClient;
-  let FKS: Awaited<ReturnType<typeof fksDeOrden>>;
+  // SLT-180 (R1042): tienda y zona se SIEMBRAN en la tx de cada caso (en `borrarComoAdmin`).
+  let FKS: FksDeOrden | null = null;
 
   /** Quien hace la CONSULTA. El modulo lo lee solo el `maestro` (`ROLES_HISTORIAL_ACCIONES`). */
   const MAESTRO: Actor = { usuarioId: "no-se-usa-para-autorizar", rol: "maestro" };
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    FKS = await fksDeOrden(prisma);
-    if (FKS === null) {
-      // ⚠️ LANZA, no `return`: un `if (!fks) return;` reporta `passed` sin comprobar nada.
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar. Corre " +
-          "`pnpm run db:seed` antes de esta suite.",
-      );
-    }
   });
 
   afterAll(async () => {
@@ -507,12 +506,24 @@ describeSiHayBase("424/T8 — quien borro es consultable filtrando por accion y 
    * consultar despues. Todo dentro de la transaccion que el caso revierte.
    */
   async function borrarComoAdmin(tx: TxDeTest, marca: string) {
+    // SLT-180 (R1044): siembra propia + control positivo. LANZA, no `return`.
+    FKS = await crearFksDeOrden(tx);
+    expect(
+      await tx.usuario.count({ where: { id: FKS.tiendaId } }),
+      "SLT-180: la tienda sembrada no esta en la base",
+    ).toBe(1);
+    expect(
+      await tx.zona.count({ where: { id: FKS.zonaId } }),
+      "SLT-180: la zona sembrada no esta en la base",
+    ).toBe(1);
     const rolAdmin = await tx.rol.findFirstOrThrow({
       where: { value: "admin" },
       select: { id: true },
     });
-    const plantilla = await tx.usuario.findFirstOrThrow({
-      select: { tipoIdentificacionId: true },
+    // SLT-180: el tipo de identificacion se lee del catalogo por su clave, no del primer usuario.
+    const cedula = await tx.tipoIdentificacion.findUniqueOrThrow({
+      where: { value: "cedula" },
+      select: { id: true },
     });
     const nombre = `Admin${marca}`;
     const primerApellido = "Efimero424";
@@ -525,7 +536,7 @@ describeSiHayBase("424/T8 — quien borro es consultable filtrando por accion y 
         passwordHash: "x",
         cedula: `${MARCA}-${marca}`,
         estado: "activo",
-        tipoIdentificacionId: plantilla.tipoIdentificacionId,
+        tipoIdentificacionId: cedula.id,
         rolId: rolAdmin.id,
       },
       select: { id: true },
@@ -559,6 +570,7 @@ describeSiHayBase("424/T8 — quien borro es consultable filtrando por accion y 
       eliminadas,
       servicio: new HistorialAccionService(
         new HistorialAccionRepository(tx as unknown as PrismaClient),
+        reglasPaisFijas(),
       ),
     };
   }

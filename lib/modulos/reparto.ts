@@ -23,6 +23,8 @@ export const MODULO_POR_RUTA: Readonly<Record<string, Destino>> = {
   // núcleo
   "/dashboard": "nucleo",
   "/ordenes": "nucleo",
+  // SLT-159: la página «Recibir paquetes» de escritorio (central y tienda; satélite abajo).
+  "/ordenes/recibir": "nucleo",
   // Redirige a `/mis-asignaciones/reparto` (Entregas, núcleo): no pinta nada propio.
   "/mis-asignaciones": "nucleo",
   "/mis-asignaciones/reparto": "nucleo",
@@ -51,11 +53,15 @@ export const MODULO_POR_RUTA: Readonly<Record<string, Destino>> = {
   "/plataforma/geografia": "nucleo",
   // SL-42: el catálogo de vehículos lo gestiona la plataforma (superadmin); `/configuracion/vehiculos` se retiró.
   "/plataforma/vehiculos": "nucleo",
+  // SLT-97: los reportes de problema los ve solo la plataforma (superadmin).
+  "/plataforma/reportes": "nucleo",
+  "/plataforma/reportes/[reporteId]": "nucleo",
   // Recolección y Bodegas satélite (núcleo desde el 2026-10-27).
   "/recoleccion": "nucleo",
   "/recepcion-satelite": "nucleo",
   "/recepcion-satelite/por-recibir": "nucleo",
   "/recepcion-satelite/en-bodega": "nucleo",
+  "/recepcion-satelite/recibir": "nucleo",
   "/mi-bodega": "nucleo",
   // analitica, monitoreo
   "/analitica": "analitica",
@@ -170,6 +176,9 @@ export const MODULO_POR_ACTION: Readonly<Record<string, Destino>> = {
   "envio-devolucion-central": "nucleo",
   "eliminar-orden": "nucleo",
   "etiquetas-guia": "nucleo",
+  // SLT-119: el detalle de una factura de la plataforma, en «Mi plan» (maestro) y en el detalle de empresa
+  // (superadmin), ambas núcleo.
+  "facturas-plataforma": "nucleo",
   "filtros-ordenes": "nucleo",
   geografia: "nucleo",
   "geografia-plataforma": "nucleo",
@@ -190,9 +199,15 @@ export const MODULO_POR_ACTION: Readonly<Record<string, Destino>> = {
   "ordenes-guia": "nucleo",
   "order-status": "nucleo",
   organizaciones: "nucleo",
+  // SLT-60: el superadmin confirma los pagos a la plataforma en el detalle de la empresa, de plataforma.
+  "pagos-plataforma": "nucleo",
   "password-reset": "nucleo",
+  // SLT-99: el cambio de plan del maestro en «Mi plan», que es núcleo como su ruta.
+  "mi-plan": "nucleo",
   // SL-24: de plataforma, como `modulos-empresa` (solo el superadmin).
   planes: "nucleo",
+  // SLT-129: el borrador de planes del superadmin, de plataforma como `planes`.
+  "plan-borrador": "nucleo",
   "postulacion-mensajero": "nucleo",
   "postulacion-recurso": "nucleo",
   push: "nucleo",
@@ -203,6 +218,10 @@ export const MODULO_POR_ACTION: Readonly<Record<string, Destino>> = {
   "recepcion-satelite": "nucleo",
   "recoleccion-tienda": "nucleo",
   "recuperar-orden": "nucleo",
+  // SLT-87: avisar de un fallo no depende de ningún módulo.
+  "reporte-bug": "nucleo",
+  // SLT-97: el módulo de reportes del superadmin, de plataforma.
+  "reportes-bug-plataforma": "nucleo",
   "reprogramadas-retenidas": "nucleo",
   "resolver-novedad": "nucleo",
   "ruta-mensajero": "nucleo",
@@ -243,6 +262,12 @@ export const MODULO_POR_JOB: Readonly<Record<JobTipo, Destino>> = {
   plan_recordatorio_cambio: "nucleo",
   plan_aviso_correo: "nucleo",
   plan_cambios_vencidos: "nucleo",
+  // SLT-86 (design §5.2): aplicar el cambio de empresa con fecha; de plataforma, sin módulo.
+  plan_aplicar_cambio_empresa: "nucleo",
+  // SLT-118 (design §4.1): el cierre de las facturas de la plataforma; de plataforma, sin módulo.
+  factura_plataforma_cerrar: "nucleo",
+  // SLT-136 (design §7.2, R30): el aviso de una factura cerrada; ningún módulo apagado lo descarta.
+  factura_plataforma_aviso: "nucleo",
 };
 
 /** §3.4 — carpetas de `app/api/cron/`. */

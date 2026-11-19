@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 
 import { CorregirDatosClienteService } from "@/lib/services/CorregirDatosClienteService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type {
   DistritoResueltoRow,
@@ -111,6 +112,7 @@ async function avisoDe(opciones: {
         tarifaViejaDeFormula(opciones.tarifaFila === undefined ? tarifa() : opciones.tarifaFila),
       ),
     },
+    reglasPaisFijas(),
   );
   const r = await service.corregir(
     { ordenId: ORDEN_ID, provinciaId: "p-1", cantonId: "c-1", distritoId: "d-2" },
@@ -237,6 +239,7 @@ describe("SLT-52 — R16/R18: cada ubicacion del aviso pide su tarifa con SU dis
         corregirDatosCliente: vi.fn(async () => "ok" as const),
       },
       { resolveTarifa },
+      reglasPaisFijas(),
     );
 
     const r = await service.corregir(

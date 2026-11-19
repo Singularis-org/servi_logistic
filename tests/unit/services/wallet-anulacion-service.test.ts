@@ -164,6 +164,51 @@ describe("458-B — EgresoCajaAnulacionService.anular (R63–R67, R82)", () => {
   });
 });
 
+// SLT-60 (design §3.5, §4.7; R10) — el contra-asiento de un pago a la plataforma ya confirmado lo rechaza
+// la base (`SL060 {"codigo": "pago_confirmado"}`); el servicio responde `forbidden`. Las dos formas en que
+// llega por Prisma 7 + adapter-pg (lib/db/sqlstate.ts): el `DriverAdapterError` de una operacion de modelo
+// y el P2010 del SQL a mano. Que no quede nada escrito lo mide `pago-plataforma-confirmacion.test.ts`.
+describe("SLT-60 — EgresoCajaAnulacionService.anular de un pago confirmado (R10)", () => {
+  const PAGO = mov({ id: "pago-1", categoria: "egreso_pago_plataforma", descripcion: "Pago a la plataforma" });
+  const JSON_CONFIRMADO = '{"codigo": "pago_confirmado", "pago_id": "pago-1"}';
+  const DE_MODELO = Object.assign(new Error("driver"), {
+    name: "DriverAdapterError",
+    cause: { kind: "postgres", code: "SL060", originalCode: "SL060", message: JSON_CONFIRMADO },
+  });
+  const DE_SQL = Object.assign(new Error(`Raw query failed. Code: \`SL060\`. Message: \`${JSON_CONFIRMADO}\``), {
+    code: "P2010",
+  });
+
+  function conRechazo(error: unknown) {
+    const m = montaje(PAGO);
+    (m.walletRepo.crearMovimientos as unknown as { mockRejectedValueOnce: (e: unknown) => void }).mockRejectedValueOnce(error);
+    return m;
+  }
+
+  it.each([
+    ["el error de la operacion de modelo", DE_MODELO],
+    ["el P2010 del SQL a mano", DE_SQL],
+  ])("con %s `SL060 pago_confirmado` responde `forbidden`", async (_forma, error) => {
+    for (const actor of [MAESTRO, ADMIN]) {
+      const m = conRechazo(error);
+      expect(await m.servicio.anular({ ...PETICION, movimientoId: "pago-1" }, actor)).toEqual({ status: "forbidden" });
+      // La constancia se intento DENTRO de la transaccion que la base revierte.
+      expect(m.anulaciones.anularEgreso).toHaveBeenCalledWith(m.TX, expect.objectContaining({ movimientoId: "pago-1" }));
+    }
+  });
+
+  it("otro error `SL060` (no `pago_confirmado`) o de otro SQLSTATE no se traga: se relanza", async () => {
+    const inmutable = Object.assign(new Error("driver"), {
+      cause: { kind: "postgres", code: "SL060", originalCode: "SL060", message: '{"codigo": "inmutable"}' },
+    });
+    const otroCodigo = Object.assign(new Error("driver"), {
+      cause: { kind: "postgres", code: "SL017", originalCode: "SL017", message: JSON_CONFIRMADO },
+    });
+    await expect(conRechazo(inmutable).servicio.anular(PETICION, MAESTRO)).rejects.toBe(inmutable);
+    await expect(conRechazo(otroCodigo).servicio.anular(PETICION, MAESTRO)).rejects.toBe(otroCodigo);
+  });
+});
+
 // ── La accion unica: el enrutado ────────────────────────────────────────────────────────────
 
 function fila(over: Partial<FilaDeLibroParaAnular> = {}): FilaDeLibroParaAnular {

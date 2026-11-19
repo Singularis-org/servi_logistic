@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { useSearchParams } from "next/navigation";
 import { User, Warehouse } from "lucide-react";
 
 import { SegmentedToggle } from "@/components/shared/SegmentedToggle";
 
 import { PanelConmutado } from "./PanelConmutado";
+import { PARAM_CIERRE_BODEGA } from "./cierre-enlace";
 
 /**
  * Pedido humano del 2026-08-16 — la pantalla de cierres se divide en dos: BODEGA y MENSAJERO.
@@ -55,7 +57,14 @@ export function CierresTabs({ bodega, mensajero }: Readonly<CierresTabsProps>) {
   // haber pestañas, así que quien ya usaba la pantalla no tiene que aprender un clic nuevo para
   // llegar a lo mismo. La mitad de bodega es la que se consulta de vez en cuando; ésta es la
   // que se atiende todos los días.
-  const [tab, setTab] = useState<TabCierres>(TAB_MENSAJERO);
+  //
+  // SLT-114 (R238): la excepción es el enlace «Ver el cierre de bodega completo» de la wallet de
+  // satélites. Trae `?cierreBodega=` y su detalle vive en la mitad «Bodega»: arrancar en
+  // «Mensajero» lo abriría detrás de una pestaña oculta.
+  const searchParams = useSearchParams();
+  const [tab, setTab] = useState<TabCierres>(() =>
+    searchParams.get(PARAM_CIERRE_BODEGA) === null ? TAB_MENSAJERO : TAB_BODEGA,
+  );
 
   if (!bodega) return <>{mensajero}</>;
 

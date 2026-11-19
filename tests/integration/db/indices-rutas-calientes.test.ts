@@ -21,6 +21,7 @@ import {
   type TxDeTest,
 } from "./_postgres-real";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // SL-18 T5.3 — los indices de rutas calientes (migracion `20261026090100_indices_rutas_calientes`)
 // contra Postgres real: R24 y R25. T5.4 suma los de la ampliacion
 // (`20261026090200_indices_ordenes_gestiones_historial`): el listado de ordenes, la ventana
@@ -98,7 +99,7 @@ function consultaDelMaestro(desde: string, hasta: string): ConsultaAnalitica {
     { rango: "personalizado", desde, hasta },
     { usuarioId: "u-maestro-sl18", rol: "maestro" },
     "entregas",
-    AHORA,
+    ZONA_DE_CR, AHORA,
   );
   if (r.status !== "ok") throw new Error(`preparacion no concedida: ${JSON.stringify(r)}`);
   return r.consulta;

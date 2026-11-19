@@ -184,3 +184,25 @@ describe("SLT-51/R10 — ningún texto visible de «Zonas» dice «central»", (
     expect(textoVisible()).not.toMatch(/central/i);
   });
 });
+
+describe("SLT-198/R1230 — una zona sin distritos se marca", () => {
+  const CON_VACIA: ZonaDTO[] = [
+    ...ZONAS,
+    { id: "z3", nombre: "Oeste", cobroVehiculo: false, distritosCount: 0, esCentral: false },
+  ];
+
+  it("con 0 distritos lleva «Sin distritos» y no el texto «0 distritos»", () => {
+    renderModulo(CON_VACIA);
+
+    expect(within(fila("Oeste")).getByText("Sin distritos")).toBeInTheDocument();
+    expect(within(fila("Oeste")).queryByText(/0 distritos/)).toBeNull();
+  });
+
+  it("una zona con al menos un distrito no lleva la marca", () => {
+    renderModulo(CON_VACIA);
+
+    expect(within(fila("Sur")).queryByText("Sin distritos")).toBeNull();
+    expect(within(fila("Norte")).queryByText("Sin distritos")).toBeNull();
+    expect(screen.getAllByText("Sin distritos")).toHaveLength(1);
+  });
+});

@@ -28,8 +28,14 @@ vi.mock("@/lib/repositories/InformeTransitoRepository", () => ({
 
 import { crearInformeTransito } from "@/lib/whatsapp-envios/informes/transito/informe";
 import { PARAMETROS_POR_DEFECTO } from "@/lib/whatsapp-envios/informes/transito/parametros";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
-const ctx = { parametros: PARAMETROS_POR_DEFECTO, ahora: new Date("2026-10-05T11:00:00.000Z"), conDocumento: false };
+const ctx = {
+  parametros: PARAMETROS_POR_DEFECTO,
+  ahora: new Date("2026-10-05T11:00:00.000Z"),
+  zona: ZONA_DE_CR,
+  conDocumento: false,
+};
 
 describe("476/m1 — deps de produccion del transito sin memoizar", () => {
   beforeEach(() => {

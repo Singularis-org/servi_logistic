@@ -15,6 +15,20 @@ import {
   type FilterSelection,
 } from "@/components/shared/FilterComponent";
 import { BuscadorFiltros } from "@/components/shared/BuscadorFiltros";
+import { SegmentedToggle } from "@/components/shared/SegmentedToggle";
+import type {
+  DireccionOrden,
+  OrdenamientoListado,
+} from "@/lib/types/ordenamiento-listado";
+import {
+  VISTA_FILTRO_VERSION,
+  type VistaFiltroPayload,
+} from "@/lib/types/vista-filtro";
+import {
+  catalogoCargado,
+  catalogoNoDisponible,
+  type CatalogoVistas,
+} from "@/lib/utils/vista-filtro-aplicabilidad";
 import {
   conBadgePrioridad,
   resaltarFilaPrioridad,
@@ -30,6 +44,18 @@ import {
   CLAVE_BUSQUEDA,
   PLACEHOLDER_BUSQUEDA,
 } from "@/app/(app)/ordenes/_components/ordenes-filtros-def";
+// SLT-210 (R1400): los conmutadores de orden de `/ordenes`, IMPORTADOS —opciones, etiquetas,
+// iconos y valores iniciales—. Mismo precedente que `ordenes-filtros-def` de arriba: las dos
+// barras no pueden llamar a lo mismo de dos maneras.
+import {
+  CAMPO_ORDEN_INICIAL,
+  DIRECCION_ORDEN_INICIAL,
+  ETIQUETA_CAMPO_ORDEN,
+  ETIQUETA_DIRECCION,
+  OPCIONES_CAMPO_ORDEN,
+  OPCIONES_DIRECCION,
+  type CampoOrdenOfrecido,
+} from "@/app/(app)/ordenes/_components/ordenamiento-ordenes";
 
 // Feature 158 (T2.7, decisión del humano del 2026-07-30): el reporte de incidente también
 // vive en la bodega satélite. Se IMPORTA el mismo disparador y el mismo modal de `/ordenes`;
@@ -174,6 +200,12 @@ export interface SateliteOrdenesListadoProps {
   /** Emite los tres filtros elegidos; el módulo pide con ellos la página al servidor (R45). */
   onFiltroChange: (filtro: FiltroBodegaSatelite) => void;
   /**
+   * SLT-210 (R1402) — emite el orden elegido en los conmutadores; el módulo lo mete en la clave
+   * de SWR, vuelve a la página 1 y lo pasa a la descarga. Opcional: sin él los conmutadores se
+   * pintan igual, pero el orden no llega al servidor.
+   */
+  onOrdenChange?: (orden: OrdenamientoListado<CampoOrdenOfrecido>) => void;
+  /**
    * R52 — filas del CONJUNTO COMPLETO con los filtros vigentes, para el archivo.
    *
    * Es un CALLBACK, no unos filtros: esta tabla pinta la página que le llega por props y no
@@ -242,6 +274,7 @@ export function SateliteOrdenesListado({
   totalSinFiltros,
   catalogo,
   onFiltroChange,
+  onOrdenChange,
   obtenerFilasDescarga,
   comprobarVigencia,
   cargando = false,
@@ -273,6 +306,35 @@ export function SateliteOrdenesListado({
   const [filtrosActivos, setFiltrosActivos] = useState<string[]>([]);
   /** Contador de "Limpiar todo": `FilterComponent` es dueño de su selección, se remonta limpio. */
   const [resetFiltros, setResetFiltros] = useState(0);
+
+  /**
+   * SLT-210 (R1408-R1410) — las vistas guardadas, con la MISMA costura que `OrdenesListado`
+   * (ficha 453): la señal de siembra repone el término y la selección en los dos canónicos sin
+   * remontarlos, y `vistaPuestaId` dice qué vista está puesta hasta el primer cambio del filtro.
+   * El ORDEN no entra en la vista (P1 de la 453): aplicar una no reordena la tabla.
+   */
+  const [senalSiembra, setSenalSiembra] = useState(0);
+  const [siembraTermino, setSiembraTermino] = useState("");
+  const [siembraSeleccion, setSiembraSeleccion] = useState<FilterSelection>({});
+  const [vistaPuestaId, setVistaPuestaId] = useState<string | null>(null);
+
+  /**
+   * SLT-210 (R1401/R1402) — el orden, en sus DOS dimensiones y con los valores iniciales de
+   * `/ordenes`. Dos estados y no uno: cambiar el campo no toca la dirección. El servidor lo
+   * aplica DENTRO de cada grupo de estado (P2), así que entrar enseña el listado de siempre.
+   */
+  const [sortBy, setSortBy] = useState<CampoOrdenOfrecido>(CAMPO_ORDEN_INICIAL);
+  const [sortDir, setSortDir] = useState<DireccionOrden>(DIRECCION_ORDEN_INICIAL);
+
+  function cambiarCampoOrden(campo: CampoOrdenOfrecido) {
+    setSortBy(campo);
+    onOrdenChange?.({ sortBy: campo, sortDir });
+  }
+
+  function cambiarDireccionOrden(direccion: DireccionOrden) {
+    setSortDir(direccion);
+    onOrdenChange?.({ sortBy, sortDir: direccion });
+  }
 
   /**
    * FICHA 355 — el catálogo `order_status`, con la MISMA clave de SWR que `/ordenes`
@@ -317,6 +379,30 @@ export function SateliteOrdenesListado({
     [filtros, filtrosActivos],
   );
 
+  /**
+   * SLT-210 (R1414) — ¿se puede comprobar una vista ahora? El mismo criterio que `/ordenes`
+   * (R29 de la 453): con el catálogo geográfico o el de estados sin cargar, ninguna vista se
+   * presenta como incompleta. «El catálogo no está» no es «el valor desapareció».
+   */
+  const catalogoVistas = useMemo<CatalogoVistas>(
+    () =>
+      catalogo !== null && (estatus?.length ?? 0) > 0
+        ? catalogoCargado(filtros)
+        : catalogoNoDisponible(),
+    [catalogo, estatus, filtros],
+  );
+
+  /** SLT-210 (R1408) — lo que hay puesto ahora, en el formato que se guarda. Sin el orden. */
+  const filtroActual = useMemo<VistaFiltroPayload>(
+    () => ({
+      v: VISTA_FILTRO_VERSION,
+      termino,
+      activos: filtrosActivos,
+      seleccion,
+    }),
+    [termino, filtrosActivos, seleccion],
+  );
+
   /** `true` si hay algún filtro marcado (cambia el contador y el mensaje de vacío). */
   const hayFiltros =
     termino !== "" || Object.values(seleccion).some((valores) => valores.length > 0);
@@ -355,24 +441,58 @@ export function SateliteOrdenesListado({
    * (el módulo vuelve a la página 1) y se limpia la selección: actuar sobre una fila que ya
    * no se ve es actuar a ciegas.
    */
+  // SLT-210 (R1410): los tres cambios del filtro apagan la vista puesta.
   function cambiarFiltros(nueva: FilterSelection) {
     setSeleccion(nueva);
+    setVistaPuestaId(null);
     emitir(nueva, termino);
   }
 
   function cambiarTermino(nuevo: string) {
     setTermino(nuevo);
+    setVistaPuestaId(null);
     emitir(seleccion, nuevo);
   }
 
-  /** Deja la barra como recién abierta: sin término, sin valores y sin filtros puestos. */
+  function cambiarActivos(claves: string[]) {
+    setFiltrosActivos(claves);
+    setVistaPuestaId(null);
+  }
+
+  /**
+   * Deja la barra como recién abierta: sin término, sin valores y sin filtros puestos.
+   * SLT-210 (R1407/R1410): apaga la vista puesta y NO toca el orden —«Limpiar todo» deshace lo
+   * que esconde filas, y el orden no esconde ninguna (mismo criterio que `/ordenes`, ficha 356)—.
+   */
   function limpiarFiltros() {
     setSeleccion({});
     setTermino("");
     setFiltrosActivos([]);
     setResetFiltros((n) => n + 1);
     setSeleccionados(new Set());
+    setVistaPuestaId(null);
     onFiltroChange({});
+  }
+
+  /**
+   * SLT-210 (R1409) — REPONER UNA VISTA: los tres estados de la barra a la vez, la señal de las
+   * dos siembras y la vista marcada como puesta. Las siembras no emiten, así que el filtro nuevo
+   * se emite aquí una sola vez (el módulo vuelve a la página 1). El orden no se toca.
+   */
+  function aplicarVista(vistaId: string, filtro: VistaFiltroPayload) {
+    // Un valor puesto sin su control montado sería un filtro invisible y aplicado.
+    const activos = [
+      ...filtro.activos,
+      ...Object.keys(filtro.seleccion).filter((clave) => !filtro.activos.includes(clave)),
+    ];
+    setFiltrosActivos(activos);
+    setSeleccion(filtro.seleccion);
+    setTermino(filtro.termino);
+    setSiembraTermino(filtro.termino);
+    setSiembraSeleccion(filtro.seleccion);
+    setSenalSiembra((n) => n + 1);
+    setVistaPuestaId(vistaId);
+    emitir(filtro.seleccion, filtro.termino);
   }
 
   function toggleUno(id: string, checked: boolean) {
@@ -712,23 +832,55 @@ export function SateliteOrdenesListado({
         // `ReactNode` opaco): solo lo coloca.
         filtros={
           <BuscadorFiltros
-            label="Buscar"
+            escaneo
+            // SLT-160 (R772, DC2): nombre accesible propio del listado.
+            label="Buscar órdenes de la bodega"
             placeholder={PLACEHOLDER_BUSQUEDA}
             minChars={BUSQUEDA_MIN_CHARS}
             onChange={cambiarTermino}
             filtros={filtrosOfrecidos}
             activos={filtrosActivos}
-            onActivosChange={setFiltrosActivos}
+            onActivosChange={cambiarActivos}
+            // SLT-210 (R1409): la costura de la 453 para reponer el término de una vista.
+            siembra={{ senal: senalSiembra, termino: siembraTermino }}
+            // SLT-210 (R1400/R1411): el control «Vistas», al principio de la fila, con su
+            // superficie PROPIA. Las vistas son de cada usuario (P1), como en `/ordenes`.
+            vistas={{
+              superficie: "ordenes-bodega-satelite",
+              filtroActual,
+              catalogo: catalogoVistas,
+              vistaPuestaId,
+              onAplicar: aplicarVista,
+              onGuardada: setVistaPuestaId,
+            }}
             // "Limpiar todo" lo pone la barra al final de la fila, igual que en `/ordenes`.
             onLimpiarTodo={limpiarFiltros}
             hayFiltrosAplicados={filtrosActivos.length > 0 || hayFiltros}
           >
+            {/* SLT-210 (R1400/R1413) — los dos conmutadores de orden de `/ordenes`, en el mismo
+                sitio (primeros hijos, tras «Vistas»), en solo icono y con el mismo tamaño: no
+                se les pasa ninguna clase propia. */}
+            <SegmentedToggle
+              ariaLabel={ETIQUETA_CAMPO_ORDEN}
+              options={OPCIONES_CAMPO_ORDEN}
+              valor={sortBy}
+              onChange={cambiarCampoOrden}
+              soloIcono
+            />
+            <SegmentedToggle
+              ariaLabel={ETIQUETA_DIRECCION[sortBy]}
+              options={OPCIONES_DIRECCION[sortBy]}
+              valor={sortDir}
+              onChange={cambiarDireccionOrden}
+              soloIcono
+            />
             {filtrosMontados.length > 0 ? (
               <FilterComponent
                 key={resetFiltros}
                 filters={filtrosMontados}
                 onChange={cambiarFiltros}
                 debounceMs={0}
+                siembra={{ senal: senalSiembra, seleccion: siembraSeleccion }}
               />
             ) : null}
           </BuscadorFiltros>

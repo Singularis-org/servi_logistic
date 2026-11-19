@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 
 import { comoPlataforma, conEmpresa } from "@/lib/db/contexto-empresa";
 import { conAislamientoPorEmpresa } from "@/lib/db/extension-empresa";
 import { OrganizacionRepository } from "@/lib/repositories/OrganizacionRepository";
+import { PaisRepository } from "@/lib/repositories/PaisRepository";
 import { PremioRankingRepository } from "@/lib/repositories/PremioRankingRepository";
 import { UserRepository } from "@/lib/repositories/UserRepository";
 import { EmailOtpChallengeRepository } from "@/lib/repositories/EmailOtpChallengeRepository";
@@ -13,7 +14,7 @@ import { PasswordResetService } from "@/lib/services/PasswordResetService";
 import { verifyPassword } from "@/lib/utils/password";
 import type { EmailMessage } from "@/lib/interfaces/external/IEmailSender";
 import type { AltaEmpresaResultado } from "@/lib/types/organizacion";
-import { crearPaisDePrueba } from "@/tests/fabricas/paises";
+import { crearTipoDocumentoDePrueba } from "@/tests/fabricas/paises";
 import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, clienteConTransaccionAnidada, crearPrismaDeTest } from "./_postgres-real";
 import { revertida } from "./_fixtures/pais-20";
 
@@ -25,7 +26,7 @@ import { revertida } from "./_fixtures/pais-20";
 // catálogos `rol` y `tipo_identificacion` que dejan las migraciones. Todo lo creado se borra al
 // final (el repositorio abre su propia transacción, así que no cabe dentro de una revertida).
 //
-// SL-20 (T2.2; R6, R8): el alta lleva el país. Los casos que necesitan un SEGUNDO país (`XA`) corren
+// SL-20 (T2.2; R6, R8): el alta lleva el país. Los casos que necesitan un SEGUNDO país (`SEGUNDO`, abajo) corren
 // en una transacción revertida con el repositorio sobre `clienteConTransaccionAnidada`: así el país de
 // prueba no llega a confirmarse y no lo ve ningún otro archivo de la suite.
 
@@ -38,20 +39,63 @@ let base: PrismaClient;
 let app: PrismaClient;
 const slugsCreados = new Set<string>();
 
+/**
+ * SLT-42 (R10): el documento del maestro tiene que cumplir la regla de su tipo (cédula física de CR,
+ * 9 dígitos). Los casos siguen nombrando su documento con una etiqueta legible; esta es la cédula
+ * que le corresponde, determinista para poder buscarla después.
+ */
+function cedulaDe(etiqueta: string): string {
+  const n = createHash("sha256").update(etiqueta).digest().readUInt32BE(0) % 1_000_000_000;
+  return String(n).padStart(9, "0");
+}
+
+/**
+ * SLT-42: el SEGUNDO país de los casos de SL-20. Los de prueba `XA`–`XZ` no tienen reglas de teléfono
+ * en libphonenumber (R16), así que un alta en ellos ya no puede salir bien: el segundo país es uno real
+ * (Panamá), completo (R6) y con un tipo de documento de prueba, creado en la transacción revertida.
+ */
+const SEGUNDO = "PA";
+const MAESTRO_DEL_SEGUNDO = { telefono: "61234567", tipoDocumento: `${SEGUNDO}_cedula` };
+
+async function crearSegundoPais(tx: Parameters<Parameters<typeof revertida>[1]>[0]): Promise<void> {
+  await tx.pais.create({
+    data: {
+      id: SEGUNDO,
+      nombre: `País de prueba ${SEGUNDO} ${RUN}`,
+      nivel1Singular: "Provincia",
+      nivel1Plural: "Provincias",
+      nivel2Singular: "Distrito",
+      nivel2Plural: "Distritos",
+      nivel3Singular: "Corregimiento",
+      nivel3Plural: "Corregimientos",
+      prefijoTelefonico: "507",
+      telefonoDigitosNacionales: 8,
+      zonaHoraria: "America/Panama",
+    },
+  });
+  await crearTipoDocumentoDePrueba(tx, SEGUNDO, { clave: "cedula", largoMin: 9, largoMax: 9 });
+}
+
 function entrada(slug: string, email: string, documento: string, paisId = "CR") {
   slugsCreados.add(slug);
+  const delPais = paisId === SEGUNDO ? MAESTRO_DEL_SEGUNDO : { telefono: "88887777", tipoDocumento: "cedula" };
   return {
     nombre: `Empresa ${slug}`,
     slug,
     paisId,
-    maestro: { nombre: "Maestra de prueba", email, telefono: "88887777", documento, tipoDocumento: "cedula" },
+    maestro: { nombre: "Maestra de prueba", email, documento: cedulaDe(documento), ...delPais },
   };
+}
+
+/** El servicio del alta sobre `cliente`, con el repositorio de países real (SLT-42). */
+function servicioSobre(cliente: PrismaClient): OrganizacionService {
+  return new OrganizacionService(new OrganizacionRepository(cliente), new PaisRepository(cliente));
 }
 
 // El alta commitea `organizacion`, `usuario` y su podio fuera de una transaccion revertida: bajo el
 // lock de la 227, para no cruzarse con un `down.sql` serializado (ver `bajoLockDeEscrituraReal`).
 function alta(input: unknown): Promise<AltaEmpresaResultado> {
-  const servicio = new OrganizacionService(new OrganizacionRepository(app));
+  const servicio = servicioSobre(app);
   return bajoLockDeEscrituraReal(() =>
     comoPlataforma("SL-17", "test de alta de empresa", () => servicio.altaEmpresa(input)),
   );
@@ -123,7 +167,7 @@ describeSiHayBase("SL-17 — alta de empresa contra Postgres", () => {
     const org = await base.organizacion.findUniqueOrThrow({ where: { id: r.organizacionId } });
     expect(org).toMatchObject({ slug, nombre: `Empresa ${slug}` });
     const maestro = await base.usuario.findUniqueOrThrow({ where: { id: r.maestroId }, include: { rol: true } });
-    expect(maestro).toMatchObject({ email, estado: "activo", organizacionId: r.organizacionId, cedula: `doc-alta-${RUN}` });
+    expect(maestro).toMatchObject({ email, estado: "activo", organizacionId: r.organizacionId, cedula: cedulaDe(`doc-alta-${RUN}`) });
     expect(maestro.rol.value).toBe("maestro");
 
     // El login compara con `verifyPassword`: ninguna contraseña tecleable abre la cuenta.
@@ -233,7 +277,7 @@ describeSiHayBase("SL-17 — alta de empresa contra Postgres", () => {
       usuarios: antes.usuarios + 1,
       podio: antes.podio + 3,
     });
-    expect(await base.usuario.count({ where: { cedula: documento } })).toBe(2);
+    expect(await base.usuario.count({ where: { cedula: cedulaDe(documento) } })).toBe(2);
   });
 
   it("R46: la entrada inválida no escribe nada", async () => {
@@ -285,13 +329,13 @@ describeSiHayBase("SL-17 — alta de empresa contra Postgres", () => {
   });
 
   it("SL-20 R6/R8: en otro país nace allí, y repetirla con otro país es `conflicto` `paisId` sin cambiar nada", async () => {
-    const slug = conSufijo("pais-xa");
-    const email = `pais-xa-${RUN}@ejemplo.test`;
+    const slug = conSufijo("pais-pa");
+    const email = `pais-pa-${RUN}@ejemplo.test`;
     const r = await revertida(base, async (tx) => {
-      await crearPaisDePrueba(tx, "XA");
-      const servicio = new OrganizacionService(new OrganizacionRepository(clienteConTransaccionAnidada(tx)));
-      const primera = await servicio.altaEmpresa(entrada(slug, email, `doc-pais-xa-${RUN}`, "XA"));
-      const repetida = await servicio.altaEmpresa(entrada(slug, email, `doc-pais-xa-${RUN}`, "XA"));
+      await crearSegundoPais(tx);
+      const servicio = servicioSobre(clienteConTransaccionAnidada(tx));
+      const primera = await servicio.altaEmpresa(entrada(slug, email, `doc-pais-xa-${RUN}`, SEGUNDO));
+      const repetida = await servicio.altaEmpresa(entrada(slug, email, `doc-pais-xa-${RUN}`, SEGUNDO));
       const conOtroPais = await servicio.altaEmpresa(entrada(slug, email, `doc-pais-xa-${RUN}`, "CR"));
       const despues = await tx.organizacion.findMany({ where: { slug }, select: { id: true, paisId: true } });
       return { primera, repetida, conOtroPais, despues };
@@ -301,26 +345,26 @@ describeSiHayBase("SL-17 — alta de empresa contra Postgres", () => {
     if (r.primera.estado !== "creada") return;
     expect(r.repetida).toEqual({ estado: "ya_existe", organizacionId: r.primera.organizacionId });
     expect(r.conOtroPais).toEqual({ estado: "conflicto", campo: "paisId" });
-    expect(r.despues).toEqual([{ id: r.primera.organizacionId, paisId: "XA" }]);
+    expect(r.despues).toEqual([{ id: r.primera.organizacionId, paisId: SEGUNDO }]);
   });
 
   // Enmienda 2026-10-26, decisión 6. La repetición de la empresa que ya existía sigue la propuesta de
   // la pregunta abierta de `requirements.md` («R45 solo frena altas nuevas»), que es lo que hace el
   // orden de `altaEnTransaccion` (design §13): si el humano decide otra cosa, este caso cambia.
-  it("SL-20 R45/R46: con XA apagado, un alta nueva en XA es `invalida` `paisId` sin escribir nada; la empresa que ya estaba sigue en XA", async () => {
+  it("SL-20 R45/R46: con el segundo país apagado, un alta nueva en él es `invalida` `paisId` sin escribir nada; la empresa que ya estaba sigue allí", async () => {
     const slugVieja = conSufijo("xa-vieja");
     const emailVieja = `xa-vieja-${RUN}@ejemplo.test`;
     const slugNueva = conSufijo("xa-nueva");
     const emailNueva = `xa-nueva-${RUN}@ejemplo.test`;
     const r = await revertida(base, async (tx) => {
-      await crearPaisDePrueba(tx, "XA");
-      const servicio = new OrganizacionService(new OrganizacionRepository(clienteConTransaccionAnidada(tx)));
-      const vieja = await servicio.altaEmpresa(entrada(slugVieja, emailVieja, `doc-xa-vieja-${RUN}`, "XA"));
+      await crearSegundoPais(tx);
+      const servicio = servicioSobre(clienteConTransaccionAnidada(tx));
+      const vieja = await servicio.altaEmpresa(entrada(slugVieja, emailVieja, `doc-xa-vieja-${RUN}`, SEGUNDO));
 
-      await tx.pais.update({ where: { id: "XA" }, data: { disponible: false } });
+      await tx.pais.update({ where: { id: SEGUNDO }, data: { disponible: false } });
 
-      const nueva = await servicio.altaEmpresa(entrada(slugNueva, emailNueva, `doc-xa-nueva-${RUN}`, "XA"));
-      const repetida = await servicio.altaEmpresa(entrada(slugVieja, emailVieja, `doc-xa-vieja-${RUN}`, "XA"));
+      const nueva = await servicio.altaEmpresa(entrada(slugNueva, emailNueva, `doc-xa-nueva-${RUN}`, SEGUNDO));
+      const repetida = await servicio.altaEmpresa(entrada(slugVieja, emailVieja, `doc-xa-vieja-${RUN}`, SEGUNDO));
       return {
         vieja,
         nueva,
@@ -329,7 +373,7 @@ describeSiHayBase("SL-17 — alta de empresa contra Postgres", () => {
           organizaciones: await tx.organizacion.count({ where: { slug: slugNueva } }),
           usuarios: await tx.usuario.count({ where: { email: emailNueva } }),
         },
-        organizacionesEnXA: await tx.organizacion.findMany({ where: { paisId: "XA" }, select: { slug: true } }),
+        organizacionesEnElSegundo: await tx.organizacion.findMany({ where: { paisId: SEGUNDO }, select: { slug: true } }),
       };
     });
 
@@ -338,7 +382,34 @@ describeSiHayBase("SL-17 — alta de empresa contra Postgres", () => {
     expect(r.nueva).toEqual({ estado: "invalida", campo: "paisId" });
     expect(r.escritoDeLaNueva).toEqual({ organizaciones: 0, usuarios: 0 });
     expect(r.repetida).toEqual({ estado: "ya_existe", organizacionId: r.vieja.organizacionId });
-    expect(r.organizacionesEnXA).toEqual([{ slug: slugVieja }]);
+    expect(r.organizacionesEnElSegundo).toEqual([{ slug: slugVieja }]);
+  });
+
+  // SLT-42 (punto 7 tras la tanda 2, decisión del humano): la repetición se decide ANTES de R6 y de
+  // los datos del maestro, como SL-20 §13. Un país que quedó incompleto no convierte la repetición
+  // en `invalida`, y una empresa nueva en ese país sigue rechazada.
+  it("SLT-42 R6: repetir un alta en un país que quedó incompleto da `ya_existe`; un alta nueva allí es `invalida` `paisId`", async () => {
+    const slugVieja = conSufijo("xa-incompleto-vieja");
+    const emailVieja = `xa-incompleto-vieja-${RUN}@ejemplo.test`;
+    const slugNueva = conSufijo("xa-incompleto-nueva");
+    const r = await revertida(base, async (tx) => {
+      await crearSegundoPais(tx);
+      const servicio = servicioSobre(clienteConTransaccionAnidada(tx));
+      const vieja = await servicio.altaEmpresa(entrada(slugVieja, emailVieja, `doc-xa-inc-vieja-${RUN}`, SEGUNDO));
+
+      await tx.pais.update({ where: { id: SEGUNDO }, data: { prefijoTelefonico: null } });
+
+      const repetida = await servicio.altaEmpresa(entrada(slugVieja, emailVieja, `doc-xa-inc-vieja-${RUN}`, SEGUNDO));
+      const nueva = await servicio.altaEmpresa(
+        entrada(slugNueva, `xa-incompleto-nueva-${RUN}@ejemplo.test`, `doc-xa-inc-nueva-${RUN}`, SEGUNDO),
+      );
+      return { vieja, repetida, nueva };
+    });
+
+    expect(r.vieja.estado).toBe("creada");
+    if (r.vieja.estado !== "creada") return;
+    expect(r.repetida).toEqual({ estado: "ya_existe", organizacionId: r.vieja.organizacionId });
+    expect(r.nueva).toEqual({ estado: "invalida", campo: "paisId" });
   });
 
   it("R44: primer acceso — tras «recuperar contraseña» la nueva contraseña vale", async () => {

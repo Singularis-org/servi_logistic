@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -15,6 +16,7 @@ import { conEmpresa } from "@/lib/db/contexto-empresa";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import type { EvidenciaArchivo } from "@/lib/interfaces/services/IMisAsignacionesService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { ORDEN_MODULOS } from "@/lib/modulos/catalogo";
 import { notificarCierreDiaVencidoReal } from "@/lib/notificaciones/notificadores";
 import { AbonoTiendaRepository } from "@/lib/repositories/AbonoTiendaRepository";
 import { AporteCapitalRepository } from "@/lib/repositories/AporteCapitalRepository";
@@ -22,8 +24,6 @@ import { ApiKeyRepository } from "@/lib/repositories/ApiKeyRepository";
 import { CierreBodegaRepository } from "@/lib/repositories/CierreBodegaRepository";
 import { CierreDiaRepository } from "@/lib/repositories/CierreDiaRepository";
 import { CierresBodegaAdminRepository } from "@/lib/repositories/CierresBodegaAdminRepository";
-import { CobroPlataformaMovimientoRepository } from "@/lib/repositories/CobroPlataformaMovimientoRepository";
-import { CobroPlataformaTarifaRepository } from "@/lib/repositories/CobroPlataformaTarifaRepository";
 import { CorteDiarioRepository } from "@/lib/repositories/CorteDiarioRepository";
 import { DevolucionTiendaRepository } from "@/lib/repositories/DevolucionTiendaRepository";
 import { DistritoZonaEspecialRepository } from "@/lib/repositories/DistritoZonaEspecialRepository";
@@ -36,6 +36,7 @@ import { OrdenHistorialRepository } from "@/lib/repositories/OrdenHistorialRepos
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { PagoMensajeroMovimientoRepository } from "@/lib/repositories/PagoMensajeroMovimientoRepository";
 import { PagoPlataformaRepository } from "@/lib/repositories/PagoPlataformaRepository";
+import { PlanesRepository } from "@/lib/repositories/PlanesRepository";
 import { RechazoTiendaCobroRepository } from "@/lib/repositories/RechazoTiendaCobroRepository";
 import { SaldosSatelitesRepository } from "@/lib/repositories/SaldosSatelitesRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
@@ -52,8 +53,8 @@ import { CajaAbonoTiendaFeedService } from "@/lib/services/CajaAbonoTiendaFeedSe
 import { CajaAporteCapitalFeedService } from "@/lib/services/CajaAporteCapitalFeedService";
 import { CajaPagoTiendaFeedService } from "@/lib/services/CajaPagoTiendaFeedService";
 import { CierreBodegaService } from "@/lib/services/CierreBodegaService";
-import { CobroPlataformaService } from "@/lib/services/CobroPlataformaService";
 import { ConciliacionSatelitesService } from "@/lib/services/ConciliacionSatelitesService";
+import { CorregirDatosClienteService } from "@/lib/services/CorregirDatosClienteService";
 import { CorteDiarioService } from "@/lib/services/CorteDiarioService";
 import { DevolucionOrigenService } from "@/lib/services/DevolucionOrigenService";
 import { DevolucionTiendaService } from "@/lib/services/DevolucionTiendaService";
@@ -61,6 +62,7 @@ import { DistritoZonaEspecialService } from "@/lib/services/DistritoZonaEspecial
 import { EnvioDevolucionCentralService } from "@/lib/services/EnvioDevolucionCentralService";
 import { IncidenteAdminService } from "@/lib/services/IncidenteAdminService";
 import { LiquidacionService } from "@/lib/services/LiquidacionService";
+import { PlanesService } from "@/lib/services/PlanesService";
 import { RechazoTiendaService } from "@/lib/services/RechazoTiendaService";
 import { RecepcionBodegaCentralService } from "@/lib/services/RecepcionBodegaCentralService";
 import { RecepcionOrigenService } from "@/lib/services/RecepcionOrigenService";
@@ -68,13 +70,14 @@ import { RecoleccionTiendaService } from "@/lib/services/RecoleccionTiendaServic
 import { TopePagoPlataformaService } from "@/lib/services/TopePagoPlataformaService";
 import { WalletEgresoService } from "@/lib/services/WalletEgresoService";
 import { WalletIndemnizacionIncidenteFeedService } from "@/lib/services/WalletIndemnizacionIncidenteFeedService";
+import { buildOptimizacionRutaService } from "@/lib/services/jobs/optimizacion-ruta-handler";
 import { SupabaseFileStorage } from "@/lib/storage/SupabaseFileStorage";
 import { SupabaseSignedUrlProvider } from "@/lib/storage/SupabaseSignedUrlProvider";
 import { registrarAbonoTiendaSchema } from "@/lib/types/abono-tienda";
 import { generarApiKeySchema } from "@/lib/types/api-key";
 import { registrarAporteCapitalSchema } from "@/lib/types/aporte-capital";
-import { fijarCobroEmpresaSchema } from "@/lib/types/cobro-plataforma";
 import { marcarConsolidacionRecibidaSchema } from "@/lib/types/conciliacion-satelites";
+import { corregirDatosClienteSchema } from "@/lib/types/correccion-datos-cliente";
 import { distritosEspecialesSchema } from "@/lib/types/distrito-zona-especial";
 import { aprobarIncidenteSchema, reportarIncidenteSchema } from "@/lib/types/incidente";
 import { registrarPagoMensajeroSchema } from "@/lib/types/liquidacion";
@@ -82,7 +85,7 @@ import { ORDER_STATUS_SEED } from "@/lib/types/order-status";
 import { rechazarNovedadSchema } from "@/lib/types/rechazo-tienda";
 import { crearTarifaSchema } from "@/lib/types/tarifa";
 import { registrarEgresoConLateralesSchema } from "@/lib/types/wallet-laterales";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendario } from "@/lib/utils/calendario-zona";
 import { crearEmpresa, crearUsuario, type EmpresaCreada, type UsuarioCreado } from "@/tests/fabricas/empresa-y-usuarios";
 import { escenarioCierres, solicitarCierre } from "@/tests/fabricas/escenarios/cierres";
 import {
@@ -197,9 +200,16 @@ const TABLAS_SIN_FILAS = ["integracion", "webhook_suscripcion", "plantilla_mensa
 const MONTO_A_COBRAR = 8000;
 const EFECTIVO_DEL_PAGO_MIXTO = 1000;
 const MONTO_ENTREGA_SATELITE = 1000;
+/**
+ * SLT-200 (punto 5): el peso, en kg, de las órdenes en reparto del mensajero-reposo, por orden de
+ * remisión (se reparte en ciclo). La carga masiva no trae peso (feature 15/R4): se pone después, por
+ * la corrección de datos del cliente, como lo haría el admin. Los de los ejemplos de la API.
+ */
+const PESOS_EN_REPARTO = [1.5, 0.8] as const;
 /** Con B recortada: con 4 entregas sin cobro, los fletes superan lo cobrado más el abono (medido en local). */
 const ENTREGAS_SIN_COBRO_CON_RECORTE = 4;
-const COBRO_PLATAFORMA_POR_ORDEN = "100";
+/** SLT-126 R13: el costo por orden fijo del plan de la demo. */
+const COBRO_PLATAFORMA_POR_ORDEN = "100.00";
 const TARIFA_TIENDA = { valorFlete: 2500, valorFleteDevuelto: 1250 } as const;
 const PAGO_MENSAJERO = { cobroEntregado: 1500, cobroRechazado: 164 } as const;
 const INDEMNIZACION = "5000";
@@ -216,6 +226,9 @@ const TELEFONO = "88880000";
 // ─── Tipos públicos ─────────────────────────────────────────────────────────────────────────────
 
 export type ClaveEmpresaDemo = "A" | "B";
+
+/** Cédulas ficticias del maestro de cada empresa demo (9 dígitos, la regla de CR, `PAIS_DEMO`). */
+const DOCUMENTO_MAESTRO_DEMO: Record<ClaveEmpresaDemo, string> = { A: "900000001", B: "900000002" };
 
 export interface ContextoReceta {
   /** Cliente dueño (`DIRECT_URL`), sin la extensión de empresa: lee, y marca `es_demo` (D5.3). */
@@ -311,8 +324,9 @@ async function geoDe(dueno: PrismaClient, distrito: DistritoDemo): Promise<Geo> 
 }
 
 /**
- * El cobro de la plataforma lo fija el superadmin, que no tiene empresa (SL-40). Aquí lo fija la
- * demo, no una persona: `CobroPlataformaService` solo mira el rol y no escribe el `usuarioId`.
+ * El plan de la empresa lo crea y asigna el superadmin, que no tiene empresa (SL-24). Aquí lo hace la
+ * demo, no una persona: `PlanesService` solo mira el rol, y `resolverActorCongelado` registra el
+ * historial con actor de sistema (`"demo-qa"` no es un usuario; `plan_rastro` no tiene FK al usuario).
  */
 const ACTOR_PLATAFORMA: Actor = { usuarioId: "demo-qa", rol: "superadmin", zonaId: null, organizacionId: null };
 
@@ -388,7 +402,9 @@ export async function crearEmpresaDemo(
             paisId: PAIS_DEMO,
             correoMaestro: correoDemo(slugEmpresa, "maestro"),
             contrasena: opciones.contrasena,
-            documentoMaestro: `demo-qa-${clave.toLowerCase()}-maestro`,
+            // SLT-42 (R10): el documento tiene que cumplir la regla del tipo en el país de la demo
+            // (cédula física de CR: 9 dígitos). Ficticio y fijo por empresa, para que A y B no choquen.
+            documentoMaestro: DOCUMENTO_MAESTRO_DEMO[clave],
             marcarContrasenaDefinida: true,
           },
           { ficha: "SL-43", motivo: "demo de QA: alta de la empresa demo" },
@@ -409,7 +425,7 @@ export async function crearEmpresaDemo(
     empresa: EmpresaCreada,
     perfil: string,
     rol: RolValue,
-    extra: { zonaId?: string; vehiculoId?: string; fulfillment?: boolean } = {},
+    extra: { zonaId?: string; vehiculoId?: string; seRecogeEnTienda?: boolean } = {},
   ): Promise<UsuarioCreado> {
     const correo = correoDemo(slugEmpresa, perfil);
     const u = await crearUsuario(dueno, empresa, rol, {
@@ -442,23 +458,49 @@ export async function crearEmpresaDemo(
   const { maestro, tienda: tiendaBodega, adminSatelite } = escenario.actores;
   const s = servicios();
 
-  // R12: los demás perfiles, por tandas a la vez (`enTandas`), los primeros con la excepción de
+  // R12: los demás perfiles, por tandas a la vez (`enTandas`), los primeros con el plan de
   // cobro. Mensajeros de más por las reglas de T1 §2: recolector (R-c), corte (R-b), un cierre
   // rechazado, un cierre pendiente y las órdenes en reposo (R-a). Y por tiempo: las gestiones de la
   // central y de la satélite se reparten entre varios (novedades, rechazos, satélite 2), porque las
   // de un mismo mensajero van de una en una (ver «Los tramos»).
   const mensajero = (zona: ZonaTipo, perfil: string): Promise<MensajeroEscenario> =>
     enPaso(`alta de ${perfil}`, () => nucleo.crearMensajero(escenario, zona, { perfil }));
+  // SLT-126 (design §4): el camino de la pantalla de Planes, que crea el custom y lo asigna en una sola
+  // transacción. Lleva los tres módulos apagables porque la asignación deja encendidos exactamente los
+  // del plan, y la empresa demo nace con todos (`crearEmpresa`, por defecto): así no cambia ninguno. Sin
+  // topes (la demo no debe chocar con ninguno) y sin precio (el costo base no entra en la demo).
+  // Con el reloj real y no con `ahora` de la receta: el plan rige desde hoy de la base, que es el reloj con
+  // que el trigger calcula el cargo de cada orden; y el primer paso con el reloj de la receta sigue siendo
+  // ubicar la primera orden (el corte simulado de R28 en `demo-qa.test.ts` cuenta con ello).
+  const asignarPlanDemo = (organizacionId: string) =>
+    enPaso("PlanesService.crear", async () => {
+      const r = await new PlanesService(new PlanesRepository(app)).crear(ACTOR_PLATAFORMA, {
+        nombre: `Demo QA ${clave}`,
+        visibilidad: "custom",
+        organizacionId,
+        topes: { porRol: {}, apiKeys: null },
+        modulos: [...ORDEN_MODULOS],
+        precio: { tipo: "sin_precio" },
+        costoPorOrden: COBRO_PLATAFORMA_POR_ORDEN,
+        costoPorOrdenPorcentual: null,
+        tipoCobro: "mensual",
+      });
+      // `PlanResult` dice `estado`, no `status`: por eso no pasa por `exigir`. Mismo mensaje.
+      if (r.estado !== "ok") {
+        const campos = r.estado === "validation_error" ? Object.keys(r.fieldErrors) : [];
+        throw new Error(
+          `[demo-qa] «PlanesService.crear» no fue ok: ${r.estado}${campos.length > 0 ? ` (${campos.join(", ")})` : ""}`,
+        );
+      }
+      return r;
+    });
   const [, admin, tiendaSinBodegaUsuario] = await enParalelo([
-    // R19: la excepción de cobro va ANTES de la primera orden, porque el cargo se calcula al nacer.
-    llamar("CobroPlataformaService.fijarDeEmpresa", () =>
-      new CobroPlataformaService(new CobroPlataformaTarifaRepository(app)).fijarDeEmpresa(
-        ACTOR_PLATAFORMA,
-        fijarCobroEmpresaSchema.parse({ organizacionId: org, monto: COBRO_PLATAFORMA_POR_ORDEN }),
-      ),
-    ),
+    // SLT-126 R13 (SL-43 R19): el plan con costo por orden va ANTES de la primera orden, porque el
+    // cargo se calcula al nacer. Custom de la empresa demo: el borrado de la demo (SL-43 R28) se lo
+    // lleva por `ON DELETE CASCADE`, así que cada corrida crea el suyo.
+    asignarPlanDemo(org),
     enPaso("alta de admin", () => altaUsuario(escenario.empresa, "admin", "admin")),
-    enPaso("alta de tienda", () => altaUsuario(escenario.empresa, "tienda", "adminTienda", { fulfillment: false })),
+    enPaso("alta de tienda", () => altaUsuario(escenario.empresa, "tienda", "adminTienda", { seRecogeEnTienda: true })),
   ]);
   const perfilesDeMensajero: [ZonaTipo, string][] = [
     ["central", "mensajero-central"],
@@ -556,7 +598,9 @@ export async function crearEmpresaDemo(
     aCierreRechazado: plan("central", 1),
     aCierrePendiente: plan("central", 1),
     aRecoger: plan("central", n),
-    enReparto: plan("central", n),
+    // SLT-200 (punto 5): la primera cobra y las demás no, para ver en la tarjeta «COBRAR» con importe
+    // y sin él, y el KPI «Por cobrar» con cifra. Su mensajero no entrega: no mueve ningún saldo.
+    enReparto: [...plan("central", 1, MONTO_A_COBRAR), ...plan("central", n - 1)],
   };
 
   /** Las órdenes de la tienda con bodega, por remisión. Las llena `ordenesDeBodega`. */
@@ -907,7 +951,7 @@ export async function crearEmpresaDemo(
     // coherente con `cierre_bodega_conciliacion_coherente` y la base lo rechaza.
     const cierreBodega = await llamar("CierreBodegaService.solicitarCierreBodega", () =>
       conEmpresa(org, () =>
-        new CierreBodegaService(new CierreBodegaRepository(app), new OrdenRepository(app)).solicitarCierreBodega(adminSatelite),
+        new CierreBodegaService(new CierreBodegaRepository(app), new OrdenRepository(app), construirReglasPaisEmpresa(app)).solicitarCierreBodega(adminSatelite),
       ),
     );
     if (cierreBodega.status !== "ok") throw new Error("inalcanzable");
@@ -917,7 +961,11 @@ export async function crearEmpresaDemo(
     });
     await llamar("ConciliacionSatelitesService.marcarRecibida", () =>
       conEmpresa(org, () =>
-        new ConciliacionSatelitesService(new SaldosSatelitesRepository(app), new CierresBodegaAdminRepository(app)).marcarRecibida(
+        new ConciliacionSatelitesService(
+          new SaldosSatelitesRepository(app),
+          new CierresBodegaAdminRepository(app),
+          construirReglasPaisEmpresa(app), // SLT-42 (R22): la zona horaria del pais de la empresa.
+        ).marcarRecibida(
           recibida,
           maestro,
         ),
@@ -955,6 +1003,9 @@ export async function crearEmpresaDemo(
       new OrdenRepository(app),
       new GestionOrdenRepository(app),
       new OrdenHistorialRepository(app),
+      undefined, // el parametro opcional previo, con su valor por defecto
+      // SLT-42 (R22): la zona horaria del pais de la empresa.
+      construirReglasPaisEmpresa(app),
     );
     for (const o of porPantalla.slice(n)) {
       await llamar("RecoleccionTiendaService.recolectarEnTienda", () =>
@@ -1007,12 +1058,14 @@ export async function crearEmpresaDemo(
 
   async function registrarDinero(): Promise<void> {
     const caja = new WalletMovimientoRepository(app);
-    // El día calendario de la app: el de las fechas de pago y del aporte.
-    const hoy = fechaCalendarioCR(ahora());
+    // SLT-42 (R22): la zona horaria del pais de la empresa de la demo, leida una vez en su contexto.
+    const zona = await conEmpresa(org, () => construirReglasPaisEmpresa(app).zonaHoraria());
+    // El día calendario de la empresa: el de las fechas de pago y del aporte.
+    const hoy = fechaCalendario(ahora(), zona);
     const comprobante = { contentType: "image/jpeg", bytes: bytesEvidencia };
 
     // Aporte de capital con su comprobante en Storage.
-    const aporte = registrarAporteCapitalSchema.parse({
+    const aporte = registrarAporteCapitalSchema(zona).parse({
       claveIdempotencia: randomUUID(),
       clase: "aporte",
       monto: APORTE_CAPITAL,
@@ -1031,6 +1084,9 @@ export async function crearEmpresaDemo(
           new SupabaseFileStorage(undefined, walletComprobanteConfig.BUCKET),
           new SupabaseSignedUrlProvider(undefined, walletComprobanteConfig.BUCKET),
           (fn) => app.$transaction((tx) => fn(tx)),
+          undefined,
+          undefined,
+          construirReglasPaisEmpresa(app), // SLT-42 (R22): la zona horaria del pais de la empresa.
         ).registrar(entradaAporte, comprobante, maestro),
       ),
     );
@@ -1049,8 +1105,9 @@ export async function crearEmpresaDemo(
           undefined,
           undefined,
           buildComprobantes(app),
+          construirReglasPaisEmpresa(app), // SLT-42 (R22): la zona horaria del pais de la empresa.
         ).registrarPagoMensajero(
-          registrarPagoMensajeroSchema.parse({
+          registrarPagoMensajeroSchema(zona).parse({
             cierreId: cierreCentral,
             claveIdempotencia: randomUUID(),
             monto: PAGO_A_MENSAJERO,
@@ -1063,7 +1120,7 @@ export async function crearEmpresaDemo(
     );
 
     // Abono de la tienda con bodega.
-    const abono = registrarAbonoTiendaSchema.parse({
+    const abono = registrarAbonoTiendaSchema(zona).parse({
       claveIdempotencia: randomUUID(),
       tiendaId: escenario.tienda.id,
       monto: ABONO_DE_TIENDA,
@@ -1085,11 +1142,28 @@ export async function crearEmpresaDemo(
           new SupabaseFileStorage(undefined, walletComprobanteConfig.BUCKET),
           new SupabaseSignedUrlProvider(undefined, walletComprobanteConfig.BUCKET),
           (fn) => app.$transaction((tx) => fn(tx)),
+          undefined,
+          undefined,
+          construirReglasPaisEmpresa(app), // SLT-42 (R22): la zona horaria del pais de la empresa.
         ).registrar(entradaAbono, comprobante, maestro),
       ),
     );
 
-    // Pago a la plataforma (SL-45): el tope exige que la deuda de cargos ya cubra el monto.
+    // SLT-60 (R3): solo se paga lo facturado en facturas cerradas, y la demo no espera al fin de su período.
+    // Como dueño, abre la factura en curso si aún no la tiene (un cierre con la hora de la base no cierra nada)
+    // y la cierra con `fin_natural_at + 6 min`: el artificio de SLT-119 §9 y de
+    // `tests/integration/db/_fixtures/factura-cerrada.ts`. Su total son los cargos de las órdenes ya creadas
+    // (más la cuota del plan), que cubren el pago de abajo.
+    await enPaso("factura_plataforma_cerrar (antes del pago a la plataforma)", async () => {
+      await dueno.$queryRaw`SELECT factura_plataforma_cerrar(${org}, (now() AT TIME ZONE 'UTC')::timestamp)`;
+      const filas = await dueno.$queryRaw<{ n: number }[]>`
+        SELECT factura_plataforma_cerrar(f."organizacion_id", f."fin_natural_at" + interval '6 minutes')::int AS "n"
+          FROM "factura_plataforma" f
+         WHERE f."organizacion_id" = ${org} AND f."estado" = 'en_curso'`;
+      if (filas[0]?.n !== 1) throw new Error(`[demo-qa] el cierre de la factura en curso cerró ${String(filas[0]?.n ?? 0)}, no 1`);
+    });
+
+    // Pago a la plataforma (SL-45): el tope de SLT-60 exige que lo pendiente de la factura cerrada cubra el monto.
     await llamar(
       "WalletEgresoService.registrarEgreso(pago_plataforma)",
       () => conEmpresa(org, () =>
@@ -1097,9 +1171,10 @@ export async function crearEmpresaDemo(
           caja,
           app,
           buildComprobantes(app),
-          new TopePagoPlataformaService(new CobroPlataformaMovimientoRepository(app), new PagoPlataformaRepository(app)),
+          new TopePagoPlataformaService(new PagoPlataformaRepository(app)),
+          construirReglasPaisEmpresa(app), // SLT-42 (R22): la zona horaria del pais de la empresa.
         ).registrarEgreso(
-          registrarEgresoConLateralesSchema.parse({
+          registrarEgresoConLateralesSchema(zona).parse({
             tipoEgreso: "pago_plataforma",
             monto: PAGO_A_LA_PLATAFORMA,
             descripcion: "Pago a la plataforma de la demo",
@@ -1127,6 +1202,8 @@ export async function crearEmpresaDemo(
       new TarifaZonaMensajeroRepository(app),
       { warn: (m: string) => console.warn(m) },
       notificarCierreDiaVencidoReal,
+      // SLT-42 (R22): la zona horaria del pais de la empresa.
+      construirReglasPaisEmpresa(app),
     );
     const manana = new Date(ahora().getTime() + 24 * 60 * 60 * 1000);
     exigirUnVencido(await conEmpresa(org, () => corte.ejecutarCorte(manana)));
@@ -1164,6 +1241,9 @@ export async function crearEmpresaDemo(
       new GestionOrdenRepository(app),
       new TarifaVigenteRepository(app),
       new RechazoTiendaCobroRepository(app),
+      undefined, // el parametro opcional previo, con su valor por defecto
+      // SLT-42 (R22): la zona horaria del pais de la empresa.
+      construirReglasPaisEmpresa(app),
     );
     for (const o of novedades.slice(n)) {
       const r = rechazarNovedadSchema.parse({ ordenId: o.id, motivo: "La tienda no la reintenta" });
@@ -1172,9 +1252,41 @@ export async function crearEmpresaDemo(
   }
 
   // Órdenes en reposo: recogiendo en bodega y en reparto (su mensajero no cierra: R-a).
+  //
+  // SLT-200 (punto 5): las de reparto, con su peso y su posición en la ruta, que es lo que la tarjeta
+  // del mensajero pinta (sin ellas, «Sin posición · —»). El orden de los pasos sale de las guardas
+  // de la ruta: «Sincronizar ruta» no calcula la primera ruta del día con menos del
+  // `RUTA_PRIMERA_MIN_RECOGIDO_PCT` de lo asignado recogido, así que va con las de reparto ya
+  // recogidas y ANTES de asignarle las que se quedan por recoger. Ni la asignación ni la recogida
+  // encolan `optimizacion_ruta` (SLT-79: solo la gestión y el traspaso), y este mensajero no gestiona.
   async function enReposo(): Promise<void> {
-    await llevarA(aRecoger, "mensajero_recogiendo_en_bodega", mReposo);
+    await enPaso("corregir el peso de las órdenes en reparto", () => ponerPeso(enReparto));
     await alReparto(enReparto, mReposo);
+    await enPaso("sincronizar la ruta del mensajero-reposo", () => sincronizarRuta(mReposo, enReparto.length));
+    await llevarA(aRecoger, "mensajero_recogiendo_en_bodega", mReposo);
+  }
+
+  /** El peso por `CorregirDatosClienteService`, montado como en `lib/actions/corregir-datos-cliente.ts`. */
+  async function ponerPeso(ordenes: OrdenEscenario[]): Promise<void> {
+    const correccion = new CorregirDatosClienteService(new OrdenRepository(app), new TarifaVigenteRepository(app), construirReglasPaisEmpresa(app));
+    for (const [i, o] of ordenes.entries()) {
+      const d = corregirDatosClienteSchema.parse({ ordenId: o.id, peso: PESOS_EN_REPARTO[i % PESOS_EN_REPARTO.length] });
+      await llamar("CorregirDatosClienteService.corregir", () => conEmpresa(org, () => correccion.corregir({ ordenId: d.ordenId, peso: d.peso }, actorAdmin)));
+    }
+  }
+
+  /**
+   * El botón «Sincronizar ruta» del mensajero (`lib/actions/ruta-mensajero.ts`): la MISMA fábrica y
+   * `ejecutar` con motivo `manual`, sin GPS. La empresa demo no tiene la integración de rutas, así que
+   * el servicio cae solo al orden local (Haversine) y no llama a nadie (R24 de SL-43).
+   */
+  async function sincronizarRuta(m: MensajeroEscenario, paradas: number): Promise<void> {
+    const r = await conEmpresa(org, () => buildOptimizacionRutaService().ejecutar(m.id, { motivo: "manual" }));
+    // Con una sola parada el servicio no ordena (R35 de la 92) pero guarda su posición: vale.
+    if (r.status !== "ok" && paradas > 1) {
+      // Solo el desenlace: el trazado lleva coordenadas de las entregas (R14 de la 92).
+      throw new Error(`[demo-qa] «Sincronizar ruta» no calculó la ruta del mensajero-reposo: ${r.status}${"razon" in r ? ` (${r.razon})` : ""}`);
+    }
   }
 
   await enPaso("después del corte", () =>

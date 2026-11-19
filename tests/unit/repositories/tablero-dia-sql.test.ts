@@ -5,6 +5,7 @@ import { TableroDiaRepository } from "@/lib/repositories/TableroDiaRepository";
 import { ESTATUS_CON_BUCKET_EXPLICITO, estatusDelBucket } from "@/lib/types/tablero-dia";
 import { ventanaDelDiaEnCursoCR } from "@/lib/utils/ventana-dia-cr";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 192 (B2.3 / B8.6) — R10, R36, R37, R39, R46, R58, R59, R64, R65.
 //
 // Este archivo mide EL SQL QUE EL REPOSITORIO EMITE, no un SQL escrito a mano en el test:
@@ -12,7 +13,7 @@ import { ventanaDelDiaEnCursoCR } from "@/lib/utils/ventana-dia-cr";
 // test que escribiera la consulta demostraria que una consulta inventada cumple los
 // requisitos, no que los cumpla la que corre en produccion.
 
-const VENTANA = ventanaDelDiaEnCursoCR(new Date("2026-08-08T19:00:00.000Z"));
+const VENTANA = ventanaDelDiaEnCursoCR(new Date("2026-08-08T19:00:00.000Z"), ZONA_CR);
 const ZONA = "11111111-1111-4111-8111-111111111111";
 
 interface Espia {

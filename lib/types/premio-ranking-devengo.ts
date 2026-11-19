@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { esFechaCalendarioValida, fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { esFechaCalendarioValida, fechaCalendario } from "@/lib/utils/calendario-zona";
 
 // Feature 293 (design §7.3) — contratos I/O del PREMIO DEL RANKING en la cuenta por pagar.
 // Frontera Server Action -> cliente. Money-safe (R35): todos los importes cruzan como STRING de
@@ -48,29 +48,32 @@ export interface PremioPodioDTO {
 // ── Entradas, validadas con zod EN EL BORDE (design §7.3) ───────────────────────────────────
 
 /**
- * R8 — la fecha debe ser una fecha calendario que EXISTA y NO puede ser posterior a hoy en Costa
- * Rica. Las dos comprobaciones van en el BORDE, antes de consultar o escribir nada.
+ * R8 — la fecha debe ser una fecha calendario que EXISTA y NO puede ser posterior a hoy en la zona
+ * del pais de la empresa. Las dos comprobaciones van en el BORDE, antes de consultar o escribir
+ * nada. SLT-42: por eso es una FABRICA `(zona) => schema`; la zona la pone quien parsea.
  *
  * `esFechaCalendarioValida` hace el round-trip que caza `"2026-02-31"` —que un regex de forma
  * aceptaria y que `new Date` rueda en silencio al 3 de marzo—; es el mismo refinamiento que usa
  * `lib/actions/ranking-historico.ts`.
  *
- * La cota superior se compara como STRING contra `fechaCalendarioCR()`: dos fechas `YYYY-MM-DD`
+ * La cota superior se compara como STRING contra `fechaCalendario(new Date(), zona)`: dos fechas `YYYY-MM-DD`
  * se ordenan lexicograficamente igual que cronologicamente, asi que no hace falta convertir a
- * instante —y convertir seria justo donde se cuela el off-by-one de las 6 horas de CR—.
+ * instante —y convertir seria justo donde se cuela el off-by-one del desfase de la zona—.
  */
-export const listarPremiosDelDiaSchema = z
-  .object({
-    fecha: z
-      .string()
-      .refine(esFechaCalendarioValida, { message: "Fecha invalida: se espera YYYY-MM-DD." })
-      .refine((f) => f <= fechaCalendarioCR(), {
-        message: "La fecha no puede ser posterior a hoy.",
-      }),
-  })
-  .strict();
+export function listarPremiosDelDiaSchema(zona: string) {
+  return z
+    .object({
+      fecha: z
+        .string()
+        .refine(esFechaCalendarioValida, { message: "Fecha invalida: se espera YYYY-MM-DD." })
+        .refine((f) => f <= fechaCalendario(new Date(), zona), {
+          message: "La fecha no puede ser posterior a hoy.",
+        }),
+    })
+    .strict();
+}
 
-export type ListarPremiosDelDiaInput = z.infer<typeof listarPremiosDelDiaSchema>;
+export type ListarPremiosDelDiaInput = z.infer<ReturnType<typeof listarPremiosDelDiaSchema>>;
 
 /** R16 — del cliente solo viene CUAL fila se registra. Ni monto, ni mensajero, ni cierre. */
 export const registrarPremioSchema = z

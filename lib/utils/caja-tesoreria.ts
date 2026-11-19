@@ -116,6 +116,13 @@ export const NATURALEZA_POR_CATEGORIA: Record<WalletMovimientoCategoria, Natural
   // ingreso (entregó de más, o el pago posterior por «Corregir») lo BAJA (R25).
   egreso_diferencia_satelite: "por_cobrar_satelite",
   ingreso_diferencia_satelite: "por_cobrar_satelite",
+  // SLT-94 (design §4, R20): el cobro de fulfillment por paquete y su IVA son ganancia/IVA de la
+  // empresa (se toman del saldo de la tienda) y su devolucion los baja. Los cuatro PROPIOS, como el
+  // cobro de la 461 y el reverso de la 458-B.
+  ingreso_fulfillment: "propio",
+  ingreso_iva_fulfillment: "propio",
+  egreso_reverso_fulfillment: "propio",
+  egreso_reverso_iva_fulfillment: "propio",
 };
 
 /**
@@ -158,6 +165,12 @@ export const LIQUIDEZ_POR_CATEGORIA: Record<WalletMovimientoCategoria, LiquidezM
   // `efectivo` subirian «Salio» sin que saliera dinero (mutacion 4 de design §8.2).
   egreso_reverso_flete_devolucion: "cargo_a_tienda",
   egreso_reverso_iva_flete_devolucion: "cargo_a_tienda",
+  // SLT-94 (R20): el fulfillment y su IVA son CARGOS a la tienda (no entra dinero: «Entro» no cambia,
+  // «De las tiendas» baja) y sus devoluciones, REVERSOS de cargo (no suman a «Salio»).
+  ingreso_fulfillment: "cargo_a_tienda",
+  ingreso_iva_fulfillment: "cargo_a_tienda",
+  egreso_reverso_fulfillment: "cargo_a_tienda",
+  egreso_reverso_iva_fulfillment: "cargo_a_tienda",
   // EFECTIVO: todo lo demas entra o sale de verdad.
   ingreso_ajuste: "efectivo",
   ingreso_cod_recaudado: "efectivo",

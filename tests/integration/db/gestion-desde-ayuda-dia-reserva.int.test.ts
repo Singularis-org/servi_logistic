@@ -13,9 +13,10 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FEATURE 261 (B18, R30) — LA PUERTA B DE LA TIENDA: el `where` del `updateMany`, contra Postgres.
@@ -87,13 +88,6 @@ describeSiHayBase("261/B18 — el `where` del `updateMany` de la tienda, contra 
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const fks = await fksDeOrden(prisma);
-    if (fks === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar. Corre " +
-          "`pnpm run db:seed` antes de esta suite.",
-      );
-    }
     const estados = await prisma.orderStatus.findMany({
       where: { value: { in: ["en_reparto", "devolucion_a_origen_por_rechazo"] } },
       select: { id: true, value: true },
@@ -106,13 +100,24 @@ describeSiHayBase("261/B18 — el `where` del `updateMany` de la tienda, contra 
           "transicion que medir. Corre el seed del catalogo.",
       );
     }
-    const mensajeroId = fks.tiendaId;
     let n = 0;
 
     conOrden = (fechaReparto, fn) =>
       enTransaccionRevertida(prisma, async (tx) => {
         await serializarEscriturasReales(tx);
         n += 1;
+        // SLT-179 — tienda y zona nacen en ESTA transaccion (nada de leer la primera orden de la
+        // base). Control positivo: si la siembra no llega, el caso cae nombrando la fila.
+        const fks = await crearFksDeOrden(tx);
+        expect(
+          await tx.usuario.count({ where: { id: fks.tiendaId } }),
+          "SLT-179: la tienda sembrada no esta en la base",
+        ).toBe(1);
+        expect(
+          await tx.zona.count({ where: { id: fks.zonaId } }),
+          "SLT-179: la zona sembrada no esta en la base",
+        ).toBe(1);
+        const mensajeroId = fks.tiendaId;
         const orden = await tx.orden.create({
           data: {
             numGuia: GUIA_BASE + n,
@@ -189,6 +194,7 @@ describeSiHayBase("261/B18 — el `where` del `updateMany` de la tienda, contra 
       fechaReparto: fechaRepartoQueVeElServicio,
     };
     const service = new GestionDesdeAyudaService({
+      reglasPais: reglasPaisFijas(),
       notaRepo: { findOrdenParaHilo: vi.fn(async () => orden) },
       ordenRepo: {
         findEstatusIdByValue: vi.fn(async (v: string) =>

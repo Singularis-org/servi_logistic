@@ -1,12 +1,12 @@
 // Ficha 475 (design §5, R6/R7/R15-R17/R20/R24-R26) — CALCULO del informe de transito. PURO: sin
 // base, sin reloj propio (`ahora` llega del contexto), sin `number` sobre dinero.
 //
-// Toda fecha y todo conteo de dias en el calendario de Costa Rica con los helpers de `fecha-cr`
-// (R17): el cambio de dia es a las 00:00 CR (06:00 UTC).
-import { diasNaturalesCRDesde, fechaCalendarioCR, inicioDelDiaSiguienteCREnUtc } from "@/lib/utils/fecha-cr";
+// Toda fecha y todo conteo de dias en el calendario de la zona del pais de la empresa (SLT-42, R22)
+// con los helpers de `calendario-zona` (R17): el cambio de dia es a las 00:00 locales.
+import { diasNaturalesDesde, inicioDelDiaEnUtc, manana, sumarDiasCalendario } from "@/lib/utils/calendario-zona";
 import { formatMontoString } from "@/lib/config/moneda";
 import { sumarMontos } from "@/lib/utils/kpis-financieros";
-import { fechaCRLegible } from "@/lib/whatsapp-envios/informes/formato";
+import { fechaLegibleEnZona } from "@/lib/whatsapp-envios/informes/formato";
 import {
   ESTADOS_OFRECIDOS,
   estadosIncluidos,
@@ -20,11 +20,10 @@ import {
 } from "@/lib/whatsapp-envios/informes/transito/parametros";
 import type { CorteZona, FilaTransito } from "@/lib/whatsapp-envios/informes/transito/tipos";
 
-const UN_DIA_MS = 24 * 60 * 60 * 1000;
-
 /**
- * Design §4 — el corte de cada zona EXISTENTE: `inicio del dia CR siguiente a hoy − umbral dias`.
- * `hito < corte` ⇔ `diasNaturalesCRDesde(hito, ahora) >= umbral` (CR es UTC−6 fijo). Una entrada de
+ * Design §4 — el corte de cada zona EXISTENTE: `inicio del dia siguiente a hoy − umbral dias`, en
+ * el CALENDARIO de `zona` (SLT-42, R23: con horario de verano, la resta es de dias, no de 24 h).
+ * `hito < corte` ⇔ `diasNaturalesDesde(hito, ahora, zona) >= umbral`. Una entrada de
  * parametros cuya zona no existe no produce corte (R7): se recorre la lista de ZONAS, no la de
  * parametros.
  */
@@ -32,11 +31,12 @@ export function cortesPorZona(
   zonas: readonly ZonaInforme[],
   parametros: Pick<ParametrosTransito, "zonas">,
   ahora: Date,
+  zona: string,
 ): CorteZona[] {
-  const finDeHoy = inicioDelDiaSiguienteCREnUtc(fechaCalendarioCR(ahora)).getTime();
+  const mananaLocal = manana(ahora, zona);
   return zonas.map((z) => ({
     zonaId: z.id,
-    corte: new Date(finDeHoy - umbralDeAlerta(plazoEfectivo(z, parametros)) * UN_DIA_MS),
+    corte: inicioDelDiaEnUtc(sumarDiasCalendario(mananaLocal, -umbralDeAlerta(plazoEfectivo(z, parametros))), zona),
   }));
 }
 
@@ -90,6 +90,8 @@ export interface TotalesTransito {
 
 export interface ModeloInformeTransito {
   ahora: Date;
+  /** SLT-42 (R22): la zona del pais de la empresa, para las fechas y horas del PDF. */
+  zona: string;
   hito: Hito;
   totales: TotalesTransito;
   /** La zona central si tiene paquetes en alerta. */
@@ -153,6 +155,7 @@ export function clasificar(
   zonas: readonly ZonaInforme[],
   parametros: ParametrosTransito,
   ahora: Date,
+  zonaHoraria: string,
   sinHito: number,
 ): ModeloInformeTransito {
   const porId = new Map(zonas.map((z) => [z.id, z]));
@@ -160,8 +163,9 @@ export function clasificar(
     const zona = porId.get(f.zonaId);
     if (zona === undefined) throw new Error(`informe transito: fila de una zona desconocida (${f.zonaId})`);
     const plazo = plazoEfectivo(zona, parametros);
-    const dias = diasNaturalesCRDesde(f.hitoAt, ahora);
-    const diasEnEstado = f.ultimaTransicionAt === null ? null : diasNaturalesCRDesde(f.ultimaTransicionAt, ahora);
+    const dias = diasNaturalesDesde(f.hitoAt, ahora, zonaHoraria);
+    const diasEnEstado =
+      f.ultimaTransicionAt === null ? null : diasNaturalesDesde(f.ultimaTransicionAt, ahora, zonaHoraria);
     const umbral = umbralDeParado(parametros, f.estado);
     return {
       ordenId: f.ordenId,
@@ -222,6 +226,7 @@ export function clasificar(
 
   return {
     ahora,
+    zona: zonaHoraria,
     hito: parametros.hito,
     totales: {
       enAlerta: paquetes.length,
@@ -272,6 +277,6 @@ export function variables(modelo: ModeloInformeTransito): Record<(typeof CLAVES_
     por_cobrar: formatMontoString(t.porCobrar),
     en_alerta_gam: String(t.enAlertaGam),
     en_alerta_fuera_gam: String(t.enAlertaFueraGam),
-    fecha: fechaCRLegible(modelo.ahora),
+    fecha: fechaLegibleEnZona(modelo.ahora, modelo.zona),
   };
 }

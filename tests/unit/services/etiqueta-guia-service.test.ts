@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from "vitest";
 import { EtiquetaGuiaService } from "@/lib/services/EtiquetaGuiaService";
 import type { EtiquetaRow, IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 const MAESTRO: Actor = { usuarioId: "u-maestro", rol: "maestro" };
 const ADMIN: Actor = { usuarioId: "u-admin", rol: "admin" };
@@ -44,7 +46,7 @@ function fakeRepo(rows: EtiquetaRow[] = [etiquetaRow()]): IOrdenRepository {
     softDelete: vi.fn(),
     existsEstatus: vi.fn(),
     findEstatusIdByValue: vi.fn(),
-    findUsuarioFulfillment: vi.fn(),
+    findUsuarioSeRecogeEnTienda: vi.fn(),
     existsGeo: vi.fn(),
     findExistingRemisiones: vi.fn(),
     findAllProvincias: vi.fn(),
@@ -98,7 +100,7 @@ function repoQueIgnoraTienda(rows: EtiquetaRow[]): IOrdenRepository {
 describe("EtiquetaGuiaService — autorizacion (roles sin frontera de tienda)", () => {
   it("R11/R12: maestro/admin/mensajero generan la etiqueta de cualquier tienda, sin forbidden", async () => {
     const repo = fakeRepo();
-    const service = new EtiquetaGuiaService(repo);
+    const service = new EtiquetaGuiaService(repo, reglasPaisFijas());
 
     for (const actor of [ADMIN, MENSAJERO, MAESTRO]) {
       const r = await service.generarEtiquetas({ ordenIds: ["o1"] }, actor);
@@ -119,7 +121,7 @@ describe("EtiquetaGuiaService — aislamiento por dueño del rol apiKey (feature
 
   it("una API key NO obtiene la etiqueta de una orden de otra tienda", async () => {
     const repo = fakeRepo([etiquetaRow({ id: "o1", tiendaId: "tienda-1" })]);
-    const service = new EtiquetaGuiaService(repo);
+    const service = new EtiquetaGuiaService(repo, reglasPaisFijas());
 
     const r = await service.generarEtiquetas({ ordenIds: ["o1"] }, KEY_TIENDA_2);
 
@@ -132,7 +134,7 @@ describe("EtiquetaGuiaService — aislamiento por dueño del rol apiKey (feature
 
   it("una API key SI obtiene la etiqueta de sus propias ordenes", async () => {
     const repo = fakeRepo([etiquetaRow({ id: "o1", tiendaId: "tienda-1" })]);
-    const service = new EtiquetaGuiaService(repo);
+    const service = new EtiquetaGuiaService(repo, reglasPaisFijas());
 
     const r = await service.generarEtiquetas({ ordenIds: ["o1"] }, KEY_TIENDA_1);
 
@@ -147,7 +149,7 @@ describe("EtiquetaGuiaService — aislamiento por dueño del rol apiKey (feature
       etiquetaRow({ id: "propia", tiendaId: "tienda-1", numGuia: 11 }),
       etiquetaRow({ id: "ajena", tiendaId: "tienda-2", numGuia: 22 }),
     ]);
-    const service = new EtiquetaGuiaService(repo);
+    const service = new EtiquetaGuiaService(repo, reglasPaisFijas());
 
     const r = await service.generarEtiquetas({ ordenIds: ["propia", "ajena"] }, KEY_TIENDA_1);
 
@@ -160,7 +162,7 @@ describe("EtiquetaGuiaService — aislamiento por dueño del rol apiKey (feature
 
   it("la ruta por num_guia tampoco expone la orden de otra tienda a una API key", async () => {
     const repo = fakeRepo([etiquetaRow({ id: "o1", tiendaId: "tienda-1", numGuia: 501 })]);
-    const service = new EtiquetaGuiaService(repo);
+    const service = new EtiquetaGuiaService(repo, reglasPaisFijas());
 
     expect((await service.obtenerEtiquetaPorGuia(501, KEY_TIENDA_2)).status).toBe("no_encontrada");
     expect((await service.obtenerEtiquetaPorGuia(501, KEY_TIENDA_1)).status).toBe("ok");
@@ -168,19 +170,19 @@ describe("EtiquetaGuiaService — aislamiento por dueño del rol apiKey (feature
 
   it("R13: el repo se llama con el dueño de la key como `tiendaId` (frontera en el where)", async () => {
     const repo = fakeRepo([etiquetaRow({ id: "o1", tiendaId: "tienda-1", numGuia: 501 })]);
-    const service = new EtiquetaGuiaService(repo);
+    const service = new EtiquetaGuiaService(repo, reglasPaisFijas());
 
     await service.generarEtiquetas({ ordenIds: ["o1"] }, KEY_TIENDA_1);
     await service.obtenerEtiquetaPorGuia(501, KEY_TIENDA_1);
 
-    expect(repo.findEtiquetasByIds).toHaveBeenCalledWith(["o1"], "tienda-1");
-    expect(repo.findEtiquetaByNumGuia).toHaveBeenCalledWith(501, "tienda-1");
+    expect(repo.findEtiquetasByIds).toHaveBeenCalledWith(["o1"], "tienda-1", ZONA_CR);
+    expect(repo.findEtiquetaByNumGuia).toHaveBeenCalledWith(501, "tienda-1", ZONA_CR);
   });
 
   // SLT-49: antes incluia a ADMIN_TIENDA; ahora la tienda tiene frontera (bloque de abajo).
   it("R11/R12: maestro/admin/mensajero/adminSatelite NO se filtran por dueño", async () => {
     const repo = fakeRepo([etiquetaRow({ id: "o1", tiendaId: "otra-tienda" })]);
-    const service = new EtiquetaGuiaService(repo);
+    const service = new EtiquetaGuiaService(repo, reglasPaisFijas());
 
     for (const actor of [MAESTRO, ADMIN, MENSAJERO, ADMIN_SATELITE]) {
       const r = await service.generarEtiquetas({ ordenIds: ["o1"] }, actor);
@@ -197,7 +199,7 @@ describe("EtiquetaGuiaService — frontera por dueño del adminTienda (SLT-49)",
   const AJENA = etiquetaRow({ id: "ajena", tiendaId: "otra-tienda", numGuia: 22 });
 
   it("R7: tienda propia -> recibe su etiqueta", async () => {
-    const service = new EtiquetaGuiaService(fakeRepo([PROPIA, AJENA]));
+    const service = new EtiquetaGuiaService(fakeRepo([PROPIA, AJENA]), reglasPaisFijas());
 
     const r = await service.generarEtiquetas({ ordenIds: ["propia"] }, ADMIN_TIENDA);
 
@@ -207,7 +209,7 @@ describe("EtiquetaGuiaService — frontera por dueño del adminTienda (SLT-49)",
   });
 
   it("R8: lote de uno con la orden de otra tienda -> sin etiqueta y `no_encontrada`", async () => {
-    const service = new EtiquetaGuiaService(fakeRepo([PROPIA, AJENA]));
+    const service = new EtiquetaGuiaService(fakeRepo([PROPIA, AJENA]), reglasPaisFijas());
 
     const r = await service.generarEtiquetas({ ordenIds: ["ajena"] }, ADMIN_TIENDA);
 
@@ -217,7 +219,7 @@ describe("EtiquetaGuiaService — frontera por dueño del adminTienda (SLT-49)",
   });
 
   it("R7: lote mixto -> la propia en `etiquetas`, la ajena en `omitidas` como `no_encontrada`", async () => {
-    const service = new EtiquetaGuiaService(fakeRepo([PROPIA, AJENA]));
+    const service = new EtiquetaGuiaService(fakeRepo([PROPIA, AJENA]), reglasPaisFijas());
 
     const r = await service.generarEtiquetas({ ordenIds: ["propia", "ajena"] }, ADMIN_TIENDA);
 
@@ -228,7 +230,7 @@ describe("EtiquetaGuiaService — frontera por dueño del adminTienda (SLT-49)",
   });
 
   it("R9: por guia ajena -> `no_encontrada`; por guia propia -> ok", async () => {
-    const service = new EtiquetaGuiaService(fakeRepo([PROPIA, AJENA]));
+    const service = new EtiquetaGuiaService(fakeRepo([PROPIA, AJENA]), reglasPaisFijas());
 
     expect((await service.obtenerEtiquetaPorGuia(22, ADMIN_TIENDA)).status).toBe("no_encontrada");
     expect((await service.obtenerEtiquetaPorGuia(11, ADMIN_TIENDA)).status).toBe("ok");
@@ -236,30 +238,30 @@ describe("EtiquetaGuiaService — frontera por dueño del adminTienda (SLT-49)",
 
   it("R10: el repo se llama con el usuarioId de la tienda como `tiendaId` (lote y guia)", async () => {
     const repo = fakeRepo([PROPIA, AJENA]);
-    const service = new EtiquetaGuiaService(repo);
+    const service = new EtiquetaGuiaService(repo, reglasPaisFijas());
 
     await service.generarEtiquetas({ ordenIds: ["propia", "ajena"] }, ADMIN_TIENDA);
     await service.obtenerEtiquetaPorGuia(22, ADMIN_TIENDA);
 
-    expect(repo.findEtiquetasByIds).toHaveBeenCalledWith(["propia", "ajena"], "u-tienda");
-    expect(repo.findEtiquetaByNumGuia).toHaveBeenCalledWith(22, "u-tienda");
+    expect(repo.findEtiquetasByIds).toHaveBeenCalledWith(["propia", "ajena"], "u-tienda", ZONA_CR);
+    expect(repo.findEtiquetaByNumGuia).toHaveBeenCalledWith(22, "u-tienda", ZONA_CR);
   });
 
   it("R11/R12: maestro/admin/mensajero/adminSatelite -> repo llamado con `null` (sin frontera)", async () => {
     for (const actor of [MAESTRO, ADMIN, MENSAJERO, ADMIN_SATELITE]) {
       const repo = fakeRepo([PROPIA, AJENA]);
-      const service = new EtiquetaGuiaService(repo);
+      const service = new EtiquetaGuiaService(repo, reglasPaisFijas());
 
       await service.generarEtiquetas({ ordenIds: ["ajena"] }, actor);
       await service.obtenerEtiquetaPorGuia(22, actor);
 
-      expect(repo.findEtiquetasByIds).toHaveBeenCalledWith(["ajena"], null);
-      expect(repo.findEtiquetaByNumGuia).toHaveBeenCalledWith(22, null);
+      expect(repo.findEtiquetasByIds).toHaveBeenCalledWith(["ajena"], null, ZONA_CR);
+      expect(repo.findEtiquetaByNumGuia).toHaveBeenCalledWith(22, null, ZONA_CR);
     }
   });
 
   it("R7/R8/R9 segunda capa: un repo que IGNORA `tiendaId` y devuelve la ajena -> sigue `no_encontrada`", async () => {
-    const service = new EtiquetaGuiaService(repoQueIgnoraTienda([PROPIA, AJENA]));
+    const service = new EtiquetaGuiaService(repoQueIgnoraTienda([PROPIA, AJENA]), reglasPaisFijas());
 
     const r = await service.generarEtiquetas({ ordenIds: ["propia", "ajena"] }, ADMIN_TIENDA);
     if (r.status !== "ok") throw new Error("unreachable");
@@ -270,7 +272,7 @@ describe("EtiquetaGuiaService — frontera por dueño del adminTienda (SLT-49)",
   });
 
   it("R13 segunda capa: tambien para una API key con un repo que ignora `tiendaId`", async () => {
-    const service = new EtiquetaGuiaService(repoQueIgnoraTienda([PROPIA, AJENA]));
+    const service = new EtiquetaGuiaService(repoQueIgnoraTienda([PROPIA, AJENA]), reglasPaisFijas());
     const key: Actor = { usuarioId: "u-tienda", rol: "apiKey" };
 
     const r = await service.generarEtiquetas({ ordenIds: ["ajena"] }, key);
@@ -282,7 +284,7 @@ describe("EtiquetaGuiaService — frontera por dueño del adminTienda (SLT-49)",
 describe("EtiquetaGuiaService — armado del DTO de etiqueta (R1)", () => {
   it("R1: orden con guia y geografia completas -> DTO con todos los nombres resueltos", async () => {
     const repo = fakeRepo([etiquetaRow()]);
-    const service = new EtiquetaGuiaService(repo);
+    const service = new EtiquetaGuiaService(repo, reglasPaisFijas());
 
     const r = await service.generarEtiquetas({ ordenIds: ["o1"] }, MAESTRO);
 
@@ -315,7 +317,7 @@ describe("EtiquetaGuiaService — armado del DTO de etiqueta (R1)", () => {
 describe("EtiquetaGuiaService — orden sin guia (R2)", () => {
   it("R2: orden existente sin num_guia -> omitida 'sin_guia', sin etiqueta (no tiene QR)", async () => {
     const repo = fakeRepo([etiquetaRow({ id: "o1", numGuia: null })]);
-    const service = new EtiquetaGuiaService(repo);
+    const service = new EtiquetaGuiaService(repo, reglasPaisFijas());
 
     const r = await service.generarEtiquetas({ ordenIds: ["o1"] }, MAESTRO);
 
@@ -330,7 +332,7 @@ describe("EtiquetaGuiaService — orden inexistente/borrada (R3)", () => {
   it("R3: id no encontrado (no viene de la query) + orden valida -> etiqueta del valido, omitida del otro (no aborta el lote)", async () => {
     // El repo solo devuelve o1 (o2 no existe o esta borrada -> el repo lo excluye).
     const repo = fakeRepo([etiquetaRow({ id: "o1" })]);
-    const service = new EtiquetaGuiaService(repo);
+    const service = new EtiquetaGuiaService(repo, reglasPaisFijas());
 
     const r = await service.generarEtiquetas({ ordenIds: ["o1", "o2"] }, MAESTRO);
 
@@ -345,7 +347,7 @@ describe("EtiquetaGuiaService — orden inexistente/borrada (R3)", () => {
 describe("EtiquetaGuiaService — distrito ausente (R4)", () => {
   it("R4: orden sin distrito -> distritoNombre null con etiqueta valida y resto de geografia", async () => {
     const repo = fakeRepo([etiquetaRow({ id: "o1", distritoNombre: null })]);
-    const service = new EtiquetaGuiaService(repo);
+    const service = new EtiquetaGuiaService(repo, reglasPaisFijas());
 
     const r = await service.generarEtiquetas({ ordenIds: ["o1"] }, MAESTRO);
 
@@ -361,7 +363,7 @@ describe("EtiquetaGuiaService — distrito ausente (R4)", () => {
 describe("EtiquetaGuiaService — montoCobrar serializable (R5)", () => {
   it("R5: montoCobrar number cuando la orden lo trae; sin simbolo de moneda", async () => {
     const repo = fakeRepo([etiquetaRow({ id: "o1", montoCobrar: 99.9 })]);
-    const service = new EtiquetaGuiaService(repo);
+    const service = new EtiquetaGuiaService(repo, reglasPaisFijas());
 
     const r = await service.generarEtiquetas({ ordenIds: ["o1"] }, MAESTRO);
 
@@ -372,7 +374,7 @@ describe("EtiquetaGuiaService — montoCobrar serializable (R5)", () => {
 
   it("R5: montoCobrar null cuando la orden no lo trae", async () => {
     const repo = fakeRepo([etiquetaRow({ id: "o1", montoCobrar: null })]);
-    const service = new EtiquetaGuiaService(repo);
+    const service = new EtiquetaGuiaService(repo, reglasPaisFijas());
 
     const r = await service.generarEtiquetas({ ordenIds: ["o1"] }, MAESTRO);
 
@@ -384,7 +386,7 @@ describe("EtiquetaGuiaService — montoCobrar serializable (R5)", () => {
 describe("EtiquetaGuiaService — no expone internos (R6)", () => {
   it("R6: el DTO de etiqueta no contiene deletedAt ni claves fuera del contrato", async () => {
     const repo = fakeRepo([etiquetaRow({ id: "o1" })]);
-    const service = new EtiquetaGuiaService(repo);
+    const service = new EtiquetaGuiaService(repo, reglasPaisFijas());
 
     const r = await service.generarEtiquetas({ ordenIds: ["o1"] }, MAESTRO);
 
@@ -417,7 +419,7 @@ describe("EtiquetaGuiaService — no expone internos (R6)", () => {
 describe("EtiquetaGuiaService — codificacion QR/barcode (R7/R8)", () => {
   it("R7: qrValue === String(numGuia) (el QR ya NO codifica orden.id)", async () => {
     const repo = fakeRepo([etiquetaRow({ id: "orden-uuid-abc", numGuia: 700 })]);
-    const service = new EtiquetaGuiaService(repo);
+    const service = new EtiquetaGuiaService(repo, reglasPaisFijas());
 
     const r = await service.generarEtiquetas({ ordenIds: ["orden-uuid-abc"] }, MAESTRO);
 
@@ -429,7 +431,7 @@ describe("EtiquetaGuiaService — codificacion QR/barcode (R7/R8)", () => {
 
   it("R7/R8: qrValue y barcodeValue codifican el MISMO num_guia", async () => {
     const repo = fakeRepo([etiquetaRow({ id: "o1", numGuia: 4242 })]);
-    const service = new EtiquetaGuiaService(repo);
+    const service = new EtiquetaGuiaService(repo, reglasPaisFijas());
 
     const r = await service.generarEtiquetas({ ordenIds: ["o1"] }, MAESTRO);
 
@@ -439,7 +441,7 @@ describe("EtiquetaGuiaService — codificacion QR/barcode (R7/R8)", () => {
 
   it("R8: barcodeValue === String(numGuia)", async () => {
     const repo = fakeRepo([etiquetaRow({ id: "o1", numGuia: 12345 })]);
-    const service = new EtiquetaGuiaService(repo);
+    const service = new EtiquetaGuiaService(repo, reglasPaisFijas());
 
     const r = await service.generarEtiquetas({ ordenIds: ["o1"] }, MAESTRO);
 
@@ -452,7 +454,7 @@ describe("EtiquetaGuiaService — codificacion QR/barcode (R7/R8)", () => {
 describe("EtiquetaGuiaService — etiqueta por num_guia (ruta /paquete/<numGuia>)", () => {
   it("R1/R7: resuelve la etiqueta de la orden con ese num_guia (mismo DTO)", async () => {
     const repo = fakeRepo([etiquetaRow({ id: "o1", numGuia: 501 })]);
-    const service = new EtiquetaGuiaService(repo);
+    const service = new EtiquetaGuiaService(repo, reglasPaisFijas());
 
     const r = await service.obtenerEtiquetaPorGuia(501, MAESTRO);
 
@@ -461,12 +463,12 @@ describe("EtiquetaGuiaService — etiqueta por num_guia (ruta /paquete/<numGuia>
     expect(r.etiqueta.ordenId).toBe("o1");
     expect(r.etiqueta.numGuia).toBe(501);
     expect(r.etiqueta.qrValue).toBe("501");
-    expect(repo.findEtiquetaByNumGuia).toHaveBeenCalledWith(501, null); // maestro: sin frontera
+    expect(repo.findEtiquetaByNumGuia).toHaveBeenCalledWith(501, null, ZONA_CR); // maestro: sin frontera
   });
 
   it("R3: sin orden viva con ese num_guia (inexistente o borrada) -> no_encontrada", async () => {
     const repo = fakeRepo([etiquetaRow({ id: "o1", numGuia: 501 })]);
-    const service = new EtiquetaGuiaService(repo);
+    const service = new EtiquetaGuiaService(repo, reglasPaisFijas());
 
     const r = await service.obtenerEtiquetaPorGuia(999, MAESTRO);
 
@@ -477,7 +479,7 @@ describe("EtiquetaGuiaService — etiqueta por num_guia (ruta /paquete/<numGuia>
   // guia vive en el bloque «frontera por dueño del adminTienda».
   it("R11/R12: maestro/admin/mensajero/adminSatelite resuelven la etiqueta por guia de cualquier tienda", async () => {
     const repo = fakeRepo([etiquetaRow({ id: "o1", numGuia: 501 })]);
-    const service = new EtiquetaGuiaService(repo);
+    const service = new EtiquetaGuiaService(repo, reglasPaisFijas());
 
     for (const actor of [ADMIN, MENSAJERO, MAESTRO, ADMIN_SATELITE]) {
       const r = await service.obtenerEtiquetaPorGuia(501, actor);

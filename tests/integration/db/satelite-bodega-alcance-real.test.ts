@@ -17,6 +17,7 @@ import {
   enTransaccionRevertida,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FICHA 349 — EL LISTADO «Órdenes de la bodega» CONTRA UN POSTGRES DE VERDAD.
@@ -258,15 +259,19 @@ async function sembrar(tx: Tx): Promise<Escenario> {
   // las de otra zona» estaria verde sin haber ejercido el recorte por zona.
   for (const id of idsAjenos) await sembrarPasoPorBodega(id);
 
-  // Zona PROPIA y fuera del listado. FICHA 357: `en_reparto`, `entregada` y `ayuda_tienda` YA
+  // Zona PROPIA y fuera del listado. FICHA 357: `en_reparto`, `entregado` y `reprogramado` YA
   // NO estan fuera por su estado —el listado los muestra ahora, y esa es la cara A de la ficha—,
   // asi que lo que las deja fuera aqui es el ALCANCE: nunca pasaron por una bodega satelite.
+  // SLT-186: la tercera era `ayuda_tienda`, que la 454 saco del catalogo (ninguna orden viva puede
+  // tenerlo; una base nueva ni siquiera trae la fila). La sustituye `reprogramado`, que esta en
+  // `ESTADOS_BODEGA_SATELITE` (lib/utils/estados-bodega-satelite.ts, FICHA 357 cara A): el listado la
+  // mostraria por su estado, de modo que solo el alcance (no paso por la bodega) la deja fuera.
   // La cuarta si queda fuera por el ESTADO: paso por la bodega, pero el paquete volvio a la
   // custodia de la central.
   const idsFueraDeLaLista = [
     await crearOrden("propia-en-reparto", zonaPropia, "en_reparto", { mensajeroId: mensajero }),
     await crearOrden("propia-entregada", zonaPropia, "entregado", { mensajeroId: mensajero }),
-    await crearOrden("propia-ayuda", zonaPropia, "ayuda_tienda", { mensajeroId: mensajero }),
+    await crearOrden("propia-reprogramada", zonaPropia, "reprogramado", { mensajeroId: mensajero }),
   ];
   const enLaCentral = await crearOrden("propia-central", zonaPropia, "en_bodega_central");
   await sembrarPasoPorBodega(enLaCentral);
@@ -296,6 +301,8 @@ function servicio(tx: Tx): RecepcionSateliteService {
       new OrdenDiaRepartoCambioRepository(prisma),
       new OrdenTraspasoRepository(prisma),
     ),
+    undefined,
+    reglasPaisFijas(),
   );
 }
 

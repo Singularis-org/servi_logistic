@@ -16,6 +16,8 @@ import {
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
+import { datosDeOrganizacionDePrueba, fijarEmpresa } from "@/tests/fabricas/organizaciones";
 
 // FICHA 333 (D7) — LA APROBACIÓN, MEDIDA CONTRA POSTGRES: **R15** (o quedan las dos escrituras o
 // no queda ninguna), **R17** (un cobro ya decidido no escribe y responde `ya_decidido`), **R18**
@@ -113,26 +115,24 @@ async function insertarCobroPendiente(
 }
 
 /**
- * Usuarios REALES de la base: `decidido_por` es una FK `RESTRICT` contra `usuario`.
+ * Usuarios REALES en la base: `decidido_por` es una FK `RESTRICT` contra `usuario`.
+ *
+ * SLT-182: se SIEMBRAN (maestros) en el cliente que se pase —la tx revertida del caso, o la
+ * conexion del bloque concurrente, que los borra en su `finally`—. Antes se leian «los primeros
+ * usuarios» de la base, y la base recien migrada no tiene ninguno.
  *
  * NO se salta el test si faltan: se ROMPE. Un `return` silencioso aquí es exactamente el modo de
  * fallo que este repo ya tiene medido —«passed» sin haber comprobado nada—.
  */
-async function idsDeUsuarios(
-  cliente: { $queryRawUnsafe: <T>(sql: string) => Promise<T> },
-  cuantos: number,
-): Promise<string[]> {
-  const filas = await cliente.$queryRawUnsafe<{ id: string }[]>(
-    `SELECT "id" FROM "usuario" ORDER BY "id" LIMIT ${cuantos}`,
-  );
-  if (filas.length < cuantos) {
-    throw new Error(
-      `La base tiene ${filas.length} usuarios y hacen falta ${cuantos}: esta suite ` +
-        "necesita crear sus usuarios en el test (SL-31). Sin usuarios no se " +
-        "puede ejercer la FK `decidido_por` ni distinguir QUIÉN ganó la carrera.",
-    );
+async function idsDeUsuarios(cliente: TxDeTest, cuantos: number): Promise<string[]> {
+  const ids: string[] = [];
+  for (let i = 0; i < cuantos; i++) ids.push((await crearUsuarioDePrueba(cliente, "maestro")).id);
+  // Control positivo (R1084): los `cuantos` sembrados llegaron a la base.
+  const sembrados = await cliente.usuario.count({ where: { id: { in: ids } } });
+  if (sembrados !== cuantos) {
+    throw new Error(`SLT-182: de ${cuantos} usuarios sembrados hay ${sembrados} en la base`);
   }
-  return filas.map((f) => f.id);
+  return ids;
 }
 
 async function leerCobro(
@@ -254,6 +254,7 @@ describeSiHayBase("333/D7 — R15: aprobar deja estado, decisor, instante y enla
         obtenerPorClave: libroReal.obtenerPorClave.bind(libroReal), // ficha 461
         listar: libroReal.listar.bind(libroReal),
         agregarPorCategoriaYTipo: libroReal.agregarPorCategoriaYTipo.bind(libroReal),
+        categoriasConModeloNuevo: libroReal.categoriasConModeloNuevo.bind(libroReal),
         obtenerPorId: libroReal.obtenerPorId.bind(libroReal),
         agregarPorCategoria: libroReal.agregarPorCategoria.bind(libroReal),
         // FICHA 362: el escritor de los movimientos que nacen de una decision humana. Este camino
@@ -645,6 +646,22 @@ describeSiHayBase("333/D7 — R18: dos aprobaciones simultáneas dejan UN movimi
     );
   }
 
+  /** SLT-182 (R1083): lo sembrado commiteado por el caso concurrente, para comprobar que se fue. */
+  const sembradoCommiteado: { empresas: string[]; usuarios: string[] } = { empresas: [], usuarios: [] };
+
+  /**
+   * Borra la empresa y los usuarios que el caso concurrente sembro commiteados. Despues de
+   * `barrer()`: el libro y los cobros cuelgan de ellos. El rastro de la aprobacion
+   * (`historial_accion`) lleva la empresa y se va con ella.
+   */
+  async function borrarEmpresaSembrada(empresaId: string, usuarios: string[]): Promise<void> {
+    sembradoCommiteado.empresas.push(empresaId);
+    sembradoCommiteado.usuarios.push(...usuarios);
+    await prismaA.$executeRawUnsafe(`DELETE FROM "historial_accion" WHERE "organizacion_id" = $1`, empresaId);
+    await prismaA.usuario.deleteMany({ where: { id: { in: usuarios } } });
+    await prismaA.organizacion.deleteMany({ where: { id: empresaId } });
+  }
+
   beforeAll(async () => {
     prismaA = crearPrismaDeTest();
     prismaB = crearPrismaDeTest();
@@ -665,29 +682,45 @@ describeSiHayBase("333/D7 — R18: dos aprobaciones simultáneas dejan UN movimi
     // que tomó la primera, re-evalúa el `WHERE ... AND estado = 'pendiente'` tras su commit,
     // afecta CERO filas y sale sin escribir. Con el `WHERE` mutado, las DOS escribirían y las dos
     // devolverían `ok`.
-    const [actorGanador, actorPerdedor] = await idsDeUsuarios(prismaA, 2);
     const plantillaId = randomUUID();
     const cobroId = randomUUID();
     const origenId = `${plantillaId}:${PERIODO}`;
+    // SLT-182 (R1083): la empresa y los dos usuarios tambien se siembran COMMITEADOS —la segunda
+    // conexion tiene que verlos—, con claves propias, y se borran en el `finally`.
+    const empresa = await prismaA.organizacion.create({
+      data: datosDeOrganizacionDePrueba(),
+      select: { id: true },
+    });
+    let actores: string[] = [];
 
     try {
       // Fixture COMMITEADO: sin esto, la segunda conexión no vería el cobro.
-      await prismaA.$transaction(async (tx) => {
+      actores = await prismaA.$transaction(async (tx) => {
+        await fijarEmpresa(tx, empresa.id);
+        const ids = await idsDeUsuarios(tx as unknown as TxDeTest, 2);
         await insertarPlantilla(tx as unknown as TxDeTest, plantillaId);
         await insertarCobroPendiente(tx as unknown as TxDeTest, cobroId, plantillaId);
+        return ids;
       });
+      const [actorGanador, actorPerdedor] = actores;
 
       const svcA = servicioSobre(prismaA, (fn) =>
-        prismaA.$transaction((tx) => fn(tx as unknown as GastoFijoCobroTx), {
-          timeout: 20_000,
-          maxWait: 15_000,
-        }),
+        prismaA.$transaction(
+          async (tx) => {
+            await fijarEmpresa(tx, empresa.id);
+            return fn(tx as unknown as GastoFijoCobroTx);
+          },
+          { timeout: 20_000, maxWait: 15_000 },
+        ),
       );
       const svcB = servicioSobre(prismaB, (fn) =>
-        prismaB.$transaction((tx) => fn(tx as unknown as GastoFijoCobroTx), {
-          timeout: 20_000,
-          maxWait: 15_000,
-        }),
+        prismaB.$transaction(
+          async (tx) => {
+            await fijarEmpresa(tx, empresa.id);
+            return fn(tx as unknown as GastoFijoCobroTx);
+          },
+          { timeout: 20_000, maxWait: 15_000 },
+        ),
       );
 
       const [a, b] = await Promise.all([
@@ -711,6 +744,7 @@ describeSiHayBase("333/D7 — R18: dos aprobaciones simultáneas dejan UN movimi
       expect([actorGanador, actorPerdedor]).toContain(cobro.decidido_por);
     } finally {
       await barrer();
+      await borrarEmpresaSembrada(empresa.id, actores);
     }
   }, 60_000);
 
@@ -723,5 +757,13 @@ describeSiHayBase("333/D7 — R18: dos aprobaciones simultáneas dejan UN movimi
       `${MARCA}%`,
     );
     expect(Number(restos[0].n)).toBe(0);
+  });
+
+  it("SLT-182 (R1083): ni la empresa ni los usuarios sembrados commiteados quedan en la base", async () => {
+    // Control positivo: el caso concurrente sembro UNA empresa y DOS usuarios.
+    expect(sembradoCommiteado.empresas).toHaveLength(1);
+    expect(sembradoCommiteado.usuarios).toHaveLength(2);
+    expect(await prismaA.organizacion.count({ where: { id: { in: sembradoCommiteado.empresas } } })).toBe(0);
+    expect(await prismaA.usuario.count({ where: { id: { in: sembradoCommiteado.usuarios } } })).toBe(0);
   });
 });

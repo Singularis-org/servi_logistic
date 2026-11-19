@@ -8,9 +8,10 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 /**
  * 💰 FICHA 396 (TANDA D) — **QUÉ FILAS SE AGRUPAN EN CADA NIVEL DEL CIERRE DE BODEGA,
@@ -76,27 +77,28 @@ const NOMBRE_COMPARTIDO = "Comercial Talamanca";
  *   ANA (cierre_dia 1) — snapshot general 100.000,00 · UNA sola tienda (la A)
  *     a1 · entrega de 100.000,00 → flete+IVA 2.260,00 · comisión+IVA 3.390,00 · total 5.650,00
  *     a2 · RECHAZO de 20.000,00  → flete devuelto+IVA 1.695,00 · total 1.695,00
- *     tienda A: recaudado 100.000,00 · se le paga 94.350,00 · gana 92.655,00
+ *     tienda A: recaudado 100.000,00 · se le paga 92.655,00
+ *               (SLT-169 R621: se le paga resta TODO lo facturado; antes 94.350,00)
  *
  *   BETO (cierre_dia 2) — snapshot general 65.000,00 · DOS tiendas
  *     b1 · entrega de 40.000,00 (tienda B) → 2.260,00 · 1.356,00 · total 3.616,00
  *     b2 · entrega de 25.000,00 (tienda A) → 2.260,00 ·   847,50 · total 3.107,50
- *     tienda B: recaudado 40.000,00 · se le paga 36.384,00 · gana 36.384,00
- *     tienda A: recaudado 25.000,00 · se le paga 21.892,50 · gana 21.892,50
+ *     tienda B: recaudado 40.000,00 · se le paga 36.384,00
+ *     tienda A: recaudado 25.000,00 · se le paga 21.892,50
  *
  *   AGREGADO — snapshot general 165.000,00 · DOS tiendas (A sale UNA vez, no dos)
- *     tienda A: recaudado 125.000,00 · se le paga 116.242,50 · gana 114.547,50
- *     tienda B: recaudado  40.000,00 · se le paga  36.384,00 · gana  36.384,00
+ *     tienda A: recaudado 125.000,00 · se le paga 114.547,50 (antes 116.242,50)
+ *     tienda B: recaudado  40.000,00 · se le paga  36.384,00
  */
 const ANA_GENERAL = "100000.00";
 const BETO_GENERAL = "65000.00";
 const BODEGA_GENERAL = "165000.00";
 
-const ANA_A = { recaudado: "100000.00", pagoTienda: "94350.00", ganaLaTienda: "92655.00" };
-const BETO_B = { recaudado: "40000.00", pagoTienda: "36384.00", ganaLaTienda: "36384.00" };
-const BETO_A = { recaudado: "25000.00", pagoTienda: "21892.50", ganaLaTienda: "21892.50" };
-const AGREGADO_A = { recaudado: "125000.00", pagoTienda: "116242.50", ganaLaTienda: "114547.50" };
-const AGREGADO_B = { recaudado: "40000.00", pagoTienda: "36384.00", ganaLaTienda: "36384.00" };
+const ANA_A = { recaudado: "100000.00", pagoTienda: "92655.00" };
+const BETO_B = { recaudado: "40000.00", pagoTienda: "36384.00" };
+const BETO_A = { recaudado: "25000.00", pagoTienda: "21892.50" };
+const AGREGADO_A = { recaudado: "125000.00", pagoTienda: "114547.50" };
+const AGREGADO_B = { recaudado: "40000.00", pagoTienda: "36384.00" };
 
 describeSiHayBase(
   "396/D — el desglose por tienda del cierre de BODEGA, nivel a nivel, contra Postgres",
@@ -120,31 +122,10 @@ describeSiHayBase(
     beforeAll(async () => {
       prisma = crearPrismaDeTest();
 
-      const fks = await fksDeOrden(prisma);
-      // Fallo RUIDOSO, no `return` silencioso: con base alcanzable y sin catálogo este archivo no
-      // puede comprobar nada, y un `passed` en esas condiciones es peor que no tener el test.
-      if (fks === null) {
-        throw new Error(
-          "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar el " +
-            "corpus. Corre `pnpm run db:seed` (y las semillas de zonas) antes de esta suite.",
-        );
-      }
-
-      const plantilla = await prisma.usuario.findFirst({
-        select: { tipoIdentificacionId: true, rolId: true, passwordHash: true },
-      });
-      if (plantilla === null) {
-        throw new Error(
-          "la tabla `usuario` esta vacia: no hay de donde tomar `tipo_identificacion_id` ni " +
-            "`rol_id` para crear las tiendas y los mensajeros del corpus. Corre las semillas.",
-        );
-      }
-
-      // `cierre_bodega.solicitado_por` es FK -> `usuario`. Se reusa uno REAL: lo que se mide
-      // aqui es el agrupamiento por tienda, no un rol.
-      const solicitante = await prisma.usuario.findFirst({ select: { id: true } });
-      if (solicitante === null) throw new Error("no hay ningun usuario para ser el solicitante");
-
+      // SLT-175 R671: de la base solo se leen CATÁLOGOS por su clave. La zona, la geografía, las
+      // dos tiendas, Ana, Beto y el solicitante se crean dentro de la transacción de cada caso
+      // (`conCorpus`), con el fixture de SL-11, y el rollback se los lleva. Si falta un catálogo,
+      // el fixture o este `findFirst` LANZAN nombrándolo: nunca un `return` silencioso (R673).
       const estatus = await prisma.orderStatus.findFirst({
         where: { value: "en_reparto" },
         select: { id: true },
@@ -162,28 +143,29 @@ describeSiHayBase(
           // reales de `public` (ver `_postgres-real.ts`).
           await serializarEscriturasReales(tx);
 
-          const nuevoUsuario = async (clave: string, nombre: string) =>
-            (
-              await tx.usuario.create({
-                data: {
-                  nombre,
-                  email: `u-${clave}-${SUFIJO}@ejemplo.test`,
-                  telefono: "88880000",
-                  passwordHash: plantilla.passwordHash,
-                  cedula: `C-${clave}-${SUFIJO}`,
-                  tipoIdentificacionId: plantilla.tipoIdentificacionId,
-                  rolId: plantilla.rolId,
-                },
-                select: { id: true },
-              })
-            ).id;
+          // Zona y geografía propias (SLT-175). La tienda que crea el fixture no se usa: las dos
+          // del corpus se crean aparte para que ninguna tenga tarifa propia y compartan nombre.
+          const fks = await crearFksDeOrden(tx);
+          // `cierre_bodega.solicitado_por` es FK -> `usuario`: el actor del cierre de bodega.
+          const solicitante = await crearUsuarioDePrueba(tx, "adminSatelite");
+
+          // Usuarios del corpus con el nombre que el caso pide. El fixture les da uno propio; se
+          // renombran en la tx.
+          const nuevoUsuario = async (rol: "adminTienda" | "mensajero", nombre: string) => {
+            const usuario = await crearUsuarioDePrueba(tx, rol);
+            await tx.usuario.update({
+              where: { id: usuario.id },
+              data: { nombre, primerApellido: null },
+            });
+            return usuario.id;
+          };
 
           // El nombre VIVO también es el mismo en las dos tiendas: nada en el corpus permite
           // distinguirlas por texto.
-          const tiendaA = await nuevoUsuario("tienda-a", NOMBRE_COMPARTIDO);
-          const tiendaB = await nuevoUsuario("tienda-b", NOMBRE_COMPARTIDO);
-          const ana = await nuevoUsuario("mensajera-ana", "Ana Mensajera");
-          const beto = await nuevoUsuario("mensajero-beto", "Beto Mensajero");
+          const tiendaA = await nuevoUsuario("adminTienda", NOMBRE_COMPARTIDO);
+          const tiendaB = await nuevoUsuario("adminTienda", NOMBRE_COMPARTIDO);
+          const ana = await nuevoUsuario("mensajero", "Ana Mensajera");
+          const beto = await nuevoUsuario("mensajero", "Beto Mensajero");
 
           // LA TARIFA CONGELADA del corpus. `cierre_detail.tarifa_id` es FK con ON DELETE
           // RESTRICT, asi que tiene que apuntar a una fila real; se crea una sola y la comparten
@@ -439,7 +421,7 @@ describeSiHayBase(
       // Sin esto, todo lo de abajo podría estar midiendo el vacío. Nada de `if (!filas) return;`:
       // un `return` silencioso reporta `passed` sin haber comprobado nada.
       const medido = await conCorpus(async (ctx) => {
-        const r = await ctx.repo.findCierreBodegaConDetalle(ctx.cierreBodegaId);
+        const r = await ctx.repo.findCierreBodegaConDetalle(ctx.cierreBodegaId, ZONA_CR, { lectura: "toda_la_empresa" });
         if (r === null) throw new Error("el cierre de bodega sembrado no se encontro");
         const todas = r.cierresDia.flatMap((cd) => cd.gestiones);
         return {
@@ -463,7 +445,7 @@ describeSiHayBase(
       // dice HOY. Si `DETALLE_ADMIN_SELECT` dejara de proyectar `tienda_id`, o si el mapper
       // leyera `orden.tienda_id`, estas dos columnas coincidirían y el caso cae.
       const medido = await conCorpus(async (ctx) => {
-        const r = await ctx.repo.findCierreBodegaConDetalle(ctx.cierreBodegaId);
+        const r = await ctx.repo.findCierreBodegaConDetalle(ctx.cierreBodegaId, ZONA_CR, { lectura: "toda_la_empresa" });
         if (r === null) throw new Error("el cierre de bodega sembrado no se encontro");
         const porRemision = new Map(
           r.cierresDia.flatMap((cd) => cd.gestiones).map((g) => [g.numRemision, g.tiendaId]),
@@ -506,7 +488,7 @@ describeSiHayBase(
       // derivara del conjunto de toda la bodega, a Ana le saldrían DOS tiendas: enseñaría un
       // desglose en un mensajero que sólo llevó una.
       const medido = await conCorpus(async (ctx) => {
-        const r = await ctx.repo.findCierreBodegaConDetalle(ctx.cierreBodegaId);
+        const r = await ctx.repo.findCierreBodegaConDetalle(ctx.cierreBodegaId, ZONA_CR, { lectura: "toda_la_empresa" });
         if (r === null) throw new Error("el cierre de bodega sembrado no se encontro");
         const etiqueta = (id: string) =>
           id === ctx.tiendaA ? "A" : id === ctx.tiendaB ? "B" : "DESCONOCIDA";
@@ -516,7 +498,6 @@ describeSiHayBase(
             tiendaNombre: p.tiendaNombre,
             recaudado: p.recaudado,
             pagoTienda: p.pagoTienda,
-            ganaLaTienda: p.ganaLaTienda,
           }));
         const deAna = r.cierresDia.find((cd) => cd.resumen.cierreDiaId === ctx.cierreAnaId);
         const deBeto = r.cierresDia.find((cd) => cd.resumen.cierreDiaId === ctx.cierreBetoId);
@@ -555,7 +536,7 @@ describeSiHayBase(
 
     it("las identidades de los TRES niveles se sostienen sobre datos que salieron de Postgres", async () => {
       const medido = await conCorpus(async (ctx) => {
-        const r = await ctx.repo.findCierreBodegaConDetalle(ctx.cierreBodegaId);
+        const r = await ctx.repo.findCierreBodegaConDetalle(ctx.cierreBodegaId, ZONA_CR, { lectura: "toda_la_empresa" });
         if (r === null) throw new Error("el cierre de bodega sembrado no se encontro");
         const suma = (montos: string[]) =>
           montos.reduce((a, m) => a.plus(new Prisma.Decimal(m)), new Prisma.Decimal(0)).toFixed(2);
@@ -563,7 +544,6 @@ describeSiHayBase(
           const partes = partesPorTienda(gestiones);
           return {
             pago: suma(partes.map((p) => p.pagoTienda)),
-            gana: suma(partes.map((p) => p.ganaLaTienda)),
             recaudado: suma(partes.map((p) => p.recaudado)),
           };
         };
@@ -572,7 +552,8 @@ describeSiHayBase(
         const dif = (id: string) => {
           const p = partesAgregado.find((x) => x.tiendaId === id);
           if (p === undefined) throw new Error("falta una tienda en el desglose agregado");
-          return new Prisma.Decimal(p.pagoTienda).minus(p.ganaLaTienda).toFixed(2);
+          // SLT-169: pago − recaudado = −(todo lo facturado a ESA tienda, flete por rechazo incluido).
+          return new Prisma.Decimal(p.pagoTienda).minus(p.recaudado).toFixed(2);
         };
         const deAna = r.cierresDia.find((cd) => cd.resumen.cierreDiaId === ctx.cierreAnaId)!;
         const deBeto = r.cierresDia.find((cd) => cd.resumen.cierreDiaId === ctx.cierreBetoId)!;
@@ -585,33 +566,32 @@ describeSiHayBase(
         };
       });
 
-      // R10 / R11 / R12 en el nivel de ANA, contra literales escritos a mano.
+      // R10 / R12 en el nivel de ANA, contra literales escritos a mano (R11 se fue con SLT-174).
       expect(medido.ana).toEqual({
-        pago: "94350.00",
-        gana: "92655.00",
+        pago: "92655.00",
         recaudado: ANA_GENERAL,
       });
 
       // …en el nivel de BETO: 36.384,00 + 21.892,50 y 40.000,00 + 25.000,00.
       expect(medido.beto).toEqual({
         pago: "58276.50",
-        gana: "58276.50",
         recaudado: BETO_GENERAL,
       });
 
-      // …y en el AGREGADO: 116.242,50 + 36.384,00 · 114.547,50 + 36.384,00 · 125.000,00 + 40.000,00.
+      // …y en el AGREGADO: 114.547,50 + 36.384,00 y 125.000,00 + 40.000,00.
       expect(medido.agregado).toEqual({
-        pago: "152626.50",
-        gana: "150931.50",
+        pago: "150931.50",
         recaudado: BODEGA_GENERAL,
       });
+      // SLT-169 R623: la suma de los cierres del día es el agregado (92.655,00 + 58.276,50).
+      expect(
+        new Prisma.Decimal(medido.ana.pago).plus(medido.beto.pago).toFixed(2),
+      ).toBe(medido.agregado.pago);
 
-      // La CUARTA identidad, por tienda, en el agregado: A tuvo un rechazo (1.695,00) y B no
-      // (0,00). Que una de las dos NO sea cero es lo que impide que este caso pase sin comprobar
-      // nada — con las dos en cero, derivar una de las dos cifras con el subconjunto equivocado
-      // no se notaría.
-      expect(medido.difA).toBe("1695.00");
-      expect(medido.difB).toBe("0.00");
+      // SLT-169 R621, por tienda, en el agregado: A tuvo un rechazo y su facturado lo incluye
+      // (5.650,00 + 1.695,00 + 3.107,50 = 10.452,50); B no (3.616,00).
+      expect(medido.difA).toBe("-10452.50");
+      expect(medido.difB).toBe("-3616.00");
     });
   },
 );

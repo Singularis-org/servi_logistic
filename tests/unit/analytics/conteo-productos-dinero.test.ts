@@ -19,6 +19,7 @@ import {
 import { cacheFalsa } from "./_cache-falsa";
 import { congelada, dineroFalso, filaDinero, TARIFA } from "./_dinero-falso";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // FICHA 347 / B4.2 + B4.4 — LA FUSION DEL DINERO Y SU LLEGADA A LA FILA.
 // Cubre R5, R11, R12, R13, R16, R17, R18, R19, R20, R21, R22, R25, R28, R30, R76, R77, R78.
 //
@@ -29,7 +30,7 @@ const AHORA = new Date("2026-09-01T12:00:00.000Z");
 const T1 = "t1";
 
 function consultaDe(raw: object = {}, rol = "maestro", usuarioId = "u1"): ConsultaProductos {
-  const preparada = prepararConsultaProductos(raw, { usuarioId, rol } as never, AHORA);
+  const preparada = prepararConsultaProductos(raw, { usuarioId, rol } as never, ZONA_DE_CR, AHORA);
   if (preparada.status !== "ok") throw new Error(`filtro de prueba invalido: ${preparada.status}`);
   return preparada.consulta;
 }

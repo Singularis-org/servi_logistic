@@ -4,6 +4,8 @@ import type { PrismaClient } from "@prisma/client";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "../../_postgres-real";
 import {
   conEscenario,
+  clienteDeLaApp454,
+  enEmpresaDe,
   entradaGestion,
   limpiarComprometido,
   montarServicios,
@@ -51,13 +53,19 @@ describeSiHayBase("454/C07 — no se registra una segunda gestion (Postgres real
         return { ordenIds: [o.ordenId] };
       });
       sembrados.push(s);
+      // SLT-185 (R1146): control positivo: la empresa y la central propias del escenario estan confirmadas.
+      expect(await mundo.prisma.organizacion.count({ where: { id: s.organizacionId } }), "SLT-185: empresa sembrada").toBe(1);
+      expect(
+        await mundo.prisma.zona.count({ where: { id: s.centralZonaId ?? "-", esCentral: true, organizacionId: s.organizacionId } }),
+        "SLT-185: central sembrada",
+      ).toBe(1);
       const ordenId = s.ordenIds[0];
       const enviar = async (cliente: PrismaClient) => {
-        const svc = montarServicios(cliente).misAsignaciones;
+        const svc = montarServicios(clienteDeLaApp454(cliente)).misAsignaciones;
         return (await svc.gestionar(entradaGestion(ordenId, "entregado", { monto: 3000 }), s.actorMensajero))
           .status;
       };
-      const estados = await Promise.all([enviar(c1), enviar(c2)]);
+      const estados = await enEmpresaDe(s, () => Promise.all([enviar(c1), enviar(c2)]));
       const filas = await mundo.prisma.gestionOrden.count({ where: { ordenId } });
       concurrente.push({ estados, filas });
     }
@@ -65,6 +73,10 @@ describeSiHayBase("454/C07 — no se registra una segunda gestion (Postgres real
 
   afterAll(async () => {
     for (const s of sembrados) await limpiarComprometido(mundo.prisma, s);
+    // SLT-185 (R1145): tras limpiar no queda ni la empresa ni sus zonas (central incluida).
+    const empresas = sembrados.map((s) => s.organizacionId);
+    expect(await mundo.prisma.organizacion.count({ where: { id: { in: empresas } } }), "SLT-185: empresas borradas").toBe(0);
+    expect(await mundo.prisma.zona.count({ where: { organizacionId: { in: empresas } } }), "SLT-185: zonas borradas").toBe(0);
     await c1?.$disconnect();
     await c2?.$disconnect();
     await mundo?.prisma.$disconnect();

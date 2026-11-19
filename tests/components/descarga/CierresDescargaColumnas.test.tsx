@@ -19,7 +19,7 @@ import type { CierreAdminResumen } from "@/lib/interfaces/services/ICierresAdmin
 import type { CatalogoFiltrosCierresDTO } from "@/lib/types/filtros-cierres";
 import type {
   CierreBodegaResumen,
-  CierreBodegaResumenLite,
+  CierreConsolidableCola,
 } from "@/lib/interfaces/services/ICierreBodegaService";
 import type {
   CierreDetalleGestion,
@@ -169,17 +169,7 @@ import {
 } from "@/app/(app)/cierres-admin/_components/cierres-bodega-descarga-columnas";
 import {
   AMBITO_DESCARGA_DIA_CIERRES_PASADOS,
-  AMBITO_DESCARGA_DIA_DEVUELTAS,
-  AMBITO_DESCARGA_DIA_ENTREGADAS,
-  AMBITO_DESCARGA_DIA_INCIDENTES,
-  AMBITO_DESCARGA_DIA_RECHAZADAS,
-  AMBITO_DESCARGA_DIA_REPROGRAMADAS,
   COLUMNAS_DESCARGA_DIA_CIERRES_PASADOS,
-  COLUMNAS_DESCARGA_DIA_DEVUELTAS,
-  COLUMNAS_DESCARGA_DIA_ENTREGADAS,
-  COLUMNAS_DESCARGA_DIA_INCIDENTES,
-  COLUMNAS_DESCARGA_DIA_RECHAZADAS,
-  COLUMNAS_DESCARGA_DIA_REPROGRAMADAS,
 } from "@/app/(app)/cierre-dia/_components/cierre-dia-descarga-columnas";
 
 // --- Datos ---------------------------------------------------------------
@@ -238,7 +228,7 @@ function cierreBodega(
   };
 }
 
-function consolidable(i: number): CierreBodegaResumenLite {
+function consolidable(i: number): CierreConsolidableCola {
   return {
     cierreDiaId: `cd-${i}`,
     mensajeroId: `m-${i}`,
@@ -246,6 +236,10 @@ function consolidable(i: number): CierreBodegaResumenLite {
     totales: TOTALES,
     totalPagoMensajero: "100.10",
     totalIngresoBodegaRechazos: "5.00",
+    // SLT-106 (R67, R194): lo que pinta la fila de la cola; el archivo no lo lee.
+    paraLaCentral: "895.00",
+    aprobadoAt: null,
+    gestionesAjustadas: 0,
   };
 }
 
@@ -527,6 +521,13 @@ function renderConsolidacion() {
     motivoBloqueo: null,
     cierresBodegaPasados: BODEGA_SOLICITADOS,
     sinZona: false,
+    // SLT-106 (R67/R195): campos nuevos del resultado; esta suite no los lee.
+    paraLaCentralAgregado: "789.90",
+    cierresAConsolidar: CONSOLIDABLES.length,
+    mensajerosAConsolidar: 2,
+    bloqueo: null,
+    // SLT-107 (R287): campo nuevo obligatorio del contrato; esta suite no lo lee.
+    solicitadosResumen: { porLlegar: { monto: "0.00", cierres: 0 }, recibido30Dias: { monto: "0.00", cierres: 0 }, faltaPorRecibir: { monto: "0.00", cierres: 0 } },
   });
   envolver(
     <ConsolidacionBodegaModule
@@ -535,10 +536,16 @@ function renderConsolidacion() {
       totalPagoMensajeroAgregado="200.20"
       totalIngresoBodegaRechazosAgregado="10.00"
       incluyeModeloNuevoAgregado={false}
-      totalNetoAgregado="800.00"
       totalCentralDebeAgregado="0.00"
       puedesSolicitar
       motivoBloqueo={null}
+      paraLaCentralAgregado="789.90"
+      cierresAConsolidar={CONSOLIDABLES.length}
+      mensajerosAConsolidar={2}
+      bloqueo={null}
+      zonaNombre={null}
+      // SLT-107: la prop nueva obligatoria (R287); este test no mira las tarjetas de «Solicitados».
+      solicitadosResumen={{ porLlegar: { monto: "0.00", cierres: 0 }, recibido30Dias: { monto: "0.00", cierres: 0 }, faltaPorRecibir: { monto: "0.00", cierres: 0 } }}
       cierresBodegaPasados={paginaInicial(BODEGA_SOLICITADOS)}
       sinZona={false}
     />,
@@ -599,6 +606,12 @@ interface Superficie {
    */
   readonly region?: string;
   /**
+   * SLT-137: el título (`h2`) de la sección que contiene el control, cuando esa sección no es una
+   * región con nombre. En `/cierre-dia` la región «Cierres solicitados» es la TABLA de la cola, y
+   * «Descargar» vive en la barra de la cola, fuera de ella pero dentro de la misma sección.
+   */
+  readonly seccion?: string;
+  /**
    * Nombre accesible del disparador del selector, cuando no es el de siempre.
    *
    * Lo estrenan las cuatro superficies que la unificación de la descarga de cierres metió bajo
@@ -637,7 +650,7 @@ const SUPERFICIES: readonly Superficie[] = [
     disparador: SELECTOR_DISPARADOR,
     columnas: COLUMNAS_DESCARGA_BODEGA_RESUELTOS,
     montar: renderCierresBodega,
-    pestana: /^Resueltos/,
+    pestana: /^Conciliados/,
   },
   {
     control: "Cierres del día a consolidar",
@@ -657,46 +670,16 @@ const SUPERFICIES: readonly Superficie[] = [
     ambito: AMBITO_DESCARGA_DIA_CIERRES_PASADOS,
     columnas: COLUMNAS_DESCARGA_DIA_CIERRES_PASADOS,
     montar: renderCierreDia,
-    region: "Cierres solicitados",
+    seccion: "Cierres solicitados",
   },
-  // Las CINCO secciones de `/cierre-dia`. Mismo resultado, OTRO catálogo (el mensajero ve
-  // menos), y por eso otro ámbito.
-  {
-    control: "Entregado",
-    ambito: AMBITO_DESCARGA_DIA_ENTREGADAS,
-    columnas: COLUMNAS_DESCARGA_DIA_ENTREGADAS,
-    montar: renderCierreDia,
-    region: "Entregado",
-  },
-  {
-    control: "Reprogramado",
-    ambito: AMBITO_DESCARGA_DIA_REPROGRAMADAS,
-    columnas: COLUMNAS_DESCARGA_DIA_REPROGRAMADAS,
-    montar: renderCierreDia,
-    region: "Reprogramado",
-  },
-  {
-    control: "Novedad",
-    ambito: AMBITO_DESCARGA_DIA_DEVUELTAS,
-    columnas: COLUMNAS_DESCARGA_DIA_DEVUELTAS,
-    montar: renderCierreDia,
-    region: "Novedad",
-  },
-  {
-    control: "Devolución a origen por rechazo",
-    ambito: AMBITO_DESCARGA_DIA_RECHAZADAS,
-    columnas: COLUMNAS_DESCARGA_DIA_RECHAZADAS,
-    montar: renderCierreDia,
-    region: "Devolución a origen por rechazo",
-  },
-  {
-    control: "Incidente",
-    ambito: AMBITO_DESCARGA_DIA_INCIDENTES,
-    columnas: COLUMNAS_DESCARGA_DIA_INCIDENTES,
-    montar: renderCierreDia,
-    region: "Incidente",
-  },
+  // SLT-109 «/cierre-dia: el cierre de hoy, rechazado o vencido como página» (R256, PA4): aquí vivían
+  // las CINCO secciones de `/cierre-dia`, cada una con su catálogo y su ámbito. Pasan a UNA descarga,
+  // la de «Gestiones» del detalle único, con las columnas del mensajero (R152) y SIN ámbito de
+  // columnas —como la del detalle de un cierre pasado (SLT-108)—, así que no tienen selector que
+  // probar aquí. Sus catálogos los retiró SLT-115 «Retirar los componentes de cierre sustituidos»
+  // (R404, D13).
 ];
+
 
 // --- Utilidades de los casos ---------------------------------------------
 
@@ -708,19 +691,27 @@ function claveDe(ambito: string): string {
 const DISPARADOR_SELECTOR = "Elegir columnas de la descarga";
 
 /** El disparador del selector de ESTA superficie, acotado a su sección si comparte pantalla. */
-function disparadorDe(superficie: Superficie): HTMLElement {
-  const ambito = superficie.region
+function ambitoDe(superficie: Superficie) {
+  if (superficie.seccion) {
+    const titulo = screen.getByRole("heading", { level: 2, name: superficie.seccion });
+    const seccion = titulo.closest("section");
+    if (!seccion) throw new Error(`«${superficie.seccion}» no está dentro de una <section>`);
+    return within(seccion);
+  }
+  return superficie.region
     ? within(screen.getByRole("region", { name: superficie.region }))
     : screen;
+}
+
+function disparadorDe(superficie: Superficie): HTMLElement {
+  const ambito = ambitoDe(superficie);
   return ambito.getByRole("button", {
     name: superficie.disparador ?? DISPARADOR_SELECTOR,
   });
 }
 
 function botonDescargaDe(superficie: Superficie): HTMLElement {
-  const ambito = superficie.region
-    ? within(screen.getByRole("region", { name: superficie.region }))
-    : screen;
+  const ambito = ambitoDe(superficie);
   return ambito.getByRole("button", { name: `Descargar ${superficie.control}` });
 }
 
@@ -730,7 +721,10 @@ async function montar(
 ): Promise<void> {
   superficie.montar();
   if (superficie.pestana) {
-    await user.click(await screen.findByRole("button", { name: superficie.pestana }));
+    // SLT-102 «Cola de cierres única: mensajeros (central y satélite)» (R99): en la cola de mensajeros la pestaña es un `tab`; las mitades de bodega siguen con
+    // el segmentado (`button`). Se pulsa la que haya.
+    const tab = screen.queryByRole("tab", { name: superficie.pestana });
+    await user.click(tab ?? (await screen.findByRole("button", { name: superficie.pestana })));
   }
 }
 
@@ -750,7 +744,7 @@ function encabezadosDe(superficie: Superficie): string[] {
 
 /**
  * La columna que cada caso oculta: la ÚLTIMA del catálogo. Se elige por posición y no por
- * nombre para que valga igual en las doce superficies, y la última porque ninguna de
+ * nombre para que valga igual en las siete superficies, y la última porque ninguna de
  * ellas la comparte con la primera —que es la que se afirma que SIGUE saliendo—.
  */
 function columnaAOcultar(superficie: Superficie): DescargaColumna {
@@ -776,7 +770,7 @@ afterEach(() => {
 });
 
 describe("Cierres · elección de columnas de la descarga", () => {
-  it("el registro cubre las doce superficies y ninguna repite ámbito", () => {
+  it("el registro cubre las siete superficies y ninguna repite ámbito", () => {
     // Anti-vacuidad del propio archivo: si una superficie se cayera del registro, los casos de
     // abajo —que iteran sobre él— pasarían verdes sin haberla mirado. Y los ámbitos se
     // comparan aquí además de en la guardia porque aquí se sabe QUÉ superficie es cada uno.
@@ -784,7 +778,8 @@ describe("Cierres · elección de columnas de la descarga", () => {
     expect(new Set(ambitos).size).toBe(ambitos.length);
     // FICHA 482: 17 -> 12. Salen las cinco secciones del detalle del admin (`DetalleSecciones`,
     // borrado); sus ámbitos `cierre-gestiones-*` ya no existen en el árbol.
-    expect(ambitos).toHaveLength(12);
+    // SLT-109 (R256, PA4): 12 -> 7. Salen las cinco secciones del cierre del día de `/cierre-dia`.
+    expect(ambitos).toHaveLength(7);
     for (const superficie of SUPERFICIES) {
       expect(
         superficie.ambito,
@@ -931,7 +926,8 @@ describe("Cierres · elección de columnas de la descarga", () => {
     await user.keyboard("{Escape}");
 
     // Se cambia de pestaña y se descarga el histórico: su cabecera está ENTERA.
-    await user.click(await screen.findByRole("button", { name: /^Resueltos/ }));
+    // SLT-102 «Cola de cierres única: mensajeros (central y satélite)» (R99): la pestaña es un `tab` de la cola única.
+    await user.click(await screen.findByRole("tab", { name: /^Resueltos/ }));
     await user.click(botonDescargaDe(historico));
     await waitFor(() => expect(buildXlsxRowsMock).toHaveBeenCalledTimes(1));
 

@@ -6,6 +6,7 @@ import {
   validarEvidencia,
 } from "@/lib/types/gestion-orden";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // ⚠️ Feature 193 (R10), decision humana del 2026-08-10: la gestion pasa a EXIGIR la ubicacion
 // del mensajero (o un motivo tecnico de por que falta). Los casos validos de abajo se AMPLIAN
 // con `ubicacion` —no se relajan—, mismo criterio que aplicaron la 73 y la 75 al endurecer
@@ -56,15 +57,15 @@ describe("validarEvidencia (R24)", () => {
 
 describe("esFechaFutura (R25)", () => {
   it("true solo para fechas posteriores a hoy", () => {
-    expect(esFechaFutura(FUTURA)).toBe(true);
-    expect(esFechaFutura(PASADA)).toBe(false);
-    expect(esFechaFutura("no-fecha")).toBe(false);
+    expect(esFechaFutura(FUTURA, ZONA_CR)).toBe(true);
+    expect(esFechaFutura(PASADA, ZONA_CR)).toBe(false);
+    expect(esFechaFutura("no-fecha", ZONA_CR)).toBe(false);
   });
 });
 
 describe("gestionarSchema — ENTREGADA (R22/R24)", () => {
   it("valida con monto>0, metodo enum y foto imagen", () => {
-    const r = gestionarSchema.safeParse({
+    const r = gestionarSchema(ZONA_CR).safeParse({
       ordenId: "o1",
       ubicacion: UBICACION_193,
       resultado: "entregado",
@@ -76,7 +77,7 @@ describe("gestionarSchema — ENTREGADA (R22/R24)", () => {
   });
 
   it("R22: sin foto -> invalido", () => {
-    const r = gestionarSchema.safeParse({
+    const r = gestionarSchema(ZONA_CR).safeParse({
       ordenId: "o1",
       ubicacion: UBICACION_193,
       resultado: "entregado",
@@ -87,7 +88,7 @@ describe("gestionarSchema — ENTREGADA (R22/R24)", () => {
   });
 
   it("monto 0 (entrega sin cobro) -> valido", () => {
-    const r = gestionarSchema.safeParse({
+    const r = gestionarSchema(ZONA_CR).safeParse({
       ordenId: "o1",
       ubicacion: UBICACION_193,
       resultado: "entregado",
@@ -99,7 +100,7 @@ describe("gestionarSchema — ENTREGADA (R22/R24)", () => {
   });
 
   it("R22: monto negativo -> invalido", () => {
-    const r = gestionarSchema.safeParse({
+    const r = gestionarSchema(ZONA_CR).safeParse({
       ordenId: "o1",
       ubicacion: UBICACION_193,
       resultado: "entregado",
@@ -111,7 +112,7 @@ describe("gestionarSchema — ENTREGADA (R22/R24)", () => {
   });
 
   it("R22: metodo de pago fuera del enum -> invalido", () => {
-    const r = gestionarSchema.safeParse({
+    const r = gestionarSchema(ZONA_CR).safeParse({
       ordenId: "o1",
       ubicacion: UBICACION_193,
       resultado: "entregado",
@@ -123,7 +124,7 @@ describe("gestionarSchema — ENTREGADA (R22/R24)", () => {
   });
 
   it("R24: foto no-imagen -> invalido", () => {
-    const r = gestionarSchema.safeParse({
+    const r = gestionarSchema(ZONA_CR).safeParse({
       ordenId: "o1",
       ubicacion: UBICACION_193,
       resultado: "entregado",
@@ -137,7 +138,7 @@ describe("gestionarSchema — ENTREGADA (R22/R24)", () => {
 
 describe("gestionarSchema — REPROGRAMAR (R25)", () => {
   it("valida con fecha futura + motivo", () => {
-    const r = gestionarSchema.safeParse({
+    const r = gestionarSchema(ZONA_CR).safeParse({
       ordenId: "o1",
       ubicacion: UBICACION_193,
       resultado: "reprogramado",
@@ -148,7 +149,7 @@ describe("gestionarSchema — REPROGRAMAR (R25)", () => {
   });
 
   it("R25: fecha no futura -> invalido", () => {
-    const r = gestionarSchema.safeParse({
+    const r = gestionarSchema(ZONA_CR).safeParse({
       ordenId: "o1",
       ubicacion: UBICACION_193,
       resultado: "reprogramado",
@@ -159,7 +160,7 @@ describe("gestionarSchema — REPROGRAMAR (R25)", () => {
   });
 
   it("R25: motivo vacio -> invalido", () => {
-    const r = gestionarSchema.safeParse({
+    const r = gestionarSchema(ZONA_CR).safeParse({
       ordenId: "o1",
       ubicacion: UBICACION_193,
       resultado: "reprogramado",
@@ -179,7 +180,7 @@ describe("gestionarSchema — REPROGRAMAR (R25)", () => {
 // casos validos se AMPLIAN con `evidencia`; se suma un caso de ausencia de foto -> invalido.
 describe("gestionarSchema — DEVOLUCION (R27, + causa de la 73/R6, + evidencia de la 75)", () => {
   it("valida con motivo no vacio, causa y foto", () => {
-    const r = gestionarSchema.safeParse({
+    const r = gestionarSchema(ZONA_CR).safeParse({
       ordenId: "o1",
       ubicacion: UBICACION_193,
       resultado: "novedad",
@@ -191,7 +192,7 @@ describe("gestionarSchema — DEVOLUCION (R27, + causa de la 73/R6, + evidencia 
   });
 
   it("R27: motivo vacio -> invalido", () => {
-    const r = gestionarSchema.safeParse({
+    const r = gestionarSchema(ZONA_CR).safeParse({
       ordenId: "o1",
       ubicacion: UBICACION_193,
       resultado: "novedad",
@@ -203,7 +204,7 @@ describe("gestionarSchema — DEVOLUCION (R27, + causa de la 73/R6, + evidencia 
   });
 
   it("Feature 75/119: sin foto -> invalido, con el error en el campo lista `evidencias`", () => {
-    const r = gestionarSchema.safeParse({
+    const r = gestionarSchema(ZONA_CR).safeParse({
       ordenId: "o1",
       ubicacion: UBICACION_193,
       resultado: "novedad",
@@ -219,7 +220,7 @@ describe("gestionarSchema — DEVOLUCION (R27, + causa de la 73/R6, + evidencia 
   });
 
   it("Feature 75: foto no-imagen -> invalido", () => {
-    const r = gestionarSchema.safeParse({
+    const r = gestionarSchema(ZONA_CR).safeParse({
       ordenId: "o1",
       ubicacion: UBICACION_193,
       resultado: "novedad",
@@ -233,7 +234,7 @@ describe("gestionarSchema — DEVOLUCION (R27, + causa de la 73/R6, + evidencia 
 
 describe("gestionarSchema — RECHAZO (R29)", () => {
   it("valida con foto + motivo", () => {
-    const r = gestionarSchema.safeParse({
+    const r = gestionarSchema(ZONA_CR).safeParse({
       ordenId: "o1",
       ubicacion: UBICACION_193,
       resultado: "devolucion_a_origen_por_rechazo",
@@ -244,7 +245,7 @@ describe("gestionarSchema — RECHAZO (R29)", () => {
   });
 
   it("R29: sin foto -> invalido", () => {
-    const r = gestionarSchema.safeParse({
+    const r = gestionarSchema(ZONA_CR).safeParse({
       ordenId: "o1",
       ubicacion: UBICACION_193,
       resultado: "devolucion_a_origen_por_rechazo",
@@ -254,7 +255,7 @@ describe("gestionarSchema — RECHAZO (R29)", () => {
   });
 
   it("R29: sin motivo -> invalido", () => {
-    const r = gestionarSchema.safeParse({
+    const r = gestionarSchema(ZONA_CR).safeParse({
       ordenId: "o1",
       ubicacion: UBICACION_193,
       resultado: "devolucion_a_origen_por_rechazo",

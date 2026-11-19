@@ -4,6 +4,7 @@ import { useEffect, useState, type ComponentType, type CSSProperties } from "rea
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Bug,
   Building2,
   Car,
   ChartColumn,
@@ -58,6 +59,12 @@ import {
 import { Logo } from "@/components/shared/Logo";
 
 type SidebarIcon = ComponentType<LucideProps>;
+
+/**
+ * SLT-193 (R914, R915): ítems y subítems del menú a 44 px de alto en móvil, para cualquier rol.
+ * Solo con `max-md:`: en escritorio siguen `h-8` / `h-7` de `components/ui/sidebar.tsx` (rail incluido).
+ */
+export const ITEM_MENU_TACTIL_MOVIL = "max-md:h-11";
 
 /** Datos mínimos del usuario para el footer del sidebar. */
 export interface SidebarUsuario {
@@ -209,6 +216,9 @@ export const ICON_BY_KEY: Record<IconKey, SidebarIcon> = {
   // SL-42 (R1): «Vehículos», el catálogo de tipos de vehículo del superadmin. Icono PROPIO, distinto
   // del `truck` de «Entregas»: un tipo de vehículo del catálogo no es el reparto.
   car: Car,
+  // SLT-97 (R1): «Reportes», los reportes de bugs que llegan de las empresas, del superadmin. Icono
+  // PROPIO, distinto de los de las otras secciones de plataforma: un reporte no es un catálogo.
+  bug: Bug,
 };
 
 // Entrada escalonada de los items al cargar (solo la primera vez). Cada item
@@ -386,6 +396,7 @@ export function Sidebar({
                             <SidebarMenuButton
                               isActive={childActive}
                               tooltip={item.label}
+                              className={ITEM_MENU_TACTIL_MOVIL}
                             />
                           }
                         >
@@ -401,6 +412,7 @@ export function Sidebar({
                                 <SidebarMenuSubItem key={child.href}>
                                   <SidebarMenuSubButton
                                     isActive={isActive}
+                                    className={ITEM_MENU_TACTIL_MOVIL}
                                     render={
                                       <Link
                                         href={child.href}
@@ -430,6 +442,7 @@ export function Sidebar({
                       <SidebarMenuButton
                         isActive={isActive}
                         tooltip={item.label}
+                        className={ITEM_MENU_TACTIL_MOVIL}
                         render={
                           <Link
                             href={item.href}

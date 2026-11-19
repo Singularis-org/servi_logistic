@@ -21,7 +21,13 @@ import { quitarComentarios } from "@/tests/fixtures/sin-comentarios";
 // comparación EXACTA contra ella: cualquier línea que vuelva a recortar pone la guardia en rojo.
 
 const RAIZ = path.resolve(__dirname, "../../..");
-const CARPETAS = ["app/(app)/cierres-admin", "app/(app)/cierre-dia"];
+// SLT-137 «/cierre-dia: cola de cierres del mensajero con filtros»: el «Ver del cierre del <día>» de
+// `/cierre-dia` se mudó a la cola (`TablaColaPropia.tsx`), así que la carpeta de la cola entra.
+const CARPETAS = [
+  "app/(app)/cierres-admin",
+  "app/(app)/cierre-dia",
+  "components/private/cierres/cola",
+];
 
 /** Las formas prohibidas: un recorte de 10 caracteres o `fechaDiaISO` sobre un campo de fecha. */
 const PROHIBIDAS: readonly RegExp[] = [
@@ -90,6 +96,7 @@ describe("GUARDIA SLT-76/R2 — los cierres no recortan fechas en UTC", () => {
     // Las dos superficies que arregló SLT-76 están entre los revisados.
     expect(revisados).toContain("app/(app)/cierres-admin/_components/cierre-factura.tsx");
     expect(revisados).toContain("app/(app)/cierre-dia/_components/CierreDiaModule.tsx");
+    expect(revisados).toContain("components/private/cierres/cola/TablaColaPropia.tsx");
     // Las descargas de cierres (R21) también están entre los revisados.
     expect(revisados).toEqual(
       expect.arrayContaining([

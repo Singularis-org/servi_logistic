@@ -1,5 +1,8 @@
 "use server";
 
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
+import { zonaDelBorde } from "@/lib/actions/_shared/zona-del-borde";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { LiquidacionPagoRepository } from "@/lib/repositories/LiquidacionPagoRepository";
 import { LiquidacionRepartoRepository } from "@/lib/repositories/LiquidacionRepartoRepository";
@@ -116,12 +119,15 @@ function buildService(): ILiquidacionService {
     undefined, // el reloj por defecto
     undefined, // el tope del reparto por defecto (R53)
     buildComprobantes(prisma), // FICHA 458-B (R74): el comprobante del pago y del reparto
+    construirReglasPaisEmpresa(prisma), // SLT-42 (R22, R28): la zona horaria del pais de la empresa.
   );
 }
 
 export interface LiquidacionDeps {
   service?: ILiquidacionService;
   getActor?: () => Promise<Actor | null>;
+  /** SLT-42 (R22, R28): la zona del pais de la empresa; en produccion, la real (`zonaDelBorde`). */
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
 }
 
 /**
@@ -135,7 +141,9 @@ export async function registrarPagoMensajeroAction(
   const r = await withErrorHandler(async () => {
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R3: antes de evaluar ningun otro dato
-    const data = registrarPagoMensajeroSchema.parse(input); // ZodError -> VALIDATION_ERROR
+    // SLT-42 (R22, R28): «hoy» en la zona del pais de la empresa; sin zona, falla sin tocar nada.
+    const zona = await zonaDelBorde(deps.reglasPais);
+    const data = registrarPagoMensajeroSchema(zona).parse(input); // ZodError -> VALIDATION_ERROR
     const service = deps.service ?? buildService();
     return service.registrarPagoMensajero(data, actor);
   });
@@ -164,7 +172,9 @@ export async function registrarPagoTiendaAction(
     // FICHA 458-B (R74): el objeto de hoy o un FormData con `comprobante` (molde 459). El `.strict()`
     // se conserva: el archivo se separa ANTES y cualquier otra clave no prevista sigue muriendo aqui.
     const { crudo, comprobante } = separarComprobante(input);
-    const data = registrarPagoTiendaSchema.parse(crudo); // ZodError -> VALIDATION_ERROR
+    // SLT-42 (R22, R28): «hoy» en la zona del pais de la empresa; sin zona, falla sin tocar nada.
+    const zona = await zonaDelBorde(deps.reglasPais);
+    const data = registrarPagoTiendaSchema(zona).parse(crudo); // ZodError -> VALIDATION_ERROR
     const archivo = await leerComprobanteOpcional(comprobante);
     const service = deps.service ?? buildService();
     return archivo === null
@@ -235,7 +245,9 @@ export async function registrarRepartoMensajeroAction(
     if (!actor) throw new UnauthenticatedError(); // R2: antes de evaluar ningun otro dato
     // FICHA 458-B (R74): el objeto de hoy o un FormData con `comprobante` (molde 459).
     const { crudo, comprobante } = separarComprobante(input);
-    const data = registrarRepartoMensajeroSchema.parse(crudo); // ZodError -> VALIDATION_ERROR
+    // SLT-42 (R22, R28): «hoy» en la zona del pais de la empresa; sin zona, falla sin tocar nada.
+    const zona = await zonaDelBorde(deps.reglasPais);
+    const data = registrarRepartoMensajeroSchema(zona).parse(crudo); // ZodError -> VALIDATION_ERROR
     const archivo = await leerComprobanteOpcional(comprobante);
     const service = deps.service ?? buildService();
     return archivo === null

@@ -70,7 +70,7 @@ function buildRepo(opciones: {
 }): IOrdenRepository {
   const { omitidas, fulfillment = false, estatusDeLoOmitido, overrides = {} } = opciones;
   return {
-    findUsuarioFulfillment: vi.fn().mockResolvedValue(fulfillment),
+    findUsuarioSeRecogeEnTienda: vi.fn().mockResolvedValue(!fulfillment), // SLT-94: «fulfillment» = nace en bodega
     findEstatusIdByValue: vi.fn().mockResolvedValue("os-1"),
     // Antes de insertar NO existe nada (si existiera, la fila saldria `duplicada` por el
     // pre-chequeo y este archivo no probaria nada). DESPUES —la segunda llamada, la que hace

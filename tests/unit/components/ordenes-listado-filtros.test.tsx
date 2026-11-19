@@ -247,7 +247,7 @@ describe("OrdenesListado — barra de filtros (R55, R63)", () => {
   it("R63: la barra ofrece 'Limpiar todo' además de la limpieza individual", async () => {
     const user = userEvent.setup();
     renderListado(<OrdenesListado catalogoFiltros={CATALOGO} />);
-    await screen.findByRole("searchbox", { name: "Buscar" });
+    await screen.findByRole("searchbox", { name: "Buscar órdenes" });
 
     // Barra recién abierta: nada escrito y ningún filtro puesto ⇒ no hay nada que
     // limpiar y el botón no se ofrece.

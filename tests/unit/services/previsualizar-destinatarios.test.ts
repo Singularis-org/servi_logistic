@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { WhatsappEnvioService, construirPreview } from "@/lib/services/WhatsappEnvioService";
 import { MAESTRO, destinatario, enviosRepo } from "./_dobles-envios-474";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import type { ReglasTelefono } from "@/lib/utils/telefono-pais";
+
+// SLT-42 (R20): la validez del telefono sale de las reglas del pais de la empresa.
+const TEL_CR: ReglasTelefono = { prefijo: "506", digitosNacionales: 8 };
 
 // Ficha 474 (T7.1, R17) — la lista resuelta y deduplicada, con un aviso por telefono invalido y uno
 // por telefono compartido; los avisos NO impiden guardar y la vista previa NO escribe.
@@ -12,7 +17,7 @@ describe("474/R17 — previsualizar destinatarios", () => {
       destinatario({ usuarioId: "b", nombre: "Beto", telefono: "+506 8888 7777" }), // el mismo normalizado
       destinatario({ usuarioId: "c", nombre: "Cris", telefono: "123" }),
       destinatario({ usuarioId: "d", nombre: "Dani", telefono: "88881111" }),
-    ]);
+    ], TEL_CR);
     expect(p.total).toBe(4);
     expect(p.destinatarios.map((d) => [d.nombre, d.telefonoValido, d.telefonoCompartido, d.telefonoEnmascarado])).toEqual([
       ["Ana", true, true, "•••• 7777"],
@@ -26,14 +31,27 @@ describe("474/R17 — previsualizar destinatarios", () => {
     expect(p.excedeTope).toBe(false);
   });
 
+  it("SLT-42 R20: con otro pais, el local de SUS digitos es valido y el de CR no", () => {
+    const otro: ReglasTelefono = { prefijo: "507", digitosNacionales: 7 };
+    const p = construirPreview([
+      destinatario({ usuarioId: "a", nombre: "Ana", telefono: "612-3456" }),
+      destinatario({ usuarioId: "b", nombre: "Beto", telefono: "8888-7777" }),
+    ], otro);
+    expect(p.destinatarios.map((d) => [d.nombre, d.telefonoValido])).toEqual([
+      ["Ana", true],
+      ["Beto", false],
+    ]);
+  });
+
   it("> 50 marca excedeTope", () => {
-    const p = construirPreview(Array.from({ length: 51 }, (_, i) => destinatario({ usuarioId: `u${i}`, telefono: `8888${String(1000 + i)}` })));
+    const p = construirPreview(Array.from({ length: 51 }, (_, i) => destinatario({ usuarioId: `u${i}`, telefono: `8888${String(1000 + i)}` })), TEL_CR);
     expect(p).toMatchObject({ excedeTope: true, tope: 50, total: 51 });
   });
 
   it("el service filtra roles no permitidos y NO escribe", async () => {
     const envios = enviosRepo({ resolverDestinatariosDe: vi.fn(async () => [destinatario()]) });
     const s = new WhatsappEnvioService({
+      reglasPais: reglasPaisFijas(),
       envios,
       plantillas: { findEnviableDeInformeById: vi.fn() },
       cola: { enqueue: vi.fn() },

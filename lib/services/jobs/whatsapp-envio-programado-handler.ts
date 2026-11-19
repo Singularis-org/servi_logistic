@@ -20,6 +20,8 @@ import { encolarProximaOcurrencia } from "@/lib/whatsapp-envios/encolar";
 import { diaIsoDe, instanteDe } from "@/lib/whatsapp-envios/proxima-ocurrencia";
 import { ventanaMinutos } from "@/lib/config/whatsapp-envios";
 import { buildEnviosWhatsappDeps } from "@/lib/services/jobs/whatsapp-envio-deps";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 
 const payloadSchema = z.object({
   envioId: z.string().min(1),
@@ -34,12 +36,21 @@ export interface ProgramadoDeps {
   ejecutor: Pick<IEjecucionEnvioService, "ejecutar">;
   now: () => Date;
   ventanaMin?: () => number;
+  /** SLT-42 (R22, R28): la zona del pais de la empresa del envio, en la que se lee la hora. */
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
 }
 
 export function crearWhatsappEnvioProgramadoHandler(
   buildDeps: () => ProgramadoDeps = () => {
     const d = buildEnviosWhatsappDeps();
-    return { envios: d.envios, ejecuciones: d.ejecuciones, cola: d.cola, ejecutor: d.ejecutor, now: () => new Date() };
+    return {
+      envios: d.envios,
+      ejecuciones: d.ejecuciones,
+      cola: d.cola,
+      ejecutor: d.ejecutor,
+      now: () => new Date(),
+      reglasPais: d.reglasPais,
+    };
   },
 ): JobHandler {
   return async (job: JobDTO) => {
@@ -51,10 +62,11 @@ export function crearWhatsappEnvioProgramadoHandler(
       return;
     }
     const now = deps.now();
-    const instante = instanteDe(p.fechaCr, p.hora);
+    const zona = await zonaDeLaEmpresa(deps.reglasPais, "whatsapp_envio_programado"); // SLT-42 (R22, R28)
+    const instante = instanteDe(p.fechaCr, p.hora, zona);
     // 2. La cadena sigue aunque esta ocurrencia falle.
     const desde = new Date(Math.max(now.getTime(), instante.getTime()));
-    await encolarProximaOcurrencia(deps.cola, { id: envio.id, diasSemana: envio.diasSemana, hora: envio.hora }, desde);
+    await encolarProximaOcurrencia(deps.cola, { id: envio.id, diasSemana: envio.diasSemana, hora: envio.hora }, desde, zona);
     // 3. Obsoleto (R20): la ocurrencia valida tiene su propio job.
     if (p.hora !== envio.hora || !envio.diasSemana.includes(diaIsoDe(p.fechaCr))) return;
     // 4. R24.

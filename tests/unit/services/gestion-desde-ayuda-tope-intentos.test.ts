@@ -9,8 +9,8 @@ import { GestionDesdeAyudaService } from "@/lib/services/GestionDesdeAyudaServic
 // que la regla valga IGUAL en las dos superficies, y R6 que el motivo sea el mismo: si alguien
 // escribiera un texto propio en uno de los dos servicios, este import lo delata.
 import { MSG_TOPE_INTENTOS_GESTION } from "@/lib/services/mensajes-bloqueo";
-import { reintentosConfig } from "@/lib/config/reintentos";
 import { fakeIntentosEnLote } from "@/tests/fixtures/intentos-entrega";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FEATURE 276 (T5) — LA PUERTA DEL TOPE EN LA PESTAÑA DE AYUDA DE LA TIENDA. R1, R4, R5, R6, R11.
@@ -27,7 +27,7 @@ import { fakeIntentosEnLote } from "@/tests/fixtures/intentos-entrega";
 const TIENDA: Actor = { usuarioId: "tienda-1", rol: "adminTienda" };
 
 /** El umbral REAL. Ningun caso escribe `3`. */
-const UMBRAL = reintentosConfig.MIN_INTENTOS_ENTREGA;
+const UMBRAL = 3; // el de toda empresa nueva (SLT-77 R2)
 
 const CATALOGO: Record<string, string> = {
   ayuda_tienda: "os-ayuda",
@@ -62,6 +62,7 @@ function montar(intentos: number) {
   const storage = fakeStorage();
   const historial = fakeIntentosEnLote({ o1: intentos });
   const service = new GestionDesdeAyudaService({
+    reglasPais: reglasPaisFijas(),
     notaRepo,
     ordenRepo,
     gestionRepo,
@@ -209,6 +210,7 @@ describe("276/T5 · R11 — no hay campo del input que abra la puerta", () => {
     };
     const historial = fakeIntentosEnLote({ o1: UMBRAL + 1 });
     const service = new GestionDesdeAyudaService({
+      reglasPais: reglasPaisFijas(),
       notaRepo,
       ordenRepo: { findEstatusIdByValue: vi.fn(async (v: string) => CATALOGO[v] ?? null) },
       gestionRepo: { crearGestionDesdeAyuda: vi.fn(async () => "g") },

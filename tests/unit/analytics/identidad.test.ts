@@ -7,6 +7,7 @@ import {
 import { MENSAJERO_SIN_ASIGNAR, ROLES_ANALITICA } from "@/lib/analytics/types";
 import { prepararConsultaAnalitica } from "@/lib/analytics/consulta";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Feature 122 / T3.5-T3.6 — D5: el adminTienda ve la DISTRIBUCION, no a la PERSONA.
 //
 // R38 (positivo): politica seudonima para el `adminTienda`, etiquetas ordinales
@@ -48,12 +49,12 @@ describe("R38 · politica de identidad por rol", () => {
     const tienda = prepararConsultaAnalitica(
       filtro,
       { usuarioId: "u-tienda", rol: "adminTienda" },
-      "entregas",
+      "entregas", ZONA_DE_CR,
     );
     const maestro = prepararConsultaAnalitica(
       filtro,
       { usuarioId: "u-maestro", rol: "maestro" },
-      "entregas",
+      "entregas", ZONA_DE_CR,
     );
     expect(tienda.status).toBe("ok");
     expect(maestro.status).toBe("ok");

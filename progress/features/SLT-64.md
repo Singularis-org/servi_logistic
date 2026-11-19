@@ -2,7 +2,7 @@
 
 | key | nombre | zone | complexity | rama | assignee | estado |
 |---|---|---|---|---|---|---|
-| SLT-64 | ciclo-vida-cerradas-coherente | backend | medium | feature/SLT-64-ciclo-vida-cerradas-coherente | Carlos Restrepo | in_progress |
+| SLT-64 | ciclo-vida-cerradas-coherente | backend | medium | feature/SLT-64-ciclo-vida-cerradas-coherente | Carlos Restrepo | done |
 
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
@@ -35,3 +35,7 @@ Ninguna.
 Subagentes en Opus (memoria: Fable agotado).
 
 ## Cierre
+2026-11-04: PR #77 mergeado a `dev` por Carlos (88887afa). «Cerrada» en Analítica = gestión final del mensajero (R1-R17).
+`{ expire: 0 }` y la enmienda de R12 y R13 iban declarados en el PR; no hubo OK explícito aparte (n4).
+n1, n2 y n3 hechos en `chore/deudas-2026-11-05`. n2: la cláusula de primera lectura de R12 se cubre por composición; ningún E2E deshace y luego lee Analítica.
+Abiertos: m3 (doble render al deshacer y corregir), m4 (deshacer y recargar en el Preview de `dev`), ficha aparte de R18-R23.

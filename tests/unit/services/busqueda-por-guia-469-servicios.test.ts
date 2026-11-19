@@ -9,6 +9,7 @@ import type { WalletTiendaMovimientoDTO } from "@/lib/types/wallet-tienda";
 import { DetalleMovimientoService } from "@/lib/services/DetalleMovimientoService";
 import { EstadoCuentaService } from "@/lib/services/EstadoCuentaService";
 import { WalletService } from "@/lib/services/WalletService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // FICHA 469 / T8 y T10 — los servicios del libro y del detalle con DOBLES: que el termino se resuelva en
 // el servidor y viaje como `termino` O como `porGuia` (nunca los dos), que `modoBusqueda` vuelva bien, que
@@ -36,8 +37,9 @@ describe("469 — WalletService (caja)", () => {
     const listar = vi.fn<(f: ListarMovimientosFiltros) => Promise<{ movimientos: never[]; total: number }>>(async () => ({ movimientos: [], total: 0 }));
     const agregarPorCategoriaYTipo = vi.fn(async () => []);
     const primerDiaDeLaCaja = vi.fn(async () => null);
-    const repo = { listar, agregarPorCategoriaYTipo, primerDiaDeLaCaja } as unknown as IWalletMovimientoRepository;
-    const svc = new WalletService(repo, {} as WalletTxClient, SIN_SALDO, SIN_DOCUMENTOS, undefined, busqueda);
+    const categoriasConModeloNuevo = vi.fn(async () => []);
+    const repo = { listar, agregarPorCategoriaYTipo, primerDiaDeLaCaja, categoriasConModeloNuevo } as unknown as IWalletMovimientoRepository;
+    const svc = new WalletService(repo, {} as WalletTxClient, SIN_SALDO, SIN_DOCUMENTOS, undefined, busqueda, reglasPaisFijas());
     return { svc, listar, agregarPorCategoriaYTipo };
   }
 
@@ -111,6 +113,7 @@ describe("469 — EstadoCuentaService", () => {
       { estadoPorGestion: async () => new Map() } as never,
       { resolver: async () => [] } as never,
       b,
+      reglasPaisFijas(),
     );
     const r = await svc.leer(
       { cuenta: { tipo: "bodega", id: "00000000-0000-4000-8000-0000000000cc" }, page: 1, pageSize: 20, q: "46803", sortBy: "fecha", sortDir: "desc" },

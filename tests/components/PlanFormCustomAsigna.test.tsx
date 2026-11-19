@@ -12,15 +12,20 @@ import userEvent from "@testing-library/user-event";
 import { PlanForm, type EmpresaParaCustom } from "@/app/(app)/plataforma/planes/_components/PlanForm";
 import type { CrearPlanInput, PlanResult, PrevisualizarCustomInput, VistaPreviaCustomResult } from "@/lib/types/planes";
 
+import { avanzarHasta, conBorrador, botonDeLaLista } from "./plan-form-pasos";
+
 const SIN_PLAN = "6f1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f60";
 const CON_PLAN = "7a1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f61";
 const EMPRESAS: EmpresaParaCustom[] = [
-  { id: SIN_PLAN, nombre: "Envíos Norte", tienePlan: false },
-  { id: CON_PLAN, nombre: "Reparto Sur", tienePlan: true },
+  { id: SIN_PLAN, nombre: "Envíos Norte", tienePlan: false, fechaDeEfectoPorDefecto: null },
+  // SLT-86 (R25): el primer día de su siguiente período de calendario, como lo calcula la página.
+  { id: CON_PLAN, nombre: "Reparto Sur", tienePlan: true, fechaDeEfectoPorDefecto: "2026-11-01" },
 ];
 /** D5: mañana en la hora de la plataforma, como lo calcula la página con `inicioDelCicloPorDefecto`. */
 const MANANA = "2026-10-30";
 const RANGO = { hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" };
+/** SLT-86 (R16): de hoy a hoy + 12 meses. */
+const RANGO_EFECTO = { hoy: "2026-10-29", min: "2026-10-29", max: "2027-10-29" };
 const OK: PlanResult = {
   estado: "ok",
   planId: "0b6f3a2e-1c4d-4e5f-8a9b-0c1d2e3f4a5b",
@@ -34,7 +39,7 @@ type Enviar = (input: CrearPlanInput) => Promise<PlanResult>;
 afterEach(() => cleanup());
 
 /** D13: la vista previa del custom; por defecto, sin topes pasados. */
-const VISTA_PREVIA_OK: VistaPreviaCustomResult = { estado: "ok", avisos: [], siguienteCiclo: "2026-11-30" };
+const VISTA_PREVIA_OK: VistaPreviaCustomResult = { estado: "ok", avisos: [] };
 type Previsualizar = (input: PrevisualizarCustomInput) => Promise<VistaPreviaCustomResult>;
 
 function montar(
@@ -48,7 +53,8 @@ function montar(
       empresas={EMPRESAS}
       inicioCicloPorDefecto={MANANA}
       rangoInicioCiclo={RANGO}
-      enviar={enviar}
+      rangoFechaDeEfecto={RANGO_EFECTO}
+      {...conBorrador(enviar)}
       previsualizar={previsualizar}
       onGuardado={onGuardado}
     />,
@@ -65,17 +71,39 @@ async function custom(user: Usuario, empresa: string) {
   await user.click(within(await screen.findByRole("listbox")).getByRole("option", { name: empresa }));
 }
 
+/** SLT-130: el costo base en «Precio y descuentos» y el costo por orden en su paso. */
 async function conCosto(user: Usuario) {
+  await avanzarHasta(user, "Precio y descuentos");
   await user.click(screen.getByRole("radio", { name: "Con monto" }));
   await user.type(screen.getByLabelText("Costo base mensual"), "50000");
+  await avanzarHasta(user, "Cobro por orden");
   await user.type(screen.getByLabelText("Costo por orden"), "100");
 }
 
-const campoInicio = () => screen.queryByLabelText("Inicio del ciclo de órdenes");
+/**
+ * SLT-130 (R24, R28): llega a «Revisar y crear» y pulsa «Crear plan» en cuanto la vista previa del custom
+ * lo deja (para una empresa sin plan, el botón espera la lectura).
+ */
+async function crear(user: Usuario) {
+  await avanzarHasta(user, "Revisar y crear");
+  const boton = screen.getByRole("button", { name: "Crear plan" });
+  await waitFor(() => expect(boton).toBeEnabled());
+  await user.click(boton);
+}
+
+/** SLT-130 (R5): salta a un paso ya visitado desde la lista de pasos. */
+async function irAlPaso(user: Usuario, titulo: string) {
+  await user.click(botonDeLaLista(titulo));
+}
+
+const campoInicio = () => screen.queryByLabelText("Inicio del período");
 
 describe("D1 — el costo base ya no ofrece «Negociable»", () => {
-  it("solo «Sin precio» y «Con monto»", () => {
+  it("solo «Sin precio» y «Con monto»", async () => {
+    const user = userEvent.setup();
     montar();
+    await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Libre");
+    await avanzarHasta(user, "Precio y descuentos");
     const grupo = screen.getByRole("radiogroup", { name: "Costo base" });
     expect(within(grupo).getAllByRole("radio").map((r) => r.closest("label")?.textContent)).toEqual([
       "Sin precio",
@@ -100,18 +128,22 @@ describe("D4, D5 — «Inicio del ciclo» en el custom", () => {
     expect(campo).toHaveAttribute("max", RANGO.max);
   });
 
-  it("D4: empresa con plan → el campo no aparece y la action no recibe `inicioCiclo`", async () => {
+  it("D4, SLT-86 R16: empresa con plan → no pide el inicio; la action recibe «Rige desde» y no `inicioCiclo`", async () => {
     const user = userEvent.setup();
     const { enviar } = montar();
     await custom(user, "Reparto Sur");
     expect(campoInicio()).toBeNull();
 
     await conCosto(user);
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+    await crear(user);
 
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
     expect(enviar.mock.calls[0]![0]).not.toHaveProperty("inicioCiclo");
-    expect(enviar.mock.calls[0]![0]).toMatchObject({ organizacionId: CON_PLAN, tipoCobro: "mensual" });
+    expect(enviar.mock.calls[0]![0]).toMatchObject({
+      organizacionId: CON_PLAN,
+      tipoCobro: "mensual",
+      vigenteDesde: "2026-11-01",
+    });
   });
 
   it("D4: sin empresa elegida, ni público, no se pide la fecha", async () => {
@@ -130,7 +162,7 @@ describe("D4, D5 — «Inicio del ciclo» en el custom", () => {
     await user.clear(campo);
     await user.type(campo, "2026-11-05");
     await conCosto(user);
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+    await crear(user);
 
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
     expect(enviar.mock.calls[0]![0]).toMatchObject({ organizacionId: SIN_PLAN, inicioCiclo: "2026-11-05" });
@@ -138,7 +170,7 @@ describe("D4, D5 — «Inicio del ciclo» en el custom", () => {
 });
 
 describe("D6 — el tipo de cobro en el custom", () => {
-  it("D6: un custom ofrece «Mensual» y «Anual», con «Mensual» por defecto", async () => {
+  it("D6, SLT-86 R1: un custom ofrece los cuatro tipos, con «Mensual» por defecto", async () => {
     const user = userEvent.setup();
     montar();
     expect(screen.queryByRole("radiogroup", { name: "Tipo de cobro" })).toBeNull(); // público: no aplica
@@ -146,7 +178,9 @@ describe("D6 — el tipo de cobro en el custom", () => {
 
     const grupo = screen.getByRole("radiogroup", { name: "Tipo de cobro" });
     expect(within(grupo).getAllByRole("radio").map((r) => r.closest("label")?.textContent)).toEqual([
+      "Quincenal",
       "Mensual",
+      "Bimestral",
       "Anual",
     ]);
     expect(within(grupo).getByRole("radio", { name: "Mensual" })).toBeChecked();
@@ -158,7 +192,7 @@ describe("D6 — el tipo de cobro en el custom", () => {
     await custom(user, "Envíos Norte");
     await user.click(screen.getByRole("radio", { name: "Anual" }));
     await conCosto(user);
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+    await crear(user);
 
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
     expect(enviar.mock.calls[0]![0]).toMatchObject({
@@ -166,17 +200,17 @@ describe("D6 — el tipo de cobro en el custom", () => {
       organizacionId: SIN_PLAN,
       tipoCobro: "anual",
       inicioCiclo: MANANA,
-      precio: { tipo: "monto", mensual: "50000", anual: null },
+      precio: { tipo: "monto", mensual: "50000", descuentos: {} },
       costoPorOrden: "100",
     });
-    expect(onGuardado).toHaveBeenCalledWith(OK, "Norte a medida", "2026-11-30");
+    expect(onGuardado).toHaveBeenCalledWith(OK, "Norte a medida");
   });
 
   it("D6: un plan público no manda tipo de cobro ni inicio del ciclo", async () => {
     const user = userEvent.setup();
     const { enviar } = montar();
     await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Libre");
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+    await crear(user);
 
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
     expect(enviar.mock.calls[0]![0]).not.toHaveProperty("tipoCobro");
@@ -185,44 +219,18 @@ describe("D6 — el tipo de cobro en el custom", () => {
 });
 
 describe("D3 — un rechazo de la asignación no cierra el formulario", () => {
-  it("D3: `plan_sin_costo` con base «Sin precio» → junto a «Costo base», sin cerrar y con lo escrito", async () => {
+  it("SLT-99 (decisión del 2026-11-10, modifica SLT-66 R28): un custom sin costo base ni costo por orden se envía y, con `ok`, se guarda sin errores de costo", async () => {
     const user = userEvent.setup();
-    const { enviar, onGuardado } = montar(vi.fn<Enviar>().mockResolvedValue({ estado: "plan_sin_costo" }));
+    const { enviar, onGuardado } = montar();
     await custom(user, "Envíos Norte");
-    await user.click(screen.getByRole("radio", { name: "Anual" }));
-    await user.type(screen.getByLabelText("Costo por orden"), "100");
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+    await crear(user);
 
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
-    const grupo = screen.getByRole("radiogroup", { name: "Costo base" });
-    await waitFor(() => expect(grupo).toHaveAttribute("aria-invalid", "true"));
-    expect(grupo).toHaveAccessibleDescription(
-      "Para asignarlo a la empresa, el plan necesita costo base con monto y costo por orden.",
-    );
-    expect(onGuardado).not.toHaveBeenCalled();
-    // Lo escrito sigue ahí para corregirlo.
-    expect(screen.getByRole("textbox", { name: "Nombre" })).toHaveValue("Norte a medida");
-    expect(screen.getByRole("combobox", { name: "Empresa" })).toHaveTextContent("Envíos Norte");
-    expect(screen.getByRole("radio", { name: "Anual" })).toBeChecked();
-    expect(screen.getByLabelText("Costo por orden")).toHaveValue("100");
-    expect(campoInicio()).toHaveValue(MANANA);
-  });
-
-  it("D3: `plan_sin_costo` sin costo por orden → junto a «Costo por orden»", async () => {
-    const user = userEvent.setup();
-    const { onGuardado } = montar(vi.fn<Enviar>().mockResolvedValue({ estado: "plan_sin_costo" }));
-    await custom(user, "Envíos Norte");
-    await user.click(screen.getByRole("radio", { name: "Con monto" }));
-    await user.type(screen.getByLabelText("Costo base mensual"), "50000");
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
-
-    const campo = screen.getByLabelText("Costo por orden");
-    await waitFor(() => expect(campo).toHaveAttribute("aria-invalid", "true"));
-    expect(campo).toHaveAccessibleDescription(
-      expect.stringContaining("Para asignarlo a la empresa, el plan necesita costo base con monto y costo por orden."),
-    );
-    expect(onGuardado).not.toHaveBeenCalled();
-    expect(screen.getByLabelText("Costo base mensual")).toHaveValue("50000");
+    expect(enviar.mock.calls[0]![0]).toMatchObject({ precio: { tipo: "sin_precio" }, costoPorOrden: null });
+    await waitFor(() => expect(onGuardado).toHaveBeenCalledWith(OK, "Norte a medida"));
+    expect(
+      screen.queryByText("Para asignarlo a la empresa, el plan necesita costo base con monto y costo por orden."),
+    ).toBeNull();
   });
 
   it("D3: `not_found` → junto a «Empresa»", async () => {
@@ -230,7 +238,7 @@ describe("D3 — un rechazo de la asignación no cierra el formulario", () => {
     const { onGuardado } = montar(vi.fn<Enviar>().mockResolvedValue({ estado: "not_found" }));
     await custom(user, "Envíos Norte");
     await conCosto(user);
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+    await crear(user);
 
     const empresa = screen.getByRole("combobox", { name: "Empresa" });
     await waitFor(() => expect(empresa).toHaveAttribute("aria-invalid", "true"));
@@ -249,14 +257,17 @@ describe("D3 — un rechazo de la asignación no cierra el formulario", () => {
       }),
     );
     await custom(user, "Reparto Sur");
-    await user.type(screen.getByLabelText("Usuarios activos con el rol Mensajero"), "5");
     await conCosto(user);
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+    await avanzarHasta(user, "Topes");
+    await user.type(screen.getByLabelText("Usuarios activos con el rol Mensajero"), "5");
+    await crear(user);
 
+    // SLT-130 (R26): sin campo, el aviso va en «Revisar y crear»; lo escrito sigue en su paso.
     expect(await screen.findByRole("alert")).toHaveTextContent(mensaje);
     expect(onGuardado).not.toHaveBeenCalled();
-    expect(screen.getByLabelText("Usuarios activos con el rol Mensajero")).toHaveValue("5");
     expect(screen.getByRole("button", { name: "Crear plan" })).toBeEnabled();
+    await irAlPaso(user, "Topes");
+    expect(screen.getByLabelText("Usuarios activos con el rol Mensajero")).toHaveValue("5");
   });
 
   it("D3: un `validation_error` de `inicioCiclo` va junto al campo de la fecha", async () => {
@@ -269,7 +280,7 @@ describe("D3 — un rechazo de la asignación no cierra el formulario", () => {
     );
     await custom(user, "Envíos Norte");
     await conCosto(user);
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+    await crear(user);
 
     const campo = campoInicio()!;
     await waitFor(() => expect(campo).toHaveAttribute("aria-invalid", "true"));

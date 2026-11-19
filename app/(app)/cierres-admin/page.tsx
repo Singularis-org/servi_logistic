@@ -126,11 +126,18 @@ export default async function CierresAdminPage() {
       ? { pendientesPagina: bodegaPendientesResult, resueltos: resueltosResult }
       : null;
 
+  // SLT-102 «Cola de cierres única: mensajeros (central y satélite)» (R106, PA3): el nombre de la zona
+  // para la descripción de la cola, con datos que la página ya tiene. La satélite: su `zonaId` en el
+  // catálogo (que para ella trae solo SU zona). La central: el catálogo no marca cuál es, así que
+  // va sin nombre («Bodega central. …») hasta que haya una fuente.
+  const zonaNombre =
+    actor.rol === "adminSatelite" && actor.zonaId
+      ? (catalogoFiltros.zonas.find((z) => z.id === actor.zonaId)?.nombre ?? null)
+      : null;
+
   return (
-    <AppPage
-      title="Cierres del día"
-      description="Revisá el detalle de cada cierre solicitado por tus mensajeros y aprobalo o rechazalo"
-    >
+    // SLT-102 (R106): sin `description`; la descripción por rol la pinta la cola.
+    <AppPage title="Cierres del día">
       {/* Pedido humano del 2026-08-16 — la pantalla se divide en BODEGA y MENSAJERO, con el
           conmutador segmentado del portal del mensajero (ver `CierresTabs`). Cuál es la mitad
           de «bodega» depende del ROL, y esa decisión sigue donde estaba: el `adminSatelite`
@@ -154,15 +161,23 @@ export default async function CierresAdminPage() {
             consolidacion.totalIngresoBodegaRechazosAgregado
           }
           incluyeModeloNuevoAgregado={consolidacion.incluyeModeloNuevoAgregado}
-          totalNetoAgregado={consolidacion.totalNetoAgregado}
           totalCentralDebeAgregado={consolidacion.totalCentralDebeAgregado}
           puedesSolicitar={consolidacion.puedesSolicitar}
           motivoBloqueo={consolidacion.motivoBloqueo}
+          // SLT-106 (R67, R195, R203): lo que la cola de «A consolidar» pinta y hoy no llegaba.
+          // `totalNetoAgregado` sigue en el contrato pero ya no se pinta (R204).
+          paraLaCentralAgregado={consolidacion.paraLaCentralAgregado}
+          cierresAConsolidar={consolidacion.cierresAConsolidar}
+          mensajerosAConsolidar={consolidacion.mensajerosAConsolidar}
+          bloqueo={consolidacion.bloqueo}
+          zonaNombre={zonaNombre}
           cierresBodegaPasados={{
             items: consolidacion.solicitados.items,
             total: consolidacion.solicitados.total,
             pageSize: consolidacion.solicitados.pageSize,
           }}
+          // SLT-107 (R68, R287): las cifras de las tarjetas de «Solicitados», sin filtros.
+          solicitadosResumen={consolidacion.solicitadosResumen}
           sinZona={consolidacion.sinZona}
           catalogoFiltros={catalogoFiltros}
         />
@@ -234,6 +249,7 @@ export default async function CierresAdminPage() {
         /* FICHA 481 — el fulfillment de la fila desplegada es dato de la CENTRAL: el
            `adminSatelite` ve el comprobante con audiencia `satelite`, que solo lo calla a él. */
         audiencia={esAccesoTotal(actor.rol) ? "admin" : "satelite"}
+        zonaNombre={zonaNombre}
         /**
          * FICHA 398 (R16) — el permiso de CORREGIR EL RESULTADO de una gestión, resuelto
          * server-side con el MISMO predicado que exige `CierresAdminService.corregirResultadoGestion`

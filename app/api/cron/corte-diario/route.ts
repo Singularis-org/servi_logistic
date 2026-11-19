@@ -2,6 +2,7 @@
 // + autorizacion por `CRON_SECRET`; delega TODA la logica de negocio en
 // CorteDiarioService (docs/architecture.md, patron Controller -> Service -> Repo). Sin
 // queries ni logica de negocio aqui. NUNCA loguea el secreto ni PII (R24).
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { NextResponse } from "next/server";
 import { withErrorHandler, isAppErrorShape, appErrorToResponse } from "@/lib/errors";
 import type { ICorteDiarioService } from "@/lib/interfaces/services/ICorteDiarioService";
@@ -68,6 +69,8 @@ function buildService(): ICorteDiarioService {
     // default es el no-op para que ninguna suite escriba avisos en la base, que es COMPARTIDA.
     // Hay guardia que lo comprueba (`notificacion-notificadores-reales.test.ts`).
     notificarCierreDiaVencidoReal,
+    // SLT-42 (R22): la zona horaria del pais de la empresa.
+    construirReglasPaisEmpresa(prisma),
   );
 }
 

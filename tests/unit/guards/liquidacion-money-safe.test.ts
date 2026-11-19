@@ -48,7 +48,6 @@ const RAIZ = path.resolve(__dirname, "../../..");
  * nombre, el primer test cae.
  */
 const ARCHIVOS_DE_LA_FEATURE: readonly string[] = [
-  "app/(app)/cierres-admin/_components/CierresAdminHistoricoLista.tsx",
   "app/(app)/cierres-admin/_components/CierresAdminModule.tsx",
   "app/(app)/cierres-admin/_components/PagoMensajeroSeccion.tsx",
   "app/(app)/cierres-admin/_components/PendienteLiquidarBadge.tsx",
@@ -147,6 +146,64 @@ const ARCHIVOS_DE_LA_FEATURE: readonly string[] = [
   // con él DENTRO: rojo nombrando la ruta. Es un archivo de cliente, así que pesan las cuatro
   // aserciones, incluidas la de `.toFixed(` y la de la biblioteca de decimales.
   "app/(app)/wallet/mensajeros/_components/wallet-mensajeros-labels.ts",
+  // SLT-95 «Rediseño del detalle de cierre (mensajero y bodega)», S1 (T3.1, R71) — el módulo de
+  // cierres rediseñado vive en `components/private/cierres/` y pinta TODO el dinero de un cierre:
+  // cifras, reparto y cuentas. Es cliente, así que pesan las cuatro aserciones. La cláusula de
+  // auto-captura de abajo mete en el censo cualquier archivo nuevo de esa carpeta (las rebanadas
+  // S2-S17 añaden `fila/`, `cola/` y `dialogos/`), o el primer test cae.
+  "components/private/cierres/detalle/detalle-cierre-vista.ts",
+  "components/private/cierres/detalle/detalle-cierre-labels.ts",
+  "components/private/cierres/detalle/DetalleCierre.tsx",
+  "components/private/cierres/detalle/CifrasCierre.tsx",
+  "components/private/cierres/detalle/DineroCierre.tsx",
+  "components/private/cierres/detalle/Cuenta.tsx",
+  // SLT-100 «Detalle de cierre único en /cierres-admin (mensajeros)» (R71): la pestaña de rechazos
+  // (sin dinero) y las columnas de «Descargar» (importes como el string del servidor).
+  "components/private/cierres/detalle/RechazosDeTiendaCierre.tsx",
+  "components/private/cierres/detalle/detalle-cierre-descarga-columnas.ts",
+  // SLT-104 «Detalle de cierre de bodega en el detalle único (central)»: las pestañas «Mensajeros» y
+  // «Conciliación» del detalle de bodega.
+  "components/private/cierres/detalle/MensajerosCierreBodega.tsx",
+  "components/private/cierres/detalle/ConciliacionCierreBodega.tsx",
+  // SLT-107 «Bodega satélite: Solicitados y su cierre de bodega en lectura»: el montaje común del
+  // detalle de bodega para la central y la satélite (pinta lo que llega, no deriva importes).
+  "components/private/cierres/detalle/DetalleCierreBodegaAbierto.tsx",
+  // SLT-109 «/cierre-dia: el cierre de hoy, rechazado o vencido como página» (R248): la pestaña
+  // «Corregir» del rechazado (sin dinero).
+  "components/private/cierres/detalle/CorregirCierre.tsx",
+  // SLT-101 «Fila de gestión única y lista con filtros» (R71): la lista y la fila de una gestión
+  // pintan las cifras del servidor tal cual; ninguna se deriva en el cliente.
+  "components/private/cierres/fila/GestionesCierre.tsx",
+  "components/private/cierres/fila/FilaGestion.tsx",
+  "components/private/cierres/fila/CalculoCobro.tsx",
+  "components/private/cierres/fila/fila-gestion-vista.ts",
+  "components/private/cierres/fila/fila-gestion-labels.ts",
+  // SLT-102 «Cola de cierres única: mensajeros (central y satélite)» (R71): la cola pinta los
+  // importes del servidor con `money()` y compara el pendiente como TEXTO.
+  "components/private/cierres/cola/ColaCierres.tsx",
+  "components/private/cierres/cola/cola-cierres-vista.ts",
+  "components/private/cierres/cola/cola-cierres-labels.ts",
+  // SLT-103 «Diálogos del módulo de cierres y trato tú» (R137-R140): el visor único de evidencia y
+  // los textos de los diálogos (el resumen pinta las cifras del servidor con `money()`).
+  "components/private/cierres/dialogos/VisorEvidencia.tsx",
+  "components/private/cierres/dialogos/dialogos-labels.ts",
+  // SLT-137 «/cierre-dia: cola de cierres del mensajero con filtros» (R71): la lógica de la cola con
+  // rol mensajero compara el pendiente como TEXTO (`hayPendienteDeLiquidar`).
+  "components/private/cierres/cola/cola-propia-vista.ts",
+  // SLT-137 (R71, T2.2): las celdas de la cola propia pintan los importes con `money()`, tal cual.
+  "components/private/cierres/cola/TablaColaPropia.tsx",
+  // SLT-106 «Bodega satélite: A consolidar con la cola única» (R71): el módulo de la satélite pasa
+  // a la cola única; las tarjetas y el resumen del diálogo pintan los strings del servidor.
+  "app/(app)/cierres-admin/_components/ConsolidacionBodegaModule.tsx",
+  // SLT-111 «Cifras del servidor: reparto en % y señales de la cola» (R262): el reparto en % se
+  // calcula sobre centimos exactos con `Prisma.Decimal`; un `Number(`/`parseFloat(` de un importe
+  // aqui lo devolveria a la coma flotante. Su ruta no casa la auto-captura: entra a mano.
+  "lib/utils/porcentajes-reparto.ts",
+  // SLT-112 «Cifras del servidor: ganancia pendiente y pagada del mensajero» (R355): las dos cifras
+  // de «Cierres solicitados» se suman con `Prisma.Decimal` en el servicio, sobre los aprobados que
+  // lee el repositorio. Sus rutas no casan la auto-captura: entran a mano.
+  "lib/services/CierreDiaService.ts",
+  "lib/repositories/CierreDiaRepository.ts",
 ];
 
 /** Un archivo es de CLIENTE si vive en los árboles de UI. */
@@ -198,6 +255,8 @@ describe("barrido transversal money-safe y de fuga de datos (feature 172)", () =
     const propios = [
       ...listarArchivos(path.join(RAIZ, "components/shared/liquidacion")),
       ...listarArchivos(path.join(RAIZ, "lib")).filter((a) => /[Ll]iquidacion/.test(a)),
+      // SLT-95 (T3.1, R71): todo el módulo de cierres rediseñado.
+      ...listarArchivos(path.join(RAIZ, "components/private/cierres")),
     ].map(relativa);
 
     expect(propios.length).toBeGreaterThan(0);
@@ -263,6 +322,12 @@ describe("barrido transversal money-safe y de fuga de datos (feature 172)", () =
     const real = codigo("components/shared/liquidacion/PagosRegistradosTabla.tsx");
     expect(cazadas(real)).toBe(0);
     expect(cazadas(`${real}\nconst x = Number(pago.monto);`)).toBe(1);
+
+    // SLT-95 (T3.1, R71) — la misma contraprueba sobre un archivo de `components/private/cierres/`:
+    // limpio tal cual, y cazado en cuanto se le cuela un `Number(monto)`.
+    const cuenta = codigo("components/private/cierres/detalle/Cuenta.tsx");
+    expect(cazadas(cuenta)).toBe(0);
+    expect(cazadas(`${cuenta}\nconst x = Number(l.monto);`)).toBe(1);
   });
 
   it("el DTO del comprobante no declara ningún identificador salvo el `id` del pago", () => {

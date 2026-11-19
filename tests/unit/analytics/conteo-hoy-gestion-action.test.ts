@@ -4,6 +4,7 @@ import type { ConsultaConteoEntregas } from "@/lib/analytics/entregas-conteo";
 import { consultarConteoHoyGestion } from "@/lib/actions/conteo-hoy-gestion";
 import type { ConteoHoyGestionDTO } from "@/lib/types/conteo-hoy-gestion";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // El borde de la CUARTA lectura de la pantalla. Recorre los mismos cuatro pasos que las otras
 // tres y REUSA `prepararConteoEntregas`: no es parecido, es el mismo código.
 
@@ -21,7 +22,7 @@ function deps(actor: unknown) {
   const service = { consultar: vi.fn(async (_c: ConsultaConteoEntregas) => DATOS) };
   const logger = { logError: vi.fn() };
   return {
-    deps: { service, logger, getActor: async () => actor as never, now: () => AHORA },
+    deps: { reglasPais: reglasPaisFijas(), service, logger, getActor: async () => actor as never, now: () => AHORA },
     service,
     logger,
   };

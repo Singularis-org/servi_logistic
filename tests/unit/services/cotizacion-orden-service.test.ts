@@ -415,7 +415,7 @@ describe("CotizacionOrdenService — cobertura por fila (T6)", () => {
     // que aquella exige y esta no. `resolveGeo` es uno solo (design.md §5.1), asi que los tres
     // mensajes tienen que salir identicos carácter a carácter.
     const repoCarga = {
-      findUsuarioFulfillment: vi.fn(async () => false),
+      findUsuarioSeRecogeEnTienda: vi.fn(async () => true),
       findExistingRemisiones: vi.fn(async () => new Map<string, string>()),
       findEstatusIdByValue: vi.fn(async () => "os-1"),
       findAllProvincias: vi.fn(async () => PROVINCIAS),

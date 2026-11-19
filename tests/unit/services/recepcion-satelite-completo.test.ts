@@ -4,7 +4,11 @@ import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepos
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IOrdenHistorialService } from "@/lib/interfaces/services/IOrdenHistorialService";
 import { descargaConfig } from "@/lib/config/descarga";
-import { listarOrdenesBodegaPaginadoSchema } from "@/lib/types/recepcion-satelite";
+import {
+  listarIdsVigentesBodegaSchema,
+  listarOrdenesBodegaCompletoSchema,
+  listarOrdenesBodegaPaginadoSchema,
+} from "@/lib/types/recepcion-satelite";
 import {
   ALMACEN_SATELITE,
   filaSatelite,
@@ -15,6 +19,7 @@ import {
   SAT_SIN_ZONA,
   type FilaAlmacen,
 } from "@/tests/fixtures/satelite-bodega-almacen";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Ficha 470 (T1.3, riesgo K6) — el tope real de la descarga es ahora el limite de Excel
 // (1.048.575 filas). Este archivo prueba la MECANICA del tope (N entra, N+1 no), que no depende
@@ -57,7 +62,7 @@ function servicio(repo: IOrdenRepository, lotes?: string[][]) {
       return new Map(pares);
     }),
   } as unknown as Pick<IOrdenHistorialService, "contarIntentosEnLote">;
-  return new RecepcionSateliteService(repo, historial);
+  return new RecepcionSateliteService(repo, historial, undefined, reglasPaisFijas());
 }
 
 function ids(items: ReadonlyArray<{ id: string }>): string[] {
@@ -312,5 +317,45 @@ describe("RecepcionSateliteService.listarOrdenesBodegaCompleto (feature 184, T A
     ]);
     // Un solo argumento: la firma no lleva rango y la llamada tampoco.
     expect(findRecepcionSateliteCompleta.mock.calls[0]).toHaveLength(1);
+  });
+});
+
+describe("SLT-210 · el orden viaja a la página y a la descarga, y no a la vigencia", () => {
+  it("R1401: sin orden en la entrada, el repositorio recibe fecha de creación descendente", async () => {
+    const { repo, filtros } = repoSateliteEnMemoria();
+    await servicio(repo).listarOrdenesBodegaPaginado(listarOrdenesBodegaPaginadoSchema.parse({}), SAT_A);
+    expect(filtros.map((f) => f.filtro.orden)).toEqual([{ sortBy: "created_at", sortDir: "desc" }]);
+  });
+
+  it("R1403/R1406: la página y la descarga reciben EL MISMO orden pedido", async () => {
+    for (const orden of [
+      { sortBy: "num_remision", sortDir: "asc" },
+      { sortBy: "created_at", sortDir: "asc" },
+      { sortBy: "num_remision", sortDir: "desc" },
+    ] as const) {
+      const { repo, filtros } = repoSateliteEnMemoria();
+      const svc = servicio(repo);
+      await svc.listarOrdenesBodegaPaginado(
+        listarOrdenesBodegaPaginadoSchema.parse({ ...orden, page: 1, pageSize: 3 }),
+        SAT_A,
+      );
+      await svc.listarOrdenesBodegaCompleto(listarOrdenesBodegaCompletoSchema.parse(orden), SAT_A);
+      expect(
+        filtros.map((f) => [f.metodo, f.filtro.orden]),
+        JSON.stringify(orden),
+      ).toEqual([
+        ["paginada", orden],
+        ["completa", orden],
+      ]);
+    }
+  });
+
+  it("la vigencia de la selección NO lleva orden (no cambia la pertenencia), y el borde no lo admite", async () => {
+    const { repo, filtros } = repoSateliteEnMemoria();
+    const ids = ["3f1c7c2e-9a1a-4f0e-9d4a-000000000001"];
+    await servicio(repo).listarIdsVigentesBodega(listarIdsVigentesBodegaSchema.parse({ ids }), SAT_A);
+    expect(filtros).toHaveLength(1);
+    expect(filtros[0]!.filtro).not.toHaveProperty("orden");
+    expect(listarIdsVigentesBodegaSchema.safeParse({ ids, sortBy: "created_at" }).success).toBe(false);
   });
 });

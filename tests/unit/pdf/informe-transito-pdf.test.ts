@@ -7,6 +7,7 @@ import { pdfInformeTransito } from "@/lib/whatsapp-envios/informes/transito/pdf"
 import { PARAMETROS_POR_DEFECTO, type ZonaInforme } from "@/lib/whatsapp-envios/informes/transito/parametros";
 import type { FilaTransito } from "@/lib/whatsapp-envios/informes/transito/tipos";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Ficha 475 (T4.2) — R19, R23-R32 sobre el PDF REAL, leyendo el texto con el /ToUnicode que el
 // propio documento declara (la fuente embebida escribe en Identity-H: un grep no lo veria).
 
@@ -46,7 +47,7 @@ function leer(bytes: Uint8Array): string[][] {
 }
 
 function pdfDe(filas: FilaTransito[], sinHito = 0) {
-  const modelo = clasificar(filas, ZONAS, PARAMETROS_POR_DEFECTO, AHORA, sinHito);
+  const modelo = clasificar(filas, ZONAS, PARAMETROS_POR_DEFECTO, AHORA, ZONA_DE_CR, sinHito);
   const bytes = pdfInformeTransito(modelo);
   const pags = leer(bytes);
   return { bytes, pags, todo: pags.flat(), plano: pags.flat().join("\n") };
@@ -81,7 +82,7 @@ describe("475/R23 — A4 vertical, encabezado y totales", () => {
       expect.arrayContaining([
         "Informe de tránsito",
         "Lunes 5 de octubre de 2026",
-        "05:00 · hora de Costa Rica",
+        "05:00 · hora local",
         "Días contados desde la entrada a la bodega central",
       ]),
     );
@@ -274,7 +275,7 @@ describe("SL-15 R8 · el membrete de la empresa en el informe de tránsito", () 
       EMPRESA: { enFrase: "Acme Envíos", alInicio: "Acme Envíos", membrete: "Acme Envíos" },
     }));
     const { pdfInformeTransito: conMembrete } = await import("@/lib/whatsapp-envios/informes/transito/pdf");
-    const modelo = clasificar(FILAS, ZONAS, PARAMETROS_POR_DEFECTO, AHORA, 3);
+    const modelo = clasificar(FILAS, ZONAS, PARAMETROS_POR_DEFECTO, AHORA, ZONA_DE_CR, 3);
     const pags = leer(conMembrete(modelo));
     expect(pags[0].slice(0, 2)).toEqual(["Acme Envíos", "Informe de tránsito"]);
     pags.forEach((p) => expect(p).toContain("Acme Envíos · Informe de tránsito · 05/10/2026 05:00"));

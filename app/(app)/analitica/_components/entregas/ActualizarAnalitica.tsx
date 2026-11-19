@@ -73,7 +73,7 @@ const SELLO_DESCONOCIDO = `${PREFIJO_SELLO} —`;
  * Lo que se pierde y se asume: dos personas en zonas distintas ven el MISMO instante con dos
  * horas distintas. Es el trato habitual de un sello de frescura —cada uno lo compara con su
  * reloj— y es lo que se pidió. Si algún día hace falta anclarlo a la zona de la operación, el
- * sitio es `lib/config/`, donde ya vive `RASTREO_PUBLICO_ZONA_HORARIA`, y no un literal aquí.
+ * sitio es la zona del país de la empresa (`IReglasPaisEmpresa`, SLT-42), y no un literal aquí.
  *
  * El LOCALE tampoco es un literal: sale de `monedaConfig.locale` (`MONEDA_LOCALE`), que es de
  * donde lo toma el resto del formateo del repo —`components/private/analytics/formato.ts` lo

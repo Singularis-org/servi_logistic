@@ -7,6 +7,7 @@ import { crearWhatsappEnvioReintentoHandler } from "@/lib/services/jobs/whatsapp
 import { crearWhatsappEnvioMantenimientoHandler } from "@/lib/services/jobs/whatsapp-envio-mantenimiento-handler";
 import { envio } from "../_dobles-envios-474";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Ficha 474 (T8.1) — handlers de la cola: programado (R19-R22, R24), evento (R19/R27), ejecucion,
 // reintento (R36) y mantenimiento (R25/R44).
 
@@ -43,6 +44,7 @@ function programado(o: { envio?: ReturnType<typeof envio> | null; ahora?: Date }
     ejecutor: { ejecutar },
     now: () => o.ahora ?? new Date("2026-10-05T11:00:30.000Z"),
     ventanaMin: () => 60,
+    reglasPais: reglasPaisFijas(),
   }));
   return { h, obtener, insertarProgramada, enqueue, ejecutar };
 }
@@ -184,6 +186,7 @@ describe("474/R25/R44 — mantenimiento", () => {
       almacen: { borrar },
       cola: { enqueue },
       now: () => new Date("2026-10-05T09:30:00.000Z"),
+      reglasPais: reglasPaisFijas(),
       logger: { info: () => {} },
     }));
     return { h, enqueue, borrar, marcarPurgadas };

@@ -21,6 +21,7 @@ import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { FinanzasDiarioRepository } from "@/lib/repositories/FinanzasDiarioRepository";
 import { FinanzasDiarioService } from "@/lib/services/FinanzasDiarioService";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import type { ResultadoFinanzasDiario } from "@/lib/types/finanzas-diario";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
@@ -64,7 +65,12 @@ export async function consultarFinanzasDiario(
 
   const now = deps.now ?? (() => new Date());
   const service =
-    deps.service ?? new FinanzasDiarioService(new FinanzasDiarioRepository(getPrismaClient()), { now });
+    deps.service ??
+    new FinanzasDiarioService(
+      new FinanzasDiarioRepository(getPrismaClient()),
+      { now },
+      construirReglasPaisEmpresa(getPrismaClient()), // SLT-42 (R22, R28): la zona horaria del pais de la empresa.
+    );
 
   return { status: "ok", datos: await service.consultar() };
 }

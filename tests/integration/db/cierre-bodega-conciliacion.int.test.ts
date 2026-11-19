@@ -11,6 +11,8 @@ import {
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // ⭑ FICHA 431 / T6 (R15) — LOS DOS `CHECK` EXISTEN Y MUERDEN. Contra Postgres de verdad.
@@ -170,16 +172,16 @@ describeSiHayBase("431/T6 — los dos CHECK de la conciliacion (Postgres real)",
     return fila.id;
   }
 
-  /** Un usuario cualquiera al que colgar la consolidacion (`solicitado_por` es una FK). */
+  /**
+   * El usuario al que colgar la consolidacion (`solicitado_por` es una FK), SEMBRADO en la tx del
+   * caso (SLT-182): antes se leia «el primer usuario» de la base, y la base recien migrada no tiene.
+   */
   async function algunUsuarioId(tx: TxDeTest): Promise<string> {
-    const fila = await tx.usuario.findFirst({ select: { id: true } });
-    if (!fila) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `usuario` esta vacia: sin FK no se puede sembrar un " +
-          "cierre_bodega. Corre `pnpm run db:seed` antes de esta suite.",
-      );
-    }
-    return fila.id;
+    const { id } = await crearUsuarioDePrueba(tx, "adminSatelite");
+    // Control positivo (R1084): la siembra llego a la base.
+    const sembrados = await tx.usuario.count({ where: { id } });
+    if (sembrados !== 1) throw new Error("SLT-182: el usuario `solicitado_por` sembrado no esta en la base");
+    return id;
   }
 
   it("⭑ (a) `aprobado` SIN datos de marca -> la base lo RECHAZA (R15)", async () => {
@@ -296,7 +298,7 @@ describeSiHayBase("431/T6 — los dos CHECK de la conciliacion (Postgres real)",
 
       const repo = new CierresBodegaAdminRepository(tx as unknown as PrismaClient);
       try {
-        await repo.resolverCierreBodega({
+        await repo.resolverCierreBodega({ zonaHoraria: ZONA_DE_CR,
           id: cb.id,
           nuevoEstado: "aprobado",
           resueltoPor: usuarioId,
@@ -326,7 +328,7 @@ describeSiHayBase("431/T6 — los dos CHECK de la conciliacion (Postgres real)",
         select: { id: true },
       });
       const repo = new CierresBodegaAdminRepository(tx as unknown as PrismaClient);
-      const r = await repo.resolverCierreBodega({
+      const r = await repo.resolverCierreBodega({ zonaHoraria: ZONA_DE_CR,
         id: cb.id,
         nuevoEstado: "rechazado",
         resueltoPor: usuarioId,

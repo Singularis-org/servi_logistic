@@ -60,6 +60,7 @@ import { OrdenGeocodeRepository } from "@/lib/repositories/OrdenGeocodeRepositor
 import { UserRepository } from "@/lib/repositories/UserRepository";
 import { AsignabilidadCoordenadasService } from "@/lib/services/AsignabilidadCoordenadasService";
 import { AuthService } from "@/lib/services/AuthService";
+import { PlanesService } from "@/lib/services/PlanesService";
 import { ConsoleEmailSender } from "@/lib/services/email/ConsoleEmailSender";
 import { NodemailerEmailSender } from "@/lib/services/email/NodemailerEmailSender";
 import { ORDER_STATUS_SEED } from "@/lib/types/order-status";
@@ -71,7 +72,7 @@ import { RUTAS_GUARDADAS } from "@/scripts/migrar-storage-a-carpetas";
 
 import { crearEmpresaE2E, crearUsuarioE2E } from "../../fabricas/e2e";
 import { comoApp } from "../../fabricas/organizaciones";
-import { escenarioReparto, type EscenarioReparto } from "../../fabricas/escenarios/reparto";
+import { escenarioReparto, servicios, type EscenarioReparto } from "../../fabricas/escenarios/reparto";
 import { tomarExclusionDemoQa, type ExclusionDemoQa } from "./_exclusion-demo-qa";
 import { borrarEmpresasDemoDeEmergencia } from "./_limpieza-demo-qa";
 import { tomarTarifaGlobal } from "./_fixtures/cobro-plataforma-40";
@@ -116,7 +117,7 @@ const TIPO_NO_ESPERADO = "whatsapp_bienvenida";
  */
 const CENTINELA_JOB = randomUUID();
 const CENTINELA_GEOCODE = randomUUID();
-/** El valor global que se fija mientras dura una foto: las dos demo tienen su excepción (R19). */
+/** El valor global que se fija mientras dura una foto: las dos demo tienen su plan con costo por orden (SLT-126 R13). */
 const TARIFA_GLOBAL_DE_CONTROL = "7.00";
 
 /**
@@ -146,12 +147,16 @@ const ORDENES_POR_ESTADO: Record<string, number> = {
   incidente: 2,
 };
 
-/** R12: perfil → rol, y si es tienda, si tiene bodega propia (`fulfillment`). */
-const PERFILES: Record<string, { rol: string; fulfillment?: boolean; zona?: "central" | "satelite" }> = {
+/**
+ * R12: perfil → rol, y si es tienda, si sus pedidos se recogen en la tienda (`se_recoge_en_tienda`).
+ * SLT-94: la tienda CON bodega propia es la que NO se recoge en tienda (la marca vieja `fulfillment`
+ * se migro negada y su columna ya no se lee).
+ */
+const PERFILES: Record<string, { rol: string; seRecogeEnTienda?: boolean; zona?: "central" | "satelite" }> = {
   maestro: { rol: "maestro" },
   admin: { rol: "admin" },
-  "tienda-bodega": { rol: "Admin Tienda", fulfillment: true },
-  tienda: { rol: "Admin Tienda", fulfillment: false },
+  "tienda-bodega": { rol: "Admin Tienda", seRecogeEnTienda: false },
+  tienda: { rol: "Admin Tienda", seRecogeEnTienda: true },
   satelite: { rol: "adminSatelite", zona: "satelite" },
   "mensajero-central": { rol: "mensajero", zona: "central" },
   "mensajero-novedades": { rol: "mensajero", zona: "central" },
@@ -214,6 +219,31 @@ let correosCorrida1: string[] = [];
 
 const espiaConsola = vi.spyOn(ConsoleEmailSender.prototype, "enviar").mockResolvedValue({ messageId: null } as never);
 const espiaSmtp = vi.spyOn(NodemailerEmailSender.prototype, "enviar").mockResolvedValue({ messageId: null } as never);
+
+/**
+ * SLT-126 R13 (design §4): los módulos de cada empresa demo justo ANTES de que la receta le cree y asigne
+ * su plan, por `organizacionId`. La asignación deja encendidos exactamente los del plan: el caso de R13
+ * compara esto con lo que queda al final. El servicio sigue siendo el real.
+ */
+const modulosAntesDelPlan = new Map<string, string[]>();
+const crearPlanReal = PlanesService.prototype.crear;
+vi.spyOn(PlanesService.prototype, "crear").mockImplementation(async function (
+  this: PlanesService,
+  actor,
+  input,
+) {
+  const organizacionId = (input as { organizacionId?: unknown }).organizacionId;
+  if (typeof organizacionId === "string") modulosAntesDelPlan.set(organizacionId, await modulosDe(organizacionId));
+  return crearPlanReal.call(this, actor, input);
+});
+
+async function modulosDe(organizacionId: string): Promise<string[]> {
+  const filas = await base.$queryRawUnsafe<{ m: string }[]>(
+    `SELECT modulo::text AS m FROM organizacion_modulo WHERE organizacion_id = $1 ORDER BY 1`,
+    organizacionId,
+  );
+  return filas.map((f) => f.m);
+}
 
 /**
  * El aviso de `pg` por consultas lanzadas sobre una conexión ocupada (medición del build, 2026-10-26):
@@ -382,7 +412,7 @@ async function huella(organizacionId: string): Promise<Record<string, string>> {
   }
   const [org] = await base.$queryRawUnsafe<{ m: string | null }[]>(
     // Sin `updated_at`: R10 cambia el slug de la real y lo restaura; el contenido es lo que cuenta.
-    `SELECT md5((x.id, x.nombre, x.slug, x.cobro_plataforma_por_orden, x.es_demo, x.created_at)::text) AS m
+    `SELECT md5((x.id, x.nombre, x.slug, x.plan_id, x.es_demo, x.created_at)::text) AS m
        FROM organizacion x WHERE id = $1`,
     organizacionId,
   );
@@ -723,9 +753,9 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
       // R12, D29: un usuario por perfil, correos fijos `servi-<slug>-<perfil>@yopmail.com`; el de la API key
       // es la excepción (D28).
       const usuarios = await base.$queryRawUnsafe<
-        { id: string; email: string; rol: string; fulfillment: boolean; zona: boolean | null; estado: string }[]
+        { id: string; email: string; rol: string; seRecoge: boolean; zona: boolean | null; estado: string }[]
       >(
-        `SELECT u.id, u.email, r.value::text AS rol, u.fulfillment, z.es_central AS zona, u.estado::text AS estado
+        `SELECT u.id, u.email, r.value::text AS rol, u.se_recoge_en_tienda AS "seRecoge", z.es_central AS zona, u.estado::text AS estado
            FROM usuario u JOIN rol r ON r.id = u.rol_id LEFT JOIN zona z ON z.id = u.zona_id
           WHERE u.organizacion_id = $1`,
         org,
@@ -736,7 +766,7 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
         const u = porCorreo.get(`servi-demo-qa-${x}-${perfil}@yopmail.com`);
         expect(u, `${slug} sin ${perfil}`).toBeDefined();
         expect(u!.rol, `${slug} ${perfil}`).toBe(esperado.rol);
-        if (esperado.fulfillment !== undefined) expect(u!.fulfillment, `${slug} ${perfil}`).toBe(esperado.fulfillment);
+        if (esperado.seRecogeEnTienda !== undefined) expect(u!.seRecoge, `${slug} ${perfil}`).toBe(esperado.seRecogeEnTienda);
         if (esperado.zona) expect(u!.zona, `${slug} ${perfil}`).toBe(esperado.zona === "central");
       }
       const api = usuarios.filter((u) => u.rol === "apiKey");
@@ -799,18 +829,19 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
 
       // R14: las tres vías. Pantalla = carga de la tienda SIN bodega; masiva = la de la tienda CON
       // bodega; API = `carga_api`. Las dos primeras dejan el mismo origen (`progress/impl_SL-43.md > T8`).
-      const vias = await base.$queryRawUnsafe<{ origen: string; fulfillment: boolean; n: number }[]>(
-        `SELECT h.origen_tipo::text AS origen, t.fulfillment, count(*)::int AS n
+      const vias = await base.$queryRawUnsafe<{ origen: string; seRecoge: boolean; n: number }[]>(
+        `SELECT h.origen_tipo::text AS origen, t.se_recoge_en_tienda AS "seRecoge", count(*)::int AS n
            FROM orden_historial_estado h JOIN orden o ON o.id = h.orden_id JOIN usuario t ON t.id = o.tienda_id
           WHERE h.organizacion_id = $1 AND h.estatus_origen_id IS NULL
           GROUP BY 1, 2 ORDER BY 1, 2`,
         org,
       );
-      const via = (origen: string, fulfillment: boolean) =>
-        vias.find((v) => v.origen === origen && v.fulfillment === fulfillment)?.n ?? 0;
-      expect(via("carga_masiva", false), "pantalla").toBeGreaterThanOrEqual(1);
-      expect(via("carga_masiva", true), "carga masiva").toBeGreaterThanOrEqual(1);
-      expect(via("carga_api", false), "API").toBeGreaterThanOrEqual(1);
+      // SLT-94: «sin bodega» = se recoge en tienda (`true`); «con bodega» = no (`false`).
+      const via = (origen: string, seRecoge: boolean) =>
+        vias.find((v) => v.origen === origen && v.seRecoge === seRecoge)?.n ?? 0;
+      expect(via("carga_masiva", true), "pantalla").toBeGreaterThanOrEqual(1);
+      expect(via("carga_masiva", false), "carga masiva").toBeGreaterThanOrEqual(1);
+      expect(via("carga_api", true), "API").toBeGreaterThanOrEqual(1);
 
       // R16: una gestión de cada resultado, pago mixto, devuelta a tienda e incidente indemnizado.
       const resultados = await base.$queryRawUnsafe<{ r: string }[]>(
@@ -880,16 +911,12 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
       }
       expect(await contar(`SELECT count(*)::int AS n FROM abono_tienda WHERE organizacion_id = $1`, org)).toBeGreaterThanOrEqual(1);
 
-      // R19: excepción de cobro propia, un cargo de la plataforma por orden y un pago a la plataforma.
-      const fila = await base.$queryRawUnsafe<{ c: string | null }[]>(
-        `SELECT cobro_plataforma_por_orden::text AS c FROM organizacion WHERE id = $1`,
-        org,
-      );
-      expect(Number(fila[0].c)).toBe(100);
+      // R19: el plan con costo por orden y el cargo de 100 por orden los comprueba el caso de SLT-126 R13
+      // (abajo); el pago a la plataforma, `egreso_pago_plataforma` de arriba.
       // R11 también: cada orden nació por un camino con trigger, que deja su cargo.
       // SLT-83 (design §13, T5): solo las órdenes SIN condiciones porcentuales congeladas. Una orden
       // porcentual no lleva cargo hasta su estado final, así que «toda orden tiene su cargo» ya no es cierto
-      // para ellas. La demo tiene excepción propia (no congela nada): el acotado no le quita ninguna orden.
+      // para ellas. El plan de la demo es de costo fijo (no congela nada): el acotado no le quita ninguna orden.
       const sinCargoUnico = await contar(
         `SELECT count(*)::int AS n FROM orden o
           WHERE o.organizacion_id = $1
@@ -898,13 +925,6 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
         org,
       );
       expect(sinCargoUnico, "órdenes sin exactamente un cargo de SL-40").toBe(0);
-      expect(
-        await contar(
-          `SELECT count(*)::int AS n FROM cobro_plataforma_movimiento
-            WHERE organizacion_id = $1 AND tipo = 'cargo' AND fuente = 'empresa' AND monto = 100`,
-          org,
-        ),
-      ).toBe(await contar(`SELECT count(*)::int AS n FROM orden WHERE organizacion_id = $1`, org));
 
       // R11: todo el historial con un origen de servicio, y cada orden con su alta en él.
       const origenes = (
@@ -934,6 +954,42 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
     corrida1 = { organizaciones: demo.map((d) => d.id), usuarios: usuariosTodos, ordenes: ordenesTodas };
     correosCorrida1 = [...correos].sort();
   }, 300_000);
+
+  it("SLT-126 R13: cada empresa demo con su plan custom de 100.00 por orden, un cargo `plan` de 100 por orden y los mismos módulos", async () => {
+    const demo = await empresasDemo();
+    expect(demo.map((d) => d.slug)).toEqual([...SLUGS]);
+    for (const { id: org, slug } of demo) {
+      // El plan asignado es el custom de la empresa, con costo fijo y sin porcentual.
+      const planes = await base.$queryRawUnsafe<{ visibilidad: string; exclusiva: string | null; costo: string | null; pct: string | null }[]>(
+        `SELECT p.visibilidad::text AS visibilidad, p.organizacion_exclusiva_id AS exclusiva,
+                p.costo_por_orden::text AS costo, p.costo_por_orden_pct::text AS pct
+           FROM organizacion o JOIN plan p ON p.id = o.plan_id
+          WHERE o.id = $1`,
+        org,
+      );
+      expect(planes, `${slug}: plan asignado`).toEqual([{ visibilidad: "custom", exclusiva: org, costo: "100.00", pct: null }]);
+
+      // Desde antes de la primera orden: TODA orden nació con su cargo de 100 de fuente `plan`, y ninguno
+      // de otra fuente (`empresa` ya no existe como valor propio; `global` sería el plan llegando tarde).
+      const ordenes = await contar(`SELECT count(*)::int AS n FROM orden WHERE organizacion_id = $1`, org);
+      expect(ordenes, `${slug}: órdenes`).toBeGreaterThan(0);
+      const cargos = await base.$queryRawUnsafe<{ fuente: string; monto: string; n: number }[]>(
+        `SELECT fuente::text AS fuente, monto::text AS monto, count(DISTINCT orden_id)::int AS n
+           FROM cobro_plataforma_movimiento
+          WHERE organizacion_id = $1 AND tipo = 'cargo'
+          GROUP BY 1, 2`,
+        org,
+      );
+      expect(cargos, `${slug}: cargos por fuente y monto`).toEqual([{ fuente: "plan", monto: "100.00", n: ordenes }]);
+
+      // Los módulos no cambian al asignar el plan: los de justo antes (espía de `PlanesService.crear`)
+      // son los de ahora, y son los tres apagables con que nace la empresa demo.
+      const antes = modulosAntesDelPlan.get(org);
+      expect(antes, `${slug}: la receta no pasó por PlanesService.crear`).toBeDefined();
+      expect(antes!.length, `${slug}: módulos antes del plan`).toBeGreaterThan(0);
+      expect(await modulosDe(org), `${slug}: módulos después del plan`).toEqual(antes);
+    }
+  });
 
   it("órdenes ubicadas y asignables, cola sin pendientes, sin integraciones ni correo (R20–R24)", async () => {
     exigirCorrida1();
@@ -992,8 +1048,9 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
           MOTIVO_CIERRE_SIN_EJECUTAR,
         ),
       ).toBe(0);
-      // SLT-79: la primera ruta del día es manual y la demo no siembra rutas calculadas, así que ni la
-      // recogida ni la gestión encolan `optimizacion_ruta`: la demo no deja ninguno, ni cerrado.
+      // SLT-79: la primera ruta del día es manual, así que ni la recogida ni la gestión encolan
+      // `optimizacion_ruta`: la demo no deja ninguno, ni cerrado. SLT-200: la del mensajero-reposo se
+      // calcula con «Sincronizar ruta» (síncrono, sin cola), y ese mensajero no gestiona después.
       expect(
         await contar(`SELECT count(*)::int AS n FROM jobs WHERE organizacion_id = $1 AND tipo = 'optimizacion_ruta'`, org),
       ).toBe(0);
@@ -1016,6 +1073,36 @@ describeSiHayBase("SL-43 — la demo de QA de punta a punta (Postgres real y dob
     // R24: ningún correo.
     expect(espiaConsola).not.toHaveBeenCalled();
     expect(espiaSmtp).not.toHaveBeenCalled();
+  }, 120_000);
+
+  it("SLT-200 (punto 5): las órdenes en reparto del mensajero-reposo llegan a su tarjeta con parada, peso y monto", async () => {
+    exigirCorrida1();
+    for (const { id: org, slug } of await empresasDemo()) {
+      const x = slug.slice(-1);
+      const u = await base.usuario.findFirstOrThrow({
+        where: { organizacionId: org, email: `servi-demo-qa-${x}-mensajero-reposo@${YOPMAIL}` },
+        select: { id: true, zonaId: true },
+      });
+      // Lo que lee la pantalla del mensajero: el mismo servicio, con su actor.
+      const r = await conEmpresa(org, () =>
+        servicios().misAsignaciones.listarMisAsignaciones({ usuarioId: u.id, rol: "mensajero", zonaId: u.zonaId, organizacionId: org }),
+      );
+      if (r.status !== "ok") throw new Error(`${slug}: listarMisAsignaciones no fue ok: ${r.status}`);
+      const tarjetas = r.porGestionar;
+      // Control positivo: sin órdenes en reparto, los `every` de abajo saldrían verdes sin mirar nada.
+      expect(tarjetas.length, `${slug}: órdenes en reparto del mensajero-reposo`).toBe(2);
+      // La parada: 1 y 2, no «Sin posición» (`secuenciaRuta === null`).
+      expect(tarjetas.map((t) => t.secuenciaRuta), `${slug}: posición en la ruta`).toEqual([1, 2]);
+      expect(r.ruta.paradasSinOptimizar, `${slug}: paradas sin optimizar`).toBe(0);
+      expect(r.ruta.estado, `${slug}: ruta`).toBe("vigente");
+      // El peso, de los que pone la receta (en cualquier orden: lo decide la ruta).
+      expect(tarjetas.map((t) => t.peso).sort(), `${slug}: peso`).toEqual([0.8, 1.5]);
+      // Una cobra y otra no: «COBRAR» con importe y sin él, y el KPI «Por cobrar» con cifra.
+      expect(tarjetas.map((t) => t.montoCobrar ?? 0).sort((a, b) => a - b), `${slug}: montos`).toEqual([0, 8000]);
+      expect(r.kpis.porCobrar, `${slug}: KPI por cobrar`).toBe(8000);
+      // Y con coordenadas, que es lo que el mapa pinta.
+      expect(tarjetas.every((t) => t.latitud !== null && t.longitud !== null), `${slug}: coordenadas`).toBe(true);
+    }
   }, 120_000);
 
   it("la segunda ejecución recrea y no toca la empresa real (R7, R9, R27)", async () => {

@@ -1,4 +1,10 @@
-import type { GestionResultado, MetodoPagoValue, RolValue } from "@prisma/client";
+import type {
+  GestionResultado,
+  MetodoPagoValue,
+  RolValue,
+  TarifaModo,
+  TarifaNivel,
+} from "@prisma/client";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { CierreEstado, CierreDestinoTipo } from "@/lib/types/cierre";
 import type { CausaIncidente } from "@/lib/types/causa-incidente";
@@ -6,6 +12,7 @@ import type { OrderStatusRetirado, OrderStatusValue } from "@/lib/types/order-st
 import type { ListarPaginadoServiceResult } from "@/lib/types/listado-paginado";
 import type { ListarCompletoServiceResult } from "@/lib/types/descarga-listado";
 import type { OrigenFlete } from "@/lib/types/tarifa";
+import type { FiltrosColaPropia } from "@/lib/types/filtros-cierres";
 
 // Feature 37 — contrato del servicio del "Cierre del dia" del mensajero. Logica de
 // negocio pura (sin HTTP ni Prisma); el borde (Server Action) la traduce a
@@ -138,12 +145,63 @@ export interface CierreDetalleGestion {
    */
   ingresoEmpresa?: IngresoEmpresaDTO | null;
   /**
+   * SLT-154 (R463, D1) — el modelo de tarifa de la fila cuando `ingresoEmpresa` llega en `null` por
+   * el corte de quien no tiene acceso total (el bloque entero es cobro a la tienda). La pantalla lo
+   * necesita para decidir el modelo nuevo. Ausente para la central: ella lo lee de `ingresoEmpresa`.
+   */
+  tarifaModelo?: "viejo" | "nuevo" | null;
+  /**
    * SLT-56 (R19/R20) — los ajustes del pago al mensajero de esta gestion, en orden cronologico. Que
    * haya al menos uno es la marca «Ajustado». OPCIONAL porque este tipo lo comparte la vista del
    * mensajero, y alli no se rellena nunca (Q2: el mensajero ve el valor nuevo, sin marca ni motivo).
    * Solo lo rellena el mapper de los detalles de admin.
    */
   ajustesPago?: AjustePagoGestionDTO[];
+  /**
+   * SLT-101 (R66, R95) — el pago «por tarifa» congelado de esta gestion para el MENSAJERO (nunca la
+   * fila de la satelite), con su origen y, si hubo ajuste, la diferencia hasta `pagoMensajero`.
+   * `null` sin fila congelada (modelo viejo). OPCIONAL: solo lo rellenan los detalles de admin; la
+   * vista del mensajero no lo lleva.
+   */
+  pagoPorTarifa?: PagoPorTarifaDTO | null;
+}
+
+/**
+ * SLT-101 (R64, R95, R97) — de que valor de tarifa salio un importe congelado: su nivel y los
+ * nombres de zona, grupo o vehiculo de ese valor. Nombres `null` si el valor se borro despues (la FK
+ * es SET NULL) o si el nivel no los tiene.
+ */
+export interface OrigenTarifaDTO {
+  nivel: TarifaNivel;
+  zonaNombre: string | null;
+  grupoNombre: string | null;
+  vehiculoNombre: string | null;
+}
+
+/**
+ * SLT-101 (R64, R97) — la tarifa congelada de UN concepto cobrado a la tienda en el modelo nuevo.
+ * `concepto` dice a que linea del cobro corresponde. `base` solo en porcentaje (el valor del pedido,
+ * `montoCobrar`); `null` en monto. Importes y porcentajes STRING escala 2.
+ */
+export interface ConceptoTarifaDTO extends OrigenTarifaDTO {
+  concepto: "flete" | "fleteDevolucion" | "comisionCod";
+  modo: TarifaModo;
+  valor: string;
+  ivaPct: string;
+  base: string | null;
+}
+
+/**
+ * SLT-101 (R66, R95) — `gestion_pago_congelado` del mensajero. `ajuste` es la diferencia en valor
+ * absoluto, con su signo, entre `pagoMensajero` y `importe` cuando hubo ajuste; `null` si no hubo o
+ * si no difieren.
+ */
+export interface PagoPorTarifaDTO extends OrigenTarifaDTO {
+  importe: string;
+  modo: TarifaModo;
+  valor: string;
+  base: string | null;
+  ajuste: { signo: "suma" | "resta"; monto: string } | null;
 }
 
 /**
@@ -240,6 +298,18 @@ export interface IngresoEmpresaDTO {
   // SLT-54 (R63): `tarifa === null` no distingue «sin tarifa» de «modelo nuevo», donde no hay fila de
   // `tarifas` que enseñar, y la tarjeta diria algo falso. `null` = sin tarifa congelada.
   tarifaModelo: "viejo" | "nuevo" | null;
+  // SLT-101 (R65, R92-R94, R64, R97) — campos ADITIVOS y opcionales: los rellena el mapper del
+  // snapshot (`toIngresoEmpresa`); un doble de hoy que no los trae sigue valiendo.
+  /** Suma de los IVA de los conceptos presentes; `null` si ninguno aplica. */
+  ivaIncluido?: string | null;
+  /** «Se cobró»: `fulfillment` + `ivaFulfillment`. `null` para quien no es la central (481). */
+  fulfillmentConIva?: string | null;
+  /** % de IVA congelado del concepto `tienda_fulfillment`; `null` en el viejo o sin concepto. */
+  ivaPctFulfillment?: string | null;
+  /** ISO del cargo de fulfillment vigente de la orden (su ultimo movimiento es un cargo). */
+  fulfillmentCargadoAt?: string | null;
+  /** Tarifa congelada de cada concepto cobrado (modelo nuevo); `[]` en el viejo. */
+  conceptosTarifa?: ConceptoTarifaDTO[];
 }
 
 /**
@@ -285,6 +355,13 @@ export interface CierrePasadoDTO {
   totales: CierreTotales;
   totalPagoMensajero: string; // feature 39/R13: total snapshot del pago al mensajero (STRING)
   totalIngresoBodegaRechazos: string; // feature 56/R12: total snapshot del ingreso de bodega por rechazos (STRING)
+  /**
+   * SLT-123 (R320) — `cierre_dia.pago_independiente_efectivo`: la regla con la que el servicio
+   * deriva `pendientePagoMensajero`. Opcional AQUI porque la pantalla no la lee y sus dobles la
+   * omiten. Donde el servicio la usa —la pagina del historico— llega como
+   * `CierrePasadoDeRepositorio` (`ICierreDiaRepository`), con la marca OBLIGATORIA (SLT-147, D68).
+   */
+  pagoIndependienteEfectivo?: boolean;
   solicitadoAt: string; // ISO
   /**
    * Fecha de resolucion (aprobado/rechazado) e ISO; `null` mientras siga abierto. Viajan al
@@ -293,6 +370,75 @@ export interface CierrePasadoDTO {
    */
   resueltoAt?: string | null;
   motivoRechazo?: string | null;
+  /**
+   * SLT-137 (R164): solo lo emite `listarCierresPasadosPaginado` con las lecturas inyectadas.
+   * `aprobado` → string de escala 2, nunca negativo. Otro estado → `null`.
+   * Ausente (`undefined`) = el servicio no lo calculó: la celda dice «Sin dato» (R157).
+   */
+  pendientePagoMensajero?: string | null;
+}
+
+/**
+ * SLT-137 (R165): las dos lecturas en lote del pendiente de pago de una página de cierres
+ * (`ILiquidacionPagoRepository.sumarVigentesPorCierre` e
+ * `IPagoMensajeroMovimientoRepository.sumarPremiosVivosPorCierre`). Se declaran por su forma y no
+ * con `Pick<IRepo, …>` porque este archivo lo importa la pantalla: traer las interfaces de los
+ * repositorios arrastraría `@prisma/client` al grafo del navegador (`pagos-captura.guardia`).
+ */
+export interface LecturasPendienteCierre {
+  liquidaciones: { sumarVigentesPorCierre(cierreIds: string[]): Promise<Record<string, string>> };
+  /**
+   * SLT-139 (R335, design §5.3): el mismo repositorio del libro trae, ademas, lo «pagado por la
+   * satelite» por cierre. Opcional en el tipo (las suites pasan un doble de una funcion); sin ella,
+   * un cierre NUEVO sale sin `pendientePagoMensajero` («Sin dato»), nunca con una cifra inventada.
+   */
+  premios: {
+    sumarPremiosVivosPorCierre(cierreIds: string[]): Promise<Record<string, string>>;
+    sumarPagadoSatelitePorCierre?(cierreIds: string[]): Promise<Record<string, string>>;
+  };
+}
+
+/** SLT-112 — una cifra de «Cierres solicitados»: importe en escala 2 (string) y su conteo. */
+export interface CifraGanancia {
+  monto: string;
+  conteo: number;
+}
+
+/** SLT-112 (R350-R353) — las dos tarjetas de «Cierres solicitados» del mensajero. */
+export interface ResumenGananciaMensajero {
+  /** R350: Σ lo pendiente de sus cierres aprobados; conteo = aprobados con pendiente > 0. */
+  pendiente: CifraGanancia;
+  /** R352/R353: Σ pagos vigentes con `fecha_pago` en el mes (+ lo pagado por la satélite); conteo = pagos. */
+  pagadaEsteMes: CifraGanancia;
+}
+
+export type ResumenGananciaServiceResult =
+  | { status: "ok"; resumen: ResumenGananciaMensajero }
+  | { status: "sin_dato" } // R357: el servicio no tiene las lecturas
+  | { status: "forbidden" }; // R359
+
+/**
+ * SLT-112 (R353) — la lectura de lo «pagado por la satélite» en un rango de instantes, que
+ * implementa e inyecta SLT-139. Mientras no se inyecte, «Ganancia pagada este mes» es la de R352.
+ */
+export interface LecturaPagadoPorSatelite {
+  /** Σ y nº de movimientos «pagado por la satélite» del mensajero con `fecha_movimiento` en [desde, hasta). */
+  sumarPagadoPorSateliteEnRango(mensajeroId: string, desde: Date, hasta: Date): Promise<CifraGanancia>;
+}
+
+/**
+ * SLT-112 — lo que el servicio necesita, ademas de `LecturasPendienteCierre`, para las cifras.
+ * `pagos` se declara por su forma (`ILiquidacionPagoRepository.sumarVigentesDelMensajeroEnRango`)
+ * por la misma razon que `LecturasPendienteCierre`: este archivo lo importa la pantalla.
+ */
+export interface LecturasGananciaMensajero {
+  pagos: {
+    sumarVigentesDelMensajeroEnRango(mensajeroId: string, desde: Date, hasta: Date): Promise<CifraGanancia>;
+  };
+  /** R353 (revisado en SLT-139): ausente = `sin_dato` (R357), nunca una pagada que la omita. */
+  pagadoPorSatelite?: LecturaPagadoPorSatelite;
+  /** Reloj inyectable para fijar «hoy» en los tests; ausente = `new Date()`. */
+  ahora?: () => Date;
 }
 
 // R2-R11/R17/R18: detalle del dia + totales + gate de "Solicitar cierre" +
@@ -560,18 +706,25 @@ export interface ICierreDiaService {
    * como `mensajero_id` del WHERE (nunca un id de la peticion). Un mensajero no puede pedir
    * la pagina 1 del historico de otro: no hay parametro por el que pedirlo. R44 se cumple por
    * construccion. Cualquier otro rol -> forbidden, sin filas y sin total.
+   *
+   * SLT-138 (R168-R173): `filtros` opcional RECORTA dentro de ese alcance; sin el, lo de antes.
    */
   listarCierresPasadosPaginado(
-    input: { page: number; pageSize: number },
+    input: { page: number; pageSize: number; filtros?: FiltrosColaPropia },
     actor: Actor,
   ): Promise<ListarCierresPasadosServiceResult>;
+  /**
+   * SLT-112 (R350-R357, R359) — «Ganancia pendiente de pago» y «Ganancia pagada este mes» del
+   * mensajero de la sesion, del conjunto (no de la pagina ni de los filtros). Otro rol →
+   * `forbidden` sin leer; sin las lecturas → `sin_dato`.
+   */
+  resumenGanancia(actor: Actor): Promise<ResumenGananciaServiceResult>;
   /**
    * Feature 184 — Tanda C (R1/R4/R6/R9): el CONJUNTO de «Cierres solicitados» del propio
    * mensajero, sin recorte, para producir el archivo.
    *
-   * **No recibe entrada**: este listado no admite filtros, asi que su lista blanca —derivada de
-   * la de la pagina quitando `page`/`pageSize`— no deja ninguna clave, y la barrera se aplica
-   * entera en el borde (R17). El alcance ES el actor: `actor.usuarioId` va al `mensajero_id` del
+   * Recibe el MISMO bloque `filtros` que la pagina (SLT-138, R168, R174), opcional; la barrera de
+   * claves se aplica entera en el borde (R17). El alcance ES el actor: `actor.usuarioId` va al `mensajero_id` del
    * WHERE y no hay parametro por el que pedir el historico de otro (R4).
    *
    * El tope de filas se evalua aqui (R6): superarlo NO entrega filas ni un archivo truncado.
@@ -579,7 +732,10 @@ export interface ICierreDiaService {
    * **R9:** ni una llamada al firmador de URL. La relectura que sustituye (`listarCierreDia`)
    * firma las evidencias de todas las gestiones del dia; el archivo no usa ninguna.
    */
-  listarCierresPasadosCompleto(actor: Actor): Promise<ListarCierresPasadosCompletoServiceResult>;
+  listarCierresPasadosCompleto(
+    actor: Actor,
+    filtros?: FiltrosColaPropia,
+  ): Promise<ListarCierresPasadosCompletoServiceResult>;
   /**
    * R10-R16: crea la solicitud de cierre (`solicitado`) agrupando TODAS las
    * gestiones pendientes del mensajero, con destino derivado por zona (R15) y
