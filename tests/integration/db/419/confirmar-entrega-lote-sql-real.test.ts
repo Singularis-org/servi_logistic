@@ -281,6 +281,9 @@ describeSiHayBase("419 — lote central de entrega a la tienda (Postgres real)",
       // SLT-185 (R1144): siembra y clientes de concurrencia con la envoltura de produccion
       // (`conAislamientoPorEmpresa`): sus escrituras fijan la empresa del contexto y bajan a `servi_app`.
       // Sin ella, `zona.create` de la central viola `organizacion_id NOT NULL` (SL-17).
+      // CONFIRMADA a proposito (SLT-207, D79): `c1` y `c2` son otras conexiones y tienen que ver la
+      // empresa, sus personas y sus ordenes para pelear por ellas. Motivo completo en la cabecera de
+      // `_escenario-419.ts`; la limpia `limpiar419` en el `afterAll`.
       organizacionId = (await crearOrganizacion(mundo.prisma)).id;
       const empresa = organizacionId;
       const deLaApp = (base: PrismaClient) => conAislamientoPorEmpresa(base, async () => null);
@@ -328,14 +331,18 @@ describeSiHayBase("419 — lote central de entrega a la tienda (Postgres real)",
     }, 300_000);
 
     afterAll(async () => {
-      await limpiar419(mundo.prisma, { usuarios, ordenIds, organizacionId });
-      // SLT-185 (R1145): tras limpiar no queda ni la empresa ni sus zonas (central incluida).
-      if (organizacionId !== undefined) {
-        expect(await mundo.prisma.organizacion.count({ where: { id: organizacionId } }), "SLT-185: empresa borrada").toBe(0);
-        expect(await mundo.prisma.zona.count({ where: { organizacionId } }), "SLT-185: zonas borradas").toBe(0);
+      try {
+        await limpiar419(mundo.prisma, { usuarios, ordenIds, organizacionId });
+        // SLT-185 (R1145): tras limpiar no queda ni la empresa ni sus zonas (central incluida).
+        if (organizacionId !== undefined) {
+          expect(await mundo.prisma.organizacion.count({ where: { id: organizacionId } }), "SLT-185: empresa borrada").toBe(0);
+          expect(await mundo.prisma.zona.count({ where: { organizacionId } }), "SLT-185: zonas borradas").toBe(0);
+        }
+      } finally {
+        // SLT-207: las conexiones de la carrera se cierran aunque la limpieza falle.
+        await c1?.$disconnect();
+        await c2?.$disconnect();
       }
-      await c1?.$disconnect();
-      await c2?.$disconnect();
     }, 120_000);
 
     it(`dos lotes a la vez sobre la misma orden (${REPETICIONES}x): uno ok, otro ninguna_devuelta; 1 historial, 1 enlace`, () => {

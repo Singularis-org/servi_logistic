@@ -10,6 +10,14 @@ import { HAY_BASE_DE_DATOS, crearPrismaDeTest, tomarLockDeEscrituraReal } from "
 // filtro `modulos: { some: { modulo } }` es SQL de verdad sobre `organizacion_modulo`, y el cliente es
 // el de la app (`getPrismaClient()`), como en un cron. La base puede tener otras empresas: se mira
 // solo lo que pasa con las dos del archivo.
+//
+// POR QUE COMMITEA Y NO VA EN UNA TRANSACCION REVERTIDA (SLT-207, D79): `paraCadaEmpresa` lista las
+// empresas con el cliente de la app (`getPrismaClient()`), que es OTRA conexion del pool. Una empresa
+// sembrada en la tx del test no la ve nadie fuera de esa tx; pasarle la tx como `cliente` dejaria de
+// medir lo que se mide aqui (el filtro por modulo por el camino de un cron, con su extension). El
+// precio es limpiar a mano en el `afterAll`, acotado a las dos empresas del archivo: el `deleteMany`
+// de `organizacion` se lleva sus `organizacion_modulo` (ON DELETE CASCADE), y el `finally` suelta el
+// lock y desconecta aunque el borrado falle.
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
@@ -22,6 +30,7 @@ describeSiHayBase("SL-23 — paraCadaEmpresa se salta las empresas con el módul
   beforeAll(async () => {
     base = crearPrismaDeTest();
     soltar = await tomarLockDeEscrituraReal();
+    // CONFIRMADAS a proposito: las lee `getPrismaClient()` desde otra conexion (ver la cabecera).
     conMonitoreo = (await crearOrganizacion(base, { nombre: "SL-23 con monitoreo" })).id;
     sinMonitoreo = (await crearOrganizacion(base, { nombre: "SL-23 sin monitoreo" })).id;
     await base.organizacionModulo.createMany({
