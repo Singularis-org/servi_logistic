@@ -22,6 +22,37 @@ export type BloqueMarkdown = { linea: number } & (
   | { tipo: "parrafo"; texto: string }
 );
 
+/** Los patrones de énfasis en línea, en orden de prioridad (`**` antes que `*`). */
+const INLINE = /(\*\*[^*\n]+\*\*|\*[^*\n]+\*|`[^`\n]+`)/g;
+
+/** Un trozo de texto de una línea con su énfasis, ya sin los marcadores. */
+export interface TrozoInline {
+  tipo: "texto" | "negrita" | "cursiva" | "codigo";
+  texto: string;
+}
+
+/**
+ * El texto de una línea partido en trozos: negritas, cursivas, código en línea y texto literal.
+ * Es la misma gramática para la pantalla y para el PDF.
+ */
+export function partirInline(texto: string): TrozoInline[] {
+  return texto
+    .split(INLINE)
+    .filter((trozo) => trozo !== "")
+    .map((trozo): TrozoInline => {
+      if (trozo.startsWith("**") && trozo.endsWith("**") && trozo.length > 4) {
+        return { tipo: "negrita", texto: trozo.slice(2, -2) };
+      }
+      if (trozo.startsWith("*") && trozo.endsWith("*") && trozo.length > 2) {
+        return { tipo: "cursiva", texto: trozo.slice(1, -1) };
+      }
+      if (trozo.startsWith("`") && trozo.endsWith("`") && trozo.length > 2) {
+        return { tipo: "codigo", texto: trozo.slice(1, -1) };
+      }
+      return { tipo: "texto", texto: trozo };
+    });
+}
+
 /** Es la fila separadora de una tabla (`| --- | --- |`), no una fila de datos. */
 function esSeparadorDeTabla(linea: string): boolean {
   return /^\|[\s:|-]+\|$/.test(linea.trim()) && linea.includes("-");

@@ -1,6 +1,6 @@
 import { Fragment, type ReactNode } from "react";
 
-import { analizarBloques, type BloqueMarkdown } from "@/lib/ayuda/bloques";
+import { analizarBloques, partirInline, type BloqueMarkdown } from "@/lib/ayuda/bloques";
 
 /**
  * ⭑ FICHA 433 — el renderizador de Markdown del módulo de ayuda.
@@ -35,39 +35,34 @@ import { analizarBloques, type BloqueMarkdown } from "@/lib/ayuda/bloques";
  * pantallas, así que «quitar el primer `#` y ascenderlo al título» no era una opción.
  */
 
-/** Los patrones de énfasis en línea, en orden de prioridad (`**` antes que `*`). */
-const INLINE = /(\*\*[^*\n]+\*\*|\*[^*\n]+\*|`[^`\n]+`)/g;
-
 /**
  * Renderiza el texto de una línea: negritas, cursivas y código en línea.
- * Todo lo demás es texto literal.
+ * Todo lo demás es texto literal. La gramática es `partirInline` (`bloques.ts`), la misma del PDF.
  */
 export function renderizarInline(texto: string, claveBase: string): ReactNode {
-  const trozos = texto.split(INLINE).filter((trozo) => trozo !== "");
-
-  return trozos.map((trozo, i) => {
+  return partirInline(texto).map((trozo, i) => {
     const clave = `${claveBase}-${i}`;
-    if (trozo.startsWith("**") && trozo.endsWith("**") && trozo.length > 4) {
+    if (trozo.tipo === "negrita") {
       return (
         <strong key={clave} className="font-semibold text-foreground">
-          {trozo.slice(2, -2)}
+          {trozo.texto}
         </strong>
       );
     }
-    if (trozo.startsWith("*") && trozo.endsWith("*") && trozo.length > 2) {
-      return <em key={clave}>{trozo.slice(1, -1)}</em>;
+    if (trozo.tipo === "cursiva") {
+      return <em key={clave}>{trozo.texto}</em>;
     }
-    if (trozo.startsWith("`") && trozo.endsWith("`") && trozo.length > 2) {
+    if (trozo.tipo === "codigo") {
       return (
         <code
           key={clave}
           className="rounded-sm bg-muted px-1 py-0.5 font-mono text-[0.9em] text-foreground"
         >
-          {trozo.slice(1, -1)}
+          {trozo.texto}
         </code>
       );
     }
-    return <Fragment key={clave}>{trozo}</Fragment>;
+    return <Fragment key={clave}>{trozo.texto}</Fragment>;
   });
 }
 
