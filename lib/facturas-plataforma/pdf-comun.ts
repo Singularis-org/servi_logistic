@@ -2,7 +2,7 @@
 // medidas y los componentes (cabecera con barra degradada, tarjetas, títulos, tablas, banda de total y pies).
 // `pdf.ts` y `anexo.ts` solo componen; así los dos documentos no pueden divergir en estilo (R1).
 //
-// Los tokens salen de las plantillas de `docs/referencias/` (Factura-1-Ordenex*.pdf), medidas en px CSS y pasadas
+// Los tokens salen de las plantillas de `docs/referencias/` (la factura y su detalle de referencia), medidas en px CSS y pasadas
 // a mm (1 px = 0,2646 mm). Las referencias son tamaño carta; aquí el papel es A4 con el mismo margen de 14 mm.
 //
 // Altura de fila FIJA: así la paginación es exacta y una tabla partida repite su cabecera sin perder ni duplicar

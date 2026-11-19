@@ -1,5 +1,5 @@
 // SLT-199 (design §4; R8–R14, R26) — el PDF de una factura cerrada de la plataforma con el diseño de
-// `docs/referencias/Factura-1-Ordenex.pdf`: cabecera con barra degradada, seis tarjetas, «Resumen» con tarifa,
+// la factura de referencia de `docs/referencias/`: cabecera con barra degradada, seis tarjetas, «Resumen» con tarifa,
 // banda «TOTAL A PAGAR» con su nota y, en página aparte, «Desglose por día». Se compone con los componentes de
 // `pdf-comun.ts`, que comparte con el anexo (R1).
 //

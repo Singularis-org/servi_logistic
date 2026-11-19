@@ -186,8 +186,8 @@ describe("SLT-199 R11, R12 — textos de las notas", () => {
   });
 
   it("la nota del desglose remite al anexo con el número y la empresa", () => {
-    expect(FACTURA_DESCARGA_TEXTOS.desglose.notaAnexo("2 567", 1, "Ordenex")).toBe(
-      "El detalle completo de los 2 567 movimientos va en el anexo «Factura 1 · Ordenex · Detalle de movimientos».",
+    expect(FACTURA_DESCARGA_TEXTOS.desglose.notaAnexo("2 567", 1, "Acme")).toBe(
+      "El detalle completo de los 2 567 movimientos va en el anexo «Factura 1 · Acme · Detalle de movimientos».",
     );
   });
 });

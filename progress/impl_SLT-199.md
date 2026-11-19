@@ -189,3 +189,11 @@ Veredicto: T4.1 en verde; los botones son «Descargar factura» y «Descargar an
   baja del sistema (otras sesiones). Procesos huérfanos del build terminados. No se relanzó: falta correr
   `e2e/facturas-plataforma.spec.ts` y `--project=dinero` (script en el scratchpad del implementer:
   base → build; spec; dinero, con `E2E_PUERTO=3044`, `E2E_STORAGE_PUERTO=54339`).
+
+### Rojos del gate rápido corregidos (implementer)
+- `sin-nombre-heredado.guardia`: tres comentarios citaban las referencias por su nombre de archivo (con el nombre
+  heredado) y un fixture de `resumen.test.ts` usaba esa empresa. Comentarios reescritos sin el nombre; fixture → «Acme».
+- `test-citado-desaparecido.guardia`: `specs/SLT-136-…/tasks.md` mapeaba R16/R17 a `excel.test.ts`, borrado en T4.2.
+  Se añadió al final de ese `tasks.md` la anotación `<!-- @test-desaparecido … -->` con el motivo (enmienda de
+  SLT-199, design §9). Choca con «los archivos de specs/SLT-136 no se tocan» (design §9), pero la guardia solo admite
+  arreglarlo en ese archivo; es un comentario HTML, sin tocar requisitos. Lo decide el reviewer/leader.
