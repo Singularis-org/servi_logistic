@@ -8,17 +8,14 @@ import type { RecibirEnBodegaCentralResult } from "@/lib/types/recepcion-bodega-
 
 import { estatusLabel } from "./estatus-label";
 
-// Feature 138 — Receptor en `/ordenes` (encabezado, solo maestro/admin): cierra el
-// callejón de `en_ruta_bodega_central`. Espejo de `EscanerRecepcionOrigen`, con DOS
-// entradas equivalentes (R12): (a) escaneo de QR por cámara y (b) entrada manual del
-// número de guía. Ambas funelan a la MISMA Server Action `recibirEnBodegaCentralPorQr`
-// y traducen el resultado a un toast por estado (R15). Tras `ok`/`ya_recibida` invoca
-// `onRecibida` para refrescar el listado (R14).
+// Feature 138 — Receptor de la BODEGA CENTRAL en `/ordenes` (solo maestro/admin): cierra el
+// callejón de `en_ruta_bodega_central`. Llama a `recibirEnBodegaCentralPorQr` y traduce cada
+// respuesta a la fila de la sesión continua (`desenlaceBodegaCentral`, SLT-159 R583), con los
+// motivos de la guía suelta de prod.
 //
-// SLT-158: cada lectura DEVUELVE su resultado a la tarjeta (acierto, o error con el mismo
-// motivo del toast) para el tono, la marca y la línea de error. Sin guard `procesando`
-// propio: la tarjeta encola las lecturas y las envía de a una (R574); el guard tiraba la
-// segunda lectura de la pistola.
+// SLT-202 «Escritorio igual a prod: tamaños de controles y un solo botón de recibir» (Carlos,
+// 2026-11-18): la guía suelta (tarjeta y toast por lectura) se quitó; queda la recepción continua,
+// en diálogo (`continua`) o en página (`pagina`).
 //
 // El rol (maestro/admin) NO se decide aquí: el padre (OrdenesListado) solo monta este
 // control cuando `puedeRecibirBodegaCentral`, y el service revalida server-side (R16).
@@ -33,22 +30,30 @@ export interface EscanerRecepcionBodegaCentralProps {
    * SLT-159: `continua` (el diálogo con lista) o `pagina`. SLT-202: la guía `suelta` se quitó (la
    * cubre la continua).
    */
-  modo: Exclude<ModoRecepcion, "suelta">;
+  modo: ModoRecepcion;
   /** SLT-159 (R613): en `pagina`, adónde vuelve «Terminar recepción». */
   volverA?: string;
 }
 
 const sinRefresco = () => {};
 
+/** Feature 139 (R17), SLT-202 (review B1): el destino de una devolución recibida en la central. */
+export const AVISO_POR_DEVOLVER_A_TIENDA = "Queda por devolver a la tienda.";
+
 /**
  * SLT-159 (R583): la respuesta de la acción traducida a desenlace de la fila. Los motivos son
- * los textos de siempre del toast.
+ * los textos de prod.
  */
 export function desenlaceBodegaCentral(result: RecibirEnBodegaCentralResult): DesenlaceRecepcion {
   const noSePudo = (motivo: string): DesenlaceRecepcion => ({ tipo: "no_se_pudo", motivo });
   switch (result.status) {
     case "ok":
-      return { tipo: "recibida", resumen: result.resumen };
+      // Feature 139 (R17): la recepción central es STATE-AWARE. Si la orden volvía de una devolución
+      // (`devolviendo_a_bodega_central`), queda en `por_devolver_a_tienda`, no en la bodega: la fila
+      // lo dice, como el toast de prod (SLT-202, review B1).
+      return result.estado === "por_devolver_a_tienda"
+        ? { tipo: "recibida", resumen: result.resumen, aviso: AVISO_POR_DEVOLVER_A_TIENDA }
+        : { tipo: "recibida", resumen: result.resumen };
     case "ya_recibida":
       return { tipo: "ya_recibida", resumen: result.resumen };
     case "no_encontrada":

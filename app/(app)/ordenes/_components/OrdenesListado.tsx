@@ -1413,15 +1413,9 @@ export function OrdenesListado({
   // filtro): son acciones independientes del estado. La carga masiva y la recepción en
   // origen se ofrecen al adminTienda (feature 26); la recepción en bodega central
   // (feature 138) al maestro/admin. `onRecibida={handleSuccess}` revalida el listado
-  // (R14), de modo que la orden recibida refleja su nuevo estado.
-  //
-  // El receptor es una TARJETA (cámara + número de guía), demasiado alta para vivir
-  // desplegada encima de la tabla: se abre desde la barra de acciones EN MODAL y se
-  // cierra igual. Quien no puede recibir no ve ni el botón.
-  // El disparador vive a la IZQUIERDA, donde empieza la lectura de la pagina; la carga
-  // masiva sigue a la derecha de la misma fila. Abrir monta la tarjeta y cerrar la
-  // desmonta (apaga la camara): el mismo `EscanerModal` compartido que usan las demás
-  // superficies de escaneo. El label es el suyo por defecto ("Recibir paquete").
+  // (R14) al cerrar la sesión continua (SLT-159 R592), de modo que lo recibido refleja su
+  // nuevo estado. Quien no puede recibir no ve ni el botón. El disparador vive a la
+  // IZQUIERDA, donde empieza la lectura de la página; la carga masiva, a la derecha.
   const header =
     puedeCargarMasiva || puedeEscanearQr || puedeRecibirBodegaCentral ? (
       puedeEscanearQr || puedeRecibirBodegaCentral ? (

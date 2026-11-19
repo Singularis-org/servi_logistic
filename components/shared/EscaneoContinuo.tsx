@@ -85,6 +85,10 @@ function Estado({
       >
         {textoEstado(fila.estado, textos)}
       </span>
+      {/* SLT-202 (review B1): el destino que la guía suelta decía en su toast (feature 139, R17). */}
+      {fila.estado.tipo === "recibida" && fila.estado.aviso ? (
+        <span className="text-xs font-medium text-foreground">{fila.estado.aviso}</span>
+      ) : null}
       {fila.estado.tipo === "no_se_pudo" ? (
         <>
           <span className="text-xs text-muted-foreground">{fila.estado.motivo}</span>

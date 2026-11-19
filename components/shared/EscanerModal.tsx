@@ -46,7 +46,8 @@ import { cn } from "@/lib/utils";
 // acto («Recoger paquete», «Recolectar en tienda»).
 //
 // SLT-193 (R925-R928, decisión de Carlos del 2026-11-17): el escáner es UN solo componente. La
-// barra con el título visible y el único «Cerrar» de 44 × 44 px son de aquí, para TODOS los usos
+// barra con el título visible y el único «Cerrar» (44 × 44 px en el móvil y el `icon-sm` de prod en
+// escritorio, SLT-202) son de aquí, para TODOS los usos
 // y cualquier disparador; la X pequeña del `Dialog` no se pinta y ninguna pantalla pinta su
 // propio cierre (lo vigila `tests/unit/guards/escaner-un-solo-cierre.guardia.test.ts`). Cada
 // pantalla pasa `titulo` (obligatorio) y monta su tarjeta sin encabezado propio.
@@ -94,7 +95,7 @@ export interface EscanerModalProps {
   ayuda?: string;
   /**
    * SLT-190 (R867-R869, DS7) y SLT-193 (R925, R927): título VISIBLE del diálogo, en una barra arriba
-   * con el único «Cerrar» de 44 × 44 px. Obligatorio: es el único título del diálogo (la tarjeta de
+   * con el único «Cerrar» (44 × 44 px en el móvil, SLT-202). Obligatorio: es el único título del diálogo (la tarjeta de
    * dentro va sin encabezado, `sinEncabezado`) y también su nombre accesible.
    */
   titulo: string;

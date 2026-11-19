@@ -115,6 +115,23 @@ describe("EscanerRecepcionBodegaCentral — diálogo continuo (R580, R590, R592)
     expect(onRecibida).toHaveBeenCalledTimes(1);
   });
 
+  // SLT-202 (review B1): sin la guía suelta, la fila es el único sitio donde la central ve que una
+  // devolución recibida queda por devolver a la tienda (feature 139 R17; en prod lo decía el toast).
+  it("B1: el ok de una devolución pinta «Queda por devolver a la tienda.»; el de bodega central no", async () => {
+    const user = userEvent.setup();
+    recibirMock
+      .mockResolvedValueOnce({ status: "ok", ordenId: "o1", estado: "por_devolver_a_tienda" })
+      .mockResolvedValueOnce(OK);
+    render(dialogoContinuo(vi.fn()));
+
+    await abrirYLeer(user, "1024", "2048");
+    await vi.waitFor(() => expect(filasDeLaSesion()).toHaveLength(2));
+    await vi.waitFor(() => expect(filasDeLaSesion()[0]).toHaveTextContent("Recibida"));
+    const [segunda, primera] = filasDeLaSesion();
+    expect(primera).toHaveTextContent("Queda por devolver a la tienda.");
+    expect(segunda).not.toHaveTextContent("Queda por devolver a la tienda.");
+  });
+
   it("R590: ni «Recibida» ni «No encontrada» sacan toast", async () => {
     const user = userEvent.setup();
     recibirMock.mockResolvedValueOnce(OK).mockResolvedValueOnce({ status: "no_encontrada" });

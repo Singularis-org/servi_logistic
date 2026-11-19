@@ -11,24 +11,13 @@ import type { RecibirResult } from "@/lib/types/recepcion-satelite";
 
 import { estatusLabel } from "@/app/(app)/ordenes/_components/estatus-label";
 
-// Feature 33 (T13, R12–R16, decisión F1.4 (a)): recepción por escaneo con la
-// cámara del dispositivo, delegada al componente compartido `QrScanner`, que
-// encapsula el botón, el visor y el ciclo de vida de html5-qrcode. Aquí solo
-// resolvemos el numGuia del texto decodificado y llamamos a `recibirPorQr`.
-// Feedback por ítem con useToast (un toast por resultado). Tras ok/ya_recibida se
-// dispara `onRecibida` (el módulo lo conecta a router.refresh()).
+// Feature 33 — recepción en la bodega satélite. Llama a `recibirPorQr` y traduce cada respuesta a
+// la fila de la sesión continua (`desenlaceSatelite`, SLT-159 R583), con los motivos de la guía
+// suelta de prod. Tras recibir, `onRecibida` relee el listado al cerrar la sesión (R592).
 //
-// Pedido humano (rama ux): la recepción se opera IGUAL que la recogida del mensajero
-// (`RecogerPaqueteCard`), con los DOS caminos en la misma tarjeta: cámara y número de
-// guía TECLEADO. La diferencia entre ambos es solo de parseo — la cámara entrega la URL
-// del paquete (`<origin>/paquete/<numGuia>`) y hay que extraer el número; lo tecleado ES
-// el número—, así que los dos terminan en el mismo `recibirPorQr`.
-//
-// SLT-158: cada lectura DEVUELVE su resultado a la tarjeta (acierto, o error con el mismo
-// motivo del toast). Sin guard `procesando` propio: la tarjeta encola las lecturas (R574).
-//
-// SLT-202 (Carlos, 2026-11-18): la tarjeta de guía suelta, con su toast por lectura, se quitó. La
-// pantalla tiene un solo «Recibir paquete», que abre la recepción continua (SLT-159).
+// SLT-202 «Escritorio igual a prod: tamaños de controles y un solo botón de recibir» (Carlos,
+// 2026-11-18): la tarjeta de guía suelta, con su toast por lectura, se quitó. La pantalla tiene un
+// solo «Recibir paquete», que abre la recepción continua (SLT-159).
 
 export interface EscanerRecepcionProps {
   /**
@@ -40,14 +29,14 @@ export interface EscanerRecepcionProps {
    * SLT-159: `continua` (solo la tarjeta) o `pagina`. Sin modo, el disparador «Recibir paquete» de la
    * pantalla (SLT-202: la guía suelta ya no existe; la cubre la continua).
    */
-  modo?: Exclude<ModoRecepcion, "suelta">;
+  modo?: ModoRecepcion;
   /** SLT-159 (R613): en `pagina`, adónde vuelve «Terminar recepción». */
   volverA?: string;
 }
 
 const sinRefresco = () => {};
 
-/** SLT-159 (R583): la respuesta traducida a desenlace de la fila, con los motivos del toast. */
+/** SLT-159 (R583): la respuesta traducida a desenlace de la fila, con los motivos de prod. */
 export function desenlaceSatelite(result: RecibirResult): DesenlaceRecepcion {
   const noSePudo = (motivo: string): DesenlaceRecepcion => ({ tipo: "no_se_pudo", motivo });
   switch (result.status) {
