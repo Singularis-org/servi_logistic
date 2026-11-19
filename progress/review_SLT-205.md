@@ -88,3 +88,26 @@ Revisé solo el diff de los arreglos (`tests/unit/guards/buscadores-con-escaneo.
 
 ### Veredicto vuelta 2
 **OK**. B1 y B2 quedan resueltos y verificados con mutación. m1 queda resuelto. No hay regresiones. Queda abierto solo m2, que es menor.
+
+## Vuelta 3 (acotada a 495abefd..ca4163f0, sin lo que entró del merge de dev)
+
+Commits propios revisados: `3085caae` (m2) y `ca4163f0` (`SPREADS_VERIFICADOS`). Lo que llegó de dev (SLT-206 «filtro Tienda compartido», SLT-204) queda fuera del alcance.
+
+### Checklist
+- [x] m2 resuelto: el lookahead es `(?![\w$])` y llega a la regex como `\w`. Mutación: lo devolví a `(?![\w$])` y el test nuevo «`<BuscadorFiltrosZz>` NO cuenta como buscador» da ROJO (1 failed). Restaurado: verde.
+- [x] Solo se acepta `{...barraTienda}` suelto. `propsDeApertura` exige `^\.\.\.\s*ident$` y que el ident esté en `SPREADS_VERIFICADOS`. Lo comprobé con mutaciones en `RecogerModule.tsx`. `{...resto}` añadido: ROJO (3 failed). `{...{ ...barraTienda }}`: ROJO (3 failed). En el test, `{...barraTiendaZq7}` y `{...{ ...barraTienda, escaneo: true }}` lanzan `CON_SPREAD`.
+- [x] `escaneo` en `BarraFiltroTienda` (mutación M1, `escaneo?: boolean;` en la interface): ROJO, falla el test «spread verificado».
+- [~] `useFiltroTienda` devuelve `escaneo`: la guardia NO se pone en rojo en ningún caso. Lo frenan otras capas, según la forma:
+  - M2, `escaneo: true` en el literal `barra`: guardia verde (33/33). Lo para `tsc`: TS2353, excess property. El gate lo frena por typecheck, no por la guardia.
+  - M3, `barra` armado en una variable intermedia con `escaneo: true`: guardia verde y `tsc` verde (0 errores). Lo para `tests/components/RecoleccionModule.test.tsx` (3 failed: «el buscador no lleva cámara…»). `RecogerModule.test.tsx` sigue verde, así que Recoger en bodega recibiría la cámara sin que nada avise. Ver m3.
+- [x] Recolección sigue sin cámara y la excepción de Carlos sigue fijada. Mutación M6: añadí `escaneo` al montaje de `RecoleccionModule.tsx` y da ROJO (3 failed, entre ellos «SLT-200: `/recoleccion` monta `BuscadorFiltros` sin `escaneo`»).
+- [x] Corrí la guardia en limpio: 33/33. `eslint` sobre el test: sin problemas. `tsc --noEmit` del proyecto: verde.
+- [x] Tamaño: `node scripts/tamano-pr.mjs` da 1/40 archivos, 0/1000 líneas de producción y 339/3000 de tests.
+- Todas las mutaciones se restauraron con `git checkout --`. `git status` quedó limpio antes de escribir este informe.
+
+### Hallazgos
+- **m3, menor.** El comentario del test dice «TypeScript impide que el hook devuelva más», y es falso fuera del literal directo. La guardia comprueba la interface `BarraFiltroTienda`, no lo que el hook devuelve de verdad. Con un objeto intermedio que lleve `escaneo: true`, la guardia y `tsc` quedan verdes (M3). Para Recolección hay red: los tests de componente la cazan. Para Recoger en bodega no hay ninguna. Arreglo barato: en el test «spread verificado», exigir además que `useFiltroTienda.tsx` (el `archivo`), ya sin comentarios, no contenga `\bescaneo\b`. Y corregir el comentario. No bloquea: hace falta construir el objeto aposta fuera del literal, y la excepción que fijó Carlos (Recolección) sigue cubierta.
+- **m4, menor.** La regex `origen` (`barra:\s*barraTienda\b[\s\S]*?=\s*useFiltroTienda\(`) es laxa. Basta con que `barra: barraTienda` aparezca en algún sitio y, más adelante en el archivo, haya una llamada `= useFiltroTienda(` cualquiera. Un `barraTienda` desestructurado de otro origen pasaría si el archivo llama también a `useFiltroTienda`. Es teórico: hoy los dos usuarios lo desestructuran en la misma sentencia (`RecogerModule.tsx:157` y `RecoleccionModule.tsx:163-167`). Arreglo: limitar el tramo intermedio a `[^;]*?`, o sea, la misma sentencia.
+
+### Veredicto vuelta 3
+**OK**. `SPREADS_VERIFICADOS` no abre un agujero en la guardia en lo que se pidió verificar, con un matiz: si `useFiltroTienda` empieza a devolver `escaneo`, la guardia no se pone en rojo. Esa mutación la frena `tsc` en el literal directo y los tests de componente de Recolección por la variable intermedia, y en Recoger en bodega no la frena nada (m3). Cualquier otro spread sigue en rojo, Recolección sigue fijada sin cámara y m2 está resuelto con mutación. Quedan abiertos m3 y m4, los dos menores.
