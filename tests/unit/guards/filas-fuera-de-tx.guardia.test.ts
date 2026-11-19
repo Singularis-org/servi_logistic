@@ -319,6 +319,36 @@ describe("SLT-204 — unir: un worker de vitest caido no se presenta como fuga d
     expect(r.codigo).toBe(1);
     expect(r.lineas.some((l) => l.startsWith("shard 1/1: se cayó un worker de vitest"))).toBe(true);
     expect(r.lineas).not.toContain("total: 0 filas fuera de su transacción");
+    // m2 (review SLT-204): la linea del shard tampoco dice «0 filas fuera de su transacción».
+    expect(r.lineas).not.toContain("shard 1/1: 0 filas fuera de su transacción");
+    expect(r.lineas).toContain("shard 1/1: 0 filas sueltas, pero el shard quedó incompleto: ese 0 no mide");
+  });
+
+  it("m1: la frase del aviso DENTRO de un AssertionError o un diff, «Service Worker» y el arranque del pool no son caida", () => {
+    const base = join(dir, "falso-positivo");
+    const log = [
+      " FAIL  tests/unit/guards/filas-fuera-de-tx.guardia.test.ts > algo",
+      "AssertionError: expected 'shard 1/1: se cayó un worker de vitest («Worker exited unexpectedly»): el shard' to contain 'x'",
+      "- Expected",
+      "+ Received",
+      "+ shard 1/1: se cayó un worker de vitest («Worker exited unexpectedly» en tests/a.test.ts)",
+      "  console.log: Service Worker registrado",
+      "[vitest-pool]: Worker forks started",
+      "Nota: Error: Worker exited unexpectedly, citado a mitad de linea: no es la traza",
+    ].join("\n");
+    shardCompleto(base, 1, comparar(ANTES, limpio([])), { log, json: jsonVitest(false) });
+    const r = unir(base, 1, "rojo");
+    expect(r.lineas.some((l) => /se cayó un worker/.test(l)), r.lineas.join("\n")).toBe(false);
+    expect(r.codigo).toBe(0);
+    expect(r.lineas).toContain("total: 0 filas fuera de su transacción");
+  });
+
+  it("m1: la traza real con color ANSI y sangria delante si cuenta como caida", () => {
+    const base = join(dir, "ansi");
+    const log = "\u001b[31mError: [vitest-pool]: Worker forks emitted error.\u001b[39m\n";
+    shardCompleto(base, 1, comparar(ANTES, limpio([])), { log });
+    const r = unir(base, 1, "rojo");
+    expect(r.lineas.some((l) => l.startsWith("shard 1/1: se cayó un worker de vitest"))).toBe(true);
   });
 
   it("sin caida (log y JSON sanos) y con filas: el mensaje de siempre, sin hablar de workers", () => {

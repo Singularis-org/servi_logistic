@@ -281,7 +281,13 @@ export function lineasDeInforme(informe: Informe, prefijo = "", opciones?: { tra
   if (informe.estado !== "ok") {
     return [`${prefijo}no se pudo comparar: ${informe.motivo ?? "sin motivo"}`, ...lineaDeControl];
   }
-  if (codigoDeSalida(informe) === 0) return [`${prefijo}${LINEA_CERO}`, ...lineaDeControl];
+  if (codigoDeSalida(informe) === 0) {
+    // SLT-204 (m2): con el worker caido el 0 no mide nada; no se dice «0 filas fuera de su transacción».
+    const cero = opciones?.trasCaida
+      ? `${prefijo}0 filas sueltas, pero el shard quedó incompleto: ese 0 no mide`
+      : `${prefijo}${LINEA_CERO}`;
+    return [cero, ...lineaDeControl];
+  }
   const lineas: string[] = [...lineaDeControl];
   for (const o of informe.organizaciones) {
     const filas = Object.entries(o.filas)
@@ -308,9 +314,14 @@ export function lineasDeInforme(informe: Informe, prefijo = "", opciones?: { tra
 /**
  * La traza que deja vitest 4 cuando un worker muere a mitad del shard: el pool rechaza la tarea con
  * «[vitest-pool]: Worker forks emitted error.» y la causa «Worker exited unexpectedly». Va al log
- * (errores no manejados); el JSON de vitest no la trae.
+ * (errores no manejados); el JSON de vitest no la trae. Medido con vitest 4.1.10.
+ *
+ * ANCLADA al principio de la linea (con color ANSI o sangria delante, como la imprime vitest): el aviso
+ * de abajo cita la misma frase, y si un test que lo compara falla, vitest la imprime DENTRO de un
+ * `AssertionError` o de un diff. Sin el ancla ese log contaria como caida (review SLT-204, m1).
  */
-const TRAZA_DE_CAIDA = /Worker exited unexpectedly|\[vitest-pool\]: Worker \S+ emitted error/;
+const TRAZA_DE_CAIDA =
+  /^(?:\x1b\[[0-9;]*m|\s)*(?:Caused by: )?Error: (?:Worker exited unexpectedly|\[vitest-pool\]: Worker \S+ emitted error)/m;
 
 export interface CaidaDeWorker {
   /** Archivos con casos sin terminar (`pending` en el JSON de vitest), en ruta relativa al repo. */

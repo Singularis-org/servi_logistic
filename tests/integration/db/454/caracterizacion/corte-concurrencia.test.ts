@@ -7,15 +7,12 @@ import {
   crearPrismaDeTest,
 } from "../../_postgres-real";
 import {
-  MARCA_C02,
-  barrerComprometidosHuerfanos,
+  ESCENARIO_C02,
   clienteDeLaApp454,
   enEmpresaDe,
   entradaGestion,
   limpiarComprometido,
   montarServicios,
-  prepararMundo,
-  sembrarComprometido,
   type Comprometido,
   type Mundo,
 } from "../_escenario";
@@ -53,10 +50,11 @@ describeSiHayBase("454/C02 — corte y gestion concurrentes (Postgres real, dos 
   }
 
   async function unaRepeticion(): Promise<(typeof resultados)[number]> {
-    const s = await sembrarComprometido(mundo, async (e) => {
+    // SLT-204 (D80): siembra con la marca de C02 (`ESCENARIO_C02`), para que un resto se reconozca.
+    const s = await ESCENARIO_C02.sembrar(mundo, async (e) => {
       const o = await e.sembrarOrden({ estatus: "en_reparto", montoCobrar: 4000 });
       return { ordenIds: [o.ordenId] };
-    }, { marca: MARCA_C02 });
+    });
     sembrados.push(s);
     // SLT-185 (R1146): control positivo: la empresa y la central propias del escenario estan confirmadas.
     expect(await mundo.prisma.organizacion.count({ where: { id: s.organizacionId } }), "SLT-185: empresa sembrada").toBe(1);
@@ -109,10 +107,9 @@ describeSiHayBase("454/C02 — corte y gestion concurrentes (Postgres real, dos 
   }
 
   beforeAll(async () => {
-    mundo = await prepararMundo();
     // SLT-204 (D80): si una corrida anterior murio con el worker, su escenario confirmado sigue aqui
-    // (con `MARCA_C02` en el nombre de la empresa): se barre antes de sembrar el de esta corrida.
-    await barrerComprometidosHuerfanos(mundo.prisma, MARCA_C02);
+    // (con la marca de C02 en el nombre de la empresa): `preparar` lo barre antes de sembrar el de hoy.
+    mundo = await ESCENARIO_C02.preparar();
     prismaA = clienteDeLaApp454(crearPrismaDeTest());
     prismaB = clienteDeLaApp454(crearPrismaDeTest());
     sonda = crearPrismaDeTest();

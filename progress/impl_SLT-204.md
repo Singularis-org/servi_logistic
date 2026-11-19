@@ -18,7 +18,7 @@ Base desechable: `servi_slt204_desechable` (migrada + catálogos).
 
 ## Parte 1: aviso de worker caído
 
-De dónde sale la caída (datos reales del run, mismo artefacto `informe-shard-<i>`):
+De dónde sale la caída (medido con vitest 4.1.10 en local, T7 de SLT-188, y reproducido por la review; mismo artefacto `informe-shard-<i>`):
 - `init-shard.log`: vitest 4 rechaza la tarea del pool con `[vitest-pool]: Worker forks emitted error.` y causa
   `Worker exited unexpectedly` (`node_modules/vitest/dist/chunks/cli-api.*.js`, `emitUnexpectedExit`). Va a los
   errores no manejados, que el reporter JSON **no** incluye.
@@ -116,5 +116,48 @@ INIT_EXIT=0
 
 MCP de grafo: no usado (exploración con Grep/Read sobre el script, el escenario y vitest en `node_modules`).
 
+## Ronda 2 (review RECHAZADA, `progress/review_SLT-204.md`)
+
+- **B1.** El arranque y la siembra de C02 pasan a `_escenario.ts`: `escenarioConfirmadoDe(marca)` devuelve `preparar()`
+  (`prepararMundo` + barrido de la marca) y `sembrar(mundo, fn)` (`sembrarComprometido` con la marca), y
+  `ESCENARIO_C02 = escenarioConfirmadoDe(MARCA_C02)`. C02 hace `mundo = await ESCENARIO_C02.preparar()` y
+  `ESCENARIO_C02.sembrar(mundo, ...)`. En `corte-concurrencia-restos.test.ts`, el comportamiento de la fábrica se
+  prueba con una marca PROPIA (nunca se siembra con `MARCA_C02`). La conexión con C02 la vigila una guardia de texto
+  sobre su código sin comentarios: llama a `ESCENARIO_C02.preparar()` y `ESCENARIO_C02.sembrar(`, no a `prepararMundo(`
+  ni a `sembrarComprometido(`. Además `ESCENARIO_C02.marca === MARCA_C02`. Se añade un caso de control: `prepararMundo` a
+  secas NO barre.
+- **m1.** `TRAZA_DE_CAIDA` va anclada al principio de línea (multilínea, admite color ANSI o sangría delante):
+  `^(...)(Caused by: )?Error: (Worker exited unexpectedly|[vitest-pool]: Worker \S+ emitted error)`. Caso negativo nuevo:
+  la frase dentro de un `AssertionError` o de un diff, «Service Worker» o `[vitest-pool]: Worker forks started` no
+  cuentan como caída. Caso positivo nuevo: la traza con color ANSI sí cuenta.
+- **m2.** Con un worker caído y 0 filas, la línea del shard dice «0 filas sueltas, pero el shard quedó incompleto: ese 0
+  no mide», no «0 filas fuera de su transacción».
+- **m4.** El origen de las señales queda corregido (medidas en local con vitest 4.1.10, reproducidas por la review).
+
+Mutaciones de la ronda 2 (todas restauradas con `git checkout -- <archivo>`):
+- **M3a** C02 arranca con `prepararMundo()`: `Tests 2 failed | 4 passed (6)` (las dos guardias de texto). **M3 muere.**
+- **M3b** C02 siembra con `sembrarComprometido(mundo,` sin marca: `Tests 2 failed | 4 passed (6)`.
+- **M3c** `preparar` sin el barrido: `Tests 2 failed | 4 passed (6)` («el preparar SIGUIENTE barre...» y el del conteo).
+- **M3d** `sembrar` sin la marca: `Tests 2 failed | 4 passed (6)`. (Dejó restos sin marca en la desechable; purgados:
+  `organizaciones=0`.)
+- **m1** regex sin el ancla `^`: `Tests 1 failed | 23 passed (24)`, cae el caso negativo «la frase del aviso DENTRO de un
+  AssertionError...».
+- **m2** la línea en cero ignora la caída: `Tests 1 failed | 23 passed (24)`, cae «worker caido con 0 filas».
+
+Tests tras la ronda: `Test Files 3 passed (3)`, `Tests 32 passed (32)`; base al final con `organizaciones=0`.
+
+Gate rápido (ronda 2), `servi_slt204_desechable`:
+```
+✓ typecheck paso
+✓ lint paso
+ ✓ tests/integration/db/454/caracterizacion/corte-concurrencia-restos.test.ts (6 tests)
+ ✓ tests/integration/db/454/caracterizacion/corte-concurrencia.test.ts (2 tests)
+ ✓ tests/unit/guards/filas-fuera-de-tx.guardia.test.ts (24 tests)
+ Tests 668 / 1303 / 1813 / 1503 (1 skipped) / 500 passed
+== init OK ==
+INIT_EXIT=0
+```
+`tamano-pr`: `6/40 archivos, 126/1000 lineas de produccion, 399/3000 de tests`.
+
 ## Veredicto
-Aviso de worker caído en `gate-completo` y barrido D80 implementados con test en rojo previo y mutaciones que muerden; gate rápido verde.
+Aviso de worker caído y barrido D80 implementados. Tras la review, el aviso va anclado a la traza, el 0 de un shard incompleto ya no se presenta como medida y C02 queda atado al barrido con tests (M3 muere). Gate rápido verde.

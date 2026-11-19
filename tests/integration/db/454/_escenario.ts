@@ -959,3 +959,30 @@ export async function barrerComprometidosHuerfanos(prisma: PrismaClient, marca: 
   }
   return huerfanas.length;
 }
+
+/**
+ * SLT-204 (D80, review B1): el arranque y la siembra de un archivo que CONFIRMA su escenario, atados a
+ * su marca. `preparar` = `prepararMundo` + barrido de los restos con la marca; `sembrar` =
+ * `sembrarComprometido` con la marca. Asi «barre al arrancar» y «siembra marcado» viven aqui, donde
+ * `corte-concurrencia-restos.test.ts` los prueba con una marca propia (sin tocar la de C02 en vivo).
+ */
+export interface EscenarioConfirmado {
+  marca: string;
+  preparar(): Promise<Mundo>;
+  sembrar(mundo: Mundo, fn: (e: Escenario) => Promise<{ ordenIds: string[] }>): Promise<Comprometido>;
+}
+
+export function escenarioConfirmadoDe(marca: string): EscenarioConfirmado {
+  return {
+    marca,
+    async preparar() {
+      const mundo = await prepararMundo();
+      await barrerComprometidosHuerfanos(mundo.prisma, marca);
+      return mundo;
+    },
+    sembrar: (mundo, fn) => sembrarComprometido(mundo, fn, { marca }),
+  };
+}
+
+/** SLT-204 (D80): el de C02 (`caracterizacion/corte-concurrencia`). */
+export const ESCENARIO_C02 = escenarioConfirmadoDe(MARCA_C02);
