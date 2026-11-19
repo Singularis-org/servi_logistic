@@ -7,14 +7,15 @@ import { Button } from "@/components/ui/button";
 import { MARCA_FACTURA } from "@/lib/config/marca";
 import { nombreArchivoFactura, resumirFactura } from "@/lib/facturas-plataforma/resumen";
 import type { DescargaFacturaResult } from "@/lib/types/factura-plataforma";
-import { XLSX_MIME } from "@/lib/utils/xlsx-template";
 
 import { FACTURAS_TEXTOS } from "./facturas-vista";
 
 // SLT-136 (design §6; R14, R15, R19, R20) — los dos botones de descarga de una factura cerrada, dentro del panel de
 // detalle. El archivo nace en el navegador: se piden los datos con la función que pasa la pantalla (la action del
-// maestro o la del superadmin ya ligada a su empresa), se comprueba su cuadre (`resumirFactura`, R15) y se arma el
-// PDF o el Excel. jsPDF y exceljs entran con `import()` dinámico: no pesan en la carga de la pantalla.
+// maestro o la del superadmin ya ligada a su empresa), se comprueba su cuadre (`resumirFactura`) y se arma el PDF.
+// jsPDF entra con `import()` dinámico: no pesa en la carga de la pantalla.
+// SLT-199 (design §7; R7, R22–R24): los dos botones son la factura y el anexo de movimientos, los dos en PDF. Siguen
+// el mismo camino (lectura, cuadre, logo, constructor), así que un descuadre impide los dos documentos.
 
 /** La lectura de la descarga: la action de «Mi plan» o la del detalle de empresa, ya ligada. */
 export type DescargarFacturaFn = (input: { facturaId: string }) => Promise<DescargaFacturaResult>;
@@ -24,7 +25,7 @@ export interface DescargarFacturaProps {
   readonly descargar: DescargarFacturaFn;
 }
 
-type Formato = "pdf" | "xlsx";
+type Documento = "factura" | "anexo";
 
 const T = FACTURAS_TEXTOS.descarga;
 const MIME_PDF = "application/pdf";
@@ -40,40 +41,34 @@ async function cargarLogo(): Promise<Uint8Array | null> {
   }
 }
 
-/** Lee, comprueba y entrega el archivo. Lanza si la lectura no es `ok` o si la generación falla (R15, R20). */
-async function generar(facturaId: string, descargar: DescargarFacturaFn, formato: Formato): Promise<void> {
+/** Lee, comprueba y entrega el PDF. Lanza si la lectura no es `ok` o si la generación falla (SLT-199 R7, R23). */
+async function generar(facturaId: string, descargar: DescargarFacturaFn, documento: Documento): Promise<void> {
   const r = await descargar({ facturaId });
   if (r.estado !== "ok") throw new Error(`la lectura de la descarga respondió ${r.estado}`);
   const { datos } = r;
   const numero = datos.factura.numero;
   if (numero === null) throw new Error("la factura no está cerrada (no tiene número)");
-  // R15: un descuadre con la base lanza aquí, antes de construir ningún archivo.
+  // R7: un descuadre con la base lanza aquí, antes de construir ninguno de los dos documentos.
   const resumen = resumirFactura(datos);
-  if (formato === "pdf") {
-    const logo = await cargarLogo();
-    const { construirPdfFactura } = await import("@/lib/facturas-plataforma/pdf");
-    const bytes = construirPdfFactura(datos, resumen, logo);
-    descargarBlob(bytes, MIME_PDF, nombreArchivoFactura(numero, datos.empresaNombre, "factura"));
-    return;
-  }
-  const { construirExcelFactura } = await import("@/lib/facturas-plataforma/excel");
-  const bytes = await construirExcelFactura(datos);
-  // Hasta que el anexo sustituya al Excel (SLT-199 T4.1), el nombre de la factura con la extensión del Excel.
-  const nombre = nombreArchivoFactura(numero, datos.empresaNombre, "factura").replace(/\.pdf$/, ".xlsx");
-  descargarBlob(bytes, XLSX_MIME, nombre);
+  const logo = await cargarLogo();
+  const bytes =
+    documento === "factura"
+      ? (await import("@/lib/facturas-plataforma/pdf")).construirPdfFactura(datos, resumen, logo)
+      : (await import("@/lib/facturas-plataforma/anexo")).construirPdfAnexo(datos, resumen, logo);
+  descargarBlob(bytes, MIME_PDF, nombreArchivoFactura(numero, datos.empresaNombre, documento));
 }
 
 export function DescargarFactura({ facturaId, descargar }: DescargarFacturaProps) {
-  const [enCurso, setEnCurso] = useState<Formato | null>(null);
+  const [enCurso, setEnCurso] = useState<Documento | null>(null);
   const [fallo, setFallo] = useState(false);
 
-  async function pulsar(formato: Formato) {
+  async function pulsar(documento: Documento) {
     // R20: los dos botones quedan deshabilitados hasta que termine; un segundo clic no lanza otra descarga.
     if (enCurso !== null) return;
-    setEnCurso(formato);
+    setEnCurso(documento);
     setFallo(false);
     try {
-      await generar(facturaId, descargar, formato);
+      await generar(facturaId, descargar, documento);
     } catch (error) {
       console.error("[DescargarFactura] la descarga falló", error);
       setFallo(true);
@@ -86,11 +81,11 @@ export function DescargarFactura({ facturaId, descargar }: DescargarFacturaProps
   return (
     <div role="group" aria-label={T.etiqueta} aria-busy={ocupado} className="flex flex-col gap-2">
       <div className="flex flex-wrap gap-2">
-        <Button type="button" variant="outline" size="sm" disabled={ocupado} onClick={() => void pulsar("pdf")}>
-          {T.pdf}
+        <Button type="button" variant="outline" size="sm" disabled={ocupado} onClick={() => void pulsar("factura")}>
+          {T.factura}
         </Button>
-        <Button type="button" variant="outline" size="sm" disabled={ocupado} onClick={() => void pulsar("xlsx")}>
-          {T.excel}
+        <Button type="button" variant="outline" size="sm" disabled={ocupado} onClick={() => void pulsar("anexo")}>
+          {T.anexo}
         </Button>
       </div>
       {fallo && (

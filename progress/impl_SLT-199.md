@@ -119,3 +119,31 @@ medido en el navegador.
 - No se corrieron `./init.sh` ni las guardias (lo pidió el leader).
 
 Veredicto: Tandas 2 y 3 en verde; la factura tiene el diseño nuevo, el anexo existe y R1 se comprueba entre los dos.
+
+## Tanda 4, T4.1 — frontend_dev, 2026-11-18
+
+### Archivos (+/−)
+- `components/shared/facturas/DescargarFactura.tsx`: `Documento = "factura" | "anexo"`; los dos caminos leen,
+  cuadran (`resumirFactura`), cargan el logo y arman su PDF con `import()`; fuera `XLSX_MIME`, el Excel y el
+  `.replace(/\.pdf$/, ".xlsx")` provisional.
+- `components/shared/facturas/facturas-vista.ts`: `descarga.factura` «Descargar factura» y `descarga.anexo`
+  «Descargar anexo» (fuera `pdf`/`excel`).
+- `components/shared/facturas/DetalleDeFactura.tsx`: solo el comentario.
+- Tests: `tests/components/DescargarFactura.test.tsx`, `tests/components/DetalleDeFactura.test.tsx`,
+  `tests/components/MiPlanModule.test.tsx`, `tests/integration/plataforma-empresa-detalle-page.test.tsx`.
+
+### Mapa R → test (T4.1)
+| R | Test |
+|---|---|
+| R7 | `DescargarFactura.test.tsx` «SLT-199 R7 — … no se genera ninguno de los dos documentos» (los dos botones) |
+| R22 | `DescargarFactura.test.tsx` «SLT-199 R22 — el componente ya no ofrece Excel»; `DetalleDeFactura.test.tsx` «R23: una cerrada muestra los dos botones…» (ningún botón /excel/) y «R16, R22, R23: en una cerrada los botones son…» |
+| R23 | `DescargarFactura.test.tsx` «SLT-199 R23 — al pulsar…» y «… si la lectura o la generación fallan»; `DetalleDeFactura.test.tsx` «SLT-199 R22, R23 — … solo en una factura cerrada»; `MiPlanModule.test.tsx` «SLT-199 R23: el maestro ve…»; `plataforma-empresa-detalle-page.test.tsx` «SLT-136 R2, SLT-199 R23: …» |
+| R24 | `DescargarFactura.test.tsx` «SLT-199 R23, R24 — una descarga que sale bien» (`factura-1-…pdf` y `factura-1-…-anexo.pdf`, `application/pdf`) |
+
+### Salida
+- `pnpm exec vitest run` (los 4 archivos): Test Files 4 passed (4), Tests 90 passed (90).
+- `pnpm run typecheck`: limpio. `pnpm exec eslint` sobre los 7 archivos tocados: limpio.
+- Siguen nombrando el Excel (de T4.2/T5.2, sin tocar): `lib/facturas-plataforma/excel.ts`,
+  `tests/unit/facturas-plataforma/excel.test.ts`, `e2e/facturas-plataforma.spec.ts`.
+
+Veredicto: T4.1 en verde; los botones son «Descargar factura» y «Descargar anexo», los dos en PDF.

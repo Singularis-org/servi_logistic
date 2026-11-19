@@ -84,11 +84,11 @@ export const FACTURAS_TEXTOS = {
     pagina: (p: number, de: number) => `Página ${p} de ${de}`,
     etiqueta: "Páginas de líneas",
   },
-  /** SLT-136 (design §6; R19, R20): los botones de descarga de una factura cerrada y su error. */
+  /** SLT-136 (design §6; R19, R20) y SLT-199 (R23): los botones de descarga de una factura cerrada y su error. */
   descarga: {
     etiqueta: "Descargar la factura",
-    pdf: "Descargar PDF",
-    excel: "Descargar Excel",
+    factura: "Descargar factura",
+    anexo: "Descargar anexo",
     error: "No se pudo descargar la factura",
   },
   dias: (cobrados: number, periodo: number) => `${cobrados} de ${periodo} días`,
