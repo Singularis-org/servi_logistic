@@ -21,20 +21,20 @@ En PR 2 el margen de líneas de producción es corto: comentarios breves y nada 
 
 ## Tanda 1 — PR 1: cédula y base del Histórico (R1601-R1609)
 
-- [ ] **T1.1 — Migración A y esquema.**
+- [x] **T1.1 — Migración A y esquema.**
   `20261120120000_slt221_historial_correo_cedula`: los dos valores del enum y `varchar(254)` en
   `valor_anterior`/`valor_nuevo` (design §2.1). Antes, comprobar con `pg_depend` qué vistas
   dependen de esas columnas. `down.sql` con el molde de
   `20261119120000_historial_accion_ordenes_retiradas_a_central`. `db/schema.prisma` al día.
   **Hecho:** `migrate deploy` y `db:rollback` aplican y revierten sin error en una base desechable,
   y `prisma generate` compila.
-- [ ] **T1.2 — Catálogo del Histórico** (depende de T1.1).
+- [x] **T1.2 — Catálogo del Histórico** (depende de T1.1).
   `lib/types/historial-accion.ts`: los dos tipos en A.3, categoría «cambia_permisos» y etiquetas
   (R1609). **Hecho:** `pnpm run typecheck` verde (exhaustividad del enum).
-- [ ] **T1.3 [P] — Borde.** `actualizarUsuarioSchema` gana `cedula` y el comentario R16 se
+- [x] **T1.3 [P] — Borde.** `actualizarUsuarioSchema` gana `cedula` y el comentario R16 se
   actualiza (design §3.1). **Hecho:** `tests/unit/types/usuario-schema.test.ts` cubre que `cedula`
   entra y que `email` y `password` siguen siendo `validation_error` (R1607).
-- [ ] **T1.4 — Servicio y repositorio** (depende de T1.2 y T1.3).
+- [x] **T1.4 — Servicio y repositorio** (depende de T1.2 y T1.3).
   - `UpdateUsuarioData.cedula` y `ActualizarUsuarioServiceResult` con `conflict`;
   - `validarCambioDePersona` con la cédula;
   - `actualizar` traduce `UsuarioDuplicadoError`;
@@ -53,7 +53,7 @@ En PR 2 el margen de líneas de producción es corto: comentarios breves y nada 
     - 254 caracteres caben y 255 abortan (R1608).
   - Cada test se mata con una mutación (quitar la condición de «cambió», quitar el `organizacion_id`
     del choque) antes de darlo por bueno.
-- [ ] **T1.5 — Guardias del Histórico** (depende de T1.4).
+- [x] **T1.5 — Guardias del Histórico** (depende de T1.4).
   - `historial-accion-sin-datos-cliente`: lista de excepciones declaradas para
     `usuario_cedula_cambiada` y `usuario_email_cambiado` en `UserRepository.ts`, con su
     contraprueba y la consecuencia de D10 escrita en la cabecera (design §6);
