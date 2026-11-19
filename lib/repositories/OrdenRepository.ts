@@ -117,7 +117,7 @@ import type { NivelGeografico } from "@/lib/types/geografia-nodo";
 // etiqueta congelada. Los cuatro escritores de esta clase que registran accion lo llaman DENTRO
 // de su propia `$transaction`.
 import { appendAccion, resolverActorCongelado } from "@/lib/repositories/registrar-accion";
-import { etiquetaDeEntidad } from "@/lib/types/historial-accion-etiquetas";
+import { etiquetaDeEntidad, etiquetaDeRetiroSatelite } from "@/lib/types/historial-accion-etiquetas";
 import type { IJobRepository, JobTxClient } from "@/lib/interfaces/repositories/IJobRepository";
 import { JobRepository } from "@/lib/repositories/JobRepository";
 import {
@@ -4123,6 +4123,8 @@ export class OrdenRepository implements IOrdenRepository {
    * revierte y se devuelve `"conflicto"` sin filas cambiadas ni historial (R974). La orden queda sin
    * mensajero, sin `asignado_at` y sin dia de reparto (R972), y conserva zona, tienda, guia, remision
    * y monto: no se tocan.
+   *
+   * SLT-211: deja ademas su accion en `historial_accion` (una por satelite del lote, mismo `lote_id`).
    */
   async retirarSateliteLote(
     ordenIds: string[],
@@ -4139,7 +4141,15 @@ export class OrdenRepository implements IOrdenRepository {
       await this.prisma.$transaction(async (tx) => {
         const origenRows = await tx.orden.findMany({
           where,
-          select: { id: true, estatusId: true },
+          // SLT-211: zona, guia y remision, para la accion de Historico › Acciones.
+          select: {
+            id: true,
+            estatusId: true,
+            zonaId: true,
+            numGuia: true,
+            numRemision: true,
+            zona: { select: { nombre: true } },
+          },
         });
         const result = await tx.orden.updateMany({
           where,
@@ -4161,6 +4171,28 @@ export class OrdenRepository implements IOrdenRepository {
             estatusDestinoId: destinoEstatusId,
             actorUsuarioId: historial.actorUsuarioId,
             origenTipo: historial.origenTipo, // ajuste_estado
+          })),
+        );
+
+        // SLT-211: la accion en Historico › Acciones, en esta MISMA transaccion y DESPUES de la
+        // guarda de conflicto (un conflicto no deja fila). Una por satelite del lote, todas con el
+        // mismo `lote_id` (una sola llamada): el lote puede mezclar satelites (D9 de SLT-197).
+        const porZona = new Map<string, { nombre: string | null; envios: typeof origenRows }>();
+        for (const r of origenRows) {
+          if (r.zonaId === null) continue; // una orden en estante de satelite siempre tiene zona
+          const grupo = porZona.get(r.zonaId) ?? { nombre: r.zona?.nombre ?? null, envios: [] };
+          grupo.envios.push(r);
+          porZona.set(r.zonaId, grupo);
+        }
+        const actor = await resolverActorCongelado(tx, historial.actorUsuarioId);
+        await appendAccion(
+          tx,
+          [...porZona].map(([zonaId, grupo]) => ({
+            accion: "ordenes_retiradas_a_central" as const,
+            entidadTipo: "zona" as const,
+            entidadId: zonaId,
+            entidadEtiqueta: etiquetaDeRetiroSatelite(grupo.nombre ?? "", grupo.envios),
+            ...actor,
           })),
         );
       });
