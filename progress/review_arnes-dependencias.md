@@ -158,7 +158,7 @@ Plantilla: #35 (`main` <- `...-0220`) y #36 (`...-0220` <- `...-0236`, head `04b
 
 - B1, m1, m2 y m3: **resueltos**.
 - **m5 — menor, estilo.** El reflujo dejó líneas largas en `docs/gate.md:363` (119 columnas),
-  `scripts/verificar-dependencias.mjs:64` y la guardia, línea 97. Es cosmético y no bloquea.
+  `scripts/verificar-dependencias.mjs:5` y la guardia, línea 5 (las dos reflujadas en este rango; el resto de líneas largas de esos archivos son anteriores). Es cosmético y no bloquea.
 - **m6 — menor, operativo.** El #36 apunta a la rama del #35, no a `main`. Hay que mergear primero
   el #35. Si al mergearlo no se borra su rama, GitHub no re-apunta el #36 a `main`, y mergear el #36
   lo metería en una rama muerta. O se borra la rama del #35 al mergear, o se cambia la base del #36
