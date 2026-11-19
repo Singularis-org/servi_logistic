@@ -30,7 +30,7 @@
 
 | Dónde | Clave | Qué es |
 |---|---|---|
-| `POST /api/ordenes/api-key/carga` → `manifiesto.filas[]` (`ManifiestoFila`) | `intentos` | Entero ≥ 0, nunca `null`. Intentos de entrega de la orden: visitas del mensajero que no terminaron en entrega (`novedad`, `reprogramado` o `devolucion_a_origen_por_rechazo`), contadas una por cierre aprobado. Sin intentos vale `0`; en la respuesta de la carga las órdenes acaban de crearse, así que vale `0`. |
+| `POST /api/ordenes/api-key/carga` → `manifiesto.filas[]` (`ManifiestoFila`) | `intentos` | Entero ≥ 0, nunca `null`. Intentos de entrega de la orden: visitas de entrega sin entrega, contadas una por cierre aprobado con al menos una gestión no anulada de resultado `novedad`, `reprogramado` o `devolucion_a_origen_por_rechazo`. Sin intentos vale `0`; en la respuesta de la carga las órdenes acaban de crearse, así que vale `0`. |
 
 **Lo que NO cambia:** ningún otro endpoint gana el conteo (listado, detalle, webhook y el resto de
 la carga siguen sin él).
@@ -123,7 +123,6 @@ que se pide y se recibe por este canal es el mismo).
 ## 2026-09-24 — ⚠️ RUPTURA — Los estados cambian de código y ganan su nombre
 
 > **Fecha de despliegue: en producción desde el primer despliegue de la plataforma (2026-10-22).**
-> Este cambio **rompe** a quien compare códigos de estado o de resultado con los códigos anteriores.
 
 **Qué cambia, en una frase:** cada estado de una orden se llama igual en todas partes —en la
 aplicación, en el rastreo público y en este canal—. Siete estados cambian de **código**, los cuatro

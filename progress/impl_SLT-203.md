@@ -83,3 +83,12 @@ Para esta plataforma el renombrado está en producción desde su primer commit e
 `86d70bf0` (2026-10-22); la entrada 2026-09-24 es anterior a la plataforma. El CHANGELOG pasa de
 «PENDIENTE» a «en producción desde el primer despliegue de la plataforma (2026-10-22)». La guía
 (§ bloque A: «Ya está en producción») no contradice y no se toca.
+
+## Review (170d2652): hallazgos 2 y 3
+- H2: la definición de `intentos` decía «visitas del mensajero», pero el conteo incluye también la
+  gestión que registra la tienda desde una ayuda (`OrdenHistorialRepository.ts:230-233`). Ahora dice
+  «visitas de entrega sin entrega, contadas una por cierre aprobado con al menos una gestión no
+  anulada de resultado `novedad`, `reprogramado` o `devolucion_a_origen_por_rechazo`» en el spec TS,
+  el YAML, Postman, la guía y el CHANGELOG.
+- H3: quitada del CHANGELOG 2026-09-24 la frase «rompe a quien compare… con los códigos anteriores».
+- Gate rápido: 4 × `Test Files 100 passed (100)` + `2 passed (2)`, `== init OK ==`, **INIT_EXIT=0**.

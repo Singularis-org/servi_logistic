@@ -2044,7 +2044,7 @@ components:
         intentos:
           type: integer
           minimum: 0
-          description: "Intentos de entrega de la orden: visitas del mensajero que no terminaron en entrega (`novedad`, `reprogramado` o `devolucion_a_origen_por_rechazo`), contadas una por cierre aprobado; una gestión anulada o cuyo cierre no se aprobó no cuenta. Nunca `null`: sin intentos vale `0`. En la respuesta de la carga las órdenes acaban de crearse, así que vale `0`."
+          description: "Intentos de entrega de la orden: visitas de entrega sin entrega, contadas una por cierre aprobado con al menos una gestión no anulada de resultado `novedad`, `reprogramado` o `devolucion_a_origen_por_rechazo`; una gestión anulada o cuyo cierre no se aprobó no cuenta. Nunca `null`: sin intentos vale `0`. En la respuesta de la carga las órdenes acaban de crearse, así que vale `0`."
         origen:
           type: string
           description: "De dónde sale el paquete en este traslado (tu tienda)."
