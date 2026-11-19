@@ -1,27 +1,33 @@
-# Guía de integración — API de Servi Logistic (fuente editable)
+# Guía de integración — API de Servi Logistic (dónde se edita)
 
-Aquí vive la **fuente** del manual de integración del canal por API key que se entrega a los
-integradores como PDF. Hasta septiembre de 2026 el manual existía solo como PDF y cada versión
-había que reconstruirla desde el anterior; desde esta carpeta se edita el HTML y se regenera.
+El manual de integración del canal por API key tiene **una sola fuente**:
+`docs/ayuda/oficina/guia-integracion-api.md`. De ese archivo salen las tres cosas que existen de
+la guía (SLT-80):
 
-| Archivo | Qué es |
+| Qué | Cómo sale del `.md` |
 |---|---|
-| `guia-integracion.html` | La guía completa: texto, tablas, ejemplos y la hoja de estilo (inline). Es lo único que se edita. |
-| `generar-pdf.py` | Valida los ejemplos JSON del HTML e imprime el PDF con Chrome/Edge en modo headless. |
+| La pantalla en Ayuda | `/ayuda/oficina/guia-integracion-api`, solo para maestro y admin (`roles` del frontmatter). |
+| El PDF que se entrega al integrador | Se descarga desde la app en `/ayuda/descargas/guia-integracion-api`. Se genera en el momento con jsPDF, con la marca Servi Logistic, y se llama `Guia-Integracion-API-Servi-Logistic-<actualizado>.pdf`. No se commitea ningún PDF. |
+| Lo que lee el asistente | El asistente recibe la guía en el contexto de maestro y admin, como el resto de Ayuda. |
 
-## Regenerar el PDF
+Hasta noviembre de 2026 la guía era un HTML de esta carpeta que se imprimía a mano con Chrome
+(`generar-pdf.py`). Los dos se retiraron: con dos fuentes vivas, lo que se veía en la app y lo que
+recibía el integrador acababan siendo distintos.
 
-```bash
-python docs/api/guia-integracion/generar-pdf.py "C:/Users/<usuario>/Desktop/Guia-Integracion-API-Servi-Logistic (mes año).pdf"
-```
+## Cómo se edita
 
-Sin argumento escribe `guia-integracion.pdf` al lado del HTML (ese PDF **no se commitea**: el
-entregable se genera cuando hace falta). Los pies de página («Guía de integración — API de
-Servi Logistic · n / N») salen de las reglas `@page` del HTML; la portada no lleva pie.
+- Se edita el `.md` y nada más. Sigue el contrato de `docs/ayuda/README.md` (frontmatter,
+  subconjunto de Markdown que pinta `lib/ayuda/markdown.tsx`: sin enlaces, imágenes, HTML crudo ni
+  listas anidadas). Los marcadores angulares (`<ordenId>`) van siempre dentro de código.
+- Cada operación lleva su método y su ruta en el título: `**POST** \`/api/...\``.
+- La guardia `tests/unit/guards/guia-api-fuente-unica.guardia.test.ts` comprueba que la guía nombra
+  cada operación de `openApiSpec.paths` y cada evento de `EVENTOS_PUBLICOS`, que no nombra rutas que
+  la spec no tiene, y que todo bloque `json` es JSON válido.
 
 ## Qué actualizar en cada versión
 
-1. **La portada**: «Versión del documento: <mes año>».
+1. **El frontmatter**: `actualizado` (la fecha da nombre al PDF) y la línea «Versión del documento»
+   del comienzo de la guía.
 2. **La sección «Cambios respecto de la versión de <anterior>»**: qué se rompe, desde cuándo, qué
    tiene que cambiar el integrador y la tabla de lo ya vigente. La fuente es
    `docs/api/CHANGELOG.md`: cada entrada del changelog posterior a la versión anterior tiene que
@@ -40,14 +46,15 @@ Servi Logistic · n / N») salen de las reglas `@page` del HTML; la portada no l
      `lib/repositories/OrdenRepository.ts` (`ESTADOS_CANCELABLES_API`),
      `lib/services/ApiHabilitacionService.ts`.
 4. **El índice** («Contenido») si cambian las secciones.
+5. **`fuentes`** del frontmatter si la guía pasa a apoyarse en un archivo nuevo.
 
 ## Reglas del documento
 
 - Los **códigos anteriores** al cambio de nombres de estados (los siete de la tabla A.1 y los
   cuatro resultados de A.2) solo pueden aparecer en la sección de cambios. En el resto de la
   guía se usan los vigentes.
-- Todos los bloques `<pre>` con JSON tienen que ser JSON válido; `generar-pdf.py` aborta si no.
-  Los `curl` y los fragmentos con placeholders angulares (`<ordenId>`, `<host-de-storage>`) se
-  admiten.
+- Todos los bloques `json` tienen que ser JSON válido; la guardia de arriba se pone roja si no.
+  Los `curl` van en bloques `bash` y los fragmentos con marcadores angulares (`<ordenId>`,
+  `<host-de-storage>`) se admiten dentro de las cadenas.
 - Los importes, guías, UUID y claves son ilustrativos; nunca datos reales.
 - Tono: «usted», frases cortas, un aviso `⚠` por cada comportamiento que suele sorprender.

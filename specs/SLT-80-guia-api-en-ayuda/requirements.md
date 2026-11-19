@@ -178,7 +178,7 @@ Preview.
 
 ## Tasks
 
-- [ ] **T0 — Esperar a SLT-201.**
+- [x] **T0 — Esperar a SLT-201.**
   - Comprobar en `origin/dev` que SLT-201 está mergeada (su commit toca
     `docs/api/guia-integracion/guia-integracion.html`) y traerla a la rama con `git merge origin/dev`.
   - **Hecho:** el HTML de la rama es el de SLT-201. Si SLT-201 no está en `dev`, se para y se avisa
@@ -194,7 +194,7 @@ Preview.
   - **Hecho:**
     - todas las secciones del índice («Contenido») del HTML están, con el mismo orden y el mismo texto;
     - `ayuda-render-sin-filtracion` y `nombres-estado-retirados` siguen en verde.
-- [ ] **T2 — Retirar la fuente vieja (R1300).**
+- [x] **T2 — Retirar la fuente vieja (R1300).**
   - Borrar `guia-integracion.html` y `generar-pdf.py`.
   - Reescribir `docs/api/guia-integracion/README.md`: dónde se edita (el `.md`), cómo se descarga el
     PDF (desde la app) y qué actualizar en cada versión.
@@ -238,7 +238,7 @@ Preview.
   - Añadir los dos enlaces a `actions` de `AppPage` en `configuracion/api/page.tsx` y en
     `configuracion/integraciones/page.tsx`, en la rama del `maestro`.
   - **Hecho:** test de componente en verde, y los enlaces no aparecen en la rama «sin permiso».
-- [ ] **T9 — Recuentos del catálogo (R1317).** El catálogo pasa de 37 a 38 documentos, +1 a `maestro` y
+- [x] **T9 — Recuentos del catálogo (R1317).** El catálogo pasa de 37 a 38 documentos, +1 a `maestro` y
   `admin`.
   - Actualizar con su línea de motivo:
     - `tests/components/AyudaLayout.test.tsx`;

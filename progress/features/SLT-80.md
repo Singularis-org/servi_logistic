@@ -44,6 +44,12 @@
 (cerradas el 2026-11-18; ver Decisiones)
 
 ## Tandas
+- **Tanda 1** (2026-11-18, backend_dev; T1, T2, T9, T10): `.md` creado (cuerpo 74.275 bytes /
+  73.012 caracteres / 925 líneas), HTML y `generar-pdf.py` borrados, README reescrito, recuentos
+  37→38 y guardia `guia-api-fuente-unica` con sus dos mutaciones en rojo. T2 y T9 [x].
+  T1 y T10 sin cerrar: 5 rojos piden decisión (R1305 contra la guía, `pantalla` de D7, `actualizado:`
+  en la prosa, `B.`/`sin gestionar`/`Asignada` en `nombres-estado-retirados`). Detalle en
+  `progress/impl_SLT-80.md > Bloqueos`.
 
 ## Modelos (overrides)
 
