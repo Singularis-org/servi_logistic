@@ -36,7 +36,7 @@
 
 ## Tanda 2 — La factura
 
-- [ ] **T2.1** Rediseñar `construirPdfFactura` en `lib/facturas-plataforma/pdf.ts` (design §4). Depende de T1.1 y
+- [x] **T2.1** Rediseñar `construirPdfFactura` en `lib/facturas-plataforma/pdf.ts` (design §4). Depende de T1.1 y
   T1.2.
   - Cabecera y barra.
   - Seis tarjetas en dos columnas.
@@ -49,11 +49,11 @@
 
 ## Tanda 3 — El anexo
 
-- [ ] **T3.1** `lib/facturas-plataforma/anexo.ts` con `construirPdfAnexo` (design §6). Depende de T1.1 y T1.2.
+- [x] **T3.1** `lib/facturas-plataforma/anexo.ts` con `construirPdfAnexo` (design §6). Depende de T1.1 y T1.2.
   *Hecho:*
   - `tests/unit/facturas-plataforma/anexo.test.ts` en verde (R7, R15–R21);
   - un caso de 3 000 movimientos mide el tiempo de generación y el peso, y los anota en `progress/impl_SLT-199.md`.
-- [ ] **T3.2** El caso R1 de `pdf-comun.test.ts`: la banda, la barra, la cabecera de tabla y el pie de la factura y
+- [x] **T3.2** El caso R1 de `pdf-comun.test.ts`: la banda, la barra, la cabecera de tabla y el pie de la factura y
   del anexo coinciden en color, altura y x. Depende de T2.1 y T3.1.
   *Hecho:* en verde.
 
