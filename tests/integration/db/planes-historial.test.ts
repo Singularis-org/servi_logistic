@@ -50,7 +50,9 @@ async function conSuperadmin(tx: TxDeTest) {
   const id = await superadminEnTx(tx);
   const actor: Actor = { usuarioId: id, rol: "superadmin", organizacionId: null };
   const nombre = (await tx.usuario.findUniqueOrThrow({ where: { id }, select: { nombre: true, primerApellido: true } }));
-  return { actor, nombre: `${nombre.nombre} ${nombre.primerApellido}` };
+  // El superadmin de una base de desarrollo puede no tener apellido: sin el, el nombre congelado es
+  // solo `nombre`, sin el espacio suelto. El del fixture (CI) siempre lo trae.
+  return { actor, nombre: [nombre.nombre, nombre.primerApellido].filter((p) => p != null && p !== "").join(" ") };
 }
 
 const ORDEN_DE_ACCION = [

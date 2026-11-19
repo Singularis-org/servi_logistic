@@ -6,7 +6,9 @@ import path from "node:path";
 import { expect, type Page } from "@playwright/test";
 import type { ModuloApagable, PrismaClient } from "@prisma/client";
 
+import { SESSION_COOKIE_NAME } from "../lib/constants/auth";
 import { nombreDelModulo, ORDEN_MODULOS } from "../lib/modulos/catalogo";
+import { SessionRepository } from "../lib/repositories/SessionRepository";
 
 import { LogDelServidor } from "./_dos-empresas-fixture";
 
@@ -47,10 +49,57 @@ export function correrArranque(): SalidaDelArranque {
 }
 
 /**
- * Deja la base con EL superadmin de prueba: lo crea, o confirma que el que ya existe es este. Si
- * hay otro, falla: con un superadmin ajeno el login de prueba no entraría y el fallo despistaría.
+ * El superadmin que hay en la base. `esDePrueba` dice si es el de `SUPERADMIN_DE_PRUEBA` (el que
+ * crea el arranque en una base vacía, como en CI) o uno ajeno: el de una base local con datos, del
+ * que el E2E no sabe la contraseña y al que nunca cambia nada (ver `entrarComoSuperadmin`).
  */
-export async function asegurarSuperadmin(dueno: PrismaClient): Promise<SalidaDelArranque> {
+export interface SuperadminDeLaBase {
+  id: string;
+  /** El nombre que la app pinta de él (rastros, historial). */
+  nombre: string;
+  esDePrueba: boolean;
+}
+
+/** El superadmin de la base, o `null` si no hay ninguno. El índice `usuario_un_solo_superadmin` admite uno. */
+async function superadminSiLoHay(dueno: PrismaClient): Promise<SuperadminDeLaBase | null> {
+  const superadmins = await dueno.usuario.findMany({
+    where: { rol: { value: "superadmin" } },
+    select: { id: true, email: true, nombre: true, organizacionId: true },
+  });
+  if (superadmins.length === 0) return null;
+  if (superadmins.length > 1) {
+    throw new Error(`SL-32 E2E: la base tiene ${superadmins.length} superadmins; el índice solo admite uno.`);
+  }
+  const [sa] = superadmins;
+  return {
+    id: sa.id,
+    nombre: sa.nombre,
+    esDePrueba: sa.email === SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL && sa.organizacionId === null,
+  };
+}
+
+/** El superadmin de la base (de prueba o ajeno). Falla si no hay ninguno: va después de `asegurarSuperadmin`. */
+export async function superadminDeLaBase(dueno: PrismaClient): Promise<SuperadminDeLaBase> {
+  const sa = await superadminSiLoHay(dueno);
+  if (!sa) throw new Error("SL-32 E2E: no hay superadmin en la base (lo deja `asegurarSuperadmin`).");
+  return sa;
+}
+
+/** `true` si la base ya trae un superadmin que no es el de prueba: el arranque no lo puede crear. */
+export async function hayOtroSuperadmin(dueno: PrismaClient): Promise<boolean> {
+  const sa = await superadminSiLoHay(dueno);
+  return sa !== null && !sa.esDePrueba;
+}
+
+/**
+ * Deja la base con un superadmin con el que entrar. Sin superadmin, o con el de prueba, corre el
+ * arranque y confirma que el que queda es el de prueba (lo de siempre, y lo único que pasa en CI,
+ * con la base vacía). Si la base ya trae OTRO (una base local con datos: el índice admite uno solo),
+ * no corre el arranque y devuelve `null`: los specs lo reutilizan con `entrarComoSuperadmin`, sin
+ * tocar su fila ni nada suyo.
+ */
+export async function asegurarSuperadmin(dueno: PrismaClient): Promise<SalidaDelArranque | null> {
+  if (await hayOtroSuperadmin(dueno)) return null;
   const arranque = correrArranque();
   expect(arranque.codigo, arranque.salida).toBe(0);
   const superadmins = await dueno.usuario.findMany({
@@ -63,6 +112,46 @@ export async function asegurarSuperadmin(dueno: PrismaClient): Promise<SalidaDel
     );
   }
   return arranque;
+}
+
+/**
+ * Vida de la sesión que se abre para un superadmin ajeno: le sobra a un spec (su `beforeAll` la abre y
+ * sus casos la usan) y caduca sola, porque la fila se queda en la base (no se borra nada suyo).
+ */
+const HORAS_DE_LA_SESION_PRESTADA = 2;
+
+/** La URL de la app, la misma que `use.baseURL` de `playwright.config.ts`: la cookie va a ese origen. */
+function urlDeLaApp(): string {
+  return `http://localhost:${Number(process.env.E2E_PUERTO || 3000)}`;
+}
+
+/**
+ * Deja `page` con la sesión del superadmin de la base, en `/plataforma/empresas` (donde aterriza su
+ * login).
+ *
+ * - El de prueba entra como siempre: olvida sus dispositivos y pasa por `/login` con el OTP del log.
+ * - Uno ajeno no tiene contraseña conocida, y su fila no se toca (ni contraseña, ni email, ni sus
+ *   dispositivos confiados o intentos de login). Se le abre una sesión NUEVA en la tabla `Session`
+ *   con el repositorio de la app (la misma fila que deja un login, con vida corta) y se pone su id
+ *   en la cookie `session`, que es todo lo que miran el middleware y `resolveActorFromSession`.
+ *
+ * Va dentro de `conCandadoDelSuperadmin`, como el login que reemplaza.
+ */
+export async function entrarComoSuperadmin(page: Page, dueno: PrismaClient): Promise<void> {
+  const sa = await superadminDeLaBase(dueno);
+  if (sa.esDePrueba) {
+    await olvidarDispositivos(dueno, SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL);
+    await entrarConOtp(page, SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL, SUPERADMIN_DE_PRUEBA.SUPERADMIN_PASSWORD);
+    return;
+  }
+  const sesion = await new SessionRepository(dueno).create({ userId: sa.id, ttlHours: HORAS_DE_LA_SESION_PRESTADA });
+  await page.context().addCookies([
+    { name: SESSION_COOKIE_NAME, value: sesion.id, url: urlDeLaApp(), httpOnly: true, sameSite: "Lax" },
+  ]);
+  await page.goto("/plataforma/empresas");
+  if (new URL(page.url()).pathname.startsWith("/login")) {
+    throw new Error("SL-32 E2E: la sesión abierta para el superadmin existente no vale (¿no está activo?).");
+  }
 }
 
 /**

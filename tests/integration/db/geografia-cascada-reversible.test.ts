@@ -10,7 +10,7 @@ import {
   enTransaccionRevertida,
   serializarEscriturasReales,
 } from "./_postgres-real";
-import { idDeRol, insertarUsuario, liberarHuecoDeSuperadmin, tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
+import { idDeRol, superadminDelCaso, tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
 
 /**
  * FICHA 374 — **LA CASCADA SE EVALUA Y NO SE MATERIALIZA: POR ESO REACTIVAR ES REVERSIBLE.**
@@ -69,12 +69,11 @@ describeSiHayBase("374 — la cascada es reversible (Postgres real)", () => {
     await prisma?.$disconnect();
   });
 
-  /** Siembra el superadmin del caso en `tx` y deja su id (y su nombre) para las aserciones. */
+  /** Toma el superadmin del caso (el de la base o uno sembrado en `tx`) y deja su id y su nombre para las aserciones. */
   async function sembrarActor(tx: Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0]): Promise<void> {
     const rolSuperadmin = await idDeRol(tx, "superadmin");
-    await liberarHuecoDeSuperadmin(tx, rolSuperadmin);
-    const actor = await insertarUsuario(tx, rolSuperadmin, null);
-    if (!actor.desenlace.ok) throw new Error(`SLT-183: no se sembro el superadmin: ${JSON.stringify(actor.desenlace)}`);
+    // El que ya tenga la base (no se toca) o uno sembrado en esta tx: aqui solo hace falta un actor.
+    const actor = await superadminDelCaso(tx, rolSuperadmin);
     // Control positivo (R1104): la siembra llego a la base. LANZA, no `return`.
     const sembrado = await tx.usuario.findUnique({
       where: { id: actor.id },

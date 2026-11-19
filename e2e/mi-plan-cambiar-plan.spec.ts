@@ -11,7 +11,7 @@ import { crearEmpresaE2E, crearUsuarioE2E, sesionDe, type EmpresaE2E } from "../
 
 import { clienteDueno } from "./_dos-empresas-fixture";
 import { crearPlanPublicoConCosto } from "./_planes-fixture";
-import { asegurarSuperadmin, conCandadoDelSuperadmin, NO_ENCONTRADO, SUPERADMIN_DE_PRUEBA } from "./_superadmin-fixture";
+import { asegurarSuperadmin, conCandadoDelSuperadmin, NO_ENCONTRADO, superadminDeLaBase } from "./_superadmin-fixture";
 
 /**
  * SLT-99 T8.1 (R22; también R3, R8, R16, R19) — el maestro cambia de plan desde «Mi plan» y cancela el cambio.
@@ -75,10 +75,7 @@ test.beforeAll(async ({ browser }) => {
 
   // El superadmin de prueba es el actor de los planes: `PlanesRepository` congela su nombre en el rastro.
   await conCandadoDelSuperadmin(() => asegurarSuperadmin(db()));
-  const sa = await db().usuario.findFirstOrThrow({
-    where: { email: SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL, rol: { value: "superadmin" } },
-    select: { id: true },
-  });
+  const sa = await superadminDeLaBase(db());
   superadminId = sa.id;
 
   activoId = await crearPlanPublicoConCosto(db(), nombreActivo, "100");
