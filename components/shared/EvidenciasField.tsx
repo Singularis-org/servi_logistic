@@ -31,12 +31,22 @@ import { comprimirImagen } from "@/lib/utils/comprimir-imagen";
 //
 // Por eso se sigue el patron que este repo YA resolvio en el chat saliente
 // (`mis-asignaciones/_components/chat/ChatConversacion.tsx`): DOS inputs ocultos que comparten
-// `accept`, `multiple` y el MISMO `onChange`, disparados por dos botones distintos. La lista de
+// el MISMO `onChange`, disparados por dos botones distintos. La lista de
 // evidencias, el tope, la compresion y la previsualizacion son las mismas para las dos vias
 // porque literalmente es el mismo manejador del padre.
 //
 // `capture` solo tiene efecto en movil; en escritorio el navegador lo ignora y abre el selector
 // de archivos normal. Es degradacion aceptable: el boton sigue anadiendo una foto.
+//
+// ── POR QUE EL INPUT DE CAMARA NO LLEVA `multiple` Y ACEPTA `image/*` (SLT-220)
+// La primera version copiaba `accept` (MIME concretos) y `multiple` en los dos inputs. En el movil
+// «Tomar foto» abria la GALERIA: varios navegadores ignoran `capture` cuando el input es `multiple`,
+// y algunos Android solo abren la camara directo con `accept="image/*"`. El input del chat, que si
+// abre la camara, nunca llevo `multiple`. Por eso el de camara toma UNA foto por pulsacion (se
+// repite el boton para la siguiente; el tope es el mismo) y el de galeria conserva `multiple` y la
+// lista de MIME. Relajar el `accept` NO relaja el formato: el `onSelect` de cada pantalla pasa por
+// `prepararEvidencias`, que convierte (HEIC → JPEG) y rechaza nombrando la foto lo que no sea
+// JPEG/PNG/WEBP; el servidor lo revalida con `GESTION_ALLOWED_MIME`.
 // =================================================================================================
 
 /** Textos visibles, fuera de la logica (i18n-ready, como el resto del modulo). */
@@ -281,16 +291,19 @@ export function EvidenciasField({
       </div>
 
       {/* Las DOS vias, ocultas y disparadas por los botones de arriba (patron de `ChatConversacion`).
-          Comparten `accept`, `multiple` y `onChange`: misma lista, mismo tope, misma compresion.
+          Comparten `onChange`: misma lista, mismo tope, misma compresion y validacion. El de
+          camara va sin `multiple` y con `image/*` (ver cabecera, SLT-220).
           El de camara va PRIMERO en el DOM porque es la via principal de quien esta en la calle. */}
       <input
         ref={inputCamaraRef}
         id={`${inputId}-camara`}
         type="file"
-        accept={ACCEPT_MIME}
+        // `image/*` y SIN `multiple` (SLT-220): con `multiple` o una lista de MIME concretos varios
+        // navegadores moviles ignoran `capture` y abren la galeria. El formato lo sigue decidiendo
+        // `prepararEvidencias` en el `onSelect` de cada pantalla, no este atributo.
+        accept="image/*"
         // `environment` = camara TRASERA: se fotografia el paquete o la puerta, no al mensajero.
         capture="environment"
-        multiple
         onChange={onSelect}
         aria-invalid={error ? true : undefined}
         aria-label={evidenciasAriaLabelCamara(ariaLabel)}

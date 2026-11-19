@@ -258,9 +258,9 @@ describe("OrdenesModule — bloqueoSeleccion por fila", () => {
     expect(screen.getByText(/2 seleccionadas/)).toBeInTheDocument();
   });
 
-  // Pedido humano: la cabecera "seleccionar todas" es asimétrica — marcar añade lo de esta
-  // página; DESMARCAR limpia la selección entera, también lo de otras páginas.
-  it("desmarcar 'todas' limpia la selección de TODAS las páginas", async () => {
+  // SLT-222 D6 (R1513) sustituye la asimetría anterior (desmarcar la cabecera limpiaba
+  // TODAS las páginas): ahora desmarcar quita solo lo visible; el borrado total es «Limpiar».
+  it("SLT-222 R1513: desmarcar 'todas' quita solo la página visible, no las otras", async () => {
     const user = userEvent.setup();
     listarOrdenesMock.mockImplementation(async (input: { page: number }) => ({
       status: "ok",
@@ -290,17 +290,22 @@ describe("OrdenesModule — bloqueoSeleccion por fila", () => {
     );
     expect(await screen.findByText(/2 seleccionadas/)).toBeInTheDocument();
 
-    // Desmarcar la cabecera desde la página 2 se lleva TAMBIÉN la de la página 1.
+    // Desmarcar la cabecera desde la página 2 quita la p2; la de la página 1 SIGUE marcada.
     await user.click(
       screen.getByRole("checkbox", { name: "Seleccionar todas las órdenes" }),
     );
-    await waitFor(() => expect(screen.queryByText(/seleccionada/)).toBeNull());
+    expect(
+      await screen.findByText("1 seleccionada · 1 fuera de esta búsqueda"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: "Seleccionar orden REM-p2" }),
+    ).toHaveAttribute("aria-checked", "false");
 
     await user.click(screen.getByRole("button", { name: "Página anterior" }));
     await screen.findByText("8001");
     expect(
       screen.getByRole("checkbox", { name: "Seleccionar orden REM-p1" }),
-    ).toHaveAttribute("aria-checked", "false");
+    ).toHaveAttribute("aria-checked", "true");
   });
 
   // Pedido humano (2026-08-19): ejecutada una acción por lote, las casillas quedan

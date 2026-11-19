@@ -311,28 +311,35 @@ export function RecepcionSateliteModule({
   }
 
   /**
-   * Feature 184 — Tanda A (T A.5, R18/R19/R21/R22) — cuáles de los identificadores marcados
-   * SIGUEN perteneciendo al conjunto filtrado.
+   * Feature 184 — Tanda A (T A.5, R18/R21/R22) — cuáles de los identificadores marcados
+   * SIGUEN perteneciendo al listado de la bodega.
    *
-   * Vive aquí y baja como callback por lo mismo que `obtenerFilasDescarga`: los filtros
-   * vigentes son de este módulo y la selección es del listado. Se construye EN EL RENDER, así
-   * que el closure lee el `filtro` de ESTE render y la comprobación se hace sobre el conjunto
-   * que el usuario está viendo (R19). El alcance por zona lo impone el servidor: aquí no viaja
-   * ninguna clave de alcance (R21).
+   * SLT-222 R1514 (sustituye R19/R25 de la 188): se pregunta SIN el `filtro` vigente, sólo con
+   * los `ids`. La selección sobrevive ahora a la búsqueda, y preguntar con el término actual
+   * retiraría lo marcado en la búsqueda anterior por no cumplirlo. Lo que se poda es lo que
+   * SALIÓ del listado (incidente, transición), no lo que no se ve. Por lo mismo, el corte de
+   * `filtroSinResultados` (FICHA 355) ya no entra aquí: un filtro imposible no vacía lo marcado;
+   * sigue cortando la lectura de la página y la descarga. El alcance por zona lo impone el
+   * servidor: aquí no viaja ninguna clave de alcance (R21).
    *
    * Devuelve `null` en CUALQUIER respuesta que no sea `ok` —incluida la de pasarse del tope de
    * identificadores— y el listado lo trata como «no podar»: la selección queda intacta (R22).
    * El tope lo decide el servidor y no se replica aquí, para que no haya dos números.
    */
   async function comprobarVigencia(ids: string[]): Promise<readonly string[] | null> {
-    // FICHA 355: con la selección imposible el conjunto filtrado es VACÍO, así que ninguna
-    // marca sigue en él. Se responde sin consultar por la misma razón que en `leerPagina`:
-    // preguntarlo devolvería el conjunto de los cinco estados y conservaría marcas que ya no
-    // pertenecen a lo que se está viendo. `[]` es «ninguno vigente», no «no se pudo
-    // comprobar» (eso es `null`, R22), que es exactamente lo que corresponde aquí.
-    if (filtroSinResultados(filtro)) return [];
-    const res = await listarIdsVigentesBodega({ ...filtro, ids });
+    const res = await listarIdsVigentesBodega({ ids });
     return res.status === "ok" ? res.ids : null;
+  }
+
+  /**
+   * SLT-222 R1508 — señal para el listado de «desmarca todo». Se incrementa tras cada acción
+   * por lote con éxito (asignar, deshacer, cambiar día, enviar a central, recuperar): las
+   * órdenes actuadas ya cambiaron de estado y dejarlas marcadas —también las que no se ven—
+   * invita a repetir la acción sobre algo que ya no la admite.
+   */
+  const [resetSeleccion, setResetSeleccion] = useState(0);
+  function vaciarSeleccion() {
+    setResetSeleccion((n) => n + 1);
   }
 
   /**
@@ -374,6 +381,7 @@ export function RecepcionSateliteModule({
     setRecuperando(false);
     if (recuperadas > 0) {
       toast.success(`${recuperadas} orden(es) recuperada(s) a bodega.`);
+      vaciarSeleccion();
     }
     if (errores.length > 0) toast.error(errores[0]);
     await releerBodega();
@@ -397,6 +405,7 @@ export function RecepcionSateliteModule({
   function handleSuccess() {
     setOrdenesAAsignar([]);
     setModalOpen(false);
+    vaciarSeleccion();
     void releerBodega(); // relee el estado del servidor (patrón feature 33)
   }
 
@@ -416,6 +425,7 @@ export function RecepcionSateliteModule({
   function handleDeshacerSuccess() {
     setOrdenesADeshacer([]);
     setDeshacerOpen(false);
+    vaciarSeleccion();
     void releerBodega();
   }
 
@@ -439,6 +449,7 @@ export function RecepcionSateliteModule({
   function handleCambiarDiaSuccess() {
     setOrdenesACambiarDia([]);
     setCambiarDiaOpen(false);
+    vaciarSeleccion();
     void releerBodega();
   }
 
@@ -469,6 +480,7 @@ export function RecepcionSateliteModule({
     setUltimoEnvioACentral(enviadasIds);
     if (enviadas > 0) {
       toast.success(`${enviadas} orden(es) enviada(s) a bodega central.`);
+      vaciarSeleccion();
     }
     if (errores.length > 0) toast.error(errores[0]);
     await releerBodega();
@@ -641,6 +653,7 @@ export function RecepcionSateliteModule({
            * fuera de la página visible (R23).
            */
           comprobarVigencia={comprobarVigencia}
+          resetSeleccion={resetSeleccion}
           zonaNombre={zonaNombre}
           puedeAsignar={!bloqueoBodega.bloqueada}
           onAsignar={abrirAsignacion}
