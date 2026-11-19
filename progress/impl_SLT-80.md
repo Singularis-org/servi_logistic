@@ -375,3 +375,49 @@ Servidores parados al terminar (Playwright cierra los suyos; 3080 y 54380 sin es
 
 ### Veredicto
 Parte E2E de T11 en verde (3/3, dos corridas) y la mutación del permiso la pone roja; falta el `./init.sh` del implementer.
+
+## Cierre del implementer — 2026-11-18
+
+### Mapa R → test (consolidado)
+
+| R | Test |
+|---|---|
+| R1300, R1302, R1303, R1304, R1305, R1316 | `tests/unit/guards/guia-api-fuente-unica.guardia.test.ts` |
+| R1301 | `tests/unit/pdf/guia-api-pdf.test.ts` (títulos en orden) + `tests/components/AccionesGuiaApi.test.tsx` |
+| R1306 | `tests/components/AccionesGuiaApi.test.tsx` + `e2e/ayuda-guia-api.spec.ts` |
+| R1307 | `tests/unit/ayuda/guia-api-descargas.test.ts` + `tests/unit/ayuda/acotamiento-por-rol.test.ts` + `e2e/ayuda-guia-api.spec.ts` |
+| R1308 | `tests/components/AccionesGuiaApi.test.tsx` |
+| R1309, R1310, R1311 | `tests/unit/pdf/guia-api-pdf.test.ts` (+ cabeceras en `guia-api-descargas.test.ts`) |
+| R1312 | `tests/unit/ayuda/guia-api-descargas.test.ts` + guardia `guia-api-fuente-unica` (sin otra copia) |
+| R1313, R1314, R1315 | `tests/components/enlaces-guia-api-configuracion.test.tsx` |
+| R1317 | `tests/unit/asistente/acotamiento-por-rol.test.ts` + `tests/unit/asistente/contexto-documental.test.ts` |
+
+### Verificación final (base `servi_slt80_desechable`)
+
+Typecheck, lint y todos los tests que el diff toca más las guardias de Ayuda y `e2e-sin-saltos`:
+
+```
+TYPECHECK_EXIT=0
+LINT_EXIT=0
+ Test Files  18 passed (18)
+      Tests  262 passed (262)
+VITEST_EXIT=0
+```
+
+E2E: `e2e/ayuda-guia-api.spec.ts` 3 passed / 0 failed (ver «T11 E2E»).
+
+### Gate (`./init.sh`)
+
+`INIT_EXIT=1`: se para en el validador antes de typecheck/tests:
+`specs/SLT-80-guia-api-en-ayuda/ no cuadra con feature_list.json: SLT-80 se llama "guia-integracion-api-ayuda"`
+(la ficha en `feature_list.json` tiene name `guia-integracion-api-ayuda` y rama
+`feature/SLT-80-guia-integracion-api-ayuda`; la rama y el spec usan `guia-api-en-ayuda`). Es dato del
+leader (`feature_list.json` no se versiona); el implementer no lo toca.
+
+### Para el reviewer
+
+- La guía cambió 43 glifos que Archivo no tiene (⚠ ∈ ☐ ✔) en un commit aparte (`5414f62e`), para cumplir R1311.
+- R1305: §8.1 cubre solo los códigos comunes a todas las operaciones (401, 403, 422, 500); el resto se exige por sección.
+- R1307: sin cookie, `middleware.ts` redirige a `/login` antes del handler (igual que la página); con sesión y rol no permitido, 404 con `notFound()`.
+- `ErrorCaracterNoImprimible` reutiliza el mensaje de etiquetas («La etiqueta de …»).
+- Tamaño: 34 archivos fuera de `specs/` y `progress/` (dos guardias ajustadas fuera de «Archivos esperados» y `playwright.config.ts`), sobre el aviso del 80%; tamaño aceptado por Carlos (P2).

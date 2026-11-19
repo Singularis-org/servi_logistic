@@ -261,7 +261,7 @@ Preview.
   - Correr en local con base desechable los E2E de `/ayuda` (`grep -rl "/ayuda" e2e/`).
   - **Hecho:** `./init.sh` verde y los E2E en verde, anotados.
   - [x] Parte E2E: `e2e/ayuda-guia-api.spec.ts` 3/3 en local, mutación en rojo (`progress/impl_SLT-80.md > T11 E2E`).
-  - [ ] `./init.sh` verde: lo corre el implementer.
+  - [ ] `./init.sh` verde: bloqueado por el nombre de la ficha en feature_list.json (ver impl_SLT-80.md > Gate).
 
 ## Archivos esperados
 
