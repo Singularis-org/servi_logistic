@@ -17,6 +17,11 @@ import type {
 // SLT-63: `liberaAsignacion` decide si la recepcion deja la orden sin mensajero. El caso 138 libera,
 // porque la recoleccion (157) llega con el recolector asignado y, recibida en la central, ya no la
 // lleva el. La devolucion (139) conserva la asignacion: no esta evidenciado que deba cambiar.
+//
+// SLT-224: `reconciliaZona` decide si, al recibir, la zona de la orden se re-deriva desde su
+// distrito. El caso 138 si: es el primer momento en que la zona vuelve a decidir algo en la central
+// (asignar o rutear). La devolucion (139) no (R1704): va de vuelta a la tienda y su zona no
+// desbloquea nada. Es una decision de dominio, por eso vive aqui y no en el repositorio.
 type DestinoRecepcionCentral = "en_bodega_central" | "por_devolver_a_tienda";
 const TRANSICIONES: Record<
   string,
@@ -24,17 +29,20 @@ const TRANSICIONES: Record<
     destino: DestinoRecepcionCentral;
     origenTipo: OrdenHistorialOrigenTipo;
     liberaAsignacion: boolean;
+    reconciliaZona: boolean;
   }
 > = {
   en_ruta_bodega_central: {
     destino: "en_bodega_central",
     origenTipo: "recepcion_bodega_central",
     liberaAsignacion: true,
+    reconciliaZona: true,
   },
   devolviendo_a_bodega_central: {
     destino: "por_devolver_a_tienda",
     origenTipo: "recepcion_bodega_central",
     liberaAsignacion: false,
+    reconciliaZona: false,
   },
 };
 // Destinos = estados "recibida" para la idempotencia: si la orden ya esta en cualquiera de ellos, la
@@ -104,7 +112,7 @@ export class RecepcionBodegaCentralService implements IRecepcionBodegaCentralSer
         actorUsuarioId: actor.usuarioId,
         origenTipo: transicion.origenTipo, // recepcion_bodega_central (ambos casos)
       },
-      { liberaAsignacion: transicion.liberaAsignacion },
+      { liberaAsignacion: transicion.liberaAsignacion, reconciliaZona: transicion.reconciliaZona },
     );
 
     if (!transiciono) {
