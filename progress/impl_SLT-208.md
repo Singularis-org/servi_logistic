@@ -208,3 +208,21 @@ Veredicto vuelta 2: H1 a H9 resueltos; gate y E2E en verde.
 
 Salidas: guardia + PDF 30 passed; `next build` BUILD_EXIT=0; E2E 8 passed (E2E_EXIT=0); `./init.sh` INIT_EXIT=0.
 Tamaño (`scripts/tamano-pr.mjs`): 12/40 archivos, 979/1000 líneas de producción, 1044/3000 de tests: en el aviso, sin pasarse.
+
+## Vuelta 4 (2026-11-19, E2E rojo en CI)
+
+Causa: la clave ausente de la fila de carga tomaba su mensaje del `localeError` global de zod que
+instala `instrumentation.ts`; en el build de CI ese mapa no llegaba a la ruta de la carga y salía el
+texto por defecto de zod en inglés («Invalid input: expected string, received undefined»). En local sí
+llegaba, por eso pasaba. Arreglo: `requiredNonEmpty` (`lib/types/carga-masiva.ts`) declara el mensaje de
+la clave ausente (`MENSAJE_OBLIGATORIO`) en el propio `z.string({ error })`; la clave vacía no cambia.
+Alcance: `filaCargaSchema` es la puerta compartida de la carga por API key y de la carga masiva por
+sesión (`BulkOrdenService.resolveFila`): las dos dan ahora «Este campo es obligatorio» de forma
+determinista. Ninguna otra validación cambia.
+
+Test: `tests/unit/types/carga-fila-clave-ausente-slt208.test.ts` quita el mapa global
+(`z.config({ localeError: undefined })`) y fija los dos mensajes para los cuatro campos. Sin el arreglo:
+4 failed; con él: 9 passed. E2E tras `next build`: 8 passed.
+
+Gate: INIT_EXIT=1 por `tests/integration/db/demo-qa.test.ts` (12 rojos, «WalletEgresoService.registrarEgreso(pago_plataforma) … validation_error (monto)»). No es de esta rama: falla igual con el arreglo retirado (`git stash` del archivo) y en una base desechable nueva (`servi_slt208b_desechable`); entra en el rápido porque `vitest related` lo relaciona con `carga-masiva.ts`. No está en `tests/baseline-rojos.json`.
+Tamaño: 14/40 archivos, 986/1000 líneas de producción, 1092/3000 de tests.
