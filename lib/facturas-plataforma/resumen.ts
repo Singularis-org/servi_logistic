@@ -5,11 +5,11 @@ import { aCentimos, aCentimosConSigno, aTexto } from "@/lib/planes/centimos";
 import { fechaCalendarioPlataforma } from "@/lib/planes/ciclo";
 import type { DatosDescargaFactura, TipoLineaFactura } from "@/lib/types/factura-plataforma";
 
-// SLT-136 (design §3) — el resumen de la descarga de una factura cerrada, sin React y sin E/S. Lo comparten el PDF,
-// el Excel y sus pruebas. Los importes son los de la base (R9, R10); lo único que se suma aquí es el importe de
+// SLT-136 (design §3) — el resumen de la descarga de una factura cerrada, sin React y sin E/S. Lo comparten la factura,
+// el anexo y sus pruebas. Los importes son los de la base (R9, R10); lo único que se suma aquí es el importe de
 // cada día del desglose (R11), en céntimos exactos, y esa suma se contrasta con los totales de la base (R15).
 
-/** Todos los literales del PDF y del Excel de la factura, en un sitio para cuando llegue la i18n. */
+/** Todos los literales de la factura y del anexo en PDF, en un sitio para cuando llegue la i18n. */
 export const FACTURA_DESCARGA_TEXTOS = {
   emisor: MARCA_FACTURA.emisor,
   titulo: "FACTURA DE PLATAFORMA",
@@ -84,15 +84,6 @@ export const FACTURA_DESCARGA_TEXTOS = {
     vacio: "Sin movimientos en el período",
     totalNeto: (movimientos: string) => `Total neto (${movimientos} movimientos)`,
     pie: `${MARCA_FACTURA.pie} · Anexo: detalle de movimientos`,
-  },
-  excel: {
-    hoja: "Movimientos",
-    fecha: "Fecha",
-    guia: "Guía",
-    remision: "Remisión",
-    tipo: "Tipo",
-    valor: "Valor",
-    tipos: { cargo: "Cobrado", reverso: "Reverso" } satisfies Record<TipoLineaFactura, string>,
   },
 } as const;
 

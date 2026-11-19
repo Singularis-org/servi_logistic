@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -180,6 +180,12 @@ describe("SLT-199 R7 — un descuadre no genera el anexo", () => {
   it("resumirFactura lanza antes de dibujar", () => {
     const datos = datosDescarga({ factura: factura({ movimientos: 4 }) });
     expect(() => construirPdfAnexo(datos, resumirFactura(datos), LOGO)).toThrow(DescuadreDeFactura);
+  });
+});
+
+describe("SLT-199 R22 — el Excel de la factura ya no existe", () => {
+  it("el módulo excel.ts de lib/facturas-plataforma no existe", () => {
+    expect(existsSync(path.join(RAIZ, "lib", "facturas-plataforma", "excel.ts"))).toBe(false);
   });
 });
 
