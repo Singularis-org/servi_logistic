@@ -746,14 +746,19 @@ describe("SLT-165 B3 de la review — el panel de la página entre 768 y 1023 px
   });
 });
 
-describe("SLT-209 — el panel del modal no deja franja sobre la barra fija de «Gestiones»", () => {
-  it("en el teléfono el hueco de arriba es margen y no relleno; desde `md`, `pt-4` como siempre", async () => {
+describe("SLT-209 — en el teléfono el modal desplaza entero; desde `md`, solo el panel", () => {
+  it("modal: `max-md:overflow-y-auto` sin relleno vertical; pestañas y panel con su alto; pie pegado abajo", async () => {
     mensajero("central", "decidir");
     await screen.findByRole("tablist", { name: "Secciones del cierre" });
+    const dialogo = screen.getByRole("dialog");
+    // Con el panel como único scroll en el teléfono, la barra fija de «Gestiones» (132 px) no cabía
+    // en él y la lista no se veía. Sin relleno arriba: un `sticky` se pega al borde del CONTENIDO.
+    expect(clases(dialogo)).toEqual(expect.arrayContaining(["max-md:overflow-y-auto", "max-md:py-0"]));
     const panel = screen.getByRole("tabpanel");
-    // Un `sticky top-0` se pega al borde del CONTENIDO del que desplaza: con relleno arriba, la barra
-    // queda por debajo del borde visible y las tarjetas asoman por esa franja.
-    expect(clases(panel)).toEqual(expect.arrayContaining(["overflow-auto", "max-md:pt-0", "max-md:mt-4", "pt-4"]));
+    expect(clases(panel)).toEqual(expect.arrayContaining(["overflow-auto", "max-md:overflow-visible", "max-md:min-h-auto"]));
+    expect(clases(screen.getByRole("tablist").parentElement)).toContain("max-md:min-h-auto");
+    expect(clases(dialogo.querySelector("footer"))).toEqual(expect.arrayContaining(["max-md:sticky", "max-md:bottom-0", "max-md:bg-background"]));
+    expect(clases(dialogo.querySelector("header"))).toContain("max-md:pt-4");
   });
 });
 

@@ -92,3 +92,28 @@ Ver la línea final de abajo.
   `test:rapido` (4 shards) `100/100/100/78 files passed`, `1368 + 1712 + 1717 + 1004 passed | 1 skipped` → `RAPIDO_OK`, `PASOS_EXIT=0`.
 
 Veredicto: arreglo y tests en verde; INIT_EXIT=1 solo por el cupo frontend del board (leader).
+
+## Vuelta 3 — rojo de CI (run 44471124331, proyecto dinero, sobre e208b17b)
+CI: en «Ver», `ajenos: 3` (la fila de abajo de la barra). Reproducido en local a 360 × 667: el panel de la
+pestaña del modal medía 124 px y la barra fija 132, así que quedaba recortada y el punto lo recibía el modal
+(`"listaVisible":-41`); a 780 px solo quedaban 72 px de lista a la vista. En CI pasaba a 780 porque las
+fuentes de Linux hacen más alta la cabecera. Era un defecto real, no de la medida: en el teléfono el modal
+tenía cabecera, cifras, pestañas y pie fijos, y el único scroll era un panel de 124-204 px.
+
+Arreglo (`DetalleCierre.tsx`, solo `max-md`; desde `md` sin cambios, el panel sigue siendo el único scroll):
+el modal desplaza entero (`max-md:overflow-y-auto max-md:py-0`); cabecera `max-md:pt-4`; pestañas y panel
+con su alto (`max-md:min-h-auto`, panel `max-md:overflow-visible`); pie `max-md:sticky bottom-0` con fondo.
+
+E2E: añade `listaVisible >= 150` y una segunda medida a 667 px. Espera a que se vaya el aviso «Cierre
+solicitado correctamente.» (`fixed`, `z-[100]`, 5 s), que con la barra ya arriba tapaba sus puntos; es
+pasajero, por eso se espera y no se excluye de la medida. La medida sale en el log también en verde.
+- Rojo con el código anterior: `listaVisible` 72 (780 px) y -41 con `ajenos: 3` (667 px) → `1 failed`.
+- Verde: `listaVisible` 535 / 422, `ajenos` 0 → `1 passed (20.2s)`.
+- Componente: `DetalleCierre.test.tsx > SLT-209 — en el teléfono el modal desplaza entero…`; los 4 de DetalleCierre: `85 passed`.
+- Proyecto `dinero` tras `next build` (base desechable nueva): `119 passed, 3 failed`. Ninguno es de esta ficha:
+  `pwa-mensajero-cierre-dia` (a) 360 fue un cierre del worker (`code=3221226505`) y pasa al repetirlo
+  (`5 passed` con el spec entero); `facturas-plataforma:316` (`Expected "₡300" Received "-₡300"`) y
+  `pago-plataforma-confirmacion:229` (`el total 0.00 debe pasar de 100`) fallan igual al repetirlos solos.
+  En CI (run 44471124331) los dos pasaron, y no tocan nada de este diff (Mi plan / cobro de plataforma).
+  Rojo solo en local, sin investigar más.
+- Gate rápido: INIT_EXIT=0 (typecheck, lint, test:rapido 100/100/100/78 archivos).

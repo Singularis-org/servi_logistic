@@ -36,6 +36,10 @@ const DETALLE = "Detalle del cierre · Tu cierre del día";
 const BUSCAR = "Buscar gestión";
 /** El campo ocupa su línea: 360 − 2 × 16 de márgenes = 328; hoy medía ~150 al lado de los botones. */
 const ANCHO_MIN_CAMPO = 280;
+/** Alto mínimo de lista a la vista bajo la barra fija. */
+const LISTA_VISIBLE_MIN = 150;
+/** Un teléfono bajo (iPhone SE): el caso en que el panel del modal no daba para la barra. */
+const ALTO_BAJO = 667;
 
 let r: RepartoE2E;
 let m: MensajeroE2E;
@@ -56,6 +60,8 @@ async function medir(page: Page, lista: Locator) {
     while (port && !/(auto|scroll)/.test(getComputedStyle(port).overflowY)) port = port.parentElement;
     const p = port ? port.getBoundingClientRect() : { top: 0, bottom: window.innerHeight };
     const b = barra.getBoundingClientRect();
+    const pie = port?.querySelector(":scope > footer") ?? null;
+    const altoPie = pie && getComputedStyle(pie).position === "sticky" ? pie.getBoundingClientRect().height : 0;
     const fondo = getComputedStyle(barra).backgroundColor;
     const alfa = /rgba\([^)]*,\s*([\d.]+)\)/.exec(fondo)?.[1];
     const tarjetas = Array.from(document.querySelectorAll(sel)).map((t) => t.getBoundingClientRect());
@@ -64,11 +70,19 @@ async function medir(page: Page, lista: Locator) {
     const asoman = tarjetas.filter((t) => Math.min(t.bottom, b.top) - Math.max(t.top, p.top) > 0.5).length;
     // Lo que recibe el toque en la barra es la barra (nada de una tarjeta pintado encima).
     const puntos = [b.top + 2, b.top + b.height / 2, b.bottom - 2].flatMap((y) =>
-      [b.left + 4, b.left + b.width / 2, b.right - 4].map((x) => document.elementFromPoint(x, y)),
+      [b.left + 4, b.left + b.width / 2, b.right - 4].map((x) => ({ x, y, e: document.elementFromPoint(x, y) })),
     );
-    const ajenos = puntos.filter((e) => e === null || !barra!.contains(e)).length;
+    const describir = (e: Element | null) =>
+      e === null
+        ? "ninguno"
+        : `<${e.tagName.toLowerCase()} slot=${e.getAttribute("data-slot") ?? ""} class="${(e.getAttribute("class") ?? "").slice(0, 80)}"> «${(e.textContent ?? "").trim().slice(0, 30)}»`;
+    const fuera = puntos.filter((q) => q.e === null || !barra!.contains(q.e));
+    const ajenos = fuera.length;
     return {
       separacion: Math.round(b.top - p.top),
+      // Lo que queda de lista a la vista bajo la barra: hasta el borde inferior del que desplaza,
+      // menos el pie si va pegado abajo dentro de él (el del modal en el teléfono).
+      listaVisible: Math.round(p.bottom - b.bottom - altoPie),
       asoman,
       ajenos,
       alfa: alfa === undefined ? 1 : Number(alfa),
@@ -76,6 +90,9 @@ async function medir(page: Page, lista: Locator) {
       ancho: Math.round(campo.getBoundingClientRect().width),
       tarjetas: tarjetas.length,
       tapadas: tarjetas.filter((t) => t.top < b.bottom && t.bottom > b.top).length,
+      // Diagnóstico: qué recibe cada punto ajeno, y las cajas de la barra y del contenedor.
+      quien: fuera.map((q) => `(${Math.round(q.x)},${Math.round(q.y)}) ${describir(q.e)}`),
+      cajas: { barra: [Math.round(b.top), Math.round(b.bottom)], port: [Math.round(p.top), Math.round(p.bottom)], alto: window.innerHeight },
     };
   }, `[aria-label="${GESTIONES}"] [data-gestion]`);
 }
@@ -84,13 +101,20 @@ function comprobar(med: Awaited<ReturnType<typeof medir>>, donde: string) {
   expect("error" in med ? med.error : null, donde).toBeNull();
   if ("error" in med) return;
   const info = `${donde}: ${JSON.stringify(med)}`;
+  // La medida sale en el log también en verde: un rojo de CI se compara con ella.
+  console.log(`SLT-209 medida ${info}`);
   // Control positivo: hay tarjetas y al menos una pasa por debajo de la barra (se desplazó de verdad).
   expect(med.tarjetas, info).toBeGreaterThan(0);
   expect(med.tapadas, info).toBeGreaterThan(0);
   // La barra pegada al borde visible, sin franja por la que asomen tarjetas.
   expect.soft(med.separacion, info).toBeLessThanOrEqual(1);
   expect.soft(med.asoman, info).toBe(0);
+  // Los nueve puntos de la barra los recibe la barra. En CI eran 3 ajenos (la fila de abajo): la
+  // barra (132 px) no cabía en el panel del modal (124 px con las fuentes de Linux) y quedaba
+  // recortada; lo que recibía el punto era el propio modal. No se afloja: es el defecto.
   expect.soft(med.ajenos, info).toBe(0);
+  // Y la lista se ve bajo la barra: al menos 150 px (tres tarjetas a medias), también a 667 px.
+  expect.soft(med.listaVisible, info).toBeGreaterThanOrEqual(LISTA_VISIBLE_MIN);
   // Fondo opaco.
   expect.soft(med.alfa, info).toBe(1);
   // Ancho útil del campo en el teléfono.
@@ -138,12 +162,23 @@ test.describe("SLT-209 — la barra de «Gestiones» no flota sobre la lista a 3
     await detalle.getByRole("tab", { name: /^Gestiones \(10\)$/ }).click();
     const listaModal = detalle.getByRole("region", { name: GESTIONES });
     await expect(listaModal.locator("[data-gestion]")).toHaveCount(10);
-    // El panel de la pestaña es el que desplaza: se baja 150 px dentro de él.
-    await listaModal.evaluate((el) => {
-      let p: HTMLElement | null = el.parentElement;
-      while (p && !/(auto|scroll)/.test(getComputedStyle(p).overflowY)) p = p.parentElement;
-      if (p) p.scrollTop = 150;
-    });
+    // Se baja dentro del que desplaza (en el teléfono, el modal entero) hasta que la lista pasa 60 px
+    // por debajo de su borde visible.
+    const bajar = () =>
+      listaModal.evaluate((el) => {
+        let p: HTMLElement | null = el.parentElement;
+        while (p && !/(auto|scroll)/.test(getComputedStyle(p).overflowY)) p = p.parentElement;
+        if (p) p.scrollTop += el.getBoundingClientRect().top - p.getBoundingClientRect().top + 60;
+      });
+    // El aviso «Cierre solicitado correctamente.» es `fixed` arriba con `z-[100]`, por encima de todo
+    // durante 5 s: con la barra ya arriba del modal, sus puntos caían en él. Es legítimo y pasajero,
+    // así que se espera a que se vaya en vez de excluirlo de la medida.
+    await expect(page.getByText("Cierre solicitado correctamente.")).toBeHidden({ timeout: 15_000 });
+    await bajar();
     comprobar(await medir(page, listaModal), "detalle «Ver»");
+    // El mismo modal en un teléfono bajo.
+    await page.setViewportSize({ width: ANCHO, height: ALTO_BAJO });
+    await bajar();
+    comprobar(await medir(page, listaModal), `detalle «Ver» a ${ALTO_BAJO} px`);
   });
 });
