@@ -459,3 +459,7 @@ leader (`feature_list.json` no se versiona); el implementer no lo toca.
   Restaurado con `git checkout -- lib/types/webhook-eventos.ts`; `git status --short lib/` vacío.
 - **Typecheck:** `pnpm run typecheck` → `TC_EXIT=0`. **Lint:** `pnpm exec eslint <guardia>` → `LINT_EXIT=0`.
 - **Veredicto:** B2 cerrado; la guardia de R1304 se pone roja con un estado existente promovido a evento.
+
+### m6 — frontend_dev, 2026-11-18
+- Un solo `EnlacesGuiaApi` en `app/(app)/ayuda/_components/EnlacesGuiaApi.tsx` (mismo markup, `Link` a `RUTA_GUIA_API` y `<a>` a `RUTA_DESCARGA_GUIA_API_PDF`); `configuracion/api/page.tsx` y `configuracion/integraciones/page.tsx` lo importan. Ninguna regla de `docs/conventions.md` ni guardia pide otra ubicación; `grep "function EnlacesGuiaApi"` → 1 sola definición.
+- `vitest run` enlaces-guia-api-configuracion + ConfiguracionApiPage + AccionesGuiaApi → `3 passed (3) · 14 passed (14) · EXIT=0`; `tsc --noEmit` → 0; `eslint` de los 3 archivos → 0.
