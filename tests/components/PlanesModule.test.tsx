@@ -131,11 +131,15 @@ function borradorEnMemoria(alConfirmar: PlanResult = OK, sobre: Partial<Dobles> 
   return { acciones, peticionConfirmada: () => peticionDeCrear(pasos as PasosDeCrear) };
 }
 
-function montar({ acciones, borradores = [] }: { acciones?: Dobles; borradores?: BorradorResumen[] | null } = {}) {
+function montar({
+  acciones,
+  borradores = [],
+  planes = [PUBLICO, CUSTOM, ARCHIVADO],
+}: { acciones?: Dobles; borradores?: BorradorResumen[] | null; planes?: PlanDelCatalogo[] } = {}) {
   const a = acciones ?? borradorEnMemoria().acciones;
   render(
     <PlanesModule
-      planes={[PUBLICO, CUSTOM, ARCHIVADO]}
+      planes={planes}
       empresas={[{ id: CUSTOM.organizacionId!, nombre: "Envíos Norte", tienePlan: true, fechaDeEfectoPorDefecto: "2026-11-01" }]}
       inicioCicloPorDefecto="2026-10-30"
       rangoInicioCiclo={{ hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" }}
@@ -192,6 +196,7 @@ describe("SLT-58 R13 — el catálogo de planes", () => {
       // SLT-86 (R24): «{mensual} / mes» y el descuento de cada período que lo tiene; sin tope de órdenes.
       "Costo base: 10.00 / mes · Descuento anual: 10.00 %Costo por orden: se aplica el valor global",
       "Usuarios activos con el rol Mensajero: 5API keys activas: 2",
+      "Sin beneficios", // SLT-214 (R20)
       "1.200",
       "Desde 2030-01-15",
     ]);
@@ -200,6 +205,7 @@ describe("SLT-58 R13 — el catálogo de planes", () => {
       "Custom de Envíos Norte",
       "Costo base: sin precioCosto por orden: se aplica el valor global", // SLT-66 R9, R24
       "Usuarios: sin límite por rolAPI keys activas: sin límite",
+      "Sin beneficios", // SLT-214 (R20)
       "1",
       "Ninguno",
     ]);
@@ -332,13 +338,15 @@ describe("SLT-58 — revisión de diseño del catálogo", () => {
     expect(screen.queryByText("—")).toBeNull();
   });
 
-  it("por debajo de md se ocultan «Visibilidad» y «Cambio programado» (cabecera y celdas)", () => {
+  it("por debajo de md se ocultan «Visibilidad», «Beneficios» y «Cambio programado» (cabecera y celdas)", () => {
     montar();
-    for (const nombre of ["Visibilidad", "Cambio programado"]) {
+    // SLT-214 (design §4.4): «Beneficios» también, para que la tabla no se rompa en móvil.
+    for (const nombre of ["Visibilidad", "Beneficios", "Cambio programado"]) {
       expect(screen.getByRole("columnheader", { name: nombre })).toHaveClass("hidden", "md:table-cell");
     }
-    const [, visibilidad, precio, , , cambio] = within(filaDe("Básico")).getAllByRole("cell");
+    const [, visibilidad, precio, , beneficios, , cambio] = within(filaDe("Básico")).getAllByRole("cell");
     expect(visibilidad).toHaveClass("hidden", "md:table-cell");
+    expect(beneficios).toHaveClass("hidden", "md:table-cell");
     expect(cambio).toHaveClass("hidden", "md:table-cell");
     expect(precio).not.toHaveClass("hidden");
   });
@@ -557,5 +565,91 @@ describe("SLT-144 R13 — cerrar el panel con el borrador guardado", () => {
     expect(acciones.confirmar).not.toHaveBeenCalled();
     // Relee para que la sección «Borradores» traiga el que se acaba de guardar.
     expect(refreshMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+// SLT-214 «Planes: beneficios de texto con ícono» (design §4.4; R20, R21): la columna «Beneficios» del listado, con
+// los 3 primeros en orden y «Mostrar más» por fila.
+describe("SLT-214 R20, R21 — la columna «Beneficios» del listado", () => {
+  const CINCO: NonNullable<PlanDelCatalogo["beneficios"]> = [
+    { icono: "equipo", texto: "Equipo dedicado" },
+    { icono: "soporte", texto: "Soporte prioritario" },
+    { icono: "reloj_24h", texto: "Atención 24 h" },
+    { icono: "rayo", texto: "Alta rápida" },
+    { icono: "estrella", texto: "Reportes premium" },
+  ];
+  const CON_CINCO: PlanDelCatalogo = { ...PUBLICO, beneficios: CINCO };
+  const CON_TRES: PlanDelCatalogo = { ...CUSTOM, beneficios: CINCO.slice(0, 3) };
+  const OTRO_CON_CINCO: PlanDelCatalogo = {
+    ...PUBLICO,
+    id: "3b6f3a2e-1c4d-4e5f-8a9b-0c1d2e3f4a5b",
+    nombre: "Pro",
+    beneficios: CINCO,
+  };
+
+  const celdaDeBeneficios = (nombre: string) => within(filaDe(nombre)).getAllByRole("cell")[4]!;
+  const textos = (celda: HTMLElement) =>
+    within(within(celda).getByRole("list", { name: "Beneficios" }))
+      .getAllByRole("listitem")
+      .map((li) => li.textContent);
+
+  it("R20: la columna va después de «Topes»; cada fila muestra los 3 primeros con su ícono y en orden", () => {
+    montar({ planes: [CON_CINCO, CON_TRES] });
+
+    const cabeceras = screen.getAllByRole("columnheader").map((c) => c.textContent);
+    expect(cabeceras.indexOf("Beneficios")).toBe(cabeceras.indexOf("Topes") + 1);
+
+    const celda = celdaDeBeneficios("Básico");
+    expect(textos(celda)).toEqual(["Equipo dedicado", "Soporte prioritario", "Atención 24 h"]);
+    // R5: el ícono es decorativo, al lado del texto.
+    const iconos = celda.querySelectorAll("svg[data-icono]");
+    expect([...iconos].map((i) => i.getAttribute("data-icono"))).toEqual(["equipo", "soporte", "reloj_24h"]);
+    for (const i of iconos) expect(i).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("R20: sin beneficios, la celda dice «Sin beneficios»", () => {
+    montar({ planes: [PUBLICO] });
+
+    expect(celdaDeBeneficios("Básico")).toHaveTextContent("Sin beneficios");
+    expect(within(celdaDeBeneficios("Básico")).queryByRole("list")).toBeNull();
+  });
+
+  it("R21: con 3 o menos no hay «Mostrar más»; con más de 3, sí, con `aria-expanded=false`", () => {
+    montar({ planes: [CON_CINCO, CON_TRES] });
+
+    expect(within(celdaDeBeneficios("Norte a medida")).queryByRole("button")).toBeNull();
+    const boton = within(celdaDeBeneficios("Básico")).getByRole("button", { name: "Mostrar más" });
+    expect(boton).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("R21: «Mostrar más» despliega todos en su fila y pasa a «Mostrar menos»; al pulsarlo, vuelven los 3", async () => {
+    const user = userEvent.setup();
+    montar({ planes: [CON_CINCO] });
+
+    await user.click(within(celdaDeBeneficios("Básico")).getByRole("button", { name: "Mostrar más" }));
+    expect(textos(celdaDeBeneficios("Básico"))).toEqual(CINCO.map((b) => b.texto));
+    const menos = within(celdaDeBeneficios("Básico")).getByRole("button", { name: "Mostrar menos" });
+    expect(menos).toHaveAttribute("aria-expanded", "true");
+
+    await user.click(menos);
+    expect(textos(celdaDeBeneficios("Básico"))).toHaveLength(3);
+    expect(within(celdaDeBeneficios("Básico")).getByRole("button", { name: "Mostrar más" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+  });
+
+  it("R21: cada fila se despliega por su cuenta", async () => {
+    const user = userEvent.setup();
+    montar({ planes: [CON_CINCO, OTRO_CON_CINCO] });
+
+    await user.click(within(celdaDeBeneficios("Pro")).getByRole("button", { name: "Mostrar más" }));
+
+    expect(textos(celdaDeBeneficios("Pro"))).toHaveLength(5);
+    expect(textos(celdaDeBeneficios("Básico"))).toHaveLength(3);
+    expect(within(celdaDeBeneficios("Básico")).getByRole("button", { name: "Mostrar más" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
   });
 });

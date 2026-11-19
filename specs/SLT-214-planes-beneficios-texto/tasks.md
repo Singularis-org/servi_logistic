@@ -70,7 +70,7 @@ Orden: T1 → T2 → (T3, T4, T5 [P]) → T6 → (T7, T8 [P]) → T9 → T10 →
       - R14: «Revisar»;
     - `tests/unit/planes/plan-form-borrador.test.ts` cubre R11 (ida y vuelta);
     - `tests/components/PlanFormPasos.test.tsx` cubre R7 (el orden de los pasos en los dos modos).
-- [ ] **T9. Vistas** (`PlanesModule.tsx`, `PlanDetalle.tsx`, `PlanActivo.tsx`, `CarruselDePlanes.tsx`). R19–R25.
+- [x] **T9. Vistas** (`PlanesModule.tsx`, `PlanDetalle.tsx`, `PlanActivo.tsx`, `CarruselDePlanes.tsx`). R19–R25.
   Depende de T3, T5, T6 y T7.
   - **Hecho:**
     - `tests/components/PlanesModule.test.tsx` cubre R20 y R21 (cada fila se despliega por su cuenta);

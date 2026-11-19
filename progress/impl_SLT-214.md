@@ -194,3 +194,50 @@ Tests FUERA de la lista (rompían solo por el paso nuevo):
 
 Veredicto: T8 y T10 en verde (typecheck, lint, tests del formulario y guardias); un archivo de producción fuera de
 la lista (`components/ui/select.tsx`, aditivo) y dos tests fuera de la lista ajustados solo por el paso nuevo.
+
+## Tanda 4 (frontend_dev): T9
+
+### Archivos
+
+Producción (todos en la lista de `tasks.md`):
+- `app/(app)/plataforma/planes/_components/PlanesModule.tsx`: columna «Beneficios» tras «Topes», con `SOLO_DESDE_MD`,
+  `ListaDeBeneficios plegable={3}` y «Sin beneficios» (R20, R21).
+- `app/(app)/plataforma/planes/[planId]/_components/PlanDetalle.tsx`: `Dato` «Beneficios» tras «Módulos incluidos»
+  con la lista completa y «Sin beneficios» (R22); `lineasDelRastro` pinta el alta «Beneficios: t1, t2, …» y pasa
+  `beneficios` de una edición a `lineasDeCambioDelPlan` (R19, R25).
+- `app/(app)/mi-plan/_components/PlanActivo.tsx`: bloque «Beneficios» tras los módulos, con la lista completa; sin
+  beneficios no se pinta (R23).
+- `components/shared/planes/CarruselDePlanes.tsx`: `ListaDeBeneficios plegable={3}` tras `ListaDeModulos` en
+  `TarjetaDePlan`, en un contenedor `relative z-10` sobre el botón del plan; sin beneficios no se pinta (R21, R24).
+
+Ninguna página server ni mapeo cambia: `PlanDelCatalogo`, `DetallePlan.plan`, `PlanConConsumo` y `PlanVista` ya traen
+`beneficios` desde `lib/` (T3, T5). Nada fuera de la lista.
+
+Tests (en la lista): `PlanesModule.test.tsx` (nuevo bloque SLT-214; la fila exacta de R13 lleva la celda «Sin
+beneficios» y el caso de `md` incluye la columna nueva), `PlanDetalle.test.tsx`, `MiPlanModule.test.tsx` y
+`MiPlanCambioDePlan.test.tsx` (bloques nuevos).
+
+### R<n> → test (esta tanda)
+
+| R | Test |
+|---|---|
+| R19 (vista) | `PlanDetalle.test.tsx` «R19: un alta con beneficios pinta «Beneficios: t1, t2, …» en orden», «R19: un alta sin beneficios (sin la clave) no pinta la línea», «R19, R25: una edición pinta «Se agrega» y «Se quita», tras los módulos», «R19, R25: una edición que solo cambia íconos u orden pinta una sola línea» |
+| R20 | `PlanesModule.test.tsx` «R20: la columna va después de «Topes»; cada fila muestra los 3 primeros…», «R20: sin beneficios, la celda dice «Sin beneficios»»; «R13: una fila por plan…» (celda exacta) |
+| R21 | `PlanesModule.test.tsx` «R21: con 3 o menos no hay «Mostrar más»…», «R21: «Mostrar más» despliega todos en su fila…», «R21: cada fila se despliega por su cuenta»; `MiPlanCambioDePlan.test.tsx` «R21, R24: «Mostrar más» despliega la tarjeta sola y no selecciona el plan…» |
+| R22 | `PlanDetalle.test.tsx` «R22: todos, con su ícono y en orden, después de «Módulos incluidos»…», «R22: sin beneficios dice «Sin beneficios»» |
+| R23 | `MiPlanModule.test.tsx` «R23: todos los de la versión que corre la empresa…», «R23: sin beneficios no hay sección…», «R18, R23: una versión sin la clave `beneficios`…» |
+| R24 | `MiPlanCambioDePlan.test.tsx` «R24: cada tarjeta, también la del plan activo, muestra los 3 primeros…», «R24: el custom activo también muestra sus beneficios», «R21, R24: …no selecciona el plan…» |
+| R25 (Mi plan) | `MiPlanModule.test.tsx` «R25: «Se agrega: …» y «Se quita: …» por cada beneficio…», «R25: si solo cambian íconos u orden, sale una sola línea» |
+
+### Salida real
+
+- `pnpm run typecheck` (tsc --noEmit): sin errores, rc 0.
+- `pnpm exec eslint` sobre los 8 archivos tocados: sin salida, rc 0.
+- `pnpm exec vitest run` de `PlanesModule`, `PlanDetalle`, `MiPlanModule` y `MiPlanCambioDePlan`:
+  `Test Files  4 passed (4)` / `Tests  108 passed (108)`.
+- `pnpm exec vitest related --run` sobre los 4 archivos de producción: `Test Files  13 passed (13)` /
+  `Tests  225 passed (225)`.
+- `pnpm run test:guardias`: `Test Files  357 passed | 3 skipped (360)` / `Tests  5380 passed | 28 skipped (5408)`.
+- Archivos en LF (0 `\r` en los 8). E2E no corridos (T11, por indicación del leader).
+
+Veredicto: T9 en verde (typecheck, lint, los 4 tests, related y guardias), sin archivos fuera de la lista.
