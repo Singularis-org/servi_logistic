@@ -146,6 +146,16 @@ T2 — guardias:
 
 - `./init.sh` tras el merge (base `servi_slt224_e2e` exportada): **INIT_EXIT=0**.
 
+## Ronda 3 (2026-11-19): arreglos de la review del PR 1 (`progress/review_SLT-224-pr1.md`)
+
+- **B1** — nuevo caso en `zona-desalineada-central-migration.test.ts`, «R1708 (en su empresa)»: la empresa 2 mapea a una zona suya el MISMO distrito que las órdenes de la empresa 1 (una desalineada y una alineada en `en_bodega_central`). Se afirma que la desalineada toma la zona de SU empresa, que la alineada no cambia y que el respaldo tiene una fila por orden corregida.
+  - **Mutación D** (quitar `zd.organizacion_id = o.organizacion_id` del JOIN de la migración), en una base desechable limpia (`servi_slt224_b1`): **1 rojo de 6**, el caso nuevo. El rojo llega como `SL017` «referencia a otra empresa: orden.zona_id -> zona»: sin el JOIN por empresa, la migración intenta poner a la orden de la empresa 1 la zona de la empresa 2 y el trigger de misma empresa de SL-17 aborta. Si el trigger no existiera, la aserción de zona y la del respaldo (fila duplicada) también caerían. En la base `servi_slt224_e2e` (con datos de E2E commiteados) la misma mutación da 6/6 rojos por el mismo SL017.
+- **m1** — el mismo fixture en `actualizacion-zonas.int.test.ts` («R1719: con el MISMO distrito mapeado por la otra empresa…», sobre la vista previa). **Mutación G** (quitar el JOIN por empresa del SQL del botón): **1 rojo de 5**, el caso nuevo. El helper (Prisma) no tiene ese JOIN: lee `zona_distrito` por la transacción de empresa, con RLS en producción, igual que el guardado de zona desde la 366.
+- **m2** — la sección «Actualizar zonas» de la ayuda sale de este PR (queda en `[ ]` en T9, PR 2; borrador en `a3c78989`). Se queda el párrafo de la recepción.
+- **m4** — `design.md` §5.1, §5.3 y §6 (T11) nombran ya la tabla real `respaldo_slt224.orden_zona` y el esquema propio.
+- **m5** — `requirements.md`: una línea junto a la enmienda a R977 sobre el cambio en el camino de SLT-198/R1228.
+- **Sin tocar, anotados:** m3 (T0 y T7 en `tasks.md` y `progress/features/SLT-224.md` son del leader) y m6 (`e2e/dos-empresas-humo.spec.ts` lo corre el check `e2e (aislamiento)` del CI).
+
 ## Veredicto
 
 VERDE: backend de SLT-224 «Retiro a central: recalcular la zona de la orden» hecho (T1-T6, T8), init.sh exit 0; falta T9 (pantalla) y T0/T7 del leader.

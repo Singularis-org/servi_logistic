@@ -61,6 +61,9 @@ estante hacia otra bodega. SLT-197 la añadió, y con ella el hueco que esta fic
 **Enmienda a SLT-197.** R977 de SLT-197 «Retirar paquetes de una bodega satélite a la central» dice
 que la recepción en la central no cambia la zona. Esta ficha lo enmienda **solo** para la orden cuya
 zona no es la de su distrito (R1700). R972 (el retiro conserva la zona) se mantiene (R1705).
+Por lo mismo cambia el camino de SLT-198/R1228: la orden retirada de una satélite vaciada ya llega a la
+central con la zona de su distrito, y re-guardar esa zona no tiene nada que mover
+(`tests/integration/db/zona-sin-distritos.test.ts`).
 
 ## Decisiones cerradas (no reabrir)
 

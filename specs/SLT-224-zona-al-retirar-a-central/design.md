@@ -283,12 +283,12 @@ AND NOT EXISTS (SELECT 1 FROM gestion_orden g WHERE g.orden_id = o.id AND g.anul
 
 `migration.sql`, en orden y en la transacción de la migración:
 
-1. `CREATE SCHEMA IF NOT EXISTS respaldo;` (ya existe por SLT-75; el `IF NOT EXISTS` lo hace inocuo).
-2. `CREATE TABLE respaldo.slt224_orden_zona AS` con las candidatas: `orden_id`, `organizacion_id`,
+1. `CREATE SCHEMA IF NOT EXISTS respaldo_slt224;` + `REVOKE ALL ON SCHEMA respaldo_slt224 FROM PUBLIC;`. Esquema PROPIO y no el compartido `respaldo`: SLT-76 retira ese esquema y sus pruebas esperan poder borrarlo vacío (desvío de la implementación, `progress/impl_SLT-224.md`).
+2. `CREATE TABLE respaldo_slt224.orden_zona AS` con las candidatas: `orden_id`, `organizacion_id`,
    `zona_id_anterior`, `zona_id_nueva`, `lote_id` (un `gen_random_uuid()` por empresa, con un CTE de
    empresas distintas) y `respaldado_at`. Columnas con nombre, nunca `o.*`.
-   `REVOKE ALL ON respaldo.slt224_orden_zona FROM PUBLIC;`
-3. `UPDATE orden o SET zona_id = r.zona_id_nueva, updated_at = NOW() FROM respaldo.slt224_orden_zona r WHERE o.id = r.orden_id;`
+   `REVOKE ALL ON respaldo_slt224.orden_zona FROM PUBLIC;`
+3. `UPDATE orden o SET zona_id = r.zona_id_nueva, updated_at = NOW() FROM respaldo_slt224.orden_zona r WHERE o.id = r.orden_id;`
    Solo esas dos columnas (R1707).
 4. `INSERT INTO historial_accion (id, accion, entidad_tipo, entidad_id, entidad_etiqueta, actor_usuario_id, actor_nombre, actor_rol, lote_id, organizacion_id)`
    desde el respaldo unido a `orden`: `gen_random_uuid()`, `'orden_zona_reconciliada'`, `'orden'`,
@@ -320,11 +320,10 @@ Si no hay candidatas, el respaldo queda vacío y los pasos 3 y 4 no escriben nad
 
 ### 5.3 `down.sql` (R1711)
 
-1. `UPDATE orden o SET zona_id = r.zona_id_anterior, updated_at = NOW() FROM respaldo.slt224_orden_zona r WHERE o.id = r.orden_id AND o.zona_id = r.zona_id_nueva AND EXISTS (SELECT 1 FROM zona z WHERE z.id = r.zona_id_anterior);`
+1. `UPDATE orden o SET zona_id = r.zona_id_anterior, updated_at = NOW() FROM respaldo_slt224.orden_zona r WHERE o.id = r.orden_id AND o.zona_id = r.zona_id_nueva AND EXISTS (SELECT 1 FROM zona z WHERE z.id = r.zona_id_anterior);`
    No pisa una zona que alguien cambió después, ni apunta a una zona borrada.
-2. `DELETE FROM historial_accion h USING (SELECT DISTINCT lote_id FROM respaldo.slt224_orden_zona) l WHERE h.lote_id = l.lote_id AND h.accion = 'orden_zona_reconciliada';`
-3. `DROP TABLE respaldo.slt224_orden_zona;`. **No** se borra el esquema `respaldo`: ahí sigue el
-   respaldo de SLT-75.
+2. `DELETE FROM historial_accion h USING (SELECT DISTINCT lote_id FROM respaldo_slt224.orden_zona) l WHERE h.lote_id = l.lote_id AND h.accion = 'orden_zona_reconciliada';`
+3. `DROP TABLE respaldo_slt224.orden_zona;` y `DROP SCHEMA respaldo_slt224;` (el esquema es solo de esta ficha).
 
 ## 6. T0 y T11 contra producción (solo lectura, los hace el leader)
 
@@ -390,7 +389,7 @@ si hiciera falta, con el JSON del leader.
 Se re-mide el día del paso a producción, no solo el del PR.
 
 **T11, después del deploy a producción.** La misma consulta da `a_corregir = 0`, el respaldo
-`respaldo.slt224_orden_zona` tiene tantas filas como `a_corregir` daba el T0 del día (0 si no apareció
+`respaldo_slt224.orden_zona` tiene tantas filas como `a_corregir` daba el T0 del día (0 si no apareció
 nada), hay una acción `orden_zona_reconciliada` por fila de ese respaldo, la guía 64482571 sigue con la
 zona de su distrito («GAM») y las 18 de P2 siguen intactas.
 

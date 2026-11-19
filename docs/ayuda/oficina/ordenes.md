@@ -84,26 +84,6 @@ de zonas.
 Si alguna orden del lote ya no está en el estante (por ejemplo, la satélite la acaba de asignar), no se
 retira ninguna: el diálogo te dice cuál y podés actualizar la lista y volver a intentarlo.
 
-## Actualizar zonas
-
-Junto a **Recibir paquete** está el botón **Actualizar zonas**. No depende de las órdenes que tengas
-seleccionadas: busca en toda tu empresa las órdenes cuya zona no es la de su distrito y, antes de
-cambiar nada, te muestra cuántas se actualizarían (agrupadas por zona actual y zona nueva) y cuáles se
-saltan y por qué. Al confirmar, les pone la zona de su distrito y te dice cuántas se actualizaron.
-
-Se saltan, con su guía y el motivo:
-
-- las que están **en el estante de una bodega satélite**: esa bodega tiene el paquete y es la que lo
-  tiene que despachar o retirar a la central;
-- las que están **en devolución**, camino de la central o de vuelta a la tienda: cambiarles la zona
-  no las desbloquea y puede dejarlas sin quien las envíe;
-- las que **ya tienen un cierre o una gestión que decidió el cobro** (entregada, rechazada o con
-  incidente): su cobro ya está decidido y no se recalcula.
-
-Una orden saltada no impide que se actualicen las demás. Cada orden actualizada deja una fila en el
-**histórico de acciones** con quien confirmó. Lo que se actualiza es solo la zona: el cobro de lo ya
-cerrado no cambia, y el próximo cierre de esa orden usa la tarifa de la zona nueva.
-
 ## Acciones por orden
 
 **Ver el historial completo**, **reportar un incidente**, **corregir los datos del cliente**, **generar

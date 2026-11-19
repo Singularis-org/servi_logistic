@@ -417,4 +417,33 @@ describeSiHayBase("SLT-224 — la correccion unica de la zona en la central (Pos
     expect(r.acciones).toEqual([]);
     expect(r.respaldo).toEqual([{ n: 0 }]);
   }, 60_000);
+
+  it("R1708 (en su empresa): con el MISMO distrito mapeado por la otra empresa a otra zona, cada orden toma la zona de SU empresa", async () => {
+    // La geografia es de la plataforma: dos empresas que mapean el mismo distrito es lo normal. La
+    // migracion corre como dueño, sin RLS, asi que el JOIN por `organizacion_id` es la unica defensa.
+    const r = await enTransaccionRevertida(prisma, async (tx) => {
+      const s = await sembrar(tx, ["central"], ["central", "alineada"]);
+      const [e1, e2] = s.empresas;
+      const central = e1.ordenes.get("central") ?? "";
+      const { distritoId } = await tx.orden.findUniqueOrThrow({ where: { id: central }, select: { distritoId: true } });
+      if (distritoId === null) throw new Error("la orden sembrada no tiene distrito");
+      // La empresa 2 mapea el distrito de la empresa 1 a una zona SUYA.
+      await fijarEmpresa(tx, e2.id);
+      await tx.zonaDistrito.create({ data: { zonaId: e2.zonaD, distritoId } });
+      await fijarEmpresa(tx, e1.id);
+      const antes = await zonas(tx, s.ids);
+      await ejecutar(tx, UP);
+      const despues = await zonas(tx, s.ids);
+      const respaldo = await tx.$queryRawUnsafe<{ orden_id: string }[]>(
+        `SELECT orden_id FROM respaldo_slt224.orden_zona WHERE orden_id = ANY($1::text[])`,
+        s.ids,
+      );
+      return { s, e1, cambiadas: cambiadas(s, antes, despues), despues, central, respaldo };
+    });
+    expect(r.cambiadas).toEqual(["e1:central", "e2:central"]);
+    expect(r.despues.get(r.central)).toBe(r.e1.zonaC);
+    expect(r.despues.get(r.e1.ordenes.get("alineada") ?? "")).toBe(r.e1.zonaC);
+    // Una fila de respaldo por orden corregida, sin duplicados por la otra empresa.
+    expect(r.respaldo.map((f) => r.s.claveDe.get(f.orden_id)).sort()).toEqual(["e1:central", "e2:central"]);
+  }, 60_000);
 });

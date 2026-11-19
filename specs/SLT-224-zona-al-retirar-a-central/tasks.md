@@ -69,7 +69,7 @@
 - [x] `docs/ayuda/oficina/ordenes.md`, «Retirar a bodega central»: «quedan En bodega central con su
   zona de siempre» pasa a decir que, al recibirlas, toman la zona de su distrito (si el distrito se
   pasó a otra zona mientras estaban en la satélite, ya llegan con la nueva). Sin glifos ni símbolos.
-- [x] Mismo archivo: un párrafo para «Actualizar zonas» (qué busca, qué se salta y por qué, y que deja
+- [ ] (Movido a T9, PR 2, por la review del PR 1: el botón no existe hasta entonces.) Mismo archivo: un párrafo para «Actualizar zonas» (qué busca, qué se salta y por qué, y que deja
   rastro en el histórico de acciones).
 - **Hecho:** texto revisado contra R1700, R1705 y R1713–R1718.
 
@@ -97,6 +97,7 @@
   `RecibirPaquetesEntrada` en `header`, con `onSuccess={handleSuccess}`. `app/(app)/ordenes/page.tsx`:
   `puedeActualizarZonas = esAccesoTotal(rol)`.
 - [ ] `tests/components/ActualizarZonasButton.test.tsx`.
+- [ ] Ayuda: la sección «Actualizar zonas» de `docs/ayuda/oficina/ordenes.md` (qué busca, qué se salta y por qué, y que deja rastro en el histórico de acciones), con el texto ajustado a la decisión de Carlos sobre P2. Sale del PR 1 por la review (m2); el borrador está en el commit `a3c78989`.
 - **Hecho:** test de componente verde; en local, con maestro, el botón aparece junto a «Recibir
   paquete», la vista previa coincide con la base y al confirmar el listado se refresca. Con
   `adminSatelite` el botón no aparece.

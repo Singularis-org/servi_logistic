@@ -287,6 +287,34 @@ describeSiHayBase("SLT-224 · «Actualizar zonas» contra Postgres real", () => 
     expect(saltadasPorClave(r.e, r.res.saltadas)).toContain("central:estante_satelite");
   });
 
+  it("R1719: con el MISMO distrito mapeado por la otra empresa a otra zona, la vista previa solo mira el mapa de SU empresa", async () => {
+    // La geografia es compartida: la empresa 2 mapea el distrito X (de las ordenes de la empresa 1) a
+    // una zona suya. Sin el JOIN por `organizacion_id`, la alineada de la empresa 1 apareceria como
+    // errada hacia la zona de la empresa 2, y la central saldria dos veces. Como dueño (sin RLS), el
+    // filtro del SQL es lo unico que lo impide.
+    const r = await conEscenario(async (e) => {
+      const { distritoId } = await e.tx.orden.findUniqueOrThrow({
+        where: { id: e.ordenes.get("central") ?? "" },
+        select: { distritoId: true },
+      });
+      if (distritoId === null) throw new Error("la orden sembrada no tiene distrito");
+      await fijarEmpresa(e.tx, e.org2);
+      const zonaOtra = (
+        await e.tx.zona.create({
+          data: { nombre: `e2 X ${randomUUID().slice(0, 6)}`, sinpeNumero: "80000000", sinpeNombre: "Titular" },
+          select: { id: true },
+        })
+      ).id;
+      await e.tx.zonaDistrito.create({ data: { zonaId: zonaOtra, distritoId } });
+      await fijarEmpresa(e.tx, e.org1);
+      return { e, vp: await e.servicio.vistaPrevia() };
+    });
+    expect(r.vp.total).toBe(2);
+    expect(r.vp.grupos).toHaveLength(1);
+    expect(r.vp.grupos[0].zonaNueva.startsWith(NOMBRE_C)).toBe(true);
+    expect(saltadasPorClave(r.e, r.vp.saltadas)).toEqual(SALTADAS_ESPERADAS);
+  });
+
   it("R1719: ni la alineada ni la de distrito sin zona aparecen, ni cambian", async () => {
     const r = await conEscenario(async (e) => {
       const vp = await e.servicio.vistaPrevia();
