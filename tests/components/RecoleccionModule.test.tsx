@@ -1347,6 +1347,49 @@ describe("SLT-190 — Recolección según el canvas", () => {
     expect(within(seccionHoy()).getByText("REM-H2")).toBeInTheDocument();
   });
 
+  // SLT-206 «Filtro Tienda duplicado en Recoger y Recolección»: fija el comportamiento del filtro
+  // antes de llevarlo al hook compartido (`useFiltroTienda`). El mismo par vive en RecogerModule.test.
+  it("R852 (SLT-206): quitar «Tienda» de «Filtros» vacía su valor: vuelve todo y, al ponerlo otra vez, dice «Todas»", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: POR, recolectadasHoy: HOY });
+    await ponerTienda(user, "Tienda Norte");
+    expect(within(seccionPor()).queryByText("REM-P1")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: /^Filtros/ }));
+    const selector = await screen.findByRole("listbox", { name: "Filtros" });
+    await user.click(within(selector).getByRole("option", { name: "Tienda" }));
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("combobox", { name: "Filtrar por tienda" })).toBeNull();
+    for (const rem of ["REM-P1", "REM-P2", "REM-P3"]) {
+      expect(within(seccionPor()).getByText(rem)).toBeInTheDocument();
+    }
+    expect(within(seccionHoy()).getByText("REM-H2")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /^Filtros/ }));
+    const otraVez = await screen.findByRole("listbox", { name: "Filtros" });
+    await user.click(within(otraVez).getByRole("option", { name: "Tienda" }));
+    await user.keyboard("{Escape}");
+    const control = screen.getByRole("combobox", { name: "Filtrar por tienda" });
+    expect(control).toHaveTextContent("Todas");
+    expect(control).not.toHaveTextContent("Tienda Norte");
+  });
+
+  it("R852 (SLT-206): «Tienda» puesto sin valor ya ofrece «Limpiar todo», y este retira el control", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: POR, recolectadasHoy: HOY });
+    expect(within(barra()).queryByRole("button", { name: "Limpiar todo" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: /^Filtros/ }));
+    const selector = await screen.findByRole("listbox", { name: "Filtros" });
+    await user.click(within(selector).getByRole("option", { name: "Tienda" }));
+    await user.keyboard("{Escape}");
+    expect(within(barra()).getByRole("combobox", { name: "Filtrar por tienda" })).toBeInTheDocument();
+
+    await user.click(within(barra()).getByRole("button", { name: "Limpiar todo" }));
+    expect(screen.queryByRole("combobox", { name: "Filtrar por tienda" })).toBeNull();
+    expect(within(barra()).queryByRole("button", { name: "Limpiar todo" })).toBeNull();
+  });
+
   it("R854: con solo el filtro, la lista que queda vacía dice el vacío de búsqueda, no «sin órdenes»", async () => {
     const user = userEvent.setup();
     renderModule({ porRecolectar: POR, recolectadasHoy: HOY });

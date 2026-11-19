@@ -38,13 +38,8 @@ import {
   VACIO_GRUPO_HOY,
   VACIO_GRUPO_OTRO_DIA,
 } from "./recoger-grupos";
-import { FiltroTienda } from "./FiltroTienda";
-import {
-  ETIQUETA_FILTRO_TIENDA,
-  FILTRO_TIENDA,
-  filtrarPorTienda,
-  opcionesTienda,
-} from "./filtro-tienda";
+import { filtrarPorTienda } from "./filtro-tienda";
+import { useFiltroTienda } from "./useFiltroTienda";
 import { RecogerPaqueteCard } from "./RecogerPaqueteCard";
 import { PosOrderCardDetalle } from "./pos-card/PosOrderCardDetalle";
 import { PosOrderCardMosaico } from "./pos-card/PosOrderCardMosaico";
@@ -158,20 +153,8 @@ export function RecogerModule({
   // SLT-190 (R850-R854, DS1, DS2): el filtro «Tienda». Se trata como el término: filtra lo que se
   // ve en las DOS pestañas, no toca contadores ni lo que acepta el escáner (que mira `porRecoger`
   // completo), y cuenta como búsqueda activa para el vacío y el puntero a la otra pestaña.
-  const [tienda, setTienda] = useState("");
-  const [filtrosPuestos, setFiltrosPuestos] = useState<string[]>([]);
-  const tiendas = useMemo(() => opcionesTienda(porRecoger), [porRecoger]);
-  const filtrosOfrecidos = [{ key: FILTRO_TIENDA, label: ETIQUETA_FILTRO_TIENDA }];
-  // Quitar el filtro de «Filtros» vacía su valor: un filtro que ya no se ve no puede seguir filtrando.
-  function cambiarFiltrosPuestos(siguientes: string[]) {
-    if (!siguientes.includes(FILTRO_TIENDA)) setTienda("");
-    setFiltrosPuestos(siguientes);
-  }
-  // «Limpiar todo»: la barra vacía su campo y emite `""`; aquí se quita el filtro.
-  function limpiarTodo() {
-    setTienda("");
-    setFiltrosPuestos([]);
-  }
+  // SLT-206: el estado y el control, compartidos con Recolección (`useFiltroTienda`).
+  const { tienda, barra: barraTienda, control: controlTienda } = useFiltroTienda(porRecoger);
 
   const buscando = query.trim() !== "" || tienda !== "";
 
@@ -365,11 +348,7 @@ export function RecogerModule({
           debounceMs={0}
           leerDeUrl={false}
           // SLT-190 (R850-R852): el filtro «Tienda» con el selector de siempre (P2).
-          filtros={filtrosOfrecidos}
-          activos={filtrosPuestos}
-          onActivosChange={cambiarFiltrosPuestos}
-          onLimpiarTodo={limpiarTodo}
-          hayFiltrosAplicados={tienda !== "" || filtrosPuestos.length > 0}
+          {...barraTienda}
           fija
           tactil
           // SLT-190 (R859): el conmutador Mosaico/Detalle va en la barra fija, tras «Filtros».
@@ -381,9 +360,7 @@ export function RecogerModule({
             />
           }
         >
-          {filtrosPuestos.includes(FILTRO_TIENDA) ? (
-            <FiltroTienda tienda={tienda} tiendas={tiendas} onTiendaChange={setTienda} />
-          ) : null}
+          {controlTienda}
         </BuscadorFiltros>
 
         {/* ---------- Los dos grupos, feature 277 ---------- */}

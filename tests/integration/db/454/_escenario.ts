@@ -810,11 +810,15 @@ export interface Comprometido {
 export async function sembrarComprometido(
   mundo: Mundo,
   fn: (e: Escenario) => Promise<{ ordenIds: string[] }>,
+  opciones?: { marca?: string },
 ): Promise<Comprometido> {
   // SLT-185 (R1144): el escenario confirmado crea y fija SU empresa, como `conEscenario`: sin ella el
   // `zona.create` de la central viola `organizacion_id NOT NULL` (SL-17). La organizacion se confirma
   // aparte; si la siembra falla, se borra aqui mismo (R1145).
-  const organizacionId = (await crearOrganizacion(mundo.prisma)).id;
+  // SLT-204 (D80): con `marca`, el nombre de la empresa empieza por ella y `barrerComprometidosHuerfanos`
+  // la reconoce en el arranque siguiente si el worker murio antes de limpiarla.
+  const nombre = opciones?.marca === undefined ? undefined : `${opciones.marca} ${claveUnica()}`;
+  const organizacionId = (await crearOrganizacion(mundo.prisma, { nombre })).id;
   try {
     return await conEmpresa(organizacionId, () =>
       mundo.prisma.$transaction(
@@ -907,3 +911,78 @@ export async function limpiarComprometido(
   }
   if (s.organizacionId) await prisma.organizacion.delete({ where: { id: s.organizacionId } });
 }
+
+/**
+ * SLT-204 (D80): marca de la empresa de C02 (`caracterizacion/corte-concurrencia`). Si el worker muere
+ * a medias, su escenario confirmado queda con este nombre: en el informe de filas de SLT-188 se ve de
+ * quien es, y el siguiente arranque de C02 lo barre.
+ */
+export const MARCA_C02 = "Resto 454-C02 corte-concurrencia (worker caido)";
+
+/**
+ * SLT-204 (D80): borra los escenarios CONFIRMADOS que una corrida anterior dejo sin limpiar porque su
+ * worker murio (`afterAll` no llego; un `finally` tampoco, muere el proceso). Reconoce la empresa por
+ * `marca` al principio de su nombre y reune lo que cuelga de ella por `organizacion_id`. Devuelve
+ * cuantas empresas barrio.
+ *
+ * Solo se llama con la marca PROPIA del archivo: un archivo nunca corre dos veces a la vez en una
+ * corrida, asi que no hay escenario vivo con esa marca que barrer por error.
+ */
+export async function barrerComprometidosHuerfanos(prisma: PrismaClient, marca: string): Promise<number> {
+  const huerfanas = await prisma.organizacion.findMany({
+    where: { nombre: { startsWith: `${marca} ` } },
+    select: { id: true },
+  });
+  for (const { id } of huerfanas) {
+    const usuarios = (await prisma.usuario.findMany({ where: { organizacionId: id }, select: { id: true } })).map(
+      (u) => u.id,
+    );
+    const ordenIds = (await prisma.orden.findMany({ where: { organizacionId: id }, select: { id: true } })).map(
+      (o) => o.id,
+    );
+    const zonas = await prisma.zona.findMany({ where: { organizacionId: id }, select: { id: true, esCentral: true } });
+    const satelites = zonas.filter((z) => !z.esCentral).map((z) => z.id);
+    const centrales = zonas.filter((z) => z.esCentral).map((z) => z.id);
+    // Una zona por llamada; la empresa se borra con la ultima. Si quedara algo que la referencia, el
+    // RESTRICT hace fallar el borrado en voz alta (R1145), no lo deja mudo.
+    const pares = Math.max(satelites.length, centrales.length, 1);
+    for (let i = 0; i < pares; i++) {
+      const ultima = i === pares - 1;
+      await limpiarComprometido(prisma, {
+        usuarios,
+        ordenIds,
+        zonaId: satelites[i] ?? "",
+        centralZonaId: centrales[i] ?? null,
+        organizacionId: ultima ? id : undefined,
+      });
+    }
+  }
+  return huerfanas.length;
+}
+
+/**
+ * SLT-204 (D80, review B1): el arranque y la siembra de un archivo que CONFIRMA su escenario, atados a
+ * su marca. `preparar` = `prepararMundo` + barrido de los restos con la marca; `sembrar` =
+ * `sembrarComprometido` con la marca. Asi «barre al arrancar» y «siembra marcado» viven aqui, donde
+ * `corte-concurrencia-restos.test.ts` los prueba con una marca propia (sin tocar la de C02 en vivo).
+ */
+export interface EscenarioConfirmado {
+  marca: string;
+  preparar(): Promise<Mundo>;
+  sembrar(mundo: Mundo, fn: (e: Escenario) => Promise<{ ordenIds: string[] }>): Promise<Comprometido>;
+}
+
+export function escenarioConfirmadoDe(marca: string): EscenarioConfirmado {
+  return {
+    marca,
+    async preparar() {
+      const mundo = await prepararMundo();
+      await barrerComprometidosHuerfanos(mundo.prisma, marca);
+      return mundo;
+    },
+    sembrar: (mundo, fn) => sembrarComprometido(mundo, fn, { marca }),
+  };
+}
+
+/** SLT-204 (D80): el de C02 (`caracterizacion/corte-concurrencia`). */
+export const ESCENARIO_C02 = escenarioConfirmadoDe(MARCA_C02);
