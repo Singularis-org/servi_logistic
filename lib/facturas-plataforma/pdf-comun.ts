@@ -10,7 +10,7 @@
 import { jsPDF } from "jspdf";
 
 import { MARCA_FACTURA } from "@/lib/config/marca";
-import { FACTURA_DESCARGA_TEXTOS as T } from "@/lib/facturas-plataforma/resumen";
+import { FACTURA_DESCARGA_TEXTOS as T, importeDocumento } from "@/lib/facturas-plataforma/resumen";
 import { fuenteEtiqueta } from "@/lib/pdf/etiquetas-fuente";
 import { registrarFuente, seguroEnFuenteEstandar } from "@/lib/pdf/etiquetas-fuente-registro";
 import { imprimible } from "@/lib/pdf/imprimible";
@@ -92,6 +92,14 @@ export interface Celda {
   texto: string;
   color?: Color;
   negrita?: boolean;
+  /** Columnas que ocupa, desde la suya (por defecto 1): la etiqueta de un total que no cabe en «#». */
+  abarca?: number;
+}
+
+/** R3: un importe de la base con el formato de documento; si es negativo, en rojo. */
+export function celdaImporte(valor: string): Celda {
+  const texto = importeDocumento(valor);
+  return { texto, color: texto.startsWith("-") ? COLORES.rojo : undefined };
 }
 
 export interface Fila {
@@ -298,18 +306,22 @@ export class Lienzo {
     negrita?: boolean,
   ): void {
     let x = MARGEN;
-    columnas.forEach((c, i) => {
-      const celda = celdas[i];
+    for (let i = 0, j = 0; i < columnas.length; j++) {
+      const celda = celdas[j];
+      const tramo = columnas.slice(i, i + (celda?.abarca ?? 1));
+      const ancho = tramo.reduce((suma, c) => suma + c.ancho, 0);
+      const derecha = tramo[tramo.length - 1].derecha;
       if (celda !== undefined && celda.texto !== "") {
-        this.texto(celda.texto, c.derecha ? x + c.ancho - SANGRIA_CELDA : x + SANGRIA_CELDA, base, {
-          derecha: c.derecha,
+        this.texto(celda.texto, derecha ? x + ancho - SANGRIA_CELDA : x + SANGRIA_CELDA, base, {
+          derecha,
           negrita: negrita || celda.negrita,
           color: celda.color ?? color,
-          ancho: c.ancho - 2 * SANGRIA_CELDA,
+          ancho: ancho - 2 * SANGRIA_CELDA,
         });
       }
-      x += c.ancho;
-    });
+      x += ancho;
+      i += tramo.length;
+    }
   }
 
   /** R5: la cabecera y las filas, con fondos alternos; una fila que no cabe salta de página y repite la cabecera. */

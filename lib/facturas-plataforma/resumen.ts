@@ -58,7 +58,6 @@ export const FACTURA_DESCARGA_TEXTOS = {
     importe: "Importe neto",
     total: "Total",
     vacio: "Sin movimientos en el período",
-    nota: "Cada cargo y cada reverso, con su guía y su remisión, va en el Excel de esta factura.",
     /** R12: N es el `movimientos` de la base. */
     notaAnexo: (movimientos: string, numero: number, empresa: string) =>
       `El detalle completo de los ${movimientos} movimientos va en el anexo ` +
