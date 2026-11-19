@@ -300,6 +300,7 @@ describe("427/T2 — el UP y el DOWN, leidos del archivo", () => {
       "20261116120000_pago_plataforma_confirmacion",
       "20261117120000_factura_plataforma_aviso_enums",
       "20261117120000_plan_borrador",
+      "20261119120000_historial_accion_ordenes_retiradas_a_central",
     ]);
   });
 });

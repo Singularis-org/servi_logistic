@@ -1955,6 +1955,8 @@ export interface IOrdenRepository {
    * `en_bodega_satelite`) va en el `WHERE`; si el conteo no es exacto revierte y devuelve
    * `"conflicto"` sin cambios ni historial. Limpia mensajero, `asignado_at` y dia de reparto;
    * conserva la zona. Un historial por orden con `historial.origenTipo` (`ajuste_estado`).
+   * SLT-211: en la misma transaccion, una accion `ordenes_retiradas_a_central` por satelite del lote
+   * (Historico › Acciones); un conflicto no deja ninguna.
    */
   retirarSateliteLote(
     ordenIds: string[],
