@@ -72,6 +72,7 @@ import {
   nombrePlantilla,
 } from "./chat-format";
 import { formatMonto } from "../pos-card/pos-format";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
 
 // Rediseño del chat (rama ux) — columna derecha del chat separado: hilo REAL de la orden,
 // plantillas REALES y composer.
@@ -255,6 +256,8 @@ export function ChatConversacion({
   className,
 }: Readonly<ChatConversacionProps>) {
   const toast = useToast();
+  // SLT-235 (R11): el monto a cobrar de la cabecera, en la moneda del país de la empresa.
+  const moneda = useMonedaDelPais();
   const [borrador, setBorrador] = useState<Borrador>(BORRADOR_VACIO);
   const [enviando, setEnviando] = useState(false);
   const [ubicacionCliente, setUbicacionCliente] = useState<UbicacionPunto | null>(
@@ -717,7 +720,7 @@ export function ChatConversacion({
 
         <div className="hidden text-right sm:block">
           <p className="text-sm font-semibold text-foreground">
-            {formatMonto(orden.montoCobrar)}
+            {formatMonto(orden.montoCobrar, moneda)}
           </p>
           <p className="text-[11px] text-muted-foreground">A cobrar</p>
         </div>

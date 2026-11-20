@@ -74,3 +74,48 @@ Veredicto: Bloque 1 hecho, con typecheck y unit en verde. Falta correr R6 contra
   nuevo (no exportados) para que el bloque 3 monte cada pantalla con el mismo proveedor.
 
 Veredicto: Bloque 2 hecho; typecheck, lint y los dos archivos de test en verde.
+
+## Bloque 3 — T3.1 y T3.2 (frontend_dev, 2026-11-20)
+
+### Archivos (todos modificados, todos en «Archivos esperados»)
+- T3.1: `components/shared/PriceLabel.tsx` (`"use client"` + hook), `components/shared/KpiValorAnimado.tsx`
+  (`formatearMontoEn(moneda, n)`, `decimals = moneda.decimales`, moneda en las deps del `useCallback`),
+  `components/shared/DesglosePagoField.tsx` (hook en el componente; `mensajeDeCuadre(lineas, monto,
+  moneda = MONEDA_PLATAFORMA)`; `montoEn` local = `formatearMontoEn(moneda, v, SIN_MONTO_RAYA)`;
+  `export { montoExacto }` se queda).
+- T3.2: `pos-card/pos-format.ts` (`formatMonto(monto, moneda)` obligatoria), `pos-card/PosAmountRow.tsx`
+  (pasa a `"use client"`), `pos-card/PosOrderCardDetalle.tsx`, `pos-card/PosOrderCardMosaico.tsx`,
+  `chat/ChatConversacion.tsx` (solo la cabecera «A cobrar»; la vista previa queda para T3.4),
+  `AsignacionDetalle.tsx`, `KpisMensajero.tsx` (pasa a `"use client"`; `texto(kpis, moneda)`),
+  `GestionarOrdenPanel.tsx` (`mensajeDeCuadre(..., moneda)`).
+- Test: `tests/components/moneda-del-pais-pantallas.test.tsx` (dobles de `react-countup` con props,
+  router, mapa, acciones del chat y de mis-asignaciones; describes T3.1 y T3.2).
+
+### R → test (`moneda-del-pais-pantallas.test.tsx`)
+| R | Test |
+|---|---|
+| R11 | T3.1: PriceLabel, KpiValorAnimado, resumen de DesglosePagoField, «mensajeDeCuadre dice sus importes en la moneda que se le pasa». T3.2: pos-format.formatMonto, PosAmountRow, PosOrderCardDetalle, PosOrderCardMosaico, AsignacionDetalle, KpisMensajero, ChatConversacion (cabecera), GestionarOrdenPanel (aviso de cuadre) |
+| R12 | «R12: con una moneda de 0 decimales el contador cuenta a 0 decimales y el último fotograma da el texto del formateador» y «R12, R16: con la moneda de CR…» |
+| R15 | «R15: PriceLabel sin proveedor…», «R15, R16: mensajeDeCuadre sin moneda usa la de la plataforma…»; guardia 359 y `DineroIdentidadesEnPantalla.test.tsx` sin cambios y en verde |
+| R16 | cada caso de R11 compara el texto con `MONEDA_CR` contra el de sin proveedor (`compruebaMonedaDelPais`); tests existentes de esas pantallas en verde sin tocar |
+
+### Verificación
+- `pnpm run typecheck`: exit 0.
+- `pnpm exec eslint` sobre los 11 de producción y el test: 0 errores, 1 aviso preexistente
+  (`GestionarOrdenPanel.tsx:74` `EnviarPlantillaWhatsappButton` sin usar; no es de este cambio).
+- `pnpm exec vitest run` de `moneda-del-pais-pantallas`, `DineroIdentidadesEnPantalla`, guardia 359
+  (`dinero-centimos-cuando-existen.guardia`), `PriceLabel`, `KpiValorAnimado`, `KpisMensajero`,
+  `AsignacionDetalle`, los 8 de `GestionarOrdenPanel*`/`GestionarOrdenUbicacion*`, los 10 de
+  `PosCard*`/`PosOrderCard*`, 4 de `ChatConversacion*`/`ChatContactoAntesDeRecoger`,
+  `unit/utils/pos-format`, `unit/components/detalle-columnas`: 30 archivos, 415 tests, todos en verde.
+- Guardias que nombran estos archivos (`estado-con-info`, `marca-pwa-capturas-iconos`,
+  `paleta-secundaria`, `pwa-mensajero-sin-recorte`, `recorte-por-alcance` ×2, `pais-sin-literales`):
+  7 archivos, 193 tests, en verde.
+
+### Desviaciones
+- `KpisMensajero.tsx` y `PosAmountRow.tsx` pasan a `"use client"` (design §7 lo prevé): `KpisMensajero`
+  lo monta `mis-asignaciones/reparto/page.tsx`, que es de servidor; no hizo falta tocar la página.
+- `DesglosePagoField` pinta su resumen con un `montoEn` local en vez de `montoExacto`: mismo
+  formateador base y misma raya, así que con la moneda de la plataforma da lo mismo byte a byte.
+
+Veredicto: T3.1 y T3.2 hechas; typecheck, lint y los tests de las pantallas tocadas en verde.

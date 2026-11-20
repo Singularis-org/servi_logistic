@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import CountUp from "react-countup";
 
-import { ESCALA_PRESENTACION, formatMonto, monedaConfig } from "@/lib/config/moneda";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
+import { formatearMontoEn, monedaConfig } from "@/lib/config/moneda";
 import { cn } from "@/lib/utils";
 import { toValidNumber } from "@/lib/utils/number";
 
@@ -138,7 +139,8 @@ export interface KpiValorAnimadoProps {
    *
    * Por defecto `0`, que es el comportamiento de siempre para conteos y magnitudes grandes.
    *
-   * ⛔ EN MODO MONEDA SE IGNORA y se fuerza a `ESCALA_PRESENTACION`. La 230 lo forzaba a 0
+   * ⛔ EN MODO MONEDA SE IGNORA y se fuerza a los `decimales` de la moneda del país (SLT-235; hasta
+   * entonces, `ESCALA_PRESENTACION`, que es la de la moneda de la plataforma). La 230 lo forzaba a 0
    * porque entonces el texto del dinero se cuadraba al colon y recalcular centimos por
    * fotograma era trabajo invisible; con la ficha 359 el texto SI los lleva cuando existen, y
    * countup.js cuadra `frameVal` a `decimalPlaces` ANTES de pasarlo al formateador — incluido
@@ -172,7 +174,12 @@ export function KpiValorAnimado({
   // es que ahora una cifra menor que 1 puede pedir la resolucion que su cuenta necesita (ver
   // la prop). Se sanea aqui —entero y no negativo— porque countup.js lo pasa tal cual a
   // `toFixed`, que revienta con un valor absurdo.
-  const decimals = moneda ? ESCALA_PRESENTACION : Math.max(0, Math.trunc(decimales));
+  //
+  // SLT-235 (R12): la escala es la de la moneda del país, no la de la plataforma, por la misma
+  // razón: el último fotograma llega ya cuadrado a la escala que pinta `formatearMontoEn`, así
+  // que el KPI aterriza en el mismo texto que la tabla de al lado, también con 0 decimales.
+  const monedaDelPais = useMonedaDelPais();
+  const decimals = moneda ? monedaDelPais.decimales : Math.max(0, Math.trunc(decimales));
 
   // `false` en el servidor y durante la hidratacion, `true` en cuanto corre en el navegador.
   // Va con `useSyncExternalStore` y no con un `useState` + `useEffect`: React usa el snapshot
@@ -212,19 +219,19 @@ export function KpiValorAnimado({
   // MEMOIZADA A PROPÓSITO: react-countup reinicia la animación desde `start` en un
   // efecto que depende de la IDENTIDAD de `formattingFn`. Si se recreara en cada
   // render, cualquier re-render del padre (abrir el detalle de un cierre, por
-  // ejemplo) relanzaría el conteo desde 0. `moneda` y `prefijo` son los únicos valores
-  // reactivos que la función lee (`formatMonto` y `monedaConfig` son de módulo), así
-  // que el formato sigue correcto.
+  // ejemplo) relanzaría el conteo desde 0. `moneda`, `monedaDelPais` y `prefijo` son los
+  // únicos valores reactivos que la función lee (`monedaConfig` es de módulo, y la moneda
+  // del país la memoriza su proveedor), así que el formato sigue correcto.
   const formatearPorDefecto = useCallback(
     (n: number) =>
       prefijo +
       (moneda
-        ? formatMonto(n)
+        ? formatearMontoEn(monedaDelPais, n)
         : new Intl.NumberFormat(monedaConfig.locale, {
             minimumFractionDigits: 0,
             maximumFractionDigits: 0,
           }).format(n)),
-    [moneda, prefijo],
+    [moneda, monedaDelPais, prefijo],
   );
   const formatear = formatearPropio ?? formatearPorDefecto;
 

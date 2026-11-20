@@ -45,11 +45,11 @@ prueba con `MONEDA_DE_PRUEBA` y con `MONEDA_CR`; con `MONEDA_CR` el texto debe s
 proveedor (R16). Los tests existentes de esas pantallas siguen en verde sin cambiar ningún valor
 esperado.
 
-- [ ] **T3.1** [P] Componentes compartidos: `PriceLabel` (`"use client"`), `KpiValorAnimado` (R12) y
+- [x] **T3.1** [P] Componentes compartidos: `PriceLabel` (`"use client"`), `KpiValorAnimado` (R12) y
   `DesglosePagoField` con `mensajeDeCuadre(..., moneda?)`.
   - *Hecho:* sus casos en verde, y además la guardia 359 y `DineroIdentidadesEnPantalla.test.tsx` sin
     cambios.
-- [ ] **T3.2** [P] `mis-asignaciones`: `pos-format.formatMonto(monto, moneda)` y sus llamantes
+- [x] **T3.2** [P] `mis-asignaciones`: `pos-format.formatMonto(monto, moneda)` y sus llamantes
   (`PosAmountRow`, `PosOrderCardDetalle`, `PosOrderCardMosaico`, `ChatConversacion`), además de
   `AsignacionDetalle`, `KpisMensajero` y `GestionarOrdenPanel`.
   - *Hecho:* sus casos en verde (R11).
