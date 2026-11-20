@@ -1,7 +1,7 @@
 import type { jsPDF } from "jspdf";
 
 import { EMPRESA } from "@/lib/config/marca";
-import { formatMonto } from "@/lib/config/moneda";
+import { formatearMontoEn, MONEDA_PLATAFORMA, type FormatoMoneda } from "@/lib/config/moneda";
 import type { EtiquetaGuiaDTO } from "@/lib/types/etiqueta-guia";
 
 import {
@@ -153,6 +153,16 @@ export function geografiaLegible(etiqueta: EtiquetaGuiaDTO): string {
 }
 
 /**
+ * SL-21 (R14) — el importe en la moneda del pais de la empresa, que el PDF por API
+ * recibe del puerto. Sin ella cae a la de la plataforma: es el generador del
+ * navegador, que no conoce el pais hasta SLT-235. Un solo punto para que el
+ * importe medido, el exigido a la fuente y el dibujado no puedan divergir.
+ */
+function importeDeEtiqueta(etiqueta: EtiquetaGuiaDTO, moneda?: FormatoMoneda): string {
+  return formatearMontoEn(moneda ?? MONEDA_PLATAFORMA, etiqueta.montoCobrar);
+}
+
+/**
  * Los textos que se dibujan con la FUENTE EMBEBIDA, en el orden en que se
  * dibujan. Hoy es uno solo: el valor del importe, que es el unico que necesita
  * el simbolo de moneda.
@@ -165,9 +175,9 @@ export function geografiaLegible(etiqueta: EtiquetaGuiaDTO): string {
  * rojo (R21). Sin este punto unico ese olvido seria invisible: jsPDF BORRA de la
  * cadena el caracter que la fuente no cubre y sigue adelante sin decir nada.
  */
-export function textosConFuenteEmbebida(etiqueta: EtiquetaGuiaDTO): string[] {
-  const monto = formatMonto(etiqueta.montoCobrar);
-  const otros = datosDeEtiqueta(etiqueta)
+export function textosConFuenteEmbebida(etiqueta: EtiquetaGuiaDTO, moneda?: FormatoMoneda): string[] {
+  const monto = importeDeEtiqueta(etiqueta, moneda);
+  const otros = datosDeEtiqueta(etiqueta, moneda)
     .filter((d) => d.id !== "montoCobrar" && !seguroEnFuenteEstandar(d.valor))
     .map((d) => d.valor);
   return [monto, ...otros];
@@ -201,7 +211,7 @@ export interface DatoEtiqueta {
  * siempre verde. El valor esperado sale del literal del fixture; esto sirve para
  * el ORDEN y para el cruce pantalla/papel.
  */
-export function datosDeEtiqueta(etiqueta: EtiquetaGuiaDTO): DatoEtiqueta[] {
+export function datosDeEtiqueta(etiqueta: EtiquetaGuiaDTO, moneda?: FormatoMoneda): DatoEtiqueta[] {
   return [
     { id: "numGuia", valor: String(etiqueta.numGuia) },
     { id: "fechaCreacion", valor: etiqueta.fechaCreacion },
@@ -210,7 +220,7 @@ export function datosDeEtiqueta(etiqueta: EtiquetaGuiaDTO): DatoEtiqueta[] {
     { id: "telefonoDest", valor: etiqueta.telefonoDest },
     { id: "direccion", valor: etiqueta.direccion ?? SIN_DIRECCION },
     { id: "ubicacion", valor: geografiaLegible(etiqueta) },
-    { id: "montoCobrar", valor: formatMonto(etiqueta.montoCobrar) },
+    { id: "montoCobrar", valor: importeDeEtiqueta(etiqueta, moneda) },
     { id: "producto", valor: etiqueta.producto },
     { id: "tiendaNombre", valor: etiqueta.tiendaNombre },
   ];
@@ -266,6 +276,7 @@ export function drawEtiqueta(
   etiqueta: EtiquetaGuiaDTO,
   raster: RasterEtiqueta,
   fuente: FuenteEmbebida,
+  moneda?: FormatoMoneda,
 ): void {
   const { anchoUtil, altoUtil, cuerpos } = layout;
   const hojaId = layout.hoja.id;
@@ -357,7 +368,7 @@ export function drawEtiqueta(
   // money-safe: no se convierte a numero, no se re-parsea, no se reconstruye.
   // Ninguna decision de maquetacion altera sus caracteres.
   // -------------------------------------------------------------------------
-  const monto = formatMonto(etiqueta.montoCobrar);
+  const monto = importeDeEtiqueta(etiqueta, moneda);
   exigirCobertura(fuente, monto, "Monto a cobrar", etiqueta.numGuia);
   const tipoMonto: FuenteTexto = { nombre: fuente.nombre, estilo: fuente.estilo };
 

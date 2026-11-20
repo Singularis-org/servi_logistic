@@ -1,5 +1,5 @@
 import { sumaDeCuotas } from "@/components/shared/facturas/facturas-vista";
-import { money } from "@/lib/config/moneda";
+import { formatearMontoEn, MONEDA_DE_LOS_PLANES, SIN_MONTO_RAYA } from "@/lib/config/moneda";
 import type { EmailMessage } from "@/lib/interfaces/external/IEmailSender";
 import { periodoDeFactura, textoFacturaEmitida } from "@/lib/notificaciones/emitir";
 import { aCentimos, aTexto } from "@/lib/planes/centimos";
@@ -7,9 +7,17 @@ import { componerCorreo, type Bloque } from "@/lib/services/email/plantillas/pla
 import type { FacturaPlataformaDTO } from "@/lib/types/factura-plataforma";
 
 // SLT-136 (design §7.4; R26, R29) — el correo a cada maestro activo cuando se cierra una factura de la plataforma.
-// Lleva importes, a diferencia de la campanita (regla 146 §4.6): son los de la base, pintados con `money()` y sin
+// Lleva importes, a diferencia de la campanita (regla 146 §4.6): son los de la base, pintados con `importeDelCorreo()` y sin
 // recalcular nada salvo la suma de las dos cuotas (`sumaDeCuotas`, en céntimos exactos). No lleva adjuntos (R26): la
 // descarga está en «Mi plan». Todo dato variable lo escapa `componerCorreo`.
+
+/**
+ * SL-21 (R15): un importe de la factura con la moneda de los planes, la de la plataforma, sea cual sea el país de la
+ * empresa (hasta SLT-237). Pinta lo mismo que el `money()` de antes.
+ */
+function importeDelCorreo(valor: string): string {
+  return formatearMontoEn(MONEDA_DE_LOS_PLANES, valor, SIN_MONTO_RAYA);
+}
 
 /** Los literales del correo, en un sitio para cuando llegue la i18n. */
 export const FACTURA_EMITIDA_TEXTOS = {
@@ -56,7 +64,7 @@ export function plantillaFacturaEmitida(p: FacturaEmitidaParams): EmailMessage {
   const { factura } = p;
   if (factura.numero === null) throw new Error("plantillaFacturaEmitida: la factura no está cerrada (sin número)");
 
-  const linea = (concepto: string, importe: string): Bloque => ({ tipo: "parrafo", texto: `${concepto}: ${money(importe)}` });
+  const linea = (concepto: string, importe: string): Bloque => ({ tipo: "parrafo", texto: `${concepto}: ${importeDelCorreo(importe)}` });
   const bloques: Bloque[] = [
     { tipo: "parrafo", texto: T.saludo(p.nombre) },
     { tipo: "parrafo", texto: T.periodo(factura.numero, periodoDeFactura(factura.desde, factura.hasta)) },
@@ -72,7 +80,7 @@ export function plantillaFacturaEmitida(p: FacturaEmitidaParams): EmailMessage {
   return componerCorreo({
     to: p.to,
     asunto: T.asunto(factura.numero, p.empresaNombre),
-    preheader: T.preheader(money(factura.total)),
+    preheader: T.preheader(importeDelCorreo(factura.total)),
     bloques,
     contacto: p.contacto,
   });

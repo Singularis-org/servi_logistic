@@ -8,7 +8,7 @@ import {
 } from "@/lib/whatsapp-envios/informes/transito/parametros";
 import type { FilaTransito } from "@/lib/whatsapp-envios/informes/transito/tipos";
 
-import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
+import { MONEDA_CR, ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Ficha 475 (T3.2) — R6, R7, R15, R16, R17, R20, R24-R26 sobre el calculo PURO.
 
 const UN_DIA = 24 * 60 * 60 * 1000;
@@ -233,7 +233,7 @@ describe("475/R20 — variables", () => {
       ZONA_DE_CR, 3,
     );
     expect(m.totales.porCobrar).toBe("200000018498.00");
-    expect(variables(m)).toEqual({
+    expect(variables(m, MONEDA_CR)).toEqual({
       total_en_alerta: "5",
       vencidos: "1",
       por_vencer: "4",
@@ -247,12 +247,12 @@ describe("475/R20 — variables", () => {
   });
 
   it("sin paquetes: todo a 0 y por_cobrar ₡0", () => {
-    const v = variables(clasificar([], ZONAS, P, AHORA, ZONA_DE_CR, 0));
+    const v = variables(clasificar([], ZONAS, P, AHORA, ZONA_DE_CR, 0), MONEDA_CR);
     expect(v).toMatchObject({ total_en_alerta: "0", vencidos: "0", por_vencer: "0", parados: "0", por_cobrar: "₡0" });
   });
 
   it("fecha DD/MM/YYYY de Costa Rica: a las 23:30 CR sigue siendo el mismo dia", () => {
     const tarde = new Date("2026-10-06T05:30:00.000Z"); // 23:30 CR del 5
-    expect(variables(clasificar([], ZONAS, P, tarde, ZONA_DE_CR, 0)).fecha).toBe("05/10/2026");
+    expect(variables(clasificar([], ZONAS, P, tarde, ZONA_DE_CR, 0), MONEDA_CR).fecha).toBe("05/10/2026");
   });
 });

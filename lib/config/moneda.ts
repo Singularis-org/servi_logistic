@@ -114,6 +114,47 @@ export const ESCALA_PRESENTACION = 2;
 const ESCALA = ESCALA_PRESENTACION;
 
 /**
+ * SL-21 — la moneda con la que se pinta un importe. La de un país sale de
+ * `pais` (por el puerto `IReglasPaisEmpresa.moneda()`); la de la plataforma, de
+ * aquí. Es un parámetro EXPLÍCITO del formato y no un contexto implícito: un
+ * job o un cron fuera de ese contexto pintaría en silencio con la moneda
+ * equivocada (design §10, alternativa 1).
+ */
+export interface FormatoMoneda {
+  /** Código ISO 4217. */
+  codigo: string;
+  /** Va delante del importe. */
+  simbolo: string;
+  /** Separa los grupos de tres de la parte entera. */
+  separadorMiles: string;
+  /** Separa la parte entera de la cola, cuando la hay. */
+  separadorDecimal: string;
+  /** Escala de presentación de esta moneda. Hasta 2 porque los importes son `DECIMAL(12,2)`. */
+  decimales: 0 | 1 | 2;
+}
+
+/**
+ * SL-21 — la única moneda que existía antes de la ficha: `monedaConfig` (env
+ * `MONEDA_*`) con la escala de presentación. La siguen usando las pantallas
+ * hasta SLT-235 y los seis formateadores de siempre, que delegan aquí.
+ */
+export const MONEDA_PLATAFORMA: FormatoMoneda = {
+  codigo: monedaConfig.currency,
+  simbolo: monedaConfig.simbolo,
+  separadorMiles: monedaConfig.separadorMiles,
+  separadorDecimal: monedaConfig.separadorDecimal,
+  decimales: ESCALA,
+};
+
+/**
+ * SL-21 (R15) — la moneda de las facturas y los textos de planes. Es la de la
+ * plataforma, sea cual sea el país de la empresa, hasta que SLT-237 ponga
+ * precio por moneda. Tiene nombre propio para que esos llamantes digan POR QUÉ
+ * no usan la del país.
+ */
+export const MONEDA_DE_LOS_PLANES: FormatoMoneda = MONEDA_PLATAFORMA;
+
+/**
  * La forma de un importe decimal serializado por el servidor: signo opcional,
  * parte entera y —opcionalmente— cola. Es lo que emite
  * `Prisma.Decimal.toFixed(2)`, que es como el dinero cruza la frontera.
@@ -168,7 +209,10 @@ function sumarUno(digitos: string): string {
 interface Partido {
   /** Parte entera, sin signo y sin agrupar. */
   enteros: string;
-  /** La cola, SIEMPRE con `ESCALA` digitos (`"00"` cuando el importe es redondo). */
+  /**
+   * La cola, SIEMPRE con tantos digitos como la escala de la moneda (`"00"`
+   * cuando el importe es redondo a escala 2; `""` a escala 0).
+   */
   cola: string;
 }
 
@@ -188,16 +232,18 @@ interface Partido {
  * El signo no llega hasta aqui: quien llama ya lo separo, asi que "alejarse del
  * cero" es siempre "subir" y el negativo hereda el mismo redondeo.
  */
-function cuadrarAEscala(enteros: string, decimales: string | null): Partido {
-  if (decimales === null || decimales === "") return { enteros, cola: "0".repeat(ESCALA) };
+function cuadrarAEscala(enteros: string, decimales: string | null, escala: number): Partido {
+  if (decimales === null || decimales === "") return { enteros, cola: "0".repeat(escala) };
 
-  const cola = `${decimales}${"0".repeat(ESCALA)}`.slice(0, ESCALA);
-  const sobrante = decimales.slice(ESCALA);
+  const cola = `${decimales}${"0".repeat(escala)}`.slice(0, escala);
+  const sobrante = decimales.slice(escala);
 
   if (sobrante === "" || sobrante.charAt(0) < "5") return { enteros, cola };
 
+  // SL-21: con escala 0 la cola es `""` y `sumarUno("")` da `"1"`, que no cabe en
+  // ella: es el mismo desbordamiento de abajo y el acarreo sube a la parte entera.
   const subida = sumarUno(cola);
-  if (subida.length === ESCALA) return { enteros, cola: subida };
+  if (subida.length === escala) return { enteros, cola: subida };
   // La cola desbordo (`"99"` sube a `"100"`): se queda en ceros y el acarreo sube.
   return { enteros: sumarUno(enteros), cola: subida.slice(1) };
 }
@@ -207,6 +253,11 @@ function esCero(digitos: string): boolean {
   return /^0+$/.test(digitos);
 }
 
+/** La cola no existe: toda ceros, o vacia a escala 0 (SL-21). */
+function colaVacia(cola: string): boolean {
+  return cola === "" || esCero(cola);
+}
+
 /**
  * Agrupa de tres en tres DESDE LA DERECHA. El borde que importa es el del
  * principio: con 3 digitos exactos ("999") o con un multiplo de 3 ("1000" ->
@@ -214,12 +265,12 @@ function esCero(digitos: string): boolean {
  * grupo (".999"). Por eso se recorre desde el final y el `join` solo pone
  * separador ENTRE grupos.
  */
-function agruparMiles(enteros: string): string {
+function agruparMiles(enteros: string, separadorMiles: string): string {
   const grupos: string[] = [];
   for (let fin = enteros.length; fin > 0; fin -= 3) {
     grupos.unshift(enteros.slice(Math.max(0, fin - 3), fin));
   }
-  return grupos.join(monedaConfig.separadorMiles);
+  return grupos.join(separadorMiles);
 }
 
 /**
@@ -232,12 +283,12 @@ function agruparMiles(enteros: string): string {
  * ceros". El signo se cae cuando lo que queda es un cero entero: "menos cero" no
  * es una cantidad que nadie quiera leer.
  */
-function componer(partido: Partido, negativo: boolean): string {
+function componer(moneda: FormatoMoneda, partido: Partido, negativo: boolean): string {
   const { enteros, cola } = partido;
-  const agrupado = agruparMiles(enteros);
-  const sufijo = esCero(cola) ? "" : `${monedaConfig.separadorDecimal}${cola}`;
-  const signo = negativo && !(esCero(enteros) && esCero(cola)) ? "-" : "";
-  return `${signo}${monedaConfig.simbolo}${agrupado}${sufijo}`;
+  const agrupado = agruparMiles(enteros, moneda.separadorMiles);
+  const sufijo = colaVacia(cola) ? "" : `${moneda.separadorDecimal}${cola}`;
+  const signo = negativo && !(esCero(enteros) && colaVacia(cola)) ? "-" : "";
+  return `${signo}${moneda.simbolo}${agrupado}${sufijo}`;
 }
 
 /** Las dos mitades de un importe con forma decimal, ya separado del signo. */
@@ -280,20 +331,50 @@ function partirSinSigno(sinSigno: string): { enteros: string; decimales: string 
  *                 pantallas que hoy muestran la raya larga pasan `SIN_MONTO_RAYA`.
  */
 export function formatMontoString(value: string | null, sinMonto: string = SIN_MONTO): string {
-  if (value === null) return sinMonto;
-  const texto = value.trim();
+  return formatearMontoEn(MONEDA_PLATAFORMA, value, sinMonto);
+}
+
+/**
+ * SL-21 (R8) — el formateador de un importe CON LA MONEDA QUE SE LE PASA. Es el
+ * cuerpo que antes tenia `formatMontoString`, con la moneda como parametro en
+ * vez de leer `monedaConfig`; los seis caminos de siempre delegan aqui con
+ * `MONEDA_PLATAFORMA` y por eso pintan lo mismo que antes (R9). Lo que arma el
+ * servidor para una empresa le pasa la moneda de su pais, que le da el puerto.
+ *
+ * Mismas reglas que la ficha 359, a la escala de la moneda: cuadre por cadena
+ * con el medio alejandose del cero, cola solo cuando existe, signo que se cae
+ * cuando queda cero. Con `decimales = 0` el cuadre mira el primer digito
+ * decimal y no hay cola.
+ *
+ * Un `number` entra por `toFixed(ESCALA)`, como entraba en `formatMonto`: es la
+ * serializacion de la frontera (escala 2, la del dato), no la escala de la
+ * moneda. Asi el cuadre a la escala de la moneda lo hace siempre este modulo
+ * sobre la cadena, y no el motor de JS en binario.
+ *
+ * @param moneda   la moneda con la que se pinta.
+ * @param valor    importe serializado (`"13331832.72"`), un `number` por
+ *                 contrato, o `null` si no lo hay.
+ * @param sinMonto que pintar cuando no hay importe. Por defecto `SIN_MONTO`.
+ */
+export function formatearMontoEn(
+  moneda: FormatoMoneda,
+  valor: string | number | null,
+  sinMonto: string = SIN_MONTO,
+): string {
+  if (valor === null) return sinMonto;
+  const texto = typeof valor === "number" ? valor.toFixed(ESCALA) : valor.trim();
   if (texto === "") return sinMonto;
 
   // Lo que no tiene forma de decimal se pinta tal cual detras del simbolo, que
   // es lo que hacian las siete copias de `money()`. Ni se agrupa a ciegas ni se
   // esconde tras el marcador de ausencia: un importe ilegible es un fallo que
   // hay que poder VER, y decir "no hay monto" cuando si lo hay seria mentir.
-  if (!FORMA_DECIMAL.test(texto)) return `${monedaConfig.simbolo}${texto}`;
+  if (!FORMA_DECIMAL.test(texto)) return `${moneda.simbolo}${texto}`;
 
   const negativo = texto.startsWith("-");
   const { enteros, decimales } = partirSinSigno(negativo ? texto.slice(1) : texto);
 
-  return componer(cuadrarAEscala(enteros, decimales), negativo);
+  return componer(moneda, cuadrarAEscala(enteros, decimales, moneda.decimales), negativo);
 }
 
 /**
@@ -326,18 +407,28 @@ export function formatMontoString(value: string | null, sinMonto: string = SIN_M
  * Money-safe: corta el STRING, sin `Number(`/`parseFloat(`/`.toFixed(`.
  */
 export function formatMontoTope(max: string | null, sinMonto: string = SIN_MONTO): string {
+  return formatearTopeEn(MONEDA_PLATAFORMA, max, sinMonto);
+}
+
+/**
+ * SL-21 — la variante de cota de `formatearMontoEn`: el cuerpo que antes tenia
+ * `formatMontoTope`, con la moneda como parametro. No se exporta: hoy el unico
+ * tope del repo es de pantalla y va con la moneda de la plataforma, y un camino
+ * publico mas tendria que entrar en el censo de la guardia 359.
+ */
+function formatearTopeEn(moneda: FormatoMoneda, max: string | null, sinMonto: string): string {
   if (max === null) return sinMonto;
   const texto = max.trim();
   if (texto === "") return sinMonto;
-  if (!FORMA_DECIMAL.test(texto)) return `${monedaConfig.simbolo}${texto}`;
+  if (!FORMA_DECIMAL.test(texto)) return `${moneda.simbolo}${texto}`;
 
   const negativo = texto.startsWith("-");
   const { enteros, decimales } = partirSinSigno(negativo ? texto.slice(1) : texto);
 
-  // Cuadrar hacia el cero es quedarse con los `ESCALA` primeros digitos de la
-  // cola y tirar el resto: sin mirar el sobrante, no hay acarreo posible.
-  const cola = `${decimales ?? ""}${"0".repeat(ESCALA)}`.slice(0, ESCALA);
-  return componer({ enteros, cola }, negativo);
+  // Cuadrar hacia el cero es quedarse con los primeros digitos de la cola que
+  // pide la escala y tirar el resto: sin mirar el sobrante, no hay acarreo posible.
+  const cola = `${decimales ?? ""}${"0".repeat(moneda.decimales)}`.slice(0, moneda.decimales);
+  return componer(moneda, { enteros, cola }, negativo);
 }
 
 /**
@@ -406,7 +497,7 @@ export function moneyTope(max: string | null): string {
  */
 export function formatMonto(monto: number | null, sinMonto: string = SIN_MONTO): string {
   if (monto == null) return sinMonto;
-  return formatMontoString(monto.toFixed(ESCALA));
+  return formatearMontoEn(MONEDA_PLATAFORMA, monto);
 }
 
 /**

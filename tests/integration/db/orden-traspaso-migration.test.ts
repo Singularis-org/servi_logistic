@@ -322,6 +322,8 @@ describe("427/T2 — el UP y el DOWN, leidos del archivo", () => {
       // triggers; no tocan `orden_traspaso_mensajero`.
       "20261123120000_historial_zona_desactivada",
       "20261123120100_zona_activa",
+      // SL-21: seis columnas de moneda e impuesto en `pais` y el relleno de CR; no toca `orden_traspaso_mensajero`.
+      "20261124120000_sl21_pais_moneda_impuesto",
       // SLT-121: los siete valores de enum de la mora, y las columnas, funciones y triggers del congelamiento. A
       // `orden_traspaso_mensajero` solo le suma el trigger por sentencia `…_bloqueo_por_mora`; no cambia su tabla.
       "20261126120000_mora_enums",

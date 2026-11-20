@@ -7,7 +7,7 @@ import { pdfInformeTransito } from "@/lib/whatsapp-envios/informes/transito/pdf"
 import { PARAMETROS_POR_DEFECTO, type ZonaInforme } from "@/lib/whatsapp-envios/informes/transito/parametros";
 import type { FilaTransito } from "@/lib/whatsapp-envios/informes/transito/tipos";
 
-import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
+import { MONEDA_CR, ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Ficha 475 (T4.2) — R19, R23-R32 sobre el PDF REAL, leyendo el texto con el /ToUnicode que el
 // propio documento declara (la fuente embebida escribe en Identity-H: un grep no lo veria).
 
@@ -48,7 +48,7 @@ function leer(bytes: Uint8Array): string[][] {
 
 function pdfDe(filas: FilaTransito[], sinHito = 0) {
   const modelo = clasificar(filas, ZONAS, PARAMETROS_POR_DEFECTO, AHORA, ZONA_DE_CR, sinHito);
-  const bytes = pdfInformeTransito(modelo);
+  const bytes = pdfInformeTransito(modelo, MONEDA_CR);
   const pags = leer(bytes);
   return { bytes, pags, todo: pags.flat(), plano: pags.flat().join("\n") };
 }
@@ -276,7 +276,7 @@ describe("SL-15 R8 · el membrete de la empresa en el informe de tránsito", () 
     }));
     const { pdfInformeTransito: conMembrete } = await import("@/lib/whatsapp-envios/informes/transito/pdf");
     const modelo = clasificar(FILAS, ZONAS, PARAMETROS_POR_DEFECTO, AHORA, ZONA_DE_CR, 3);
-    const pags = leer(conMembrete(modelo));
+    const pags = leer(conMembrete(modelo, MONEDA_CR));
     expect(pags[0].slice(0, 2)).toEqual(["Acme Envíos", "Informe de tránsito"]);
     pags.forEach((p) => expect(p).toContain("Acme Envíos · Informe de tránsito · 05/10/2026 05:00"));
     expect(pags.flat().filter((t) => /la empresa/i.test(t))).toEqual([]);
