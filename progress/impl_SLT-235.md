@@ -119,3 +119,58 @@ Veredicto: Bloque 2 hecho; typecheck, lint y los dos archivos de test en verde.
   formateador base y misma raya, así que con la moneda de la plataforma da lo mismo byte a byte.
 
 Veredicto: T3.1 y T3.2 hechas; typecheck, lint y los tests de las pantallas tocadas en verde.
+
+## Bloque 3 y 4 — T3.3, T3.4, T3.5 y T4.1 (frontend_dev, 2026-11-20)
+
+### Archivos (todos modificados, todos en «Archivos esperados»)
+- T3.3: `recepcion-satelite/_components/RecepcionDetalle.tsx` y `SateliteOrderCard.tsx`: su
+  `formatMonto` local pasa a `formatMonto(monto, moneda)` = `formatearMontoEn(moneda, monto,
+  SIN_MONTO_RAYA)`, con la moneda de `useMonedaDelPais()`. `RecepcionDetalle` sigue sin
+  `"use client"`: su único montador es `SateliteOrderCard`, que ya es cliente.
+- T3.4: `components/shared/EnviarPlantillaWhatsappButton.tsx` y `chat/ChatConversacion.tsx`
+  (`renderizar` → `resolverValoresPlantilla(vars, datos, undefined, moneda)`);
+  `components/shared/sinpe-preview-segmentos.ts` (`segmentosDelMensaje(cuerpo, numero, nombre,
+  moneda?)`) y `SinpeMensajePreview.tsx` (le pasa el hook).
+- T3.5: `app/paquete/[numGuia]/page.tsx`: `paisParaPantallasDelActor(actor.organizacionId ?? null,
+  { paraPantallas: (id) => construirPaisService().paraPantallas(id) })` y
+  `formatearMontoEn(pais.moneda, orden.montoCobrar)`.
+- T4.1 y tests: `tests/components/moneda-del-pais-pantallas.test.tsx` (dobles de `resolve-actor`,
+  `etiquetas-guia`, `paises-plataforma`, `notFound`/`redirect` y las dos acciones de plantillas del
+  botón; describes T3.3, T3.4, T3.5 y el censo T4.1).
+
+### R → test (`moneda-del-pais-pantallas.test.tsx`)
+| R | Test |
+|---|---|
+| R11 | T3.3: «R11, R16: RecepcionDetalle», «R11: RecepcionDetalle conserva la raya larga sin monto», «R11, R16: SateliteOrderCard (fila «A cobrar» y el detalle desplegable)» |
+| R13 | T3.4: «R13, R16: EnviarPlantillaWhatsappButton pinta y pega…», «R13, R16: ChatConversacion arma la vista previa…», «R13: segmentosDelMensaje da el texto del servidor…», «R13, R16: SinpeMensajePreview pinta el importe…». Cada uno compara con `renderPlantilla(cuerpo, resolverValoresPlantilla(vars, datos, undefined, MONEDA_DE_PRUEBA))` |
+| R14 | T3.5: «R14: con empresa…», «R14: sin empresa, en la moneda de la plataforma y sin consultar ningún país», «R14 (caída de R3)…», «R14 (caída de R5)…» (página real, `PaisService` real con memo nuevo, repositorio doblado) |
+| R16 | cada caso de T3.3–T3.5 con `MONEDA_CR` da lo mismo que sin proveedor / sin empresa («R14, R16: con una empresa de CR…»); tests existentes en verde sin tocar |
+| R18 | T4.1: «R18: $archivo no llama…» (17 archivos de design §7), contraprueba con 12 rojos y 6 verdes inventados, «la página de servidor puede leer el país…», «rojo si un archivo REAL del censo vuelve a un formateador implícito» (los 17 + `pos-format` reescrito a `formatMonto` de `@/lib/config/moneda`) |
+| R20 | sin cambios en `monto-cliente.ts`, `plantilla-datos.ts` ni `informe.ts` (ejemplos de SLT-241) |
+
+### Verificación
+- `pnpm run typecheck`: exit 0, sin salida.
+- `pnpm exec eslint` sobre los 7 de producción y el test: exit 0, sin salida.
+- `pnpm exec vitest run tests/components/moneda-del-pais-pantallas.test.tsx`: 1 archivo, 69 tests, verde.
+- Tests existentes de los componentes tocados: `botones-44-pwa-mensajero`, `ChatConversacionLlamada`,
+  `ChatConversacionPlantillaDiaria`, `ChatConversacionTono`, `ChatComposerAdjunto`, `ChatNotaVoz`,
+  `ChatReacciones`, `ChatBurbujaContenido`, `ContactoButtons`, `EtiquetaFechaEnPantalla` (sin tocarlo),
+  `GestionarOrdenPanelHilo`, `RecepcionSateliteModule`, `SateliteOrderCardInfo`,
+  `unit/plantillas/preview-mismo-motor`, `unit/components/intentos-no-alcance-ui`,
+  `DineroIdentidadesEnPantalla`: 16 archivos, 213 tests, verde. `MiBodegaSinpe` (monta
+  `SinpeMensajePreview`): 15 tests, verde.
+- `pnpm run test:guardias`: 360 archivos; 1 rojo, 356 verdes, 3 saltados (5393 tests verdes, 1 rojo).
+  El rojo es `tests/unit/guards/asistente-panel-hermano.guardia.test.ts > ⭑ CONTRAPRUEBA`: busca en
+  `app/(app)/layout.tsx` el literal `<EtiquetasGeograficasProvider etiquetas={etiquetas}>{children}
+  </EtiquetasGeograficasProvider>`, que T2.2 cambió (ahora envuelve `MonedaDelPaisProvider`). No es de
+  esta tanda y la guardia no está en «Archivos esperados»: no se toca. Queda para el leader.
+
+### Desviaciones
+- `segmentosDelMensaje` recibe la moneda como 4.º argumento OPCIONAL (sin ella, la de la plataforma):
+  así no cambian sus otros usos ni tests. Su único llamante de producción (`SinpeMensajePreview`) la pasa.
+- En `/paquete` el servicio del país se construye solo si hay empresa (un envoltorio con
+  `paraPantallas`), en vez de `construirPaisService()` directo como en el layout: sin empresa no se
+  crea ni el cliente de Prisma (R14 «sin consultar ningún país») y `EtiquetaFechaEnPantalla` no lo dobla.
+- R19 (quitar `/paquete` de la lista de excepciones) es T4.2: no se ha tocado.
+
+Veredicto: T3.3, T3.4, T3.5 y T4.1 hechas; typecheck, lint y sus tests en verde; guardias con un rojo ajeno (asistente-panel-hermano, por el layout de T2.2).

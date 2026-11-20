@@ -53,23 +53,23 @@ esperado.
   (`PosAmountRow`, `PosOrderCardDetalle`, `PosOrderCardMosaico`, `ChatConversacion`), además de
   `AsignacionDetalle`, `KpisMensajero` y `GestionarOrdenPanel`.
   - *Hecho:* sus casos en verde (R11).
-- [ ] **T3.3** [P] `recepcion-satelite`: `RecepcionDetalle` y `SateliteOrderCard`.
+- [x] **T3.3** [P] `recepcion-satelite`: `RecepcionDetalle` y `SateliteOrderCard`.
   - *Hecho:* sus casos en verde (R11).
-- [ ] **T3.4** [P] Vistas previas de plantilla: `EnviarPlantillaWhatsappButton`, `ChatConversacion`
+- [x] **T3.4** [P] Vistas previas de plantilla: `EnviarPlantillaWhatsappButton`, `ChatConversacion`
   (la vista previa), y `sinpe-preview-segmentos` con `SinpeMensajePreview`.
   - *Hecho:* los casos de R13 en verde. El texto de cada superficie es igual a
     `renderPlantilla(cuerpo, resolverValoresPlantilla(vars, datos, undefined, MONEDA_DE_PRUEBA))`.
-- [ ] **T3.5** [P] `app/paquete/[numGuia]/page.tsx` con `paisParaPantallasDelActor`.
+- [x] **T3.5** [P] `app/paquete/[numGuia]/page.tsx` con `paisParaPantallasDelActor`.
   - *Hecho:* los casos de R14 en verde, y `tests/components/EtiquetaFechaEnPantalla.test.tsx` sigue
     verde sin tocarlo (su actor no tiene empresa: no se consulta).
 
 ## Bloque 4 — Guardias, docs y cierre (depende del bloque 3)
 
-- [ ] **T4.1** Censo de R18: un `describe` en `moneda-del-pais-pantallas.test.tsx` con la lista de los
+- [x] **T4.1** Censo de R18: un `describe` en `moneda-del-pais-pantallas.test.tsx` con la lista de los
   archivos de design §7 y su contraprueba.
   - *Hecho:* en verde, y rojo si en uno de ellos se reescribe un `money(` o un `formatMonto(` de
     `@/lib/config/moneda`.
-- [ ] **T4.2** Lista de excepciones de `pais-sin-literales` (design §8). Depende de que SL-21 T5.1 esté
+- [ ] **T4.2** (BLOQUEADA 2026-11-20: SL-21 T5.1 aún no está en esta rama; la guardia no tiene las fichas SLT-235/SLT-237) Lista de excepciones de `pais-sin-literales` (design §8). Depende de que SL-21 T5.1 esté
   en esta rama.
   - Se quita la entrada de `/paquete` y se baja el tope.
   - `FichaQueLoRetira` gana `SLT-240` a `SLT-246`, y cada entrada `SLT-235` pasa a su rebanada. Los dos

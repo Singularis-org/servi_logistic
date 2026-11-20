@@ -256,7 +256,8 @@ export function ChatConversacion({
   className,
 }: Readonly<ChatConversacionProps>) {
   const toast = useToast();
-  // SLT-235 (R11): el monto a cobrar de la cabecera, en la moneda del país de la empresa.
+  // SLT-235 (R11, R13): el monto a cobrar de la cabecera y los importes de la vista previa de
+  // plantillas, en la moneda del país de la empresa.
   const moneda = useMonedaDelPais();
   const [borrador, setBorrador] = useState<Borrador>(BORRADOR_VACIO);
   const [enviando, setEnviando] = useState(false);
@@ -365,7 +366,11 @@ export function ChatConversacion({
   /** Cuerpo de una plantilla ya renderizado con los datos de esta orden. */
   function renderizar(plantilla: PlantillaTextoDTO): string {
     if (datos === null) return plantilla.cuerpo;
-    return renderPlantilla(plantilla.cuerpo, resolverValoresPlantilla(plantilla.variables, datos));
+    // SLT-235 (R13): con la moneda del país, para que el texto sea el que enviaría el servidor.
+    return renderPlantilla(
+      plantilla.cuerpo,
+      resolverValoresPlantilla(plantilla.variables, datos, undefined, moneda),
+    );
   }
 
   // Ancla el hilo abajo al cambiar de orden o al llegar/enviar un mensaje.

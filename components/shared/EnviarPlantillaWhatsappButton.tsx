@@ -14,6 +14,7 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/useToast";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
 import {
   listarPlantillasParaEnvio,
   listarPlantillasParaEnvioTienda,
@@ -85,6 +86,8 @@ export function EnviarPlantillaWhatsappButton({
   incluirPlantillasDeTienda = false,
 }: Readonly<EnviarPlantillaWhatsappButtonProps>) {
   const toast = useToast();
+  // SLT-235 (R13): los importes de la vista previa, en la moneda del país de la empresa.
+  const moneda = useMonedaDelPais();
   const [abierto, setAbierto] = useState(false);
   const [cargando, setCargando] = useState(false);
   const [items, setItems] = useState<PlantillaTextoDTO[] | null>(null);
@@ -111,9 +114,15 @@ export function EnviarPlantillaWhatsappButton({
   // servidor. Ver `datosPlantillaDesdeAsignacion`.
   const datos = useMemo<DatosPlantilla>(() => datosPlantillaDesdeAsignacion(orden), [orden]);
 
-  /** Renderiza el cuerpo de una plantilla con los valores de la orden. */
+  /**
+   * Renderiza el cuerpo de una plantilla con los valores de la orden. SLT-235 (R13): con la moneda
+   * del país, para que el texto sea el mismo que enviaría el servidor para esos datos.
+   */
   function renderizar(plantilla: PlantillaTextoDTO): string {
-    return renderPlantilla(plantilla.cuerpo, resolverValoresPlantilla(plantilla.variables, datos));
+    return renderPlantilla(
+      plantilla.cuerpo,
+      resolverValoresPlantilla(plantilla.variables, datos, undefined, moneda),
+    );
   }
 
   // Carga perezosa al abrir (se cachea en memoria): no se pide el catalogo hasta que hace falta.

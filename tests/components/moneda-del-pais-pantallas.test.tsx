@@ -31,6 +31,30 @@ import { AsignacionDetalle } from "@/app/(app)/mis-asignaciones/_components/Asig
 import { KpisMensajero } from "@/app/(app)/mis-asignaciones/_components/KpisMensajero";
 import { GestionarOrdenPanel } from "@/app/(app)/mis-asignaciones/_components/GestionarOrdenPanel";
 import { ChatConversacion } from "@/app/(app)/mis-asignaciones/_components/chat/ChatConversacion";
+import { RecepcionDetalle } from "@/app/(app)/recepcion-satelite/_components/RecepcionDetalle";
+import { SateliteOrderCard } from "@/app/(app)/recepcion-satelite/_components/SateliteOrderCard";
+import type { RecepcionSateliteDTO } from "@/lib/interfaces/services/IRecepcionSateliteService";
+import { CAMPOS_BASE_ORDEN } from "@/tests/fixtures/fila-bodega-satelite";
+import { EnviarPlantillaWhatsappButton } from "@/components/shared/EnviarPlantillaWhatsappButton";
+import { SinpeMensajePreview } from "@/components/shared/SinpeMensajePreview";
+import { segmentosDelMensaje } from "@/components/shared/sinpe-preview-segmentos";
+import {
+  listarPlantillasActivasParaEnvio,
+  listarPlantillasParaEnvio,
+} from "@/lib/actions/whatsapp-envio";
+import { DATOS_PLANTILLA_EJEMPLO, resolverValoresPlantilla, type DatosPlantilla } from "@/lib/types/plantilla-datos";
+import { extraerVariables, renderPlantilla } from "@/lib/utils/plantilla-mensaje";
+import { datosPlantillaDesdeAsignacion } from "@/lib/utils/whatsapp-envio-valores";
+import type { PlantillaTextoDTO } from "@/lib/types/whatsapp-envio";
+import type { EtiquetaGuiaDTO } from "@/lib/types/etiqueta-guia";
+import type { IPaisRepository } from "@/lib/interfaces/repositories/IPaisRepository";
+import type { PaisDTO } from "@/lib/types/pais";
+import { PaisService } from "@/lib/services/PaisService";
+import { MemoPaisEmpresa } from "@/lib/services/pais-para-pantallas";
+import { paisDelAltaFijo } from "@/tests/fabricas/reglas-pais";
+import { quitarComentarios } from "@/tests/fixtures/sin-comentarios";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
 // ── Dobles de lo que las pantallas del mensajero arrastran y no es de esta ficha ──────────────
 
@@ -49,6 +73,13 @@ vi.mock("react-countup", () => ({
 }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
+  // `/paquete/[numGuia]` (T3.5) los llama solo en sus caminos de error; aquí no deben saltar.
+  notFound: () => {
+    throw new Error("notFound");
+  },
+  redirect: (destino: string) => {
+    throw new Error(`redirect ${destino}`);
+  },
 }));
 // Leaflet vía `next/dynamic`: jsdom no pinta canvas.
 vi.mock("@/app/(app)/mis-asignaciones/_components/UbicacionMapa", () => ({ UbicacionMapa: () => null }));
@@ -68,6 +99,24 @@ vi.mock("@/lib/actions/chat-whatsapp", () => ({
 }));
 vi.mock("@/lib/actions/whatsapp-envio", () => ({
   listarPlantillasActivasParaEnvio: vi.fn().mockResolvedValue({ status: "ok", items: [] }),
+  listarPlantillasParaEnvio: vi.fn().mockResolvedValue({ status: "ok", items: [] }),
+  listarPlantillasParaEnvioTienda: vi.fn().mockResolvedValue({ status: "ok", items: [] }),
+}));
+// `/paquete/[numGuia]` (T3.5): la sesión, la etiqueta y el composition root del país se doblan; el
+// `page.tsx`, `paisParaPantallasDelActor` y `PaisService` (con su memo) son los REALES.
+const { resolveActorMock, obtenerEtiquetaMock, construirPaisServiceMock } = vi.hoisted(() => ({
+  resolveActorMock: vi.fn(),
+  obtenerEtiquetaMock: vi.fn(),
+  construirPaisServiceMock: vi.fn(),
+}));
+vi.mock("@/lib/auth/resolve-actor", () => ({
+  resolveActorFromSession: () => resolveActorMock(),
+}));
+vi.mock("@/lib/actions/etiquetas-guia", () => ({
+  obtenerEtiquetaPorGuia: (...a: unknown[]) => obtenerEtiquetaMock(...a),
+}));
+vi.mock("@/lib/actions/_shared/paises-plataforma", () => ({
+  construirPaisService: () => construirPaisServiceMock(),
 }));
 vi.mock("@/lib/audio/tono-notificacion", () => ({
   reproducirTono: vi.fn(),
@@ -357,5 +406,399 @@ describe("SLT-235/T3.2 — mis-asignaciones", () => {
     const sinProveedor = await avisoDeCuadre();
     expect(sinProveedor).toBe(avisoEn(MONEDA_PLATAFORMA));
     expect(await avisoDeCuadre(MONEDA_CR)).toBe(sinProveedor);
+  });
+});
+
+describe("SLT-235/T3.3 — recepcion-satelite", () => {
+  const ORDEN_SATELITE = {
+    ...CAMPOS_BASE_ORDEN,
+    id: "r1",
+    numGuia: 1001,
+    numRemision: "REM-R1",
+    estatusValue: "en_ruta_bodega_satelite",
+    destinatario: "Ana Pérez",
+    telefonoDest: "88880000",
+    direccion: "Calle 1",
+    producto: "Caja",
+    montoCobrar: IMPORTE,
+    tiendaNombre: "Tienda X",
+    zonaNombre: "Zona",
+    provinciaNombre: "Provincia",
+    cantonNombre: "Cantón",
+    distritoNombre: "Distrito",
+  } as RecepcionSateliteDTO;
+
+  it("R11, R16: RecepcionDetalle", () => {
+    compruebaMonedaDelPais(<RecepcionDetalle orden={ORDEN_SATELITE} />, (m) => conRaya(m));
+  });
+
+  it("R11: RecepcionDetalle conserva la raya larga sin monto", () => {
+    const sinMonto = { ...ORDEN_SATELITE, montoCobrar: null } as RecepcionSateliteDTO;
+    expect(textoPintado(<RecepcionDetalle orden={sinMonto} />, MONEDA_DE_PRUEBA)).toContain(SIN_MONTO_RAYA);
+  });
+
+  it("R11, R16: SateliteOrderCard (fila «A cobrar» y el detalle desplegable)", () => {
+    compruebaMonedaDelPais(<SateliteOrderCard orden={ORDEN_SATELITE} />, (m) => conRaya(m));
+  });
+});
+
+// ── Vistas previas de plantilla (T3.4, R13) ──────────────────────────────────────────────────
+
+/** Una plantilla con un importe: lo único que cambia de una moneda a otra. */
+const PLANTILLA_CON_MONTO: PlantillaTextoDTO = {
+  id: "p-monto",
+  nombre: "cobro",
+  cuerpo: "Su pedido llega hoy. Total a pagar: {{monto}}.",
+  variables: ["monto"],
+};
+
+/** Lo que el servidor enviaría para esos datos (SL-21 R10): el mismo par de llamadas. */
+function comoElServidor(plantilla: PlantillaTextoDTO, datos: DatosPlantilla, moneda: FormatoMoneda): string {
+  return renderPlantilla(plantilla.cuerpo, resolverValoresPlantilla(plantilla.variables, datos, undefined, moneda));
+}
+
+describe("SLT-235/T3.4 — vistas previas de plantilla", () => {
+  it("R13, R16: EnviarPlantillaWhatsappButton pinta y pega el mensaje con los importes en la moneda del país", async () => {
+    vi.mocked(listarPlantillasParaEnvio).mockResolvedValue({ status: "ok", items: [PLANTILLA_CON_MONTO] });
+    const orden = makeOrden();
+    const datos = datosPlantillaDesdeAsignacion(orden);
+
+    async function vistaPrevia(moneda?: FormatoMoneda): Promise<{ pintado: string; pegado: string }> {
+      const user = userEvent.setup();
+      const onElegir = vi.fn();
+      const { unmount } = render(
+        <ToastProvider>
+          <EnviarPlantillaWhatsappButton orden={orden} onElegirPlantilla={onElegir} />
+        </ToastProvider>,
+        moneda ? { wrapper: conPais(moneda) } : undefined,
+      );
+      await user.click(screen.getByRole("button", { name: `Usar plantilla en el chat con ${orden.destinatario}` }));
+      const opcion = await screen.findByRole("button", { name: new RegExp(PLANTILLA_CON_MONTO.nombre) });
+      const pintado = opcion.querySelector("p")?.textContent ?? "";
+      await user.click(opcion);
+      const pegado = (onElegir.mock.calls[0]?.[0] as { textoRenderizado: string }).textoRenderizado;
+      unmount();
+      return { pintado, pegado };
+    }
+
+    try {
+      const esperado = comoElServidor(PLANTILLA_CON_MONTO, datos, MONEDA_DE_PRUEBA);
+      expect(esperado).toContain(formatearMontoEn(MONEDA_DE_PRUEBA, IMPORTE));
+      expect(await vistaPrevia(MONEDA_DE_PRUEBA)).toEqual({ pintado: esperado, pegado: esperado });
+
+      const sinProveedor = await vistaPrevia();
+      const dePlataforma = comoElServidor(PLANTILLA_CON_MONTO, datos, MONEDA_PLATAFORMA);
+      expect(sinProveedor).toEqual({ pintado: dePlataforma, pegado: dePlataforma });
+      expect(await vistaPrevia(MONEDA_CR)).toEqual(sinProveedor);
+    } finally {
+      vi.mocked(listarPlantillasParaEnvio).mockResolvedValue({ status: "ok", items: [] });
+    }
+  });
+
+  it("R13, R16: ChatConversacion arma la vista previa de cada plantilla en la moneda del país", async () => {
+    vi.mocked(listarPlantillasActivasParaEnvio).mockResolvedValue({ status: "ok", items: [PLANTILLA_CON_MONTO] });
+    const orden = makeOrden();
+    const datos = datosPlantillaDesdeAsignacion(orden);
+
+    async function vistaPrevia(moneda?: FormatoMoneda): Promise<string> {
+      const { unmount } = render(
+        <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0, revalidateOnFocus: false }}>
+          <ToastProvider>
+            <ChatConversacion orden={orden} onVolver={() => {}} />
+          </ToastProvider>
+        </SWRConfig>,
+        moneda ? { wrapper: conPais(moneda) } : undefined,
+      );
+      const grupo = await screen.findByRole("group", { name: "Plantillas disponibles" });
+      const texto = within(grupo).getAllByRole("button")[0].getAttribute("title") ?? "";
+      unmount();
+      return texto;
+    }
+
+    try {
+      expect(await vistaPrevia(MONEDA_DE_PRUEBA)).toBe(comoElServidor(PLANTILLA_CON_MONTO, datos, MONEDA_DE_PRUEBA));
+      const sinProveedor = await vistaPrevia();
+      expect(sinProveedor).toBe(comoElServidor(PLANTILLA_CON_MONTO, datos, MONEDA_PLATAFORMA));
+      expect(await vistaPrevia(MONEDA_CR)).toBe(sinProveedor);
+    } finally {
+      vi.mocked(listarPlantillasActivasParaEnvio).mockResolvedValue({ status: "ok", items: [] });
+    }
+  });
+
+  it("R13: segmentosDelMensaje da el texto del servidor con la moneda que se le pasa; sin ella, la de la plataforma", () => {
+    const cuerpo = "Total a pagar: {{monto}}.";
+    const vars = extraerVariables(cuerpo);
+    const texto = (moneda?: FormatoMoneda) =>
+      segmentosDelMensaje(cuerpo, "80000000", "Titular", moneda).map((s) => s.texto).join("");
+    expect(texto(MONEDA_DE_PRUEBA)).toBe(
+      renderPlantilla(cuerpo, resolverValoresPlantilla(vars, DATOS_PLANTILLA_EJEMPLO, undefined, MONEDA_DE_PRUEBA)),
+    );
+    expect(texto()).toBe(
+      renderPlantilla(cuerpo, resolverValoresPlantilla(vars, DATOS_PLANTILLA_EJEMPLO, undefined, MONEDA_PLATAFORMA)),
+    );
+    expect(texto(MONEDA_CR)).toBe(texto());
+  });
+
+  it("R13, R16: SinpeMensajePreview pinta el importe en la moneda del país junto al par resaltado", () => {
+    const cuerpo = "Pague {{monto}} al {{sinpe}} a nombre de {{sinpe_nombre}}.";
+    const numero = "80001111";
+    const nombre = "Titular de Prueba";
+    const datos: DatosPlantilla = {
+      ...DATOS_PLANTILLA_EJEMPLO,
+      negocio: { ...DATOS_PLANTILLA_EJEMPLO.negocio, sinpeNumero: numero, sinpeNombre: nombre },
+    };
+    // El par se pinta tal cual se teclea (ficha 429); lo demás, como lo enviaría el servidor.
+    const esperado = (moneda: FormatoMoneda) =>
+      renderPlantilla(cuerpo, {
+        ...resolverValoresPlantilla(extraerVariables(cuerpo), datos, undefined, moneda),
+        sinpe: numero,
+        sinpe_nombre: nombre,
+      });
+    function mensaje(moneda?: FormatoMoneda): string {
+      const { unmount } = render(
+        <SinpeMensajePreview cuerpoPlantilla={cuerpo} numero={numero} nombre={nombre} />,
+        moneda ? { wrapper: conPais(moneda) } : undefined,
+      );
+      const texto = screen.getByTestId("sinpe-preview-mensaje").textContent ?? "";
+      unmount();
+      return texto;
+    }
+    expect(mensaje(MONEDA_DE_PRUEBA)).toBe(esperado(MONEDA_DE_PRUEBA));
+    expect(mensaje(MONEDA_DE_PRUEBA)).not.toBe(esperado(MONEDA_PLATAFORMA));
+    const sinProveedor = mensaje();
+    expect(sinProveedor).toBe(esperado(MONEDA_PLATAFORMA));
+    expect(mensaje(MONEDA_CR)).toBe(sinProveedor);
+  });
+});
+
+// ── /paquete/[numGuia] (T3.5, R14) ───────────────────────────────────────────────────────────
+
+describe("SLT-235/T3.5 — /paquete/[numGuia]", () => {
+  const ETIQUETA: EtiquetaGuiaDTO = {
+    ordenId: "orden-235",
+    numGuia: 4021,
+    numRemision: "REM-235",
+    destinatario: "María Solís",
+    telefonoDest: "0999888777",
+    direccion: "Calle 1",
+    producto: "Caja",
+    montoCobrar: IMPORTE,
+    tiendaNombre: "Tienda Central",
+    zonaNombre: "Zona",
+    provinciaNombre: "Provincia",
+    cantonNombre: "Cantón",
+    distritoNombre: "Distrito",
+    fechaCreacion: "2026-08-27",
+    qrValue: "4021",
+    barcodeValue: "4021",
+  };
+  const PAIS_XA = paisDelAltaFijo({ id: "XA", nombre: "País XA", moneda: MONEDA_DE_PRUEBA, impuestoNombre: IMPUESTO_DE_PRUEBA }).pais;
+  const PAIS_CR = paisDelAltaFijo().pais;
+
+  const deLaEmpresa = vi.fn<(organizacionId: string) => Promise<PaisDTO | null>>();
+
+  beforeEach(() => {
+    resolveActorMock.mockReset();
+    obtenerEtiquetaMock.mockReset().mockResolvedValue({ status: "ok", etiqueta: ETIQUETA });
+    deLaEmpresa.mockReset();
+    // Un memo nuevo por servicio: el de producción es de proceso y el país de otro caso no debe colarse.
+    construirPaisServiceMock
+      .mockReset()
+      .mockImplementation(() => new PaisService({ deLaEmpresa } as unknown as IPaisRepository, new MemoPaisEmpresa()));
+  });
+
+  /** El texto del campo «Monto a cobrar» de la página real. */
+  async function montoDelPaquete(organizacionId?: string): Promise<string> {
+    resolveActorMock.mockResolvedValue({ usuarioId: "u1", rol: "mensajero", organizacionId });
+    const { default: PaquetePage } = await import("@/app/paquete/[numGuia]/page");
+    const { unmount } = render(await PaquetePage({ params: Promise.resolve({ numGuia: String(ETIQUETA.numGuia) }) }));
+    const texto = screen.getByText("Monto a cobrar").nextElementSibling?.textContent ?? "";
+    unmount();
+    return texto;
+  }
+
+  it("R14: con empresa, el monto a cobrar sale en la moneda del país de su empresa", async () => {
+    deLaEmpresa.mockResolvedValue(PAIS_XA);
+    expect(await montoDelPaquete("org-xa")).toBe(formatearMontoEn(MONEDA_DE_PRUEBA, IMPORTE));
+    expect(deLaEmpresa).toHaveBeenCalledWith("org-xa");
+  });
+
+  it("R14: sin empresa, en la moneda de la plataforma y sin consultar ningún país", async () => {
+    expect(await montoDelPaquete(undefined)).toBe(formatearMontoEn(MONEDA_PLATAFORMA, IMPORTE));
+    expect(construirPaisServiceMock).not.toHaveBeenCalled();
+    expect(deLaEmpresa).not.toHaveBeenCalled();
+  });
+
+  it("R14, R16: con una empresa de CR, el mismo texto que sin empresa", async () => {
+    deLaEmpresa.mockResolvedValue(PAIS_CR);
+    expect(await montoDelPaquete("org-cr")).toBe(await montoDelPaquete(undefined));
+  });
+
+  it("R14 (caída de R3): país sin moneda, la de la plataforma, un aviso en el log y la página se pinta", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      deLaEmpresa.mockResolvedValue({ ...PAIS_XA, moneda: null });
+      expect(await montoDelPaquete("org-xa")).toBe(formatearMontoEn(MONEDA_PLATAFORMA, IMPORTE));
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("org-xa"));
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("R14 (caída de R5): si la lectura del país falla, la de la plataforma, el error en el log y la página se pinta", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      deLaEmpresa.mockRejectedValue(new Error("base caída"));
+      expect(await montoDelPaquete("org-xa")).toBe(formatearMontoEn(MONEDA_PLATAFORMA, IMPORTE));
+      expect(error).toHaveBeenCalled();
+    } finally {
+      error.mockRestore();
+    }
+  });
+});
+
+// ── Censo de R18 (T4.1) ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Los archivos que ya pintan con la moneda del país (design §7). La lista SOLO CRECE: SLT-240 a
+ * SLT-246 añaden los suyos. `servidor` marca la página que lee el país en el servidor por su cuenta
+ * (design §7): la única a la que se le permite importar de `@/lib/actions/` algo del país.
+ */
+const CENSO_MONEDA_DEL_PAIS: readonly { archivo: string; servidor?: true }[] = [
+  { archivo: "components/shared/PriceLabel.tsx" },
+  { archivo: "components/shared/KpiValorAnimado.tsx" },
+  { archivo: "components/shared/DesglosePagoField.tsx" },
+  { archivo: "components/shared/EnviarPlantillaWhatsappButton.tsx" },
+  { archivo: "components/shared/sinpe-preview-segmentos.ts" },
+  { archivo: "components/shared/SinpeMensajePreview.tsx" },
+  { archivo: "app/(app)/mis-asignaciones/_components/GestionarOrdenPanel.tsx" },
+  { archivo: "app/(app)/mis-asignaciones/_components/AsignacionDetalle.tsx" },
+  { archivo: "app/(app)/mis-asignaciones/_components/KpisMensajero.tsx" },
+  { archivo: "app/(app)/mis-asignaciones/_components/pos-card/pos-format.ts" },
+  { archivo: "app/(app)/mis-asignaciones/_components/pos-card/PosAmountRow.tsx" },
+  { archivo: "app/(app)/mis-asignaciones/_components/pos-card/PosOrderCardDetalle.tsx" },
+  { archivo: "app/(app)/mis-asignaciones/_components/pos-card/PosOrderCardMosaico.tsx" },
+  { archivo: "app/(app)/mis-asignaciones/_components/chat/ChatConversacion.tsx" },
+  { archivo: "app/(app)/recepcion-satelite/_components/RecepcionDetalle.tsx" },
+  { archivo: "app/(app)/recepcion-satelite/_components/SateliteOrderCard.tsx" },
+  { archivo: "app/paquete/[numGuia]/page.tsx", servidor: true },
+];
+
+/** Los formateadores que usan la moneda de la plataforma sin nombrarla (R18). */
+const FORMATEADORES_IMPLICITOS = ["money", "moneyTope", "formatMonto", "formatMontoString", "formatMontoTope", "montoExacto"];
+/**
+ * Estos cuatro no tienen copia local con el mismo nombre en los archivos del censo: su llamada es
+ * infracción venga de donde venga. `formatMonto` y `montoExacto` sí (`pos-format`, el reexport del
+ * desglose), así que esos dos solo cuentan si vienen de `@/lib/config/moneda`.
+ */
+const SIEMPRE_IMPLICITOS = ["money", "moneyTope", "formatMontoString", "formatMontoTope"];
+const MODULO_MONEDA = "@/lib/config/moneda";
+
+const escaparRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Las importaciones de `modulo`: nombre importado → nombre local, y los alias de `import * as`. */
+function importacionesDe(codigo: string, modulo: string): { nombres: Map<string, string>; espacios: string[] } {
+  const nombres = new Map<string, string>();
+  const espacios: string[] = [];
+  const desde = escaparRegex(modulo);
+  for (const m of codigo.matchAll(new RegExp(`import\\s+(?:type\\s+)?\\{([^}]*)\\}\\s*from\\s*["']${desde}["']`, "g"))) {
+    for (const parte of m[1].split(",")) {
+      const [importado, local] = parte.replace(/\btype\s+/, "").trim().split(/\s+as\s+/);
+      if (importado) nombres.set(importado.trim(), (local ?? importado).trim());
+    }
+  }
+  for (const m of codigo.matchAll(new RegExp(`import\\s+\\*\\s+as\\s+(\\w+)\\s+from\\s*["']${desde}["']`, "g"))) {
+    espacios.push(m[1]);
+  }
+  return { nombres, espacios };
+}
+
+/** Lo que un archivo del censo hace mal (R18 y design §6, §8); vacío si nada. */
+function infraccionesDeMoneda(fuente: string, opciones: { servidor?: boolean } = {}): string[] {
+  const codigo = quitarComentarios(fuente);
+  const infracciones: string[] = [];
+  const llama = (nombre: string) => new RegExp(`(?<![\\w.$])${escaparRegex(nombre)}\\s*\\(`).test(codigo);
+
+  for (const nombre of SIEMPRE_IMPLICITOS) if (llama(nombre)) infracciones.push(`llama a ${nombre}(`);
+
+  const { nombres, espacios } = importacionesDe(codigo, MODULO_MONEDA);
+  for (const implicito of FORMATEADORES_IMPLICITOS) {
+    const local = nombres.get(implicito);
+    if (local && llama(local) && !infracciones.includes(`llama a ${local}(`)) {
+      infracciones.push(`llama a ${implicito}( de ${MODULO_MONEDA}`);
+    }
+    for (const espacio of espacios) {
+      if (new RegExp(`\\b${espacio}\\.${implicito}\\s*\\(`).test(codigo)) {
+        infracciones.push(`llama a ${espacio}.${implicito}(`);
+      }
+    }
+  }
+
+  if (/\bmonedaConfig\s*(?:\.(?!locale\b)|\[)/.test(codigo)) infracciones.push("lee monedaConfig más allá de .locale");
+  if (/\blocalStorage\b/.test(codigo)) infracciones.push("usa localStorage");
+
+  if (!opciones.servidor) {
+    for (const m of codigo.matchAll(/import\s+(?:type\s+)?\{([^}]*)\}\s*from\s*["']@\/lib\/actions\/[^"']*["']/g)) {
+      if (/pais|moneda|impuesto/i.test(m[1])) infracciones.push(`lee el país por una acción: ${m[1].trim()}`);
+    }
+  }
+  return infracciones;
+}
+
+describe("SLT-235/T4.1 — censo de R18: las pantallas en la moneda del país no vuelven a la implícita", () => {
+  const leer = (rel: string) => readFileSync(join(process.cwd(), rel), "utf8");
+
+  it.each(CENSO_MONEDA_DEL_PAIS)("R18: $archivo no llama a los formateadores implícitos ni lee monedaConfig", ({ archivo, servidor }) => {
+    expect(existsSync(join(process.cwd(), archivo)), `${archivo} no existe: ¿se movió sin actualizar el censo?`).toBe(true);
+    expect(infraccionesDeMoneda(leer(archivo), { servidor })).toEqual([]);
+  });
+
+  describe("contraprueba sobre fuentes inventadas", () => {
+    const ROJOS: [string, string][] = [
+      ["money( importado", `import { money } from "${MODULO_MONEDA}";\nmoney(1);`],
+      ["money( sin importar", `const t = money(1);`],
+      ["moneyTope(", `import { moneyTope } from "${MODULO_MONEDA}";\nmoneyTope(1);`],
+      ["formatMonto( importado", `import { formatMonto } from "${MODULO_MONEDA}";\nformatMonto(1);`],
+      ["formatMonto( con alias", `import { formatMonto as f, SIN_MONTO_RAYA } from "${MODULO_MONEDA}";\nf(1, SIN_MONTO_RAYA);`],
+      ["montoExacto( importado", `import {\n  montoExacto,\n} from "${MODULO_MONEDA}";\nmontoExacto(1);`],
+      ["formatMontoString(", `formatMontoString("1");`],
+      ["import * as", `import * as M from "${MODULO_MONEDA}";\nM.formatMonto(1);`],
+      ["monedaConfig.simbolo", `import { monedaConfig } from "${MODULO_MONEDA}";\nconst s = monedaConfig.simbolo;`],
+      ["monedaConfig[…]", `const d = monedaConfig["decimales"];`],
+      ["localStorage", `const m = localStorage.getItem("moneda");`],
+      ["acción que lee el país", `import { leerMonedaDelPais } from "@/lib/actions/pais";`],
+    ];
+    it.each(ROJOS)("R18: rojo con %s", (_caso, fuente) => {
+      expect(infraccionesDeMoneda(fuente)).not.toEqual([]);
+    });
+
+    const VERDES: [string, string][] = [
+      ["formatearMontoEn con la moneda", `import { formatearMontoEn } from "${MODULO_MONEDA}";\nformatearMontoEn(moneda, 1);`],
+      ["un formatMonto local", `function formatMonto(m: number, moneda: FormatoMoneda) { return formatearMontoEn(moneda, m); }\nformatMonto(1, moneda);`],
+      ["montoExacto solo reexportado", `import { montoExacto } from "${MODULO_MONEDA}";\nexport { montoExacto };`],
+      ["monedaConfig.locale", `new Intl.NumberFormat(monedaConfig.locale);`],
+      ["una llamada en un comentario", `// money(1) y formatMonto(2)\n/* localStorage */\nconst x = 1;`],
+      ["una acción que no es del país", `import { listarHiloChat } from "@/lib/actions/chat-whatsapp";`],
+    ];
+    it.each(VERDES)("R18: verde con %s", (_caso, fuente) => {
+      expect(infraccionesDeMoneda(fuente)).toEqual([]);
+    });
+
+    it("R18: la página de servidor puede leer el país por su composition root; un componente, no", () => {
+      const fuente = `import { construirPaisService } from "@/lib/actions/_shared/paises-plataforma";`;
+      expect(infraccionesDeMoneda(fuente, { servidor: true })).toEqual([]);
+      expect(infraccionesDeMoneda(fuente)).not.toEqual([]);
+    });
+  });
+
+  it("R18: rojo si un archivo REAL del censo vuelve a un formateador implícito", () => {
+    for (const { archivo, servidor } of CENSO_MONEDA_DEL_PAIS) {
+      const reescrito = `${leer(archivo)}\nimport { money as dinero } from "${MODULO_MONEDA}";\nexport const _x = dinero(1);\n`;
+      expect(infraccionesDeMoneda(reescrito, { servidor }), archivo).not.toEqual([]);
+    }
+    const posFormat = leer("app/(app)/mis-asignaciones/_components/pos-card/pos-format.ts")
+      .replace(`import { formatearMontoEn,`, `import { formatMonto as formatMontoConfigurado, formatearMontoEn,`)
+      .replace(`formatearMontoEn(moneda, monto, SIN_MONTO_RAYA)`, `formatMontoConfigurado(monto, SIN_MONTO_RAYA)`);
+    expect(infraccionesDeMoneda(posFormat)).toEqual([`llama a formatMonto( de ${MODULO_MONEDA}`]);
   });
 });
