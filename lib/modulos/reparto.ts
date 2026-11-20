@@ -202,6 +202,8 @@ export const MODULO_POR_ACTION: Readonly<Record<string, Destino>> = {
   // SLT-60: el superadmin confirma los pagos a la plataforma en el detalle de la empresa, de plataforma.
   "pagos-plataforma": "nucleo",
   "password-reset": "nucleo",
+  // SLT-221: el canje público del cambio de correo, núcleo como `password-reset`.
+  "confirmar-correo": "nucleo",
   // SLT-99: el cambio de plan del maestro en «Mi plan», que es núcleo como su ruta.
   "mi-plan": "nucleo",
   // SL-24: de plataforma, como `modulos-empresa` (solo el superadmin).

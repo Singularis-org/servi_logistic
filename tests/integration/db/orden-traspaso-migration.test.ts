@@ -316,6 +316,8 @@ describe("427/T2 — el UP y el DOWN, leidos del archivo", () => {
       // no tocan `orden_traspaso_mensajero`.
       "20261121140000_plan_nivel_job_enum",
       "20261121140100_plan_nivel",
+      // SLT-221: la tabla del cambio de correo pendiente; no toca `orden_traspaso_mensajero`.
+      "20261122120000_slt221_usuario_cambio_correo",
     ]);
   });
 });

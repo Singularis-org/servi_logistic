@@ -636,6 +636,14 @@ const CENSO: EntradaCenso[] = [
     forma: "abre_tx",
     mutacion: /tx\.usuario\.update\(/,
   },
+  // SLT-221 (R1622): el canje del cambio de correo escribe `usuario.email` y su fila en la misma tx.
+  {
+    tipos: ["usuario_email_cambiado"],
+    archivo: "lib/repositories/UserRepository.ts",
+    metodo: "aplicarCambioCorreo",
+    forma: "abre_tx",
+    mutacion: /tx\.usuario\.update\(/,
+  },
   {
     tipos: ["postulacion_aprobada", "postulacion_rechazada"],
     archivo: "lib/repositories/AprobacionPostulacionRepository.ts",
@@ -838,12 +846,8 @@ interface TiposConEscritorPendiente {
   tarea: string;
 }
 
-// SLT-52 T6.2 y SLT-77 T2.2 ya escriben sus tipos (ver el censo).
-const ESCRITOR_PENDIENTE_EN_CURSO: TiposConEscritorPendiente[] = [
-  // SLT-221: el enum gana los dos tipos en el PR 1 (una sola migracion de enum); el correo lo escribe
-  // `UserRepository.aplicarCambioCorreo` en el PR 2, que vacia esta entrada.
-  { tipos: ["usuario_email_cambiado"], ficha: "SLT-221", tarea: "T2.4" },
-];
+// SLT-52 T6.2, SLT-77 T2.2 y SLT-221 (PR 2) ya escriben sus tipos (ver el censo).
+const ESCRITOR_PENDIENTE_EN_CURSO: TiposConEscritorPendiente[] = [];
 
 /** Los archivos `.ts` de `lib/`, relativos a la raiz. */
 function archivosDeLib(dir = "lib"): string[] {
@@ -1296,7 +1300,7 @@ describe("362/R16 — cada tipo del catalogo tiene al menos un punto de escritur
     // 85 desde SLT-94 (`usuario_se_recoge_en_tienda_cambiado`, de `UserRepository.update`).
     // 86 desde SLT-211 (`ordenes_retiradas_a_central`, de `OrdenRepository.retirarSateliteLote`).
     // 88 desde SLT-221 (`usuario_cedula_cambiada`, de `UserRepository.update`, y
-    // `usuario_email_cambiado`, con escritor pendiente hasta el PR 2).
+    // `usuario_email_cambiado`, de `UserRepository.aplicarCambioCorreo`).
     expect(HISTORIAL_ACCION_TIPOS).toHaveLength(88);
   });
 });
