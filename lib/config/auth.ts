@@ -37,6 +37,8 @@ export interface AuthConfig {
    * del viernes por la tarde se abre el lunes, y un enlace vencido cuesta un clic de «Reenviar».
    */
   BIENVENIDA_TTL_HORAS: number;
+  /** SLT-221/R1621 (D8): vida en horas del enlace que confirma un cambio de correo. 72 por defecto. */
+  CAMBIO_CORREO_TTL_HORAS: number;
 }
 
 export function loadAuthConfig(): AuthConfig {
@@ -53,6 +55,7 @@ export function loadAuthConfig(): AuthConfig {
     RESET_VERIFY_WINDOW_MINUTES: readPositiveInt("AUTH_RESET_VERIFY_WINDOW_MINUTES", 10),
     RESET_MAX_VERIFY_ATTEMPTS: readPositiveInt("AUTH_RESET_MAX_VERIFY_ATTEMPTS", 5),
     BIENVENIDA_TTL_HORAS: readPositiveInt("AUTH_BIENVENIDA_TTL_HORAS", 72),
+    CAMBIO_CORREO_TTL_HORAS: readPositiveInt("AUTH_CAMBIO_CORREO_TTL_HORAS", 72),
   };
 }
 

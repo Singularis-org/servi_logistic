@@ -104,6 +104,11 @@ export const EXCEPCIONES_DE_PLATAFORMA: readonly ExcepcionDeAislamiento[] = [
     motivo: "recuperar contrasena: buscar el usuario y su OTP sin sesion ni empresa",
   },
   {
+    archivo: "lib/actions/confirmar-correo.ts",
+    ficha: "SL-18",
+    motivo: "SLT-221: confirmar un cambio de correo sin sesión; el enlace lleva a su empresa",
+  },
+  {
     archivo: "lib/api/api-key-request.ts",
     ficha: "SL-17",
     motivo: "resolver la API key a su empresa antes de abrir su contexto (R13)",
