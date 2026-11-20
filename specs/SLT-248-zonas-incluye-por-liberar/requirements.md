@@ -160,23 +160,23 @@ resultado se anota en `progress/features/SLT-248.md` y no bloquea el PR: el camb
 
 ## Tasks
 
-- [ ] **T0 (leader, solo lectura):** correr la consulta de arriba en prod y anotar el resultado en
+- [x] **T0 (leader, solo lectura):** correr la consulta de arriba en prod y anotar el resultado en
   `progress/features/SLT-248.md`. *Hecho:* números por estado anotados, con fecha.
-- [ ] **T1 — clasificación:** en `lib/utils/estados-bodega-satelite.ts`, `reprogramado: "se_mueve"` y
+- [x] **T1 — clasificación:** en `lib/utils/estados-bodega-satelite.ts`, `reprogramado: "se_mueve"` y
   `novedad: "se_mueve"`. Quitar `"por_liberar"` de `ClaseReconciliacionZona` y actualizar el docstring
   (la viñeta de `por_liberar` sale, se cita SLT-248 y `novedad` deja de figurar entre las devoluciones).
   *Hecho:* `pnpm run typecheck` señala los consumidores de T2 y nada más.
-- [ ] **T2 — motivo y pantalla** (depende de T1): quitar `"por_liberar"` de `MotivoSaltada` y de su
+- [x] **T2 — motivo y pantalla** (depende de T1): quitar `"por_liberar"` de `MotivoSaltada` y de su
   docstring (`lib/types/actualizacion-zonas.ts`), y la entrada de `TEXTO_MOTIVO_SALTADA` en
   `app/(app)/ordenes/_components/ActualizarZonasButton.tsx`. Revisar el comentario de
   `motivoDeSaltada` (`lib/services/ActualizacionZonasService.ts`) y tocarlo solo si nombra la clase.
   *Hecho:* typecheck y lint verdes.
-- [ ] **T3 [P] — ayuda:** en `docs/ayuda/oficina/ordenes.md > Actualizar zonas`, quitar la viñeta
+- [x] **T3 [P] — ayuda:** en `docs/ayuda/oficina/ordenes.md > Actualizar zonas`, quitar la viñeta
   «esperando liberación en bodega». En `docs/ayuda/oficina/configuracion-zonas.md > Editar y eliminar`,
   cambiar «Las que ya tienen el paquete en una bodega» por «Las que tienen el paquete en el estante de
   una bodega satélite», porque una reprogramada en bodega ahora sí cambia de zona. *Hecho:* ninguna
   ayuda nombra «esperando liberación» y `pnpm run test:guardias` sigue verde.
-- [ ] **T4 — tests de SLT-224 que fijan la exclusión** (depende de T1-T2). Se actualizan:
+- [x] **T4 — tests de SLT-224 que fijan la exclusión** (depende de T1-T2). Se actualizan:
   - `tests/unit/utils/clase-reconciliacion-zona.test.ts`: «se mueve» literal con `reprogramado` y
     `novedad`; `devolucion` literal sin `novedad` (5); quitar `deClase("por_liberar")`;
     `ESTADOS_QUE_NO_SE_MUEVEN` literal con 9 estados (título «(9 estados)»).
@@ -202,7 +202,7 @@ resultado se anota en `progress/features/SLT-248.md` y no bloquea el PR: el camb
   desechable exportada**, porque los dos `.int.test.ts` sin base salen `skipped` y no `passed`. Cada
   integración se mata con una mutación: devolver `reprogramado: "por_liberar"` (o `novedad:
   "devolucion"`) pone rojo la matriz y la vista previa.
-- [ ] **T5 — gate:** `./init.sh` en verde con `.env` copiado al worktree. *Hecho:* exit 0 anotado en el
+- [x] **T5 — gate:** `./init.sh` en verde con `.env` copiado al worktree. *Hecho:* exit 0 anotado en el
   log.
 
 ## Archivos esperados
