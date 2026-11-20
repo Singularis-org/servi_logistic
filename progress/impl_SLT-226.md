@@ -154,8 +154,11 @@ El `backend_dev` escribió los dos archivos, pero no entregó informe. Verifiqu�
     `--testTimeout=180000` (19 tests en 8 s). Ningún rojo es de lógica.
   - `scripts/tamano-pr.mjs`: AVISO (31/40 archivos, 1752/1000 de producción, 2534/3000 de tests), aceptado por P5. El
     marcador está en `progress/features/SLT-226.md`.
-- E2E `dinero`: en CI, en verde sobre `dc824e6e` (9 min 32 s). La tanda 3 solo añade tests y no cambia código
-  de producción. No lo corrí en local porque la máquina estaba ocupada con el Playwright de otra feature.
+- E2E `dinero` en local, con el `backend_dev` de la tanda 3. Base nueva `servi_logistic_slt226_e2e` (migrate deploy y
+  `db:seed`), `next build` con `NEXT_PUBLIC_APP_URL=http://localhost:3226` (`E2E_PUERTO=3226`,
+  `docs/verification.md > En local`) y `pnpm exec playwright test --project=dinero`. Dos corridas seguidas sobre la
+  misma base: `132 passed (13.2m)` y `132 passed (8.5m)`, sin fallos, saltos ni inestables. Después se borró la base.
+- E2E `dinero` en CI: en verde sobre `dc824e6e` (9 min 32 s) y sobre `d887fab3` (12 min 8 s).
 - El primer CI del PR (#263) dio rojo solo por el tamaño, sin marcador. `estatico` y los tres shards de vitest
   cortaron ahí. El E2E `aislamiento` dio timeout de `page.goto` en la landing (`marca.spec.ts` y
   `rastreo-publico.spec.ts`); el diff no toca la landing, y en la primera corrida del PR estaba en verde.

@@ -106,9 +106,12 @@
 - [x] **T7.1** `tests/integration/db/migracion-slt226-ida-y-vuelta.test.ts`. **Hecho:** cubre R28, en verde.
 - [x] **T7.2** Las suites de SLT-60 y SLT-143 en verde sin cambios de afirmaciones. **Hecho:** cubre R28.
 - [x] **T7.3** El mapa `R<n> -> test` en `progress/impl_SLT-226.md`. **Hecho:** los 29 requisitos tienen test.
-- [ ] **T7.4** `./init.sh` en verde. El grupo `dinero` de E2E en local (`docs/perfil-agentes.md`: el diff toca
+- [x] **T7.4** `./init.sh` en verde. El grupo `dinero` de E2E en local (`docs/perfil-agentes.md`: el diff toca
   `db/` y dinero), aunque esta ficha no añade E2E. **Hecho:** los dos en verde, salvo el aviso de tamaño, aceptado
   por la decisión P5.
+  - E2E `dinero` en local: 132 en verde, dos veces seguidas.
+  - `./init.sh` en local se corta en la validación del board: el cupo, que el humano aceptó, y SLT-247, que es
+    ajena. Sus pasos se corrieron a mano, todos en verde. En CI no hay board y corre en `estatico`.
 - [x] **T7.5** (solo si T0.5 lo pide) Ajustar `migracion-slt143-ida-y-vuelta.test.ts`. **Hecho:** en verde.
   - **No aplica** (T0.5 lo descartó): la suite de SLT-143 no aplica su `down` sobre esta migración; corre en verde sin cambios (T7.2).
 
