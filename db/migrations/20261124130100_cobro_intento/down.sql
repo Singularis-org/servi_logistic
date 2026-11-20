@@ -123,12 +123,14 @@ DROP TRIGGER "cobro_intento_saldo_anulacion" ON "pago_plataforma_anulacion";
 DROP FUNCTION cobro_intento_anular_por_saldo();
 DROP FUNCTION cobro_evento_registrar(text, text, text, text, timestamp);
 DROP FUNCTION cobro_evento_cerrar(text, text, text, text, timestamp);
+DROP FUNCTION cobro_marcar_pagado_manual(text, text, text, timestamp);
 DROP FUNCTION cobro_registrar_pago_aprobado(text, text, text, numeric, text, timestamp);
+DROP FUNCTION _cobro_aprobar("cobro_intento", text, text, timestamp);
 DROP FUNCTION cobro_intento_avanzar(text, text, text, timestamp);
 DROP FUNCTION cobro_intento_registrar_enlace(text, text, text, timestamp);
-DROP FUNCTION cobro_intento_obtener_o_crear(text, text, text, text, text, timestamp);
+DROP FUNCTION cobro_intento_obtener_o_crear(text, text, text, text, text, text, timestamp);
 DROP FUNCTION _cobro_intento_pasar(text, text, text, timestamp);
-DROP FUNCTION _cobro_historial("cobro_intento", text, text);
+DROP FUNCTION _cobro_historial("cobro_intento", text, text, boolean);
 
 -- ─── 3. Las tablas, con sus triggers ────────────────────────────────────────────────────────────────
 -- Las funciones de SL-17 (`verificar_misma_empresa`, `impedir_cambio_de_empresa`) son anteriores y se quedan.

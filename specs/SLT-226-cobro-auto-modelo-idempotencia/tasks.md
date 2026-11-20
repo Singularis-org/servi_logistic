@@ -120,7 +120,7 @@
 > Tanda nueva sobre el PR #263. Edita la migración `20261124130100_cobro_intento` directamente (no está en `dev`):
 > no nace ninguna migración ni ningún archivo. Antes de T8.1, la base de la feature se baja con su `down.sql`.
 
-- [ ] **T8.1** La migración (§12.1, §12.3, §12.4):
+- [x] **T8.1** La migración (§12.1, §12.3, §12.4):
   - los dos CHECK de proveedor con `rebill`, `wompi` y `global66`;
   - la columna `metodo` con su CHECK, y `metodo` entre las columnas fijas de `cobro_intento_solo_avanza`;
   - `_cobro_historial` con `p_manual` y el `detalle` con `proveedor` y `metodo`;
@@ -131,16 +131,16 @@
 
   **Hecho:** aplica en una base desechable; las funciones nuevas tienen `prosecdef` y no tienen `EXECUTE` para
   `servi_app`.
-- [ ] **T8.2** El `down.sql` (§12.5). **Hecho:** ida y vuelta con la huella del catálogo idéntica, y aborta con un
+- [x] **T8.2** El `down.sql` (§12.5). **Hecho:** ida y vuelta con la huella del catálogo idéntica, y aborta con un
   intento.
-- [ ] **T8.3** `[P]` `db/schema.prisma`: `metodo String` en `CobroIntento`. **Hecho:** `prisma validate` y
+- [x] **T8.3** `[P]` `db/schema.prisma`: `metodo String` en `CobroIntento`. **Hecho:** `prisma validate` y
   `prisma migrate diff` contra la base migrada dicen «No difference detected».
 - [ ] **T8.4** `[P]` Tipos (§12.6): `PROVEEDORES_COBRO` con los tres, `METODOS_COBRO`, `metodo` en el DTO,
   `marcarPagadoManualSchema` y `MarcarPagadoManualResult`. **Hecho:** typecheck en verde.
 - [ ] **T8.5** Repositorio y servicio (§12.6): `metodo` en `obtenerOCrear`, sin el literal `"rebill"` en el
   servicio; `marcarPagadoManual` en las dos interfaces y las dos clases; el motivo de `EXCEPCIONES_DE_PLATAFORMA`.
   Depende de T8.4. **Hecho:** typecheck y lint en verde, y `grep '"rebill"' lib/services` no da nada.
-- [ ] **T8.6** Tests de la base (§12.7): R30–R34 en `cobro-intento.test.ts` y `cobro-webhook-evento.test.ts`;
+- [x] **T8.6** Tests de la base (§12.7): R30–R34 en `cobro-intento.test.ts` y `cobro-webhook-evento.test.ts`;
   R35–R39 (la parte de la base) en `cobro-pago-en-linea.test.ts`; el fixture y la clave de los tests que ya
   existen. Depende de T8.1–T8.3. **Hecho:** en verde, y las mutaciones 7, 8 y 9 los ponen en rojo.
 - [ ] **T8.7** `[P]` Tests del servicio (§12.7): R30, R31, R38 y R39 en `cobro-intento-service.test.ts`. Depende de

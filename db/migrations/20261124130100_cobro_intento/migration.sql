@@ -11,7 +11,8 @@
 --   · `pago_plataforma_confirmacion` admite la confirmación sin persona del pago en línea (§1.4);
 --   · `_pago_plataforma_aplicar` con `p_en_linea` (§3.6) y el tope que deja pasar el pago en línea (§3.7);
 --   · las funciones del dueño de §3.1, §3.2, §3.3, §3.5 y §3.8, y los triggers que anulan un intento vivo cuando
---     cambia el saldo de su factura (§3.4).
+--     cambia el saldo de su factura (§3.4);
+--   · la enmienda del 2026-11-20 (§12): varios proveedores, el método del cobro y la marca a mano del superadmin.
 --
 -- Todas las funciones nuevas son del dueño (`SECURITY DEFINER`, `search_path = public, pg_temp`), sin EXECUTE para
 -- `servi_app`: la app las llama en `comoPlataforma`. Toman primero el candado `pago_plataforma:<org>` de SLT-60, así
@@ -35,6 +36,7 @@ CREATE TABLE "cobro_intento" (
     "organizacion_id" TEXT NOT NULL DEFAULT NULLIF(current_setting('app.organizacion_id', true), ''),
     "factura_id" TEXT NOT NULL,
     "proveedor" TEXT NOT NULL,
+    "metodo" TEXT NOT NULL,
     "clave" TEXT NOT NULL,
     "monto_local" DECIMAL(14,2) NOT NULL,
     "moneda_local" CHAR(3) NOT NULL,
@@ -54,7 +56,9 @@ CREATE TABLE "cobro_intento" (
     "aprobado_at" TIMESTAMP(3),
 
     CONSTRAINT "cobro_intento_pkey" PRIMARY KEY ("id"),
-    CONSTRAINT "cobro_intento_proveedor" CHECK ("proveedor" IN ('rebill')),
+    -- R30, R31 (enmienda del 2026-11-20): conjuntos cerrados, sin matriz proveedor × método (§12.1).
+    CONSTRAINT "cobro_intento_proveedor" CHECK ("proveedor" IN ('rebill', 'wompi', 'global66')),
+    CONSTRAINT "cobro_intento_metodo" CHECK ("metodo" IN ('tarjeta', 'recurrente', 'transferencia')),
     CONSTRAINT "cobro_intento_estado" CHECK ("estado" IN ('creado', 'pendiente', 'aprobado', 'rechazado', 'expirado',
                                                           'anulado', 'devuelto', 'contracargo')),
     -- R6: en decimal y mayores que 0.
@@ -154,12 +158,13 @@ BEGIN
                                    'de', OLD."estado", 'a', NEW."estado")::text;
   END IF;
 
-  -- R8: lo que define el cobro no cambia; los ids externos, el pago del libro, el motivo y la hora de aprobación
+  -- R8, R33: lo que define el cobro (también el método) no cambia; los ids externos, el pago del libro, el motivo y la hora de aprobación
   -- solo pasan de vacío a un valor.
   IF NEW."id" IS DISTINCT FROM OLD."id"
      OR NEW."organizacion_id" IS DISTINCT FROM OLD."organizacion_id"
      OR NEW."factura_id" IS DISTINCT FROM OLD."factura_id"
      OR NEW."proveedor" IS DISTINCT FROM OLD."proveedor"
+     OR NEW."metodo" IS DISTINCT FROM OLD."metodo"
      OR NEW."clave" IS DISTINCT FROM OLD."clave"
      OR NEW."monto_local" IS DISTINCT FROM OLD."monto_local"
      OR NEW."moneda_local" IS DISTINCT FROM OLD."moneda_local"
@@ -200,7 +205,7 @@ CREATE TABLE "cobro_webhook_evento" (
     "resultado" TEXT,
 
     CONSTRAINT "cobro_webhook_evento_pkey" PRIMARY KEY ("id"),
-    CONSTRAINT "cobro_webhook_evento_proveedor" CHECK ("proveedor" IN ('rebill')),
+    CONSTRAINT "cobro_webhook_evento_proveedor" CHECK ("proveedor" IN ('rebill', 'wompi', 'global66')),
     CONSTRAINT "cobro_webhook_evento_resultado" CHECK (
       "resultado" IS NULL OR "resultado" IN ('aplicado', 'sin_cambio', 'sin_intento', 'requiere_revision')),
     -- Cerrado = con hora y resultado, los dos a la vez.
@@ -363,9 +368,11 @@ END $$;
 
 -- ─── 6. El historial de cada cambio de estado (§1.3; R25) ───────────────────────────────────────────
 -- Una fila por nacimiento o cambio, en la MISMA sentencia que el cambio: si el cambio se revierte, la fila también.
--- `p_actor` solo en el nacimiento; en los demás cambios es NULL (el sistema). El nombre del actor se congela como en
--- `registrar-accion.ts` (nombre y primer apellido). Lanza si no escribe la fila: un cambio sin rastro no se guarda.
-CREATE FUNCTION _cobro_historial(p_intento "cobro_intento", p_anterior text, p_actor text) RETURNS void
+-- `p_actor` en el nacimiento y en la marca a mano (§12.4); en los demás cambios es NULL (el sistema). El nombre del
+-- actor se congela como en `registrar-accion.ts` (nombre y primer apellido). Con `p_manual` el detalle lleva
+-- `"manual": true` (R36). Lanza si no escribe la fila: un cambio sin rastro no se guarda.
+CREATE FUNCTION _cobro_historial(p_intento "cobro_intento", p_anterior text, p_actor text,
+                                 p_manual boolean DEFAULT false) RETURNS void
   LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE
   v_n integer;
@@ -381,7 +388,9 @@ BEGIN
          jsonb_strip_nulls(jsonb_build_object(
            'organizacion_id', p_intento."organizacion_id", 'factura_id', p_intento."factura_id",
            'monto_local', p_intento."monto_local", 'moneda_cobro', p_intento."moneda_cobro",
-           'motivo', p_intento."motivo_anulacion", 'pago_proveedor_id', p_intento."pago_proveedor_id")),
+           'motivo', p_intento."motivo_anulacion", 'pago_proveedor_id', p_intento."pago_proveedor_id",
+           'proveedor', p_intento."proveedor", 'metodo', p_intento."metodo",
+           'manual', CASE WHEN p_manual THEN true END)),
          now() AT TIME ZONE 'UTC'
     FROM "organizacion" o
     JOIN "factura_plataforma" f ON f."id" = p_intento."factura_id"
@@ -392,7 +401,7 @@ BEGIN
     RAISE EXCEPTION 'historial del cobro sin escribir: intento %', p_intento."id";
   END IF;
 END $$;
-REVOKE EXECUTE ON FUNCTION _cobro_historial("cobro_intento", text, text) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION _cobro_historial("cobro_intento", text, text, boolean) FROM PUBLIC;
 
 -- Cambia el estado de un intento ya bloqueado y deja su fila de historial (sin actor: el sistema).
 CREATE FUNCTION _cobro_intento_pasar(p_id text, p_estado text, p_motivo text, p_ahora timestamp)
@@ -417,8 +426,9 @@ REVOKE EXECUTE ON FUNCTION _cobro_intento_pasar(text, text, text, timestamp) FRO
 -- Devuelve ('creado' | 'existente', id) o ('factura_no_valida' | 'sin_saldo', NULL), sin escribir en esos dos.
 -- El candado de la empresa y el FOR UPDATE de la factura serializan dos pedidos de la misma factura: el segundo ve
 -- el vivo del primero y lo devuelve (R4). El único parcial es la red para quien inserte saltándose esto.
-CREATE FUNCTION cobro_intento_obtener_o_crear(p_org text, p_factura text, p_proveedor text, p_moneda_local text,
-                                              p_por text, p_ahora timestamp)
+-- Un proveedor o un método fuera de su conjunto lo rechaza el CHECK con 23514, que revierte todo (R30, R31).
+CREATE FUNCTION cobro_intento_obtener_o_crear(p_org text, p_factura text, p_proveedor text, p_metodo text,
+                                              p_moneda_local text, p_por text, p_ahora timestamp)
   RETURNS TABLE(resultado text, intento_id text)
   LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE
@@ -444,8 +454,9 @@ BEGIN
     RETURN;
   END IF;
 
-  -- La clave: factura | monto local | moneda de cobro | tasa (vacía: se cobra en la moneda local).
-  v_clave := p_factura || '|' || v_saldo::text || '|' || p_moneda_local || '|';
+  -- La clave: factura | monto local | moneda de cobro | tasa (vacía: se cobra en la moneda local) | proveedor |
+  -- método. Otro proveedor u otro método es otra clave: anula el vivo y nace uno nuevo (R32, §12.2).
+  v_clave := p_factura || '|' || v_saldo::text || '|' || p_moneda_local || '||' || p_proveedor || '|' || p_metodo;
 
   SELECT * INTO v_vivo FROM "cobro_intento" i
    WHERE i."organizacion_id" = p_org AND i."factura_id" = p_factura AND i."estado" IN ('creado', 'pendiente')
@@ -460,16 +471,16 @@ BEGIN
   END IF;
 
   INSERT INTO "cobro_intento"
-    ("organizacion_id", "factura_id", "proveedor", "clave", "monto_local", "moneda_local", "moneda_cobro",
+    ("organizacion_id", "factura_id", "proveedor", "metodo", "clave", "monto_local", "moneda_local", "moneda_cobro",
      "monto_cobrado", "estado", "creado_por", "created_at", "estado_at")
-  VALUES (p_org, p_factura, p_proveedor, v_clave, v_saldo, p_moneda_local, p_moneda_local,
+  VALUES (p_org, p_factura, p_proveedor, p_metodo, v_clave, v_saldo, p_moneda_local, p_moneda_local,
           v_saldo, 'creado', p_por, now() AT TIME ZONE 'UTC', p_ahora)
   RETURNING * INTO v_intento;
   PERFORM _cobro_historial(v_intento, NULL, p_por);
 
   RETURN QUERY SELECT 'creado'::text, v_intento."id";
 END $$;
-REVOKE EXECUTE ON FUNCTION cobro_intento_obtener_o_crear(text, text, text, text, text, timestamp) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION cobro_intento_obtener_o_crear(text, text, text, text, text, text, timestamp) FROM PUBLIC;
 
 -- ─── 8. El proveedor creó el cobro (§3.2; R10) ──────────────────────────────────────────────────────
 -- 'ok' (creado → pendiente con el id externo), 'ya_pendiente' (el mismo id externo) o 'no_vivo'. Con OTRO id
@@ -552,14 +563,53 @@ BEGIN
 END $$;
 REVOKE EXECUTE ON FUNCTION cobro_intento_avanzar(text, text, text, timestamp) FROM PUBLIC;
 
--- ─── 10. Registrar el pago aprobado (§3.5; R17–R22, capa 3) ─────────────────────────────────────────
--- 'ok', 'ya_registrado', 'sin_intento' o 'requiere_revision' (decisión P2: no escribe nada). Una sola sentencia:
--- cualquier rechazo revierte el intento, el movimiento, la confirmación y la aplicación juntos.
---   · Orden de bloqueo: el candado de la empresa y después la factura, como SLT-60, para no cruzarse.
+-- ─── 10. Registrar el pago aprobado (§3.5, §12.4; R17–R22, R35–R37, capa 3) ─────────────────────────
+-- `_cobro_aprobar` son los pasos 5 a 7 de §3.5 sin el `creado → pendiente`, comunes al aviso del proveedor y a la
+-- marca a mano (§12.4). Quien la llama ya tiene el candado de la empresa, la factura y el intento bloqueados, y el
+-- intento `pendiente` y validado. Interna: sin EXECUTE para nadie salvo el dueño.
 --   · El intento pasa a `aprobado` ANTES del movimiento (FK diferida): así el tope lo deja pasar (§3.7) y el trigger
 --     de §3.4 no anula el propio intento al escribir la aplicación.
 --   · No mira la caja: puede quedar negativa (R18).
 --   · Con confirmación, no es «por confirmar» y lo disponible no lo resta (R19).
+--   · `p_por` es NULL con el aviso (el sistema) y el superadmin con la marca a mano: la fila de historial lo lleva
+--     como actor con `"manual": true`, y la confirmación como quien confirmó (R36).
+CREATE FUNCTION _cobro_aprobar(p_intento "cobro_intento", p_pago_proveedor_id text, p_por text, p_ahora timestamp)
+  RETURNS void
+  LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE
+  v_intento  "cobro_intento";
+  v_pago     record;
+  v_pago_id  text := (gen_random_uuid())::text;
+BEGIN
+  UPDATE "cobro_intento"
+     SET "estado" = 'aprobado', "estado_at" = p_ahora, "aprobado_at" = p_ahora,
+         "pago_proveedor_id" = p_pago_proveedor_id, "pago_id" = v_pago_id
+   WHERE "id" = p_intento."id"
+  RETURNING * INTO v_intento;
+  PERFORM _cobro_historial(v_intento, 'pendiente', p_por, p_por IS NOT NULL);
+
+  -- R17: el mismo movimiento que escribe el registro por fuera de SLT-143 (T0.2): la caja, la ganancia y la deuda
+  -- bajan igual. La marca y el id del pago van en la descripción; `registrado_por` nulo, porque es automático. La
+  -- clave es la misma para el aviso y para la marca: una red más contra el doble conteo (R37).
+  INSERT INTO "wallet_movimiento"
+    ("id", "organizacion_id", "tipo", "categoria", "monto", "origen_tipo", "origen_id", "descripcion",
+     "registrado_por", "fecha_movimiento", "created_at", "clave_idempotencia")
+  VALUES (v_pago_id, v_intento."organizacion_id", 'egreso', 'egreso_pago_plataforma', v_intento."monto_local",
+          'gasto', NULL, 'Pagado en línea · ' || p_pago_proveedor_id, NULL, p_ahora, now() AT TIME ZONE 'UTC',
+          'cobro:' || v_intento."proveedor" || ':' || p_pago_proveedor_id)
+  RETURNING "id", "monto" INTO v_pago;
+
+  -- La confirmación `en_linea` y la aplicación entera a la factura del intento.
+  PERFORM _pago_plataforma_aplicar(v_intento."organizacion_id", v_pago."id", v_pago."monto",
+                                   jsonb_build_array(jsonb_build_object('factura_id', v_intento."factura_id",
+                                                                        'monto', v_pago."monto")),
+                                   p_por, p_ahora, false, true);
+END $$;
+REVOKE EXECUTE ON FUNCTION _cobro_aprobar("cobro_intento", text, text, timestamp) FROM PUBLIC;
+
+-- El aviso del proveedor. 'ok', 'ya_registrado', 'sin_intento' o 'requiere_revision' (decisión P2: no escribe
+-- nada). Una sola sentencia: cualquier rechazo revierte el intento, el movimiento, la confirmación y la aplicación
+-- juntos. Orden de bloqueo: el candado de la empresa y después la factura, como SLT-60, para no cruzarse.
 CREATE FUNCTION cobro_registrar_pago_aprobado(p_proveedor text, p_pago_proveedor_id text, p_id_externo text,
                                               p_monto numeric, p_moneda text, p_ahora timestamp)
   RETURNS text
@@ -568,9 +618,14 @@ DECLARE
   v_org      text;
   v_intento  "cobro_intento";
   v_saldo    numeric(14, 2);
-  v_pago     record;
-  v_pago_id  text := (gen_random_uuid())::text;
 BEGIN
+  -- R37 (paso 0, §12.4): el pago ya lo marcó a mano el superadmin, quizá en un intento sin id externo. Va antes de
+  -- buscar por `id_externo`, y se lee sin candado porque `pago_proveedor_id` solo pasa de vacío a un valor (R8).
+  IF EXISTS (SELECT 1 FROM "cobro_intento" i
+              WHERE i."proveedor" = p_proveedor AND i."pago_proveedor_id" = p_pago_proveedor_id) THEN
+    RETURN 'ya_registrado';
+  END IF;
+
   SELECT i."organizacion_id" INTO v_org FROM "cobro_intento" i
    WHERE i."proveedor" = p_proveedor AND i."id_externo" = p_id_externo;
   IF v_org IS NULL THEN
@@ -583,7 +638,7 @@ BEGIN
                     WHERE i."proveedor" = p_proveedor AND i."id_externo" = p_id_externo)
      FOR UPDATE;
 
-  -- R20: el mismo pago del proveedor ya se contó (webhook, conciliación o reintento).
+  -- R20: el mismo pago del proveedor ya se contó (webhook, conciliación, reintento o la marca a mano).
   IF EXISTS (SELECT 1 FROM "cobro_intento" i
               WHERE i."proveedor" = p_proveedor AND i."pago_proveedor_id" = p_pago_proveedor_id) THEN
     RETURN 'ya_registrado';
@@ -601,35 +656,74 @@ BEGIN
     RETURN 'requiere_revision';
   END IF;
 
-  -- R14: de `creado` a `aprobado` pasando por `pendiente`; una fila de historial por paso (R25).
+  -- R14: de `creado` a `aprobado` pasando por `pendiente`; una fila de historial por paso (R25), sin actor.
   IF v_intento."estado" = 'creado' THEN
-    PERFORM _cobro_intento_pasar(v_intento."id", 'pendiente', NULL, p_ahora);
+    v_intento := _cobro_intento_pasar(v_intento."id", 'pendiente', NULL, p_ahora);
   END IF;
-  UPDATE "cobro_intento"
-     SET "estado" = 'aprobado', "estado_at" = p_ahora, "aprobado_at" = p_ahora,
-         "pago_proveedor_id" = p_pago_proveedor_id, "pago_id" = v_pago_id
-   WHERE "id" = v_intento."id"
-  RETURNING * INTO v_intento;
-  PERFORM _cobro_historial(v_intento, 'pendiente', NULL);
-
-  -- R17: el mismo movimiento que escribe el registro por fuera de SLT-143 (T0.2): la caja, la ganancia y la deuda
-  -- bajan igual. La marca y el id del pago van en la descripción; `registrado_por` nulo, porque es automático.
-  INSERT INTO "wallet_movimiento"
-    ("id", "organizacion_id", "tipo", "categoria", "monto", "origen_tipo", "origen_id", "descripcion",
-     "registrado_por", "fecha_movimiento", "created_at", "clave_idempotencia")
-  VALUES (v_pago_id, v_org, 'egreso', 'egreso_pago_plataforma', v_intento."monto_local", 'gasto', NULL,
-          'Pagado en línea · ' || p_pago_proveedor_id, NULL, p_ahora, now() AT TIME ZONE 'UTC',
-          'cobro:' || p_proveedor || ':' || p_pago_proveedor_id)
-  RETURNING "id", "monto" INTO v_pago;
-
-  -- La confirmación `en_linea` sin persona y la aplicación entera a la factura del intento.
-  PERFORM _pago_plataforma_aplicar(v_org, v_pago."id", v_pago."monto",
-                                   jsonb_build_array(jsonb_build_object('factura_id', v_intento."factura_id",
-                                                                        'monto', v_pago."monto")),
-                                   NULL, p_ahora, false, true);
+  PERFORM _cobro_aprobar(v_intento, p_pago_proveedor_id, NULL, p_ahora);
   RETURN 'ok';
 END $$;
 REVOKE EXECUTE ON FUNCTION cobro_registrar_pago_aprobado(text, text, text, numeric, text, timestamp) FROM PUBLIC;
+
+-- La marca a mano del superadmin (§12.4; R35–R39) cuando el aviso no llega. 'ok', 'ya_registrado',
+-- 'referencia_vacia', 'sin_intento', 'referencia_en_otro_intento', 'no_vivo' o 'requiere_revision'; solo escribe
+-- con 'ok'. El monto y la moneda son los del intento. La autorización está en el servicio (solo el superadmin):
+-- la función confía en `p_por` porque solo la ejecuta el dueño (R39).
+CREATE FUNCTION cobro_marcar_pagado_manual(p_intento text, p_referencia text, p_por text, p_ahora timestamp)
+  RETURNS text
+  LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE
+  v_referencia  text := btrim(p_referencia);
+  v_org         text;
+  v_intento     "cobro_intento";
+  v_otro        text;
+  v_saldo       numeric(14, 2);
+BEGIN
+  IF v_referencia IS NULL OR v_referencia = '' THEN
+    RETURN 'referencia_vacia';
+  END IF;
+
+  SELECT i."organizacion_id" INTO v_org FROM "cobro_intento" i WHERE i."id" = p_intento;
+  IF v_org IS NULL THEN
+    RETURN 'sin_intento';
+  END IF;
+
+  -- El orden de §3.5: el candado de la empresa, la factura y el intento. Se serializa con el aviso (R37).
+  PERFORM pg_advisory_xact_lock(hashtext('pago_plataforma:' || v_org));
+  PERFORM 1 FROM "factura_plataforma" f
+   WHERE f."id" = (SELECT i."factura_id" FROM "cobro_intento" i WHERE i."id" = p_intento)
+     FOR UPDATE;
+  SELECT * INTO v_intento FROM "cobro_intento" i WHERE i."id" = p_intento FOR UPDATE;
+
+  -- R37, R38: el mismo pago del proveedor cuenta una vez.
+  SELECT i."id" INTO v_otro FROM "cobro_intento" i
+   WHERE i."proveedor" = v_intento."proveedor" AND i."pago_proveedor_id" = v_referencia;
+  IF v_otro IS NOT NULL THEN
+    RETURN CASE WHEN v_otro = v_intento."id" THEN 'ya_registrado' ELSE 'referencia_en_otro_intento' END;
+  END IF;
+
+  IF v_intento."estado" NOT IN ('creado', 'pendiente') THEN
+    RETURN 'no_vivo';
+  END IF;
+
+  SELECT s."saldo" INTO v_saldo FROM factura_plataforma_saldos(v_org) s WHERE s."factura_id" = v_intento."factura_id";
+  IF v_saldo IS NULL OR v_saldo < v_intento."monto_local" THEN
+    RETURN 'requiere_revision';
+  END IF;
+
+  -- R35: desde `creado` (la transferencia sin enlace de Global66) pasa por `pendiente`, con el superadmin como
+  -- actor; no usa `_cobro_intento_pasar`, que escribe el historial sin actor (R36).
+  IF v_intento."estado" = 'creado' THEN
+    UPDATE "cobro_intento" SET "estado" = 'pendiente', "estado_at" = p_ahora
+     WHERE "id" = v_intento."id"
+    RETURNING * INTO v_intento;
+    PERFORM _cobro_historial(v_intento, 'creado', p_por, true);
+  END IF;
+
+  PERFORM _cobro_aprobar(v_intento, v_referencia, p_por, p_ahora);
+  RETURN 'ok';
+END $$;
+REVOKE EXECUTE ON FUNCTION cobro_marcar_pagado_manual(text, text, text, timestamp) FROM PUBLIC;
 
 -- ─── 11. Anular el vivo cuando cambia el saldo (§3.4; R11) ──────────────────────────────────────────
 -- Cubre los tres caminos sin tocar sus funciones: la confirmación de SLT-60 y el registro por fuera escriben

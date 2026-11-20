@@ -153,6 +153,26 @@ describeSiHayBase("SLT-226 — los eventos del proveedor: una vez por (proveedor
     expect(r).toEqual({ repetido: "23505", otroProveedor: "23514", otroLog: null, filas: 1 });
   });
 
+  it("R30: un evento de global66 (y de wompi) se guarda; uno de otro proveedor da 23514, también por la función, sin escribir", async () => {
+    const log = logId();
+    const r = await revertida(base, async (tx) => {
+      const porFuncion = (proveedor: string, l: string) =>
+        tx.$queryRawUnsafe<{ r: string }[]>(`SELECT cobro_evento_registrar($1, $2, 'payment.updated', 'pp-30', ${AHORA_SQL}) AS r`, proveedor, l);
+      const contarDe = async (l: string) =>
+        (await tx.$queryRawUnsafe<{ n: number }[]>(`SELECT count(*)::int AS n FROM "cobro_webhook_evento" WHERE "log_id" = $1`, l))[0].n;
+      const logStripe = logId();
+      return {
+        global66: (await porFuncion("global66", log))[0].r,
+        wompi: (await porFuncion("wompi", log))[0].r,
+        // El mismo log_id en otro proveedor es otro evento: el único es (proveedor, log_id).
+        filas: await contarDe(log),
+        stripe: await errorEnTx(tx, () => porFuncion("stripe", logStripe)),
+        filasStripe: await contarDe(logStripe),
+      };
+    });
+    expect(r).toEqual({ global66: "nuevo", wompi: "nuevo", filas: 2, stripe: "23514", filasStripe: 0 });
+  });
+
   /* ------------------------- repetido y pendiente (R13) ---------------------- */
 
   it("R13: si llegó antes y su proceso no terminó responde `pendiente` (se procesa otra vez) sin escribir otra fila ni cambiar la que hay", async () => {

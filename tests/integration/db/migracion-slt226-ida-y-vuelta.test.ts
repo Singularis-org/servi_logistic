@@ -44,6 +44,7 @@ const M = "20261124130100_cobro_intento";
 
 const TABLAS = ["cobro_intento", "cobro_webhook_evento"];
 const FUNCIONES_NUEVAS = [
+  "_cobro_aprobar",
   "_cobro_historial",
   "_cobro_intento_pasar",
   "cobro_evento_cerrar",
@@ -53,6 +54,7 @@ const FUNCIONES_NUEVAS = [
   "cobro_intento_obtener_o_crear",
   "cobro_intento_registrar_enlace",
   "cobro_intento_solo_avanza",
+  "cobro_marcar_pagado_manual",
   "cobro_registrar_pago_aprobado",
   "cobro_webhook_evento_inmutable",
 ];
@@ -278,9 +280,9 @@ describeSiHayBase("SLT-226 R28 — cobro_historial_enum y cobro_intento de ida y
     try {
       await db.query(
         `INSERT INTO "cobro_intento"
-           ("id", "organizacion_id", "factura_id", "proveedor", "clave", "monto_local", "moneda_local", "moneda_cobro",
-            "monto_cobrado", "estado", "created_at", "estado_at")
-         VALUES ($1, $2, $3, 'rebill', 'iv', 100.00, 'CRC', 'CRC', 100.00, 'creado', now() AT TIME ZONE 'UTC',
+           ("id", "organizacion_id", "factura_id", "proveedor", "metodo", "clave", "monto_local", "moneda_local",
+            "moneda_cobro", "monto_cobrado", "estado", "created_at", "estado_at")
+         VALUES ($1, $2, $3, 'rebill', 'tarjeta', 'iv', 100.00, 'CRC', 'CRC', 100.00, 'creado', now() AT TIME ZONE 'UTC',
                  now() AT TIME ZONE 'UTC')`,
         [randomUUID(), organizacionId, randomUUID()],
       );

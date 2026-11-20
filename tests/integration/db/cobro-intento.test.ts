@@ -7,11 +7,13 @@ import { comoApp } from "@/tests/fabricas/organizaciones";
 import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
 import {
   AHORA_SQL,
+  METODO,
   MONEDA_LOCAL,
   PROVEEDOR,
   aLaVezConCandado,
   anularConfirmado,
   avanzarIntento,
+  claveDe,
   confirmarPago,
   crearIntento,
   facturaCerradaCon,
@@ -49,7 +51,8 @@ import { capturar, revertida, sqlstateDe } from "./_fixtures/planes";
 // MUTACIONES QUE LO MATAN (design §8; medidas el 2026-11-20 en una base desechable copiada de la migrada): 1) el único
 // parcial sin `WHERE` (8 rojos: R11, el intento siguiente da 23505) o quitado (R4: el INSERT del dueño entra); 2) el
 // trigger `cobro_intento_solo_avanza` que deja pasar todo (10 rojos: R7, R8, R10); 6) los dos triggers de §3.4
-// quitados (8 rojos: R11 en sus tres caminos).
+// quitados (8 rojos: R11 en sus tres caminos); 7) la clave sin el método (enmienda §12.7, medida el 2026-11-20: 5 rojos,
+// R32, R31 x2, R1 y R3).
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
@@ -116,6 +119,8 @@ interface IntentoAMano {
   tasaAt?: boolean;
   estado?: string;
   clave?: string;
+  proveedor?: string;
+  metodo?: string;
 }
 
 /**
@@ -128,13 +133,13 @@ async function insertarAMano(tx: TxDeTest, org: string, d: IntentoAMano): Promis
   await tx.$executeRawUnsafe(
     `INSERT INTO "cobro_intento"
        ("id", "organizacion_id", "factura_id", "proveedor", "clave", "monto_local", "moneda_local", "moneda_cobro",
-        "monto_cobrado", "tasa", "tasa_fuente", "tasa_at", "estado", "created_at", "estado_at")
+        "monto_cobrado", "tasa", "tasa_fuente", "tasa_at", "estado", "created_at", "estado_at", "metodo")
      VALUES ($1, $2, $3, $4, $5, $6::numeric, $7, $8, $9::numeric, $10::numeric, $11,
-             CASE WHEN $12 THEN ${AHORA_SQL} END, $13, ${AHORA_SQL}, ${AHORA_SQL})`,
+             CASE WHEN $12 THEN ${AHORA_SQL} END, $13, ${AHORA_SQL}, ${AHORA_SQL}, $14)`,
     id,
     org,
     d.facturaId,
-    PROVEEDOR,
+    d.proveedor ?? PROVEEDOR,
     d.clave ?? `a-mano|${id}`,
     montoLocal,
     MONEDA_LOCAL,
@@ -144,6 +149,7 @@ async function insertarAMano(tx: TxDeTest, org: string, d: IntentoAMano): Promis
     d.tasaFuente ?? null,
     d.tasaAt ?? false,
     d.estado ?? "creado",
+    d.metodo ?? METODO,
   );
   return id;
 }
@@ -251,7 +257,9 @@ describeSiHayBase("SLT-226 — el intento de cobro: creación, máquina de estad
       pagoProveedorId: null,
       pagoId: null,
       creadoPor: maestroA(),
-      clave: `${factura.A1.id}|20000.00|${MONEDA_LOCAL}|`,
+      proveedor: PROVEEDOR,
+      metodo: METODO,
+      clave: claveDe(factura.A1.id, "20000.00"),
     });
 
     const { paisId } = await base.organizacion.findUniqueOrThrow({ where: { id: orgDe(empresaA()) }, select: { paisId: true } });
@@ -268,7 +276,8 @@ describeSiHayBase("SLT-226 — el intento de cobro: creación, máquina de estad
     });
     expect(h[0].actorNombre).toEqual(expect.stringContaining("Maestro"));
     expect(h[0].entidadEtiqueta).toContain(`Factura N.º ${factura.A1.numero}`);
-    expect(h[0].detalle).toMatchObject({ organizacion_id: orgDe(empresaA()), factura_id: factura.A1.id, moneda_cobro: MONEDA_LOCAL });
+    expect(h[0].detalle).toMatchObject({ organizacion_id: orgDe(empresaA()), factura_id: factura.A1.id, moneda_cobro: MONEDA_LOCAL, proveedor: PROVEEDOR, metodo: METODO });
+    expect(h[0].detalle).not.toHaveProperty("manual");
   });
 
   it("R2: pedirlo otra vez con la misma clave devuelve `existente` con el mismo id, sin otra fila ni otro historial", async () => {
@@ -367,8 +376,156 @@ describeSiHayBase("SLT-226 — el intento de cobro: creación, máquina de estad
     expect(r.pedido.resultado).toBe("creado");
     expect(r.viejo).toMatchObject({ estado: "anulado", motivoAnulacion: "clave_distinta" });
     expect(r.historialViejo).toEqual([["creado", "anulado", "clave_distinta"]]);
-    expect(r.nuevo).toMatchObject({ estado: "creado", montoLocal: "25000.00", clave: `${factura.A2.id}|25000.00|${MONEDA_LOCAL}|` });
+    expect(r.nuevo).toMatchObject({ estado: "creado", montoLocal: "25000.00", clave: claveDe(factura.A2.id, "25000.00") });
     expect(r.vivos).toEqual([r.pedido.intentoId]);
+  });
+
+  /* ------------------- proveedor y método (R30–R34, enmienda) ---------------- */
+
+  it("R30: el proveedor del intento admite rebill, wompi y global66, y la base rechaza otro (23514), también pedido por la función sin dejar filas", async () => {
+    const r = await revertida(base, async (tx) => {
+      const o = orgDe(empresaA());
+      const f = factura.A0.id;
+      const stripe = await errorEnTx(tx, () => insertarAMano(tx, o, { facturaId: f, proveedor: "stripe" }));
+      const wompi = await insertarAMano(tx, o, { facturaId: f, proveedor: "wompi" });
+      // Un vivo por factura (R4): se cierra el de wompi para que nazca el de global66 en la misma factura.
+      await actualizar(tx, wompi, `"estado" = 'anulado', "motivo_anulacion" = 'clave_distinta'`);
+      const global66 = await insertarAMano(tx, o, { facturaId: f, proveedor: "global66" });
+      const antes = await conteos(tx, o);
+      const porLaFuncion = await errorEnTx(tx, () => obtenerOCrearIntento(tx, o, factura.A2.id, maestroA(), { proveedor: "stripe" }));
+      return {
+        stripe,
+        proveedores: [(await leerIntento(tx, wompi)).proveedor, (await leerIntento(tx, global66)).proveedor],
+        porLaFuncion,
+        antes,
+        despues: await conteos(tx, o),
+        vivosA2: await vivosDe(tx, factura.A2.id),
+      };
+    });
+    expect(r.stripe).toBe("23514");
+    expect(r.proveedores).toEqual(["wompi", "global66"]);
+    expect(r.porLaFuncion).toBe("23514");
+    expect(r.despues).toEqual(r.antes);
+    expect(r.vivosA2).toEqual([intento.a2b]);
+  });
+
+  it("R31: pedido con wompi y tarjeta → el intento y su historial llevan los dos", async () => {
+    const r = await revertida(base, async (tx) => {
+      const pedido = await obtenerOCrearIntento(tx, orgDe(empresaA()), factura.A2.id, maestroA(), { proveedor: "wompi", metodo: "tarjeta" });
+      if (pedido.intentoId === null) throw new Error(`sin intento: ${JSON.stringify(pedido)}`);
+      return { pedido, fila: await leerIntento(tx, pedido.intentoId), historial: await historialDeIntento(tx, pedido.intentoId) };
+    });
+    expect(r.pedido.resultado).toBe("creado");
+    expect(r.fila).toMatchObject({ proveedor: "wompi", metodo: "tarjeta", estado: "creado", clave: claveDe(factura.A2.id, "25000.00", "wompi", "tarjeta") });
+    expect(r.historial).toHaveLength(1);
+    expect(r.historial[0]).toMatchObject({ valorAnterior: null, valorNuevo: "creado", actorUsuarioId: maestroA() });
+    expect(r.historial[0].detalle).toMatchObject({ proveedor: "wompi", metodo: "tarjeta" });
+  });
+
+  it("R31: un método fuera del conjunto da 23514 y no deja filas, ni por la función ni a mano", async () => {
+    const r = await revertida(base, async (tx) => {
+      const o = orgDe(empresaA());
+      const antes = await conteos(tx, o);
+      const porLaFuncion = await errorEnTx(tx, () => obtenerOCrearIntento(tx, o, factura.A2.id, maestroA(), { metodo: "efectivo" }));
+      const aMano = await errorEnTx(tx, () => insertarAMano(tx, o, { facturaId: factura.A0.id, metodo: "efectivo" }));
+      // Control: los tres métodos del conjunto entran (uno vivo por factura: se anula antes del siguiente).
+      const admitidos: string[] = [];
+      for (const metodo of ["tarjeta", "recurrente", "transferencia"]) {
+        const id = await insertarAMano(tx, o, { facturaId: factura.A0.id, metodo });
+        admitidos.push((await leerIntento(tx, id)).metodo);
+        await actualizar(tx, id, `"estado" = 'anulado', "motivo_anulacion" = 'clave_distinta'`);
+      }
+      return { porLaFuncion, aMano, admitidos, antes, despues: await conteos(tx, o), vivosA2: await vivosDe(tx, factura.A2.id) };
+    });
+    expect(r.porLaFuncion).toBe("23514");
+    expect(r.aMano).toBe("23514");
+    expect(r.admitidos).toEqual(["tarjeta", "recurrente", "transferencia"]);
+    // Ni intento ni historial por los rechazados; los tres de control, sin historial (a mano).
+    expect(r.despues).toEqual({ intentos: r.antes.intentos + 3, historial: r.antes.historial });
+    expect(r.vivosA2).toEqual([intento.a2b]);
+  });
+
+  it("R32: con un vivo de tarjeta, pedir transferencia lo anula `clave_distinta` y crea otro por el mismo saldo; sigue habiendo un vivo", async () => {
+    const r = await revertida(base, async (tx) => {
+      const o = orgDe(empresaA());
+      const antes = await conteos(tx, o);
+      const pedido = await obtenerOCrearIntento(tx, o, factura.A2.id, maestroA(), { metodo: "transferencia" });
+      return {
+        pedido,
+        viejo: await leerIntento(tx, intento.a2b),
+        nuevo: pedido.intentoId === null ? null : await leerIntento(tx, pedido.intentoId),
+        vivos: await vivosDe(tx, factura.A2.id),
+        antes,
+        despues: await conteos(tx, o),
+      };
+    });
+    expect(r.pedido.resultado).toBe("creado");
+    expect(r.pedido.intentoId).not.toBe(intento.a2b);
+    expect(r.viejo).toMatchObject({ estado: "anulado", motivoAnulacion: "clave_distinta", metodo: METODO });
+    expect(r.nuevo).toMatchObject({
+      estado: "creado",
+      montoLocal: "25000.00",
+      proveedor: PROVEEDOR,
+      metodo: "transferencia",
+      clave: claveDe(factura.A2.id, "25000.00", PROVEEDOR, "transferencia"),
+    });
+    expect(r.vivos).toEqual([r.pedido.intentoId]);
+    // El nuevo y su nacimiento, y la anulación del viejo: dos filas de historial.
+    expect(r.despues).toEqual({ intentos: r.antes.intentos + 1, historial: r.antes.historial + 2 });
+  });
+
+  it("R32, R2: lo mismo con otro proveedor; con el mismo proveedor y el mismo método, `existente`", async () => {
+    const r = await revertida(base, async (tx) => {
+      const o = orgDe(empresaA());
+      const mismo = await obtenerOCrearIntento(tx, o, factura.A2.id, maestroA(), { proveedor: PROVEEDOR, metodo: METODO });
+      const otroProveedor = await obtenerOCrearIntento(tx, o, factura.A2.id, maestroA(), { proveedor: "global66", metodo: METODO });
+      const otraVez = await obtenerOCrearIntento(tx, o, factura.A2.id, maestroA(), { proveedor: "global66", metodo: METODO });
+      return {
+        mismo,
+        otroProveedor,
+        otraVez,
+        viejo: await leerIntento(tx, intento.a2b),
+        vivos: await vivosDe(tx, factura.A2.id),
+      };
+    });
+    expect(r.mismo).toEqual({ resultado: "existente", intentoId: intento.a2b });
+    expect(r.otroProveedor.resultado).toBe("creado");
+    expect(r.viejo).toMatchObject({ estado: "anulado", motivoAnulacion: "clave_distinta", proveedor: PROVEEDOR });
+    expect(r.otraVez).toEqual({ resultado: "existente", intentoId: r.otroProveedor.intentoId });
+    expect(r.vivos).toEqual([r.otroProveedor.intentoId]);
+  });
+
+  it("R34: las columnas de cobro_intento son exactamente las del design y ninguna del medio de pago", async () => {
+    const columnas = await base.$queryRawUnsafe<{ column_name: string }[]>(
+      `SELECT column_name FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'cobro_intento' ORDER BY column_name`,
+    );
+    // Del medio de pago solo `pago_proveedor_id`: ni número, CVV, vencimiento, marca, últimos 4, titular, ni ids de
+    // cliente o de tarjeta del proveedor (eso es de SLT-232).
+    expect(columnas.map((c) => c.column_name)).toEqual([
+      "aprobado_at",
+      "clave",
+      "creado_por",
+      "created_at",
+      "estado",
+      "estado_at",
+      "factura_id",
+      "id",
+      "id_externo",
+      "metodo",
+      "moneda_cobro",
+      "moneda_local",
+      "monto_cobrado",
+      "monto_local",
+      "motivo_anulacion",
+      "organizacion_id",
+      "pago_id",
+      "pago_proveedor_id",
+      "proveedor",
+      "tasa",
+      "tasa_at",
+      "tasa_fuente",
+    ]);
   });
 
   /* ----------------------------- concurrencia (R4) --------------------------- */
@@ -544,7 +701,7 @@ describeSiHayBase("SLT-226 — el intento de cobro: creación, máquina de estad
 
   /* --------------------------- columnas fijas (R8) --------------------------- */
 
-  it("R8: el dueño no puede cambiar la empresa, la factura, el proveedor, la clave, los importes, las monedas ni la foto; los ids externos y el pago solo pasan de vacío a un valor", async () => {
+  it("R8, R33: el dueño no puede cambiar la empresa, la factura, el proveedor, la clave, los importes, las monedas, la foto ni el método; los ids externos y el pago solo pasan de vacío a un valor", async () => {
     const r = await revertida(base, async (tx) => {
       const o = orgDe(empresaA());
       const i = await insertarAMano(tx, o, { facturaId: factura.A0.id });
@@ -556,6 +713,8 @@ describeSiHayBase("SLT-226 — el intento de cobro: creación, máquina de estad
         empresa: (await cambio(`"organizacion_id" = $2`, orgDe(empresaB()))) !== null,
         factura: await cambio(`"factura_id" = $2`, factura.A1.id),
         proveedor: await cambio(`"proveedor" = 'otro'`),
+        // R33: ni a otro método del conjunto (el CHECK lo dejaría pasar: lo para el trigger).
+        metodo: await cambio(`"metodo" = 'transferencia'`),
         clave: await cambio(`"clave" = 'otra'`),
         montoLocal: await cambio(`"monto_local" = 1, "monto_cobrado" = 1`),
         monedaCobro: await cambio(`"moneda_cobro" = $2, "tasa" = 1, "tasa_fuente" = 'x', "tasa_at" = ${AHORA_SQL}`, OTRA_MONEDA),
@@ -576,6 +735,7 @@ describeSiHayBase("SLT-226 — el intento de cobro: creación, máquina de estad
       empresa: true,
       factura: "SL226",
       proveedor: "SL226",
+      metodo: "SL226",
       clave: "SL226",
       montoLocal: "SL226",
       monedaCobro: "SL226",
@@ -589,7 +749,7 @@ describeSiHayBase("SLT-226 — el intento de cobro: creación, máquina de estad
       pagoOtro: "SL226",
       pagoVacio: "SL226",
     });
-    expect(r.fila).toMatchObject({ organizacionId: orgDe(empresaA()), facturaId: factura.A0.id, montoLocal: "1000.00", monedaCobro: MONEDA_LOCAL, estado: "creado" });
+    expect(r.fila).toMatchObject({ organizacionId: orgDe(empresaA()), facturaId: factura.A0.id, montoLocal: "1000.00", monedaCobro: MONEDA_LOCAL, estado: "creado", metodo: METODO });
   });
 
   /* -------------------------- el pago es obligatorio (R9) -------------------- */

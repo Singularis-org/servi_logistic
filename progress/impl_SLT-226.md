@@ -175,3 +175,56 @@ El `backend_dev` escribió los dos archivos, pero no entregó informe. Verifiqu�
   tocó ni se añadió al baseline: va a una rama `chore/`, que decide el leader.
 - Local, con la base de la feature: los 4 archivos más los 2 tocados dan `Test Files 6 passed (6)` y
   `Tests 76 passed (76)`.
+
+## Tanda T8 (enmienda del 2026-11-20): la base, T8.1, T8.2, T8.3 y T8.6 (backend_dev)
+
+Archivos (ninguno nuevo):
+- `db/migrations/20261124130100_cobro_intento/migration.sql`, editada en el sitio (§12.1, §12.3, §12.4): CHECK de
+  proveedor con `rebill`, `wompi` y `global66` en las dos tablas; `metodo` con su CHECK y entre las columnas fijas de
+  `cobro_intento_solo_avanza`; `_cobro_historial` con `p_manual` y el detalle con `proveedor` y `metodo`;
+  `cobro_intento_obtener_o_crear` de 7 argumentos con la clave `…||proveedor|metodo`; `_cobro_aprobar` (interna);
+  `cobro_registrar_pago_aprobado` con el paso 0 y delegando en `_cobro_aprobar`; `cobro_marcar_pagado_manual`.
+- `db/migrations/20261124130100_cobro_intento/down.sql` (§12.5): las firmas nuevas y las dos funciones nuevas.
+- `db/schema.prisma`: `metodo String` en `CobroIntento`.
+- Tests: `_fixtures/cobro.ts` (`METODO`, `claveDe`, `marcarPagadoManual`, proveedor y método opcionales),
+  `cobro-intento`, `cobro-webhook-evento`, `cobro-pago-en-linea` y `migracion-slt226-ida-y-vuelta` (la lista de
+  funciones nuevas suma las dos, y el intento sembrado lleva `metodo`).
+
+Base de la feature (`servi_logistic_slt226`): bajada con el `down.sql` anterior, borrada su fila de
+`_prisma_migrations`, y rehecha con `prisma migrate deploy` («All migrations have been successfully applied»).
+`prisma generate` hecho; `prisma validate` en verde; `prisma migrate diff --from-config-datasource --to-schema
+db/schema.prisma`: «No difference detected». Las cinco funciones tocadas o nuevas tienen `prosecdef = true` y
+`has_function_privilege('servi_app', …, 'EXECUTE') = false`.
+
+Verificación, con `DATABASE_URL` en `servi_logistic_slt226`:
+- `vitest run` de `cobro-intento`, `cobro-webhook-evento`, `cobro-pago-en-linea` y `migracion-slt226-ida-y-vuelta`:
+  `Test Files 4 passed (4)`, `Tests 60 passed (60)`.
+- Mutaciones, una a una, en `servi_logistic_slt226_mut` (TEMPLATE de la de la feature; borrada al acabar):
+  - 7, la clave sin el método: `cobro-intento` con 5 rojos (R32 «con un vivo de tarjeta, pedir transferencia…»,
+    R31 x2, R1 y R3 por el formato de la clave).
+  - 8, `cobro_registrar_pago_aprobado` sin el paso 0: `cobro-pago-en-linea` con 1 rojo (R37 «…el aviso de un pago
+    marcado a mano → `ya_registrado`, sin id externo y con él»): el aviso sin id externo da `sin_intento`.
+  - 9, `cobro_marcar_pagado_manual` sin el candado ni los `FOR UPDATE`: 1 rojo (R37 «la marca y el aviso … a la
+    vez»), por 40P01.
+- `eslint` de los 5 archivos de tests: 0 errores y 0 avisos. `pnpm run typecheck` (con
+  `NODE_OPTIONS=--max-old-space-size=8192`; sin él, el proceso se queda sin memoria): exit 0.
+- Pendiente de T8.5 (otro backend_dev): `lib/repositories/CobroIntentoRepository.ts` sigue llamando a
+  `cobro_intento_obtener_o_crear` con 6 argumentos. Compila, pero contra la base nueva falla en ejecución hasta que
+  pase `metodo`.
+
+Mapa `R<n> → test` (la parte de base):
+
+| R | Test |
+|---|---|
+| R30 | CI «R30: el proveedor del intento admite rebill, wompi y global66, y la base rechaza otro (23514)…»; WE «R30: un evento de global66 (y de wompi) se guarda; uno de otro proveedor da 23514…» |
+| R31 | CI «R31: pedido con wompi y tarjeta → el intento y su historial llevan los dos»; CI «R31: un método fuera del conjunto da 23514 y no deja filas…» |
+| R32 | CI «R32: con un vivo de tarjeta, pedir transferencia lo anula `clave_distinta`…»; CI «R32, R2: lo mismo con otro proveedor; con el mismo proveedor y el mismo método, `existente`» |
+| R33 | CI «R8, R33: el dueño no puede cambiar … ni el método…» |
+| R34 | CI «R34: las columnas de cobro_intento son exactamente las del design y ninguna del medio de pago» |
+| R35 | PL «R35, R36, R29: marcar a mano un `pendiente` de global66 sin id externo → `ok`…»; PL «R35, R36: marcar a mano un `creado` de global66 por transferencia…» |
+| R36 | Los dos de R35 (historial con el superadmin y `manual: true`; `confirmado_por` del superadmin) |
+| R37 | PL «R37: marcar otra vez la misma referencia → `ya_registrado`; el aviso…, sin id externo y con él…»; PL «R37: la marca y el aviso del mismo pago a la vez…» |
+| R38 | PL «R38: inexistente, `aprobado`, `rechazado`, `expirado`, `anulado`, referencia en blanco, referencia de otro intento y saldo menor…» |
+| R39 | PL «R39: como `servi_app`, ejecutar `cobro_marcar_pagado_manual` da 42501…» |
+
+Veredicto: la parte de base de T8 en verde, con las mutaciones 7, 8 y 9 muertas; falta T8.4, T8.5 y T8.7.

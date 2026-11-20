@@ -6841,7 +6841,7 @@ model PagoPlataformaAnulacion {
 
 // SLT-226 (design §1.1) — el cobro en línea de una factura de la plataforma. De NEGOCIO. Lo escriben SOLO las
 // funciones del dueño de 20261124130100; `servi_app` solo lo lee (R26). Viven solo en el SQL de esa migración:
-//   · los CHECK del proveedor, del estado, de los montos (> 0), de la foto de conversión, del pago completo y del
+//   · los CHECK del proveedor, del método, del estado, de los montos (> 0), de la foto de conversión, del pago completo y del
 //     motivo (R6, R9);
 //   · el único parcial `cobro_intento_un_vivo_por_factura` (un solo intento `creado`/`pendiente` por factura, R4);
 //   · la FK DIFERIDA de `pago_id`: el intento pasa a `aprobado` antes de que exista su fila del libro (§3.5);
@@ -6852,8 +6852,12 @@ model PagoPlataformaAnulacion {
 model CobroIntento {
   id               String    @id @default(dbgenerated("(gen_random_uuid())::text"))
   facturaId        String    @map("factura_id")
+  // rebill | wompi | global66 (R30), CHECK en el SQL.
   proveedor        String
-  // factura|monto_local|moneda_cobro|tasa: dos pedidos con la misma clave reciben el mismo intento (R2).
+  // tarjeta | recurrente | transferencia (R31), CHECK en el SQL; no cambia después de crearlo (R33).
+  metodo           String
+  // factura|monto_local|moneda_cobro|tasa|proveedor|metodo: dos pedidos con la misma clave reciben el mismo
+  // intento (R2, R32).
   clave            String
   montoLocal       Decimal   @map("monto_local") @db.Decimal(14, 2)
   monedaLocal      String    @map("moneda_local") @db.Char(3)

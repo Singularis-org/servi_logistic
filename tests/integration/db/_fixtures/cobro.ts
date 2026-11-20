@@ -26,8 +26,19 @@ import { cerrarFacturaEnCurso, confirmarComoDueno, facturaEnCurso, type Aplicaci
 //
 // No es un archivo de test (no acaba en `.test.ts`): vitest no lo recoge.
 
-/** El único proveedor que admite la base hoy (`cobro_intento_proveedor`). */
+/**
+ * El proveedor por defecto de los tests. La base admite `rebill`, `wompi` y `global66` (`cobro_intento_proveedor`,
+ * R30); los casos que necesitan otro lo pasan explícito.
+ */
 export const PROVEEDOR = "rebill";
+
+/** El método por defecto de los tests: `tarjeta`, `recurrente` o `transferencia` (`cobro_intento_metodo`, R31). */
+export const METODO = "tarjeta";
+
+/** La clave del intento (§12.2): factura | monto local | moneda de cobro | tasa (vacía) | proveedor | método. */
+export function claveDe(facturaId: string, montoLocal: string, proveedor = PROVEEDOR, metodo = METODO): string {
+  return `${facturaId}|${montoLocal}|${MONEDA_LOCAL}||${proveedor}|${metodo}`;
+}
 
 /** La moneda local la pasa el servicio desde la configuración (design §2): aquí, la misma fuente. */
 export const MONEDA_LOCAL = monedaConfig.currency;
@@ -155,13 +166,26 @@ export interface ResultadoObtener {
   intentoId: string | null;
 }
 
+/** El proveedor y el método del pedido (§12.3); por defecto, `PROVEEDOR` y `METODO`. */
+export interface MedioDelCobro {
+  proveedor?: string;
+  metodo?: string;
+}
+
 /** §3.1 con la moneda local de la configuración. */
-export async function obtenerOCrearIntento(c: ClienteSql, org: string, facturaId: string, por: string | null): Promise<ResultadoObtener> {
+export async function obtenerOCrearIntento(
+  c: ClienteSql,
+  org: string,
+  facturaId: string,
+  por: string | null,
+  medio: MedioDelCobro = {},
+): Promise<ResultadoObtener> {
   const [f] = await c.$queryRawUnsafe<{ resultado: ResultadoObtener["resultado"]; intento_id: string | null }[]>(
-    `SELECT r."resultado", r."intento_id" FROM cobro_intento_obtener_o_crear($1, $2, $3, $4, $5, ${AHORA_SQL}) r`,
+    `SELECT r."resultado", r."intento_id" FROM cobro_intento_obtener_o_crear($1, $2, $3, $4, $5, $6, ${AHORA_SQL}) r`,
     org,
     facturaId,
-    PROVEEDOR,
+    medio.proveedor ?? PROVEEDOR,
+    medio.metodo ?? METODO,
     MONEDA_LOCAL,
     por,
   );
@@ -169,8 +193,8 @@ export async function obtenerOCrearIntento(c: ClienteSql, org: string, facturaId
 }
 
 /** §3.1 cuando el caso necesita un intento nuevo: lanza si no responde `creado`. */
-export async function crearIntento(c: ClienteSql, org: string, facturaId: string, por: string | null): Promise<string> {
-  const r = await obtenerOCrearIntento(c, org, facturaId, por);
+export async function crearIntento(c: ClienteSql, org: string, facturaId: string, por: string | null, medio: MedioDelCobro = {}): Promise<string> {
+  const r = await obtenerOCrearIntento(c, org, facturaId, por, medio);
   if (r.resultado !== "creado" || r.intentoId === null) throw new Error(`se esperaba un intento nuevo y respondió ${JSON.stringify(r)}`);
   return r.intentoId;
 }
@@ -200,15 +224,29 @@ export async function avanzarIntento(c: ClienteSql, idExterno: string, destino: 
 /** §3.5: 'ok', 'ya_registrado', 'sin_intento' o 'requiere_revision'. */
 export async function registrarPagoAprobado(
   c: ClienteSql,
-  d: { pagoProveedorId: string; idExterno: string; monto: string; moneda?: string },
+  d: { pagoProveedorId: string; idExterno: string | null; monto: string; moneda?: string; proveedor?: string },
 ): Promise<string> {
   const [f] = await c.$queryRawUnsafe<{ r: string }[]>(
     `SELECT cobro_registrar_pago_aprobado($1, $2, $3, $4::numeric, $5, ${AHORA_SQL}) AS r`,
-    PROVEEDOR,
+    d.proveedor ?? PROVEEDOR,
     d.pagoProveedorId,
     d.idExterno,
     d.monto,
     d.moneda ?? MONEDA_LOCAL,
+  );
+  return f.r;
+}
+
+/**
+ * §12.4: la marca a mano del superadmin. 'ok', 'ya_registrado', 'referencia_vacia', 'sin_intento',
+ * 'referencia_en_otro_intento', 'no_vivo' o 'requiere_revision'.
+ */
+export async function marcarPagadoManual(c: ClienteSql, intentoId: string, referencia: string | null, por: string): Promise<string> {
+  const [f] = await c.$queryRawUnsafe<{ r: string }[]>(
+    `SELECT cobro_marcar_pagado_manual($1, $2, $3, ${AHORA_SQL}) AS r`,
+    intentoId,
+    referencia,
+    por,
   );
   return f.r;
 }
@@ -279,6 +317,8 @@ export interface IntentoLeido {
   id: string;
   organizacionId: string;
   facturaId: string;
+  proveedor: string;
+  metodo: string;
   estado: string;
   motivoAnulacion: string | null;
   clave: string;
@@ -296,7 +336,7 @@ export interface IntentoLeido {
 }
 
 const COLUMNAS_INTENTO = `i."id" AS "id", i."organizacion_id" AS "organizacionId", i."factura_id" AS "facturaId",
-  i."estado" AS "estado", i."motivo_anulacion" AS "motivoAnulacion", i."clave" AS "clave",
+  i."proveedor" AS "proveedor", i."metodo" AS "metodo", i."estado" AS "estado", i."motivo_anulacion" AS "motivoAnulacion", i."clave" AS "clave",
   i."monto_local"::text AS "montoLocal", i."monto_cobrado"::text AS "montoCobrado",
   i."moneda_local"::text AS "monedaLocal", i."moneda_cobro"::text AS "monedaCobro", i."tasa"::text AS "tasa",
   i."tasa_fuente" AS "tasaFuente", i."tasa_at" AS "tasaAt", i."id_externo" AS "idExterno",

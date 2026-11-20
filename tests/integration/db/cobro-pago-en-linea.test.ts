@@ -22,6 +22,8 @@ import {
   historialDeIntento,
   leerIntento,
   limpiarEmpresasCobro,
+  marcarPagadoManual,
+  obtenerOCrearIntento,
   orgDe,
   pagoPorConfirmar,
   prepararContextoCobro,
@@ -29,11 +31,13 @@ import {
   registrarPagoAprobado,
   registrarPorFuera,
   sembrarEmpresaCobro,
+  type ClienteSql,
   type ContextoCobro,
   type EmpresaCobro,
 } from "./_fixtures/cobro";
 import type { FacturaCerrada } from "./_fixtures/factura-cerrada";
-import { revertida, sqlstateDe } from "./_fixtures/planes";
+import { capturar, revertida, sqlstateDe } from "./_fixtures/planes";
+import { idDeRol, insertarUsuario, obtenerOCrearSuperadmin, tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
 
 // La zona del país de la empresa es la de CR, como en SLT-143 (`pago-plataforma-por-fuera.test.ts`): la caja y la
 // deuda se leen por sus Server Actions.
@@ -57,7 +61,9 @@ vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabric
 //   · B: B1 (dos registros del mismo pago a la vez, R20), B2 (R21), B3 (el `creado` aprobado, R14) y B4/B5 (rechazo,
 //     expiración y los destinos que no se alcanzan, R24 y R15);
 //   · C: la caja en 0 y una cerrada de 10 000 (R18);
-//   · D: una cerrada de 30 000 con un pago de la wallet de 10 000 por confirmar (R22, decisión P1).
+//   · D: una cerrada de 30 000 con un pago de la wallet de 10 000 por confirmar (R22, decisión P1);
+//   · E: cinco cerradas de 20 000 y un superadmin (el de la base o uno propio, molde de SLT-143): la marca a mano de la
+//     enmienda (§12.4; R35–R39).
 //
 // Las funciones se llaman como DUEÑO, que es como las llama el job del webhook (SLT-228) o la conciliación (SLT-233);
 // la caja y la deuda se leen como las ve la empresa (sus Server Actions), y lo escrito, con el cliente base.
@@ -68,7 +74,10 @@ vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabric
 // MUTACIONES QUE LO MATAN (design §8; medidas el 2026-11-20 en una base desechable copiada de la migrada, ver
 // `progress/impl_SLT-226.md`): 3) `cobro_registrar_pago_aprobado` sin el paso 3 y sin el candado (R20: el segundo
 // responde `requiere_revision`, no `ya_registrado`); 4) la aplicación antes de `aprobado` (el trigger de §3.4 anula
-// el propio intento y el paso a `aprobado` da SL226); 5) el tope sin la salida de §3.7 (R22: 23514).
+// el propio intento y el paso a `aprobado` da SL226); 5) el tope sin la salida de §3.7 (R22: 23514). De la enmienda
+// (§12.7, medidas el 2026-11-20): 8) `cobro_registrar_pago_aprobado` sin el paso 0 (1 rojo, R37: el aviso sin id
+// externo da `sin_intento`); 9) `cobro_marcar_pagado_manual` sin el candado ni los `FOR UPDATE` (1 rojo, R37 a la vez:
+// 40P01, la marca bloquea el intento y espera el candado del tope que tiene el aviso).
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
@@ -82,6 +91,11 @@ let A: EmpresaCobro | undefined;
 let B: EmpresaCobro | undefined;
 let C: EmpresaCobro | undefined;
 let D: EmpresaCobro | undefined;
+let E: EmpresaCobro | undefined;
+let soltarSuperadmin: () => Promise<void> = async () => {};
+let superadminId: string | null = null;
+// En una base de desarrollo que ya tiene su superadmin, se usa ese y no se borra al acabar (molde de SLT-143).
+let superadminPropio = false;
 const factura: Record<string, FacturaCerrada> = {};
 const intento: Record<string, string> = {};
 const ext: Record<string, string> = {};
@@ -153,8 +167,8 @@ async function porConfirmar(e: EmpresaCobro): Promise<string[]> {
 }
 
 /** Lo que un registro del pago puede escribir en la empresa: el libro, la confirmación, la aplicación y el historial. */
-async function escrituras(e: EmpresaCobro) {
-  const [f] = await base.$queryRawUnsafe<{ libro: number; confirmaciones: number; aplicaciones: number; historial: number }[]>(
+async function escrituras(e: EmpresaCobro, c: ClienteSql = base) {
+  const [f] = await c.$queryRawUnsafe<{ libro: number; confirmaciones: number; aplicaciones: number; historial: number }[]>(
     `SELECT (SELECT count(*)::int FROM "wallet_movimiento" WHERE "organizacion_id" = $1) AS "libro",
             (SELECT count(*)::int FROM "pago_plataforma_confirmacion" WHERE "organizacion_id" = $1) AS "confirmaciones",
             (SELECT count(*)::int FROM "pago_plataforma_aplicacion" WHERE "organizacion_id" = $1) AS "aplicaciones",
@@ -166,7 +180,7 @@ async function escrituras(e: EmpresaCobro) {
 }
 
 /** Lo que el pago `pagoProveedorId` dejó en el libro: el movimiento, su confirmación y su aplicación. */
-async function rastroDelPago(e: EmpresaCobro, pagoProveedorId: string) {
+async function rastroDelPago(e: EmpresaCobro, pagoProveedorId: string, proveedor = PROVEEDOR) {
   const movimientos = await base.$queryRawUnsafe<
     { id: string; tipo: string; categoria: string; monto: string; origenTipo: string; origenId: string | null; descripcion: string; registradoPor: string | null }[]
   >(
@@ -175,7 +189,7 @@ async function rastroDelPago(e: EmpresaCobro, pagoProveedorId: string) {
        FROM "wallet_movimiento" m
       WHERE m."organizacion_id" = $1 AND m."clave_idempotencia" = $2`,
     orgDe(e),
-    `cobro:${PROVEEDOR}:${pagoProveedorId}`,
+    `cobro:${proveedor}:${pagoProveedorId}`,
   );
   const ids = movimientos.map((m) => m.id);
   const confirmaciones = await base.$queryRawUnsafe<{ id: string; confirmadoPor: string | null; enLinea: boolean; porFuera: boolean }[]>(
@@ -204,12 +218,27 @@ describeSiHayBase("SLT-226 — el pago aprobado en línea: libro, idempotencia, 
     B = await sembrarEmpresaCobro(ctx, "SLT226 PL B");
     C = await sembrarEmpresaCobro(ctx, "SLT226 PL C");
     D = await sembrarEmpresaCobro(ctx, "SLT226 PL D");
+    E = await sembrarEmpresaCobro(ctx, "SLT226 PL E");
+
+    soltarSuperadmin = await tomarLockDeSuperadmin();
+    const sa = await obtenerOCrearSuperadmin(base, () =>
+      escribir(() =>
+        base.$transaction(async (tx) => {
+          const u = await insertarUsuario(tx, await idDeRol(tx, "superadmin"), null);
+          if (!u.desenlace.ok) throw new Error(`no se sembró el superadmin: ${JSON.stringify(u.desenlace)}`);
+          return u.id;
+        }),
+      ),
+    );
+    superadminId = sa.id;
+    superadminPropio = sa.propio;
 
     await ingresarEnCaja(A, "50000.00");
     factura.A1 = await facturaCerradaCon(ctx, A, "30000.00", "SLT226-PL-A1");
     for (const n of ["B1", "B2", "B3", "B4", "B5"]) factura[n] = await facturaCerradaCon(ctx, B, "30000.00", `SLT226-PL-${n}`);
     factura.C1 = await facturaCerradaCon(ctx, C, "10000.00", "SLT226-PL-C1");
     factura.D1 = await facturaCerradaCon(ctx, D, "30000.00", "SLT226-PL-D1");
+    for (const n of ["E1", "E2", "E3", "E4", "E5"]) factura[n] = await facturaCerradaCon(ctx, E, "20000.00", `SLT226-PL-${n}`);
 
     await intentoPendiente(empresa(A), factura.A1, "a1");
     for (const n of ["b1", "b2", "b4", "b5"]) await intentoPendiente(empresa(B), factura[n.toUpperCase()], n);
@@ -220,8 +249,14 @@ describeSiHayBase("SLT-226 — el pago aprobado en línea: libro, idempotencia, 
   afterAll(async () => {
     if (base === undefined) return;
     try {
-      await limpiarEmpresasCobro(base, [A, B, C, D]);
+      await limpiarEmpresasCobro(base, [A, B, C, D, E]);
+      // Solo el superadmin propio: el que ya tenía la base no se borra.
+      if (superadminId !== null && superadminPropio) {
+        const id = superadminId;
+        await escribir(() => base.$executeRawUnsafe(`DELETE FROM "usuario" WHERE "id" = $1`, id));
+      }
     } finally {
+      await soltarSuperadmin();
       await ctx?.tarifa.soltar();
       await Promise.all([base.$disconnect(), otra?.$disconnect(), sostenedor?.$disconnect()]);
     }
@@ -234,14 +269,17 @@ describeSiHayBase("SLT-226 — el pago aprobado en línea: libro, idempotencia, 
       `SELECT p.proname || '/' || p.pronargs AS f FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
         WHERE n.nspname = 'public'
           AND p.proname IN ('cobro_registrar_pago_aprobado', 'cobro_intento_avanzar', '_pago_plataforma_aplicar',
-                            'wallet_movimiento_tope_pago_plataforma', 'cobro_intento_anular_por_saldo')
+                            'wallet_movimiento_tope_pago_plataforma', 'cobro_intento_anular_por_saldo',
+                            '_cobro_aprobar', 'cobro_marcar_pagado_manual')
         ORDER BY 1`,
     );
     expect(funciones.map((f) => f.f)).toEqual([
+      "_cobro_aprobar/4",
       "_pago_plataforma_aplicar/7",
       "_pago_plataforma_aplicar/8",
       "cobro_intento_anular_por_saldo/0",
       "cobro_intento_avanzar/4",
+      "cobro_marcar_pagado_manual/4",
       "cobro_registrar_pago_aprobado/6",
       "wallet_movimiento_tope_pago_plataforma/0",
     ]);
@@ -502,5 +540,226 @@ describeSiHayBase("SLT-226 — el pago aprobado en línea: libro, idempotencia, 
     expect(await leerIntento(base, intento.b3)).toEqual(b3);
     expect(await leerIntento(base, intento.b4)).toEqual(b4);
     expect(await escrituras(b)).toEqual(antes);
+  });
+
+  /* ------------------- marcar pagado a mano (R35–R39, enmienda) -------------- */
+
+  it("R35, R36, R29: marcar a mano un `pendiente` de global66 sin id externo → `ok`; caja y deuda bajan 20 000, saldo 0, «Pagado en línea · <ref>» confirmado en línea por el superadmin y aplicado entero; historial `pendiente→aprobado` con el superadmin y `manual: true`", async () => {
+    const e = empresa(E);
+    const sa = superadminId as string;
+    intento.e1 = await escribir(() => crearIntento(base, orgDe(e), factura.E1.id, e.p.maestro.usuarioId, { proveedor: "global66", metodo: "transferencia" }));
+    // Un pendiente sin id externo: el enlace de Global66 no existe aún (SLT-253). Sembrado a mano como DUEÑO; el
+    // trigger admite `creado → pendiente`.
+    await escribir(() => base.$executeRawUnsafe(`UPDATE "cobro_intento" SET "estado" = 'pendiente' WHERE "id" = $1`, intento.e1));
+    expect(await leerIntento(base, intento.e1)).toMatchObject({ estado: "pendiente", idExterno: null, proveedor: "global66", metodo: "transferencia" });
+    pp.e1 = `G66-123-${randomUUID().slice(0, 8)}`;
+
+    const cajaAntes = await caja(e);
+    const deudaAntes = await deuda(e);
+    const antes = await escrituras(e);
+    // La referencia llega con espacios: se guarda recortada.
+    expect(await escribir(() => marcarPagadoManual(base, intento.e1, `  ${pp.e1} `, sa))).toBe("ok");
+
+    expect(menos(cajaAntes.enCaja, (await caja(e)).enCaja)).toBe("20000.00");
+    expect(menos(deudaAntes, await deuda(e))).toBe("20000.00");
+    expect(await saldo(e, factura.E1)).toBe("0.00");
+
+    const r = await rastroDelPago(e, pp.e1, "global66");
+    expect(r.movimientos).toHaveLength(1);
+    const [m] = r.movimientos;
+    expect(m).toMatchObject({ categoria: "egreso_pago_plataforma", monto: "20000.00", descripcion: `Pagado en línea · ${pp.e1}`, registradoPor: null });
+    // R36: la confirmación lleva al superadmin como quien confirmó, y sigue siendo en línea.
+    expect(r.confirmaciones).toEqual([expect.objectContaining({ confirmadoPor: sa, enLinea: true, porFuera: false })]);
+    expect(r.aplicaciones).toEqual([{ facturaId: factura.E1.id, monto: "20000.00" }]);
+    expect(await leerIntento(base, intento.e1)).toMatchObject({ estado: "aprobado", pagoProveedorId: pp.e1, pagoId: m.id, idExterno: null });
+
+    const h = await historialDeIntento(base, intento.e1);
+    expect(h.at(-1)).toMatchObject({ valorAnterior: "pendiente", valorNuevo: "aprobado", actorUsuarioId: sa });
+    expect(h.at(-1)?.detalle).toMatchObject({ manual: true, proveedor: "global66", metodo: "transferencia", pago_proveedor_id: pp.e1 });
+    expect(await escrituras(e)).toEqual({
+      libro: antes.libro + 1,
+      confirmaciones: antes.confirmaciones + 1,
+      aplicaciones: antes.aplicaciones + 1,
+      historial: antes.historial + 1,
+    });
+
+    // R29 y R19: la marca de «Registró» es la del pago en línea, y no queda «por confirmar».
+    const marcas = await revertida(base, async (tx) => {
+      await comoApp(tx, orgDe(e));
+      const mm = await new LibroCajaAutoriaRepository(tx as unknown as PrismaClient).marcasDeLaPlataforma([m.id]);
+      return { enLinea: [...mm.enLinea], registrados: [...mm.registrados] };
+    });
+    expect(marcas).toEqual({ enLinea: [m.id], registrados: [] });
+    expect(await porConfirmar(e)).toEqual([]);
+    pp.e1Mov = m.id;
+  });
+
+  it("R35, R36: marcar a mano un `creado` de global66 por transferencia, sin enlace → pasa por `pendiente` y queda `aprobado`, con dos filas de historial del superadmin y `manual: true`", async () => {
+    const e = empresa(E);
+    const sa = superadminId as string;
+    intento.e2 = await escribir(() => crearIntento(base, orgDe(e), factura.E2.id, e.p.maestro.usuarioId, { proveedor: "global66", metodo: "transferencia" }));
+    pp.e2 = `G66-${randomUUID()}`;
+    const deudaAntes = await deuda(e);
+    const antes = await escrituras(e);
+
+    expect(await escribir(() => marcarPagadoManual(base, intento.e2, pp.e2, sa))).toBe("ok");
+
+    expect(await leerIntento(base, intento.e2)).toMatchObject({ estado: "aprobado", pagoProveedorId: pp.e2, idExterno: null });
+    expect(await saldo(e, factura.E2)).toBe("0.00");
+    expect(menos(deudaAntes, await deuda(e))).toBe("20000.00");
+    const r = await rastroDelPago(e, pp.e2, "global66");
+    expect(r.movimientos).toHaveLength(1);
+    expect(r.confirmaciones).toEqual([expect.objectContaining({ confirmadoPor: sa, enLinea: true })]);
+    expect(r.aplicaciones).toEqual([{ facturaId: factura.E2.id, monto: "20000.00" }]);
+
+    const h = await historialDeIntento(base, intento.e2);
+    expect(h.map((f) => [f.valorAnterior, f.valorNuevo, f.actorUsuarioId, f.detalle.manual ?? null])).toEqual([
+      [null, "creado", e.p.maestro.usuarioId, null],
+      ["creado", "pendiente", sa, true],
+      ["pendiente", "aprobado", sa, true],
+    ]);
+    expect(await escrituras(e)).toEqual({
+      libro: antes.libro + 1,
+      confirmaciones: antes.confirmaciones + 1,
+      aplicaciones: antes.aplicaciones + 1,
+      historial: antes.historial + 2,
+    });
+  });
+
+  it("R37: marcar otra vez la misma referencia → `ya_registrado`; el aviso de un pago marcado a mano → `ya_registrado`, sin id externo y con él; nada se escribe", async () => {
+    const e = empresa(E);
+    const sa = superadminId as string;
+    // Con id externo: un intento de Rebill con su enlace, marcado a mano antes de que llegue el aviso.
+    const extE3 = await intentoPendiente(e, factura.E3, "e3");
+    pp.e3 = `pp-e3-${randomUUID()}`;
+    expect(await escribir(() => marcarPagadoManual(base, intento.e3, pp.e3, sa))).toBe("ok");
+
+    const antes = await escrituras(e);
+    const e1 = await leerIntento(base, intento.e1);
+    const e3 = await leerIntento(base, intento.e3);
+    const res = {
+      otraVez: await escribir(() => marcarPagadoManual(base, intento.e1, pp.e1, sa)),
+      // El aviso del pago de E1 no encuentra intento por id externo (no lo tiene): lo para el paso 0.
+      avisoSinIdExterno: await escribir(() =>
+        registrarPagoAprobado(base, { proveedor: "global66", pagoProveedorId: pp.e1, idExterno: `ext-g66-${randomUUID()}`, monto: "20000.00" }),
+      ),
+      avisoSinIdExternoNulo: await escribir(() => registrarPagoAprobado(base, { proveedor: "global66", pagoProveedorId: pp.e1, idExterno: null, monto: "20000.00" })),
+      avisoConIdExterno: await escribir(() => registrarPagoAprobado(base, { pagoProveedorId: pp.e3, idExterno: extE3, monto: "20000.00" })),
+    };
+    expect(res).toEqual({ otraVez: "ya_registrado", avisoSinIdExterno: "ya_registrado", avisoSinIdExternoNulo: "ya_registrado", avisoConIdExterno: "ya_registrado" });
+    expect(await escrituras(e)).toEqual(antes);
+    expect(await leerIntento(base, intento.e1)).toEqual(e1);
+    expect(await leerIntento(base, intento.e3)).toEqual(e3);
+    expect((await rastroDelPago(e, pp.e1, "global66")).movimientos).toHaveLength(1);
+    expect((await rastroDelPago(e, pp.e3)).movimientos).toHaveLength(1);
+  });
+
+  it("R37: la marca y el aviso del mismo pago a la vez, en dos conexiones → esperan el candado; uno `ok` y el otro `ya_registrado`, con 1 movimiento, 1 confirmación y 1 aplicación", async () => {
+    const e = empresa(E);
+    const sa = superadminId as string;
+    const extE4 = await intentoPendiente(e, factura.E4, "e4");
+    pp.e4 = `pp-e4-${randomUUID()}`;
+    const antes = await escrituras(e);
+    const { terminadasConElCandado, resultados } = await escribir(() =>
+      aLaVezConCandado(sostenedor, orgDe(e), [
+        () => marcarPagadoManual(base, intento.e4, pp.e4, sa),
+        () => registrarPagoAprobado(otra, { pagoProveedorId: pp.e4, idExterno: extE4, monto: "20000.00" }),
+      ]),
+    );
+    expect(terminadasConElCandado).toBe(0);
+    expect([...resultados].sort()).toEqual(["ok", "ya_registrado"]);
+
+    const r = await rastroDelPago(e, pp.e4);
+    expect(r.movimientos).toHaveLength(1);
+    expect(r.confirmaciones).toHaveLength(1);
+    expect(r.aplicaciones).toEqual([{ facturaId: factura.E4.id, monto: "20000.00" }]);
+    expect(await escrituras(e)).toMatchObject({ libro: antes.libro + 1, confirmaciones: antes.confirmaciones + 1, aplicaciones: antes.aplicaciones + 1 });
+    expect(await leerIntento(base, intento.e4)).toMatchObject({ estado: "aprobado", pagoProveedorId: pp.e4 });
+    expect(await saldo(e, factura.E4)).toBe("0.00");
+  });
+
+  it("R38: inexistente, `aprobado`, `rechazado`, `expirado`, `anulado`, referencia en blanco, referencia de otro intento y saldo menor se rechazan con su respuesta, sin escribir nada", async () => {
+    const e = empresa(E);
+    const sa = superadminId as string;
+    const r = await revertida(base, async (tx) => {
+      const o = orgDe(e);
+      const nuevo = async () => {
+        const p = await obtenerOCrearIntento(tx, o, factura.E5.id, e.p.maestro.usuarioId, { proveedor: "global66", metodo: "transferencia" });
+        if (p.resultado !== "creado" || p.intentoId === null) throw new Error(`se esperaba un intento nuevo: ${JSON.stringify(p)}`);
+        return p.intentoId;
+      };
+      const pasar = (id: string, set: string) => tx.$executeRawUnsafe(`UPDATE "cobro_intento" SET ${set} WHERE "id" = $1`, id);
+      const rechazado = await nuevo();
+      await pasar(rechazado, `"estado" = 'pendiente'`);
+      await pasar(rechazado, `"estado" = 'rechazado'`);
+      const expirado = await nuevo();
+      await pasar(expirado, `"estado" = 'pendiente'`);
+      await pasar(expirado, `"estado" = 'expirado'`);
+      const anulado = await nuevo();
+      await pasar(anulado, `"estado" = 'anulado', "motivo_anulacion" = 'clave_distinta'`);
+      // Un vivo por más que el saldo (20 000): sembrado a mano como DUEÑO, sin pasar por §3.4.
+      const deMas = randomUUID();
+      await tx.$executeRawUnsafe(
+        `INSERT INTO "cobro_intento"
+           ("id", "organizacion_id", "factura_id", "proveedor", "metodo", "clave", "monto_local", "moneda_local", "moneda_cobro",
+            "monto_cobrado", "estado", "created_at", "estado_at")
+         VALUES ($1, $2, $3, 'global66', 'transferencia', 'a-mano', 25000.00, $4, $4, 25000.00, 'creado',
+                 now() AT TIME ZONE 'UTC', now() AT TIME ZONE 'UTC')`,
+        deMas,
+        o,
+        factura.E5.id,
+        MONEDA_LOCAL,
+      );
+
+      const antes = await escrituras(e, tx);
+      const estados = async () =>
+        (
+          await tx.$queryRawUnsafe<{ id: string; estado: string; pago: string | null }[]>(
+            `SELECT "id", "estado", "pago_proveedor_id" AS "pago" FROM "cobro_intento" WHERE "organizacion_id" = $1 ORDER BY "id"`,
+            o,
+          )
+        ).map((f) => `${f.id}:${f.estado}:${f.pago}`);
+      const estadosAntes = await estados();
+      const ref = `G66-${randomUUID()}`;
+      const respuestas = {
+        inexistente: await marcarPagadoManual(tx, randomUUID(), ref, sa),
+        aprobado: await marcarPagadoManual(tx, intento.e2, ref, sa),
+        rechazado: await marcarPagadoManual(tx, rechazado, ref, sa),
+        expirado: await marcarPagadoManual(tx, expirado, ref, sa),
+        anulado: await marcarPagadoManual(tx, anulado, ref, sa),
+        enBlanco: await marcarPagadoManual(tx, deMas, "   ", sa),
+        nula: await marcarPagadoManual(tx, deMas, null, sa),
+        deOtroIntento: await marcarPagadoManual(tx, deMas, pp.e1, sa),
+        saldoMenor: await marcarPagadoManual(tx, deMas, ref, sa),
+      };
+      return { respuestas, antes, despues: await escrituras(e, tx), estadosAntes, estadosDespues: await estados() };
+    });
+    expect(r.respuestas).toEqual({
+      inexistente: "sin_intento",
+      aprobado: "no_vivo",
+      rechazado: "no_vivo",
+      expirado: "no_vivo",
+      anulado: "no_vivo",
+      enBlanco: "referencia_vacia",
+      nula: "referencia_vacia",
+      deOtroIntento: "referencia_en_otro_intento",
+      saldoMenor: "requiere_revision",
+    });
+    expect(r.despues).toEqual(r.antes);
+    expect(r.estadosDespues).toEqual(r.estadosAntes);
+  });
+
+  it("R39: como `servi_app`, ejecutar `cobro_marcar_pagado_manual` da 42501 y el intento no cambia", async () => {
+    const e = empresa(E);
+    const r = await revertida(base, async (tx) => {
+      const id = await obtenerOCrearIntento(tx, orgDe(e), factura.E5.id, e.p.maestro.usuarioId);
+      if (id.intentoId === null) throw new Error(`sin intento: ${JSON.stringify(id)}`);
+      await comoApp(tx, orgDe(e));
+      const error = await capturar(tx, () => marcarPagadoManual(tx, id.intentoId as string, `pp-${randomUUID()}`, e.p.maestro.usuarioId));
+      await tx.$executeRawUnsafe(`RESET ROLE`);
+      return { sqlstate: error === null ? null : sqlstateDe(error), fila: await leerIntento(tx, id.intentoId) };
+    });
+    expect(r.sqlstate).toBe("42501");
+    expect(r.fila).toMatchObject({ estado: "creado", pagoProveedorId: null });
   });
 });
