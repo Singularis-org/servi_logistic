@@ -22,7 +22,7 @@
 
 ## Bloque 2 — PDF de etiquetas del navegador (R5, R6, R7, R14)
 
-- [ ] **T2.1** `lib/pdf/etiquetas-dibujo.ts`: `moneda: FormatoMoneda` obligatoria en `drawEtiqueta`,
+- [x] **T2.1** `lib/pdf/etiquetas-dibujo.ts`: `moneda: FormatoMoneda` obligatoria en `drawEtiqueta`,
   `datosDeEtiqueta` y `textosConFuenteEmbebida`. `importeDeEtiqueta` sin caída y sin el import de
   `MONEDA_PLATAFORMA` (design §5).
   - Los tests que llaman sin moneda pasan `MONEDA_PLATAFORMA`:
@@ -172,6 +172,9 @@ Tests:
 - `tests/unit/components/historial-acciones-descarga-columnas.test.ts`
 - `tests/integration/db/455/caracterizacion/snapshot-correccion.test.ts`
 - `tests/unit/components/ordenes-descarga-columnas.test.ts`
+- `tests/unit/services/etiquetas-lote-pdf-service.test.ts` (añadido el 2026-11-20 al implementar T2.1, aceptado
+  por el leader: su caso `montoCobrar` probaba la caída a CR sin moneda que R14 quita; se borra esa aserción
+  y el `?` de `moneda?`. Total 36/40)
 
 Grep del 2026-11-20. Si el typecheck o un test señalan otro llamante (de `columnasHistorialAcciones`,
 `MONTO_EXCEDE`, `columnasDescargaOrdenes`, `buildEtiquetasPdf` o `drawEtiqueta`), se añade aquí antes
