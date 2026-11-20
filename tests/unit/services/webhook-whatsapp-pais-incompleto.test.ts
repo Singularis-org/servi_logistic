@@ -102,6 +102,8 @@ function reglasPorEmpresa(): IReglasPaisEmpresa {
     deLaEmpresa: () => actual().deLaEmpresa(),
     zonaHoraria: () => actual().zonaHoraria(),
     tipoDocumento: (v) => actual().tipoDocumento(v),
+    moneda: () => actual().moneda(),
+    nombreImpuesto: () => actual().nombreImpuesto(),
   };
 }
 

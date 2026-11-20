@@ -68,3 +68,51 @@ Tests:
 
 ### Veredicto
 Bloques 1 y 2 hechos y en verde; listo para el bloque 3.
+
+## Tanda 2 — Bloque 3, el puerto (T3.1, T3.2; R5–R7)
+
+### Archivos
+- Producción: `lib/types/pais.ts` (`PaisDTO.moneda`, `impuestoNombre`), `lib/repositories/PaisRepository.ts`
+  (select con las 6 columnas y `paisDeFila`, que junta las 5 de moneda en `FormatoMoneda` o `null`),
+  `lib/db/errores-pais.ts` (`PaisSinMoneda`, `PaisSinImpuesto`), `lib/interfaces/services/IReglasPaisEmpresa.ts`,
+  `lib/services/ReglasPaisEmpresaService.ts` (`moneda()`, `nombreImpuesto()` sobre `paisDeLaEmpresa`).
+- Tests: `tests/fabricas/reglas-pais.ts` (`MONEDA_CR`; `ReglasPaisFijas.moneda`/`impuestoNombre` con CR por
+  defecto; `reglasPaisFijas` cumple los dos métodos; `paisDelAltaFijo` con moneda e impuesto de CR),
+  `tests/integration/db/pais-repositorio.test.ts` (caso SL-21 nuevo + alta con `moneda: null`),
+  `tests/unit/services/reglas-pais-empresa-service.test.ts` (6 casos R5–R7), fixtures de `PaisDTO` en
+  `pais-service.test.ts`, `GeografiaPlataformaAltaPais.test.tsx`, `geografia-plataforma-page.test.tsx`; la fila
+  simulada de `pais` en `organizaciones-action.composition-root.test.ts`; dobles a mano en
+  `usuario-service-cedula.test.ts`, `usuario-service-superadmin.test.ts`, `webhook-whatsapp-pais-incompleto.test.ts`.
+- `usuario-service-pais.test.ts` y `cierres-filtro-folio.test.ts` (en la lista esperada) no hizo falta tocarlos:
+  sus dobles extienden `reglasPaisFijas()` con spread y heredan los métodos nuevos.
+
+### Mapa R → test (tanda 2)
+| R | Test |
+|---|---|
+| R5 | `reglas-pais-empresa-service.test.ts` («R5: dos empresas seguidas…», «R5: dos empresas a la vez…», «R5: sin empresa en curso…»); `pais-repositorio.test.ts` («SL-21 (R1, R3, R5): porId, listar y deLaEmpresa…») |
+| R6 | `reglas-pais-empresa-service.test.ts` («R6: un país sin moneda lanza PaisSinMoneda…»; doble `reglasPaisFijas`) |
+| R7 | `reglas-pais-empresa-service.test.ts` («R7: un país sin nombre de impuesto lanza PaisSinImpuesto…»; doble) |
+
+### Verificación (salida real)
+- `pnpm run typecheck` → verde (sin errores TS).
+- `pnpm run lint` → 0 errores, 249 warnings (los mismos de la tanda 1).
+- T3.1: `pais-repositorio` (integración, base `servi_logistic_sl21`), `pais-service`, `reglas-pais-empresa-service`,
+  `GeografiaPlataformaAltaPais`, `geografia-plataforma-page` → 5 files, 98 passed. Vecinos (`geografia-plataforma-action`,
+  `paises-plataforma.composition-root`, `organizacion-service(-pais)`, `hora-por-pais-dos-empresas`,
+  `tipos-identificacion-por-pais`, `geografia-superadmin-sin-empresa`, `organizacion-alta`, `AppLayout`,
+  `organizaciones-action.composition-root`, `rastreo-publico-zona-pais`, `pais-tabla`) → 12 files, 200 passed tras
+  arreglar la fila simulada de `organizaciones-action.composition-root` (fallaba con «pais.moneda_decimales inesperado: undefined»).
+- T3.2: `reglas-pais-empresa-service`, `usuario-service-cedula`, `usuario-service-superadmin`,
+  `webhook-whatsapp-pais-incompleto`, `usuario-service-pais`, `cierres-filtro-folio`, `pais-service`,
+  `organizacion-service-pais` → 8 files, 143 passed.
+- `pnpm run test:guardias` → 360 files, 5421 passed | 1 skipped.
+
+### Desviaciones del design
+- `PaisRepository` ya no devuelve la fila de Prisma tal cual: `paisDeFila` arma el DTO. Una fila con la moneda a
+  medias o `moneda_decimales` fuera de 0–2 lanza (la base no cumpliría su CHECK), como `caracteresDeDocumento`.
+- `MONEDA_CR` se exporta desde `tests/fabricas/reglas-pais.ts` (el design solo nombra `MONEDA_DE_PRUEBA`): es la
+  moneda de CR por defecto de `ReglasPaisFijas` y de `paisDelAltaFijo`.
+- Archivo fuera de la lista esperada: ninguno de producción; en tests, todos los tocados están en la lista.
+
+### Veredicto
+Bloque 3 hecho y en verde; listo para el bloque 4.

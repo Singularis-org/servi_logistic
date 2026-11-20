@@ -1,17 +1,21 @@
 import { describe, expect, it } from "vitest";
 
 import { comoPlataforma, conEmpresa, EmpresaNoResuelta } from "@/lib/db/contexto-empresa";
-import { PaisSinZonaHoraria } from "@/lib/db/errores-pais";
+import type { FormatoMoneda } from "@/lib/config/moneda";
+import { PaisSinImpuesto, PaisSinMoneda, PaisSinZonaHoraria } from "@/lib/db/errores-pais";
 import type { IPaisRepository } from "@/lib/interfaces/repositories/IPaisRepository";
 import { ReglasPaisEmpresaService } from "@/lib/services/ReglasPaisEmpresaService";
 import type { PaisDTO, TipoDocumentoDTO } from "@/lib/types/pais";
-import { CR, reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { CR, MONEDA_CR, MONEDA_DE_PRUEBA, reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // SLT-42 (T3.2; design §4.2) — `ReglasPaisEmpresaService` con un repositorio doble.
 //   · R30: dos marcos de `conEmpresa` seguidos (o a la vez) con el MISMO servicio devuelven cada uno
 //     el país de su empresa; dentro de un marco el país se lee una vez, entre marcos nunca se reusa.
 //   · R28: sin zona horaria, `zonaHoraria()` lanza `PaisSinZonaHoraria`.
 //   · R11: `tipoDocumento` pregunta por el país de la empresa en curso, no por otro.
+//   · SL-21 (T3.2): `moneda()` y `nombreImpuesto()` dan los del país de la empresa en curso, sin caché
+//     entre empresas (R5); sin moneda lanzan `PaisSinMoneda` (R6) y sin impuesto `PaisSinImpuesto`
+//     (R7), sin caer en la de otro país ni en la de la plataforma.
 
 function pais(id: string, o: Partial<PaisDTO> = {}): PaisDTO {
   return {
@@ -39,6 +43,11 @@ function pais(id: string, o: Partial<PaisDTO> = {}): PaisDTO {
 const XA = pais("XA", { prefijoTelefonico: "99", telefonoDigitosNacionales: 7, zonaHoraria: "Pacific/Auckland" });
 const XB = pais("XB", { prefijoTelefonico: "98", telefonoDigitosNacionales: 9, zonaHoraria: "Asia/Tokyo" });
 const XC_SIN_ZONA = pais("XC", { prefijoTelefonico: "97", telefonoDigitosNacionales: 8 });
+
+/** SL-21: una segunda moneda de prueba, distinta de `MONEDA_DE_PRUEBA` y de la de CR. */
+const MONEDA_XB: FormatoMoneda = { codigo: "XXX", simbolo: "¤", separadorMiles: "'", separadorDecimal: ".", decimales: 1 };
+const XA_CON_MONEDA = { ...XA, moneda: MONEDA_DE_PRUEBA, impuestoNombre: "Impuesto XA" };
+const XB_CON_MONEDA = { ...XB, moneda: MONEDA_XB, impuestoNombre: "Impuesto XB" };
 
 function repoDoble(paisPorEmpresa: Record<string, PaisDTO | null>) {
   const lecturas: string[] = [];
@@ -190,5 +199,80 @@ describe("SLT-42 · ReglasPaisEmpresaService", () => {
       await expect(conEmpresa("org-fantasma", () => servicio.deLaEmpresa())).rejects.toBeInstanceOf(EmpresaNoResuelta);
       expect(d.lecturas).toEqual(["org-fantasma"]);
     });
+  });
+});
+
+describe("SL-21 · moneda() y nombreImpuesto() del puerto", () => {
+  it("R5: dos empresas seguidas con el mismo servicio reciben cada una la moneda y el impuesto de su país", async () => {
+    const d = repoDoble({ "org-a": XA_CON_MONEDA, "org-b": XB_CON_MONEDA });
+    const servicio = new ReglasPaisEmpresaService({ repo: d.repo, empresaDeLaSesion: sinSesion });
+
+    const enA = await conEmpresa("org-a", async () => [await servicio.moneda(), await servicio.nombreImpuesto()]);
+    const enB = await conEmpresa("org-b", async () => [await servicio.moneda(), await servicio.nombreImpuesto()]);
+    const otraVezA = await conEmpresa("org-a", () => servicio.moneda());
+
+    expect(enA).toEqual([MONEDA_DE_PRUEBA, "Impuesto XA"]);
+    expect(enB).toEqual([MONEDA_XB, "Impuesto XB"]);
+    expect(otraVezA).toEqual(MONEDA_DE_PRUEBA);
+    // Una lectura por marco y ninguna reusada entre empresas.
+    expect(d.lecturas).toEqual(["org-a", "org-b", "org-a"]);
+  });
+
+  it("R5: dos empresas a la vez no se mezclan", async () => {
+    const d = repoDoble({ "org-a": XA_CON_MONEDA, "org-b": XB_CON_MONEDA });
+    const servicio = new ReglasPaisEmpresaService({ repo: d.repo, empresaDeLaSesion: sinSesion });
+
+    const [a, b] = await Promise.all([
+      conEmpresa("org-a", async () => (await servicio.moneda()).codigo),
+      conEmpresa("org-b", async () => (await servicio.moneda()).codigo),
+    ]);
+
+    expect([a, b]).toEqual(["XTS", "XXX"]);
+  });
+
+  it("R5: sin empresa en curso, la lectura falla como el resto del puerto (EmpresaNoResuelta) sin leer el país", async () => {
+    const d = repoDoble({});
+    const servicio = new ReglasPaisEmpresaService({ repo: d.repo, empresaDeLaSesion: sinSesion });
+
+    await expect(servicio.moneda()).rejects.toBeInstanceOf(EmpresaNoResuelta);
+    await expect(servicio.nombreImpuesto()).rejects.toBeInstanceOf(EmpresaNoResuelta);
+    await expect(comoPlataforma("SL-20", "test", () => servicio.moneda())).rejects.toBeInstanceOf(EmpresaNoResuelta);
+    expect(d.lecturas).toEqual([]);
+  });
+
+  it("R6: un país sin moneda lanza PaisSinMoneda con su código, aunque la empresa anterior sí la tuviera", async () => {
+    const d = repoDoble({ "org-a": XA_CON_MONEDA, "org-c": { ...XC_SIN_ZONA, impuestoNombre: "Impuesto XC" } });
+    const servicio = new ReglasPaisEmpresaService({ repo: d.repo, empresaDeLaSesion: sinSesion });
+
+    await conEmpresa("org-a", () => servicio.moneda());
+    const error = await conEmpresa("org-c", () => servicio.moneda()).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(PaisSinMoneda);
+    expect((error as PaisSinMoneda).paisId).toBe("XC");
+    expect((error as Error).message).toBe("El país XC no tiene moneda");
+    // El impuesto es independiente: el país lo tiene y se lee.
+    await expect(conEmpresa("org-c", () => servicio.nombreImpuesto())).resolves.toBe("Impuesto XC");
+  });
+
+  it("R7: un país sin nombre de impuesto lanza PaisSinImpuesto con su código, sin dar uno por defecto", async () => {
+    const d = repoDoble({ "org-a": { ...XA, moneda: MONEDA_DE_PRUEBA } });
+    const servicio = new ReglasPaisEmpresaService({ repo: d.repo, empresaDeLaSesion: sinSesion });
+
+    const error = await conEmpresa("org-a", () => servicio.nombreImpuesto()).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(PaisSinImpuesto);
+    expect((error as PaisSinImpuesto).paisId).toBe("XA");
+    expect((error as Error).message).toBe("El país XA no tiene nombre de impuesto");
+    await expect(conEmpresa("org-a", () => servicio.moneda())).resolves.toEqual(MONEDA_DE_PRUEBA);
+  });
+
+  it("el doble `reglasPaisFijas` cumple el mismo contrato: CR por defecto, y los dos errores con null", async () => {
+    await expect(reglasPaisFijas().moneda()).resolves.toEqual(MONEDA_CR);
+    await expect(reglasPaisFijas().nombreImpuesto()).resolves.toBe("IVA");
+    await expect(reglasPaisFijas({ moneda: MONEDA_DE_PRUEBA }).moneda()).resolves.toBe(MONEDA_DE_PRUEBA);
+    await expect(reglasPaisFijas({ paisId: "XA", moneda: null }).moneda()).rejects.toBeInstanceOf(PaisSinMoneda);
+    await expect(reglasPaisFijas({ paisId: "XA", impuestoNombre: null }).nombreImpuesto()).rejects.toBeInstanceOf(
+      PaisSinImpuesto,
+    );
   });
 });
