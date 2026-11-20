@@ -1,7 +1,17 @@
 # SLT-224 — Retiro a central: recalcular la zona de la orden (quedan con la zona vieja tras mover distritos)
 
 > Ruta completa (toca la zona, de la que sale la tarifa, y lleva migración de datos), zona backend,
-> complejidad medium. Rango reservado: **R1700–R1729** (se usan R1700–R1719).
+> complejidad medium. Rango reservado: **R1700–R1729** (se usan R1700–R1727).
+>
+> **Dos PR en la misma ficha.** PR 1 (#253, mergeado en dev y en prod): R1700–R1719 con el corte de
+> la 366. **PR 2** (este bloque): el corte nuevo de P2 (R1720–R1725) en el helper compartido, que
+> cambia a la vez el guardado de zona, la recepción en la central y el botón, y la pantalla del
+> botón (R1713, R1715, R1716, R1718, con los motivos de R1726–R1727). R1701 y la frase «exactamente lo
+> mismo que antes» de R1706 quedan sustituidas por R1720–R1725 desde el PR 2.
+>
+> **Pregunta abierta del PR 2: P4** (las órdenes `reprogramado` y `novedad` que esperan liberación en
+> una bodega). El spec la resuelve por defecto **sin moverlas** (lo de hoy) hasta que Carlos diga
+> otra cosa. No hay pregunta de dinero abierta: el análisis está en `design.md §4b`.
 
 ## Alcance
 
@@ -47,11 +57,13 @@ estante hacia otra bodega. SLT-197 la añadió, y con ella el hueco que esta fic
 ### Lo que NO entra
 
 - **El estante de la satélite** (`en_bodega_satelite`): sigue retenido como decidió la 377.
-- **Las entregadas** ni ninguna orden con cierre o con gestión que ya decidió dinero.
+- **Las entregadas** ni ninguna orden con cierre o con gestión que ya decidió dinero. *(Desde el PR 2:
+  las finalizadas y las que tienen un cobro en curso, R1721–R1722. Un cierre ya aprobado no se toca
+  nunca; solo deja de impedir que la orden viva cambie de zona.)*
 - **Las devoluciones** (`por_devolver_a_bodega_central`, `devolviendo_a_bodega_central`,
   `por_devolver_a_tienda` y siguientes): ver `design.md §5.2` y P3.
-- **Cambiar el corte de elegibilidad de la 366** (por ejemplo, para órdenes con un cierre de un intento
-  anterior): ver P2.
+- ~~**Cambiar el corte de elegibilidad de la 366**~~: **entra en el PR 2** por la decisión de Carlos
+  sobre P2 (D6, R1720–R1725).
 - **El retiro en sí** (SLT-197): no cambia. El manifiesto del retiro sigue diciendo la satélite de
   origen.
 - **Rediseñar el modelo de zona**, mover la regla de la 366 o añadir pantallas. El botón de R1713
@@ -73,7 +85,8 @@ central con la zona de su distrito, y re-guardar esa zona no tiene nada que move
 | D2 | Corrección única de las vivas que ya están en la central o en ruta a la central, con un T0 medido contra producción antes del PR. | 2026-11-19 | Carlos (descripción de la ficha) | R1708, R1709, R1710, R1711, R1712 |
 | D3 | No se tocan las órdenes en `en_bodega_satelite` ni las entregadas. | 2026-11-19 | Carlos (encargo del leader) | R1709 |
 | D4 | Arreglo mínimo: no se rediseña el modelo de zona. | 2026-11-19 | Carlos (encargo del leader) | R1706 |
-| D5 | Botón junto a «Recibir paquete» que corrige zonas erradas sueltas. No depende de la selección: el sistema busca en la empresa las órdenes con zona errada, muestra cuántas se corrigen y cuáles se saltan y por qué, y corrige al confirmar, con el mismo helper y el mismo corte. | 2026-11-19 | Carlos | R1713–R1719 |
+| D5 | Botón junto a «Recibir paquete» que corrige zonas erradas sueltas. No depende de la selección: el sistema busca en la empresa las órdenes con zona errada, muestra cuántas se corrigen y cuáles se saltan y por qué, y corrige al confirmar, con el mismo helper y el mismo corte. | 2026-11-19 | Carlos | R1713–R1719, R1726, R1727 |
+| D6 | (P2) Las órdenes **vivas** se mueven a la zona nueva aunque tengan un cierre anterior o una gestión previa; las **finalizadas** no. Cambia el corte compartido (guardado de zona, recepción y botón) y va en el PR 2. | 2026-11-19 | Carlos | R1720–R1725 |
 
 ## Requisitos (EARS)
 
@@ -86,6 +99,8 @@ central con la zona de su distrito, y re-guardar esa zona no tiene nada que move
 - **R1701** — SI la orden recibida tiene algún detalle de cierre, o tiene una gestión vigente (no
   anulada) con resultado entregado, devolución a origen por rechazo o incidente, ENTONCES el sistema
   NO DEBE cambiar su zona y DEBE completar la recepción igual.
+  *(PR 1. Sustituido desde el PR 2 por R1720–R1725: la recepción excluye solo lo que excluye el corte
+  nuevo, y sigue completando la recepción igual.)*
 - **R1702** — SI la orden recibida no tiene distrito, o su distrito no tiene zona en su empresa,
   ENTONCES el sistema DEBE conservar su zona y DEBE completar la recepción igual.
 - **R1703** — CUANDO la recepción cambia la zona de una orden, el sistema DEBE registrar en el
@@ -104,6 +119,8 @@ central con la zona de su distrito, y re-guardar esa zona no tiene nada que move
 - **R1706** — El sistema DEBE aplicar una única implementación de la regla «qué orden cambia de zona y
   a cuál» al guardar una zona, al recibir en la central y al corregir desde el botón de R1713, y el guardado de una zona DEBE
   seguir reconciliando, reteniendo y contando exactamente lo mismo que antes de esta ficha.
+  *(Desde el PR 2, «exactamente lo mismo» se lee «lo mismo salvo lo que cambian R1720–R1725», que
+  aplican por igual a los tres llamadores.)*
 
 ### El dinero
 
@@ -139,6 +156,7 @@ se corrige, por uno de tres motivos, en este orden de precedencia: **en el estan
 (`en_bodega_satelite`), **devolución** (`por_devolver_a_bodega_central`,
 `devolviendo_a_bodega_central`, `novedad`, `por_devolver_a_tienda`, `devolviendo_a_tienda`,
 `devuelta_a_tienda`) y **ya cerrada o con dinero decidido** (el corte de R1701).
+*(PR 1. Desde el PR 2 los motivos y su precedencia son los de R1726.)*
 
 - **R1713** — La pantalla `/ordenes` DEBE mostrar el botón «Actualizar zonas» junto a «Recibir paquete»
   al maestro y al admin, sin depender de las órdenes seleccionadas, y NO DEBE mostrarlo a ningún otro rol.
@@ -158,6 +176,46 @@ se corrige, por uno de tres motivos, en este orden de precedencia: **en el estan
   saltada NO DEBE impedir que se actualicen las demás.
 - **R1719** — La vista previa y la actualización NO DEBEN leer ni cambiar órdenes de otra empresa, ni
   cambiar órdenes cuya zona ya es la de su distrito ni órdenes cuyo distrito no tiene zona.
+
+### PR 2 — El corte nuevo: vivas sí, finalizadas no (D6)
+
+Se aplica en los tres sitios que re-derivan la zona: el guardado de una zona, la recepción en la
+central (arista `en_ruta_bodega_central → en_bodega_central`) y la confirmación de «Actualizar zonas».
+Términos de este bloque:
+
+- **Cierre aprobado**: un `cierre_dia` en estado `aprobado`. Los estados `solicitado`, `rechazado` y
+  `vencido` son **cierre sin aprobar**.
+- **Finalizada**: una orden en `entregado`, `devuelta_a_tienda` o `incidente` (los estados terminales
+  del flujo, `ESTADOS_TERMINALES` de `lib/types/order-status-transiciones.ts`).
+- **Cobro en curso**: la orden tiene un detalle de cierre que pertenece a un cierre sin aprobar, o una
+  gestión no anulada con resultado entregado, devolución a origen por rechazo o incidente que no
+  pertenece a ningún cierre o pertenece a un cierre sin aprobar.
+
+- **R1720** — CUANDO el sistema re-deriva la zona de una orden (al guardar una zona, al recibir en la
+  central o al confirmar «Actualizar zonas»), el sistema DEBE cambiarla a la zona de su distrito aunque
+  la orden tenga detalles de cierre o gestiones, siempre que todos ellos pertenezcan a cierres
+  aprobados y la orden no esté excluida por R1721, R1722 o R1723.
+- **R1721** — SI la orden está finalizada, ENTONCES el sistema NO DEBE cambiar su zona.
+- **R1722** — SI la orden tiene un cobro en curso, ENTONCES el sistema NO DEBE cambiar su zona.
+- **R1723** — SI la orden está en `en_bodega_satelite`, en `por_devolver_a_bodega_central`,
+  `devolviendo_a_bodega_central`, `devolucion_a_origen_por_rechazo`, `novedad`,
+  `por_devolver_a_tienda`, `devolviendo_a_tienda` o `reprogramado`, ENTONCES el sistema NO DEBE cambiar
+  su zona.
+- **R1724** — CUANDO se guarda una zona, el sistema DEBE seguir contando como retenidas en el estante
+  solo las órdenes en `en_bodega_satelite` que habrían cambiado de zona, con el corte de R1720–R1722.
+- **R1725** — El sistema DEBE clasificar cada estado del catálogo de estados de orden como «se mueve»
+  o con un motivo para no moverse, sin dejar ninguno sin clasificar, de modo que añadir un estado al
+  catálogo sin clasificarlo haga fallar la compilación.
+
+### PR 2 — Los motivos del botón (D5 con D6)
+
+- **R1726** — CUANDO la vista previa o el resultado de «Actualizar zonas» lista una orden saltada, el
+  sistema DEBE darle uno de estos motivos, en este orden de precedencia: «en el estante de una
+  satélite» (`en_bodega_satelite`), «finalizada» (R1721), «en devolución» (los estados de devolución de
+  R1723), «esperando liberación en bodega» (`reprogramado`) y «cobro en curso» (R1722).
+- **R1727** — CUANDO quien actúa confirma sin que la base haya cambiado desde la vista previa, el
+  sistema DEBE actualizar exactamente las órdenes que la vista previa contó en sus grupos y DEBE
+  devolver como saltadas exactamente las mismas guías con los mismos motivos.
 
 ## Trazabilidad prevista
 
@@ -183,8 +241,32 @@ se corrige, por uno de tres motivos, en este orden de precedencia: **en el estan
 | R1717 | `actualizacion-zonas.int.test.ts` (una orden que cambia entre vista previa y confirmación se re-evalúa; una acción por orden con actor y lote único) | integración |
 | R1718 | `actualizacion-zonas.int.test.ts` (resultado con saltadas y las demás actualizadas) + `ActualizarZonasButton.test.tsx` (resultado y `onSuccess`) | integración + componente |
 | R1719 | `actualizacion-zonas.int.test.ts` (dos empresas; alineada; distrito sin zona) | integración |
+| R1720 | `tests/integration/db/reconciliar-zona-corte-vivas.int.test.ts` (nuevo: orden viva con `cierre_detail` y gestión `entregado` de un cierre `aprobado` se mueve, por los TRES llamadores: `ZonaRepository.update`, recepción y `ActualizacionZonasRepository.actualizar`) + `recepcion-central-reconcilia-zona.int.test.ts` (caso nuevo: cierre aprobado anterior se mueve al recibir) | integración (Postgres) |
+| R1721 | `reconciliar-zona-corte-vivas.int.test.ts` (`entregado`, `devuelta_a_tienda`, `incidente` sin ningún cierre ni gestión: no se mueven) | integración |
+| R1722 | ídem (`cierre_detail` de cierre `solicitado`, `rechazado` y `vencido`; gestión `entregado`/`devolucion_a_origen_por_rechazo`/`incidente` sin cierre y con cierre sin aprobar: no se mueven; la misma gestión ANULADA y la de cierre aprobado: sí) + `recepcion-central-reconcilia-zona.int.test.ts` y `tests/integration/db/zona-reconciliacion-ordenes.test.ts` verdes sin cambiar expectativas | integración |
+| R1723 | `reconciliar-zona-corte-vivas.int.test.ts` (cada estado de R1723 con solo cierre aprobado: no se mueve) | integración |
+| R1724 | ídem (guardado de zona: `ordenesRetenidasEnBodegaSatelite` cuenta la del estante con cierre aprobado y no cuenta la del estante con cobro en curso) | integración |
+| R1725 | `tests/unit/utils/clase-reconciliacion-zona.test.ts` (claves del mapa = `ORDER_STATUS_SEED`; conjunto «se mueve» escrito literal) + typecheck (el `Record` exhaustivo) | unit + typecheck |
+| R1726 | `tests/unit/services/actualizacion-zonas-action.test.ts` (donde ya se prueba `motivoDeSaltada`: cada motivo y la precedencia: `devuelta_a_tienda` es «finalizada», no «devolución»; estante con cobro en curso es «estante») + `actualizacion-zonas.int.test.ts` (motivos literales) + `tests/components/ActualizarZonasButton.test.tsx` (texto de cada motivo) | unit + integración + componente |
+| R1727 | `actualizacion-zonas.int.test.ts` (vista previa y confirmación seguidas sobre la matriz completa: `actualizadas === total` y mismas saltadas) | integración |
 
 ## Preguntas abiertas
+
+> **Estado a 2026-11-19:** P1 y P3 **resueltas** según la recomendación (Carlos: «aprobado […] con
+> P1-P3 según recomendación»). P2 **resuelta** por Carlos (D6): va en el PR 2. **Abierta: P4.**
+
+- **P4 — ¿Se mueven las `reprogramado` y las `novedad` que esperan liberación en una bodega?**
+  (Abierta, PR 2.) Son órdenes vivas, pero su paquete ya volvió a la bodega que recibió el cierre (la
+  del mensajero) y espera a que el cron lo libere (`LiberacionReprogramadaService`,
+  `DevolucionSlaService`). La liberación decide `en_bodega_central` o `en_bodega_satelite` con
+  `orden.zonaId` (`resolverDestinoCierre`). Si se les cambia la zona de una satélite a la central, la
+  liberación las marcará `en_bodega_central` con el paquete en el estante de la satélite: el mismo
+  atasco que la 377 evita con `en_bodega_satelite`. Si no se les cambia, se liberan al estante de la
+  satélite y salen por el retiro a la central (SLT-197), que al recibirlas ya les corrige la zona
+  (R1700). **El spec las deja sin mover** (R1723: es lo que pasa hoy, porque siempre tienen el
+  `cierre_detail` de su cierre aprobado) y el botón las lista como saltadas. Si Carlos prefiere
+  moverlas, sale `reprogramado` de R1723 y `novedad` de las devoluciones, y hay que decidir qué pasa con
+  el paquete que está físicamente en la satélite.
 
 - **P1 — ¿La zona se corrige al recibir en la central (propuesto) o al retirar (lo que decía la
   ficha)?** El spec la corrige al **recibir**. Si se corrigiera al retirar, el manifiesto que se
@@ -194,7 +276,9 @@ se corrige, por uno de tres motivos, en este orden de precedencia: **en el estan
   ruta, la zona vieja no bloquea nada: la satélite ya no la ve y la central no la puede asignar hasta
   recibirla. Al recibirla ya tiene la zona correcta. Recomendación: recepción. Si Carlos prefiere el
   retiro, hay que cambiar también de dónde saca el manifiesto el origen del retiro (más alcance).
-- **P2 — Órdenes desalineadas que el corte de la 366 deja fuera.** El corte excluye toda orden con
+- **P2 — Órdenes desalineadas que el corte de la 366 deja fuera.** *(Resuelta, D6: «si son ordenes
+  que aún se pueden gestionar si se deben mover a la nueva […] pero las ordenes que ya llegaron a un fin
+  no es necesario». Las 18 se corrigieron a mano el 2026-11-19; la regla entra en R1720–R1725.)* El corte excluye toda orden con
   algún `cierre_detail`, también el de un intento anterior (por ejemplo, una reprogramada que se cerró,
   se liberó al estante de la satélite y luego se retiró). Esas órdenes seguirían con la zona vieja en
   la central. **En prod son 18 a 2026-11-19** (excluidas en la corrección a mano): 11071399, 15592443,
