@@ -13,6 +13,7 @@ import {
   INVENTARIO_FLUJO,
   RECUENTO_INVENTARIO,
 } from "@/tests/fixtures/inventario-transiciones-140";
+import { ORIGEN_TIPOS_CON_GESTION, ORIGEN_TIPOS_VISITA_REAL } from "@/lib/types/orden-historial";
 
 // Feature 140 — T3.2 (R6/R8/R10/R12): unit de la funcion PURA `assertTransicionValida`.
 // El inventario del apendice A entra data-driven (fixture transcrita a mano, no derivada del
@@ -186,7 +187,10 @@ describe("R6 — la guardia rechaza los pares que no estan en TRANSICIONES", () 
     // LEGAL (#47). Se sustituye por `por_recoger -> en_preparacion`, que sigue siendo ilegal
     // (D3': la reversion normaliza a un estado de BODEGA, nunca vuelve a un estado pre-guia).
     ["mensajero_recogiendo_en_bodega", "en_preparacion"],
-    ["novedad_interna", "en_reparto"],
+    // SLT-247: `novedad_interna -> en_reparto` SALE de esta lista porque paso a ser LEGAL (#74, el
+    // retorno al rechazar el cierre). Se sustituye por `novedad_interna -> reprogramado`, que sigue
+    // siendo ilegal: una orden que nadie gestiono no se reprograma por un cierre.
+    ["novedad_interna", "reprogramado"],
     ["devolviendo_a_bodega_central", "devuelta_a_tienda"],
   ] as const)("lanza TransicionIlegalError en %s -> %s", (origen, destino) => {
     expect(() => assertTransicionValida(origen, destino)).toThrow(TransicionIlegalError);
@@ -533,8 +537,10 @@ describe("156 — BAJAS EJECUTADAS: generar guia ya no asigna mensajero ni rutea
     // #13/#15 y no suman par.
     // Ficha SLT-197 (2026-11-17): 59 -> 60 y 54 -> 55. Suma #73 (`en_bodega_satelite ->
     // en_ruta_bodega_central`, la central retira del estante de una satelite). Par NUEVO.
-    expect(RECUENTO_INVENTARIO.aristasFlujo).toBe(60); // +2: 157; +3 -1: 239; +3: 235; +2: 237; +1: 240; +1: 276; +1: 398; +1 -8 +2: 454; +1: SLT-197
-    expect(RECUENTO_INVENTARIO.paresUnicos).toBe(55); // ... +1: 276 (par nuevo); +1: 398 (par nuevo); +1 -8: 454; +1: SLT-197
+    // Ficha SLT-247 (2026-11-20): 60 -> 61 y 55 -> 56. Suma #74 (`sin_gestionar -> en_reparto`, el
+    // retorno de las barridas al rechazar el cierre). Par NUEVO.
+    expect(RECUENTO_INVENTARIO.aristasFlujo).toBe(61); // +2: 157; +3 -1: 239; +3: 235; +2: 237; +1: 240; +1: 276; +1: 398; +1 -8 +2: 454; +1: SLT-197; +1: SLT-247
+    expect(RECUENTO_INVENTARIO.paresUnicos).toBe(56); // ... +1: 276 (par nuevo); +1: 398 (par nuevo); +1 -8: 454; +1: SLT-197; +1: SLT-247
   });
 });
 
@@ -734,14 +740,15 @@ describe("154/R27 — el inventario auditable sigue sincronizado con el mapa", (
   // rechazada`): sube la arista y NO sube el par. Es el tercer duplicado historico del inventario.
   // Ficha 398 (2026-09-08): 63/60/2 -> 64/61/2 con #69 (`entregada -> rechazada`, la correccion
   // en sitio), que es un par NUEVO: de `entregada` solo se salia deshaciendo la gestion.
-  it("los recuentos del inventario son 60 flujo / 55 pares / 2 creacion", () => {
+  it("los recuentos del inventario son 61 flujo / 56 pares / 2 creacion", () => {
     expect(RECUENTO_INVENTARIO).toEqual({
       // ficha 454 (2026-09-23): 64 -> 65 (la alta #70) y, con el retiro del catalogo, 65 -> 59
       // (-#59..#66, +#71/#72 de metadato). Ficha SLT-197 (2026-11-17): 59 -> 60 (#73).
-      aristasFlujo: 60,
+      // Ficha SLT-247 (2026-11-20): 60 -> 61 (#74).
+      aristasFlujo: 61,
       // ficha 454: 61 -> 62 (#70 es par NUEVO) y 62 -> 54 (-8 pares; #71/#72 repiten #13/#15).
-      // Ficha SLT-197: 54 -> 55 (#73 es par NUEVO).
-      paresUnicos: 55,
+      // Ficha SLT-197: 54 -> 55 (#73 es par NUEVO). Ficha SLT-247: 55 -> 56 (#74 es par NUEVO).
+      paresUnicos: 56,
       aristasCreacion: 2,
     });
   });
@@ -770,11 +777,12 @@ describe("276/R21/R22 — `novedad_interna -> devolucion_a_origen_por_rechazo` e
 
   it("la arista viaja con la familia `rechazo_tope_intentos`, no con `liberacion_sin_gestionar`", () => {
     const salidas = INVENTARIO_FLUJO.filter((a) => a.origen === "novedad_interna");
-    // Las TRES salidas, y solo tres.
+    // Las CUATRO salidas, y solo cuatro (SLT-247 añadio la cuarta: `en_reparto`, #74).
     expect(salidas.map((a) => a.destino).sort()).toEqual([
       "devolucion_a_origen_por_rechazo",
       "en_bodega_central",
       "en_bodega_satelite",
+      "en_reparto",
     ]);
     const aRechazada = salidas.find((a) => a.destino === "devolucion_a_origen_por_rechazo");
     expect(aRechazada?.via).toBe("rechazo_tope_intentos");
@@ -782,6 +790,41 @@ describe("276/R21/R22 — `novedad_interna -> devolucion_a_origen_por_rechazo` e
     // bodega y la que se termina— serian indistinguibles en el historial, que es su unica
     // evidencia. Y esta cobra dinero.
     expect(aRechazada?.via).not.toBe("liberacion_sin_gestionar");
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// SLT-247 (R1770/R1771) — #74. Al RECHAZAR un cierre, las barridas por el corte vuelven a la
+// calle con su mismo mensajero. Sin esta arista el choke point (140) rechaza la escritura del
+// bloque `retornoSinGestion` y REVIERTE el rechazo entero; con ella declarada con otra familia, el
+// historial no distinguiria este retorno de un deshacer del mensajero.
+// ---------------------------------------------------------------------------------------------
+describe("SLT-247/R1771 — `novedad_interna -> en_reparto` es legal, por su familia propia, y no es visita", () => {
+  it("el par es LEGAL y no lanza (#74)", () => {
+    expect(() => assertTransicionValida("novedad_interna", "en_reparto")).not.toThrow();
+  });
+
+  it("el MAPA declara la salida con la familia `retorno_por_rechazo_cierre` y el rol del rechazo", () => {
+    // Sobre el mapa real, no sobre el inventario: es lo que lee el choke point.
+    const aReparto = TRANSICIONES.novedad_interna.filter((d) => d.to === "en_reparto");
+    expect(aReparto).toEqual([
+      { to: "en_reparto", via: "retorno_por_rechazo_cierre", rol: "admin (rechazar cierre)" },
+    ]);
+  });
+
+  it("las salidas de `novedad_interna` en el MAPA son exactamente cuatro, enumeradas enteras", () => {
+    const salidas = TRANSICIONES.novedad_interna.map((d) => `${d.to} (${d.via})`).sort();
+    expect(salidas).toEqual([
+      "devolucion_a_origen_por_rechazo (rechazo_tope_intentos)",
+      "en_bodega_central (liberacion_sin_gestionar)",
+      "en_bodega_satelite (liberacion_sin_gestionar)",
+      "en_reparto (retorno_por_rechazo_cierre)",
+    ]);
+  });
+
+  it("💰 la familia NO es visita real ni enlaza gestion: el retorno no es un intento de entrega", () => {
+    expect(ORIGEN_TIPOS_VISITA_REAL as readonly string[]).not.toContain("retorno_por_rechazo_cierre");
+    expect(ORIGEN_TIPOS_CON_GESTION as readonly string[]).not.toContain("retorno_por_rechazo_cierre");
   });
 });
 

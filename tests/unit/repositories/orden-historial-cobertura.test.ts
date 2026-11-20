@@ -439,6 +439,13 @@ const FAMILIAS_CON_VARIOS_PUNTOS = [
 // la 157. La lista no se vacia ni se borra: si la 157 nunca llega, esta linea lo sigue diciendo.
 const FAMILIAS_SIN_PRODUCTOR = [
   { origenTipo: "recoleccion_tienda", productorFuturo: "feature 157 (recoleccion en tienda)" },
+  // SLT-247 (Tanda 1, 2026-11-20): el valor del enum y su arista llegan en la Tanda 1; el productor
+  // (`CierresAdminRepository.resolverCierre`, rama `rechazado` con `retornoSinGestion`) llega en la
+  // Tanda 2 del MISMO PR, que la MUEVE de aqui a `PUNTOS_DE_ESCRITURA` (#37).
+  {
+    origenTipo: "retorno_por_rechazo_cierre",
+    productorFuturo: "SLT-247 Tanda 2 (CierresAdminRepository.resolverCierre, rama rechazado)",
+  },
 ] as const;
 
 // Familias cuyo productor EXISTIO y se RETIRO. No es lo mismo que `FAMILIAS_SIN_PRODUCTOR`
@@ -515,7 +522,7 @@ describe("Feature 49 · T5.2 cobertura del choke point (R6)", () => {
     }
   });
 
-  it("las familias con productor + la 1 sin productor cubren EXACTAMENTE el enum (R23)", () => {
+  it("las familias con productor + las sin productor cubren EXACTAMENTE el enum (R23)", () => {
     // Feature 158/PR2: se compara por CONJUNTO de familias, no por lista de puntos, porque
     // desde el camino del ADMIN una familia (`incidente`) tiene TRES productores. La cobertura
     // del enum es lo que este caso mide y no se debilita: sigue exigiendo IGUALDAD exacta.
@@ -537,7 +544,11 @@ describe("Feature 49 · T5.2 cobertura del choke point (R6)", () => {
   // UNA. Si un repo empieza a emitir `recoleccion_tienda` antes de instrumentarla como punto
   // de escritura, este test se pone rojo exactamente igual que antes.
   it("feature 154/R28 + 158/Q-G: solo `recoleccion_tienda` sigue declarada y SIN productor", () => {
-    expect(FAMILIAS_SIN_PRODUCTOR.map((f) => f.origenTipo)).toEqual(["recoleccion_tienda"]);
+    // SLT-247 Tanda 1: `retorno_por_rechazo_cierre` espera a su productor (Tanda 2, mismo PR).
+    expect(FAMILIAS_SIN_PRODUCTOR.map((f) => f.origenTipo)).toEqual([
+      "recoleccion_tienda",
+      "retorno_por_rechazo_cierre",
+    ]);
     const simbolosPorFamilia: string[] = PUNTOS_DE_ESCRITURA.map((p) => p.origenTipo);
     for (const familia of FAMILIAS_SIN_PRODUCTOR) {
       // Declarada en el enum fuente de verdad...

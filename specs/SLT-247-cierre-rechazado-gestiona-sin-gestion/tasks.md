@@ -38,19 +38,19 @@
 
 ## Tanda 1 — Esquema e historial (backend_dev)
 
-- [ ] **T1.1** Enum `retorno_por_rechazo_cierre`. Va en `db/schema.prisma` y en la migración
+- [x] **T1.1** Enum `retorno_por_rechazo_cierre`. Va en `db/schema.prisma` y en la migración
   `20261120120000_orden_historial_origen_retorno_rechazo_cierre` (`migration.sql` con
   `ADD VALUE`). Su `down.sql` recrea el tipo con la lista MEDIDA en la base, con el aviso de lista
   fechada del patrón de la 398. Aplicar en la base desechable y `prisma generate`.
   **Hecho:** `migrate deploy` limpio en base nueva. El test de migración (T1.4) pasa: up añade el
   valor al final, down devuelve exactamente la lista previa, en orden.
-- [ ] **T1.2** `lib/types/orden-historial.ts`: el valor en `ORDEN_HISTORIAL_ORIGEN_TIPO_SEED`, fuera
+- [x] **T1.2** `lib/types/orden-historial.ts`: el valor en `ORDEN_HISTORIAL_ORIGEN_TIPO_SEED`, fuera
   de `ORIGEN_TIPOS_VISITA_REAL` y de `ORIGEN_TIPOS_CON_GESTION`, con su comentario de familia.
   **Hecho:** typecheck verde (`_EnsureExhaustive`).
-- [ ] **T1.3** `lib/types/order-status-transiciones.ts`: arista
+- [x] **T1.3** `lib/types/order-status-transiciones.ts`: arista
   `novedad_interna -> en_reparto via retorno_por_rechazo_cierre`.
   **Hecho:** la guardia de transiciones pasa con el caso nuevo (T1.4).
-- [ ] **T1.4** [P] Tests: `tests/unit/types/orden-historial-types.test.ts` (lista y longitud),
+- [x] **T1.4** [P] Tests: `tests/unit/types/orden-historial-types.test.ts` (lista y longitud),
   `tests/unit/domain/order-status-transiciones.guardia.test.ts` (la arista viaja con su familia y no
   es visita real) y `tests/integration/db/247-origen-retorno-rechazo-migration.test.ts` (up/down
   contra Postgres, patrón `correccion-resultado-gestion-migration.test.ts`).
