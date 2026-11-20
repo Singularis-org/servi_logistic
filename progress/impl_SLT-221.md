@@ -340,3 +340,53 @@ conflict; canje sin verificar el secreto, sin limitador, `correo_en_uso` perdido
   UI de T3.x el PR 2 pasa de 1000 líneas de producción: hay que decidirlo antes de T3.
 
 Veredicto: backend del PR 2 (T2.1-T2.6) hecho y verde; UI (T3.x) pendiente del canvas de T2.0.
+
+---
+
+# PR 3 — UI del cambio de correo (T3.1-T3.3), frontend_dev, 2026-11-20
+
+T2.0 omitido por decisión de Carlos (2026-11-19): componentes de hoy, sin canvas. El bloque va en
+`UsuarioForm`; la página pública copia el marco y las tarjetas de `/recuperar-contrasena`.
+
+## Archivos
+
+- Creados: `app/(app)/configuracion/_components/CambioCorreoUsuario.tsx`,
+  `app/recuperar-contrasena/confirmar-correo/page.tsx`,
+  `app/recuperar-contrasena/confirmar-correo/_components/ConfirmarCorreoForm.tsx`,
+  `tests/unit/components/cambio-correo-usuario.test.tsx`, `e2e/usuario-cambio-correo.spec.ts`.
+- Modificados: `app/(app)/configuracion/_components/UsuarioForm.tsx` (monta el bloque en edición; no
+  para una cuenta `apiKey`, R1613), `lib/actions/usuarios.ts` y `lib/actions/confirmar-correo.ts` (solo
+  se quitan los cuatro `@sin-superficie`), `tests/unit/components/usuario-form.test.tsx` (el mock de
+  acciones gana las tres del bloque), `playwright.config.ts` (E2E en `aislamiento`),
+  `specs/SLT-221-corregir-correo-cedula/tasks.md` (T2.0, T3.1-T3.3 y archivos esperados).
+- Sin cambio de backend. La fecha del vencimiento usa `formatFechaHoraLegible` de Configuración › API.
+- `docs/ayuda`: tasks.md no pide entrada.
+
+## Mapa R → test
+
+| R | Test |
+|---|---|
+| R1617 | `cambio-correo-usuario.test.tsx` (envio_fallido al pedir y al reenviar: aviso y relectura sin pendiente) |
+| R1618 | `cambio-correo-usuario.test.tsx` (sin pendiente, con pendiente y fecha, vencido; error de lectura) + E2E paso 1 |
+| R1619 | `cambio-correo-usuario.test.tsx` (cancelar y cancelar fallido) + E2E paso 2 (pendiente anulado en la base) |
+| R1620 | `cambio-correo-usuario.test.tsx` (reenviar pide el MISMO correo y muestra el vencimiento nuevo) |
+| conflict / validation_error | `cambio-correo-usuario.test.tsx` (junto al campo; el motivo del servidor tal cual) |
+| R1622 | E2E pasos 6, 8 y 9 (correo cambiado en la base, entra con el nuevo y no con el anterior, fila del Histórico) |
+| R1623 | E2E paso 7 (el mismo enlace otra vez: mensaje genérico) |
+| R1624 | texto en `ConfirmarCorreoForm` (`correo_en_uso`); el caso lo prueban los tests de servicio y acción del PR 2 |
+| R1626, R1628 | E2E paso 5 (sin sesión; al abrir, correo y pendiente intactos y el fragmento sale de la barra) |
+
+## Salida real
+
+- `pnpm run typecheck`: exit 0. `eslint` sobre los 9 archivos tocados: exit 0.
+- `vitest run cambio-correo-usuario.test.tsx usuario-form.test.tsx`: 2 files, 51 passed (13 + 38).
+- E2E local. `servi_slt221_e2e` ya existía (del PR 1) y no se resetea: base NUEVA `servi_slt221_e2e_pr3`,
+  `prisma migrate deploy` exit 0, `pnpm run db:seed` exit 0, `next build` con
+  `NEXT_PUBLIC_APP_URL`/`APP_BASE_URL` en `localhost:3321` exit 0.
+  `E2E_PUERTO=3321 E2E_STORAGE_PUERTO=54521 pnpm exec playwright test e2e/usuario-cambio-correo.spec.ts
+  e2e/usuario-corregir-cedula.spec.ts`: **12 passed, 0 failed, E2E_EXIT=0** (los 2 SLT-221 + 10 de la
+  dependencia `plataforma-vacia`, que incluye `superadmin-empresas`, el otro spec de `/recuperar-contrasena`).
+  Primera vuelta roja: `getByRole("alert")` chocaba con el anunciador de rutas de Next; se afirma por texto.
+- `./init.sh`: ver la línea de la tanda en `progress/features/SLT-221.md`.
+
+Veredicto: UI del cambio de correo hecha; E2E verde en local; el tamaño del PR mide contra `dev` sin el PR 2.
