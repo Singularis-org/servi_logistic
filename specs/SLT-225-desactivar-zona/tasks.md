@@ -15,29 +15,29 @@
 
 ## T1 — Migraciones y esquema (R1740, R1754, R1755-base) — sin dependencias
 
-- [ ] `db/migrations/20261123120000_historial_zona_desactivada/{migration,down}.sql` (design §1.4).
-- [ ] `db/migrations/20261123120100_zona_activa/{migration,down}.sql`: columna y los dos triggers
+- [x] `db/migrations/20261123120000_historial_zona_desactivada/{migration,down}.sql` (design §1.4).
+- [x] `db/migrations/20261123120100_zona_activa/{migration,down}.sql`: columna y los dos triggers
   (design §1.2).
-- [ ] `db/schema.prisma`: `Zona.activa` y los dos valores en `HistorialAccionTipo`.
+- [x] `db/schema.prisma`: `Zona.activa` y los dos valores en `HistorialAccionTipo`.
 - **Hecho:** `migrate deploy` sobre una base desechable nueva; `down.sql` de las dos aplicado y
   re-aplicado sin error; `prisma generate` y typecheck verdes.
 
 ## T2 — Catálogo del historial (R1749, R1750) — depende de T1
 
-- [ ] `lib/types/historial-accion.ts`: tupla, categoría y etiqueta (design §3.5). Ajustar los conteos
+- [x] `lib/types/historial-accion.ts`: tupla, categoría y etiqueta (design §3.5). Ajustar los conteos
   escritos en comentarios y tests que cuenten tipos.
 - **Hecho:** typecheck verde (`satisfies` y `_AsegurarExhaustivo` cierran las dos direcciones).
 
 ## T3 — Repositorio (R1741–R1748, R1752, R1753, R1759-orden) — depende de T1, T2
 
-- [ ] `IZonaRepository`: `desactivar`, `reactivar`, sus resultados y `zona_desactivada` en
+- [x] `IZonaRepository`: `desactivar`, `reactivar`, sus resultados y `zona_desactivada` en
   `UpdateZonaResult`.
-- [ ] `ZonaRepository`: `desactivar` y `reactivar` (design §3.1–3.2), `update` rechaza la zona
+- [x] `ZonaRepository`: `desactivar` y `reactivar` (design §3.1–3.2), `update` rechaza la zona
   desactivada (§3.3), `list` ordena y `toDTO` proyecta `activa` (§3.4).
-- [ ] `TarifasPantallaRepository.listarZonas`/`buscarZona` con `where: { activa: true }` (R1757).
+- [x] `TarifasPantallaRepository.listarZonas`/`buscarZona` con `where: { activa: true }` (R1757).
   Comprobar si el diálogo de activar tarifas y los «faltantes» leen `listarZonas`. Si leen otra
   consulta, anotarlo en `progress/impl_SLT-225.md` y decidir con el leader.
-- [ ] `tests/unit/guards/historial-accion-escrituras-cubiertas.guardia.test.ts`: las dos entradas del
+- [x] `tests/unit/guards/historial-accion-escrituras-cubiertas.guardia.test.ts`: las dos entradas del
   censo (design §3.5).
 - **Hecho:** `tests/integration/db/zona-desactivar.test.ts` verde y matado por mutación (ver mapa);
   `zona-repository.test.ts` y `zona-sin-distritos.test.ts` verdes sin cambiar expectativas;
@@ -45,12 +45,12 @@
 
 ## T4 — Servicios y acciones (R1751, R1753, R1755) — depende de T3
 
-- [ ] `IZonaService`/`ZonaService`: `desactivar`, `reactivar`, y `actualizar` traduce
+- [x] `IZonaService`/`ZonaService`: `desactivar`, `reactivar`, y `actualizar` traduce
   `zona_desactivada`.
-- [ ] `lib/types/zona.ts`: `ZonaDTO.activa`, `ImpedimentosDesactivacion`, resultados, los dos mensajes y
+- [x] `lib/types/zona.ts`: `ZonaDTO.activa`, `ImpedimentosDesactivacion`, resultados, los dos mensajes y
   `opcionesZonaUsuario` (design §2.1).
-- [ ] `lib/actions/zonas.ts`: `desactivarZona`, `reactivarZona`.
-- [ ] `UsuarioService.resolverZona` con el valor actual (design §2.3).
+- [x] `lib/actions/zonas.ts`: `desactivarZona`, `reactivarZona`.
+- [x] `UsuarioService.resolverZona` con el valor actual (design §2.3).
 - **Hecho:** `zona-service.test.ts`, `zonas-action.test.ts` y `usuario-zona.test.ts` verdes.
 
 ## T5 — Pantallas (R1756, R1759–R1761) — depende de T4 [P con T6]
