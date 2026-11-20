@@ -11,9 +11,26 @@
 > La idempotencia va en 3 capas: al crear el intento, al recibir el evento y al registrar el pago. Cada empresa
 > ve solo sus cobros (RLS), y el historial de plataforma registra cada transición.
 >
+> **Enmienda del alcance (humano, 2026-11-20, con la ficha ya implementada en el PR #263).** Entra además:
+> - **Varios proveedores:** el intento y el evento admiten `rebill`, `wompi` y `global66`. El proveedor entra como
+>   parámetro al crear el intento, no como literal.
+> - **El método del cobro** se guarda en el intento: `tarjeta`, `recurrente` o `transferencia`, como conjunto cerrado.
+> - **Marcar pagado a mano:** la función de dominio y su permiso (solo el superadmin) para marcar como pagado un
+>   intento pendiente con la referencia del proveedor cuando el aviso no llega, por la misma vía de la capa 3 y con
+>   rastro en el historial de plataforma.
+>
 > **Lo que NO entra.**
-> - El adaptador de Rebill: SLT-227 «Cobro automático: proveedor de cobro y adaptador de Rebill».
-> - El endpoint del webhook: SLT-228 «Cobro automático: webhook de Rebill».
+> - La interfaz de proveedores y el adaptador de Rebill: SLT-227 «Cobro automático: interfaz de proveedores y
+>   adaptador de Rebill». El de Wompi: SLT-252 «Cobro automático: adaptador de Wompi». La transferencia y el enlace
+>   de Global66: SLT-253 «Cobro automático: transferencia y enlace con Global66» (enmienda del 2026-11-20).
+> - Qué método y qué proveedor usa cada país: SLT-251 «Cobro automático: medios y proveedor por país» (enmienda del
+>   2026-11-20).
+> - La casilla «Recordar tarjeta» y lo que se guarda del medio de pago al marcarla: SLT-232 «Cobro automático:
+>   medios de pago guardados y cobro recurrente». En el intento solo queda el id del pago del proveedor (enmienda
+>   del 2026-11-20).
+> - La pantalla para marcar pagado a mano: SLT-234 «Cobro automático: panel del superadmin para cobros y
+>   proveedor» (enmienda del 2026-11-20).
+> - El endpoint del webhook: SLT-228 «Cobro automático: webhook por proveedor y el de Rebill».
 > - La conversión a USD: SLT-229 «Cobro automático: cobro en USD para países sin cobertura». Aquí solo se
 >   guardan sus campos.
 > - El enlace de pago: SLT-230 «Cobro automático: enlace de pago por factura».
@@ -33,6 +50,9 @@ Escritos por `spec_author` el 2026-11-20. Vocabulario:
 - **Saldo de la factura:** el de SLT-60 «Confirmación del pago a la plataforma por el superadmin»: el total de
   una factura cerrada menos lo aplicado por los pagos confirmados y no anulados.
 - **Clave del intento:** factura + monto local + moneda de cobro + tasa (la tasa vacía si se cobra en moneda local).
+  Desde la enmienda del 2026-11-20, también el proveedor y el método (R32; design §12.2).
+- **Método del cobro:** `tarjeta`, `recurrente` o `transferencia` (enmienda del 2026-11-20).
+- **Referencia del proveedor:** el `payment_id` que el superadmin copia del proveedor al marcar pagado a mano.
 - **Pago del proveedor:** el pago que el proveedor identifica con su `payment_id`.
 - **Evento:** un aviso del proveedor, identificado por (proveedor, `logId`).
 
@@ -169,6 +189,57 @@ Escritos por `spec_author` el 2026-11-20. Vocabulario:
   columna «Registró» (y el detalle del movimiento) DEBE mostrar «Pagado en línea», nunca «Automático · Plantilla
   de gasto fijo». Los demás movimientos automáticos DEBEN seguir mostrando lo mismo que hoy.
 
+### Proveedor y método (enmienda del 2026-11-20)
+
+- **R30.** El sistema DEBE admitir como proveedor de un intento y de un evento solo `rebill`, `wompi` y `global66`.
+  SI se intenta guardar un intento o un evento con otro proveedor, con cualquier rol (también el dueño de la base),
+  ENTONCES la base DEBE rechazarlo sin escribir. SI llega al servicio un evento con otro proveedor, ENTONCES el
+  servicio DEBE rechazarlo sin registrarlo ni consultar a nadie.
+- **R31.** CUANDO se pide un intento, el pedido DEBE traer el proveedor y el método, y el intento DEBE nacer con
+  esos dos valores. SI el método no es `tarjeta`, `recurrente` ni `transferencia`, ENTONCES la base DEBE rechazar el
+  intento sin escribir. Ejemplo: se pide con `wompi` y `tarjeta` ⇒ el intento nace con proveedor `wompi` y método
+  `tarjeta`, y su fila de historial lleva los dos.
+- **R32.** CUANDO se pide un intento para una factura cuyo intento vivo es de otro proveedor o de otro método, el
+  sistema DEBE tratarlo como otra clave (R3): en una sola operación, anular el vivo con el motivo «clave distinta» y
+  crear uno nuevo con el proveedor y el método pedidos. Con el mismo proveedor, el mismo método y el mismo saldo,
+  aplica R2. Ejemplo: vivo de ₡20 000 con `tarjeta`; la empresa pide `transferencia` ⇒ el de tarjeta queda
+  `anulado` y nace uno de ₡20 000 con `transferencia`; sigue habiendo un solo vivo (R4).
+- **R33.** El método de un intento NO DEBE poder cambiar después de crearlo, con ningún rol (también el dueño de la
+  base), igual que el proveedor en R8.
+- **R34.** Un intento NO DEBE guardar del medio de pago nada más que el id del pago del proveedor: ni número, CVV,
+  vencimiento, marca, últimos 4 dígitos ni titular de la tarjeta, ni ids de cliente o de tarjeta del proveedor.
+  Lo que se guarda al marcar «Recordar tarjeta» es de SLT-232 y no va en el intento.
+
+### Marcar pagado a mano (enmienda del 2026-11-20)
+
+- **R35.** CUANDO el superadmin marca como pagado un intento `pendiente` con la referencia del proveedor, el sistema
+  DEBE registrarlo igual que R17, en una sola operación, con el candado de la empresa y la factura bloqueada:
+  - el intento pasa a `aprobado`, con la referencia como id del pago del proveedor;
+  - el libro recibe un «Pago a la plataforma» por el monto local, con la marca «Pagado en línea» y la referencia;
+  - el pago queda confirmado y aplicado entero a la factura del intento;
+  - la caja, la ganancia y la deuda bajan en el monto (R18 y R19 aplican igual, y «Registró» dice «Pagado en
+    línea», R29).
+
+  Ejemplo: una transferencia de Global66 de ₡20 000 llegó sin aviso; el superadmin la marca con la referencia
+  `G66-123` ⇒ el intento queda `aprobado` con `G66-123`, la deuda baja ₡20 000 y el saldo de la factura queda en 0.
+- **R36.** CUANDO se marca pagado a mano, el sistema DEBE dejar en el historial de plataforma, en la misma operación,
+  la fila `pendiente` → `aprobado` con el superadmin como quien lo hizo y la marca de que fue a mano. La
+  confirmación del pago DEBE llevar al superadmin como quien la confirmó.
+- **R37.** El mismo pago (proveedor, referencia) DEBE contar una sola vez, venga por el aviso del proveedor, por la
+  marca a mano o por los dos:
+  - CUANDO se marca a mano una referencia que ya es el pago de ese intento, el sistema DEBE responder «ya
+    registrado» sin escribir nada;
+  - CUANDO llega el aviso del proveedor de un pago ya marcado a mano, el sistema DEBE responder «ya registrado» sin
+    escribir nada, también si el intento no tiene id externo;
+  - CUANDO la marca y el aviso llegan a la vez, el sistema DEBE dejar un solo «Pago a la plataforma», una
+    confirmación y una aplicación.
+- **R38.** SI el intento no existe, no está `pendiente`, la referencia está vacía, la referencia ya es el pago de
+  otro intento del mismo proveedor o el saldo de la factura es menor que el monto del intento, ENTONCES el sistema
+  DEBE rechazar la marca sin escribir nada y DEBE decir cuál de esos casos fue.
+- **R39.** SI marca pagado a mano un rol que no es el superadmin, ENTONCES el sistema DEBE responder `forbidden`
+  antes de leer o escribir nada. El rol de la app NO DEBE poder ejecutar la función de la base que marca el pago
+  (`42501`).
+
 ### Cobertura de las decisiones cerradas
 
 | Decisión (fecha) | Requisitos |
@@ -189,10 +260,23 @@ Escritos por `spec_author` el 2026-11-20. Vocabulario:
 | P5, un solo PR (2026-11-20) | Sin comportamiento: tamaño del PR |
 | El borrado del intento se cierra solo con el `REVOKE` (2026-11-20) | R8, R26 |
 | «Pagado en línea» en «Registró», en este PR (2026-11-20) | R29 |
+| Enmienda: varios proveedores (2026-11-20) | R30, R31, R32 |
+| Enmienda: el método del cobro en el intento (2026-11-20) | R31, R32, R33 |
+| Enmienda: marcar pagado a mano (2026-11-20) | R35, R36, R37, R38, R39 |
+| Enmienda: lo que queda fuera, y en el intento solo el id del pago (2026-11-20) | R34 (el resto, sin comportamiento: fichas aparte) |
 
 ## Preguntas abiertas
 
-Ninguna.
+Ninguna bloquea el spec. Las dos de la enmienda llevan una propuesta, que vale si el humano no dice otra cosa:
+
+1. **¿La marca a mano admite también un intento `creado`?** El humano escribió «un intento pendiente», y así va en
+   R35 y R38. Un intento llega a `pendiente` cuando el proveedor crea el cobro (R10). Si la transferencia de
+   Global66 de SLT-253 «Cobro automático: transferencia y enlace con Global66» no crea cobro en el proveedor, sus
+   intentos se quedarían en `creado` y no se podrían marcar. **Propuesta:** solo `pendiente`, como dijo el
+   humano. Si SLT-253 lo necesita, admitir `creado` es una condición más en la función (design §12.4).
+2. **Tamaño de los tests.** La enmienda suma unas 380–480 líneas de tests a las 2 534 medidas, así que queda en
+   2 900–3 000, en el borde del tope de 3 000 (design §12.8). P5 aceptó pasar el tope de **producción**, no el de
+   tests. **Propuesta:** si al medir pasa de 3 000, se acepta igual que P5 y se anota el marcador.
 
 ## Decisiones cerradas (no reabrir)
 
@@ -214,3 +298,7 @@ Ninguna.
 | 2026-11-20 | P5: ~24 archivos y ~1 300–1 500 líneas de producción, por encima del tope de 1 000 | **Un solo PR**, aunque pase el tope de líneas (humano). |
 | 2026-11-20 | T0.3: con el trigger `cobro_intento_sin_borrar`, una empresa con intentos no se puede limpiar (tests y demo) | **Se quita el trigger** (humano, opción a). El borrado de `cobro_intento` queda cerrado solo por `REVOKE DELETE` a `servi_app`, como `pago_plataforma_confirmacion` (SLT-60). El dueño de la base sí puede borrar, para limpiar la demo y los tests. |
 | 2026-11-20 | ¿Qué muestra «Registró» en un pago en línea? | **«Pagado en línea»**, nunca «Automático · Plantilla de gasto fijo», y se corrige en este PR (humano). Es la alternativa 6 del design, que deja de estar descartada (R29). Sube el tamaño del PR, ya aceptado por P5. |
+| 2026-11-20 | Enmienda: ¿solo Rebill? | **No: varios proveedores** (humano). El modelo admite `rebill`, `wompi` y `global66` en `cobro_intento` y en `cobro_webhook_evento`. El proveedor entra como parámetro al crear el intento, no como literal en el servicio. |
+| 2026-11-20 | Enmienda: ¿se guarda el método del cobro? | **Sí, en el intento** (humano): `tarjeta`, `recurrente` o `transferencia`, como conjunto cerrado. Si forma parte de la clave de idempotencia lo decide el design (§12.2). |
+| 2026-11-20 | Enmienda: ¿qué pasa si el aviso del proveedor no llega? | **El superadmin marca pagado a mano** un intento pendiente con la referencia del proveedor (humano). Ejemplo: una transferencia de Global66 que llegó sin aviso. Usa la vía de la capa 3: único (proveedor, payment_id), `FOR UPDATE` y el candado de la empresa; si el aviso llega después, responde «ya registrado» y no cuenta doble. Aquí entran solo la función de dominio y el permiso (solo el superadmin), con rastro en el historial de plataforma con el actor. La pantalla es de SLT-234 «Cobro automático: panel del superadmin para cobros y proveedor». |
+| 2026-11-20 | Enmienda: ¿qué queda fuera? | **Fichas aparte** (humano): el método y el proveedor por país, SLT-251 «Cobro automático: medios y proveedor por país»; los adaptadores, SLT-227 «Cobro automático: interfaz de proveedores y adaptador de Rebill», SLT-252 «Cobro automático: adaptador de Wompi» y SLT-253 «Cobro automático: transferencia y enlace con Global66»; la casilla «Recordar tarjeta», SLT-232 «Cobro automático: medios de pago guardados y cobro recurrente». En el intento solo queda `pago_proveedor_id`, nada más de la tarjeta. |

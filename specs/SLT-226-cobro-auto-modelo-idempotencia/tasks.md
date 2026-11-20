@@ -1,6 +1,6 @@
 # SLT-226 «Cobro automático: modelo del cobro e idempotencia» — tasks
 
-> Design: `design.md`. Requisitos: `requirements.md` (R1–R29).
+> Design: `design.md`. Requisitos: `requirements.md` (R1–R39; R30–R39 son la enmienda del 2026-11-20, tanda T8).
 > - P1–P5 están cerradas (humano, 2026-11-20; `requirements.md > Decisiones cerradas`). Por la decisión P5 va
 >   todo en un solo PR.
 > - `[P]` = se puede hacer en paralelo con las demás `[P]` del mismo bloque.
@@ -115,6 +115,40 @@
 - [x] **T7.5** (solo si T0.5 lo pide) Ajustar `migracion-slt143-ida-y-vuelta.test.ts`. **Hecho:** en verde.
   - **No aplica** (T0.5 lo descartó): la suite de SLT-143 no aplica su `down` sobre esta migración; corre en verde sin cambios (T7.2).
 
+## T8 — Enmienda del 2026-11-20: proveedores, método y marcar pagado a mano (R30–R39; design §12)
+
+> Tanda nueva sobre el PR #263. Edita la migración `20261124130100_cobro_intento` directamente (no está en `dev`):
+> no nace ninguna migración ni ningún archivo. Antes de T8.1, la base de la feature se baja con su `down.sql`.
+
+- [ ] **T8.1** La migración (§12.1, §12.3, §12.4):
+  - los dos CHECK de proveedor con `rebill`, `wompi` y `global66`;
+  - la columna `metodo` con su CHECK, y `metodo` entre las columnas fijas de `cobro_intento_solo_avanza`;
+  - `_cobro_historial` con `p_manual` y el `detalle` con `proveedor` y `metodo`;
+  - `cobro_intento_obtener_o_crear` con `p_metodo` y la clave nueva;
+  - `_cobro_aprobar`, sacada de `cobro_registrar_pago_aprobado`, y el paso 0 de esa función;
+  - `cobro_marcar_pagado_manual`, con su `REVOKE`.
+
+  **Hecho:** aplica en una base desechable; las funciones nuevas tienen `prosecdef` y no tienen `EXECUTE` para
+  `servi_app`.
+- [ ] **T8.2** El `down.sql` (§12.5). **Hecho:** ida y vuelta con la huella del catálogo idéntica, y aborta con un
+  intento.
+- [ ] **T8.3** `[P]` `db/schema.prisma`: `metodo String` en `CobroIntento`. **Hecho:** `prisma validate` y
+  `prisma migrate diff` contra la base migrada dicen «No difference detected».
+- [ ] **T8.4** `[P]` Tipos (§12.6): `PROVEEDORES_COBRO` con los tres, `METODOS_COBRO`, `metodo` en el DTO,
+  `marcarPagadoManualSchema` y `MarcarPagadoManualResult`. **Hecho:** typecheck en verde.
+- [ ] **T8.5** Repositorio y servicio (§12.6): `metodo` en `obtenerOCrear`, sin el literal `"rebill"` en el
+  servicio; `marcarPagadoManual` en las dos interfaces y las dos clases; el motivo de `EXCEPCIONES_DE_PLATAFORMA`.
+  Depende de T8.4. **Hecho:** typecheck y lint en verde, y `grep '"rebill"' lib/services` no da nada.
+- [ ] **T8.6** Tests de la base (§12.7): R30–R34 en `cobro-intento.test.ts` y `cobro-webhook-evento.test.ts`;
+  R35–R39 (la parte de la base) en `cobro-pago-en-linea.test.ts`; el fixture y la clave de los tests que ya
+  existen. Depende de T8.1–T8.3. **Hecho:** en verde, y las mutaciones 7, 8 y 9 los ponen en rojo.
+- [ ] **T8.7** `[P]` Tests del servicio (§12.7): R30, R31, R38 y R39 en `cobro-intento-service.test.ts`. Depende de
+  T8.5. **Hecho:** en verde, y la mutación 10 lo pone en rojo.
+- [ ] **T8.8** Cierre: el mapa `R<n> → test` de `progress/impl_SLT-226.md` con R30–R39; `migracion-slt226-ida-y-vuelta`
+  y las suites de SLT-60 y SLT-143 en verde sin cambiar afirmaciones (R28); `./init.sh` y el grupo `dinero` de E2E
+  en local; `scripts/tamano-pr.mjs` medido. **Hecho:** los 39 requisitos con test, todo en verde, y el tamaño
+  anotado. Si los tests pasan de 3 000 líneas, se para y se pregunta (pregunta abierta 2 de `requirements.md`).
+
 ## Archivos esperados
 
 - `db/migrations/20261124130000_cobro_historial_enum/migration.sql`
@@ -153,5 +187,15 @@
   limpia empresas con intentos. Las limpiezas de los tests nuevos (T4, T6) borran `cobro_intento` antes que los
   usuarios y el libro (la FK `RESTRICT` de `creado_por`; el movimiento en línea tiene `registrado_por` nulo).
 
-> **Tamaño (design §10):** ~34 archivos (20 de producción, 14 de tests) tras sumar R29; las líneas de producción
-> pasan del tope, aceptado por la decisión P5.
+- Enmienda (T8): ningún archivo nuevo. Toca de nuevo `db/migrations/20261124130100_cobro_intento/migration.sql`,
+  `db/migrations/20261124130100_cobro_intento/down.sql`, `db/schema.prisma`, `lib/types/cobro.ts`,
+  `lib/interfaces/repositories/ICobroIntentoRepository.ts`, `lib/repositories/CobroIntentoRepository.ts`,
+  `lib/interfaces/services/ICobroIntentoService.ts`, `lib/services/CobroIntentoService.ts`,
+  `lib/db/excepciones-aislamiento.ts`, `tests/integration/db/cobro-intento.test.ts`,
+  `tests/integration/db/cobro-webhook-evento.test.ts`, `tests/integration/db/cobro-pago-en-linea.test.ts`,
+  `tests/integration/db/migracion-slt226-ida-y-vuelta.test.ts`, `tests/integration/db/_fixtures/cobro.ts` y
+  `tests/unit/services/cobro-intento-service.test.ts`.
+
+> **Tamaño (design §10 y §12.8):** se midieron 31 archivos (T7.4); la enmienda no suma ninguno. Las líneas de
+> producción pasan del tope, aceptado por la decisión P5, y quedan en ~2 010–2 070. Las de tests quedan en
+> ~2 910–3 010, en el borde de 3 000 (pregunta abierta 2).

@@ -1,6 +1,8 @@
 # SLT-226 «Cobro automático: modelo del cobro e idempotencia» — design
 
-> Requisitos: `requirements.md` (R1–R29). Escrito por `spec_author` el 2026-11-20.
+> Requisitos: `requirements.md` (R1–R39). Escrito por `spec_author` el 2026-11-20.
+> **Enmienda del 2026-11-20** (humano; R30–R39): varios proveedores, el método del cobro y marcar pagado a mano.
+> Todo lo que cambia está en §12; las secciones de antes llevan una nota donde §12 las corrige.
 > - Hay dos migraciones nuevas, cada una con su `down.sql`: una para los valores del enum del historial y otra
 >   para el modelo.
 > - Hay una tabla nueva de negocio, `cobro_intento`, y una de plataforma, `cobro_webhook_evento`.
@@ -55,8 +57,9 @@ cobro_intento
   id                 text PK (gen_random_uuid())
   organizacion_id    text NOT NULL FK organizacion ON DELETE CASCADE   (DEFAULT de la empresa de la tx)
   factura_id         text NOT NULL FK factura_plataforma (sin acción)
-  proveedor          text NOT NULL  CHECK IN ('rebill')
-  clave              text NOT NULL                       -- factura|monto_local|moneda_cobro|tasa
+  proveedor          text NOT NULL  CHECK IN ('rebill')    -- enmienda §12.1: + 'wompi', 'global66'
+  metodo             text NOT NULL  CHECK IN ('tarjeta','recurrente','transferencia')   -- enmienda §12.1
+  clave              text NOT NULL                       -- factura|monto_local|moneda_cobro|tasa (§12.2: +|proveedor|metodo)
   monto_local        numeric(14,2) NOT NULL CHECK > 0    -- el saldo de la factura al crearlo (R1)
   moneda_local       char(3) NOT NULL                    -- ISO 4217
   moneda_cobro       char(3) NOT NULL
@@ -141,7 +144,7 @@ cobro_intento
 ```
 cobro_webhook_evento
   id                 text PK (gen_random_uuid())
-  proveedor          text NOT NULL CHECK IN ('rebill')
+  proveedor          text NOT NULL CHECK IN ('rebill')    -- enmienda §12.1: + 'wompi', 'global66'
   log_id             text NOT NULL
   tipo               text NOT NULL            -- el tipo del evento, p. ej. payment.updated (sin interpretar)
   pago_proveedor_id  text NULL                -- el payment_id al que se refiere
@@ -232,6 +235,8 @@ La llaman todas las funciones y los triggers que cambian un estado (R25).
 
 ### 3.1 Crear o reutilizar el intento (R1–R5)
 
+> **Enmienda (§12.3):** gana `p_metodo` después de `p_proveedor`, y la clave del paso 4 suma el proveedor y el método.
+
 `cobro_intento_obtener_o_crear(p_org, p_factura, p_proveedor, p_moneda_local, p_por, p_ahora)` devuelve
 `(resultado text, intento_id text)`. El resultado es `'creado'`, `'existente'`, `'factura_no_valida'` o
 `'sin_saldo'`. Los pasos:
@@ -290,7 +295,11 @@ escribe el historial con actor `NULL`.
 ### 3.5 Registrar el pago aprobado (R17–R22)
 
 `cobro_registrar_pago_aprobado(p_proveedor, p_pago_proveedor_id, p_id_externo, p_monto numeric, p_moneda text, p_ahora)`
-devuelve `'ok'`, `'ya_registrado'`, `'sin_intento'` o `'requiere_revision'`. Todo ocurre en una sola sentencia:
+devuelve `'ok'`, `'ya_registrado'`, `'sin_intento'` o `'requiere_revision'`. Todo ocurre en una sola sentencia.
+
+> **Enmienda (§12.4):** antes del paso 1 busca el pago por `(proveedor, pago_proveedor_id)` y, si ya está, devuelve
+> `ya_registrado` (R37: el intento marcado a mano puede no tener `id_externo`). Los pasos 5–7 pasan a la función
+> interna `_cobro_aprobar`, que comparte con la marca a mano (§12.4).
 
 1. Encuentra el intento por `(proveedor, id_externo)`. Si no hay ninguno: `sin_intento`.
 2. Toma el candado `pago_plataforma:<org>` y luego `SELECT … FROM factura_plataforma … FOR UPDATE` (capa 3). El
@@ -399,6 +408,9 @@ muestra.
 ## 4. Backend
 
 ### 4.1 Tipos (`lib/types/cobro.ts`)
+
+> **Enmienda (§12.6):** `PROVEEDORES_COBRO` pasa a los tres proveedores, nace `METODOS_COBRO`, el DTO gana
+> `metodo` y nace `MarcarPagadoManualResult`. El bloque de abajo es el de la primera versión.
 
 ```ts
 export const ESTADOS_COBRO = ["creado","pendiente","aprobado","rechazado","expirado","anulado","devuelto","contracargo"] as const;
@@ -530,6 +542,7 @@ Es el camino de la marca `por_fuera` de SLT-143, con una marca más:
 | Crear un intento y registrar el enlace | Quien llame desde SLT-230 o SLT-231, que pone la regla de rol de su pantalla | Esa ficha. Aquí, la función valida la empresa y la factura | R5 |
 | Procesar eventos y registrar pagos | El job del webhook (SLT-228) o la conciliación (SLT-233), sin sesión | Las funciones del dueño. `servi_app` no las ejecuta | R26 |
 | Escribir intentos o eventos | Solo las funciones del dueño | `REVOKE` a `servi_app` | R26 |
+| Marcar pagado a mano (enmienda, §12.4) | Solo el superadmin | `marcarPagadoManual` (`esPlataforma`, antes de leer nada); la función del dueño no la ejecuta `servi_app` | R39 |
 
 **Módulo:** ninguno. El cobro de la plataforma es núcleo, como el pago a la plataforma.
 
@@ -669,3 +682,248 @@ Un `skip` por falta de base no cuenta como verde.
 - **T0.6 (2026-11-20):** sin deriva. Con una FK existente pasada a `DEFERRABLE INITIALLY DEFERRED` a mano,
   `prisma migrate diff --from-config-datasource --to-schema db/schema.prisma` da «empty migration»: Prisma no
   compara la diferibilidad. §3.5 se queda con su orden.
+
+## 12. Enmienda del 2026-11-20: proveedores, método y marcar pagado a mano (R30–R39)
+
+El humano cambió el alcance con la ficha ya implementada (PR #263, CI en verde). La migración
+`20261124130100_cobro_intento` todavía no está en `dev`, así que **la enmienda la edita directamente**: no hay
+migración nueva. Las bases ya migradas (la de la feature y las desechables) se rehacen con su `down` y su ida.
+
+### 12.0 Lo que ya existe
+
+- **El board:** SLT-227 «Cobro automático: interfaz de proveedores y adaptador de Rebill», SLT-251 «Cobro
+  automático: medios y proveedor por país», SLT-252 «Cobro automático: adaptador de Wompi» y SLT-253 «Cobro
+  automático: transferencia y enlace con Global66» se llevan los adaptadores y la configuración por país; SLT-232
+  «Cobro automático: medios de pago guardados y cobro recurrente», lo que se guarda de la tarjeta; SLT-234 «Cobro
+  automático: panel del superadmin para cobros y proveedor», la pantalla de la marca a mano. Ninguna trae la función
+  de dominio de la marca ni el método en el intento.
+- **El código:** la capa 3 ya existe (§3.5): el único `(proveedor, pago_proveedor_id)`, el candado de la empresa y
+  el `FOR UPDATE` de la factura. La marca a mano **la reutiliza** con una función interna común, no la copia. El
+  puerto `IProveedorCobro` y el `Map` de proveedores del servicio ya van por proveedor, no cambian.
+
+### 12.1 El modelo
+
+| Dónde | Cambio | R |
+|---|---|---|
+| `cobro_intento_proveedor` y `cobro_webhook_evento_proveedor` | `CHECK ("proveedor" IN ('rebill', 'wompi', 'global66'))` | R30 |
+| `cobro_intento.metodo` | Columna nueva `TEXT NOT NULL`, con `CONSTRAINT "cobro_intento_metodo" CHECK ("metodo" IN ('tarjeta', 'recurrente', 'transferencia'))`. Sin `DEFAULT`: siempre la escribe la función | R31 |
+| `cobro_intento_solo_avanza` | `metodo` se suma a las columnas fijas de R8 (`columna_fija`) | R33 |
+| `_cobro_historial` | El `detalle` suma `proveedor` y `metodo`. Gana un cuarto parámetro `p_manual boolean DEFAULT false`: con `true` el `detalle` lleva `"manual": true` | R31, R36 |
+| `db/schema.prisma` | `metodo String` en `CobroIntento` | R31 |
+
+- **El estado y el método van en `text` con CHECK** y no en enum, por la alternativa 5 de §9.
+- **Sin matriz proveedor × método en la base.** La base acepta cualquier par de los dos conjuntos. Qué pares usa
+  cada país es de SLT-251, y qué pares soporta cada proveedor lo saben sus adaptadores (SLT-227, SLT-252, SLT-253).
+  Un CHECK aquí habría que cambiarlo con cada adaptador.
+- **R34, nada más de la tarjeta.** Las columnas de `cobro_intento` siguen siendo las de §1.1 más `metodo`. Ninguna
+  guarda número, CVV, vencimiento, marca, últimos 4, titular ni ids de cliente o de tarjeta. El único dato del
+  medio es `pago_proveedor_id`. `cobro_webhook_evento` ya no guarda el cuerpo (R12). Un test afirma la lista exacta
+  de columnas, así que una columna nueva del medio de pago lo pone en rojo.
+- **El índice `cobro_intento_un_vivo_por_factura` no cambia:** sigue siendo un vivo por factura, sin el método
+  ni el proveedor (R4, R32).
+
+### 12.2 ¿El método va en la clave? Sí, y el proveedor también
+
+**Decisión técnica (no del humano):** la clave pasa a ser
+`factura | monto_local | moneda_cobro | tasa | proveedor | metodo`. Pedir un intento con otro método o con otro
+proveedor que el vivo anula el vivo con `clave_distinta` y crea uno nuevo, en la misma sentencia, igual que cuando
+cambia el saldo (R3, R32).
+
+**Por qué:**
+- **Hay un solo intento vivo por factura (R4).** Si el método no estuviera en la clave, pedir `transferencia` con
+  un vivo de `tarjeta` devolvería el de tarjeta (R2). La empresa no podría cambiar de método hasta que el vivo
+  venciera.
+- **Dos vivos, uno por método, rompen R4** y abren justo lo que la capa 1 cierra: dos cobros abiertos de la misma
+  factura que se pueden pagar los dos.
+- **Es el mismo caso que el saldo.** El intento describe un cobro concreto: cuánto, en qué moneda, con quién y por
+  qué medio. Si cambia cualquiera de esas cosas, el intento viejo ya no sirve. La regla de R3 ya lo resuelve y está
+  probada.
+- **El proveedor, por la misma razón.** Con SLT-251, un país puede cambiar de proveedor. Devolver un vivo de Rebill a
+  una empresa cuyo país ya cobra con Wompi la mandaría a un enlace que ya no corresponde.
+
+**El riesgo, y por qué se acepta.** La empresa abre el enlace de tarjeta, pide transferencia y luego paga el enlace
+viejo. El aviso encuentra el intento `anulado` y queda «requiere revisión» (R21, decisión P2), que resuelve SLT-233
+«Cobro automático: conciliación, devoluciones y contracargos». Es el mismo riesgo que ya aceptó P2 para el saldo, y
+no cuenta doble. Expirar en el proveedor el enlace del intento anulado es del adaptador (SLT-230 «Cobro automático:
+enlace de pago por factura» y SLT-253), y se anota para sus specs.
+
+**Alternativas descartadas:**
+- **El método fuera de la clave y el vivo se reutiliza:** la empresa queda atada al primer método que eligió.
+- **Un vivo por (factura, método):** rompe R4 y permite pagar dos veces la misma factura.
+- **Una columna aparte y comparar `(clave, metodo, proveedor)`:** da lo mismo con más código. La clave ya es el
+  sitio donde vive «¿es el mismo cobro?», y la función solo compara una cadena.
+
+### 12.3 Crear el intento (§3.1)
+
+`cobro_intento_obtener_o_crear(p_org, p_factura, p_proveedor, p_metodo, p_moneda_local, p_por, p_ahora)`:
+- la firma pasa de 6 a 7 argumentos y cambian el `REVOKE` y el `DROP` del `down.sql`;
+- paso 4: `v_clave := p_factura || '|' || v_saldo || '|' || p_moneda_local || '||' || p_proveedor || '|' || p_metodo`
+  (la tasa sigue vacía);
+- el `INSERT` escribe `metodo`;
+- un proveedor o un método fuera de su conjunto lo rechaza el CHECK con `23514`, que revierte todo (R30, R31).
+
+### 12.4 Marcar pagado a mano (R35–R39)
+
+**`_cobro_aprobar(p_intento "cobro_intento", p_pago_proveedor_id text, p_por text, p_ahora timestamp)`**, interna
+(sin `EXECUTE` para nadie salvo el dueño). Son los pasos 5 a 7 de §3.5 sin el `creado → pendiente`, sacados tal cual:
+1. `UPDATE` a `aprobado` con `pago_proveedor_id`, `pago_id` y `aprobado_at`, y `_cobro_historial(…, 'pendiente',
+   p_por, p_por IS NOT NULL)`: con la marca a mano, la fila lleva al superadmin como actor y `"manual": true` (R36);
+2. el `INSERT` en `wallet_movimiento` de §3.5 paso 6, sin cambios: «Pagado en línea · <referencia>»,
+   `registrado_por = NULL` y `clave_idempotencia = 'cobro:' || proveedor || ':' || referencia`. Es la misma clave
+   para el aviso y para la marca: una red más contra el doble conteo, por empresa;
+3. `_pago_plataforma_aplicar(org, pago, monto_local, [{factura_id, monto_local}], p_por, p_ahora, false, true)`. La
+   confirmación queda `en_linea` con `confirmado_por = p_por` (R36). Con el aviso, `p_por` es `NULL`, como hoy.
+
+`cobro_registrar_pago_aprobado` (§3.5) llama a `_cobro_aprobar(v_intento, p_pago_proveedor_id, NULL, p_ahora)`.
+
+**`cobro_marcar_pagado_manual(p_intento text, p_referencia text, p_por text, p_ahora timestamp)`**, del dueño,
+`SECURITY DEFINER`, `REVOKE EXECUTE … FROM PUBLIC`, sin `GRANT` a `servi_app` (R39). Devuelve una de estas
+respuestas, sin escribir nada salvo con `ok`:
+
+| Paso | Si… | Devuelve |
+|---|---|---|
+| 1 | `p_referencia` es nula o vacía tras `btrim` | `referencia_vacia` (R38) |
+| 2 | No hay intento con ese id | `sin_intento` (R38) |
+| 3 | — | Toma el candado `pago_plataforma:<org>`, luego `FOR UPDATE` de la factura y del intento, en el orden de §3.5 |
+| 4 | Ya hay un intento con `(proveedor del intento, referencia)`: es este | `ya_registrado` (R37) |
+| 4 | … es otro | `referencia_en_otro_intento` (R38) |
+| 5 | El intento no está `pendiente` | `no_pendiente` (R38) |
+| 6 | El saldo de la factura es menor que `monto_local` | `requiere_revision` (R38) |
+| 7 | — | `_cobro_aprobar(intento, btrim(referencia), p_por, p_ahora)` y `ok` (R35, R36) |
+
+- **El monto y la moneda son los del intento.** El superadmin no escribe un monto. Si la transferencia llegó por
+  otro monto, no se marca: se registra por fuera con SLT-143 «El superadmin registra un pago hecho por fuera y anula
+  un pago confirmado», o lo resuelve SLT-233.
+- **Solo `pendiente`**, como lo pidió el humano. Admitir `creado` sería cambiar la condición del paso 5 y pasar por
+  `pendiente` como §3.5; queda como pregunta abierta 1 de `requirements.md`.
+- **La autorización** está en el servicio, como en SLT-60 y SLT-143: la función recibe `p_por` y confía en quien
+  la llama, que solo puede ser el dueño.
+
+**`cobro_registrar_pago_aprobado` con un paso 0 (R37):**
+
+```sql
+IF EXISTS (SELECT 1 FROM "cobro_intento" i
+            WHERE i."proveedor" = p_proveedor AND i."pago_proveedor_id" = p_pago_proveedor_id) THEN
+  RETURN 'ya_registrado';
+END IF;
+```
+
+- **Va antes de buscar por `id_externo`.** Un intento de transferencia marcado a mano puede no tener `id_externo`,
+  y sin este paso el aviso respondería `sin_intento` en vez de «ya registrado».
+- **Se puede leer sin el candado** porque `pago_proveedor_id` solo pasa de vacío a un valor, una vez (R8): si la
+  fila ya está confirmada, no cambia. El paso 3 de dentro del candado se queda como estaba.
+- **A la vez (R37):** con `id_externo`, la marca y el aviso toman el mismo candado y el segundo ve el pago del
+  primero. Sin `id_externo`, un aviso que corre antes de que la marca confirme no encuentra intento y responde
+  `sin_intento` sin escribir. No cuenta doble, y un reintento posterior responde `ya_registrado`.
+
+### 12.5 El `down.sql`
+
+- `DROP FUNCTION cobro_intento_obtener_o_crear(text, text, text, text, text, text, timestamp)`, con la firma de 7;
+- `DROP FUNCTION cobro_marcar_pagado_manual(text, text, text, timestamp)` y
+  `DROP FUNCTION _cobro_aprobar("cobro_intento", text, text, timestamp)`, antes del `DROP TABLE`;
+- `_cobro_historial` con su firma de 4.
+
+La guarda que aborta si hay intentos no cambia (R28).
+
+### 12.6 Backend
+
+**Tipos (`lib/types/cobro.ts`):**
+
+```ts
+export const PROVEEDORES_COBRO = ["rebill", "wompi", "global66"] as const;
+export const METODOS_COBRO = ["tarjeta", "recurrente", "transferencia"] as const;
+export type MetodoCobro = (typeof METODOS_COBRO)[number];
+// CobroIntentoDTO gana `metodo: MetodoCobro`.
+export const marcarPagadoManualSchema = z.object({
+  intentoId: z.string().min(1),
+  referencia: z.string().trim().min(1).max(200),
+});
+export type MarcarPagadoManualResult = {
+  estado: "ok" | "ya_registrado" | "forbidden" | "sin_intento" | "no_pendiente" | "referencia_vacia"
+        | "referencia_en_otro_intento" | "requiere_revision";
+};
+```
+
+- `eventoProveedorSchema` ya usa `z.enum(PROVEEDORES_COBRO)`: admite los tres y rechaza el resto (R30).
+- El tope de 200 caracteres de la referencia es una red contra basura. No sale de ningún proveedor, y si un
+  adaptador lo necesita más largo lo sube.
+
+**Repositorio:** `ObtenerOCrearRepoInput` gana `metodo`. Nace `marcarPagadoManual({ intentoId, referencia, por,
+ahora })`, que llama a la función de §12.4 en `comoPlataforma("SL-45", …)`. El motivo de su entrada en
+`EXCEPCIONES_DE_PLATAFORMA` suma `cobro_marcar_pagado_manual` y R35–R39.
+
+**Servicio:**
+- **`obtenerOCrearIntento`:** `ObtenerOCrearIntentoInput` gana `proveedor: ProveedorCobroId` y `metodo:
+  MetodoCobro`, y los pasa al repositorio. Se quita el literal `"rebill"` (R31). Quien llama los elige: SLT-230 y
+  SLT-231 con lo que diga SLT-251.
+- **`marcarPagadoManual(actor, entrada)`** (R35–R39):
+  1. si `!esPlataforma(actor.rol)`, devuelve `forbidden` sin llamar al repositorio (R39);
+  2. valida con `marcarPagadoManualSchema`; si la referencia queda vacía, devuelve `referencia_vacia` sin llamar
+     (R38). Otro fallo de forma lanza, porque es un error de programación;
+  3. llama a `repo.marcarPagadoManual` con `por = actor.usuarioId` y `ahora`, y devuelve su respuesta.
+- `procesarEvento` no cambia: el paso 0 vive en la base.
+
+No hay action ni pantalla: el borde lo pone SLT-234.
+
+### 12.7 Tests y mapa `R<n> → test`
+
+Los tests van en los archivos que ya existen; no nace ninguno. Abreviaturas de `progress/impl_SLT-226.md`: `CI`
+(`cobro-intento.test.ts`), `WE` (`cobro-webhook-evento.test.ts`), `PL` (`cobro-pago-en-linea.test.ts`), `MI`
+(`migracion-slt226-ida-y-vuelta.test.ts`) y `SV` (`cobro-intento-service.test.ts`).
+
+| R | Test | Qué afirma |
+|---|---|---|
+| R30 | CI «R30: el proveedor del intento admite rebill, wompi y global66, y la base rechaza otro» | `INSERT` del dueño con `stripe` da `23514`; con `wompi` y `global66`, nace |
+| R30 | WE «R30: un evento de global66 se guarda; uno de otro proveedor da 23514» | El CHECK del evento |
+| R30 | SV «R30: un evento con un proveedor desconocido lanza sin registrar ni consultar» | Ni `registrarEvento` ni `consultarPago` |
+| R31 | CI «R31: pedido con wompi y tarjeta → el intento y su historial llevan los dos» | `proveedor`, `metodo` y el `detalle` del historial |
+| R31 | CI «R31: un método fuera del conjunto da 23514 y no deja filas» | Ni intento ni historial |
+| R31 | SV «R31: obtenerOCrearIntento pasa al repositorio el proveedor y el método que recibe» | Con `global66` y `transferencia`; sin literal |
+| R32 | CI «R32: con un vivo de tarjeta, pedir transferencia lo anula `clave_distinta` y crea otro» | 1 vivo, el viejo `anulado`, 2 filas de historial |
+| R32 | CI «R32: lo mismo con otro proveedor; con el mismo proveedor y método, `existente` (R2)» | Ajusta el test de R2 a la clave nueva |
+| R33 | CI, el test de R8 ampliado: «… ni el método» | `UPDATE` de `metodo` como dueño da `SL226 columna_fija` |
+| R34 | CI «R34: las columnas de cobro_intento son exactamente las del design y ninguna del medio de pago» | `information_schema.columns` contra la lista cerrada |
+| R35 | PL «R35: marcar a mano un pendiente de global66 sin id externo → ok» | Caja y deuda bajan; saldo 0; movimiento «Pagado en línea · G66-123»; confirmación `en_linea`; 1 aplicación; `marcasDeLaPlataforma` lo trae en `enLinea` (R29) |
+| R36 | PL «R36: la marca a mano deja `pendiente → aprobado` con el superadmin como actor y `manual: true`, y la confirmación con el superadmin» | `historial_plataforma` y `confirmado_por` |
+| R37 | PL «R37: marcar otra vez la misma referencia → `ya_registrado` sin filas» | Conteos iguales |
+| R37 | PL «R37: el aviso de un pago marcado a mano responde `ya_registrado`, con y sin id externo» | `cobro_registrar_pago_aprobado` sin filas nuevas |
+| R37 | PL «R37: la marca y el aviso a la vez, en dos conexiones, cuentan una vez» | 1 movimiento, 1 confirmación y 1 aplicación |
+| R38 | PL «R38: inexistente, `creado`, `aprobado`, `anulado`, referencia en blanco, referencia de otro intento y saldo menor se rechazan con su respuesta» | Cada respuesta de §12.4 y 0 filas |
+| R38 | SV «R38: una referencia en blanco devuelve `referencia_vacia` sin llamar al repositorio» | — |
+| R39 | SV «R39: maestro, admin, mensajero y tienda reciben `forbidden` sin llamadas» | El repositorio doble no recibe nada |
+| R39 | SV «R39: el superadmin marca con su usuarioId como actor» | `por = actor.usuarioId` |
+| R39 | PL «R39: como `servi_app`, ejecutar `cobro_marcar_pagado_manual` da 42501» | — |
+| R28 | MI, sin cambios de afirmaciones | El `down` quita también las dos funciones nuevas y la huella vuelve a la de antes |
+
+Además se ajustan, sin cambiar lo que afirman, los tests y el fixture `_fixtures/cobro.ts` que crean intentos
+(pasan proveedor y método) o comparan la clave (`…|rebill|tarjeta`).
+
+**Mutaciones que deben matar los tests nuevos**, una a la vez:
+7. la clave sin el método (R32);
+8. `cobro_registrar_pago_aprobado` sin el paso 0 (R37: el aviso sin `id_externo` da `sin_intento`);
+9. `cobro_marcar_pagado_manual` sin el candado ni los `FOR UPDATE` (R37 a la vez);
+10. `marcarPagadoManual` sin la comprobación de `esPlataforma` (R39).
+
+### 12.8 Tamaño de la enmienda
+
+Medido antes de la enmienda (T7.4, `scripts/tamano-pr.mjs`): **31/40 archivos, 1 752/1 000 líneas de producción y
+2 534/3 000 de tests.**
+
+| | Archivos nuevos | Archivos tocados (ya en el PR) | Líneas (añadidas + borradas) |
+|---|---|---|---|
+| Producción | 0 | `migration.sql`, `down.sql`, `schema.prisma`, `lib/types/cobro.ts`, las dos interfaces y las dos clases del cobro, `excepciones-aislamiento.ts` (9) | ~+260–320: SQL ~150, TypeScript ~110, Prisma ~3 |
+| Tests | 0 | `cobro-intento`, `cobro-webhook-evento`, `cobro-pago-en-linea`, `migracion-slt226-ida-y-vuelta`, `cobro-intento-service` y `_fixtures/cobro.ts` (6) | ~+380–480 |
+| **Total del PR** | **31/40** | | Producción ~2 010–2 070/1 000; tests ~2 910–3 010/3 000 |
+
+- **Archivos:** no cambian.
+- **Producción:** sigue por encima del tope, aceptado por P5.
+- **Tests:** quedan en el borde del tope. Si pasan de 3 000 al medir, va a la pregunta abierta 2.
+
+### 12.9 Riesgos de la enmienda
+
+- **Una referencia mal copiada.** Si el superadmin escribe otra referencia que la del proveedor, el aviso posterior
+  no la encuentra por el paso 0. Si el intento tiene `id_externo`, el aviso lo encuentra `aprobado` y responde
+  `requiere_revision` (R21), sin contar doble. Si no tiene, responde `sin_intento`. Nunca cuenta doble, pero la
+  pantalla de SLT-234 debe pedir la referencia tal cual la da el proveedor. Se anota para su spec.
+- **Las bases ya migradas.** Editar `20261124130100` cambia su contenido, y Prisma marca la diferencia en una base
+  que ya la aplicó. La de la feature se rehace (`down` y la ida); `dev` todavía no la tiene.
