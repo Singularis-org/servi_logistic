@@ -1,3 +1,4 @@
+import type { FormatoMoneda } from "@/lib/config/moneda";
 import { PaisSinZonaHoraria } from "@/lib/db/errores-pais";
 import type { IReglasPaisEmpresa, ReglasPais } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import type { PaisesDelAlta } from "@/lib/services/OrganizacionService";
@@ -31,6 +32,20 @@ export const CR: ReglasPaisFijas = {
   zonaHoraria: "America/Costa_Rica",
   telefono: { prefijo: "506", digitosNacionales: 8 },
   tiposDocumento: TIPOS_CR,
+};
+
+/**
+ * SL-21 (design §5.1) — una moneda distinta en TODO de la de Costa Rica, para que un test de moneda
+ * por país no pase por casualidad: otro código, otro símbolo, espacio de miles, punto decimal y sin
+ * decimales. `XTS` es el código que ISO 4217 reserva para pruebas; «€» porque la fuente embebida de
+ * las etiquetas lo cubre (U+20AC) y así un test de PDF falla por la moneda y no por la fuente.
+ */
+export const MONEDA_DE_PRUEBA: FormatoMoneda = {
+  codigo: "XTS",
+  simbolo: "€",
+  separadorMiles: " ",
+  separadorDecimal: ".",
+  decimales: 0,
 };
 
 /**
