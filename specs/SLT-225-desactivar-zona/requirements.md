@@ -6,6 +6,9 @@
 
 ## Preguntas abiertas (para Carlos, máximo 3)
 
+> **Resueltas (Carlos, 2026-11-19): las tres según la recomendación.** P1 sí sigue en los filtros
+> de consulta; P2 sí bloquea un usuario dado de baja; P3 sí bloquean devolviendo/por devolver a tienda.
+
 1. **¿La zona desactivada sigue en los filtros de consulta?** (listado de órdenes, entregas,
    analítica). La ficha dice «deja de aparecer en filtros», pero esos filtros son para buscar
    historia: «GAM Kevin (Alajuéla)» tiene unas 150 órdenes viejas y, si se quita del filtro, ya no
@@ -137,7 +140,7 @@ qué hay que mover antes. También se puede reactivar.
   pantalla pide una zona desactivada, ENTONCES DEBE mostrar la primera zona activa, como ya hace hoy
   con una zona que no existe.
 - **R1758** — Los filtros de consulta (órdenes, entregas, analítica) DEBEN seguir ofreciendo la zona
-  desactivada. *(Pendiente de la pregunta 1.)*
+  desactivada. *(Pregunta 1 resuelta: sí.)*
 
 ### Pantalla de zonas
 
