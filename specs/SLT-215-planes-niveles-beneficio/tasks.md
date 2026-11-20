@@ -56,7 +56,7 @@ Orden: T1 → T2 → (T3, T4, T5 [P]) → T6 → T7 → (T8, T9 [P]) → T10 →
     de error de R3–R5. `tests/integration/db/plan-borrador-confirmar.test.ts` cubre R12 (sin el paso:
     `pasos_pendientes` con `niveles`), R15 y R16 (confirmar la edición los deja en la versión programada y no en el
     plan).
-- [ ] **T6. Recálculo** (`PlanesRepository.ts`: `recibirCambio`, `aplicarEnTx`, `mismosNiveles`). R16, R31–R34.
+- [x] **T6. Recálculo** (`PlanesRepository.ts`: `recibirCambio`, `aplicarEnTx`, `mismosNiveles`). R16, R31–R34.
   Depende de T3, T4 y T5.
   - **Hecho:** `tests/integration/db/plan-nivel-recalculo.test.ts` cubre:
     - R31: al recibir un cambio de niveles, primero se cierra el mes pendiente con las metas de antes y después se
@@ -66,7 +66,7 @@ Orden: T1 → T2 → (T3, T4, T5 [P]) → T6 → T7 → (T8, T9 [P]) → T10 →
       efecto;
     - R33: primera asignación en nivel 0, sin historial;
     - R34: cambio de solo tipo de cobro y recepción sin cambio de niveles no tocan nada.
-- [ ] **T7. Trabajo diario** (`lib/repositories/NivelesEmpresaRepository.ts`,
+- [x] **T7. Trabajo diario** (`lib/repositories/NivelesEmpresaRepository.ts`,
   `lib/interfaces/repositories/INivelesEmpresaRepository.ts`, `lib/planes/jobs-niveles.ts`,
   `app/api/cron/procesar-jobs/route.ts`, `scripts/siembra-jobs-recurrentes.ts`, `lib/modulos/reparto.ts`,
   `lib/db/excepciones-aislamiento.ts`). R29, R30. Depende de T3.
@@ -93,7 +93,7 @@ Orden: T1 → T2 → (T3, T4, T5 [P]) → T6 → T7 → (T8, T9 [P]) → T10 →
   - Pasan por «Niveles» después de «Beneficios»; el contador pasa a 7 al crear y 8 al editar.
   - **Hecho:** sus aserciones de carga útil no cambian, salvo el contador. `pnpm exec vitest related --run` sobre el
     diff, en verde.
-- [ ] **T11. E2E nuevo** (`e2e/planes-niveles.spec.ts`). R38. Depende de T9 y T10.
+- [x] **T11. E2E nuevo** (`e2e/planes-niveles.spec.ts`). R38. Depende de T9 y T10.
   - **Hecho:** en verde en local, sobre una base desechable nueva y con `NEXT_PUBLIC_APP_URL` como en `gate.yml`.
     Pasan también en local los cinco E2E de planes adaptados (`docs/perfil-agentes.md > E2E en local antes del PR`).
 - [ ] **T12. Cierre.**
