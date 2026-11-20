@@ -159,3 +159,16 @@ El `backend_dev` escribió los dos archivos, pero no entregó informe. Verifiqu�
 - El primer CI del PR (#263) dio rojo solo por el tamaño, sin marcador. `estatico` y los tres shards de vitest
   cortaron ahí. El E2E `aislamiento` dio timeout de `page.goto` en la landing (`marca.spec.ts` y
   `rastreo-publico.spec.ts`); el diff no toca la landing, y en la primera corrida del PR estaba en verde.
+
+### CI del PR #263 sobre d887fab3: 4 rojos fuera del baseline
+
+- `catalogo-postgres-acota-esquema`: dos consultas de los tests nuevos leían `pg_enum` y `pg_trigger` sin acotar el
+  esquema. Ahora acotan a `public`.
+- `verificar-rls-despliegue.test.ts`: las cifras seguían en las de SLT-221. Pasan a 97 tablas, 186 triggers sme, 98
+  políticas y 97 sin cambio. El script ya estaba bien.
+- `orden-traspaso-migration`: a la lista exacta de migraciones posteriores le faltaban las dos de SLT-226.
+- `caja-caracterizacion-459`: no es de SLT-226. Falla 1 de cada 1000 corridas porque `diaDelPremio()`
+  (`_fixtures/caja-459.ts:129`) sortea dos fechas que pueden coincidir en la misma empresa. Lo trae `86d70bf0`. No se
+  tocó ni se añadió al baseline: va a una rama `chore/`, que decide el leader.
+- Local, con la base de la feature: los 4 archivos más los 2 tocados dan `Test Files 6 passed (6)` y
+  `Tests 76 passed (76)`.

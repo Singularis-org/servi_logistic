@@ -208,7 +208,8 @@ describeSiHayBase("SLT-226 — el intento de cobro: creación, máquina de estad
     );
     expect(funciones).toHaveLength(7);
     const triggers = await base.$queryRawUnsafe<{ tgname: string }[]>(
-      `SELECT tgname FROM pg_trigger WHERE NOT tgisinternal AND tgname = ANY($1::text[]) ORDER BY tgname`,
+      `SELECT t.tgname FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public' AND NOT t.tgisinternal AND t.tgname = ANY($1::text[]) ORDER BY t.tgname`,
       ["cobro_intento_saldo_anulacion", "cobro_intento_saldo_aplicacion", "cobro_intento_solo_avanza"],
     );
     expect(triggers).toHaveLength(3);

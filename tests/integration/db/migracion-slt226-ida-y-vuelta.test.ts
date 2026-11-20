@@ -158,8 +158,8 @@ const tablasNuevas = () =>
   );
 const valoresDelHistorial = () =>
   nombresDe(
-    `SELECT e.enumlabel AS n FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
-      WHERE t.typname IN ('historial_plataforma_accion', 'historial_plataforma_entidad') AND e.enumlabel = ANY($1::text[])`,
+    `SELECT e.enumlabel AS n FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid JOIN pg_namespace ns ON ns.oid = t.typnamespace
+      WHERE ns.nspname = 'public' AND t.typname IN ('historial_plataforma_accion', 'historial_plataforma_entidad') AND e.enumlabel = ANY($1::text[])`,
     ["cobro_intento_transicion", "cobro_intento"],
   );
 

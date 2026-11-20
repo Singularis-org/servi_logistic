@@ -322,6 +322,10 @@ describe("427/T2 — el UP y el DOWN, leidos del archivo", () => {
       // triggers; no tocan `orden_traspaso_mensajero`.
       "20261123120000_historial_zona_desactivada",
       "20261123120100_zona_activa",
+      // SLT-226: los dos valores del historial de plataforma (sola, por el 55P04) y las tablas `cobro_intento` y
+      // `cobro_webhook_evento` con sus funciones; no tocan `orden_traspaso_mensajero`.
+      "20261124120000_cobro_historial_enum",
+      "20261124120100_cobro_intento",
     ]);
   });
 });
