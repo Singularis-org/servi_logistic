@@ -46,11 +46,11 @@
 
 ## Bloque 4 — Lo que arma el servidor (depende del bloque 3)
 
-- [ ] **T4.1** [P] Plantillas de WhatsApp (design §5.2): `usaMoneda`, `necesitaMoneda` y el cuarto
+- [x] **T4.1** [P] Plantillas de WhatsApp (design §5.2): `usaMoneda`, `necesitaMoneda` y el cuarto
   argumento, en sus tres llamantes de servidor.
   - *Hecho:* `whatsapp-moneda-por-pais.test.ts` (R10, R11) en verde, y `plantilla-datos.test.ts` sin
     cambios en sus valores esperados (R16).
-- [ ] **T4.2** [P] Informes (design §5.3): `ContextoInforme.moneda` perezosa,
+- [x] **T4.2** [P] Informes (design §5.3): `ContextoInforme.moneda` perezosa,
   `EjecucionEnvioService`, y `transito/informe.ts`, `calculo.ts` y `pdf.ts`.
   - *Hecho:* `informe-moneda-por-pais.test.ts` (R12, R13) en verde, y los tests de cálculo y PDF del
     tránsito solo cambian la firma, no los textos esperados con CR (R16).
@@ -146,6 +146,11 @@ Tests:
 - `tests/unit/services/usuario-service-superadmin.test.ts`
 - `tests/unit/services/cierres-filtro-folio.test.ts`
 - `tests/unit/services/webhook-whatsapp-pais-incompleto.test.ts`
+- `tests/unit/whatsapp-envios/informe-transito-informe.test.ts` (añadido en T4.2)
+- `tests/unit/whatsapp-envios/informe-transito-composicion.test.ts` (añadido en T4.2)
+- `tests/unit/whatsapp-envios/informe-transito-repo-consultas.test.ts` (añadido en T4.2)
+- `tests/unit/actions/informe-transito-actions.test.ts` (añadido en T4.2)
+- `tests/integration/db/informe-transito-catalogo-real.test.ts` (añadido en T4.2)
 
 Los fixtures de `PaisDTO` y los dobles escritos a mano del puerto son los que hoy construyen el
 objeto entero, según Grep del 2026-11-19. Si el typecheck señala otro, se añade aquí antes del PR.
