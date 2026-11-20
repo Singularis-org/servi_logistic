@@ -66,7 +66,7 @@ const MOTIVO_DEL_SERVIDOR =
   "Tiene que haber una zona de bodega principal. Para quitarle la marca a ésta, márcala en otra zona.";
 
 function zonaDTO(id: string, nombre: string, esCentral = false) {
-  return { id, nombre, cobroVehiculo: false, distritosCount: 1, esCentral };
+  return { id, nombre, cobroVehiculo: false, distritosCount: 1, esCentral, activa: true };
 }
 
 /** Árbol mínimo con un solo distrito, suficiente para montar el selector. */

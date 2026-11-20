@@ -36,6 +36,8 @@ const filaPlan = {
   archivadoAt: null,
   topesPorRol: [{ rol: "adminTienda", maximo: 3 }],
   modulos: [{ modulo: "ranking" }],
+  beneficios: [], // SLT-214: la lista que trae el `include` del repositorio
+  niveles: [], // SLT-215: la lista que trae el `include` del repositorio
   // SLT-86 (R10): un descuento del período anual en porcentaje.
   descuentos: [{ periodo: "anual", porcentaje: new Prisma.Decimal("10.00"), monto: null }],
 };
@@ -86,6 +88,8 @@ describe("SL-24 — el composition root de planes pasa PlanesRepository", () => 
         organizacionId: null,
         topes: { porRol: { adminTienda: 3 }, apiKeys: null },
         modulos: ["ranking"],
+        beneficios: [], // SLT-214 R1: sin beneficios en la fila
+        niveles: [], // SLT-215 R1: sin niveles en la fila
         // SLT-66 R28; SLT-86 (R10): con el descuento de su fila de `plan_descuento_periodo`.
         precio: { tipo: "monto", mensual: "1000.00", descuentos: { anual: { tipo: "porcentaje", porcentaje: "10.00" } } },
         costoPorOrden: "100.00", // SLT-66 R28

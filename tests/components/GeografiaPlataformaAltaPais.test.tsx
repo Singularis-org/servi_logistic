@@ -53,6 +53,8 @@ function paisDadoDeAlta(id: string): PaisDTO {
     prefijoTelefonico: null,
     telefonoDigitosNacionales: null,
     zonaHoraria: null,
+    moneda: null,
+    impuestoNombre: null,
   };
 }
 

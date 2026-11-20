@@ -86,6 +86,13 @@ const pais = {
     prefijoTelefonico: "506",
     telefonoDigitosNacionales: 8,
     zonaHoraria: "America/Costa_Rica",
+    // SL-21 (R3): las columnas de moneda e impuesto de CR, como las deja su migración.
+    monedaCodigo: "CRC",
+    monedaSimbolo: "₡",
+    monedaSeparadorMiles: ".",
+    monedaSeparadorDecimal: ",",
+    monedaDecimales: 2,
+    impuestoNombre: "IVA",
   })),
 };
 const tipoIdentificacion = {

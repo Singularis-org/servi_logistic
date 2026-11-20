@@ -3,7 +3,7 @@ titulo: Wallet · Caja
 modulo: wallet
 pantalla: /wallet
 roles: [maestro, admin]
-actualizado: 2026-11-13
+actualizado: 2026-11-19
 fuentes:
   - app/(app)/wallet/_components/WalletModule.tsx
   - app/(app)/wallet/_components/CajaResumenCard.tsx
@@ -234,6 +234,16 @@ se descuenta de los cobros de las órdenes que vengan.
 anularlo, el monto vuelve a la caja y a la ganancia, y vuelve a lo que se puede registrar; la deuda no
 cambia, porque ese pago todavía no la había bajado. Una vez que la plataforma lo confirma, la empresa ya
 no puede anularlo.
+
+**Pagos registrados por la plataforma.** Si la empresa le paga a la plataforma por fuera y no lo registra aquí,
+la plataforma puede registrarlo por ella. Ese pago sale en el libro como **Pago a la plataforma**, con la marca
+**Registrado por la plataforma** en **Registró**, y llega ya confirmado: la caja baja en el monto, como con
+cualquier pago, y la deuda baja en el mismo momento. No pasa por confirmar, y la empresa no puede anularlo.
+
+**La plataforma puede anular un pago confirmado.** Si un pago confirmado estaba mal, la plataforma lo anula con un
+motivo; vale para los que registró la empresa y para los que registró la plataforma. El pago queda anulado en el
+libro con su motivo, y la anulación sale como una fila propia con la marca **Anulado por la plataforma**: el monto
+vuelve a la caja y a la ganancia, y la deuda sube en el monto.
 
 ## De dónde entra el dinero solo
 

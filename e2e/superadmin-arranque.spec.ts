@@ -7,6 +7,7 @@ import {
   conCandadoDelSuperadmin,
   enlacesDelMenu,
   entrarConOtp,
+  hayOtroSuperadmin,
   NO_ENCONTRADO,
   olvidarDispositivos,
   SUPERADMIN_DE_PRUEBA,
@@ -44,6 +45,15 @@ let sesion: Awaited<ReturnType<BrowserContext["cookies"]>> | null = null;
 test.beforeAll(async () => {
   test.setTimeout(180_000);
   dueno = clienteDueno();
+  // Este spec es el único que no puede reutilizar un superadmin ajeno: prueba que el arranque deja
+  // EL de prueba y que entra con SU contraseña y su OTP. Los demás lo reutilizan
+  // (`entrarComoSuperadmin`); para correrlos en una base con datos, `--no-deps` salta este proyecto.
+  if (await hayOtroSuperadmin(dueno)) {
+    throw new Error(
+      "SL-32 E2E: la base ya tiene un superadmin que no es el de prueba, y este spec prueba el arranque " +
+        "y el login del de prueba. Corre los demás proyectos con `--no-deps` o usa una base recién migrada.",
+    );
+  }
   arranque = await conCandadoDelSuperadmin(() => asegurarSuperadmin(dueno!));
 });
 

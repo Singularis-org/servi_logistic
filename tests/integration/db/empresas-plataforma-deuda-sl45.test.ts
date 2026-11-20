@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { RolValue, type PrismaClient } from "@prisma/client";
 
 import { listarEmpresasPlataforma } from "@/lib/actions/_shared/empresas-plataforma";
-import { confirmarPagoPlataformaAction } from "@/lib/actions/pagos-plataforma";
+import { anularPagoConfirmadoAction, confirmarPagoPlataformaAction } from "@/lib/actions/pagos-plataforma";
 import { anularMovimientoAction } from "@/lib/actions/wallet-anulacion";
 import { registrarEgresoAdministrativoAction } from "@/lib/actions/wallet-egresos";
 import { conEmpresa } from "@/lib/db/contexto-empresa";
@@ -23,7 +23,7 @@ import { limpiar459, sembrarPersonas459, type Personas459 } from "./_fixtures/es
 import { asignarPlan, crearPlan } from "./_fixtures/planes";
 import { tomarTarifaGlobal, type TarifaGlobalBajoLock } from "./_fixtures/cobro-plataforma-40";
 import { cerrarFacturaEnCurso } from "./_fixtures/factura-cerrada";
-import { exigirSinSuperadmin, idDeRol, insertarUsuario, tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
+import { idDeRol, insertarUsuario, obtenerOCrearSuperadmin, tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
 
 // SLT-42 (T5.4): la zona del pais de la empresa es la de CR, como antes. Las reglas reales leen el pais
 // de la empresa en curso con el cliente global, que no ve la empresa de una transaccion revertida ni
@@ -68,6 +68,8 @@ const RUN = randomUUID().replace(/-/g, "").slice(0, 10);
 const SUPERADMIN = { rol: RolValue.superadmin };
 let soltarSuperadmin: () => Promise<void> = async () => {};
 let superadminId: string | null = null;
+// En una base de desarrollo que ya tiene su superadmin, se usa ese y no se borra al acabar.
+let superadminPropio = false;
 /** Las facturas cerradas de cada empresa (SLT-60: lo único que se puede pagar). */
 const facturaDe: Record<"A" | "B", string> = { A: "", B: "" };
 /** Los pagos por su monto. */
@@ -173,14 +175,17 @@ describeSiHayBase("SL-45 — la columna «Plataforma» de «Empresas»: deuda y 
 
     // SL-32: el superadmin es único en la base; este archivo commitea el suyo con el lock tomado.
     soltarSuperadmin = await tomarLockDeSuperadmin();
-    await exigirSinSuperadmin(base);
-    superadminId = await bajoLockDeEscrituraReal(() =>
-      base.$transaction(async (tx) => {
-        const u = await insertarUsuario(tx, await idDeRol(tx, "superadmin"), null);
-        if (!u.desenlace.ok) throw new Error(`no se sembró el superadmin: ${JSON.stringify(u.desenlace)}`);
-        return u.id;
-      }),
+    const superadmin = await obtenerOCrearSuperadmin(base, () =>
+      bajoLockDeEscrituraReal(() =>
+        base.$transaction(async (tx) => {
+          const u = await insertarUsuario(tx, await idDeRol(tx, "superadmin"), null);
+          if (!u.desenlace.ok) throw new Error(`no se sembró el superadmin: ${JSON.stringify(u.desenlace)}`);
+          return u.id;
+        }),
+      ),
     );
+    superadminId = superadmin.id;
+    superadminPropio = superadmin.propio;
 
     const estatus = await base.orderStatus.findUnique({ where: { value: "por_recolectar_en_tienda" }, select: { id: true } });
     if (estatus === null) throw new Error("falta el estatus «por_recolectar_en_tienda»: corre `pnpm run db:seed`");
@@ -216,8 +221,18 @@ describeSiHayBase("SL-45 — la columna «Plataforma» de «Empresas»: deuda y 
       if (orgs.length > 0) {
         await bajoLockDeEscrituraReal(async () => {
           // SLT-60: la FK del pago a su confirmación no tiene acción; las confirmaciones se van antes que el libro.
-          for (const tabla of ["pago_plataforma_aplicacion", "pago_plataforma_confirmacion"]) {
+          // SLT-143: la anulación de la plataforma cuelga de la confirmación, y va antes.
+          for (const tabla of ["pago_plataforma_anulacion", "pago_plataforma_aplicacion", "pago_plataforma_confirmacion"]) {
             await base.$executeRawUnsafe(`DELETE FROM "${tabla}" WHERE "organizacion_id" = ANY($1::text[])`, orgs);
+          }
+          // SLT-143: el contra-asiento de la anulación de la plataforma lo registró el superadmin, que no es de la
+          // empresa: `limpiar459` no lo ve.
+          if (superadminId !== null) {
+            await base.$executeRawUnsafe(
+              `DELETE FROM "wallet_movimiento" WHERE "organizacion_id" = ANY($1::text[]) AND "registrado_por" = $2`,
+              orgs,
+              superadminId,
+            );
           }
           for (const tabla of ["historial_accion", "orden_historial_estado", "jobs", "orden", "carga", "zona"]) {
             await base.$executeRawUnsafe(`DELETE FROM "${tabla}" WHERE "organizacion_id" = ANY($1::text[])`, orgs);
@@ -226,7 +241,8 @@ describeSiHayBase("SL-45 — la columna «Plataforma» de «Empresas»: deuda y 
       }
       await limpiar459(base, A?.p ?? null);
       await limpiar459(base, B?.p ?? null);
-      if (superadminId !== null) {
+      // Solo el superadmin propio: el que ya tenia la base no se borra.
+      if (superadminId !== null && superadminPropio) {
         const id = superadminId;
         await bajoLockDeEscrituraReal(() => base.$executeRawUnsafe(`DELETE FROM "usuario" WHERE "id" = $1`, id));
       }
@@ -325,5 +341,23 @@ describeSiHayBase("SL-45 — la columna «Plataforma» de «Empresas»: deuda y 
 
   it("un rol de empresa no lee el listado: forbidden", async () => {
     expect(await listarEmpresasPlataforma({ rol: RolValue.maestro })).toEqual({ status: "forbidden" });
+  });
+
+  // SLT-143 (design §4.5; R26): un pago que la plataforma anula deja de contar como pagado. Va al final: los casos
+  // de arriba fijan las cifras de antes.
+  it("SLT-143 R26: el superadmin anula el pago confirmado de A → «Pagado» y la deuda vuelven en 300,00; los por confirmar y B no cambian", async () => {
+    const r = await anularPagoConfirmadoAction(
+      org(A),
+      { pagoId: pagos.a300, motivo: `Pago duplicado SLT143 ${RUN}` },
+      deps({ usuarioId: superadminId as string, rol: RolValue.superadmin, organizacionId: null }),
+    );
+    expect(r).toEqual({ estado: "ok" });
+    expect(await filasDelListado()).toEqual({
+      a: { deudaPlataforma: { deuda: "1000.00", estado: "debe", importe: "1000.00" }, pagadoPlataforma: "0.00", pagosPorConfirmar: 2 },
+      b: { deudaPlataforma: { deuda: "-300.00", estado: "a_favor", importe: "300.00" }, pagadoPlataforma: "300.00", pagosPorConfirmar: 0 },
+    });
+    // Con el cliente dueño, igual.
+    const filas = await new EmpresasPlataformaRepository(base).listar();
+    expect(filas.find((f) => f.id === org(A))?.pagadoPlataforma).toBe("0.00");
   });
 });

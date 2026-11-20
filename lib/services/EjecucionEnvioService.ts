@@ -194,6 +194,7 @@ export class EjecucionEnvioService implements IEjecucionEnvioService {
         parametros: params.data,
         ahora: this.now(),
         zona: await this.deps.reglasPais.zonaHoraria(), // SLT-42 (R22, R28)
+        moneda: () => this.deps.reglasPais.moneda(), // SL-21 (R12, R13): solo la lee quien pinta importes
         conDocumento: plantilla.llevaDocumento,
         ...(e.origen === "evento" && e.eventoClave !== null && e.eventoDatos !== null
           ? {

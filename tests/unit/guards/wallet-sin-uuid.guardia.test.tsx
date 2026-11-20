@@ -103,7 +103,6 @@ const u = (n: number) => `${String(n).padStart(8, "0")}-aaaa-4bbb-8ccc-${String(
 const TIENDA = u(1);
 const MENSAJERO = u(2);
 const CIERRE = u(3);
-const USUARIO = u(4);
 
 /** El origen legible que adjunta el servidor, con el uuid SOLO en `href`. */
 const ORIGEN: OrigenLegibleDTO = {
@@ -120,7 +119,6 @@ const CAJA: (WalletMovimientoDTO & { origen: OrigenLegibleDTO })[] = [
     origenTipo: "cierre_dia",
     origenId: CIERRE,
     descripcion: null,
-    registradoPor: USUARIO,
     fechaMovimiento: "2026-09-12T20:00:00.000Z",
     dueno: "propio",
     documento: null,

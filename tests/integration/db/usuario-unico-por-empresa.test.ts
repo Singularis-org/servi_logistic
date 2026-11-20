@@ -24,7 +24,13 @@ import {
   urlDeBaseDeDatos,
   type TxDeTest,
 } from "./_postgres-real";
-import { idDeRol, liberarHuecoDeSuperadmin, tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
+import {
+  exigirHuecoDeSuperadmin,
+  idDeRol,
+  saltarSiHaySuperadminAjeno,
+  superadminDeLaBase,
+  tomarLockDeSuperadmin,
+} from "./_fixtures/superadmin-32";
 
 // SL-18 T1.4/T1.5 — email y cedula de `usuario` unicos POR EMPRESA (migracion
 // `20261026090000_usuario_unico_por_empresa`), contra Postgres real.
@@ -121,12 +127,14 @@ async function codigoPrismaDe(tx: TxDeTest, fn: () => Promise<unknown>): Promise
 describeSiHayBase("SL-18 — email y cedula de usuario, unicos por empresa (tabla real)", () => {
   let prisma: PrismaClient;
   let soltarSuperadmin: () => Promise<void> = async () => {};
+  let hayAjeno = false;
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    // R3 aparta y crea el superadmin dentro de su transaccion revertida: el hueco unico (SL-32 R27)
-    // es de este archivo mientras vive. Este lock va ANTES que el de la 227.
+    // R3 crea el superadmin dentro de su transaccion revertida: el hueco unico (SL-32 R27) es de este
+    // archivo mientras vive. Este lock va ANTES que el de la 227.
     soltarSuperadmin = await tomarLockDeSuperadmin();
+    hayAjeno = (await superadminDeLaBase(prisma)) !== null;
   });
 
   afterAll(async () => {
@@ -195,10 +203,12 @@ describeSiHayBase("SL-18 — email y cedula de usuario, unicos por empresa (tabl
     expect(r.conOtroEmail).toBe(0);
   });
 
-  it("R3: el superadmin (sin empresa) entra con el email y la cedula de una cuenta de A; una segunda cuenta sin empresa con ese email da P2002", async () => {
+  it("R3: el superadmin (sin empresa) entra con el email y la cedula de una cuenta de A; una segunda cuenta sin empresa con ese email da P2002", async (ctx) => {
+    // Una base de desarrollo puede traer su superadmin, que no se aparta ni se toca: sin el hueco del
+    // indice R27, la segunda cuenta chocaria por el indice y no por el email. Se salta con el motivo.
+    saltarSiHaySuperadminAjeno(ctx, hayAjeno);
     const r = await conDosEmpresas(async (tx, a, _b, c) => {
-      // Una base de desarrollo puede traer su superadmin: se aparta dentro de esta transaccion.
-      await liberarHuecoDeSuperadmin(tx, c.rolSuperadmin);
+      await exigirHuecoDeSuperadmin(tx);
       const datos = datosDeUsuario(c, "r3");
       const deA = await crearEn(tx, a, datos);
 

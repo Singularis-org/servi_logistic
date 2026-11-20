@@ -74,8 +74,9 @@ describe("SL-40/SL-45 — verDeudaPlataformaAction cablea los repositorios reale
       _sum: { monto: true },
     });
     expect(aggregateAplicaciones).toHaveBeenCalledTimes(1);
+    // SLT-143 (R26): sin lo aplicado por los pagos que la plataforma anuló.
     expect(aggregateAplicaciones).toHaveBeenCalledWith({
-      where: { organizacionId: "org-a" },
+      where: { organizacionId: "org-a", confirmacion: { anulaciones: { none: {} } } },
       _sum: { monto: true },
     });
     expect(findMany).not.toHaveBeenCalled();

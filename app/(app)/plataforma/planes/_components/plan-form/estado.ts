@@ -4,6 +4,8 @@ import type { ModuloApagable } from "@prisma/client";
 import type { PasoDelFormulario } from "@/components/shared/FormularioPorPasos";
 import { montoParaCampo } from "@/lib/config/moneda";
 import { ORDEN_MODULOS } from "@/lib/modulos/catalogo";
+import type { Beneficio, IconoDeBeneficio } from "@/lib/planes/beneficios";
+import type { DescuentoNivel, Nivel } from "@/lib/planes/niveles";
 import {
   ROLES_CON_TOPE,
   TIPOS_COBRO,
@@ -30,6 +32,71 @@ export type LineaDeDescuento = { periodo: TipoCobro; forma: "porcentaje" | "mont
 /** SLT-83 (R20): el modo del costo por orden; al abrir un plan sale de `costoPorOrdenPorcentual !== null`. */
 export type ModoCostoPorOrden = "fijo" | "porcentual";
 
+/**
+ * SLT-214 (design §4.3; R8): un beneficio en pantalla. `clave` es un id local para el `key` de React (subir,
+ * bajar y quitar no remontan las filas vecinas); no viaja.
+ */
+export type BeneficioEnPantalla = { clave: string; icono: IconoDeBeneficio; texto: string };
+
+let ultimaClave = 0;
+/** SLT-214: una clave local nueva para una fila de beneficio. */
+export function nuevaClaveDeBeneficio(): string {
+  ultimaClave += 1;
+  return `beneficio-${ultimaClave}`;
+}
+
+/** SLT-214 (R11, R13): los beneficios de un plan o de un borrador, en su orden, con claves locales nuevas. */
+export function beneficiosEnPantalla(beneficios: readonly Beneficio[]): BeneficioEnPantalla[] {
+  return beneficios.map(({ icono, texto }) => ({ clave: nuevaClaveDeBeneficio(), icono, texto }));
+}
+
+/**
+ * SLT-215 (design §4.2; R8): un nivel en pantalla. `meta` y `valor` son lo escrito; `tipo` es la forma del
+ * descuento. Un solo `valor` por fila, para que cambiar el tipo no borre lo escrito. `clave` es un id local para el
+ * `key` de React (quitar una fila no remonta las vecinas); no viaja.
+ */
+export type NivelEnPantalla = { clave: string; meta: string; tipo: DescuentoNivel["tipo"]; valor: string };
+
+let ultimaClaveDeNivel = 0;
+/** SLT-215: una clave local nueva para una fila de nivel. */
+export function nuevaClaveDeNivel(): string {
+  ultimaClaveDeNivel += 1;
+  return `nivel-${ultimaClaveDeNivel}`;
+}
+
+/** SLT-215 (R11, R13): los niveles de un plan o de un borrador, en su orden, con claves locales nuevas. */
+export function nivelesEnPantalla(niveles: readonly Nivel[]): NivelEnPantalla[] {
+  return niveles.map(({ meta, descuento: d }) => ({
+    clave: nuevaClaveDeNivel(),
+    meta: String(meta),
+    tipo: d.tipo,
+    valor: d.tipo === "porcentaje" ? d.porcentaje : montoParaCampo(d.monto),
+  }));
+}
+
+/**
+ * SLT-215 (R3): solo cifras 0-9, sin signo, punto ni exponente (`1.5`, `1e2` y `0x10` no lo son). Se compara por
+ * carácter y no con una expresión de dígitos, que es la lectura de guía que reserva `leerGuia` (SLT-157 R567).
+ */
+function esEnteroSinSigno(texto: string): boolean {
+  return texto !== "" && [...texto].every((c) => c >= "0" && c <= "9");
+}
+
+/**
+ * SLT-215 (design §4.2; R3, R8): de la pantalla a la lista que se guarda, en el orden de pantalla y sin la clave
+ * local. Una meta que no es un entero viaja como `NaN`, para que el esquema dé el error de R3 en su campo.
+ */
+export function nivelesDe(niveles: readonly NivelEnPantalla[]): Nivel[] {
+  return niveles.map(({ meta, tipo, valor }): Nivel => {
+    const m = meta.trim();
+    const v = valor.trim();
+    return {
+      meta: esEnteroSinSigno(m) ? Number(m) : Number.NaN,
+      descuento: tipo === "porcentaje" ? { tipo, porcentaje: v } : { tipo, monto: v },
+    };
+  });
+}
+
 export type Formulario = {
   nombre: string;
   visibilidad: "publico" | "custom";
@@ -37,6 +104,10 @@ export type Formulario = {
   porRol: Record<RolConTope, string>;
   apiKeys: string;
   modulos: ModuloApagable[];
+  /** SLT-214 (R8): en el orden de pantalla, que es el que se guarda. */
+  beneficios: BeneficioEnPantalla[];
+  /** SLT-215 (R8): en el orden de pantalla, que es el que se guarda (el número es la posición + 1). */
+  niveles: NivelEnPantalla[];
   precio: PrecioPlan["tipo"];
   mensual: string;
   descuentos: LineaDeDescuento[];
@@ -103,6 +174,10 @@ export function inicial(plan: PlanDTO | null, inicioCiclo: string, precioDesde: 
     >,
     apiKeys: texto(plan?.topes.apiKeys),
     modulos: plan?.modulos ?? [],
+    // SLT-214 (R13): al editar, los vigentes del plan; un DTO sin ellos es un plan sin beneficios.
+    beneficios: beneficiosEnPantalla(plan?.beneficios ?? []),
+    // SLT-215 (R13): al editar, los vigentes del plan; un DTO sin ellos es un plan sin niveles.
+    niveles: nivelesEnPantalla(plan?.niveles ?? []),
     precio: precio.tipo,
     mensual: precio.tipo === "monto" ? montoParaCampo(precio.mensual) : "",
     descuentos: lineasIniciales(descuentos),
@@ -155,6 +230,11 @@ export function versionDe(f: Formulario) {
     topes: { porRol, apiKeys: tope(f.apiKeys) },
     // En el orden de pantalla, sea cual sea el orden en que se marcaron.
     modulos: ORDEN_MODULOS.filter((m) => f.modulos.includes(m)),
+    // SLT-214 (R8): en el orden de pantalla, sin la clave local. El esquema recorta el texto; aquí también, para
+    // que «Revisar» y la huella del paso vean lo que se guarda.
+    beneficios: f.beneficios.map(({ icono, texto }): Beneficio => ({ icono, texto: texto.trim() })),
+    // SLT-215 (R8): en el orden de pantalla, sin la clave local.
+    niveles: nivelesDe(f.niveles),
     precio: precioDe(f),
     // SLT-83 (R20): solo viajan los datos del modo elegido; el otro, `null`.
     costoPorOrden: f.modoCosto === "fijo" && f.costoPorOrden.trim() !== "" ? f.costoPorOrden.trim() : null,
@@ -187,7 +267,7 @@ export type CamposVisibles = { pideInicioCiclo: boolean; pideFechaDeEfecto: bool
  * Las rutas de error que tienen un campo propio y visible, EN EL ORDEN DE PANTALLA (el foco va al primero
  * con error). El resto va al aviso general, para que ningún rechazo se quede sin pintar por caer en un
  * campo oculto. SLT-130 (R25): el orden de pantalla es el de los pasos (General, Precio, Cobro por orden,
- * Topes, Módulos, Cuándo rige), así el formulario va al primer paso con error.
+ * Topes, Módulos, Beneficios, Niveles, Cuándo rige), así el formulario va al primer paso con error.
  */
 export function camposEnOrden(modo: ModoDelPlanForm, f: Formulario, v: CamposVisibles): string[] {
   const claves = ["nombre"];
@@ -207,13 +287,27 @@ export function camposEnOrden(modo: ModoDelPlanForm, f: Formulario, v: CamposVis
   else claves.push("costoPorOrdenPorcentual.porcentaje", "costoPorOrdenPorcentual.minimo");
   claves.push("periodicidadOrdenes");
   claves.push(...ROLES_CON_TOPE.map((r) => `topes.porRol.${r}`), "topes.apiKeys", "modulos");
+  // SLT-214 (design §4.3; R10): cada fila de beneficio tiene su ícono y su texto, en el orden de pantalla.
+  f.beneficios.forEach((_b, i) => claves.push(`beneficios.${i}.icono`, `beneficios.${i}.texto`));
+  // SLT-215 (design §4.2; R10): la lista (R5) y, por fila, su meta y el valor de su descuento, en el orden de pantalla.
+  claves.push("niveles");
+  f.niveles.forEach((n, i) => claves.push(`niveles.${i}.meta`, `niveles.${i}.descuento.${n.tipo}`));
   // SLT-135 (R14): al editar, «Cuándo rige» siempre tiene su campo de fecha.
   if (modo === "editar") claves.push("vigenteDesde");
   return claves;
 }
 
 /** SLT-130 (design §4): los pasos del formulario. «vigencia» («Cuándo rige») solo existe al editar. */
-export type IdPaso = "general" | "precio" | "orden" | "topes" | "modulos" | "vigencia" | "revisar";
+export type IdPaso =
+  | "general"
+  | "precio"
+  | "orden"
+  | "topes"
+  | "modulos"
+  | "beneficios"
+  | "niveles"
+  | "vigencia"
+  | "revisar";
 
 /**
  * Un paso tal como lo pinta el componente de pasos: `PasoDelFormulario`
@@ -231,6 +325,10 @@ export function pasosDe(modo: ModoDelPlanForm): PasoDelPlan[] {
     { id: "orden", titulo: t.orden },
     { id: "topes", titulo: t.topes },
     { id: "modulos", titulo: t.modulos },
+    // SLT-214 (R7): justo después de «Módulos»; al editar, antes de «Cuándo rige».
+    { id: "beneficios", titulo: t.beneficios },
+    // SLT-215 (R7): justo después de «Beneficios»; al editar, antes de «Cuándo rige».
+    { id: "niveles", titulo: t.niveles },
     ...(modo === "editar" ? [{ id: "vigencia" as const, titulo: t.vigencia }] : []),
     { id: "revisar", titulo: modo === "crear" ? t.revisarCrear : t.revisarEditar },
   ];
@@ -263,6 +361,8 @@ export function pasoDeLaClave(clave: string, modo: ModoDelPlanForm): IdPaso | nu
   if (clave === "periodicidadOrdenes") return "orden";
   if (empiezaPor(clave, "topes")) return "topes";
   if (clave === "modulos") return "modulos";
+  if (empiezaPor(clave, "beneficios")) return "beneficios";
+  if (empiezaPor(clave, "niveles")) return "niveles";
   return null;
 }
 

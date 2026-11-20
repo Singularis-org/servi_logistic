@@ -164,10 +164,36 @@ describe("R5, R10, R19 — verPlanes", () => {
     if (r.estado !== "ok") throw new Error(r.estado);
     expect(r.planes.map((p) => p.id)).toEqual(["p1", "p2", "p3", "p4"]);
     expect(Object.keys(r.planes[0]).sort()).toEqual(
-      ["costoPorOrden", "costoPorOrdenPorcentual", "id", "modulos", "nombre", "precio", "topes"].sort(),
+      ["beneficios", "costoPorOrden", "costoPorOrdenPorcentual", "id", "modulos", "nombre", "precio", "topes"].sort(),
     );
     expect(r.activoId).toBe("p1");
     expect(r.customActivo).toBeNull();
+  });
+
+  it("SLT-214 R24: cada plan de la lista y el custom activo llevan sus beneficios en orden; un DTO sin ellos va con la lista vacía", async () => {
+    const beneficios = [
+      { icono: "soporte" as const, texto: "Soporte 24 h" },
+      { icono: "camion" as const, texto: "Envíos prioritarios" },
+      { icono: "rayo" as const, texto: "Acceso anticipado" },
+      { icono: "regalo" as const, texto: "Mes de prueba" },
+    ];
+    const delCustom = [{ icono: "estrella" as const, texto: "Gestor de cuenta" }];
+    const custom = planDTO({ id: "c1", nombre: "A la medida", visibilidad: "custom", organizacionId: ORG_A, beneficios: delCustom });
+    const publicos = [
+      planDTO({ id: "p1", nombre: "Con cuatro", beneficios }),
+      planDTO({ id: "p2", nombre: "Sin ninguno", beneficios: [] }),
+      // Los dobles de antes de la ficha no traen la clave (design §3.2).
+      planDTO({ id: "p3", nombre: "Sin la clave" }),
+    ];
+    const repo = repoEspia({ publicos, empresa: empresa({ planId: "c1", planEsCustom: true }), custom });
+    const r = await servicio(repo).verPlanes(MAESTRO);
+    if (r.estado !== "ok") throw new Error(r.estado);
+    expect(r.planes.map((p) => [p.id, p.beneficios])).toEqual([
+      ["p1", beneficios],
+      ["p2", []],
+      ["p3", []],
+    ]);
+    expect(r.customActivo?.beneficios).toEqual(delCustom);
   });
 
   it("R10: el corte sale del tipo vigente (quincenal y mensual → 1 de diciembre; bimestral y anual → 1 de enero)", async () => {

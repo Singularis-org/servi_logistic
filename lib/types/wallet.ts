@@ -395,7 +395,9 @@ export type WalletMovimientoDTO = {
   origenTipo: WalletOrigenTipo;
   origenId: string | null;
   descripcion: string | null;
-  registradoPor: string | null;
+  // SLT-143 (B1, R13/R36): sin `registradoPor`. Era el uuid de quien escribio el asiento y viajaba
+  // al navegador de la empresa; en el pago por fuera y en su anulacion es el id del superadmin, que
+  // no debe llegar. Nadie lo leia: «Registró» sale de `LibroCajaAutoriaService`, que da nombres.
   fechaMovimiento: string; // ISO
   /**
    * Feature 231 (R31/R32) — de quien es este dinero, derivado EN EL SERVIDOR a partir de la

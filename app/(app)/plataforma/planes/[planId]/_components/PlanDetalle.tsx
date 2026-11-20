@@ -7,6 +7,7 @@ import type { ModuloApagable, PlanRastroAccion } from "@prisma/client";
 import { TriangleAlert } from "lucide-react";
 
 import { EmptyState } from "@/components/shared/EmptyState";
+import { ListaDeBeneficios } from "@/components/shared/planes/BeneficiosDelPlan";
 import { Modal } from "@/components/shared/Modal";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +16,8 @@ import { Select } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { nombreDelModulo } from "@/lib/modulos/catalogo";
+import type { Beneficio } from "@/lib/planes/beneficios";
+import { textoDeLosNiveles, type Nivel } from "@/lib/planes/niveles";
 import { formatearConteo } from "@/lib/planes/consumo";
 import {
   lineaNoAplicada,
@@ -79,6 +82,9 @@ const TEXTOS = {
   topes: "Topes",
   modulos: "Módulos incluidos",
   sinModulos: "Ninguno",
+  // SLT-214 (design §6; R22).
+  beneficios: "Beneficios",
+  sinBeneficios: "Sin beneficios",
   pendiente: "Cambio programado",
   sinPendiente: "No hay ningún cambio programado.",
   cancelarCambio: "Cancelar cambio",
@@ -118,6 +124,10 @@ const TEXTOS = {
   cancelaPrevisto: (fecha: string) => `Se cancela el previsto para ${fecha}`,
   nombreDelPlan: (nombre: string) => `Nombre del plan: ${nombre}`,
   modulosDelPlan: (modulos: string) => `Módulos: ${modulos}`,
+  /** SLT-214 (R19): el alta con beneficios; un alta sin ellos no trae la clave. */
+  beneficiosDelPlan: (textos: string) => `Beneficios: ${textos}`,
+  /** SLT-215 (R19): el alta con niveles; un alta sin ellos no trae la clave. */
+  nivelesDelPlan: (textos: string) => `Niveles: ${textos}`,
   /** SLT-86 (R30): el tope de órdenes de un alta anterior a la ficha, con el texto de entonces. */
   ordenesPorCiclo: (limite: string) => `Órdenes por ciclo: ${limite}`,
   // SLT-66 (design §6.6; R33).
@@ -340,6 +350,10 @@ export function PlanDetalle({
                 ))}
               </ul>
             )}
+          </Dato>
+          {/* SLT-214 (design §4.4; R22): todos, con su ícono y en orden. */}
+          <Dato termino={TEXTOS.beneficios}>
+            <ListaDeBeneficios beneficios={plan.beneficios ?? []} vacio={TEXTOS.sinBeneficios} />
           </Dato>
         </dl>
       </Seccion>
@@ -651,10 +665,24 @@ function lineasDelRastro(fila: FilaRastro): string[] {
     const modulos = modulosAlta.despues as ModuloApagable[];
     lineas.push(TEXTOS.modulosDelPlan(modulos.length === 0 ? TEXTOS.sinModulos : modulos.map(nombreDelModulo).join(", ")));
   }
+  // SLT-214 (design §3.6; R19): el alta con beneficios los lista en orden.
+  const beneficiosAlta = deAlta(c.beneficios);
+  if (beneficiosAlta) {
+    const beneficios = beneficiosAlta.despues as Beneficio[];
+    if (beneficios.length > 0) lineas.push(TEXTOS.beneficiosDelPlan(beneficios.map((b) => b.texto).join(", ")));
+  }
+  // SLT-215 (design §3.6; R19): el alta con niveles, «Niveles: <nivel 1>; <nivel 2>; …».
+  const nivelesAlta = deAlta(c.niveles);
+  if (nivelesAlta) {
+    const niveles = nivelesAlta.despues as Nivel[];
+    if (niveles.length > 0) lineas.push(TEXTOS.nivelesDelPlan(textoDeLosNiveles(niveles)));
+  }
 
   const nombre = deEdicion(c.nombre);
   const topes = deEdicion(c.topes);
   const modulos = deEdicion(c.modulos);
+  const beneficios = deEdicion(c.beneficios);
+  const niveles = deEdicion(c.niveles);
   const precio = deEdicion(c.precio);
   // SLT-118 (R35): la periodicidad de órdenes; el alta la trae con `antes: null` y no pinta línea.
   const periodicidadOrdenes = deEdicion(c.periodicidadOrdenes);
@@ -665,6 +693,12 @@ function lineasDelRastro(fila: FilaRastro): string[] {
       modulos: modulos
         ? { antes: modulos.antes as ModuloApagable[], despues: modulos.despues as ModuloApagable[] }
         : undefined,
+      // SLT-214 (R19, R25): «Se agrega / Se quita» o la línea de solo íconos u orden, tras los módulos.
+      beneficios: beneficios
+        ? { antes: beneficios.antes as Beneficio[], despues: beneficios.despues as Beneficio[] }
+        : undefined,
+      // SLT-215 (R19, R20): «Niveles por volumen: antes → después», tras los beneficios.
+      niveles: niveles ? { antes: niveles.antes as Nivel[], despues: niveles.despues as Nivel[] } : undefined,
       precio: precio ? { antes: precio.antes as PrecioPlan, despues: precio.despues as PrecioPlan } : undefined,
       costoPorOrden:
         costo && !esAlta

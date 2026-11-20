@@ -174,7 +174,6 @@ function movimientoCaja(i: number): WalletMovimientoDTO {
     origenTipo: "cierre_dia",
     origenId: `o-${i}`,
     descripcion: `Movimiento ${i}`,
-    registradoPor: null,
     fechaMovimiento: `2026-07-${String(10 + i).padStart(2, "0")}T14:00:00.000Z`,
     dueno: "propio", // feature 231 (R31): el flete es dinero de la empresa
     documento: null, // ficha 459 (design §7.3): fila sin documento
@@ -576,7 +575,6 @@ function movimientoNuevo(
     origenTipo: categoria === "ingreso_cod_recaudado" ? "cierre_dia" : "pago_tienda",
     origenId: `o-n-${i}`,
     descripcion: null,
-    registradoPor: null,
     fechaMovimiento: `2026-08-0${i}T14:00:00.000Z`,
     dueno: "terceros", // feature 231 (R31): los dos conceptos de la 173 son de las tiendas
     documento: null, // ficha 459 (design §7.3): fila sin documento

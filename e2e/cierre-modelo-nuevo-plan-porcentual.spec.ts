@@ -32,7 +32,7 @@ import {
   type OrdenE2E,
   type RepartoE2E,
 } from "./_escenarios/reparto";
-import { asegurarSuperadmin, conCandadoDelSuperadmin, SUPERADMIN_DE_PRUEBA } from "./_superadmin-fixture";
+import { asegurarSuperadmin, conCandadoDelSuperadmin, superadminDeLaBase } from "./_superadmin-fixture";
 import {
   abrirTarifas,
   activacionesDe,
@@ -443,10 +443,7 @@ test.describe.serial("Cierre del modelo nuevo con plan porcentual, de punta a pu
   /** El plan público de 2 % con mínimo 500, por el servicio del superadmin. */
   async function asignarPlanPorcentual(): Promise<void> {
     await conCandadoDelSuperadmin(() => asegurarSuperadmin(baseReparto()));
-    const sa = await baseReparto().usuario.findFirstOrThrow({
-      where: { email: SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL, rol: { value: "superadmin" } },
-      select: { id: true },
-    });
+    const sa = await superadminDeLaBase(baseReparto());
     const actor = { usuarioId: sa.id, rol: "superadmin" as const, zonaId: null, organizacionId: null };
     const planes = new PlanesService(new PlanesRepository(baseReparto()));
     const creado = await planes.crear(actor, {

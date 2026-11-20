@@ -154,6 +154,9 @@ las órdenes marcadas que ya NO pertenecen al conjunto filtrado.
 **R19** — El sistema DEBE determinar esa pertenencia en el SERVIDOR, sobre el conjunto completo
 con los filtros vigentes, y NUNCA sobre la página visible.
 
+> Sustituido por SLT-222 R1514 (2026-11-19): la pertenencia se decide sobre el listado de la
+> bodega SIN filtros ni búsqueda (sigue siendo en el servidor y nunca sobre la página).
+
 **R20** — El sistema NO DEBE retirar de la selección una orden por el solo hecho de no estar en
 la página visible.
 
@@ -173,11 +176,16 @@ cada relectura del listado DEBE costar como mucho UNA comprobación.
 únicamente órdenes vigentes en el conjunto filtrado, y DEBE dejar de mostrarse cuando no quede
 ninguna.
 
+> Sustituido por SLT-222 R1505/R1506/R1514 (2026-11-19): el aviso desaparece; el contador dice
+> «N seleccionadas · M fuera de esta búsqueda», y M cuenta las vigentes en el listado sin filtros.
+
 **R26** — La poda NO DEBE alterar la página visible, los filtros vigentes, los contadores de
 cabecera ni la acción de lote que se ofrece sobre lo seleccionado en la página.
 
 **R27** — CUANDO el usuario cambie los filtros, el sistema DEBE seguir limpiando la selección
 entera.
+
+> Sustituido por SLT-222 R1502 (2026-11-19): cambiar los filtros CONSERVA la selección.
 
 **R28** — La poda NO DEBE añadir ninguna consulta a la carga inicial de la pantalla ni a una
 descarga.

@@ -9,11 +9,10 @@ import {
   conCandadoDelSuperadmin,
   enlaceEnviadoA,
   enlacesDelMenu,
+  entrarComoSuperadmin,
   entrarConOtp,
   NO_ENCONTRADO,
-  olvidarDispositivos,
   recuperarContrasena,
-  SUPERADMIN_DE_PRUEBA,
 } from "./_superadmin-fixture";
 
 /**
@@ -121,8 +120,7 @@ test.beforeAll(async ({ browser }) => {
   contextoSa = await browser.newContext();
   sa = await contextoSa.newPage();
   await conCandadoDelSuperadmin(async () => {
-    await olvidarDispositivos(dueno!, SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL);
-    await entrarConOtp(superadmin(), SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL, SUPERADMIN_DE_PRUEBA.SUPERADMIN_PASSWORD);
+    await entrarComoSuperadmin(superadmin(), dueno!);
   });
   await superadmin().waitForURL("**/plataforma/empresas", { timeout: 60_000 });
 });

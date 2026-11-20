@@ -10,7 +10,7 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SWRConfig } from "swr";
-import type { ReactElement } from "react";
+import type { ReactElement, RefObject } from "react";
 
 import type { UsuarioPublico } from "@/lib/interfaces/repositories/IUserRepository";
 
@@ -25,6 +25,11 @@ vi.mock("@/lib/actions/usuarios", () => ({
   listarTiposIdentificacion: (...args: unknown[]) =>
     listarTiposIdentificacionMock(...args),
   listarRoles: (...args: unknown[]) => listarRolesMock(...args),
+  // SLT-221: el bloque «Cambiar correo» de la edición lee el pendiente. Aquí no hay ninguno; su
+  // comportamiento lo prueba `cambio-correo-usuario.test.tsx`.
+  obtenerCambioCorreoPendiente: async () => ({ status: "ok", pendiente: null }),
+  solicitarCambioCorreoUsuario: vi.fn(),
+  cancelarCambioCorreoUsuario: vi.fn(),
 }));
 
 // Feature 24/R27: el select de zona lee la acción `listarZonas` (módulo aparte).
@@ -56,10 +61,11 @@ const ROLES = [
   { id: "rol-mensajero", value: "mensajero" },
 ] as const;
 
-// Feature 24/R27: item de `listarZonas` (ZonaDTO); el form solo lee id + nombre.
+// Feature 24/R27: item de `listarZonas` (ZonaDTO); el form lee id + nombre.
+// SLT-225 (R1756): y `activa`, para dejar fuera las desactivadas.
 const ZONAS = [
-  { id: "z1", nombre: "Central" },
-  { id: "z2", nombre: "Norte" },
+  { id: "z1", nombre: "Central", activa: true },
+  { id: "z2", nombre: "Norte", activa: true },
 ] as const;
 
 // Feature 21: item de `listarVehiculos` (VehiculoDTO); el form lee id + name.
@@ -112,13 +118,15 @@ afterEach(() => {
 });
 
 describe("UsuarioForm — edición (R16)", () => {
-  it("modo editar bloquea email y cedula (R16)", () => {
+  it("modo editar bloquea el email y deja editar el número de documento (R16, SLT-221 R1606)", () => {
     renderIsolated(<UsuarioForm mode="editar" usuario={USUARIO} />);
 
     const email = screen.getByLabelText("Email");
     const cedula = screen.getByLabelText("Número de documento");
     expect(email).toBeDisabled();
-    expect(cedula).toBeDisabled();
+    // SLT-221 R1606: el documento se corrige desde la edición (antes estaba bloqueado).
+    expect(cedula).not.toBeDisabled();
+    expect(cedula).toHaveValue(USUARIO.cedula);
 
     // Los campos editables siguen habilitados.
     expect(screen.getByLabelText("Nombre")).not.toBeDisabled();
@@ -634,6 +642,56 @@ describe("UsuarioForm — zona (feature 24/R27)", () => {
     const zonaTrigger = await screen.findByRole("combobox", { name: "Zona" });
     await waitFor(() => expect(zonaTrigger).toHaveTextContent("Norte"));
   }, 15000);
+
+  describe("SLT-225 (R1756) — una zona desactivada no se ofrece, salvo la que el usuario ya tiene", () => {
+    const CON_DESACTIVADA = [
+      ...ZONAS,
+      { id: "z9", nombre: "Retirada", activa: false },
+    ];
+
+    beforeEach(() => {
+      listarRolesMock.mockResolvedValue({ status: "ok", roles: [...ROLES_ZONA] });
+      listarZonasMock.mockResolvedValue({
+        status: "ok",
+        items: CON_DESACTIVADA,
+        page: 1,
+        pageSize: 100,
+        total: CON_DESACTIVADA.length,
+      });
+    });
+
+    async function opcionesDeZona(user: ReturnType<typeof userEvent.setup>) {
+      const trigger = await screen.findByRole("combobox", { name: "Zona" });
+      await waitFor(() => expect(listarZonasMock).toHaveBeenCalled());
+      await user.click(trigger);
+      const lista = await screen.findByRole("listbox");
+      return within(lista)
+        .getAllByRole("option")
+        .map((o) => o.textContent?.trim());
+    }
+
+    it("al editar un usuario de otra zona, la desactivada no aparece", async () => {
+      const user = userEvent.setup();
+      renderIsolated(<UsuarioForm mode="editar" usuario={USUARIO_ZONA} />);
+
+      const opciones = await opcionesDeZona(user);
+      expect(opciones).toContain("Norte");
+      expect(opciones).not.toContain("Retirada");
+    }, 15000);
+
+    it("al editar al usuario que ya la tiene, la conserva y sale preseleccionada", async () => {
+      const user = userEvent.setup();
+      renderIsolated(
+        <UsuarioForm mode="editar" usuario={{ ...USUARIO_ZONA, zonaId: "z9" }} />,
+      );
+
+      const trigger = await screen.findByRole("combobox", { name: "Zona" });
+      await waitFor(() => expect(trigger).toHaveTextContent("Retirada"));
+      const opciones = await opcionesDeZona(user);
+      expect(opciones).toContain("Retirada");
+      expect(opciones).toContain("Norte");
+    }, 15000);
+  });
 });
 
 
@@ -939,6 +997,23 @@ describe("UsuarioForm — el rol apiKey no se asigna a mano", () => {
     // ...pero no se puede cambiar.
     expect(rolTrigger).toBeDisabled();
   }, 15000);
+
+  // SLT-221 «Maestro: corregir correo y cédula de un usuario» (review PR 3, m1): la cuenta de
+  // máquina no recibe correos, así que la edición no le ofrece el bloque «Cambiar correo». El
+  // servidor lo rechaza igual (R1613); esto fija que la UI no lo enseña.
+  it("SLT-221: el bloque «Cambiar correo» sale al editar a una persona y no a la cuenta apiKey", async () => {
+    listarRolesMock.mockResolvedValue({ status: "ok", roles: [...ROLES_CON_API] });
+    renderIsolated(<UsuarioForm mode="editar" usuario={USUARIO} />);
+    expect(await screen.findByRole("region", { name: "Cambiar correo" })).toBeInTheDocument();
+    cleanup();
+
+    renderIsolated(<UsuarioForm mode="editar" usuario={USUARIO_API} />);
+    // Se espera a que el rol esté resuelto: antes de eso el bloque no sale para nadie.
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: "Rol" })).toHaveTextContent("apiKey"),
+    );
+    expect(screen.queryByRole("region", { name: "Cambiar correo" })).toBeNull();
+  }, 15000);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────
@@ -1130,5 +1205,122 @@ describe("UsuarioForm — cambio pendiente de rol/zona (ficha 379/T9)", () => {
     ).toBeInTheDocument();
     // Y no ha salido ninguna escritura por el camino: evaluar no escribe.
     expect(actualizarUsuarioMock).not.toHaveBeenCalled();
+  }, 15000);
+});
+
+// SLT-221 «Maestro: corregir correo y cédula de un usuario» (Tanda 1): el maestro corrige el
+// número de documento desde la edición. El backend valida, normaliza y responde; el formulario
+// solo envía el valor y pinta lo que el servidor diga bajo «Número de documento».
+describe("UsuarioForm — SLT-221: corregir el número de documento", () => {
+  // Un maestro: su rol no pide zona ni vehículo, así la validación de cliente no frena el envío.
+  const USUARIO_MAESTRO: UsuarioPublico = { ...USUARIO, rolId: "rol-maestro" };
+
+  async function renderEdicion(
+    ref: RefObject<UsuarioFormHandle | null>,
+    usuario: UsuarioPublico = USUARIO_MAESTRO,
+  ) {
+    renderIsolated(<UsuarioForm ref={ref} mode="editar" usuario={usuario} />);
+    const rolTrigger = screen.getByRole("combobox", { name: "Rol" });
+    await waitFor(() => expect(rolTrigger).toHaveTextContent("maestro"));
+  }
+
+  it("SLT-42 R9: sin tocar el documento, editar otro campo no manda `cedula` aunque la guardada pase de 30", async () => {
+    const user = userEvent.setup();
+    // 67 caracteres: el tope de una cuenta `APIKEY-<slug>` o una cédula anterior a SLT-42.
+    const cedulaLarga = `APIKEY-${"x".repeat(60)}`;
+    expect(cedulaLarga).toHaveLength(67);
+    const conCedulaLarga: UsuarioPublico = { ...USUARIO_MAESTRO, cedula: cedulaLarga };
+    actualizarUsuarioMock.mockResolvedValue({
+      status: "ok",
+      usuario: { ...conCedulaLarga, nombre: "Ana Renombrada" },
+    });
+    const ref = createRef<UsuarioFormHandle>();
+    await renderEdicion(ref, conCedulaLarga);
+
+    const nombre = screen.getByLabelText("Nombre");
+    await user.clear(nombre);
+    await user.type(nombre, "Ana Renombrada");
+
+    let res: unknown;
+    await act(async () => {
+      res = await ref.current!.submit();
+    });
+
+    expect(res).toMatchObject({ status: "ok" });
+    expect(actualizarUsuarioMock).toHaveBeenCalledTimes(1);
+    const enviado = actualizarUsuarioMock.mock.calls[0][1] as Record<string, unknown>;
+    expect(enviado.nombre).toBe("Ana Renombrada");
+    expect(enviado).not.toHaveProperty("cedula");
+    expect(screen.getByLabelText("Número de documento")).not.toHaveAttribute("aria-invalid");
+  }, 15000);
+
+  it("R1606: el documento editado viaja en el payload de edición, sin email ni password", async () => {
+    const user = userEvent.setup();
+    actualizarUsuarioMock.mockResolvedValue({
+      status: "ok",
+      usuario: { ...USUARIO, cedula: "0926687856" },
+    });
+    const ref = createRef<UsuarioFormHandle>();
+    await renderEdicion(ref);
+
+    const cedula = screen.getByLabelText("Número de documento");
+    await user.clear(cedula);
+    await user.type(cedula, "0926687856");
+
+    await act(async () => {
+      await ref.current!.submit();
+    });
+
+    expect(actualizarUsuarioMock).toHaveBeenCalledTimes(1);
+    expect(actualizarUsuarioMock.mock.calls[0][0]).toBe(USUARIO.id);
+    const enviado = actualizarUsuarioMock.mock.calls[0][1] as Record<string, unknown>;
+    expect(enviado.cedula).toBe("0926687856");
+    // R1607: el correo y la contraseña no viajan nunca por esta edición.
+    expect(enviado).not.toHaveProperty("email");
+    expect(enviado).not.toHaveProperty("password");
+  }, 15000);
+
+  it("R1603: un conflict en `cedula` se pinta bajo «Número de documento»", async () => {
+    const user = userEvent.setup();
+    actualizarUsuarioMock.mockResolvedValue({ status: "conflict", campo: "cedula" });
+    const ref = createRef<UsuarioFormHandle>();
+    await renderEdicion(ref);
+
+    const cedula = screen.getByLabelText("Número de documento");
+    await user.clear(cedula);
+    await user.type(cedula, "0926687856");
+
+    let res: unknown;
+    await act(async () => {
+      res = await ref.current!.submit();
+    });
+
+    expect(res).toEqual({ status: "conflict", campo: "cedula" });
+    expect(cedula).toHaveAttribute("aria-invalid", "true");
+    expect(cedula).toHaveAccessibleDescription("Ya está en uso por otro usuario");
+    // El error no se cuela en otro campo.
+    expect(screen.getByLabelText("Email")).not.toHaveAttribute("aria-invalid");
+  }, 15000);
+
+  it("R1602: el validation_error del servidor en `cedula` se pinta en el campo", async () => {
+    const user = userEvent.setup();
+    const motivo = "Motivo-SLT221-de-prueba: el documento no cumple la regla del tipo";
+    actualizarUsuarioMock.mockResolvedValue({
+      status: "validation_error",
+      fieldErrors: { cedula: [motivo] },
+    });
+    const ref = createRef<UsuarioFormHandle>();
+    await renderEdicion(ref);
+
+    const cedula = screen.getByLabelText("Número de documento");
+    await user.clear(cedula);
+    await user.type(cedula, "123");
+
+    await act(async () => {
+      await ref.current!.submit();
+    });
+
+    expect(cedula).toHaveAttribute("aria-invalid", "true");
+    expect(cedula).toHaveAccessibleDescription(motivo);
   }, 15000);
 });

@@ -15,6 +15,7 @@ import { verifyPassword } from "@/lib/utils/password";
 import type { EmailMessage } from "@/lib/interfaces/external/IEmailSender";
 import type { AltaEmpresaResultado } from "@/lib/types/organizacion";
 import { crearTipoDocumentoDePrueba } from "@/tests/fabricas/paises";
+import { MONEDA_DE_PRUEBA } from "@/tests/fabricas/reglas-pais";
 import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, clienteConTransaccionAnidada, crearPrismaDeTest } from "./_postgres-real";
 import { revertida } from "./_fixtures/pais-20";
 
@@ -71,6 +72,13 @@ async function crearSegundoPais(tx: Parameters<Parameters<typeof revertida>[1]>[
       prefijoTelefonico: "507",
       telefonoDigitosNacionales: 8,
       zonaHoraria: "America/Panama",
+      // SL-21 (R17): sin moneda ni impuesto el país tampoco admite altas. Los de prueba, no los de Panamá.
+      monedaCodigo: MONEDA_DE_PRUEBA.codigo,
+      monedaSimbolo: MONEDA_DE_PRUEBA.simbolo,
+      monedaSeparadorMiles: MONEDA_DE_PRUEBA.separadorMiles,
+      monedaSeparadorDecimal: MONEDA_DE_PRUEBA.separadorDecimal,
+      monedaDecimales: MONEDA_DE_PRUEBA.decimales,
+      impuestoNombre: "TASA DE PRUEBA",
     },
   });
   await crearTipoDocumentoDePrueba(tx, SEGUNDO, { clave: "cedula", largoMin: 9, largoMax: 9 });

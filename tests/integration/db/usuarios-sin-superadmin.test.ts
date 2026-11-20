@@ -17,7 +17,9 @@ import {
 import {
   idDeRol,
   insertarUsuario,
-  liberarHuecoDeSuperadmin,
+  saltarSiHaySuperadminAjeno,
+  superadminDeLaBase,
+  superadminDelCaso,
   tomarLockDeSuperadmin,
 } from "./_fixtures/superadmin-32";
 
@@ -33,6 +35,11 @@ import {
 // `tomarLockDeSuperadmin` (crea un superadmin) y, en cada caso, el de la 227 como primera sentencia.
 //
 // Mutacion de T7: sin `notIn: [...ROLES_PLATAFORMA]` en `UserRepository.list` caen todos los casos.
+//
+// Si la base ya tiene un superadmin que no es del test (una base de desarrollo), se usa ese y NO se
+// toca: no lleva el sufijo en el nombre. Los casos que buscan por el sufijo no probarian nada con el
+// (no saldria de todos modos) y se saltan con el motivo a la vista; los que miran la lista entera o
+// los datos corren. En CI la base no lo tiene y corren todos.
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
@@ -42,6 +49,7 @@ const TAKE_TODO = 2000;
 
 let prisma: PrismaClient;
 let soltarSuperadmin: () => Promise<void> = async () => {};
+let hayAjeno = false;
 
 interface Contexto {
   tx: TxDeTest;
@@ -57,18 +65,18 @@ function conDatos<T>(fn: (c: Contexto) => Promise<T>): Promise<T> {
     await serializarEscriturasReales(tx);
     const rolSuperadmin = await idDeRol(tx, "superadmin");
     const rolMensajero = await idDeRol(tx, "mensajero");
-    await liberarHuecoDeSuperadmin(tx, rolSuperadmin);
 
-    const superadmin = await insertarUsuario(tx, rolSuperadmin, null);
+    const superadmin = await superadminDelCaso(tx, rolSuperadmin);
     const mensajero = await insertarUsuario(tx, rolMensajero, "por_defecto");
-    if (!superadmin.desenlace.ok || !mensajero.desenlace.ok) {
-      throw new Error(`no se sembraron los dos usuarios: ${JSON.stringify([superadmin.desenlace, mensajero.desenlace])}`);
+    if (!mensajero.desenlace.ok) {
+      throw new Error(`no se sembro el mensajero: ${JSON.stringify(mensajero.desenlace)}`);
     }
-    // El sufijo en el nombre de los dos: buscarlo devuelve solo lo sembrado aqui.
+    // El sufijo en el nombre de lo sembrado aqui: buscarlo devuelve solo eso. Al superadmin ajeno no
+    // se le pone (no se toca).
     await tx.$executeRawUnsafe(
       `UPDATE "usuario" SET "nombre" = 'Prueba ' || $1 WHERE "id" = ANY($2::text[])`,
       SUFIJO,
-      [superadmin.id, mensajero.id],
+      superadmin.propio ? [superadmin.id, mensajero.id] : [mensajero.id],
     );
 
     const repo = new UserRepository(clienteConTransaccionAnidada(tx));
@@ -90,6 +98,7 @@ describeSiHayBase("SL-32 — el listado de usuarios no devuelve ni cuenta al sup
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
     soltarSuperadmin = await tomarLockDeSuperadmin();
+    hayAjeno = (await superadminDeLaBase(prisma)) !== null;
   });
 
   afterAll(async () => {
@@ -111,7 +120,8 @@ describeSiHayBase("SL-32 — el listado de usuarios no devuelve ni cuenta al sup
     expect(filas[1].org).toBeNull();
   });
 
-  it("con busqueda por el sufijo: solo el mensajero, y el total es 1", async () => {
+  it("con busqueda por el sufijo: solo el mensajero, y el total es 1", async (ctx) => {
+    saltarSiHaySuperadminAjeno(ctx, hayAjeno);
     const r = await conDatos(async ({ repo, mensajeroId }) => ({
       lista: await repo.list({ skip: 0, take: 50, busqueda: SUFIJO }),
       mensajeroId,
@@ -136,7 +146,8 @@ describeSiHayBase("SL-32 — el listado de usuarios no devuelve ni cuenta al sup
     expect(r.lista.total).toBe(r.cuenta.deEmpresa);
   });
 
-  it("con filtro por rol: el de mensajero trae al mensajero, y uno que pida superadmin no trae nada", async () => {
+  it("con filtro por rol: el de mensajero trae al mensajero, y uno que pida superadmin no trae nada", async (ctx) => {
+    saltarSiHaySuperadminAjeno(ctx, hayAjeno);
     const r = await conDatos(async ({ repo, mensajeroId }) => ({
       mensajeros: await repo.list({ skip: 0, take: TAKE_TODO, busqueda: SUFIJO, roles: ["mensajero"] }),
       // El borde ya rechaza `rol=superadmin` (R10); aqui se pide al repositorio directamente para
@@ -151,7 +162,8 @@ describeSiHayBase("SL-32 — el listado de usuarios no devuelve ni cuenta al sup
     expect(r.soloSuperadmin).toEqual({ items: [], total: 0 });
   });
 
-  it("por el servicio, listar y listarCompleto (la descarga) tampoco lo traen ni lo cuentan", async () => {
+  it("por el servicio, listar y listarCompleto (la descarga) tampoco lo traen ni lo cuentan", async (ctx) => {
+    saltarSiHaySuperadminAjeno(ctx, hayAjeno);
     const r = await conDatos(async ({ servicio, superadminId }) => ({
       listar: await servicio.listar(listarUsuariosSchema.parse({ q: SUFIJO, pageSize: 100 }), MAESTRO),
       completo: await servicio.listarCompleto({ q: SUFIJO, sortBy: "createdAt", sortDir: "desc" }, MAESTRO),

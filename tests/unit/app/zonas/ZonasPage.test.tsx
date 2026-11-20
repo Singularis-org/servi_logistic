@@ -87,7 +87,7 @@ const ARBOL: ProvinciaArbolDTO[] = [
 ];
 
 const ZONAS: ZonaDTO[] = [
-  { id: "z1", nombre: "Norte", cobroVehiculo: false, distritosCount: 1, esCentral: true },
+  { id: "z1", nombre: "Norte", cobroVehiculo: false, distritosCount: 1, esCentral: true , activa: true },
 ];
 
 async function importPage() {

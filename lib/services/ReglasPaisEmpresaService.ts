@@ -1,5 +1,6 @@
 import { contextoActual, EmpresaNoResuelta, memoriaDelMarco } from "@/lib/db/contexto-empresa";
-import { PaisSinZonaHoraria } from "@/lib/db/errores-pais";
+import type { FormatoMoneda } from "@/lib/config/moneda";
+import { PaisSinImpuesto, PaisSinMoneda, PaisSinZonaHoraria } from "@/lib/db/errores-pais";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import type { IPaisRepository } from "@/lib/interfaces/repositories/IPaisRepository";
 import type { IReglasPaisEmpresa, ReglasPais } from "@/lib/interfaces/services/IReglasPaisEmpresa";
@@ -57,6 +58,23 @@ export class ReglasPaisEmpresaService implements IReglasPaisEmpresa {
     const pais = await this.paisDeLaEmpresa("zonaHoraria");
     if (pais.zonaHoraria === null) throw new PaisSinZonaHoraria(pais.id);
     return pais.zonaHoraria;
+  }
+
+  /**
+   * SL-21 (R5, R6): la moneda del país de la empresa en curso, por la misma memoria del marco que
+   * el resto (sin caché entre empresas). Sin moneda no se usa la de otro país ni la de la plataforma.
+   */
+  async moneda(): Promise<FormatoMoneda> {
+    const pais = await this.paisDeLaEmpresa("moneda");
+    if (pais.moneda === null) throw new PaisSinMoneda(pais.id);
+    return pais.moneda;
+  }
+
+  /** SL-21 (R5, R7): el nombre del impuesto del país; sin él, falla en vez de dar uno por defecto. */
+  async nombreImpuesto(): Promise<string> {
+    const pais = await this.paisDeLaEmpresa("nombreImpuesto");
+    if (pais.impuestoNombre === null) throw new PaisSinImpuesto(pais.id);
+    return pais.impuestoNombre;
   }
 
   /** R11: el país lo pone la empresa en curso, no quien llama. El inactivo sale con `activo: false`. */
