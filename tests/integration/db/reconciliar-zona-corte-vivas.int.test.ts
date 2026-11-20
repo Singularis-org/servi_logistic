@@ -38,6 +38,8 @@ import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima"
  *   3. `not: "aprobado"` -> `equals: "solicitado"` (los dos) -> rojo en la matriz (rechazado/vencido).
  *   4. `incidente: "se_mueve"` en la clasificacion          -> rojo en la matriz (R1721).
  *   5. `reprogramado: "se_mueve"`                            -> rojo en la matriz (R1723).
+ *      SLT-248 lo invirtio (R1801): ahora la mutacion es `reprogramado: "por_liberar"` (o
+ *      `novedad: "devolucion"`) -> rojo en la matriz (ver `progress/impl_SLT-248.md`).
  *   6. `notIn` con `ESTADOS_PAQUETE_EN_ESTANTE`              -> rojo en la matriz.
  */
 
@@ -318,17 +320,21 @@ describeSiHayBase("SLT-224 PR 2 · el corte nuevo de la reconciliacion de zona (
   // La matriz, por el guardado de zona (el llamador que no acota por estado ni por orden)
   // ═══════════════════════════════════════════════════════════════════════════════════════════
 
-  /** Los ocho estados de R1723, cada uno con SOLO un cierre aprobado. */
+  /**
+   * Los seis estados de R1723 que siguen sin moverse (SLT-248/R1805), cada uno con SOLO un cierre
+   * aprobado. `novedad` y `reprogramado` salieron de aqui: desde SLT-248 se mueven (R1801).
+   */
   const ESTADOS_R1723: OrderStatusValue[] = [
     "en_bodega_satelite",
     "por_devolver_a_bodega_central",
     "devolviendo_a_bodega_central",
     "devolucion_a_origen_por_rechazo",
-    "novedad",
     "por_devolver_a_tienda",
     "devolviendo_a_tienda",
-    "reprogramado",
   ];
+
+  /** SLT-248 (R1801/R1802): los dos estados «por liberar» que la P4 de SLT-224 dejaba fuera. */
+  const ESTADOS_POR_LIBERAR: OrderStatusValue[] = ["reprogramado", "novedad"];
 
   async function sembrarMatriz(e: Escenario): Promise<void> {
     // --- se mueven (R1720) ---
@@ -362,12 +368,27 @@ describeSiHayBase("SLT-224 PR 2 · el corte nuevo de la reconciliacion de zona (
       await e.crearDetalle(id, await e.crearCierre("aprobado"));
     }
 
+    // --- SLT-248: `reprogramado`/`novedad` con solo cierre aprobado se mueven (R1801); con un
+    //     cierre `solicitado` (cobro en curso) no (R1802) ---
+    for (const estado of ESTADOS_POR_LIBERAR) {
+      const aprobado = await e.crearOrden(`estado-${estado}`, estado);
+      await e.crearDetalle(aprobado, await e.crearCierre("aprobado"));
+      const solicitado = await e.crearOrden(`cd-solicitado-${estado}`, estado);
+      await e.crearDetalle(solicitado, await e.crearCierre("solicitado"));
+    }
+
     // --- R1724: la del estante con cobro en curso NO cuenta como retenida ---
     const estanteSolicitado = await e.crearOrden("estante-cd-solicitado", "en_bodega_satelite");
     await e.crearDetalle(estanteSolicitado, await e.crearCierre("solicitado"));
   }
 
-  const SE_MUEVEN = ["central-solo-aprobado", "reparto-gestion-anulada", "ruta-sat-rechazo-aprobado"];
+  const SE_MUEVEN = [
+    "central-solo-aprobado",
+    "reparto-gestion-anulada",
+    "ruta-sat-rechazo-aprobado",
+    "estado-reprogramado",
+    "estado-novedad",
+  ];
 
   const NO_SE_MUEVEN = [
     "finalizada-entregado",
@@ -384,14 +405,14 @@ describeSiHayBase("SLT-224 PR 2 · el corte nuevo de la reconciliacion de zona (
     "estado-por_devolver_a_bodega_central",
     "estado-devolviendo_a_bodega_central",
     "estado-devolucion_a_origen_por_rechazo",
-    "estado-novedad",
     "estado-por_devolver_a_tienda",
     "estado-devolviendo_a_tienda",
-    "estado-reprogramado",
+    "cd-solicitado-reprogramado",
+    "cd-solicitado-novedad",
     "estante-cd-solicitado",
   ];
 
-  it("R1720-R1724 · la matriz por el guardado de zona: exactamente las tres vivas sin cobro en curso se mueven", async () => {
+  it("R1720-R1724 · SLT-248/R1801/R1802/R1805 · la matriz por el guardado de zona: exactamente las cinco vivas sin cobro en curso se mueven (con `reprogramado` y `novedad`)", async () => {
     const r = await conEscenario(async (e) => {
       await sembrarMatriz(e);
       const res = okDe(await e.guardarZonaC());
@@ -410,10 +431,10 @@ describeSiHayBase("SLT-224 PR 2 · el corte nuevo de la reconciliacion de zona (
     expect(r.sembradas).toBe(SE_MUEVEN.length + NO_SE_MUEVEN.length);
     expect(r.movidas.sort()).toEqual([...SE_MUEVEN].sort());
     expect(r.quietas.sort()).toEqual([...NO_SE_MUEVEN].sort());
-    expect(r.res.reconciliadas).toBe(3);
+    expect(r.res.reconciliadas).toBe(5);
     // R1724: cuenta la del estante con solo cierre aprobado, no la del estante con cobro en curso.
     expect(r.res.retenidas).toBe(1);
-    expect(r.acciones).toHaveLength(3);
+    expect(r.acciones).toHaveLength(5);
     expect(new Set(r.acciones.map((a) => a.loteId)).size).toBe(1);
   });
 

@@ -763,8 +763,9 @@ describe("377/T4 — el corte por estado y el conteo de retenidas", () => {
   };
 
   /**
-   * SLT-224 PR 2 (R1721/R1723): los 11 estados que no se mueven, LITERAL y en el orden en que los
-   * declara `CLASE_RECONCILIACION_ZONA` (estante, finalizadas, devoluciones, por liberar).
+   * SLT-224 PR 2 (R1721/R1723) y SLT-248 (R1805): los 9 estados que no se mueven, LITERAL y en el
+   * orden en que los declara `CLASE_RECONCILIACION_ZONA` (estante, finalizadas, devoluciones). Ni
+   * `novedad` ni `reprogramado`: desde SLT-248 se mueven (R1801).
    */
   const NO_SE_MUEVEN = [
     "en_bodega_satelite",
@@ -774,10 +775,8 @@ describe("377/T4 — el corte por estado y el conteo de retenidas", () => {
     "por_devolver_a_bodega_central",
     "devolviendo_a_bodega_central",
     "devolucion_a_origen_por_rechazo",
-    "novedad",
     "por_devolver_a_tienda",
     "devolviendo_a_tienda",
-    "reprogramado",
   ];
 
   it("⭑ R2/R9: las dos consultas comparten el `where` base y solo difieren en el estado", async () => {
