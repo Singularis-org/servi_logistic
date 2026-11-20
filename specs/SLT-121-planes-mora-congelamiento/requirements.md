@@ -27,14 +27,195 @@
 
 ## Requisitos (EARS)
 
-_Pendiente: los escribe spec_author (F1.2)._
+> Escritos por `spec_author` el 2026-11-20. «Hora de la plataforma» es la de CR hasta SLT-90. «Saldo» de una
+> factura es el de SLT-60 (`factura_plataforma_saldos`, con las anulaciones de SLT-143). Los requisitos marcados
+> «(propuesta, Pn)» llevan el valor por defecto de una pregunta abierta: si el humano la cierra distinto, se
+> reescriben antes de implementar.
+
+### Plazo de pago
+
+- **R1** — El sistema DEBE fijar la **fecha límite de pago** de cada factura cerrada como el día de emisión más
+  la gracia vigente de su empresa, en días corridos y en la hora de la plataforma. El día de emisión es el día
+  calendario de la plataforma en que empieza `hasta` (el fin del intervalo de la factura). La factura se puede
+  pagar hasta las 23:59:59 de la fecha límite. Ejemplo: `hasta` = 16 nov 00:00 y gracia 7 → fecha límite 23 nov.
+- **R2** — El sistema DEBE tomar como gracia vigente de una empresa su gracia propia si la tiene; si no, el valor
+  de `FACTURA_DIAS_GRACIA`. SI `FACTURA_DIAS_GRACIA` falta, o no es un entero de 1 a 60, ENTONCES el sistema DEBE
+  usar 7.
+- **R3** — CUANDO el superadmin guarda la gracia propia de una empresa con un entero de 1 a 60, el sistema DEBE
+  guardarla. CUANDO la quita, la empresa DEBE volver a la gracia global. SI el valor no es un entero de 1 a 60,
+  ENTONCES el sistema DEBE rechazarlo sin cambiar nada.
+- **R4** — SI quien cambia la gracia o descongela a mano no es el superadmin, ENTONCES el sistema DEBE rechazarlo
+  sin leer ni escribir datos de la empresa.
+- **R5** — CUANDO cambia la gracia vigente de una empresa, el sistema DEBE recalcular la fecha límite de todas sus
+  facturas cerradas, también las ya vencidas. SI la empresa estaba congelada y con el plazo nuevo ya no tiene
+  facturas vencidas con saldo, ENTONCES el sistema DEBE descongelarla en el acto.
+- **R6** — El sistema DEBE considerar **vencida** una factura cerrada con saldo mayor que 0 cuando ya empezó el
+  día siguiente a su fecha límite. Una factura en curso o por cerrar, o una cerrada con saldo 0 o negativo, NO
+  DEBE contar como vencida. El estado vencida y la fecha límite de cada factura DEBEN poder leerse por factura
+  (para SLT-231 «Cobro automático: botón «Pagar» y estado de la factura»).
+
+### Congelar
+
+- **R7** — CUANDO empieza un día en la hora de la plataforma, el sistema DEBE congelar, en la madrugada de ese
+  día, cada empresa que cumpla las tres condiciones: tiene al menos una factura vencida, no está congelada y no
+  tiene un descongelamiento manual vigente (R23).
+- **R8** — El sistema NO DEBE congelar ninguna empresa fuera de la madrugada (de 00:00 a 05:59, hora de la
+  plataforma). SI la corrida de la madrugada no llega a congelar dentro de esa franja, ENTONCES el sistema DEBE
+  esperar a la madrugada siguiente.
+- **R9** — Congelar DEBE ser idempotente: repetir la corrida en la misma madrugada NO DEBE duplicar el registro
+  del historial ni los correos.
+
+### Qué se puede hacer con la empresa congelada
+
+- **R10** — MIENTRAS una empresa está congelada, sus usuarios DEBEN poder iniciar sesión y ver todas las
+  pantallas y datos a los que su rol ya tiene acceso.
+- **R11** — MIENTRAS una empresa está congelada, el sistema DEBE permitir a cada usuario cambiar su propia
+  contraseña y su propio perfil (incluido confirmar su propio cambio de correo), y DEBE permitir registrar un
+  pago a la plataforma desde la wallet.
+- **R12** — MIENTRAS una empresa está congelada, el sistema DEBE rechazar sin efectos toda otra escritura desde
+  las pantallas, y quien la intenta DEBE ver un error. Se incluyen: crear, editar, cancelar o asignar órdenes;
+  gestionar entregas, también las que el mensajero ya lleva en ruta; cierres y liquidaciones; movimientos de la
+  wallet que no sean el pago a la plataforma; usuarios, tarifas, zonas, tiendas y la configuración de la empresa.
+- **R13** — MIENTRAS una empresa está congelada, la API por API key DEBE responder a toda escritura (`POST`, `PUT`
+  o `DELETE`, salvo la cotización, que no escribe) con HTTP 403 y este cuerpo, sin efectos:
+  `{ "status": "error", "code": "FORBIDDEN", "message": "Empresa suspendida por falta de pago.",
+  "details": { "codigo": "empresa_congelada" } }`. Las consultas (`GET`) DEBEN seguir respondiendo igual que antes.
+- **R14** — MIENTRAS una empresa está congelada, la carga masiva por pantalla DEBE rechazar el lote entero con el
+  mensaje «Empresa suspendida por falta de pago.», sin crear ninguna orden.
+- **R15** — MIENTRAS una empresa está congelada, el sistema DEBE seguir recibiendo y guardando los mensajes
+  entrantes de WhatsApp.
+- **R16** — MIENTRAS una empresa está congelada, toda escritura en sus datos de negocio que llegue por un camino
+  de empresa no permitido en R11, R15 o R17 DEBE fallar en la base de datos, también por SQL a mano, y DEBE
+  llegar al llamador como el error «Empresa suspendida por falta de pago.» (`empresa_congelada`).
+- **R17** — (propuesta, P1) MIENTRAS una empresa está congelada, los trabajos de la cola y los crons del sistema
+  DEBEN seguir corriendo para ella.
+- **R18** — Congelar o descongelar una empresa NO DEBE cambiar lo que pueden hacer las demás.
+
+### Descongelar
+
+- **R19** — CUANDO el saldo de las facturas vencidas de una empresa congelada llega a 0, el sistema DEBE
+  descongelarla en el acto, en la misma transacción que lo hizo bajar. Esto vale al confirmar un pago (SLT-60
+  «Confirmación del pago a la plataforma por el superadmin»), al registrar un pago por fuera (SLT-143 «El
+  superadmin registra un pago hecho por fuera y anula un pago confirmado») y en cualquier otro registro de pago
+  que use el punto de enganche de R34. La factura en curso NO DEBE impedirlo.
+- **R20** — Un pago registrado por la empresa que sigue por confirmar NO DEBE descongelarla.
+- **R21** — CUANDO el superadmin anula un pago confirmado, el sistema NO DEBE congelar la empresa en el acto. SI
+  tras la anulación hay facturas vencidas con saldo, ENTONCES la empresa DEBE congelarse en la madrugada siguiente
+  (R7).
+- **R22** — CUANDO el superadmin descongela a mano una empresa congelada con un motivo y una fecha hasta, el sistema
+  DEBE descongelarla en el acto. El motivo DEBE tener de 1 a 200 caracteres. (propuesta, P4) La fecha hasta DEBE
+  estar entre hoy y hoy + 60 días, hora de la plataforma. SI la empresa no está congelada o los datos no son
+  válidos, ENTONCES el sistema DEBE rechazarlo sin cambiar nada.
+- **R23** — MIENTRAS no haya pasado la fecha hasta de un descongelamiento manual, el sistema NO DEBE volver a
+  congelar la empresa. CUANDO empieza el día siguiente a la fecha hasta, SI sigue habiendo facturas vencidas con
+  saldo, ENTONCES el sistema DEBE congelarla en esa madrugada (R7, R8).
+
+### Avisos
+
+- **R24** — MIENTRAS la empresa tiene alguna factura cerrada con saldo, el sistema DEBE mostrar a sus usuarios
+  `maestro` y `admin` un banner en todas las pantallas autenticadas:
+  - en plazo: la fecha límite más próxima;
+  - con facturas vencidas, sin congelar: que la operación se congela la madrugada siguiente;
+  - congelada: «Empresa congelada por falta de pago» y lo que se puede hacer;
+  - descongelada a mano: hasta qué fecha.
+
+  Los demás roles NO DEBEN ver el banner. Sin facturas con saldo y sin congelamiento, nadie lo ve.
+- **R25** — CUANDO se cierra una factura con total mayor que 0, el correo de cierre de SLT-136 «Planes: aviso,
+  correo y descarga de la factura» DEBE incluir su fecha límite de pago. Con total 0 o negativo, NO DEBE llevarla.
+- **R26** — CUANDO falta un día para la fecha límite de una factura con saldo, el sistema DEBE enviar un correo de
+  recordatorio a los maestros de la empresa. Va una sola vez por factura y fecha límite.
+- **R27** — CUANDO la empresa se congela, el sistema DEBE enviar un correo a sus maestros con las facturas vencidas
+  y el saldo vencido.
+- **R28** — CUANDO la empresa se descongela, por pago, a mano o por un cambio de gracia, el sistema DEBE enviar un
+  correo a sus maestros avisando de que su operación está activa de nuevo.
+- **R29** — Los correos de R26 a R28 DEBEN salir por la cola. Un correo que no sale NO DEBE deshacer el
+  congelamiento ni el descongelamiento, y el envío DEBE reintentarse.
+
+### Historial y superadmin
+
+- **R30** — El sistema DEBE registrar en el historial de la empresa (`historial_accion`), en la misma transacción
+  que el cambio:
+  - congelada, con sus facturas vencidas y el saldo vencido;
+  - descongelada por pago, con quién confirmó o registró el pago (el sistema si no hubo persona);
+  - descongelada a mano, con quién, el motivo y la fecha hasta;
+  - descongelada por un cambio de gracia;
+  - cambio de gracia, con el valor anterior, el nuevo y quién lo hizo.
+- **R31** — El maestro DEBE ver esas filas en el historial de acciones de su empresa, y el superadmin DEBE verlas
+  en el detalle de la empresa en Plataforma > Empresas.
+- **R32** — El detalle de la empresa en Plataforma > Empresas DEBE mostrar al superadmin la gracia vigente (propia
+  o global, con su valor), el estado (al día, en plazo con su fecha límite, vencida, congelada desde o
+  descongelada a mano hasta) y las facturas vencidas con su saldo. DEBE permitirle cambiar o quitar la gracia
+  propia y descongelar a mano.
+- **R33** — Las lecturas del estado de mora DEBEN devolver solo datos de la empresa del contexto. Con otra
+  empresa, o sin empresa, DEBEN fallar sin devolver datos.
+
+### Frontera y prueba de punta a punta
+
+- **R34** — El sistema DEBE ofrecer una sola operación de dominio, «recalcular congelamiento de la empresa», que
+  se llama dentro de la transacción que cambia el saldo de las facturas. Descongela si corresponde (R19), nunca
+  congela, y deja el historial y el correo. Confirmar, registrar por fuera, anular y cambiar la gracia DEBEN
+  usarla. Es el enganche para SLT-226 «Cobro automático: modelo del cobro e idempotencia» y SLT-231.
+- **R35** — Un E2E DEBE recorrer de punta a punta, contra la app real, este camino:
+  1. una empresa con una factura vencida se congela;
+  2. el maestro ve el banner;
+  3. un `admin` no puede crear una orden y ve el error;
+  4. la API por key responde 403 a una carga y 200 a una consulta;
+  5. el maestro registra el pago a la plataforma desde la wallet;
+  6. el superadmin lo confirma;
+  7. la empresa queda descongelada, sin banner, y el `admin` vuelve a crear la orden.
+
+  `e2e/dos-empresas-humo.spec.ts` DEBE seguir en verde.
+
+### Trazabilidad decisión → requisito
+
+| Decisión | Requisitos |
+|---|---|
+| Dónde vive la gracia (2026-11-11) | R2, R3, R32 |
+| ¿Cómo se sabe si una vencida está pagada? | R6, R19, R20 |
+| Cambio de gracia de una empresa | R5, R28, R30 |
+| Fecha límite | R1 |
+| ¿Cuándo cae el congelamiento? | R7, R8, R9, R21 |
+| Mensajeros en ruta al congelar | R12 |
+| Entradas externas | R13, R14, R15 |
+| ¿Qué queda permitido? | R10, R11, R12, R16 |
+| Descongelar a mano | R22, R23 |
+| Descongelamiento automático | R19, R34 |
+| Historial | R30, R31 |
+| Variable de entorno | R2 |
+| Rango de la gracia propia | R3 |
+| Banner | R24 |
+| Correos | R25, R26, R27, R29 |
+| Tamaño | sin requisito: es del proceso (label `tamano-pr-aceptado`) |
+| E2E | R35 |
+| Ruta | sin requisito: es del proceso |
+| Correo al descongelar (2026-11-20) | R28 |
 
 ## Preguntas abiertas
 
-- ¿Sale un correo al maestro cuando la empresa se descongela (por pago o a mano)? La tarjeta solo pide tres
-  correos: al cierre, un día antes y al congelar.
-- Respuesta de la API por API key a una escritura con la empresa congelada: el código HTTP y el cuerpo los
-  propone el design. El mensaje dice «empresa suspendida por falta de pago».
+> Cada una lleva una propuesta que el design ya aplica. Si el humano decide otra cosa, se cambian el requisito y el
+> design antes de implementar.
+
+- **P1 — Procesos del sistema con la empresa congelada.** ¿Los trabajos de la cola y los crons de la empresa siguen
+  corriendo? Entre ellos están los avisos, la analítica, la liberación de reprogramadas y el cobro de gastos fijos.
+  **Propuesta:** sí, siguen todos. La decisión «¿Qué queda permitido?» habla de lo que hacen las personas y las
+  integraciones. Si un trabajo falla, la cola lo reintenta sin fin, y los avisos de la mora también salen por la
+  cola (R17).
+- **P2 — Qué más cuenta como «la propia cuenta».** **Propuesta:** también se permiten marcar avisos como leídos,
+  activar o quitar las notificaciones push del propio dispositivo, las preferencias propias y guardar vistas de
+  filtro propias. Son personales y no operan.
+- **P3 — Anular un pago propio por confirmar con la empresa congelada.** **Propuesta:** se permite, como parte de
+  «pagar a la plataforma». Si la empresa se equivoca de monto, puede anular y volver a registrar.
+- **P4 — Rango de la fecha hasta del descongelamiento a mano.** **Propuesta:** de hoy a hoy + 60 días, hora de la
+  plataforma, el mismo tope que la gracia (R22).
+- **P5 — El motivo del descongelamiento a mano en `historial_accion`.** La decisión «Historial» pide guardar el
+  motivo, pero la columna prohíbe el texto libre que teclea una persona: la única excepción declarada es la de
+  SLT-221 (D10, aceptada por Carlos el 2026-11-19). **Propuesta:** una segunda excepción declarada, solo para
+  `empresa_descongelada_a_mano`, con el motivo recortado a 200 caracteres. Necesita la aceptación explícita de
+  Carlos.
+
+**Resuelta por el design (2026-11-20):** la respuesta de la API por key a una escritura con la empresa congelada
+es 403 con `details.codigo = "empresa_congelada"`, la misma convención que `modulo_inactivo` (SL-23) y
+`tope_plan` (SL-24). Detalle en `design.md` §6.3 y en R13.
 
 ## Decisiones cerradas (no reabrir)
 
@@ -58,3 +239,4 @@ _Pendiente: los escribe spec_author (F1.2)._
 | 2026-11-13 | Tamaño | **Una sola ficha y un solo PR** grande; label `tamano-pr-aceptado` (humano). |
 | 2026-11-13 | E2E | Obligatorio: toca «Dinero: wallet», cierres, asignaciones y una entrada por cron, así que corre `dos-empresas-humo` (`docs/checkpoints-proyecto.md`). |
 | 2026-11-13 | Ruta | Completa: migración, dinero, permisos e integraciones (API, webhooks). |
+| 2026-11-20 | ¿Sale un correo al maestro cuando la empresa se descongela, por pago o a mano? | **Sí.** El maestro recibe un aviso de que su operación está activa de nuevo, sea porque pagó o porque el superadmin la descongeló a mano (humano). |
