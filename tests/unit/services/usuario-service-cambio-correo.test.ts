@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { UsuarioService } from "@/lib/services/UsuarioService";
-import type {
-  ICambioCorreoRepository,
-  IUserRepository,
-  UsuarioPublico,
+import {
+  CambioCorreoSimultaneoError,
+  type ICambioCorreoRepository,
+  type IUserRepository,
+  type UsuarioPublico,
 } from "@/lib/interfaces/repositories/IUserRepository";
 import type { Actor, CorreoDeCambio } from "@/lib/interfaces/services/IUsuarioService";
 import type { EmailMessage, IEmailSender } from "@/lib/interfaces/external/IEmailSender";
@@ -112,6 +113,9 @@ describe("SLT-221 · solicitarCambioCorreo", () => {
     expect(enviados[0].to).toBe("nuevo@empresa.test");
     expect(JSON.stringify(enviados)).not.toContain("ana@empresa.test");
     expect(enviados[0].subject).toContain("Confirma tu correo");
+    // m7 (review PR 2): el correo aún no cambió; el texto lo dice pendiente, no hecho.
+    expect(enviados[0].text).toContain("pidió cambiar el correo de tu cuenta a este. El cambio está pendiente");
+    expect(enviados[0].text).not.toContain("cambió el correo");
     // R1610: el correo del usuario no cambia al pedir.
     expect(repo.update).not.toHaveBeenCalled();
     expect(cambios.aplicarCambioCorreo).not.toHaveBeenCalled();
@@ -141,6 +145,29 @@ describe("SLT-221 · solicitarCambioCorreo", () => {
     expect(r).toEqual({ status: "conflict", campo: "email" });
     expect(cambios.existeEmailEnEmpresa).toHaveBeenCalledWith("otro@empresa.test", "usr-1");
     expect(cambios.abrirCambioCorreo).not.toHaveBeenCalled();
+    expect(enviar).not.toHaveBeenCalled();
+  });
+
+  it("m5 (review PR 2): dos pedidos a la vez -> conflict en `email` con un mensaje llano, sin envío ni anulación", async () => {
+    const { service, cambios, enviar } = montar();
+    cambios.abrirCambioCorreo.mockRejectedValue(new CambioCorreoSimultaneoError());
+    const r = await service.solicitarCambioCorreo("usr-1", { email: "nuevo@empresa.test" }, MAESTRO);
+    expect(r).toEqual({
+      status: "conflict",
+      campo: "email",
+      mensaje: "Se estaba pidiendo otro cambio de correo para este usuario al mismo tiempo. Vuelve a intentarlo.",
+    });
+    expect(enviar).not.toHaveBeenCalled();
+    // El abierto es el de la otra petición: no se anula.
+    expect(cambios.anularCambioCorreo).not.toHaveBeenCalled();
+  });
+
+  it("m5: otro error al abrir el pendiente no se disfraza de conflicto: se propaga", async () => {
+    const { service, cambios, enviar } = montar();
+    cambios.abrirCambioCorreo.mockRejectedValue(new Error("caida de la base"));
+    await expect(service.solicitarCambioCorreo("usr-1", { email: "nuevo@empresa.test" }, MAESTRO)).rejects.toThrow(
+      "caida de la base",
+    );
     expect(enviar).not.toHaveBeenCalled();
   });
 

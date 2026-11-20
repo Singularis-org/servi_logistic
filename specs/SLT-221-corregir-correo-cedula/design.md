@@ -313,8 +313,8 @@ Toda salida inválida da la misma respuesta (R1623). No toca `Session` (R1627) n
 `lib/services/email/plantillas/confirmar-correo.ts` sobre `componerCorreo`:
 - asunto `Confirma tu correo en ${MARCA.nombre}` (sin enlace en el asunto ni en el preheader,
   criterio de SL-41 R11);
-- un párrafo: «Tu administrador cambió el correo de tu cuenta a este. Confírmalo para empezar a
-  entrar con él.»;
+- un párrafo: «Tu administrador pidió cambiar el correo de tu cuenta a este. El cambio está
+  pendiente: confírmalo para empezar a entrar con él.» (review PR 2, m7: el correo aún no cambió);
 - botón «Confirmar correo»;
 - nota de vencimiento en horas;
 - nota «Si no esperabas este cambio, ignora este correo: tu cuenta no cambia.»

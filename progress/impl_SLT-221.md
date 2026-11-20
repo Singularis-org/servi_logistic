@@ -340,3 +340,64 @@ conflict; canje sin verificar el secreto, sin limitador, `correo_en_uso` perdido
   UI de T3.x el PR 2 pasa de 1000 líneas de producción: hay que decidirlo antes de T3.
 
 Veredicto: backend del PR 2 (T2.1-T2.6) hecho y verde; UI (T3.x) pendiente del canvas de T2.0.
+
+# PR 2 — vuelta 2 tras la review (`progress/review_SLT-221-pr2.md`), 2026-11-20
+
+## Arreglos
+
+- **B1 (R1629).** `tests/unit/actions/confirmar-correo.test.ts` llama a `confirmarCambioCorreo` SIN
+  `deps.service`, con `UserRepository` doblado por `vi.mock` (espía compartido entre instancias) e IP
+  fija; repite el mismo enlace `tope + 3` veces y exige que `empresaDelCambioCorreo` se llame solo
+  `tope` veces. El limitador ya era un singleton del módulo (`const limitador` en
+  `lib/actions/confirmar-correo.ts`): no hizo falta tocar el código.
+  - Mutación S4a (`new ResetRateLimiter()` por petición en `buildConfirmarCorreoService`): ROJO,
+    «expected "vi.fn()" to be called 5 times, but got 8 times».
+  - Mutación S4b (sin pasar limitador; usa el `= new ResetRateLimiter()` del constructor): ROJO, el
+    mismo mensaje.
+- **m1 (R1627).** El test de integración de R1622 crea dos filas `session` de la persona antes de
+  `aplicarCambioCorreo` y exige que sigan las dos después. Mutación (`tx.session.deleteMany` del
+  usuario dentro del canje): ROJO. El `afterAll` borra las sesiones de los usuarios del archivo.
+- **m5.** `abrirCambioCorreo` traduce el P2002 del índice `usuario_cambio_correo_abierto` a
+  `CambioCorreoSimultaneoError` (`IUserRepository.ts`); `solicitarCambioCorreo` lo devuelve como
+  `{ status: "conflict", campo: "email", mensaje }` con «Se estaba pidiendo otro cambio de correo para
+  este usuario al mismo tiempo. Vuelve a intentarlo.», sin enviar ni anular. El design no definía
+  respuesta para la carrera; el `conflict` sin `mensaje` sigue siendo R1611 («Ya está en uso»). La UI
+  del PR 3 debe mostrar `mensaje` cuando venga.
+  - Integración: una transacción de otro cliente abre un pendiente sin confirmar; el `create` del
+    repositorio espera en el índice (se comprueba en `pg_stat_activity`, no con un tiempo fijo) y al
+    confirmar sale `CambioCorreoSimultaneoError`. Mutación (re-lanzar el P2002 crudo): ROJO.
+  - Unit: conflict con mensaje, sin envío ni anulación; otro error se propaga. Mutación (no capturar):
+    ROJO.
+- **m7.** La plantilla dice «Tu administrador pidió cambiar el correo de tu cuenta a este. El cambio
+  está pendiente: confírmalo para empezar a entrar con él.»; design §8 al día; el test de R1610 lo
+  fija. Mutación (texto anterior): ROJO.
+
+## Deuda anotada (no se toca en este PR)
+
+- **m3:** diferencia de tiempo entre enlace inexistente/cerrado (sin hash) y abierto con secreto
+  incorrecto. Mismo patrón que `PasswordResetService`; cierre posible con un `verifyPassword` contra
+  un hash señuelo.
+- **m4:** `ConsoleEmailSender` (previo) escribe `to=` sin SMTP o con dominios reservados, y con su
+  bandera de debug el cuerpo con la URL. Choca con la letra de R1632 en dev/CI; es de SL-41.
+- **m6:** un reenvío fallido deja al usuario sin pendiente (R1616 + R1617). Lo cubre la UI del PR 3,
+  que debe mostrar que ya no hay nada pendiente.
+
+## R → test (añadidos de esta vuelta)
+
+| R | Test |
+|---|---|
+| R1629 | `tests/unit/actions/confirmar-correo.test.ts` › «R1629: sin deps.service, el límite por (enlace, IP) cuenta entre peticiones del composition root» |
+| R1627 | `tests/integration/db/usuario-cambio-correo.test.ts` › «R1622/R1627: … y conserva las sesiones» |
+| m5 | `tests/integration/db/usuario-cambio-correo.test.ts` › «m5 (review PR 2): dos «Pedir cambio» a la vez …»; `tests/unit/services/usuario-service-cambio-correo.test.ts` › dos tests «m5» |
+| m7 | `tests/unit/services/usuario-service-cambio-correo.test.ts` › «R1610/R1614/R1621 …» |
+
+## Salida real (vuelta 2)
+
+- Tests de la vuelta (base `servi_slt221_fix`): `usuario-cambio-correo` (integración) 10 passed,
+  `usuario-service-cambio-correo` 24 passed, `confirmar-correo` (acción) 5 passed.
+- Mutaciones: 6/6 ROJAS (S4a, S4b, m1, m5 repo, m5 servicio, m7).
+- `NODE_OPTIONS=--max-old-space-size=8192 ./init.sh` sobre `servi_slt221_fix`: `✓ typecheck paso`,
+  `✓ lint paso`, lotes de tests en verde, `== init OK ==`, `INIT_EXIT=0` (primera corrida).
+- Tamaño: `34/40 archivos, 908/1000 líneas de producción, 1131/3000 de tests` (aviso del 80%).
+
+Veredicto: B1, m1, m5 y m7 arreglados y probados con mutación; m3, m4 y m6 quedan como deuda anotada.

@@ -101,6 +101,17 @@ export class UsuarioDuplicadoError extends Error {
   }
 }
 
+/**
+ * SLT-221 (review PR 2, m5): dos «Pedir cambio» simultáneos del mismo usuario; el segundo choca con el
+ * índice parcial `usuario_cambio_correo_abierto` (un solo abierto por usuario, R1616).
+ */
+export class CambioCorreoSimultaneoError extends Error {
+  constructor() {
+    super("Otro cambio de correo de este usuario se abrió a la vez");
+    this.name = "CambioCorreoSimultaneoError";
+  }
+}
+
 // Feature 25/R14: fila del listado de usuarios. Incluye el `value` legible del
 // rol (via include) y NUNCA el hash de la contrasena (R24).
 export interface UsuarioListItem {
@@ -363,7 +374,10 @@ export interface IUserRepository {
 export interface ICambioCorreoRepository {
   /** R1611: ¿otro usuario de la empresa en curso ya usa ese correo? */
   existeEmailEnEmpresa(email: string, excluirUsuarioId: string): Promise<boolean>;
-  /** R1616, R1620: anula el abierto del usuario y crea el nuevo, en una transacción. */
+  /**
+   * R1616, R1620: anula el abierto del usuario y crea el nuevo, en una transacción. Lanza
+   * `CambioCorreoSimultaneoError` si otra petición abrió uno a la vez.
+   */
   abrirCambioCorreo(input: AbrirCambioCorreoInput): Promise<{ id: string; expiraAt: Date }>;
   /** R1617: anula ESE pendiente si sigue abierto. */
   anularCambioCorreo(id: string): Promise<void>;

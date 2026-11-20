@@ -26,7 +26,7 @@ export function plantillaConfirmarCorreo(p: ConfirmarCorreoParams): EmailMessage
       {
         tipo: "parrafo",
         texto:
-          "Tu administrador cambió el correo de tu cuenta a este. Confírmalo para empezar a entrar con él.",
+          "Tu administrador pidió cambiar el correo de tu cuenta a este. El cambio está pendiente: confírmalo para empezar a entrar con él.",
       },
       { tipo: "boton", texto: "Confirmar correo", url: p.url },
       {

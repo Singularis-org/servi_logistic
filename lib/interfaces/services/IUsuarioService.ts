@@ -221,6 +221,7 @@ export type SolicitarCambioCorreoServiceResult =
   | { status: "ok"; pendiente: CambioCorreoPendienteDTO }
   | { status: "envio_fallido" } // R1617
   | { status: "conflict"; campo: "email" } // R1611
+  | { status: "conflict"; campo: "email"; mensaje: string } // m5: dos pedidos a la vez
   | RechazoDeCambioCorreo;
 export type CancelarCambioCorreoServiceResult = { status: "ok" } | RechazoDeCambioCorreo;
 export type CambioCorreoPendienteServiceResult =

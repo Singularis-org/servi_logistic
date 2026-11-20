@@ -298,6 +298,8 @@ export interface CambioCorreoPendienteDTO {
 export type SolicitarCambioCorreoResult =
   | { status: "ok"; pendiente: CambioCorreoPendienteDTO }
   | { status: "envio_fallido" } // R1617
+  // Review PR 2 (m5): dos pedidos a la vez del mismo usuario; la pantalla muestra `mensaje`.
+  | { status: "conflict"; campo: "email"; mensaje: string }
   | ActionError;
 export type CancelarCambioCorreoResult = { status: "ok" } | ActionError;
 export type ObtenerCambioCorreoPendienteResult =

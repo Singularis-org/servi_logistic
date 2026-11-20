@@ -4,12 +4,15 @@ import type { PrismaClient } from "@prisma/client";
 
 import { comoPlataforma, conEmpresa } from "@/lib/db/contexto-empresa";
 import { conAislamientoPorEmpresa } from "@/lib/db/extension-empresa";
-import type { CreateUsuarioInput } from "@/lib/interfaces/repositories/IUserRepository";
+import {
+  CambioCorreoSimultaneoError,
+  type CreateUsuarioInput,
+} from "@/lib/interfaces/repositories/IUserRepository";
 import { UserRepository } from "@/lib/repositories/UserRepository";
 import { comoApp, datosDeOrganizacionDePrueba } from "../../fabricas/organizaciones";
 import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, crearPrismaDeTest } from "./_postgres-real";
 
-// SLT-221 (T2.3; R1611, R1615, R1616, R1622, R1624, R1625, R1630) — los accesos de `UserRepository` a
+// SLT-221 (T2.3; R1611, R1615, R1616, R1622, R1624, R1625, R1627, R1630; m5) — los accesos de `UserRepository` a
 // `usuario_cambio_correo`, contra Postgres real y con el cliente EXTENDIDO de la app (filtro de
 // empresa + RLS), como `aislamiento-usuarios`. No cabe en una transacción revertida: el repositorio
 // abre su `$transaction` y la concurrencia (R1625) necesita dos conexiones. Los datos se commitean con
@@ -91,6 +94,8 @@ describeSiHayBase("SLT-221 — el cambio de correo pendiente (Postgres real)", (
     if (!base) return;
     const orgs = [orgA, orgB].filter(Boolean);
     await bajoLockDeEscrituraReal(async () => {
+      const usuarios = await base.usuario.findMany({ where: { organizacionId: { in: orgs } }, select: { id: true } });
+      await base.session.deleteMany({ where: { userId: { in: usuarios.map((u) => u.id) } } });
       await base.usuarioCambioCorreo.deleteMany({ where: { organizacionId: { in: orgs } } });
       await base.historialAccion.deleteMany({ where: { organizacionId: { in: orgs } } });
       await base.usuario.deleteMany({ where: { organizacionId: { in: orgs } } });
@@ -150,6 +155,60 @@ describeSiHayBase("SLT-221 — el cambio de correo pendiente (Postgres real)", (
     expect(r.directo).toBe("P2002");
     expect(r.abierto).toEqual({ id: r.segundo.id, emailNuevo: correoNuevo("p2"), expiraAt: r.segundo.expiraAt });
   });
+
+  it("m5 (review PR 2): dos «Pedir cambio» a la vez; el que choca con el índice sale como CambioCorreoSimultaneoError", async () => {
+    const r = await bajoLockDeEscrituraReal(async () => {
+      const a1 = await sembrar(orgA);
+      let carrera: Promise<unknown> = Promise.resolve("sin empezar");
+      let bloqueado = false;
+      // Una transacción abre un pendiente y NO confirma: el `updateMany` del repositorio no lo ve y su
+      // `create` queda esperando en el índice parcial. Al confirmar, ese `create` aborta con P2002.
+      // Va por un cliente aparte: el pool de `base` (2 conexiones) queda libre para el repositorio.
+      const rival = crearPrismaDeTest();
+      try {
+        await rival.$transaction(
+          async (tx) => {
+            await tx.usuarioCambioCorreo.create({
+              data: {
+                organizacionId: orgA,
+                usuarioId: a1.id,
+                emailNuevo: correoNuevo("c1"),
+                secretoHash: "h",
+                solicitadoPorId: maestroA,
+                expiraAt: enUnaHora(),
+              },
+            });
+            carrera = abrirEnA(a1.id, correoNuevo("c2")).then(
+              () => "abierto",
+              (e: unknown) => e,
+            );
+            // Se espera a que el INSERT del repositorio esté de verdad bloqueado, no un tiempo fijo.
+            for (let i = 0; i < 100 && !bloqueado; i++) {
+              const filas = await rival.$queryRaw<{ n: bigint }[]>`
+                SELECT count(*) AS n FROM pg_stat_activity
+                WHERE datname = current_database() AND wait_event_type = 'Lock'
+                  AND query ILIKE '%usuario_cambio_correo%'`;
+              bloqueado = Number(filas[0].n) > 0;
+              if (!bloqueado) await new Promise((ok) => setTimeout(ok, 100));
+            }
+          },
+          { timeout: 20_000 },
+        );
+      } finally {
+        await rival.$disconnect();
+      }
+      const salida = await carrera;
+      const abiertos = await base.usuarioCambioCorreo.findMany({
+        where: { usuarioId: a1.id, confirmadoAt: null, anuladoAt: null },
+        select: { emailNuevo: true },
+      });
+      return { bloqueado, salida, abiertos };
+    });
+    expect(r.bloqueado, "el INSERT del repositorio nunca llegó a esperar en el índice").toBe(true);
+    expect(r.salida).toBeInstanceOf(CambioCorreoSimultaneoError);
+    // Queda el de la otra petición, intacto.
+    expect(r.abiertos).toEqual([{ emailNuevo: correoNuevo("c1") }]);
+  }, 60_000);
 
   it("R1619/R1617: anular el abierto del usuario, y anular un pendiente por su id, solo tocan el suyo", async () => {
     const r = await bajoLockDeEscrituraReal(async () => {
@@ -240,19 +299,25 @@ describeSiHayBase("SLT-221 — el cambio de correo pendiente (Postgres real)", (
     expect(r.aplicarVencido).toBe("invalido");
   });
 
-  it("R1622: el canje cambia el correo, confirma el pendiente y deja la fila con el maestro que lo pidió", async () => {
+  it("R1622/R1627: el canje cambia el correo, confirma el pendiente, deja la fila con el maestro que lo pidió y conserva las sesiones", async () => {
     const r = await bajoLockDeEscrituraReal(async () => {
       const a1 = await sembrar(orgA);
+      // R1627: dos sesiones abiertas de la persona; el canje no las cierra.
+      const expiresAt = enUnaHora();
+      const sesiones = [randomUUID(), randomUUID()];
+      await base.session.createMany({ data: sesiones.map((id) => ({ id, userId: a1.id, expiresAt })) });
       const p = await abrirEnA(a1.id, correoNuevo("ok"));
       const salida = await enA(() => repo.aplicarCambioCorreo(p.id));
+      const sesionesDespues = await base.session.findMany({ where: { userId: a1.id }, select: { id: true } });
       const usuario = await base.usuario.findUniqueOrThrow({ where: { id: a1.id }, select: { email: true } });
       const pendiente = await base.usuarioCambioCorreo.findUniqueOrThrow({ where: { id: p.id } });
       const nuevo = await comoPlataforma(LOGIN.ficha, LOGIN.motivo, () =>
         repo.findCuentasPorEmailConHash(correoNuevo("ok")),
       );
-      return { a1, salida, usuario, pendiente, filas: await filasDeCorreo(a1.id), nuevo };
+      return { a1, salida, usuario, pendiente, filas: await filasDeCorreo(a1.id), nuevo, sesiones, sesionesDespues };
     });
     expect(r.salida).toBe("ok");
+    expect(r.sesionesDespues.map((x) => x.id).sort()).toEqual([...r.sesiones].sort());
     expect(r.usuario.email).toBe(correoNuevo("ok"));
     expect(r.pendiente.confirmadoAt).toBeInstanceOf(Date);
     expect(r.pendiente.anuladoAt).toBeNull();
