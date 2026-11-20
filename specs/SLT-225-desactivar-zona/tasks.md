@@ -7,7 +7,7 @@
 
 ## T0 — Impedimentos reales en producción (leader, solo lectura) — antes del PR
 
-- [ ] Contra producción (`.env.prod`, `SET default_transaction_read_only = on`), para «GAM Kevin
+- [x] Contra producción (`.env.prod`, `SET default_transaction_read_only = on`), para «GAM Kevin
   (Alajuéla)»: órdenes vivas según `WHERE_ORDEN_VIVA` (design §3.1) agrupadas por estado, usuarios
   con `zona_id` = la zona (nombre, rol, estado) y número de filas en `zona_distrito`.
 - **Hecho:** números en `progress/features/SLT-225.md`, sin imprimir datos de clientes. Con ellos se
