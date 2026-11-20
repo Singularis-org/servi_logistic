@@ -599,6 +599,11 @@ model Zona {
   nombre        String  // feature 24: nombre unico (indice zona_nombre_key); feature 54 restaura el @unique perdido en el refactor
   cobroVehiculo Boolean @default(false) @map("cobro_vehiculo") // feature 24: cobro extra por vehiculo en esta zona
   esCentral     Boolean @default(false) @map("es_central") // feature 54: flag de zona central (renombrado del viejo es_gam); a lo sumo una via indice unico parcial
+  // SLT-225 (R1740): NOT NULL DEFAULT true, como `activo` de la geografia (FICHA 374): toda zona esta
+  // activa o desactivada, y null no significaria nada. Femenino y no `activo`: la guardia de la 374
+  // prohibe el literal `activo: true` en lib/ fuera de geografia-activa.ts, y esta marca no es geografia.
+  // Los triggers de 20261123120100 impiden darle distritos o usuarios nuevos mientras este en false.
+  activa        Boolean @default(true)
 
   /// ⭑ FICHA 429 — EL SINPE DE ESTA BODEGA: el numero al que el cliente transfiere y el titular a
   /// cuyo nombre esta. Hasta esta ficha habia UNO SOLO para toda la operacion, en
@@ -5128,6 +5133,12 @@ enum HistorialAccionTipo {
   /// SLT-221 (R1622): el usuario confirmó el correo nuevo que pidió el maestro. Cambia quién entra en la
   /// cuenta. `valor_anterior` y `valor_nuevo` son el correo (D10). Su escritor llega en el PR 2.
   usuario_email_cambiado
+  /// SLT-225 (R1749): un maestro desactivó una zona sin trabajo vivo. Hace desaparecer algo, como
+  /// `nodo_geografico_desactivado`: la zona sale del trabajo nuevo. Entidad: `zona`; `valor_anterior` y
+  /// `valor_nuevo` NULL (el par de tipos ya dice la transición).
+  zona_desactivada
+  /// SLT-225 (R1750): el maestro la reactivó. Misma categoría que su par, como `nodo_geografico_activado`.
+  zona_reactivada
 
   @@map("historial_accion_tipo")
 }
