@@ -204,11 +204,11 @@ el mismo patrón `_EnsureExhaustive` de `order-status-transiciones.ts`. Los 20 e
 | `estante_satelite` | `en_bodega_satelite` | 377 (D3). Se deriva de `ESTADOS_PAQUETE_EN_ESTANTE`, que no cambia. |
 | `finalizada` | `entregado`, `devuelta_a_tienda`, `incidente` | `ESTADOS_TERMINALES` (D6, R1721). |
 | `devolucion` | `por_devolver_a_bodega_central`, `devolviendo_a_bodega_central`, `devolucion_a_origen_por_rechazo`, `novedad`, `por_devolver_a_tienda`, `devolviendo_a_tienda` | P3 (resuelta según la recomendación): `por_devolver_a_bodega_central` solo la envía el `adminSatelite` de su zona; las demás vuelven a la tienda. `devolucion_a_origen_por_rechazo` entra **nueva**: es la entrada del retorno (#38/#39 la mandan a `por_devolver_*` según la zona) y su resultado ya está decidido. Hasta hoy nunca se movía porque siempre tenía cierre o gestión de rechazo. |
-| `por_liberar` | `reprogramado` | P4 (abierta; por defecto no se mueve): paquete físicamente en la bodega del cierre, se libera por `orden.zonaId`. |
+| `por_liberar` | `reprogramado` | P4 (resuelta por Carlos 2026-11-20: no se mueve): paquete físicamente en la bodega del cierre, se libera por `orden.zonaId`. |
 | `se_mueve` | `en_preparacion`, `por_recolectar_en_tienda`, `recolectando`, `en_ruta_bodega_central`, `en_bodega_central`, `mensajero_recogiendo_en_bodega`, `en_ruta_bodega_satelite`, `en_reparto`, `novedad_interna` | Vivas. `novedad_interna` lleva un cierre `vencido` (sin aprobar), así que en la práctica la protege R1722 hasta que se apruebe. |
 
-`ESTADOS_DEVOLUCION_SIN_RECONCILIAR` se conserva (la usa `motivoDeSaltada` en el PR 1) pero pasa a
-derivarse del mapa (`devolucion`), y `devuelta_a_tienda` sale de ella porque ahora es `finalizada`.
+`ESTADOS_DEVOLUCION_SIN_RECONCILIAR` se quitó en la review del PR 2 (m4): ningún código la usaba; la clase
+`devolucion` del mapa la sustituye, y `devuelta_a_tienda` pasa a `finalizada`.
 El parámetro `excluirEstados` del helper **se quita**: con la clasificación dentro del helper, los tres
 llamadores excluyen lo mismo (R1706) y ya no hay un llamador que pase una lista propia.
 

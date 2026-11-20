@@ -184,7 +184,7 @@ Las casillas de T9 de arriba, con estos ajustes del PR 2:
 - [x] E2E locales de recepción en la central y retiro (`grep -rl` en `e2e/` por `recepcion` y
   `retirar`), base desechable nueva + `next build`. Review PR 2: 55/55 verdes.
 - [x] `progress/impl_SLT-224.md > PR 2`: mapa R1720–R1727 → test y las mutaciones con su rojo.
-- [ ] T0b re-medido por el leader antes de abrir el PR.
+- [x] T0b re-medido por el leader antes de abrir el PR (2026-11-20).
 - **Hecho:** todo lo anterior, y el `head` del PR en GitHub igual al `HEAD` local antes del aviso.
 
 ## Después del merge
