@@ -133,4 +133,25 @@ Los triggers se repusieron tras cada mutación (`pg_trigger` = 2, `FOR SHARE` pr
 - Gate: ver «Gate» abajo.
 
 ## Gate
-(se completa al cerrar)
+
+`NODE_OPTIONS=--max-old-space-size=8192 ./init.sh` contra `servi_slt225_impl` (exportada como `DATABASE_URL`):
+
+1. Primera corrida (40 archivos): typecheck ✓, lint ✓ (0 errores), guardias del arnés ✓; `test:rapido` rojo en
+   `orden-traspaso-migration` (lista fija de migraciones: arreglado en e0b340db) y en tres archivos de
+   zonas por **cliente de Prisma ajeno** (`PrismaClientValidationError: activa`). `INIT_EXIT=1`.
+2. Segunda corrida: `INIT_EXIT=1` en el chequeo de tamaño, antes de los tests:
+   «el PR de esta feature pasa del tamano maximo (41/40 archivos, 669/1000 lineas de produccion, 903/3000 de
+   tests)». 14 archivos de producción y 27 de tests, de los que ~21 son arrastre (listas fijas del enum,
+   conteos del catálogo, `activa`/`desactivar` en dobles). Con T5–T7 llegará a ~48. Pide el OK escrito de
+   Carlos (`<!-- tamano-pr-aceptado: ... -->` en `progress/features/SLT-225.md`); no lo anoto yo.
+3. `test:rapido` y `test:guardias` corridos a mano tras el chequeo: guardias 357/360 archivos verdes; los 3
+   rojos (`zona-central-guarda-y-rastro`, `zona-guardado-conserva-costos`, `zona-guardado-conserva-inactivos`)
+   y los 3 timeouts de 20 s del rápido (`cierres-gestiones-modelo-nuevo-descarga-sql-real`,
+   `corte-diario-segundo-cierre-sql-real`, `historial-accion-migration`) **pasan aislados** con el cliente
+   bueno: `Test Files 4 passed (4) · Tests 39 passed` y `Test Files 4 passed (4) · Tests 44 passed`.
+
+**Bloqueo de entorno:** el cliente de Prisma vive en el `node_modules` compartido y otra sesión
+(`.worktrees/SLT-224-zona-al-retirar-a-central`, proceso `prisma generate` visto a las 00:48) lo regeneró
+con su schema cuatro veces durante la tanda (00:00, 00:11, 00:31, 00:48). Cada vez los tests de zonas de
+esta rama caen con `PrismaClientValidationError`, y mis `prisma generate` le hacen lo mismo a esa rama.
+El gate completo tiene que correrse cuando SLT-224 no esté generando.
