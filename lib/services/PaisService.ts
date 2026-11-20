@@ -7,15 +7,11 @@ import type {
   IPaisService,
   ListarPaisesDisponiblesServiceResult,
   ListarPaisesServiceResult,
+  PaisParaPantallas,
 } from "@/lib/interfaces/services/IPaisService";
 import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
-import {
-  crearPaisSchema,
-  etiquetasDePais,
-  PAIS_FUERA_DEL_CATALOGO,
-  type CambiarDisponibilidadPaisInput,
-  type EtiquetasGeograficas,
-} from "@/lib/types/pais";
+import { memoPaisEmpresa, paraPantallasDe, type MemoPaisEmpresa } from "@/lib/services/pais-para-pantallas";
+import { crearPaisSchema, PAIS_FUERA_DEL_CATALOGO, type CambiarDisponibilidadPaisInput } from "@/lib/types/pais";
 import { normalizeName } from "@/lib/utils/normalize";
 
 // SL-20 (design §4, §5; R23, R37) — los países son de la plataforma, y solo ella los gestiona. El
@@ -24,7 +20,11 @@ import { normalizeName } from "@/lib/utils/normalize";
 const GESTION_ROLES = new Set<string>(ROLES_PLATAFORMA);
 
 export class PaisService implements IPaisService {
-  constructor(private readonly repo: IPaisRepository) {}
+  /** El memo se inyecta para que los tests lo usen con un reloj falso y sin compartir el del proceso. */
+  constructor(
+    private readonly repo: IPaisRepository,
+    private readonly memo: MemoPaisEmpresa = memoPaisEmpresa,
+  ) {}
 
   async listar(actor: Actor): Promise<ListarPaisesServiceResult> {
     if (!GESTION_ROLES.has(actor.rol)) return { status: "forbidden" };
@@ -87,11 +87,9 @@ export class PaisService implements IPaisService {
     return { status: "ok", id: input.id, disponible: input.disponible };
   }
 
-  async etiquetasDeEmpresa(organizacionId: string): Promise<EtiquetasGeograficas> {
-    const pais = await this.repo.deLaEmpresa(organizacionId);
-    // `organizacion.pais_id` es NOT NULL: sin país, la empresa no existe o no es la del contexto.
-    // Inventar unas etiquetas aquí escondería ese fallo.
-    if (!pais) throw new Error(`etiquetas de nivel: no se encontró el país de la empresa ${organizacionId}`);
-    return etiquetasDePais(pais);
+  /** SLT-235 (design §5): una lectura memorizada del país; las caídas de R3/R4 las arma `paraPantallasDe`. */
+  async paraPantallas(organizacionId: string): Promise<PaisParaPantallas> {
+    const { pais, recienLeido } = await this.memo.leer(organizacionId, () => this.repo.deLaEmpresa(organizacionId));
+    return paraPantallasDe(pais, recienLeido, organizacionId);
   }
 }

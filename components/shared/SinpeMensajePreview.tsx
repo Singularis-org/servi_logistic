@@ -6,6 +6,7 @@ import {
   type SegmentoMensaje,
 } from "@/components/shared/sinpe-preview-segmentos";
 import { SINPE_PREVIEW } from "@/components/shared/sinpe-textos";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
 
 /**
  * ⭑ FICHA 429 (T21) — LA VISTA PREVIA DEL MENSAJE REAL. ES LA PIEZA CENTRAL DE LA PANTALLA.
@@ -39,7 +40,9 @@ export function SinpeMensajePreview({
   numero,
   nombre,
 }: Readonly<SinpeMensajePreviewProps>) {
-  const segmentos = segmentosDelMensaje(cuerpoPlantilla, numero, nombre);
+  // SLT-235 (R13): los importes de la frase, en la moneda del país de la empresa.
+  const moneda = useMonedaDelPais();
+  const segmentos = segmentosDelMensaje(cuerpoPlantilla, numero, nombre, moneda);
 
   return (
     <section

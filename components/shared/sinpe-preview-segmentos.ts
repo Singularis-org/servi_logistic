@@ -3,6 +3,7 @@ import {
   resolverValoresPlantilla,
 } from "@/lib/types/plantilla-datos";
 import { extraerVariables, renderPlantilla } from "@/lib/utils/plantilla-mensaje";
+import type { FormatoMoneda } from "@/lib/config/moneda";
 
 /**
  * ⭑ FICHA 429 (T21) — EL MENSAJE REAL, PARTIDO EN TROZOS PARA PODER RESALTAR EL PAR.
@@ -65,11 +66,14 @@ const MARCA_NOMBRE = `${NUL}sinpe-nombre${NUL}`;
  *                mensaje que nadie va a recibir.
  * @param numero  lo que la persona esta tecleando AHORA, sin validar ni normalizar: la vista
  *                previa enseña lo que hay, no lo que deberia haber.
+ * @param moneda  SLT-235 (R13): la moneda del pais de la empresa, para que los importes de la
+ *                frase salgan como los enviaria el servidor. Sin ella, la de la plataforma.
  */
 export function segmentosDelMensaje(
   cuerpo: string | null,
   numero: string,
   nombre: string,
+  moneda?: FormatoMoneda,
 ): SegmentoMensaje[] {
   if (cuerpo === null || cuerpo.trim() === "") return [];
 
@@ -81,7 +85,7 @@ export function segmentosDelMensaje(
       sinpeNombre: nombre,
     },
   };
-  const valores = resolverValoresPlantilla(extraerVariables(cuerpo), datos);
+  const valores = resolverValoresPlantilla(extraerVariables(cuerpo), datos, undefined, moneda);
   const texto = renderPlantilla(cuerpo, {
     ...valores,
     sinpe: MARCA_NUMERO,
