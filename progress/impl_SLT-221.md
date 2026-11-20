@@ -221,3 +221,122 @@ B1, B2, B3 y m2 resueltos; los 3 E2E afectados en verde en local y el gate local
 - Tests de integración del diff (10 archivos): **124 passed**. SLT-214 (`migracion-plan-beneficio-ida-y-vuelta`,
   `plan-beneficio`, `plan-de-la-empresa`): **23 passed**.
 - `NODE_OPTIONS=--max-old-space-size=8192 ./init.sh` sobre `servi_slt221_v3`: `== init OK ==`, `INIT_EXIT=0`; tamaño `31/40 archivos, 510/1000 líneas de producción, 1065/3000 de tests`.
+
+---
+
+# PR 2 — backend (T2.1-T2.6), 2026-11-19
+
+> Base desechable NUEVA `servi_slt221_pr2` (Postgres local): `prisma generate`, `migrate deploy` y
+> `db:seed`, todos con exit 0; exportada como `DATABASE_URL`/`DIRECT_URL` antes de cada vitest y del
+> `./init.sh`. T3.x (UI) no se tocan: esperan el canvas de T2.0.
+
+## Migración
+
+`20261122120000_slt221_usuario_cambio_correo` (no `20261120120100`: ese timestamp queda por debajo de
+migraciones ya aplicadas en prod; la última de `origin/dev` era `20261121140100_plan_nivel`). Nombre
+corregido en `tasks.md` y `design.md`. Tabla, CHECK, índice único parcial
+`usuario_cambio_correo_abierto`, índices, FK (usuario CASCADE, solicitante RESTRICT, empresa RESTRICT),
+RLS `usuario_cambio_correo_por_empresa`, `REVOKE DELETE` + `GRANT SELECT, INSERT, UPDATE` a
+`servi_app`, triggers de misma empresa generados con `generar-misma-empresa.ts --faltantes`.
+`migrate deploy` (exit 0) → `db:rollback` (exit 0, «Rollback completado») → `migrate deploy` (exit 0).
+
+## Ajustes al design (anotados en design §3.4)
+
+1. `ICambioCorreoRepository` aparte de `IUserRepository` (mismo archivo, lo implementa el mismo
+   `UserRepository`). Con los métodos dentro de `IUserRepository`, el typecheck rompía 16 archivos de
+   test con dobles de ese contrato (medido) y el PR pasaba el tope de 40 archivos. Consecuencia:
+   `correoDeCambio` (7.º parámetro) lleva también `repo`, y el composition root pasa el mismo
+   `UserRepository` del 1.er parámetro (lo prueba `usuarios-composition.test.ts`). `UserPrismaClient`
+   gana `usuarioCambioCorreo` como opcional, con un getter que lanza si falta (los dobles de Prisma
+   existentes siguen valiendo).
+2. `IConfirmarCorreoService` con dos métodos, uno por contexto: `empresaDelEnlace` (partir, limitador,
+   empresa; en `comoPlataforma`) y `confirmar` (pendiente, secreto, canje; en `conEmpresa`).
+3. Los tres métodos del maestro lanzan sin `correoDeCambio` justo después del permiso.
+4. El índice único parcial es `(organizacion_id, usuario_id)`: la guardia `unicos-por-empresa`
+   (SL-18 R22) exige `organizacion_id` primero. Mismo único (el usuario ya es de una empresa).
+5. El aviso del envío fallido es `avisarEnvioFallidoCambioCorreo(causa)` en la plantilla: la guardia
+   `contrasena-generada-superficie` (287) prohíbe todo `console` en `UsuarioService.ts`.
+6. Las cuatro acciones nuevas llevan `@sin-superficie SLT-221 en curso` (la UI es T3.1/T3.2); caducan
+   al montar la pantalla.
+7. m1 de la review del PR 1: comentario de `VALOR_MAX_CHARS` reescrito (es el tope de
+   `valorDeCatalogo`, no de la columna; el correo y la cédula no pasan por él). No cambia el 60.
+
+## Archivos
+
+Creados: `db/migrations/20261122120000_slt221_usuario_cambio_correo/{migration,down}.sql`,
+`lib/utils/enlace-de-un-uso.ts`, `lib/services/email/plantillas/confirmar-correo.ts`,
+`lib/interfaces/services/IConfirmarCorreoService.ts`, `lib/services/ConfirmarCorreoService.ts`,
+`lib/actions/confirmar-correo.ts`, `tests/unit/services/usuario-service-cambio-correo.test.ts`,
+`tests/unit/services/confirmar-correo-service.test.ts`, `tests/unit/actions/confirmar-correo.test.ts`,
+`tests/integration/db/usuario-cambio-correo.test.ts`.
+
+Modificados: `db/schema.prisma`, `lib/db/modelos-de-negocio.ts`, `lib/db/excepciones-aislamiento.ts`,
+`lib/config/auth.ts`, `.env.example`, `lib/types/usuario.ts`, `lib/types/historial-accion-etiquetas.ts`
+(m1, solo comentario), `lib/interfaces/repositories/IUserRepository.ts`,
+`lib/repositories/UserRepository.ts`, `lib/interfaces/services/IUsuarioService.ts`,
+`lib/services/UsuarioService.ts`, `lib/actions/usuarios.ts`, `tests/unit/actions/usuarios.test.ts`,
+`tests/unit/actions/usuarios-composition.test.ts`,
+`tests/unit/guards/historial-accion-escrituras-cubiertas.guardia.test.ts` (censo + pendiente vacío),
+`tests/unit/guards/historial-accion-sin-datos-cliente.guardia.test.ts` (sin `escritorPendiente`; control
+positivo con el correo), `tests/unit/guards/rls-por-empresa.guardia.test.ts` (95 → 96 tablas),
+`tests/unit/password-reset-service.test.ts` (literal de `AuthConfig` con el campo nuevo),
+`specs/.../{tasks,design}.md`, `lib/modulos/reparto.ts` (`confirmar-correo` núcleo),
+`scripts/verificar-rls-despliegue.ts` (`TRIGGERS_MISMA_EMPRESA` 181 → 183; en la desechable hay 183
+`sme_*`, medido), `tests/unit/scripts/verificar-rls-despliegue.test.ts` (96 tablas, 97 políticas, 183),
+`tests/fixtures/api-key-dependencias-usuario.ts` (las dos FK nuevas a `usuario`, `no_alcanzable`),
+`tests/integration/db/orden-traspaso-migration.test.ts` (lista de migraciones posteriores).
+
+## R → test (PR 2, backend)
+
+| R | Test |
+|---|---|
+| R1610, R1614, R1621 | `usuario-service-cambio-correo.test.ts` «crea el pendiente, escribe SOLO al correo nuevo…» |
+| R1611 | ídem «conflict en `email`» + `usuario-cambio-correo.test.ts` (integración) «existeEmailEnEmpresa…» |
+| R1612, R1613 | `usuario-service-cambio-correo.test.ts` |
+| R1615 | `usuario-cambio-correo.test.ts` «con el pendiente abierto se entra con el correo anterior…» |
+| R1616 | `usuario-cambio-correo.test.ts` «un solo pendiente abierto…» + servicio «reenviar…» |
+| R1617 | `usuario-service-cambio-correo.test.ts` «si el envío falla…» + integración «anular… solo tocan el suyo» |
+| R1619 | servicio «cancelar anula el abierto» + integración «anular el abierto…» (pantalla en T3.1) |
+| R1618 | servicio «consultar devuelve el pendiente… vencido» (pantalla en T3.1) |
+| R1620 | `usuario-service-cambio-correo.test.ts` «reenviar…» |
+| R1622 | `usuario-cambio-correo.test.ts` «el canje cambia el correo…» + `confirmar-correo-service.test.ts` |
+| R1623 | `confirmar-correo-service.test.ts` (roto, inexistente, anulado, usado, vencido, secreto) + integración «cambioCorreoParaCanje solo da el abierto y vigente» |
+| R1624 | `usuario-cambio-correo.test.ts` «si el correo nuevo ya lo usa otro…» + servicio de canje |
+| R1625 | `usuario-cambio-correo.test.ts` «dos canjes a la vez…» + servicio de canje |
+| R1627, R1628 | `confirmar-correo-service.test.ts` (solo tres métodos de repo, sin sesión ni contraseña) + `confirmar-correo.test.ts` |
+| R1629 | `confirmar-correo-service.test.ts` «superado el tope…» |
+| R1630 | servicio (otra empresa y superadmin, x3 operaciones) + integración «no se ve ni se anula desde B (filtro y RLS)» |
+| R1631 | `usuario-service-cambio-correo.test.ts` (x3) + `usuarios.test.ts` (unauthenticated) |
+| R1632 | `usuario-service-cambio-correo.test.ts` «solo el hash… `#enlace=`» y «el log no lleva destinatario ni URL» |
+| composition | `usuarios-composition.test.ts` «el correo de cambio en la séptima posición» |
+| R1626 | pendiente de T3.2/T3.3 (pantalla) |
+
+## Mutaciones (cada una aplicada sola, test corrido, archivo restaurado y comprobado)
+
+`UserRepository.ts` contra `tests/integration/db/usuario-cambio-correo.test.ts` (9 tests ejecutados en
+cada corrida, ninguno saltado): 13/13 MUERTAS — `existeEmailEnEmpresa` sin `id: { not }` y sin `email`;
+`abrirCambioCorreo` sin anular el anterior; `cambioCorreoParaCanje` sin `anuladoAt`, sin
+`confirmadoAt` y sin `expiraAt`; `aplicarCambioCorreo` sin `confirmadoAt` (carrera) y sin `expiraAt`;
+`anularCambioCorreoAbierto` sin `usuarioId`; `anularCambioCorreo` sin `id`; `cambioCorreoAbierto` sin
+`anuladoAt`; `valorAnterior` equivocado; P2002 sin traducir.
+
+Servicio, canje y acciones contra sus tests unitarios: 14/14 MUERTAS — sin R1612, sin R1613, sin
+anular en fallo, log con destinatario, secreto en claro, TTL ignorado, superadmin visible, sin
+conflict; canje sin verificar el secreto, sin limitador, `correo_en_uso` perdido; canje fuera de
+`conEmpresa`, sin corte por empresa `null`; composition root con otro `UserRepository`.
+
+## Salida real
+
+- `pnpm run typecheck` (dentro de init): `✓ typecheck paso`.
+- `pnpm run lint`: `✓ lint paso` (0 errores; los warnings son previos).
+- Tests del cambio (verbose, dos corridas): 111 passed (111) — `usuario-service-cambio-correo` 22,
+  `confirmar-correo-service` 11, `confirmar-correo` (acción) 4, `usuarios.test` 46, `usuarios-composition` 4,
+  `usuario-cambio-correo` (integración) 9, `orden-traspaso-migration` 15.
+- `pnpm run test:guardias`: 360 passed, 5424 tests passed, 1 skipped.
+- `NODE_OPTIONS=--max-old-space-size=8192 ./init.sh` sobre `servi_slt221_pr2`: `== init OK ==`, `INIT_EXIT=0`
+  (quinta corrida; las cuatro anteriores destaparon los contadores y guardias de arriba, y dos veces un
+  «Worker exited unexpectedly» de vitest en Windows: `demo-qa.test.ts` y un lote local, verdes al repetir).
+- Tamaño: `34/40 archivos, 870/1000 líneas de producción, 1015/3000 de tests` (aviso del 80%). Con la
+  UI de T3.x el PR 2 pasa de 1000 líneas de producción: hay que decidirlo antes de T3.
+
+Veredicto: backend del PR 2 (T2.1-T2.6) hecho y verde; UI (T3.x) pendiente del canvas de T2.0.
