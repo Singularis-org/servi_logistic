@@ -35,11 +35,119 @@
 
 ## Requisitos (EARS)
 
-_Pendiente: los escribe spec_author (F1.2)._
+Vocabulario:
+- **Moneda del país / nombre del impuesto:** los que guarda el país de la empresa (SL-21 R1).
+- **Moneda de la plataforma / rótulo de la plataforma:** `MONEDA_PLATAFORMA` (`lib/config/moneda.ts`)
+  y `IMPUESTO_ROTULO` (`lib/constants/impuesto-rotulo.ts`), lo único que existía antes de SL-21.
+- **Datos del país para pantallas:** las etiquetas de nivel (SL-20), la moneda y el nombre del impuesto
+  del país de la empresa del usuario.
+- **Pantallas de esta ficha:** `PriceLabel`, `KpiValorAnimado` en modo moneda, el desglose de pago
+  (`DesglosePagoField`), el detalle de la asignación, los KPI del mensajero, las tarjetas de orden del
+  mensajero (fila de monto, detalle y mosaico), el chat del mensajero, el detalle y la tarjeta de la
+  recepción en satélite, y `/paquete/[numGuia]`.
+- **Vistas previas de plantilla:** la del botón «Enviar plantilla», la del chat del mensajero y la
+  del mensaje SINPE.
+- **País de prueba:** uno de `XA`–`XZ` con una moneda distinta en todo de la de CR
+  (`MONEDA_DE_PRUEBA` de SL-21) y otro nombre de impuesto.
+
+### Datos del país en el portal
+
+- **R1.** CUANDO se pinta una página del portal autenticado (`app/(app)/`) para un usuario de empresa,
+  el sistema DEBE entregar a sus pantallas los datos del país para pantallas de esa empresa, resueltos
+  en el servidor al pintar la página. Ninguna pantalla DEBE leerlos por su cuenta ni guardarlos en el
+  navegador.
+- **R2.** MIENTRAS el usuario no tenga empresa (superadmin), el sistema DEBE entregar las etiquetas
+  neutras, la moneda de la plataforma y el rótulo de la plataforma, sin consultar ningún país.
+- **R3.** SI el país de la empresa no tiene moneda, ENTONCES las pantallas DEBEN usar la moneda de la
+  plataforma, el sistema DEBE dejar un aviso en el log que nombre la empresa y el país, y la página NO
+  DEBE fallar.
+- **R4.** SI el país de la empresa no tiene nombre de impuesto, ENTONCES las pantallas DEBEN usar el
+  rótulo de la plataforma, el sistema DEBE dejar un aviso en el log que nombre la empresa y el país,
+  y la página NO DEBE fallar.
+- **R5.** SI la lectura del país de la empresa falla o no encuentra país, ENTONCES las pantallas DEBEN
+  recibir las etiquetas neutras, la moneda de la plataforma y el rótulo de la plataforma, el error
+  DEBE quedar en el log, y la página NO DEBE fallar.
+
+### Lectura y memoria del país
+
+- **R6.** CUANDO se lee el país de una empresa por su id, el sistema DEBE hacerlo en una sola consulta
+  a la base y devolver el país de esa empresa, o nada si la empresa no es visible en el contexto de
+  quien lee.
+- **R7.** CUANDO se piden los datos del país para pantallas de una empresa cuyo país se leyó en el mismo
+  proceso hace menos de 10 minutos, el sistema DEBE responder sin consultar la base. CUANDO han pasado
+  10 minutos o más, DEBE volver a leerlo.
+- **R8.** El sistema NO DEBE responder a una empresa con el país memorizado de otra empresa, y NO DEBE
+  memorizar una lectura que falló ni una empresa sin país.
+- **R9.** MIENTRAS la memoria tenga 1 000 entradas o más, el sistema DEBE quitar las caducadas antes de
+  escribir una nueva.
+- **R10.** SI al país le falta la moneda o el nombre del impuesto, ENTONCES el aviso de R3 o R4 DEBE
+  salir una vez por cada lectura de la base, no en cada página.
+
+### Importes en pantalla
+
+- **R11.** CUANDO una pantalla de esta ficha pinta un importe, DEBE formatearlo con la moneda del país
+  de la empresa que entregó R1, con las reglas de formato de SL-21 R8. Incluye el mensaje de cuadre
+  del desglose de pago.
+- **R12.** CUANDO `KpiValorAnimado` anima un importe, el último fotograma DEBE dar el mismo texto que
+  el formateador con la moneda del país, también con una moneda de 0 decimales.
+- **R13.** CUANDO el navegador arma una vista previa de plantilla, cada importe DEBE salir en la moneda
+  del país de la empresa, con el mismo texto que el servidor enviaría para esos datos (SL-21 R10).
+- **R14.** CUANDO se abre `/paquete/[numGuia]`, el monto a cobrar DEBE salir en la moneda del país de la
+  empresa del usuario. Sin empresa, en la moneda de la plataforma y sin consultar ningún país. Con
+  las mismas caídas de R3 y R5.
+- **R15.** MIENTRAS un componente compartido de monto se pinte fuera del portal autenticado (sin los
+  datos de R1), DEBE usar la moneda de la plataforma; y la lectura del nombre del impuesto, el rótulo
+  de la plataforma.
+- **R16.** MIENTRAS la empresa sea de Costa Rica, lo que pintan las pantallas y las vistas previas de
+  R11–R14 DEBE ser idéntico a lo de antes de esta ficha.
+- **R17.** CUANDO una pantalla del portal pide el nombre del impuesto, el sistema DEBE darle el del país
+  de la empresa. Esta ficha NO DEBE cambiar ningún texto «IVA» de pantalla: los cambian SLT-241 y
+  SLT-243 a SLT-246.
+
+### Guardias y lo que no cambia
+
+- **R18.** Los archivos que esta ficha pasa a la moneda del país NO DEBEN llamar a los formateadores que
+  usan la moneda de la plataforma sin nombrarla (`money`, `moneyTope`, `formatMonto`,
+  `formatMontoString`, `formatMontoTope`, `montoExacto`) ni leer sus datos de moneda de `monedaConfig`.
+  Su lista solo crece: cada rebanada (SLT-240 a SLT-246) añade los suyos.
+- **R19.** `app/paquete/[numGuia]/page.tsx` DEBE salir de la lista de excepciones de
+  `pais-sin-literales`, con el tope un número más bajo. Las entradas que sigan a nombre de SLT-235
+  DEBEN pasar a la ficha de la rebanada que las retira.
+- **R20.** El sistema NO DEBE cambiar en esta ficha:
+  - las pantallas de plataforma de facturas, pagos y cobro de planes (siguen con la moneda de los
+    planes);
+  - las pantallas que no son de esta ficha (siguen con la moneda de la plataforma hasta su rebanada);
+  - los nombres internos con «iva» ni el documento OpenAPI.
+
+### Cobertura de las decisiones cerradas
+
+| Decisión | R |
+|---|---|
+| Apilar sobre SL-21 | R11, R13 (usan `formatearMontoEn`, `FormatoMoneda` y `resolverValoresPlantilla` de SL-21) |
+| Heredadas de SL-21 | R20 |
+| ¿Cabe en un PR? (corte en 8) | R15, R18, R19, R20 |
+| Moneda explícita | R11, R18 |
+| Pantallas de plataforma «fila por fila» | R20 |
+| País sin moneda o sin impuesto | R3, R4, R10 |
+| Token, caché o carga por pantalla | R1, R2 |
+| Consulta del país | R6 |
+| Caché del país | R7, R8, R9 |
 
 ## Preguntas abiertas
 
-Ninguna.
+- **P1. `components/shared/monto-cliente.ts` no formatea importes.** Solo valida lo que se teclea («hasta
+  2 decimales», mayor que 0), y está en el Alcance por el corte (el spec_author lo listó ahí por error
+  en la propuesta). Limitar los decimales a los de la moneda dejaría al cliente más estricto que el
+  servidor, que acepta 2 (lo que su propio comentario prohíbe), y los céntimos de entrada son de
+  SLT-238. **Propuesta:** no se toca en esta ficha. El spec lo trata así hasta que el humano diga otra
+  cosa.
+- **P2. Los ejemplos «₡12.500» (`lib/types/plantilla-datos.ts`) y «₡322.900»
+  (`lib/whatsapp-envios/informes/transito/informe.ts`).** Son textos de ejemplo del catálogo de
+  variables que ve quien edita plantillas e informes. Siguen en la lista de excepciones de
+  `pais-sin-literales` a nombre de SLT-235, y ninguna rebanada del corte los nombra. **Propuesta:**
+  pasan a SLT-241 «Moneda e impuesto del país en pantallas: tarifas, configuración y ranking», si el
+  editor de plantillas cuenta como configuración. Si no, a `permanente`, con la fecha y el motivo
+  «ejemplo fijo del catálogo, igual para todas las empresas».
 
 ## Decisiones cerradas (no reabrir)
 
