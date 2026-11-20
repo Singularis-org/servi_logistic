@@ -212,9 +212,12 @@ Escritos por `spec_author` el 2026-11-20. Vocabulario:
 
 ### Marcar pagado a mano (enmienda del 2026-11-20)
 
-- **R35.** CUANDO el superadmin marca como pagado un intento `pendiente` con la referencia del proveedor, el sistema
-  DEBE registrarlo igual que R17, en una sola operación, con el candado de la empresa y la factura bloqueada:
-  - el intento pasa a `aprobado`, con la referencia como id del pago del proveedor;
+- **R35.** CUANDO el superadmin marca como pagado un intento vivo (`creado` o `pendiente`) con la referencia del
+  proveedor, el sistema DEBE registrarlo igual que R17, en una sola operación, con el candado de la empresa y la
+  factura bloqueada:
+  - el intento pasa a `aprobado`, con la referencia como id del pago del proveedor; si estaba en `creado`, pasa
+    antes por `pendiente` (decisión del humano del 2026-11-20: cubre la transferencia por datos de cuenta de
+    Global66, sin enlace);
   - el libro recibe un «Pago a la plataforma» por el monto local, con la marca «Pagado en línea» y la referencia;
   - el pago queda confirmado y aplicado entero a la factura del intento;
   - la caja, la ganancia y la deuda bajan en el monto (R18 y R19 aplican igual, y «Registró» dice «Pagado en
@@ -223,8 +226,9 @@ Escritos por `spec_author` el 2026-11-20. Vocabulario:
   Ejemplo: una transferencia de Global66 de ₡20 000 llegó sin aviso; el superadmin la marca con la referencia
   `G66-123` ⇒ el intento queda `aprobado` con `G66-123`, la deuda baja ₡20 000 y el saldo de la factura queda en 0.
 - **R36.** CUANDO se marca pagado a mano, el sistema DEBE dejar en el historial de plataforma, en la misma operación,
-  la fila `pendiente` → `aprobado` con el superadmin como quien lo hizo y la marca de que fue a mano. La
-  confirmación del pago DEBE llevar al superadmin como quien la confirmó.
+  una fila por cada paso (`creado` → `pendiente`, si lo hubo, y `pendiente` → `aprobado`), cada una con el
+  superadmin como quien lo hizo y la marca de que fue a mano. La confirmación del pago DEBE llevar al superadmin
+  como quien la confirmó.
 - **R37.** El mismo pago (proveedor, referencia) DEBE contar una sola vez, venga por el aviso del proveedor, por la
   marca a mano o por los dos:
   - CUANDO se marca a mano una referencia que ya es el pago de ese intento, el sistema DEBE responder «ya
@@ -233,7 +237,7 @@ Escritos por `spec_author` el 2026-11-20. Vocabulario:
     escribir nada, también si el intento no tiene id externo;
   - CUANDO la marca y el aviso llegan a la vez, el sistema DEBE dejar un solo «Pago a la plataforma», una
     confirmación y una aplicación.
-- **R38.** SI el intento no existe, no está `pendiente`, la referencia está vacía, la referencia ya es el pago de
+- **R38.** SI el intento no existe, no está vivo (`creado` o `pendiente`), la referencia está vacía, la referencia ya es el pago de
   otro intento del mismo proveedor o el saldo de la factura es menor que el monto del intento, ENTONCES el sistema
   DEBE rechazar la marca sin escribir nada y DEBE decir cuál de esos casos fue.
 - **R39.** SI marca pagado a mano un rol que no es el superadmin, ENTONCES el sistema DEBE responder `forbidden`
@@ -263,20 +267,13 @@ Escritos por `spec_author` el 2026-11-20. Vocabulario:
 | Enmienda: varios proveedores (2026-11-20) | R30, R31, R32 |
 | Enmienda: el método del cobro en el intento (2026-11-20) | R31, R32, R33 |
 | Enmienda: marcar pagado a mano (2026-11-20) | R35, R36, R37, R38, R39 |
+| Enmienda: la marca a mano admite `creado` o `pendiente` (2026-11-20) | R35, R36, R38 |
+| Enmienda: se acepta pasar el tope de líneas de tests (2026-11-20) | Sin comportamiento: tamaño del PR |
 | Enmienda: lo que queda fuera, y en el intento solo el id del pago (2026-11-20) | R34 (el resto, sin comportamiento: fichas aparte) |
 
 ## Preguntas abiertas
 
-Ninguna bloquea el spec. Las dos de la enmienda llevan una propuesta, que vale si el humano no dice otra cosa:
-
-1. **¿La marca a mano admite también un intento `creado`?** El humano escribió «un intento pendiente», y así va en
-   R35 y R38. Un intento llega a `pendiente` cuando el proveedor crea el cobro (R10). Si la transferencia de
-   Global66 de SLT-253 «Cobro automático: transferencia y enlace con Global66» no crea cobro en el proveedor, sus
-   intentos se quedarían en `creado` y no se podrían marcar. **Propuesta:** solo `pendiente`, como dijo el
-   humano. Si SLT-253 lo necesita, admitir `creado` es una condición más en la función (design §12.4).
-2. **Tamaño de los tests.** La enmienda suma unas 380–480 líneas de tests a las 2 534 medidas, así que queda en
-   2 900–3 000, en el borde del tope de 3 000 (design §12.8). P5 aceptó pasar el tope de **producción**, no el de
-   tests. **Propuesta:** si al medir pasa de 3 000, se acepta igual que P5 y se anota el marcador.
+Ninguna.
 
 ## Decisiones cerradas (no reabrir)
 
@@ -302,3 +299,5 @@ Ninguna bloquea el spec. Las dos de la enmienda llevan una propuesta, que vale s
 | 2026-11-20 | Enmienda: ¿se guarda el método del cobro? | **Sí, en el intento** (humano): `tarjeta`, `recurrente` o `transferencia`, como conjunto cerrado. Si forma parte de la clave de idempotencia lo decide el design (§12.2). |
 | 2026-11-20 | Enmienda: ¿qué pasa si el aviso del proveedor no llega? | **El superadmin marca pagado a mano** un intento pendiente con la referencia del proveedor (humano). Ejemplo: una transferencia de Global66 que llegó sin aviso. Usa la vía de la capa 3: único (proveedor, payment_id), `FOR UPDATE` y el candado de la empresa; si el aviso llega después, responde «ya registrado» y no cuenta doble. Aquí entran solo la función de dominio y el permiso (solo el superadmin), con rastro en el historial de plataforma con el actor. La pantalla es de SLT-234 «Cobro automático: panel del superadmin para cobros y proveedor». |
 | 2026-11-20 | Enmienda: ¿qué queda fuera? | **Fichas aparte** (humano): el método y el proveedor por país, SLT-251 «Cobro automático: medios y proveedor por país»; los adaptadores, SLT-227 «Cobro automático: interfaz de proveedores y adaptador de Rebill», SLT-252 «Cobro automático: adaptador de Wompi» y SLT-253 «Cobro automático: transferencia y enlace con Global66»; la casilla «Recordar tarjeta», SLT-232 «Cobro automático: medios de pago guardados y cobro recurrente». En el intento solo queda `pago_proveedor_id`, nada más de la tarjeta. |
+| 2026-11-20 | Enmienda: ¿la marca a mano admite un intento `creado`? | **Sí: `creado` o `pendiente`** (humano). Si está en `creado`, pasa por `pendiente` y después a `aprobado`. Cubre la transferencia por datos de cuenta de Global66, sin enlace (SLT-253 «Cobro automático: transferencia y enlace con Global66»). |
+| 2026-11-20 | Enmienda: ¿y si las líneas de tests pasan del tope de 3 000? | **Se acepta** (humano), como P5 para producción. El implementer lo anota en el marcador `tamano-pr-aceptado` de `progress/features/SLT-226.md` y sigue, sin parar a preguntar. |

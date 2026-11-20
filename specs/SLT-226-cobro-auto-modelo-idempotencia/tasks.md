@@ -126,7 +126,8 @@
   - `_cobro_historial` con `p_manual` y el `detalle` con `proveedor` y `metodo`;
   - `cobro_intento_obtener_o_crear` con `p_metodo` y la clave nueva;
   - `_cobro_aprobar`, sacada de `cobro_registrar_pago_aprobado`, y el paso 0 de esa función;
-  - `cobro_marcar_pagado_manual`, con su `REVOKE`.
+  - `cobro_marcar_pagado_manual`, con su `REVOKE`. Admite `creado` o `pendiente`; desde `creado` pasa por
+    `pendiente` con el actor (§12.4, paso 7).
 
   **Hecho:** aplica en una base desechable; las funciones nuevas tienen `prosecdef` y no tienen `EXECUTE` para
   `servi_app`.
@@ -147,7 +148,8 @@
 - [ ] **T8.8** Cierre: el mapa `R<n> → test` de `progress/impl_SLT-226.md` con R30–R39; `migracion-slt226-ida-y-vuelta`
   y las suites de SLT-60 y SLT-143 en verde sin cambiar afirmaciones (R28); `./init.sh` y el grupo `dinero` de E2E
   en local; `scripts/tamano-pr.mjs` medido. **Hecho:** los 39 requisitos con test, todo en verde, y el tamaño
-  anotado. Si los tests pasan de 3 000 líneas, se para y se pregunta (pregunta abierta 2 de `requirements.md`).
+  anotado. Si los tests pasan de 3 000 líneas, se acepta (decisión del humano del 2026-11-20): el implementer lo
+  anota en el marcador `tamano-pr-aceptado` de `progress/features/SLT-226.md` y sigue, sin parar a preguntar.
 
 ## Archivos esperados
 
@@ -198,4 +200,4 @@
 
 > **Tamaño (design §10 y §12.8):** se midieron 31 archivos (T7.4); la enmienda no suma ninguno. Las líneas de
 > producción pasan del tope, aceptado por la decisión P5, y quedan en ~2 010–2 070. Las de tests quedan en
-> ~2 910–3 010, en el borde de 3 000 (pregunta abierta 2).
+> ~2 950–3 050, en el borde de 3 000; pasar el tope lo aceptó el humano el 2026-11-20.

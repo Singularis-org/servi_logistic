@@ -787,15 +787,17 @@ respuestas, sin escribir nada salvo con `ok`:
 | 3 | — | Toma el candado `pago_plataforma:<org>`, luego `FOR UPDATE` de la factura y del intento, en el orden de §3.5 |
 | 4 | Ya hay un intento con `(proveedor del intento, referencia)`: es este | `ya_registrado` (R37) |
 | 4 | … es otro | `referencia_en_otro_intento` (R38) |
-| 5 | El intento no está `pendiente` | `no_pendiente` (R38) |
+| 5 | El intento no está vivo (`creado` ni `pendiente`) | `no_vivo` (R38) |
 | 6 | El saldo de la factura es menor que `monto_local` | `requiere_revision` (R38) |
-| 7 | — | `_cobro_aprobar(intento, btrim(referencia), p_por, p_ahora)` y `ok` (R35, R36) |
+| 7 | El intento está en `creado` | Lo pasa a `pendiente` con un `UPDATE` y `_cobro_historial(…, 'creado', p_por, true)`: la fila lleva al superadmin y `"manual": true` (R35, R36) |
+| 8 | — | `_cobro_aprobar(intento, btrim(referencia), p_por, p_ahora)` y `ok` (R35, R36) |
 
 - **El monto y la moneda son los del intento.** El superadmin no escribe un monto. Si la transferencia llegó por
   otro monto, no se marca: se registra por fuera con SLT-143 «El superadmin registra un pago hecho por fuera y anula
   un pago confirmado», o lo resuelve SLT-233.
-- **Solo `pendiente`**, como lo pidió el humano. Admitir `creado` sería cambiar la condición del paso 5 y pasar por
-  `pendiente` como §3.5; queda como pregunta abierta 1 de `requirements.md`.
+- **`creado` o `pendiente`** (decisión del humano del 2026-11-20). La transferencia por datos de cuenta de Global66
+  no crea cobro en el proveedor, así que su intento se queda en `creado` y sin `id_externo`. El paso 7 lo lleva por
+  `pendiente` como §3.5, pero con el actor: no usa `_cobro_intento_pasar`, que escribe el historial sin actor.
 - **La autorización** está en el servicio, como en SLT-60 y SLT-143: la función recibe `p_por` y confía en quien
   la llama, que solo puede ser el dueño.
 
@@ -839,7 +841,7 @@ export const marcarPagadoManualSchema = z.object({
   referencia: z.string().trim().min(1).max(200),
 });
 export type MarcarPagadoManualResult = {
-  estado: "ok" | "ya_registrado" | "forbidden" | "sin_intento" | "no_pendiente" | "referencia_vacia"
+  estado: "ok" | "ya_registrado" | "forbidden" | "sin_intento" | "no_vivo" | "referencia_vacia"
         | "referencia_en_otro_intento" | "requiere_revision";
 };
 ```
@@ -884,11 +886,13 @@ Los tests van en los archivos que ya existen; no nace ninguno. Abreviaturas de `
 | R33 | CI, el test de R8 ampliado: «… ni el método» | `UPDATE` de `metodo` como dueño da `SL226 columna_fija` |
 | R34 | CI «R34: las columnas de cobro_intento son exactamente las del design y ninguna del medio de pago» | `information_schema.columns` contra la lista cerrada |
 | R35 | PL «R35: marcar a mano un pendiente de global66 sin id externo → ok» | Caja y deuda bajan; saldo 0; movimiento «Pagado en línea · G66-123»; confirmación `en_linea`; 1 aplicación; `marcasDeLaPlataforma` lo trae en `enLinea` (R29) |
+| R35 | PL «R35: marcar a mano un `creado` de global66 por transferencia, sin enlace → pasa por `pendiente` y queda `aprobado`» | Lo mismo que el anterior, desde `creado` |
 | R36 | PL «R36: la marca a mano deja `pendiente → aprobado` con el superadmin como actor y `manual: true`, y la confirmación con el superadmin» | `historial_plataforma` y `confirmado_por` |
+| R36 | PL «R36: desde `creado`, dos filas (`creado → pendiente` y `pendiente → aprobado`), las dos con el superadmin y `manual: true`» | — |
 | R37 | PL «R37: marcar otra vez la misma referencia → `ya_registrado` sin filas» | Conteos iguales |
 | R37 | PL «R37: el aviso de un pago marcado a mano responde `ya_registrado`, con y sin id externo» | `cobro_registrar_pago_aprobado` sin filas nuevas |
 | R37 | PL «R37: la marca y el aviso a la vez, en dos conexiones, cuentan una vez» | 1 movimiento, 1 confirmación y 1 aplicación |
-| R38 | PL «R38: inexistente, `creado`, `aprobado`, `anulado`, referencia en blanco, referencia de otro intento y saldo menor se rechazan con su respuesta» | Cada respuesta de §12.4 y 0 filas |
+| R38 | PL «R38: inexistente, `aprobado`, `rechazado`, `expirado`, `anulado`, referencia en blanco, referencia de otro intento y saldo menor se rechazan con su respuesta» | Cada respuesta de §12.4 (`no_vivo` para los cuatro estados no vivos) y 0 filas |
 | R38 | SV «R38: una referencia en blanco devuelve `referencia_vacia` sin llamar al repositorio» | — |
 | R39 | SV «R39: maestro, admin, mensajero y tienda reciben `forbidden` sin llamadas» | El repositorio doble no recibe nada |
 | R39 | SV «R39: el superadmin marca con su usuarioId como actor» | `por = actor.usuarioId` |
@@ -917,7 +921,9 @@ Medido antes de la enmienda (T7.4, `scripts/tamano-pr.mjs`): **31/40 archivos, 1
 
 - **Archivos:** no cambian.
 - **Producción:** sigue por encima del tope, aceptado por P5.
-- **Tests:** quedan en el borde del tope. Si pasan de 3 000 al medir, va a la pregunta abierta 2.
+- **Tests:** quedan en el borde del tope. Si pasan de 3 000 al medir, se acepta (decisión del humano del
+  2026-11-20): se anota en el marcador `tamano-pr-aceptado` y se sigue. La marca desde `creado` suma ~40 líneas de
+  tests y ~10 de SQL a la estimación de arriba.
 
 ### 12.9 Riesgos de la enmienda
 

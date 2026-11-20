@@ -2,12 +2,12 @@
 
 ## Tanda 1 (T0–T3), 2026-11-20
 
-Base de la feature: `servi_logistic_slt226` en localhost (migrada hasta `20261124120100_cobro_intento`, catálogos
+Base de la feature: `servi_logistic_slt226` en localhost (migrada hasta `20261124130100_cobro_intento`, catálogos
 sembrados, sin empresas).
 
 ### Primera parte (commit 4a4d5f6c)
 - T0.1, T0.2, T0.4, T0.5, T0.6: anotados en `design.md` (§1.4, §3.5, §5, §11).
-- T1.1, T1.2: `db/migrations/20261124120000_cobro_historial_enum/{migration.sql,down.sql}`, con ida y vuelta.
+- T1.1, T1.2: `db/migrations/20261124130000_cobro_historial_enum/{migration.sql,down.sql}`, con ida y vuelta.
 - T0.3 quedó BLOQUEADA: con el trigger `cobro_intento_sin_borrar` y la FK `RESTRICT` de `creado_por`, una empresa
   con intentos no se podía limpiar.
 
@@ -19,11 +19,11 @@ sembrados, sin empresas).
 
 ### Segunda parte: T2 y T3
 Archivos:
-- `db/migrations/20261124120100_cobro_intento/migration.sql` (nuevo, 714 líneas): tablas, CHECK, índices, RLS,
+- `db/migrations/20261124130100_cobro_intento/migration.sql` (nuevo, 714 líneas): tablas, CHECK, índices, RLS,
   REVOKE, triggers de SL-17 (generados), `cobro_intento_solo_avanza`, `cobro_webhook_evento_inmutable`, la
   confirmación sin persona, la sobrecarga de `_pago_plataforma_aplicar`, el tope con la salida del pago en línea,
   `_cobro_historial`, `_cobro_intento_pasar`, las funciones de §3.1–§3.3, §3.5 y §3.8 y los triggers de §3.4.
-- `db/migrations/20261124120100_cobro_intento/down.sql` (nuevo, 146 líneas): guarda, cuerpos literales del tope
+- `db/migrations/20261124130100_cobro_intento/down.sql` (nuevo, 146 líneas): guarda, cuerpos literales del tope
   (20261116120000 §8) y de `_pago_plataforma_aplicar` de 7 argumentos (20261121130000 §4, extraídos del archivo),
   DROP de lo nuevo, la columna y el CHECK.
 - `db/schema.prisma` (+~90): `CobroIntento`, `CobroWebhookEvento`, `PagoPlataformaConfirmacion` (`confirmadoPor?`,
