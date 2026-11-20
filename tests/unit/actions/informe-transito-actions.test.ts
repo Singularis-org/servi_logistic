@@ -6,7 +6,7 @@ import { PARAMETROS_POR_DEFECTO } from "@/lib/whatsapp-envios/informes/transito/
 import type { IInformeTransitoRepository } from "@/lib/interfaces/repositories/IInformeTransitoRepository";
 import type { FilaTransito } from "@/lib/whatsapp-envios/informes/transito/tipos";
 
-import { ZONA_DE_CR, reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { MONEDA_CR, reglasPaisFijas, ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Ficha 475 (T5.4) — R38/R39: la vista previa del panel. Solo maestro, solo lectura, y LA MISMA
 // seleccion que `generar`.
 
@@ -98,7 +98,7 @@ describe("475/R38 — conteo o errores por campo", () => {
     });
     expect(res).toEqual({ status: "ok", zonas: ZONAS, totalEnAlerta: 3, parados: 2, sinHito: 4 });
 
-    const g = await crearInformeTransito({ repo: repo() }).generar({ zona: ZONA_DE_CR,
+    const g = await crearInformeTransito({ repo: repo() }).generar({ zona: ZONA_DE_CR, moneda: async () => MONEDA_CR,
       parametros: PARAMETROS_POR_DEFECTO,
       ahora: AHORA,
       conDocumento: false,

@@ -6070,6 +6070,19 @@ model Pais {
   telefonoDigitosNacionales Int?    @map("telefono_digitos_nacionales") @db.SmallInt
   /// Identificador IANA. Sin CHECK en la base: se valida en el servidor (tzdata de Node ≠ de Postgres).
   zonaHoraria               String? @map("zona_horaria")
+  /// SL-21 (R1; 20261124120000): la moneda del país. Las cinco a la vez o ninguna (CHECK en el SQL);
+  /// NULL = el país aún no la tiene (R6, R17). Código ISO 4217 en tres mayúsculas.
+  monedaCodigo              String? @map("moneda_codigo")
+  /// Va delante del importe; de 1 a 5 caracteres.
+  monedaSimbolo             String? @map("moneda_simbolo")
+  /// Un solo carácter, distinto del decimal.
+  monedaSeparadorMiles      String? @map("moneda_separador_miles")
+  /// '.' o ','.
+  monedaSeparadorDecimal    String? @map("moneda_separador_decimal")
+  /// De 0 a 2: los importes son DECIMAL(12,2).
+  monedaDecimales           Int?    @map("moneda_decimales") @db.SmallInt
+  /// SL-21 (R1, R7): el nombre del impuesto del país («IVA»). La tasa NO vive aquí: va en cada tarifa.
+  impuestoNombre            String? @map("impuesto_nombre")
 
   provincias          Provincia[]
   organizaciones      Organizacion[]
@@ -6093,8 +6106,8 @@ enum HistorialPlataformaAccion {
   // Enmienda 2026-10-26, decisión 6 (R47; 20261026130500): el superadmin enciende o apaga un país.
   pais_disponibilidad_activada
   pais_disponibilidad_desactivada
-  // SLT-226 (design §1.3; R25; 20261124120000): cada nacimiento o cambio de estado de un `cobro_intento`. Lo
-  // escriben solo las funciones del dueño de 20261124120100, en la misma sentencia que el cambio.
+  // SLT-226 (design §1.3; R25; 20261124130000): cada nacimiento o cambio de estado de un `cobro_intento`. Lo
+  // escriben solo las funciones del dueño de 20261124130100, en la misma sentencia que el cambio.
   cobro_intento_transicion
 
   @@map("historial_plataforma_accion")
@@ -6764,7 +6777,7 @@ model PagoPlataformaConfirmacion {
   // `pago_plataforma_registrar_por_fuera`; las confirmaciones anteriores a 20261121130000 quedan en false (R33).
   porFuera     Boolean  @default(false) @map("por_fuera")
   // SLT-226 (design §1.4; R17, R29): true solo si el pago lo aprobó el proveedor de cobro en línea. Lo escribe solo
-  // `cobro_registrar_pago_aprobado`; las confirmaciones anteriores a 20261124120100 quedan en false (R28).
+  // `cobro_registrar_pago_aprobado`; las confirmaciones anteriores a 20261124130100 quedan en false (R28).
   enLinea      Boolean  @default(false) @map("en_linea")
 
   pago         WalletMovimiento @relation(fields: [pagoId], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -6827,7 +6840,7 @@ model PagoPlataformaAnulacion {
 }
 
 // SLT-226 (design §1.1) — el cobro en línea de una factura de la plataforma. De NEGOCIO. Lo escriben SOLO las
-// funciones del dueño de 20261124120100; `servi_app` solo lo lee (R26). Viven solo en el SQL de esa migración:
+// funciones del dueño de 20261124130100; `servi_app` solo lo lee (R26). Viven solo en el SQL de esa migración:
 //   · los CHECK del proveedor, del estado, de los montos (> 0), de la foto de conversión, del pago completo y del
 //     motivo (R6, R9);
 //   · el único parcial `cobro_intento_un_vivo_por_factura` (un solo intento `creado`/`pendiente` por factura, R4);
@@ -6878,7 +6891,7 @@ model CobroIntento {
 
 // SLT-226 (design §1.2) — los eventos del proveedor de cobro, uno por (proveedor, log_id) (R12, R13). De
 // PLATAFORMA: llegan sin empresa. Sin el cuerpo del evento ni datos del pagador (R12). Viven solo en el SQL de
-// 20261124120100: los CHECK, la RLS sin políticas, el `REVOKE ALL … FROM servi_app` (R26) y el trigger
+// 20261124130100: los CHECK, la RLS sin políticas, el `REVOKE ALL … FROM servi_app` (R26) y el trigger
 // `cobro_webhook_evento_inmutable` (solo `procesado_at`, `resultado` e `intento_id`, de nulo a un valor, una vez).
 model CobroWebhookEvento {
   id              String    @id @default(dbgenerated("(gen_random_uuid())::text"))

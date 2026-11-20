@@ -215,12 +215,12 @@ en su propia migración, antes, como `20261121140000_plan_nivel_job_enum`.
 ## 3. La base
 
 Hay dos migraciones, con `BEGIN`/`COMMIT` escritos a mano (`db:migrate:create` falla con P3006). Su prefijo va
-después de la mayor de `dev`, hoy `20261123120100_zona_activa`; T0.1 lo vuelve a comprobar.
+después de la mayor de `dev`, hoy `20261124120000_sl21_pais_moneda_impuesto`; T0.1 lo vuelve a comprobar.
 
 | Migración | Qué trae |
 |---|---|
-| `20261124120000_cobro_historial_enum` | Los dos `ALTER TYPE … ADD VALUE IF NOT EXISTS` (§1.3) |
-| `20261124120100_cobro_intento` | Todo lo demás |
+| `20261124130000_cobro_historial_enum` | Los dos `ALTER TYPE … ADD VALUE IF NOT EXISTS` (§1.3) |
+| `20261124130100_cobro_intento` | Todo lo demás |
 
 Todas las funciones nuevas son del dueño:
 - `SECURITY DEFINER`, con `search_path = public, pg_temp`;
@@ -382,7 +382,7 @@ muestra.
 
 ### 3.10 `down.sql`
 
-**`20261124120100_cobro_intento/down.sql`** va en este orden:
+**`20261124130100_cobro_intento/down.sql`** va en este orden:
 1. Aborta si `cobro_intento` tiene filas, con el molde de SLT-143 §3.7 (R28).
 2. Repone **literal** el cuerpo de `20261116120000` §8 en `wallet_movimiento_tope_pago_plataforma` y el de
    `20261121130000` §4 en `_pago_plataforma_aplicar` de 7 argumentos. Después hace `DROP` de la sobrecarga de 8.
@@ -392,7 +392,7 @@ muestra.
    - `DROP COLUMN en_linea`;
    - `ALTER COLUMN confirmado_por SET NOT NULL`. Sin intentos no puede haber confirmaciones sin persona.
 
-**`20261124120000_cobro_historial_enum/down.sql`** va **después** del anterior:
+**`20261124130000_cobro_historial_enum/down.sql`** va **después** del anterior:
 1. `DELETE FROM historial_plataforma` de las filas con los valores nuevos (solo pueden existir si hubo intentos);
 2. `pg_temp.quitar_valores_de_enum_slt226`, copiada de SLT-215, sobre los dos tipos.
 
@@ -446,7 +446,7 @@ export interface IProveedorCobro {
 
 Cada método llama a una función de §3 en `comoPlataforma("SL-45", …)`. `FichaJira` no admite `SLT` (deuda D29),
 como en SLT-60. La entrada nueva de `EXCEPCIONES_DE_PLATAFORMA` lleva el motivo «SLT-226: el cobro en línea; llama
-a las funciones del dueño de 20261124120100, que `servi_app` no puede ejecutar».
+a las funciones del dueño de 20261124130100, que `servi_app` no puede ejecutar».
 
 | Método | Función |
 |---|---|
@@ -660,6 +660,10 @@ Un `skip` por falta de base no cuenta como verde.
   `pago_proveedor_id` y `clave_idempotencia`.
 - **`migracion-slt143-ida-y-vuelta`:** puede chocar con la sobrecarga de `_pago_plataforma_aplicar` (T0.5).
 - **T0.1 (2026-11-20):** la mayor de `origin/dev` es `20261123120100_zona_activa`; los prefijos de §3 valen.
+- **Renombre al sincronizar con `dev` (2026-11-20):** SL-21 entró en `dev` con
+  `20261124120000_sl21_pais_moneda_impuesto`, el mismo prefijo que la del enum. Las dos de esta ficha pasan a
+  `20261124130000_cobro_historial_enum` y `20261124130100_cobro_intento`; el contenido no cambia. Sin `125` en el nombre: `backfill-guards` (SLT-125)
+  rechaza toda carpeta de migración que lo contenga, y `20261125…` lo contenía.
 - **T0.5 (2026-11-20):** no choca. El test crea su propia base y aplica con `aplicarMigracionesHasta(db, M)`, que
   para ANTES de SLT-143: nunca ve las migraciones de esta ficha. T7.5 no hace falta.
 - **T0.6 (2026-11-20):** sin deriva. Con una FK existente pasada a `DEFERRABLE INITIALLY DEFERRED` a mano,

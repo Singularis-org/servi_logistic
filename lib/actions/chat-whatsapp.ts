@@ -21,7 +21,7 @@ import { idiomaPlantillasWhatsapp } from "@/lib/config/whatsapp";
 import { whatsappDeLaEmpresaOpcional } from "@/lib/services/whatsapp/whatsapp-de-la-empresa";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { construirComponentsEnvio } from "@/lib/utils/whatsapp-template";
-import { necesitaZona, resolverValoresPlantilla } from "@/lib/types/plantilla-datos";
+import { necesitaMoneda, necesitaZona, resolverValoresPlantilla } from "@/lib/types/plantilla-datos";
 import { renderPlantilla } from "@/lib/utils/plantilla-mensaje";
 import { fechaCalendario, inicioDelDiaEnUtc } from "@/lib/utils/calendario-zona";
 import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
@@ -61,9 +61,10 @@ export interface ChatWhatsappDeps {
   now?: () => Date;
   /**
    * SLT-42 (R22, R28; decisión del humano tras T5.5): el país de la empresa de la sesión, para el
-   * corte de «hoy» del hilo. Sin él, la real (`construirReglasPaisEmpresa`).
+   * corte de «hoy» del hilo. Sin él, la real (`construirReglasPaisEmpresa`). SL-21 (R10): también
+   * la moneda de los importes de la plantilla.
    */
-  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria" | "moneda">;
 }
 
 /**
@@ -287,10 +288,12 @@ export async function enviarPlantillaChat(
   // de la feature 107 (no se reinventa). El cuerpo renderizado se persiste para el historial.
   // SLT-42 (R22, R28): las fechas con hora, en la zona del pais de la empresa. Solo se lee si la
   // plantilla pinta alguna; sin zona en el pais, falla antes de enviar nada.
-  const zona = necesitaZona(plantilla.variables)
-    ? await (deps.reglasPais ?? construirReglasPaisEmpresa(prisma)).zonaHoraria()
-    : undefined;
-  const valores = resolverValoresPlantilla(plantilla.variables, datos, zona);
+  // SL-21 (R10, R11): los importes, en la moneda del mismo pais; solo se lee si la plantilla pinta
+  // uno, y sin moneda (`PaisSinMoneda`) falla antes de enviar nada.
+  const reglasPais = deps.reglasPais ?? construirReglasPaisEmpresa(prisma);
+  const zona = necesitaZona(plantilla.variables) ? await reglasPais.zonaHoraria() : undefined;
+  const moneda = necesitaMoneda(plantilla.variables) ? await reglasPais.moneda() : undefined;
+  const valores = resolverValoresPlantilla(plantilla.variables, datos, zona, moneda);
   const componentes = construirComponentsEnvio(plantilla.variables, valores);
   const cuerpoRenderizado = renderPlantilla(plantilla.cuerpo, valores);
   const idioma =

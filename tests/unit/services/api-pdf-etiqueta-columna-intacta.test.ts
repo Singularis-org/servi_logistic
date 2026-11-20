@@ -235,6 +235,7 @@ function montar(store: Store) {
     TTL_SEG,
     200,
     async () => new Uint8Array([37, 80, 68, 70]),
+    reglasPaisFijas(), // SL-21 (R14): la moneda del pais, como en las rutas
   );
 
   const service = new ApiPdfEtiquetaService(repo, lotePdf, signedUrls, TTL_SEG);

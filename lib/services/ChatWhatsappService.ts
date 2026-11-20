@@ -18,7 +18,7 @@ import { normalizarTelefono, type ReglasTelefono } from "@/lib/utils/telefono-pa
 import { esErrorTransitorio } from "@/lib/services/whatsapp/errores-meta";
 import { decidirEnrutadoPorCita, type DecisionCita } from "@/lib/services/whatsapp/enrutado-por-cita";
 import { construirComponentsEnvio } from "@/lib/utils/whatsapp-template";
-import { necesitaZona, resolverValoresPlantilla } from "@/lib/types/plantilla-datos";
+import { necesitaMoneda, necesitaZona, resolverValoresPlantilla } from "@/lib/types/plantilla-datos";
 
 /**
  * Cliente minimo consumido: el envio de texto libre (saliente del chat) y el envio de una
@@ -758,7 +758,9 @@ export class ChatWhatsappService {
     // SLT-42 (R22, R28): las fechas con hora, en la zona del pais de la empresa del hilo; solo se
     // lee si la plantilla pinta alguna.
     const zona = necesitaZona(plantilla.variables) ? await this.deps.reglasPais.zonaHoraria() : undefined;
-    const valores = resolverValoresPlantilla(plantilla.variables, datos, zona);
+    // SL-21 (R10, R11): el importe, en la moneda de ese mismo pais; solo se lee si la plantilla pinta uno.
+    const moneda = necesitaMoneda(plantilla.variables) ? await this.deps.reglasPais.moneda() : undefined;
+    const valores = resolverValoresPlantilla(plantilla.variables, datos, zona, moneda);
     const componentes = construirComponentsEnvio(plantilla.variables, valores);
     return client.enviarPlantilla(
       hilo.telefonoE164,

@@ -9,7 +9,8 @@
 ## T0 — Comprobaciones previas (sin código de producción)
 
 - [x] **T0.1** La mayor migración de `dev`. **Hecho:** los dos prefijos de §3 van después de ella, o se anotan
-  los nuevos en `design.md`.
+  los nuevos en `design.md`. Al sincronizar con `dev` (SL-21 tomó `20261124120000`), pasan a `20261124130000` y
+  `20261124130100` (`design.md` > Riesgos).
 - [x] **T0.2** Las columnas exactas que escribe `pago_plataforma_registrar_por_fuera` en `wallet_movimiento`.
   **Hecho:** §3.5 las copia.
 - [x] **T0.3** El trigger `cobro_intento_sin_borrar` frente al `CASCADE` desde `organizacion`. Se prueban
@@ -32,7 +33,7 @@
 
 ## T1 — Migración del enum (depende de T0.1)
 
-- [x] **T1.1** `20261124120000_cobro_historial_enum/migration.sql`: los dos `ADD VALUE IF NOT EXISTS` de §1.3.
+- [x] **T1.1** `20261124130000_cobro_historial_enum/migration.sql`: los dos `ADD VALUE IF NOT EXISTS` de §1.3.
   **Hecho:** aplica en una base desechable.
 - [x] **T1.2** Su `down.sql`: el `DELETE` del historial y `quitar_valores_de_enum_slt226`, copiada de SLT-215.
   **Hecho:** ida y vuelta en una base desechable, sin cambiar los demás valores.
@@ -113,10 +114,10 @@
 
 ## Archivos esperados
 
-- `db/migrations/20261124120000_cobro_historial_enum/migration.sql`
-- `db/migrations/20261124120000_cobro_historial_enum/down.sql`
-- `db/migrations/20261124120100_cobro_intento/migration.sql`
-- `db/migrations/20261124120100_cobro_intento/down.sql`
+- `db/migrations/20261124130000_cobro_historial_enum/migration.sql`
+- `db/migrations/20261124130000_cobro_historial_enum/down.sql`
+- `db/migrations/20261124130100_cobro_intento/migration.sql`
+- `db/migrations/20261124130100_cobro_intento/down.sql`
 - `db/schema.prisma`
 - `lib/types/cobro.ts`
 - `lib/interfaces/external/IProveedorCobro.ts`

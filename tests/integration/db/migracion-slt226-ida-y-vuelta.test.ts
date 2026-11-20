@@ -26,7 +26,7 @@ import {
  *
  * - Aplicadas con un pago ya confirmado, no crean datos: la confirmación sigue igual, con `en_linea = false` y su
  *   `confirmado_por` (R28).
- * - El `down.sql` de 20261124120100 aborta si hay un intento, sin tocar nada. Sin intentos, los dos `down.sql` (en
+ * - El `down.sql` de 20261124130100 aborta si hay un intento, sin tocar nada. Sin intentos, los dos `down.sql` (en
  *   orden inverso) dejan el esquema como antes, y el tope y `_pago_plataforma_aplicar` de 7 argumentos vuelven a ser
  *   los de antes (`pg_get_functiondef`).
  * - Reaplicadas, todo vuelve igual que la primera vez.
@@ -37,10 +37,10 @@ import {
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
-/** La mayor de `dev` antes de SLT-226 (T0.1). */
-const PREVIA = "20261123120100_zona_activa";
-const ENUM = "20261124120000_cobro_historial_enum";
-const M = "20261124120100_cobro_intento";
+/** La mayor de `dev` antes de SLT-226 (T0.1; la de SL-21 desde la sincronización con `dev`). */
+const PREVIA = "20261124120000_sl21_pais_moneda_impuesto";
+const ENUM = "20261124130000_cobro_historial_enum";
+const M = "20261124130100_cobro_intento";
 
 const TABLAS = ["cobro_intento", "cobro_webhook_evento"];
 const FUNCIONES_NUEVAS = [
@@ -56,7 +56,7 @@ const FUNCIONES_NUEVAS = [
   "cobro_registrar_pago_aprobado",
   "cobro_webhook_evento_inmutable",
 ];
-/** Las anteriores que 20261124120100 reescribe y su down repone, por su firma (la sobrecarga de 8 es nueva). */
+/** Las anteriores que 20261124130100 reescribe y su down repone, por su firma (la sobrecarga de 8 es nueva). */
 const FUNCIONES_CAMBIADAS = [
   "_pago_plataforma_aplicar(p_org text, p_pago_id text, p_monto numeric, p_aplicaciones jsonb, p_por text, p_ahora timestamp without time zone, p_por_fuera boolean)",
   "wallet_movimiento_tope_pago_plataforma()",
