@@ -8,6 +8,7 @@ import type { ErrorLogger } from "@/lib/errors/logger";
 import type { IAnaliticaOperativaService } from "@/lib/interfaces/services/IAnaliticaOperativaService";
 import type { SerieOperativa } from "@/lib/types/analitica-operativa";
 
+import { reglasPaisFijas, ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Feature 267 (T5) — EL BORDE DEL CANAL INTEGRADOR, probado por donde duele.
 //
 // ⚠ R32 ESPIA EL LOGGER, NO EL STATUS, y el motivo esta verificado en el codigo (design §4.4):
@@ -79,7 +80,7 @@ function montar() {
   const logError = vi.fn();
   const logger: ErrorLogger = { logError };
   const { service, consultar } = servicioEspia();
-  const deps: AnaliticaIntegradorDeps = { service, logger, now: () => AHORA };
+  const deps: AnaliticaIntegradorDeps = { service, logger, now: () => AHORA, reglasPais: reglasPaisFijas() };
   return { logError, consultar, deps };
 }
 
@@ -113,7 +114,8 @@ describe("267/R14 · una llamada al punto de entrada POR METRICA, con el canal e
       deps,
     );
 
-    const [rawPasado, actorPasado, metricaPasada, nowPasado, canalPasado] =
+    // SLT-42: el cuarto argumento es la zona (T5.7 la toma de la empresa de la key).
+    const [rawPasado, actorPasado, metricaPasada, , nowPasado, canalPasado] =
       prepararEspia.mock.calls[0]!;
     expect(canalPasado).toBe("api_key");
     expect(actorPasado).toEqual(INTEGRADOR);
@@ -126,7 +128,7 @@ describe("267/R14 · una llamada al punto de entrada POR METRICA, con el canal e
     // No se llama al borde: se comprueba la propiedad de la que depende, sobre el mismo
     // actor y la misma metrica. Si `prepararConsultaAnalitica` se invocara sin `"api_key"`,
     // este es el resultado que recibiria el integrador.
-    const sinCanal = consultas.prepararConsultaAnalitica(raw(), INTEGRADOR, "entregas", AHORA);
+    const sinCanal = consultas.prepararConsultaAnalitica(raw(), INTEGRADOR, "entregas", ZONA_DE_CR, AHORA);
     expect(sinCanal.status).toBe("forbidden");
   });
 });
@@ -341,7 +343,7 @@ describe("267/R45 · el lote prepara y consulta UNA vez por metrica, en el orden
 
     const r = await consultarAnaliticaIntegrador(
       { actor: INTEGRADOR, metricaIds: pedidas, raw: raw() },
-      { service, logger: { logError: vi.fn() }, now: () => AHORA },
+      { service, logger: { logError: vi.fn() }, now: () => AHORA, reglasPais: reglasPaisFijas() },
     );
 
     expect(r.status).toBe("ok");
@@ -359,10 +361,10 @@ describe("267/R45 · el lote prepara y consulta UNA vez por metrica, en el orden
 
     await consultarAnaliticaIntegrador(
       { actor: INTEGRADOR, metricaIds: ["entregas", "devoluciones"], raw: raw() },
-      { service, logger: { logError: vi.fn() }, now: () => AHORA },
+      { service, logger: { logError: vi.fn() }, now: () => AHORA, reglasPais: reglasPaisFijas() },
     );
 
-    for (const call of prepararEspia.mock.calls) expect(call[4]).toBe("api_key");
+    for (const call of prepararEspia.mock.calls) expect(call[5]).toBe("api_key");
     for (const call of consultar.mock.calls) {
       expect(call[0].alcance).toEqual({ tipo: "tienda", tiendaId: "u-integrador" });
       expect(call[0].politicaIdentidad).toBe("seudonima");
@@ -384,7 +386,7 @@ describe("267/R45 · el lote es TODO O NADA: una metrica denegada no deja pasar 
         metricaIds: ["entregas", "egresos", "devoluciones"],
         raw: raw(),
       },
-      { service, logger: { logError }, now: () => AHORA },
+      { service, logger: { logError }, now: () => AHORA, reglasPais: reglasPaisFijas() },
     );
 
     expect(r).toEqual({ status: "forbidden" });
@@ -397,7 +399,7 @@ describe("267/R45 · el lote es TODO O NADA: una metrica denegada no deja pasar 
 
     await consultarAnaliticaIntegrador(
       { actor: INTEGRADOR, metricaIds: ["entregas", "egresos", "devoluciones"], raw: raw() },
-      { service, logger: { logError }, now: () => AHORA },
+      { service, logger: { logError }, now: () => AHORA, reglasPais: reglasPaisFijas() },
     );
 
     // Un solo registro, y con el id culpable dentro: sin esto, diagnosticar el 403 de un lote de
@@ -413,11 +415,11 @@ describe("267/R45 · el lote es TODO O NADA: una metrica denegada no deja pasar 
 
     const noPublicable = await consultarAnaliticaIntegrador(
       { actor: INTEGRADOR, metricaIds: ["entregas", "egresos"], raw: raw() },
-      { service, logger: { logError: vi.fn() }, now: () => AHORA },
+      { service, logger: { logError: vi.fn() }, now: () => AHORA, reglasPais: reglasPaisFijas() },
     );
     const inexistente = await consultarAnaliticaIntegrador(
       { actor: INTEGRADOR, metricaIds: ["entregas", "no-existe-en-el-catalogo"], raw: raw() },
-      { service, logger: { logError: vi.fn() }, now: () => AHORA },
+      { service, logger: { logError: vi.fn() }, now: () => AHORA, reglasPais: reglasPaisFijas() },
     );
 
     expect(inexistente).toEqual(noPublicable);
@@ -434,7 +436,7 @@ describe("267/R45 · el lote es TODO O NADA: una metrica denegada no deja pasar 
         metricaIds: ["entregas", "devoluciones", "rechazos"],
         raw: { rango: "personalizado" },
       },
-      { service, logger: { logError }, now: () => AHORA },
+      { service, logger: { logError }, now: () => AHORA, reglasPais: reglasPaisFijas() },
     );
 
     expect(r.status).toBe("validation_error");
@@ -466,7 +468,7 @@ describe("267/R48 · el reloj se lee UNA sola vez para todo el lote", () => {
 
     const r = await consultarAnaliticaIntegrador(
       { actor: INTEGRADOR, metricaIds: diez, raw: raw() },
-      { service, logger: { logError: vi.fn() }, now },
+      { service, logger: { logError: vi.fn() }, now, reglasPais: reglasPaisFijas() },
     );
 
     expect(r.status).toBe("ok");

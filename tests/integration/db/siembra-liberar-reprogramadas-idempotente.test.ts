@@ -13,6 +13,7 @@ import type {
 } from "@/lib/interfaces/repositories/IJobRepository";
 import type { JobTipo } from "@prisma/client";
 import { seedJobLiberarReprogramadas } from "@/scripts/seed-jobs-liberar-reprogramadas";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 import { recurrenciaLiberarReprogramadas } from "@/lib/services/jobs/liberar-reprogramadas-handler";
 
 // FICHA 313 — LA SIEMBRA DE `liberar_reprogramadas` ES IDEMPOTENTE, MEDIDO CONTRA POSTGRES.
@@ -72,16 +73,16 @@ describeDb("313 · la siembra de `liberar_reprogramadas` no duplica", () => {
       } as unknown as IJobRepository;
 
       const antes = await contarJobs(tx);
-      const primera = await seedJobLiberarReprogramadas(repo, PRIMER_INSTANTE);
+      const primera = await seedJobLiberarReprogramadas(repo, PRIMER_INSTANTE, [ZONA_DE_CR]);
       const trasPrimera = await contarJobs(tx);
-      const segunda = await seedJobLiberarReprogramadas(repo, SEGUNDO_INSTANTE);
+      const segunda = await seedJobLiberarReprogramadas(repo, SEGUNDO_INSTANTE, [ZONA_DE_CR]);
       const trasSegunda = await contarJobs(tx);
 
       // Y la via que de verdad discrimina: el REENCOLADO de la recurrencia para esa MISMA
       // corrida. La siembra (que corre en cada despliegue) y la recurrencia (que corre tras
       // cada ocurrencia) son DOS productores del mismo trabajo. Si sus claves no colisionaran,
       // quedarian dos filas liberando el mismo dia — y el despliegue seria quien las creara.
-      const { runAfter, dedupeKey } = recurrenciaLiberarReprogramadas.siguiente(PRIMER_INSTANTE);
+      const { runAfter, dedupeKey } = recurrenciaLiberarReprogramadas.siguiente(PRIMER_INSTANTE, [ZONA_DE_CR]);
       const reencolada = await repo.enqueue(VALOR, {}, { runAfter, dedupeKey });
       const trasReencolado = await contarJobs(tx);
 
@@ -92,7 +93,8 @@ describeDb("313 · la siembra de `liberar_reprogramadas` no duplica", () => {
     expect(conteos.trasPrimera).toBe(conteos.antes + 1);
     expect(conteos.trasSegunda).toBe(conteos.antes + 1);
     expect(conteos.trasReencolado).toBe(conteos.antes + 1);
-    expect(conteos.primera?.dedupeKey).toBe("liberar_reprogramadas:2026-08-03");
+    // SLT-42 (design §6.1): la clave lleva tambien la zona de la corrida.
+    expect(conteos.primera?.dedupeKey).toBe("liberar_reprogramadas:America/Costa_Rica:2026-08-03");
     expect(conteos.segunda).toBeNull();
     expect(conteos.reencolada).toBeNull();
   });
@@ -104,7 +106,7 @@ describeDb("313 · la siembra de `liberar_reprogramadas` no duplica", () => {
         enqueue: (tipo: JobTipo, payload: Record<string, unknown>, opts?: EnqueueOpts) =>
           real.enqueue(tipo, payload, opts, tx as unknown as JobTxClient),
       } as unknown as IJobRepository;
-      return seedJobLiberarReprogramadas(repo, PRIMER_INSTANTE);
+      return seedJobLiberarReprogramadas(repo, PRIMER_INSTANTE, [ZONA_DE_CR]);
     });
 
     expect(fila).not.toBeNull();

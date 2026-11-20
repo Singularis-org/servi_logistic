@@ -14,6 +14,7 @@ import {
   soltarDependientesPosterioresDelEnumDeEventos,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import { tomarExclusionDemoQa, type ExclusionDemoQa } from "./_exclusion-demo-qa";
 
 // FICHA 401 (T5, design §3.3) — la migración que añade el aviso a los DOS enums de `notificacion`,
@@ -421,7 +422,12 @@ describeSiHayBase("401/T5 — la base aplicada, y las dos propiedades de dedupe"
       const repo = new NotificacionRepository(tx);
       await emitirGeocodificacionCaida(repo, { afectados: 3, diaCR: dia }, tx);
 
-      const usuarios = await tx.$queryRawUnsafe<{ id: string }[]>(`SELECT "id" FROM "usuario" LIMIT 1`);
+      // SLT-183: el maestro que lee se SIEMBRA en la tx del caso; antes se leia «el primer usuario».
+      const { id: maestroId } = await crearUsuarioDePrueba(tx, "maestro");
+      const usuarios = await tx.$queryRawUnsafe<{ id: string }[]>(
+        `SELECT "id" FROM "usuario" WHERE "id" = $1`,
+        maestroId,
+      );
       // ⚠️ FALLA RUIDOSAMENTE si no hay a quién atribuir la lectura. Un `if (!usuario) return;`
       // dejaría este test reportando `passed` sin haber comprobado nada.
       expect(usuarios.length, "no hay ningún usuario en la base: el caso no se puede medir").toBe(1);
@@ -480,8 +486,11 @@ describeSiHayBase("401/T5 — la base aplicada, y las dos propiedades de dedupe"
           { afectados: 3, diaCR: dia },
           tx,
         );
+        // SLT-183: el maestro que lee se SIEMBRA en la tx del caso; antes se leia «el primer usuario».
+        const { id: maestroId } = await crearUsuarioDePrueba(tx, "maestro");
         const usuarios = await tx.$queryRawUnsafe<{ id: string }[]>(
-          `SELECT "id" FROM "usuario" LIMIT 1`,
+          `SELECT "id" FROM "usuario" WHERE "id" = $1`,
+          maestroId,
         );
         expect(usuarios.length, "no hay ningún usuario en la base").toBe(1);
         const maestra = await tx.$queryRawUnsafe<{ id: string }[]>(

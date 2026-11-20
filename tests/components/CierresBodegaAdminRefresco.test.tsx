@@ -100,7 +100,6 @@ const DETALLE = {
   pagoTienda: "9000.00",
   cobradoSobreRecaudado: "0.00",
   netoEmpresa: "0.00",
-  ganaLaTienda: "9000.00",
   partesPorTienda: [],
   paraLaCentral: "9000.00",
   efectivoCubreDescuentos: true,
@@ -120,7 +119,8 @@ describe("CierresBodegaAdminModule — refresco tras marcar recibida (SL-44)", (
 
     render(
       <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
-        <CierresBodegaAdminModule pendientes={paginaInicial([CABECERA])} historico={paginaInicial([])} puedeConciliar />
+        {/* FICHA 431/481 (SLT-107 M1): montaje de la CENTRAL; sin audiencia falla cerrado a la satélite. */}
+        <CierresBodegaAdminModule pendientes={paginaInicial([CABECERA])} historico={paginaInicial([])} puedeConciliar audiencia="admin" />
       </SWRConfig>,
     );
     await waitFor(() => expect(listarHistoricoCierresBodegaPaginado).toHaveBeenCalled());
@@ -128,7 +128,7 @@ describe("CierresBodegaAdminModule — refresco tras marcar recibida (SL-44)", (
     const lecturasPendientes = vi.mocked(listarPendientesCierresBodegaPaginado).mock.calls.length;
 
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Ver / decidir el cierre de bodega de Limón" }));
+    await user.click(await screen.findByRole("button", { name: "Ver / conciliar el cierre de bodega de Limón" }));
     await user.click(await screen.findByRole("button", { name: /^Marcar recibido la consolidación de Limón/ }));
     await user.click(within(await screen.findByRole("dialog", { name: "Marcar recibido" })).getByRole("button", { name: "Marcar recibido" }));
 

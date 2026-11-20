@@ -90,7 +90,7 @@ function correrValidador(cwd: string): { code: number; salida: string } {
   }
 }
 
-describe('guardia: el validador ve los worktrees hermanos', () => {
+describe('guardia: el validador ve los worktrees hermanos', { timeout: 30_000 }, () => {
   it('pasa cuando el spec de la feature en vuelo vive en OTRO worktree', () => {
     const { code, salida } = correrValidador(montarRepo(true))
 

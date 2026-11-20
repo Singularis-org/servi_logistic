@@ -8,9 +8,11 @@ import { PlanesRepository } from "@/lib/repositories/PlanesRepository";
 import { PlanesService } from "@/lib/services/PlanesService";
 import type {
   CambiarTipoCobroResult,
+  CancelarCambioEmpresaResult,
   ListarPlanesAsignablesResult,
   PlanResult,
   VistaPreviaAsignacionResult,
+  VistaPreviaCambioResult,
   VistaPreviaCustomResult,
 } from "@/lib/types/planes";
 
@@ -18,7 +20,8 @@ import type {
 // sesión y la autorización la decide el servicio (R5), antes de tocar la base. Es de plataforma, así
 // que no lleva puerta de módulo: va al núcleo en `lib/modulos/reparto.ts`. Las usan las pantallas de
 // SLT-58: «Planes» del superadmin y el plan en el detalle de la empresa. Los planes públicos (R7)
-// NO se exponen aquí: son una lectura de servidor para SL-25.
+// NO se exponen aquí: son una lectura de servidor para SL-25. SLT-144 (R29): crear y editar un plan no
+// tienen action propia: la pantalla confirma por `lib/actions/plan-borrador.ts`.
 
 /** Inyección para los tests del borde. */
 export interface PlanesDeps {
@@ -28,28 +31,13 @@ export interface PlanesDeps {
 
 /** El composition root: el servicio con su repositorio real. No exportado: un "use server" solo exporta actions. */
 function construirPlanesService(): IPlanesService {
-  return new PlanesService(new PlanesRepository(getPrismaClient()));
+  const prisma = getPrismaClient();
+  return new PlanesService(new PlanesRepository(prisma));
 }
 
 async function conServicio<T>(deps: PlanesDeps, fn: (s: IPlanesService, actor: Actor | null) => Promise<T>): Promise<T> {
   const actor = await (deps.getActor ?? resolveActorFromSession)();
   return fn(deps.service ?? construirPlanesService(), actor);
-}
-
-/**
- * Crea un plan público o custom (R1–R3). Ajuste planes-custom (D2, D4, D6): un custom se asigna a su
- * empresa en la misma operación, con `tipoCobro` obligatorio e `inicioCiclo` opcional (solo si la empresa
- * no tiene plan). Si la asignación se rechaza, no se crea nada y vuelve el rechazo de `asignarPlanAction`.
- */
-export async function crearPlanAction(input: unknown, deps: PlanesDeps = {}): Promise<PlanResult> {
-  return conServicio(deps, (s, actor) => s.crear(actor, input));
-}
-
-/**
- * Edita un plan: de inmediato con `vigenteDesde: null` (R15–R17), o programado con una fecha (R37).
- */
-export async function editarPlanAction(input: unknown, deps: PlanesDeps = {}): Promise<PlanResult> {
-  return conServicio(deps, (s, actor) => s.editar(actor, input));
 }
 
 /**
@@ -62,7 +50,8 @@ export async function archivarPlanAction(input: unknown, deps: PlanesDeps = {}):
 /**
  * Asigna o cambia el plan de una empresa (R9–R13). SLT-58: `inicioCiclo` (`AAAA-MM-DD`) opcional, solo
  * en la primera asignación (R29–R31); los topes ya pasados vuelven en `avisos` (R36, R42). Ajuste
- * planes-custom (D6): `tipoCobro` (`mensual` | `anual`) obligatorio.
+ * planes-custom (D6) y SLT-86 (R1): `tipoCobro` obligatorio, uno de los cuatro. SLT-86 (R16–R18): a una
+ * empresa con plan, `vigenteDesde` obligatoria; con fecha futura queda pendiente y vuelve en `vigenteDesde`.
  */
 export async function asignarPlanAction(input: unknown, deps: PlanesDeps = {}): Promise<PlanResult> {
   return conServicio(deps, (s, actor) => s.asignar(actor, input));
@@ -90,11 +79,32 @@ export async function previsualizarCustomAction(input: unknown, deps: PlanesDeps
 }
 
 /**
- * Ajuste planes-custom (D10): cambia solo el tipo de cobro (`mensual` | `anual`) del plan que la empresa
- * ya tiene, con su fila en el historial de asignaciones. No toca el ancla del ciclo ni los módulos.
+ * SLT-144 (design §3.1; R17–R22): «Cuándo rige» del formulario de editar. `{ planId, vigenteDesde, topes }`: la
+ * fecha en que cada empresa del plan recibiría el cambio y los topes que ya pasa, como los dejaría programar.
+ * Solo lee.
+ */
+export async function previsualizarCambioPlanAction(input: unknown, deps: PlanesDeps = {}): Promise<VistaPreviaCambioResult> {
+  return conServicio(deps, (s, actor) => s.previsualizarCambio(actor, input));
+}
+
+/**
+ * Ajuste planes-custom (D10): cambia solo el tipo de cobro del plan que la empresa ya tiene, con su fila en
+ * el historial de asignaciones. No toca los módulos. SLT-86 (R16, R17): con `vigenteDesde` obligatoria;
+ * desde sus 00:00 la entrada pasa a esa fecha.
  */
 export async function cambiarTipoCobroAction(input: unknown, deps: PlanesDeps = {}): Promise<CambiarTipoCobroResult> {
   return conServicio(deps, (s, actor) => s.cambiarTipoCobro(actor, input));
+}
+
+/**
+ * SLT-86 (R19, R26): «Cancelar cambio» del detalle de empresa. `{ organizacionId }`: borra el cambio
+ * pendiente de la empresa y deja su fila en el historial; sin pendiente, `sin_cambio_programado`.
+ */
+export async function cancelarCambioEmpresaAction(
+  input: unknown,
+  deps: PlanesDeps = {},
+): Promise<CancelarCambioEmpresaResult> {
+  return conServicio(deps, (s, actor) => s.cancelarCambioEmpresa(actor, input));
 }
 
 /**

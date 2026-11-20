@@ -204,7 +204,7 @@ export class ApiKeyRepository implements IApiKeyRepository {
             tipoIdentificacionId: tipoIdentificacion.id, // [D4]
             rolId: rol.id, // R12/[D1]
             estado: "activo", // R12/[D5]
-            fulfillment: false,
+            seRecogeEnTienda: true, // SLT-94 D13: la cuenta dedicada siempre «se recoge en tienda»
             zonaId: null,
           },
           select: { id: true },

@@ -16,10 +16,12 @@ import type {
 import { toDTO } from "@/lib/services/MisAsignacionesService";
 import type { RecoleccionOrdenDTO } from "@/lib/types/recoleccion-tienda";
 import {
-  fechaCalendarioCR,
-  inicioDelDiaCREnUtc,
-  inicioDelDiaSiguienteCREnUtc,
-} from "@/lib/utils/fecha-cr";
+  fechaCalendario,
+  inicioDelDiaEnUtc,
+  inicioDelDiaSiguienteEnUtc,
+} from "@/lib/utils/calendario-zona";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 
 // Feature 157 — RECOLECCION EN TIENDA por el mensajero (arista #43, declarada por la 154 y sin
 // productor hasta aqui). El mensajero va a la tienda, escanea el QR de la etiqueta y la orden
@@ -90,9 +92,11 @@ export class RecoleccionTiendaService implements IRecoleccionTiendaService {
     /**
      * Feature 167 (R27) — reloj INYECTABLE (patron `GestionOrdenRepository`). La ventana de
      * "hoy" es la unica logica temporal de este service; con el reloj global los tests de los
-     * bordes (23:59 y 00:00 hora CR) tendrian que falsear `Date` para todo el proceso.
+     * bordes (23:59 y 00:00 hora local) tendrian que falsear `Date` para todo el proceso.
      */
     private readonly now: () => Date = () => new Date(),
+    /** SLT-42 (R22): la zona del pais de la empresa, con la que se corta la ventana de «hoy». */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
 
   async recolectarEnTienda(
@@ -106,7 +110,10 @@ export class RecoleccionTiendaService implements IRecoleccionTiendaService {
     //    que `gestionar`, de modo que un mensajero bloqueado no llega siquiera a saber si la guia
     //    existe. Recolectar en tienda es COBRAR, asi que le toca la MISMA regla que gestionar — y
     //    desde el 2026-08-23 tambien la misma que RECIBIR trabajo nuevo: ya no hay dos politicas.
-    const bloqueo = await this.repo.findBloqueoDetalle(actor.usuarioId);
+    // SLT-42 (R22, R28): la zona del pais de la empresa fecha la jornada que nombra el motivo; sin
+    // zona la operacion falla aqui, antes de escribir nada.
+    const zona = await zonaDeLaEmpresa(this.reglasPais, "RecoleccionTiendaService.recolectarEnTienda");
+    const bloqueo = await this.repo.findBloqueoDetalle(actor.usuarioId, zona);
     if (bloqueo.bloqueado) {
       return { status: "conflict", motivo: avisoBloqueo(bloqueo, { conCta: true }) };
     }
@@ -181,18 +188,19 @@ export class RecoleccionTiendaService implements IRecoleccionTiendaService {
     // MISMA guardia de rol que `recolectarEnTienda`: el apartado es del mensajero.
     if (actor.rol !== "mensajero") return { status: "forbidden" };
 
-    // R27 — ventana de "hoy" = dia natural de Costa Rica (00:00 a 24:00 hora de pared de CR),
-    // la MISMA convencion que usa la analitica (144/135). Costa Rica es UTC-6 fijo y sin
-    // horario de verano, asi que todo borde cae en `...T06:00:00.000Z` y aqui no hay aritmetica
-    // de zona propia: sale entera de `lib/utils/fecha-cr.ts`.
+    // R27 — ventana de "hoy" = dia natural del pais de la empresa (00:00 a 24:00 hora de pared de
+    // su zona), la MISMA convencion que usa la analitica (144/135). SLT-42 (R22, R23): la zona es
+    // la del pais y los bordes salen de `lib/utils/calendario-zona.ts`, que resuelve el desfase de
+    // cada borde (un dia de cambio de hora dura 23 o 25 h); aqui no hay aritmetica de zona propia.
     //
     // NO se replica la ventana 18:00-18:00 de `RankingService` (medianoche UTC + 24h): es una
     // divergencia CONOCIDA con ticket propio (166) y el ranking ni siquiera cuenta
     // recolecciones (157/R38), asi que no hay ningun numero que el mensajero pueda ver en dos
     // sitios con dos valores distintos. Copiarla aqui propagaria el defecto a una superficie mas.
-    const hoyCR = fechaCalendarioCR(this.now());
-    const desde = inicioDelDiaCREnUtc(hoyCR); // inclusivo
-    const hasta = inicioDelDiaSiguienteCREnUtc(hoyCR); // EXCLUSIVO
+    const zona = await zonaDeLaEmpresa(this.reglasPais, "RecoleccionTiendaService.listarRecoleccion");
+    const hoy = fechaCalendario(this.now(), zona);
+    const desde = inicioDelDiaEnUtc(hoy, zona); // inclusivo
+    const hasta = inicioDelDiaSiguienteEnUtc(hoy, zona); // EXCLUSIVO
 
     const [pendientes, recolecciones] = await Promise.all([
       // R21: la propiedad y el estado los impone el WHERE del repo, no un filtro en memoria.

@@ -11,6 +11,17 @@ import type {
 } from "@/lib/types/wallet-tienda";
 import { ORIGENES_FALSOS, conOrigenFalso } from "@/tests/fixtures/origenes-falsos";
 
+// SLT-42 (T5.4): la zona del pais de la empresa, sin sesion ni base: la de CR, como antes. El borde
+// (`zonaDelBorde`) y los composition roots leen `construirReglasPaisEmpresa`; la zona en si la mide
+// `tests/unit/services/hora-por-pais-wallet.test.ts`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
+
 // Feature 171 / T1.5 (R25/R29/R40) — BORDE del desglose de una tienda.
 //
 // Aqui se cierran las dos cosas que el servicio no puede cerrar porque no conoce la sesion ni

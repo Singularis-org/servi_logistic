@@ -16,11 +16,14 @@
  *     un doc cumple 61 dias seria un gate que se ignora. Se renueva con `/arnes-init` (modo
  *     revision), que relee el doc con el humano y actualiza la fecha.
  *
- *   - FALLA si `ramas.integracion` o `ramas.produccion` faltan, o si `.github/workflows/gate.yml`
- *     no las sigue: su `pull_request.branches` debe incluir las dos y todo `github.base_ref == '<x>'`
- *     debe nombrar la de produccion. GitHub no lee el JSON, asi que el workflow lleva los nombres
- *     escritos y aqui se comprueba que no se desalinean (con `main` escrito y `prod` real, el PR
- *     de despliegue no corria ni el gate ni el E2E). AVISA si `origin/<rama>` no existe en local.
+ *   - FALLA si `ramas.integracion` o `ramas.produccion` faltan, si el bloque `ci` esta mal, o si
+ *     el `.github/workflows/gate.yml` GENERADO (`scripts/ci.mjs`) no esta al dia con
+ *     `arnes.config.json` o le falta el `arnes-gate.yml` al que llama. GitHub no lee el JSON, asi
+ *     que el workflow lleva los nombres escritos y aqui se comprueba que no se desalinean (con
+ *     `main` escrito y `prod` real, el PR de despliegue no corria ni el gate ni el E2E).
+ *     Un `gate.yml` escrito a mano AVISA (pasalo al generado) y sigue con la comprobacion antigua:
+ *     su `pull_request.branches` debe incluir las dos ramas y todo `github.base_ref == '<x>'` debe
+ *     nombrar la de produccion. AVISA si `origin/<rama>` no existe en local.
  *
  * La deriva de DEPENDENCIAS no se mira aqui: la caza `tests/guards/guard-dependencias-aprobadas`.
  *
@@ -29,6 +32,8 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 
+import { erroresCi, esGenerado, generarGate } from './ci.mjs';
+import { erroresDisparadores } from './disparadores.mjs';
 import { resolverTracker } from './tracker.mjs';
 
 const CONFIG = 'arnes.config.json';
@@ -59,7 +64,29 @@ if (!integracion || !produccion) {
   process.exit(1);
 }
 const GATE = '.github/workflows/gate.yml';
-if (existsSync(GATE)) {
+// El gate.yml GENERADO (`scripts/ci.mjs`, `docs/gate.md > El CI se genera`) tiene que estar al dia
+// con arnes.config.json: si no, `fail` con el comando que lo arregla. Uno escrito a mano sigue con
+// las comprobaciones de ramas de abajo y un aviso para pasarlo al generado.
+const erroresDeCi = erroresCi(config);
+if (erroresDeCi.length > 0) {
+  console.error(`${CONFIG}: ${erroresDeCi.join('; ')}.`);
+  process.exit(1);
+}
+if (!existsSync(GATE)) {
+  console.log(`AVISO: no hay ${GATE}: el CI no corre. Generalo con node scripts/ci.mjs generar (docs/gate.md > El CI se genera).`);
+} else if (esGenerado(readFileSync(GATE, 'utf8'))) {
+  if (readFileSync(GATE, 'utf8').replace(/\r\n/g, '\n') !== generarGate(config)) {
+    console.error(`${GATE} no esta al dia con ${CONFIG} (ramas o ci): node scripts/ci.mjs generar.`);
+    process.exit(1);
+  }
+  if (!existsSync('.github/workflows/arnes-gate.yml')) {
+    console.error(`${GATE} llama a .github/workflows/arnes-gate.yml, que no existe: ./scripts/arnes-sync.sh --aplicar.`);
+    process.exit(1);
+  }
+} else {
+  console.log(`AVISO: ${GATE} esta escrito a mano: cada mejora del CI del arnes habra que copiarla a mano. Pasalo al generado: node scripts/ci.mjs generar (docs/gate.md > El CI se genera).`);
+}
+if (existsSync(GATE) && !esGenerado(readFileSync(GATE, 'utf8'))) {
   const yml = readFileSync(GATE, 'utf8');
   const filtro = /pull_request:[\s\S]*?branches:\s*\[([^\]]*)\]/.exec(yml);
   if (!filtro) {
@@ -82,6 +109,30 @@ if (existsSync(GATE)) {
 for (const rama of [integracion, produccion]) {
   const hay = spawnSync('git', ['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${rama}`], { stdio: 'ignore' });
   if (hay.status !== 0) console.log(`AVISO: no existe origin/${rama} en local (${CONFIG} > ramas). Haz git fetch o revisa el nombre.`);
+}
+
+// Forma de lo que lee el gate rapido y el validador: un error aqui haria que el gate ignorase la
+// configuracion en silencio (`docs/gate.md > Disparadores`, `docs/specs.md > Tres rutas`).
+const erroresGate = erroresDisparadores(config.gate?.disparadores);
+const presupuesto = config.gate?.presupuesto_rapido;
+if (presupuesto !== undefined && !(Number.isInteger(presupuesto) && presupuesto > 0)) {
+  erroresGate.push('gate.presupuesto_rapido debe ser un entero positivo (archivos de test)');
+}
+const tamano = config.gate?.tamano_pr;
+if (tamano !== undefined) {
+  const ent = (v) => v === undefined || (Number.isInteger(v) && v > 0);
+  if (tamano === null || typeof tamano !== 'object' || !ent(tamano.max_archivos) || !ent(tamano.max_lineas)
+    || (tamano.excluir !== undefined && !(Array.isArray(tamano.excluir) && tamano.excluir.every((g) => typeof g === 'string' && g.trim())))) {
+    erroresGate.push('gate.tamano_pr debe ser { max_archivos?: entero > 0, max_lineas?: entero > 0, excluir?: [globs] }');
+  }
+}
+const completaSi = config.rutas?.completa_si_toca;
+if (completaSi !== undefined && !(Array.isArray(completaSi) && completaSi.every((g) => typeof g === 'string' && g.trim()))) {
+  erroresGate.push('rutas.completa_si_toca debe ser una lista de globs');
+}
+if (erroresGate.length > 0) {
+  console.error(`${CONFIG}: ${erroresGate.join('; ')}.`);
+  process.exit(1);
 }
 
 const docs = config.perfil?.docs ?? [];

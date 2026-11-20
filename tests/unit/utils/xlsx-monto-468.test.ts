@@ -6,6 +6,7 @@ import { construirDescarga, nombreHoja } from "@/lib/utils/descarga-dataset";
 import { buildXlsxRows } from "@/lib/utils/xlsx-template";
 import { celdaMonto, FORMATO_EXCEL_MONTO } from "@/lib/utils/xlsx-monto";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Ficha 468 (T2, design §5) — montos como NUMERO de Excel (R22), filas en negrita (R23/R47), el csv
 // intacto (R58) y el archivo de siempre cuando nadie pide nada nuevo (R59). Los asertos de xlsx RELEEN
 // el binario con exceljs.
@@ -59,7 +60,7 @@ const FILAS: DescargaFila[] = [
 
 describe("468 — R22/R23/R47: el libro con columnas de monto y filas destacadas", () => {
   it("R22: la celda de monto es number, su toFixed(2) es el texto del servidor y lleva #,##0.00", async () => {
-    const a = await construirDescarga({ titulo: "Movimientos", columnas: COLUMNAS, filas: FILAS }, FECHA);
+    const a = await construirDescarga({ titulo: "Movimientos", columnas: COLUMNAS, filas: FILAS }, ZONA_CR, FECHA);
     const ws = (await leer(a.contenido)).worksheets[0];
     let medidas = 0;
     for (const [i, fila] of FILAS.entries()) {
@@ -97,7 +98,7 @@ describe("468 — R22/R23/R47: el libro con columnas de monto y filas destacadas
     };
     const a = await construirDescarga(
       { titulo: "Movimientos", columnas: COLUMNAS, filas: FILAS, filasDestacadas: [0, 3], hojasAdicionales: [detalle] },
-      FECHA,
+      ZONA_CR, FECHA,
     );
     const libro = await leer(a.contenido);
     const negritas = (ws: ExcelJS.Worksheet, n: number) =>
@@ -111,7 +112,7 @@ describe("468 — R22/R23/R47: el libro con columnas de monto y filas destacadas
 
   it("R59: sin `formato` ni `filasDestacadas` el archivo es el de antes (celdas, tipos y fuentes)", async () => {
     const sinNada: DescargaColumna[] = COLUMNAS.map(({ clave, encabezado }) => ({ clave, encabezado }));
-    const nuevo = await leer((await construirDescarga({ titulo: "Libro", columnas: sinNada, filas: FILAS }, FECHA)).contenido);
+    const nuevo = await leer((await construirDescarga({ titulo: "Libro", columnas: sinNada, filas: FILAS }, ZONA_CR, FECHA)).contenido);
     const ref = await leer(
       await buildXlsxRows(
         sinNada.map((c) => ({ key: c.clave, header: c.encabezado })),
@@ -132,7 +133,7 @@ describe("468 — R22/R23/R47: el libro con columnas de monto y filas destacadas
   });
 
   it("R58: el csv con columnas de monto sigue sacando el texto del servidor, sin simbolo", async () => {
-    const a = await construirDescarga({ tipo: "csv", titulo: "Movimientos", columnas: COLUMNAS, filas: FILAS, filasDestacadas: [0] }, FECHA);
+    const a = await construirDescarga({ tipo: "csv", titulo: "Movimientos", columnas: COLUMNAS, filas: FILAS, filasDestacadas: [0] }, ZONA_CR, FECHA);
     expect(typeof a.contenido).toBe("string");
     const lineas = (a.contenido as string).split(/\r?\n/);
     expect(lineas[2]).toBe("Contra-entrega,39506131.00,");

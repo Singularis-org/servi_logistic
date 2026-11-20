@@ -95,6 +95,8 @@ export interface DatosAviso {
 export interface ContextoInforme<P> {
   parametros: P;
   ahora: Date;
+  /** SLT-42 (R22): zona IANA del pais de la empresa del envio; fechas y horas del informe, en ella. */
+  zona: string;
   /** La plantilla lleva cabecera documento. */
   conDocumento: boolean;
   /** Solo origen `evento`. */

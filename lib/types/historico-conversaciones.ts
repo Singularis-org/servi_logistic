@@ -20,7 +20,7 @@ import { z } from "zod";
 
 import type { ChatMensajeVista } from "@/lib/types/chat-whatsapp";
 import { BUSQUEDA_MAX_CHARS, BUSQUEDA_MIN_CHARS } from "@/lib/types/orden";
-import { esFechaCalendarioValida } from "@/lib/utils/fecha-cr";
+import { esFechaCalendarioValida } from "@/lib/utils/calendario-zona";
 
 // ---------------------------------------------------------------------------
 // Limites de pagina (P8: «solo X conversaciones a la vez»)

@@ -1,6 +1,6 @@
 ---
 description: Analiza un modulo ya construido y extrae su prompt portable y el cuestionario de decisiones que tomo en silencio
-argument-hint: <el modulo: un nombre de dominio (login), una carpeta (lib/modules/identity) o un key de feature (QC-14)>
+argument-hint: <el modulo: un nombre de dominio (login), una carpeta (lib/modules/identity) o un key de feature (PROY-14)>
 ---
 
 Vas a convertir un módulo **ya construido** de este repo en material que otro proyecto pueda
@@ -9,7 +9,8 @@ dejarlas escritas.
 
 Módulo: **$ARGUMENTS**
 
-Alcance: **solo módulos con código real en `dev`**. Si te piden extraer una feature que todavía
+Alcance: **solo módulos con código real en la rama de integración**
+(`arnes.config.json > ramas.integracion`). Si te piden extraer una feature que todavía
 no tiene código, eso es `/afinar-feature`: no hay nada que leer. Si te piden documentar o cambiar
 el arnés (`docs/`, `.claude/`, `CLAUDE.md`, `AGENTS.md`), eso es `/afinar-regla`. Si te piden
 *modificar* el módulo, este comando es **solo lectura**. Dilo y para — y di a dónde.
@@ -39,7 +40,7 @@ Para, di por qué y no escribas nada si:
 Resuelve el argumento por estos tres modos, en este orden de precedencia, y **anuncia cuál
 usaste** — delimitar mal es el fallo caro aquí:
 
-1. **Key de feature** (`QC-14`, o el número suelto de las fichas antiguas como `10`): busca la
+1. **Key de feature** (`PROY-14`, o el número suelto de una ficha sin key como `10`): busca la
    ficha en `feature_list.json` por `key` y toma como semillas los archivos citados en `specs/<key>-<slug>/tasks.md`. Es el modo más rico: el mapa
    `R<n> → test` y las alternativas descartadas de `design.md` vienen ya escritos.
 2. **Ruta o glob** (contiene `/`): las semillas son los archivos de esa carpeta.
@@ -48,16 +49,17 @@ usaste** — delimitar mal es el fallo caro aquí:
 Calcula el **cierre transitivo**:
 
 - **Hacia adentro** — desde cada semilla, sigue los imports locales (`@/…`, `./…`)
-  recursivamente. Para en `node_modules`, en archivos ya visitados y en `components/ui/*`: los
-  primitivos de shadcn se declaran **dependencia asumida**, no se extraen.
+  recursivamente. Para en `node_modules`, en archivos ya visitados y en los primitivos de la
+  librería de UI del proyecto (p. ej. `components/ui/*` con shadcn): se declaran **dependencia
+  asumida**, no se extraen.
 - **Hacia afuera** — `grep` inverso por cada símbolo exportado. Los importadores **no entran** al
   módulo: entran a la sección *Contrato público y consumidores*. Esto es lo que evita que extraer
   el login se coma medio repo.
 - **Tests** — todo `tests/**` que importe cualquier archivo del cierre. Entran siempre: son el
   criterio de aceptación portable.
 - **Specs** — `specs/<key>-*/{requirements,design,tasks}.md`, y las decisiones ya cerradas por
-  `grep -i "decisiones cerradas"`, **no por un heading exacto**: el formato ya diverge entre la 4
-  y la 11, y buscar solo uno de los dos te salta medio repo.
+  `grep -i "decisiones cerradas"`, **no por un heading exacto**: el formato puede variar entre
+  specs, y buscar uno solo deja fuera el resto.
 - **Prohibido `.worktrees/`.**
 
 Muestra la lista de archivos **con el rol de cada uno en una línea** y **pide confirmación antes
@@ -67,7 +69,7 @@ condiciona el eje 13.
 ## Paso 2 — Inventario, delegado
 
 Delega en el subagente `extractor` (pasada 1) pasándole **solo** el slug, la lista de archivos ya
-confirmada, la naturaleza y el SHA actual de `dev`. Él recorre los ejes del Paso 3, los clasifica
+confirmada, la naturaleza y el SHA actual de la rama de integración. Él recorre los ejes del Paso 3, los clasifica
 con evidencia citada y escribe `extracciones/<slug>/inventario.md`.
 
 Te devuelve la ruta, el conteo por estado y los huecos. **No pegues el inventario en el chat**
@@ -86,10 +88,11 @@ el criterio no es «¿está en el código?» sino **«¿está el *porqué* escri
   eje omitido en silencio es indistinguible de un olvido.
 
 El desempate entre los dos primeros es la parte fina: la pregunta no es «¿el código es claro?»
-sino **«¿otro proyecto razonable habría elegido lo contrario?»**. `login-stub.ts` devuelve siempre
-`{ok:false}` y está justificado en R18/R19 con su comentario de costura → RESUELTO. En cambio
-`GENERIC_CREDENTIALS_ERROR` eligió mensaje genérico sobre específico y en ningún sitio dice «para
-no enumerar usuarios» → **IMPLÍCITA**, aunque el código sea cristalino.
+sino **«¿otro proyecto razonable habría elegido lo contrario?»**. Un ejemplo con un login: un
+stub que devuelve siempre `{ok:false}`, justificado en un `R<n>` y con un comentario que dice qué
+lo reemplazará → RESUELTO. En cambio, una constante que eligió un mensaje de error genérico en vez
+de uno por campo, sin que ningún sitio diga «para no revelar qué usuarios existen» →
+**IMPLÍCITA**, aunque el código sea cristalino.
 
 Y la regla anti-inflación: solo es IMPLÍCITA si se puede nombrar **una alternativa concreta y su
 consecuencia**. Si no, es RESUELTO. Sin esto el cuestionario llega a 60 filas y deja de leerse.
@@ -104,8 +107,9 @@ consecuencia**. Si no, es RESUELTO. Sin esto el cuestionario llega a 60 filas y 
 4. **Quién obtiene acceso.** Autoregistro abierto, invitación, alta administrada.
 5. **Estado y duración de la sesión.** Cookie, JWT o servidor; expiración, renovación, cierre, qué
    pasa al recargar.
-6. **Autorización y roles.** Quién puede qué y **dónde se valida** — en este repo, en el service
-   (`docs/architecture.md > Acceso a datos y autorizacion`), con test exigido por `docs/checkpoints-proyecto.md > Datos y seguridad`.
+6. **Autorización y roles.** Quién puede qué y **dónde se valida** — en este proyecto, donde
+   diga `docs/architecture.md > Acceso a datos y autorización`, con el test que exija
+   `docs/checkpoints-proyecto.md`.
 7. **Política de fallo hacia el usuario.** Mensaje genérico o específico, enumeración de usuarios,
    rate limit o bloqueo por intentos, auditoría del intento fallido, timing. Es el eje con más
    decisiones implícitas de cualquier módulo de autenticación, y el que el receptor más necesita
@@ -130,9 +134,9 @@ consecuencia**. Si no, es RESUELTO. Sin esto el cuestionario llega a 60 filas y 
 
 ### Portabilidad: qué es del stack y qué sobrevive (siempre)
 
-14. **Acoplado al framework.** Qué existe solo porque es Next App Router — `'use server'`,
-    `useActionState`, `redirect()`, los route groups, el par server/client component — cada uno
-    **con su equivalente nombrado** en otro stack.
+14. **Acoplado al framework.** Qué existe solo por el framework del proyecto (con Next App Router,
+    p. ej.: `'use server'`, `useActionState`, `redirect()`, los route groups, el par
+    server/client component), cada uno **con su equivalente nombrado** en otro stack.
 15. **Acoplado a librerías.** Por cada una: qué aporta y cuál es el requisito abstracto que
     sobrevive si se sustituye («validación de esquema declarativa con errores por campo», no
     «zod»).
@@ -147,15 +151,16 @@ consecuencia**. Si no, es RESUELTO. Sin esto el cuestionario llega a 60 filas y 
 18. **Lo que el módulo NO hace, y de qué tipo es cada ausencia.** Tres tipos que no se mezclan:
     **deliberado** (va a otra feature), **stub** (hay hueco con firma) y **deuda** (debería estar
     y no está).
-19. **Provisionalidad.** Qué es placeholder y qué definitivo. La técnica del login —copys marcados
-    provisionales y tests que afirman sobre la constante, nunca sobre el literal— es transferible
-    y va al prompt.
+19. **Provisionalidad.** Qué es placeholder y qué definitivo. Si el módulo marca sus copys como
+    provisionales y sus tests afirman sobre la constante y no sobre el literal, esa técnica es
+    transferible y va al prompt.
 20. **Tests como criterio de aceptación.** Por cada uno: qué caso fija, qué `R<n>` cubre, y si es
     **transferible** (comportamiento) o **del stack**. Si falta E2E, decirlo con motivo:
-    `CHECKPOINTS.md` lo exige para los flujos críticos de `docs/checkpoints-proyecto.md > Flujos criticos`, autenticación incluida.
-21. **Dependencias asumidas ya montadas.** Lo que el módulo da por hecho y no crea: primitivos de
-    `components/ui/`, Tailwind, el layout público, el tooling de tests. Omitir esto es la causa
-    clásica de que el receptor reimplemente shadcn entero.
+    `CHECKPOINTS.md` lo exige para los flujos críticos de `docs/checkpoints-proyecto.md > Flujos
+    críticos (exigen E2E)`.
+21. **Dependencias asumidas ya montadas.** Lo que el módulo da por hecho y no crea: los primitivos
+    de UI, los estilos, el layout, el tooling de tests. Omitir esto es la causa clásica de que el
+    receptor reimplemente la librería de UI entera.
 
 ## Paso 4 — Preguntar, en lenguaje llano
 

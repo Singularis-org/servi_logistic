@@ -16,6 +16,7 @@ import type {
 import { AnaliticaOperativaService } from "@/lib/services/AnaliticaOperativaService";
 import type { ContadorIntentos } from "@/lib/services/AnaliticaOperativaService";
 
+import { ZONA_DE_CR, reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Feature 126 — dobles compartidos por los tests unitarios de la 126.
 //
 // NO acaba en `.test.ts`: vitest no lo recoge como suite.
@@ -50,7 +51,7 @@ export function consultaDe(
   raw: unknown = { rango: "dia" },
   now: Date = AHORA,
 ): ConsultaAnalitica {
-  const r = prepararConsultaAnalitica(raw, actor, metricaId, now);
+  const r = prepararConsultaAnalitica(raw, actor, metricaId, ZONA_DE_CR, now);
   if (r.status !== "ok") {
     throw new Error(`la preparacion de "${metricaId}" no concedio: ${JSON.stringify(r)}`);
   }
@@ -131,7 +132,7 @@ export function servicioCon(
   intentos: ContadorIntentos = intentosFalso(),
   now: Date = AHORA,
 ): AnaliticaOperativaService {
-  return new AnaliticaOperativaService(rollup, viva, intentos, { now: () => now });
+  return new AnaliticaOperativaService(rollup, viva, intentos, { now: () => now }, reglasPaisFijas());
 }
 
 /* -------------------------------------------------------------------------- */

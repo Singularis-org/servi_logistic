@@ -4,10 +4,12 @@ import type {
   DistritoDeZona,
   GrupoDeEmpresa,
   ITarifasPantallaRepository,
+  MensajeroDePantalla,
   TiendaDePantalla,
   VehiculoDePantalla,
   ZonaDePantalla,
 } from "@/lib/interfaces/repositories/ITarifasPantallaRepository";
+import { ESTADOS_USUARIO_NO_ASIGNABLES } from "@/lib/constants/estado-usuario-asignable";
 import { GrupoDistritosRepository } from "@/lib/repositories/GrupoDistritosRepository";
 import {
   leerModeloViejoCon,
@@ -22,6 +24,7 @@ import {
   esZonaEspecialDeLaEmpresa,
   SELECT_MARCA_ZONA_ESPECIAL,
 } from "@/lib/repositories/_shared/zona-especial";
+import { leerTopeIntentosDeLaEmpresa } from "@/lib/repositories/_shared/tope-intentos-empresa";
 import type { ValorDeNivel } from "@/lib/tarifas/faltantes";
 import { ROLES_TARIFABLES } from "@/lib/types/tarifa";
 import type { GrupoDistritosDTO, TarifaValorDTO } from "@/lib/types/tarifa-flexible";
@@ -35,7 +38,7 @@ import { etiquetaDePersona } from "@/lib/types/historial-accion-etiquetas";
 type TarifasPantallaPrismaClient = ConstructorParameters<typeof GrupoDistritosRepository>[0] &
   Pick<
     PrismaClient,
-    "tarifaActivacion" | "zona" | "zonaDistrito" | "grupoDistritos" | "tarifaValor" | "vehiculo" | "usuario" | "tarifa" | "tarifaZonaMensajero"
+    "tarifaActivacion" | "zona" | "zonaDistrito" | "grupoDistritos" | "tarifaValor" | "vehiculo" | "usuario" | "tarifa" | "tarifaZonaMensajero" | "$queryRaw"
   >;
 
 const SELECT_ZONA = { id: true, nombre: true, esCentral: true } as const;
@@ -45,6 +48,10 @@ export class TarifasPantallaRepository implements ITarifasPantallaRepository {
 
   async leerActivacion(): Promise<{ activadaAt: Date } | null> {
     return this.prisma.tarifaActivacion.findFirst({ select: { activadaAt: true } });
+  }
+
+  async leerTopeIntentos(): Promise<number> {
+    return leerTopeIntentosDeLaEmpresa(this.prisma);
   }
 
   async listarZonas(): Promise<ZonaDePantalla[]> {
@@ -105,6 +112,30 @@ export class TarifasPantallaRepository implements ITarifasPantallaRepository {
       orderBy: [{ nombre: "asc" }, { primerApellido: "asc" }],
     });
     return filas.map((u) => ({ id: u.id, nombre: etiquetaDePersona(u) }));
+  }
+
+  async listarMensajeros(): Promise<MensajeroDePantalla[]> {
+    const filas = await this.prisma.usuario.findMany({
+      // La segunda rama es el retirado: su valor sigue pagando, y sin ella no se podria ver ni quitar (R32).
+      where: { OR: [{ rol: { value: "mensajero" } }, { tarifaValoresComoMensajero: { some: {} } }] },
+      select: { id: true, nombre: true, primerApellido: true, estado: true, rol: { select: { value: true } } },
+      orderBy: [{ nombre: "asc" }, { primerApellido: "asc" }],
+    });
+    return filas.map((u) => ({
+      id: u.id,
+      nombre: etiquetaDePersona(u),
+      // La misma regla que `TarifaValorRepository.mensajeroEsElegibleONivelOcupado`: lo que se ofrece es lo que se admite.
+      elegible: u.rol.value === "mensajero" && !ESTADOS_USUARIO_NO_ASIGNABLES.includes(u.estado),
+    }));
+  }
+
+  async valoresDeMensajeros(): Promise<TarifaValorDTO[]> {
+    const filas = await this.prisma.tarifaValor.findMany({
+      where: { mensajeroId: { not: null } },
+      select: SELECT_VALOR_DTO,
+      orderBy: [{ concepto: "asc" }, { createdAt: "asc" }],
+    });
+    return filas.map(valorADTO);
   }
 
   async distritosDeZona(zonaId: string, opciones: { conMarca: boolean }): Promise<DistritoDeZona[]> {

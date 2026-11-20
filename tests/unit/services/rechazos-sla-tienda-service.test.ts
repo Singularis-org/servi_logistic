@@ -3,6 +3,7 @@ import { RechazosSlaTiendaService } from "@/lib/services/RechazosSlaTiendaServic
 import type { IOrdenRepository, RechazoSlaTiendaRow } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { fakeIntentosEnLote, llamadasIntentos } from "@/tests/fixtures/intentos-entrega";
+import { terminoDeBusqueda } from "@/lib/utils/filtros-listado-ordenes";
 
 // Feature 102 (T8) — tests unit del RechazosSlaTiendaService (dobles de repo, sin DB/red). Cubre:
 //   R12 la lista incluye las ordenes rechazadas por SLA de la tienda, con su monto de 56;
@@ -174,5 +175,64 @@ describe("RechazosSlaTiendaService.listar — intentos en lote (160/R11-R15/R26)
     const r = await new RechazosSlaTiendaService(fakeRepo(), doble).listar(INPUT, MENSAJERO);
     expect(r.status).toBe("forbidden");
     expect(doble.contarIntentosEnLote).not.toHaveBeenCalled();
+  });
+});
+
+// --- SLT-194 (T4): el termino de busqueda viaja igual a la cuenta y a la pagina ---
+
+describe("RechazosSlaTiendaService.listar — busqueda (SLT-194/R956)", () => {
+  it("R956: adminTienda con termino -> count y find reciben su tienda y EL MISMO termino", async () => {
+    const repo = fakeRepo({
+      countRechazadasSlaByTienda: vi.fn(async () => 1),
+      findRechazadasSlaByTienda: vi.fn(async () => [row({ numGuia: 91024 })]),
+    });
+    const busqueda = terminoDeBusqueda("91024");
+    const r = await new RechazosSlaTiendaService(repo, intentos).listar(
+      { page: 2, pageSize: 10, busqueda },
+      ADMIN_TIENDA,
+    );
+
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    expect(r.total).toBe(1);
+    // Literal a mano: lo que da `terminoDeBusqueda` para una guia ya limpia es una sola forma.
+    expect(repo.countRechazadasSlaByTienda).toHaveBeenCalledWith("tienda-1", { busqueda: "91024" });
+    expect(repo.findRechazadasSlaByTienda).toHaveBeenCalledWith(
+      "tienda-1",
+      { skip: 10, take: 10 },
+      { busqueda: "91024" },
+    );
+  });
+
+  it("R956: con las dos formas del termino, las dos llegan a la cuenta y a la pagina", async () => {
+    const repo = fakeRepo();
+    await new RechazosSlaTiendaService(repo, intentos).listar(
+      { ...INPUT, busqueda: terminoDeBusqueda("8888-0000") },
+      ADMIN_TIENDA,
+    );
+    const esperado = { busqueda: "8888-0000", busquedaDigitos: "88880000" };
+    expect(repo.countRechazadasSlaByTienda).toHaveBeenCalledWith("tienda-1", esperado);
+    expect(repo.findRechazadasSlaByTienda).toHaveBeenCalledWith("tienda-1", { skip: 0, take: 10 }, esperado);
+  });
+
+  it("R956: otro rol con termino -> forbidden y cero lecturas del repositorio", async () => {
+    for (const actor of [MENSAJERO, ADMIN_SATELITE, MAESTRO]) {
+      const repo = fakeRepo();
+      const r = await new RechazosSlaTiendaService(repo, intentos).listar(
+        { ...INPUT, busqueda: terminoDeBusqueda("91024") },
+        actor,
+      );
+      expect(r.status).toBe("forbidden");
+      expect(repo.countRechazadasSlaByTienda).not.toHaveBeenCalled();
+      expect(repo.findRechazadasSlaByTienda).not.toHaveBeenCalled();
+    }
+  });
+
+  it("R957: sin termino, las llamadas no llevan argumento de busqueda (las de antes)", async () => {
+    const repo = fakeRepo();
+    await new RechazosSlaTiendaService(repo, intentos).listar(INPUT, ADMIN_TIENDA);
+    expect(vi.mocked(repo.countRechazadasSlaByTienda).mock.calls).toEqual([["tienda-1"]]);
+    expect(vi.mocked(repo.findRechazadasSlaByTienda).mock.calls).toEqual([
+      ["tienda-1", { skip: 0, take: 10 }],
+    ]);
   });
 });

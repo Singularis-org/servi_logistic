@@ -54,7 +54,7 @@ const COMPOSICION: ComposicionGananciaDTO = {
     ingreso_flete_devolucion: "4000.00",
     ingreso_comision_cod: "900.00",
     ingreso_ajuste: "90.00",
-    ingreso_cobro_tienda: "0.00", // ficha 461: la exige el `Record` total
+    ingreso_cobro_tienda: "0.00", ingreso_fulfillment: "0.00", /* SLT-94 */ // ficha 461: la exige el `Record` total
   },
   // SL-39 (R8): sin las tres de IVA. 150 + 4 000 + 900 + 90 + 0 = 5 140,00.
   totalIngresos: "5140.00",
@@ -63,7 +63,7 @@ const COMPOSICION: ComposicionGananciaDTO = {
     egreso_ajuste: "45.75",
     egreso_reverso_cobro_tienda: "0.00", // ficha 461: la exige el `Record` total
     egreso_reverso_flete_devolucion: "0.00", // ficha 458-B: la exige el `Record` total
-    egreso_pago_plataforma: "0.00", // SL-45: la exige el `Record` total
+    egreso_pago_plataforma: "0.00", egreso_reverso_fulfillment: "0.00", /* SLT-94 */ // SL-45: la exige el `Record` total
   },
   otrosEgresos: "194.25",
   hayOtrosEgresos: true,
@@ -73,7 +73,7 @@ const COMPOSICION: ComposicionGananciaDTO = {
     ingreso_iva_flete: "19.50",
     ingreso_iva_flete_devolucion: "520.00",
     ingreso_iva_comision_cod: "30.25",
-    egreso_reverso_iva_flete_devolucion: "0.00",
+    egreso_reverso_iva_flete_devolucion: "0.00", ingreso_iva_fulfillment: "0.00", egreso_reverso_iva_fulfillment: "0.00", /* SLT-94 */
   },
   totalIva: "569.75",
 };
@@ -368,10 +368,13 @@ describe("Ficha 339 — el nombre de cada control y sus estados (R24/R25/R26)", 
     // (Ficha 458-B: + las dos filas de la anulacion de un cobro por devolución a origen: 18.)
     // (SL-39: las cuatro de IVA pasan a su bloque —5 de ingreso + 9 de egreso + 4 de IVA—: 18.)
     // (SL-45, R24: + la fila del pago a la plataforma, que abre su detalle: 19.)
-    expect(controles).toHaveLength(19);
+    // (SLT-94, R37: + «Fulfillment cobrado a la tienda», + «Devoluciones de fulfillment a una tienda» y + las dos
+    // de su IVA: 23.)
+    expect(controles).toHaveLength(23);
 
     const nombres = controles.map((b) => b.getAttribute("aria-label") ?? "");
-    expect(new Set(nombres).size).toBe(19);
+    expect(new Set(nombres).size).toBe(23);
+    expect(nombres).toContain("Ver los movimientos de Fulfillment cobrado a la tienda"); // SLT-94 (R37)
     expect(nombres).toContain("Ver los movimientos de Pago a la plataforma"); // SL-45 (R24)
     // Y cada nombre CONTIENE el rótulo visible de su fila («Label in Name»).
     expect(nombres).toContain(ABRIR_MENSAJEROS);

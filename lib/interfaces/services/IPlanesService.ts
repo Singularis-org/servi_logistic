@@ -1,13 +1,16 @@
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type {
   CambiarTipoCobroResult,
+  CancelarCambioEmpresaResult,
   CatalogoResult,
   DetallePlanResult,
   ListarPlanesAsignablesResult,
   PlanDTO,
   PlanDeEmpresaResult,
   PlanResult,
+  PreciosQueRigenResult,
   VistaPreviaAsignacionResult,
+  VistaPreviaCambioResult,
   VistaPreviaCustomResult,
 } from "@/lib/types/planes";
 
@@ -19,21 +22,45 @@ import type {
 // servidor, que ya resolvieron el actor; no hay action de lectura. Cualquier otro rol: `forbidden` sin
 // leer nada (R22). La excepción es la vista previa de la primera asignación (§11.4), que sí tiene action.
 
+/** SLT-129 (design §5.3): confirmar un borrador; sin opciones, el comportamiento de hoy (R21). */
+export type OpcionesDeBorrador = { borradorId: string };
+
 export interface IPlanesService {
-  crear(actor: Actor | null, input: unknown): Promise<PlanResult>;
-  /** De inmediato (`vigenteDesde: null`) o programada (R37, T11). */
-  editar(actor: Actor | null, input: unknown): Promise<PlanResult>;
+  crear(actor: Actor | null, input: unknown, opciones?: OpcionesDeBorrador): Promise<PlanResult>;
+  /**
+   * SLT-135 (R1–R9): siempre programada (SLT-128) con `vigenteDesde` obligatoria y `≥ hoy`, cambie el precio
+   * o no; con la de hoy, cada empresa que empieza período hoy lo recibe en la siguiente pasada de la cola.
+   */
+  editar(actor: Actor | null, input: unknown, opciones?: OpcionesDeBorrador): Promise<PlanResult>;
   archivar(actor: Actor | null, input: unknown): Promise<PlanResult>;
-  /** SLT-58 (R29–R31, R36, R42): `inicioCiclo` opcional, solo en la primera asignación. */
+  /**
+   * SLT-58 (R29–R31, R36, R42): `inicioCiclo` opcional, solo en la primera asignación. SLT-86 (R16):
+   * `vigenteDesde` obligatorio en un cambio a una empresa con plan; con fecha futura queda pendiente.
+   */
   asignar(actor: Actor | null, input: unknown): Promise<PlanResult>;
   /** SLT-58 (R37): `{ organizacionId, planId, inicioCiclo }`; solo lee. */
   previsualizarAsignacion(actor: Actor | null, input: unknown): Promise<VistaPreviaAsignacionResult>;
   /** Ajuste planes-custom (D13): `{ organizacionId, inicioCiclo, topes }`; solo lee. */
   previsualizarCustom(actor: Actor | null, input: unknown): Promise<VistaPreviaCustomResult>;
-  /** Ajuste planes-custom (D10): `{ organizacionId, tipoCobro }`; solo el tipo de cobro del plan actual. */
+  /**
+   * SLT-144 (design §3.1; R21, R22): `{ planId, vigenteDesde, topes }`; la fecha en que cada empresa del plan
+   * recibiría el cambio y los topes que ya pasa, como los dejaría programar. Solo lee.
+   */
+  previsualizarCambio(actor: Actor | null, input: unknown): Promise<VistaPreviaCambioResult>;
+  /**
+   * Ajuste planes-custom (D10): `{ organizacionId, tipoCobro, vigenteDesde }`; solo el tipo de cobro del
+   * plan actual, desde la fecha de efecto (SLT-86 R16, R17).
+   */
   cambiarTipoCobro(actor: Actor | null, input: unknown): Promise<CambiarTipoCobroResult>;
+  /** SLT-86 (R19, R26): `{ organizacionId }`; cancela el cambio pendiente de la empresa. */
+  cancelarCambioEmpresa(actor: Actor | null, input: unknown): Promise<CancelarCambioEmpresaResult>;
   cancelarCambio(actor: Actor | null, input: unknown): Promise<PlanResult>;
   asignables(actor: Actor | null, input: unknown): Promise<ListarPlanesAsignablesResult>;
+  /**
+   * SLT-86 (R15, R25; review m4): `{ planIds }`; por plan, los precios que pueden regir de hoy en adelante
+   * (`PreciosQueRigen`). Solo lee; un id que no existe no tiene clave.
+   */
+  preciosQueRigen(actor: Actor | null, input: unknown): Promise<PreciosQueRigenResult>;
   planesPublicos(): Promise<PlanDTO[]>;
   /** SLT-58 R13: todos los planes, también los archivados. */
   catalogo(actor: Actor | null): Promise<CatalogoResult>;

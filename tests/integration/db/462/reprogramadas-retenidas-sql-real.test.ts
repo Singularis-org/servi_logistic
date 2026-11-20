@@ -15,6 +15,7 @@ import {
 } from "@/lib/interfaces/services/IReprogramadasRetenidasService";
 import { HAY_BASE_DE_DATOS } from "../_postgres-real";
 import { conEscenario, diaCR, prepararMundo, type Escenario, type Mundo } from "../454/_escenario";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 /**
  * FICHA 462 (T1.5, design §8.1) — EL PREDICADO DE «RETENIDA», CONTRA POSTGRES DE VERDAD.
@@ -329,13 +330,13 @@ describeSiHayBase("462/T1.5 — reprogramadas retenidas (Postgres real)", () => 
 
       // ── Medicion 2: el servicio ENTERO, con el ensamblaje real ──
       const service = buildReprogramadasRetenidasService(e.cliente);
-      const resumen = await service.resumen(HOY);
+      const resumen = await service.resumen(HOY, ZONA_CR);
       const misCierres = [
         cSol, cVen, cRec, cApr, cEscritorio, cFutura, cAyer, cBorrada, cBodega, cAnulada, cViejo, cNuevoApr,
         cViejoApr, cNuevoSol, cSat, cBSol, cBApr, cBRec, cBEnt, cBFut, cBAnu, cBLeg, cBViejo, cBNuevo, cBBorr,
         cBAyer, cBSat, cVincular,
       ];
-      const marca = await service.contarPorCierre(HOY, misCierres);
+      const marca = await service.contarPorCierre(HOY, ZONA_CR, misCierres);
       const cifraCentral = await service.contar(HOY, { tipo: "central" });
       const cifraSatelite = await service.contar(HOY, { tipo: "zona", zonaId: e.zonaSateliteId });
       const central = recortarPorAmbito(resumen, { tipo: "central" });
@@ -353,13 +354,13 @@ describeSiHayBase("462/T1.5 — reprogramadas retenidas (Postgres real)", () => 
       // ── Medicion 5: los casos DINAMICOS (R45/R46/R47), releyendo despues de cada cambio ──
       // R47: la gestion sin cierre de a5 se vincula a un cierre -> pasa del grupo al cierre.
       await e.tx.gestionOrden.update({ where: { id: a5.gestionId }, data: { cierreId: cVincular } });
-      const trasVincular = await service.resumen(HOY);
+      const trasVincular = await service.resumen(HOY, ZONA_CR);
       // R45: la futura (a7) se corrige a HOY -> cuenta bajo su cierre.
       await e.tx.gestionOrden.update({ where: { id: a7.gestionId }, data: { fechaReprogramacion: HOY } });
-      const trasCorregirAHoy = await service.contarPorCierre(HOY, [cFutura]);
+      const trasCorregirAHoy = await service.contarPorCierre(HOY, ZONA_CR, [cFutura]);
       // R46: a1 se corrige a MAÑANA -> deja de contar.
       await e.tx.gestionOrden.update({ where: { id: a1.gestionId }, data: { fechaReprogramacion: MANANA } });
-      const trasCorregirAFuturo = await service.contarPorCierre(HOY, [cSol]);
+      const trasCorregirAFuturo = await service.contarPorCierre(HOY, ZONA_CR, [cSol]);
 
       return {
         ids: {

@@ -9,6 +9,17 @@ import type { ILiquidacionService } from "@/lib/interfaces/services/ILiquidacion
 import type { PrevisualizacionRepartoDTO, RepartoAplicadoDTO } from "@/lib/types/liquidacion-reparto";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 
+// SLT-42 (T5.4): la zona del pais de la empresa, sin sesion ni base: la de CR, como antes. El borde
+// (`zonaDelBorde`) y los composition roots leen `construirReglasPaisEmpresa`; la zona en si la mide
+// `tests/unit/services/hora-por-pais-wallet.test.ts`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
+
 // Feature 205 / T4.3 — el BORDE del reparto: las dos Server Actions. Cubre R2 (sin sesion ->
 // `unauthenticated` ANTES de nada), R9 (`cierreId` colado muere en el borde), R46/R47 (forma y
 // montos STRING) y R52 (la superficie del modulo, ampliada a siete y ni una mas).

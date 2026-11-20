@@ -29,6 +29,10 @@ export interface IWalletMensajeroFeedService {
    * Prisma.Decimal y emite: `pago_devengado = P` (si P>0), `pago_efectivo = pagado` (si pagado>0),
    * y el egreso `egreso_pago_mensajero = P` en la caja 42 (si P>0). El pendiente NO es fila: es el
    * saldo derivado. SI P=0 devuelve listas vacias (R10). Idempotente por el constraint DB.
+   *
+   * SLT-123 (R313, R325): la misma lectura trae `pagoIndependienteEfectivo`. Con la marca en
+   * `true` NO se emite `pago_efectivo` (el libro lleva solo el devengo P); el egreso de caja no
+   * cambia (R314). Con `false`, la regla de la 44 tal cual.
    */
   construirMovimientosDePago(
     cierreId: string,

@@ -21,12 +21,14 @@
 // es justo como se acaba con dos verdades: aqui uno es la fuente y el otro se VERIFICA.
 //
 // LA CORRIDA DE `01:00Z` DEL DIA D+1 ES, EN HORA DE PARED, LAS 19:00 DEL DIA D:
-// `fechaCalendarioCR(2026-09-12T01:00Z)` = `"2026-09-11"`, y su mañana es `"2026-09-12"`. El
-// codigo no hace ninguna resta: usa `startOfDayCR(now)` y compara con `>`.
+// `fechaCalendario(2026-09-12T01:00Z, zona de CR)` = `"2026-09-11"`, y su mañana es `"2026-09-12"`.
+// El codigo no hace ninguna resta: usa `inicioDelDiaComoFecha(now, zona)` con la zona del pais de
+// cada empresa (SLT-42) y compara con `>`.
 import { NextResponse } from "next/server";
 import { withErrorHandler, isAppErrorShape, appErrorToResponse } from "@/lib/errors";
 import type { IRepartoMananaAvisoService } from "@/lib/interfaces/services/IRepartoMananaAvisoService";
 import { RepartoMananaAvisoService } from "@/lib/services/RepartoMananaAvisoService";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { RepartoMananaRepository } from "@/lib/repositories/RepartoMananaRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { getPrismaClient } from "@/lib/db/prisma-client";
@@ -65,6 +67,9 @@ function buildService(): IRepartoMananaAvisoService {
     // `tests/unit/services/notificacion-notificadores-reales.test.ts` afirma sobre el USO EFECTIVO
     // (fuente sin imports ni comentarios) y no sobre el fichero entero.
     notificarRepartoMananaReal,
+    undefined,
+    // SLT-42 (R24, R28): cada empresa de `paraCadaEmpresa` calcula hoy y mañana con la zona de SU pais.
+    construirReglasPaisEmpresa(prisma),
   );
 }
 

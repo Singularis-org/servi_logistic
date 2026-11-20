@@ -8,6 +8,7 @@ import type { ICajaCobroTiendaFeedService } from "@/lib/interfaces/services/ICaj
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { RegistrarCobroTiendaInput } from "@/lib/types/wallet-tienda";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // ⭑ FICHA 381 → 461 / T B.7 + T B.8 — el servicio con el que LA EMPRESA LE COBRA A UNA TIENDA, y anula.
@@ -125,6 +126,8 @@ function montaje(over: Montaje = {}) {
     anulaciones as unknown as ICobroTiendaAnulacionRepository,
     runTransaction as never,
     () => AHORA,
+    undefined, // sin comprobante
+    reglasPaisFijas(),
   );
   return { servicio, tiendaRepo, usuarioRepo, caja, anulaciones, tx, runTransaction };
 }

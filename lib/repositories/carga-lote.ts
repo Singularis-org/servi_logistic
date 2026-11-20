@@ -2,7 +2,8 @@
 // que `appendCambioEstado(tx, ...)`: una funcion pura que opera sobre el `tx` de la
 // transaccion EN CURSO, para que resolver el lote y escribir las ordenes sean atomicos (R34).
 import { randomUUID } from "crypto";
-import { Prisma, type PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "@prisma/client";
+import { textoConstraintP2002 } from "@/lib/repositories/_shared/prisma-unique";
 import {
   CargaLoteAjenoError,
   CargaNombreDuplicadoError,
@@ -11,8 +12,8 @@ import {
 /** Cara del `tx` que necesita el helper: solo el delegate de `carga`. */
 export type CargaTxClient = Pick<PrismaClient, "carga">;
 
-/** Codigo de Prisma para violacion de restriccion unica (`carga_usuario_carga_name_key`). */
-const PRISMA_UNIQUE_VIOLATION = "P2002";
+/** Indice unico compuesto (usuario_carga, name) de `carga`. */
+const INDICE_NOMBRE_POR_USUARIO = "carga_usuario_carga_name_key";
 
 export interface EnsureCargaParams {
   /**
@@ -28,15 +29,19 @@ export interface EnsureCargaParams {
   name?: string | null;
 }
 
-/** ¿El error es la violacion del unico compuesto (usuario_carga, name)? */
+/**
+ * ¿El error es la violacion del unico compuesto (usuario_carga, name)?
+ *
+ * SLT-93: con `@prisma/adapter-pg` el P2002 NO trae columnas en `meta.target` (llega
+ * «(not available)»); el nombre del indice viene en `meta.driverAdapterError`. Se lee con
+ * `textoConstraintP2002`, que une las dos formas (nativa y adapter), igual que el resto de
+ * repositorios. Antes se miraba solo `meta.target` y el duplicado escapaba como 500.
+ */
 function esNombreDuplicado(err: unknown): boolean {
-  if (!(err instanceof Prisma.PrismaClientKnownRequestError)) return false;
-  if (err.code !== PRISMA_UNIQUE_VIOLATION) return false;
-  const target = err.meta?.target;
-  const campos = Array.isArray(target) ? target.join(",") : String(target ?? "");
-  // Prisma reporta el target como lista de columnas (`usuario_carga,name`) o como el nombre
-  // del indice (`carga_usuario_carga_name_key`), segun el conector: ambas mencionan `name`.
-  return campos.includes("name");
+  const texto = textoConstraintP2002(err);
+  if (texto === null) return false;
+  // Adapter: nombre del indice. Motor nativo: lista de columnas `usuario_carga,name`.
+  return texto.includes(INDICE_NOMBRE_POR_USUARIO) || texto.includes("usuario_carga,name");
 }
 
 /**

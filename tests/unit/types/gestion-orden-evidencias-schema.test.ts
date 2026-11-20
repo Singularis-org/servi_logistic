@@ -3,6 +3,7 @@ import type { ZodError } from "zod";
 import { gestionarSchema } from "@/lib/types/gestion-orden";
 import { gestionConfig } from "@/lib/config/gestion";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // ⚠️ Feature 193 (R10), decision humana del 2026-08-10: la gestion pasa a EXIGIR la ubicacion
 // del mensajero (o un motivo tecnico de por que falta). Los casos validos de abajo se AMPLIAN
 // con `ubicacion` —no se relajan—, mismo criterio que aplicaron la 73 y la 75 al endurecer
@@ -76,12 +77,12 @@ const RAMAS_CON_FOTO = [
 
 describe("R5: las 3 ramas con foto aceptan una LISTA de 1..MAX evidencias", () => {
   it.each(RAMAS_CON_FOTO)("%s: acepta 1 foto y acepta MAX fotos", (_nombre, build) => {
-    expect(gestionarSchema.safeParse(build(fotos(1))).success).toBe(true);
-    expect(gestionarSchema.safeParse(build(fotos(MAX))).success).toBe(true);
+    expect(gestionarSchema(ZONA_CR).safeParse(build(fotos(1))).success).toBe(true);
+    expect(gestionarSchema(ZONA_CR).safeParse(build(fotos(MAX))).success).toBe(true);
   });
 
   it("reprogramada NO lleva evidencias (rama sin foto, sigue valida)", () => {
-    const r = gestionarSchema.safeParse({
+    const r = gestionarSchema(ZONA_CR).safeParse({
       ordenId: "o1",
       ubicacion: UBICACION_193,
       resultado: "reprogramado",
@@ -94,7 +95,7 @@ describe("R5: las 3 ramas con foto aceptan una LISTA de 1..MAX evidencias", () =
 
 describe("R6: lista con menos de 1 elemento -> validation_error en `evidencias`", () => {
   it.each(RAMAS_CON_FOTO)("%s: lista vacia -> invalido", (_nombre, build) => {
-    const r = gestionarSchema.safeParse(build([]));
+    const r = gestionarSchema(ZONA_CR).safeParse(build([]));
     expect(r.success).toBe(false);
     if (!r.success) expect(fieldErrorsDe(r.error).evidencias).toBeDefined();
   });
@@ -102,14 +103,14 @@ describe("R6: lista con menos de 1 elemento -> validation_error en `evidencias`"
   it.each(RAMAS_CON_FOTO)("%s: campo `evidencias` ausente -> invalido", (_nombre, build) => {
     const base = build([]) as Record<string, unknown>;
     delete base.evidencias;
-    const r = gestionarSchema.safeParse(base);
+    const r = gestionarSchema(ZONA_CR).safeParse(base);
     expect(r.success).toBe(false);
   });
 });
 
 describe("R7: por encima del maximo configurado -> validation_error", () => {
   it.each(RAMAS_CON_FOTO)("%s: MAX+1 fotos -> invalido en `evidencias`", (_nombre, build) => {
-    const r = gestionarSchema.safeParse(build(fotos(MAX + 1)));
+    const r = gestionarSchema(ZONA_CR).safeParse(build(fotos(MAX + 1)));
     expect(r.success).toBe(false);
     if (!r.success) expect(fieldErrorsDe(r.error).evidencias).toBeDefined();
   });
@@ -122,14 +123,14 @@ describe("R7: por encima del maximo configurado -> validation_error", () => {
 
 describe("R8: validacion POR ARCHIVO — una foto invalida invalida el envio", () => {
   it.each(RAMAS_CON_FOTO)("%s: una foto no-imagen entre validas -> invalido", (_nombre, build) => {
-    const r = gestionarSchema.safeParse(build([fotoValida(), { type: "application/pdf", size: 10 }]));
+    const r = gestionarSchema(ZONA_CR).safeParse(build([fotoValida(), { type: "application/pdf", size: 10 }]));
     expect(r.success).toBe(false);
     if (!r.success) expect(fieldErrorsDe(r.error).evidencias).toBeDefined();
   });
 
   it.each(RAMAS_CON_FOTO)("%s: una foto sobre el tamano maximo entre validas -> invalido", (_nombre, build) => {
     const grande = { type: "image/png", size: gestionConfig.MAX_FILE_BYTES + 1 };
-    const r = gestionarSchema.safeParse(build([fotoValida(), grande]));
+    const r = gestionarSchema(ZONA_CR).safeParse(build([fotoValida(), grande]));
     expect(r.success).toBe(false);
   });
 });
@@ -145,7 +146,7 @@ describe("sin puente: el campo singular `evidencia` ya no se pliega", () => {
         : nombre === "devolucion_a_origen_por_rechazo"
           ? { ordenId: "o1", resultado: "devolucion_a_origen_por_rechazo", motivo: "x", evidencia: fotoValida() }
           : { ordenId: "o1", resultado: "novedad", causaDevolucion: "wrong_address", motivo: "x", evidencia: fotoValida() };
-    const r = gestionarSchema.safeParse(raw);
+    const r = gestionarSchema(ZONA_CR).safeParse(raw);
     expect(r.success).toBe(false);
     if (!r.success) expect(fieldErrorsDe(r.error).evidencias).toBeDefined();
   });

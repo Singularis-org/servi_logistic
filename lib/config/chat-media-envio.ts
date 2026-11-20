@@ -40,19 +40,22 @@ export const MIMES_ENVIO: Readonly<Record<TipoAdjuntoEnvio, ReadonlySet<string>>
 };
 
 /**
- * Tope PROPIO de los documentos (D6/P3), 25 MB: MAS restrictivo que los 100 MB que admite Meta,
- * porque quien sube es un repartidor por red movil y 100 MB tardan minutos y agotan el timeout
- * antes de llegar. UNA constante, para que subirlo o bajarlo sea una linea: `LIMITE_BYTES`
- * la REFERENCIA, no repite el numero.
+ * Tope de cualquier adjunto (SLT-88), 4 MB. Lo pone el TRANSPORTE, no Meta: el adjunto viaja en el
+ * cuerpo de una Server Action y Vercel corta ese cuerpo a ~4,5 MB antes de que la funcion lo vea.
+ * El margen cubre el pie, el nombre y el sobre multipart (SLT-88 design §3). Enviar mas exigiria
+ * subir por otro camino, no cambiar este numero.
  */
-export const LIMITE_DOCUMENTO_BYTES = 25 * 1024 * 1024;
+export const LIMITE_ADJUNTO_BYTES = 4 * 1024 * 1024;
 
-/** Limite por tipo, en bytes (R10). Imagen/video/audio son los de Meta; documento es propio. */
+/**
+ * Limite por tipo, en bytes. Hoy los cuatro valen lo mismo porque el tope es del transporte; se
+ * conserva por tipo porque `validarAdjunto` responde con el limite del tipo que rechazo.
+ */
 export const LIMITE_BYTES: Readonly<Record<TipoAdjuntoEnvio, number>> = {
-  imagen: 5 * 1024 * 1024,
-  video: 16 * 1024 * 1024,
-  audio: 16 * 1024 * 1024,
-  documento: LIMITE_DOCUMENTO_BYTES,
+  imagen: LIMITE_ADJUNTO_BYTES,
+  video: LIMITE_ADJUNTO_BYTES,
+  audio: LIMITE_ADJUNTO_BYTES,
+  documento: LIMITE_ADJUNTO_BYTES,
 };
 
 /**
@@ -82,8 +85,7 @@ export const MAX_CAPTION = 1024;
 /**
  * Timeout de la SUBIDA del binario a la Graph API. Mucho mas generoso que el del envio de un
  * mensaje (10 s) por la misma razon que `TIMEOUT_MEDIA_MS` de la descarga: aqui viaja un binario
- * de hasta 25 MB por el enlace de SUBIDA de una red movil, que es el mas lento de los dos
- * sentidos. Dicho sin adornos: un documento pegado al limite puede agotarlo igualmente; ese caso
+ * del servidor a Meta, y ese binario puede llegar a `LIMITE_ADJUNTO_BYTES`. Si aun asi se agota,
  * termina en `fallo_subida` con el adjunto todavia seleccionado para reintentar a mano (R19).
  */
 export const TIMEOUT_SUBIDA_MS = 60_000;

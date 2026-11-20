@@ -17,6 +17,7 @@ type OrigenPrismaClient = Pick<
   | "cierreDia"
   | "gestionOrden"
   | "ordenIncidente"
+  | "ordenFulfillmentMovimiento"
   | "liquidacionPago"
   | "rankingSnapshotFila"
   | "pagoPorCuentaTienda"
@@ -73,6 +74,16 @@ export class OrigenLegibleRepository implements IOrigenLegibleRepository {
 
   async incidentes(ids: readonly string[]): Promise<OrdenDeOrigen[]> {
     const filas = await this.prisma.ordenIncidente.findMany({
+      where: { id: { in: [...ids] } },
+      select: { id: true, orden: { select: ORDEN_SELECT } },
+    });
+    return filas.map((f) => ({ id: f.id, ...guiaDe(f.orden) }));
+  }
+
+  // SLT-94 (R36): el movimiento de fulfillment nombra su orden. La lectura es de la app (RLS por
+  // empresa sobre `orden_fulfillment_movimiento`): SELECT permitido, escritura revocada (R25).
+  async movimientosFulfillment(ids: readonly string[]): Promise<OrdenDeOrigen[]> {
+    const filas = await this.prisma.ordenFulfillmentMovimiento.findMany({
       where: { id: { in: [...ids] } },
       select: { id: true, orden: { select: ORDEN_SELECT } },
     });

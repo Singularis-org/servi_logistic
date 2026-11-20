@@ -1,10 +1,13 @@
 import type { CierreTotales } from "@/lib/interfaces/services/ICierreDiaService";
-import type { CierreGestionDescargaDTO } from "@/lib/interfaces/services/ICierresAdminService";
-import type { FiltrosDescargaGestiones } from "@/lib/types/filtros-cierres";
+import type {
+  CierreGestionDescargaRow,
+  RechazoTiendaDescargaDTO,
+} from "@/lib/interfaces/services/ICierresAdminService";
+import type { FiltrosDescargaGestionesRepo } from "@/lib/types/filtros-cierres";
 import type { CierreBodegaResumenRow } from "@/lib/interfaces/repositories/ICierreBodegaRepository";
 import type { CierreGestionPendienteRow } from "@/lib/interfaces/repositories/ICierreDiaRepository";
 import type { PaginaRepositorio, RangoPagina } from "@/lib/utils/rango-pagina";
-import type { FiltrosCierresBodega } from "@/lib/types/filtros-cierres";
+import type { FiltrosCierresBodegaRepo } from "@/lib/types/filtros-cierres";
 
 // Feature 40 — contrato del repositorio de "Cierres de bodega" del maestro (aprobar /
 // rechazar). Solo queries Prisma; sin logica de negocio (esa vive en
@@ -23,7 +26,24 @@ export interface CierreBodegaDetalleCierreRow {
   totalPagoMensajero: string; // feature 39/R20: snapshot del pago al mensajero del cierre_dia (STRING)
   totalIngresoBodegaRechazos: string; // feature 56/R19: snapshot del ingreso de bodega por rechazos del cierre_dia (STRING)
   gestionesAjustadas: number; // SLT-56 (R20): gestiones de este cierre_dia con al menos un ajuste del pago
+  /** SLT-104 (PA3, R120): ISO del `solicitado_at` de ESTE cierre_dia, no el del cierre de bodega. */
+  solicitadoAt: string;
+  /**
+   * SLT-154 (R466): marca del modelo nuevo de ESTE cierre_dia (la satelite le paga al mensajero
+   * aparte del efectivo). Obligatorio: si el mapper la perdiera, «La central debe» contaria un
+   * cierre nuevo como viejo.
+   */
+  pagoIndependienteEfectivo: boolean;
 }
+
+/**
+ * SLT-107 (R280, R281): el alcance con el que se LEE la cabecera de un cierre de bodega. Acceso
+ * total = toda la empresa (la central, como hoy); `adminSatelite` = solo la zona de SU usuario,
+ * resuelta por el servicio desde la base (nunca de la peticion).
+ */
+export type AlcanceLecturaBodega =
+  | { lectura: "toda_la_empresa" }
+  | { lectura: "zona"; zonaId: string };
 
 // Datos de la transicion guardada (aprobar/rechazar) de un cierre de bodega.
 // `motivoRechazo` = null al aprobar; el motivo (ya validado) al rechazar.
@@ -32,6 +52,8 @@ export interface ResolverCierreBodegaInput {
   nuevoEstado: "aprobado" | "rechazado";
   resueltoPor: string;
   motivoRechazo: string | null;
+  /** SLT-42 (R22): la zona IANA del pais de la empresa, para el dia del cierre en la etiqueta del historial. */
+  zonaHoraria: string;
 }
 
 // Resultado de la transicion guardada: `updated` (aplicada), `conflict` (existe pero
@@ -47,17 +69,21 @@ export type ResolverCierreBodegaResult = "updated" | "conflict" | "fuera_de_alca
  */
 export interface MarcarConciliadoInput {
   id: string;
-  /** STRING de escala 2, ya validado en el borde (`montoPositivoSchema`, > 0). */
+  /** STRING de escala 2, ya validado en el borde (>= 0). El 0 lo filtra el repositorio contra lo declarado (SLT-96). */
   montoRecibido: string;
   nota: string | null;
   /** Quien marca (`esAccesoTotal`). Va a `conciliado_por` Y al espejo `resuelto_por` (§4.1). */
   actorUsuarioId: string;
+  /** SLT-42 (R22): la zona IANA del pais de la empresa, para el dia del cierre en la etiqueta del historial. */
+  zonaHoraria: string;
 }
 
 /** ⭑ FICHA 431 (R12) — deshacer la marca. No hace falta monto: se BORRA el que hubiera. */
 export interface RevertirConciliacionInput {
   id: string;
   actorUsuarioId: string;
+  /** SLT-42 (R22): la zona IANA del pais de la empresa, para el dia del cierre en la etiqueta del historial. */
+  zonaHoraria: string;
 }
 
 /**
@@ -67,11 +93,13 @@ export interface RevertirConciliacionInput {
  */
 export interface CorregirConciliacionInput {
   id: string;
-  /** STRING de escala 2, ya validado en el borde (`montoPositivoSchema`, > 0). */
+  /** STRING de escala 2, ya validado en el borde (>= 0). El 0 lo filtra el repositorio contra lo declarado (SLT-96). */
   montoRecibido: string;
   nota: string | null;
   /** Quien corrige (`esAccesoTotal`). Va a `conciliado_por` Y al espejo `resuelto_por`. */
   actorUsuarioId: string;
+  /** SLT-42 (R22): la zona IANA del pais de la empresa, para el dia del cierre en la etiqueta del historial. */
+  zonaHoraria: string;
 }
 
 /**
@@ -89,6 +117,13 @@ export type MarcaConciliacionResult = "updated" | "conflict" | "fuera_de_alcance
  * porque marcar y corregir nunca lo devuelven.
  */
 export type RevertirConciliacionResult = MarcaConciliacionResult | "con_asientos";
+
+/**
+ * SLT-96 — marcar y corregir tienen un desenlace mas: `monto_cero_no_permitido`. El 0 solo vale
+ * cuando lo declarado de la consolidacion (su snapshot) es 0, y eso solo lo sabe el repositorio.
+ * Revertir no lo devuelve nunca: no lleva monto.
+ */
+export type MarcaConMontoResult = MarcaConciliacionResult | "monto_cero_no_permitido";
 
 export interface ICierresBodegaAdminRepository {
   /**
@@ -112,7 +147,7 @@ export interface ICierresBodegaAdminRepository {
    * de bodega consolida los de varios) y RECORTA dentro del alcance, componiendose con `AND` y
    * nunca en lugar de el. Omitirlo deja el criterio IDENTICO al de antes.
    */
-  findHistoricoCompleto(filtros?: FiltrosCierresBodega): Promise<CierreBodegaResumenRow[]>;
+  findHistoricoCompleto(filtros?: FiltrosCierresBodegaRepo): Promise<CierreBodegaResumenRow[]>;
   /**
    * Feature 184 — Tanda E (T E.1, R1/R14/R15/R16): la COLA ENTERA de cierres de bodega
    * PENDIENTES (`solicitado`), sin recorte. Es el conjunto del que sale el archivo del listado 4.
@@ -120,7 +155,7 @@ export interface ICierresBodegaAdminRepository {
    * COMPLEMENTO EXACTO del de arriba, con la MISMA constante de estados (`in` aqui, `notIn`
    * alli): los dos conjuntos particionan la tabla igual que las dos paginas.
    */
-  findColaCompleta(filtros?: FiltrosCierresBodega): Promise<CierreBodegaResumenRow[]>;
+  findColaCompleta(filtros?: FiltrosCierresBodegaRepo): Promise<CierreBodegaResumenRow[]>;
   /**
    * Feature 170 — FASE 2 (T I.1, R40/R41/R44/R51/R54): UNA PAGINA del historico (los cierres
    * de bodega ya RESUELTOS) + el TOTAL del conjunto.
@@ -132,7 +167,7 @@ export interface ICierresBodegaAdminRepository {
    */
   findHistoricoPaginado(
     rango: RangoPagina,
-    filtros?: FiltrosCierresBodega,
+    filtros?: FiltrosCierresBodegaRepo,
   ): Promise<PaginaRepositorio<CierreBodegaResumenRow>>;
   /**
    * Feature 170 — FASE 2 (T J.1, R40/R41/R44/R51/R54): UNA PAGINA de la COLA de cierres de
@@ -144,7 +179,7 @@ export interface ICierresBodegaAdminRepository {
    */
   findColaPaginada(
     rango: RangoPagina,
-    filtros?: FiltrosCierresBodega,
+    filtros?: FiltrosCierresBodegaRepo,
   ): Promise<PaginaRepositorio<CierreBodegaResumenRow>>;
   /**
    * R11: el cierre de bodega (cabecera + totales snapshot) + por cada cierre_dia
@@ -152,7 +187,20 @@ export interface ICierresBodegaAdminRepository {
    * reuso 37, WHERE cierre_id=cierre_dia.id). `null` si el cierre de bodega no existe
    * (R19).
    */
-  findCierreBodegaConDetalle(id: string): Promise<{
+  findCierreBodegaConDetalle(
+    id: string,
+    /**
+     * SLT-42 (R22): la zona del pais de la empresa (la lee el servicio). Con ella se fecha cada
+     * instante del DTO (`fechaGestion`, ...); el repositorio no la lee ni la guarda.
+     */
+    zona: string,
+    /**
+     * SLT-107 (R280, R281): con que alcance se LEE la cabecera. De zona = `zonaId` en el `where`
+     * (no se lee y se descarta); fuera de alcance = `null` sin leer nada mas. Obligatorio: cada
+     * llamada declara el suyo.
+     */
+    alcance: AlcanceLecturaBodega,
+  ): Promise<{
     cierre: CierreBodegaResumenRow;
     cierresDia: {
       resumen: CierreBodegaDetalleCierreRow;
@@ -175,8 +223,23 @@ export interface ICierresBodegaAdminRepository {
    * de otra forma que la de «cierres del dia», la misma orden saldria con dos numeros.
    */
   findGestionesDeCierresBodegaCompleto(
-    filtros: FiltrosDescargaGestiones,
-  ): Promise<CierreGestionDescargaDTO[]>;
+    filtros: FiltrosDescargaGestionesRepo,
+    /**
+     * SLT-42 (R22): la zona del pais de la empresa (la lee el servicio). Con ella se fecha cada
+     * instante del DTO (`fechaGestion`, ...); el repositorio no la lee ni la guarda.
+     */
+    zona: string,
+  ): Promise<CierreGestionDescargaRow[]>;
+  /**
+   * SLT-113 (R372, R373) — los rechazos de la tienda de los cierres del MODELO NUEVO del mismo
+   * conjunto que `findGestionesDeCierresBodegaCompleto` (consolidados en bodega, mismos recortes, con
+   * alguna gestion), con el criterio en el WHERE. Sin ids ni importes.
+   */
+  findRechazosTiendaDeCierresBodegaModeloNuevoCompleto(
+    filtros: FiltrosDescargaGestionesRepo,
+    /** SLT-42 (R22): la zona del pais de la empresa, con la que se fecha `fechaRechazo`. */
+    zona: string,
+  ): Promise<RechazoTiendaDescargaDTO[]>;
   /**
    * R16-R22: transicion atomica y guardada de `solicitado` -> nuevoEstado, SOLO si el
    * cierre de bodega sigue `solicitado` (updateMany con guardia de estado). Un solo
@@ -202,7 +265,7 @@ export interface ICierresBodegaAdminRepository {
    * difiere de `paraLaCentral`, UNA fila de diferencia de la satelite en la caja, enlazada a una
    * fila de `conciliacion_bodega_ajuste` (R11/R15). Todo fechado en el instante de la marca (R22).
    */
-  marcarConciliado(input: MarcarConciliadoInput): Promise<MarcaConciliacionResult>;
+  marcarConciliado(input: MarcarConciliadoInput): Promise<MarcaConMontoResult>;
   /**
    * ⭑ FICHA 431 (R12/R13) — DESHACE la marca: vuelve a `solicitado` y VACIA las cuatro columnas de
    * la conciliacion mas las dos del espejo (`resuelto_at`/`resuelto_por`).
@@ -232,5 +295,5 @@ export interface ICierresBodegaAdminRepository {
    * `valor_anterior`/`valor_nuevo`. La nota NO entra al historial. SLT-73 (R13): si la diferencia
    * cambia, escribe UN movimiento de diferencia nuevo por la variacion; nunca toca los anteriores.
    */
-  corregirConciliacion(input: CorregirConciliacionInput): Promise<MarcaConciliacionResult>;
+  corregirConciliacion(input: CorregirConciliacionInput): Promise<MarcaConMontoResult>;
 }

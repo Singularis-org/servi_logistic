@@ -84,7 +84,7 @@ function apiKeyRepo(fila: Partial<ApiKeyAutenticada>): IApiKeyRepository {
 function ordenRepo(): { repo: IOrdenRepository; escritas: CreateOrdenData[][] } {
   const escritas: CreateOrdenData[][] = [];
   const repo = {
-    findUsuarioFulfillment: vi.fn(async () => false),
+    findUsuarioSeRecogeEnTienda: vi.fn(async () => true),
     findEstatusIdByValue: vi.fn(async () => "os-erbp"),
     findExistingRemisiones: vi.fn(async () => new Map<string, string>()),
     findAllProvincias: vi.fn(async () => [{ id: "p1", nombre: "Pichincha", disponible: true }]),

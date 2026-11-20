@@ -43,6 +43,9 @@ const CREDITO_SEED: readonly WalletTiendaMovimientoCategoria[] = [
   // Ficha 458-B: los creditos espejo de la anulacion de un cobro por devolución a origen (flete e IVA).
   "flete_devolucion_anulado",
   "iva_flete_devolucion_anulado",
+  // SLT-94: la devolucion del cobro de fulfillment (monto e IVA), creditos que escribe el trigger.
+  "fulfillment_anulado",
+  "iva_fulfillment_anulado",
 ];
 
 function tipoEmitido(categoria: WalletTiendaMovimientoCategoria): WalletTiendaMovimientoTipo {

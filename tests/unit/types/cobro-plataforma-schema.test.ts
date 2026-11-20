@@ -1,11 +1,7 @@
 import { describe, it, expect } from "vitest";
 
-import {
-  MENSAJE_MONTO_COBRO_INVALIDO,
-  fijarCobroEmpresaSchema,
-  fijarCobroGlobalSchema,
-  montoCobroSchema,
-} from "@/lib/types/cobro-plataforma";
+import * as tipos from "@/lib/types/cobro-plataforma";
+import { MENSAJE_MONTO_COBRO_INVALIDO, fijarCobroGlobalSchema, montoCobroSchema } from "@/lib/types/cobro-plataforma";
 
 // SL-40 R4 — el importe del cobro por orden: texto, mayor o igual que cero, dos decimales como
 // máximo y dentro de DECIMAL(12,2). Los literales de abajo SON el contrato (el tope de 10 cifras
@@ -44,23 +40,15 @@ describe("SL-40 R4 — montoCobroSchema", () => {
   });
 });
 
-describe("SL-40 R4/R5 — los schemas de las dos escrituras", () => {
+describe("SL-40 R4 / SLT-126 R2 — el schema del global es la única escritura", () => {
   it("el global exige monto, y no admite null (no hay «quitar el global»)", () => {
     expect(fijarCobroGlobalSchema.safeParse({ monto: "600.00" }).success).toBe(true);
     expect(fijarCobroGlobalSchema.safeParse({ monto: null }).success).toBe(false);
     expect(fijarCobroGlobalSchema.safeParse({}).success).toBe(false);
   });
 
-  it("la excepción admite null para quitarla (R5) y exige la empresa", () => {
-    expect(fijarCobroEmpresaSchema.safeParse({ organizacionId: "org-1", monto: null }).success).toBe(true);
-    expect(fijarCobroEmpresaSchema.safeParse({ organizacionId: "org-1", monto: "300.00" }).success).toBe(true);
-    expect(fijarCobroEmpresaSchema.safeParse({ organizacionId: "", monto: "300.00" }).success).toBe(false);
-    expect(fijarCobroEmpresaSchema.safeParse({ monto: "300.00" }).success).toBe(false);
-  });
-
-  it("el error de la excepción sale por el campo `monto`", () => {
-    const r = fijarCobroEmpresaSchema.safeParse({ organizacionId: "org-1", monto: "-5" });
-    expect(r.success).toBe(false);
-    expect(r.error?.flatten().fieldErrors).toEqual({ monto: [MENSAJE_MONTO_COBRO_INVALIDO] });
+  it("SLT-126 R2: no queda schema para fijar el cobro por orden de una empresa", () => {
+    expect(Object.keys(tipos)).not.toContain("fijarCobroEmpresaSchema");
+    expect(Object.keys(tipos).filter((k) => k.endsWith("Schema")).sort()).toEqual(["fijarCobroGlobalSchema", "montoCobroSchema"]);
   });
 });

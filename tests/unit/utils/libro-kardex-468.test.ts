@@ -32,8 +32,9 @@ describe("468 — R10: la columna de cada concepto de la caja, recorriendo el SE
       }
     }
     // No-vacuidad: las tres ramas existen (7 cargos, 3 reversos y el resto efectivo, ficha 459/461/458-B).
-    expect({ cargos, reversos }).toEqual({ cargos: 7, reversos: 3 });
-    expect(efectivo).toBe(WALLET_MOVIMIENTO_CATEGORIA_SEED.length - 10);
+    // SLT-94: + el fulfillment y su IVA (2 cargos) y sus devoluciones (2 reversos).
+    expect({ cargos, reversos }).toEqual({ cargos: 9, reversos: 5 });
+    expect(efectivo).toBe(WALLET_MOVIMIENTO_CATEGORIA_SEED.length - 14);
     expect([...CATEGORIAS_EFECTIVO].sort()).toEqual(
       WALLET_MOVIMIENTO_CATEGORIA_SEED.filter((c) => LIQUIDEZ_POR_CATEGORIA[c] === "efectivo").sort(),
     );

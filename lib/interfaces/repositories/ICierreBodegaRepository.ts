@@ -1,7 +1,7 @@
 import type { CierreEstado } from "@/lib/types/cierre";
 import type { CierreTotales } from "@/lib/interfaces/services/ICierreDiaService";
 import type { PaginaRepositorio, RangoPagina } from "@/lib/utils/rango-pagina";
-import type { FiltrosCierresBodega } from "@/lib/types/filtros-cierres";
+import type { FiltrosCierresBodegaRepo } from "@/lib/types/filtros-cierres";
 
 // Feature 40 — contrato del repositorio del "Cierre de bodega" (lado adminSatelite:
 // consolidar + solicitar). Solo queries Prisma; sin logica de negocio (esa vive en
@@ -19,6 +19,15 @@ export interface CierreDiaConsolidableRow {
   totalPagoMensajero: string; // feature 39/R18: snapshot del pago al mensajero del cierre_dia (STRING)
   totalIngresoBodegaRechazos: string; // feature 56/R17: snapshot del ingreso de bodega por rechazos del cierre_dia (STRING)
   incluyeModeloNuevo?: boolean; // SLT-54 (R71): ver `CierreBodegaResumenLite.incluyeModeloNuevo`
+  // SLT-106: requeridos a proposito. La fila de «A consolidar» los pinta sin derivar nada; un
+  // mapper que no los emitiera tiene que fallar al compilar, no pintar celdas vacias.
+  paraLaCentral: string; // R67: `paraLaCentral(general, pago, bodega)` de ESTE cierre, con su signo
+  aprobadoAt: string | null; // R194: `cierre_dia.resuelto_at` en ISO
+  gestionesAjustadas: number; // R194: gestiones de este cierre con al menos un ajuste del pago
+  // SLT-139 (R322, R323): la marca de la regla de pago del cierre. OBLIGATORIA (B1 de la review de
+  // SLT-123): una marca opcional en una fila de repositorio se pierde sin aviso si el mapper deja
+  // de emitirla. `true` = cierre nuevo (no aporta a «La central debe»; su P resta del neto).
+  pagoIndependienteEfectivo: boolean;
 }
 
 // Fila cruda de un cierre de bodega (cabecera). Totales ya como STRING (money-safe);
@@ -94,6 +103,7 @@ export interface CierreBodegaResumenRow {
    * conciliacion real de la RETROACTIVA del backfill (R30)— y NO baja a ninguna descarga.
    */
   conciliadoNota: string | null;
+  incluyeModeloNuevo?: boolean; // D40: ver `CierreBodegaResumen.incluyeModeloNuevo`
 }
 
 // Datos para crear la solicitud de cierre de bodega (R9/R10). Totales snapshot
@@ -133,7 +143,7 @@ export interface ICierreBodegaRepository {
    */
   findCierresDiaConsolidables(
     zonaId: string,
-    filtros?: FiltrosCierresBodega,
+    filtros?: FiltrosCierresBodegaRepo,
   ): Promise<CierreDiaConsolidableRow[]>;
   /**
    * Feature 170 — FASE 2 (T J.1, R40/R41/R44/R49/R51/R54): UNA PAGINA de los cierre_dia
@@ -147,7 +157,7 @@ export interface ICierreBodegaRepository {
   findCierresDiaConsolidablesPaginado(
     zonaId: string,
     rango: RangoPagina,
-    filtros?: FiltrosCierresBodega,
+    filtros?: FiltrosCierresBodegaRepo,
   ): Promise<PaginaRepositorio<CierreDiaConsolidableRow>>;
   /**
    * FICHA 379/R18 — el MISMO conjunto que `findCierresDiaConsolidables`, agregado.
@@ -169,6 +179,13 @@ export interface ICierreBodegaRepository {
    * adminSatelite los resuelva). Precondicion para poder cerrar la bodega.
    */
   contarCierresDiaSolicitados(zonaId: string): Promise<number>;
+  /**
+   * SLT-106 (R199) — un nombre de mensajero por cada cierre_dia `solicitado` de la zona, con
+   * repetidos y sin orden; el servicio los junta. Mismo `where` que `contarCierresDiaSolicitados`:
+   * el aviso de la pantalla y la puerta de `solicitarCierreBodega` no pueden contar conjuntos
+   * distintos.
+   */
+  findMensajerosConCierreSinResolver(zonaId: string): Promise<string[]>;
   // ⭑ FICHA 431 — AQUI VIVIA `existeCierreBodegaSolicitado(zonaId)`, el gate «a lo sumo una
   // consolidacion `solicitado` por zona» de la feature 40 (su R8). SE RETIRO con el indice unico
   // parcial que lo respaldaba (`cierre_bodega_zona_solicitado_uq`), y no es una limpieza: es el
@@ -198,7 +215,7 @@ export interface ICierreBodegaRepository {
    */
   findCierresBodegaByZona(
     zonaId: string,
-    filtros?: FiltrosCierresBodega,
+    filtros?: FiltrosCierresBodegaRepo,
   ): Promise<CierreBodegaResumenRow[]>;
   /**
    * Feature 170 — FASE 2 (T I.1, R40/R41/R44/R51/R54): UNA PAGINA de los cierres de bodega
@@ -215,6 +232,6 @@ export interface ICierreBodegaRepository {
   findCierresBodegaByZonaPaginado(
     zonaId: string,
     rango: RangoPagina,
-    filtros?: FiltrosCierresBodega,
+    filtros?: FiltrosCierresBodegaRepo,
   ): Promise<PaginaRepositorio<CierreBodegaResumenRow>>;
 }

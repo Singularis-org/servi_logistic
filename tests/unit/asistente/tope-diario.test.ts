@@ -5,6 +5,8 @@ import { leerCatalogoAyuda } from "@/lib/ayuda/catalogo";
 import { AsistenteService } from "@/lib/services/AsistenteService";
 import type { IAsistenteUsoRepository } from "@/lib/interfaces/repositories/IAsistenteUsoRepository";
 import { DobleProveedor } from "./_doble-proveedor";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { PaisSinZonaHoraria } from "@/lib/db/errores-pais";
 
 /**
  * ⭑ FICHA 436 · R13, R14, R15 y Q5 — EL TOPE, MEDIDO DONDE SE DECIDE.
@@ -45,6 +47,7 @@ function servicioCon(
     usoRepo,
     leerCatalogo: leerCatalogoAyuda,
     maxConsultasDia,
+    reglasPais: reglasPaisFijas(),
   });
 }
 
@@ -248,5 +251,37 @@ describe("R20 / proveedor caído — el servicio traduce, no reenvía", () => {
     // `toEqual` exacto y no `toMatchObject`: lo que se afirma es que NO HAY NINGÚN CAMPO MÁS por
     // el que se pueda escapar lo que el proveedor dijo.
     expect(resultado).toEqual({ status: "proveedor_caido" });
+  });
+});
+
+describe("SLT-42 R22/R28 — el día del tope es el de la zona del país de la empresa", () => {
+  // 2026-08-04T05:30Z: las 23:30 del 3 en Costa Rica (UTC-6) y las 00:30 del 4 en Bogotá (UTC-5).
+  const AHORA = new Date("2026-08-04T05:30:00.000Z");
+  const conZona = (usoRepo: IAsistenteUsoRepository, reglasPais = reglasPaisFijas()) =>
+    new AsistenteService({
+      proveedor: new DobleProveedor(),
+      usoRepo,
+      leerCatalogo: leerCatalogoAyuda,
+      maxConsultasDia: 30,
+      ahora: () => AHORA,
+      reglasPais,
+    });
+
+  it("el mismo instante cuenta en el día 3 en Costa Rica y en el día 4 en Bogotá", async () => {
+    const enCR = usoQueDevuelve(1);
+    const enCO = usoQueDevuelve(1);
+    // El contador se llama antes de tocar al proveedor: no hace falta consumir el stream.
+    await conZona(enCR).responder(consultaDe("mensajero"));
+    await conZona(enCO, reglasPaisFijas({ paisId: "CO", zonaHoraria: "America/Bogota" })).responder(consultaDe("mensajero"));
+    expect(enCR.argumentos[0][1]).toBe("2026-08-03");
+    expect(enCO.argumentos[0][1]).toBe("2026-08-04");
+  });
+
+  it("sin zona en el país, falla con PaisSinZonaHoraria sin contar la consulta ni llamar al proveedor", async () => {
+    const uso = usoQueDevuelve(1);
+    await expect(
+      conZona(uso, reglasPaisFijas({ zonaHoraria: null })).responder(consultaDe("mensajero")),
+    ).rejects.toBeInstanceOf(PaisSinZonaHoraria);
+    expect(uso.argumentos).toEqual([]);
   });
 });

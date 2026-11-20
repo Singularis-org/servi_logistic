@@ -8,6 +8,7 @@ import { ETIQUETA_MENSAJERO } from "@/lib/analytics/identidad";
 import { AHORA, MAESTRO, TIENDA, consultaDe, cubo, rollupFalso, servicioCon } from "./_fake-operativa";
 import type { IAnaliticaOperativaService } from "@/lib/interfaces/services/IAnaliticaOperativaService";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Feature 126 / T9.5 + T9.6 — R24 y R36 (T0-Q5 = A del 2026-08-02).
 //
 // EL AGUJERO, verificado: `recortarFiltro` de la 122 (`lib/analytics/consulta.ts`) solo
@@ -41,7 +42,7 @@ describe("R24 · un adminTienda no puede sondear por mensajero_id", () => {
     const logger: ErrorLogger = { logError };
     const r = await consultarAnaliticaOperativa(
       { metricaId: "entregas", raw: { rango: "dia", mensajero_id: [UUID_SONDEADO] } },
-      { service: SERVICIO_MUDO, logger, now: () => AHORA, getActor: async () => TIENDA },
+      { reglasPais: reglasPaisFijas(), service: SERVICIO_MUDO, logger, now: () => AHORA, getActor: async () => TIENDA },
     );
     // Ni conteo, ni cero, ni lista vacia: `forbidden` sin datos.
     expect(r).toEqual({ status: "forbidden" });
@@ -51,7 +52,7 @@ describe("R24 · un adminTienda no puede sondear por mensajero_id", () => {
     const logError = vi.fn();
     await consultarAnaliticaOperativa(
       { metricaId: "entregas", raw: { rango: "dia", mensajero_id: [UUID_SONDEADO] } },
-      {
+      { reglasPais: reglasPaisFijas(),
         service: SERVICIO_MUDO,
         logger: { logError },
         now: () => AHORA,
@@ -86,7 +87,7 @@ describe("R24 · un adminTienda no puede sondear por mensajero_id", () => {
     };
     const r = await consultarAnaliticaOperativa(
       { metricaId: "entregas", raw: { rango: "dia", mensajero_id: [UUID_SONDEADO] } },
-      { service, logger: { logError: vi.fn() }, now: () => AHORA, getActor: async () => MAESTRO },
+      { reglasPais: reglasPaisFijas(), service, logger: { logError: vi.fn() }, now: () => AHORA, getActor: async () => MAESTRO },
     );
     expect(r.status).toBe("ok");
     expect(llego).toBe(true);
@@ -131,7 +132,7 @@ describe("R24 · lo que pierde es el FILTRO, no la VISTA", () => {
     };
     const r = await consultarAnaliticaOperativa(
       { metricaId: "entregas", raw: { rango: "dia" }, desagregacion: "mensajero" },
-      { service, logger: { logError: vi.fn() }, now: () => AHORA, getActor: async () => TIENDA },
+      { reglasPais: reglasPaisFijas(), service, logger: { logError: vi.fn() }, now: () => AHORA, getActor: async () => TIENDA },
     );
     expect(r.status).toBe("ok");
     expect(desagregacionRecibida).toBe("mensajero");

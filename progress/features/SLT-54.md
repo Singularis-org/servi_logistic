@@ -2,7 +2,7 @@
 
 | key | nombre | zone | complexity | rama | assignee | estado |
 |---|---|---|---|---|---|---|
-| SLT-54 | pantalla-tarifas | fullstack | high | feature/SLT-54-pantalla-tarifas | Carlos Restrepo | in_progress |
+| SLT-54 | pantalla-tarifas | fullstack | high | feature/SLT-54-pantalla-tarifas | Carlos Restrepo | done |
 
 > Solo lo edita la rama de esta feature. Se lee al trabajarla, no al arrancar sesión.
 
@@ -39,3 +39,7 @@ Ninguna.
 Subagentes en Opus.
 
 ## Cierre
+2026-11-05: PR #80 mergeado a `dev` por Carlos (49f45a7e). Pantalla de Tarifas y activación explícita por empresa; ninguna empresa cambia hasta digitar y activar. No promovido a producción: la épica sale completa.
+Carlos dio visto bueno a R71, R72 y al rótulo «Ingreso de bodega» el 2026-11-05. Producción re-medida ese día: `tarifa_valor`=0.
+Sin cubrir de punta a punta: empresa activada, con plan porcentual (SLT-83) y cierre aprobado.
+Deudas: D36, D37, D41, D42, D43 en `progress/deudas.md`. D39 y D40 cerradas en `chore/deudas-2026-11-05`.

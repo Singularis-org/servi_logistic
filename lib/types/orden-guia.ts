@@ -78,6 +78,17 @@ export interface RutearSateliteResultadoItem {
   estado: string; // "en_ruta_bodega_satelite"
 }
 
+// SLT-197 (R971/R976) — retiro de ordenes del estante de una satelite a la central.
+export const retirarSateliteSchema = z.object({
+  ordenIds: z.array(z.string().min(1)).min(1), // cota del lote: ver el bloque de arriba
+});
+export type RetirarSateliteActionInput = z.infer<typeof retirarSateliteSchema>;
+
+export interface RetirarSateliteResultadoItem {
+  ordenId: string;
+  estado: string; // "en_ruta_bodega_central"
+}
+
 export interface DetalleConflicto {
   ordenId: string;
   motivo: string;
@@ -152,6 +163,15 @@ export type RutearSateliteResult =
   | { status: "forbidden" } // R16
   | { status: "validation_error"; fieldErrors: Record<string, string[]> } // R4/catalogo
   | { status: "conflict"; detalle: DetalleConflicto[] }; // R17
+
+// SLT-197 (R971-R976) — resultado del retiro a la central. `conflict` trae `detalle` por orden
+// (inexistente / borrada / fuera de `en_bodega_satelite`, o cambio de estado concurrente).
+export type RetirarSateliteResult =
+  | { status: "ok"; resultados: RetirarSateliteResultadoItem[] }
+  | { status: "unauthenticated" } // R976
+  | { status: "forbidden" } // R975
+  | { status: "validation_error"; fieldErrors: Record<string, string[]> } // R976/catalogo
+  | { status: "conflict"; detalle: DetalleConflicto[] }; // R973/R974
 
 // T15 — loader de mensajeros para el modal (R28): TODOS los usuarios rol
 // mensajero, SIN filtro de zona. La feature 30 restringira el CUERPO del loader

@@ -3,6 +3,7 @@ import type { PrismaClient } from "@prisma/client";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import type { GenerarGuiaDecisionData } from "@/lib/interfaces/repositories/IOrdenRepository";
 import { idEstado, sembrarCatalogoEstados } from "@/tests/fixtures/catalogo-estados";
+import { startOfDayCR, ZONA_CR } from "@/lib/utils/fecha-cr";
 
 // Feature 17 — repo de "Generar guia"/asignacion de mensajero. $transaction se
 // mockea ejecutando el callback con un tx fake (patron zona-repository.test.ts).
@@ -189,7 +190,7 @@ describe("OrdenRepository.findEtiquetaByNumGuia (feature 32/R1/R3)", () => {
     });
     const repo = new OrdenRepository(prisma as unknown as PrismaClient);
 
-    const row = await repo.findEtiquetaByNumGuia(501, null);
+    const row = await repo.findEtiquetaByNumGuia(501, null, ZONA_CR);
 
     expect(row?.id).toBe("o1");
     expect(row?.numGuia).toBe(501);
@@ -205,7 +206,7 @@ describe("OrdenRepository.findEtiquetaByNumGuia (feature 32/R1/R3)", () => {
     orden.findFirst.mockResolvedValue(null);
     const repo = new OrdenRepository(prisma as unknown as PrismaClient);
 
-    expect(await repo.findEtiquetaByNumGuia(501, null)).toBeNull();
+    expect(await repo.findEtiquetaByNumGuia(501, null, ZONA_CR)).toBeNull();
   });
 });
 
@@ -255,8 +256,8 @@ describe("OrdenRepository — la etiqueta proyecta la fecha de creacion (feature
     orden.findMany.mockResolvedValue([fila]);
     const repo = new OrdenRepository(prisma as unknown as PrismaClient);
 
-    await repo.findEtiquetaByNumGuia(501, null);
-    await repo.findEtiquetasByIds(["o1"], null);
+    await repo.findEtiquetaByNumGuia(501, null, ZONA_CR);
+    await repo.findEtiquetasByIds(["o1"], null, ZONA_CR);
 
     // Sin esta columna en la proyeccion el dato NO EXISTE en el camino al PDF: es
     // el estado exacto que la ficha 295 vino a arreglar.
@@ -277,7 +278,7 @@ describe("OrdenRepository — la etiqueta proyecta la fecha de creacion (feature
     );
     const repo = new OrdenRepository(prisma as unknown as PrismaClient);
 
-    const row = await repo.findEtiquetaByNumGuia(501, null);
+    const row = await repo.findEtiquetaByNumGuia(501, null, ZONA_CR);
 
     expect(row?.fechaCreacion).toBe("2026-08-25");
     expect(row?.fechaCreacion).not.toBe(
@@ -295,7 +296,7 @@ describe("OrdenRepository — la etiqueta proyecta la fecha de creacion (feature
     ]);
     const repo = new OrdenRepository(prisma as unknown as PrismaClient);
 
-    const rows = await repo.findEtiquetasByIds(["o1"], null);
+    const rows = await repo.findEtiquetasByIds(["o1"], null, ZONA_CR);
 
     expect(rows).toHaveLength(1);
     expect(rows[0].fechaCreacion).toBe("2026-08-25");
@@ -548,13 +549,16 @@ describe("OrdenRepository.generarGuiaLote (R5/R19/R25)", () => {
   // El PARAMETRO `mensajeroAsignadoId` NO se retira del repo (design §6, alternativa E): queda
   // MUERTO —ningun productor lo rellena— y se limpia con el barrido de la 159. Los casos que
   // lo ejercitan siguen abajo, sobre pares que el grafo si declara.
-  function decision(overrides: Partial<GenerarGuiaDecisionData> = {}): GenerarGuiaDecisionData {
-    return {
-      ordenId: "o1",
-      estatusId: idEstado("en_bodega_central"),
-      mensajeroAsignadoId: null,
-      ...overrides,
-    };
+  // SLT-42: con mensajero, la decision lleva su dia de reparto (lo resuelve el servicio con la zona
+  // del pais de la empresa); aqui el dia de hoy de CR, como antes lo calculaba el repositorio.
+  function decision(
+    overrides: { ordenId?: string; estatusId?: string; mensajeroAsignadoId?: string | null } = {},
+  ): GenerarGuiaDecisionData {
+    const { mensajeroAsignadoId = null, ...resto } = overrides;
+    const base = { ordenId: "o1", estatusId: idEstado("en_bodega_central"), ...resto };
+    return mensajeroAsignadoId === null
+      ? { ...base, mensajeroAsignadoId: null }
+      : { ...base, mensajeroAsignadoId, fechaReparto: startOfDayCR() };
   }
 
   it("ejecuta TODO el lote dentro de una sola $transaction", async () => {

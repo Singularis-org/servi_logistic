@@ -21,7 +21,7 @@
 import type { ILiberacionReprogramadaService } from "@/lib/interfaces/services/ILiberacionReprogramadaService";
 import type { DesenlaceLiberacion } from "@/lib/interfaces/services/ICorreccionFechaReprogramacionService";
 import type { LiberacionLogger } from "@/lib/services/LiberacionReprogramadaService";
-import { fechaCalendarioCR, startOfDayCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendario, inicioDelDiaComoFecha } from "@/lib/utils/calendario-zona";
 
 /**
  * Firma que ve `CorreccionFechaReprogramacionService`: «esta orden acaba de quedar corregida a esta
@@ -31,10 +31,14 @@ import { fechaCalendarioCR, startOfDayCR } from "@/lib/utils/fecha-cr";
  * honestidad el desenlace. `espera_fecha` significa «espera al calendario», y eso sólo se puede
  * AFIRMAR si la fecha corregida todavía no llegó; con una fecha de hoy sería una frase falsa sobre
  * un día que ya es hoy.
+ *
+ * SLT-42: `zona` es la del país de la empresa, la misma con la que el servicio validó la fecha; con
+ * ella se calcula el «hoy» de la liberación y del desenlace.
  */
 export type LiberarTrasCorregirFecha = (
   ordenId: string,
   fechaCorregida: string,
+  zona: string,
 ) => Promise<DesenlaceLiberacion>;
 
 /**
@@ -57,11 +61,12 @@ export type LiberarTrasCorregirFecha = (
  */
 export function desenlaceSinLiberar(
   fechaCorregida: string,
+  zona: string,
   ahora: Date = new Date(),
 ): DesenlaceLiberacion {
   // Comparación lexicográfica: `YYYY-MM-DD` ordena igual como texto que como fecha. El «hoy» sale
-  // del calendario de Costa Rica, la MISMA fuente que valida la fecha en el borde.
-  return fechaCorregida > fechaCalendarioCR(ahora) ? "espera_fecha" : "espera_cierre";
+  // del calendario de la zona del país de la empresa, la MISMA con la que se validó la fecha.
+  return fechaCorregida > fechaCalendario(ahora, zona) ? "espera_fecha" : "espera_cierre";
 }
 
 /**
@@ -70,8 +75,8 @@ export function desenlaceSinLiberar(
  * «no se liberó ahora», con la MISMA regla que el camino real (así un doble tampoco puede afirmar
  * que una orden espera a un día que ya pasó).
  */
-export const liberarTrasCorregirFechaNoOp: LiberarTrasCorregirFecha = async (_ordenId, fecha) =>
-  desenlaceSinLiberar(fecha);
+export const liberarTrasCorregirFechaNoOp: LiberarTrasCorregirFecha = async (_ordenId, fecha, zona) =>
+  desenlaceSinLiberar(fecha, zona);
 
 /** Prefijo de los avisos de este camino, alineado con `ETIQUETA_CORRECCION` del servicio. */
 const ETIQUETA = "liberar-tras-corregir-fecha";
@@ -83,8 +88,8 @@ const defaultLogger: LiberacionLogger = { warn: (m) => console.warn(m) };
  * (`lib/actions/corregir-fecha-reprogramacion.ts`) y la MISMA que ejercitan los tests, sólo que con
  * dobles.
  *
- * `now` es inyectable para que la fecha CR sea determinista en las pruebas; en producción es el
- * reloj. `startOfDayCR` es la MISMA conversión que usan el cron (90/R22) y el camino del cierre
+ * `now` es inyectable para que la fecha sea determinista en las pruebas; en producción es el
+ * reloj. `inicioDelDiaComoFecha(ahora, zona)` es la MISMA conversión que usan el cron (90/R22) y el camino del cierre
  * (315): si aquí se usara `new Date()` a secas, una orden corregida a HOY quedaría fuera durante las
  * horas de la mañana, porque `fecha_reprogramacion` es `@db.Date` a medianoche.
  *
@@ -109,16 +114,16 @@ export function liberarTrasCorregirFechaCon(
   now: () => Date = () => new Date(),
   logger: LiberacionLogger = defaultLogger,
 ): LiberarTrasCorregirFecha {
-  return async (ordenId, fechaCorregida) => {
+  return async (ordenId, fechaCorregida, zona) => {
     // El MISMO instante para las dos cosas que dependen del reloj: la ventana de la liberación y el
     // «hoy» con el que se decide si la orden espera al calendario. Dos llamadas a `now()` podrían
     // caer a distinto lado de la medianoche dentro de la misma corrección.
     const ahora = now();
     try {
-      const resultado = await service.liberarOrdenCorregida(ordenId, startOfDayCR(ahora));
+      const resultado = await service.liberarOrdenCorregida(ordenId, inicioDelDiaComoFecha(ahora, zona));
       if ((resultado.liberadas ?? 0) >= 1) return "liberada";
       if ((resultado.esperandoCierre ?? 0) >= 1) return "espera_cierre";
-      return desenlaceSinLiberar(fechaCorregida, ahora);
+      return desenlaceSinLiberar(fechaCorregida, zona, ahora);
     } catch (error) {
       // No es un `catch` vacío (docs/conventions.md): se registra con su causa. Lo que no se hace es
       // propagarlo, porque la corrección ya está escrita y la corrida de medianoche es la red. El
@@ -128,7 +133,7 @@ export function liberarTrasCorregirFechaCon(
         `[${ETIQUETA}] la liberacion tras corregir fallo; queda para la corrida de las 00:00 CR: ` +
           `${error instanceof Error ? error.message : String(error)}`,
       );
-      return desenlaceSinLiberar(fechaCorregida, ahora);
+      return desenlaceSinLiberar(fechaCorregida, zona, ahora);
     }
   };
 }

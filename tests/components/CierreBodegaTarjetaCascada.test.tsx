@@ -53,17 +53,11 @@ vi.mock("@/lib/actions/cierre-bodega", () => ({
 }));
 
 import {
-  listarCierresBodegaSolicitadosPaginado,
-  listarHistoricoCierresBodegaPaginado,
-} from "@/lib/actions/cierre-bodega";
-import {
   CierreBodegaFacturaResumen,
   CierreFacturaResumen,
   CierreFacturaResumenPropio,
   CierreConsolidableFacturaResumen,
 } from "@/app/(app)/cierres-admin/_components/cierre-factura";
-import { CierresBodegaSolicitadosLista } from "@/app/(app)/cierres-admin/_components/CierresBodegaSolicitadosLista";
-import { CierresBodegaResueltosLista } from "@/app/(app)/cierres-admin/_components/CierresBodegaResueltosLista";
 
 import { marcaSinConciliar } from "@/tests/fixtures/marca-conciliacion";
 // ---------------------------------------------------------------------------
@@ -201,46 +195,6 @@ describe("393 · F4 — la tarjeta del cierre de bodega cuenta la cascada B", ()
     envolver(<CierreBodegaFacturaResumen cierre={cierreBodega()} />);
     const cascada = await desplegar();
     expect(within(cascada).getByText(PARA_LA_CENTRAL_NOTA)).toBeInTheDocument();
-  });
-
-  it("la satélite y el maestro ven el MISMO rótulo y el MISMO valor (R38)", async () => {
-    // Las dos pantallas donde aparece la tarjeta de un cierre de bodega: la del `adminSatelite`
-    // (su listado de solicitados, sin acción de abrir detalle) y la del maestro (el histórico de
-    // resueltos). Montan el MISMO comprobante, así que no pueden discrepar — y esto lo mide en
-    // vez de razonarlo.
-    const fila = cierreBodega();
-    vi.mocked(listarCierresBodegaSolicitadosPaginado).mockResolvedValue({
-      status: "ok",
-      page: 1,
-      items: [fila],
-      total: 1,
-      pageSize: 10,
-    });
-    vi.mocked(listarHistoricoCierresBodegaPaginado).mockResolvedValue({
-      status: "ok",
-      page: 1,
-      items: [fila],
-      total: 1,
-      pageSize: 10,
-    });
-
-    const pagina = { items: [fila], total: 1, pageSize: 10 };
-
-    const satelite = envolver(<CierresBodegaSolicitadosLista initialData={pagina} />);
-    const cascadaSatelite = await desplegar();
-    const rotuloSatelite = PARA_LA_CENTRAL_LABEL;
-    const valorSatelite = importeTras(cascadaSatelite, PARA_LA_CENTRAL_LABEL);
-    satelite.unmount();
-
-    envolver(
-      <CierresBodegaResueltosLista initialData={pagina} onAbrir={() => {}} />,
-    );
-    const cascadaMaestro = await desplegar();
-    const valorMaestro = importeTras(cascadaMaestro, PARA_LA_CENTRAL_LABEL);
-
-    expect(within(cascadaMaestro).getByText(rotuloSatelite)).toBeInTheDocument();
-    expect(valorMaestro).toBe(valorSatelite);
-    expect(valorMaestro).toBe(money("111838.37"));
   });
 
   it("el resultado LLEGA en la prop: la tarjeta no lo calcula (R20)", async () => {

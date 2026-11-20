@@ -148,7 +148,7 @@ dato:
 | `status` | nombre de la lista, traducido con `tracker.estados` |
 | `assignee` | el member de la tarjeta: `{accountId: idMember, displayName: fullName}`, o `null` |
 | `depends_on` | ítems del checklist **«Depende de»**; cada ítem es una key |
-| `zone`, `complexity`, `name` (slug), `sdd` | los mismos labels que en Jira |
+| `zone`, `complexity`, `ruta`, `name` (slug), `sdd` | los mismos labels que en Jira |
 | `branch`, `spec_path` | derivados de key y slug, como en Jira |
 
 - **El label `key:` manda sobre el `idShort`.** Es lo que deja a una feature migrada conservar

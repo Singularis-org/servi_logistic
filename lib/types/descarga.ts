@@ -50,6 +50,11 @@ export interface DescargaConfig {
   tipo?: DescargaTipo;
   /** R8: nombre de la hoja (xlsx) y base del nombre de archivo (todo tipo). */
   titulo: string;
+  /**
+   * SLT-113 — nombre de la hoja principal (xlsx) cuando no coincide con la base del nombre de
+   * archivo. Ausente => la hoja se llama como `titulo`, como siempre.
+   */
+  tituloHoja?: string;
   /** R5/R9: se emiten EXACTAMENTE estas columnas, en este orden. Vacio => error. */
   columnas: DescargaColumna[];
   filas: DescargaFila[];

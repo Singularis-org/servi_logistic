@@ -9,12 +9,6 @@ function readPositiveInt(name: string, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-function readNonEmpty(name: string, fallback: string): string {
-  const raw = process.env[name];
-  if (raw === undefined || raw.trim() === "") return fallback;
-  return raw.trim();
-}
-
 export interface RastreoPublicoConfig {
   /** Intentos permitidos por IP dentro de la ventana (G4). */
   RATE_MAX: number;
@@ -22,12 +16,8 @@ export interface RastreoPublicoConfig {
   RATE_WINDOW_MINUTES: number;
   /** Digitos finales del telefono del destinatario que forman el segundo factor (G1). */
   DIGITOS_SEGUNDO_FACTOR: number;
-  /**
-   * R19 — zona horaria del NEGOCIO para el dia y la hora de cada hito. Vive aqui y no en el
-   * service a proposito: una guardia comprueba que el service no contiene ningun literal de
-   * zona ni de pais.
-   */
-  ZONA_HORARIA: string;
+  // SLT-42 (R27): la zona horaria del dia y la hora de cada hito ya no es configuracion: es la del
+  // pais de la empresa dueña de la orden (`IReglasPaisEmpresa`). La variable de entorno de SL-37 se retiro.
 }
 
 export function loadRastreoPublicoConfig(): RastreoPublicoConfig {
@@ -35,7 +25,6 @@ export function loadRastreoPublicoConfig(): RastreoPublicoConfig {
     RATE_MAX: readPositiveInt("RASTREO_PUBLICO_RATE_MAX", 8),
     RATE_WINDOW_MINUTES: readPositiveInt("RASTREO_PUBLICO_RATE_WINDOW_MINUTES", 10),
     DIGITOS_SEGUNDO_FACTOR: readPositiveInt("RASTREO_PUBLICO_DIGITOS_FACTOR", 4),
-    ZONA_HORARIA: readNonEmpty("RASTREO_PUBLICO_ZONA_HORARIA", "America/Costa_Rica"),
   };
 }
 

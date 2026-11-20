@@ -15,7 +15,8 @@ import type {
   RespuestaDelAsistente,
 } from "@/lib/interfaces/services/IAsistenteService";
 import { mensajeTopeAlcanzado } from "@/lib/config/asistente";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendario } from "@/lib/utils/calendario-zona";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 
 /**
  * ⭑ FICHA 436 (design §2, T10) — EL SERVICIO. Orquesta: rol → tope → contexto → proveedor.
@@ -41,8 +42,13 @@ export interface AsistenteServiceDeps {
   leerCatalogo: () => Promise<DocumentoAyuda[]>;
   /** El tope diario, ya leído de la configuración por quien compone (R14/R16). */
   maxConsultasDia: number;
-  /** El reloj. Inyectable para poder probar el borde de medianoche de Costa Rica. */
+  /** El reloj. Inyectable para poder probar el borde de medianoche de la empresa. */
   ahora?: () => Date;
+  /**
+   * SLT-42 (R22, R28; decisión del humano tras T5.5): el país de la empresa de la sesión. El tope
+   * diario se cuenta por el día de su zona horaria. La real la pone el composition root.
+   */
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
 }
 
 export class AsistenteService implements IAsistenteService {
@@ -87,7 +93,15 @@ export class AsistenteService implements IAsistenteService {
     // decide qué se ESCRIBE (y es el único sitio donde eso se puede decidir sin una carrera), y
     // esta línea decide qué VE la persona. Con un contador que no respetara el tope —un doble, o
     // una implementación futura— el rechazo sigue saliendo de aquí.
-    const fecha = fechaCalendarioCR(this.ahora());
+    // SLT-42 (R22, R28): el día del tope es el de la zona del país de la empresa. Sin zona, falla antes
+    // de contar la consulta.
+    // No usa `zonaDeLaEmpresa` (`lib/services/`): la guardia de la 436 (R3) no deja al servicio importar
+    // otro servicio. La regla es la misma: sin el puerto se falla nombrandolo, sin inventar una zona.
+    if (!this.deps.reglasPais) {
+      throw new Error("AsistenteService.responder requiere las reglas del pais de la empresa (SLT-42)");
+    }
+    const zona = await this.deps.reglasPais.zonaHoraria();
+    const fecha = fechaCalendario(this.ahora(), zona);
     const consultasHoy = await this.deps.usoRepo.consumirUnaConsulta(
       actor.usuarioId,
       fecha,

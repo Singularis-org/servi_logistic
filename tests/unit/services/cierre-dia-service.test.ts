@@ -20,6 +20,8 @@ import { conPagos } from "@/tests/fixtures/cierre-pagos";
 import { esGestionDeLaTienda } from "@/lib/utils/gestion-de-la-tienda-flag";
 import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
 import { bloqueoConVencido, bloqueoPorAcumular } from "@/tests/fixtures/bloqueo-cierre";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 // Feature 37 — tests unit del CierreDiaService (mocks de repos + dobles de
 // ISignedUrlProvider/findCentralZonaId, sin DB/red). Cubre R1,R2,R3,R4,R5,R6,R7,R8,
@@ -108,6 +110,7 @@ function fakeRepo(overrides: Partial<Repo> = {}): Repo {
     findCierrePropioConGestiones: vi.fn(async () => null),
     // Feature 170 (T I.1): el listado paginado vive en su propia suite (*-paginado).
     findCierresByMensajeroPaginado: vi.fn(async () => ({ items: [], total: 0 })),
+    findAprobadosParaPendiente: vi.fn(async () => []),
     // Feature 67: por defecto, una gestion `entregada` vigente del propio mensajero, sin
     // cierre, que ES la mas reciente y cuya orden sigue en `entregada` -> deshacible (R1).
     findGestionParaDeshacer: vi.fn(async () => gestionDeshacer()),
@@ -206,6 +209,9 @@ function newService(opts: {
     ordenRepo as IOrdenRepository,
     signedUrls,
     tarifaZonaRepo,
+    undefined,
+    undefined,
+    reglasPaisFijas(),
   );
   return { service, repo, zonaRepo, ordenRepo, tarifaZonaRepo, signedUrls };
 }
@@ -223,7 +229,7 @@ describe("listarCierreDia — autorizacion y alcance (R1/R2)", () => {
   it("R2: resuelve gestiones/conteo/historico SIEMPRE por el usuarioId del actor", async () => {
     const { service, repo } = newService();
     await service.listarCierreDia(MENSAJERO);
-    expect(repo.findGestionesPendientes).toHaveBeenCalledWith("m1");
+    expect(repo.findGestionesPendientes).toHaveBeenCalledWith("m1", ZONA_CR);
     // Feature 235 (T4.1, R23): la lista gana `ayuda_tienda` POR SU NOMBRE.
     // Feature 246: y un TERCER argumento, el dia CR con el que se descarta lo reservado para
     // despues. `expect.any(Date)` basta aqui —este test es sobre el ACOTAMIENTO POR ACTOR—; que el
@@ -345,7 +351,7 @@ describe("verCierrePasado — detalle de un cierre propio (solo lectura)", () =>
     const { service } = newService({ repo });
     const r = await service.verCierrePasado("c-ajeno", MENSAJERO);
     expect(r.status).toBe("no_encontrada");
-    expect(repo.findCierrePropioConGestiones).toHaveBeenCalledWith("c-ajeno", "m1");
+    expect(repo.findCierrePropioConGestiones).toHaveBeenCalledWith("c-ajeno", "m1", ZONA_CR);
   });
 
   it("devuelve la cabecera + las gestiones agrupadas, con el pago SNAPSHOT (no re-derivado)", async () => {
@@ -480,6 +486,8 @@ describe("listarCierreDia — gate de solicitar (R10/R11) y solo lectura (R17)",
     if (r.status !== "ok") throw new Error("esperaba ok");
     expect(r.puedesSolicitar).toBe(false);
     expect(r.motivoBloqueo).not.toBeNull();
+    // SLT-133 (L2, R141/R144): texto exacto en «tú», en el mismo campo.
+    expect(r.motivoBloqueo).toBe("No tienes gestiones pendientes de cierre.");
   });
 
   it("R10/R11: sin pendientes y con >=1 gestion -> puedesSolicitar true", async () => {
@@ -563,6 +571,8 @@ describe("solicitarCierre — precondiciones (R1/R10/R11/R12)", () => {
     const { service } = newService({ repo });
     const r = await service.solicitarCierre(MENSAJERO);
     expect(r).toMatchObject({ status: "conflict" });
+    // SLT-133 (L2, R141/R144): mismo status, mismo campo, texto en «tú».
+    expect(r).toEqual({ status: "conflict", motivo: "No tienes gestiones pendientes de cierre." });
     expect(repo.crearCierre).not.toHaveBeenCalled();
   });
 });
@@ -575,6 +585,11 @@ describe("solicitarCierre — ruteo por zona (R15/R16) y snapshot (R13/R14)", ()
     expect(r).toMatchObject({ status: "validation_error" });
     if (r.status !== "validation_error") throw new Error("esperaba validation_error");
     expect(r.fieldErrors.zona).toBeDefined();
+    // SLT-133 (L3, R141/R144): viaja en `fieldErrors.zona`, en «tú».
+    expect(r).toEqual({
+      status: "validation_error",
+      fieldErrors: { zona: ["No tienes una zona asignada; contacta a tu administrador."] },
+    });
     expect(repo.crearCierre).not.toHaveBeenCalled();
   });
 
@@ -986,6 +1001,8 @@ describe("Feature 67 · deshacerGestion — ventana y elegibilidad (R1-R6)", () 
     expect(r.status).toBe("conflict");
     if (r.status !== "conflict") throw new Error("esperaba conflict");
     expect(r.motivo).toMatch(/ya fue deshecha/i);
+    // SLT-133 (L7, R141/R144): texto exacto con tilde.
+    expect(r).toEqual({ status: "conflict", motivo: "Esta gestión ya fue deshecha." });
     expect(repo.anularGestionYDevolverAGestion).not.toHaveBeenCalled();
   });
 
@@ -1000,7 +1017,11 @@ describe("Feature 67 · deshacerGestion — ventana y elegibilidad (R1-R6)", () 
 
     expect(r.status).toBe("conflict");
     if (r.status !== "conflict") throw new Error("esperaba conflict");
-    expect(r.motivo).toMatch(/mas reciente/i);
+    // SLT-133 (L8, R141/R144): texto exacto con tildes, mismo status y campo.
+    expect(r).toEqual({
+      status: "conflict",
+      motivo: "Esta orden tiene una gestión más reciente; hay que deshacer esa primero.",
+    });
     expect(repo.anularGestionYDevolverAGestion).not.toHaveBeenCalled();
   });
 
@@ -1197,7 +1218,7 @@ describe("Feature 237 · deshacerGestion — la gestion de LA TIENDA (D3/R38)", 
     expect(r).toEqual({
       status: "conflict",
       motivo:
-        "Esta orden la resolvió la tienda; solo ella puede corregirlo. Escribile por el chat de la orden.",
+        "Esta orden la resolvió la tienda; solo ella puede corregirlo. Escríbele por el chat de la orden.",
     });
     // Y la pantalla que ya no corresponde no vuelve por la puerta de atras.
     expect(r.status === "conflict" && r.motivo).not.toContain("pantalla de ayuda");
@@ -1277,7 +1298,7 @@ describe("Feature 240 · deshacerGestion — el rechazo MANUAL de la tienda (D6/
     expect(r).toEqual({
       status: "conflict",
       motivo:
-        "Esta orden la resolvió la tienda; solo ella puede corregirlo. Escribile por el chat de la orden.",
+        "Esta orden la resolvió la tienda; solo ella puede corregirlo. Escríbele por el chat de la orden.",
     });
     // 💰 Lo que de verdad protege: NI UNA escritura.
     expect(repo.anularGestionYDevolverAGestion).not.toHaveBeenCalled();
@@ -1382,6 +1403,11 @@ describe("Feature 67 · deshacerGestion — transicion y efectos (R18/R19/R29/R3
     const r = await service.deshacerGestion("g1", MENSAJERO);
 
     expect(r.status).toBe("validation_error");
+    // SLT-133 (L10, PA5, R141/R144): viaja en `fieldErrors.estatus`, con tilde.
+    expect(r).toEqual({
+      status: "validation_error",
+      fieldErrors: { estatus: ["catálogo de estados incompleto (seed pendiente)"] },
+    });
     expect(repo.anularGestionYDevolverAGestion).not.toHaveBeenCalled();
   });
 
@@ -1749,7 +1775,7 @@ describe("Feature 111 · deshacerGestion — bloqueo total del mensajero (R5/R20
 
     expect(r.status).toBe("conflict");
     // R5 (Q2, belt-and-suspenders): usa el MISMO predicado derivado.
-    expect(ordenRepo.findBloqueoDetalle).toHaveBeenCalledWith("m1");
+    expect(ordenRepo.findBloqueoDetalle).toHaveBeenCalledWith("m1", ZONA_CR);
     // FICHA 477 (D4): con el bloqueo la gestion se LEE para saber si es corregible (la exencion es
     // por objeto). Esta no lo es —sin cierre y fuera de correccion— y no se escribe nada.
     expect(repo.anularGestionYDevolverAGestion).not.toHaveBeenCalled(); // sin devolver a en_reparto
@@ -2240,10 +2266,9 @@ describe("235 · el bloqueo del cierre (T4.1, R22/R23)", () => {
 
     expect(r.status).toBe("conflict");
     if (r.status !== "conflict") return;
-    expect(r.motivo).toContain("gestionalos antes de cerrar");
-    // FICHA 455 (recorrido F3): sin «sin gestionar» (nombre retirado de `novedad_interna`) y con tildes.
+        // FICHA 455 (recorrido F3): sin «sin gestionar» (nombre retirado de `novedad_interna`) y con tildes.
     expect(r.motivo).toBe(
-      "Tenés paquetes en reparto que todavía no gestionaste; gestionalos antes de cerrar.",
+      "Tienes paquetes en reparto que todavía no gestionaste; gestiónalos antes de cerrar.",
     );
     // Sin PII (R46): el motivo no nombra la orden, ni al mensajero, ni al cierre.
     expect(r.motivo).not.toMatch(/m1|o1|c1/);
@@ -2263,7 +2288,9 @@ describe("235 · el bloqueo del cierre (T4.1, R22/R23)", () => {
     expect(r.puedesSolicitar).toBe(false);
     // Los dos consumidores de la lista dicen lo mismo: el gate y la precondicion. Si divergieran,
     // el boton estaria activo y la accion fallaria al pulsarlo.
-    expect(r.motivoBloqueo).toContain("gestionalos antes de cerrar");
+    expect(r.motivoBloqueo).toBe(
+      "Tienes paquetes en reparto que todavía no gestionaste; gestiónalos antes de cerrar.",
+    );
   });
 });
 
@@ -2383,7 +2410,7 @@ describe("264/B9 — verCierrePasado emite `ordenesSinGestion` y `sinGestionRegi
 
     await service.verCierrePasado("c1", MENSAJERO);
 
-    expect(repo.findCierrePropioConGestiones).toHaveBeenCalledWith("c1", "m1");
+    expect(repo.findCierrePropioConGestiones).toHaveBeenCalledWith("c1", "m1", ZONA_CR);
     expect(repo.findCierrePropioConGestiones).toHaveBeenCalledTimes(1);
   });
 

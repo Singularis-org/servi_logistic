@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { Camera, Loader2, ScanLine } from "lucide-react";
+import type { Html5QrcodeSupportedFormats } from "html5-qrcode";
 
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/useToast";
@@ -13,6 +14,19 @@ const MENSAJE_ERROR_CAMARA_DEFAULT =
 const LADO_MARCO_MINIMO = 50;
 /** Porción del lado corto del visor que ocupa el recuadro de escaneo. */
 const PROPORCION_MARCO = 0.7;
+
+/**
+ * SLT-157 (R564): los dos códigos de la etiqueta, QR y CODE128 (mismo `num_guia`), y
+ * SOLO esos: sin la lista la lib prueba todos los formatos (más lento y lee códigos
+ * ajenos a la etiqueta). Son los valores del enum `Html5QrcodeSupportedFormats` de la
+ * lib (`QR_CODE = 0`, `CODE_128 = 5`), escritos aquí y no leídos del import dinámico:
+ * los dobles de la lib que usan los tests de las superficies no exportan el enum, y
+ * leerlo de ahí apagaría su cámara. `QrScanner.test.tsx` los contrasta con la lib real.
+ */
+const FORMATOS_ETIQUETA: Html5QrcodeSupportedFormats[] = [0, 5];
+
+/** SLT-159 (R589): en modo continuo, el mismo texto antes de este tiempo se ignora. */
+export const ESPERA_MISMO_CODIGO_MS = 3000;
 
 /**
  * Lado del recuadro de escaneo para un visor de `ancho`×`alto`. Cuadrado y
@@ -31,6 +45,18 @@ export interface QrScannerProps {
   disabled?: boolean;
   /** Mensaje del toast cuando la cámara no se puede abrir (permisos). */
   mensajeErrorCamara?: string;
+  /**
+   * SLT-160 (D4) — arranca con el visor ya encendido: el gesto fue el toque que abrió el contenedor
+   * (el botón de cámara del buscador). Apagada por defecto: los demás usos arrancan con el botón.
+   */
+  encendidaAlMontar?: boolean;
+  /**
+   * SLT-159 (R588): escaneo continuo. La cámara NO se cierra tras leer y sigue entregando; el
+   * mismo texto antes de `ESPERA_MISMO_CODIGO_MS` se ignora (R589). Por defecto, guía suelta.
+   */
+  continuo?: boolean;
+  /** SLT-159: se llama al pulsar «Cerrar cámara» (la página desmonta el visor). */
+  alCerrar?: () => void;
 }
 
 /**
@@ -43,13 +69,16 @@ export function QrScanner({
   onDecoded,
   disabled = false,
   mensajeErrorCamara = MENSAJE_ERROR_CAMARA_DEFAULT,
+  encendidaAlMontar = false,
+  continuo = false,
+  alCerrar,
 }: Readonly<QrScannerProps>) {
   const toast = useToast();
-  const [camaraAbierta, setCamaraAbierta] = useState(false);
+  const [camaraAbierta, setCamaraAbierta] = useState(encendidaAlMontar);
   // Entre abrir el visor y el primer frame hay un hueco (permisos + arranque de la
   // lib): sin esto el usuario mira un rectangulo negro sin saber si algo pasa. Se
   // enciende en el propio clic (no en un efecto) y se apaga cuando la camara arranca.
-  const [iniciando, setIniciando] = useState(false);
+  const [iniciando, setIniciando] = useState(encendidaAlMontar);
   // Lado en px del recuadro que html5-qrcode recorta del frame. Lo publica la
   // propia lib al medir el visor (ver `calcularLadoMarco`) y lo pintamos con ese
   // mismo tamaño: el marco que ve el usuario ES la zona que se decodifica.
@@ -65,7 +94,9 @@ export function QrScanner({
   const onDecodedRef = useRef(onDecoded);
   const toastRef = useRef(toast);
   const mensajeErrorCamaraRef = useRef(mensajeErrorCamara);
+  const continuoRef = useRef(continuo);
   useEffect(() => {
+    continuoRef.current = continuo;
     onDecodedRef.current = onDecoded;
     toastRef.current = toast;
     mensajeErrorCamaraRef.current = mensajeErrorCamara;
@@ -80,6 +111,8 @@ export function QrScanner({
     // vez por frame. Un `useState` no serviría — el callback vive en la clausura
     // que `start()` capturó y nunca vería el valor nuevo.
     let entregado = false;
+    // Modo continuo (R589): el último texto entregado y cuándo.
+    let ultimo: { texto: string; en: number } | null = null;
     let instancia: {
       stop: () => Promise<void>;
       clear: () => void;
@@ -89,7 +122,10 @@ export function QrScanner({
       try {
         const { Html5Qrcode } = await import("html5-qrcode");
         if (cancelado) return;
-        const scanner = new Html5Qrcode(regionId);
+        const scanner = new Html5Qrcode(regionId, {
+          formatsToSupport: FORMATOS_ETIQUETA,
+          verbose: false,
+        });
         instancia = scanner as unknown as typeof instancia;
         await scanner.start(
           { facingMode: "environment" },
@@ -106,7 +142,17 @@ export function QrScanner({
             },
           },
           (decodedText: string) => {
-            if (entregado || cancelado) return;
+            if (cancelado) return;
+            if (continuoRef.current) {
+              const ahora = Date.now();
+              if (ultimo?.texto === decodedText && ahora - ultimo.en < ESPERA_MISMO_CODIGO_MS) {
+                return;
+              }
+              ultimo = { texto: decodedText, en: ahora };
+              onDecodedRef.current(decodedText);
+              return;
+            }
+            if (entregado) return;
             entregado = true;
             setCamaraAbierta(false);
             onDecodedRef.current(decodedText);
@@ -240,6 +286,7 @@ export function QrScanner({
           onClick={() => {
             setIniciando(false);
             setCamaraAbierta(false);
+            alCerrar?.();
           }}
         >
           Cerrar cámara

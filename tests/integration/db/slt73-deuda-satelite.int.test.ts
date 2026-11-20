@@ -13,6 +13,7 @@ import {
   type TxDeTest,
 } from "./_postgres-real";
 import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // SLT-73 · T6 (R4-R8) — LA DEUDA DE LA SATELITE, CONTRA POSTGRES.
 //
@@ -270,7 +271,7 @@ describeSiHayBase("SLT-73 T6 — la deuda de la satelite (R4-R8), con filas real
       await serializarEscriturasReales(tx);
       const z = await sembrar(tx);
       const repo = new SaldosSatelitesRepository(tx as unknown as PrismaClient);
-      return { z, todas: await repo.findSaldosCompleto() };
+      return { z, todas: await repo.findSaldosCompleto(ZONA_DE_CR) };
     });
     const { z, todas } = r;
     const cifras = (id: string) => {
@@ -305,7 +306,7 @@ describeSiHayBase("SLT-73 T6 — la deuda de la satelite (R4-R8), con filas real
         z,
         consol: await repo.findConsolidacionesCompleto(z.consol),
         parcial: await repo.findConsolidacionesCompleto(z.parcial),
-        todas: await repo.findSaldosCompleto(),
+        todas: await repo.findSaldosCompleto(ZONA_DE_CR),
       };
     });
 
@@ -346,8 +347,8 @@ describeSiHayBase("SLT-73 T6 — la deuda de la satelite (R4-R8), con filas real
       // empresa A nacio vacia en esta transaccion, asi que la cabecera es SOLO lo sembrado.
       await comoApp(tx, empresaA);
       const repo = new SaldosSatelitesRepository(tx as unknown as PrismaClient);
-      const resumen: ResumenSatelitesDTO = await repo.findResumen();
-      const todas = await repo.findSaldosCompleto();
+      const resumen: ResumenSatelitesDTO = await repo.findResumen(ZONA_DE_CR);
+      const todas = await repo.findSaldosCompleto(ZONA_DE_CR);
       return { z, zB, resumen, todas };
     });
 

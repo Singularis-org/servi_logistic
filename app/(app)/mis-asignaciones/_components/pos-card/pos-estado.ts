@@ -42,7 +42,7 @@ export function claseChipEstado(estatusValue: string): string {
 // y le pone su botón de información; este módulo solo decide el COLOR (`claseChipEstado`).
 
 /** Clases de la nota de ayuda de la 454 (la misma familia que `CLASE_NOTA`). */
-export const CLASE_NOTA_AYUDA = "bg-warning-soft text-warning-strong";
+export const CLASE_NOTA_AYUDA = "bg-warning-soft text-warning-strong dark:bg-warning/15";
 
 /** Las condiciones de la INTERFAZ que la card anuncia fuera del chip (R8). */
 export type MarcaTarjeta = "activa" | "detalle";
@@ -63,7 +63,7 @@ const CLASE_MARCA_TARJETA: Record<MarcaTarjeta, string> = {
 };
 
 /** Color de la nota que pone el consumidor (ayuda, causa): la familia de espera con acción. */
-const CLASE_NOTA = "bg-warning-soft text-warning-strong";
+const CLASE_NOTA = "bg-warning-soft text-warning-strong dark:bg-warning/15";
 
 /**
  * La marca de la card, derivada de los flags del módulo: activa (puntero 1-a-1 fijado) > abierta en

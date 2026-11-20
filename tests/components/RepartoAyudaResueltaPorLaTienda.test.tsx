@@ -147,6 +147,7 @@ const OTRA = asignacion({
 function renderPortal(conAyuda: MiAsignacionDTO[]) {
   return render(
     <RepartoModule
+      kpis={null}
       porGestionar={[OTRA]}
       conAyuda={conAyuda}
       porRecoger={[]}

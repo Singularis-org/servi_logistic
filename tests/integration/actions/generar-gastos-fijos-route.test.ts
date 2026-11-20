@@ -7,6 +7,17 @@ import type {
   GeneracionGastosFijosResult,
 } from "@/lib/interfaces/services/IGeneracionGastosFijosService";
 
+// SLT-42 (T5.4): la zona del pais de la empresa es la de CR, como antes. Las reglas reales leen el pais
+// de la empresa en curso con el cliente global, que no ve la empresa de una transaccion revertida ni
+// tiene empresa fuera de `conEmpresa`; la zona por pais la miden `hora-por-pais-wallet` y `demo-qa`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
+
 // Feature 45 + 84 (R29/R30) — Controller del cron de gastos fijos. Valida el CRON_SECRET (401 sin
 // efectos: ni construye el service ni toca la DB), delega en el service (200 con resumen sin
 // PII) y NUNCA loguea el secreto. Se inyecta el secreto + un service fake (sin DB ni entorno).

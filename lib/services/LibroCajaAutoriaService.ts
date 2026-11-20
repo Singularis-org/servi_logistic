@@ -7,8 +7,9 @@ import type {
 } from "@/lib/interfaces/repositories/ILibroCajaAutoriaRepository";
 import { tipoDeDocumentoOriginal } from "@/lib/services/WalletService";
 import type { AnulacionDeFilaDTO } from "@/lib/types/estado-cuenta";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
-import { horaCostaRica } from "@/lib/utils/hora-cr";
+import { fechaCalendario, horaDePared } from "@/lib/utils/calendario-zona";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 import { movimientoDeLaAnotacion } from "@/lib/utils/anotacion-de-fila";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { RegistroDTO } from "@/lib/types/estado-cuenta";
@@ -53,12 +54,22 @@ function aCuenta(c: CuentaNombrada | undefined): AQuienDTO {
  * El texto lo compone la pantalla con sus rotulos: aqui solo hay datos.
  */
 export class LibroCajaAutoriaService implements ILibroCajaAutoriaService {
-  constructor(private readonly repo: ILibroCajaAutoriaRepository) {}
+  constructor(
+    private readonly repo: ILibroCajaAutoriaRepository,
+    /** SLT-42 (R22, R28): la zona del pais de la empresa, para el dia y la hora de cada fila. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
+  ) {}
 
   async resolver(input: AutoriaLibroCajaInput, actor: Actor): Promise<AutoriaLibroCajaServiceResult> {
     if (!esAccesoTotal(actor.rol)) return { status: "forbidden" }; // R82: antes de leer
 
     const movs = await this.repo.movimientos(input.movimientoIds);
+    // SLT-42 (R22, R28): el dia y la hora de cada fila, en la zona del pais; sin filas no se lee.
+    const zona = movs.length === 0 ? null : await zonaDeLaEmpresa(this.reglasPais, "LibroCajaAutoriaService.resolver");
+    const diaYHora = (instante: Date) => ({
+      fecha: fechaCalendario(instante, zona as string),
+      hora: horaDePared(instante, zona as string),
+    });
     const ids = (origen: string) => [
       ...new Set(movs.flatMap((m) => (m.origenTipo === origen && m.origenId !== null ? [m.origenId] : []))),
     ];
@@ -222,15 +233,12 @@ export class LibroCajaAutoriaService implements ILibroCajaAutoriaService {
       }
       return a === undefined
         ? null
-        : { motivo: a.motivo, por: a.por, fecha: fechaCalendarioCR(a.fecha), hora: horaCostaRica(a.fecha.toISOString()) };
+        : { motivo: a.motivo, por: a.por, ...diaYHora(a.fecha) };
     };
 
-    // Ficha 458-E (revision B1, R58): CUANDO se registro — el `created_at` de la fila en dia y hora de
-    // Costa Rica, no la fecha del movimiento (que la pantalla ya pinta aparte).
-    const registradoEl = (m: MovimientoDeCajaParaAutoria): RegistradoElDTO => ({
-      fecha: fechaCalendarioCR(m.createdAt),
-      hora: horaCostaRica(m.createdAt.toISOString()),
-    });
+    // Ficha 458-E (revision B1, R58): CUANDO se registro — el `created_at` de la fila en dia y hora del
+    // pais de la empresa (SLT-42), no la fecha del movimiento (que la pantalla ya pinta aparte).
+    const registradoEl = (m: MovimientoDeCajaParaAutoria): RegistradoElDTO => diaYHora(m.createdAt);
 
     const porId = new Map(movs.map((m) => [m.id, m]));
     const filas: AutoriaDeFilaDTO[] = input.movimientoIds.flatMap((id) => {

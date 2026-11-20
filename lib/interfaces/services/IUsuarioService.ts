@@ -1,4 +1,8 @@
-import type { RolItem, UsuarioPublico } from "@/lib/interfaces/repositories/IUserRepository";
+import type {
+  RolItem,
+  TipoIdentificacionItem,
+  UsuarioPublico,
+} from "@/lib/interfaces/repositories/IUserRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type {
   ActualizarUsuarioInput,
@@ -56,7 +60,7 @@ export type CambiarEstadoUsuarioServiceResult =
   | ResultadoTopePlan;
 
 export type ListarTiposIdentificacionServiceResult =
-  | { status: "ok"; tipos: { id: string; value: string }[] }
+  | { status: "ok"; tipos: TipoIdentificacionItem[] } // SLT-42 (R5): solo los del pais de la empresa
   | { status: "forbidden" };
 
 export type ListarRolesServiceResult =

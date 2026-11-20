@@ -8,6 +8,7 @@ import { recorteDePresentacion } from "@/lib/analytics/presentacion";
 import type { ActorAnalitica } from "@/lib/analytics/alcance";
 import { ROLES_ACCESO_ANALITICA } from "@/lib/auth/menu-visibility";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 /**
  * ⭑⭑ FICHA 443 — EL HEROE DE LA EFECTIVIDAD ES DE TODOS LOS ROLES QUE ENTRAN, NO DE DOS.
  *
@@ -79,7 +80,7 @@ describe("443/(a) — TODO rol con puerta a la analitica recibe la cifra del her
   it.each([...ROLES_ACCESO_ANALITICA])(
     "`%s` obtiene una consulta CONCEDIDA, no un `forbidden`",
     (rol) => {
-      const preparada = prepararConteoEntregas({}, actorDe(rol), AHORA);
+      const preparada = prepararConteoEntregas({}, actorDe(rol), ZONA_DE_CR, AHORA);
 
       // ⭑ LA MUTACION QUE MATA: denegar la lectura para uno de los roles. La tarjeta seguiria
       // en su sitio y escribiria «no tienes permiso» donde antes habia un porcentaje.
@@ -93,7 +94,7 @@ describe("443/(a) — TODO rol con puerta a la analitica recibe la cifra del her
   it.each([...ROLES_ACCESO_ANALITICA])(
     "`%s` recibe EL MISMO alcance que la pantalla dice que tiene (`recorteDePresentacion`)",
     (rol) => {
-      const preparada = prepararConteoEntregas({}, actorDe(rol), AHORA);
+      const preparada = prepararConteoEntregas({}, actorDe(rol), ZONA_DE_CR, AHORA);
       if (preparada.status !== "ok") throw new Error(`${rol} fue denegado: ver el caso de arriba`);
 
       // NO se escribe una tabla rol -> alcance: eso seria la segunda tabla que R8/R37 de la 122
@@ -110,7 +111,7 @@ describe("443/(a) — TODO rol con puerta a la analitica recibe la cifra del her
   it("los roles con puerta NO resuelven todos el mismo alcance (el recorte hace algo)", () => {
     const tipos = new Set(
       ROLES_ACCESO_ANALITICA.map((rol) => {
-        const p = prepararConteoEntregas({}, actorDe(rol), AHORA);
+        const p = prepararConteoEntregas({}, actorDe(rol), ZONA_DE_CR, AHORA);
         return p.status === "ok" ? p.consulta.alcance.tipo : "denegado";
       }),
     );

@@ -4,6 +4,8 @@ import type { IWalletMovimientoRepository } from "@/lib/interfaces/repositories/
 import type { ComoQuedoServiceResult, IComoQuedoService } from "@/lib/interfaces/services/IComoQuedoService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { LectorSaldoInicial } from "@/lib/interfaces/services/IWalletService";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 import type { ComoQuedoDTO, ComoQuedoInput } from "@/lib/types/como-quedo";
 import { derivarCaja } from "@/lib/utils/caja-tesoreria";
 import { derivarCuentaPorPagar } from "@/lib/utils/cuenta-por-pagar";
@@ -22,6 +24,8 @@ export class ComoQuedoService implements IComoQuedoService {
     private readonly repo: IComoQuedoRepository,
     private readonly caja: Pick<IWalletMovimientoRepository, "primerDiaDeLaCaja">,
     private readonly saldoInicial: LectorSaldoInicial,
+    /** SLT-42 (R22, R28): la zona del pais de la empresa, para el dia del primer movimiento de la caja. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
 
   async comoQuedo(input: ComoQuedoInput, actor: Actor): Promise<ComoQuedoServiceResult> {
@@ -51,7 +55,9 @@ export class ComoQuedoService implements IComoQuedoService {
     if (cajaFilaId !== null) {
       const resumen = derivarCaja(await this.repo.agregadoCajaHasta(cajaFilaId), {
         haySaldoInicialVigente: await this.saldoInicial.haySaldoInicialVigente(),
-        primerDia: await this.caja.primerDiaDeLaCaja(),
+        primerDia: await this.caja.primerDiaDeLaCaja({
+          zonaHoraria: await zonaDeLaEmpresa(this.reglasPais, "ComoQuedoService.comoQuedo"),
+        }),
       });
       dto.caja = {
         cifraPrincipal: resumen.enCaja,

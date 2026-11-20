@@ -22,7 +22,9 @@ import {
   type ListarHistorialAccionesCompletoResult,
   type ListarHistorialAccionesResult,
 } from "@/lib/types/historial-accion";
-import { inicioDelDiaCREnUtc, inicioDelDiaSiguienteCREnUtc } from "@/lib/utils/fecha-cr";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
+import { inicioDelDiaEnUtc, inicioDelDiaSiguienteEnUtc } from "@/lib/utils/calendario-zona";
 import { codigoVigente } from "@/lib/types/order-status";
 
 // FICHA 362 (design §4.1) — servicio de LECTURA del historial de acciones.
@@ -121,7 +123,11 @@ export function aDTO(fila: FilaHistorialAccion): HistorialAccionDTO {
 }
 
 export class HistorialAccionService implements IHistorialAccionService {
-  constructor(private readonly repo: IHistorialAccionRepository) {}
+  constructor(
+    private readonly repo: IHistorialAccionRepository,
+    /** SLT-42 (R22, R28): la zona del pais de la empresa, para los limites del rango de fechas. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
+  ) {}
 
   /** El gate, en un solo sitio. `true` = puede leer. */
   private puedeLeer(actor: Actor | null): actor is Actor {
@@ -130,9 +136,14 @@ export class HistorialAccionService implements IHistorialAccionService {
 
   /**
    * Traduce la entrada YA VALIDADA a lo que el repositorio entiende: la interseccion de tipos y el
-   * rango de fechas convertido de CALENDARIO de Costa Rica a instantes.
+   * rango de fechas convertido del CALENDARIO del pais de la empresa a instantes (SLT-42, R22). La
+   * zona solo se lee si hay rango.
    */
-  private resolverFiltro(filtro: FiltroHistorialAccion): FiltroHistorialAccionResuelto {
+  private async resolverFiltro(filtro: FiltroHistorialAccion, operacion: string): Promise<FiltroHistorialAccionResuelto> {
+    const zona =
+      filtro.desde === undefined && filtro.hasta === undefined
+        ? null
+        : await zonaDeLaEmpresa(this.reglasPais, `HistorialAccionService.${operacion}`);
     return {
       q: filtro.q ?? null,
       actorId: filtro.actorId ?? null,
@@ -141,8 +152,8 @@ export class HistorialAccionService implements IHistorialAccionService {
       // `desde` incluye el dia entero; `hasta` es el INICIO DEL DIA SIGUIENTE y el repositorio lo
       // compara con `lt`. Es la convencion del repo (feature 166) y evita perder las filas
       // escritas entre las 00:00 y las 23:59:59.999 del ultimo dia pedido.
-      desde: filtro.desde === undefined ? null : inicioDelDiaCREnUtc(filtro.desde),
-      hasta: filtro.hasta === undefined ? null : inicioDelDiaSiguienteCREnUtc(filtro.hasta),
+      desde: filtro.desde === undefined ? null : inicioDelDiaEnUtc(filtro.desde, zona as string),
+      hasta: filtro.hasta === undefined ? null : inicioDelDiaSiguienteEnUtc(filtro.hasta, zona as string),
     };
   }
 
@@ -164,7 +175,7 @@ export class HistorialAccionService implements IHistorialAccionService {
 
     const filtro = parsed.data;
     const pagina = await this.repo.list({
-      filtro: this.resolverFiltro(filtro),
+      filtro: await this.resolverFiltro(filtro, "listar"),
       orden: this.ordenDe(filtro),
       page: filtro.page,
       pageSize: filtro.pageSize,
@@ -200,7 +211,7 @@ export class HistorialAccionService implements IHistorialAccionService {
     // conjunto de exactamente `maximo + 1` filas saldria truncado y en silencio, que es lo que
     // R21 de la 151 prohibe.
     const filas = await this.repo.listAll({
-      filtro: this.resolverFiltro(filtro),
+      filtro: await this.resolverFiltro(filtro, "listarCompleto"),
       orden: this.ordenDe(filtro),
       limite: maximo + 1,
     });

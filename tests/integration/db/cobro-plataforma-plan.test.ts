@@ -33,13 +33,17 @@ import { limpiar459, sembrarPersonas459, type Personas459 } from "./_fixtures/es
 // sobre el cliente extendido, como en una petición. Se anulan y se recuperan con los servicios de la
 // pantalla. Quien escribe el cargo es el trigger: aquí no hay ningún INSERT a mano en la tabla.
 //
-// El plan se crea, se edita, se archiva y se aplica su cambio programado con `PlanesRepository` real
-// (como dueño, igual que el superadmin en `comoPlataforma`); el global y la excepción, con el
+// El plan se crea, se archiva y se aplica su cambio programado con `PlanesRepository` real (como dueño, igual
+// que el superadmin en `comoPlataforma`); SLT-135: cada «edición» de P es un pendiente que ya rige, escrito a
+// mano y promovido por `aplicarCambioProgramado` (no hay edición inmediata). El global, con el
 // repositorio del superadmin bajo el lock de `_fixtures/cobro-plataforma-40`. La asignación es la
 // misma sentencia que usan los fixtures de SL-24 (`_fixtures/planes.ts > asignarPlan`).
 //
 // Todo se commitea (los repositorios abren su transacción) y se limpia en el `afterAll`, acotado a las
 // empresas y los planes de esta ejecución.
+//
+// SLT-126: ya no hay valor propio de la empresa. B comparte P sin excepción, y se quitaron los pasos
+// cuya razón era la excepción («la excepción gana al plan», «sin plan no se pierde la excepción»).
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
@@ -155,9 +159,9 @@ function entradaDePlan(nombre: string, costoPorOrden: string | null): CrearPlanI
     nombre: `SLT66 ${nombre} ${RUN}`,
     visibilidad: "publico",
     organizacionId: null,
-    topes: { ordenesPorCiclo: null, porRol: {}, apiKeys: null },
+    topes: { porRol: {}, apiKeys: null },
     modulos: [],
-    precio: { tipo: "monto", mensual: "50000.00", anual: null },
+    precio: { tipo: "monto", mensual: "50000.00", descuentos: {} },
     costoPorOrden,
     costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del tipo
   };
@@ -170,9 +174,24 @@ async function versionDeP(cambio: Partial<VersionPlan>): Promise<VersionPlan> {
   return { nombre: actual.nombre, topes: actual.topes, modulos: actual.modulos, precio: actual.precio, costoPorOrden: actual.costoPorOrden, costoPorOrdenPorcentual: actual.costoPorOrdenPorcentual, ...cambio };
 }
 
-async function editarP(cambio: Partial<VersionPlan>): Promise<void> {
-  const r = await planes().editar(P, await versionDeP(cambio), ACTOR);
-  expect(r, JSON.stringify(r)).toMatchObject({ estado: "ok", cambio: true });
+/**
+ * Un pendiente de P que ya rige, escrito a mano (sin recepciones: A y B lo toman del plan), y su promoción por
+ * `aplicarCambioProgramado`, como la pasada de la cola. Sin trabajos en `jobs`: esto se commitea. SLT-135: así
+ * llega cada «edición» de P (ya no hay edición inmediata). SLT-86 (R15): un precio nuevo rige desde ese instante;
+ * aquí no cambia el cargo de las órdenes (R13).
+ */
+async function aplicarAP(cambio: Partial<VersionPlan>): Promise<void> {
+  const cambioId = randomUUID();
+  await base.$executeRawUnsafe(
+    `INSERT INTO "plan_cambio_programado" ("id", "plan_id", "vigente_desde", "version", "avisos_al_programar",
+       "actor_usuario_id", "actor_nombre")
+     VALUES ($1, $2, (now() AT TIME ZONE 'UTC') - interval '1 minute', $3::jsonb, '[]'::jsonb, $4, 'Superadmin SLT66')`,
+    cambioId,
+    P,
+    JSON.stringify(await versionDeP(cambio)),
+    ACTOR,
+  );
+  expect(await planes().aplicarCambioProgramado({ planId: P, cambioId }, new Date())).toEqual({ estado: "aplicado" });
 }
 
 /** Lo que hay en la base para cada orden creada hasta ahora, contra lo esperado. */
@@ -199,7 +218,7 @@ describeSiHayBase("SLT-66 — el cargo de cada orden con el costo por orden del 
     if (distrito === null) throw new Error("no hay distritos: aplica las migraciones");
     geo = { provinciaId: distrito.canton.provinciaId, cantonId: distrito.cantonId, distritoId: distrito.id };
 
-    // Partida de §3.4: global 500,00; A con P (100,00); B con P y excepción de 80,00; C con Q (sin
+    // Partida de §3.4 sin la excepción (SLT-126): global 500,00; A y B con P (100,00); C con Q (sin
     // costo por orden); D sin plan.
     tarifaGlobal = await tomarTarifaGlobal();
     await tarifas().fijarGlobal("500.00");
@@ -212,7 +231,6 @@ describeSiHayBase("SLT-66 — el cargo de cada orden con el costo por orden del 
     await asignar(A, P);
     await asignar(B, P);
     await asignar(C, Q);
-    expect(await tarifas().fijarDeEmpresa(org(B), "80.00")).toBe(true);
   }, 240_000);
 
   afterAll(async () => {
@@ -254,12 +272,11 @@ describeSiHayBase("SLT-66 — el cargo de cada orden con el costo por orden del 
     expect(triggers).toHaveLength(1);
     const partida = await base.organizacion.findMany({
       where: { id: { in: [A, B, C, D].map(org) } },
-      select: { id: true, planId: true, cobroPlataformaPorOrden: true },
+      select: { id: true, planId: true },
     });
     const de = (e: Empresa) => partida.find((x) => x.id === org(e));
     expect(de(A)?.planId).toBe(P);
     expect(de(B)?.planId).toBe(P);
-    expect(de(B)?.cobroPlataformaPorOrden?.toFixed(2)).toBe("80.00");
     expect(de(C)?.planId).toBe(Q);
     expect(de(D)?.planId).toBeNull();
     expect((await planes().plan(Q))?.costoPorOrden).toBeNull();
@@ -267,15 +284,15 @@ describeSiHayBase("SLT-66 — el cargo de cada orden con el costo por orden del 
 
   /* --------------------------- §3.4, fila a fila --------------------------- */
 
-  it("R12: A crea o1 → 100.00 «plan» (excepción no hay, el plan gana al global)", async () => {
+  it("R12: A crea o1 → 100.00 «plan» (el plan gana al global)", async () => {
     await crear(A, "o1", "conGuia");
     esperado.o1 = [cargo("100.00", "plan")];
     await todasComoSeEspera();
   });
 
-  it("R12: B crea p1 → 80.00 «empresa» (la excepción gana al plan)", async () => {
+  it("R12: B, con el mismo plan, crea p1 por la otra rama → 100.00 «plan»", async () => {
     await crear(B, "p1", "sinGuia");
-    esperado.p1 = [cargo("80.00", "empresa")];
+    esperado.p1 = [cargo("100.00", "plan")];
     await todasComoSeEspera();
   });
 
@@ -291,8 +308,8 @@ describeSiHayBase("SLT-66 — el cargo de cada orden con el costo por orden del 
     await todasComoSeEspera();
   });
 
-  it("R15: P pasa a 120.00 (edición inmediata) y A crea o2 → 120.00; o1 sigue en 100.00", async () => {
-    await editarP({ costoPorOrden: "120.00" });
+  it("R15: P pasa a 120.00 (cambio ya aplicado) y A crea o2 → 120.00; o1 sigue en 100.00", async () => {
+    await aplicarAP({ costoPorOrden: "120.00" });
     await crear(A, "o2", "sinGuia");
     esperado.o2 = [cargo("120.00", "plan")];
     await todasComoSeEspera();
@@ -325,9 +342,9 @@ describeSiHayBase("SLT-66 — el cargo de cada orden con el costo por orden del 
     await todasComoSeEspera();
   });
 
-  it("R14: P con descuento anual del 20 %; B quita la excepción y crea p2 → 120.00 «plan», sin descuento", async () => {
-    await editarP({ precio: { tipo: "monto", mensual: "50000.00", anual: { tipo: "descuento", porcentaje: "20" } } });
-    expect(await tarifas().fijarDeEmpresa(org(B), null)).toBe(true);
+  it("R14: P con descuento anual del 20 %; B crea p2 → 120.00 «plan», sin descuento", async () => {
+    // SLT-86 (R13, R33): el descuento anual de antes es ahora el descuento del período anual.
+    await aplicarAP({ precio: { tipo: "monto", mensual: "50000.00", descuentos: { anual: { tipo: "porcentaje", porcentaje: "20" } } } });
     await crear(B, "p2", "conGuia");
     esperado.p2 = [cargo("120.00", "plan")];
     await todasComoSeEspera();
@@ -335,7 +352,7 @@ describeSiHayBase("SLT-66 — el cargo de cada orden con el costo por orden del 
 
   it("R14: P con base sin precio; B crea p3 → 120.00 «plan» (la forma del costo base no cuenta)", async () => {
     // D1 (ajuste planes-custom): «negociable» ya no existe; «sin precio» es la otra forma sin monto.
-    await editarP({ precio: { tipo: "sin_precio" } });
+    await aplicarAP({ precio: { tipo: "sin_precio" } });
     await crear(B, "p3", "sinGuia");
     esperado.p3 = [cargo("120.00", "plan")];
     await todasComoSeEspera();
@@ -344,17 +361,7 @@ describeSiHayBase("SLT-66 — el cargo de cada orden con el costo por orden del 
   /* ------------------------- más allá de la tabla -------------------------- */
 
   it("R15: un cambio programado que se aplica (aplicarCambioProgramado) pone P en 130.00; B crea p4 → 130.00", async () => {
-    const cambioId = randomUUID();
-    await base.$executeRawUnsafe(
-      `INSERT INTO "plan_cambio_programado" ("id", "plan_id", "vigente_desde", "version", "avisos_al_programar",
-         "actor_usuario_id", "actor_nombre")
-       VALUES ($1, $2, (now() AT TIME ZONE 'UTC') - interval '1 minute', $3::jsonb, '[]'::jsonb, $4, 'Superadmin SLT66')`,
-      cambioId,
-      P,
-      JSON.stringify(await versionDeP({ costoPorOrden: "130.00" })),
-      ACTOR,
-    );
-    expect(await planes().aplicarCambioProgramado({ planId: P, cambioId }, new Date())).toEqual({ estado: "aplicado" });
+    await aplicarAP({ costoPorOrden: "130.00" });
     expect((await planes().plan(P))?.costoPorOrden).toBe("130.00");
 
     await crear(B, "p4", "conGuia");
@@ -369,13 +376,6 @@ describeSiHayBase("SLT-66 — el cargo de cada orden con el costo por orden del 
 
     await crear(B, "p5", "sinGuia");
     esperado.p5 = [cargo("130.00", "plan")];
-    await todasComoSeEspera();
-  });
-
-  it("R12: D, sin plan y con excepción de 70.00, crea d2 → 70.00 «empresa» (sin plan no se pierde la excepción)", async () => {
-    expect(await tarifas().fijarDeEmpresa(org(D), "70.00")).toBe(true);
-    await crear(D, "d2", "conGuia");
-    esperado.d2 = [cargo("70.00", "empresa")];
     await todasComoSeEspera();
   });
 

@@ -28,6 +28,8 @@ import type {
 import type { ICajaAbonoTiendaFeedService } from "@/lib/interfaces/services/ICajaAbonoTiendaFeedService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { compensarEvidencias } from "@/lib/services/evidencias-compensadas";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 import type {
   AbonoTiendaDTO,
   AnularAbonoTiendaInput,
@@ -41,7 +43,7 @@ import {
   descripcionAnulacionAbono,
 } from "@/lib/utils/descripcion-abono";
 import { medianocheUtcDelDia } from "@/lib/utils/descripcion-pago";
-import { fechaCalendarioCR, inicioDelDiaCREnUtc } from "@/lib/utils/fecha-cr";
+import { fechaCalendario, inicioDelDiaEnUtc } from "@/lib/utils/calendario-zona";
 import { derivarSaldoTienda } from "@/lib/utils/saldo-tienda";
 
 const ROL_TIENDA = "adminTienda";
@@ -126,6 +128,8 @@ export class AbonoTiendaService implements IAbonoTiendaService {
       WalletComprobanteConfig,
       "MAX_BYTES" | "SIGNED_URL_TTL_SECONDS"
     > = walletComprobanteConfig,
+    /** SLT-42 (R22, R28): la zona del pais de la empresa, para el inicio del dia de los asientos. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
 
   /**
@@ -138,7 +142,7 @@ export class AbonoTiendaService implements IAbonoTiendaService {
    *  4. Pre-chequeo OPTIMISTA del saldo, sin candado: ahorra subir un archivo que no va a servir. No
    *     sustituye al paso 7.
    *  5. El COMPROBANTE, validado y subido ANTES de la transaccion (R26–R28).
-   *  6. Las FECHAS: la real del pago para el documento; el inicio de ese dia en CR para los dos asientos (R20).
+   *  6. Las FECHAS: la real del pago para el documento; el inicio de ese dia en la zona del pais (SLT-42) para los dos asientos (R20).
    *  7. La TRANSACCION: candado de la tienda ANTES de leer el saldo (R16), leido por ESA transaccion
    *     (m3) → saldo ≥ 0 → `sin_deuda` (R14); monto > |saldo| → `excede` (R15) —y si la regla rechaza,
    *     la clave se mira OTRA VEZ: dos envios simultaneos de la misma clave—; documento + historial →
@@ -173,6 +177,9 @@ export class AbonoTiendaService implements IAbonoTiendaService {
     const reglaPrevia = reglaDelDinero(previo, monto);
     if (reglaPrevia !== null) return reglaPrevia;
 
+    // SLT-42 (R22, R28): la zona se lee ANTES de subir el comprobante; sin zona, nada se escribe.
+    const zona = await zonaDeLaEmpresa(this.reglasPais, "AbonoTiendaService.registrar");
+
     let ruta: string | null = null;
     if (comprobante !== null) {
       const problema = problemaDeComprobante(
@@ -192,9 +199,9 @@ export class AbonoTiendaService implements IAbonoTiendaService {
     }
 
     const id = randomUUID();
-    // R20 (461 T2/R73): el credito y la entrada se fechan con el MISMO instante, el inicio del dia en
-    // Costa Rica de la fecha REAL del pago (06:00Z); el documento conserva el dia calendario (@db.Date).
-    const fechaMovimiento = inicioDelDiaCREnUtc(input.fechaPago);
+    // R20 (461 T2/R73): el credito y la entrada se fechan con el MISMO instante, el inicio del dia de la
+    // fecha REAL del pago en la zona del pais (SLT-42); el documento conserva el dia calendario (@db.Date).
+    const fechaMovimiento = inicioDelDiaEnUtc(input.fechaPago, zona);
     const fechaPago = medianocheUtcDelDia(input.fechaPago);
     const datosDescripcion = {
       motivo: input.motivo,
@@ -283,7 +290,7 @@ export class AbonoTiendaService implements IAbonoTiendaService {
   /**
    * R31–R39 — la anulacion. El documento se lee FUERA de la transaccion (es inmutable y hace falta
    * saber su tienda para tomar el candado); el monto del contra-asiento es el DEL DOCUMENTO (R34); los
-   * dos asientos se fechan con el MISMO instante: el inicio del dia de la anulacion en CR (R32). El
+   * dos asientos se fechan con el MISMO instante: el inicio del dia de la anulacion en la zona del pais (R32, SLT-42). El
    * comprobante NO se toca (R33).
    */
   async anular(input: AnularAbonoTiendaInput, actor: Actor): Promise<AnularAbonoTiendaServiceResult> {
@@ -292,7 +299,9 @@ export class AbonoTiendaService implements IAbonoTiendaService {
     const abono = await this.abonoRepo.obtenerPorId(input.abonoId);
     if (abono === null) return { status: "no_encontrado" }; // R37
 
-    const instante = inicioDelDiaCREnUtc(fechaCalendarioCR(this.ahora())); // R32
+    // R32 + SLT-42 (R22, R28): el inicio del dia de hoy en la zona del pais, antes de escribir nada.
+    const zona = await zonaDeLaEmpresa(this.reglasPais, "AbonoTiendaService.anular");
+    const instante = inicioDelDiaEnUtc(fechaCalendario(this.ahora(), zona), zona);
     const datosDescripcion = {
       motivo: abono.motivo,
       metodo: abono.metodo,

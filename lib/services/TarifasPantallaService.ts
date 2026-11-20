@@ -48,6 +48,9 @@ export class TarifasPantallaService implements ITarifasPantallaService, IFaltant
       vehiculos,
       tiendas: await this.repo.listarTiendas(),
       preciosTienda: await this.repo.preciosDeTienda(),
+      mensajeros: await this.repo.listarMensajeros(),
+      valoresMensajero: await this.repo.valoresDeMensajeros(),
+      topeIntentos: await this.repo.leerTopeIntentos(),
       puedeEscribir: actor.rol === "maestro",
     };
   }

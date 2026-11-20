@@ -4,9 +4,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
-import { inicioDelCicloPorDefecto } from "@/lib/planes/ciclo";
+import { inicioDelCicloPorDefecto, inicioDelDiaPlataforma } from "@/lib/planes/ciclo";
 import { PlanesService } from "@/lib/services/PlanesService";
-import type { CrearPlanInput, TopesPlan } from "@/lib/types/planes";
+import type { CrearPlanInput, TipoCobro, TopesPlan } from "@/lib/types/planes";
 import { crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones";
 
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
@@ -22,12 +22,28 @@ import { entradaAsignable, planesEnTx, revertida } from "./_fixtures/planes";
 //   · D14: la lectura del detalle trae el tipo de cobro de cada fila y el cambio de solo el tipo como fila propia.
 //   · D12: crear un custom con fecha devuelve los topes ya pasados en `avisos`, como la primera asignación.
 //   · D13: la vista previa con los topes del form avisa lo mismo que luego devuelve crear el custom.
+//
+// SLT-86 (R16, R17, R30): el cambio de tipo lleva fecha de efecto. Aquí siempre la de hoy, que se aplica en
+// el acto: la entrada pasa a las 00:00 de hoy (la misma que dejó la primera asignación sin fecha) y el
+// `valor_nuevo` lleva la fecha delante del tipo. Con fecha futura: `planes-cambio-empresa.test.ts`.
+//
+// SLT-118 (R30, R31): «hoy» solo se aplica en el acto si es el primer día de un período del tipo de referencia
+// (el más largo entre el vigente y el nuevo; mensual → anual: el año). Por eso «hoy» es aquí un reloj fijo el
+// 1 de enero de 2027, inyectado en el servicio. Al final, los casos de R30 y R31 con el tipo de referencia.
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
 const SUPERADMIN: Actor = { usuarioId: randomUUID(), rol: "superadmin", organizacionId: null };
 
+/** Hoy en la plataforma: la fecha de efecto de los cambios de este archivo (SLT-118: reloj fijo, inicio de año). */
+const HOY = "2027-01-01";
+const AHORA = new Date("2027-01-01T18:00:00.000Z");
+const EFECTO_HOY = { clase: "cambio", fecha: HOY, desde: inicioDelDiaPlataforma(HOY), elegida: true } as const;
+
 let base: PrismaClient;
+
+/** `PlanesService` con el repositorio real y el reloj en `AHORA`. */
+const servicioEn = (tx: TxDeTest, romper: "nada" | "historial" = "nada") => new PlanesService(planesEnTx(tx, romper), () => AHORA);
 
 beforeAll(() => {
   base = crearPrismaDeTest();
@@ -41,7 +57,7 @@ async function estadoDeLaEmpresa(tx: TxDeTest, organizacionId: string) {
   return {
     empresa: await tx.organizacion.findUniqueOrThrow({
       where: { id: organizacionId },
-      select: { planId: true, planTipoCobro: true, planCicloAnclaAt: true, planCicloCortoDesdeAt: true },
+      select: { planId: true, planTipoCobro: true, planCicloAnclaAt: true, planCambioId: true },
     }),
     modulos: (await tx.organizacionModulo.findMany({ where: { organizacionId }, select: { modulo: true } }))
       .map((m) => m.modulo)
@@ -65,15 +81,15 @@ async function empresaConPlan(tx: TxDeTest, servicio: PlanesService) {
 }
 
 describeSiHayBase("Ajuste planes-custom D10 — cambiar solo el tipo de cobro del plan actual", () => {
-  it("guarda el tipo y deja su fila en el historial; plan, ancla, ciclo corto y módulos quedan igual", async () => {
+  it("guarda el tipo y deja su fila en el historial; plan, entrada (00:00 de hoy) y módulos quedan igual", async () => {
     const r = await revertida(base, async (tx) => {
-      const servicio = new PlanesService(planesEnTx(tx));
+      const servicio = servicioEn(tx);
       const { org, planId } = await empresaConPlan(tx, servicio);
       const antes = await estadoDeLaEmpresa(tx, org);
-      const res = await servicio.cambiarTipoCobro(SUPERADMIN, { organizacionId: org, tipoCobro: "anual" });
+      const res = await servicio.cambiarTipoCobro(SUPERADMIN, { organizacionId: org, tipoCobro: "anual", vigenteDesde: HOY });
       return { res, antes, despues: await estadoDeLaEmpresa(tx, org), planId };
     });
-    expect(r.res).toEqual({ estado: "ok", cambio: true });
+    expect(r.res).toEqual({ estado: "ok", cambio: true, vigenteDesde: null });
     expect(r.despues.empresa).toEqual({ ...r.antes.empresa, planTipoCobro: "anual" });
     expect(r.antes.empresa.planTipoCobro).toBe("mensual");
     expect(r.despues.modulos).toEqual(r.antes.modulos);
@@ -84,7 +100,7 @@ describeSiHayBase("Ajuste planes-custom D10 — cambiar solo el tipo de cobro de
     expect(r.despues.historial.map(comoTexto).sort()).toEqual(
       [
         ...r.antes.historial,
-        { accion: "plan_tipo_cobro_cambiado", entidadId: r.planId, valorAnterior: "mensual", valorNuevo: "anual" },
+        { accion: "plan_tipo_cobro_cambiado", entidadId: r.planId, valorAnterior: "mensual", valorNuevo: `${HOY} · anual` },
       ]
         .map(comoTexto)
         .sort(),
@@ -93,11 +109,11 @@ describeSiHayBase("Ajuste planes-custom D10 — cambiar solo el tipo de cobro de
 
   it("D16: de vuelta a mensual deja otra fila `plan_tipo_cobro_cambiado` (anual → mensual) y ninguna `plan_asignado` nueva", async () => {
     const r = await revertida(base, async (tx) => {
-      const servicio = new PlanesService(planesEnTx(tx));
+      const servicio = servicioEn(tx);
       const { org } = await empresaConPlan(tx, servicio);
       const antes = await estadoDeLaEmpresa(tx, org);
-      await servicio.cambiarTipoCobro(SUPERADMIN, { organizacionId: org, tipoCobro: "anual" });
-      await servicio.cambiarTipoCobro(SUPERADMIN, { organizacionId: org, tipoCobro: "mensual" });
+      await servicio.cambiarTipoCobro(SUPERADMIN, { organizacionId: org, tipoCobro: "anual", vigenteDesde: HOY });
+      await servicio.cambiarTipoCobro(SUPERADMIN, { organizacionId: org, tipoCobro: "mensual", vigenteDesde: HOY });
       return { antes, despues: await estadoDeLaEmpresa(tx, org) };
     });
     // Por `valor_anterior` y no por posición: las dos filas nacen en la misma transacción del caso y pueden
@@ -107,8 +123,8 @@ describeSiHayBase("Ajuste planes-custom D10 — cambiar solo el tipo de cobro de
       .map(({ accion, valorAnterior, valorNuevo }) => ({ accion, valorAnterior, valorNuevo }))
       .sort((a, b) => String(b.valorAnterior).localeCompare(String(a.valorAnterior)));
     expect(nuevas).toEqual([
-      { accion: "plan_tipo_cobro_cambiado", valorAnterior: "mensual", valorNuevo: "anual" },
-      { accion: "plan_tipo_cobro_cambiado", valorAnterior: "anual", valorNuevo: "mensual" },
+      { accion: "plan_tipo_cobro_cambiado", valorAnterior: "mensual", valorNuevo: `${HOY} · anual` },
+      { accion: "plan_tipo_cobro_cambiado", valorAnterior: "anual", valorNuevo: `${HOY} · mensual` },
     ]);
     expect(r.despues.historial.filter((h) => h.accion === "plan_asignado")).toEqual(
       r.antes.historial.filter((h) => h.accion === "plan_asignado"),
@@ -118,13 +134,13 @@ describeSiHayBase("Ajuste planes-custom D10 — cambiar solo el tipo de cobro de
 
   it("el mismo tipo → ok sin cambio, y no escribe nada (ni historial)", async () => {
     const r = await revertida(base, async (tx) => {
-      const servicio = new PlanesService(planesEnTx(tx));
+      const servicio = servicioEn(tx);
       const { org } = await empresaConPlan(tx, servicio);
       const antes = await estadoDeLaEmpresa(tx, org);
-      const res = await servicio.cambiarTipoCobro(SUPERADMIN, { organizacionId: org, tipoCobro: "mensual" });
+      const res = await servicio.cambiarTipoCobro(SUPERADMIN, { organizacionId: org, tipoCobro: "mensual", vigenteDesde: HOY });
       return { res, antes, despues: await estadoDeLaEmpresa(tx, org) };
     });
-    expect(r.res).toEqual({ estado: "ok", cambio: false });
+    expect(r.res).toEqual({ estado: "ok", cambio: false, vigenteDesde: null });
     expect(r.despues).toEqual(r.antes);
   });
 
@@ -132,8 +148,8 @@ describeSiHayBase("Ajuste planes-custom D10 — cambiar solo el tipo de cobro de
     const r = await revertida(base, async (tx) => {
       const org = (await crearOrganizacion(tx)).id;
       const antes = await estadoDeLaEmpresa(tx, org);
-      const res = await new PlanesService(planesEnTx(tx)).cambiarTipoCobro(SUPERADMIN, { organizacionId: org, tipoCobro: "anual" });
-      const directo = await planesEnTx(tx).cambiarTipoCobro(org, "anual", SUPERADMIN.usuarioId);
+      const res = await servicioEn(tx).cambiarTipoCobro(SUPERADMIN, { organizacionId: org, tipoCobro: "anual", vigenteDesde: HOY });
+      const directo = await planesEnTx(tx).cambiarTipoCobro(org, "anual", EFECTO_HOY, SUPERADMIN.usuarioId, AHORA);
       return { res, directo, antes, despues: await estadoDeLaEmpresa(tx, org) };
     });
     expect(r.res).toEqual({ estado: "sin_plan" });
@@ -142,16 +158,18 @@ describeSiHayBase("Ajuste planes-custom D10 — cambiar solo el tipo de cobro de
   });
 
   it("empresa inexistente → not_found en el repositorio", async () => {
-    const r = await revertida(base, (tx) => planesEnTx(tx).cambiarTipoCobro(randomUUID(), "anual", SUPERADMIN.usuarioId));
+    const r = await revertida(base, (tx) =>
+      planesEnTx(tx).cambiarTipoCobro(randomUUID(), "anual", EFECTO_HOY, SUPERADMIN.usuarioId, AHORA),
+    );
     expect(r).toEqual({ estado: "not_found" });
   });
 
   it("si el historial falla, el tipo no se guarda (misma transacción)", async () => {
     const r = await revertida(base, async (tx) => {
-      const { org } = await empresaConPlan(tx, new PlanesService(planesEnTx(tx)));
+      const { org } = await empresaConPlan(tx, servicioEn(tx));
       const antes = await estadoDeLaEmpresa(tx, org);
-      const error = await new PlanesService(planesEnTx(tx, "historial"))
-        .cambiarTipoCobro(SUPERADMIN, { organizacionId: org, tipoCobro: "anual" })
+      const error = await servicioEn(tx, "historial")
+        .cambiarTipoCobro(SUPERADMIN, { organizacionId: org, tipoCobro: "anual", vigenteDesde: HOY })
         .catch((e: unknown) => e);
       return { error, antes, despues: await estadoDeLaEmpresa(tx, org) };
     });
@@ -163,9 +181,9 @@ describeSiHayBase("Ajuste planes-custom D10 — cambiar solo el tipo de cobro de
 describeSiHayBase("Ajuste planes-custom D14 — el historial de asignaciones del detalle trae el tipo de cobro", () => {
   it("cada fila con su tipo; el cambio de solo el tipo (D10, D16: `plan_tipo_cobro_cambiado`) es una fila propia, distinguible", async () => {
     const r = await revertida(base, async (tx) => {
-      const servicio = new PlanesService(planesEnTx(tx));
+      const servicio = servicioEn(tx);
       const { org } = await empresaConPlan(tx, servicio);
-      await servicio.cambiarTipoCobro(SUPERADMIN, { organizacionId: org, tipoCobro: "anual" });
+      await servicio.cambiarTipoCobro(SUPERADMIN, { organizacionId: org, tipoCobro: "anual", vigenteDesde: HOY });
       return servicio.planDeEmpresa(SUPERADMIN, { organizacionId: org });
     });
     if (r.estado !== "ok") throw new Error(r.estado);
@@ -187,7 +205,7 @@ describeSiHayBase("Ajuste planes-custom D14 — el historial de asignaciones del
 });
 
 describeSiHayBase("Ajuste planes-custom D12, D13 — avisos de topes ya pasados en el custom con fecha", () => {
-  const TOPES: TopesPlan = { ordenesPorCiclo: null, porRol: { adminTienda: 2 }, apiKeys: null };
+  const TOPES: TopesPlan = { porRol: { adminTienda: 2 }, apiKeys: null };
 
   function custom(organizacionId: string, extra: Partial<CrearPlanInput> = {}): CrearPlanInput {
     return entradaAsignable({
@@ -221,11 +239,14 @@ describeSiHayBase("Ajuste planes-custom D12, D13 — avisos de topes ya pasados 
       return { org, vista, antes, trasVista, creado, despues: await estadoDeLaEmpresa(tx, org) };
     });
     const aviso = { organizacionId: r.org, empresa: expect.any(String), tope: "adminTienda", usados: 3, maximo: 2 };
-    expect(r.vista).toEqual({ estado: "ok", avisos: [aviso], siguienteCiclo: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) });
+    // SLT-86 (R8): sin siguiente ciclo; solo los topes de usuarios y API keys.
+    expect(r.vista).toEqual({ estado: "ok", avisos: [aviso] });
     expect(r.trasVista).toEqual(r.antes);
-    // D12: la creación con fecha no rechaza: asigna y avisa, igual que la primera asignación (SLT-58 R36, R42).
-    expect(r.creado).toEqual({ estado: "ok", planId: expect.any(String), cambio: true, avisos: [aviso], vigenteDesde: null });
-    expect(r.despues.empresa.planId).toBe(r.creado.estado === "ok" ? r.creado.planId : "");
+    // D12: la creación con fecha no rechaza: avisa, igual que la primera asignación (SLT-58 R36, R42). SLT-86
+    // (P4 = a): mañana es futura, así que queda pendiente hasta sus 00:00 y la empresa sigue sin plan.
+    expect(r.creado).toEqual({ estado: "ok", planId: expect.any(String), cambio: true, avisos: [aviso], vigenteDesde: manana });
+    expect(r.despues.empresa.planId).toBeNull();
+    expect(r.despues.empresa.planCambioId).not.toBeNull();
   });
 
   it("D13: la vista previa usa los topes del form, no un plan: con topes holgados no avisa nada", async () => {
@@ -235,7 +256,7 @@ describeSiHayBase("Ajuste planes-custom D12, D13 — avisos de topes ya pasados 
       return new PlanesService(planesEnTx(tx)).previsualizarCustom(SUPERADMIN, {
         organizacionId: org,
         inicioCiclo: manana,
-        topes: { ordenesPorCiclo: null, porRol: { adminTienda: 3 }, apiKeys: null },
+        topes: { porRol: { adminTienda: 3 }, apiKeys: null },
       });
     });
     expect(r).toMatchObject({ estado: "ok", avisos: [] });
@@ -253,8 +274,77 @@ describeSiHayBase("Ajuste planes-custom D12, D13 — avisos de topes ya pasados 
 
   it("D13: empresa inexistente → null en el repositorio", async () => {
     const r = await revertida(base, (tx) =>
-      planesEnTx(tx).vistaPreviaConTopes(randomUUID(), TOPES, { fecha: "2026-11-01", ancla: new Date("2026-11-01T06:00:00.000Z") }),
+      planesEnTx(tx).vistaPreviaConTopes(randomUUID(), TOPES),
     );
     expect(r).toBeNull();
+  });
+});
+
+describeSiHayBase("SLT-118 — cambiar el tipo de cobro con el tipo de referencia (R30, R31)", () => {
+  /** 10 de noviembre de 2026, 12:00 en la plataforma: el «hoy» de los ejemplos de R30. */
+  const EL_10 = new Date("2026-11-10T18:00:00.000Z");
+  const efecto = (fecha: string) => ({ clase: "cambio", fecha, desde: inicioDelDiaPlataforma(fecha), elegida: true }) as const;
+
+  /** Una empresa con un plan en `tipo` desde el 1 de noviembre de 2026 (primera asignación). */
+  async function empresaEn(tx: TxDeTest, tipo: TipoCobro) {
+    const org = (await crearOrganizacion(tx)).id;
+    const plan = await new PlanesService(planesEnTx(tx)).crear(SUPERADMIN, entradaAsignable());
+    if (plan.estado !== "ok") throw new Error(plan.estado);
+    const r = await planesEnTx(tx).asignar(
+      org,
+      plan.planId,
+      SUPERADMIN.usuarioId,
+      { clase: "inicio", fecha: "2026-11-01", desde: inicioDelDiaPlataforma("2026-11-01"), elegida: true },
+      tipo,
+      new Date("2026-11-01T18:00:00.000Z"),
+    );
+    if (r.estado !== "ok") throw new Error(r.estado);
+    return org;
+  }
+
+  async function pendiente(tx: TxDeTest, organizacionId: string) {
+    return tx.organizacion.findUniqueOrThrow({
+      where: { id: organizacionId },
+      select: { planTipoCobro: true, planCicloAnclaAt: true, planCambioTipoCobro: true, planCambioDesdeAt: true },
+    });
+  }
+
+  // [vigente, nuevo, elegida, real, ahora]
+  const CASOS: [string, TipoCobro, TipoCobro, string, string, Date][] = [
+    ["R30: a uno más largo", "quincenal", "anual", "2026-11-10", "2027-01-01", EL_10],
+    ["R30: a uno más corto, en el próximo inicio del vigente", "anual", "mensual", "2026-11-10", "2027-01-01", EL_10],
+    ["R30: a uno más corto, no en el próximo inicio del nuevo", "mensual", "quincenal", "2026-11-10", "2026-12-01", EL_10],
+    ["R31: inicio común futuro", "quincenal", "anual", "2027-01-01", "2027-01-01", EL_10],
+    ["R31, R30: inicio del vigente pero no del de referencia", "quincenal", "mensual", "2026-11-16", "2026-12-01", EL_10],
+  ];
+
+  it.each(CASOS)("%s: %s → %s elegido el %s → pendiente para el %s; hasta entonces sigue el tipo de antes", async (_c, vigente, nuevo, elegida, real, ahora) => {
+    const r = await revertida(base, async (tx) => {
+      const org = await empresaEn(tx, vigente);
+      const res = await planesEnTx(tx).cambiarTipoCobro(org, nuevo, efecto(elegida), SUPERADMIN.usuarioId, ahora);
+      return { res, empresa: await pendiente(tx, org) };
+    });
+    expect(r.res).toEqual({ estado: "ok", cambio: true, pendiente: true, vigenteDesde: real });
+    expect(r.empresa).toEqual({
+      planTipoCobro: vigente,
+      planCicloAnclaAt: inicioDelDiaPlataforma("2026-11-01"),
+      planCambioTipoCobro: nuevo,
+      planCambioDesdeAt: inicioDelDiaPlataforma(real),
+    });
+  });
+
+  it("R31: mensual → anual con «hoy» = 1 de enero (inicio del tipo de referencia) se aplica en el acto, sin pendiente", async () => {
+    const r = await revertida(base, async (tx) => {
+      const org = await empresaEn(tx, "mensual");
+      const res = await servicioEn(tx).cambiarTipoCobro(SUPERADMIN, { organizacionId: org, tipoCobro: "anual", vigenteDesde: "2027-01-01" });
+      return { res, empresa: await pendiente(tx, org) };
+    });
+    expect(r.res).toEqual({ estado: "ok", cambio: true, vigenteDesde: null });
+    expect(r.empresa).toEqual({
+      planTipoCobro: "anual",
+      planCicloAnclaAt: inicioDelDiaPlataforma("2027-01-01"),
+      planCambioTipoCobro: null,
+      planCambioDesdeAt: null,
+    });
   });
 });

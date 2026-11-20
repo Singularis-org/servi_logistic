@@ -6,6 +6,7 @@ import type { Alcance } from "@/lib/interfaces/repositories/ICierresAdminReposit
 import type { CrearMovimientoInput } from "@/lib/interfaces/repositories/IWalletMovimientoRepository";
 import type { CrearMovimientoTiendaInput } from "@/lib/interfaces/repositories/IWalletTiendaMovimientoRepository";
 import { APLICACION_GESTIONES } from "@/tests/fixtures/anclaje-devolucion";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 /**
  * Feature 173 / T B.2 (R11/R12/R13/R15) — el enganche del contra-entrega en la APROBACION del
@@ -237,7 +238,7 @@ function buildRepo(
 }
 
 function aprobar(repo: CierresAdminRepository, cierreId = CIERRE) {
-  return repo.resolverCierre({
+  return repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
     cierreId,
     alcance: ALCANCE,
     nuevoEstado: "aprobado",
@@ -360,7 +361,7 @@ describe("T B.2 — R13: un cierre sin contra-entrega no toca la caja", () => {
     const d = buildPrisma();
     const { repo } = buildRepo(d, { movsTienda: [credito("t1", "12500.00")] });
 
-    const res = await repo.resolverCierre({
+    const res = await repo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
       cierreId: CIERRE,
       alcance: ALCANCE,
       nuevoEstado: "rechazado",

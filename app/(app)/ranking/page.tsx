@@ -59,6 +59,8 @@ export default async function RankingPage() {
           ranking={result.data.ranking}
           premios={result.data.premios}
           esEditable={result.data.esEditable}
+          // SLT-162 (R750): el mismo id que el podio, para el chip «Tú» de su tarjeta.
+          mensajeroPropioId={actor.rol === "mensajero" ? actor.usuarioId : null}
         />
       </div>
     </AppPage>

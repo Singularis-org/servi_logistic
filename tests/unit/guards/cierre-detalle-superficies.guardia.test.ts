@@ -42,13 +42,6 @@ const APP = path.join(RAIZ, "app");
 /** El componente vigilado, por su nombre de etiqueta JSX. */
 const COMPONENTE = "CierreFacturaDetalle";
 
-/** Las props que ninguna superficie puede omitir: las dos de la 264 (R30) y la de la 425 (R14). */
-const PROPS_OBLIGATORIAS = [
-  "ordenesSinGestion",
-  "sinGestionRegistrado",
-  "rechazosDeTienda",
-] as const;
-
 /** Todos los `.tsx` de `app/**`, recursivo. */
 function tsxDeApp(dir: string = APP): string[] {
   const salida: string[] = [];
@@ -73,14 +66,14 @@ interface Uso {
  * La etiqueta se corta en el primer `/>` o `>` de nivel superior, contando llaves para no
  * partirla dentro de una expresión con `{}` (las props de esta hoja las llevan casi todas).
  */
-function usosEnApp(): Uso[] {
+function usosEnApp(componente: string = COMPONENTE): Uso[] {
   const usos: Uso[] = [];
   for (const archivo of tsxDeApp()) {
     // El archivo que DECLARA el componente no lo renderiza: se salta por ruta, no por heurística.
     if (path.basename(archivo) === "cierre-factura.tsx") continue;
     const fuente = quitarComentarios(readFileSync(archivo, "utf8"));
 
-    let desde = fuente.indexOf(`<${COMPONENTE}`);
+    let desde = buscarEtiqueta(fuente, componente, 0);
     while (desde !== -1) {
       let llaves = 0;
       let i = desde;
@@ -94,76 +87,119 @@ function usosEnApp(): Uso[] {
         archivo: path.relative(RAIZ, archivo).replaceAll("\\", "/"),
         etiqueta: fuente.slice(desde, i + 1),
       });
-      desde = fuente.indexOf(`<${COMPONENTE}`, i);
+      desde = buscarEtiqueta(fuente, componente, i);
     }
   }
   return usos;
 }
 
+/** La próxima `<Componente` como etiqueta completa (no el prefijo de otro nombre). */
+function buscarEtiqueta(fuente: string, componente: string, desde: number): number {
+  const patron = new RegExp(`<${componente}(?![\\w$])`, "g");
+  patron.lastIndex = desde;
+  return patron.exec(fuente)?.index ?? -1;
+}
+
 const USOS = usosEnApp();
 
-describe("features 264 y 425 — el detalle del cierre pinta sus secciones en TODAS sus superficies (264/R30, 425/R14)", () => {
+describe("SLT-108 — el comprobante (`CierreFacturaDetalle`) ya no se monta en ninguna pantalla (R161)", () => {
   /**
    * Autocomprobación. Sin esto, una ruta mal resuelta o un `readdirSync` sobre una carpeta vacía
-   * darían CERO usos y todos los casos de abajo pasarían en verde sin haber mirado nada — que es
-   * el modo de fallo que este repo ya se ha comido varias veces.
+   * darían CERO usos y el caso de abajo pasaría en verde sin haber mirado nada — que es el modo de
+   * fallo que este repo ya se ha comido varias veces. El extractor se prueba contra un componente
+   * que SÍ se monta (`DetalleCierre`, abajo) para que «cero» signifique cero.
    */
-  it("el censo encuentra de verdad las superficies que montan el comprobante", () => {
+  it("el censo recorre de verdad `app/**` y el extractor encuentra etiquetas", () => {
     expect(
       tsxDeApp().length,
       "el barrido de `app/**` no encontró apenas archivos: está midiendo un árbol vacío",
     ).toBeGreaterThan(50);
-    expect(
-      USOS.length,
-      "no se encontró ningún `<CierreFacturaDetalle>` en `app/**`. O el componente se renombró " +
-        "—y esta guardia se quedó vigilando un nombre muerto— o el extractor está roto.",
-    ).toBeGreaterThanOrEqual(2);
+    expect(usosEnApp("DetalleCierre").length, "el extractor no encontró ni el detalle único").toBeGreaterThanOrEqual(2);
+  });
 
-    // Las dos superficies conocidas, nombradas: si mañana aparece una tercera, el caso de abajo
-    // la exige igual, pero esta lista deja constancia de cuáles se revisaron a mano.
-    const archivos = [...new Set(USOS.map((u) => u.archivo))].sort();
-    expect(archivos).toEqual([
+  it("ninguna pantalla monta `<CierreFacturaDetalle>`", () => {
+    // SLT-100 quitó el del admin; SLT-108 «/cierre-dia: detalle y cola únicos para el mensajero»,
+    // el de `/cierre-dia`. Las secciones sin dinero (264/R30, 425/R14) las vigila ahora el
+    // `describe` del detalle único, de abajo.
+    expect(
+      [...new Set(USOS.map((u) => u.archivo))],
+      "alguien volvió a montar el comprobante: el detalle de un cierre es el detalle único (R1 de SLT-95, R161)",
+    ).toEqual([]);
+  });
+});
+
+/**
+ * SLT-100 «Detalle de cierre único en /cierres-admin (mensajeros)» — la superficie NUEVA del detalle
+ * del cierre de mensajero: el detalle único, montado por quien lo abre. Sus pestañas «Gestiones» y
+ * «Rechazados por la tienda» pintan las mismas tres listas sin dinero, con piezas propias:
+ * `SeccionSinGestion` (órdenes y marca de registro, 264/R30) y `RechazosDeTiendaCierre` (425/R14).
+ * Mismo defecto que vigila el `describe` de arriba: una superficie que no se las pase compila.
+ */
+const PIEZAS_DETALLE_UNICO = [
+  { componente: "SeccionSinGestion", props: ["ordenes", "registrado"] },
+  { componente: "RechazosDeTiendaCierre", props: ["rechazos"] },
+] as const;
+
+/** Los archivos de `app/**` que montan el detalle único de un cierre de MENSAJERO. */
+const SUPERFICIES_DETALLE_UNICO = usosEnApp("DetalleCierre")
+  .filter((u) => /tipo="mensajero"/.test(u.etiqueta))
+  .map((u) => u.archivo);
+
+describe("SLT-100 — el detalle único del cierre de mensajero pinta las tres listas sin dinero (264/R30, 425/R14)", () => {
+  it("el censo encuentra la superficie del detalle único (autocomprobación)", () => {
+    // SLT-108: `/cierre-dia` es la segunda superficie (el cierre pasado del mensajero).
+    expect([...new Set(SUPERFICIES_DETALLE_UNICO)].sort()).toEqual([
       "app/(app)/cierre-dia/_components/CierreDiaModule.tsx",
       "app/(app)/cierres-admin/_components/CierresAdminModule.tsx",
     ]);
   });
 
-  it.each(USOS.map((u) => [u.archivo, u] as const))(
-    "%s pasa TODAS las props de las secciones sin dinero (órdenes sin gestionar y rechazos de tienda)",
-    (archivo, uso) => {
-      // La etiqueta se cortó de verdad: si el extractor devolviera una cadena mínima, un
-      // `toContain` sobre ella podría fallar por el motivo equivocado (o pasar por casualidad).
-      expect(
-        uso.etiqueta.length,
-        `no se pudo aislar la etiqueta de <${COMPONENTE}> en ${archivo}`,
-      ).toBeGreaterThan(40);
-
-      for (const prop of PROPS_OBLIGATORIAS) {
-        expect(
-          uso.etiqueta,
-          `${archivo} monta el comprobante detallado SIN pasarle \`${prop}\`. Estas props son ` +
-            "opcionales en el tipo por los dobles de test, así que el typecheck no caza este " +
-            "olvido: la hoja pintaría la sección en una pantalla y la callaría en la otra, que " +
-            "es el arreglo a medias que se corrigió en la 263 (264/R30, 425/R14).",
-        ).toContain(`${prop}=`);
+  it.each([...new Set(SUPERFICIES_DETALLE_UNICO)].map((archivo) => [archivo] as const))(
+    "%s monta las dos piezas y les pasa sus props desde el detalle del servidor",
+    (archivo) => {
+      for (const { componente, props } of PIEZAS_DETALLE_UNICO) {
+        const usos = usosEnApp(componente).filter((u) => u.archivo === archivo);
+        expect(usos.length, `${archivo} monta el detalle único sin \`<${componente}>\``).toBeGreaterThan(0);
+        for (const uso of usos) {
+          for (const prop of props) {
+            const valor = uso.etiqueta.match(new RegExp(`${prop}=\\{([^}]*)\\}`))?.[1];
+            expect(valor, `${archivo} monta <${componente}> sin \`${prop}\``).toBeTruthy();
+            if (esLiteralPermitido(archivo, componente, prop, (valor ?? "").trim())) continue;
+            expect(
+              (valor ?? "").trim(),
+              `${archivo} pasa \`${prop}\` con un literal en vez del dato del servidor (R28)`,
+            ).toMatch(/^[A-Za-z_$][\w$]*(?:\.[\w$]+)+$/);
+          }
+        }
       }
     },
   );
 
-  it("ninguna superficie inventa el valor: todas las props salen del detalle del servidor", () => {
-    for (const uso of USOS) {
-      for (const prop of PROPS_OBLIGATORIAS) {
-        const valor = uso.etiqueta.match(
-          new RegExp(`${prop}=\\{([^}]*)\\}`),
-        )?.[1];
-        expect(valor, `\`${prop}\` en ${uso.archivo} no se pasa como expresión`).toBeTruthy();
-        expect(
-          (valor ?? "").trim(),
-          `${uso.archivo} pasa \`${prop}\` con un literal en vez del dato del servidor. Un ` +
-            "`[]` o un `true` escritos a mano son exactamente la mentira que R28 prohíbe: la " +
-            "pantalla diría «no hubo ninguna» sin haber preguntado.",
-        ).toMatch(/^[A-Za-z_$][\w$]*(?:\.[\w$]+)+$/);
-      }
+  it("SLT-109 (PA3): el único literal permitido es el `[]` de «Rechazados por la tienda» del cierre en curso, y una sola vez", () => {
+    // El cierre de HOY aún no tiene rechazos de tienda: se vinculan al solicitarlo y el servidor no
+    // da los pendientes del día (PA3 de SLT-109, aceptada por Carlos el 2026-11-12). La pestaña se ve
+    // con su estado vacío (D11). La excepción es de UNA etiqueta: un segundo `[]` en el archivo —por
+    // ejemplo en el rechazado o el vencido, que SÍ tienen su lista del servidor— la pone roja.
+    for (const { archivo, componente, prop, valor } of LITERALES_PERMITIDOS) {
+      const usos = usosEnApp(componente).filter((u) => u.archivo === archivo);
+      const conLiteral = usos.filter((u) => u.etiqueta.match(new RegExp(`${prop}=\\{([^}]*)\\}`))?.[1]?.trim() === valor);
+      expect(conLiteral, `${archivo}: <${componente} ${prop}={${valor}}>`).toHaveLength(1);
     }
   });
 });
+
+/** Literales que una superficie puede pasar en vez del dato del servidor, con su motivo escrito. */
+const LITERALES_PERMITIDOS = [
+  {
+    archivo: "app/(app)/cierre-dia/_components/CierreDiaModule.tsx",
+    componente: "RechazosDeTiendaCierre",
+    prop: "rechazos",
+    valor: "[]",
+  },
+] as const;
+
+function esLiteralPermitido(archivo: string, componente: string, prop: string, valor: string): boolean {
+  return LITERALES_PERMITIDOS.some(
+    (l) => l.archivo === archivo && l.componente === componente && l.prop === prop && l.valor === valor,
+  );
+}

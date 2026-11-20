@@ -1,5 +1,6 @@
 "use server";
 
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { z } from "zod";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
@@ -75,7 +76,9 @@ function buildService(): ITraspasoMensajeroService {
   return new TraspasoMensajeroService(
     new OrdenRepository(prisma),
     notificarTraspasoRecibidoReal, // R38 + push al destino (R43)
-    notificarTraspasoCedidoReal, // R39, sin push (R43)
+    notificarTraspasoCedidoReal, // R39, sin push (R43),
+    // SLT-42 (R22): la zona horaria del pais de la empresa.
+    construirReglasPaisEmpresa(prisma),
   );
 }
 

@@ -10,6 +10,7 @@ import {
   SAT_B,
   SAT_SIN_ZONA,
 } from "@/tests/fixtures/satelite-bodega-almacen";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 184 — Tanda A (T A.3) — la comprobacion de VIGENCIA con la que se poda la seleccion
 // de la bodega satelite: `RecepcionSateliteService.listarIdsVigentesBodega`.
@@ -34,7 +35,7 @@ function servicio(repo: IOrdenRepository) {
   const historial = {
     contarIntentosEnLote: vi.fn(async () => new Map<string, number>()),
   } as unknown as Pick<IOrdenHistorialService, "contarIntentosEnLote">;
-  return new RecepcionSateliteService(repo, historial);
+  return new RecepcionSateliteService(repo, historial, undefined, reglasPaisFijas());
 }
 
 describe("RecepcionSateliteService.listarIdsVigentesBodega (feature 184, T A.3)", () => {

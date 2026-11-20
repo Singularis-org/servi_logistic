@@ -26,6 +26,7 @@ import { cargarCatalogo459, enTransaccionRevertida459, montarServicios459, type 
 import { montarEstadoCuenta } from "./_fixtures/wallet-458";
 import { busquedaPorGuiaDe } from "./_fixtures/busqueda-469";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FICHA 464 / T4 + T6 — EL DETALLE POR ORDEN EN LOTE, CONTRA POSTGRES DE VERDAD.
 // ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -184,7 +185,23 @@ async function sembrar(tx: TxDeTest, cat: Catalogo459): Promise<Escenario> {
   const s = montarServicios459(tx);
   const cliente = s.cliente as unknown as PrismaClient;
   const sufijo = randomUUID().slice(0, 8);
-  const tarifa = await tx.tarifa.findFirst({ select: { id: true } });
+  // SLT-177 (R737): la tarifa a la que apunta `cierre_detail.tarifa_id` se crea aqui (la base migrada
+  // no trae tarifas); los importes del caso salen de la foto de cada fila, no de esta tarifa.
+  const sembrada = await tx.tarifa.create({
+    data: {
+      tiendaId: null,
+      zonaId: null,
+      valorFlete: "2000.00",
+      valorFleteGam: "2500.00",
+      valorFleteDevuelto: "1000.00",
+      valorFleteDevueltoGam: "1200.00",
+      comisionCod: "3.50",
+      ivaFlete: "13.00",
+      ivaComisionCod: "13.00",
+    },
+    select: { id: true },
+  });
+  const tarifa = await tx.tarifa.findUnique({ where: { id: sembrada.id }, select: { id: true } });
   expect(tarifa, "la base no tiene ni una tarifa a la que apuntar `cierre_detail.tarifa_id`").not.toBeNull();
   const estatusId = cat.estatus.get("entregado");
   expect(estatusId, "falta el estatus «entregado»").toBeDefined();
@@ -202,7 +219,7 @@ async function sembrar(tx: TxDeTest, cat: Catalogo459): Promise<Escenario> {
         tipoIdentificacionId: cat.tipoIdentificacionId,
         rolId,
         estado: "activo",
-        fulfillment: false,
+        seRecogeEnTienda: true,
       },
       select: { id: true },
     });
@@ -530,7 +547,7 @@ describeSiHayBase("464 — detalle por orden en lote (Postgres real)", () => {
 
   it("R14/R21/R22/R36 — caja: la hoja de movimientos es la de siempre y cada detalle = el de su fila", async () => {
     await conEscenario(async (e) => {
-      const entrada = listarLibroCajaCompletoSchema.parse({ desde: DIA_C1, hasta: DIA_C2, sortDir: "asc" });
+      const entrada = listarLibroCajaCompletoSchema(ZONA_CR).parse({ desde: DIA_C1, hasta: DIA_C2, sortDir: "asc" });
       const conDetalle = await cajaConDetalle(e, entrada);
       const sinDetalle = await e.s.wallet.listarMovimientosCompleto(entrada, MAESTRO);
       if (conDetalle.status !== "ok" || sinDetalle.status !== "ok") throw new Error("se esperaba ok en los dos");
@@ -654,7 +671,7 @@ describeSiHayBase("464 — detalle por orden en lote (Postgres real)", () => {
     try {
       await conEscenario(async (e) => {
         // Solo el flete: 2 movimientos (C1, C2) y 6 filas de detalle (4 + 2).
-        const entrada = listarLibroCajaCompletoSchema.parse({ desde: DIA_C1, hasta: DIA_C2, categoria: "ingreso_flete" });
+        const entrada = listarLibroCajaCompletoSchema(ZONA_CR).parse({ desde: DIA_C1, hasta: DIA_C2, categoria: "ingreso_flete" });
         const listar = vi.spyOn(e.aportes, "listarAportesDeCierres");
         const cabeceras = vi.spyOn(e.aportes, "cabecerasDeCierres");
         // 468: el orquestador de la 464 se retiró; el de hoy es `CajaKardexService` (mismo lote, mismos topes).

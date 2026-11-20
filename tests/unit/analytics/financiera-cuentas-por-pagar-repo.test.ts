@@ -9,6 +9,7 @@ import {
   type FilaLedgerTienda,
 } from "./_fake-prisma-dinero";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Feature 127 / T C.3 — `CuentasPorPagarAnaliticaRepository`: R21, R14, R28.
 //
 // El "hecho cuando" de la tarea es literalmente una mutacion: **un devengo anterior al rango
@@ -29,7 +30,7 @@ const DENTRO = new Date("2026-08-02T14:00:00.000Z");
 const HACE_TRES_MESES = new Date("2026-05-04T14:00:00.000Z");
 
 function consultaDe(metricaId: string): ConsultaAnalitica {
-  const r = prepararConsultaAnalitica({ rango: "dia" }, MAESTRO, metricaId, AHORA);
+  const r = prepararConsultaAnalitica({ rango: "dia" }, MAESTRO, metricaId, ZONA_DE_CR, AHORA);
   if (r.status !== "ok") throw new Error(`no se pudo preparar la consulta de ${metricaId}`);
   return r.consulta;
 }

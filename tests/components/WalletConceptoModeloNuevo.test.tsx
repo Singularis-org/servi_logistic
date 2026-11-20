@@ -35,6 +35,7 @@ import { detalleDeFilaCaja } from "@/app/(app)/wallet/_components/VerMovimientoC
 import { WalletLedger } from "@/app/(app)/wallet/_components/WalletLedger";
 import { DETALLE_MOVIMIENTO_NOMBRE } from "@/app/(app)/wallet/_components/detalle-movimiento-labels";
 import { fechaDiaMovimientoCR } from "@/lib/utils/fecha-dia-iso";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 import { CATEGORIA_LABEL, conceptoDeMovimientoCaja } from "@/lib/constants/wallet-rotulos";
 
 afterEach(() => cleanup());
@@ -45,7 +46,7 @@ const FLETE_NUEVO = "Flete de gestiones no entregadas cobrado a la tienda";
 const IVA_NUEVO = "IVA del flete de gestiones no entregadas cobrado a la tienda";
 
 const nombreDesplegable = (concepto: string, fecha: string): string =>
-  DETALLE_MOVIMIENTO_NOMBRE.abrir(concepto, fechaDiaMovimientoCR(fecha));
+  DETALLE_MOVIMIENTO_NOMBRE.abrir(concepto, fechaDiaMovimientoCR(fecha, ZONA_CR));
 
 function fila(over: Partial<WalletMovimientoDTO>): WalletMovimientoDTO {
   return {

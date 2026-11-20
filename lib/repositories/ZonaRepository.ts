@@ -579,6 +579,14 @@ export class ZonaRepository implements IZonaRepository {
           return { estado: "sin_zona_central" as const };
         }
 
+        // SLT-198 (R1222): una satelite puede quedar sin distritos (cerrar la bodega); la central
+        // no, porque es la que recibe y reparte. Cubre «ya es central y no se la quitan» y «se la
+        // ponen en este guardado». Tambien antes de la primera escritura.
+        const quedaraCentral = data.esCentral === true || (exists.esCentral && data.esCentral !== false);
+        if (data.distritoIds.length === 0 && quedaraCentral) {
+          return { estado: "central_sin_distritos" as const };
+        }
+
         // ⭑ SLT-75 (R2/R4/R6): los distritos pedidos que ya estan en OTRA zona, leidos antes de
         // la primera escritura. Los de esta misma zona no cuentan (R4).
         const conflictos = await leerDistritosEnOtraZona(tx, data.distritoIds, id);

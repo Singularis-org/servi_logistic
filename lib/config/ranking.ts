@@ -1,7 +1,7 @@
 // Feature 76 (R7/R22) — configuracion del umbral minimo de muestra para entrar al PODIO
 // del ranking diario (posiciones 1-3). Sobreescribible por variable de entorno para no
-// hardcodear el contexto (docs/architecture.md "Sin hardcode de contexto"), espejo de
-// lib/config/reintentos.ts. Un mensajero con menos asignaciones HOY que este umbral se
+// hardcodear el contexto (docs/architecture.md "Sin hardcode de contexto").
+// Un mensajero con menos asignaciones HOY que este umbral se
 // LISTA pero NO ocupa podio (R7). Un valor invalido/ausente cae al default 1.
 
 function readPositiveInt(name: string, fallback: number): number {

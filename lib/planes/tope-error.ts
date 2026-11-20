@@ -51,7 +51,8 @@ function leerTope(texto: string): TopeDelPlan | null {
   }
   if (!entero(o.maximo) || !entero(o.usados) || !entero(o.pedidas)) return null;
   const cifras = { maximo: o.maximo, usados: o.usados, pedidas: o.pedidas };
-  if (o.tope === "ordenes" || o.tope === "api_keys") return { tope: o.tope, ...cifras };
+  // SLT-86 (R8): `ordenes` ya no es un tope; su trigger se borró. Un mensaje así no se reconoce.
+  if (o.tope === "api_keys") return { tope: o.tope, ...cifras };
   if (o.tope === "rol" && typeof o.rol === "string" && ROLES.has(o.rol)) {
     return { tope: "rol", rol: o.rol as RolValue, ...cifras };
   }

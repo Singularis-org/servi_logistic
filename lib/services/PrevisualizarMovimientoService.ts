@@ -9,6 +9,8 @@ import type {
   PrevisualizarMovimientoServiceResult,
 } from "@/lib/interfaces/services/IPrevisualizarMovimientoService";
 import type { LectorSaldoInicial } from "@/lib/interfaces/services/IWalletService";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 import type { PrevisualizarMovimientoInput } from "@/lib/types/efecto-movimiento";
 import { EFECTO_POR_TIPO, efectoDeMovimiento, type EstadoActualParaEfecto } from "@/lib/utils/efecto-movimiento";
 
@@ -26,6 +28,8 @@ export class PrevisualizarMovimientoService implements IPrevisualizarMovimientoS
     private readonly tiendas: Pick<IWalletTiendaMovimientoRepository, "agregarSaldoPorTienda">,
     private readonly usuarios: Pick<IUserRepository, "obtenerCuentaTienda">,
     private readonly mensajeros: Pick<IPagoMensajeroMovimientoRepository, "agregarCuentaPorPagar" | "obtenerNombreMensajero">,
+    /** SLT-42 (R22, R28): la zona del pais de la empresa, para el dia del primer movimiento de la caja. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
 
   async previsualizar(
@@ -56,7 +60,9 @@ export class PrevisualizarMovimientoService implements IPrevisualizarMovimientoS
     const actual: EstadoActualParaEfecto = {
       caja: await this.caja.agregarPorCategoriaYTipo({}),
       haySaldoInicialVigente: await this.saldoInicial.haySaldoInicialVigente(),
-      primerDia: await this.caja.primerDiaDeLaCaja(),
+      primerDia: await this.caja.primerDiaDeLaCaja({
+        zonaHoraria: await zonaDeLaEmpresa(this.reglasPais, "PrevisualizarMovimientoService.previsualizar"),
+      }),
       cuenta,
     };
     return { status: "ok", efecto: efectoDeMovimiento(input.concepto, input.monto, actual) };

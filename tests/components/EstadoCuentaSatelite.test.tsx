@@ -7,6 +7,7 @@ import { SWRConfig } from "swr";
 
 import { ToastProvider } from "@/providers/ToastProvider";
 import { FORMA_UUID, UUID_BODEGA, UUID_MOV, estado, fila } from "@/tests/fixtures/estado-cuenta";
+import { casillasOfrecidas, ponerCasillas } from "@/tests/fixtures/barra-libro-wallet";
 
 // =================================================================================================
 // FICHA 458-D (T D.4; R17, R24, R30, R31, R81) — EL ESTADO DE CUENTA DE UNA BODEGA SATÉLITE.
@@ -17,6 +18,11 @@ import { FORMA_UUID, UUID_BODEGA, UUID_MOV, estado, fila } from "@/tests/fixture
 //    sobre `ConciliacionSatelite`). Su «Pendiente de llegar» es el saldo actual del estado de cuenta.
 //  - R30: tras marcar se relee el estado de cuenta de ESTA bodega.
 //  - R81: la página, solo acceso total.
+//
+// SLT-114 «Estado de cuenta de la satélite: conciliación en pestaña» (R230-R233, R239): la conciliación y
+// el libro pasan a dos pestañas bajo las tarjetas; «Conciliación» abre seleccionada y cuenta las que
+// quedan sin conciliar. Los tests que leen el libro pulsan antes «Movimientos». PA1: sin la tarjeta
+// «Pendiente de llegar»; PA2: columnas «Debe llegar» y «Falta».
 // =================================================================================================
 
 const verEstadoCuentaMock = vi.fn();
@@ -98,11 +104,17 @@ const CONSOLIDACION = {
   cantidadCierres: 1,
 };
 
-function montar(puedeConciliar = true) {
+/** El libro vive en «Movimientos» (R231): se abre esa pestaña antes de leerlo. */
+async function abrirMovimientos(user = userEvent.setup()) {
+  await user.click(screen.getByRole("tab", { name: "Movimientos" }));
+  return user;
+}
+
+function montar(puedeConciliar = true, inicial = INICIAL) {
   return render(
     <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
       <ToastProvider>
-        <EstadoCuentaSatelite inicial={INICIAL} puedeConciliar={puedeConciliar} />
+        <EstadoCuentaSatelite inicial={inicial} puedeConciliar={puedeConciliar} />
       </ToastProvider>
     </SWRConfig>,
   );
@@ -117,8 +129,9 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("el extracto de la bodega: Declarado / Recibido / Por entregar", () => {
-  it("columnas y fila en el vocabulario de la bodega; sin «Ver» (no hay fila de libro) y sin uuid", () => {
+  it("columnas y fila en el vocabulario de la bodega; sin «Ver» (no hay fila de libro) y sin uuid", async () => {
     const { container } = montar();
+    await abrirMovimientos();
     const tabla = screen.getByRole("table", { name: "Estado de cuenta de FGAM Puntarenas" });
     const cabeceras = within(tabla).getAllByRole("columnheader").map((c) => c.textContent);
     expect(cabeceras).toEqual(["Fecha", "Movimiento", "Declarado", "Recibido", "Por entregar", "Ver"]);
@@ -157,7 +170,7 @@ const INICIAL_SIN_CONSOLIDAR = estado({
 });
 
 describe("SLT-73 R32/R33 — la fila del cierre aprobado sin consolidar", () => {
-  it("se rotula «Cierre aprobado sin consolidar» (no «Consolidación declarada») y pinta su importe negativo", () => {
+  it("se rotula «Cierre aprobado sin consolidar» (no «Consolidación declarada») y pinta su importe negativo", async () => {
     verEstadoCuentaMock.mockResolvedValue({ status: "ok", estado: INICIAL_SIN_CONSOLIDAR });
     render(
       <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
@@ -166,6 +179,7 @@ describe("SLT-73 R32/R33 — la fila del cierre aprobado sin consolidar", () => 
         </ToastProvider>
       </SWRConfig>,
     );
+    await abrirMovimientos();
     const tabla = screen.getByRole("table", { name: "Estado de cuenta de FGAM Puntarenas" });
     const filas = within(tabla).getAllByRole("row");
     // «Más recientes»: la fila del 18 va primero, la consolidación del 16 después.
@@ -188,14 +202,67 @@ describe("SLT-73 R32/R33 — la fila del cierre aprobado sin consolidar", () => 
   });
 });
 
-describe("R31 — la conciliación de hoy, debajo del extracto, con su «Pendiente de llegar»", () => {
-  it("la sección de conciliación está y su pendiente es el saldo actual del estado de cuenta", async () => {
+describe("R31, R239 — la conciliación de hoy, en su pestaña", () => {
+  it("la sección de conciliación está, con sus acciones", async () => {
     montar();
     const region = await screen.findByRole("region", { name: "Conciliación de FGAM Puntarenas" });
-    expect(within(region).getByText("Pendiente de llegar").nextSibling?.textContent).toBe("₡115.000");
     expect(
       await within(region).findByRole("button", { name: /Marcar recibido la consolidación de FGAM Puntarenas/ }),
     ).toBeInTheDocument();
+  });
+
+  it("R239 — sin «Pendiente de llegar» y columnas «Debe llegar» y «Falta» (PA1, PA2)", async () => {
+    montar();
+    const region = await screen.findByRole("region", { name: "Conciliación de FGAM Puntarenas" });
+    const tabla = await within(region).findByRole("table", { name: "Consolidaciones de FGAM Puntarenas" });
+    await within(tabla).findByRole("button", { name: /Marcar recibido la consolidación/ });
+    expect(within(region).queryByText("Pendiente de llegar")).toBeNull();
+    const cabeceras = within(tabla)
+      .getAllByRole("columnheader")
+      .map((c) => c.textContent ?? "");
+    // R239: solo cambian los dos títulos; las demás columnas y su orden, como estaban.
+    expect(cabeceras).toEqual(["Desglose", "Consolidada", "Debe llegar", "Recibido", "Falta", "Estado", "Conciliado por", ""]);
+  });
+
+  it("R239 — con dos incompletas, el aviso dice el `saldoActual` del estado de cuenta", async () => {
+    // Tres importes distintos a propósito: el de cada fila (₡20.000 y ₡12.000), su suma (₡32.000) y el
+    // saldo actual (₡48.250,75). Solo el último es el del aviso.
+    const conSaldo = estado({ ...INICIAL, saldoActual: "48250.75", saldoFinal: "48250.75", cargos: "48250.75" });
+    verEstadoCuentaMock.mockResolvedValue({ status: "ok", estado: conSaldo });
+    const incompleta = (n: number, debe: string, llego: string, falta: string) => ({
+      ...CONSOLIDACION,
+      cierreBodegaId: UUID_MOV(n),
+      paraLaCentral: debe,
+      totales: { ...CONSOLIDACION.totales, efectivo: debe, general: debe },
+      montoRecibido: llego,
+      faltaPorRecibir: falta,
+      conciliado: true,
+      conciliadoAt: "2026-09-17T15:00:00.000Z",
+      conciliadoPorNombre: "Carla Central",
+    });
+    listarConsolidacionesMock.mockResolvedValue({
+      status: "ok",
+      items: [incompleta(7, "60000.00", "40000.00", "20000.00"), incompleta(8, "30000.00", "18000.00", "12000.00")],
+      total: 2,
+      page: 1,
+      pageSize: 25,
+    });
+    render(
+      <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+        <ToastProvider>
+          <EstadoCuentaSatelite inicial={conSaldo} puedeConciliar />
+        </ToastProvider>
+      </SWRConfig>,
+    );
+    const region = await screen.findByRole("region", { name: "Conciliación de FGAM Puntarenas" });
+    const titulo = await within(region).findByText("2 consolidaciones llegaron incompletas");
+    const aviso = titulo.closest('[role="status"]');
+    expect(aviso).not.toBeNull();
+    expect(aviso?.textContent).toBe(
+      "2 consolidaciones llegaron incompletas" +
+        "Entre todas falta por llegar ₡48.250,75. Esa diferencia sigue contando como pendiente de esta " +
+        "bodega hasta que llegue o se corrija la marca.",
+    );
   });
 
   it("R30: marcar recibido relee el estado de cuenta de ESTA bodega", async () => {
@@ -218,6 +285,117 @@ describe("R31 — la conciliación de hoy, debajo del extracto, con su «Pendien
     const region = await screen.findByRole("region", { name: "Conciliación de FGAM Puntarenas" });
     await waitFor(() => expect(listarConsolidacionesMock).toHaveBeenCalled());
     expect(within(region).queryByRole("button", { name: /Marcar recibido/ })).toBeNull();
+  });
+});
+
+describe("R230-R233 — «Conciliación» y «Movimientos» bajo las tarjetas", () => {
+  it("R230 — pestañas Conciliación y Movimientos, abre en Conciliación", async () => {
+    montar();
+    const lista = screen.getByRole("tablist", { name: "Pestañas del estado de cuenta de FGAM Puntarenas" });
+    const pestanas = within(lista).getAllByRole("tab");
+    expect(pestanas).toHaveLength(2);
+    expect(pestanas[0].textContent).toMatch(/^Conciliación/);
+    expect(pestanas[1].textContent).toBe("Movimientos");
+    expect(pestanas[0].getAttribute("aria-selected")).toBe("true");
+    expect(pestanas[1].getAttribute("aria-selected")).toBe("false");
+    // Las pestañas van DEBAJO de las tarjetas del estado de cuenta.
+    const tarjetas = screen.getByText("FGAM Puntarenas tiene ₡115.000 por entregar");
+    expect(tarjetas.compareDocumentPosition(lista) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("R231 — cada pestaña muestra lo suyo y las tarjetas siguen", async () => {
+    montar();
+    expect(await screen.findByRole("region", { name: "Conciliación de FGAM Puntarenas" })).toBeTruthy();
+    expect(screen.queryByRole("table", { name: "Estado de cuenta de FGAM Puntarenas" })).toBeNull();
+    expect(screen.getByText("FGAM Puntarenas tiene ₡115.000 por entregar")).toBeTruthy();
+
+    await abrirMovimientos();
+    expect(screen.getByRole("table", { name: "Estado de cuenta de FGAM Puntarenas" })).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Conciliación de FGAM Puntarenas" })).toBeNull();
+    expect(screen.getByText("FGAM Puntarenas tiene ₡115.000 por entregar")).toBeTruthy();
+  });
+
+  it("R232 — volver a una pestaña conserva filtro y página", async () => {
+    // Dos páginas: 26 en «Todas», con 25 por página (`cierreBodegaConfig.DEFAULT_PAGE_SIZE`).
+    listarConsolidacionesMock.mockImplementation(async (input: { page: number; soloSinConciliar?: boolean }) => ({
+      status: "ok",
+      items: [CONSOLIDACION],
+      total: input.soloSinConciliar ? 1 : 26,
+      page: input.page,
+      pageSize: 25,
+    }));
+    const user = userEvent.setup();
+    montar();
+    const region = await screen.findByRole("region", { name: "Conciliación de FGAM Puntarenas" });
+    await user.click(within(region).getByRole("button", { name: "Todas" }));
+    const paginacion = await within(region).findByRole("navigation", {
+      name: "Paginación de las consolidaciones de FGAM Puntarenas",
+    });
+    await user.click(await within(paginacion).findByRole("button", { name: "Página siguiente" }));
+    await waitFor(() =>
+      expect(listarConsolidacionesMock).toHaveBeenCalledWith(expect.objectContaining({ page: 2 })),
+    );
+
+    await abrirMovimientos(user);
+    await user.click(screen.getByRole("tab", { name: /^Conciliación/ }));
+
+    const otra = screen.getByRole("region", { name: "Conciliación de FGAM Puntarenas" });
+    expect(within(otra).getByRole("button", { name: "Todas" }).getAttribute("aria-pressed")).toBe("true");
+    const pag = within(otra).getByRole("navigation", { name: "Paginación de las consolidaciones de FGAM Puntarenas" });
+    expect(within(pag).getByText("26-26 de 26")).toBeTruthy();
+  });
+
+  it("R232 — volver a «Movimientos» conserva término, casillas y página del libro", async () => {
+    // 45 movimientos, 20 por página (el `pageSize` de la primera lectura): hay página 2.
+    const largo = estado({ ...INICIAL, total: 45 });
+    verEstadoCuentaMock.mockResolvedValue({ status: "ok", estado: largo });
+    const user = userEvent.setup();
+    montar(true, largo);
+    await abrirMovimientos(user);
+
+    await user.type(screen.getByRole("searchbox", { name: "Buscar en el libro" }), "etiquetas");
+    await waitFor(() => expect(verEstadoCuentaMock).toHaveBeenLastCalledWith(expect.objectContaining({ q: "etiquetas" })), {
+      timeout: 3000,
+    });
+    await ponerCasillas(user, document.body, "Tipo de movimiento");
+    const paginacionLibro = () =>
+      screen.getByRole("navigation", { name: "Paginación del estado de cuenta de FGAM Puntarenas" });
+    await user.click(within(paginacionLibro()).getByRole("button", { name: /siguiente/i }));
+    await waitFor(() =>
+      expect(verEstadoCuentaMock).toHaveBeenLastCalledWith(expect.objectContaining({ q: "etiquetas", page: 2 })),
+    );
+    const lecturas = verEstadoCuentaMock.mock.calls.length;
+
+    await user.click(screen.getByRole("tab", { name: /^Conciliación/ }));
+    expect(screen.queryByRole("searchbox", { name: "Buscar en el libro" })).toBeNull();
+    await abrirMovimientos(user);
+
+    expect(screen.getByRole("searchbox", { name: "Buscar en el libro" })).toHaveValue("etiquetas");
+    expect((await casillasOfrecidas(user, document.body)).marcadas).toEqual(["Tipo de movimiento"]);
+    expect(within(paginacionLibro()).getByText("21-40 de 45")).toBeTruthy();
+    // Ir y volver no relee el libro: la selección es la misma.
+    expect(verEstadoCuentaMock.mock.calls.length).toBe(lecturas);
+  });
+
+  it("R233 — la pestaña dice \"2 sin conciliar\" con total 2 y solo \"Conciliación\" con 0", async () => {
+    listarConsolidacionesMock.mockResolvedValue({ status: "ok", items: [CONSOLIDACION], total: 2, page: 1, pageSize: 25 });
+    montar();
+    expect(await screen.findByRole("tab", { name: "Conciliación 2 sin conciliar" })).toBeTruthy();
+    cleanup();
+
+    listarConsolidacionesMock.mockResolvedValue({ status: "ok", items: [], total: 0, page: 1, pageSize: 25 });
+    montar();
+    await waitFor(() => expect(listarConsolidacionesMock).toHaveBeenCalled());
+    await screen.findByText("Esta bodega no tiene consolidaciones que mostrar.");
+    expect(screen.getByRole("tab", { name: "Conciliación" })).toBeTruthy();
+    expect(screen.queryByText(/sin conciliar$/)).toBeNull();
+  });
+
+  it("R233 — si la lectura falla, la pestaña dice solo \"Conciliación\"", async () => {
+    listarConsolidacionesMock.mockResolvedValue({ status: "error" });
+    montar();
+    await screen.findByText("No se pudo cargar el desglose de esta bodega.");
+    expect(screen.getByRole("tab", { name: "Conciliación" })).toBeTruthy();
   });
 });
 

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 
 import { derivarJornada, jornadaDelCorte } from "@/lib/utils/jornada-cierre";
 import { diaQueElCorteCierra } from "@/lib/services/CorteDiarioService";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 /**
  * FEATURE 271 (T6.9 — R57/R58/R59/R60/R61) — EL DERIVADOR DE LA JORNADA DE UN CIERRE.
@@ -82,7 +83,7 @@ describe("271/T6.9 · jornadaDelCorte — coincide con el ancla de la corrida (R
   it("(d) el cron NORMAL (00:03 CR del 22) cierra el 21, y las dos fuentes dicen lo mismo", () => {
     // 00:03 CR del 22/08 = 06:03 UTC del 22/08.
     const now = new Date("2026-08-22T06:03:15.000Z");
-    const porElAncla = jornadaDelCorte(diaQueElCorteCierra(now));
+    const porElAncla = jornadaDelCorte(diaQueElCorteCierra(now, ZONA_CR));
     // La rama B del derivador para ese mismo instante: `created_at` CR es el 22, menos un dia.
     const porElFallback = derivarJornada({ diasCRDeGestiones: [], diaCRDeCreacion: "2026-08-22" });
 
@@ -95,7 +96,7 @@ describe("271/T6.9 · jornadaDelCorte — coincide con el ancla de la corrida (R
     // 23:55 CR del 22/08 = 05:55 UTC del 23/08. `startOfDayCR` da el 22 y el corte cierra el 21;
     // `created_at` en CR es el 22, menos un dia = 21. Coinciden, que es lo que R61 exige.
     const now = new Date("2026-08-23T05:55:00.000Z");
-    const porElAncla = jornadaDelCorte(diaQueElCorteCierra(now));
+    const porElAncla = jornadaDelCorte(diaQueElCorteCierra(now, ZONA_CR));
     const porElFallback = derivarJornada({ diasCRDeGestiones: [], diaCRDeCreacion: "2026-08-22" });
 
     expect(porElAncla).toBe("2026-08-21");
@@ -105,7 +106,7 @@ describe("271/T6.9 · jornadaDelCorte — coincide con el ancla de la corrida (R
   it("NO usa `fechaCalendarioCR` sobre el ancla: eso restaria OTRAS 6 h y daria el dia anterior", () => {
     // La trampa de las dos convenciones de fecha de este repo (ficha 166), escrita como caso.
     const now = new Date("2026-08-22T06:03:15.000Z");
-    const ancla = diaQueElCorteCierra(now); // medianoche UTC de la fecha CR
+    const ancla = diaQueElCorteCierra(now, ZONA_CR); // medianoche UTC de la fecha CR
     expect(jornadaDelCorte(ancla)).toBe("2026-08-21");
     // Si se aplicara el desfase otra vez, saldria el 20. Se afirma para que la mutacion muera.
     expect(jornadaDelCorte(ancla)).not.toBe("2026-08-20");

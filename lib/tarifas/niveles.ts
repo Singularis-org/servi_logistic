@@ -62,9 +62,26 @@ function nivelDePago(c: ColumnasDeNivel, esDelMensajero: boolean): NivelResuelto
   return { ok: true, nivel: c.vehiculoId === null ? "zona" : "zona_vehiculo" };
 }
 
+/** SLT-94 (R10): el rechazo de un fulfillment fuera del precio propio de la tienda. */
+export const MSG_FULFILLMENT_SOLO_TIENDA = "El fulfillment solo se configura como precio propio de la tienda.";
+
+/**
+ * SLT-94 (R10, D6) — el fulfillment SOLO vive en el nivel «tienda en todas sus zonas». Cualquier
+ * otro nivel valido de cobro (zona, grupo, tienda en una zona, tienda en un grupo) se rechaza sobre
+ * la columna que lo saca de ahi: `grupoId` si trae grupo, si no `zonaId`. Misma regla que el CHECK
+ * `tarifa_valor_fulfillment_solo_tienda_monto` de la base (R12), que es el respaldo.
+ */
+function soloPrecioPropio(nivel: NivelResuelto, c: ColumnasDeNivel): NivelResuelto {
+  if (!nivel.ok || nivel.nivel === "tienda_general") return nivel;
+  return rechazo(c.grupoId !== null ? "grupoId" : "zonaId", MSG_FULFILLMENT_SOLO_TIENDA);
+}
+
 /** El nivel de un valor de `concepto` con estas columnas, o el campo que lo hace invalido (R7). */
 export function nivelDeValor(concepto: TarifaConcepto, columnas: ColumnasDeNivel): NivelResuelto {
   const actor = CATALOGO_CONCEPTOS[concepto].actor;
-  if (actor === "tienda") return nivelDeCobro(columnas);
+  if (actor === "tienda") {
+    const nivel = nivelDeCobro(columnas);
+    return concepto === "tienda_fulfillment" ? soloPrecioPropio(nivel, columnas) : nivel;
+  }
   return nivelDePago(columnas, actor === "mensajero");
 }

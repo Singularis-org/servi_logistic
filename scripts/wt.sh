@@ -192,17 +192,51 @@ inventory() {
   done < <(enumerate)
   echo
   echo "${DIM}$N_TOTAL worktree(s): $N_SAFE desmontable(s), $N_HOLD retenido(s).${NC}"
+  restos
+}
+
+# Lo que hay en `.worktrees/` y git no conoce. Las papeleras (`*.borrando-*`) son de un `done` que
+# no pudo terminar de borrar: su contenido ya se juzgo SAFE, asi que `clean --force` las borra. Un
+# directorio sin registrar y sin ese sufijo es un HUERFANO de otra causa: no se toca nunca solo
+# (docs/worktrees.md > Huerfanos).
+PAPELERAS=()
+restos() {
+  local dir="$MAIN_WT/$WT_DIR" d registrados
+  [ -d "$dir" ] || return 0
+  registrados="$(git -C "$REPO" worktree list --porcelain | sed -n 's/^worktree //p')"
+  for d in "$dir"/*/; do
+    [ -d "$d" ] || continue
+    d="${d%/}"
+    case "$d" in
+      *.borrando-*) PAPELERAS+=("$d"); print_row "SAFE" "" "$d" "papelera de un done que no termino de borrar" ;;
+      *) printf '%s\n' "$registrados" | grep -qxF "$d" || print_row "HOLD" "" "$d" "huerfano: no esta registrado en git; revisalo a mano (docs/worktrees.md)" ;;
+    esac
+  done
 }
 
 # Desmonta un worktree ya juzgado SAFE. No vuelve a juzgar: eso es de quien llama.
+#
+# ORDEN (docs/worktrees.md > wt.sh done: apartar, desregistrar, borrar): primero se RENOMBRA el
+# directorio a una papelera (`<path>.borrando-<ts>`), despues se desregistra y por ultimo se borra
+# la papelera. Antes era al reves —desregistrar y borrar—, y un borrado que fallaba a medias (en
+# Windows basta un archivo abierto bajo node_modules) dejaba un huerfano: ni registrado ni entero,
+# y nada lo reintentaba. Ahora:
+#   - si el renombrado falla (algo lo tiene abierto), no se toco nada: sigue entero y registrado;
+#   - si falla el borrado de la papelera, ya no es un worktree, se ve por su nombre y
+#     `wt.sh clean` la reintenta.
 remove_wt() {
   local path="$1" branch="$2"
   if [ -d "$path" ]; then
-    # Sin --force git se niega si quedan ficheros ignorados (node_modules). Ya sabemos por
-    # la guarda (3) que no hay nada tracked modificado ni untracked no-ignorado.
-    git -C "$REPO" worktree remove "$path" 2>/dev/null \
-      || git -C "$REPO" worktree remove --force "$path" \
-      || { warn "no se pudo desmontar $path (¿archivo en uso en Windows?)"; return 1; }
+    local papelera
+    papelera="$path.borrando-$(date +%s)"
+    if ! mv "$path" "$papelera" 2>/dev/null; then
+      warn "no se pudo apartar $path (¿un proceso lo tiene abierto, p. ej. un editor o un servidor en Windows?)."
+      warn "No se toco nada: el worktree sigue entero y registrado. Cierra lo que lo use y repite."
+      return 1
+    fi
+    git -C "$REPO" worktree prune
+    rm -rf "$papelera" 2>/dev/null || true
+    [ -e "$papelera" ] && warn "quedo $papelera a medio borrar: ya no es un worktree; ./scripts/wt.sh clean --force lo reintenta"
   fi
   git -C "$REPO" worktree prune
   if [ -n "$branch" ] && git -C "$REPO" rev-parse --verify -q "$branch" >/dev/null 2>&1; then
@@ -307,6 +341,13 @@ cmd_list() { inventory; }
 
 cmd_clean() {
   inventory
+  if [ "$FORCE" = 1 ] && [ "${#PAPELERAS[@]}" -gt 0 ]; then
+    local p
+    for p in "${PAPELERAS[@]}"; do
+      rm -rf "$p" 2>/dev/null || true
+      if [ -e "$p" ]; then warn "sigue sin poder borrarse: $p"; else ok "papelera borrada: $p"; fi
+    done
+  fi
   if [ "$N_SAFE" = 0 ]; then
     git -C "$REPO" worktree prune
     ok "nada que desmontar"

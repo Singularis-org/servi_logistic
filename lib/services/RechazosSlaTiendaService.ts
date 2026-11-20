@@ -38,18 +38,22 @@ export class RechazosSlaTiendaService implements IRechazosSlaTiendaService {
   ): Promise<ListarRechazosSlaTiendaServiceResult> {
     if (actor.rol !== ROL_AUTORIZADO) return { status: "forbidden" }; // R13: cualquier otro rol
 
-    const { page, pageSize } = input;
+    const { page, pageSize, busqueda } = input;
 
     // R12/R15: total de rechazos por SLA de la tienda del actor (predicado central en el repo;
     // mismo universo que la pagina). El acotamiento a la tienda va SIEMPRE por `actor.usuarioId`.
-    const total = await this.repo.countRechazadasSlaByTienda(actor.usuarioId);
+    // SLT-194 (R956): el MISMO termino a la cuenta y a la pagina. Sin termino, la llamada no lleva
+    // un tercer argumento `undefined`: es exactamente la de antes (R957).
+    const total = busqueda
+      ? await this.repo.countRechazadasSlaByTienda(actor.usuarioId, busqueda)
+      : await this.repo.countRechazadasSlaByTienda(actor.usuarioId);
 
     // R12/R14/R15: la pagina, ordenada por `Orden.createdAt` desc. `skip` derivado de la pagina.
     const skip = (page - 1) * pageSize;
-    const rows = await this.repo.findRechazadasSlaByTienda(actor.usuarioId, {
-      skip,
-      take: pageSize,
-    });
+    const pagina = { skip, take: pageSize };
+    const rows = busqueda
+      ? await this.repo.findRechazadasSlaByTienda(actor.usuarioId, pagina, busqueda)
+      : await this.repo.findRechazadasSlaByTienda(actor.usuarioId, pagina);
 
     // Feature 160 (R12/R13/R15): UNA sola consulta al historial para toda la pagina, sobre las
     // ordenes YA acotadas a la tienda del actor. Pagina vacia -> 0 consultas (R13).

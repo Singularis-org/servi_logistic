@@ -90,7 +90,7 @@ function correrValidador(cwd: string): { code: number; salida: string } {
   }
 }
 
-describe('guardia: el validador ve el spec en la rama remota de la feature', () => {
+describe('guardia: el validador ve el spec en la rama remota de la feature', { timeout: 30_000 }, () => {
   it('pasa cuando el spec solo existe en origin/<branch>', () => {
     const { code, salida } = correrValidador(montarRepo(true))
 

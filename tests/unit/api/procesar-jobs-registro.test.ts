@@ -4,6 +4,7 @@ import { JobQueueService } from "@/lib/services/JobQueueService";
 import type { IJobRepository, JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
 import type { JobHandler } from "@/lib/interfaces/services/IJobQueueService";
 import type { JobTipo } from "@prisma/client";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // Feature 92 (R21) — el tipo `optimizacion_ruta` esta enganchado al drenador y NO es
 // recurrente: se encola por EVENTO (recogida con debounce, gestion inmediata), nunca por
@@ -42,12 +43,15 @@ describe("R21 — registro en el drenador", () => {
     expect([...handlers.keys()].sort()).toEqual([
       "analitica_invalidacion_cache", // feature 128: PUNTUAL, no va en buildRecurrencias
       "analitica_rollup_diario", // feature 124
+      "factura_plataforma_aviso", // SLT-136 (design §7.2, R30): el aviso de UNA factura cerrada (PUNTUAL, con empresa)
+      "factura_plataforma_cerrar", // SLT-118 (design §4.2): el cierre horario (HH:10) de las facturas de la plataforma (RECURRENTE)
       "geocodificacion",
       "liberar_reprogramadas",
       "optimizacion_ruta",
       // SL-24 (design §16.3): aplicar un cambio programado (PUNTUAL) y el barrido horario de los
       // vencidos (RECURRENTE).
       "plan_aplicar_cambio",
+      "plan_aplicar_cambio_empresa", // SLT-86 (design §5.2): aplica un cambio de empresa con fecha (PUNTUAL)
       // SL-24 · T12 (design §16.4): los correos del cambio, PUNTUALES: el aviso a una empresa y
       // el recordatorio que los reparte.
       "plan_aviso_correo",
@@ -89,10 +93,16 @@ describe("R21 — registro en el drenador", () => {
     // 124, `analitica_rollup_diario`. Conjunto EXACTO, por el mismo motivo que arriba.
     expect([...recurrencias.keys()].sort()).toEqual([
       "analitica_rollup_diario",
+      "factura_plataforma_cerrar", // SLT-118 (design §4.2): el cierre horario (HH:10) de las facturas de la plataforma
       "liberar_reprogramadas",
       "plan_cambios_vencidos", // SL-24: barrido horario de cambios de plan vencidos
       "whatsapp_envio_mantenimiento", // ficha 474: mantenimiento diario 03:30 CR
     ]);
+  });
+
+  it("SLT-136/R30 — `factura_plataforma_aviso` tiene handler y NO es recurrente (lo encola el cierre)", () => {
+    expect(buildHandlers(() => AHORA).has("factura_plataforma_aviso")).toBe(true);
+    expect(buildRecurrencias().has("factura_plataforma_aviso")).toBe(false);
   });
 
   it("R36 (124) — `analitica_rollup_diario` esta en AMBOS mapas y su recurrencia es a las 06:30 UTC", () => {
@@ -104,10 +114,10 @@ describe("R21 — registro en el drenador", () => {
 
     const spec = buildRecurrencias().get("analitica_rollup_diario");
     expect(spec).toBeDefined();
-    const { runAfter, dedupeKey } = spec!.siguiente(new Date("2026-08-02T06:30:00.000Z"));
+    const { runAfter, dedupeKey } = spec!.siguiente(new Date("2026-08-02T06:30:00.000Z"), [ZONA_DE_CR]);
     expect(runAfter.toISOString()).toBe("2026-08-03T06:30:00.000Z");
     // La clave es la fecha OBJETIVO (el dia que esa corrida agregara), no la de la corrida.
-    expect(dedupeKey).toBe("analitica_rollup_diario:2026-08-02");
+    expect(dedupeKey).toBe("analitica_rollup_diario:America/Costa_Rica:2026-08-02"); // SLT-42: con la zona
   });
 
   it("construir los handlers NO lanza: ninguna credencial se lee al registrar", () => {

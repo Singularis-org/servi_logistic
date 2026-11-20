@@ -46,3 +46,6 @@ abiertas cerradas; tarjeta movida a «En curso». Siguiente: F2.1, implementer.
 - 2026-11-04 · CERRADO el ABIERTO de `salida-a-reparto-sql-real` (SLT-76 R15): el arreglo de SLT-43 (`337bd521`, id
   distinto para la provincia ajena) baja por SLT-44 y entra con el merge `68567ea4`. 7/7 contra `logistic_slt65_r1104`;
   typecheck exit 0. Detalle en `progress/impl_SLT-65.md`.
+- 2026-11-20 · Puesta al día con `origin/geo_jerarquica` (tras #44 y #55, `88442421`). Conflictos: `progress/deudas.md` (D43 de SLT-65 renumerada a D81), tres imports de tests (se conservan los dos) y el censo de `gestiones-detalle-api-405` (12 de SLT-65 + `cierre_detail_concepto` de SLT-52 = 13). Detalle en `progress/integracion_geo.md > SLT-65`.
+
+<!-- tamano-pr-aceptado: 2026-11-20 · pila geo aceptada entera por el humano (2026-11-19) -->

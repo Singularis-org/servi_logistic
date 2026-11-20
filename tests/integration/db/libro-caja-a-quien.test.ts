@@ -9,6 +9,18 @@ import type { AutoriaDeFilaDTO, AutoriaLibroCajaResult } from "@/lib/types/libro
 
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
 import { cargarCatalogo459, enTransaccionRevertida459, montarServicios459, sembrarEscenario459 } from "./_fixtures/caja-459";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+
+// SLT-42 (T5.4): la zona del pais de la empresa es la de CR, como antes. Las reglas reales leen el pais
+// de la empresa en curso con el cliente global, que no ve la empresa de una transaccion revertida ni
+// tiene empresa fuera de `conEmpresa`; la zona por pais la miden `hora-por-pais-wallet` y `demo-qa`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
 
 // SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
 vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
@@ -29,7 +41,7 @@ const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
 interface Medida {
   porOrigen: Record<string, AutoriaDeFilaDTO[]>;
-  nombres: Record<"tiendaA" | "tiendaB" | "mensajero" | "maestro" | "adminSat", string>;
+  nombres: Record<"tiendaA" | "tiendaB" | "mensajero" | "maestro" | "aprobador", string>;
   ids: { tiendaA: string; tiendaB: string; mensajero: string };
   sueldoId: string;
   gastoId: string;
@@ -79,7 +91,7 @@ describeSiHayBase("458-B/TB.7 — «A quien» y «Registro» del libro de la caj
         });
 
         const nuevas = (await tx.walletMovimiento.findMany({ select: { id: true, origenTipo: true } })).filter((x) => !previos.has(x.id));
-        const servicio = new LibroCajaAutoriaService(new LibroCajaAutoriaRepository(s.cliente));
+        const servicio = new LibroCajaAutoriaService(new LibroCajaAutoriaRepository(s.cliente), reglasPaisFijas());
         const r = await autoriaDelLibroCajaAction(
           { movimientoIds: nuevas.map((x) => x.id) },
           { getActor: async () => esc.maestro, service: servicio },
@@ -90,7 +102,7 @@ describeSiHayBase("458-B/TB.7 — «A quien» y «Registro» del libro de la caj
         for (const f of r.filas) (porOrigen[origenDe.get(f.movimientoId) as string] ??= []).push(f);
 
         const nombreDe = async (id: string) => (await tx.usuario.findUniqueOrThrow({ where: { id }, select: { nombre: true } })).nombre;
-        const adminSat = await tx.cierreDia.findUniqueOrThrow({ where: { id: esc.cierreId }, select: { resueltoPor: true } });
+        const aprobador = await tx.cierreDia.findUniqueOrThrow({ where: { id: esc.cierreId }, select: { resueltoPor: true } });
         return {
           porOrigen,
           nombres: {
@@ -98,7 +110,7 @@ describeSiHayBase("458-B/TB.7 — «A quien» y «Registro» del libro de la caj
             tiendaB: await nombreDe(esc.tiendaB),
             mensajero: await nombreDe(esc.mensajeroId),
             maestro: await nombreDe(esc.maestro.usuarioId),
-            adminSat: await nombreDe(adminSat.resueltoPor as string),
+            aprobador: await nombreDe(aprobador.resueltoPor as string),
           },
           ids: { tiendaA: esc.tiendaA, tiendaB: esc.tiendaB, mensajero: esc.mensajeroId },
           sueldoId: sueldo.id,
@@ -134,9 +146,12 @@ describeSiHayBase("458-B/TB.7 — «A quien» y «Registro» del libro de la caj
   });
 
   it("R56: el cierre → su MENSAJERO (con enlace); R57: automatico, «aprobacion del cierre» por quien lo aprobo", () => {
+    // SLT-195 (review B1): el aprobador es otra persona que el maestro que lee y registra el resto;
+    // si fueran la misma, «por quien lo aprobo» no distinguiria nada.
+    expect(m().nombres.aprobador, "SLT-195 B1: aprobador == maestro").not.toBe(m().nombres.maestro);
     for (const f of m().porOrigen.cierre_dia) {
       expect(f.aQuien).toEqual({ nombre: m().nombres.mensajero, beneficiario: null, cuenta: { tipo: "mensajero", id: m().ids.mensajero }, esEmpresa: false });
-      expect(f.registro).toEqual({ nombre: null, automatico: { accion: "aprobacion_cierre", por: m().nombres.adminSat } });
+      expect(f.registro).toEqual({ nombre: null, automatico: { accion: "aprobacion_cierre", por: m().nombres.aprobador } });
     }
   });
 

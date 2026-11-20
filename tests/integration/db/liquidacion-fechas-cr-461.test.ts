@@ -10,6 +10,7 @@ import { HAY_BASE_DE_DATOS, crearPrismaDeTest, enTransaccionRevertida, serializa
 import { cargarCatalogo459, enTransaccionRevertida459, montarServicios459, sembrarEscenario459 } from "./_fixtures/caja-459";
 import { CLAVE_CANDADO_459 } from "./_fixtures/escrituras-459";
 import { sembrarPersonas461 } from "./_fixtures/personas-461";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FICHA 461 / R73 (auditoria de la wallet, T2) — LA FECHA DE LOS ASIENTOS DE LOS PAGOS, contra Postgres.
@@ -59,7 +60,7 @@ describeSiHayBase("461/R73 — los asientos de los pagos, al inicio del dia en C
       const s = montarServicios459(tx);
       const rollup = new FinanzasDiarioRepository(tx as unknown as PrismaClient);
       const ventana = [inicioDelDiaCREnUtc("2026-09-09"), inicioDelDiaSiguienteCREnUtc(DIA)] as const;
-      const antes = await rollup.sumarPorDia(ventana[0], ventana[1]);
+      const antes = await rollup.sumarPorDia(ventana[0], ventana[1], ZONA_DE_CR);
 
       const r = await s.liquidacion.registrarPagoTienda(
         { claveIdempotencia: randomUUID(), tiendaId: p.tiendaId, monto: "1234.56", metodo: "efectivo", fechaPago: DIA },
@@ -69,7 +70,7 @@ describeSiHayBase("461/R73 — los asientos de los pagos, al inicio del dia en C
       const doc = await tx.liquidacionPago.findUniqueOrThrow({ where: { id: r.pago.id } });
       const debito = await tx.walletTiendaMovimiento.findFirstOrThrow({ where: { origenTipo: "pago_tienda", origenId: r.pago.id, categoria: "pago_tienda" } });
       const egreso = await tx.walletMovimiento.findFirstOrThrow({ where: { origenTipo: "pago_tienda", origenId: r.pago.id, categoria: "egreso_pago_tienda" } });
-      const despues = await rollup.sumarPorDia(ventana[0], ventana[1]);
+      const despues = await rollup.sumarPorDia(ventana[0], ventana[1], ZONA_DE_CR);
 
       const a = await s.liquidacion.anularPago({ pagoId: r.pago.id, motivo: "Cuenta equivocada" }, p.maestro);
       if (a.status !== "ok") throw new Error(`anulacion: ${JSON.stringify(a)}`);

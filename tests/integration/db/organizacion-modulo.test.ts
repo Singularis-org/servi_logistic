@@ -7,6 +7,7 @@ import { comoPlataforma, conEmpresa, EmpresaNoResuelta } from "@/lib/db/contexto
 import { conAislamientoPorEmpresa } from "@/lib/db/extension-empresa";
 import { ModulosActivosRepository } from "@/lib/repositories/ModulosActivosRepository";
 import { OrganizacionRepository } from "@/lib/repositories/OrganizacionRepository";
+import { PaisRepository } from "@/lib/repositories/PaisRepository";
 import { OrganizacionService } from "@/lib/services/OrganizacionService";
 import { comoApp, datosDeOrganizacionDePrueba } from "@/tests/fabricas/organizaciones";
 import {
@@ -258,7 +259,7 @@ describeSiHayBase("SL-23 — organizacion_modulo: estado por empresa, RLS y solo
 
   it("R6 — una empresa dada de alta por OrganizacionService nace sin ningún módulo encendido", async () => {
     const sufijo = randomUUID().replace(/-/g, "").slice(0, 10);
-    const servicio = new OrganizacionService(new OrganizacionRepository(app));
+    const servicio = new OrganizacionService(new OrganizacionRepository(app), new PaisRepository(app));
     const r = await bajoLockDeEscrituraReal(() =>
       comoPlataforma("SL-23", "test: alta sin módulos (R6)", () =>
         servicio.altaEmpresa({
@@ -271,7 +272,8 @@ describeSiHayBase("SL-23 — organizacion_modulo: estado por empresa, RLS y solo
             nombre: "Maestra de prueba",
             email: `sl23-alta-${sufijo}@ejemplo.test`,
             telefono: "88887777",
-            documento: `doc-sl23-${sufijo}`,
+            // SLT-42 (R10): una cédula física de CR, 9 dígitos; única por empresa y tipo.
+            documento: String(parseInt(sufijo.slice(0, 8), 16) % 1_000_000_000).padStart(9, "0"),
             tipoDocumento: "cedula",
           },
         }),

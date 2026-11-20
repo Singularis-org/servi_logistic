@@ -13,9 +13,8 @@ import type { GestionResultado } from "@prisma/client";
 //
 // ⚠️ EL UMBRAL NO VIVE AQUI Y NO PUEDE VIVIR AQUI (R10, y 160/R20 con test de contrato en
 // `tests/unit/components/intentos-entrega.test.tsx`): entra por PARAMETRO. Si este modulo
-// importara `reintentosConfig`, cualquier componente que use `permitidoEnElTope` se llevaria la
-// configuracion al navegador. `tests/unit/types/tope-intentos.test.ts` lee este fichero y falla si
-// aparece el nombre `MIN_INTENTOS_ENTREGA` o `reintentosConfig`.
+// lo leyera, cualquier componente que use `permitidoEnElTope` se llevaria el servidor al navegador.
+// `tests/unit/types/tope-intentos.test.ts` lee este fichero y falla si importa configuracion.
 
 /**
  * R1/R2/R3 — LISTA DE INCLUSION de los `resultado` de gestion que SIGUEN admitidos cuando la
@@ -54,7 +53,7 @@ export type ResultadoPermitidoEnElTope = (typeof RESULTADOS_PERMITIDOS_EN_EL_TOP
  * circulando— y esos tambien tienen que quedar bloqueados. Con `===` una orden con `umbral`
  * intentos se escaparia por el hueco.
  *
- * El `umbral` entra por parametro: quien lo llama lo resuelve de `reintentosConfig` (R7).
+ * El `umbral` entra por parametro: quien lo llama usa el tope de su empresa (SLT-77).
  */
 export function alcanzaElTope(intentosVigentes: number, umbral: number): boolean {
   return intentosVigentes >= umbral - 1;

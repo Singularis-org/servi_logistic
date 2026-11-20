@@ -58,6 +58,10 @@ const nextConfig: NextConfig = {
   // equivocarse es que el «?» desaparezca en produccion y en ningun otro sitio.
   outputFileTracingIncludes: {
     "/**": ["./docs/ayuda/**/*.md"],
+    // SLT-80 (R1312): la descarga de Postman lee la colección del disco en cada petición, sin copia.
+    // El PDF de la guía no necesita nada más: lee el `.md` (ya cubierto arriba) y lleva Archivo en
+    // base64 dentro de `lib/pdf/guia-fuente.ts`, no lee `assets/fuentes/`.
+    "/ayuda/descargas/postman": ["./docs/api/servi-logistic-api-key.postman_collection.json"],
   },
 
   async headers() {

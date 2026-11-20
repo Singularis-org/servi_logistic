@@ -1,5 +1,6 @@
 "use server";
 
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import {
   generarEtiquetasSchema,
   etiquetaPorGuiaSchema,
@@ -16,7 +17,7 @@ import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/e
 import type { AppErrorShape } from "@/lib/errors";
 
 function buildEtiquetaService(): IEtiquetaGuiaService {
-  return new EtiquetaGuiaService(new OrdenRepository(getPrismaClient()));
+  return new EtiquetaGuiaService(new OrdenRepository(getPrismaClient()), construirReglasPaisEmpresa(getPrismaClient()));
 }
 
 export interface EtiquetaActionDeps {

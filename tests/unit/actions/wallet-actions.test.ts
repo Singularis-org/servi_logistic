@@ -14,6 +14,17 @@ import type {
 } from "@/lib/types/wallet";
 import { ORIGENES_FALSOS } from "@/tests/fixtures/origenes-falsos";
 
+// SLT-42 (T5.4): la zona del pais de la empresa, sin sesion ni base: la de CR, como antes. El borde
+// (`zonaDelBorde`) y los composition roots leen `construirReglasPaisEmpresa`; la zona en si la mide
+// `tests/unit/services/hora-por-pais-wallet.test.ts`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
+
 // Feature 42 (T10) — tests unit de las Server Actions de wallet (R19/R21/R25). Sin sesion
 // -> unauthenticated; rol no autorizado -> forbidden (el service lo decide); DTOs STRING.
 //
@@ -90,7 +101,7 @@ const COMPOSICION: ComposicionGananciaDTO = {
     ingreso_flete_devolucion: "0.00",
     ingreso_comision_cod: "0.00",
     ingreso_ajuste: "0.00",
-    ingreso_cobro_tienda: "0.00", // ficha 461: la exige el `Record` total
+    ingreso_cobro_tienda: "0.00", ingreso_fulfillment: "0.00", /* SLT-94 */ // ficha 461: la exige el `Record` total
   },
   totalIngresos: "1000.00",
   // Ficha 339 (T1.3): las dos cubetas nuevas. Aqui van a 0,00 y los 300 siguen en «otros»,
@@ -100,7 +111,7 @@ const COMPOSICION: ComposicionGananciaDTO = {
     egreso_ajuste: "0.00",
     egreso_reverso_cobro_tienda: "0.00", // ficha 461: la exige el `Record` total
     egreso_reverso_flete_devolucion: "0.00", // ficha 458-B: la exige el `Record` total
-    egreso_pago_plataforma: "0.00", // SL-45: la exige el `Record` total
+    egreso_pago_plataforma: "0.00", egreso_reverso_fulfillment: "0.00", /* SLT-94 */ // SL-45: la exige el `Record` total
   },
   otrosEgresos: "300.00",
   totalEgresos: "300.00",
@@ -110,7 +121,7 @@ const COMPOSICION: ComposicionGananciaDTO = {
     ingreso_iva_flete: "0.00",
     ingreso_iva_flete_devolucion: "0.00",
     ingreso_iva_comision_cod: "0.00",
-    egreso_reverso_iva_flete_devolucion: "0.00",
+    egreso_reverso_iva_flete_devolucion: "0.00", ingreso_iva_fulfillment: "0.00", egreso_reverso_iva_fulfillment: "0.00", /* SLT-94 */
   },
   totalIva: "0.00",
 };

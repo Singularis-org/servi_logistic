@@ -1,4 +1,5 @@
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import type { ResumenRecepcion } from "@/lib/interfaces/repositories/IOrdenRepository";
 
 // Feature 138 — Recepcion en la BODEGA CENTRAL, contrato del servicio. Cierra el dead-end
 // de la carga por API: la orden cargada por el canal integrador queda en
@@ -27,10 +28,15 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
  * - `conflict`: perdio una carrera (el estado cambio entre la lectura y el UPDATE) (R9).
  */
 export type RecibirEnBodegaCentralServiceResult =
-  | { status: "ok"; ordenId: string; estado: "en_bodega_central" | "por_devolver_a_tienda" }
+  | {
+      status: "ok";
+      ordenId: string;
+      estado: "en_bodega_central" | "por_devolver_a_tienda";
+      resumen?: ResumenRecepcion; // SLT-167 (R710)
+    }
   | { status: "forbidden" }
   | { status: "estado_invalido"; estado: string }
-  | { status: "ya_recibida" }
+  | { status: "ya_recibida"; resumen?: ResumenRecepcion } // SLT-167 (R711)
   | { status: "no_encontrada" }
   | { status: "validation_error"; fieldErrors: Record<string, string[]> }
   | { status: "conflict" };

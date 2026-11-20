@@ -48,9 +48,10 @@ import { derivarJornada } from "@/lib/utils/jornada-cierre";
 import { NOMBRE_USUARIO_SELECT, nombreCompletoUsuario } from "@/lib/utils/nombre-usuario";
 // FICHA 352 — el constructor del orden TOTAL: exige el desempate como argumento, para que no se
 // pueda armar un `orderBy` de listado paginado sin el. Ver `DESEMPATE_UNICO` mas abajo.
-import { ordenTotal } from "@/lib/types/ordenamiento-listado";
+import { ordenTotal, type OrdenamientoListado } from "@/lib/types/ordenamiento-listado";
+import type { CampoOrdenBodegaSatelite } from "@/lib/types/recepcion-satelite";
 import { ESTADOS_USUARIO_NO_ASIGNABLES } from "@/lib/constants/estado-usuario-asignable";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendario } from "@/lib/utils/calendario-zona";
 // Feature 274 — LA REGLA de resolucion de tarifa vive en un modulo PURO, compartido con el
 // resolver del cierre de dia: el listado no puede tener una regla propia (R18/R21).
 import { clavePar } from "@/lib/utils/cascada-tarifa";
@@ -120,7 +121,7 @@ import type { NivelGeografico } from "@/lib/types/geografia-nodo";
 // etiqueta congelada. Los cuatro escritores de esta clase que registran accion lo llaman DENTRO
 // de su propia `$transaction`.
 import { appendAccion, resolverActorCongelado } from "@/lib/repositories/registrar-accion";
-import { etiquetaDeEntidad } from "@/lib/types/historial-accion-etiquetas";
+import { etiquetaDeEntidad, etiquetaDeRetiroSatelite } from "@/lib/types/historial-accion-etiquetas";
 import type { IJobRepository, JobTxClient } from "@/lib/interfaces/repositories/IJobRepository";
 import { JobRepository } from "@/lib/repositories/JobRepository";
 import {
@@ -153,6 +154,7 @@ import {
   type OrdenBaseCobroDevolucionRow,
   type OrdenParaCorreccionRow,
   type OrdenTransicionRow,
+  type ResumenRecepcion,
   type OrderStatusLiteRow,
   type ProvinciaRow,
   type RecepcionSateliteFiltro,
@@ -160,6 +162,7 @@ import {
   // FICHA 370: «¿ya salio a reparto?», el MISMO tipo para las dos rutas de consulta.
   type SalioAReparto,
   type RechazoSlaTiendaRow,
+  type BusquedaRechazosSla,
   type UpdateOrdenData,
   type ApiOrdenListResult,
   type ApiOrdenDetalleRow,
@@ -218,9 +221,6 @@ import {
   ESTADOS_CUSTODIA_SATELITE,
 } from "@/lib/utils/estados-bodega-satelite";
 import { fechaRepartoComoTexto } from "@/lib/utils/dia-reparto";
-// Feature 246 (T3.5, R8): la convencion `@db.Date` para las vias que reasignan SIN eleccion de
-// dia. `inicioDelDiaCREnUtc` (06:00Z) es la de las columnas `timestamp` y aqui desplazaria el dia.
-import { startOfDayCR } from "@/lib/utils/fecha-cr";
 import type { PaginaRepositorio, RangoPagina } from "@/lib/utils/rango-pagina";
 import type { OrdenAsignabilidadRow } from "@/lib/interfaces/services/IAsignabilidadCoordenadasService";
 import type {
@@ -970,6 +970,9 @@ const SELECT_CIERRE_A_RESOLVER = {
 // (y cualquiera nuevo) no puedan divergir.
 const NUM_GUIA_GENERATOR = "siguiente_num_guia()";
 
+// SLT-197 (R974): senal interna para revertir la transaccion del retiro cuando el lote no cuadra.
+class RetiroSateliteConflicto extends Error {}
+
 // Feature 33/R11/R18: estado de ORIGEN de la recepcion en satelite. La escritura
 // guardada (`recibirEnSatelite`) solo transiciona una orden que sigue en este
 // estado (guardia por estado de origen en el propio UPDATE, patron feature 17/36).
@@ -1419,10 +1422,10 @@ type OrdenEtiquetaRow = Prisma.OrdenGetPayload<typeof WITH_ETIQUETA>;
 // R1/R4/R5/R6: serializa la fila de etiqueta a EtiquetaRow. Resuelve los nombres
 // legibles, mapea Decimal montoCobrar -> number|null (R5, sin moneda) y deja
 // distritoNombre null si la orden no tiene distrito (R4). NO expone deletedAt (R6).
-// Feature 295: `created_at` (timestamp UTC) sale como fecha CALENDARIO DE CR
-// `YYYY-MM-DD`, la misma convencion con la que el manifiesto escribe su columna
-// `fecha` y con la que el comprobante de cierre pinta las suyas.
-function toEtiquetaRow(row: OrdenEtiquetaRow): EtiquetaRow {
+// Feature 295: `created_at` (timestamp UTC) sale como fecha CALENDARIO `YYYY-MM-DD`, la misma
+// convencion con la que el manifiesto escribe su columna `fecha` y con la que el comprobante de
+// cierre pinta las suyas. SLT-42 (R22): en la `zona` del pais de la empresa, que llega del servicio.
+function toEtiquetaRow(row: OrdenEtiquetaRow, zona: string): EtiquetaRow {
   return {
     id: row.id,
     tiendaId: row.tiendaId,
@@ -1438,7 +1441,7 @@ function toEtiquetaRow(row: OrdenEtiquetaRow): EtiquetaRow {
     provinciaNombre: row.provincia.nombre,
     cantonNombre: row.canton.nombre,
     distritoNombre: row.distrito?.nombre ?? null,
-    fechaCreacion: fechaCalendarioCR(row.createdAt), // feature 295
+    fechaCreacion: fechaCalendario(row.createdAt, zona), // feature 295
   };
 }
 
@@ -1740,6 +1743,10 @@ function condicionesSatelite(filtro: RecepcionSateliteFiltro): Prisma.Sql[] {
   if (filtro.busqueda) {
     condiciones.push(condicionBusquedaSatelite(filtro.busqueda, filtro.busquedaDigitos));
   }
+  // SLT-160 (R606-R608): guia exacta, hermana del acotamiento en el AND (nunca en un `OR`).
+  if (filtro.numGuia !== undefined) {
+    condiciones.push(Prisma.sql`o."num_guia" = ${filtro.numGuia}`);
+  }
   return condiciones;
 }
 
@@ -1796,13 +1803,24 @@ function desdeSatelite(condiciones: Prisma.Sql[]): Prisma.Sql {
  *
  * Lo comparten la pagina y el conjunto de la descarga: si divergieran, la fila N del archivo
  * dejaria de ser la fila N de la pantalla sin que nada fallara.
+ *
+ * SLT-210 (R1403) — el TERCER termino lo elige la persona: fecha de creacion o numero de remision,
+ * en la direccion pedida. El grupo de estado y la prioridad siguen DELANTE (el conmutador ordena
+ * dentro de cada grupo, decision P2) y el `id` sigue cerrando la lista con direccion fija. La
+ * columna y la direccion salen de fragmentos FIJOS de este archivo elegidos por comparacion: el
+ * texto del cliente nunca se interpola. `num_remision` ordena por `clave_remision` —la columna
+ * generada de la ficha 423, la misma de `/ordenes`—, nunca por el texto crudo. Sin orden, el de
+ * siempre (`created_at DESC`, R1401).
  */
-function ordenBodegaSatelite(): Prisma.Sql {
+function ordenBodegaSatelite(orden?: OrdenamientoListado<CampoOrdenBodegaSatelite>): Prisma.Sql {
+  const columna =
+    orden?.sortBy === "num_remision" ? Prisma.sql`o."clave_remision"` : Prisma.sql`o."created_at"`;
+  const direccion = orden?.sortDir === "asc" ? Prisma.sql`ASC` : Prisma.sql`DESC`;
   return Prisma.sql`
       ORDER BY
         array_position(ARRAY[${Prisma.join([...ESTADOS_BODEGA_SATELITE])}]::text[], os."value") ASC,
         o."prioridad" DESC,
-        o."created_at" DESC,
+        ${columna} ${direccion},
         o."id" ASC
     `;
 }
@@ -2667,16 +2685,17 @@ export class OrdenRepository implements IOrdenRepository {
   }
 
   /**
-   * Feature 27/R15/R16/R17: `usuario.fulfillment` de la tienda. `null` si no resuelve (SL-17 D15:
-   * con el filtro por empresa, una tienda de otra empresa no resuelve, y convertirla en `false`
-   * dejaba seguir la carga hasta el trigger de la base).
+   * SLT-94 (R5): la marca «se recoge en tienda» de la tienda DUEÑA de la orden, el unico dato que
+   * decide en que estado nace. `null` si no resuelve (SL-17 D15: con el filtro por empresa, una
+   * tienda de otra empresa no resuelve, y convertirla en un booleano dejaba seguir la carga hasta
+   * el trigger de la base).
    */
-  async findUsuarioFulfillment(usuarioId: string): Promise<boolean | null> {
+  async findUsuarioSeRecogeEnTienda(usuarioId: string): Promise<boolean | null> {
     const row = await this.prisma.usuario.findUnique({
       where: { id: usuarioId },
-      select: { fulfillment: true },
+      select: { seRecogeEnTienda: true },
     });
-    return row?.fulfillment ?? null;
+    return row?.seRecogeEnTienda ?? null;
   }
 
   // BORRADO 2026-08-07 (tanda 2): aqui vivia `existsGeo`, la comprobacion fila-a-fila de que
@@ -3527,6 +3546,27 @@ export class OrdenRepository implements IOrdenRepository {
     };
   }
 
+  /**
+   * SLT-167 (R713, R714): destinatario y nombre de la tienda de una orden, para la respuesta de la
+   * recepcion por guia. Solo esas dos columnas (privacidad).
+   *
+   * Va en SQL a mano para que el acotado por empresa quede ESCRITO y se pueda medir: la RLS de la
+   * envoltura ya esconde las filas de otra empresa, pero el `organizacion_id` explicito es la segunda
+   * barrera (mismo criterio que `CierresBodegaAdminRepository.idsRecibidosIncompletos`).
+   */
+  async resumenRecepcion(ordenId: string): Promise<ResumenRecepcion | null> {
+    const [fila] = await this.prisma.$queryRaw<ResumenRecepcion[]>`
+      SELECT o."destinatario" AS "destinatario", t."nombre" AS "tienda"
+        FROM "orden" o
+        JOIN "usuario" t ON t."id" = o."tienda_id"
+       WHERE o."id" = ${ordenId}
+         AND o."organizacion_id" = NULLIF(current_setting('app.organizacion_id', true), '')
+       LIMIT 1`;
+    // R713: las dos claves, ambas texto. Una fila que no las trae como texto no es un resumen.
+    if (typeof fila?.destinatario !== "string" || typeof fila.tienda !== "string") return null;
+    return { destinatario: fila.destinatario, tienda: fila.tienda };
+  }
+
   // --- Feature 106: canal integrador de lectura/cancelacion por API key ---
 
   /**
@@ -3876,9 +3916,10 @@ export class OrdenRepository implements IOrdenRepository {
             // guardia `fecha-reparto-acompana-asignado-at` censa el arbol entero y ESTE sitio fue
             // el que encontro — el spec listaba cinco limpiezas y este estampado no estaba.
             //
-            // El dia es el de Costa Rica EN CURSO porque esta via NO ofrece la eleccion (R8).
+            // El dia es el EN CURSO porque esta via NO ofrece la eleccion (R8). SLT-42 (R22): llega
+            // en la decision, resuelto por el servicio en la zona del pais de la empresa.
             ...(d.mensajeroAsignadoId != null
-              ? { asignadoAt: new Date(), fechaReparto: startOfDayCR() }
+              ? { asignadoAt: new Date(), fechaReparto: d.fechaReparto }
               : {}),
           },
           select: { numGuia: true },
@@ -4129,6 +4170,95 @@ export class OrdenRepository implements IOrdenRepository {
     });
   }
 
+  /**
+   * SLT-197 (R971-R974, arista #73): retira un lote de ordenes del estante de una satelite a la
+   * central (`en_bodega_satelite -> en_ruta_bodega_central`), todo o nada.
+   *
+   * La guarda de estado vive en el `WHERE` (lectura y `updateMany` con el mismo filtro): si alguna
+   * orden ya no esta en `en_bodega_satelite` o esta borrada, el conteo no cuadra, la transaccion se
+   * revierte y se devuelve `"conflicto"` sin filas cambiadas ni historial (R974). La orden queda sin
+   * mensajero, sin `asignado_at` y sin dia de reparto (R972), y conserva zona, tienda, guia, remision
+   * y monto: no se tocan.
+   *
+   * SLT-211: deja ademas su accion en `historial_accion` (una por satelite del lote, mismo `lote_id`).
+   */
+  async retirarSateliteLote(
+    ordenIds: string[],
+    destinoEstatusId: string,
+    historial: HistorialContexto,
+  ): Promise<"ok" | "conflicto"> {
+    if (ordenIds.length === 0) return "ok";
+    const where = {
+      id: { in: ordenIds },
+      deletedAt: null,
+      estatus: { value: "en_bodega_satelite" },
+    };
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        const origenRows = await tx.orden.findMany({
+          where,
+          // SLT-211: zona, guia y remision, para la accion de Historico › Acciones.
+          select: {
+            id: true,
+            estatusId: true,
+            zonaId: true,
+            numGuia: true,
+            numRemision: true,
+            zona: { select: { nombre: true } },
+          },
+        });
+        const result = await tx.orden.updateMany({
+          where,
+          data: {
+            estatusId: destinoEstatusId,
+            mensajeroAsignadoId: null,
+            asignadoAt: null,
+            fechaReparto: null,
+          },
+        });
+        if (origenRows.length !== ordenIds.length || result.count !== ordenIds.length) {
+          throw new RetiroSateliteConflicto();
+        }
+        await appendCambioEstado(
+          tx,
+          origenRows.map((r) => ({
+            ordenId: r.id,
+            estatusOrigenId: r.estatusId,
+            estatusDestinoId: destinoEstatusId,
+            actorUsuarioId: historial.actorUsuarioId,
+            origenTipo: historial.origenTipo, // ajuste_estado
+          })),
+        );
+
+        // SLT-211: la accion en Historico › Acciones, en esta MISMA transaccion y DESPUES de la
+        // guarda de conflicto (un conflicto no deja fila). Una por satelite del lote, todas con el
+        // mismo `lote_id` (una sola llamada): el lote puede mezclar satelites (D9 de SLT-197).
+        const porZona = new Map<string, { nombre: string | null; envios: typeof origenRows }>();
+        for (const r of origenRows) {
+          if (r.zonaId === null) continue; // una orden en estante de satelite siempre tiene zona
+          const grupo = porZona.get(r.zonaId) ?? { nombre: r.zona?.nombre ?? null, envios: [] };
+          grupo.envios.push(r);
+          porZona.set(r.zonaId, grupo);
+        }
+        const actor = await resolverActorCongelado(tx, historial.actorUsuarioId);
+        await appendAccion(
+          tx,
+          [...porZona].map(([zonaId, grupo]) => ({
+            accion: "ordenes_retiradas_a_central" as const,
+            entidadTipo: "zona" as const,
+            entidadId: zonaId,
+            entidadEtiqueta: etiquetaDeRetiroSatelite(grupo.nombre ?? "", grupo.envios),
+            ...actor,
+          })),
+        );
+      });
+      return "ok";
+    } catch (e) {
+      if (e instanceof RetiroSateliteConflicto) return "conflicto";
+      throw e;
+    }
+  }
+
   // --- Feature 32: etiqueta de guia (READ derivado, R1/R3) ---
 
   /**
@@ -4140,14 +4270,18 @@ export class OrdenRepository implements IOrdenRepository {
    * SLT-49/R10: con `tiendaId` no nulo, la frontera de tienda va EN el `where`: la fila de otra
    * tienda no se lee de la base. `null` -> sin frontera de tienda (decidido por el service).
    */
-  async findEtiquetasByIds(ids: string[], tiendaId: string | null): Promise<EtiquetaRow[]> {
+  async findEtiquetasByIds(
+    ids: string[],
+    tiendaId: string | null,
+    zona: string,
+  ): Promise<EtiquetaRow[]> {
     if (ids.length === 0) return [];
     const rows = await this.prisma.orden.findMany({
       // R3 + SLT-49/R10 (dueño en el `where`, no en un `if` posterior)
       where: { id: { in: ids }, deletedAt: null, ...(tiendaId !== null ? { tiendaId } : {}) },
       ...WITH_ETIQUETA,
     });
-    return rows.map(toEtiquetaRow);
+    return rows.map((r) => toEtiquetaRow(r, zona));
   }
 
   /**
@@ -4158,6 +4292,7 @@ export class OrdenRepository implements IOrdenRepository {
   async findEtiquetaByNumGuia(
     numGuia: number,
     tiendaId: string | null,
+    zona: string,
   ): Promise<EtiquetaRow | null> {
     // `findFirst`: añadir `tiendaId` al `where` no choca con el UNIQUE de `num_guia`.
     const row = await this.prisma.orden.findFirst({
@@ -4165,7 +4300,7 @@ export class OrdenRepository implements IOrdenRepository {
       where: { numGuia, deletedAt: null, ...(tiendaId !== null ? { tiendaId } : {}) },
       ...WITH_ETIQUETA,
     });
-    return row ? toEtiquetaRow(row) : null;
+    return row ? toEtiquetaRow(row, zona) : null;
   }
 
   // --- Feature 148: manifiesto Excel por lote (READ derivado, R4/R6/R7/R12/R29) ---
@@ -4305,7 +4440,7 @@ export class OrdenRepository implements IOrdenRepository {
     const pagina = await this.prisma.$queryRaw<PaginaSateliteIdRow[]>(Prisma.sql`
       SELECT o."id", (COUNT(*) OVER ())::int AS "total"
       ${desde}
-      ${ordenBodegaSatelite()}
+      ${ordenBodegaSatelite(filtro.orden)}
       LIMIT ${rango.take} OFFSET ${rango.skip}
     `);
 
@@ -4351,7 +4486,7 @@ export class OrdenRepository implements IOrdenRepository {
     const conjunto = await this.prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
       SELECT o."id"
       ${desdeSatelite(condicionesSatelite(filtro))}
-      ${ordenBodegaSatelite()}
+      ${ordenBodegaSatelite(filtro.orden)}
     `);
     if (conjunto.length === 0) return [];
 
@@ -4392,6 +4527,23 @@ export class OrdenRepository implements IOrdenRepository {
       ${desdeSatelite(condiciones)}
     `);
     return filas.map((fila) => fila.id);
+  }
+
+  /**
+   * SLT-160 (R606, R608) — ¿la guia es de una orden del listado? El MISMO `condicionesSatelite`
+   * que la pagina, la descarga y la vigencia (con `numGuia` en su AND): una guia de otra zona,
+   * otra empresa o fuera de los filtros no activa la busqueda exacta.
+   */
+  async existeGuiaEnBodega(
+    filtro: RecepcionSateliteFiltro & { numGuia: number },
+  ): Promise<boolean> {
+    if (filtro.estatusValues.length === 0) return false;
+    const filas = await this.prisma.$queryRaw<{ existe: number }[]>(Prisma.sql`
+      SELECT 1 AS "existe"
+      ${desdeSatelite(condicionesSatelite(filtro))}
+      LIMIT 1
+    `);
+    return filas.length > 0;
   }
 
   /**
@@ -5013,8 +5165,10 @@ export class OrdenRepository implements IOrdenRepository {
     ordenes: readonly TraspasoMensajeroItem[];
     actor: { usuarioId: string; rol: RolValue };
     motivo: string;
+    inicioDelDia: Date;
   }): Promise<TraspasoMensajeroAplicado> {
-    const { loteId, mensajeroOrigenId, mensajeroDestinoId, ordenes, actor, motivo } = input;
+    const { loteId, mensajeroOrigenId, mensajeroDestinoId, ordenes, actor, motivo, inicioDelDia } =
+      input;
     if (ordenes.length === 0) {
       return { loteId, movidas: 0, conversaciones: 0 };
     }
@@ -5148,7 +5302,6 @@ export class OrdenRepository implements IOrdenRepository {
       //    R64). Se evalua por separado para origen y destino, con UNA lectura para los dos (R67).
       const ahora = this.now();
       const debounceS = loadRouteOptimizationConfig().RUTA_DEBOUNCE_S;
-      const diaCR = fechaCalendarioCR(ahora);
       //    Review m7: la lectura filtra por la empresa de las ordenes del lote, ya bloqueadas en el
       //    paso 1 (la RLS solo deja ver las de la sesion). Segunda barrera que no depende del
       //    contexto: la ruta de otra empresa con el mismo `mensajero_id` no decide aqui.
@@ -5158,7 +5311,9 @@ export class OrdenRepository implements IOrdenRepository {
            AND "organizacion_id" = (SELECT "organizacion_id" FROM "orden" WHERE "id" = ${ids[0]})`;
       const calculadaPorMensajero = new Map(rutas.map((r) => [r.mensajero_id, r.calculada_at]));
       for (const mensajeroId of [mensajeroOrigenId, mensajeroDestinoId]) {
-        if (primeraRutaPendiente(calculadaPorMensajero.get(mensajeroId) ?? null, diaCR)) continue;
+        if (primeraRutaPendiente(calculadaPorMensajero.get(mensajeroId) ?? null, inicioDelDia)) {
+          continue;
+        }
         await encolarOptimizacionDebounce(this.jobRepo, tx as unknown as JobTxClient, mensajeroId, {
           ahora,
           debounceS,
@@ -5262,7 +5417,7 @@ export class OrdenRepository implements IOrdenRepository {
    * EL MISMO, y con solo el primero la pantalla le dice «espera a la bodega» y le esconde el boton
    * de reenviar el segundo, que `solicitarCierre` SI le permite (R16/R18). Ver `BloqueoDetalle`.
    */
-  async findBloqueoDetalle(mensajeroId: string): Promise<BloqueoDetalle> {
+  async findBloqueoDetalle(mensajeroId: string, zona: string): Promise<BloqueoDetalle> {
     const conteo =
       (await this.contarCierresAbiertosPorMensajero([mensajeroId])).get(mensajeroId) ??
       SIN_CIERRES_ABIERTOS;
@@ -5298,7 +5453,7 @@ export class OrdenRepository implements IOrdenRepository {
               select: SELECT_CIERRE_A_RESOLVER,
             });
 
-    const aResolverPrimero = await this.aCierreAResolver(masViejo);
+    const aResolverPrimero = await this.aCierreAResolver(masViejo, zona);
 
     return {
       bloqueado: estaBloqueadoPorCierres(conteo),
@@ -5312,7 +5467,7 @@ export class OrdenRepository implements IOrdenRepository {
             ? // Mismo cierre: se reusa el objeto YA derivado. Volver a derivarlo abriria la puerta
               // a que los dos campos nombraran jornadas distintas del MISMO cierre.
               aResolverPrimero
-            : await this.aCierreAResolver(reenviable),
+            : await this.aCierreAResolver(reenviable, zona),
     };
   }
 
@@ -5330,14 +5485,14 @@ export class OrdenRepository implements IOrdenRepository {
   /**
    * FICHA 412 (T5.1, R11) — la JORNADA de UN cierre concreto, para fechar el aviso de «tu cierre
    * fue rechazado». UNA sola consulta y el MISMO derivador que la pantalla y los avisos de la 271:
-   * `derivarJornada` (271/R61). Aqui solo se leen las fechas y se convierten a dia de Costa Rica.
+   * `derivarJornada` (271/R61). Aqui solo se leen las fechas y se convierten a dia de la zona del pais de la empresa (SLT-42).
    *
    * `anulada_at IS NULL` no es cosmetica: una gestion deshecha no es jornada trabajada que nombrar.
    * Es el mismo `where` que usa `aCierreAResolver`, de donde sale la fecha de los otros dos avisos.
    *
    * Cierre inexistente -> `null`, y el texto que lo consuma OMITE la fecha (R12). Nunca la inventa.
    */
-  async findJornadaDeCierre(cierreId: string): Promise<string | null> {
+  async findJornadaDeCierre(cierreId: string, zona: string): Promise<string | null> {
     const fila = await this.prisma.cierreDia.findUnique({
       where: { id: cierreId },
       select: {
@@ -5347,8 +5502,8 @@ export class OrdenRepository implements IOrdenRepository {
     });
     if (fila === null) return null;
     return derivarJornada({
-      diasCRDeGestiones: fila.gestiones.map((g) => fechaCalendarioCR(g.createdAt)),
-      diaCRDeCreacion: fechaCalendarioCR(fila.createdAt),
+      diasCRDeGestiones: fila.gestiones.map((g) => fechaCalendario(g.createdAt, zona)),
+      diaCRDeCreacion: fechaCalendario(fila.createdAt, zona),
     });
   }
 
@@ -5357,12 +5512,15 @@ export class OrdenRepository implements IOrdenRepository {
    * pantalla, con su JORNADA derivada. Existe para que `aResolverPrimero` y `aReenviarPrimero`
    * salgan del MISMO codigo: dos derivaciones de la misma jornada es como se desincronizan.
    */
-  private async aCierreAResolver(fila: {
-    id: string;
-    estado: CierreEstado;
-    solicitadoAt: Date;
-    createdAt: Date;
-  }): Promise<CierreAResolver> {
+  private async aCierreAResolver(
+    fila: {
+      id: string;
+      estado: CierreEstado;
+      solicitadoAt: Date;
+      createdAt: Date;
+    },
+    zona: string,
+  ): Promise<CierreAResolver> {
     // R57: las gestiones VINCULADAS y NO anuladas de ESE cierre. `anulada_at IS NULL` no es
     // cosmetica: una gestion deshecha no es jornada trabajada que nombrar.
     const gestiones = await this.prisma.gestionOrden.findMany({
@@ -5374,8 +5532,8 @@ export class OrdenRepository implements IOrdenRepository {
       estado: fila.estado,
       solicitadoAt: fila.solicitadoAt.toISOString(),
       jornadaCR: derivarJornada({
-        diasCRDeGestiones: gestiones.map((g) => fechaCalendarioCR(g.createdAt)),
-        diaCRDeCreacion: fechaCalendarioCR(fila.createdAt),
+        diasCRDeGestiones: gestiones.map((g) => fechaCalendario(g.createdAt, zona)),
+        diaCRDeCreacion: fechaCalendario(fila.createdAt, zona),
       }),
       resuelve: quienResuelve(fila.estado),
     };
@@ -6028,19 +6186,31 @@ export class OrdenRepository implements IOrdenRepository {
    * (R15), su estatus ACTUAL es `rechazada` Y tiene AL MENOS una transicion del cron SLA en su
    * historial (`origen_tipo = escalado_devuelta_sla`, feature 99). Un rechazo MANUAL del mensajero
    * (sin esa transicion) NO entra. Al salir de `rechazada` o al borrarse, deja de casar (R15).
+   *
+   * SLT-194 (D3, R953/R954/R957): `busqueda` opcional, el MISMO criterio de `/ordenes` y de la
+   * satelite (`criterioBusqueda`). Va como clave HERMANA de las cuatro de arriba (AND): el termino
+   * solo estrecha, nunca ensancha el alcance por tienda. Sin termino, `criterioBusqueda` devuelve
+   * `{}` y el `where` es el de antes, clave por clave.
    */
-  private rechazoSlaWhere(tiendaId: string): Prisma.OrdenWhereInput {
+  private rechazoSlaWhere(
+    tiendaId: string,
+    busqueda?: BusquedaRechazosSla,
+  ): Prisma.OrdenWhereInput {
     return {
       tiendaId, // R13: acotada a la tienda del actor
       deletedAt: null, // R15: excluye borradas
       estatus: { value: ESTATUS_RECHAZADA }, // R12/R15: solo mientras REPOSE en `rechazada`
       historialEstados: { some: { origenTipo: ORIGEN_TIPO_RECHAZO_SLA } }, // R12: alcanzada por el cron SLA
+      ...OrdenRepository.criterioBusqueda(busqueda?.busqueda, busqueda?.busquedaDigitos), // SLT-194/R953
     };
   }
 
   /** Feature 102/R12/R13/R15: cuenta los rechazos por SLA de `tiendaId` (mismo `where` que find). */
-  async countRechazadasSlaByTienda(tiendaId: string): Promise<number> {
-    return this.prisma.orden.count({ where: this.rechazoSlaWhere(tiendaId) });
+  async countRechazadasSlaByTienda(
+    tiendaId: string,
+    busqueda?: BusquedaRechazosSla,
+  ): Promise<number> {
+    return this.prisma.orden.count({ where: this.rechazoSlaWhere(tiendaId, busqueda) });
   }
 
   /**
@@ -6053,9 +6223,10 @@ export class OrdenRepository implements IOrdenRepository {
   async findRechazadasSlaByTienda(
     tiendaId: string,
     pagination: { skip: number; take: number },
+    busqueda?: BusquedaRechazosSla,
   ): Promise<RechazoSlaTiendaRow[]> {
     const rows = await this.prisma.orden.findMany({
-      where: this.rechazoSlaWhere(tiendaId),
+      where: this.rechazoSlaWhere(tiendaId, busqueda), // SLT-194/R953: el mismo filtro que el total
       orderBy: { createdAt: "desc" },
       skip: pagination.skip,
       take: pagination.take,

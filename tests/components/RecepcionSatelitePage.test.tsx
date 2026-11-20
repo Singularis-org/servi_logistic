@@ -34,6 +34,11 @@ import { CAMPOS_BASE_ORDEN } from "@/tests/fixtures/fila-bodega-satelite";
 // Ningún caso de acceso por rol se pierde: los cuatro que tenía la pantalla única se
 // ejecutan AHORA CONTRA LAS DOS páginas, con la misma tabla de roles.
 // SL-23 (design §10): las puertas de módulo, todas encendidas; esta prueba no es sobre ellas.
+// SLT-42 (T5.7): la página lee la zona del país de la empresa de la sesión; aquí, la de Costa Rica.
+vi.mock("@/lib/actions/_shared/zona-del-borde", async () => {
+  const { ZONA_DE_CR } = await import("@/tests/fabricas/reglas-pais");
+  return { zonaDelBorde: async () => ZONA_DE_CR };
+});
 vi.mock("@/lib/modulos/exigir-modulo", async () =>
   (await import("@/tests/fabricas/modulos")).puertasAbiertas());
 

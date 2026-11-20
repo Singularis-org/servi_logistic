@@ -102,6 +102,7 @@ const RUTA_VIGENTE: RutaResumenDTO = {
 function renderModule(porGestionar: MiAsignacionDTO[]) {
   render(
     <RepartoModule
+      kpis={null}
       porGestionar={porGestionar}
       conAyuda={[]}
       porRecoger={[]}

@@ -58,6 +58,7 @@ describe("R14 · y NO es recurrente", () => {
     // Los dos que SI lo son siguen estandolo.
     expect([...recurrencias.keys()].sort()).toEqual([
       "analitica_rollup_diario",
+      "factura_plataforma_cerrar", // SLT-118 (design §4.2): el cierre horario (HH:10) de las facturas de la plataforma
       "liberar_reprogramadas",
       "plan_cambios_vencidos", // SL-24 (design §16.3): barrido horario de cambios de plan vencidos
       "whatsapp_envio_mantenimiento", // ficha 474: mantenimiento diario 03:30 CR

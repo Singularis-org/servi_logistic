@@ -21,7 +21,7 @@ import {
 /**
  * E2E — Tope de intentos de entrega (features 47, 215 y 276; SL-44 T5.4, R18).
  *
- * El umbral legal es 3 intentos (`REINTENTOS_MIN_INTENTOS`, por defecto 3). Desde la feature 276 la
+ * Toda empresa nace con un tope de 3 intentos (SLT-77), el que usa este flujo. Desde la feature 276 la
  * gestión que ALCANZA el tope ya no puede devolver la orden a circulación: con dos intentos
  * vigentes, el panel del mensajero explica la condición (nota) y deja de ofrecer «Reprogramar» y
  * «Devolver»; quedan «Entregar» y «Rechazar». Así una orden no da una cuarta vuelta: el tercer
@@ -67,12 +67,14 @@ test.describe.serial("Tope de intentos — el tercer intento no vuelve a circula
   test("con dos intentos, el panel solo ofrece entregar o rechazar; el mensajero rechaza", async ({ browser }) => {
     const page = await paginaDe(browser, mensajero, CONTEXTO_MENSAJERO);
     await page.goto("/mis-asignaciones/reparto");
+    // SLT-156 (R504, R510): la gestión se abre en modo foco desde la tarjeta, tras «¿Gestionar esta orden?».
+    await page.getByRole("button", { name: `Gestionar la orden ${orden.numRemision}` }).click();
+    await page.getByRole("dialog", { name: "¿Gestionar esta orden?" }).getByRole("button", { name: "Aceptar" }).click();
     const panel = page.getByRole("region", { name: "Detalle de la orden" });
     await expect(panel.getByText(`Guía ${orden.numGuia}`).first()).toBeVisible();
-    await panel.getByRole("button", { name: "Gestionar esta orden" }).click();
     const gate = panel.getByRole("region", { name: "Verificar la guía del paquete antes de gestionar" });
     await gate.getByLabel("Número de guía").fill(String(orden.numGuia));
-    await gate.getByRole("button", { name: "Gestionar", exact: true }).click();
+    await gate.getByRole("button", { name: "Confirmar guía", exact: true }).click();
     await expect(panel.getByText("¿Cómo terminó la gestión?")).toBeVisible();
 
     await expect(panel.getByRole("note").first()).toBeVisible();

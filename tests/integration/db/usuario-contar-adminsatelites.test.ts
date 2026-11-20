@@ -60,11 +60,13 @@ describeSiHayBase("379/T5 · `contarAdminSatelitesActivos` corta en el WHERE (Po
     marca: string,
     datos: { rolId: string; zonaId: string | null; estado: "activo" | "inactivo" },
   ): Promise<string> {
-    const plantilla = await tx.usuario.findFirst({ select: { tipoIdentificacionId: true } });
-    if (!plantilla) {
+    // SLT-183: el tipo de identificacion se lee del CATALOGO por su clave; antes se copiaba del
+    // «primer usuario» de la base, y la recien migrada no tiene ninguno.
+    const tipo = await tx.tipoIdentificacion.findUnique({ where: { value: "cedula" }, select: { id: true } });
+    if (!tipo) {
       throw new Error(
-        "hay DATABASE_URL pero la tabla `usuario` esta vacia: sin el catalogo de tipos de " +
-          "identificacion no se puede sembrar. Corre `pnpm run db:seed` antes de esta suite.",
+        "hay DATABASE_URL pero falta el tipo de identificacion «cedula» en el catalogo: aplica las " +
+          "migraciones (`pnpm exec prisma migrate deploy`) antes de esta suite.",
       );
     }
     const fila = await tx.usuario.create({
@@ -76,12 +78,16 @@ describeSiHayBase("379/T5 · `contarAdminSatelitesActivos` corta en el WHERE (Po
         passwordHash: "x",
         cedula: `${SUFIJO}-${marca}`,
         estado: datos.estado,
-        tipoIdentificacionId: plantilla.tipoIdentificacionId,
+        tipoIdentificacionId: tipo.id,
         rolId: datos.rolId,
         zonaId: datos.zonaId,
       },
       select: { id: true },
     });
+    // Control positivo (R1104): la siembra llego a la base.
+    if ((await tx.usuario.count({ where: { id: fila.id } })) !== 1) {
+      throw new Error(`SLT-183: el usuario sembrado «${marca}» no esta en la base`);
+    }
     return fila.id;
   }
 

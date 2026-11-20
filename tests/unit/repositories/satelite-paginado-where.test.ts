@@ -493,4 +493,58 @@ describe("SQL de la página de la bodega satélite (T K.1)", () => {
     expect(findMany).not.toHaveBeenCalled();
   });
 
+  // SLT-210 (R1403) — el TERCER termino lo elige la persona; el grupo y la prioridad siguen
+  // delante y el `id` cierra. La columna y la direccion son fragmentos fijos: ni un valor nuevo
+  // viaja como parametro, asi que el texto del cliente no puede llegar al SQL.
+  it("SLT-210 (R1403): el orden pedido cambia SOLO el término de recencia, con columna y dirección fijas", async () => {
+    const casos = [
+      [{ sortBy: "created_at", sortDir: "desc" }, 'o."created_at" DESC'],
+      [{ sortBy: "created_at", sortDir: "asc" }, 'o."created_at" ASC'],
+      [{ sortBy: "num_remision", sortDir: "desc" }, 'o."clave_remision" DESC'],
+      [{ sortBy: "num_remision", sortDir: "asc" }, 'o."clave_remision" ASC'],
+    ] as const;
+    const base = clienteFalso(["o-1"], 1);
+    await base.repo.findRecepcionSatelitePaginada(
+      { zonaId: "z-a", estatusValues: [...ESTADOS_BODEGA_SATELITE] },
+      RANGO,
+    );
+    const valoresSinOrden = base.consultas[0]!.values;
+
+    for (const [orden, termino] of casos) {
+      const { repo, consultas } = clienteFalso(["o-1"], 1);
+      await repo.findRecepcionSatelitePaginada(
+        { zonaId: "z-a", estatusValues: [...ESTADOS_BODEGA_SATELITE], orden },
+        RANGO,
+      );
+      const sql = texto(consultas[0]!);
+      expect(sql, termino).toContain(
+        `os."value") ASC, o."prioridad" DESC, ${termino}, o."id" ASC LIMIT ? OFFSET ?`,
+      );
+      // Nunca la remision CRUDA (ficha 423): `NA-107` caeria despues de `NA-1069`.
+      expect(sql, termino).not.toContain('o."num_remision"');
+      // Mismos parametros que sin orden: ni el campo ni la direccion viajan como valor.
+      expect(consultas[0]!.values, termino).toEqual(valoresSinOrden);
+    }
+  });
+
+  it("SLT-210 (R1406): la descarga lleva el MISMO ORDER BY que la página", async () => {
+    const orden = { sortBy: "num_remision", sortDir: "asc" } as const;
+    const pagina = clienteFalso(["o-1"], 1);
+    await pagina.repo.findRecepcionSatelitePaginada(
+      { zonaId: "z-a", estatusValues: [...ESTADOS_BODEGA_SATELITE], orden },
+      RANGO,
+    );
+    const conjunto = clienteFalso(["o-1"], 1);
+    await conjunto.repo.findRecepcionSateliteCompleta({
+      zonaId: "z-a",
+      estatusValues: [...ESTADOS_BODEGA_SATELITE],
+      orden,
+    });
+    const ordenDe = (sql: Prisma.Sql) => {
+      const t = texto(sql);
+      return t.slice(t.indexOf("ORDER BY")).replace(/ LIMIT \? OFFSET \?$/, "");
+    };
+    expect(ordenDe(conjunto.consultas[0]!)).toBe(ordenDe(pagina.consultas[0]!));
+    expect(ordenDe(conjunto.consultas[0]!)).toContain('o."clave_remision" ASC');
+  });
 });

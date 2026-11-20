@@ -13,14 +13,21 @@ import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { paraCadaEmpresa, type ClienteDeOrganizaciones } from "@/lib/db/para-cada-empresa";
 import { loadCronConfig } from "@/lib/config/cron";
-import { startOfDayCR } from "@/lib/utils/fecha-cr";
+import { inicioDelDiaComoFecha } from "@/lib/utils/calendario-zona";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 
 export interface LiberarReprogramadasDeps {
   // Secreto esperado (inyectable en tests). Por defecto, `CRON_SECRET` del entorno.
   getSecret?: () => string | null;
   service?: ILiberacionReprogramadaService;
-  // Reloj inyectable (tests): por defecto `new Date()`. Se pasa por `startOfDayCR` (R9).
+  // Reloj inyectable (tests): por defecto `new Date()`. Se pasa por `inicioDelDiaComoFecha` con la
+  // zona del pais de cada empresa (R9; SLT-42 R24).
   now?: () => Date;
+  // SLT-42 (R24, R28): las reglas del pais de la empresa en curso (un doble en tests). Por defecto,
+  // las reales. Sin zona en el pais, falla esa empresa y las demas corren.
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
   // SL-17 (R16): fuente de las empresas que se recorren (un doble en tests). Con `service`
   // inyectado y sin `empresas`, una sola corrida sin recorrer empresas: el contrato de los tests
   // de controller anteriores a SL-17.
@@ -85,10 +92,13 @@ export async function handleLiberarReprogramadas(
 
   const result = await withErrorHandler(async () => {
     const service = deps.service ?? buildService();
-    // R9: "hoy" en zona America/Costa_Rica (UTC-6) para comparar fecha_reprogramacion.
-    const hoyCR = startOfDayCR((deps.now ?? (() => new Date()))());
+    const reglasPais = deps.reglasPais ?? construirReglasPaisEmpresa(getPrismaClient());
+    const ahora = (deps.now ?? (() => new Date()))();
     const corrida = async (): Promise<ResumenLiberacion> => {
-      const resumen = await service.ejecutarLiberacion(hoyCR);
+      // R9 + SLT-42 (R24, R28): "hoy" en la zona del pais de ESTA empresa, para comparar
+      // fecha_reprogramacion. Sin zona, `PaisSinZonaHoraria` antes de leer o escribir nada.
+      const zona = await zonaDeLaEmpresa(reglasPais, "liberar-reprogramadas");
+      const resumen = await service.ejecutarLiberacion(inicioDelDiaComoFecha(ahora, zona));
       // R7/R19: resumen SIN PII (solo conteos).
       return {
         evaluadas: resumen.evaluadas,

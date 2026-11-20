@@ -6,6 +6,7 @@ import {
 } from "@/lib/analytics/entregas-conteo";
 import { CohorteCargaRepository } from "@/lib/repositories/CohorteCargaRepository";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Ficha 411 / T5.3 — UNA sola consulta por lectura (R38).
 //
 // EL MODO DE FALLO QUE ESTO CIERRA: una consulta POR DIA del rango. Es la forma natural de
@@ -20,7 +21,7 @@ import { CohorteCargaRepository } from "@/lib/repositories/CohorteCargaRepositor
 const AHORA = new Date("2026-08-17T12:00:00.000Z");
 
 function consultaDe(raw: object): ConsultaConteoEntregas {
-  const preparada = prepararConteoEntregas(raw, { usuarioId: "u1", rol: "maestro" } as never, AHORA);
+  const preparada = prepararConteoEntregas(raw, { usuarioId: "u1", rol: "maestro" } as never, ZONA_DE_CR, AHORA);
   if (preparada.status !== "ok") throw new Error(`filtro de prueba invalido: ${preparada.status}`);
   return preparada.consulta;
 }

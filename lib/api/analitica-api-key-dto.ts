@@ -88,8 +88,8 @@
 // MARCADO `parcial` (2026-09-04), que es la verdad completa: «este es el numero de hoy, y hoy
 // todavia no esta cerrado». Antes ese mismo caso respondia `data: []`, que era media verdad.
 //
-// El `rango` se publica como `desdeFecha`/`hastaFecha` (`YYYY-MM-DD` calendario de Costa Rica,
-// `hasta` INCLUSIVO), nunca como los `Date` de `RangoResuelto`: asi el eco del rango habla el
+// El `rango` se publica como `desdeFecha`/`hastaFecha` (`YYYY-MM-DD` calendario de la zona del
+// pais de la empresa de la key, SLT-42; `hasta` INCLUSIVO), nunca como los `Date` de `RangoResuelto`: asi el eco del rango habla el
 // MISMO idioma que la entrada del endpoint, que es el que publico la 257 en el listado por API
 // key (decision P3). Dos convenciones de fecha en el mismo canal son una trampa.
 //

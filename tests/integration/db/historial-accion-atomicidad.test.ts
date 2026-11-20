@@ -9,15 +9,17 @@ import { UserRepository } from "@/lib/repositories/UserRepository";
 // que dispara el registro), asi que hace falta el servicio real y su repo de zonas.
 import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
 import { UsuarioService } from "@/lib/services/UsuarioService";
+import { CR, reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 import type { Actor } from "@/lib/interfaces/services/IUsuarioService";
 import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
+  type FksDeOrden,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FICHA 362 / T8.1 (R9/R10/R11/R12) — **NO PUEDE HABER UNA SIN LA OTRA**, MEDIDO CONTRA POSTGRES.
@@ -94,22 +96,31 @@ function clienteConSavepoint(tx: TxDeTest, romperRegistro = false): PrismaClient
 
 describeSiHayBase("362/T8.1 — la accion y su registro son atomicos (Postgres real)", () => {
   let prisma: PrismaClient;
-  let FKS: Awaited<ReturnType<typeof fksDeOrden>>;
+  // SLT-180 (R1042): tienda y zona se SIEMBRAN en la tx de cada caso (`sembrarFks`); ya no se lee
+  // «la primera orden» de la base, ni «el primer usuario» como actor o plantilla.
+  let FKS: FksDeOrden | null = null;
   let ESTATUS_ID: string;
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    FKS = await fksDeOrden(prisma);
-    if (FKS === null) {
-      // ⚠️ LANZA, no `return`. Un `if (!fks) return;` reporta `passed` sin comprobar NADA, y este
-      // repo ya se comio esa mentira una vez.
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar. Corre " +
-          "`pnpm run db:seed` (y `pnpm exec tsx scripts/seed-zonas.ts`) antes de esta suite.",
-      );
-    }
-    ESTATUS_ID = FKS.estatusId;
   });
+
+  /**
+   * SLT-180 (R1044): siembra propia del caso + control positivo que nombra la fila. LANZA, no
+   * `return`: un `if (!fks) return;` reporta `passed` sin comprobar NADA.
+   */
+  async function sembrarFks(tx: TxDeTest): Promise<void> {
+    FKS = await crearFksDeOrden(tx);
+    ESTATUS_ID = FKS.estatusId;
+    expect(
+      await tx.usuario.count({ where: { id: FKS.tiendaId } }),
+      "SLT-180: la tienda sembrada no esta en la base",
+    ).toBe(1);
+    expect(
+      await tx.zona.count({ where: { id: FKS.zonaId } }),
+      "SLT-180: la zona sembrada no esta en la base",
+    ).toBe(1);
+  }
 
   afterAll(async () => {
     await prisma.$disconnect();
@@ -163,6 +174,7 @@ describeSiHayBase("362/T8.1 — la accion y su registro son atomicos (Postgres r
       // El test que mas importa de la ficha, en su primera direccion.
       const r = await enTransaccionRevertida(prisma, async (tx) => {
         await serializarEscriturasReales(tx);
+        await sembrarFks(tx);
         const [ordenId] = await sembrarOrdenes(tx, 1, "r10");
         const repo = new OrdenRepository(clienteConSavepoint(tx, true));
 
@@ -193,6 +205,7 @@ describeSiHayBase("362/T8.1 — la accion y su registro son atomicos (Postgres r
       // alcanza ninguna fila, el `RETURNING` vuelve vacio y `appendAccion` es no-op.
       const r = await enTransaccionRevertida(prisma, async (tx) => {
         await serializarEscriturasReales(tx);
+        await sembrarFks(tx);
         const [ordenId] = await sembrarOrdenes(tx, 1, "r11");
         await tx.orden.update({ where: { id: ordenId }, data: { deletedAt: new Date() } });
 
@@ -215,6 +228,7 @@ describeSiHayBase("362/T8.1 — la accion y su registro son atomicos (Postgres r
       // una de ellas seria la auditoria de un borrado que no ocurrio.
       const r = await enTransaccionRevertida(prisma, async (tx) => {
         await serializarEscriturasReales(tx);
+        await sembrarFks(tx);
         const ids = await sembrarOrdenes(tx, 3, "r12");
         await tx.orden.update({ where: { id: ids[1] }, data: { deletedAt: new Date() } });
 
@@ -241,6 +255,7 @@ describeSiHayBase("362/T8.1 — la accion y su registro son atomicos (Postgres r
       // La diferencia entre «se borraron 79 de una vez» y «hubo 79 borrados».
       const r = await enTransaccionRevertida(prisma, async (tx) => {
         await serializarEscriturasReales(tx);
+        await sembrarFks(tx);
         const lote1 = await sembrarOrdenes(tx, 3, "lote1");
         const lote2 = await sembrarOrdenes(tx, 2, "lote2");
         const repo = new OrdenRepository(clienteConSavepoint(tx));
@@ -262,8 +277,11 @@ describeSiHayBase("362/T8.1 — la accion y su registro son atomicos (Postgres r
     it("R3/R4: la fila congela la GUIA de la orden y el nombre y rol del actor", async () => {
       const r = await enTransaccionRevertida(prisma, async (tx) => {
         await serializarEscriturasReales(tx);
+        await sembrarFks(tx);
         const [ordenId] = await sembrarOrdenes(tx, 1, "congelado");
+        // SLT-180: el actor es la tienda SEMBRADA en este caso, no «el primer usuario» de la base.
         const actor = await tx.usuario.findFirstOrThrow({
+          where: { id: FKS!.tiendaId },
           select: { id: true, nombre: true, primerApellido: true, rol: { select: { value: true } } },
         });
         const repo = new OrdenRepository(clienteConSavepoint(tx));
@@ -284,6 +302,7 @@ describeSiHayBase("362/T8.1 — la accion y su registro son atomicos (Postgres r
     it("R4: `orden_recuperada` es el reverso, y deja SU propia fila", async () => {
       const r = await enTransaccionRevertida(prisma, async (tx) => {
         await serializarEscriturasReales(tx);
+        await sembrarFks(tx);
         const [ordenId] = await sembrarOrdenes(tx, 1, "recup");
         const repo = new OrdenRepository(clienteConSavepoint(tx));
         await repo.softDelete({ ids: [ordenId], ownerId: null, actorUsuarioId: FKS!.tiendaId });
@@ -299,6 +318,7 @@ describeSiHayBase("362/T8.1 — la accion y su registro son atomicos (Postgres r
     it("R11: recuperar una orden que NUNCA se borro no deja fila", async () => {
       const r = await enTransaccionRevertida(prisma, async (tx) => {
         await serializarEscriturasReales(tx);
+        await sembrarFks(tx);
         const [ordenId] = await sembrarOrdenes(tx, 1, "recup-noop");
         const repo = new OrdenRepository(clienteConSavepoint(tx));
         const recuperadas = await repo.restore([ordenId], FKS!.tiendaId);
@@ -340,6 +360,7 @@ describeSiHayBase("362/T8.1 — la accion y su registro son atomicos (Postgres r
     it("⭑ R10: si el REGISTRO falla, la tarifa NO queda creada", async () => {
       const r = await enTransaccionRevertida(prisma, async (tx) => {
         await serializarEscriturasReales(tx);
+        await sembrarFks(tx);
         const antes = await tx.tarifa.count();
         const repo = new TarifaRepository(clienteConSavepoint(tx, true));
 
@@ -378,6 +399,7 @@ describeSiHayBase("362/T8.1 — la accion y su registro son atomicos (Postgres r
       // tarifa se trataba. Si la etiqueta se resolviera por join al leer, esta fila diria nada.
       const r = await enTransaccionRevertida(prisma, async (tx) => {
         await serializarEscriturasReales(tx);
+        await sembrarFks(tx);
         const zona = await tx.zona.findUniqueOrThrow({
           where: { id: FKS!.zonaId },
           select: { nombre: true },
@@ -406,6 +428,7 @@ describeSiHayBase("362/T8.1 — la accion y su registro son atomicos (Postgres r
     it("R1: crear y borrar dejan DOS filas, una por hecho", async () => {
       const r = await enTransaccionRevertida(prisma, async (tx) => {
         await serializarEscriturasReales(tx);
+        await sembrarFks(tx);
         const tarifa = await crearTarifa(tx, FKS!.tiendaId);
         await new TarifaRepository(clienteConSavepoint(tx)).hardDelete(tarifa.id, FKS!.tiendaId);
         return registroDe(tx, [tarifa.id]);
@@ -419,6 +442,7 @@ describeSiHayBase("362/T8.1 — la accion y su registro son atomicos (Postgres r
       // con un test en vez de con un comentario.
       const r = await enTransaccionRevertida(prisma, async (tx) => {
         await serializarEscriturasReales(tx);
+        await sembrarFks(tx);
         const tarifa = await crearTarifa(tx, FKS!.tiendaId);
         await new TarifaRepository(clienteConSavepoint(tx)).update(
           tarifa.id,
@@ -446,7 +470,7 @@ describeSiHayBase("362/T8.1 — la accion y su registro son atomicos (Postgres r
   // ═══════════════════════════════════════════════════════════════════════════════════════════
 
   describe("familia 3/3 · cambia quien puede hacer que (`usuario_estado_cambiado`)", () => {
-    /** Un usuario desechable, clonado de los catalogos que ya existen. */
+    /** Un usuario desechable, clonado de la tienda sembrada en el caso (SLT-180). */
     async function sembrarUsuario(
       tx: TxDeTest,
       marca: string,
@@ -456,6 +480,7 @@ describeSiHayBase("362/T8.1 — la accion y su registro son atomicos (Postgres r
       overrides: { rolId?: string; zonaId?: string | null } = {},
     ): Promise<string> {
       const plantilla = await tx.usuario.findFirstOrThrow({
+        where: { id: FKS!.tiendaId },
         select: { tipoIdentificacionId: true, rolId: true },
       });
       const fila = await tx.usuario.create({
@@ -479,6 +504,7 @@ describeSiHayBase("362/T8.1 — la accion y su registro son atomicos (Postgres r
     it("⭑ R10: si el REGISTRO falla, el estado del usuario NO cambia", async () => {
       const r = await enTransaccionRevertida(prisma, async (tx) => {
         await serializarEscriturasReales(tx);
+        await sembrarFks(tx);
         const usuarioId = await sembrarUsuario(tx, "r10u");
         const repo = new UserRepository(clienteConSavepoint(tx, true));
 
@@ -506,6 +532,7 @@ describeSiHayBase("362/T8.1 — la accion y su registro son atomicos (Postgres r
       // activo a activo» es ruido que ahoga el modulo.
       const r = await enTransaccionRevertida(prisma, async (tx) => {
         await serializarEscriturasReales(tx);
+        await sembrarFks(tx);
         const usuarioId = await sembrarUsuario(tx, "r11u");
         const repo = new UserRepository(clienteConSavepoint(tx));
         await repo.setEstado(usuarioId, "activo", FKS!.tiendaId);
@@ -517,6 +544,7 @@ describeSiHayBase("362/T8.1 — la accion y su registro son atomicos (Postgres r
     it("R11: un usuario INEXISTENTE no deja fila y devuelve `null`", async () => {
       const r = await enTransaccionRevertida(prisma, async (tx) => {
         await serializarEscriturasReales(tx);
+        await sembrarFks(tx);
         const inventado = randomUUID();
         const repo = new UserRepository(clienteConSavepoint(tx));
         const salida = await repo.setEstado(inventado, "inactivo", FKS!.tiendaId);
@@ -531,6 +559,7 @@ describeSiHayBase("362/T8.1 — la accion y su registro son atomicos (Postgres r
       // registro no funciona en absoluto.
       const r = await enTransaccionRevertida(prisma, async (tx) => {
         await serializarEscriturasReales(tx);
+        await sembrarFks(tx);
         const usuarioId = await sembrarUsuario(tx, "ok-u");
         const repo = new UserRepository(clienteConSavepoint(tx));
         await repo.setEstado(usuarioId, "inactivo", FKS!.tiendaId);
@@ -551,6 +580,7 @@ describeSiHayBase("362/T8.1 — la accion y su registro son atomicos (Postgres r
       // Un acto de dos efectos, no dos actos. Es lo que el `lote_id` existe para poder decir.
       const r = await enTransaccionRevertida(prisma, async (tx) => {
         await serializarEscriturasReales(tx);
+        await sembrarFks(tx);
         const usuarioId = await sembrarUsuario(tx, "lote-u");
         const otroRol = await tx.rol.findFirstOrThrow({
           where: { value: { in: ["mensajero", "adminSatelite"] } },
@@ -571,25 +601,26 @@ describeSiHayBase("362/T8.1 — la accion y su registro son atomicos (Postgres r
       expect(r[0].valorNuevo).toMatch(/^(mensajero|adminSatelite)$/);
     });
 
-    it("⭑ Q2: cambiar el `fulfillment` de una tienda SI registra, y va como DINERO", async () => {
+    it("⭑ SLT-94 R8 (hereda Q2): cambiar «se recoge en tienda» de una tienda SI registra, y va como DINERO", async () => {
       // ⚠️ ESTE CASO EXISTE PORQUE LA GUARDIA DE CENSO NO BASTA, Y ESTA MEDIDO: con un
-      // `if (false && …)` delante de la rama del `fulfillment`, la guardia de T7.1 SIGUE VERDE —
+      // `if (false && …)` delante de la rama de la marca, la guardia de T7.1 SIGUE VERDE —
       // el literal del tipo sigue en el cuerpo del metodo—. Lo unico que caza esa mutacion es
       // ejercer el camino contra Postgres y contar la fila.
       //
-      // Q2 la cerro el humano el 2026-09-02: cambiar `fulfillment` a una tienda activa un cobro
-      // periodico de bodega, o sea MUEVE DINERO.
+      // Q2 la cerro el humano el 2026-09-02 sobre el `fulfillment`; SLT-94 lo sustituye por la marca
+      // «se recoge en tienda» (decide donde nace la orden), que hereda la categoria «mueve dinero».
       const r = await enTransaccionRevertida(prisma, async (tx) => {
         await serializarEscriturasReales(tx);
+        await sembrarFks(tx);
         const usuarioId = await sembrarUsuario(tx, "fulf-u");
         const repo = new UserRepository(clienteConSavepoint(tx));
-        await repo.update(usuarioId, { fulfillment: true }, FKS!.tiendaId);
+        await repo.update(usuarioId, { seRecogeEnTienda: false }, FKS!.tiendaId);
         const fila = await tx.usuario.findUniqueOrThrow({
           where: { id: usuarioId },
-          select: { fulfillment: true },
+          select: { seRecogeEnTienda: true },
         });
         return {
-          fulfillment: fila.fulfillment,
+          seRecogeEnTienda: fila.seRecogeEnTienda,
           registro: await tx.historialAccion.findMany({
             where: { entidadId: usuarioId },
             select: { accion: true, valorAnterior: true, valorNuevo: true },
@@ -598,20 +629,21 @@ describeSiHayBase("362/T8.1 — la accion y su registro son atomicos (Postgres r
       });
 
       // Control positivo: la mutacion ocurrio de verdad …
-      expect(r.fulfillment).toBe(true);
-      // … y dejo EXACTAMENTE una fila, con su vocabulario cerrado.
+      expect(r.seRecogeEnTienda).toBe(false);
+      // … y dejo EXACTAMENTE una fila, con su vocabulario cerrado y los dos valores (R8).
       expect(r.registro).toHaveLength(1);
-      expect(r.registro[0].accion).toBe("usuario_fulfillment_cambiado");
-      expect(r.registro[0].valorAnterior).toBe("false");
-      expect(r.registro[0].valorNuevo).toBe("true");
+      expect(r.registro[0].accion).toBe("usuario_se_recoge_en_tienda_cambiado");
+      expect(r.registro[0].valorAnterior).toBe("true");
+      expect(r.registro[0].valorNuevo).toBe("false");
     });
 
-    it("Q2: re-enviar el MISMO `fulfillment` no deja fila", async () => {
+    it("SLT-94 R8: re-enviar la MISMA marca no deja fila", async () => {
       const r = await enTransaccionRevertida(prisma, async (tx) => {
         await serializarEscriturasReales(tx);
+        await sembrarFks(tx);
         const usuarioId = await sembrarUsuario(tx, "fulf-noop");
         const repo = new UserRepository(clienteConSavepoint(tx));
-        await repo.update(usuarioId, { fulfillment: false }, FKS!.tiendaId);
+        await repo.update(usuarioId, { seRecogeEnTienda: true }, FKS!.tiendaId);
         return registroDe(tx, [usuarioId]);
       });
       expect(r).toEqual([]);
@@ -622,6 +654,7 @@ describeSiHayBase("362/T8.1 — la accion y su registro son atomicos (Postgres r
       // puede hacer —ni mueve dinero— no entra en el registro.
       const r = await enTransaccionRevertida(prisma, async (tx) => {
         await serializarEscriturasReales(tx);
+        await sembrarFks(tx);
         const usuarioId = await sembrarUsuario(tx, "tel-u");
         const repo = new UserRepository(clienteConSavepoint(tx));
         await repo.update(usuarioId, { telefono: "88887777" }, FKS!.tiendaId);
@@ -658,7 +691,15 @@ describeSiHayBase("362/T8.1 — la accion y su registro son atomicos (Postgres r
       /** El servicio real cableado sobre la tx del test (con savepoint para el `$transaction`). */
       function servicioDeTest(tx: TxDeTest): UsuarioService {
         const cliente = clienteConSavepoint(tx);
-        return new UsuarioService(new UserRepository(cliente), new ZonaRepository(cliente));
+        // SLT-42: CR fijo; lo que se mide aqui es el rastro, no las reglas del pais.
+        return new UsuarioService(
+          new UserRepository(cliente),
+          new ZonaRepository(cliente),
+          undefined,
+          undefined,
+          undefined,
+          reglasPaisFijas(CR),
+        );
       }
 
       async function rolPorValor(tx: TxDeTest, value: RolValue): Promise<string> {
@@ -669,6 +710,7 @@ describeSiHayBase("362/T8.1 — la accion y su registro son atomicos (Postgres r
       it("⭑ R5: cambiar el rol de un adminSatelite CON zona, SIN enviar zonaId, registra la zona anterior en el MISMO lote", async () => {
         const r = await enTransaccionRevertida(prisma, async (tx) => {
           await serializarEscriturasReales(tx);
+          await sembrarFks(tx);
           const [rolSat, rolAdmin] = await Promise.all([
             rolPorValor(tx, "adminSatelite"),
             rolPorValor(tx, "admin"),
@@ -728,6 +770,7 @@ describeSiHayBase("362/T8.1 — la accion y su registro son atomicos (Postgres r
       it("R6: editar solo el telefono de un usuario CON zona no escribe ninguna fila de zona", async () => {
         const r = await enTransaccionRevertida(prisma, async (tx) => {
           await serializarEscriturasReales(tx);
+          await sembrarFks(tx);
           const rolSat = await rolPorValor(tx, "adminSatelite");
           const usuarioId = await sembrarUsuario(tx, "379-r6", {
             rolId: rolSat,
@@ -767,6 +810,7 @@ describeSiHayBase("362/T8.1 — la accion y su registro son atomicos (Postgres r
         // la unica fila que corresponde: la del rol.
         const r = await enTransaccionRevertida(prisma, async (tx) => {
           await serializarEscriturasReales(tx);
+          await sembrarFks(tx);
           const [rolAdmin, rolTienda] = await Promise.all([
             rolPorValor(tx, "admin"),
             rolPorValor(tx, "adminTienda"),

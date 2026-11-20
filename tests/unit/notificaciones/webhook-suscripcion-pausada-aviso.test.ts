@@ -11,6 +11,7 @@ import {
 } from "@/lib/notificaciones/emitir";
 import { notificarWebhookSuscripcionPausadaCon } from "@/lib/notificaciones/notificadores";
 
+import { ZONA_DE_CR, reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // FICHA 403 (T10/T11) — EL AVISO de «un webhook lleva fallando y sus reintentos se espaciaron»,
 // contra un repositorio doble.
 //
@@ -95,7 +96,7 @@ describe("403/R9 — una fila `warning` al rol `maestro`, con la RACHA como enti
     const creadas = await emitirWebhookSuscripcionPausada(repo, {
       ownerUsuarioId: OWNER,
       sinExitoDesde: RACHA,
-    });
+    }, ZONA_DE_CR);
 
     expect(creadas).toBe(1);
     expect(repo.creadas).toEqual([
@@ -121,7 +122,7 @@ describe("403/R9 — una fila `warning` al rol `maestro`, con la RACHA como enti
     // `lib/actions/webhooks.ts` autoriza a `maestro` y a nadie mas. El `admin` veria un aviso
     // sobre el que no puede actuar, que es ruido — mismo criterio que excluyo al admin en la 333.
     const repo = new RepoDoble();
-    await emitirWebhookSuscripcionPausada(repo, { ownerUsuarioId: OWNER, sinExitoDesde: RACHA });
+    await emitirWebhookSuscripcionPausada(repo, { ownerUsuarioId: OWNER, sinExitoDesde: RACHA }, ZONA_DE_CR);
     expect(repo.creadas.map((c) => c.destinatario)).toEqual([{ tipo: "rol", rol: "maestro" }]);
   });
 
@@ -130,7 +131,7 @@ describe("403/R9 — una fila `warning` al rol `maestro`, con la RACHA como enti
     // texto que dijera «se desactivo» mandaria al maestro a reactivar a mano algo que no esta
     // apagado — exactamente el mecanismo que el humano descarto para esta ficha.
     for (const fecha of [RACHA, new Date("2026-01-31T05:00:00.000Z")]) {
-      const texto = textoWebhookSuscripcionPausada(fecha);
+      const texto = textoWebhookSuscripcionPausada(fecha, ZONA_DE_CR);
       expect(texto).not.toMatch(/desactiv/i);
       expect(texto).not.toMatch(/dad[oa] de baja|dar de baja/i);
       expect(texto).not.toMatch(/cancel/i);
@@ -144,7 +145,7 @@ describe("403/R9 — una fila `warning` al rol `maestro`, con la RACHA como enti
     // Un fallo de las 19:00 CR es ya el dia siguiente en UTC. Un aviso que dice «desde el 10»
     // cuando en pantalla todavia es el 9 se lee como un error del sistema.
     // 2026-09-05T02:00:00Z = 20:00 del 4 de septiembre en CR.
-    expect(textoWebhookSuscripcionPausada(new Date("2026-09-05T02:00:00.000Z"))).toContain(
+    expect(textoWebhookSuscripcionPausada(new Date("2026-09-05T02:00:00.000Z"), ZONA_DE_CR)).toContain(
       "desde el 4 de septiembre",
     );
   });
@@ -157,11 +158,11 @@ describe("403/R12 — una racha, un aviso; una racha NUEVA, otro aviso", () => {
     const primera = await emitirWebhookSuscripcionPausada(repo, {
       ownerUsuarioId: OWNER,
       sinExitoDesde: RACHA,
-    });
+    }, ZONA_DE_CR);
     const segunda = await emitirWebhookSuscripcionPausada(repo, {
       ownerUsuarioId: OWNER,
       sinExitoDesde: RACHA,
-    });
+    }, ZONA_DE_CR);
 
     expect(primera).toBe(1);
     expect(segunda).toBe(0);
@@ -173,13 +174,13 @@ describe("403/R12 — una racha, un aviso; una racha NUEVA, otro aviso", () => {
     // (`existeNoLeidaPara`) solo actua mientras el aviso siga sin leer; una vez leido, el que
     // impide el duplicado es `notificacion_dedupe_key`, cuyo `P2002` el repositorio absorbe.
     const repo = new RepoDoble();
-    await emitirWebhookSuscripcionPausada(repo, { ownerUsuarioId: OWNER, sinExitoDesde: RACHA });
+    await emitirWebhookSuscripcionPausada(repo, { ownerUsuarioId: OWNER, sinExitoDesde: RACHA }, ZONA_DE_CR);
     repo.marcarTodoLeido();
 
     const tras = await emitirWebhookSuscripcionPausada(repo, {
       ownerUsuarioId: OWNER,
       sinExitoDesde: RACHA,
-    });
+    }, ZONA_DE_CR);
 
     expect(tras).toBe(0);
     expect(repo.creadas).toHaveLength(1);
@@ -192,12 +193,12 @@ describe("403/R12 — una racha, un aviso; una racha NUEVA, otro aviso", () => {
     // Con la racha, `sinExitoDesde` cambia tras el 2xx ⇒ otra entidad ⇒ aviso independiente.
     const repo = new RepoDoble();
 
-    await emitirWebhookSuscripcionPausada(repo, { ownerUsuarioId: OWNER, sinExitoDesde: RACHA });
+    await emitirWebhookSuscripcionPausada(repo, { ownerUsuarioId: OWNER, sinExitoDesde: RACHA }, ZONA_DE_CR);
     repo.marcarTodoLeido();
     const nueva = await emitirWebhookSuscripcionPausada(repo, {
       ownerUsuarioId: OWNER,
       sinExitoDesde: new Date("2026-10-01T09:00:00.000Z"),
-    });
+    }, ZONA_DE_CR);
 
     expect(nueva).toBe(1);
     expect(repo.creadas).toHaveLength(2);
@@ -211,8 +212,8 @@ describe("403/R12 — una racha, un aviso; una racha NUEVA, otro aviso", () => {
     // El `entidadId` lleva el owner por esto: el dia que haya varias suscripciones, una racha
     // simultanea de dos integradores debe producir dos avisos, no uno.
     const repo = new RepoDoble();
-    await emitirWebhookSuscripcionPausada(repo, { ownerUsuarioId: "owner-A", sinExitoDesde: RACHA });
-    await emitirWebhookSuscripcionPausada(repo, { ownerUsuarioId: "owner-B", sinExitoDesde: RACHA });
+    await emitirWebhookSuscripcionPausada(repo, { ownerUsuarioId: "owner-A", sinExitoDesde: RACHA }, ZONA_DE_CR);
+    await emitirWebhookSuscripcionPausada(repo, { ownerUsuarioId: "owner-B", sinExitoDesde: RACHA }, ZONA_DE_CR);
     expect(repo.creadas).toHaveLength(2);
   });
 
@@ -221,11 +222,11 @@ describe("403/R12 — una racha, un aviso; una racha NUEVA, otro aviso", () => {
     // «una racha, un aviso» seria imposible y el primer caso estaria midiendo su propio ruido.
     const uno = new RepoDoble();
     const otro = new RepoDoble();
-    await emitirWebhookSuscripcionPausada(uno, { ownerUsuarioId: OWNER, sinExitoDesde: RACHA });
+    await emitirWebhookSuscripcionPausada(uno, { ownerUsuarioId: OWNER, sinExitoDesde: RACHA }, ZONA_DE_CR);
     await emitirWebhookSuscripcionPausada(otro, {
       ownerUsuarioId: OWNER,
       sinExitoDesde: new Date(RACHA),
-    });
+    }, ZONA_DE_CR);
     expect(uno.creadas[0].entidadId).toBe(otro.creadas[0].entidadId);
   });
 });
@@ -236,7 +237,7 @@ describe("403/R13 — ni la URL ni el secreto entran en el aviso", () => {
     // nombre o una guia—. Aqui va vacio A PROPOSITO: no hay nada mas que enseñar sin arriesgar R13.
     const repo = new RepoDoble();
 
-    await emitirWebhookSuscripcionPausada(repo, { ownerUsuarioId: OWNER, sinExitoDesde: RACHA });
+    await emitirWebhookSuscripcionPausada(repo, { ownerUsuarioId: OWNER, sinExitoDesde: RACHA }, ZONA_DE_CR);
 
     const fila = repo.creadas[0];
     expect(fila.anexo).toBeNull();
@@ -254,7 +255,7 @@ describe("403/R10/R11 — el camino REAL: `crear`, y un fallo que no propaga", (
     const repo = new RepoDoble();
     const crear = vi.spyOn(repo, "crear");
 
-    await notificarWebhookSuscripcionPausadaCon(repo)({
+    await notificarWebhookSuscripcionPausadaCon(repo, undefined, reglasPaisFijas())({
       ownerUsuarioId: OWNER,
       sinExitoDesde: RACHA,
     });
@@ -271,7 +272,7 @@ describe("403/R10/R11 — el camino REAL: `crear`, y un fallo que no propaga", (
     const logError = vi.fn();
 
     await expect(
-      notificarWebhookSuscripcionPausadaCon(new RepoQueFalla(), { logError })({
+      notificarWebhookSuscripcionPausadaCon(new RepoQueFalla(), { logError }, reglasPaisFijas())({
         ownerUsuarioId: OWNER,
         sinExitoDesde: RACHA,
       }),
@@ -287,7 +288,7 @@ describe("403/R10/R11 — el camino REAL: `crear`, y un fallo que no propaga", (
 
   it("el absorbedor no se traga los avisos buenos: con un repo sano SI emite", async () => {
     const repo = new RepoDoble();
-    await notificarWebhookSuscripcionPausadaCon(repo)({
+    await notificarWebhookSuscripcionPausadaCon(repo, undefined, reglasPaisFijas())({
       ownerUsuarioId: OWNER,
       sinExitoDesde: RACHA,
     });

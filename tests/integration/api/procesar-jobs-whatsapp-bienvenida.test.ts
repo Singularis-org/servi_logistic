@@ -61,7 +61,7 @@ function deps(): WhatsappBienvenidaDeps {
     plantillaRepo: { findWelcomeMessage, findEnviableById },
     ordenReader: { findParaEnvio },
     idiomaPorDefecto: "es",
-    logger: { warn },
+    logger: { warn, error: vi.fn() },
   };
 }
 

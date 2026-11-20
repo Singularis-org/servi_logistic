@@ -186,8 +186,9 @@ test.describe.serial("Tarifas — medidas frente a la maqueta (R70)", () => {
       const nombres = await columnas.allInnerTexts();
       medida("Columnas de cobro", "Concepto, Modo, Valor, IVA, Hoy rige", nombres.join(", "));
       expect(nombres).toEqual(["Concepto", "Modo", "Valor", "IVA", "Hoy rige"]);
-      await expect(filasRejilla).toHaveCount(8);
-      medida("Filas de cobro", "7", "7");
+      // SLT-94 R13: el fulfillment solo vive en el precio propio de la tienda.
+      await expect(filasRejilla).toHaveCount(7);
+      medida("Filas de cobro", "6", "6");
 
       const valor = await caja(panelDe(page).getByRole("textbox", { name: "Valor de Flete por entregado", exact: true }));
       medida("Campo valor", "110 × ≥ 40", `${entero(valor.width)} × ${entero(valor.height)}`);

@@ -189,6 +189,7 @@ describeSiHayBase("SLT-54 R3 — fijar y quitar no cambian el modelo", () => {
         zonaId: e.fksA.zonaId,
         grupoId: null,
         tiendaId: null,
+        mensajeroId: null,
         vehiculoId: null,
       };
       const recorrer = async () => {

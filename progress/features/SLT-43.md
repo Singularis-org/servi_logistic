@@ -53,3 +53,6 @@ T8 (enmienda «sin `ruta`», aprobada por Camilo 2026-10-29): T8.1–T8.10 hecha
   cantón el mismo id literal y la sincronía dejaba un nodo padre de sí mismo. Con datos reales no ocurre (uuid
   aleatorio en default, seed y carga CSV). Se cambia solo el id de la provincia en el test; 3 archivos verdes contra
   `logistic_slt43_r1104b`. Detalle en `progress/impl_SLT-43.md`.
+- 2026-11-19 · Puesta al día con `geo_jerarquica` (= dev, `4bacc530`). CI rojo solo por tamaño (48/40 archivos, 1322/1000 prod, 3318/3000 tests). Humano acepta el tamaño: es el modelo base de toda la pila geo. Probado en la base local del humano: integración (151) y E2E de zonas, tarifas, recepción, reparto y cierre (45/45).
+
+<!-- tamano-pr-aceptado: 2026-11-19 · 48 archivos (modelo base de la pila geo) · aceptado por el humano -->

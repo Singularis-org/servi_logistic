@@ -28,6 +28,32 @@ export class GeografiaDeOtroPais extends Error {
   }
 }
 
+// SLT-42 (design §4.2; R6, R28) — dos errores de dominio que NO vienen de la base: los lanza el
+// servidor cuando al país le falta un dato que la operación necesita. No pasan por
+// `traducirErrorDePais`. `withErrorHandler` no los tiene en su mapa (`lib/errors/normalize.ts`), así
+// que salen como `{ status: "error", code: "INTERNAL" }` con el mensaje genérico de siempre; el
+// mensaje propio solo nombra el país (un código ISO, no un dato personal).
+
+/** R28: la operación necesita la zona horaria del país y el país aún no la tiene. No se escribió nada. */
+export class PaisSinZonaHoraria extends Error {
+  readonly paisId: string;
+  constructor(paisId: string) {
+    super(`El país ${paisId} no tiene zona horaria`);
+    this.name = "PaisSinZonaHoraria";
+    this.paisId = paisId;
+  }
+}
+
+/** R6: al país le falta prefijo, dígitos nacionales, zona horaria o un tipo de documento activo. */
+export class PaisIncompleto extends Error {
+  readonly paisId: string;
+  constructor(paisId: string) {
+    super(`El país ${paisId} no tiene todos sus datos de teléfono, hora y documento`);
+    this.name = "PaisIncompleto";
+    this.paisId = paisId;
+  }
+}
+
 // Las formas en que llega un SQLSTATE propio por Prisma 7 + adapter-pg están descritas en
 // `lib/db/contexto-empresa.ts` (SQL a mano: P2010 con el código en el mensaje; operación de modelo:
 // el `DriverAdapterError` con `cause.originalCode`; `pg` directo: `code`). Se recorre el mismo grafo.

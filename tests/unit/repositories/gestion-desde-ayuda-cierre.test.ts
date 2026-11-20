@@ -14,6 +14,7 @@ import {
 } from "@/lib/utils/cierre-totales";
 import { idEstado, sembrarCatalogoEstados } from "@/tests/fixtures/catalogo-estados";
 import { delegadosDelCatalogo } from "@/tests/fixtures/doble-catalogo-geografico";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 // 💰 Feature 237 (T6.1/T6.2/T6.6, R29/R30/R36) — LA MITAD DEL DINERO: la gestion que registra LA
 // TIENDA entra en el cierre DEL MENSAJERO por el MISMO mecanismo que las suyas, y mueve
@@ -73,6 +74,7 @@ function gestionDeLaTienda(over: Partial<FilaGestion> = {}): FilaGestion {
 function proyectar(f: FilaGestion) {
   return {
     id: f.id,
+    createdAt: f.createdAt,
     ordenId: f.ordenId,
     resultado: f.resultado,
     montoRecibido: null,
@@ -429,7 +431,7 @@ describe("💰 R29 — la gestion de la tienda entra en el cierre del mensajero,
     const propia = gestion({ id: "g-propia", ordenId: "o-propia" });
     const store = buildStore([deLaTienda, propia]);
 
-    const pendientes = await repoCon(store).findGestionesPendientes("mensajero-1");
+    const pendientes = await repoCon(store).findGestionesPendientes("mensajero-1", ZONA_CR);
 
     expect(pendientes.map((g) => [g.gestionId, g.desdeAyudaTienda])).toEqual([
       ["g-tienda", true],
