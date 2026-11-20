@@ -145,7 +145,7 @@
   existen. Depende de T8.1–T8.3. **Hecho:** en verde, y las mutaciones 7, 8 y 9 los ponen en rojo.
 - [x] **T8.7** `[P]` Tests del servicio (§12.7): R30, R31, R38 y R39 en `cobro-intento-service.test.ts`. Depende de
   T8.5. **Hecho:** en verde, y la mutación 10 lo pone en rojo.
-- [ ] **T8.8** Cierre: el mapa `R<n> → test` de `progress/impl_SLT-226.md` con R30–R39; `migracion-slt226-ida-y-vuelta`
+- [x] **T8.8** Cierre: el mapa `R<n> → test` de `progress/impl_SLT-226.md` con R30–R39; `migracion-slt226-ida-y-vuelta`
   y las suites de SLT-60 y SLT-143 en verde sin cambiar afirmaciones (R28); `./init.sh` y el grupo `dinero` de E2E
   en local; `scripts/tamano-pr.mjs` medido. **Hecho:** los 39 requisitos con test, todo en verde, y el tamaño
   anotado. Si los tests pasan de 3 000 líneas, se acepta (decisión del humano del 2026-11-20): el implementer lo

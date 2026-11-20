@@ -228,3 +228,46 @@ Mapa `R<n> → test` (la parte de base):
 | R39 | PL «R39: como `servi_app`, ejecutar `cobro_marcar_pagado_manual` da 42501…» |
 
 Veredicto: la parte de base de T8 en verde, con las mutaciones 7, 8 y 9 muertas; falta T8.4, T8.5 y T8.7.
+
+## Tanda T8: T8.4, T8.5 y T8.7 (backend_dev) y cierre T8.8 (implementer)
+
+Commits: `fc03a509` (base) y `12ee23b5` (tipos, repositorio y servicio).
+
+- Archivos: `lib/types/cobro.ts`, `lib/interfaces/repositories/ICobroIntentoRepository.ts`,
+  `lib/interfaces/services/ICobroIntentoService.ts`, `lib/repositories/CobroIntentoRepository.ts` (llamada de 7
+  argumentos y `marcarPagadoManual` bajo `comoPlataforma("SL-45", …)`), `lib/services/CobroIntentoService.ts`,
+  `lib/db/excepciones-aislamiento.ts`, `tests/unit/services/cobro-intento-service.test.ts`.
+- `grep '"rebill"' lib/services`: vacío.
+- Mutación 10 (`marcarPagadoManual` sin `esPlataforma`): `Tests 6 failed | 39 passed (45)`, los 6 «R39: %s recibe
+  forbidden sin llamadas». Revertida.
+
+Mapa `R<n> → test` (parte del servicio, `cobro-intento-service.test.ts`):
+
+| R | Test |
+|---|---|
+| R30 | «R30: un evento con un proveedor desconocido (%j) lanza sin registrar ni consultar»; «R30: un proveedor admitido sin adaptador enchufado lanza…» |
+| R31 | «R31: obtenerOCrearIntento pasa al repositorio el proveedor y el método que recibe» |
+| R38 | «R38: una referencia en blanco (%j) devuelve referencia_vacia sin llamar al repositorio»; «R38: la respuesta «%s» de la base pasa tal cual»; «R38: un intento vacío o una referencia de más de 200 … lanza sin llamar» |
+| R39 | «R39: %s recibe forbidden sin llamadas» (6 roles); «R39: el superadmin marca con su usuarioId como actor» |
+
+Con la tabla de base de arriba, R30–R39 tienen test; R1–R29 siguen en las tablas de las tandas 1–3.
+
+### Verificación del implementer (salida real, `DATABASE_URL` de `dburl_SLT226`)
+
+- `cobro-intento`, `cobro-webhook-evento`, `cobro-pago-en-linea`, `migracion-slt226-ida-y-vuelta` y
+  `cobro-intento-service`: `Test Files 5 passed (5)`, `Tests 105 passed (105)`.
+- SLT-60, SLT-143 y SL-45 (`pago-plataforma-confirmacion`, `pago-plataforma-por-fuera`,
+  `migracion-slt143-ida-y-vuelta`, `migracion-slt60-ida-y-vuelta`, `pago-plataforma-sl45`, `-sl45-blindaje`,
+  `-sl45-concurrencia`): `Test Files 7 passed (7)`, `Tests 84 passed (84)`, sin cambiar afirmaciones (R28).
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: exit 0.
+- `pnpm run lint`: 0 errores, 249 avisos (los de antes).
+- `pnpm run test:guardias`: `Test Files 357 passed | 3 skipped (360)`, `Tests 5413 passed | 28 skipped (5441)`.
+- `scripts/tamano-pr.mjs`: AVISO, 33/40 archivos, 1968/1000 de producción, **3112/3000 de tests**. Pasa del tope de
+  tests; aceptado por el humano el 2026-11-20 (marcador `tamano-pr-aceptado` de `progress/features/SLT-226.md`).
+- No corridos en local en esta tanda: `./init.sh` (se corta en la validación del board, ver T7.4) y el E2E `dinero`
+  (la enmienda no toca UI ni rutas); los cubre el CI de #263.
+
+Desvíos frente al spec (§12.7): `FUNCIONES_NUEVAS` de `migracion-slt226-ida-y-vuelta` suma `_cobro_aprobar` y
+`cobro_marcar_pagado_manual` (para que el test compruebe que el `down` las quita); `metodo` en dos INSERT de tests
+existentes (NOT NULL); empresa E nueva en `cobro-pago-en-linea`; R39 del servicio cubre además adminSatelite y apiKey;
+tests extra de servicio (R30 wompi sin adaptador, R38 respuestas de la base, R35 referencia sin espacios).
