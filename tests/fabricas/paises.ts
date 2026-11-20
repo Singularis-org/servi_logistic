@@ -27,6 +27,22 @@ export interface DatosTelefonoYHoraDePrueba {
   prefijoTelefonico?: string | null;
   telefonoDigitosNacionales?: number | null;
   zonaHoraria?: string | null;
+  /**
+   * SL-21: la moneda del país, entera o ninguna (el CHECK `pais_moneda_todo_o_nada`). Sin ella el país
+   * nace sin moneda, que es el caso de R6 y R17.
+   */
+  moneda?: MonedaDePrueba | null;
+  /** SL-21: el nombre del impuesto. Sin él, NULL (R7, R17). */
+  impuestoNombre?: string | null;
+}
+
+/** SL-21: las cinco columnas de moneda de `pais`, con la forma de `FormatoMoneda`. */
+export interface MonedaDePrueba {
+  codigo: string;
+  simbolo: string;
+  separadorMiles: string;
+  separadorDecimal: string;
+  decimales: number;
 }
 
 /**
@@ -51,6 +67,12 @@ export async function crearPaisDePrueba(
       prefijoTelefonico: o?.prefijoTelefonico ?? null,
       telefonoDigitosNacionales: o?.telefonoDigitosNacionales ?? null,
       zonaHoraria: o?.zonaHoraria ?? null,
+      monedaCodigo: o?.moneda?.codigo ?? null,
+      monedaSimbolo: o?.moneda?.simbolo ?? null,
+      monedaSeparadorMiles: o?.moneda?.separadorMiles ?? null,
+      monedaSeparadorDecimal: o?.moneda?.separadorDecimal ?? null,
+      monedaDecimales: o?.moneda?.decimales ?? null,
+      impuestoNombre: o?.impuestoNombre ?? null,
     },
     select: { id: true, nombre: true },
   });
