@@ -335,3 +335,13 @@ para correrlos en local, la base desechable `servi_logistic_sl21_e2e`.
 
 ## Renombre tras mergear dev · 2026-11-20
 - La migración pasa de `20261122120000_sl21_pais_moneda_impuesto` a `20261124120000_sl21_pais_moneda_impuesto` (dev trae `20261122120000_slt221_usuario_cambio_correo`, mismo timestamp; tasks T1.1).
+
+### Gate tras mergear dev (2026-11-20)
+- Merge de origin/dev (72 commits; conflicto trivial en `orden-traspaso-migration.test.ts`) y migración
+  renombrada a `20261124120000_sl21_pais_moneda_impuesto` (c7abbb16). Base `servi_logistic_sl21` recreada;
+  `migrate diff` vacío; tests de migración/país 7 files 151 passed; guardias 360 files, 5440 passed.
+- `./init.sh` tras el merge NO llega a los pasos de código: el validador de `feature_list.json` cae por el
+  board (cupo backend 7/6 y SLT-235 en vuelo sin assignee), ajeno a esta rama. El último `./init.sh`
+  completo en verde es el de antes del merge (84815d54).
+- A mano, tras el merge: typecheck verde; lint 0 errores (249 warnings, los de siempre). `test:rapido` lo
+  cortó el sistema por falta de memoria y no se relanzó; queda la suite completa del CI (`gate-completo`).
