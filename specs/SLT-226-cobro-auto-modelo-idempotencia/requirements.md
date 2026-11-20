@@ -27,11 +27,197 @@
 
 ## Requisitos (EARS)
 
-_Pendiente: los escribe spec_author (F1.2)._
+Escritos por `spec_author` el 2026-11-20. Vocabulario:
+- **Intento:** un cobro en línea de una factura de la plataforma (una fila de `cobro_intento`).
+- **Intento vivo:** un intento en estado `creado` o `pendiente`.
+- **Saldo de la factura:** el de SLT-60 «Confirmación del pago a la plataforma por el superadmin»: el total de
+  una factura cerrada menos lo aplicado por los pagos confirmados y no anulados.
+- **Clave del intento:** factura + monto local + moneda de cobro + tasa (la tasa vacía si se cobra en moneda local).
+- **Pago del proveedor:** el pago que el proveedor identifica con su `payment_id`.
+- **Evento:** un aviso del proveedor, identificado por (proveedor, `logId`).
+
+### Crear el intento (capa 1 de la idempotencia)
+
+- **R1.** CUANDO se pide un intento para una factura cerrada de la empresa, con saldo mayor que 0 y sin intento
+  vivo, el sistema DEBE crear un intento en estado `creado` por el saldo de la factura, en la moneda local, con
+  la moneda de cobro igual a la local y el monto cobrado igual al saldo. Ejemplo: factura de ₡30 000 con ₡10 000
+  confirmados ⇒ intento de ₡20 000.
+- **R2.** CUANDO se pide un intento para una factura que ya tiene un intento vivo con la misma clave, el sistema
+  DEBE devolver ese intento sin crear otro.
+- **R3.** SI la factura tiene un intento vivo con otra clave, ENTONCES el sistema DEBE, en una sola operación,
+  anular el vivo y crear uno nuevo con la clave nueva.
+- **R4.** El sistema NO DEBE dejar que una factura tenga dos intentos vivos, con ningún rol ni por ningún camino.
+  Dos pedidos simultáneos para la misma factura DEBEN terminar con un solo intento vivo, y los dos DEBEN recibir
+  ese mismo intento.
+- **R5.** SI la factura no existe, es de otra empresa, no está cerrada o su saldo es 0, ENTONCES el sistema DEBE
+  rechazar el pedido sin escribir nada.
+- **R6.** Los importes del intento (monto local, monto cobrado y tasa) DEBEN guardarse en decimal y ser mayores
+  que 0. La base DEBE rechazar:
+  - un monto 0 o negativo;
+  - una foto de conversión (tasa, fuente y fecha de la tasa) incompleta;
+  - una foto de conversión presente cuando la moneda de cobro es la local;
+  - un monto cobrado distinto del local cuando la moneda de cobro es la local.
+
+### La máquina de estados
+
+- **R7.** El sistema DEBE admitir solo estos cambios de estado:
+  - `creado` → `pendiente`;
+  - `pendiente` → `aprobado`, `rechazado` o `expirado`;
+  - `creado` o `pendiente` → `anulado` (R11, R3; ver P4);
+  - `aprobado` → `devuelto` o `contracargo`.
+
+  SI se intenta cualquier otro cambio, con cualquier rol (también el dueño de la base), ENTONCES la base DEBE
+  rechazarlo sin cambiar la fila. Un intento nuevo DEBE nacer en `creado`.
+- **R8.** Un intento NO DEBE poder borrarse ni cambiar su empresa, su factura, su proveedor, su clave, sus
+  importes, sus monedas ni su foto de conversión. El id externo, el id del pago del proveedor y el pago del libro
+  solo DEBEN poder pasar de vacío a un valor, una vez.
+- **R9.** Un intento en `aprobado`, `devuelto` o `contracargo` DEBE tener el id del pago del proveedor y su
+  «Pago a la plataforma» en el libro. La base DEBE rechazar lo contrario.
+- **R10.** CUANDO el proveedor crea el cobro de un intento `creado`, el sistema DEBE guardar el id externo y
+  pasar el intento a `pendiente`. Un mismo id externo de un proveedor NO DEBE poder estar en dos intentos.
+
+### El saldo cambia con un intento vivo
+
+- **R11.** CUANDO cambia el saldo de una factura que tiene un intento vivo, el sistema DEBE anular ese intento en
+  la misma operación que cambia el saldo. El saldo cambia cuando:
+  - se confirma un pago que se aplica a la factura (SLT-60);
+  - se registra un pago por fuera que se aplica a ella (SLT-143);
+  - se anula un pago confirmado que estaba aplicado a ella (SLT-143).
+
+  Ejemplo: intento vivo de ₡20 000; el superadmin confirma un pago de ₡5 000 aplicado a esa factura ⇒ el intento
+  queda `anulado` y el siguiente pedido crea uno de ₡15 000.
+
+### Los eventos del proveedor (capa 2 de la idempotencia)
+
+- **R12.** CUANDO llega un evento, el sistema DEBE guardarlo una sola vez por (proveedor, `logId`), con su tipo,
+  el id del pago al que se refiere y la hora de llegada. NO DEBE guardar el cuerpo del evento ni datos de la
+  tarjeta o del pagador.
+- **R13.** SI llega un evento ya procesado con el mismo (proveedor, `logId`), ENTONCES el sistema DEBE ignorarlo
+  sin cambiar ningún intento ni escribir nada más. SI el evento llegó antes pero su proceso no terminó, ENTONCES
+  el sistema DEBE procesarlo otra vez.
+- **R14.** CUANDO se procesa un evento, el sistema DEBE tomar el estado del pago consultándolo al proveedor, no
+  del evento ni del orden de llegada, y DEBE llevar el intento hasta ese estado pasando por los estados
+  intermedios. Ejemplos:
+  - un evento de «pago pendiente» que llega después del de «pago aprobado» deja el intento `aprobado`;
+  - un evento de un intento aún `creado` cuyo pago el proveedor da por aprobado deja el intento `aprobado`,
+    pasando por `pendiente`.
+- **R15.** SI el estado que da el proveedor ya está alcanzado, queda detrás del estado del intento o no se puede
+  alcanzar desde él, ENTONCES el sistema NO DEBE cambiar el intento, y DEBE dejar el evento procesado con ese
+  resultado.
+- **R16.** SI la consulta al proveedor falla, ENTONCES el sistema NO DEBE cambiar el intento, y el evento DEBE
+  quedar sin procesar para que un reintento lo procese.
+
+### Registrar el pago aprobado (capa 3 de la idempotencia)
+
+- **R17.** CUANDO el proveedor da por aprobado el pago de un intento vivo, por el monto y la moneda del intento, el
+  sistema DEBE hacer todo esto en una sola operación, con la factura bloqueada:
+  - pasar el intento a `aprobado` con el id del pago del proveedor;
+  - escribir en el libro de la caja de la empresa un «Pago a la plataforma» por el monto local, con la marca
+    «Pagado en línea» y el id del pago del proveedor;
+  - dejarlo confirmado, sin persona que confirme, y aplicado entero a la factura del intento;
+  - bajar la caja, la ganancia y la deuda en el monto, igual que el pago por fuera de SLT-143 (R2).
+
+  Ejemplo: caja de ₡50 000 y factura de ₡30 000 pagada con tarjeta ⇒ la caja queda en ₡20 000, la deuda baja
+  ₡30 000 y el saldo de la factura queda en 0.
+- **R18.** SI la caja de la empresa es menor que el monto, ENTONCES el sistema DEBE registrar el pago igual. La
+  caja queda negativa.
+- **R19.** Un pago aprobado en línea NO DEBE contar como pago por confirmar: no sale en «Pagos por confirmar» y no
+  resta de lo disponible para registrar.
+- **R20.** CUANDO el mismo pago del proveedor (proveedor, `payment_id`) se registra dos veces, una tras otra o a la
+  vez (webhook, conciliación o reintento), el sistema DEBE contarlo una sola vez: un solo «Pago a la plataforma»,
+  una confirmación y una aplicación. La segunda vez DEBE responder «ya registrado» sin escribir nada.
+- **R21.** SI el pago aprobado no corresponde a un intento vivo, o su monto o su moneda no coinciden con los del
+  intento, o supera el saldo de la factura, ENTONCES el sistema NO DEBE escribir en el libro ni cambiar el
+  intento, y DEBE dejar el evento procesado con el resultado «requiere revisión» (ver P2).
+- **R22.** CUANDO el pago aprobado de un intento vivo cumple R17, el sistema DEBE registrarlo aunque los pagos por
+  confirmar dejen lo disponible para registrar por debajo de su monto. Un «Pago a la plataforma» que no sea el de
+  un intento aprobado DEBE seguir sujeto al tope de SLT-60 (ver P1).
+- **R23.** CUANDO el proveedor da por devuelto o por contracargo el pago de un intento `aprobado`, el sistema DEBE
+  pasar el intento a `devuelto` o `contracargo` sin escribir en el libro ni cambiar la deuda (eso es SLT-233).
+- **R24.** CUANDO el proveedor da por rechazado o por expirado el pago de un intento vivo, el sistema DEBE pasar el
+  intento a `rechazado` o `expirado` sin escribir en el libro (ver P3).
+
+### El historial de plataforma
+
+- **R25.** CUANDO un intento nace o cambia de estado, por cualquier camino (incluida la anulación de R3 y R11), el
+  sistema DEBE escribir en el historial de plataforma, en la misma operación, una fila por cambio con:
+  - el intento y su factura;
+  - el estado anterior (vacío al nacer) y el nuevo;
+  - quién lo hizo, o vacío si fue el sistema;
+  - el país de la empresa.
+
+  Si el cambio no se guarda, su fila tampoco. Al pasar de `creado` a `aprobado` (R14) quedan dos filas.
+
+### Acceso
+
+- **R26.** El rol de la app de una empresa DEBE poder leer solo sus propios intentos, y NO DEBE poder insertarlos,
+  cambiarlos ni borrarlos (`42501`). Ninguna empresa DEBE poder leer ni escribir los eventos del proveedor.
+- **R27.** CUANDO un `maestro` o un `admin` pide los intentos de una factura de su empresa, el sistema DEBE
+  devolverlos, del más nuevo al más viejo. CUANDO los pide el superadmin, DEBE devolver los de cualquier empresa.
+  SI los pide cualquier otro rol, ENTONCES DEBE responder `forbidden` antes de leer nada.
+
+### Despliegue
+
+- **R28.** CUANDO se aplican las migraciones de esta ficha, el sistema NO DEBE crear datos. Las confirmaciones que
+  ya existen DEBEN quedar igual, sin la marca de pago en línea, y la confirmación de SLT-60 y el registro por
+  fuera de SLT-143 DEBEN comportarse igual. Cada migración DEBE tener su `down.sql`, que la revierte entera; el
+  `down.sql` DEBE abortar sin cambiar nada si ya hay intentos.
+
+### Cobertura de las decisiones cerradas
+
+| Decisión (fecha) | Requisitos |
+|---|---|
+| Prioridad de la épica (2026-11-19) | Sin comportamiento: orden de trabajo |
+| El pago en línea baja la caja como SLT-143 (2026-11-20) | R17, R18, R19, R22 |
+| El intento cobra el saldo; si el saldo cambia, se anula (2026-11-20) | R1, R3, R11 |
+| Quién ve los cobros (2026-11-20) | R26, R27 |
+| La tabla de eventos se llama `cobro_webhook_evento` (2026-11-20) | R12, R13 |
+| Importes en decimal y mayores que 0 (2026-11-20) | R6 |
+| No se borra nada y los estados solo avanzan (2026-11-20) | R7, R8, R9 |
+| Sin E2E (2026-11-20) | Sin comportamiento: lo cubren los tests de integración contra la base (design §8) |
+| Ruta completa, un PR (2026-11-20) | Sin comportamiento: ver «Tamaño» en `design.md` y P5 |
 
 ## Preguntas abiertas
 
-Ninguna.
+Las escribe `spec_author` el 2026-11-20. Cada una trae la respuesta que el diseño asume; si el humano responde
+otra cosa, se corrige el spec antes de implementar.
+
+- **P1. El pago en línea y los pagos por confirmar.** Hoy el tope de SLT-60 no deja registrar un «Pago a la
+  plataforma» por encima de lo disponible: el saldo de las cerradas menos los pagos por confirmar. Si la empresa
+  tiene un pago de la wallet por confirmar, el pago en línea de la factura entera puede chocar con el tope, pero el
+  dinero ya se cobró. Ejemplo: factura de ₡30 000 y un pago de la wallet por confirmar de ₡10 000; lo disponible es
+  ₡20 000 y el pago en línea es de ₡30 000.
+  - **Lo que asume el diseño (R22):** el pago en línea se registra igual, y el tope sigue igual para todo lo demás.
+    El pago por confirmar choca después, cuando el superadmin lo confirma: si no cabe, se rechaza (SLT-142
+    «Rechazo del pago a la plataforma y su estado en la wallet»).
+  - **La otra opción:** no crear un intento mientras haya pagos por confirmar. No cierra la carrera: un pago de la
+    wallet puede entrar con el intento ya vivo.
+- **P2. Un pago aprobado que ya no cabe.** El proveedor puede aprobar un pago de un intento que ya no está vivo: por
+  ejemplo, se anuló porque el superadmin confirmó otro pago (R11), pero el maestro ya estaba en la página de pago.
+  También puede llegar un monto distinto del intento, o uno mayor que el saldo.
+  - **Lo que asume el diseño (R21):** no se escribe en el libro, y el evento queda «requiere revisión» para la
+    conciliación y la devolución de SLT-233 «Cobro automático: conciliación, devoluciones y contracargos».
+  - **La otra opción:** registrarlo si aún cabe en el saldo de la factura.
+- **P3. El rechazo y el enlace reutilizable.** SLT-230 «Cobro automático: enlace de pago por factura» usa un enlace
+  que admite varios intentos de pago. Con la máquina de estados decidida, el primer pago rechazado deja el intento
+  `rechazado` (terminal).
+  - **Lo que asume el diseño (R24):** el rechazo cierra el intento, y SLT-230 desactiva el enlace y crea otro en el
+    siguiente «Pagar». Un pago aprobado que llegue después por el enlace viejo cae en P2.
+  - **La otra opción:** que un pago rechazado no cierre el intento mientras el enlace siga vigente. Eso cambia la
+    máquina de estados decidida.
+- **P4. El estado `anulado`.** La decisión dice que el intento «se anula» si cambia el saldo, pero la máquina de
+  estados del Alcance no tiene ese estado.
+  - **Lo que asume el diseño (R7):** un estado terminal `anulado`, al que se llega desde `creado` o `pendiente`.
+  - **La otra opción:** reusar `expirado`, con un motivo `saldo_cambiado`.
+- **P5. Tamaño.** Son unos 24 archivos, que caben. Las líneas de producción, en cambio, se estiman en
+  1 300–1 500, por encima del tope de 1 000: las dos migraciones con su `down.sql` suman unas 900. Hay dos
+  opciones:
+  - **aceptar un solo PR**, como SLT-143;
+  - **partirlo en dos rebanadas** que se mergean solas:
+    - A «Intento, máquina de estados, eventos e historial»: capas 1 y 2, R1–R16, R23–R28;
+    - B «Registro del pago aprobado en línea»: capa 3, R17–R22, el tope y la confirmación sin persona.
+
+    B depende de A.
 
 ## Decisiones cerradas (no reabrir)
 
