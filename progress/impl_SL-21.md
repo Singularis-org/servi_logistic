@@ -175,3 +175,58 @@ Grafo: no usado (worktree sin indexar); Grep/Read.
 
 ### Veredicto
 T4.1 y T4.2 hechas y en verde.
+
+## Tanda 4 — Bloque 4, etiquetas, facturas, alta y monto (T4.3–T4.6; R14, R15, R17, R18, R16)
+
+### Commits
+- `feat(SL-21): T4.3` etiquetas por API con la moneda del país.
+- `feat(SL-21): T4.4` facturas de planes con `MONEDA_DE_LOS_PLANES`.
+- `feat(SL-21): T4.5` el alta de empresa exige país con moneda e impuesto.
+- `test(SL-21): T4.6` monto a cobrar por país (con esta sección).
+
+### Archivos
+- Producción: `lib/pdf/etiquetas-dibujo.ts`, `lib/pdf/etiquetas-pdf-lote.ts`,
+  `lib/services/EtiquetasLotePdfService.ts`, las 3 rutas `app/api/ordenes/api-key/{carga,carga/[cargaId]/generate,orden/[id]/generate}/route.ts`,
+  `lib/facturas-plataforma/resumen.ts`, `lib/services/email/plantillas/factura-emitida.ts`, `lib/planes/mensajes.ts`,
+  `lib/services/OrganizacionService.ts`.
+- Tests: `tests/unit/services/etiquetas-lote-pdf-service.test.ts`, `tests/unit/planes/factura-moneda-plataforma.test.ts` (nuevo),
+  `tests/unit/services/organizacion-service-pais.test.ts`, `tests/unit/utils/monto-cobrar-por-pais.test.ts` (nuevo);
+  fuera de la lista esperada: `tests/unit/services/api-pdf-etiqueta-columna-intacta.test.ts` y
+  `tests/integration/db/organizacion-alta.test.ts`.
+
+### Mapa R → test (tanda 4)
+| R | Test |
+|---|---|
+| R14 | `etiquetas-lote-pdf-service.test.ts` («SL-21 R14 ·…»: `build` recibe la moneda en los dos modos y se lee una vez; `PaisSinMoneda` sin construir ni subir en los dos modos; lote vacío no la lee; sin `reglasPais` lanza; PDF real con `€1 234 567`) |
+| R15 | `factura-moneda-plataforma.test.ts` (correo, `notaMoneda`, `importeDocumento`, PDF de la factura y `textoDelCobroVigente` en la moneda de los planes, sin moneda ni impuesto del país de prueba ni «IVA») |
+| R16 | casos CR en los dos tests nuevos de R14/R15; los tests existentes de PDF de etiquetas y de facturas sin cambiar valores esperados |
+| R17 | `organizacion-service-pais.test.ts` («sin moneda (SL-21 R17)», «sin nombre de impuesto (SL-21 R17)») |
+| R18 | `monto-cobrar-por-pais.test.ts` (moneda de 2 decimales: `125.50` → 126 con aviso; texto `"125.50"` → `"126"`; el módulo no importa moneda ni puerto) |
+
+### Verificación (salida real)
+- T4.3: `etiquetas-lote-pdf-service` → 28 passed. Existentes de etiquetas (`api-pdf-etiqueta-service`,
+  `-columna-intacta`, `etiquetas-descarga-service`, `etiquetas-pdf-lote`, `.smoke`, `etiquetas-dos-generadores`,
+  `components/etiquetas-pdf`) → 7 files, 130 passed (tras pasar el doble de CR a `columna-intacta`). Rutas
+  (`ordenes-api-key-carga-generate`, `-carga`, `-orden-generate`, `carga-api-etiquetas`, `ordenes-api-key-composicion-415`)
+  → 5 files, 75 passed.
+- T4.4: `factura-moneda-plataforma` → 6 passed. Existentes (`facturas-plataforma/{anexo,pdf,resumen}`,
+  `emitir-factura-emitida`, `mensajes-costo-porcentual`, `plantilla-factura-emitida`, `jobs-factura-aviso`) → 7 files, 119 passed.
+- T4.5/T4.6: `factura-moneda-plataforma`, `organizacion-service-pais`, `monto-cobrar-por-pais`, `monto-cobrar` → 4 files, 58 passed.
+  Alta: `organizacion-service`, `organizaciones-action{,.composition-root}`, `organizacion-alta` (int.),
+  `organizacion-pais-inmutable` (int.) → 5 files, 82 passed (tras el arreglo de `organizacion-alta`).
+- `pnpm run typecheck` → verde. `pnpm run lint` → 0 errores, 249 warnings (los mismos que en la tanda 3).
+- `pnpm run test:guardias` → 358/360 files; 2 rojos por timeout de 20 s (`descargas-por-registro`,
+  `sin-estados-retirados`), sin aserción fallida; repetidos solos → 2 files, 15 passed.
+
+### Desviaciones del design
+- `buildEtiquetasLotePdf(etiquetas, moneda = MONEDA_PLATAFORMA)`: con valor por defecto en vez de `moneda?`, para que
+  `buildEtiquetasLotePdf.length` siga en 1 y el smoke de R18 de la 136 (`toHaveLength(1)`) no cambie. Mismo comportamiento.
+- `api-pdf-etiqueta-columna-intacta.test.ts` construye el servicio con `build` real de la cadena y ahora le pasa
+  `reglasPaisFijas()` (sin ella el servicio lanza, design §5.4). Solo cambia el montaje.
+- `organizacion-alta.test.ts` (integración) crea Panamá «completo» a mano; con R17 necesita moneda e impuesto, y se le
+  ponen los de prueba (`MONEDA_DE_PRUEBA`, «TASA DE PRUEBA»). Sin ellos 3 casos daban `invalida` en vez de `creada`.
+- R15: ningún camino de factura recibe el puerto; el test usa `reglasPaisFijas` con `MONEDA_DE_PRUEBA` para nombrar el
+  país de la empresa y exigir que su moneda e impuesto NO aparezcan.
+
+### Veredicto
+T4.3–T4.6 hechas y en verde.
