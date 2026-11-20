@@ -69,12 +69,12 @@
 
 ## Bloque 5 — Guardia, docs y cierre (depende del bloque 4)
 
-- [ ] **T5.1** Guardia `pais-sin-literales` (design §7): el censo nuevo, las fichas `SLT-235`,
+- [x] **T5.1** Guardia `pais-sin-literales` (design §7): el censo nuevo, las fichas `SLT-235`,
   `SLT-237` y `permanente`, la lista de excepciones con la salida real y el tope nuevo. Además, el
   comentario de `lib/constants/impuesto-rotulo.ts` pasa a decir SLT-235.
   - *Hecho:* `pnpm run test:guardias` en verde, y la autocomprobación caza «₡», `CRC`, `IVA` y un
     `import { money }` en fuentes inventadas (R20, R21).
-- [ ] **T5.2** `docs/architecture.md`: un párrafo «Moneda e impuesto (SL-21)» junto al de SLT-42.
+- [x] **T5.2** `docs/architecture.md`: un párrafo «Moneda e impuesto (SL-21)» junto al de SLT-42.
   Explica las columnas, el puerto, `formatearMontoEn`, `MONEDA_DE_LOS_PLANES` y la guardia.
   - *Hecho:* el reviewer lo encuentra y cuadra con el código.
 - [ ] **T5.3** Cierre.
@@ -153,6 +153,7 @@ Tests:
 - `tests/integration/db/informe-transito-catalogo-real.test.ts` (añadido en T4.2)
 - `tests/unit/services/api-pdf-etiqueta-columna-intacta.test.ts` (añadido en T4.3)
 - `tests/integration/db/organizacion-alta.test.ts` (añadido en T4.5)
+- `tests/integration/db/orden-traspaso-migration.test.ts` (añadido al cierre: recuento de migraciones)
 
 Los fixtures de `PaisDTO` y los dobles escritos a mano del puerto son los que hoy construyen el
 objeto entero, según Grep del 2026-11-19. Si el typecheck señala otro, se añade aquí antes del PR.
