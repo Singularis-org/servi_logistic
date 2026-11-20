@@ -60,7 +60,9 @@ function errorDeSolicitud(res: SolicitarCambioCorreoResult): string | null {
     case "ok":
       return null;
     case "conflict":
-      return T.enUso;
+      // Review PR 2 (m5): si el servidor redacta el motivo (dos pedidos a la vez), se muestra tal
+      // cual; sin él, el correo está en uso (R1611).
+      return ("mensaje" in res && res.mensaje) || T.enUso;
     case "envio_fallido":
       return T.envioFallido;
     case "validation_error":

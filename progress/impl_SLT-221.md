@@ -453,3 +453,39 @@ T2.0 omitido por decisión de Carlos (2026-11-19): componentes de hoy, sin canva
 - `./init.sh`: ver la línea de la tanda en `progress/features/SLT-221.md`.
 
 Veredicto: UI del cambio de correo hecha; E2E verde en local; el tamaño del PR mide contra `dev` sin el PR 2.
+
+---
+
+# PR 3 — m5 y m6 de la review del PR 2 en la UI, frontend_dev, 2026-11-20
+
+Merge de `origin/feature/SLT-221-correo-backend` (vuelta 2 del PR 2): solo chocaban `progress/`.
+
+## Archivos
+
+- `app/(app)/configuracion/_components/CambioCorreoUsuario.tsx`: un `conflict` con `mensaje` muestra
+  ese texto (junto al campo al pedir; en el aviso del bloque al reenviar); sin `mensaje`, «Ya está en
+  uso por otro usuario» (R1611).
+- `tests/unit/components/cambio-correo-usuario.test.tsx`: dos tests m5 y el de reenvío fallido
+  reforzado para m6.
+
+## R → test (añadidos)
+
+| R | Test |
+|---|---|
+| m5 | `cambio-correo-usuario.test.tsx` › «m5 conflict con mensaje …» y «m5 al reenviar …» |
+| m6 (R1616 + R1617) | `cambio-correo-usuario.test.tsx` › «R1617/m6 al reenviar: envio_fallido avisa, relee el estado y el bloque queda sin pendiente» |
+
+## Salida real
+
+- Componentes (`cambio-correo-usuario` + `usuario-form`): 2 files, 53 passed.
+- Mutaciones: m5 (`return T.enUso` siempre) ROJO 2 tests; m6 (sin `mutate()` tras un error) ROJO 2 tests.
+- `./init.sh` (servi_slt221_fix): `INIT_EXIT=1`, solo por tamaño (42/40 archivos, 1371/1000 líneas de
+  producción contra `dev` sin #258).
+- A mano: `typecheck` 0, `lint` 0, `test:guardias` 0 (360 files, 5424 passed, 1 skipped),
+  `test:rapido` 1: un rojo NUEVO fuera del área, `satelite-detalle-sin-dinero-empresa-sql-real` (R460,
+  `AppErrorCode inesperado INTERNAL`); solo pasa 8/8. Antes, una corrida en paralelo con las
+  guardias tumbó un worker de vitest.
+- E2E (`servi_slt221_e2e_pr3`, `next build` exit 0, `E2E_PUERTO=3321`): `usuario-cambio-correo` +
+  `usuario-corregir-cedula`: 12 passed, `E2E_EXIT=0`.
+
+Veredicto: m5 y m6 cubiertos en la UI y probados con mutación; rojo solo por tamaño (#258 fuera de dev) y un flaky ajeno.

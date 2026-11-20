@@ -25,6 +25,9 @@ const ID = "6f1c2b3a-0000-4000-8000-000000000001";
 // Literales a propósito: son el contrato con el usuario (requirements R1617 y design §7).
 const ENVIO_FALLIDO = "No se pudo enviar el correo de confirmación. Inténtalo de nuevo.";
 const EN_USO = "Ya está en uso por otro usuario";
+// Review PR 2 (m5): el servicio redacta este motivo cuando llegan dos pedidos a la vez.
+const SIMULTANEO =
+  "Se estaba pidiendo otro cambio de correo para este usuario al mismo tiempo. Vuelve a intentarlo.";
 
 const PENDIENTE = {
   emailNuevo: "nuevo.correo@example.test",
@@ -145,6 +148,22 @@ describe("CambioCorreoUsuario — pedir el cambio", () => {
     expect(screen.queryByText(/Pendiente de confirmar/)).toBeNull();
   });
 
+  it("m5 conflict con mensaje: muestra junto al campo el motivo del servidor, no «en uso»", async () => {
+    obtenerMock.mockResolvedValue({ status: "ok", pendiente: null });
+    solicitarMock.mockResolvedValue({ status: "conflict", campo: "email", mensaje: SIMULTANEO });
+    const user = userEvent.setup();
+    renderBloque();
+
+    await user.click(await screen.findByRole("button", { name: "Cambiar correo" }));
+    const campo = screen.getByLabelText("Correo nuevo");
+    await user.type(campo, "otro@example.test");
+    await user.click(screen.getByRole("button", { name: "Enviar confirmación" }));
+
+    expect(await screen.findByText(SIMULTANEO)).toBeTruthy();
+    expect(campo.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.queryByText(EN_USO)).toBeNull();
+  });
+
   it("validation_error: repite el motivo que redacta el servidor", async () => {
     obtenerMock.mockResolvedValue({ status: "ok", pendiente: null });
     solicitarMock.mockResolvedValue({
@@ -225,7 +244,19 @@ describe("CambioCorreoUsuario — R1620: reenviar", () => {
     expect(screen.queryByText("Vencido")).toBeNull();
   });
 
-  it("R1617 al reenviar: envio_fallido avisa y el bloque queda sin pendiente", async () => {
+  it("m5 al reenviar: un conflict con mensaje se avisa con ese mensaje", async () => {
+    obtenerMock.mockResolvedValue({ status: "ok", pendiente: PENDIENTE });
+    solicitarMock.mockResolvedValue({ status: "conflict", campo: "email", mensaje: SIMULTANEO });
+    const user = userEvent.setup();
+    renderBloque();
+
+    await user.click(await screen.findByRole("button", { name: "Reenviar" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain(SIMULTANEO);
+    expect(screen.queryByText(EN_USO)).toBeNull();
+  });
+
+  it("R1617/m6 al reenviar: envio_fallido avisa, relee el estado y el bloque queda sin pendiente", async () => {
     obtenerMock
       .mockResolvedValueOnce({ status: "ok", pendiente: PENDIENTE })
       .mockResolvedValue({ status: "ok", pendiente: null });
@@ -237,6 +268,12 @@ describe("CambioCorreoUsuario — R1620: reenviar", () => {
 
     expect((await screen.findByRole("alert")).textContent).toContain(ENVIO_FALLIDO);
     expect(await screen.findByRole("button", { name: "Cambiar correo" })).toBeTruthy();
+    // m6 (review PR 2): el reenvío fallido anuló el pendiente en el servidor; la pantalla lo relee
+    // (segunda lectura) en vez de seguir mostrando el anterior.
+    expect(obtenerMock).toHaveBeenCalledTimes(2);
     expect(screen.queryByText(PENDIENTE.emailNuevo)).toBeNull();
+    expect(screen.queryByText(/Pendiente de confirmar/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reenviar" })).toBeNull();
+    expect(screen.getByRole("alert").textContent).toContain(ENVIO_FALLIDO);
   });
 });
