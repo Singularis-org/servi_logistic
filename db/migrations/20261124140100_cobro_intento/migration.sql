@@ -26,7 +26,7 @@
 -- `ADD COLUMN`, que no dispara `…_inmutable`) y con su `confirmado_por`.
 --
 -- ATOMICIDAD: BEGIN/COMMIT, a mano (`db:migrate:create` falla con P3006 en este repo). Va después de
--- 20261124130000_cobro_historial_enum, que añade los valores del historial que estas funciones escriben (55P04).
+-- 20261124140000_cobro_historial_enum, que añade los valores del historial que estas funciones escriben (55P04).
 
 BEGIN;
 

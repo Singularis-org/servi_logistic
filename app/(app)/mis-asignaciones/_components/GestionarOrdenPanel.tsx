@@ -33,6 +33,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup } from "@/components/ui/radio-group";
 import { useToast } from "@/hooks/useToast";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
 import { useDeclararTrabajo } from "@/hooks/useDeclararTrabajo";
 import { gestionar } from "@/lib/actions/mis-asignaciones";
 import { solicitarAyudaOrden } from "@/lib/actions/orden-ayuda";
@@ -352,6 +353,8 @@ export function GestionarOrdenPanel({
   onAbrirChat,
 }: Readonly<GestionarOrdenPanelProps>) {
   const toast = useToast();
+  // SLT-235 (R11): el aviso de cuadre dice sus importes en la moneda del país de la empresa.
+  const moneda = useMonedaDelPais();
 
   // Feature 227 (T3.4, design §5.2) — HILO de notas con la tienda, montado JUSTO donde
   // estaba el editor de la nota privada de la 116 (retirada por esta misma feature).
@@ -806,7 +809,7 @@ export function GestionarOrdenPanel({
   // —aquí solo se teclean enteros—, y entonces el aviso lo DICE con el número real delante en
   // vez de repetir «debe sumar exactamente», que pide algo imposible junto a una diferencia
   // pintada como cero.
-  const cuadreError = sinCobro ? undefined : mensajeDeCuadre(lineas, montoACobrar);
+  const cuadreError = sinCobro ? undefined : mensajeDeCuadre(lineas, montoACobrar, moneda);
   // El desglose que no cuadra no llega ni a intentarlo: «Guardar gestión» se deshabilita mientras
   // la suma no iguale el monto a cobrar. `revisarDesglose` (:538) sigue siendo la barrera de
   // verdad —el botón puede habilitarse con las líneas a medias—; esto solo evita el pulso inútil.

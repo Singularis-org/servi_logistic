@@ -3389,6 +3389,14 @@ enum OrdenHistorialOrigenTipo {
   /// NO entra en `ORIGEN_TIPOS_CON_GESTION` aunque su fila nazca CON `gestion_orden_id` poblado:
   /// mismo caso declarado que `escalado_devuelta_sla`, `anclaje_devolucion` y `rechazo_tienda`.
   correccion_resultado_gestion
+  /// SLT-247 (2026-11-20, R1771) — `novedad_interna -> en_reparto` al RECHAZAR un cierre: las
+  /// órdenes que el corte barrió a Novedad interna vuelven al mensajero para que las gestione
+  /// antes de reenviar el cierre. Productor único: `CierresAdminRepository.resolverCierre`, rama
+  /// `rechazado` con `retornoSinGestion`. Actor = el admin que rechaza.
+  ///
+  /// NO entra en `ORIGEN_TIPOS_VISITA_REAL` (nadie visitó la orden: no es un intento) ni en
+  /// `ORIGEN_TIPOS_CON_GESTION` (la fila nace sin `gestion_orden_id`).
+  retorno_por_rechazo_cierre
 
   @@map("orden_historial_origen_tipo")
 }
@@ -6106,8 +6114,8 @@ enum HistorialPlataformaAccion {
   // Enmienda 2026-10-26, decisión 6 (R47; 20261026130500): el superadmin enciende o apaga un país.
   pais_disponibilidad_activada
   pais_disponibilidad_desactivada
-  // SLT-226 (design §1.3; R25; 20261124130000): cada nacimiento o cambio de estado de un `cobro_intento`. Lo
-  // escriben solo las funciones del dueño de 20261124130100, en la misma sentencia que el cambio.
+  // SLT-226 (design §1.3; R25; 20261124140000): cada nacimiento o cambio de estado de un `cobro_intento`. Lo
+  // escriben solo las funciones del dueño de 20261124140100, en la misma sentencia que el cambio.
   cobro_intento_transicion
 
   @@map("historial_plataforma_accion")
@@ -6777,7 +6785,7 @@ model PagoPlataformaConfirmacion {
   // `pago_plataforma_registrar_por_fuera`; las confirmaciones anteriores a 20261121130000 quedan en false (R33).
   porFuera     Boolean  @default(false) @map("por_fuera")
   // SLT-226 (design §1.4; R17, R29): true solo si el pago lo aprobó el proveedor de cobro en línea. Lo escribe solo
-  // `cobro_registrar_pago_aprobado`; las confirmaciones anteriores a 20261124130100 quedan en false (R28).
+  // `cobro_registrar_pago_aprobado`; las confirmaciones anteriores a 20261124140100 quedan en false (R28).
   enLinea      Boolean  @default(false) @map("en_linea")
 
   pago         WalletMovimiento @relation(fields: [pagoId], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -6840,7 +6848,7 @@ model PagoPlataformaAnulacion {
 }
 
 // SLT-226 (design §1.1) — el cobro en línea de una factura de la plataforma. De NEGOCIO. Lo escriben SOLO las
-// funciones del dueño de 20261124130100; `servi_app` solo lo lee (R26). Viven solo en el SQL de esa migración:
+// funciones del dueño de 20261124140100; `servi_app` solo lo lee (R26). Viven solo en el SQL de esa migración:
 //   · los CHECK del proveedor, del método, del estado, de los montos (> 0), de la foto de conversión, del pago completo y del
 //     motivo (R6, R9);
 //   · el único parcial `cobro_intento_un_vivo_por_factura` (un solo intento `creado`/`pendiente` por factura, R4);
@@ -6895,7 +6903,7 @@ model CobroIntento {
 
 // SLT-226 (design §1.2) — los eventos del proveedor de cobro, uno por (proveedor, log_id) (R12, R13). De
 // PLATAFORMA: llegan sin empresa. Sin el cuerpo del evento ni datos del pagador (R12). Viven solo en el SQL de
-// 20261124130100: los CHECK, la RLS sin políticas, el `REVOKE ALL … FROM servi_app` (R26) y el trigger
+// 20261124140100: los CHECK, la RLS sin políticas, el `REVOKE ALL … FROM servi_app` (R26) y el trigger
 // `cobro_webhook_evento_inmutable` (solo `procesado_at`, `resultado` e `intento_id`, de nulo a un valor, una vez).
 model CobroWebhookEvento {
   id              String    @id @default(dbgenerated("(gen_random_uuid())::text"))

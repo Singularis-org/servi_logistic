@@ -1,4 +1,7 @@
-import { formatMonto } from "@/lib/config/moneda";
+"use client";
+
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
+import { formatearMontoEn } from "@/lib/config/moneda";
 import { cn } from "@/lib/utils";
 import { toValidNumber } from "@/lib/utils/number";
 
@@ -40,16 +43,22 @@ export interface PriceLabelProps {
  * dígito vuelve a hacer el trabajo que la 201 le pedía. Se queda, y ahora otra
  * vez por su motivo original.
  *
+ * SLT-235 (R11, R15): la moneda es la del país de la empresa, que baja del layout del portal por
+ * `useMonedaDelPais`; por eso es `"use client"`. Fuera del portal (sin proveedor) es la de la
+ * plataforma y el texto es el de siempre, que es lo que miden la guardia 359 y el censo de
+ * identidades. Sus consumidores de otras rebanadas heredan la moneda del país sin tocarlos.
+ *
  * (Se retiró la prop `maxDecimals`: no la usaba ningún consumidor. La escala del
  * dinero de esta app sigue siendo 2 en la base y en la frontera —R17—, y desde
  * la 359 es también la escala que se PINTA.)
  */
 export function PriceLabel({ value, className }: PriceLabelProps) {
   const amount = toValidNumber(value);
+  const moneda = useMonedaDelPais();
 
   return (
     <span className={cn("tabular-nums whitespace-nowrap", className)}>
-      {formatMonto(amount)}
+      {formatearMontoEn(moneda, amount)}
     </span>
   );
 }

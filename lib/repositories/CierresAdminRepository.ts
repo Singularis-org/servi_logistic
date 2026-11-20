@@ -1531,7 +1531,13 @@ export class CierresAdminRepository implements ICierresAdminRepository {
    */
   async findBarridasDelCierre(cierreId: string, alcance: Alcance): Promise<BarridaDelCierre[]> {
     const rows = await this.prisma.cierreSinGestion.findMany({
-      where: { cierreId, cierre: alcanceWhere(alcance) },
+      // SLT-247 (R1791): solo las que SIGUEN en `novedad_interna` (las que la aprobacion libera).
+      // Una barrida que el rechazo devolvio a `en_reparto` ya no vuelve a bodega por este camino.
+      where: {
+        cierreId,
+        cierre: alcanceWhere(alcance),
+        orden: { estatus: { value: "novedad_interna" } },
+      },
       select: { ordenId: true, numGuia: true },
     });
     return rows.map((r) => ({ ordenId: r.ordenId, numGuia: r.numGuia }));
@@ -3219,6 +3225,56 @@ export class CierresAdminRepository implements ICierresAdminRepository {
         // bloque «APLICACION DE GESTIONES» de mas arriba. La devolucion se sigue aplicando con la
         // familia `anclaje_devolucion` y el aprobador de actor, asi que el reloj del plazo de la tienda
         // (D8) sigue leyendo la misma fila. El pre-estado muere con la ficha.
+      }
+
+      // SLT-247 (R1770-R1777) — EL RECHAZO DEVUELVE LAS BARRIDAS AL MENSAJERO. Dentro de la MISMA
+      // tx que pasa el cierre a `rechazado` y solo si el `updateMany` aplico (R1776). Sin esto, las
+      // barridas quedan en `novedad_interna`, que solo se libera al APROBAR, y el mensajero no las
+      // puede gestionar. Solo toca `estatusId` (R1772): ni mensajero, ni prioridad, ni dinero.
+      if (res.count === 1 && input.nuevoEstado === "rechazado" && input.retornoSinGestion) {
+        const { sinGestionarEstatusId, enRepartoEstatusId } = input.retornoSinGestion;
+        const cierre = await tx.cierreDia.findUnique({
+          where: { id: cierreId },
+          select: { mensajeroId: true, sinGestionRegistrado: true },
+        });
+        // R1774: un cierre anterior al registro de la 264 no sabe que barrio -> no mueve nada.
+        if (cierre !== null && cierre.sinGestionRegistrado) {
+          const barridas = (
+            await tx.cierreSinGestion.findMany({ where: { cierreId }, select: { ordenId: true } })
+          ).map((f) => f.ordenId);
+          // R1773: las mismas guardas en la lectura y en la escritura.
+          const guarda = {
+            estatusId: sinGestionarEstatusId,
+            mensajeroAsignadoId: cierre.mensajeroId,
+            deletedAt: null,
+          };
+          const aMover =
+            barridas.length === 0
+              ? []
+              : (
+                  await tx.orden.findMany({
+                    where: { id: { in: barridas }, ...guarda },
+                    select: { id: true },
+                  })
+                ).map((o) => o.id);
+          if (aMover.length > 0) {
+            await tx.orden.updateMany({
+              where: { id: { in: aMover }, ...guarda },
+              data: { estatusId: enRepartoEstatusId },
+            });
+            // R1771: una transicion por orden, con el admin que rechazo y sin gestion enlazada.
+            await appendCambioEstado(
+              tx,
+              aMover.map((ordenId) => ({
+                ordenId,
+                estatusOrigenId: sinGestionarEstatusId,
+                estatusDestinoId: enRepartoEstatusId,
+                actorUsuarioId: resueltoPor,
+                origenTipo: "retorno_por_rechazo_cierre" as const,
+              })),
+            );
+          }
+        }
       }
 
       // ═══════════════════════════════════════════════════════════════════════════════════════

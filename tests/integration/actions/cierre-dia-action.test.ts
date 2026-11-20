@@ -78,7 +78,7 @@ function inMemoryRepo(seed: GestionPendienteDeCierreRow[]): ICierreDiaRepository
     // FICHA 454 (T1.11): la rama NUEVA del deshacer (gestion pendiente, sin transicion).
     anularGestionPendiente: vi.fn(async () => true),
     // FICHA 477: re-solicitud del rechazado, deshacer en cierre rechazado y correcciones.
-    resolicitarCierreRechazado: vi.fn(async () => true),
+    resolicitarCierreRechazado: vi.fn(async () => ({ status: "ok" as const })),
     anularGestionDeCierreRechazado: vi.fn(async () => true),
     findCorreccionesPendientes: vi.fn(async () => []),
     crearCierre: vi.fn(async (input: CrearCierreInput) => {

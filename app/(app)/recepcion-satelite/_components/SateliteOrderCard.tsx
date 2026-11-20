@@ -10,8 +10,9 @@ import {
 } from "@/components/ui/collapsible";
 import { EstadoConInfo } from "@/components/shared/EstadoInfo";
 import { IntentosDato, valorIntentos } from "@/components/shared/intentos-entrega";
-import { formatMonto as formatMontoConfigurado, SIN_MONTO_RAYA } from "@/lib/config/moneda";
+import { formatearMontoEn, SIN_MONTO_RAYA, type FormatoMoneda } from "@/lib/config/moneda";
 import type { RecepcionSateliteDTO } from "@/lib/interfaces/services/IRecepcionSateliteService";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
 
 import { RecepcionDetalle } from "./RecepcionDetalle";
 
@@ -31,9 +32,11 @@ import { RecepcionDetalle } from "./RecepcionDetalle";
  * Feature 201: el formato sale de `lib/config/moneda.ts` (era la cuarta copia del
  * formateador "estilo EEUU", `₡13,331,832.72`). El marcador de ausencia se pasa
  * explícito porque el default del compartido es el guion corto.
+ *
+ * SLT-235 (R11): con la moneda del país de la empresa, que el componente lee del hook.
  */
-function formatMonto(monto: number | null): string {
-  return formatMontoConfigurado(monto, SIN_MONTO_RAYA);
+function formatMonto(monto: number | null, moneda: FormatoMoneda): string {
+  return formatearMontoEn(moneda, monto, SIN_MONTO_RAYA);
 }
 
 export interface SateliteOrderCardProps {
@@ -56,6 +59,8 @@ export function SateliteOrderCard({
   // Estado del desplegable del detalle: UI efímera, de un solo consumidor.
   const [detalleAbierto, setDetalleAbierto] = useState(false);
   const intentos = valorIntentos(orden);
+  // SLT-235 (R11): el monto a cobrar en la moneda del país de la empresa.
+  const moneda = useMonedaDelPais();
 
   return (
     <article className="flex flex-col gap-2.5 rounded-xl border border-border bg-card p-3 shadow-sm">
@@ -110,7 +115,7 @@ export function SateliteOrderCard({
             A cobrar
           </p>
           <p className="font-mono text-base font-bold text-foreground">
-            {formatMonto(orden.montoCobrar)}
+            {formatMonto(orden.montoCobrar, moneda)}
           </p>
         </div>
         {/* Feature 160 (R25): intentos de entrega, siempre visibles (`0` incluido). */}

@@ -7,7 +7,7 @@ import type {
   ResultadoDelEvento,
 } from "@/lib/types/cobro";
 
-// SLT-226 (design §4.3) — el acceso a las funciones del dueño de `20261124130100_cobro_intento`. Cada escritura es
+// SLT-226 (design §4.3) — el acceso a las funciones del dueño de `20261124140100_cobro_intento`. Cada escritura es
 // una sola sentencia: su propia transacción, bajo el candado `pago_plataforma:` de la empresa.
 
 export interface ObtenerOCrearRepoInput {

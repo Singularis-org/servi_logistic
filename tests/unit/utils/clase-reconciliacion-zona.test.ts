@@ -13,6 +13,9 @@ import {
  * zona. El `Record<OrderStatusValue, …>` ya rompe el typecheck si falta un estado; este test fija
  * ademas QUE clase lleva cada uno, escrito LITERAL (no derivado del propio mapa), para que mover un
  * estado de clase sea un cambio visible y no una casualidad.
+ *
+ * SLT-248 (R1801, R1805): `reprogramado` y `novedad` pasan a «se mueve»; la clase `por_liberar` ya no
+ * existe y `devolucion` queda con 5 estados.
  */
 
 function deClase(clase: ClaseReconciliacionZona): string[] {
@@ -26,7 +29,7 @@ describe("SLT-224/R1725 — la clasificacion de estados para la reconciliacion d
     expect(Object.keys(CLASE_RECONCILIACION_ZONA).sort()).toEqual([...ORDER_STATUS_SEED].sort());
   });
 
-  it("«se mueve»: las vivas, escritas literal", () => {
+  it("R1801: «se mueve»: las vivas (con `reprogramado` y `novedad`), escritas literal", () => {
     expect(deClase("se_mueve")).toEqual(
       [
         "en_preparacion",
@@ -38,11 +41,13 @@ describe("SLT-224/R1725 — la clasificacion de estados para la reconciliacion d
         "en_ruta_bodega_satelite",
         "en_reparto",
         "novedad_interna",
+        "reprogramado",
+        "novedad",
       ].sort(),
     );
   });
 
-  it("cada clase que no se mueve, escrita literal", () => {
+  it("R1805: cada clase que no se mueve, escrita literal", () => {
     expect(deClase("estante_satelite")).toEqual(["en_bodega_satelite"]);
     expect(deClase("finalizada")).toEqual(["devuelta_a_tienda", "entregado", "incidente"]);
     expect(deClase("devolucion")).toEqual(
@@ -50,19 +55,17 @@ describe("SLT-224/R1725 — la clasificacion de estados para la reconciliacion d
         "por_devolver_a_bodega_central",
         "devolviendo_a_bodega_central",
         "devolucion_a_origen_por_rechazo",
-        "novedad",
         "por_devolver_a_tienda",
         "devolviendo_a_tienda",
       ].sort(),
     );
-    expect(deClase("por_liberar")).toEqual(["reprogramado"]);
   });
 
   it("R1721: `finalizada` es exactamente `ESTADOS_TERMINALES`", () => {
     expect(deClase("finalizada")).toEqual([...ESTADOS_TERMINALES].sort());
   });
 
-  it("`ESTADOS_QUE_NO_SE_MUEVEN` es el complemento de «se mueve» (11 estados)", () => {
+  it("`ESTADOS_QUE_NO_SE_MUEVEN` es el complemento de «se mueve» (9 estados, R1805)", () => {
     expect([...ESTADOS_QUE_NO_SE_MUEVEN].sort()).toEqual(
       [
         "en_bodega_satelite",
@@ -72,10 +75,8 @@ describe("SLT-224/R1725 — la clasificacion de estados para la reconciliacion d
         "por_devolver_a_bodega_central",
         "devolviendo_a_bodega_central",
         "devolucion_a_origen_por_rechazo",
-        "novedad",
         "por_devolver_a_tienda",
         "devolviendo_a_tienda",
-        "reprogramado",
       ].sort(),
     );
   });

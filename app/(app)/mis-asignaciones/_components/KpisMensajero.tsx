@@ -1,10 +1,13 @@
+"use client";
+
 import { HandCoins, PackageCheck, Truck, Wallet, type LucideIcon } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
 import type { MisAsignacionesKpis } from "@/lib/interfaces/services/IMisAsignacionesService";
 
 import { NOMBRE_ESTADO } from "@/lib/types/order-status";
-import { formatMonto, monedaConfig } from "@/lib/config/moneda";
+import { formatearMontoEn, monedaConfig, type FormatoMoneda } from "@/lib/config/moneda";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
 
 import { KpiValorAnimado } from "./KpiValorAnimado";
 
@@ -66,7 +69,7 @@ interface Tile {
    * tamaño y si cabe al lado del icono con el valor final, no con el de cada fotograma: así la
    * tarjeta no salta de disposición mientras la cifra cuenta.
    */
-  texto: (kpis: MisAsignacionesKpis) => string;
+  texto: (kpis: MisAsignacionesKpis, moneda: FormatoMoneda) => string;
 }
 
 const TILES: Tile[] = [
@@ -87,13 +90,13 @@ const TILES: Tile[] = [
     label: "Por cobrar",
     Icono: HandCoins,
     render: (k) => <KpiValorAnimado value={k.porCobrar} moneda />,
-    texto: (k) => formatMonto(k.porCobrar),
+    texto: (k, moneda) => formatearMontoEn(moneda, k.porCobrar),
   },
   {
     label: "Total a cobrar",
     Icono: Wallet,
     render: (k) => <KpiValorAnimado value={k.totalACobrar} moneda />,
-    texto: (k) => formatMonto(k.totalACobrar),
+    texto: (k, moneda) => formatearMontoEn(moneda, k.totalACobrar),
   },
 ];
 
@@ -113,7 +116,11 @@ function alLadoPorTarjeta(textos: string[]): boolean[] {
 }
 
 export function KpisMensajero({ kpis }: Readonly<KpisMensajeroProps>) {
-  const textos = TILES.map((tile) => tile.texto(kpis));
+  // SLT-235 (R11): la tabla de tarjetas es de módulo, así que la moneda del país le llega como
+  // argumento; el contador animado la lee por su cuenta del mismo proveedor. Por el hook este
+  // componente pasa a ser de cliente: lo monta la página de Reparto, que es de servidor.
+  const moneda = useMonedaDelPais();
+  const textos = TILES.map((tile) => tile.texto(kpis, moneda));
   const alLado = alLadoPorTarjeta(textos);
   return (
     <section

@@ -222,8 +222,8 @@ después de la mayor de `dev`, hoy `20261124120000_sl21_pais_moneda_impuesto`; T
 
 | Migración | Qué trae |
 |---|---|
-| `20261124130000_cobro_historial_enum` | Los dos `ALTER TYPE … ADD VALUE IF NOT EXISTS` (§1.3) |
-| `20261124130100_cobro_intento` | Todo lo demás |
+| `20261124140000_cobro_historial_enum` | Los dos `ALTER TYPE … ADD VALUE IF NOT EXISTS` (§1.3) |
+| `20261124140100_cobro_intento` | Todo lo demás |
 
 Todas las funciones nuevas son del dueño:
 - `SECURITY DEFINER`, con `search_path = public, pg_temp`;
@@ -391,7 +391,7 @@ muestra.
 
 ### 3.10 `down.sql`
 
-**`20261124130100_cobro_intento/down.sql`** va en este orden:
+**`20261124140100_cobro_intento/down.sql`** va en este orden:
 1. Aborta si `cobro_intento` tiene filas, con el molde de SLT-143 §3.7 (R28).
 2. Repone **literal** el cuerpo de `20261116120000` §8 en `wallet_movimiento_tope_pago_plataforma` y el de
    `20261121130000` §4 en `_pago_plataforma_aplicar` de 7 argumentos. Después hace `DROP` de la sobrecarga de 8.
@@ -401,7 +401,7 @@ muestra.
    - `DROP COLUMN en_linea`;
    - `ALTER COLUMN confirmado_por SET NOT NULL`. Sin intentos no puede haber confirmaciones sin persona.
 
-**`20261124130000_cobro_historial_enum/down.sql`** va **después** del anterior:
+**`20261124140000_cobro_historial_enum/down.sql`** va **después** del anterior:
 1. `DELETE FROM historial_plataforma` de las filas con los valores nuevos (solo pueden existir si hubo intentos);
 2. `pg_temp.quitar_valores_de_enum_slt226`, copiada de SLT-215, sobre los dos tipos.
 
@@ -458,7 +458,7 @@ export interface IProveedorCobro {
 
 Cada método llama a una función de §3 en `comoPlataforma("SL-45", …)`. `FichaJira` no admite `SLT` (deuda D29),
 como en SLT-60. La entrada nueva de `EXCEPCIONES_DE_PLATAFORMA` lleva el motivo «SLT-226: el cobro en línea; llama
-a las funciones del dueño de 20261124130100, que `servi_app` no puede ejecutar».
+a las funciones del dueño de 20261124140100, que `servi_app` no puede ejecutar».
 
 | Método | Función |
 |---|---|
@@ -677,6 +677,10 @@ Un `skip` por falta de base no cuenta como verde.
   `20261124120000_sl21_pais_moneda_impuesto`, el mismo prefijo que la del enum. Las dos de esta ficha pasan a
   `20261124130000_cobro_historial_enum` y `20261124130100_cobro_intento`; el contenido no cambia. Sin `125` en el nombre: `backfill-guards` (SLT-125)
   rechaza toda carpeta de migración que lo contenga, y `20261125…` lo contenía.
+- **Segundo renombre al sincronizar con `dev` (2026-11-20, F2.3):** SLT-247 entró en `dev` con
+  `20261124130000_orden_historial_origen_retorno_rechazo_cierre`, el mismo prefijo que la del enum. Las dos de esta
+  ficha pasan a `20261124140000_cobro_historial_enum` y `20261124140100_cobro_intento`, detrás de todas las de `dev`
+  (convención, precedente SL-45 D10); el contenido no cambia y el nombre sigue sin `125`.
 - **T0.5 (2026-11-20):** no choca. El test crea su propia base y aplica con `aplicarMigracionesHasta(db, M)`, que
   para ANTES de SLT-143: nunca ve las migraciones de esta ficha. T7.5 no hace falta.
 - **T0.6 (2026-11-20):** sin deriva. Con una FK existente pasada a `DEFERRABLE INITIALLY DEFERRED` a mano,
@@ -686,7 +690,7 @@ Un `skip` por falta de base no cuenta como verde.
 ## 12. Enmienda del 2026-11-20: proveedores, método y marcar pagado a mano (R30–R39)
 
 El humano cambió el alcance con la ficha ya implementada (PR #263, CI en verde). La migración
-`20261124130100_cobro_intento` todavía no está en `dev`, así que **la enmienda la edita directamente**: no hay
+`20261124140100_cobro_intento` todavía no está en `dev`, así que **la enmienda la edita directamente**: no hay
 migración nueva. Las bases ya migradas (la de la feature y las desechables) se rehacen con su `down` y su ida.
 
 ### 12.0 Lo que ya existe
@@ -931,5 +935,5 @@ Medido antes de la enmienda (T7.4, `scripts/tamano-pr.mjs`): **31/40 archivos, 1
   no la encuentra por el paso 0. Si el intento tiene `id_externo`, el aviso lo encuentra `aprobado` y responde
   `requiere_revision` (R21), sin contar doble. Si no tiene, responde `sin_intento`. Nunca cuenta doble, pero la
   pantalla de SLT-234 debe pedir la referencia tal cual la da el proveedor. Se anota para su spec.
-- **Las bases ya migradas.** Editar `20261124130100` cambia su contenido, y Prisma marca la diferencia en una base
+- **Las bases ya migradas.** Editar `20261124140100` cambia su contenido, y Prisma marca la diferencia en una base
   que ya la aplicó. La de la feature se rehace (`down` y la ida); `dev` todavía no la tiene.

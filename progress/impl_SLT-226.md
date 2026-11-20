@@ -2,12 +2,12 @@
 
 ## Tanda 1 (T0–T3), 2026-11-20
 
-Base de la feature: `servi_logistic_slt226` en localhost (migrada hasta `20261124130100_cobro_intento`, catálogos
+Base de la feature: `servi_logistic_slt226` en localhost (migrada hasta `20261124140100_cobro_intento`, catálogos
 sembrados, sin empresas).
 
 ### Primera parte (commit 4a4d5f6c)
 - T0.1, T0.2, T0.4, T0.5, T0.6: anotados en `design.md` (§1.4, §3.5, §5, §11).
-- T1.1, T1.2: `db/migrations/20261124130000_cobro_historial_enum/{migration.sql,down.sql}`, con ida y vuelta.
+- T1.1, T1.2: `db/migrations/20261124140000_cobro_historial_enum/{migration.sql,down.sql}`, con ida y vuelta.
 - T0.3 quedó BLOQUEADA: con el trigger `cobro_intento_sin_borrar` y la FK `RESTRICT` de `creado_por`, una empresa
   con intentos no se podía limpiar.
 
@@ -19,11 +19,11 @@ sembrados, sin empresas).
 
 ### Segunda parte: T2 y T3
 Archivos:
-- `db/migrations/20261124130100_cobro_intento/migration.sql` (nuevo, 714 líneas): tablas, CHECK, índices, RLS,
+- `db/migrations/20261124140100_cobro_intento/migration.sql` (nuevo, 714 líneas): tablas, CHECK, índices, RLS,
   REVOKE, triggers de SL-17 (generados), `cobro_intento_solo_avanza`, `cobro_webhook_evento_inmutable`, la
   confirmación sin persona, la sobrecarga de `_pago_plataforma_aplicar`, el tope con la salida del pago en línea,
   `_cobro_historial`, `_cobro_intento_pasar`, las funciones de §3.1–§3.3, §3.5 y §3.8 y los triggers de §3.4.
-- `db/migrations/20261124130100_cobro_intento/down.sql` (nuevo, 146 líneas): guarda, cuerpos literales del tope
+- `db/migrations/20261124140100_cobro_intento/down.sql` (nuevo, 146 líneas): guarda, cuerpos literales del tope
   (20261116120000 §8) y de `_pago_plataforma_aplicar` de 7 argumentos (20261121130000 §4, extraídos del archivo),
   DROP de lo nuevo, la columna y el CHECK.
 - `db/schema.prisma` (+~90): `CobroIntento`, `CobroWebhookEvento`, `PagoPlataformaConfirmacion` (`confirmadoPor?`,
@@ -179,12 +179,12 @@ El `backend_dev` escribió los dos archivos, pero no entregó informe. Verifiqu�
 ## Tanda T8 (enmienda del 2026-11-20): la base, T8.1, T8.2, T8.3 y T8.6 (backend_dev)
 
 Archivos (ninguno nuevo):
-- `db/migrations/20261124130100_cobro_intento/migration.sql`, editada en el sitio (§12.1, §12.3, §12.4): CHECK de
+- `db/migrations/20261124140100_cobro_intento/migration.sql`, editada en el sitio (§12.1, §12.3, §12.4): CHECK de
   proveedor con `rebill`, `wompi` y `global66` en las dos tablas; `metodo` con su CHECK y entre las columnas fijas de
   `cobro_intento_solo_avanza`; `_cobro_historial` con `p_manual` y el detalle con `proveedor` y `metodo`;
   `cobro_intento_obtener_o_crear` de 7 argumentos con la clave `…||proveedor|metodo`; `_cobro_aprobar` (interna);
   `cobro_registrar_pago_aprobado` con el paso 0 y delegando en `_cobro_aprobar`; `cobro_marcar_pagado_manual`.
-- `db/migrations/20261124130100_cobro_intento/down.sql` (§12.5): las firmas nuevas y las dos funciones nuevas.
+- `db/migrations/20261124140100_cobro_intento/down.sql` (§12.5): las firmas nuevas y las dos funciones nuevas.
 - `db/schema.prisma`: `metodo String` en `CobroIntento`.
 - Tests: `_fixtures/cobro.ts` (`METODO`, `claveDe`, `marcarPagadoManual`, proveedor y método opcionales),
   `cobro-intento`, `cobro-webhook-evento`, `cobro-pago-en-linea` y `migracion-slt226-ida-y-vuelta` (la lista de
@@ -271,3 +271,26 @@ Desvíos frente al spec (§12.7): `FUNCIONES_NUEVAS` de `migracion-slt226-ida-y-
 `cobro_marcar_pagado_manual` (para que el test compruebe que el `down` las quita); `metodo` en dos INSERT de tests
 existentes (NOT NULL); empresa E nueva en `cobro-pago-en-linea`; R39 del servicio cubre además adminSatelite y apiKey;
 tests extra de servicio (R30 wompi sin adaptador, R38 respuestas de la base, R35 referencia sin espacios).
+
+## F2.3: sincronización con `dev` y segundo renombre (2026-11-20)
+
+- `git merge origin/dev` (39 commits). Conflicto en `orden-traspaso-migration.test.ts`: la de SLT-247 y las dos de
+  SLT-226, en orden cronológico.
+- SLT-247 entró en `dev` con `20261124130000_orden_historial_origen_retorno_rechazo_cierre`, el mismo prefijo que la
+  del enum. Por la convención (marca posterior a todas las de `dev`, precedente SL-45 D10), `git mv` a
+  `20261124140000_cobro_historial_enum` y `20261124140100_cobro_intento` (sin `125`). Referencias actualizadas en
+  migraciones, `schema.prisma`, `lib/`, `scripts/verificar-rls-despliegue.ts`, tests, design, tasks y esta
+  bitácora (las menciones de las tandas anteriores ya usan el nombre nuevo). `PREVIA` de la ida y vuelta: la de
+  SLT-247.
+- Base `servi_logistic_slt226` (solo `dburl_SLT226`): los dos `down.sql`, borradas las filas viejas de
+  `_prisma_migrations`, `migrate deploy` (entra la de SLT-247 y las dos renombradas), `prisma generate`;
+  `migrate diff` → «No difference detected».
+- Verificación:
+  - SLT-226 (`cobro-intento`, `cobro-webhook-evento`, `cobro-pago-en-linea`, `migracion-slt226-ida-y-vuelta`,
+    `cobro-intento-service`) y `orden-traspaso-migration`: `Test Files 6 passed (6)`, `Tests 120 passed (120)`.
+  - SLT-60, SLT-143 y SL-45 (los 7 de antes): `Test Files 7 passed (7)`, `Tests 84 passed (84)`.
+  - Nota: corridos los 13 archivos en una sola invocación, 3–4 dan `Hook timed out in 300000ms` en el `beforeAll`
+    (esperan locks de asesoría compartidos con la carga de la máquina). Solos o en los dos grupos de siempre, verdes.
+  - Typecheck (8192 MB): exit 0.
+  - Lint: 0 errores, 249 avisos. `test:guardias`: `Test Files 357 passed | 3 skipped (360)`,
+    `Tests 5419 passed | 28 skipped (5447)`.

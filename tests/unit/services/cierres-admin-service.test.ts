@@ -1782,6 +1782,34 @@ describe("CierresAdminService.rechazarCierre (R11/R12/R13/R14)", () => {
     expect(r.status).toBe("forbidden");
     expect(repo.resolverCierre).not.toHaveBeenCalled();
   });
+
+  // SLT-247 (R1770): el composition root que no inyecta deja el bug vivo con la suite verde. Este
+  // caso comprueba que el servicio PASA los dos ids del catalogo al repositorio.
+  it("SLT-247/R1770: pasa `retornoSinGestion` con los ids de novedad_interna y en_reparto", async () => {
+    const repo = fakeRepo({ resolverCierre: vi.fn(async () => "updated" as const) });
+    const { service } = newService({ repo });
+    await service.rechazarCierre("c1", "motivo", MAESTRO);
+    const arg = (repo.resolverCierre as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(arg.retornoSinGestion).toEqual({
+      sinGestionarEstatusId: ESTATUS_IDS.novedad_interna,
+      enRepartoEstatusId: ESTATUS_IDS.en_reparto,
+    });
+    expect(arg.retornoSinGestion.sinGestionarEstatusId).toEqual(expect.any(String));
+    expect(arg.retornoSinGestion.enRepartoEstatusId).toEqual(expect.any(String));
+  });
+
+  it.each(["novedad_interna", "en_reparto"])(
+    "SLT-247/R1775: sin `%s` en el catalogo -> validation_error y NO rechaza (falla cerrado)",
+    async (falta) => {
+      const repo = fakeRepo({ resolverCierre: vi.fn(async () => "updated" as const) });
+      const { service } = newService({ repo, estatusIds: { ...ESTATUS_IDS, [falta]: null } });
+      const r = await service.rechazarCierre("c1", "motivo", MAESTRO);
+      expect(r.status).toBe("validation_error");
+      if (r.status !== "validation_error") throw new Error("esperaba validation_error");
+      expect(r.fieldErrors.estatus).toBeDefined();
+      expect(repo.resolverCierre).not.toHaveBeenCalled();
+    },
+  );
 });
 
 // --- feature 111: VÁLVULA DE ESCAPE (R16/R17/R18) ---

@@ -47,7 +47,7 @@ function repoParaSolicitar(over: {
     findCierreResolicitableMasViejo: vi.fn(async () => resolicitable),
     transicionarASolicitado: vi.fn(async () => true),
     // FICHA 477 (D5): el `rechazado` se re-solicita por su propia transaccion.
-    resolicitarCierreRechazado: vi.fn(async () => true),
+    resolicitarCierreRechazado: vi.fn(async () => ({ status: "ok" as const })),
     contarOrdenesPendientesGestion: vi.fn(async () => 0),
     findGestionesPendientes: vi.fn(async () => []),
     crearCierre: vi.fn(async () => "c-nuevo"),

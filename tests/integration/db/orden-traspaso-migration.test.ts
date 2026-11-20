@@ -324,10 +324,13 @@ describe("427/T2 — el UP y el DOWN, leidos del archivo", () => {
       "20261123120100_zona_activa",
       // SL-21: seis columnas de moneda e impuesto en `pais` y el relleno de CR; no toca `orden_traspaso_mensajero`.
       "20261124120000_sl21_pais_moneda_impuesto",
+      // SLT-247 (2026-11-20): el valor `retorno_por_rechazo_cierre` del enum del historial; no toca
+      // `orden_traspaso_mensajero`.
+      "20261124130000_orden_historial_origen_retorno_rechazo_cierre",
       // SLT-226: los dos valores del historial de plataforma (sola, por el 55P04) y las tablas `cobro_intento` y
       // `cobro_webhook_evento` con sus funciones; no tocan `orden_traspaso_mensajero`.
-      "20261124130000_cobro_historial_enum",
-      "20261124130100_cobro_intento",
+      "20261124140000_cobro_historial_enum",
+      "20261124140100_cobro_intento",
     ]);
   });
 });

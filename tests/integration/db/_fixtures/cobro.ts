@@ -15,7 +15,7 @@ import { cerrarFacturaEnCurso, confirmarComoDueno, facturaEnCurso, type Aplicaci
 
 // SLT-226 (design §8) — lo que comparten los tests del cobro en línea contra Postgres: `cobro-intento`,
 // `cobro-pago-en-linea` y los que vengan. Todo se escribe COMMITEADO y como DUEÑO, que es como llaman a las
-// funciones de 20261124130100 el repositorio (en `comoPlataforma`) y el job del webhook; la RLS se prueba aparte,
+// funciones de 20261124140100 el repositorio (en `comoPlataforma`) y el job del webhook; la RLS se prueba aparte,
 // bajando a `servi_app` con `comoApp`.
 //
 // LAS FACTURAS: como en SLT-60, una orden por el repositorio real de la carga masiva y su cargo cambiado por uno del
@@ -158,7 +158,7 @@ export async function facturaCerradaCon(ctx: ContextoCobro, e: EmpresaCobro, mon
 }
 
 /* -------------------------------------------------------------------------- */
-/* Las funciones del dueño (20261124130100), tal como las llama el repositorio  */
+/* Las funciones del dueño (20261124140100), tal como las llama el repositorio  */
 /* -------------------------------------------------------------------------- */
 
 export interface ResultadoObtener {

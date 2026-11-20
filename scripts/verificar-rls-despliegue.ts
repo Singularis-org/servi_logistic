@@ -45,7 +45,7 @@ const ROL_APP = "servi_app";
 // confirmación y a `usuario` (el superadmin).
 // SLT-221 (20261122120000_slt221_usuario_cambio_correo) suma dos: las de `usuario_cambio_correo` a `usuario`
 // (la cuenta del cambio y el maestro que lo pidió).
-// SLT-226 (20261124130100_cobro_intento) suma tres: las de `cobro_intento` a `factura_plataforma`, a
+// SLT-226 (20261124140100_cobro_intento) suma tres: las de `cobro_intento` a `factura_plataforma`, a
 // `wallet_movimiento` (el pago del libro) y a `usuario` (quien lo pidió).
 const TRIGGERS_MISMA_EMPRESA = 186;
 

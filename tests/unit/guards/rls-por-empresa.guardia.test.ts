@@ -166,7 +166,7 @@ describe("SL-17 · RLS por empresa en cada tabla de negocio (R24)", () => {
     // + `pago_plataforma_anulacion` (SLT-143, 20261121130000).
     // + `plan_nivel_empresa` y `plan_nivel_historial` (SLT-215, 20261121140100).
     // + `usuario_cambio_correo` (SLT-221, 20261122120000).
-    // + `cobro_intento` (SLT-226, 20261124130100).
+    // + `cobro_intento` (SLT-226, 20261124140100).
     expect(tablas.length).toBe(97);
   });
 

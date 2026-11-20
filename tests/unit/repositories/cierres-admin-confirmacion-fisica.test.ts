@@ -652,13 +652,19 @@ describe("451/T2.2 — findBarridasDelCierre: el registro persistido de ESE cier
     expect(deC2).toEqual([{ ordenId: O_B1, numGuia: 7001 }]);
   });
 
-  it("R6: el WHERE sale del registro (`cierreId` + alcance por la relacion), no del estado de la orden", async () => {
+  // SLT-247 (R1791) enmienda R6 en UNA condicion: la barrida que el rechazo devolvio a `en_reparto` ya no
+  // vuelve a bodega por este cierre, asi que el WHERE pide ademas que la orden siga en `novedad_interna`.
+  it("R6 + SLT-247/R1791: el WHERE sale del registro (`cierreId` + alcance) y de que la orden siga en novedad_interna", async () => {
     const { prisma, cierreSinGestion } = baseConBarridas();
 
     await makeRepo(prisma).findBarridasDelCierre("c1", ALCANCE_MAESTRO);
 
     const { where, select } = cierreSinGestion.findMany.mock.calls[0][0];
-    expect(where).toEqual({ cierreId: "c1", cierre: { destinoTipo: "bodega_central" } });
+    expect(where).toEqual({
+      cierreId: "c1",
+      cierre: { destinoTipo: "bodega_central" },
+      orden: { estatus: { value: "novedad_interna" } },
+    });
     // Proyeccion minima: lo que la cobertura necesita, y nada de la orden VIVA.
     expect(select).toEqual({ ordenId: true, numGuia: true });
   });

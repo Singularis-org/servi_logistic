@@ -11,8 +11,9 @@ import { RevisionSinpeBodega } from "@/components/shared/RevisionSinpeBodega";
 import { TemaProvider } from "@/providers/TemaProvider";
 import { AyudaProvider } from "@/providers/AyudaProvider";
 import { EtiquetasGeograficasProvider } from "@/providers/EtiquetasGeograficasProvider";
+import { MonedaDelPaisProvider } from "@/providers/MonedaDelPaisProvider";
 import { construirPaisService } from "@/lib/actions/_shared/paises-plataforma";
-import { ETIQUETAS_NEUTRAS, type EtiquetasGeograficas } from "@/lib/types/pais";
+import { PARA_PANTALLAS_DE_PLATAFORMA, paisParaPantallasDelActor } from "@/lib/services/pais-para-pantallas";
 import { AsistenteProvider } from "@/providers/AsistenteProvider";
 import { AsistentePanel } from "@/components/shared/AsistentePanel";
 import { ReporteBugBoton } from "@/components/shared/ReporteBugBoton";
@@ -91,11 +92,14 @@ export default async function AppLayout({
   const deLaPlataforma = actor !== null && esPlataforma(actor.rol);
   const pideRevisionSinpe = actor !== null && puedeEditarAlgunSinpe(actor.rol);
   //
-  // ⭑ SL-20 (design §7; R19) — LA CUARTA LECTURA: cómo llama el país de la empresa a cada nivel
-  // geográfico. Va en el mismo `Promise.all` por la razón de arriba. Sin empresa (el superadmin, o un
-  // actor sin `organizacionId`) no hay país del que leerlas: `ETIQUETAS_NEUTRAS`, sin consulta.
-  const [usuarioRow, avisosRecordados, revisionSinpe, etiquetas] = !actor
-    ? ([null, false, null, ETIQUETAS_NEUTRAS] as const)
+  // ⭑ SL-20 (design §7; R19) y SLT-235 (design §6; R1, R2, R5) — LA CUARTA LECTURA: el país de la
+  // empresa para las pantallas, en UNA llamada: los nombres de nivel, la moneda y el nombre del impuesto.
+  // Va en el mismo `Promise.all` por la razón de arriba, y pasa por el memo de 10 min de
+  // `pais-para-pantallas.ts`, así que casi ninguna carga llega a la base. Sin empresa (el superadmin,
+  // o un actor sin `organizacionId`) no hay país: lo de la plataforma, sin promesa ni consulta (R2). Si
+  // la lectura falla, `paisParaPantallasDelActor` cae a lo de la plataforma y lo deja en el log (R5).
+  const [usuarioRow, avisosRecordados, revisionSinpe, pais] = !actor
+    ? ([null, false, null, PARA_PANTALLAS_DE_PLATAFORMA] as const)
     : deLaPlataforma
     ? await Promise.all([
         comoPlataforma("SL-32", "nombre del superadmin en el pie", () =>
@@ -103,7 +107,7 @@ export default async function AppLayout({
         ),
         false,
         null,
-        ETIQUETAS_NEUTRAS,
+        PARA_PANTALLAS_DE_PLATAFORMA,
       ])
     : await Promise.all([
         new UserRepository(getPrismaClient()).findById(actor.usuarioId),
@@ -111,7 +115,7 @@ export default async function AppLayout({
         pideRevisionSinpe
           ? resolverRevisionSinpePendiente(actor, new ZonaRepository(getPrismaClient()))
           : null,
-        etiquetasDelActor(actor.organizacionId ?? null),
+        paisParaPantallasDelActor(actor.organizacionId ?? null, construirPaisService()),
       ]);
   const usuario =
     actor && usuarioRow
@@ -180,8 +184,15 @@ export default async function AppLayout({
               {/* SL-20 (design §7; R19) — los nombres de nivel del país de la empresa. Envuelve
                   SÓLO a `{children}`, como el mapa de la ayuda: es ahí donde viven las pantallas
                   que los pintan. No pinta ninguna caja. */}
+              {/* SLT-235 (design §6; R1) — la moneda y el nombre del impuesto del mismo país, dentro
+                  del de etiquetas y por la misma razón: las pantallas que formatean montos viven en
+                  `{children}`. Sin ninguna rama: no puede dejar de pintar a sus hijos. */}
               <AyudaProvider mapa={mapaAyuda}>
-                <EtiquetasGeograficasProvider etiquetas={etiquetas}>{children}</EtiquetasGeograficasProvider>
+                <EtiquetasGeograficasProvider etiquetas={pais.etiquetas}>
+                  <MonedaDelPaisProvider moneda={pais.moneda} impuestoNombre={pais.impuestoNombre}>
+                    {children}
+                  </MonedaDelPaisProvider>
+                </EtiquetasGeograficasProvider>
               </AyudaProvider>
             </SidebarInset>
           </SidebarProvider>
@@ -261,24 +272,5 @@ async function mapaAyudaDelActor(rol: RolValue | null): Promise<Record<string, s
   } catch (error) {
     console.error("[ayuda] no se pudo leer docs/ayuda; el portal sigue sin «?»", error);
     return {};
-  }
-}
-
-/**
- * SL-20 (design §7; R19) — los nombres de nivel del país de la empresa del actor.
- *
- * Mismo criterio que `mapaAyudaDelActor`: este layout se pinta en TODAS las páginas del portal, así que
- * un fallo aquí no puede dar un 500 en todas. `etiquetasDeEmpresa` lanza si la empresa no tiene país
- * visible (un dato roto, no un caso normal: `organizacion.pais_id` es NOT NULL); entonces se pintan las
- * neutras («Nivel 1»…) y el error queda en `console.error`, que es lo que se lee en los logs. No se
- * sustituyen por las de un país: eso escondería el fallo detrás de unos nombres que parecen buenos.
- */
-async function etiquetasDelActor(organizacionId: string | null): Promise<EtiquetasGeograficas> {
-  if (!organizacionId) return ETIQUETAS_NEUTRAS;
-  try {
-    return await construirPaisService().etiquetasDeEmpresa(organizacionId);
-  } catch (error) {
-    console.error("[geografía] no se pudieron leer los nombres de nivel; se pintan los neutros", error);
-    return ETIQUETAS_NEUTRAS;
   }
 }

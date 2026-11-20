@@ -3,14 +3,14 @@
 --   historial_plataforma_entidad − cobro_intento
 --
 -- BORRA LAS FILAS QUE LOS USAN: el rastro de las transiciones de los intentos de cobro. Solo pueden existir si hubo
--- intentos, y el down de 20261124130100 ya abortó en ese caso; sin el valor, el cliente Prisma de la versión
+-- intentos, y el down de 20261124140100 ya abortó en ese caso; sin el valor, el cliente Prisma de la versión
 -- anterior no sabría leerlas.
 --
 -- Postgres no tiene `ALTER TYPE ... DROP VALUE`: hay que recrear el tipo. La función es la de
 -- `20261121140000_plan_nivel_job_enum/down.sql` (SLT-215) TAL CUAL, renombrada `_slt226`: lee la lista VIGENTE de
 -- `pg_enum` y quita SOLO estos valores, así que no borra los que otra rama añada.
 --
--- ORDEN: va DESPUÉS del down de 20261124130100 (el modelo y las funciones que escriben estos valores).
+-- ORDEN: va DESPUÉS del down de 20261124140100 (el modelo y las funciones que escriben estos valores).
 
 BEGIN;
 

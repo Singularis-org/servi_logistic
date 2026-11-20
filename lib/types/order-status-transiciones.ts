@@ -339,6 +339,12 @@ export const TRANSICIONES = {
     // indistinguibles justo en la fila que es su unica evidencia — y esta cobra dinero
     // (`cobroRechazado`, 56). El argumento completo vive en `lib/types/orden-historial.ts`.
     { to: "devolucion_a_origen_por_rechazo", via: "rechazo_tope_intentos", rol: "admin (aprobar cierre)" }, // #68 (276)
+    // SLT-247 (R1770/R1771) — #74. Al RECHAZAR el cierre, las barridas por el corte vuelven a la
+    // calle con su mismo mensajero, que las gestiona antes de reenviarlo. Productor:
+    // `CierresAdminRepository.resolverCierre`, rama `rechazado` con `retornoSinGestion`. Sin esta
+    // arista el choke point (140) rechaza la escritura y REVIERTE el rechazo entero. Familia propia:
+    // el argumento vive en `lib/types/orden-historial.ts`.
+    { to: "en_reparto", via: "retorno_por_rechazo_cierre", rol: "admin (rechazar cierre)" }, // #74 (SLT-247)
   ],
 
   // --- Flujo de devolucion (137 + 139) -------------------------------------------------

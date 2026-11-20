@@ -226,6 +226,21 @@ export const ORDEN_HISTORIAL_ORIGEN_TIPO_SEED = [
   // NO entra en `ORIGENES_SIN_EVENTO_PUBLICO`: esa lista esta VACIA desde la 268 y el integrador
   // recibe `rechazada` igual que por cualquier otra via.
   "correccion_resultado_gestion",
+  // SLT-247 (2026-11-20, R1771) — `novedad_interna -> en_reparto` al RECHAZAR un cierre. Las
+  // órdenes que el corte barrió a Novedad interna (`cierre_sin_gestion`) vuelven a la calle con su
+  // mismo mensajero, que debe gestionarlas antes de reenviar el cierre. Productor ÚNICO:
+  // `CierresAdminRepository.resolverCierre`, rama `rechazado` con `retornoSinGestion`. Actor = el
+  // admin que rechaza.
+  //
+  // FAMILIA PROPIA: `deshacer_gestion` atribuiría al mensajero un deshacer que no hizo, y
+  // `liberacion_sin_gestionar` dice «liberación a bodega» sobre una orden que vuelve al reparto.
+  //
+  // 💰 NO ENTRA EN `ORIGEN_TIPOS_VISITA_REAL`: nadie visitó la orden; el retorno no es un intento
+  // de entrega (R1771). NO entra en `ORIGEN_TIPOS_CON_GESTION`: la fila nace SIN
+  // `gestion_orden_id`. NO entra en `ORIGENES_GESTION_FUERA_DEL_CIERRE`: no produce gestión. NO
+  // entra en `ORIGENES_SIN_EVENTO_PUBLICO` (vacía desde la 268): el integrador recibe `en_reparto`
+  // como en cualquier reingreso a la calle.
+  "retorno_por_rechazo_cierre",
 ] as const satisfies readonly PrismaOrdenHistorialOrigenTipo[];
 
 export type OrdenHistorialOrigenTipo = (typeof ORDEN_HISTORIAL_ORIGEN_TIPO_SEED)[number];

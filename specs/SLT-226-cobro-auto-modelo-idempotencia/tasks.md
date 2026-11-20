@@ -10,7 +10,8 @@
 
 - [x] **T0.1** La mayor migración de `dev`. **Hecho:** los dos prefijos de §3 van después de ella, o se anotan
   los nuevos en `design.md`. Al sincronizar con `dev` (SL-21 tomó `20261124120000`), pasan a `20261124130000` y
-  `20261124130100` (`design.md` > Riesgos).
+  `20261124130100`; al sincronizar otra vez (SLT-247 tomó `20261124130000`), a `20261124140000` y `20261124140100`
+  (`design.md` > Riesgos).
 - [x] **T0.2** Las columnas exactas que escribe `pago_plataforma_registrar_por_fuera` en `wallet_movimiento`.
   **Hecho:** §3.5 las copia.
 - [x] **T0.3** El trigger `cobro_intento_sin_borrar` frente al `CASCADE` desde `organizacion`. Se prueban
@@ -33,7 +34,7 @@
 
 ## T1 — Migración del enum (depende de T0.1)
 
-- [x] **T1.1** `20261124130000_cobro_historial_enum/migration.sql`: los dos `ADD VALUE IF NOT EXISTS` de §1.3.
+- [x] **T1.1** `20261124140000_cobro_historial_enum/migration.sql`: los dos `ADD VALUE IF NOT EXISTS` de §1.3.
   **Hecho:** aplica en una base desechable.
 - [x] **T1.2** Su `down.sql`: el `DELETE` del historial y `quitar_valores_de_enum_slt226`, copiada de SLT-215.
   **Hecho:** ida y vuelta en una base desechable, sin cambiar los demás valores.
@@ -117,7 +118,7 @@
 
 ## T8 — Enmienda del 2026-11-20: proveedores, método y marcar pagado a mano (R30–R39; design §12)
 
-> Tanda nueva sobre el PR #263. Edita la migración `20261124130100_cobro_intento` directamente (no está en `dev`):
+> Tanda nueva sobre el PR #263. Edita la migración `20261124140100_cobro_intento` directamente (no está en `dev`):
 > no nace ninguna migración ni ningún archivo. Antes de T8.1, la base de la feature se baja con su `down.sql`.
 
 - [x] **T8.1** La migración (§12.1, §12.3, §12.4):
@@ -153,10 +154,10 @@
 
 ## Archivos esperados
 
-- `db/migrations/20261124130000_cobro_historial_enum/migration.sql`
-- `db/migrations/20261124130000_cobro_historial_enum/down.sql`
-- `db/migrations/20261124130100_cobro_intento/migration.sql`
-- `db/migrations/20261124130100_cobro_intento/down.sql`
+- `db/migrations/20261124140000_cobro_historial_enum/migration.sql`
+- `db/migrations/20261124140000_cobro_historial_enum/down.sql`
+- `db/migrations/20261124140100_cobro_intento/migration.sql`
+- `db/migrations/20261124140100_cobro_intento/down.sql`
 - `db/schema.prisma`
 - `lib/types/cobro.ts`
 - `lib/interfaces/external/IProveedorCobro.ts`
@@ -189,8 +190,8 @@
   limpia empresas con intentos. Las limpiezas de los tests nuevos (T4, T6) borran `cobro_intento` antes que los
   usuarios y el libro (la FK `RESTRICT` de `creado_por`; el movimiento en línea tiene `registrado_por` nulo).
 
-- Enmienda (T8): ningún archivo nuevo. Toca de nuevo `db/migrations/20261124130100_cobro_intento/migration.sql`,
-  `db/migrations/20261124130100_cobro_intento/down.sql`, `db/schema.prisma`, `lib/types/cobro.ts`,
+- Enmienda (T8): ningún archivo nuevo. Toca de nuevo `db/migrations/20261124140100_cobro_intento/migration.sql`,
+  `db/migrations/20261124140100_cobro_intento/down.sql`, `db/schema.prisma`, `lib/types/cobro.ts`,
   `lib/interfaces/repositories/ICobroIntentoRepository.ts`, `lib/repositories/CobroIntentoRepository.ts`,
   `lib/interfaces/services/ICobroIntentoService.ts`, `lib/services/CobroIntentoService.ts`,
   `lib/db/excepciones-aislamiento.ts`, `tests/integration/db/cobro-intento.test.ts`,

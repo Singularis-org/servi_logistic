@@ -41,7 +41,7 @@ describe("455/C10 — el grafo de transiciones leido en claves", () => {
   });
 
   it("el grafo es igual a la lista literal de aristas en claves", () => {
-    expect(ARISTAS_ESPERADAS).toHaveLength(60); // 59 + #73 (SLT-197)
+    expect(ARISTAS_ESPERADAS).toHaveLength(61); // 59 + #73 (SLT-197) + #74 (SLT-247)
     expect(aristasDelGrafo()).toEqual([...ARISTAS_ESPERADAS].sort());
   });
 
@@ -54,6 +54,7 @@ describe("455/C10 — el grafo de transiciones leido en claves", () => {
 
 // Transcrita del grafo de HOY (2026-09-24, `dev` @ 0bd66809) y leida en claves. 59 aristas.
 // SLT-197 (2026-11-17): +1, `enBodegaSatelite -> enRutaBodegaCentral @ ajuste_estado` (#73). 60 aristas.
+// SLT-247 (2026-11-20): +1, `novedadInterna -> enReparto @ retorno_por_rechazo_cierre` (#74). 61 aristas.
 const ARISTAS_ESPERADAS: readonly string[] = [
   "devolviendoABodegaCentral -> porDevolverATienda @ recepcion_bodega_central",
   "devolviendoATienda -> devueltaATienda @ ajuste_estado",
@@ -99,6 +100,7 @@ const ARISTAS_ESPERADAS: readonly string[] = [
   "novedad -> reprogramado @ reprogramacion_tienda",
   "novedadInterna -> enBodegaCentral @ liberacion_sin_gestionar",
   "novedadInterna -> enBodegaSatelite @ liberacion_sin_gestionar",
+  "novedadInterna -> enReparto @ retorno_por_rechazo_cierre", // SLT-247 (#74)
   "novedadInterna -> rechazo @ rechazo_tope_intentos",
   "porDevolverATienda -> devolviendoATienda @ ajuste_estado",
   "porDevolverCentral -> devolviendoABodegaCentral @ ajuste_estado",

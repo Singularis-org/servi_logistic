@@ -6,7 +6,7 @@
 -- que SLT-60 no conoce (y `confirmado_por` no podría volver a NOT NULL). Es el molde de SLT-143 §3.7: no se borra
 -- nada y se pide resolverlo a mano. Sin intentos no puede haber confirmaciones `en_linea`.
 --
--- ORDEN: va ANTES del down de 20261124130000_cobro_historial_enum, que quita los valores del historial.
+-- ORDEN: va ANTES del down de 20261124140000_cobro_historial_enum, que quita los valores del historial.
 
 BEGIN;
 

@@ -4,7 +4,10 @@ import { render, screen, within, cleanup, waitFor } from "@testing-library/react
 import userEvent from "@testing-library/user-event";
 import { RolValue } from "@prisma/client";
 
-import { ActualizarZonasButton } from "@/app/(app)/ordenes/_components/ActualizarZonasButton";
+import {
+  ActualizarZonasButton,
+  TEXTO_MOTIVO_SALTADA,
+} from "@/app/(app)/ordenes/_components/ActualizarZonasButton";
 import { actualizarZonas, vistaPreviaActualizacionZonas } from "@/lib/actions/actualizacion-zonas";
 import { esAccesoTotal } from "@/lib/auth/acceso-total";
 
@@ -110,7 +113,13 @@ describe("ActualizarZonasButton (SLT-224)", () => {
     expect(actualizarMock).not.toHaveBeenCalled();
   });
 
-  it("R1726: cada motivo sale con su texto en español llano", async () => {
+  it("SLT-248/R1804: los motivos son exactamente cuatro, escritos literal", () => {
+    expect(Object.keys(TEXTO_MOTIVO_SALTADA).sort()).toEqual(
+      ["cobro_en_curso", "devolucion", "estante_satelite", "finalizada"],
+    );
+  });
+
+  it("R1726/R1804: cada motivo sale con su texto en español llano", async () => {
     vistaMock.mockResolvedValue({
       status: "ok",
       vistaPrevia: {
@@ -120,7 +129,6 @@ describe("ActualizarZonasButton (SLT-224)", () => {
           { guia: "G-1", motivo: "estante_satelite" },
           { guia: "G-2", motivo: "finalizada" },
           { guia: "G-3", motivo: "devolucion" },
-          { guia: "G-4", motivo: "por_liberar" },
           { guia: "G-5", motivo: "cobro_en_curso" },
         ],
       },
@@ -134,9 +142,10 @@ describe("ActualizarZonasButton (SLT-224)", () => {
       "G-1: en el estante de una satélite",
       "G-2: finalizada",
       "G-3: en devolución",
-      "G-4: esperando liberación en bodega",
       "G-5: cobro en curso (gestión o cierre sin aprobar)",
     ]);
+    // SLT-248 (R1804): el motivo de las reprogramadas ya no existe.
+    expect(dialog.textContent).not.toContain("esperando liberación en bodega");
   });
 
   it("R1716: sin desalineadas dice que todas las zonas están al día y no ofrece confirmar", async () => {
