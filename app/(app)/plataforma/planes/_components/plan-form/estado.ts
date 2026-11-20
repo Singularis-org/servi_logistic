@@ -75,6 +75,14 @@ export function nivelesEnPantalla(niveles: readonly Nivel[]): NivelEnPantalla[] 
 }
 
 /**
+ * SLT-215 (R3): solo cifras 0-9, sin signo, punto ni exponente (`1.5`, `1e2` y `0x10` no lo son). Se compara por
+ * carácter y no con una expresión de dígitos, que es la lectura de guía que reserva `leerGuia` (SLT-157 R567).
+ */
+function esEnteroSinSigno(texto: string): boolean {
+  return texto !== "" && [...texto].every((c) => c >= "0" && c <= "9");
+}
+
+/**
  * SLT-215 (design §4.2; R3, R8): de la pantalla a la lista que se guarda, en el orden de pantalla y sin la clave
  * local. Una meta que no es un entero viaja como `NaN`, para que el esquema dé el error de R3 en su campo.
  */
@@ -83,7 +91,7 @@ export function nivelesDe(niveles: readonly NivelEnPantalla[]): Nivel[] {
     const m = meta.trim();
     const v = valor.trim();
     return {
-      meta: /^\d+$/.test(m) ? Number(m) : Number.NaN,
+      meta: esEnteroSinSigno(m) ? Number(m) : Number.NaN,
       descuento: tipo === "porcentaje" ? { tipo, porcentaje: v } : { tipo, monto: v },
     };
   });
