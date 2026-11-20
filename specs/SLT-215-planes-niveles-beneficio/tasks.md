@@ -78,16 +78,16 @@ Orden: T1 → T2 → (T3, T4, T5 [P]) → T6 → T7 → (T8, T9 [P]) → T10 →
       (sin pendientes, lista vacía);
     - `pnpm run test:guardias` en verde (`jobs-handler-por-tipo`, `jobs-recurrentes-con-siembra`,
       `plataforma-solo-en-lista`).
-- [ ] **T8 [P]. Paso «Niveles»** (`PasoNiveles.tsx`, `estado.ts`, `borrador.ts` del cliente, `textos.ts`,
+- [x] **T8 [P]. Paso «Niveles»** (`PasoNiveles.tsx`, `estado.ts`, `borrador.ts` del cliente, `textos.ts`,
   `PlanForm.tsx`, `PasoRevisar.tsx`). R7–R11, R13, R14. Depende de T5.
   - **Hecho:** `tests/components/PlanFormNiveles.test.tsx` cubre R8 (agregar, meta, tipo, valor, quitar y
     renumerar; «Agregar nivel» deshabilitado con 10; lo que se envía), R9, R10 (errores bajo su campo y no avanza),
     R13 y R14. `tests/unit/planes/plan-form-borrador.test.ts` cubre R11. `tests/components/PlanFormPasos.test.tsx`
     cubre R7 en los dos modos.
-- [ ] **T9 [P]. Vistas** (`PlanesModule.tsx`, `plan-vista.ts`, `PlanDetalle.tsx`). R19, R21. Depende de T4.
+- [x] **T9 [P]. Vistas** (`PlanesModule.tsx`, `plan-vista.ts`, `PlanDetalle.tsx`). R19, R21. Depende de T4.
   - **Hecho:** `tests/components/PlanesModule.test.tsx` cubre R21 (porcentaje, monto, orden y «Sin niveles»).
     `tests/components/PlanDetalle.test.tsx` cubre la línea «Niveles: …» del alta (R19).
-- [ ] **T10. Adaptar los tests que recorren los pasos.** Depende de T8.
+- [x] **T10. Adaptar los tests que recorren los pasos.** Depende de T8.
   - Archivos: `tests/components/plan-form-pasos.ts`, `tests/components/PlanFormBorrador.test.tsx` y los cinco E2E de
     planes.
   - Pasan por «Niveles» después de «Beneficios»; el contador pasa a 7 al crear y 8 al editar.

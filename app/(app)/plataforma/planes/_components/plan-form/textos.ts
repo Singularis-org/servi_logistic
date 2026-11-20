@@ -62,6 +62,7 @@ export const TEXTOS_PLAN_FORM = {
     topes: "Topes",
     modulos: "Módulos",
     beneficios: "Beneficios",
+    niveles: "Niveles",
     vigencia: "Cuándo rige",
     revisarCrear: "Revisar y crear",
     revisarEditar: "Revisar y programar",
@@ -106,6 +107,23 @@ export const TEXTOS_PLAN_FORM = {
   subirBeneficio: (n: number) => `Subir beneficio ${n}`,
   bajarBeneficio: (n: number) => `Bajar beneficio ${n}`,
   quitarBeneficio: (n: number) => `Quitar beneficio ${n}`,
+
+  /** SLT-215 (design §7; R8, R9, R14): el paso «Niveles» y su fila de «Revisar». */
+  niveles: "Niveles",
+  agregarNivel: "Agregar nivel",
+  sinNivelesEnElPaso: "Este plan no tiene niveles.",
+  nivel: (n: number) => `Nivel ${n}`,
+  metaDelNivel: (n: number) => `Meta de órdenes al mes del nivel ${n}`,
+  tipoDeDescuentoDelNivel: (n: number) => `Tipo de descuento del nivel ${n}`,
+  porcentaje: "Porcentaje",
+  montoFijo: "Monto fijo",
+  descuentoDelNivel: (n: number) => `Descuento del nivel ${n}`,
+  quitarNivel: (n: number) => `Quitar nivel ${n}`,
+  /**
+   * R14: un nivel de «Revisar» que todavía no pasa el esquema, tal cual se escribió. Mismo formato que
+   * `textoDelNivel` (`lib/planes/niveles.ts`), sin canonizar: «Revisar» no valida (SLT-130 design §6).
+   */
+  nivelEscrito: (n: number, meta: string, descuento: string) => `Nivel ${n}: desde ${meta} órdenes, −${descuento}`,
 
   // SLT-144 (design §9): el borrador del servidor. `pasoGuardado` y `marcaSinGuardar` viven en
   // `TEXTOS_FORMULARIO_POR_PASOS`, porque los pinta el componente compartido.

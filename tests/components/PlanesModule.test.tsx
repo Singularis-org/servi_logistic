@@ -197,6 +197,7 @@ describe("SLT-58 R13 — el catálogo de planes", () => {
       "Costo base: 10.00 / mes · Descuento anual: 10.00 %Costo por orden: se aplica el valor global",
       "Usuarios activos con el rol Mensajero: 5API keys activas: 2",
       "Sin beneficios", // SLT-214 (R20)
+      "Sin niveles", // SLT-215 (R21)
       "1.200",
       "Desde 2030-01-15",
     ]);
@@ -206,6 +207,7 @@ describe("SLT-58 R13 — el catálogo de planes", () => {
       "Costo base: sin precioCosto por orden: se aplica el valor global", // SLT-66 R9, R24
       "Usuarios: sin límite por rolAPI keys activas: sin límite",
       "Sin beneficios", // SLT-214 (R20)
+      "Sin niveles", // SLT-215 (R21)
       "1",
       "Ninguno",
     ]);
@@ -311,10 +313,11 @@ describe("SLT-58 R13 — el catálogo de planes", () => {
       "Topes",
       "Módulos",
       "Beneficios", // SLT-214 «Planes: beneficios de texto con ícono» (R7)
+      "Niveles", // SLT-215 «Planes: niveles de beneficio por volumen de órdenes» (R7)
       "Revisar y crear",
     ]);
     expect(tituloDelPasoActual()).toBe("General");
-    expect(within(panel).getByText("Paso 1 de 7")).toBeInTheDocument();
+    expect(within(panel).getByText("Paso 1 de 8")).toBeInTheDocument();
     // SLT-144 (R1): el botón de avance guarda el paso.
     expect(within(panel).getByRole("button", { name: "Guardar y continuar" })).toBeInTheDocument();
   });
@@ -338,15 +341,17 @@ describe("SLT-58 — revisión de diseño del catálogo", () => {
     expect(screen.queryByText("—")).toBeNull();
   });
 
-  it("por debajo de md se ocultan «Visibilidad», «Beneficios» y «Cambio programado» (cabecera y celdas)", () => {
+  it("por debajo de md se ocultan «Visibilidad», «Beneficios», «Niveles» y «Cambio programado» (cabecera y celdas)", () => {
     montar();
-    // SLT-214 (design §4.4): «Beneficios» también, para que la tabla no se rompa en móvil.
-    for (const nombre of ["Visibilidad", "Beneficios", "Cambio programado"]) {
+    // SLT-214 (design §4.4): «Beneficios» también, para que la tabla no se rompa en móvil. SLT-215 (design §4.3):
+    // y «Niveles».
+    for (const nombre of ["Visibilidad", "Beneficios", "Niveles", "Cambio programado"]) {
       expect(screen.getByRole("columnheader", { name: nombre })).toHaveClass("hidden", "md:table-cell");
     }
-    const [, visibilidad, precio, , beneficios, , cambio] = within(filaDe("Básico")).getAllByRole("cell");
+    const [, visibilidad, precio, , beneficios, niveles, , cambio] = within(filaDe("Básico")).getAllByRole("cell");
     expect(visibilidad).toHaveClass("hidden", "md:table-cell");
     expect(beneficios).toHaveClass("hidden", "md:table-cell");
+    expect(niveles).toHaveClass("hidden", "md:table-cell");
     expect(cambio).toHaveClass("hidden", "md:table-cell");
     expect(precio).not.toHaveClass("hidden");
   });
@@ -651,5 +656,38 @@ describe("SLT-214 R20, R21 — la columna «Beneficios» del listado", () => {
       "aria-expanded",
       "false",
     );
+  });
+});
+
+// SLT-215 «Planes: niveles de beneficio por volumen de órdenes» (design §4.3; R21): la columna «Niveles» del listado,
+// después de «Beneficios», con todos los niveles, uno por línea y en su orden.
+describe("SLT-215 R21 — la columna «Niveles» del listado", () => {
+  const CON_NIVELES: PlanDelCatalogo = {
+    ...PUBLICO,
+    niveles: [
+      { meta: 100, descuento: { tipo: "porcentaje", porcentaje: "5" } },
+      { meta: 500, descuento: { tipo: "monto", monto: "1500" } },
+      { meta: 15000, descuento: { tipo: "porcentaje", porcentaje: "12.5" } },
+    ],
+  };
+  const celdaDeNiveles = (nombre: string) => within(filaDe(nombre)).getAllByRole("cell")[5]!;
+
+  it("R21: va después de «Beneficios»; una línea por nivel, en orden, en porcentaje y en monto sin moneda", () => {
+    montar({ planes: [CON_NIVELES, CUSTOM] });
+    const cabeceras = screen.getAllByRole("columnheader").map((c) => c.textContent);
+    expect(cabeceras.indexOf("Niveles")).toBe(cabeceras.indexOf("Beneficios") + 1);
+    const lineas = within(celdaDeNiveles("Básico"))
+      .getAllByRole("listitem")
+      .map((li) => li.textContent);
+    expect(lineas).toEqual([
+      "Nivel 1: desde 100 órdenes, −5.00 %",
+      "Nivel 2: desde 500 órdenes, −1500.00",
+      "Nivel 3: desde 15000 órdenes, −12.50 %",
+    ]);
+  });
+
+  it("R21: sin niveles, la celda dice «Sin niveles»", () => {
+    montar({ planes: [CON_NIVELES, { ...CUSTOM, niveles: [] }] });
+    expect(celdaDeNiveles("Norte a medida")).toHaveTextContent(/^Sin niveles$/);
   });
 });
