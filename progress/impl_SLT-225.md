@@ -203,3 +203,10 @@ recorre el impedimento de usuario, que ese cambio no toca.)
   1385/3000 tests), antes de los tests. La marca de aceptación no la puso esta tanda (ver informe).
 
 Veredicto: T5–T7 hechas; E2E local verde; falta la marca de tamaño para que `init.sh` salga verde.
+
+## Tanda 2026-11-20 — merge de dev y menores de la review
+- Merge de origin/dev (SLT-224 #257, SLT-221 #258): conflictos en `tests/integration/db/orden-traspaso-migration.test.ts` (ambas listas) y en el contador del Histórico (90 = 88 + 2). Sin renumerar: 20261123120000/100 siguen últimas.
+- m1: `tests/integration/db/zona-desactivar.test.ts` (R1755) reescribe la MISMA `zonaId`. Mutación C (sin la salida «ya tenía esa zona» del trigger de usuario, aplicada en la base servi_slt225_impl y restaurada): rojo.
+- m3: `docs/ayuda/oficina/configuracion-zonas.md`, tabla de impedimentos en tuteo.
+- Gate: `./init.sh` INIT_EXIT=0; `zona-repository.test.ts` + `zona-desactivar.test.ts`: 78/78.
+- Veredicto: lista para PR.

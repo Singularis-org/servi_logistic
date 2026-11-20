@@ -420,9 +420,14 @@ describeSiHayBase("SLT-225 — desactivar una zona, contra Postgres real", () =>
       await comoApp(tx, organizacionId);
       const conSavepoint = clienteConSavepoint(tx);
 
+      // Se reescribe la MISMA zona (como hace el formulario al guardar): el `UPDATE OF zona_id` dispara
+      // el trigger, y solo su salida «ya tenia esa zona» lo deja pasar.
       await conSavepoint.$transaction(async (t) => {
-        await t.usuario.update({ where: { id: yaLaTenia.id }, data: { telefono: "88881111" } });
+        await t.usuario.update({ where: { id: yaLaTenia.id }, data: { telefono: "88881111", zonaId: z.id } });
       });
+      expect((await tx.usuario.findUniqueOrThrow({ where: { id: yaLaTenia.id }, select: { telefono: true } })).telefono).toBe(
+        "88881111",
+      );
 
       let error: unknown = null;
       await conSavepoint

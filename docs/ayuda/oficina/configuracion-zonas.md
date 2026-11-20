@@ -80,10 +80,10 @@ dice qué hay que mover antes. Puede ser cualquiera de estas cosas, o varias a l
 
 | Lo que impide | Qué hacer |
 |---|---|
-| **Es la zona de bodega principal** | Marcá otra zona como bodega principal. |
-| **Tiene distritos** (dice cuántos) | Editá la zona y quitale todos los distritos. |
-| **Tiene usuarios asignados** (con nombre, rol y estado; también los dados de baja) | En **Configuración · Usuarios**, cambiale la zona a cada uno. |
-| **Tiene órdenes sin terminar** (cuántas por estado y las primeras guías) | Esperá a que lleguen a entregado, devuelta a tienda o incidente. Las eliminadas no cuentan. |
+| **Es la zona de bodega principal** | Marca otra zona como bodega principal. |
+| **Tiene distritos** (dice cuántos) | Edita la zona y quítale todos los distritos. |
+| **Tiene usuarios asignados** (con nombre, rol y estado; también los dados de baja) | En **Configuración · Usuarios**, cámbiale la zona a cada uno. |
+| **Tiene órdenes sin terminar** (cuántas por estado y las primeras guías) | Espera a que lleguen a entregado, devuelta a tienda o incidente. Las eliminadas no cuentan. |
 
 Cuando ya no queda nada, se vuelve a pulsar **Desactivar** y sale bien.
 
