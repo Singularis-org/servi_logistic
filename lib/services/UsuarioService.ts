@@ -1,4 +1,5 @@
 import {
+  CambioCorreoSimultaneoError,
   CatalogoInvalidoError,
   UsuarioDuplicadoError,
   type IUserRepository,
@@ -65,6 +66,10 @@ const RUTA_CONFIRMAR_CORREO = "/recuperar-contrasena/confirmar-correo";
 export function urlDeConfirmarCorreo(baseUrl: string, enlace: string): string {
   return `${baseUrl}${RUTA_CONFIRMAR_CORREO}#enlace=${enlace}`;
 }
+
+/** m5 (review PR 2): lo que ve el maestro si dos pedidos de cambio de correo chocan. */
+export const MENSAJE_CAMBIO_CORREO_SIMULTANEO =
+  "Se estaba pidiendo otro cambio de correo para este usuario al mismo tiempo. Vuelve a intentarlo.";
 
 function rechazoDeCorreo(motivo: string): {
   status: "validation_error";
@@ -799,13 +804,22 @@ export class UsuarioService implements IUsuarioService {
     }
 
     const secreto = generarSecretoEnlace();
-    const pendiente = await correo.repo.abrirCambioCorreo({
-      usuarioId: usuario.id,
-      emailNuevo,
-      secretoHash: await hashPassword(secreto), // R1632: solo el hash llega a la base
-      solicitadoPorId: actor.usuarioId,
-      expiraAt: new Date(Date.now() + correo.ttlHoras * 3_600_000), // R1621
-    });
+    let pendiente: { id: string; expiraAt: Date };
+    try {
+      pendiente = await correo.repo.abrirCambioCorreo({
+        usuarioId: usuario.id,
+        emailNuevo,
+        secretoHash: await hashPassword(secreto), // R1632: solo el hash llega a la base
+        solicitadoPorId: actor.usuarioId,
+        expiraAt: new Date(Date.now() + correo.ttlHoras * 3_600_000), // R1621
+      });
+    } catch (error) {
+      // m5 (review PR 2): otro pedido del mismo usuario ganó; no se envía nada y el maestro reintenta.
+      if (error instanceof CambioCorreoSimultaneoError) {
+        return { status: "conflict", campo: "email", mensaje: MENSAJE_CAMBIO_CORREO_SIMULTANEO };
+      }
+      throw error;
+    }
 
     try {
       await correo.sender.enviar(

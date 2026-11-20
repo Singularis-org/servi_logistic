@@ -30,6 +30,17 @@ vi.mock("@/lib/db/contexto-empresa", () => ({
 }));
 vi.mock("@/lib/db/prisma-client", () => ({ getPrismaClient: () => ({}) as never }));
 
+// B1 (R1629): el composition root real (`buildConfirmarCorreoService`) con el repositorio doblado.
+// El espía se comparte entre instancias: cada petición construye un `UserRepository` nuevo.
+const empresaDelCambioCorreo = vi.fn(async (): Promise<string | null> => null);
+vi.mock("@/lib/repositories/UserRepository", () => ({
+  UserRepository: class {
+    empresaDelCambioCorreo = empresaDelCambioCorreo;
+    cambioCorreoParaCanje = vi.fn(async () => null);
+    aplicarCambioCorreo = vi.fn(async () => "invalido" as const);
+  },
+}));
+
 const ENLACE = `0b6b1c1e-3a52-4d8c-9e43-7c1d2a3b4c5d.${"s".repeat(43)}`;
 const getContext = async () => ({ ipAddress: "203.0.113.7", userAgent: "test" });
 
@@ -89,6 +100,23 @@ describe("SLT-221 · confirmarCambioCorreo (borde público)", () => {
     });
     expect(service.confirmar).not.toHaveBeenCalled();
     expect(pasos.some((p) => p.startsWith("empresa:"))).toBe(false);
+  });
+
+  it("R1629: sin deps.service, el límite por (enlace, IP) cuenta entre peticiones del composition root", async () => {
+    const { confirmarCambioCorreo } = await import("@/lib/actions/confirmar-correo");
+    const { authConfig } = await import("@/lib/config/auth");
+    const tope = authConfig.RESET_MAX_VERIFY_ATTEMPTS;
+    // Un enlace propio de este test: el limitador del módulo vive mientras viva el módulo.
+    const enlace = `9f0e8d7c-6b5a-4c3d-8e2f-1a0b9c8d7e6f.${"t".repeat(43)}`;
+    empresaDelCambioCorreo.mockClear();
+
+    for (let i = 0; i < tope + 3; i++) {
+      expect(await confirmarCambioCorreo({ enlace }, { getContext })).toEqual({ status: "invalid_or_expired" });
+    }
+
+    // Pasado el tope ya no se lee la base: solo las `tope` primeras peticiones llegan al repositorio.
+    expect(empresaDelCambioCorreo).toHaveBeenCalledTimes(tope);
+    expect(empresaDelCambioCorreo).toHaveBeenCalledWith("9f0e8d7c-6b5a-4c3d-8e2f-1a0b9c8d7e6f");
   });
 
   it("propaga correo_en_uso del servicio tal cual (R1624)", async () => {

@@ -9,6 +9,7 @@ import { textoConstraintP2002 } from "@/lib/repositories/_shared/prisma-unique";
 import { escaparComodinesLike } from "@/lib/utils/escapar-like";
 import { NOMBRE_USUARIO_SELECT, nombreCompletoUsuario } from "@/lib/utils/nombre-usuario";
 import {
+  CambioCorreoSimultaneoError,
   CatalogoInvalidoError,
   UsuarioDuplicadoError,
   type AbrirCambioCorreoInput,
@@ -716,6 +717,19 @@ export class UserRepository implements IUserRepository, ICambioCorreoRepository 
   }
 
   async abrirCambioCorreo(input: AbrirCambioCorreoInput): Promise<{ id: string; expiraAt: Date }> {
+    try {
+      return await this.abrirCambioCorreoEnTx(input);
+    } catch (error) {
+      // m5: la otra petición creó su abierto entre nuestro `updateMany` y el `create`.
+      const texto = textoConstraintP2002(error);
+      if (texto && (texto.includes("usuario_cambio_correo_abierto") || texto.includes("usuario_id"))) {
+        throw new CambioCorreoSimultaneoError();
+      }
+      throw error;
+    }
+  }
+
+  private abrirCambioCorreoEnTx(input: AbrirCambioCorreoInput): Promise<{ id: string; expiraAt: Date }> {
     return this.prisma.$transaction(async (tx) => {
       // R1616, R1620: el abierto anterior deja de valer antes de crear el nuevo (índice parcial).
       await tx.usuarioCambioCorreo.updateMany({
