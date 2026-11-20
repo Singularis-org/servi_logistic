@@ -266,3 +266,6 @@ commits fuera de la épica, así que no hizo falta un merge aparte.
 - `vitest run tests/unit/guards`: `Test Files 262 passed (262)`, `Tests 3990 passed | 4 skipped`.
 
 ### CI
+
+- Commit del merge `13457e3d`, `git push` normal. CI lanzado sin esperar (`gh workflow run gate.yml`):
+  https://github.com/Singularis-org/servi_logistic/actions/runs/44775310940
