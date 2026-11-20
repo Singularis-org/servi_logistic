@@ -31,7 +31,7 @@ const TIPOS_CR: readonly TipoDocumentoDTO[] = [
   { id: "tipo-cr-pasaporte", value: "pasaporte", paisId: "CR", clave: "pasaporte", nombre: "Pasaporte", caracteres: "alfanumerico", largoMin: 6, largoMax: 20, activo: true },
 ];
 
-/** SL-21 (R3) — la moneda de Costa Rica tal como la deja la migración `20261122120000`. */
+/** SL-21 (R3) — la moneda de Costa Rica tal como la deja la migración `20261124120000`. */
 export const MONEDA_CR: FormatoMoneda = {
   codigo: "CRC",
   simbolo: "₡",

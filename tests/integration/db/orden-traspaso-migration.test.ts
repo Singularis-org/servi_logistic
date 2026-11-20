@@ -323,7 +323,7 @@ describe("427/T2 — el UP y el DOWN, leidos del archivo", () => {
       "20261123120000_historial_zona_desactivada",
       "20261123120100_zona_activa",
       // SL-21: seis columnas de moneda e impuesto en `pais` y el relleno de CR; no toca `orden_traspaso_mensajero`.
-      "20261122120000_sl21_pais_moneda_impuesto",
+      "20261124120000_sl21_pais_moneda_impuesto",
     ]);
   });
 });

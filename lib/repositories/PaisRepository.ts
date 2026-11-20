@@ -209,7 +209,7 @@ export class PaisRepository implements IPaisRepository {
 
 /**
  * SL-21 (design §5.1) — la fila al DTO: las cinco columnas de moneda se juntan en `moneda`. El CHECK
- * «todo o nada» de 20261122120000 garantiza que no hay mitades; aun así, una fila a medias o con
+ * «todo o nada» de 20261124120000 garantiza que no hay mitades; aun así, una fila a medias o con
  * decimales fuera de 0–2 es una base que no cumple su propia regla y se lanza, no se inventa nada.
  */
 function paisDeFila(fila: FilaDePais): PaisDTO {

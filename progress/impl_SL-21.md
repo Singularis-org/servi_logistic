@@ -332,3 +332,6 @@ No se corrieron en local. Por la memoria justa de la máquina, el leader pidió 
 en esta sesión. Los E2E afectados (el grupo `dinero` y los de etiquetas, plantillas y facturas) quedan
 al CI del PR. No hay E2E nuevo (decisión cerrada: para CR la salida es idéntica, R16). Queda creada,
 para correrlos en local, la base desechable `servi_logistic_sl21_e2e`.
+
+## Renombre tras mergear dev · 2026-11-20
+- La migración pasa de `20261122120000_sl21_pais_moneda_impuesto` a `20261124120000_sl21_pais_moneda_impuesto` (dev trae `20261122120000_slt221_usuario_cambio_correo`, mismo timestamp; tasks T1.1).

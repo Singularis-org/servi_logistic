@@ -172,7 +172,7 @@ esta bien hecha, no solo si "funciona".
   - **Moneda e impuesto (SL-21):** `pais` guarda la moneda (`moneda_codigo` ISO 4217,
     `moneda_simbolo`, `moneda_separador_miles`, `moneda_separador_decimal`, `moneda_decimales` de 0
     a 2) y `impuesto_nombre`. Todas son NULL-ables, con `CHECK` (la moneda va entera o no va), y la
-    migración `20261122120000_sl21_pais_moneda_impuesto` carga CR con CRC, «₡», «.», «,», 2 e «IVA».
+    migración `20261124120000_sl21_pais_moneda_impuesto` carga CR con CRC, «₡», «.», «,», 2 e «IVA».
     El país no guarda tasa: sigue en cada tarifa.
     - **Lectura:** por el mismo puerto, `IReglasPaisEmpresa.moneda()` (un `FormatoMoneda`) y
       `nombreImpuesto()`. Fallan con `PaisSinMoneda` y `PaisSinImpuesto`, y el alta de empresa rechaza

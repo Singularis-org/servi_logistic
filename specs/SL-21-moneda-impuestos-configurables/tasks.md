@@ -5,7 +5,7 @@
 
 ## Bloque 1 — Datos del país (R1–R4)
 
-- [x] **T1.1** Migración `20261122120000_sl21_pais_moneda_impuesto` (`migration.sql` y `down.sql`).
+- [x] **T1.1** Migración `20261124120000_sl21_pais_moneda_impuesto` (`migration.sql` y `down.sql`).
   - Contenido: las 6 columnas, los 8 `CHECK`, la precondición de la fila CR y el `UPDATE` de CR
     (design §2.1).
   - Si al implementar ya hay migraciones con timestamp posterior en `dev`, se renombra al siguiente
@@ -88,8 +88,8 @@
 
 Producción:
 - `db/schema.prisma`
-- `db/migrations/20261122120000_sl21_pais_moneda_impuesto/migration.sql`
-- `db/migrations/20261122120000_sl21_pais_moneda_impuesto/down.sql`
+- `db/migrations/20261124120000_sl21_pais_moneda_impuesto/migration.sql`
+- `db/migrations/20261124120000_sl21_pais_moneda_impuesto/down.sql`
 - `lib/types/pais.ts`
 - `lib/repositories/PaisRepository.ts`
 - `lib/interfaces/services/IReglasPaisEmpresa.ts`

@@ -37,7 +37,7 @@ const COSTA_RICA: PaisDTO = {
   prefijoTelefonico: "506",
   telefonoDigitosNacionales: 8,
   zonaHoraria: "America/Costa_Rica",
-  // SL-21 (R3): la moneda y el impuesto que deja la migración 20261122120000.
+  // SL-21 (R3): la moneda y el impuesto que deja la migración 20261124120000.
   moneda: MONEDA_CR,
   impuestoNombre: "IVA",
 };
