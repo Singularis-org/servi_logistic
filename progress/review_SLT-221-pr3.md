@@ -88,3 +88,36 @@ Dice que el PR 2 está pendiente y que pasa por /design (T2.0); T2.0 se omitió 
 
 **RECHAZADO** por B1 (R1624 sin test en la UI). m1-m4 no bloquean; m1 y m2 salen solos con el test de
 B1 y uno de `usuario-form`.
+
+## Vuelta 2 (acotada a 6213389d..815f0efe; arreglo en 88a018dc)
+
+### Checklist
+- [x] B1 cerrado: `tests/unit/components/confirmar-correo-form.test.tsx` (nuevo) monta `ConfirmarCorreoForm`
+  con la acción doblada y afirma el texto literal de R1624 con `correo_en_uso`, el de R1623 con
+  `invalid_or_expired`, `validation_error` y sin `#enlace=` (sin llamar a la acción), R1622 y R1626.
+  Los textos van escritos a mano, no leídos de `TEXTOS_CONFIRMAR_CORREO`.
+- [x] Mutación de B1 repetida por el reviewer: `ConfirmarCorreoForm.tsx:91` `setFase("en_uso")` →
+  `setFase("invalido")` → **muerta** (1 failed | 5 passed: «con `correo_en_uso` muestra el texto de
+  R1624, no el genérico»). Archivo restaurado.
+- [x] m1 cerrado: mutación `UsuarioForm.tsx:490` quitando `&& !esRolApiKey` → **muerta** (1 failed |
+  38 passed: «SLT-221: el bloque «Cambiar correo» sale al editar a una persona y no a la cuenta
+  apiKey»). El test espera a que el rol esté resuelto antes del negativo, así que no es un negativo
+  vacío. Archivo restaurado.
+- [x] m2 cerrado de paso: «al montar con enlace no llama a la acción» afirma R1626 directo.
+- [x] m3 cerrado: la explicación dice «Tu administrador pidió cambiar el correo de tu cuenta…»; el test
+  de componente y el E2E la afirman literal. No queda el texto antiguo en `app/`, `e2e/` ni `tests/`.
+- [x] m4 cerrado: la sección «Estado» de `progress/features/SLT-221.md` refleja #251 y #258 en `dev`,
+  PR 3 en review y T2.0 omitido.
+- [x] `tasks.md` T3.2 y el mapa R → test de `progress/impl_SLT-221.md` corregidos (R1623, R1624, R1626).
+- [x] Tests de componente (`confirmar-correo-form`, `usuario-form`, `cambio-correo-usuario`): 3 archivos,
+  60/60 verdes sin mutar.
+- [x] `tsc --noEmit` verde; `eslint` sobre los archivos tocados verde.
+- [x] Tamaño: 11/40 archivos, 480/1000 líneas de producción, 674/3000 de tests.
+- [ ] E2E no repetido por el reviewer (indicación del leader): el implementer reporta 11 passed en
+  815f0efe con build nuevo y el CI del PR lo vuelve a correr.
+
+### Hallazgos
+Ninguno nuevo. Sin regresiones en el diff.
+
+### Veredicto
+**APROBADO** (OK). B1 cerrado con mutación muerta; m1-m4 cerrados.
