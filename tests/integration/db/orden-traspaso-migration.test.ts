@@ -322,6 +322,9 @@ describe("427/T2 — el UP y el DOWN, leidos del archivo", () => {
       // triggers; no tocan `orden_traspaso_mensajero`.
       "20261123120000_historial_zona_desactivada",
       "20261123120100_zona_activa",
+      // SLT-247 (2026-11-20): el valor `retorno_por_rechazo_cierre` del enum del historial; no toca
+      // `orden_traspaso_mensajero`.
+      "20261124130000_orden_historial_origen_retorno_rechazo_cierre",
     ]);
   });
 });

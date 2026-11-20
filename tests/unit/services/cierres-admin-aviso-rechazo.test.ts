@@ -437,7 +437,8 @@ describe("412/R4 — los avisos van DESPUÉS de la escritura, FUERA de su transa
     const input = (repo.resolverCierre as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(Object.keys(input).sort()).toEqual(
       // SLT-42 (R22): + la zona del pais, para el dia del cierre en el historial.
-      ["alcance", "cierreId", "motivoRechazo", "nuevoEstado", "resueltoPor", "zonaHoraria"].sort(),
+      // SLT-247 (R1770): + los dos ids del catalogo del retorno de las barridas (datos, no un emisor).
+      ["alcance", "cierreId", "motivoRechazo", "nuevoEstado", "resueltoPor", "retornoSinGestion", "zonaHoraria"].sort(),
     );
     expect(input).toMatchObject({ nuevoEstado: "rechazado", motivoRechazo: MOTIVO });
   });

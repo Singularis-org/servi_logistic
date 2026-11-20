@@ -60,24 +60,24 @@ Depende de: nada. Bloquea: Tanda 2.
 
 ## Tanda 2 — Backend (backend_dev)
 
-- [ ] **T2.1** Rechazo (design §2).
+- [x] **T2.1** Rechazo (design §2).
   - `ICierresAdminRepository.ts`: `retornoSinGestion?` en la rama `rechazado`.
   - `CierresAdminRepository.resolverCierre`: el bloque de retorno en la misma transacción.
   - `CierresAdminService.rechazarCierre`: resuelve los dos ids, falla cerrado y los pasa.
 
   **Hecho:** R1770-R1777 y R1799 con sus tests de T2.6 verdes. Una mutación que quite
   `mensajeroAsignadoId` o `estatusId` del `where` del `updateMany` pone rojo un test de integración.
-- [ ] **T2.2** Predicado (design §3). En `lib/repositories/correccion-cierre.ts`: la rama
+- [x] **T2.2** Predicado (design §3). En `lib/repositories/correccion-cierre.ts`: la rama
   `sin_gestion`, la columna `fuente` con precedencia `sin_gestion` y el fragmento
   `whereOrdenNoRetenidaPorRechazado()`.
   **Hecho:** los casos de `477-ordenes-en-correccion-sql-real.test.ts` siguen verdes sin cambiarlos.
   Los casos nuevos (dos fuentes, dueño distinto, `novedad_interna`, borrada, gestión vigente
   vinculada) también pasan.
-- [ ] **T2.3** Corte (design §5). Va en `CorteDiarioRepository` rama (b) y en el `findMany` del
+- [x] **T2.3** Corte (design §5). Va en `CorteDiarioRepository` rama (b) y en el `findMany` del
   barrido de `CierreDiaRepository.crearCierre`, con el MISMO fragmento.
   **Hecho:** R1788/R1789 verdes en integración. Una mutación que lo quite de uno solo de los dos
   sitios pone rojo un test.
-- [ ] **T2.4** Re-solicitud (design §4).
+- [x] **T2.4** Re-solicitud (design §4).
   - Se extrae `congelarDetalleDeOrdenes` de `crearCierre` sin cambiar valores.
   - `resolicitarCierreRechazado` lleva los pasos 2, 5 y 7 y devuelve el nuevo resultado.
   - Se actualiza el tipo en `ICierreDiaRepository.ts`.
@@ -85,7 +85,7 @@ Depende de: nada. Bloquea: Tanda 2.
 
   **Hecho:** R1782-R1787 verdes. Los tests existentes de `crearCierre` y de la 477 siguen verdes
   SIN tocarlos, salvo el doble de `cierre-dia-477-resolicitud.test.ts`, que gana el resultado nuevo.
-- [ ] **T2.5** Aprobación y lectura (design §6 y §7, parte servidor).
+- [x] **T2.5** Aprobación y lectura (design §6 y §7, parte servidor).
   - `findBarridasDelCierre` filtra `novedad_interna`.
   - `cierre-sin-gestion.ts` añade `fueraDeNovedadInterna`.
   - `findCorreccionesPendientes`/`correccionesDe` añaden `obligatoria` y los descriptivos de
@@ -93,7 +93,7 @@ Depende de: nada. Bloquea: Tanda 2.
   - Tipos en `ICierreDiaService.ts`.
 
   **Hecho:** R1791-R1794 verdes.
-- [ ] **T2.6** [P] Tests de integración y unidad de la tanda:
+- [x] **T2.6** [P] Tests de integración y unidad de la tanda:
   - `tests/integration/db/247-sin-gestion-rechazado-sql-real.test.ts` (rechazo, corte, aprobación,
     válvula y multi-empresa);
   - `tests/integration/db/247-resolicitud-sin-gestion-sql-real.test.ts`;

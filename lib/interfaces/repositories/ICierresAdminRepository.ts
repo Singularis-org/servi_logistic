@@ -421,7 +421,20 @@ export type ResolverCierreInput =
       // pasarlo NO COMPILE: si alguien lo cablea aqui es que espera que rechazar deje marca, y no
       // la deja. La ausencia de codigo para R24 es una DECISION, y el tipo es quien la sostiene.
       confirmacionFisica?: never;
+      // SLT-247 (R1770-R1777): presente -> DENTRO de la MISMA tx devuelve a `en_reparto` las
+      // barridas del cierre (`cierre_sin_gestion`) que sigan en `novedad_interna` con el mensajero
+      // del cierre, via el choke point (`origen_tipo = retorno_por_rechazo_cierre`). Opcional por
+      // el mismo motivo que `liberacionSinGestionar`: lo sostiene un test del servicio que
+      // comprueba que se PASA.
+      retornoSinGestion?: RetornoSinGestionConfig;
     });
+
+// SLT-247 (R1770): ids del catalogo que resuelve el servicio antes de rechazar (falla cerrado si
+// falta alguno, R1775).
+export interface RetornoSinGestionConfig {
+  sinGestionarEstatusId: string;
+  enRepartoEstatusId: string;
+}
 
 // Resultado de la transicion guardada: `updated` (aplicada), `conflict` (existe en
 // alcance pero ya no esta `solicitado`, R12), `fuera_de_alcance` (no existe o de otra

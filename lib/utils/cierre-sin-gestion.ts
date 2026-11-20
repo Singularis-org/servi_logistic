@@ -4,6 +4,9 @@ import type { CierreSinGestionRow } from "@/lib/interfaces/repositories/ICierreD
 import { esOrderStatusRetirado } from "@/lib/types/order-status";
 import { esOrderStatusValue } from "@/lib/types/order-status-transiciones";
 
+/** SLT-247 (R1791): el estado del que bodega confirma y la aprobacion libera las barridas. */
+const ESTADO_NOVEDAD_INTERNA = "novedad_interna";
+
 /**
  * Feature 264 — LA LECTURA DEL VINCULO, DECLARADA UNA SOLA VEZ.
  *
@@ -31,6 +34,9 @@ export const SIN_GESTION_SELECT = {
   // R4: el estatus del que SALIO la orden, resuelto a su `value` de catalogo (los ids son
   // distintos en cada base). La relacion es opcional: `null` = no consta (R32/R33).
   estatusOrigen: { select: { value: true } },
+  // SLT-247 (R1791): el estatus de HOY, solo para saber si la barrida sigue en `novedad_interna`
+  // (la que bodega confirma y la aprobacion libera). No viaja como descriptivo.
+  orden: { select: { estatus: { select: { value: true } } } },
 } as const;
 
 /**
@@ -77,5 +83,10 @@ export function toSinGestionRow(r: SinGestionSelectRow): CierreSinGestionRow {
       value !== undefined && (esOrderStatusValue(value) || esOrderStatusRetirado(value))
         ? value
         : null,
+    // SLT-247 (R1791): la marca SOLO cuando consta que la orden ya salio de `novedad_interna` (el
+    // rechazo la devolvio al mensajero). Ausente = el comportamiento de siempre.
+    ...(r.orden?.estatus?.value !== undefined && r.orden.estatus.value !== ESTADO_NOVEDAD_INTERNA
+      ? { fueraDeNovedadInterna: true as const }
+      : {}),
   };
 }

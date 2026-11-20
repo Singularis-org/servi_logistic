@@ -1,4 +1,5 @@
 import { whereOrdenSinGestionPendiente } from "@/lib/repositories/gestion-pendiente";
+import { whereOrdenNoRetenidaPorRechazado } from "@/lib/repositories/correccion-cierre";
 import { type PrismaClient } from "@prisma/client";
 import type {
   ICorteDiarioRepository,
@@ -126,6 +127,9 @@ export class CorteDiarioRepository implements ICorteDiarioRepository {
         // `NULL` significa una sola cosa aqui, y es «no reservada».
         OR: [{ fechaReparto: null }, { fechaReparto: { lte: diaCerrado } }],
         ...whereOrdenSinGestionPendiente(), // ficha 454/R43
+        // SLT-247 (R1788): GEMELO del barrido de `crearCierre`. Las barridas de un cierre que sigue
+        // `rechazado` no seleccionan al mensajero (no nace un segundo `vencido` por ellas).
+        ...whereOrdenNoRetenidaPorRechazado(),
       },
       distinct: ["mensajeroAsignadoId"],
       select: { mensajeroAsignadoId: true, mensajeroAsignado: { select: { zonaId: true } } },

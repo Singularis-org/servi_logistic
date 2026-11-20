@@ -165,7 +165,7 @@ function cierreRepo(overrides: Record<string, unknown> = {}) {
     findCierreResolicitableMasViejo: vi.fn().mockResolvedValue(null),
     transicionarASolicitado: vi.fn().mockResolvedValue(true),
     // FICHA 477 (D5): la re-solicitud de un `rechazado` va por su propia transaccion.
-    resolicitarCierreRechazado: vi.fn().mockResolvedValue(true),
+    resolicitarCierreRechazado: vi.fn().mockResolvedValue({ status: "ok" }),
     contarOrdenesPendientesGestion: vi.fn().mockResolvedValue(0),
     findGestionesPendientes: vi.fn().mockResolvedValue([GESTION_PENDIENTE]),
     crearCierre: vi.fn().mockResolvedValue("c-1"),
