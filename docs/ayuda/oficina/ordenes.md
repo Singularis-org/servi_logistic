@@ -102,7 +102,7 @@ y el motivo:
 - **en devolución**: va camino de la central o de vuelta a la tienda; cambiarle la zona no la
   desbloquea y puede dejarla sin quien la envíe;
 - **esperando liberación en bodega**: está reprogramada y retenida hasta que se libere;
-- **cobro en curso (cierre sin aprobar)**: tiene un cierre que todavía no se aprobó, o una entrega, un
+- **cobro en curso (gestión o cierre sin aprobar)**: tiene un cierre que todavía no se aprobó, o una entrega, un
   rechazo o un incidente que todavía no entró en un cierre aprobado.
 
 Al confirmar, el sistema vuelve a revisar cada orden en ese momento, les pone la zona de su distrito y

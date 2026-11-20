@@ -14,7 +14,7 @@ import type { OrderStatusValue } from "@/lib/types/order-status";
  * Por que una orden con zona errada NO se actualiza, en este orden de precedencia (R1726, PR 2):
  *   · `estante_satelite` — esta en el estante de una satelite (`en_bodega_satelite`, 377);
  *   · `finalizada`       — esta en un estado terminal (`ESTADOS_TERMINALES`, R1721);
- *   · `devolucion`       — esta en un estado de devolucion (`ESTADOS_DEVOLUCION_SIN_RECONCILIAR`, R1723);
+ *   · `devolucion`       — esta en un estado de devolucion (clase `devolucion` de `CLASE_RECONCILIACION_ZONA`, R1723);
  *   · `por_liberar`      — `reprogramado`, esperando liberacion en bodega (R1723, P4);
  *   · `cobro_en_curso`   — un cierre sin aprobar o una gestion que decidio dinero sin cierre aprobado (R1722).
  * Los cuatro primeros salen de `CLASE_RECONCILIACION_ZONA`; el estado manda sobre el cobro.

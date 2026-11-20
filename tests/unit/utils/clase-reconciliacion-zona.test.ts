@@ -4,7 +4,6 @@ import { ORDER_STATUS_SEED, type OrderStatusValue } from "@/lib/types/order-stat
 import { ESTADOS_TERMINALES } from "@/lib/types/order-status-transiciones";
 import {
   CLASE_RECONCILIACION_ZONA,
-  ESTADOS_DEVOLUCION_SIN_RECONCILIAR,
   ESTADOS_QUE_NO_SE_MUEVEN,
   type ClaseReconciliacionZona,
 } from "@/lib/utils/estados-bodega-satelite";
@@ -79,11 +78,5 @@ describe("SLT-224/R1725 — la clasificacion de estados para la reconciliacion d
         "reprogramado",
       ].sort(),
     );
-  });
-
-  it("`ESTADOS_DEVOLUCION_SIN_RECONCILIAR` sale de la clase devolucion: entra el rechazo, sale `devuelta_a_tienda`", () => {
-    expect([...ESTADOS_DEVOLUCION_SIN_RECONCILIAR].sort()).toEqual(deClase("devolucion"));
-    expect(ESTADOS_DEVOLUCION_SIN_RECONCILIAR).toContain("devolucion_a_origen_por_rechazo");
-    expect(ESTADOS_DEVOLUCION_SIN_RECONCILIAR).not.toContain("devuelta_a_tienda");
   });
 });

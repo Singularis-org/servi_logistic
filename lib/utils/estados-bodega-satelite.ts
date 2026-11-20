@@ -153,12 +153,6 @@ export const CLASE_RECONCILIACION_ZONA: Record<OrderStatusValue, ClaseReconcilia
   reprogramado: "por_liberar",
 };
 
-function estadosDeClase(clase: ClaseReconciliacionZona): OrderStatusValue[] {
-  return (Object.keys(CLASE_RECONCILIACION_ZONA) as OrderStatusValue[]).filter(
-    (v) => CLASE_RECONCILIACION_ZONA[v] === clase,
-  );
-}
-
 /**
  * Los estados que la reconciliacion NO mueve (R1721, R1723): todo lo que no es `se_mueve`. Es el
  * `notIn` del `findMany` de elegibles del helper compartido.
@@ -166,13 +160,6 @@ function estadosDeClase(clase: ClaseReconciliacionZona): OrderStatusValue[] {
 export const ESTADOS_QUE_NO_SE_MUEVEN: readonly OrderStatusValue[] = (
   Object.keys(CLASE_RECONCILIACION_ZONA) as OrderStatusValue[]
 ).filter((v) => CLASE_RECONCILIACION_ZONA[v] !== "se_mueve");
-
-/**
- * SLT-224 (design §2.1, P3) — los estados de DEVOLUCION que no se reconcilian: la clase
- * `devolucion` de `CLASE_RECONCILIACION_ZONA`. Desde el PR 2 se deriva del mapa: entra
- * `devolucion_a_origen_por_rechazo` y sale `devuelta_a_tienda`, que es `finalizada`.
- */
-export const ESTADOS_DEVOLUCION_SIN_RECONCILIAR: readonly OrderStatusValue[] = estadosDeClase("devolucion");
 
 /**
  * 377/R15 — ¿el paquete de esta orden esta AHORA MISMO en el estante de una satelite?

@@ -25,7 +25,7 @@ export const TEXTO_MOTIVO_SALTADA: Record<MotivoSaltada, string> = {
   finalizada: "finalizada",
   devolucion: "en devolución",
   por_liberar: "esperando liberación en bodega",
-  cobro_en_curso: "cobro en curso (cierre sin aprobar)",
+  cobro_en_curso: "cobro en curso (gestión o cierre sin aprobar)",
 };
 
 const TEXTOS = {

@@ -127,7 +127,7 @@
 
 ## T0b — Conteo del corte nuevo en producción (leader, solo lectura) — antes del PR 2
 
-- [ ] Consulta T0b de `design.md §6`. Números por empresa y estado en `progress/features/SLT-224.md`.
+- [x] Consulta T0b de `design.md §6`. Números por empresa y estado en `progress/features/SLT-224.md`. Medido por el leader el 2026-11-20.
 - **Hecho:** anotado; si sale una condición de parada de `design.md §6 > T0b`, para y decide Carlos.
   Se repite el día del paso a producción.
 
@@ -180,10 +180,10 @@ Las casillas de T9 de arriba, con estos ajustes del PR 2:
 
 ## T15 — Cierre del PR 2 — depende de T0b, T12–T14 y T9
 
-- [ ] `./init.sh` verde con `.env` copiado y base desechable exportada (`INIT_EXIT=$?` dentro del log).
-- [ ] E2E locales de recepción en la central y retiro (`grep -rl` en `e2e/` por `recepcion` y
-  `retirar`), base desechable nueva + `next build`.
-- [ ] `progress/impl_SLT-224.md > PR 2`: mapa R1720–R1727 → test y las mutaciones con su rojo.
+- [x] `./init.sh` verde con `.env` copiado y base desechable exportada (`INIT_EXIT=$?` dentro del log). Review PR 2 y tanda de B1: `INIT_EXIT=0`.
+- [x] E2E locales de recepción en la central y retiro (`grep -rl` en `e2e/` por `recepcion` y
+  `retirar`), base desechable nueva + `next build`. Review PR 2: 55/55 verdes.
+- [x] `progress/impl_SLT-224.md > PR 2`: mapa R1720–R1727 → test y las mutaciones con su rojo.
 - [ ] T0b re-medido por el leader antes de abrir el PR.
 - **Hecho:** todo lo anterior, y el `head` del PR en GitHub igual al `HEAD` local antes del aviso.
 

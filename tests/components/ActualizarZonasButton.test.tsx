@@ -102,7 +102,7 @@ describe("ActualizarZonasButton (SLT-224)", () => {
     const saltadas = within(dialog).getByRole("list", { name: "Órdenes que se saltan" });
     expect(within(saltadas).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
       "G-100: en el estante de una satélite",
-      "G-200: cobro en curso (cierre sin aprobar)",
+      "G-200: cobro en curso (gestión o cierre sin aprobar)",
     ]);
     expect(within(dialog).getByRole("button", { name: "Confirmar" })).toBeTruthy();
     expect(within(dialog).getByRole("button", { name: "Cancelar" })).toBeTruthy();
@@ -135,7 +135,7 @@ describe("ActualizarZonasButton (SLT-224)", () => {
       "G-2: finalizada",
       "G-3: en devolución",
       "G-4: esperando liberación en bodega",
-      "G-5: cobro en curso (cierre sin aprobar)",
+      "G-5: cobro en curso (gestión o cierre sin aprobar)",
     ]);
   });
 

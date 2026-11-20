@@ -223,3 +223,35 @@ Salidas:
 - `./init.sh` (DATABASE_URL a servi_slt224_pr2): typecheck paso, lint paso (0 errors), test:rapido paso, `INIT_EXIT=0`.
 
 Veredicto: T9 hecha; botón, modal, ayuda y test verdes; sin E2E en T9 (los E2E van en T15).
+
+## PR 2 (2026-11-20): arreglos de la review vuelta 1 (`progress/review_SLT-224-pr2.md`)
+
+Archivos:
+- `tests/integration/db/actualizacion-zonas.int.test.ts` (B1): la matriz suma `cd-rechazado` y `cd-vencido` (detalle de
+  cierre `rechazado`/`vencido`), `gestion-cierre-rechazado` (rechazo con cierre `rechazado`) y `gestion-cierre-aprobado`
+  (rechazo con el cierre `aprobado`). Literales a mano: `SALTADAS_ESPERADAS` con las tres nuevas como `cobro_en_curso`;
+  totales y `actualizadas` de 3 a 4; `cambiadas` y acciones con `gestion-cierre-aprobado`.
+- `app/(app)/ordenes/_components/ActualizarZonasButton.tsx`, `tests/components/ActualizarZonasButton.test.tsx`,
+  `docs/ayuda/oficina/ordenes.md` (m3): «cobro en curso (gestión o cierre sin aprobar)».
+- `lib/utils/estados-bodega-satelite.ts`, `tests/unit/utils/clase-reconciliacion-zona.test.ts`, `lib/types/actualizacion-zonas.ts`
+  (m4): fuera `ESTADOS_DEVOLUCION_SIN_RECONCILIAR` (sin consumidor en producción), su test y `estadosDeClase`, que solo
+  la usaba ella. El comentario de `MotivoSaltada` nombra ahora la clase `devolucion`. `design.md`/`tasks.md` la citan como
+  historia del PR 1; no se reescriben.
+- `specs/SLT-224-zona-al-retirar-a-central/tasks.md` (m1): T0b y T15 (init, E2E 55/55 de la review, mapa) marcadas;
+  queda «T0b re-medido antes de abrir el PR» (leader).
+
+Mutaciones sobre `sqlZonaErrada()` (DATABASE_URL a `servi_slt224_pr2`; `git checkout` tras cada una, diff limpio):
+| # | Mutación | Resultado |
+|---|---|---|
+| SM1 | `AND (g.cierre_id IS NULL OR c.estado <> 'aprobado')` → `AND (g.cierre_id IS NULL)` | **MUERTA**: 5 de 6 rojos, R1727 incluido (`expected 5 to be 4`: la vista previa cuenta `gestion-cierre-rechazado`) |
+| SM2 | detalle: `c.estado <> 'aprobado'` → `c.estado = 'solicitado'` | **MUERTA**: 5 de 6 rojos, R1727 incluido (`expected 6 to be 4`: cuenta `cd-rechazado` y `cd-vencido`) |
+
+Sin mutar: `actualizacion-zonas.int.test.ts` 6 passed. Los cinco archivos tocados o vecinos
+(`clase-reconciliacion-zona`, `ActualizarZonasButton`, `actualizacion-zonas.int`, `reconciliar-zona-corte-vivas.int`,
+`actualizacion-zonas-action`): Test Files 5 passed, Tests 45 passed.
+
+`./init.sh` (DATABASE_URL a `servi_slt224_pr2`, tras `prisma generate`): typecheck y lint pasan (0 errors), test:rapido 100/100/100/87 archivos verdes, `INIT_EXIT=0`.
+
+P4 y la parada del T0b (m2) siguen esperando a Carlos; no se tocan.
+
+Veredicto: B1, m1, m3 y m4 resueltos; SM1 y SM2 mueren; gate verde.
