@@ -107,15 +107,12 @@ export type EstadoPaqueteEnEstante = (typeof ESTADOS_PAQUETE_EN_ESTANTE)[number]
  *   · `devolucion`       — vuelve a la central o a la tienda (P3). `por_devolver_a_bodega_central`
  *     solo la envia el `adminSatelite` de SU zona (`EnvioDevolucionCentralService`): moverle la zona
  *     la dejaria sin nadie que la envie. `devolucion_a_origen_por_rechazo` es la entrada del retorno.
- *   · `por_liberar`      — `reprogramado`: el paquete espera en la bodega del cierre a que el cron lo
- *     libere, y la liberacion decide bodega con `orden.zonaId` (P4, valor por defecto del spec).
+ *
+ * SLT-248 (R1801, D1/D4) revierte la P4 de SLT-224: `reprogramado` y `novedad` son `se_mueve`. Si el
+ * cliente cambia sus zonas es porque ya mueve sus paquetes; al liberarse, la orden va a la bodega de
+ * su zona nueva (`resolverDestinoCierre` usa `orden.zonaId`, R1806).
  */
-export type ClaseReconciliacionZona =
-  | "se_mueve"
-  | "estante_satelite"
-  | "finalizada"
-  | "devolucion"
-  | "por_liberar";
+export type ClaseReconciliacionZona = "se_mueve" | "estante_satelite" | "finalizada" | "devolucion";
 
 const FINALIZADA = Object.fromEntries(
   ESTADOS_TERMINALES.map((v) => [v, "finalizada" as const]),
@@ -142,19 +139,20 @@ export const CLASE_RECONCILIACION_ZONA: Record<OrderStatusValue, ClaseReconcilia
   en_reparto: "se_mueve",
   // Lleva un cierre `vencido` (sin aprobar): en la practica la protege R1722 hasta que se apruebe.
   novedad_interna: "se_mueve",
+  // SLT-248 (R1801): se re-derivan como cualquier otra; el cobro en curso (R1722) las sigue protegiendo.
+  reprogramado: "se_mueve",
+  novedad: "se_mueve",
   ...ESTANTE,
   ...FINALIZADA,
   por_devolver_a_bodega_central: "devolucion",
   devolviendo_a_bodega_central: "devolucion",
   devolucion_a_origen_por_rechazo: "devolucion",
-  novedad: "devolucion",
   por_devolver_a_tienda: "devolucion",
   devolviendo_a_tienda: "devolucion",
-  reprogramado: "por_liberar",
 };
 
 /**
- * Los estados que la reconciliacion NO mueve (R1721, R1723): todo lo que no es `se_mueve`. Es el
+ * Los estados que la reconciliacion NO mueve (R1721, R1723, R1805): todo lo que no es `se_mueve`. Es el
  * `notIn` del `findMany` de elegibles del helper compartido.
  */
 export const ESTADOS_QUE_NO_SE_MUEVEN: readonly OrderStatusValue[] = (
