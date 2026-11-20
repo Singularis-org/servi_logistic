@@ -174,3 +174,41 @@ Veredicto: T3.1 y T3.2 hechas; typecheck, lint y los tests de las pantallas toca
 - R19 (quitar `/paquete` de la lista de excepciones) es T4.2: no se ha tocado.
 
 Veredicto: T3.3, T3.4, T3.5 y T4.1 hechas; typecheck, lint y sus tests en verde; guardias con un rojo ajeno (asistente-panel-hermano, por el layout de T2.2).
+
+## Cierre (implementer, 2026-11-20) — T4.3 hecha, T4.2 bloqueada, T4.4 parcial
+
+### Archivos de esta tanda
+- `tests/unit/guards/asistente-panel-hermano.guardia.test.ts` (archivo 33, aceptado por el leader): la contraprueba muta ahora el nodo `<MonedaDelPaisProvider …>{children}</MonedaDelPaisProvider>` (regex, porque ocupa tres líneas). Sigue fallando en ruidoso si el nodo desaparece.
+- `docs/architecture.md`: punto «Moneda e impuesto en pantallas (SLT-235)» bajo «País por empresa (SL-20)» (T4.3).
+
+### Mapa R → test (consolidado)
+| R | Test |
+|---|---|
+| R1 | `tests/components/AppLayout.test.tsx` > bloque SL-20/T5.1 (una llamada a `paraPantallas`, los dos proveedores con lo suyo) |
+| R2 | `AppLayout.test.tsx` (superadmin, ninguna llamada) y `tests/unit/services/pais-para-pantallas.test.ts` > «R2» |
+| R3 | `pais-para-pantallas.test.ts` > «R3», `pais-service.test.ts` (R3/R4) y `moneda-del-pais-pantallas.test.tsx` > `/paquete` sin moneda |
+| R4 | `pais-para-pantallas.test.ts` > «R4» |
+| R5 | `pais-para-pantallas.test.ts` > «R5» (×2), `AppLayout.test.tsx` (falla y pinta) y `/paquete` con lectura que falla |
+| R6 | `tests/integration/db/pais-repositorio.test.ts` > «SLT-235 (R6)» — 14/14 sobre base desechable |
+| R7 | `pais-para-pantallas.test.ts` (9:59 / 10:00) y `pais-service.test.ts` > «R7» |
+| R8 | `pais-para-pantallas.test.ts` > describe «R8» |
+| R9 | `pais-para-pantallas.test.ts` > describe «R9» |
+| R10 | `pais-para-pantallas.test.ts` > «R10» (×2) |
+| R11 | `moneda-del-pais-pantallas.test.tsx` > casos por pantalla (T3.1–T3.3) |
+| R12 | `moneda-del-pais-pantallas.test.tsx` > `KpiValorAnimado` (0 decimales y `MONEDA_CR`) |
+| R13 | `moneda-del-pais-pantallas.test.tsx` > vistas previas (T3.4) contra `renderPlantilla(resolverValoresPlantilla(…))` |
+| R14 | `moneda-del-pais-pantallas.test.tsx` > `/paquete` (con empresa, sin empresa sin consulta, R3, R5) |
+| R15 | `moneda-del-pais-pantallas.test.tsx` > hooks sin proveedor, `PriceLabel` sin proveedor, `mensajeDeCuadre` sin moneda |
+| R16 | cada caso con `MONEDA_CR` igual que sin proveedor + tests existentes sin tocar |
+| R17 | `moneda-del-pais-pantallas.test.tsx` > `useImpuestoDelPais` da «IGV» |
+| R18 | `moneda-del-pais-pantallas.test.tsx` > «censo de R18» con contraprueba |
+| R19 | PENDIENTE — T4.2 bloqueada (SL-21 T5.1 no está en esta rama) |
+| R20 | lo comprueba el reviewer en el diff |
+
+### Verificación de esta tanda
+- `pnpm run typecheck`: exit 0. `pnpm run lint`: 0 errores (249 avisos, ninguno nuevo de esta rama salvo el ya listado).
+- `pnpm run test:guardias`: 357 archivos verdes, 3 saltados; 5394 tests verdes, 28 saltados.
+- `asistente-panel-hermano.guardia.test.ts`: 12/12.
+- `./init.sh`: rojo en el paso 3 por el cupo del board (14 fullstack / 7 backend in_progress; aceptado por el humano, no es de esta rama) y en el tamaño del PR medido contra `dev` (87/40, arrastra SL-21). Contra la base SL-21 son 32 archivos de código/docs + specs/progress, 502 líneas de producción y 1 295 de tests.
+- La corrida del resto del gate (con esos dos pasos bajados a aviso en una copia en el scratchpad) llegó hasta «cliente de Prisma al día» y «tipos de ruta al día» y la cortó Claude Code por falta de memoria del sistema antes de los `vitest related`. No se reintentó.
+- E2E: NO corridos (memoria del sistema al límite). Quedan pendientes: `--project=dinero`, `mis-asignaciones`, `recepcion-satelite`, `asignacion-satelite` y los `pwa-mensajero-*` que montan las tarjetas.
