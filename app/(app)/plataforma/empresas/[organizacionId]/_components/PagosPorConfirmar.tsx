@@ -7,11 +7,9 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { Modal } from "@/components/shared/Modal";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { money } from "@/lib/config/moneda";
 import {
-  claveDeFactura,
   type ConfirmarPagoInput,
   type ConfirmarPagoResult,
   type FacturaConSaldoDTO,
@@ -23,11 +21,14 @@ import { fechaCortaEnZona } from "@/lib/utils/fecha-corta";
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
 import { proponerReparto, resumenDelReparto } from "@/lib/utils/reparto-pago-plataforma";
 
+import { RepartoEntreFacturas } from "./RepartoEntreFacturas";
+
 // SLT-60 (design §6.1; R12–R14, R17, R23, R32, R33) — la sección «Pagos por confirmar» del detalle de una
 // empresa para el superadmin. Los datos llegan por props desde `page.tsx` (Server Component): este
 // componente no lee nada por su cuenta. Las cifras son texto con dos decimales; las cuentas del reparto las
 // hace `lib/utils/reparto-pago-plataforma.ts` en céntimos `bigint`, y quien decide si el reparto vale es la
-// base al confirmar. Ni `Number(` ni `parseFloat`.
+// base al confirmar. Ni `Number(` ni `parseFloat`. SLT-143 (design §6.1): la tabla del reparto vive en
+// `RepartoEntreFacturas.tsx`, que comparte con el registro por fuera.
 
 /** Textos de la sección, en un solo sitio para cuando llegue la i18n. Forma impersonal (design §6.1). */
 const TEXTOS = {
@@ -49,16 +50,6 @@ const TEXTOS = {
   tituloDialogo: (monto: string) => `Confirmar pago de ${monto}`,
   confirmarPago: "Confirmar pago",
   sinFacturas: "La empresa no tiene facturas cerradas con saldo",
-  factura: (numero: number) => `N.º ${numero}`,
-  dialogoColumnas: {
-    factura: "Factura",
-    periodo: "Período",
-    total: "Total",
-    saldo: "Saldo",
-    aplicar: "Aplicar",
-  },
-  repartido: (suma: string, monto: string) => `Repartido ${suma} de ${monto}`,
-  falta: (falta: string) => `Falta ${falta}`,
   yaConfirmado: "Este pago ya estaba confirmado",
   noEncontrado: "El pago ya no está por confirmar",
   falloConfirmar: "No se pudo confirmar ahora",
@@ -70,11 +61,6 @@ const SIN_DATO = "—";
 /** «5 oct 2026» en la zona de la plataforma (design §7: `ZONA_CR` hasta SLT-90). */
 function fecha(instante: Date): string {
   return fechaCortaEnZona(instante, ZONA_CR);
-}
-
-/** El período de una factura: `hasta` es exclusivo, así que el último día es `hasta` − 1 ms. */
-function periodo(f: FacturaConSaldoDTO): string {
-  return `${fecha(f.desde)} – ${fecha(new Date(f.hasta.getTime() - 1))}`;
 }
 
 export interface PagosPorConfirmarProps {
@@ -196,14 +182,14 @@ function FilaDePago({
 /**
  * R32, R33: «Ver comprobante» abre el enlace temporal en una pestaña nueva; la ruta del archivo no llega al
  * navegador. Cualquier respuesta distinta de `ok`, o un fallo, dice «No se pudo abrir el comprobante» aquí
- * mismo. Sin comprobante, solo el texto.
+ * mismo. Sin comprobante, solo el texto. SLT-143 (design §6.2; R20): «Pagos confirmados» lo usa igual.
  */
-function Comprobante({
+export function Comprobante({
   pago,
   verComprobante,
   describedBy,
 }: {
-  pago: PagoPorConfirmarDTO;
+  pago: Pick<PagoPorConfirmarDTO, "id" | "tieneComprobante">;
   verComprobante: PagosPorConfirmarProps["verComprobante"];
   describedBy?: string;
 }) {
@@ -290,10 +276,6 @@ function DialogoConfirmar({
   const resumen = useMemo(() => resumenDelReparto(pago.monto, facturas, montos), [pago.monto, facturas, montos]);
   const sinFacturas = facturas.length === 0;
 
-  function error(clave: string): string | undefined {
-    return erroresServidor[clave] ?? resumen.errores[clave];
-  }
-
   function cambiar(facturaId: string, valor: string) {
     setErroresServidor({});
     setFallo(null);
@@ -337,8 +319,6 @@ function DialogoConfirmar({
     }
   }
 
-  const errorGeneral = error("aplicaciones");
-
   return (
     <Modal
       open
@@ -365,36 +345,13 @@ function DialogoConfirmar({
         {sinFacturas ? (
           <p className="text-sm">{TEXTOS.sinFacturas}</p>
         ) : (
-          <>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{TEXTOS.dialogoColumnas.factura}</TableHead>
-                  <TableHead>{TEXTOS.dialogoColumnas.periodo}</TableHead>
-                  <TableHead className="text-right">{TEXTOS.dialogoColumnas.total}</TableHead>
-                  <TableHead className="text-right">{TEXTOS.dialogoColumnas.saldo}</TableHead>
-                  <TableHead>{TEXTOS.dialogoColumnas.aplicar}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {facturas.map((f) => (
-                  <FilaDeFactura
-                    key={f.id}
-                    factura={f}
-                    valor={montos[f.id] ?? ""}
-                    error={error(claveDeFactura(f.id))}
-                    onCambiar={(v) => cambiar(f.id, v)}
-                  />
-                ))}
-              </TableBody>
-            </Table>
-
-            <div className="flex flex-col gap-1 text-sm tabular-nums" aria-live="polite">
-              <span>{TEXTOS.repartido(money(resumen.suma), money(pago.monto))}</span>
-              <span>{TEXTOS.falta(money(resumen.falta))}</span>
-              {errorGeneral === undefined ? null : <span className="text-destructive">{errorGeneral}</span>}
-            </div>
-          </>
+          <RepartoEntreFacturas
+            monto={pago.monto}
+            facturas={facturas}
+            montos={montos}
+            onCambio={cambiar}
+            errores={{ ...resumen.errores, ...erroresServidor }}
+          />
         )}
 
         {fallo === null ? null : (
@@ -404,43 +361,5 @@ function DialogoConfirmar({
         )}
       </div>
     </Modal>
-  );
-}
-
-function FilaDeFactura({
-  factura,
-  valor,
-  error,
-  onCambiar,
-}: {
-  factura: FacturaConSaldoDTO;
-  valor: string;
-  error: string | undefined;
-  onCambiar: (valor: string) => void;
-}) {
-  const errorId = useId();
-  const nombre = TEXTOS.factura(factura.numero);
-  return (
-    <TableRow data-factura-id={factura.id}>
-      <TableCell className="whitespace-nowrap">{nombre}</TableCell>
-      <TableCell className="whitespace-nowrap">{periodo(factura)}</TableCell>
-      <TableCell className="text-right whitespace-nowrap tabular-nums">{money(factura.total)}</TableCell>
-      <TableCell className="text-right whitespace-nowrap tabular-nums">{money(factura.saldo)}</TableCell>
-      <TableCell className="min-w-32 align-top">
-        <Input
-          inputMode="decimal"
-          aria-label={`${TEXTOS.dialogoColumnas.aplicar} · ${nombre}`}
-          aria-invalid={error === undefined ? undefined : true}
-          aria-describedby={error === undefined ? undefined : errorId}
-          value={valor}
-          onChange={(e) => onCambiar(e.target.value)}
-        />
-        {error === undefined ? null : (
-          <p id={errorId} className="mt-1 text-xs text-destructive">
-            {error}
-          </p>
-        )}
-      </TableCell>
-    </TableRow>
   );
 }

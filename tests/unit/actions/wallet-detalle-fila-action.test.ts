@@ -39,7 +39,6 @@ function mov(overrides: Partial<WalletMovimientoDTO> = {}): WalletMovimientoDTO 
     origenTipo: "cierre_dia",
     origenId: "c-1",
     descripcion: null, // los pagos a mensajeros llegan SIN descripcion (medido en produccion)
-    registradoPor: null,
     fechaMovimiento: "2026-08-25T06:00:00.000Z",
     dueno: "propio",
     documento: null, // ficha 459 (design §7.3): fila sin documento

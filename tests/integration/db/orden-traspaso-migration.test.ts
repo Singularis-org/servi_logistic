@@ -310,6 +310,8 @@ describe("427/T2 — el UP y el DOWN, leidos del archivo", () => {
       // SLT-224: correccion unica de `orden.zona_id` en la central (UPDATE de `orden`, INSERT en
       // `historial_accion`, respaldo en `respaldo_slt224`). No toca `orden_traspaso_mensajero`.
       "20261121120000_slt224_zona_de_ordenes_en_central",
+      // SLT-143: la tabla `pago_plataforma_anulacion` y el pago por fuera; no toca `orden_traspaso_mensajero`.
+      "20261121130000_pago_plataforma_por_fuera",
     ]);
   });
 });

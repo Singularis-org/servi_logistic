@@ -121,6 +121,8 @@ export const MODELOS_DE_NEGOCIO: readonly ModeloClasificado[] = [
   // Confirmación del superadmin de un pago a la plataforma y su reparto entre facturas cerradas (SLT-60): las escribe solo una función del dueño
   { modelo: "PagoPlataformaConfirmacion", tabla: "pago_plataforma_confirmacion" },
   { modelo: "PagoPlataformaAplicacion", tabla: "pago_plataforma_aplicacion" },
+  // Anulación de un pago confirmado por el superadmin (SLT-143): la escribe solo una función del dueño
+  { modelo: "PagoPlataformaAnulacion", tabla: "pago_plataforma_anulacion" },
   // Cobro de fulfillment por paquete a la tienda (SLT-94): lo escriben solo los triggers de `orden` y de su bitácora
   { modelo: "OrdenFulfillmentMovimiento", tabla: "orden_fulfillment_movimiento" },
   // Devoluciones

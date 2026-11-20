@@ -101,7 +101,6 @@ function fila(id: string, over: Partial<WalletMovimientoDTO>): WalletMovimientoD
     origenTipo: "gasto",
     origenId: null,
     descripcion: "Sueldo de septiembre",
-    registradoPor: "99999999-0000-4000-8000-000000000001",
     fechaMovimiento: "2026-09-20T15:00:00.000Z",
     dueno: "propio",
     documento: null,

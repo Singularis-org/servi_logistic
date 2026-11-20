@@ -40,7 +40,6 @@ function mov(): WalletMovimientoDTO {
     origenTipo: "gasto",
     origenId: null,
     descripcion: "Papeleria",
-    registradoPor: "u-maestro",
     fechaMovimiento: "2026-07-13T10:00:00.000Z",
     dueno: "propio", // feature 231 (R31): un gasto variable es dinero de la empresa
     documento: null, // ficha 459 (design §7.3): fila sin documento

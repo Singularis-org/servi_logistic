@@ -93,4 +93,17 @@ export interface ILibroCajaAutoriaRepository {
    * descripcion, que lleva el motivo). Una consulta por tipo presente.
    */
   anulaciones(ids: IdsDeDocumentos): Promise<Record<keyof IdsDeDocumentos, Map<string, AnulacionDeDocumento>>>;
+  /**
+   * SLT-143 (design §5, §5.1; R13, R14, R36) — de los pagos a la plataforma `pagoIds`, los que registró el
+   * superadmin por fuera (`registrados`) y los que la plataforma anuló (`anulados`). Los ids son los de las
+   * filas y, para los contra-asientos, su `origen_id`. Corre con la empresa de la sesión: la RLS le deja leer
+   * sus confirmaciones y sus anulaciones (SLT-60 R25, R32).
+   */
+  marcasDeLaPlataforma(pagoIds: readonly string[]): Promise<MarcasDeLaPlataforma>;
+}
+
+/** SLT-143 (design §5.1) — ids de pagos a la plataforma con la marca de la plataforma. */
+export interface MarcasDeLaPlataforma {
+  registrados: Set<string>;
+  anulados: Set<string>;
 }
