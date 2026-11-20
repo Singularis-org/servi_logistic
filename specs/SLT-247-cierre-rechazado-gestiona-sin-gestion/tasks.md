@@ -6,7 +6,7 @@
 
 ## T0 — Medición en producción (leader, SOLO LECTURA)
 
-- [ ] **T0.1** Conectar con `.env.prod` (`DIRECT_URL`) y fijar solo lectura tras conectar
+- [x] **T0.1** Conectar con `.env.prod` (`DIRECT_URL`) y fijar solo lectura tras conectar
   (`SET default_transaction_read_only = on;`). Sin imprimir la URL. Ejecutar:
 
   ```sql
@@ -141,7 +141,7 @@ Depende de: Tanda 2.
 
 ## Cierre
 
-- [ ] **T4.1** `progress/impl_SLT-247.md` con el mapa R→test (abajo) y la evidencia de las
+- [x] **T4.1** `progress/impl_SLT-247.md` con el mapa R→test (abajo) y la evidencia de las
   mutaciones.
 - [ ] **T4.2** Verificación en Preview con Carlos antes de promover (memoria «Aprobar en Preview
   antes de prod»): rechazar un cierre de demo con barridas y recorrer el flujo como mensajero.

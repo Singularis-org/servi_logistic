@@ -199,6 +199,10 @@ Consecuencias:
   barrería mientras el cierre siga rechazado. Ese mensajero puede gestionarla normalmente, y se
   barre en cuanto el cierre salga de `rechazado` (R1789). Hoy no existe ninguna vía para reasignar
   una orden `en_reparto` de un mensajero bloqueado. Se acepta y se documenta.
+- Una barrida que deja de ser obligatoria por R1790 (su gestión se la llevó un cierre posterior) y
+  vuelve a `en_reparto` sin gestión pendiente queda sin barrer y sin exigir mientras el cierre siga
+  `rechazado`. No se pierde dinero: se barre en cuanto el cierre se reenvía (R1789) y el mensajero
+  sigue bloqueado por él. Se acepta, como el caso de la reasignada.
 - Gestiones registradas y no reenviadas: siguen el camino de la 477 (rama (a) del corte, su pregunta
   abierta 1), y el aviso `CORRECCION_AVISO_CORTE` ya lo dice en pantalla (R1790).
 

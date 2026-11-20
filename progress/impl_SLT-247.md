@@ -299,3 +299,20 @@ integración ajenos (`zona-*`, `filas-fuera-de-tx`); con la desechable, verde.
   tests`. Lo decide Carlos.
 
 **Veredicto:** Tanda 3 hecha y verde en todo lo que corre (incluido el E2E y el grupo `dinero`); el gate queda rojo solo por el tamaño del PR (66/40 archivos).
+
+## Menores de la review (backend_dev, 2026-11-20)
+
+- **m1.** Merge de `origin/dev` (sin rebase). Conflicto en `tests/integration/db/orden-traspaso-migration.test.ts`:
+  quedan las dos, en orden: `20261124120000_sl21_pais_moneda_impuesto` (SL-21) y la nuestra
+  `20261124130000_orden_historial_origen_retorno_rechazo_cierre`, que sigue siendo la última (sin renumerar).
+  `prisma generate` tras el merge. Base desechable nueva `servi_slt247_t4` (`migrate deploy` + `db:seed`).
+  Tests de migración + los dos de 247: `Test Files 5 passed (5)`, `Tests 41 passed (41)`.
+- **m2.** T0.1 y T4.1 marcadas en `tasks.md`; T4.2/T4.3 quedan para después del merge.
+- **m3.** Línea en design §5: la barrida que deja de ser obligatoria por R1790 queda sin barrer mientras el cierre
+  siga `rechazado` (sin pérdida de dinero; se barre al reenviar, R1789).
+- **m4.** El test de R1790 (`247-resolicitud-sin-gestion-sql-real` › R1790) afirma además que el `cierre_detail` de Y
+  tiene A con 1000, que el `total_general` de Y es `1000.00` y que el de X es `0.00`.
+
+| # | Mutación | Resultado |
+|---|---|---|
+| M10 | `recalcularTotalesDelCierre` suma también las gestiones de las barridas del cierre por `ordenId` (no solo por `cierreId`) | rojo (1): `expected '1000.00' to be '0.00'` en el `general` de X; las aserciones previas pasaban. Restaurada (`git diff --stat lib/` vacío) |

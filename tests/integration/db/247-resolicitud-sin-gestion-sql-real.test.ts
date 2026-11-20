@@ -241,6 +241,11 @@ describeSiHayBase("SLT-247 — gestionar las barridas devueltas y reenviar el re
         cierreDeB: (await e.tx.gestionOrden.findUniqueOrThrow({ where: { id: gB }, select: { cierreId: true } })).cierreId,
         vigentesDeA: await e.tx.gestionOrden.count({ where: { ordenId: a.ordenId, anuladaAt: null } }),
         detalleX: (await e.tx.cierreDetail.findMany({ where: { cierreId: x }, select: { ordenId: true } })).map((d) => d.ordenId),
+        detalleY: (await e.tx.cierreDetail.findMany({ where: { cierreId: y.id }, select: { ordenId: true, montoCobrar: true } })).map(
+          (d) => ({ ordenId: d.ordenId, monto: String(d.montoCobrar) }),
+        ),
+        generalX: (await cierreDe(e, x)).general,
+        generalY: (await cierreDe(e, y.id)).general,
       };
     });
     expect(r.obligatorias).toEqual([r.ids.b]);
@@ -250,5 +255,9 @@ describeSiHayBase("SLT-247 — gestionar las barridas devueltas y reenviar el re
     expect(r.cierreDeB).toBe(r.x);
     expect(r.vigentesDeA).toBe(1);
     expect(r.detalleX).toEqual([r.ids.b]);
+    // «Cuenta una sola vez»: el dinero de A vive en Y (su detalle y su total) y X no lo cuenta.
+    expect(r.detalleY).toEqual([{ ordenId: r.ids.a, monto: "1000" }]);
+    expect(r.generalY).toBe("1000.00");
+    expect(r.generalX).toBe("0.00");
   });
 });
