@@ -35,10 +35,10 @@
 
 ## Bloque 3 — Puerto (R5–R7) (depende de los bloques 1 y 2)
 
-- [ ] **T3.1** `PaisDTO` (`moneda`, `impuestoNombre`) y `PaisRepository` (select y mapeo).
+- [x] **T3.1** `PaisDTO` (`moneda`, `impuestoNombre`) y `PaisRepository` (select y mapeo).
   - Se actualizan los fixtures de `PaisDTO` de los tests.
   - *Hecho:* typecheck en verde y el test de `pais-repositorio` con los campos nuevos.
-- [ ] **T3.2** Los errores `PaisSinMoneda` y `PaisSinImpuesto`, los métodos `moneda()` y
+- [x] **T3.2** Los errores `PaisSinMoneda` y `PaisSinImpuesto`, los métodos `moneda()` y
   `nombreImpuesto()` en `IReglasPaisEmpresa` y `ReglasPaisEmpresaService`, y la fábrica
   `reglasPaisFijas` con `MONEDA_DE_PRUEBA`.
   - Se completan los dobles escritos a mano.
