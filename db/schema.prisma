@@ -6088,6 +6088,9 @@ enum HistorialPlataformaAccion {
   // Enmienda 2026-10-26, decisión 6 (R47; 20261026130500): el superadmin enciende o apaga un país.
   pais_disponibilidad_activada
   pais_disponibilidad_desactivada
+  // SLT-226 (design §1.3; R25; 20261124120000): cada nacimiento o cambio de estado de un `cobro_intento`. Lo
+  // escriben solo las funciones del dueño de 20261124120100, en la misma sentencia que el cambio.
+  cobro_intento_transicion
 
   @@map("historial_plataforma_accion")
 }
@@ -6097,6 +6100,8 @@ enum HistorialPlataformaEntidad {
   provincia
   canton
   distrito
+  // SLT-226 (design §1.3): el intento de cobro en línea; `pais_id` es el de su empresa.
+  cobro_intento
 
   @@map("historial_plataforma_entidad")
 }

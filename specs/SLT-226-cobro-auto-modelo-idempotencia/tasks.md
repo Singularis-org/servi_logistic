@@ -8,29 +8,29 @@
 
 ## T0 — Comprobaciones previas (sin código de producción)
 
-- [ ] **T0.1** La mayor migración de `dev`. **Hecho:** los dos prefijos de §3 van después de ella, o se anotan
+- [x] **T0.1** La mayor migración de `dev`. **Hecho:** los dos prefijos de §3 van después de ella, o se anotan
   los nuevos en `design.md`.
-- [ ] **T0.2** Las columnas exactas que escribe `pago_plataforma_registrar_por_fuera` en `wallet_movimiento`.
+- [x] **T0.2** Las columnas exactas que escribe `pago_plataforma_registrar_por_fuera` en `wallet_movimiento`.
   **Hecho:** §3.5 las copia.
 - [ ] **T0.3** El trigger `cobro_intento_sin_borrar` frente al `CASCADE` desde `organizacion`. Se prueban
   `pg_trigger_depth()` y la existencia de la empresa en una base desechable. **Hecho:** la opción elegida queda
   anotada en §1.1 y la limpieza de una empresa con intentos pasa.
-- [ ] **T0.4** Tres comprobaciones, anotadas en §1.4 y §5:
+- [x] **T0.4** Tres comprobaciones, anotadas en §1.4 y §5:
   - `PagoPlataformaConfirmacionRepository.leer` ya tolera `confirmado_por` nulo;
   - `confirmador` no se usa en TypeScript;
   - qué muestra «Registró» con `registrado_por` nulo en un `egreso_pago_plataforma`.
 
   **Hecho:** las tres anotadas.
-- [ ] **T0.5** Si `migracion-slt143-ida-y-vuelta.test.ts` aplica el `down` de SLT-143 sobre una base con esta
+- [x] **T0.5** Si `migracion-slt143-ida-y-vuelta.test.ts` aplica el `down` de SLT-143 sobre una base con esta
   migración. **Hecho:** decidido si se ajusta (va en T7.5).
-- [ ] **T0.6** `prisma migrate diff` con una FK `DEFERRABLE` hecha a mano. **Hecho:** sin deriva, o §3.5 pasa al
+- [x] **T0.6** `prisma migrate diff` con una FK `DEFERRABLE` hecha a mano. **Hecho:** sin deriva, o §3.5 pasa al
   orden alternativo de §11.
 
 ## T1 — Migración del enum (depende de T0.1)
 
-- [ ] **T1.1** `20261124120000_cobro_historial_enum/migration.sql`: los dos `ADD VALUE IF NOT EXISTS` de §1.3.
+- [x] **T1.1** `20261124120000_cobro_historial_enum/migration.sql`: los dos `ADD VALUE IF NOT EXISTS` de §1.3.
   **Hecho:** aplica en una base desechable.
-- [ ] **T1.2** Su `down.sql`: el `DELETE` del historial y `quitar_valores_de_enum_slt226`, copiada de SLT-215.
+- [x] **T1.2** Su `down.sql`: el `DELETE` del historial y `quitar_valores_de_enum_slt226`, copiada de SLT-215.
   **Hecho:** ida y vuelta en una base desechable, sin cambiar los demás valores.
 
 ## T2 — Migración del modelo (depende de T1)

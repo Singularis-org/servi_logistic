@@ -118,6 +118,13 @@ cobro_intento
     elige cuál de las dos con un test.
     - **Por qué:** las limpiezas de los tests y de la demo borran empresas (el `CASCADE` de SLT-118), y sin
       DELETE para `servi_app` (el `REVOKE`) la empresa no puede borrar intentos.
+    - **T0.3 (2026-11-20), ABIERTO.** Medido en una base desechable: en el `CASCADE` desde `organizacion` el
+      trigger corre con `pg_trigger_depth() = 2` y la empresa ya no existe; en un `DELETE` directo, con
+      profundidad 1 y la empresa viva. Las dos opciones distinguen el cascade. Pero ninguna deja limpiar una
+      empresa con un intento cuyo `creado_por` es un usuario suyo: `usuario` no se borra (la FK `RESTRICT` de
+      `creado_por`), `organizacion` tampoco (la FK `RESTRICT` de `usuario.organizacion_id`) y el intento tampoco
+      (este trigger). Y el borrado de la demo (`scripts/demo-qa/borrar.ts`) borra tabla por tabla antes que la
+      empresa, así que choca con `SL226` aunque `creado_por` sea nulo. Pendiente de decisión antes de T2.
   - Los de SL-17, generados con `pnpm exec tsx scripts/generar-misma-empresa.ts --faltantes`:
     - misma empresa en `factura_id`, `pago_id` y `creado_por`;
     - `cobro_intento_sin_cambio_de_empresa`.
@@ -189,6 +196,9 @@ en su propia migración, antes, como `20261121140000_plan_nivel_job_enum`.
   ya existen quedan con `en_linea = false` (R28).
 - **Lectura:** `PagoPlataformaConfirmacionRepository.leer` ya usa `LEFT JOIN usuario` y `confirmado_por` ya es
   nulable en su zod (lo confirma T0.4), así que no cambia.
+  - **T0.4 (2026-11-20):** confirmado. `leer` hace `LEFT JOIN "usuario" cu` y un `CASE WHEN cu."id" IS NULL THEN
+    NULL`, su zod tiene `confirmado_por: z.string().nullable()`, y `PagosConfirmados.tsx` pinta `?? SIN_DATO`. La
+    relación `confirmador` no se usa en TypeScript (`lib/`, `app/`, `components/`, `scripts/`).
 - **Prisma:** `confirmadoPor String?`, `confirmador Usuario?` y `enLinea Boolean @default(false)`.
 
 ## 2. País
@@ -302,6 +312,11 @@ devuelve `'ok'`, `'ya_registrado'`, `'sin_intento'` o `'requiere_revision'`. Tod
    - `fecha_movimiento = p_ahora`.
 
    El tope corre aquí y deja pasar este pago (§3.7). No mira la caja: puede quedar negativa (R18).
+
+   **T0.2 (2026-11-20):** las columnas que escribe `pago_plataforma_registrar_por_fuera` son `id`,
+   `organizacion_id`, `tipo`, `categoria`, `monto`, `origen_tipo`, `origen_id`, `descripcion`, `registrado_por`,
+   `fecha_movimiento`, `created_at` (con `now() AT TIME ZONE 'UTC'`) y `clave_idempotencia`. Son todas las de
+   `wallet_movimiento`; §3.5 escribe las mismas.
 7. `PERFORM _pago_plataforma_aplicar(org, pago, monto_local, [{factura_id, monto_local}], NULL, p_ahora, false, true)`.
    Escribe la confirmación `en_linea` sin persona y la aplicación entera. El saldo y la deuda bajan solos (R17).
    No es «por confirmar», porque tiene confirmación (R19).
@@ -469,6 +484,10 @@ pago>»`.
   referencia del pago por fuera de SLT-143. Así la marca y el id salen en los tres sin tocar la wallet (R17).
 - **Dónde no:** «Registró» no gana una marca propia en esta ficha (alternativa 6). Con `registrado_por` nulo,
   muestra lo que ya muestra un movimiento automático; T0.4 lo anota.
+  - **T0.4 (2026-11-20):** `LibroCajaAutoriaService.registro` mira primero la marca `por_fuera` (no aplica) y,
+    con `registrado_por` nulo, decide por `origen_tipo`. Para `gasto` devuelve la acción `plantilla_gasto_fijo`,
+    así que «Registró» dirá «Automático · Plantilla de gasto fijo». Es un texto engañoso: se avisa al humano
+    (la alternativa 6 lo arreglaría, aquí o en SLT-231).
 
 ## 6. Autorización
 
@@ -605,3 +624,9 @@ Un `skip` por falta de base no cuenta como verde.
   marque como deriva. Si la marca, se cambia el orden de §3.5: el pago primero, y el tope busca el intento por
   `pago_proveedor_id` y `clave_idempotencia`.
 - **`migracion-slt143-ida-y-vuelta`:** puede chocar con la sobrecarga de `_pago_plataforma_aplicar` (T0.5).
+- **T0.1 (2026-11-20):** la mayor de `origin/dev` es `20261123120100_zona_activa`; los prefijos de §3 valen.
+- **T0.5 (2026-11-20):** no choca. El test crea su propia base y aplica con `aplicarMigracionesHasta(db, M)`, que
+  para ANTES de SLT-143: nunca ve las migraciones de esta ficha. T7.5 no hace falta.
+- **T0.6 (2026-11-20):** sin deriva. Con una FK existente pasada a `DEFERRABLE INITIALLY DEFERRED` a mano,
+  `prisma migrate diff --from-config-datasource --to-schema db/schema.prisma` da «empty migration»: Prisma no
+  compara la diferibilidad. §3.5 se queda con su orden.
