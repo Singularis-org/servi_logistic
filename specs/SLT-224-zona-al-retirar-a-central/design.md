@@ -22,6 +22,16 @@
 | Índice único `zona_distrito (organizacion_id, distrito_id)` (SLT-75) | Un distrito tiene como mucho una zona por empresa | Hace que en SQL un `JOIN` a `zona_distrito` sea equivalente a `zonaUnicaDeDistrito` (§5.1) |
 | `tests/unit/guards/zona-reconciliacion-no-retarifa.guardia.test.ts` y `historial-accion-escrituras-cubiertas.guardia.test.ts` | Guardias que leen el cuerpo de `ZonaRepository.update` | Se reapuntan al helper (§2.3) |
 
+**PR 2, buscado además:** «finalizada», «terminal», `ESTADOS_TERMINALES`, `CierreEstado`,
+`zonaOrdenId`, `resolverDestinoCierre`, `cierre_o_dinero`.
+
+| Qué apareció (PR 2) | Qué es | Qué hace el PR 2 con ello |
+|---|---|---|
+| `ESTADOS_TERMINALES` (`lib/types/order-status-transiciones.ts:475`) | `entregado`, `devuelta_a_tienda`, `incidente` | **Es** la definición de «finalizada» (R1721); no se crea otra |
+| `CierreEstado` (`solicitado`, `aprobado`, `rechazado`, `vencido`) | Estado del `cierre_dia` | Separa cierre anterior (`aprobado`) de cobro en curso (R1720, R1722) |
+| `zonaOrdenId` en la resolicitud y en la corrección de la 398; `resolverDestinoCierre(o.zonaId)` en la aprobación | Lecturas de la zona **viva** dentro de un cierre abierto | Motivo de proteger el cobro en curso (§4b) |
+| `MotivoSaltada` y `motivoDeSaltada` (PR 1) | Motivos del botón | Se reemplaza `cierre_o_dinero` (§3b.5) |
+
 En el board no hay otra ficha que corrija la zona al retirar o al recibir. Las dos que aparecen,
 SLT-197 «Retirar paquetes de una bodega satélite a la central» y SLT-211 «Histórico de acciones:
 registrar el retiro de paquetes de una satélite a la central», ya están hechas y son el origen del
@@ -128,6 +138,93 @@ export async function reconciliarZonaDeOrdenes(
   - ni `ZonaRepository.ts`, ni `OrdenRepository.ts`, ni `ActualizacionZonasRepository.ts` contienen `cierreDetalles: { none` ni el literal
     `"orden_zona_reconciliada"`, o sea, nadie repite el corte ni la acción fuera del helper.
 
+### 2.4 PR 2: el corte nuevo (R1720–R1725, D6)
+
+> PR 2. Grafo sin índice de este worktree (`index_status`: «project not found»); todo se confirmó con
+> Grep/Read sobre la rama con el PR 1 mergeado.
+
+**Qué dijo Carlos:** las vivas se mueven aunque tengan un cierre anterior o una gestión previa; las
+finalizadas no. El corte de la 366 (`whereBaseElegible`) no distingue un cierre **anterior** de uno
+**en curso**: `cierreDetalles: { none: {} }` excluye cualquier detalle y `gestiones: { none: { anuladaAt:
+null, resultado: in [...] } }` excluye cualquier gestión no anulada, también la de un intento ya
+cerrado y aprobado (una gestión de un intento anterior nunca se anula: solo queda vieja).
+
+**«Finalizada» en el código.** No hay estado «anulada» en el catálogo (`ORDER_STATUS_SEED`, 20
+valores; la orden se borra con `deleted_at`, que el corte ya excluye). Los estados sin continuación de
+negocio son `ESTADOS_TERMINALES` (`lib/types/order-status-transiciones.ts:475`): `entregado`,
+`devuelta_a_tienda`, `incidente`. Sus salidas son solo reversiones (deshacer, #31, #53-#58). Es la
+definición de R1721; no se crea otra lista.
+
+**El corte nuevo**, dentro de `reconciliarZonaDeOrdenes` (los tres llamadores lo heredan sin cambio):
+
+```ts
+function whereBaseElegible(distritoIds, zonaResueltaId, ordenIds): Prisma.OrdenWhereInput {
+  return {
+    ...(ordenIds !== undefined ? { id: { in: ordenIds } } : {}),
+    distritoId: { in: distritoIds },
+    zonaId: { not: zonaResueltaId },
+    deletedAt: null,
+    // R1722: solo el detalle de un cierre SIN APROBAR protege. Uno aprobado ya es inmutable y
+    // no se vuelve a leer (§4b).
+    cierreDetalles: { none: { cierre: { estado: { not: "aprobado" } } } },
+    // R1722: la gestion que decidio dinero y aun no tiene cierre aprobado.
+    gestiones: {
+      none: {
+        anuladaAt: null,
+        resultado: { in: ["entregado", "devolucion_a_origen_por_rechazo", "incidente"] },
+        OR: [{ cierreId: null }, { cierre: { estado: { not: "aprobado" } } }],
+      },
+    },
+  };
+}
+```
+
+y el `notIn` del `findMany` de elegibles pasa de «estante + `excluirEstados`» a **todos los estados
+que no se mueven** (R1721, R1723), sacados de la clasificación de abajo. El `count` de retenidas sigue
+siendo `{ ...base, estatus: in ESTADOS_PAQUETE_EN_ESTANTE }` (R1724), ahora con la base nueva. El
+estado no entra en `whereBaseElegible` a propósito: las dos consultas le añaden su cláusula de
+`estatus` y una segunda clave `estatus` en el mismo objeto pisaría la primera.
+
+**La clasificación (R1725).** En `lib/utils/estados-bodega-satelite.ts`, junto a
+`ESTADOS_PAQUETE_EN_ESTANTE`:
+
+```ts
+export type ClaseReconciliacionZona =
+  | "se_mueve" | "estante_satelite" | "finalizada" | "devolucion" | "por_liberar";
+
+export const CLASE_RECONCILIACION_ZONA: Record<OrderStatusValue, ClaseReconciliacionZona> = { ... };
+export const ESTADOS_QUE_NO_SE_MUEVEN: readonly OrderStatusValue[] = /* derivada del mapa */;
+```
+
+Un `Record` sobre `OrderStatusValue` rompe el typecheck si el catálogo gana un estado sin clasificar,
+el mismo patrón `_EnsureExhaustive` de `order-status-transiciones.ts`. Los 20 estados:
+
+| Clase | Estados | Por qué |
+|---|---|---|
+| `estante_satelite` | `en_bodega_satelite` | 377 (D3). Se deriva de `ESTADOS_PAQUETE_EN_ESTANTE`, que no cambia. |
+| `finalizada` | `entregado`, `devuelta_a_tienda`, `incidente` | `ESTADOS_TERMINALES` (D6, R1721). |
+| `devolucion` | `por_devolver_a_bodega_central`, `devolviendo_a_bodega_central`, `devolucion_a_origen_por_rechazo`, `novedad`, `por_devolver_a_tienda`, `devolviendo_a_tienda` | P3 (resuelta según la recomendación): `por_devolver_a_bodega_central` solo la envía el `adminSatelite` de su zona; las demás vuelven a la tienda. `devolucion_a_origen_por_rechazo` entra **nueva**: es la entrada del retorno (#38/#39 la mandan a `por_devolver_*` según la zona) y su resultado ya está decidido. Hasta hoy nunca se movía porque siempre tenía cierre o gestión de rechazo. |
+| `por_liberar` | `reprogramado` | P4 (resuelta por Carlos 2026-11-20: no se mueve): paquete físicamente en la bodega del cierre, se libera por `orden.zonaId`. |
+| `se_mueve` | `en_preparacion`, `por_recolectar_en_tienda`, `recolectando`, `en_ruta_bodega_central`, `en_bodega_central`, `mensajero_recogiendo_en_bodega`, `en_ruta_bodega_satelite`, `en_reparto`, `novedad_interna` | Vivas. `novedad_interna` lleva un cierre `vencido` (sin aprobar), así que en la práctica la protege R1722 hasta que se apruebe. |
+
+`ESTADOS_DEVOLUCION_SIN_RECONCILIAR` se quitó en la review del PR 2 (m4): ningún código la usaba; la clase
+`devolucion` del mapa la sustituye, y `devuelta_a_tienda` pasa a `finalizada`.
+El parámetro `excluirEstados` del helper **se quita**: con la clasificación dentro del helper, los tres
+llamadores excluyen lo mismo (R1706) y ya no hay un llamador que pase una lista propia.
+
+**Qué cambia para cada llamador.**
+
+- **Guardado de zona** (366/377): ahora también mueve las vivas con solo cierres aprobados, y deja de
+  mover las finalizadas y las de devolución que hoy no tuvieran cierre (en la práctica no existen: las
+  devoluciones nacen de aprobar un cierre). Los tests de la 366 siguen verdes sin tocar expectativas:
+  sus órdenes nacen en `en_preparacion` y sus detalles de cierre cuelgan de un cierre `solicitado`
+  (`zona-reconciliacion-ordenes.test.ts:250-279`), así que el corte nuevo las sigue protegiendo.
+- **Recepción en la central**: la orden que llega a `en_bodega_central` con un cierre aprobado
+  anterior ahora sí cambia de zona (es el caso de la orden pendiente del T0 re-medido del
+  2026-11-19). Los casos de R1701 del PR 1 siguen protegidos porque su cierre es `solicitado` y su
+  gestión no tiene cierre.
+- **Botón**: §3b.5.
+
 ## 3. La recepción en la central (R1700–R1704)
 
 ### 3.1 Servicio
@@ -232,6 +329,55 @@ incluye estados como `en_ruta_bodega_satelite` o `en_reparto`, que la 366 ya rec
 No es pantalla nueva: un botón en una cabecera que ya existe y un `Modal` existente. No necesita
 `/design`.
 
+### 3b.5 PR 2: el botón con el corte nuevo (R1726, R1727) y la pantalla (T9)
+
+**Motivos.** `MotivoSaltada` deja de tener `cierre_o_dinero` (con el corte nuevo un cierre aprobado no
+salta a nadie) y queda:
+
+```ts
+export type MotivoSaltada =
+  | "estante_satelite" | "finalizada" | "devolucion" | "por_liberar" | "cobro_en_curso";
+```
+
+| Motivo | Texto en el modal | Regla |
+|---|---|---|
+| `estante_satelite` | «en el estante de una satélite» | clase del estado |
+| `finalizada` | «finalizada» | clase del estado (R1721) |
+| `devolucion` | «en devolución» | clase del estado (R1723) |
+| `por_liberar` | «esperando liberación en bodega» | clase del estado (R1723, P4) |
+| `cobro_en_curso` | «cobro en curso (cierre sin aprobar)» | R1722 |
+
+`motivoDeSaltada(fila)`: primero `CLASE_RECONCILIACION_ZONA[fila.estado]` (si no es `se_mueve`, ese es el
+motivo); si se mueve por estado, `fila.cobroEnCurso ? "cobro_en_curso" : null`. Es la precedencia de
+R1726 por construcción: el estado manda sobre el cobro. Los textos viven en el componente (un
+`Record<MotivoSaltada, string>`, exhaustivo).
+
+**La consulta de la vista previa.** `FilaZonaErrada` cambia `conCierre` y `conGestion` por un solo
+`cobroEnCurso: boolean`, y el SQL de `sqlZonaErrada()` lo calcula con la misma regla que el `WHERE`
+del helper:
+
+```sql
+(EXISTS (SELECT 1 FROM cierre_detail cd JOIN cierre_dia c ON c.id = cd.cierre_id
+         WHERE cd.orden_id = o.id AND c.estado <> 'aprobado')
+ OR EXISTS (SELECT 1 FROM gestion_orden g LEFT JOIN cierre_dia c ON c.id = g.cierre_id
+            WHERE g.orden_id = o.id AND g.anulada_at IS NULL
+              AND g.resultado IN ('entregado', 'devolucion_a_origen_por_rechazo', 'incidente')
+              AND (g.cierre_id IS NULL OR c.estado <> 'aprobado'))) AS "cobroEnCurso"
+```
+
+Es la segunda escritura del corte (Prisma en el helper, SQL aquí), como ya lo era en el PR 1. Lo que
+escribe lo decide siempre el helper; la vista previa solo lo anticipa. R1727 es la prueba que las ata:
+sobre la matriz completa, vista previa y confirmación seguidas tienen que coincidir orden por orden.
+Si un día divergen, ese test cae.
+
+**`actualizar`.** Igual que en el PR 1 (§3b.3), sin `excluirEstados`:
+`reconciliarZonaDeOrdenes(tx, { distritoIds }, actorUsuarioId)`.
+
+**La pantalla (T9).** Lo de §3b.1 y §3b.4 sin cambios, con los textos de la tabla de arriba. Al
+montar el botón se quitan las dos anotaciones `@sin-superficie` de `lib/actions/actualizacion-zonas.ts`.
+La ayuda (`docs/ayuda/oficina/ordenes.md`) parte del borrador del commit `a3c78989` y se ajusta a los
+cinco motivos.
+
 ## 4. La tarifa y el cobro (R1707)
 
 Igual que la 366, porque es su misma regla:
@@ -256,6 +402,31 @@ fila completa de la orden y las tablas de dinero antes y después.
 
 No queda nada de dinero sin decidir con el código. La única arista dudosa (la orden con un cierre de
 un intento anterior) queda **excluida** por la regla existente y se lleva a P2.
+
+## 4b. PR 2: el dinero con el corte nuevo (R1707, R1720, R1722)
+
+La pregunta: si una orden viva con un cierre anterior cambia de zona, ¿cambia algo que ya se cobró o se
+pagó? Se buscó cada sitio que lee `orden.zona_id` para dinero:
+
+| Dónde | Qué lee | ¿Lo afecta mover la zona? |
+|---|---|---|
+| `cierre_detail` (al **solicitar**, `CierreDetail`, schema `:3433-3510`) | copia `zona_id`, `es_central`, `es_zona_especial` y la tarifa en ese instante | No. Fila inmutable (69/R10). Cambiar la zona después no la toca. |
+| Aprobación del cierre (wallet, 42/43) | los totales y detalles **congelados** | No. 69 dejó de leer `orden`/`zona`/`tarifas` vivas al aprobar. |
+| Aprobación del cierre, ruteo (`CierresAdminRepository.ts:2887, 3105`, `resolverDestinoCierre(o.zonaId)`) | la zona **viva** para decidir a qué bodega vuelve | Sí, en un cierre **sin aprobar**. Lo protege R1722. |
+| Resolicitud de un cierre rechazado (`CierreDiaRepository.ts:2169-2183`, `zonaOrdenId: g.orden.zonaId`) | la zona **viva** de la orden para el grupo de cobro y la base del % del pago | Sí, en un cierre **sin aprobar**. Lo protege R1722. (En el modelo nuevo la base se rebasa con el `cierre_detail` congelado, pero el grupo de la zona viva se sigue leyendo.) |
+| Corrección en sitio de la 398 (`CierresAdminRepository.ts:2286-2300`, `zonaOrdenId: previa.orden.zonaId`) | ídem, en un cierre **abierto** | Sí, sin aprobar. Lo protege R1722. |
+| Liberación de `reprogramado`/`novedad` (`LiberacionReprogramadaService.ts:223`, `DevolucionSlaService.ts:255`) | la zona viva para decidir bodega | No es dinero: es ubicación del paquete. P4, R1723. |
+| El **próximo** cierre de una orden viva | la zona viva, que congela en su `cierre_detail` | Sí, y es lo que pidió Carlos: el siguiente intento cobra y paga con la zona de su dirección y de quien la entrega. |
+
+**Regla explícita.** Un cierre **aprobado** es pasado: nada lo vuelve a leer para dinero, así que no
+impide mover la zona (R1720). Un cierre **sin aprobar** (`solicitado`, `rechazado`, `vencido`) o una
+gestión que decidió dinero y todavía no tiene cierre aprobado es dinero **en curso**: se puede
+resolicitar, corregir o aprobar con la zona viva, así que la orden no se mueve hasta que se apruebe
+(R1722). Es la misma protección que la 366 daba a todo cierre, acotada a los que siguen abiertos.
+
+Por eso no queda pregunta de dinero abierta: lo ya liquidado no cambia (R1707 sigue igual, y las
+pruebas comparan las tablas de dinero antes y después también en el caso con cierre aprobado), y lo
+que está por liquidar no se mueve.
 
 ## 5. La corrección única (R1708–R1712)
 
@@ -388,6 +559,37 @@ si hiciera falta, con el JSON del leader.
 
 Se re-mide el día del paso a producción, no solo el del PR.
 
+**T0b, PR 2 (antes de abrir el PR y el día del paso a producción).** Qué hará el corte nuevo en
+prod, en todos los estados, por empresa y clase. Solo lectura, misma conexión:
+
+```sql
+WITH d AS (
+  SELECT o.organizacion_id, s.value AS estado,
+         (EXISTS (SELECT 1 FROM cierre_detail cd JOIN cierre_dia c ON c.id = cd.cierre_id
+                  WHERE cd.orden_id = o.id AND c.estado <> 'aprobado')
+          OR EXISTS (SELECT 1 FROM gestion_orden g LEFT JOIN cierre_dia c ON c.id = g.cierre_id
+                     WHERE g.orden_id = o.id AND g.anulada_at IS NULL
+                       AND g.resultado IN ('entregado','devolucion_a_origen_por_rechazo','incidente')
+                       AND (g.cierre_id IS NULL OR c.estado <> 'aprobado'))) AS cobro_en_curso,
+         EXISTS (SELECT 1 FROM cierre_detail cd WHERE cd.orden_id = o.id) AS con_cierre_366
+  FROM orden o
+  JOIN order_status s ON s.id = o.estatus_id
+  JOIN zona_distrito zd ON zd.organizacion_id = o.organizacion_id AND zd.distrito_id = o.distrito_id
+  WHERE o.deleted_at IS NULL AND o.zona_id <> zd.zona_id
+)
+SELECT organizacion_id, estado, count(*) AS desalineadas,
+       count(*) FILTER (WHERE cobro_en_curso) AS cobro_en_curso,
+       count(*) FILTER (WHERE con_cierre_366 AND NOT cobro_en_curso) AS solo_cierre_aprobado
+FROM d GROUP BY 1, 2 ORDER BY 1, 2;
+```
+
+El leader clasifica cada `estado` con la tabla de §2.4: lo de `se_mueve` sin `cobro_en_curso` es lo
+que el botón actualizaría. **Para, y decide Carlos, si** alguna fila de clase `se_mueve` con
+`solo_cierre_aprobado > 0` está en un estado distinto de `en_bodega_central`,
+`en_ruta_bodega_central`, `en_ruta_bodega_satelite` o `en_reparto` (sería un caso que P2 no miró), o
+si aparecen desalineadas `reprogramado` o `novedad` (P4 deja de ser teórica: se le pasan las guías).
+Se anotan los números en `progress/features/SLT-224.md`; no se escribe nada.
+
 **T11, después del deploy a producción.** La misma consulta da `a_corregir = 0`, el respaldo
 `respaldo_slt224.orden_zona` tiene tantas filas como `a_corregir` daba el T0 del día (0 si no apareció
 nada), hay una acción `orden_zona_reconciliada` por fila de ese respaldo, la guía 64482571 sigue con la
@@ -459,6 +661,71 @@ pertenece a otra zona; tras `retirarSateliteLote` conserva la zona satélite.
   candidatas pinta grupos, total y saltadas con motivo, y «Confirmar»; sin candidatas, el mensaje y sin
   «Confirmar»; tras confirmar, el resultado y `onSuccess` al cerrar (R1713, R1715, R1716, R1718).
 
+### 7.5 PR 2: el corte nuevo (R1720–R1727)
+
+**`tests/integration/db/reconciliar-zona-corte-vivas.int.test.ts`** (nuevo), contra Postgres, con la
+base desechable. Fixtures: zona satélite A, zona central C, distrito X mapeado a C, órdenes con
+`zona_id = A`. Cierres con estado explícito (`aprobado`, `solicitado`, `rechazado`, `vencido`).
+
+- **Por los tres llamadores** (`ZonaRepository.update` re-guardando la zona C, la recepción por
+  `RecepcionBodegaCentralService` y `ActualizacionZonasRepository.actualizar`): una orden en
+  `en_bodega_central` (o `en_ruta_bodega_central` para la recepción) con `cierre_detail` de un cierre
+  `aprobado` y gestión `devolucion_a_origen_por_rechazo` de ese cierre (un intento anterior, como las
+  de P2), se mueve a C con su acción (R1720). Mismo caso con el cierre `solicitado`: no se mueve
+  (R1722). El estado y las filas de cierre se siembran directos, sin recorrer el flujo: lo que se mide
+  es el `WHERE`.
+- **Matriz por el helper** (vía `ZonaRepository.update`, el llamador que no acota por estado ni por
+  orden), con el resultado esperado **escrito literal** por orden:
+  - se mueven: `en_bodega_central` con solo cierre aprobado; `en_reparto` con gestión `entregado`
+    ANULADA; `en_ruta_bodega_satelite` con gestión `devolucion_a_origen_por_rechazo` de cierre aprobado;
+  - no se mueven, finalizada (R1721): `entregado`, `devuelta_a_tienda`, `incidente`, sin cierre ni
+    gestión;
+  - no se mueven, cobro en curso (R1722): `cierre_detail` de cierre `solicitado`, `rechazado` y
+    `vencido`; gestión `entregado`, `devolucion_a_origen_por_rechazo` e `incidente` sin cierre; gestión
+    `entregado` con cierre `rechazado`;
+  - no se mueven, estado (R1723): cada uno de los ocho estados de R1723 con solo cierre aprobado;
+  - `ordenesRetenidasEnBodegaSatelite` = 1: cuenta la `en_bodega_satelite` con solo cierre aprobado y
+    no la `en_bodega_satelite` con cierre `solicitado` (R1724).
+- Tablas de dinero (`cierre_detail`, `cierre_detail_concepto`, `gestion_orden`,
+  `gestion_pago_congelado`, movimientos de wallet) idénticas antes y después, también para la orden con
+  cierre aprobado que se movió (R1707).
+
+Mutaciones que deben ponerla en rojo (anotadas con su rojo en `progress/impl_SLT-224.md`):
+
+1. volver a `cierreDetalles: { none: {} }` → rojo en «solo cierre aprobado se mueve»;
+2. quitar `{ cierreId: null }` del `OR` de gestiones → rojo en «gestión `entregado` sin cierre no se mueve»;
+3. cambiar `not: "aprobado"` por `equals: "solicitado"` → rojo en `rechazado`/`vencido`;
+4. sacar `incidente` (o cualquier terminal) de la clase `finalizada` → rojo en R1721;
+5. pasar `reprogramado` a `se_mueve` → rojo en R1723;
+6. usar `ESTADOS_PAQUETE_EN_ESTANTE` en vez de `ESTADOS_QUE_NO_SE_MUEVEN` en el `notIn` → rojo.
+
+**`tests/integration/db/recepcion-central-reconcilia-zona.int.test.ts`**: un caso nuevo, orden
+`en_ruta_bodega_central` con cierre aprobado anterior se recibe y queda en C con su acción (R1720).
+Los casos de R1701 se quedan como están (su cierre es `solicitado`) y deben seguir verdes.
+
+**`tests/integration/db/actualizacion-zonas.int.test.ts`**: los motivos esperados pasan a los cinco
+nuevos (escritos literal) y se añade R1727: sobre toda la matriz, `vistaPrevia()` y luego
+`actualizar()` sin cambios en medio: `actualizadas === vistaPrevia.total`, mismo conjunto de guías
+saltadas y mismos motivos. Mutación: quitar el `JOIN cierre_dia` del `cobroEnCurso` del SQL (vuelve al
+«existe detalle») → rojo en R1727.
+
+**Unit.** `tests/unit/utils/clase-reconciliacion-zona.test.ts`: las claves de
+`CLASE_RECONCILIACION_ZONA` son exactamente `ORDER_STATUS_SEED`; el conjunto `se_mueve` y el de cada
+clase, literales; `finalizada` es igual a `ESTADOS_TERMINALES` (R1725).
+`tests/unit/services/actualizacion-zonas-action.test.ts`, donde ya se prueba `motivoDeSaltada`: los
+casos pasan de `cierre_o_dinero` a los cinco motivos, con su precedencia (R1726), sin cambiar lo que
+mide de la autorización (R1714).
+
+**Componente** (T9): `tests/components/ActualizarZonasButton.test.tsx` como en §7.4, más el texto de
+cada uno de los cinco motivos (R1726).
+
+**Regresión.** `zona-reconciliacion-ordenes.test.ts`, `zona-central-guarda-y-rastro.test.ts`,
+`zona-pago-mensajero-rastro.test.ts` y `zona-repository.test.ts` verdes **sin tocar expectativas**. Si
+alguno pide cambiar una, se para: es un cambio de comportamiento del guardado que este spec no prevé.
+*(Enmienda 2026-11-19, leader: `zona-repository.test.ts` › «377/T4 ⭑ R2/R9» fija LITERAL el `where` base
+y el `notIn`, que son justo el corte que cambia D6. Se reescribe a mano con el corte nuevo y los 11
+estados de `ESTADOS_QUE_NO_SE_MUEVEN`, sin derivarlo del helper. Es el único test de la lista que cambia.)*
+
 ## 8. Alternativas descartadas
 
 - **A. Re-derivar la zona en el retiro (lo que decía la ficha).** El manifiesto del retiro, descargado
@@ -482,11 +749,28 @@ pertenece a otra zona; tras `retirarSateliteLote` conserva la zona satélite.
   qué se queda fuera, y las saltadas son las que piden una decisión humana (P2).
 - **E. Corrección sin historial** (como SLT-63). Ahí no cambiaba un dato de negocio; aquí cambia la
   zona de la que sale la tarifa, y la 366/R10 exige una fila por orden re-estampada.
+- **H. (PR 2) Corte solo por estado: finalizada no, todo lo demás sí** (quitar `cierreDetalles` y
+  `gestiones` del `WHERE`). Es la lectura más literal de D6 y la más corta, pero mueve la orden que
+  está en un cierre **sin aprobar**, y ahí la resolicitud, la corrección de la 398 y el ruteo de la
+  aprobación leen la zona viva (§4b): podría cambiar el pago o la bodega de destino de un cierre que
+  aún no se liquidó. Carlos habló de cierres **anteriores**; un cierre abierto no lo es.
+- **I. (PR 2) Aplicar el corte nuevo solo al botón y a la recepción, y dejar el guardado de zona con el
+  de la 366** (`excluirEstados` + un flag). Menos riesgo de regresión en el guardado, pero vuelve a
+  haber dos reglas de «quién se mueve» (rompe R1706) y el guardado seguiría dejando atrás justo las
+  órdenes de P2, que el botón tendría que arreglar después cada vez.
+- **J. (PR 2) Liberar el corte también para `reprogramado` y `novedad`.** Ver P4: el paquete está en la
+  bodega del cierre y la liberación usaría la zona nueva para decidir dónde está. Queda por defecto
+  fuera hasta que Carlos responda.
 
 ## 9. Riesgos
 
-- **Órdenes con cierre de un intento anterior** quedan con la zona vieja (P2): 18 en prod el
-  2026-11-19. El T0 las cuenta y el botón las lista como saltadas («ya cerrada o con cobro decidido»).
+- ~~**Órdenes con cierre de un intento anterior** quedan con la zona vieja (P2)~~: resuelto en el PR 2
+  (R1720). Hasta que se despliegue, el T0b las cuenta y el botón del PR 1 no existe en pantalla.
+- **(PR 2) El guardado de una zona mueve más órdenes que antes**: las vivas con solo cierres aprobados.
+  Es lo pedido (D6). El T0b dice cuántas hay en prod antes de desplegar; el resultado del guardado ya
+  devuelve cuántas reconcilió.
+- **(PR 2) Vista previa y escritura con dos escrituras del corte** (Prisma y SQL). R1727 las ata con un
+  test de igualdad sobre la matriz completa.
 - **El botón en una empresa grande.** La vista previa trae una fila por orden con zona errada, incluidas
   las saltadas. En prod hoy son unas 200 (100 en el estante + 18 + devoluciones). No hace falta paginar;
   si una empresa pasara de unas mil, se reconsidera.
@@ -505,3 +789,11 @@ pertenece a otra zona; tras `retirarSateliteLote` conserva la zona satélite.
   e interfaz ~90, servicio e interfaz ~70, acciones ~50, tipos ~25, componente ~130, cabecera y página ~10).
 - Tests: unas 1 150 líneas (tres integraciones nuevas ~850, componente ~140, acciones ~60, guardias
   ~60, ajustes de unit ~40).
+
+**PR 2** (cuenta propia; el PR 1 ya está en dev):
+
+- Archivos: **22** (`tasks.md > Archivos esperados > PR 2`), el 55 % de 40.
+- Producción: unas **330 líneas** de 1 000 (helper ~35, clasificación ~60, repositorio del botón ~20,
+  tipos ~15, servicio ~15, acciones −4, componente ~150, cabecera y página ~12, ayuda ~25).
+- Tests: unas **700 líneas** (integración nueva del corte ~380, ajustes de recepción y del botón ~140,
+  unit de la clasificación ~50, acción ~30, componente ~140 contando el nuevo).

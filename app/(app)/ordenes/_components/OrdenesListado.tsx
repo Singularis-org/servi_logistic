@@ -36,6 +36,7 @@ import {
 } from "@/lib/utils/vista-filtro-aplicabilidad";
 
 import { OrdenesModule, type AccionLote } from "./OrdenesModule";
+import { ActualizarZonasButton } from "./ActualizarZonasButton";
 import { OrdenesCargaMasivaButton } from "./OrdenesCargaMasivaButton";
 import { EscanerRecepcionOrigen } from "./EscanerRecepcionOrigen";
 import { EscanerRecepcionBodegaCentral } from "./EscanerRecepcionBodegaCentral";
@@ -259,6 +260,7 @@ export function OrdenesListado({
   puedeCargarMasiva = false,
   puedeEscanearQr = false,
   puedeRecibirBodegaCentral = false,
+  puedeActualizarZonas = false,
   mostrarHistorial = false,
   accionesLote = false,
   catalogoFiltros = null,
@@ -292,6 +294,11 @@ export function OrdenesListado({
    * revalida server-side. `adminTienda` y otros roles NO lo reciben.
    */
   puedeRecibirBodegaCentral?: boolean;
+  /**
+   * SLT-224 (R1713): el botón «Actualizar zonas» a la derecha de «Recibir paquete». Solo
+   * maestro/admin (`esAccesoTotal`); las Server Actions revalidan el rol (R1714).
+   */
+  puedeActualizarZonas?: boolean;
   mostrarHistorial?: boolean;
   /**
    * Habilita la selección por checkbox + barra de acciones por lote (asignar
@@ -1456,6 +1463,11 @@ export function OrdenesListado({
               <EscanerRecepcionOrigen modo="continua" onRecibida={handleRecibida} />
             )}
           </RecibirPaquetesEntrada>
+          {/* SLT-224 (R1713): no depende de la selección; refresca el listado al cerrar (R1718). */}
+          <ActualizarZonasButton
+            puedeActualizarZonas={puedeActualizarZonas}
+            onSuccess={handleSuccess}
+          />
           {puedeCargarMasiva ? (
             <div className="ms-auto flex gap-2">
               <OrdenesCargaMasivaButton />
