@@ -94,7 +94,7 @@ function renderModulo() {
   return render(
     <ZonasModule
       initialZonas={[
-        { id: ZONA_Z.id, nombre: ZONA_Z.nombre, cobroVehiculo: false, distritosCount: 1, esCentral: false },
+        { id: ZONA_Z.id, nombre: ZONA_Z.nombre, cobroVehiculo: false, distritosCount: 1, esCentral: false , activa: true },
       ]}
       provincias={arbolCon([])}
     />,
@@ -126,6 +126,7 @@ beforeEach(() => {
       cobroVehiculo: false,
       distritosCount: 1,
       esCentral: false,
+      activa: true,
     },
   });
 });

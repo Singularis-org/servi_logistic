@@ -61,10 +61,11 @@ const ROLES = [
   { id: "rol-mensajero", value: "mensajero" },
 ] as const;
 
-// Feature 24/R27: item de `listarZonas` (ZonaDTO); el form solo lee id + nombre.
+// Feature 24/R27: item de `listarZonas` (ZonaDTO); el form lee id + nombre.
+// SLT-225 (R1756): y `activa`, para dejar fuera las desactivadas.
 const ZONAS = [
-  { id: "z1", nombre: "Central" },
-  { id: "z2", nombre: "Norte" },
+  { id: "z1", nombre: "Central", activa: true },
+  { id: "z2", nombre: "Norte", activa: true },
 ] as const;
 
 // Feature 21: item de `listarVehiculos` (VehiculoDTO); el form lee id + name.
@@ -641,6 +642,56 @@ describe("UsuarioForm — zona (feature 24/R27)", () => {
     const zonaTrigger = await screen.findByRole("combobox", { name: "Zona" });
     await waitFor(() => expect(zonaTrigger).toHaveTextContent("Norte"));
   }, 15000);
+
+  describe("SLT-225 (R1756) — una zona desactivada no se ofrece, salvo la que el usuario ya tiene", () => {
+    const CON_DESACTIVADA = [
+      ...ZONAS,
+      { id: "z9", nombre: "Retirada", activa: false },
+    ];
+
+    beforeEach(() => {
+      listarRolesMock.mockResolvedValue({ status: "ok", roles: [...ROLES_ZONA] });
+      listarZonasMock.mockResolvedValue({
+        status: "ok",
+        items: CON_DESACTIVADA,
+        page: 1,
+        pageSize: 100,
+        total: CON_DESACTIVADA.length,
+      });
+    });
+
+    async function opcionesDeZona(user: ReturnType<typeof userEvent.setup>) {
+      const trigger = await screen.findByRole("combobox", { name: "Zona" });
+      await waitFor(() => expect(listarZonasMock).toHaveBeenCalled());
+      await user.click(trigger);
+      const lista = await screen.findByRole("listbox");
+      return within(lista)
+        .getAllByRole("option")
+        .map((o) => o.textContent?.trim());
+    }
+
+    it("al editar un usuario de otra zona, la desactivada no aparece", async () => {
+      const user = userEvent.setup();
+      renderIsolated(<UsuarioForm mode="editar" usuario={USUARIO_ZONA} />);
+
+      const opciones = await opcionesDeZona(user);
+      expect(opciones).toContain("Norte");
+      expect(opciones).not.toContain("Retirada");
+    }, 15000);
+
+    it("al editar al usuario que ya la tiene, la conserva y sale preseleccionada", async () => {
+      const user = userEvent.setup();
+      renderIsolated(
+        <UsuarioForm mode="editar" usuario={{ ...USUARIO_ZONA, zonaId: "z9" }} />,
+      );
+
+      const trigger = await screen.findByRole("combobox", { name: "Zona" });
+      await waitFor(() => expect(trigger).toHaveTextContent("Retirada"));
+      const opciones = await opcionesDeZona(user);
+      expect(opciones).toContain("Retirada");
+      expect(opciones).toContain("Norte");
+    }, 15000);
+  });
 });
 
 

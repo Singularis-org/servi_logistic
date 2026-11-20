@@ -7,7 +7,13 @@ import type {
   UpdateZonaResult,
 } from "@/lib/interfaces/repositories/IZonaRepository";
 import type { Actor } from "@/lib/interfaces/services/IZonaService";
-import type { ActualizarZonaInput, CrearZonaInput, ZonaDTO } from "@/lib/types/zona";
+import {
+  MSG_ZONA_DESACTIVADA_EDITAR,
+  type ActualizarZonaInput,
+  type CrearZonaInput,
+  type ImpedimentosDesactivacion,
+  type ZonaDTO,
+} from "@/lib/types/zona";
 
 const MAESTRO: Actor = { usuarioId: "m1", rol: "maestro" };
 const ADMIN: Actor = { usuarioId: "a1", rol: "admin" };
@@ -17,7 +23,7 @@ const DESCONOCIDO: Actor = { usuarioId: "z", rol: "invitado" as RolValue };
 const NO_MAESTROS = [ADMIN, MENSAJERO, TIENDA, DESCONOCIDO];
 
 function dto(overrides: Partial<ZonaDTO> = {}): ZonaDTO {
-  return { id: "z1", nombre: "GAM", cobroVehiculo: false, distritosCount: 1, esCentral: false, ...overrides };
+  return { id: "z1", nombre: "GAM", cobroVehiculo: false, distritosCount: 1, esCentral: false, activa: true, ...overrides };
 }
 
 /**
@@ -46,6 +52,9 @@ function buildRepo(overrides: Partial<IZonaRepository> = {}): IZonaRepository {
     listLite: vi.fn().mockResolvedValue([]), // feature 144; no ejercitado aqui
     update: vi.fn().mockResolvedValue(resultadoUpdate()),
     hardDelete: vi.fn().mockResolvedValue("ok"),
+    // SLT-225: desactivar/reactivar; por defecto salen bien.
+    desactivar: vi.fn().mockResolvedValue({ estado: "ok" }),
+    reactivar: vi.fn().mockResolvedValue({ estado: "ok" }),
     // por defecto: todos los ids existen.
     countExistingDistritos: vi.fn(async (ids: string[]) => ids.length),
     countExistingVehiculos: vi.fn(async (ids: string[]) => ids.length),
@@ -596,5 +605,62 @@ describe("SLT-198 — el desenlace `central_sin_distritos`", () => {
       expect.objectContaining({ distritoIds: [] }),
       MAESTRO.usuarioId,
     );
+  });
+});
+
+/**
+ * SLT-225 «Desactivar zona: sacarla del trabajo nuevo sin borrar su historia» — el servicio: gate
+ * `maestro` antes del repositorio (R1751) y la traduccion de cada desenlace del repositorio.
+ */
+describe("SLT-225 — desactivar / reactivar", () => {
+  const IMPEDIMENTOS: ImpedimentosDesactivacion = {
+    esCentral: true,
+    distritos: 3,
+    usuarios: [{ nombre: "Ana Mora", rol: "mensajero", estado: "inactivo" }],
+    ordenesVivas: { total: 2, porEstado: [{ estado: "por_devolver_a_tienda", cantidad: 2 }], muestra: ["#7", "remisión R-1"] },
+  };
+
+  it.each(NO_MAESTROS)("R1751: desactivar/reactivar con rol %o -> forbidden y el repositorio no se llama", async (actor) => {
+    expect((await service.desactivar("z1", actor)).status).toBe("forbidden");
+    expect((await service.reactivar("z1", actor)).status).toBe("forbidden");
+    expect(repo.desactivar).not.toHaveBeenCalled();
+    expect(repo.reactivar).not.toHaveBeenCalled();
+  });
+
+  it("maestro: el repositorio recibe el id y QUIEN lo hace (el actor del historial)", async () => {
+    expect(await service.desactivar("z1", MAESTRO)).toEqual({ status: "ok" });
+    expect(await service.reactivar("z1", MAESTRO)).toEqual({ status: "ok" });
+    expect(repo.desactivar).toHaveBeenCalledWith("z1", "m1");
+    expect(repo.reactivar).toHaveBeenCalledWith("z1", "m1");
+  });
+
+  it("bloqueada -> conflict/impedimentos con los impedimentos sin tocar", async () => {
+    repo = buildRepo({ desactivar: vi.fn().mockResolvedValue({ estado: "bloqueada", impedimentos: IMPEDIMENTOS }) });
+    service = new ZonaService(repo);
+    expect(await service.desactivar("z1", MAESTRO)).toEqual({
+      status: "conflict",
+      motivo: "impedimentos",
+      impedimentos: IMPEDIMENTOS,
+    });
+  });
+
+  it("ya_desactivada / ya_activa / not_found se traducen a su status", async () => {
+    repo = buildRepo({
+      desactivar: vi.fn().mockResolvedValueOnce({ estado: "ya_desactivada" }).mockResolvedValueOnce({ estado: "not_found" }),
+      reactivar: vi.fn().mockResolvedValueOnce({ estado: "ya_activa" }).mockResolvedValueOnce({ estado: "not_found" }),
+    });
+    service = new ZonaService(repo);
+    expect(await service.desactivar("z1", MAESTRO)).toEqual({ status: "conflict", motivo: "ya_desactivada" });
+    expect(await service.desactivar("z1", MAESTRO)).toEqual({ status: "not_found" });
+    expect(await service.reactivar("z1", MAESTRO)).toEqual({ status: "conflict", motivo: "ya_activa" });
+    expect(await service.reactivar("z1", MAESTRO)).toEqual({ status: "not_found" });
+  });
+
+  it("R1753: actualizar traduce zona_desactivada al mensaje, colgado de `nombre`", async () => {
+    repo = buildRepo({ update: vi.fn().mockResolvedValue({ estado: "zona_desactivada" }) });
+    service = new ZonaService(repo);
+    const r = await service.actualizar("z1", crearInput(), MAESTRO);
+    expect(r).toEqual({ status: "validation_error", fieldErrors: { nombre: [MSG_ZONA_DESACTIVADA_EDITAR] } });
+    expect(MSG_ZONA_DESACTIVADA_EDITAR).toBe("Esta zona está desactivada. Reactívala para editarla.");
   });
 });
