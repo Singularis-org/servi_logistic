@@ -149,3 +149,50 @@ cliente después.
   `retenidas = 1` (R1724).
 - La recepción mueve la orden con un intento anterior aprobado y deja su acción con el escáner como actor (R1720).
 - `motivoDeSaltada`: el estado manda sobre el cobro, por construcción. Probado en unit, en integración y en componente.
+
+## Vuelta 2 (acotada a 4dcc7b87..cc6f38ab)
+
+- Revisado: HEAD `cc6f38ab` (arreglo `39cd5a4e` + decisiones de Carlos `cc6f38ab`). Fecha: 2026-11-20. Reviewer (Opus).
+- Entorno: `pnpm prisma generate` antes de empezar (cliente sin la columna `activa` de SLT-225, comprobado en el
+  `schema.prisma` generado). `DATABASE_URL`/`DIRECT_URL` exportadas a `servi_slt224_pr2`; `.env` comprobado solo
+  como booleano, ninguna URL impresa.
+
+### Veredicto: APROBADO
+
+B1 cerrado: repetí SM1 y SM2 y las dos mueren. m1, m3 y m4 resueltos; m2 resuelto por Carlos. El diff no
+toca código de producción salvo un texto de UI y un export muerto, y el gate sale verde.
+
+### Checklist de la vuelta
+- [x] **B1** — `actualizacion-zonas.int.test.ts` sin mutar: 6 passed (no skipped). Mutaciones mías sobre
+      `sqlZonaErrada()`, árbol restaurado con `git checkout` tras cada una (`git status` limpio):
+
+| # | Mutación | Resultado |
+|---|---|---|
+| SM1 | `AND (g.cierre_id IS NULL OR c.estado <> 'aprobado')` → `AND (g.cierre_id IS NULL)` | **MUERTA**: 5/6 rojos, R1727 incluido (`expected 5 to be 4`; falta `gestion-cierre-rechazado` en las saltadas) |
+| SM2 | detalle: `c.estado <> 'aprobado'` → `c.estado = 'solicitado'` | **MUERTA**: 5/6 rojos, R1727 incluido (`expected 6 to be 4`; faltan `cd-rechazado` y `cd-vencido`) |
+| SM3 (nueva) | gestión: `AND (g.cierre_id IS NULL OR c.estado <> 'aprobado')` → `AND TRUE` | **MUERTA**: 4/6 rojos (`expected 3 to be 4`; `gestion-cierre-aprobado` deja de actualizarse) |
+
+      Los literales nuevos (`SALTADAS_ESPERADAS`, 4 actualizadas, `cambiadas`) están escritos a mano, no derivados
+      de la fuente. El comentario del repositorio («R1727 ata las dos») ya es cierto.
+- [x] **m1** — `tasks.md`: T0b y tres casillas de T15 marcadas. Queda abierta «T0b re-medido antes de abrir el PR»,
+      que le toca al leader. Es correcto que siga sin marcar.
+- [x] **m2** — `requirements.md` registra P4 resuelta («No moverlas hasta liberar», 2026-11-20). El código ya seguía
+      ese valor. La parada del T0b la responde Carlos en `progress/features/SLT-224.md > Decisiones`, y el corte no cambia.
+- [x] **m3** — «cobro en curso (gestión o cierre sin aprobar)» en el botón, el test de componente y la ayuda. Sin glifos.
+- [x] **m4** — `ESTADOS_DEVOLUCION_SIN_RECONCILIAR` y `estadosDeClase` fuera. No queda ninguna referencia en código ni
+      en tests (grep), y `deClase` del test unitario sigue en uso.
+- [x] **Tamaño**: 17/40 archivos, 498/1000 líneas de producción, 978/3000 de tests.
+- [x] **`./init.sh`** (`NODE_OPTIONS=--max-old-space-size=8192`, `INIT_EXIT` dentro del log): **INIT_EXIT=0**. Test
+      rápido 100/1342, 100/1739, 100/1565 y 87/1252 (1 skipped), typecheck, lint, guardias y down.sql en verde.
+      Nota de entorno: el `mtime` del cliente Prisma compartido cambió a mitad de la corrida (otro worktree generó).
+      El cliente resultante sigue sin `activa` y la corrida salió verde, así que no afecta al veredicto.
+- [x] **E2E**: no los repetí. El diff solo cambia el texto de un motivo dentro del modal del botón, y ese texto lo
+      cubre `ActualizarZonasButton.test.tsx`.
+
+### Menores (nuevos, no bloquean)
+- **m6. Spec y ficha con restos de «P4 abierta».** `design.md` §2 (tabla de clases, fila `por_liberar`) dice todavía
+  «P4 (abierta; por defecto no se mueve)», y `progress/features/SLT-224.md > Preguntas abiertas` sigue listando P4.
+  Además `design.md` §2.1 dice que `ESTADOS_DEVOLUCION_SIN_RECONCILIAR` «se conserva». Conviene una línea que diga
+  que P4 está resuelta y que el export se quitó en el PR 2. Puede hacerlo el leader al cerrar.
+- **m5** (entorno) sigue igual: el cliente compartido lo regeneran otros worktrees. Antes del aviso de merge, mira
+  que el `gate-completo` de CI salga verde.
