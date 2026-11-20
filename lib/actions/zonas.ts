@@ -195,8 +195,6 @@ export async function borrarZona(
  * ⭑ SLT-225 (R1741-R1748, R1751) — desactivar una zona (solo maestro). Sale del trabajo nuevo y su
  * historia se queda. El rechazo por impedimentos viaja tipado con TODOS ellos (R1746): la pantalla
  * los pinta en la confirmacion, este borde no redacta texto.
- *
- * @sin-superficie SLT-225 en curso: la monta el boton «Desactivar» de ZonasModule (T5, frontend_dev). Quitar esta anotacion al montarla.
  */
 export async function desactivarZona(
   id: unknown,
@@ -218,8 +216,6 @@ export async function desactivarZona(
 /**
  * ⭑ SLT-225 (R1747, R1748, R1751) — reactivar una zona desactivada (solo maestro). No le devuelve
  * distritos ni usuarios.
- *
- * @sin-superficie SLT-225 en curso: la monta el boton «Reactivar» de ZonasModule (T5, frontend_dev). Quitar esta anotacion al montarla.
  */
 export async function reactivarZona(
   id: unknown,

@@ -89,12 +89,12 @@ de `lib/actions/zonas.ts` (la guardia `superficie-de-uso` exige quitarlas cuando
 | R1753 | `zona-desactivar.test.ts` › «R1753 — update de una zona desactivada devuelve zona_desactivada sin escribir» + `zona-service.test.ts` › «R1753: actualizar traduce zona_desactivada al mensaje» |
 | R1754 | `zona-desactivar.test.ts` › «R1754 — la base rechaza insertar en zona_distrito con la zona desactivada (bajo servi_app)» + «la desactivación va primero…» + «el distrito va primero…» (dos conexiones reales) |
 | R1755 | `tests/unit/services/usuario-zona.test.ts` › bloque «SLT-225 — zona desactivada (R1755)» (4) + `zona-desactivar.test.ts` › «R1755 — la base rechaza usuario.zona_id nuevo…» |
-| R1756 | `tests/unit/types/zona-opciones.test.ts` › «opcionesZonaUsuario deja fuera las desactivadas salvo la actual» (la pantalla, T5) |
+| R1756 | `tests/unit/types/zona-opciones.test.ts` › «opcionesZonaUsuario deja fuera las desactivadas salvo la actual» + `tests/unit/components/usuario-form.test.tsx` › «SLT-225 (R1756)…» (2: la de otra zona no aparece; la propia se conserva y sale preseleccionada) |
 | R1757 | `zona-desactivar.test.ts` › «R1757 — TarifasPantallaRepository.listarZonas y buscarZona no devuelven la desactivada» |
 | R1758 | `zona-desactivar.test.ts` › «R1758 — listLite sigue devolviendo la zona desactivada; R1759 — list pone las activas primero» |
-| R1759 | parte de datos: el mismo test (orden de `list`). Pantalla: pendiente T5 (`ZonaDesactivar.test.tsx`, E2E) |
-| R1760 | pendiente T5 (frontend) |
-| R1761 | pendiente T5 (frontend) |
+| R1759 | `zona-desactivar.test.ts` › «R1758 — listLite… ; R1759 — list pone las activas primero» (datos) + `tests/components/ZonaDesactivar.test.tsx` › «orden, marca y botones por estado» + `e2e/zona-desactivar.spec.ts` |
+| R1760 | `tests/components/ZonaDesactivar.test.tsx` › «el rechazo deja abierta la confirmación con usuarios, órdenes, distritos y bodega principal; el éxito avisa y refresca» + «un impedimento solo nombra ese, con singular» + «reactivar pide confirmación, avisa y refresca» + `e2e/zona-desactivar.spec.ts` |
+| R1761 | `tests/components/ZonaBorradoMotivo.test.tsx` › «R1761 — en_uso ofrece desactivar; es_central conserva su texto» (+ el caso `es_central` del mismo archivo) |
 
 ## Mutaciones (cada una aplicada, test corrido, restaurada; hash de `git diff -- lib` igual antes y después)
 
@@ -155,3 +155,51 @@ Los triggers se repusieron tras cada mutación (`pg_trigger` = 2, `FOR SHARE` pr
 con su schema cuatro veces durante la tanda (00:00, 00:11, 00:31, 00:48). Cada vez los tests de zonas de
 esta rama caen con `PrismaClientValidationError`, y mis `prisma generate` le hacen lo mismo a esa rama.
 El gate completo tiene que correrse cuando SLT-224 no esté generando.
+
+---
+
+# Tanda frontend (T5–T7, frontend_dev, 2026-11-20)
+
+## Archivos
+- `app/(app)/configuracion/zonas/_components/ZonasModule.tsx` — marca «Desactivada», botones por estado
+  (activa: Editar/Desactivar/Eliminar; desactivada: Reactivar/Eliminar), un `Modal` para desactivar y
+  reactivar (`dismissible={false}`, `throw res` para quedarse abierto) con `ImpedimentosLista` (`role="alert"`),
+  texto nuevo de `en_uso`. Rol y estado de usuario con `ROL_LABELS`/`ESTADO_LABELS`; el estado de la orden con
+  `EstadoConInfo` (la guardia `estado-con-info` prohíbe pintar `NOMBRE_ESTADO` suelto: lo pilló el rápido).
+  `ya_desactivada`/`ya_activa` avisan con `toast.info` y refrescan.
+- `app/(app)/configuracion/_components/UsuarioForm.tsx` — opciones con `opcionesZonaUsuario(zonas, usuario?.zonaId ?? null)`.
+- `lib/actions/zonas.ts` — quitadas las dos `@sin-superficie`.
+- `docs/ayuda/oficina/configuracion-zonas.md` — «Desactivar y reactivar» con tabla impedimento → qué hacer; «Eliminar» nuevo.
+- `e2e/zona-desactivar.spec.ts` (nuevo) y `playwright.config.ts` (proyecto `aislamiento`).
+- Tests: `tests/components/ZonaDesactivar.test.tsx` (nuevo, 5), `ZonaBorradoMotivo.test.tsx` (texto R1761),
+  `tests/unit/components/usuario-form.test.tsx` (`activa` en el doble + 2 casos R1756).
+
+## Mutaciones (aplicadas, corridas, restauradas)
+- `UsuarioForm` sin `opcionesZonaUsuario` → rojo «la desactivada no aparece» (R1756).
+- `throw res` → `return` tras guardar impedimentos → rojo R1760 (2 casos).
+- Sin el `Badge` «Desactivada» → rojo R1759.
+
+## E2E local
+Base nueva `servi_slt225_e2e` (crear + `migrate deploy` + `db:seed`), `next build` con
+`NEXT_PUBLIC_APP_URL=http://localhost:3361`, `E2E_PUERTO=3361`, `--project=aislamiento --no-deps`:
+`zona-desactivar`, `zonas-crear-sin-costos`, `zona-sin-distritos`, `dos-empresas-humo` → **11 passed (1.3m)**.
+La primera corrida cayó en `zona-desactivar`: cambiar la zona del único Admin satélite abre el aviso de la
+FICHA 379; el spec ahora pulsa «Continuar» (es determinista, no inestable).
+(El build y el E2E se hicieron antes de cambiar `NOMBRE_ESTADO` por `EstadoConInfo`; el spec solo
+recorre el impedimento de usuario, que ese cambio no toca.)
+
+## Verificación (base `servi_slt225_impl` exportada como `DATABASE_URL`)
+- `pnpm run typecheck` (8 GB): TC_EXIT=0. `pnpm run lint`: 0 errores (249 warnings previos, ninguno en
+  archivos de la tanda); eslint de los 8 archivos tocados tras el último cambio: LINT_EXIT=0.
+- Componentes: `ZonaDesactivar` + `ZonaBorradoMotivo` + `ZonasModuleListado` 19/19; con la guardia
+  `estado-con-info` 22/22; `usuario-form.test.tsx` 40/40.
+- `pnpm run test:guardias`: GUARDIAS_EXIT=0, `Test Files 360 passed (360) · Tests 5425 passed | 1 skipped`.
+- `pnpm run test:rapido` (665 archivos en lotes de 100; se corta en el primer lote rojo), cinco corridas:
+  1. lote 2 «Worker exited unexpectedly» (Windows). 2. lotes 1–4 verdes; lote 5 rojo REAL en
+  `estado-con-info.guardia` → arreglado (`EstadoConInfo`). 3. lote 2 worker. 4. lotes 1–2 verdes, lote 3
+  timeout 20 s en `orden-traspaso-migration` (aislado: 15/15 verde). 5. lote 2 worker. RAPIDO_EXIT=1 en
+  la última. Los lotes 5–7 son solo guardias (`tests/unit/guards/…`), verdes las 360 en `test:guardias`.
+- `./init.sh` (8 GB): INIT_EXIT=1 por el chequeo de tamaño (48/40 archivos, 941/1000 producción,
+  1385/3000 tests), antes de los tests. La marca de aceptación no la puso esta tanda (ver informe).
+
+Veredicto: T5–T7 hechas; E2E local verde; falta la marca de tamaño para que `init.sh` salga verde.

@@ -55,25 +55,25 @@
 
 ## T5 — Pantallas (R1756, R1759–R1761) — depende de T4 [P con T6]
 
-- [ ] `ZonasModule.tsx`: marca, botones, `Modal` de desactivar/reactivar con impedimentos y el texto
+- [x] `ZonasModule.tsx`: marca, botones, `Modal` de desactivar/reactivar con impedimentos y el texto
   nuevo de `en_uso` (design §3.6–3.7).
-- [ ] `UsuarioForm.tsx`: opciones con `opcionesZonaUsuario` (design §3.8).
+- [x] `UsuarioForm.tsx`: opciones con `opcionesZonaUsuario` (design §3.8).
 - **Hecho:** `tests/components/ZonaDesactivar.test.tsx`, `ZonaBorradoMotivo.test.tsx` y
   `ZonasModuleListado.test.tsx` verdes; typecheck y lint verdes.
 
 ## T6 — Ayuda (sin R) — depende de T4 [P con T5]
 
-- [ ] `docs/ayuda/oficina/configuracion-zonas.md`: sección «Desactivar y reactivar» (qué la impide y
+- [x] `docs/ayuda/oficina/configuracion-zonas.md`: sección «Desactivar y reactivar» (qué la impide y
   qué hacer con cada impedimento) y el texto nuevo de «Eliminar». Actualizar `actualizado`.
 - **Hecho:** las guardias de ayuda verdes.
 
 ## T7 — E2E y cierre — depende de T5, T6
 
-- [ ] `e2e/zona-desactivar.spec.ts`: el maestro intenta desactivar una zona con un usuario asignado,
+- [x] `e2e/zona-desactivar.spec.ts`: el maestro intenta desactivar una zona con un usuario asignado,
   ve el nombre en la confirmación, le cambia la zona, la desactiva, ve «Desactivada», la reactiva.
-- [ ] Correr en local (base desechable nueva + `next build`) ese E2E, `zonas-crear-sin-costos`,
+- [x] Correr en local (base desechable nueva + `next build`) ese E2E, `zonas-crear-sin-costos`,
   `zona-sin-distritos` y `dos-empresas-humo`.
-- [ ] Mapa `R -> test` en `progress/impl_SLT-225.md`.
+- [x] Mapa `R -> test` en `progress/impl_SLT-225.md`.
 - **Hecho:** `./init.sh` verde; E2E locales verdes; mapa completo.
 
 ## Mapa R -> test

@@ -64,7 +64,10 @@ const { ZonasModule } = await import(
 
 const TEXTO_CENTRAL =
   "No se puede eliminar la zona de bodega principal. Marca otra zona como bodega principal antes de eliminarla.";
-const TEXTO_EN_USO = "No se puede eliminar: la zona está en uso.";
+// SLT-225 (R1761): `en_uso` ya no dice solo «está en uso»: dice por qué (tiene historia) y la
+// salida que sí existe (desactivarla). Literal a propósito: es el contrato aprobado en design §3.6.
+const TEXTO_EN_USO =
+  "No se puede eliminar: la zona tiene historia (órdenes o usuarios). Puedes desactivarla en su lugar.";
 
 function provincias(): ProvinciaArbolDTO[] {
   return [];
@@ -116,7 +119,7 @@ describe("R24 — el rechazo por zona central tiene texto propio", () => {
     expect(successMock).not.toHaveBeenCalled();
   });
 
-  it("motivo `en_uso` conserva EXACTAMENTE el texto de antes de esta ficha", async () => {
+  it("R1761 — en_uso ofrece desactivar; es_central conserva su texto", async () => {
     borrarZonaMock.mockResolvedValue({ status: "conflict", motivo: "en_uso" });
     const user = userEvent.setup();
     renderModulo();
@@ -125,6 +128,8 @@ describe("R24 — el rechazo por zona central tiene texto propio", () => {
 
     await waitFor(() => expect(errorMock).toHaveBeenCalledWith(TEXTO_EN_USO));
     expect(errorMock).not.toHaveBeenCalledWith(TEXTO_CENTRAL);
+    // El texto viejo no sobrevive en ninguna llamada.
+    expect(errorMock).not.toHaveBeenCalledWith("No se puede eliminar: la zona está en uso.");
   });
 
   it("un rechazo que no es `conflict` sigue con el mensaje genérico", async () => {

@@ -91,6 +91,8 @@ export default defineConfig({
         "zonas-crear-sin-costos",
         // SLT-198 R1233: el maestro vacía una zona satélite y pasa su distrito a la principal.
         "zona-sin-distritos",
+        // SLT-225 R1759, R1760: el usuario asignado frena la desactivación; sin él, se desactiva y se reactiva.
+        "zona-desactivar",
         // SLT-221 R1606, R1609: el maestro corrige la cédula de un usuario y la ve en el Histórico.
         "usuario-corregir-cedula",
         "wallet-iva-aparte-sl39",
