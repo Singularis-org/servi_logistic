@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { quitarComentarios } from "../../fixtures/sin-comentarios";
@@ -36,6 +36,13 @@ import { HISTORIAL_ACCION_TIPOS } from "@/lib/types/historial-accion";
 // lista; el resto del archivo —incluidas las entradas hermanas del mismo lote— se sigue barriendo.
 // Para eso el barrido mira, ademas de los bloques `appendAccion(...)`, cada OBJETO DE ENTRADA
 // (`{ accion: "<tipo>", ... }`) aunque se arme fuera de la llamada (`entradas.push({...})`).
+//
+// SLT-121 (decision P5, 2026-11-20) — LA SEGUNDA EXCEPCION DECLARADA, y la primera de TEXTO LIBRE: el
+// motivo con el que el superadmin descongela a mano una empresa congelada por mora va en `valor_nuevo`
+// de `empresa_descongelada_a_mano` («hasta AAAA-MM-DD — <motivo>»), recortado a 200 caracteres. La base
+// no lo guarda en otro sitio (design §2.4): sin esto, la fila no diria por que se descongelo. Solo ese
+// tipo y solo en `MoraEmpresaRepository.ts`. CONDICION: Carlos Restrepo la acepta en la review del PR de
+// SLT-121; si no la acepta, se quita de aqui y el motivo no entra en la fila.
 //
 // La selecciona `pnpm exec vitest run guard` por el nombre del archivo.
 
@@ -108,15 +115,21 @@ const PUNTOS_DE_ESCRITURA = [
 
 const FUENTE_ETIQUETAS = "lib/types/historial-accion-etiquetas.ts";
 
+/**
+ * SLT-121 — el archivo de una excepcion cuyo escritor aun no existe (T2.4). En cuanto exista, entra
+ * en `PUNTOS_DE_ESCRITURA` y la excepcion pierde `escritorPendiente` (lo exige el ultimo test).
+ */
+const ARCHIVOS_CON_ESCRITOR_PENDIENTE = ["lib/repositories/MoraEmpresaRepository.ts"] as const;
+
 interface ExcepcionDeclarada {
-  archivo: (typeof PUNTOS_DE_ESCRITURA)[number];
+  archivo: (typeof PUNTOS_DE_ESCRITURA)[number] | (typeof ARCHIVOS_CON_ESCRITOR_PENDIENTE)[number];
   accion: string;
   motivo: string;
   /** La tarea que escribira la entrada, mientras aun no exista. */
   escritorPendiente?: string;
 }
 
-/** SLT-221 (D10): las unicas entradas que pueden llevar un dato de persona. Ver la cabecera. */
+/** SLT-221 (D10) y SLT-121 (P5): las unicas entradas que pueden llevar un dato de persona o texto libre. Ver la cabecera. */
 const EXCEPCIONES_DECLARADAS: readonly ExcepcionDeclarada[] = [
   {
     archivo: "lib/repositories/UserRepository.ts",
@@ -127,6 +140,13 @@ const EXCEPCIONES_DECLARADAS: readonly ExcepcionDeclarada[] = [
     archivo: "lib/repositories/UserRepository.ts",
     accion: "usuario_email_cambiado",
     motivo: "SLT-221 D4/D10: el correo anterior y el nuevo de un usuario de la empresa; descargable y sin purga, aceptado",
+  },
+  {
+    archivo: "lib/repositories/MoraEmpresaRepository.ts",
+    accion: "empresa_descongelada_a_mano",
+    motivo:
+      "SLT-121 P5: el motivo del descongelamiento a mano, recortado a 200; Carlos Restrepo la acepta en la review del PR",
+    escritorPendiente: "SLT-121 T2.4 (MoraEmpresaRepository.descongelarAMano)",
   },
 ];
 
@@ -371,10 +391,38 @@ describe("SLT-221/D10 — solo las entradas declaradas pueden llevar la cedula o
     for (const e of EXCEPCIONES_DECLARADAS) {
       expect(tipos.has(e.accion), e.accion).toBe(true);
       expect(e.motivo.length).toBeGreaterThan(20);
-      const tiene = bloquesDeEntrada(fuente(e.archivo)).some((b) => b.accion === e.accion);
+      // SLT-121: el archivo de un escritor pendiente puede no existir todavia.
+      const existe = existsSync(path.join(RAIZ, e.archivo));
+      const tiene = existe && bloquesDeEntrada(fuente(e.archivo)).some((b) => b.accion === e.accion);
       expect(tiene || e.escritorPendiente !== undefined, `${e.archivo}: ${e.accion} sin entrada`).toBe(true);
       // Una excepcion «pendiente» cuyo escritor ya existe se queda vieja: quitar `escritorPendiente`.
       if (e.escritorPendiente !== undefined) expect(tiene, `${e.accion} ya tiene escritor`).toBe(false);
+      // SLT-121: un archivo pendiente solo vale para una excepcion pendiente.
+      if ((ARCHIVOS_CON_ESCRITOR_PENDIENTE as readonly string[]).includes(e.archivo)) {
+        expect(e.escritorPendiente, `${e.archivo} ya existe: pasalo a PUNTOS_DE_ESCRITURA`).toBeDefined();
+      }
+      // SLT-121: una excepcion con escritor tiene que estar en el barrido; si no, no exceptua nada.
+      if (e.escritorPendiente === undefined) {
+        expect(PUNTOS_DE_ESCRITURA as readonly string[], `${e.archivo} fuera de PUNTOS_DE_ESCRITURA`).toContain(
+          e.archivo,
+        );
+      }
     }
+  });
+
+  it("SLT-121 P5: la excepcion del motivo es la unica de texto libre, y solo para `empresa_descongelada_a_mano`", () => {
+    const deMora = EXCEPCIONES_DECLARADAS.filter((e) => e.motivo.startsWith("SLT-121"));
+    expect(deMora.map((e) => [e.archivo, e.accion])).toEqual([
+      ["lib/repositories/MoraEmpresaRepository.ts", "empresa_descongelada_a_mano"],
+    ]);
+    // Las otras cuatro filas de la mora no llevan texto libre: si una entra aqui, rojo.
+    const otrasDeMora = [
+      "empresa_congelada",
+      "empresa_descongelada_por_pago",
+      "empresa_descongelada_por_gracia",
+      "factura_dias_gracia_cambiada",
+    ];
+    expect(EXCEPCIONES_DECLARADAS.filter((e) => otrasDeMora.includes(e.accion))).toEqual([]);
+    expect(deMora[0]?.motivo).toContain("Carlos Restrepo");
   });
 });

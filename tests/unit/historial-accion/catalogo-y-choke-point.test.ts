@@ -113,11 +113,12 @@ describe("362/T0.1 (R14/R17) — el catalogo es cerrado y sus mapas son exhausti
     // 86 desde SLT-211: `ordenes_retiradas_a_central` (entidad `zona`, sin entidad nueva).
     // 88 desde SLT-221: `usuario_cedula_cambiada` y `usuario_email_cambiado` (entidad `usuario`).
     // 90 desde SLT-225: `zona_desactivada` y `zona_reactivada` (entidad `zona`).
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(90);
-    expect(new Set(HISTORIAL_ACCION_TIPOS).size).toBe(90);
+    // 95 desde SLT-121: los cinco de la mora (entidad `organizacion`, sin entidad nueva) y la categoria `mora`.
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(95);
+    expect(new Set(HISTORIAL_ACCION_TIPOS).size).toBe(95);
     expect(HISTORIAL_ACCION_ENTIDADES).toHaveLength(31); // 31 desde SLT-77 (`organizacion`)
     expect(new Set(HISTORIAL_ACCION_ENTIDADES).size).toBe(31);
-    expect(CATEGORIAS_ACCION).toHaveLength(6);
+    expect(CATEGORIAS_ACCION).toHaveLength(7); // 7 desde SLT-121 (`mora`)
   });
 
   it("los DOS tipos que abren Q1 y Q2 estan en el catalogo y son de DINERO", () => {
@@ -966,5 +967,29 @@ describe("SL-15 R4 · el nombre de la empresa del historial sale del modulo de m
     // No vacuidad, a mano: exactamente tres textos nombran a la empresa.
     expect(textos.filter((t) => t.includes("Acme Envíos"))).toHaveLength(3);
     expect(textos.filter((t) => /la empresa/i.test(t))).toEqual([]);
+  });
+});
+
+describe("SLT-121 R30 — la mora y el congelamiento, en el catalogo del Historico", () => {
+  const DE_MORA = [
+    "empresa_congelada",
+    "empresa_descongelada_por_pago",
+    "empresa_descongelada_a_mano",
+    "empresa_descongelada_por_gracia",
+    "factura_dias_gracia_cambiada",
+  ];
+
+  it("R30: los cinco tipos son la categoria `mora` entera, con su etiqueta de pantalla", () => {
+    expect([...accionesDeCategoria("mora")].sort()).toEqual([...DE_MORA].sort());
+    expect(CATEGORIA_LABELS.mora).toBe("Mora y congelamiento");
+    for (const tipo of DE_MORA) {
+      expect(ACCION_LABELS[tipo as keyof typeof ACCION_LABELS], tipo).toMatch(/^[A-ZÁÉÍÓÚ]/);
+    }
+  });
+
+  it("R30: la etiqueta de la entidad `organizacion` dice «Plazo de pago y mora» con `asunto: mora`, y el tope sigue igual", async () => {
+    const { etiquetaDeEntidad } = await import("@/lib/types/historial-accion-etiquetas");
+    expect(etiquetaDeEntidad("organizacion", { asunto: "mora" })).toBe("Plazo de pago y mora");
+    expect(etiquetaDeEntidad("organizacion", {})).toBe("Intentos de entrega");
   });
 });

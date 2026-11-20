@@ -3801,6 +3801,12 @@ enum JobTipo {
   /// SLT-215 (design §5; R29, R30): RECURRENTE diario a las 06:20 UTC, sin empresa; cierra los meses pendientes de los
   /// niveles por volumen de cada empresa. Payload {}, dedupe `plan_niveles_cerrar:<AAAA-MM-DD>`. Núcleo
   plan_niveles_cerrar
+  /// SLT-121 (design §4.1; R7, R8, R26): RECURRENTE diario a las 06:30 UTC, sin empresa; congela de madrugada las
+  /// empresas con facturas vencidas y encola los recordatorios. Payload {}, dedupe `mora_diaria:<AAAA-MM-DD>`. Núcleo
+  mora_diaria
+  /// SLT-121 (design §4.2; R26-R29): PUNTUAL, con empresa; un correo de la mora (recordatorio, congelada o
+  /// descongelada) a los maestros. Núcleo
+  mora_aviso_correo
 
   @@map("job_tipo")
 }
@@ -5141,6 +5147,15 @@ enum HistorialAccionTipo {
   zona_desactivada
   /// SLT-225 (R1750): el maestro la reactivó. Misma categoría que su par, como `nodo_geografico_activado`.
   zona_reactivada
+  /// SLT-121 (R30, design §1.2): la mora de la empresa. Entidad `organizacion`. `empresa_congelada` lleva las
+  /// facturas vencidas en `valor_nuevo` y el saldo vencido en `monto`; las tres de descongelar dicen la causa
+  /// (pago, a mano con «hasta — motivo», o un cambio de gracia); `factura_dias_gracia_cambiada` lleva la
+  /// gracia de antes y la nueva («15» o «7 (global)»). Migración `20261126120000_mora_enums`.
+  empresa_congelada
+  empresa_descongelada_por_pago
+  empresa_descongelada_a_mano
+  empresa_descongelada_por_gracia
+  factura_dias_gracia_cambiada
 
   @@map("historial_accion_tipo")
 }
@@ -6033,6 +6048,15 @@ model Organizacion {
   // tests y el SQL a mano (R10); el alta de la app lo exige por zod (R6).
   paisId String @default("CR") @map("pais_id")
   pais   Pais   @relation(fields: [paisId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  // SLT-121 (design §1.1): la mora. Solo las escribe el dueño (funciones `organizacion_mora_*` y
+  // `MoraEmpresaRepository` en `comoPlataforma`): `servi_app` no tiene UPDATE sobre ellas, así la empresa no se
+  // descongela sola. `facturaDiasGracia` NULL = rige `FACTURA_DIAS_GRACIA`; el CHECK 1-60 vive solo en el SQL de
+  // 20261126120100. `congeladaAt` no nula = congelada desde ese instante UTC, y el trigger `bloqueo_por_mora`
+  // rechaza sus escrituras (SL121). `descongeladaHasta` = último día de la plataforma de un descongelamiento manual.
+  facturaDiasGracia Int?      @map("factura_dias_gracia")
+  congeladaAt       DateTime? @map("congelada_at") @db.Timestamp(3)
+  descongeladaHasta DateTime? @map("descongelada_hasta") @db.Date
 
   @@index([paisId])
   @@map("organizacion")

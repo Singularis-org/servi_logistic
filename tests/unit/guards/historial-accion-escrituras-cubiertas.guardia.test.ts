@@ -863,7 +863,19 @@ interface TiposConEscritorPendiente {
 }
 
 // SLT-52 T6.2, SLT-77 T2.2 y SLT-221 (PR 2) ya escriben sus tipos (ver el censo).
-const ESCRITOR_PENDIENTE_EN_CURSO: TiposConEscritorPendiente[] = [];
+// SLT-121: los cinco de la mora entran en el enum en T1.1 y los escriben T2.4 y T2.5 de la misma rama.
+const ESCRITOR_PENDIENTE_EN_CURSO: TiposConEscritorPendiente[] = [
+  {
+    tipos: ["empresa_congelada", "empresa_descongelada_a_mano", "factura_dias_gracia_cambiada"],
+    ficha: "SLT-121",
+    tarea: "T2.4 (MoraEmpresaRepository: congelarSiVencida, descongelarAMano, fijarGracia)",
+  },
+  {
+    tipos: ["empresa_descongelada_por_pago", "empresa_descongelada_por_gracia"],
+    ficha: "SLT-121",
+    tarea: "T2.5 (mora-recalcular.recalcularCongelamiento)",
+  },
+];
 
 /** Los archivos `.ts` de `lib/`, relativos a la raiz. */
 function archivosDeLib(dir = "lib"): string[] {
@@ -1318,7 +1330,8 @@ describe("362/R16 — cada tipo del catalogo tiene al menos un punto de escritur
     // 88 desde SLT-221 (`usuario_cedula_cambiada`, de `UserRepository.update`, y
     // `usuario_email_cambiado`, de `UserRepository.aplicarCambioCorreo`).
     // 90 desde SLT-225 (`zona_desactivada`/`zona_reactivada`, de `ZonaRepository.desactivar`/`reactivar`).
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(90);
+    // 95 desde SLT-121 (los cinco de la mora; escritor pendiente en `ESCRITOR_PENDIENTE_EN_CURSO`).
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(95);
   });
 });
 

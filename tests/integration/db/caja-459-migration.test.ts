@@ -144,11 +144,20 @@ describeSiHayBase("459/B.5 — las migraciones de la 459 contra Postgres", () =>
     // se afirma y se quita igual.
     // SLT-221: DOS tipos mas detras (20261120130000), ninguna entidad; se afirman y se quitan igual.
     // SLT-225: DOS tipos mas detras (20261123120000), ninguna entidad; se afirman y se quitan igual.
-    expect(tiposHoy.slice(-2)).toEqual(["zona_desactivada", "zona_reactivada"]);
-    expect(tiposHoy.slice(-4, -2)).toEqual(["usuario_cedula_cambiada", "usuario_email_cambiado"]);
-    expect(tiposHoy.at(-5)).toBe("ordenes_retiradas_a_central");
-    expect(tiposHoy.at(-6)).toBe("usuario_se_recoge_en_tienda_cambiado");
-    const tipos = tiposHoy.slice(0, -6);
+    // SLT-121: CINCO tipos mas detras (20261126120000, la mora), ninguna entidad; se afirman y se quitan igual.
+    expect(tiposHoy.slice(-5)).toEqual([
+      "empresa_congelada",
+      "empresa_descongelada_por_pago",
+      "empresa_descongelada_a_mano",
+      "empresa_descongelada_por_gracia",
+      "factura_dias_gracia_cambiada",
+    ]);
+    const hastaSlt225 = tiposHoy.slice(0, -5);
+    expect(hastaSlt225.slice(-2)).toEqual(["zona_desactivada", "zona_reactivada"]);
+    expect(hastaSlt225.slice(-4, -2)).toEqual(["usuario_cedula_cambiada", "usuario_email_cambiado"]);
+    expect(hastaSlt225.at(-5)).toBe("ordenes_retiradas_a_central");
+    expect(hastaSlt225.at(-6)).toBe("usuario_se_recoge_en_tienda_cambiado");
+    const tipos = hastaSlt225.slice(0, -6);
     expect(tipos.at(-1)).toBe("tope_intentos_cambiado");
     expect(tipos.slice(-3)).toEqual(["tarifas_activadas", "plan_cambio_empresa_cancelado", "tope_intentos_cambiado"]);
     expect(entidades.slice(-2)).toEqual(["tarifa_activacion", "organizacion"]);

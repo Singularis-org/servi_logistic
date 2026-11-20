@@ -7,17 +7,17 @@
 
 ## Tanda 1 — Base de datos (backend_dev)
 
-- [ ] **T1.1** Migración de enums `db/migrations/20261124120000_mora_enums/` (`migration.sql` + `down.sql`) y los siete
+- [x] **T1.1** Migración de enums `db/migrations/20261126120000_mora_enums/` (`migration.sql` + `down.sql`) y los siete
       valores en `db/schema.prisma` (design §1.2, §8.1).
       *Hecho:* `pnpm run db:migrate` aplica; `down` quita solo esos valores y aborta si hay uso; inventarios de enums
       ampliados y en verde.
-- [ ] **T1.2** Migración `db/migrations/20261124120100_mora_congelamiento/`: columnas, `CHECK`, índice, funciones de §2
+- [x] **T1.2** Migración `db/migrations/20261126120100_mora_congelamiento/`: columnas, `CHECK`, índice, funciones de §2
       y triggers `<t>_bloqueo_por_mora`, más su `down.sql` (design §1.1, §2, §8.2). Depende de T1.1.
       *Hecho:* `tests/integration/db/mora-migration.test.ts` y `bloqueo-por-mora-cobertura.test.ts` en verde.
-- [ ] **T1.3** Tabla de casos compartida `tests/integration/db/_fixtures/fecha-limite-pago.ts` y
+- [x] **T1.3** Tabla de casos compartida `tests/integration/db/_fixtures/fecha-limite-pago.ts` y
       `factura-plataforma-mora.test.ts` (R1, R6, R33). Depende de T1.2.
       *Hecho:* la función devuelve fecha límite, `vence_at` y `vencida` de cada caso; `42501` con otra empresa.
-- [ ] **T1.4** `bloqueo-por-mora.test.ts` (R10, R12, R16, R18) y `mora-congelar.test.ts` (R7, R8, R9, R21, R23).
+- [x] **T1.4** `bloqueo-por-mora.test.ts` (R10, R12, R16, R18) y `mora-congelar.test.ts` (R7, R8, R9, R21, R23).
       Depende de T1.2.
       *Hecho:* congela solo en la franja; lecturas pasan; escrituras de `servi_app` sin permiso dan `SL121`; el
       dueño y el permiso pasan; la otra empresa escribe.
@@ -42,7 +42,7 @@
       operaciones en `$transaction`; contrato sin cambios) (design §5.2). Depende de T2.4.
       *Hecho:* `pago-plataforma-recalcula-mora.test.ts` (R19, R20, R21, R34); los tests existentes de SLT-60 y
       SLT-143 siguen en verde.
-- [ ] **T2.6** Historial: los cinco tipos y la categoría `mora` en `lib/types/historial-accion.ts` y
+- [x] **T2.6** Historial: los cinco tipos y la categoría `mora` en `lib/types/historial-accion.ts` y
       `lib/types/historial-accion-etiquetas.ts`; guardias del historial enmendadas, con la excepción de la decisión P5,
       que Carlos Restrepo acepta en la review del PR (R30). Depende de T1.1.
       *Hecho:* `historial-accion-*.guardia` en verde.
@@ -102,10 +102,10 @@
 
 ### Producción
 
-- `db/migrations/20261124120000_mora_enums/migration.sql`
-- `db/migrations/20261124120000_mora_enums/down.sql`
-- `db/migrations/20261124120100_mora_congelamiento/migration.sql`
-- `db/migrations/20261124120100_mora_congelamiento/down.sql`
+- `db/migrations/20261126120000_mora_enums/migration.sql`
+- `db/migrations/20261126120000_mora_enums/down.sql`
+- `db/migrations/20261126120100_mora_congelamiento/migration.sql`
+- `db/migrations/20261126120100_mora_congelamiento/down.sql`
 - `db/schema.prisma`
 - `.env.example`
 - `lib/config/factura-gracia.ts`
@@ -191,3 +191,22 @@
 
 > Inventarios de enums de `job_tipo` y `historial_accion_tipo` que se pongan en rojo (design §10): se añaden aquí
 > en cuanto el gate los nombre, antes del commit que los toca.
+
+> Desvío de implementación (2026-11-20): las migraciones llevan `20261126…` y no `20261124…`. SLT-226 «Cobro automático:
+> modelo del cobro e idempotencia» ya usa `20261124120000`, y `tests/unit/analytics/backfill-guards.test.ts` atrapa
+> cualquier nombre con `125`. T2.6 y las dos entradas de `MODULO_POR_JOB` se adelantaron a la Tanda 1: sin ellas, el
+> typecheck no pasa con los enums nuevos.
+
+### Inventarios y guardias tocados (añadidos al implementar)
+
+- `tests/integration/db/_fixtures/mora-121.ts`
+- `tests/integration/db/caja-459-migration.test.ts`
+- `tests/integration/db/correccion-resultado-gestion-migration.test.ts`
+- `tests/integration/db/historial-accion-cobro-tienda-migration.test.ts`
+- `tests/integration/db/historial-accion-conciliacion-bodega-migration.test.ts`
+- `tests/integration/db/historial-accion-orden-zona-reconciliada-migration.test.ts`
+- `tests/integration/db/historial-accion-pago-mensajero-ajustado-migration.test.ts`
+- `tests/integration/db/historial-accion-zona-pago-mensajero-migration.test.ts`
+- `tests/integration/db/historial-accion-zona-sinpe-migration.test.ts`
+- `tests/integration/db/orden-traspaso-migration.test.ts`
+- `tests/unit/historial-accion/catalogo-y-choke-point.test.ts`
