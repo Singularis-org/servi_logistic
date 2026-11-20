@@ -54,17 +54,17 @@
   `EjecucionEnvioService`, y `transito/informe.ts`, `calculo.ts` y `pdf.ts`.
   - *Hecho:* `informe-moneda-por-pais.test.ts` (R12, R13) en verde, y los tests de cálculo y PDF del
     tránsito solo cambian la firma, no los textos esperados con CR (R16).
-- [ ] **T4.3** [P] Etiquetas por API (design §5.4): el argumento `moneda?` en `etiquetas-dibujo.ts` y
+- [x] **T4.3** [P] Etiquetas por API (design §5.4): el argumento `moneda?` en `etiquetas-dibujo.ts` y
   `etiquetas-pdf-lote.ts`, `reglasPais` en `EtiquetasLotePdfService` y sus 3 rutas.
   - *Hecho:* `etiquetas-lote-pdf-service.test.ts` (R14) y los tests de PDF de etiquetas existentes en
     verde, sin cambiar sus textos esperados (R16).
-- [ ] **T4.4** [P] Facturas de planes (design §5.5): `resumen.ts`, `factura-emitida.ts` y
+- [x] **T4.4** [P] Facturas de planes (design §5.5): `resumen.ts`, `factura-emitida.ts` y
   `planes/mensajes.ts` con `MONEDA_DE_LOS_PLANES`.
   - *Hecho:* `factura-moneda-plataforma.test.ts` (R15) en verde, y los tests de factura existentes sin
     cambios (R16).
-- [ ] **T4.5** [P] Alta de empresa (design §5.6).
+- [x] **T4.5** [P] Alta de empresa (design §5.6).
   - *Hecho:* `organizacion-service-pais.test.ts` con «sin moneda» y «sin impuesto» (R17).
-- [ ] **T4.6** [P] `tests/unit/utils/monto-cobrar-por-pais.test.ts` (R18).
+- [x] **T4.6** [P] `tests/unit/utils/monto-cobrar-por-pais.test.ts` (R18).
   - *Hecho:* en verde, sin cambiar `lib/utils/monto-cobrar.ts`.
 
 ## Bloque 5 — Guardia, docs y cierre (depende del bloque 4)
@@ -151,6 +151,8 @@ Tests:
 - `tests/unit/whatsapp-envios/informe-transito-repo-consultas.test.ts` (añadido en T4.2)
 - `tests/unit/actions/informe-transito-actions.test.ts` (añadido en T4.2)
 - `tests/integration/db/informe-transito-catalogo-real.test.ts` (añadido en T4.2)
+- `tests/unit/services/api-pdf-etiqueta-columna-intacta.test.ts` (añadido en T4.3)
+- `tests/integration/db/organizacion-alta.test.ts` (añadido en T4.5)
 
 Los fixtures de `PaisDTO` y los dobles escritos a mano del puerto son los que hoy construyen el
 objeto entero, según Grep del 2026-11-19. Si el typecheck señala otro, se añade aquí antes del PR.
