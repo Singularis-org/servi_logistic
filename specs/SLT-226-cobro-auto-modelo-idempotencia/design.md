@@ -1,6 +1,6 @@
 # SLT-226 «Cobro automático: modelo del cobro e idempotencia» — design
 
-> Requisitos: `requirements.md` (R1–R28). Escrito por `spec_author` el 2026-11-20.
+> Requisitos: `requirements.md` (R1–R29). Escrito por `spec_author` el 2026-11-20.
 > - Hay dos migraciones nuevas, cada una con su `down.sql`: una para los valores del enum del historial y otra
 >   para el modelo.
 > - Hay una tabla nueva de negocio, `cobro_intento`, y una de plataforma, `cobro_webhook_evento`.
@@ -113,18 +113,17 @@ cobro_intento
     - `id_externo`, `pago_proveedor_id` y `pago_id` solo pasan de `NULL` a un valor;
     - si algo falla, `RAISE … ERRCODE = 'SL226'` con `{codigo: 'transicion_invalida' | 'columna_fija'}`;
     - corre para todos los roles, el dueño incluido, como `pago_plataforma_inmutable`.
-  - `cobro_intento_sin_borrar` (BEFORE DELETE): rechaza con `SL226` salvo en el borrado en cascada de la
-    empresa. Lo distingue con `pg_trigger_depth() > 1` o con que ya no exista la fila de `organizacion`; T0.3
-    elige cuál de las dos con un test.
-    - **Por qué:** las limpiezas de los tests y de la demo borran empresas (el `CASCADE` de SLT-118), y sin
-      DELETE para `servi_app` (el `REVOKE`) la empresa no puede borrar intentos.
-    - **T0.3 (2026-11-20), ABIERTO.** Medido en una base desechable: en el `CASCADE` desde `organizacion` el
-      trigger corre con `pg_trigger_depth() = 2` y la empresa ya no existe; en un `DELETE` directo, con
-      profundidad 1 y la empresa viva. Las dos opciones distinguen el cascade. Pero ninguna deja limpiar una
-      empresa con un intento cuyo `creado_por` es un usuario suyo: `usuario` no se borra (la FK `RESTRICT` de
-      `creado_por`), `organizacion` tampoco (la FK `RESTRICT` de `usuario.organizacion_id`) y el intento tampoco
-      (este trigger). Y el borrado de la demo (`scripts/demo-qa/borrar.ts`) borra tabla por tabla antes que la
-      empresa, así que choca con `SL226` aunque `creado_por` sea nulo. Pendiente de decisión antes de T2.
+  - **Sin trigger de borrado (T0.3, decisión del humano del 2026-11-20, opción a).** El borrado lo cierra solo el
+    `REVOKE DELETE` a `servi_app` (R8, R26), como en `pago_plataforma_confirmacion` (SLT-60). El dueño de la base
+    sí puede borrar: es lo que necesitan las limpiezas de los tests y la de la demo, que borran empresas.
+    - **Por qué no el trigger `cobro_intento_sin_borrar`:** medido en una base desechable, en el `CASCADE` desde
+      `organizacion` corre con `pg_trigger_depth() = 2` y la empresa ya no existe, así que las dos señales
+      distinguían el cascade. Pero ninguna dejaba limpiar una empresa con un intento cuyo `creado_por` es un
+      usuario suyo: `usuario` no se borra (la FK `RESTRICT` de `creado_por`), `organizacion` tampoco (la FK
+      `RESTRICT` de `usuario.organizacion_id`) y el intento tampoco (el trigger). Y el borrado de la demo
+      (`scripts/demo-qa/borrar.ts`) va tabla por tabla antes que la empresa.
+    - **Las limpiezas:** borran `cobro_intento` (y sus filas de historial) antes que los usuarios de la empresa,
+      por la FK `RESTRICT` de `creado_por`. `cobro_webhook_evento` no tiene FK a nada de la empresa.
   - Los de SL-17, generados con `pnpm exec tsx scripts/generar-misma-empresa.ts --faltantes`:
     - misma empresa en `factura_id`, `pago_id` y `creado_por`;
     - `cobro_intento_sin_cambio_de_empresa`.
@@ -362,9 +361,24 @@ END IF;
 
 ### 3.9 Errores
 
-`SL226` lleva un JSON con `codigo`: `transicion_invalida`, `columna_fija` o `borrado`. El repositorio los traduce
+`SL226` lleva un JSON con `codigo`: `transicion_invalida` o `columna_fija`. El repositorio los traduce
 a un error del dominio (`CobroIntentoInvalido`). Solo salen si alguien salta las funciones, así que la app no los
 muestra.
+
+**Notas de implementación (T2, 2026-11-20).** Lo que el código fija y este diseño no decía:
+- `_cobro_intento_pasar(p_id, p_estado, p_motivo, p_ahora)`, interna como `_cobro_historial`: cambia el estado de
+  un intento ya bloqueado y escribe su fila de historial con actor `NULL`. La usan §3.1, §3.2, §3.3, §3.4 y §3.5.
+  `_cobro_historial` recibe la fila de `cobro_intento` (no un `record`) y lanza si no escribe la fila.
+- `cobro_evento_cerrar` devuelve `'ok'`, `'ya_cerrado'` o `'sin_evento'`, y un CHECK
+  `cobro_webhook_evento_cierre` exige `procesado_at` y `resultado` juntos.
+- `cobro_intento_avanzar` con un destino fuera de los cinco admitidos lanza `22023` (`invalid_parameter_value`):
+  es un error de programación, no un resultado.
+- El trigger `cobro_intento_solo_avanza` también trata `motivo_anulacion` y `aprobado_at` como «de vacío a un
+  valor, una vez», y en el INSERT exige vacíos el motivo, los ids externos, el pago y `aprobado_at`.
+- **Un intento `creado` con `id_externo`** solo existe si alguien lo pone sin pasar por §3.2, que lo guarda y pasa
+  a `pendiente` a la vez. §3.3 y §3.5 lo encuentran por `(proveedor, id_externo)`, así que el caso «`creado` y
+  aprobado» de R14 solo se alcanza así; el test lo prepara a mano como dueño, y SLT-230 decide si su flujo lo
+  produce.
 
 ### 3.10 `down.sql`
 
@@ -482,12 +496,30 @@ El pago en línea queda en el libro como un «Pago a la plataforma» con `descri
 pago>»`.
 - **Dónde se ve:** la tabla, el detalle y la descarga ya pintan la `descripcion` en «Detalle», como la
   referencia del pago por fuera de SLT-143. Así la marca y el id salen en los tres sin tocar la wallet (R17).
-- **Dónde no:** «Registró» no gana una marca propia en esta ficha (alternativa 6). Con `registrado_por` nulo,
-  muestra lo que ya muestra un movimiento automático; T0.4 lo anota.
+- **«Registró» (R29, decisión del humano del 2026-11-20):** muestra «Pagado en línea», sin el prefijo
+  «Automático · », como la marca de la plataforma de SLT-143. Antes de la decisión, con `registrado_por` nulo,
+  decía lo de un movimiento automático (T0.4, abajo).
   - **T0.4 (2026-11-20):** `LibroCajaAutoriaService.registro` mira primero la marca `por_fuera` (no aplica) y,
     con `registrado_por` nulo, decide por `origen_tipo`. Para `gasto` devuelve la acción `plantilla_gasto_fijo`,
-    así que «Registró» dirá «Automático · Plantilla de gasto fijo». Es un texto engañoso: se avisa al humano
-    (la alternativa 6 lo arreglaría, aquí o en SLT-231).
+    así que «Registró» diría «Automático · Plantilla de gasto fijo». Es engañoso, y el humano pidió corregirlo
+    en este PR (§5.1).
+
+### 5.1 «Pagado en línea» en «Registró» (R29)
+
+Es el camino de la marca `por_fuera` de SLT-143, con una marca más:
+- **`ILibroCajaAutoriaRepository.MarcasDeLaPlataforma`** gana `enLinea: Set<string>`.
+  `LibroCajaAutoriaRepository.marcasDeLaPlataforma` añade `{ enLinea: true }` a su `OR` y lee `enLinea` en la
+  misma consulta (los ids de los pagos con la confirmación `en_linea`). Sigue sin leer quién confirmó.
+- **`LibroCajaAutoriaService.registro`:** antes de mirar `registradoPor` y `origen_tipo`, un
+  `egreso_pago_plataforma` con la marca `enLinea` devuelve `{ nombre: null, automatico: { accion:
+  "pago_en_linea", por: null } }`.
+- **`RegistroDTO.automatico.accion`** (`lib/types/estado-cuenta.ts`) gana `"pago_en_linea"`.
+- **El texto** (`components/shared/wallet/detalle-movimiento-panel-labels.ts`): `ACCION_AUTOMATICA_LABEL` gana
+  `pago_en_linea: "Pagado en línea"`, y `textoRegistro` lo pinta sin el prefijo, como `plataforma`. La tabla, el
+  detalle y la descarga usan `textoRegistro`, así que salen los tres. Es el único archivo de `components/` del PR:
+  una línea de texto en un `Record` total que el typecheck exige.
+- **La anulación** de un pago en línea por «Anular…» (§11) sigue mostrando «Anulado por la plataforma» en su
+  contra-asiento: no cambia.
 
 ## 6. Autorización
 
@@ -516,6 +548,9 @@ Ninguna llamada real. El puerto `IProveedorCobro` (§4.2) es el único contacto,
 | `tests/unit/services/cobro-intento-service.test.ts` (**nuevo**) | R13–R16, R20 (traducción), R27 | Repositorio y proveedor dobles. Tabla de abajo |
 | `tests/integration/db/pago-plataforma-confirmacion.test.ts`, `pago-plataforma-por-fuera.test.ts`, `migracion-slt143-ida-y-vuelta.test.ts` | R28 | Sin cambios de afirmaciones: tienen que seguir en verde. Si `migracion-slt143` aplica el `down` de SLT-143 sobre esta, primero aplica el de esta (T0.5) |
 | `tests/unit/guards/rls-por-empresa.guardia.test.ts`, `_unicos-sin-empresa.ts`, `scripts/verificar-rls-despliegue.ts` | R26 | 97 tablas, los dos globales y 186 triggers |
+| `tests/unit/services/libro-caja-autoria-plataforma.test.ts` (**se amplía**) | R29 | Repositorio doble con la marca `enLinea`: el pago dice `pago_en_linea` con `por: null`; un `egreso_pago_plataforma` sin la marca y con `origen_tipo = 'gasto'` sigue en `plantilla_gasto_fijo`; la marca `por_fuera` sigue en `plataforma` |
+| `tests/unit/components/detalle-movimiento-panel-labels-plataforma.test.ts` (**se amplía**) | R29 | `textoRegistro` de `pago_en_linea` es «Pagado en línea», sin «Automático · » |
+| `tests/integration/db/cobro-pago-en-linea.test.ts` (paso de R17) | R29 | `LibroCajaAutoriaRepository.marcasDeLaPlataforma` devuelve el pago aprobado en `enLinea` (la columna real, con la RLS de la empresa) |
 
 **`cobro-intento.test.ts`, paso a paso** (montos en colones):
 
@@ -529,7 +564,7 @@ Ninguna llamada real. El puerto `IProveedorCobro` (§4.2) es el único contacto,
 | `INSERT` del dueño con monto 0, con la tasa sin fuente, o con tasa en moneda local | `check_violation` (R6) |
 | `UPDATE` del dueño de `creado` a `aprobado`, de `rechazado` a `pendiente` o de `monto_local` | `SL226` (R7, R8) |
 | `UPDATE` del dueño de `pendiente` a `aprobado` con `pago_id` nulo | `check_violation` (R9) |
-| `DELETE` del dueño, y `DELETE`/`UPDATE`/`INSERT` como `servi_app` | `SL226` / `42501` (R8, R26) |
+| `DELETE` como `servi_app` (permiso denegado), y `UPDATE`/`INSERT` como `servi_app` | `42501` (R8, R26) |
 | `registrarEnlace` y después otra vez con otro id externo; el mismo id externo en un intento de B | `ok`, luego `SL226`; 23505 (R10) |
 | Intento vivo de 20 000; el superadmin confirma 5 000 a esa factura (`pago_plataforma_confirmar`) | El intento queda `anulado/saldo_cambiado` y su historial con actor nulo. El siguiente pedido da 15 000 (R11) |
 | Lo mismo con un registro por fuera y con la anulación de un confirmado (SLT-143) | `anulado` en los dos (R11) |
@@ -592,9 +627,8 @@ Un `skip` por falta de base no cuenta como verde.
    solo la escribe el dueño.
 5. **El estado como enum de Postgres.** Pediría otra migración solo para el enum y la función de reversión en el
    `down`. `text` con CHECK es el molde de `factura_plataforma.estado`.
-6. **La marca «Pagado en línea» en «Registró»,** con `LibroCajaAutoriaService` y sus textos, como la marca de
-   SLT-143. Son unos 6 archivos más en un PR que ya pasa del tope de líneas (decisión P5). La `descripcion` ya pone la marca y
-   el id en la tabla, el detalle y la descarga. Si el humano la quiere en «Registró», se suma aquí o en SLT-231.
+6. ~~**La marca «Pagado en línea» en «Registró»** fuera de esta ficha.~~ **Ya no está descartada:** el humano
+   pidió el 2026-11-20 que se haga en este PR (R29, §5.1).
 7. **Que el único `(proveedor, payment_id)` fuera por empresa.** Pasaría la guardia sin tocar la lista de
    globales, pero un id del proveedor lleva a un solo pago en toda la plataforma. Un único global además frena un
    error de enrutado que asignara el mismo pago a dos empresas.
@@ -603,9 +637,9 @@ Un `skip` por falta de base no cuenta como verde.
 
 | | Archivos | Líneas (añadidas + borradas) |
 |---|---|---|
-| Producción | 15 | ~1 300–1 500: SQL ~900 (las dos migraciones y sus `down`), `schema.prisma` ~90, TypeScript ~500, docs ~10 |
-| Tests | 9 | ~1 600 |
-| **Total** | **24** de 40 (60 %) | |
+| Producción | 20 | ~1 350–1 550: SQL ~900 (las dos migraciones y sus `down`), `schema.prisma` ~90, TypeScript ~550 (R29 suma ~40), docs ~10 |
+| Tests | 14 | ~1 700: R29 suma ~60 en dos tests que se amplían; el censo de `api-key-dependencias-usuario` suma una entrada |
+| **Total** | **34** de 40 (85 %) | |
 
 - **Archivos:** caben.
 - **Líneas de producción:** pasan del tope de 1 000. El humano aceptó un solo PR (decisión P5 del 2026-11-20).
@@ -618,8 +652,9 @@ Un `skip` por falta de base no cuenta como verde.
   `aprobado`. Es terreno de las devoluciones de SLT-233, y se anota para su spec.
 - **El orden del `down`:** el de la migración del enum va después del de la principal. Lo comprueba
   `migracion-slt226-ida-y-vuelta`.
-- **El trigger sin borrar y las limpiezas:** el `CASCADE` desde `organizacion` tiene que seguir funcionando
-  (T0.3).
+- **Las limpiezas y el `creado_por`:** sin trigger de borrado (T0.3), una limpieza que borre los usuarios de una
+  empresa antes que sus intentos choca con la FK `RESTRICT` de `creado_por`. Las limpiezas que lo necesiten borran
+  primero `cobro_intento`.
 - **La FK diferida y Prisma:** Prisma no expresa `DEFERRABLE`, y T0.6 comprueba que `prisma migrate diff` no la
   marque como deriva. Si la marca, se cambia el orden de §3.5: el pago primero, y el tope busca el intento por
   `pago_proveedor_id` y `clave_idempotencia`.

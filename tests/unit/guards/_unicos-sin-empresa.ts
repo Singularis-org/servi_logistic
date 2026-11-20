@@ -84,6 +84,18 @@ export const UNICOS_SIN_EMPRESA: readonly UnicoSinEmpresa[] = [
     tipo: "global",
     motivo: "SL-32 R27: un único superadmin en la plataforma; el superadmin no tiene empresa",
   },
+  {
+    indice: "cobro_intento_proveedor_id_externo_key",
+    tabla: "cobro_intento",
+    tipo: "global",
+    motivo: "SLT-226 R10: el webhook del proveedor llega sin empresa; un cobro del proveedor lleva a un solo intento",
+  },
+  {
+    indice: "cobro_intento_proveedor_pago_key",
+    tabla: "cobro_intento",
+    tipo: "global",
+    motivo: "SLT-226 R20: un pago del proveedor se cuenta una sola vez en toda la plataforma (capa 3)",
+  },
   // Anclados por una FK de negocio (T3.9).
   anclado("abono_tienda_anulacion", "abono_tienda_anulacion_abono_id_key", "abono_tienda"),
   anclado("ajuste_caja_anulacion", "ajuste_caja_anulacion_movimiento_id_key", "wallet_movimiento"),

@@ -124,6 +124,8 @@ export const MODELOS_DE_NEGOCIO: readonly ModeloClasificado[] = [
   { modelo: "PagoPlataformaAplicacion", tabla: "pago_plataforma_aplicacion" },
   // Anulación de un pago confirmado por el superadmin (SLT-143): la escribe solo una función del dueño
   { modelo: "PagoPlataformaAnulacion", tabla: "pago_plataforma_anulacion" },
+  // El cobro en línea de una factura de la plataforma (SLT-226): lo escriben solo funciones del dueño; la empresa lo lee
+  { modelo: "CobroIntento", tabla: "cobro_intento" },
   // El nivel por volumen de cada empresa y su historial (SLT-215, R36): los escriben solo funciones del dueño; la
   // empresa solo los lee
   { modelo: "PlanNivelEmpresa", tabla: "plan_nivel_empresa" },
@@ -213,6 +215,8 @@ export const MODELOS_DE_PLATAFORMA: readonly ModeloClasificado[] = [
   { modelo: "BugReportImage", tabla: "bug_report_image" },
   // Tope diario de imágenes (SLT-98): sin acceso para `servi_app`; lo escribe el servidor en plataforma (SLT-98, tope diario)
   { modelo: "BugReportUploadQuota", tabla: "bug_report_upload_quota" },
+  // Eventos del proveedor de cobro (SLT-226, R12): llegan sin empresa; sin acceso para `servi_app` (R26)
+  { modelo: "CobroWebhookEvento", tabla: "cobro_webhook_evento" },
 ];
 
 // SL-19 (design §5.1). `organizacion_id` nulable a proposito: no entra en negocio porque la unica

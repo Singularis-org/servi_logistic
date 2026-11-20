@@ -183,6 +183,7 @@ model Usuario {
   ajustesCajaAnulados                 AjusteCajaAnulacion[]              @relation("AjusteCajaAnulacionActor") // ficha 461/R69: anulaciones de correcciones de caja que este usuario hizo; FK RESTRICT
   pagosPlataformaConfirmados          PagoPlataformaConfirmacion[]       @relation("PagoPlataformaConfirmador") // SLT-60: pagos a la plataforma que este superadmin confirmó; FK RESTRICT
   pagosPlataformaAnulados             PagoPlataformaAnulacion[]          @relation("PagoPlataformaAnulador") // SLT-143: pagos confirmados que este superadmin anuló; FK RESTRICT
+  cobrosIntentoCreados                CobroIntento[]                     @relation("CobroIntentoCreador") // SLT-226: cobros en línea que este usuario pidió; FK RESTRICT
   abonosComoTienda                    AbonoTienda[]                      @relation("AbonoTiendaTienda") // ficha 457/R1: pagos que ESTA tienda le hizo a la empresa
   abonosRegistrados                   AbonoTienda[]                      @relation("AbonoTiendaRegistrador") // ficha 457/R1: pagos de una tienda a la empresa que este usuario registro
   abonosAnulados                      AbonoTiendaAnulacion[]             @relation("AbonoTiendaAnulacionActor") // ficha 457/R31: anulaciones de pagos de una tienda a la empresa que este usuario hizo; FK RESTRICT
@@ -2398,6 +2399,9 @@ model WalletMovimiento {
   // (organizacion_id, pago_id); lista porque Prisma solo admite un 1 a 1 sobre un único de una columna.
   // La FK vive en `pago_plataforma_confirmacion.pago_id`: la fila del libro sigue append-only.
   confirmacionesPagoPlataforma PagoPlataformaConfirmacion[]
+  // SLT-226: el intento aprobado en línea de este «Pago a la plataforma». 0 o 1 por el UNIQUE
+  // (organizacion_id, pago_id); lista por la misma razón que la confirmación.
+  cobrosIntento CobroIntento[]
 
   organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
@@ -5983,6 +5987,7 @@ model Organizacion {
   pagosPlataformaConfirmacion PagoPlataformaConfirmacion[] // SLT-60
   pagosPlataformaAplicacion PagoPlataformaAplicacion[] // SLT-60
   pagosPlataformaAnulacion PagoPlataformaAnulacion[] // SLT-143
+  cobrosIntento CobroIntento[] // SLT-226
   ordenFulfillmentMovimientos OrdenFulfillmentMovimiento[] // SLT-94
   conciliacionBodegaAjustes ConciliacionBodegaAjuste[] // SLT-73
   usuarioCambiosCorreo UsuarioCambioCorreo[] // SLT-221
@@ -6118,10 +6123,12 @@ model HistorialPlataforma {
   /// NULL = sistema o script. `Restrict`: la autoría es evidencia y no se pierde al dar de baja al usuario.
   actorUsuarioId  String? @map("actor_usuario_id")
   actorNombre     String? @map("actor_nombre") @db.VarChar(120)
-  /// Solo en el renombre. 80 = `GEO_NOMBRE_MAX`: no hay recorte.
+  /// El renombre (80 = `GEO_NOMBRE_MAX`: no hay recorte) y, desde SLT-226, los estados del cobro en línea
+  /// (`valor_anterior` nulo al nacer).
   valorAnterior   String? @map("valor_anterior") @db.VarChar(80)
   valorNuevo      String? @map("valor_nuevo") @db.VarChar(80)
-  /// Solo `division_cargada`, y solo cifras.
+  /// `division_cargada`, solo cifras. SLT-226, `cobro_intento_transicion`: `{organizacion_id, factura_id,
+  /// monto_local, moneda_cobro, motivo?, pago_proveedor_id?}`, sin datos del pagador.
   detalle         Json?
   /// Inmutable: sin `updated_at`.
   createdAt       DateTime @default(now()) @map("created_at")
@@ -6682,6 +6689,8 @@ model FacturaPlataforma {
   // SLT-60: lo que los pagos confirmados aplicaron a esta factura. El saldo NO es una columna (la cerrada es
   // inmutable): lo calcula `factura_plataforma_saldos(org)` desde estas filas.
   aplicacionesPago PagoPlataformaAplicacion[]
+  // SLT-226: sus cobros en línea, vivos o cerrados.
+  cobrosIntento CobroIntento[]
 
   @@unique([organizacionId, desdeAt]) // R11: un intervalo no se factura dos veces
   @@unique([organizacionId, numero]) // R14: sin repetidos
@@ -6747,14 +6756,19 @@ model PlanNivelHistorial {
 model PagoPlataformaConfirmacion {
   id           String   @id @default(dbgenerated("(gen_random_uuid())::text"))
   pagoId       String   @map("pago_id")
-  confirmadoPor String  @map("confirmado_por")
+  // SLT-226 (design §1.4): nulo solo en un pago en línea, que nadie confirma (CHECK
+  // `pago_plataforma_confirmacion_quien`: `confirmado_por IS NOT NULL OR en_linea`).
+  confirmadoPor String? @map("confirmado_por")
   confirmadoAt DateTime @map("confirmado_at") @db.Timestamp(3)
   // SLT-143 (design §1.2): true solo si el pago lo registró el superadmin por fuera (R13, R14). Lo escribe solo
   // `pago_plataforma_registrar_por_fuera`; las confirmaciones anteriores a 20261121130000 quedan en false (R33).
   porFuera     Boolean  @default(false) @map("por_fuera")
+  // SLT-226 (design §1.4; R17, R29): true solo si el pago lo aprobó el proveedor de cobro en línea. Lo escribe solo
+  // `cobro_registrar_pago_aprobado`; las confirmaciones anteriores a 20261124120100 quedan en false (R28).
+  enLinea      Boolean  @default(false) @map("en_linea")
 
   pago         WalletMovimiento @relation(fields: [pagoId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  confirmador  Usuario          @relation("PagoPlataformaConfirmador", fields: [confirmadoPor], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  confirmador  Usuario?         @relation("PagoPlataformaConfirmador", fields: [confirmadoPor], references: [id], onDelete: Restrict, onUpdate: Cascade)
   aplicaciones PagoPlataformaAplicacion[]
   // SLT-143: 0 o 1 por el UNIQUE (organizacion_id, confirmacion_id); lista porque Prisma solo admite un 1 a 1
   // sobre un único de una columna (como `WalletMovimiento.confirmacionesPagoPlataforma`).
@@ -6810,6 +6824,76 @@ model PagoPlataformaAnulacion {
   @@unique([organizacionId, confirmacionId], map: "pago_plataforma_anulacion_org_confirmacion_key") // una anulación por confirmación
   @@index([organizacionId]) // SL-17/R2
   @@map("pago_plataforma_anulacion")
+}
+
+// SLT-226 (design §1.1) — el cobro en línea de una factura de la plataforma. De NEGOCIO. Lo escriben SOLO las
+// funciones del dueño de 20261124120100; `servi_app` solo lo lee (R26). Viven solo en el SQL de esa migración:
+//   · los CHECK del proveedor, del estado, de los montos (> 0), de la foto de conversión, del pago completo y del
+//     motivo (R6, R9);
+//   · el único parcial `cobro_intento_un_vivo_por_factura` (un solo intento `creado`/`pendiente` por factura, R4);
+//   · la FK DIFERIDA de `pago_id`: el intento pasa a `aprobado` antes de que exista su fila del libro (§3.5);
+//   · la política, el `REVOKE INSERT, UPDATE, DELETE … FROM servi_app` (R8, R26), el trigger
+//     `cobro_intento_solo_avanza` (R7, R8) y los de SL-17.
+// El estado es texto con CHECK, como `factura_plataforma.estado`: creado → pendiente → aprobado | rechazado |
+// expirado; creado/pendiente → anulado; aprobado → devuelto | contracargo.
+model CobroIntento {
+  id               String    @id @default(dbgenerated("(gen_random_uuid())::text"))
+  facturaId        String    @map("factura_id")
+  proveedor        String
+  // factura|monto_local|moneda_cobro|tasa: dos pedidos con la misma clave reciben el mismo intento (R2).
+  clave            String
+  montoLocal       Decimal   @map("monto_local") @db.Decimal(14, 2)
+  monedaLocal      String    @map("moneda_local") @db.Char(3)
+  monedaCobro      String    @map("moneda_cobro") @db.Char(3)
+  montoCobrado     Decimal   @map("monto_cobrado") @db.Decimal(14, 2)
+  // La foto de la conversión (SLT-229): las tres a la vez o ninguna.
+  tasa             Decimal?  @db.Decimal(18, 8)
+  tasaFuente       String?   @map("tasa_fuente")
+  tasaAt           DateTime? @map("tasa_at") @db.Timestamp(3)
+  estado           String
+  motivoAnulacion  String?   @map("motivo_anulacion")
+  idExterno        String?   @map("id_externo")
+  pagoProveedorId  String?   @map("pago_proveedor_id")
+  pagoId           String?   @map("pago_id")
+  creadoPor        String?   @map("creado_por")
+  createdAt        DateTime  @map("created_at") @db.Timestamp(3)
+  estadoAt         DateTime  @map("estado_at") @db.Timestamp(3)
+  aprobadoAt       DateTime? @map("aprobado_at") @db.Timestamp(3)
+
+  factura FacturaPlataforma @relation(fields: [facturaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  pago    WalletMovimiento? @relation(fields: [pagoId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  creador Usuario?          @relation("CobroIntentoCreador", fields: [creadoPor], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Cascade, onUpdate: Cascade) // SL-17/R2
+
+  // Globales a propósito: el id del proveedor lleva a un solo intento en toda la plataforma (R10, R20).
+  @@unique([proveedor, idExterno], map: "cobro_intento_proveedor_id_externo_key")
+  @@unique([proveedor, pagoProveedorId], map: "cobro_intento_proveedor_pago_key")
+  @@unique([organizacionId, pagoId], map: "cobro_intento_org_pago_key") // un pago del libro, un intento
+  @@index([organizacionId, facturaId, createdAt(sort: Desc)], map: "cobro_intento_org_factura_idx") // R27
+  @@index([organizacionId]) // SL-17/R2
+  @@map("cobro_intento")
+}
+
+// SLT-226 (design §1.2) — los eventos del proveedor de cobro, uno por (proveedor, log_id) (R12, R13). De
+// PLATAFORMA: llegan sin empresa. Sin el cuerpo del evento ni datos del pagador (R12). Viven solo en el SQL de
+// 20261124120100: los CHECK, la RLS sin políticas, el `REVOKE ALL … FROM servi_app` (R26) y el trigger
+// `cobro_webhook_evento_inmutable` (solo `procesado_at`, `resultado` e `intento_id`, de nulo a un valor, una vez).
+model CobroWebhookEvento {
+  id              String    @id @default(dbgenerated("(gen_random_uuid())::text"))
+  proveedor       String
+  logId           String    @map("log_id")
+  tipo            String
+  pagoProveedorId String?   @map("pago_proveedor_id")
+  // Opaco, sin FK: la fila sobrevive al intento.
+  intentoId       String?   @map("intento_id")
+  recibidoAt      DateTime  @map("recibido_at") @db.Timestamp(3)
+  procesadoAt     DateTime? @map("procesado_at") @db.Timestamp(3)
+  resultado       String?
+
+  @@unique([proveedor, logId], map: "cobro_webhook_evento_proveedor_log_key") // capa 2 de la idempotencia
+  @@map("cobro_webhook_evento")
 }
 
 // SL-36 (design §2.1) — los cuatro servicios que una empresa conecta con sus propias cuentas.

@@ -236,6 +236,10 @@ export const CLASIFICACION_FK_USUARIO: Record<string, ClasificacionFk> = {
   // SLT-143 (2026-11-19): quien anulo un pago confirmado. Solo el superadmin anula (`esPlataforma`), con
   // sesion, y solo la escribe una funcion del duenio; la cuenta dedicada de una key no llega. FK `Restrict`.
   "PagoPlataformaAnulacion.anulador": { categoria: "no_alcanzable", motivo: SOLO_OPERADOR },
+  // SLT-226 (2026-11-20): quien pidió un cobro en línea. Lo pide un operador con sesion desde la pantalla de la
+  // factura (SLT-230, SLT-231), y solo lo escribe una funcion del duenio; ninguna ruta de la API lo crea.
+  // FK `Restrict`.
+  "CobroIntento.creador": { categoria: "no_alcanzable", motivo: SOLO_OPERADOR },
   "AporteCapital.registrador": { categoria: "no_alcanzable", motivo: SOLO_OPERADOR },
   "AporteCapitalAnulacion.anulador": { categoria: "no_alcanzable", motivo: SOLO_OPERADOR },
   // ⭑ FICHA 457 — el pago de una tienda a la empresa. La tienda la valida `AbonoTiendaService` (R10):

@@ -68,7 +68,7 @@ Escritos por `spec_author` el 2026-11-20. Vocabulario:
 
   SI se intenta cualquier otro cambio, con cualquier rol (también el dueño de la base), ENTONCES la base DEBE
   rechazarlo sin cambiar la fila. Un intento nuevo DEBE nacer en `creado`.
-- **R8.** Un intento NO DEBE poder borrarse ni cambiar su empresa, su factura, su proveedor, su clave, sus
+- **R8.** Un intento NO DEBE poder borrarse con el rol de la app, y NO DEBE poder cambiar su empresa, su factura, su proveedor, su clave, sus
   importes, sus monedas ni su foto de conversión. El id externo, el id del pago del proveedor y el pago del libro
   solo DEBEN poder pasar de vacío a un valor, una vez.
 - **R9.** Un intento en `aprobado`, `devuelto` o `contracargo` DEBE tener el id del pago del proveedor y su
@@ -163,6 +163,12 @@ Escritos por `spec_author` el 2026-11-20. Vocabulario:
   fuera de SLT-143 DEBEN comportarse igual. Cada migración DEBE tener su `down.sql`, que la revierte entera; el
   `down.sql` DEBE abortar sin cambiar nada si ya hay intentos.
 
+### La marca en «Registró»
+
+- **R29.** CUANDO la wallet muestra un «Pago a la plataforma» que nació de un intento aprobado en línea, la
+  columna «Registró» (y el detalle del movimiento) DEBE mostrar «Pagado en línea», nunca «Automático · Plantilla
+  de gasto fijo». Los demás movimientos automáticos DEBEN seguir mostrando lo mismo que hoy.
+
 ### Cobertura de las decisiones cerradas
 
 | Decisión (fecha) | Requisitos |
@@ -181,6 +187,8 @@ Escritos por `spec_author` el 2026-11-20. Vocabulario:
 | P3, el primer rechazo cierra el intento (2026-11-20) | R7, R24 |
 | P4, estado terminal `anulado` (2026-11-20) | R3, R7, R11 |
 | P5, un solo PR (2026-11-20) | Sin comportamiento: tamaño del PR |
+| El borrado del intento se cierra solo con el `REVOKE` (2026-11-20) | R8, R26 |
+| «Pagado en línea» en «Registró», en este PR (2026-11-20) | R29 |
 
 ## Preguntas abiertas
 
@@ -204,3 +212,5 @@ Ninguna.
 | 2026-11-20 | P3: con un enlace de pago que admite varios intentos, ¿el primer rechazo cierra el intento? | **Sí: queda `rechazado`, que es terminal** (humano). Para volver a intentar se crea un intento nuevo. |
 | 2026-11-20 | P4: la decisión dice que el intento «se anula», pero la máquina de estados no tiene ese estado | **Un estado terminal nuevo, `anulado`**, distinto de `expirado` (humano). Se llega a él desde `creado` o `pendiente`. |
 | 2026-11-20 | P5: ~24 archivos y ~1 300–1 500 líneas de producción, por encima del tope de 1 000 | **Un solo PR**, aunque pase el tope de líneas (humano). |
+| 2026-11-20 | T0.3: con el trigger `cobro_intento_sin_borrar`, una empresa con intentos no se puede limpiar (tests y demo) | **Se quita el trigger** (humano, opción a). El borrado de `cobro_intento` queda cerrado solo por `REVOKE DELETE` a `servi_app`, como `pago_plataforma_confirmacion` (SLT-60). El dueño de la base sí puede borrar, para limpiar la demo y los tests. |
+| 2026-11-20 | ¿Qué muestra «Registró» en un pago en línea? | **«Pagado en línea»**, nunca «Automático · Plantilla de gasto fijo», y se corrige en este PR (humano). Es la alternativa 6 del design, que deja de estar descartada (R29). Sube el tamaño del PR, ya aceptado por P5. |

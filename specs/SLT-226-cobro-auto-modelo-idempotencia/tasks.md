@@ -1,6 +1,6 @@
 # SLT-226 «Cobro automático: modelo del cobro e idempotencia» — tasks
 
-> Design: `design.md`. Requisitos: `requirements.md` (R1–R28).
+> Design: `design.md`. Requisitos: `requirements.md` (R1–R29).
 > - P1–P5 están cerradas (humano, 2026-11-20; `requirements.md > Decisiones cerradas`). Por la decisión P5 va
 >   todo en un solo PR.
 > - `[P]` = se puede hacer en paralelo con las demás `[P]` del mismo bloque.
@@ -12,9 +12,13 @@
   los nuevos en `design.md`.
 - [x] **T0.2** Las columnas exactas que escribe `pago_plataforma_registrar_por_fuera` en `wallet_movimiento`.
   **Hecho:** §3.5 las copia.
-- [ ] **T0.3** El trigger `cobro_intento_sin_borrar` frente al `CASCADE` desde `organizacion`. Se prueban
+- [x] **T0.3** El trigger `cobro_intento_sin_borrar` frente al `CASCADE` desde `organizacion`. Se prueban
   `pg_trigger_depth()` y la existencia de la empresa en una base desechable. **Hecho:** la opción elegida queda
   anotada en §1.1 y la limpieza de una empresa con intentos pasa.
+  - **Decisión (humano, 2026-11-20): opción a.** Se quita el trigger; el borrado lo cierra solo el `REVOKE DELETE`
+    a `servi_app`, como en SLT-60. Comprobado el 2026-11-20 en una base desechable: `borrarFilasDeEmpresas` de la
+    demo limpia, en una sola pasada, una empresa con un intento aprobado (con su pago en el libro) y otro vivo,
+    los dos con `creado_por` de un usuario suyo.
 - [x] **T0.4** Tres comprobaciones, anotadas en §1.4 y §5:
   - `PagoPlataformaConfirmacionRepository.leer` ya tolera `confirmado_por` nulo;
   - `confirmador` no se usa en TypeScript;
@@ -35,33 +39,38 @@
 
 ## T2 — Migración del modelo (depende de T1)
 
-- [ ] **T2.1** Las tablas, los CHECK, los índices, la RLS y el `REVOKE` de §1.1 y §1.2. **Hecho:** aplica, y
+- [x] **T2.1** Las tablas, los CHECK, los índices, la RLS y el `REVOKE` de §1.1 y §1.2. **Hecho:** aplica, y
   `\d cobro_intento` muestra los seis índices.
-- [ ] **T2.2** Los triggers `cobro_intento_solo_avanza`, `cobro_intento_sin_borrar` y
-  `cobro_webhook_evento_inmutable`. Los de SL-17, con `generar-misma-empresa.ts --faltantes`. **Hecho:** el
+- [x] **T2.2** Los triggers `cobro_intento_solo_avanza` y `cobro_webhook_evento_inmutable` (sin
+  `cobro_intento_sin_borrar`: T0.3). Los de SL-17, con `generar-misma-empresa.ts --faltantes`. **Hecho:** el
   generador no deja faltantes.
-- [ ] **T2.3** `pago_plataforma_confirmacion` (§1.4), la sobrecarga de `_pago_plataforma_aplicar` (§3.6) y el
+- [x] **T2.3** `pago_plataforma_confirmacion` (§1.4), la sobrecarga de `_pago_plataforma_aplicar` (§3.6) y el
   tope (§3.7). **Hecho:** los tests de SLT-60 y SLT-143 en verde sin cambios.
-- [ ] **T2.4** `_cobro_historial` y las funciones de §3.1, §3.2, §3.3, §3.5 y §3.8. **Hecho:** cada una existe en
+- [x] **T2.4** `_cobro_historial` y las funciones de §3.1, §3.2, §3.3, §3.5 y §3.8. **Hecho:** cada una existe en
   `pg_proc` con `prosecdef` y sin `EXECUTE` para `servi_app`.
-- [ ] **T2.5** Los dos triggers de §3.4. **Hecho:** aplica.
-- [ ] **T2.6** `down.sql` (§3.10). **Hecho:** ida y vuelta en una base desechable, y aborta con un intento.
+- [x] **T2.5** Los dos triggers de §3.4. **Hecho:** aplica.
+- [x] **T2.6** `down.sql` (§3.10). **Hecho:** ida y vuelta en una base desechable, y aborta con un intento.
 
 ## T3 — Prisma y clasificación (depende de T2)
 
-- [ ] **T3.1** `db/schema.prisma`:
+- [x] **T3.1** `db/schema.prisma`:
   - los modelos `CobroIntento` y `CobroWebhookEvento`;
   - los cambios de `PagoPlataformaConfirmacion`;
   - las relaciones inversas;
   - el comentario de `HistorialPlataforma.detalle` y los dos valores de sus enums.
 
   **Hecho:** `prisma validate` y `pnpm run typecheck` en verde.
-- [ ] **T3.2** `[P]` `lib/db/modelos-de-negocio.ts`: `CobroIntento` en negocio y `CobroWebhookEvento` en
+- [x] **T3.2** `[P]` `lib/db/modelos-de-negocio.ts`: `CobroIntento` en negocio y `CobroWebhookEvento` en
   plataforma. **Hecho:** `organizacion-en-modelos` en verde.
-- [ ] **T3.3** `[P]` Los dos globales: en `tests/unit/guards/_unicos-sin-empresa.ts` y en
+- [x] **T3.3** `[P]` Los dos globales: en `tests/unit/guards/_unicos-sin-empresa.ts` y en
   `docs/architecture.md > Multi-empresa`. **Hecho:** `unicos-por-empresa` en verde.
-- [ ] **T3.4** `[P]` La guardia `rls-por-empresa` a 97 y `TRIGGERS_MISMA_EMPRESA` a 186, con su comentario.
+- [x] **T3.4** `[P]` La guardia `rls-por-empresa` a 97 y `TRIGGERS_MISMA_EMPRESA` a 186, con su comentario.
   **Hecho:** las guardias en verde.
+  - **Valores reales (2026-11-20):** 97 tablas de negocio y 186 triggers de misma empresa, medidos en la base
+    migrada (`pg_trigger`; 97 `…_sin_cambio_de_empresa` y 98 políticas `…_por_empresa` con `jobs`). Quitar el
+    trigger de borrado no los mueve: no es de SL-17.
+  - La guardia `api-key-dependencias-usuario` pidió clasificar la relación nueva `CobroIntento.creador`
+    (`tests/fixtures/api-key-dependencias-usuario.ts`, `no_alcanzable`).
 
 ## T4 — Tests de la base: intento, máquina y eventos (depende de T3)
 
@@ -79,6 +88,12 @@
 - [ ] **T5.3** `ICobroIntentoService` y `CobroIntentoService` (§4.4). **Hecho:** typecheck y lint en verde.
 - [ ] **T5.4** `tests/unit/services/cobro-intento-service.test.ts`. **Hecho:** cubre R13–R16, R20 (traducción) y
   R27, en verde.
+- [ ] **T5.5** `[P]` «Pagado en línea» en «Registró» (R29, design §5.1): la marca `enLinea` en
+  `MarcasDeLaPlataforma` y `LibroCajaAutoriaRepository.marcasDeLaPlataforma`, la acción `pago_en_linea` en
+  `LibroCajaAutoriaService.registro` y en `RegistroDTO`, y su texto en `ACCION_AUTOMATICA_LABEL` / `textoRegistro`.
+  Tests: amplía `libro-caja-autoria-plataforma.test.ts` y `detalle-movimiento-panel-labels-plataforma.test.ts`; la
+  lectura real de la marca la afirma T6.1. **Hecho:** cubre R29, en verde, y los tests de la marca de SLT-143
+  siguen sin cambios.
 
 ## T6 — Tests del pago en línea (depende de T4 y T5)
 
@@ -89,7 +104,7 @@
 
 - [ ] **T7.1** `tests/integration/db/migracion-slt226-ida-y-vuelta.test.ts`. **Hecho:** cubre R28, en verde.
 - [ ] **T7.2** Las suites de SLT-60 y SLT-143 en verde sin cambios de afirmaciones. **Hecho:** cubre R28.
-- [ ] **T7.3** El mapa `R<n> -> test` en `progress/impl_SLT-226.md`. **Hecho:** los 28 requisitos tienen test.
+- [ ] **T7.3** El mapa `R<n> -> test` en `progress/impl_SLT-226.md`. **Hecho:** los 29 requisitos tienen test.
 - [ ] **T7.4** `./init.sh` en verde. El grupo `dinero` de E2E en local (`docs/perfil-agentes.md`: el diff toca
   `db/` y dinero), aunque esta ficha no añade E2E. **Hecho:** los dos en verde, salvo el aviso de tamaño, aceptado
   por la decisión P5.
@@ -121,3 +136,17 @@
 - `tests/unit/guards/_unicos-sin-empresa.ts`
 - `tests/unit/guards/rls-por-empresa.guardia.test.ts`
 - `tests/integration/db/migracion-slt143-ida-y-vuelta.test.ts`
+- `tests/fixtures/api-key-dependencias-usuario.ts` (T3.4: la relación `CobroIntento.creador` en el censo)
+- R29 (T5.5): `lib/interfaces/repositories/ILibroCajaAutoriaRepository.ts`,
+  `lib/repositories/LibroCajaAutoriaRepository.ts`, `lib/services/LibroCajaAutoriaService.ts`,
+  `lib/types/estado-cuenta.ts`, `components/shared/wallet/detalle-movimiento-panel-labels.ts`,
+  `tests/unit/services/libro-caja-autoria-plataforma.test.ts` y
+  `tests/unit/components/detalle-movimiento-panel-labels-plataforma.test.ts`
+- T0.3: `scripts/demo-qa/borrar.ts` y las limpiezas que borran empresas (`limpiar459` y similares) **no
+  cambian**: el borrado de la demo descubre las tablas con `organizacion_id` y las ordena por sus FK, así que
+  `cobro_intento` se borra antes que sus facturas, sus movimientos y los usuarios; y ninguna limpieza existente
+  limpia empresas con intentos. Las limpiezas de los tests nuevos (T4, T6) borran `cobro_intento` antes que los
+  usuarios y el libro (la FK `RESTRICT` de `creado_por`; el movimiento en línea tiene `registrado_por` nulo).
+
+> **Tamaño (design §10):** ~34 archivos (20 de producción, 14 de tests) tras sumar R29; las líneas de producción
+> pasan del tope, aceptado por la decisión P5.
