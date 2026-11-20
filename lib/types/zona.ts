@@ -1,6 +1,8 @@
+import type { EstadoUsuario, RolValue } from "@prisma/client";
 import { z } from "zod";
 import { zonasConfig } from "@/lib/config/zonas";
 import { sinpeNombreSchema, sinpeNumeroSchema } from "@/lib/utils/sinpe-cr";
+import type { OrderStatusValue } from "@/lib/types/order-status";
 
 // Feature 24 (redefinida). Zod en el borde. Montos >= 0 (patron tarifa.ts).
 const montoSchema = z.number().nonnegative();
@@ -220,6 +222,7 @@ export interface ZonaDTO {
   cobroVehiculo: boolean;
   distritosCount: number;
   esCentral: boolean; // feature 54: flag de zona central (antes esGam)
+  activa: boolean; // SLT-225 (R1740/R1759): false = desactivada, fuera del trabajo nuevo
   // Presente en crear/actualizar/obtener; en listar solo si include incluye "tarifas".
   tarifas?: TarifaZonaMensajeroDTO[];
 }
@@ -304,3 +307,49 @@ export type ImpactoZonaCentralResult =
 // (feature 55/R10) eran los resultados de las Server Actions de `lib/actions/geo.ts`, borradas
 // el 2026-08-07. `ZonaActionError`, del que colgaban, SI sigue vivo: lo usan las cinco acciones
 // de zonas que quedan.
+
+/* --- SLT-225 — desactivar y reactivar una zona ------------------------------------------- */
+
+/**
+ * SLT-225 (R1742-R1746) — TODO lo que impide desactivar una zona, en una sola respuesta.
+ *
+ * Viaja al navegador: por eso no lleva ids de usuario. `rol` y `estado` van como VALOR y no como
+ * texto: la pantalla ya tiene su fuente unica de etiquetas (`ROL_LABELS`, `ESTADO_LABELS`) y el
+ * servicio no redacta texto (design §3.7). `estado` de una orden se nombra con `NOMBRE_ESTADO`.
+ */
+export interface ImpedimentosDesactivacion {
+  esCentral: boolean; // R1745
+  distritos: number; // R1744
+  usuarios: { nombre: string; rol: RolValue; estado: EstadoUsuario }[]; // R1743, de cualquier estado
+  ordenesVivas: {
+    total: number;
+    porEstado: { estado: OrderStatusValue; cantidad: number }[];
+    muestra: string[]; // R1742: hasta 20, «#<guia>» o «remisión <n>» si aun no tiene guia
+  };
+}
+
+/** Cuantas ordenes nombra la muestra de R1742; el total y el conteo por estado no se recortan. */
+export const MUESTRA_ORDENES_VIVAS = 20;
+
+export type DesactivarZonaResult =
+  | { status: "ok" }
+  | { status: "conflict"; motivo: "impedimentos"; impedimentos: ImpedimentosDesactivacion }
+  | { status: "conflict"; motivo: "ya_desactivada" }
+  | Exclude<ZonaActionError, { status: "conflict" }>;
+
+export type ReactivarZonaResult =
+  | { status: "ok" }
+  | { status: "conflict"; motivo: "ya_activa" }
+  | Exclude<ZonaActionError, { status: "conflict" }>;
+
+export const MSG_ZONA_DESACTIVADA_EDITAR = "Esta zona está desactivada. Reactívala para editarla."; // R1753
+export const MSG_ZONA_DESACTIVADA_USUARIO = "Esa zona está desactivada; elige otra."; // R1755
+
+/**
+ * R1756 — las zonas que ofrece el selector de zona de un usuario: las activas y, si la tiene, la que
+ * ese usuario ya tiene aunque este desactivada (si no, el selector la perderia y el guardado la
+ * cambiaria sin que nadie lo pida). Conserva el orden de entrada.
+ */
+export function opcionesZonaUsuario(zonas: ZonaDTO[], zonaActualId: string | null): ZonaDTO[] {
+  return zonas.filter((z) => z.activa || z.id === zonaActualId);
+}

@@ -172,6 +172,9 @@ describeSiHayBase("SLT-56 — tabla de ajustes y tipo de historial, de ida y vue
       // SLT-221: los dos tipos de `20261120130000_slt221_historial_correo_cedula`.
       "usuario_cedula_cambiada",
       "usuario_email_cambiado",
+      // SLT-225: los dos tipos de `20261123120000_historial_zona_desactivada`.
+      "zona_desactivada",
+      "zona_reactivada",
     ];
     expect([...enLaBase].sort()).toEqual(
       HISTORIAL_ACCION_TIPOS.filter((t) => !POSTERIORES.includes(t)).sort(),

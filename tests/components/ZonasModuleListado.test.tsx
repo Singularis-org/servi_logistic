@@ -44,8 +44,8 @@ const { ZonasModule } = await import(
 );
 
 const ZONAS: ZonaDTO[] = [
-  { id: "z1", nombre: "Norte", cobroVehiculo: true, distritosCount: 3, esCentral: true },
-  { id: "z2", nombre: "Sur", cobroVehiculo: false, distritosCount: 1, esCentral: false },
+  { id: "z1", nombre: "Norte", cobroVehiculo: true, distritosCount: 3, esCentral: true , activa: true },
+  { id: "z2", nombre: "Sur", cobroVehiculo: false, distritosCount: 1, esCentral: false , activa: true },
 ];
 
 function arbol(): ProvinciaArbolDTO[] {
@@ -188,7 +188,7 @@ describe("SLT-51/R10 — ningún texto visible de «Zonas» dice «central»", (
 describe("SLT-198/R1230 — una zona sin distritos se marca", () => {
   const CON_VACIA: ZonaDTO[] = [
     ...ZONAS,
-    { id: "z3", nombre: "Oeste", cobroVehiculo: false, distritosCount: 0, esCentral: false },
+    { id: "z3", nombre: "Oeste", cobroVehiculo: false, distritosCount: 0, esCentral: false , activa: true },
   ];
 
   it("con 0 distritos lleva «Sin distritos» y no el texto «0 distritos»", () => {

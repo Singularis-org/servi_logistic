@@ -5,6 +5,7 @@ import type {
   GeneralDeEditar,
   ValoresDeBeneficios,
   ValoresDeModulos,
+  ValoresDeNiveles,
   ValoresDeOrden,
   ValoresDePrecio,
   ValoresDeTopes,
@@ -17,6 +18,7 @@ import { horaCostaRica } from "@/lib/utils/hora-cr";
 
 import {
   beneficiosEnPantalla,
+  nivelesEnPantalla,
   PASOS_QUE_SE_GUARDAN,
   versionDe,
   type CamposVisibles,
@@ -56,6 +58,9 @@ export function valoresDelPaso(
     case "beneficios":
       // SLT-214 (R8): en el orden de pantalla, sin la clave local.
       return { beneficios: version.beneficios };
+    case "niveles":
+      // SLT-215 (R8): en el orden de pantalla, sin la clave local.
+      return { niveles: version.niveles };
     case "vigencia":
       // SLT-135 (R15, R16): siempre la fecha del campo que se ve.
       return { vigenteDesde: visibles.cambiaPrecio ? form.precioDesde : form.vigenteDesde };
@@ -100,6 +105,8 @@ export function formDelBorrador(base: Formulario, pasos: BorradorVista["pasos"])
   if (pasos.modulos) f = { ...f, modulos: [...(pasos.modulos as ValoresDeModulos).modulos] };
   // SLT-214 (R11): en su orden, con su texto y su ícono, y claves locales nuevas.
   if (pasos.beneficios) f = { ...f, beneficios: beneficiosEnPantalla((pasos.beneficios as ValoresDeBeneficios).beneficios) };
+  // SLT-215 (R11): en su orden, con su meta y su descuento, y claves locales nuevas.
+  if (pasos.niveles) f = { ...f, niveles: nivelesEnPantalla((pasos.niveles as ValoresDeNiveles).niveles) };
   if (pasos.vigencia) f = conVigencia(f, pasos.vigencia as ValoresDeVigencia);
   return f;
 }

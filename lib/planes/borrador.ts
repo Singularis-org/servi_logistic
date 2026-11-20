@@ -58,6 +58,8 @@ export function peticionDeCrear(pasos: PasosDeCrear): z.input<typeof crearPlanSc
     modulos: pasos.modulos.modulos,
     // SLT-214 (R15): el paso guardado, en su orden.
     beneficios: pasos.beneficios.beneficios,
+    // SLT-215 (R15): lo mismo con los niveles.
+    niveles: pasos.niveles.niveles,
   };
 }
 
@@ -74,6 +76,8 @@ export function peticionDeEditar(planId: string, pasos: PasosDeEditar): z.input<
     modulos: pasos.modulos.modulos,
     // SLT-214 (R16): van en la versión programada, no en el plan.
     beneficios: pasos.beneficios.beneficios,
+    // SLT-215 (R16): también en la versión programada; la lista del plan no cambia al programar.
+    niveles: pasos.niveles.niveles,
     vigenteDesde: pasos.vigencia.vigenteDesde,
   };
 }

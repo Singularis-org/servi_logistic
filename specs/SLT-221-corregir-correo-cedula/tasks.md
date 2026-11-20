@@ -106,12 +106,14 @@ En PR 2 el margen de líneas de producción es corto: comentarios breves y nada 
 
 Empieza con PR 1 mergeado y la rama al día con `dev`.
 
-- [ ] **T2.0 — `/design`** (bloquea T3.x, no T2.x).
+- [x] **T2.0 — `/design`** (bloquea T3.x, no T2.x). **Omitido por decisión de Carlos 2026-11-19:
+  componentes de hoy, sin canvas.** El bloque va en `UsuarioForm` con sus componentes y la página
+  pública copia la estructura y el estilo de `/recuperar-contrasena`.
   Canvas de la página pública `/recuperar-contrasena/confirmar-correo` (pantalla nueva) y del
   bloque «Cambiar correo / Pendiente de confirmar» dentro de `UsuarioForm`, con los componentes de
   hoy. **Hecho:** el canvas está aprobado por Carlos.
-- [ ] **T2.1 — Migración B y esquema.**
-  `20261120120100_slt221_usuario_cambio_correo` (design §2.2):
+- [x] **T2.1 — Migración B y esquema.**
+  `20261122120000_slt221_usuario_cambio_correo` (design §2.2):
   - tabla, CHECK, índice parcial, RLS `usuario_cambio_correo_por_empresa`, GRANT a `servi_app`;
   - triggers de misma empresa generados con `scripts/generar-misma-empresa.ts --faltantes`;
   - `down.sql`;
@@ -120,7 +122,7 @@ Empieza con PR 1 mergeado y la rama al día con `dev`.
 
   **Hecho:** deploy y rollback limpios, y las guardias `organizacion-en-modelos` y
   `fk-misma-empresa` verdes.
-- [ ] **T2.2 [P] — Piezas puras** (depende de T2.1 solo para tipos).
+- [x] **T2.2 [P] — Piezas puras** (depende de T2.1 solo para tipos).
   - `lib/utils/enlace-de-un-uso.ts`;
   - `AUTH_CAMBIO_CORREO_TTL_HORAS` (72) en `lib/config/auth.ts`;
   - plantilla `confirmar-correo.ts`;
@@ -128,7 +130,7 @@ Empieza con PR 1 mergeado y la rama al día con `dev`.
 
   **Hecho:** typecheck verde. Las piezas se prueban a través de los tests de T2.3 y T2.5, con la
   plantilla real (sin doble).
-- [ ] **T2.3 — Repositorio** (depende de T2.1).
+- [x] **T2.3 — Repositorio** (depende de T2.1).
   Métodos de `usuario_cambio_correo` y `aplicarCambioCorreo` en `IUserRepository`/`UserRepository`
   (design §3.4). **Hecho:** `tests/integration/db/usuario-cambio-correo.test.ts`, contra la base,
   cubre:
@@ -142,7 +144,7 @@ Empieza con PR 1 mergeado y la rama al día con `dev`.
   - dos canjes concurrentes, un solo cambio (R1625).
 
   Cada caso se mata con una mutación del WHERE antes de creerlo.
-- [ ] **T2.4 — Servicio del maestro** (depende de T2.2 y T2.3).
+- [x] **T2.4 — Servicio del maestro** (depende de T2.2 y T2.3).
   - `solicitarCambioCorreo`, `cancelarCambioCorreo` y `cambioCorreoPendiente` en `UsuarioService`;
   - el 7.º parámetro `correoDeCambio`, que lanza si falta;
   - `usuario_email_cambiado` sale de `ESCRITOR_PENDIENTE_EN_CURSO` y entra en el censo.
@@ -152,7 +154,7 @@ Empieza con PR 1 mergeado y la rama al día con `dev`.
     R1620, R1621, R1630, R1631 y R1632 (hash persistido, `#enlace=` en la URL, log sin destinatario
     ni URL);
   - guardia `historial-accion-escrituras-cubiertas` verde.
-- [ ] **T2.5 — Canje** (depende de T2.2 y T2.3).
+- [x] **T2.5 — Canje** (depende de T2.2 y T2.3).
   - `IConfirmarCorreoService` y `ConfirmarCorreoService`;
   - `lib/actions/confirmar-correo.ts`, con `comoPlataforma` + `conEmpresa` y su composition root no
     exportado;
@@ -164,7 +166,7 @@ Empieza con PR 1 mergeado y la rama al día con `dev`.
   - `tests/unit/actions/confirmar-correo.test.ts` cubre el borde y el paso por `comoPlataforma` →
     `conEmpresa`;
   - guardia `plataforma-solo-en-lista` verde.
-- [ ] **T2.6 — Acciones del maestro** (depende de T2.4).
+- [x] **T2.6 — Acciones del maestro** (depende de T2.4).
   - Las tres acciones en `lib/actions/usuarios.ts`;
   - `buildUsuarioService` pasa `correoDeCambio` con `crearEmailSender()`, `baseUrlDeLaApp()`,
     `emailContacto()` y el TTL.
@@ -173,18 +175,21 @@ Empieza con PR 1 mergeado y la rama al día con `dev`.
   - `tests/unit/actions/usuarios-composition.test.ts` prueba que el 7.º parámetro se PASA;
   - `tests/unit/actions/usuarios.test.ts` cubre el borde de las tres acciones (`unauthenticated`,
     id inválido, `.strict()`).
-- [ ] **T3.1 — Bloque del formulario** (depende de T2.0 y T2.6).
+- [x] **T3.1 — Bloque del formulario** (depende de T2.0 y T2.6).
   `CambioCorreoUsuario.tsx`, montado en `UsuarioForm.tsx` en edición (design §7). **Hecho:**
   `tests/unit/components/cambio-correo-usuario.test.tsx` cubre:
   - sin pendiente, con pendiente y vencido (R1618);
   - cancelar (R1619);
   - reenviar (R1620);
   - los mensajes de `conflict` y `envio_fallido`.
-- [ ] **T3.2 — Página pública** (depende de T2.0 y T2.5).
+- [x] **T3.2 — Página pública** (depende de T2.0 y T2.5).
   `app/recuperar-contrasena/confirmar-correo/page.tsx` + `_components/ConfirmarCorreoForm.tsx`.
   Abrirla no llama a nada (R1626); el botón confirma; los tres mensajes (R1622-R1624). **Hecho:**
-  cubierto por T3.3. La página se ve sin sesión, sin tocar `PUBLIC_ROUTES`.
-- [ ] **T3.3 — E2E** (depende de T3.1 y T3.2).
+  `tests/unit/components/confirmar-correo-form.test.tsx` cubre R1622, R1623 (`invalid_or_expired`,
+  `validation_error` y sin `#enlace=`), R1624 (`correo_en_uso`) y R1626 (al montar no llama a la
+  acción); T3.3 cubre R1622, R1623 y R1626 de punta a punta. La página se ve sin sesión, sin tocar
+  `PUBLIC_ROUTES`.
+- [x] **T3.3 — E2E** (depende de T3.1 y T3.2).
   `e2e/usuario-cambio-correo.spec.ts`:
   - el maestro pide el cambio y ve el pendiente;
   - lo cancela y lo vuelve a pedir;
@@ -204,8 +209,8 @@ Empieza con PR 1 mergeado y la rama al día con `dev`.
 ### Archivos esperados — PR 2
 
 - `db/schema.prisma`
-- `db/migrations/20261120120100_slt221_usuario_cambio_correo/migration.sql`
-- `db/migrations/20261120120100_slt221_usuario_cambio_correo/down.sql`
+- `db/migrations/20261122120000_slt221_usuario_cambio_correo/migration.sql`
+- `db/migrations/20261122120000_slt221_usuario_cambio_correo/down.sql`
 - `lib/db/modelos-de-negocio.ts`
 - `lib/db/excepciones-aislamiento.ts`
 - `lib/config/auth.ts`
@@ -231,8 +236,10 @@ Empieza con PR 1 mergeado y la rama al día con `dev`.
 - `tests/unit/actions/confirmar-correo.test.ts`
 - `tests/integration/db/usuario-cambio-correo.test.ts`
 - `tests/unit/guards/historial-accion-escrituras-cubiertas.guardia.test.ts`
+- `tests/unit/components/usuario-form.test.tsx` (el mock de acciones gana las tres del bloque)
 - `tests/unit/components/cambio-correo-usuario.test.tsx`
 - `e2e/usuario-cambio-correo.spec.ts`
+- `playwright.config.ts` (registra el E2E en `aislamiento`)
 
 ## Archivos esperados
 
@@ -241,8 +248,8 @@ Unión de los dos PR (la lee `scripts/archivos-en-vuelo.mjs`):
 - `db/schema.prisma`
 - `db/migrations/20261120130000_slt221_historial_correo_cedula/migration.sql`
 - `db/migrations/20261120130000_slt221_historial_correo_cedula/down.sql`
-- `db/migrations/20261120120100_slt221_usuario_cambio_correo/migration.sql`
-- `db/migrations/20261120120100_slt221_usuario_cambio_correo/down.sql`
+- `db/migrations/20261122120000_slt221_usuario_cambio_correo/migration.sql`
+- `db/migrations/20261122120000_slt221_usuario_cambio_correo/down.sql`
 - `lib/db/modelos-de-negocio.ts`
 - `lib/db/excepciones-aislamiento.ts`
 - `lib/config/auth.ts`
@@ -277,3 +284,4 @@ Unión de los dos PR (la lee `scripts/archivos-en-vuelo.mjs`):
 - `tests/unit/guards/historial-accion-escrituras-cubiertas.guardia.test.ts`
 - `e2e/usuario-corregir-cedula.spec.ts`
 - `e2e/usuario-cambio-correo.spec.ts`
+- `playwright.config.ts`

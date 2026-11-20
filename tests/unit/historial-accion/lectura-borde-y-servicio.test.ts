@@ -263,9 +263,10 @@ describe("362/R17 — `categoria` se traduce a `accion IN (…)` en el borde", (
     // los DOS `nodo_geografico_*` a esa categoria; 10 desde la 375, que añade el tercero del mismo
     // eje (`nodo_geografico_renombrado`); 11 desde SLT-52, que añade `grupo_distritos_borrado`;
     // 12 desde SLT-211, que añade `ordenes_retiradas_a_central`. 14 permisos desde SLT-221, que
-    // añade la cedula y el correo de un usuario.
-    expect(tipos).toHaveLength(12 + 14);
-    expect(new Set(tipos).size).toBe(26);
+    // añade la cedula y el correo de un usuario. 14 desapariciones desde SLT-225, que añade
+    // zona_desactivada y zona_reactivada.
+    expect(tipos).toHaveLength(14 + 14);
+    expect(new Set(tipos).size).toBe(28);
   });
 
   it("categoria Y accion a la vez se INTERSECAN (design §4.2)", () => {

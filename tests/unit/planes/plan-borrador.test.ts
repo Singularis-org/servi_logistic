@@ -40,6 +40,14 @@ const BENEFICIOS = {
   ],
 };
 
+// SLT-215 (R7, R15, R16): el paso «Niveles», después de «Beneficios».
+const NIVELES = {
+  niveles: [
+    { meta: 100, descuento: { tipo: "porcentaje" as const, porcentaje: "5" } },
+    { meta: 500, descuento: { tipo: "monto" as const, monto: "1500" } },
+  ],
+};
+
 const DESCUENTOS_DE_HOY = {
   anual: { tipo: "porcentaje", porcentaje: "10" },
   quincenal: { tipo: "monto", monto: "1500.50" },
@@ -47,19 +55,37 @@ const DESCUENTOS_DE_HOY = {
 
 describe("R16 — los pasos que faltan, en el orden del formulario", () => {
   it("los pasos de cada modo", () => {
-    expect(pasosDelModo("crear")).toEqual(["general", "precio", "orden", "topes", "modulos", "beneficios"]);
-    expect(pasosDelModo("editar")).toEqual(["general", "precio", "orden", "topes", "modulos", "beneficios", "vigencia"]);
+    expect(pasosDelModo("crear")).toEqual(["general", "precio", "orden", "topes", "modulos", "beneficios", "niveles"]);
+    expect(pasosDelModo("editar")).toEqual([
+      "general",
+      "precio",
+      "orden",
+      "topes",
+      "modulos",
+      "beneficios",
+      "niveles",
+      "vigencia",
+    ]);
   });
 
   it("crear sin Topes y programar sin Cuándo rige", () => {
-    expect(pasosQueFaltan("crear", ["modulos", "beneficios", "general", "orden", "precio"])).toEqual(["topes"]);
-    expect(pasosQueFaltan("editar", ["general", "precio", "orden", "topes", "modulos", "beneficios"])).toEqual(["vigencia"]);
+    expect(pasosQueFaltan("crear", ["modulos", "beneficios", "niveles", "general", "orden", "precio"])).toEqual(["topes"]);
+    expect(pasosQueFaltan("editar", ["general", "precio", "orden", "topes", "modulos", "beneficios", "niveles"])).toEqual([
+      "vigencia",
+    ]);
   });
 
   it("sin nada guardado faltan todos; con todos, ninguno", () => {
-    expect(pasosQueFaltan("crear", [])).toEqual(["general", "precio", "orden", "topes", "modulos", "beneficios"]);
-    expect(pasosQueFaltan("editar", ["vigencia", "beneficios", "modulos", "topes", "orden", "precio", "general"])).toEqual([]);
-    expect(pasosQueFaltan("crear", ["topes", "precio"])).toEqual(["general", "orden", "modulos", "beneficios"]);
+    expect(pasosQueFaltan("crear", [])).toEqual(["general", "precio", "orden", "topes", "modulos", "beneficios", "niveles"]);
+    expect(
+      pasosQueFaltan("editar", ["vigencia", "niveles", "beneficios", "modulos", "topes", "orden", "precio", "general"]),
+    ).toEqual([]);
+    expect(pasosQueFaltan("crear", ["topes", "precio"])).toEqual(["general", "orden", "modulos", "beneficios", "niveles"]);
+    // SLT-215 (R12): sin el paso «Niveles» guardado, falta `niveles`.
+    expect(pasosQueFaltan("crear", ["general", "precio", "orden", "topes", "modulos", "beneficios"])).toEqual(["niveles"]);
+    expect(
+      pasosQueFaltan("editar", ["general", "precio", "orden", "topes", "modulos", "beneficios", "vigencia"]),
+    ).toEqual(["niveles"]);
   });
 });
 
@@ -82,6 +108,7 @@ describe("R17 — la petición de crear armada con los cinco pasos", () => {
       topes: TOPES,
       modulos: MODULOS,
       beneficios: BENEFICIOS,
+      niveles: NIVELES,
     };
     const peticion = peticionDeCrear(pasos);
 
@@ -96,6 +123,7 @@ describe("R17 — la petición de crear armada con los cinco pasos", () => {
       topes: TOPES.topes,
       modulos: MODULOS.modulos,
       beneficios: BENEFICIOS.beneficios,
+      niveles: NIVELES.niveles,
     });
     expect(crearPlanSchema.safeParse(peticion).success).toBe(true);
   });
@@ -108,6 +136,7 @@ describe("R17 — la petición de crear armada con los cinco pasos", () => {
       topes: TOPES,
       modulos: { modulos: [] },
       beneficios: { beneficios: [] },
+      niveles: { niveles: [] },
     };
     const peticion = peticionDeCrear(pasos);
 
@@ -129,6 +158,7 @@ describe("R17 — la petición de crear armada con los cinco pasos", () => {
       topes: ESQUEMAS_DE_CREAR.topes.parse(TOPES),
       modulos: ESQUEMAS_DE_CREAR.modulos.parse(MODULOS),
       beneficios: ESQUEMAS_DE_CREAR.beneficios.parse(BENEFICIOS),
+      niveles: ESQUEMAS_DE_CREAR.niveles.parse(NIVELES),
     };
     expect(crearPlanSchema.safeParse(peticionDeCrear(pasos)).success).toBe(true);
   });
@@ -141,6 +171,7 @@ describe("R17 — la petición de crear armada con los cinco pasos", () => {
       topes: TOPES,
       modulos: MODULOS,
       beneficios: BENEFICIOS,
+      niveles: NIVELES,
     };
     const r = crearPlanSchema.safeParse(peticionDeCrear(pasos));
     expect(r.success).toBe(false);
@@ -157,6 +188,7 @@ describe("R18 — la petición de editar armada con los seis pasos", () => {
       topes: TOPES,
       modulos: MODULOS,
       beneficios: BENEFICIOS,
+      niveles: NIVELES,
       vigencia: { vigenteDesde: "2026-12-01" },
     };
     const peticion = peticionDeEditar(PLAN, pasos);
@@ -171,6 +203,7 @@ describe("R18 — la petición de editar armada con los seis pasos", () => {
       topes: TOPES.topes,
       modulos: MODULOS.modulos,
       beneficios: BENEFICIOS.beneficios,
+      niveles: NIVELES.niveles,
       vigenteDesde: "2026-12-01",
     });
     expect(editarPlanSchema.safeParse(peticion).success).toBe(true);

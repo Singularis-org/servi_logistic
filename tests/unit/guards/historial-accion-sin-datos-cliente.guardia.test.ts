@@ -127,7 +127,6 @@ const EXCEPCIONES_DECLARADAS: readonly ExcepcionDeclarada[] = [
     archivo: "lib/repositories/UserRepository.ts",
     accion: "usuario_email_cambiado",
     motivo: "SLT-221 D4/D10: el correo anterior y el nuevo de un usuario de la empresa; descargable y sin purga, aceptado",
-    escritorPendiente: "SLT-221 T2.4 (PR 2)",
   },
 ];
 
@@ -340,11 +339,18 @@ describe("SLT-221/D10 — solo las entradas declaradas pueden llevar la cedula o
     expect(rol?.texto).not.toContain("usuario_zona_cambiada");
   });
 
-  it("control positivo: la entrada exceptuada SI lleva la cedula, y sin la excepcion el archivo sale en rojo", () => {
+  it("control positivo: las entradas exceptuadas SI llevan la cedula y el correo, y sin la excepcion el archivo sale en rojo", () => {
     const codigo = fuente(USER_REPO);
     const cedula = bloquesDeEntrada(codigo).find((b) => b.accion === "usuario_cedula_cambiada");
     expect(prohibidosEn(cedula?.texto ?? "")).toContain("cedula");
-    expect(hallazgosDe(USER_REPO, codigo, [])).toEqual([`${USER_REPO} (entrada usuario_cedula_cambiada): cedula`]);
+    const correo = bloquesDeEntrada(codigo).find((b) => b.accion === "usuario_email_cambiado");
+    expect(prohibidosEn(correo?.texto ?? "")).toContain("email");
+    // SLT-221 PR 2: el canje arma su entrada dentro de la llamada, asi que tambien la delata el bloque.
+    expect(hallazgosDe(USER_REPO, codigo, [])).toEqual([
+      `${USER_REPO} (llamada 4): email`,
+      `${USER_REPO} (entrada usuario_cedula_cambiada): cedula`,
+      `${USER_REPO} (entrada usuario_email_cambiado): email`,
+    ]);
   });
 
   it("CONTRAPRUEBA: meter `email` en la entrada de `usuario_rol_cambiado` sigue en rojo aunque haya excepcion", () => {

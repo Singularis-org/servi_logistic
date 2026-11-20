@@ -75,6 +75,7 @@ describe("410/R36 · guardia: ningun tipo de job se queda sin handler", () => {
       "factura_plataforma_cerrar", // SLT-118 (design §4.2): el cierre horario (HH:10) de las facturas de la plataforma
       "liberar_reprogramadas",
       "plan_cambios_vencidos", // SL-24 (design §16.3): el barrido horario de cambios de plan vencidos
+      "plan_niveles_cerrar", // SLT-215 (design §5): el cierre diario (06:20 UTC) de los niveles por volumen
       "whatsapp_envio_mantenimiento",
     ]);
   });

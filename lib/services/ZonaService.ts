@@ -9,10 +9,12 @@ import type {
   ActualizarZonaServiceResult,
   BorrarZonaServiceResult,
   CrearZonaServiceResult,
+  DesactivarZonaServiceResult,
   ImpactoZonaCentralServiceResult,
   IZonaService,
   ListarZonasServiceResult,
   ObtenerZonaServiceResult,
+  ReactivarZonaServiceResult,
 } from "@/lib/interfaces/services/IZonaService";
 import type {
   ActualizarZonaInput,
@@ -20,7 +22,7 @@ import type {
   ListarZonasInput,
   TarifaZonaMensajeroInput,
 } from "@/lib/types/zona";
-import { MENSAJE_CENTRAL_SIN_DISTRITOS } from "@/lib/types/zona";
+import { MENSAJE_CENTRAL_SIN_DISTRITOS, MSG_ZONA_DESACTIVADA_EDITAR } from "@/lib/types/zona";
 import { rechazoDeNombreDeEtiqueta } from "@/lib/utils/nombre-imprimible-etiqueta";
 
 /**
@@ -226,6 +228,10 @@ export class ZonaService implements IZonaService {
       actor.usuarioId,
     );
     if (res.estado === "not_found") return { status: "not_found" };
+    // SLT-225 (R1753): cuelga de `nombre`, el primer campo del formulario, porque no es de ninguno.
+    if (res.estado === "zona_desactivada") {
+      return { status: "validation_error", fieldErrors: { nombre: [MSG_ZONA_DESACTIVADA_EDITAR] } };
+    }
     // 376/R6: el desenlace del repositorio se traduce a la rama de validacion que ya existia, con
     // el motivo colgado del CAMPO de la marca para que la pantalla lo pinte junto a la casilla.
     if (res.estado === "sin_zona_central") {
@@ -265,6 +271,24 @@ export class ZonaService implements IZonaService {
     if (res === "es_central") return { status: "conflict", motivo: "es_central" };
     if (res === "referenced") return { status: "conflict", motivo: "en_uso" };
     return { status: "ok" };
+  }
+
+  /** SLT-225 (R1751): mismo gate `maestro` que el CRUD, antes de tocar el repositorio. */
+  async desactivar(id: string, actor: Actor): Promise<DesactivarZonaServiceResult> {
+    if (!esMaestro(actor)) return { status: "forbidden" };
+    const res = await this.repo.desactivar(id, actor.usuarioId);
+    if (res.estado === "ok") return { status: "ok" };
+    if (res.estado === "not_found") return { status: "not_found" };
+    if (res.estado === "ya_desactivada") return { status: "conflict", motivo: "ya_desactivada" };
+    return { status: "conflict", motivo: "impedimentos", impedimentos: res.impedimentos };
+  }
+
+  async reactivar(id: string, actor: Actor): Promise<ReactivarZonaServiceResult> {
+    if (!esMaestro(actor)) return { status: "forbidden" };
+    const res = await this.repo.reactivar(id, actor.usuarioId);
+    if (res.estado === "ok") return { status: "ok" };
+    if (res.estado === "not_found") return { status: "not_found" };
+    return { status: "conflict", motivo: "ya_activa" };
   }
 
   /**

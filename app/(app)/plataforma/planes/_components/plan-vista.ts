@@ -7,6 +7,7 @@ import {
   textoDelCostoPorOrdenPorcentual,
   textoDelPrecio,
 } from "@/lib/planes/mensajes";
+import { SIN_NIVELES, textoDelNivel, type Nivel } from "@/lib/planes/niveles";
 import { ROLES_CON_TOPE, type TopesPlan } from "@/lib/types/planes";
 
 // SLT-58 (design §6.3, §6.5) — cómo se pinta un plan en el catálogo y en su detalle. Puro: sin React.
@@ -70,4 +71,12 @@ export function lineasDeCosto(plan: PlanParaCosto): string[] {
     TEXTOS_PLAN.costoBase(textoDelPrecio(plan.precio)),
     TEXTOS_PLAN.costoPorOrden(textoDelCostoPorOrdenDelPlan(plan)),
   ];
+}
+
+/**
+ * SLT-215 (design §4.3; R21) — la columna «Niveles» del catálogo: una línea por nivel, en su orden («Nivel n: desde
+ * M órdenes, −p %» o «… −monto»); sin niveles, «Sin niveles».
+ */
+export function lineasDeNiveles(niveles: readonly Nivel[]): string[] {
+  return niveles.length === 0 ? [SIN_NIVELES] : niveles.map((n, i) => textoDelNivel(i + 1, n));
 }
