@@ -312,6 +312,18 @@ describe("427/T2 — el UP y el DOWN, leidos del archivo", () => {
       "20261121120000_slt224_zona_de_ordenes_en_central",
       // SLT-143: la tabla `pago_plataforma_anulacion` y el pago por fuera; no toca `orden_traspaso_mensajero`.
       "20261121130000_pago_plataforma_por_fuera",
+      // SLT-215: el valor `plan_niveles_cerrar` de `job_tipo` y las tablas y funciones de los niveles por volumen;
+      // no tocan `orden_traspaso_mensajero`.
+      "20261121140000_plan_nivel_job_enum",
+      "20261121140100_plan_nivel",
+      // SLT-221: la tabla del cambio de correo pendiente; no toca `orden_traspaso_mensajero`.
+      "20261122120000_slt221_usuario_cambio_correo",
+      // SLT-225: los tipos `zona_desactivada`/`zona_reactivada` y la marca `zona.activa` con sus dos
+      // triggers; no tocan `orden_traspaso_mensajero`.
+      "20261123120000_historial_zona_desactivada",
+      "20261123120100_zona_activa",
+      // SL-21: seis columnas de moneda e impuesto en `pais` y el relleno de CR; no toca `orden_traspaso_mensajero`.
+      "20261124120000_sl21_pais_moneda_impuesto",
     ]);
   });
 });

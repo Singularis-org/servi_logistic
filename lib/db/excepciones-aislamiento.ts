@@ -104,6 +104,11 @@ export const EXCEPCIONES_DE_PLATAFORMA: readonly ExcepcionDeAislamiento[] = [
     motivo: "recuperar contrasena: buscar el usuario y su OTP sin sesion ni empresa",
   },
   {
+    archivo: "lib/actions/confirmar-correo.ts",
+    ficha: "SL-18",
+    motivo: "SLT-221: confirmar un cambio de correo sin sesión; el enlace lleva a su empresa",
+  },
+  {
     archivo: "lib/api/api-key-request.ts",
     ficha: "SL-17",
     motivo: "resolver la API key a su empresa antes de abrir su contexto (R13)",
@@ -229,6 +234,13 @@ export const EXCEPCIONES_DE_PLATAFORMA: readonly ExcepcionDeAislamiento[] = [
     ficha: "SL-24",
     motivo:
       "SLT-118: el cierre horario de las facturas de la plataforma recorre todas las empresas y llama a `factura_plataforma_cerrar`, función del dueño que `servi_app` no puede ejecutar (R3, R22, R25)",
+  },
+  {
+    // SLT-215 (design §3.5). Lleva `SL-24` (la ficha de los planes) porque `FichaJira` no admite `SLT` (deuda D29).
+    archivo: "lib/repositories/NivelesEmpresaRepository.ts",
+    ficha: "SL-24",
+    motivo:
+      "SLT-215: cerrar los meses de los niveles por volumen de todas las empresas; llama a `plan_nivel_cerrar_meses`, función del dueño que `servi_app` no puede ejecutar (R29, R36)",
   },
   {
     // SLT-60 (design §4.3). Lleva `SL-45` (la ficha del pago a la plataforma) porque `FichaJira` no admite

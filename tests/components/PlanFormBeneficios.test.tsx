@@ -147,7 +147,8 @@ describe("SLT-214 R9 — sin beneficios", () => {
     expect(screen.getByText("Este plan no tiene beneficios.")).toBeInTheDocument();
 
     await user.click(boton("Guardar y continuar"));
-    await waitFor(() => expect(tituloDelPasoActual()).toBe("Revisar y crear"));
+    // SLT-215 «Planes: niveles de beneficio por volumen de órdenes» (R7): el siguiente es «Niveles».
+    await waitFor(() => expect(tituloDelPasoActual()).toBe("Niveles"));
     expect(acciones.guardarPaso).toHaveBeenLastCalledWith(
       expect.objectContaining({ paso: "beneficios", valores: { beneficios: [] } }),
     );
@@ -190,7 +191,8 @@ describe("SLT-214 R10 — validar al guardar el paso", () => {
     await user.type(texto(2), "Acceso anticipado");
     await user.click(boton("Quitar beneficio 3"));
     await user.click(boton("Guardar y continuar"));
-    await waitFor(() => expect(tituloDelPasoActual()).toBe("Revisar y crear"));
+    // SLT-215 «Planes: niveles de beneficio por volumen de órdenes» (R7): el siguiente es «Niveles».
+    await waitFor(() => expect(tituloDelPasoActual()).toBe("Niveles"));
   });
 
   it("R10: un error del servidor en `beneficios.<i>.texto` va bajo su campo", async () => {

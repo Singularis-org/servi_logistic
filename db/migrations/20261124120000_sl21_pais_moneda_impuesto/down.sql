@@ -1,4 +1,4 @@
--- DOWN (SL-21, design §2.1; R3) — revierte 20261122120000_sl21_pais_moneda_impuesto.
+-- DOWN (SL-21, design §2.1; R3) — revierte 20261124120000_sl21_pais_moneda_impuesto.
 --
 -- Solo borra lo que creó la subida: los ocho CHECK y las seis columnas. Ninguna fila de `pais` se
 -- pierde y sus columnas de antes no cambiaron nunca.

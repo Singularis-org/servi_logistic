@@ -77,6 +77,11 @@ import {
   recurrenciaCierreFacturas,
 } from "@/lib/planes/jobs-factura-plataforma";
 import { buildDepsAvisoFactura, crearFacturaAvisoHandler } from "@/lib/planes/jobs-factura-aviso";
+import {
+  buildNivelesEmpresaRepositoryDeJobs,
+  crearCierreNivelesHandler,
+  recurrenciaCierreNiveles,
+} from "@/lib/planes/jobs-niveles";
 
 export interface ProcesarJobsDeps {
   // Secreto esperado (inyectable en tests). Por defecto, `CRON_SECRET` del entorno.
@@ -283,6 +288,9 @@ export function buildHandlers(
   // SLT-136 (design §7.2; R22, R30): el aviso de UNA factura recién cerrada. PUNTUAL y CON empresa (lo encola
   // el cierre en su transacción, con la empresa de la factura). Las deps se construyen al correr.
   handlers.set("factura_plataforma_aviso", crearFacturaAvisoHandler(buildDepsAvisoFactura));
+  // SLT-215 (design §5; R29, R30): el cierre mensual de los niveles por volumen, RECURRENTE (diario a las 06:20
+  // UTC) y de plataforma: recorre las empresas con meses pendientes. `getPrismaClient()` es perezoso.
+  handlers.set("plan_niveles_cerrar", crearCierreNivelesHandler(buildNivelesEmpresaRepositoryDeJobs(), now));
   return new Map(
     [...handlers].map(([tipo, h]) => [
       tipo,
@@ -307,6 +315,8 @@ export const RECURRENTES_DE_PLATAFORMA: ReadonlySet<JobTipo> = new Set<JobTipo>(
   // SLT-118 (design §4.2): el cierre de facturas es de todas las empresas, y una por empresa no abriría la
   // primera factura de una empresa nueva.
   "factura_plataforma_cerrar",
+  // SLT-215 (design §5): el cierre de los niveles es de todas las empresas con meses pendientes.
+  "plan_niveles_cerrar",
 ]);
 
 /**
@@ -334,6 +344,9 @@ export function buildRecurrencias(): Map<JobTipo, RecurrenciaSpec> {
   // SLT-118 (design §4.2; R25): el cierre de las facturas de la plataforma, cada hora a los :10. Corre una
   // vez en plataforma (`RECURRENTES_DE_PLATAFORMA`); su primera fila la siembra `SIEMBRAS_RECURRENTES`.
   recurrencias.set("factura_plataforma_cerrar", recurrenciaCierreFacturas);
+  // SLT-215 (design §5; P1, R29): el cierre de los niveles por volumen, diario a las 06:20 UTC. Corre una vez en
+  // plataforma (`RECURRENTES_DE_PLATAFORMA`); su primera fila la siembra `SIEMBRAS_RECURRENTES`.
+  recurrencias.set("plan_niveles_cerrar", recurrenciaCierreNiveles);
   return recurrencias;
 }
 

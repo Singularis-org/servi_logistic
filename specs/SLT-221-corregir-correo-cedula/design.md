@@ -71,7 +71,7 @@ sin él la vuelta atrás aborta.
 `valorAnterior` y `valorNuevo`, con su comentario actualizado (la columna admite, por D10, el
 correo y el documento de un usuario).
 
-### 2.2 Migración B — PR 2: `20261120120100_slt221_usuario_cambio_correo`
+### 2.2 Migración B — PR 2: `20261122120000_slt221_usuario_cambio_correo`
 
 Tabla de negocio nueva `usuario_cambio_correo` (modelo `UsuarioCambioCorreo`). El molde de una
 tabla de negocio es `20261031140100_slt73_ajuste_conciliacion`.
@@ -154,6 +154,22 @@ El composition root (`buildConfirmarCorreoService`) es una función NO exportada
 en un archivo `"use server"` toda función exportada es un endpoint.
 
 ### 3.4 PR 2 — servicios y repositorio
+
+> **Ajuste de implementación (PR 2, backend, 2026-11-19).** Dos cambios de forma, sin cambio de
+> comportamiento, anotados en `progress/impl_SLT-221.md`:
+> 1. Los accesos a `usuario_cambio_correo` van en una interfaz aparte, `ICambioCorreoRepository`
+>    (mismo archivo `IUserRepository.ts`), que implementa el MISMO `UserRepository`. Meterlos en
+>    `IUserRepository` rompía 16 dobles de test de ese contrato y pasaba el tope de 40 archivos del PR.
+>    Por eso `correoDeCambio` lleva además `repo: ICambioCorreoRepository` (el `UserRepository` del
+>    primer parámetro), y `usuarios-composition.test.ts` prueba que es esa instancia.
+> 2. `IConfirmarCorreoService` tiene dos métodos, uno por contexto: `empresaDelEnlace` (limitador y
+>    empresa, dentro de `comoPlataforma`) y `confirmar` (secreto y canje, dentro de `conEmpresa`).
+> 3. El índice `usuario_cambio_correo_abierto` es `(organizacion_id, usuario_id)` y no `(usuario_id)`:
+>    la guardia `unicos-por-empresa` (SL-18 R22) exige `organizacion_id` primero. Es el mismo único,
+>    porque el usuario ya es de una empresa.
+> 4. El aviso del envío fallido (§4.2 paso 9) es `avisarEnvioFallidoCambioCorreo(causa)`, junto a la
+>    plantilla: la guardia `contrasena-generada-superficie` (feature 287) prohíbe todo `console` en
+>    `UsuarioService.ts`, por donde pasa una contraseña en claro.
 
 - `UsuarioService` gana `solicitarCambioCorreo`, `cancelarCambioCorreo` y `cambioCorreoPendiente`.
   Viven aquí y no en un servicio aparte por la regla del propio archivo: una sola lista de permisos
@@ -297,8 +313,8 @@ Toda salida inválida da la misma respuesta (R1623). No toca `Session` (R1627) n
 `lib/services/email/plantillas/confirmar-correo.ts` sobre `componerCorreo`:
 - asunto `Confirma tu correo en ${MARCA.nombre}` (sin enlace en el asunto ni en el preheader,
   criterio de SL-41 R11);
-- un párrafo: «Tu administrador cambió el correo de tu cuenta a este. Confírmalo para empezar a
-  entrar con él.»;
+- un párrafo: «Tu administrador pidió cambiar el correo de tu cuenta a este. El cambio está
+  pendiente: confírmalo para empezar a entrar con él.» (review PR 2, m7: el correo aún no cambió);
 - botón «Confirmar correo»;
 - nota de vencimiento en horas;
 - nota «Si no esperabas este cambio, ignora este correo: tu cuenta no cambia.»

@@ -4,6 +4,7 @@ import { ROL_LABELS } from "@/lib/auth/rol-label";
 import { formatearMontoEn, MONEDA_DE_LOS_PLANES, SIN_MONTO_RAYA } from "@/lib/config/moneda";
 import { nombreDelModulo } from "@/lib/modulos/catalogo";
 import { cambiosDeBeneficios, type Beneficio } from "@/lib/planes/beneficios";
+import { textoDeLosNiveles, type Nivel } from "@/lib/planes/niveles";
 import { importeCanonico } from "@/lib/planes/rastro";
 import type { CosteoDelCiclo, CostoVigente } from "@/lib/types/consumo-plan";
 import {
@@ -286,6 +287,8 @@ export interface CambioDelPlanParaCorreo {
   modulos?: { antes: readonly ModuloApagable[]; despues: readonly ModuloApagable[] };
   /** SLT-214 (R25): las dos listas en su orden; las compara `cambiosDeBeneficios` con la regla de R4. */
   beneficios?: { antes: readonly Beneficio[]; despues: readonly Beneficio[] };
+  /** SLT-215 (R20): las dos listas de niveles en su orden. */
+  niveles?: { antes: readonly Nivel[]; despues: readonly Nivel[] };
   /** SLT-86 (R30): una fila de antes de la ficha trae aquí el anual (`PrecioAnterior`). */
   precio?: { antes: PrecioDelRastro; despues: PrecioDelRastro };
   /** SLT-86 (R31): un descuento por período, en su propia clave del rastro (`rastro.ts`). */
@@ -507,6 +510,10 @@ export function lineasDeCambioDelPlan(c: CambioDelPlanParaCorreo): string[] {
   }
   // SLT-214 (R25): «Se agrega: …», «Se quita: …» o la línea de solo íconos u orden, después de los módulos.
   if (c.beneficios) lineas.push(...cambiosDeBeneficios(c.beneficios.antes, c.beneficios.despues));
+  // SLT-215 (R20, P5): una sola línea con las dos listas enteras, después de los beneficios.
+  if (c.niveles) {
+    lineas.push(`Niveles por volumen: ${textoDeLosNiveles(c.niveles.antes)} → ${textoDeLosNiveles(c.niveles.despues)}`);
+  }
   // SLT-66 (R9): el precio mensual de SL-24 se llama ahora «costo base».
   if (c.precio) lineas.push(`Costo base: ${textoDelPrecio(c.precio.antes)} → ${textoDelPrecio(c.precio.despues)}`);
   // SLT-86 (R31): un descuento por línea, en el orden de los tipos.

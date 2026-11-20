@@ -192,6 +192,8 @@ test("R26: crear un plan con 4 beneficios, verlos en el listado con «Mostrar m�
   await page.getByRole("option", { name: TEXTO.soporte, exact: true }).click();
   await expect(icono2).toContainText(TEXTO.soporte);
 
+  // SLT-215 «Planes: niveles de beneficio por volumen de órdenes» (R7, R9): «Niveles» tras «Beneficios», sin niveles.
+  await guardarYContinuar(form, "Niveles");
   // «Revisar y crear» los lista en orden (R14) y «Crear plan» los guarda (R15).
   await guardarYContinuar(form, "Revisar y crear");
   await expect(itemsDeBeneficios(form)).toHaveText([...BENEFICIOS]);
@@ -267,6 +269,8 @@ test("R26: editar los beneficios programa el cambio con su fecha sin cambiar tod
   await form.getByRole("button", { name: TEXTO.quitarBeneficio(4), exact: true }).click();
   await expect(form.getByRole("textbox", { name: TEXTO.textoDelBeneficio(4), exact: true })).toHaveCount(0);
   await agregarBeneficio(form, 4, BENEFICIO_NUEVO);
+  // SLT-215 (R7): al editar, «Niveles» va antes de «Cuándo rige».
+  await guardarYContinuar(form, "Niveles");
   await guardarYContinuar(form, "Cuándo rige");
 
   // «A partir de» F: la empresa mensual lo recibe en F.

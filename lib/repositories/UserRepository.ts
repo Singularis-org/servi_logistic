@@ -9,9 +9,14 @@ import { textoConstraintP2002 } from "@/lib/repositories/_shared/prisma-unique";
 import { escaparComodinesLike } from "@/lib/utils/escapar-like";
 import { NOMBRE_USUARIO_SELECT, nombreCompletoUsuario } from "@/lib/utils/nombre-usuario";
 import {
+  CambioCorreoSimultaneoError,
   CatalogoInvalidoError,
   UsuarioDuplicadoError,
+  type AbrirCambioCorreoInput,
+  type CambioCorreoAbierto,
+  type CambioCorreoParaCanje,
   type CreateUsuarioInput,
+  type ICambioCorreoRepository,
   type CuentaConHash,
   type CuentaPublica,
   type CuentaTiendaValidacion,
@@ -32,7 +37,9 @@ import type { CuentaTiendaDTO, MensajeroFiltroDTO } from "@/lib/types/filtros-or
 type UserPrismaClient = Pick<
   PrismaClient,
   "usuario" | "tipoIdentificacion" | "rol" | "$transaction" | "historialAccion"
->;
+> &
+  // SLT-221: opcional para que los dobles de Prisma que no tocan el cambio de correo sigan valiendo.
+  Partial<Pick<PrismaClient, "usuarioCambioCorreo">>;
 
 const PUBLIC_SELECT = {
   id: true,
@@ -108,8 +115,14 @@ function ordenarCuentas<T extends CuentaPublica>(cuentas: T[]): T[] {
   });
 }
 
-export class UserRepository implements IUserRepository {
+export class UserRepository implements IUserRepository, ICambioCorreoRepository {
   constructor(private readonly prisma: UserPrismaClient) {}
+
+  private get cambiosCorreo(): PrismaClient["usuarioCambioCorreo"] {
+    const delegado = this.prisma.usuarioCambioCorreo;
+    if (!delegado) throw new Error("UserRepository: el cliente no trae `usuarioCambioCorreo` (SLT-221)");
+    return delegado;
+  }
 
   async findCuentasPorEmailConHash(email: string): Promise<CuentaConHash[]> {
     const filas = await this.prisma.usuario.findMany({
@@ -691,6 +704,148 @@ export class UserRepository implements IUserRepository {
       select: { id: true, value: true },
       orderBy: { value: "asc" },
     });
+  }
+
+  // ── SLT-221 (design §3.4): el cambio de correo pendiente. La empresa la ponen la extensión y la RLS.
+
+  async existeEmailEnEmpresa(email: string, excluirUsuarioId: string): Promise<boolean> {
+    const fila = await this.prisma.usuario.findFirst({
+      where: { email, id: { not: excluirUsuarioId } },
+      select: { id: true },
+    });
+    return fila !== null;
+  }
+
+  async abrirCambioCorreo(input: AbrirCambioCorreoInput): Promise<{ id: string; expiraAt: Date }> {
+    try {
+      return await this.abrirCambioCorreoEnTx(input);
+    } catch (error) {
+      // m5: la otra petición creó su abierto entre nuestro `updateMany` y el `create`.
+      const texto = textoConstraintP2002(error);
+      if (texto && (texto.includes("usuario_cambio_correo_abierto") || texto.includes("usuario_id"))) {
+        throw new CambioCorreoSimultaneoError();
+      }
+      throw error;
+    }
+  }
+
+  private abrirCambioCorreoEnTx(input: AbrirCambioCorreoInput): Promise<{ id: string; expiraAt: Date }> {
+    return this.prisma.$transaction(async (tx) => {
+      // R1616, R1620: el abierto anterior deja de valer antes de crear el nuevo (índice parcial).
+      await tx.usuarioCambioCorreo.updateMany({
+        where: { usuarioId: input.usuarioId, confirmadoAt: null, anuladoAt: null },
+        data: { anuladoAt: new Date() },
+      });
+      return tx.usuarioCambioCorreo.create({
+        data: {
+          usuarioId: input.usuarioId,
+          emailNuevo: input.emailNuevo,
+          secretoHash: input.secretoHash,
+          solicitadoPorId: input.solicitadoPorId,
+          expiraAt: input.expiraAt,
+        },
+        select: { id: true, expiraAt: true },
+      });
+    });
+  }
+
+  async anularCambioCorreo(id: string): Promise<void> {
+    await this.cambiosCorreo.updateMany({
+      where: { id, confirmadoAt: null, anuladoAt: null },
+      data: { anuladoAt: new Date() },
+    });
+  }
+
+  async anularCambioCorreoAbierto(usuarioId: string): Promise<void> {
+    await this.cambiosCorreo.updateMany({
+      where: { usuarioId, confirmadoAt: null, anuladoAt: null },
+      data: { anuladoAt: new Date() },
+    });
+  }
+
+  async cambioCorreoAbierto(usuarioId: string): Promise<CambioCorreoAbierto | null> {
+    return this.cambiosCorreo.findFirst({
+      where: { usuarioId, confirmadoAt: null, anuladoAt: null },
+      select: { id: true, emailNuevo: true, expiraAt: true },
+    });
+  }
+
+  async empresaDelCambioCorreo(id: string): Promise<string | null> {
+    const fila = await this.cambiosCorreo.findUnique({
+      where: { id },
+      select: { organizacionId: true },
+    });
+    return fila?.organizacionId ?? null;
+  }
+
+  async cambioCorreoParaCanje(id: string): Promise<CambioCorreoParaCanje | null> {
+    return this.cambiosCorreo.findFirst({
+      where: { id, confirmadoAt: null, anuladoAt: null, expiraAt: { gt: new Date() } },
+      select: {
+        id: true,
+        usuarioId: true,
+        emailNuevo: true,
+        secretoHash: true,
+        solicitadoPorId: true,
+      },
+    });
+  }
+
+  /**
+   * SLT-221 (R1622, R1624, R1625) — `usuario_email_cambiado`. Se consume ANTES de escribir el
+   * correo: de dos canjes concurrentes, el segundo espera el bloqueo de la fila y su `updateMany` ya
+   * no la ve abierta. Un P2002 de `usuario_email_key` revierte la transacción entera y el pendiente
+   * queda como estaba.
+   */
+  async aplicarCambioCorreo(id: string): Promise<"ok" | "invalido" | "correo_en_uso"> {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const ahora = new Date();
+        const consumido = await tx.usuarioCambioCorreo.updateMany({
+          where: { id, confirmadoAt: null, anuladoAt: null, expiraAt: { gt: ahora } },
+          data: { confirmadoAt: ahora },
+        });
+        if (consumido.count === 0) return "invalido" as const;
+
+        const pendiente = await tx.usuarioCambioCorreo.findUniqueOrThrow({
+          where: { id },
+          select: { usuarioId: true, emailNuevo: true, solicitadoPorId: true },
+        });
+        const previo = await tx.usuario.findUniqueOrThrow({
+          where: { id: pendiente.usuarioId },
+          select: { email: true },
+        });
+        const usuario = await tx.usuario.update({
+          where: { id: pendiente.usuarioId },
+          data: { email: pendiente.emailNuevo },
+          select: { id: true, nombre: true, primerApellido: true },
+        });
+
+        // Excepción DECLARADA a «ningún dato de persona en la fila» (D10), como la cédula.
+        const actor = await resolverActorCongelado(tx, pendiente.solicitadoPorId);
+        await appendAccion(tx, [
+          {
+            accion: "usuario_email_cambiado",
+            entidadTipo: "usuario",
+            entidadId: usuario.id,
+            entidadEtiqueta: etiquetaDeEntidad("usuario", {
+              nombre: usuario.nombre,
+              primerApellido: usuario.primerApellido,
+            }),
+            ...actor,
+            valorAnterior: previo.email,
+            valorNuevo: pendiente.emailNuevo,
+          },
+        ]);
+        return "ok" as const;
+      });
+    } catch (error) {
+      const traducido = mapDuplicadoError(error);
+      if (traducido instanceof UsuarioDuplicadoError && traducido.campo === "email") {
+        return "correo_en_uso";
+      }
+      throw error;
+    }
   }
 
   private toUpdateData(data: UpdateUsuarioData): Prisma.UsuarioUncheckedUpdateManyInput {

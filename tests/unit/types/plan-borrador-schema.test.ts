@@ -14,8 +14,9 @@ import {
   leerBorradorSchema,
 } from "@/lib/types/plan-borrador";
 import { BENEFICIO_REPETIDO, TEXTO_LARGO, TEXTO_VACIO } from "@/lib/planes/beneficios";
+import { DEMASIADOS_NIVELES, META_INVALIDA, META_NO_CRECE } from "@/lib/planes/niveles";
 import { MENSAJE_MONTO_COBRO_INVALIDO } from "@/lib/types/cobro-plataforma";
-import { crearPlanSchema } from "@/lib/types/planes";
+import { SOLO_UNA_FORMA, crearPlanSchema } from "@/lib/types/planes";
 
 // SLT-129 (design §3; R3, R6, R7) — el esquema de cada paso del borrador. Cada error sale con la clave de campo
 // de `PlanesService.crear` / `.editar` (la forma de `erroresDeCampo` de `PlanesService`) y con el mensaje
@@ -297,8 +298,9 @@ describe("SLT-214 — el paso «Beneficios» del borrador", () => {
   ] as const;
 
   it("R7: va justo después de «Módulos», y al editar antes de «Cuándo rige»", () => {
-    expect(PASOS_DE_CREAR).toEqual(["general", "precio", "orden", "topes", "modulos", "beneficios"]);
-    expect(PASOS_DE_EDITAR).toEqual(["general", "precio", "orden", "topes", "modulos", "beneficios", "vigencia"]);
+    // SLT-215 (R7): «Niveles» va entre «Beneficios» y «Cuándo rige».
+    expect(PASOS_DE_CREAR).toEqual(["general", "precio", "orden", "topes", "modulos", "beneficios", "niveles"]);
+    expect(PASOS_DE_EDITAR).toEqual(["general", "precio", "orden", "topes", "modulos", "beneficios", "niveles", "vigencia"]);
   });
 
   it.each(MODOS)("R9, R10 (%s): la lista vacía y una lista válida pasan; el texto se guarda recortado", (_modo, esquema) => {
@@ -352,5 +354,80 @@ describe("SLT-214 — el paso «Beneficios» del borrador", () => {
       valores: { beneficios: [{ icono: "check", texto: "Uno" }, { icono: "rayo", texto: "uno" }] },
     });
     expect(claves(r)).toEqual(["valores.beneficios.1.texto"]);
+  });
+});
+
+// SLT-215 (design §3.7; R7, R10, R3–R5) — el paso «Niveles» del borrador, en los dos modos. Sus errores salen en
+// `niveles.<i>.meta`, `niveles.<i>.descuento.<campo>` o `niveles`, la clave que el formulario pinta junto a su campo.
+describe("SLT-215 — el paso «Niveles» del borrador", () => {
+  const MODOS = [
+    ["crear", ESQUEMAS_DE_CREAR.niveles],
+    ["editar", ESQUEMAS_DE_EDITAR.niveles],
+  ] as const;
+  const pct = (meta: unknown, porcentaje: string) => ({ meta, descuento: { tipo: "porcentaje", porcentaje } });
+  const monto = (meta: unknown, m: string) => ({ meta, descuento: { tipo: "monto", monto: m } });
+
+  it("R7: va justo después de «Beneficios»; al editar, antes de «Cuándo rige»", () => {
+    expect(PASOS_DE_CREAR.indexOf("niveles")).toBe(PASOS_DE_CREAR.indexOf("beneficios") + 1);
+    expect(PASOS_DE_CREAR.at(-1)).toBe("niveles");
+    expect(PASOS_DE_EDITAR.indexOf("niveles")).toBe(PASOS_DE_EDITAR.indexOf("beneficios") + 1);
+    expect(PASOS_DE_EDITAR.indexOf("vigencia")).toBe(PASOS_DE_EDITAR.indexOf("niveles") + 1);
+  });
+
+  it.each(MODOS)("R9, R10 (%s): la lista vacía y una lista válida pasan, en su orden", (_modo, esquema) => {
+    expect(claves(esquema.safeParse({ niveles: [] }))).toEqual([]);
+    const r = esquema.safeParse({ niveles: [pct(100, "5"), monto(500, "1500.50")] });
+    expect(r.success && r.data.niveles).toEqual([pct(100, "5"), monto(500, "1500.50")]);
+  });
+
+  it.each(MODOS)("R3 (%s): meta 0, decimal o que no crece, en `niveles.<i>.meta` con su mensaje", (_modo, esquema) => {
+    const r = esquema.safeParse({ niveles: [pct(0, "5"), pct(10.5, "5"), pct(Number.NaN, "5")] });
+    expect(claves(r).sort()).toEqual(["niveles.0.meta", "niveles.1.meta", "niveles.2.meta"]);
+    expect(mensajes(r, "niveles.0.meta")).toEqual([META_INVALIDA]);
+    const noCrece = esquema.safeParse({ niveles: [pct(100, "5"), pct(100, "10"), pct(50, "15")] });
+    expect(claves(noCrece).sort()).toEqual(["niveles.1.meta", "niveles.2.meta"]);
+    expect(mensajes(noCrece, "niveles.1.meta")).toEqual([META_NO_CRECE]);
+  });
+
+  it.each(MODOS)("R4 (%s): el descuento fuera de rango o con las dos formas, en `niveles.<i>.descuento.<campo>`", (_modo, esquema) => {
+    const r = esquema.safeParse({ niveles: [pct(1, "0"), pct(2, "100.01"), monto(3, "0"), monto(4, "1.234")] });
+    expect(claves(r).sort()).toEqual([
+      "niveles.0.descuento.porcentaje",
+      "niveles.1.descuento.porcentaje",
+      "niveles.2.descuento.monto",
+      "niveles.3.descuento.monto",
+    ]);
+    const dos = esquema.safeParse({ niveles: [{ meta: 1, descuento: { tipo: "porcentaje", porcentaje: "10", monto: "5" } }] });
+    expect(claves(dos)).toEqual(["niveles.0.descuento.monto"]);
+    expect(mensajes(dos, "niveles.0.descuento.monto")).toEqual([SOLO_UNA_FORMA]);
+  });
+
+  it.each(MODOS)("R5 (%s): 11 niveles dan el error en `niveles`; 10 pasan", (_modo, esquema) => {
+    const lista = (n: number) => Array.from({ length: n }, (_, i) => pct((i + 1) * 10, "1"));
+    expect(claves(esquema.safeParse({ niveles: lista(10) }))).toEqual([]);
+    const r = esquema.safeParse({ niveles: lista(11) });
+    expect(claves(r)).toEqual(["niveles"]);
+    expect(mensajes(r, "niveles")).toEqual([DEMASIADOS_NIVELES]);
+  });
+
+  it.each(MODOS)("R10 (%s): sin la lista, o con claves de más, no pasa", (_modo, esquema) => {
+    expect(esquema.safeParse({}).success).toBe(false);
+    expect(esquema.safeParse({ niveles: [], beneficios: [] }).success).toBe(false);
+    expect(claves(esquema.safeParse({ niveles: [{ ...pct(1, "5"), nombre: "Oro" }] }))).toEqual(["niveles.0"]);
+  });
+
+  it("R10: guardar el paso en los dos modos; sus errores salen bajo `valores.niveles.<i>.<campo>`", () => {
+    const valores = { niveles: [pct(100, "5")] };
+    expect(guardarPasoBorradorSchema.safeParse({ modo: "crear", borradorId: randomUUID(), paso: "niveles", valores }).success).toBe(
+      true,
+    );
+    expect(guardarPasoBorradorSchema.safeParse({ modo: "editar", planId: randomUUID(), paso: "niveles", valores }).success).toBe(true);
+    const r = guardarPasoBorradorSchema.safeParse({
+      modo: "editar",
+      planId: randomUUID(),
+      paso: "niveles",
+      valores: { niveles: [pct(100, "5"), monto(90, "0")] },
+    });
+    expect(claves(r).sort()).toEqual(["valores.niveles.1.descuento.monto", "valores.niveles.1.meta"]);
   });
 });

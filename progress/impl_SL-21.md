@@ -230,3 +230,118 @@ T4.1 y T4.2 hechas y en verde.
 
 ### Veredicto
 T4.3–T4.6 hechas y en verde.
+
+## Tanda 5 — Bloque 5, guardia y docs (T5.1, T5.2; R20, R21) y recuentos de migraciones
+
+Grafo: no usado (worktree sin indexar); Grep/Read.
+
+### Commits
+- `test(SL-21): T5.1` guardia `pais-sin-literales` con moneda e impuesto.
+- `docs(SL-21): T5.2` párrafo «Moneda e impuesto (SL-21)» en `docs/architecture.md`.
+- `test(SL-21): recuentos de migraciones y columnas` (con esta sección).
+
+### Archivos
+- `tests/unit/guards/pais-sin-literales.guardia.test.ts`: `literalesDelPais` caza «₡», `\bCRC\b`, `\bIVA\b` y los
+  imports (también de varias líneas, con alias o como `export … from`) de `money`, `moneyTope`, `formatMonto`,
+  `formatMontoString`, `formatMontoTope`, `montoExacto` y `monedaConfig` desde `@/lib/config/moneda`. Fichas
+  admitidas: `SLT-81`, `SLT-90`, `SL-22`, `SLT-235`, `SLT-237` y `permanente` (con fecha en el motivo). 14 casos
+  de autocomprobación nuevos. R21: el control positivo de la segunda parte exige `EtiquetasLotePdfService` entre
+  los receptores de `reglasPais?`.
+- `tests/unit/guards/_pais-sin-literales-excepciones.ts`: 12 entradas nuevas sacadas de la salida real; tope 8 → 20.
+- `lib/constants/impuesto-rotulo.ts`: el comentario remite a SLT-235.
+- `docs/architecture.md`: el párrafo de T5.2.
+- `tests/integration/db/orden-traspaso-migration.test.ts` (fuera de la lista esperada): la migración de SL-21 entra
+  en su lista de posteriores.
+
+### Excepciones nuevas (salida real de la guardia)
+`app/paquete/[numGuia]/page.tsx` (SLT-235, `formatMonto`), `lib/analytics/metrics.ts` (SLT-235, IVA),
+`lib/api/openapi-spec.ts` (permanente, IVA), `lib/config/moneda.ts` (SLT-237, CRC y ₡),
+`lib/constants/impuesto-rotulo.ts` y `lib/constants/wallet-rotulos.ts` (SLT-235, IVA),
+`lib/repositories/TarifaValorRepository.ts` y `lib/repositories/_shared/resolver-tarifas.ts` (SLT-235, IVA),
+`lib/services/AnaliticaFinancieraService.ts` (SLT-235, `monedaConfig`), `lib/types/plantilla-datos.ts` (SLT-235, ₡),
+`lib/types/tarifa-flexible.ts` (SLT-235, IVA), `lib/whatsapp-envios/informes/transito/informe.ts` (SLT-235, ₡).
+
+### Mapa R → test (tanda 5)
+| R | Test |
+|---|---|
+| R20 | `pais-sin-literales.guardia.test.ts` (censo, lista que solo baja, tope 20, fichas; autocomprobación «SL-21: …») |
+| R21 | `pais-sin-literales.guardia.test.ts` (segunda parte: `EtiquetasLotePdfService` es receptor y sus 3 rutas pasan el real) |
+
+### Verificación (salida real)
+- `pais-sin-literales.guardia.test.ts` → 49 passed (antes 35).
+- Recuentos contra `servi_logistic_sl21`: 21 archivos candidatos (`orden-traspaso-migration`,
+  `verificar-rls-despliegue`, `empresas-plataforma`, `migracion-slt143/-slt42/-sl20/-sl21/-plan-beneficio`,
+  `zona-desalineada-central-migration`, los 6 `historial-accion-*-migration` con lista de migraciones,
+  `correccion-resultado-gestion-migration`, `caja-459-migration`, `schema-drift-saneamiento`, `no-migration-102`,
+  `pais-tabla`, `tipo-documento-por-pais`) → 1 failed (`orden-traspaso`: 143 posteriores contra 142) | 196 passed.
+  Tras el arreglo, `orden-traspaso` y 11 más que leen `db/migrations` (`backfill-guards`, `orden-clave-remision`,
+  `orden-num-remision-parcial`, `notificacion-productores-wiring`, `busqueda-orden`, `censo-order-status-rename`,
+  `carga-masiva-schema`, `plantillas.int`, `orden-mensajero-meta.int`, `migracion-sl17`, `migracion-sl38`)
+  → 12 files, 167 passed. `verificar-rls-despliegue` no cambia: SL-21 no añade tablas.
+- `pnpm run typecheck` → verde. `pnpm run lint` → 0 errores, 249 warnings (los mismos).
+- `pnpm run test:guardias` → 360 files, 5435 passed | 1 skipped.
+
+### Desviaciones del design
+- `lib/pdf/etiquetas-dibujo.ts` no entra en la lista: nombra `MONEDA_PLATAFORMA` y la guardia no lo marca.
+  Tampoco `PlantillaMensajeService.preview` ni `resolverValoresOrden` (`lib/utils/whatsapp-envio-valores.ts`):
+  caen en la moneda de la plataforma por el `moneda ?? MONEDA_PLATAFORMA` de `plantilla-datos.ts`, sin literal ni
+  import marcado. El censo es por archivo, así que no los ve (anotado en el motivo de `plantilla-datos.ts`).
+- Las `page.tsx` de `app/` no escriben «IVA»; la única página en la lista es `app/paquete/[numGuia]/page.tsx`.
+
+### Veredicto
+T5.1 y T5.2 hechas y en verde; recuentos al día. Queda T5.3 (init.sh y E2E en local).
+
+## Cierre (T5.3) · implementer · 2026-11-20
+
+### Mapa R → test consolidado (R22)
+| R | Test |
+|---|---|
+| R1 | `tests/integration/db/migracion-sl21-ida-y-vuelta.test.ts`, `tests/integration/db/pais-moneda-impuesto.test.ts` |
+| R2 | `tests/integration/db/pais-moneda-impuesto.test.ts` (17 casos, 23514) |
+| R3 | `tests/integration/db/migracion-sl21-ida-y-vuelta.test.ts` |
+| R4 | `tests/integration/db/pais-moneda-impuesto.test.ts` (42501 como `servi_app`) |
+| R5 | `tests/unit/services/reglas-pais-empresa-service.test.ts`, `tests/integration/db/pais-repositorio.test.ts` |
+| R6 | `tests/unit/services/reglas-pais-empresa-service.test.ts`; además `whatsapp-moneda-por-pais`, `informe-moneda-por-pais` y `etiquetas-lote-pdf-service` (falla antes de enviar o subir) |
+| R7 | `tests/unit/services/reglas-pais-empresa-service.test.ts` |
+| R8 | `tests/unit/config/moneda-formato-pais.test.ts` |
+| R9 | `tests/unit/guards/dinero-centimos-cuando-existen.guardia.test.ts`, `tests/unit/config/moneda-formato-pais.test.ts` (CR migrada = plataforma) |
+| R10 | `tests/unit/services/whatsapp-moneda-por-pais.test.ts` |
+| R11 | `tests/unit/services/whatsapp-moneda-por-pais.test.ts` |
+| R12 | `tests/unit/whatsapp-envios/informe-moneda-por-pais.test.ts` |
+| R13 | `tests/unit/whatsapp-envios/informe-moneda-por-pais.test.ts` |
+| R14 | `tests/unit/services/etiquetas-lote-pdf-service.test.ts` |
+| R15 | `tests/unit/planes/factura-moneda-plataforma.test.ts` |
+| R16 | casos CR de los tests nuevos de R10, R12, R14 y R15, y los existentes sin cambiar valores esperados: `plantilla-datos`, `informe-transito-calculo`, `informe-transito-pdf`, PDF de etiquetas y facturas |
+| R17 | `tests/unit/services/organizacion-service-pais.test.ts`, `tests/integration/db/organizacion-alta.test.ts` |
+| R18 | `tests/unit/utils/monto-cobrar-por-pais.test.ts` |
+| R19 | `tests/integration/db/migracion-sl21-ida-y-vuelta.test.ts` (enums y `wallet_movimiento` iguales) y los tests de contrato de `tests/unit/api/openapi-*.test.ts` sin cambios (20 files, 255 passed el 2026-11-20); `lib/api/openapi-spec.ts` fuera del diff |
+| R20 | `tests/unit/guards/pais-sin-literales.guardia.test.ts` |
+| R21 | `tests/unit/guards/pais-sin-literales.guardia.test.ts` (receptores de `reglasPais`) |
+| R22 | todos los anteriores usan una empresa de CR y otra de un país de prueba con `MONEDA_DE_PRUEBA`; sin E2E nuevo |
+
+### Gate local
+`./init.sh` (modo rápido) en verde, exit 0, el 2026-11-20. Lo corrí con una copia temporal de
+`arnes.config.json` con `cupos_por_persona.fullstack` subido (el board tiene 12 fullstack en vuelo de
+otras fichas, aceptado por el humano); la restauré al terminar y no se commitea.
+- typecheck y lint en verde; `test:rapido` en verde: 7 lotes, 659 files, 8 626 passed, 1 skipped.
+- Tamaño: 64/40 archivos, 674/1000 líneas de producción y 1771/3000 de tests (aceptado por el humano).
+- Todas las migraciones con `down.sql`.
+
+### E2E
+No se corrieron en local. Por la memoria justa de la máquina, el leader pidió no lanzar playwright
+en esta sesión. Los E2E afectados (el grupo `dinero` y los de etiquetas, plantillas y facturas) quedan
+al CI del PR. No hay E2E nuevo (decisión cerrada: para CR la salida es idéntica, R16). Queda creada,
+para correrlos en local, la base desechable `servi_logistic_sl21_e2e`.
+
+## Renombre tras mergear dev · 2026-11-20
+- La migración pasa de `20261122120000_sl21_pais_moneda_impuesto` a `20261124120000_sl21_pais_moneda_impuesto` (dev trae `20261122120000_slt221_usuario_cambio_correo`, mismo timestamp; tasks T1.1).
+
+### Gate tras mergear dev (2026-11-20)
+- Merge de origin/dev (72 commits; conflicto trivial en `orden-traspaso-migration.test.ts`) y migración
+  renombrada a `20261124120000_sl21_pais_moneda_impuesto` (c7abbb16). Base `servi_logistic_sl21` recreada;
+  `migrate diff` vacío; tests de migración/país 7 files 151 passed; guardias 360 files, 5440 passed.
+- `./init.sh` tras el merge NO llega a los pasos de código: el validador de `feature_list.json` cae por el
+  board (cupo backend 7/6 y SLT-235 en vuelo sin assignee), ajeno a esta rama. El último `./init.sh`
+  completo en verde es el de antes del merge (84815d54).
+- A mano, tras el merge: typecheck verde; lint 0 errores (249 warnings, los de siempre). `test:rapido` lo
+  cortó el sistema por falta de memoria y no se relanzó; queda la suite completa del CI (`gate-completo`).

@@ -1,7 +1,7 @@
 // Clasificacion de los modelos de `db/schema.prisma` (SL-17, design §2): la UNICA lista que leen la
 // extension de aislamiento, las guardias y el generador de migraciones.
 //
-//   · negocio    (92): llevan `organizacion_id`; la extension filtra y la RLS manda.
+//   · negocio    (94): llevan `organizacion_id`; la extension filtra y la RLS manda.
 //   · plataforma (23): catalogos, geografia, autenticacion previa a la empresa, cache tecnica, el
 //                      valor global del cobro por orden (SL-40), la marca de entorno (SL-43), los
 //                      paises y el historial de plataforma (SL-20) y el catalogo de planes con su
@@ -34,6 +34,7 @@ export const MODELOS_DE_NEGOCIO: readonly ModeloClasificado[] = [
   { modelo: "Usuario", tabla: "usuario" },
   { modelo: "MensajeroDocumento", tabla: "mensajero_documento" },
   { modelo: "UsuarioPreferencia", tabla: "usuario_preferencia" },
+  { modelo: "UsuarioCambioCorreo", tabla: "usuario_cambio_correo" }, // SLT-221: cambio de correo pendiente
   { modelo: "PushSuscripcion", tabla: "push_suscripcion" },
   { modelo: "PushEnvioDia", tabla: "push_envio_dia" },
   { modelo: "AsistenteUsoDiario", tabla: "asistente_uso_diario" },
@@ -123,6 +124,10 @@ export const MODELOS_DE_NEGOCIO: readonly ModeloClasificado[] = [
   { modelo: "PagoPlataformaAplicacion", tabla: "pago_plataforma_aplicacion" },
   // Anulación de un pago confirmado por el superadmin (SLT-143): la escribe solo una función del dueño
   { modelo: "PagoPlataformaAnulacion", tabla: "pago_plataforma_anulacion" },
+  // El nivel por volumen de cada empresa y su historial (SLT-215, R36): los escriben solo funciones del dueño; la
+  // empresa solo los lee
+  { modelo: "PlanNivelEmpresa", tabla: "plan_nivel_empresa" },
+  { modelo: "PlanNivelHistorial", tabla: "plan_nivel_historial" },
   // Cobro de fulfillment por paquete a la tienda (SLT-94): lo escriben solo los triggers de `orden` y de su bitácora
   { modelo: "OrdenFulfillmentMovimiento", tabla: "orden_fulfillment_movimiento" },
   // Devoluciones
@@ -194,6 +199,8 @@ export const MODELOS_DE_PLATAFORMA: readonly ModeloClasificado[] = [
   // Los beneficios de texto de un plan (SLT-214, R6): igual que el catalogo; la empresa los lee solo por
   // `plan_de_la_empresa`
   { modelo: "PlanBeneficio", tabla: "plan_beneficio" },
+  // Los niveles por volumen de un plan (SLT-215, R6): igual que el catalogo
+  { modelo: "PlanNivel", tabla: "plan_nivel" },
   // Paises (SL-20): solo lectura para `servi_app` (R3); los da de alta el superadmin
   { modelo: "Pais", tabla: "pais" },
   // Historial del superadmin (SL-20, D15): sin acceso para `servi_app` (R34)

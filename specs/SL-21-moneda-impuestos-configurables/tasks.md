@@ -5,7 +5,7 @@
 
 ## Bloque 1 — Datos del país (R1–R4)
 
-- [x] **T1.1** Migración `20261122120000_sl21_pais_moneda_impuesto` (`migration.sql` y `down.sql`).
+- [x] **T1.1** Migración `20261124120000_sl21_pais_moneda_impuesto` (`migration.sql` y `down.sql`).
   - Contenido: las 6 columnas, los 8 `CHECK`, la precondición de la fila CR y el `UPDATE` de CR
     (design §2.1).
   - Si al implementar ya hay migraciones con timestamp posterior en `dev`, se renombra al siguiente
@@ -69,17 +69,17 @@
 
 ## Bloque 5 — Guardia, docs y cierre (depende del bloque 4)
 
-- [ ] **T5.1** Guardia `pais-sin-literales` (design §7): el censo nuevo, las fichas `SLT-235`,
+- [x] **T5.1** Guardia `pais-sin-literales` (design §7): el censo nuevo, las fichas `SLT-235`,
   `SLT-237` y `permanente`, la lista de excepciones con la salida real y el tope nuevo. Además, el
   comentario de `lib/constants/impuesto-rotulo.ts` pasa a decir SLT-235.
   - *Hecho:* `pnpm run test:guardias` en verde, y la autocomprobación caza «₡», `CRC`, `IVA` y un
     `import { money }` en fuentes inventadas (R20, R21).
-- [ ] **T5.2** `docs/architecture.md`: un párrafo «Moneda e impuesto (SL-21)» junto al de SLT-42.
+- [x] **T5.2** `docs/architecture.md`: un párrafo «Moneda e impuesto (SL-21)» junto al de SLT-42.
   Explica las columnas, el puerto, `formatearMontoEn`, `MONEDA_DE_LOS_PLANES` y la guardia.
   - *Hecho:* el reviewer lo encuentra y cuadra con el código.
-- [ ] **T5.3** Cierre.
+- [x] **T5.3** Cierre.
   - `./init.sh` en verde.
-  - E2E en local del grupo `dinero` y de los que tocan etiquetas, plantillas y facturas
+  - (2026-11-20: en esta sesión, al CI por memoria; constancia en la bitácora) E2E en local del grupo `dinero` y de los que tocan etiquetas, plantillas y facturas
     (`docs/perfil-agentes.md > E2E en local antes del PR`), sobre una base desechable.
   - El mapa R → test va en `progress/impl_SL-21.md` (R22).
   - *Hecho:* todo verde y el mapa con los 22 requisitos.
@@ -88,8 +88,8 @@
 
 Producción:
 - `db/schema.prisma`
-- `db/migrations/20261122120000_sl21_pais_moneda_impuesto/migration.sql`
-- `db/migrations/20261122120000_sl21_pais_moneda_impuesto/down.sql`
+- `db/migrations/20261124120000_sl21_pais_moneda_impuesto/migration.sql`
+- `db/migrations/20261124120000_sl21_pais_moneda_impuesto/down.sql`
 - `lib/types/pais.ts`
 - `lib/repositories/PaisRepository.ts`
 - `lib/interfaces/services/IReglasPaisEmpresa.ts`
@@ -153,6 +153,7 @@ Tests:
 - `tests/integration/db/informe-transito-catalogo-real.test.ts` (añadido en T4.2)
 - `tests/unit/services/api-pdf-etiqueta-columna-intacta.test.ts` (añadido en T4.3)
 - `tests/integration/db/organizacion-alta.test.ts` (añadido en T4.5)
+- `tests/integration/db/orden-traspaso-migration.test.ts` (añadido al cierre: recuento de migraciones)
 
 Los fixtures de `PaisDTO` y los dobles escritos a mano del puerto son los que hoy construyen el
 objeto entero, según Grep del 2026-11-19. Si el typecheck señala otro, se añade aquí antes del PR.

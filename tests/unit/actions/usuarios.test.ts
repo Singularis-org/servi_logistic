@@ -9,6 +9,9 @@ import {
   listarRoles,
   restablecerContrasenaUsuario,
   consultarImpactoCambioUsuario,
+  solicitarCambioCorreoUsuario,
+  cancelarCambioCorreoUsuario,
+  obtenerCambioCorreoPendiente,
 } from "@/lib/actions/usuarios";
 import type { Actor, IUsuarioService } from "@/lib/interfaces/services/IUsuarioService";
 import type { UsuarioPublico } from "@/lib/interfaces/repositories/IUserRepository";
@@ -68,6 +71,10 @@ function fakeService(overrides: Partial<IUsuarioService> = {}): IUsuarioService 
     // FICHA 379 (T8): por defecto NO hay nada que avisar, que es el caso normal. Los casos con
     // impacto lo sobreescriben.
     consultarImpactoCambio: vi.fn().mockResolvedValue({ status: "ok", impacto: null }),
+    // SLT-221 (T2.6): los tres del cambio de correo.
+    solicitarCambioCorreo: vi.fn().mockResolvedValue({ status: "envio_fallido" }),
+    cancelarCambioCorreo: vi.fn().mockResolvedValue({ status: "ok" }),
+    cambioCorreoPendiente: vi.fn().mockResolvedValue({ status: "ok", pendiente: null }),
     ...overrides,
   };
 }
@@ -506,5 +513,125 @@ describe("SLT-221 R1601/R1607: actualizarUsuario admite la cédula y sigue cerra
     );
     expect(r.status).toBe("validation_error");
     if (r.status === "validation_error") expect(r.fieldErrors.cedula).toEqual(["Motivo-SLT221"]);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// SLT-221 (T2.6) — el borde de las tres acciones del cambio de correo.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+const PENDIENTE = { emailNuevo: "nuevo@example.com", expiraAt: "2026-11-25T12:00:00.000Z", vencido: false };
+
+describe("SLT-221 T2.6 — solicitarCambioCorreoUsuario: el borde", () => {
+  it("sin sesión -> unauthenticated sin tocar el service (R1631)", async () => {
+    const service = fakeService();
+    const r = await solicitarCambioCorreoUsuario(
+      "usr-1",
+      { email: "nuevo@example.com" },
+      { usuarioService: service, getActor: noActor },
+    );
+    expect(r.status).toBe("unauthenticated");
+    expect(service.solicitarCambioCorreo).not.toHaveBeenCalled();
+  });
+
+  it("id inválido -> validation_error con clave `id`, sin llamar al service", async () => {
+    const service = fakeService();
+    const r = await solicitarCambioCorreoUsuario(
+      "",
+      { email: "nuevo@example.com" },
+      { usuarioService: service, getActor: getActor(MAESTRO) },
+    );
+    expect(r.status).toBe("validation_error");
+    if (r.status === "validation_error") expect(Object.keys(r.fieldErrors)).toContain("id");
+    expect(service.solicitarCambioCorreo).not.toHaveBeenCalled();
+  });
+
+  it("⭑ clave desconocida -> validation_error (prueba del `.strict()`)", async () => {
+    const service = fakeService();
+    const r = await solicitarCambioCorreoUsuario(
+      "usr-1",
+      { email: "nuevo@example.com", usuarioId: "otro" },
+      { usuarioService: service, getActor: getActor(MAESTRO) },
+    );
+    expect(r.status).toBe("validation_error");
+    expect(service.solicitarCambioCorreo).not.toHaveBeenCalled();
+  });
+
+  it("un correo mal formado -> validation_error en `email`, sin llamar al service (R1610)", async () => {
+    const service = fakeService();
+    const r = await solicitarCambioCorreoUsuario(
+      "usr-1",
+      { email: "no-es-un-correo" },
+      { usuarioService: service, getActor: getActor(MAESTRO) },
+    );
+    expect(r.status).toBe("validation_error");
+    if (r.status === "validation_error") expect(Object.keys(r.fieldErrors)).toContain("email");
+    expect(service.solicitarCambioCorreo).not.toHaveBeenCalled();
+  });
+
+  it("delega con id, correo y actor, y propaga `ok`, `envio_fallido` y `conflict` tal cual", async () => {
+    for (const salida of [
+      { status: "ok" as const, pendiente: PENDIENTE },
+      { status: "envio_fallido" as const },
+      { status: "conflict" as const, campo: "email" as const },
+    ]) {
+      const service = fakeService({ solicitarCambioCorreo: vi.fn().mockResolvedValue(salida) });
+      const r = await solicitarCambioCorreoUsuario(
+        "usr-1",
+        { email: "nuevo@example.com" },
+        { usuarioService: service, getActor: getActor(MAESTRO) },
+      );
+      expect(r).toEqual(salida);
+      expect(service.solicitarCambioCorreo).toHaveBeenCalledWith(
+        "usr-1",
+        { email: "nuevo@example.com" },
+        MAESTRO,
+      );
+    }
+  });
+});
+
+describe("SLT-221 T2.6 — cancelarCambioCorreoUsuario y obtenerCambioCorreoPendiente: el borde", () => {
+  it("sin sesión -> unauthenticated sin tocar el service", async () => {
+    const service = fakeService();
+    expect((await cancelarCambioCorreoUsuario("usr-1", { usuarioService: service, getActor: noActor })).status).toBe(
+      "unauthenticated",
+    );
+    expect((await obtenerCambioCorreoPendiente("usr-1", { usuarioService: service, getActor: noActor })).status).toBe(
+      "unauthenticated",
+    );
+    expect(service.cancelarCambioCorreo).not.toHaveBeenCalled();
+    expect(service.cambioCorreoPendiente).not.toHaveBeenCalled();
+  });
+
+  it("id inválido -> validation_error con clave `id`, sin llamar al service", async () => {
+    const service = fakeService();
+    const deps = { usuarioService: service, getActor: getActor(MAESTRO) };
+    for (const r of [await cancelarCambioCorreoUsuario(42, deps), await obtenerCambioCorreoPendiente("", deps)]) {
+      expect(r.status).toBe("validation_error");
+      if (r.status === "validation_error") expect(Object.keys(r.fieldErrors)).toContain("id");
+    }
+    expect(service.cancelarCambioCorreo).not.toHaveBeenCalled();
+    expect(service.cambioCorreoPendiente).not.toHaveBeenCalled();
+  });
+
+  it("delegan con id y actor y propagan lo que da el service", async () => {
+    const service = fakeService({
+      cambioCorreoPendiente: vi.fn().mockResolvedValue({ status: "ok", pendiente: PENDIENTE }),
+    });
+    const deps = { usuarioService: service, getActor: getActor(MAESTRO) };
+    expect(await cancelarCambioCorreoUsuario("usr-1", deps)).toEqual({ status: "ok" });
+    expect(service.cancelarCambioCorreo).toHaveBeenCalledWith("usr-1", MAESTRO);
+    expect(await obtenerCambioCorreoPendiente("usr-1", deps)).toEqual({ status: "ok", pendiente: PENDIENTE });
+    expect(service.cambioCorreoPendiente).toHaveBeenCalledWith("usr-1", MAESTRO);
+  });
+
+  it("propagan `not_found` y `forbidden` del service (R1630, R1631)", async () => {
+    const service = fakeService({
+      cancelarCambioCorreo: vi.fn().mockResolvedValue({ status: "not_found" }),
+      cambioCorreoPendiente: vi.fn().mockResolvedValue({ status: "forbidden" }),
+    });
+    const deps = { usuarioService: service, getActor: getActor(MAESTRO) };
+    expect((await cancelarCambioCorreoUsuario("usr-1", deps)).status).toBe("not_found");
+    expect((await obtenerCambioCorreoPendiente("usr-1", deps)).status).toBe("forbidden");
   });
 });

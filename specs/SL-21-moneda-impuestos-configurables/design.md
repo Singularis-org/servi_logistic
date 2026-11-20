@@ -61,7 +61,7 @@ El precio de los planes por moneda es de SLT-237. Los céntimos en la carga, de 
 `pais` es una tabla **de plataforma**: no tiene `organizacion_id` y está en `MODELOS_DE_PLATAFORMA`.
 No hay tabla de negocio nueva ni índice único nuevo.
 
-### 2.1 Migración `20261122120000_sl21_pais_moneda_impuesto`
+### 2.1 Migración `20261124120000_sl21_pais_moneda_impuesto`
 
 ```sql
 BEGIN;

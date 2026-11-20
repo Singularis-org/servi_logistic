@@ -8,8 +8,10 @@ import {
   crearUsuarioSchema,
   listarUsuariosCompletoSchema,
   listarUsuariosSchema,
+  solicitarCambioCorreoSchema,
   type ActionError,
   type ActualizarUsuarioResult,
+  type CancelarCambioCorreoResult,
   type CambiarEstadoUsuarioResult,
   type ConsultarImpactoCambioUsuarioResult,
   type CrearUsuarioResult,
@@ -17,8 +19,10 @@ import {
   type ListarTiposIdentificacionResult,
   type ListarUsuariosCompletoResult,
   type ListarUsuariosResult,
+  type ObtenerCambioCorreoPendienteResult,
   type ObtenerUsuarioResult,
   type RestablecerContrasenaResult,
+  type SolicitarCambioCorreoResult,
 } from "@/lib/types/usuario";
 import type { Actor, IUsuarioService } from "@/lib/interfaces/services/IUsuarioService";
 import { UsuarioService } from "@/lib/services/UsuarioService";
@@ -29,6 +33,10 @@ import { VehiculoRepository } from "@/lib/repositories/VehiculoRepository";
 import { SessionRepository } from "@/lib/repositories/SessionRepository";
 import { CierreBodegaRepository } from "@/lib/repositories/CierreBodegaRepository";
 import { getPrismaClient } from "@/lib/db/prisma-client";
+import { authConfig } from "@/lib/config/auth";
+import { baseUrlDeLaApp } from "@/lib/config/app-url";
+import { emailContacto } from "@/lib/config/email";
+import { crearEmailSender } from "@/lib/services/EmailProvider";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import {
   withErrorHandler,
@@ -66,8 +74,9 @@ function buildUsuarioService(): IUsuarioService {
   // parametro tambien es opcional, olvidarlo NO rompe el typecheck, y `consultarImpactoCambio`
   // lanzaria en produccion la primera vez que el maestro tocara el rol de alguien. Lo prueba
   // el mismo `usuarios-composition.test.ts`.
+  const userRepo = new UserRepository(prisma);
   return new UsuarioService(
-    new UserRepository(prisma),
+    userRepo,
     new ZonaRepository(prisma),
     new VehiculoRepository(prisma),
     new SessionRepository(prisma),
@@ -75,7 +84,25 @@ function buildUsuarioService(): IUsuarioService {
     // SLT-42: las reglas del pais de la empresa. Sexto parametro opcional, con el mismo riesgo y la
     // misma prueba que los dos anteriores: sin el, el alta y la edicion del telefono lanzan.
     construirReglasPaisEmpresa(prisma),
+    // SLT-221: el correo de confirmacion del cambio de correo. Septimo parametro opcional, con el
+    // mismo riesgo y la misma prueba: sin el, pedir, cancelar y consultar el cambio lanzan.
+    {
+      repo: userRepo,
+      sender: crearEmailSender(),
+      baseUrl: baseUrlDeLaApp(),
+      contacto: emailContacto(),
+      ttlHoras: authConfig.CAMBIO_CORREO_TTL_HORAS,
+    },
   );
+}
+
+// SLT-221: el `id` invalido es `validation_error` en el campo `id`, como en las demas acciones.
+function parseIdOLanza(id: unknown): string {
+  const parsedId = idSchema.safeParse(id);
+  if (!parsedId.success) {
+    throw new ValidationError(MSG.VALIDATION_ERROR, { fieldErrors: { id: ["id invalido"] } });
+  }
+  return parsedId.data;
 }
 
 export interface UsuarioActionDeps {
@@ -304,6 +331,60 @@ export async function listarRoles(
     if (!actor) throw new UnauthenticatedError(); // R2
     const service = deps.usuarioService ?? buildUsuarioService();
     return service.listarRoles(actor);
+  });
+  return isAppErrorShape(r) ? toUsuarioActionError(r) : r;
+}
+
+/**
+ * SLT-221 (design §3.2; R1610-R1617, R1620): el maestro pide el correo nuevo de un usuario. También
+ * es «Reenviar», con el correo del pendiente. El correo del usuario no cambia hasta el canje.
+ */
+export async function solicitarCambioCorreoUsuario(
+  id: unknown,
+  input: unknown,
+  deps: UsuarioActionDeps = {},
+): Promise<SolicitarCambioCorreoResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError();
+    const parsedId = parseIdOLanza(id);
+    const data = solicitarCambioCorreoSchema.parse(input); // ZodError -> VALIDATION_ERROR
+    const service = deps.usuarioService ?? buildUsuarioService();
+    return service.solicitarCambioCorreo(parsedId, data, actor);
+  });
+  return isAppErrorShape(r) ? toUsuarioActionError(r) : r;
+}
+
+/**
+ * SLT-221 (R1619): anula el cambio de correo pendiente del usuario.
+ */
+export async function cancelarCambioCorreoUsuario(
+  id: unknown,
+  deps: UsuarioActionDeps = {},
+): Promise<CancelarCambioCorreoResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError();
+    const parsedId = parseIdOLanza(id);
+    const service = deps.usuarioService ?? buildUsuarioService();
+    return service.cancelarCambioCorreo(parsedId, actor);
+  });
+  return isAppErrorShape(r) ? toUsuarioActionError(r) : r;
+}
+
+/**
+ * SLT-221 (R1618): el cambio de correo pendiente del usuario, o `null`.
+ */
+export async function obtenerCambioCorreoPendiente(
+  id: unknown,
+  deps: UsuarioActionDeps = {},
+): Promise<ObtenerCambioCorreoPendienteResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError();
+    const parsedId = parseIdOLanza(id);
+    const service = deps.usuarioService ?? buildUsuarioService();
+    return service.cambioCorreoPendiente(parsedId, actor);
   });
   return isAppErrorShape(r) ? toUsuarioActionError(r) : r;
 }

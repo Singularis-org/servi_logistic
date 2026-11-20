@@ -91,8 +91,12 @@ export default defineConfig({
         "zonas-crear-sin-costos",
         // SLT-198 R1233: el maestro vacía una zona satélite y pasa su distrito a la principal.
         "zona-sin-distritos",
+        // SLT-225 R1759, R1760: el usuario asignado frena la desactivación; sin él, se desactiva y se reactiva.
+        "zona-desactivar",
         // SLT-221 R1606, R1609: el maestro corrige la cédula de un usuario y la ve en el Histórico.
         "usuario-corregir-cedula",
+        // SLT-221 R1618-R1628: el maestro pide el cambio de correo y la persona lo confirma sin sesión.
+        "usuario-cambio-correo",
         "wallet-iva-aparte-sl39",
         "marca",
         "auth",
@@ -112,6 +116,8 @@ export default defineConfig({
         "planes-borrador",
         // SLT-214 R26: crear un plan con beneficios, «Mostrar más», detalle y editar; archiva al final el plan público.
         "planes-beneficios",
+        // SLT-215 R38: crear un plan con 2 niveles, la columna «Niveles» y editar; archiva al final el plan público.
+        "planes-niveles",
         // SLT-54 R54, R59, R60, R70: toca el catálogo de vehículos, global, y lo devuelve al terminar.
         "tarifas-maqueta",
         // SLT-87 R1, R2, R13: el botón de reportar un problema; toca la sesión y una tabla de plataforma.

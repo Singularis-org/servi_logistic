@@ -12,9 +12,14 @@
 //   - un desfase fijo de CR: `CR_OFFSET*`, `OFFSET_CR*`, `6 * 60 * 60 * 1000` en una linea que
 //     nombra `CR`, o `T06:00:00`;
 //   - el prefijo `506` como literal: `"506"`, `'506'`, `+506`, `506${`;
-//   - un import de los envoltorios `@/lib/utils/(fecha-cr|hora-cr|separador-dia-cr|telefono-cr|whatsapp-telefono)`.
-// Las excepciones (la UI que pasa a SLT-81, los planes que pasan a SLT-90 y SINPE, de SL-22) viven en
-// `_pais-sin-literales-excepciones.ts`, con su ficha y su motivo, y la lista solo baja.
+//   - un import de los envoltorios `@/lib/utils/(fecha-cr|hora-cr|separador-dia-cr|telefono-cr|whatsapp-telefono)`;
+//   - SL-21 (R20, design §7): el simbolo «₡», el codigo `CRC`, la palabra `IVA` (en mayusculas y entera:
+//     `ingreso_iva` o `ACTIVA` no casan) y un import de un formateador que pinta con la moneda de la
+//     plataforma sin nombrarla (`money`, `formatMonto`, `monedaConfig`…). La moneda y el impuesto salen
+//     del pais de la empresa (`IReglasPaisEmpresa.moneda()`, `formatearMontoEn`).
+// Las excepciones (la UI que pasa a SLT-81 y a SLT-235, los planes que pasan a SLT-90 y a SLT-237,
+// SINPE, de SL-22, y la OpenAPI, permanente) viven en `_pais-sin-literales-excepciones.ts`, con su
+// ficha y su motivo, y la lista solo baja.
 //
 // Segunda guardia del archivo (decision del humano tras T5.3): `reglasPais` es OPCIONAL en los
 // constructores de servicio para no romper sus tests, asi que olvidarlo en un composition root no
@@ -55,10 +60,43 @@ const leer = (rel: string): string => readFileSync(path.join(RAIZ, rel), "utf8")
 
 const ENVOLTORIOS_CR = /["']@\/lib\/utils\/(fecha-cr|hora-cr|separador-dia-cr|telefono-cr|whatsapp-telefono)["']/;
 
+/**
+ * SL-21 · R20 — los formateadores que pintan con la moneda de la plataforma sin nombrarla. El servidor
+ * usa `formatearMontoEn` con la moneda del pais, o con `MONEDA_DE_LOS_PLANES` si es de planes.
+ */
+const FORMATEADORES_IMPLICITOS = new Set([
+  "money",
+  "moneyTope",
+  "formatMonto",
+  "formatMontoString",
+  "formatMontoTope",
+  "montoExacto",
+  "monedaConfig",
+]);
+
+/** `import`/`export … from "@/lib/config/moneda"` enteros: un import puede ocupar varias lineas. */
+const IMPORT_DE_MONEDA = /\b(?:import|export)\s+(?:type\s+)?\{([^}]*)\}\s*from\s*["']@\/lib\/config\/moneda["']/g;
+
+function formateadoresImplicitos(sinComentarios: string): string[] {
+  const nombres: string[] = [];
+  for (const m of sinComentarios.matchAll(IMPORT_DE_MONEDA)) {
+    for (const especificador of m[1].split(",")) {
+      const nombre = especificador.trim().replace(/^type\s+/, "").split(/\s+as\s+/)[0].trim();
+      if (FORMATEADORES_IMPLICITOS.has(nombre)) nombres.push(nombre);
+    }
+  }
+  return nombres;
+}
+
 /** Los literales del pais que encuentra en `fuente` (con comentarios: se quitan aqui). Vacio = limpio. */
 export function literalesDelPais(fuente: string): string[] {
   const hallados = new Set<string>();
-  for (const linea of quitarComentarios(fuente).split("\n")) {
+  const sinComentarios = quitarComentarios(fuente);
+  for (const nombre of formateadoresImplicitos(sinComentarios)) hallados.add(`import de ${nombre} (moneda de la plataforma implicita)`);
+  for (const linea of sinComentarios.split("\n")) {
+    if (linea.includes("₡")) hallados.add("simbolo ₡");
+    if (/\bCRC\b/.test(linea)) hallados.add("codigo CRC");
+    if (/\bIVA\b/.test(linea)) hallados.add("palabra IVA");
     if (linea.includes("America/Costa_Rica")) hallados.add("zona America/Costa_Rica");
     if (/\b(CR_OFFSET|OFFSET_CR)\w*/.test(linea)) hallados.add("desfase fijo CR_OFFSET/OFFSET_CR");
     if (/\b6\s*\*\s*60\s*\*\s*60\s*\*\s*1000\b/.test(linea) && /CR/.test(linea)) hallados.add("desfase fijo de 6 h junto a CR");
@@ -89,7 +127,8 @@ describe("SLT-42 · R29 — el servidor no escribe el pais a mano", () => {
       .map(([rel, l]) => `${rel}: ${l.join(", ")}`);
     expect(
       fuera,
-      "Lee la zona o el prefijo del pais de la empresa (IReglasPaisEmpresa, calendario-zona.ts); no escribas el de CR",
+      "Lee la zona, el prefijo, la moneda o el impuesto del pais de la empresa (IReglasPaisEmpresa, calendario-zona.ts, " +
+        "formatearMontoEn); no escribas los de CR",
     ).toEqual([]);
   });
 
@@ -102,11 +141,13 @@ describe("SLT-42 · R29 — el servidor no escribe el pais a mano", () => {
     expect(EXCEPCIONES_PAIS_SIN_LITERALES.length).toBeLessThanOrEqual(TOPE_EXCEPCIONES);
   });
 
-  it("cada excepcion trae ficha SLT-81, SLT-90 o SL-22, motivo, un archivo que existe y no se repite; la lista esta ordenada", () => {
+  it("cada excepcion trae ficha admitida, motivo, un archivo que existe y no se repite; la lista esta ordenada", () => {
     const rutas = EXCEPCIONES_PAIS_SIN_LITERALES.map((e) => e.archivo);
     for (const e of EXCEPCIONES_PAIS_SIN_LITERALES) {
-      expect(["SLT-81", "SLT-90", "SL-22"], e.archivo).toContain(e.ficha);
+      expect(["SLT-81", "SLT-90", "SL-22", "SLT-235", "SLT-237", "permanente"], e.archivo).toContain(e.ficha);
       expect(e.motivo.trim().length, e.archivo).toBeGreaterThan(10);
+      // Sin ficha que la retire, lo unico que la ata es la decision: su fecha va en el motivo.
+      if (e.ficha === "permanente") expect(e.motivo, e.archivo).toMatch(/\b20\d\d-\d\d-\d\d\b/);
       expect(archivos, e.archivo).toContain(e.archivo);
     }
     expect(new Set(rutas).size).toBe(rutas.length);
@@ -126,6 +167,18 @@ describe("SLT-42 · R29 — el servidor no escribe el pais a mano", () => {
       ["506${", "const t = `506${n}`;", "prefijo 506"],
       ["import de fecha-cr", 'import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";', "import de un envoltorio *-cr"],
       ["import de whatsapp-telefono", "import { x } from '@/lib/utils/whatsapp-telefono';", "import de un envoltorio *-cr"],
+      ["SL-21: el simbolo ₡", "const t = `₡${monto}`;", "simbolo ₡"],
+      ["SL-21: el codigo CRC", 'const c = { currency: "CRC" };', "codigo CRC"],
+      ["SL-21: la palabra IVA", 'const r = "IVA del flete";', "palabra IVA"],
+      ["SL-21: IVA en una plantilla", "const r = `${base} IVA ${pct}`;", "palabra IVA"],
+      ["SL-21: import de money", 'import { money } from "@/lib/config/moneda";', "import de money (moneda de la plataforma implicita)"],
+      [
+        "SL-21: import de varias lineas con alias",
+        'import {\n  formatearMontoEn,\n  formatMonto as fm,\n} from "@/lib/config/moneda";',
+        "import de formatMonto (moneda de la plataforma implicita)",
+      ],
+      ["SL-21: import de monedaConfig", "import { monedaConfig } from '@/lib/config/moneda';", "import de monedaConfig (moneda de la plataforma implicita)"],
+      ["SL-21: re-export de money", 'export { money } from "@/lib/config/moneda";', "import de money (moneda de la plataforma implicita)"],
     ])("%s → falla", (_caso, fuente, esperado) => {
       expect(literalesDelPais(fuente)).toContain(esperado);
     });
@@ -137,6 +190,12 @@ describe("SLT-42 · R29 — el servidor no escribe el pais a mano", () => {
       ["6 h sin CR", "const SEIS_HORAS = 6 * 60 * 60 * 1000;"],
       ["el modulo generico", 'import { fechaCalendario } from "@/lib/utils/calendario-zona";'],
       ["fecha-cr-algo no es el envoltorio", 'import { x } from "@/lib/utils/fecha-cr-sql";'],
+      ["SL-21: ₡, CRC e IVA en comentarios", "// pinta ₡12.500 en CRC\n/* sin IVA */ const a = 1;"],
+      ["SL-21: iva en minusculas o dentro de otra palabra", "const ingreso_iva = ivaPct; const ACTIVA = 1; const IVAS = 2;"],
+      ["SL-21: CRC dentro de otra palabra", "const CRCX = 1; const crc32 = 2;"],
+      ["SL-21: el formateador con la moneda nombrada", 'import { formatearMontoEn, MONEDA_PLATAFORMA, type FormatoMoneda } from "@/lib/config/moneda";'],
+      ["SL-21: money de otro modulo", 'import { money } from "@/lib/utils/otra-cosa";'],
+      ["SL-21: money como nombre local", "const money = 1; formatMonto(x);"],
     ])("%s → no falla", (_caso, fuente) => {
       expect(literalesDelPais(fuente)).toEqual([]);
     });
@@ -255,6 +314,8 @@ describe("SLT-42 · composition roots: cada servicio con `reglasPais?` recibe `c
     expect(receptores.filter((r) => r.tipo === "clase").length).toBeGreaterThan(40);
     expect(nombres).toEqual(expect.arrayContaining(["OrdenService", "WalletService", "UsuarioService", "RastreoPublicoService"]));
     expect(nombres).toEqual(expect.arrayContaining(["crearLiberarReprogramadasHandler", "crearAnaliticaRollupDiarioHandler"]));
+    // SL-21 · R21: el PDF de etiquetas por API lee la moneda por el puerto; sus 3 rutas pasan el real.
+    expect(nombres).toContain("EtiquetasLotePdfService");
   });
 
   it("los nombres no se repiten (la guardia empareja construcciones por nombre)", () => {

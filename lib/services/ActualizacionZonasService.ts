@@ -11,24 +11,21 @@ import type {
   ResultadoActualizacionZonasDTO,
   VistaPreviaZonasDTO,
 } from "@/lib/types/actualizacion-zonas";
-import {
-  ESTADOS_DEVOLUCION_SIN_RECONCILIAR,
-  paqueteEnEstanteSatelite,
-} from "@/lib/utils/estados-bodega-satelite";
+import { CLASE_RECONCILIACION_ZONA } from "@/lib/utils/estados-bodega-satelite";
 
 /**
- * SLT-224 (R1713) — por que una orden con zona errada NO se actualiza, con la precedencia
- * estante -> devolucion -> cierre o dinero. `null` = se actualiza.
+ * SLT-224 PR 2 (R1726) — por que una orden con zona errada NO se actualiza. `null` = se actualiza.
+ * Primero la clase de su estado (si no es `se_mueve`, ese es el motivo); despues el cobro en curso.
+ * La precedencia de R1726 sale por construccion: el estado manda sobre el cobro.
  *
- * Es la MISMA decision que toma el `WHERE` del helper compartido al escribir (el estante por la 377,
- * las devoluciones por `excluirEstados`, el cierre y la gestion por `whereBaseElegible`); aqui solo se
- * le pone nombre para enseñarla. Lo que se escribe lo decide siempre el `WHERE`, no esta funcion.
+ * Es la MISMA decision que toma el `WHERE` del helper compartido al escribir (el `notIn` de
+ * `ESTADOS_QUE_NO_SE_MUEVEN` y el corte de dinero de `whereBaseElegible`); aqui solo se le pone
+ * nombre para enseñarla. Lo que se escribe lo decide siempre el `WHERE`, no esta funcion.
  */
 export function motivoDeSaltada(fila: FilaZonaErrada): MotivoSaltada | null {
-  if (paqueteEnEstanteSatelite(fila.estado)) return "estante_satelite";
-  if ((ESTADOS_DEVOLUCION_SIN_RECONCILIAR as readonly string[]).includes(fila.estado)) return "devolucion";
-  if (fila.conCierre || fila.conGestion) return "cierre_o_dinero";
-  return null;
+  const clase = CLASE_RECONCILIACION_ZONA[fila.estado];
+  if (clase !== "se_mueve") return clase;
+  return fila.cobroEnCurso ? "cobro_en_curso" : null;
 }
 
 function saltadasDe(filas: readonly FilaZonaErrada[]): OrdenSaltadaDTO[] {

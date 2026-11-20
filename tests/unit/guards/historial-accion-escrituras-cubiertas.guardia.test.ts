@@ -604,6 +604,22 @@ const CENSO: EntradaCenso[] = [
     forma: "abre_tx",
     mutacion: /tx\.zona\.delete\(/,
   },
+  // SLT-225 (R1749, R1750) — un metodo por tipo: la marca cambia con un `updateMany` condicionado
+  // al estado previo, en la misma transaccion que la fila.
+  {
+    tipos: ["zona_desactivada"],
+    archivo: "lib/repositories/ZonaRepository.ts",
+    metodo: "desactivar",
+    forma: "abre_tx",
+    mutacion: /tx\.zona\.updateMany\(/,
+  },
+  {
+    tipos: ["zona_reactivada"],
+    archivo: "lib/repositories/ZonaRepository.ts",
+    metodo: "reactivar",
+    forma: "abre_tx",
+    mutacion: /tx\.zona\.updateMany\(/,
+  },
   // SL-42 (P1) — `VehiculoRepository.delete` estaba aqui como productor de `vehiculo_borrado`. El
   // borrado se retiro y el catalogo es del superadmin: sale del censo, ver `SIN_ESCRITOR_DESDE`.
   {
@@ -633,6 +649,14 @@ const CENSO: EntradaCenso[] = [
     tipos: ["usuario_contrasena_restablecida"],
     archivo: "lib/repositories/UserRepository.ts",
     metodo: "restablecerContrasena",
+    forma: "abre_tx",
+    mutacion: /tx\.usuario\.update\(/,
+  },
+  // SLT-221 (R1622): el canje del cambio de correo escribe `usuario.email` y su fila en la misma tx.
+  {
+    tipos: ["usuario_email_cambiado"],
+    archivo: "lib/repositories/UserRepository.ts",
+    metodo: "aplicarCambioCorreo",
     forma: "abre_tx",
     mutacion: /tx\.usuario\.update\(/,
   },
@@ -838,12 +862,8 @@ interface TiposConEscritorPendiente {
   tarea: string;
 }
 
-// SLT-52 T6.2 y SLT-77 T2.2 ya escriben sus tipos (ver el censo).
-const ESCRITOR_PENDIENTE_EN_CURSO: TiposConEscritorPendiente[] = [
-  // SLT-221: el enum gana los dos tipos en el PR 1 (una sola migracion de enum); el correo lo escribe
-  // `UserRepository.aplicarCambioCorreo` en el PR 2, que vacia esta entrada.
-  { tipos: ["usuario_email_cambiado"], ficha: "SLT-221", tarea: "T2.4" },
-];
+// SLT-52 T6.2, SLT-77 T2.2 y SLT-221 (PR 2) ya escriben sus tipos (ver el censo).
+const ESCRITOR_PENDIENTE_EN_CURSO: TiposConEscritorPendiente[] = [];
 
 /** Los archivos `.ts` de `lib/`, relativos a la raiz. */
 function archivosDeLib(dir = "lib"): string[] {
@@ -1296,8 +1316,9 @@ describe("362/R16 — cada tipo del catalogo tiene al menos un punto de escritur
     // 85 desde SLT-94 (`usuario_se_recoge_en_tienda_cambiado`, de `UserRepository.update`).
     // 86 desde SLT-211 (`ordenes_retiradas_a_central`, de `OrdenRepository.retirarSateliteLote`).
     // 88 desde SLT-221 (`usuario_cedula_cambiada`, de `UserRepository.update`, y
-    // `usuario_email_cambiado`, con escritor pendiente hasta el PR 2).
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(88);
+    // `usuario_email_cambiado`, de `UserRepository.aplicarCambioCorreo`).
+    // 90 desde SLT-225 (`zona_desactivada`/`zona_reactivada`, de `ZonaRepository.desactivar`/`reactivar`).
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(90);
   });
 });
 

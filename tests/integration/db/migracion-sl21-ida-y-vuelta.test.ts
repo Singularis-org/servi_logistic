@@ -37,7 +37,7 @@ const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
 /** La última de `origin/dev` al escribir la ficha (2026-11-19): la de SL-21 va detrás. */
 const ULTIMA_ANTERIOR = "20261121130000_pago_plataforma_por_fuera";
-const M = "20261122120000_sl21_pais_moneda_impuesto";
+const M = "20261124120000_sl21_pais_moneda_impuesto";
 const BASE = `sl21_iv_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 
 const NUEVAS = [

@@ -429,6 +429,9 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("431/T1 (b) — el down recrea la lista PREV
       // SLT-221: los dos tipos de `20261120130000_slt221_historial_correo_cedula`.
       "usuario_cedula_cambiada",
       "usuario_email_cambiado",
+      // SLT-225: los dos tipos de `20261123120000_historial_zona_desactivada`.
+      "zona_desactivada",
+      "zona_reactivada",
     ];
     const catalogoPrevio = HISTORIAL_ACCION_TIPOS.filter(
       (t) => !VALORES_NUEVOS.includes(t as (typeof VALORES_NUEVOS)[number]) &&

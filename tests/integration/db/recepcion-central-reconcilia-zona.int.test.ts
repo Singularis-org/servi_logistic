@@ -249,6 +249,39 @@ describeSiHayBase("SLT-224 · la recepcion en la central re-deriva la zona (Post
     expect(r.acciones).toHaveLength(1);
   });
 
+  it("R1720 (PR 2): con un cierre APROBADO anterior (y su gestion de rechazo) SI cambia al recibir y deja su accion", async () => {
+    // Las 18 de P2: una orden cerrada y aprobada en un intento anterior, liberada al estante, retirada
+    // y recibida. Desde D6 ese cierre es pasado y no protege la zona.
+    const r = await conEscenario(async (e) => {
+      const orden = await e.crearOrden({ distritoId: e.distritoX, estado: "en_ruta_bodega_central" });
+      const mensajero = (await crearUsuarioDePrueba(e.tx, "mensajero")).id;
+      const { tiendaId } = await e.tx.orden.findUniqueOrThrow({ where: { id: orden }, select: { tiendaId: true } });
+      const cierre = await e.tx.cierreDia.create({
+        data: { mensajeroId: mensajero, estado: "aprobado", destinoTipo: "bodega_satelite", destinoZonaId: e.zonaA },
+        select: { id: true },
+      });
+      await e.tx.cierreDetail.create({
+        data: {
+          cierreId: cierre.id, ordenId: orden, cobraComision: false, zonaId: e.zonaA, tiendaId, esCentral: false,
+          numRemision: `R-224-${randomUUID().slice(0, 8)}`, destinatario: "Destinataria 224", producto: "caja",
+          tiendaNombre: "Tienda de prueba", zonaNombre: "Zona congelada", provinciaNombre: "Provincia", cantonNombre: "Canton",
+        },
+        select: { id: true },
+      });
+      await e.tx.gestionOrden.create({
+        data: { ordenId: orden, mensajeroId: mensajero, resultado: "devolucion_a_origen_por_rechazo", cierreId: cierre.id },
+        select: { id: true },
+      });
+      const status = await e.recibir(orden);
+      return { e, status, zona: await e.zonaDe(orden), estado: await e.estadoDe(orden), acciones: await e.acciones([orden]) };
+    });
+    expect(r.status).toBe("ok");
+    expect(r.estado).toBe("en_bodega_central");
+    expect(r.zona).toBe(r.e.zonaC);
+    expect(r.acciones).toHaveLength(1);
+    expect(r.acciones[0].actorUsuarioId).toBe(r.e.maestro);
+  });
+
   it("R1702: sin distrito, o con un distrito sin zona, conserva la zona y se recibe igual", async () => {
     const r = await conEscenario(async (e) => {
       const sinDistrito = await e.crearOrden({ distritoId: null, estado: "en_ruta_bodega_central" });
