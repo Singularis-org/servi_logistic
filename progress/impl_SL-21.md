@@ -230,3 +230,63 @@ T4.1 y T4.2 hechas y en verde.
 
 ### Veredicto
 T4.3–T4.6 hechas y en verde.
+
+## Tanda 5 — Bloque 5, guardia y docs (T5.1, T5.2; R20, R21) y recuentos de migraciones
+
+Grafo: no usado (worktree sin indexar); Grep/Read.
+
+### Commits
+- `test(SL-21): T5.1` guardia `pais-sin-literales` con moneda e impuesto.
+- `docs(SL-21): T5.2` párrafo «Moneda e impuesto (SL-21)» en `docs/architecture.md`.
+- `test(SL-21): recuentos de migraciones y columnas` (con esta sección).
+
+### Archivos
+- `tests/unit/guards/pais-sin-literales.guardia.test.ts`: `literalesDelPais` caza «₡», `\bCRC\b`, `\bIVA\b` y los
+  imports (también de varias líneas, con alias o como `export … from`) de `money`, `moneyTope`, `formatMonto`,
+  `formatMontoString`, `formatMontoTope`, `montoExacto` y `monedaConfig` desde `@/lib/config/moneda`. Fichas
+  admitidas: `SLT-81`, `SLT-90`, `SL-22`, `SLT-235`, `SLT-237` y `permanente` (con fecha en el motivo). 14 casos
+  de autocomprobación nuevos. R21: el control positivo de la segunda parte exige `EtiquetasLotePdfService` entre
+  los receptores de `reglasPais?`.
+- `tests/unit/guards/_pais-sin-literales-excepciones.ts`: 12 entradas nuevas sacadas de la salida real; tope 8 → 20.
+- `lib/constants/impuesto-rotulo.ts`: el comentario remite a SLT-235.
+- `docs/architecture.md`: el párrafo de T5.2.
+- `tests/integration/db/orden-traspaso-migration.test.ts` (fuera de la lista esperada): la migración de SL-21 entra
+  en su lista de posteriores.
+
+### Excepciones nuevas (salida real de la guardia)
+`app/paquete/[numGuia]/page.tsx` (SLT-235, `formatMonto`), `lib/analytics/metrics.ts` (SLT-235, IVA),
+`lib/api/openapi-spec.ts` (permanente, IVA), `lib/config/moneda.ts` (SLT-237, CRC y ₡),
+`lib/constants/impuesto-rotulo.ts` y `lib/constants/wallet-rotulos.ts` (SLT-235, IVA),
+`lib/repositories/TarifaValorRepository.ts` y `lib/repositories/_shared/resolver-tarifas.ts` (SLT-235, IVA),
+`lib/services/AnaliticaFinancieraService.ts` (SLT-235, `monedaConfig`), `lib/types/plantilla-datos.ts` (SLT-235, ₡),
+`lib/types/tarifa-flexible.ts` (SLT-235, IVA), `lib/whatsapp-envios/informes/transito/informe.ts` (SLT-235, ₡).
+
+### Mapa R → test (tanda 5)
+| R | Test |
+|---|---|
+| R20 | `pais-sin-literales.guardia.test.ts` (censo, lista que solo baja, tope 20, fichas; autocomprobación «SL-21: …») |
+| R21 | `pais-sin-literales.guardia.test.ts` (segunda parte: `EtiquetasLotePdfService` es receptor y sus 3 rutas pasan el real) |
+
+### Verificación (salida real)
+- `pais-sin-literales.guardia.test.ts` → 49 passed (antes 35).
+- Recuentos contra `servi_logistic_sl21`: 21 archivos candidatos (`orden-traspaso-migration`,
+  `verificar-rls-despliegue`, `empresas-plataforma`, `migracion-slt143/-slt42/-sl20/-sl21/-plan-beneficio`,
+  `zona-desalineada-central-migration`, los 6 `historial-accion-*-migration` con lista de migraciones,
+  `correccion-resultado-gestion-migration`, `caja-459-migration`, `schema-drift-saneamiento`, `no-migration-102`,
+  `pais-tabla`, `tipo-documento-por-pais`) → 1 failed (`orden-traspaso`: 143 posteriores contra 142) | 196 passed.
+  Tras el arreglo, `orden-traspaso` y 11 más que leen `db/migrations` (`backfill-guards`, `orden-clave-remision`,
+  `orden-num-remision-parcial`, `notificacion-productores-wiring`, `busqueda-orden`, `censo-order-status-rename`,
+  `carga-masiva-schema`, `plantillas.int`, `orden-mensajero-meta.int`, `migracion-sl17`, `migracion-sl38`)
+  → 12 files, 167 passed. `verificar-rls-despliegue` no cambia: SL-21 no añade tablas.
+- `pnpm run typecheck` → verde. `pnpm run lint` → 0 errores, 249 warnings (los mismos).
+- `pnpm run test:guardias` → 360 files, 5435 passed | 1 skipped.
+
+### Desviaciones del design
+- `lib/pdf/etiquetas-dibujo.ts` no entra en la lista: nombra `MONEDA_PLATAFORMA` y la guardia no lo marca.
+  Tampoco `PlantillaMensajeService.preview` ni `resolverValoresOrden` (`lib/utils/whatsapp-envio-valores.ts`):
+  caen en la moneda de la plataforma por el `moneda ?? MONEDA_PLATAFORMA` de `plantilla-datos.ts`, sin literal ni
+  import marcado. El censo es por archivo, así que no los ve (anotado en el motivo de `plantilla-datos.ts`).
+- Las `page.tsx` de `app/` no escriben «IVA»; la única página en la lista es `app/paquete/[numGuia]/page.tsx`.
+
+### Veredicto
+T5.1 y T5.2 hechas y en verde; recuentos al día. Queda T5.3 (init.sh y E2E en local).

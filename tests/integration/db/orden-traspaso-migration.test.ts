@@ -312,6 +312,8 @@ describe("427/T2 — el UP y el DOWN, leidos del archivo", () => {
       "20261121120000_slt224_zona_de_ordenes_en_central",
       // SLT-143: la tabla `pago_plataforma_anulacion` y el pago por fuera; no toca `orden_traspaso_mensajero`.
       "20261121130000_pago_plataforma_por_fuera",
+      // SL-21: seis columnas de moneda e impuesto en `pais` y el relleno de CR; no toca `orden_traspaso_mensajero`.
+      "20261122120000_sl21_pais_moneda_impuesto",
     ]);
   });
 });
