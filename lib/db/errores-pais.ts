@@ -54,6 +54,30 @@ export class PaisIncompleto extends Error {
   }
 }
 
+// SL-21 (design §5.1; R6, R7) — los dos de moneda e impuesto, con la forma de `PaisSinZonaHoraria`:
+// un `paisId` y un mensaje que solo nombra el código ISO. Tampoco están en el mapa de
+// `withErrorHandler`: salen como `{ status: "error" }` genérico, igual que `PaisIncompleto`.
+
+/** R6: la operación necesita la moneda del país y el país aún no la tiene. No se envió ni guardó nada. */
+export class PaisSinMoneda extends Error {
+  readonly paisId: string;
+  constructor(paisId: string) {
+    super(`El país ${paisId} no tiene moneda`);
+    this.name = "PaisSinMoneda";
+    this.paisId = paisId;
+  }
+}
+
+/** R7: se pidió el nombre del impuesto del país y el país aún no lo tiene. No hay uno por defecto. */
+export class PaisSinImpuesto extends Error {
+  readonly paisId: string;
+  constructor(paisId: string) {
+    super(`El país ${paisId} no tiene nombre de impuesto`);
+    this.name = "PaisSinImpuesto";
+    this.paisId = paisId;
+  }
+}
+
 // Las formas en que llega un SQLSTATE propio por Prisma 7 + adapter-pg están descritas en
 // `lib/db/contexto-empresa.ts` (SQL a mano: P2010 con el código en el mensaje; operación de modelo:
 // el `DriverAdapterError` con `cause.originalCode`; `pg` directo: `code`). Se recorre el mismo grafo.

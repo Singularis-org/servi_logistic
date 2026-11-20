@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import type { FormatoMoneda } from "@/lib/config/moneda";
 import { paisDelCatalogo } from "@/lib/constants/paises-iso-3166-1";
 import { normalizarNombreGeografico, type NivelGeografico } from "@/lib/types/geografia-nodo";
 import type { ReglaDeCodigoDePais } from "@/lib/utils/codigo-geografico";
@@ -95,6 +96,13 @@ export interface PaisDTO extends ReglaDeCodigoDePais {
   telefonoDigitosNacionales: number | null;
   /** SLT-42 (R1): identificador IANA. `null` = aún sin dato; lo que la necesite falla (R28). */
   zonaHoraria: string | null;
+  /**
+   * SL-21 (R1, R5; design §5.1): la moneda del país, armada por el repositorio con sus cinco
+   * columnas. `null` = aún sin dato; lo que la necesite falla con `PaisSinMoneda` (R6).
+   */
+  moneda: FormatoMoneda | null;
+  /** SL-21 (R1, R7): el nombre del impuesto («IVA»). `null` = aún sin dato (`PaisSinImpuesto`). */
+  impuestoNombre: string | null;
 }
 
 /**

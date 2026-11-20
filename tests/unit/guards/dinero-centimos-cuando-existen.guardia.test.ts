@@ -9,9 +9,11 @@ import { formatearValor } from "@/components/private/analytics/formato";
 import { PriceLabel } from "@/components/shared/PriceLabel";
 import {
   ESCALA_PRESENTACION,
+  MONEDA_PLATAFORMA,
   formatMonto,
   formatMontoString,
   formatMontoTope,
+  formatearMontoEn,
   monedaConfig,
   money,
   moneyTope,
@@ -211,7 +213,13 @@ function textoDePriceLabel(valor: number): string {
 }
 
 /**
- * Los SEIS caminos publicos de presentacion de dinero, cada uno con su nombre.
+ * Los SIETE caminos publicos de presentacion de dinero, cada uno con su nombre.
+ *
+ * SL-21 — `formatearMontoEn` es el septimo: el formateador con la moneda como
+ * parametro, en el que delegan los otros. Entra en las DOS listas con
+ * `MONEDA_PLATAFORMA` —recibe cadena y `number`— y cuenta una sola vez: lo que
+ * se censa son caminos, no entradas. Pasarle el mismo corpus que a los demas es
+ * lo que garantiza que con la moneda de la plataforma pinta lo mismo (R9).
  *
  * `montoExacto` entro en el censo con la ficha 359. Era el sexto formateador —lo
  * escribio la feature 300 para UNA pantalla, porque el de entonces cuadraba al
@@ -221,9 +229,12 @@ function textoDePriceLabel(valor: number): string {
  * corpus entero igual: lo que garantiza que siga siendo un alias es esto, no su
  * docstring.
  */
+const CAMINO_CON_MONEDA = "formatearMontoEn(MONEDA_PLATAFORMA, ·)";
+
 const CAMINOS_STRING: readonly { nombre: string; formatear: (v: string) => string }[] = [
   { nombre: "formatMontoString", formatear: (v) => formatMontoString(v) },
   { nombre: "money", formatear: (v) => money(v) },
+  { nombre: CAMINO_CON_MONEDA, formatear: (v) => formatearMontoEn(MONEDA_PLATAFORMA, v) },
 ];
 
 const CAMINOS_NUMERO: readonly { nombre: string; formatear: (v: number) => string }[] = [
@@ -231,11 +242,12 @@ const CAMINOS_NUMERO: readonly { nombre: string; formatear: (v: number) => strin
   { nombre: "PriceLabel", formatear: (v) => textoDePriceLabel(v) },
   { nombre: "formatearValor(·, moneda)", formatear: (v) => formatearValor(v, "moneda") },
   { nombre: "montoExacto", formatear: (v) => montoExacto(v) },
+  { nombre: CAMINO_CON_MONEDA, formatear: (v) => formatearMontoEn(MONEDA_PLATAFORMA, v) },
 ];
 
-const CAMINOS_PUBLICOS = CAMINOS_STRING.length + CAMINOS_NUMERO.length;
+const CAMINOS_PUBLICOS = new Set([...CAMINOS_STRING, ...CAMINOS_NUMERO].map((c) => c.nombre)).size;
 
-/** Recorre los seis caminos con los dos corpus y devuelve lo que casa el patron. */
+/** Recorre los siete caminos con los dos corpus y devuelve lo que casa el patron. */
 function salidasQueCasan(patron: RegExp): string[] {
   const hallazgos: string[] = [];
   for (const camino of CAMINOS_STRING) {
@@ -325,7 +337,7 @@ describe("guardia 359 · diente 1 — la cola se pinta si y solo si existe", () 
     // pasando por no mirar nada — el modo de fallo silencioso de este repo.
     expect(CORPUS_STRING.length).toBeGreaterThan(100);
     expect(CORPUS_NUMERO.length).toBeGreaterThan(100);
-    expect(CAMINOS_PUBLICOS).toBe(6);
+    expect(CAMINOS_PUBLICOS).toBe(7);
     // Y los patrones distinguen lo que dicen distinguir.
     expect(CON_DECIMAL.test(`1.234${monedaConfig.separadorDecimal}5`)).toBe(true);
     expect(CON_DECIMAL.test("1.234")).toBe(false);
@@ -391,7 +403,7 @@ describe("guardia 359 · diente 1 — la cola se pinta si y solo si existe", () 
     expect(formatMontoString("999.999")).toBe(mil);
   });
 
-  it("los seis caminos dan la MISMA cadena para el mismo importe (R12)", () => {
+  it("los siete caminos dan la MISMA cadena para el mismo importe (R12; SL-21 R9)", () => {
     // Que cada uno cumpla la regla no basta: podrian estar dando seis aspectos
     // distintos que la cumplen. Los consumidores no cambian precisamente porque
     // no lo hacen.
@@ -404,6 +416,8 @@ describe("guardia 359 · diente 1 — la cola se pinta si y solo si existe", () 
         ["formatearValor", formatearValor(numero, "moneda")],
         ["montoExacto", montoExacto(numero)],
         ["money", money(numero.toFixed(ESCALA_PRESENTACION))],
+        [CAMINO_CON_MONEDA, formatearMontoEn(MONEDA_PLATAFORMA, numero)],
+        [`${CAMINO_CON_MONEDA} con cadena`, formatearMontoEn(MONEDA_PLATAFORMA, numero.toFixed(ESCALA_PRESENTACION))],
       ];
       for (const [nombre, salida] of salidas) {
         if (salida !== desdeString) {
@@ -888,9 +902,9 @@ const SALIDAS_DE_MAQUINA: readonly { ruta: string; porque: string }[] = [
 /** Un import de una salida de maquina, por el alias o por ruta relativa. */
 const IMPORTA_SALIDA_DE_MAQUINA = /from\s+["'][^"']*\/monto-cotizacion["']/;
 
-/** Los nombres de los SEIS caminos publicos, tal cual se exportan hoy. */
+/** Los nombres de los caminos publicos, tal cual se exportan hoy (SL-21: con `formatearMontoEn`). */
 const EXPORTA_CAMINO_PUBLICO =
-  /export\s+(?:async\s+)?(?:function|const|class)\s+(formatMontoString|money|formatMonto|PriceLabel|formatearValor)\b/;
+  /export\s+(?:async\s+)?(?:function|const|class)\s+(formatMontoString|money|formatMonto|PriceLabel|formatearValor|formatearMontoEn)\b/;
 
 /**
  * El PUNTO money-safe seguido de EXACTAMENTE dos digitos. Lo exigido a una salida
@@ -919,14 +933,14 @@ describe("guardia 359 · diente 6 — las salidas de maquina SI llevan centimos 
       for (const arbol of ARBOLES_DE_PANTALLA) {
         expect(ruta.startsWith(`${arbol}/`), `${ruta} vive en un arbol de pantalla`).toBe(false);
       }
-      // Y no es ninguno de los seis caminos publicos disfrazado: no exporta
-      // ninguno de sus seis nombres.
+      // Y no es ninguno de los caminos publicos disfrazado: no exporta
+      // ninguno de sus nombres.
       const nombrado = EXPORTA_CAMINO_PUBLICO.exec(codigo(ruta));
       expect(nombrado?.[1] ?? null, `${ruta} exporta un camino publico de dinero`).toBeNull();
     }
-    // Los seis caminos publicos siguen siendo seis: si alguien añadiera uno,
+    // Los caminos publicos siguen siendo siete (SL-21): si alguien añadiera uno,
     // el regex de arriba se quedaria corto sin que nadie lo notara.
-    expect(CAMINOS_PUBLICOS).toBe(6);
+    expect(CAMINOS_PUBLICOS).toBe(7);
   });
 
   it("ninguna pantalla importa una salida de maquina, sin excepciones (R40, R41)", () => {

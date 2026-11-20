@@ -2,6 +2,7 @@ import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
 import bwipjs from "bwip-js/node";
 
+import { MONEDA_PLATAFORMA, type FormatoMoneda } from "@/lib/config/moneda";
 import { buildPaqueteUrl } from "@/lib/utils/paquete-url";
 import type { EtiquetaGuiaDTO } from "@/lib/types/etiqueta-guia";
 
@@ -72,8 +73,17 @@ async function barcodeDataUrl(value: string): Promise<string> {
  * por ruta en tiempo de ejecucion depende del trazado automatico y podria no
  * llegar a la function; el fallo aparecerian SOLO en produccion, como un error
  * en la carga por API, que es el peor sitio posible para descubrirlo.
+ *
+ * SL-21 (R14) — `moneda` es la del pais de la empresa; la lee el servicio por el
+ * puerto. Opcional solo para no romper a quien hoy llama con un argumento: sin
+ * ella, el importe sale con la de la plataforma. Va con valor por defecto y no
+ * con `?` para que `buildEtiquetasLotePdf.length` siga en 1: el smoke de R18
+ * vigila con ella que no entre un parametro OBLIGATORIO nuevo (un `hoja`).
  */
-export async function buildEtiquetasLotePdf(etiquetas: EtiquetaGuiaDTO[]): Promise<Uint8Array> {
+export async function buildEtiquetasLotePdf(
+  etiquetas: EtiquetaGuiaDTO[],
+  moneda: FormatoMoneda = MONEDA_PLATAFORMA,
+): Promise<Uint8Array> {
   const format: [number, number] = [LIENZO_BASE_MM, LIENZO_BASE_MM];
   const doc = new jsPDF({ unit: "mm", format, compress: true });
   // Una sola vez por documento: `addFont` descodifica y parsea el TTF entero, y
@@ -85,7 +95,7 @@ export async function buildEtiquetasLotePdf(etiquetas: EtiquetaGuiaDTO[]): Promi
     const etiqueta = etiquetas[i];
     const qr = await qrDataUrl(buildPaqueteUrl(etiqueta.numGuia));
     const barcode = await barcodeDataUrl(etiqueta.barcodeValue);
-    drawEtiqueta(doc, layout, etiqueta, { qr, barcode }, fuenteEtiqueta);
+    drawEtiqueta(doc, layout, etiqueta, { qr, barcode }, fuenteEtiqueta, moneda);
   }
   return new Uint8Array(doc.output("arraybuffer"));
 }

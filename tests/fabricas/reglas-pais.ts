@@ -1,4 +1,5 @@
-import { PaisSinZonaHoraria } from "@/lib/db/errores-pais";
+import type { FormatoMoneda } from "@/lib/config/moneda";
+import { PaisSinImpuesto, PaisSinMoneda, PaisSinZonaHoraria } from "@/lib/db/errores-pais";
 import type { IReglasPaisEmpresa, ReglasPais } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import type { PaisesDelAlta } from "@/lib/services/OrganizacionService";
 import type { PaisDTO, TipoDocumentoDTO } from "@/lib/types/pais";
@@ -7,13 +8,18 @@ import { fechaCalendario, inicioDelDiaEnUtc, inicioDelDiaSiguienteEnUtc } from "
 // SLT-42 (design §4.2) — doble de `IReglasPaisEmpresa` para los tests unitarios de los servicios que
 // lo reciben por constructor. Devuelve siempre el mismo país, sin base ni contexto de empresa, y
 // cumple el contrato del puerto: `zonaHoraria()` lanza `PaisSinZonaHoraria` sin zona (R28) y
-// `tipoDocumento` solo encuentra los tipos de ESE país, por `id` o por `value` (R11).
+// `tipoDocumento` solo encuentra los tipos de ESE país, por `id` o por `value` (R11). SL-21: `moneda()`
+// lanza `PaisSinMoneda` y `nombreImpuesto()` `PaisSinImpuesto` si el país no los tiene (R6, R7).
 
 export interface ReglasPaisFijas {
   paisId: string;
   zonaHoraria: string | null;
   telefono: ReglasPais["telefono"];
   tiposDocumento: readonly TipoDocumentoDTO[];
+  /** SL-21: `null` = el país aún no tiene moneda (R6). */
+  moneda: FormatoMoneda | null;
+  /** SL-21: `null` = el país aún no tiene nombre de impuesto (R7). */
+  impuestoNombre: string | null;
 }
 
 /** Los cinco tipos de Costa Rica de la migración `20261107120100` (R3), con ids fijos de test. */
@@ -25,12 +31,40 @@ const TIPOS_CR: readonly TipoDocumentoDTO[] = [
   { id: "tipo-cr-pasaporte", value: "pasaporte", paisId: "CR", clave: "pasaporte", nombre: "Pasaporte", caracteres: "alfanumerico", largoMin: 6, largoMax: 20, activo: true },
 ];
 
-/** Costa Rica tal como la deja la migración de SLT-42 (R3): `reglasPaisFijas(CR)`. */
+/** SL-21 (R3) — la moneda de Costa Rica tal como la deja la migración `20261124120000`. */
+export const MONEDA_CR: FormatoMoneda = {
+  codigo: "CRC",
+  simbolo: "₡",
+  separadorMiles: ".",
+  separadorDecimal: ",",
+  decimales: 2,
+};
+
+/**
+ * Costa Rica tal como la dejan la migración de SLT-42 (R3) y la de SL-21 (moneda e impuesto):
+ * `reglasPaisFijas(CR)`.
+ */
 export const CR: ReglasPaisFijas = {
   paisId: "CR",
   zonaHoraria: "America/Costa_Rica",
   telefono: { prefijo: "506", digitosNacionales: 8 },
   tiposDocumento: TIPOS_CR,
+  moneda: MONEDA_CR,
+  impuestoNombre: "IVA",
+};
+
+/**
+ * SL-21 (design §5.1) — una moneda distinta en TODO de la de Costa Rica, para que un test de moneda
+ * por país no pase por casualidad: otro código, otro símbolo, espacio de miles, punto decimal y sin
+ * decimales. `XTS` es el código que ISO 4217 reserva para pruebas; «€» porque la fuente embebida de
+ * las etiquetas lo cubre (U+20AC) y así un test de PDF falla por la moneda y no por la fuente.
+ */
+export const MONEDA_DE_PRUEBA: FormatoMoneda = {
+  codigo: "XTS",
+  simbolo: "€",
+  separadorMiles: " ",
+  separadorDecimal: ".",
+  decimales: 0,
 };
 
 /**
@@ -51,6 +85,9 @@ export function reglasPaisFijas(datos: Partial<ReglasPaisFijas> = {}): IReglasPa
       const tipo = delPais.find((t) => t.id === idOValue) ?? delPais.find((t) => t.value === idOValue) ?? null;
       return Promise.resolve(tipo);
     },
+    moneda: () => (r.moneda === null ? Promise.reject(new PaisSinMoneda(r.paisId)) : Promise.resolve(r.moneda)),
+    nombreImpuesto: () =>
+      r.impuestoNombre === null ? Promise.reject(new PaisSinImpuesto(r.paisId)) : Promise.resolve(r.impuestoNombre),
   };
 }
 
@@ -81,6 +118,8 @@ export function paisDelAltaFijo(datos: Partial<PaisDTO> = {}, tiposDocumento: re
       prefijoTelefonico: CR.telefono?.prefijo ?? null,
       telefonoDigitosNacionales: CR.telefono?.digitosNacionales ?? null,
       zonaHoraria: CR.zonaHoraria,
+      moneda: CR.moneda,
+      impuestoNombre: CR.impuestoNombre,
       ...datos,
     },
     tiposDocumento,
