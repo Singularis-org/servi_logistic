@@ -93,6 +93,8 @@ export default defineConfig({
         "zona-sin-distritos",
         // SLT-221 R1606, R1609: el maestro corrige la cédula de un usuario y la ve en el Histórico.
         "usuario-corregir-cedula",
+        // SLT-221 R1618-R1628: el maestro pide el cambio de correo y la persona lo confirma sin sesión.
+        "usuario-cambio-correo",
         "wallet-iva-aparte-sl39",
         "marca",
         "auth",

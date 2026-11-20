@@ -32,8 +32,6 @@ export interface ConfirmarCorreoDeps {
 /**
  * SLT-221 (design §4.3; R1622-R1629): la persona confirma su correo nuevo con el enlace, sin sesión
  * y sin contraseña. Abrir la página no llama a esto (R1626): solo el botón.
- *
- * @sin-superficie SLT-221 en curso: la monta el botón «Confirmar correo» de `/recuperar-contrasena/confirmar-correo` (tarea T3.2, pantalla, tras el canvas de T2.0); al montarlo esta anotacion caduca y se quita.
  */
 export async function confirmarCambioCorreo(
   input: unknown,

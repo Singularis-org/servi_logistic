@@ -25,6 +25,11 @@ vi.mock("@/lib/actions/usuarios", () => ({
   listarTiposIdentificacion: (...args: unknown[]) =>
     listarTiposIdentificacionMock(...args),
   listarRoles: (...args: unknown[]) => listarRolesMock(...args),
+  // SLT-221: el bloque «Cambiar correo» de la edición lee el pendiente. Aquí no hay ninguno; su
+  // comportamiento lo prueba `cambio-correo-usuario.test.tsx`.
+  obtenerCambioCorreoPendiente: async () => ({ status: "ok", pendiente: null }),
+  solicitarCambioCorreoUsuario: vi.fn(),
+  cancelarCambioCorreoUsuario: vi.fn(),
 }));
 
 // Feature 24/R27: el select de zona lee la acción `listarZonas` (módulo aparte).

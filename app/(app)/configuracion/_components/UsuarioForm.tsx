@@ -34,6 +34,7 @@ import { listarZonas } from "@/lib/actions/zonas";
 import { listarVehiculos } from "@/lib/actions/vehiculos";
 import type { UsuarioPublico } from "@/lib/interfaces/repositories/IUserRepository";
 import type { CambioUsuarioEvaluable } from "@/lib/interfaces/services/IUsuarioService";
+import { CambioCorreoUsuario } from "./CambioCorreoUsuario";
 
 /**
  * Rol que este formulario NUNCA asigna: `apiKey` identifica la cuenta de máquina de una
@@ -483,6 +484,12 @@ export const UsuarioForm = forwardRef<UsuarioFormHandle, UsuarioFormProps>(
             onChange={(e) => setField("email", e.target.value)}
           />
         </FormField>
+
+        {/* SLT-221 (design §7): el correo se cambia con confirmación desde el correo nuevo, no
+            editando el campo. Una cuenta de API key no tiene persona que confirme (R1613). */}
+        {isEditar && usuario && rolValue !== undefined && !esRolApiKey && (
+          <CambioCorreoUsuario usuarioId={usuario.id} />
+        )}
 
         <FormField id="telefono" label="Teléfono" error={errors.telefono}>
           <Input
