@@ -28,11 +28,11 @@
 
 ## Bloque 2 — Layout, proveedor y hooks (R1, R2, R15, R17) (depende del bloque 1)
 
-- [ ] **T2.1** [P] `providers/MonedaDelPaisProvider.tsx` y `hooks/use-moneda-del-pais.ts` (design §6).
+- [x] **T2.1** [P] `providers/MonedaDelPaisProvider.tsx` y `hooks/use-moneda-del-pais.ts` (design §6).
   - *Hecho:* en `tests/components/moneda-del-pais-pantallas.test.tsx`, sin proveedor dan
     `MONEDA_PLATAFORMA` e `IMPUESTO_ROTULO` (R15), y con el proveedor de prueba, `MONEDA_DE_PRUEBA` e
     «IGV» (R17).
-- [ ] **T2.2** `app/(app)/layout.tsx`: `paisParaPantallasDelActor` en el `Promise.all` y el proveedor
+- [x] **T2.2** `app/(app)/layout.tsx`: `paisParaPantallasDelActor` en el `Promise.all` y el proveedor
   dentro del de etiquetas. Se borra `etiquetasDelActor`.
   - *Hecho:* `tests/components/AppLayout.test.tsx` en verde. Su bloque SL-20/T5.1 pasa a doblar
     `paraPantallas` y cubre R1, R2 y R5: con empresa, una llamada y los dos proveedores con lo suyo;

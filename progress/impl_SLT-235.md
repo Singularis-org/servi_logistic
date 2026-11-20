@@ -43,3 +43,34 @@ Tests:
 - `layout.tsx`: la línea mínima de arriba. `etiquetasDelActor` vive dentro del layout, así que no había forma de dejarla sobre `paraPantallas` sin tocarlo. Su comentario todavía nombra `etiquetasDeEmpresa`: la función entera desaparece en T2.2.
 
 Veredicto: Bloque 1 hecho, con typecheck y unit en verde. Falta correr R6 contra una base, y `AppLayout.test.tsx` queda en rojo hasta T2.2.
+
+## Bloque 2 — T2.1 y T2.2 (frontend_dev, 2026-11-20)
+
+### Archivos
+- Nuevos: `providers/MonedaDelPaisProvider.tsx`, `hooks/use-moneda-del-pais.ts`,
+  `tests/components/moneda-del-pais-pantallas.test.tsx`.
+- Modificados: `app/(app)/layout.tsx` (cuarta lectura = `paisParaPantallasDelActor`, rama del
+  superadmin y sin sesión = `PARA_PANTALLAS_DE_PLATAFORMA`, `MonedaDelPaisProvider` dentro del de
+  etiquetas, `etiquetasDelActor` borrada), `tests/components/AppLayout.test.tsx` (bloque SL-20/T5.1
+  dobla `paraPantallas` y el proveedor de moneda; valor por defecto de `paraPantallas` a nivel de módulo).
+
+### R → test
+| R | Test |
+|---|---|
+| R1 | `AppLayout.test.tsx` > «⭑ R1: con una empresa, UNA llamada, y cada proveedor recibe lo suyo de SU país» |
+| R2 | `AppLayout.test.tsx` > «R2: el superadmin (sin empresa) recibe lo neutro y lo de la plataforma…» |
+| R5 | `AppLayout.test.tsx` > «R5: si la lectura del país falla, el portal se pinta… y lo dice en los logs» |
+| R15 | `moneda-del-pais-pantallas.test.tsx` > «R15: sin proveedor, useMonedaDelPais…» y «R15: sin proveedor, useImpuestoDelPais…» |
+| R17 | `moneda-del-pais-pantallas.test.tsx` > «R17: con el proveedor de prueba, useImpuestoDelPais da «IGV»…» |
+
+### Verificación
+- `pnpm run typecheck`: exit 0.
+- `pnpm exec eslint` sobre los 5 archivos: exit 0, sin avisos.
+- `pnpm exec vitest run tests/components/AppLayout.test.tsx tests/components/moneda-del-pais-pantallas.test.tsx`:
+  2 archivos, 28 tests, 28 en verde (el rojo del bloque 1 en `AppLayout.test.tsx` queda resuelto).
+
+### Desviaciones
+- Ninguna sobre el design. `IMPUESTO_DE_PRUEBA` («IGV») y el envoltorio `conPais()` viven en el test
+  nuevo (no exportados) para que el bloque 3 monte cada pantalla con el mismo proveedor.
+
+Veredicto: Bloque 2 hecho; typecheck, lint y los dos archivos de test en verde.
