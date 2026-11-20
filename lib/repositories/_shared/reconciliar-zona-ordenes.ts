@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
 
 import type { Prisma } from "@prisma/client";
-import type { OrderStatusValue } from "@/lib/types/order-status";
 import { zonaUnicaDeDistrito } from "@/lib/repositories/_shared/zona-colapso";
 import { appendAccion, resolverActorCongelado } from "@/lib/repositories/registrar-accion";
 import { etiquetaDeEntidad } from "@/lib/types/historial-accion-etiquetas";
-import { ESTADOS_PAQUETE_EN_ESTANTE } from "@/lib/utils/estados-bodega-satelite";
+import {
+  ESTADOS_PAQUETE_EN_ESTANTE,
+  ESTADOS_QUE_NO_SE_MUEVEN,
+} from "@/lib/utils/estados-bodega-satelite";
 
 /**
  * SLT-224 (design §2) — LA RECONCILIACION DE `orden.zona_id`, EN UN SOLO SITIO DEL ARBOL.
@@ -15,6 +17,11 @@ import { ESTADOS_PAQUETE_EN_ESTANTE } from "@/lib/utils/estados-bodega-satelite"
  * y el boton «Actualizar zonas» (`ActualizacionZonasRepository.actualizar`). Tres copias del corte
  * de dinero serian tres reglas que un dia divergen sin que falle nada (R1706). Lo vigila
  * `tests/unit/guards/zona-reconciliacion-no-retarifa.guardia.test.ts`.
+ *
+ * PR 2 (D6, R1720-R1725): «las vivas se mueven aunque tengan un cierre anterior; las finalizadas
+ * no». El corte deja de excluir todo cierre y toda gestion: solo protege el dinero EN CURSO (un
+ * cierre sin aprobar, o una gestion que decidio dinero y aun no tiene cierre aprobado), y el estado
+ * lo decide `CLASE_RECONCILIACION_ZONA`. Los tres llamadores heredan el corte sin cambio.
  */
 
 export interface AlcanceReconciliacion {
@@ -22,8 +29,6 @@ export interface AlcanceReconciliacion {
   distritoIds: string[];
   /** Si viene, acota ademas a estas ordenes (la recepcion pasa la suya). Ausente = todas las del distrito. */
   ordenIds?: string[];
-  /** Si viene, estados que ademas NO se mueven (el boton pasa las devoluciones). Ausente = como hoy. */
-  excluirEstados?: readonly OrderStatusValue[];
 }
 
 export interface ResultadoReconciliacion {
@@ -32,19 +37,20 @@ export interface ResultadoReconciliacion {
 }
 
 /**
- * ⭑ EL CORTE DE ELEGIBILIDAD DE LA RECONCILIACION (366/R6/R7/R8), EN UNA SOLA DECLARACION.
+ * ⭑ EL CORTE DE ELEGIBILIDAD DE LA RECONCILIACION (366/R6/R7/R8 → SLT-224 PR 2, D6), EN UNA SOLA
+ * DECLARACION.
  *
- * Vive en el `WHERE` a proposito: son condiciones sobre filas de OTRAS tablas (`cierre_detail` y
- * `gestion_orden`), no `if`s que un doble pueda esquivar. Sus cuatro cortes, sin ninguno de
- * estado:
+ * Vive en el `WHERE` a proposito: son condiciones sobre filas de OTRAS tablas (`cierre_detail`,
+ * `cierre_dia` y `gestion_orden`), no `if`s que un doble pueda esquivar. Sus cortes, sin ninguno
+ * de estado:
  *   · `deletedAt: null`       — una orden borrada no se re-estampa;
- *   · `cierreDetalles: none`  — ya tiene un detalle congelado en un cierre: eso ya se facturo, y
- *     `cierre_detail` es INMUTABLE (366/R8);
- *   · `gestiones: none {...}` — tiene una gestion VIGENTE cuyo resultado ya decidio dinero
- *     (`entregada`, `rechazada`, `incidente`). Una `reprogramada` o una `devuelta` vigentes NO
- *     excluyen: las dos se rutean HACIA ADELANTE por `orden.zonaId`
- *     (`LiberacionReprogramadaService`, `DevolucionSlaService`), asi que dejarlas con la zona
- *     vieja las liberaria a la bodega equivocada — el mismo atasco que la 366 vino a arreglar.
+ *   · `cierreDetalles: none {cierre sin aprobar}` — R1722: el detalle de un cierre `solicitado`,
+ *     `rechazado` o `vencido` es dinero EN CURSO: la resolicitud, la correccion de la 398 y el ruteo
+ *     de la aprobacion leen la zona VIVA (design §4b). Uno `aprobado` ya es pasado e inmutable
+ *     (69/R10) y no impide mover la zona (R1720): el proximo cierre cobra con la zona nueva;
+ *   · `gestiones: none {...}` — R1722: una gestion VIGENTE cuyo resultado ya decidio dinero
+ *     (`entregado`, rechazo, `incidente`) y que aun NO tiene cierre aprobado (sin cierre, o con uno
+ *     sin aprobar). Una `reprogramada` o una `devuelta` vigentes NO excluyen por aqui.
  *
  * ⭑ FICHA 377 (design §3.3) — POR QUE ES UNA FUNCION Y NO DOS `where` ESCRITOS DOS VECES. La 377
  * lo lee DOS veces en cada grupo: una para las ordenes que SE MUEVEN (`notIn` estante) y otra
@@ -69,11 +75,14 @@ function whereBaseElegible(
     distritoId: { in: distritoIds },
     zonaId: { not: zonaResueltaId },
     deletedAt: null,
-    cierreDetalles: { none: {} },
+    // R1722: solo el detalle de un cierre SIN APROBAR protege.
+    cierreDetalles: { none: { cierre: { estado: { not: "aprobado" } } } },
+    // R1722: la gestion que decidio dinero y aun no tiene cierre aprobado.
     gestiones: {
       none: {
         anuladaAt: null,
         resultado: { in: ["entregado", "devolucion_a_origen_por_rechazo", "incidente"] },
+        OR: [{ cierreId: null }, { cierre: { estado: { not: "aprobado" } } }],
       },
     },
   };
@@ -93,7 +102,7 @@ export async function reconciliarZonaDeOrdenes(
   alcance: AlcanceReconciliacion,
   actorUsuarioId: string | null,
 ): Promise<ResultadoReconciliacion> {
-  const { distritoIds: distritosAfectados, ordenIds, excluirEstados } = alcance;
+  const { distritoIds: distritosAfectados, ordenIds } = alcance;
   let ordenesReconciliadas = 0;
   // 377/R8: las que HABRIAN cambiado de zona y no lo hacen porque su paquete ya esta en el
   // estante de una satelite. Se devuelve en la misma respuesta del guardado (R8/R10).
@@ -137,13 +146,14 @@ export async function reconciliarZonaDeOrdenes(
   const loteId = randomUUID();
   const actor = await resolverActorCongelado(tx, actorUsuarioId);
 
-  // Lo que el `findMany` de elegibles NO mueve: el estante (377) y, si el llamador lo pide, sus
-  // estados extra (el boton pasa las devoluciones). Sin `excluirEstados` es la lista de la 377.
-  const noSeMueven = [...ESTADOS_PAQUETE_EN_ESTANTE, ...(excluirEstados ?? [])];
+  // R1721/R1723: lo que el `findMany` de elegibles NO mueve por su estado: todo lo que la
+  // clasificacion no marca `se_mueve` (estante, finalizadas, devoluciones, por liberar). Los tres
+  // llamadores excluyen lo mismo (R1706).
+  const noSeMueven = [...ESTADOS_QUE_NO_SE_MUEVEN];
 
   for (const [zonaResueltaId, distritoIds] of distritosPorZonaResuelta) {
-    // El corte de elegibilidad de la 366 (los cuatro cortes que NO miran el estado) vive
-    // en `whereBaseElegible`, arriba, y lo leen las DOS consultas de este bloque.
+    // El corte de elegibilidad (los cortes que NO miran el estado) vive en
+    // `whereBaseElegible`, arriba, y lo leen las DOS consultas de este bloque (R1724).
     const base = whereBaseElegible(distritoIds, zonaResueltaId, ordenIds);
 
     // ══════════════════════════════════════════════════════════════════════════════
