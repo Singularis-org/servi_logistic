@@ -10,21 +10,32 @@ import {
 } from "@/lib/repositories/_shared/prisma-unique";
 import { reconciliarZonaDeOrdenes } from "@/lib/repositories/_shared/reconciliar-zona-ordenes";
 import { normalizeName } from "@/lib/utils/normalize";
+import { NOMBRE_USUARIO_SELECT, nombreCompletoUsuario } from "@/lib/utils/nombre-usuario";
+import { ESTADOS_TERMINALES } from "@/lib/types/order-status-transiciones";
+import type { OrderStatusValue } from "@/lib/types/order-status";
 import { appendAccion, resolverActorCongelado } from "@/lib/repositories/registrar-accion";
 import {
   ETIQUETA_DESCONOCIDA,
   etiquetaDeEntidad,
   valorDeCatalogo,
 } from "@/lib/types/historial-accion-etiquetas";
-import type { ImpactoZonaCentralDTO, TarifaZonaMensajeroDTO, ZonaDTO } from "@/lib/types/zona";
+import {
+  MUESTRA_ORDENES_VIVAS,
+  type ImpactoZonaCentralDTO,
+  type ImpedimentosDesactivacion,
+  type TarifaZonaMensajeroDTO,
+  type ZonaDTO,
+} from "@/lib/types/zona";
 import type {
   CreateZonaData,
   CreateZonaResult,
   DeleteZonaResult,
+  DesactivarZonaRepoResult,
   DistritoEnOtraZona,
   IZonaRepository,
   ListZonasParams,
   ListZonasResult,
+  ReactivarZonaRepoResult,
   SinpeZonaRow,
   UpdateZonaData,
   UpdateZonaResult,
@@ -65,6 +76,8 @@ type ZonaPrismaClient = Pick<
   // fila por la API de modelo, y sin el dos guardados simultaneos sobre la misma bodega leerian el
   // mismo valor «anterior» y escribirian dos filas que cuentan la misma transicion dos veces.
   | "$queryRaw"
+  // SLT-225 (R1742): el valor de cada estado del conteo agrupado de ordenes vivas.
+  | "orderStatus"
 >;
 
 /** Una zona nombrada, tal como la necesita una fila del historial (376/R12/R13). */
@@ -179,7 +192,7 @@ function tarifaToDTO(row: TarifaRow): TarifaZonaMensajeroDTO {
 }
 
 function toDTO(
-  zona: { id: string; nombre: string; cobroVehiculo: boolean; esCentral: boolean },
+  zona: { id: string; nombre: string; cobroVehiculo: boolean; esCentral: boolean; activa: boolean },
   distritosCount: number,
   tarifas: TarifaRow[] | undefined,
 ): ZonaDTO {
@@ -189,6 +202,7 @@ function toDTO(
     cobroVehiculo: zona.cobroVehiculo,
     distritosCount,
     esCentral: zona.esCentral,
+    activa: zona.activa,
   };
   if (tarifas !== undefined) dto.tarifas = tarifas.map(tarifaToDTO);
   return dto;
@@ -269,6 +283,92 @@ async function leerDistritosEnOtraZona(
     select: { distrito: { select: { nombre: true } }, zona: { select: { nombre: true } } },
   });
   return filas.map((f) => ({ distritoNombre: f.distrito.nombre, zonaNombre: f.zona.nombre }));
+}
+
+/**
+ * ⭑ SLT-225 (D4, R1742) — «ORDEN VIVA» DE UNA ZONA: no eliminada y fuera de `ESTADOS_TERMINALES`.
+ *
+ * Es la definicion del retiro de geografia (FICHA 374, `contarSinEntregarPorNodoGeografico`), no la
+ * de `contarOrdenesVivasPorZona` (esa cuenta tambien una entregada sin cierre: responde otra
+ * pregunta). Devolviendo y por devolver a tienda SI son vivas: el paquete aun no volvio (P3).
+ * Declarada una vez: el conteo por estado y la muestra salen del MISMO corte.
+ */
+function whereOrdenViva(zonaId: string): Prisma.OrdenWhereInput {
+  return { zonaId, deletedAt: null, estatus: { value: { notIn: [...ESTADOS_TERMINALES] } } };
+}
+
+/** «#<guia>» o, si la orden aun no tiene guia, «remisión <n>» (R1742). */
+function nombreDeOrdenViva(o: { numGuia: number | null; numRemision: string }): string {
+  return o.numGuia !== null ? `#${o.numGuia}` : `remisión ${o.numRemision}`;
+}
+
+/**
+ * SLT-225 (R1746) — el centinela que deshace la marca. Se lanza DENTRO del callback de
+ * `$transaction` para que el `updateMany` que ya corrio se revierta, y se atrapa fuera: nunca sale
+ * del repositorio.
+ */
+class DesactivacionBloqueada extends Error {
+  constructor(readonly impedimentos: ImpedimentosDesactivacion) {
+    super("zona con impedimentos para desactivar");
+  }
+}
+
+type TxImpedimentos = Pick<PrismaClient, "zonaDistrito" | "usuario" | "orden" | "orderStatus">;
+
+/**
+ * SLT-225 (R1742-R1745) — TODOS los impedimentos, leidos por la `tx` de la desactivacion DESPUES
+ * de su `updateMany`: la escritura que compita en el mismo instante o ya hizo commit (y se cuenta)
+ * o espera al bloqueo de fila y la rechaza el trigger (design §1.2). Secuencial: nada de
+ * `Promise.all` dentro de la `tx`. La empresa la ponen la extension y la RLS (R1752).
+ */
+async function leerImpedimentos(
+  tx: TxImpedimentos,
+  zonaId: string,
+  esCentral: boolean,
+): Promise<ImpedimentosDesactivacion> {
+  const distritos = await tx.zonaDistrito.count({ where: { zonaId } });
+  // P2: cualquier estado cuenta; al reactivar a la persona quedaria en una zona desactivada.
+  const usuarios = await tx.usuario.findMany({
+    where: { zonaId },
+    select: { ...NOMBRE_USUARIO_SELECT, estado: true, rol: { select: { value: true } } },
+    orderBy: { nombre: "asc" },
+  });
+  const grupos = await tx.orden.groupBy({
+    by: ["estatusId"],
+    where: whereOrdenViva(zonaId),
+    _count: { _all: true },
+  });
+  const estados =
+    grupos.length === 0
+      ? []
+      : await tx.orderStatus.findMany({
+          where: { id: { in: grupos.map((g) => g.estatusId) } },
+          select: { id: true, value: true },
+        });
+  const valorDe = new Map(estados.map((e) => [e.id, e.value as OrderStatusValue]));
+  const porEstado = grupos
+    .map((g) => ({ estado: valorDe.get(g.estatusId) as OrderStatusValue, cantidad: g._count._all }))
+    .sort((a, b) => b.cantidad - a.cantidad || a.estado.localeCompare(b.estado));
+  const total = porEstado.reduce((n, g) => n + g.cantidad, 0);
+  const muestra =
+    total === 0
+      ? []
+      : await tx.orden.findMany({
+          where: whereOrdenViva(zonaId),
+          select: { numGuia: true, numRemision: true },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+          take: MUESTRA_ORDENES_VIVAS,
+        });
+  return {
+    esCentral,
+    distritos,
+    usuarios: usuarios.map((u) => ({ nombre: nombreCompletoUsuario(u), rol: u.rol.value, estado: u.estado })),
+    ordenesVivas: { total, porEstado, muestra: muestra.map(nombreDeOrdenViva) },
+  };
+}
+
+function hayImpedimentos(i: ImpedimentosDesactivacion): boolean {
+  return i.esCentral || i.distritos > 0 || i.usuarios.length > 0 || i.ordenesVivas.total > 0;
 }
 
 function tarifaCreateRows(zonaId: string, tarifas: CreateZonaData["tarifas"]) {
@@ -375,7 +475,8 @@ export class ZonaRepository implements IZonaRepository {
   async list(params: ListZonasParams): Promise<ListZonasResult> {
     const [rows, total] = await Promise.all([
       this.prisma.zona.findMany({
-        orderBy: { nombre: "asc" },
+        // SLT-225 (R1759): las activas primero; dentro de cada grupo, por nombre.
+        orderBy: [{ activa: "desc" }, { nombre: "asc" }],
         skip: params.skip,
         take: params.take,
         include: { _count: { select: { distritos: true } } },
@@ -443,11 +544,15 @@ export class ZonaRepository implements IZonaRepository {
         // 376/R5: la lectura que ya existia gana UNA columna. No hace falta contar zonas: el
         // indice unico parcial `zona_es_central_unico` garantiza «a lo sumo una», asi que «esta
         // zona ES la central» equivale a «quitarle la marca deja el sistema sin ninguna».
+        // SLT-225 (R1753): la misma lectura gana `activa`, en vez de una consulta mas.
         const exists = await tx.zona.findUnique({
           where: { id },
-          select: { id: true, esCentral: true },
+          select: { id: true, esCentral: true, activa: true },
         });
         if (!exists) return { estado: "not_found" as const };
+        // SLT-225 (R1753): antes de la primera escritura, asi que no se guarda nada: ni nombre, ni
+        // distritos (el trigger los rechazaria igual), ni tarifas, ni la marca, ni la reconciliacion.
+        if (exists.activa === false) return { estado: "zona_desactivada" as const };
 
         // ⭑ 376/R5 — EL RECHAZO SALE ANTES DE LA PRIMERA ESCRITURA, y por eso no se aplica NADA
         // del guardado: ni el nombre, ni los distritos, ni las tarifas, ni la marca. Solo un
@@ -767,6 +872,77 @@ export class ZonaRepository implements IZonaRepository {
       if (esViolacionDeClaveForanea(e)) return "referenced";
       throw e;
     }
+  }
+
+  /**
+   * ⭑ SLT-225 (R1741-R1746, R1749) — DESACTIVAR, EN UNA SOLA TRANSACCION.
+   *
+   * 1. El `updateMany` condicionado a `activa: true` va PRIMERO: toma el bloqueo de fila que
+   *    ordena la carrera con los triggers (design §1.2). Si no toca nada, un `findUnique` distingue
+   *    `not_found` de `ya_desactivada` (R1748) y se sale sin escribir.
+   * 2. Los impedimentos se leen despues, por la misma `tx`. Si hay alguno, el centinela deshace el
+   *    paso 1: ni marca ni fila de historial (R1746).
+   * 3. Sin impedimentos, la fila `zona_desactivada` en la misma transaccion. `valor_anterior` y
+   *    `valor_nuevo` en NULL, como `nodo_geografico_*`: el par de tipos ya dice la transicion.
+   * No toca ordenes, usuarios, tarifas, grupos ni cierres (R1741).
+   */
+  async desactivar(id: string, actorUsuarioId: string | null): Promise<DesactivarZonaRepoResult> {
+    try {
+      return await this.prisma.$transaction(async (tx): Promise<DesactivarZonaRepoResult> => {
+        const marcadas = await tx.zona.updateMany({ where: { id, activa: true }, data: { activa: false } });
+        if (marcadas.count === 0) {
+          const existe = await tx.zona.findUnique({ where: { id }, select: { id: true } });
+          return existe ? { estado: "ya_desactivada" } : { estado: "not_found" };
+        }
+        const zona = await tx.zona.findUniqueOrThrow({
+          where: { id },
+          select: { nombre: true, esCentral: true },
+        });
+        const impedimentos = await leerImpedimentos(tx, id, zona.esCentral);
+        if (hayImpedimentos(impedimentos)) throw new DesactivacionBloqueada(impedimentos);
+
+        const actor = await resolverActorCongelado(tx, actorUsuarioId);
+        await appendAccion(tx, [
+          {
+            accion: "zona_desactivada",
+            entidadTipo: "zona",
+            entidadId: id,
+            entidadEtiqueta: etiquetaDeEntidad("zona", { nombre: zona.nombre }),
+            ...actor,
+          },
+        ]);
+        return { estado: "ok" };
+      });
+    } catch (e) {
+      if (e instanceof DesactivacionBloqueada) return { estado: "bloqueada", impedimentos: e.impedimentos };
+      throw e;
+    }
+  }
+
+  /**
+   * ⭑ SLT-225 (R1747, R1748, R1750) — REACTIVAR. Solo la marca y su fila `zona_reactivada`, en la
+   * misma transaccion: no devuelve distritos ni usuarios (se quitaron a mano antes de desactivar).
+   */
+  async reactivar(id: string, actorUsuarioId: string | null): Promise<ReactivarZonaRepoResult> {
+    return this.prisma.$transaction(async (tx): Promise<ReactivarZonaRepoResult> => {
+      const marcadas = await tx.zona.updateMany({ where: { id, activa: false }, data: { activa: true } });
+      if (marcadas.count === 0) {
+        const existe = await tx.zona.findUnique({ where: { id }, select: { id: true } });
+        return existe ? { estado: "ya_activa" } : { estado: "not_found" };
+      }
+      const zona = await tx.zona.findUniqueOrThrow({ where: { id }, select: { nombre: true } });
+      const actor = await resolverActorCongelado(tx, actorUsuarioId);
+      await appendAccion(tx, [
+        {
+          accion: "zona_reactivada",
+          entidadTipo: "zona",
+          entidadId: id,
+          entidadEtiqueta: etiquetaDeEntidad("zona", { nombre: zona.nombre }),
+          ...actor,
+        },
+      ]);
+      return { estado: "ok" };
+    });
   }
 
   async countExistingDistritos(ids: string[]): Promise<number> {

@@ -3,6 +3,7 @@ import type {
   ActualizarZonaInput,
   CrearZonaInput,
   ImpactoZonaCentralDTO,
+  ImpedimentosDesactivacion,
   ListarZonasInput,
   MotivoConflictoBorrado,
   ZonaDTO,
@@ -64,6 +65,21 @@ export type ImpactoZonaCentralServiceResult =
   | { status: "ok"; impacto: ImpactoZonaCentralDTO[] }
   | { status: "forbidden" };
 
+/** SLT-225 (R1741-R1748, R1751): el desenlace de desactivar, ya en el vocabulario de la accion. */
+export type DesactivarZonaServiceResult =
+  | { status: "ok" }
+  | { status: "forbidden" }
+  | { status: "not_found" }
+  | { status: "conflict"; motivo: "impedimentos"; impedimentos: ImpedimentosDesactivacion }
+  | { status: "conflict"; motivo: "ya_desactivada" };
+
+/** SLT-225 (R1747, R1748, R1751): el desenlace de reactivar. */
+export type ReactivarZonaServiceResult =
+  | { status: "ok" }
+  | { status: "forbidden" }
+  | { status: "not_found" }
+  | { status: "conflict"; motivo: "ya_activa" };
+
 export interface IZonaService {
   crear(input: CrearZonaInput, actor: Actor): Promise<CrearZonaServiceResult>;
   obtener(id: string, actor: Actor): Promise<ObtenerZonaServiceResult>;
@@ -74,6 +90,9 @@ export interface IZonaService {
     actor: Actor,
   ): Promise<ActualizarZonaServiceResult>;
   borrar(id: string, actor: Actor): Promise<BorrarZonaServiceResult>;
+  /** SLT-225: solo `maestro`; un no-maestro recibe `forbidden` sin tocar el repositorio (R1751). */
+  desactivar(id: string, actor: Actor): Promise<DesactivarZonaServiceResult>;
+  reactivar(id: string, actor: Actor): Promise<ReactivarZonaServiceResult>;
   /** FICHA 376 (Q4): cuantas ordenes vivas re-tarifaria mover la marca, por zona. Solo lectura. */
   impactoZonaCentral(
     zonaIds: string[],

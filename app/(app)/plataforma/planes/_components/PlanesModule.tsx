@@ -28,7 +28,7 @@ import type {
 import { BorradoresDePlanes } from "./BorradoresDePlanes";
 import { ESTILO_SHEET_PLAN, type AccionesDelBorrador, type EmpresaParaCustom } from "./PlanForm";
 import { AbrirPlanForm } from "./plan-form/AbrirPlanForm";
-import { lineasDeCosto, lineasDeTopes, TEXTOS_PLAN, textoDeVisibilidad } from "./plan-vista";
+import { lineasDeCosto, lineasDeNiveles, lineasDeTopes, TEXTOS_PLAN, textoDeVisibilidad } from "./plan-vista";
 
 /** Textos de la pantalla, en un solo sitio para cuando llegue la i18n. */
 const TEXTOS = {
@@ -44,6 +44,8 @@ const TEXTOS = {
   // SLT-214 (design §4.4; R20).
   columnaBeneficios: "Beneficios",
   sinBeneficios: "Sin beneficios",
+  // SLT-215 (design §4.3; R21).
+  columnaNiveles: "Niveles",
   columnaEmpresas: "Empresas",
   columnaCambio: "Cambio programado",
   sinCambio: "Ninguno",
@@ -283,6 +285,7 @@ function Catalogo({
           <TableHead>{TEXTOS.columnaCosto}</TableHead>
           <TableHead>{TEXTOS.columnaTopes}</TableHead>
           <TableHead className={SOLO_DESDE_MD}>{TEXTOS.columnaBeneficios}</TableHead>
+          <TableHead className={SOLO_DESDE_MD}>{TEXTOS.columnaNiveles}</TableHead>
           <TableHead className="text-right">{TEXTOS.columnaEmpresas}</TableHead>
           <TableHead className={SOLO_DESDE_MD}>{TEXTOS.columnaCambio}</TableHead>
         </TableRow>
@@ -323,6 +326,14 @@ function Catalogo({
             {/* SLT-214 (R20, R21): los 3 primeros; «Mostrar más» despliega el resto en esta fila sola. */}
             <TableCell className={SOLO_DESDE_MD}>
               <ListaDeBeneficios beneficios={plan.beneficios ?? []} plegable={3} vacio={TEXTOS.sinBeneficios} />
+            </TableCell>
+            {/* SLT-215 (R21): todos los niveles, uno por línea y en su orden; sin «Mostrar más» (son 10 como mucho). */}
+            <TableCell className={SOLO_DESDE_MD}>
+              <ul className="flex flex-col gap-0.5">
+                {lineasDeNiveles(plan.niveles ?? []).map((linea) => (
+                  <li key={linea}>{linea}</li>
+                ))}
+              </ul>
             </TableCell>
             <TableCell className="text-right tabular-nums">{formatearConteo(plan.empresas)}</TableCell>
             <TableCell className={SOLO_DESDE_MD}>

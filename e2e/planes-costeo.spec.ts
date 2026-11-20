@@ -285,6 +285,8 @@ test("el superadmin crea un custom de A «Con monto» con costo por orden 100, q
   }
   // SLT-214 «Planes: beneficios de texto con ícono» (R7, R9): «Beneficios» tras «Módulos», sin beneficios.
   await siguientePaso(form, "Beneficios");
+  // SLT-215 «Planes: niveles de beneficio por volumen de órdenes» (R7, R9): «Niveles» tras «Beneficios», sin niveles.
+  await siguientePaso(form, "Niveles");
   await siguientePaso(form, "Revisar y crear");
 
   // D13/D17: «Crear plan» espera a la vista previa.

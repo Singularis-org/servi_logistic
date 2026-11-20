@@ -73,36 +73,47 @@ function fila(o: Partial<FilaZonaErrada>): FilaZonaErrada {
     estado: "en_bodega_central",
     zonaActual: "A",
     zonaNueva: "C",
-    conCierre: false,
-    conGestion: false,
+    cobroEnCurso: false,
     ...o,
   };
 }
 
-describe("SLT-224/R1715 — la clasificacion de las saltadas (funcion pura)", () => {
+describe("SLT-224/R1715/R1726 — la clasificacion de las saltadas (funcion pura)", () => {
   it("una orden elegible no se salta", () => {
     expect(motivoDeSaltada(fila({ estado: "en_bodega_central" }))).toBeNull();
     expect(motivoDeSaltada(fila({ estado: "en_ruta_bodega_satelite" }))).toBeNull();
   });
 
-  it("precedencia: estante antes que cierre; devolucion antes que cierre", () => {
-    expect(motivoDeSaltada(fila({ estado: "en_bodega_satelite", conCierre: true }))).toBe("estante_satelite");
-    expect(motivoDeSaltada(fila({ estado: "por_devolver_a_tienda", conGestion: true }))).toBe("devolucion");
-    expect(motivoDeSaltada(fila({ estado: "en_reparto", conGestion: true }))).toBe("cierre_o_dinero");
-    expect(motivoDeSaltada(fila({ estado: "entregado", conCierre: true }))).toBe("cierre_o_dinero");
+  it("R1726: precedencia — el estado manda sobre el cobro en curso", () => {
+    expect(motivoDeSaltada(fila({ estado: "en_bodega_satelite", cobroEnCurso: true }))).toBe("estante_satelite");
+    expect(motivoDeSaltada(fila({ estado: "entregado", cobroEnCurso: true }))).toBe("finalizada");
+    expect(motivoDeSaltada(fila({ estado: "por_devolver_a_tienda", cobroEnCurso: true }))).toBe("devolucion");
+    expect(motivoDeSaltada(fila({ estado: "reprogramado", cobroEnCurso: true }))).toBe("por_liberar");
+    expect(motivoDeSaltada(fila({ estado: "en_reparto", cobroEnCurso: true }))).toBe("cobro_en_curso");
+    expect(motivoDeSaltada(fila({ estado: "en_bodega_central", cobroEnCurso: true }))).toBe("cobro_en_curso");
   });
 
-  it("los seis estados de devolucion se saltan como devolucion", () => {
+  it("R1726: `devuelta_a_tienda` es finalizada, no devolucion; los tres terminales son finalizada", () => {
+    for (const estado of ["entregado", "devuelta_a_tienda", "incidente"] as const) {
+      expect(motivoDeSaltada(fila({ estado }))).toBe("finalizada");
+    }
+  });
+
+  it("R1726: los seis estados de devolucion se saltan como devolucion", () => {
     for (const estado of [
       "por_devolver_a_bodega_central",
       "devolviendo_a_bodega_central",
+      "devolucion_a_origen_por_rechazo",
       "novedad",
       "por_devolver_a_tienda",
       "devolviendo_a_tienda",
-      "devuelta_a_tienda",
     ] as const) {
       expect(motivoDeSaltada(fila({ estado }))).toBe("devolucion");
     }
+  });
+
+  it("R1726: `reprogramado` sin cobro en curso se salta como por_liberar", () => {
+    expect(motivoDeSaltada(fila({ estado: "reprogramado" }))).toBe("por_liberar");
   });
 
   it("la vista previa agrupa por zona actual -> nueva y separa las saltadas", () => {

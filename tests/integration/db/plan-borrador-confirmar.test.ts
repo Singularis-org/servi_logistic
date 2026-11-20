@@ -39,6 +39,8 @@ const TOPES = { topes: { porRol: { admin: 4 }, apiKeys: 2 } };
 const MODULOS = { modulos: ["ranking"] };
 // SLT-214 (R7): el paso «Beneficios»; vacío salvo en los casos que lo prueban.
 const SIN_BENEFICIOS = { beneficios: [] };
+// SLT-215 (R7): el paso «Niveles»; vacío salvo en los casos que lo prueban.
+const SIN_NIVELES = { niveles: [] };
 
 function servicios(repo: PlanesRepository, ahora: () => Date = () => new Date()) {
   const planes = new PlanesService(repo, ahora);
@@ -61,10 +63,11 @@ async function borradorDeCreacion(b: Borradores, pasos: Record<string, unknown> 
     topes: TOPES,
     modulos: MODULOS,
     beneficios: SIN_BENEFICIOS,
+    niveles: SIN_NIVELES,
     ...pasos,
   };
   const id = idDe(await b.guardarPaso(SUPERADMIN, { modo: "crear", borradorId: null, paso: "general", valores: todos.general }));
-  for (const paso of ["precio", "orden", "topes", "modulos", "beneficios"]) {
+  for (const paso of ["precio", "orden", "topes", "modulos", "beneficios", "niveles"]) {
     const r = await b.guardarPaso(SUPERADMIN, { modo: "crear", borradorId: id, paso, valores: todos[paso] });
     if (r.estado !== "ok") throw new Error(`guardar ${paso}: ${JSON.stringify(r)}`);
   }
@@ -80,11 +83,12 @@ async function borradorDeCambio(b: Borradores, planId: string, pasos: Record<str
     topes: TOPES,
     modulos: MODULOS,
     beneficios: SIN_BENEFICIOS,
+    niveles: SIN_NIVELES,
     vigencia: { vigenteDesde: "2026-11-16" },
     ...pasos,
   };
   let id = "";
-  for (const paso of ["general", "precio", "orden", "topes", "modulos", "beneficios", "vigencia"]) {
+  for (const paso of ["general", "precio", "orden", "topes", "modulos", "beneficios", "niveles", "vigencia"]) {
     id = idDe(await b.guardarPaso(SUPERADMIN, { modo: "editar", planId, paso, valores: todos[paso] }));
   }
   return id;
@@ -95,9 +99,10 @@ async function planConEmpresas(
   tx: TxDeTest,
   tipos: readonly ("quincenal" | "mensual")[],
   beneficios: CrearPlanInput["beneficios"] = undefined,
+  niveles: CrearPlanInput["niveles"] = undefined,
 ) {
   const { planes } = servicios(planesEnTx(tx), () => AHORA);
-  const entrada = entradaAsignable({ topes: TOPES.topes, modulos: ["ranking"], beneficios });
+  const entrada = entradaAsignable({ topes: TOPES.topes, modulos: ["ranking"], beneficios, niveles });
   const creado = await planes.crear(SUPERADMIN, entrada);
   if (creado.estado !== "ok") throw new Error(`crear: ${JSON.stringify(creado)}`);
   const orgs: string[] = [];
@@ -371,7 +376,7 @@ describeSiHayBase("SLT-129 — confirmar un borrador de plan (Postgres real)", (
       return { leido, res, antes, despues: { borrador: await tx.planBorrador.findUnique({ where: { id } }), plan: await fotoDelPlan(tx, p.planId) } };
     });
     // Leer lo da sin «Cuándo rige»; confirmar lo pide y no escribe nada.
-    expect(r.leido).toMatchObject({ estado: "ok", borrador: { pasosGuardados: ["general", "precio", "orden", "topes", "modulos", "beneficios"] } });
+    expect(r.leido).toMatchObject({ estado: "ok", borrador: { pasosGuardados: ["general", "precio", "orden", "topes", "modulos", "beneficios", "niveles"] } });
     expect(r.leido.estado === "ok" ? r.leido.borrador?.pasos : undefined).not.toHaveProperty("vigencia");
     expect(r.res).toEqual({ estado: "pasos_pendientes", pasos: ["vigencia"] });
     expect(r.despues).toEqual(r.antes);
@@ -507,6 +512,99 @@ describeSiHayBase("SLT-129 — confirmar un borrador de plan (Postgres real)", (
     expect(r.res).toMatchObject({ estado: "ok", cambio: true, vigenteDesde: "2026-11-16" });
     expect(r.version).toMatchObject({ beneficios: nuevos });
     expect(r.filas).toEqual(delPlan);
+  });
+
+  /* ------------------------------ SLT-215: niveles ------------------------------ */
+
+  // SLT-215 (R12): un borrador empezado antes de la ficha no tiene el paso; confirmar lo pide y no escribe nada.
+  it("SLT-215 R12: un borrador sin el paso «Niveles» da pasos_pendientes con niveles, al crear y al editar", async () => {
+    const r = await revertida(base, async (tx) => {
+      const p = await planConEmpresas(tx, ["mensual"]);
+      const { borradores } = servicios(planesEnTx(tx), () => AHORA);
+      const deCreacion = await borradorDeCreacion(borradores);
+      const deCambio = await borradorDeCambio(borradores, p.planId, {});
+      const sinElPaso = `UPDATE "plan_borrador" SET "pasos" = "pasos" - 'niveles' WHERE "id" = $1`;
+      await tx.$executeRawUnsafe(sinElPaso, deCreacion);
+      await tx.$executeRawUnsafe(sinElPaso, deCambio);
+      const planes = await tx.plan.count();
+      const antes = await fotoDelPlan(tx, p.planId);
+      return {
+        crear: await borradores.confirmar(SUPERADMIN, { borradorId: deCreacion }),
+        editar: await borradores.confirmar(SUPERADMIN, { borradorId: deCambio }),
+        planes,
+        planesDespues: await tx.plan.count(),
+        antes,
+        despues: await fotoDelPlan(tx, p.planId),
+        borradores: await tx.planBorrador.count({ where: { id: { in: [deCreacion, deCambio] } } }),
+      };
+    });
+    expect(r.crear).toEqual({ estado: "pasos_pendientes", pasos: ["niveles"] });
+    expect(r.editar).toEqual({ estado: "pasos_pendientes", pasos: ["niveles"] });
+    expect(r.planesDespues).toBe(r.planes);
+    expect(r.despues).toEqual(r.antes);
+    expect(r.borradores).toBe(2);
+  });
+
+  it("SLT-215 R15: confirmar la creación deja el plan con los niveles del borrador, en su orden, y el rastro «creado» los lleva", async () => {
+    const niveles = [
+      { meta: 100, descuento: { tipo: "porcentaje", porcentaje: "5" } },
+      { meta: 500, descuento: { tipo: "monto", monto: "1500" } },
+      { meta: 1000, descuento: { tipo: "porcentaje", porcentaje: "12.5" } },
+    ];
+    const r = await revertida(base, async (tx) => {
+      const { borradores } = servicios(planesEnTx(tx));
+      const id = await borradorDeCreacion(borradores, { niveles: { niveles } });
+      const res = await borradores.confirmar(SUPERADMIN, { borradorId: id });
+      const filas = await tx.planNivel.findMany({ where: { planId: id }, orderBy: { nivel: "asc" } });
+      return {
+        res,
+        filas: filas.map((f) => [f.nivel, f.meta, f.descuentoPct?.toFixed(2) ?? null, f.descuentoMonto?.toFixed(2) ?? null]),
+        rastro: await tx.planRastro.findMany({ where: { planId: id }, select: { accion: true, cambios: true } }),
+      };
+    });
+    expect(r.res).toMatchObject({ estado: "ok", cambio: true });
+    expect(r.filas).toEqual([
+      [1, 100, "5.00", null],
+      [2, 500, null, "1500.00"],
+      [3, 1000, "12.50", null],
+    ]);
+    expect(r.rastro).toHaveLength(1);
+    expect(r.rastro[0]).toMatchObject({
+      accion: "creado",
+      cambios: {
+        niveles: {
+          antes: null,
+          despues: [
+            { meta: 100, descuento: { tipo: "porcentaje", porcentaje: "5.00" } },
+            { meta: 500, descuento: { tipo: "monto", monto: "1500.00" } },
+            { meta: 1000, descuento: { tipo: "porcentaje", porcentaje: "12.50" } },
+          ],
+        },
+      },
+    });
+  });
+
+  it("SLT-215 R16: confirmar la edición deja los niveles en la versión programada y no toca los del plan", async () => {
+    const delPlan = [{ meta: 100, descuento: { tipo: "porcentaje" as const, porcentaje: "5" } }];
+    const nuevos = [
+      { meta: 50, descuento: { tipo: "monto", monto: "200" } },
+      { meta: 300, descuento: { tipo: "porcentaje", porcentaje: "7.5" } },
+    ];
+    const r = await revertida(base, async (tx) => {
+      const p = await planConEmpresas(tx, ["quincenal", "mensual"], undefined, delPlan);
+      const { borradores } = servicios(planesEnTx(tx), () => AHORA);
+      const id = await borradorDeCambio(borradores, p.planId, { niveles: { niveles: nuevos } });
+      const res = await borradores.confirmar(SUPERADMIN, { borradorId: id });
+      const filas = await tx.planNivel.findMany({ where: { planId: p.planId }, orderBy: { nivel: "asc" } });
+      return {
+        res,
+        version: (await tx.planCambioProgramado.findUniqueOrThrow({ where: { planId: p.planId }, select: { version: true } })).version,
+        filas: filas.map((f) => [f.nivel, f.meta, f.descuentoPct?.toFixed(2) ?? null, f.descuentoMonto?.toFixed(2) ?? null]),
+      };
+    });
+    expect(r.res).toMatchObject({ estado: "ok", cambio: true, vigenteDesde: "2026-11-16" });
+    expect(r.version).toMatchObject({ niveles: nuevos });
+    expect(r.filas).toEqual([[1, 100, "5.00", null]]);
   });
 
   /* ----------------------------- El borrador ya no está ----------------------------- */

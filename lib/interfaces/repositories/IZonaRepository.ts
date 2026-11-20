@@ -1,4 +1,4 @@
-import type { ImpactoZonaCentralDTO, ZonaDTO } from "@/lib/types/zona";
+import type { ImpactoZonaCentralDTO, ImpedimentosDesactivacion, ZonaDTO } from "@/lib/types/zona";
 
 /**
  * ⭑ FICHA 429 — la fila de una bodega tal como la necesita la superficie del SINPE. NO es
@@ -132,7 +132,19 @@ export type UpdateZonaResult =
   /** SLT-198 R1222: el guardado dejaria sin distritos a la zona central. No se escribio nada. */
   | { estado: "central_sin_distritos" }
   /** SLT-75 R2/R8: algun distrito pedido ya esta en OTRA zona de la empresa. No se escribio nada. */
-  | { estado: "distrito_en_otra_zona"; conflictos: DistritoEnOtraZona[] | null };
+  | { estado: "distrito_en_otra_zona"; conflictos: DistritoEnOtraZona[] | null }
+  /** SLT-225 R1753: la zona esta desactivada; no se guarda nada (ni nombre, ni distritos, ni marca). */
+  | { estado: "zona_desactivada" };
+
+/** SLT-225 (R1741-R1748): el desenlace de `desactivar`. Fuera de `ok`, no se escribio nada. */
+export type DesactivarZonaRepoResult =
+  | { estado: "ok" }
+  | { estado: "not_found" }
+  | { estado: "ya_desactivada" }
+  | { estado: "bloqueada"; impedimentos: ImpedimentosDesactivacion };
+
+/** SLT-225 (R1747, R1748): el desenlace de `reactivar`. Fuera de `ok`, no se escribio nada. */
+export type ReactivarZonaRepoResult = { estado: "ok" } | { estado: "not_found" } | { estado: "ya_activa" };
 
 /**
  * SLT-75 (R1-R3) — un distrito pedido que ya pertenece a OTRA zona de la empresa. Los nombres salen
@@ -166,7 +178,7 @@ export interface IZonaRepository {
   create(data: CreateZonaData, actorUsuarioId: string | null): Promise<CreateZonaResult>;
   /** null si no existe. Carga tarifas solo si includeTarifas. */
   findById(id: string, includeTarifas: boolean): Promise<ZonaDTO | null>;
-  /** Listado paginado (orden por nombre asc). include tarifas opcional. */
+  /** Listado paginado: activas primero y, en cada grupo, por nombre asc (SLT-225 R1759). include tarifas opcional. */
   list(params: ListZonasParams): Promise<ListZonasResult>;
   /**
    * Feature 144/B2 (R48/R49): TODAS las zonas proyectadas a `{id, nombre}`, por nombre
@@ -198,6 +210,13 @@ export interface IZonaRepository {
   /** Borrado FISICO (cascade de zona_distrito y tarifas). */
   /** FICHA 362 (R4/R9): `actorUsuarioId` congela QUIEN borro; la etiqueta se lee ANTES del DELETE. */
   hardDelete(id: string, actorUsuarioId: string | null): Promise<DeleteZonaResult>;
+  /**
+   * SLT-225 (R1741-R1746, R1749): marca la zona desactivada y escribe `zona_desactivada` en la misma
+   * transaccion, solo si no tiene impedimentos. Con impedimentos devuelve TODOS y no deja nada escrito.
+   */
+  desactivar(id: string, actorUsuarioId: string | null): Promise<DesactivarZonaRepoResult>;
+  /** SLT-225 (R1747, R1750): la marca vuelve a activa y escribe `zona_reactivada`. No devuelve distritos ni usuarios. */
+  reactivar(id: string, actorUsuarioId: string | null): Promise<ReactivarZonaRepoResult>;
   /** Cuenta cuantos de `ids` existen como distrito (validacion de existencia). */
   countExistingDistritos(ids: string[]): Promise<number>;
   /** Cuenta cuantos de `ids` existen como vehiculo (validacion de existencia). */

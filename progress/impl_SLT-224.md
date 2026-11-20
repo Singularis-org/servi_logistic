@@ -161,3 +161,97 @@ T2 — guardias:
 ## Veredicto
 
 VERDE: backend de SLT-224 «Retiro a central: recalcular la zona de la orden» hecho (T1-T6, T8), init.sh exit 0; falta T9 (pantalla) y T0/T7 del leader.
+
+## PR 2 (2026-11-19): T12-T14 backend — PARADO antes del cierre
+
+Base desechable NUEVA `servi_slt224_pr2` (create + `migrate deploy` + seed), exportada como `DATABASE_URL`/`DIRECT_URL`
+antes de cada vitest. `prisma generate` corrido (el cliente compartido estaba atrasado respecto de SLT-215).
+
+**Archivos:** `lib/utils/estados-bodega-satelite.ts` (clasificación), `lib/repositories/_shared/reconciliar-zona-ordenes.ts`
+(corte nuevo, sin `excluirEstados`), `lib/repositories/ActualizacionZonasRepository.ts` (SQL `cobroEnCurso`),
+`lib/types/actualizacion-zonas.ts`, `lib/services/ActualizacionZonasService.ts`; tests nuevos
+`tests/unit/utils/clase-reconciliacion-zona.test.ts` (6) y `tests/integration/db/reconciliar-zona-corte-vivas.int.test.ts` (5);
+ajustados `actualizacion-zonas.int.test.ts` (+1, R1727, motivos nuevos), `recepcion-central-reconcilia-zona.int.test.ts` (+1),
+`actualizacion-zonas-action.test.ts` (motivos y precedencia).
+
+**Mutaciones** (contra `reconciliar-zona-corte-vivas.int.test.ts`, 5 tests; ejecutados, no skipped):
+1. `cierreDetalles: { none: {} }` → 5 rojos (matriz, R1707, los tres llamadores).
+2. sin `{ cierreId: null }` en el `OR` → 1 rojo: se mueven las tres `gestion-*-sin-cierre`.
+3. `not: "aprobado"` → `equals: "solicitado"` → 1 rojo: se mueven `cd-rechazado`, `cd-vencido`, `gestion-entregado-cierre-rechazado`.
+4. `incidente: "se_mueve"` → 1 rojo: se mueve `finalizada-incidente`.
+5. `reprogramado: "se_mueve"` → 1 rojo: se mueve `estado-reprogramado`.
+6. `notIn` = `ESTADOS_PAQUETE_EN_ESTANTE` → 1 rojo: se mueven 7 estados R1723 y las 3 finalizadas.
+7. (R1727) quitar el `JOIN cierre_dia` del `cobroEnCurso` → 4 rojos en `actualizacion-zonas.int.test.ts`, incluido R1727.
+
+**Mapa R → test:** R1720 corte-vivas (tres llamadores + matriz) y recepcion (+1); R1721/R1722/R1723/R1724 corte-vivas (matriz);
+R1725 clase-reconciliacion-zona + typecheck; R1726 actualizacion-zonas-action + actualizacion-zonas.int; R1727 actualizacion-zonas.int.
+
+**Regresión:** 366 (`zona-reconciliacion-ordenes`), `zona-central-guarda-y-rastro`, `zona-pago-mensajero-rastro`, recepción R1701,
+migración, retiro y guardias verdes sin tocar. **ROJO:** `tests/unit/repositories/zona-repository.test.ts` › «377/T4 ⭑ R2/R9: las
+dos consultas comparten el `where` base» fija LITERAL `BASE_D1_ZA` (el corte de la 366) y `notIn: ["en_bodega_satelite"]`. El
+spec decía que seguiría verde; pide cambiar la expectativa → parado, sin tocarlo.
+
+**P4 sin aplicar:** la liberación (`LiberacionReprogramadaService:223`, `DevolucionSlaService:255`) decide bodega con
+`resolverDestinoCierre(orden.zonaId)`, y el paquete está en la bodega del cierre (`cierre_dia.destino_zona_id` = zona del
+mensajero, `CierreDiaService:984`). Moverles la zona los marcaría en la bodega de la zona nueva con el paquete en otra.
+
+**Desbloqueo (leader):** el literal de 377/T4 se reescribe A MANO con el corte de D6 (`BASE_D1_ZA` y los 11 estados
+del `notIn`), no derivado del helper. Mutaciones 2 y 5 contra él: 1 rojo cada una (61 tests). P4 queda por defecto.
+
+## PR 2 (2026-11-20): T9 pantalla «Actualizar zonas» (frontend_dev)
+
+Archivos:
+- nuevo `app/(app)/ordenes/_components/ActualizarZonasButton.tsx` (botón + `Modal` compartido; `TEXTO_MOTIVO_SALTADA: Record<MotivoSaltada, string>` con los cinco textos de design §3b.5).
+- `app/(app)/ordenes/_components/OrdenesListado.tsx` (prop `puedeActualizarZonas`, botón a la derecha de `RecibirPaquetesEntrada`, `onSuccess={handleSuccess}`).
+- `app/(app)/ordenes/page.tsx` (`puedeActualizarZonas = esAccesoTotal(rol)`).
+- `lib/actions/actualizacion-zonas.ts` (fuera las dos `@sin-superficie`).
+- `docs/ayuda/oficina/ordenes.md` (sección «Actualizar zonas» desde a3c78989 con D6 y los cinco motivos; el párrafo de la recepción en la central ajustado a D6: conserva la zona solo con cobro en curso).
+- nuevo `tests/components/ActualizarZonasButton.test.tsx` (17 tests).
+
+Mapa R → test (`tests/components/ActualizarZonasButton.test.tsx`):
+- R1713: «con el rol %s el botón se ve solo si es maestro o admin» (todos los `RolValue` con `esAccesoTotal`) y «sin permiso no pinta nada».
+- R1715: «al pulsar pide la vista previa y pinta grupos, total y saltadas con motivo».
+- R1716: «sin desalineadas dice que todas las zonas están al día» y «sin candidatas pero con saltadas».
+- R1718: «confirmar muestra cuántas se actualizaron y las saltadas, y refresca solo al cerrar»; «cancelar no confirma ni refresca».
+- R1726: «cada motivo sale con su texto en español llano».
+- R1714 (pantalla): unauthenticated y forbidden en la vista previa (aviso, sin Confirmar) y forbidden al confirmar (toast, sin resultado ni refresco).
+
+Mensaje vacío: sin grupos ni saltadas, «Todas las zonas están al día.» (pedido del leader); sin grupos pero con saltadas, el de design §3b.4 «No hay órdenes con la zona errada que se puedan actualizar.», porque «al día» sería falso.
+
+Salidas:
+- `vitest run tests/components/ActualizarZonasButton.test.tsx`: Test Files 1 passed, Tests 17 passed.
+- `./init.sh` (DATABASE_URL a servi_slt224_pr2): typecheck paso, lint paso (0 errors), test:rapido paso, `INIT_EXIT=0`.
+
+Veredicto: T9 hecha; botón, modal, ayuda y test verdes; sin E2E en T9 (los E2E van en T15).
+
+## PR 2 (2026-11-20): arreglos de la review vuelta 1 (`progress/review_SLT-224-pr2.md`)
+
+Archivos:
+- `tests/integration/db/actualizacion-zonas.int.test.ts` (B1): la matriz suma `cd-rechazado` y `cd-vencido` (detalle de
+  cierre `rechazado`/`vencido`), `gestion-cierre-rechazado` (rechazo con cierre `rechazado`) y `gestion-cierre-aprobado`
+  (rechazo con el cierre `aprobado`). Literales a mano: `SALTADAS_ESPERADAS` con las tres nuevas como `cobro_en_curso`;
+  totales y `actualizadas` de 3 a 4; `cambiadas` y acciones con `gestion-cierre-aprobado`.
+- `app/(app)/ordenes/_components/ActualizarZonasButton.tsx`, `tests/components/ActualizarZonasButton.test.tsx`,
+  `docs/ayuda/oficina/ordenes.md` (m3): «cobro en curso (gestión o cierre sin aprobar)».
+- `lib/utils/estados-bodega-satelite.ts`, `tests/unit/utils/clase-reconciliacion-zona.test.ts`, `lib/types/actualizacion-zonas.ts`
+  (m4): fuera `ESTADOS_DEVOLUCION_SIN_RECONCILIAR` (sin consumidor en producción), su test y `estadosDeClase`, que solo
+  la usaba ella. El comentario de `MotivoSaltada` nombra ahora la clase `devolucion`. `design.md`/`tasks.md` la citan como
+  historia del PR 1; no se reescriben.
+- `specs/SLT-224-zona-al-retirar-a-central/tasks.md` (m1): T0b y T15 (init, E2E 55/55 de la review, mapa) marcadas;
+  queda «T0b re-medido antes de abrir el PR» (leader).
+
+Mutaciones sobre `sqlZonaErrada()` (DATABASE_URL a `servi_slt224_pr2`; `git checkout` tras cada una, diff limpio):
+| # | Mutación | Resultado |
+|---|---|---|
+| SM1 | `AND (g.cierre_id IS NULL OR c.estado <> 'aprobado')` → `AND (g.cierre_id IS NULL)` | **MUERTA**: 5 de 6 rojos, R1727 incluido (`expected 5 to be 4`: la vista previa cuenta `gestion-cierre-rechazado`) |
+| SM2 | detalle: `c.estado <> 'aprobado'` → `c.estado = 'solicitado'` | **MUERTA**: 5 de 6 rojos, R1727 incluido (`expected 6 to be 4`: cuenta `cd-rechazado` y `cd-vencido`) |
+
+Sin mutar: `actualizacion-zonas.int.test.ts` 6 passed. Los cinco archivos tocados o vecinos
+(`clase-reconciliacion-zona`, `ActualizarZonasButton`, `actualizacion-zonas.int`, `reconciliar-zona-corte-vivas.int`,
+`actualizacion-zonas-action`): Test Files 5 passed, Tests 45 passed.
+
+`./init.sh` (DATABASE_URL a `servi_slt224_pr2`, tras `prisma generate`): typecheck y lint pasan (0 errors), test:rapido 100/100/100/87 archivos verdes, `INIT_EXIT=0`.
+
+P4 y la parada del T0b (m2) siguen esperando a Carlos; no se tocan.
+
+Veredicto: B1, m1, m3 y m4 resueltos; SM1 y SM2 mueren; gate verde.

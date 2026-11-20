@@ -101,6 +101,17 @@ export class UsuarioDuplicadoError extends Error {
   }
 }
 
+/**
+ * SLT-221 (review PR 2, m5): dos «Pedir cambio» simultáneos del mismo usuario; el segundo choca con el
+ * índice parcial `usuario_cambio_correo_abierto` (un solo abierto por usuario, R1616).
+ */
+export class CambioCorreoSimultaneoError extends Error {
+  constructor() {
+    super("Otro cambio de correo de este usuario se abrió a la vez");
+    this.name = "CambioCorreoSimultaneoError";
+  }
+}
+
 // Feature 25/R14: fila del listado de usuarios. Incluye el `value` legible del
 // rol (via include) y NUNCA el hash de la contrasena (R24).
 export interface UsuarioListItem {
@@ -351,4 +362,59 @@ export interface IUserRepository {
   listTiposIdentificacion(paisId?: string): Promise<TipoIdentificacionItem[]>;
   /** Feature 25: catalogo `rol` proyectado a id/value, ordenado por `value`. */
   listRoles(): Promise<RolItem[]>;
+}
+
+/**
+ * SLT-221 (design §3.4): el cambio de correo pendiente (`usuario_cambio_correo`). Lo implementa
+ * `UserRepository`, porque el canje escribe `usuario.email` y el Histórico en la misma transacción.
+ * Interfaz aparte de `IUserRepository` para no obligar a los dobles de ese contrato a implementar
+ * métodos que no ejercitan. La empresa la ponen la extensión y la RLS; ninguno recibe
+ * `organizacionId`.
+ */
+export interface ICambioCorreoRepository {
+  /** R1611: ¿otro usuario de la empresa en curso ya usa ese correo? */
+  existeEmailEnEmpresa(email: string, excluirUsuarioId: string): Promise<boolean>;
+  /**
+   * R1616, R1620: anula el abierto del usuario y crea el nuevo, en una transacción. Lanza
+   * `CambioCorreoSimultaneoError` si otra petición abrió uno a la vez.
+   */
+  abrirCambioCorreo(input: AbrirCambioCorreoInput): Promise<{ id: string; expiraAt: Date }>;
+  /** R1617: anula ESE pendiente si sigue abierto. */
+  anularCambioCorreo(id: string): Promise<void>;
+  /** R1619: anula el abierto del usuario, si lo hay (idempotente). */
+  anularCambioCorreoAbierto(usuarioId: string): Promise<void>;
+  /** R1618: el abierto del usuario (vencido o no), o `null`. */
+  cambioCorreoAbierto(usuarioId: string): Promise<CambioCorreoAbierto | null>;
+  /** El canje sin sesión: solo la empresa del pendiente. Se llama dentro de `comoPlataforma`. */
+  empresaDelCambioCorreo(id: string): Promise<string | null>;
+  /** R1622, R1623: el pendiente abierto y no vencido, con el hash del secreto, o `null`. */
+  cambioCorreoParaCanje(id: string): Promise<CambioCorreoParaCanje | null>;
+  /**
+   * R1622, R1624, R1625: en UNA transacción, marca el pendiente confirmado (solo si sigue abierto y
+   * vigente), cambia `usuario.email` y registra `usuario_email_cambiado` con el actor que lo pidió.
+   */
+  aplicarCambioCorreo(id: string): Promise<"ok" | "invalido" | "correo_en_uso">;
+}
+
+/** SLT-221: lo que `abrirCambioCorreo` persiste. `secretoHash` es el hash, nunca el secreto (R1632). */
+export interface AbrirCambioCorreoInput {
+  usuarioId: string;
+  emailNuevo: string;
+  secretoHash: string;
+  solicitadoPorId: string;
+  expiraAt: Date;
+}
+
+export interface CambioCorreoAbierto {
+  id: string;
+  emailNuevo: string;
+  expiraAt: Date;
+}
+
+export interface CambioCorreoParaCanje {
+  id: string;
+  usuarioId: string;
+  emailNuevo: string;
+  secretoHash: string;
+  solicitadoPorId: string;
 }

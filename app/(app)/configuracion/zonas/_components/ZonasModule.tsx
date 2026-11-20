@@ -1,17 +1,27 @@
 "use client";
 
 import { useState } from "react";
-import { MapPin, Pencil, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, MapPin, Pencil, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/EmptyState";
+import { EstadoConInfo } from "@/components/shared/EstadoInfo";
 import { Modal } from "@/components/shared/Modal";
 import { useToast } from "@/hooks/useToast";
-import { listarZonas, obtenerZona, borrarZona } from "@/lib/actions/zonas";
+import {
+  listarZonas,
+  obtenerZona,
+  borrarZona,
+  desactivarZona,
+  reactivarZona,
+} from "@/lib/actions/zonas";
 import { listarArbolGeografico } from "@/lib/actions/geografia";
-import type { ZonaDTO } from "@/lib/types/zona";
+import { ROL_LABELS } from "@/lib/auth/rol-label";
+import type { ImpedimentosDesactivacion, ZonaDTO } from "@/lib/types/zona";
 import type { ProvinciaArbolDTO } from "@/lib/actions/geografia";
+
+import { ESTADO_LABELS } from "../../_components/usuario-estado-label";
 
 import { CrearZonaForm, type ZonaFormInitial } from "./CrearZonaForm";
 
@@ -20,7 +30,7 @@ const PAGE_SIZE = 100;
 /**
  * Módulo cliente de Zonas (SLT-51; antes «Costos por zona» dentro de Tarifas, ahora sin costos):
  * texto introductorio + botón Crear zona,
- * listado de zonas con Editar/Eliminar, formulario de crear/editar (precargado
+ * listado de zonas con Editar/Desactivar/Reactivar/Eliminar, formulario de crear/editar (precargado
  * en edición) y modal de confirmación de borrado (no se cierra por click fuera:
  * `dismissible={false}`). Notifica creación/edición/eliminación/error con toast.
  */
@@ -43,6 +53,54 @@ export function ZonasModule({
   // Cambia al abrir crear/editar para remontar el form y leer `initial` fresco.
   const [formKey, setFormKey] = useState(0);
   const [deleteTarget, setDeleteTarget] = useState<ZonaDTO | null>(null);
+  // SLT-225 (R1760): un solo Modal para desactivar y reactivar; `accion` decide textos y acción.
+  const [estadoTarget, setEstadoTarget] = useState<{
+    zona: ZonaDTO;
+    accion: "desactivar" | "reactivar";
+  } | null>(null);
+  // Lo que devolvió el último rechazo por impedimentos; se pinta dentro de la confirmación abierta.
+  const [impedimentos, setImpedimentos] = useState<ImpedimentosDesactivacion | null>(null);
+
+  function abrirCambioEstado(zona: ZonaDTO, accion: "desactivar" | "reactivar") {
+    setImpedimentos(null);
+    setEstadoTarget({ zona, accion });
+  }
+
+  async function confirmarCambioEstado() {
+    if (!estadoTarget) return;
+    const { zona, accion } = estadoTarget;
+    if (accion === "desactivar") {
+      const res = await desactivarZona(zona.id);
+      if (res.status === "ok") {
+        toast.success("Zona desactivada");
+        await refetch();
+        return;
+      }
+      if (res.status === "conflict" && res.motivo === "impedimentos") {
+        setImpedimentos(res.impedimentos);
+        throw res; // mantiene abierta la confirmación con lo que hay que mover
+      }
+      if (res.status === "conflict") {
+        // Otra persona ya la desactivó: no es un fallo, el listado solo estaba atrasado.
+        toast.info("La zona ya estaba desactivada.");
+        await refetch();
+        return;
+      }
+      throw res;
+    }
+    const res = await reactivarZona(zona.id);
+    if (res.status === "ok") {
+      toast.success("Zona reactivada");
+      await refetch();
+      return;
+    }
+    if (res.status === "conflict") {
+      toast.info("La zona ya estaba activa.");
+      await refetch();
+      return;
+    }
+    throw res;
+  }
 
   async function refetch() {
     const [zonasRes, arbolRes] = await Promise.all([
@@ -145,6 +203,8 @@ export function ZonasModule({
           zonas={zonas}
           onCrear={abrirCrear}
           onEditar={abrirEditar}
+          onDesactivar={(z) => abrirCambioEstado(z, "desactivar")}
+          onReactivar={(z) => abrirCambioEstado(z, "reactivar")}
           onEliminar={setDeleteTarget}
         />
       )}
@@ -175,6 +235,40 @@ export function ZonasModule({
         }}
         onError={(e) => toast.error(mensajeBorradoFallido(e))}
       />
+
+      <Modal
+        open={estadoTarget !== null}
+        onOpenChange={(o) => {
+          if (!o) {
+            setEstadoTarget(null);
+            setImpedimentos(null);
+          }
+        }}
+        title={estadoTarget?.accion === "reactivar" ? "Reactivar zona" : "Desactivar zona"}
+        description={
+          estadoTarget
+            ? estadoTarget.accion === "reactivar"
+              ? `¿Reactivar la zona "${estadoTarget.zona.nombre}"? Vuelve a ofrecerse para trabajo nuevo. No recupera distritos ni usuarios.`
+              : `¿Desactivar la zona "${estadoTarget.zona.nombre}"? Deja de ofrecerse para trabajo nuevo. Sus órdenes y su historia se conservan.`
+            : ""
+        }
+        confirmLabel={estadoTarget?.accion === "reactivar" ? "Reactivar" : "Desactivar"}
+        cancelLabel="Cancelar"
+        dismissible={false}
+        onConfirm={confirmarCambioEstado}
+        onError={(e) => {
+          // Los impedimentos ya se ven en la confirmación; el toast solo cubre el fallo inesperado.
+          const res = e as { status?: string } | null;
+          if (res?.status === "conflict") return;
+          toast.error(
+            estadoTarget?.accion === "reactivar"
+              ? "No se pudo reactivar la zona."
+              : "No se pudo desactivar la zona.",
+          );
+        }}
+      >
+        {impedimentos ? <ImpedimentosLista impedimentos={impedimentos} /> : null}
+      </Modal>
     </section>
   );
 }
@@ -195,19 +289,88 @@ function mensajeBorradoFallido(error: unknown): string {
   if (res?.status !== "conflict") return "No se pudo eliminar la zona.";
   return res.motivo === "es_central"
     ? "No se puede eliminar la zona de bodega principal. Marca otra zona como bodega principal antes de eliminarla."
-    : "No se puede eliminar: la zona está en uso.";
+    : "No se puede eliminar: la zona tiene historia (órdenes o usuarios). Puedes desactivarla en su lugar.";
 }
 
-/** Listado simple de zonas con acciones Editar/Eliminar. */
+function plural(n: number, uno: string, varios: string): string {
+  return n === 1 ? uno : varios;
+}
+
+/**
+ * SLT-225 (R1760, design §3.7): qué hay que mover antes de desactivar, en español llano. El servicio
+ * entrega datos tipados y no texto; las etiquetas salen de sus fuentes únicas (`ROL_LABELS`,
+ * `ESTADO_LABELS`) y el estado de una orden se pinta con `EstadoConInfo`, que es quien resuelve su
+ * nombre y le pone el botón de información, como en el resto de la app (guardia `estado-con-info`).
+ */
+function ImpedimentosLista({ impedimentos }: { impedimentos: ImpedimentosDesactivacion }) {
+  const { esCentral, distritos, usuarios, ordenesVivas } = impedimentos;
+  const restantes = ordenesVivas.total - ordenesVivas.muestra.length;
+  return (
+    <div
+      role="alert"
+      className="flex flex-col gap-3 rounded-md border border-destructive/40 p-3 text-sm"
+    >
+      <p className="font-medium">Todavía no se puede desactivar. Antes hay que mover:</p>
+      <ul className="flex list-disc flex-col gap-2 pl-5">
+        {esCentral ? (
+          <li>Es la zona de bodega principal. Marca otra zona como bodega principal antes.</li>
+        ) : null}
+        {distritos > 0 ? (
+          <li>
+            {`Tiene ${distritos} ${plural(distritos, "distrito", "distritos")}. ${plural(distritos, "Quítalo", "Quítalos")} editando la zona.`}
+          </li>
+        ) : null}
+        {usuarios.length > 0 ? (
+          <li>
+            {`Tiene ${usuarios.length} ${plural(usuarios.length, "usuario asignado", "usuarios asignados")}. ${plural(usuarios.length, "Cámbiale", "Cámbiales")} la zona:`}
+            <ul className="mt-1 flex flex-col gap-0.5">
+              {usuarios.map((u, i) => (
+                <li key={`${u.nombre}-${i}`}>
+                  {`${u.nombre} · ${ROL_LABELS[u.rol] ?? u.rol} · ${ESTADO_LABELS[u.estado] ?? u.estado}`}
+                </li>
+              ))}
+            </ul>
+          </li>
+        ) : null}
+        {ordenesVivas.total > 0 ? (
+          <li>
+            {`Tiene ${ordenesVivas.total} ${plural(ordenesVivas.total, "orden", "órdenes")} sin terminar:`}
+            <ul className="mt-1 flex flex-col gap-0.5">
+              {ordenesVivas.porEstado.map((e) => (
+                <li key={e.estado}>
+                  <EstadoConInfo codigo={e.estado} /> ({e.cantidad})
+                </li>
+              ))}
+            </ul>
+            {ordenesVivas.muestra.length > 0 ? (
+              <p className="mt-1 break-words">
+                {`Guías: ${ordenesVivas.muestra.join(", ")}${restantes > 0 ? ` y ${restantes} más.` : "."}`}
+              </p>
+            ) : null}
+          </li>
+        ) : null}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * Listado simple de zonas. SLT-225 (R1759): el orden (activas primero) lo da el servidor; una zona
+ * desactivada no se edita (R1753), así que solo ofrece Reactivar y Eliminar.
+ */
 function ZonasList({
   zonas,
   onCrear,
   onEditar,
+  onDesactivar,
+  onReactivar,
   onEliminar,
 }: {
   zonas: ZonaDTO[];
   onCrear: () => void;
   onEditar: (zona: ZonaDTO) => void;
+  onDesactivar: (zona: ZonaDTO) => void;
+  onReactivar: (zona: ZonaDTO) => void;
   onEliminar: (zona: ZonaDTO) => void;
 }) {
   if (zonas.length === 0) {
@@ -237,8 +400,11 @@ function ZonasList({
           className="flex flex-wrap items-center justify-between gap-2 px-3 py-2"
         >
           <div className="flex flex-col">
-            <span className="flex flex-wrap items-center gap-2 text-sm font-medium">
+            <span
+              className={`flex flex-wrap items-center gap-2 text-sm font-medium${z.activa ? "" : " text-muted-foreground"}`}
+            >
               {z.nombre}
+              {z.activa ? null : <Badge variant="secondary">Desactivada</Badge>}
               {/* SLT-51 (R3/R10): la marca se nombra por lo que decide —a qué bodega va el
                   cierre—, no por la variante de flete GAM que retira SLT-52. */}
               {z.esCentral ? (
@@ -257,16 +423,39 @@ function ZonasList({
               </span>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => onEditar(z)}
-            >
-              <Pencil aria-hidden="true" />
-              Editar
-            </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {z.activa ? (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onEditar(z)}
+                >
+                  <Pencil aria-hidden="true" />
+                  Editar
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onDesactivar(z)}
+                >
+                  <Archive aria-hidden="true" />
+                  Desactivar
+                </Button>
+              </>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => onReactivar(z)}
+              >
+                <ArchiveRestore aria-hidden="true" />
+                Reactivar
+              </Button>
+            )}
             <Button
               type="button"
               variant="destructive"

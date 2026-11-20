@@ -31,9 +31,11 @@ import {
   listarTiposIdentificacion,
 } from "@/lib/actions/usuarios";
 import { listarZonas } from "@/lib/actions/zonas";
+import { opcionesZonaUsuario } from "@/lib/types/zona";
 import { listarVehiculos } from "@/lib/actions/vehiculos";
 import type { UsuarioPublico } from "@/lib/interfaces/repositories/IUserRepository";
 import type { CambioUsuarioEvaluable } from "@/lib/interfaces/services/IUsuarioService";
+import { CambioCorreoUsuario } from "./CambioCorreoUsuario";
 
 /**
  * Rol que este formulario NUNCA asigna: `apiKey` identifica la cuenta de máquina de una
@@ -201,9 +203,16 @@ export const UsuarioForm = forwardRef<UsuarioFormHandle, UsuarioFormProps>(
 
     // `value` = id de la zona (lo que espera el backend en `zonaId`);
     // `label` = nombre legible de la zona.
+    // SLT-225 (R1756): una zona desactivada no se ofrece, salvo la que este usuario ya tiene; sin
+    // ella el select la perderia y el guardado le cambiaria la zona sin que nadie lo pida.
+    const zonaActualId = usuario?.zonaId ?? null;
     const zonaOptions: SelectOption[] = useMemo(
-      () => (zonas ?? []).map((z) => ({ value: z.id, label: z.nombre })),
-      [zonas],
+      () =>
+        opcionesZonaUsuario(zonas ?? [], zonaActualId).map((z) => ({
+          value: z.id,
+          label: z.nombre,
+        })),
+      [zonas, zonaActualId],
     );
 
     // Feature 21: catalogo de vehiculos para el select (solo aplica a `mensajero`).
@@ -483,6 +492,12 @@ export const UsuarioForm = forwardRef<UsuarioFormHandle, UsuarioFormProps>(
             onChange={(e) => setField("email", e.target.value)}
           />
         </FormField>
+
+        {/* SLT-221 (design §7): el correo se cambia con confirmación desde el correo nuevo, no
+            editando el campo. Una cuenta de API key no tiene persona que confirme (R1613). */}
+        {isEditar && usuario && rolValue !== undefined && !esRolApiKey && (
+          <CambioCorreoUsuario usuarioId={usuario.id} />
+        )}
 
         <FormField id="telefono" label="Teléfono" error={errors.telefono}>
           <Input
