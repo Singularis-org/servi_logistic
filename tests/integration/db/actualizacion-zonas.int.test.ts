@@ -29,6 +29,10 @@ import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima"
  * El cliente de test es el DUEÑO de las tablas (sin RLS): el filtro de empresa que se mide es el del
  * SQL del repositorio. En produccion, ademas, la RLS de `servi_app`.
  *
+ * PR 2 (design §7.5, R1726/R1727): la matriz suma una viva con un cierre APROBADO anterior (se
+ * actualiza), `reprogramado` (por liberar), `entregado` (finalizada) y el rechazo
+ * (`devolucion_a_origen_por_rechazo`, devolucion); las saltadas llevan los cinco motivos nuevos.
+ *
  * MUTACIONES EJECUTADAS (ver `progress/impl_SLT-224.md`), cada una con su rojo.
  */
 
@@ -162,10 +166,13 @@ describeSiHayBase("SLT-224 · «Actualizar zonas» contra Postgres real", () => 
       for (const d of [
         "por_devolver_a_bodega_central",
         "devolviendo_a_bodega_central",
+        "devolucion_a_origen_por_rechazo",
         "novedad",
         "por_devolver_a_tienda",
         "devolviendo_a_tienda",
         "devuelta_a_tienda",
+        "entregado",
+        "reprogramado",
       ] as const) {
         await e.crearOrden(d, { estado: d });
       }
@@ -178,6 +185,20 @@ describeSiHayBase("SLT-224 · «Actualizar zonas» contra Postgres real", () => 
         data: {
           cierreId: cierre.id, ordenId: conCierre, cobraComision: false, zonaId: zonaA, tiendaId: fks.tiendaId,
           esCentral: false, numRemision: `cd-${suf}`, destinatario: "D", producto: "caja", tiendaNombre: "T",
+          zonaNombre: "Z", provinciaNombre: "P", cantonNombre: "C",
+        },
+        select: { id: true },
+      });
+      // PR 2 (R1720): un cierre APROBADO anterior ya no la salta.
+      const conAprobado = await e.crearOrden("con-cierre-aprobado", { estado: "en_bodega_central" });
+      const cierreAprobado = await tx.cierreDia.create({
+        data: { mensajeroId: mensajero, estado: "aprobado", destinoTipo: "bodega_satelite", destinoZonaId: zonaA },
+        select: { id: true },
+      });
+      await tx.cierreDetail.create({
+        data: {
+          cierreId: cierreAprobado.id, ordenId: conAprobado, cobraComision: false, zonaId: zonaA, tiendaId: fks.tiendaId,
+          esCentral: false, numRemision: `cda-${suf}`, destinatario: "D", producto: "caja", tiendaNombre: "T",
           zonaNombre: "Z", provinciaNombre: "P", cantonNombre: "C",
         },
         select: { id: true },
@@ -201,15 +222,18 @@ describeSiHayBase("SLT-224 · «Actualizar zonas» contra Postgres real", () => 
   }
 
   const SALTADAS_ESPERADAS = [
-    "con-cierre:cierre_o_dinero",
-    "con-gestion:cierre_o_dinero",
+    "con-cierre:cobro_en_curso",
+    "con-gestion:cobro_en_curso",
+    "devolucion_a_origen_por_rechazo:devolucion",
     "devolviendo_a_bodega_central:devolucion",
     "devolviendo_a_tienda:devolucion",
-    "devuelta_a_tienda:devolucion",
+    "devuelta_a_tienda:finalizada",
+    "entregado:finalizada",
     "estante:estante_satelite",
     "novedad:devolucion",
     "por_devolver_a_bodega_central:devolucion",
     "por_devolver_a_tienda:devolucion",
+    "reprogramado:por_liberar",
   ];
 
   it("R1715/R1719: la vista previa da los grupos y las saltadas esperados, y no escribe nada", async () => {
@@ -220,9 +244,9 @@ describeSiHayBase("SLT-224 · «Actualizar zonas» contra Postgres real", () => 
       const zonasDespues = await e.tx.orden.findMany({ select: { id: true, zonaId: true }, orderBy: { id: "asc" } });
       return { e, vp, zonasAntes, zonasDespues, accionesAntes, accionesDespues: await e.tx.historialAccion.count() };
     });
-    expect(r.vp.total).toBe(2);
+    expect(r.vp.total).toBe(3);
     expect(r.vp.grupos).toHaveLength(1);
-    expect(r.vp.grupos[0].cantidad).toBe(2);
+    expect(r.vp.grupos[0].cantidad).toBe(3);
     expect(r.vp.grupos[0].zonaActual.startsWith(NOMBRE_A)).toBe(true);
     expect(r.vp.grupos[0].zonaNueva.startsWith(NOMBRE_C)).toBe(true);
     expect(saltadasPorClave(r.e, r.vp.saltadas)).toEqual(SALTADAS_ESPERADAS);
@@ -230,7 +254,7 @@ describeSiHayBase("SLT-224 · «Actualizar zonas» contra Postgres real", () => 
     expect(r.accionesDespues).toBe(r.accionesAntes);
   });
 
-  it("R1717/R1718/R1719: confirmar actualiza las dos elegibles, salta las demas y deja intacta la otra empresa", async () => {
+  it("R1717/R1718/R1719: confirmar actualiza las tres elegibles, salta las demas y deja intacta la otra empresa", async () => {
     const r = await conEscenario(async (e) => {
       const ids = [...e.ordenes.values()];
       const antes = new Map(await Promise.all(ids.map(async (id) => [id, await e.zonaDe(id)] as const)));
@@ -250,14 +274,14 @@ describeSiHayBase("SLT-224 · «Actualizar zonas» contra Postgres real", () => 
         acciones: acciones.map((a) => ({ ...a, clave: claveDe.get(a.entidadId) ?? "ajena" })),
       };
     });
-    expect(r.cambiadas).toEqual(["central", "ruta-satelite"]);
-    expect(r.nuevas).toEqual([r.e.zonaC, r.e.zonaC]);
-    expect(r.res.actualizadas).toBe(2);
+    expect(r.cambiadas).toEqual(["central", "con-cierre-aprobado", "ruta-satelite"]);
+    expect(r.nuevas).toEqual([r.e.zonaC, r.e.zonaC, r.e.zonaC]);
+    expect(r.res.actualizadas).toBe(3);
     expect(saltadasPorClave(r.e, r.res.saltadas)).toEqual(SALTADAS_ESPERADAS);
     // R1719: la otra empresa, intacta.
     expect(r.ajenaZona).toBe(r.e.ajenaZona);
     // R1717: una accion por orden actualizada, con el actor y UN solo lote.
-    expect(r.acciones.map((a) => a.clave).sort()).toEqual(["central", "ruta-satelite"]);
+    expect(r.acciones.map((a) => a.clave).sort()).toEqual(["central", "con-cierre-aprobado", "ruta-satelite"]);
     expect(new Set(r.acciones.map((a) => a.actorUsuarioId))).toEqual(new Set([r.e.maestro]));
     expect(new Set(r.acciones.map((a) => a.loteId)).size).toBe(1);
   });
@@ -279,11 +303,11 @@ describeSiHayBase("SLT-224 · «Actualizar zonas» contra Postgres real", () => 
         zonaRuta: await e.zonaDe(e.ordenes.get("ruta-satelite") ?? ""),
       };
     });
-    expect(r.vp.total).toBe(2);
+    expect(r.vp.total).toBe(3);
     expect(r.zonaCentral).toBe(r.e.zonaA);
     expect(r.zonaNueva).toBe(r.e.zonaC);
     expect(r.zonaRuta).toBe(r.e.zonaC);
-    expect(r.res.actualizadas).toBe(2);
+    expect(r.res.actualizadas).toBe(3);
     expect(saltadasPorClave(r.e, r.res.saltadas)).toContain("central:estante_satelite");
   });
 
@@ -309,10 +333,24 @@ describeSiHayBase("SLT-224 · «Actualizar zonas» contra Postgres real", () => 
       await fijarEmpresa(e.tx, e.org1);
       return { e, vp: await e.servicio.vistaPrevia() };
     });
-    expect(r.vp.total).toBe(2);
+    expect(r.vp.total).toBe(3);
     expect(r.vp.grupos).toHaveLength(1);
     expect(r.vp.grupos[0].zonaNueva.startsWith(NOMBRE_C)).toBe(true);
     expect(saltadasPorClave(r.e, r.vp.saltadas)).toEqual(SALTADAS_ESPERADAS);
+  });
+
+  it("R1727: vista previa y confirmacion seguidas, sin cambios en medio, coinciden orden por orden", async () => {
+    // La vista previa anticipa el corte en SQL (`cobroEnCurso`); la escritura lo decide el `WHERE`
+    // Prisma del helper. Si las dos escrituras del corte divergen, este test cae.
+    const r = await conEscenario(async (e) => {
+      const vp = await e.servicio.vistaPrevia();
+      const res = await e.servicio.actualizar({ usuarioId: e.maestro, rol: "maestro" });
+      return { e, vp, res };
+    });
+    expect(r.vp.total).toBe(3);
+    expect(r.res.actualizadas).toBe(r.vp.total);
+    expect(saltadasPorClave(r.e, r.res.saltadas)).toEqual(saltadasPorClave(r.e, r.vp.saltadas));
+    expect(saltadasPorClave(r.e, r.res.saltadas)).toEqual(SALTADAS_ESPERADAS);
   });
 
   it("R1719: ni la alineada ni la de distrito sin zona aparecen, ni cambian", async () => {

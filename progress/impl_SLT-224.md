@@ -161,3 +161,38 @@ T2 — guardias:
 ## Veredicto
 
 VERDE: backend de SLT-224 «Retiro a central: recalcular la zona de la orden» hecho (T1-T6, T8), init.sh exit 0; falta T9 (pantalla) y T0/T7 del leader.
+
+## PR 2 (2026-11-19): T12-T14 backend — PARADO antes del cierre
+
+Base desechable NUEVA `servi_slt224_pr2` (create + `migrate deploy` + seed), exportada como `DATABASE_URL`/`DIRECT_URL`
+antes de cada vitest. `prisma generate` corrido (el cliente compartido estaba atrasado respecto de SLT-215).
+
+**Archivos:** `lib/utils/estados-bodega-satelite.ts` (clasificación), `lib/repositories/_shared/reconciliar-zona-ordenes.ts`
+(corte nuevo, sin `excluirEstados`), `lib/repositories/ActualizacionZonasRepository.ts` (SQL `cobroEnCurso`),
+`lib/types/actualizacion-zonas.ts`, `lib/services/ActualizacionZonasService.ts`; tests nuevos
+`tests/unit/utils/clase-reconciliacion-zona.test.ts` (6) y `tests/integration/db/reconciliar-zona-corte-vivas.int.test.ts` (5);
+ajustados `actualizacion-zonas.int.test.ts` (+1, R1727, motivos nuevos), `recepcion-central-reconcilia-zona.int.test.ts` (+1),
+`actualizacion-zonas-action.test.ts` (motivos y precedencia).
+
+**Mutaciones** (contra `reconciliar-zona-corte-vivas.int.test.ts`, 5 tests; ejecutados, no skipped):
+1. `cierreDetalles: { none: {} }` → 5 rojos (matriz, R1707, los tres llamadores).
+2. sin `{ cierreId: null }` en el `OR` → 1 rojo: se mueven las tres `gestion-*-sin-cierre`.
+3. `not: "aprobado"` → `equals: "solicitado"` → 1 rojo: se mueven `cd-rechazado`, `cd-vencido`, `gestion-entregado-cierre-rechazado`.
+4. `incidente: "se_mueve"` → 1 rojo: se mueve `finalizada-incidente`.
+5. `reprogramado: "se_mueve"` → 1 rojo: se mueve `estado-reprogramado`.
+6. `notIn` = `ESTADOS_PAQUETE_EN_ESTANTE` → 1 rojo: se mueven 7 estados R1723 y las 3 finalizadas.
+7. (R1727) quitar el `JOIN cierre_dia` del `cobroEnCurso` → 4 rojos en `actualizacion-zonas.int.test.ts`, incluido R1727.
+
+**Mapa R → test:** R1720 corte-vivas (tres llamadores + matriz) y recepcion (+1); R1721/R1722/R1723/R1724 corte-vivas (matriz);
+R1725 clase-reconciliacion-zona + typecheck; R1726 actualizacion-zonas-action + actualizacion-zonas.int; R1727 actualizacion-zonas.int.
+
+**Regresión:** 366 (`zona-reconciliacion-ordenes`), `zona-central-guarda-y-rastro`, `zona-pago-mensajero-rastro`, recepción R1701,
+migración, retiro y guardias verdes sin tocar. **ROJO:** `tests/unit/repositories/zona-repository.test.ts` › «377/T4 ⭑ R2/R9: las
+dos consultas comparten el `where` base» fija LITERAL `BASE_D1_ZA` (el corte de la 366) y `notIn: ["en_bodega_satelite"]`. El
+spec decía que seguiría verde; pide cambiar la expectativa → parado, sin tocarlo.
+
+**P4 sin aplicar:** la liberación (`LiberacionReprogramadaService:223`, `DevolucionSlaService:255`) decide bodega con
+`resolverDestinoCierre(orden.zonaId)`, y el paquete está en la bodega del cierre (`cierre_dia.destino_zona_id` = zona del
+mensajero, `CierreDiaService:984`). Moverles la zona los marcaría en la bodega de la zona nueva con el paquete en otra.
+
+**Veredicto:** PARADO — T12-T14 hechos y probados, pero un literal de la 377 pide cambio y P4 queda en el valor por defecto.
