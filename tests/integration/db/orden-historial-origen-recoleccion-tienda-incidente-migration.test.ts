@@ -73,7 +73,7 @@ describe("Feature 154 · SEED del enum — las dos familias del flujo v2 (R7/R8/
     );
   // 27: la 149 apendio `deshacer_asignacion`, la 157 `asignacion_recoleccion` y la 239
     // `anclaje_devolucion` (2026-08-19), las tres DESPUES de estos dos valores.
-    expect(ORDEN_HISTORIAL_ORIGEN_TIPO_SEED).toHaveLength(34); // 2026-08-19 (235): +2 familias de la ayuda · 2026-08-20 (237): +gestion_tienda_ayuda · 2026-08-20 (240): +rechazo_tienda · 2026-08-23 (266): +habilitacion_api · 2026-08-24 (276): +rechazo_tope_intentos · 2026-09-08 (398): +correccion_resultado_gestion
+    expect(ORDEN_HISTORIAL_ORIGEN_TIPO_SEED).toHaveLength(35); // 2026-11-20 (SLT-247): +retorno_por_rechazo_cierre · 2026-08-19 (235): +2 familias de la ayuda · 2026-08-20 (237): +gestion_tienda_ayuda · 2026-08-20 (240): +rechazo_tienda · 2026-08-23 (266): +habilitacion_api · 2026-08-24 (276): +rechazo_tope_intentos · 2026-09-08 (398): +correccion_resultado_gestion
   });
 
   it("R12: NINGUNA de las dos entra en ORIGEN_TIPOS_CON_GESTION (no alteran los intentos)", () => {
@@ -150,6 +150,8 @@ describe("Feature 154 · DOWN — recrea el tipo con las 22 familias previas (R1
       "rechazo_tope_intentos",
       // ficha 398 (2026-09-08): la correccion en sitio del resultado de una gestion
       "correccion_resultado_gestion",
+      // SLT-247 (2026-11-20): el retorno a la calle de las barridas al rechazar el cierre
+      "retorno_por_rechazo_cierre",
 ]);
     expect(new Set(valores)).toEqual(
       new Set(ORDEN_HISTORIAL_ORIGEN_TIPO_SEED.filter((v) => !AÑADIDOS_EN_O_DESPUES_DEL_154.has(v))),

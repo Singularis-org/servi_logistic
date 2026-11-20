@@ -60,6 +60,8 @@ const AÑADIDOS_EN_O_DESPUES_DEL_149 = new Set<string>([
       "rechazo_tope_intentos",
       // ficha 398 (2026-09-08): la correccion en sitio del resultado de una gestion
       "correccion_resultado_gestion",
+      // SLT-247 (2026-11-20): el retorno a la calle de las barridas al rechazar el cierre
+      "retorno_por_rechazo_cierre",
 ]);
 const schemaPrisma = fs.readFileSync(
   path.join(__dirname, "..", "..", "..", "db", "schema.prisma"),

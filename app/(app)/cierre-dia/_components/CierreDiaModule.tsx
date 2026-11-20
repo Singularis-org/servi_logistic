@@ -52,6 +52,7 @@ import {
 } from "@/components/private/cierres/detalle/detalle-cierre-descarga-columnas";
 import {
   DESCARGA_GESTIONES_HOY,
+  motivoFaltanObligatorias,
   REENVIABLE_ERROR,
   tituloDescargaGestiones,
 } from "@/components/private/cierres/detalle/detalle-cierre-labels";
@@ -300,12 +301,13 @@ export function CierreDiaModule({
 
   // FICHA 477 (R28): las órdenes en corrección del cierre que reenvía el pie (el mismo
   // `aReenviarPrimero` que transiciona el servidor) que aún no se volvieron a gestionar.
+  // SLT-247 (R1797): solo las deshechas; una obligatoria no sale del cierre, impide enviarlo (R1796).
   const porReenviar = bloqueo.aReenviarPrimero;
   const sinRehacerDelReenviable =
     porReenviar?.estado === "rechazado"
       ? (correcciones
           .find((c) => c.cierreId === porReenviar.cierreId)
-          ?.ordenesEnCorreccion.filter((o) => !o.regestionada).length ?? 0)
+          ?.ordenesEnCorreccion.filter((o) => !o.obligatoria && !o.regestionada).length ?? 0)
       : 0;
   const rechazadoConfirmDetalle =
     sinRehacerDelReenviable > 0
@@ -556,6 +558,12 @@ export function CierreDiaModule({
     // Rechazado o vencido: `cierreDeLaPagina` solo los devuelve con la lectura `ok`.
     if (!leido) return null;
     const rechazado = pagina.modo === "rechazado";
+    // SLT-247 (R1796): con obligatorias sin gestionar, el reenvío sale deshabilitado con cuántas faltan.
+    const obligatoriasPendientes = rechazado
+      ? (correcciones
+          .find((c) => c.cierreId === pagina.cierreId)
+          ?.ordenesEnCorreccion.filter((o) => o.obligatoria && !o.regestionada).length ?? 0)
+      : 0;
     return (
       <DetalleCierre
         tipo="mensajero"
@@ -567,6 +575,11 @@ export function CierreDiaModule({
           rechazado
             ? { solicitarRechazado: () => setConfirmarRechazado(true) }
             : { solicitarVencido: () => setConfirmarVencido(true) }
+        }
+        deshabilitadas={
+          obligatoriasPendientes > 0
+            ? { solicitarRechazado: motivoFaltanObligatorias(obligatoriasPendientes) }
+            : undefined
         }
         pestanas={{
           // R248: solo el rechazado tiene «Corregir» (`pestanasDe` la pone primera).

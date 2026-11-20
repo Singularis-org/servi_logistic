@@ -3385,6 +3385,14 @@ enum OrdenHistorialOrigenTipo {
   /// NO entra en `ORIGEN_TIPOS_CON_GESTION` aunque su fila nazca CON `gestion_orden_id` poblado:
   /// mismo caso declarado que `escalado_devuelta_sla`, `anclaje_devolucion` y `rechazo_tienda`.
   correccion_resultado_gestion
+  /// SLT-247 (2026-11-20, R1771) — `novedad_interna -> en_reparto` al RECHAZAR un cierre: las
+  /// órdenes que el corte barrió a Novedad interna vuelven al mensajero para que las gestione
+  /// antes de reenviar el cierre. Productor único: `CierresAdminRepository.resolverCierre`, rama
+  /// `rechazado` con `retornoSinGestion`. Actor = el admin que rechaza.
+  ///
+  /// NO entra en `ORIGEN_TIPOS_VISITA_REAL` (nadie visitó la orden: no es un intento) ni en
+  /// `ORIGEN_TIPOS_CON_GESTION` (la fila nace sin `gestion_orden_id`).
+  retorno_por_rechazo_cierre
 
   @@map("orden_historial_origen_tipo")
 }

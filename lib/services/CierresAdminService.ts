@@ -1995,6 +1995,17 @@ export class CierresAdminService implements ICierresAdminService {
 
     if (scope.status === "sinZona") return { status: "no_encontrada" }; // R13
 
+    // SLT-247 (R1770/R1775): el rechazo devuelve las barridas a `en_reparto`. Sin los dos ids del
+    // catalogo falla CERRADO: degradar en silencio repondria el bug de la ficha (barridas
+    // inalcanzables con el cierre rechazado).
+    const [sinGestionarEstatusId, enRepartoEstatusId] = await Promise.all([
+      this.ordenRepo.findEstatusIdByValue(ESTADO_SIN_GESTIONAR),
+      this.ordenRepo.findEstatusIdByValue(ESTADO_EN_REPARTO_APLICACION),
+    ]);
+    if (sinGestionarEstatusId === null || enRepartoEstatusId === null) {
+      return { status: "validation_error", fieldErrors: { estatus: [MSG_CATALOGO_ANCLAJE] } };
+    }
+
     // SLT-42 (R22, R28): el dia del cierre en el historial, con la zona del pais; sin zona, nada se escribe.
     const zonaHoraria = await zonaDeLaEmpresa(this.reglasPais, "CierresAdminService.rechazarCierre");
     // R11-R15: transicion guardada; persiste el motivo con el cierre.
@@ -2005,6 +2016,7 @@ export class CierresAdminService implements ICierresAdminService {
       zonaHoraria,
       resueltoPor: actor.usuarioId, // R14
       motivoRechazo: motivoLimpio,
+      retornoSinGestion: { sinGestionarEstatusId, enRepartoEstatusId }, // SLT-247 (R1770)
     });
     if (res === "updated") {
       // FEATURE 271 (T6.6, R42) + FICHA 412 (R1/R4): los avisos van AQUI —despues de que el

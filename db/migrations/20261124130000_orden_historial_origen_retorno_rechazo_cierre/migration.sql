@@ -1,0 +1,22 @@
+-- SLT-247 (T1.1, R1771) — añade el valor `retorno_por_rechazo_cierre` al enum
+-- `orden_historial_origen_tipo`. Es la familia PROPIA de la transicion
+--
+--   novedad_interna -> en_reparto     (actor = el admin que RECHAZA el cierre)
+--
+-- QUE HACE ESA TRANSICION: al rechazar un cierre, las ordenes que el corte de la noche barrio a
+-- Novedad interna (`cierre_sin_gestion`) vuelven a la calle con su mismo mensajero, que debe
+-- gestionarlas antes de reenviar el cierre. Productor UNICO: `CierresAdminRepository.resolverCierre`,
+-- rama `rechazado` con `retornoSinGestion` (Tanda 2 de la misma ficha, mismo PR).
+--
+-- POR QUE FAMILIA PROPIA: `deshacer_gestion` atribuiria al mensajero un deshacer que no hizo, y
+-- `liberacion_sin_gestionar` dice «liberacion a bodega» sobre una orden que vuelve al reparto.
+--
+-- NO ENTRA en `ORIGEN_TIPOS_VISITA_REAL` (nadie visito la orden: no es un intento de entrega) ni en
+-- `ORIGEN_TIPOS_CON_GESTION` (la fila nace sin `gestion_orden_id`). Ver `lib/types/orden-historial.ts`.
+--
+-- POR QUE VA SOLA: Postgres NO permite USAR un valor de enum recien añadido en la misma transaccion
+-- que lo añadio (55P04) y Prisma Migrate corre cada migration.sql en una. Su primer uso ocurre en
+-- runtime, en transacciones posteriores.
+--
+-- ADITIVA: no crea tablas ni columnas, no toca RLS y NO MUEVE NINGUNA ORDEN (sin backfill, R1800).
+ALTER TYPE "orden_historial_origen_tipo" ADD VALUE IF NOT EXISTS 'retorno_por_rechazo_cierre';

@@ -391,6 +391,17 @@ const PUNTOS_DE_ESCRITURA = [
     simbolo: "retirarSateliteLote",
     origenTipo: "ajuste_estado",
   },
+  // #37: SLT-247 (2026-11-20) — EL RECHAZO DE UN CIERRE DEVUELVE SUS BARRIDAS AL MENSAJERO.
+  //
+  // `novedad_interna -> en_reparto` (arista #74), en la MISMA tx que pasa el cierre a `rechazado`,
+  // con el admin que rechaza de actor y sin gestion enlazada (R1771). Familia propia: reusar
+  // `deshacer_gestion` diria que el mensajero deshizo una gestion que nunca existio (design A2).
+  {
+    n: 37,
+    repo: "CierresAdminRepository",
+    simbolo: "resolverCierre",
+    origenTipo: "retorno_por_rechazo_cierre",
+  },
 ] as const;
 
 // Feature 158/PR2 — familias con MAS DE UN punto de escritura, declaradas UNA A UNA con su
@@ -439,6 +450,8 @@ const FAMILIAS_CON_VARIOS_PUNTOS = [
 // la 157. La lista no se vacia ni se borra: si la 157 nunca llega, esta linea lo sigue diciendo.
 const FAMILIAS_SIN_PRODUCTOR = [
   { origenTipo: "recoleccion_tienda", productorFuturo: "feature 157 (recoleccion en tienda)" },
+  // SLT-247: `retorno_por_rechazo_cierre` estuvo aqui durante la Tanda 1 y la Tanda 2 la MOVIO a
+  // `PUNTOS_DE_ESCRITURA` (#37) al instrumentar su productor.
 ] as const;
 
 // Familias cuyo productor EXISTIO y se RETIRO. No es lo mismo que `FAMILIAS_SIN_PRODUCTOR`
@@ -494,17 +507,17 @@ const NO_ESCRIBEN_ESTADO = [
 ] as const;
 
 describe("Feature 49 · T5.2 cobertura del choke point (R6)", () => {
-  it("son EXACTAMENTE 32 puntos de escritura de estado (conjunto cerrado, design §2)", () => {
+  it("son EXACTAMENTE 33 puntos de escritura de estado (conjunto cerrado, design §2)", () => {
     // 30 - 1: el #2 se retiro el 2026-08-07. Feature 235 (2026-08-19): +2 (#29/#30, las dos
     // familias del viaje de la ayuda, con UN solo simbolo — el punto unico que R8 exige).
-    expect(PUNTOS_DE_ESCRITURA).toHaveLength(32); // 2026-08-20 (237): +#31 · 2026-08-20 (240): +#32 · 2026-08-23 (266): +#33 · 2026-08-24 (276): +#34 · 2026-09-08 (398): +#35 · 2026-09-23 (454): -#29 -#30 -#33 · 2026-11-17 (SLT-197): +#36
+    expect(PUNTOS_DE_ESCRITURA).toHaveLength(33); // 2026-08-20 (237): +#31 · 2026-08-20 (240): +#32 · 2026-08-23 (266): +#33 · 2026-08-24 (276): +#34 · 2026-09-08 (398): +#35 · 2026-09-23 (454): -#29 -#30 -#33 · 2026-11-17 (SLT-197): +#36 · 2026-11-20 (SLT-247): +#37
     // Numeracion CRECIENTE y sin duplicados, con los numeros JUBILADOS declarados uno a uno.
     // No se exige contigüidad a proposito: `n` identifica el punto, no su posicion (ver la
     // cabecera del mapa). Un hueco no declarado aqui SI rompe.
     // FICHA 454: jubilados #29, #30 y #33 (las tres familias de la ayuda como transicion).
     expect(PUNTOS_DE_ESCRITURA.map((p) => p.n)).toEqual([
       1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
-      26, 27, 28, 31, 32, 34, 35, 36,
+      26, 27, 28, 31, 32, 34, 35, 36, 37,
     ]);
   });
 
@@ -515,7 +528,7 @@ describe("Feature 49 · T5.2 cobertura del choke point (R6)", () => {
     }
   });
 
-  it("las familias con productor + la 1 sin productor cubren EXACTAMENTE el enum (R23)", () => {
+  it("las familias con productor + las sin productor cubren EXACTAMENTE el enum (R23)", () => {
     // Feature 158/PR2: se compara por CONJUNTO de familias, no por lista de puntos, porque
     // desde el camino del ADMIN una familia (`incidente`) tiene TRES productores. La cobertura
     // del enum es lo que este caso mide y no se debilita: sigue exigiendo IGUALDAD exacta.
@@ -537,6 +550,7 @@ describe("Feature 49 · T5.2 cobertura del choke point (R6)", () => {
   // UNA. Si un repo empieza a emitir `recoleccion_tienda` antes de instrumentarla como punto
   // de escritura, este test se pone rojo exactamente igual que antes.
   it("feature 154/R28 + 158/Q-G: solo `recoleccion_tienda` sigue declarada y SIN productor", () => {
+    // SLT-247: `retorno_por_rechazo_cierre` paso por aqui en la Tanda 1 y ya tiene productor (#37).
     expect(FAMILIAS_SIN_PRODUCTOR.map((f) => f.origenTipo)).toEqual(["recoleccion_tienda"]);
     const simbolosPorFamilia: string[] = PUNTOS_DE_ESCRITURA.map((p) => p.origenTipo);
     for (const familia of FAMILIAS_SIN_PRODUCTOR) {

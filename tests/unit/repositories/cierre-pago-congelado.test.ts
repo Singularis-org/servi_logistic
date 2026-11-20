@@ -392,7 +392,7 @@ describe("SLT-52 R33/R40 — la re-solicitud de un rechazado paga y congela cada
       vehiculoId: "veh-moto",
     });
 
-    expect(ok).toBe(true);
+    expect(ok).toEqual({ status: "ok" });
     expect(resolverPagosCon).toHaveBeenCalledWith(tx, [
       {
         gestionId: "g1b",
