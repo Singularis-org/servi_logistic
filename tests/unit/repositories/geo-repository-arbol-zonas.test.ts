@@ -11,34 +11,43 @@ import { GeoRepository } from "@/lib/repositories/GeoRepository";
 // lista no se puede medir contra la base. Lo que depende de la base (que las zonas de otra empresa
 // no lleguen) vive en `tests/integration/db/zona-distrito-unica.test.ts`.
 
-function prismaConDistrito(zonas: { id: string; nombre: string }[]) {
+//
+// SLT-44 (design §10): `listArbol` sale del catalogo (`nodo_geografico`) y de las asignaciones de
+// la empresa. Se reescribe EL DOBLE a ese modelo; las salidas esperadas no cambian.
+
+function nodo(id: string, nombre: string, profundidad: number, padreId: string | null) {
   return {
-    provincia: {
+    id,
+    nombre,
+    nombreNormalizado: nombre.toLowerCase(),
+    profundidad,
+    padreId,
+    tipoId: `t${profundidad}`,
+    codigoOficial: null,
+    activo: true,
+  };
+}
+
+function prismaConDistrito(zonas: { id: string; nombre: string }[]) {
+  const prisma = {
+    organizacion: { findFirst: vi.fn().mockResolvedValue({ paisId: "CR" }) },
+    tipoNivelGeografico: { findMany: vi.fn().mockResolvedValue([]) },
+    nodoGeografico: {
       findMany: vi.fn().mockResolvedValue([
-        {
-          id: "p1",
-          nombre: "Provincia Sintetica",
-          activo: true,
-          cantones: [
-            {
-              id: "c1",
-              nombre: "Canton Sintetico",
-              activo: true,
-              distritos: [
-                {
-                  id: "d1",
-                  nombre: "Distrito Sintetico",
-                  activo: true,
-                  zonasEspeciales: [],
-                  zonas: zonas.map((zona) => ({ zona })),
-                },
-              ],
-            },
-          ],
-        },
+        nodo("p1", "Provincia Sintetica", 1, null),
+        nodo("c1", "Canton Sintetico", 2, "p1"),
+        nodo("d1", "Distrito Sintetico", 3, "c1"),
       ]),
     },
+    zonaDistrito: {
+      findMany: vi
+        .fn()
+        .mockResolvedValue(zonas.map((z) => ({ distritoId: "d1", zona: { ...z, esCentral: false } }))),
+    },
+    distritoZonaEspecial: { findMany: vi.fn().mockResolvedValue([]) },
+    $transaction: vi.fn((fn: (tx: unknown) => unknown) => fn(prisma)),
   };
+  return prisma;
 }
 
 async function distritoDelArbol(zonas: { id: string; nombre: string }[]) {

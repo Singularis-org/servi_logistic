@@ -42,3 +42,26 @@ export function esZonaEspecialDeLaEmpresa(
 ): boolean {
   return (d?.zonasEspeciales.length ?? 0) > 0;
 }
+
+/**
+ * SLT-44 (design §3) — el cliente minimo para leer las marcas. Se exporta desde aqui para que
+ * `CatalogoGeograficoRepository` tipe su transaccion sin escribir el nombre del modelo, que la
+ * guardia de R22 solo permite en este archivo y en el repositorio de escritura.
+ */
+export type ClienteDeMarcas = Pick<Prisma.TransactionClient, "distritoZonaEspecial">;
+
+/**
+ * SLT-44 (design §3; R12) — los nodos marcados por la EMPRESA de la transaccion, para el catalogo
+ * en memoria. La empresa la ponen la extension (en el `where`) y la RLS: aqui no hay parametro de
+ * empresa que un llamador pueda rellenar mal.
+ *
+ * El nodo es `distrito_id` y no `nodo_geografico_id`: el nodo tiene el mismo id que el distrito, y
+ * asi la lectura no depende de que haya corrido el backfill de SLT-43 (decision cerrada de SLT-44).
+ */
+export async function leerNodosConMarcaDeLaEmpresa(tx: ClienteDeMarcas): Promise<string[]> {
+  const filas = await tx.distritoZonaEspecial.findMany({
+    select: { distritoId: true },
+    orderBy: { distritoId: "asc" },
+  });
+  return filas.map((f) => f.distritoId);
+}

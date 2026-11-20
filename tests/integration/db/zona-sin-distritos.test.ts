@@ -371,17 +371,22 @@ describeSiHayBase("SLT-198 — zona sin distritos, contra Postgres real", () => 
       const enEstante = await e.crearOrden({ zonaId: e.cartago.id, estado: "en_bodega_satelite", distritoId: e.d.quebradilla });
       const enTransito = await e.crearOrden({ zonaId: e.cartago.id, estado: "en_ruta_bodega_satelite", distritoId: e.d.quebradilla });
 
+      // Cada resolucion es una peticion aparte, con su repositorio, como en produccion (las
+      // composiciones crean uno por llamada). SLT-44 R11: el catalogo y las asignaciones se leen una
+      // vez por repositorio y no se reutilizan entre peticiones; con un solo `ordenRepo` para toda la
+      // secuencia, la resolucion de despues de vaciar veria la foto de antes.
       const resolver = async () => {
-        const porCanton = await e.ordenRepo.findDistritosByCantonIds([e.cantonId]);
+        const ordenRepo = new OrdenRepository(clienteConSavepoint(e.tx));
+        const porCanton = await ordenRepo.findDistritosByCantonIds([e.cantonId]);
         const zonaPorCanton = (id: string) => porCanton.find((r) => r.id === id)?.zonaId;
         return {
           quebradilla: {
             canton: zonaPorCanton(e.d.quebradilla),
-            correccion: (await e.ordenRepo.findDistritoParaCorreccion(e.d.quebradilla))?.zonaId,
+            correccion: (await ordenRepo.findDistritoParaCorreccion(e.d.quebradilla))?.zonaId,
           },
           dulceNombre: {
             canton: zonaPorCanton(e.d.dulceNombre),
-            correccion: (await e.ordenRepo.findDistritoParaCorreccion(e.d.dulceNombre))?.zonaId,
+            correccion: (await ordenRepo.findDistritoParaCorreccion(e.d.dulceNombre))?.zonaId,
           },
         };
       };

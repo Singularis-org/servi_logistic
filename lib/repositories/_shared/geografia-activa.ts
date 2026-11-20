@@ -41,6 +41,16 @@ export interface FlagsGeograficos {
 }
 
 /**
+ * SLT-44 (design §2.3) — LA REGLA, sin niveles con nombre: un nodo esta activo si y solo si lo
+ * estan todos los eslabones de su cadena. La comparten `estaDisponible` (tres niveles) y el
+ * dominio de N niveles (`lib/services/geografia-dominio.ts`), para que haya una sola definicion
+ * en el sitio que ya vigila `geografia-predicado-unico`.
+ */
+export function activoEnCascada(flags: readonly boolean[]): boolean {
+  return flags.every((f) => f);
+}
+
+/**
  * La conjuncion de la cadena. Un nivel ausente (`undefined`) no resta.
  *
  * Es la MISMA definicion que expresan los tres `WHERE_*_DISPONIBLE` de abajo, solo que evaluada
@@ -48,7 +58,10 @@ export interface FlagsGeograficos {
  * tienen los tres flags delante y no van a volver a la base para preguntarlo.
  */
 export function estaDisponible(flags: FlagsGeograficos): boolean {
-  return flags.provincia && flags.canton !== false && flags.distrito !== false;
+  const presentes = [flags.provincia, flags.canton, flags.distrito].filter(
+    (f): f is boolean => f !== undefined,
+  );
+  return activoEnCascada(presentes);
 }
 
 /**
