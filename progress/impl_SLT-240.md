@@ -197,3 +197,50 @@ Veredicto (T3.3, T3.4): hechas; casos de R9/R10/R11 en verde, tests existentes v
 - `pnpm exec eslint` de los 7 archivos tocados: sin salida (0 errores, 0 warnings).
 
 Veredicto (T3.6): hecha; R16 en verde con CR idéntico, sin «IVA» literal nuevo en producción, solo archivos de la lista.
+
+## Tanda 6 — T4.1, T4.2 y mapa consolidado (frontend_dev, 2026-11-20)
+
+### Archivos
+- `tests/components/moneda-del-pais-pantallas.test.tsx` — `CENSO_MONEDA_DEL_PAIS` gana los 12 archivos de design §7;
+  el caso «rojo si un archivo REAL del censo vuelve a un formateador implícito» añade, por archivo, la
+  reescritura con `formatMonto(` de `@/lib/config/moneda` (además de la de `money(`, que ya tenía).
+- `tests/components/moneda-del-pais-ordenes.test.tsx` — `describe` «SLT-240 R19 — excepciones de pais-sin-literales».
+- `tests/unit/guards/_pais-sin-literales-excepciones.ts` sin tocar: no hay entradas de SLT-240; `FichaQueLoRetira`
+  conserva `SLT-240` (decisión P2); `TOPE_EXCEPCIONES` sigue en 19.
+
+### Mapa R → test (consolidado, verificado con grep sobre cada archivo)
+
+Abreviatura: `MPO` = `tests/components/moneda-del-pais-ordenes.test.tsx`.
+
+| R | Archivo | Test |
+|---|---|---|
+| R1 | `MPO` | «SLT-240 R1 — celdas de importe del listado de órdenes (ordenes-columns)» › «con la moneda de prueba, monto, flete, fulfillment y comisión salen en la moneda del país» |
+| R2 | `MPO` | «SLT-240 R2 — resumen de la carga masiva (OrdenesCargaResumen)» › «con la moneda de prueba, el monto sale en «€» con espacio de miles» y «sin monto pinta `-`…» |
+| R3 | `MPO` | «SLT-240 R3 — tabla del monto redondeado (OrdenesConMontoAjustadoTabla)» › «con la moneda de prueba (0 decimales), símbolo y miles del país y la cola de 2 decimales» |
+| R4 | `MPO` | «SLT-240 R4 — aviso de cambio de ubicación (CorregirUbicacionAviso)» › «con la moneda de prueba, flete y comisión…» y «la ubicación sin tarifa sigue diciendo «Sin tarifa configurada»…» |
+| R5 | `MPO` | «SLT-240 R5 — vista previa de la etiqueta (EtiquetaGuia)» › «con la moneda de prueba…» y «sin monto pinta `-`…» |
+| R6 | `tests/unit/pdf/etiquetas-dos-generadores.test.ts`; `tests/components/EtiquetasGuiaModal.test.tsx`; `tests/components/EtiquetaGuiaPreview.test.tsx` | «SLT-240 R6 — con la moneda del pais, el PDF del navegador dice el importe del lote»; «SLT-240 R6: dentro del proveedor del pais, el PDF se pide con la moneda del pais»; «SLT-240 R6 — paridad vista previa <-> PDF con la moneda del pais» |
+| R7 | `tests/unit/pdf/etiquetas-caracter-no-cubierto.test.ts` | «SLT-240 — una moneda cuyo simbolo la fuente embebida no cubre» › «R7: lanza ErrorCaracterNoImprimible desde el IMPORTE y sin haber escrito nada» |
+| R8 | `MPO` | «SLT-240 R8 — tarjeta de novedades (PosOrderCardDetalle + novedadAOrdenCard)» › «con la moneda de prueba…» |
+| R9 | `MPO` | «SLT-240 R9 — indemnización de la cola de incidentes» › «columna del histórico: … sin importe, `—`», «detalle: con la moneda de prueba…», «detalle sin importe (pendiente): `—`…» |
+| R10 | `MPO`; `tests/unit/config/moneda-formato-pais.test.ts`; `tests/unit/guards/dinero-centimos-cuando-existen.guardia.test.ts` | «SLT-240 R10 — tope de la indemnización…» › «con la moneda de prueba (0 decimales), la ayuda y el error…» y «el tope anunciado con una moneda de 0 decimales NUNCA queda por encima…»; «formatearTopeEn — la cota en la moneda del país (SLT-240 R10)»; «`moneyTope` comparte el aspecto pero NUNCA queda por encima (cota)» |
+| R11 | `MPO` | «SLT-240 R11 — importe del registro de acciones (HistorialAccionesModule)» › «con la moneda de prueba, el monto sale en la moneda del país; sin monto, `—`» |
+| R12 | `MPO` + existentes | los casos «R12: con la moneda de CR…» de cada `describe` de R1–R5, R8–R11 y R16; `tests/components/IncidentesAdminModule.test.tsx` › «un monto por encima del TOPE se bloquea…» (literal `₡9.999.999.999,99` intacto); `tests/unit/components/ordenes-descarga-columnas.test.ts` › «R12: `conImpuestoDelPais` con el rótulo de la plataforma devuelve EL MISMO arreglo»; tests existentes de las pantallas verdes sin cambiar valores (tandas anteriores) |
+| R13 | `MPO` | los casos «R13: sin proveedor…» de cada `describe` de R1–R5, R8–R11 y R16 |
+| R14 | `tests/unit/components/etiquetas-pdf.test.ts` | «SLT-240 R14 — sin moneda por defecto en el PDF del navegador» › «buildEtiquetasPdf y drawEtiqueta no compilan sin moneda (lo hace cumplir el typecheck)» y «en ejecucion, sin moneda no imprime…» |
+| R15 | `tests/unit/components/ordenes-descarga-columnas.test.ts`; `tests/unit/components/historial-acciones-descarga-columnas.test.ts`; `tests/components/HistorialAccionesValorInfo.test.tsx` | «R16/R15: con «IGV», la descarga cambia SOLO los encabezados del flete y la comisión»; los otros dos sin cambiar valores esperados. **Verificación de diff:** el reviewer comprueba que de los `*-descarga-columnas.ts` solo cambia `ordenes-descarga-columnas.ts`, y solo en sus encabezados |
+| R16 | `MPO`; `tests/unit/components/ordenes-descarga-columnas.test.ts` | «SLT-240 R16 — rótulos con impuesto de órdenes» (listado, descarga y aviso con «IGV»); «SLT-240 R16 — censo «sin IVA» de los rótulos…» (+ contraprueba); «SLT-240/R16 — los rótulos con impuesto de órdenes, con el del país» |
+| R17 | `tests/components/IncidentesAdminModule.test.tsx` | «un monto por encima del TOPE se bloquea, y el mensaje dice QUÉ corregir» (literal «(10 dígitos y 2 decimales)…» sin cambios). **Verificación de diff:** el reviewer comprueba que no cambia ningún texto de formato de entrada ni un «IVA» fuera de los archivos de T3.6 |
+| R18 | `tests/components/moneda-del-pais-pantallas.test.tsx` | «SLT-235/T4.1 — censo de R18…» › «R18: $archivo no llama a los formateadores implícitos ni lee monedaConfig» (con los 12 de design §7) y «R18: rojo si un archivo REAL del censo vuelve a un formateador implícito» (`money(` y `formatMonto(` de `@/lib/config/moneda`) |
+| R19 | `MPO`; `tests/unit/guards/pais-sin-literales.guardia.test.ts` | «SLT-240 R19 — excepciones de pais-sin-literales» › «ninguna excepción queda a nombre de SLT-240» y «el tope no crece…»; la guardia en verde sin cambios |
+
+Todos los R1–R19 tienen test. R15 y R17 llevan además la comprobación de diff del reviewer (T4.3).
+
+### Salida real (worktree, NODE_OPTIONS=--max-old-space-size=8192)
+- `pnpm exec vitest run tests/components/moneda-del-pais-pantallas.test.tsx tests/components/moneda-del-pais-ordenes.test.tsx`:
+  `Test Files 2 passed (2)` / `Tests 127 passed (127)`.
+- `pnpm run test:guardias`: `Test Files 357 passed | 3 skipped (360)` / `Tests 5419 passed | 28 skipped (5447)`.
+- `pnpm run typecheck` (`tsc --noEmit`): exit 0.
+- `pnpm run lint`: `✖ 249 problems (0 errors, 249 warnings)`, exit 0; `pnpm exec eslint` de los 2 archivos tocados: sin salida.
+
+Veredicto (T4.1, T4.2): hechas; censo con los 12 archivos y su contraprueba `money(`/`formatMonto(`, R19 con su caso, mapa R1–R19 completo.

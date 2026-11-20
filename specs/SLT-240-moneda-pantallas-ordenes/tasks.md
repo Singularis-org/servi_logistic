@@ -109,11 +109,11 @@
 
 ## Bloque 4 — Guardias y cierre (depende de los bloques 1–3)
 
-- [ ] **T4.1** Censo de R18 de SLT-235: `CENSO_MONEDA_DEL_PAIS` de
+- [x] **T4.1** Censo de R18 de SLT-235: `CENSO_MONEDA_DEL_PAIS` de
   `tests/components/moneda-del-pais-pantallas.test.tsx` gana los 12 archivos de design §7 (R18).
   - *Hecho:* en verde, y rojo si en uno de ellos se reescribe un `money(` o un `formatMonto(` de
     `@/lib/config/moneda`.
-- [ ] **T4.2** `pais-sin-literales` (R19): no hay entradas de SLT-240 que quitar y el tope sigue en 19.
+- [x] **T4.2** `pais-sin-literales` (R19): no hay entradas de SLT-240 que quitar y el tope sigue en 19.
   - Caso en `moneda-del-pais-ordenes.test.tsx`: ninguna excepción con `ficha === "SLT-240"`.
   - No se toca `FichaQueLoRetira` (decisión P2: se limpia al cerrar la última rebanada).
   - *Hecho:* `pnpm run test:guardias` en verde.

@@ -682,6 +682,19 @@ const CENSO_MONEDA_DEL_PAIS: readonly { archivo: string; servidor?: true }[] = [
   { archivo: "app/(app)/recepcion-satelite/_components/RecepcionDetalle.tsx" },
   { archivo: "app/(app)/recepcion-satelite/_components/SateliteOrderCard.tsx" },
   { archivo: "app/paquete/[numGuia]/page.tsx", servidor: true },
+  // SLT-240 (rebanada 2, design §7).
+  { archivo: "app/(app)/ordenes/_components/OrdenesCargaResumen.tsx" },
+  { archivo: "app/(app)/ordenes/_components/OrdenesConMontoAjustadoTabla.tsx" },
+  { archivo: "app/(app)/ordenes/_components/CorregirUbicacionAviso.tsx" },
+  { archivo: "app/(app)/ordenes/_components/EtiquetaGuia.tsx" },
+  { archivo: "app/(app)/ordenes/_components/EtiquetasGuiaModal.tsx" },
+  { archivo: "app/(app)/ordenes/_components/etiquetas-pdf.ts" },
+  { archivo: "app/(app)/ordenes/_components/OrdenesModule.tsx" },
+  { archivo: "lib/pdf/etiquetas-dibujo.ts" },
+  { archivo: "app/(app)/incidentes/_components/IncidentesAdminModule.tsx" },
+  { archivo: "app/(app)/incidentes/_components/IncidentesHistoricoTabla.tsx" },
+  { archivo: "app/(app)/historico/acciones/_components/historial-acciones-columnas.ts" },
+  { archivo: "app/(app)/historico/acciones/_components/HistorialAccionesModule.tsx" },
 ];
 
 /** Los formateadores que usan la moneda de la plataforma sin nombrarla (R18). */
@@ -795,6 +808,8 @@ describe("SLT-235/T4.1 — censo de R18: las pantallas en la moneda del país no
     for (const { archivo, servidor } of CENSO_MONEDA_DEL_PAIS) {
       const reescrito = `${leer(archivo)}\nimport { money as dinero } from "${MODULO_MONEDA}";\nexport const _x = dinero(1);\n`;
       expect(infraccionesDeMoneda(reescrito, { servidor }), archivo).not.toEqual([]);
+      const conFormatMonto = `${leer(archivo)}\nimport { formatMonto as montoImplicito } from "${MODULO_MONEDA}";\nexport const _y = montoImplicito(1);\n`;
+      expect(infraccionesDeMoneda(conFormatMonto, { servidor }), archivo).toContain(`llama a formatMonto( de ${MODULO_MONEDA}`);
     }
     const posFormat = leer("app/(app)/mis-asignaciones/_components/pos-card/pos-format.ts")
       .replace(`import { formatearMontoEn,`, `import { formatMonto as formatMontoConfigurado, formatearMontoEn,`)

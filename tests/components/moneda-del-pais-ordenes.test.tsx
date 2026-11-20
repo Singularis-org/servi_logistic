@@ -43,6 +43,10 @@ import {
 } from "@/app/(app)/incidentes/_components/IncidentesAdminModule";
 import { HistorialAccionesModule } from "@/app/(app)/historico/acciones/_components/HistorialAccionesModule";
 import { columnasHistorialAcciones } from "@/app/(app)/historico/acciones/_components/historial-acciones-columnas";
+import {
+  EXCEPCIONES_PAIS_SIN_LITERALES,
+  TOPE_EXCEPCIONES,
+} from "@/tests/unit/guards/_pais-sin-literales-excepciones";
 import { montoValido } from "@/app/(app)/wallet/_components/wallet-labels";
 import { verIncidente } from "@/lib/actions/incidentes";
 import { INDEMNIZACION_MONTO_MAX } from "@/lib/types/cierres-admin";
@@ -859,5 +863,18 @@ describe("SLT-240 R11 — importe del registro de acciones (HistorialAccionesMod
 
   it("R12: con la moneda de CR, los mismos importes que sin proveedor", async () => {
     expect(await importesDelRegistro(MONEDA_CR)).toEqual(await importesDelRegistro());
+  });
+});
+
+// ── R19: la lista de excepciones de `pais-sin-literales` no crece y no queda nada a nombre de SLT-240 ──
+
+describe("SLT-240 R19 — excepciones de pais-sin-literales", () => {
+  it("ninguna excepción queda a nombre de SLT-240", () => {
+    expect(EXCEPCIONES_PAIS_SIN_LITERALES.filter((e) => e.ficha === "SLT-240")).toEqual([]);
+  });
+
+  it("el tope no crece: sigue en 19 o menos y la lista no lo pasa", () => {
+    expect(TOPE_EXCEPCIONES).toBeLessThanOrEqual(19);
+    expect(EXCEPCIONES_PAIS_SIN_LITERALES.length).toBeLessThanOrEqual(TOPE_EXCEPCIONES);
   });
 });
