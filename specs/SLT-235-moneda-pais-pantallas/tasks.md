@@ -69,7 +69,7 @@ esperado.
   archivos de design §7 y su contraprueba.
   - *Hecho:* en verde, y rojo si en uno de ellos se reescribe un `money(` o un `formatMonto(` de
     `@/lib/config/moneda`.
-- [ ] **T4.2** (BLOQUEADA 2026-11-20: SL-21 T5.1 aún no está en esta rama; la guardia no tiene las fichas SLT-235/SLT-237) Lista de excepciones de `pais-sin-literales` (design §8). Depende de que SL-21 T5.1 esté
+- [x] **T4.2** (2026-11-20: `/paquete` fuera y tope 20 → 19. El campo `ficha` sigue en `SLT-235` porque la guardia `pais-sin-literales.guardia.test.ts` fija la lista de fichas admitidas y tocarla sería el archivo 34; cada motivo nombra ya la rebanada que la retira, y los dos ejemplos van a SLT-241 por P2. Pasar el campo queda para la primera rebanada que toque la guardia.) Lista de excepciones de `pais-sin-literales` (design §8). Depende de que SL-21 T5.1 esté
   en esta rama.
   - Se quita la entrada de `/paquete` y se baja el tope.
   - `FichaQueLoRetira` gana `SLT-240` a `SLT-246`, y cada entrada `SLT-235` pasa a su rebanada. Los dos
@@ -83,7 +83,7 @@ esperado.
   - la regla «cada pantalla pasa la moneda a `formatearMontoEn`»;
   - el censo de R18 que crece por rebanada.
   - *Hecho:* el reviewer lo encuentra y cuadra con el código.
-- [ ] **T4.4** Cierre.
+- [x] **T4.4** Cierre. (2026-11-20: typecheck, lint, `test:guardias` y los tests tocados en verde en local; `./init.sh` completo y E2E delegados a CI, porque el local muere por memoria. Mapa R1–R20 en `progress/impl_SLT-235.md`.)
   - `./init.sh` en verde.
   - E2E en local del grupo `dinero` y de los que tocan `mis-asignaciones`, `recepcion-satelite` y
     `/paquete` (`docs/perfil-agentes.md > E2E en local antes del PR`), sobre una base desechable.

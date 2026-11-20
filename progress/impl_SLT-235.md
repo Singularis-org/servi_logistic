@@ -202,8 +202,8 @@ Veredicto: T3.3, T3.4, T3.5 y T4.1 hechas; typecheck, lint y sus tests en verde;
 | R16 | cada caso con `MONEDA_CR` igual que sin proveedor + tests existentes sin tocar |
 | R17 | `moneda-del-pais-pantallas.test.tsx` > `useImpuestoDelPais` da «IGV» |
 | R18 | `moneda-del-pais-pantallas.test.tsx` > «censo de R18» con contraprueba |
-| R19 | PENDIENTE — T4.2 bloqueada (SL-21 T5.1 no está en esta rama) |
-| R20 | lo comprueba el reviewer en el diff |
+| R19 | `tests/unit/guards/pais-sin-literales.guardia.test.ts` > «la lista solo baja…» (exige quitar `/paquete`, que ya no tiene literales) y «la lista no crece respecto de su tope» (tope 19). El paso de dueño va en el motivo de cada entrada, no en `ficha` (ver T4.2 abajo) |
+| R20 | lo comprueba el reviewer en el diff: sin cambios en `monto-cliente.ts`, `plantilla-datos.ts`, `informe.ts`, las pantallas de plataforma de planes, los nombres internos con «iva» ni `openapi-spec.ts` |
 
 ### Verificación de esta tanda
 - `pnpm run typecheck`: exit 0. `pnpm run lint`: 0 errores (249 avisos, ninguno nuevo de esta rama salvo el ya listado).
@@ -212,3 +212,21 @@ Veredicto: T3.3, T3.4, T3.5 y T4.1 hechas; typecheck, lint y sus tests en verde;
 - `./init.sh`: rojo en el paso 3 por el cupo del board (14 fullstack / 7 backend in_progress; aceptado por el humano, no es de esta rama) y en el tamaño del PR medido contra `dev` (87/40, arrastra SL-21). Contra la base SL-21 son 32 archivos de código/docs + specs/progress, 502 líneas de producción y 1 295 de tests.
 - La corrida del resto del gate (con esos dos pasos bajados a aviso en una copia en el scratchpad) llegó hasta «cliente de Prisma al día» y «tipos de ruta al día» y la cortó Claude Code por falta de memoria del sistema antes de los `vitest related`. No se reintentó.
 - E2E: NO corridos (memoria del sistema al límite). Quedan pendientes: `--project=dinero`, `mis-asignaciones`, `recepcion-satelite`, `asignacion-satelite` y los `pwa-mensajero-*` que montan las tarjetas.
+
+## Cierre final (implementer, 2026-11-20) — T4.2 y T4.4
+
+### Archivos
+- `tests/unit/guards/_pais-sin-literales-excepciones.ts`: sale `app/paquete/[numGuia]/page.tsx` y `TOPE_EXCEPCIONES` baja de 20 a 19 (R19). Las 9 entradas que siguen con `ficha: "SLT-235"` nombran en su motivo la rebanada que las retira (design §8): `metrics.ts` y `AnaliticaFinancieraService.ts` → SLT-242; `impuesto-rotulo.ts` y `wallet-rotulos.ts` → SLT-245; `TarifaValorRepository.ts`, `resolver-tarifas.ts` y `tarifa-flexible.ts` → SLT-241; los ejemplos «₡12.500» (`plantilla-datos.ts`) y «₡322.900» (`informe.ts`) → SLT-241 (P2, decisión humana).
+- `specs/SLT-235-moneda-pais-pantallas/tasks.md`: T4.2 y T4.4 en `[x]`.
+
+### Desviación (abierta para el leader)
+- R19, segunda frase («DEBEN pasar a la ficha de la rebanada»), queda cumplida solo en el motivo. Ampliar `FichaQueLoRetira` con SLT-240..SLT-246 obliga a ampliar también la lista fija de fichas de `tests/unit/guards/pais-sin-literales.guardia.test.ts` (línea 147), que no está en «Archivos esperados»: sería el archivo 34 (tope aceptado 33). No se tocó.
+
+### Verificación
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: exit 0.
+- `pnpm exec eslint tests/unit/guards/_pais-sin-literales-excepciones.ts`: sin avisos.
+- `pnpm exec vitest run tests/unit/guards/pais-sin-literales.guardia.test.ts`: 1 archivo, 49 tests, verde.
+- `pnpm run test:guardias`: 357 archivos verdes, 3 saltados (360); 5413 tests verdes, 28 saltados.
+- `./init.sh` completo y E2E (`dinero`, `mis-asignaciones`, `recepcion-satelite`, `asignacion-satelite`, `pwa-mensajero-*`): NO corridos en local (el local muere por memoria); delegados a CI.
+
+Veredicto: T1.1–T4.4 hechas; verificación local acotada en verde; R19 con el dueño en el motivo (ver desviación).
