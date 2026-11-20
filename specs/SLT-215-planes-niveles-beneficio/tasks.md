@@ -96,7 +96,7 @@ Orden: T1 → T2 → (T3, T4, T5 [P]) → T6 → T7 → (T8, T9 [P]) → T10 →
 - [x] **T11. E2E nuevo** (`e2e/planes-niveles.spec.ts`). R38. Depende de T9 y T10.
   - **Hecho:** en verde en local, sobre una base desechable nueva y con `NEXT_PUBLIC_APP_URL` como en `gate.yml`.
     Pasan también en local los cinco E2E de planes adaptados (`docs/perfil-agentes.md > E2E en local antes del PR`).
-- [ ] **T12. Cierre.**
+- [x] **T12. Cierre.**
   - `./init.sh` en verde. El aviso de tamaño queda cubierto por la aceptación del humano (P6 para las líneas).
   - El mapa `R<n> -> test` de R1 a R38 en `progress/impl_SLT-215.md`.
   - **Hecho:** el gate local en verde y ningún R sin test.

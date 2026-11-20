@@ -370,3 +370,56 @@ Modificados (tests):
 
 T6 y T7 hechas: typecheck, lint, tests de la tanda y los afectados en verde; guardias en verde salvo
 `lectura-guia-unica` por `estado.ts` de T8.
+
+## Integración con dev y renombrado de migraciones — 2026-11-19
+
+- Merge de `origin/dev` (SLT-224 y SLT-143). Conflictos resueltos sumando ambos lados: `lib/db/modelos-de-negocio.ts`,
+  `orden-traspaso-migration.test.ts`, `rls-por-empresa.guardia.test.ts` (95 tablas) y `verificar-rls-despliegue.test.ts`
+  (95 tablas; contrato 96 políticas, 181 `sme_*`, 95 sin-cambio).
+- Dev trajo `20261121120000_slt224_…` y `20261121130000_pago_plataforma_por_fuera`: las nuestras pasan a
+  `20261121140000_plan_nivel_job_enum` y `20261121140100_plan_nivel` (sin cambio de SQL; ni SLT-143 ni SLT-224 tocan
+  `job_tipo`, el CHECK de pasos ni `plan_nivel_*`). `M_ANTERIOR` del test de ida y vuelta apunta a la de SLT-143.
+  Base `servi_logistic_slt215` recreada desde cero y sembrada.
+- Entorno: el worktree dejó de compartir `node_modules` (junction) con el checkout principal; tiene el suyo
+  (`pnpm install --frozen-lockfile`), porque `prisma generate` escribía el cliente en el compartido y otra sesión lo pisó.
+- Fix de la guardia R567 (SLT-157): `plan-form/estado.ts` valida la meta sin `/^\d+$/` suelto.
+
+## Cierre (T12) — mapa R → test consolidado
+
+| R | Test |
+|---|---|
+| R1 | `tests/unit/planes/niveles.test.ts`, `tests/integration/db/plan-nivel.test.ts` |
+| R2 | `tests/unit/planes/niveles.test.ts` |
+| R3–R5 | `tests/unit/planes/niveles.test.ts`, `tests/unit/types/plan-borrador-schema.test.ts`, `tests/components/PlanFormNiveles.test.tsx` |
+| R6 | `tests/integration/db/plan-nivel.test.ts`, `tests/integration/db/migracion-plan-nivel-ida-y-vuelta.test.ts` |
+| R7 | `tests/components/PlanFormPasos.test.tsx`, `tests/unit/types/plan-borrador-schema.test.ts`, `tests/unit/planes/plan-form-borrador.test.ts`, `migracion-plan-nivel-ida-y-vuelta.test.ts` |
+| R8, R9 | `tests/components/PlanFormNiveles.test.tsx` |
+| R10 | `tests/components/PlanFormNiveles.test.tsx`, `tests/unit/types/plan-borrador-schema.test.ts` |
+| R11 | `tests/unit/planes/plan-form-borrador.test.ts` |
+| R12 | `tests/integration/db/plan-borrador-confirmar.test.ts` |
+| R13 | `tests/components/PlanFormNiveles.test.tsx`, `tests/unit/planes/plan-form-borrador.test.ts` |
+| R14 | `tests/components/PlanFormNiveles.test.tsx`, `tests/components/PlanFormRevisar.test.tsx` |
+| R15 | `tests/integration/db/plan-nivel.test.ts`, `tests/integration/db/plan-borrador-confirmar.test.ts` |
+| R16 | `tests/integration/db/plan-borrador-confirmar.test.ts`, `tests/integration/db/plan-nivel-recalculo.test.ts` |
+| R17 | `tests/integration/db/plan-nivel.test.ts` |
+| R18 | `tests/unit/planes/niveles.test.ts`, `tests/integration/db/plan-nivel.test.ts` |
+| R19 | `tests/unit/planes/rastro.test.ts`, `tests/integration/db/plan-nivel.test.ts`, `tests/components/PlanDetalle.test.tsx` |
+| R20 | `tests/unit/planes/rastro.test.ts`, `tests/unit/planes/niveles.test.ts` |
+| R21 | `tests/unit/planes/niveles.test.ts`, `tests/components/PlanesModule.test.tsx` |
+| R22–R28 | `tests/integration/db/plan-nivel-cierre.test.ts` |
+| R29 | `tests/integration/db/plan-nivel-cierre.test.ts`, `tests/integration/db/plan-nivel.test.ts`, `tests/unit/planes/jobs-niveles.test.ts` |
+| R30 | `tests/unit/planes/jobs-niveles.test.ts` |
+| R31–R34 | `tests/integration/db/plan-nivel-recalculo.test.ts` |
+| R35, R36 | `tests/integration/db/plan-nivel.test.ts` |
+| R37 | `tests/integration/db/migracion-plan-nivel-ida-y-vuelta.test.ts` |
+| R38 | `e2e/planes-niveles.spec.ts` (lo corre el CI; no se corrió en local por orden del leader) |
+
+### Salida real final (HEAD tras el renombrado, `NODE_OPTIONS=--max-old-space-size=8192`)
+- `pnpm run typecheck`: exit 0.
+- `pnpm run lint`: 0 errores (249 avisos, preexistentes del repo).
+- `pnpm run test:guardias`: 360/360 archivos, 5423 pasan, 1 omitido, 0 fallan.
+- `vitest run` de los 22 archivos de `tests/unit` y `tests/components` tocados: 22/22 archivos, 428/428 tests.
+- `vitest run --no-file-parallelism` de los 6 de `tests/integration` tocados, base `servi_logistic_slt215`: 6/6, 79/79.
+  Además `demo-qa.test.ts` y `verificar-rls-despliegue.test.ts` en verde en la corrida del renombrado.
+- No corridos en local (orden del leader, por memoria): `./init.sh`, E2E (los 5 adaptados y `planes-niveles`) y `next build`.
+  Los verifica el CI (`gate-completo`).
