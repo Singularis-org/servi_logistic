@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { beneficiosSchema } from "@/lib/planes/beneficios";
 import { descuentosDeLaLista } from "@/lib/planes/borrador";
+import { nivelesSchema } from "@/lib/planes/niveles";
 import { montoCobroSchema } from "@/lib/types/cobro-plataforma";
 import {
   CUSTOM_CON_EMPRESA,
@@ -39,10 +40,20 @@ import {
 
 /**
  * Los pasos de SLT-130, en el orden del formulario. `vigencia` («Cuándo rige») solo en un cambio. SLT-214 (R7):
- * `beneficios` justo después de `modulos`.
+ * `beneficios` justo después de `modulos`. SLT-215 (R7): `niveles` justo después de `beneficios` (y, al editar,
+ * antes de `vigencia`).
  */
-export const PASOS_DE_CREAR = ["general", "precio", "orden", "topes", "modulos", "beneficios"] as const;
-export const PASOS_DE_EDITAR = ["general", "precio", "orden", "topes", "modulos", "beneficios", "vigencia"] as const;
+export const PASOS_DE_CREAR = ["general", "precio", "orden", "topes", "modulos", "beneficios", "niveles"] as const;
+export const PASOS_DE_EDITAR = [
+  "general",
+  "precio",
+  "orden",
+  "topes",
+  "modulos",
+  "beneficios",
+  "niveles",
+  "vigencia",
+] as const;
 export type IdPasoDeCrear = (typeof PASOS_DE_CREAR)[number];
 export type IdPasoDeEditar = (typeof PASOS_DE_EDITAR)[number];
 export type IdPasoBorrador = IdPasoDeEditar;
@@ -133,6 +144,10 @@ const modulosDelPasoSchema = z.object({ modulos: modulosSchema }).strict();
 // SLT-214 (R10): R2–R4 con sus errores en `beneficios.<i>.texto`. La lista vacía vale (R9).
 const beneficiosDelPasoSchema = z.object({ beneficios: beneficiosSchema }).strict();
 
+// SLT-215 (R10): R3–R5 con sus errores en `niveles.<i>.meta`, `niveles.<i>.descuento.<campo>` y `niveles`. La lista
+// vacía vale (R9).
+const nivelesDelPasoSchema = z.object({ niveles: nivelesSchema }).strict();
+
 // Lo que acepte la edición: una fecha obligatoria (SLT-135 R10). «No antes de hoy» lo mira confirmar (R6, R19).
 const vigenciaSchema = z.object({ vigenteDesde: editarPlanSchema.shape.vigenteDesde }).strict();
 
@@ -143,6 +158,7 @@ export const ESQUEMAS_DE_CREAR = {
   topes: topesSchema,
   modulos: modulosDelPasoSchema,
   beneficios: beneficiosDelPasoSchema,
+  niveles: nivelesDelPasoSchema,
 } as const satisfies Record<IdPasoDeCrear, z.ZodType>;
 
 export const ESQUEMAS_DE_EDITAR = {
@@ -152,6 +168,7 @@ export const ESQUEMAS_DE_EDITAR = {
   topes: topesSchema,
   modulos: modulosDelPasoSchema,
   beneficios: beneficiosDelPasoSchema,
+  niveles: nivelesDelPasoSchema,
   vigencia: vigenciaSchema,
 } as const satisfies Record<IdPasoDeEditar, z.ZodType>;
 
@@ -162,6 +179,7 @@ export type ValoresDeOrden = z.infer<typeof ordenSchema>;
 export type ValoresDeTopes = z.infer<typeof topesSchema>;
 export type ValoresDeModulos = z.infer<typeof modulosDelPasoSchema>;
 export type ValoresDeBeneficios = z.infer<typeof beneficiosDelPasoSchema>;
+export type ValoresDeNiveles = z.infer<typeof nivelesDelPasoSchema>;
 export type ValoresDeVigencia = z.infer<typeof vigenciaSchema>;
 export type ValoresDelPaso =
   | GeneralDeCrear
@@ -171,6 +189,7 @@ export type ValoresDelPaso =
   | ValoresDeTopes
   | ValoresDeModulos
   | ValoresDeBeneficios
+  | ValoresDeNiveles
   | ValoresDeVigencia;
 
 /** Los pasos de un borrador de creación, ya validados, por su id. */
@@ -181,6 +200,7 @@ export type PasosDeCrear = {
   topes: ValoresDeTopes;
   modulos: ValoresDeModulos;
   beneficios: ValoresDeBeneficios;
+  niveles: ValoresDeNiveles;
 };
 /** Los pasos de un borrador de cambio, ya validados, por su id. */
 export type PasosDeEditar = Omit<PasosDeCrear, "general"> & { general: GeneralDeEditar; vigencia: ValoresDeVigencia };
@@ -220,6 +240,7 @@ export const guardarPasoBorradorSchema = z
       opcionDeCrear("topes"),
       opcionDeCrear("modulos"),
       opcionDeCrear("beneficios"),
+      opcionDeCrear("niveles"),
     ]),
     z.discriminatedUnion("paso", [
       opcionDeEditar("general"),
@@ -228,6 +249,7 @@ export const guardarPasoBorradorSchema = z
       opcionDeEditar("topes"),
       opcionDeEditar("modulos"),
       opcionDeEditar("beneficios"),
+      opcionDeEditar("niveles"),
       opcionDeEditar("vigencia"),
     ]),
   ])

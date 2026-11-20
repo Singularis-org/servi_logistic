@@ -407,11 +407,12 @@ describe("SLT-58 R15 — editar y los avisos de topes pasados", () => {
       "Topes",
       "Módulos",
       "Beneficios", // SLT-214 «Planes: beneficios de texto con ícono» (R7)
+      "Niveles", // SLT-215 «Planes: niveles de beneficio por volumen de órdenes» (R7)
       "Cuándo rige",
       "Revisar y programar",
     ]);
     expect(tituloDelPasoActual()).toBe("General");
-    expect(within(panel).getByText("Paso 1 de 8")).toBeInTheDocument();
+    expect(within(panel).getByText("Paso 1 de 9")).toBeInTheDocument();
     // SLT-144 (R1): el botón del pie guarda el paso en el borrador antes de avanzar.
     expect(within(panel).getByRole("button", { name: TEXTOS_PLAN_FORM.guardarYContinuar })).toBeInTheDocument();
   });
@@ -754,5 +755,50 @@ describe("SLT-214 R19 — los beneficios en el rastro del plan", () => {
     });
 
     expect(lineas()).toEqual(["Cambian los íconos o el orden de los beneficios."]);
+  });
+});
+
+// SLT-215 «Planes: niveles de beneficio por volumen de órdenes» (design §3.6; R19, R20): los niveles en el rastro del
+// plan. El alta pinta «Niveles: <nivel 1>; <nivel 2>; …»; una edición, la línea «Niveles por volumen» del correo.
+describe("SLT-215 R19 — los niveles en el rastro del plan", () => {
+  const filaDelRastro = (accion: "creado" | "editado", cambios: DetallePlan["rastro"][number]["cambios"]) => ({
+    id: `r-${accion}`,
+    accion,
+    cambios,
+    actorNombre: "Sofía Admin",
+    creadoAt: "2026-11-19T15:00:00.000Z",
+  });
+  const queCambio = () =>
+    within(within(seccion("Historial del plan")).getAllByRole("row")[1]!).getAllByRole("cell")[3]!;
+  const lineas = () => within(queCambio()).getAllByRole("listitem").map((li) => li.textContent);
+  const DOS = [
+    { meta: 100, descuento: { tipo: "porcentaje", porcentaje: "10.00" } },
+    { meta: 500, descuento: { tipo: "monto", monto: "1500.00" } },
+  ];
+
+  it("R19: un alta con niveles pinta «Niveles: <nivel 1>; <nivel 2>» en orden", () => {
+    montar({
+      ...DETALLE,
+      rastro: [
+        filaDelRastro("creado", { nombre: { antes: null, despues: "Básico" }, niveles: { antes: null, despues: DOS } }),
+      ],
+    });
+
+    expect(lineas()).toEqual([
+      "Nombre del plan: Básico",
+      "Niveles: Nivel 1: desde 100 órdenes, −10.00 %; Nivel 2: desde 500 órdenes, −1500.00",
+    ]);
+  });
+
+  it("R19: un alta sin niveles (sin la clave) no pinta la línea", () => {
+    montar({ ...DETALLE, rastro: [filaDelRastro("creado", { nombre: { antes: null, despues: "Básico" } })] });
+
+    expect(queCambio()).not.toHaveTextContent("Niveles");
+  });
+
+  it("R19, R20: una edición pinta «Niveles por volumen: antes → después»", () => {
+    montar({ ...DETALLE, rastro: [filaDelRastro("editado", { niveles: { antes: [], despues: DOS.slice(0, 1) } })] });
+
+    expect(lineas()).toEqual(["Niveles por volumen: Sin niveles → Nivel 1: desde 100 órdenes, −10.00 %"]);
   });
 });

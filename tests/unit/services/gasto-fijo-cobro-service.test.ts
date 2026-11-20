@@ -63,7 +63,6 @@ function movimiento(overrides: Partial<WalletMovimientoDTO> = {}): WalletMovimie
     origenTipo: "gasto",
     origenId: "p-alquiler:2026-08",
     descripcion: "Alquiler — 2026-08",
-    registradoPor: MAESTRO.usuarioId,
     fechaMovimiento: "2026-08-29T18:00:00.000Z",
     dueno: "propio",
     documento: null, // ficha 459 (design §7.3): fila sin documento
@@ -261,7 +260,7 @@ describe("333/R17 — un cobro ya decidido no vuelve a escribir en el libro", ()
 
 describe("333/R19 — si el libro YA tiene la clave, se enlaza ese movimiento y se dice la verdad", () => {
   it("⭑ `crearMovimientos` devuelve 0 -> se enlaza el existente y `yaEstabaEnElLibro` es true", async () => {
-    const existente = movimiento({ id: "w-existente", registradoPor: null });
+    const existente = movimiento({ id: "w-existente" });
     const movRepo = buildMovRepo({
       crearMovimientos: vi.fn().mockResolvedValue(0), // ON CONFLICT DO NOTHING
       obtenerPorOrigen: vi.fn().mockResolvedValue(existente),

@@ -2,11 +2,16 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { z } from "zod";
 
 import { comoPlataforma } from "@/lib/db/contexto-empresa";
-import { traducirErrorDeConfirmacion } from "@/lib/db/errores-pago-plataforma";
+import { esTopeDelPagoSuperado, traducirErrorDeConfirmacion } from "@/lib/db/errores-pago-plataforma";
 import type {
+  AnularConfirmadoRepoInput,
+  AnularConfirmadoRepoResult,
+  AplicacionAConfirmar,
   ConfirmarPagoRepoInput,
   ConfirmarPagoRepoResult,
   IPagoPlataformaConfirmacionRepository,
+  RegistrarPorFueraRepoInput,
+  RegistrarPorFueraRepoResult,
 } from "@/lib/interfaces/repositories/IPagoPlataformaConfirmacionRepository";
 import type { PagosDeEmpresa } from "@/lib/types/pago-plataforma";
 import { nombreCompletoUsuarioSql } from "@/lib/utils/nombre-usuario";
@@ -19,6 +24,10 @@ import { nombreCompletoUsuarioSql } from "@/lib/utils/nombre-usuario";
 //
 // Las funciones filtran por la empresa que reciben; los JOIN a tablas de negocio llevan además su
 // `organizacion_id` escrito, porque como dueño no hay RLS que lo ponga.
+//
+// SLT-143 (design §4.2): `leer` gana los pagos confirmados vigentes, y `registrarPorFuera` y `anularConfirmado`
+// llaman a `pago_plataforma_registrar_por_fuera` y `pago_plataforma_anular_confirmado`, también del dueño. El
+// nombre de quien confirmó sale de `usuario` sin filtro de empresa: es el superadmin, que no tiene ninguna.
 //
 // `pagoDeLaEmpresa` (design §4.8) es la excepción: NO corre como plataforma. La llama el servicio dentro de
 // `conEmpresa(organizacionId)`, así que la extensión baja a `servi_app` con esa empresa y la RLS esconde los
@@ -72,6 +81,25 @@ const lecturaSchema = z.object({
   ),
 });
 
+const confirmadosSchema = z.array(
+  z.object({
+    id: z.string(),
+    monto: importeSchema,
+    fecha: instanteUtcSchema,
+    referencia: z.string().nullable(),
+    registrado_por: z.string().nullable(),
+    por_fuera: z.boolean(),
+    confirmado_por: z.string().nullable(),
+    confirmado_el: instanteUtcSchema,
+    aplicaciones: z.array(z.object({ factura_id: z.string(), numero: z.int().min(1), monto: importeSchema })),
+    tiene_comprobante: z.boolean(),
+  }),
+);
+
+/** Los montos van como texto: la función los lleva a `numeric` sin pasar por `number`. */
+const aplicacionesJson = (aplicaciones: readonly AplicacionAConfirmar[]): string =>
+  JSON.stringify(aplicaciones.map((a) => ({ factura_id: a.facturaId, monto: a.monto })));
+
 /** Según el driver, el `jsonb` llega ya parseado o como texto. */
 const comoJson = (v: unknown): unknown => (typeof v === "string" ? (JSON.parse(v) as unknown) : v);
 
@@ -81,7 +109,7 @@ export class PagoPlataformaConfirmacionRepository implements IPagoPlataformaConf
   leer(organizacionId: string): Promise<PagosDeEmpresa> {
     return comoPlataforma(FICHA, "SLT-60: leer los pagos por confirmar y las facturas con saldo de una empresa para el superadmin (R12, R14, R32)", async () => {
       // Una sola sentencia: una sola foto de los pagos y los saldos.
-      const filas = await this.prisma.$queryRaw<{ pagos: unknown; facturas: unknown }[]>`
+      const filas = await this.prisma.$queryRaw<{ pagos: unknown; facturas: unknown; confirmados: unknown }[]>`
         SELECT
           COALESCE((
             SELECT jsonb_agg(jsonb_build_object(
@@ -102,8 +130,46 @@ export class PagoPlataformaConfirmacionRepository implements IPagoPlataformaConf
                    ORDER BY s."desde_at")
               FROM factura_plataforma_saldos(${organizacionId}) s
              WHERE s."saldo" > 0
-          ), '[]'::jsonb) AS "facturas"`;
-      const leida = lecturaSchema.safeParse({ pagos: comoJson(filas[0]?.pagos), facturas: comoJson(filas[0]?.facturas) });
+          ), '[]'::jsonb) AS "facturas",
+          -- SLT-143 (R16): los confirmados vigentes, sin contra-asiento ni anulación de la plataforma.
+          COALESCE((
+            SELECT jsonb_agg(jsonb_build_object(
+                     'id', p."id", 'monto', p."monto"::text, 'fecha', p."fecha_movimiento",
+                     'referencia', p."descripcion",
+                     'registrado_por', CASE WHEN c."por_fuera" OR u."id" IS NULL THEN NULL
+                                            ELSE ${Prisma.raw(nombreCompletoUsuarioSql("u"))} END,
+                     'por_fuera', c."por_fuera",
+                     'confirmado_por', CASE WHEN cu."id" IS NULL THEN NULL ELSE ${Prisma.raw(nombreCompletoUsuarioSql("cu"))} END,
+                     'confirmado_el', c."confirmado_at",
+                     'aplicaciones', COALESCE((
+                       SELECT jsonb_agg(jsonb_build_object('factura_id', a."factura_id", 'numero', f."numero",
+                                                           'monto', a."monto"::text) ORDER BY f."numero")
+                         FROM "pago_plataforma_aplicacion" a
+                         JOIN "factura_plataforma" f ON f."id" = a."factura_id" AND f."organizacion_id" = ${organizacionId}
+                        WHERE a."organizacion_id" = ${organizacionId} AND a."confirmacion_id" = c."id"), '[]'::jsonb),
+                     'tiene_comprobante', EXISTS (
+                       SELECT 1 FROM "wallet_comprobante" wc
+                        WHERE wc."organizacion_id" = ${organizacionId} AND wc."caja_movimiento_id" = p."id"))
+                   ORDER BY c."confirmado_at" DESC, c."id")
+              FROM "pago_plataforma_confirmacion" c
+              JOIN "wallet_movimiento" p ON p."id" = c."pago_id" AND p."organizacion_id" = ${organizacionId}
+              LEFT JOIN "usuario" u ON u."id" = p."registrado_por" AND u."organizacion_id" = ${organizacionId}
+              LEFT JOIN "usuario" cu ON cu."id" = c."confirmado_por"
+             WHERE c."organizacion_id" = ${organizacionId}
+               AND NOT EXISTS (SELECT 1 FROM "pago_plataforma_anulacion" n
+                                WHERE n."organizacion_id" = ${organizacionId} AND n."confirmacion_id" = c."id")
+               AND NOT EXISTS (SELECT 1 FROM "wallet_movimiento" r
+                                WHERE r."organizacion_id" = ${organizacionId} AND r."tipo" = 'ingreso'
+                                  AND r."categoria" = 'ingreso_ajuste' AND r."origen_tipo" = 'gasto'
+                                  AND r."origen_id" = p."id")
+          ), '[]'::jsonb) AS "confirmados"`;
+      const leida = lecturaSchema
+        .extend({ confirmados: confirmadosSchema })
+        .safeParse({
+          pagos: comoJson(filas[0]?.pagos),
+          facturas: comoJson(filas[0]?.facturas),
+          confirmados: comoJson(filas[0]?.confirmados),
+        });
       if (!leida.success) {
         throw new Error(`PagoPlataformaConfirmacionRepository.leer: la base devolvió una forma inesperada: ${leida.error.message}`);
       }
@@ -117,14 +183,25 @@ export class PagoPlataformaConfirmacionRepository implements IPagoPlataformaConf
           tieneComprobante: p.tiene_comprobante,
         })),
         facturas: leida.data.facturas,
+        confirmados: leida.data.confirmados.map((c) => ({
+          id: c.id,
+          monto: c.monto,
+          fecha: c.fecha,
+          referencia: c.referencia,
+          registradoPor: c.registrado_por,
+          porFuera: c.por_fuera,
+          confirmadoPor: c.confirmado_por,
+          confirmadoEl: c.confirmado_el,
+          aplicaciones: c.aplicaciones.map((a) => ({ facturaId: a.factura_id, numero: a.numero, monto: a.monto })),
+          tieneComprobante: c.tiene_comprobante,
+        })),
       };
     });
   }
 
   confirmar(input: ConfirmarPagoRepoInput): Promise<ConfirmarPagoRepoResult> {
     return comoPlataforma(FICHA, "SLT-60: el superadmin confirma un pago a la plataforma y lo reparte entre facturas cerradas (R16)", async () => {
-      // Los montos van como texto: la función los lleva a `numeric` sin pasar por `number`.
-      const aplicaciones = JSON.stringify(input.aplicaciones.map((a) => ({ factura_id: a.facturaId, monto: a.monto })));
+      const aplicaciones = aplicacionesJson(input.aplicaciones);
       try {
         // Una sola sentencia: su propia transacción. La función toma el candado de los pagos de la empresa,
         // así que se serializa con el registro, la anulación y otra confirmación del mismo pago (R19, R21).
@@ -134,6 +211,46 @@ export class PagoPlataformaConfirmacionRepository implements IPagoPlataformaConf
         if (fila?.resultado === "ok") return { estado: "ok" };
         if (fila?.resultado === "ya_confirmado") return { estado: "ya_confirmado" };
         throw new Error(`pago_plataforma_confirmar devolvió un resultado inesperado: ${String(fila?.resultado)}`);
+      } catch (e) {
+        const error = traducirErrorDeConfirmacion(e);
+        if (error !== null) return { estado: "rechazado", error };
+        throw e;
+      }
+    });
+  }
+
+  registrarPorFuera(input: RegistrarPorFueraRepoInput): Promise<RegistrarPorFueraRepoResult> {
+    return comoPlataforma(FICHA, "SLT-143: el superadmin registra un pago hecho por fuera, ya confirmado y repartido entre facturas cerradas (R1, R10, R11)", async () => {
+      const fecha = input.fecha === null ? null : comoTimestamp(input.fecha);
+      try {
+        // Una sola sentencia: el pago, el comprobante, la confirmación y las aplicaciones, o nada (R5, R9).
+        const [fila] = await this.prisma.$queryRaw<{ resultado: string }[]>`
+          SELECT pago_plataforma_registrar_por_fuera(
+                   ${input.organizacionId}, ${input.pagoId}, ${input.monto}::numeric, ${fecha}::timestamp,
+                   ${input.referencia}, ${input.claveIdempotencia}, ${aplicacionesJson(input.aplicaciones)}::jsonb,
+                   ${input.por}, ${comoTimestamp(input.ahora)}::timestamp,
+                   ${input.comprobante?.storagePath ?? null}, ${input.comprobante?.contentType ?? null}) AS "resultado"`;
+        if (fila?.resultado === "ok") return { estado: "ok" };
+        if (fila?.resultado === "ya_registrado") return { estado: "ya_registrado" };
+        throw new Error(`pago_plataforma_registrar_por_fuera devolvió un resultado inesperado: ${String(fila?.resultado)}`);
+      } catch (e) {
+        if (esTopeDelPagoSuperado(e)) return { estado: "tope_superado" };
+        const error = traducirErrorDeConfirmacion(e);
+        if (error !== null) return { estado: "rechazado", error };
+        throw e;
+      }
+    });
+  }
+
+  anularConfirmado(input: AnularConfirmadoRepoInput): Promise<AnularConfirmadoRepoResult> {
+    return comoPlataforma(FICHA, "SLT-143: el superadmin anula un pago confirmado a la plataforma y devuelve el monto a la caja de la empresa (R21, R24)", async () => {
+      try {
+        const [fila] = await this.prisma.$queryRaw<{ resultado: string }[]>`
+          SELECT pago_plataforma_anular_confirmado(${input.organizacionId}, ${input.pagoId}, ${input.motivo},
+                                                   ${input.por}, ${comoTimestamp(input.ahora)}::timestamp) AS "resultado"`;
+        if (fila?.resultado === "ok") return { estado: "ok" };
+        if (fila?.resultado === "ya_anulado") return { estado: "ya_anulado" };
+        throw new Error(`pago_plataforma_anular_confirmado devolvió un resultado inesperado: ${String(fila?.resultado)}`);
       } catch (e) {
         const error = traducirErrorDeConfirmacion(e);
         if (error !== null) return { estado: "rechazado", error };

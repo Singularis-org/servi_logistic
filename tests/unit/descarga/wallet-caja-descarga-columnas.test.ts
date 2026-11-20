@@ -15,7 +15,6 @@ const MOV: WalletMovimientoDTO = {
   origenTipo: "gasto",
   origenId: "8a7b6c5d-4e3f-4a2b-9c1d-0e9f8a7b6c5d",
   descripcion: "Alquiler de bodega",
-  registradoPor: "1b2c3d4e-5f6a-4b7c-8d9e-0f1a2b3c4d5e",
   fechaMovimiento: "2026-07-12T10:00:00.000Z",
   dueno: "propio", // feature 231 (R31): un gasto fijo es dinero de la empresa
   documento: null, // ficha 459 (design §7.3): fila sin documento
@@ -177,5 +176,48 @@ describe("columnas de descarga del libro de caja", () => {
     const sin = filaDescargaMovimientoCaja(MOV);
     expect(sin.aQuien).toBe("—");
     expect(sin.registro).toBe("—");
+  });
+
+  // SLT-143 (design §5, §5.1; R13, R36) — la marca de la plataforma llega a la descarga por `textoRegistro`, con
+  // el literal de la decisión del humano y sin el prefijo «Automático · ». Los textos van escritos a mano.
+  it("SLT-143 R13/R36: «Registró» dice «Registrado por la plataforma» o «Anulado por la plataforma», sin nombre ni id", () => {
+    const PAGO: WalletMovimientoDTO = {
+      ...MOV,
+      categoria: "egreso_pago_plataforma",
+      origenId: null,
+      descripcion: "Transferencia del día",
+      dueno: "propio",
+    };
+    const autoria = (accion: "plataforma" | "plataforma_anulacion"): AutoriaDeFilaDTO => ({
+      movimientoId: PAGO.id,
+      aQuien: { nombre: null, beneficiario: null, cuenta: null, esEmpresa: false },
+      registro: { nombre: null, automatico: { accion, por: null } },
+      registradoEl: { fecha: "2026-11-19", hora: "10:30" },
+      como: null,
+      anulacion: null,
+    });
+
+    const registrado = filaDescargaMovimientoCaja(PAGO, autoria("plataforma"));
+    expect(registrado.registro).toBe("Registrado por la plataforma");
+    // R13: la referencia del superadmin, en «Detalle», como la de un pago desde la wallet.
+    expect(String(registrado.detalle)).toContain("Transferencia del día");
+
+    const contra: WalletMovimientoDTO = {
+      ...PAGO,
+      tipo: "ingreso",
+      categoria: "ingreso_ajuste",
+      origenId: "0a000000-0000-4000-8000-000000000001",
+      descripcion: "Anulación de: Transferencia del día",
+    };
+    expect(filaDescargaMovimientoCaja(contra, autoria("plataforma_anulacion")).registro).toBe("Anulado por la plataforma");
+
+    for (const fila of [registrado, filaDescargaMovimientoCaja(contra, autoria("plataforma_anulacion"))]) {
+      for (const celda of Object.values(fila)) {
+        if (typeof celda === "string") {
+          expect(celda).not.toContain("Automático");
+          expect(celda).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+        }
+      }
+    }
   });
 });

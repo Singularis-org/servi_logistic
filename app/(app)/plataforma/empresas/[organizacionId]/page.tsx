@@ -7,10 +7,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { verFacturasDeEmpresa } from "@/lib/actions/_shared/facturas-plataforma";
 import { verModulosEmpresa } from "@/lib/actions/_shared/modulos-empresa";
 import { verDetalleDePlan, verPlanDeEmpresa, verPreciosQueRigen } from "@/lib/actions/_shared/planes-plataforma";
+import { zonaDelBorde } from "@/lib/actions/_shared/zona-del-borde";
 import { descargarFacturaEmpresaAction, verDetalleFacturaEmpresaAction } from "@/lib/actions/facturas-plataforma";
 import { fijarModuloEmpresaAction } from "@/lib/actions/modulos-empresa";
 import {
+  anularPagoConfirmadoAction,
   confirmarPagoPlataformaAction,
+  registrarPagoPorFueraAction,
   verComprobantePagoPlataformaAction,
   verPagosDeEmpresaAction,
 } from "@/lib/actions/pagos-plataforma";
@@ -23,6 +26,7 @@ import {
 } from "@/lib/actions/planes";
 import { esPlataforma } from "@/lib/auth/plataforma";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
+import { conEmpresa } from "@/lib/db/contexto-empresa";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { NUCLEO } from "@/lib/modulos/catalogo";
 import {
@@ -36,6 +40,7 @@ import type { FacturaPlataformaDTO } from "@/lib/types/factura-plataforma";
 import type { PlanDeEmpresaVista, PlanDTO, PreciosQueRigen } from "@/lib/types/planes";
 
 import { ModulosEmpresa } from "./_components/ModulosEmpresa";
+import { PagosConfirmados } from "./_components/PagosConfirmados";
 import { PagosPorConfirmar } from "./_components/PagosPorConfirmar";
 import { PlanEmpresa } from "./_components/PlanEmpresa";
 
@@ -74,6 +79,20 @@ async function leerPagos(actor: Actor, organizacionId: string): Promise<PagosDeE
     return r.estado === "ok" ? r.datos : null;
   } catch (error) {
     console.error("[EmpresaDetallePage] verPagosDeEmpresaAction lanzó", error);
+    return null;
+  }
+}
+
+/**
+ * SLT-143 (decisión P5 del leader) — la zona horaria del país de la empresa de la URL, para la ventana de la fecha
+ * del registro por fuera: la misma con la que valida el servidor (`conEmpresa` + reglas del país). Aislada: si
+ * falla, `null`, y el diálogo deja la fecha al servidor (vacía = hoy).
+ */
+async function leerZona(organizacionId: string): Promise<string | null> {
+  try {
+    return await conEmpresa(organizacionId, () => zonaDelBorde());
+  } catch (error) {
+    console.error("[EmpresaDetallePage] la zona del país de la empresa falló", error);
     return null;
   }
 }
@@ -166,6 +185,9 @@ async function leerPreciosQueRigen(
  * SLT-119 (design §6.3; R12, P6): dos pestañas. «Empresa», la elegida al abrir, lleva lo de siempre (plan, núcleo
  * y módulos) sin cambios; «Facturación», las facturas de la empresa de la URL con su detalle. La pestaña elegida
  * no va en la URL: al recargar se vuelve a «Empresa».
+ *
+ * SLT-143 (design §6.4; R16–R19): «Pagos confirmados» va justo debajo de «Pagos por confirmar», fuera de las
+ * pestañas, con la misma lectura `pagos`. Las tres actions van ligadas aquí a la empresa de la URL.
  */
 export default async function EmpresaDetallePage({
   params,
@@ -179,12 +201,13 @@ export default async function EmpresaDetallePage({
   if (!actor || !esPlataforma(actor.rol)) notFound();
 
   const { organizacionId } = await params;
-  const [r, plan, asignables, pagos, facturas] = await Promise.all([
+  const [r, plan, asignables, pagos, facturas, zona] = await Promise.all([
     verModulosEmpresa(actor, { organizacionId }),
     leerPlan(actor, organizacionId),
     leerAsignables(organizacionId),
     leerPagos(actor, organizacionId),
     leerFacturas(actor, organizacionId),
+    leerZona(organizacionId),
   ]);
   if (r.estado !== "ok") notFound();
   const planActual = await leerPlanActual(actor, plan, asignables);
@@ -211,6 +234,14 @@ export default async function EmpresaDetallePage({
           organizacionId={empresa.organizacionId}
           confirmar={confirmarPagoPlataformaAction}
           verComprobante={verComprobantePagoPlataformaAction.bind(null, empresa.organizacionId)}
+        />
+
+        <PagosConfirmados
+          datos={pagos}
+          registrarPorFuera={registrarPagoPorFueraAction.bind(null, empresa.organizacionId)}
+          anular={anularPagoConfirmadoAction.bind(null, empresa.organizacionId)}
+          verComprobante={verComprobantePagoPlataformaAction.bind(null, empresa.organizacionId)}
+          zona={zona}
         />
 
         <Tabs defaultValue="empresa" className="flex flex-col gap-6">

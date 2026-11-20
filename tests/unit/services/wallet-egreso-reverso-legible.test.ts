@@ -26,7 +26,6 @@ function original(over: Partial<WalletMovimientoDTO>): WalletMovimientoDTO {
     origenTipo: "gasto",
     origenId: null,
     descripcion: null,
-    registradoPor: "u-maestro",
     fechaMovimiento: "2026-09-12T15:00:00.000Z",
     dueno: "propio",
     documento: null,

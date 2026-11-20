@@ -48,7 +48,6 @@ function mov(): WalletMovimientoDTO {
     origenTipo: "cierre_dia",
     origenId: "c1",
     descripcion: null,
-    registradoPor: null,
     fechaMovimiento: "2026-07-12T10:00:00.000Z",
     // Feature 231 (R31): el flete es dinero de la empresa.
     dueno: "propio",

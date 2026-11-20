@@ -5,6 +5,7 @@ import type {
   CuentaNombrada,
   IdsDeDocumentos,
   ILibroCajaAutoriaRepository,
+  MarcasDeLaPlataforma,
   MovimientoDeCajaParaAutoria,
 } from "@/lib/interfaces/repositories/ILibroCajaAutoriaRepository";
 import type { ComoDTO } from "@/lib/types/libro-caja-autoria";
@@ -32,6 +33,7 @@ type Cliente = Pick<
   | "cobroTiendaAnulacion"
   | "rechazoTiendaCobroAnulacion"
   | "ajusteCajaAnulacion"
+  | "pagoPlataformaConfirmacion" // SLT-143 (design §5.1): la marca de la plataforma
 >;
 
 const PERSONA = { select: { id: true, ...NOMBRE_USUARIO_SELECT } } as const;
@@ -200,9 +202,12 @@ export class LibroCajaAutoriaRepository implements ILibroCajaAutoriaRepository {
 
   async anulaciones(ids: IdsDeDocumentos): Promise<Record<keyof IdsDeDocumentos, Map<string, AnulacionDeDocumento>>> {
     const CONSTANCIA = { motivo: true, createdAt: true, anulador: { select: NOMBRE_USUARIO_SELECT } } as const;
-    const leer = (f: { motivo: string; createdAt: Date; anulador: NombreUsuarioFuente }): AnulacionDeDocumento => ({
+    // SLT-143 (R36): la constancia de una anulación de la plataforma la firma el superadmin, que no tiene empresa:
+    // la RLS de `usuario` se lo esconde a la empresa y Prisma trae `null` aunque la relación sea obligatoria. Sale
+    // `por: null` y el servicio pone «la plataforma».
+    const leer = (f: { motivo: string; createdAt: Date; anulador: NombreUsuarioFuente | null }): AnulacionDeDocumento => ({
       motivo: f.motivo,
-      por: nombreCompletoUsuario(f.anulador),
+      por: nombreONulo(f.anulador),
       fecha: f.createdAt,
     });
     const lista = (xs: readonly string[]) => ({ in: [...xs] });
@@ -284,6 +289,23 @@ export class LibroCajaAutoriaRepository implements ILibroCajaAutoriaRepository {
             : [[f.origenId, { motivo: f.descripcion, por: nombreONulo(f.registrador), fecha: f.createdAt }] as const],
         ),
       ),
+    };
+  }
+
+  async marcasDeLaPlataforma(pagoIds: readonly string[]): Promise<MarcasDeLaPlataforma> {
+    if (pagoIds.length === 0) return { registrados: new Set(), anulados: new Set() };
+    // Una sola lectura para las dos marcas: la confirmación dice si fue por fuera y si su anulación existe.
+    // Solo se leen los ids: ni quién confirmó ni quién anuló llegan a la empresa (R13, R36).
+    const cs = await this.prisma.pagoPlataformaConfirmacion.findMany({
+      where: {
+        pagoId: { in: [...pagoIds] },
+        OR: [{ porFuera: true }, { anulaciones: { some: {} } }],
+      },
+      select: { pagoId: true, porFuera: true, anulaciones: { select: { id: true } } },
+    });
+    return {
+      registrados: new Set(cs.filter((c) => c.porFuera).map((c) => c.pagoId)),
+      anulados: new Set(cs.filter((c) => c.anulaciones.length > 0).map((c) => c.pagoId)),
     };
   }
 }

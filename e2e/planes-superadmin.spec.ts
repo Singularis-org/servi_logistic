@@ -211,6 +211,8 @@ async function rellenarRestoDelPlan(form: Locator): Promise<void> {
   }
   // SLT-214 «Planes: beneficios de texto con ícono» (R7, R9): «Beneficios» tras «Módulos», sin beneficios.
   await siguiente(form, "Beneficios");
+  // SLT-215 «Planes: niveles de beneficio por volumen de órdenes» (R7, R9): «Niveles» tras «Beneficios», sin niveles.
+  await siguiente(form, "Niveles");
   await siguiente(form, "Revisar y crear");
 }
 

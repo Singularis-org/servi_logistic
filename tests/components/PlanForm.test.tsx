@@ -126,6 +126,7 @@ describe("SLT-58 R14 — crear un plan", () => {
       costoPorOrdenPorcentual: null, // SLT-83: campo nuevo; el modo no elegido viaja null
       periodicidadOrdenes: "quincenal", // SLT-118 (R35): viaja siempre
       beneficios: [], // SLT-214 (R15, R16): el paso «Beneficios» viaja siempre; sin tocarlo, vacío
+      niveles: [], // SLT-215 (R15, R16): el paso «Niveles» viaja siempre; sin tocarlo, vacío
       // Ajuste planes-custom (D2, D4–D6): el custom se asigna al crearlo; la empresa no tiene plan.
       tipoCobro: "mensual",
       inicioCiclo: MANANA,
@@ -153,6 +154,7 @@ describe("SLT-58 R14 — crear un plan", () => {
       costoPorOrdenPorcentual: null, // SLT-83: campo nuevo; el modo no elegido viaja null
       periodicidadOrdenes: "quincenal", // SLT-118 (R35): viaja siempre
       beneficios: [], // SLT-214 (R15, R16): el paso «Beneficios» viaja siempre; sin tocarlo, vacío
+      niveles: [], // SLT-215 (R15, R16): el paso «Niveles» viaja siempre; sin tocarlo, vacío
     });
   });
 
@@ -236,6 +238,7 @@ describe("SLT-58 R15 — editar: de inmediato o a partir de una fecha", () => {
       costoPorOrdenPorcentual: null, // SLT-83: campo nuevo; el modo no elegido viaja null
       periodicidadOrdenes: "quincenal", // SLT-118 (R35): viaja siempre
       beneficios: [], // SLT-214 (R15, R16): el paso «Beneficios» viaja siempre; sin tocarlo, vacío
+      niveles: [], // SLT-215 (R15, R16): el paso «Niveles» viaja siempre; sin tocarlo, vacío
       // Sin tocar «A partir de», la fecha por defecto: mañana.
       vigenteDesde: mananaCalendarioCR(),
     });
