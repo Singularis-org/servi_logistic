@@ -95,6 +95,8 @@ export default async function OrdenesPage() {
   // el callejón `en_ruta_bodega_central`; el service revalida el rol server-side.
   // `adminTienda` NO la recibe (conserva su recepción en origen `puedeEscanearQr`).
   const puedeRecibirBodegaCentral = rol ? esAccesoTotal(rol) : false;
+  // SLT-224 (R1713): «Actualizar zonas», mismos roles que la recepción en la central.
+  const puedeActualizarZonas = rol ? esAccesoTotal(rol) : false;
   const usaFiltroEstado = rol ? ROLES_CON_FILTRO_ESTADO.has(rol) : false;
   // Feature 94 (paridad adm↔maestro): selección por checkbox + acciones por lote
   // (asignar mensajero, rutear a bodega satélite, etc.) para roles de ACCESO TOTAL
@@ -237,6 +239,7 @@ export default async function OrdenesPage() {
           puedeCargarMasiva={puedeCargarMasiva}
           puedeEscanearQr={puedeEscanearQr}
           puedeRecibirBodegaCentral={puedeRecibirBodegaCentral}
+          puedeActualizarZonas={puedeActualizarZonas}
           mostrarHistorial
           accionesLote={accionesLote}
           catalogoFiltros={catalogoFiltros}

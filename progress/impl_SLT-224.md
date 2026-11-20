@@ -197,3 +197,29 @@ mensajero, `CierreDiaService:984`). Moverles la zona los marcaría en la bodega 
 
 **Desbloqueo (leader):** el literal de 377/T4 se reescribe A MANO con el corte de D6 (`BASE_D1_ZA` y los 11 estados
 del `notIn`), no derivado del helper. Mutaciones 2 y 5 contra él: 1 rojo cada una (61 tests). P4 queda por defecto.
+
+## PR 2 (2026-11-20): T9 pantalla «Actualizar zonas» (frontend_dev)
+
+Archivos:
+- nuevo `app/(app)/ordenes/_components/ActualizarZonasButton.tsx` (botón + `Modal` compartido; `TEXTO_MOTIVO_SALTADA: Record<MotivoSaltada, string>` con los cinco textos de design §3b.5).
+- `app/(app)/ordenes/_components/OrdenesListado.tsx` (prop `puedeActualizarZonas`, botón a la derecha de `RecibirPaquetesEntrada`, `onSuccess={handleSuccess}`).
+- `app/(app)/ordenes/page.tsx` (`puedeActualizarZonas = esAccesoTotal(rol)`).
+- `lib/actions/actualizacion-zonas.ts` (fuera las dos `@sin-superficie`).
+- `docs/ayuda/oficina/ordenes.md` (sección «Actualizar zonas» desde a3c78989 con D6 y los cinco motivos; el párrafo de la recepción en la central ajustado a D6: conserva la zona solo con cobro en curso).
+- nuevo `tests/components/ActualizarZonasButton.test.tsx` (17 tests).
+
+Mapa R → test (`tests/components/ActualizarZonasButton.test.tsx`):
+- R1713: «con el rol %s el botón se ve solo si es maestro o admin» (todos los `RolValue` con `esAccesoTotal`) y «sin permiso no pinta nada».
+- R1715: «al pulsar pide la vista previa y pinta grupos, total y saltadas con motivo».
+- R1716: «sin desalineadas dice que todas las zonas están al día» y «sin candidatas pero con saltadas».
+- R1718: «confirmar muestra cuántas se actualizaron y las saltadas, y refresca solo al cerrar»; «cancelar no confirma ni refresca».
+- R1726: «cada motivo sale con su texto en español llano».
+- R1714 (pantalla): unauthenticated y forbidden en la vista previa (aviso, sin Confirmar) y forbidden al confirmar (toast, sin resultado ni refresco).
+
+Mensaje vacío: sin grupos ni saltadas, «Todas las zonas están al día.» (pedido del leader); sin grupos pero con saltadas, el de design §3b.4 «No hay órdenes con la zona errada que se puedan actualizar.», porque «al día» sería falso.
+
+Salidas:
+- `vitest run tests/components/ActualizarZonasButton.test.tsx`: Test Files 1 passed, Tests 17 passed.
+- `./init.sh` (DATABASE_URL a servi_slt224_pr2): typecheck paso, lint paso (0 errors), test:rapido paso, `INIT_EXIT=0`.
+
+Veredicto: T9 hecha; botón, modal, ayuda y test verdes; sin E2E en T9 (los E2E van en T15).

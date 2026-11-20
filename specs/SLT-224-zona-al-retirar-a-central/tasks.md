@@ -72,7 +72,7 @@
 - [x] `docs/ayuda/oficina/ordenes.md`, «Retirar a bodega central»: «quedan En bodega central con su
   zona de siempre» pasa a decir que, al recibirlas, toman la zona de su distrito (si el distrito se
   pasó a otra zona mientras estaban en la satélite, ya llegan con la nueva). Sin glifos ni símbolos.
-- [ ] (Movido a T9, PR 2, por la review del PR 1: el botón no existe hasta entonces.) Mismo archivo: un párrafo para «Actualizar zonas» (qué busca, qué se salta y por qué, y que deja
+- [x] (Movido a T9, PR 2, por la review del PR 1: el botón no existe hasta entonces.) Mismo archivo: un párrafo para «Actualizar zonas» (qué busca, qué se salta y por qué, y que deja
   rastro en el histórico de acciones).
 - **Hecho:** texto revisado contra R1700, R1705 y R1713–R1718.
 
@@ -94,13 +94,13 @@
 > T8, con las dos Server Actions aún anotadas `@sin-superficie`. Esta tarea, T9, va en el **PR 2**,
 > después del merge del PR 1; al montar el botón se quita la anotación.
 
-- [ ] `app/(app)/ordenes/_components/ActualizarZonasButton.tsx` (botón + `Modal` compartido,
+- [x] `app/(app)/ordenes/_components/ActualizarZonasButton.tsx` (botón + `Modal` compartido,
   `design.md §3b.4`).
-- [ ] `OrdenesListado.tsx`: prop `puedeActualizarZonas` y el botón a la derecha de
+- [x] `OrdenesListado.tsx`: prop `puedeActualizarZonas` y el botón a la derecha de
   `RecibirPaquetesEntrada` en `header`, con `onSuccess={handleSuccess}`. `app/(app)/ordenes/page.tsx`:
   `puedeActualizarZonas = esAccesoTotal(rol)`.
-- [ ] `tests/components/ActualizarZonasButton.test.tsx`.
-- [ ] Ayuda: la sección «Actualizar zonas» de `docs/ayuda/oficina/ordenes.md` (qué busca, qué se salta y por qué, y que deja rastro en el histórico de acciones), con el texto ajustado a la decisión de Carlos sobre P2. Sale del PR 1 por la review (m2); el borrador está en el commit `a3c78989`.
+- [x] `tests/components/ActualizarZonasButton.test.tsx`.
+- [x] Ayuda: la sección «Actualizar zonas» de `docs/ayuda/oficina/ordenes.md` (qué busca, qué se salta y por qué, y que deja rastro en el histórico de acciones), con el texto ajustado a la decisión de Carlos sobre P2. Sale del PR 1 por la review (m2); el borrador está en el commit `a3c78989`.
 - **Hecho:** test de componente verde; en local, con maestro, el botón aparece junto a «Recibir
   paquete», la vista previa coincide con la base y al confirmar el listado se refresca. Con
   `adminSatelite` el botón no aparece.
@@ -172,9 +172,9 @@
 
 Las casillas de T9 de arriba, con estos ajustes del PR 2:
 
-- [ ] Textos de los cinco motivos de `design.md §3b.5` (un `Record<MotivoSaltada, string>`).
-- [ ] Quitar las dos anotaciones `@sin-superficie` de `lib/actions/actualizacion-zonas.ts`.
-- [ ] Ayuda en `docs/ayuda/oficina/ordenes.md` desde el borrador de `a3c78989`, con la regla de D6
+- [x] Textos de los cinco motivos de `design.md §3b.5` (un `Record<MotivoSaltada, string>`).
+- [x] Quitar las dos anotaciones `@sin-superficie` de `lib/actions/actualizacion-zonas.ts`.
+- [x] Ayuda en `docs/ayuda/oficina/ordenes.md` desde el borrador de `a3c78989`, con la regla de D6
   (vivas sí, finalizadas no; qué se salta y por qué), sin glifos ni símbolos.
 - **Hecho:** el de T9 de arriba.
 
