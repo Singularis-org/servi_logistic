@@ -26,7 +26,7 @@
 -- pasa su `now()` inyectable y los tests fijan el instante.
 --
 -- ATOMICIDAD: BEGIN/COMMIT, como 20261120120000, para que el runner de los tests (sentencia a sentencia) tampoco
--- deje nada a medias. No usa `plan_niveles_cerrar` de `job_tipo`: ese valor lo añade 20261121120000 y solo lo usa
+-- deje nada a medias. No usa `plan_niveles_cerrar` de `job_tipo`: ese valor lo añade 20261121140000 y solo lo usa
 -- la cola en runtime.
 --
 -- Prefijo 20261121: va después de la mayor migración de `dev` (20261120130000_slt221_historial_correo_cedula).

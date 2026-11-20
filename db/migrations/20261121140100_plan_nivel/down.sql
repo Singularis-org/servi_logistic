@@ -7,7 +7,7 @@
 -- antes es `.strict()` y rechazaría la versión al aplicarla.
 --
 -- En orden inverso a la subida: el borrador y las versiones, las funciones (dejan de leer las tablas) y las tablas
--- al final. ORDEN entre migraciones: va ANTES del down de 20261121120000 (el valor de `job_tipo`).
+-- al final. ORDEN entre migraciones: va ANTES del down de 20261121140000 (el valor de `job_tipo`).
 
 BEGIN;
 

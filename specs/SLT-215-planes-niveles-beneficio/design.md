@@ -27,7 +27,7 @@ Nada de lo encontrado calcula ya un nivel por volumen.
 
 ```prisma
 // SLT-215 (design §1.1; R1, R6) — un nivel de beneficio por volumen de un plan. De PLATAFORMA, como
-// `plan_beneficio`. Viven solo en el SQL de 20261121120100: los CHECK, la RLS sin políticas y el
+// `plan_beneficio`. Viven solo en el SQL de 20261121140100: los CHECK, la RLS sin políticas y el
 // `REVOKE ALL … FROM servi_app`. Que las metas crezcan con el nivel vive en zod (`nivelesSchema`).
 model PlanNivel {
   planId         String   @map("plan_id")
@@ -62,7 +62,7 @@ En `plan_cambio_programado.version`, `plan_version_empresa.version` y `plan_borr
 
 ```prisma
 // SLT-215 (design §1.2; R24–R37) — el nivel vigente de una empresa con plan y lo que el cierre necesita.
-// Una fila por empresa con plan. De NEGOCIO. La escriben SOLO las funciones del dueño de 20261121120100;
+// Una fila por empresa con plan. De NEGOCIO. La escriben SOLO las funciones del dueño de 20261121140100;
 // `servi_app` solo la lee (política `plan_nivel_empresa_por_empresa`, `REVOKE INSERT, UPDATE, DELETE`).
 model PlanNivelEmpresa {
   nivel            Int      @default(0)
@@ -127,7 +127,7 @@ model PlanNivelHistorial {
   current_setting('app.organizacion_id')`), `GRANT SELECT` y `REVOKE INSERT, UPDATE, DELETE … FROM servi_app` (R36),
   como `factura_plataforma`. No tienen FK a otra tabla de negocio: no hacen falta triggers de misma empresa.
 
-## 2. Funciones del dueño (migración `20261121120100_plan_nivel`)
+## 2. Funciones del dueño (migración `20261121140100_plan_nivel`)
 
 Todas `SECURITY DEFINER` con `SET search_path = public` y `REVOKE EXECUTE … FROM PUBLIC`. Las llama solo código que
 corre como plataforma (§3.4, §5), igual que `factura_plataforma_cerrar`.
@@ -250,7 +250,7 @@ empresa no tenía cuando terminó, salvo por el caso raro de §10.
 Bajar la migración pierde los niveles, el estado y el historial a sabiendas: el esquema de antes no tiene dónde
 guardarlos. Lo dice la cabecera del `down.sql`.
 
-### 2.6 Migración `20261121120000_plan_nivel_job_enum`
+### 2.6 Migración `20261121140000_plan_nivel_job_enum`
 
 `ALTER TYPE "job_tipo" ADD VALUE IF NOT EXISTS 'plan_niveles_cerrar'`. Va aparte porque un valor nuevo de enum no se
 puede usar en la misma transacción, como hizo SLT-118 con `20261111130000_factura_plataforma_job_enum`. Su `down.sql`

@@ -21,7 +21,7 @@ import { cero } from "./_fixtures/periodo-calendario";
 import { crearPlan, revertida } from "./_fixtures/planes";
 
 // SLT-215 · T3 (design §2.1–§2.3; R22–R30) — el cierre mensual de los niveles contra Postgres real, por las
-// funciones del dueño de 20261121120100 (`plan_nivel_ordenes_efectivas` y `plan_nivel_cerrar_meses`). Cada caso
+// funciones del dueño de 20261121140100 (`plan_nivel_ordenes_efectivas` y `plan_nivel_cerrar_meses`). Cada caso
 // en una transacción del dueño que se revierte, salvo «dos cierres a la vez», que necesita dos conexiones que vean
 // lo commiteado: ahí la siembra, la corrida y la limpieza van bajo el lock de la 227.
 //

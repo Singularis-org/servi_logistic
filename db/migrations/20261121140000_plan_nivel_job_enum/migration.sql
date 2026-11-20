@@ -2,7 +2,7 @@
 --
 -- `plan_niveles_cerrar` es RECURRENTE (cada día a las 06:20 UTC, 00:20 de la plataforma, P1) y va SIN empresa:
 -- corre una vez, en plataforma (`RECURRENTES_DE_PLATAFORMA`), y cierra los meses pendientes de cada empresa con
--- `plan_nivel_cerrar_meses` de 20261121120100. Es de núcleo (`MODULO_POR_JOB`). Su primera fila la siembra
+-- `plan_nivel_cerrar_meses` de 20261121140100. Es de núcleo (`MODULO_POR_JOB`). Su primera fila la siembra
 -- `scripts/siembra-jobs-recurrentes.ts`.
 --
 -- VA SOLA: Postgres prohíbe USAR un valor de enum en la misma transacción que lo añade (55P04), como

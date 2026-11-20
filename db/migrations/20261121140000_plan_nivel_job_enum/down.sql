@@ -7,7 +7,7 @@
 -- `20261111130000_factura_plataforma_job_enum/down.sql` TAL CUAL, renombrada `_slt215`: lee la lista VIGENTE de
 -- `pg_enum` y quita SOLO este valor, así que no borra los que otra rama añada.
 --
--- ORDEN: va DESPUÉS del down de 20261121120100 (las tablas y las funciones de los niveles).
+-- ORDEN: va DESPUÉS del down de 20261121140100 (las tablas y las funciones de los niveles).
 
 BEGIN;
 

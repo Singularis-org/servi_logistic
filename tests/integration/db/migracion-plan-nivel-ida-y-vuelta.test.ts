@@ -29,9 +29,9 @@ import {
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
-const M_ANTERIOR = "20261120130000_slt221_historial_correo_cedula";
-const M_ENUM = "20261121120000_plan_nivel_job_enum";
-const M = "20261121120100_plan_nivel";
+const M_ANTERIOR = "20261121130000_pago_plataforma_por_fuera";
+const M_ENUM = "20261121140000_plan_nivel_job_enum";
+const M = "20261121140100_plan_nivel";
 const BASE = `slt215_iv_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 
 const TABLAS = ["plan_nivel", "plan_nivel_empresa", "plan_nivel_historial"];

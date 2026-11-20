@@ -8,8 +8,8 @@ Nuevos:
 - `lib/planes/niveles.ts` — `MAX_NIVELES`, `Nivel`, `DescuentoNivel`, textos de error, `descuentoNivelSchema`,
   `nivelSchema`, `nivelesSchema`, `descuentosDelNivel`, `textoDelNivel`, `textoDeLosNiveles`, `SIN_NIVELES`.
 - `lib/planes/importes.ts` — hoja con `porcentajeSchema`, `SOLO_UNA_FORMA` e `importeCanonico` (ver Desviaciones).
-- `db/migrations/20261121120000_plan_nivel_job_enum/{migration,down}.sql`
-- `db/migrations/20261121120100_plan_nivel/{migration,down}.sql`
+- `db/migrations/20261121140000_plan_nivel_job_enum/{migration,down}.sql`
+- `db/migrations/20261121140100_plan_nivel/{migration,down}.sql`
 - `tests/unit/planes/niveles.test.ts`
 - `tests/integration/db/plan-nivel.test.ts`
 - `tests/integration/db/migracion-plan-nivel-ida-y-vuelta.test.ts`

@@ -8,7 +8,7 @@ import { montoCobroSchema } from "@/lib/types/cobro-plataforma";
 // React: lo usan el servidor, el formulario y las vistas. Módulo hoja como `beneficios.ts`: `lib/types/planes.ts`
 // lo importa, así que de allí no importa nada (ver `importes.ts`).
 
-/** P2: un plan admite hasta 10 niveles. El CHECK `plan_nivel_nivel_check` de 20261121120100 admite 1 a 10. */
+/** P2: un plan admite hasta 10 niveles. El CHECK `plan_nivel_nivel_check` de 20261121140100 admite 1 a 10. */
 export const MAX_NIVELES = 10;
 
 /** El descuento de un nivel, en porcentaje o en monto fijo; nunca los dos (R1). */
