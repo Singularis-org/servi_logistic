@@ -189,3 +189,32 @@ PR #55 contra `geo_jerarquica`.
 - `gate.yml` lanzado a mano con `workflow_dispatch` sobre la rama:
   https://github.com/Singularis-org/servi_logistic/actions/runs/44639642504 (no se esperó el
   resultado).
+
+## SLT-44 — rojo CI 44641382942
+
+`gate-completo` dio un rojo nuevo: `tests/integration/db/zona-sin-distritos.test.ts` (SLT-198,
+`dev`), caso «R1224/R1226/R1227/R1228/R1232: vaciar Cartago…». Con Cartago vacía, la resolución
+seguía devolviendo Cartago en `canton` y en `correccion`.
+
+- Causa (montaje del test, no producción): el caso usa **un solo** `OrdenRepository` para toda la
+  secuencia: resuelve, vacía la zona con `ZonaRepository` y vuelve a resolver. SLT-44 R11 lee el
+  catálogo y las asignaciones una vez por instancia de repositorio (una petición) y no los reutiliza
+  entre peticiones. La segunda resolución veía la foto de antes de vaciar.
+  - En producción cada composición crea su repositorio por llamada. Ningún servicio escribe zonas y
+    vuelve a resolver con el mismo `OrdenRepository` en la misma petición: `ZonaService` solo usa
+    `ZonaRepository`.
+  - La regla R1224 se cumple con SLT-44. Con un repositorio por resolución pasan la resolución
+    vacía (`null`) y la final (Quebradilla → GAM, Dulce Nombre → `null`).
+- Arreglo: el `resolver` del caso crea su `OrdenRepository` en cada llamada, sobre la misma
+  transacción revertida. Las aserciones no cambian (R1224 sigue afirmada igual). Código de SLT-44
+  sin cambios.
+- Verificación local (`NODE_OPTIONS=--max-old-space-size=6144`, contra `servi_logistic_simprod`, en
+  transacciones revertidas):
+  - `zona-sin-distritos`, `zona-distrito-unica`, `geo-catalogo-repository`,
+    `geo-lecturas-catalogo` y `geo-lecturas-sin-backfill`: `Test Files 1 failed | 4 passed (5)`,
+    `Tests 1 failed | 30 passed (31)`. El caso de R1224 sale en verde.
+  - El rojo que queda, «R1220/R1223/R1225» (historial con filas de más), **no es de SLT-44**: sale
+    igual en el worktree de SLT-43 contra la misma base, y en CI pasa. Depende de los datos de la
+    base local.
+  - `tsc --noEmit` (sin `.next`): sin errores. `eslint` del archivo: sin salida.
+  - `vitest run guard`: `Test Files 361 passed | 3 skipped (364)`, `Tests 5426 passed | 28 skipped`.
