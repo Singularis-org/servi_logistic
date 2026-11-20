@@ -9,9 +9,8 @@
 > botón (R1713, R1715, R1716, R1718, con los motivos de R1726–R1727). R1701 y la frase «exactamente lo
 > mismo que antes» de R1706 quedan sustituidas por R1720–R1725 desde el PR 2.
 >
-> **Pregunta abierta del PR 2: P4** (las órdenes `reprogramado` y `novedad` que esperan liberación en
-> una bodega). El spec la resuelve por defecto **sin moverlas** (lo de hoy) hasta que Carlos diga
-> otra cosa. No hay pregunta de dinero abierta: el análisis está en `design.md §4b`.
+> **P4 resuelta** (Carlos, 2026-11-20: «No moverlas hasta liberar»): las órdenes `reprogramado` y
+> `novedad` que esperan liberación en una bodega **no se mueven**. No hay pregunta de dinero abierta: el análisis está en `design.md §4b`.
 
 ## Alcance
 
@@ -253,10 +252,10 @@ Términos de este bloque:
 ## Preguntas abiertas
 
 > **Estado a 2026-11-19:** P1 y P3 **resueltas** según la recomendación (Carlos: «aprobado […] con
-> P1-P3 según recomendación»). P2 **resuelta** por Carlos (D6): va en el PR 2. **Abierta: P4.**
+> P1-P3 según recomendación»). P2 **resuelta** por Carlos (D6): va en el PR 2. P4 **resuelta** por Carlos (2026-11-20): no se mueven.
 
 - **P4 — ¿Se mueven las `reprogramado` y las `novedad` que esperan liberación en una bodega?**
-  (Abierta, PR 2.) Son órdenes vivas, pero su paquete ya volvió a la bodega que recibió el cierre (la
+  (Resuelta 2026-11-20: no se mueven.) Son órdenes vivas, pero su paquete ya volvió a la bodega que recibió el cierre (la
   del mensajero) y espera a que el cron lo libere (`LiberacionReprogramadaService`,
   `DevolucionSlaService`). La liberación decide `en_bodega_central` o `en_bodega_satelite` con
   `orden.zonaId` (`resolverDestinoCierre`). Si se les cambia la zona de una satélite a la central, la
