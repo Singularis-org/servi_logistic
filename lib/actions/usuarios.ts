@@ -338,8 +338,6 @@ export async function listarRoles(
 /**
  * SLT-221 (design §3.2; R1610-R1617, R1620): el maestro pide el correo nuevo de un usuario. También
  * es «Reenviar», con el correo del pendiente. El correo del usuario no cambia hasta el canje.
- *
- * @sin-superficie SLT-221 en curso: la monta el bloque «Cambiar correo» de `UsuarioForm` (tarea T3.1, pantalla, tras el canvas de T2.0); al montarlo esta anotacion caduca y se quita.
  */
 export async function solicitarCambioCorreoUsuario(
   id: unknown,
@@ -359,8 +357,6 @@ export async function solicitarCambioCorreoUsuario(
 
 /**
  * SLT-221 (R1619): anula el cambio de correo pendiente del usuario.
- *
- * @sin-superficie SLT-221 en curso: la monta el bloque «Cambiar correo» de `UsuarioForm` (tarea T3.1, pantalla, tras el canvas de T2.0); al montarlo esta anotacion caduca y se quita.
  */
 export async function cancelarCambioCorreoUsuario(
   id: unknown,
@@ -378,8 +374,6 @@ export async function cancelarCambioCorreoUsuario(
 
 /**
  * SLT-221 (R1618): el cambio de correo pendiente del usuario, o `null`.
- *
- * @sin-superficie SLT-221 en curso: la monta el bloque «Cambiar correo» de `UsuarioForm` (tarea T3.1, pantalla, tras el canvas de T2.0); al montarlo esta anotacion caduca y se quita.
  */
 export async function obtenerCambioCorreoPendiente(
   id: unknown,

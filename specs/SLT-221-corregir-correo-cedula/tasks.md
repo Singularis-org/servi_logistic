@@ -106,7 +106,9 @@ En PR 2 el margen de líneas de producción es corto: comentarios breves y nada 
 
 Empieza con PR 1 mergeado y la rama al día con `dev`.
 
-- [ ] **T2.0 — `/design`** (bloquea T3.x, no T2.x).
+- [x] **T2.0 — `/design`** (bloquea T3.x, no T2.x). **Omitido por decisión de Carlos 2026-11-19:
+  componentes de hoy, sin canvas.** El bloque va en `UsuarioForm` con sus componentes y la página
+  pública copia la estructura y el estilo de `/recuperar-contrasena`.
   Canvas de la página pública `/recuperar-contrasena/confirmar-correo` (pantalla nueva) y del
   bloque «Cambiar correo / Pendiente de confirmar» dentro de `UsuarioForm`, con los componentes de
   hoy. **Hecho:** el canvas está aprobado por Carlos.
@@ -173,18 +175,21 @@ Empieza con PR 1 mergeado y la rama al día con `dev`.
   - `tests/unit/actions/usuarios-composition.test.ts` prueba que el 7.º parámetro se PASA;
   - `tests/unit/actions/usuarios.test.ts` cubre el borde de las tres acciones (`unauthenticated`,
     id inválido, `.strict()`).
-- [ ] **T3.1 — Bloque del formulario** (depende de T2.0 y T2.6).
+- [x] **T3.1 — Bloque del formulario** (depende de T2.0 y T2.6).
   `CambioCorreoUsuario.tsx`, montado en `UsuarioForm.tsx` en edición (design §7). **Hecho:**
   `tests/unit/components/cambio-correo-usuario.test.tsx` cubre:
   - sin pendiente, con pendiente y vencido (R1618);
   - cancelar (R1619);
   - reenviar (R1620);
   - los mensajes de `conflict` y `envio_fallido`.
-- [ ] **T3.2 — Página pública** (depende de T2.0 y T2.5).
+- [x] **T3.2 — Página pública** (depende de T2.0 y T2.5).
   `app/recuperar-contrasena/confirmar-correo/page.tsx` + `_components/ConfirmarCorreoForm.tsx`.
   Abrirla no llama a nada (R1626); el botón confirma; los tres mensajes (R1622-R1624). **Hecho:**
-  cubierto por T3.3. La página se ve sin sesión, sin tocar `PUBLIC_ROUTES`.
-- [ ] **T3.3 — E2E** (depende de T3.1 y T3.2).
+  `tests/unit/components/confirmar-correo-form.test.tsx` cubre R1622, R1623 (`invalid_or_expired`,
+  `validation_error` y sin `#enlace=`), R1624 (`correo_en_uso`) y R1626 (al montar no llama a la
+  acción); T3.3 cubre R1622, R1623 y R1626 de punta a punta. La página se ve sin sesión, sin tocar
+  `PUBLIC_ROUTES`.
+- [x] **T3.3 — E2E** (depende de T3.1 y T3.2).
   `e2e/usuario-cambio-correo.spec.ts`:
   - el maestro pide el cambio y ve el pendiente;
   - lo cancela y lo vuelve a pedir;
@@ -231,8 +236,10 @@ Empieza con PR 1 mergeado y la rama al día con `dev`.
 - `tests/unit/actions/confirmar-correo.test.ts`
 - `tests/integration/db/usuario-cambio-correo.test.ts`
 - `tests/unit/guards/historial-accion-escrituras-cubiertas.guardia.test.ts`
+- `tests/unit/components/usuario-form.test.tsx` (el mock de acciones gana las tres del bloque)
 - `tests/unit/components/cambio-correo-usuario.test.tsx`
 - `e2e/usuario-cambio-correo.spec.ts`
+- `playwright.config.ts` (registra el E2E en `aislamiento`)
 
 ## Archivos esperados
 
@@ -277,3 +284,4 @@ Unión de los dos PR (la lee `scripts/archivos-en-vuelo.mjs`):
 - `tests/unit/guards/historial-accion-escrituras-cubiertas.guardia.test.ts`
 - `e2e/usuario-corregir-cedula.spec.ts`
 - `e2e/usuario-cambio-correo.spec.ts`
+- `playwright.config.ts`
