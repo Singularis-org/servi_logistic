@@ -6,6 +6,7 @@ import type { CrearPaisRepoResultado, IPaisRepository } from "@/lib/interfaces/r
 import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
 import { PaisService } from "@/lib/services/PaisService";
 import { ETIQUETAS_NEUTRAS, etiquetasDePais, type PaisDTO } from "@/lib/types/pais";
+import { MONEDA_CR } from "@/tests/fabricas/reglas-pais";
 
 // SL-20 (T2.1, T2.3; design §5) — `PaisService` con el repositorio doble.
 //   · R23: el alta crea el país del catálogo con el nombre del catálogo; un código o un nombre
@@ -36,6 +37,9 @@ const COSTA_RICA: PaisDTO = {
   prefijoTelefonico: "506",
   telefonoDigitosNacionales: 8,
   zonaHoraria: "America/Costa_Rica",
+  // SL-21 (R3): la moneda y el impuesto que deja la migración 20261122120000.
+  moneda: MONEDA_CR,
+  impuestoNombre: "IVA",
 };
 
 const PAIS_XA: PaisDTO = {
@@ -54,6 +58,8 @@ const PAIS_XA: PaisDTO = {
   prefijoTelefonico: null,
   telefonoDigitosNacionales: null,
   zonaHoraria: null,
+  moneda: null,
+  impuestoNombre: null,
 };
 
 /** El alta elige el país del catálogo por su código (R41) y teclea los seis nombres de nivel. */
@@ -92,6 +98,8 @@ function repoDoble(
         prefijoTelefonico: null,
         telefonoDigitosNacionales: null,
         zonaHoraria: null,
+        moneda: null,
+        impuestoNombre: null,
       } },
     ),
     deLaEmpresa: vi.fn(async () => (o.deLaEmpresa === undefined ? COSTA_RICA : o.deLaEmpresa)),

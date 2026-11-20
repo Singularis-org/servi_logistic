@@ -5,6 +5,7 @@ import { PaisRepository } from "@/lib/repositories/PaisRepository";
 import { PaisService } from "@/lib/services/PaisService";
 import { comoApp, crearOrganizacion } from "@/tests/fabricas/organizaciones";
 import { crearOrganizacionEnPais, crearPaisDePrueba, crearTipoDocumentoDePrueba } from "@/tests/fabricas/paises";
+import { MONEDA_CR, MONEDA_DE_PRUEBA } from "@/tests/fabricas/reglas-pais";
 import { revertida } from "./_fixtures/pais-20";
 import { idDeRol, insertarUsuario } from "./_fixtures/superadmin-32";
 import { HAY_BASE_DE_DATOS, clienteConSavepoint, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
@@ -21,6 +22,8 @@ import { HAY_BASE_DE_DATOS, clienteConSavepoint, crearPrismaDeTest, type TxDeTes
 //   · SLT-42 (T3.1): el DTO trae prefijo, dígitos nacionales y zona (CR con los de su migración, un país
 //     nuevo con `null`); `tipoDocumentoDelPais` solo da tipos de ese país, por `id` o por `value` (R11);
 //     `zonasConEmpresas` da las zonas distintas de los países con empresas, sin `NULL` (design §6.1).
+//   · SL-21 (T3.1; R1, R3, R5): el DTO trae `moneda` (las cinco columnas juntas) e `impuestoNombre`:
+//     CR con los de su migración, un país nuevo con `null`, y `deLaEmpresa` los del país de ESA empresa.
 //
 // Todo en una transacción del dueño que se revierte. El repositorio abre su propia transacción: va
 // sobre `clienteConSavepoint`, que abre un SAVEPOINT real, para que un único violado no aborte el caso.
@@ -97,6 +100,9 @@ describeSiHayBase("SL-20 — PaisRepository contra Postgres", () => {
         prefijoTelefonico: null,
         telefonoDigitosNacionales: null,
         zonaHoraria: null,
+        // SL-21 (R1): ni moneda ni impuesto.
+        moneda: null,
+        impuestoNombre: null,
       },
     });
     expect(r.fila).toMatchObject(esperado);
@@ -267,6 +273,32 @@ describeSiHayBase("SL-20 — PaisRepository contra Postgres", () => {
     expect(r.cr).toMatchObject({ prefijoTelefonico: "506", telefonoDigitosNacionales: 8, zonaHoraria: "America/Costa_Rica" });
     expect(r.xb).toMatchObject({ prefijoTelefonico: null, telefonoDigitosNacionales: null, zonaHoraria: null });
     expect(r.deXa).toMatchObject({ id: "XA", prefijoTelefonico: "99", telefonoDigitosNacionales: 7, zonaHoraria: "Pacific/Auckland" });
+  });
+
+  it("SL-21 (R1, R3, R5): porId, listar y deLaEmpresa traen la moneda junta y el impuesto; un país nuevo los trae en null", async () => {
+    const r = await revertida(base, async (tx) => {
+      await crearPaisDePrueba(tx, "XA", { moneda: MONEDA_DE_PRUEBA, impuestoNombre: "Impuesto XA" });
+      await crearPaisDePrueba(tx, "XB");
+      const enXa = await crearOrganizacionEnPais(tx, "XA");
+      const enCr = await crearOrganizacion(tx);
+      const repo = new PaisRepository(clienteConSavepoint(tx));
+      const cr = await repo.porId("CR");
+      const xb = await repo.porId("XB");
+      const xaListado = (await repo.listar()).find((p) => p.id === "XA");
+      await comoApp(tx, enXa.id);
+      const deXa = await repo.deLaEmpresa(enXa.id);
+      await comoApp(tx, enCr.id);
+      const deCr = await repo.deLaEmpresa(enCr.id);
+      return { cr, xb, xaListado, deXa, deCr };
+    });
+
+    expect(r.cr).toMatchObject({ moneda: MONEDA_CR, impuestoNombre: "IVA" });
+    expect(r.xb).toMatchObject({ moneda: null, impuestoNombre: null });
+    expect(r.xaListado).toMatchObject({ moneda: MONEDA_DE_PRUEBA, impuestoNombre: "Impuesto XA" });
+    expect(r.deXa).toMatchObject({ id: "XA", moneda: MONEDA_DE_PRUEBA, impuestoNombre: "Impuesto XA" });
+    expect(r.deCr).toMatchObject({ id: "CR", moneda: MONEDA_CR, impuestoNombre: "IVA" });
+    // Las columnas sueltas no se filtran al DTO: solo la moneda armada.
+    expect(Object.keys(r.cr ?? {}).filter((k) => k.startsWith("moneda"))).toEqual(["moneda"]);
   });
 
   it("SLT-42 (R11): tipoDocumentoDelPais da el tipo por id o por value solo si es de ese país, con su regla y su `activo`", async () => {

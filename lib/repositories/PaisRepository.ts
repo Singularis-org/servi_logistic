@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 
+import type { FormatoMoneda } from "@/lib/config/moneda";
 import { comoPlataforma } from "@/lib/db/contexto-empresa";
 import type {
   ActorDeAltaDePais,
@@ -23,7 +24,10 @@ import type { ReglaDocumento } from "@/lib/utils/documento";
  */
 export type PaisPrismaClient = Pick<PrismaClient, "pais" | "organizacion" | "tipoIdentificacion" | "$transaction">;
 
-/** Lo que sale de la base de cada país: el DTO entero, nada más (`created_at` no lo usa nadie). */
+/**
+ * Lo que sale de la base de cada país: el DTO entero, nada más (`created_at` no lo usa nadie). Las
+ * columnas de moneda llegan sueltas y `paisDeFila` las junta en `PaisDTO.moneda`.
+ */
 const SELECT_PAIS = {
   id: true,
   nombre: true,
@@ -41,13 +45,30 @@ const SELECT_PAIS = {
   prefijoTelefonico: true,
   telefonoDigitosNacionales: true,
   zonaHoraria: true,
+  // SL-21 (R1; design §5.1): moneda e impuesto del país.
+  monedaCodigo: true,
+  monedaSimbolo: true,
+  monedaSeparadorMiles: true,
+  monedaSeparadorDecimal: true,
+  monedaDecimales: true,
+  impuestoNombre: true,
 } as const;
+
+/** Una fila de `pais` con las columnas de `SELECT_PAIS`, antes de juntar la moneda. */
+type FilaDePais = Omit<PaisDTO, "moneda"> & {
+  monedaCodigo: string | null;
+  monedaSimbolo: string | null;
+  monedaSeparadorMiles: string | null;
+  monedaSeparadorDecimal: string | null;
+  monedaDecimales: number | null;
+};
 
 export class PaisRepository implements IPaisRepository {
   constructor(private readonly prisma: PaisPrismaClient) {}
 
-  listar(): Promise<PaisDTO[]> {
-    return this.prisma.pais.findMany({ orderBy: [{ nombre: "asc" }], select: SELECT_PAIS });
+  async listar(): Promise<PaisDTO[]> {
+    const filas = await this.prisma.pais.findMany({ orderBy: [{ nombre: "asc" }], select: SELECT_PAIS });
+    return filas.map(paisDeFila);
   }
 
   /** R9/R45: el filtro va en el SQL, no en la pantalla; un país apagado no sale de la base. */
@@ -59,8 +80,9 @@ export class PaisRepository implements IPaisRepository {
     });
   }
 
-  porId(id: string): Promise<PaisDTO | null> {
-    return this.prisma.pais.findUnique({ where: { id }, select: SELECT_PAIS });
+  async porId(id: string): Promise<PaisDTO | null> {
+    const fila = await this.prisma.pais.findUnique({ where: { id }, select: SELECT_PAIS });
+    return fila === null ? null : paisDeFila(fila);
   }
 
   /**
@@ -71,7 +93,7 @@ export class PaisRepository implements IPaisRepository {
   async crear(datos: DatosDeAltaDePais, actor: ActorDeAltaDePais): Promise<CrearPaisRepoResultado> {
     try {
       return await this.prisma.$transaction(async (tx) => {
-        const pais = await tx.pais.create({ data: datos, select: SELECT_PAIS });
+        const pais = paisDeFila(await tx.pais.create({ data: datos, select: SELECT_PAIS }));
         const congelado = await resolverActorCongelado(tx, actor.usuarioId);
         await appendAccionPlataforma(tx, [
           {
@@ -133,7 +155,7 @@ export class PaisRepository implements IPaisRepository {
       where: { id: organizacionId },
       select: { pais: { select: SELECT_PAIS } },
     });
-    return fila?.pais ?? null;
+    return fila?.pais ? paisDeFila(fila.pais) : null;
   }
 
   /**
@@ -183,6 +205,40 @@ export class PaisRepository implements IPaisRepository {
       return filas.flatMap((f) => (f.zonaHoraria === null ? [] : [f.zonaHoraria]));
     });
   }
+}
+
+/**
+ * SL-21 (design §5.1) — la fila al DTO: las cinco columnas de moneda se juntan en `moneda`. El CHECK
+ * «todo o nada» de 20261122120000 garantiza que no hay mitades; aun así, una fila a medias o con
+ * decimales fuera de 0–2 es una base que no cumple su propia regla y se lanza, no se inventa nada.
+ */
+function paisDeFila(fila: FilaDePais): PaisDTO {
+  const { monedaCodigo, monedaSimbolo, monedaSeparadorMiles, monedaSeparadorDecimal, monedaDecimales, ...resto } = fila;
+  const columnas = [monedaCodigo, monedaSimbolo, monedaSeparadorMiles, monedaSeparadorDecimal, monedaDecimales];
+  if (columnas.every((c) => c === null)) return { ...resto, moneda: null };
+  if (
+    monedaCodigo === null ||
+    monedaSimbolo === null ||
+    monedaSeparadorMiles === null ||
+    monedaSeparadorDecimal === null ||
+    monedaDecimales === null
+  ) {
+    throw new Error(`pais.moneda_* a medias en ${fila.id}`);
+  }
+  const moneda: FormatoMoneda = {
+    codigo: monedaCodigo,
+    simbolo: monedaSimbolo,
+    separadorMiles: monedaSeparadorMiles,
+    separadorDecimal: monedaSeparadorDecimal,
+    decimales: decimalesDeMoneda(monedaDecimales),
+  };
+  return { ...resto, moneda };
+}
+
+/** `moneda_decimales` es `SMALLINT` con el CHECK `BETWEEN 0 AND 2`. */
+function decimalesDeMoneda(valor: number): FormatoMoneda["decimales"] {
+  if (valor === 0 || valor === 1 || valor === 2) return valor;
+  throw new Error(`pais.moneda_decimales inesperado: ${valor}`);
 }
 
 /**

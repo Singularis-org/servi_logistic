@@ -34,6 +34,15 @@ export const CR: ReglasPaisFijas = {
   tiposDocumento: TIPOS_CR,
 };
 
+/** SL-21 (R3) — la moneda de Costa Rica tal como la deja la migración `20261122120000`. */
+export const MONEDA_CR: FormatoMoneda = {
+  codigo: "CRC",
+  simbolo: "₡",
+  separadorMiles: ".",
+  separadorDecimal: ",",
+  decimales: 2,
+};
+
 /**
  * SL-21 (design §5.1) — una moneda distinta en TODO de la de Costa Rica, para que un test de moneda
  * por país no pase por casualidad: otro código, otro símbolo, espacio de miles, punto decimal y sin
@@ -96,6 +105,8 @@ export function paisDelAltaFijo(datos: Partial<PaisDTO> = {}, tiposDocumento: re
       prefijoTelefonico: CR.telefono?.prefijo ?? null,
       telefonoDigitosNacionales: CR.telefono?.digitosNacionales ?? null,
       zonaHoraria: CR.zonaHoraria,
+      moneda: MONEDA_CR,
+      impuestoNombre: "IVA",
       ...datos,
     },
     tiposDocumento,
