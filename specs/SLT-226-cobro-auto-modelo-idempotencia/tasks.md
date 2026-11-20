@@ -1,8 +1,8 @@
 # SLT-226 «Cobro automático: modelo del cobro e idempotencia» — tasks
 
 > Design: `design.md`. Requisitos: `requirements.md` (R1–R28).
-> - **Antes de T1:** el humano responde P1–P5. Si P5 es «partir», T1–T5 son la rebanada A, y T6 con su parte de
->   T7 son la rebanada B.
+> - P1–P5 están cerradas (humano, 2026-11-20; `requirements.md > Decisiones cerradas`). Por la decisión P5 va
+>   todo en un solo PR.
 > - `[P]` = se puede hacer en paralelo con las demás `[P]` del mismo bloque.
 > - Cada task cierra con su commit (`feat(SLT-226): …` / `test(SLT-226): …`).
 
@@ -91,8 +91,8 @@
 - [ ] **T7.2** Las suites de SLT-60 y SLT-143 en verde sin cambios de afirmaciones. **Hecho:** cubre R28.
 - [ ] **T7.3** El mapa `R<n> -> test` en `progress/impl_SLT-226.md`. **Hecho:** los 28 requisitos tienen test.
 - [ ] **T7.4** `./init.sh` en verde. El grupo `dinero` de E2E en local (`docs/perfil-agentes.md`: el diff toca
-  `db/` y dinero), aunque esta ficha no añade E2E. **Hecho:** los dos en verde, o el aviso de tamaño aceptado
-  según P5.
+  `db/` y dinero), aunque esta ficha no añade E2E. **Hecho:** los dos en verde, salvo el aviso de tamaño, aceptado
+  por la decisión P5.
 - [ ] **T7.5** (solo si T0.5 lo pide) Ajustar `migracion-slt143-ida-y-vuelta.test.ts`. **Hecho:** en verde.
 
 ## Archivos esperados

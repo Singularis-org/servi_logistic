@@ -1,13 +1,14 @@
 # SLT-226 «Cobro automático: modelo del cobro e idempotencia» — design
 
-> Requisitos: `requirements.md` (R1–R28, P1–P5). Escrito por `spec_author` el 2026-11-20.
+> Requisitos: `requirements.md` (R1–R28). Escrito por `spec_author` el 2026-11-20.
 > - Hay dos migraciones nuevas, cada una con su `down.sql`: una para los valores del enum del historial y otra
 >   para el modelo.
 > - Hay una tabla nueva de negocio, `cobro_intento`, y una de plataforma, `cobro_webhook_evento`.
 > - **No hay dependencias nuevas:** Prisma, zod y SQL.
 > - Los importes van en `numeric`/`Prisma.Decimal` y viajan como `string` en los tipos, como en SLT-60. Nunca van
 >   en `Number`.
-> - Donde el diseño depende de una pregunta abierta, lo dice (P1–P5 de `requirements.md`).
+> - P1–P5 las respondió el humano el 2026-11-20 y están en `requirements.md > Decisiones cerradas`. El diseño
+>   las cita como «decisión P<n>».
 
 ## Lo que ya existe
 
@@ -33,7 +34,7 @@ Busqué el 2026-11-20 en los tres sitios, con los términos `cobro_intento`, `re
 |---|---|---|
 | `factura_plataforma_saldos(p_org)`: la única definición del saldo | `20261116120000`, cambiada en `20261121130000` | **Se reutiliza** sin cambios (R1, R5, R21) |
 | `_pago_plataforma_aplicar(…, p_por_fuera)`: valida y escribe la confirmación y las aplicaciones | `20261121130000` §4 | **Se reutiliza** con un parámetro más (§3.6) |
-| `wallet_movimiento_tope_pago_plataforma()`: el tope del «Pago a la plataforma» | `20261116120000` §8 | **Cambia su cuerpo:** gana la excepción del pago en línea (§3.7; R22, P1) |
+| `wallet_movimiento_tope_pago_plataforma()`: el tope del «Pago a la plataforma» | `20261116120000` §8 | **Cambia su cuerpo:** gana la excepción del pago en línea (§3.7; R22, decisión P1) |
 | El candado `pg_advisory_xact_lock(hashtext('pago_plataforma:' \|\| org))` | Las funciones de SLT-60 y SLT-143 | **Se reutiliza:** todas las funciones nuevas lo toman primero |
 | `pago_plataforma_registrar_por_fuera`: el molde del pago que nace confirmado | `20261121130000` §5 | **Es el molde** de `cobro_registrar_pago_aprobado` (§3.5) |
 | `historial_plataforma` y `appendAccionPlataforma` | `20261026130400`, `lib/repositories/registrar-accion-plataforma.ts` | **Se reutiliza la tabla** con dos valores nuevos en sus enums (§1.3). Las filas las escriben las funciones del dueño de §3, en su misma sentencia |
@@ -286,7 +287,7 @@ devuelve `'ok'`, `'ya_registrado'`, `'sin_intento'` o `'requiere_revision'`. Tod
 2. Toma el candado `pago_plataforma:<org>` y luego `SELECT … FROM factura_plataforma … FOR UPDATE` (capa 3). El
    orden es siempre el mismo: primero el candado de la empresa y después la fila, para no cruzarse con SLT-60.
 3. Si ya hay un intento con `(proveedor, pago_proveedor_id)`: `ya_registrado` (R20).
-4. `FOR UPDATE` del intento. Devuelve `requiere_revision` (R21, P2) en tres casos:
+4. `FOR UPDATE` del intento. Devuelve `requiere_revision` (R21, decisión P2) en tres casos:
    - el intento no está vivo;
    - `p_monto <> monto_cobrado` o `p_moneda <> moneda_cobro`;
    - el saldo de la factura es menor que `monto_local`.
@@ -319,7 +320,7 @@ pararía el único `(proveedor, pago_proveedor_id)` con 23505, que revierte todo
   `pago_plataforma_confirmar` y `pago_plataforma_registrar_por_fuera` no cambian.
 - **Vigilancia:** los tests de SLT-60 y SLT-143 tienen que seguir en verde sin tocarse (R28).
 
-### 3.7 El tope deja pasar el pago en línea (R22, P1)
+### 3.7 El tope deja pasar el pago en línea (R22, decisión P1)
 
 `CREATE OR REPLACE FUNCTION wallet_movimiento_tope_pago_plataforma()`: el cuerpo de `20261116120000` §8, con una
 salida más, después del candado:
@@ -334,8 +335,6 @@ END IF;
 
 - **Nadie más puede usar la salida:** `servi_app` no escribe en `cobro_intento` (el `REVOKE`), así que la empresa
   no puede fabricarla. Es el molde de la fila de `pago_plataforma_anulacion` de SLT-143.
-- **Si P1 se responde con la otra opción,** esta salida no se escribe y §3.1 gana el rechazo.
-
 ### 3.8 Los eventos (R12, R13, R16)
 
 - **`cobro_evento_registrar(p_proveedor, p_log_id, p_tipo, p_pago_proveedor_id, p_ahora)`** devuelve `'nuevo'`,
@@ -575,7 +574,7 @@ Un `skip` por falta de base no cuenta como verde.
 5. **El estado como enum de Postgres.** Pediría otra migración solo para el enum y la función de reversión en el
    `down`. `text` con CHECK es el molde de `factura_plataforma.estado`.
 6. **La marca «Pagado en línea» en «Registró»,** con `LibroCajaAutoriaService` y sus textos, como la marca de
-   SLT-143. Son unos 6 archivos más en un PR que ya va justo de líneas (P5). La `descripcion` ya pone la marca y
+   SLT-143. Son unos 6 archivos más en un PR que ya pasa del tope de líneas (decisión P5). La `descripcion` ya pone la marca y
    el id en la tabla, el detalle y la descarga. Si el humano la quiere en «Registró», se suma aquí o en SLT-231.
 7. **Que el único `(proveedor, payment_id)` fuera por empresa.** Pasaría la guardia sin tocar la lista de
    globales, pero un id del proveedor lleva a un solo pago en toda la plataforma. Un único global además frena un
@@ -590,8 +589,7 @@ Un `skip` por falta de base no cuenta como verde.
 | **Total** | **24** de 40 (60 %) | |
 
 - **Archivos:** caben.
-- **Líneas de producción:** pasan del tope de 1 000. Lo decide el humano en P5: un solo PR aceptado, o las dos
-  rebanadas propuestas allí.
+- **Líneas de producción:** pasan del tope de 1 000. El humano aceptó un solo PR (decisión P5 del 2026-11-20).
 - **Líneas de tests:** caben.
 
 ## 11. Riesgos

@@ -63,7 +63,7 @@ Escritos por `spec_author` el 2026-11-20. Vocabulario:
 - **R7.** El sistema DEBE admitir solo estos cambios de estado:
   - `creado` → `pendiente`;
   - `pendiente` → `aprobado`, `rechazado` o `expirado`;
-  - `creado` o `pendiente` → `anulado` (R11, R3; ver P4);
+  - `creado` o `pendiente` → `anulado` (R11, R3; decisión P4);
   - `aprobado` → `devuelto` o `contracargo`.
 
   SI se intenta cualquier otro cambio, con cualquier rol (también el dueño de la base), ENTONCES la base DEBE
@@ -128,14 +128,14 @@ Escritos por `spec_author` el 2026-11-20. Vocabulario:
   una confirmación y una aplicación. La segunda vez DEBE responder «ya registrado» sin escribir nada.
 - **R21.** SI el pago aprobado no corresponde a un intento vivo, o su monto o su moneda no coinciden con los del
   intento, o supera el saldo de la factura, ENTONCES el sistema NO DEBE escribir en el libro ni cambiar el
-  intento, y DEBE dejar el evento procesado con el resultado «requiere revisión» (ver P2).
+  intento, y DEBE dejar el evento procesado con el resultado «requiere revisión» (decisión P2).
 - **R22.** CUANDO el pago aprobado de un intento vivo cumple R17, el sistema DEBE registrarlo aunque los pagos por
   confirmar dejen lo disponible para registrar por debajo de su monto. Un «Pago a la plataforma» que no sea el de
-  un intento aprobado DEBE seguir sujeto al tope de SLT-60 (ver P1).
+  un intento aprobado DEBE seguir sujeto al tope de SLT-60 (decisión P1).
 - **R23.** CUANDO el proveedor da por devuelto o por contracargo el pago de un intento `aprobado`, el sistema DEBE
   pasar el intento a `devuelto` o `contracargo` sin escribir en el libro ni cambiar la deuda (eso es SLT-233).
 - **R24.** CUANDO el proveedor da por rechazado o por expirado el pago de un intento vivo, el sistema DEBE pasar el
-  intento a `rechazado` o `expirado` sin escribir en el libro (ver P3).
+  intento a `rechazado` o `expirado` sin escribir en el libro (decisión P3).
 
 ### El historial de plataforma
 
@@ -175,49 +175,16 @@ Escritos por `spec_author` el 2026-11-20. Vocabulario:
 | Importes en decimal y mayores que 0 (2026-11-20) | R6 |
 | No se borra nada y los estados solo avanzan (2026-11-20) | R7, R8, R9 |
 | Sin E2E (2026-11-20) | Sin comportamiento: lo cubren los tests de integración contra la base (design §8) |
-| Ruta completa, un PR (2026-11-20) | Sin comportamiento: ver «Tamaño» en `design.md` y P5 |
+| Ruta completa, un PR (2026-11-20) | Sin comportamiento: ver «Tamaño» en `design.md` y la decisión P5 |
+| P1, el pago en línea se registra aunque haya pagos por confirmar (2026-11-20) | R22 |
+| P2, el pago aprobado que no cabe queda «requiere revisión» (2026-11-20) | R21 |
+| P3, el primer rechazo cierra el intento (2026-11-20) | R7, R24 |
+| P4, estado terminal `anulado` (2026-11-20) | R3, R7, R11 |
+| P5, un solo PR (2026-11-20) | Sin comportamiento: tamaño del PR |
 
 ## Preguntas abiertas
 
-Las escribe `spec_author` el 2026-11-20. Cada una trae la respuesta que el diseño asume; si el humano responde
-otra cosa, se corrige el spec antes de implementar.
-
-- **P1. El pago en línea y los pagos por confirmar.** Hoy el tope de SLT-60 no deja registrar un «Pago a la
-  plataforma» por encima de lo disponible: el saldo de las cerradas menos los pagos por confirmar. Si la empresa
-  tiene un pago de la wallet por confirmar, el pago en línea de la factura entera puede chocar con el tope, pero el
-  dinero ya se cobró. Ejemplo: factura de ₡30 000 y un pago de la wallet por confirmar de ₡10 000; lo disponible es
-  ₡20 000 y el pago en línea es de ₡30 000.
-  - **Lo que asume el diseño (R22):** el pago en línea se registra igual, y el tope sigue igual para todo lo demás.
-    El pago por confirmar choca después, cuando el superadmin lo confirma: si no cabe, se rechaza (SLT-142
-    «Rechazo del pago a la plataforma y su estado en la wallet»).
-  - **La otra opción:** no crear un intento mientras haya pagos por confirmar. No cierra la carrera: un pago de la
-    wallet puede entrar con el intento ya vivo.
-- **P2. Un pago aprobado que ya no cabe.** El proveedor puede aprobar un pago de un intento que ya no está vivo: por
-  ejemplo, se anuló porque el superadmin confirmó otro pago (R11), pero el maestro ya estaba en la página de pago.
-  También puede llegar un monto distinto del intento, o uno mayor que el saldo.
-  - **Lo que asume el diseño (R21):** no se escribe en el libro, y el evento queda «requiere revisión» para la
-    conciliación y la devolución de SLT-233 «Cobro automático: conciliación, devoluciones y contracargos».
-  - **La otra opción:** registrarlo si aún cabe en el saldo de la factura.
-- **P3. El rechazo y el enlace reutilizable.** SLT-230 «Cobro automático: enlace de pago por factura» usa un enlace
-  que admite varios intentos de pago. Con la máquina de estados decidida, el primer pago rechazado deja el intento
-  `rechazado` (terminal).
-  - **Lo que asume el diseño (R24):** el rechazo cierra el intento, y SLT-230 desactiva el enlace y crea otro en el
-    siguiente «Pagar». Un pago aprobado que llegue después por el enlace viejo cae en P2.
-  - **La otra opción:** que un pago rechazado no cierre el intento mientras el enlace siga vigente. Eso cambia la
-    máquina de estados decidida.
-- **P4. El estado `anulado`.** La decisión dice que el intento «se anula» si cambia el saldo, pero la máquina de
-  estados del Alcance no tiene ese estado.
-  - **Lo que asume el diseño (R7):** un estado terminal `anulado`, al que se llega desde `creado` o `pendiente`.
-  - **La otra opción:** reusar `expirado`, con un motivo `saldo_cambiado`.
-- **P5. Tamaño.** Son unos 24 archivos, que caben. Las líneas de producción, en cambio, se estiman en
-  1 300–1 500, por encima del tope de 1 000: las dos migraciones con su `down.sql` suman unas 900. Hay dos
-  opciones:
-  - **aceptar un solo PR**, como SLT-143;
-  - **partirlo en dos rebanadas** que se mergean solas:
-    - A «Intento, máquina de estados, eventos e historial»: capas 1 y 2, R1–R16, R23–R28;
-    - B «Registro del pago aprobado en línea»: capa 3, R17–R22, el tope y la confirmación sin persona.
-
-    B depende de A.
+Ninguna.
 
 ## Decisiones cerradas (no reabrir)
 
@@ -232,3 +199,8 @@ otra cosa, se corrige el spec antes de implementar.
 | 2026-11-20 | ¿Se borran intentos o eventos? | No. Los cambios de estado solo avanzan y `servi_app` no tiene DELETE (como SL-45 D13). |
 | 2026-11-20 | ¿Hace falta E2E? | No en esta ficha, porque no tiene pantalla. El flujo de punta a punta entra con SLT-231. |
 | 2026-11-20 | ¿Qué ruta lleva y cabe en un PR? | Ruta completa, porque toca dinero, esquema e idempotencia. Se estiman unos 20 archivos: cabe en un PR. |
+| 2026-11-20 | P1: ¿se registra el pago en línea si hay pagos por confirmar que dejan lo disponible por debajo de su monto? | **Sí, se registra igual** (humano). El tope de SLT-60 sigue igual para todo lo demás. El pago por confirmar que ya no cabe se rechaza al intentar confirmarlo, igual que hoy. |
+| 2026-11-20 | P2: ¿qué pasa con un pago aprobado que no cabe (intento no vivo, otro monto u otra moneda, o mayor que el saldo)? | **Queda «requiere revisión»** (humano). No se escribe en la caja, y lo resuelve SLT-233 «Cobro automático: conciliación, devoluciones y contracargos». |
+| 2026-11-20 | P3: con un enlace de pago que admite varios intentos, ¿el primer rechazo cierra el intento? | **Sí: queda `rechazado`, que es terminal** (humano). Para volver a intentar se crea un intento nuevo. |
+| 2026-11-20 | P4: la decisión dice que el intento «se anula», pero la máquina de estados no tiene ese estado | **Un estado terminal nuevo, `anulado`**, distinto de `expirado` (humano). Se llega a él desde `creado` o `pendiente`. |
+| 2026-11-20 | P5: ~24 archivos y ~1 300–1 500 líneas de producción, por encima del tope de 1 000 | **Un solo PR**, aunque pase el tope de líneas (humano). |
