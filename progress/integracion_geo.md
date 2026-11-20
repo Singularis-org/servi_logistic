@@ -268,3 +268,9 @@ van todas después de `20261104120500`: el orden sigue válido. Ningún test de 
 
 `scripts/tamano-pr.mjs`: «no aplica fuera de una rama de feature». Es un merge de `dev`, no código
 nuevo; no se marca ninguna ficha.
+
+### PR y CI
+
+- PR #266 contra `geo_jerarquica`: https://github.com/Singularis-org/servi_logistic/pull/266
+- `gate.yml` lanzado a mano (`workflow_dispatch`), sin esperar:
+  https://github.com/Singularis-org/servi_logistic/actions/runs/44793065410
