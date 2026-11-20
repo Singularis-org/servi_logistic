@@ -269,3 +269,28 @@ commits fuera de la épica, así que no hizo falta un merge aparte.
 
 - Commit del merge `13457e3d`, `git push` normal. CI lanzado sin esperar (`gh workflow run gate.yml`):
   https://github.com/Singularis-org/servi_logistic/actions/runs/44775310940
+
+## SLT-65 — rojos CI 44775310940
+
+El CI sobre `13457e3d` dio dos archivos en rojo que no están en el baseline. Los dos se reprodujeron
+en local contra `logistic_slt65_r1120`. Los dos eran del montaje de los tests, no de producción.
+
+- `tests/integration/db/costo-y-zona-api-415.test.ts`, censo exacto de consultas. Es el mismo cruce
+  que en `gestiones-detalle-api-405`: SLT-65 quita `distrito` y `distrito_zona_especial` del
+  `select`, y SLT-52 añade `cierre_detail_concepto`. Medido con el espía del propio test: el detalle
+  emite **13** consultas (antes 15) y el listado **9** (antes 11) con `limit=1` y con `limit=50`.
+  La invariante de que el listado no depende del tamaño de la página sigue igual. Se actualizan
+  las dos listas y los dos números.
+- `tests/integration/db/tarifas-valor-propio-caminos.test.ts` (SLT-55, llega de dev). Daba 32 rojos
+  con `EmpresaNoResuelta: Sin empresa en contexto para Organizacion.findFirst`, lanzado en
+  `CatalogoGeograficoRepository.ts:104`. La causa es la misma que en `49f3296c`: su `comoEmpresa`
+  fijaba la empresa solo en la base (`comoApp`), y el contexto seguía en la empresa por defecto de
+  `enTransaccionRevertida`. Arreglo: `comoEmpresa` corre `fn` dentro de `conEmpresa(org, …)`. No
+  cambia ningún `expect` ni código de app.
+- Otros censos: el CI completo solo marcó estos dos archivos. El resto de tests con espía de
+  consultas (`tablasDe`, `crearPrismaDeTestConEspia`) salieron en verde en ese run. El grep de
+  `"distrito_zona_especial"` en `tests/integration` no encuentra más censos.
+- Local: 415, `tarifas-valor-propio-caminos` y 405 dan `Test Files 3 passed (3)` y
+  `Tests 60 passed (60)`. `eslint` de los dos archivos, sin salida.
+- Commit `122c1292`, `git push` normal. CI lanzado sin esperar:
+  https://github.com/Singularis-org/servi_logistic/actions/runs/44784347315
