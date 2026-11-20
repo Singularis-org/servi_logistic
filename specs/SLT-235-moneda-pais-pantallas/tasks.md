@@ -75,7 +75,7 @@ esperado.
   - `FichaQueLoRetira` gana `SLT-240` a `SLT-246`, y cada entrada `SLT-235` pasa a su rebanada. Los dos
     ejemplos del catálogo van donde diga la respuesta a P2.
   - *Hecho:* `pnpm run test:guardias` en verde (R19).
-- [ ] **T4.3** `docs/architecture.md`, bajo «País por empresa (SL-20)»: un punto «Moneda e impuesto en
+- [x] **T4.3** `docs/architecture.md`, bajo «País por empresa (SL-20)»: un punto «Moneda e impuesto en
   pantallas (SLT-235)». Cuenta:
   - la lectura única;
   - el memo de 10 min compartido con las etiquetas;

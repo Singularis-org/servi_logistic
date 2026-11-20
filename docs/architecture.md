@@ -169,6 +169,31 @@ esta bien hecha, no solo si "funciona".
     zona (`lib/services/jobs/serie-diaria-por-zona.ts`). `pais-sin-literales.guardia` impide escribir en
     el servidor la zona de CR, un desfase fijo o el `506`, y exige el real en cada composition root. Los
     envoltorios `*-cr.ts` quedan solo para la UI, en su lista de excepciones (SLT-81; SINPE, SL-22).
+  - **Moneda e impuesto en pantallas (SLT-235):**
+    - *Lectura única.* `PaisRepository.deLaEmpresa` lee el país en una sola consulta (`pais.findFirst`
+      con `organizaciones: { some: { id } }`); devuelve `null` si la empresa no es visible en el contexto.
+    - *Memo compartido.* `PaisService.paraPantallas(organizacionId)` devuelve `PaisParaPantallas`
+      (etiquetas de nivel, moneda y nombre del impuesto) desde `memoPaisEmpresa`
+      (`lib/services/pais-para-pantallas.ts`): memo por proceso de 10 min (`MEMO_PAIS_MS`), el mismo
+      para etiquetas, moneda e impuesto, que barre las caducadas desde 1 000 entradas y no guarda ni un
+      fallo ni un `null`. Un cambio de moneda tarda hasta 10 min en verse por instancia (aceptado).
+    - *Caídas.* Un país sin moneda cae a `MONEDA_PLATAFORMA` y uno sin impuesto a `IMPUESTO_ROTULO`,
+      con un aviso en el log por lectura de la base (no por página). Si la lectura falla o no hay país,
+      `paisParaPantallasDelActor` da `PARA_PANTALLAS_DE_PLATAFORMA` y deja el error en el log; sin
+      empresa (superadmin) da eso mismo sin consultar.
+    - *Proveedor y hooks.* `app/(app)/layout.tsx` lo resuelve en su `Promise.all` y monta
+      `MonedaDelPaisProvider` dentro de `EtiquetasGeograficasProvider`. `useMonedaDelPais()` y
+      `useImpuestoDelPais()` (`hooks/use-moneda-del-pais.ts`) caen a `MONEDA_PLATAFORMA` e
+      `IMPUESTO_ROTULO` fuera del portal. Ninguna pantalla lee el país por su cuenta ni lo guarda en el
+      navegador. Las páginas de servidor fuera del layout (`/paquete/[numGuia]`) llaman a
+      `paisParaPantallasDelActor` ellas mismas.
+    - *Regla.* Cada pantalla pasa la moneda explícita a `formatearMontoEn` (o a un formateador que la
+      recibe, como `pos-format.formatMonto(monto, moneda)`); nada de estado de módulo, que en el SSR
+      mezcla empresas.
+    - *Censo de R18.* El `describe` «censo de R18» de `tests/components/moneda-del-pais-pantallas.test.tsx`
+      lista los archivos ya pasados a la moneda del país y falla si uno vuelve a `money`, `formatMonto`,
+      `montoExacto` (y afines) de la moneda implícita o lee `monedaConfig`. La lista solo crece: cada
+      rebanada (SLT-240 a SLT-246) añade los suyos.
 - **Catálogo de vehículos (SL-42, 2026-11-04).** `vehiculos` es uno solo para todas las empresas, que
   solo lo leen: el `maestro` en el formulario de usuarios y la postulación pública, y solo los activos
   para una elección nueva (`WHERE_VEHICULO_ELEGIBLE`, `lib/repositories/_shared/vehiculo-activo.ts`).
