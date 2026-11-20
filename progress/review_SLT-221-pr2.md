@@ -121,3 +121,34 @@ Antes hubo tres corridas que no valen, por causas del entorno y no del diff:
 1. **`init.log` contaminado.** El scratchpad es compartido por los subagentes de la sesión, y otros agentes (SLT-221 frontend y SLT-224) escribieron en el mismo `init.log`. De ahí salieron el «42/40 archivos» (es el trabajo sin commitear del PR 3 en el worktree SLT-221) y el `demo-qa-paralelo` por tiempo (91 ms contra un tope de 75; suelto pasa 4/4). Desde ahí usé logs con nombre único.
 2. **`init2`: typecheck rojo** con `zona_desactivada` en `HistorialAccionTipo`. El cliente de Prisma del `node_modules` compartido se regeneró con el esquema de otra rama mientras corría (la lección «node_modules compartido y Prisma»). El typecheck suelto, justo después, terminó con `TC_EXIT=0`.
 3. **`init3`: «Worker exited unexpectedly»** + `notificacion-evento-gasto-fijo-migration` en rojo (22P02). La causa son datos que dejaron MIS E2E en `servi_slt221_rev2`. En la base nueva `servi_slt221_rev2b`, ese test pasa 20/20.
+
+## Vuelta 2 (acotada a 0a1b032d..acfcf8e6, arreglo ba8fd346)
+
+### Checklist
+- [x] B1 (R1629) cerrado: mutación repetida por el reviewer.
+- [x] m1 (R1627) cerrado, con test de integración que muere ante su mutación.
+- [x] m5 cerrado: traducción del P2002, test de integración con carrera real y test unitario.
+- [x] m7 cerrado: texto de la plantilla y aserción en el test del servicio.
+- [x] m3, m4 y m6: anotados como deuda en `progress/impl_SLT-221.md`. No se revisan en esta vuelta.
+- [x] Tareas T2.x en `[x]`. Las abiertas son T1.8 y T2.0/T3.x, del cierre y del PR 3.
+- [x] Tamaño: 34/40 archivos, 908/1000 líneas de producción y 1131/3000 de tests (AVISO, no supera el máximo).
+- [x] Gate local verde.
+
+### Mutaciones (corridas por el reviewer y revertidas después; `git status` limpio)
+| # | Mutación | Test | Resultado |
+|---|---|---|---|
+| S4a | `buildConfirmarCorreoService` con `new ResetRateLimiter()` en cada petición | `tests/unit/actions/confirmar-correo.test.ts` | **muerta** (1 failed / 4 passed; base 5/5) |
+| S4b | `buildConfirmarCorreoService` sin pasar el limitador (vale el `= new ResetRateLimiter()` por defecto) | ídem | **muerta** |
+| M-m1 | `aplicarCambioCorreo` borra las `session` del usuario dentro de la transacción | `tests/integration/db/usuario-cambio-correo.test.ts` | **muerta** (R1622/R1627 en rojo; base 10/10 contra `servi_slt221_fix`) |
+| M-m5 | `abrirCambioCorreo` relanza el P2002 sin traducirlo | ídem | **muerta** (test m5 en rojo) |
+
+El test de m5 no es verde por timing: comprueba que el INSERT llegó a esperar el lock (`pg_stat_activity`) antes de soltar la transacción rival. `usuario-service-cambio-correo.test.ts` cubre m5 y m7: 24/24 en verde.
+
+### Hallazgos
+- **menor (nuevo) n1:** en `UserRepository.abrirCambioCorreo`, la condición `texto.includes("usuario_id")` es más ancha que el índice. Hoy la transacción solo inserta en `usuario_cambio_correo`, cuyo único sobre `usuario_id` es ese índice parcial, así que no hay falso positivo. Si en el futuro se añade otro único con `usuario_id` en esa transacción, se disfrazaría de «pedido simultáneo». Basta con `usuario_cambio_correo_abierto`, salvo que Prisma no dé el nombre; en ese caso conviene dejarlo comentado.
+- Ningún bloqueante.
+
+### Gate
+`NODE_OPTIONS=--max-old-space-size=8192 ./init.sh` con `DATABASE_URL` en `servi_slt221_fix`: `== init OK ==` e `INIT_EXIT=0`, escrito dentro del log propio (`rev221v2/init-v2.log`). Vitest: 6 bloques de 100/100 archivos y 38/38. El rápido no corrió los 1686 relacionados porque pasan del presupuesto de 150. Por eso el reviewer corrió a mano los tests del diff (arriba). `.env` se comprobó solo como booleano y no se imprimió ninguna URL.
+
+### Veredicto vuelta 2: **APROBADO** (OK)
