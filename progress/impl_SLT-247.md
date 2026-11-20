@@ -219,3 +219,83 @@ Base desechable nueva `servi_slt247_t2` (`migrate deploy` + `db:seed`), exportad
   de retorno). El rojo «faltan specs… SLT-248» ya no sale.
 
 **Veredicto:** Tanda 2 hecha y verde en todo lo que corre; el gate queda rojo solo por el tamaño del PR (55/40 archivos), que decide el humano.
+
+## Tanda 3 — Pantallas (frontend_dev, 2026-11-20)
+
+T3.1–T3.5 de `specs/SLT-247-cierre-rechazado-gestiona-sin-gestion/tasks.md`.
+
+### Archivos
+
+Producción:
+- `components/private/cierres/detalle/detalle-cierre-labels.ts` — textos de las obligatorias y `motivoFaltanObligatorias(n)` (R1795, R1796).
+- `components/private/cierres/detalle/CorregirCierre.tsx` — dos secciones con una sola lista interna: primero «Órdenes que
+  pasaron a Novedad interna» (obligatorias, «Ya la gestionaste» / «Falta gestionarla» + «Ir a Entregas»), debajo la de la 477
+  solo con las deshechas.
+- `app/(app)/cierre-dia/_components/CierreDiaModule.tsx` — `deshabilitadas.solicitarRechazado` con el motivo mientras falte
+  alguna obligatoria del cierre de la página; `sinRehacerDelReenviable` sin obligatorias.
+- `app/(app)/cierres-admin/_components/cierre-confirmacion-fisica.tsx` — `filasAConfirmar` descarta `fueraDeNovedadInterna`.
+- `components/private/cierres/detalle/detalle-cierre-vista.ts` — **fuera de la lista del design**: `paquetesVuelven` (franja
+  «Por revisar» y pie «Aprobar pide confirmar N paquetes») descarta también `fueraDeNovedadInterna`.
+- `playwright.config.ts` — el spec nuevo en el grupo `dinero` (sin él no corre: guardia `e2e-sin-saltos`).
+
+Tests:
+- `tests/components/247-cierre-rechazado-sin-gestion.test.tsx` (10, nuevo).
+- `tests/unit/utils/detalle-cierre-vista.test.ts` — 1 caso SLT-247/R1791 (`paquetesVuelven`).
+- `e2e/cierre-rechazado-sin-gestion.spec.ts` (5 pasos, nuevo) + `e2e/_escenarios/cierres.ts` (`repartoDeDiasAtras`, la
+  excepción de R8 que ya usaba `tope-intentos-por-empresa.spec.ts`: sin reloj falso, el corte solo barre lo reservado para un
+  día cerrado).
+
+### Desvíos del design (anotados)
+
+1. **`detalle-cierre-vista.ts` también filtra.** El E2E lo destapó: tras gestionar y reenviar, la bodega veía «Aprobar pide
+   confirmar 1 paquete» y «Revisar paquetes y aprobar» por la barrida que ya estaba `en_reparto` (gestionada). El pie cuenta
+   `paquetesVuelven` en `vistaMensajeroDesdeAdmin` sin pasar por `filasAConfirmar`. Sin el filtro, R1791 («la pantalla pide
+   exactamente el mismo conjunto que el servidor») no se cumplía. Se filtra igual en `vistaMensajeroDesdeCierreDia`
+   (vista del mensajero, solo el conteo de la franja).
+2. **El reenvío deshabilitado lleva el motivo en `title` y descripción accesible** (`BotonPie` de SLT-109, R245), no en
+   texto visible: es el mecanismo que ya existe. Lo visible es la sección de «Corregir».
+3. **`e2e/_escenarios/cierres.ts` gana `repartoDeDiasAtras`** (copia de la función local de `tope-intentos-por-empresa`, que
+   no se toca para no ensanchar el PR).
+
+### Mapa R → test (Tanda 3)
+
+| R | Test |
+|---|---|
+| R1791 (pantalla) | `247-cierre-rechazado-sin-gestion.test.tsx` › «filasAConfirmar descarta fueraDeNovedadInterna» + «con todas en Novedad interna, la lista es la de siempre»; `detalle-cierre-vista.test.ts` › «SLT-247/R1791: una barrida que el rechazo devolvió…»; E2E paso 5 |
+| R1795 | idem › «Corregir lista las obligatorias aparte, con estado y enlace» + «sin obligatorias no pinta su sección»; E2E pasos 3-4 |
+| R1796 | idem › «reenvío deshabilitado con el motivo mientras falte alguna», «en singular…», «todas gestionadas…», «las obligatorias de OTRO cierre no bloquean…»; E2E paso 3 |
+| R1797 | idem › «la confirmación cuenta solo las deshechas» (modo `error`, el único con el botón pulsable y obligatorias pendientes) |
+| R1798 | idem › «rechazado y vencido siguen mostrando la sección Novedad interna» |
+| E2E | `e2e/cierre-rechazado-sin-gestion.spec.ts` (R1770, R1779, R1782, R1784, R1791, R1796) |
+
+### Mutaciones (todas rojas, todas restauradas)
+
+| # | Mutación | Resultado |
+|---|---|---|
+| M1 | `sinRehacerDelReenviable` sin `!o.obligatoria` | rojo (1) |
+| M2 | `filasAConfirmar` sin el filtro `fueraDeNovedadInterna` | rojo (1) |
+| M3 | `deshabilitadas` nunca se pasa | rojo (2) |
+| M4 | el motivo cuenta también las deshechas | rojo (1) |
+| M5 | `CorregirCierre`: las deshechas incluyen las obligatorias | rojo (1) |
+| M6 | `vistaMensajeroDesdeAdmin` sin el filtro | rojo (1) |
+| E2E | sin el arreglo de `detalle-cierre-vista.ts` | rojo en el paso 5 (rojo real, antes del arreglo) |
+
+### Verificación (Tanda 3)
+
+Base desechable nueva `servi_slt247_t3` (`migrate deploy` + `db:seed`), exportada antes de cada vitest, del build y del E2E.
+El `.env` del worktree apunta a una base atrasada (falta una columna de `zona`): con ella `test:guardias` dio 5 rojos de
+integración ajenos (`zona-*`, `filas-fuera-de-tx`); con la desechable, verde.
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck` — exit 0.
+- `pnpm run lint` — `0 errors`, exit 0; `eslint` sobre los archivos de la tanda — `No issues found`.
+- `pnpm run test:guardias` — `Test Files 360 passed (360)`, `Tests 5432 passed | 1 skipped (5433)` (tras renombrar un id de
+  prueba «devuelta», código anterior de la 455 que la guardia del censo rechaza).
+- `pnpm exec vitest related --run <5 archivos de la tanda>` — `Test Files 75 passed (75)`, `Tests 1630 passed (1630)`.
+- `pnpm exec vitest run tests/unit/utils/detalle-cierre-vista.test.ts` — `Tests 97 passed (97)`.
+- `next build` + `pnpm exec playwright test e2e/cierre-rechazado-sin-gestion.spec.ts --project=dinero` (E2E_PUERTO=3047) —
+  `5 passed`, sin reintentos.
+- `pnpm exec playwright test --project=dinero` — `137 passed (7.8m)`, exit 0.
+- `./init.sh` — `INIT_EXIT=1`, SOLO por el tamaño del PR: `66/40 archivos, 958/1000 líneas de producción, 1865/3000 de
+  tests`. Lo decide Carlos.
+
+**Veredicto:** Tanda 3 hecha y verde en todo lo que corre (incluido el E2E y el grupo `dinero`); el gate queda rojo solo por el tamaño del PR (66/40 archivos).

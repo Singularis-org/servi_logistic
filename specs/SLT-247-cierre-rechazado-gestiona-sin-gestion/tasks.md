@@ -113,19 +113,19 @@ Depende de: Tanda 1. Bloquea: Tanda 3.
 
 ## Tanda 3 — Pantallas (frontend_dev)
 
-- [ ] **T3.1** `CorregirCierre.tsx` + `detalle-cierre-labels.ts`: sección de obligatorias antes de
+- [x] **T3.1** `CorregirCierre.tsx` + `detalle-cierre-labels.ts`: sección de obligatorias antes de
   la de deshechas (design §7).
   **Hecho:** R1795 verde en test de componente.
-- [ ] **T3.2** `CierreDiaModule.tsx`: `deshabilitadas.solicitarRechazado` con el motivo y
+- [x] **T3.2** `CierreDiaModule.tsx`: `deshabilitadas.solicitarRechazado` con el motivo y
   `sinRehacerDelReenviable` sin obligatorias.
   **Hecho:** R1796/R1797 verdes. La sección «Novedad interna» del rechazado y del vencido sigue
   (R1798).
-- [ ] **T3.3** `cierre-confirmacion-fisica.tsx`: `filasAConfirmar` descarta `fueraDeNovedadInterna`.
+- [x] **T3.3** `cierre-confirmacion-fisica.tsx`: `filasAConfirmar` descarta `fueraDeNovedadInterna`.
   **Hecho:** R1791 (pantalla) verde. Con todas las barridas en `novedad_interna`, la lista es
   idéntica a la de hoy.
-- [ ] **T3.4** [P] `tests/components/247-cierre-rechazado-sin-gestion.test.tsx` (T3.1-T3.3).
+- [x] **T3.4** [P] `tests/components/247-cierre-rechazado-sin-gestion.test.tsx` (T3.1-T3.3).
   **Hecho:** verde.
-- [ ] **T3.5** E2E `e2e/cierre-rechazado-sin-gestion.spec.ts` (+ escenario en
+- [x] **T3.5** E2E `e2e/cierre-rechazado-sin-gestion.spec.ts` (+ escenario en
   `e2e/_escenarios/cierres.ts`). El flujo:
   1. corte con barridas;
   2. el admin rechaza;
@@ -165,12 +165,12 @@ Depende de: Tanda 2.
 | R1787 | `247-sin-gestion-rechazado-sql-real.test.ts` › «vencido reenviado sin rechazo: solo estado; aprobar libera y pide escanear como hoy» |
 | R1788, R1789 | idem › «corte con rechazado abierto: no selecciona ni barre; al salir de rechazado sí» |
 | R1790 | idem › «gestión no reenviada antes del corte: va al vencido nuevo, deja de ser pendiente, se cobra una vez» |
-| R1791 | idem › «aprobar: confirmación física solo de barridas en novedad_interna» + `247-cierre-rechazado-sin-gestion.test.tsx` › «filasAConfirmar descarta fueraDeNovedadInterna» |
+| R1791 | idem › «aprobar: confirmación física solo de barridas en novedad_interna» + `247-cierre-rechazado-sin-gestion.test.tsx` › «filasAConfirmar descarta fueraDeNovedadInterna» + `detalle-cierre-vista.test.ts` › «SLT-247/R1791: una barrida que el rechazo devolvió a Entregas no cuenta…» |
 | R1792 | `247-resolicitud-sin-gestion-sql-real.test.ts` › «aprobar el reenviado aplica la gestión, cuenta intento y no libera la orden» |
 | R1793 | idem › «cierre_sin_gestion intacta tras rechazo, reenvío y aprobación» |
 | R1794 | `247-sin-gestion-rechazado-sql-real.test.ts` › «válvula sobre rechazado con pendientes: aprobar no las pide ni libera; el corte siguiente las barre» |
 | R1795 | `247-cierre-rechazado-sin-gestion.test.tsx` › «Corregir lista las obligatorias aparte, con estado y enlace» |
-| R1796 | idem › «reenvío deshabilitado con el motivo mientras falte alguna» |
+| R1796 | idem › «reenvío deshabilitado con el motivo mientras falte alguna» (+ singular, todas gestionadas, otro cierre) |
 | R1797 | idem › «la confirmación cuenta solo las deshechas» |
 | R1798 | idem › «rechazado y vencido siguen mostrando la sección Novedad interna» |
 | R1799 | `247-sin-gestion-rechazado-sql-real.test.ts` › «cierre creado antes (vencido → solicitado) y rechazado ahora: aplica R1770» |

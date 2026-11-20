@@ -166,6 +166,8 @@ export default defineConfig({
       testMatch: specs(
         "cierre-dia",
         "cierre-vencido-modelo",
+        // SLT-247 R1770, R1779, R1782, R1784, R1791, R1796: el rechazo devuelve la barrida; se gestiona y se reenvía.
+        "cierre-rechazado-sin-gestion",
         "cierres-admin",
         "cierres-admin-rechazos-sla",
         "cierre-bodega-satelite",

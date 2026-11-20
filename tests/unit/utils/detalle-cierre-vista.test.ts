@@ -623,6 +623,18 @@ describe("SLT-100 — vistaMensajeroDesdeAdmin pasa lo nuevo del servidor (R80, 
     expect(vista({}).resueltoPorNombre).toBeNull();
   });
 
+  // SLT-247 «Cierre rechazado: el mensajero gestiona las órdenes que pasaron a Novedad interna antes
+  // de reenviarlo» (R1791): el pie («Aprobar pide confirmar N paquetes») cuenta lo mismo que la
+  // ventana de confirmación: solo las barridas que siguen en Novedad interna.
+  it("SLT-247/R1791: una barrida que el rechazo devolvió a Entregas no cuenta como paquete que vuelve", () => {
+    const barrida = (ordenId: string, extra: object = {}) => ({
+      ordenId, numGuia: 1, numRemision: ordenId, destinatario: "x", producto: "y", tiendaNombre: "t", zonaNombre: "z",
+      estatusOrigen: "en_reparto", ...extra,
+    });
+    expect(vista({ ordenesSinGestion: [barrida("viva"), barrida("de-vuelta-a-entregas", { fueraDeNovedadInterna: true })] }).conteos.paquetesVuelven).toBe(1);
+    expect(vista({ ordenesSinGestion: [barrida("a"), barrida("b")] }).conteos.paquetesVuelven).toBe(2);
+  });
+
   it("el desglose del ingreso de bodega llega en el modelo viejo, sin el total", () => {
     expect(vista({}).desgloseIngresoBodega).toEqual({ sla: "0.00", manual: "500.00" });
   });
