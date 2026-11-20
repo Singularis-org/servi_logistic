@@ -52,11 +52,11 @@
 
 ## Bloque 3 — Pantallas y rótulos (R1–R4, R8–R11, R16) (puede ir en paralelo con el bloque 2; T3.3 depende de T1.1)
 
-- [ ] **T3.1** [P] Carga masiva: `OrdenesCargaResumen.tsx` (R2) y `OrdenesConMontoAjustadoTabla.tsx` con
+- [x] **T3.1** [P] Carga masiva: `OrdenesCargaResumen.tsx` (R2) y `OrdenesConMontoAjustadoTabla.tsx` con
   la moneda del país a escala 2 (R3, design §4, nota de R3).
   - *Hecho:* casos de R2 y R3 en verde; `OrdenesCargaResumen.test.tsx` y `OrdenesCargaPreview.test.tsx`
     verdes sin tocarlos.
-- [ ] **T3.2** [P] `CorregirUbicacionAviso.tsx`: `importe(u, campo, moneda)` (R4). Sus rótulos, en
+- [x] **T3.2** [P] `CorregirUbicacionAviso.tsx`: `importe(u, campo, moneda)` (R4). Sus rótulos, en
   T3.6.
   - *Hecho:* casos de R4 en verde; los tests existentes del aviso, verdes sin tocarlos.
 - [ ] **T3.3** [P] Incidentes (depende de T1.1).
@@ -78,7 +78,7 @@
     - `tests/integration/db/455/caracterizacion/snapshot-correccion.test.ts`.
   - *Hecho:* casos de R11 en verde; los tres en verde sin cambiar ningún valor esperado (R15);
     `estado-con-info.guardia.test.ts` verde sin tocarlo.
-- [ ] **T3.5** [P] Pantallas que ya cumplen por SLT-235: solo tests.
+- [x] **T3.5** [P] Pantallas que ya cumplen por SLT-235: solo tests.
   - Celdas de `ordenes-columns` (R1).
   - `PosOrderCardDetalle` con `novedadAOrdenCard` (R8).
   - *Hecho:* casos de R1 y R8 en verde, sin tocar producción.

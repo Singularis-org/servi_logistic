@@ -62,3 +62,32 @@ Ningún valor esperado de los tests existentes cambió. `tests/components/Etique
 - `pnpm exec eslint` de los 10 archivos: 0 errores, 4 warnings `no-unused-vars` en `etiquetas-pdf.test.ts` (`MAQUETA_BASE`, `PT_A_MM_MAQUETA`, `lineasDe`, `textosConY`), los mismos 4 que en HEAD: previos, no del diff.
 
 Veredicto (T2.2–T2.3): hechas; los cuatro de T2.2 y los de T2.3 en verde, typecheck en 0, sin archivos fuera de la lista.
+
+## Tanda 3 (parcial) — T3.1, T3.2, T3.5 (frontend_dev, 2026-11-20)
+
+### Archivos
+Producción:
+- `app/(app)/ordenes/_components/OrdenesCargaResumen.tsx` — `useMonedaDelPais()`; la celda de monto pasa de `formatMonto` a `formatearMontoEn(moneda, row.montoCobrar)` (sin monto, `SIN_MONTO` por defecto) (R2).
+- `app/(app)/ordenes/_components/OrdenesConMontoAjustadoTabla.tsx` — fuera `montoExacto`; `exacta = useMemo({ ...moneda, decimales: ESCALA_PRESENTACION })` y `formatearMontoEn(exacta, v, SIN_MONTO_RAYA)` en las dos columnas (R3, design §4 y nota de R3).
+- `app/(app)/ordenes/_components/CorregirUbicacionAviso.tsx` — `importe(u, campo, moneda)` con `formatearMontoEn(moneda, u[campo], SIN_MONTO_RAYA)`; la rama `sin_tarifa` sigue primero; fuera `money` (R4). Rótulos «Flete + IVA»/«Comisión + IVA» sin tocar (son de T3.6).
+
+Tests:
+- `tests/components/moneda-del-pais-ordenes.test.tsx` — dobles de `carga-masiva-resumen`, `useToast` y `etiquetas-guia` (los de `OrdenesCargaResumen.test.tsx`); `describe` de R1, R2, R3, R4 y R8.
+
+T3.5: R1 (`ordenes-columns`, vía `PriceLabel`) y R8 (`PosOrderCardDetalle` + `novedadAOrdenCard`) ya cumplían sin tocar producción.
+
+### R → test (`moneda-del-pais-ordenes.test.tsx`)
+- R1: `SLT-240 R1 — celdas de importe del listado de órdenes` (monto, flete, fulfillment y comisión = `formatearMontoEn(MONEDA_DE_PRUEBA, v)`; sin proveedor = plataforma; CR = sin proveedor).
+- R2: `SLT-240 R2 — resumen de la carga masiva` («€12 501», sin proveedor, CR = sin proveedor, `null` → `-` en los tres).
+- R3: `SLT-240 R3 — tabla del monto redondeado` (`€11 898.81` y `€11 899`, distintos; sin proveedor = `montoExacto`; CR = sin proveedor).
+- R4: `SLT-240 R4 — aviso de cambio de ubicación` (flete y comisión en la moneda de prueba; `sin_tarifa` → «Sin tarifa configurada» en las dos filas con las tres monedas; sin proveedor; CR = sin proveedor).
+- R8: `SLT-240 R8 — tarjeta de novedades` (moneda de prueba, sin proveedor, CR = sin proveedor).
+
+### Salida real (worktree, NODE_OPTIONS=--max-old-space-size=8192)
+- `pnpm exec vitest run tests/components/moneda-del-pais-ordenes.test.tsx`: `Test Files  1 passed (1)` / `Tests  21 passed (21)`.
+- `pnpm exec vitest related --run` de los 3 archivos de producción: `Test Files  55 passed (55)` / `Tests  756 passed (756)`.
+- Directos: `OrdenesCargaResumen.test.tsx`, `OrdenesCargaPreview.test.tsx`, `CorregirDatosCliente.ordenes.test.tsx`, `CorregirDatosCliente.novedades.test.tsx`: `Test Files  4 passed (4)` / `Tests  98 passed (98)`, sin tocarlos.
+- `pnpm run typecheck` (`tsc --noEmit`): exit 0.
+- `pnpm exec eslint` de los 4 archivos: `No issues found`.
+
+Veredicto (T3.1, T3.2, T3.5): hechas; casos de R1/R2/R3/R4/R8 en verde, tests existentes verdes sin tocar, typecheck y lint en 0, sin archivos fuera de la lista.
