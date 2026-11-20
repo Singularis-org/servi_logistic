@@ -314,12 +314,13 @@ const CENSO: EntradaCenso[] = [
   },
   {
     // ⭑ FICHA 366 — la re-derivacion de la zona de las ordenes elegibles al guardar una zona.
-    // Comparte metodo con el resto del guardado (`update`), y por eso su `appendAccion` va dentro
-    // de la MISMA `$transaction` que ya reemplazaba la N:M y las tarifas.
+    // SLT-224 (design §2.3): la regla se movio a un helper compartido por el guardado de zona, la
+    // recepcion en la central y el boton «Actualizar zonas». El helper RECIBE la `tx` de cada
+    // llamador y nunca abre la suya, asi que su `appendAccion` cae en la transaccion de quien llama.
     tipos: ["orden_zona_reconciliada"],
-    archivo: "lib/repositories/ZonaRepository.ts",
-    metodo: "update",
-    forma: "abre_tx",
+    archivo: "lib/repositories/_shared/reconciliar-zona-ordenes.ts",
+    metodo: "reconciliarZonaDeOrdenes",
+    forma: "recibe_tx",
     mutacion: /tx\.orden\.updateMany\(/,
   },
   {
@@ -890,7 +891,11 @@ function bloqueBalanceado(codigo: string, desde: number): string | null {
  */
 function cuerpoDelMetodo(archivo: string, metodo: string): string {
   const codigo = codigoSinComentarios(archivo);
-  const declaracion = new RegExp(`(?:^|\\n)\\s*(?:private\\s+)?async\\s+${metodo}\\s*\\(`);
+  // SLT-224: tambien reconoce una funcion exportada (`export async function nombre(`), la forma
+  // del helper compartido de la reconciliacion de zona.
+  const declaracion = new RegExp(
+    `(?:^|\\n)\\s*(?:export\\s+)?(?:private\\s+)?async\\s+(?:function\\s+)?${metodo}\\s*\\(`,
+  );
   const encontrado = declaracion.exec(codigo);
   if (encontrado === null) {
     throw new Error(
@@ -1196,6 +1201,15 @@ describe("362/T7.1 — el detector se prueba a si mismo", () => {
     expect(cuerpo).toContain("plantillaMensaje.updateMany");
     // Y NO trae el metodo de al lado.
     expect(cuerpo).not.toContain("setTemplate");
+  });
+
+  it("CONTRAPRUEBA (SLT-224): el recortador reconoce una `export async function` y recorta SOLO esa", () => {
+    const archivo = "lib/repositories/_shared/reconciliar-zona-ordenes.ts";
+    const cuerpo = cuerpoDelMetodo(archivo, "reconciliarZonaDeOrdenes");
+    expect(cuerpo).toContain("tx.orden.updateMany");
+    // El corte vive en `whereBaseElegible`, la funcion de al lado: el cuerpo recortado no lo trae.
+    expect(cuerpo).not.toContain("cierreDetalles");
+    expect(cuerpo.length).toBeLessThan(codigoSinComentarios(archivo).length);
   });
 
   it("CONTRAPRUEBA: pedir un metodo inexistente LANZA en vez de medir vacio", () => {

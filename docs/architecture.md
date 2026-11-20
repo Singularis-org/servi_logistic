@@ -377,6 +377,41 @@ esta bien hecha, no solo si "funciona".
       `pago_confirmado` el contra-asiento de un pago confirmado, por cualquier camino y con cualquier
       rol. `EgresoCajaAnulacionService` lo traduce a `forbidden`. Anular y confirmar a la vez el mismo
       pago no ganan los dos.
+  - **Pago por fuera y anulación por la plataforma (SLT-143, migración
+    `20261121130000_pago_plataforma_por_fuera`).** El superadmin, desde el detalle de la empresa, registra
+    un pago hecho por fuera y anula un pago confirmado. Las dos son funciones del dueño (`SECURITY
+    DEFINER`, `EXECUTE` revocado a `PUBLIC`) bajo el candado `pago_plataforma:` de la empresa, y la app
+    llega a ellas por `PagoPlataformaConfirmacionRepository` en `comoPlataforma` y
+    `PagoPlataformaConfirmacionService`, que exige superadmin (`lib/actions/pagos-plataforma.ts`).
+    - **Pago por fuera:** `pago_plataforma_registrar_por_fuera` escribe en una transacción el
+      `egreso_pago_plataforma` de la wallet (la caja baja igual que con un pago de la empresa, aunque la
+      caja no alcance), el comprobante si viene y la confirmación con su reparto
+      (`_pago_plataforma_aplicar`, las mismas validaciones que confirmar). Nace confirmado: no cuenta como
+      por confirmar y la deuda baja al registrarlo. La misma clave de idempotencia responde
+      `ya_registrado` sin escribir. El monto se acota a 9 999 999 999,99 (`montoPagoPorFueraSchema`, el
+      tope de `wallet_movimiento.monto`).
+    - **La columna `por_fuera`:** `pago_plataforma_confirmacion.por_fuera` (`false` por defecto; la
+      migración no toca filas). Es `true` solo en los pagos por fuera y de ahí sale la marca «Registrado
+      por la plataforma» del libro de la caja (`LibroCajaAutoriaRepository`), sin el nombre ni el id del
+      superadmin. Un pago de la empresa confirmado después no la lleva.
+    - **La anulación:** `pago_plataforma_anular_confirmado(org, pago, motivo, por, ahora)` responde `ok` o
+      `ya_anulado`; si no, `SL060` con `pago_no_encontrado`, `pago_no_confirmado` (uno por confirmar no se
+      anula aquí) o `motivo_vacio`. Escribe, en este orden, la fila de `pago_plataforma_anulacion`, la
+      constancia con el motivo en `ajuste_caja_anulacion` y el contra-asiento `ingreso_ajuste` con origen
+      `gasto`, como la anulación de un egreso (SL-45): el monto vuelve a la caja. Sin historial. No toca
+      `factura_plataforma` ni `pago_plataforma_aplicacion`: `factura_plataforma_saldos`, la suma de
+      confirmados y el «Pagado» de Empresas descartan las aplicaciones de una confirmación anulada, y la
+      deuda sube en el monto. Un pago anulado no se confirma (`pago_no_encontrado`) ni vuelve a por
+      confirmar. El libro marca el contra-asiento y la línea de anulación con «Anulado por la plataforma».
+    - **La tabla `pago_plataforma_anulacion`:** una por confirmación (único por empresa y confirmación;
+      quién y cuándo). De negocio, con RLS por empresa: la empresa solo **lee** lo suyo; `servi_app` tiene
+      `REVOKE INSERT, UPDATE, DELETE`. Inmutable (`pago_plataforma_anulacion_inmutable`, también el dueño),
+      con triggers de misma empresa en `anulado_por` y `confirmacion_id`. En Prisma, la confirmación la
+      lee como lista: `anulaciones`.
+    - **La excepción del trigger:** `pago_plataforma_no_anular_confirmado` sigue rechazando el
+      contra-asiento de un pago confirmado, salvo si su confirmación ya tiene fila en
+      `pago_plataforma_anulacion`. Como `servi_app` no puede escribir esa tabla, la empresa sigue sin
+      poder anular un confirmado (`forbidden`), tampoco uno por fuera, y el dueño tampoco sin la anulación.
   - **Lectura:** la empresa lee sus facturas con `FacturaPlataformaRepository.deLaEmpresa`. Es una
     sola sentencia que trae las cerradas y `factura_plataforma_en_curso` (`42501` con otra empresa o
     sin empresa). Las no cerradas traen el total de órdenes hasta ahora y las cuotas previstas. El

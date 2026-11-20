@@ -214,6 +214,8 @@ export const MODULO_POR_ACTION: Readonly<Record<string, Destino>> = {
   "rastreo-publico": "nucleo",
   "recepcion-bodega-central": "nucleo",
   "recepcion-origen": "nucleo",
+  // SLT-224: «Actualizar zonas», en la cabecera de `/ordenes` (núcleo), junto a «Recibir paquete».
+  "actualizacion-zonas": "nucleo",
   // Recolección y Bodegas satélite (núcleo desde el 2026-10-27).
   "recepcion-satelite": "nucleo",
   "recoleccion-tienda": "nucleo",

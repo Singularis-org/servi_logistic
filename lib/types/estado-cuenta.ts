@@ -156,7 +156,18 @@ export type SentidoDelSaldo =
 export interface RegistroDTO {
   nombre: string | null;
   automatico: {
-    accion: "aprobacion_cierre" | "plantilla_gasto_fijo" | "cobro_por_rechazo" | "incidente" | "premio_del_ranking" | "sistema";
+    // SLT-143 (design §5, §5.1; R13, R36): `plataforma` es el pago que registró el superadmin y
+    // `plataforma_anulacion`, el contra-asiento de su anulación. Los dos van con `por: null`: el nombre del
+    // superadmin no llega a la empresa.
+    accion:
+      | "aprobacion_cierre"
+      | "plantilla_gasto_fijo"
+      | "cobro_por_rechazo"
+      | "incidente"
+      | "premio_del_ranking"
+      | "sistema"
+      | "plataforma"
+      | "plataforma_anulacion";
     por: string | null;
   } | null;
 }

@@ -121,6 +121,8 @@ export const MODELOS_DE_NEGOCIO: readonly ModeloClasificado[] = [
   // Confirmación del superadmin de un pago a la plataforma y su reparto entre facturas cerradas (SLT-60): las escribe solo una función del dueño
   { modelo: "PagoPlataformaConfirmacion", tabla: "pago_plataforma_confirmacion" },
   { modelo: "PagoPlataformaAplicacion", tabla: "pago_plataforma_aplicacion" },
+  // Anulación de un pago confirmado por el superadmin (SLT-143): la escribe solo una función del dueño
+  { modelo: "PagoPlataformaAnulacion", tabla: "pago_plataforma_anulacion" },
   // El nivel por volumen de cada empresa y su historial (SLT-215, R36): los escriben solo funciones del dueño; la
   // empresa solo los lee
   { modelo: "PlanNivelEmpresa", tabla: "plan_nivel_empresa" },

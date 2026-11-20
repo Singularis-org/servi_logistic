@@ -85,7 +85,6 @@ function fila(over: Partial<WalletMovimientoDTO>): WalletMovimientoDTO {
     origenTipo: "abono_tienda",
     origenId: ABONO_ID,
     descripcion: "Tienda Norte · Pago de los fletes · SINPE · 123456",
-    registradoPor: null,
     fechaMovimiento: "2026-09-24T06:00:00.000Z",
     dueno: "terceros",
     documento: null,

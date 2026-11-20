@@ -75,6 +75,7 @@ import type {
 } from "@/lib/interfaces/repositories/IOrdenHistorialRepository";
 import { appendCambioEstado } from "@/lib/repositories/registrar-cambio-estado";
 import { zonaUnicaDeDistrito } from "@/lib/repositories/_shared/zona-colapso";
+import { reconciliarZonaDeOrdenes } from "@/lib/repositories/_shared/reconciliar-zona-ordenes";
 // SL-38 (R22): la marca de zona especial es de la EMPRESA y se lee por un unico punto.
 import {
   esZonaEspecialDeLaEmpresa,
@@ -4645,18 +4646,19 @@ export class OrdenRepository implements IOrdenRepository {
     origenValue: string,
     destinoEstatusId: string,
     historial: HistorialContexto,
-    opciones: { liberaAsignacion: boolean },
+    opciones: { liberaAsignacion: boolean; reconciliaZona?: boolean },
   ): Promise<boolean> {
     return this.prisma.$transaction(async (tx) => {
       // Origen pre-leido con la MISMA guarda (estado `origenValue` + no borrada). SIN zona/tienda:
-      // cualquier orden en el origen es elegible (R11).
+      // cualquier orden en el origen es elegible (R11). SLT-224: trae tambien el distrito, que es
+      // lo que decide su zona.
       const actual = await tx.orden.findFirst({
         where: {
           id: ordenId,
           deletedAt: null,
           estatus: { value: origenValue },
         },
-        select: { estatusId: true },
+        select: { estatusId: true, distritoId: true },
       });
       const result = await tx.orden.updateMany({
         where: {
@@ -4679,6 +4681,18 @@ export class OrdenRepository implements IOrdenRepository {
             origenTipo: historial.origenTipo, // recepcion_bodega_central
           },
         ]);
+        // ⭑ SLT-224 (R1700-R1703): la zona de la orden se re-deriva desde su distrito, con la regla
+        // de la 366/377 y en esta misma tx. Va DESPUES de la transicion a proposito: la orden ya esta
+        // en `en_bodega_central` (no es estante, la 377 no la retiene) y una recepcion que pierde la
+        // carrera no llega aqui. `ordenIds` la acota a ESTA orden: otra del mismo distrito no se toca.
+        // Sin distrito no hay nada que derivar; con un distrito sin zona, el helper no escribe.
+        if (opciones.reconciliaZona === true && actual.distritoId != null) {
+          await reconciliarZonaDeOrdenes(
+            tx,
+            { distritoIds: [actual.distritoId], ordenIds: [ordenId] },
+            historial.actorUsuarioId,
+          );
+        }
       }
       return result.count === 1;
     });

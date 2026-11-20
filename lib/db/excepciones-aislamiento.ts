@@ -243,7 +243,7 @@ export const EXCEPCIONES_DE_PLATAFORMA: readonly ExcepcionDeAislamiento[] = [
     archivo: "lib/repositories/PagoPlataformaConfirmacionRepository.ts",
     ficha: "SL-45",
     motivo:
-      "SLT-60: el superadmin, que no tiene empresa, lee los pagos por confirmar y los saldos de las facturas de una empresa y confirma un pago; llama a `pago_plataforma_por_confirmar`, `factura_plataforma_saldos` y `pago_plataforma_confirmar`, funciones del dueño que `servi_app` no puede ejecutar (R12, R14, R16, R24)",
+      "SLT-60 y SLT-143: el superadmin, que no tiene empresa, lee los pagos por confirmar, los confirmados y los saldos de las facturas de una empresa, confirma un pago, registra uno hecho por fuera y anula uno confirmado; llama a `pago_plataforma_por_confirmar`, `factura_plataforma_saldos`, `pago_plataforma_confirmar`, `pago_plataforma_registrar_por_fuera` y `pago_plataforma_anular_confirmado`, funciones del dueño que `servi_app` no puede ejecutar (SLT-60 R12, R14, R16, R24; SLT-143 R1, R16, R21, R31)",
   },
   {
     // SLT-87 (design §2.3). Lleva la ficha que separó negocio y plataforma porque `FichaJira` no admite

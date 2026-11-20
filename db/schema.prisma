@@ -182,6 +182,7 @@ model Usuario {
   cobrosTiendaAnulados                CobroTiendaAnulacion[]             @relation("CobroTiendaAnulacionActor") // ficha 461/R10: anulaciones de cobros de la empresa a una tienda que este usuario hizo; FK RESTRICT (quien devolvio dinero es evidencia)
   ajustesCajaAnulados                 AjusteCajaAnulacion[]              @relation("AjusteCajaAnulacionActor") // ficha 461/R69: anulaciones de correcciones de caja que este usuario hizo; FK RESTRICT
   pagosPlataformaConfirmados          PagoPlataformaConfirmacion[]       @relation("PagoPlataformaConfirmador") // SLT-60: pagos a la plataforma que este superadmin confirmó; FK RESTRICT
+  pagosPlataformaAnulados             PagoPlataformaAnulacion[]          @relation("PagoPlataformaAnulador") // SLT-143: pagos confirmados que este superadmin anuló; FK RESTRICT
   abonosComoTienda                    AbonoTienda[]                      @relation("AbonoTiendaTienda") // ficha 457/R1: pagos que ESTA tienda le hizo a la empresa
   abonosRegistrados                   AbonoTienda[]                      @relation("AbonoTiendaRegistrador") // ficha 457/R1: pagos de una tienda a la empresa que este usuario registro
   abonosAnulados                      AbonoTiendaAnulacion[]             @relation("AbonoTiendaAnulacionActor") // ficha 457/R31: anulaciones de pagos de una tienda a la empresa que este usuario hizo; FK RESTRICT
@@ -5939,6 +5940,7 @@ model Organizacion {
   planNivelHistorial PlanNivelHistorial[] // SLT-215
   pagosPlataformaConfirmacion PagoPlataformaConfirmacion[] // SLT-60
   pagosPlataformaAplicacion PagoPlataformaAplicacion[] // SLT-60
+  pagosPlataformaAnulacion PagoPlataformaAnulacion[] // SLT-143
   ordenFulfillmentMovimientos OrdenFulfillmentMovimiento[] // SLT-94
   conciliacionBodegaAjustes ConciliacionBodegaAjuste[] // SLT-73
   integraciones Integracion[] // SL-36
@@ -6699,10 +6701,16 @@ model PagoPlataformaConfirmacion {
   pagoId       String   @map("pago_id")
   confirmadoPor String  @map("confirmado_por")
   confirmadoAt DateTime @map("confirmado_at") @db.Timestamp(3)
+  // SLT-143 (design §1.2): true solo si el pago lo registró el superadmin por fuera (R13, R14). Lo escribe solo
+  // `pago_plataforma_registrar_por_fuera`; las confirmaciones anteriores a 20261121130000 quedan en false (R33).
+  porFuera     Boolean  @default(false) @map("por_fuera")
 
   pago         WalletMovimiento @relation(fields: [pagoId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   confirmador  Usuario          @relation("PagoPlataformaConfirmador", fields: [confirmadoPor], references: [id], onDelete: Restrict, onUpdate: Cascade)
   aplicaciones PagoPlataformaAplicacion[]
+  // SLT-143: 0 o 1 por el UNIQUE (organizacion_id, confirmacion_id); lista porque Prisma solo admite un 1 a 1
+  // sobre un único de una columna (como `WalletMovimiento.confirmacionesPagoPlataforma`).
+  anulaciones  PagoPlataformaAnulacion[]
 
   organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Cascade, onUpdate: Cascade) // SL-17/R2
@@ -6731,6 +6739,29 @@ model PagoPlataformaAplicacion {
   @@unique([organizacionId, confirmacionId, facturaId], map: "pago_plataforma_aplicacion_org_conf_factura_key") // una fila por factura
   @@index([organizacionId, facturaId], map: "pago_plataforma_aplicacion_org_factura_idx") // el saldo de cada factura
   @@map("pago_plataforma_aplicacion")
+}
+
+// SLT-143 (design §1.1) — la anulación de un pago confirmado hecha por el superadmin. De NEGOCIO. Su existencia
+// es lo que deja pasar el contra-asiento en el trigger `pago_plataforma_no_anular_confirmado` (R29): por eso la
+// escribe SOLO `pago_plataforma_anular_confirmado` (función del dueño de 20261121130000) y `servi_app` solo la lee
+// (R32). El motivo no se duplica: vive en la constancia `ajuste_caja_anulacion` de la misma operación. Viven solo
+// en el SQL de esa migración: la política, el REVOKE, el trigger `pago_plataforma_anulacion_inmutable` y los de
+// SL-17 (`anulado_por` es el superadmin, sin empresa).
+model PagoPlataformaAnulacion {
+  id             String   @id @default(dbgenerated("(gen_random_uuid())::text"))
+  confirmacionId String   @map("confirmacion_id")
+  anuladoPor     String   @map("anulado_por")
+  anuladoAt      DateTime @map("anulado_at") @db.Timestamp(3)
+
+  confirmacion PagoPlataformaConfirmacion @relation(fields: [confirmacionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  anulador     Usuario                    @relation("PagoPlataformaAnulador", fields: [anuladoPor], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Cascade, onUpdate: Cascade) // SL-17/R2
+
+  @@unique([organizacionId, confirmacionId], map: "pago_plataforma_anulacion_org_confirmacion_key") // una anulación por confirmación
+  @@index([organizacionId]) // SL-17/R2
+  @@map("pago_plataforma_anulacion")
 }
 
 // SL-36 (design §2.1) — los cuatro servicios que una empresa conecta con sus propias cuentas.

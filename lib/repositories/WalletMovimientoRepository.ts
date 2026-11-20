@@ -74,7 +74,7 @@ function toDTO(r: MovimientoRow): WalletMovimientoDTO {
     origenTipo: r.origenTipo,
     origenId: r.origenId,
     descripcion: r.descripcion,
-    registradoPor: r.registradoPor,
+    // SLT-143 (B1): `r.registradoPor` NO se proyecta; ver el tipo `WalletMovimientoDTO`.
     fechaMovimiento: r.fechaMovimiento.toISOString(),
     dueno: NATURALEZA_POR_CATEGORIA[r.categoria],
     // Ficha 459 (design §7.3): el repositorio no conoce los documentos. Lo resuelve EN LOTE

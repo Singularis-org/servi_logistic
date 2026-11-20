@@ -84,7 +84,6 @@ function fila(over: Partial<WalletMovimientoDTO>): WalletMovimientoDTO {
     origenTipo: "cobro_tienda",
     origenId: COBRO_ID,
     descripcion: "Tienda Norte · Material de despacho",
-    registradoPor: null,
     fechaMovimiento: "2026-09-25T15:00:00.000Z",
     dueno: "propio",
     documento: null,

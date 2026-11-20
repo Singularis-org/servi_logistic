@@ -69,7 +69,6 @@ const PAGO_POR_CUENTA: WalletMovimientoDTO = {
   origenTipo: "pago_por_cuenta_tienda",
   origenId: "0b6c1f7e-7a44-4b43-9c1a-5e0f2d9a1c11",
   descripcion: "Tania Tienda · A Facebook · Pauta",
-  registradoPor: null,
   fechaMovimiento: NOCHE_CR,
   dueno: "terceros",
   documento: { tipo: "pago_por_cuenta_tienda", anulado: false, tieneComprobante: false },
