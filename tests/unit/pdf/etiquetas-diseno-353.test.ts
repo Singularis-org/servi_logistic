@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { jsPDF } from "jspdf";
 
 import { getHojaEtiqueta, HOJAS_ETIQUETA } from "@/lib/config/etiquetas-hoja";
+import { MONEDA_PLATAFORMA } from "@/lib/config/moneda";
 import { drawEtiqueta, ROTULO_GUIA, ROTULO_PARA } from "@/lib/pdf/etiquetas-dibujo";
 import { fuenteEtiqueta } from "@/lib/pdf/etiquetas-fuente";
 import { registrarFuente } from "@/lib/pdf/etiquetas-fuente-registro";
@@ -34,7 +35,7 @@ function dibujar(hojaId: string, dto: Parameters<typeof drawEtiqueta>[2]) {
   const doc = new jsPDF({ unit: "mm", format: [hoja.anchoMm, hoja.altoMm] });
   registrarFuente(doc, fuenteEtiqueta);
   const layout = crearLayout(hoja);
-  drawEtiqueta(doc, layout, dto, { qr: PNG_1X1, barcode: PNG_1X1 }, fuenteEtiqueta);
+  drawEtiqueta(doc, layout, dto, { qr: PNG_1X1, barcode: PNG_1X1 }, fuenteEtiqueta, MONEDA_PLATAFORMA);
   const bytes = new Uint8Array(Buffer.from(doc.output("arraybuffer")));
   return { doc, bytes, layout, hoja };
 }

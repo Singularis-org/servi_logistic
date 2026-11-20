@@ -10,7 +10,7 @@
 
 ## Bloque 1 — Formateador de topes (R10)
 
-- [ ] **T1.1** Exportar `formatearTopeEn(moneda, max, sinMonto = SIN_MONTO)` en `lib/config/moneda.ts`
+- [x] **T1.1** Exportar `formatearTopeEn(moneda, max, sinMonto = SIN_MONTO)` en `lib/config/moneda.ts`
   y actualizar su comentario (design §3).
   - En `tests/unit/config/moneda-formato-pais.test.ts`:
     - con `MONEDA_DE_PRUEBA`, `"9999999999.99"` → `€9 999 999 999`;

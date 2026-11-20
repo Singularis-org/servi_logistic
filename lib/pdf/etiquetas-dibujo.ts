@@ -1,7 +1,7 @@
 import type { jsPDF } from "jspdf";
 
 import { EMPRESA } from "@/lib/config/marca";
-import { formatearMontoEn, MONEDA_PLATAFORMA, type FormatoMoneda } from "@/lib/config/moneda";
+import { formatearMontoEn, type FormatoMoneda } from "@/lib/config/moneda";
 import type { EtiquetaGuiaDTO } from "@/lib/types/etiqueta-guia";
 
 import {
@@ -153,13 +153,14 @@ export function geografiaLegible(etiqueta: EtiquetaGuiaDTO): string {
 }
 
 /**
- * SL-21 (R14) — el importe en la moneda del pais de la empresa, que el PDF por API
- * recibe del puerto. Sin ella cae a la de la plataforma: es el generador del
- * navegador, que no conoce el pais hasta SLT-235. Un solo punto para que el
- * importe medido, el exigido a la fuente y el dibujado no puedan divergir.
+ * SL-21 (R14) — el importe en la moneda del pais de la empresa: el PDF por API la
+ * recibe del puerto y el del navegador, del proveedor de la moneda (SLT-240 R14).
+ * Sin caida a la de la plataforma: un llamador que la olvidara imprimiria otra
+ * moneda sin que nadie lo viera. Un solo punto para que el importe medido, el
+ * exigido a la fuente y el dibujado no puedan divergir.
  */
-function importeDeEtiqueta(etiqueta: EtiquetaGuiaDTO, moneda?: FormatoMoneda): string {
-  return formatearMontoEn(moneda ?? MONEDA_PLATAFORMA, etiqueta.montoCobrar);
+function importeDeEtiqueta(etiqueta: EtiquetaGuiaDTO, moneda: FormatoMoneda): string {
+  return formatearMontoEn(moneda, etiqueta.montoCobrar);
 }
 
 /**
@@ -175,7 +176,7 @@ function importeDeEtiqueta(etiqueta: EtiquetaGuiaDTO, moneda?: FormatoMoneda): s
  * rojo (R21). Sin este punto unico ese olvido seria invisible: jsPDF BORRA de la
  * cadena el caracter que la fuente no cubre y sigue adelante sin decir nada.
  */
-export function textosConFuenteEmbebida(etiqueta: EtiquetaGuiaDTO, moneda?: FormatoMoneda): string[] {
+export function textosConFuenteEmbebida(etiqueta: EtiquetaGuiaDTO, moneda: FormatoMoneda): string[] {
   const monto = importeDeEtiqueta(etiqueta, moneda);
   const otros = datosDeEtiqueta(etiqueta, moneda)
     .filter((d) => d.id !== "montoCobrar" && !seguroEnFuenteEstandar(d.valor))
@@ -211,7 +212,7 @@ export interface DatoEtiqueta {
  * siempre verde. El valor esperado sale del literal del fixture; esto sirve para
  * el ORDEN y para el cruce pantalla/papel.
  */
-export function datosDeEtiqueta(etiqueta: EtiquetaGuiaDTO, moneda?: FormatoMoneda): DatoEtiqueta[] {
+export function datosDeEtiqueta(etiqueta: EtiquetaGuiaDTO, moneda: FormatoMoneda): DatoEtiqueta[] {
   return [
     { id: "numGuia", valor: String(etiqueta.numGuia) },
     { id: "fechaCreacion", valor: etiqueta.fechaCreacion },
@@ -263,7 +264,8 @@ function mayorCuerpoQueCabe(
  *
  * La `fuente` es un parametro OBLIGATORIO por el mismo criterio que `hoja` en el
  * generador de cliente: con un default silencioso, un llamador que olvidase
- * inyectarla volveria a producir el bug del simbolo sin que nadie lo viera.
+ * inyectarla volveria a producir el bug del simbolo sin que nadie lo viera. La
+ * `moneda` tambien, por el mismo criterio (SLT-240 R14).
  *
  * Disciplina de fuentes (feature 282, intacta): la tipografia de cada texto se
  * activa ANTES de medirlo y ANTES de dibujarlo, nunca despues. Sin eso, el
@@ -276,7 +278,7 @@ export function drawEtiqueta(
   etiqueta: EtiquetaGuiaDTO,
   raster: RasterEtiqueta,
   fuente: FuenteEmbebida,
-  moneda?: FormatoMoneda,
+  moneda: FormatoMoneda,
 ): void {
   const { anchoUtil, altoUtil, cuerpos } = layout;
   const hojaId = layout.hoja.id;

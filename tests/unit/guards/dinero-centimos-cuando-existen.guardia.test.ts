@@ -14,6 +14,7 @@ import {
   formatMontoString,
   formatMontoTope,
   formatearMontoEn,
+  formatearTopeEn,
   monedaConfig,
   money,
   moneyTope,
@@ -456,6 +457,15 @@ describe("guardia 359 · diente 1 — la cola se pinta si y solo si existe", () 
     }
     expect(distintos, "un tope se desalineo del importe que se lee a su lado").toEqual([]);
     expect(porEncima, "un tope se anuncio POR ENCIMA de lo que el validador acepta").toEqual([]);
+
+    // SLT-240 (R10): `formatearTopeEn` es publico. Con la moneda de la plataforma
+    // es byte a byte `formatMontoTope` en todo el corpus; la cota con otra moneda
+    // la fija `tests/unit/config/moneda-formato-pais.test.ts`.
+    const desalineadosConMoneda = CORPUS_STRING.filter(
+      (entrada) => formatearTopeEn(MONEDA_PLATAFORMA, entrada) !== formatMontoTope(entrada),
+    );
+    expect(desalineadosConMoneda, "formatearTopeEn se separo de formatMontoTope").toEqual([]);
+    expect(formatearTopeEn(MONEDA_PLATAFORMA, null)).toBe(formatMontoTope(null));
 
     // Y las dos reglas de verdad se separan en alguna parte: sin esto, (a) podria
     // estar verde porque `moneyTope` fuera `money` con otro nombre.
