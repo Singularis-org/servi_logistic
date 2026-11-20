@@ -14,6 +14,7 @@ import { PaisRepository } from "@/lib/repositories/PaisRepository";
 import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { comoPlataforma, conEmpresa } from "@/lib/db/contexto-empresa";
 import { paraCadaEmpresa, type ClienteDeOrganizaciones } from "@/lib/db/para-cada-empresa";
+import { permitidoEnMora } from "@/lib/db/permiso-en-mora";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { loadCronConfig } from "@/lib/config/cron";
 import { loadJobsConfig } from "@/lib/config/jobs";
@@ -125,11 +126,14 @@ export function conSuEmpresa(
   return async (job) => {
     const empresa = empresaDelJob(job);
     if (empresa !== null) {
-      await conEmpresa(empresa, async () => {
-        const apagado = claves.length > 0 ? await primerModuloApagado([claves[0], ...claves.slice(1)]) : null;
-        if (apagado !== null) throw new JobDescartado(apagado);
-        await handler(job);
-      });
+      // SLT-121 (design §6.1, decision P1; R17): todo trabajo con empresa corre también con ella congelada.
+      await permitidoEnMora("sistema", () =>
+        conEmpresa(empresa, async () => {
+          const apagado = claves.length > 0 ? await primerModuloApagado([claves[0], ...claves.slice(1)]) : null;
+          if (apagado !== null) throw new JobDescartado(apagado);
+          await handler(job);
+        }),
+      );
       return;
     }
     if (!recurrente) {

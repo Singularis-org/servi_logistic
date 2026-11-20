@@ -113,3 +113,197 @@ Modificados:
 
 Veredicto: T2.6 hecha y migraciones renombradas; typecheck, lint e inventarios en verde; solo queda en rojo
 `jobs-handler-por-tipo` hasta los handlers de T3.2.
+
+## Tanda T2.3 + T2.7 — permisos y traducción de la mora (backend_dev, 2026-11-20)
+
+### Archivos
+Creados:
+- `lib/db/permiso-en-mora.ts`: `MOTIVOS_EN_MORA`, `permitidoEnMora`, `permisoEnMoraActual` (ALS propio en `globalThis`
+  con `Symbol.for`; un motivo fuera de la lista se rechaza con `TypeError`).
+- `lib/planes/empresa-congelada.ts`: `EmpresaCongelada` (`ForbiddenError`, `details.codigo = "empresa_congelada"`),
+  `traducirErrorDeMora` (SL121), `exigirEmpresaOperativa(lector?)`. El lector por defecto importa en perezoso
+  `MoraEmpresaRepository.estaCongelada()` (T2.4) y `getPrismaClient` para no cerrar el ciclo
+  `prisma-client → extension-empresa → empresa-congelada`. `MENSAJE_EMPRESA_CONGELADA` sale de `lib/planes/mora.ts`.
+- Tests: `tests/unit/db/extension-empresa-mora.test.ts`, `tests/unit/actions/wallet-egresos-mora.test.ts`,
+  `tests/unit/services/webhook-whatsapp-mora.test.ts`, `tests/unit/cron/procesar-jobs-mora.test.ts`,
+  `tests/unit/guards/mora-permiso-solo-en-lista.guardia.test.ts`.
+
+Modificados:
+- `lib/db/extension-empresa.ts`: `set_config('app.mora_permitida', …)` en la misma sentencia en los dos sitios;
+  `traducirError` = `traducirErrorDeMora(traducirErrorDeEmpresa(e))` en los dos `traducir`.
+- `lib/actions/wallet-egresos.ts`: permiso `pago_plataforma` solo si `data.tipoEgreso === "pago_plataforma"`; el
+  `FORBIDDEN` del borde pasa a `{ status: "forbidden" }` (antes lanzaba «AppErrorCode inesperado»).
+- `lib/actions/wallet-anulacion.ts` (P3): `anularEgresoCajaAction` lee la categoría del egreso (dep
+  `categoriaDelEgreso`, por defecto `WalletMovimientoRepository.obtenerPorId`) y concede `pago_plataforma` solo a
+  `egreso_pago_plataforma`; `FORBIDDEN` → `forbidden`.
+- `lib/actions/confirmar-correo.ts` (solo el canje, `cuenta_propia`), `push.ts` (registrar, preferencia, baja),
+  `notificaciones.ts` (marcar todas, descartar), `vistas-filtro.ts` (guardar, renombrar, actualizar, eliminar).
+- `lib/services/WebhookWhatsappService.ts`: los dos `conEmpresa` con `whatsapp_entrante`.
+- `app/api/cron/procesar-jobs/route.ts` (`conSuEmpresa`) y `lib/db/para-cada-empresa.ts`: `sistema`.
+- `tests/unit/db/extension-empresa.test.ts`: `esSetConfigDe` espera ahora dos valores (empresa y permiso vacío).
+
+### Desvíos frente al spec
+- Design §6.1 dice `data.categoria === "egreso_pago_plataforma"`; el schema real no tiene `categoria`, tiene
+  `tipoEgreso`: se usa `data.tipoEgreso === "pago_plataforma"` (que `TIPO_EGRESO_MANUAL_A_CATEGORIA` mapea a esa
+  categoría).
+- P3 (anulación): el permiso se decide con una lectura previa de la categoría en la action (el design no dice cómo).
+  «Por confirmar» lo sigue imponiendo el trigger `pago_plataforma_no_anular_confirmado` (SLT-60).
+- `toEgresoActionError` y `toAnulacionActionError` traducen `FORBIDDEN` (antes lanzaban): sin eso, el «forbidden»
+  de R12 que pide `wallet-egresos-mora.test.ts` era una excepción.
+- En `notificaciones.ts`, `notificarCargaMasivaTerminada` queda SIN permiso: no es de la propia cuenta.
+
+### R → test (esta tanda)
+| R | Test |
+|---|---|
+| R11 (wallet: pago a la plataforma y anulación P3) | `wallet-egresos-mora.test.ts` |
+| R11 (envoltura con el motivo, fuera y dentro de tx) | `extension-empresa-mora.test.ts` |
+| R11, R15, R17 (lista cerrada de permisos y motivos) | `mora-permiso-solo-en-lista.guardia.test.ts` |
+| R12 (gasto/anulación con la empresa congelada → `forbidden`) | `wallet-egresos-mora.test.ts` |
+| R13/R16 (SL121 → `EmpresaCongelada`; `withErrorHandler` → `FORBIDDEN` + `details.codigo`) | `extension-empresa-mora.test.ts` |
+| R15 | `webhook-whatsapp-mora.test.ts` |
+| R17 | `procesar-jobs-mora.test.ts` |
+| §6.2 `exigirEmpresaOperativa` (congelada, operativa, sin empresa, fallo) | `extension-empresa-mora.test.ts` |
+
+### Verificación (salida real)
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: verde (`tsc --noEmit` sin errores), con los archivos
+  de T2.4/T2.5 del otro agente ya en el árbol.
+- `pnpm run lint`: `0 errors, 249 warnings` (heredados); `eslint` sobre los 19 archivos de esta tanda: limpio.
+- `pnpm exec vitest run` de 31 archivos unitarios (los 5 nuevos + extension-empresa, para-cada-empresa(-modulo),
+  contexto-empresa-una-instancia, prisma-transaccion, wallet-egresos-actions, wallet-egresos.composition-root,
+  wallet-anulacion-service, confirmar-correo, push-action, vistas-filtro-action, marco-superadmin-sin-empresa,
+  webhook-whatsapp-{service,pais-incompleto,entregas,por-empresa}, procesar-jobs-{modulos,plan-cambio,registro,
+  registro-envios}, crons-sin-empresas, plataforma-solo-en-lista, sql-a-mano-por-empresa, alta-push, baja-push,
+  notificacion-service): **31 archivos, 495 tests, 0 fallidos**.
+- Integración que importa los archivos tocados (aislamiento-wallet, pago-plataforma-*, empresas-plataforma-deuda,
+  descarga-pago-plataforma…): ROJA por el entorno, no por el cambio. `prisma migrate status` sobre la base de la
+  feature: «not yet applied: 20261126120000_mora_enums, 20261126120100_mora_congelamiento» y «found in the database,
+  not locally: 20261124120000_cobro_historial_enum, 20261124120100_cobro_intento» (las de SLT-226). El cliente de
+  Prisma pide `congelada_at` y la base no la tiene («The column `(not available)` does not exist»). No reaplico
+  migraciones: la base parece compartida con otro trabajo.
+
+Veredicto: T2.3 y T2.7 hechas; typecheck, lint y 495 unitarios en verde; la integración queda pendiente de que la
+base de la feature vuelva a tener las migraciones de la mora.
+
+## Tanda 2: T2.1, T2.2, T2.4 y T2.5 (backend_dev, 2026-11-20)
+
+### Base de datos usada
+`servi_logistic_slt121` (`prisma migrate status`: «Database schema is up to date!»). La URL del scratchpad del leader
+(`dburl`) apunta a `servi_logistic_slt226`, la base de SLT-226 «Cobro automático: modelo del cobro e
+idempotencia», que no tiene las migraciones de la mora. Allí solo corrió una pasada de tests en transacciones
+revertidas, que fallaron por la columna que falta: no se escribió ni se migró nada. Es también la causa del rojo de
+integración de la sección de T2.3 y T2.7, justo arriba.
+
+### Archivos
+Creados:
+- `lib/config/factura-gracia.ts`: `diasDeGraciaGlobal(env)` (T2.1).
+- `lib/planes/mora.ts`: la gemela pura (T2.2).
+  - Funciones: `fechaLimiteDePago`, `venceEn`, `estaVencida`, `enFranjaDeMadrugada`, `estadoDeMora`.
+  - Textos: `MORA_TEXTOS` y `MENSAJE_EMPRESA_CONGELADA`.
+  - Tipos: `FilaMora`, `FacturaVencida`, `OrganizacionMora`, `EstadoMora`.
+- `lib/interfaces/repositories/IMoraEmpresaRepository.ts` y `lib/repositories/MoraEmpresaRepository.ts` (T2.4).
+- `lib/repositories/_shared/encolar-aviso-mora.ts`: el payload de `mora_aviso_correo`, las dedupes de §4.2 y el
+  encolado en la transacción. Lo usan el repositorio y el recálculo; T3.2 importa el tipo.
+- `lib/planes/mora-recalcular.ts`: `recalcularCongelamiento` (T2.5).
+- Tests:
+  - `tests/unit/config/factura-gracia.test.ts`;
+  - `tests/unit/planes/mora.test.ts`;
+  - `tests/integration/repositories/mora-empresa-repository.test.ts`;
+  - `tests/integration/repositories/pago-plataforma-recalcula-mora.test.ts`.
+
+Modificados:
+- `.env.example`: `FACTURA_DIAS_GRACIA=`.
+- `lib/db/excepciones-aislamiento.ts`: la entrada de `MoraEmpresaRepository.ts` en `EXCEPCIONES_DE_PLATAFORMA`
+  (`SL-24`). Solo esa entrada.
+- `lib/repositories/PagoPlataformaConfirmacionRepository.ts`: `confirmar`, `registrarPorFuera` y
+  `anularConfirmado` van en `$transaction` y llaman a `recalcularCongelamiento` tras un `ok`. El contrato no cambia.
+- `tests/unit/guards/historial-accion-escrituras-cubiertas.guardia.test.ts`: cuatro entradas nuevas en el `CENSO` y
+  `ESCRITOR_PENDIENTE_EN_CURSO` vacío.
+- `tests/unit/guards/historial-accion-sin-datos-cliente.guardia.test.ts`:
+  - `MoraEmpresaRepository.ts` y `lib/planes/mora-recalcular.ts` entran en `PUNTOS_DE_ESCRITURA`;
+  - la excepción P5 pierde `escritorPendiente`;
+  - `ARCHIVOS_CON_ESCRITOR_PENDIENTE` queda vacío.
+- `tests/unit/actions/pagos-plataforma.test.ts` (SLT-60 y SLT-143):
+  - el cliente falso gana `$transaction`;
+  - los dos casos que contaban una sola llamada a `$queryRaw` cuentan dos. La segunda es la lectura del recálculo.
+
+### Desvíos frente al spec
+- **Sin entrada en `_pais-sin-literales-excepciones.ts`.**
+  - `mora.ts` no escribe la zona. Toma la hora de la plataforma de `lib/planes/ciclo.ts` (`fechaCalendarioPlataforma`,
+    `inicioDelDiaPlataforma`, `horaDeParedPlataforma`), que ya es excepción a cargo de SLT-90.
+  - Una entrada sin literal pone roja la guardia `pais-sin-literales` («la lista solo baja»), y el tope está lleno
+    (8 de 8).
+- **`recalcularCongelamiento` admite un 5.º parámetro opcional, `gracia`**, que por defecto vale
+  `diasDeGraciaGlobal()`. `fijarGracia` le pasa la gracia global que recibe, y los tests la fijan. La llamada de
+  cuatro argumentos de §5.2 (la de SLT-226) no cambia.
+- **El recálculo lee primero `congelada_at`, sin bloquear.** Solo si la empresa está congelada llama a
+  `organizacion_mora_descongelar_si_pagada`.
+  - Sin esa lectura, `pago-plataforma-confirmacion.test.ts` > «R21: A anula y el superadmin confirma el mismo pago a la
+    vez» daba `40P01` (deadlock).
+  - La causa: la anulación de la empresa toma `FOR KEY SHARE` sobre `organizacion` (la FK del contra-asiento) y espera
+    el candado `pago_plataforma:`. La confirmación ya tiene ese candado y pide `FOR UPDATE` sobre la misma fila.
+  - **Queda abierto:** con la empresa congelada, el mismo cruce sigue siendo posible. Es la decisión P3: la empresa
+    anula su pago por confirmar mientras el superadmin lo confirma. Arreglarlo de raíz pide `FOR NO KEY UPDATE` en las
+    tres funciones `organizacion_mora_*` (migración de la Tanda 1). Lo decide el leader.
+- **Los tipos del dominio viven en `lib/planes/mora.ts` y en la interfaz**, no en `lib/types/mora.ts` (que es de
+  T4.1). T4.1 puede reexportarlos.
+- **`fijarGracia` toma la empresa con `FOR NO KEY UPDATE`**, no con el «FOR UPDATE» del design. Es la misma razón que
+  en `TopeIntentosRepository`: no frenar las FK de las escrituras de la empresa.
+- **Empresa inexistente en `fijarGracia`:** lanza un `Error`. El design no lo dice; el servicio (T4.1) debería
+  responder `not_found` antes.
+
+### R → test (esta tanda)
+| R | Test |
+|---|---|
+| R1 | `tests/unit/planes/mora.test.ts` > «fechaLimiteDePago y venceEn con la tabla compartida» (los 11 casos de `fecha-limite-pago.ts`) |
+| R2 | `tests/unit/config/factura-gracia.test.ts`: ausente, vacía, «abc», «0», «61», «7.5», «-3» y «15abc» dan 7; «15», «1», «60» y « 30 » se toman |
+| R3 | `mora-empresa-repository.test.ts` > «R3, R30: de la global a 15 y de vuelta…» |
+| R5 | `mora-empresa-repository.test.ts` > «R5, R28, R30: … la descongela en el acto» y «R5: subir la gracia sin dejar la factura en plazo no descongela; bajarla nunca congela» |
+| R6 | `mora.test.ts` > «estaVencida»: tabla compartida, el milisegundo anterior, saldo 0 y negativo |
+| R7, R27 | `mora-empresa-repository.test.ts` > «R7, R27, R30: congela y … deja la fila y el correo» |
+| R8 | `mora.test.ts` > «enFranjaDeMadrugada»; `mora-empresa-repository.test.ts` > «R8: fuera de la franja…» |
+| R9 | `mora-empresa-repository.test.ts` > «R9: repetir la corrida…» |
+| R19 | `pago-plataforma-recalcula-mora.test.ts`: confirmar el pago que salda, un pago parcial, registrar por fuera |
+| R20 | `pago-plataforma-recalcula-mora.test.ts` > «R20: un pago … por confirmar no la descongela» |
+| R21 | `pago-plataforma-recalcula-mora.test.ts` > «R21: anular un pago confirmado no congela en el acto» |
+| R22 | `mora-empresa-repository.test.ts` > «R22, R28, R30: descongela hasta la fecha…», «decisión P5: … recortado a 200» y «R22: … no_congelada» |
+| R24 | `mora.test.ts` > «estadoDeMora en sus cinco estados» y «textos»; `mora-empresa-repository.test.ts` > «R24, §6.2: la empresa lee su mora…» |
+| R26 | `mora-empresa-repository.test.ts` > «R26: encola el recordatorio… a las 08:00…» |
+| R28 | el trabajo `descongelada`: `mora-empresa-repository.test.ts` (por gracia y a mano) y `pago-plataforma-recalcula-mora.test.ts` (por pago) |
+| R29 | los mismos tests: el trabajo entra en la transacción del cambio. Además, «R30: si el registro falla, la empresa no queda congelada» |
+| R30 | `mora-empresa-repository.test.ts` (las cuatro filas del repositorio, con actor, monto y valores) y `pago-plataforma-recalcula-mora.test.ts` (la fila por pago); guardias `historial-accion-escrituras-cubiertas` y `historial-accion-sin-datos-cliente` |
+| R31, R32 | `mora-empresa-repository.test.ts` > «R32, R31: el superadmin ve la gracia propia, las facturas … y el historial» |
+| R33 | `mora-empresa-repository.test.ts` > «R33: sin empresa en el contexto…»; también `factura-plataforma-mora.test.ts` (Tanda 1) |
+| R34 | `pago-plataforma-recalcula-mora.test.ts` > «R34: si el recálculo falla, la confirmación se deshace» y «… ya_confirmado no recalcula» |
+
+### Verificación (salida real)
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: `tsc --noEmit`, exit 0, con los archivos de
+  T2.3 y T2.7 que había en disco en ese momento.
+- `pnpm run lint`: exit 0, `0 errors, 249 warnings` (heredados). `eslint` sobre los 15 archivos de esta tanda: exit
+  0, sin avisos.
+- `pnpm exec vitest run` sobre la base `servi_logistic_slt121`: 18 archivos, 526 tests; 526 pasados, 0 fallidos, 0
+  saltados.
+
+  | Archivo | Pasados |
+  |---|---|
+  | `mora-empresa-repository` | 15/15 |
+  | `pago-plataforma-recalcula-mora` | 7/7 |
+  | `pagos-plataforma` (unit) | 28/28 |
+  | `factura-plataforma-mora` | 5/5 |
+  | `mora-congelar` | 10/10 |
+  | `pago-plataforma-confirmacion` | 22/22 |
+  | `pago-plataforma-por-fuera` | 21/21 |
+  | `factura-gracia` | 13/13 |
+  | `mora` | 37/37 |
+  | `catalogo-y-choke-point` | 58/58 |
+  | `pago-plataforma-confirmacion-service` | 99/99 |
+  | `env-example-sin-valores` (guardia) | 4/4 |
+  | `historial-accion-escrituras-cubiertas` (guardia) | 105/105 |
+  | `historial-accion-punto-unico` (guardia) | 7/7 |
+  | `historial-accion-sin-datos-cliente` (guardia) | 34/34 |
+  | `pais-sin-literales` (guardia) | 35/35 |
+  | `plataforma-solo-en-lista` (guardia) | 7/7 |
+  | `sql-a-mano-por-empresa` (guardia) | 19/19 |
+- Los cuatro archivos de integración (SLT-60, SLT-143 y los dos nuevos), en tres pasadas seguidas: 65/65 en cada una.
+
+Veredicto: T2.1, T2.2, T2.4 y T2.5 hechas y en verde contra `servi_logistic_slt121`. Queda abierto el deadlock con la
+empresa congelada (P3), que pide `FOR NO KEY UPDATE` en las funciones de la Tanda 1.

@@ -24,21 +24,21 @@
 
 ## Tanda 2 — Dominio y bloqueo en la app (backend_dev)
 
-- [ ] **T2.1** [P] `lib/config/factura-gracia.ts` + `.env.example` + test (R2).
+- [x] **T2.1** [P] `lib/config/factura-gracia.ts` + `.env.example` + test (R2).
       *Hecho:* los seis casos de `factura-gracia.test.ts`.
-- [ ] **T2.2** [P] `lib/planes/mora.ts` (puro) + entrada en `tests/unit/guards/_pais-sin-literales-excepciones.ts` +
+- [x] **T2.2** [P] `lib/planes/mora.ts` (puro) + entrada en `tests/unit/guards/_pais-sin-literales-excepciones.ts` +
       `tests/unit/planes/mora.test.ts`, con la tabla de T1.3 (R1, R6, R8, R24).
       *Hecho:* la gemela TS da lo mismo que SQL en todos los casos.
-- [ ] **T2.3** `lib/db/permiso-en-mora.ts` y la envoltura de `lib/db/extension-empresa.ts` (`app.mora_permitida` en los
+- [x] **T2.3** `lib/db/permiso-en-mora.ts` y la envoltura de `lib/db/extension-empresa.ts` (`app.mora_permitida` en los
       dos sitios); `lib/planes/empresa-congelada.ts` (`EmpresaCongelada`, `traducirErrorDeMora`,
       `exigirEmpresaOperativa`); la traducción en los dos `traducir` de la extensión (design §6.1, §6.2).
       Depende de T1.2.
       *Hecho:* `tests/unit/db/extension-empresa-mora.test.ts` en verde; `withErrorHandler` da `FORBIDDEN` con
       `details.codigo = "empresa_congelada"`.
-- [ ] **T2.4** `MoraEmpresaRepository` + `IMoraEmpresaRepository` + entrada en `lib/db/excepciones-aislamiento.ts`
+- [x] **T2.4** `MoraEmpresaRepository` + `IMoraEmpresaRepository` + entrada en `lib/db/excepciones-aislamiento.ts`
       (design §5.1). Depende de T1.2, T2.1 y T2.2.
       *Hecho:* `mora-empresa-repository.test.ts` (R5, R22, R30, R31, R32).
-- [ ] **T2.5** `lib/planes/mora-recalcular.ts` y el enganche en `PagoPlataformaConfirmacionRepository` (las tres
+- [x] **T2.5** `lib/planes/mora-recalcular.ts` y el enganche en `PagoPlataformaConfirmacionRepository` (las tres
       operaciones en `$transaction`; contrato sin cambios) (design §5.2). Depende de T2.4.
       *Hecho:* `pago-plataforma-recalcula-mora.test.ts` (R19, R20, R21, R34); los tests existentes de SLT-60 y
       SLT-143 siguen en verde.
@@ -46,7 +46,7 @@
       `lib/types/historial-accion-etiquetas.ts`; guardias del historial enmendadas, con la excepción de la decisión P5,
       que Carlos Restrepo acepta en la review del PR (R30). Depende de T1.1.
       *Hecho:* `historial-accion-*.guardia` en verde.
-- [ ] **T2.7** Permisos de §6.1:
+- [x] **T2.7** Permisos de §6.1:
       - `wallet-egresos.ts` y `wallet-anulacion.ts` (decisión P3);
       - `confirmar-correo.ts`;
       - `push.ts`, `notificaciones.ts` y `vistas-filtro.ts` (decisión P2);

@@ -2,6 +2,7 @@ import type { ModuloApagable } from "@prisma/client";
 
 import { comoPlataforma, conEmpresa } from "./contexto-empresa";
 import { getPrismaClient } from "./prisma-client";
+import { permitidoEnMora } from "./permiso-en-mora";
 
 // SL-17 (R16) — un cron o job recurrente que toca datos de negocio corre una vez por empresa,
 // cada vez con esa empresa en contexto: asi el filtro y la RLS le aplican igual que a una
@@ -75,7 +76,9 @@ export async function paraCadaEmpresa(
   // job por empresa en paralelo lo agotaria con pocas empresas.
   for (const { id } of organizaciones) {
     try {
-      await conEmpresa(id, () => fn(id));
+      // SLT-121 (design §6.1, decision P1; R17): los crons y recurrentes siguen corriendo para una empresa
+      // congelada. El permiso es «sistema»: no lo da ninguna persona.
+      await permitidoEnMora("sistema", () => conEmpresa(id, () => fn(id)));
       resumen.ok.push(id);
     } catch (error) {
       // Una empresa con datos raros no puede dejar sin correr el job de las demas.

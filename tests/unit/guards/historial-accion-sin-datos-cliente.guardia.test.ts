@@ -111,18 +111,23 @@ const PUNTOS_DE_ESCRITURA = [
   // SL-36 (R33). Sus cinco bloques llevan el NOMBRE del servicio y, en la prueba, el codigo del
   // catalogo: ni la credencial, ni su cifrado, ni el numero de WhatsApp, ni el texto del proveedor.
   "lib/repositories/IntegracionRepository.ts",
+  // SLT-121 (R30). `MoraEmpresaRepository` lleva la excepcion P5 (el motivo del descongelamiento a mano); sus
+  // otras dos filas y las de `mora-recalcular` no llevan texto libre, y se barren como las demas.
+  "lib/repositories/MoraEmpresaRepository.ts",
+  "lib/planes/mora-recalcular.ts",
 ] as const;
 
 const FUENTE_ETIQUETAS = "lib/types/historial-accion-etiquetas.ts";
 
 /**
- * SLT-121 — el archivo de una excepcion cuyo escritor aun no existe (T2.4). En cuanto exista, entra
- * en `PUNTOS_DE_ESCRITURA` y la excepcion pierde `escritorPendiente` (lo exige el ultimo test).
+ * El archivo de una excepcion cuyo escritor aun no existe. En cuanto exista, entra en
+ * `PUNTOS_DE_ESCRITURA` y la excepcion pierde `escritorPendiente` (lo exige el ultimo test). Vacia desde
+ * SLT-121 T2.4, que escribio `MoraEmpresaRepository.descongelarAMano`.
  */
-const ARCHIVOS_CON_ESCRITOR_PENDIENTE = ["lib/repositories/MoraEmpresaRepository.ts"] as const;
+const ARCHIVOS_CON_ESCRITOR_PENDIENTE: readonly string[] = [];
 
 interface ExcepcionDeclarada {
-  archivo: (typeof PUNTOS_DE_ESCRITURA)[number] | (typeof ARCHIVOS_CON_ESCRITOR_PENDIENTE)[number];
+  archivo: (typeof PUNTOS_DE_ESCRITURA)[number];
   accion: string;
   motivo: string;
   /** La tarea que escribira la entrada, mientras aun no exista. */
@@ -146,7 +151,6 @@ const EXCEPCIONES_DECLARADAS: readonly ExcepcionDeclarada[] = [
     accion: "empresa_descongelada_a_mano",
     motivo:
       "SLT-121 P5: el motivo del descongelamiento a mano, recortado a 200; Carlos Restrepo la acepta en la review del PR",
-    escritorPendiente: "SLT-121 T2.4 (MoraEmpresaRepository.descongelarAMano)",
   },
 ];
 
@@ -398,7 +402,7 @@ describe("SLT-221/D10 — solo las entradas declaradas pueden llevar la cedula o
       // Una excepcion «pendiente» cuyo escritor ya existe se queda vieja: quitar `escritorPendiente`.
       if (e.escritorPendiente !== undefined) expect(tiene, `${e.accion} ya tiene escritor`).toBe(false);
       // SLT-121: un archivo pendiente solo vale para una excepcion pendiente.
-      if ((ARCHIVOS_CON_ESCRITOR_PENDIENTE as readonly string[]).includes(e.archivo)) {
+      if (ARCHIVOS_CON_ESCRITOR_PENDIENTE.includes(e.archivo)) {
         expect(e.escritorPendiente, `${e.archivo} ya existe: pasalo a PUNTOS_DE_ESCRITURA`).toBeDefined();
       }
       // SLT-121: una excepcion con escritor tiene que estar en el barrido; si no, no exceptua nada.

@@ -808,6 +808,42 @@ const CENSO: EntradaCenso[] = [
     forma: "recibe_tx",
     mutacion: /tx\.\$executeRaw`UPDATE "organizacion" SET \$\{SIN_PENDIENTE\} WHERE "id"/,
   },
+  // --- SLT-121 (design §5.1, §5.2; R5, R19, R22, R30) · la mora de una empresa ---
+  //
+  // Un metodo por tipo, salvo los dos «descongelada por pago / por gracia», que comparten el unico punto
+  // de recalculo (R34) y se eligen por la causa. Los tres de `MoraEmpresaRepository` corren en
+  // `comoPlataforma` y abren su `$transaction` ahi dentro; la mutacion es la funcion del dueño que cambia
+  // la empresa (o el UPDATE de la gracia). `recalcularCongelamiento` recibe la `tx` de quien cambio el saldo
+  // o la gracia. Que las filas y los trabajos se escriban de verdad, en la misma transaccion, lo prueban
+  // `tests/integration/repositories/mora-empresa-repository.test.ts` y `pago-plataforma-recalcula-mora.test.ts`.
+  {
+    tipos: ["empresa_congelada"],
+    archivo: "lib/repositories/MoraEmpresaRepository.ts",
+    metodo: "congelarSiVencida",
+    forma: "abre_tx",
+    mutacion: /organizacion_mora_congelar\(/,
+  },
+  {
+    tipos: ["empresa_descongelada_a_mano"],
+    archivo: "lib/repositories/MoraEmpresaRepository.ts",
+    metodo: "descongelarAMano",
+    forma: "abre_tx",
+    mutacion: /organizacion_mora_descongelar_a_mano\(/,
+  },
+  {
+    tipos: ["factura_dias_gracia_cambiada"],
+    archivo: "lib/repositories/MoraEmpresaRepository.ts",
+    metodo: "fijarGracia",
+    forma: "abre_tx",
+    mutacion: /tx\.\$executeRaw`\s*UPDATE "organizacion" SET "factura_dias_gracia"/,
+  },
+  {
+    tipos: ["empresa_descongelada_por_pago", "empresa_descongelada_por_gracia"],
+    archivo: "lib/planes/mora-recalcular.ts",
+    metodo: "recalcularCongelamiento",
+    forma: "recibe_tx",
+    mutacion: /organizacion_mora_descongelar_si_pagada\(/,
+  },
 ];
 
 /**
@@ -862,20 +898,8 @@ interface TiposConEscritorPendiente {
   tarea: string;
 }
 
-// SLT-52 T6.2, SLT-77 T2.2 y SLT-221 (PR 2) ya escriben sus tipos (ver el censo).
-// SLT-121: los cinco de la mora entran en el enum en T1.1 y los escriben T2.4 y T2.5 de la misma rama.
-const ESCRITOR_PENDIENTE_EN_CURSO: TiposConEscritorPendiente[] = [
-  {
-    tipos: ["empresa_congelada", "empresa_descongelada_a_mano", "factura_dias_gracia_cambiada"],
-    ficha: "SLT-121",
-    tarea: "T2.4 (MoraEmpresaRepository: congelarSiVencida, descongelarAMano, fijarGracia)",
-  },
-  {
-    tipos: ["empresa_descongelada_por_pago", "empresa_descongelada_por_gracia"],
-    ficha: "SLT-121",
-    tarea: "T2.5 (mora-recalcular.recalcularCongelamiento)",
-  },
-];
+// SLT-52 T6.2, SLT-77 T2.2, SLT-221 (PR 2) y SLT-121 (T2.4, T2.5) ya escriben sus tipos (ver el censo).
+const ESCRITOR_PENDIENTE_EN_CURSO: TiposConEscritorPendiente[] = [];
 
 /** Los archivos `.ts` de `lib/`, relativos a la raiz. */
 function archivosDeLib(dir = "lib"): string[] {
@@ -1330,7 +1354,7 @@ describe("362/R16 — cada tipo del catalogo tiene al menos un punto de escritur
     // 88 desde SLT-221 (`usuario_cedula_cambiada`, de `UserRepository.update`, y
     // `usuario_email_cambiado`, de `UserRepository.aplicarCambioCorreo`).
     // 90 desde SLT-225 (`zona_desactivada`/`zona_reactivada`, de `ZonaRepository.desactivar`/`reactivar`).
-    // 95 desde SLT-121 (los cinco de la mora; escritor pendiente en `ESCRITOR_PENDIENTE_EN_CURSO`).
+    // 95 desde SLT-121 (los cinco de la mora, escritos por `MoraEmpresaRepository` y `mora-recalcular`).
     expect(HISTORIAL_ACCION_TIPOS).toHaveLength(95);
   });
 });

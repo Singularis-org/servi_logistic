@@ -4,6 +4,7 @@ import { getPrismaClient } from "@/lib/db/prisma-client";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import type { AppErrorShape } from "@/lib/errors";
+import { permitidoEnMora } from "@/lib/db/permiso-en-mora";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IEgresoCajaAnulacionService } from "@/lib/interfaces/services/IEgresoCajaAnulacionService";
 import type { IWalletAnulacionService } from "@/lib/interfaces/services/IWalletAnulacionService";
@@ -47,7 +48,8 @@ function toAnulacionActionError(
   shape: AppErrorShape,
 ):
   | { status: "validation_error"; fieldErrors: Record<string, string[]> }
-  | { status: "unauthenticated" } {
+  | { status: "unauthenticated" }
+  | { status: "forbidden" } {
   switch (shape.code) {
     case "VALIDATION_ERROR":
       return {
@@ -56,6 +58,10 @@ function toAnulacionActionError(
       };
     case "UNAUTHORIZED":
       return { status: "unauthenticated" };
+    // SLT-121 (design §6.4; R12): la base rechaza la anulacion de una empresa congelada (`EmpresaCongelada`).
+    // Las dos actions ya devuelven `forbidden` como resultado de dominio.
+    case "FORBIDDEN":
+      return { status: "forbidden" };
     default:
       throw new Error(`wallet-anulacion: AppErrorCode inesperado ${shape.code}`);
   }
@@ -70,6 +76,10 @@ function buildEgresoService(): IEgresoCajaAnulacionService {
   );
 }
 
+async function categoriaDelLibro(movimientoId: string): Promise<string | null> {
+  return (await new WalletMovimientoRepository(getPrismaClient()).obtenerPorId(movimientoId))?.categoria ?? null;
+}
+
 function buildRouter(): IWalletAnulacionService {
   return new WalletAnulacionService(new WalletAnulacionDestinoRepository(getPrismaClient()));
 }
@@ -78,6 +88,11 @@ export interface WalletAnulacionDeps {
   egresos?: IEgresoCajaAnulacionService;
   router?: IWalletAnulacionService;
   getActor?: () => Promise<Actor | null>;
+  /**
+   * SLT-121 (decision P3): la categoria del egreso a anular, para conceder el permiso de la mora solo al pago
+   * a la plataforma. Por defecto la lee del libro; inyectable para test.
+   */
+  categoriaDelEgreso?: (movimientoId: string) => Promise<string | null>;
   /** Solo tests: sustituye la action de un camino (con el MISMO actor ya resuelto). */
   caminos?: Partial<Record<CaminoAnulacion, (id: string, motivo: string, actor: Actor) => Promise<ResultadoDeCamino>>>;
 }
@@ -98,7 +113,14 @@ export async function anularEgresoCajaAction(
     if (!actor) throw new UnauthenticatedError(); // antes de evaluar ningun otro dato
     const data = anularEgresoCajaSchema.parse(input); // ZodError -> VALIDATION_ERROR
     const service = deps.egresos ?? buildEgresoService();
-    return service.anular(data, actor);
+    // SLT-121 (design §6.1, decision P3): con la empresa congelada, anular su propio pago a la plataforma
+    // por confirmar es parte de pagar, y pasa. Uno ya confirmado lo sigue rechazando su trigger
+    // (`pago_plataforma_no_anular_confirmado`, SLT-60); cualquier otro egreso lo rechaza la base (R12). La
+    // categoria de un movimiento del libro no cambia, asi que leerla antes no abre una carrera.
+    const categoria = await (deps.categoriaDelEgreso ?? categoriaDelLibro)(data.movimientoId);
+    return categoria === "egreso_pago_plataforma"
+      ? permitidoEnMora("pago_plataforma", () => service.anular(data, actor))
+      : service.anular(data, actor);
   });
   return isAppErrorShape(r) ? toAnulacionActionError(r) : r;
 }

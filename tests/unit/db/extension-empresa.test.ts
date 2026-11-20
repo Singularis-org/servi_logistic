@@ -104,13 +104,17 @@ function crearDoble(opciones: { resultado?: unknown; falla?: unknown } = {}) {
   return { base: base as unknown as PrismaClient, ejecutadas, lotes, interactivas, $transaction: base.$transaction };
 }
 
-/** Lo que se espera que la envoltura anteponga (design §6.3). */
+/**
+ * Lo que se espera que la envoltura anteponga (design §6.3). SLT-121 (design §6.1) suma un segundo valor,
+ * el permiso de la mora; sin `permitidoEnMora` va vacio (lo prueba `extension-empresa-mora.test.ts`).
+ */
 function esSetConfigDe(item: unknown, id: string): boolean {
   const m = item as MarcaSetConfig;
   return (
     m?.[SET_CONFIG] === true &&
-    m.valores.length === 1 &&
+    m.valores.length === 2 &&
     m.valores[0] === id &&
+    m.valores[1] === "" &&
     m.sql.includes("set_config('app.organizacion_id', ?, true)") &&
     m.sql.includes("set_config('role', 'servi_app', true)")
   );
