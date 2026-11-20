@@ -77,9 +77,9 @@
 - [x] **T5.2** `docs/architecture.md`: un párrafo «Moneda e impuesto (SL-21)» junto al de SLT-42.
   Explica las columnas, el puerto, `formatearMontoEn`, `MONEDA_DE_LOS_PLANES` y la guardia.
   - *Hecho:* el reviewer lo encuentra y cuadra con el código.
-- [ ] **T5.3** Cierre.
+- [x] **T5.3** Cierre.
   - `./init.sh` en verde.
-  - E2E en local del grupo `dinero` y de los que tocan etiquetas, plantillas y facturas
+  - (2026-11-20: en esta sesión, al CI por memoria; constancia en la bitácora) E2E en local del grupo `dinero` y de los que tocan etiquetas, plantillas y facturas
     (`docs/perfil-agentes.md > E2E en local antes del PR`), sobre una base desechable.
   - El mapa R → test va en `progress/impl_SL-21.md` (R22).
   - *Hecho:* todo verde y el mapa con los 22 requisitos.

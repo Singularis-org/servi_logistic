@@ -290,3 +290,45 @@ Grafo: no usado (worktree sin indexar); Grep/Read.
 
 ### Veredicto
 T5.1 y T5.2 hechas y en verde; recuentos al día. Queda T5.3 (init.sh y E2E en local).
+
+## Cierre (T5.3) · implementer · 2026-11-20
+
+### Mapa R → test consolidado (R22)
+| R | Test |
+|---|---|
+| R1 | `tests/integration/db/migracion-sl21-ida-y-vuelta.test.ts`, `tests/integration/db/pais-moneda-impuesto.test.ts` |
+| R2 | `tests/integration/db/pais-moneda-impuesto.test.ts` (17 casos, 23514) |
+| R3 | `tests/integration/db/migracion-sl21-ida-y-vuelta.test.ts` |
+| R4 | `tests/integration/db/pais-moneda-impuesto.test.ts` (42501 como `servi_app`) |
+| R5 | `tests/unit/services/reglas-pais-empresa-service.test.ts`, `tests/integration/db/pais-repositorio.test.ts` |
+| R6 | `tests/unit/services/reglas-pais-empresa-service.test.ts`; además `whatsapp-moneda-por-pais`, `informe-moneda-por-pais` y `etiquetas-lote-pdf-service` (falla antes de enviar o subir) |
+| R7 | `tests/unit/services/reglas-pais-empresa-service.test.ts` |
+| R8 | `tests/unit/config/moneda-formato-pais.test.ts` |
+| R9 | `tests/unit/guards/dinero-centimos-cuando-existen.guardia.test.ts`, `tests/unit/config/moneda-formato-pais.test.ts` (CR migrada = plataforma) |
+| R10 | `tests/unit/services/whatsapp-moneda-por-pais.test.ts` |
+| R11 | `tests/unit/services/whatsapp-moneda-por-pais.test.ts` |
+| R12 | `tests/unit/whatsapp-envios/informe-moneda-por-pais.test.ts` |
+| R13 | `tests/unit/whatsapp-envios/informe-moneda-por-pais.test.ts` |
+| R14 | `tests/unit/services/etiquetas-lote-pdf-service.test.ts` |
+| R15 | `tests/unit/planes/factura-moneda-plataforma.test.ts` |
+| R16 | casos CR de los tests nuevos de R10, R12, R14 y R15, y los existentes sin cambiar valores esperados: `plantilla-datos`, `informe-transito-calculo`, `informe-transito-pdf`, PDF de etiquetas y facturas |
+| R17 | `tests/unit/services/organizacion-service-pais.test.ts`, `tests/integration/db/organizacion-alta.test.ts` |
+| R18 | `tests/unit/utils/monto-cobrar-por-pais.test.ts` |
+| R19 | `tests/integration/db/migracion-sl21-ida-y-vuelta.test.ts` (enums y `wallet_movimiento` iguales) y los tests de contrato de `tests/unit/api/openapi-*.test.ts` sin cambios (20 files, 255 passed el 2026-11-20); `lib/api/openapi-spec.ts` fuera del diff |
+| R20 | `tests/unit/guards/pais-sin-literales.guardia.test.ts` |
+| R21 | `tests/unit/guards/pais-sin-literales.guardia.test.ts` (receptores de `reglasPais`) |
+| R22 | todos los anteriores usan una empresa de CR y otra de un país de prueba con `MONEDA_DE_PRUEBA`; sin E2E nuevo |
+
+### Gate local
+`./init.sh` (modo rápido) en verde, exit 0, el 2026-11-20. Lo corrí con una copia temporal de
+`arnes.config.json` con `cupos_por_persona.fullstack` subido (el board tiene 12 fullstack en vuelo de
+otras fichas, aceptado por el humano); la restauré al terminar y no se commitea.
+- typecheck y lint en verde; `test:rapido` en verde: 7 lotes, 659 files, 8 626 passed, 1 skipped.
+- Tamaño: 64/40 archivos, 674/1000 líneas de producción y 1771/3000 de tests (aceptado por el humano).
+- Todas las migraciones con `down.sql`.
+
+### E2E
+No se corrieron en local. Por la memoria justa de la máquina, el leader pidió no lanzar playwright
+en esta sesión. Los E2E afectados (el grupo `dinero` y los de etiquetas, plantillas y facturas) quedan
+al CI del PR. No hay E2E nuevo (decisión cerrada: para CR la salida es idéntica, R16). Queda creada,
+para correrlos en local, la base desechable `servi_logistic_sl21_e2e`.
