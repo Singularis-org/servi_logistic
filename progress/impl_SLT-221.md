@@ -489,3 +489,33 @@ Merge de `origin/feature/SLT-221-correo-backend` (vuelta 2 del PR 2): solo choca
   `usuario-corregir-cedula`: 12 passed, `E2E_EXIT=0`.
 
 Veredicto: m5 y m6 cubiertos en la UI y probados con mutación; rojo solo por tamaño (#258 fuera de dev) y un flaky ajeno.
+
+---
+
+# PR 3 — vuelta 2 tras la review (`progress/review_SLT-221-pr3.md`), frontend_dev, 2026-11-20
+
+Merge de `origin/dev` (ya con #258): limpio, sin conflictos.
+
+## Archivos
+
+- `tests/unit/components/confirmar-correo-form.test.tsx` (nuevo, B1): R1622, R1623 (`invalid_or_expired`,
+  `validation_error`, sin `#enlace=`), R1624 (`correo_en_uso`) y R1626 (al montar no llama a la acción).
+  Textos de R1623 y R1624 escritos a mano, no leídos de `TEXTOS_CONFIRMAR_CORREO`.
+- `tests/unit/components/usuario-form.test.tsx` (m1): el bloque «Cambiar correo» sale para una persona y
+  no para la cuenta `apiKey`.
+- `app/recuperar-contrasena/confirmar-correo/_components/ConfirmarCorreoForm.tsx` (m3): «Tu administrador
+  pidió cambiar el correo de tu cuenta. Confírmalo para empezar a entrar con el correo nuevo.»
+- `e2e/usuario-cambio-correo.spec.ts` (m3): el paso 5 afirma ese texto.
+- `specs/SLT-221-corregir-correo-cedula/tasks.md` (T3.2), mapa R → test de arriba, `progress/features/SLT-221.md` (m4).
+
+## Salida real
+
+- `typecheck` 0; `eslint` de los 4 archivos de código: sin avisos.
+- `confirmar-correo-form` + `usuario-form`: 2 files, 45 passed.
+- Mutación B1 (`correo_en_uso` → `setFase("invalido")`): ROJO, 1 test (R1624).
+- Mutación m1 (quitar `!esRolApiKey`): ROJO, 1 test («expected <section> to be null»).
+- `./init.sh` (servi_slt221_fix): `INIT_EXIT=0`; tamaño 11/40 archivos, 480/1000 producción, 674/3000 tests.
+- E2E `usuario-cambio-correo` (servi_slt221_e2e_pr3, `migrate deploy` 0, `next build` nuevo 0,
+  `E2E_PUERTO=3321`): 11 passed, `E2E_EXIT=0`.
+
+Veredicto: B1, m1, m3 y m4 resueltos; gate verde también en tamaño.
