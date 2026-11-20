@@ -218,3 +218,6 @@ seguía devolviendo Cartago en `canton` y en `correccion`.
     base local.
   - `tsc --noEmit` (sin `.next`): sin errores. `eslint` del archivo: sin salida.
   - `vitest run guard`: `Test Files 361 passed | 3 skipped (364)`, `Tests 5426 passed | 28 skipped`.
+
+- Commit `7d16628a`, `git push` normal. CI lanzado sin esperar:
+  https://github.com/Singularis-org/servi_logistic/actions/runs/44644761926
