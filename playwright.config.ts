@@ -112,6 +112,8 @@ export default defineConfig({
         "planes-borrador",
         // SLT-214 R26: crear un plan con beneficios, «Mostrar más», detalle y editar; archiva al final el plan público.
         "planes-beneficios",
+        // SLT-215 R38: crear un plan con 2 niveles, la columna «Niveles» y editar; archiva al final el plan público.
+        "planes-niveles",
         // SLT-54 R54, R59, R60, R70: toca el catálogo de vehículos, global, y lo devuelve al terminar.
         "tarifas-maqueta",
         // SLT-87 R1, R2, R13: el botón de reportar un problema; toca la sesión y una tabla de plataforma.

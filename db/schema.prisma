@@ -3791,6 +3791,9 @@ enum JobTipo {
   /// PUNTUAL, con empresa; lo encola `FacturaPlataformaRepository.cerrar` en su transacción. Payload { facturaId },
   /// dedupe `factura_plataforma_aviso:<facturaId>`. Núcleo
   factura_plataforma_aviso
+  /// SLT-215 (design §5; R29, R30): RECURRENTE diario a las 06:20 UTC, sin empresa; cierra los meses pendientes de los
+  /// niveles por volumen de cada empresa. Payload {}, dedupe `plan_niveles_cerrar:<AAAA-MM-DD>`. Núcleo
+  plan_niveles_cerrar
 
   @@map("job_tipo")
 }
@@ -5933,6 +5936,8 @@ model Organizacion {
   cobrosPorcentuales CobroPlataformaPorcentualOrden[] // SLT-83
   cobrosPlataformaTraza CobroPlataformaTraza[] // SLT-85
   facturasPlataforma FacturaPlataforma[] // SLT-118
+  planNivel          PlanNivelEmpresa? // SLT-215: su nivel por volumen, si tiene plan
+  planNivelHistorial PlanNivelHistorial[] // SLT-215
   pagosPlataformaConfirmacion PagoPlataformaConfirmacion[] // SLT-60
   pagosPlataformaAplicacion PagoPlataformaAplicacion[] // SLT-60
   pagosPlataformaAnulacion PagoPlataformaAnulacion[] // SLT-143
@@ -6203,6 +6208,7 @@ model Plan {
   topesPorRol      PlanTopeRol[]
   modulos          PlanModulo[]
   beneficios       PlanBeneficio[] // SLT-214: en su orden, por `posicion`
+  niveles          PlanNivel[] // SLT-215: en su orden, por `nivel`
   empresas         Organizacion[]         @relation("PlanAsignado")
   cambioProgramado PlanCambioProgramado?
   cambiosDeEmpresa Organizacion[]         @relation("PlanCambioEmpresa") // SLT-86: pendientes hacia este plan
@@ -6282,6 +6288,22 @@ model PlanBeneficio {
 
   @@id([planId, posicion])
   @@map("plan_beneficio")
+}
+
+// SLT-215 (design §1.1; R1, R6) — un nivel de beneficio por volumen de un plan. De PLATAFORMA, como
+// `plan_beneficio`. Viven solo en el SQL de 20261121140100: los CHECK (número de 1 a 10, meta ≥ 1, una sola forma
+// de descuento, porcentaje en (0, 100] y monto > 0), la RLS sin políticas y el `REVOKE ALL … FROM servi_app`. Que
+// las metas crezcan con el nivel vive en zod (`nivelesSchema`).
+model PlanNivel {
+  planId         String   @map("plan_id")
+  plan           Plan     @relation(fields: [planId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  nivel          Int
+  meta           Int
+  descuentoPct   Decimal? @map("descuento_pct") @db.Decimal(5, 2)
+  descuentoMonto Decimal? @map("descuento_monto") @db.Decimal(12, 2)
+
+  @@id([planId, nivel])
+  @@map("plan_nivel")
 }
 
 // SL-24 (design §2.8) — el rastro de plataforma de crear, editar y archivar un plan (R29). Solo se
@@ -6617,6 +6639,51 @@ model FacturaPlataforma {
   @@unique([organizacionId, numero]) // R14: sin repetidos
   @@index([organizacionId, estado])
   @@map("factura_plataforma")
+}
+
+// SLT-215 (design §1.2; R24–R37) — el nivel vigente de una empresa con plan y lo que el cierre necesita. Una fila
+// por empresa con plan. De NEGOCIO. La escriben SOLO las funciones del dueño de 20261121140100; `servi_app` solo la
+// lee. Viven solo en ese SQL: los CHECK (`nivel` de 0 a 10, `meses_sin_cumplir` 0 o 1), la política
+// `plan_nivel_empresa_por_empresa`, el `REVOKE INSERT, UPDATE, DELETE … FROM servi_app` y el trigger de «sin cambio
+// de empresa». `cerradoHastaAt` es el fin (excluido, UTC) del último mes cerrado; `entradaAt`, la entrada al plan
+// actual (no `plan_ciclo_ancla_at`, que también mueve un cambio de solo tipo de cobro). El `@@index` repite la
+// clave a propósito: la guardia `organizacion-en-modelos` lo pide a toda tabla de negocio, como en
+// `tarifa_activacion`.
+model PlanNivelEmpresa {
+  nivel           Int      @default(0)
+  mesesSinCumplir Int      @default(0) @map("meses_sin_cumplir")
+  cerradoHastaAt  DateTime @map("cerrado_hasta_at") @db.Timestamp(3)
+  entradaAt       DateTime @map("entrada_at") @db.Timestamp(3)
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at")
+
+  organizacionId String       @id @map("organizacion_id")
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizacionId])
+  @@map("plan_nivel_empresa")
+}
+
+// SLT-215 (design §1.3; R35) — cada inicio de nivel de una empresa: subida, bajada o recálculo. Solo se añade. De
+// NEGOCIO, como `plan_nivel_empresa`. `planId` es una copia sin FK, como en `cobro_plataforma_traza`. Viven solo
+// en el SQL de 20261121140100: los CHECK (motivo, niveles de 0 a 10, órdenes ≥ 0, mes y órdenes los dos o
+// ninguno), el único parcial `plan_nivel_historial_un_cierre_por_mes` (un cierre por empresa y mes), la política,
+// el `REVOKE` y el trigger. El nivel vigente en `t` es el de la fila con el mayor `desdeAt <= t`; sin fila, 0.
+model PlanNivelHistorial {
+  id               String    @id @default(dbgenerated("(gen_random_uuid())::text"))
+  planId           String    @map("plan_id")
+  nivel            Int
+  nivelAnterior    Int       @map("nivel_anterior")
+  motivo           String // CHECK: subida | bajada | cambio_niveles | cambio_plan
+  desdeAt          DateTime  @map("desde_at") @db.Timestamp(3)
+  mesInicioAt      DateTime? @map("mes_inicio_at") @db.Timestamp(3)
+  ordenesEfectivas Int?      @map("ordenes_efectivas")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  organizacionId String       @map("organizacion_id")
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizacionId, desdeAt])
+  @@map("plan_nivel_historial")
 }
 
 // SLT-60 (design §1) — la confirmación del superadmin de un pago a la plataforma (`egreso_pago_plataforma` de

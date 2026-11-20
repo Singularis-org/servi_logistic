@@ -17,6 +17,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { nombreDelModulo } from "@/lib/modulos/catalogo";
 import type { Beneficio } from "@/lib/planes/beneficios";
+import { textoDeLosNiveles, type Nivel } from "@/lib/planes/niveles";
 import { formatearConteo } from "@/lib/planes/consumo";
 import {
   lineaNoAplicada,
@@ -125,6 +126,8 @@ const TEXTOS = {
   modulosDelPlan: (modulos: string) => `Módulos: ${modulos}`,
   /** SLT-214 (R19): el alta con beneficios; un alta sin ellos no trae la clave. */
   beneficiosDelPlan: (textos: string) => `Beneficios: ${textos}`,
+  /** SLT-215 (R19): el alta con niveles; un alta sin ellos no trae la clave. */
+  nivelesDelPlan: (textos: string) => `Niveles: ${textos}`,
   /** SLT-86 (R30): el tope de órdenes de un alta anterior a la ficha, con el texto de entonces. */
   ordenesPorCiclo: (limite: string) => `Órdenes por ciclo: ${limite}`,
   // SLT-66 (design §6.6; R33).
@@ -668,11 +671,18 @@ function lineasDelRastro(fila: FilaRastro): string[] {
     const beneficios = beneficiosAlta.despues as Beneficio[];
     if (beneficios.length > 0) lineas.push(TEXTOS.beneficiosDelPlan(beneficios.map((b) => b.texto).join(", ")));
   }
+  // SLT-215 (design §3.6; R19): el alta con niveles, «Niveles: <nivel 1>; <nivel 2>; …».
+  const nivelesAlta = deAlta(c.niveles);
+  if (nivelesAlta) {
+    const niveles = nivelesAlta.despues as Nivel[];
+    if (niveles.length > 0) lineas.push(TEXTOS.nivelesDelPlan(textoDeLosNiveles(niveles)));
+  }
 
   const nombre = deEdicion(c.nombre);
   const topes = deEdicion(c.topes);
   const modulos = deEdicion(c.modulos);
   const beneficios = deEdicion(c.beneficios);
+  const niveles = deEdicion(c.niveles);
   const precio = deEdicion(c.precio);
   // SLT-118 (R35): la periodicidad de órdenes; el alta la trae con `antes: null` y no pinta línea.
   const periodicidadOrdenes = deEdicion(c.periodicidadOrdenes);
@@ -687,6 +697,8 @@ function lineasDelRastro(fila: FilaRastro): string[] {
       beneficios: beneficios
         ? { antes: beneficios.antes as Beneficio[], despues: beneficios.despues as Beneficio[] }
         : undefined,
+      // SLT-215 (R19, R20): «Niveles por volumen: antes → después», tras los beneficios.
+      niveles: niveles ? { antes: niveles.antes as Nivel[], despues: niveles.despues as Nivel[] } : undefined,
       precio: precio ? { antes: precio.antes as PrecioPlan, despues: precio.despues as PrecioPlan } : undefined,
       costoPorOrden:
         costo && !esAlta

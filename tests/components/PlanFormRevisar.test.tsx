@@ -103,6 +103,8 @@ describe("SLT-130 R22 — «Revisar y crear»", () => {
       ["Módulos incluidos", "Monitoreo"],
       // SLT-214 (R14): tras «Módulos», y sin beneficios lo dice.
       ["Beneficios", "Sin beneficios"],
+      // SLT-215 «Planes: niveles de beneficio por volumen de órdenes» (R14): tras «Beneficios»; sin niveles lo dice.
+      ["Niveles", "Sin niveles"],
     ]);
     clavesEnNegrita();
     expect(screen.queryByText("Sin cambios.")).toBeNull();

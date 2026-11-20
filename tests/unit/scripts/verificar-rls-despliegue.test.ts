@@ -23,8 +23,8 @@ describe("verificar-rls-despliegue — el contrato sale de MODELOS_DE_NEGOCIO (R
     });
   });
 
-  it("sin argumento usa MODELOS_DE_NEGOCIO, que hoy son 93 tablas (SL-38, SL-40, las dos de SL-36, SL-23, SLT-56, SLT-73, las cinco de SLT-52, la de SLT-54, la de SLT-83, la de SLT-94, la de SLT-85, la de SLT-118, las dos de SLT-60 y la de SLT-143)", () => {
-    expect(MODELOS_DE_NEGOCIO).toHaveLength(93);
+  it("sin argumento usa MODELOS_DE_NEGOCIO, que hoy son 95 tablas (SL-38, SL-40, las dos de SL-36, SL-23, SLT-56, SLT-73, las cinco de SLT-52, la de SLT-54, la de SLT-83, la de SLT-94, la de SLT-85, la de SLT-118, las dos de SLT-60, la de SLT-143 y las dos de SLT-215)", () => {
+    expect(MODELOS_DE_NEGOCIO).toHaveLength(95);
     // SLT-56: `gestion_pago_mensajero_ajuste` suma una politica, tres `sme_*` y un sin-cambio.
     // SLT-73: `conciliacion_bodega_ajuste` suma su politica, su trigger sin cambio y DOS de misma
     // empresa (sus FK a `cierre_bodega` y a `usuario`).
@@ -45,11 +45,13 @@ describe("verificar-rls-despliegue — el contrato sale de MODELOS_DE_NEGOCIO (R
     // a `factura_plataforma`) (175 -> 179).
     // SLT-143: `pago_plataforma_anulacion` suma su politica, su sin-cambio y DOS `sme_*` (sus FK a la
     // confirmacion y a `usuario` por `anulado_por`; la de `organizacion` no cuenta) (179 -> 181).
+    // SLT-215: `plan_nivel_empresa` y `plan_nivel_historial` suman dos politicas y dos sin-cambio, y ningun `sme_*`:
+    // su unica FK es a `organizacion` (181 se queda).
     // SL-23: `organizacion_modulo` tampoco suma triggers de misma empresa: su unica FK es a `organizacion`.
     // SL-36 no suma triggers de misma empresa: sus dos tablas no tienen FK a otra tabla de negocio.
     // SL-19: `jobs` (empresa opcional) suma su `jobs_por_empresa`, pero no tiene trigger sin cambio.
     expect(MODELOS_CON_EMPRESA_OPCIONAL.map((m) => m.tabla)).toEqual(["jobs"]);
-    expect(contratoEsperado()).toEqual({ politicasPorEmpresa: 94, triggersMismaEmpresa: 181, triggersSinCambio: 93 });
+    expect(contratoEsperado()).toEqual({ politicasPorEmpresa: 96, triggersMismaEmpresa: 181, triggersSinCambio: 95 });
   });
 
   it("SL-19 — una tabla de empresa opcional suma una politica y ningun trigger sin cambio de empresa", () => {

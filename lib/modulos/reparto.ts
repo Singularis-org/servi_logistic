@@ -270,6 +270,8 @@ export const MODULO_POR_JOB: Readonly<Record<JobTipo, Destino>> = {
   factura_plataforma_cerrar: "nucleo",
   // SLT-136 (design §7.2, R30): el aviso de una factura cerrada; ningún módulo apagado lo descarta.
   factura_plataforma_aviso: "nucleo",
+  // SLT-215 (design §5): el cierre diario de los niveles por volumen; de plataforma, sin módulo.
+  plan_niveles_cerrar: "nucleo",
 };
 
 /** §3.4 — carpetas de `app/api/cron/`. */

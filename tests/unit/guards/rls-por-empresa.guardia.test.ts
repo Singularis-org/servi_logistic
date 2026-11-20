@@ -164,7 +164,8 @@ describe("SL-17 · RLS por empresa en cada tabla de negocio (R24)", () => {
     // + `factura_plataforma` (SLT-118, 20261111130100)
     // + `pago_plataforma_confirmacion` y `pago_plataforma_aplicacion` (SLT-60, 20261116120000)
     // + `pago_plataforma_anulacion` (SLT-143, 20261121130000).
-    expect(tablas.length).toBe(93);
+    // + `plan_nivel_empresa` y `plan_nivel_historial` (SLT-215, 20261121140100).
+    expect(tablas.length).toBe(95);
   });
 
   it("cada tabla de negocio tiene su política vigente", () => {

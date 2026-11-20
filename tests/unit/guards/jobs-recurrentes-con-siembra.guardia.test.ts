@@ -109,6 +109,7 @@ describe("313 · frente 1 — todo job recurrente tiene su siembra registrada", 
       "factura_plataforma_cerrar", // SLT-118 (design §4.2): el cierre horario (HH:10) de las facturas de la plataforma
       "liberar_reprogramadas",
       "plan_cambios_vencidos", // SL-24 (design §16.3): el barrido horario de cambios de plan vencidos
+      "plan_niveles_cerrar", // SLT-215 (design §5): el cierre diario (06:20 UTC) de los niveles por volumen
       "whatsapp_envio_mantenimiento", // ficha 474: el mantenimiento diario de los envios por WhatsApp
     ]);
   });
@@ -417,6 +418,8 @@ describe("313 · frente 4 — el build de Vercel corre el paso, y alguien mide e
       ["tests/integration/db/planes-cambio-programado.test.ts", "sembrarPlanCambiosVencidos"],
       // SLT-118 (design §4.2): el cierre horario de las facturas de la plataforma.
       ["tests/integration/db/factura-plataforma-cierre.test.ts", "sembrarCierreFacturas"],
+      // SLT-215 (design §5): el cierre diario de los niveles por volumen.
+      ["tests/integration/db/plan-nivel-cierre.test.ts", "sembrarCierreNiveles"],
     ];
     for (const [ruta, sembrador] of pruebas) {
       expect(pruebaLaIdempotenciaDe(ruta, sembrador), `${ruta} ya no prueba ${sembrador}`).toBe(

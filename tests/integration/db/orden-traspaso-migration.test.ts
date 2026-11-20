@@ -312,6 +312,10 @@ describe("427/T2 — el UP y el DOWN, leidos del archivo", () => {
       "20261121120000_slt224_zona_de_ordenes_en_central",
       // SLT-143: la tabla `pago_plataforma_anulacion` y el pago por fuera; no toca `orden_traspaso_mensajero`.
       "20261121130000_pago_plataforma_por_fuera",
+      // SLT-215: el valor `plan_niveles_cerrar` de `job_tipo` y las tablas y funciones de los niveles por volumen;
+      // no tocan `orden_traspaso_mensajero`.
+      "20261121140000_plan_nivel_job_enum",
+      "20261121140100_plan_nivel",
     ]);
   });
 });
