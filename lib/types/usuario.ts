@@ -4,6 +4,7 @@ import { usuariosConfig } from "@/lib/config/usuarios";
 import { ROL_LABELS } from "@/lib/auth/rol-label";
 import { esPlataforma } from "@/lib/auth/plataforma";
 import { strongPasswordSchema } from "@/lib/types/password-policy";
+import { crearConEnlaceSchema } from "@/lib/types/password-reset";
 import type { ListarCompletoResult } from "@/lib/types/descarga-listado";
 import type { ListarPaginadoResult } from "@/lib/types/listado-paginado";
 import type { ResultadoTopePlan } from "@/lib/types/planes";
@@ -281,3 +282,42 @@ export type RestablecerContrasenaResult =
   | { status: "ok"; usuarioId: string; generatedPassword: string; sesionesRevocadas: number }
   | { status: "self_reset_forbidden" } // R5
   | ActionError; // unauthenticated (R1) | forbidden (R2) | not_found (R4) | validation_error (R6)
+
+// SLT-221 (design §3.2): el maestro pide el correo nuevo. Misma forma que el alta; `.strict()`.
+export const solicitarCambioCorreoSchema = z.object({ email: z.string().email() }).strict();
+export type SolicitarCambioCorreoInput = z.infer<typeof solicitarCambioCorreoSchema>;
+
+/** SLT-221 (design §3.2, R1618): lo que ve el maestro del pendiente. Nunca el id ni el hash. */
+export interface CambioCorreoPendienteDTO {
+  emailNuevo: string;
+  /** ISO 8601. */
+  expiraAt: string;
+  vencido: boolean;
+}
+
+export type SolicitarCambioCorreoResult =
+  | { status: "ok"; pendiente: CambioCorreoPendienteDTO }
+  | { status: "envio_fallido" } // R1617
+  // Review PR 2 (m5): dos pedidos a la vez del mismo usuario; la pantalla muestra `mensaje`.
+  | { status: "conflict"; campo: "email"; mensaje: string }
+  | ActionError;
+export type CancelarCambioCorreoResult = { status: "ok" } | ActionError;
+export type ObtenerCambioCorreoPendienteResult =
+  | { status: "ok"; pendiente: CambioCorreoPendienteDTO | null }
+  | ActionError;
+
+/**
+ * SLT-221 (design §3.3): confirmar un cambio de correo con su enlace. El campo es el MISMO del canje
+ * de contraseña, no una copia del regex.
+ */
+export const confirmarCambioCorreoSchema = z
+  .object({ enlace: crearConEnlaceSchema.shape.enlace })
+  .strict();
+export type ConfirmarCambioCorreoInput = z.infer<typeof confirmarCambioCorreoSchema>;
+
+/** SLT-221 (R1622-R1624): no devuelve ni el correo ni el nombre. */
+export type ConfirmarCambioCorreoResult =
+  | { status: "ok" }
+  | { status: "invalid_or_expired" } // R1623, R1625, R1629
+  | { status: "correo_en_uso" } // R1624
+  | { status: "validation_error" };

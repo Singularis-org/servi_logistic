@@ -110,8 +110,8 @@ Empieza con PR 1 mergeado y la rama al día con `dev`.
   Canvas de la página pública `/recuperar-contrasena/confirmar-correo` (pantalla nueva) y del
   bloque «Cambiar correo / Pendiente de confirmar» dentro de `UsuarioForm`, con los componentes de
   hoy. **Hecho:** el canvas está aprobado por Carlos.
-- [ ] **T2.1 — Migración B y esquema.**
-  `20261120120100_slt221_usuario_cambio_correo` (design §2.2):
+- [x] **T2.1 — Migración B y esquema.**
+  `20261122120000_slt221_usuario_cambio_correo` (design §2.2):
   - tabla, CHECK, índice parcial, RLS `usuario_cambio_correo_por_empresa`, GRANT a `servi_app`;
   - triggers de misma empresa generados con `scripts/generar-misma-empresa.ts --faltantes`;
   - `down.sql`;
@@ -120,7 +120,7 @@ Empieza con PR 1 mergeado y la rama al día con `dev`.
 
   **Hecho:** deploy y rollback limpios, y las guardias `organizacion-en-modelos` y
   `fk-misma-empresa` verdes.
-- [ ] **T2.2 [P] — Piezas puras** (depende de T2.1 solo para tipos).
+- [x] **T2.2 [P] — Piezas puras** (depende de T2.1 solo para tipos).
   - `lib/utils/enlace-de-un-uso.ts`;
   - `AUTH_CAMBIO_CORREO_TTL_HORAS` (72) en `lib/config/auth.ts`;
   - plantilla `confirmar-correo.ts`;
@@ -128,7 +128,7 @@ Empieza con PR 1 mergeado y la rama al día con `dev`.
 
   **Hecho:** typecheck verde. Las piezas se prueban a través de los tests de T2.3 y T2.5, con la
   plantilla real (sin doble).
-- [ ] **T2.3 — Repositorio** (depende de T2.1).
+- [x] **T2.3 — Repositorio** (depende de T2.1).
   Métodos de `usuario_cambio_correo` y `aplicarCambioCorreo` en `IUserRepository`/`UserRepository`
   (design §3.4). **Hecho:** `tests/integration/db/usuario-cambio-correo.test.ts`, contra la base,
   cubre:
@@ -142,7 +142,7 @@ Empieza con PR 1 mergeado y la rama al día con `dev`.
   - dos canjes concurrentes, un solo cambio (R1625).
 
   Cada caso se mata con una mutación del WHERE antes de creerlo.
-- [ ] **T2.4 — Servicio del maestro** (depende de T2.2 y T2.3).
+- [x] **T2.4 — Servicio del maestro** (depende de T2.2 y T2.3).
   - `solicitarCambioCorreo`, `cancelarCambioCorreo` y `cambioCorreoPendiente` en `UsuarioService`;
   - el 7.º parámetro `correoDeCambio`, que lanza si falta;
   - `usuario_email_cambiado` sale de `ESCRITOR_PENDIENTE_EN_CURSO` y entra en el censo.
@@ -152,7 +152,7 @@ Empieza con PR 1 mergeado y la rama al día con `dev`.
     R1620, R1621, R1630, R1631 y R1632 (hash persistido, `#enlace=` en la URL, log sin destinatario
     ni URL);
   - guardia `historial-accion-escrituras-cubiertas` verde.
-- [ ] **T2.5 — Canje** (depende de T2.2 y T2.3).
+- [x] **T2.5 — Canje** (depende de T2.2 y T2.3).
   - `IConfirmarCorreoService` y `ConfirmarCorreoService`;
   - `lib/actions/confirmar-correo.ts`, con `comoPlataforma` + `conEmpresa` y su composition root no
     exportado;
@@ -164,7 +164,7 @@ Empieza con PR 1 mergeado y la rama al día con `dev`.
   - `tests/unit/actions/confirmar-correo.test.ts` cubre el borde y el paso por `comoPlataforma` →
     `conEmpresa`;
   - guardia `plataforma-solo-en-lista` verde.
-- [ ] **T2.6 — Acciones del maestro** (depende de T2.4).
+- [x] **T2.6 — Acciones del maestro** (depende de T2.4).
   - Las tres acciones en `lib/actions/usuarios.ts`;
   - `buildUsuarioService` pasa `correoDeCambio` con `crearEmailSender()`, `baseUrlDeLaApp()`,
     `emailContacto()` y el TTL.
@@ -204,8 +204,8 @@ Empieza con PR 1 mergeado y la rama al día con `dev`.
 ### Archivos esperados — PR 2
 
 - `db/schema.prisma`
-- `db/migrations/20261120120100_slt221_usuario_cambio_correo/migration.sql`
-- `db/migrations/20261120120100_slt221_usuario_cambio_correo/down.sql`
+- `db/migrations/20261122120000_slt221_usuario_cambio_correo/migration.sql`
+- `db/migrations/20261122120000_slt221_usuario_cambio_correo/down.sql`
 - `lib/db/modelos-de-negocio.ts`
 - `lib/db/excepciones-aislamiento.ts`
 - `lib/config/auth.ts`
@@ -241,8 +241,8 @@ Unión de los dos PR (la lee `scripts/archivos-en-vuelo.mjs`):
 - `db/schema.prisma`
 - `db/migrations/20261120130000_slt221_historial_correo_cedula/migration.sql`
 - `db/migrations/20261120130000_slt221_historial_correo_cedula/down.sql`
-- `db/migrations/20261120120100_slt221_usuario_cambio_correo/migration.sql`
-- `db/migrations/20261120120100_slt221_usuario_cambio_correo/down.sql`
+- `db/migrations/20261122120000_slt221_usuario_cambio_correo/migration.sql`
+- `db/migrations/20261122120000_slt221_usuario_cambio_correo/down.sql`
 - `lib/db/modelos-de-negocio.ts`
 - `lib/db/excepciones-aislamiento.ts`
 - `lib/config/auth.ts`

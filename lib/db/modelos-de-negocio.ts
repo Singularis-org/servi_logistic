@@ -34,6 +34,7 @@ export const MODELOS_DE_NEGOCIO: readonly ModeloClasificado[] = [
   { modelo: "Usuario", tabla: "usuario" },
   { modelo: "MensajeroDocumento", tabla: "mensajero_documento" },
   { modelo: "UsuarioPreferencia", tabla: "usuario_preferencia" },
+  { modelo: "UsuarioCambioCorreo", tabla: "usuario_cambio_correo" }, // SLT-221: cambio de correo pendiente
   { modelo: "PushSuscripcion", tabla: "push_suscripcion" },
   { modelo: "PushEnvioDia", tabla: "push_envio_dia" },
   { modelo: "AsistenteUsoDiario", tabla: "asistente_uso_diario" },

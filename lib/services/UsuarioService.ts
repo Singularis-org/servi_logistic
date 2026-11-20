@@ -1,5 +1,6 @@
 import { MSG_ZONA_DESACTIVADA_USUARIO } from "@/lib/types/zona";
 import {
+  CambioCorreoSimultaneoError,
   CatalogoInvalidoError,
   UsuarioDuplicadoError,
   type IUserRepository,
@@ -11,7 +12,10 @@ import type {
   Actor,
   ActualizarUsuarioServiceResult,
   CambiarEstadoUsuarioServiceResult,
+  CambioCorreoPendienteServiceResult,
   CambioUsuarioEvaluable,
+  CancelarCambioCorreoServiceResult,
+  CorreoDeCambio,
   ConsultarImpactoCambioServiceResult,
   CrearUsuarioServiceResult,
   IUsuarioService,
@@ -21,6 +25,7 @@ import type {
   ListarUsuariosServiceResult,
   ObtenerUsuarioServiceResult,
   RestablecerContrasenaServiceResult,
+  SolicitarCambioCorreoServiceResult,
 } from "@/lib/interfaces/services/IUsuarioService";
 import type { ICierreBodegaRepository } from "@/lib/interfaces/repositories/ICierreBodegaRepository";
 import type { ISessionRepository } from "@/lib/interfaces/repositories/ISessionRepository";
@@ -30,6 +35,8 @@ import type {
   CrearUsuarioInput,
   ListarUsuariosCompletoInput,
   ListarUsuariosInput,
+  CambioCorreoPendienteDTO,
+  SolicitarCambioCorreoInput,
 } from "@/lib/types/usuario";
 import type { IZonaRepository } from "@/lib/interfaces/repositories/IZonaRepository";
 import type { IVehiculoRepository } from "@/lib/interfaces/repositories/IVehiculoRepository";
@@ -47,6 +54,39 @@ import { TopeDelPlanAlcanzado, traducirErrorDeTope } from "@/lib/planes/tope-err
 import { rechazoDeNombreDeEtiqueta } from "@/lib/utils/nombre-imprimible-etiqueta";
 import { hashPassword } from "@/lib/utils/password";
 import { generateStrongPassword } from "@/lib/utils/password-generator";
+import { componerEnlace, generarSecretoEnlace } from "@/lib/utils/enlace-de-un-uso";
+import {
+  avisarEnvioFallidoCambioCorreo,
+  plantillaConfirmarCorreo,
+} from "@/lib/services/email/plantillas/confirmar-correo";
+
+// SLT-221 (design §4.3): la página pública del canje. Subruta de `/recuperar-contrasena`, que ya es
+// pública sin tocar `PUBLIC_ROUTES`. El secreto va solo en el fragmento (R1632).
+const RUTA_CONFIRMAR_CORREO = "/recuperar-contrasena/confirmar-correo";
+
+export function urlDeConfirmarCorreo(baseUrl: string, enlace: string): string {
+  return `${baseUrl}${RUTA_CONFIRMAR_CORREO}#enlace=${enlace}`;
+}
+
+/** m5 (review PR 2): lo que ve el maestro si dos pedidos de cambio de correo chocan. */
+export const MENSAJE_CAMBIO_CORREO_SIMULTANEO =
+  "Se estaba pidiendo otro cambio de correo para este usuario al mismo tiempo. Vuelve a intentarlo.";
+
+function rechazoDeCorreo(motivo: string): {
+  status: "validation_error";
+  fieldErrors: Record<string, string[]>;
+} {
+  return { status: "validation_error", fieldErrors: { email: [motivo] } };
+}
+
+// R1618: `vencido` se calcula al leer; un pendiente vencido sigue abierto hasta reenviar o cancelar.
+function aPendienteDTO(p: { emailNuevo: string; expiraAt: Date }): CambioCorreoPendienteDTO {
+  return {
+    emailNuevo: p.emailNuevo,
+    expiraAt: p.expiraAt.toISOString(),
+    vencido: p.expiraAt.getTime() <= Date.now(),
+  };
+}
 
 // Decision 1: SOLO `maestro` tiene lectura Y escritura del modulo. Cualquier otro
 // rol (incluido uno no reconocido) -> forbidden (R3/R4).
@@ -176,6 +216,10 @@ export class UsuarioService implements IUsuarioService {
     // `sessionRepo`: el alta, la edicion del telefono o del tipo y la lista de tipos LANZAN si no
     // esta, en vez de guardar sin validar. Que se pasa lo prueba `usuarios-composition.test.ts`.
     private readonly reglasPais?: IReglasPaisEmpresa,
+    // SLT-221 (design §3.4): el correo de confirmación de un cambio de correo. Opcional en el
+    // constructor, obligatorio en el uso: los tres métodos del cambio lanzan si no está. Que se
+    // pasa lo prueba `usuarios-composition.test.ts`.
+    private readonly correoDeCambio?: CorreoDeCambio,
   ) {}
 
   async crear(input: CrearUsuarioInput, actor: Actor): Promise<CrearUsuarioServiceResult> {
@@ -732,6 +776,114 @@ export class UsuarioService implements IUsuarioService {
     const tope = traducirErrorDeTope(error);
     if (tope instanceof TopeDelPlanAlcanzado) return rechazoDeTopeEnRol(tope);
     throw error;
+  }
+
+  /**
+   * SLT-221 (design §4.2; R1610-R1617, R1620, R1630-R1632): pedir o reenviar el cambio de correo.
+   * «Reenviar» es esta misma llamada con el correo del pendiente: un solo camino de emisión. No se
+   * escribe al correo anterior (R1614) ni al Histórico: un pendiente no cambia nada (D4).
+   */
+  async solicitarCambioCorreo(
+    id: string,
+    input: SolicitarCambioCorreoInput,
+    actor: Actor,
+  ): Promise<SolicitarCambioCorreoServiceResult> {
+    if (!ALLOWED_ROLES.has(actor.rol)) return { status: "forbidden" }; // R1631
+    const correo = this.correoDeCambioOLanza("solicitarCambioCorreo");
+    const usuario = await this.usuarioDelModulo(id);
+    if (!usuario) return { status: "not_found" }; // R1630
+
+    if ((await this.rolValueDe(usuario.rolId)) === "apiKey") {
+      return rechazoDeCorreo("Esta cuenta es de una API key: no hay persona que confirme el correo"); // R1613
+    }
+    const emailNuevo = input.email;
+    if (emailNuevo === usuario.email) return rechazoDeCorreo("El correo nuevo es igual al actual"); // R1612
+    if (await correo.repo.existeEmailEnEmpresa(emailNuevo, usuario.id)) {
+      return { status: "conflict", campo: "email" }; // R1611
+    }
+
+    if (correo.baseUrl === null) {
+      // Sin URL no hay enlace: falla visible, no un pendiente que nadie puede abrir.
+      throw new Error("UsuarioService.solicitarCambioCorreo: falta NEXT_PUBLIC_APP_URL (SLT-221)");
+    }
+
+    const secreto = generarSecretoEnlace();
+    let pendiente: { id: string; expiraAt: Date };
+    try {
+      pendiente = await correo.repo.abrirCambioCorreo({
+        usuarioId: usuario.id,
+        emailNuevo,
+        secretoHash: await hashPassword(secreto), // R1632: solo el hash llega a la base
+        solicitadoPorId: actor.usuarioId,
+        expiraAt: new Date(Date.now() + correo.ttlHoras * 3_600_000), // R1621
+      });
+    } catch (error) {
+      // m5 (review PR 2): otro pedido del mismo usuario ganó; no se envía nada y el maestro reintenta.
+      if (error instanceof CambioCorreoSimultaneoError) {
+        return { status: "conflict", campo: "email", mensaje: MENSAJE_CAMBIO_CORREO_SIMULTANEO };
+      }
+      throw error;
+    }
+
+    try {
+      await correo.sender.enviar(
+        plantillaConfirmarCorreo({
+          to: emailNuevo,
+          url: urlDeConfirmarCorreo(correo.baseUrl, componerEnlace(pendiente.id, secreto)),
+          ttlHoras: correo.ttlHoras,
+          contacto: correo.contacto,
+        }),
+      );
+    } catch (error) {
+      // R1617: el correo no salió, así que el enlace no lo tiene nadie. R1632: el log lleva solo el
+      // nombre del error, nunca el destinatario ni la URL.
+      await correo.repo.anularCambioCorreo(pendiente.id);
+      avisarEnvioFallidoCambioCorreo(error instanceof Error ? error.name : "desconocido");
+      return { status: "envio_fallido" };
+    }
+    return { status: "ok", pendiente: aPendienteDTO({ emailNuevo, expiraAt: pendiente.expiraAt }) };
+  }
+
+  /** SLT-221 (R1619, R1630, R1631): idempotente; sin pendiente también es `ok`. */
+  async cancelarCambioCorreo(id: string, actor: Actor): Promise<CancelarCambioCorreoServiceResult> {
+    if (!ALLOWED_ROLES.has(actor.rol)) return { status: "forbidden" };
+    const { repo } = this.correoDeCambioOLanza("cancelarCambioCorreo");
+    const usuario = await this.usuarioDelModulo(id);
+    if (!usuario) return { status: "not_found" };
+    await repo.anularCambioCorreoAbierto(usuario.id);
+    return { status: "ok" };
+  }
+
+  /** SLT-221 (R1618, R1630, R1631): el pendiente, vencido o no. */
+  async cambioCorreoPendiente(id: string, actor: Actor): Promise<CambioCorreoPendienteServiceResult> {
+    if (!ALLOWED_ROLES.has(actor.rol)) return { status: "forbidden" };
+    const { repo } = this.correoDeCambioOLanza("cambioCorreoPendiente");
+    const usuario = await this.usuarioDelModulo(id);
+    if (!usuario) return { status: "not_found" };
+    const abierto = await repo.cambioCorreoAbierto(usuario.id);
+    return { status: "ok", pendiente: abierto ? aPendienteDTO(abierto) : null };
+  }
+
+  /** SL-32 (R11) y SLT-221 (R1630): el usuario del módulo; el de plataforma es `not_found`. */
+  private async usuarioDelModulo(id: string): Promise<UsuarioPublico | null> {
+    const usuario = await this.repo.findById(id);
+    if (!usuario || (await this.esRolDePlataforma(usuario.rolId))) return null;
+    return usuario;
+  }
+
+  private async rolValueDe(rolId: string): Promise<string | undefined> {
+    return (await this.repo.listRoles()).find((r) => r.id === rolId)?.value;
+  }
+
+  // SLT-221 (design §3.4): opcional en el constructor, obligatorio en el uso, como `sessionRepo`.
+  private correoDeCambioOLanza(operacion: string): CorreoDeCambio {
+    if (!this.correoDeCambio) {
+      throw new Error(
+        `UsuarioService.${operacion} requiere el emisor del correo de confirmacion: sin el no hay ` +
+          "enlace que confirme el cambio (SLT-221)",
+      );
+    }
+    return this.correoDeCambio;
   }
 
   private reglasDelPais(operacion: string): IReglasPaisEmpresa {

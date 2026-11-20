@@ -43,7 +43,9 @@ const ROL_APP = "servi_app";
 // `factura_plataforma`.
 // SLT-143 (20261121130000_pago_plataforma_por_fuera) suma dos: las de `pago_plataforma_anulacion` a la
 // confirmación y a `usuario` (el superadmin).
-const TRIGGERS_MISMA_EMPRESA = 181;
+// SLT-221 (20261122120000_slt221_usuario_cambio_correo) suma dos: las de `usuario_cambio_correo` a `usuario`
+// (la cuenta del cambio y el maestro que lo pidió).
+const TRIGGERS_MISMA_EMPRESA = 183;
 
 /** Lo que el punto 6 espera encontrar en el catalogo de la base. */
 export interface ContratoRls {

@@ -46,9 +46,8 @@ function rechazo(r: Parameters<typeof toActionError>[0]): { status: "unauthentic
 
 /**
  * R1715 — la vista previa: cuantas ordenes con zona errada de la empresa se actualizarian,
- * agrupadas por zona actual -> nueva, y las saltadas con su guia y motivo. NO escribe nada.
- *
- * @sin-superficie SLT-224 en curso: la monta el boton «Actualizar zonas» de la cabecera de /ordenes (tarea T9, pantalla); al montarlo esta anotacion caduca y se quita.
+ * agrupadas por zona actual -> nueva, y las saltadas con su guia y motivo. NO escribe nada. La monta
+ * el boton «Actualizar zonas» de la cabecera de /ordenes.
  */
 export async function vistaPreviaActualizacionZonas(
   deps: ActualizacionZonasDeps = {},
@@ -64,9 +63,7 @@ export async function vistaPreviaActualizacionZonas(
 /**
  * R1717/R1718 — confirma: en UNA transaccion actualiza a la zona de su distrito toda orden con zona
  * errada que en ese momento no este saltada, con quien confirma como actor y un mismo lote. Devuelve
- * cuantas se actualizaron y las saltadas.
- *
- * @sin-superficie SLT-224 en curso: la monta el boton «Actualizar zonas» de la cabecera de /ordenes (tarea T9, pantalla); al montarlo esta anotacion caduca y se quita.
+ * cuantas se actualizaron y las saltadas. La monta el boton «Actualizar zonas» de /ordenes.
  */
 export async function actualizarZonas(deps: ActualizacionZonasDeps = {}): Promise<ActualizarZonasResult> {
   const r = await withErrorHandler(async () => {

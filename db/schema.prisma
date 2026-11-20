@@ -227,6 +227,8 @@ model Usuario {
   devolucionesTiendaSubidas           DevolucionTiendaComprobante[]      @relation("DevolucionTiendaComprobanteSubidoPor")
   bugReports                          BugReport[] // SLT-87: reportes de problema que ESTA persona envió; CASCADE (la tabla es de plataforma y no bloquea el borrado)
   bugReportUploadQuotas               BugReportUploadQuota[] // SLT-98: su conteo diario de permisos de subida de imágenes (tope diario); CASCADE, es un contador y no historia
+  cambiosCorreo                       UsuarioCambioCorreo[]              @relation("UsuarioCambioCorreoUsuario") // SLT-221: cambios de correo pedidos PARA esta cuenta; CASCADE
+  cambiosCorreoSolicitados            UsuarioCambioCorreo[]              @relation("UsuarioCambioCorreoSolicitadoPor") // SLT-221: cambios que ESTE maestro pidió; RESTRICT (es el actor del Histórico)
 
   organizacionId String? @default(dbgenerated()) @map("organizacion_id") // SL-17/R2/R3: NULL = superadmin
   organizacion   Organizacion? @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
@@ -5524,6 +5526,35 @@ model UsuarioPreferencia {
   @@map("usuario_preferencia")
 }
 
+// SLT-221 (design §2.2): el cambio de correo que el maestro pidió y la persona aún no confirmó. El
+// correo de login no cambia hasta el canje (R1615, R1622). En la base solo el hash del secreto (R1632).
+// Viven solo en el SQL de 20261122120000: el CHECK «confirmado o anulado, no los dos» y el índice
+// único PARCIAL de un solo abierto por usuario (R1616).
+model UsuarioCambioCorreo {
+  id              String    @id @default(uuid())
+  usuarioId       String    @map("usuario_id")
+  emailNuevo      String    @map("email_nuevo") @db.VarChar(254)
+  secretoHash     String    @map("secreto_hash")
+  solicitadoPorId String    @map("solicitado_por_id")
+  expiraAt        DateTime  @map("expira_at")
+  confirmadoAt    DateTime? @map("confirmado_at")
+  anuladoAt       DateTime? @map("anulado_at") // cancelar, reemplazar o envío fallido
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  // CASCADE: el pendiente no es evidencia. El cambio aplicado queda en el Histórico.
+  usuario       Usuario @relation("UsuarioCambioCorreoUsuario", fields: [usuarioId], references: [id], onDelete: Cascade)
+  // RESTRICT: es el actor del Histórico al confirmar.
+  solicitadoPor Usuario @relation("UsuarioCambioCorreoSolicitadoPor", fields: [solicitadoPorId], references: [id], onDelete: Restrict)
+
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
+  @@index([usuarioId])
+  @@index([solicitadoPorId])
+  @@index([organizacionId])
+  @@map("usuario_cambio_correo")
+}
+
 // ⭑ FICHA 436 (design §4.1, R16/R17/R30) — EL TOPE DE GASTO DEL ASISTENTE: una fila por
 // PERSONA y DIA. Es un CONTADOR, y es lo UNICO que esta ficha persiste.
 //
@@ -5954,6 +5985,7 @@ model Organizacion {
   pagosPlataformaAnulacion PagoPlataformaAnulacion[] // SLT-143
   ordenFulfillmentMovimientos OrdenFulfillmentMovimiento[] // SLT-94
   conciliacionBodegaAjustes ConciliacionBodegaAjuste[] // SLT-73
+  usuarioCambiosCorreo UsuarioCambioCorreo[] // SLT-221
   integraciones Integracion[] // SL-36
   integracionPruebasMinuto IntegracionPruebaMinuto[] // SL-36
   bugReports BugReport[] // SLT-87: reportes de problema de su gente; la empresa no los lee (tabla de plataforma)
