@@ -256,6 +256,10 @@ function filaDeOrdenSinGestion(o: CierreOrdenSinGestion): FilaAConfirmar {
  * Que las barridas vuelvan también lo decide el punto único (`vuelveABodegaElPaquete`), no esta
  * función: si la pantalla lo decidiera por su cuenta podría pedir un conjunto distinto del que el
  * servidor exige, y el botón se quedaría bloqueado sin explicación.
+ *
+ * SLT-247 «Cierre rechazado: el mensajero gestiona las órdenes que pasaron a Novedad interna antes de
+ * reenviarlo» (R1791): solo las barridas que SIGUEN en Novedad interna. Una que el rechazo devolvió a
+ * Entregas no vuelve a bodega; es el mismo filtro de `findBarridasDelCierre` en el servidor.
  */
 export function filasAConfirmar(
   grupos: CierreGrupos,
@@ -263,7 +267,10 @@ export function filasAConfirmar(
 ): FilaAConfirmar[] {
   return [
     ...retornablesDelCierre(grupos).map(filaDeGestion),
-    ...ordenesSinGestion.map(filaDeOrdenSinGestion).filter(vuelveABodegaElPaquete),
+    ...ordenesSinGestion
+      .filter((o) => !o.fueraDeNovedadInterna)
+      .map(filaDeOrdenSinGestion)
+      .filter(vuelveABodegaElPaquete),
   ];
 }
 

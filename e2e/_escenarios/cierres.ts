@@ -24,6 +24,7 @@ import {
   crearMensajero,
   crearOrden,
   gestionar,
+  hoyDeLaApp,
   llevarA,
   paginaDe,
   type MensajeroE2E,
@@ -126,6 +127,25 @@ export async function anclarDevolucionHaceDias(r: RepartoE2E, orden: { id: strin
     return res.count;
   });
   if (n !== 1) throw new Error(`SL-44 E2E cierres: la orden debía tener UN anclaje de devolución y tiene ${n}.`);
+}
+
+/**
+ * SLT-247 «Cierre rechazado: el mensajero gestiona las órdenes que pasaron a Novedad interna antes de
+ * reenviarlo» (T3.5) — ⚠️ EXCEPCIÓN DE R8, la misma que `tope-intentos-por-empresa.spec.ts`: el corte
+ * solo barre lo reservado para un día ya cerrado y asignar reserva para hoy. Sin reloj falso, se mueve
+ * al pasado SOLO la `fecha_reparto` de la orden; el barrido lo hace el cron real.
+ */
+export async function repartoDeDiasAtras(r: RepartoE2E, orden: { id: string }): Promise<void> {
+  const db = baseReparto();
+  const n = await db.$transaction(async (tx) => {
+    await fijarEmpresa(tx, r.empresa.organizacionId);
+    const res = await tx.orden.updateMany({
+      where: { id: orden.id },
+      data: { fechaReparto: new Date(new Date(`${hoyDeLaApp()}T00:00:00.000Z`).getTime() - 2 * DIA_MS) },
+    });
+    return res.count;
+  });
+  if (n !== 1) throw new Error(`SLT-247 E2E cierres: la orden debía existir una vez y aparece ${n}.`);
 }
 
 export function importe(n: number, opts: { solo?: boolean } = {}): RegExp {

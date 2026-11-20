@@ -15,15 +15,14 @@ import type { OrderStatusValue } from "@/lib/types/order-status";
  *   · `estante_satelite` — esta en el estante de una satelite (`en_bodega_satelite`, 377);
  *   · `finalizada`       — esta en un estado terminal (`ESTADOS_TERMINALES`, R1721);
  *   · `devolucion`       — esta en un estado de devolucion (clase `devolucion` de `CLASE_RECONCILIACION_ZONA`, R1723);
- *   · `por_liberar`      — `reprogramado`, esperando liberacion en bodega (R1723, P4);
  *   · `cobro_en_curso`   — un cierre sin aprobar o una gestion que decidio dinero sin cierre aprobado (R1722).
- * Los cuatro primeros salen de `CLASE_RECONCILIACION_ZONA`; el estado manda sobre el cobro.
+ * Los tres primeros salen de `CLASE_RECONCILIACION_ZONA`; el estado manda sobre el cobro. SLT-248
+ * (R1804) quito el motivo de las reprogramadas: `reprogramado` y `novedad` ya se mueven.
  */
 export type MotivoSaltada =
   | "estante_satelite"
   | "finalizada"
   | "devolucion"
-  | "por_liberar"
   | "cobro_en_curso";
 
 /** Una orden saltada, con lo que la pantalla enseña: su guia (o remision) y el motivo. */

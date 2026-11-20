@@ -484,7 +484,7 @@ describeSiHayBase("💰 SLT-56 — ajustar el pago al mensajero de una gestion d
       const estado = await tx.cierreDia.findUniqueOrThrow({ where: { id: c.cierreId }, select: { estado: true } });
       return { reabierto, estado: estado.estado, despues: await foto(ctx), c };
     });
-    expect(r.reabierto).toBe(true);
+    expect(r.reabierto).toEqual({ status: "ok" });
     expect(r.estado).toBe("solicitado");
     expect(r.despues.gestiones.find((g) => g.id === r.c.gestionRechazo)?.pago).toBe("1000.00");
     expect(r.despues.cierre.totalPagoMensajero).toBe("3400.00");

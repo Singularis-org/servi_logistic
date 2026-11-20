@@ -51,6 +51,11 @@ export interface CierreSinGestionRow {
    * (`ayuda_tienda`) en las barridas historicas, que se siguen leyendo igual.
    */
   estatusOrigen: OrderStatusValue | OrderStatusRetirado | null;
+  /**
+   * SLT-247 (R1791): `true` = la orden ya NO esta en `novedad_interna` (el rechazo la devolvio al
+   * mensajero): bodega no la confirma ni la aprobacion la libera. Ausente = como hoy. No es dinero.
+   */
+  fueraDeNovedadInterna?: true;
 }
 
 export interface CierreGestionPendienteRow {
@@ -380,6 +385,16 @@ export interface ResolicitarCierreRechazadoInput {
   vehiculoId: string | null;
 }
 
+/**
+ * SLT-247 (design §4) — resultado de re-solicitar un rechazado. `conflict` es la carrera de la 477
+ * (R22); `obligatorias_pendientes` trae las guias CONGELADAS (`cierre_sin_gestion.num_guia`, en
+ * orden) de las barridas que el mensajero aun no gestiono (R1782).
+ */
+export type ResolicitarRechazadoResult =
+  | { status: "ok" }
+  | { status: "conflict" }
+  | { status: "obligatorias_pendientes"; guias: (number | null)[]; total: number };
+
 /** FICHA 477 (R26) — una orden en correccion de un cierre rechazado, con sus descriptivos CONGELADOS. */
 export interface OrdenEnCorreccionRow {
   ordenId: string;
@@ -388,6 +403,11 @@ export interface OrdenEnCorreccionRow {
   destinatario: string;
   /** `true` = ya tiene una gestion vigente sin cierre que la re-solicitud se llevara (R15). */
   regestionada: boolean;
+  /**
+   * SLT-247 (R1795): `true` = barrida que el rechazo devolvio (`fuente = sin_gestion`); hay que
+   * gestionarla antes de reenviar. Ausente = orden deshecha de la 477, como hoy.
+   */
+  obligatoria?: true;
 }
 
 /** FICHA 477 (R25/R26) — un cierre `rechazado` propio y sus ordenes en correccion. */
@@ -517,8 +537,13 @@ export interface ICierreDiaRepository {
    *   5. borra las filas de `cierre_detail` de las ordenes en correccion que siguen sin gestion (R18);
    *   6. recalcula los seis totales sumando los snapshots por gestion (R19).
    * Sin correcciones, los pasos 3-5 no tocan filas y el 6 escribe los mismos valores (R20).
+   *
+   * SLT-247 (design §4): + las BARRIDAS devueltas por el rechazo (`fuente = sin_gestion`). Si
+   * alguna no tiene gestion que vincular, no escribe nada y devuelve `obligatorias_pendientes`
+   * (R1782/R1783); si todas la tienen, les crea su `cierre_detail` con el cobro congelado antes
+   * de congelar el pago (R1784/R1785).
    */
-  resolicitarCierreRechazado(input: ResolicitarCierreRechazadoInput): Promise<boolean>;
+  resolicitarCierreRechazado(input: ResolicitarCierreRechazadoInput): Promise<ResolicitarRechazadoResult>;
   /**
    * FICHA 477 (design §5.1, R1-R3, R11) — deshace una gestion vinculada a un cierre `rechazado`
    * propio: candado del cierre, re-lectura (`rechazado` + dueño), candado de la orden (`en_reparto`,

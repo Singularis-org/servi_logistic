@@ -125,7 +125,7 @@ describe("276/T2 · enum — la forma de `rechazo_tope_intentos` (R22/R36)", () 
     // anteriores con el down de la 239.
     // Ficha 398 (2026-09-08): `correccion_resultado_gestion` llega DESPUES, asi que este
     // `down.sql` NO se toca —es una foto historica— y lo que crece es este conjunto.
-    const POSTERIORES = new Set<string>([FAMILIA, "correccion_resultado_gestion"]);
+    const POSTERIORES = new Set<string>([FAMILIA, "correccion_resultado_gestion", "retorno_por_rechazo_cierre"]); // + SLT-247 (2026-11-20)
     expect(new Set(valores)).toEqual(
       new Set(ORDEN_HISTORIAL_ORIGEN_TIPO_SEED.filter((v) => !POSTERIORES.has(v))),
     );

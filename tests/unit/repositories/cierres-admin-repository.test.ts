@@ -675,6 +675,75 @@ describe("CierresAdminRepository.findCierreByIdEnAlcance (R6/R13)", () => {
   });
 });
 
+// SLT-247 (T2.6, R1770/R1774/R1776): el cableado del retorno de las barridas. La SEMANTICA del
+// `where` (que barridas se mueven) se mide contra Postgres en
+// `tests/integration/db/247-sin-gestion-rechazado-sql-real.test.ts`; aqui solo cuando corre.
+describe("SLT-247 — resolverCierre(rechazado) y el retorno de las barridas", () => {
+  const RETORNO = { sinGestionarEstatusId: "s-novedad-interna", enRepartoEstatusId: "s-en-reparto" };
+  const rechazo = { zonaHoraria: ZONA_DE_CR, cierreId: "c1", alcance: ALCANCE_SAT, nuevoEstado: "rechazado" as const,
+    resueltoPor: "adm-sat", motivoRechazo: "no cuadra" };
+
+  it("sin `retornoSinGestion` el rechazo no toca `orden` (como antes)", async () => {
+    const prisma = buildPrisma();
+    prisma.cierreDia.updateMany.mockResolvedValue({ count: 1 });
+    const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
+    expect(await repo.resolverCierre(rechazo)).toBe("updated");
+    expect(prisma.orden.findMany).not.toHaveBeenCalled();
+    expect(prisma.orden.updateMany).not.toHaveBeenCalled();
+    expect(prisma.cierreSinGestion.findMany).not.toHaveBeenCalled();
+  });
+
+  it("R1770/R1773: con el, lee las barridas de ESTE cierre y busca solo las vivas y suyas", async () => {
+    const prisma = buildPrisma();
+    prisma.cierreDia.updateMany.mockResolvedValue({ count: 1 });
+    prisma.cierreDia.findUnique.mockResolvedValue({
+      mensajeroId: "m1",
+      sinGestionRegistrado: true,
+      totalGeneral: new Prisma.Decimal("0.00"),
+      solicitadoAt: new Date("2026-09-02T12:00:00Z"),
+      mensajero: { nombre: "Mensa", primerApellido: "Uno" },
+    });
+    (prisma.cierreSinGestion.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([{ ordenId: "o1" }]);
+    const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
+    await repo.resolverCierre({ ...rechazo, retornoSinGestion: RETORNO });
+    expect((prisma.cierreSinGestion.findMany as ReturnType<typeof vi.fn>).mock.calls[0][0].where).toEqual({ cierreId: "c1" });
+    expect(prisma.orden.findMany.mock.calls[0][0].where).toEqual({
+      id: { in: ["o1"] },
+      estatusId: "s-novedad-interna",
+      mensajeroAsignadoId: "m1",
+      deletedAt: null,
+    });
+    // Ninguna viva (el doble devuelve []) -> no escribe.
+    expect(prisma.orden.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("R1774: cierre sin el registro de la 264 -> no lee barridas ni toca `orden`", async () => {
+    const prisma = buildPrisma();
+    prisma.cierreDia.updateMany.mockResolvedValue({ count: 1 });
+    prisma.cierreDia.findUnique.mockResolvedValue({
+      mensajeroId: "m1",
+      sinGestionRegistrado: false,
+      totalGeneral: new Prisma.Decimal("0.00"),
+      solicitadoAt: new Date("2026-09-02T12:00:00Z"),
+      mensajero: { nombre: "Mensa", primerApellido: "Uno" },
+    });
+    const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
+    await repo.resolverCierre({ ...rechazo, retornoSinGestion: RETORNO });
+    expect(prisma.cierreSinGestion.findMany).not.toHaveBeenCalled();
+    expect(prisma.orden.findMany).not.toHaveBeenCalled();
+  });
+
+  it("R1776: si el rechazo no aplica (count 0), no toca `orden`", async () => {
+    const prisma = buildPrisma();
+    prisma.cierreDia.updateMany.mockResolvedValue({ count: 0 });
+    prisma.cierreDia.count.mockResolvedValue(1);
+    const { repo } = makeRepo(prisma as unknown as Record<string, unknown>);
+    expect(await repo.resolverCierre({ ...rechazo, retornoSinGestion: RETORNO })).toBe("conflict");
+    expect(prisma.cierreSinGestion.findMany).not.toHaveBeenCalled();
+    expect(prisma.orden.findMany).not.toHaveBeenCalled();
+  });
+});
+
 describe("CierresAdminRepository.resolverCierre (R10/R12/R13/R14/R15)", () => {
   it("R10/R14: updateMany count=1 -> updated; WHERE guarda estado=solicitado + alcance; data lleva audit", async () => {
     const prisma = buildPrisma();

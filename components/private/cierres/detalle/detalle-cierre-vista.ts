@@ -934,7 +934,9 @@ export function vistaMensajeroDesdeAdmin(r: DetalleAdminOk): DetalleMensajeroVis
   const gestiones = Object.values(r.grupos).flat();
   const paquetesVuelven =
     gestiones.filter((g) => vuelveABodegaElPaquete({ origen: "gestion", resultado: g.resultado })).length +
-    r.ordenesSinGestion.filter(() => vuelveABodegaElPaquete({ origen: "barrida" })).length;
+    // SLT-247 (R1791): solo las barridas que siguen en Novedad interna; las que el rechazo devolvió
+    // a Entregas no vuelven a bodega (mismo filtro que `filasAConfirmar` y el servidor).
+    r.ordenesSinGestion.filter((o) => !o.fueraDeNovedadInterna && vuelveABodegaElPaquete({ origen: "barrida" })).length;
   const modeloNuevo = hayGestionEnModeloNuevo(r.grupos);
   const desglose = r.desgloseIngresoBodegaRechazos;
   return {
@@ -1039,7 +1041,9 @@ export function vistaMensajeroDesdeCierreDia(
   const gestiones = Object.values(d.grupos).flat();
   const paquetesVuelven =
     gestiones.filter((g) => vuelveABodegaElPaquete({ origen: "gestion", resultado: g.resultado })).length +
-    d.ordenesSinGestion.filter(() => vuelveABodegaElPaquete({ origen: "barrida" })).length;
+    // SLT-247 (R1791): solo las barridas que siguen en Novedad interna; las que el rechazo devolvió
+    // a Entregas no vuelven a bodega (mismo filtro que `filasAConfirmar` y el servidor).
+    d.ordenesSinGestion.filter((o) => !o.fueraDeNovedadInterna && vuelveABodegaElPaquete({ origen: "barrida" })).length;
   return {
     // Con audiencia mensajero el título es «Tu cierre del día»: el nombre no se pinta.
     mensajeroNombre: "",
