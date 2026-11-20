@@ -116,3 +116,62 @@ Bloques 1 y 2 hechos y en verde; listo para el bloque 3.
 
 ### Veredicto
 Bloque 3 hecho y en verde; listo para el bloque 4.
+
+## Tanda 3 — Bloque 4, plantillas e informes (T4.1, T4.2; R10–R13, R16)
+
+Grafo: no usado (worktree sin indexar); Grep/Read.
+
+### Commits
+- `51fc9442` feat(SL-21): T4.1 plantillas de WhatsApp con la moneda del país (usaMoneda, necesitaMoneda)
+- T4.2: el commit que trae esta sección.
+
+### Archivos
+- T4.1 producción: `lib/types/plantilla-datos.ts` (`usaMoneda` en `monto`, heredado por el alias `total`;
+  `necesitaMoneda`; cuarto argumento `moneda?` en `transform`, `valorDeCampo` y `resolverValoresPlantilla`;
+  `dinero` = `formatearMontoEn(moneda ?? MONEDA_PLATAFORMA, v)`), `lib/services/ChatWhatsappService.ts`
+  (reintento de plantilla), `lib/actions/chat-whatsapp.ts` y `lib/services/jobs/whatsapp-bienvenida-handler.ts`
+  (`Pick<…, "zonaHoraria" | "moneda">`). Composition roots: los dos ya pasan `construirReglasPaisEmpresa(prisma)`
+  (la acción, además, cae al real si el test no inyecta); `ChatWhatsappService` lo exige por tipo (R21).
+- T4.1 tests: `tests/unit/services/whatsapp-moneda-por-pais.test.ts` (nuevo, 13 casos).
+- T4.2 producción: `lib/whatsapp-envios/informes/tipos.ts` (`ContextoInforme.moneda?`, perezosa),
+  `lib/services/EjecucionEnvioService.ts` (`moneda: () => this.deps.reglasPais.moneda()`; su root
+  `whatsapp-envio-deps.ts` ya pasa el real), `transito/informe.ts`, `transito/calculo.ts`, `transito/pdf.ts`.
+- T4.2 tests: `tests/unit/whatsapp-envios/informe-moneda-por-pais.test.ts` (nuevo, 9 casos); firma
+  (`MONEDA_CR`) en `informe-transito-calculo.test.ts` y `tests/unit/pdf/informe-transito-pdf.test.ts`;
+  `moneda: async () => MONEDA_CR` en el contexto de `informe-transito-informe`, `-composicion`,
+  `-repo-consultas`, `tests/unit/actions/informe-transito-actions.test.ts` y
+  `tests/integration/db/informe-transito-catalogo-real.test.ts`. Ningún valor esperado cambió (R16).
+
+### Mapa R → test (tanda 3)
+| R | Test |
+|---|---|
+| R10 | `whatsapp-moneda-por-pais.test.ts` («R10: …» en acción del chat, bienvenida y reintento del servicio, con `MONEDA_DE_PRUEBA` → `€25 900`) |
+| R11 | `whatsapp-moneda-por-pais.test.ts` («R11: sin importe…» ×3 con `moneda()` que lanza y espiada; `necesitaMoneda`) |
+| R12 | `informe-moneda-por-pais.test.ts` («`por_cobrar` y los importes del PDF…», PaisSinMoneda, llamante sin moneda, motor) |
+| R13 | `informe-moneda-por-pais.test.ts` (picking, aviso interno, prueba con `ctx.moneda` que lanza; tránsito vacío no la lee; el motor no la lee al construir el contexto) |
+| R16 | casos «R16: con Costa Rica…» en los dos tests nuevos; `plantilla-datos.test.ts`, `informe-transito-calculo.test.ts` e `informe-transito-pdf.test.ts` sin cambiar valores esperados |
+
+### Verificación (salida real)
+- T4.1: `whatsapp-moneda-por-pais`, `plantilla-datos`, `chat-whatsapp-actions`, `chat-whatsapp-service`,
+  `tests/unit/plantillas/`, `whatsapp-sin-integracion` → 19 files, 483 passed. Vecinos (bienvenida y chat-envio
+  de integración, `chat-whatsapp-*`, `whatsapp-composition-root`, `whatsapp-fallo-saliente`, catálogo de variables,
+  `ChatConversacionPlantillaDiaria`, `plantilla-estatus`) → 11 files, 89 passed.
+- T4.2: `tests/unit/whatsapp-envios/`, `informe-transito-pdf`, `informe-transito-catalogo-real`,
+  `informe-transito-zonas`, `ejecucion-envio-*`, `whatsapp-envio-*`, `informe-transito-actions`,
+  `hora-por-pais-analitica-avisos` → 33 files, 344 passed. Integración de tránsito y motor (`hitos`, `parados`,
+  `seleccion`, `whatsapp-envio-ejecucion-admintienda`, `whatsapp-envio-entrega-reclamo`) → 5 files, 12 passed.
+- `pnpm run typecheck` → verde. `pnpm run lint` → 0 errores, 249 warnings (los mismos).
+- `pnpm run test:guardias` → 360 files, 5421 passed | 1 skipped.
+
+### Desviaciones del design
+- Cinco tests de tránsito fuera de la lista esperada (`informe-transito-informe`, `-composicion`,
+  `-repo-consultas`, `informe-transito-actions`, `informe-transito-catalogo-real`) ganan
+  `moneda: async () => MONEDA_CR` en su contexto: sin ella `generar` lanza (design §5.3). Solo cambia el
+  contexto, no lo esperado.
+- El tránsito pide la moneda después de decidir «vacío»: un informe vacío no pinta importes y no la lee.
+- La bienvenida, sin puerto y con importe, lanza un `Error` que nombra la operación (igual que `zonaDeLaEmpresa`).
+- `PlantillaMensajeService.preview` (vista previa en servidor) y `resolverValoresOrden` (sin llamantes) siguen con
+  la moneda de la plataforma: son vista previa (SLT-235) y no están entre los tres llamantes del design.
+
+### Veredicto
+T4.1 y T4.2 hechas y en verde.

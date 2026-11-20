@@ -4,7 +4,7 @@
 // Toda fecha y todo conteo de dias en el calendario de la zona del pais de la empresa (SLT-42, R22)
 // con los helpers de `calendario-zona` (R17): el cambio de dia es a las 00:00 locales.
 import { diasNaturalesDesde, inicioDelDiaEnUtc, manana, sumarDiasCalendario } from "@/lib/utils/calendario-zona";
-import { formatMontoString } from "@/lib/config/moneda";
+import { formatearMontoEn, type FormatoMoneda } from "@/lib/config/moneda";
 import { sumarMontos } from "@/lib/utils/kpis-financieros";
 import { fechaLegibleEnZona } from "@/lib/whatsapp-envios/informes/formato";
 import {
@@ -266,15 +266,18 @@ export const CLAVES_VARIABLES_TRANSITO = [
   "fecha",
 ] as const;
 
-/** R20 — una entrada por variable. `por_cobrar` con el formato de moneda configurado. */
-export function variables(modelo: ModeloInformeTransito): Record<(typeof CLAVES_VARIABLES_TRANSITO)[number], string> {
+/** R20 — una entrada por variable. `por_cobrar` en la moneda del pais de la empresa (SL-21, R12). */
+export function variables(
+  modelo: ModeloInformeTransito,
+  moneda: FormatoMoneda,
+): Record<(typeof CLAVES_VARIABLES_TRANSITO)[number], string> {
   const t = modelo.totales;
   return {
     total_en_alerta: String(t.enAlerta),
     vencidos: String(t.vencidos),
     por_vencer: String(t.porVencer),
     parados: String(t.parados),
-    por_cobrar: formatMontoString(t.porCobrar),
+    por_cobrar: formatearMontoEn(moneda, t.porCobrar),
     en_alerta_gam: String(t.enAlertaGam),
     en_alerta_fuera_gam: String(t.enAlertaFueraGam),
     fecha: fechaLegibleEnZona(modelo.ahora, modelo.zona),

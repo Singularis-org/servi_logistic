@@ -147,11 +147,22 @@ export function crearInformeTransito(deps?: DepsInformeTransito): InformeWhatsap
       if (modelo.totales.enAlerta === 0 && !ctx.parametros.enviarSiVacio) {
         return { tipo: "vacio", motivo: MOTIVO_SIN_ALERTAS };
       }
+      // SL-21 (R12): `por_cobrar` y los importes del PDF, en la moneda del pais de la empresa. Un
+      // llamante que no la pasa es un fallo suyo: se lanza en vez de pintar una moneda inventada.
+      if (ctx.moneda === undefined) {
+        throw new Error("informe transito: necesita la moneda del pais de la empresa (SL-21)");
+      }
+      const moneda = await ctx.moneda();
       return {
         tipo: "contenido",
-        valores: variables(modelo),
+        valores: variables(modelo, moneda),
         ...(ctx.conDocumento
-          ? { documento: { bytes: pdfInformeTransito(modelo), nombreArchivo: nombreArchivoTransito(ctx.ahora, ctx.zona) } }
+          ? {
+              documento: {
+                bytes: pdfInformeTransito(modelo, moneda),
+                nombreArchivo: nombreArchivoTransito(ctx.ahora, ctx.zona),
+              },
+            }
           : {}),
       };
     },
