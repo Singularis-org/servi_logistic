@@ -31,6 +31,7 @@ import {
   listarTiposIdentificacion,
 } from "@/lib/actions/usuarios";
 import { listarZonas } from "@/lib/actions/zonas";
+import { opcionesZonaUsuario } from "@/lib/types/zona";
 import { listarVehiculos } from "@/lib/actions/vehiculos";
 import type { UsuarioPublico } from "@/lib/interfaces/repositories/IUserRepository";
 import type { CambioUsuarioEvaluable } from "@/lib/interfaces/services/IUsuarioService";
@@ -201,9 +202,16 @@ export const UsuarioForm = forwardRef<UsuarioFormHandle, UsuarioFormProps>(
 
     // `value` = id de la zona (lo que espera el backend en `zonaId`);
     // `label` = nombre legible de la zona.
+    // SLT-225 (R1756): una zona desactivada no se ofrece, salvo la que este usuario ya tiene; sin
+    // ella el select la perderia y el guardado le cambiaria la zona sin que nadie lo pida.
+    const zonaActualId = usuario?.zonaId ?? null;
     const zonaOptions: SelectOption[] = useMemo(
-      () => (zonas ?? []).map((z) => ({ value: z.id, label: z.nombre })),
-      [zonas],
+      () =>
+        opcionesZonaUsuario(zonas ?? [], zonaActualId).map((z) => ({
+          value: z.id,
+          label: z.nombre,
+        })),
+      [zonas, zonaActualId],
     );
 
     // Feature 21: catalogo de vehiculos para el select (solo aplica a `mensajero`).

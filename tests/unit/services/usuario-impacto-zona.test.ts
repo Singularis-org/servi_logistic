@@ -90,6 +90,9 @@ function buildZonaRepo(over: Partial<IZonaRepository> = {}): IZonaRepository {
     listLite: vi.fn().mockResolvedValue([]),
     update: vi.fn(),
     hardDelete: vi.fn(),
+    // SLT-225: desactivar/reactivar; por defecto salen bien.
+    desactivar: vi.fn().mockResolvedValue({ estado: "ok" }),
+    reactivar: vi.fn().mockResolvedValue({ estado: "ok" }),
     countExistingDistritos: vi.fn(),
     countExistingVehiculos: vi.fn(),
     findCentralZonaId: vi.fn().mockResolvedValue(null),
