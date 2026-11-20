@@ -97,18 +97,19 @@
 
 ## T6 — Tests del pago en línea (depende de T4 y T5)
 
-- [ ] **T6.1** `tests/integration/db/cobro-pago-en-linea.test.ts`, con la tabla de §8 y la concurrencia en dos
+- [x] **T6.1** `tests/integration/db/cobro-pago-en-linea.test.ts`, con la tabla de §8 y la concurrencia en dos
   conexiones. **Hecho:** cubre R14 (cadena) y R17–R24, en verde, y las mutaciones 3, 4 y 5 lo ponen en rojo.
 
 ## T7 — Despliegue y cierre (depende de T6)
 
-- [ ] **T7.1** `tests/integration/db/migracion-slt226-ida-y-vuelta.test.ts`. **Hecho:** cubre R28, en verde.
-- [ ] **T7.2** Las suites de SLT-60 y SLT-143 en verde sin cambios de afirmaciones. **Hecho:** cubre R28.
-- [ ] **T7.3** El mapa `R<n> -> test` en `progress/impl_SLT-226.md`. **Hecho:** los 29 requisitos tienen test.
+- [x] **T7.1** `tests/integration/db/migracion-slt226-ida-y-vuelta.test.ts`. **Hecho:** cubre R28, en verde.
+- [x] **T7.2** Las suites de SLT-60 y SLT-143 en verde sin cambios de afirmaciones. **Hecho:** cubre R28.
+- [x] **T7.3** El mapa `R<n> -> test` en `progress/impl_SLT-226.md`. **Hecho:** los 29 requisitos tienen test.
 - [ ] **T7.4** `./init.sh` en verde. El grupo `dinero` de E2E en local (`docs/perfil-agentes.md`: el diff toca
   `db/` y dinero), aunque esta ficha no añade E2E. **Hecho:** los dos en verde, salvo el aviso de tamaño, aceptado
   por la decisión P5.
-- [ ] **T7.5** (solo si T0.5 lo pide) Ajustar `migracion-slt143-ida-y-vuelta.test.ts`. **Hecho:** en verde.
+- [x] **T7.5** (solo si T0.5 lo pide) Ajustar `migracion-slt143-ida-y-vuelta.test.ts`. **Hecho:** en verde.
+  - **No aplica** (T0.5 lo descartó): la suite de SLT-143 no aplica su `down` sobre esta migración; corre en verde sin cambios (T7.2).
 
 ## Archivos esperados
 

@@ -72,7 +72,90 @@ Conteos reales de T3.4 (medidos en la base migrada): 97 tablas de negocio, 186 t
   clasificar, ya corregido) y un timeout de 20 s en `cierres-componentes-retirados` bajo carga, que pasa solo y en la
   corrida final.
 
-### Mapa R<n> → test
-Pendiente: los tests llegan en T4–T7 (R29 en T5.5 y T6.1).
+Veredicto de la tanda 1: T0–T3 cerradas.
 
-Veredicto: T0–T3 cerradas; la base, el esquema y la clasificación están listos para la tanda 2 (T4–T7).
+## Mapa R<n> → test (T7.3)
+
+Archivos: `CI` = `tests/integration/db/cobro-intento.test.ts`, `WE` = `tests/integration/db/cobro-webhook-evento.test.ts`,
+`PL` = `tests/integration/db/cobro-pago-en-linea.test.ts`, `MI` = `tests/integration/db/migracion-slt226-ida-y-vuelta.test.ts`,
+`SV` = `tests/unit/services/cobro-intento-service.test.ts`, `LA` = `tests/unit/services/libro-caja-autoria-plataforma.test.ts`,
+`PA` = `tests/unit/components/detalle-movimiento-panel-labels-plataforma.test.ts`.
+
+| R | Tests |
+|---|---|
+| R1 | CI «R1, R25: factura de 30 000 con 10 000 confirmados → intento `creado` de 20 000…»; SV (capa de servicio) |
+| R2 | CI «R2: pedirlo otra vez con la misma clave devuelve `existente`…» |
+| R3 | CI «R3, R25: un vivo con OTRA clave… se anula `clave_distinta` y nace uno nuevo…» |
+| R4 | CI «R4: dos pedidos a la vez sobre A3…»; CI «R4: un INSERT del dueño de un segundo vivo… 23505» |
+| R5 | CI «R5: la factura en curso, la de otra empresa, una inexistente y una con saldo 0 se rechazan…» |
+| R6 | CI «R6: los importes son decimales, y el dueño no puede escribir un monto ≤ 0…» |
+| R7 | CI «R7: el dueño solo puede mover un intento por la tabla de R7…» (22 transiciones) |
+| R8 | CI «R8: el dueño no puede cambiar la empresa, la factura…»; CI «R8, R26: como `servi_app`… no puede borrar… (42501)» |
+| R9 | CI «R9: `aprobado` sin el pago del proveedor o sin el pago del libro da 23514» |
+| R10 | CI «R10, R25: registrar el enlace pasa el intento a `pendiente`…»; CI «R10: el mismo id externo en un intento de B da 23505…» |
+| R11 | CI «R11, R25: … confirmar (SLT-60)…»; CI «R11: anular (SLT-143)…»; CI «R11: un pago por fuera (SLT-143)…» |
+| R12 | WE «R12: guarda el evento una vez…»; WE «R12: el único (proveedor, log_id)… (23505)»; SV (evento sin logId) |
+| R13 | WE «R13: si llegó antes y su proceso no terminó…»; WE «R13: cerrado… `repetido`…»; WE «R13: lo recibido no cambia…»; SV «R13: un evento ya procesado se ignora…»; SV «R13: un evento que llegó y no terminó se procesa otra vez…» |
+| R14 | SV «R14: el evento dice «pendiente» y el proveedor «aprobado»…»; SV «R14: … el proveedor «rechazado»…»; PL «R14, R25: un intento aún `creado` con su id externo… → `aprobado`» (sembrado a mano: hueco anotado para SLT-230) |
+| R15 | SV «R15: con «%s» el evento se cierra como «sin_cambio»…»; PL «R15: `pendiente` sobre un aprobado → `sin_cambio`…» |
+| R16 | SV «R16: si la consulta al proveedor falla, no cambia el intento, no cierra el evento…» |
+| R17 | PL «R17, R25: el pago aprobado de 30 000 → `ok`; caja 20 000, deuda 0…» |
+| R18 | PL «R18: C con la caja en 0 recibe un pago en línea de 10 000 → `ok`…» |
+| R19 | PL «R19: el pago en línea no sale en `pago_plataforma_por_confirmar`…» |
+| R20 | PL «R20: el mismo pago otra vez → `ya_registrado`…»; PL «R20: el mismo pago de B1 registrado a la vez desde dos conexiones…»; SV «R20: un pago ya registrado cierra el evento como «aplicado»» |
+| R21 | PL «R21: un intento `anulado`, otro monto (29 999) u otra moneda → `requiere_revision`…»; SV (requiere_revision) |
+| R22 | PL «R22: con un pago de la wallet de 10 000 por confirmar…» |
+| R23 | PL «R23: `avanzar` a `devuelto`…»; PL «R23: `contracargo` sobre un aprobado…» |
+| R24 | PL «R24: `rechazado` y `expirado` sobre un vivo → el intento cierra…» |
+| R25 | CI y PL en los tests de R1, R3, R10, R11, R14 y R17; CI «R25: si la transacción que cambia un estado falla después…» |
+| R26 | CI «R8, R26: como `servi_app`…»; CI «R26: como `servi_app`, B lee solo sus intentos…»; WE «R26: como `servi_app` de cualquier empresa, ni se leen ni se escriben los eventos…» |
+| R27 | SV «R27: %s lee los intentos de su empresa»; SV «R27: el superadmin lee…»; SV «R27: %s recibe forbidden…»; SV «R27: un maestro sin empresa…» |
+| R28 | MI «R28: no insertan ni cambian datos»; MI «R28: no crean datos…»; MI «R28: la confirmación que ya existía sigue igual…»; MI «R28: el down.sql aborta sin tocar nada si hay un intento»; MI «R28: sin intentos, los dos down.sql dejan el esquema como antes…»; suites de SLT-60 y SLT-143 sin cambios (T7.2) |
+| R29 | LA «R29: el pago aprobado en línea dice «pago_en_linea» en Registró…» (y 3 más); PA «R29 — un pago aprobado en línea dice «Pagado en línea»…»; PA «R29 — un gasto de plantilla sigue diciendo «Automático · …»»; PL «R29: como `servi_app` de A, `marcasDeLaPlataforma` devuelve el pago en `enLinea`…» |
+
+## Tanda 2 (T4, T5): commit dc824e6e
+
+- T4: `cobro-intento` y `cobro-webhook-evento`: 2 archivos, 26 tests en verde, también en la segunda pasada (la
+  limpieza es idempotente). Mutaciones en `servi_logistic_slt226_mut` (borrada): 1a 8 rojos, 1b 1, 2 10, 6 8.
+- T5: `cobro-intento-service`, más los dos tests ampliados de R29: 3 archivos y 42 tests en verde.
+  `vitest related` de los 6 archivos de producción: 63 archivos en verde y 7 saltados; 834 tests.
+- Typecheck en verde con T4 y T5 juntos; lint con 0 errores; guardias con 5399 tests en verde.
+- Fuera de `lib/` y `tests/`: `components/shared/wallet/detalle-movimiento-panel-labels.ts` (R29, solo el mapeo
+  del texto).
+
+## Tanda 3 (T6, T7): la cierra el implementer
+
+El `backend_dev` escribió los dos archivos, pero no entregó informe. Verifiqué todo de nuevo con
+`DATABASE_URL` en `servi_logistic_slt226`:
+- `vitest run` de `cobro-pago-en-linea`, `migracion-slt226-ida-y-vuelta`, `cobro-intento` y `cobro-webhook-evento`:
+  `Test Files 4 passed (4)`, `Tests 47 passed (47)`, ninguno saltado.
+- T7.2: `pago-plataforma-confirmacion`, `pago-plataforma-por-fuera`, `migracion-slt143-ida-y-vuelta`,
+  `migracion-slt60-ida-y-vuelta`, `pago-plataforma-sl45`, `-sl45-blindaje` y `-sl45-concurrencia`:
+  `Test Files 7 passed (7)`, `Tests 84 passed (84)`. Ninguno cambia frente a `origin/dev`.
+- Mutaciones sobre `cobro-pago-en-linea`, en `servi_logistic_slt226_mut` creada desde la base de la feature
+  (TEMPLATE) y borrada después:
+  - 3: `cobro_registrar_pago_aprobado` sin el chequeo R20 y sin candado ni `FOR UPDATE`. 2 rojos, los dos R20:
+    secuencial y concurrente.
+  - 4: la aplicación va antes de `aprobado`. 10 rojos: R17, R29, R20, R18, R22, R14, R23, R15.
+  - 5: el tope sin la salida de §3.7. 1 rojo: R22.
+- T7.4: ver abajo.
+
+### T7.4: gate local y E2E
+
+- `NODE_OPTIONS=--max-old-space-size=8192 ./init.sh` (rápido): `exit 1` en el paso 3, antes de llegar al diff.
+  `✗ feature_list.json invalido`: zona fullstack 15/7 y zona backend 7/6, el exceso que aceptó el humano;
+  además «faltan specs para features sdd en vuelo: SLT-247», que no es de esta ficha. Es el estado del board, no el
+  código. En CI no hay copia del board, así que ese paso sale en verde.
+- Pasos del rápido corridos a mano:
+  - typecheck: 0 errores.
+  - lint: 0 errores y 249 avisos, los de antes.
+  - `test:guardias`: con la CPU al 99 % por procesos de otras features, 8 archivos dieron rojo por
+    timeout de 20 s. Corridos aparte, todos en verde; los dos que seguían lentos pasan con
+    `--testTimeout=180000` (19 tests en 8 s). Ningún rojo es de lógica.
+  - `scripts/tamano-pr.mjs`: AVISO (31/40 archivos, 1752/1000 de producción, 2534/3000 de tests), aceptado por P5. El
+    marcador está en `progress/features/SLT-226.md`.
+- E2E `dinero`: en CI, en verde sobre `dc824e6e` (9 min 32 s). La tanda 3 solo añade tests y no cambia código
+  de producción. No lo corrí en local porque la máquina estaba ocupada con el Playwright de otra feature.
+- El primer CI del PR (#263) dio rojo solo por el tamaño, sin marcador. `estatico` y los tres shards de vitest
+  cortaron ahí. El E2E `aislamiento` dio timeout de `page.goto` en la landing (`marca.spec.ts` y
+  `rastreo-publico.spec.ts`); el diff no toca la landing, y en la primera corrida del PR estaba en verde.
