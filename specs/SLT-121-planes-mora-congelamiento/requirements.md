@@ -29,8 +29,7 @@
 
 > Escritos por `spec_author` el 2026-11-20. «Hora de la plataforma» es la de CR hasta SLT-90. «Saldo» de una
 > factura es el de SLT-60 (`factura_plataforma_saldos`, con las anulaciones de SLT-143). Los requisitos marcados
-> «(propuesta, Pn)» llevan el valor por defecto de una pregunta abierta: si el humano la cierra distinto, se
-> reescriben antes de implementar.
+> «(decisión Pn)» siguen la decisión cerrada Pn del 2026-11-20 (tabla de abajo).
 
 ### Plazo de pago
 
@@ -87,7 +86,7 @@
 - **R16** — MIENTRAS una empresa está congelada, toda escritura en sus datos de negocio que llegue por un camino
   de empresa no permitido en R11, R15 o R17 DEBE fallar en la base de datos, también por SQL a mano, y DEBE
   llegar al llamador como el error «Empresa suspendida por falta de pago.» (`empresa_congelada`).
-- **R17** — (propuesta, P1) MIENTRAS una empresa está congelada, los trabajos de la cola y los crons del sistema
+- **R17** — (decisión P1) MIENTRAS una empresa está congelada, los trabajos de la cola y los crons del sistema
   DEBEN seguir corriendo para ella.
 - **R18** — Congelar o descongelar una empresa NO DEBE cambiar lo que pueden hacer las demás.
 
@@ -103,7 +102,7 @@
   tras la anulación hay facturas vencidas con saldo, ENTONCES la empresa DEBE congelarse en la madrugada siguiente
   (R7).
 - **R22** — CUANDO el superadmin descongela a mano una empresa congelada con un motivo y una fecha hasta, el sistema
-  DEBE descongelarla en el acto. El motivo DEBE tener de 1 a 200 caracteres. (propuesta, P4) La fecha hasta DEBE
+  DEBE descongelarla en el acto. El motivo DEBE tener de 1 a 200 caracteres. (decisión P4) La fecha hasta DEBE
   estar entre hoy y hoy + 60 días, hora de la plataforma. SI la empresa no está congelada o los datos no son
   válidos, ENTONCES el sistema DEBE rechazarlo sin cambiar nada.
 - **R23** — MIENTRAS no haya pasado la fecha hasta de un descongelamiento manual, el sistema NO DEBE volver a
@@ -192,26 +191,7 @@
 
 ## Preguntas abiertas
 
-> Cada una lleva una propuesta que el design ya aplica. Si el humano decide otra cosa, se cambian el requisito y el
-> design antes de implementar.
-
-- **P1 — Procesos del sistema con la empresa congelada.** ¿Los trabajos de la cola y los crons de la empresa siguen
-  corriendo? Entre ellos están los avisos, la analítica, la liberación de reprogramadas y el cobro de gastos fijos.
-  **Propuesta:** sí, siguen todos. La decisión «¿Qué queda permitido?» habla de lo que hacen las personas y las
-  integraciones. Si un trabajo falla, la cola lo reintenta sin fin, y los avisos de la mora también salen por la
-  cola (R17).
-- **P2 — Qué más cuenta como «la propia cuenta».** **Propuesta:** también se permiten marcar avisos como leídos,
-  activar o quitar las notificaciones push del propio dispositivo, las preferencias propias y guardar vistas de
-  filtro propias. Son personales y no operan.
-- **P3 — Anular un pago propio por confirmar con la empresa congelada.** **Propuesta:** se permite, como parte de
-  «pagar a la plataforma». Si la empresa se equivoca de monto, puede anular y volver a registrar.
-- **P4 — Rango de la fecha hasta del descongelamiento a mano.** **Propuesta:** de hoy a hoy + 60 días, hora de la
-  plataforma, el mismo tope que la gracia (R22).
-- **P5 — El motivo del descongelamiento a mano en `historial_accion`.** La decisión «Historial» pide guardar el
-  motivo, pero la columna prohíbe el texto libre que teclea una persona: la única excepción declarada es la de
-  SLT-221 (D10, aceptada por Carlos el 2026-11-19). **Propuesta:** una segunda excepción declarada, solo para
-  `empresa_descongelada_a_mano`, con el motivo recortado a 200 caracteres. Necesita la aceptación explícita de
-  Carlos.
+Ninguna.
 
 **Resuelta por el design (2026-11-20):** la respuesta de la API por key a una escritura con la empresa congelada
 es 403 con `details.codigo = "empresa_congelada"`, la misma convención que `modulo_inactivo` (SL-23) y
@@ -240,3 +220,8 @@ es 403 con `details.codigo = "empresa_congelada"`, la misma convención que `mod
 | 2026-11-13 | E2E | Obligatorio: toca «Dinero: wallet», cierres, asignaciones y una entrada por cron, así que corre `dos-empresas-humo` (`docs/checkpoints-proyecto.md`). |
 | 2026-11-13 | Ruta | Completa: migración, dinero, permisos e integraciones (API, webhooks). |
 | 2026-11-20 | ¿Sale un correo al maestro cuando la empresa se descongela, por pago o a mano? | **Sí.** El maestro recibe un aviso de que su operación está activa de nuevo, sea porque pagó o porque el superadmin la descongeló a mano (humano). |
+| 2026-11-20 | P1 — ¿Los trabajos de la cola y los crons siguen corriendo con la empresa congelada? | **Sí, siguen todos** (humano). |
+| 2026-11-20 | P2 — ¿Qué más cuenta como «la propia cuenta»? | Marcar avisos como leídos, activar o quitar las notificaciones push, las preferencias propias y las vistas de filtro propias: **se permiten** (humano). |
+| 2026-11-20 | P3 — ¿Puede la empresa anular un pago propio por confirmar estando congelada? | **Sí**, como parte de pagar a la plataforma (humano). |
+| 2026-11-20 | P4 — Rango de la fecha hasta del descongelamiento a mano | **De hoy a hoy + 60 días**, hora de la plataforma (humano). |
+| 2026-11-20 | P5 — El motivo del descongelamiento a mano en `historial_accion` | Se guarda con una **segunda excepción declarada** a la regla de texto libre, solo para `empresa_descongelada_a_mano` y recortado a 200 caracteres. **Condición de la review:** Carlos Restrepo la acepta en la review del PR (humano). |

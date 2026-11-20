@@ -1,7 +1,7 @@
 # SLT-121 — planes-mora-congelamiento · tasks.md
 
-> Diseño: `design.md`. Requisitos: `requirements.md` (R1–R35). Las preguntas P1–P5 se cierran antes de T1: si alguna
-> cambia, se ajustan el requisito, el design y estas tareas.
+> Diseño: `design.md`. Requisitos: `requirements.md` (R1–R35). Las decisiones P1–P5 las cerró el humano el
+> 2026-11-20.
 > `[P]` = paralelizable con las demás `[P]` de su tanda. «Hecho» incluye siempre `pnpm run typecheck`, `pnpm run lint`
 > y `pnpm exec vitest related --run <archivos>` en verde.
 
@@ -43,15 +43,15 @@
       *Hecho:* `pago-plataforma-recalcula-mora.test.ts` (R19, R20, R21, R34); los tests existentes de SLT-60 y
       SLT-143 siguen en verde.
 - [ ] **T2.6** Historial: los cinco tipos y la categoría `mora` en `lib/types/historial-accion.ts` y
-      `lib/types/historial-accion-etiquetas.ts`; guardias del historial enmendadas, con la excepción de P5 si Carlos la
-      acepta (R30). Depende de T1.1.
+      `lib/types/historial-accion-etiquetas.ts`; guardias del historial enmendadas, con la excepción de la decisión P5,
+      que Carlos Restrepo acepta en la review del PR (R30). Depende de T1.1.
       *Hecho:* `historial-accion-*.guardia` en verde.
 - [ ] **T2.7** Permisos de §6.1:
-      - `wallet-egresos.ts` y `wallet-anulacion.ts` (P3);
+      - `wallet-egresos.ts` y `wallet-anulacion.ts` (decisión P3);
       - `confirmar-correo.ts`;
-      - `push.ts`, `notificaciones.ts` y `vistas-filtro.ts` (P2);
+      - `push.ts`, `notificaciones.ts` y `vistas-filtro.ts` (decisión P2);
       - `WebhookWhatsappService.ts`;
-      - `conSuEmpresa` y `paraCadaEmpresa` (P1);
+      - `conSuEmpresa` y `paraCadaEmpresa` (decisión P1);
       - la guardia `mora-permiso-solo-en-lista`.
 
       Depende de T2.3.

@@ -152,7 +152,7 @@ La pieza SQL de «recalcular» (R34):
 - Toma la empresa en `FOR UPDATE`. Si no está congelada, responde `no_congelada`.
 - Si no, fija `congelada_at = NULL` y `descongelada_hasta = p_hasta`, y responde `ok`.
 - El motivo y el rango de la fecha (R22) los valida el servicio. La base no guarda el motivo: va solo al historial
-  (P5).
+  (decisión P5).
 
 ### 2.5 El bloqueo en la base: `bloqueo_por_mora()` (R16)
 
@@ -312,7 +312,7 @@ interface IMoraEmpresaRepository {
      `valorNuevo` son «15» o «7 (global)»; el actor es el superadmin (`resolverActorCongelado`);
   4. después llama a `recalcularCongelamiento(tx, org, ahora, { causa: "gracia", actor })` (R5).
 - **`descongelarAMano`** llama a `organizacion_mora_descongelar_a_mano`. Con `ok`, en la misma transacción:
-  - `appendAccion` con `empresa_descongelada_a_mano`, `valorNuevo` = `hasta AAAA-MM-DD — <motivo>` (P5);
+  - `appendAccion` con `empresa_descongelada_a_mano`, `valorNuevo` = `hasta AAAA-MM-DD — <motivo>` (decisión P5);
   - encola `mora_aviso_correo { tipo: "descongelada", motivo: "a_mano", hasta }` (R28).
 - **`moraParaPlataforma`** lee con `conEmpresa(org)`, como `deEmpresaParaPlataforma` de SLT-119, y no pasa por
   `comoPlataforma`. El historial son las filas de `historial_accion` de los cinco tipos de §1.2, las 50 más recientes
@@ -358,7 +358,7 @@ export async function recalcularCongelamiento(
 | `avisoDeMiEmpresa(actor)` | `maestro` y `admin` de la empresa; otro rol → `null` sin leer (R24) | — | `EstadoMora \| null` |
 | `moraDeEmpresa(actor, { organizacionId })` | `esPlataforma` (R4) | `z.uuid()` | `ok` / `forbidden` / `not_found` |
 | `fijarGracia(actor, { organizacionId, dias })` | `esPlataforma` | `dias: z.int().min(1).max(60).nullable()` | `ok` / `sin_cambio` / `forbidden` / `validation_error` (R3, R4) |
-| `descongelar(actor, { organizacionId, motivo, hasta })` | `esPlataforma` | motivo recortado, de 1 a 200 caracteres; `hasta` entre hoy y hoy + 60 de la plataforma (P4) | `ok` / `no_congelada` / `forbidden` / `validation_error` (R22) |
+| `descongelar(actor, { organizacionId, motivo, hasta })` | `esPlataforma` | motivo recortado, de 1 a 200 caracteres; `hasta` entre hoy y hoy + 60 de la plataforma (decisión P4) | `ok` / `no_congelada` / `forbidden` / `validation_error` (R22) |
 
 Con un actor que no es superadmin, el servicio devuelve `forbidden` antes de leer nada.
 
@@ -408,13 +408,13 @@ No hay ningún viaje más a la base.
 | Archivo | Motivo | Alcance |
 |---|---|---|
 | `lib/actions/wallet-egresos.ts` | `pago_plataforma` | Solo si `data.categoria === "egreso_pago_plataforma"`, después del parse (R11) |
-| `lib/actions/wallet-anulacion.ts` | `pago_plataforma` | (P3) Solo la anulación de un egreso de pago a la plataforma por confirmar |
+| `lib/actions/wallet-anulacion.ts` | `pago_plataforma` | (decisión P3) Solo la anulación de un egreso de pago a la plataforma por confirmar |
 | `lib/actions/confirmar-correo.ts` | `cuenta_propia` | El canje del enlace de la propia persona (R11) |
 | `lib/actions/password-reset.ts` | — | No hace falta: ya corre como plataforma (dueño) |
-| `lib/actions/push.ts`, `lib/actions/notificaciones.ts`, `lib/actions/vistas-filtro.ts` | `cuenta_propia` | (P2) Solo las mutaciones sobre filas del propio usuario |
+| `lib/actions/push.ts`, `lib/actions/notificaciones.ts`, `lib/actions/vistas-filtro.ts` | `cuenta_propia` | (decisión P2) Solo las mutaciones sobre filas del propio usuario |
 | `lib/services/WebhookWhatsappService.ts` | `whatsapp_entrante` | Los dos `conEmpresa` de la ingesta (R15) |
-| `app/api/cron/procesar-jobs/route.ts` (`conSuEmpresa`) | `sistema` | (P1) Todo trabajo con empresa (R17) |
-| `lib/db/para-cada-empresa.ts` | `sistema` | (P1) Todo cron y recurrente por empresa (R17) |
+| `app/api/cron/procesar-jobs/route.ts` (`conSuEmpresa`) | `sistema` | (decisión P1) Todo trabajo con empresa (R17) |
+| `lib/db/para-cada-empresa.ts` | `sistema` | (decisión P1) Todo cron y recurrente por empresa (R17) |
 
 **Propio perfil.** Hoy no hay una pantalla de «mi perfil»: un usuario cambia su contraseña por «¿Olvidaste tu
 contraseña?» (como plataforma, no le afecta), y su correo con el enlace de SLT-221. `actualizarUsuario` es la
@@ -586,7 +586,7 @@ Las filas entran en «Histórico de acciones» con una categoría nueva, `mora` 
 | `tests/unit/guards/mora-permiso-solo-en-lista.guardia.test.ts` (nuevo) | R11, R15, R17 | §8.3 |
 | `tests/integration/repositories/mora-empresa-repository.test.ts` (nuevo) | R5, R19, R22, R30, R31, R32 | Fijar gracia: historial «7 (global)» → «15», `sin_cambio` no escribe; bajar la gracia no congela y subirla con la empresa congelada la descongela con su fila y su trabajo; descongelar a mano con motivo y hasta; `no_congelada`; historial del superadmin con `conEmpresa` |
 | `tests/integration/repositories/pago-plataforma-recalcula-mora.test.ts` (nuevo) | R19, R20, R21, R34 | Congelada → confirmar el pago que salda → descongelada en la misma transacción, con historial y trabajo; un pago parcial no descongela; por fuera igual; un pago por confirmar no descongela; anular no congela; si el recálculo falla, la confirmación se deshace |
-| `tests/unit/services/mora-empresa-service.test.ts` (nuevo) | R3, R4, R22, R24 | `forbidden` sin llamadas (maestro, admin, sin sesión); validación de días, motivo y hasta (P4); el banner solo para maestro y admin |
+| `tests/unit/services/mora-empresa-service.test.ts` (nuevo) | R3, R4, R22, R24 | `forbidden` sin llamadas (maestro, admin, sin sesión); validación de días, motivo y hasta (decisión P4); el banner solo para maestro y admin |
 | `tests/unit/actions/mora-empresa.test.ts` (nuevo) | R4, R32 | Manda la empresa ligada, no la del `input` |
 | `tests/unit/planes/jobs-mora.test.ts` (nuevo) | R7, R9, R26, R27, R28, R29 | Dobles: la corrida por empresa sigue si una falla y después lanza; los recordatorios con `run_after` a las 08:00 y su dedupe; el manejador de avisos relee el estado (factura pagada → no envía); un envío fallido sigue y lanza; registro en `buildHandlers`, `MODULO_POR_JOB`, `RECURRENTES_DE_PLATAFORMA` y `SIEMBRAS_RECURRENTES` |
 | `tests/unit/services/email/plantilla-mora-aviso.test.ts` (nuevo) | R26, R27, R28 | Asunto y cuerpo de los tres tipos; botón a `/mi-plan`; sin URL, la nota; escape |
@@ -599,7 +599,7 @@ Las filas entran en «Histórico de acciones» con una categoría nueva, `mora` 
 | `tests/unit/actions/wallet-egresos-mora.test.ts` (nuevo) | R11 | El permiso solo para `egreso_pago_plataforma`; un gasto con la empresa congelada → `forbidden` |
 | `tests/components/AvisoMora.test.tsx` (nuevo) | R24 | Cinco estados; enlace solo para el maestro; `role` |
 | `tests/components/MoraEmpresa.test.tsx` (nuevo) | R32 | Gracia propia o global; «Descongelar» solo si está congelada; errores de validación |
-| `tests/unit/guards/historial-accion-*.guardia.test.ts` (se enmiendan) | R30 | Los cinco tipos nuevos en el censo; la excepción declarada de P5 |
+| `tests/unit/guards/historial-accion-*.guardia.test.ts` (se enmiendan) | R30 | Los cinco tipos nuevos en el censo; la excepción declarada de la decisión P5 |
 | `tests/unit/guards/mi-plan-solo-maestro.guardia.test.ts` (se enmienda) | R24, R26 | `mora-aviso.ts` y `AvisoMora.tsx` en `permitidos` |
 | Inventarios de enums existentes (se amplían) | §8.1 | Los de `job_tipo` y `historial_accion_tipo` que se pongan en rojo |
 | `e2e/mora-congelamiento.spec.ts` (nuevo, proyecto `dinero`) | R35, R10, R12, R13, R24 | §11 |
