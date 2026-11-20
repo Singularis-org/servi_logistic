@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { SWRConfig } from "swr";
 import type { ReactElement, ReactNode } from "react";
 import { MonedaDelPaisProvider } from "@/providers/MonedaDelPaisProvider";
 import {
   formatearMontoEn,
+  formatearTopeEn,
   montoExacto,
   MONEDA_PLATAFORMA,
   SIN_MONTO_RAYA,
@@ -26,6 +29,20 @@ import {
   novedadAOrdenCard,
   SECCIONES_NOVEDAD,
 } from "@/app/(app)/novedades/_components/novedad-a-orden-card";
+import {
+  IncidentesAdminModule,
+  APROBAR_CONFIRMAR,
+  MONTO_LABEL,
+  montoAyuda,
+  montoExcede,
+} from "@/app/(app)/incidentes/_components/IncidentesAdminModule";
+import { HistorialAccionesModule } from "@/app/(app)/historico/acciones/_components/HistorialAccionesModule";
+import { columnasHistorialAcciones } from "@/app/(app)/historico/acciones/_components/historial-acciones-columnas";
+import { montoValido } from "@/app/(app)/wallet/_components/wallet-labels";
+import { verIncidente } from "@/lib/actions/incidentes";
+import { INDEMNIZACION_MONTO_MAX } from "@/lib/types/cierres-admin";
+import type { IncidenteAdminDTO } from "@/lib/interfaces/services/IIncidenteAdminService";
+import type { HistorialAccionDTO, ListarHistorialAccionesResult } from "@/lib/types/historial-accion";
 import type { EtiquetaGuiaDTO } from "@/lib/types/etiqueta-guia";
 import type { ResumenCargaOrdenDTO } from "@/lib/types/carga-masiva-resumen";
 import type { OrdenListItemDTO } from "@/lib/types/orden";
@@ -58,6 +75,26 @@ vi.mock("@/lib/actions/carga-masiva-resumen", () => ({
 }));
 vi.mock("@/hooks/useToast", () => ({
   useToast: () => ({ error: vi.fn(), success: vi.fn(), info: vi.fn(), warning: vi.fn() }),
+}));
+// Dobles de la cola de incidentes (R9, R10), los mismos que `IncidentesAdminModule.test.tsx`: las
+// acciones del servidor y el router del refresco.
+vi.mock("@/lib/actions/incidentes", () => ({
+  verIncidente: vi.fn(),
+  aprobarIncidente: vi.fn(),
+  rechazarIncidente: vi.fn(),
+  retractarIncidente: vi.fn(),
+  listarHistoricoIncidentesPaginado: vi.fn(),
+  listarPendientesIncidentesPaginado: vi.fn(),
+}));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
+}));
+// El registro de acciones (R11) recibe su listado por la prop `acciones`; esto solo evita que el
+// módulo arrastre las acciones reales del servidor.
+vi.mock("@/lib/actions/historial-acciones", () => ({
+  listarHistorialAccionesPaginado: vi.fn(),
+  listarHistorialAccionesCompleto: vi.fn(),
+  obtenerCatalogoActoresHistorial: vi.fn(),
 }));
 vi.mock("@/lib/actions/etiquetas-guia", () => ({
   generarEtiquetas: vi.fn(async () => ({ status: "ok", etiquetas: [], omitidas: [] })),
@@ -443,5 +480,264 @@ describe("SLT-240 R8 — tarjeta de novedades (PosOrderCardDetalle + novedadAOrd
 
   it("R12: con la moneda de CR, el mismo texto que sin proveedor", () => {
     expect(textoDeLaTarjeta(MONEDA_CR)).toBe(textoDeLaTarjeta());
+  });
+});
+
+// ── R9 y R10: la cola de incidentes (IncidentesAdminModule + IncidentesHistoricoTabla) ─────────
+
+/** Una indemnización con cola y miles, en el STRING de escala 2 que entrega el servidor. */
+const INDEMNIZACION = "12500.50";
+
+function makeIncidente(over: Partial<IncidenteAdminDTO> & { incidenteId: string }): IncidenteAdminDTO {
+  return {
+    ordenId: `o-${over.incidenteId}`,
+    numGuia: 1001,
+    numRemision: "REM-001",
+    destinatario: "Beto Ruiz",
+    zonaNombre: "GAM",
+    estatusValue: "incidente",
+    causa: "danado",
+    motivo: "Caja aplastada",
+    estado: "solicitado",
+    indemnizacion: null,
+    reportadoPorNombre: "Ana Admin",
+    resueltoPorNombre: null,
+    resueltoAt: null,
+    motivoRechazo: null,
+    createdAt: "2026-07-30T10:00:00.000Z",
+    evidenciaUrls: [],
+    esPropio: false,
+    ...over,
+  };
+}
+
+const PENDIENTE = makeIncidente({ incidenteId: "i1" });
+const RESUELTO = makeIncidente({
+  incidenteId: "i2",
+  numRemision: "REM-002",
+  estado: "aprobado",
+  indemnizacion: INDEMNIZACION,
+  resueltoPorNombre: "Carla Admin",
+  resueltoAt: "2026-07-30T12:00:00.000Z",
+});
+const RESUELTO_SIN_IMPORTE = makeIncidente({
+  incidenteId: "i3",
+  numRemision: "REM-003",
+  estado: "rechazado",
+  motivoRechazo: "No procede",
+});
+
+function pagina<T>(items: T[]) {
+  return { items, total: items.length, pageSize: 25 };
+}
+
+/** Monta la cola con un pendiente y dos resueltos, con el proveedor de `moneda` o sin él. */
+function montarIncidentes(moneda?: FormatoMoneda) {
+  return render(
+    <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0, revalidateOnMount: false }}>
+      <IncidentesAdminModule
+        pendientes={pagina([PENDIENTE])}
+        historico={pagina([RESUELTO, RESUELTO_SIN_IMPORTE])}
+        sinZona={false}
+      />
+    </SWRConfig>,
+    moneda ? { wrapper: conPais(moneda) } : undefined,
+  );
+}
+
+/** La celda «Indemnización» de cada fila del histórico, en orden. */
+function indemnizacionesDelHistorico(moneda?: FormatoMoneda): string[] {
+  const { unmount } = montarIncidentes(moneda);
+  const tabla = screen.getByRole("table", { name: "Histórico" });
+  const columna = within(tabla)
+    .getAllByRole("columnheader")
+    .findIndex((th) => (th.textContent ?? "").trim() === "Indemnización");
+  const celdas = within(tabla)
+    .getAllByRole("row")
+    .slice(1)
+    .map((tr) => (within(tr).getAllByRole("cell")[columna].textContent ?? "").trim());
+  unmount();
+  return celdas;
+}
+
+const VER_RESUELTO = "Ver el incidente de la orden REM-002";
+const VER_PENDIENTE = "Ver o decidir el incidente de la orden REM-001";
+
+/** El valor del dato «Indemnización» del detalle de `incidente`, abierto desde su botón. */
+async function indemnizacionDelDetalle(
+  incidente: IncidenteAdminDTO,
+  boton: string,
+  moneda?: FormatoMoneda,
+): Promise<string> {
+  vi.mocked(verIncidente).mockResolvedValue({ status: "ok", incidente });
+  const user = userEvent.setup();
+  const { unmount } = montarIncidentes(moneda);
+  await user.click(screen.getByRole("button", { name: boton }));
+  const dialogo = await screen.findByRole("dialog", { name: "Detalle del incidente" });
+  const rotulo = within(dialogo).getByText(/^Indemnización:/);
+  const texto = (rotulo.nextElementSibling?.textContent ?? "").trim();
+  unmount();
+  return texto;
+}
+
+describe("SLT-240 R9 — indemnización de la cola de incidentes", () => {
+  it("columna del histórico: con la moneda de prueba, en la moneda del país; sin importe, `—`", () => {
+    const [conImporte, sinImporte] = indemnizacionesDelHistorico(MONEDA_DE_PRUEBA);
+    expect(conImporte).toBe(formatearMontoEn(MONEDA_DE_PRUEBA, INDEMNIZACION));
+    expect(conImporte).not.toBe(formatearMontoEn(MONEDA_PLATAFORMA, INDEMNIZACION));
+    expect(sinImporte).toBe(SIN_MONTO_RAYA);
+  });
+
+  it("columna del histórico, R13: sin proveedor, con la moneda de la plataforma", () => {
+    expect(indemnizacionesDelHistorico()).toEqual([
+      formatearMontoEn(MONEDA_PLATAFORMA, INDEMNIZACION),
+      SIN_MONTO_RAYA,
+    ]);
+  });
+
+  it("columna del histórico, R12: con la moneda de CR, las mismas celdas que sin proveedor", () => {
+    expect(indemnizacionesDelHistorico(MONEDA_CR)).toEqual(indemnizacionesDelHistorico());
+  });
+
+  it("detalle: con la moneda de prueba, en la moneda del país", async () => {
+    const texto = await indemnizacionDelDetalle(RESUELTO, VER_RESUELTO, MONEDA_DE_PRUEBA);
+    expect(texto).toBe(formatearMontoEn(MONEDA_DE_PRUEBA, INDEMNIZACION));
+    expect(texto).not.toBe(formatearMontoEn(MONEDA_PLATAFORMA, INDEMNIZACION));
+  });
+
+  it("detalle sin importe (pendiente): `—`, con la moneda de prueba, con la de CR y sin proveedor", async () => {
+    expect(await indemnizacionDelDetalle(PENDIENTE, VER_PENDIENTE, MONEDA_DE_PRUEBA)).toBe(SIN_MONTO_RAYA);
+    expect(await indemnizacionDelDetalle(PENDIENTE, VER_PENDIENTE, MONEDA_CR)).toBe(SIN_MONTO_RAYA);
+    expect(await indemnizacionDelDetalle(PENDIENTE, VER_PENDIENTE)).toBe(SIN_MONTO_RAYA);
+  });
+
+  it("detalle, R13 y R12: sin proveedor la de la plataforma, y con la de CR el mismo texto", async () => {
+    const sinProveedor = await indemnizacionDelDetalle(RESUELTO, VER_RESUELTO);
+    expect(sinProveedor).toBe(formatearMontoEn(MONEDA_PLATAFORMA, INDEMNIZACION));
+    expect(await indemnizacionDelDetalle(RESUELTO, VER_RESUELTO, MONEDA_CR)).toBe(sinProveedor);
+  });
+});
+
+/** La ayuda y el error de «excede» del formulario de aprobación, con el proveedor de `moneda`. */
+async function textosDelTope(moneda?: FormatoMoneda): Promise<{ ayuda: string; excede: string }> {
+  vi.mocked(verIncidente).mockResolvedValue({ status: "ok", incidente: PENDIENTE });
+  const user = userEvent.setup();
+  const { unmount } = montarIncidentes(moneda);
+  await user.click(screen.getByRole("button", { name: VER_PENDIENTE }));
+  await screen.findByRole("dialog", { name: "Detalle del incidente" });
+  await user.click(screen.getByRole("button", { name: "Aprobar" }));
+  await screen.findByRole("button", { name: APROBAR_CONFIRMAR });
+  const campo = screen.getByLabelText(MONTO_LABEL);
+  const ayuda = (document.getElementById("incidente-monto-ayuda")?.textContent ?? "").trim();
+  fireEvent.change(campo, { target: { value: "99999999999.99" } }); // 11 dígitos enteros
+  const excede = (screen.getByRole("alert").textContent ?? "").trim();
+  unmount();
+  return { ayuda, excede };
+}
+
+describe("SLT-240 R10 — tope de la indemnización en el formulario de aprobación", () => {
+  it("con la moneda de prueba (0 decimales), la ayuda y el error escriben el tope en la moneda del país", async () => {
+    const { ayuda, excede } = await textosDelTope(MONEDA_DE_PRUEBA);
+    expect(ayuda).toBe(montoAyuda(MONEDA_DE_PRUEBA));
+    expect(excede).toBe(montoExcede(MONEDA_DE_PRUEBA));
+    // Cuadrado hacia el cero a la escala de la moneda: sin cola y sin subir a 10 000 000 000.
+    expect(excede).toContain("€9 999 999 999 (");
+    expect(ayuda).toContain("€9 999 999 999,");
+    expect(excede).not.toBe(montoExcede(MONEDA_PLATAFORMA));
+  });
+
+  it("el tope anunciado con una moneda de 0 decimales NUNCA queda por encima del que acepta el validador", () => {
+    const anunciado = formatearTopeEn(MONEDA_DE_PRUEBA, INDEMNIZACION_MONTO_MAX, SIN_MONTO_RAYA);
+    expect(montoExcede(MONEDA_DE_PRUEBA)).toContain(anunciado);
+    const comoSeTeclearia = anunciado
+      .replace(MONEDA_DE_PRUEBA.simbolo, "")
+      .split(MONEDA_DE_PRUEBA.separadorMiles)
+      .join("");
+    expect(montoValido(comoSeTeclearia, INDEMNIZACION_MONTO_MAX)).toBe(true);
+  });
+
+  it("R13: sin proveedor, el tope en la moneda de la plataforma", async () => {
+    const { ayuda, excede } = await textosDelTope();
+    expect(ayuda).toBe(montoAyuda(MONEDA_PLATAFORMA));
+    expect(excede).toBe(montoExcede(MONEDA_PLATAFORMA));
+  });
+
+  it("R12: con la moneda de CR, los mismos textos que sin proveedor", async () => {
+    expect(await textosDelTope(MONEDA_CR)).toEqual(await textosDelTope());
+  });
+});
+
+// ── R11: el registro de acciones (HistorialAccionesModule) ──────────────────────────────────
+
+/** El monto del registro: STRING de escala 2, como lo entrega el servidor. */
+const MONTO_REGISTRO = "1234.50";
+
+function filaDelRegistro(id: string, monto: string | null): HistorialAccionDTO {
+  return {
+    id,
+    fecha: "2026-09-02T05:30:00.000Z",
+    accion: "orden_eliminada",
+    accionLabel: "Eliminó una orden",
+    categoria: "hace_desaparecer",
+    entidadTipo: "orden",
+    entidadEtiqueta: `Guía ${id}`,
+    actorNombre: "Ana Mora",
+    actorRol: "admin",
+    monto,
+    valorAnterior: null,
+    valorNuevo: null,
+    loteId: `l-${id}`,
+  };
+}
+
+/** La columna «Importe» de las filas del registro, montado con el proveedor de `moneda` o sin él. */
+async function importesDelRegistro(moneda?: FormatoMoneda): Promise<string[]> {
+  const listar = vi.fn(
+    async (): Promise<ListarHistorialAccionesResult> => ({
+      status: "ok",
+      items: [filaDelRegistro("f1", MONTO_REGISTRO), filaDelRegistro("f2", null)],
+      page: 1,
+      pageSize: 25,
+      total: 2,
+    }),
+  );
+  const { unmount } = render(
+    <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+      <HistorialAccionesModule
+        actores={[]}
+        acciones={{ listar }}
+        ahora={new Date("2026-09-02T18:00:00Z")}
+        debounceMs={0}
+      />
+    </SWRConfig>,
+    moneda ? { wrapper: conPais(moneda) } : undefined,
+  );
+  await screen.findByText("Guía f1");
+  const columna = columnasHistorialAcciones(MONEDA_PLATAFORMA).findIndex((c) => c.id === "monto");
+  const importes = within(screen.getByRole("table"))
+    .getAllByRole("row")
+    .slice(1)
+    .map((tr) => (within(tr).getAllByRole("cell")[columna].textContent ?? "").trim());
+  unmount();
+  return importes;
+}
+
+describe("SLT-240 R11 — importe del registro de acciones (HistorialAccionesModule)", () => {
+  it("con la moneda de prueba, el monto sale en la moneda del país; sin monto, `—`", async () => {
+    const [conMonto, sinMonto] = await importesDelRegistro(MONEDA_DE_PRUEBA);
+    expect(conMonto).toBe(formatearMontoEn(MONEDA_DE_PRUEBA, MONTO_REGISTRO));
+    expect(conMonto).not.toBe(formatearMontoEn(MONEDA_PLATAFORMA, MONTO_REGISTRO));
+    expect(sinMonto).toBe(SIN_MONTO_RAYA);
+  });
+
+  it("R13: sin proveedor, con la moneda de la plataforma", async () => {
+    expect(await importesDelRegistro()).toEqual([
+      formatearMontoEn(MONEDA_PLATAFORMA, MONTO_REGISTRO),
+      SIN_MONTO_RAYA,
+    ]);
+  });
+
+  it("R12: con la moneda de CR, los mismos importes que sin proveedor", async () => {
+    expect(await importesDelRegistro(MONEDA_CR)).toEqual(await importesDelRegistro());
   });
 });

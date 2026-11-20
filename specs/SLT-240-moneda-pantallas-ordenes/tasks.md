@@ -59,7 +59,7 @@
 - [x] **T3.2** [P] `CorregirUbicacionAviso.tsx`: `importe(u, campo, moneda)` (R4). Sus rótulos, en
   T3.6.
   - *Hecho:* casos de R4 en verde; los tests existentes del aviso, verdes sin tocarlos.
-- [ ] **T3.3** [P] Incidentes (depende de T1.1).
+- [x] **T3.3** [P] Incidentes (depende de T1.1).
   - `IncidentesAdminModule.tsx`: el detalle con `formatearMontoEn`, y `montoAyuda(moneda)` /
     `montoExcede(moneda)` en lugar de `MONTO_AYUDA` / `MONTO_EXCEDE` (R9, R10).
   - `IncidentesHistoricoTabla.tsx`: `columnasHistorico(onAbrir, moneda)` (R9).
@@ -70,7 +70,7 @@
     `montoExcede(MONEDA_PLATAFORMA)`, y `USA_EL_FORMATEADOR` gana `formatearMontoEn|formatearTopeEn`
     (design §6).
   - *Hecho:* casos de R9 y R10 en verde y esos dos tests en verde.
-- [ ] **T3.4** [P] Registro de acciones: `columnasHistorialAcciones(moneda)` como función y
+- [x] **T3.4** [P] Registro de acciones: `columnasHistorialAcciones(moneda)` como función y
   `HistorialAccionesModule.tsx` con `useMemo` sobre el hook (R11).
   - Pasan a `columnasHistorialAcciones(MONEDA_PLATAFORMA)`:
     - `tests/components/HistorialAccionesValorInfo.test.tsx`;

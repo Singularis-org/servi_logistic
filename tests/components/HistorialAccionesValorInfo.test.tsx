@@ -12,6 +12,7 @@ import { cleanup, render, within } from "@testing-library/react";
 
 import { columnasHistorialAcciones } from "@/app/(app)/historico/acciones/_components/historial-acciones-columnas";
 import { filaDescargaHistorialAccion } from "@/app/(app)/historico/acciones/_components/historial-acciones-descarga-columnas";
+import { MONEDA_PLATAFORMA } from "@/lib/config/moneda";
 import type { HistorialAccionDTO } from "@/lib/types/historial-accion";
 
 afterEach(() => cleanup());
@@ -37,7 +38,7 @@ function fila(extra: Partial<HistorialAccionDTO> = {}): HistorialAccionDTO {
 
 /** Pinta la celda de UNA columna tal como la monta `DataTable` (su `render`). */
 function celda(id: "anterior" | "nuevo", f: HistorialAccionDTO): HTMLElement {
-  const col = columnasHistorialAcciones.find((c) => c.id === id);
+  const col = columnasHistorialAcciones(MONEDA_PLATAFORMA).find((c) => c.id === id);
   if (typeof col?.render !== "function") throw new Error(`la columna «${id}» no pinta con una función`);
   const { container } = render(<div data-testid={id}>{col.render(f)}</div>);
   return container.firstElementChild as HTMLElement;

@@ -3,7 +3,7 @@ import { createElement, type ReactNode } from "react";
 import type { Column } from "@/components/shared/DataTable";
 import { EstadoConInfo } from "@/components/shared/EstadoInfo";
 import { ROL_LABELS } from "@/lib/auth/rol-label";
-import { money } from "@/lib/config/moneda";
+import { formatearMontoEn, SIN_MONTO_RAYA, type FormatoMoneda } from "@/lib/config/moneda";
 import {
   CATEGORIA_LABELS,
   ENTIDAD_LABELS,
@@ -24,8 +24,8 @@ import { nombreDeEstado } from "@/lib/types/order-status";
 //     recalcularla aqui a partir del tipo la volveria a atar al presente — que es
 //     exactamente lo que un registro de auditoria no puede hacer. La entidad puede ni
 //     existir ya.
-//   · NO convierte `monto` a numero. Es un STRING de escala 2 y `money()` lo formatea
-//     partiendo el STRING (R6). Un `Number()` en este camino es la mutacion que caza
+//   · NO convierte `monto` a numero. Es un STRING de escala 2 y `formatearMontoEn` lo formatea
+//     partiendo el STRING (R6), con la moneda del pais (SLT-240 R11). Un `Number()` en este camino es la mutacion que caza
 //     `historial-accion-money-safe.guardia`.
 //   · NO deja `actorNombre` en blanco cuando es `null`: eso significa que la accion la hizo
 //     el SISTEMA (un cron, un job), y una celda vacia se lee como «falta el dato» (R36).
@@ -120,73 +120,78 @@ export function rolLegible(fila: HistorialAccionDTO): string {
  * desbordar pero a cambio se vuelve ilegible. Cuando la suma de minimos no cabe, lo correcto
  * es que la tabla scrollee en horizontal DENTRO de su contenedor, que es lo que `DataTable`
  * ya hace.
+ *
+ * SLT-240 (R11): es funcion de la moneda del pais, que llega del hook del modulo. Con
+ * `MONEDA_PLATAFORMA` pinta lo mismo que antes (R12, R13).
  */
-export const columnasHistorialAcciones: Column<HistorialAccionDTO>[] = [
-  {
-    id: "fecha",
-    value: "Cuándo",
-    minWidth: "11rem",
-    render: (fila) => fechaCR(fila.fecha),
-  },
-  {
-    id: "actor",
-    value: "Quién",
-    minWidth: "10rem",
-    render: actorLegible,
-  },
-  {
-    id: "rol",
-    value: "Rol",
-    minWidth: "8rem",
-    render: rolLegible,
-  },
-  {
-    id: "categoria",
-    value: "Categoría",
-    minWidth: "9rem",
-    render: (fila) => CATEGORIA_LABELS[fila.categoria],
-  },
-  {
-    // R34 «qué». `accionLabel` viene CONGELADO del servidor; aquí no se traduce nada.
-    id: "accion",
-    value: "Qué",
-    minWidth: "14rem",
-    render: (fila) => fila.accionLabel,
-  },
-  {
-    id: "entidadTipo",
-    value: "Tipo",
-    minWidth: "9rem",
-    render: (fila) => ENTIDAD_LABELS[fila.entidadTipo],
-  },
-  {
-    // R34 «sobre qué». `entidadEtiqueta` viene CONGELADA y nunca vacía: sobrevive al borrado
-    // físico de la entidad, que es la mitad del valor de este registro.
-    id: "entidad",
-    value: "Sobre qué",
-    minWidth: "12rem",
-    render: (fila) => fila.entidadEtiqueta,
-  },
-  {
-    // R37 — el formato de dinero de la casa, alineado a la derecha como el resto de columnas
-    // de importe del repo: con las unidades a la misma altura, dos filas se comparan de un
-    // vistazo en vez de cifra a cifra.
-    id: "monto",
-    value: "Importe",
-    align: "right",
-    minWidth: "8rem",
-    render: (fila) => money(fila.monto),
-  },
-  {
-    id: "anterior",
-    value: "Valor anterior",
-    minWidth: "10rem",
-    render: (fila) => celdaValor(fila.accion, fila.valorAnterior),
-  },
-  {
-    id: "nuevo",
-    value: "Valor nuevo",
-    minWidth: "10rem",
-    render: (fila) => celdaValor(fila.accion, fila.valorNuevo),
-  },
-];
+export function columnasHistorialAcciones(moneda: FormatoMoneda): Column<HistorialAccionDTO>[] {
+  return [
+    {
+      id: "fecha",
+      value: "Cuándo",
+      minWidth: "11rem",
+      render: (fila) => fechaCR(fila.fecha),
+    },
+    {
+      id: "actor",
+      value: "Quién",
+      minWidth: "10rem",
+      render: actorLegible,
+    },
+    {
+      id: "rol",
+      value: "Rol",
+      minWidth: "8rem",
+      render: rolLegible,
+    },
+    {
+      id: "categoria",
+      value: "Categoría",
+      minWidth: "9rem",
+      render: (fila) => CATEGORIA_LABELS[fila.categoria],
+    },
+    {
+      // R34 «qué». `accionLabel` viene CONGELADO del servidor; aquí no se traduce nada.
+      id: "accion",
+      value: "Qué",
+      minWidth: "14rem",
+      render: (fila) => fila.accionLabel,
+    },
+    {
+      id: "entidadTipo",
+      value: "Tipo",
+      minWidth: "9rem",
+      render: (fila) => ENTIDAD_LABELS[fila.entidadTipo],
+    },
+    {
+      // R34 «sobre qué». `entidadEtiqueta` viene CONGELADA y nunca vacía: sobrevive al borrado
+      // físico de la entidad, que es la mitad del valor de este registro.
+      id: "entidad",
+      value: "Sobre qué",
+      minWidth: "12rem",
+      render: (fila) => fila.entidadEtiqueta,
+    },
+    {
+      // R37 — el formato de dinero de la casa, alineado a la derecha como el resto de columnas
+      // de importe del repo: con las unidades a la misma altura, dos filas se comparan de un
+      // vistazo en vez de cifra a cifra.
+      id: "monto",
+      value: "Importe",
+      align: "right",
+      minWidth: "8rem",
+      render: (fila) => formatearMontoEn(moneda, fila.monto, SIN_MONTO_RAYA),
+    },
+    {
+      id: "anterior",
+      value: "Valor anterior",
+      minWidth: "10rem",
+      render: (fila) => celdaValor(fila.accion, fila.valorAnterior),
+    },
+    {
+      id: "nuevo",
+      value: "Valor nuevo",
+      minWidth: "10rem",
+      render: (fila) => celdaValor(fila.accion, fila.valorNuevo),
+    },
+  ];
+}

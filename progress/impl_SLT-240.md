@@ -91,3 +91,66 @@ T3.5: R1 (`ordenes-columns`, vía `PriceLabel`) y R8 (`PosOrderCardDetalle` + `n
 - `pnpm exec eslint` de los 4 archivos: `No issues found`.
 
 Veredicto (T3.1, T3.2, T3.5): hechas; casos de R1/R2/R3/R4/R8 en verde, tests existentes verdes sin tocar, typecheck y lint en 0, sin archivos fuera de la lista.
+
+## Tanda 3 — T3.3, T3.4 (frontend_dev, 2026-11-20)
+
+### Archivos
+
+Producción:
+- `app/(app)/incidentes/_components/IncidentesAdminModule.tsx` — `useMonedaDelPais()`; el detalle pinta
+  `formatearMontoEn(moneda, detalle.indemnizacion, SIN_MONTO_RAYA)` (R9); `MONTO_AYUDA` / `MONTO_EXCEDE`
+  pasan a `montoAyuda(moneda)` / `montoExcede(moneda)` exportadas, con
+  `formatearTopeEn(moneda, INDEMNIZACION_MONTO_MAX, SIN_MONTO_RAYA)`; textos alrededor sin cambiar (R10, R17).
+  De `cierre-detalle-shared` solo importa ya `EstadoCierreBadge`.
+- `app/(app)/incidentes/_components/IncidentesHistoricoTabla.tsx` — `useMonedaDelPais()`;
+  `columnasHistorico(onAbrir, moneda)` con `formatearMontoEn(moneda, i.indemnizacion, SIN_MONTO_RAYA)` (R9).
+  Ya no importa `money`.
+- `app/(app)/historico/acciones/_components/historial-acciones-columnas.ts` —
+  `export function columnasHistorialAcciones(moneda: FormatoMoneda)` con
+  `formatearMontoEn(moneda, fila.monto, SIN_MONTO_RAYA)` (R11).
+- `app/(app)/historico/acciones/_components/HistorialAccionesModule.tsx` —
+  `const columnas = useMemo(() => columnasHistorialAcciones(moneda), [moneda])` sobre `useMonedaDelPais()`.
+
+Tests:
+- `tests/components/moneda-del-pais-ordenes.test.tsx` — casos de R9, R10 y R11 (+13); dobles de
+  `@/lib/actions/incidentes`, `next/navigation` y `@/lib/actions/historial-acciones`.
+- `tests/components/IncidentesAdminModule.test.tsx` — `montoExcede(MONEDA_PLATAFORMA)`; el literal entero
+  `₡9.999.999.999,99 (10 dígitos y 2 decimales)…` se conserva sin tocar.
+- `tests/components/DineroIdentidadesEnPantalla.test.tsx` — el test del tope lee `montoExcede(MONEDA_PLATAFORMA)`;
+  `USA_EL_FORMATEADOR` gana `formatearMontoEn|formatearTopeEn`.
+- `tests/components/HistorialAccionesValorInfo.test.tsx`, `tests/unit/components/historial-acciones-descarga-columnas.test.ts`,
+  `tests/integration/db/455/caracterizacion/snapshot-correccion.test.ts` — pasan a
+  `columnasHistorialAcciones(MONEDA_PLATAFORMA)`; ningún valor esperado cambia (R15).
+
+Sin otros llamantes de `MONTO_AYUDA`, `MONTO_EXCEDE`, `columnasHistorico` ni `columnasHistorialAcciones`
+fuera de la lista (los `MONTO_*` de `CierresAdminModule.tsx` son suyos y no se tocan).
+
+### R → test
+
+- R9: `moneda-del-pais-ordenes.test.tsx` › `SLT-240 R9 — indemnización de la cola de incidentes` (columna del
+  histórico y detalle: moneda de prueba, sin importe `—`, sin proveedor, CR = sin proveedor).
+- R10: › `SLT-240 R10 — tope de la indemnización en el formulario de aprobación` (ayuda y error con la moneda
+  de prueba, `€9 999 999 999`; el tope anunciado con 0 decimales lo acepta `montoValido`; sin proveedor; CR = sin proveedor).
+- R11: › `SLT-240 R11 — importe del registro de acciones (HistorialAccionesModule)` (moneda de prueba, `—`,
+  sin proveedor, CR = sin proveedor).
+- R12: casos «R12» de los tres `describe` anteriores + `IncidentesAdminModule.test.tsx` › «un monto por encima
+  del TOPE se bloquea…» (literal entero `₡9.999.999.999,99 …`).
+- R15: `HistorialAccionesValorInfo.test.tsx`, `historial-acciones-descarga-columnas.test.ts`,
+  `snapshot-correccion.test.ts` sin cambiar valores esperados.
+- R17: el mismo literal de `IncidentesAdminModule.test.tsx` (texto «(10 dígitos y 2 decimales)» intacto) y
+  `montoAyuda` conserva «con hasta 2 decimales (por ejemplo 12500.00)».
+
+### Salida real (worktree, NODE_OPTIONS=--max-old-space-size=8192)
+
+- `pnpm exec vitest run tests/components/moneda-del-pais-ordenes.test.tsx`: `Test Files 1 passed (1)` / `Tests 34 passed (34)`.
+- `pnpm exec vitest related --run` de los 4 archivos de producción: `Test Files 15 passed | 1 skipped (16)` /
+  `Tests 236 passed | 3 skipped (239)`. El saltado es `snapshot-correccion.test.ts` (sin `HAY_BASE_DE_DATOS`);
+  compila (typecheck en 0).
+- `pnpm exec vitest run tests/unit/guards/estado-con-info.guardia.test.ts …snapshot-correccion.test.ts
+  …DineroIdentidadesEnPantalla.test.tsx`: `Test Files 2 passed | 1 skipped (3)` / `Tests 60 passed | 3 skipped (63)`.
+  La guardia `estado-con-info` en verde sin tocarla.
+- `pnpm run typecheck` (`tsc --noEmit`): exit 0.
+- `pnpm exec eslint` de los 10 archivos tocados: 0 errores, 1 warning previo en
+  `DineroIdentidadesEnPantalla.test.tsx:542` (directiva `eslint-disable` sin uso; línea no tocada).
+
+Veredicto (T3.3, T3.4): hechas; casos de R9/R10/R11 en verde, tests existentes verdes sin cambiar valores, typecheck en 0, sin archivos fuera de la lista.

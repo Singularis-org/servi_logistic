@@ -10,12 +10,13 @@ import { CajaResumenCard } from "@/app/(app)/wallet/_components/CajaResumenCard"
 import { CAJA_RESUMEN_LABEL, IMPUESTO_ROTULO } from "@/app/(app)/wallet/_components/wallet-labels";
 import { PanelConciliacion } from "@/app/(app)/analitica/_components/financiero/PanelConciliacion";
 import { REPARTO_PREVISUALIZACION } from "@/app/(app)/wallet/mensajeros/_components/wallet-mensajeros-labels";
-import { MONTO_EXCEDE } from "@/app/(app)/incidentes/_components/IncidentesAdminModule";
+import { montoExcede } from "@/app/(app)/incidentes/_components/IncidentesAdminModule";
 import { montoValido } from "@/components/shared/monto-cliente";
 import { getMetrica } from "@/lib/analytics/metrics";
 import {
   ESCALA_PRESENTACION,
   formatMonto,
+  MONEDA_PLATAFORMA,
   monedaConfig,
   money,
   moneyTope,
@@ -1226,7 +1227,7 @@ describe("ficha 359 · C — el resto del censo, por su propia etiqueta", () => 
     // El otro sitio donde `moneyTope` manda. Antes anunciaba `₡9.999.999.999`
     // —99 céntimos POR DEBAJO del límite y en contradicción con el «(10 dígitos y
     // 2 decimales)» de su propia frase—; ahora anuncia el límite.
-    const anunciado = MONTO_EXCEDE.match(PATRON_IMPORTE);
+    const anunciado = montoExcede(MONEDA_PLATAFORMA).match(PATRON_IMPORTE);
     expect(anunciado, "el mensaje del tope dejó de nombrar la cifra").not.toBeNull();
     expect(centimosPintados(anunciado![0])).toBe(centimosDelServidor(INDEMNIZACION_MONTO_MAX));
 
@@ -1531,7 +1532,7 @@ const CENSO: readonly { ruta: string; identidad: string }[] = [
 
 /** Un uso del formateador compartido, por cualquiera de sus nombres. */
 const USA_EL_FORMATEADOR =
-  /\b(money|moneyTope|montoExacto|formatMonto|formatMontoString|formatearValor|PriceLabel|KpiValorAnimado)\b/;
+  /\b(money|moneyTope|montoExacto|formatMonto|formatMontoString|formatearValor|formatearMontoEn|formatearTopeEn|PriceLabel|KpiValorAnimado)\b/;
 
 /**
  * Los modulos que un fuente importa, resueltos a ruta de disco. UN SOLO SALTO, y
