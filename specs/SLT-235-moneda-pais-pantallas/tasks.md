@@ -5,11 +5,11 @@
 
 ## Bloque 1 — Servidor (R2–R10)
 
-- [ ] **T1.1** `PaisRepository.deLaEmpresa` en una sola consulta (design §3).
+- [x] **T1.1** `PaisRepository.deLaEmpresa` en una sola consulta (design §3).
   - *Hecho:* `tests/integration/db/pais-repositorio.test.ts` con el caso de R6 en verde: una sentencia
     con el espía, el mismo país para CR y `XA`, y `null` para la empresa de otro contexto. Los casos de
     `deLaEmpresa` de antes siguen verdes sin cambiar.
-- [ ] **T1.2** [P] `lib/services/pais-para-pantallas.ts`: `MemoPaisEmpresa`, `memoPaisEmpresa`,
+- [x] **T1.2** [P] `lib/services/pais-para-pantallas.ts`: `MemoPaisEmpresa`, `memoPaisEmpresa`,
   `paraPantallasDe`, `PARA_PANTALLAS_DE_PLATAFORMA` y `paisParaPantallasDelActor` (design §4).
   - *Hecho:* `tests/unit/services/pais-para-pantallas.test.ts` en verde con reloj falso. Cubre:
     - caducidad a 10 min (R7);
@@ -18,7 +18,7 @@
     - las caídas con su aviso, una vez por lectura (R3, R4, R10);
     - lectura que falla (R5);
     - sin empresa, sin llamada (R2).
-- [ ] **T1.3** `IPaisService.paraPantallas` y `PaisParaPantallas`; `PaisService.paraPantallas` con el
+- [x] **T1.3** `IPaisService.paraPantallas` y `PaisParaPantallas`; `PaisService.paraPantallas` con el
   memo inyectable; se borra `etiquetasDeEmpresa` (design §5). Depende de T1.2.
   - Se actualizan sus dobles: `tests/unit/actions/geografia-plataforma-action.test.ts`.
   - Los casos de `etiquetasDeEmpresa` pasan a `paraPantallas` en `tests/unit/services/pais-service.test.ts`

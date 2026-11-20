@@ -4,9 +4,12 @@ import { RolValue } from "@prisma/client";
 import { ROLES_PLATAFORMA } from "@/lib/auth/plataforma";
 import type { CrearPaisRepoResultado, IPaisRepository } from "@/lib/interfaces/repositories/IPaisRepository";
 import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
+import { MONEDA_PLATAFORMA } from "@/lib/config/moneda";
+import { IMPUESTO_ROTULO } from "@/lib/constants/impuesto-rotulo";
+import { MEMO_PAIS_MS, MemoPaisEmpresa } from "@/lib/services/pais-para-pantallas";
 import { PaisService } from "@/lib/services/PaisService";
 import { ETIQUETAS_NEUTRAS, etiquetasDePais, type PaisDTO } from "@/lib/types/pais";
-import { MONEDA_CR } from "@/tests/fabricas/reglas-pais";
+import { MONEDA_CR, MONEDA_DE_PRUEBA } from "@/tests/fabricas/reglas-pais";
 
 // SL-20 (T2.1, T2.3; design §5) — `PaisService` con el repositorio doble.
 //   · R23: el alta crea el país del catálogo con el nombre del catálogo; un código o un nombre
@@ -14,7 +17,8 @@ import { MONEDA_CR } from "@/tests/fabricas/reglas-pais";
 //     repositorio.
 //   · R41 (enmienda 2026-10-26): un código fuera del catálogo es `validation_error` en `id`.
 //   · R37: un rol de empresa recibe `forbidden` sin tocar la base (ni para leer).
-//   · T2.3: `etiquetasDeEmpresa` da los nombres de nivel del país de la empresa (XA y CR).
+//   · T2.3 / SLT-235 (T1.3): `paraPantallas` da los nombres de nivel, la moneda y el impuesto del país
+//     de la empresa (XA y CR), y dos llamadas seguidas leen la base una vez (R7).
 //   · R9/R45 (enmienda 2026-10-26): `listarDisponibles` da `{ id, nombre }` de los países con
 //     cobertura, solo a la plataforma.
 // El SQL (único, historial, RLS) lo mide `tests/integration/db/pais-repositorio.test.ts`.
@@ -299,29 +303,62 @@ describe("R47 (T4.6) — encender o apagar la disponibilidad de un país", () =>
   );
 });
 
-describe("T2.3 — etiquetas de nivel de la empresa (R19)", () => {
-  it("una empresa en XA ve los nombres de XA", async () => {
-    const repo = repoDoble({ deLaEmpresa: PAIS_XA });
-    expect(await new PaisService(repo).etiquetasDeEmpresa("org-xa")).toEqual({
-      provincia: { singular: "Región", plural: "Regiones" },
-      canton: { singular: "Comuna", plural: "Comunas" },
-      distrito: { singular: "Barrio", plural: "Barrios" },
+describe("T2.3 / SLT-235 T1.3 — datos del país para las pantallas de la empresa (R19, R1, R7)", () => {
+  /** Cada caso con su memo y su reloj: el del proceso no se comparte entre tests. */
+  function servicioCon(repo: IPaisRepository, reloj = { t: 0 }) {
+    return new PaisService(repo, new MemoPaisEmpresa(() => reloj.t));
+  }
+
+  it("una empresa en XA ve los nombres de XA, y con su moneda y su impuesto, los de XA", async () => {
+    const repo = repoDoble({ deLaEmpresa: { ...PAIS_XA, moneda: MONEDA_DE_PRUEBA, impuestoNombre: "IGV" } });
+    expect(await servicioCon(repo).paraPantallas("org-xa")).toEqual({
+      etiquetas: {
+        provincia: { singular: "Región", plural: "Regiones" },
+        canton: { singular: "Comuna", plural: "Comunas" },
+        distrito: { singular: "Barrio", plural: "Barrios" },
+      },
+      moneda: MONEDA_DE_PRUEBA,
+      impuestoNombre: "IGV",
     });
     expect(repo.deLaEmpresa).toHaveBeenCalledWith("org-xa");
   });
 
-  it("una empresa en CR ve Provincia, Cantón y Distrito", async () => {
+  it("una empresa en CR ve Provincia, Cantón y Distrito, su moneda y su impuesto", async () => {
     const repo = repoDoble({ deLaEmpresa: COSTA_RICA });
-    expect(await new PaisService(repo).etiquetasDeEmpresa("org-cr")).toEqual({
-      provincia: { singular: "Provincia", plural: "Provincias" },
-      canton: { singular: "Cantón", plural: "Cantones" },
-      distrito: { singular: "Distrito", plural: "Distritos" },
+    expect(await servicioCon(repo).paraPantallas("org-cr")).toEqual({
+      etiquetas: {
+        provincia: { singular: "Provincia", plural: "Provincias" },
+        canton: { singular: "Cantón", plural: "Cantones" },
+        distrito: { singular: "Distrito", plural: "Distritos" },
+      },
+      moneda: MONEDA_CR,
+      impuestoNombre: COSTA_RICA.impuestoNombre,
     });
   });
 
-  it("si la empresa no se encuentra, falla con su id en vez de inventar etiquetas", async () => {
+  it("R3/R4: un país sin moneda ni impuesto da los de la plataforma, no falla", async () => {
+    const aviso = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const repo = repoDoble({ deLaEmpresa: PAIS_XA });
+    const r = await servicioCon(repo).paraPantallas("org-xa");
+    expect(r.moneda).toEqual(MONEDA_PLATAFORMA);
+    expect(r.impuestoNombre).toBe(IMPUESTO_ROTULO);
+    aviso.mockRestore();
+  });
+
+  it("R7: dos llamadas seguidas para la misma empresa leen la base una vez", async () => {
+    const repo = repoDoble({ deLaEmpresa: COSTA_RICA });
+    const reloj = { t: 1_000 };
+    const servicio = servicioCon(repo, reloj);
+    const primera = await servicio.paraPantallas("org-cr");
+    reloj.t += MEMO_PAIS_MS - 1;
+    const segunda = await servicio.paraPantallas("org-cr");
+    expect(segunda).toEqual(primera);
+    expect(repo.deLaEmpresa).toHaveBeenCalledTimes(1);
+  });
+
+  it("si la empresa no se encuentra, falla con su id en vez de inventar datos", async () => {
     const repo = repoDoble({ deLaEmpresa: null });
-    await expect(new PaisService(repo).etiquetasDeEmpresa("org-x")).rejects.toThrow("org-x");
+    await expect(servicioCon(repo).paraPantallas("org-x")).rejects.toThrow("org-x");
   });
 
   it("ETIQUETAS_NEUTRAS no son las de ningún país: ni las de Costa Rica", () => {

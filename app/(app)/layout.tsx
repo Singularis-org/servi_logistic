@@ -276,7 +276,7 @@ async function mapaAyudaDelActor(rol: RolValue | null): Promise<Record<string, s
 async function etiquetasDelActor(organizacionId: string | null): Promise<EtiquetasGeograficas> {
   if (!organizacionId) return ETIQUETAS_NEUTRAS;
   try {
-    return await construirPaisService().etiquetasDeEmpresa(organizacionId);
+    return (await construirPaisService().paraPantallas(organizacionId)).etiquetas;
   } catch (error) {
     console.error("[geografía] no se pudieron leer los nombres de nivel; se pintan los neutros", error);
     return ETIQUETAS_NEUTRAS;

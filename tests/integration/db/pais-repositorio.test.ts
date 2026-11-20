@@ -2,19 +2,29 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
 import { PaisRepository } from "@/lib/repositories/PaisRepository";
+import { MemoPaisEmpresa } from "@/lib/services/pais-para-pantallas";
 import { PaisService } from "@/lib/services/PaisService";
 import { comoApp, crearOrganizacion } from "@/tests/fabricas/organizaciones";
 import { crearOrganizacionEnPais, crearPaisDePrueba, crearTipoDocumentoDePrueba } from "@/tests/fabricas/paises";
 import { MONEDA_CR, MONEDA_DE_PRUEBA } from "@/tests/fabricas/reglas-pais";
 import { revertida } from "./_fixtures/pais-20";
 import { idDeRol, insertarUsuario } from "./_fixtures/superadmin-32";
-import { HAY_BASE_DE_DATOS, clienteConSavepoint, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
+import {
+  HAY_BASE_DE_DATOS,
+  clienteConSavepoint,
+  crearPrismaDeTest,
+  crearPrismaDeTestConEspia,
+  type EventoSqlDeTest,
+  type TxDeTest,
+} from "./_postgres-real";
 
 // SL-20 (T2.1, T2.3; design §5) — `PaisRepository` contra Postgres real.
 //   · R23/R41: el alta crea el país del catálogo sin geografía, con el nombre del catálogo, y deja su
 //     fila `pais_creado` (R33) en la misma transacción; un código o un nombre que ya están los rechaza la base como `duplicado`.
 //   · R19 (datos): `deLaEmpresa`, en el contexto de la empresa (`servi_app`, RLS), lee el país de esa
-//     empresa; `etiquetasDeEmpresa` da sus nombres de nivel.
+//     empresa; `paraPantallas` (SLT-235 T1.3) da sus nombres de nivel, su moneda y su impuesto.
+//   · SLT-235 (R6): `deLaEmpresa` es UNA sentencia, con la misma respuesta para CR, para `XA` y `null`
+//     para la empresa de otro contexto.
 //   · R9/R45 (enmienda 2026-10-26): `listarDisponibles` trae `{ id, nombre }` solo de los países con
 //     `disponible = true`, por nombre; `listar` sigue trayéndolos todos, con su `disponible`.
 //   · R47 (T4.6): `cambiarDisponible` escribe su fila `pais_disponibilidad_*` en la misma transacción,
@@ -228,33 +238,80 @@ describeSiHayBase("SL-20 — PaisRepository contra Postgres", () => {
     expect(r).toEqual({ fallo: "RegistroCaido", disponible: true, sano: "cambiado" });
   });
 
-  it("R19/T2.3: en el contexto de una empresa (RLS), sus etiquetas son las de su país: XA y CR", async () => {
+  it("R19/T2.3, SLT-235 T1.3: en el contexto de una empresa (RLS), paraPantallas da los nombres de nivel, la moneda y el impuesto de su país: XA y CR", async () => {
     const r = await revertida(base, async (tx) => {
-      await crearPaisDePrueba(tx, "XA");
+      await crearPaisDePrueba(tx, "XA", { moneda: MONEDA_DE_PRUEBA, impuestoNombre: "Impuesto XA" });
       const enXa = await crearOrganizacionEnPais(tx, "XA");
       const enCr = await crearOrganizacion(tx);
-      const servicio = new PaisService(new PaisRepository(clienteConSavepoint(tx)));
+      // Memo propio: el del proceso podría traer una lectura de otro caso.
+      const servicio = new PaisService(new PaisRepository(clienteConSavepoint(tx)), new MemoPaisEmpresa());
 
       await comoApp(tx, enXa.id);
-      const deXa = await servicio.etiquetasDeEmpresa(enXa.id);
+      const deXa = await servicio.paraPantallas(enXa.id);
       // La RLS de `organizacion` no deja a una empresa leer otra: su país no se ve.
       const ajena = await new PaisRepository(clienteConSavepoint(tx)).deLaEmpresa(enCr.id);
       await comoApp(tx, enCr.id);
-      const deCr = await servicio.etiquetasDeEmpresa(enCr.id);
+      const deCr = await servicio.paraPantallas(enCr.id);
       return { deXa, deCr, ajena };
     });
 
     expect(r.deXa).toEqual({
-      provincia: { singular: "Región", plural: "Regiones" },
-      canton: { singular: "Comuna", plural: "Comunas" },
-      distrito: { singular: "Barrio", plural: "Barrios" },
+      etiquetas: {
+        provincia: { singular: "Región", plural: "Regiones" },
+        canton: { singular: "Comuna", plural: "Comunas" },
+        distrito: { singular: "Barrio", plural: "Barrios" },
+      },
+      moneda: MONEDA_DE_PRUEBA,
+      impuestoNombre: "Impuesto XA",
     });
     expect(r.deCr).toEqual({
-      provincia: { singular: "Provincia", plural: "Provincias" },
-      canton: { singular: "Cantón", plural: "Cantones" },
-      distrito: { singular: "Distrito", plural: "Distritos" },
+      etiquetas: {
+        provincia: { singular: "Provincia", plural: "Provincias" },
+        canton: { singular: "Cantón", plural: "Cantones" },
+        distrito: { singular: "Distrito", plural: "Distritos" },
+      },
+      moneda: MONEDA_CR,
+      impuestoNombre: "IVA",
     });
     expect(r.ajena).toBeNull();
+  });
+
+  describe("SLT-235 (R6) — deLaEmpresa en una sola consulta", () => {
+    const { prisma: espia, eventos } = HAY_BASE_DE_DATOS
+      ? crearPrismaDeTestConEspia()
+      : { prisma: undefined as unknown as PrismaClient, eventos: [] as EventoSqlDeTest[] };
+
+    afterAll(async () => {
+      if (HAY_BASE_DE_DATOS) await espia.$disconnect();
+    });
+
+    /** Lo que devuelve `deLaEmpresa` y cuántas sentencias mandó a la base para darlo. */
+    async function medir(tx: TxDeTest, organizacionId: string) {
+      eventos.length = 0;
+      const pais = await new PaisRepository(clienteConSavepoint(tx)).deLaEmpresa(organizacionId);
+      return { pais, sentencias: eventos.length };
+    }
+
+    it("una sentencia por lectura: el país de CR y el de XA en su contexto, y null para la empresa de otro contexto", async () => {
+      const r = await revertida(espia, async (tx) => {
+        await crearPaisDePrueba(tx, "XA", { moneda: MONEDA_DE_PRUEBA, impuestoNombre: "Impuesto XA" });
+        const enXa = await crearOrganizacionEnPais(tx, "XA");
+        const enCr = await crearOrganizacion(tx);
+        await comoApp(tx, enXa.id);
+        const deXa = await medir(tx, enXa.id);
+        const ajena = await medir(tx, enCr.id);
+        await comoApp(tx, enCr.id);
+        const deCr = await medir(tx, enCr.id);
+        return { deXa, ajena, deCr };
+      });
+
+      expect(r.deXa.sentencias).toBe(1);
+      expect(r.deXa.pais).toMatchObject({ id: "XA", moneda: MONEDA_DE_PRUEBA, impuestoNombre: "Impuesto XA" });
+      expect(r.deCr.sentencias).toBe(1);
+      expect(r.deCr.pais).toMatchObject({ id: "CR", moneda: MONEDA_CR, impuestoNombre: "IVA" });
+      expect(r.ajena.sentencias).toBe(1);
+      expect(r.ajena.pais).toBeNull();
+    });
   });
 
   it("SLT-42 (R1, R3): porId y deLaEmpresa traen prefijo, dígitos nacionales y zona; un país nuevo los trae en null", async () => {
