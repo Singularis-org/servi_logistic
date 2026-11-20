@@ -12,10 +12,8 @@ import { clienteDueno } from "./_dos-empresas-fixture";
 import {
   asegurarSuperadmin,
   conCandadoDelSuperadmin,
-  entrarConOtp,
+  entrarComoSuperadmin,
   NO_ENCONTRADO,
-  olvidarDispositivos,
-  SUPERADMIN_DE_PRUEBA,
 } from "./_superadmin-fixture";
 
 /**
@@ -137,8 +135,7 @@ test.beforeAll(async ({ browser }) => {
   contextoSa = await browser.newContext();
   sa = await contextoSa.newPage();
   await conCandadoDelSuperadmin(async () => {
-    await olvidarDispositivos(db(), SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL);
-    await entrarConOtp(superadmin(), SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL, SUPERADMIN_DE_PRUEBA.SUPERADMIN_PASSWORD);
+    await entrarComoSuperadmin(superadmin(), db());
   });
   await superadmin().waitForURL("**/plataforma/empresas", { timeout: 60_000 });
 });
@@ -212,6 +209,10 @@ async function rellenarRestoDelPlan(form: Locator): Promise<void> {
   for (const modulo of ORDEN_MODULOS) {
     await form.getByRole("checkbox", { name: nombreDelModulo(modulo), exact: true }).check();
   }
+  // SLT-214 «Planes: beneficios de texto con ícono» (R7, R9): «Beneficios» tras «Módulos», sin beneficios.
+  await siguiente(form, "Beneficios");
+  // SLT-215 «Planes: niveles de beneficio por volumen de órdenes» (R7, R9): «Niveles» tras «Beneficios», sin niveles.
+  await siguiente(form, "Niveles");
   await siguiente(form, "Revisar y crear");
 }
 

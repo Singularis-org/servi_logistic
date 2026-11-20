@@ -9,6 +9,10 @@
 // SLT-119 (design §6.3; R12, R17): dos pestañas. «Empresa», la elegida al abrir, con plan, núcleo y módulos; y
 // «Facturación», con las facturas de la empresa de la URL. La lectura de las facturas y la action del detalle son
 // dobles. La pestaña no elegida no se monta: los tests eligen «Facturación» antes de afirmar su contenido.
+//
+// SLT-143 (design §6.4; R16, R18): «Pagos confirmados» debajo de «Pagos por confirmar», con las actions de
+// registrar por fuera y anular ligadas a la empresa de la URL, y la zona del país de esa empresa (P5) leída
+// dentro de su `conEmpresa` (el doble de `zonaDelBorde` lee el contexto real).
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -64,15 +68,28 @@ vi.mock("@/lib/actions/planes", () => ({
 }));
 
 // SLT-60 (design §6.2; R12, R13): la lectura de los pagos por confirmar y las dos actions de la sección.
-const { verPagosMock, confirmarPagoMock, comprobanteMock } = vi.hoisted(() => ({
-  verPagosMock: vi.fn(),
-  confirmarPagoMock: vi.fn(),
-  comprobanteMock: vi.fn(),
-}));
+const { verPagosMock, confirmarPagoMock, comprobanteMock, registrarPorFueraMock, anularConfirmadoMock } = vi.hoisted(
+  () => ({
+    verPagosMock: vi.fn(),
+    confirmarPagoMock: vi.fn(),
+    comprobanteMock: vi.fn(),
+    // SLT-143 (R17, R21): registrar por fuera y anular un confirmado.
+    registrarPorFueraMock: vi.fn(),
+    anularConfirmadoMock: vi.fn(),
+  }),
+);
 vi.mock("@/lib/actions/pagos-plataforma", () => ({
   verPagosDeEmpresaAction: (...a: unknown[]) => verPagosMock(...a),
   confirmarPagoPlataformaAction: (...a: unknown[]) => confirmarPagoMock(...a),
   verComprobantePagoPlataformaAction: (...a: unknown[]) => comprobanteMock(...a),
+  registrarPagoPorFueraAction: (...a: unknown[]) => registrarPorFueraMock(...a),
+  anularPagoConfirmadoAction: (...a: unknown[]) => anularConfirmadoMock(...a),
+}));
+
+// SLT-143 (P5): la zona del país de la empresa. El doble anota el contexto de empresa en el que lo llaman.
+const { zonaMock } = vi.hoisted(() => ({ zonaMock: vi.fn() }));
+vi.mock("@/lib/actions/_shared/zona-del-borde", () => ({
+  zonaDelBorde: (...a: unknown[]) => zonaMock(...a),
 }));
 
 // SLT-119 (R12, R17): las facturas de la empresa y el detalle de una, como dobles.
@@ -91,6 +108,7 @@ vi.mock("@/lib/actions/facturas-plataforma", () => ({
 }));
 
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
+import { contextoActual } from "@/lib/db/contexto-empresa";
 import type {
   DescargaFacturaResult,
   DetalleFacturaResult,
@@ -139,8 +157,9 @@ beforeEach(() => {
   verPreciosMock.mockResolvedValue({ estado: "ok", precios: {} } satisfies PreciosQueRigenResult);
   previsualizarMock.mockResolvedValue({ estado: "ok", avisos: [] });
   cancelarMock.mockResolvedValue({ estado: "ok" });
-  verPagosMock.mockResolvedValue({ estado: "ok", datos: { pagos: [], facturas: [] } } satisfies VerPagosDeEmpresaResult);
+  verPagosMock.mockResolvedValue({ estado: "ok", datos: { pagos: [], facturas: [], confirmados: [] } } satisfies VerPagosDeEmpresaResult);
   verFacturasMock.mockResolvedValue({ estado: "ok", facturas: [] } satisfies FacturasResult);
+  zonaMock.mockResolvedValue("America/Costa_Rica");
 });
 
 afterEach(() => cleanup());
@@ -526,6 +545,7 @@ describe("SLT-60 (R12, R13) — «Pagos por confirmar» en el detalle de la empr
         },
       ],
       facturas: [],
+      confirmados: [],
     },
   };
 
@@ -729,5 +749,160 @@ describe("SLT-119 (R12, R17) — las pestañas «Empresa» y «Facturación»", 
 
     await expect(EmpresaDetallePage({ params: params() })).rejects.toThrow("NEXT_NOT_FOUND");
     expect(verFacturasMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("SLT-143 (R16, R18) — «Pagos confirmados» en el detalle de la empresa", () => {
+  const superadmin = { usuarioId: "sa-1", rol: "superadmin" as const };
+  const PAGO = "33333333-3333-4333-8333-333333333333";
+  const FACTURA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const CON_CONFIRMADO: VerPagosDeEmpresaResult = {
+    estado: "ok",
+    datos: {
+      pagos: [],
+      facturas: [
+        {
+          id: FACTURA,
+          numero: 2,
+          desde: new Date("2026-11-16T06:00:00Z"),
+          hasta: new Date("2026-12-01T06:00:00Z"),
+          total: "190000.00",
+          saldo: "80000.00",
+        },
+      ],
+      confirmados: [
+        {
+          id: PAGO,
+          monto: "100000.00",
+          fecha: new Date("2026-11-18T15:00:00Z"),
+          referencia: "Transferencia del día",
+          registradoPor: null,
+          porFuera: true,
+          confirmadoPor: "Sofía Plataforma",
+          confirmadoEl: new Date("2026-11-18T16:00:00Z"),
+          aplicaciones: [{ facturaId: FACTURA, numero: 1, monto: "100000.00" }],
+          tieneComprobante: false,
+        },
+      ],
+    },
+  };
+
+  it("R16: la sección va justo debajo de «Pagos por confirmar» y antes del plan, con los confirmados de la lectura", async () => {
+    actorMock.mockResolvedValue(superadmin);
+    verPagosMock.mockResolvedValue(CON_CONFIRMADO);
+
+    render(<ToastProvider>{await EmpresaDetallePage({ params: params() })}</ToastProvider>);
+
+    expect(verPagosMock).toHaveBeenCalledTimes(1);
+    const porConfirmar = screen.getByRole("region", { name: "Pagos por confirmar" });
+    const confirmados = screen.getByRole("region", { name: "Pagos confirmados" });
+    const plan = screen.getByRole("region", { name: "Plan" });
+    expect(porConfirmar.compareDocumentPosition(confirmados) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(confirmados.compareDocumentPosition(plan) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(confirmados).getByText("Transferencia del día")).toBeInTheDocument();
+    expect(within(confirmados).getByText("Registrado por la plataforma")).toBeInTheDocument();
+  });
+
+  it("R16: sin confirmados, la sección dice «No hay pagos confirmados»", async () => {
+    actorMock.mockResolvedValue(superadmin);
+
+    render(<ToastProvider>{await EmpresaDetallePage({ params: params() })}</ToastProvider>);
+
+    const confirmados = screen.getByRole("region", { name: "Pagos confirmados" });
+    expect(within(confirmados).getByText("No hay pagos confirmados")).toBeInTheDocument();
+  });
+
+  it("R21: «Anular…» llama a la action con la empresa ligada en el servidor, el pago y el motivo", async () => {
+    actorMock.mockResolvedValue(superadmin);
+    verPagosMock.mockResolvedValue(CON_CONFIRMADO);
+    anularConfirmadoMock.mockResolvedValue({ estado: "ok" });
+    const user = userEvent.setup();
+
+    render(<ToastProvider>{await EmpresaDetallePage({ params: params() })}</ToastProvider>);
+    const confirmados = screen.getByRole("region", { name: "Pagos confirmados" });
+    await user.click(within(confirmados).getByRole("button", { name: "Anular…" }));
+    const dialogo = within(await screen.findByRole("dialog"));
+    await user.type(dialogo.getByRole("textbox", { name: /^Motivo/ }), "Registrado por error");
+    await user.click(dialogo.getByRole("button", { name: "Anular pago" }));
+
+    await waitFor(() => expect(anularConfirmadoMock).toHaveBeenCalledTimes(1));
+    expect(anularConfirmadoMock.mock.calls[0].slice(0, 2)).toEqual([
+      ORG,
+      { pagoId: PAGO, motivo: "Registrado por error" },
+    ]);
+  });
+
+  it("R17, P5: el registro por fuera va ligado a la empresa y la fecha usa la zona de su país, leída en su contexto", async () => {
+    actorMock.mockResolvedValue(superadmin);
+    verPagosMock.mockResolvedValue(CON_CONFIRMADO);
+    registrarPorFueraMock.mockResolvedValue({ estado: "ok" });
+    let contexto: unknown;
+    zonaMock.mockImplementation(async () => {
+      contexto = contextoActual();
+      return "Asia/Tokyo";
+    });
+    const user = userEvent.setup();
+
+    render(<ToastProvider>{await EmpresaDetallePage({ params: params() })}</ToastProvider>);
+    expect(contexto).toEqual({ tipo: "empresa", organizacionId: ORG });
+
+    const confirmados = screen.getByRole("region", { name: "Pagos confirmados" });
+    await user.click(within(confirmados).getByRole("button", { name: "Registrar pago hecho por fuera…" }));
+    const dialogo = within(await screen.findByRole("dialog"));
+    const fecha = dialogo.getByLabelText(/^Fecha/) as HTMLInputElement;
+    expect(fecha.max).toBe(new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tokyo" }).format(new Date()));
+    await user.type(dialogo.getByRole("textbox", { name: /^Monto/ }), "50000");
+    await user.type(dialogo.getByRole("textbox", { name: /^Referencia del pago/ }), "Transferencia del día");
+    await user.click(dialogo.getByRole("button", { name: "Registrar pago" }));
+
+    await waitFor(() => expect(registrarPorFueraMock).toHaveBeenCalledTimes(1));
+    const [org, fd] = registrarPorFueraMock.mock.calls[0] as [string, FormData];
+    expect(org).toBe(ORG);
+    expect(fd.get("monto")).toBe("50000");
+  });
+
+  it("si la zona no se puede leer, el detalle se pinta igual y la fecha queda al servidor", async () => {
+    actorMock.mockResolvedValue(superadmin);
+    verPagosMock.mockResolvedValue(CON_CONFIRMADO);
+    zonaMock.mockRejectedValue(new Error("país sin zona"));
+    const consola = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const user = userEvent.setup();
+
+    render(<ToastProvider>{await EmpresaDetallePage({ params: params() })}</ToastProvider>);
+    expect(screen.getByRole("region", { name: "Plan" })).toBeInTheDocument();
+    const confirmados = screen.getByRole("region", { name: "Pagos confirmados" });
+    await user.click(within(confirmados).getByRole("button", { name: "Registrar pago hecho por fuera…" }));
+    const fecha = within(await screen.findByRole("dialog")).getByLabelText(/^Fecha/) as HTMLInputElement;
+    expect(fecha.value).toBe("");
+    expect(fecha.max).toBe("");
+    consola.mockRestore();
+  });
+
+  it.each<[string, () => void]>([
+    ["un estado distinto de ok", () => verPagosMock.mockResolvedValue({ estado: "forbidden" })],
+    ["un throw", () => verPagosMock.mockRejectedValue(new Error("caída"))],
+  ])("R18: si la lectura da %s, las dos secciones dicen su error y el plan se pinta igual", async (_caso, preparar) => {
+    actorMock.mockResolvedValue(superadmin);
+    preparar();
+    const consola = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    render(<ToastProvider>{await EmpresaDetallePage({ params: params() })}</ToastProvider>);
+
+    const confirmados = screen.getByRole("region", { name: "Pagos confirmados" });
+    expect(within(confirmados).getByText("No se pudieron cargar los pagos confirmados")).toBeInTheDocument();
+    expect(within(confirmados).queryByText("No hay pagos confirmados")).not.toBeInTheDocument();
+    const porConfirmar = screen.getByRole("region", { name: "Pagos por confirmar" });
+    expect(within(porConfirmar).getByText("No se pudieron cargar los pagos por confirmar")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Plan" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Núcleo (siempre activo)" })).toBeInTheDocument();
+    consola.mockRestore();
+  });
+
+  it("R31: un rol de empresa no lee la zona ni los pagos (notFound antes de leer)", async () => {
+    actorMock.mockResolvedValue({ usuarioId: "u-1", rol: "maestro" });
+
+    await expect(EmpresaDetallePage({ params: params() })).rejects.toThrow("NEXT_NOT_FOUND");
+    expect(zonaMock).not.toHaveBeenCalled();
+    expect(verPagosMock).not.toHaveBeenCalled();
   });
 });

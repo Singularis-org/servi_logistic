@@ -15,7 +15,7 @@ import { EMPRESA } from "@/lib/config/marca";
 import { fuenteEtiqueta } from "@/lib/pdf/etiquetas-fuente";
 import { registrarFuente } from "@/lib/pdf/etiquetas-fuente-registro";
 import { imprimible } from "@/lib/pdf/imprimible";
-import { formatMontoString } from "@/lib/config/moneda";
+import { formatearMontoEn, type FormatoMoneda } from "@/lib/config/moneda";
 import { sumarMontos } from "@/lib/utils/kpis-financieros";
 import { fechaCalendario } from "@/lib/utils/calendario-zona";
 import {
@@ -187,8 +187,8 @@ class Lienzo {
   }
 }
 
-function porCobrarCelda(monto: string | null): string {
-  return sinImporte(monto) ? "—" : formatMontoString(monto);
+function porCobrarCelda(monto: string | null, moneda: FormatoMoneda): string {
+  return sinImporte(monto) ? "—" : formatearMontoEn(moneda, monto);
 }
 
 function cantonDistrito(p: PaqueteTransito): string {
@@ -214,7 +214,7 @@ function encabezado(l: Lienzo, m: ModeloInformeTransito): void {
   l.y = 35;
 }
 
-function totales(l: Lienzo, m: ModeloInformeTransito): void {
+function totales(l: Lienzo, m: ModeloInformeTransito, moneda: FormatoMoneda): void {
   const t = m.totales;
   const recuadros: { k: string; v: string; s: string; color: [number, number, number] }[] = [
     { k: "VENCIDOS", v: String(t.vencidos), s: "pasaron su plazo", color: t.vencidos > 0 ? ROJO : TINTA },
@@ -222,7 +222,7 @@ function totales(l: Lienzo, m: ModeloInformeTransito): void {
     { k: "PARADOS", v: String(t.parados), s: "sin moverse de estado", color: t.parados > 0 ? AMBAR : TINTA },
     {
       k: "POR COBRAR",
-      v: formatMontoString(t.porCobrar),
+      v: formatearMontoEn(moneda, t.porCobrar),
       s: `en ${plural(t.enAlerta, "paquete", "paquetes")}`,
       color: TINTA,
     },
@@ -269,14 +269,14 @@ function bloqueParados(l: Lienzo, grupos: readonly GrupoParados[], total: number
   l.y += 4;
 }
 
-function tablaZona(l: Lienzo, z: ZonaConAlertas): void {
+function tablaZona(l: Lienzo, z: ZonaConAlertas, moneda: FormatoMoneda): void {
   l.asegurar(8 + ALTO_CABECERA + ALTO_FILA);
   l.estilo(11);
   l.texto(z.zona.nombre, MARGEN, l.y + 4);
   l.estilo(7.5, GRIS);
   l.texto(
     `Plazo ${plural(z.plazo.plazoDias, "día", "días")} · alerta desde el día ${z.umbral} · ` +
-      `${plural(z.paquetes.length, "paquete", "paquetes")} · ${formatMontoString(z.porCobrar)} por cobrar`,
+      `${plural(z.paquetes.length, "paquete", "paquetes")} · ${formatearMontoEn(moneda, z.porCobrar)} por cobrar`,
     ANCHO - MARGEN,
     l.y + 4,
     { derecha: true },
@@ -292,7 +292,7 @@ function tablaZona(l: Lienzo, z: ZonaConAlertas): void {
       nombreDeEstado(p.estado),
       p.destinatario,
       cantonDistrito(p),
-      porCobrarCelda(p.montoCobrar),
+      porCobrarCelda(p.montoCobrar, moneda),
       "",
     ],
     (p) => (p.vencido ? ROJO : TINTA),
@@ -314,7 +314,7 @@ function tablaZona(l: Lienzo, z: ZonaConAlertas): void {
   l.y += 4;
 }
 
-function seccionFuera(l: Lienzo, m: ModeloInformeTransito): void {
+function seccionFuera(l: Lienzo, m: ModeloInformeTransito, moneda: FormatoMoneda): void {
   const paquetes = m.fuera.reduce((n, z) => n + z.paquetes.length, 0);
   const porCobrar = sumarMontos(m.fuera.map((z) => z.porCobrar));
   l.asegurar(14 + 8 + ALTO_CABECERA + ALTO_FILA);
@@ -323,12 +323,12 @@ function seccionFuera(l: Lienzo, m: ModeloInformeTransito): void {
   l.estilo(8, GRIS);
   l.texto(
     `${plural(paquetes, "paquete", "paquetes")} en ${plural(m.fuera.length, "zona", "zonas")} · ` +
-      `${formatMontoString(porCobrar)} por cobrar`,
+      `${formatearMontoEn(moneda, porCobrar)} por cobrar`,
     MARGEN,
     l.y + 10,
   );
   l.y += 14;
-  for (const z of m.fuera) tablaZona(l, z);
+  for (const z of m.fuera) tablaZona(l, z, moneda);
 }
 
 function resumenParametros(l: Lienzo, m: ModeloInformeTransito): void {
@@ -376,11 +376,14 @@ function pies(l: Lienzo, m: ModeloInformeTransito): void {
   }
 }
 
-/** El PDF del informe. Con 0 paquetes en alerta, una hoja que lo dice (R19). */
-export function pdfInformeTransito(m: ModeloInformeTransito): Uint8Array {
+/**
+ * El PDF del informe. Con 0 paquetes en alerta, una hoja que lo dice (R19). Los importes, en la
+ * moneda del pais de la empresa (SL-21, R12).
+ */
+export function pdfInformeTransito(m: ModeloInformeTransito, moneda: FormatoMoneda): Uint8Array {
   const l = new Lienzo();
   encabezado(l, m);
-  totales(l, m);
+  totales(l, m, moneda);
 
   if (m.totales.enAlerta === 0) {
     l.estilo(11);
@@ -388,11 +391,11 @@ export function pdfInformeTransito(m: ModeloInformeTransito): Uint8Array {
     l.y += 10;
   } else {
     if (m.parados.length > 0) bloqueParados(l, m.parados, m.totales.parados);
-    if (m.central !== null) tablaZona(l, m.central);
+    if (m.central !== null) tablaZona(l, m.central, moneda);
     if (m.fuera.length > 0) {
       // Maqueta: las zonas fuera de la GAM empiezan pagina si ya se dibujo algo antes.
       if (m.central !== null || m.parados.length > 0) l.nuevaPagina();
-      seccionFuera(l, m);
+      seccionFuera(l, m, moneda);
     }
   }
 

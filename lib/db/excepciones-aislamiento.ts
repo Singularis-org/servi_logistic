@@ -104,6 +104,11 @@ export const EXCEPCIONES_DE_PLATAFORMA: readonly ExcepcionDeAislamiento[] = [
     motivo: "recuperar contrasena: buscar el usuario y su OTP sin sesion ni empresa",
   },
   {
+    archivo: "lib/actions/confirmar-correo.ts",
+    ficha: "SL-18",
+    motivo: "SLT-221: confirmar un cambio de correo sin sesión; el enlace lleva a su empresa",
+  },
+  {
     archivo: "lib/api/api-key-request.ts",
     ficha: "SL-17",
     motivo: "resolver la API key a su empresa antes de abrir su contexto (R13)",
@@ -231,12 +236,19 @@ export const EXCEPCIONES_DE_PLATAFORMA: readonly ExcepcionDeAislamiento[] = [
       "SLT-118: el cierre horario de las facturas de la plataforma recorre todas las empresas y llama a `factura_plataforma_cerrar`, función del dueño que `servi_app` no puede ejecutar (R3, R22, R25)",
   },
   {
+    // SLT-215 (design §3.5). Lleva `SL-24` (la ficha de los planes) porque `FichaJira` no admite `SLT` (deuda D29).
+    archivo: "lib/repositories/NivelesEmpresaRepository.ts",
+    ficha: "SL-24",
+    motivo:
+      "SLT-215: cerrar los meses de los niveles por volumen de todas las empresas; llama a `plan_nivel_cerrar_meses`, función del dueño que `servi_app` no puede ejecutar (R29, R36)",
+  },
+  {
     // SLT-60 (design §4.3). Lleva `SL-45` (la ficha del pago a la plataforma) porque `FichaJira` no admite
     // `SLT` (deuda D29).
     archivo: "lib/repositories/PagoPlataformaConfirmacionRepository.ts",
     ficha: "SL-45",
     motivo:
-      "SLT-60: el superadmin, que no tiene empresa, lee los pagos por confirmar y los saldos de las facturas de una empresa y confirma un pago; llama a `pago_plataforma_por_confirmar`, `factura_plataforma_saldos` y `pago_plataforma_confirmar`, funciones del dueño que `servi_app` no puede ejecutar (R12, R14, R16, R24)",
+      "SLT-60 y SLT-143: el superadmin, que no tiene empresa, lee los pagos por confirmar, los confirmados y los saldos de las facturas de una empresa, confirma un pago, registra uno hecho por fuera y anula uno confirmado; llama a `pago_plataforma_por_confirmar`, `factura_plataforma_saldos`, `pago_plataforma_confirmar`, `pago_plataforma_registrar_por_fuera` y `pago_plataforma_anular_confirmado`, funciones del dueño que `servi_app` no puede ejecutar (SLT-60 R12, R14, R16, R24; SLT-143 R1, R16, R21, R31)",
   },
   {
     // SLT-87 (design §2.3). Lleva la ficha que separó negocio y plataforma porque `FichaJira` no admite

@@ -29,7 +29,13 @@ import {
 } from "@/lib/types/plan-borrador";
 import type { CrearPlanInput, EditarPlanInput, PlanResult, VistaPreviaCambioResult } from "@/lib/types/planes";
 
-/** Tope de vueltas: el formulario tiene a lo sumo 7 pasos. */
+/**
+ * Tope de vueltas: el formulario tiene a lo sumo 9 pasos. SLT-214 «Planes: beneficios de texto con ícono» (R7) añadió
+ * «Beneficios» tras «Módulos». `accionesFalsas` lo guarda con su esquema como los demás, y `avanzarHasta` y
+ * `terminar` pasan por él con la lista vacía, que es válida (R9): los tests que no lo tocan confirman sin beneficios.
+ * SLT-215 «Planes: niveles de beneficio por volumen de órdenes» (R7) añadió «Niveles» tras «Beneficios», igual: al
+ * crear pasan por él con la lista vacía (R9) y al editar con los niveles del plan (R13).
+ */
 const MAX_PASOS = 10;
 
 /** El id del borrador que abre el primer guardado. */

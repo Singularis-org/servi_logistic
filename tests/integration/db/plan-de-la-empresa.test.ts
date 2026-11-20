@@ -229,6 +229,7 @@ describeSiHayBase("SLT-58 — plan_de_la_empresa: la empresa lee su plan y su co
         "tope_api_keys",
         "topes_rol",
         "modulos",
+        "beneficios", // SLT-214 R23 (20261120120000)
         "ciclo_inicio",
         "ciclo_fin", // SLT-86 R27
         "ciclo_ancla",

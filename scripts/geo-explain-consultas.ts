@@ -9,7 +9,7 @@ import { conAislamientoPorEmpresa } from "@/lib/db/extension-empresa";
 import { PRISMA_OMIT } from "@/lib/db/prisma-client";
 import { leerDescriptivosDeOrdenes, SNAPSHOT_SELECT } from "@/lib/repositories/CierreDiaRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
-import { planificarReconciliacion } from "@/lib/repositories/ZonaRepository";
+import { planificarReconciliacion } from "@/lib/repositories/_shared/reconciliar-zona-ordenes";
 import { sinTransaccionAnidada } from "@/lib/repositories/_shared/sin-transaccion-anidada";
 
 import { crearCaptura, type Captura, type ConsultaCapturada } from "./geo-equivalencia/captura-consultas";

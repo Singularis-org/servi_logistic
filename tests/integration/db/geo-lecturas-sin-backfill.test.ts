@@ -12,7 +12,8 @@ import {
 import { CoberturaRepository } from "@/lib/repositories/CoberturaRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
-import { ZonaRepository, planificarReconciliacion } from "@/lib/repositories/ZonaRepository";
+import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
+import { planificarReconciliacion } from "@/lib/repositories/_shared/reconciliar-zona-ordenes";
 import type { NivelGeografico } from "@/lib/types/geografia-nodo";
 import { comoApp } from "@/tests/fabricas/organizaciones";
 import { crearBasePropia43, type BasePropia43 } from "./_fixtures/base-propia-43";

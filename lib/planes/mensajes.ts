@@ -1,8 +1,10 @@
 import type { ModuloApagable, RolValue } from "@prisma/client";
 
 import { ROL_LABELS } from "@/lib/auth/rol-label";
-import { money } from "@/lib/config/moneda";
+import { formatearMontoEn, MONEDA_DE_LOS_PLANES, SIN_MONTO_RAYA } from "@/lib/config/moneda";
 import { nombreDelModulo } from "@/lib/modulos/catalogo";
+import { cambiosDeBeneficios, type Beneficio } from "@/lib/planes/beneficios";
+import { textoDeLosNiveles, type Nivel } from "@/lib/planes/niveles";
 import { importeCanonico } from "@/lib/planes/rastro";
 import type { CosteoDelCiclo, CostoVigente } from "@/lib/types/consumo-plan";
 import {
@@ -283,6 +285,10 @@ export interface CambioDelPlanParaCorreo {
   nombre?: { antes: string; despues: string };
   topes?: { antes: TopesDelPlanParaCorreo; despues: TopesDelPlanParaCorreo };
   modulos?: { antes: readonly ModuloApagable[]; despues: readonly ModuloApagable[] };
+  /** SLT-214 (R25): las dos listas en su orden; las compara `cambiosDeBeneficios` con la regla de R4. */
+  beneficios?: { antes: readonly Beneficio[]; despues: readonly Beneficio[] };
+  /** SLT-215 (R20): las dos listas de niveles en su orden. */
+  niveles?: { antes: readonly Nivel[]; despues: readonly Nivel[] };
   /** SLT-86 (R30): una fila de antes de la ficha trae aquí el anual (`PrecioAnterior`). */
   precio?: { antes: PrecioDelRastro; despues: PrecioDelRastro };
   /** SLT-86 (R31): un descuento por período, en su propia clave del rastro (`rastro.ts`). */
@@ -423,11 +429,12 @@ function textoDelPorcentualOVacio(c: CostoPorOrdenPorcentual | null): string {
 
 /**
  * SLT-83 (design §4.4; R22): la columna «Cobro por orden» del listado de «Empresas». El modo fijo es el
- * importe de hoy, con `money` como lo pinta la celda desde SL-40; el porcentual, `«{p} % (mín. {m})»` o
+ * importe de hoy, como lo pinta la celda desde SL-40 (`money`); el porcentual, `«{p} % (mín. {m})»` o
  * `«{p} %»`, sin moneda como el resto de importes del plan (SLT-66 §2.5). La fuente va aparte.
  */
 export function textoDelCobroVigente(c: CostoVigente): string {
-  if (c.modo === "fijo") return money(c.monto);
+  // SL-21 (R15): la moneda de los planes (la de la plataforma), no la del país de la empresa (SLT-237).
+  if (c.modo === "fijo") return formatearMontoEn(MONEDA_DE_LOS_PLANES, c.monto, SIN_MONTO_RAYA);
   const porcentaje = `${importeCanonico(c.porcentaje)} %`;
   return c.minimo === null ? porcentaje : `${porcentaje} (mín. ${importeCanonico(c.minimo)})`;
 }
@@ -500,6 +507,12 @@ export function lineasDeCambioDelPlan(c: CambioDelPlanParaCorreo): string[] {
     const { antes, despues } = c.modulos;
     for (const m of despues) if (!antes.includes(m)) lineas.push(`Se incluye el módulo ${nombreDelModulo(m)}.`);
     for (const m of antes) if (!despues.includes(m)) lineas.push(`Deja de incluirse el módulo ${nombreDelModulo(m)}.`);
+  }
+  // SLT-214 (R25): «Se agrega: …», «Se quita: …» o la línea de solo íconos u orden, después de los módulos.
+  if (c.beneficios) lineas.push(...cambiosDeBeneficios(c.beneficios.antes, c.beneficios.despues));
+  // SLT-215 (R20, P5): una sola línea con las dos listas enteras, después de los beneficios.
+  if (c.niveles) {
+    lineas.push(`Niveles por volumen: ${textoDeLosNiveles(c.niveles.antes)} → ${textoDeLosNiveles(c.niveles.despues)}`);
   }
   // SLT-66 (R9): el precio mensual de SL-24 se llama ahora «costo base».
   if (c.precio) lineas.push(`Costo base: ${textoDelPrecio(c.precio.antes)} → ${textoDelPrecio(c.precio.despues)}`);

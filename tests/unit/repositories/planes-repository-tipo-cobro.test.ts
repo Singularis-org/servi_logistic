@@ -66,6 +66,8 @@ function txDeCambio(tipoActual: string) {
       archivadoAt: null,
       topesPorRol: [],
       modulos: [],
+      beneficios: [], // SLT-214: la lista que trae `INCLUIR`
+      niveles: [], // SLT-215: la lista que trae `INCLUIR`
       descuentos: [],
     })),
   };

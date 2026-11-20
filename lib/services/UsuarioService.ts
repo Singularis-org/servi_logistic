@@ -1,4 +1,6 @@
+import { MSG_ZONA_DESACTIVADA_USUARIO } from "@/lib/types/zona";
 import {
+  CambioCorreoSimultaneoError,
   CatalogoInvalidoError,
   UsuarioDuplicadoError,
   type IUserRepository,
@@ -10,7 +12,10 @@ import type {
   Actor,
   ActualizarUsuarioServiceResult,
   CambiarEstadoUsuarioServiceResult,
+  CambioCorreoPendienteServiceResult,
   CambioUsuarioEvaluable,
+  CancelarCambioCorreoServiceResult,
+  CorreoDeCambio,
   ConsultarImpactoCambioServiceResult,
   CrearUsuarioServiceResult,
   IUsuarioService,
@@ -20,6 +25,7 @@ import type {
   ListarUsuariosServiceResult,
   ObtenerUsuarioServiceResult,
   RestablecerContrasenaServiceResult,
+  SolicitarCambioCorreoServiceResult,
 } from "@/lib/interfaces/services/IUsuarioService";
 import type { ICierreBodegaRepository } from "@/lib/interfaces/repositories/ICierreBodegaRepository";
 import type { ISessionRepository } from "@/lib/interfaces/repositories/ISessionRepository";
@@ -29,6 +35,8 @@ import type {
   CrearUsuarioInput,
   ListarUsuariosCompletoInput,
   ListarUsuariosInput,
+  CambioCorreoPendienteDTO,
+  SolicitarCambioCorreoInput,
 } from "@/lib/types/usuario";
 import type { IZonaRepository } from "@/lib/interfaces/repositories/IZonaRepository";
 import type { IVehiculoRepository } from "@/lib/interfaces/repositories/IVehiculoRepository";
@@ -46,6 +54,39 @@ import { TopeDelPlanAlcanzado, traducirErrorDeTope } from "@/lib/planes/tope-err
 import { rechazoDeNombreDeEtiqueta } from "@/lib/utils/nombre-imprimible-etiqueta";
 import { hashPassword } from "@/lib/utils/password";
 import { generateStrongPassword } from "@/lib/utils/password-generator";
+import { componerEnlace, generarSecretoEnlace } from "@/lib/utils/enlace-de-un-uso";
+import {
+  avisarEnvioFallidoCambioCorreo,
+  plantillaConfirmarCorreo,
+} from "@/lib/services/email/plantillas/confirmar-correo";
+
+// SLT-221 (design §4.3): la página pública del canje. Subruta de `/recuperar-contrasena`, que ya es
+// pública sin tocar `PUBLIC_ROUTES`. El secreto va solo en el fragmento (R1632).
+const RUTA_CONFIRMAR_CORREO = "/recuperar-contrasena/confirmar-correo";
+
+export function urlDeConfirmarCorreo(baseUrl: string, enlace: string): string {
+  return `${baseUrl}${RUTA_CONFIRMAR_CORREO}#enlace=${enlace}`;
+}
+
+/** m5 (review PR 2): lo que ve el maestro si dos pedidos de cambio de correo chocan. */
+export const MENSAJE_CAMBIO_CORREO_SIMULTANEO =
+  "Se estaba pidiendo otro cambio de correo para este usuario al mismo tiempo. Vuelve a intentarlo.";
+
+function rechazoDeCorreo(motivo: string): {
+  status: "validation_error";
+  fieldErrors: Record<string, string[]>;
+} {
+  return { status: "validation_error", fieldErrors: { email: [motivo] } };
+}
+
+// R1618: `vencido` se calcula al leer; un pendiente vencido sigue abierto hasta reenviar o cancelar.
+function aPendienteDTO(p: { emailNuevo: string; expiraAt: Date }): CambioCorreoPendienteDTO {
+  return {
+    emailNuevo: p.emailNuevo,
+    expiraAt: p.expiraAt.toISOString(),
+    vencido: p.expiraAt.getTime() <= Date.now(),
+  };
+}
 
 // Decision 1: SOLO `maestro` tiene lectura Y escritura del modulo. Cualquier otro
 // rol (incluido uno no reconocido) -> forbidden (R3/R4).
@@ -74,6 +115,8 @@ const VEHICULO_ROLES = new Set<string>(["mensajero"]);
 // Mensaje de error de vehiculo segun el motivo: obligatorio para el rol, inexistente o, desde
 // SL-42 (R18), desactivado por la plataforma para elecciones nuevas.
 type VehiculoMotivo = "required" | "not_found" | "inactive";
+// SLT-225 (R1755): `inactive` = la zona esta desactivada y no es la que el usuario ya tenia.
+type ZonaMotivo = "required" | "not_found" | "inactive";
 
 function vehiculoErrorMessage(reason: VehiculoMotivo): string {
   if (reason === "required") return "El vehiculo es obligatorio para el rol mensajero";
@@ -82,7 +125,8 @@ function vehiculoErrorMessage(reason: VehiculoMotivo): string {
 }
 
 // Mensaje de error de zona segun el motivo (obligatoria para el rol vs inexistente).
-function zonaErrorMessage(reason: "required" | "not_found"): string {
+function zonaErrorMessage(reason: ZonaMotivo): string {
+  if (reason === "inactive") return MSG_ZONA_DESACTIVADA_USUARIO; // SLT-225 (R1755)
   return reason === "required"
     ? "La zona es obligatoria para este rol"
     : "La zona indicada no existe";
@@ -116,6 +160,21 @@ function validarPersonaSinEmpresa(
   if (motivoCedula !== null) fieldErrors.cedula = [motivoCedula];
   if (Object.keys(fieldErrors).length > 0) return { ok: false, fieldErrors };
   return { ok: true, ...input };
+}
+
+// SLT-42 (R17) y SLT-221 (R1602): sin empresa, solo lo que cambia cae en la regla generica.
+function validarCambioSinEmpresa(
+  resultantes: { telefono: string; cedula: string; tipoIdentificacionId: string },
+  cambiaTelefono: boolean,
+  cambiaCedula: boolean,
+): ValidacionDePersona {
+  const fieldErrors: Record<string, string[]> = {};
+  const motivoTelefono = cambiaTelefono ? rechazoGenerico(resultantes.telefono) : null;
+  if (motivoTelefono !== null) fieldErrors.telefono = [motivoTelefono];
+  const motivoCedula = cambiaCedula ? rechazoGenerico(resultantes.cedula) : null;
+  if (motivoCedula !== null) fieldErrors.cedula = [motivoCedula];
+  if (Object.keys(fieldErrors).length > 0) return { ok: false, fieldErrors };
+  return { ok: true, ...resultantes };
 }
 
 export class UsuarioService implements IUsuarioService {
@@ -157,6 +216,10 @@ export class UsuarioService implements IUsuarioService {
     // `sessionRepo`: el alta, la edicion del telefono o del tipo y la lista de tipos LANZAN si no
     // esta, en vez de guardar sin validar. Que se pasa lo prueba `usuarios-composition.test.ts`.
     private readonly reglasPais?: IReglasPaisEmpresa,
+    // SLT-221 (design §3.4): el correo de confirmación de un cambio de correo. Opcional en el
+    // constructor, obligatorio en el uso: los tres métodos del cambio lanzan si no está. Que se
+    // pasa lo prueba `usuarios-composition.test.ts`.
+    private readonly correoDeCambio?: CorreoDeCambio,
   ) {}
 
   async crear(input: CrearUsuarioInput, actor: Actor): Promise<CrearUsuarioServiceResult> {
@@ -398,6 +461,7 @@ export class UsuarioService implements IUsuarioService {
       if (input.tipoIdentificacionId !== undefined) {
         data.tipoIdentificacionId = persona.tipoIdentificacionId;
       }
+      if (input.cedula !== undefined) data.cedula = persona.cedula; // SLT-221 R1601: ya normalizada
     }
 
     // Feature 24/R27/R28: si se edita la zona, se valida y se aplica la invariante por rol
@@ -451,6 +515,8 @@ export class UsuarioService implements IUsuarioService {
       if (error instanceof CatalogoInvalidoError) {
         return { status: "validation_error", fieldErrors: { [error.campo]: [error.message] } }; // R18
       }
+      // SLT-221 (R1603): el indice unico por empresa es la verdad; no hay consulta previa que compita.
+      if (error instanceof UsuarioDuplicadoError) return { status: "conflict", campo: error.campo };
       // SL-24 (R27): cambiar a un rol con el tope lleno. Mismo campo que en el alta.
       const tope = traducirErrorDeTope(error);
       if (tope instanceof TopeDelPlanAlcanzado) return rechazoDeTopeEnRol(tope);
@@ -712,6 +778,114 @@ export class UsuarioService implements IUsuarioService {
     throw error;
   }
 
+  /**
+   * SLT-221 (design §4.2; R1610-R1617, R1620, R1630-R1632): pedir o reenviar el cambio de correo.
+   * «Reenviar» es esta misma llamada con el correo del pendiente: un solo camino de emisión. No se
+   * escribe al correo anterior (R1614) ni al Histórico: un pendiente no cambia nada (D4).
+   */
+  async solicitarCambioCorreo(
+    id: string,
+    input: SolicitarCambioCorreoInput,
+    actor: Actor,
+  ): Promise<SolicitarCambioCorreoServiceResult> {
+    if (!ALLOWED_ROLES.has(actor.rol)) return { status: "forbidden" }; // R1631
+    const correo = this.correoDeCambioOLanza("solicitarCambioCorreo");
+    const usuario = await this.usuarioDelModulo(id);
+    if (!usuario) return { status: "not_found" }; // R1630
+
+    if ((await this.rolValueDe(usuario.rolId)) === "apiKey") {
+      return rechazoDeCorreo("Esta cuenta es de una API key: no hay persona que confirme el correo"); // R1613
+    }
+    const emailNuevo = input.email;
+    if (emailNuevo === usuario.email) return rechazoDeCorreo("El correo nuevo es igual al actual"); // R1612
+    if (await correo.repo.existeEmailEnEmpresa(emailNuevo, usuario.id)) {
+      return { status: "conflict", campo: "email" }; // R1611
+    }
+
+    if (correo.baseUrl === null) {
+      // Sin URL no hay enlace: falla visible, no un pendiente que nadie puede abrir.
+      throw new Error("UsuarioService.solicitarCambioCorreo: falta NEXT_PUBLIC_APP_URL (SLT-221)");
+    }
+
+    const secreto = generarSecretoEnlace();
+    let pendiente: { id: string; expiraAt: Date };
+    try {
+      pendiente = await correo.repo.abrirCambioCorreo({
+        usuarioId: usuario.id,
+        emailNuevo,
+        secretoHash: await hashPassword(secreto), // R1632: solo el hash llega a la base
+        solicitadoPorId: actor.usuarioId,
+        expiraAt: new Date(Date.now() + correo.ttlHoras * 3_600_000), // R1621
+      });
+    } catch (error) {
+      // m5 (review PR 2): otro pedido del mismo usuario ganó; no se envía nada y el maestro reintenta.
+      if (error instanceof CambioCorreoSimultaneoError) {
+        return { status: "conflict", campo: "email", mensaje: MENSAJE_CAMBIO_CORREO_SIMULTANEO };
+      }
+      throw error;
+    }
+
+    try {
+      await correo.sender.enviar(
+        plantillaConfirmarCorreo({
+          to: emailNuevo,
+          url: urlDeConfirmarCorreo(correo.baseUrl, componerEnlace(pendiente.id, secreto)),
+          ttlHoras: correo.ttlHoras,
+          contacto: correo.contacto,
+        }),
+      );
+    } catch (error) {
+      // R1617: el correo no salió, así que el enlace no lo tiene nadie. R1632: el log lleva solo el
+      // nombre del error, nunca el destinatario ni la URL.
+      await correo.repo.anularCambioCorreo(pendiente.id);
+      avisarEnvioFallidoCambioCorreo(error instanceof Error ? error.name : "desconocido");
+      return { status: "envio_fallido" };
+    }
+    return { status: "ok", pendiente: aPendienteDTO({ emailNuevo, expiraAt: pendiente.expiraAt }) };
+  }
+
+  /** SLT-221 (R1619, R1630, R1631): idempotente; sin pendiente también es `ok`. */
+  async cancelarCambioCorreo(id: string, actor: Actor): Promise<CancelarCambioCorreoServiceResult> {
+    if (!ALLOWED_ROLES.has(actor.rol)) return { status: "forbidden" };
+    const { repo } = this.correoDeCambioOLanza("cancelarCambioCorreo");
+    const usuario = await this.usuarioDelModulo(id);
+    if (!usuario) return { status: "not_found" };
+    await repo.anularCambioCorreoAbierto(usuario.id);
+    return { status: "ok" };
+  }
+
+  /** SLT-221 (R1618, R1630, R1631): el pendiente, vencido o no. */
+  async cambioCorreoPendiente(id: string, actor: Actor): Promise<CambioCorreoPendienteServiceResult> {
+    if (!ALLOWED_ROLES.has(actor.rol)) return { status: "forbidden" };
+    const { repo } = this.correoDeCambioOLanza("cambioCorreoPendiente");
+    const usuario = await this.usuarioDelModulo(id);
+    if (!usuario) return { status: "not_found" };
+    const abierto = await repo.cambioCorreoAbierto(usuario.id);
+    return { status: "ok", pendiente: abierto ? aPendienteDTO(abierto) : null };
+  }
+
+  /** SL-32 (R11) y SLT-221 (R1630): el usuario del módulo; el de plataforma es `not_found`. */
+  private async usuarioDelModulo(id: string): Promise<UsuarioPublico | null> {
+    const usuario = await this.repo.findById(id);
+    if (!usuario || (await this.esRolDePlataforma(usuario.rolId))) return null;
+    return usuario;
+  }
+
+  private async rolValueDe(rolId: string): Promise<string | undefined> {
+    return (await this.repo.listRoles()).find((r) => r.id === rolId)?.value;
+  }
+
+  // SLT-221 (design §3.4): opcional en el constructor, obligatorio en el uso, como `sessionRepo`.
+  private correoDeCambioOLanza(operacion: string): CorreoDeCambio {
+    if (!this.correoDeCambio) {
+      throw new Error(
+        `UsuarioService.${operacion} requiere el emisor del correo de confirmacion: sin el no hay ` +
+          "enlace que confirme el cambio (SLT-221)",
+      );
+    }
+    return this.correoDeCambio;
+  }
+
   private reglasDelPais(operacion: string): IReglasPaisEmpresa {
     if (!this.reglasPais) {
       throw new Error(
@@ -737,8 +911,8 @@ export class UsuarioService implements IUsuarioService {
 
   /**
    * SLT-42 (R11, R12): el tipo pedido, si es del pais de la empresa y esta activo, y el documento
-   * normalizado con su regla (R10). Los errores van en `campoDelDocumento`: en el alta es el documento;
-   * en la edicion, el tipo, porque el documento no se edita desde aqui (R12).
+   * normalizado con su regla (R10). Los errores van en `campoDelDocumento`: el documento si es el que se
+   * escribio (alta, o edicion que lo corrige: SLT-221); el tipo si solo cambio el tipo (R12).
    */
   private async validarTipoYDocumento(
     operacion: string,
@@ -771,7 +945,11 @@ export class UsuarioService implements IUsuarioService {
   /**
    * SLT-42 (R9, R11, R12, R14-R17): en la edicion solo se valida lo que CAMBIA, para que un telefono o
    * un documento guardados antes de esta ficha no bloqueen editar otro campo (R9, P1). `null` = no
-   * cambia ninguno de los dos y no hay nada que validar.
+   * cambia nada de la persona y no hay nada que validar.
+   *
+   * SLT-221 (R1601, R1602): la cedula tambien se corrige aqui. Si cambia la cedula o el tipo, se valida
+   * el par RESULTANTE (tipo nuevo o guardado, cedula nueva o guardada). El error del documento va a
+   * `cedula` si la cedula cambio, y al tipo si solo cambio el tipo (SLT-42 R12).
    */
   private async validarCambioDePersona(
     input: ActualizarUsuarioInput,
@@ -781,39 +959,35 @@ export class UsuarioService implements IUsuarioService {
     const cambiaTipo =
       input.tipoIdentificacionId !== undefined &&
       input.tipoIdentificacionId !== actual.tipoIdentificacionId;
-    if (!cambiaTelefono && !cambiaTipo) return null;
+    const cambiaCedula = input.cedula !== undefined && input.cedula !== actual.cedula;
+    if (!cambiaTelefono && !cambiaTipo && !cambiaCedula) return null;
 
-    const sinCambios = { telefono: actual.telefono, cedula: actual.cedula, tipoIdentificacionId: actual.tipoIdentificacionId };
+    const resultantes = {
+      telefono: input.telefono ?? actual.telefono,
+      cedula: input.cedula ?? actual.cedula,
+      tipoIdentificacionId: input.tipoIdentificacionId ?? actual.tipoIdentificacionId,
+    };
     const paisId = await this.paisDeLaEmpresa("actualizar");
-    if (paisId === null) {
-      // R17: el documento no se edita, asi que solo el telefono cae en la regla generica.
-      const motivo = cambiaTelefono ? rechazoGenerico(input.telefono ?? "") : null;
-      if (motivo !== null) return { ok: false, fieldErrors: { telefono: [motivo] } };
-      return {
-        ok: true,
-        cedula: actual.cedula,
-        telefono: input.telefono ?? actual.telefono,
-        tipoIdentificacionId: input.tipoIdentificacionId ?? actual.tipoIdentificacionId,
-      };
-    }
+    if (paisId === null) return validarCambioSinEmpresa(resultantes, cambiaTelefono, cambiaCedula);
 
     const fieldErrors: Record<string, string[]> = {};
-    const resultado = { ok: true as const, ...sinCambios };
+    const resultado = { ok: true as const, ...resultantes };
     if (cambiaTelefono) {
-      const r = validarTelefonoDePersona(input.telefono ?? "", paisId); // R14, R16
+      const r = validarTelefonoDePersona(resultantes.telefono, paisId); // R14, R16
       if (r.ok) resultado.telefono = r.nacional; // R15
       else fieldErrors.telefono = [r.mensaje];
     }
-    if (cambiaTipo) {
+    if (cambiaTipo || cambiaCedula) {
       const doc = await this.validarTipoYDocumento(
         "actualizar",
-        input.tipoIdentificacionId ?? "",
-        actual.cedula,
-        "tipoIdentificacionId",
+        resultantes.tipoIdentificacionId,
+        resultantes.cedula,
+        cambiaCedula ? "cedula" : "tipoIdentificacionId",
       );
-      // R12: el documento guardado no se reescribe; solo se comprueba contra el tipo nuevo.
-      if (doc.ok) resultado.tipoIdentificacionId = doc.tipoId;
-      else fieldErrors[doc.campo] = [doc.mensaje];
+      if (doc.ok) {
+        resultado.tipoIdentificacionId = doc.tipoId;
+        resultado.cedula = doc.cedula; // SLT-221 R1601: normalizada; si no cambio, es la misma
+      } else fieldErrors[doc.campo] = [doc.mensaje];
     }
     if (Object.keys(fieldErrors).length > 0) return { ok: false, fieldErrors };
     return resultado;
@@ -883,11 +1057,11 @@ export class UsuarioService implements IUsuarioService {
     actual: Pick<UsuarioPublico, "rolId" | "zonaId">,
   ): Promise<
     | { ok: true; zonaId: string | null }
-    | { ok: false; reason: "required" | "not_found" }
+    | { ok: false; reason: ZonaMotivo }
   > {
     const rolIdResultante = input.rolId ?? actual.rolId;
     const deseado = input.zonaId !== undefined ? input.zonaId : actual.zonaId;
-    return this.resolverZona(rolIdResultante, deseado);
+    return this.resolverZona(rolIdResultante, deseado, actual.zonaId);
   }
 
   // Feature 24/R27/R28: resuelve el `zonaId` efectivo. Solo mensajero/adminSatelite
@@ -895,12 +1069,17 @@ export class UsuarioService implements IUsuarioService {
   // null (ignora el valor recibido, R27). Cuando aplica y se provee una zona, valida
   // su existencia (R28). Distingue el fallo por zona ausente (`required`) del de zona
   // inexistente (`not_found`) para reportar el mensaje correcto.
+  //
+  // SLT-225 (R1755): una zona desactivada no se acepta como eleccion NUEVA. `actual` es la zona que
+  // el usuario ya tiene (solo en la edicion; `null` en el alta): conservarla sigue valiendo, como
+  // el vehiculo inactivo de SL-42. El trigger `usuario_zona_exige_activa` aplica la misma regla.
   private async resolverZona(
     rolId: string,
     deseado: string | null | undefined,
+    actual: string | null = null,
   ): Promise<
     | { ok: true; zonaId: string | null }
-    | { ok: false; reason: "required" | "not_found" }
+    | { ok: false; reason: ZonaMotivo }
   > {
     const roles = await this.repo.listRoles();
     const rolValue = roles.find((r) => r.id === rolId)?.value;
@@ -918,6 +1097,7 @@ export class UsuarioService implements IUsuarioService {
     if (this.zonaRepo) {
       const zona = await this.zonaRepo.findById(deseado, false);
       if (!zona) return { ok: false, reason: "not_found" };
+      if (zona.activa === false && deseado !== actual) return { ok: false, reason: "inactive" };
     }
     return { ok: true, zonaId: deseado };
   }

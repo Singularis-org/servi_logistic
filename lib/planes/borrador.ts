@@ -56,10 +56,14 @@ export function peticionDeCrear(pasos: PasosDeCrear): z.input<typeof crearPlanSc
     periodicidadOrdenes: pasos.orden.periodicidadOrdenes,
     topes: pasos.topes.topes,
     modulos: pasos.modulos.modulos,
+    // SLT-214 (R15): el paso guardado, en su orden.
+    beneficios: pasos.beneficios.beneficios,
+    // SLT-215 (R15): lo mismo con los niveles.
+    niveles: pasos.niveles.niveles,
   };
 }
 
-/** R18: la entrada de `editarPlanSchema` con los seis pasos del borrador de cambio de `planId`. */
+/** R18: la entrada de `editarPlanSchema` con los pasos del borrador de cambio de `planId`. */
 export function peticionDeEditar(planId: string, pasos: PasosDeEditar): z.input<typeof editarPlanSchema> {
   return {
     planId,
@@ -70,6 +74,10 @@ export function peticionDeEditar(planId: string, pasos: PasosDeEditar): z.input<
     periodicidadOrdenes: pasos.orden.periodicidadOrdenes,
     topes: pasos.topes.topes,
     modulos: pasos.modulos.modulos,
+    // SLT-214 (R16): van en la versión programada, no en el plan.
+    beneficios: pasos.beneficios.beneficios,
+    // SLT-215 (R16): también en la versión programada; la lista del plan no cambia al programar.
+    niveles: pasos.niveles.niveles,
     vigenteDesde: pasos.vigencia.vigenteDesde,
   };
 }

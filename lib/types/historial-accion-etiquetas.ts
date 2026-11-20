@@ -26,13 +26,18 @@ import type { HistorialAccionEntidad } from "@/lib/types/historial-accion";
 export const ETIQUETA_MAX_CHARS = 120;
 
 /**
- * FICHA 375 — anchura de `valor_anterior` / `valor_nuevo` (`VarChar(60)`).
+ * FICHA 375 — el tope de `valorDeCatalogo`, y SOLO de el. Nacio como la anchura de `valor_anterior`
+ * / `valor_nuevo` (`VarChar(60)`); desde SLT-221 (R1608) las columnas son `VarChar(254)` y este 60
+ * ya no es la columna: es el recorte de los valores de CATALOGO, que no se cambia para no mover lo
+ * que ya se registraba.
  *
- * ⚠️ POSTGRES NO TRUNCA: un valor mas largo ABORTA la sentencia, y con ella la transaccion entera
- * de la accion. Por eso quien escriba ahi algo que pueda pasarse tiene que recortarlo EN LA FUENTE,
- * exactamente como `appendAccion` recorta `entidad_etiqueta` a 120. Los cinco tipos que nacieron
- * usando estas columnas escriben valores de enum (nunca mas de 20 caracteres) y no lo necesitaban;
- * el nombre de un nodo geografico admite hasta `GEO_NOMBRE_MAX` (80) y si.
+ * El correo y la cedula de un usuario (`usuario_email_cambiado`, `usuario_cedula_cambiada`) NO pasan
+ * por `valorDeCatalogo`: van completos, hasta 254 (D4, D10). Recortarlos dejaria un «valor anterior»
+ * que no sirve (design §9, A6).
+ *
+ * ⚠️ POSTGRES NO TRUNCA: un valor mas largo que la columna ABORTA la sentencia, y con ella la
+ * transaccion entera de la accion. Quien escriba ahi algo que pueda pasarse tiene que recortarlo EN
+ * LA FUENTE, como `appendAccion` recorta `entidad_etiqueta` a 120.
  */
 export const VALOR_MAX_CHARS = 60;
 

@@ -2,15 +2,43 @@
 
 import type { Ref } from "react";
 
+import { ListaDeBeneficios } from "@/components/shared/planes/BeneficiosDelPlan";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { nivelSchema, SIN_NIVELES, textoDelNivel, type Nivel } from "@/lib/planes/niveles";
+import { diferenciasDelPlan } from "@/lib/planes/rastro";
 import type { PlanDTO } from "@/lib/types/planes";
 
-import { versionDe, type PropsDelPaso } from "./estado";
+import { versionDe, type Formulario, type PropsDelPaso } from "./estado";
 import { FechasPorEmpresa, type FechasDelCambio } from "./FechasPorEmpresa";
 import { ListaDelPrimerPeriodo } from "./PasoGeneral";
 import { filasDeRevision, haySoloExtras, type FilaDeRevision } from "./revision";
 import { TEXTOS_PLAN_FORM } from "./textos";
+
+/**
+ * SLT-215 (R14): las líneas de la fila «Niveles», una por nivel y en su orden. Con `escrito` (el lado «después»),
+ * un nivel que todavía no pasa el esquema sale tal cual se escribió, como los importes de las demás filas.
+ */
+function lineasDeNiveles(niveles: readonly Nivel[], escrito: Formulario | null): string[] {
+  return niveles.map((nivel, i) => {
+    const fila = escrito?.niveles[i];
+    if (fila === undefined || nivelSchema.safeParse(nivel).success) return textoDelNivel(i + 1, nivel);
+    const sufijo = fila.tipo === "porcentaje" ? ` ${TEXTOS_PLAN_FORM.sufijoPorcentaje}` : "";
+    return TEXTOS_PLAN_FORM.nivelEscrito(i + 1, fila.meta.trim(), `${fila.valor.trim()}${sufijo}`);
+  });
+}
+
+/** SLT-215 (R14): la lista de niveles de un lado de la fila; sin niveles, «Sin niveles». */
+function ListaDeNiveles({ lineas }: { lineas: readonly string[] }) {
+  if (lineas.length === 0) return <p>{SIN_NIVELES}</p>;
+  return (
+    <ol aria-label={TEXTOS_PLAN_FORM.niveles} className="flex flex-col gap-1">
+      {lineas.map((linea) => (
+        <li key={linea}>{linea}</li>
+      ))}
+    </ol>
+  );
+}
 
 export type PasoRevisarProps = PropsDelPaso & {
   /** Las filas que no son del plan: las de General al crear, o la de cuándo rige al editar (design §6). */
@@ -72,7 +100,25 @@ export function PasoRevisar({
       ? { ...plan, ...versionDe(form) }
       : { id: "", visibilidad: form.visibilidad, organizacionId: null, archivado: false, ...versionDe(form) };
   const filas = filasDeRevision({ modo, plan, despues, extras, escrito: form });
-  const sinCambios = modo === "editar" && haySoloExtras(filas, extras);
+  // SLT-214 (R14): la fila «Beneficios» pinta cada ícono, así que no es una fila de texto de `filasDeRevision`. Va
+  // tras las del plan (después de «Módulos»): al crear, siempre; al editar, solo si cambian, antes de cuándo rige.
+  const cambianBeneficios = plan !== null && diferenciasDelPlan(plan, despues).beneficios !== undefined;
+  const conBeneficios = modo === "crear" || plan === null || cambianBeneficios;
+  // SLT-215 (R14): la fila «Niveles», una línea por nivel, va tras «Beneficios» con la misma regla.
+  const cambianNiveles = plan !== null && diferenciasDelPlan(plan, despues).niveles !== undefined;
+  const conNiveles = modo === "crear" || plan === null || cambianNiveles;
+  const sinCambios = modo === "editar" && haySoloExtras(filas, extras) && !cambianBeneficios && !cambianNiveles;
+  // Al crear, las del plan van al final; al editar, los `extras` (cuándo rige) van al final.
+  const corte = modo === "crear" || plan === null ? filas.length : filas.length - extras.length;
+  const fila = (f: { clave: string; valor: string }) => (
+    <div key={f.clave} className="flex flex-col gap-1 px-3 py-2 text-sm sm:flex-row sm:gap-4">
+      <dt className="font-semibold sm:w-48 sm:flex-none">{f.clave}</dt>
+      <dd className="min-w-0 break-words">{f.valor}</dd>
+    </div>
+  );
+  const lista = (beneficios: PlanDTO["beneficios"]) => (
+    <ListaDeBeneficios beneficios={beneficios ?? []} vacio={TEXTOS_PLAN_FORM.sinBeneficios} />
+  );
 
   return (
     <div className="flex flex-col gap-4">
@@ -81,12 +127,42 @@ export function PasoRevisar({
       </p>
       {sinCambios ? <p className="text-sm">{TEXTOS_PLAN_FORM.sinCambios}</p> : null}
       <dl className="flex flex-col divide-y divide-border rounded-lg border border-border">
-        {filas.map((f) => (
-          <div key={f.clave} className="flex flex-col gap-1 px-3 py-2 text-sm sm:flex-row sm:gap-4">
-            <dt className="font-semibold sm:w-48 sm:flex-none">{f.clave}</dt>
-            <dd className="min-w-0 break-words">{f.valor}</dd>
+        {filas.slice(0, corte).map(fila)}
+        {conBeneficios ? (
+          <div className="flex flex-col gap-1 px-3 py-2 text-sm sm:flex-row sm:gap-4">
+            <dt className="font-semibold sm:w-48 sm:flex-none">{TEXTOS_PLAN_FORM.beneficios}</dt>
+            <dd className="min-w-0 break-words">
+              {modo === "editar" && plan !== null ? (
+                // Como las demás filas al editar: «antes → después».
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:gap-2">
+                  {lista(plan.beneficios)}
+                  <span aria-hidden="true">→</span>
+                  {lista(despues.beneficios)}
+                </div>
+              ) : (
+                lista(despues.beneficios)
+              )}
+            </dd>
           </div>
-        ))}
+        ) : null}
+        {conNiveles ? (
+          <div className="flex flex-col gap-1 px-3 py-2 text-sm sm:flex-row sm:gap-4">
+            <dt className="font-semibold sm:w-48 sm:flex-none">{TEXTOS_PLAN_FORM.niveles}</dt>
+            <dd className="min-w-0 break-words">
+              {modo === "editar" && plan !== null ? (
+                // Como las demás filas al editar: «antes → después».
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:gap-2">
+                  <ListaDeNiveles lineas={lineasDeNiveles(plan.niveles ?? [], null)} />
+                  <span aria-hidden="true">→</span>
+                  <ListaDeNiveles lineas={lineasDeNiveles(despues.niveles ?? [], form)} />
+                </div>
+              ) : (
+                <ListaDeNiveles lineas={lineasDeNiveles(despues.niveles ?? [], form)} />
+              )}
+            </dd>
+          </div>
+        ) : null}
+        {filas.slice(corte).map(fila)}
       </dl>
       {/* SLT-144 (design §5.3): al editar, debajo de la fila de cuándo rige (la última), la fecha de cada empresa. */}
       {modo === "editar" ? <FechasPorEmpresa fechas={fechas} onReintentar={onReintentarFechas} /> : null}

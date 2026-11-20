@@ -13,9 +13,10 @@ const TEXTOS_POR_DEFECTO = {
 export type TextosEnlacesGuiaApi = typeof TEXTOS_POR_DEFECTO;
 
 /**
- * SLT-80 (R1313, R1314) — la guía de integración y su PDF, a mano desde la cabecera de
- * `Configuración › API` y `Configuración › Integraciones`. El PDF va en `<a href>`: es una ruta
- * GET que responde con un adjunto (D2), no una página que precargar.
+ * SLT-223 (sustituye R1313/R1314 de SLT-80) — la guía de integración y su PDF, en el cuerpo de
+ * `Configuración › API`, junto a «Generar API key». Ya no va en cabeceras ni en
+ * `Configuración › Integraciones`. Sin hooks: sirve en Server y en Client Components. El PDF va
+ * en `<a href>`: es una ruta GET que responde con un adjunto (D2), no una página que precargar.
  */
 export function EnlacesGuiaApi({
   textos = TEXTOS_POR_DEFECTO,

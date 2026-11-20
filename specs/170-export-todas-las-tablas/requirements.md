@@ -228,6 +228,10 @@ página visible.
 la página visible, y el control de «seleccionar todo» DEBE marcar exactamente las filas de esa
 página.
 
+> Sustituido por SLT-222 R1505 (2026-11-19) en la bodega satélite: la acción en lote actúa sobre
+> TODAS las marcadas, se vean o no. «Seleccionar todo» sigue marcando solo la página visible
+> (SLT-222 R1512/R1513). `specs/SLT-222-seleccion-entre-busquedas/requirements.md`.
+
 **R48** — SI una acción de lote se ofrece o se oculta según el contenido del listado, ENTONCES
 la decisión DEBE tomarse sobre las filas SELECCIONADAS y no sobre el conjunto completo.
 

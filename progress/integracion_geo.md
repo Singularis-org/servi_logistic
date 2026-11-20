@@ -294,3 +294,56 @@ en local contra `logistic_slt65_r1120`. Los dos eran del montaje de los tests, n
   `Tests 60 passed (60)`. `eslint` de los dos archivos, sin salida.
 - Commit `122c1292`, `git push` normal. CI lanzado sin esperar:
   https://github.com/Singularis-org/servi_logistic/actions/runs/44784347315
+
+## dev → geo_jerarquica
+
+Rama `chore/dev-a-geo-jerarquica` (worktree `.worktrees/chore-dev-a-geo`), desde
+`origin/geo_jerarquica` (`88442421`, Merge PR #55). `git merge --no-ff origin/dev` (`70628761`):
+210 commits, 460 archivos. Entra #249 (`19e8ed10`, tests que reutilizan el superadmin existente) y
+#245-#262 (SLT-143, SLT-214, SLT-215, SLT-220..225, SL-21, cierres de docs). Commit de merge
+`167f6e2c`.
+
+### Conflictos y criterio
+
+Cuatro, todos de censo o de texto; ninguno pidió decidir comportamiento.
+
+- `docs/architecture.md`: el bloque de SLT-43/SLT-44 y el de SL-21 (moneda e impuesto) se conservan
+  los dos, uno detrás de otro.
+- `lib/db/modelos-de-negocio.ts`: cabecera a **94 negocio** (dev) y **25 plataforma** (SLT-43). El
+  comentario de la geografía jerárquica se conserva.
+- `lib/repositories/OrdenRepository.ts`: se queda la lectura por catálogo de SLT-44 (sin el import de
+  `zonaUnicaDeDistrito`, que SLT-44 retiró) y entra el import de `reconciliarZonaDeOrdenes`
+  (SLT-224), que dev usa en la recepción en central.
+- `tests/unit/historial-accion/catalogo-y-choke-point.test.ts`: **90 tipos** (dev: SLT-221 y
+  SLT-225) y **32 entidades** (31 + `nodo_geografico` de SLT-43).
+
+Sin conflicto pero revisado: `orden-traspaso-migration.test.ts` (las 6 de SLT-43 una sola vez, las
+de dev después), `caja-459-migration`, `historial-accion-cobro-tienda-migration`,
+`lib/db/excepciones-aislamiento.ts` (entradas nuevas de SLT-221 y SLT-215), `db/schema.prisma`.
+Las 10 migraciones nuevas de dev (`20261120120000` … `20261124120000_sl21_pais_moneda_impuesto`)
+van todas después de `20261104120500`: el orden sigue válido. Ningún test de dev necesitó ajuste.
+
+### Verificación local
+
+`NODE_OPTIONS=--max-old-space-size=8192`, base desechable nueva `servi_logistic_devgeo_tmp`
+(`DROP`/`CREATE`, `prisma migrate deploy` con todas las migraciones, `db:seed`).
+
+- `pnpm install --frozen-lockfile` y `prisma generate`: verde.
+- `pnpm run typecheck`: `exit=0`. `pnpm run lint`: `exit=0`, 0 errores (249 avisos ya presentes).
+- `vitest run tests/unit/guards tests/unit/historial-accion tests/unit/db --maxWorkers=4`:
+  `Test Files 281 passed (281)`, `Tests 4337 passed | 1 skipped (4338)`. (Una primera corrida con
+  todos los workers dio 7 rojos por tiempo, de máquina cargada; los mismos archivos solos pasan.)
+- Integración relacionada (censos, zonas, cobertura, geografía, recepción en central, SLT-44):
+  `Test Files 29 passed (29)`, `Tests 357 passed (357)`.
+- `migracion-slt43-ida-y-vuelta` y `migracion-sl21-ida-y-vuelta`, en serie: `Tests 12 passed (12)`.
+
+### Tamaño del PR
+
+`scripts/tamano-pr.mjs`: «no aplica fuera de una rama de feature». Es un merge de `dev`, no código
+nuevo; no se marca ninguna ficha.
+
+### PR y CI
+
+- PR #266 contra `geo_jerarquica`: https://github.com/Singularis-org/servi_logistic/pull/266
+- `gate.yml` lanzado a mano (`workflow_dispatch`), sin esperar:
+  https://github.com/Singularis-org/servi_logistic/actions/runs/44793065410

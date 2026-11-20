@@ -1,4 +1,6 @@
 import { ORDEN_MODULOS } from "@/lib/modulos/catalogo";
+import { importeCanonico } from "@/lib/planes/importes";
+import type { Nivel } from "@/lib/planes/niveles";
 import {
   ROLES_CON_TOPE,
   TIPOS_COBRO,
@@ -28,6 +30,8 @@ export type CampoDelPlan =
   | "nombre"
   | "topes"
   | "modulos"
+  | "beneficios"
+  | "niveles"
   | "precio"
   | ClaveDeDescuento
   | "costoPorOrden"
@@ -45,6 +49,8 @@ const CAMPOS: readonly CampoDelPlan[] = [
   "nombre",
   "topes",
   "modulos",
+  "beneficios",
+  "niveles",
   "precio",
   ...TIPOS_COBRO.map(claveDeDescuento),
   "costoPorOrden",
@@ -53,11 +59,8 @@ const CAMPOS: readonly CampoDelPlan[] = [
   "archivado",
 ];
 
-/** Texto con dos decimales y sin ceros a la izquierda, sin pasar por `Number` («007.5» → «7.50»). */
-export function importeCanonico(texto: string): string {
-  const [entero, decimales = ""] = texto.split(".");
-  return `${entero.replace(/^0+(?=\d)/, "")}.${decimales.padEnd(2, "0")}`;
-}
+// SLT-215: vive en `importes.ts`, un módulo hoja que también usa `niveles.ts`; se reexporta con su nombre.
+export { importeCanonico };
 
 /** El costo base del rastro: solo el mensual; los descuentos van en sus claves. */
 type CostoBaseDelRastro = { tipo: "sin_precio" } | { tipo: "monto"; mensual: string };
@@ -81,6 +84,20 @@ function porcentualCanonico(c: CostoPorOrdenPorcentual | null): CostoPorOrdenPor
   return { porcentaje: importeCanonico(c.porcentaje), minimo: c.minimo === null ? null : importeCanonico(c.minimo) };
 }
 
+/**
+ * SLT-215 (R19): la meta y el descuento de cada nivel, en su orden, con el importe normalizado: «10» y el «10.00»
+ * de la base son el mismo descuento. Ausente = ninguno.
+ */
+function nivelesCanonicos(niveles: readonly Nivel[] | undefined): Nivel[] {
+  return (niveles ?? []).map(({ meta, descuento: d }) => ({
+    meta,
+    descuento:
+      d.tipo === "porcentaje"
+        ? { tipo: "porcentaje", porcentaje: importeCanonico(d.porcentaje) }
+        : { tipo: "monto", monto: importeCanonico(d.monto) },
+  }));
+}
+
 function topesCanonicos(t: TopesPlan): TopesPlan {
   const porRol: TopesPlan["porRol"] = {};
   for (const rol of ROLES_CON_TOPE) {
@@ -96,6 +113,9 @@ export function planCanonico(p: PlanDTO): Record<CampoDelPlan, unknown> {
     nombre: p.nombre,
     topes: topesCanonicos(p.topes),
     modulos: ORDEN_MODULOS.filter((m) => p.modulos.includes(m)),
+    // SLT-214 (R19): el orden es dato, así que va tal cual; solo se quitan las claves de más. Ausente = ninguno.
+    beneficios: (p.beneficios ?? []).map(({ icono, texto }) => ({ icono, texto })),
+    niveles: nivelesCanonicos(p.niveles),
     precio: precioCanonico(p.precio),
     // SLT-66 (R11): «100» y el «100.00» de la base son el mismo costo; vacío sigue siendo `null`.
     costoPorOrden: p.costoPorOrden === null ? null : importeCanonico(p.costoPorOrden),
@@ -111,6 +131,9 @@ export function planCanonico(p: PlanDTO): Record<CampoDelPlan, unknown> {
 /**
  * Los campos que cambian de `antes` a `despues`. Con `antes = null` (alta) salen todos, con
  * `antes: null`. Un objeto vacío significa «sin cambios»: no se escribe nada (§2.8).
+ *
+ * SLT-214 (design §3.6; R19): un alta sin beneficios no tiene nada que contar y omite la clave. SLT-215 (design
+ * §3.6; R19): lo mismo con un alta sin niveles.
  */
 export function diferenciasDelPlan(antes: PlanDTO | null, despues: PlanDTO): CambiosDelPlan {
   const d = planCanonico(despues);
@@ -118,6 +141,7 @@ export function diferenciasDelPlan(antes: PlanDTO | null, despues: PlanDTO): Cam
   const cambios: CambiosDelPlan = {};
   for (const campo of CAMPOS) {
     const valorAntes = a === null ? null : a[campo];
+    if (a === null && (campo === "beneficios" || campo === "niveles") && JSON.stringify(d[campo]) === "[]") continue;
     if (a !== null && JSON.stringify(valorAntes) === JSON.stringify(d[campo])) continue;
     cambios[campo] = { antes: valorAntes, despues: d[campo] };
   }

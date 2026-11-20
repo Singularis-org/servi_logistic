@@ -193,6 +193,135 @@ describe("SLT-144 — valoresDelPaso y formDelBorrador", () => {
   });
 });
 
+// SLT-214 «Planes: beneficios de texto con ícono» (design §4.3; R8, R11, R13).
+describe("SLT-214 — el paso «Beneficios»", () => {
+  const CUATRO: Formulario["beneficios"] = [
+    { clave: "a", icono: "soporte", texto: "  Soporte 24 h " },
+    { clave: "b", icono: "rayo", texto: "Acceso anticipado" },
+    { clave: "c", icono: "check", texto: "Features nuevas" },
+    { clave: "d", icono: "corazon", texto: "Equipo dedicado" },
+  ];
+
+  it("R11: ida y vuelta en los dos modos, en su orden, con texto e ícono y sin la clave local", () => {
+    for (const modo of ["crear", "editar"] as const) {
+      const { ida, cargado } = idaYVuelta(modo, "beneficios", { ...baseDe(modo), beneficios: CUATRO });
+      // R8: el orden de pantalla es el que se guarda; el texto viaja sin los espacios de los extremos (R2).
+      expect(ida).toEqual({
+        beneficios: [
+          { icono: "soporte", texto: "Soporte 24 h" },
+          { icono: "rayo", texto: "Acceso anticipado" },
+          { icono: "check", texto: "Features nuevas" },
+          { icono: "corazon", texto: "Equipo dedicado" },
+        ],
+      });
+      expect(cargado.beneficios.map(({ icono, texto }) => [icono, texto])).toEqual([
+        ["soporte", "Soporte 24 h"],
+        ["rayo", "Acceso anticipado"],
+        ["check", "Features nuevas"],
+        ["corazon", "Equipo dedicado"],
+      ]);
+      // Las claves locales son nuevas y distintas: el `key` de cada fila.
+      expect(new Set(cargado.beneficios.map((b) => b.clave)).size).toBe(4);
+    }
+  });
+
+  it("R9, R11: la lista vacía también va y vuelve", () => {
+    for (const modo of ["crear", "editar"] as const) {
+      const vacia = idaYVuelta(modo, "beneficios", { ...baseDe(modo), beneficios: [] });
+      expect(vacia.ida).toEqual({ beneficios: [] });
+      expect(vacia.cargado.beneficios).toEqual([]);
+    }
+  });
+
+  it("R11: un borrador guardado con beneficios pisa los del plan; sin el paso, quedan los del plan (R13)", () => {
+    const plan: PlanDTO = { ...PLAN, beneficios: [{ icono: "estrella", texto: "Novedades" }] };
+    const base = inicial(plan, "", "2026-11-18");
+    expect(base.beneficios.map(({ icono, texto }) => ({ icono, texto }))).toEqual(plan.beneficios);
+    expect(formDelBorrador(base, { general: { nombre: "Otro" } }).beneficios).toBe(base.beneficios);
+    const cargado = formDelBorrador(base, { beneficios: { beneficios: [{ icono: "camion", texto: "Envíos" }] } });
+    expect(cargado.beneficios.map(({ icono, texto }) => ({ icono, texto }))).toEqual([{ icono: "camion", texto: "Envíos" }]);
+  });
+
+  it("R13: al crear, sin beneficios; un plan sin la clave `beneficios` es un plan sin beneficios", () => {
+    expect(inicial(null, "2026-12-01", "").beneficios).toEqual([]);
+    expect(inicial(PLAN, "", "2026-11-18").beneficios).toEqual([]);
+  });
+});
+
+// SLT-215 «Planes: niveles de beneficio por volumen de órdenes» (design §4.2; R8, R11, R13).
+describe("SLT-215 — el paso «Niveles»", () => {
+  const TRES: Formulario["niveles"] = [
+    { clave: "a", meta: " 100 ", tipo: "porcentaje", valor: "10" },
+    { clave: "b", meta: "500", tipo: "monto", valor: "1500" },
+    { clave: "c", meta: "15000", tipo: "porcentaje", valor: "12.5" },
+  ];
+
+  it("R11: ida y vuelta en los dos modos, en su orden, con meta y descuento y sin la clave local", () => {
+    for (const modo of ["crear", "editar"] as const) {
+      const { ida, cargado } = idaYVuelta(modo, "niveles", { ...baseDe(modo), niveles: TRES });
+      // R8: el orden de pantalla es el que se guarda; la meta viaja como número.
+      expect(ida).toEqual({
+        niveles: [
+          { meta: 100, descuento: { tipo: "porcentaje", porcentaje: "10" } },
+          { meta: 500, descuento: { tipo: "monto", monto: "1500" } },
+          { meta: 15000, descuento: { tipo: "porcentaje", porcentaje: "12.5" } },
+        ],
+      });
+      expect(cargado.niveles.map(({ meta, tipo, valor }) => [meta, tipo, valor])).toEqual([
+        ["100", "porcentaje", "10"],
+        ["500", "monto", "1500"],
+        ["15000", "porcentaje", "12.5"],
+      ]);
+      expect(new Set(cargado.niveles.map((n) => n.clave)).size).toBe(3);
+    }
+  });
+
+  it("R9, R11: la lista vacía también va y vuelve", () => {
+    for (const modo of ["crear", "editar"] as const) {
+      const vacia = idaYVuelta(modo, "niveles", { ...baseDe(modo), niveles: [] });
+      expect(vacia.ida).toEqual({ niveles: [] });
+      expect(vacia.cargado.niveles).toEqual([]);
+    }
+  });
+
+  it("R3: una meta que no es un entero viaja como NaN y el esquema la marca en su campo", () => {
+    const ida = valoresDelPaso("crear", "niveles", {
+      ...baseDe("crear"),
+      niveles: [{ clave: "a", meta: "1.5", tipo: "porcentaje", valor: "10" }],
+    }, SIN_EXTRAS) as { niveles: { meta: number }[] };
+    expect(ida.niveles[0]!.meta).toBeNaN();
+    const r = ESQUEMAS_DE_CREAR.niveles.safeParse(ida);
+    expect(r.success).toBe(false);
+    expect(r.error?.issues.map((i) => i.path.join("."))).toEqual(["niveles.0.meta"]);
+  });
+
+  it("R11: un borrador con niveles pisa los del plan; sin el paso, quedan los del plan (R13)", () => {
+    const plan: PlanDTO = {
+      ...PLAN,
+      niveles: [
+        { meta: 10, descuento: { tipo: "monto", monto: "250.00" } },
+        { meta: 20, descuento: { tipo: "porcentaje", porcentaje: "5.00" } },
+      ],
+    };
+    const base = inicial(plan, "", "2026-11-18");
+    // R13: los vigentes del plan, con el monto como se escribe en el campo.
+    expect(base.niveles.map(({ meta, tipo, valor }) => [meta, tipo, valor])).toEqual([
+      ["10", "monto", "250"],
+      ["20", "porcentaje", "5.00"],
+    ]);
+    expect(formDelBorrador(base, { general: { nombre: "Otro" } }).niveles).toBe(base.niveles);
+    const cargado = formDelBorrador(base, {
+      niveles: { niveles: [{ meta: 7, descuento: { tipo: "porcentaje", porcentaje: "3" } }] },
+    });
+    expect(cargado.niveles.map(({ meta, tipo, valor }) => [meta, tipo, valor])).toEqual([["7", "porcentaje", "3"]]);
+  });
+
+  it("R13: al crear, sin niveles; un plan sin la clave `niveles` es un plan sin niveles", () => {
+    expect(inicial(null, "2026-12-01", "").niveles).toEqual([]);
+    expect(inicial(PLAN, "", "2026-11-18").niveles).toEqual([]);
+  });
+});
+
 describe("SLT-144 — pasoInicial", () => {
   it("R15: el primer paso sin guardar, o Revisar con todos guardados", () => {
     expect(pasoInicial("crear", new Set())).toBe("general");
@@ -204,8 +333,26 @@ describe("SLT-144 — pasoInicial", () => {
   });
 
   it("R7: los pasos que se guardan son todos menos Revisar, con Cuándo rige solo al editar", () => {
-    expect(PASOS_QUE_SE_GUARDAN("crear")).toEqual(["general", "precio", "orden", "topes", "modulos"]);
-    expect(PASOS_QUE_SE_GUARDAN("editar")).toEqual(["general", "precio", "orden", "topes", "modulos", "vigencia"]);
+    // SLT-214 (R7): «Beneficios» justo después de «Módulos». SLT-215 (R7): «Niveles» justo después de «Beneficios».
+    expect(PASOS_QUE_SE_GUARDAN("crear")).toEqual([
+      "general",
+      "precio",
+      "orden",
+      "topes",
+      "modulos",
+      "beneficios",
+      "niveles",
+    ]);
+    expect(PASOS_QUE_SE_GUARDAN("editar")).toEqual([
+      "general",
+      "precio",
+      "orden",
+      "topes",
+      "modulos",
+      "beneficios",
+      "niveles",
+      "vigencia",
+    ]);
   });
 });
 

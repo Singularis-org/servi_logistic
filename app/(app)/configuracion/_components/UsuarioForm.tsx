@@ -31,9 +31,11 @@ import {
   listarTiposIdentificacion,
 } from "@/lib/actions/usuarios";
 import { listarZonas } from "@/lib/actions/zonas";
+import { opcionesZonaUsuario } from "@/lib/types/zona";
 import { listarVehiculos } from "@/lib/actions/vehiculos";
 import type { UsuarioPublico } from "@/lib/interfaces/repositories/IUserRepository";
 import type { CambioUsuarioEvaluable } from "@/lib/interfaces/services/IUsuarioService";
+import { CambioCorreoUsuario } from "./CambioCorreoUsuario";
 
 /**
  * Rol que este formulario NUNCA asigna: `apiKey` identifica la cuenta de máquina de una
@@ -139,7 +141,8 @@ function initialState(usuario?: UsuarioPublico | null): FormState {
  * `listarTiposIdentificacion`, R29). En creación ofrece
  * el toggle de modo de contraseña escribir/generar (R36): en modo generar oculta
  * el input; tras crear con éxito muestra la `generatedPassword` UNA vez con botón
- * copiar y aviso (R33). En edición deshabilita email y cédula (R16). Valida en
+ * copiar y aviso (R33). En edición deshabilita el email (R16); la cédula sí se
+ * corrige (SLT-221 R1606). Valida en
  * cliente reusando los schemas de `lib/types/usuario` (no duplica reglas).
  */
 export const UsuarioForm = forwardRef<UsuarioFormHandle, UsuarioFormProps>(
@@ -200,9 +203,16 @@ export const UsuarioForm = forwardRef<UsuarioFormHandle, UsuarioFormProps>(
 
     // `value` = id de la zona (lo que espera el backend en `zonaId`);
     // `label` = nombre legible de la zona.
+    // SLT-225 (R1756): una zona desactivada no se ofrece, salvo la que este usuario ya tiene; sin
+    // ella el select la perderia y el guardado le cambiaria la zona sin que nadie lo pida.
+    const zonaActualId = usuario?.zonaId ?? null;
     const zonaOptions: SelectOption[] = useMemo(
-      () => (zonas ?? []).map((z) => ({ value: z.id, label: z.nombre })),
-      [zonas],
+      () =>
+        opcionesZonaUsuario(zonas ?? [], zonaActualId).map((z) => ({
+          value: z.id,
+          label: z.nombre,
+        })),
+      [zonas, zonaActualId],
     );
 
     // Feature 21: catalogo de vehiculos para el select (solo aplica a `mensajero`).
@@ -301,6 +311,10 @@ export const UsuarioForm = forwardRef<UsuarioFormHandle, UsuarioFormProps>(
           telefono: form.telefono,
           rolId: form.rolId,
           tipoIdentificacionId: form.tipoIdentificacionId,
+          // SLT-221 (R1601/R1606): el documento se corrige aquí y el service lo normaliza. Solo
+          // viaja si cambió: uno guardado sin tocar no se valida, así una cédula previa a SLT-42 o
+          // una `APIKEY-<slug>` de más de 30 no bloquea editar otro campo (SLT-42 R9).
+          ...(form.cedula !== usuario?.cedula ? { cedula: form.cedula } : {}),
           // SLT-94 (R4/R9): solo se envía cuando el rol es `adminTienda`; el backend
           // fuerza «sí» para otros roles.
           ...(esAdminTienda ? { seRecogeEnTienda: form.seRecogeEnTienda } : {}),
@@ -479,6 +493,12 @@ export const UsuarioForm = forwardRef<UsuarioFormHandle, UsuarioFormProps>(
           />
         </FormField>
 
+        {/* SLT-221 (design §7): el correo se cambia con confirmación desde el correo nuevo, no
+            editando el campo. Una cuenta de API key no tiene persona que confirme (R1613). */}
+        {isEditar && usuario && rolValue !== undefined && !esRolApiKey && (
+          <CambioCorreoUsuario usuarioId={usuario.id} />
+        )}
+
         <FormField id="telefono" label="Teléfono" error={errors.telefono}>
           <Input
             value={form.telefono}
@@ -513,7 +533,6 @@ export const UsuarioForm = forwardRef<UsuarioFormHandle, UsuarioFormProps>(
         >
           <Input
             value={form.cedula}
-            disabled={isEditar}
             onChange={(e) => setField("cedula", e.target.value)}
           />
         </FormField>

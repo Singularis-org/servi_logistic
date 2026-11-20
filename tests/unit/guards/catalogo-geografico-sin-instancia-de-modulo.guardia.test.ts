@@ -228,13 +228,14 @@ describe("SLT-65 R21 — el detector se prueba a si mismo", () => {
 describe("SLT-65 R21 — ningun repositorio del catalogo geografico se crea a nivel de modulo", () => {
   it("las clases vigiladas estan calculadas y no vacias (antivacio)", () => {
     expect(FUENTES.length).toBeGreaterThan(500);
+    // `ZonaRepository` ya no esta: desde SLT-224 su reconciliacion vive en la funcion
+    // `_shared/reconciliar-zona-ordenes.ts`, que crea el catalogo por llamada y no exporta clase.
     expect([...VIGILADAS]).toEqual(
       expect.arrayContaining([
         CATALOGO,
         "GeoRepository",
         "OrdenRepository",
         "CoberturaRepository",
-        "ZonaRepository",
         "CierreDiaRepository",
       ]),
     );

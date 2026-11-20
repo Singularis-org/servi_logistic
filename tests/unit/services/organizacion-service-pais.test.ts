@@ -95,6 +95,9 @@ describe("SLT-42 R6 — el país elegido tiene que estar completo", () => {
     ["sin prefijo telefónico", crCon({ prefijoTelefonico: null })],
     ["sin dígitos nacionales", crCon({ telefonoDigitosNacionales: null })],
     ["sin zona horaria", crCon({ zonaHoraria: null })],
+    // SL-21 (R17): moneda e impuesto también hacen falta para dar de alta una empresa.
+    ["sin moneda (SL-21 R17)", crCon({ moneda: null })],
+    ["sin nombre de impuesto (SL-21 R17)", crCon({ impuestoNombre: null })],
     ["sin ningún tipo de documento", crCon({}, [])],
     ["solo con tipos inactivos", crCon({}, CR.tiposDocumento.map((t) => ({ ...t, activo: false })))],
   ];

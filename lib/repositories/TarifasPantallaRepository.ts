@@ -55,11 +55,13 @@ export class TarifasPantallaRepository implements ITarifasPantallaRepository {
   }
 
   async listarZonas(): Promise<ZonaDePantalla[]> {
-    return this.prisma.zona.findMany({ select: SELECT_ZONA, orderBy: { nombre: "asc" } });
+    // SLT-225 (R1757): una zona desactivada no recibe trabajo nuevo, y tampoco precios nuevos.
+    return this.prisma.zona.findMany({ where: { activa: true }, select: SELECT_ZONA, orderBy: { nombre: "asc" } });
   }
 
   async buscarZona(zonaId: string): Promise<ZonaDePantalla | null> {
-    return this.prisma.zona.findFirst({ where: { id: zonaId }, select: SELECT_ZONA });
+    // SLT-225 (R1757): la desactivada responde como una que no existe, y la pantalla cae en la primera activa.
+    return this.prisma.zona.findFirst({ where: { id: zonaId, activa: true }, select: SELECT_ZONA });
   }
 
   async listarGruposDeEmpresa(): Promise<GrupoDeEmpresa[]> {

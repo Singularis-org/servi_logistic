@@ -1,3 +1,4 @@
+import { ListaDeBeneficios } from "@/components/shared/planes/BeneficiosDelPlan";
 import { ListaDeModulos } from "@/components/shared/planes/CarruselDePlanes";
 import { TEXTOS_PLANES, usoDeLasFilas, usuariosDelPlan, usuariosEnUso } from "@/components/shared/planes/planes-vista";
 import { TEXTOS_TIPO_COBRO } from "@/components/shared/tipo-cobro";
@@ -17,6 +18,8 @@ const TEXTOS = {
   porDefinir: "por definir",
   usoDeLaPlataforma: (tipo: string, costo: string) => `${tipo} · ${costo}`,
   periodo: (desde: string, hasta: string) => `${desde} – ${hasta}`,
+  // SLT-214 (design §6; R23).
+  beneficios: "Beneficios",
 } as const;
 
 /** R4: «Usuarios» con los mismos topes y usos de las filas del consumo, sumados con la regla de `planes-vista`. */
@@ -64,6 +67,14 @@ export function PlanActivo({ plan }: { readonly plan: PlanConConsumo }) {
           <BarraDeUso etiqueta={TEXTOS_PLANES.ordenes} usados={plan.ordenesDelPeriodo} maximo={null} />
         </ul>
         <ListaDeModulos incluidos={plan.modulos.map((m) => m.clave)} />
+        {/* SLT-214 (design §4.4; R23): todos los de la versión que corre la empresa, en orden. Sin beneficios, la
+            sección no se pinta: un «Sin beneficios» aquí sonaría a carencia del plan. */}
+        {plan.beneficios.length > 0 ? (
+          <div className="flex flex-col gap-2 md:col-span-3">
+            <h3 className="text-sm font-medium text-muted-foreground">{TEXTOS.beneficios}</h3>
+            <ListaDeBeneficios beneficios={plan.beneficios} />
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );

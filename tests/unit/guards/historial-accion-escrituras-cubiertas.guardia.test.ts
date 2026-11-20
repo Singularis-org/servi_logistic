@@ -3,7 +3,12 @@ import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 import { codigoSinComentarios } from "../../fixtures/sin-comentarios";
-import { HISTORIAL_ACCION_TIPOS } from "@/lib/types/historial-accion";
+import {
+  ACCION_LABELS,
+  CATEGORIA_POR_ACCION,
+  HISTORIAL_ACCION_TIPOS,
+  accionesDeCategoria,
+} from "@/lib/types/historial-accion";
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // FICHA 362 / T7.1 (R9/R16) — LA GUARDIA QUE SOSTIENE «NO PUEDE HABER UNA SIN LA OTRA».
@@ -309,12 +314,13 @@ const CENSO: EntradaCenso[] = [
   },
   {
     // ⭑ FICHA 366 — la re-derivacion de la zona de las ordenes elegibles al guardar una zona.
-    // Comparte metodo con el resto del guardado (`update`), y por eso su `appendAccion` va dentro
-    // de la MISMA `$transaction` que ya reemplazaba la N:M y las tarifas.
+    // SLT-224 (design §2.3): la regla se movio a un helper compartido por el guardado de zona, la
+    // recepcion en la central y el boton «Actualizar zonas». El helper RECIBE la `tx` de cada
+    // llamador y nunca abre la suya, asi que su `appendAccion` cae en la transaccion de quien llama.
     tipos: ["orden_zona_reconciliada"],
-    archivo: "lib/repositories/ZonaRepository.ts",
-    metodo: "update",
-    forma: "abre_tx",
+    archivo: "lib/repositories/_shared/reconciliar-zona-ordenes.ts",
+    metodo: "reconciliarZonaDeOrdenes",
+    forma: "recibe_tx",
     mutacion: /tx\.orden\.updateMany\(/,
   },
   {
@@ -518,8 +524,13 @@ const CENSO: EntradaCenso[] = [
   {
     // ⭑ Q2 comparte punto de escritura con el rol y la zona: es el MISMO formulario, y las N filas
     // salen con el MISMO `lote_id`. SLT-94 (R8): la marca «se recoge en tienda» sustituye al
-    // `fulfillment` (que pasa a `SIN_ESCRITOR_DESDE`).
-    tipos: ["usuario_rol_cambiado", "usuario_zona_cambiada", "usuario_se_recoge_en_tienda_cambiado"],
+    // `fulfillment` (que pasa a `SIN_ESCRITOR_DESDE`). SLT-221 (R1604): la cedula, en el mismo lote.
+    tipos: [
+      "usuario_rol_cambiado",
+      "usuario_zona_cambiada",
+      "usuario_se_recoge_en_tienda_cambiado",
+      "usuario_cedula_cambiada",
+    ],
     archivo: "lib/repositories/UserRepository.ts",
     metodo: "update",
     forma: "abre_tx",
@@ -593,6 +604,22 @@ const CENSO: EntradaCenso[] = [
     forma: "abre_tx",
     mutacion: /tx\.zona\.delete\(/,
   },
+  // SLT-225 (R1749, R1750) — un metodo por tipo: la marca cambia con un `updateMany` condicionado
+  // al estado previo, en la misma transaccion que la fila.
+  {
+    tipos: ["zona_desactivada"],
+    archivo: "lib/repositories/ZonaRepository.ts",
+    metodo: "desactivar",
+    forma: "abre_tx",
+    mutacion: /tx\.zona\.updateMany\(/,
+  },
+  {
+    tipos: ["zona_reactivada"],
+    archivo: "lib/repositories/ZonaRepository.ts",
+    metodo: "reactivar",
+    forma: "abre_tx",
+    mutacion: /tx\.zona\.updateMany\(/,
+  },
   // SL-42 (P1) — `VehiculoRepository.delete` estaba aqui como productor de `vehiculo_borrado`. El
   // borrado se retiro y el catalogo es del superadmin: sale del censo, ver `SIN_ESCRITOR_DESDE`.
   {
@@ -622,6 +649,14 @@ const CENSO: EntradaCenso[] = [
     tipos: ["usuario_contrasena_restablecida"],
     archivo: "lib/repositories/UserRepository.ts",
     metodo: "restablecerContrasena",
+    forma: "abre_tx",
+    mutacion: /tx\.usuario\.update\(/,
+  },
+  // SLT-221 (R1622): el canje del cambio de correo escribe `usuario.email` y su fila en la misma tx.
+  {
+    tipos: ["usuario_email_cambiado"],
+    archivo: "lib/repositories/UserRepository.ts",
+    metodo: "aplicarCambioCorreo",
     forma: "abre_tx",
     mutacion: /tx\.usuario\.update\(/,
   },
@@ -827,7 +862,7 @@ interface TiposConEscritorPendiente {
   tarea: string;
 }
 
-// SLT-52 T6.2 y SLT-77 T2.2 ya escriben sus tipos (ver el censo).
+// SLT-52 T6.2, SLT-77 T2.2 y SLT-221 (PR 2) ya escriben sus tipos (ver el censo).
 const ESCRITOR_PENDIENTE_EN_CURSO: TiposConEscritorPendiente[] = [];
 
 /** Los archivos `.ts` de `lib/`, relativos a la raiz. */
@@ -876,7 +911,11 @@ function bloqueBalanceado(codigo: string, desde: number): string | null {
  */
 function cuerpoDelMetodo(archivo: string, metodo: string): string {
   const codigo = codigoSinComentarios(archivo);
-  const declaracion = new RegExp(`(?:^|\\n)\\s*(?:private\\s+)?async\\s+${metodo}\\s*\\(`);
+  // SLT-224: tambien reconoce una funcion exportada (`export async function nombre(`), la forma
+  // del helper compartido de la reconciliacion de zona.
+  const declaracion = new RegExp(
+    `(?:^|\\n)\\s*(?:export\\s+)?(?:private\\s+)?async\\s+(?:function\\s+)?${metodo}\\s*\\(`,
+  );
   const encontrado = declaracion.exec(codigo);
   if (encontrado === null) {
     throw new Error(
@@ -1184,6 +1223,15 @@ describe("362/T7.1 — el detector se prueba a si mismo", () => {
     expect(cuerpo).not.toContain("setTemplate");
   });
 
+  it("CONTRAPRUEBA (SLT-224): el recortador reconoce una `export async function` y recorta SOLO esa", () => {
+    const archivo = "lib/repositories/_shared/reconciliar-zona-ordenes.ts";
+    const cuerpo = cuerpoDelMetodo(archivo, "reconciliarZonaDeOrdenes");
+    expect(cuerpo).toContain("tx.orden.updateMany");
+    // El corte vive en `whereBaseElegible`, la funcion de al lado: el cuerpo recortado no lo trae.
+    expect(cuerpo).not.toContain("cierreDetalles");
+    expect(cuerpo.length).toBeLessThan(codigoSinComentarios(archivo).length);
+  });
+
   it("CONTRAPRUEBA: pedir un metodo inexistente LANZA en vez de medir vacio", () => {
     expect(() =>
       cuerpoDelMetodo("lib/repositories/PlantillaMensajeRepository.ts", "metodoQueNoExiste"),
@@ -1267,7 +1315,23 @@ describe("362/R16 — cada tipo del catalogo tiene al menos un punto de escritur
     // 84 desde SLT-77 (`tope_intentos_cambiado`, de `TopeIntentosRepository.guardar`).
     // 85 desde SLT-94 (`usuario_se_recoge_en_tienda_cambiado`, de `UserRepository.update`).
     // 86 desde SLT-211 (`ordenes_retiradas_a_central`, de `OrdenRepository.retirarSateliteLote`).
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(86);
+    // 88 desde SLT-221 (`usuario_cedula_cambiada`, de `UserRepository.update`, y
+    // `usuario_email_cambiado`, de `UserRepository.aplicarCambioCorreo`).
+    // 90 desde SLT-225 (`zona_desactivada`/`zona_reactivada`, de `ZonaRepository.desactivar`/`reactivar`).
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(90);
+  });
+});
+
+describe("SLT-221 R1609 — la cedula y el correo de un usuario, en el catalogo del Historico", () => {
+  it("R1609: los dos tipos estan en «Cambia quien puede hacer que» con su etiqueta de pantalla y descarga", () => {
+    expect(CATEGORIA_POR_ACCION.usuario_cedula_cambiada).toBe("cambia_permisos");
+    expect(CATEGORIA_POR_ACCION.usuario_email_cambiado).toBe("cambia_permisos");
+    expect(accionesDeCategoria("cambia_permisos")).toEqual(
+      expect.arrayContaining(["usuario_cedula_cambiada", "usuario_email_cambiado"]),
+    );
+    // Literales a proposito: son el texto que pidio el spec, no una derivacion del codigo.
+    expect(ACCION_LABELS.usuario_cedula_cambiada).toBe("Cambió la cédula de un usuario");
+    expect(ACCION_LABELS.usuario_email_cambiado).toBe("Cambió el correo de un usuario");
   });
 });
 

@@ -11,13 +11,7 @@ import { crearEmpresaE2E, crearUsuarioE2E, sesionDe, type EmpresaE2E } from "../
 import { crearZonaE2E, type ZonaE2E } from "./_aislamiento-datos";
 import { altaDeEmpresa, clienteDueno, prepararAcceso, type Empresa } from "./_dos-empresas-fixture";
 import { crearPlanPublicoConCosto } from "./_planes-fixture";
-import {
-  asegurarSuperadmin,
-  conCandadoDelSuperadmin,
-  entrarConOtp,
-  olvidarDispositivos,
-  SUPERADMIN_DE_PRUEBA,
-} from "./_superadmin-fixture";
+import { asegurarSuperadmin, conCandadoDelSuperadmin, entrarComoSuperadmin } from "./_superadmin-fixture";
 import { CAJA_A, sembrarCaja } from "./_wallet-iva-sl39-siembra";
 
 /**
@@ -194,8 +188,7 @@ test.beforeAll(async ({ browser }) => {
   contextoSa = await browser.newContext();
   sa = await contextoSa.newPage();
   await conCandadoDelSuperadmin(async () => {
-    await olvidarDispositivos(base(), SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL);
-    await entrarConOtp(superadmin(), SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL, SUPERADMIN_DE_PRUEBA.SUPERADMIN_PASSWORD);
+    await entrarComoSuperadmin(superadmin(), base());
   });
   await superadmin().waitForURL("**/plataforma/empresas", { timeout: 60_000 });
 });
@@ -290,6 +283,10 @@ test("el superadmin crea un custom de A «Con monto» con costo por orden 100, q
   for (const modulo of ORDEN_MODULOS) {
     await form.getByRole("checkbox", { name: nombreDelModulo(modulo), exact: true }).check();
   }
+  // SLT-214 «Planes: beneficios de texto con ícono» (R7, R9): «Beneficios» tras «Módulos», sin beneficios.
+  await siguientePaso(form, "Beneficios");
+  // SLT-215 «Planes: niveles de beneficio por volumen de órdenes» (R7, R9): «Niveles» tras «Beneficios», sin niveles.
+  await siguientePaso(form, "Niveles");
   await siguientePaso(form, "Revisar y crear");
 
   // D13/D17: «Crear plan» espera a la vista previa.

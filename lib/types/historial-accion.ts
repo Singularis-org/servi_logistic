@@ -50,7 +50,7 @@ import { esFechaCalendarioValida } from "@/lib/utils/calendario-zona";
 // saldo con el que la central lo persigue. El motivo de cada uno esta escrito a su lado.
 
 /**
- * Los 86 tipos de accion. El ORDEN de esta tupla es el del Anexo A (dinero, desaparicion,
+ * Los 90 tipos de accion. El ORDEN de esta tupla es el del Anexo A (dinero, desaparicion,
  * permisos) mas las integraciones de SL-36, los modulos de SL-23 y el plan de SL-24 (y su tipo de cobro, D16, y
  * el cambio cancelado, SLT-86) y el tope de intentos de SLT-77, y es el que consume el selector de filtros: no se
  * reordena por gusto.
@@ -284,7 +284,7 @@ export const HISTORIAL_ACCION_TIPOS = [
   // rechazos, y un rechazo genera cobro. `valor_anterior`/`valor_nuevo` llevan los dos numeros y nada mas (R41).
   "tope_intentos_cambiado", // TopeIntentosRepository.guardar
 
-  // --- A.2 · hace desaparecer algo (12) ---
+  // --- A.2 · hace desaparecer algo (14) ---
   // ⭑ FICHA 371 — la fecha de una reprogramacion ya registrada, corregida por un coordinador.
   // ENTRA AQUI, EN «hace desaparecer algo», PORQUE LA ORDEN PUEDE DEJAR DE ESTAR DONDE ESTABA:
   // corregir la fecha a HOY dispara la liberacion en el mismo acto (desenlace `liberada`), asi que
@@ -308,6 +308,11 @@ export const HISTORIAL_ACCION_TIPOS = [
   // borra en FISICO, `db/schema.prisma`).
   "tarifa_borrada", // TarifaService.borrar (sembrados; sin action desde SLT-54)
   "zona_borrada", // zonas.borrarZona — fisico, y arrastra sus tarifas en cascada
+  // ⭑ SLT-225 — desactivar (y reactivar) una zona. LOS DOS AQUI, en «hace desaparecer algo»: es el
+  // precedente literal de `nodo_geografico_desactivado`/`_activado` (la zona sale del trabajo nuevo
+  // sin borrar su historia). `valor_anterior`/`valor_nuevo` en NULL: el par de tipos dice la transicion.
+  "zona_desactivada", // ZonaRepository.desactivar
+  "zona_reactivada", // ZonaRepository.reactivar
   // SLT-52: AQUI por el mismo motivo que `tarifa_borrada`: borrar un grupo es fisico y se lleva sus
   // valores por cascada (R12); lo que la fila documenta es esa desaparicion.
   "grupo_distritos_borrado", // GrupoDistritosService.borrarGrupo
@@ -354,12 +359,18 @@ export const HISTORIAL_ACCION_TIPOS = [
   // del mismo genero que el nombre de una zona: ni un dato de destinatario, ni texto libre.
   "nodo_geografico_renombrado", // GeoRepository.renombrar
 
-  // --- A.3 · cambia quien puede hacer que (12) ---
+  // --- A.3 · cambia quien puede hacer que (14) ---
   "usuario_creado", // usuarios.crearUsuario
   "usuario_rol_cambiado", // usuarios.actualizarUsuario (solo si cambia `rolId`)
   "usuario_zona_cambiada", // usuarios.actualizarUsuario (solo si cambia `zonaId`)
   "usuario_estado_cambiado", // usuarios.cambiarEstadoUsuario
   "usuario_contrasena_restablecida", // usuarios.restablecerContrasenaUsuario
+  // ⭑ SLT-221 (R1609) — la cedula es la identidad de la cuenta y el correo decide quien entra en ella:
+  // el mismo eje que el rol. Son la UNICA excepcion declarada a «ningun dato de persona en la fila»
+  // (D10): llevan el valor anterior y el nuevo, y la guardia `historial-accion-sin-datos-cliente` lo
+  // admite solo en estos dos bloques.
+  "usuario_cedula_cambiada", // usuarios.actualizarUsuario (solo si cambia `cedula`)
+  "usuario_email_cambiado", // confirmar-correo.confirmarCambioCorreo (PR 2 de SLT-221)
   "postulacion_aprobada", // aprobacion-postulaciones.aprobarPostulacion
   "postulacion_rechazada", // aprobacion-postulaciones.rechazarPostulacion
   "api_key_generada", // api-keys.generarApiKey
@@ -595,6 +606,9 @@ export const CATEGORIA_POR_ACCION: Record<HistorialAccionTipo, CategoriaAccion> 
   orden_recuperada: "hace_desaparecer",
   tarifa_borrada: "hace_desaparecer",
   zona_borrada: "hace_desaparecer",
+  // SLT-225: los DOS en la misma categoria, como `nodo_geografico_*`.
+  zona_desactivada: "hace_desaparecer",
+  zona_reactivada: "hace_desaparecer",
   // SLT-52: como `tarifa_borrada`; arrastra los valores del grupo por cascada.
   grupo_distritos_borrado: "hace_desaparecer",
   vehiculo_borrado: "hace_desaparecer",
@@ -611,6 +625,8 @@ export const CATEGORIA_POR_ACCION: Record<HistorialAccionTipo, CategoriaAccion> 
   usuario_zona_cambiada: "cambia_permisos",
   usuario_estado_cambiado: "cambia_permisos",
   usuario_contrasena_restablecida: "cambia_permisos",
+  usuario_cedula_cambiada: "cambia_permisos", // SLT-221 R1609
+  usuario_email_cambiado: "cambia_permisos", // SLT-221 R1609
   postulacion_aprobada: "cambia_permisos",
   postulacion_rechazada: "cambia_permisos",
   api_key_generada: "cambia_permisos",
@@ -696,6 +712,8 @@ export const ACCION_LABELS: Record<HistorialAccionTipo, string> = {
   orden_recuperada: "Recuperó una orden",
   tarifa_borrada: "Borró una tarifa",
   zona_borrada: "Borró una zona",
+  zona_desactivada: "Desactivó una zona",
+  zona_reactivada: "Reactivó una zona",
   grupo_distritos_borrado: "Borró un grupo de distritos",
   vehiculo_borrado: "Borró un vehículo",
   plantilla_eliminada: "Eliminó una plantilla",
@@ -709,6 +727,8 @@ export const ACCION_LABELS: Record<HistorialAccionTipo, string> = {
   usuario_zona_cambiada: "Cambió la zona de un usuario",
   usuario_estado_cambiado: "Cambió el estado de un usuario",
   usuario_contrasena_restablecida: "Restableció la contraseña de un usuario",
+  usuario_cedula_cambiada: "Cambió la cédula de un usuario",
+  usuario_email_cambiado: "Cambió el correo de un usuario",
   postulacion_aprobada: "Aprobó una postulación",
   postulacion_rechazada: "Rechazó una postulación",
   api_key_generada: "Generó una API key",

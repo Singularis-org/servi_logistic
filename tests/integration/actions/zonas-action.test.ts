@@ -6,6 +6,8 @@ import {
   actualizarZona,
   borrarZona,
   impactoZonaCentral,
+  desactivarZona,
+  reactivarZona,
 } from "@/lib/actions/zonas";
 import { ZonaService } from "@/lib/services/ZonaService";
 import type {
@@ -31,6 +33,7 @@ function dto(over: Partial<ZonaDTO> = {}): ZonaDTO {
     cobroVehiculo: false,
     distritosCount: 2,
     esCentral: false,
+    activa: true,
     ...over,
   };
 }
@@ -51,6 +54,9 @@ function fakeService(over: Partial<IZonaService> = {}): IZonaService {
     borrar: vi.fn().mockResolvedValue({ status: "ok" }),
     // FICHA 376 (Q4): la lectura de impacto que la confirmacion consulta antes de enviar.
     impactoZonaCentral: vi.fn().mockResolvedValue({ status: "ok", impacto: [] }),
+    // SLT-225: desactivar y reactivar, por defecto salen bien.
+    desactivar: vi.fn().mockResolvedValue({ status: "ok" }),
+    reactivar: vi.fn().mockResolvedValue({ status: "ok" }),
     ...over,
   };
 }
@@ -311,6 +317,9 @@ function repoConGuarda(): IZonaRepository {
           },
     ),
     hardDelete: vi.fn().mockResolvedValue("ok"),
+    // SLT-225: desactivar/reactivar; por defecto salen bien.
+    desactivar: vi.fn().mockResolvedValue({ estado: "ok" }),
+    reactivar: vi.fn().mockResolvedValue({ estado: "ok" }),
     countExistingDistritos: vi.fn(async (ids: string[]) => ids.length),
     countExistingVehiculos: vi.fn(async (ids: string[]) => ids.length),
     findCentralZonaId: vi.fn().mockResolvedValue(ZONA_CENTRAL),
@@ -549,5 +558,73 @@ describe("SLT-54 R27 — la action rechaza costos", () => {
       status: "validation_error",
       fieldErrors: { cobroVehiculo: MENSAJE, tarifas: MENSAJE },
     });
+  });
+});
+
+/**
+ * SLT-225 «Desactivar zona: sacarla del trabajo nuevo sin borrar su historia» — el borde de las dos
+ * acciones nuevas: sesion, id, y el contrato discriminado que la pantalla consume tal cual (R1746,
+ * R1748, R1751). El SQL se prueba en `tests/integration/db/zona-desactivar.test.ts`.
+ */
+describe("SLT-225 — desactivarZona / reactivarZona", () => {
+  const IMPEDIMENTOS = {
+    esCentral: false,
+    distritos: 2,
+    usuarios: [{ nombre: "Ana Mora", rol: "mensajero" as const, estado: "inactivo" as const }],
+    ordenesVivas: { total: 1, porEstado: [{ estado: "en_reparto" as const, cantidad: 1 }], muestra: ["#1234"] },
+  };
+
+  it("sin sesion -> unauthenticated y el service no se llama", async () => {
+    const service = fakeService();
+    const deps = { zonaService: service, getActor: noActor };
+    expect((await desactivarZona("z1", deps)).status).toBe("unauthenticated");
+    expect((await reactivarZona("z1", deps)).status).toBe("unauthenticated");
+    expect(service.desactivar).not.toHaveBeenCalled();
+    expect(service.reactivar).not.toHaveBeenCalled();
+  });
+
+  it("id vacio -> validation_error sin llamar al service", async () => {
+    const service = fakeService();
+    const deps = { zonaService: service, getActor: getActor(MAESTRO) };
+    expect((await desactivarZona("", deps)).status).toBe("validation_error");
+    expect((await reactivarZona(42, deps)).status).toBe("validation_error");
+    expect(service.desactivar).not.toHaveBeenCalled();
+    expect(service.reactivar).not.toHaveBeenCalled();
+  });
+
+  it("ok: el service recibe el id y el actor de la sesion", async () => {
+    const service = fakeService();
+    const deps = { zonaService: service, getActor: getActor(MAESTRO) };
+    expect(await desactivarZona("z1", deps)).toEqual({ status: "ok" });
+    expect(await reactivarZona("z1", deps)).toEqual({ status: "ok" });
+    expect(service.desactivar).toHaveBeenCalledWith("z1", MAESTRO);
+    expect(service.reactivar).toHaveBeenCalledWith("z1", MAESTRO);
+  });
+
+  it("R1746: el rechazo por impedimentos llega con TODOS ellos, tal cual", async () => {
+    const service = fakeService({
+      desactivar: vi.fn().mockResolvedValue({ status: "conflict", motivo: "impedimentos", impedimentos: IMPEDIMENTOS }),
+    });
+    const r = await desactivarZona("z1", { zonaService: service, getActor: getActor(MAESTRO) });
+    expect(r).toEqual({ status: "conflict", motivo: "impedimentos", impedimentos: IMPEDIMENTOS });
+  });
+
+  it("R1748: ya_desactivada / ya_activa llegan con su motivo", async () => {
+    const service = fakeService({
+      desactivar: vi.fn().mockResolvedValue({ status: "conflict", motivo: "ya_desactivada" }),
+      reactivar: vi.fn().mockResolvedValue({ status: "conflict", motivo: "ya_activa" }),
+    });
+    const deps = { zonaService: service, getActor: getActor(MAESTRO) };
+    expect(await desactivarZona("z1", deps)).toEqual({ status: "conflict", motivo: "ya_desactivada" });
+    expect(await reactivarZona("z1", deps)).toEqual({ status: "conflict", motivo: "ya_activa" });
+  });
+
+  it("R1751: con el ZonaService real, un admin recibe forbidden y el repositorio no se toca", async () => {
+    const repo = { desactivar: vi.fn(), reactivar: vi.fn() } as unknown as IZonaRepository;
+    const deps = { zonaService: new ZonaService(repo), getActor: getActor({ usuarioId: "a1", rol: "admin" }) };
+    expect((await desactivarZona("z1", deps)).status).toBe("forbidden");
+    expect((await reactivarZona("z1", deps)).status).toBe("forbidden");
+    expect(repo.desactivar).not.toHaveBeenCalled();
+    expect(repo.reactivar).not.toHaveBeenCalled();
   });
 });

@@ -19,6 +19,11 @@ export interface SelectOption {
    * distinta procedencia (p. ej. administradores de tienda vs API keys).
    */
   group?: string;
+  /**
+   * SLT-214 — un ícono decorativo delante de la etiqueta, en la lista (p. ej. el ícono de cada beneficio). Debe
+   * llevar `aria-hidden`: el nombre de la opción sigue siendo `label`. Opcional: sin él, la opción de siempre.
+   */
+  icon?: React.ReactNode;
 }
 
 export interface SelectProps {
@@ -167,7 +172,14 @@ function renderItem(option: SelectOption) {
       disabled={option.disabled}
       className="flex cursor-pointer items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm outline-none data-[highlighted]:bg-muted data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50"
     >
-      <SelectPrimitive.ItemText>{option.label}</SelectPrimitive.ItemText>
+      {option.icon === undefined ? (
+        <SelectPrimitive.ItemText>{option.label}</SelectPrimitive.ItemText>
+      ) : (
+        <span className="flex min-w-0 items-center gap-2">
+          {option.icon}
+          <SelectPrimitive.ItemText>{option.label}</SelectPrimitive.ItemText>
+        </span>
+      )}
       <SelectPrimitive.ItemIndicator>
         <Check className="size-4" aria-hidden="true" />
       </SelectPrimitive.ItemIndicator>
