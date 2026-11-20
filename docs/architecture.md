@@ -169,6 +169,27 @@ esta bien hecha, no solo si "funciona".
     zona (`lib/services/jobs/serie-diaria-por-zona.ts`). `pais-sin-literales.guardia` impide escribir en
     el servidor la zona de CR, un desfase fijo o el `506`, y exige el real en cada composition root. Los
     envoltorios `*-cr.ts` quedan solo para la UI, en su lista de excepciones (SLT-81; SINPE, SL-22).
+  - **Moneda e impuesto (SL-21):** `pais` guarda la moneda (`moneda_codigo` ISO 4217,
+    `moneda_simbolo`, `moneda_separador_miles`, `moneda_separador_decimal`, `moneda_decimales` de 0
+    a 2) y `impuesto_nombre`. Todas son NULL-ables, con `CHECK` (la moneda va entera o no va), y la
+    migración `20261122120000_sl21_pais_moneda_impuesto` carga CR con CRC, «₡», «.», «,», 2 e «IVA».
+    El país no guarda tasa: sigue en cada tarifa.
+    - **Lectura:** por el mismo puerto, `IReglasPaisEmpresa.moneda()` (un `FormatoMoneda`) y
+      `nombreImpuesto()`. Fallan con `PaisSinMoneda` y `PaisSinImpuesto`, y el alta de empresa rechaza
+      un país sin ellas.
+    - **Formato:** todo importe se pinta con `formatearMontoEn(moneda, valor)` (`lib/config/moneda.ts`).
+      Un `number` entra por `toFixed(ESCALA)` y el cuadre a los decimales de la moneda se hace sobre la
+      cadena. Los formateadores de antes (`money`, `formatMonto`, `formatMontoString`, `montoExacto`…)
+      son envoltorios con `MONEDA_PLATAFORMA`, la moneda de las variables `MONEDA_*`.
+    - **Quién la lee:** lo que arma el servidor la pide al puerto solo si pinta un importe: las
+      plantillas de WhatsApp, el informe de tránsito y el PDF de etiquetas por API
+      (`EtiquetasLotePdfService`). `buildEtiquetasLotePdf` lleva `moneda = MONEDA_PLATAFORMA` por
+      defecto para el generador del navegador. Las facturas y los textos de planes usan
+      `MONEDA_DE_LOS_PLANES`, que es la de la plataforma hasta SLT-237.
+    - **Guardia:** `pais-sin-literales.guardia` prohíbe en el servidor «₡», `CRC`, la palabra `IVA` y
+      los imports de los formateadores con la moneda de la plataforma implícita. Las pantallas, la
+      vista previa y la página pública quedan en su lista de excepciones (SLT-235); la moneda de los
+      planes, en SLT-237; la OpenAPI, como `permanente`.
 - **Catálogo de vehículos (SL-42, 2026-11-04).** `vehiculos` es uno solo para todas las empresas, que
   solo lo leen: el `maestro` en el formulario de usuarios y la postulación pública, y solo los activos
   para una elección nueva (`WHERE_VEHICULO_ELEGIBLE`, `lib/repositories/_shared/vehiculo-activo.ts`).
