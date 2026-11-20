@@ -149,6 +149,7 @@ function renderModule(
 ) {
   return render(
     <RepartoModule
+      kpis={null}
       porGestionar={porGestionar}
       conAyuda={conAyuda}
       porRecoger={[]}
@@ -171,16 +172,41 @@ function enAyuda(over: Partial<MiAsignacionDTO> & { id: string }): MiAsignacionD
 const seccionAyuda = () =>
   screen.queryByRole("region", { name: "Con ayuda solicitada" });
 
+/**
+ * SLT-189 «Reparto del mensajero según el canvas» (R800, R801) — cada orden de la sección es una FILA
+ * compacta plegada: el chip, la nota de ayuda, «Recuperar» y «Conversación» viven en su despliegue.
+ * Los casos de abajo que miran esas piezas despliegan antes las filas de la sección.
+ */
+async function desplegarAyuda(user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> {
+  const seccion = seccionAyuda() as HTMLElement;
+  for (const fila of within(seccion).getAllByRole("button", { expanded: false })) {
+    await user.click(fila);
+  }
+  return seccion;
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
 afterEach(cleanup);
 
+/**
+ * SLT-156 (R504): el panel ya no va inline con la primera orden; se abre en modo foco desde el
+ * botón "Gestionar" de la card y su confirmación.
+ */
+async function abrirPanel(user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> {
+  const [gestionar] = screen.getAllByRole("button", { name: /^Gestionar la orden / });
+  await user.click(gestionar!);
+  await user.click(await screen.findByRole("button", { name: "Aceptar" }));
+  return screen.getByRole("region", { name: "Detalle de la orden" });
+}
+
 describe("Reparto · el cuarto botón «Ayuda» del panel", () => {
-  it("está junto a los otros tres gestos de la puerta y arranca sin marcar", () => {
+  it("está junto a los otros tres gestos de la puerta y arranca sin marcar", async () => {
+    const user = userEvent.setup();
     renderModule([makeAsignacion({ id: "g1" })]);
 
-    const panel = screen.getByRole("region", { name: "Detalle de la orden" });
+    const panel = await abrirPanel(user);
     // Los otros tres siguen ahí: este botón se AÑADE, no sustituye a ninguno.
     expect(within(panel).getByRole("link", { name: /^Llamar a / })).toBeTruthy();
     expect(within(panel).getByRole("button", { name: /^Abrir el chat con / })).toBeTruthy();
@@ -220,7 +246,7 @@ describe("Reparto · el cuarto botón «Ayuda» del panel", () => {
     });
     renderModule([makeAsignacion({ id: "g1" })]);
 
-    const panel = screen.getByRole("region", { name: "Detalle de la orden" });
+    const panel = await abrirPanel(user);
     await user.click(
       within(panel).getByRole("button", {
         name: "Solicitar ayuda con la orden de Ana Perez",
@@ -293,6 +319,7 @@ describe("Reparto · las órdenes con ayuda se van abajo, a su propia sección",
       [enAyuda({ id: "g2", numRemision: "REM-002" })],
     );
 
+    await desplegarAyuda(user);
     await user.click(
       screen.getByRole("button", {
         name: "Retirar la solicitud de ayuda de la orden REM-002",
@@ -308,6 +335,7 @@ describe("Reparto · las órdenes con ayuda se van abajo, a su propia sección",
     recuperarMock.mockResolvedValue({ status: "forbidden" });
     renderModule([], [enAyuda({ id: "g2", numRemision: "REM-002" })]);
 
+    await desplegarAyuda(user);
     await user.click(
       screen.getByRole("button", {
         name: "Retirar la solicitud de ayuda de la orden REM-002",
@@ -325,17 +353,20 @@ describe("Reparto · las órdenes con ayuda se van abajo, a su propia sección",
   //
   // Lo que aquel caso protegía —que la orden no quede ATRAPADA— lo protegen los dos de abajo:
   // «Recuperar» la devuelve arriba y «Conversación» le da al mensajero dónde ejercer su ventana.
-  it("235/R16: la card de ayuda YA NO ofrece «Gestionar» (llamaría a una acción que rechaza)", () => {
+  it("235/R16: la card de ayuda YA NO ofrece «Gestionar» (llamaría a una acción que rechaza)", async () => {
+    const user = userEvent.setup();
     renderModule([], [enAyuda({ id: "g2", numRemision: "REM-002" })]);
 
-    const seccion = seccionAyuda() as HTMLElement;
+    // SLT-189 (R801): desplegada, que es donde viven las acciones; plegada no diría nada.
+    const seccion = await desplegarAyuda(user);
     expect(within(seccion).queryByRole("button", { name: /Gestionar/ })).toBeNull();
   });
 
-  it("235/R19: la card conserva «Recuperar», que es la salida de vuelta", () => {
+  it("235/R19: la card conserva «Recuperar», que es la salida de vuelta", async () => {
+    const user = userEvent.setup();
     renderModule([], [enAyuda({ id: "g2", numRemision: "REM-002" })]);
 
-    const seccion = seccionAyuda() as HTMLElement;
+    const seccion = await desplegarAyuda(user);
     expect(
       within(seccion).getByRole("button", {
         name: "Retirar la solicitud de ayuda de la orden REM-002",
@@ -361,6 +392,7 @@ describe("Reparto · las órdenes con ayuda se van abajo, a su propia sección",
     // de bloqueo puede convivir con otras alertas de la pantalla (ruta desactualizada, p. ej.).
     expect(screen.getAllByRole("alert").length).toBeGreaterThan(0);
 
+    await desplegarAyuda(user);
     const recuperar = screen.getByRole("button", {
       name: "Retirar la solicitud de ayuda de la orden REM-002",
     });
@@ -378,16 +410,17 @@ describe("Reparto · las órdenes con ayuda se van abajo, a su propia sección",
   // convirtió en evento (la orden sigue `en_reparto`) y la 455 fija que el chip dice SIEMPRE el
   // estado de la orden: «En reparto», que es lo cierto. La ayuda va como NOTA aparte, con el texto
   // de la 456 («Ayuda solicitada a la tienda»), y «En ayuda» (nombre retirado, §0.3) desaparece.
-  it("455/R7: el chip dice el estado de la orden («En reparto») y la ayuda va como nota aparte", () => {
+  it("455/R7: el chip dice el estado de la orden («En reparto») y la ayuda va como nota aparte", async () => {
+    const user = userEvent.setup();
     renderModule([], [enAyuda({ id: "g2", numRemision: "REM-002" })]);
 
-    const seccion = seccionAyuda() as HTMLElement;
+    const seccion = await desplegarAyuda(user);
     expect(within(seccion).getByText("En reparto")).toBeInTheDocument();
     expect(within(seccion).getByText("Ayuda solicitada a la tienda")).toBeInTheDocument();
     expect(within(seccion).queryByText("En ayuda")).toBeNull();
   });
 
-  it("235/R37: y el COLOR de ese chip es el de `warning` sólido, fijado y no heredado", () => {
+  it("235/R37: y el COLOR de ese chip es el de `warning` sólido, fijado y no heredado", async () => {
     // N1/N2 de la re-revisión. «En ayuda» es texto libre para `estadoBadgeClass`, así que hasta
     // ahora su color llegaba por el FALLBACK — la rama que existe para no romper con un rótulo
     // desconocido, no para expresar una decisión — y coincidía con el de «En reparto». Nadie lo
@@ -396,11 +429,12 @@ describe("Reparto · las órdenes con ayuda se van abajo, a su propia sección",
     // familia de los estados de espera con acción pendiente (la de `EstatusBadge.ayuda_tienda` y la
     // del encabezado de la sección) y `bg-warning`/`text-navy` son tokens fijos, o sea el par
     // fijo-sobre-fijo que DESIGN.md exige para un chip sólido.
+    const user = userEvent.setup();
     renderModule([], [enAyuda({ id: "g2", numRemision: "REM-002" })]);
 
     // ⏳ 2026-09-24 (FICHA 455, R12): el color del chip sale del CÓDIGO (`en_reparto` → `warning`
     // sólido), no de un rótulo; la nota de ayuda lleva la familia `warning` en su tratamiento suave.
-    const seccion = seccionAyuda() as HTMLElement;
+    const seccion = await desplegarAyuda(user);
     expect(within(seccion).getByText("En reparto")).toHaveClass(
       "bg-warning",
       "text-navy",
@@ -419,7 +453,7 @@ describe("Reparto · las órdenes con ayuda se van abajo, a su propia sección",
     const user = userEvent.setup();
     renderModule([], [enAyuda({ id: "g2", numRemision: "REM-002" })]);
 
-    const seccion = seccionAyuda() as HTMLElement;
+    const seccion = await desplegarAyuda(user);
     await user.click(within(seccion).getByRole("button", { name: "Conversación" }));
 
     expect(await screen.findByRole("region", { name: "Notas con la tienda" })).toBeTruthy();
@@ -457,7 +491,8 @@ describe("Reparto · la orden en ayuda sale de la ruta, pero no del chat", () =>
     expect(screen.getAllByRole("article", { name: /REM-002/ })).toHaveLength(1);
   });
 
-  it("235/R15: su card NO lleva la marca «Pendiente de optimizar», que sí sigue en el listado de arriba", () => {
+  it("235/R15: su card NO lleva la marca «Pendiente de optimizar», que sí sigue en el listado de arriba", async () => {
+    const user = userEvent.setup();
     // La otra mitad de R15, la que el número ya cumplía y la superficie no: el servicio deja estas
     // órdenes fuera de `paradasSinOptimizar`, pero la card seguía luciendo la marca. El contraste
     // con la orden de arriba es lo que hace al caso decir algo: si se apagara la marca en TODAS
@@ -467,7 +502,8 @@ describe("Reparto · la orden en ayuda sale de la ruta, pero no del chat", () =>
       [enAyuda({ id: "g2", numRemision: "REM-002", secuenciaRuta: null })],
     );
 
-    const seccion = seccionAyuda() as HTMLElement;
+    // SLT-189: desplegada, que es donde la fila lleva sus marcas.
+    const seccion = await desplegarAyuda(user);
     expect(within(seccion).queryByText("Pendiente de optimizar")).toBeNull();
     // Y la posición en la ruta tampoco se anuncia: sin ruta no hay «sin posición» que declarar.
     expect(within(seccion).queryByText("Sin posición en la ruta")).toBeNull();
@@ -483,5 +519,90 @@ describe("Reparto · la orden en ayuda sale de la ruta, pero no del chat", () =>
 
     // El botón flotante del chat solo se pinta si hay contactos; su nombre accesible los cuenta.
     expect(screen.getByRole("button", { name: /chat/i })).toBeTruthy();
+  });
+});
+
+// =================================================================================================
+// SLT-189 «Reparto del mensajero según el canvas» (R800, R801, DS5) — «Con ayuda solicitada» como fila
+// compacta desplegable, en Mosaico y en Detalle. Guía (2002) y remisión (REM-002) difieren a
+// propósito: una fila que volviera a la remisión se ve. Literales escritos a mano.
+// =================================================================================================
+describe("SLT-189 — «Con ayuda solicitada» como fila desplegable", () => {
+  const orden = () =>
+    enAyuda({
+      id: "g2",
+      numGuia: 2002,
+      numRemision: "REM-002",
+      destinatario: "Beto Ruiz",
+      tiendaNombre: "Tienda Sur",
+      montoCobrar: 150,
+    });
+
+  function filaPlegada(seccion: HTMLElement) {
+    return within(seccion).getByRole("button", { expanded: false });
+  }
+
+  it("R800: en Mosaico, fila plegada con la guía, «destinatario · tienda» y «Valor a cobrar», sin parada", () => {
+    renderModule([makeAsignacion({ id: "g1" })], [orden()]);
+    const seccion = seccionAyuda() as HTMLElement;
+    const fila = filaPlegada(seccion);
+
+    expect(within(fila).getByText("2002")).toHaveClass("font-mono");
+    expect(within(fila).queryByText("REM-002")).toBeNull();
+    expect(within(fila).getByText("Beto Ruiz · Tienda Sur")).toBeInTheDocument();
+    expect(within(fila).getByText("Valor a cobrar")).toBeInTheDocument();
+    expect(within(fila).getByText(/150/)).toBeInTheDocument();
+    // Feature 235 R15: sin número de parada ni «Pendiente de optimizar».
+    expect(within(seccion).queryByText("Sin posición en la ruta")).toBeNull();
+    expect(within(seccion).queryByText(/^Parada /)).toBeNull();
+    expect(within(seccion).queryByText("Pendiente de optimizar")).toBeNull();
+  });
+
+  it("R800: en Detalle, la misma fila plegada", async () => {
+    const user = userEvent.setup();
+    renderModule([makeAsignacion({ id: "g1" })], [orden()]);
+    await user.click(screen.getByRole("button", { name: "Detalle" }));
+
+    const fila = filaPlegada(seccionAyuda() as HTMLElement);
+    expect(within(fila).getByText("2002")).toBeInTheDocument();
+    expect(within(fila).getByText("Beto Ruiz · Tienda Sur")).toBeInTheDocument();
+    expect(within(fila).getByText("Valor a cobrar")).toBeInTheDocument();
+  });
+
+  it("R801: plegada sin «Recuperar» ni «Conversación»; al tocarla los despliega con estado, nota, dirección e intentos", async () => {
+    const user = userEvent.setup();
+    renderModule([], [orden()]);
+    const seccion = seccionAyuda() as HTMLElement;
+
+    expect(
+      within(seccion).queryByRole("button", { name: "Retirar la solicitud de ayuda de la orden REM-002" }),
+    ).toBeNull();
+    expect(within(seccion).queryByRole("button", { name: "Conversación" })).toBeNull();
+
+    await user.click(filaPlegada(seccion));
+
+    expect(
+      within(seccion).getByRole("button", { name: "Retirar la solicitud de ayuda de la orden REM-002" }),
+    ).toBeInTheDocument();
+    expect(within(seccion).getByRole("button", { name: "Conversación" })).toBeInTheDocument();
+    expect(within(seccion).getByText("En reparto")).toBeInTheDocument();
+    expect(within(seccion).getByText("Ayuda solicitada a la tienda")).toBeInTheDocument();
+    expect(within(seccion).getByText("Central · Carmen — Calle 1, casa 2")).toBeInTheDocument();
+    expect(within(seccion).getByText(/^Intentos: /)).toBeInTheDocument();
+  });
+
+  it("R801: con el mensajero bloqueado por un cierre, «Recuperar» desplegado sigue pulsable", async () => {
+    const user = userEvent.setup();
+    recuperarMock.mockResolvedValue({ status: "ok" });
+    renderModule([], [orden()], bloqueoConVencido());
+    const seccion = seccionAyuda() as HTMLElement;
+
+    await user.click(filaPlegada(seccion));
+    const recuperar = within(seccion).getByRole("button", {
+      name: "Retirar la solicitud de ayuda de la orden REM-002",
+    });
+    expect(recuperar).not.toBeDisabled();
+    await user.click(recuperar);
+    expect(recuperarMock).toHaveBeenCalledWith({ ordenId: "g2" });
   });
 });

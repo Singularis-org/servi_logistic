@@ -676,7 +676,8 @@ const SUPERFICIES: readonly Superficie[] = [
   // las CINCO secciones de `/cierre-dia`, cada una con su catálogo y su ámbito. Pasan a UNA descarga,
   // la de «Gestiones» del detalle único, con las columnas del mensajero (R152) y SIN ámbito de
   // columnas —como la del detalle de un cierre pasado (SLT-108)—, así que no tienen selector que
-  // probar aquí. Sus catálogos siguen en `cierre-dia-descarga-columnas.ts` hasta SLT-115 (D13).
+  // probar aquí. Sus catálogos los retiró SLT-115 «Retirar los componentes de cierre sustituidos»
+  // (R404, D13).
 ];
 
 

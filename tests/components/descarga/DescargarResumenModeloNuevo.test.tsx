@@ -54,7 +54,7 @@ import {
   type DescargaResumenCierres,
 } from "@/app/(app)/cierres-admin/_components/DescargarCierresButton";
 import { descargaColaCierres } from "@/app/(app)/cierres-admin/_components/CierresAdminModule";
-import { descargaHistoricoCierres } from "@/app/(app)/cierres-admin/_components/CierresAdminHistoricoLista";
+import { descargaHistoricoCierres } from "@/app/(app)/cierres-admin/_components/CierresAdminModule";
 
 // --- Dobles -----------------------------------------------------------------------------------
 
@@ -103,13 +103,13 @@ const V1 = cierre({
 const VP = cierre({ ...V1, cierreId: "00000000-0000-4000-8000-0000cafe0004", estado: "solicitado", resueltoAt: null });
 
 const PARTES = [
-  { tiendaNombre: "Tienda Norte", recaudado: "100000.00", pagoTienda: "94350.00", ganaLaTienda: "94350.00" },
-  { tiendaNombre: "Tienda Sur", recaudado: "0.00", pagoTienda: "0.00", ganaLaTienda: "-2260.00" },
+  { tiendaNombre: "Tienda Norte", recaudado: "100000.00", pagoTienda: "94350.00" },
+  { tiendaNombre: "Tienda Sur", recaudado: "0.00", pagoTienda: "-2260.00" },
 ];
 const CIFRAS_N1: CifrasCierreDescargaDTO = {
   cierreId: N1.cierreId,
-  pagoTienda: "94350.00",
-  ganaLaTienda: "92090.00",
+  // SLT-169 (R620): 100.000 − 7.910 de todo lo facturado.
+  pagoTienda: "92090.00",
   totalFacturado: "7910.00",
   ivaFacturado: "910.00",
   netoEmpresa: "3500.00",
@@ -154,11 +154,17 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+const ENCABEZADOS_CIERRES_CENTRAL = [
+  "Folio", "Mensajero", "Destino", "Estado", "Solicitado", "Resuelto", "Efectivo", "SINPE",
+  "Transferencia", "Recaudado", "Se le paga a la tienda",
+  "Pago al mensajero", "Pago a la bodega satélite", "Total facturado", "IVA facturado",
+  "Le queda a la empresa", "Gestiones", "Pagos ajustados", "Pago entregado",
+];
+// SLT-161 (R485): 19 − «Pago entregado» − las cuatro de la empresa = 14.
 const ENCABEZADOS_CIERRES_SATELITE = [
   "Folio", "Mensajero", "Destino", "Estado", "Solicitado", "Resuelto", "Efectivo", "SINPE",
-  "Transferencia", "Recaudado", "Se le paga a la tienda", "Gana la tienda en total",
-  "Pago al mensajero", "Pago a la bodega satélite", "Total facturado", "IVA facturado",
-  "Le queda a la empresa", "Gestiones", "Pagos ajustados",
+  "Transferencia", "Recaudado", "Pago al mensajero", "Pago a la bodega satélite", "Gestiones",
+  "Pagos ajustados",
 ];
 
 describe("SLT-140 — el «Resumen» de cierres con el libro del modelo nuevo (T4.2)", () => {
@@ -232,7 +238,7 @@ describe("SLT-140 — el «Resumen» de cierres con el libro del modelo nuevo (T
     expect(config.tipo).toBe("xlsx");
     expect(config.titulo).toBe("Cierres del día resueltos");
     expect(config.tituloHoja).toBe("Cierres");
-    expect(config.columnas).toHaveLength(20);
+    expect(config.columnas).toHaveLength(19);
     expect(config.filas).toEqual([
       {
         folio: "ABCD1234",
@@ -245,8 +251,7 @@ describe("SLT-140 — el «Resumen» de cierres con el libro del modelo nuevo (T
         sinpe: "30000.00",
         transferencia: "0.00",
         recaudado: "100000.00",
-        pagoTienda: "94350.00",
-        ganaLaTienda: "92090.00",
+        pagoTienda: "92090.00",
         pagoMensajero: "3000.00",
         pagoBodega: "500.00",
         totalFacturado: "7910.00",
@@ -259,8 +264,8 @@ describe("SLT-140 — el «Resumen» de cierres con el libro del modelo nuevo (T
     ]);
     expect(config.hojasAdicionales?.map((h) => h.titulo)).toEqual(["Por tienda"]);
     expect(config.hojasAdicionales?.[0].filas).toEqual([
-      { folio: "ABCD1234", tienda: "Tienda Norte", recaudado: "100000.00", pagoTienda: "94350.00", ganaLaTienda: "94350.00" },
-      { folio: "ABCD1234", tienda: "Tienda Sur", recaudado: "0.00", pagoTienda: "0.00", ganaLaTienda: "-2260.00" },
+      { folio: "ABCD1234", tienda: "Tienda Norte", recaudado: "100000.00", pagoTienda: "94350.00" },
+      { folio: "ABCD1234", tienda: "Tienda Sur", recaudado: "0.00", pagoTienda: "-2260.00" },
     ]);
   });
 
@@ -269,7 +274,7 @@ describe("SLT-140 — el «Resumen» de cierres con el libro del modelo nuevo (T
     const config = await descargarResumen(resumenDe("pendientes", "admin"), "admin");
     expect(config.titulo).toBe("Cierres pendientes de decisión");
     expect(config.tituloHoja).toBe("Cierres");
-    expect(config.columnas.map((c) => c.encabezado)).toEqual([...ENCABEZADOS_CIERRES_SATELITE, "Pago entregado"]);
+    expect(config.columnas.map((c) => c.encabezado)).toEqual(ENCABEZADOS_CIERRES_CENTRAL);
     expect(config.filas.map((f) => [f.folio, f.estado, f.resuelto, f.pagoEntregado])).toEqual([
       ["BEEF0002", "Solicitado", null, null],
     ]);
@@ -287,7 +292,7 @@ describe("SLT-140 — el «Resumen» de cierres con el libro del modelo nuevo (T
       "Por tienda",
       "Cierres modelo anterior",
     ]);
-    expect(config.columnas).toHaveLength(20);
+    expect(config.columnas).toHaveLength(19);
     expect(config.filas.map((f) => f.folio)).toEqual(["ABCD1234"]);
     const anterior = config.hojasAdicionales?.[1];
     expect(anterior?.columnas).toEqual([
@@ -301,11 +306,29 @@ describe("SLT-140 — el «Resumen» de cierres con el libro del modelo nuevo (T
     expect(anterior?.filas.map((f) => f.mensajero)).toEqual(["Rosa Mensajera"]);
   });
 
-  it("(d) satélite: «Cierres» con 19 columnas, sin «Pago entregado» (R382)", async () => {
-    H.datos.mockResolvedValue(respuesta([N1], [{ ...CIFRAS_N1, pagoEntregado: null }]));
+  it("(d) satélite: «Cierres» con 14 columnas y sin «Por tienda» (R382; SLT-169 R634; SLT-161 R485, R486)", async () => {
+    H.datos.mockResolvedValue(
+      respuesta([N1], [
+        {
+          ...CIFRAS_N1,
+          pagoTienda: null,
+          totalFacturado: null,
+          ivaFacturado: null,
+          netoEmpresa: null,
+          pagoEntregado: null,
+          partesPorTienda: null,
+        },
+      ]),
+    );
     const config = await descargarResumen(resumenDe("resueltos", "satelite"), "satelite");
     expect(config.columnas.map((c) => c.encabezado)).toEqual(ENCABEZADOS_CIERRES_SATELITE);
-    expect(config.filas[0]).not.toHaveProperty("pagoEntregado");
+    expect(config.hojasAdicionales ?? []).toEqual([]);
+    expect(Object.keys(config.filas[0]).sort()).toEqual(
+      [
+        "folio", "mensajero", "destino", "estado", "solicitado", "resuelto", "efectivo", "sinpe",
+        "transferencia", "recaudado", "pagoMensajero", "pagoBodega", "gestiones", "pagosAjustados",
+      ].sort(),
+    );
   });
 
   it("(e) un «Resumen» sin `obtenerFilasConColumnas` (bodega): la llamada de siempre, sin argumentos", async () => {

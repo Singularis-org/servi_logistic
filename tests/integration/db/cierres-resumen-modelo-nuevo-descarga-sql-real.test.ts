@@ -97,16 +97,15 @@ interface Corpus {
 function cifrasN1(cierreId: string, pagoEntregado: string | null) {
   return {
     cierreId,
-    pagoTienda: "94350.00",
-    ganaLaTienda: "92090.00",
+    pagoTienda: "92090.00", // SLT-169 R620: 100 000 − 7 910 (antes 94 350)
     totalFacturado: "7910.00",
     ivaFacturado: "910.00",
     netoEmpresa: "3500.00",
     gestiones: 2,
     pagoEntregado,
     partesPorTienda: [
-      { tiendaNombre: "Tienda Norte", recaudado: "100000.00", pagoTienda: "94350.00", ganaLaTienda: "94350.00" },
-      { tiendaNombre: "Tienda Sur", recaudado: "0.00", pagoTienda: "0.00", ganaLaTienda: "-2260.00" },
+      { tiendaNombre: "Tienda Norte", recaudado: "100000.00", pagoTienda: "94350.00" },
+      { tiendaNombre: "Tienda Sur", recaudado: "0.00", pagoTienda: "-2260.00" }, // R622
     ],
   };
 }
@@ -475,9 +474,14 @@ describeSiHayBase("SLT-140 — cifras de la hoja «Cierres» del modelo nuevo, c
 
       const d = await c.svc.verCierreDetalle(c.cierre.N1, c.maestro);
       if (d.status !== "ok") throw new Error(`detalle ${d.status}`);
+      // SLT-154 (R465): el maestro recibe las cifras de la empresa; el tipo las admite `null` por
+      // la satelite (R462), y un `null` aqui es un rojo, no una paridad que se cumple sola.
+      if (d.totalesIngreso === null || d.partesPorTienda === null) {
+        throw new Error("R465: el maestro recibio en null las cifras de la empresa del detalle");
+      }
       const cifras = r.cifrasModeloNuevo?.[0];
       expect(cifras?.pagoTienda).toBe(d.pagoTienda);
-      expect(cifras?.ganaLaTienda).toBe(d.ganaLaTienda);
+      expect(cifras).not.toHaveProperty("ganaLaTienda"); // SLT-174 (R651)
       expect(cifras?.totalFacturado).toBe(d.totalesIngreso.total);
       expect(cifras?.ivaFacturado).toBe(d.ivaFacturado);
       expect(cifras?.netoEmpresa).toBe(d.netoEmpresa);
@@ -487,7 +491,6 @@ describeSiHayBase("SLT-140 — cifras de la hoja «Cierres» del modelo nuevo, c
           tiendaNombre: p.tiendaNombre,
           recaudado: p.recaudado,
           pagoTienda: p.pagoTienda,
-          ganaLaTienda: p.ganaLaTienda,
         })),
       );
       expect(d.cierre.pendientePagoMensajero).toBe("1800.00");
@@ -516,16 +519,104 @@ describeSiHayBase("SLT-140 — cifras de la hoja «Cierres» del modelo nuevo, c
       if (d.status !== "ok") throw new Error(`detalle ${d.status}`);
       expect(r.cifrasModeloNuevo?.[0].netoEmpresa).toBe(d.netoEmpresa);
       expect(r.cifrasModeloNuevo?.[0].pagoTienda).toBe(d.pagoTienda);
-      expect(r.cifrasModeloNuevo?.[0].ganaLaTienda).toBe(d.ganaLaTienda);
     });
   });
 
-  it("R382/R383: la satelite solo recibe S1 (nunca N3 de otra zona) y sin «Pago entregado»", async () => {
+  it("R481: la satélite recibe S1 sin las cifras de la empresa, en Resueltos y en Pendientes", async () => {
+    // SLT-161 «Descargas de la satélite sin el dinero de la empresa». Sigue R382/R383: solo S1 (nunca
+    // N3 de otra zona) y sin «Pago entregado». De la satélite solo viajan el id y las 2 gestiones.
+    const sinEmpresa = (cierreId: string) => ({
+      cierreId,
+      pagoTienda: null,
+      totalFacturado: null,
+      ivaFacturado: null,
+      netoEmpresa: null,
+      gestiones: 2, // G1 y G2 de S1
+      pagoEntregado: null,
+      partesPorTienda: null,
+    });
     await conCorpus(async (c) => {
       const r = await c.svc.listarHistoricoCierresAdminCompleto(c.satelite);
       if (r.status !== "ok") throw new Error(`status ${r.status}`);
       expect(r.items.map((i) => i.cierreId)).toEqual([c.cierre.S1]);
-      expect(r.cifrasModeloNuevo).toEqual([cifrasN1(c.cierre.S1, null)]);
+      expect(r.cifrasModeloNuevo).toEqual([sinEmpresa(c.cierre.S1)]);
+
+      // Pendientes: S1 vuelve a `solicitado` dentro de la transaccion (se revierte) y pasa a la cola.
+      await c.tx.cierreDia.update({ where: { id: c.cierre.S1 }, data: { estado: "solicitado", resueltoAt: null } });
+      const cola = await c.svc.listarPendientesCierresAdminCompleto(c.satelite);
+      if (cola.status !== "ok") throw new Error(`status ${cola.status}`);
+      expect(cola.items.map((i) => i.cierreId)).toEqual([c.cierre.S1]);
+      expect(cola.cifrasModeloNuevo).toEqual([sinEmpresa(c.cierre.S1)]);
+    });
+  });
+
+  it("R482: las gestiones de S1 para la hoja Detalle, sin cobro a la tienda y con monto a cobrar y modelo", async () => {
+    await conCorpus(async (c) => {
+      const r = await c.svc.listarGestionesCierresAdminCompleto(c.satelite, { mensajeroIds: [c.m.S1] });
+      if (r.status !== "ok") throw new Error(`status ${r.status}`);
+      expect(r.items).toHaveLength(2); // G1 y G2 de S1; nada de N3 (otra zona)
+      const porTienda = new Map(r.items.map((g) => [g.tiendaNombre, g]));
+      const g1 = porTienda.get("Tienda Norte");
+      const g2 = porTienda.get("Tienda Sur");
+      if (g1 === undefined || g2 === undefined) throw new Error("faltan G1/G2 de S1");
+      for (const g of [g1, g2]) {
+        expect(g.ingresoEmpresa).toBeNull();
+        expect(g.tarifaModelo).toBe("nuevo");
+        expect(g.pagoMensajero).toBe("0.00"); // sembrado 0,00
+        expect(g.cierreModelo).toBe("nuevo");
+        expect(g.fulfillmentCargadoDia).toBeNull();
+        expect(g.folioCierre).toBe(c.cierre.S1.slice(-8).toUpperCase());
+      }
+      expect(g1.montoCobrar).toBe("100000.00"); // COD de G1
+      expect(g2.montoCobrar).toBe("10000.00"); // COD de G2
+      expect(g1.montoRecibido).toBe("100000.00");
+      expect(g1.pagos).toEqual(
+        expect.arrayContaining([
+          { metodo: "efectivo", monto: "70000.00" },
+          { metodo: "SINPE", monto: "30000.00" },
+        ]),
+      );
+      expect(g1.indemnizacion).toBeNull();
+
+      // R487 en el servidor: el maestro, con N1 (central, mismas G1/G2 que S1), recibe el bloque
+      // entero y nada aparte. (S1 es de un destino satelite: fuera del alcance de esta lectura central.)
+      const central = await c.svc.listarGestionesCierresAdminCompleto(c.maestro, { mensajeroIds: [c.m.N1] });
+      if (central.status !== "ok") throw new Error(`status ${central.status}`);
+      expect(central.items).toHaveLength(2);
+      for (const g of central.items) {
+        expect(g.ingresoEmpresa).not.toBeNull();
+        expect("montoCobrar" in g).toBe(false);
+      }
+      const g1Central = central.items.find((g) => g.tiendaNombre === "Tienda Norte");
+      expect(g1Central?.ingresoEmpresa?.montoCobrar).toBe("100000.00");
+      // 4 000 + 13 % (520) + 1 % de 100 000 (1 000) + 13 % (130) = 5 650
+      expect(g1Central?.ingresoEmpresa?.total).toBe("5650.00");
+    });
+  });
+
+  it("R482: la satélite recibe de la base la indemnización, el pago al mensajero y el ingreso de bodega del rechazo tal cual", async () => {
+    // SLT-161 (decision de Carlos): estos tres importes son de la satelite y la hoja Detalle los
+    // lleva. Se escriben en G1 y G2 de S1 dentro de la transaccion (se revierte) con valores a mano,
+    // imposibles de encontrar por casualidad: un recorte que anulara o pusiera a cero cualquiera falla.
+    await conCorpus(async (c) => {
+      const escritas = await c.tx.gestionOrden.updateMany({
+        where: { cierreId: c.cierre.S1 },
+        data: {
+          indemnizacion: new Prisma.Decimal("731957.41"),
+          pagoMensajero: new Prisma.Decimal("846213.52"),
+          ingresoBodegaRechazo: new Prisma.Decimal("583914.63"),
+        },
+      });
+      expect(escritas.count).toBe(2); // G1 y G2 de S1: sin filas, el caso no comprobaria nada
+      const r = await c.svc.listarGestionesCierresAdminCompleto(c.satelite, { mensajeroIds: [c.m.S1] });
+      if (r.status !== "ok") throw new Error(`status ${r.status}`);
+      expect(r.items).toHaveLength(2);
+      for (const g of r.items) {
+        expect(g.indemnizacion).toBe("731957.41");
+        expect(g.pagoMensajero).toBe("846213.52");
+        expect(g.ingresoBodegaRechazo).toBe("583914.63");
+        expect(g.ingresoEmpresa).toBeNull();
+      }
     });
   });
 

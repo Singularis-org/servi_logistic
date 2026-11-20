@@ -37,7 +37,7 @@ import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // `Prisma.Decimal`.
 //
 // **Lo que este archivo NO puede probar, y por eso no lo intenta:** el `WHERE` de
-// `listarCierresImputables` / `contarCierresNoAprobadosPorEstado` — ni que el conteo de R36 lo
+// `listarCierresImputablesEnAlcance` / `contarCierresNoAprobadosPorEstado` — ni que el conteo de R36 lo
 // haga la BASE con un `groupBy` en vez del proceso (aqui son dobles y no hay SQL que mirar).
 // Eso vive en `tests/unit/repositories/liquidacion-pago-repository.test.ts`, que lo prueba donde
 // se ejecuta. Lo de aqui es el ORDEN, la ATOMICIDAD y la ARITMETICA del acto.
@@ -131,7 +131,7 @@ function repartoDTO(over: Partial<LiquidacionRepartoDTO> = {}): LiquidacionRepar
 }
 
 interface Opciones {
-  /** Lo que devuelve `listarCierresImputables`. Una entrada por LLAMADA; la ultima se repite. */
+  /** Lo que devuelve `listarCierresImputablesEnAlcance`. Una entrada por LLAMADA; la ultima se repite. */
   cierres?: CierreImputableDTO[][];
   /** Σ de pagos vigentes por cierre. Una entrada por LLAMADA; la ultima se repite. */
   pagados?: Record<string, string>[];
@@ -236,12 +236,6 @@ function buildDobles(opciones: Opciones = {}) {
       };
       pendientesDeCommit.push(() => confirmados.pagos.push(input));
       return { status: "creado" as const, pago };
-    }),
-    // SLT-122: la lectura SIN alcance ya no la usa el reparto. Se deja con su propia marca en el
-    // log, para que una llamada colada rompa las aserciones de orden en vez de pasar inadvertida.
-    listarCierresImputables: vi.fn(async () => {
-      log.push("leer:imputables:SIN-ALCANCE");
-      return enesima(listasDeCierres, 0);
     }),
     listarCierresImputablesEnAlcance: vi.fn(async (_mensajeroId, alcance, t) => {
       const lista = enesima(listasDeCierres, llamadasCierres);
@@ -765,7 +759,6 @@ describe("SLT-122 — el reparto solo imputa a cierres de la bodega central", ()
         expect(mensajeroId).toBe(MENSAJERO);
         expect(alcance).toEqual(ALCANCE_CENTRAL);
       }
-      expect(d.pagoRepo.listarCierresImputables).not.toHaveBeenCalled();
     });
   }
 
@@ -1257,7 +1250,6 @@ describe("R35/R57 — la previsualización no escribe nada y usa la MISMA ventan
     const r = await d.service.previsualizarRepartoMensajero({ mensajeroId: MENSAJERO }, ACTOR_ADMIN);
 
     expect(r).toEqual({ status: "no_encontrado" });
-    expect(d.pagoRepo.listarCierresImputables).not.toHaveBeenCalled();
     expect(d.pagoRepo.listarCierresImputablesEnAlcance).not.toHaveBeenCalled(); // SLT-122
   });
 });
@@ -1320,7 +1312,6 @@ describe("R36/R37/R56 — los avisos, resueltos en el servidor y separados", () 
     // El servicio no recuenta ni suma nada: quien agrega es la base (ahí es donde el `groupBy`
     // se prueba). Aquí solo se afirma que no hay una segunda fuente para el mismo número.
     expect(d.pagoRepo.listarCierresImputablesEnAlcance).toHaveBeenCalledTimes(1);
-    expect(d.pagoRepo.listarCierresImputables).not.toHaveBeenCalled();
   });
 
   it("R36: sin cierres fuera, la lista de conteos viene VACÍA (no un `0` por estado)", async () => {

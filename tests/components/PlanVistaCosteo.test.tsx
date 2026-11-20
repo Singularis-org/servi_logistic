@@ -92,7 +92,8 @@ describe("SLT-66 R24 — catálogo", () => {
         inicioCicloPorDefecto="2026-10-30"
         rangoInicioCiclo={{ hoy: "2026-10-29", min: "2026-09-29", max: "2026-11-29" }}
         rangoFechaDeEfecto={{ hoy: "2026-10-29", min: "2026-10-29", max: "2027-10-29" }}
-        crearPlan={vi.fn()}
+        borradores={[]}
+        borrador={{ guardarPaso: vi.fn(), leer: vi.fn(), descartar: vi.fn(), confirmar: vi.fn() }}
         previsualizarCustom={vi.fn().mockResolvedValue({ estado: "ok", avisos: [] })}
       />,
     );
@@ -115,7 +116,7 @@ describe("SLT-66 R24, R10 — detalle del plan", () => {
     rastro,
   });
   const montar = (d: DetallePlan) =>
-    render(<PlanDetalle detalle={d} editarPlan={vi.fn()} archivarPlan={vi.fn()} cancelarCambio={vi.fn()} />);
+    render(<PlanDetalle detalle={d} borrador={{ guardarPaso: vi.fn(), leer: vi.fn(), descartar: vi.fn(), confirmar: vi.fn() }} previsualizarCambio={vi.fn()} archivarPlan={vi.fn()} cancelarCambio={vi.fn()} />);
   const dato = (termino: string) => screen.getByText(termino, { selector: "dt" }).nextElementSibling as HTMLElement;
 
   it("R24: «Costo base» y «Costo por orden» como datos de la versión vigente", () => {

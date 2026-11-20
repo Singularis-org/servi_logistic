@@ -328,18 +328,132 @@ esta bien hecha, no solo si "funciona".
     aplica el cambio. No es un fallo.
   - **Sin devoluciones:** un cambio de plan o de tipo aplicado después de emitir una cuota no la
     devuelve ni baja la deuda. Las facturas cerradas no cambian.
-  - **Deuda:** cargos − reversos + (`cuota` + `primera_cuota` de las facturas **cerradas**) − pagos.
-    `CobroPlataformaMovimientoRepository.sumasPorTipo` las suma como el tipo `cuota` y
-    `derivarDeudaPlataforma` las suma como un cargo. `EmpresasPlataformaRepository` las suma por
-    empresa en el listado del superadmin. El trigger `wallet_movimiento_tope_pago_plataforma` las
-    incluye en el tope del pago. El cierre no escribe en `cobro_plataforma_movimiento`,
+  - **Deuda:** cargos − reversos + (`cuota` + `primera_cuota` de las facturas **cerradas**) − pagos
+    **confirmados** (SLT-60). `CobroPlataformaMovimientoRepository.sumasPorTipo` suma las cuotas como
+    el tipo `cuota` y `derivarDeudaPlataforma` las suma como un cargo. Los confirmados los suma
+    `PagoPlataformaRepository.sumaPagosConfirmados` (Σ `pago_plataforma_aplicacion.monto`, con la
+    empresa escrita en el `where`). `EmpresasPlataformaRepository` hace lo mismo por empresa en el
+    listado del superadmin: «Pagado» es la suma de los confirmados, y el contador «N pagos por
+    confirmar» sale de `pago_plataforma_por_confirmar`. Un pago por confirmar sale de la caja al
+    registrarlo, pero **no** baja la deuda. El cierre no escribe en `cobro_plataforma_movimiento`,
     `cobro_plataforma_traza` ni `wallet_movimiento`.
+  - **Pagos a la plataforma: registro y confirmación (SLT-60, migración
+    `20261116120000_pago_plataforma_confirmacion`).** El pago lo registra la empresa en la wallet
+    (`egreso_pago_plataforma`, SL-45) y nace **por confirmar**. Lo confirma el superadmin desde el
+    detalle de la empresa y lo reparte entre las facturas cerradas con saldo; la deuda baja entonces.
+    - **El saldo de una factura:** `factura_plataforma_saldos(org)` es su única definición: total de la
+      cerrada − Σ aplicado, **con signo**. Una cerrada de total negativo (solo reversos) da saldo
+      negativo, cuenta como saldo a favor y nunca recibe aplicaciones.
+    - **Lo disponible para registrar:** Σ saldo de las cerradas − Σ pagos por confirmar
+      (`pago_plataforma_disponible_de`). Un pago está por confirmar si es un `egreso_pago_plataforma`
+      sin contra-asiento y sin confirmación (`pago_plataforma_por_confirmar`, la única definición).
+      Solo se paga lo facturado en facturas cerradas: sin cerradas con saldo, o con lo disponible en 0
+      o menos, no entra ningún pago. El tope lo aplican dos capas con el mismo número. En la base, el
+      trigger `wallet_movimiento_tope_pago_plataforma` (23514, también para el dueño). En la app,
+      `TopePagoPlataformaService`, con un solo repositorio, vía
+      `PagoPlataformaRepository.disponibleParaRegistrar`. Esa lectura llama a
+      `pago_plataforma_disponible(org)`, la envoltura con `GRANT` a `servi_app`, que da `42501` con otra
+      empresa o sin empresa. Las dos capas toman el candado `pg_advisory_xact_lock(hashtext(
+      'pago_plataforma:' || org))`.
+    - **La confirmación:** `pago_plataforma_confirmar(org, pago, aplicaciones, por, ahora)`, función del
+      dueño (`SECURITY DEFINER`, `EXECUTE` revocado a `PUBLIC`), bajo el **mismo** candado. Valida
+      todo: el pago vigente de la empresa, cada factura cerrada de la empresa con saldo, montos
+      positivos, sin facturas repetidas, ninguno por encima del saldo, y la suma igual al monto del
+      pago. Un rechazo sale con `SQLSTATE SL060` y un JSON `{codigo, factura_id?}` que traduce
+      `lib/db/errores-pago-plataforma.ts`. Confirmar otra vez responde `ya_confirmado` sin escribir. No
+      toca `factura_plataforma` ni el libro. La app llega por `PagoPlataformaConfirmacionRepository`
+      (en `comoPlataforma`, con su entrada en `EXCEPCIONES_DE_PLATAFORMA`) y
+      `PagoPlataformaConfirmacionService`, que exige superadmin antes de leer nada
+      (`lib/actions/pagos-plataforma.ts`).
+    - **Las dos tablas:** `pago_plataforma_confirmacion` (una por pago, único por empresa y pago; quién
+      y cuándo confirmó) y `pago_plataforma_aplicacion` (una fila por factura del reparto, `monto > 0`).
+      Las dos son de negocio, con RLS por empresa: la empresa solo **lee** lo suyo. `servi_app` tiene
+      `REVOKE INSERT, UPDATE, DELETE`, y solo las escribe `pago_plataforma_confirmar`. Son inmutables:
+      el trigger `pago_plataforma_inmutable` rechaza con `SL060` todo `UPDATE`, también al dueño.
+      `confirmado_por` es FK a `usuario` (el superadmin, sin empresa) con su trigger de misma empresa.
+    - **El bloqueo de la anulación:** la empresa anula un pago solo mientras está por confirmar. Anular
+      uno por confirmar le devuelve el monto a la caja y a lo disponible, y la deuda no cambia. El
+      trigger `pago_plataforma_no_anular_confirmado` (bajo el mismo candado) rechaza con `SL060`
+      `pago_confirmado` el contra-asiento de un pago confirmado, por cualquier camino y con cualquier
+      rol. `EgresoCajaAnulacionService` lo traduce a `forbidden`. Anular y confirmar a la vez el mismo
+      pago no ganan los dos.
+  - **Pago por fuera y anulación por la plataforma (SLT-143, migración
+    `20261121130000_pago_plataforma_por_fuera`).** El superadmin, desde el detalle de la empresa, registra
+    un pago hecho por fuera y anula un pago confirmado. Las dos son funciones del dueño (`SECURITY
+    DEFINER`, `EXECUTE` revocado a `PUBLIC`) bajo el candado `pago_plataforma:` de la empresa, y la app
+    llega a ellas por `PagoPlataformaConfirmacionRepository` en `comoPlataforma` y
+    `PagoPlataformaConfirmacionService`, que exige superadmin (`lib/actions/pagos-plataforma.ts`).
+    - **Pago por fuera:** `pago_plataforma_registrar_por_fuera` escribe en una transacción el
+      `egreso_pago_plataforma` de la wallet (la caja baja igual que con un pago de la empresa, aunque la
+      caja no alcance), el comprobante si viene y la confirmación con su reparto
+      (`_pago_plataforma_aplicar`, las mismas validaciones que confirmar). Nace confirmado: no cuenta como
+      por confirmar y la deuda baja al registrarlo. La misma clave de idempotencia responde
+      `ya_registrado` sin escribir. El monto se acota a 9 999 999 999,99 (`montoPagoPorFueraSchema`, el
+      tope de `wallet_movimiento.monto`).
+    - **La columna `por_fuera`:** `pago_plataforma_confirmacion.por_fuera` (`false` por defecto; la
+      migración no toca filas). Es `true` solo en los pagos por fuera y de ahí sale la marca «Registrado
+      por la plataforma» del libro de la caja (`LibroCajaAutoriaRepository`), sin el nombre ni el id del
+      superadmin. Un pago de la empresa confirmado después no la lleva.
+    - **La anulación:** `pago_plataforma_anular_confirmado(org, pago, motivo, por, ahora)` responde `ok` o
+      `ya_anulado`; si no, `SL060` con `pago_no_encontrado`, `pago_no_confirmado` (uno por confirmar no se
+      anula aquí) o `motivo_vacio`. Escribe, en este orden, la fila de `pago_plataforma_anulacion`, la
+      constancia con el motivo en `ajuste_caja_anulacion` y el contra-asiento `ingreso_ajuste` con origen
+      `gasto`, como la anulación de un egreso (SL-45): el monto vuelve a la caja. Sin historial. No toca
+      `factura_plataforma` ni `pago_plataforma_aplicacion`: `factura_plataforma_saldos`, la suma de
+      confirmados y el «Pagado» de Empresas descartan las aplicaciones de una confirmación anulada, y la
+      deuda sube en el monto. Un pago anulado no se confirma (`pago_no_encontrado`) ni vuelve a por
+      confirmar. El libro marca el contra-asiento y la línea de anulación con «Anulado por la plataforma».
+    - **La tabla `pago_plataforma_anulacion`:** una por confirmación (único por empresa y confirmación;
+      quién y cuándo). De negocio, con RLS por empresa: la empresa solo **lee** lo suyo; `servi_app` tiene
+      `REVOKE INSERT, UPDATE, DELETE`. Inmutable (`pago_plataforma_anulacion_inmutable`, también el dueño),
+      con triggers de misma empresa en `anulado_por` y `confirmacion_id`. En Prisma, la confirmación la
+      lee como lista: `anulaciones`.
+    - **La excepción del trigger:** `pago_plataforma_no_anular_confirmado` sigue rechazando el
+      contra-asiento de un pago confirmado, salvo si su confirmación ya tiene fila en
+      `pago_plataforma_anulacion`. Como `servi_app` no puede escribir esa tabla, la empresa sigue sin
+      poder anular un confirmado (`forbidden`), tampoco uno por fuera, y el dueño tampoco sin la anulación.
   - **Lectura:** la empresa lee sus facturas con `FacturaPlataformaRepository.deLaEmpresa`. Es una
     sola sentencia que trae las cerradas y `factura_plataforma_en_curso` (`42501` con otra empresa o
-    sin empresa). Las no cerradas traen el total de órdenes hasta ahora y las cuotas previstas. La
-    lectura del superadmin de una empresa (`deEmpresaParaPlataforma`) **aún no existe**: está abierta
-    la pregunta de cómo fija el contexto de empresa (`progress/features/SLT-118.md > Preguntas
-    abiertas`).
+    sin empresa). Las no cerradas traen el total de órdenes hasta ahora y las cuotas previstas. El
+    superadmin lee las de una empresa con `deEmpresaParaPlataforma(organizacionId)`, la misma sentencia
+    con `conEmpresa`, sin `comoPlataforma`.
+  - **Pantallas (SLT-119, 2026-11-12).** Las facturas van **por empresa, no por plan**: el plan es
+    una columna de cada factura. Se pintan en la sección «Facturas de la empresa» de «Mi plan» (solo el
+    maestro) y en la pestaña «Facturación» del detalle de empresa del superadmin (la pestaña
+    «Empresa» sigue siendo la de por defecto). Componentes en `components/shared/facturas/`; servicio
+    `FacturaPlataformaService` (la autorización vive ahí) y actions en `lib/actions/facturas-plataforma.ts`.
+    Una cerrada muestra su número «N.º N»; una no cerrada, «En curso». El detalle se abre en un panel
+    lateral, se carga al abrirlo y al paginar, y sus líneas salen de `cobro_plataforma_traza` por
+    `cobrado_at` en `[desde, hasta)`, 100 por página (`detalleDeLaEmpresa` / `detalleParaPlataforma`),
+    sin copiarlas. Las pantallas no escriben (SLT-119 R16 sigue en pie).
+  - **Descarga (SLT-136, 2026-11-17; SLT-199, 2026-11-18).** Una factura **cerrada** se descarga en dos
+    PDF, la factura y su anexo de movimientos (`factura-<n>-<empresa>.pdf` y `…-anexo.pdf`; sin Excel),
+    desde las dos pantallas, solo por el maestro (`descargarFacturaMiPlanAction`) y el superadmin
+    (`descargarFacturaEmpresaAction`, con la empresa ligada en la página). El servidor solo devuelve los
+    datos (`datosDescargaDeLaEmpresa` / `datosDescargaParaPlataforma`: cabecera y todos los movimientos,
+    sin paginar); los archivos se arman en el navegador (`lib/facturas-plataforma/{resumen,pdf,anexo}.ts`,
+    `components/shared/facturas/DescargarFactura.tsx`). Si el resumen no cuadra con la base, no sale
+    archivo. Una no cerrada no tiene botones.
+    - **Estilo común:** los dos PDF se dibujan con `lib/facturas-plataforma/pdf-comun.ts` (banda, barra,
+      tarjetas, tabla partida en páginas con su cabecera, pie y «Página x de y»).
+    - **Letra:** Helvetica de jsPDF; un texto con un carácter que Helvetica no tiene (p. ej. `₡`) se
+      escribe entero con la fuente embebida de respaldo (Liberation Sans, `lib/pdf/etiquetas-fuente.ts`).
+    - **Importes de documento:** `importeDocumento` y `cantidadVisible` (`resumen.ts`) dan el formato de
+      los PDF («₡473 000,00», «2 365»), sobre el texto de la base y sin redondear. Es distinto del de
+      pantalla (`formatMontoString`, `lib/config/moneda.ts`) y no se usa fuera de los documentos.
+    - **Logo PROVISIONAL:** `public/brand/logo-singularis.png` (`MARCA_FACTURA` en `lib/config/marca.ts`)
+      es un marcador; el humano lo reemplaza por el real con el mismo nombre.
+  - **Aviso al cerrar (SLT-136).** `FacturaPlataformaRepository.cerrar` cierra y, en la **misma**
+    transacción (outbox), encola un trabajo `factura_plataforma_aviso` por factura cerrada
+    (`lib/repositories/_shared/encolar-en-empresas.ts`, dedupe `factura_plataforma_aviso:<facturaId>`).
+    El manejador (`lib/planes/jobs-factura-aviso.ts`, de núcleo, no recurrente) emite la campanita
+    `factura_plataforma_emitida` (sin montos), el push y el correo (`plantillaFacturaEmitida`, con
+    montos), solo a los maestros de la empresa; también avisa una factura de total 0.
+    - **Enmienda de SLT-118 R25:** el manejador del cierre sigue sin enviar nada; los avisos salen por la
+      cola.
+    - **Enmienda de la guardia de SLT-91 R10:** `mi-plan-solo-maestro` admite nombrar `/mi-plan` en
+      `lib/notificaciones/catalogo-avisos.ts` (atajo «Ver factura») y en
+      `lib/services/email/plantillas/factura-emitida.ts`.
 - **Reportes de problemas (SLT-87, 2026-11-09).** `bug_report` (migración `20261110120000`) es de
   plataforma (`MODELOS_DE_PLATAFORMA`): RLS sin políticas y `REVOKE ALL … FROM servi_app`, así que la
   empresa no la lee ni la escribe, ni lo suyo ni lo de su gente (`42501`). La escribe solo

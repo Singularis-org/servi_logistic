@@ -24,7 +24,7 @@
  */
 import type { ReactNode } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SWRConfig } from "swr";
 
@@ -280,8 +280,8 @@ describe("ConsolidacionBodegaModule — la cola de la satélite (SLT-106)", () =
     ).toBeInTheDocument();
     const lista = screen.getByRole("tablist", { name: "Cierre de bodega por etapa" });
     expect(within(lista).getAllByRole("tab").map((t) => t.textContent)).toEqual([
-      "A consolidar 1",
-      "Solicitados 8",
+      "A consolidar (1)",
+      "Solicitados (8)",
     ]);
     expect(screen.getByRole("region", { name: "Cierres del día a consolidar" })).toBeInTheDocument();
     expect(
@@ -299,7 +299,7 @@ describe("ConsolidacionBodegaModule — la cola de la satélite (SLT-106)", () =
 
   it("R289 (sustituye a R201): «Solicitados» con sus tarjetas y su región, sin las de «A consolidar» ni botón", async () => {
     montar();
-    await userEvent.setup().click(screen.getByRole("tab", { name: "Solicitados 0" }));
+    await userEvent.setup().click(screen.getByRole("tab", { name: "Solicitados (0)" }));
     expect(screen.getByRole("region", { name: "Cierres de bodega solicitados" })).toBeInTheDocument();
     const cifras = screen.getByRole("group", { name: "Cifras de los cierres de bodega solicitados" });
     expect(within(cifras).getByRole("group", { name: "Por llegar a la central" })).toHaveTextContent(
@@ -313,12 +313,13 @@ describe("ConsolidacionBodegaModule — la cola de la satélite (SLT-106)", () =
     expect(screen.queryByRole("button", { name: "Solicitar cierre de bodega" })).toBeNull();
   });
 
-  it("R202: sin zona, el aviso de hoy y la lista de solicitados, sin cola, tarjetas ni botón", () => {
+  it("SLT-115 R403 (sustituye a R202): sin zona, SOLO el aviso; ni la lista de solicitados, ni cola, tarjetas ni botón", () => {
     montar({ sinZona: true, puedesSolicitar: false, bloqueo: "sin_zona" });
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "No tenés una zona asignada; contactá a tu administrador.",
+      "No tienes una zona asignada; contacta a tu administrador.",
     );
-    expect(screen.getByRole("region", { name: "Cierres de bodega solicitados" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Cierres de bodega solicitados" })).toBeNull();
+    expect(screen.queryByText("Aún no has solicitado ningún cierre de bodega.")).toBeNull();
     expect(screen.queryByRole("tablist")).toBeNull();
     expect(screen.queryByRole("group", { name: "Cifras a consolidar" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Solicitar cierre de bodega" })).toBeNull();
@@ -416,7 +417,6 @@ function detalle(cierre: CierreBodegaResumen): Ok {
     pagoTienda: "0.00",
     cobradoSobreRecaudado: "0.00",
     netoEmpresa: "0.00",
-    ganaLaTienda: "0.00",
     partesPorTienda: [],
     paraLaCentral: cierre.paraLaCentral,
     efectivoCubreDescuentos: true,
@@ -496,9 +496,9 @@ describe("SLT-107 — «Solicitados» con filtros y páginas (R52, R290, R291)",
   it("(c) R290: «Solicitados <n>» es el `total` filtrado del servidor, el de la tabla", async () => {
     montar(conPaginas);
     const usuario = userEvent.setup();
-    expect(screen.getByRole("tab", { name: "Solicitados 25" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Solicitados (25)" })).toBeInTheDocument();
     await usuario.click(screen.getByRole("button", { name: "Aplicar filtro QK4" }));
-    expect(await screen.findByRole("tab", { name: "Solicitados 13" })).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: "Solicitados (13)" })).toBeInTheDocument();
   });
 
   it("R52: la descarga de «Solicitados» y la lista llevan el mismo filtro", async () => {
@@ -511,12 +511,17 @@ describe("SLT-107 — «Solicitados» con filtros y páginas (R52, R290, R291)",
     );
   });
 
-  it("(g) R202: sin zona, la lista de hoy sin filtros, como antes", async () => {
+  it("(g) SLT-115 R403: sin zona no hay región de solicitados y no se pide ninguna página", async () => {
     montar({ sinZona: true, puedesSolicitar: false, bloqueo: "sin_zona" });
-    expect(screen.getByRole("region", { name: "Cierres de bodega solicitados" })).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Cierres de bodega solicitados" })).toBeNull();
     expect(screen.queryByRole("group", { name: "Cifras de los cierres de bodega solicitados" })).toBeNull();
-    await waitFor(() => expect(solicitados).toHaveBeenCalled());
-    expect(solicitados.mock.calls.every(([input]) => input.filtros === undefined)).toBe(true);
+    // Se deja correr el ciclo de efectos y de SWR antes de afirmar la ausencia de la lectura: con
+    // zona, este mismo montaje la pide (casos de arriba).
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(solicitados).not.toHaveBeenCalled();
   });
 });
 
@@ -547,9 +552,10 @@ describe("SLT-107 — «Ver»: el cierre de bodega en lectura (R50, R51, R292-R2
   it("(d) sin marca: pestañas, franja de la satélite, pie solo «Cerrar» y su texto", async () => {
     const { dialogo } = await verDesdeSolicitados(PENDIENTE);
     expect(verDetalle).toHaveBeenCalledWith({ cierreBodegaId: ID_CB });
+    // SLT-154 (R470): la satélite abre en Gestiones; su pestaña del dinero es «Lo que va a la central».
     expect(within(dialogo).getAllByRole("tab").map((t) => t.textContent)).toEqual([
-      "Dinero",
       "Gestiones (1)",
+      "Lo que va a la central",
       "Mensajeros (1)",
       "Conciliación",
     ]);

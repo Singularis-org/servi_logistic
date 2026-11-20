@@ -5,10 +5,16 @@
 // empresas, rastro del más reciente al más antiguo) y se mide qué sale hacia las actions inyectadas:
 // cancelar y archivar no llaman sin confirmar, un archivado no ofrece controles, los avisos de una
 // edición se ven y un rechazo se explica sin dar el cambio por hecho.
+//
+// SLT-144 «Planes: formulario por pasos conectado al borrador y a la fecha de cada empresa» (design §6; R13, R26):
+// editar guarda por pasos en el borrador de cambio y lo confirma. Las cuatro actions son un borrador en memoria
+// (`accionesFalsas`) que, al confirmar, pasa la petición de editar de hoy a `editarPlan`, el doble de la action de
+// hoy: los casos de SLT-58 siguen midiendo la misma carga útil.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
+import { TEXTOS_PLAN_FORM } from "@/app/(app)/plataforma/planes/_components/plan-form/textos";
 import type { DetallePlan, PlanResult } from "@/lib/types/planes";
 
 const { refreshMock } = vi.hoisted(() => ({ refreshMock: vi.fn() }));
@@ -17,6 +23,14 @@ vi.mock("next/navigation", () => ({
 }));
 
 import { PlanDetalle } from "@/app/(app)/plataforma/planes/[planId]/_components/PlanDetalle";
+
+import {
+  accionesFalsas,
+  avanzarHasta,
+  previsualizarCambioFalso,
+  terminar,
+  tituloDelPasoActual,
+} from "./plan-form-pasos";
 
 const PLAN_ID = "0b6f3a2e-1c4d-4e5f-8a9b-0c1d2e3f4a5b";
 const ORG = "6f1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f60";
@@ -35,7 +49,8 @@ const DETALLE: DetallePlan = {
     archivado: false,
   },
   empresaNombre: null,
-  pendiente: { vigenteDesde: "2030-01-15", lineas: ["Órdenes por ciclo: 3000 → 5000"] },
+  // SLT-128 (R11): el conteo de recepciones del pendiente.
+  pendiente: { vigenteDesde: "2030-01-15", lineas: ["Órdenes por ciclo: 3000 → 5000"], recibidas: 0, total: 1 },
   empresas: [{ id: ORG, nombre: "Envíos Norte" }],
   rastro: [
     {
@@ -68,6 +83,8 @@ const DETALLE: DetallePlan = {
 };
 
 const OK: PlanResult = { estado: "ok", planId: PLAN_ID, cambio: true, avisos: [], vigenteDesde: null };
+/** SLT-135 (R9): editar siempre programa; su `ok` con cambio lleva la fecha elegida. */
+const PROGRAMADO: PlanResult = { ...OK, vigenteDesde: "2030-02-01" };
 
 /** Una action inyectada que responde `r`. */
 const accion = (r: PlanResult) => vi.fn<(input: unknown) => Promise<PlanResult>>().mockResolvedValue(r);
@@ -76,17 +93,36 @@ type Accion = ReturnType<typeof accion>;
 function montar(
   detalle: DetallePlan = DETALLE,
   acciones: Partial<Record<"editarPlan" | "archivarPlan" | "cancelarCambio", Accion>> = {},
+  { abrirEditar = false }: { abrirEditar?: boolean } = {},
 ) {
-  const editarPlan = acciones.editarPlan ?? accion(OK);
+  const editarPlan = acciones.editarPlan ?? accion(PROGRAMADO);
   const archivarPlan = acciones.archivarPlan ?? accion(OK);
   const cancelarCambio = acciones.cancelarCambio ?? accion(OK);
+  // SLT-144: confirmar el borrador en memoria llama a `editarPlan` con la petición de editar de hoy.
+  const borrador = accionesFalsas(editarPlan);
+  const previsualizarCambio = previsualizarCambioFalso();
   const pintar = (d: DetallePlan) => (
-    <PlanDetalle detalle={d} editarPlan={editarPlan} archivarPlan={archivarPlan} cancelarCambio={cancelarCambio} />
+    <PlanDetalle
+      detalle={d}
+      borrador={borrador}
+      previsualizarCambio={previsualizarCambio}
+      abrirEditar={abrirEditar}
+      archivarPlan={archivarPlan}
+      cancelarCambio={cancelarCambio}
+    />
   );
   const { rerender } = render(pintar(detalle));
   /** Lo que hace `router.refresh()` en la app: la página baja el `DetallePlan` releído. */
   const releer = (d: DetallePlan) => rerender(pintar(d));
-  return { editarPlan, archivarPlan, cancelarCambio, releer };
+  return { editarPlan, archivarPlan, cancelarCambio, borrador, releer };
+}
+
+/** Pulsa «Editar» y espera a que el panel lea el borrador (SLT-144 R14) y pinte el formulario. Devuelve el panel. */
+async function abrirEdicion(user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> {
+  await user.click(screen.getByRole("button", { name: "Editar" }));
+  const panel = await screen.findByRole("dialog", { name: "Editar plan" });
+  await within(panel).findByRole("navigation", { name: "Pasos" });
+  return panel;
 }
 
 const seccion = (nombre: string) => screen.getByRole("region", { name: nombre });
@@ -291,7 +327,7 @@ describe("SLT-58 R15 — editar y los avisos de topes pasados", () => {
   it("R15: tras guardar, muestra cada empresa que ya pasa un tope nuevo con el tope, su uso y el tope nuevo", async () => {
     const user = userEvent.setup();
     const editarPlan = accion({
-      ...OK,
+      ...PROGRAMADO,
       avisos: [
         { organizacionId: ORG, empresa: "Envíos Norte", tope: "mensajero", usados: 7, maximo: 5 },
         { organizacionId: ORG, empresa: "Envíos Norte", tope: "api_keys", usados: 3, maximo: 2 },
@@ -299,13 +335,13 @@ describe("SLT-58 R15 — editar y los avisos de topes pasados", () => {
     } satisfies PlanResult);
     montar(DETALLE, { editarPlan });
 
-    await user.click(screen.getByRole("button", { name: "Editar" }));
-    const panel = await screen.findByRole("dialog", { name: "Editar plan" });
-    await user.click(within(panel).getByRole("button", { name: "Guardar" }));
+    await abrirEdicion(user);
+    await terminar(user);
 
     await waitFor(() => expect(editarPlan).toHaveBeenCalledTimes(1));
-    expect(editarPlan.mock.calls[0][0]).toMatchObject({ planId: PLAN_ID, vigenteDesde: null });
-    expect(await screen.findByRole("status")).toHaveTextContent("Cambios guardados.");
+    // SLT-135 (R16): sin tocar la fecha, viaja la de por defecto (mañana), nunca `null`.
+    expect(editarPlan.mock.calls[0][0]).toMatchObject({ planId: PLAN_ID, vigenteDesde: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) });
+    expect(await screen.findByRole("status")).toHaveTextContent("Cambio programado desde 2030-02-01.");
     expect(
       screen.getByText("Envíos Norte ya tiene 7 usuarios activos con el rol Mensajero y el plan permite 5."),
     ).toBeInTheDocument();
@@ -318,13 +354,67 @@ describe("SLT-58 R15 — editar y los avisos de topes pasados", () => {
     const editarPlan = accion({ ...OK, vigenteDesde: "2030-02-01" } satisfies PlanResult);
     montar(DETALLE, { editarPlan });
 
-    await user.click(screen.getByRole("button", { name: "Editar" }));
-    const panel = await screen.findByRole("dialog", { name: "Editar plan" });
-    await user.click(within(panel).getByRole("radio", { name: "A partir de" }));
-    await user.type(within(panel).getByLabelText("Fecha"), "2030-02-01");
+    const panel = await abrirEdicion(user);
+    await avanzarHasta(user, "Cuándo rige");
+    await user.clear(within(panel).getByLabelText("A partir de"));
+    await user.type(within(panel).getByLabelText("A partir de"), "2030-02-01");
+    await avanzarHasta(user, "Revisar y programar");
     await user.click(within(panel).getByRole("button", { name: "Programar cambio" }));
 
     expect(await screen.findByRole("status")).toHaveTextContent("Cambio programado desde 2030-02-01.");
+  });
+
+  it("R20: programar avisa con la fecha", async () => {
+    const user = userEvent.setup();
+    const editarPlan = accion({ ...OK, vigenteDesde: "2030-03-01" } satisfies PlanResult);
+    montar(DETALLE, { editarPlan });
+
+    const panel = await abrirEdicion(user);
+    await avanzarHasta(user, "Cuándo rige");
+    await user.clear(within(panel).getByLabelText("A partir de"));
+    await user.type(within(panel).getByLabelText("A partir de"), "2030-03-01");
+    await avanzarHasta(user, "Revisar y programar");
+    await user.click(within(panel).getByRole("button", { name: "Programar cambio" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Cambio programado desde 2030-03-01.");
+    expect(screen.queryByText("Cambios guardados.")).toBeNull();
+    expect(editarPlan.mock.calls[0][0]).toMatchObject({ planId: PLAN_ID, vigenteDesde: "2030-03-01" });
+
+    // Sin cambio: «No había nada que cambiar.».
+    cleanup();
+    const sinCambio = accion({ ...OK, cambio: false } satisfies PlanResult);
+    montar(DETALLE, { editarPlan: sinCambio });
+    await abrirEdicion(user);
+    await terminar(user);
+    expect(await screen.findByRole("status")).toHaveTextContent("No había nada que cambiar.");
+    expect(screen.queryByText("Cambios guardados.")).toBeNull();
+  });
+
+  it("R6: el panel abre el formulario por pasos", async () => {
+    const user = userEvent.setup();
+    montar(DETALLE);
+
+    const panel = await abrirEdicion(user);
+    // El Sheet ancho de la maqueta (design §7), sin el tope de ancho por defecto. jsdom descarta el
+    // `width: min(…)`, así que se mide el `maxWidth` que lo acompaña.
+    expect(panel.style.maxWidth).toBe("none");
+    // El mismo componente de pasos que al crear, con los pasos de editar, abierto en General.
+    const pasos = within(panel).getByRole("navigation", { name: "Pasos" });
+    expect(within(pasos).getAllByRole("button").map((b) => b.textContent?.replace(/^\d+/, ""))).toEqual([
+      "General",
+      "Precio y descuentos",
+      "Cobro por orden",
+      "Topes",
+      "Módulos",
+      "Beneficios", // SLT-214 «Planes: beneficios de texto con ícono» (R7)
+      "Niveles", // SLT-215 «Planes: niveles de beneficio por volumen de órdenes» (R7)
+      "Cuándo rige",
+      "Revisar y programar",
+    ]);
+    expect(tituloDelPasoActual()).toBe("General");
+    expect(within(panel).getByText("Paso 1 de 9")).toBeInTheDocument();
+    // SLT-144 (R1): el botón del pie guarda el paso en el borrador antes de avanzar.
+    expect(within(panel).getByRole("button", { name: TEXTOS_PLAN_FORM.guardarYContinuar })).toBeInTheDocument();
   });
 
   it("SLT-83 (texto aprobado 2026-11-04): el panel «Editar plan» explica cuándo se cobra el costo por orden fijo y el porcentual", async () => {
@@ -377,14 +467,338 @@ describe("SLT-58 R18 — un rechazo se explica y no da el cambio por hecho", () 
     } satisfies PlanResult);
     montar(DETALLE, { editarPlan });
 
-    await user.click(screen.getByRole("button", { name: "Editar" }));
-    const panel = await screen.findByRole("dialog", { name: "Editar plan" });
-    await user.click(within(panel).getByRole("button", { name: "Guardar" }));
+    const panel = await abrirEdicion(user);
+    await terminar(user);
 
-    const nombre = within(panel).getByRole("textbox", { name: "Nombre" });
+    // SLT-130 (R25): el error del nombre lleva de vuelta a General.
+    const nombre = await within(panel).findByRole("textbox", { name: "Nombre" });
     await waitFor(() => expect(nombre).toHaveAttribute("aria-invalid", "true"));
     expect(within(panel).getByText("Ya hay un plan con ese nombre.")).toBeInTheDocument();
+    // Ningún aviso de éxito en la pantalla. SLT-144 (R7): el único `status` es la hora del borrador, dentro del panel.
+    expect(screen.queryAllByRole("status").filter((s) => !panel.contains(s))).toEqual([]);
+    expect(refreshMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("SLT-128 R14, R15 — `cambio_a_medias` dice lo que pasa según la acción", () => {
+  it("R15: archivar → `cambio_a_medias` muestra el mensaje de R15, sin aviso de éxito ni relectura", async () => {
+    const user = userEvent.setup();
+    montar(DETALLE, { archivarPlan: accion({ estado: "cambio_a_medias" }) });
+
+    await user.click(screen.getByRole("button", { name: "Archivar" }));
+    const dialogo = await screen.findByRole("dialog");
+    await user.click(within(dialogo).getByRole("button", { name: "Archivar plan" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "El plan tiene un cambio programado que aún no llegó a todas sus empresas. Espera a que termine o cancélalo.",
+      ),
+    );
     expect(screen.queryByRole("status")).toBeNull();
     expect(refreshMock).not.toHaveBeenCalled();
+  });
+
+  it("R14: cancelar → `cambio_a_medias` muestra el mensaje de R14, sin aviso de éxito ni relectura", async () => {
+    const user = userEvent.setup();
+    montar(DETALLE, { cancelarCambio: accion({ estado: "cambio_a_medias" }) });
+
+    await user.click(within(seccion("Cambio programado")).getByRole("button", { name: "Cancelar cambio" }));
+    const dialogo = await screen.findByRole("dialog");
+    await user.click(within(dialogo).getByRole("button", { name: "Cancelar cambio" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Alguna empresa ya recibió este cambio. Para volver atrás, programa otro cambio con los valores de antes.",
+      ),
+    );
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(refreshMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("SLT-128 R11 — cuántas empresas ya recibieron el cambio programado", () => {
+  it("R11: bajo «Cambio programado desde F» dice «N de M empresas ya lo recibieron»", () => {
+    montar({ ...DETALLE, pendiente: { ...DETALLE.pendiente!, recibidas: 2, total: 5 } });
+    const pendiente = seccion("Cambio programado");
+    const lineas = within(pendiente).getAllByText(/Cambio programado desde|empresas ya lo recibieron/);
+    expect(lineas.map((p) => p.textContent)).toEqual([
+      "Cambio programado desde 2030-01-15",
+      "2 de 5 empresas ya lo recibieron",
+    ]);
+  });
+
+  it("R11: con ninguna recibida también lo dice («0 de M»)", () => {
+    montar();
+    expect(within(seccion("Cambio programado")).getByText("0 de 1 empresas ya lo recibieron")).toBeInTheDocument();
+  });
+
+  it("R11: sin cambio programado no muestra la línea", () => {
+    montar({ ...DETALLE, pendiente: null });
+    expect(screen.queryByText(/empresas ya lo recibieron/)).toBeNull();
+  });
+});
+
+describe("SLT-128 R28 — las empresas que no recibieron el cambio", () => {
+  const NO_APLICADA = {
+    empresaId: ORG,
+    empresa: "Envíos Norte",
+    motivo: "cobro_quincenal_ordenes_mensuales" as const,
+    desde: "2030-01-15T06:00:00.000Z",
+  };
+  const LINEA =
+    "Envíos Norte no recibió el cambio: cobra por quincena y el plan nuevo factura las órdenes por mes. " +
+    "Sigue con su versión anterior.";
+
+  it("R28: con cambio programado pinta una línea por empresa no aplicada", () => {
+    montar({
+      ...DETALLE,
+      noAplicadas: [NO_APLICADA, { ...NO_APLICADA, empresaId: "otra", empresa: "Rápido Sur" }],
+    });
+    const pendiente = seccion("Cambio programado");
+    expect(within(pendiente).getByText(LINEA)).toBeInTheDocument();
+    expect(within(pendiente).getByText(/^Rápido Sur no recibió el cambio: /)).toBeInTheDocument();
+    expect(within(pendiente).getByText("Cambio programado desde 2030-01-15")).toBeInTheDocument();
+  });
+
+  it("R28: tras promover (sin pendiente) la línea sigue mientras la empresa conserve su versión", () => {
+    montar({ ...DETALLE, pendiente: null, noAplicadas: [NO_APLICADA] });
+    const pendiente = seccion("Cambio programado");
+    expect(within(pendiente).getByText(LINEA)).toBeInTheDocument();
+    expect(within(pendiente).getByText("No hay ningún cambio programado.")).toBeInTheDocument();
+  });
+
+  it("R28: sin no aplicadas (vacío o ausente) no pinta ninguna línea", () => {
+    montar({ ...DETALLE, noAplicadas: [] });
+    expect(screen.queryByText(/no recibió el cambio/)).toBeNull();
+    cleanup();
+    montar({ ...DETALLE, pendiente: null });
+    expect(screen.queryByText(/no recibió el cambio/)).toBeNull();
+  });
+});
+
+describe("SLT-144 R13 — cerrar la edición con el borrador guardado", () => {
+  it("R13: cerrar la edición con un paso guardado avisa", async () => {
+    const user = userEvent.setup();
+    const { borrador, editarPlan } = montar();
+
+    // Sin guardar nada, cerrar no avisa.
+    await abrirEdicion(user);
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.queryByRole("status")).toBeNull();
+
+    const panel = await abrirEdicion(user);
+    await avanzarHasta(user, "Precio y descuentos");
+    expect(borrador.guardarPaso).toHaveBeenCalledTimes(1);
+    expect(borrador.guardarPaso.mock.calls[0][0]).toMatchObject({ modo: "editar", planId: PLAN_ID, paso: "general" });
+
+    await user.click(within(panel).getByRole("button", { name: "Cerrar" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.getByRole("status")).toHaveTextContent("El borrador queda guardado. Puedes retomarlo luego.");
+    expect(borrador.confirmar).not.toHaveBeenCalled();
+    expect(editarPlan).not.toHaveBeenCalled();
+  });
+
+  it("R13: tras confirmar no avisa de un borrador guardado", async () => {
+    const user = userEvent.setup();
+    montar();
+
+    await abrirEdicion(user);
+    await terminar(user);
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Cambio programado desde 2030-02-01.");
+    expect(screen.queryByText("El borrador queda guardado. Puedes retomarlo luego.")).toBeNull();
+  });
+});
+
+describe("SLT-144 R26 — retomar un borrador de cambio abre la edición", () => {
+  it("R26: con editar en la dirección abre el formulario", async () => {
+    const { borrador } = montar(DETALLE, {}, { abrirEditar: true });
+
+    // Abierto al cargar, sin pulsar «Editar»: lee el borrador de cambio del plan y monta el formulario.
+    const panel = await screen.findByRole("dialog", { name: "Editar plan" });
+    await within(panel).findByRole("navigation", { name: "Pasos" });
+    expect(borrador.leer).toHaveBeenCalledWith({ planId: PLAN_ID });
+    expect(tituloDelPasoActual()).toBe("General");
+  });
+
+  it("R26: sin editar en la dirección el panel no se abre ni lee el borrador", () => {
+    const { borrador } = montar();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(borrador.leer).not.toHaveBeenCalled();
+  });
+
+  it("R26: un plan archivado no abre la edición aunque la dirección lo pida", () => {
+    const { borrador } = montar({ ...DETALLE, plan: { ...DETALLE.plan, archivado: true } }, {}, { abrirEditar: true });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(borrador.leer).not.toHaveBeenCalled();
+  });
+});
+
+// SLT-214 «Planes: beneficios de texto con ícono» (design §3.6, §4.4; R19, R22): el dato «Beneficios» de la versión
+// vigente y las líneas del rastro.
+describe("SLT-214 R22 — los beneficios en la versión vigente", () => {
+  it("R22: todos, con su ícono y en orden, después de «Módulos incluidos» y sin «Mostrar más»", () => {
+    const beneficios = [
+      { icono: "equipo", texto: "Equipo dedicado" },
+      { icono: "soporte", texto: "Soporte prioritario" },
+      { icono: "reloj_24h", texto: "Atención 24 h" },
+      { icono: "camion", texto: "Recolección diaria" },
+    ] as const;
+    montar({ ...DETALLE, plan: { ...DETALLE.plan, beneficios: [...beneficios] } });
+
+    const vigente = seccion("Versión vigente");
+    const terminos = within(vigente)
+      .getAllByRole("term")
+      .map((t) => t.textContent);
+    expect(terminos.indexOf("Beneficios")).toBe(terminos.indexOf("Módulos incluidos") + 1);
+    const lista = within(vigente).getByRole("list", { name: "Beneficios" });
+    expect(within(lista).getAllByRole("listitem").map((li) => li.textContent)).toEqual(beneficios.map((b) => b.texto));
+    const iconos = [...lista.querySelectorAll("svg[data-icono]")];
+    expect(iconos.map((i) => i.getAttribute("data-icono"))).toEqual(beneficios.map((b) => b.icono));
+    for (const i of iconos) expect(i).toHaveAttribute("aria-hidden", "true");
+    expect(within(vigente).queryByRole("button", { name: "Mostrar más" })).toBeNull();
+  });
+
+  it("R22: sin beneficios dice «Sin beneficios»", () => {
+    montar({ ...DETALLE, plan: { ...DETALLE.plan, beneficios: [] } });
+
+    const vigente = seccion("Versión vigente");
+    expect(within(vigente).getByText("Sin beneficios")).toBeInTheDocument();
+    expect(within(vigente).queryByRole("list", { name: "Beneficios" })).toBeNull();
+  });
+});
+
+describe("SLT-214 R19 — los beneficios en el rastro del plan", () => {
+  const filaDelRastro = (accion: "creado" | "editado", cambios: DetallePlan["rastro"][number]["cambios"]) => ({
+    id: `r-${accion}`,
+    accion,
+    cambios,
+    actorNombre: "Sofía Admin",
+    creadoAt: "2026-11-19T15:00:00.000Z",
+  });
+  const queCambio = () =>
+    within(within(seccion("Historial del plan")).getAllByRole("row")[1]!).getAllByRole("cell")[3]!;
+  const lineas = () => within(queCambio()).getAllByRole("listitem").map((li) => li.textContent);
+
+  it("R19: un alta con beneficios pinta «Beneficios: t1, t2, …» en orden", () => {
+    montar({
+      ...DETALLE,
+      rastro: [
+        filaDelRastro("creado", {
+          nombre: { antes: null, despues: "Básico" },
+          beneficios: {
+            antes: null,
+            despues: [
+              { icono: "equipo", texto: "Equipo dedicado" },
+              { icono: "soporte", texto: "Soporte prioritario" },
+            ],
+          },
+        }),
+      ],
+    });
+
+    expect(lineas()).toEqual(["Nombre del plan: Básico", "Beneficios: Equipo dedicado, Soporte prioritario"]);
+  });
+
+  it("R19: un alta sin beneficios (sin la clave) no pinta la línea", () => {
+    montar({ ...DETALLE, rastro: [filaDelRastro("creado", { nombre: { antes: null, despues: "Básico" } })] });
+
+    expect(queCambio()).not.toHaveTextContent("Beneficios");
+  });
+
+  it("R19, R25: una edición pinta «Se agrega» y «Se quita», tras los módulos", () => {
+    montar({
+      ...DETALLE,
+      rastro: [
+        filaDelRastro("editado", {
+          modulos: { antes: ["analitica"], despues: ["analitica", "ranking"] },
+          beneficios: {
+            antes: [
+              { icono: "equipo", texto: "Equipo dedicado" },
+              { icono: "soporte", texto: "Soporte prioritario" },
+            ],
+            despues: [
+              { icono: "equipo", texto: "Equipo dedicado" },
+              { icono: "rayo", texto: "Alta rápida" },
+            ],
+          },
+        }),
+      ],
+    });
+
+    expect(lineas()).toEqual([
+      "Se incluye el módulo Ranking.",
+      "Se agrega: Alta rápida",
+      "Se quita: Soporte prioritario",
+    ]);
+  });
+
+  it("R19, R25: una edición que solo cambia íconos u orden pinta una sola línea", () => {
+    montar({
+      ...DETALLE,
+      rastro: [
+        filaDelRastro("editado", {
+          beneficios: {
+            antes: [
+              { icono: "equipo", texto: "Equipo dedicado" },
+              { icono: "soporte", texto: "Soporte prioritario" },
+            ],
+            despues: [
+              { icono: "soporte", texto: "Soporte prioritario" },
+              { icono: "check", texto: "Equipo dedicado" },
+            ],
+          },
+        }),
+      ],
+    });
+
+    expect(lineas()).toEqual(["Cambian los íconos o el orden de los beneficios."]);
+  });
+});
+
+// SLT-215 «Planes: niveles de beneficio por volumen de órdenes» (design §3.6; R19, R20): los niveles en el rastro del
+// plan. El alta pinta «Niveles: <nivel 1>; <nivel 2>; …»; una edición, la línea «Niveles por volumen» del correo.
+describe("SLT-215 R19 — los niveles en el rastro del plan", () => {
+  const filaDelRastro = (accion: "creado" | "editado", cambios: DetallePlan["rastro"][number]["cambios"]) => ({
+    id: `r-${accion}`,
+    accion,
+    cambios,
+    actorNombre: "Sofía Admin",
+    creadoAt: "2026-11-19T15:00:00.000Z",
+  });
+  const queCambio = () =>
+    within(within(seccion("Historial del plan")).getAllByRole("row")[1]!).getAllByRole("cell")[3]!;
+  const lineas = () => within(queCambio()).getAllByRole("listitem").map((li) => li.textContent);
+  const DOS = [
+    { meta: 100, descuento: { tipo: "porcentaje", porcentaje: "10.00" } },
+    { meta: 500, descuento: { tipo: "monto", monto: "1500.00" } },
+  ];
+
+  it("R19: un alta con niveles pinta «Niveles: <nivel 1>; <nivel 2>» en orden", () => {
+    montar({
+      ...DETALLE,
+      rastro: [
+        filaDelRastro("creado", { nombre: { antes: null, despues: "Básico" }, niveles: { antes: null, despues: DOS } }),
+      ],
+    });
+
+    expect(lineas()).toEqual([
+      "Nombre del plan: Básico",
+      "Niveles: Nivel 1: desde 100 órdenes, −10.00 %; Nivel 2: desde 500 órdenes, −1500.00",
+    ]);
+  });
+
+  it("R19: un alta sin niveles (sin la clave) no pinta la línea", () => {
+    montar({ ...DETALLE, rastro: [filaDelRastro("creado", { nombre: { antes: null, despues: "Básico" } })] });
+
+    expect(queCambio()).not.toHaveTextContent("Niveles");
+  });
+
+  it("R19, R20: una edición pinta «Niveles por volumen: antes → después»", () => {
+    montar({ ...DETALLE, rastro: [filaDelRastro("editado", { niveles: { antes: [], despues: DOS.slice(0, 1) } })] });
+
+    expect(lineas()).toEqual(["Niveles por volumen: Sin niveles → Nivel 1: desde 100 órdenes, −10.00 %"]);
   });
 });

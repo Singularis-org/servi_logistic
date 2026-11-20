@@ -9,10 +9,10 @@ import {
   clienteConSavepoint,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 
 /**
  * 💰 FICHA 398 (T2.3/T2.4) — LA CORRECCION EN SITIO, CONTRA POSTGRES REAL.
@@ -69,13 +69,6 @@ describeSiHayBase("💰 398 — corregir el resultado de una gestion con el cier
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const fks = await fksDeOrden(prisma);
-    if (fks === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar el " +
-          "corpus. Corre `pnpm run db:seed` (y las semillas de zonas) antes de esta suite.",
-      );
-    }
     const estatusEntregada = await prisma.orderStatus.findFirst({ where: { value: "entregado" } });
     const estatusRechazada = await prisma.orderStatus.findFirst({ where: { value: "devolucion_a_origen_por_rechazo" } });
     // `en_reparto` es el ORIGEN de la visita real que la orden ya tenia contada. No es decorado:
@@ -88,18 +81,28 @@ describeSiHayBase("💰 398 — corregir el resultado de una gestion con el cier
           "ids la correccion no puede transicionar la orden. Corre `pnpm run db:seed`.",
       );
     }
-    // `gestion_orden.mensajero_id` y `cierre_dia.mensajero_id` son FK -> `usuario`. Se reusa el
-    // id de la tienda de una orden real: lo que se mide aqui son escrituras, no un rol.
-    const mensajeroId = fks.tiendaId;
-    const vehiculoId =
-      (await prisma.usuario.findUnique({ where: { id: mensajeroId }, select: { vehiculoId: true } }))
-        ?.vehiculoId ?? null;
-
     conCorpus = (fn) =>
       enTransaccionRevertida(prisma, async (tx) => {
         // PRIMERA sentencia: serializa contra los otros archivos que escriben en las tablas
         // reales de `public` (ver `_postgres-real.ts`).
         await serializarEscriturasReales(tx);
+
+        // SLT-179 — tienda y zona nacen en ESTA transaccion (nada de leer la primera orden de la
+        // base). Control positivo: si la siembra no llega, el caso cae nombrando la fila.
+        const fks = await crearFksDeOrden(tx);
+        expect(
+          await tx.zona.count({ where: { id: fks.zonaId } }),
+          "SLT-179: la zona sembrada no esta en la base",
+        ).toBe(1);
+        // `gestion_orden.mensajero_id` y `cierre_dia.mensajero_id` son FK -> `usuario`. Se reusa el
+        // id de la tienda sembrada: lo que se mide aqui son escrituras, no un rol.
+        const mensajeroId = fks.tiendaId;
+        const tienda = await tx.usuario.findUnique({
+          where: { id: mensajeroId },
+          select: { vehiculoId: true },
+        });
+        if (tienda === null) throw new Error("SLT-179: la tienda sembrada no esta en la base");
+        const vehiculoId = tienda.vehiculoId;
 
         // La TARIFA de la zona destino, con numeros conocidos. Se hace `upsert` sobre el par
         // (zona, vehiculo) EXACTO que `resolvePagoTarifaCon` va a buscar, para que el importe del

@@ -283,6 +283,15 @@ export interface CrearCierreInput {
 // Fila cruda de un cierre pasado (R18); el repo la mapea a CierrePasadoDTO.
 export type CierrePasadoRow = CierrePasadoDTO & { estado: CierreEstado };
 
+/**
+ * SLT-147 (D68, R416) — el cierre pasado tal como el repositorio lo entrega al servicio en la
+ * lectura PAGINADA del historico, la unica de la que el servicio deriva el pendiente de pago. Aqui
+ * la marca `pagoIndependienteEfectivo` es OBLIGATORIA: si el mapper la perdiera, un cierre de
+ * satelite ya conciliado saldria con `P − min(P,E)` en vez de 0.00, y ahora eso no compila.
+ * En `CierrePasadoDTO` sigue opcional porque la pantalla no la lee y sus dobles la omiten.
+ */
+export type CierrePasadoDeRepositorio = CierrePasadoDTO & { pagoIndependienteEfectivo: boolean };
+
 // Feature 67 — proyeccion MINIMA de la gestion candidata a deshacerse + el estado real de su
 // orden, con TODO lo que necesitan las guardias del service (design 64 §5.2) y nada mas (no
 // expone montos ni evidencia: la decision no los usa). `anuladaAt` != null = ya deshecha (R3);
@@ -623,7 +632,7 @@ export interface ICierreDiaRepository {
     mensajeroId: string,
     rango: RangoPagina,
     filtros?: FiltrosColaPropiaRepo,
-  ): Promise<PaginaRepositorio<CierrePasadoDTO>>;
+  ): Promise<PaginaRepositorio<CierrePasadoDeRepositorio>>;
   /**
    * SLT-112 (R350) — los cierres `aprobado` del mensajero, con solo lo que pide la regla de lo
    * pendiente. Sin filtros ni pagina: las cifras son del conjunto (R354). Importes en escala 2.

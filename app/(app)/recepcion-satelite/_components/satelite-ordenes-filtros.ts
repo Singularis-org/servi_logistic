@@ -14,6 +14,12 @@ import {
 import { filtroEstado } from "@/app/(app)/ordenes/_components/filtro-estado-def";
 import { estatusLabel } from "@/app/(app)/ordenes/_components/estatus-label";
 import { seleccionAFilter } from "@/app/(app)/ordenes/_components/seleccion-a-filter";
+import {
+  CAMPO_ORDEN_INICIAL,
+  DIRECCION_ORDEN_INICIAL,
+  type CampoOrdenOfrecido,
+} from "@/app/(app)/ordenes/_components/ordenamiento-ordenes";
+import type { OrdenamientoListado } from "@/lib/types/ordenamiento-listado";
 
 // Barra de filtros del listado de la bodega satélite (pedido humano: "el mismo diseño
 // que en el admin"). Declaración PURA de los filtros que ofrece `FilterComponent`,
@@ -308,3 +314,16 @@ export const FILTRO_SATELITE_VACIO = serializarFiltroSatelite({});
 // vez de quedarse muerta: este listado era el ÚNICO del Anexo A que lo tenía escrito dos
 // veces —una en SQL y otra aquí, con dos formas de comparar (exacta contra normalizada)—, y
 // dos declaraciones del mismo criterio es exactamente lo que R16 prohíbe.
+
+/**
+ * SLT-210 (R1401/R1402) — el orden vigente del listado, con los campos que ofrece `/ordenes`.
+ * No es parte del filtro: no cambia el conjunto, no entra en las vistas (R1408) y la vigencia de
+ * la seleccion no lo lleva. Viaja a la pagina y a la descarga (R1406).
+ */
+export type OrdenBodega = OrdenamientoListado<CampoOrdenOfrecido>;
+
+/** El orden con el que arranca la pantalla: el de siempre, el de la pagina pre-cargada. */
+export const ORDEN_BODEGA_INICIAL: OrdenBodega = {
+  sortBy: CAMPO_ORDEN_INICIAL,
+  sortDir: DIRECCION_ORDEN_INICIAL,
+};

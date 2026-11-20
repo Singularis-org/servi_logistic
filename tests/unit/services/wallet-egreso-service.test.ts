@@ -69,7 +69,6 @@ function buildRepo(overrides: Partial<IWalletMovimientoRepository> = {}): IWalle
         origenTipo: m.origenTipo,
         origenId: m.origenId,
         descripcion: m.descripcion ?? null,
-        registradoPor: m.registradoPor ?? null,
         fechaMovimiento: (m.fechaMovimiento ?? new Date(INSTANTE_DEL_DEFAULT)).toISOString(),
       }),
     );
@@ -238,7 +237,6 @@ describe("WalletEgresoService.reversarEgreso (R13/R15/R16/R17/R32)", () => {
       origenTipo: "gasto",
       origenId: "p-alquiler:2026-07",
       descripcion: "Alquiler — 2026-07",
-      registradoPor: null,
     });
     const repo = buildRepo({ obtenerPorId: vi.fn().mockResolvedValue(cronEgreso) });
     const svc = new WalletEgresoService(repo, writeClient, undefined, undefined, reglasPaisFijas());
@@ -508,8 +506,8 @@ describe("WalletEgresoService.registrarEgreso — la clave de idempotencia (461/
 
 describe("SL-45 — WalletEgresoService.registrarEgreso con el pago a la plataforma (R9, R11, R19)", () => {
   const MAESTRO_A: Actor = { ...MAESTRO, organizacionId: "org-a" };
-  /** Copiado a mano de R9: es el texto que la persona ve bajo el monto. */
-  const MENSAJE_R9 = "El pago no puede ser mayor que lo que la empresa debe a la plataforma.";
+  /** Copiado a mano de SLT-60 R36 (antes SL-45 R9): es el texto que la persona ve bajo el monto. */
+  const MENSAJE_R9 = "El pago no puede ser mayor que lo pendiente de las facturas cerradas, descontados los pagos por confirmar.";
   const TX_FALSO = { tx: "del-registro" };
 
   /** El repositorio corre el `antes` que le pasan, como lo hace el real dentro de su transacción. */
@@ -557,7 +555,7 @@ describe("SL-45 — WalletEgresoService.registrarEgreso con el pago a la platafo
     expect(tope.comprobar).toHaveBeenCalledWith(TX_FALSO, { organizacionId: "org-a", monto: "500.00", claveIdempotencia: "clave-pago" });
   });
 
-  it("R9: supera → validation_error en monto con el mensaje de R9, y no se relee nada", async () => {
+  it("R9, SLT-60 R36: supera → validation_error en monto con el mensaje de R36, y no se relee nada", async () => {
     const repo = repoQueCorreElAntes();
     const tope = topeQueResponde("supera");
     const r = await new WalletEgresoService(repo, writeClient, undefined, tope, reglasPaisFijas()).registrarEgreso(pagoDe("600.00"), MAESTRO_A);

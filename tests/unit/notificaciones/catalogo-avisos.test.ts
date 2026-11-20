@@ -297,3 +297,15 @@ describe("`esAccionable` es el atajo que usa el conteo del distintivo", () => {
     expect(esAccionable("cierre_dia_vencido", "admin")).toBe(false);
   });
 });
+
+describe("SLT-136/R23, R24 — `factura_plataforma_emitida`", () => {
+  it("⭑ es accionable para el maestro, con «Ver factura» a «Mi plan», y solo va al maestro", () => {
+    expect(accionDeAviso("factura_plataforma_emitida", "maestro")).toEqual({
+      clase: "accionable",
+      atajo: { href: "/mi-plan", etiqueta: "Ver factura" },
+    });
+    expect(CATALOGO_AVISOS.factura_plataforma_emitida.destinatarios).toEqual(["maestro"]);
+    expect(CATALOGO_AVISOS.factura_plataforma_emitida.porRol).toBeUndefined();
+    expect(esEventoAgregado("factura_plataforma_emitida")).toBe(false);
+  });
+});

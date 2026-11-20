@@ -13,9 +13,18 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
+  type FksDeOrden,
 } from "./_postgres-real";
+import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
+import {
+  clienteConEmpresa459,
+  conCandado459,
+  limpiar459,
+  sembrarPersonas459,
+  type Personas459,
+} from "./_fixtures/escrituras-459";
+import { conEmpresa, contextoActual } from "@/lib/db/contexto-empresa";
 
 /**
  * 💰 FICHA 337 (segunda mitad, 2026-08-31) — EL COBRO POR RECHAZO DESDE NOVEDADES, EJECUTADO
@@ -50,24 +59,17 @@ type Tx = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0];
 
 describeSiHayBase("💰 337 — el cobro por devolución a origen desde novedades, contra Postgres", () => {
   let prisma: PrismaClient;
-  let fks: NonNullable<Awaited<ReturnType<typeof fksDeOrden>>>;
-  /** Un usuario cualquiera de la base: sirve de mensajero de la gestion y de actor que decide. */
+  // SLT-181 — las FKs y el usuario los siembra CADA caso (en su tx, `sembrarRechazo`; o
+  // commiteados, `conSiembraCommiteada`): nada se lee de la primera orden ni del primer usuario.
+  let fks: FksDeOrden;
+  /** El usuario sembrado del caso: sirve de mensajero de la gestion y de actor que decide. */
   let usuarioId: string;
+  /** La empresa de la siembra COMMITEADA (bloque 3): las escrituras directas la llevan explicita. */
+  let empresaId: string;
   let n = 0;
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const encontradas = await fksDeOrden(prisma);
-    if (encontradas === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar. " +
-          "Corre `pnpm run db:seed` antes de esta suite.",
-      );
-    }
-    fks = encontradas;
-    const u = await prisma.usuario.findFirst({ select: { id: true } });
-    if (u === null) throw new Error("hace falta al menos UN usuario en la base");
-    usuarioId = u.id;
   });
 
   afterAll(async () => {
@@ -76,6 +78,18 @@ describeSiHayBase("💰 337 — el cobro por devolución a origen desde novedade
 
   /** Una orden + su gestion sintetica `rechazada`, tal como las deja el rechazo de la tienda. */
   async function sembrarRechazo(tx: Tx): Promise<{ ordenId: string; gestionId: string }> {
+    // SLT-181 — tienda, zona y usuario nacen en ESTA tx. Control positivo: si la siembra no llega,
+    // el caso cae nombrando la fila.
+    fks = await crearFksDeOrden(tx);
+    usuarioId = (await crearUsuarioDePrueba(tx, "mensajero")).id;
+    expect(
+      await tx.usuario.count({ where: { id: { in: [fks.tiendaId, usuarioId] } } }),
+      "SLT-181: la tienda y el usuario sembrados no estan en la base",
+    ).toBe(2);
+    expect(
+      await tx.zona.count({ where: { id: fks.zonaId } }),
+      "SLT-181: la zona sembrada no esta en la base",
+    ).toBe(1);
     const clave = `${SUFIJO}${(n += 1)}`;
     const orden = await tx.orden.create({
       data: {
@@ -310,11 +324,58 @@ describeSiHayBase("💰 337 — el cobro por devolución a origen desde novedade
       );
     }
 
-    it("⭑ UNA gana, TRES leen `ya_decidido`, y el dinero se escribe UNA sola vez", async () => {
+    /**
+     * SLT-181 — siembra COMMITEADA propia (R1063): personas y empresa de la 459 + una zona de esa
+     * empresa, con claves unicas, y todo borrado en el `finally` (la zona antes que la empresa).
+     */
+    async function conSiembraCommiteada(cuerpo: () => Promise<void>): Promise<void> {
+      await conCandado459(prisma, async () => {
+        let p: Personas459 | null = null;
+        let zonaId = "";
+        try {
+          p = await sembrarPersonas459(prisma);
+          empresaId = p.organizacionId;
+          usuarioId = p.maestro.usuarioId;
+          const zona = await prisma.zona.create({
+            data: {
+              nombre: `Zona 337 ${SUFIJO}`,
+              sinpeNumero: "80000000",
+              sinpeNombre: "Titular de Prueba",
+              organizacionId: p.organizacionId,
+            },
+            select: { id: true },
+          });
+          zonaId = zona.id;
+          const estatus = await prisma.orderStatus.findUnique({ where: { value: "en_preparacion" }, select: { id: true } });
+          const canton = await prisma.canton.findFirst({
+            where: { nombre: "Cartago", provincia: { nombre: "Cartago" } },
+            select: { id: true, provinciaId: true },
+          });
+          if (estatus === null) throw new Error("falta el estado «en_preparacion»: corre `pnpm run db:seed`");
+          if (canton === null) throw new Error("falta la geografia Cartago/Cartago: aplica las migraciones");
+          fks = { estatusId: estatus.id, tiendaId: p.tiendaId, zonaId, provinciaId: canton.provinciaId, cantonId: canton.id };
+          expect(
+            await prisma.zona.count({ where: { id: zonaId, organizacionId: p.organizacionId } }),
+            "SLT-181: la zona commiteada no esta en la base",
+          ).toBe(1);
+          await cuerpo();
+        } finally {
+          if (zonaId !== "") await prisma.zona.deleteMany({ where: { id: zonaId } });
+          await limpiar459(prisma, p);
+        }
+      });
+    }
+
+    it("⭑ UNA gana, TRES leen `ya_decidido`, y el dinero se escribe UNA sola vez", () => conSiembraCommiteada(async () => {
       const actor: Actor = { usuarioId, rol: "maestro" };
       // Clientes INDEPENDIENTES: cada uno con su pool, que es lo que hace que las cuatro
       // transacciones sean de verdad simultaneas y no cuatro turnos de la misma conexion.
-      const clientes = Array.from({ length: PARALELAS }, () => crearPrismaDeTest());
+      // SLT-185 (R1141): con la envoltura de `getPrismaClient()` y la empresa sembrada en contexto, como
+      // en produccion. Sin ella, el cobro y la caja se escriben con `organizacion_id` NULL y el trigger
+      // de misma empresa los rechaza (SL017: `rechazo_tienda_cobro.gestion_id -> gestion_orden`).
+      const bases = Array.from({ length: PARALELAS }, () => crearPrismaDeTest());
+      const clientes = bases.map((b) => clienteConEmpresa459(b));
+      const deLaApp = clienteConEmpresa459(prisma);
 
       let ordenId = "";
       let gestionId = "";
@@ -323,6 +384,7 @@ describeSiHayBase("💰 337 — el cobro por devolución a origen desde novedade
         const orden = await prisma.orden.create({
           data: {
             numRemision: `R-${SUFIJO}par`,
+            organizacionId: empresaId,
             destinatario: "Dest",
             telefonoDest: "88880000",
             producto: "Prod",
@@ -336,23 +398,24 @@ describeSiHayBase("💰 337 — el cobro por devolución a origen desde novedade
         });
         ordenId = orden.id;
         const gestion = await prisma.gestionOrden.create({
-          data: { ordenId, mensajeroId: usuarioId, resultado: "devolucion_a_origen_por_rechazo", cierreId: null },
+          data: { ordenId, mensajeroId: usuarioId, resultado: "devolucion_a_origen_por_rechazo", cierreId: null, organizacionId: empresaId },
           select: { id: true },
         });
         gestionId = gestion.id;
 
-        await new RechazoTiendaCobroRepository(prisma).crearPendiente(
-          prisma,
-          inputCobro({ ordenId, gestionId }),
-        );
+        await conEmpresa(empresaId, async () => {
+          const ctx = contextoActual();
+          expect(ctx?.tipo === "empresa" ? ctx.organizacionId : null, "SLT-185: empresa en contexto").toBe(empresaId);
+          await new RechazoTiendaCobroRepository(deLaApp).crearPendiente(deLaApp, inputCobro({ ordenId, gestionId }));
+        });
         const cobro = await prisma.rechazoTiendaCobro.findFirstOrThrow({
           where: { gestionId },
           select: { id: true },
         });
 
         // ── las cuatro aprobaciones, a la vez ────────────────────────────────────────────
-        const resultados = await Promise.all(
-          clientes.map((c) => servicioCon(c).aprobar({ id: cobro.id }, actor, new Date())),
+        const resultados = await conEmpresa(empresaId, () =>
+          Promise.all(clientes.map((c) => servicioCon(c).aprobar({ id: cobro.id }, actor, new Date()))),
         );
 
         const oks = resultados.filter((r) => r.status === "ok");
@@ -417,7 +480,7 @@ describeSiHayBase("💰 337 — el cobro por devolución a origen desde novedade
         expect(final.decididoPor).toBe(usuarioId);
         expect(final.decididoAt).not.toBeNull();
       } finally {
-        await Promise.all(clientes.map((c) => c.$disconnect()));
+        await Promise.all(bases.map((c) => c.$disconnect()));
         if (gestionId !== "") {
           await prisma.walletTiendaMovimiento.deleteMany({
             where: { origenTipo: "gestion_orden", origenId: gestionId },
@@ -430,7 +493,7 @@ describeSiHayBase("💰 337 — el cobro por devolución a origen desde novedade
         }
         if (ordenId !== "") await prisma.orden.deleteMany({ where: { id: ordenId } });
       }
-    }, 60_000);
+    }), 60_000);
   });
 
   // ==========================================================================================

@@ -2,9 +2,13 @@ import { ORDER_STATUS_SEED } from "@/lib/types/order-status";
 import { EMPRESA, MARCA } from "@/lib/config/marca";
 import { WEBHOOK_SIGNATURE_HEADER, WEBHOOK_TIMESTAMP_HEADER } from "@/lib/crypto/webhook-firma";
 import { MSG_CARGA_SIN_TARIFA, MSG_FILA_SIN_TARIFA } from "@/lib/services/mensajes-tarifa";
+import { MSG } from "@/lib/errors/codes";
+import type { ManifiestoFilaDTO } from "@/lib/types/manifiesto";
+import { CargaNombreDuplicadoError } from "@/lib/interfaces/repositories/IOrdenRepository";
 import { EVENTOS_PUBLICOS } from "@/lib/types/webhook-eventos";
 import { METRICAS_API_KEY, METRICAS_TODAS } from "@/lib/analytics/publicacion-api-key";
 import { TOPE_FILAS_HABILITAR } from "@/lib/config/habilitacion-api";
+import { URL_PRODUCCION_API } from "@/lib/api/url-produccion";
 // El literal de `penumbra` NO se reescribe aqui: se importa del contrato interno, que es donde
 // vive (126/R20). Una segunda copia es la clasica cifra duplicada que un dia diverge.
 import { PENUMBRA } from "@/lib/types/analitica-operativa";
@@ -121,6 +125,28 @@ const DESC_IVA_FULFILLMENT =
 // Tope duro de filas por lote de carga (cargaMasivaConfig.MAX_CHUNK_ROWS, default 5000).
 const MAX_CARGA_ROWS = 5000;
 
+// SLT-201 — nombre de lote de los ejemplos de `POST carga` (peticion y 409 por nombre repetido).
+export const EJEMPLO_NOMBRE_LOTE = "Pedidos del 18 de noviembre";
+
+// SLT-201 — una fila del bloque `manifiesto` de los ejemplos de `POST carga`. Valores
+// ilustrativos con la forma COMPLETA de `ManifiestoFilaDTO` (`lib/types/manifiesto.ts`). SLT-203:
+// `intentos` entra (vale 0: la orden acaba de crearse); 160/R31 queda enmendado para este campo.
+const EJEMPLO_FILA_MANIFIESTO = {
+  numGuia: 100234,
+  numRemision: "REM-0001",
+  destinatario: "Juan Pérez",
+  telefono: "88887777",
+  direccion: "Av. Central, 200m norte del parque",
+  zona: "San José Centro",
+  producto: "Camiseta talla M",
+  monto: 25.9,
+  intentos: 0,
+  origen: "Mi Tienda",
+  destino: "Bodega central",
+  responsable: "Integración Mi Tienda",
+  fecha: "2026-11-18",
+} as const satisfies ManifiestoFilaDTO;
+
 export const openApiSpec = {
   openapi: "3.1.0",
   info: {
@@ -129,13 +155,15 @@ export const openApiSpec = {
     description: [
       "Canal de integración por **API key** para crear, listar, consultar, cancelar y eliminar órdenes.",
       "",
-      "Autenticación: todos los endpoints exigen el header `Authorization: Bearer svl_...`",
-      "La key identifica a un usuario dedicado que es el **dueño**",
-      "de las órdenes: cada llamada opera SIEMPRE sobre las órdenes de ese dueño y sobre ninguna",
+      `URL base de producción: \`${URL_PRODUCCION_API}\`. Es la misma para todas las empresas: la API key identifica a la empresa y a la tienda, y nunca se manda el id de la empresa.`,
+      "",
+      "Autenticación: todos los endpoints exigen el header `Authorization: Bearer svl_...` (un solo espacio). La key la genera la empresa en la aplicación, menú Configuración, opción API.",
+      "La key identifica a la empresa y al **dueño** de las órdenes: su cuenta dedicada o, si se emitió para una tienda, esa tienda;",
+      "cada llamada opera SIEMPRE sobre las órdenes de ese dueño y sobre ninguna",
       "otra. El dueño de la key **solo ve y opera sus propias órdenes**; nunca se puede ampliar el",
       "alcance (un `tiendaId`/`owner` en la query se ignora).",
       "",
-      "Aislamiento: una orden inexistente y una orden de otro dueño devuelven el **mismo 404**;",
+      "Aislamiento: una orden inexistente y una orden de otro dueño, o de otra empresa, devuelven el **mismo 404**;",
       "la API no revela la existencia de recursos ajenos.",
       "",
       "Errores: shape uniforme del manejador global — ver el schema `Error`.",
@@ -147,9 +175,15 @@ export const openApiSpec = {
       `cabecera \`${WEBHOOK_TIMESTAMP_HEADER}\` lleva ese \`<timestamp>\` en segundos unix.`,
     ].join("\n"),
   },
-  // Sin bloque `servers`: el contrato no propone servidor y Swagger UI no pinta el desplegable.
-  // Las rutas se resuelven contra el origen que sirve el documento, que es el correcto en los dos
-  // sitios donde se lee (local y el despliegue), sin que nadie tenga que elegir.
+  // SLT-208: el contrato vuelve a declarar el servidor de PRODUCCION. Sin `servers`, un generador de
+  // clientes que lee el `.yaml` no encuentra base y el integrador no sabe a que URL llamar (lo que el
+  // changelog del 2026-09-01 advertia al retirarlo). Swagger UI usa este servidor para «Try it out».
+  // SLT-208 (review H9): primero el relativo, para que «Try it out» use el host donde se abrió Swagger
+  // (Preview o local); después producción, la base que debe usar el cliente del integrador.
+  servers: [
+    { url: "/", description: "Este servidor" },
+    { url: URL_PRODUCCION_API, description: "Producción" },
+  ],
   security: [{ bearerAuth: [] }],
   tags: [
     { name: "Órdenes", description: "Carga, listado, detalle y cancelación de órdenes propias." },
@@ -179,8 +213,7 @@ export const openApiSpec = {
                         distrito: "Carmen",
                         direccion: "Av. Central, 200m norte del parque",
                         producto: "Camiseta talla M",
-                        peso: "1.5",
-                        monto_cobrar: "25.90",
+                        monto_cobrar: "25900",
                         notas: "Entregar en la tarde",
                       },
                       {
@@ -192,11 +225,12 @@ export const openApiSpec = {
                         distrito: "San Rafael",
                         direccion: "Multiplaza, local 12",
                         producto: "Zapatos talla 38",
-                        peso: "0.8",
-                        monto_cobrar: "40.00",
+                        monto_cobrar: "40000",
                         notas: "",
                       },
                     ],
+                    name: EJEMPLO_NOMBRE_LOTE,
+                    download_type: "consolidate",
                   },
                 },
               },
@@ -211,7 +245,7 @@ export const openApiSpec = {
                 schema: { $ref: "#/components/schemas/CargaResponse" },
                 examples: {
                   resumen: {
-                    summary: "Una creada, una con error",
+                    summary: "Una creada, una con error (`download_type` por defecto: `consolidate`)",
                     value: {
                       cargaId: "9c2b7f10-5d3a-4e21-9a4b-77c8e0f1a2b3",
                       total: 2,
@@ -222,7 +256,7 @@ export const openApiSpec = {
                         { fila: 1, numRemision: "REM-0001", resultado: "creada", estado: "por_recolectar_en_tienda", estadoNombre: "Por recolectar en tienda", numGuia: 100234 },
                       ],
                       errores: [
-                        { fila: 2, numRemision: "REM-0002", resultado: "error", errores: { telefono: ["requerido"] } },
+                        { fila: 2, numRemision: "REM-0002", resultado: "error", errores: { telefono: ["telefono es obligatorio"] } },
                       ],
                       ordenes: [
                         {
@@ -233,12 +267,19 @@ export const openApiSpec = {
                           costoEnvio: "3.39",
                           fulfillment: "0.00",
                           ivaFulfillment: "0.00",
+                          downloadUrl: null,
                         },
                       ],
+                      downloadType: "consolidate",
+                      etiquetasPdf: {
+                        url: "https://<host-de-storage>/object/sign/etiquetas/lote-9c2b7f10.pdf?token=...",
+                        expiraEnSegundos: 3600,
+                      },
+                      manifiesto: { filas: [EJEMPLO_FILA_MANIFIESTO], omitidas: [] },
                     },
                   },
                   filaSinTarifa: {
-                    summary: "Una creada y una degradada por falta de tarifa",
+                    summary: "Una creada y una degradada por falta de tarifa (con `download_type: individual`)",
                     value: {
                       cargaId: "9c2b7f10-5d3a-4e21-9a4b-77c8e0f1a2b3",
                       total: 2,
@@ -260,8 +301,12 @@ export const openApiSpec = {
                           costoEnvio: "3.39",
                           fulfillment: "0.00",
                           ivaFulfillment: "0.00",
+                          downloadUrl: "https://<host-de-storage>/object/sign/etiquetas/orden-6f1c2d3e.pdf?token=...",
                         },
                       ],
+                      downloadType: "individual",
+                      etiquetasPdf: null,
+                      manifiesto: { filas: [EJEMPLO_FILA_MANIFIESTO], omitidas: [] },
                     },
                   },
                 },
@@ -274,21 +319,39 @@ export const openApiSpec = {
           // porque el ejemplo publicado tiene que ser LA CONSTANTE que el service emite: dos
           // cadenas (una aqui y otra en `lib/services/mensajes-tarifa.ts`) divergen a la primera
           // errata, y R38 pide exactamente lo contrario.
+          //
+          // SLT-201 — el SEGUNDO motivo del 409: un `name` de lote repetido (feature 141, R24).
+          // Su ejemplo sale de la clase de error del repositorio, por la misma razon. El bug que
+          // hoy lo convierte en 500 en la base real es SLT-93; aqui se publica el contrato.
           "409": {
             description:
-              "Ninguna de las filas que llegaron a la resolución de tarifa la resolvió: no se creó ninguna orden ni fila de carga.",
+              "Dos motivos, y en los dos no se creó ninguna orden ni lote: (1) ninguna de las filas que llegaron a la resolución de tarifa la resolvió; (2) el `name` del lote ya lo usó antes esta misma cuenta.",
             content: {
               "application/json": {
                 schema: { $ref: "#/components/schemas/Error" },
-                example: {
-                  status: "error",
-                  code: "CONFLICT",
-                  message: MSG_CARGA_SIN_TARIFA,
+                examples: {
+                  sinTarifa: {
+                    summary: "Ninguna fila resolvió tarifa",
+                    value: {
+                      status: "error",
+                      code: "CONFLICT",
+                      message: MSG_CARGA_SIN_TARIFA,
+                    },
+                  },
+                  nombreRepetido: {
+                    summary: "Nombre de lote repetido",
+                    value: {
+                      status: "error",
+                      code: "CONFLICT",
+                      message: new CargaNombreDuplicadoError(EJEMPLO_NOMBRE_LOTE).message,
+                    },
+                  },
                 },
               },
             },
           },
           "422": { $ref: "#/components/responses/ValidationError" },
+          "500": { $ref: "#/components/responses/InternalError" },
         },
       },
     },
@@ -386,6 +449,7 @@ export const openApiSpec = {
           "401": { $ref: "#/components/responses/Unauthorized" },
           "403": { $ref: "#/components/responses/Forbidden" },
           "422": { $ref: "#/components/responses/ValidationError" },
+          "500": { $ref: "#/components/responses/InternalError" },
         },
       },
     },
@@ -427,6 +491,7 @@ export const openApiSpec = {
           "404": { $ref: "#/components/responses/NotFound" },
           "409": { $ref: "#/components/responses/Conflict" },
           "422": { $ref: "#/components/responses/ValidationError" },
+          "500": { $ref: "#/components/responses/InternalError" },
         },
       },
     },
@@ -484,6 +549,7 @@ export const openApiSpec = {
           "403": { $ref: "#/components/responses/Forbidden" },
           "404": { $ref: "#/components/responses/NotFound" },
           "422": { $ref: "#/components/responses/ValidationError" },
+          "500": { $ref: "#/components/responses/InternalError" },
         },
       },
       // FICHA 320 — el PRIMER `DELETE` del canal. Va en ESTE path (mismo recurso, otro verbo) y no
@@ -522,6 +588,7 @@ export const openApiSpec = {
           "404": { $ref: "#/components/responses/NotFound" },
           "409": { $ref: "#/components/responses/Conflict" },
           "422": { $ref: "#/components/responses/ValidationError" },
+          "500": { $ref: "#/components/responses/InternalError" },
         },
       },
     },
@@ -570,6 +637,7 @@ export const openApiSpec = {
           "404": { $ref: "#/components/responses/NotFound" },
           "409": { $ref: "#/components/responses/Conflict" },
           "422": { $ref: "#/components/responses/ValidationError" },
+          "500": { $ref: "#/components/responses/InternalError" },
         },
       },
     },
@@ -611,6 +679,7 @@ export const openApiSpec = {
           "404": { $ref: "#/components/responses/NotFound" },
           "409": { $ref: "#/components/responses/Conflict" },
           "422": { $ref: "#/components/responses/ValidationError" },
+          "500": { $ref: "#/components/responses/InternalError" },
         },
       },
     },
@@ -739,6 +808,7 @@ export const openApiSpec = {
             },
           },
           "422": { $ref: "#/components/responses/ValidationError" },
+          "500": { $ref: "#/components/responses/InternalError" },
         },
       },
     },
@@ -797,7 +867,7 @@ export const openApiSpec = {
                 examples: {
                   serie: {
                     summary:
-                      "Dos métricas; se pidieron tres días y el tercero (hoy) no viene: no está cerrado",
+                      "Dos métricas; se pidieron tres días y el tercero (hoy) viene marcado `parcial: true`: aún no está cerrado",
                     value: {
                       rango: { desde: "2026-08-19", hasta: "2026-08-21" },
                       metricas: [
@@ -807,7 +877,9 @@ export const openApiSpec = {
                           data: [
                             { fecha: "2026-08-19", valor: 41 },
                             { fecha: "2026-08-20", valor: 37 },
+                            { fecha: "2026-08-21", valor: 12, parcial: true, corteAt: "2026-08-21T18:40:00.000Z" },
                           ],
+                          cobertura: { fechasNoComparables: [], penumbra: PENUMBRA },
                         },
                         {
                           metrica: "tasa_entrega",
@@ -815,7 +887,9 @@ export const openApiSpec = {
                           data: [
                             { fecha: "2026-08-19", valor: 0.93 },
                             { fecha: "2026-08-20", valor: null },
+                            { fecha: "2026-08-21", valor: 0.8, parcial: true, corteAt: "2026-08-21T18:40:00.000Z" },
                           ],
+                          cobertura: { fechasNoComparables: [], penumbra: PENUMBRA },
                         },
                       ],
                     },
@@ -827,6 +901,7 @@ export const openApiSpec = {
           "401": { $ref: "#/components/responses/Unauthorized" },
           "403": { $ref: "#/components/responses/Forbidden" },
           "422": { $ref: "#/components/responses/ValidationError" },
+          "500": { $ref: "#/components/responses/InternalError" },
         },
       },
     },
@@ -910,6 +985,7 @@ export const openApiSpec = {
           "401": { $ref: "#/components/responses/Unauthorized" },
           "403": { $ref: "#/components/responses/Forbidden" },
           "422": { $ref: "#/components/responses/ValidationError" },
+          "500": { $ref: "#/components/responses/InternalError" },
         },
       },
     },
@@ -957,8 +1033,8 @@ export const openApiSpec = {
   // afecta al recuento. La 268 lo AMPLIA con las tres causas de incidente.
   //
   // ⚠️ Ojo tambien con la PROSA: `tests/unit/types/intentos-no-alcance.test.ts` (160/R31) prohibe
-  // la subcadena «intentos» en TODO el spec serializado. Por eso aqui se habla de «reintento», en
-  // singular: no lo «corrijas» al plural.
+  // la subcadena «intentos» en todo el spec serializado FUERA de `ManifiestoFila` (SLT-203). Por
+  // eso aqui se habla de «reintento», en singular: no lo «corrijas» al plural.
   components: {
     securitySchemes: {
       bearerAuth: {
@@ -1041,14 +1117,14 @@ export const openApiSpec = {
                   "Causa TIPIFICADA del cambio de estado, con el value crudo del enum y sin traducir. El",
                   "campo transporta DOS enums distintos y cuál aplica lo decide `estado`:",
                   "",
-                  "- **`estado: \"novedad\"`** → causa de la devolución: `not_found` (destinatario no",
+                  "- **`estado: \"novedad\"`**: causa de la devolución: `not_found` (destinatario no",
                   "  encontrado), `wrong_number` (teléfono equivocado), `wrong_address` (dirección",
                   "  equivocada). Estos tres NO aparecen nunca con otro estado.",
-                  "- **`estado: \"incidente\"`** → causa del incidente: `danado`, `perdido`, `robado`. Estos",
+                  "- **`estado: \"incidente\"`**: causa del incidente: `danado`, `perdido`, `robado`. Estos",
                   "  tres NO aparecen nunca con otro estado.",
-                  "- **cualquier otro `estado`** → siempre `null`.",
+                  "- **cualquier otro `estado`**: siempre `null`.",
                   "",
-                  "⚠️ **La asimetría de idioma es DELIBERADA, no un error que corregir.** Las causas de",
+                  "Atención: **La asimetría de idioma es DELIBERADA, no un error que corregir.** Las causas de",
                   "devolución van en INGLÉS y las de incidente en ESPAÑOL (`danado` sin eñe, `perdido`,",
                   "`robado`) porque cada enum se publicó con el value crudo de su catálogo interno y",
                   "renombrar cualquiera de los dos rompería a los integradores que ya lo consumen.",
@@ -1066,7 +1142,7 @@ export const openApiSpec = {
                   "segunda lleva la causa vigente entonces; deduplicá por `eventoId` y quedate con la",
                   "última entrega.",
                   "",
-                  "⚠️ Transporta EXCLUSIVAMENTE la causa tipificada. NO es el texto libre que el mensajero",
+                  "Atención: Transporta EXCLUSIVAMENTE la causa tipificada. NO es el texto libre que el mensajero",
                   "escribe al gestionar la orden —que comparte el nombre `motivo` en la base de datos y NO",
                   "se emite NUNCA en este webhook—, ni ningún otro dato del destinatario.",
                 ].join("\n"),
@@ -1097,7 +1173,7 @@ export const openApiSpec = {
                   "**La clave viaja SIEMPRE**, igual que `motivo`: `null` es un valor con significado",
                   "—«todavía nadie la lleva»—, no una omisión. No ramifiques por «la clave existe».",
                   "",
-                  "⚠️ **Es QUIÉN LA LLEVA, no quién la gestionó.** Sale de la asignación vigente de la",
+                  "Atención: **Es QUIÉN LA LLEVA, no quién la gestionó.** Sale de la asignación vigente de la",
                   "orden, así que es el mensajero VIGENTE EN EL MOMENTO DE LA ENTREGA del evento —la",
                   "misma regla que rige a `motivo`—: si la orden se reasigna entre dos entregas del",
                   "mismo `eventoId`, la segunda lleva el mensajero de entonces. Y varios flujos",
@@ -1133,7 +1209,7 @@ export const openApiSpec = {
                   "estado como en un `incidente` para el que no se pueda resolver el enlace. Ramificá",
                   "por «la clave existe», no por su valor.",
                   "",
-                  "⚠️ **NO es una URL firmada y NO lleva credencial.** Es un enlace ESTABLE y",
+                  "Atención: **NO es una URL firmada y NO lleva credencial.** Es un enlace ESTABLE y",
                   "determinista: sin token, sin query string y sin expiración; no caduca. Lo único",
                   "que puede cambiar entre dos entregas del mismo `eventoId` es ese identificador, y",
                   "solo si la orden GENERA su guía entre un intento y otro: las dos URLs apuntan a la",
@@ -1182,7 +1258,7 @@ export const openApiSpec = {
               // ⏳ 2026-09-10 (feature 406/R14): AQUI IBA el `orden.id` (un uuid), y ese enlace
               // respondia 404 SIEMPRE — el `{id}` de esa ruta nunca significo `orden.id`. El
               // ultimo segmento es ahora el `numGuia` que ESTE MISMO ejemplo declara arriba.
-              evidenciasUrl: "https://app.example.com/api/ordenes/api-key/orden/100235",
+              evidenciasUrl: `${URL_PRODUCCION_API}/api/ordenes/api-key/orden/100235`,
             },
           },
         ],
@@ -1210,7 +1286,7 @@ export const openApiSpec = {
               "  real llega como `orden.estado_actualizado` cuando se aprueba el cierre del mensajero.",
               "- `orden.gestion_anulada` — esa gestión pendiente se deshizo antes de entrar en un cierre.",
               "- `orden.gestion_corregida` — se corrigió el resultado de una gestión pendiente dentro de",
-              "  un cierre abierto (`resultadoAnterior` → `resultado`).",
+              "  un cierre abierto (de `resultadoAnterior` a `resultado`).",
               "- `orden.ayuda_solicitada` — el mensajero pidió ayuda a la tienda. La orden sigue `en_reparto`.",
               "- `orden.ayuda_resuelta` — la ayuda se cerró (`data.via` dice por dónde).",
               "",
@@ -1395,7 +1471,7 @@ export const openApiSpec = {
               "**La clave está SIEMPRE presente**: `null` significa «todavía nadie la lleva», no «no",
               "se sabe» y no una omisión.",
               "",
-              "⚠️ **Es QUIÉN LA LLEVA en el momento de la lectura, no quién la gestionó.** Varios",
+              "Atención: **Es QUIÉN LA LLEVA en el momento de la lectura, no quién la gestionó.** Varios",
               "flujos limpian la asignación (generación de guía, quitar mensajero, devolución o",
               "recuperación a bodega, liberación de una orden en `reprogramado`, el barrido del cierre diario),",
               "así que una orden que alguien llevó puede devolver `null` más tarde. Para «quién",
@@ -1420,7 +1496,7 @@ export const openApiSpec = {
               "Lo que costaría este paquete con la tarifa VIGENTE HOY para tu tienda en la zona de",
               "la orden, en el escenario de ENTREGA.",
               "",
-              "⚠️ **Mientras `costoReal` sea `null`, este importe PUEDE CAMBIAR entre dos lecturas de",
+              "Atención: **Mientras `costoReal` sea `null`, este importe PUEDE CAMBIAR entre dos lecturas de",
               "la misma orden: se calcula con la tarifa de hoy**, y las tarifas se editan en sitio",
               "(no guardamos su histórico). Si lo archivás sin leer esto, construirás una serie que",
               "cambia sola. Cuando llega `costoReal`, ése ya no se mueve: es lo que se congeló al",
@@ -1440,7 +1516,7 @@ export const openApiSpec = {
               "Lo que se CONGELÓ al cerrar: la tarifa y los datos de la orden tal y como estaban",
               "cuando entró en un cierre aprobado. Ya no se mueve con los cambios de tarifa.",
               "",
-              "⚠️ **Es lo que se congeló al cerrar, NO «la línea que entró en tu wallet».** Como",
+              "Atención: **Es lo que se congeló al cerrar, NO «la línea que entró en tu wallet».** Como",
               "`costoEstimado`, es el escenario de **ENTREGA**. Si la orden terminó en Devolución a origen",
               "por rechazo (`devolucion_a_origen_por_rechazo`), lo que se te factura es el flete por",
               "devolución a origen y su IVA, que son conceptos distintos y que",
@@ -1468,7 +1544,7 @@ export const openApiSpec = {
         required: ["id", "nombre"],
         additionalProperties: false,
         description:
-          "La ZONA DE LA ORDEN: a dónde va el paquete. ⚠️ NO es la zona del mensajero (en qué zona trabaja esa persona), que es un dato personal suyo y no se publica por ningún endpoint. Este campo NUNCA es `null`: toda orden tiene zona.",
+          "La ZONA DE LA ORDEN: a dónde va el paquete. Atención: NO es la zona del mensajero (en qué zona trabaja esa persona), que es un dato personal suyo y no se publica por ningún endpoint. Este campo NUNCA es `null`: toda orden tiene zona.",
         properties: {
           id: {
             type: "string",
@@ -1625,7 +1701,7 @@ export const openApiSpec = {
               "antiguas puede traer un estado RETIRADO del catálogo (ver abajo). Tratá un value",
               "desconocido como texto, no como error.",
               "",
-              "⚠️ **No lo deduzcas del `resultado`**: una gestión se REGISTRA sin mover la orden; el",
+              "Atención: **No lo deduzcas del `resultado`**: una gestión se REGISTRA sin mover la orden; el",
               "estado se aplica cuando se APRUEBA el cierre del mensajero. Mientras tanto la gestión",
               "está `pendienteConfirmacion: true` y este campo es `null`. En gestiones anteriores al",
               "2026-09-23, una `novedad` puede mostrar `devolucion_por_confirmar` (estado retirado).",
@@ -1644,13 +1720,13 @@ export const openApiSpec = {
               "MISMOS valores que ya recibís en `data.motivo` del webhook `orden.estado_actualizado`.",
               "El campo transporta DOS enums distintos y cuál aplica lo decide `resultado`:",
               "",
-              "- **`resultado: \"novedad\"`** → causa de la devolución: `not_found` (destinatario no",
+              "- **`resultado: \"novedad\"`**: causa de la devolución: `not_found` (destinatario no",
               "  encontrado), `wrong_number` (teléfono equivocado), `wrong_address` (dirección",
               "  equivocada).",
-              "- **`resultado: \"incidente\"`** → causa del incidente: `danado`, `perdido`, `robado`.",
-              "- **cualquier otro `resultado`** → siempre `null`.",
+              "- **`resultado: \"incidente\"`**: causa del incidente: `danado`, `perdido`, `robado`.",
+              "- **cualquier otro `resultado`**: siempre `null`.",
               "",
-              "⚠️ **La asimetría de idioma es DELIBERADA, no un error que corregir.** Las causas de",
+              "Atención: **La asimetría de idioma es DELIBERADA, no un error que corregir.** Las causas de",
               "devolución van en INGLÉS y las de incidente en ESPAÑOL (`danado` sin eñe, `perdido`,",
               "`robado`) porque cada enum se publicó con el value crudo de su catálogo interno y",
               "renombrar cualquiera de los dos rompería a los integradores que ya lo consumen.",
@@ -1661,7 +1737,7 @@ export const openApiSpec = {
               "contrato no distingue «no hubo causa» de «no se registró»: en los dos casos viaja",
               "`null` y el campo NUNCA se omite.",
               "",
-              "⚠️ Transporta EXCLUSIVAMENTE la causa tipificada. **NO es el comentario en texto libre",
+              "Atención: Transporta EXCLUSIVAMENTE la causa tipificada. **NO es el comentario en texto libre",
               "que el mensajero escribe al gestionar la orden** —que comparte el nombre `motivo` en",
               "nuestra base de datos y NO sale del sistema por decisión de privacidad—, ni ningún",
               "otro dato del destinatario.",
@@ -1674,7 +1750,7 @@ export const openApiSpec = {
               "`mensajero` de la orden —que es quien la lleva AHORA y puede no ser nadie—, una",
               "gestión siempre tiene una persona detrás.",
               "",
-              "⚠️ **Atribuido no siempre significa «quien la registró».** Algunas gestiones las crea",
+              "Atención: **Atribuido no siempre significa «quien la registró».** Algunas gestiones las crea",
               "el sistema o la propia tienda (una reprogramación desde el escritorio, el escalado",
               "automático por vencimiento de plazo, un rechazo manual de la tienda, el desenlace de",
               "una solicitud de ayuda, o el corte por llegar al tope de reintento) y quedan",
@@ -1717,7 +1793,7 @@ export const openApiSpec = {
                   "incidentes que reporta nuestro personal de bodega, que no son gestiones y no",
                   "tienen mensajero atribuido —sus fotos sí siguen en `evidencias[]`—.",
                   "",
-                  "⚠️ **`gestiones.length` no es nuestro contador interno de reintento.** Ese cuenta",
+                  "Atención: **`gestiones.length` no es nuestro contador interno de reintento.** Ese cuenta",
                   "cierres aprobados distintos con visita real, así que varias gestiones del mismo",
                   "cierre valen 1. Este array es la lista cruda, sin agrupar.",
                 ].join("\n"),
@@ -1777,12 +1853,29 @@ export const openApiSpec = {
             description: `Filas a cargar (1..${MAX_CARGA_ROWS}). Todos los valores son texto.`,
             items: { $ref: "#/components/schemas/CargaRow" },
           },
+          // SLT-201 — las dos claves opcionales de la feature 141 (R20-R24, R42-R45). Las lee
+          // `cargaApiBodySchema` en `app/api/ordenes/api-key/carga/route.ts`; la guardia
+          // `openapi-carga-claves-reales.guardia.test.ts` compara las dos listas.
+          name: {
+            type: "string",
+            minLength: 1,
+            maxLength: 120,
+            description:
+              "Nombre OPCIONAL del lote, de 1 a 120 caracteres (se recortan los espacios de los extremos). Si esta misma cuenta ya usó ese nombre, la carga responde `409` y no crea nada: ni lote ni órdenes. El id del lote (`cargaId`) lo genera siempre el servidor.",
+          },
+          download_type: {
+            type: "string",
+            enum: ["consolidate", "individual"],
+            default: "consolidate",
+            description:
+              "Cómo se entregan las etiquetas del lote. `consolidate` (por defecto): un solo PDF del lote, en `etiquetasPdf`. `individual`: un PDF por orden, cada URL en su `ordenes[].downloadUrl`, y `etiquetasPdf` llega `null`. Otro valor responde `422` antes de crear ninguna orden. No se guarda: vale solo para esta petición.",
+          },
         },
       },
       CargaRow: {
         type: "object",
         description:
-          "Una fila de carga. Todas las claves son strings. Las requeridas se validan en el servidor; una fila inválida no aborta el lote (se reporta como `error`).",
+          "Una fila de carga. Todos los valores son strings (un valor que no es texto responde `422` para el lote entero). Las requeridas se validan en el servidor; una fila inválida no aborta el lote: sale en `errores` con un mensaje por campo. En `num_remision`, `destinatario`, `telefono` y `producto`: `<campo> es obligatorio` si la clave viene vacía y `Este campo es obligatorio` si la clave no viene. Cualquier otra clave se ignora.",
         required: [
           "num_remision",
           "destinatario",
@@ -1790,10 +1883,7 @@ export const openApiSpec = {
           "provincia",
           "canton",
           "distrito",
-          "direccion",
           "producto",
-          "peso",
-          "monto_cobrar",
         ],
         properties: {
           num_remision: { type: "string", description: "Identificador de remisión (dedup por este valor)." },
@@ -1814,10 +1904,14 @@ export const openApiSpec = {
             description:
               "Su zona decide la tarifa. Si no se encuentra, es ambiguo, no tiene zona o está RETIRADO del catálogo, la fila sale en `errores` y el lote sigue (200 con éxito parcial).",
           },
-          direccion: { type: "string" },
+          direccion: { type: "string", description: "Opcional. Dirección de entrega en texto libre." },
           producto: { type: "string" },
-          peso: { type: "string", description: "Peso en kg como texto (p. ej. \"1.5\")." },
-          monto_cobrar: { type: "string", description: "Monto COD como texto (p. ej. \"25.90\")." },
+          peso: { type: "string", description: "No se usa: se acepta y se ignora (no se guarda ni cambia el precio)." },
+          monto_cobrar: {
+            type: "string",
+            description:
+              "Opcional. Monto contra entrega, en la moneda del país de la empresa, como texto (p. ej. \"25900\"); se redondea a la unidad entera. Vacío o ausente: no se cobra nada al destinatario. Un valor no numérico o negativo deja la fila en `errores` con `monto_cobrar debe ser numerico y no negativo`.",
+          },
           notas: { type: "string" },
         },
         additionalProperties: { type: "string" },
@@ -1868,7 +1962,7 @@ export const openApiSpec = {
       CargaOrden: {
         type: "object",
         description: "Una orden efectivamente creada (bloque plano listo para consumir).",
-        required: ["id", "numRemision", "numGuia", "estado", "estadoNombre", "costoEnvio", "fulfillment", "ivaFulfillment"],
+        required: ["id", "numRemision", "numGuia", "estado", "estadoNombre", "costoEnvio", "fulfillment", "ivaFulfillment", "downloadUrl"],
         properties: {
           id: { type: "string", format: "uuid", description: "Id interno de la orden creada." },
           numRemision: { type: "string" },
@@ -1890,11 +1984,18 @@ export const openApiSpec = {
               "Cuánto de `costoEnvio` es el servicio de bodega, string escala 2. `\"0.00\"` si tu tarifa no tiene fulfillment — y entonces `costoEnvio` es solo flete + IVA. Nunca `null`.",
           },
           ivaFulfillment: { type: "string", description: DESC_IVA_FULFILLMENT },
+          // SLT-201 — feature 141 (R48, R54): la URL del PDF individual de la orden.
+          downloadUrl: {
+            type: ["string", "null"],
+            format: "uri",
+            description:
+              "URL firmada y temporal del PDF de etiqueta de ESTA orden. Solo con `download_type: individual`. Es `null` en `consolidate`, si la orden no tiene etiqueta imprimible o si la generación falló (la carga no se revierte). Para volver a obtenerla usa `POST /api/ordenes/api-key/orden/{id}/generate`.",
+          },
         },
       },
       CargaResponse: {
         type: "object",
-        required: ["total", "creadas", "duplicadas", "conError", "filas", "errores", "ordenes"],
+        required: ["total", "creadas", "duplicadas", "conError", "filas", "errores", "ordenes", "downloadType", "etiquetasPdf", "manifiesto"],
         properties: {
           // Feature 177/R45: el integrador necesita este id para llamar a
           // `POST /api/ordenes/api-key/carga/{cargaId}/generate`. Es `null` cuando el lote no
@@ -1922,6 +2023,118 @@ export const openApiSpec = {
             items: { $ref: "#/components/schemas/CargaFilaError" },
           },
           ordenes: { type: "array", items: { $ref: "#/components/schemas/CargaOrden" } },
+          // SLT-201 — los tres bloques que la ruta añade al resumen (features 136, 141 y 155).
+          downloadType: {
+            type: "string",
+            enum: ["consolidate", "individual"],
+            description: "El modo de descarga aplicado: el `download_type` que mandaste, o `consolidate` si no lo mandaste.",
+          },
+          etiquetasPdf: { $ref: "#/components/schemas/CargaEtiquetasPdf" },
+          manifiesto: { $ref: "#/components/schemas/CargaManifiesto" },
+        },
+      },
+      // SLT-201 — bloque `etiquetasPdf` (feature 136, R10-R14; feature 141, R53). Best-effort:
+      // la carga ya esta guardada y nunca se revierte por el PDF.
+      CargaEtiquetasPdf: {
+        description:
+          "PDF consolidado de etiquetas del lote. Es best-effort: si no se pudo generar, la carga NO se revierte y el bloque llega como `{ error }` con HTTP 200. Llega `null` cuando no había nada que generar (ninguna orden creada o ninguna etiqueta imprimible) y siempre en `download_type: individual`, salvo que falle todo el lote. Un lote por encima del tope de etiquetas por PDF también llega como `{ error }`: las órdenes sí se crearon.",
+        oneOf: [
+          {
+            type: "object",
+            required: ["url", "expiraEnSegundos"],
+            properties: {
+              url: { type: "string", format: "uri", description: "URL firmada del PDF del lote." },
+              expiraEnSegundos: {
+                type: "integer",
+                description: "Segundos de validez de la URL. Para volver a obtenerla usa `POST /api/ordenes/api-key/carga/{cargaId}/generate`.",
+              },
+            },
+          },
+          {
+            type: "object",
+            required: ["error"],
+            properties: { error: { type: "string", description: "Por qué no se generó. Sin datos de las órdenes." } },
+          },
+          { type: "null" },
+        ],
+      },
+      // SLT-201 — bloque `manifiesto` (feature 155, R23-R26). Mismo criterio best-effort.
+      CargaManifiesto: {
+        description:
+          "Manifiesto del traslado de las órdenes creadas desde tu tienda a la bodega central. Es best-effort: si no se pudo armar, la carga NO se revierte y el bloque llega como `{ error }` con HTTP 200. Llega `null` cuando no hay traslado que documentar: no se creó ninguna orden, o ninguna de las creadas sale de tu tienda.",
+        oneOf: [
+          {
+            type: "object",
+            required: ["filas", "omitidas"],
+            properties: {
+              filas: { type: "array", items: { $ref: "#/components/schemas/ManifiestoFila" } },
+              omitidas: {
+                type: "array",
+                description: "Órdenes pedidas que no produjeron fila. Normalmente vacío.",
+                items: { $ref: "#/components/schemas/ManifiestoOmitida" },
+              },
+            },
+          },
+          {
+            type: "object",
+            required: ["error"],
+            properties: { error: { type: "string" } },
+          },
+          { type: "null" },
+        ],
+      },
+      // `ManifiestoFilaDTO` (`lib/types/manifiesto.ts`). Su conjunto de columnas es ABIERTO
+      // (feature 160, R28): crece cuando la orden expone un dato nuevo.
+      // SLT-203 (2026-11-18, decision de Carlos): `intentos` SE PUBLICA aqui. 160/R31 (QA5) queda
+      // enmendado SOLO para `manifiesto.filas[].intentos` de la carga; el resto de DTO del canal
+      // (`ApiOrden*`) sigue sin el conteo (`intentos-no-alcance.test.ts`). La guardia de SLT-201
+      // compara la fila real con este schema sin excepciones.
+      ManifiestoFila: {
+        type: "object",
+        description:
+          "Una orden del manifiesto. El conjunto de columnas puede crecer cuando la orden gana un dato nuevo: ignora las claves que no conozcas.",
+        required: [
+          "numGuia",
+          "numRemision",
+          "destinatario",
+          "telefono",
+          "direccion",
+          "zona",
+          "producto",
+          "monto",
+          "intentos",
+          "origen",
+          "destino",
+          "responsable",
+          "fecha",
+        ],
+        properties: {
+          numGuia: { type: ["integer", "null"] },
+          numRemision: { type: "string" },
+          destinatario: { type: "string" },
+          telefono: { type: "string", description: "Teléfono del destinatario." },
+          direccion: { type: ["string", "null"] },
+          zona: { type: "string", description: "Nombre de la zona de destino." },
+          producto: { type: "string" },
+          monto: { type: ["number", "null"], description: "Monto a cobrar (COD) de la orden." },
+          intentos: {
+            type: "integer",
+            minimum: 0,
+            description:
+              "Intentos de entrega de la orden: visitas de entrega sin entrega, contadas una por cierre aprobado con al menos una gestión no anulada de resultado `novedad`, `reprogramado` o `devolucion_a_origen_por_rechazo`; una gestión anulada o cuyo cierre no se aprobó no cuenta. Nunca `null`: sin intentos vale `0`. En la respuesta de la carga las órdenes acaban de crearse, así que vale `0`.",
+          },
+          origen: { type: "string", description: "De dónde sale el paquete en este traslado (tu tienda)." },
+          destino: { type: "string", description: "A dónde llega (la bodega central)." },
+          responsable: { type: "string" },
+          fecha: { type: "string", format: "date", description: "Fecha de la operación, `YYYY-MM-DD`." },
+        },
+      },
+      ManifiestoOmitida: {
+        type: "object",
+        required: ["ref", "motivo"],
+        properties: {
+          ref: { type: "string", description: "La referencia pedida, tal como llegó." },
+          motivo: { type: "string", const: "no_encontrada" },
         },
       },
       CancelacionResponse: {
@@ -2134,7 +2347,7 @@ export const openApiSpec = {
           montoCobrar: {
             type: "string",
             description:
-              "EL VALOR SOBRE EL QUE SE COTIZÓ: el `monto_cobrar` que entró al cálculo, ya redondeado al colón igual que lo redondea la carga, y `\"0.00\"` si la fila no traía monto (la base que usó la comisión COD). String money-safe de escala 2, crudo, como el resto de los importes.",
+              "EL VALOR SOBRE EL QUE SE COTIZÓ: el `monto_cobrar` que entró al cálculo, ya redondeado a la unidad entera igual que lo redondea la carga, y `\"0.00\"` si la fila no traía monto (la base que usó la comisión COD). String money-safe de escala 2, crudo, como el resto de los importes.",
           },
           resultado: { type: "string", const: "cotizada" },
           costos: { $ref: "#/components/schemas/CotizacionCostos" },
@@ -2234,7 +2447,7 @@ export const openApiSpec = {
           data: {
             type: "array",
             description:
-              "Los días del rango con dato, en orden, INCLUIDO el día en curso. Antes del 2026-09-04 el día en curso se omitía; ahora viene marcado `parcial: true`. ⚠️ Si sumas `data` para obtener un total del periodo, DESCARTA primero los puntos con `parcial: true` y los días listados en `cobertura.fechasNoComparables`: no son comparables con un día cerrado. Puede venir vacío, y eso es un 200 correcto. No rellenes los huecos con ceros.",
+              "Los días del rango con dato, en orden, INCLUIDO el día en curso. Antes del 2026-09-04 el día en curso se omitía; ahora viene marcado `parcial: true`. Atención: Si sumas `data` para obtener un total del periodo, DESCARTA primero los puntos con `parcial: true` y los días listados en `cobertura.fechasNoComparables`: no son comparables con un día cerrado. Puede venir vacío, y eso es un 200 correcto. No rellenes los huecos con ceros.",
             items: {
               type: "object",
               required: ["fecha", "valor"],
@@ -2400,7 +2613,12 @@ export const openApiSpec = {
         },
       },
       Forbidden: {
-        description: "El usuario dueño de la key no está activo.",
+        // SLT-201 (D5 de la auditoria del 2026-11-18): las causas salen de
+        // `ApiKeyAuthService.autenticar` (usuario no activo, key desactivada, cuenta que no es de
+        // integracion, tienda destino de baja o inactiva) y de la ruta de analitica (modulo
+        // apagado, consulta fuera de alcance). La respuesta no dice cual aplica, a proposito.
+        description:
+          "La key existe pero no puede operar: su usuario dedicado no está activo, la key está desactivada, la cuenta de la key no es una cuenta de integración, o la tienda a la que apunta la key está dada de baja o inactiva. La respuesta no dice cuál de estas causas aplica. En `GET /api/ordenes/api-key/analitica`, además: el módulo de Analítica de tu empresa está apagado (`details.codigo: \"modulo_inactivo\"`), o la consulta cae fuera del alcance de la key.",
         content: {
           "application/json": {
             schema: { $ref: "#/components/schemas/Error" },
@@ -2448,6 +2666,22 @@ export const openApiSpec = {
               code: "VALIDATION_ERROR",
               message: "Los datos enviados no son validos.",
               details: { fieldErrors: { limit: ["Number must be less than or equal to 100"] } },
+            },
+          },
+        },
+      },
+      // SLT-201 (D6 de la auditoria): el 500 generico del manejador global
+      // (`lib/errors/normalize.ts`). El mensaje es `MSG.INTERNAL`; nunca lleva el detalle original.
+      InternalError: {
+        description:
+          "Fallo del lado del servidor. El cuerpo es siempre el mismo y no lleva el detalle del error. Reintenta con espera creciente; si persiste, repórtalo con el `cargaId` o la guía involucrada.",
+        content: {
+          "application/json": {
+            schema: { $ref: "#/components/schemas/Error" },
+            example: {
+              status: "error",
+              code: "INTERNAL",
+              message: MSG.INTERNAL,
             },
           },
         },

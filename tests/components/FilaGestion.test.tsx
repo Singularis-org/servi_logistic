@@ -3,7 +3,9 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { FilaGestion } from "@/components/private/cierres/fila/FilaGestion";
+import { FilaGestion, plantillaFila } from "@/components/private/cierres/fila/FilaGestion";
+import { columnasDe } from "@/components/private/cierres/fila/fila-gestion-vista";
+import { GestionesCierre } from "@/components/private/cierres/fila/GestionesCierre";
 import type { AccionesFila, AudienciaFila } from "@/components/private/cierres/fila/fila-gestion-vista";
 import type { CierreDetalleGestion } from "@/lib/interfaces/services/ICierreDiaService";
 import type { EvidenciaAbierta } from "@/components/private/cierres/dialogos/VisorEvidencia";
@@ -71,11 +73,26 @@ function cuenta(nombre: string): string[][] {
 
 const DE_CANVAS = "de la orden REM-001 · Beto Ruiz";
 
+/** SLT-152: la celda de la rejilla de una columna de la fila cerrada. */
+function celda(id: string): HTMLElement {
+  const el = document.querySelector<HTMLElement>(`[data-gestion] [data-columna="${id}"]`);
+  if (!el) throw new Error(`sin celda ${id}`);
+  return el;
+}
+
+/** SLT-152 (R444): el elemento que lleva el texto de la celda (su único hijo). */
+function textoDe(id: string): HTMLElement {
+  const hijo = celda(id).firstElementChild;
+  if (!(hijo instanceof HTMLElement)) throw new Error(`la celda ${id} no tiene elemento de texto`);
+  return hijo;
+}
+
 describe("R86 — fila cerrada", () => {
-  it("central: guía, destinatario · tienda, resultado con su botón de información, importes y señales", () => {
+  it("central: guía, destinatario, tienda, resultado con su botón de información, importes y señales", () => {
     montar(gestionCanvas());
     expect(screen.getByText("1001")).toBeInTheDocument();
-    expect(screen.getByText("· Tienda Norte")).toBeInTheDocument();
+    expect(celda("destinatario").textContent).toBe("Beto Ruiz");
+    expect(celda("tienda").textContent).toBe("Tienda Norte");
     expect(screen.getByRole("button", { name: "Qué significa «Entregado»" })).toBeInTheDocument();
     expect(screen.getByText("₡25.000")).toBeInTheDocument();
     expect(screen.getByText("₡4.520")).toBeInTheDocument();
@@ -97,6 +114,22 @@ describe("R86 — fila cerrada", () => {
     expect(screen.queryByText("Pago ajustado")).toBeNull();
   });
 
+  it("SLT-147 (D66, R415): mensajero, un Incidente con pago 1250.00 pinta «₡1.250» en Ganancia", () => {
+    montar(
+      gestionFila({
+        gestionId: "i",
+        resultado: "incidente",
+        montoRecibido: "3000.00",
+        pagos: [{ metodo: "efectivo", monto: "3000.00" }],
+        pagoMensajero: "1250.00",
+      }),
+      { audiencia: "mensajero" },
+    );
+    expect(screen.getByText("₡1.250")).toBeInTheDocument();
+    expect(screen.queryByText("₡0")).toBeNull();
+    expect(screen.queryByText("—")).toBeNull();
+  });
+
   it("R24: una gestión sin señales deja la celda vacía", () => {
     montar(gestionFila({ gestionId: "e" }));
     expect(screen.queryByText(/Vuelve a bodega|Pago ajustado|Sin tarifa/)).toBeNull();
@@ -105,6 +138,88 @@ describe("R86 — fila cerrada", () => {
   it("R23: con mensajero (bodega), su nombre en la fila", () => {
     montar(gestionFila({ gestionId: "e" }), { audiencia: "solo lectura", mensajero: "Ana Mensajera" });
     expect(screen.getByText("Ana Mensajera")).toBeInTheDocument();
+  });
+});
+
+// SLT-152 «Tablas de cierres legibles»: una columna por dato. SLT-156 «PWA de los mensajeros: tablas
+// usables en el móvil» (R490-R492): el texto ya no se recorta con «…» ni se lee por `title` (en el
+// móvil no hay tooltip): envuelve en varias líneas, y los importes van en una columna fija.
+describe("R442, R490, R491, R445 — Destinatario, Tienda y Mensajero en su columna, enteros", () => {
+  const LARGO = "Mensajero Satélite Demo QA A con un nombre larguísimo";
+
+  it("R442: destinatario y tienda, cada uno en su celda y sin «·» entre ambos", () => {
+    for (const audiencia of ["central", "satelite", "solo lectura", "mensajero"] as const) {
+      montar(gestionCanvas(), { audiencia });
+      expect(celda("destinatario").textContent).toBe("Beto Ruiz");
+      expect(celda("tienda").textContent).toBe("Tienda Norte");
+      expect(celda("destinatario").textContent).not.toContain("·");
+      expect(celda("tienda").textContent).not.toContain("·");
+      cleanup();
+    }
+  });
+
+  it("R490, R491: destinatario, tienda y mensajero enteros, que envuelven, sin «…» ni `title`", () => {
+    montar(gestionFila({ gestionId: "e", destinatario: "Beatriz Elena Ruiz Montoya", tiendaNombre: "Tienda Norte Principal" }), {
+      audiencia: "solo lectura",
+      mensajero: LARGO,
+    });
+    const esperado: Record<string, string> = {
+      destinatario: "Beatriz Elena Ruiz Montoya",
+      tienda: "Tienda Norte Principal",
+      mensajero: LARGO,
+    };
+    for (const [id, texto] of Object.entries(esperado)) {
+      const el = textoDe(id);
+      expect(el.textContent).toBe(texto);
+      expect(el.hasAttribute("title")).toBe(false);
+      for (const clase of ["truncate", "text-ellipsis", "whitespace-nowrap", "overflow-hidden"]) {
+        expect(el.classList.contains(clase)).toBe(false);
+      }
+      // Envuelve en varias líneas y parte una palabra sin espacios si hace falta.
+      for (const clase of ["min-w-0", "whitespace-normal", "wrap-anywhere"]) expect(el.classList.contains(clase)).toBe(true);
+      expect(celda(id).querySelector("[title]")).toBeNull();
+    }
+  });
+
+  it("R445: sin nombre de mensajero, la celda «Mensajero» dice «—» (sin `title`)", () => {
+    render(
+      <FilaGestion
+        gestion={gestionFila({ gestionId: "e" })}
+        audiencia="solo lectura"
+        quienMiraEsCentral
+        congeladoAt={CONGELADO_AT}
+        acciones={{}}
+        columnaMensajero
+      />,
+    );
+    expect(textoDe("mensajero").textContent).toBe("—");
+    expect(textoDe("mensajero").hasAttribute("title")).toBe(false);
+  });
+
+  it("R492: guía en pista `max-content` e importes en `minmax(max-content,1fr)`, en las cuatro audiencias", () => {
+    for (const audiencia of ["central", "satelite", "solo lectura", "mensajero"] as const) {
+      const columnas = columnasDe(audiencia, audiencia === "solo lectura", audiencia === "central");
+      // SLT-165 (R524): la plantilla viaja en `--plantilla-fila` (solo la aplica `md:`).
+      const pistas = String((plantillaFila(columnas) as Record<string, string>)["--plantilla-fila"]).split(" ");
+      columnas.forEach((c, i) => {
+        if (c.id === "guia") expect(pistas[i]).toBe("max-content");
+        if (["recibido", "cobro", "ganaBodega", "pago", "ganancia"].includes(c.id)) expect(pistas[i]).toBe("minmax(max-content,1fr)");
+      });
+    }
+    // La ganancia del mensajero es el importe que se veía montado en la columna vecina.
+    const mensajero = columnasDe("mensajero", false, false);
+    const i = mensajero.findIndex((c) => c.id === "ganancia");
+    expect(i).toBeGreaterThan(-1);
+    expect(String((plantillaFila(mensajero) as Record<string, string>)["--plantilla-fila"]).split(" ")[i]).toBe("minmax(max-content,1fr)");
+  });
+
+  it("R492: el importe va en columna fija, alineado a la derecha y sin partirse", () => {
+    montar(gestionCanvas(), { audiencia: "mensajero" });
+    const importe = textoDe("ganancia");
+    expect(importe.textContent).toBe("₡1.800");
+    for (const clase of ["shrink-0", "whitespace-nowrap", "tabular-nums", "text-right"]) {
+      expect(importe.classList.contains(clase)).toBe(true);
+    }
   });
 });
 
@@ -204,10 +319,11 @@ describe("R25, R27, R30, R93-R98 — tarjetas del canvas (central)", () => {
 
 describe("R25, R30 — tarjetas por audiencia", () => {
   it.each([
-    ["satelite", false, ["Recibió el mensajero", "Se le cobra a la tienda", "Se le paga al mensajero"]],
+    // SLT-154 (R475): sin la central, sin «Se le cobra a la tienda».
+    ["satelite", false, ["Recibió el mensajero", "Se le paga al mensajero"]],
     ["mensajero", false, ["Recibió el mensajero", "Tu ganancia"]],
     ["solo lectura", true, ["Recibió el mensajero", "Se le cobra a la tienda", "Se le paga al mensajero", "Fulfillment · se cobró al crear la orden"]],
-    ["solo lectura", false, ["Recibió el mensajero", "Se le cobra a la tienda", "Se le paga al mensajero"]],
+    ["solo lectura", false, ["Recibió el mensajero", "Se le paga al mensajero"]],
   ] as const)("%s (mira la central: %s)", async (audiencia, central, titulos) => {
     const g = gestionCanvas();
     const user = montar(g, { audiencia, central });
@@ -376,7 +492,7 @@ describe("R26, R89 — acciones con los nombres de hoy y sus callbacks", () => {
 
   it("SLT-109 (R244): gestión de la tienda → «Devolver a gestión» deshabilitado, con el motivo en `title` y en el nombre", () => {
     const motivo =
-      "Esta orden la resolvió la tienda desde su pantalla de ayuda; solo ella puede corregirlo. Escribile por el chat de la orden.";
+      "Esta orden la resolvió la tienda desde su pantalla de ayuda; solo ella puede corregirlo. Escríbele por el chat de la orden.";
     montar(gestionCanvas({ desdeAyudaTienda: true }), { audiencia: "mensajero", acciones: { devolver: vi.fn() } });
     const boton = screen.getByRole("button", {
       name: `Devolver a gestión la orden REM-001 · Beto Ruiz — no disponible: ${motivo}`,
@@ -428,5 +544,219 @@ describe("R26, R89 — acciones con los nombres de hoy y sus callbacks", () => {
       "aria-expanded",
       "false",
     );
+  });
+});
+
+// SLT-154 «Vista de la bodega satélite: solo lo suyo» (R474, R475, R477): la lista y la fila de quien
+// no es la central. La gestión rechazada trae el cobro (defensa: aunque llegara, no se pinta) y lo que
+// gana la bodega por ella, ₡500 (corpus de `e2e/cierre-bodega-satelite.spec.ts`).
+describe("SLT-154 — quien no es la central (R474, R475)", () => {
+  const rechazo = () =>
+    gestionCanvas({ resultado: "devolucion_a_origen_por_rechazo", ingresoBodegaRechazo: "500.00" });
+
+  function montarLista(central: boolean) {
+    render(
+      <GestionesCierre
+        gestiones={[{ gestion: rechazo(), mensajeroNombre: "Ana Mensajera" }]}
+        audiencia="solo lectura"
+        quienMiraEsCentral={central}
+        congeladoAt={CONGELADO_AT}
+        acciones={{}}
+        columnaMensajero
+      />,
+    );
+    return userEvent.setup();
+  }
+
+  function cabecera(): string[] {
+    const region = screen.getByRole("region", { name: "Órdenes del cierre" });
+    const fila = region.firstElementChild as HTMLElement;
+    return Array.from(fila.querySelectorAll("[data-columna]")).map((c) => c.textContent ?? "");
+  }
+
+  it("R474 — la cabecera trae «Gana bodega» en el sitio de «Cobro a la tienda»", () => {
+    montarLista(false);
+    expect(cabecera()).toEqual([
+      "Guía",
+      "Destinatario",
+      "Tienda",
+      "Mensajero",
+      "Resultado",
+      "Recibido",
+      "Gana bodega",
+      "Pago al mensajero",
+      "Señales",
+    ]);
+  });
+
+  it("R474 — la fila del rechazo muestra ₡500 en «Gana bodega»", () => {
+    montarLista(false);
+    expect(celda("ganaBodega")).toHaveTextContent("₡500");
+    expect(document.querySelector('[data-gestion] [data-columna="cobro"]')).toBeNull();
+  });
+
+  it("R475 — desplegada, sin «Se le cobra a la tienda» ni «Ver cómo se calculó»; conserva Recibió y el pago", async () => {
+    const user = montarLista(false);
+    await desplegar(user, rechazo());
+    expect(screen.queryByText("Se le cobra a la tienda")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Ver cómo se calculó" })).toBeNull();
+    expect(Array.from(document.querySelectorAll("section h3")).map((h) => h.textContent)).toEqual([
+      "Recibió el mensajero",
+      "Se le paga al mensajero",
+    ]);
+  });
+
+  it("R477 — la central, con la misma gestión, conserva el cobro y «Ver cómo se calculó»", async () => {
+    const user = montarLista(true);
+    expect(cabecera()).toContain("Cobro a la tienda");
+    expect(cabecera()).not.toContain("Gana bodega");
+    await desplegar(user, rechazo());
+    expect(screen.getByText("Se le cobra a la tienda")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ver cómo se calculó" })).toBeInTheDocument();
+  });
+});
+
+// SLT-165 «PWA del mensajero: Cierre del día en tarjetas» (D1; R523-R525, R493). Las clases van
+// escritas a mano: son el contrato de la tarjeta (por debajo de 768 px) y de la rejilla de escritorio.
+describe("SLT-165 R523-R525 — la fila es una tarjeta en el teléfono y la rejilla de hoy desde 768 px", () => {
+  function rejilla(): HTMLElement {
+    const el = document.querySelector<HTMLElement>("[data-gestion]")?.firstElementChild;
+    if (!(el instanceof HTMLElement)) throw new Error("sin rejilla");
+    return el;
+  }
+
+  it("R524: la plantilla de columnas solo la aplica `md:`; nada de `gridTemplateColumns` en línea", () => {
+    montar(gestionCanvas(), { audiencia: "mensajero" });
+    const r = rejilla();
+    expect(r.style.gridTemplateColumns).toBe("");
+    expect(r.style.getPropertyValue("--plantilla-fila")).toBe(
+      "max-content minmax(0,1.2fr) minmax(0,1fr) minmax(110px,1.2fr) minmax(max-content,1fr) minmax(max-content,1fr) minmax(0,1.3fr) auto",
+    );
+    expect(r.classList.contains("md:[grid-template-columns:var(--plantilla-fila)]")).toBe(true);
+  });
+
+  it("R523: en la tarjeta, destinatario; guía · tienda; resultado y acciones; la Ganancia a la derecha", () => {
+    montar(gestionCanvas(), { audiencia: "mensajero" });
+    const r = rejilla();
+    expect(r.classList.contains("max-md:grid-cols-[max-content_minmax(0,1fr)_max-content]")).toBe(true);
+    expect(
+      r.classList.contains(
+        "max-md:[grid-template-areas:'dest_dest_ganancia'_'guia_tienda_ganancia'_'resultado_resultado_acciones'_'senales_senales_senales']",
+      ),
+    ).toBe(true);
+    const areas: Record<string, string> = {
+      guia: "max-md:[grid-area:guia]",
+      destinatario: "max-md:[grid-area:dest]",
+      tienda: "max-md:[grid-area:tienda]",
+      resultado: "max-md:[grid-area:resultado]",
+      ganancia: "max-md:[grid-area:ganancia]",
+    };
+    for (const [id, area] of Object.entries(areas)) expect(celda(id).classList.contains(area), id).toBe(true);
+    // «Recibido» va en el detalle desplegado («Recibió el mensajero»), no en la tarjeta.
+    expect(celda("recibido").classList.contains("max-md:hidden")).toBe(true);
+    // Las acciones, en su área.
+    expect(r.lastElementChild?.classList.contains("max-md:[grid-area:acciones]")).toBe(true);
+  });
+
+  it("R523, para cualquier audiencia: en la administración el «Pago» (la ganancia del mensajero) ocupa el sitio de la Ganancia", () => {
+    // SLT-154 (R477): la central mirando un cierre de satélite (con el cobro); la satélite, abajo.
+    montar(gestionFila({ gestionId: "c" }), { audiencia: "solo lectura", central: true, mensajero: "Ana Mensajera" });
+    expect(celda("pago").classList.contains("max-md:[grid-area:ganancia]")).toBe(true);
+    for (const id of ["recibido", "cobro"]) expect(celda(id).classList.contains("max-md:hidden"), id).toBe(true);
+    expect(celda("destinatario").classList.contains("max-md:[grid-area:dest]")).toBe(true);
+  });
+
+  it("R491 (B1 de la review de SLT-165): con la columna «Mensajero», la tarjeta dice de quién es la gestión en su línea", () => {
+    // SLT-154: la central (sin la línea de «Gana bodega», que es de la satélite; abajo).
+    montar(gestionFila({ gestionId: "m" }), { audiencia: "solo lectura", central: true, mensajero: "Ana Mensajera" });
+    const m = celda("mensajero");
+    expect(m.classList.contains("max-md:hidden")).toBe(false);
+    expect(m.classList.contains("max-md:[grid-area:mensajero]")).toBe(true);
+    expect(textoDe("mensajero").textContent).toBe("Ana Mensajera");
+    // En la tarjeta no hay cabecera: el rótulo, solo en el teléfono y sin tocar el texto de la celda.
+    expect(m.classList.contains("max-md:before:content-['Mensajero:']")).toBe(true);
+    expect(m.textContent).toBe("Ana Mensajera");
+    expect(
+      rejilla().classList.contains(
+        "max-md:[grid-template-areas:'dest_dest_ganancia'_'guia_tienda_ganancia'_'mensajero_mensajero_mensajero'_'resultado_resultado_acciones'_'senales_senales_senales']",
+      ),
+    ).toBe(true);
+  });
+
+  it("SLT-154 R474 con R523: en el teléfono, la satélite ve «Gana bodega» en su línea, bajo «Mensajero»", () => {
+    montar(gestionFila({ gestionId: "gb", resultado: "devolucion_a_origen_por_rechazo", ingresoBodegaRechazo: "500.00" }), {
+      audiencia: "solo lectura",
+      central: false,
+      mensajero: "Ana Mensajera",
+    });
+    const gb = celda("ganaBodega");
+    expect(gb.classList.contains("max-md:hidden")).toBe(false);
+    expect(gb.classList.contains("max-md:[grid-area:ganabodega]")).toBe(true);
+    expect(gb.classList.contains("max-md:before:content-['Gana_bodega:']")).toBe(true);
+    expect(gb.textContent).toBe("₡500");
+    expect(
+      rejilla().classList.contains(
+        "max-md:[grid-template-areas:'dest_dest_ganancia'_'guia_tienda_ganancia'_'mensajero_mensajero_mensajero'_'ganabodega_ganabodega_ganabodega'_'resultado_resultado_acciones'_'senales_senales_senales']",
+      ),
+    ).toBe(true);
+  });
+
+  it("SLT-154 R474 con R523: el cierre del mensajero visto por la satélite, «Gana bodega» sin línea de «Mensajero»", () => {
+    montar(gestionFila({ gestionId: "gs" }), { audiencia: "satelite", central: false });
+    expect(celda("ganaBodega").classList.contains("max-md:[grid-area:ganabodega]")).toBe(true);
+    expect(
+      rejilla().classList.contains(
+        "max-md:[grid-template-areas:'dest_dest_ganancia'_'guia_tienda_ganancia'_'ganabodega_ganabodega_ganabodega'_'resultado_resultado_acciones'_'senales_senales_senales']",
+      ),
+    ).toBe(true);
+    // R524: su pista en la plantilla de escritorio, con el ancho de un importe.
+    expect(rejilla().style.getPropertyValue("--plantilla-fila")).toBe(
+      "max-content minmax(0,1.2fr) minmax(0,1fr) minmax(110px,1.2fr) minmax(max-content,1fr) minmax(max-content,1fr) minmax(max-content,1fr) minmax(0,1.3fr) auto",
+    );
+  });
+
+  it("R523: sin la columna «Mensajero», la tarjeta no reserva su línea", () => {
+    montar(gestionCanvas(), { audiencia: "mensajero" });
+    expect(rejilla().className).not.toContain("mensajero_mensajero");
+  });
+
+  it("R523: sin señales, la tarjeta no reserva su línea; con señales, va debajo", () => {
+    montar(gestionFila({ gestionId: "s" }), { audiencia: "mensajero" });
+    expect(celda("senales").classList.contains("max-md:hidden")).toBe(true);
+    cleanup();
+    montar(gestionFila({ gestionId: "t", tarifaFaltante: true }), { audiencia: "mensajero" });
+    expect(celda("senales").classList.contains("max-md:[grid-area:senales]")).toBe(true);
+  });
+
+  it("R523, R493: «Devolver a gestión» y el desplegable, una sola vez y de 44 px en el teléfono", () => {
+    const g = gestionCanvas();
+    montar(g, { audiencia: "mensajero", acciones: { devolver: vi.fn() } });
+    const devolver = screen.getAllByRole("button", { name: `Devolver a gestión la orden ${g.numRemision} · ${g.destinatario}` });
+    expect(devolver).toHaveLength(1);
+    const desplegar = screen.getAllByRole("button", { name: /^(Detalle|Desglose de ingreso) de la orden REM-001/ });
+    expect(desplegar).toHaveLength(1);
+    for (const b of [devolver[0], desplegar[0]]) {
+      expect(b.classList.contains("max-md:min-h-11"), b.textContent ?? "").toBe(true);
+      expect(b.classList.contains("max-md:min-w-11"), b.textContent ?? "").toBe(true);
+    }
+  });
+
+  it("R525: desplegada, el detalle de hoy en una sola columna por debajo de 768 px", async () => {
+    const g = gestionCanvas();
+    const user = montar(g, { audiencia: "mensajero" });
+    await desplegar(user, g);
+    const orden = screen.getByText("Orden", { selector: "dt" }).closest("dl");
+    expect(orden?.classList.contains("grid-cols-1")).toBe(true);
+    expect(orden?.classList.contains("md:grid-cols-[140px_140px_minmax(0,1fr)]")).toBe(true);
+    const tarjetas = screen.getByRole("region", { name: `Tu ganancia ${DE_CANVAS}` }).parentElement;
+    expect(tarjetas?.classList.contains("grid-cols-1")).toBe(true);
+    expect(tarjetas?.classList.contains("md:grid-cols-2")).toBe(true);
+  });
+
+  it("R493: «Ver cómo se calculó» mide 44 px de alto en el teléfono", async () => {
+    const g = gestionCanvas();
+    const user = montar(g);
+    await desplegar(user, g);
+    expect(screen.getByRole("button", { name: "Ver cómo se calculó" }).classList.contains("max-md:min-h-11")).toBe(true);
   });
 });

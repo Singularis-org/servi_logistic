@@ -31,6 +31,13 @@ import {
   bloqueoTodosPorEnviar,
 } from "@/tests/fixtures/bloqueo-cierre";
 
+// SLT-165 «PWA del mensajero: Cierre del día en tarjetas» (R531): el botón del pie dice «Solicitar
+// cierre del día» con su contador dentro («3 gestiones»), que entra en el nombre accesible. El
+// botón del diálogo sigue siendo «Solicitar cierre» (C8). Las ausencias miran el prefijo: con el
+// nombre exacto de antes saldrían verdes sin mirar nada.
+const SOLICITAR_DEL_DIA = /^Solicitar cierre del día \d+ gesti(?:ón|ones)$/;
+const ALGUN_SOLICITAR_DEL_DIA = /^Solicitar cierre del día/;
+
 // Feature 37 (T15) — módulo cliente del "Cierre del día". Se mockea la Server
 // Action (solicitarCierre), el toast y el router (refresh) para afirmar la
 // composición (agrupación, totales, gate, histórico) y el envío sin DB ni sesión.
@@ -397,7 +404,7 @@ describe("CierreDiaModule", () => {
     const motivo = "Tienes paquetes en reparto que todavía no gestionaste; gestiónalos antes de cerrar.";
     renderModule({ puedesSolicitar: false, motivoBloqueo: motivo });
 
-    const boton = screen.getByRole("button", { name: "Solicitar cierre" });
+    const boton = screen.getByRole("button", { name: SOLICITAR_DEL_DIA });
     expect(boton).toBeDisabled();
     expect(boton).toHaveAccessibleDescription(motivo);
     const franja = screen.getByText("Antes de cerrar:").closest('[role="status"]');
@@ -410,7 +417,7 @@ describe("CierreDiaModule", () => {
     grupos.entregado = [makeGestion({ gestionId: "g1", resultado: "entregado" })];
     renderModule({ grupos, puedesSolicitar: true });
 
-    await user.click(screen.getByRole("button", { name: "Solicitar cierre" }));
+    await user.click(screen.getByRole("button", { name: SOLICITAR_DEL_DIA }));
     const dialog = await screen.findByRole("dialog", {
       name: "Solicitar cierre del día",
     });
@@ -429,7 +436,7 @@ describe("CierreDiaModule", () => {
     grupos.entregado = [makeGestion({ gestionId: "g1", resultado: "entregado" })];
     renderModule({ grupos, puedesSolicitar: true, cierresPasados: [CIERRE_PASADO] });
     const region = screen.getByRole("region", { name: "Cierres solicitados" });
-    expect(screen.getByRole("tab", { name: "Cierres solicitados 1" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Cierres solicitados (1)" })).toBeInTheDocument();
     // La revalidación del montaje termina ANTES de cambiar la respuesta: si no, ella sola traería
     // el cierre nuevo y el caso pasaría sin que solicitar releyera nada.
     await vi.waitFor(() => expect(vi.mocked(listarCierresPasadosPaginado)).toHaveBeenCalled());
@@ -449,14 +456,14 @@ describe("CierreDiaModule", () => {
       ...paginaInicial([nuevo, CIERRE_PASADO]),
     });
 
-    await user.click(screen.getByRole("button", { name: "Solicitar cierre" }));
+    await user.click(screen.getByRole("button", { name: SOLICITAR_DEL_DIA }));
     const dialog = await screen.findByRole("dialog", { name: "Solicitar cierre del día" });
     await user.click(within(dialog).getByRole("button", { name: "Solicitar cierre" }));
 
     expect(
       await within(region).findByRole("button", { name: "Ver del cierre del 2026-07-19" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Cierres solicitados 2" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Cierres solicitados (2)" })).toBeInTheDocument();
   });
 
   it("solicitar cierre conflict: muestra toast de error con el motivo del dominio", async () => {
@@ -469,7 +476,7 @@ describe("CierreDiaModule", () => {
     grupos.entregado = [makeGestion({ gestionId: "g1", resultado: "entregado" })];
     renderModule({ grupos, puedesSolicitar: true });
 
-    await user.click(screen.getByRole("button", { name: "Solicitar cierre" }));
+    await user.click(screen.getByRole("button", { name: SOLICITAR_DEL_DIA }));
     const dialog = await screen.findByRole("dialog", {
       name: "Solicitar cierre del día",
     });
@@ -502,7 +509,7 @@ describe("CierreDiaModule", () => {
       puedesSolicitar: true,
     });
 
-    await user.click(screen.getByRole("button", { name: "Solicitar cierre" }));
+    await user.click(screen.getByRole("button", { name: SOLICITAR_DEL_DIA }));
     const dialog = await screen.findByRole("dialog", { name: "Solicitar cierre del día" });
     const resumen = dialog.querySelector('dl[aria-label="Resumen del cierre a solicitar"]');
     expect(resumen).not.toBeNull();
@@ -782,7 +789,7 @@ describe("CierreDiaModule", () => {
     expect(cta).toBeEnabled();
     // SLT-109 (R240): la página pinta el vencido y NO el cierre de hoy, así que no hay «Solicitar
     // cierre» (antes salía deshabilitado debajo).
-    expect(screen.queryByRole("button", { name: "Solicitar cierre" })).toBeNull();
+    expect(screen.queryByRole("button", { name: ALGUN_SOLICITAR_DEL_DIA })).toBeNull();
   });
 
   it("R13: sin nada que reenviar NO aparece el CTA del vencido", () => {
@@ -835,7 +842,7 @@ describe("CierreDiaModule", () => {
     expect(cta).toBeInTheDocument();
     expect(cta).toBeEnabled();
     // SLT-109 (R240): se pinta el rechazado, no el cierre de hoy.
-    expect(screen.queryByRole("button", { name: "Solicitar cierre" })).toBeNull();
+    expect(screen.queryByRole("button", { name: ALGUN_SOLICITAR_DEL_DIA })).toBeNull();
   });
 
   // SLT-109 (R246, R255): los avisos sueltos «Cierre rechazado» y «Cierre vencido» se fueron con sus
@@ -1322,7 +1329,7 @@ describe("CierreDiaModule — feature 67: devolver a gestión", () => {
     await user.click(within(dialog).getByRole("button", { name: "Devolver a gestión" }));
 
     await vi.waitFor(() =>
-      expect(errorMock).toHaveBeenCalledWith("No podés deshacer esta gestión."),
+      expect(errorMock).toHaveBeenCalledWith("No puedes deshacer esta gestión."),
     );
     expect(refreshMock).not.toHaveBeenCalled();
     expect(listaGestiones().querySelector('[data-gestion="g1"]')).not.toBeNull();
@@ -1353,7 +1360,7 @@ describe("CierreDiaModule — feature 67: devolver a gestión", () => {
     dialog = await abrirDeshacer(user, "Devolver a gestión la orden REM-A · Ana Pérez");
     await user.click(within(dialog).getByRole("button", { name: "Devolver a gestión" }));
     await vi.waitFor(() =>
-      expect(errorMock).toHaveBeenCalledWith("No se pudo deshacer la gestión. Intentá de nuevo."),
+      expect(errorMock).toHaveBeenCalledWith("No se pudo deshacer la gestión. Inténtalo de nuevo."),
     );
     expect(refreshMock).not.toHaveBeenCalled();
   });
@@ -1439,7 +1446,7 @@ describe("CierreDiaModule — feature 67: devolver a gestión", () => {
 describe("Cierre del día — 237/D3: la gestión de la tienda no se puede devolver a gestión", () => {
   /** El motivo, escrito a mano. Es el MISMO que devuelve el servidor si se llega por otra vía. */
   const MOTIVO =
-    "Esta orden la resolvió la tienda desde su pantalla de ayuda; solo ella puede corregirlo. Escribile por el chat de la orden.";
+    "Esta orden la resolvió la tienda desde su pantalla de ayuda; solo ella puede corregirlo. Escríbele por el chat de la orden.";
 
   /** La fila única (`[data-gestion]`) que contiene ese número de guía. */
   function fila(guia: string): HTMLElement {
@@ -1506,7 +1513,7 @@ describe("Cierre del día — 237/D3: la gestión de la tienda no se puede devol
     const titulo = botonDeshacer("5555").getAttribute("title") as string;
 
     expect(titulo).toContain("la resolvió la tienda");
-    expect(titulo).toContain("Escribile por el chat de la orden");
+    expect(titulo).toContain("Escríbele por el chat de la orden");
   });
 
   it("pulsarlo NO abre el modal que promete devolver la orden, ni llama al servidor", async () => {
@@ -1545,5 +1552,49 @@ describe("Cierre del día — 237/D3: la gestión de la tienda no se puede devol
     await vi.waitFor(() => expect(errorMock).toHaveBeenCalledWith(MOTIVO));
     expect(successMock).not.toHaveBeenCalled();
     expect(refreshMock).not.toHaveBeenCalled();
+  });
+});
+
+// SLT-165 «PWA del mensajero: Cierre del día en tarjetas» (D4; R531, R533). El diálogo de hoy se
+// fija con test: título, resumen, «Solicitar cierre» y «Cancelar», que cierra SIN enviar nada.
+describe("SLT-165 R531, R533 — «Solicitar cierre del día» y su diálogo", () => {
+  function conDosEntregas() {
+    const grupos = emptyGrupos();
+    grupos.entregado = [
+      makeGestion({ gestionId: "e1", resultado: "entregado", numRemision: "REM-E1" }),
+      makeGestion({ gestionId: "e2", resultado: "entregado", numRemision: "REM-E2" }),
+    ];
+    renderModule({ grupos, puedesSolicitar: true });
+  }
+
+  it("R531: el botón del pie lleva el contador de las gestiones de hoy", () => {
+    conDosEntregas();
+    expect(screen.getByRole("button", { name: "Solicitar cierre del día 2 gestiones" })).toBeEnabled();
+  });
+
+  it("R533: abre «Solicitar cierre del día» con su resumen, «Solicitar cierre» y «Cancelar»", async () => {
+    const user = userEvent.setup();
+    conDosEntregas();
+    await user.click(screen.getByRole("button", { name: SOLICITAR_DEL_DIA }));
+    const dialog = await screen.findByRole("dialog", { name: "Solicitar cierre del día" });
+    expect(within(dialog).getByRole("button", { name: "Solicitar cierre" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Cancelar" })).toBeInTheDocument();
+    const resumen = dialog.querySelector('dl[aria-label="Resumen del cierre a solicitar"]');
+    expect(Array.from(resumen?.querySelectorAll("dt") ?? []).map((d) => d.textContent)).toEqual([
+      "Gestiones",
+      "Recaudado",
+      "Tu ganancia",
+    ]);
+  });
+
+  it("R533: «Cancelar» cierra el diálogo sin enviar nada", async () => {
+    const user = userEvent.setup();
+    conDosEntregas();
+    await user.click(screen.getByRole("button", { name: SOLICITAR_DEL_DIA }));
+    const dialog = await screen.findByRole("dialog", { name: "Solicitar cierre del día" });
+    await user.click(within(dialog).getByRole("button", { name: "Cancelar" }));
+    await vi.waitFor(() => expect(screen.queryByRole("dialog", { name: "Solicitar cierre del día" })).toBeNull());
+    expect(solicitarMock).not.toHaveBeenCalled();
+    expect(successMock).not.toHaveBeenCalled();
   });
 });

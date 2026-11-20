@@ -378,6 +378,16 @@ export const CATALOGO_AVISOS: Record<NotificacionEvento, EntradaCatalogo> = {
     },
     destinatarios: ["maestro", "admin", "adminSatelite"],
   },
+  // SLT-136 (R23) — se cerro una factura de la plataforma. Accionable: el maestro la revisa y la descarga en
+  // «Mi plan», que solo el ve (SLT-91). La ruta va escrita aqui por la enmienda explicita de la guardia de
+  // SLT-91 R10 (R32); la guardia R5 de este catalogo comprueba que el maestro ve la ruta.
+  factura_plataforma_emitida: {
+    porDefecto: {
+      clase: "accionable",
+      atajo: { href: "/mi-plan", etiqueta: "Ver factura" },
+    },
+    destinatarios: ["maestro"],
+  },
 };
 
 /**

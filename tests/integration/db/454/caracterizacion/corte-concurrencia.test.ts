@@ -7,11 +7,12 @@ import {
   crearPrismaDeTest,
 } from "../../_postgres-real";
 import {
+  ESCENARIO_C02,
+  clienteDeLaApp454,
+  enEmpresaDe,
   entradaGestion,
   limpiarComprometido,
   montarServicios,
-  prepararMundo,
-  sembrarComprometido,
   type Comprometido,
   type Mundo,
 } from "../_escenario";
@@ -25,7 +26,7 @@ import {
  * confirma. Invariante: NUNCA a la vez una gestion vigente de O y una fila `cierre_sin_gestion` de O.
  *
  * Es el unico escenario de la fase que CONFIRMA datos (dos conexiones reales): cada repeticion siembra
- * su mundo y lo borra por id al terminar.
+ * su mundo y lo borra por id al terminar. Si el worker muere antes (D80), lo barre el arranque siguiente.
  */
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
@@ -49,11 +50,18 @@ describeSiHayBase("454/C02 — corte y gestion concurrentes (Postgres real, dos 
   }
 
   async function unaRepeticion(): Promise<(typeof resultados)[number]> {
-    const s = await sembrarComprometido(mundo, async (e) => {
+    // SLT-204 (D80): siembra con la marca de C02 (`ESCENARIO_C02`), para que un resto se reconozca.
+    const s = await ESCENARIO_C02.sembrar(mundo, async (e) => {
       const o = await e.sembrarOrden({ estatus: "en_reparto", montoCobrar: 4000 });
       return { ordenIds: [o.ordenId] };
     });
     sembrados.push(s);
+    // SLT-185 (R1146): control positivo: la empresa y la central propias del escenario estan confirmadas.
+    expect(await mundo.prisma.organizacion.count({ where: { id: s.organizacionId } }), "SLT-185: empresa sembrada").toBe(1);
+    expect(
+      await mundo.prisma.zona.count({ where: { id: s.centralZonaId ?? "-", esCentral: true, organizacionId: s.organizacionId } }),
+      "SLT-185: central sembrada",
+    ).toBe(1);
     const ordenId = s.ordenIds[0];
 
     let soltarA!: () => void;
@@ -62,49 +70,58 @@ describeSiHayBase("454/C02 — corte y gestion concurrentes (Postgres real, dos 
     const listo = new Promise<void>((r) => (aListo = r));
 
     // A: registra la gestion por el SERVICIO real, dentro de su tx, y espera antes de confirmar.
-    const a = prismaA.$transaction(
-      async (txA) => {
-        const svc = montarServicios(clienteConTransaccionAnidada(txA));
-        await svc.misAsignaciones.escogerParaGestion(ordenId, s.actorMensajero);
-        const r = await svc.misAsignaciones.gestionar(
-          entradaGestion(ordenId, "entregado", { monto: 4000 }),
-          s.actorMensajero,
-        );
-        aListo();
-        await soltar;
-        return r.status;
-      },
-      { timeout: 30_000, maxWait: 15_000 },
-    );
-    await listo;
+    // SLT-185 (R1144): A y B escriben con la empresa del escenario, por la envoltura de produccion.
+    return enEmpresaDe(s, async () => {
+      const a = prismaA.$transaction(
+        async (txA) => {
+          const svc = montarServicios(clienteConTransaccionAnidada(txA));
+          await svc.misAsignaciones.escogerParaGestion(ordenId, s.actorMensajero);
+          const r = await svc.misAsignaciones.gestionar(
+            entradaGestion(ordenId, "entregado", { monto: 4000 }),
+            s.actorMensajero,
+          );
+          aListo();
+          await soltar;
+          return r.status;
+        },
+        { timeout: 30_000, maxWait: 15_000 },
+      );
+      await listo;
 
-    // B: el corte REAL, con su propia conexion, recortado a este mensajero.
-    const b = montarServicios(prismaB).corteDe([s.mensajeroId]).ejecutarCorte(new Date());
+      // B: el corte REAL, con su propia conexion, recortado a este mensajero.
+      const b = montarServicios(prismaB).corteDe([s.mensajeroId]).ejecutarCorte(new Date());
 
-    let bEsperoAlCandado = false;
-    for (let i = 0; i < 100 && !bEsperoAlCandado; i++) {
-      bEsperoAlCandado = await bloqueadoEnUpdateDeOrden();
-      if (!bEsperoAlCandado) await esperar(50);
-    }
-    soltarA();
-    const estadoA = await a;
-    await b;
+      let bEsperoAlCandado = false;
+      for (let i = 0; i < 100 && !bEsperoAlCandado; i++) {
+        bEsperoAlCandado = await bloqueadoEnUpdateDeOrden();
+        if (!bEsperoAlCandado) await esperar(50);
+      }
+      soltarA();
+      const estadoA = await a;
+      await b;
 
-    const vigentes = await sonda.gestionOrden.count({ where: { ordenId, anuladaAt: null } });
-    const barridas = await sonda.cierreSinGestion.count({ where: { ordenId } });
-    return { vigentes, barridas, bEsperoAlCandado, gestion: estadoA };
+      const vigentes = await sonda.gestionOrden.count({ where: { ordenId, anuladaAt: null } });
+      const barridas = await sonda.cierreSinGestion.count({ where: { ordenId } });
+      return { vigentes, barridas, bEsperoAlCandado, gestion: estadoA };
+    });
   }
 
   beforeAll(async () => {
-    mundo = await prepararMundo();
-    prismaA = crearPrismaDeTest();
-    prismaB = crearPrismaDeTest();
+    // SLT-204 (D80): si una corrida anterior murio con el worker, su escenario confirmado sigue aqui
+    // (con la marca de C02 en el nombre de la empresa): `preparar` lo barre antes de sembrar el de hoy.
+    mundo = await ESCENARIO_C02.preparar();
+    prismaA = clienteDeLaApp454(crearPrismaDeTest());
+    prismaB = clienteDeLaApp454(crearPrismaDeTest());
     sonda = crearPrismaDeTest();
     for (let i = 0; i < REPETICIONES; i++) resultados.push(await unaRepeticion());
   }, 600_000);
 
   afterAll(async () => {
     for (const s of sembrados) await limpiarComprometido(mundo.prisma, s);
+    // SLT-185 (R1145): tras limpiar no queda ni la empresa ni sus zonas (central incluida).
+    const empresas = sembrados.map((s) => s.organizacionId);
+    expect(await mundo.prisma.organizacion.count({ where: { id: { in: empresas } } }), "SLT-185: empresas borradas").toBe(0);
+    expect(await mundo.prisma.zona.count({ where: { organizacionId: { in: empresas } } }), "SLT-185: zonas borradas").toBe(0);
     await prismaA?.$disconnect();
     await prismaB?.$disconnect();
     await sonda?.$disconnect();

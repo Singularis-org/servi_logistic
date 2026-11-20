@@ -4,9 +4,10 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   type FksDeOrden,
+  type TxDeTest,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 
 // Feature 169 / T1.9 — el dato derivado se mantiene solo (R26), y NADIE puede escribirlo
 // (R27/R28). Contra Postgres real, dentro de una transaccion que siempre se revierte.
@@ -30,27 +31,43 @@ async function leerBusquedaTexto(
   return filas[0]?.busqueda_texto ?? null;
 }
 
+/**
+ * SLT-181 — tienda y zona nacen en la tx del caso (nada de leer la primera orden de la base).
+ * Control positivo: si la siembra no llega, el caso cae nombrando la fila.
+ */
+async function sembrarFks(tx: TxDeTest): Promise<FksDeOrden> {
+  const fks = await crearFksDeOrden(tx);
+  expect(
+    await tx.usuario.count({ where: { id: fks.tiendaId } }),
+    "SLT-181: la tienda sembrada no esta en la base",
+  ).toBe(1);
+  expect(
+    await tx.zona.count({ where: { id: fks.zonaId } }),
+    "SLT-181: la zona sembrada no esta en la base",
+  ).toBe(1);
+  return fks;
+}
+
 describeSiHayBase("orden.busqueda_texto se sincroniza sola con los campos buscables", () => {
   let prisma: PrismaClient;
-  let fks: FksDeOrden | null;
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    fks = await fksDeOrden(prisma);
   });
 
   afterAll(async () => {
     await prisma?.$disconnect();
   });
 
-  it("hay ordenes de las que tomar las FKs", () => {
+  it("hay ordenes de las que tomar las FKs", async () => {
+    // SLT-181 — las FKs se siembran en la tx de cada caso; aqui, el control positivo.
+    const fks = await enTransaccionRevertida(prisma, (tx) => sembrarFks(tx));
     expect(fks).not.toBeNull();
   });
 
   it("al CREAR, la orden ya se encuentra por sus cuatro datos sin accion adicional (R26)", async () => {
-    if (!fks) return;
-    const base = fks;
     const encontrada = await enTransaccionRevertida(prisma, async (tx) => {
+      const base = await sembrarFks(tx);
       const creada = await tx.orden.create({
         data: {
           numGuia: 918273,
@@ -81,14 +98,13 @@ describeSiHayBase("orden.busqueda_texto se sincroniza sola con los campos buscab
   });
 
   it("se encuentra tambien por el PRODUCTO, y con acentos plegados como el resto", async () => {
-    if (!fks) return;
-    const base = fks;
     // Migracion `20260808120000_orden_busqueda_producto`. Lo que se comprueba no es solo
     // que el texto contenga el producto, sino que lo contenga NORMALIZADO igual que los
     // otros cinco segmentos: teclear "cafe" tiene que encontrar "Café Molido". Un
     // `ILIKE` sobre la columna cruda —la via sin migracion— baja la caja pero NO pliega
     // el acento, y este caso es el que lo distingue.
     const resultado = await enTransaccionRevertida(prisma, async (tx) => {
+      const base = await sembrarFks(tx);
       const creada = await tx.orden.create({
         data: {
           numRemision: `REM-${SUFIJO}-PROD`,
@@ -129,9 +145,8 @@ describeSiHayBase("orden.busqueda_texto se sincroniza sola con los campos buscab
   });
 
   it("al MODIFICAR el destinatario, se encuentra por el nuevo y NO por el anterior (R26)", async () => {
-    if (!fks) return;
-    const base = fks;
     const resultado = await enTransaccionRevertida(prisma, async (tx) => {
+      const base = await sembrarFks(tx);
       const creada = await tx.orden.create({
         data: {
           numRemision: `REM-${SUFIJO}-UPD`,
@@ -169,9 +184,8 @@ describeSiHayBase("orden.busqueda_texto se sincroniza sola con los campos buscab
   });
 
   it("al asignar la GUIA despues, la orden pasa a encontrarse por ella (R26)", async () => {
-    if (!fks) return;
-    const base = fks;
     const resultado = await enTransaccionRevertida(prisma, async (tx) => {
+      const base = await sembrarFks(tx);
       const creada = await tx.orden.create({
         data: {
           numRemision: `REM-${SUFIJO}-GUIA`,
@@ -204,12 +218,11 @@ describeSiHayBase("orden.busqueda_texto se sincroniza sola con los campos buscab
   });
 
   it("escribir la columna a mano es IMPOSIBLE: Postgres lo rechaza (R27)", async () => {
-    if (!fks) return;
-    const base = fks;
     // La garantia de R27 no descansa en la disciplina de quien escriba el proximo
     // repositorio: descansa en el motor. Si alguien intenta escribirla, revienta la
     // escritura entera, no se cuela un dato inconsistente.
     const fallo = await enTransaccionRevertida(prisma, async (tx) => {
+      const base = await sembrarFks(tx);
       const creada = await tx.orden.create({
         data: {
           numRemision: `REM-${SUFIJO}-RO`,
@@ -243,9 +256,26 @@ describeSiHayBase("orden.busqueda_texto se sincroniza sola con los campos buscab
   });
 
   it("una lectura normal NO trae la columna: no viaja a ningun DTO (R28)", async () => {
-    if (!fks) return;
-    const filas = await prisma.orden.findMany({ take: 1 });
-    if (filas.length === 0) return;
+    // SLT-181 — la orden leida es una sembrada aqui, no «la primera» de la base.
+    const filas = await enTransaccionRevertida(prisma, async (tx) => {
+      const base = await sembrarFks(tx);
+      const creada = await tx.orden.create({
+        data: {
+          numRemision: `REM-${SUFIJO}-DTO`,
+          destinatario: "Lectura Normal",
+          telefonoDest: "88883333",
+          producto: "caja",
+          estatusId: base.estatusId,
+          tiendaId: base.tiendaId,
+          zonaId: base.zonaId,
+          provinciaId: base.provinciaId,
+          cantonId: base.cantonId,
+        },
+        select: { id: true },
+      });
+      return tx.orden.findMany({ where: { id: creada.id }, take: 1 });
+    });
+    expect(filas, "SLT-181: la orden sembrada no esta en la base").toHaveLength(1);
     expect(Object.keys(filas[0])).not.toContain("busquedaTexto");
     expect(filas[0]).not.toHaveProperty("busquedaTexto");
   });

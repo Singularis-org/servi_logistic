@@ -16,7 +16,16 @@ import type {
   ReinicioDelCiclo,
   UsoDelPlan,
 } from "@/lib/types/consumo-plan";
-import { ROLES_CON_TOPE, type PlanDTO, type PrecioPlan, type TipoCobro, type TopesPlan, type VersionPlan } from "@/lib/types/planes";
+import {
+  ROLES_CON_TOPE,
+  type NoAplicadaVista,
+  type PendienteDelDetalle,
+  type PlanDTO,
+  type PrecioPlan,
+  type TipoCobro,
+  type TopesPlan,
+  type VersionPlan,
+} from "@/lib/types/planes";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 
 // SLT-58 (design §6.1) — el consumo del plan tal como se pinta, sin React ni base: lo comparten «Mi
@@ -108,12 +117,37 @@ function comoPlanDTO(version: VersionPlan): PlanDTO {
 /** R7, R16, R19: la fecha (hora de la plataforma) y las mismas líneas de «qué cambia» que el correo de SL-24. */
 export function cambioPendienteDelPlan(vigente: VersionPlan, cambio: CambioDelPlanLeido): CambioPendienteVista {
   const antes = comoPlanDTO(vigente);
-  const diferencias = diferenciasDelPlan(antes, { ...antes, ...cambio.version });
+  // SLT-215 (R20): `plan_de_la_empresa` («Mi plan») no trae los niveles (son de SLT-216). Sin ellos en la vigente no
+  // se comparan: si no, cada versión con niveles saldría como «Sin niveles → …» aunque no los cambie.
+  const despues: PlanDTO = { ...antes, ...cambio.version };
+  if (vigente.niveles === undefined) delete despues.niveles;
+  const diferencias = diferenciasDelPlan(antes, despues);
   return {
     vigenteDesde: fechaCalendarioCR(cambio.vigenteDesde),
     // Mismo molde que el job del correo: `diferenciasDelPlan` deja `{ antes, despues }` como `unknown`.
     lineas: lineasDeCambioDelPlan(diferencias as CambioDelPlanParaCorreo),
   };
+}
+
+/**
+ * SLT-128 (design §7; R11): el cambio programado del detalle del plan, con lo mismo que `cambioPendienteDelPlan`
+ * y el conteo de recepciones que pinta «N de M empresas ya lo recibieron».
+ */
+export function pendienteDelDetalle(
+  vigente: VersionPlan,
+  cambio: CambioDelPlanLeido & { recibidas: number; total: number },
+): PendienteDelDetalle {
+  return { ...cambioPendienteDelPlan(vigente, cambio), recibidas: cambio.recibidas, total: cambio.total };
+}
+
+/**
+ * SLT-128 (design §14.3; R28): las empresas que no recibieron el cambio, como las pinta el detalle del plan
+ * (`lineaNoAplicada`), con la fecha en ISO.
+ */
+export function noAplicadasDelDetalle(
+  leidas: readonly { empresaId: string; empresa: string; motivo: NoAplicadaVista["motivo"]; desde: Date }[],
+): NoAplicadaVista[] {
+  return leidas.map((n) => ({ empresaId: n.empresaId, empresa: n.empresa, motivo: n.motivo, desde: n.desde.toISOString() }));
 }
 
 /** R1–R7, R19: el plan como se pinta, el mismo en «Mi plan» y en el detalle de empresa del superadmin. */
@@ -130,6 +164,7 @@ export function planConConsumo(leido: PlanConUsoLeido, ahora: Date): PlanConCons
       clave,
       nombre: nombreDelModulo(clave),
     })),
+    beneficios: vigente.beneficios ?? [],
     filas: filasDeConsumo(vigente.topes, leido.uso),
     ordenesDelPeriodo: leido.uso.ordenes,
     reinicio: reinicioDelCiclo(leido.tipoCobro, ahora),

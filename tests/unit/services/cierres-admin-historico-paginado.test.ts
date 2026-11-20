@@ -14,6 +14,7 @@ import type { RangoPagina } from "@/lib/utils/rango-pagina";
 import { ESTADOS_COLA_CIERRE_DIA } from "@/lib/utils/colas-cierre";
 import { listarHistoricoCierresAdminSchema } from "@/lib/types/cierres-admin";
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { dobleCierresAdmin } from "@/tests/fixtures/dobles/cierres-admin-repository";
 
 // Feature 170 — FASE 2, T I.1 (R40/R41/R44/R51/R54) — «Cierres del dia: historico» paginado.
 //
@@ -154,14 +155,10 @@ function repoEnMemoria(filas: CierreAdminResumenRow[] = ALMACEN) {
     };
   });
 
-  const repo = {
+  const repo = dobleCierresAdmin({
     findCierresByAlcance,
     findHistoricoPaginado,
-    findCierreByIdEnAlcance: vi.fn(async () => null),
-    findGestionesIncidenteDelCierre: vi.fn(async () => []),
-    resolverCierre: vi.fn(async () => "updated" as const),
-    forzarSolicitudVencido: vi.fn(async () => "updated" as const),
-  } as unknown as ICierresAdminRepository;
+  });
 
   return { repo, llamadas, findCierresByAlcance, findHistoricoPaginado };
 }

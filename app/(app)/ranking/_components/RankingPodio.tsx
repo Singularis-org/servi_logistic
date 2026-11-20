@@ -3,8 +3,10 @@
 import { Award, Crown, Medal, Trophy } from "lucide-react";
 
 import { EmptyState } from "@/components/shared/EmptyState";
+import { COLUMNA_FIJA, TEXTO_ENTERO } from "@/components/shared/texto-entero";
 import { Card, CardContent } from "@/components/ui/card";
 import type { RankingRowDTO } from "@/lib/types/ranking";
+import { cn } from "@/lib/utils";
 
 import {
   PODIO_LABELS,
@@ -23,6 +25,20 @@ import {
 // STRING (R12) — aquí solo se anteponen símbolos, nunca se recalculan. La única lectura
 // numérica es `anchoBarra`, y es puramente visual (ancho CSS de la barra).
 // Nota: es solo-lectura. La edición de premios sigue viviendo en `RankingModule`.
+//
+// SLT-162 «Ranking del mensajero en tarjetas en el móvil»: ningún dato se recorta (R758), escala de
+// 4 px (R765), la fila del resto en una línea en el teléfono (R767) y nada de letra menor de 12 px en
+// el teléfono (R768, `max-md:text-xs` sobre los 10-11 px de escritorio).
+
+/**
+ * SLT-162 (R750, R767) — el chip «Tú» de la fila del mensajero que mira. Lo comparten la lista del
+ * resto del podio y la tarjeta de «Ranking del día» (`RankingModule`), para que se vean igual.
+ */
+export const CHIP_TU =
+  "shrink-0 rounded-full bg-brand px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-primary-foreground max-md:text-xs";
+
+/** SLT-162 (R768): la letra de 11 px de escritorio sube a 12 px en el teléfono. */
+const LETRA_MENUDA = "text-[11px] max-md:text-xs";
 
 /** Paleta de cada escalón del podio, en tokens de marca (DESIGN.md: nada de hex sueltos
  * ni utilidades crudas de Tailwind). Oro → warning/hivis, plata → asfalto, bronce → brand.
@@ -45,7 +61,7 @@ const ESCALONES = {
     premio: "bg-warning text-navy-deep",
     alto: "h-32",
     avatar: "size-16 text-lg",
-    porcentaje: "text-3xl",
+    porcentaje: "text-3xl max-md:text-lg",
     nombre: "text-sm",
   },
   2: {
@@ -55,7 +71,7 @@ const ESCALONES = {
     premio: "bg-asfalto-2 text-asfalto-9",
     alto: "h-24",
     avatar: "size-14 text-base",
-    porcentaje: "text-2xl",
+    porcentaje: "text-2xl max-md:text-lg",
     nombre: "text-[13px]",
   },
   3: {
@@ -65,7 +81,7 @@ const ESCALONES = {
     premio: "bg-brand-light text-navy-deep",
     alto: "h-20",
     avatar: "size-14 text-base",
-    porcentaje: "text-2xl",
+    porcentaje: "text-2xl max-md:text-lg",
     nombre: "text-[13px]",
   },
 } as const;
@@ -96,7 +112,7 @@ function EscalonPodio({
         {destacado ? (
           <Crown
             size={22}
-            className="mx-auto mb-0.5 text-hivis opacity-40"
+            className="mx-auto mb-1 text-hivis opacity-40"
             aria-hidden="true"
           />
         ) : null}
@@ -108,10 +124,10 @@ function EscalonPodio({
         >
           {SIN_DATO}
         </div>
-        <div className={`${s.nombre} font-medium text-muted-foreground`}>
+        <div className={cn(s.nombre, "font-medium text-muted-foreground", TEXTO_ENTERO)}>
           {PODIO_LABELS.sinOcupante}
         </div>
-        <div className="mb-2 text-[11px] text-muted-foreground">{SIN_DATO}</div>
+        <div className={cn("mb-2 text-muted-foreground", LETRA_MENUDA)}>{SIN_DATO}</div>
         <div
           className={`${s.alto} ${s.fondo} flex flex-col items-center rounded-t-xl px-2 pb-3 pt-4`}
         >
@@ -119,7 +135,7 @@ function EscalonPodio({
           <div className={`${s.porcentaje} ${s.texto} mt-1 font-medium opacity-50`}>
             {SIN_DATO}
           </div>
-          <div className={`text-[11px] ${s.texto}`}>{PODIO_LABELS.lugar(posicion)}</div>
+          <div className={cn(s.texto, LETRA_MENUDA)}>{PODIO_LABELS.lugar(posicion)}</div>
         </div>
       </li>
     );
@@ -128,7 +144,7 @@ function EscalonPodio({
   return (
     <li className="flex flex-col justify-end text-center">
       {destacado ? (
-        <Crown size={22} className="mx-auto mb-0.5 text-hivis" aria-hidden="true" />
+        <Crown size={22} className="mx-auto mb-1 text-hivis" aria-hidden="true" />
       ) : null}
       <div
         className={`mx-auto mb-2 ${s.avatar} ${s.fondo} ${s.aro} ${s.texto} flex items-center justify-center rounded-full font-medium ring-2`}
@@ -136,8 +152,8 @@ function EscalonPodio({
       >
         {iniciales(fila.nombre)}
       </div>
-      <div className={`${s.nombre} font-medium text-foreground`}>{fila.nombre}</div>
-      <div className="mb-2 text-[11px] text-muted-foreground tabular-nums">
+      <div className={cn(s.nombre, "font-medium text-foreground", TEXTO_ENTERO)}>{fila.nombre}</div>
+      <div className={cn("mb-2 text-muted-foreground tabular-nums", LETRA_MENUDA)}>
         {conteoCrudo(fila.entregadasHoy, fila.asignadasHoy)} {PODIO_LABELS.conteoSufijo}
       </div>
       <div
@@ -147,10 +163,14 @@ function EscalonPodio({
         <div className={`${s.porcentaje} ${s.texto} mt-1 font-medium tabular-nums`}>
           {porcentaje(fila.pct)}
         </div>
-        <div className={`text-[11px] ${s.texto}`}>{PODIO_LABELS.lugar(posicion)}</div>
+        <div className={cn(s.texto, LETRA_MENUDA)}>{PODIO_LABELS.lugar(posicion)}</div>
         {fila.premio !== null ? (
           <div
-            className={`${s.premio} mt-2.5 rounded-full px-3 py-1 text-[13px] font-medium tabular-nums`}
+            className={cn(
+              s.premio,
+              "mt-3 max-w-full rounded-full px-3 py-1 text-[13px] font-medium tabular-nums",
+              TEXTO_ENTERO,
+            )}
           >
             {money(fila.premio)}
           </div>
@@ -170,42 +190,46 @@ function FilaResto({
   /** Fila del mensajero que está mirando: se realza el fondo para que se ubique de un vistazo. */
   esPropio?: boolean;
 }) {
+  // SLT-162 (R767): en el teléfono, UNA línea —lugar, nombre (con «Tú») que envuelve, conteo sin
+  // partirse y porcentaje en columna fija—, sin barra. El envoltorio de nombre y conteo se disuelve
+  // (`max-md:contents`) para que los dos sean hermanos del lugar y del porcentaje; en escritorio
+  // (≥ 768 px) la fila sigue siendo la rejilla de hoy, con el conteo bajo el nombre y la barra.
   return (
     <li
-      className={`grid grid-cols-[28px_1fr_52px] items-center gap-2.5 border-b border-border px-1.5 py-2 last:border-b-0 sm:grid-cols-[28px_1fr_120px_52px] ${
-        esPropio
-          ? "rounded-md border-b-transparent bg-accent px-2.5 ring-1 ring-brand-light"
-          : ""
-      }`}
+      className={cn(
+        "flex items-center gap-3 border-b border-border px-2 py-2 last:border-b-0 md:grid md:grid-cols-[28px_1fr_120px_52px]",
+        esPropio && "rounded-md border-b-transparent bg-accent px-3 ring-1 ring-brand-light",
+      )}
     >
       <span
-        className={`text-center text-[13px] font-medium tabular-nums ${
-          esPropio ? "text-brand-dark dark:text-brand-light" : "text-muted-foreground"
-        }`}
+        data-columna="lugar"
+        className={cn(
+          "w-5 shrink-0 text-center text-[13px] font-medium tabular-nums md:w-auto",
+          esPropio ? "text-brand-dark dark:text-brand-light" : "text-muted-foreground",
+        )}
       >
         {lugar}
       </span>
-      <div className="min-w-0">
-        <div className="flex items-center gap-1.5">
+      <div className="min-w-0 max-md:contents">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 max-md:flex-1">
           <span
-            className={`truncate text-[13px] ${
-              esPropio ? "font-medium text-brand-dark dark:text-brand-light" : "text-foreground"
-            }`}
+            data-columna="nombre"
+            className={cn(
+              "text-[13px] max-md:text-sm",
+              TEXTO_ENTERO,
+              esPropio ? "font-medium text-brand-dark dark:text-brand-light" : "text-foreground",
+            )}
           >
             {fila.nombre}
           </span>
-          {esPropio ? (
-            <span className="shrink-0 rounded-full bg-brand px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary-foreground">
-              {PODIO_LABELS.vos}
-            </span>
-          ) : null}
+          {esPropio ? <span className={CHIP_TU}>{PODIO_LABELS.vos}</span> : null}
         </div>
-        <div className="text-[11px] text-muted-foreground tabular-nums">
+        <div data-columna="conteo" className={cn("text-muted-foreground", LETRA_MENUDA, COLUMNA_FIJA)}>
           {conteoCrudo(fila.entregadasHoy, fila.asignadasHoy)} {PODIO_LABELS.conteoSufijo}
         </div>
       </div>
       <div
-        className="hidden h-[7px] overflow-hidden rounded-full bg-muted sm:block"
+        className="hidden h-[7px] overflow-hidden rounded-full bg-muted md:block"
         aria-hidden="true"
       >
         <div
@@ -213,7 +237,10 @@ function FilaResto({
           style={{ width: `${anchoBarra(fila.pct)}%` }}
         />
       </div>
-      <span className="text-right text-sm font-medium text-foreground tabular-nums">
+      <span
+        data-columna="porcentaje"
+        className={cn("text-right text-sm font-medium text-foreground", COLUMNA_FIJA)}
+      >
         {porcentaje(fila.pct)}
       </span>
     </li>
@@ -275,15 +302,15 @@ export function RankingPodio({
       <CardContent className="pt-6">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="flex items-center gap-1.5 text-[18px] font-medium text-foreground">
+            <div className="flex items-center gap-2 text-[18px] font-medium text-foreground">
               <Trophy size={19} className="text-warning-strong" aria-hidden="true" />
               {PODIO_LABELS.titulo}
             </div>
-            <p className="mt-0.5 text-[12px] text-muted-foreground">
+            <p className="mt-1 text-[12px] text-muted-foreground">
               {PODIO_LABELS.descripcion}
             </p>
           </div>
-          <span className="shrink-0 rounded-full border border-border bg-muted px-2.5 py-1 text-[12px] font-medium text-muted-foreground">
+          <span className="shrink-0 rounded-full border border-border bg-muted px-3 py-1 text-[12px] font-medium text-muted-foreground">
             {PODIO_LABELS.contador(ranking.length)}
           </span>
         </div>
@@ -297,7 +324,7 @@ export function RankingPodio({
             {/* Podio en orden visual 2º - 1º - 3º (el 1º al centro y más alto). */}
             <ul
               aria-label={PODIO_LABELS.podioAria}
-              className="mb-2 mt-5 grid grid-cols-3 items-end gap-2.5"
+              className="mb-2 mt-5 grid grid-cols-3 items-end gap-2"
             >
               <EscalonPodio fila={podio[1]} posicion={2} />
               <EscalonPodio fila={podio[0]} posicion={1} />
@@ -306,7 +333,7 @@ export function RankingPodio({
 
             {restoVisible.length > 0 || filaPropia !== null ? (
               <>
-                <div className="my-3.5 h-1 rounded-full bg-muted" aria-hidden="true" />
+                <div className="my-4 h-1 rounded-full bg-muted" aria-hidden="true" />
                 <ul aria-label={PODIO_LABELS.listaAria}>
                   {restoVisible.map((fila, i) => (
                     <FilaResto
@@ -320,7 +347,7 @@ export function RankingPodio({
 
                 {filaPropia !== null ? (
                   <div className="mt-3">
-                    <p className="mb-1.5 px-1.5 text-[11px] text-muted-foreground">
+                    <p className={cn("mb-2 px-2 text-muted-foreground", LETRA_MENUDA)}>
                       {PODIO_LABELS.fueraDelTop(limite ?? 0)}
                     </p>
                     <ul>

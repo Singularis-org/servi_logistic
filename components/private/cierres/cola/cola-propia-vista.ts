@@ -76,6 +76,23 @@ export function columnasColaPropia(): ColumnaPropia[] {
   ];
 }
 
+/**
+ * SLT-156 (R535) con SLT-191 (R818-R820) — en el teléfono, la MISMA tabla con dos columnas: «Cierre»
+ * (el folio arriba, «Solicitado …» con el estado y «Destino: …» debajo) y «Ganancia» (rótulo e
+ * importe en su columna fija). El desplegable de la fila solo trae «Ver»; recaudado y pago no se ven
+ * en el teléfono (DC1). «Descargar» no cambia (R538): no sale de estas columnas.
+ */
+export type ColumnaPropiaMovilId = "cierre" | "ganancia";
+export function columnasColaPropiaMovil(): { id: ColumnaPropiaMovilId; label: string; align?: "right" }[] {
+  return [
+    { id: "cierre", label: "Cierre" },
+    { id: "ganancia", label: "Ganancia", align: "right" },
+  ];
+}
+
+/** El nombre accesible del desplegable de una fila en el teléfono: el día del cierre. */
+export const masDatosPropioLabel = (dia: string): string => `Más datos del cierre del ${dia}`;
+
 // ═══ Celdas (R156, R157) ════════════════════════════════════════════════════════════════════════
 
 /** R156: el rótulo del tipo de destino, sin la zona. */

@@ -23,6 +23,8 @@ export const MODULO_POR_RUTA: Readonly<Record<string, Destino>> = {
   // núcleo
   "/dashboard": "nucleo",
   "/ordenes": "nucleo",
+  // SLT-159: la página «Recibir paquetes» de escritorio (central y tienda; satélite abajo).
+  "/ordenes/recibir": "nucleo",
   // Redirige a `/mis-asignaciones/reparto` (Entregas, núcleo): no pinta nada propio.
   "/mis-asignaciones": "nucleo",
   "/mis-asignaciones/reparto": "nucleo",
@@ -59,6 +61,7 @@ export const MODULO_POR_RUTA: Readonly<Record<string, Destino>> = {
   "/recepcion-satelite": "nucleo",
   "/recepcion-satelite/por-recibir": "nucleo",
   "/recepcion-satelite/en-bodega": "nucleo",
+  "/recepcion-satelite/recibir": "nucleo",
   "/mi-bodega": "nucleo",
   // analitica, monitoreo
   "/analitica": "analitica",
@@ -173,6 +176,9 @@ export const MODULO_POR_ACTION: Readonly<Record<string, Destino>> = {
   "envio-devolucion-central": "nucleo",
   "eliminar-orden": "nucleo",
   "etiquetas-guia": "nucleo",
+  // SLT-119: el detalle de una factura de la plataforma, en «Mi plan» (maestro) y en el detalle de empresa
+  // (superadmin), ambas núcleo.
+  "facturas-plataforma": "nucleo",
   "filtros-ordenes": "nucleo",
   geografia: "nucleo",
   "geografia-plataforma": "nucleo",
@@ -193,17 +199,25 @@ export const MODULO_POR_ACTION: Readonly<Record<string, Destino>> = {
   "ordenes-guia": "nucleo",
   "order-status": "nucleo",
   organizaciones: "nucleo",
+  // SLT-60: el superadmin confirma los pagos a la plataforma en el detalle de la empresa, de plataforma.
+  "pagos-plataforma": "nucleo",
   "password-reset": "nucleo",
+  // SLT-221: el canje público del cambio de correo, núcleo como `password-reset`.
+  "confirmar-correo": "nucleo",
   // SLT-99: el cambio de plan del maestro en «Mi plan», que es núcleo como su ruta.
   "mi-plan": "nucleo",
   // SL-24: de plataforma, como `modulos-empresa` (solo el superadmin).
   planes: "nucleo",
+  // SLT-129: el borrador de planes del superadmin, de plataforma como `planes`.
+  "plan-borrador": "nucleo",
   "postulacion-mensajero": "nucleo",
   "postulacion-recurso": "nucleo",
   push: "nucleo",
   "rastreo-publico": "nucleo",
   "recepcion-bodega-central": "nucleo",
   "recepcion-origen": "nucleo",
+  // SLT-224: «Actualizar zonas», en la cabecera de `/ordenes` (núcleo), junto a «Recibir paquete».
+  "actualizacion-zonas": "nucleo",
   // Recolección y Bodegas satélite (núcleo desde el 2026-10-27).
   "recepcion-satelite": "nucleo",
   "recoleccion-tienda": "nucleo",
@@ -256,6 +270,10 @@ export const MODULO_POR_JOB: Readonly<Record<JobTipo, Destino>> = {
   plan_aplicar_cambio_empresa: "nucleo",
   // SLT-118 (design §4.1): el cierre de las facturas de la plataforma; de plataforma, sin módulo.
   factura_plataforma_cerrar: "nucleo",
+  // SLT-136 (design §7.2, R30): el aviso de una factura cerrada; ningún módulo apagado lo descarta.
+  factura_plataforma_aviso: "nucleo",
+  // SLT-215 (design §5): el cierre diario de los niveles por volumen; de plataforma, sin módulo.
+  plan_niveles_cerrar: "nucleo",
 };
 
 /** §3.4 — carpetas de `app/api/cron/`. */

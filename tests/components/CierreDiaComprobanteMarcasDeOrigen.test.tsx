@@ -69,7 +69,7 @@ const verCierrePasadoMock = vi.mocked(verCierrePasado);
 /** R9: el MISMO rótulo y la MISMA nota que tienen que decir las dos superficies. */
 const TIENDA_LABEL = "La tienda";
 const TIENDA_NOTA =
-  "Esta gestión la registró la tienda desde «Ayuda solicitada», no vos: el motivo y la foto son suyos. Cuenta en tu cierre igual.";
+  "Esta gestión la registró la tienda desde «Ayuda solicitada», no tú: el motivo y la foto son suyos. Cuenta en tu cierre igual.";
 
 /** El distintivo de origen que esta audiencia ya no debe ver (R5). */
 const ORIGEN_AUTOMATICO_LABEL = "Automático";
@@ -323,7 +323,7 @@ describe("R9 → SLT-109 — ni el cierre de hoy ni el pasado llevan la marca; e
     expect(boton).toBeDisabled();
     expect(boton).toHaveAttribute(
       "title",
-      "Esta orden la resolvió la tienda desde su pantalla de ayuda; solo ella puede corregirlo. Escribile por el chat de la orden.",
+      "Esta orden la resolvió la tienda desde su pantalla de ayuda; solo ella puede corregirlo. Escríbele por el chat de la orden.",
     );
 
     // 2) SLT-108: el cierre pasado se lee en el detalle único, cuya fila no lleva la marca

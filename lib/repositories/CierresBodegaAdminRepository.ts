@@ -63,6 +63,7 @@ import { CierreDetalleFaltanteError } from "@/lib/utils/cierre-detalle";
 import type { PaginaRepositorio, RangoPagina } from "@/lib/utils/rango-pagina";
 import type { FiltrosCierresBodegaRepo } from "@/lib/types/filtros-cierres";
 import { NOMBRE_USUARIO_SELECT, nombreCompletoUsuario } from "@/lib/utils/nombre-usuario";
+import { idsCierresBodegaPorFolio, recortePorFolio } from "@/lib/repositories/_shared/folio-cierres-sql";
 
 // Solo el estado que la 40 puede transicionar (R18): la guardia del updateMany.
 const ESTADO_SOLICITADO = "solicitado";
@@ -181,7 +182,7 @@ type CierresBodegaAdminPrismaClient = Pick<
 
 // Proyeccion de la cabecera de un cierre_dia incluido en el detalle (mensajero +
 // totales snapshot).
-const DETALLE_CIERRE_SELECT = {
+export const DETALLE_CIERRE_SELECT = {
   id: true,
   mensajeroId: true,
   totalEfectivo: true,
@@ -191,6 +192,7 @@ const DETALLE_CIERRE_SELECT = {
   totalPagoMensajero: true, // feature 39/R20: snapshot del pago al mensajero del cierre_dia
   totalIngresoBodegaRechazos: true, // feature 56/R19: snapshot del ingreso de bodega por rechazos del cierre_dia
   solicitadoAt: true, // SLT-104 (PA3): fecha la nota de tarifas congeladas de las gestiones de ESTE cierre_dia
+  pagoIndependienteEfectivo: true, // SLT-154 (R466): separa los cierres nuevos del reparto del efectivo
   mensajero: { select: NOMBRE_USUARIO_SELECT },
   // SLT-56 (R20): cuantas gestiones de ESTE cierre tienen al menos un ajuste del pago, para marcar
   // el cierre en la lista del cierre de bodega. Se cuentan GESTIONES (`some`) y no filas de ajuste:
@@ -201,7 +203,7 @@ const DETALLE_CIERRE_SELECT = {
 
 type DetalleCierreRow = Prisma.CierreDiaGetPayload<{ select: typeof DETALLE_CIERRE_SELECT }>;
 
-function toDetalleCierreRow(r: DetalleCierreRow): CierreBodegaDetalleCierreRow {
+export function toDetalleCierreRow(r: DetalleCierreRow): CierreBodegaDetalleCierreRow {
   return {
     cierreDiaId: r.id,
     mensajeroId: r.mensajeroId,
@@ -216,6 +218,7 @@ function toDetalleCierreRow(r: DetalleCierreRow): CierreBodegaDetalleCierreRow {
     totalIngresoBodegaRechazos: r.totalIngresoBodegaRechazos.toFixed(2), // feature 56/R19: snapshot money-safe STRING
     gestionesAjustadas: r._count.gestiones, // SLT-56 (R20)
     solicitadoAt: r.solicitadoAt.toISOString(), // SLT-104 (PA3)
+    pagoIndependienteEfectivo: r.pagoIndependienteEfectivo, // SLT-154 (R466)
   };
 }
 
@@ -282,8 +285,10 @@ const ORDEN_CIERRES_BODEGA_ADMIN = {
 function historicoBodegaWhere(
   filtros: FiltrosCierresBodegaRepo | undefined,
   incompletos: readonly string[],
+  idsPorFolio?: readonly string[],
 ): Prisma.CierreBodegaWhereInput {
-  const recortes = filtrosBodegaWhere(filtros);
+  // SLT-153 (R458): el folio DENTRO del `AND`; como clave hermana pisaria el `id: { notIn }`.
+  const recortes = [...filtrosBodegaWhere(filtros), ...recortePorFolio(idsPorFolio)];
   return {
     conciliadoAt: { not: null },
     id: { notIn: [...incompletos] },
@@ -304,8 +309,9 @@ function historicoBodegaWhere(
 function colaBodegaWhere(
   filtros: FiltrosCierresBodegaRepo | undefined,
   incompletos: readonly string[],
+  idsPorFolio?: readonly string[],
 ): Prisma.CierreBodegaWhereInput {
-  const recortes = filtrosBodegaWhere(filtros);
+  const recortes = [...filtrosBodegaWhere(filtros), ...recortePorFolio(idsPorFolio)]; // SLT-153 (R458)
   return {
     OR: [{ conciliadoAt: null }, { id: { in: [...incompletos] } }],
     ...(recortes.length > 0 ? { AND: recortes } : {}),
@@ -369,7 +375,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
   ): Promise<CierreBodegaResumenRow[]> {
     const incompletos = await this.idsRecibidosIncompletos();
     const rows = await this.prisma.cierreBodega.findMany({
-      where: historicoBodegaWhere(filtros, incompletos),
+      where: historicoBodegaWhere(filtros, incompletos, await this.idsPorFolio(filtros)),
       orderBy: ORDEN_CIERRES_BODEGA_ADMIN,
       select: BODEGA_RESUMEN_SELECT,
     });
@@ -394,7 +400,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
   ): Promise<CierreBodegaResumenRow[]> {
     const incompletos = await this.idsRecibidosIncompletos();
     const rows = await this.prisma.cierreBodega.findMany({
-      where: colaBodegaWhere(filtros, incompletos),
+      where: colaBodegaWhere(filtros, incompletos, await this.idsPorFolio(filtros)),
       orderBy: ORDEN_CIERRES_BODEGA_ADMIN,
       select: BODEGA_RESUMEN_SELECT,
     });
@@ -415,7 +421,11 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
     // el conjunto completo del que sale el archivo. SLT-105 (R122): «Conciliados» = con marca y
     // fuera de los incompletos; los incompletos se leen UNA vez y el `where` lo comparten
     // `findMany` y `count`.
-    const where = historicoBodegaWhere(filtros, await this.idsRecibidosIncompletos());
+    const where = historicoBodegaWhere(
+      filtros,
+      await this.idsRecibidosIncompletos(),
+      await this.idsPorFolio(filtros),
+    );
     const [rows, total] = await Promise.all([
       this.prisma.cierreBodega.findMany({
         where,
@@ -442,7 +452,7 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
     filtros?: FiltrosCierresBodegaRepo,
   ): Promise<PaginaRepositorio<CierreBodegaResumenRow>> {
     // Feature 184/R16: mismo criterio compartido que el conjunto completo de esta cola.
-    const where = colaBodegaWhere(filtros, await this.idsRecibidosIncompletos());
+    const where = colaBodegaWhere(filtros, await this.idsRecibidosIncompletos(), await this.idsPorFolio(filtros));
     const [rows, total] = await Promise.all([
       this.prisma.cierreBodega.findMany({
         where,
@@ -454,6 +464,12 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
       this.prisma.cierreBodega.count({ where }), // R41: el total del CONJUNTO
     ]);
     return { items: await aResumenRows(this.prisma, rows), total };
+  }
+
+  /** SLT-153 (R458): con folio, los ids de `cierre_bodega` que lo contienen; sin folio, ni una consulta. */
+  private async idsPorFolio(filtros: FiltrosCierresBodegaRepo | undefined): Promise<string[] | undefined> {
+    if (filtros?.folio === undefined) return undefined;
+    return idsCierresBodegaPorFolio(this.prisma, filtros.folio);
   }
 
   /**
@@ -477,7 +493,10 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
     return filas.map((f) => f.id);
   }
 
-  /** R11 (+69/R15): cierre de bodega + cada cierre_dia con sus gestiones desde el SNAPSHOT. */
+  /**
+   * R11 (+69/R15): cierre de bodega + cada cierre_dia con sus gestiones desde el SNAPSHOT.
+   * SLT-148 (R420): el numero de sentencias no depende de cuantos cierres del dia consolide.
+   */
   async findCierreBodegaConDetalle(
     id: string,
     /**
@@ -504,62 +523,70 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
     // gestiones, detalle y cargos de fulfillment.
     if (cierre === null) return null;
 
-    // Los cierre_dia incluidos (WHERE cierre_bodega_id = id), mas reciente primero.
+    // SLT-148 (R428): sin cierres del dia no hay gestiones, filas congeladas ni cargos que leer. El
+    // conteo ya viene en la cabecera (`_count.cierresDia` de `BODEGA_RESUMEN_SELECT`): el corte va
+    // ANTES de leer `cierre_dia`, porque esa lectura carga sus gestiones como relacion y Prisma emite
+    // las sentencias de una relacion aunque no haya filas padre.
+    if (cierre._count.cierresDia === 0) return this.conCabecera(cierre, []);
+
+    // Los cierre_dia incluidos (WHERE cierre_bodega_id = id), mas reciente primero, CON sus gestiones.
+    // Feature 69/T23 (R15): un cierre_dia consolidado en un cierre_bodega esta YA CREADO (y normalmente
+    // ya aprobado y liquidado), asi que su detalle son los datos CONGELADOS, nunca
+    // `gestion_orden.orden.*` VIVO. Mismo DTO que `findCierreByIdEnAlcance` -> la UI no cambia.
+    //
+    // SLT-148 (R420, R423, R426): las gestiones van como RELACION de esta misma lectura, con la
+    // proyeccion de admin tal cual (R23 de la 212: el tercer camino reusa `GESTION_ADMIN_SELECT`, no
+    // una copia). Prisma la resuelve con UNA sentencia por nivel acotada a `cierre_id IN (los cierres
+    // del dia leidos)`, ya agrupada por cierre del dia y en `createdAt desc` dentro de cada uno: el
+    // numero de sentencias no depende de cuantos cierres del dia haya. Antes eran dos lecturas por
+    // cierre del dia (D67).
     const cierresDiaRows = await this.prisma.cierreDia.findMany({
       where: { cierreBodegaId: id },
       orderBy: { solicitadoAt: "desc" },
-      select: DETALLE_CIERRE_SELECT,
+      select: {
+        ...DETALLE_CIERRE_SELECT,
+        gestiones: { orderBy: { createdAt: "desc" }, select: GESTION_ADMIN_SELECT },
+      },
     });
+    const idsDia = cierresDiaRows.map((cd) => cd.id);
 
-    // Por cada cierre_dia, sus gestiones (WHERE cierre_id = cierre_dia.id) compuestas con el
-    // SNAPSHOT de ese cierre. Feature 69/T23 (R15): un cierre_dia consolidado en un
-    // cierre_bodega esta YA CREADO (y normalmente ya aprobado y liquidado), asi que su detalle
-    // son los datos CONGELADOS. Antes esto reusaba `WITH_DETALLE`, que navegaba
-    // `gestion_orden.orden.*` VIVO: esta pantalla y la de `findCierreByIdEnAlcance` mostraban
-    // detalle distinto del MISMO cierre. Mismo DTO que antes -> la UI no cambia.
-    //
-    // SLT-110 (R210, R216): el cargo vigente de fulfillment de las ordenes de TODOS los cierres del
-    // dia, en UNA consulta (el conjunto va en el `where`), en paralelo con el bucle. Es la regla de
-    // SLT-101 R94 por orden: una orden en dos cierres del dia lleva el mismo cargo en las dos.
-    const [cargoPorOrden, lecturas] = await Promise.all([
-      cargosFulfillmentVigentes(this.prisma, cierresDiaRows.map((cd) => cd.id)),
-      Promise.all(
-        cierresDiaRows.map(async (cd) => {
-          const [gestiones, detalle] = await Promise.all([
-            this.prisma.gestionOrden.findMany({
-              where: { cierreId: cd.id }, // R11: gestiones vinculadas a ESTE cierre_dia
-              orderBy: { createdAt: "desc" },
-              select: GESTION_ADMIN_SELECT,
-            }),
-            this.prisma.cierreDetail.findMany({
-              where: { cierreId: cd.id }, // el snapshot de ESE cierre_dia
-              select: DETALLE_ADMIN_SELECT,
-            }),
-          ]);
-          return { cd, gestiones, detalle };
-        }),
-      ),
+    // SLT-148 (R426): las filas congeladas de TODOS los cierres del dia en una lectura, con el conjunto
+    // `cierreId IN (idsDia)` en el `where`. SLT-110 (R210, R216): el cargo vigente de fulfillment por
+    // orden, en UNA consulta; una orden en dos cierres del dia lleva el mismo cargo en las dos.
+    const [cargoPorOrden, detalle] = await Promise.all([
+      cargosFulfillmentVigentes(this.prisma, idsDia),
+      this.prisma.cierreDetail.findMany({
+        where: { cierreId: { in: idsDia } },
+        select: { ...DETALLE_ADMIN_SELECT, cierreId: true },
+      }),
     ]);
-    const cierresDia = lecturas.map(({ cd, gestiones, detalle }) => {
-      // Grano: N gestiones de una orden comparten su UNICA fila congelada.
-      const byOrden = new Map(detalle.map((d) => [d.ordenId, d]));
-      return {
-        resumen: toDetalleCierreRow(cd),
-        // Sin fallback (R14/decision (a)): si falta la fila, error DURO. Igual que T18: un
-        // fallback a datos vivos seria el camino de lectura que esta feature vino a matar.
-        gestiones: gestiones.map((g) => {
-          const d = byOrden.get(g.ordenId);
-          if (d === undefined) throw new CierreDetalleFaltanteError(cd.id, g.ordenId);
-          // SLT-110 (R210-R212): la misma lectura que el detalle de mensajeros -> fecha del cargo y
-          // `tarifaFaltante` por el mismo mapper.
-          return toPendienteRowDesdeSnapshot(g, d, zona, {
-            cargoFulfillmentAt: cargoPorOrden.get(g.ordenId) ?? null,
-          });
-        }),
-      };
-    });
+    // R424: la clave es (cierre del dia, orden), el grano de `@@unique([cierreId, ordenId])`. Una orden
+    // con gestiones en dos cierres del dia del mismo cierre de bodega tiene una fila congelada en cada uno.
+    const filaPorClave = new Map(detalle.map((d) => [`${d.cierreId}:${d.ordenId}`, d]));
 
-    // SLT-76 (R3/R4): la cabecera con `desmarcable`, por el mismo camino que las listas.
+    const cierresDia = cierresDiaRows.map(({ gestiones, ...cd }) => ({
+      resumen: toDetalleCierreRow(cd),
+      // Sin fallback (R14/decision (a), R427): si falta la fila, error DURO. Un fallback a datos vivos
+      // seria el camino de lectura que la feature 69 vino a matar.
+      gestiones: gestiones.map((g) => {
+        const d = filaPorClave.get(`${cd.id}:${g.ordenId}`);
+        if (d === undefined) throw new CierreDetalleFaltanteError(cd.id, g.ordenId);
+        // SLT-110 (R210-R212): la misma lectura que el detalle de mensajeros -> fecha del cargo y
+        // `tarifaFaltante` por el mismo mapper.
+        return toPendienteRowDesdeSnapshot(g, d, zona, {
+          cargoFulfillmentAt: cargoPorOrden.get(g.ordenId) ?? null,
+        });
+      }),
+    }));
+
+    return this.conCabecera(cierre, cierresDia);
+  }
+
+  /** SLT-76 (R3/R4): la cabecera del detalle con `desmarcable`, por el mismo camino que las listas. */
+  private async conCabecera<T>(
+    cierre: Parameters<typeof aResumenRows>[1][number],
+    cierresDia: T[],
+  ): Promise<{ cierre: CierreBodegaResumenRow; cierresDia: T[] } | null> {
     const [resumen] = await aResumenRows(this.prisma, [cierre]);
     if (resumen === undefined) return null; // inalcanzable: una fila entra, una fila sale
     return { cierre: resumen, cierresDia };
@@ -580,8 +607,8 @@ export class CierresBodegaAdminRepository implements ICierresBodegaAdminReposito
    * juntos son el total; uno solo deja fuera media operacion.
    *
    * Reusa las cuatro piezas de la hoja fundida sin declarar nada propio (R26), y NO reusa
-   * `findCierreBodegaConDetalle` con su bucle por `cierre_dia`: aquel paga una consulta por
-   * cierre del dia, y aqui el conjunto es un rango de meses.
+   * `findCierreBodegaConDetalle`: aquel lee UN cierre de bodega (sus cierres del dia en lote desde
+   * SLT-148) con la proyeccion del detalle, y aqui el conjunto es un rango de meses.
    */
   async findGestionesDeCierresBodegaCompleto(
     filtros: FiltrosDescargaGestionesRepo,

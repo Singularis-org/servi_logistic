@@ -189,7 +189,6 @@ function conDetalleDe(cierre: CierreAdminResumen) {
     pagoTienda: "0.00",
     cobradoSobreRecaudado: "0.00",
     netoEmpresa: "0.00",
-    ganaLaTienda: "0.00",
     fleteRechazoYaCobradoATienda: false,
     // Ficha 396: el desglose por tienda viaja SIEMPRE en el DTO, tambien con una sola
     // tienda. Estas pruebas no lo miran, asi que aqui va vacio; las suyas estan en
@@ -663,7 +662,6 @@ describe("T E.2/R19 — el detalle de un cierre APROBADO ofrece registrar el pag
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       partesPorTienda: [],
     });
@@ -931,7 +929,6 @@ describe("R14 — ni un `Number(` ni un `parseFloat` sobre montos en esta tanda"
     "app/(app)/cierres-admin/_components/RegistrarPagoMensajeroDialog.tsx",
     "app/(app)/cierres-admin/_components/pago-mensajero-labels.ts",
     "app/(app)/cierres-admin/_components/CierresAdminModule.tsx",
-    "app/(app)/cierres-admin/_components/CierresAdminHistoricoLista.tsx",
     // SLT-102: la cola única pinta el pendiente y el pago desde la fila.
     "components/private/cierres/cola/ColaCierres.tsx",
     "components/private/cierres/cola/cola-cierres-vista.ts",

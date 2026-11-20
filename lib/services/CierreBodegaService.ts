@@ -14,7 +14,6 @@ import type {
   CifraConConteo,
   ICierreBodegaService,
   ResumenSolicitados,
-  ListarCierresBodegaSolicitadosCompletoServiceResult,
   ListarCierresBodegaSolicitadosServiceResult,
   ListarConsolidablesCompletoServiceResult,
   ListarConsolidablesServiceResult,
@@ -134,8 +133,11 @@ function sumIngresoBodega(items: { totalIngresoBodegaRechazos: string }[]): stri
  * siguiente cobra 1500, esos 500 se quedan en la bodega (el pago parcial no existe).
  *
  * Devuelve STRING escala 2 (money-safe): la aritmetica es Prisma.Decimal, nunca number.
+ *
+ * SLT-154 (R466): exportada para que el detalle del cierre de bodega derive «La central debe» con
+ * la MISMA regla que «A consolidar»; dos copias podrian divergir y la satelite veria dos numeros.
  */
-function repartirEfectivo(
+export function repartirEfectivo(
   efectivo: string,
   pagos: string[],
 ): { pagado: string; centralDebe: string } {
@@ -240,9 +242,9 @@ export class CierreBodegaService implements ICierreBodegaService {
 
   /**
    * SLT-42 (R22, R23): los filtros con `desde`/`hasta` resueltos en la zona del pais de la empresa.
-   * La zona solo se lee si el filtro trae rango.
+   * La zona solo se lee si el filtro trae rango. SLT-153 (R457): un folio imposible da `vacio`.
    */
-  private filtrosRepo<F extends RangoDeFechasCierres>(filtros: F | undefined) {
+  private filtrosRepo<F extends RangoDeFechasCierres & { folio?: string }>(filtros: F | undefined) {
     return filtrosParaRepo(filtros, zonaPerezosa(this.reglasPais, "CierreBodegaService"));
   }
 
@@ -395,10 +397,12 @@ export class CierreBodegaService implements ICierreBodegaService {
 
     // Pedido humano del 2026-08-16: el filtro RECORTA dentro de la zona del actor —se compone
     // con `AND` en el repositorio—, nunca la sustituye. Pedir la zona vecina da vacio.
+    const resueltos = await this.filtrosRepo(input.filtros);
+    if (resueltos.tipo === "vacio") return { status: "ok", items: [], page: input.page, pageSize: input.pageSize, total: 0 }; // SLT-153 (R457)
     const { items, total } = await this.repo.findCierresBodegaByZonaPaginado(
       zonaId,
       rangoDePagina(input),
-      await this.filtrosRepo(input.filtros),
+      resueltos.filtros,
     );
 
     return {
@@ -444,10 +448,12 @@ export class CierreBodegaService implements ICierreBodegaService {
       return { status: "ok", items: [], page: input.page, pageSize: input.pageSize, total: 0 };
     }
 
+    const resueltos = await this.filtrosRepo(input.filtros);
+    if (resueltos.tipo === "vacio") return { status: "ok", items: [], page: input.page, pageSize: input.pageSize, total: 0 }; // SLT-153 (R457)
     const { items, total } = await this.repo.findCierresDiaConsolidablesPaginado(
       zonaId,
       rangoDePagina(input),
-      await this.filtrosRepo(input.filtros), // recorte DENTRO de la zona (ver la nota del listado de solicitados)
+      resueltos.filtros, // recorte DENTRO de la zona (ver la nota del listado de solicitados)
     );
 
     return {
@@ -460,65 +466,11 @@ export class CierreBodegaService implements ICierreBodegaService {
   }
 
   /**
-   * Feature 184 — Tanda B (R1/R4/R6/R10) — el CONJUNTO de «Cierres de bodega solicitados» de la
-   * zona, sin recorte, que es del que sale el archivo.
-   *
-   * **Lo que cierra.** Hasta hoy ese archivo se producia releyendo `listarConsolidacion()`, que
-   * es el listado COMPUESTO de la otra pantalla: cuatro consultas (la zona, los consolidables,
-   * el contador de pendientes y este historico), los cinco agregados de dinero y el reparto del
-   * efectivo entre todos los pagos individuales ordenados. De todo eso, el archivo usaba UN
-   * campo. Aqui son DOS consultas —la zona y el listado— y ni un calculo de dinero (R10).
-   *
-   * **No lleva `input`, y es deliberado.** Este listado no admite filtros: su schema de pagina
-   * solo tenia `page`/`pageSize`, y quitarlos deja una lista blanca de CERO claves. El borde la
-   * sigue aplicando —una clave colada, `zonaId` incluida, muere alli con `validation_error`
-   * (R17)— pero no hay nada que transportar hasta aqui. El alcance sale del actor, como en la
-   * pagina.
-   *
-   * Sin zona -> conjunto vacio, no `forbidden`: el rol tiene acceso al modulo, lo que no tiene
-   * es alcance. Es lo mismo que devuelve hoy `listarConsolidacion` (`cierresBodegaPasados: []`).
-   *
-   * **Excepcion declarada a R29 de la 170.** R29 —feature `done`, requisito vivo— pide dos cosas
-   * y aqui se cumple una: por encima del tope no se transporta ni una fila (van el total y el
-   * tope, nada mas), pero el conjunto SI se materializa entero —`findCierresBodegaByZona` es un
-   * `findMany` sin `take`— y el tope lo mide este servicio despues. El conjunto es el historico
-   * de cierres de bodega de UNA zona: acotado por el alcance, que es lo que lo hace mas llevadero
-   * que su gemelo de `CierresBodegaAdminService` —aquel ve todas las zonas—, pero acumulativo,
-   * uno por dia operado y sin purga.
-   *
-   * Se acepta por el coste de la alternativa: pedir `limite + 1` obliga a un `count` aparte para
-   * conservar el total exacto del aviso (R6), que es la segunda consulta que R15 de esta feature
-   * mide y prohibe. Decision humana del 2026-08-05, anotada en el design §3.1; es una excepcion
-   * declarada, no un cumplimiento de R29.
-   */
-  async listarCierresBodegaSolicitadosCompleto(
-    actor: Actor,
-    filtros?: FiltrosCierresBodega,
-  ): Promise<ListarCierresBodegaSolicitadosCompletoServiceResult> {
-    if (actor.rol !== ROL_AUTORIZADO) return { status: "forbidden" }; // R4: antes del repo
-
-    const zonaId = await this.ordenRepo.findUsuarioZonaId(actor.usuarioId); // R4
-    if (zonaId === null) return { status: "ok", items: [], total: 0 };
-
-    // El MISMO metodo del que la pagina saca su recorte: mismo where, mismo orden y —lo que en
-    // una pantalla de dinero no es estilo— el MISMO mapper de totales.
-    // Los MISMOS filtros que la pagina: el archivo es «esto que estoy viendo, entero».
-    const conjunto = await this.repo.findCierresBodegaByZona(zonaId, await this.filtrosRepo(filtros));
-
-    const limite = descargaConfig.MAX_FILAS;
-    // R6: o van TODAS las filas del conjunto, o van solo los conteos. Nunca un archivo truncado.
-    if (conjunto.length > limite) {
-      return { status: "limite_excedido", total: conjunto.length, limite };
-    }
-
-    return { status: "ok", items: conjunto, total: conjunto.length };
-  }
-
-  /**
    * Feature 184 — Tanda B (R1/R4/R6/R10) — el CONJUNTO de «Cierres del dia a consolidar» de la
    * zona, sin recorte, para el archivo.
    *
-   * Comparte con el de arriba la relectura que evita: la pantalla de consolidacion pedia el
+   * Comparte con la descarga de «Solicitados» (desde SLT-176 en
+   * `CierresBodegaSateliteDescargaService`) la relectura que evita: la pantalla de consolidacion pedia el
    * listado compuesto entero —incluido el historico de cierres de bodega, que este archivo no
    * usa— y con el los cinco agregados y `repartirEfectivo`, que ordena TODOS los pagos
    * individuales de la zona. El archivo no necesita ninguno de esos numeros: la cabecera los
@@ -546,7 +498,9 @@ export class CierreBodegaService implements ICierreBodegaService {
     if (zonaId === null) return { status: "ok", items: [], total: 0 };
 
     // El MISMO metodo que alimenta la pagina y los agregados: un conjunto, no dos parecidos.
-    const conjunto = await this.repo.findCierresDiaConsolidables(zonaId, await this.filtrosRepo(filtros)); // idem
+    const resueltos = await this.filtrosRepo(filtros); // idem
+    if (resueltos.tipo === "vacio") return { status: "ok", items: [], total: 0 }; // SLT-153 (R457, R459)
+    const conjunto = await this.repo.findCierresDiaConsolidables(zonaId, resueltos.filtros);
 
     const limite = descargaConfig.MAX_FILAS;
     if (conjunto.length > limite) {

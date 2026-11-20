@@ -28,6 +28,9 @@ vi.mock("@/lib/actions/cierre-dia", () => ({
   listarCierresPasadosPaginado: vi.fn(),
   listarCierresPasadosCompleto: vi.fn(),
 }));
+// SLT-165: el corte de 768 px no existe en jsdom; `useIsMobile` se simula (por defecto, escritorio).
+const movil = vi.hoisted(() => ({ valor: false }));
+vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => movil.valor }));
 vi.mock("@/hooks/useToast", () => ({
   useToast: () => ({ success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn(), show: vi.fn(), dismiss: vi.fn() }),
 }));
@@ -36,10 +39,6 @@ vi.mock("@/components/shared/DescargarDatasetButton", () => ({
   DescargarDatasetButton: (p: { titulo: string }) => (
     <button type="button" aria-label={`Descargar ${p.titulo}`}>Descargar</button>
   ),
-}));
-// R166: si la pantalla volviera a montar la tira de comprobantes, estos marcadores aparecerían.
-vi.mock("@/app/(app)/cierres-admin/_components/ListaComprobantes", () => ({
-  ListaComprobantes: () => <p>MARCADOR-LISTA-COMPROBANTES-Q7</p>,
 }));
 vi.mock("@/app/(app)/cierres-admin/_components/cierre-factura", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/app/(app)/cierres-admin/_components/cierre-factura")>()),
@@ -117,14 +116,20 @@ function celdas(region: HTMLElement, n: number): string[] {
 }
 
 beforeEach(() => vi.clearAllMocks());
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  movil.valor = false;
+});
 
 describe("SLT-137 · /cierre-dia: la cola de cierres con rol mensajero", () => {
   it("R155: descripción, una pestaña con el total, su tablist y UNA región «Cierres solicitados»", () => {
     montar();
     expect(screen.getByText("Tus cierres enviados a aprobación y cómo terminaron.")).toBeInTheDocument();
     const tablist = screen.getByRole("tablist", { name: "Tus cierres" });
-    expect(within(tablist).getAllByRole("tab").map((t) => t.textContent)).toEqual(["Cierres solicitados 7"]);
+    expect(within(tablist).getAllByRole("tab").map((t) => t.textContent)).toEqual(["Cierres solicitados (7)"]);
+    // SLT-152 (R447, R449): el texto es el nombre accesible y lleva el conteo entre paréntesis.
+    expect(within(tablist).getByRole("tab", { name: "Cierres solicitados (7)" })).toBeInTheDocument();
+    expect(within(tablist).getByRole("tab").textContent).not.toMatch(/^\S.* \d+$/);
     expect(screen.getAllByRole("region", { name: "Cierres solicitados" })).toHaveLength(1);
   });
 
@@ -160,14 +165,13 @@ describe("SLT-137 · /cierre-dia: la cola de cierres con rol mensajero", () => {
 
   it("R166: la pantalla ya no monta la tira de comprobantes ni su hoja resumida", () => {
     montar();
-    expect(screen.queryByText("MARCADOR-LISTA-COMPROBANTES-Q7")).not.toBeInTheDocument();
     expect(screen.queryByText("MARCADOR-RESUMEN-PROPIO-Q7")).not.toBeInTheDocument();
   });
 
-  it("R160: vacío con el texto de hoy", () => {
+  it("R160, R448 (SLT-152): vacío con el texto de hoy y la pestaña «Cierres solicitados (0)»", () => {
     const region = montar([], 0);
     expect(within(region).getByText("Aún no has solicitado ningún cierre.")).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Cierres solicitados 0" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Cierres solicitados (0)" })).toBeInTheDocument();
   });
 
   it("R160: error con el texto de hoy cuando la página no se puede leer", async () => {
@@ -238,8 +242,8 @@ describe("SLT-112 · /cierre-dia: las tarjetas de la ganancia (R358)", () => {
       ["Ganancia pendiente de pago", "₡47.500,55", "2 cierres aprobados sin liquidar"],
       ["Ganancia pagada este mes", "₡3.500", "2 pagos"],
     ]);
-    expect(screen.getByRole("group", { name: "Ganancia pendiente de pago" }).className).toContain("bg-brand-soft");
-    expect(screen.getByRole("group", { name: "Ganancia pagada este mes" }).className).not.toContain("bg-brand-soft");
+    expect(screen.getByRole("group", { name: "Ganancia pendiente de pago" }).className).toContain("bg-accent");
+    expect(screen.getByRole("group", { name: "Ganancia pagada este mes" }).className).not.toContain("bg-accent");
   });
 
   it("van entre la barra y la tabla", () => {
@@ -291,5 +295,138 @@ describe("SLT-112 · /cierre-dia: las tarjetas de la ganancia (R358)", () => {
       ),
     );
     expect(cajas()).toEqual(antes);
+  });
+});
+
+// SLT-165 «PWA del mensajero: Cierre del día en tarjetas» (D5; R535, R536, R538). Esperados a mano.
+describe("SLT-165 R535 — «Cierres solicitados» en el teléfono: dos columnas y desplegable", () => {
+  // SLT-191 (R818): reescrito al canvas aprobado — antes «Ganancia» traía «Ver» y la fecha y el
+  // destino iban sin rótulo; ahora el folio sube a la fila y «Ver» baja al desplegado.
+  it("SLT-191 R818: dos columnas — «Cierre» (folio en mono, «Solicitado …» con el estado y «Destino: …») y «Ganancia» (rótulo e importe)", () => {
+    movil.valor = true;
+    const region = montar();
+    // La primera cabecera es la del botón de desplegar de la tabla (solo para lector).
+    expect(within(region).getAllByRole("columnheader").map((h) => h.textContent?.trim())).toEqual(["Desglose", "Cierre", "Ganancia"]);
+    const [, cierre, ganancia] = within(within(region).getAllByRole("row")[1]).getAllByRole("cell");
+    expect(cierre.textContent).toBe("#AAAA1111Solicitado 2026-07-11 04:00AprobadoDestino: Bodega central");
+    const lineas = cierre.firstElementChild!.children;
+    expect(lineas[0].textContent).toBe("#AAAA1111");
+    expect(lineas[0].className.split(/\s+/)).toContain("font-mono");
+    expect(lineas[1].textContent).toBe("Solicitado 2026-07-11 04:00Aprobado");
+    expect(lineas[2].textContent).toBe("Destino: Bodega central");
+    expect(ganancia.textContent).toBe("Ganancia₡875");
+    // R493 (B2 de la review de SLT-165): el desplegable de la fila (botón con `aria-expanded`) a 44 px.
+    const desplegar = within(region).getByRole("button", { name: "Más datos del cierre del 2026-07-11" });
+    expect(desplegar.hasAttribute("aria-expanded")).toBe(true);
+    expect(region.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(["max-md:[&_button[aria-expanded]]:min-h-11", "max-md:[&_button[aria-expanded]]:min-w-11"]),
+    );
+    // El importe, en su columna fija a la derecha.
+    expect(within(ganancia).getByText("₡875").className.split(/\s+/)).toEqual(
+      expect.arrayContaining(["shrink-0", "whitespace-nowrap", "tabular-nums", "text-right"]),
+    );
+  });
+
+  it("SLT-191 R819: la fila plegada no trae «Ver»; al desplegar, «Ver» a todo el ancho, de 44 px, y abre el detalle", async () => {
+    movil.valor = true;
+    const user = userEvent.setup();
+    const region = montar();
+    expect(within(region).queryByRole("button", { name: /^Ver del cierre/ })).toBeNull();
+    await user.click(within(region).getByRole("button", { name: "Más datos del cierre del 2026-07-11" }));
+    const desplegado = region.querySelector<HTMLElement>("tr[id$='-expandido']");
+    expect(desplegado).not.toBeNull();
+    const ver = within(desplegado!).getByRole("button", { name: "Ver del cierre del 2026-07-11" });
+    expect(ver.textContent).toBe("Ver");
+    expect(ver.className.split(/\s+/)).toEqual(expect.arrayContaining(["w-full", "min-h-11"]));
+    expect(ver).toBeEnabled();
+    vi.mocked(verCierrePasado).mockReturnValue(new Promise(() => {}));
+    await user.click(ver);
+    expect(vi.mocked(verCierrePasado)).toHaveBeenCalledWith({ cierreId: "c0000000-0000-4000-8000-0000aaaa1111" });
+    // R181: deshabilitado mientras lee.
+    expect(ver).toBeDisabled();
+  });
+
+  // SLT-191 (R820; DC1): reescrito — antes el desplegado traía Folio, Recaudado y Pago.
+  it("SLT-191 R820: al desplegar, solo «Ver»: ni «Folio», ni «Recaudado», ni «Pago» (ni su estado)", async () => {
+    movil.valor = true;
+    const user = userEvent.setup();
+    const region = montar();
+    await user.click(within(region).getByRole("button", { name: "Más datos del cierre del 2026-07-11" }));
+    const desplegado = region.querySelector<HTMLElement>("tr[id$='-expandido']")!;
+    expect(desplegado.textContent).toBe("Ver");
+    expect(desplegado.querySelector("dl")).toBeNull();
+    const texto = region.textContent ?? "";
+    for (const fuera of ["Folio", "Recaudado", "₡12.500", "Pendiente de pago", "Liquidado"]) {
+      expect(texto, fuera).not.toContain(fuera);
+    }
+  });
+
+  it("R538: una sola tabla y la misma «Descargar» en los dos anchos", () => {
+    movil.valor = true;
+    const region = montar();
+    expect(within(region).getAllByRole("table")).toHaveLength(1);
+    const descargas = () => screen.getAllByRole("button", { name: /^Descargar / }).map((b) => b.getAttribute("aria-label"));
+    // La de «Gestiones» (el cierre de hoy) y la de «Cierres solicitados», con el título de hoy.
+    expect(descargas()).toEqual(["Descargar Gestiones del cierre de hoy", "Descargar Cierres solicitados"]);
+    cleanup();
+    movil.valor = false;
+    montar();
+    expect(descargas()).toEqual(["Descargar Gestiones del cierre de hoy", "Descargar Cierres solicitados"]);
+  });
+
+  it("R536: en el teléfono la paginación va sin números de página y con botones de 44 px", () => {
+    movil.valor = true;
+    montar(CUATRO, 30);
+    const nav = screen.getByRole("navigation", { name: "Paginación de los cierres solicitados" });
+    expect(within(nav).queryByRole("button", { name: "Ir a la página 2" })).toBeNull();
+    expect(within(nav).getByRole("button", { name: "Página siguiente" })).toBeInTheDocument();
+    expect(nav.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(["max-md:[&_button]:min-h-11", "max-md:[&_button]:min-w-11", "max-md:[&_select]:min-h-11"]),
+    );
+    // B2 de la review: el selector «Elementos por página» vive dentro de la `nav` que lleva la clase.
+    expect(within(nav).getByRole("combobox", { name: "Elementos por página" }).tagName).toBe("SELECT");
+  });
+
+  it("en escritorio, las ocho columnas de hoy sin desplegable", () => {
+    const region = montar();
+    expect(within(region).getAllByRole("columnheader")).toHaveLength(8);
+    // SLT-191 (R821): en escritorio siguen «Recaudado» y «Pago» con su dato, y «Ver» en la fila.
+    expect(within(region).getAllByRole("columnheader").map((h) => h.textContent?.trim())).toEqual([
+      "Folio", "Solicitado", "Destino", "Estado", "Recaudado", "Ganancia", "Pago", "Acciones",
+    ]);
+    const fila = within(region).getAllByRole("row")[1];
+    expect(fila.textContent ?? "").toContain("₡12.500");
+    expect(fila.textContent ?? "").toContain("Pendiente de pago");
+    expect(within(fila).getByRole("button", { name: "Ver del cierre del 2026-07-11" })).toBeInTheDocument();
+    expect(within(region).queryByRole("button", { name: /^Más datos del cierre/ })).toBeNull();
+    expect(within(screen.getByRole("navigation", { name: "Paginación de los cierres solicitados" })).getByRole("button", { name: "Ir a la página 1" })).toBeInTheDocument();
+  });
+});
+
+// SLT-191 «Cierre del día del mensajero según el canvas» (R822, R823; DS6) — la barra de «Cierres
+// solicitados» (buscador, «Filtros» y «Descargar») queda fija arriba en el teléfono. Clases a mano.
+describe("SLT-191 R822, R823 — la barra de «Cierres solicitados» fija en el teléfono", () => {
+  function barra(): HTMLElement {
+    const buscador = screen.getByPlaceholderText("Busca por folio");
+    const el = buscador.closest<HTMLElement>("[data-barra-cola]");
+    if (!el) throw new Error("sin barra de la cola");
+    return el;
+  }
+
+  it("R822: en el teléfono, el envoltorio de buscador, «Filtros» y «Descargar» es `sticky top-0` con fondo", () => {
+    movil.valor = true;
+    montar();
+    const b = barra();
+    expect(b.className.split(/\s+/)).toEqual(expect.arrayContaining(["sticky", "top-0", "z-20", "bg-background"]));
+    expect(within(b).getByRole("button", { name: "Descargar Cierres solicitados" })).toBeInTheDocument();
+    expect(within(b).getByRole("button", { name: /^Filtros/ })).toBeInTheDocument();
+    // Sin desbordar (R536): envuelve en lugar de forzar una línea.
+    expect(b.className.split(/\s+/)).toContain("flex-wrap");
+  });
+
+  it("R823: en escritorio, la barra no queda fija", () => {
+    movil.valor = false;
+    montar();
+    expect(barra().className.split(/\s+/)).not.toContain("sticky");
   });
 });

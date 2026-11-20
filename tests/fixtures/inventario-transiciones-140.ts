@@ -197,6 +197,9 @@ export const INVENTARIO_FLUJO: readonly AristaInventario[] = [
   // `gestion_tienda_ayuda`. Mismo par que #13/#15: suman arista y NO suman par.
   { n: "71", origen: "en_reparto", destino: "reprogramado", via: "gestion_tienda_ayuda", callSite: "CierresAdminRepository.resolverCierre, bloque APLICACION DE GESTIONES (454; gestion registrada por GestionDesdeAyudaService)" },
   { n: "72", origen: "en_reparto", destino: "devolucion_a_origen_por_rechazo", via: "gestion_tienda_ayuda", callSite: "CierresAdminRepository.resolverCierre, bloque APLICACION DE GESTIONES (454; gestion registrada por GestionDesdeAyudaService)" },
+  // FICHA SLT-197 (2026-11-17): la central retira el paquete del estante de una satelite que deja de
+  // operar. Par NUEVO (de `en_bodega_satelite` no se salia hacia otra bodega). Sin inversa (D6).
+  { n: "73", origen: "en_bodega_satelite", destino: "en_ruta_bodega_central", via: "ajuste_estado", callSite: "GuiaAsignacionService.retirarABodegaCentral -> OrdenRepository.retirarSateliteLote (SLT-197)" },
 ];
 
 /**
@@ -250,7 +253,8 @@ export const RECUENTO_INVENTARIO = {
   // 2026-09-23 (ficha 454): 64 -> 65. Suma UNA (#70); sus bajas van con el retiro del catalogo.
   // 2026-09-23 (ficha 454, retiro del catalogo): 65 -> 59. RETIRA OCHO (#59-#66: las aristas de los
   // dos estados retirados) y suma DOS de metadato (#71/#72, `gestion_tienda_ayuda` desde `en_reparto`).
-  aristasFlujo: 59, // +2 (157); +3 -1 (239); +3 (235); +2 (237); +1 (240); +1 (276); +1 (398); +1 -8 +2 (454)
+  // 2026-11-17 (ficha SLT-197): 59 -> 60. Suma UNA (#73) y NO retira ninguna.
+  aristasFlujo: 60, // +2 (157); +3 -1 (239); +3 (235); +2 (237); +1 (240); +1 (276); +1 (398); +1 -8 +2 (454); +1 (SLT-197)
   // 52 -> 54 (239) -> 57 (235) -> 59 (237): las dos altas de la 237 son pares NUEVOS
   // (`ayuda_tienda -> reprogramada` y `ayuda_tienda -> rechazada`; ninguno estaba declarado, y
   // hasta la 237 de `ayuda_tienda` solo se salia rescatando o por el corte), igual que las tres de
@@ -280,6 +284,8 @@ export const RECUENTO_INVENTARIO = {
   // pares distintos (todos tocaban un estado retirado). #71/#72 repiten los pares de #13/#15, asi
   // que no suman par: la diferencia `aristas - pares` pasa de 3 a 5 (#19/#23, #20/#24, #21/#67,
   // #13/#71 y #15/#72).
-  paresUnicos: 54,
+  // 2026-11-17 (ficha SLT-197): 54 -> 55. La arista #73 (`en_bodega_satelite -> en_ruta_bodega_central`)
+  // es un par NUEVO, asi que la diferencia `aristas - pares` se queda en 5.
+  paresUnicos: 55,
   aristasCreacion: 2,
 } as const;

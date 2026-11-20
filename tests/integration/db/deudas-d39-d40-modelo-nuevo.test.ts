@@ -5,12 +5,14 @@ import { Prisma, type PrismaClient, type TarifaModelo } from "@prisma/client";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { consolidacionesConModeloNuevo } from "@/lib/repositories/_shared/detalle-modelo-nuevo";
 import { CierreBodegaRepository } from "@/lib/repositories/CierreBodegaRepository";
+import { CifrasBodegaLoteRepository } from "@/lib/repositories/CifrasBodegaLoteRepository";
 import { CierresBodegaAdminRepository } from "@/lib/repositories/CierresBodegaAdminRepository";
 import { FiltrosWalletRepository } from "@/lib/repositories/FiltrosWalletRepository";
 import { categoriasConModeloNuevoSql } from "@/lib/repositories/libro-caja-a-quien-sql";
 import { SaldosSatelitesRepository } from "@/lib/repositories/SaldosSatelitesRepository";
 import { WalletMovimientoRepository } from "@/lib/repositories/WalletMovimientoRepository";
 import { CierreBodegaService } from "@/lib/services/CierreBodegaService";
+import { CierresBodegaSateliteDescargaService } from "@/lib/services/CierresBodegaSateliteDescargaService";
 import { CierresBodegaAdminService } from "@/lib/services/CierresBodegaAdminService";
 import { ConciliacionSatelitesService } from "@/lib/services/ConciliacionSatelitesService";
 import { FiltrosWalletService } from "@/lib/services/FiltrosWalletService";
@@ -460,9 +462,20 @@ interface LecturaBodega {
 }
 
 function servicioZona(cli: PrismaClient, zonaId: string) {
-  return new CierreBodegaService(new CierreBodegaRepository(cli), {
-    findUsuarioZonaId: async () => zonaId,
-  } as never, reglasPaisFijas());
+  const ordenRepo = { findUsuarioZonaId: async () => zonaId } as never;
+  return {
+    // La pagina y la consolidacion siguen en CierreBodegaService.
+    cierre: new CierreBodegaService(new CierreBodegaRepository(cli), ordenRepo, reglasPaisFijas()),
+    // SLT-176 (R705): la descarga de «Solicitados», en su servicio de solo lectura.
+    // SLT-141 (R389): con una consolidacion nueva, lee sus cifras en lote; sin la lectura el servicio
+    // lanza (no devuelve el archivo sin cifras). La real, como produccion.
+    descarga: new CierresBodegaSateliteDescargaService(
+      new CierreBodegaRepository(cli),
+      ordenRepo,
+      reglasPaisFijas(),
+      new CifrasBodegaLoteRepository(cli),
+    ),
+  };
 }
 
 async function leerBodega(tx: TxDeTest, e: Empresa): Promise<LecturaBodega> {
@@ -474,9 +487,9 @@ async function leerBodega(tx: TxDeTest, e: Empresa): Promise<LecturaBodega> {
     const saldos = new ConciliacionSatelitesService(new SaldosSatelitesRepository(cli), {} as never, reglasPaisFijas());
     const zonaId = e.fks.zonaId;
 
-    const pagina = await zona.listarCierresBodegaSolicitadosPaginado(PAGINA, satelite);
-    const completo = await zona.listarCierresBodegaSolicitadosCompleto(satelite);
-    const consolidacion = await zona.listarConsolidacion(satelite);
+    const pagina = await zona.cierre.listarCierresBodegaSolicitadosPaginado(PAGINA, satelite);
+    const completo = await zona.descarga.listarCierresBodegaSolicitadosCompleto(satelite);
+    const consolidacion = await zona.cierre.listarConsolidacion(satelite);
     const lista = await admin.listarCierresBodegaAdmin(MAESTRO);
     const pendientes = await admin.listarPendientesCierresBodegaPaginado(PAGINA, MAESTRO);
     const saldosPagina = await saldos.listarConsolidacionesSatelite({ zonaId, ...PAGINA }, MAESTRO);
@@ -646,7 +659,7 @@ describeSiHayBase("D39 y D40 — sin una consulta por fila", () => {
     async function comoEmpresaConSiembra(tx: TxDeTest, e: Empresa) {
       const satelite: Actor = { usuarioId: "adminSatelite-del-test", rol: "adminSatelite" };
       const vacia = await comoEmpresa(tx, e.org, () =>
-        sentencias(() => servicioZona(clienteConSavepoint(tx), e.fks.zonaId).listarCierresBodegaSolicitadosCompleto(satelite)),
+        sentencias(() => servicioZona(clienteConSavepoint(tx), e.fks.zonaId).descarga.listarCierresBodegaSolicitadosCompleto(satelite)),
       );
       for (let i = 0; i < 3; i += 1) {
         const cierre = await crearCierre(tx, e, ["nuevo"]);
@@ -657,7 +670,7 @@ describeSiHayBase("D39 y D40 — sin una consulta por fila", () => {
         const cli = clienteConSavepoint(tx);
         return {
           vacia,
-          zona: await sentencias(() => servicioZona(cli, e.fks.zonaId).listarCierresBodegaSolicitadosCompleto(satelite)),
+          zona: await sentencias(() => servicioZona(cli, e.fks.zonaId).descarga.listarCierresBodegaSolicitadosCompleto(satelite)),
           saldos: await sentencias(() =>
             new ConciliacionSatelitesService(new SaldosSatelitesRepository(cli), {} as never, reglasPaisFijas()).listarConsolidacionesSatelite(
               { zonaId: e.fks.zonaId, ...PAGINA },
@@ -677,7 +690,9 @@ describeSiHayBase("D39 y D40 — sin una consulta por fila", () => {
       throw new Error("alguna lectura no devolvio ok");
     }
     expect(r.zona.valor.items.filter((c) => c.incluyeModeloNuevo === true)).toHaveLength(3);
-    expect(r.zona.n).toBe(1);
+    // D40: una sentencia para la marca de los tres. SLT-141 (R385, R389): con consolidaciones nuevas la
+    // descarga suma UNA lectura en lote de `cierre_detail` para sus cifras, fija con los tres: 1 + 1.
+    expect(r.zona.n).toBe(2);
     expect(r.saldos.valor.items.filter((c) => c.incluyeModeloNuevo === true)).toHaveLength(3);
     expect(r.saldos.n).toBe(1);
     expect(r.categorias.valor).toEqual([FLETE]);

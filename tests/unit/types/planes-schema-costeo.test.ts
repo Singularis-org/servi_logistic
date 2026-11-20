@@ -39,7 +39,7 @@ function editar(extra: Record<string, unknown> = {}) {
     precio: { tipo: "sin_precio" },
     costoPorOrden: null,
     costoPorOrdenPorcentual: null, // SLT-83: campo nuevo del esquema
-    vigenteDesde: null,
+    vigenteDesde: "2026-12-01", // SLT-135 (R1): obligatoria.
     ...extra,
   };
 }

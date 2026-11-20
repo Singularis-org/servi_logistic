@@ -23,6 +23,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DataTable, type Column } from "@/components/shared/DataTable";
+import { BARRA_FIJA } from "@/components/shared/BuscadorFiltros";
+import { DESPLEGABLE_TACTIL } from "@/components/shared/texto-entero";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { money } from "@/lib/config/moneda";
 import type { CierreAdminResumen } from "@/lib/interfaces/services/ICierresAdminService";
 import type {
@@ -67,7 +70,13 @@ import {
   type RolCola,
 } from "./cola-cierres-vista";
 import { CIFRAS_GANANCIA_LABEL, TABLIST_PROPIA } from "./cola-propia-vista";
-import { columnasTablaPropia, type AccionesColaPropia } from "./TablaColaPropia";
+import {
+  columnasTablaPropia,
+  columnasTablaPropiaMovil,
+  detallePropioMovil,
+  masDatosPropio,
+  type AccionesColaPropia,
+} from "./TablaColaPropia";
 
 export type { AccionesColaPropia } from "./TablaColaPropia";
 
@@ -235,7 +244,18 @@ function TablaCola<T>({
   columns,
   filas,
   rowKey,
-}: Readonly<TablaComun & { columns: Column<T>[]; filas: readonly T[]; rowKey: keyof T }>) {
+  renderExpanded,
+  expandAriaLabel,
+}: Readonly<
+  TablaComun & {
+    columns: Column<T>[];
+    filas: readonly T[];
+    rowKey: keyof T;
+    /** SLT-156 (R535): el desplegable de cada fila en el teléfono. */
+    renderExpanded?: (fila: T) => ReactNode;
+    expandAriaLabel?: (fila: T) => string;
+  }
+>) {
   return (
     <DataTable
       ariaLabel={region}
@@ -245,12 +265,17 @@ function TablaCola<T>({
       isLoading={cargando}
       error={error}
       emptyMessage={vacio}
+      renderExpanded={renderExpanded}
+      expandAriaLabel={expandAriaLabel}
     />
   );
 }
 
 export function ColaCierres(props: Readonly<ColaCierresTodasProps>) {
   const { descripcion, pestanas, pestanaActiva, barra, descargar, pie, paginacion } = props;
+  // SLT-156 (R535): «Cierres solicitados» del mensajero, en el teléfono, con dos columnas y desplegable
+  // sobre la MISMA tabla. Las colas de la central y la satélite no cambian.
+  const esMovil = useIsMobile();
   const comun: TablaComun = {
     region: props.region,
     cargando: props.cargando,
@@ -275,13 +300,18 @@ export function ColaCierres(props: Readonly<ColaCierresTodasProps>) {
         >
           {pestanas.map((p) => (
             <TabsTrigger key={p.id} value={p.id} className={TAB_TRIGGER}>
-              {`${p.label} ${p.conteo}`}
+              {`${p.label} (${p.conteo})`}
             </TabsTrigger>
           ))}
         </TabsList>
 
-        {/* La barra va FUERA de los paneles: cambiar de pestaña no la desmonta (R99, R100). */}
-        <div className="flex flex-wrap items-start gap-2">
+        {/* La barra va FUERA de los paneles: cambiar de pestaña no la desmonta (R99, R100). SLT-191
+            (R822, R823; DS6): en «Cierres solicitados» del teléfono, barra y «Descargar» quedan fijos
+            arriba al desplazar, como «Gestiones» (R527); las colas de la administración, no. */}
+        <div
+          className={cn("flex flex-wrap items-start gap-2", props.tipo === "propios" && esMovil && BARRA_FIJA)}
+          data-barra-cola=""
+        >
           <div className="min-w-[min(100%,18rem)] flex-1">{barra}</div>
           <div className="shrink-0">{descargar}</div>
         </div>
@@ -304,13 +334,17 @@ export function ColaCierres(props: Readonly<ColaCierresTodasProps>) {
             {props.tipo === "propios" && props.tarjetas && props.tarjetas.length > 0 ? (
               <CifrasCierre cifras={props.tarjetas} ariaLabel={CIFRAS_GANANCIA_LABEL} />
             ) : null}
-            <section aria-label={comun.region}>
+            {/* SLT-165 (R493, B2 de la review): el desplegable de cada fila de «Cierres solicitados»
+                (el botón con `aria-expanded` de la tabla) mide 44 px en el teléfono. */}
+            <section aria-label={comun.region} className={props.tipo === "propios" ? DESPLEGABLE_TACTIL : undefined}>
               {props.tipo === "propios" ? (
                 <TablaCola
                   {...comun}
                   filas={props.filas}
-                  columns={columnasTablaPropia(props.acciones)}
+                  columns={esMovil ? columnasTablaPropiaMovil() : columnasTablaPropia(props.acciones)}
                   rowKey="cierreId"
+                  renderExpanded={esMovil ? (c: CierrePasadoDTO) => detallePropioMovil(c, props.acciones) : undefined}
+                  expandAriaLabel={esMovil ? masDatosPropio : undefined}
                 />
               ) : props.tipo === "bodega" ? (
                 <TablaColaBodega {...comun} filas={props.filas} acciones={props.acciones} />
@@ -363,7 +397,7 @@ function PanelAConsolidar({
         <div
           role="status"
           id={ID_AVISO_CONSOLIDAR}
-          className="rounded-lg border border-warning/60 bg-warning-soft px-4 py-3 text-sm text-warning-strong"
+          className="rounded-lg border border-warning/60 bg-warning-soft px-4 dark:bg-warning/15 py-3 text-sm text-warning-strong"
         >
           {aviso}
         </div>

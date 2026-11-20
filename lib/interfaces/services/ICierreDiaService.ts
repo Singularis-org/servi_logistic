@@ -145,6 +145,12 @@ export interface CierreDetalleGestion {
    */
   ingresoEmpresa?: IngresoEmpresaDTO | null;
   /**
+   * SLT-154 (R463, D1) — el modelo de tarifa de la fila cuando `ingresoEmpresa` llega en `null` por
+   * el corte de quien no tiene acceso total (el bloque entero es cobro a la tienda). La pantalla lo
+   * necesita para decidir el modelo nuevo. Ausente para la central: ella lo lee de `ingresoEmpresa`.
+   */
+  tarifaModelo?: "viejo" | "nuevo" | null;
+  /**
    * SLT-56 (R19/R20) — los ajustes del pago al mensajero de esta gestion, en orden cronologico. Que
    * haya al menos uno es la marca «Ajustado». OPCIONAL porque este tipo lo comparte la vista del
    * mensajero, y alli no se rellena nunca (Q2: el mensajero ve el valor nuevo, sin marca ni motivo).
@@ -351,8 +357,9 @@ export interface CierrePasadoDTO {
   totalIngresoBodegaRechazos: string; // feature 56/R12: total snapshot del ingreso de bodega por rechazos (STRING)
   /**
    * SLT-123 (R320) — `cierre_dia.pago_independiente_efectivo`: la regla con la que el servicio
-   * deriva `pendientePagoMensajero`. El repositorio la lee siempre; opcional por retrocompat de los
-   * dobles, y ausente se lee como `false` (el `DEFAULT` de la columna, la regla de la 44).
+   * deriva `pendientePagoMensajero`. Opcional AQUI porque la pantalla no la lee y sus dobles la
+   * omiten. Donde el servicio la usa —la pagina del historico— llega como
+   * `CierrePasadoDeRepositorio` (`ICierreDiaRepository`), con la marca OBLIGATORIA (SLT-147, D68).
    */
   pagoIndependienteEfectivo?: boolean;
   solicitadoAt: string; // ISO

@@ -1,10 +1,25 @@
 // @vitest-environment jsdom
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, act } from "@testing-library/react";
+import type { CarouselApi } from "@/components/ui/carousel";
 
 import { BASIS_1_2_3, CarruselCards } from "@/components/shared/CarruselCards";
+
+// SLT-166 (R542): para emitir `select` hace falta la instancia de embla que monta la primitiva.
+// Se envuelve el hook REAL (no se sustituye): el carrusel sigue siendo el de verdad y el resto de
+// los casos de este archivo no cambian; solo se guarda la última instancia creada.
+const embla = vi.hoisted(() => ({ api: undefined as NonNullable<CarouselApi> | undefined }));
+vi.mock("embla-carousel-react", async (importOriginal) => {
+  const real = await importOriginal<typeof import("embla-carousel-react")>();
+  const envuelto = ((...args: Parameters<typeof real.default>) => {
+    const r = real.default(...args);
+    if (r[1]) embla.api = r[1];
+    return r;
+  }) as typeof real.default;
+  return { ...real, default: envuelto };
+});
 
 // Compuesto shared del carrusel. jsdom no mide anchos, así que embla no reporta
 // visibilidad: lo que se verifica aquí es el CABLEADO (todas las tarjetas montadas, región
@@ -182,5 +197,60 @@ describe("CarruselCards — configuración del desplazamiento (R6)", () => {
     );
     expect(umbral).toBeGreaterThanOrEqual(0.5);
     expect(umbral).toBeLessThanOrEqual(0.9);
+  });
+});
+
+describe("SLT-166 R542 — avisa de la tarjeta a la vista al cambiar de página", () => {
+  function montarConAviso() {
+    const onIndiceChange = vi.fn();
+    render(
+      <CarruselCards
+        items={ITEMS}
+        getKey={(item) => item.id}
+        ariaLabel="Órdenes en reparto"
+        renderItem={(item) => <article>{item.texto}</article>}
+        onIndiceChange={onIndiceChange}
+      />,
+    );
+    expect(embla.api, "embla tiene que haberse montado").toBeDefined();
+    return { api: embla.api!, onIndiceChange };
+  }
+
+  it("en `select` emite el índice de la tarjeta seleccionada (una por página, el móvil)", () => {
+    const { api, onIndiceChange } = montarConAviso();
+    vi.spyOn(api, "selectedScrollSnap").mockReturnValue(3);
+    const motor = api.internalEngine();
+    vi.spyOn(api, "internalEngine").mockReturnValue({ ...motor, slideRegistry: [[0], [1], [2], [3], [4]] });
+
+    act(() => {
+      api.emit("select");
+    });
+
+    expect(onIndiceChange).toHaveBeenLastCalledWith(3);
+  });
+
+  it("con varias tarjetas por página emite la PRIMERA de la página, no el número de página", () => {
+    const { api, onIndiceChange } = montarConAviso();
+    vi.spyOn(api, "selectedScrollSnap").mockReturnValue(1);
+    const motor = api.internalEngine();
+    vi.spyOn(api, "internalEngine").mockReturnValue({ ...motor, slideRegistry: [[0, 1, 2], [3, 4]] });
+
+    act(() => {
+      api.emit("select");
+    });
+
+    expect(onIndiceChange).toHaveBeenLastCalledWith(3);
+  });
+
+  it("sin `onIndiceChange` no se suscribe a nada extra: el carrusel de las otras pantallas no cambia", () => {
+    render(
+      <CarruselCards
+        items={ITEMS}
+        getKey={(item) => item.id}
+        ariaLabel="Órdenes en reparto"
+        renderItem={(item) => <article>{item.texto}</article>}
+      />,
+    );
+    expect(() => act(() => embla.api!.emit("select"))).not.toThrow();
   });
 });

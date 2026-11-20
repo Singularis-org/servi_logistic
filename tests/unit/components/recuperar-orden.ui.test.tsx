@@ -169,11 +169,12 @@ async function filtrosOfrecidos(
  * Pone y MARCA el interruptor «Eliminadas», y ESPERA a que el listado se haya vuelto a pedir con
  * el filtro puesto.
  *
- * La espera NO es decorativa: la barra de filtros emite su selección con retardo, y el cambio de
- * filtro LIMPIA la selección de filas de la tabla (`OrdenesModule`). Sin esperar aquí, marcar una
- * fila justo después la deja marcada un instante y el filtro se la lleva por delante — que es
- * exactamente lo que le pasa a una persona que haga las dos cosas seguidas, y por eso el helper
- * espera en vez de disimularlo con un `waitFor` en cada aserción.
+ * La espera NO es decorativa: la barra de filtros emite su selección con retardo, y este
+ * interruptor LIMPIA la selección de filas de la tabla (SLT-222 R1511; los demás filtros ya no
+ * la limpian). Sin esperar aquí, marcar una fila justo después la deja marcada un instante y el
+ * interruptor se la lleva por delante — que es exactamente lo que le pasa a una persona que
+ * haga las dos cosas seguidas, y por eso el helper espera en vez de disimularlo con un
+ * `waitFor` en cada aserción.
  */
 async function verEliminadas(user: ReturnType<typeof userEvent.setup>) {
   await ponerFiltros(user, FILTRO);
@@ -270,8 +271,6 @@ describe("la barra del listado de eliminadas", () => {
     await verEliminadas(user);
     await seleccionarFila(user, "REM-o1");
 
-    // eslint-disable-next-line no-console
-    console.log("BOTONES:", screen.queryAllByRole("button").map((b) => b.textContent));
     expect(await screen.findByRole("button", { name: ACCION })).toBeInTheDocument();
     // `en_bodega_central` ofrecería estas dos en el listado normal: sobre una orden borrada
     // serían transiciones que el servidor rechaza.
@@ -349,6 +348,36 @@ describe("la barra del listado de eliminadas", () => {
       expect(errorMock).toHaveBeenCalledWith(recuperarOrdenErrorMessage(fallo)),
     );
     expect(successMock).not.toHaveBeenCalled();
+  });
+});
+
+// SLT-222 R1511 (D5): la selección sobrevive a búsquedas y filtros, SALVO a este interruptor:
+// cambia el universo, y con él puesto la barra ofrece «Recuperar» para TODA la selección.
+describe("SLT-222 R1511 — el interruptor «Eliminadas» desmarca todo", () => {
+  it("ponerlo desmarca lo marcado en el listado vivo, y quitarlo desmarca lo de eliminadas", async () => {
+    listarOrdenesMock.mockResolvedValue(
+      pagina([makeOrden({ id: "o1", estatusValue: "en_bodega_central" })]),
+    );
+    const user = userEvent.setup();
+    renderConSwr(<OrdenesListado accionesLote puedeEliminar puedeVerEliminadas catalogoFiltros={CATALOGO} />);
+
+    await ponerFiltros(user, FILTRO);
+    await seleccionarFila(user, "REM-o1");
+    expect(await screen.findByText("1 seleccionada")).toBeInTheDocument();
+
+    const interruptor = await screen.findByRole("checkbox", { name: FILTRO });
+    await user.click(interruptor);
+    await waitFor(() => expect(ultimoFilter()?.eliminados).toBe(true));
+    await waitFor(() => expect(screen.queryByText(/seleccionada/)).toBeNull());
+    expect(
+      await screen.findByRole("checkbox", { name: "Seleccionar orden REM-o1" }),
+    ).toHaveAttribute("aria-checked", "false");
+
+    await seleccionarFila(user, "REM-o1");
+    expect(await screen.findByText("1 seleccionada")).toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox", { name: FILTRO }));
+    await waitFor(() => expect(ultimoFilter()?.eliminados).toBeUndefined());
+    await waitFor(() => expect(screen.queryByText(/seleccionada/)).toBeNull());
   });
 });
 

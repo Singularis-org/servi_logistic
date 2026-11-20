@@ -4,6 +4,7 @@ import { useState } from "react";
 import { MessageSquareDot, Search } from "lucide-react";
 
 import { InfoEstado } from "@/components/shared/EstadoInfo";
+import { CLASE_INFO_TACTIL } from "@/components/shared/texto-entero";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { MiAsignacionDTO } from "@/lib/interfaces/services/IMisAsignacionesService";
@@ -165,7 +166,8 @@ function OrdenFila({
           ) : null}
         </div>
       </button>
-      <span className="shrink-0 pr-3">
+      {/* SLT-193 (R916): el envoltorio da al (i) su área táctil de 44 × 44. */}
+      <span className={cn("shrink-0 pr-3", CLASE_INFO_TACTIL)}>
         <InfoEstado codigo={orden.estatusValue} />
       </span>
     </div>

@@ -13,7 +13,8 @@
 import { jsPDF } from "jspdf";
 import { EMPRESA } from "@/lib/config/marca";
 import { fuenteEtiqueta } from "@/lib/pdf/etiquetas-fuente";
-import { cubreCodePoint, registrarFuente } from "@/lib/pdf/etiquetas-fuente-registro";
+import { registrarFuente } from "@/lib/pdf/etiquetas-fuente-registro";
+import { imprimible } from "@/lib/pdf/imprimible";
 import { formatMontoString } from "@/lib/config/moneda";
 import { sumarMontos } from "@/lib/utils/kpis-financieros";
 import { fechaCalendario } from "@/lib/utils/calendario-zona";
@@ -49,16 +50,6 @@ const LINEA: [number, number, number] = [227, 232, 242];
 /** Nombre del archivo (R33): `transito-YYYY-MM-DD.pdf` con la fecha CR. */
 export function nombreArchivoTransito(ahora: Date, zona: string): string {
   return `transito-${fechaCalendario(ahora, zona)}.pdf`;
-}
-
-/** Sustituye por «?» lo que la fuente embebida no puede imprimir (nunca desaparece en silencio). */
-function imprimible(texto: string): string {
-  let out = "";
-  for (const c of texto.replace(/[\r\n\t]+/g, " ")) {
-    const cp = c.codePointAt(0) ?? 0x3f;
-    out += cubreCodePoint(fuenteEtiqueta, cp) ? c : "?";
-  }
-  return out;
 }
 
 function plural(n: number, uno: string, varios: string): string {

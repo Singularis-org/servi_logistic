@@ -134,6 +134,7 @@ export type BloqueoConsolidacion = "sin_zona" | "sin_resolver" | "vacio";
 
 // Un cierre_dia incluido, con su detalle de gestiones (reuso 37) + su total snapshot.
 // R14/F1.4-f: NO incluye pago al mensajero (feature 39).
+// SLT-154 (R461): sus ocho cifras de la empresa llegan en `null` a quien no tiene acceso total.
 export interface CierreBodegaDetalleCierre {
   cierreDiaId: string;
   mensajeroId: string;
@@ -152,54 +153,38 @@ export interface CierreBodegaDetalleCierre {
   solicitadoAt?: string;
   grupos: CierreGrupos; // por resultado (reuso CierreDetalleGestion de la 37, R11)
   // Totales por concepto del ingreso de la empresa de ESTE cierre_dia (derivados del snapshot).
-  totalesIngreso: TotalesIngresoEmpresa;
+  totalesIngreso: TotalesIngresoEmpresa | null;
   // SL-39 (R21): IVA facturado de ESTE cierre_dia = `ivaFlete` + `ivaFleteDevolucion` +
   // `ivaComisionCod` de `totalesIngreso` (STRING money-safe). No es de la empresa.
-  ivaFacturado: string;
+  ivaFacturado: string | null;
   // DERIVADO (SL-39, R22): `totalesIngreso.total` − `ivaFacturado` − `totalPagoMensajero` de ESTE
   // cierre_dia (STRING). Lo que le queda a la empresa del dia de ese mensajero. Puede ser NEGATIVO.
-  ganancia: string;
-  // DERIVADO: `totales.general` - `fleteConIva` - `comisionConIva` de ESTE cierre_dia
-  // (STRING money-safe). Lo que se le paga a la tienda. Puede ser NEGATIVO.
-  pagoTienda: string;
+  ganancia: string | null;
+  // DERIVADO (SLT-169 R623): `totales.general` − `totalesIngreso.total` de ESTE cierre_dia
+  // (STRING money-safe): lo que se le paga hoy a la tienda, restado TODO lo facturado (flete por
+  // rechazo incluido). Puede ser NEGATIVO (la tienda debe) y viaja con su signo.
+  pagoTienda: string | null;
   /**
    * Feature 393 (R7/R10) — LA LINEA PUENTE: `fleteConIva` + `comisionConIva` de ESTE
    * cierre_dia, o sea lo que la empresa cobra SOBRE LO RECAUDADO. Se emite SIEMPRE, tambien
    * cuando el flete por rechazo vale "0.00": es lo que enlaza «para la tienda» con «lo que
    * la empresa facturo» y sin ella la resta de la cascada no da en cuanto hay un rechazo.
    */
-  cobradoSobreRecaudado: string;
+  cobradoSobreRecaudado: string | null;
   /**
    * Feature 393 (R8) — DERIVADO: `totalesIngreso.total` − `ivaFacturado` (SL-39, R23) −
    * `totalPagoMensajero` − `totalIngresoBodegaRechazos` de ESTE cierre_dia. NO es `ganancia`: aquella no resta la
    * bodega, y por eso los dos numeros solo coinciden cuando la bodega es 0. Puede ser NEGATIVO.
    */
-  netoEmpresa: string;
+  netoEmpresa: string | null;
   /**
-   * Ficha 396 (D1) — DERIVADO: `totales.general` − `totalesIngreso.total` de ESTE cierre_dia.
-   * LO QUE LA TIENDA GANA EN TOTAL con el dia de ESE mensajero.
-   *
-   * **NO es `pagoTienda`**, que viaja aqui arriba y sigue significando lo mismo: aquel es lo que
-   * se le paga DE ESTE DINERO —no resta el flete por rechazo, que nunca entro en lo recaudado—;
-   * este es lo que le queda DESPUES de que tambien le cobren aquel flete. La diferencia entre los
-   * dos es exactamente `totalesIngreso.fleteDevolucionConIva` de este cierre_dia.
-   *
-   * FALTABA, y por eso lo trae esta ficha: la 395 puso `ganaLaTienda` SOLO en el detalle del
-   * cierre del mensajero, asi que el desglose por tienda de bodega sumaria hacia un total que no
-   * estaba en ninguna parte (`design.md §5.2`). Se deriva con la MISMA funcion
-   * (`ganaLaTienda`, `lib/utils/ingreso-empresa.ts`), no con una resta escrita aqui.
-   *
-   * Sale de SUS PROPIOS snapshot y desglose, nunca de los del agregado (R21). Puede ser NEGATIVO
-   * y se emite CON SU SIGNO, nunca recortado a "0.00".
-   */
-  ganaLaTienda: string;
-  /**
-   * 💰 Ficha 396 (R19) — DE QUIEN ES CADA PARTE de `pagoTienda` y `ganaLaTienda` DE ESTE
+   * 💰 Ficha 396 (R19) — DE QUIEN ES CADA PARTE de `pagoTienda` DE ESTE
    * `cierre_dia`, o sea del dia de ESE mensajero.
    *
    * ⚠️ **NO ES UNA CORRECCION DE DINERO.** `wallet_tienda_movimiento` lleva los movimientos
    * separados por tienda desde siempre: a nadie se le paga mal, y esta ficha no toca ni una fila
-   * del ledger. `pagoTienda` y `ganaLaTienda` siguen valiendo lo mismo (R18); esto se AÑADE.
+   * del ledger; esto se AÑADE. (Desde SLT-169 `pagoTienda` resta todo lo facturado; el ledger
+   * sigue igual, R631.)
    *
    * ⚠️ **SALE DE `cd.gestiones`, LAS DE ESTE MENSAJERO, y de ninguna otra.** No se deriva del
    * agregado de la bodega ni se corrige para cuadrar con el (R21). De ahi se sigue que el UMBRAL
@@ -213,18 +198,17 @@ export interface CierreBodegaDetalleCierre {
    *
    * ORDENADO POR EL SERVIDOR (R8): por `pagoTienda` descendente, desempate en `partesPorTienda`.
    *
-   * INVARIANTES de ESTE nivel (R10/R11/R12):
+   * INVARIANTES de ESTE nivel (R10/R12; R11 desaparecio con SLT-174):
    *   Σ `.pagoTienda`   === `pagoTienda`
-   *   Σ `.ganaLaTienda` === `ganaLaTienda`
    *   Σ `.recaudado`    === `totales.general`
-   * Las tres se sostienen mientras el snapshot de este `cierre_dia` sea lo que suman sus
+   * Las dos se sostienen mientras el snapshot de este `cierre_dia` sea lo que suman sus
    * gestiones. Si un dia dejara de serlo, la pantalla ensena el descuadre (R21); NO se toca el
    * agregado para forzar que cuadre.
    *
    * LO QUE NO SE REPARTE (R16): `totalPagoMensajero` y `totalIngresoBodegaRechazos` son del
    * cierre_dia ENTERO y se quedan agregados.
    */
-  partesPorTienda: ParteDeTienda[];
+  partesPorTienda: ParteDeTienda[] | null;
   /**
    * Feature 393 (R9/R15) — DERIVADO: `totales.general` − `totalPagoMensajero` −
    * `totalIngresoBodegaRechazos` de ESTE cierre_dia, desde SUS PROPIOS snapshots (nunca desde
@@ -318,8 +302,56 @@ export type ListarConsolidablesServiceResult =
  * ni el reparto de efectivo, que son de `listarConsolidacion` y viven sobre otro conjunto —los
  * consolidables—. Ese es justo el coste que esta tanda quita del camino de la descarga.
  */
-export type ListarCierresBodegaSolicitadosCompletoServiceResult =
-  ListarCompletoServiceResult<CierreBodegaResumen>;
+export type ListarCierresBodegaSolicitadosCompletoServiceResult = ConCifrasBodegaEnOk<
+  ListarCompletoServiceResult<CierreBodegaResumen>,
+  CifrasCierreBodegaDescargaDTO
+>; // SLT-141 (R385, R386): la satelite, sin `pagoEntregado`
+
+/**
+ * SLT-141 «Excel del modelo nuevo: hojas por cierre de bodega» (R385, R387, R388) — las cifras de UN
+ * cierre de bodega del modelo nuevo para las hojas «Cierres» y «Por tienda». Salen de
+ * `cifrasAgregadasBodega`, la misma funcion que el detalle. Todo OBLIGATORIO: un campo opcional que un
+ * camino no puebla se lee como «no hay». Importes: STRING de escala 2, con su signo.
+ *
+ * SLT-161 «Descargas de la satélite sin el dinero de la empresa» (R480): las cifras de la empresa
+ * admiten `null` = quien lee no tiene acceso total. La central las recibe siempre pobladas (R487).
+ */
+export interface CifrasCierreBodegaDescargaDTO {
+  /** Une con el item (`CierreBodegaResumen.cierreBodegaId`); nunca es columna. */
+  cierreBodegaId: string;
+  /** Numero de gestiones de sus cierres del dia. */
+  gestiones: number;
+  /** Numero de esas gestiones con al menos un ajuste del pago (Σ `gestionesAjustadas`). */
+  pagosAjustados: number;
+  /** `totalesIngreso.total` del detalle. */
+  totalFacturado: string | null;
+  ivaFacturado: string | null;
+  /** «Le queda a la empresa». */
+  netoEmpresa: string | null;
+  /** «Se le paga a la tienda» (SLT-169 R629; SLT-174 R653). */
+  pagoTienda: string | null;
+  /** En el orden del detalle (de mayor a menor pago a la tienda). */
+  partesPorTienda: ParteDeTienda[] | null;
+}
+
+/**
+ * SLT-141 (R388, PA1, F481) — solo la central: «Pago entregado» del cierre de bodega = Σ por sus
+ * cierres del dia de `derivarPagoEntregadoCierre`; `null` si alguno no esta aprobado.
+ */
+export interface CifrasCierreBodegaCentralDescargaDTO extends CifrasCierreBodegaDescargaDTO {
+  pagoEntregado: string | null;
+}
+
+/**
+ * SLT-141 — anade `cifrasModeloNuevo?` SOLO a la rama `ok`, gemelo de `ConRechazosDeTiendaEnOk` de
+ * SLT-113. Presente solo si algun cierre de bodega del conjunto es nuevo; uno por cierre nuevo, en el
+ * orden de `items`. `C` es el DTO de la audiencia: la satelite no puede recibir `pagoEntregado`.
+ */
+export type ConCifrasBodegaEnOk<R, C extends CifrasCierreBodegaDescargaDTO> = R extends {
+  status: "ok";
+}
+  ? R & { cifrasModeloNuevo?: C[] }
+  : R;
 
 /**
  * Feature 184 — Tanda B (R1/R6/R10) — el CONJUNTO de «Cierres del dia a consolidar» de la zona,
@@ -380,20 +412,6 @@ export interface ICierreBodegaService {
     input: { page: number; pageSize: number; filtros?: FiltrosCierresBodega },
     actor: Actor,
   ): Promise<ListarConsolidablesServiceResult>;
-  /**
-   * Feature 184 — Tanda B (R1/R4/R6/R10): el CONJUNTO de «Cierres de bodega solicitados» de la
-   * zona del actor, sin recorte, para producir el archivo.
-   *
-   * Mismo guard y misma resolucion de zona que su hermana paginada. **No recibe entrada**: este
-   * listado no admite filtros, asi que su lista blanca —derivada de la de la pagina quitando
-   * `page`/`pageSize`— no deja ninguna clave, y la barrera se aplica entera en el borde (R17).
-   * El tope de filas se evalua aqui (R6): superarlo NO entrega filas ni un conjunto truncado.
-   * Sin zona -> conjunto vacio, no `forbidden`.
-   */
-  listarCierresBodegaSolicitadosCompleto(
-    actor: Actor,
-    filtros?: FiltrosCierresBodega,
-  ): Promise<ListarCierresBodegaSolicitadosCompletoServiceResult>;
   /**
    * Feature 184 — Tanda B (R1/R4/R6/R10): el CONJUNTO de «Cierres del dia a consolidar» de la
    * zona del actor, sin recorte, para producir el archivo.

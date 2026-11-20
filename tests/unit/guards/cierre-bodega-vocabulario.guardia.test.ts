@@ -7,21 +7,12 @@ import { quitarComentarios } from "../../fixtures/sin-comentarios";
 import { LLAMADAS_PROHIBIDAS_EN_DINERO } from "../../fixtures/money-safe";
 import {
   CASCADA_CENTRAL_TITULO,
-  CASCADA_DUENO_TITULO,
-  CASCADA_FACTURA_TIENDA_TITULO,
-  CASCADA_NETO_EMPRESA_TITULO,
-  COBRADO_SOBRE_RECAUDADO_LABEL,
   EFECTIVO_NO_CUBRE_NOTA,
   FACTURADO_EMPRESA_LABEL,
-  FLETE_RECHAZO_NO_DEDUCIBLE_NOTA,
   GANA_BODEGA_SATELITE_LABEL,
   GANA_BODEGA_SATELITE_NOTA,
-  GANA_LA_TIENDA_NEGATIVO_NOTA,
-  GANA_LA_TIENDA_NOTA,
   INGRESO_TOTAL_COL,
   NETO_EMPRESA_LABEL,
-  NETO_EMPRESA_NEGATIVO_NOTA,
-  NETO_EMPRESA_NOTA,
   PARA_LA_CENTRAL_LABEL,
   PARA_LA_CENTRAL_NEGATIVO_NOTA,
   PARA_LA_CENTRAL_NOTA,
@@ -114,9 +105,9 @@ const HOJA = path.join(COMPONENTES, "cierre-factura.tsx");
 /** Los archivos que son ENTEROS una superficie del cierre de bodega. */
 const SUPERFICIES_ENTERAS = [
   "CierresBodegaAdminModule.tsx",
-  "CierresBodegaSolicitadosLista.tsx",
-  "CierresBodegaResueltosLista.tsx",
-  "CascadaDinero.tsx",
+  // SLT-115 «Retirar los componentes de cierre sustituidos»: salen las dos listas de bodega, borradas.
+  // SLT-174 «Quitar el alias ganaLaTienda y los restos de la cascada del mensajero» (R659): sale
+  // `CascadaDinero.tsx`, borrado.
 ] as const;
 
 /**
@@ -588,12 +579,10 @@ describe("393 — censo: el vocabulario del cierre de bodega (R23/R24/R34/R35)",
  */
 describe("393 — el VALOR de los rótulos y las notas, escrito a mano (R19/R23/R25/R33)", () => {
   it.each([
-    ["CASCADA_DUENO_TITULO", CASCADA_DUENO_TITULO, "De quién es el dinero"],
     ["CASCADA_CENTRAL_TITULO", CASCADA_CENTRAL_TITULO, "Lo que va a la central"],
     ["PARA_LA_TIENDA_LABEL", PARA_LA_TIENDA_LABEL, "Para la tienda"],
     ["PARA_LA_CENTRAL_LABEL", PARA_LA_CENTRAL_LABEL, "Para la central"],
     ["NETO_EMPRESA_LABEL", NETO_EMPRESA_LABEL, "Neto de la empresa"],
-    ["COBRADO_SOBRE_RECAUDADO_LABEL", COBRADO_SOBRE_RECAUDADO_LABEL, "Cobrado sobre lo recaudado"],
     ["FACTURADO_EMPRESA_LABEL", FACTURADO_EMPRESA_LABEL, "Lo que la empresa facturó"],
     ["GANA_BODEGA_SATELITE_LABEL", GANA_BODEGA_SATELITE_LABEL, "Gana la bodega satélite"],
   ])("%s dice exactamente lo aprobado", (_nombre, constante, literal) => {
@@ -605,7 +594,7 @@ describe("393 — el VALOR de los rótulos y las notas, escrito a mano (R19/R23/
   // Es el vocabulario que el humano decidió el 2026-09-16 al cerrar Q5, y el que la pantalla de
   // la satélite y la de la central usan a la vez. Anclarlo aquí cuesta un cambio visible y a
   // propósito el día que se quiera cambiar, que es exactamente lo que se quiere que pase —el
-  // mismo criterio, palabra por palabra, que los ocho de arriba.
+  // mismo criterio, palabra por palabra, que los de arriba.
   //
   // ⚠️ NO se comparan contra sí mismos ni contra `ESTADO_CONCILIACION_LABEL`, que es el mapa que
   // los reúne: una aserción contra su propia fuente está siempre verde y dejaría pasar cualquier
@@ -674,11 +663,6 @@ describe("393 — el VALOR de los rótulos y las notas, escrito a mano (R19/R23/
       GANA_BODEGA_SATELITE_NOTA,
       "Lo que se le reconoce a la bodega satélite por las devoluciones a origen. No es un movimiento de caja registrado.",
     ],
-    [
-      "FLETE_RECHAZO_NO_DEDUCIBLE_NOTA",
-      FLETE_RECHAZO_NO_DEDUCIBLE_NOTA,
-      "Se le factura a la tienda, pero no sale de lo recaudado: una devolución a origen no cobra contra entrega.",
-    ],
   ])("%s dice exactamente lo aprobado", (_nombre, constante, literal) => {
     // Las notas son la mitad del requisito, no adorno: R26 pide que se diga de qué resta sale
     // el número, R36 qué significa el negativo y R37 por qué el efectivo puede no alcanzar.
@@ -735,28 +719,6 @@ describe("SL-15 R3 — el cierre nombra a «la empresa», escrito a mano", () =>
       INGRESO_BRUTO_NOTA,
       "Todo lo que facturó la empresa en el cierre (flete + IVA + comisión + IVA), sin descontar nada.",
     ],
-    [
-      "GANA_LA_TIENDA_NOTA",
-      GANA_LA_TIENDA_NOTA,
-      "Lo recaudado menos todo lo que la empresa le factura, incluido el flete por devolución a origen. No es lo que se le paga hoy.",
-    ],
-    [
-      "GANA_LA_TIENDA_NEGATIVO_NOTA",
-      GANA_LA_TIENDA_NEGATIVO_NOTA,
-      "La empresa le factura más de lo que se recaudó en este cierre: a la tienda no le queda nada y pasa a deber la diferencia.",
-    ],
-    [
-      "NETO_EMPRESA_NOTA",
-      NETO_EMPRESA_NOTA,
-      "Lo que la empresa facturó, sin el IVA, menos el pago al mensajero y menos el ingreso de bodega por devoluciones a origen.", // SL-39 (R23): dice «sin el IVA».
-    ],
-    [
-      "NETO_EMPRESA_NEGATIVO_NOTA",
-      NETO_EMPRESA_NEGATIVO_NOTA,
-      "La empresa pagó más de lo que facturó en este cierre: ese neto es una pérdida, no una ganancia.",
-    ],
-    ["CASCADA_FACTURA_TIENDA_TITULO", CASCADA_FACTURA_TIENDA_TITULO, "Lo que la empresa le factura a la tienda"],
-    ["CASCADA_NETO_EMPRESA_TITULO", CASCADA_NETO_EMPRESA_TITULO, "Lo que le queda a la empresa"],
   ])("%s dice exactamente lo que se lee", (_nombre, constante, literal) => {
     expect(constante).toBe(literal);
   });

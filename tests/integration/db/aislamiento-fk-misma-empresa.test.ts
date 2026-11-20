@@ -15,7 +15,7 @@ import {
   type FksDeOrden,
   type TxDeTest,
 } from "./_postgres-real";
-import { exigirSinSuperadmin, tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
+import { superadminDeLaBase, tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
 
 // SL-17 / T3.7 (design §3 M3, §9.2) — R37 y R38 contra Postgres real. La garantia es de la BASE:
 // los casos de SQL a mano no pasan por servicio ni por extension, y se repiten como dueno de las
@@ -29,7 +29,8 @@ import { exigirSinSuperadmin, tomarLockDeSuperadmin } from "./_fixtures/superadm
 //
 // SL-32: el usuario sin empresa es un superadmin de verdad (el `CHECK` de R28 ya no admite un
 // `maestro` sin empresa), y la base admite uno solo (R27): el archivo toma el lock de
-// `tomarLockDeSuperadmin` desde antes de sembrarlo hasta despues de borrarlo.
+// `tomarLockDeSuperadmin` desde antes de sembrarlo hasta despues de borrarlo. En una base de desarrollo
+// que ya tiene el suyo, se usa ese (solo hace de actor sin empresa) y no se borra ni se toca.
 //
 // Mutacion de T3.7: `DROP TRIGGER sme_orden_tienda_id_… ON orden` (nombre de `nombreTrigger`) en la
 // base desechable pone en rojo los tres casos de R37 sobre `orden.tienda_id`.
@@ -42,6 +43,8 @@ type Semillas = {
   a: { organizacionId: string; fks: FksDeOrden };
   b: { organizacionId: string; fks: FksDeOrden };
   superadminId: string;
+  /** Si el superadmin lo sembro este archivo (y por tanto lo borra) o es el que ya tenia la base. */
+  superadminPropio: boolean;
 };
 
 let base: PrismaClient;
@@ -151,7 +154,8 @@ describeSiHayBase("SL-17 T3.7 — misma empresa en cada FK, en la base (R37, R38
   beforeAll(async () => {
     base = crearPrismaDeTest();
     soltarSuperadmin = await tomarLockDeSuperadmin();
-    await exigirSinSuperadmin(base);
+    const superadminAjeno = await superadminDeLaBase(base);
+    if (superadminAjeno !== null) console.warn(`[superadmin-32] se reutiliza el superadmin de la base (${superadminAjeno})`);
     s = await base.$transaction(
       async (tx) => {
         await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${CLAVE_LOCK_ESCRITURA_REAL})`);
@@ -163,11 +167,12 @@ describeSiHayBase("SL-17 T3.7 — misma empresa en cada FK, en la base (R37, R38
         const fksB = await crearFksDeOrden(tx);
         // '' vuelve NULL el DEFAULT de `usuario.organizacion_id`: el superadmin (D15).
         await fijarEmpresa(tx, "");
-        const superadmin = await crearUsuarioDePrueba(tx, "superadmin");
+        const superadminId = superadminAjeno ?? (await crearUsuarioDePrueba(tx, "superadmin")).id;
         return {
           a: { organizacionId: orgA, fks: fksA },
           b: { organizacionId: orgB, fks: fksB },
-          superadminId: superadmin.id,
+          superadminId,
+          superadminPropio: superadminAjeno === null,
         };
       },
       { timeout: 30_000, maxWait: 15_000 },
@@ -198,7 +203,9 @@ describeSiHayBase("SL-17 T3.7 — misma empresa en cada FK, en la base (R37, R38
       // recorre sus hijas en un orden distinto al de un `down.sql` serializado (40P01).
       await bajoLockDeEscrituraReal(async () => {
         await base.orden.deleteMany({ where: { tiendaId: { in: [s.a.fks.tiendaId, s.b.fks.tiendaId] } } });
-        await base.usuario.deleteMany({ where: { id: { in: [s.a.fks.tiendaId, s.b.fks.tiendaId, s.superadminId] } } });
+        // El superadmin, solo si es del archivo: el que ya tenia la base no se borra.
+        const usuarios = [s.a.fks.tiendaId, s.b.fks.tiendaId, ...(s.superadminPropio ? [s.superadminId] : [])];
+        await base.usuario.deleteMany({ where: { id: { in: usuarios } } });
         await base.zona.deleteMany({ where: { id: { in: [s.a.fks.zonaId, s.b.fks.zonaId] } } });
         await base.organizacion.deleteMany({ where: { id: { in: [s.a.organizacionId, s.b.organizacionId] } } });
       });

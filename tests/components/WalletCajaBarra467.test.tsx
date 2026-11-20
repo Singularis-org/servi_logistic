@@ -90,7 +90,6 @@ function mov(n: number, over: Partial<WalletMovimientoDTO> = {}): WalletMovimien
     origenTipo: "gasto",
     origenId: null,
     descripcion: `Movimiento ${n}`,
-    registradoPor: "99999999-0000-4000-8000-000000000001",
     fechaMovimiento: `2026-09-2${n}T15:00:00.000Z`,
     dueno: "propio",
     documento: null,
@@ -522,7 +521,12 @@ describe("467 R18/R20/R23 — «A quién» y Concepto", () => {
     expect(alto(aQuienBoton() as HTMLElement)).toBe(true);
     expect(alto(within(libro()).getByRole("combobox", { name: "Entra/Sale" }))).toBe(true);
     expect(alto(within(libro()).getByRole("combobox", { name: "Concepto" }))).toBe(true);
+    // SLT-160 (R771, DC2 de Carlos): con `escaneo` el buscador mide 44 px. SLT-202 «Escritorio igual a
+    // prod: tamaños de controles y un solo botón de recibir» (Carlos, 2026-11-18): solo en el móvil;
+    // en escritorio vuelve al `h-8` de los disparadores, alineado con ellos.
     expect(alto(buscador().parentElement as HTMLElement)).toBe(true);
+    expect(buscador().parentElement).toHaveClass("max-md:h-11");
+    expect(buscador().parentElement).not.toHaveClass("h-11");
   });
 });
 

@@ -8,6 +8,7 @@ import type {
 import type { WalletIngresoConcepto } from "@/lib/types/wallet";
 import type { OrigenFlete } from "@/lib/types/tarifa";
 import type { ValoresTienda } from "@/lib/types/tarifa-flexible";
+import type { ParteDeTienda } from "@/lib/types/parte-de-tienda";
 import { importeDe, ivaDe } from "@/lib/tarifas/calculo";
 import { conceptoPorResultado } from "@/lib/tarifas/catalogo";
 // Ficha 396 — `partesPorTienda` particiona el recaudo con LA MISMA funcion que produce el total
@@ -470,10 +471,13 @@ export function gananciaEmpresa(ingresoTotal: string, pagoMensajero: string): st
  * Pago a la tienda: la plata RECIBIDA (total general del cierre) menos los dos conceptos que
  * la empresa le factura sobre esa plata — flete + IVA y comision + IVA.
  *
- * NO descuenta el flete de devolucion + IVA (el de los RECHAZOS desde la ficha 301): un
- * rechazo no cobra COD, asi que no aporta al total general y no se le resta a lo recibido. Si
- * un dia hay que cobrarlo tambien, se cambia ACA y las dos pantallas de admin lo reflejan a
- * la vez.
+ * NO descuenta el flete de devolucion + IVA (el de los RECHAZOS desde la ficha 301).
+ *
+ * Desde SLT-169 los CIERRES ya no la usan: «Se le paga hoy a la tienda» resta TODO lo facturado
+ * y sale de `ganaLaTienda` (decision D1 de Carlos, 2026-11-14). Sigue viva SOLO para el reparto
+ * por producto de la ficha 347 (`dinero-por-producto.ts`, `repartoDeOrden`), cuya invariante
+ * `empresa + tienda === liquidadoRecaudado` depende de que no reste el flete por rechazo (R636).
+ * No la cambies para arreglar un cierre: romperias la 347.
  *
  * Puede ser NEGATIVO si lo facturado supera lo recibido (p.ej. un cierre de puros rechazos
  * con algo de efectivo suelto). Un cierre de puras DEVUELTAS ya no factura nada (301).
@@ -492,17 +496,16 @@ export function pagoTiendaEmpresa(
  * Feature 395 — LO QUE LA TIENDA GANA EN TOTAL con un cierre: lo recaudado menos TODO lo que
  * la empresa le factura (`totalesIngresoEmpresa().total`), incluido el flete por rechazo + IVA.
  *
- * **NO ES `pagoTiendaEmpresa`, y confundirlas es exactamente el fallo que esta ficha arregla.**
- * Son dos preguntas distintas sobre el mismo cierre:
+ * **Desde SLT-169 es TAMBIEN «Se le paga hoy a la tienda» de un cierre** (D1, Carlos,
+ * 2026-11-14): el pago resta desde el inicio todo lo facturado, flete por rechazo incluido. Antes
+ * el pago salia de `pagoTiendaEmpresa` (sin el flete por rechazo) y la pantalla ensenaba dos
+ * cifras que se contradecian: en el folio #C51B7B93, ₡16.626,95 «se le paga» contra −₡13.205,05
+ * «gana en total» (12 fletes por rechazo de diferencia). Es ademas lo que el libro de la tienda
+ * deja al aprobar: `WalletTiendaFeedService` acredita el COD y debita CADA concepto de
+ * `derivarIngresoOrden`, flete por devolucion incluido (R632).
  *
- *   `pagoTiendaEmpresa`  = lo que se le paga DE ESTE DINERO. No resta el flete por rechazo
- *                          porque ese flete nunca entro en lo recaudado (un rechazo no cobra
- *                          COD): se le cobra APARTE, contra su wallet.
- *   `ganaLaTienda`       = lo que le queda DESPUES de que tambien le cobren aquello. Es el
- *                          resultado, no el desembolso de hoy.
- *
- * Con las cifras reales de produccion del 2026-09-08 la diferencia son ₡10.848,00:
- * se le pagan 225.176,33 y gana 214.328,33, sobre 285.275,00 recaudados.
+ * SLT-174 retiro de los contratos el campo que duplicaba `pagoTienda` con esta misma cifra (P3 de
+ * SLT-169). Esta funcion conserva su nombre (D6 de SLT-174): es la formula.
  *
  * EXISTE POR LA IDENTIDAD QUE HACE EVIDENTE LA PANTALLA, y que hasta hoy no se podia leer en
  * ningun sitio —el humano la estaba calculando a mano cada vez que miraba el cierre—:
@@ -527,42 +530,11 @@ export function ganaLaTienda(totalGeneral: string, ingresoTotal: string): string
 /* -------------------------------------------------------------------------- */
 
 /**
- * 💰 Ficha 396 — UNA TIENDA de un cierre, con SUS TRES cifras. Todas STRING escala 2.
- *
- * CINCO CLAVES Y NI UNA MAS (R5). `fleteConIva` y `comisionConIva` por tienda se calculan
- * DENTRO de `partesPorTienda` —hacen falta para derivar `pagoTienda`— y NO se emiten: un
- * contrato que ofrece lo que la pantalla no debe ensenar acaba ensenandose, porque bastaria con
- * que alguien las pintara «ya que estan».
+ * 💰 Ficha 396 — UNA TIENDA de un cierre. SLT-174 (R661) mudó la interfaz a
+ * `lib/types/parte-de-tienda.ts`, un módulo sin imports; aquí se re-exporta EL MISMO tipo, no una
+ * copia, para que sus importadores de siempre no cambien.
  */
-export interface ParteDeTienda {
-  /** La CLAVE del grupo: `cierre_detail.tienda_id`, congelado (R7). Nunca el nombre. */
-  tiendaId: string;
-  /** El nombre congelado, SOLO para mostrarlo. No agrupa nada (R7). */
-  tiendaNombre: string;
-  /**
-   * Lo RECAUDADO atribuido a esta tienda. Sale de `computeTotales` sobre SUS gestiones, o sea
-   * con EXACTAMENTE el mismo criterio que el `total general` del cierre entero (R13): solo las
-   * `entregada`, y solo por sus lineas de pago. Puede ser "0.00" (una tienda que solo trajo
-   * rechazos recauda cero y aun asi aparece, R9).
-   */
-  recaudado: string;
-  /**
-   * Lo que se le paga A ESTA TIENDA de este dinero. `pagoTiendaEmpresa` sobre SU subconjunto.
-   * NO descuenta el flete por rechazo —ese se le cobra aparte, contra su wallet—. Puede ser
-   * NEGATIVO y viaja con su signo.
-   */
-  pagoTienda: string;
-  /**
-   * Lo que ESTA TIENDA gana en total: lo recaudado menos TODO lo que la empresa le factura,
-   * incluido el flete por rechazo + IVA. `ganaLaTienda` sobre SU subconjunto.
-   *
-   * **NO ES `pagoTienda`**, y confundirlas es el fallo que la ficha 395 arreglo un nivel mas
-   * arriba. La diferencia entre las dos es exactamente el flete por rechazo + IVA de esta
-   * tienda —ver la CUARTA identidad en `partesPorTienda`—. Puede ser NEGATIVO (es lo normal en
-   * la tienda que solo trajo rechazos) y viaja con su signo, nunca recortado a "0.00".
-   */
-  ganaLaTienda: string;
-}
+export type { ParteDeTienda };
 
 /**
  * Lo UNICO que `partesPorTienda` lee de una gestion. `GestionConPagos` se REUSA de
@@ -600,18 +572,16 @@ export type GestionDeTienda = GestionConPagos & {
  *
  *   `recaudado`     -> `computeTotales(subconjunto).general`      (`lib/utils/cierre-totales.ts`)
  *   (interno)       -> `totalesIngresoEmpresa(subconjunto)`       (arriba, en este archivo)
- *   `pagoTienda`    -> `pagoTiendaEmpresa(recaudado, fleteConIva, comisionConIva)`
- *   `ganaLaTienda`  -> `ganaLaTienda(recaudado, total)`
+ *   `pagoTienda`    -> `ganaLaTienda(recaudado, total)`   (SLT-169: resta TODO lo facturado)
  *
- * Es EXACTAMENTE lo que `lib/utils/dinero-por-producto.ts:200-273` (`repartoDeOrden`, ficha 347)
- * ya hace para partir el MISMO importe por OTRA dimension —el producto—, reusando
- * `pagoTiendaEmpresa` sobre subconjuntos. No es un patron nuevo: es el que el repo ya eligio
- * una vez, con su invariante escrita en la cabecera.
+ * Es el mismo patron que `lib/utils/dinero-por-producto.ts` (`repartoDeOrden`, ficha 347) usa
+ * para partir un importe por OTRA dimension —el producto—, reusando funciones del agregado sobre
+ * subconjuntos. Ojo: la 347 sigue con `pagoTiendaEmpresa` (R636 de SLT-169); los cierres no.
  *
  * ─── POR QUE VIVE AQUI ────────────────────────────────────────────────────────────────────
  *
- * Porque aqui viven las identidades que esta funcion particiona (`pagoTiendaEmpresa`,
- * `ganaLaTienda`), y una identidad tiene UN sitio. Verificado que el import de
+ * Porque aqui vive la identidad que esta funcion particiona (`ganaLaTienda`), y una identidad
+ * tiene UN sitio. Verificado que el import de
  * `cierre-totales.ts` NO crea ciclo: ese modulo importa `pago-mensajero`, `ingreso-bodega` y
  * tipos, y ninguno importa este archivo.
  *
@@ -631,47 +601,42 @@ export type GestionDeTienda = GestionConPagos & {
  * `tests/unit/services/cierre-desglose-tres-superficies.test.ts`: un `import` que nadie invoca no
  * rompe ni el typecheck ni ninguna guardia, solo deja la lista vacia.
  *
- * ─── LAS CUATRO IDENTIDADES ───────────────────────────────────────────────────────────────
+ * ─── LAS IDENTIDADES ──────────────────────────────────────────────────────────────────────
  *
- * Las tres primeras atan las partes con su agregado, para el MISMO conjunto de gestiones:
+ * Atan las partes con su agregado, para el MISMO conjunto de gestiones:
  *
- *   R10 ·  Σ parte.pagoTienda    ===  pagoTiendaEmpresa(general, fleteConIva, comisionConIva)
- *   R11 ·  Σ parte.ganaLaTienda  ===  ganaLaTienda(general, totalesIngresoEmpresa(todas).total)
- *   R12 ·  Σ parte.recaudado     ===  computeTotales(todas).general
+ *   R10/R621 ·  Σ parte.pagoTienda  ===  ganaLaTienda(general, totalesIngresoEmpresa(todas).total)
+ *   R12      ·  Σ parte.recaudado   ===  computeTotales(todas).general
  *
  * Son ciertas por construccion porque la particion por `tiendaId` es exhaustiva y disjunta (cada
  * gestion cae en una y solo una tienda), porque `computeTotales` y `totalesIngresoEmpresa` son
- * sumas puras sobre gestiones, y porque las tres derivaciones son restas lineales:
- * `Σ(gᵢ − fᵢ − cᵢ) = Σgᵢ − Σfᵢ − Σcᵢ`. Sin deriva de redondeo: todos los sumandos ya vienen a
+ * sumas puras sobre gestiones, y porque la derivacion es una resta lineal:
+ * `Σ(gᵢ − totalᵢ) = Σgᵢ − Σtotalᵢ`. Sin deriva de redondeo: todos los sumandos ya vienen a
  * escala 2 y sumar decimales de escala 2 da escala 2.
  *
- * Y hay una CUARTA, esta POR TIENDA, que ata entre si las dos cifras de pago:
- *
- *   parte.pagoTienda − parte.ganaLaTienda  ===  flete por rechazo + IVA DE ESA TIENDA
- *
- * Sale de restar las dos definiciones: `(g − f − c) − (g − total) = total − f − c`, que es
- * precisamente `fleteDevolucionConIva`. **Es la que hace imposible derivar una de las dos con el
- * subconjunto equivocado sin que se note:** si la particion de una no coincidiera con la de la
- * otra, esta resta dejaria de dar.
+ * La antigua CUARTA identidad de la 396 (pago − lo que gana === flete por rechazo + IVA) y la R11
+ * (Σ de lo que gana === su agregado) desaparecen: desde SLT-169 las dos cifras eran la misma, y
+ * SLT-174 retiro ese campo duplicado. Queda R10/R621 sobre `pagoTienda`.
  *
  * ⚠️ «Por construccion» es un RAZONAMIENTO, y en este repo ya se midio que un razonamiento sobre
- * el codigo puede ser desmentido por Postgres. Las cuatro llevan test propio.
+ * el codigo puede ser desmentido por Postgres. Llevan test propio, y R632 de SLT-169 ademas ata
+ * el `pagoTienda` de cada tienda con el neto que el cierre dejo en `wallet_tienda_movimiento`.
  *
  * ⚠️ EL PUNTO FRAGIL es que `computeTotales` siga siendo una suma pura sobre gestiones. El dia
  * que le entrara un tope o un `min()` a nivel de cierre, R12 dejaria de ser cierta EN SILENCIO.
  * El test de identidad es lo que lo caza.
  *
- * ─── LA TERCERA CIFRA ENTRO POR FIRMA, NO DE PASO ─────────────────────────────────────────
+ * ─── LA TERCERA CIFRA ENTRO POR FIRMA Y SALIO POR FIRMA ──────────────────────────────────
  *
- * La revision 2 del spec PROHIBIA una tercera cifra por tienda. `ganaLaTienda` entro el
- * **2026-09-08 por firma explicita del humano** (Q7 de `specs/396-.../requirements.md`), con su
- * motivo escrito: desglosar una cifra y dejar la otra agregada es exactamente el fallo que se
- * esta arreglando, un nivel mas abajo. La guardia no se relajo, se movio: hoy prohibe la CUARTA
- * con la misma fuerza. **Una cuarta cifra necesita otra firma, no un `git push`.**
+ * La revision 2 del spec PROHIBIA una tercera cifra por tienda. Una cifra «lo que gana la
+ * tienda» entro el **2026-09-08 por firma explicita del humano** (Q7 de
+ * `specs/396-.../requirements.md`); desde SLT-169 valia lo mismo que `pagoTienda` y SLT-174 la
+ * retiro (R652): cada parte lleva cuatro claves. **Una cifra mas necesita otra firma, no un
+ * `git push`.**
  *
  * ─── EL ORDEN (R8, Q6) ────────────────────────────────────────────────────────────────────
  *
- * Por `pagoTienda` DESCENDENTE —de las tres, la del rotulo que da nombre a la ficha—, con el
+ * Por `pagoTienda` DESCENDENTE —la cifra «Se le paga hoy» que ensena la pantalla—, con el
  * desempate declarado abajo. Lo fija el SERVIDOR: la pantalla pinta en el orden que recibe.
  *
  * ─── MONEY-SAFE ───────────────────────────────────────────────────────────────────────────
@@ -710,10 +675,9 @@ export function partesPorTienda(gestiones: ReadonlyArray<GestionDeTienda>): Part
       tiendaId,
       tiendaNombre: grupo.nombre,
       recaudado,
-      pagoTienda: pagoTiendaEmpresa(recaudado, ingreso.fleteConIva, ingreso.comisionConIva),
-      // La CUARTA identidad se sostiene porque este `ingreso.total` es el DE ESTA TIENDA. Con el
-      // total agregado aqui, `pagoTienda − ganaLaTienda` dejaria de dar su flete por rechazo.
-      ganaLaTienda: ganaLaTienda(recaudado, ingreso.total),
+      // SLT-169 R621: resta TODO lo facturado A ESTA TIENDA. Este `ingreso.total` es el DE ESTA
+      // TIENDA: con el total del cierre entero, Σ partes dejaria de dar la cifra del cierre.
+      pagoTienda: ganaLaTienda(recaudado, ingreso.total),
     });
   }
 

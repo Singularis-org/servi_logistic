@@ -24,6 +24,7 @@ import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, crearPrismaDeTest, urlDeBas
 import { conectar, type Conexion } from "./_fixtures/ida-y-vuelta-32";
 import { limpiar459, sembrarPersonas459, type Personas459 } from "./_fixtures/escrituras-459";
 import { asignarPlan, crearPlan } from "./_fixtures/planes";
+import { cerrarFacturaEnCurso, confirmarComoDueno } from "./_fixtures/factura-cerrada";
 
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // SLT-42 (T5.4): la zona del pais de la empresa es la de CR, como antes. Las reglas reales leen el pais
@@ -61,6 +62,11 @@ vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabric
 //
 // B2. `egresos` (tablero de /analitica y exportación financiera) cuenta el pago: pagar 600 baja su
 // neto en 600, y anularlo lo deja como estaba. Se mide por diferencia en una empresa B propia.
+//
+// SLT-60 (design §8.1): solo se paga lo de facturas cerradas y la deuda baja al CONFIRMAR. La factura de cada
+// empresa (1 000) se cierra en la siembra con el fixture `factura-cerrada.ts`, y P1 se confirma como dueño:
+// así la deuda de partida sigue siendo 400,00 y lo disponible para registrar también (1 000 − 600 aplicados),
+// que es el número contra el que choca el tope de los ataques c).
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
@@ -81,6 +87,8 @@ let geo: { provinciaId: string; cantonId: string; distritoId: string };
 let estatusInicialId: string;
 
 const ids = { p1: "", p2: "", contraP2: "", s1: "" };
+/** SLT-60: la factura cerrada de cada empresa. */
+const factura = { A: "", B: "" };
 
 const deps = (actor: Actor) => ({ getActor: async () => actor });
 const org = (e: Empresa) => e.p.organizacionId;
@@ -145,6 +153,11 @@ async function anularOk(e: Empresa, movimientoId: string): Promise<void> {
     anularMovimientoAction({ destino: { libro: "caja", movimientoId }, motivo: MOTIVO }, deps(e.p.maestro)),
   );
   expect(r).toEqual({ status: "ok", camino: "egreso_caja" });
+}
+
+/** SLT-60: el pago entero contra la factura cerrada de la empresa, como dueño y commiteado. */
+function confirmar(e: Empresa, facturaId: string, pagoId: string, monto: string): Promise<void> {
+  return bajoLockDeEscrituraReal(() => confirmarComoDueno(base, org(e), pagoId, [{ facturaId, monto }], e.p.maestro.usuarioId));
 }
 
 async function deudaDe(e: Empresa): Promise<string> {
@@ -267,11 +280,15 @@ describeSiHayBase("SL-45 review B1/B2 — la deuda no se baja con SQL a mano, y 
       if (r.status !== "ok") throw new Error(`siembra: ajuste ${JSON.stringify(r)}`);
       await crearOrdenes(e, 2);
     }
+    // SLT-60 (R3): sin factura cerrada no se puede pagar nada.
+    factura.A = (await cerrarFacturaEnCurso(base, org(A))).id;
+    factura.B = (await cerrarFacturaEnCurso(base, org(B))).id;
 
-    // El estado de la review, por las actions de la app.
+    // El estado de la review, por las actions de la app. SLT-60: P1 confirmado, para que baje la deuda.
     ids.p1 = await pagarOk(A, "600.00");
     ids.p2 = await pagarOk(A, "300.00");
     await anularOk(A, ids.p2);
+    await confirmar(A, factura.A, ids.p1, "600.00");
     const contra = await base.walletMovimiento.findFirstOrThrow({
       where: { organizacionId: org(A), tipo: "ingreso", categoria: "ingreso_ajuste", origenTipo: "gasto", origenId: ids.p2 },
       select: { id: true },
@@ -299,6 +316,10 @@ describeSiHayBase("SL-45 review B1/B2 — la deuda no se baja con SQL a mano, y 
     try {
       if (orgs.length > 0) {
         await bajoLockDeEscrituraReal(async () => {
+          // SLT-60: la FK del pago a su confirmación no tiene acción; las confirmaciones se van antes que el libro.
+          for (const tabla of ["pago_plataforma_aplicacion", "pago_plataforma_confirmacion"]) {
+            await base.$executeRawUnsafe(`DELETE FROM "${tabla}" WHERE "organizacion_id" = ANY($1::text[])`, orgs);
+          }
           for (const tabla of ["historial_accion", "orden_historial_estado", "jobs", "orden", "carga", "zona"]) {
             await base.$executeRawUnsafe(`DELETE FROM "${tabla}" WHERE "organizacion_id" = ANY($1::text[])`, orgs);
           }
@@ -313,8 +334,13 @@ describeSiHayBase("SL-45 review B1/B2 — la deuda no se baja con SQL a mano, y 
 
   /* ------------------------- control de no vacuidad ------------------------ */
 
-  it("control: A parte de la deuda de la review (400,00) y servi_app de A ve las tres filas que se atacan", async () => {
+  it("control: A parte de la deuda de la review (400,00), con 400,00 disponibles, y servi_app de A ve las tres filas que se atacan", async () => {
     expect(await deudaDe(A)).toBe("400.00");
+    // SLT-60: la factura de A está cerrada con los dos cargos y P1 confirmado contra ella.
+    const f = await base.facturaPlataforma.findUniqueOrThrow({ where: { id: factura.A }, select: { estado: true, total: true } });
+    expect({ estado: f.estado, total: f.total?.toFixed(2) }).toEqual({ estado: "cerrada", total: "1000.00" });
+    const [d] = await base.$queryRaw<{ d: string }[]>`SELECT pago_plataforma_disponible_de(${org(A)})::text AS d`;
+    expect(d.d).toBe("400.00");
     expect(await visibleComo(A, ids.p1)).toBe(1);
     expect(await visibleComo(A, ids.contraP2)).toBe(1);
     expect(await visibleComo(A, ids.s1)).toBe(1);
@@ -390,20 +416,23 @@ describeSiHayBase("SL-45 review B1/B2 — la deuda no se baja con SQL a mano, y 
     expect(restar(conAnulacion, antes), "el pago y su anulación").toBe("0.00");
   });
 
-  /* ------------- m3: el filtro explícito de `sumaPagosVigentes` ------------- */
+  /* ------------ m3: el filtro explícito de `sumaPagosConfirmados` ----------- */
 
-  it("m3: con el cliente DUEÑO (sin extensión ni RLS), `sumaPagosVigentes` solo suma los pagos vigentes de la empresa pedida", async () => {
-    // B tiene un pago vigente propio; A, el P1 de 600 (P2 está anulado). Sin el `organizacionId` en
+  it("m3: con el cliente DUEÑO (sin extensión ni RLS), `sumaPagosConfirmados` solo suma los pagos confirmados de la empresa pedida", async () => {
+    // B tiene un pago propio; A, el P1 de 600 confirmado (P2 está anulado). Sin el `organizacionId` en
     // el `where`, el cliente dueño sumaría los de las dos empresas (y los de cualquier otra en la base).
-    await pagarOk(B, "200.00");
+    // SLT-60: el de B no cuenta mientras está por confirmar.
+    const pagoB = await pagarOk(B, "200.00");
     const repo = new PagoPlataformaRepository(base);
-    expect(await repo.sumaPagosVigentes(org(A))).toBe("600.00");
-    expect(await repo.sumaPagosVigentes(org(B))).toBe("200.00");
+    expect(await repo.sumaPagosConfirmados(org(B)), "B, por confirmar").toBe("0.00");
+    await confirmar(B, factura.B, pagoB, "200.00");
+    expect(await repo.sumaPagosConfirmados(org(A))).toBe("600.00");
+    expect(await repo.sumaPagosConfirmados(org(B))).toBe("200.00");
   });
 
   /* ----------------------- B1 c) con dos inserts a la vez ------------------- */
 
-  // Va el último: el primer pago queda COMMITEADO y la deuda de A baja a 100,00.
+  // Va el último: el primer pago queda COMMITEADO; confirmado (SLT-60), la deuda de A baja a 100,00.
   it("B1 c) dos INSERT a mano de 300 a la vez con deuda de 400 → el segundo espera al primero y choca con el tope (23514)", async () => {
     const url = urlDeBaseDeDatos();
     if (url === undefined) throw new Error("sin DATABASE_URL");
@@ -441,7 +470,14 @@ describeSiHayBase("SL-45 review B1/B2 — la deuda no se baja con SQL a mano, y 
       await c1.end();
       await c2.end();
     }
-    // Solo entró uno: 400 − 300.
+    // Solo entró uno, por confirmar (SLT-60): la deuda no se mueve hasta confirmarlo; entonces, 400 − 300.
+    const entraron = await base.walletMovimiento.findMany({
+      where: { organizacionId: org(A), categoria: "egreso_pago_plataforma", descripcion: "Pago a mano SL45-B" },
+      select: { id: true },
+    });
+    expect(entraron).toHaveLength(1);
+    expect(await deudaDe(A)).toBe("400.00");
+    await confirmar(A, factura.A, entraron[0].id, "300.00");
     expect(await deudaDe(A)).toBe("100.00");
   }, 60_000);
 });

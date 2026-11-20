@@ -29,7 +29,7 @@ const ESTATUS_ID_BY_VALUE: Record<string, string> = {
 
 type RepoMethods = Pick<
   IOrdenRepository,
-  "findByNumGuiaForTransicion" | "findEstatusIdByValue" | "recibirEnBodegaCentral"
+  "findByNumGuiaForTransicion" | "findEstatusIdByValue" | "recibirEnBodegaCentral" | "resumenRecepcion"
 >;
 
 function transicionRow(
@@ -55,6 +55,8 @@ function fakeRepo(overrides: Partial<RepoMethods> = {}): RepoMethods {
     findByNumGuiaForTransicion: vi.fn(async () => transicionRow()),
     findEstatusIdByValue: vi.fn(async (v: string) => ESTATUS_ID_BY_VALUE[v] ?? null),
     recibirEnBodegaCentral: vi.fn(async () => true),
+    // SLT-167: sin datos -> la respuesta sale sin `resumen` (R715); lo mide recepcion-resumen.test.ts.
+    resumenRecepcion: vi.fn(async () => null),
     ...overrides,
   };
 }
@@ -94,7 +96,7 @@ describe("RecepcionBodegaCentralService.recibirEnBodegaCentral", () => {
       "en_ruta_bodega_central",
       "os-en-bodega-central",
       { actorUsuarioId: "u-maestro", origenTipo: "recepcion_bodega_central" },
-      { liberaAsignacion: true },
+      { liberaAsignacion: true, reconciliaZona: true },
     );
   });
 
@@ -102,7 +104,25 @@ describe("RecepcionBodegaCentralService.recibirEnBodegaCentral", () => {
     const repo = fakeRepo();
     await newService(repo).recibirEnBodegaCentral(NUM_GUIA, MAESTRO);
 
-    expect(vi.mocked(repo.recibirEnBodegaCentral).mock.calls[0][4]).toEqual({ liberaAsignacion: true });
+    expect(vi.mocked(repo.recibirEnBodegaCentral).mock.calls[0][4]).toMatchObject({ liberaAsignacion: true });
+  });
+
+  it("SLT-224/R1700: la recepcion de una orden en ruta a la central pide reconciliar su zona", async () => {
+    const repo = fakeRepo();
+    await newService(repo).recibirEnBodegaCentral(NUM_GUIA, MAESTRO);
+
+    expect(vi.mocked(repo.recibirEnBodegaCentral).mock.calls[0][4]).toMatchObject({ reconciliaZona: true });
+  });
+
+  it("SLT-224/R1704: la recepcion de una devolucion NO pide reconciliar la zona", async () => {
+    const repo = fakeRepo({
+      findByNumGuiaForTransicion: vi.fn(async () =>
+        transicionRow({ estatusValue: "devolviendo_a_bodega_central" }),
+      ),
+    });
+    await newService(repo).recibirEnBodegaCentral(NUM_GUIA, MAESTRO);
+
+    expect(vi.mocked(repo.recibirEnBodegaCentral).mock.calls[0][4]).toMatchObject({ reconciliaZona: false });
   });
 
   it("SLT-63/R3: la recepcion de una devolucion pide conservar la asignacion", async () => {
@@ -113,7 +133,7 @@ describe("RecepcionBodegaCentralService.recibirEnBodegaCentral", () => {
     });
     await newService(repo).recibirEnBodegaCentral(NUM_GUIA, MAESTRO);
 
-    expect(vi.mocked(repo.recibirEnBodegaCentral).mock.calls[0][4]).toEqual({ liberaAsignacion: false });
+    expect(vi.mocked(repo.recibirEnBodegaCentral).mock.calls[0][4]).toMatchObject({ liberaAsignacion: false });
   });
 
   // --- Caso 139 (STATE-AWARE): devolviendo_a_bodega_central -> por_devolver_a_tienda ---
@@ -133,7 +153,7 @@ describe("RecepcionBodegaCentralService.recibirEnBodegaCentral", () => {
       "devolviendo_a_bodega_central",
       "os-por-devolver-a-tienda",
       { actorUsuarioId: "u-maestro", origenTipo: "recepcion_bodega_central" },
-      { liberaAsignacion: false },
+      { liberaAsignacion: false, reconciliaZona: false },
     );
   });
 

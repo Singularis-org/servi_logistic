@@ -140,8 +140,15 @@ describeSiHayBase("459/B.5 — las migraciones de la 459 contra Postgres", () =>
     // SLT-77: UN tipo y UNA entidad mas detras (20261107130000), medidos igual.
     // SLT-94: UN tipo mas detras (`usuario_se_recoge_en_tienda_cambiado`, 20261108120000), ninguna
     // entidad; se afirma y se quita antes de los cortes.
-    expect(tiposHoy.at(-1)).toBe("usuario_se_recoge_en_tienda_cambiado");
-    const tipos = tiposHoy.slice(0, -1);
+    // SLT-211: UN tipo mas detras (`ordenes_retiradas_a_central`, 20261119120000), ninguna entidad;
+    // se afirma y se quita igual.
+    // SLT-221: DOS tipos mas detras (20261120130000), ninguna entidad; se afirman y se quitan igual.
+    // SLT-225: DOS tipos mas detras (20261123120000), ninguna entidad; se afirman y se quitan igual.
+    expect(tiposHoy.slice(-2)).toEqual(["zona_desactivada", "zona_reactivada"]);
+    expect(tiposHoy.slice(-4, -2)).toEqual(["usuario_cedula_cambiada", "usuario_email_cambiado"]);
+    expect(tiposHoy.at(-5)).toBe("ordenes_retiradas_a_central");
+    expect(tiposHoy.at(-6)).toBe("usuario_se_recoge_en_tienda_cambiado");
+    const tipos = tiposHoy.slice(0, -6);
     expect(tipos.at(-1)).toBe("tope_intentos_cambiado");
     expect(tipos.slice(-3)).toEqual(["tarifas_activadas", "plan_cambio_empresa_cancelado", "tope_intentos_cambiado"]);
     expect(entidades.slice(-2)).toEqual(["tarifa_activacion", "organizacion"]);

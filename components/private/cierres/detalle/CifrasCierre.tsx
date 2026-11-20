@@ -29,10 +29,13 @@ const COLUMNAS_LG: Record<number, string> = {
   5: "lg:grid-cols-5",
 };
 
-/** Aviso (SLT-106) sobre destacada: una deuda de la central no se lee como la cifra principal. */
+/** Aviso (SLT-106) sobre destacada: una deuda de la central no se lee como la cifra principal.
+ *  SLT-170: la destacada usa `bg-accent` (gira con el tema), no `bg-brand-soft` (crema fijo bajo
+ *  una tinta que en oscuro es clara, 1.01:1). En claro los dos valen #FFF8D9. El aviso compone
+ *  `warning/15` en oscuro por la misma razón (`bg-warning-soft` es fijo; rótulo 1.91 → 6.05). */
 function tonoCaja(c: Cifra): string {
-  if (c.aviso) return "border-warning/60 bg-warning-soft";
-  return c.destacada ? "border-brand/60 bg-brand-soft" : "border-border bg-card";
+  if (c.aviso) return "border-warning/60 bg-warning-soft dark:bg-warning/15";
+  return c.destacada ? "border-brand/60 bg-accent" : "border-border bg-card";
 }
 
 function CajaCifra({ c, totales }: Readonly<{ c: Cifra; totales?: CierreTotales }>) {
@@ -61,6 +64,8 @@ function CajaCifra({ c, totales }: Readonly<{ c: Cifra; totales?: CierreTotales 
       >
         {c.esMonto ? money(c.valor) : c.valor}
       </span>
+      {/* SLT-169 (R625): «(la tienda debe)» junto al importe; lo decide `cifrasDe`, aquí solo se pinta. */}
+      {c.sufijo ? <span className="text-sm font-semibold text-danger-strong">{c.sufijo}</span> : null}
       {c.conMetodos && totales ? (
         <dl aria-label={METODOS_DEL_RECAUDADO_LABEL} className="flex flex-col gap-0.5 text-xs text-muted-foreground">
           {metodosVisibles(totales).map((m) => (

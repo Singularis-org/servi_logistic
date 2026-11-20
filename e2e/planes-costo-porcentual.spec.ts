@@ -5,6 +5,7 @@ import { expect, test, type BrowserContext, type Locator, type Page } from "@pla
 import { fechaCalendarioCR } from "../lib/utils/fecha-cr";
 
 import { aprobarCierre, solicitarCierre } from "./_escenarios/cierres";
+import { correrCron } from "./_escenarios/crons";
 import {
   baseReparto,
   crearEscenarioReparto,
@@ -19,13 +20,7 @@ import {
   type RepartoE2E,
 } from "./_escenarios/reparto";
 import { crearPlanPublicoConCosto } from "./_planes-fixture";
-import {
-  asegurarSuperadmin,
-  conCandadoDelSuperadmin,
-  entrarConOtp,
-  olvidarDispositivos,
-  SUPERADMIN_DE_PRUEBA,
-} from "./_superadmin-fixture";
+import { asegurarSuperadmin, conCandadoDelSuperadmin, entrarComoSuperadmin } from "./_superadmin-fixture";
 
 /**
  * SLT-83 T15 (design §9.2; R28, y por el camino R6, R8, R18, R21, R22, R23) — el costo por orden
@@ -34,8 +29,10 @@ import {
  * 1. `beforeAll`: una empresa nueva con el escenario de reparto (`crearEscenarioReparto`) y un
  *    mensajero de su zona central; el superadmin de prueba; un plan PÚBLICO con costo base 1000.00 al
  *    mes y costo por orden FIJO 100.00 (`crearPlanPublicoConCosto`, `PlanesRepository.crear` real).
- * 2. (R28.1, R21) El superadmin, por pantalla, edita ese plan y pone el modo «Porcentual», 2 % y
- *    mínimo 500. El detalle dice «2.00 % del valor del paquete, mínimo 500.00».
+ * 2. (R28.1, R21; SLT-135 R23) El superadmin, por pantalla, edita ese plan y pone el modo «Porcentual»,
+ *    2 % y mínimo 500. En «Cuándo rige» pone «A partir de» = hoy y pulsa «Programar cambio»: ve «Cambio
+ *    programado desde <hoy>.». Editar ya no se aplica en el acto (SLT-135): tras correr `procesar-jobs`
+ *    el plan queda porcentual y el detalle dice «2.00 % del valor del paquete, mínimo 500.00».
  * 3. (R28.2, R28.3, R22) Lo asigna a la empresa desde el bloque «Plan» de su detalle (modal de
  *    SLT-58), con el inicio del ciclo al menos 5 días atrás y sin tramo (`entradaSinTramo`). El listado de «Empresas» dice, en «Cobro por
  *    orden», «2.00 % (mín. 500.00)» y «del plan».
@@ -76,11 +73,15 @@ const TEXTO = {
   editar: "Editar",
   dialogoEditar: "Editar plan",
   formEditar: "Guardar",
+  // SLT-135 (R14, R20): «Cuándo rige» sin «De inmediato»; el botón final programa el cambio.
+  aPartirDe: "A partir de",
+  programar: "Programar cambio",
   cobroPorOrden: "Cobro por orden",
   porcentual: "Porcentual",
   porcentaje: "Porcentaje",
   minimo: "Mínimo",
-  guardado: "Cambios guardados.",
+  // `guardadoProgramado` de PlanDetalle (`textoCambioProgramado` + «.»).
+  programado: (fecha: string) => `Cambio programado desde ${fecha}.`,
   // `textoDelCostoPorOrdenPorcentual` (R21).
   detalleCosto: "2.00 % del valor del paquete, mínimo 500.00",
   // Bloque «Plan» del detalle de empresa y modal de SLT-58.
@@ -146,6 +147,15 @@ function maestro(): Page {
   return paginaMaestro;
 }
 
+/**
+ * SLT-130 (design §4): pulsa «Guardar y continuar» del form del plan (SLT-144 R1: guarda el paso en el
+ * borrador) y espera a que el paso `proximo` esté en pantalla (su título es el `h3` del paso).
+ */
+async function siguientePaso(form: Locator, proximo: string): Promise<void> {
+  await form.getByRole("button", { name: "Guardar y continuar", exact: true }).click();
+  await expect(form.getByRole("heading", { level: 3, name: proximo, exact: true })).toBeVisible({ timeout: 30_000 });
+}
+
 function laOrden(): OrdenE2E {
   if (!orden) throw new Error("no hay orden: falló el caso que la crea");
   return orden;
@@ -165,8 +175,7 @@ test.beforeAll(async ({ browser }) => {
   contextoSa = await browser.newContext();
   sa = await contextoSa.newPage();
   await conCandadoDelSuperadmin(async () => {
-    await olvidarDispositivos(baseReparto(), SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL);
-    await entrarConOtp(superadmin(), SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL, SUPERADMIN_DE_PRUEBA.SUPERADMIN_PASSWORD);
+    await entrarComoSuperadmin(superadmin(), baseReparto());
   });
   await superadmin().waitForURL("**/plataforma/empresas", { timeout: 60_000 });
 });
@@ -215,7 +224,7 @@ async function costoDelPeriodo(page: Page): Promise<Locator> {
 /* 1–3. El superadmin pone el plan en porcentual y lo asigna                   */
 /* -------------------------------------------------------------------------- */
 
-test("el superadmin pone por pantalla el plan en «Porcentual», 2 % y mínimo 500 (R28.1, R21)", async ({}, info) => {
+test("el superadmin programa por pantalla el plan en «Porcentual» con fecha de hoy (R23)", async ({}, info) => {
   test.setTimeout(240_000);
   const page = superadmin();
   await page.goto(`/plataforma/planes/${planId}`);
@@ -223,6 +232,9 @@ test("el superadmin pone por pantalla el plan en «Porcentual», 2 % y mínimo 5
 
   const form = page.getByRole("dialog", { name: TEXTO.dialogoEditar }).getByRole("form", { name: TEXTO.formEditar });
   await expect(form).toBeVisible({ timeout: 60_000 });
+  // SLT-130 (design §4): el form va por pasos; el cobro por orden es el tercero.
+  await siguientePaso(form, "Precio y descuentos");
+  await siguientePaso(form, TEXTO.cobroPorOrden);
   const porcentual = form
     .getByRole("radiogroup", { name: TEXTO.cobroPorOrden })
     .getByRole("radio", { name: TEXTO.porcentual, exact: true });
@@ -230,21 +242,38 @@ test("el superadmin pone por pantalla el plan en «Porcentual», 2 % y mínimo 5
   await expect(porcentual).toBeChecked();
   await form.getByRole("textbox", { name: TEXTO.porcentaje, exact: true }).fill("2");
   await form.getByRole("textbox", { name: TEXTO.minimo, exact: true }).fill("500");
+  await siguientePaso(form, "Topes");
+  await siguientePaso(form, "Módulos");
+  // SLT-214 «Planes: beneficios de texto con ícono» (R7): al editar, «Beneficios» va antes de «Cuándo rige».
+  await siguientePaso(form, "Beneficios");
+  // SLT-215 «Planes: niveles de beneficio por volumen de órdenes» (R7): al editar, «Niveles» va antes de «Cuándo rige».
+  await siguientePaso(form, "Niveles");
+  await siguientePaso(form, "Cuándo rige");
+  // SLT-135 (R23): sin «De inmediato»; el precio no cambia, así que el campo es «A partir de» (por defecto
+  // mañana) y se pone hoy en la hora de la plataforma.
+  const hoy = fechaCalendarioCR(new Date());
+  await form.getByLabel(TEXTO.aPartirDe, { exact: true }).fill(hoy);
+  await siguientePaso(form, "Revisar y programar");
 
-  const guardar = form.getByRole("button", { name: TEXTO.formEditar, exact: true });
-  await expect(guardar).toBeEnabled({ timeout: 60_000 });
-  await guardar.click();
-  await expect(page.getByRole("status").filter({ hasText: TEXTO.guardado })).toBeVisible({ timeout: 60_000 });
+  const programar = form.getByRole("button", { name: TEXTO.programar, exact: true });
+  await expect(programar).toBeEnabled({ timeout: 60_000 });
+  await programar.click();
+  await expect(page.getByRole("status").filter({ hasText: TEXTO.programado(hoy) })).toBeVisible({ timeout: 60_000 });
 
-  // Por detrás: el plan quedó porcentual y sin costo fijo (un solo modo, R1).
-  const plan = await baseReparto().plan.findUniqueOrThrow({
-    where: { id: planId },
-    select: { costoPorOrden: true, costoPorOrdenPct: true, costoPorOrdenMinimo: true },
-  });
-  expect(plan.costoPorOrden).toBeNull();
-  expect(plan.costoPorOrdenPct?.toFixed(2)).toBe("2.00");
-  expect(plan.costoPorOrdenMinimo?.toFixed(2)).toBe("500.00");
+  // SLT-135 (R3, R23): el cambio con F = hoy lo aplica la cola. Se corre `procesar-jobs` hasta que el plan
+  // quede porcentual y sin costo fijo (un solo modo, R1); se espera la condición, nunca un tiempo fijo.
+  await expect(async () => {
+    await correrCron("procesar-jobs");
+    const plan = await baseReparto().plan.findUniqueOrThrow({
+      where: { id: planId },
+      select: { costoPorOrden: true, costoPorOrdenPct: true, costoPorOrdenMinimo: true },
+    });
+    expect(plan.costoPorOrden).toBeNull();
+    expect(plan.costoPorOrdenPct?.toFixed(2)).toBe("2.00");
+    expect(plan.costoPorOrdenMinimo?.toFixed(2)).toBe("500.00");
+  }).toPass({ timeout: 120_000 });
 
+  await page.reload();
   await expect(page.getByText(TEXTO.detalleCosto, { exact: true }).first()).toBeVisible({ timeout: 60_000 });
   await page.screenshot({ path: info.outputPath("slt83-plan.png"), fullPage: true });
 });

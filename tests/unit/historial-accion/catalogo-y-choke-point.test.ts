@@ -23,6 +23,7 @@ import {
   ETIQUETA_MAX_CHARS,
   ETIQUETA_ORDEN_SIN_GUIA,
   etiquetaDeEntidad,
+  etiquetaDeRetiroSatelite,
 } from "@/lib/types/historial-accion-etiquetas";
 
 import { contieneNombreHeredado } from "../../fixtures/nombre-heredado";
@@ -109,8 +110,11 @@ describe("362/T0.1 (R14/R17) — el catalogo es cerrado y sus mapas son exhausti
     // 83 desde SLT-86: `plan_cambio_empresa_cancelado` (entidad `plan`, sin entidad nueva).
     // 84 desde SLT-77: `tope_intentos_cambiado` (entidad `organizacion`, 31 entidades).
     // 85 desde SLT-94: `usuario_se_recoge_en_tienda_cambiado` (entidad `usuario`, R8).
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(85);
-    expect(new Set(HISTORIAL_ACCION_TIPOS).size).toBe(85);
+    // 86 desde SLT-211: `ordenes_retiradas_a_central` (entidad `zona`, sin entidad nueva).
+    // 88 desde SLT-221: `usuario_cedula_cambiada` y `usuario_email_cambiado` (entidad `usuario`).
+    // 90 desde SLT-225: `zona_desactivada` y `zona_reactivada` (entidad `zona`).
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(90);
+    expect(new Set(HISTORIAL_ACCION_TIPOS).size).toBe(90);
     expect(HISTORIAL_ACCION_ENTIDADES).toHaveLength(31); // 31 desde SLT-77 (`organizacion`)
     expect(new Set(HISTORIAL_ACCION_ENTIDADES).size).toBe(31);
     expect(CATEGORIAS_ACCION).toHaveLength(6);
@@ -269,6 +273,42 @@ describe("362/T0.1 (R14/R17) — el catalogo es cerrado y sus mapas son exhausti
     // La 375 NO amplia el enum de entidades: los tres niveles ya entraron con la 374. (El total es
     // 21 desde la 381, que si lo amplio con `wallet_tienda_movimiento`.)
     expect(HISTORIAL_ACCION_ENTIDADES).toHaveLength(31); // 31 desde SLT-77 (`organizacion`)
+  });
+
+  it("⭑ SLT-211: `ordenes_retiradas_a_central` tiene label, es «hace desaparecer algo» y se puede filtrar", () => {
+    expect(HISTORIAL_ACCION_TIPOS).toContain("ordenes_retiradas_a_central");
+    // Literal a proposito: el texto ES el contrato de Historico › Acciones (columna «Qué» y filtro).
+    expect(ACCION_LABELS.ordenes_retiradas_a_central).toBe("Retiró paquetes de una satélite a la central");
+    // Los paquetes salen del estante de la satelite; el retiro no toca dinero (R983 de SLT-197).
+    expect(CATEGORIA_POR_ACCION.ordenes_retiradas_a_central).toBe("hace_desaparecer");
+    expect(accionesDeCategoria("hace_desaparecer")).toContain("ordenes_retiradas_a_central");
+    expect(filtroHistorialAccionSchema.safeParse({ accion: ["ordenes_retiradas_a_central"] }).success).toBe(true);
+    // Negativo con un valor imposible por casualidad.
+    expect(filtroHistorialAccionSchema.safeParse({ accion: ["ordenes_retiradas_a_centralzz"] }).success).toBe(false);
+  });
+
+  it("⭑ SLT-211: la etiqueta del retiro lleva satelite, conteo y guias, y cabe en la columna", () => {
+    expect(
+      etiquetaDeRetiroSatelite("Cartago", [
+        { numGuia: 1003, numRemision: "R-3" },
+        { numGuia: 1001, numRemision: "R-1" },
+        { numGuia: 1002, numRemision: "R-2" },
+      ]),
+    ).toBe("Cartago · 3 paquetes: 1001, 1002, 1003");
+    expect(etiquetaDeRetiroSatelite("Limón", [{ numGuia: 77, numRemision: "R-77" }])).toBe("Limón · 1 paquete: 77");
+    // Sin guia cae a la remision, como el resto de etiquetas de envio.
+    expect(etiquetaDeRetiroSatelite("Limón", [{ numGuia: null, numRemision: "REM-9" }])).toBe(
+      "Limón · 1 paquete: REM-9",
+    );
+    // Muchas: se listan las que caben y el resto se cuenta; nunca pasa de 120.
+    const muchas = Array.from({ length: 40 }, (_, i) => ({ numGuia: 960_000_001 + i, numRemision: `R-${i}` }));
+    const larga = etiquetaDeRetiroSatelite("Cartago", muchas);
+    expect(larga.length).toBeLessThanOrEqual(120);
+    expect(larga.startsWith("Cartago · 40 paquetes: 960000001, 960000002, ")).toBe(true);
+    const m = /, … y (\d+) más$/.exec(larga);
+    expect(m, "SLT-211: el resto se cuenta al final").not.toBeNull();
+    const listadas = larga.slice("Cartago · 40 paquetes: ".length, m!.index).split(", ");
+    expect(listadas.length + Number(m![1])).toBe(40);
   });
 
   it("⭑ FICHA 376: `zona_central_cambiada` es DINERO, y su entidad `zona` ya existia", () => {
@@ -496,8 +536,13 @@ describe("362/T0.1 (R14/R17) — el catalogo es cerrado y sus mapas son exhausti
     expect(accionesDeCategoria("mueve_dinero")).toHaveLength(52);
     expect(CATEGORIA_POR_ACCION.cierre_dia_pago_mensajero_ajustado).toBe("mueve_dinero");
     // 11 desde SLT-52: borrar un grupo de distritos se lleva sus valores por cascada.
-    expect(accionesDeCategoria("hace_desaparecer")).toHaveLength(11);
-    expect(accionesDeCategoria("cambia_permisos")).toHaveLength(12);
+    // 12 desde SLT-211: retirar paquetes de una satelite los saca de su estante.
+    // 14 desde SLT-225: desactivar y reactivar una zona (R1749, R1750).
+    expect(accionesDeCategoria("hace_desaparecer")).toHaveLength(14);
+    expect(CATEGORIA_POR_ACCION.zona_desactivada).toBe("hace_desaparecer");
+    expect(CATEGORIA_POR_ACCION.zona_reactivada).toBe("hace_desaparecer");
+    // 14 desde SLT-221: la cedula y el correo de un usuario (R1609).
+    expect(accionesDeCategoria("cambia_permisos")).toHaveLength(14);
     // 5 desde SL-36: la categoria nueva, solo con los cinco `integracion_*`.
     expect(accionesDeCategoria("cambia_integraciones")).toHaveLength(5);
     // 2 desde SL-23: la quinta categoria, solo con `modulo_activado` y `modulo_desactivado`.

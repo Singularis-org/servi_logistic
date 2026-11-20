@@ -36,6 +36,11 @@ Nadie escribe ni copia el workflow a mano:
 - **Los checks se llaman `gate / estatico`, `gate / vitest (shard i/N)`, `gate / gate-completo`** y
   `gate / e2e`: el prefijo es el job que llama. La regla de merge sigue siendo la misma:
   `gate-completo` en verde.
+- **Un PR que solo toca `progress/` o `specs/` publica `gate-completo` y `e2e` en verde sin correr
+  la suite.** Lo decide el job `cambios` (`git diff` contra la base del PR) y lo anuncia en el
+  resumen del job. No vuelvas a poner `paths-ignore` en el `on:`: un workflow que no corre no
+  publica el check, y la protección de la rama lo espera para siempre. Cualquier otro PR, y el
+  `workflow_dispatch`, corren todo. La guardia es `tests/guards/guard-ci.test.ts`.
 
 ### Por qué
 
@@ -44,8 +49,16 @@ arnés (shards, CI por tanda, runner propio…) había que volver a copiarla a m
 la copia se desalineaba en silencio. Ahora la mecánica viaja con el sync y lo del proyecto es un
 dato que el gate comprueba.
 
+El PR solo de estado o specs se saltaba con `paths-ignore`, y eso tenía un agujero: el 2026-11-16 el
+#190 (solo `progress/`) se quedó bloqueado, porque la protección de `dev` exige `gate-completo` y
+el workflow, al no correr, nunca lo publicó. Un `workflow_dispatch` no sirve: su check no cuenta
+para el PR. Ahora el workflow corre siempre y es el job `cambios` el que decide saltarse la suite.
+
 - **En local corre siempre el rápido**: typecheck + lint + los tests que el grafo de imports
   (`vitest related`) relaciona con tu diff + **todas** las guardias (~1 min).
+- **El paso 2 de `init.sh` (dependencias) mide** que cada paquete declarado en `package.json` está
+  en `node_modules` (`scripts/verificar-dependencias.mjs`), no que la carpeta exista. Si falta
+  alguno, corta en rojo nombrándolo; la guardia es `tests/guards/guard-dependencias-declaradas-presentes.test.ts`.
 - **El completo (la suite entera) corre en CI**, como check del PR (`gate-completo`). Nadie
   mergea con ese check en rojo o sin terminar. Si el plan de GitHub no permite hacerlo
   obligatorio con *branch protection*, rige como convención (`docs/equipo.md > Merge sin
@@ -68,6 +81,10 @@ dato que el gate comprueba.
 - `./init.sh` **avisa** (no falla) de los tests que recorren `app/`, `lib/` o `components/` y no
   casan con ningún patrón (`scripts/tests-de-arbol.mjs`). Un test sale del aviso con
   `// gate: related` y su motivo.
+- El rápido corre también, siempre y fuera del presupuesto, los tests que **nombran por su ruta**
+  un archivo del diff (`'app/x/Y.tsx'`, con o sin extensión, entre comillas o backticks): los que
+  leen el código como texto sin importarlo. No hace falta declararlos. Una ruta armada con
+  `path.join` o por partes no se ve: para esa, un disparador.
 
 ### Disparadores: lo que no es un import
 
@@ -127,7 +144,9 @@ implementer (`AGENTS.md > F2.4`):
    sí lo seleccionaba: entonces el rojo es de verdad nuevo y va al implementer, sin disparador.
    «NO entra»: sigue.
 3. **Encuentra el acoplamiento.** Abre el test y busca qué lee sin importarlo: `readFileSync`,
-   `readdir`/`glob`, una ruta escrita a mano, la base de datos, una variable de entorno. Cruza eso
+   `readdir`/`glob`, una ruta armada por partes, la base de datos, una variable de entorno (una
+ruta escrita entera en un string ya la selecciona el rápido: si `--comprobar` dice «NO entra»,
+no es ese caso). Cruza eso
    con `git diff --name-only origin/<integracion>...HEAD`: el archivo de tu diff que el test lee es
    el `si_cambia`.
 4. **Escribe el disparador** en `arnes.config.json > gate.disparadores` (el leader puede editar
@@ -155,8 +174,8 @@ y mira el informe tras una semana.
 
 ### Lo que `--rapido` NO cubre — no te engañes
 
-- Acoplamientos que **no son imports** y que ningún disparador declara: SQL, nombres de archivo,
-  lectura de `feature_list.json`.
+- Acoplamientos que **no son imports**, no nombran el archivo por su ruta literal y ningún
+  disparador declara: SQL, rutas armadas por código, lectura de `feature_list.json`.
 - Un cambio en un archivo **sin tests que lo importen ni disparador** selecciona cero tests y sale
   verde.
 - Los relacionados que pasan del presupuesto.
@@ -333,14 +352,33 @@ fueron del proyecto `ui` (jsdom: importar módulos y montar el entorno, no los t
 **Coste aceptado:** con 3 shards se facturan ~30 min por corrida frente a ~23 de un solo job, en el
 plan Free (2000 min/mes); a cambio, el reloj del PR baja.
 
+**Tests que nombran un archivo.** En servi_logistic (2026-11-13), SLT-141 cambió
+`CierresBodegaSolicitadosLista.tsx`; `paginacion-transversal`, que lo lee como texto por su ruta
+literal, no lo importaba ni se llamaba `guard*`. El rápido salió verde y el rojo apareció en
+`gate-completo`. Buscar la ruta en el texto de los tests cuesta unos cientos de ms por corrida y
+cubre ese caso sin que nadie declare nada.
+
+**El paso 2 mide las dependencias.** En el proyecto de origen del arnés (ficha 420, 2026-09-11)
+el paso 2 solo miraba si existía la carpeta `node_modules` e imprimía «dependencias presentes».
+Tras mergear una ficha que añadía `web-push`, el gate completo dio ese visto bueno en verde y dos pasos más tarde el
+typecheck reventó con `Cannot find module 'web-push'`: parecía un error de código y era un
+`pnpm install` que faltaba. Peor: si falta solo el paquete y siguen sus tipos en `@types/`, el
+typecheck pasa y el fallo sale en ejecución. Instalar siempre se descartó porque repara en silencio
+y nadie se entera de que el árbol estaba mal. El arreglo se hizo en ese proyecto y nunca llegó a la
+plantilla: el `init.sh` del arnés no traía la llamada, y en los proyectos que heredaron la guardia
+esta vivió en el baseline de rojos desde el primer día, hasta que la mejora viajó a la plantilla.
+
 ## Tamaño del PR
 
 `./init.sh` mide el diff de la feature de tu rama contra la rama de integración, con lo no
 commiteado incluido (`scripts/tamano-pr.mjs`). Corre también en el CI.
 
-- **Límites** en `arnes.config.json > gate.tamano_pr`: `max_archivos` (por defecto 40) y
-  `max_lineas`, añadidas más borradas (por defecto 1000). No cuentan `specs/`, `progress/`, los
-  lockfiles, los snapshots ni lo que añadas en `gate.tamano_pr.excluir`.
+- **Límites** en `arnes.config.json > gate.tamano_pr`: `max_archivos` (por defecto 40, tests
+  incluidos), `max_lineas` de producción (por defecto 1000) y `max_lineas_tests` (por defecto
+  3000), en líneas añadidas más borradas. Es test lo que casa con `gate.tamano_pr.tests` (por
+  defecto `tests/**`, `e2e/**`, `**/*.test.*`, `**/*.spec.*`, `**/__tests__/**`; si el perfil lo
+  define, sustituye a esos). No cuentan `specs/`, `progress/`, los lockfiles, los snapshots ni lo
+  que añadas en `gate.tamano_pr.excluir`.
 - **Al 80%, aviso:** cierra la rebanada actual o pide partir la feature.
 - **Por encima, rojo:** la feature se parte (`docs/specs.md > Partir una feature`).
 - **La única salida es humana y queda escrita:** con el sí del humano, el leader añade a
@@ -354,6 +392,11 @@ En el proyecto de origen (2026-11-07) los PRs de feature tocaban entre 50 y 160 
 falla más en CI, se revisa peor, choca con más compañeros y cuesta más de mergear. La regla vivía
 como consejo y nadie la cumplía: ahora la mide el gate, y saltársela es una decisión humana
 escrita.
+
+En servi_logistic (2026-11-12/13), SLT-140 y SLT-141 pasaron el tope solo por sus tests (SLT-141:
+933 líneas de producción y 2391 de tests y E2E), y cada vez hizo falta un OK escrito para un PR
+cuyo código cabía de sobra. Probar bien no debe obligar a partir la feature ni a pedir permiso: el
+código de producción sigue con su tope y los tests tienen el suyo.
 
 ## Rojos heredados: la pregunta es «¿rompí algo YO?»
 

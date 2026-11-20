@@ -5,6 +5,7 @@
 // pantalla es lo que de verdad le llega a la empresa: el panel del plan activo (SLT-99 R3), el consumo con una fila
 // por tope, el reinicio y el cambio programado (SLT-58, sin cambios: R21, P8) y los planes disponibles. SLT-99
 // sustituye SLT-58 R11 («Mi plan» es solo información): el maestro cambia de plan desde aquí (R19).
+// SLT-119 (design §6.2; R1, R17): las facturas de la empresa, al final; sin la prop, con el aviso de fallo.
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, cleanup, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -16,6 +17,7 @@ import { planConConsumo, type PlanConUsoLeido } from "@/lib/planes/consumo";
 import type { PlanConConsumo } from "@/lib/types/consumo-plan";
 import type { VersionPlan } from "@/lib/types/planes";
 
+import { factura } from "./_facturas-plataforma";
 import { planesDeMiPlan, planesSinPlan } from "./_mi-plan-planes";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
@@ -282,5 +284,158 @@ describe("Ajuste planes-custom D9, SLT-86 R27 — «Mi plan» muestra el tipo, e
     render(<MiPlanModule plan={plan({ vigente: sinPrecio, precioDelPeriodo: sinPrecio.precio })} planes={planesDeMiPlan()} />);
     expect(screen.getByRole("list", { name: "Costo del período" })).toHaveTextContent("Costo base mensual: 0.00");
     expect(screen.queryByText(/por definir/)).toBeNull();
+  });
+});
+
+describe("SLT-119 R1, R17 — «Facturas de la empresa» al final de «Mi plan»", () => {
+  const cargarDetalle = vi.fn();
+  const descargar = vi.fn();
+
+  it("R1: con las facturas de la página, la sección va después del cambio de plan y lista las de la empresa", () => {
+    render(
+      <MiPlanModule
+        plan={plan()}
+        planes={planesDeMiPlan()}
+        facturas={{ lista: [factura({ plan: null })], cargarDetalle, descargar }}
+      />,
+    );
+
+    const seccion = screen.getByRole("region", { name: "Facturas de la empresa" });
+    expect(within(seccion).getByText("Sin plan")).toBeInTheDocument();
+    expect(within(seccion).getByRole("button", { name: /Ver detalle de la factura/ })).toBeInTheDocument();
+    const planes = screen.getByRole("heading", { name: "Planes disponibles" });
+    expect(planes.compareDocumentPosition(seccion) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(cargarDetalle).not.toHaveBeenCalled();
+    expect(descargar).not.toHaveBeenCalled();
+  });
+
+  it("R17: con la lista `null`, la sección dice «No se pudieron cargar las facturas» y el plan se pinta igual", () => {
+    render(<MiPlanModule plan={plan()} planes={planesDeMiPlan()} facturas={{ lista: null, cargarDetalle, descargar }} />);
+
+    expect(
+      within(screen.getByRole("region", { name: "Facturas de la empresa" })).getByRole("alert"),
+    ).toHaveTextContent("No se pudieron cargar las facturas");
+    expect(screen.getAllByRole("heading", { name: "Plan Crecer" })).toHaveLength(2);
+  });
+
+  it("R17: sin la prop facturas, la sección se ve con el aviso de fallo, no desaparece", () => {
+    render(<MiPlanModule plan={plan()} planes={planesDeMiPlan()} />);
+
+    expect(
+      within(screen.getByRole("region", { name: "Facturas de la empresa" })).getByRole("alert"),
+    ).toHaveTextContent("No se pudieron cargar las facturas");
+    expect(screen.queryByRole("button", { name: /Ver detalle de la factura/ })).toBeNull();
+  });
+
+  it("SLT-199 R23: el maestro ve «Descargar factura» y «Descargar anexo» en el detalle de una cerrada, con la descarga de la página", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const cerrada = factura({ plan: null });
+    const cargar = vi.fn(async () => ({
+      estado: "ok" as const,
+      detalle: { factura: cerrada, lineas: { lineas: [], pagina: 1, porPagina: 100, total: 0 } },
+    }));
+    const descargarDeLaPagina = vi.fn(async () => ({ estado: "not_found" as const }));
+    render(
+      <MiPlanModule
+        plan={plan()}
+        planes={planesDeMiPlan()}
+        facturas={{ lista: [cerrada], cargarDetalle: cargar, descargar: descargarDeLaPagina }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /Ver detalle de la factura/ }));
+    const panel = await screen.findByRole("dialog");
+    expect(within(panel).getByRole("button", { name: "Descargar anexo" })).toBeInTheDocument();
+    await user.click(within(panel).getByRole("button", { name: "Descargar factura" }));
+
+    expect(descargarDeLaPagina).toHaveBeenCalledWith({ facturaId: cerrada.id });
+  });
+});
+
+// SLT-214 «Planes: beneficios de texto con ícono» (design §4.4; R23, R25): los beneficios del plan activo y las
+// líneas del cambio programado.
+describe("SLT-214 R23 — los beneficios del plan activo", () => {
+  const BENEFICIOS = [
+    { icono: "equipo", texto: "Equipo dedicado" },
+    { icono: "soporte", texto: "Soporte prioritario" },
+    { icono: "reloj_24h", texto: "Atención 24 h" },
+    { icono: "camion", texto: "Recolección diaria" },
+  ] as const;
+
+  it("R23: todos los de la versión que corre la empresa, con su ícono, en orden y sin «Mostrar más»", () => {
+    render(<MiPlanModule plan={plan({ vigente: { ...VIGENTE, beneficios: [...BENEFICIOS] } })} planes={planesDeMiPlan()} />);
+
+    const panel = within(screen.getByRole("region", { name: "Plan activo" }));
+    expect(panel.getByRole("heading", { name: "Beneficios" })).toBeInTheDocument();
+    const lista = panel.getByRole("list", { name: "Beneficios" });
+    expect(within(lista).getAllByRole("listitem").map((li) => li.textContent)).toEqual(BENEFICIOS.map((b) => b.texto));
+    const iconos = [...lista.querySelectorAll("svg[data-icono]")];
+    expect(iconos.map((i) => i.getAttribute("data-icono"))).toEqual(BENEFICIOS.map((b) => b.icono));
+    for (const i of iconos) expect(i).toHaveAttribute("aria-hidden", "true");
+    expect(panel.queryByRole("button", { name: "Mostrar más" })).toBeNull();
+  });
+
+  it("R23: sin beneficios no hay sección (ni «Sin beneficios»)", () => {
+    render(<MiPlanModule plan={plan({ vigente: { ...VIGENTE, beneficios: [] } })} planes={planesDeMiPlan()} />);
+
+    const panel = within(screen.getByRole("region", { name: "Plan activo" }));
+    expect(panel.queryByRole("heading", { name: "Beneficios" })).toBeNull();
+    expect(panel.queryByRole("list", { name: "Beneficios" })).toBeNull();
+    expect(screen.queryByText("Sin beneficios")).toBeNull();
+  });
+
+  it("R18, R23: una versión sin la clave `beneficios` tampoco pinta la sección", () => {
+    render(<MiPlanModule plan={plan()} planes={planesDeMiPlan()} />);
+
+    expect(within(screen.getByRole("region", { name: "Plan activo" })).queryByRole("list", { name: "Beneficios" })).toBeNull();
+  });
+});
+
+describe("SLT-214 R25 — los beneficios en «Esto es lo que cambia»", () => {
+  const vigenteDesde = new Date("2026-04-01T06:00:00.000Z");
+  const ANTES = [
+    { icono: "equipo", texto: "Equipo dedicado" },
+    { icono: "soporte", texto: "Soporte prioritario" },
+  ] as const;
+
+  function lineasDelCambio(): (string | null)[] {
+    const titulo = screen.getByText(TITULO_LINEAS_DE_CAMBIO);
+    const lista = titulo.parentElement!.querySelector("ul")!;
+    return within(lista).getAllByRole("listitem").map((li) => li.textContent);
+  }
+
+  it("R25: «Se agrega: …» y «Se quita: …» por cada beneficio, comparados sin mayúsculas ni tildes", () => {
+    const vigente = { ...VIGENTE, beneficios: [...ANTES] };
+    const cambio = {
+      vigenteDesde,
+      version: {
+        ...vigente,
+        beneficios: [
+          { icono: "equipo" as const, texto: "EQUIPO DEDICADO" },
+          { icono: "rayo" as const, texto: "Alta rápida" },
+        ],
+      },
+    };
+    render(<MiPlanModule plan={plan({ vigente, cambio })} planes={planesDeMiPlan()} />);
+
+    expect(lineasDelCambio()).toEqual(["Se agrega: Alta rápida", "Se quita: Soporte prioritario"]);
+  });
+
+  it("R25: si solo cambian íconos u orden, sale una sola línea", () => {
+    const vigente = { ...VIGENTE, beneficios: [...ANTES] };
+    const cambio = {
+      vigenteDesde,
+      version: {
+        ...vigente,
+        beneficios: [
+          { icono: "check" as const, texto: "Soporte prioritario" },
+          { icono: "equipo" as const, texto: "Equipo dedicado" },
+        ],
+      },
+    };
+    render(<MiPlanModule plan={plan({ vigente, cambio })} planes={planesDeMiPlan()} />);
+
+    expect(lineasDelCambio()).toEqual(["Cambian los íconos o el orden de los beneficios."]);
   });
 });

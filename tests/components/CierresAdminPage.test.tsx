@@ -360,7 +360,7 @@ describe("CierresAdminPage — control de acceso por rol (R1)", () => {
 
     expect(
       screen.getByRole("alert"),
-    ).toHaveTextContent("No tenés una zona asignada; contactá a tu administrador.");
+    ).toHaveTextContent("No tienes una zona asignada; contacta a tu administrador.");
     // Sin zona: NO se muestran las tablas de acción (R3).
     expect(
       screen.queryByRole("region", { name: "Pendientes de decisión" }),
@@ -465,7 +465,6 @@ describe("CierresAdminPage — Feature 172 [P3]/R6: quién recibe la oferta de p
       pagoTienda: "0.00",
       cobradoSobreRecaudado: "0.00",
       netoEmpresa: "0.00",
-      ganaLaTienda: "0.00",
       fleteRechazoYaCobradoATienda: false,
       // Ficha 396: el desglose por tienda viaja SIEMPRE en el DTO, tambien con una sola
       // tienda. Estas pruebas no lo miran, asi que aqui va vacio; las suyas estan en

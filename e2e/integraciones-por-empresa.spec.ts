@@ -5,13 +5,7 @@ import type { PrismaClient } from "@prisma/client";
 
 import { abrirBaseE2E, crearEmpresaE2E, crearUsuarioE2E, sesionDe, type EmpresaE2E } from "../tests/fabricas/e2e";
 
-import {
-  asegurarSuperadmin,
-  conCandadoDelSuperadmin,
-  entrarConOtp,
-  olvidarDispositivos,
-  SUPERADMIN_DE_PRUEBA,
-} from "./_superadmin-fixture";
+import { asegurarSuperadmin, conCandadoDelSuperadmin, entrarComoSuperadmin } from "./_superadmin-fixture";
 
 /**
  * SL-36 T9.1 — integraciones por empresa, de punta a punta (R6, R12, R13, R18, R32, R36).
@@ -226,8 +220,7 @@ test("el admin de A, el maestro de B y el superadmin no ven la integración de A
   const sa = await ctxSa.newPage();
   await conCandadoDelSuperadmin(async () => {
     await asegurarSuperadmin(dueno);
-    await olvidarDispositivos(dueno, SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL);
-    await entrarConOtp(sa, SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL, SUPERADMIN_DE_PRUEBA.SUPERADMIN_PASSWORD);
+    await entrarComoSuperadmin(sa, dueno);
   });
   await sinNadaDeA(sa, "superadmin");
   console.log(`[integraciones] superadmin en ${RUTA} termina en ${new URL(sa.url()).pathname}`);

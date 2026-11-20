@@ -102,6 +102,71 @@ async function cifrasYDinero(detalle: Locator): Promise<void> {
   await expect(montoDeCuenta(detalle, QUEDA, "Le queda a la empresa")).toHaveText("₡1.750");
 }
 
+/** Borde izquierdo de una celda y el borde derecho de lo que se PINTA en ella (la celda o su texto). */
+interface CajaCelda {
+  columna: string;
+  izq: number;
+  der: number;
+}
+
+/**
+ * SLT-152 «Tablas de cierres legibles» (R446): en una ventana de 1280 px, ni la cabecera ni la primera
+ * fila de «Órdenes del cierre» pintan una celda encima de la siguiente. Se mide el borde derecho de
+ * la celda Y de cada elemento dentro de ella: un texto en línea que se sale de su pista agranda su
+ * propia caja aunque la celda no crezca (era el fallo de la captura de Preview).
+ *
+ * SLT-156 «PWA de los mensajeros: tablas usables en el móvil» (R490-R492) cambia el contrato del
+ * nombre: ya no se recorta con «…» (en el móvil no hay tooltip), se ve ENTERO y envuelve en varias
+ * líneas dentro de su columna. Lo que sigue igual: ninguna celda se monta sobre la vecina.
+ */
+async function textoSinMontar(page: Page, ordenes: Locator, nombreMensajero: string): Promise<void> {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const cabecera = ordenes.locator(":scope > div").first();
+  const primeraFila = ordenes.locator("[data-gestion] > div").first();
+  const celdaMensajero = primeraFila.locator('[data-columna="mensajero"]');
+  await expect(celdaMensajero).toHaveText(nombreMensajero);
+
+  // Antes de nada, que el nombre NO quepa en una línea de su columna: tiene que envolver. Sin esto,
+  // las comprobaciones de abajo pasarían en verde sin probar nada (un nombre corto cabe siempre).
+  const medida = await celdaMensajero.evaluate((celda) => {
+    const texto = celda.firstElementChild as HTMLElement;
+    const cs = getComputedStyle(texto);
+    const linea = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.5;
+    return {
+      columna: celda.clientWidth,
+      lineas: texto.getBoundingClientRect().height / linea,
+      textOverflow: cs.textOverflow,
+      lineClamp: cs.getPropertyValue("-webkit-line-clamp"),
+      title: texto.getAttribute("title"),
+      texto: { scroll: texto.scrollWidth, client: texto.clientWidth },
+    };
+  });
+  expect(medida.lineas, "el nombre cabe en una línea: no prueba nada").toBeGreaterThan(1.5);
+
+  for (const fila of [cabecera, primeraFila]) {
+    const cajas: CajaCelda[] = await fila.locator(":scope > *").evaluateAll((celdas) =>
+      celdas.map((c) => ({
+        columna: c.getAttribute("data-columna") ?? "acciones",
+        izq: c.getBoundingClientRect().left,
+        der: Math.max(...[c, ...c.querySelectorAll("*")].map((e) => e.getBoundingClientRect().right)),
+      })),
+    );
+    expect(cajas.length).toBeGreaterThan(1);
+    for (let i = 0; i + 1 < cajas.length; i++) {
+      const [a, b] = [cajas[i]!, cajas[i + 1]!];
+      expect(a.der, `«${a.columna}» invade «${b.columna}»`).toBeLessThanOrEqual(b.izq + 0.5);
+    }
+  }
+
+  // R490/R491: el nombre se ve entero — sin «…», sin `line-clamp`, sin depender de `title` — y no
+  // desborda su elemento ni su celda (lo que no cabe baja de línea).
+  expect(medida.textOverflow).not.toBe("ellipsis");
+  expect(["", "none"]).toContain(medida.lineClamp);
+  expect(medida.title).toBeNull();
+  expect(medida.texto.scroll).toBeLessThanOrEqual(medida.texto.client);
+  expect(medida.texto.scroll).toBeLessThanOrEqual(medida.columna);
+}
+
 let r: RepartoE2E;
 let m: MensajeroE2E;
 let rechazada: OrdenE2E;
@@ -124,6 +189,12 @@ test.describe.serial("Cierre de bodega satélite — solicitar, marcar recibido 
   test.beforeAll(async () => {
     r = await crearEscenarioReparto("cierre-bodega", { tarifaMensajero: { cobroEntregado: 1500, cobroRechazado: 500 } });
     m = await crearMensajero(r, "satelite");
+    // SLT-152 «Tablas de cierres legibles» (R446): un nombre más largo que la columna «Mensajero» del
+    // detalle, como el de la captura de Preview, para que la celda tenga algo que recortar. Se pone
+    // antes de crear nada que lo lea.
+    const nombreLargo = `${m.nombre} Demo QA A con un nombre de mensajero satélite larguísimo`;
+    await baseReparto().usuario.update({ where: { id: m.id }, data: { nombre: nombreLargo } });
+    m = { ...m, nombre: nombreLargo };
     const entrega = await llevarA(r, await crearOrden(r, { zona: "satelite", montoCobrar: 9000 }), "en_reparto", { mensajero: m });
     await gestionar(r, entrega, m, { resultado: "entregado" });
     rechazada = await llevarA(r, await crearOrden(r, { zona: "satelite" }), "en_reparto", { mensajero: m });
@@ -138,7 +209,7 @@ test.describe.serial("Cierre de bodega satélite — solicitar, marcar recibido 
     const bodega = page.getByRole("region", { name: "Cierre de bodega" });
     // R190: la pestaña es un `tab` de la cola única, activa al entrar.
     const etapas = bodega.getByRole("tablist", { name: "Cierre de bodega por etapa" });
-    await expect(etapas.getByRole("tab", { name: /^A consolidar \d+$/ })).toHaveAttribute("aria-selected", "true");
+    await expect(etapas.getByRole("tab", { name: /^A consolidar \(\d+\)$/ })).toHaveAttribute("aria-selected", "true");
     const solicitar = bodega.getByRole("button", { name: "Solicitar cierre de bodega" });
 
     // R46, R47: con el cierre del mensajero sin resolver, el aviso lo nombra y el botón no se puede pulsar.
@@ -275,6 +346,7 @@ test.describe.serial("Cierre de bodega satélite — solicitar, marcar recibido 
     // R41: las gestiones de todos los cierres del día en UNA lista; la evidencia firmada del rechazo.
     await irA(detalle, /^Gestiones \(/);
     const ordenes = detalle.getByRole("region", { name: "Órdenes del cierre" });
+    await textoSinMontar(page, ordenes, m.nombre);
     await detalle
       .getByRole("group", { name: "Filtrar por resultado" })
       .getByRole("button", { name: /^Devolución a origen por rechazo/ })
@@ -364,6 +436,90 @@ test.describe.serial("Cierre de bodega satélite — solicitar, marcar recibido 
     await pestanaDeColaBodega(page, "Conciliados").click();
     await expect(verRecibido).toBeVisible();
   });
+
+  // SLT-154 «Vista de la bodega satélite: solo lo suyo» (T5; R468-R471, R474, R475) — la satélite abre
+  // su cierre de bodega desde «Solicitados» (S4) y, por «Ver su cierre», el del mensajero (S6): ve solo
+  // su dinero. Literales de la cabecera, escritos a mano: Recaudado ₡9.000 · Pago ₡1.500 · Gana la
+  // bodega ₡500 · Debe llegar 9.000 − 1.500 − 500 = ₡7.000. Lo de la empresa que NO debe aparecer:
+  // facturado 2.500 + 1.250 = ₡3.750 y le queda 3.750 − 0 − 1.500 − 500 = ₡1.750. La consolidación ya
+  // está marcada (paso 2): «Solicitados» lista los cierres de la bodega en cualquier estado.
+  // T5.2: «Lo que va a la central» es a la vez pestaña y cuenta; cada localizador va acotado por su rol
+  // (`tab` en `irA`, `region` en `montoDeCuenta`).
+  test("4 — la satélite ve solo lo suyo", async ({ browser }) => {
+    const page = await paginaDe(browser, r.adminSatelite);
+    await pestanaBodega(page);
+    const bodega = page.getByRole("region", { name: "Cierre de bodega" });
+    await bodega.getByRole("tablist", { name: "Cierre de bodega por etapa" }).getByRole("tab", { name: /^Solicitados/ }).click();
+    const [c] = await consolidacionDeLaZona();
+    const folio = `#${c.id.slice(-8).toUpperCase()}`;
+    const solicitados = bodega.getByRole("region", { name: "Cierres de bodega solicitados" });
+    await solicitados.getByRole("button", { name: `Ver el cierre de bodega ${folio}` }).click();
+    const detalle = detalleDeBodega(page);
+    await expect(detalle).toBeVisible();
+
+    // S4 · R468: las tarjetas de la satélite; sin «Le queda a la empresa» (ni «La central debe»: el efectivo alcanzó).
+    const cifra = (d: Locator, id: string) => d.locator(`[data-cifra="${id}"]`);
+    await expect(cifra(detalle, "recaudado")).toHaveText("₡9.000");
+    await expect(cifra(detalle, "pago")).toHaveText("₡1.500");
+    await expect(cifra(detalle, "ganaBodega")).toHaveText("₡500");
+    await expect(cifra(detalle, "paraCentral")).toHaveText("₡7.000");
+    await expect(cifra(detalle, "leQueda")).toHaveCount(0);
+    await expect(cifra(detalle, "centralDebe")).toHaveCount(0);
+
+    // R470: abre en «Gestiones (2)».
+    const secciones = detalle.getByRole("tablist", { name: "Secciones del cierre" });
+    await expect(secciones.getByRole("tab", { name: "Gestiones (2)" })).toHaveAttribute("aria-selected", "true");
+    await expect(secciones.getByRole("tab", { name: "Dinero" })).toHaveCount(0);
+
+    // R474: «Gana bodega» en el sitio de «Cobro a la tienda»; la fila del rechazo, ₡500.
+    const ordenes = detalle.getByRole("region", { name: "Órdenes del cierre" });
+    const cabecera = ordenes.locator(":scope > div").first();
+    await expect(cabecera.locator('[data-columna="ganaBodega"]')).toHaveText("Gana bodega");
+    await expect(cabecera).not.toContainText("Cobro a la tienda");
+    const desplegar = page.getByRole("button", { name: new RegExp(`^(Desglose de ingreso|Detalle) de la orden ${rechazada.numRemision} · `) });
+    const fila = ordenes.locator("[data-gestion]").filter({ has: desplegar });
+    await expect(fila.locator('[data-columna="ganaBodega"]')).toHaveText("₡500");
+    // R474 con SLT-165 (R523): en el teléfono la fila es una tarjeta sin cabecera; «Gana bodega» no se
+    // pierde: va en su línea, con el rótulo delante. Después, de vuelta al escritorio.
+    await page.setViewportSize({ width: 390, height: 844 });
+    const ganaBodegaMovil = fila.locator('[data-columna="ganaBodega"]');
+    await expect(ganaBodegaMovil).toBeVisible();
+    await expect(ganaBodegaMovil).toHaveText("₡500");
+    expect(await ganaBodegaMovil.evaluate((el) => getComputedStyle(el, "::before").content)).toBe('"Gana bodega:"');
+    await expect(fila.locator('[data-columna="cobro"]')).toHaveCount(0);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    // R475: desplegada, conserva lo del mensajero y no trae el cobro a la tienda.
+    await fila.getByRole("button", { name: new RegExp(`^(Desglose de ingreso|Detalle) de la orden ${rechazada.numRemision} · `) }).click();
+    await expect(fila.getByText("Recibió el mensajero")).toBeVisible();
+    await expect(fila.getByText("Se le cobra a la tienda")).toHaveCount(0);
+    await expect(fila.getByRole("button", { name: "Ver cómo se calculó" })).toHaveCount(0);
+
+    // R469: la pestaña del dinero se llama «Lo que va a la central» y solo lleva su cuenta.
+    await irA(detalle, CENTRAL);
+    await expect(montoDeCuenta(detalle, CENTRAL, "Total general")).toHaveText("₡9.000");
+    await expect(montoDeCuenta(detalle, CENTRAL, "− Pago a mensajeros")).toHaveText("₡1.500");
+    await expect(montoDeCuenta(detalle, CENTRAL, "− Gana la bodega satélite")).toHaveText("₡500");
+    await expect(montoDeCuenta(detalle, CENTRAL, "Debe llegar a la central")).toHaveText("₡7.000");
+    await expect(detalle.getByRole("region", { name: FACTURA, exact: true })).toHaveCount(0);
+    await expect(detalle.getByRole("region", { name: QUEDA, exact: true })).toHaveCount(0);
+    for (const ausente of ["Le queda a la empresa", FACTURA, QUEDA, "₡3.750", "₡1.750"]) {
+      await expect(detalle).not.toContainText(ausente);
+    }
+
+    // S6 · R471: «Ver su cierre» (R294) abre el cierre del mensajero con las tarjetas de la satélite.
+    await irA(detalle, "Mensajeros (1)");
+    await filaDeMensajeros(detalle, m.nombre).getByRole("link", { name: `Ver el cierre de ${m.nombre}` }).click();
+    await expect(detalle).toHaveCount(0);
+    const suCierre = page.getByRole("dialog", { name: `Detalle del cierre · Cierre de ${m.nombre}` });
+    await expect(suCierre).toBeVisible();
+    await expect(cifra(suCierre, "recaudado")).toHaveText("₡9.000");
+    await expect(cifra(suCierre, "pago")).toHaveText("₡1.500");
+    await expect(cifra(suCierre, "ganaBodega")).toHaveText("₡500");
+    await expect(cifra(suCierre, "paraCentral")).toHaveText("₡7.000");
+    await expect(cifra(suCierre, "paraTienda")).toHaveCount(0);
+    await expect(cifra(suCierre, "leQueda")).toHaveCount(0);
+    await expect(suCierre).not.toContainText("Se le paga hoy a la tienda");
+  });
 });
 
 /**
@@ -400,8 +556,8 @@ test.describe.serial("SLT-105 — un recibido incompleto se queda en «Por conci
     const fila = filaDeCola(regionColaBodega(page, "Por conciliar"), bodega);
     const verCorregir = fila.getByRole("button", { name: `Ver / corregir el cierre de bodega de ${bodega}` });
 
-    await expect(pestanaPorConciliar).toHaveAccessibleName("Por conciliar 1");
-    await expect(pestanaConciliados).toHaveAccessibleName("Conciliados 0");
+    await expect(pestanaPorConciliar).toHaveAccessibleName("Por conciliar (1)");
+    await expect(pestanaConciliados).toHaveAccessibleName("Conciliados (0)");
     await fila.getByRole("button", { name: `Ver / conciliar el cierre de bodega de ${bodega}` }).click();
     const detalle = detalleDeBodega(page);
     await detalle.locator("footer").getByRole("button", { name: /^Marcar recibido la consolidación de / }).click();
@@ -413,7 +569,7 @@ test.describe.serial("SLT-105 — un recibido incompleto se queda en «Por conci
 
     // R126 (C1), R44, R129, R130 — sin recargar: sigue en «Por conciliar», que la sigue contando,
     // con su pastilla, lo recibido, lo que falta (8.ª celda) y «Ver / corregir».
-    await expect(pestanaPorConciliar).toHaveAccessibleName("Por conciliar 1");
+    await expect(pestanaPorConciliar).toHaveAccessibleName("Por conciliar (1)");
     await expect(fila.getByText("Recibido incompleto", { exact: true })).toBeVisible();
     await expect(fila.getByRole("cell").nth(6)).toHaveText(importe(6000, { solo: true }));
     await expect(fila.getByRole("cell").nth(7)).toHaveText(importe(1000, { solo: true }));
@@ -432,8 +588,8 @@ test.describe.serial("SLT-105 — un recibido incompleto se queda en «Por conci
     await expect(page.getByText(/^Monto recibido corregido a /)).toContainText(importe(7000));
     await expect(detalle).toHaveCount(0);
 
-    await expect(pestanaPorConciliar).toHaveAccessibleName("Por conciliar 0");
-    await expect(pestanaConciliados).toHaveAccessibleName("Conciliados 1");
+    await expect(pestanaPorConciliar).toHaveAccessibleName("Por conciliar (0)");
+    await expect(pestanaConciliados).toHaveAccessibleName("Conciliados (1)");
     await pestanaConciliados.click();
     const recibida = filaDeCola(regionColaBodega(page, "Conciliados"), bodega);
     await expect(recibida.getByText("Recibido", { exact: true })).toBeVisible();
@@ -489,7 +645,7 @@ test.describe.serial("SLT-107 — «Solicitados» de la satélite: tarjetas, fil
     const etapas = bodega.getByRole("tablist", { name: "Cierre de bodega por etapa" });
     const pestana = etapas.getByRole("tab", { name: /^Solicitados/ });
     await pestana.click();
-    await expect(pestana).toHaveAccessibleName("Solicitados 2");
+    await expect(pestana).toHaveAccessibleName("Solicitados (2)");
 
     // R49, R286: las tres tarjetas, escritas a mano.
     const cifras = bodega.getByRole("group", { name: "Cifras de los cierres de bodega solicitados" });
@@ -530,7 +686,7 @@ test.describe.serial("SLT-107 — «Solicitados» de la satélite: tarjetas, fil
     await bodega.getByRole("button", { name: "Fecha de solicitud" }).click();
     await page.getByRole("group", { name: "Rangos predefinidos" }).getByRole("button", { name: "Últimos 7 días" }).click();
     await page.keyboard.press("Escape");
-    await expect(pestana).toHaveAccessibleName("Solicitados 1");
+    await expect(pestana).toHaveAccessibleName("Solicitados (1)");
     await expect(filaViejo).toHaveCount(0);
     await expect(filaNuevo).toHaveCount(1);
     await expect(cifra("porLlegar")).toHaveText("₡10.500");

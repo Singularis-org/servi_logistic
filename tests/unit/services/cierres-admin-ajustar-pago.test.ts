@@ -12,6 +12,7 @@ import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepos
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { CierreResultado } from "@/lib/interfaces/services/ICierreDiaService";
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { dobleCierresAdmin } from "@/tests/fixtures/dobles/cierres-admin-repository";
 
 // SLT-56 (T6) — LAS GUARDIAS del AJUSTE del pago al mensajero (design §4.3), con dobles del
 // repositorio. Lo que se afirma en cada rechazo es que NO SE LLEGA A ESCRIBIR: cero llamadas a
@@ -61,32 +62,12 @@ const UPDATED: AjustarPagoMensajeroResult = {
   ajuste: AJUSTE,
 };
 
-function fakeRepo(overrides: Partial<ICierresAdminRepository> = {}): ICierresAdminRepository {
-  return {
-    leerTopeIntentos: vi.fn(async () => 3),
-    findGestionesDeCierresEnAlcance: vi.fn(async () => {
-      throw new Error("SLT-140: este doble no lee gestiones en lote");
-    }),
-    findCierresByAlcance: vi.fn(async () => []),
-    findHistoricoPaginado: vi.fn(async () => ({ items: [], total: 0 })),
-    findColaPaginada: vi.fn(async () => ({ items: [], total: 0 })),
-    findHistoricoCompleto: vi.fn(async () => []),
-    findColaCompleta: vi.fn(async () => []),
-    findCierreByIdEnAlcance: vi.fn(async () => null),
-    resolverCierre: vi.fn(async () => "updated" as const),
-    forzarSolicitudVencido: vi.fn(async () => "updated" as const),
-    findGestionesIncidenteDelCierre: vi.fn(async () => []),
-    findGestionesRetornablesDelCierre: vi.fn(async () => []),
-    findGestionesPorAlcanceCompleto: vi.fn(async () => []),
-    findRechazosTiendaModeloNuevoCompleto: vi.fn(async () => []), // SLT-113: no-op en esta suite
-    findCatalogoFiltros: vi.fn(async () => ({ zonas: [], mensajeros: [], mensajerosFiltro: [] })),
+function fakeRepo(overrides: Partial<ICierresAdminRepository> = {}) {
+  return dobleCierresAdmin({
     findGestionEditableEnCierre: vi.fn(async () => editable()),
-    actualizarPagosGestion: vi.fn(async () => ({ status: "conflict" as const })),
-    corregirResultadoGestionEnCierre: vi.fn(async () => ({ status: "conflict" as const })),
     ajustarPagoMensajeroEnCierre: vi.fn(async () => UPDATED),
-    findBarridasDelCierre: vi.fn(async () => []),
     ...overrides,
-  };
+  });
 }
 
 function fakeOrdenRepo(zonaDelActor: string | null = "z-sat") {

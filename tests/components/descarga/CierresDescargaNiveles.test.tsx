@@ -831,12 +831,20 @@ describe("Cierres · «Fulfillment» del Detalle solo para la central (ficha 481
     // El literal, no la constante: lo que se afirma es lo que el usuario leería.
     expect(selector).not.toContain("Fulfillment");
     expect(archivo).not.toContain("Fulfillment");
-    // Y no se llevó nada más por delante: la hoja de la central, menos esa sola columna.
+    // Y no se llevó nada más por delante: la hoja de la central, menos esa columna y, desde SLT-161
+    // (R483), las cuatro del cobro a la tienda.
+    const DE_LA_EMPRESA = [
+      "Fulfillment",
+      "Flete + IVA",
+      "Comisión + IVA",
+      "Flete por devolución a origen + IVA",
+      "Total de la empresa",
+    ];
     const esperado = encabezadosDe(COLUMNAS_DESCARGA_GESTIONES_FUNDIDA).filter(
-      (encabezado) => encabezado !== "Fulfillment",
+      (encabezado) => !DE_LA_EMPRESA.includes(encabezado),
     );
     expect(archivo).toEqual(esperado);
-    expect(archivo).toHaveLength(COLUMNAS_DESCARGA_GESTIONES_FUNDIDA.length - 1);
+    expect(archivo).toHaveLength(26);
   });
 
   it("la central sigue viendo «Fulfillment», en su sitio de siempre", async () => {

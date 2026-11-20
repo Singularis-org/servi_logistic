@@ -28,6 +28,9 @@ import type {
   CierreBodegaResumen,
   CierreBodegaResumenLite,
   CierreConsolidableCola,
+  CifrasCierreBodegaCentralDescargaDTO,
+  CifrasCierreBodegaDescargaDTO,
+  ConCifrasBodegaEnOk,
   ListarConsolidacionServiceResult,
   SolicitarCierreBodegaServiceResult,
 } from "@/lib/interfaces/services/ICierreBodegaService";
@@ -213,8 +216,10 @@ export type ListarConsolidablesResult = ListarPaginadoResult<
  * redacta el mensaje de CUALQUIER error de borde en un solo sitio. `limite_excedido` lleva SOLO
  * conteos, jamas filas ni un conjunto truncado (R6).
  */
-export type ListarCierresBodegaSolicitadosCompletoResult =
-  ListarCompletoResult<CierreBodegaResumen>;
+export type ListarCierresBodegaSolicitadosCompletoResult = ConCifrasBodegaEnOk<
+  ListarCompletoResult<CierreBodegaResumen>,
+  CifrasCierreBodegaDescargaDTO
+>; // SLT-141 (R385, R386): la satelite, sin `pagoEntregado`
 export type ListarConsolidablesCompletoResult = ListarCompletoResult<CierreBodegaResumenLite>;
 
 /**
@@ -225,10 +230,15 @@ export type ListarConsolidablesCompletoResult = ListarCompletoResult<CierreBodeg
  * error de borde en un solo sitio. `limite_excedido` lleva SOLO conteos, jamas filas ni un
  * conjunto truncado (R6).
  */
-export type ListarPendientesCierresBodegaCompletoResult =
-  ListarCompletoResult<CierreBodegaResumen>;
-export type ListarHistoricoCierresBodegaCompletoResult =
-  ListarCompletoResult<CierreBodegaResumen>;
+// SLT-141 (R385): la rama `ok` puede llevar ademas `cifrasModeloNuevo` (solo con cierres nuevos).
+export type ListarPendientesCierresBodegaCompletoResult = ConCifrasBodegaEnOk<
+  ListarCompletoResult<CierreBodegaResumen>,
+  CifrasCierreBodegaCentralDescargaDTO
+>;
+export type ListarHistoricoCierresBodegaCompletoResult = ConCifrasBodegaEnOk<
+  ListarCompletoResult<CierreBodegaResumen>,
+  CifrasCierreBodegaCentralDescargaDTO
+>;
 
 /**
  * Feature 230 — Tanda 7 (T7.3, R13/R21/R26/R38) — el conjunto de la HOJA FUNDIDA de «cierres de

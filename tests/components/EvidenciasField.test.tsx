@@ -35,8 +35,9 @@ vi.mock("@/lib/utils/comprimir-imagen", () => ({
 //   · que hay DOS vías —cámara y galería— y que cada botón dispara SU input. La trampa del
 //     encargo es real: poner `capture` en el input único QUITA la galería, así que se afirma
 //     tanto que el de cámara LO LLEVA como que el de galería NO;
-//   · que las dos vías comparten `accept`, `multiple` y el MISMO `onChange`, o sea el mismo
-//     tope, la misma validación y la misma previsualización;
+//   · que las dos vías comparten el MISMO `onChange`, o sea el mismo tope, la misma validación
+//     y la misma previsualización; y que la de cámara va SIN `multiple` y con `image/*` (SLT-220:
+//     con `multiple` el móvil ignora `capture` y abre la galería);
 //   · que el contrato accesible del input de galería (id + `aria-label`) NO cambió: es por donde
 //     lo localizan las tres pantallas y sus tests.
 //
@@ -149,14 +150,24 @@ describe("EvidenciasField · las DOS vías de adjuntar (cámara y galería)", ()
     expect(inputGaleria()).not.toHaveAttribute("capture");
   });
 
-  it("las dos vías comparten `accept` y `multiple`: el tope y los formatos no cambian por la vía", () => {
+  it("⭑ SLT-220: el input de cámara NO lleva `multiple` y acepta `image/*`; la galería conserva los dos", () => {
+    // ⚠️ LA MUTACIÓN QUE ESTE CASO MATA: volver a poner `multiple` (o la lista de MIME concretos)
+    // en el input de cámara. Con eso varios navegadores móviles IGNORAN `capture` y abren la
+    // galería —el fallo reportado en «Entregar» de Mis asignaciones—, y algunos Android solo
+    // abren la cámara directo con `accept="image/*"`. El formato NO se relaja por eso: lo sigue
+    // decidiendo `prepararEvidencias` (ver sus casos HEIC más abajo), no el `accept`.
     render(<Harness />);
 
-    for (const input of [inputCamara(), inputGaleria()]) {
-      expect(input).toHaveAttribute("accept", GESTION_ALLOWED_MIME.join(","));
-      expect(input).toHaveAttribute("multiple");
-      expect(input).toHaveAttribute("type", "file");
-    }
+    const camara = inputCamara();
+    expect(camara).toHaveAttribute("type", "file");
+    expect(camara).toHaveAttribute("capture", "environment");
+    expect(camara).not.toHaveAttribute("multiple");
+    expect(camara).toHaveAttribute("accept", "image/*");
+
+    const galeria = inputGaleria();
+    expect(galeria).toHaveAttribute("type", "file");
+    expect(galeria).toHaveAttribute("multiple");
+    expect(galeria).toHaveAttribute("accept", GESTION_ALLOWED_MIME.join(","));
   });
 
   it("el contrato del input de galería no cambia: mismo id y mismo nombre accesible", () => {
@@ -187,7 +198,8 @@ describe("EvidenciasField · las DOS vías de adjuntar (cámara y galería)", ()
     const user = userEvent.setup();
     render(<Harness />);
 
-    await user.upload(inputCamara(), [foto("a.jpg"), foto("b.jpg"), foto("c.jpg")]);
+    // Tres de golpe por la galería (la única vía `multiple`, SLT-220) y una más por la cámara.
+    await user.upload(inputGaleria(), [foto("a.jpg"), foto("b.jpg"), foto("c.jpg")]);
     await user.upload(inputCamara(), foto("d.jpg"));
 
     const lista = screen.getByRole("list", { name: "Fotos de evidencia seleccionadas" });

@@ -132,14 +132,14 @@ const celdaFalta = (region: HTMLElement, bodega: string) =>
   within(filaDe(region, bodega)).getAllByRole("cell")[7]!.firstElementChild as HTMLElement;
 
 describe("ColaCierres · bodega central — pestañas y cabecera (R32, R127)", () => {
-  it("tablist «Cierres de bodega por estado» con «Por conciliar 3» activa y «Conciliados 21»", () => {
+  it("tablist «Cierres de bodega por estado» con «Por conciliar (3)» activa y «Conciliados (21)»", () => {
     render(<ColaCierres {...props()} />);
     const lista = screen.getByRole("tablist", { name: "Cierres de bodega por estado" });
     expect(within(lista).getAllByRole("tab").map((t) => t.textContent)).toEqual([
-      "Por conciliar 3",
-      "Conciliados 21",
+      "Por conciliar (3)",
+      "Conciliados (21)",
     ]);
-    expect(within(lista).getByRole("tab", { name: "Por conciliar 3" })).toHaveAttribute(
+    expect(within(lista).getByRole("tab", { name: "Por conciliar (3)" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
@@ -156,7 +156,7 @@ describe("ColaCierres · bodega central — pestañas y cabecera (R32, R127)", (
   it("cambiar de pestaña avisa con el id interno", async () => {
     const onPestana = vi.fn();
     render(<ColaCierres {...props({ onPestana })} />);
-    await userEvent.setup().click(screen.getByRole("tab", { name: "Conciliados 21" }));
+    await userEvent.setup().click(screen.getByRole("tab", { name: "Conciliados (21)" }));
     expect(onPestana).toHaveBeenCalledWith("resueltos");
   });
 });

@@ -4,7 +4,6 @@ import {
   ganaLaTienda,
   gananciaEmpresa,
   netoEmpresa,
-  pagoTiendaEmpresa,
   partesPorTienda,
   totalesIngresoEmpresa,
   type GestionDeTienda,
@@ -33,7 +32,6 @@ export interface CifrasCierre {
   pagoTienda: string;
   cobradoSobreRecaudado: string;
   netoEmpresa: string;
-  ganaLaTienda: string;
   partesPorTienda: ParteDeTienda[];
 }
 
@@ -47,9 +45,10 @@ export interface CifrasCierre {
  * operan con `Prisma.Decimal` sobre STRING. Aqui no se suma ni se resta nada a mano.
  *
  *  - `ganancia` y `netoEmpresa` restan desde lo facturado SIN IVA (SL-39); `totalesIngreso.total` lo lleva.
- *  - `pagoTienda` = recaudado − flete − comision (con IVA): no resta el flete por rechazo (ficha 301).
- *  - `ganaLaTienda` = recaudado − todo lo facturado; puede ser negativo y viaja con su signo (395).
- *  - `partesPorTienda` reparte las dos anteriores por tienda con las MISMAS funciones (396), en el
+ *  - `pagoTienda` = recaudado − TODO lo facturado con IVA, flete por rechazo incluido (SLT-169 R620,
+ *    D1 de Carlos). Puede ser negativo (la tienda debe) y viaja con su signo. Es solo presentacion:
+ *    ningun servicio que mueve dinero lee esta funcion (guardia `pago-tienda-no-mueve-dinero`).
+ *  - `partesPorTienda` reparte esa cifra por tienda con las MISMAS funciones (396), en el
  *    orden que les da `partesPorTienda` (de mayor a menor pago).
  */
 export function cifrasDelCierre(
@@ -62,17 +61,12 @@ export function cifrasDelCierre(
   const sinIva = facturadoSinIva(totalesIngreso);
   // Ganancia: lo facturado sin IVA menos el pago al mensajero (snapshot, R4).
   const ganancia = gananciaEmpresa(sinIva, c.totalPagoMensajero);
-  // Pago a la tienda: lo RECIBIDO menos flete y comision con IVA.
-  const pagoTienda = pagoTiendaEmpresa(
-    c.totales.general,
-    totalesIngreso.fleteConIva,
-    totalesIngreso.comisionConIva,
-  );
+  // SLT-169 R620: «Se le paga hoy a la tienda» = lo RECIBIDO menos TODO lo facturado con IVA
+  // (`pagoTienda + totalesIngreso.total === general`).
+  const pagoTienda = ganaLaTienda(c.totales.general, totalesIngreso.total);
   // Feature 395: la linea puente y el neto (lo facturado sin IVA menos los DOS pagos de la empresa).
   const cobrado = cobradoSobreRecaudado(totalesIngreso.fleteConIva, totalesIngreso.comisionConIva);
   const neto = netoEmpresa(sinIva, c.totalPagoMensajero, c.totalIngresoBodegaRechazos);
-  // Feature 395: lo que la tienda gana en total (`ganaLaTienda + totalesIngreso.total === general`).
-  const ganaTienda = ganaLaTienda(c.totales.general, totalesIngreso.total);
   // Ficha 396: la particion por tienda, con las mismas funciones sobre cada subconjunto.
   const partes = partesPorTienda(gestiones);
   return {
@@ -82,7 +76,6 @@ export function cifrasDelCierre(
     pagoTienda,
     cobradoSobreRecaudado: cobrado,
     netoEmpresa: neto,
-    ganaLaTienda: ganaTienda,
     partesPorTienda: partes,
   };
 }

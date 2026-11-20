@@ -7,6 +7,7 @@ import { Popover } from "@base-ui/react/popover";
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
+import { useAltoControlesBarra } from "@/components/shared/alto-controles-barra";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
@@ -135,6 +136,8 @@ export function DateRangeFilter({
   defaultMonth,
   defaultRange,
 }: DateRangeFilterProps) {
+  // SLT-194 (R946, D1): 44 px en móvil dentro de una barra con `escaneo`; fuera, `""` (R948).
+  const altoBarra = useAltoControlesBarra();
   const idBase = useId();
   const idEtiquetaRango = `${idBase}-rango-label`;
 
@@ -226,6 +229,7 @@ export function DateRangeFilter({
               // elegido ("Periodo: 01/09/2026 – 30/09/2026") se cortaba. Crece con el texto
               // y solo recorta si no cabe en la fila (`max-w-full`, p. ej. a 390 px).
               "w-auto min-w-56 max-w-full justify-between font-normal",
+              altoBarra,
               !haySeleccion && "text-muted-foreground",
             )}
           >
@@ -252,7 +256,11 @@ export function DateRangeFilter({
               size="icon-xs"
               disabled={disabled}
               aria-label={`Limpiar ${label}`}
-              className="absolute right-1 bottom-1 hover:bg-transparent hover:text-foreground"
+              // Centrada en el disparador: con 44 px en móvil, (44 - 24) / 2 = 10 px desde abajo.
+              className={cn(
+                "absolute right-1 bottom-1 hover:bg-transparent hover:text-foreground",
+                altoBarra && "max-md:bottom-2.5",
+              )}
               onClick={limpiar}
             >
               <X className="size-4 opacity-60" aria-hidden />

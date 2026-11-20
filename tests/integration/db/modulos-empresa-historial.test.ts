@@ -6,7 +6,7 @@ import { ModulosEmpresaRepository } from "@/lib/repositories/ModulosEmpresaRepos
 import { ModulosEmpresaService } from "@/lib/services/ModulosEmpresaService";
 import { crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones";
 import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
-import { exigirSinSuperadmin, tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
+import { superadminDeLaBase, tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
 import {
   HAY_BASE_DE_DATOS,
   RegistroCaido,
@@ -37,6 +37,8 @@ let soltarEscritura: () => Promise<void> = async () => {};
 let empresa: string;
 let otra: string;
 let superadmin: string;
+// El superadmin que ya tenia la base (una de desarrollo): se usa de actor y no se borra ni se toca.
+let superadminAjeno: string | null = null;
 
 interface FilaHistorial {
   accion: string;
@@ -91,21 +93,35 @@ async function revertida(fn: (tx: TxDeTest) => Promise<void>): Promise<void> {
   }
 }
 
+/**
+ * El nombre congelado del actor: el del superadmin del fixture (CI) lleva «Prueba superadmin»; el que
+ * ya tenia la base se compone de sus columnas (nombre y primer apellido), leidas por SQL a mano.
+ */
+async function nombreEsperadoDelActor(): Promise<string> {
+  if (superadminAjeno === null) return expect.stringContaining("Prueba superadmin") as unknown as string;
+  const [fila] = await base.$queryRawUnsafe<{ nombre: string }[]>(
+    `SELECT concat_ws(' ', nullif("nombre", ''), nullif("primer_apellido", '')) AS nombre FROM "usuario" WHERE "id" = $1`,
+    superadminAjeno,
+  );
+  return fila.nombre.slice(0, 120);
+}
+
 describeSiHayBase("SL-23 — el superadmin cambia módulos con su rastro en historial_accion (R9, R12, R13)", () => {
   beforeAll(async () => {
     base = crearPrismaDeTest();
     app = conAislamientoPorEmpresa(base, async () => null);
     soltarSuperadmin = await tomarLockDeSuperadmin();
     soltarEscritura = await tomarLockDeEscrituraReal();
-    await exigirSinSuperadmin(base);
+    superadminAjeno = await superadminDeLaBase(base);
+    if (superadminAjeno !== null) console.warn(`[superadmin-32] se reutiliza el superadmin de la base (${superadminAjeno})`);
     const s = await base.$transaction(
       async (tx) => {
         const e = (await crearOrganizacion(tx, { nombre: "Empresa SL-23 módulos" })).id;
         const o = (await crearOrganizacion(tx, { nombre: "Empresa SL-23 vecina" })).id;
         // '' vuelve NULL el DEFAULT de `usuario.organizacion_id`: el superadmin no tiene empresa.
         await fijarEmpresa(tx, "");
-        const sa = await crearUsuarioDePrueba(tx, "superadmin");
-        return { e, o, sa: sa.id };
+        const sa = superadminAjeno ?? (await crearUsuarioDePrueba(tx, "superadmin")).id;
+        return { e, o, sa };
       },
       { timeout: 30_000, maxWait: 15_000 },
     );
@@ -122,7 +138,7 @@ describeSiHayBase("SL-23 — el superadmin cambia módulos con su rastro en hist
       if (base && empresa) {
         await base.historialAccion.deleteMany({ where: { organizacionId: { in: [empresa, otra] } } });
         await base.organizacion.deleteMany({ where: { id: { in: [empresa, otra] } } });
-        if (superadmin) await base.usuario.deleteMany({ where: { id: superadmin } });
+        if (superadmin && superadminAjeno === null) await base.usuario.deleteMany({ where: { id: superadmin } });
       }
     } finally {
       await soltarEscritura();
@@ -147,7 +163,7 @@ describeSiHayBase("SL-23 — el superadmin cambia módulos con su rastro en hist
         organizacionId: empresa,
         actorUsuarioId: superadmin,
         actorRol: "superadmin",
-        actorNombre: expect.stringContaining("Prueba superadmin"),
+        actorNombre: await nombreEsperadoDelActor(),
       },
     ]);
     // R25: la vecina no se entera.

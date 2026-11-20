@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { Prisma, RolValue } from "@prisma/client";
+import { RolValue } from "@prisma/client";
 
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IWalletEgresoService } from "@/lib/interfaces/services/IWalletEgresoService";
@@ -22,43 +22,41 @@ vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabric
 // SL-45 (design §6, §12.3) — EL COMPOSITION ROOT DEL EGRESO PASA EL TOPE (memoria «el composition
 // root que no inyecta»). Que `lib/actions/wallet-egresos.ts` importe `TopePagoPlataformaService` no
 // prueba que lo PASE: aquí se llama a la action SIN servicio inyectado, sobre un cliente falso, y se
-// exige que un pago a la plataforma tome el candado, lea la deuda dentro de la transacción y se
+// exige que un pago a la plataforma tome el candado, lea lo disponible dentro de la transacción y se
 // rechace si no cabe. Sin el tope cableado, el servicio lanza y este archivo se pone en rojo.
+// SLT-60 (design §4.2; R2, R3): el tope lee lo disponible de la base (`pago_plataforma_disponible`),
+// con un solo repositorio; ya no suma cargos ni pagos por su cuenta.
 //
 // Además, el borde: «a quién» es opcional SOLO en el pago a la plataforma (R6), y la referencia vacía
 // sigue siendo `validation_error` (R12).
 
-const MENSAJE_R9 = "El pago no puede ser mayor que lo que la empresa debe a la plataforma.";
+const MENSAJE_R9 = "El pago no puede ser mayor que lo pendiente de las facturas cerradas, descontados los pagos por confirmar.";
 
 const orden: string[] = [];
 const executeRaw = vi.fn<(sql: TemplateStringsArray, ...valores: unknown[]) => Promise<number>>(async () => {
   orden.push("candado");
   return 1;
 });
-let cargos: unknown[] = [];
-const groupBy = vi.fn(async () => {
-  orden.push("sumas");
-  return cargos;
-});
+/** Lo que devuelve `pago_plataforma_disponible`, como texto (`::text`). */
+let disponible: string | null = "0.00";
+const queryRaw = vi.fn<(sql: TemplateStringsArray, ...valores: unknown[]) => Promise<{ d: string | null }[]>>(
+  async () => {
+    orden.push("disponible");
+    return [{ d: disponible }];
+  },
+);
 const findFirst = vi.fn(async () => {
   orden.push("clave");
   return null;
-});
-const findMany = vi.fn(async () => {
-  orden.push("pagos");
-  return [];
 });
 const createMany = vi.fn(async () => {
   orden.push("insert");
   throw new Error("SENTINELA: llegó al INSERT");
 });
-// SLT-118 (design §5; R18): la deuda suma también las cuotas de las facturas cerradas; aquí, ninguna.
-const aggregate = vi.fn(async () => ({ _sum: { cuota: null, primeraCuota: null } }));
 const tx = {
   $executeRaw: executeRaw,
-  cobroPlataformaMovimiento: { groupBy },
-  facturaPlataforma: { aggregate },
-  walletMovimiento: { findFirst, findMany, createMany },
+  $queryRaw: queryRaw,
+  walletMovimiento: { findFirst, createMany },
 };
 const $transaction = vi.fn(async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx));
 
@@ -86,50 +84,49 @@ const pago = (monto: string) => ({
 
 beforeEach(() => {
   orden.length = 0;
-  cargos = [];
-  for (const f of [executeRaw, groupBy, findFirst, findMany, createMany, $transaction]) f.mockClear();
+  disponible = "0.00";
+  for (const f of [executeRaw, queryRaw, findFirst, createMany, $transaction]) f.mockClear();
 });
 
-describe("SL-45 — registrarEgresoAdministrativoAction cablea el tope real (R9, R10, R20)", () => {
-  it("sin deuda, un pago se rechaza en monto con el mensaje de R9, tras tomar el candado y sin llegar al INSERT", async () => {
+describe("SL-45 / SLT-60 — registrarEgresoAdministrativoAction cablea el tope real (R2, R3, R5)", () => {
+  it("R3: sin nada disponible, un pago se rechaza en monto, tras tomar el candado y sin llegar al INSERT", async () => {
     expect(await registrarEgresoAdministrativoAction(pago("100.00"), deps)).toEqual({
       status: "validation_error",
       fieldErrors: { monto: [MENSAJE_R9] },
     });
     expect($transaction).toHaveBeenCalledTimes(1);
-    expect(orden).toEqual(["candado", "clave", "sumas", "pagos"]);
+    expect(orden).toEqual(["candado", "clave", "disponible"]);
     expect(createMany).not.toHaveBeenCalled();
-    // El candado es el de los pagos de la empresa de la transacción (design §6).
+    // El candado es el de los pagos de la empresa de la transacción (design §6 de SL-45).
     const sql = executeRaw.mock.calls[0][0].join("?");
     expect(sql).toContain("pg_advisory_xact_lock");
     expect(sql).toContain("'pago_plataforma:'");
     expect(sql).toContain("current_setting('app.organizacion_id')");
   });
 
-  it("la deuda se lee con la empresa del actor: cargos, clave y pagos filtrados por org-a", async () => {
+  it("lo disponible se lee de la base con la empresa del actor; la clave, filtrada por org-a", async () => {
     await registrarEgresoAdministrativoAction(pago("100.00"), deps);
-    expect(groupBy).toHaveBeenCalledWith({ by: ["tipo"], where: { organizacionId: "org-a" }, _sum: { monto: true } });
     expect(findFirst).toHaveBeenCalledWith({
       where: { organizacionId: "org-a", claveIdempotencia: "4b7c3a51-6a7e-4c2f-9d1e-3f0a2b1c9d8e" },
       select: { id: true },
     });
-    expect(findMany).toHaveBeenCalledWith({
-      where: { organizacionId: "org-a", tipo: "egreso", categoria: "egreso_pago_plataforma" },
-      select: { id: true, monto: true },
-    });
+    expect(queryRaw).toHaveBeenCalledTimes(1);
+    const [sql, ...valores] = queryRaw.mock.calls[0];
+    expect(sql.join("?")).toContain("pago_plataforma_disponible(");
+    expect(valores).toEqual(["org-a"]);
   });
 
-  it("con 500,00 de deuda, pagar 500,00 cabe y sigue hasta el INSERT, en la misma transacción", async () => {
-    cargos = [{ tipo: "cargo", _sum: { monto: new Prisma.Decimal("500.00") } }];
+  it("R2: con 500,00 disponibles, pagar 500,00 cabe y sigue hasta el INSERT, en la misma transacción", async () => {
+    disponible = "500.00";
     await expect(registrarEgresoAdministrativoAction(pago("500.00"), deps)).rejects.toThrow();
-    expect(orden).toEqual(["candado", "clave", "sumas", "pagos", "insert"]);
+    expect(orden).toEqual(["candado", "clave", "disponible", "insert"]);
     expect($transaction).toHaveBeenCalledTimes(1);
   });
 
   it("R12: un monto que no cabe en DECIMAL(12,2) lo para el tope, en monto, antes de que la base lo vea", async () => {
     // `montoPositivoSchema` (compartido por toda la caja) no acota las cifras enteras; en el pago a la
-    // plataforma el tope corre antes del INSERT, y ninguna deuda real llega a 10^11.
-    cargos = [{ tipo: "cargo", _sum: { monto: new Prisma.Decimal("500.00") } }];
+    // plataforma el tope corre antes del INSERT, y nada disponible real llega a 10^11.
+    disponible = "500.00";
     expect(await registrarEgresoAdministrativoAction(pago("100000000000.00"), deps)).toEqual({
       status: "validation_error",
       fieldErrors: { monto: [MENSAJE_R9] },
@@ -137,8 +134,8 @@ describe("SL-45 — registrarEgresoAdministrativoAction cablea el tope real (R9,
     expect(createMany).not.toHaveBeenCalled();
   });
 
-  it("con 500,00 de deuda, pagar 500,01 se rechaza sin llegar al INSERT", async () => {
-    cargos = [{ tipo: "cargo", _sum: { monto: new Prisma.Decimal("500.00") } }];
+  it("R2: con 500,00 disponibles, pagar 500,01 se rechaza sin llegar al INSERT", async () => {
+    disponible = "500.00";
     expect(await registrarEgresoAdministrativoAction(pago("500.01"), deps)).toEqual({
       status: "validation_error",
       fieldErrors: { monto: [MENSAJE_R9] },

@@ -195,8 +195,8 @@ E2E:
 | R48 / R207 | `ConsolidacionBodegaRefresco.test.tsx` (`<dl>` con los 4 pares, literales); E2E (los cuatro `dd`) |
 | R67 | `ColaCierresConsolidar.test.tsx` (celda = `paraLaCentral`, con contraprueba); E2E (₡7.000) |
 | R71 | `ColaCierresConsolidar.test.tsx` (strings sin tocar, signo); `liquidacion-money-safe.test.ts` (con contraprueba) |
-| R190 | `ColaCierresConsolidar.test.tsx`; `cola-cierres-vista.test.ts`; `ColasPaginacion.test.tsx`; E2E (`role="tab"`) |
-| R191 | `ColaCierresConsolidar.test.tsx` (misma fila, fuera del panel); `CierresDescarga.test.tsx` |
+| R190 | `ColaCierresConsolidar.test.tsx`; `cola-cierres-vista.test.ts`; `ColasPaginacion.test.tsx`; E2E (`role="tab"`). «Cambiar de pestaña conserva filtros y página»: `ConsolidacionBodegaRefresco.test.tsx` «(b) R291, deuda R190» (SLT-107; corregido en SLT-147, D72) |
+| R191 | `ColaCierresConsolidar.test.tsx` (misma fila, fuera del panel); `CierresDescarga.test.tsx`. «Cambiar un filtro devuelve a la página 1»: `ConsolidacionBodegaRefresco.test.tsx` «(a) R291, deuda R191» (SLT-107; corregido en SLT-147, D72) |
 | R192 | `cola-cierres-vista.test.ts`; `ColaCierresConsolidar.test.tsx`; `e2e/ajuste-pago-mensajero-cierre.spec.ts` («1 pago ajustado», ₡1.800) |
 | R193 | `ColaCierresConsolidar.test.tsx`; `ConsolidacionBodegaRefresco.test.tsx` (`push` del enlace); E2E (abre «Detalle del cierre · Cierre de <m>») |
 | R196 | `cola-cierres-vista.test.ts`; `ColaCierresConsolidar.test.tsx`; `CierreIngresoBodegaTarjetaListado.test.tsx`; `e2e/tarifas-activacion.spec.ts` (870 sin nota; filas con 300 y 570) |

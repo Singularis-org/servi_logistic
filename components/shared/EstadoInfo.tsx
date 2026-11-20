@@ -133,6 +133,21 @@ function BotonInfo({ nombre, texto, superficie = "app", claseTitulo }: BotonInfo
 
 // ─── Piezas públicas ─────────────────────────────────────────────────────────────────────────────
 
+export interface InfoConTextoProps {
+  /** Lo que se explica (título del popup y nombre accesible «Qué significa «<nombre>»»). */
+  nombre: string;
+  /** La explicación (texto aprobado). */
+  texto: string;
+}
+
+/**
+ * SLT-209 — el mismo (i) para algo que NO es un estado (p. ej. el rótulo de una tarjeta de resumen):
+ * mismo botón, mismo popup y misma interacción (hover/foco en escritorio, toque en el móvil).
+ */
+export function InfoConTexto({ nombre, texto }: InfoConTextoProps) {
+  return <BotonInfo nombre={nombre} texto={texto} />;
+}
+
 export interface InfoEstadoProps {
   /** Código del estado (`order_status.value`). Retirado o desconocido → no se pinta nada (R15). */
   codigo: string;

@@ -230,6 +230,12 @@ export const CLASIFICACION_FK_USUARIO: Record<string, ClasificacionFk> = {
   "CobroTiendaAnulacion.anulador": { categoria: "no_alcanzable", motivo: SOLO_OPERADOR },
   // Ficha 461 (R69): quien anulo una correccion de caja. Solo el acceso total anula.
   "AjusteCajaAnulacion.anulador": { categoria: "no_alcanzable", motivo: SOLO_OPERADOR },
+  // SLT-60 (2026-11-13): quien confirmo un pago a la plataforma. Solo el superadmin confirma
+  // (`esPlataforma`), con sesion; la cuenta dedicada de una key no llega a esa accion. FK `Restrict`.
+  "PagoPlataformaConfirmacion.confirmador": { categoria: "no_alcanzable", motivo: SOLO_OPERADOR },
+  // SLT-143 (2026-11-19): quien anulo un pago confirmado. Solo el superadmin anula (`esPlataforma`), con
+  // sesion, y solo la escribe una funcion del duenio; la cuenta dedicada de una key no llega. FK `Restrict`.
+  "PagoPlataformaAnulacion.anulador": { categoria: "no_alcanzable", motivo: SOLO_OPERADOR },
   "AporteCapital.registrador": { categoria: "no_alcanzable", motivo: SOLO_OPERADOR },
   "AporteCapitalAnulacion.anulador": { categoria: "no_alcanzable", motivo: SOLO_OPERADOR },
   // ⭑ FICHA 457 — el pago de una tienda a la empresa. La tienda la valida `AbonoTiendaService` (R10):
@@ -336,6 +342,18 @@ export const CLASIFICACION_FK_USUARIO: Record<string, ClasificacionFk> = {
       "`olvidarPreferenciaDeAvisos`, las dos detras del interruptor de avisos. El backfill de su " +
       "migracion copia de `push_suscripcion`, que es inalcanzable por lo mismo, asi que tampoco " +
       `puede crearla. ${SOLO_OPERADOR}`,
+  },
+  // ── SLT-221 (2026-11-19): el cambio de correo pendiente ────────────────────────────────────────
+  "UsuarioCambioCorreo.usuario": {
+    categoria: "no_alcanzable",
+    motivo:
+      "R1613: `UsuarioService.solicitarCambioCorreo` rechaza con `validation_error` el cambio de " +
+      "correo de una cuenta de rol `apiKey` ANTES de crear el pendiente (no hay persona que lo " +
+      "confirme); lo prueba `usuario-service-cambio-correo.test.ts`.",
+  },
+  "UsuarioCambioCorreo.solicitadoPor": {
+    categoria: "no_alcanzable",
+    motivo: `Pedir un cambio de correo es solo del maestro (SLT-221 R1631): ${SOLO_OPERADOR}`,
   },
   // ── FICHA 436 (2026-09-17): el contador del asistente de ayuda ────────────────────────────────
   // CASCADE, mismo criterio que sus tres vecinas de arriba: un CONTADOR no es evidencia. Y es

@@ -19,6 +19,7 @@ import { ZONA_CR } from "@/lib/utils/fecha-cr";
 import { horaCostaRica } from "@/lib/utils/hora-cr";
 import { fechaLegibleEnZona } from "@/lib/whatsapp-envios/informes/formato";
 import { esMontoCero } from "@/components/shared/monto-cliente";
+import { normalizeName } from "@/lib/utils/normalize";
 import { CAUSA_INCIDENTE_LABEL } from "@/app/(app)/mis-asignaciones/_components/causa-incidente-options";
 import {
   RESULTADO_LABEL,
@@ -43,6 +44,7 @@ import {
 
 import type { LineaCuenta } from "../detalle/detalle-cierre-vista";
 import { COMISION_COD_LABEL, FLETE_POR_ENTREGADO_LABEL, TU_GANANCIA_LABEL } from "../detalle/detalle-cierre-labels";
+import { COLUMNA_GANA_BODEGA } from "../cola/cola-cierres-labels";
 import * as L from "./fila-gestion-labels";
 
 // ═══ Audiencia y filtros ═════════════════════════════════════════════════════════════════════════
@@ -150,6 +152,24 @@ export function filtrar<T extends { gestion: CierreDetalleGestion }>(
   return items.filter((i) => i.gestion.resultado === filtro);
 }
 
+/** SLT-156 (R526): en el teléfono, «Gestiones» se pagina de 25 en 25. */
+export const GESTIONES_POR_PAGINA = 25;
+
+/**
+ * SLT-156 (R527) — `true` si la gestión casa con el término: guía, remisión o destinatario, parcial e
+ * insensible a mayúsculas y acentos (la misma normalización que el buscador de Reparto,
+ * `normalizeName`). Un término vacío casa con todo. Sin teléfono (P2 de SLT-156).
+ */
+export function coincideGestion(
+  g: Pick<CierreDetalleGestion, "numGuia" | "numRemision" | "destinatario">,
+  termino: string,
+): boolean {
+  const buscado = normalizeName(termino);
+  if (buscado === "") return true;
+  const texto = normalizeName([g.numGuia === null ? "" : String(g.numGuia), g.numRemision, g.destinatario].join(" "));
+  return texto.includes(buscado);
+}
+
 /** El estado vacío de un filtro sin gestiones (R84): siempre un texto. */
 export function estadoVacioDe(filtro: FiltroGestiones): string {
   if (filtro === FILTRO_TODAS) return L.SIN_GESTIONES;
@@ -161,13 +181,16 @@ export function estadoVacioDe(filtro: FiltroGestiones): string {
 
 export type ColumnaId =
   | "guia"
-  | "destino"
+  | "destinatario"
+  | "tienda"
   | "mensajero"
   | "resultado"
   | "recibido"
   | "cobro"
   | "pago"
   | "ganancia"
+  // SLT-154 (R474): lo que gana la bodega por la gestión, en el sitio de «Cobro a la tienda».
+  | "ganaBodega"
   | "senales";
 export interface ColumnaFila {
   id: ColumnaId;
@@ -176,10 +199,15 @@ export interface ColumnaFila {
   derecha?: boolean;
 }
 
-export function columnasDe(a: AudienciaFila, conMensajero = false): ColumnaFila[] {
+/**
+ * SLT-154 (R474): `quienMiraEsCentral` es obligatorio (olvidarlo no compila). Sin el dinero de la
+ * empresa, «Gana bodega» en el sitio de «Cobro a la tienda»; Guía y Señales, como siempre (P9).
+ */
+export function columnasDe(a: AudienciaFila, conMensajero: boolean, quienMiraEsCentral: boolean): ColumnaFila[] {
   const inicio: ColumnaFila[] = [
     { id: "guia", label: L.COL_GUIA },
-    { id: "destino", label: L.COL_DESTINO },
+    { id: "destinatario", label: L.COL_DESTINATARIO },
+    { id: "tienda", label: L.COL_TIENDA },
   ];
   if (esMensajero(a)) {
     return [
@@ -195,7 +223,9 @@ export function columnasDe(a: AudienciaFila, conMensajero = false): ColumnaFila[
     ...(conMensajero ? [{ id: "mensajero" as const, label: L.COL_MENSAJERO }] : []),
     { id: "resultado", label: L.COL_RESULTADO },
     { id: "recibido", label: L.COL_RECIBIDO, derecha: true },
-    { id: "cobro", label: L.COL_COBRO, derecha: true },
+    veDineroEmpresa(a, quienMiraEsCentral)
+      ? { id: "cobro", label: L.COL_COBRO, derecha: true }
+      : { id: "ganaBodega", label: COLUMNA_GANA_BODEGA, derecha: true },
     { id: "pago", label: L.COL_PAGO, derecha: true },
     { id: "senales", label: L.COL_SENALES },
   ];
@@ -205,6 +235,7 @@ export function columnasDe(a: AudienciaFila, conMensajero = false): ColumnaFila[
 export function montoDeColumna(g: CierreDetalleGestion, id: ColumnaId): string | null {
   if (id === "recibido") return g.montoRecibido;
   if (id === "cobro") return g.ingresoEmpresa?.total ?? null;
+  if (id === "ganaBodega") return g.ingresoBodegaRechazo;
   if (id === "pago" || id === "ganancia") return g.pagoMensajero;
   return null;
 }
@@ -321,9 +352,17 @@ function tarjetaPago(g: CierreDetalleGestion, a: AudienciaFila): TarjetaFila {
   };
 }
 
+/**
+ * SLT-154 (R474, R475): ¿quien mira ve el dinero de la empresa (cobro a la tienda, fulfillment)? La
+ * central, o «solo lectura» que mira la central. Una sola regla, un solo sitio.
+ */
+export function veDineroEmpresa(a: AudienciaFila, quienMiraEsCentral: boolean): boolean {
+  return a === "central" || (a === "solo lectura" && quienMiraEsCentral);
+}
+
 /** R25, R30: Fulfillment solo para la central (o solo lectura que mira la central) y con dato. */
 export function veFulfillment(a: AudienciaFila, quienMiraEsCentral: boolean): boolean {
-  return a === "central" || (a === "solo lectura" && quienMiraEsCentral);
+  return veDineroEmpresa(a, quienMiraEsCentral);
 }
 
 function tarjetaFulfillment(ing: IngresoEmpresaDTO): TarjetaFila | null {
@@ -352,8 +391,9 @@ export function tarjetasDe(
   quienMiraEsCentral: boolean,
 ): TarjetaFila[] {
   const tarjetas: TarjetaFila[] = [tarjetaRecibido(g)];
-  // El mensajero no ve el dinero de la empresa (R25).
-  if (!esMensajero(a)) tarjetas.push(tarjetaCobro(g));
+  // El mensajero no ve el dinero de la empresa (R25); SLT-154 (R475): solo lo ve la central. «Ver cómo
+  // se calculó» cuelga de esta tarjeta y se va con ella.
+  if (veDineroEmpresa(a, quienMiraEsCentral)) tarjetas.push(tarjetaCobro(g));
   tarjetas.push(tarjetaPago(g, a));
   const ing = g.ingresoEmpresa ?? null;
   if (ing !== null && veFulfillment(a, quienMiraEsCentral)) {

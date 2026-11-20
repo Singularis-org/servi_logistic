@@ -32,8 +32,22 @@ const SEPARADOR_TARIFA = " · ";
 
 // --- «Gestiones» ------------------------------------------------------------------------------
 
-/** Columnas que son dato de la CENTRAL (F481): la satélite no las recibe. */
+/**
+ * Columnas que son dato de la CENTRAL: la satélite no las recibe. El fulfillment (F481) y, desde
+ * SLT-161 (R484, R489), todo el cobro a la tienda con sus tarifas e IVA.
+ */
 const CLAVES_SOLO_CENTRAL: ReadonlySet<string> = new Set([
+  "flete",
+  "tarifaFlete",
+  "ivaFlete",
+  "comisionCod",
+  "tarifaComision",
+  "ivaComisionCod",
+  "fleteDevolucion",
+  "tarifaFleteDevolucion",
+  "ivaFleteDevolucion",
+  "cobroTienda",
+  "ivaIncluido",
   "fulfillment",
   "ivaFulfillment",
   "fulfillmentCargadoDia",
@@ -86,7 +100,7 @@ const COLUMNAS_GESTIONES: DescargaColumna[] = [
   { clave: "senales", encabezado: "Señales" },
 ];
 
-/** Columnas de «Gestiones» para una audiencia: la satélite, sin las tres de fulfillment (falla cerrado). */
+/** Columnas de «Gestiones» para una audiencia: la satélite, sin las de la central (falla cerrado). */
 export function columnasGestionesModeloNuevoPara(
   audiencia: AudienciaDescargaGestionesFundida,
 ): DescargaColumna[] {
@@ -147,17 +161,6 @@ export function filaGestionModeloNuevo(
     [CLAVE_MEDIO_PAGO.efectivo]: medios.efectivo,
     [CLAVE_MEDIO_PAGO.SINPE]: medios.SINPE,
     [CLAVE_MEDIO_PAGO.transferencia]: medios.transferencia,
-    flete: ingreso?.flete ?? null,
-    tarifaFlete: textoTarifaDeConcepto(ingreso?.conceptosTarifa, "flete"),
-    ivaFlete: ingreso?.ivaFlete ?? null,
-    comisionCod: ingreso?.comisionCod ?? null,
-    tarifaComision: textoTarifaDeConcepto(ingreso?.conceptosTarifa, "comisionCod"),
-    ivaComisionCod: ingreso?.ivaComisionCod ?? null,
-    fleteDevolucion: ingreso?.fleteDevolucion ?? null,
-    tarifaFleteDevolucion: textoTarifaDeConcepto(ingreso?.conceptosTarifa, "fleteDevolucion"),
-    ivaFleteDevolucion: ingreso?.ivaFleteDevolucion ?? null,
-    cobroTienda: ingreso?.total ?? null,
-    ivaIncluido: ingreso?.ivaIncluido ?? null,
     pagoPorTarifa: pago?.importe ?? null,
     tarifaPago: pago === null ? null : textoTarifa(pago),
     ajuste: ajusteFirmado(pago),
@@ -178,9 +181,20 @@ export function filaGestionModeloNuevo(
         audienciaSenales(audiencia),
       ) || null,
   };
-  // F481: lo de la central solo entra en la fila de la central (el servidor ya lo anula para la
-  // satélite; aquí además no viaja la clave).
+  // F481, SLT-161 R489: lo de la central solo entra en la fila de la central (el servidor ya lo
+  // anula para la satélite; aquí además no viaja la clave).
   if (audiencia === "admin") {
+    fila.flete = ingreso?.flete ?? null;
+    fila.tarifaFlete = textoTarifaDeConcepto(ingreso?.conceptosTarifa, "flete");
+    fila.ivaFlete = ingreso?.ivaFlete ?? null;
+    fila.comisionCod = ingreso?.comisionCod ?? null;
+    fila.tarifaComision = textoTarifaDeConcepto(ingreso?.conceptosTarifa, "comisionCod");
+    fila.ivaComisionCod = ingreso?.ivaComisionCod ?? null;
+    fila.fleteDevolucion = ingreso?.fleteDevolucion ?? null;
+    fila.tarifaFleteDevolucion = textoTarifaDeConcepto(ingreso?.conceptosTarifa, "fleteDevolucion");
+    fila.ivaFleteDevolucion = ingreso?.ivaFleteDevolucion ?? null;
+    fila.cobroTienda = ingreso?.total ?? null;
+    fila.ivaIncluido = ingreso?.ivaIncluido ?? null;
     fila.fulfillment = ingreso?.fulfillment ?? null;
     fila.ivaFulfillment = ingreso?.ivaFulfillment ?? null;
     fila.fulfillmentCargadoDia = dto.fulfillmentCargadoDia ?? null;

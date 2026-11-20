@@ -66,6 +66,8 @@ function txDeCambio(tipoActual: string) {
       archivadoAt: null,
       topesPorRol: [],
       modulos: [],
+      beneficios: [], // SLT-214: la lista que trae `INCLUIR`
+      niveles: [], // SLT-215: la lista que trae `INCLUIR`
       descuentos: [],
     })),
   };
@@ -74,6 +76,8 @@ function txDeCambio(tipoActual: string) {
     $executeRaw: executeRaw,
     usuario: { findUnique },
     plan,
+    // SLT-128 (R19): el cambio de tipo busca una recepción del pendiente del plan que mover; aquí no hay pendiente.
+    planCambioProgramado: { findUnique: vi.fn(async () => null) },
     historialAccion: { createMany },
   };
   const prisma = { $transaction: vi.fn(async (fn: (t: typeof tx) => unknown) => fn(tx)) } as unknown as Repo;

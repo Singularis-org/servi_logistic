@@ -18,7 +18,7 @@ import type { OrderStatusLiteRow } from "@/lib/interfaces/repositories/IOrdenRep
 import { listarOrderStatus } from "@/lib/actions/order-status";
 import { listarMensajerosParaAsignacion } from "@/lib/actions/ordenes-guia";
 import type { Column } from "@/components/shared/DataTable";
-import { EscanerModal } from "@/components/shared/EscanerModal";
+import { RecibirPaquetesEntrada } from "@/components/shared/RecibirPaquetesEntrada";
 import { BUSQUEDA_MIN_CHARS, type OrdenListItemDTO } from "@/lib/types/orden";
 import type { FechasDiaReparto } from "@/lib/utils/dia-reparto-textos";
 import type { DireccionOrden } from "@/lib/types/ordenamiento-listado";
@@ -36,6 +36,7 @@ import {
 } from "@/lib/utils/vista-filtro-aplicabilidad";
 
 import { OrdenesModule, type AccionLote } from "./OrdenesModule";
+import { ActualizarZonasButton } from "./ActualizarZonasButton";
 import { OrdenesCargaMasivaButton } from "./OrdenesCargaMasivaButton";
 import { EscanerRecepcionOrigen } from "./EscanerRecepcionOrigen";
 import { EscanerRecepcionBodegaCentral } from "./EscanerRecepcionBodegaCentral";
@@ -48,6 +49,7 @@ import { AsignarBodegaModal } from "./AsignarBodegaModal";
 import { AsignarRecoleccionModal } from "./AsignarRecoleccionModal";
 import { QuitarRecoleccionModal } from "./QuitarRecoleccionModal";
 import { RutearSateliteModal } from "./RutearSateliteModal";
+import { RetirarACentralModal } from "./RetirarACentralModal";
 import { EtiquetasGuiaModal } from "./EtiquetasGuiaModal";
 import { ESTADOS_ETIQUETAS_TIENDA, MOTIVO_SIN_GUIA } from "../estados-etiquetas-tienda";
 import { DevolverATiendaModal } from "./DevolverATiendaModal";
@@ -107,6 +109,7 @@ type ModalAbierto =
   | "asignar-recoleccion" // feature 157
   | "quitar-recoleccion" // feature 157 (ampliacion)
   | "rutear-satelite" // feature 30 (reinstalado el 2026-08-05)
+  | "retirar-central" // SLT-197
   | "etiquetas"
   | "devolver-tienda"
   | "confirmar-entrega-tienda" // ficha 419
@@ -257,6 +260,7 @@ export function OrdenesListado({
   puedeCargarMasiva = false,
   puedeEscanearQr = false,
   puedeRecibirBodegaCentral = false,
+  puedeActualizarZonas = false,
   mostrarHistorial = false,
   accionesLote = false,
   catalogoFiltros = null,
@@ -290,6 +294,11 @@ export function OrdenesListado({
    * revalida server-side. `adminTienda` y otros roles NO lo reciben.
    */
   puedeRecibirBodegaCentral?: boolean;
+  /**
+   * SLT-224 (R1713): el botón «Actualizar zonas» a la derecha de «Recibir paquete». Solo
+   * maestro/admin (`esAccesoTotal`); las Server Actions revalidan el rol (R1714).
+   */
+  puedeActualizarZonas?: boolean;
   mostrarHistorial?: boolean;
   /**
    * Habilita la selección por checkbox + barra de acciones por lote (asignar
@@ -491,6 +500,14 @@ export function OrdenesListado({
     setOrdenesSeleccionadas(seleccionadas.filter((o) => o.zonaEsGam === false));
     setModalAbierto("rutear-satelite");
   }
+  // SLT-197 (R980): «Retirar a bodega central» solo para las seleccionadas que siguen en el
+  // estante de una satélite; el service revalida (R973).
+  function abrirRetirarCentral(seleccionadas: OrdenListItemDTO[]) {
+    setOrdenesSeleccionadas(
+      seleccionadas.filter((o) => o.estatusValue === "en_bodega_satelite"),
+    );
+    setModalAbierto("retirar-central");
+  }
   function abrirEtiquetas(seleccionadas: OrdenListItemDTO[]) {
     setOrdenesSeleccionadas(seleccionadas);
     setModalAbierto("etiquetas");
@@ -588,6 +605,13 @@ export function OrdenesListado({
   // de modo que esto NO rompe el encadenado guía → etiquetas.
   function revalidarTablas() {
     setResetSeleccion((n) => n + 1);
+    revalidarListado();
+  }
+
+  // SLT-222 R1510 (D4): revalidar SIN vaciar. Lo usa la recepción por escaneo («Recibir
+  // paquete»), que no es una acción sobre la selección: recibir un paquete no puede tirar
+  // las órdenes que la persona fue marcando en sus búsquedas.
+  function revalidarListado() {
     void mutate(
       (key) => Array.isArray(key) && key[0] === "ordenes:list",
       undefined,
@@ -613,11 +637,17 @@ export function OrdenesListado({
     if (!open) setModalAbierto(null);
   }
 
-  // Éxito de una acción por lote que NO encadena (devolver a tienda; escaneo de
-  // recepción): cierra y revalida.
+  // Éxito de una acción por lote que NO encadena (devolver a tienda, etc.): cierra,
+  // revalida y desmarca (SLT-222 R1508).
   function handleSuccess() {
     setModalAbierto(null);
     revalidarTablas();
+  }
+
+  // SLT-222 R1510: fin de la recepción por escaneo. Revalida (lo recibido cambia de estado)
+  // y NO desmarca: antes pasaba por `handleSuccess` y vaciaba la selección.
+  function handleRecibida() {
+    revalidarListado();
   }
 
   // Feature 95: éxito de "Generar guía" / "Asignar mensajero" → revalida las tablas
@@ -846,6 +876,16 @@ export function OrdenesListado({
             onRun: abrirEtiquetas,
           },
         ];
+      case "en_bodega_satelite":
+        // SLT-197 (R980): la satélite dejó de operar y la central se trae lo del estante. Única
+        // acción del estado, así que va primaria.
+        return [
+          {
+            key: "retirar-central",
+            label: "Retirar a bodega central",
+            onRun: abrirRetirarCentral,
+          },
+        ];
       case "en_ruta_bodega_satelite":
         // Feature 149/R34: caso (b) — ruteada a la satélite pero aún NO recibida. Solo la
         // ofrece esta superficie (maestro/admin): la satélite no la ve (R36).
@@ -1045,6 +1085,17 @@ export function OrdenesListado({
    */
   const verEliminadas =
     (seleccionFiltros[CLAVE_ELIMINADOS] ?? [])[0] === BOOLEAN_MARCADO;
+
+  // SLT-222 R1511 (D5): poner o quitar «Eliminadas» SÍ desmarca todo. Cambia el universo
+  // del listado, y con el interruptor puesto la barra ofrece «Recuperar» para TODA la
+  // selección (`accionesPara`): mezclar órdenes vivas y borradas lo ofrecería sobre vivas.
+  // Se mira el valor derivado, así cubre la barra, las vistas guardadas y «Limpiar todo».
+  // Patrón "ajustar estado durante el render", como los resets de `OrdenesModule`.
+  const [verEliminadasPrevio, setVerEliminadasPrevio] = useState(verEliminadas);
+  if (verEliminadas !== verEliminadasPrevio) {
+    setVerEliminadasPrevio(verEliminadas);
+    setResetSeleccion((n) => n + 1);
+  }
 
   // FICHA 355: el control de estado, con sus opciones, sus etiquetas y sus textos, tal
   // como lo declara el módulo compartido. `estadosDisponibles` ya aplicó el recorte, así
@@ -1392,29 +1443,37 @@ export function OrdenesListado({
   // La carga masiva y los escáneres viven a nivel del contenedor (no dependen del
   // filtro): son acciones independientes del estado. La carga masiva y la recepción en
   // origen se ofrecen al adminTienda (feature 26); la recepción en bodega central
-  // (feature 138) al maestro/admin. `onRecibida={handleSuccess}` revalida el listado
-  // (R14), de modo que la orden recibida refleja su nuevo estado.
-  //
-  // El receptor es una TARJETA (cámara + número de guía), demasiado alta para vivir
-  // desplegada encima de la tabla: se abre desde la barra de acciones EN MODAL y se
-  // cierra igual. Quien no puede recibir no ve ni el botón.
-  // El disparador vive a la IZQUIERDA, donde empieza la lectura de la pagina; la carga
-  // masiva sigue a la derecha de la misma fila. Abrir monta la tarjeta y cerrar la
-  // desmonta (apaga la camara): el mismo `EscanerModal` compartido que usan las demás
-  // superficies de escaneo. El label es el suyo por defecto ("Recibir paquete").
+  // (feature 138) al maestro/admin. `onRecibida={handleRecibida}` revalida el listado
+  // sin desmarcar (SLT-222 R1510)
+  // (R14) al cerrar la sesión continua (SLT-159 R592), de modo que lo recibido refleja su
+  // nuevo estado. Quien no puede recibir no ve ni el botón. El disparador vive a la
+  // IZQUIERDA, donde empieza la lectura de la página; la carga masiva, a la derecha.
   const header =
     puedeCargarMasiva || puedeEscanearQr || puedeRecibirBodegaCentral ? (
       puedeEscanearQr || puedeRecibirBodegaCentral ? (
-        <EscanerModal
-          acciones={puedeCargarMasiva ? <OrdenesCargaMasivaButton /> : null}
-        >
-          {puedeRecibirBodegaCentral ? (
-            <EscanerRecepcionBodegaCentral onRecibida={handleSuccess} />
+        // SLT-202 (Carlos, 2026-11-18): un solo disparador de recibir, «Recibir paquete», a la izquierda
+        // como en prod; abre la recepción continua de SLT-159 (página con puntero fino, diálogo con
+        // táctil). La guía suelta se quitó: la continua la cubre (misma acción, campo y cámara). La
+        // carga masiva sigue a la derecha de la misma fila, como en prod.
+        <div className="flex w-full flex-wrap items-center gap-2">
+          <RecibirPaquetesEntrada href="/ordenes/recibir">
+            {puedeRecibirBodegaCentral ? (
+              <EscanerRecepcionBodegaCentral modo="continua" onRecibida={handleRecibida} />
+            ) : (
+              <EscanerRecepcionOrigen modo="continua" onRecibida={handleRecibida} />
+            )}
+          </RecibirPaquetesEntrada>
+          {/* SLT-224 (R1713): no depende de la selección; refresca el listado al cerrar (R1718). */}
+          <ActualizarZonasButton
+            puedeActualizarZonas={puedeActualizarZonas}
+            onSuccess={handleSuccess}
+          />
+          {puedeCargarMasiva ? (
+            <div className="ms-auto flex gap-2">
+              <OrdenesCargaMasivaButton />
+            </div>
           ) : null}
-          {puedeEscanearQr ? (
-            <EscanerRecepcionOrigen onRecibida={handleSuccess} />
-          ) : null}
-        </EscanerModal>
+        </div>
       ) : (
         <div className="flex flex-wrap items-center justify-end gap-2">
           <OrdenesCargaMasivaButton />
@@ -1450,9 +1509,9 @@ export function OrdenesListado({
         // y se traduce lo emitido.
         filtros={
           <BuscadorFiltros
-            // El mismo nombre accesible que tenía como control de la barra: el campo
-            // cambió de sitio, no de identidad.
-            label="Buscar"
+            escaneo
+            // SLT-160 (R772, DC2): el nombre accesible del canvas.
+            label="Buscar órdenes"
             placeholder={PLACEHOLDER_BUSQUEDA}
             minChars={BUSQUEDA_MIN_CHARS}
             onChange={cambiarTermino}
@@ -1615,6 +1674,12 @@ export function OrdenesListado({
               modo que las órdenes ruteadas pasan a `en_ruta_bodega_satelite`. */}
           <RutearSateliteModal
             open={modalAbierto === "rutear-satelite"}
+            ordenes={ordenesSeleccionadas}
+            onOpenChange={cerrarModal}
+            onSuccess={handleSuccess}
+          />
+          <RetirarACentralModal
+            open={modalAbierto === "retirar-central"}
             ordenes={ordenesSeleccionadas}
             onOpenChange={cerrarModal}
             onSuccess={handleSuccess}

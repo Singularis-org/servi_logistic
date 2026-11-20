@@ -1,4 +1,4 @@
-import { Prisma, type PrismaClient } from "@prisma/client";
+import { Prisma, type CierreEstado, type PrismaClient } from "@prisma/client";
 import type {
   CrearGestionDesdeAyudaInput,
   GestionOrdenData,
@@ -53,6 +53,9 @@ const ESTADO_EN_REPARTO = "en_reparto";
 // sumando es `porGestionar ∪ conAyuda` (en mano, SIN gestion pendiente) y este, lo que no esta en
 // mano MAS lo pendiente de confirmar (`whereOrdenConGestionPendiente`).
 const ESTADOS_EN_MANO_DEL_MENSAJERO = [ESTADO_EN_REPARTO];
+// SLT-151: estados de cierre cuyo dinero ya NO esta en la mano del mensajero (declarado o entregado).
+// `rechazado` y `vencido` quedan fuera a proposito: son cierres que se re-solicitan.
+const ESTADOS_CIERRE_YA_DECLARADO = ["solicitado", "aprobado"] as const satisfies readonly CierreEstado[];
 
 /**
  * FICHA 484 (design §4.1) — EL PREDICADO UNICO DE «PUNTERO VIGENTE», nivel ORDEN: la orden
@@ -164,7 +167,17 @@ function gestionadasDelDiaWhere(mensajeroId: string, dia: VentanaDia) {
       { estatus: { value: { notIn: ESTADOS_EN_MANO_DEL_MENSAJERO } } },
       whereOrdenConGestionPendiente(),
     ],
-    gestiones: { some: gestionDelDia(mensajeroId, dia) },
+    // SLT-151: la gestion de hoy que ya esta en un cierre `solicitado` o `aprobado` NO cuenta: ese
+    // dinero ya se declaro o se entrego. Sin cierre, o en uno `rechazado`/`vencido`, sigue en la
+    // mano del mensajero: el rechazo NO desvincula la gestion (conserva `cierre_id` y el cierre se
+    // re-solicita, `resolicitarCierreRechazado`), asi que hay que mirar el estado, no el `NULL`.
+    // `OR` explicito con `cierreId: null`: un filtro de relacion negado descartaria la fila sin cierre.
+    gestiones: {
+      some: {
+        ...gestionDelDia(mensajeroId, dia),
+        OR: [{ cierreId: null }, { cierre: { estado: { notIn: [...ESTADOS_CIERRE_YA_DECLARADO] } } }],
+      },
+    },
   } satisfies Prisma.OrdenWhereInput;
 }
 
@@ -561,7 +574,10 @@ export class GestionOrdenRepository implements IGestionOrdenRepository {
     });
   }
 
-  /** Suma de `montoCobrar` (COD) de las GESTIONADAS HOY del mensajero, ya fuera de reparto. */
+  /**
+   * Suma de `montoCobrar` (COD) de las GESTIONADAS HOY del mensajero, ya fuera de reparto y que
+   * no esten en un cierre `solicitado`/`aprobado` (SLT-151).
+   */
   async sumMontoCobrarGestionadas(mensajeroId: string, dia: VentanaDia): Promise<number> {
     const agg = await this.prisma.orden.aggregate({
       _sum: { montoCobrar: true },

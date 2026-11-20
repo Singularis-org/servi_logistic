@@ -10,6 +10,10 @@ import { mensajeDelTope } from "@/lib/planes/mensajes";
 // SLT-91 (design §7; R5, R8, R9, R10, R11) — «Mi plan» es solo del `maestro`, y nada le deja al `admin` otra
 // vía hasta él: ni otra lista de roles, ni el componente del consumo en otra pantalla, ni un evento de la
 // campana, ni un enlace, ni la ayuda, ni el texto del tope. Los esperados van escritos a mano.
+//
+// SLT-136 (design §8; R32) enmienda R10: la lista de quien puede nombrar la ruta admite además el catálogo de
+// avisos (el atajo «Ver factura» del aviso de la factura emitida, solo para el maestro) y la plantilla del correo
+// de esa factura (su botón). El catálogo es un `href`; la plantilla no (es la URL de un botón de correo).
 
 const RAIZ = process.cwd();
 const RAICES_A_BARRER = ["app", "components", "lib", "public"];
@@ -31,9 +35,17 @@ const RUTA_MI_PLAN = /(?:["'`]|\})\/mi-plan(?=["'`/?#])/;
 const MODULO_CONSUMO = /["'`][^"'`\n]*\/ConsumoDelPlan["'`]/;
 
 describe("SLT-91 — la autocomprobación del barrido", () => {
-  it("el barrido encuentra archivos y los dos de producción que nombran la ruta: una búsqueda vacía queda en rojo", () => {
+  it("el barrido encuentra archivos y los cuatro de producción que nombran la ruta: una búsqueda vacía queda en rojo", () => {
     expect(barridos.length).toBeGreaterThan(100);
-    expect(conPatron(RUTA_MI_PLAN)).toEqual(expect.arrayContaining(["lib/auth/menu-visibility.ts", "lib/modulos/reparto.ts"]));
+    expect(conPatron(RUTA_MI_PLAN)).toEqual(
+      expect.arrayContaining([
+        "lib/auth/menu-visibility.ts",
+        "lib/modulos/reparto.ts",
+        // SLT-136 R32: los dos admitidos nuevos tienen que aparecer, o la lista admitiría a quien ya no la nombra.
+        "lib/notificaciones/catalogo-avisos.ts",
+        "lib/services/email/plantillas/factura-emitida.ts",
+      ]),
+    );
     expect(conPatron(MODULO_CONSUMO)).toEqual(
       expect.arrayContaining([
         "app/(app)/mi-plan/_components/MiPlanModule.tsx",
@@ -73,13 +85,22 @@ describe("SLT-91 R8, R9 — los avisos del plan", () => {
 });
 
 describe("SLT-91 R10 — ninguna otra vía a «Mi plan»", () => {
-  it("R10: fuera del menú, el reparto de módulos y el comentario de la página, nadie nombra la ruta", () => {
-    const permitidos = ["app/(app)/mi-plan/page.tsx", "lib/auth/menu-visibility.ts", "lib/modulos/reparto.ts"];
+  it("R10 (enmendado por SLT-136 R32): fuera del menú, el reparto, la página, el catálogo de avisos y el correo de la factura, nadie nombra la ruta", () => {
+    const permitidos = [
+      "app/(app)/mi-plan/page.tsx",
+      "lib/auth/menu-visibility.ts",
+      "lib/modulos/reparto.ts",
+      "lib/notificaciones/catalogo-avisos.ts",
+      "lib/services/email/plantillas/factura-emitida.ts",
+    ];
     expect(conPatron(RUTA_MI_PLAN).filter((archivo) => !permitidos.includes(archivo))).toEqual([]);
   });
 
-  it("R10: el reparto y la página no son enlaces: el único `href` a la ruta es el del ítem del menú", () => {
-    expect(conPatron(/href\s*[:=]\s*\{?\s*["'`]\/mi-plan(?=["'`/?#])/)).toEqual(["lib/auth/menu-visibility.ts"]);
+  it("R10 (enmendado por SLT-136 R32): los únicos `href` a la ruta son el del menú y el atajo del aviso de la factura", () => {
+    expect(conPatron(/href\s*[:=]\s*\{?\s*["'`]\/mi-plan(?=["'`/?#])/)).toEqual([
+      "lib/auth/menu-visibility.ts",
+      "lib/notificaciones/catalogo-avisos.ts",
+    ]);
   });
 
   it("R10: la ayuda no nombra «Mi plan»", () => {

@@ -37,24 +37,14 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
 }));
 
-import {
-  listarCierresBodegaSolicitadosPaginado,
-  listarHistoricoCierresBodegaPaginado,
-} from "@/lib/actions/cierre-bodega";
-import { CascadasCierreMensajero } from "@/app/(app)/cierres-admin/_components/CascadasCierreMensajero";
-import { CierresBodegaResueltosLista } from "@/app/(app)/cierres-admin/_components/CierresBodegaResueltosLista";
-import { CierresBodegaSolicitadosLista } from "@/app/(app)/cierres-admin/_components/CierresBodegaSolicitadosLista";
-import { DesglosePorTienda } from "@/app/(app)/cierres-admin/_components/DesglosePorTienda";
 import { CierreBodegaFacturaResumen } from "@/app/(app)/cierres-admin/_components/cierre-factura";
 import { ComposicionGananciaCard } from "@/app/(app)/wallet/_components/ComposicionGananciaCard";
 import { FILTROS_VACIOS } from "@/app/(app)/wallet/_components/wallet-filtros-input";
 import { COMPOSICION_IVA_LABEL } from "@/app/(app)/wallet/_components/wallet-labels";
 import { ConciliacionSatelite } from "@/app/(app)/wallet/satelites/_components/ConciliacionSatelite";
-import type { TotalesIngresoEmpresa } from "@/lib/interfaces/services/ICierreDiaService";
 import type { CierreBodegaResumen } from "@/lib/interfaces/services/ICierreBodegaService";
 import type { ConsolidacionSateliteDTO } from "@/lib/types/conciliacion-satelites";
 import type { CajaResumenDTO, ComposicionGananciaDTO, DesgloseEgresosDTO } from "@/lib/types/wallet";
-import type { ParteDeTienda } from "@/lib/utils/ingreso-empresa";
 import { marcaSinConciliar } from "@/tests/fixtures/marca-conciliacion";
 import { LibroCajaBarraControlada } from "@/tests/fixtures/libro-caja-barra";
 import { ToastProvider } from "@/providers/ToastProvider";
@@ -66,12 +56,6 @@ const VIEJO = {
     "Lo recaudado menos el pago a los mensajeros y menos lo que gana la bodega satélite por las devoluciones a origen.",
   ganaBodega:
     "Lo que se le reconoce a la bodega satélite por las devoluciones a origen. No es un movimiento de caja registrado.",
-  ganaTienda:
-    "Lo recaudado menos todo lo que la empresa le factura, incluido el flete por devolución a origen. No es lo que se le paga hoy.",
-  pagoHoy:
-    "Es lo que se le paga de este dinero hoy. No es lo que gana en total: el flete por devolución a origen se le cobra aparte.",
-  desglose:
-    "«Se le paga hoy» y «Gana en total» no son la misma cifra: la diferencia es el flete por devolución a origen, que a la tienda se le cobra aparte, contra su saldo.",
   flete: "Flete por devolución a origen cobrado a la tienda",
   ivaFlete: "IVA del flete por devolución a origen cobrado a la tienda",
 };
@@ -81,12 +65,6 @@ const NUEVO = {
     "Lo recaudado menos el pago a los mensajeros y menos lo que gana la bodega satélite por sus gestiones.",
   ganaBodega:
     "Lo que se le reconoce a la bodega satélite por sus gestiones. No es un movimiento de caja registrado.",
-  ganaTienda:
-    "Lo recaudado menos todo lo que la empresa le factura, incluido el flete de gestiones no entregadas. No es lo que se le paga hoy.",
-  pagoHoy:
-    "Es lo que se le paga de este dinero hoy. No es lo que gana en total: el flete de gestiones no entregadas se le cobra aparte.",
-  desglose:
-    "«Se le paga hoy» y «Gana en total» no son la misma cifra: la diferencia es el flete de gestiones no entregadas, que a la tienda se le cobra aparte, contra su saldo.",
   flete: "Flete de gestiones no entregadas cobrado a la tienda",
   ivaFlete: "IVA del flete de gestiones no entregadas cobrado a la tienda",
 };
@@ -219,126 +197,6 @@ describe("D40 — la tarjeta del cierre de bodega", () => {
     const cascada = await desplegarTarjeta();
     expect(within(cascada).getByText(VIEJO.paraLaCentral)).toBeInTheDocument();
     expect(cascada.textContent).not.toContain("sus gestiones");
-  });
-
-  it("el `adminSatelite` en sus solicitados y el maestro en los resueltos leen la misma nota", async () => {
-    const fila = cierreBodega({ incluyeModeloNuevo: true });
-    const pagina = { items: [fila], total: 1, pageSize: 10 };
-    const respuesta = { status: "ok" as const, page: 1, ...pagina };
-    vi.mocked(listarCierresBodegaSolicitadosPaginado).mockResolvedValue(respuesta);
-    vi.mocked(listarHistoricoCierresBodegaPaginado).mockResolvedValue(respuesta);
-
-    const satelite = conSWR(<CierresBodegaSolicitadosLista initialData={pagina} />);
-    expect(within(await desplegarTarjeta()).getByText(NUEVO.paraLaCentral)).toBeInTheDocument();
-    satelite.unmount();
-
-    conSWR(<CierresBodegaResueltosLista initialData={pagina} onAbrir={() => {}} />);
-    expect(within(await desplegarTarjeta()).getByText(NUEVO.paraLaCentral)).toBeInTheDocument();
-  });
-});
-
-// ── D40 — las notas del cierre de mensajero y su desglose ─────────────────────────────────────
-
-const TOTALES_INGRESO: TotalesIngresoEmpresa = {
-  montoCobrar: "285275.00",
-  fleteConIva: "50000.00",
-  fleteDevolucionConIva: "10848.00",
-  comisionConIva: "10098.67",
-  total: "70946.67",
-  flete: "44247.79",
-  ivaFlete: "5752.21",
-  fleteDevolucion: "9600.00",
-  ivaFleteDevolucion: "1248.00",
-  comisionCod: "8936.88",
-  ivaComisionCod: "1161.79",
-};
-
-const UNA_TIENDA: ParteDeTienda[] = [
-  { tiendaId: "t-1", tiendaNombre: "Tienda Uno", recaudado: "285275.00", pagoTienda: "225176.33", ganaLaTienda: "214328.33" },
-];
-
-const DOS_TIENDAS: ParteDeTienda[] = [
-  { tiendaId: "t-1", tiendaNombre: "Tienda Uno", recaudado: "200000.00", pagoTienda: "160000.33", ganaLaTienda: "152000.33" },
-  { tiendaId: "t-2", tiendaNombre: "Tienda Dos", recaudado: "85275.00", pagoTienda: "65176.00", ganaLaTienda: "62328.00" },
-];
-
-function pintarCascadas(modeloNuevo: boolean | undefined, partes: ParteDeTienda[] = UNA_TIENDA) {
-  render(
-    <CascadasCierreMensajero
-      mensajeroNombre="Ana"
-      estado="solicitado"
-      general="285275.00"
-      totalesIngreso={TOTALES_INGRESO}
-      totalPagoMensajero="20000.00"
-      totalIngresoBodegaRechazos="1000.00"
-      pagoTienda="225176.33"
-      cobradoSobreRecaudado="60098.67"
-      ivaFacturado="8162.00"
-      netoEmpresa="41784.67"
-      ganaLaTienda="214328.33"
-      fleteRechazoYaCobradoATienda={false}
-      partesPorTienda={partes}
-      {...(modeloNuevo === undefined ? {} : { modeloNuevo })}
-    />,
-  );
-}
-
-function regionDe(titulo: RegExp): HTMLElement {
-  return screen.getByRole("region", { name: titulo });
-}
-
-describe("D40 — las dos notas del cierre de mensajero", () => {
-  it("con modelo nuevo, «Gana la tienda» y «Pago a tienda» hablan de gestiones no entregadas", () => {
-    pintarCascadas(true);
-    const textoDeLaPagina = document.body.textContent ?? "";
-    expect(screen.getByText(NUEVO.ganaTienda)).toBeInTheDocument();
-    expect(screen.getByText(NUEVO.pagoHoy)).toBeInTheDocument();
-    expect(textoDeLaPagina).not.toContain(VIEJO.ganaTienda);
-    expect(textoDeLaPagina).not.toContain(VIEJO.pagoHoy);
-    expect(textoDeLaPagina).toContain("₡214.328,33");
-    expect(textoDeLaPagina).toContain("₡225.176,33");
-  });
-
-  it.each(SIN_MODELO_NUEVO)("sin modelo nuevo (%s), el texto de hoy", (_nombre, valor) => {
-    pintarCascadas(valor);
-    const textoDeLaPagina = document.body.textContent ?? "";
-    expect(screen.getByText(VIEJO.ganaTienda)).toBeInTheDocument();
-    expect(screen.getByText(VIEJO.pagoHoy)).toBeInTheDocument();
-    expect(textoDeLaPagina).not.toContain(NUEVO.ganaTienda);
-    expect(textoDeLaPagina).not.toContain(NUEVO.pagoHoy);
-  });
-
-  it("cada nota sigue en su línea: la de ganar no se cruza con la de pagar", () => {
-    pintarCascadas(true);
-    const particion = regionDe(/De quién es el dinero/);
-    expect(within(particion).getByText(NUEVO.ganaTienda)).toBeInTheDocument();
-    expect(within(particion).queryByText(NUEVO.pagoHoy)).toBeNull();
-  });
-});
-
-describe("D40 — la nota del desglose por tienda", () => {
-  it("con modelo nuevo, la diferencia es el flete de gestiones no entregadas", () => {
-    render(<DesglosePorTienda partes={DOS_TIENDAS} de="cierre de Ana" modeloNuevo />);
-    expect(screen.getByText(NUEVO.desglose)).toBeInTheDocument();
-    expect(document.body.textContent).toContain("₡152.000,33");
-    expect(document.body.textContent).not.toContain("flete por devolución a origen");
-  });
-
-  it.each(SIN_MODELO_NUEVO)("sin modelo nuevo (%s), el texto de hoy", (_nombre, valor) => {
-    render(
-      <DesglosePorTienda
-        partes={DOS_TIENDAS}
-        de="cierre de Ana"
-        {...(valor === undefined ? {} : { modeloNuevo: valor })}
-      />,
-    );
-    expect(screen.getByText(VIEJO.desglose)).toBeInTheDocument();
-    expect(document.body.textContent).not.toContain("gestiones no entregadas");
-  });
-
-  it("el cierre de mensajero le pasa el modelo al desglose", () => {
-    pintarCascadas(true, DOS_TIENDAS);
-    expect(screen.getByText(NUEVO.desglose)).toBeInTheDocument();
   });
 });
 

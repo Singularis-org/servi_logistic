@@ -10,7 +10,7 @@ import {
 } from "@/components/shared/FilterComponent";
 import { ATAJOS_CREACION } from "@/app/(app)/ordenes/_components/ordenes-filtros-def";
 import { ultimosNDiasCalendarioCR } from "@/lib/utils/fecha-cr";
-import { sinFiltrosPropios, type FiltrosColaPropia } from "@/lib/types/filtros-cierres";
+import { MAX_FOLIO_FILTRO, sinFiltrosPropios, type FiltrosColaPropia } from "@/lib/types/filtros-cierres";
 import {
   BARRA_PROPIA,
   BUSCA_POR_FOLIO,
@@ -103,12 +103,16 @@ export function FiltrosColaPropiaBarra({ onChange }: Readonly<FiltrosColaPropiaB
       <BuscadorFiltros
         label="Buscar"
         placeholder={BUSCA_POR_FOLIO}
+        // SLT-153: el mismo tope que el borde (R171); pegar más no deja la lista en error.
+        maxLength={MAX_FOLIO_FILTRO}
         onChange={aplicarTermino}
         filtros={OFRECIDOS}
         activos={activos}
         onActivosChange={setActivos}
         onLimpiarTodo={limpiarTodo}
         hayFiltrosAplicados={!sinFiltrosPropios(filtros) || activos.length > 0}
+        // SLT-156 (R493, R536): campo, «Filtros» y «Limpiar todo» de 44 px en el teléfono.
+        tactil
       >
         {montados.length > 0 ? (
           <FilterComponent key={reset} filters={montados} onChange={aplicarSeleccion} />

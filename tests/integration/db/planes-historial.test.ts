@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { inicioDelDiaPlataforma } from "@/lib/planes/ciclo";
 import { crearPlanAplicarCambioHandler } from "@/lib/planes/jobs-cambio-plan";
 import { PlanesService } from "@/lib/services/PlanesService";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
@@ -23,6 +24,8 @@ import { tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
 // T11 (§16.2, §16.3; R43): las cuatro filas del cambio programado (programar, reemplazar, cancelar y
 // aplicar), con quién, qué plan y qué cambia; la de aplicar la firma el sistema en nombre de quien lo
 // programó.
+// SLT-128 (design §3.2; R10): con empresas, la fila `cambio_aplicado` sale una sola vez, al promover el plan con
+// la última recepción; las recepciones no escriben en el rastro.
 //
 // LOCKS: el de superadmin (SL-32) desde el `beforeAll`; el de la 227 lo toma cada `revertida`, por
 // dentro. Todo se revierte: el superadmin del caso también.
@@ -47,7 +50,9 @@ async function conSuperadmin(tx: TxDeTest) {
   const id = await superadminEnTx(tx);
   const actor: Actor = { usuarioId: id, rol: "superadmin", organizacionId: null };
   const nombre = (await tx.usuario.findUniqueOrThrow({ where: { id }, select: { nombre: true, primerApellido: true } }));
-  return { actor, nombre: `${nombre.nombre} ${nombre.primerApellido}` };
+  // El superadmin de una base de desarrollo puede no tener apellido: sin el, el nombre congelado es
+  // solo `nombre`, sin el espacio suelto. El del fixture (CI) siempre lo trae.
+  return { actor, nombre: [nombre.nombre, nombre.primerApellido].filter((p) => p != null && p !== "").join(" ") };
 }
 
 const ORDEN_DE_ACCION = [
@@ -119,12 +124,20 @@ describeSiHayBase("SL-24 — el rastro de los planes (R29, R40, R43)", () => {
         costoPorOrdenPorcentual: null, // SLT-83: campo obligatorio nuevo; no cambia lo que se comprueba.
         vigenteDesde: HOY,
       });
+      // SLT-135: editar programa con F = hoy; sin empresas, lo promueve la siguiente pasada de la cola. Una pausa
+      // entre operaciones evita que dos filas compartan milisegundo (`created_at` lo pone Prisma en el cliente).
+      const pausa = () => new Promise((resolver) => setTimeout(resolver, 5));
+      const { id: cambioId } = await tx.planCambioProgramado.findUniqueOrThrow({ where: { planId }, select: { id: true } });
+      await pausa();
+      const aplicado = await planesEnTx(tx).aplicarCambioProgramado({ planId, cambioId }, new Date());
+      await pausa();
       await servicio.archivar(actor, { planId });
       const repetido = await servicio.archivar(actor, { planId });
       const empresas = await tx.organizacion.count({ where: { planId } });
-      return { planId, actor, nombre, repetido, empresas, rastro: await rastroDe(tx, planId) };
+      return { planId, actor, nombre, aplicado, repetido, empresas, rastro: await rastroDe(tx, planId) };
     });
     expect(r.empresas).toBe(0);
+    expect(r.aplicado).toEqual({ estado: "aplicado" });
     expect(r.repetido).toMatchObject({ estado: "ok", cambio: false });
     const quien = { planId: r.planId, actorUsuarioId: r.actor.usuarioId, actorNombre: r.nombre };
     expect(r.rastro).toEqual([
@@ -145,10 +158,23 @@ describeSiHayBase("SL-24 — el rastro de los planes (R29, R40, R43)", () => {
           archivado: { antes: null, despues: false },
         },
       },
+      // SLT-135: sin edición inmediata, el diff de editar queda en la programación (con su fecha) y en la fila
+      // `cambio_aplicado`, que firma el sistema en nombre de quien lo programó.
       {
         ...quien,
+        planNombre: "Básico",
+        accion: "cambio_programado",
+        cambios: {
+          nombre: { antes: "Básico", despues: "Básico plus" },
+          descuento_anual: { antes: null, despues: { tipo: "monto", monto: "50000.00" } },
+          vigenteDesde: { antes: null, despues: inicioDelDiaPlataforma(HOY).toISOString() },
+        },
+      },
+      {
+        ...quien,
+        actorNombre: `Sistema (programado por ${r.nombre})`,
         planNombre: "Básico plus",
-        accion: "editado",
+        accion: "cambio_aplicado",
         cambios: {
           nombre: { antes: "Básico", despues: "Básico plus" },
           // SLT-86 (R31): solo lo que cambió, el descuento anual; el mensual sigue igual y no sale.
@@ -236,16 +262,21 @@ describeSiHayBase("SL-24 — el rastro de los planes (R29, R40, R43)", () => {
       const creados = await tx.plan.count({ where: { nombre } });
       const planId = await sano.crear(entradaDePlan({ nombre }), actor.usuarioId);
       const entrada = entradaDePlan({ nombre: "Editado" });
-      const alEditar = await roto.editar(planId, entrada, actor.usuarioId, new Date()).catch((e: unknown) => e);
+      // SLT-135: editar es programar; su fila `cambio_programado` va en la misma transacción.
+      const alEditar = await roto
+        .programarCambio(planId, entrada, inicioDelDiaPlataforma(HOY), actor.usuarioId, new Date())
+        .catch((e: unknown) => e);
       const alArchivar = await roto.archivar(planId, actor.usuarioId).catch((e: unknown) => e);
       const plan = await tx.plan.findUniqueOrThrow({ where: { id: planId }, select: { nombre: true, archivadoAt: true } });
-      return { alCrear, creados, alEditar, alArchivar, plan, nombre, rastro: await tx.planRastro.count({ where: { planId } }) };
+      const pendientes = await tx.planCambioProgramado.count({ where: { planId } });
+      return { alCrear, creados, alEditar, alArchivar, plan, nombre, pendientes, rastro: await tx.planRastro.count({ where: { planId } }) };
     });
     expect(r.alCrear).toBeInstanceOf(RegistroCaido);
     expect(r.creados).toBe(0);
     expect(r.alEditar).toBeInstanceOf(RegistroCaido);
     expect(r.alArchivar).toBeInstanceOf(RegistroCaido);
     expect(r.plan).toEqual({ nombre: r.nombre, archivadoAt: null });
+    expect(r.pendientes).toBe(0);
     expect(r.rastro).toBe(1);
   });
 
@@ -398,6 +429,58 @@ describeSiHayBase("SL-24 — el rastro de los planes (R29, R40, R43)", () => {
       cambios: {
         nombre: { antes: "Rastro programado", despues: "Rastro C" },
         topes: { antes: topes(100), despues: topes(50) },
+      },
+    });
+  });
+
+  it("SLT-128 R10: con empresas, recibirlo no deja rastro; la última recepción promueve el plan y deja UNA fila cambio_aplicado del sistema", async () => {
+    const r = await revertida(base, async (tx) => {
+      const { actor, nombre } = await conSuperadmin(tx);
+      const servicio = new PlanesService(planesEnTx(tx), () => new Date("2026-10-28T12:00:00.000Z"));
+      const creado = await servicio.crear(actor, entradaAsignable({ nombre: "Rastro por empresa", topes: { porRol: {}, apiKeys: 100 } }));
+      if (creado.estado !== "ok") throw new Error(creado.estado);
+      const planId = creado.planId;
+      const orgs: string[] = [];
+      for (const tipoCobro of ["quincenal", "mensual"] as const) {
+        const { id } = await crearOrganizacion(tx);
+        const asignado = await servicio.asignar(actor, { organizacionId: id, planId, tipoCobro });
+        if (asignado.estado !== "ok") throw new Error(asignado.estado);
+        orgs.push(id);
+      }
+      const [quincenal, mensual] = orgs;
+      await servicio.editar(actor, {
+        planId,
+        nombre: "Rastro por empresa 2",
+        topes: { porRol: {}, apiKeys: 60 },
+        modulos: [],
+        precio: { tipo: "monto", mensual: "1000.00", descuentos: {} },
+        costoPorOrden: "100.00",
+        costoPorOrdenPorcentual: null,
+        vigenteDesde: "2026-11-16",
+      });
+      const { id: cambioId } = await tx.planCambioProgramado.findUniqueOrThrow({ where: { planId }, select: { id: true } });
+      const cambio = { planId, cambioId };
+      const repo = planesEnTx(tx);
+      // La quincenal lo recibe el 16 y la mensual el 1 de diciembre.
+      const primera = await repo.recibirCambio(cambio, quincenal, new Date("2026-11-16T06:01:00.000Z"));
+      const trasPrimera = (await rastroDe(tx, planId)).map((f) => f.accion);
+      const segunda = await repo.recibirCambio(cambio, mensual, new Date("2026-12-01T06:01:00.000Z"));
+      return { planId, actor, nombre, primera, segunda, trasPrimera, rastro: await rastroDe(tx, planId) };
+    });
+    expect([r.primera, r.segunda]).toEqual([{ estado: "aplicado" }, { estado: "aplicado" }]);
+    // La recepción de una empresa no escribe en el rastro del plan (design §13).
+    expect(r.trasPrimera).toEqual(["creado", "cambio_programado"]);
+    expect(r.rastro.map((f) => f.accion)).toEqual(["creado", "cambio_programado", "cambio_aplicado"]);
+    // Promover: el sistema, en nombre de quien lo programó; el diff contra la versión del plan de antes.
+    expect(r.rastro.at(-1)).toEqual({
+      planId: r.planId,
+      planNombre: "Rastro por empresa 2",
+      accion: "cambio_aplicado",
+      actorUsuarioId: r.actor.usuarioId,
+      actorNombre: `Sistema (programado por ${r.nombre})`,
+      cambios: {
+        nombre: { antes: "Rastro por empresa", despues: "Rastro por empresa 2" },
+        topes: { antes: { porRol: {}, apiKeys: 100 }, despues: { porRol: {}, apiKeys: 60 } },
       },
     });
   });

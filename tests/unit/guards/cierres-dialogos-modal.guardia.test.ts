@@ -1,36 +1,29 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import path from "node:path";
+import { existsSync, readFileSync } from "node:fs";
 
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
-import { quitarComentarios } from "../../fixtures/sin-comentarios";
+import { censoPantalla, rutaAbsoluta } from "../../fixtures/censo-cierres";
 
 /**
- * SLT-103 «Diálogos del módulo de cierres y trato tú» — guardia estructural de R53 y R137.
+ * SLT-103 «Diálogos del módulo de cierres y trato tú» — guardia estructural de R53 y R137, con los
+ * huecos de D65 cerrados en SLT-134 «Textos de pantalla de cierres en tú, con guardia» (R390-R392).
  *
- * - R53: todo diálogo del módulo de cierres se monta sobre `components/shared/Modal.tsx`. Ningún
- *   archivo del censo importa `@/components/ui/dialog` ni `@/components/ui/alert-dialog`, salvo el
- *   marco modal del detalle (D1), que no es un diálogo de R53.
- * - R137: hay UN solo visor de evidencia. El título «Evidencia de la gestión» vive solo en
- *   `dialogos-labels.ts` y `function VisorEvidencia` solo en `VisorEvidencia.tsx`: no puede volver
- *   a nacer un cuarto visor en línea.
+ * - R53 / R390: todo diálogo del módulo de cierres se monta sobre `components/shared/Modal.tsx`.
+ *   Ningún archivo del censo de pantalla importa, reexporta ni carga con `import()` un diálogo que no
+ *   es el `Modal` compartido: `@/components/ui/(alert-dialog|dialog|sheet)`,
+ *   `@radix-ui/react-(alert-)?dialog`, o una ruta relativa que acaba en `/ui/(alert-dialog|dialog|sheet)`.
+ *   Única excepción: el marco modal del detalle (D1), que no es un diálogo de R53.
+ * - R137 / R391: hay UN solo visor de evidencia. El título «Evidencia de la gestión» (literal, partido
+ *   en una concatenación de literales con `+`, o plantilla) vive solo en `dialogos-labels.ts`;
+ *   `VISOR_EVIDENCIA_TEXTO.titulo` se lee solo en `VisorEvidencia.tsx`, y `VisorEvidencia` (función,
+ *   `const` con flecha o con `function` anónima) se declara solo allí, una vez.
+ * - R392: el censo sale de `tests/fixtures/censo-cierres.ts > censoPantalla()`, el mismo que usa la
+ *   guardia de trato.
  *
- * Se mira el código SIN comentarios (`quitarComentarios`): un comentario que cita el título o el
- * import no es un hallazgo. Control positivo (el censo no está vacío ni le faltan los módulos que
- * vigila) y contraprueba (las detecciones sí encuentran el patrón en una muestra) al final.
+ * Todo se lee por AST (`typescript`): los comentarios no son nodos, así que un comentario que cita el
+ * título o el import no es un hallazgo. Control positivo y contraprueba al final.
  */
-
-const RAIZ = path.resolve(__dirname, "../../..");
-
-/** Censo: los `.ts`/`.tsx` de pantalla del módulo de cierres (`requirements.md > Definiciones`). */
-const ARBOLES = [
-  "app/(app)/cierres-admin",
-  "app/(app)/cierre-dia",
-  "app/(app)/wallet/satelites",
-  "components/private/cierres",
-  "components/shared/conciliacion",
-  "components/shared/liquidacion",
-] as const;
 
 /** Única excepción de R53, con su motivo. */
 const EXCEPCIONES_UI_DIALOG: Readonly<Record<string, string>> = {
@@ -40,100 +33,209 @@ const EXCEPCIONES_UI_DIALOG: Readonly<Record<string, string>> = {
 
 const DUENO_TITULO = "components/private/cierres/dialogos/dialogos-labels.ts";
 const DUENO_VISOR = "components/private/cierres/dialogos/VisorEvidencia.tsx";
+const TITULO_VISOR = "Evidencia de la gestión";
 
-function listar(relativo: string, acc: string[] = []): string[] {
-  const absoluto = path.join(RAIZ, relativo);
-  if (!existsSync(absoluto)) return acc;
-  for (const entrada of readdirSync(absoluto, { withFileTypes: true })) {
-    const hijo = `${relativo}/${entrada.name}`;
-    if (entrada.isDirectory()) listar(hijo, acc);
-    else if (/\.tsx?$/.test(entrada.name) && !entrada.name.endsWith(".d.ts")) acc.push(hijo);
+const DIALOGO_PROHIBIDO = [
+  /^@\/components\/ui\/(?:alert-dialog|dialog|sheet)$/,
+  /^@radix-ui\/react-(?:alert-)?dialog$/,
+  /^\.\.?\/(?:.*\/)?ui\/(?:alert-dialog|dialog|sheet)(?:\.tsx?)?$/,
+];
+
+function fuente(codigo: string, ruta: string): ts.SourceFile {
+  const tipo = ruta.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+  return ts.createSourceFile(ruta, codigo, ts.ScriptTarget.Latest, true, tipo);
+}
+
+function leer(ruta: string): string {
+  return readFileSync(rutaAbsoluta(ruta), "utf8");
+}
+
+function recorrer(nodo: ts.Node, visita: (n: ts.Node) => boolean | void): void {
+  if (visita(nodo) === false) return;
+  ts.forEachChild(nodo, (hijo) => recorrer(hijo, visita));
+}
+
+/** R390: especificadores de `import`, `export … from` e `import()` que son un diálogo prohibido. */
+function importsDeDialogo(codigo: string, ruta: string): string[] {
+  const out: string[] = [];
+  recorrer(fuente(codigo, ruta), (n) => {
+    let especificador: ts.Expression | undefined;
+    if (ts.isImportDeclaration(n) || ts.isExportDeclaration(n)) especificador = n.moduleSpecifier;
+    else if (ts.isCallExpression(n) && n.expression.kind === ts.SyntaxKind.ImportKeyword) {
+      especificador = n.arguments[0];
+    }
+    if (especificador && ts.isStringLiteralLike(especificador)) {
+      const texto = especificador.text;
+      if (DIALOGO_PROHIBIDO.some((re) => re.test(texto))) out.push(texto);
+    }
+  });
+  return out;
+}
+
+/** Pliega literales, plantillas sin interpolación y sus concatenaciones con `+` en un solo texto. */
+function plegar(n: ts.Node): string | null {
+  if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) return n.text;
+  if (ts.isParenthesizedExpression(n)) return plegar(n.expression);
+  if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+    const izquierda = plegar(n.left);
+    const derecha = izquierda === null ? null : plegar(n.right);
+    return izquierda === null || derecha === null ? null : izquierda + derecha;
   }
-  return acc;
+  return null;
 }
 
-function censo(): string[] {
-  return ARBOLES.flatMap((arbol) => listar(arbol)).sort();
+function apariciones(texto: string, buscado: string): number {
+  return texto.split(buscado).length - 1;
 }
 
-function codigo(ruta: string): string {
-  return quitarComentarios(readFileSync(path.join(RAIZ, ruta), "utf8"));
+function esLecturaDelTitulo(n: ts.Node): boolean {
+  if (ts.isPropertyAccessExpression(n)) {
+    return ts.isIdentifier(n.expression) && n.expression.text === "VISOR_EVIDENCIA_TEXTO" && n.name.text === "titulo";
+  }
+  if (ts.isElementAccessExpression(n)) {
+    return (
+      ts.isIdentifier(n.expression) &&
+      n.expression.text === "VISOR_EVIDENCIA_TEXTO" &&
+      ts.isStringLiteralLike(n.argumentExpression) &&
+      n.argumentExpression.text === "titulo"
+    );
+  }
+  return false;
 }
 
-/** R53: especificadores de import/export de `ui/dialog` o `ui/alert-dialog` en un código ya limpio. */
-function importsDeDialogoUi(fuente: string): string[] {
-  const patron = /from\s+["'](@\/components\/ui\/(?:alert-)?dialog)["']|import\s*\(\s*["'](@\/components\/ui\/(?:alert-)?dialog)["']\s*\)/g;
-  return [...fuente.matchAll(patron)].map((m) => m[1] ?? m[2]);
+function esDeclaracionDelVisor(n: ts.Node): boolean {
+  if (ts.isFunctionDeclaration(n)) return n.name?.text === "VisorEvidencia";
+  if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.name.text === "VisorEvidencia") {
+    const inicial = n.initializer;
+    return !!inicial && (ts.isArrowFunction(inicial) || ts.isFunctionExpression(inicial));
+  }
+  return false;
 }
 
-/** R137: apariciones del título del visor o de la declaración de un visor, en un código ya limpio. */
-function rastrosDeVisor(fuente: string): { titulo: number; declaracion: number } {
-  return {
-    titulo: fuente.split("Evidencia de la gestión").length - 1,
-    declaracion: [...fuente.matchAll(/\bfunction\s+VisorEvidencia\b/g)].length,
-  };
+type Rastros = { titulo: number; lecturaTitulo: number; declaracion: number };
+
+/** R391: título (plegado), lecturas de `VISOR_EVIDENCIA_TEXTO.titulo` y declaraciones del visor. */
+function rastrosDeVisor(codigo: string, ruta: string): Rastros {
+  const r: Rastros = { titulo: 0, lecturaTitulo: 0, declaracion: 0 };
+  recorrer(fuente(codigo, ruta), (n) => {
+    if (esLecturaDelTitulo(n)) r.lecturaTitulo += 1;
+    if (esDeclaracionDelVisor(n)) r.declaracion += 1;
+    const plegado = plegar(n);
+    if (plegado !== null) {
+      r.titulo += apariciones(plegado, TITULO_VISOR);
+      return false; // ya plegado: no contar otra vez sus tramos
+    }
+    if (ts.isTemplateHead(n) || ts.isTemplateMiddle(n) || ts.isTemplateTail(n)) {
+      r.titulo += apariciones(n.text, TITULO_VISOR);
+    } else if (ts.isJsxText(n)) {
+      r.titulo += apariciones(n.text.replace(/\s+/g, " "), TITULO_VISOR);
+    }
+  });
+  return r;
 }
 
-describe("SLT-103 · guardia de diálogos de cierres (R53, R137)", () => {
-  it("R53: ningún archivo del censo importa ui/dialog ni ui/alert-dialog, salvo el marco del detalle", () => {
-    const hallazgos = censo()
+function rastros(ruta: string): Rastros {
+  return rastrosDeVisor(leer(ruta), ruta);
+}
+
+describe("SLT-103 · guardia de diálogos de cierres (R53, R137; D65: R390-R392)", () => {
+  it("R53: ningún archivo del censo importa un diálogo que no es el Modal compartido, salvo el marco del detalle", () => {
+    const hallazgos = censoPantalla()
       .filter((ruta) => !(ruta in EXCEPCIONES_UI_DIALOG))
-      .flatMap((ruta) => importsDeDialogoUi(codigo(ruta)).map((imp) => `${ruta} → ${imp}`));
+      .flatMap((ruta) => importsDeDialogo(leer(ruta), ruta).map((imp) => `${ruta} → ${imp}`));
     expect(hallazgos).toEqual([]);
   });
 
   it("R53: la excepción sigue existiendo y sigue usando ui/dialog (si no, sobra en la lista)", () => {
     for (const ruta of Object.keys(EXCEPCIONES_UI_DIALOG)) {
-      expect(existsSync(path.join(RAIZ, ruta)), `${ruta} no existe`).toBe(true);
-      expect(importsDeDialogoUi(codigo(ruta)).length, `${ruta} ya no usa ui/dialog`).toBeGreaterThan(0);
+      expect(existsSync(rutaAbsoluta(ruta)), `${ruta} no existe`).toBe(true);
+      expect(importsDeDialogo(leer(ruta), ruta).length, `${ruta} ya no usa ui/dialog`).toBeGreaterThan(0);
     }
   });
 
-  it("R137: «Evidencia de la gestión» solo vive en dialogos-labels.ts", () => {
-    const fuera = censo().filter((ruta) => ruta !== DUENO_TITULO && rastrosDeVisor(codigo(ruta)).titulo > 0);
+  it("R137: título «Evidencia de la gestión» (literal, partido o plantilla) solo en dialogos-labels.ts", () => {
+    const fuera = censoPantalla().filter((ruta) => ruta !== DUENO_TITULO && rastros(ruta).titulo > 0);
     expect(fuera).toEqual([]);
-    expect(rastrosDeVisor(codigo(DUENO_TITULO)).titulo).toBe(1);
+    expect(rastros(DUENO_TITULO).titulo).toBe(1);
   });
 
-  it("R137: `function VisorEvidencia` solo se declara en VisorEvidencia.tsx", () => {
-    const fuera = censo().filter((ruta) => ruta !== DUENO_VISOR && rastrosDeVisor(codigo(ruta)).declaracion > 0);
+  it("R137: VISOR_EVIDENCIA_TEXTO.titulo solo se lee en VisorEvidencia.tsx", () => {
+    const fuera = censoPantalla().filter((ruta) => ruta !== DUENO_VISOR && rastros(ruta).lecturaTitulo > 0);
     expect(fuera).toEqual([]);
-    expect(rastrosDeVisor(codigo(DUENO_VISOR)).declaracion).toBe(1);
+    expect(rastros(DUENO_VISOR).lecturaTitulo).toBeGreaterThan(0);
   });
 
-  it("control positivo: el censo pasa de 40 archivos e incluye los módulos que vigila", () => {
-    const archivos = censo();
+  it("R137: declaración de VisorEvidencia (function, flecha o function anónima) solo en VisorEvidencia.tsx, y una", () => {
+    const fuera = censoPantalla().filter((ruta) => ruta !== DUENO_VISOR && rastros(ruta).declaracion > 0);
+    expect(fuera).toEqual([]);
+    expect(rastros(DUENO_VISOR).declaracion).toBe(1);
+  });
+
+  it("control positivo: el censo pasa de 40 archivos e incluye los módulos que vigila (R392)", () => {
+    const archivos = censoPantalla();
     expect(archivos.length).toBeGreaterThan(40);
     expect(archivos).toEqual(
       expect.arrayContaining([
         "app/(app)/cierres-admin/_components/CierresAdminModule.tsx",
         "app/(app)/cierre-dia/_components/CierreDiaModule.tsx",
         "components/shared/conciliacion/ConciliacionAcciones.tsx",
+        "app/(app)/wallet/satelites/_components/ConciliacionSatelite.tsx",
+        "components/shared/liquidacion/RegistrarPagoDialog.tsx",
+        "components/shared/DesglosePagoField.tsx",
+        "components/shared/EscanerGuiaCard.tsx",
         DUENO_TITULO,
         DUENO_VISOR,
       ]),
     );
   });
 
-  it("contraprueba: las detecciones encuentran el patrón en una muestra y no en la misma comentada", () => {
-    const muestra = [
-      'import { Dialog } from "@/components/ui/dialog";',
-      'import { AlertDialog } from "@/components/ui/alert-dialog";',
-      "export function VisorEvidencia() {",
-      '  return <Modal title="Evidencia de la gestión" />;',
-      "}",
-    ].join("\n");
-    expect(importsDeDialogoUi(quitarComentarios(muestra))).toEqual([
-      "@/components/ui/dialog",
-      "@/components/ui/alert-dialog",
-    ]);
-    expect(rastrosDeVisor(quitarComentarios(muestra))).toEqual({ titulo: 1, declaracion: 1 });
+  describe("contraprueba: cada vía se detecta en una muestra y no en la misma comentada", () => {
+    const comentar = (codigo: string): string =>
+      codigo
+        .split("\n")
+        .map((linea) => `// ${linea}`)
+        .join("\n");
 
-    const comentada = muestra
-      .split("\n")
-      .map((linea) => `// ${linea}`)
-      .join("\n");
-    expect(importsDeDialogoUi(quitarComentarios(comentada))).toEqual([]);
-    expect(rastrosDeVisor(quitarComentarios(comentada))).toEqual({ titulo: 0, declaracion: 0 });
+    const IMPORTS: ReadonlyArray<[string, string]> = [
+      ['import { Dialog } from "@/components/ui/dialog";', "@/components/ui/dialog"],
+      ['import { AlertDialog } from "@/components/ui/alert-dialog";', "@/components/ui/alert-dialog"],
+      ['import { Sheet } from "@/components/ui/sheet";', "@/components/ui/sheet"],
+      ['import * as D from "@radix-ui/react-dialog";', "@radix-ui/react-dialog"],
+      ['import * as A from "@radix-ui/react-alert-dialog";', "@radix-ui/react-alert-dialog"],
+      ['import { Dialog } from "../../ui/dialog";', "../../ui/dialog"],
+      ['export { Dialog } from "@/components/ui/dialog";', "@/components/ui/dialog"],
+      ['const S = import("@/components/ui/sheet");', "@/components/ui/sheet"],
+    ];
+
+    it.each(IMPORTS)("R390: %s", (codigo, especificador) => {
+      expect(importsDeDialogo(codigo, "muestra.tsx")).toEqual([especificador]);
+      expect(importsDeDialogo(comentar(codigo), "muestra.tsx")).toEqual([]);
+    });
+
+    it("R390: el Modal compartido y otros ui/ no son diálogo prohibido", () => {
+      const codigo = [
+        'import { Modal } from "@/components/shared/Modal";',
+        'import { Button } from "@/components/ui/button";',
+        'import { Sheet } from "@/components/ui/sheet-header";',
+      ].join("\n");
+      expect(importsDeDialogo(codigo, "muestra.tsx")).toEqual([]);
+    });
+
+    const VISOR: ReadonlyArray<[string, string, Partial<Rastros>]> = [
+      ["título literal en JSX", '<Modal title="Evidencia de la gestión" />;', { titulo: 1 }],
+      ["título partido con +", 'const t = "Evidencia " + "de la gestión";', { titulo: 1 }],
+      ["título partido en tres", 'const t = ("Evidencia" + " de la ") + `gestión`;', { titulo: 1 }],
+      ["título en plantilla", "const t = `Evidencia de la gestión`;", { titulo: 1 }],
+      ["VISOR_EVIDENCIA_TEXTO.titulo", "const t = VISOR_EVIDENCIA_TEXTO.titulo;", { lecturaTitulo: 1 }],
+      ['VISOR_EVIDENCIA_TEXTO["titulo"]', 'const t = VISOR_EVIDENCIA_TEXTO["titulo"];', { lecturaTitulo: 1 }],
+      ["function VisorEvidencia", "export function VisorEvidencia() { return null; }", { declaracion: 1 }],
+      ["const VisorEvidencia = () => …", "const VisorEvidencia = () => null;", { declaracion: 1 }],
+      ["const VisorEvidencia = function", "const VisorEvidencia = function () { return null; };", { declaracion: 1 }],
+    ];
+
+    it.each(VISOR)("R391: %s", (_nombre, codigo, esperado) => {
+      expect(rastrosDeVisor(codigo, "muestra.tsx")).toEqual({ titulo: 0, lecturaTitulo: 0, declaracion: 0, ...esperado });
+      expect(rastrosDeVisor(comentar(codigo), "muestra.tsx")).toEqual({ titulo: 0, lecturaTitulo: 0, declaracion: 0 });
+    });
   });
 });

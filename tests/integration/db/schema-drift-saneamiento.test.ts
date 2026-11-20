@@ -100,7 +100,7 @@ function tablasConDefaultEnUpdatedAt(): string[] {
 }
 
 describe("updated_at · el modelo declara el DEFAULT que el SQL creo", () => {
-  it("el censo encuentra las DIECIOCHO tablas cuyo CREATE TABLE le puso default a updated_at", () => {
+  it("el censo encuentra todas las tablas cuyo CREATE TABLE le puso default a updated_at", () => {
     // Contrapeso: si el parser se rompiera y devolviera [], el caso de abajo pasaria por vacio
     // en vez de por limpio. Esta lista es la que devuelve la BASE viva consultando
     // `information_schema.columns` (evidencia en progress/chore_saneamiento-deudas.md).
@@ -157,6 +157,17 @@ describe("updated_at · el modelo declara el DEFAULT que el SQL creo", () => {
       // `"updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP`; el modelo `Plan` lo declara
       // con `@default(now()) @updatedAt`.
       "plan",
+      // SLT-129 (2026-11-17) - el borrador del formulario de planes. Su `CREATE TABLE`
+      // (`20261117120000_plan_borrador/migration.sql`) escribe
+      // `"updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP`, el molde de `plan`; el modelo
+      // `PlanBorrador` lo declara con `@default(now()) @updatedAt`.
+      "plan_borrador",
+      // SLT-215 (2026-11-21) - el nivel vigente de cada empresa. Su `CREATE TABLE`
+      // (`20261121140100_plan_nivel/migration.sql`) escribe
+      // `"updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP`; el modelo `PlanNivelEmpresa` lo
+      // declara con `@default(now()) @updatedAt`.
+      // (`plan_nivel` y `plan_nivel_historial` NO entran: no tienen `updated_at`.)
+      "plan_nivel_empresa",
       "premio_ranking",
       // FICHA 410 (2026-09-10) - las suscripciones de push web. Su `CREATE TABLE`
       // (`20260912120000_push_suscripcion/migration.sql`) escribe

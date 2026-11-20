@@ -372,6 +372,10 @@ feature.
 **R60.** CUANDO cambia cualquier filtro, el listado DEBE volver a la página 1 y limpiar la
 selección de filas, igual que ya ocurre al cambiar el filtro de estado.
 
+> Sustituido por SLT-222 R1501/R1502 (2026-11-19) en lo que toca a la selección: cambiar un
+> filtro o el término vuelve a la página 1 pero CONSERVA las filas marcadas
+> (`specs/SLT-222-seleccion-entre-busquedas/requirements.md`).
+
 **R61.** El sistema DEBE derivar la identidad de caché/refetch del listado de una
 serialización estable de los filtros, de modo que dos selecciones con los mismos valores
 (en distinto orden o distinta identidad de objeto) compartan caché y NO provoquen una

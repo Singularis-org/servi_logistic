@@ -3,6 +3,8 @@ import type { ModuloApagable, RolValue } from "@prisma/client";
 import { ROL_LABELS } from "@/lib/auth/rol-label";
 import { money } from "@/lib/config/moneda";
 import { nombreDelModulo } from "@/lib/modulos/catalogo";
+import { cambiosDeBeneficios, type Beneficio } from "@/lib/planes/beneficios";
+import { textoDeLosNiveles, type Nivel } from "@/lib/planes/niveles";
 import { importeCanonico } from "@/lib/planes/rastro";
 import type { CosteoDelCiclo, CostoVigente } from "@/lib/types/consumo-plan";
 import {
@@ -122,8 +124,8 @@ export function rangoInicioCiclo(min: string, max: string): string {
 /** Error del campo `inicioCiclo` cuando la empresa ya tiene plan (R31). */
 export const SOLO_PRIMERA_ASIGNACION = "La fecha de inicio solo se elige en la primera asignación.";
 
-/** SLT-86 (R16): error del campo `vigenteDesde` cuando falta en un cambio a una empresa con plan. */
-export const FECHA_DE_EFECTO_OBLIGATORIA = "Elige desde qué fecha rige el cambio.";
+/** SLT-86 (R16), SLT-135 (R1): vive en `lib/types/planes.ts` (la usa `editarPlanSchema`); se reexporta aquí. */
+export { FECHA_DE_EFECTO_OBLIGATORIA } from "@/lib/types/planes";
 
 /** SLT-86 (R22): error del campo `vigenteDesde` con una fecha anterior a hoy. */
 export const FECHA_DE_EFECTO_PASADA = "La fecha de efecto no puede ser anterior a hoy.";
@@ -149,7 +151,9 @@ export function periodicidadIncompatible(empresas: number): string {
 // `lineaReemplazo` (§16.2). El resto son propuestas de T12, pendientes de aprobación humana
 // (`progress/impl_SL-24.md > T12`).
 
-export type TipoCorreoCambioPlan = "guardado" | "recordatorio_7" | "recordatorio_1" | "cancelado";
+// SLT-128 (R21, R22): `recordatorio_3`, el de 3 días antes de la recepción de la empresa (de 4 a 7 días
+// entre guardar y su recepción). Asunto e intro, literales del spec.
+export type TipoCorreoCambioPlan = "guardado" | "recordatorio_7" | "recordatorio_3" | "recordatorio_1" | "cancelado";
 
 /** El asunto de cada correo. */
 export function asuntoCambioPlan(tipo: TipoCorreoCambioPlan, planNombre: string): string {
@@ -158,6 +162,8 @@ export function asuntoCambioPlan(tipo: TipoCorreoCambioPlan, planNombre: string)
       return `Cambios en el plan ${planNombre}`;
     case "recordatorio_7":
       return `El plan ${planNombre} cambia en 7 días`;
+    case "recordatorio_3":
+      return `El plan ${planNombre} cambia en 3 días`;
     case "recordatorio_1":
       return `El plan ${planNombre} cambia mañana`;
     case "cancelado":
@@ -167,7 +173,8 @@ export function asuntoCambioPlan(tipo: TipoCorreoCambioPlan, planNombre: string)
 
 /**
  * La primera frase: qué plan cambia y desde cuándo (R41). `fecha` null = edición inmediata (solo con
- * `guardado`: los recordatorios siempre tienen fecha).
+ * `guardado`: los recordatorios siempre tienen fecha). SLT-135 (R21): editar ya no tiene edición inmediata;
+ * la rama queda para los correos sin fecha encolados antes del despliegue.
  */
 export function introCambioPlan(
   tipo: Exclude<TipoCorreoCambioPlan, "cancelado">,
@@ -177,6 +184,9 @@ export function introCambioPlan(
 ): string {
   if (tipo === "recordatorio_7") {
     return `Faltan 7 días: el plan ${planNombre} de ${empresaNombre} cambia a partir del ${fecha}.`;
+  }
+  if (tipo === "recordatorio_3") {
+    return `Faltan 3 días: el plan ${planNombre} de ${empresaNombre} cambia a partir del ${fecha}.`;
   }
   if (tipo === "recordatorio_1") {
     return `Mañana cambia el plan ${planNombre} de ${empresaNombre}: rige a partir del ${fecha}.`;
@@ -189,6 +199,58 @@ export function introCambioPlan(
 /** §16.2: el correo de guardado de un cambio que reemplaza a otro (no sale correo de cancelación). */
 export function lineaReemplazo(fechaAnterior: string): string {
   return `Este cambio reemplaza al previsto para ${fechaAnterior}.`;
+}
+
+/* -------------------------------------------------------------------------- */
+/* SLT-128 (design §7) — el cambio programado por empresa                      */
+/* -------------------------------------------------------------------------- */
+// Literales del spec. Los pinta la pantalla del plan según el rechazo `cambio_a_medias` de cada acción.
+
+/** R14 (P1, P8): «Cancelar cambio» con alguna empresa que ya recibió el pendiente, o el plan partido. */
+export const MENSAJE_CANCELAR_CAMBIO_A_MEDIAS =
+  "Alguna empresa ya recibió este cambio. Para volver atrás, programa otro cambio con los valores de antes.";
+
+/** R15: archivar con un pendiente que aún no llegó a todas sus empresas. */
+export const MENSAJE_ARCHIVAR_CAMBIO_A_MEDIAS =
+  "El plan tiene un cambio programado que aún no llegó a todas sus empresas. Espera a que termine o cancélalo.";
+
+/** R11: bajo «Cambio programado desde F» en el detalle del plan. */
+export function textoRecepcionesDelCambio(recibidas: number, total: number): string {
+  return `${recibidas} de ${total} empresas ya lo recibieron`;
+}
+
+/* -------------------------------------------------------------------------- */
+/* SLT-128 (design §14; R28) — la recepción que no se pudo aplicar             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * R28: los códigos de motivo de una recepción «no aplicada», los mismos que acepta el `CHECK` de
+ * `no_aplicada_motivo` en `20261114120000_plan_cambio_por_empresa`. Hoy solo el de R8.
+ */
+export const MOTIVOS_NO_APLICADA = ["cobro_quincenal_ordenes_mensuales"] as const;
+export type MotivoNoAplicada = (typeof MOTIVOS_NO_APLICADA)[number];
+
+/** R28, literal: el texto de cada motivo. */
+export function textoMotivoNoAplicada(motivo: MotivoNoAplicada): string {
+  switch (motivo) {
+    case "cobro_quincenal_ordenes_mensuales":
+      return "cobra por quincena y el plan nuevo factura las órdenes por mes";
+  }
+}
+
+/** R28, literal: la línea del detalle del plan por cada empresa que no recibió el cambio. */
+export function lineaNoAplicada(empresaNombre: string, motivo: MotivoNoAplicada): string {
+  return `${empresaNombre} no recibió el cambio: ${textoMotivoNoAplicada(motivo)}. Sigue con su versión anterior.`;
+}
+
+/** R28 (design §14.4): la primera frase del correo a la lista de alertas, con la fecha ya pintada. */
+export function introCambioPlanNoAplicado(planNombre: string, empresaNombre: string, fecha: string): string {
+  return `El cambio del plan ${planNombre} previsto para el ${fecha} no se aplicó a ${empresaNombre}.`;
+}
+
+/** R28 (design §14.4): el asunto del correo a la lista de alertas. */
+export function asuntoCambioPlanNoAplicado(planNombre: string, empresaNombre: string): string {
+  return `El cambio del plan ${planNombre} no se aplicó a ${empresaNombre}`;
 }
 
 /** R45, literal: el único texto del correo de cancelación (a mano o al archivar). */
@@ -223,6 +285,10 @@ export interface CambioDelPlanParaCorreo {
   nombre?: { antes: string; despues: string };
   topes?: { antes: TopesDelPlanParaCorreo; despues: TopesDelPlanParaCorreo };
   modulos?: { antes: readonly ModuloApagable[]; despues: readonly ModuloApagable[] };
+  /** SLT-214 (R25): las dos listas en su orden; las compara `cambiosDeBeneficios` con la regla de R4. */
+  beneficios?: { antes: readonly Beneficio[]; despues: readonly Beneficio[] };
+  /** SLT-215 (R20): las dos listas de niveles en su orden. */
+  niveles?: { antes: readonly Nivel[]; despues: readonly Nivel[] };
   /** SLT-86 (R30): una fila de antes de la ficha trae aquí el anual (`PrecioAnterior`). */
   precio?: { antes: PrecioDelRastro; despues: PrecioDelRastro };
   /** SLT-86 (R31): un descuento por período, en su propia clave del rastro (`rastro.ts`). */
@@ -440,6 +506,12 @@ export function lineasDeCambioDelPlan(c: CambioDelPlanParaCorreo): string[] {
     const { antes, despues } = c.modulos;
     for (const m of despues) if (!antes.includes(m)) lineas.push(`Se incluye el módulo ${nombreDelModulo(m)}.`);
     for (const m of antes) if (!despues.includes(m)) lineas.push(`Deja de incluirse el módulo ${nombreDelModulo(m)}.`);
+  }
+  // SLT-214 (R25): «Se agrega: …», «Se quita: …» o la línea de solo íconos u orden, después de los módulos.
+  if (c.beneficios) lineas.push(...cambiosDeBeneficios(c.beneficios.antes, c.beneficios.despues));
+  // SLT-215 (R20, P5): una sola línea con las dos listas enteras, después de los beneficios.
+  if (c.niveles) {
+    lineas.push(`Niveles por volumen: ${textoDeLosNiveles(c.niveles.antes)} → ${textoDeLosNiveles(c.niveles.despues)}`);
   }
   // SLT-66 (R9): el precio mensual de SL-24 se llama ahora «costo base».
   if (c.precio) lineas.push(`Costo base: ${textoDelPrecio(c.precio.antes)} → ${textoDelPrecio(c.precio.despues)}`);

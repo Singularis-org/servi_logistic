@@ -15,6 +15,7 @@ import type { FiltrosDescargaGestiones, FiltrosDescargaGestionesRepo } from "@/l
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 import { inicioDelDiaEnUtc } from "@/lib/utils/calendario-zona";
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { dobleCierresAdmin } from "@/tests/fixtures/dobles/cierres-admin-repository";
 
 // Ficha 470 (T1.3, riesgo K6) — el tope real de la descarga es ahora el limite de Excel
 // (1.048.575 filas). Este archivo prueba la MECANICA del tope (N entra, N+1 no), que no depende
@@ -120,24 +121,19 @@ function fakeRepo(almacen: GestionAlmacen[] = ALMACEN) {
         .filter((g) => elegidos.has(g.mensajeroId))
         .filter((g) => filtros.solicitadoDesde === undefined || instante(g.dia) >= filtros.solicitadoDesde.getTime())
         .filter((g) => filtros.solicitadoHasta === undefined || instante(g.dia) < filtros.solicitadoHasta.getTime())
-        .map(dto);
+        .map(dto) as FilasDescargaDelRepo;
     },
   );
-  return {
-    findCierresByAlcance: vi.fn(async () => []),
-    findHistoricoPaginado: vi.fn(async () => ({ items: [], total: 0 })),
-    findColaPaginada: vi.fn(async () => ({ items: [], total: 0 })),
-    findHistoricoCompleto: vi.fn(async () => []),
-    findColaCompleta: vi.fn(async () => []),
-    findCierreByIdEnAlcance: vi.fn(async () => null),
-    findGestionesIncidenteDelCierre: vi.fn(async () => []),
-    findGestionesPorAlcanceCompleto,
-    resolverCierre: vi.fn(async () => "updated" as const),
-    forzarSolicitudVencido: vi.fn(async () => "updated" as const),
-  } as unknown as ICierresAdminRepository & {
-    findGestionesPorAlcanceCompleto: typeof findGestionesPorAlcanceCompleto;
-  };
+  return dobleCierresAdmin({ findGestionesPorAlcanceCompleto });
 }
+
+/**
+ * SLT-149: la forma que devolvia el doble anterior (el DTO, sin todos los campos de la fila del
+ * repositorio). Se conserva tal cual (R436).
+ */
+type FilasDescargaDelRepo = Awaited<
+  ReturnType<ICierresAdminRepository["findGestionesPorAlcanceCompleto"]>
+>;
 
 /** El firmador se pasa como espía: R22 se mide contando invocaciones, no leyendo el código. */
 function newService(repo: ReturnType<typeof fakeRepo>) {

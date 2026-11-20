@@ -43,6 +43,7 @@ describe("R26 — el drenador resuelve el handler de webhook_estado y no lo re-a
     expect([...handlers.keys()].sort()).toEqual([
       "analitica_invalidacion_cache", // feature 128: PUNTUAL, no va en buildRecurrencias
       "analitica_rollup_diario", // feature 124
+      "factura_plataforma_aviso", // SLT-136 (design §7.2): el aviso de UNA factura cerrada (PUNTUAL, con empresa)
       "factura_plataforma_cerrar", // SLT-118 (design §4.2): el cierre horario (HH:10) de las facturas de la plataforma (RECURRENTE)
       "geocodificacion",
       "liberar_reprogramadas",
@@ -54,6 +55,7 @@ describe("R26 — el drenador resuelve el handler de webhook_estado y no lo re-a
       // el recordatorio que los reparte.
       "plan_aviso_correo",
       "plan_cambios_vencidos",
+      "plan_niveles_cerrar", // SLT-215 (design §5): el cierre diario (06:20 UTC) de los niveles por volumen (RECURRENTE)
       "plan_recordatorio_cambio",
       // FICHA 410: entrega de un aviso ya creado a las suscripciones push de sus
       // destinatarios. PUNTUAL -lo encola el decorador del repositorio de notificaciones-,
@@ -88,6 +90,7 @@ describe("R26 — el drenador resuelve el handler de webhook_estado y no lo re-a
       "whatsapp_envio_mantenimiento", // ficha 474: mantenimiento diario 03:30 CR
       "plan_cambios_vencidos", // SL-24 (design §16.3): barrido horario de cambios de plan vencidos
       "factura_plataforma_cerrar", // SLT-118 (design §4.2): el cierre horario (HH:10) de las facturas de la plataforma
+      "plan_niveles_cerrar", // SLT-215 (design §5): el cierre diario (06:20 UTC) de los niveles por volumen
     ]);
   });
 

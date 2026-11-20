@@ -160,7 +160,7 @@ describe("392 — el nombre de la TIENDA, que la etiqueta imprime como `tiendaNo
 // ── Zona: `zona.nombre`, la primera parte de `ubicacion` ─────────────────────────────────────
 
 function zonaDTO(): ZonaDTO {
-  return { id: "z1", nombre: "GAM", cobroVehiculo: false, distritosCount: 1, esCentral: false };
+  return { id: "z1", nombre: "GAM", cobroVehiculo: false, distritosCount: 1, esCentral: false , activa: true };
 }
 
 function repoZonas(): IZonaRepository {

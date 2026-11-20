@@ -15,6 +15,20 @@ import {
   type FilterSelection,
 } from "@/components/shared/FilterComponent";
 import { BuscadorFiltros } from "@/components/shared/BuscadorFiltros";
+import { SegmentedToggle } from "@/components/shared/SegmentedToggle";
+import type {
+  DireccionOrden,
+  OrdenamientoListado,
+} from "@/lib/types/ordenamiento-listado";
+import {
+  VISTA_FILTRO_VERSION,
+  type VistaFiltroPayload,
+} from "@/lib/types/vista-filtro";
+import {
+  catalogoCargado,
+  catalogoNoDisponible,
+  type CatalogoVistas,
+} from "@/lib/utils/vista-filtro-aplicabilidad";
 import {
   conBadgePrioridad,
   resaltarFilaPrioridad,
@@ -30,6 +44,18 @@ import {
   CLAVE_BUSQUEDA,
   PLACEHOLDER_BUSQUEDA,
 } from "@/app/(app)/ordenes/_components/ordenes-filtros-def";
+// SLT-210 (R1400): los conmutadores de orden de `/ordenes`, IMPORTADOS —opciones, etiquetas,
+// iconos y valores iniciales—. Mismo precedente que `ordenes-filtros-def` de arriba: las dos
+// barras no pueden llamar a lo mismo de dos maneras.
+import {
+  CAMPO_ORDEN_INICIAL,
+  DIRECCION_ORDEN_INICIAL,
+  ETIQUETA_CAMPO_ORDEN,
+  ETIQUETA_DIRECCION,
+  OPCIONES_CAMPO_ORDEN,
+  OPCIONES_DIRECCION,
+  type CampoOrdenOfrecido,
+} from "@/app/(app)/ordenes/_components/ordenamiento-ordenes";
 
 // Feature 158 (T2.7, decisión del humano del 2026-07-30): el reporte de incidente también
 // vive en la bodega satélite. Se IMPORTA el mismo disparador y el mismo modal de `/ordenes`;
@@ -45,6 +71,13 @@ import { HistorialOrdenSheet } from "@/app/(app)/ordenes/_components/HistorialOr
 // Feature 262 (F4, R13/R18): la etiqueta del botón se IMPORTA del modal que abre, para que las
 // dos superficies —ésta y `/ordenes`— no puedan llamar a la misma acción de dos maneras.
 import { CAMBIAR_DIA_ACCION } from "@/app/(app)/ordenes/_components/CambiarDiaRepartoModal";
+// SLT-222 (D2): el MISMO modelo de selección acumulada que `/ordenes` (`OrdenesModule`).
+import {
+  contarFueraDeVista,
+  filasSeleccionadas,
+  refrescarSeleccion,
+  textoContadorSeleccion,
+} from "@/app/(app)/ordenes/_components/seleccion-acumulada";
 import { puedeReportarIncidenteSatelite } from "./incidente-satelite";
 import { recibidasColumns } from "./recibidas-columns";
 import { columnasDescargaSatelite } from "./satelite-descarga-columnas";
@@ -174,6 +207,12 @@ export interface SateliteOrdenesListadoProps {
   /** Emite los tres filtros elegidos; el módulo pide con ellos la página al servidor (R45). */
   onFiltroChange: (filtro: FiltroBodegaSatelite) => void;
   /**
+   * SLT-210 (R1402) — emite el orden elegido en los conmutadores; el módulo lo mete en la clave
+   * de SWR, vuelve a la página 1 y lo pasa a la descarga. Opcional: sin él los conmutadores se
+   * pintan igual, pero el orden no llega al servidor.
+   */
+  onOrdenChange?: (orden: OrdenamientoListado<CampoOrdenOfrecido>) => void;
+  /**
    * R52 — filas del CONJUNTO COMPLETO con los filtros vigentes, para el archivo.
    *
    * Es un CALLBACK, no unos filtros: esta tabla pinta la página que le llega por props y no
@@ -193,8 +232,18 @@ export interface SateliteOrdenesListadoProps {
    * se pudo hacer, que aquí significa NO PODAR (R22).
    *
    * Opcional: sin él la selección se comporta como antes de la tanda A.
+   *
+   * SLT-222 R1514: desde que la selección sobrevive a la búsqueda, el conjunto contra el que se
+   * pregunta es el listado de la bodega SIN filtros ni término (si no, la búsqueda siguiente
+   * podaría lo marcado en la anterior). Lo decide el módulo, que es quien arma la consulta.
    */
   comprobarVigencia?: (ids: string[]) => Promise<readonly string[] | null>;
+  /**
+   * SLT-222 R1508 — señal de «la selección ya se consumió»: cada vez que este número cambia se
+   * desmarca TODO, visible o no. Mismo contrato que `OrdenesModule.resetSeleccion`: quien sabe
+   * que una acción por lote terminó bien es el módulo; la selección vive aquí.
+   */
+  resetSeleccion?: number;
   /** `true` mientras no hay ninguna página que pintar (primer viaje al servidor). */
   cargando?: boolean;
   /** Mensaje de error de la carga de la página, ya redactado; `null` si no lo hay. */
@@ -242,8 +291,10 @@ export function SateliteOrdenesListado({
   totalSinFiltros,
   catalogo,
   onFiltroChange,
+  onOrdenChange,
   obtenerFilasDescarga,
   comprobarVigencia,
+  resetSeleccion = 0,
   cargando = false,
   errorCarga = null,
   zonaNombre,
@@ -261,7 +312,33 @@ export function SateliteOrdenesListado({
   // SL-20 (R19): columnas, filtros y descarga con los nombres de nivel del país de la empresa.
   const etiquetas = useEtiquetasGeograficas();
   const [seleccion, setSeleccion] = useState<FilterSelection>({});
-  const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
+  /**
+   * SLT-222 (R1500, D2) — las órdenes MARCADAS, por id y con su fila: el modelo de `/ordenes`.
+   * Antes era un `Set` de ids acotado a la página visible; con la fila guardada, una marcada
+   * en otra búsqueda o página puede entrar en la acción aunque no se vea. Sobrevive a
+   * búsquedas, filtros, vistas, «Limpiar todo» y páginas; la vacían «Limpiar» y
+   * `resetSeleccion`, y la poda retira las que salieron del listado.
+   */
+  const [marcadas, setMarcadas] = useState<ReadonlyMap<string, RecepcionSateliteDTO>>(
+    new Map(),
+  );
+  const seleccionados = useMemo(() => new Set(marcadas.keys()), [marcadas]);
+
+  // R1509: la fila guardada de una marcada se sustituye por la que acaba de llegar del
+  // servidor. Patrón "ajustar estado durante el render", como en `OrdenesModule`.
+  const [ordenesPrevias, setOrdenesPrevias] = useState(ordenes);
+  if (ordenes !== ordenesPrevias) {
+    setOrdenesPrevias(ordenes);
+    const refrescada = refrescarSeleccion(marcadas, ordenes);
+    if (refrescada !== marcadas) setMarcadas(refrescada);
+  }
+
+  // R1508: tras una acción por lote con éxito el módulo incrementa la señal y se desmarca todo.
+  const [resetSeleccionPrevio, setResetSeleccionPrevio] = useState(resetSeleccion);
+  if (resetSeleccion !== resetSeleccionPrevio) {
+    setResetSeleccionPrevio(resetSeleccion);
+    setMarcadas(new Map());
+  }
 
   /**
    * Término del BUSCADOR, aparte de la selección agregada: `FilterComponent` emite SU
@@ -273,6 +350,35 @@ export function SateliteOrdenesListado({
   const [filtrosActivos, setFiltrosActivos] = useState<string[]>([]);
   /** Contador de "Limpiar todo": `FilterComponent` es dueño de su selección, se remonta limpio. */
   const [resetFiltros, setResetFiltros] = useState(0);
+
+  /**
+   * SLT-210 (R1408-R1410) — las vistas guardadas, con la MISMA costura que `OrdenesListado`
+   * (ficha 453): la señal de siembra repone el término y la selección en los dos canónicos sin
+   * remontarlos, y `vistaPuestaId` dice qué vista está puesta hasta el primer cambio del filtro.
+   * El ORDEN no entra en la vista (P1 de la 453): aplicar una no reordena la tabla.
+   */
+  const [senalSiembra, setSenalSiembra] = useState(0);
+  const [siembraTermino, setSiembraTermino] = useState("");
+  const [siembraSeleccion, setSiembraSeleccion] = useState<FilterSelection>({});
+  const [vistaPuestaId, setVistaPuestaId] = useState<string | null>(null);
+
+  /**
+   * SLT-210 (R1401/R1402) — el orden, en sus DOS dimensiones y con los valores iniciales de
+   * `/ordenes`. Dos estados y no uno: cambiar el campo no toca la dirección. El servidor lo
+   * aplica DENTRO de cada grupo de estado (P2), así que entrar enseña el listado de siempre.
+   */
+  const [sortBy, setSortBy] = useState<CampoOrdenOfrecido>(CAMPO_ORDEN_INICIAL);
+  const [sortDir, setSortDir] = useState<DireccionOrden>(DIRECCION_ORDEN_INICIAL);
+
+  function cambiarCampoOrden(campo: CampoOrdenOfrecido) {
+    setSortBy(campo);
+    onOrdenChange?.({ sortBy: campo, sortDir });
+  }
+
+  function cambiarDireccionOrden(direccion: DireccionOrden) {
+    setSortDir(direccion);
+    onOrdenChange?.({ sortBy, sortDir: direccion });
+  }
 
   /**
    * FICHA 355 — el catálogo `order_status`, con la MISMA clave de SWR que `/ordenes`
@@ -317,6 +423,30 @@ export function SateliteOrdenesListado({
     [filtros, filtrosActivos],
   );
 
+  /**
+   * SLT-210 (R1414) — ¿se puede comprobar una vista ahora? El mismo criterio que `/ordenes`
+   * (R29 de la 453): con el catálogo geográfico o el de estados sin cargar, ninguna vista se
+   * presenta como incompleta. «El catálogo no está» no es «el valor desapareció».
+   */
+  const catalogoVistas = useMemo<CatalogoVistas>(
+    () =>
+      catalogo !== null && (estatus?.length ?? 0) > 0
+        ? catalogoCargado(filtros)
+        : catalogoNoDisponible(),
+    [catalogo, estatus, filtros],
+  );
+
+  /** SLT-210 (R1408) — lo que hay puesto ahora, en el formato que se guarda. Sin el orden. */
+  const filtroActual = useMemo<VistaFiltroPayload>(
+    () => ({
+      v: VISTA_FILTRO_VERSION,
+      termino,
+      activos: filtrosActivos,
+      seleccion,
+    }),
+    [termino, filtrosActivos, seleccion],
+  );
+
   /** `true` si hay algún filtro marcado (cambia el contador y el mensaje de vacío). */
   const hayFiltros =
     termino !== "" || Object.values(seleccion).some((valores) => valores.length > 0);
@@ -341,7 +471,8 @@ export function SateliteOrdenesListado({
     estadosElegidos.length > 0 && etiquetasFuera.length === estadosElegidos.length;
 
   function emitir(nueva: FilterSelection, terminoNuevo: string) {
-    setSeleccionados(new Set());
+    // SLT-222 R1501/R1502: emitir un filtro o un término NO toca lo marcado (antes lo vaciaba,
+    // R27 de la 188): la persona busca, marca, busca la siguiente… y actúa sobre todas.
     // El término entra como UN filtro más, bajo su misma clave, para que
     // `seleccionAFiltroSatelite` siga siendo el único punto que conoce la forma del filtro.
     const completa: FilterSelection =
@@ -351,89 +482,109 @@ export function SateliteOrdenesListado({
 
   /**
    * Filtrar cambia el CONJUNTO, así que la página que se está viendo puede no existir en el
-   * nuevo resultado y las filas marcadas pueden desaparecer de la vista. Se emite el filtro
-   * (el módulo vuelve a la página 1) y se limpia la selección: actuar sobre una fila que ya
-   * no se ve es actuar a ciegas.
+   * nuevo resultado. Se emite el filtro (el módulo vuelve a la página 1). Las marcadas se
+   * quedan (SLT-222 R1502): el contador dice cuántas no se ven.
    */
+  // SLT-210 (R1410): los tres cambios del filtro apagan la vista puesta.
   function cambiarFiltros(nueva: FilterSelection) {
     setSeleccion(nueva);
+    setVistaPuestaId(null);
     emitir(nueva, termino);
   }
 
   function cambiarTermino(nuevo: string) {
     setTermino(nuevo);
+    setVistaPuestaId(null);
     emitir(seleccion, nuevo);
   }
 
-  /** Deja la barra como recién abierta: sin término, sin valores y sin filtros puestos. */
+  function cambiarActivos(claves: string[]) {
+    setFiltrosActivos(claves);
+    setVistaPuestaId(null);
+  }
+
+  /**
+   * Deja la barra como recién abierta: sin término, sin valores y sin filtros puestos.
+   * SLT-210 (R1407/R1410): apaga la vista puesta y NO toca el orden —«Limpiar todo» deshace lo
+   * que esconde filas, y el orden no esconde ninguna (mismo criterio que `/ordenes`, ficha 356)—.
+   */
   function limpiarFiltros() {
     setSeleccion({});
     setTermino("");
     setFiltrosActivos([]);
     setResetFiltros((n) => n + 1);
-    setSeleccionados(new Set());
+    // SLT-222 R1502: «Limpiar todo» limpia la BARRA, no lo marcado (eso es «Limpiar»).
+    setVistaPuestaId(null);
     onFiltroChange({});
   }
 
-  function toggleUno(id: string, checked: boolean) {
-    setSeleccionados((prev) => {
-      const next = new Set(prev);
-      if (checked) next.add(id);
-      else next.delete(id);
+  /**
+   * SLT-210 (R1409) — REPONER UNA VISTA: los tres estados de la barra a la vez, la señal de las
+   * dos siembras y la vista marcada como puesta. Las siembras no emiten, así que el filtro nuevo
+   * se emite aquí una sola vez (el módulo vuelve a la página 1). El orden no se toca.
+   */
+  function aplicarVista(vistaId: string, filtro: VistaFiltroPayload) {
+    // Un valor puesto sin su control montado sería un filtro invisible y aplicado.
+    const activos = [
+      ...filtro.activos,
+      ...Object.keys(filtro.seleccion).filter((clave) => !filtro.activos.includes(clave)),
+    ];
+    setFiltrosActivos(activos);
+    setSeleccion(filtro.seleccion);
+    setTermino(filtro.termino);
+    setSiembraTermino(filtro.termino);
+    setSiembraSeleccion(filtro.seleccion);
+    setSenalSiembra((n) => n + 1);
+    setVistaPuestaId(vistaId);
+    emitir(filtro.seleccion, filtro.termino);
+  }
+
+  function toggleUno(orden: RecepcionSateliteDTO, checked: boolean) {
+    setMarcadas((prev) => {
+      const next = new Map(prev);
+      if (checked) next.set(orden.id, orden);
+      else next.delete(orden.id);
       return next;
     });
   }
 
-  function toggleTodos(ids: string[], checked: boolean) {
-    setSeleccionados((prev) => {
-      const next = new Set(prev);
-      for (const id of ids) {
-        if (checked) next.add(id);
-        else next.delete(id);
+  // R1512/R1513: marca o desmarca SOLO las filas visibles; lo de fuera se queda.
+  function toggleTodos(filas: readonly RecepcionSateliteDTO[], checked: boolean) {
+    setMarcadas((prev) => {
+      const next = new Map(prev);
+      for (const orden of filas) {
+        if (checked) next.set(orden.id, orden);
+        else next.delete(orden.id);
       }
       return next;
     });
   }
 
   /**
-   * R47 — Seleccionadas REALES: las de la PÁGINA VISIBLE que están marcadas.
-   *
-   * Antes esto se leía contra el conjunto entero, porque el conjunto entero era lo que se
-   * pintaba. Con la tabla paginada, la selección se acota a la página: lo marcado en otra
-   * página no se pierde (se recupera al volver), pero NO entra en ninguna acción de lote —
-   * actuar sobre una fila que no se está viendo es actuar a ciegas—. Molde: `OrdenesModule`.
+   * SLT-222 R1505 — las seleccionadas que ACTÚAN son TODAS las marcadas: las de la página
+   * visible (dato fresco) y las de otras búsquedas o páginas, con su fila guardada. Sustituye
+   * a R47 de la 170, que acotaba la acción a la página visible y avisaba de lo que quedaba
+   * fuera (Q-K7). Ahora el contador dice cuántas no se ven y la acción se las lleva.
    */
   const seleccionadas = useMemo(
-    () => ordenes.filter((orden) => seleccionados.has(orden.id)),
-    [ordenes, seleccionados],
+    () => filasSeleccionadas(marcadas, ordenes),
+    [marcadas, ordenes],
   );
-
-  /**
-   * Q-K7 (deuda de la 170 · FASE 2, T K.3) — marcadas FUERA de la página visible.
-   *
-   * Es la diferencia entre lo que el usuario ha marcado (`seleccionados`, que sobrevive al
-   * cambio de página) y lo que de verdad entra en la acción de lote (`seleccionadas`, sólo
-   * las de la página que se está viendo). Hasta ahora esa diferencia existía y NADA la
-   * decía: se marcaba en la página 1, se pasaba a la 2 y las marcas seguían ahí, invisibles
-   * y sin participar. Se cuenta a partir de los DOS conjuntos que ya gobiernan la selección
-   * —no se cambia ni la selección ni la acción, esto es sólo un aviso—.
-   */
-  const marcadasFuera = seleccionados.size - seleccionadas.length;
 
   /**
    * Feature 184 — Tanda A (T A.5, R18-R26) — LA PODA de la selección.
    *
-   * El aviso de arriba hizo VISIBLE y CONTABLE un hueco que ya existía: la selección
-   * sobrevive al cambio de página (a propósito) y se limpia al cambiar los filtros (a
-   * propósito), pero NUNCA se limpiaba cuando una orden marcada dejaba de estar en el listado
-   * —por ejemplo al reportarle un incidente, que la saca del flujo—. La marca seguía viva,
-   * invisible, y el aviso contaba órdenes que ya no existen ahí.
+   * La selección sobrevive a páginas y búsquedas (a propósito, SLT-222), pero una orden
+   * marcada puede dejar de estar en el listado —por ejemplo al reportarle un incidente, que la
+   * saca del flujo—. Sin poda la marca seguiría viva, invisible, y el contador contaría
+   * órdenes que ya no existen ahí.
    *
    * Qué hace: tras cada lectura del listado, si hay marcas FUERA de la página visible,
-   * pregunta al servidor cuáles siguen en el conjunto filtrado y se queda con
-   * `seleccionados ∩ (idsPágina ∪ vigentes)`. La pertenencia la decide el servidor sobre el
-   * conjunto entero (R19), nunca la página: por eso una marca de otra página no se pierde por
-   * el solo hecho de no verse (R20).
+   * pregunta al servidor cuáles siguen en el listado de la bodega y se queda con
+   * `marcadas ∩ (idsPágina ∪ vigentes)`. La pertenencia la decide el servidor sobre el
+   * listado entero SIN filtros ni término (SLT-222 R1514, antes R19/R25: el conjunto
+   * filtrado), nunca la página ni la búsqueda vigente: una marca no se pierde por el solo
+   * hecho de no verse (R20) ni por no cumplir la búsqueda actual.
    *
    * Q3 CERRADA (decisión del humano): al podar NO se avisa. La poda corrige un número que
    * estaba mal; el contador simplemente pasa a ser correcto, y un tercer mensaje en una barra
@@ -466,11 +617,11 @@ export function SateliteOrdenesListado({
       // otra página y la intersección conservaría lo que no debe.
       if (!vigente || vigentes === null) return; // R22: no se pudo comprobar ⇒ no se poda
       const conservar = new Set(vigentes);
-      setSeleccionados((prev) => {
-        const podado = new Set(
-          [...prev].filter((id) => enPagina.has(id) || conservar.has(id)),
+      setMarcadas((prev) => {
+        const podado = new Map(
+          [...prev].filter(([id]) => enPagina.has(id) || conservar.has(id)),
         );
-        // R24: si no retira nada, NO se reemplaza el Set. Un Set nuevo equivalente sería un
+        // R24: si no retira nada, NO se reemplaza el Map. Uno nuevo equivalente sería un
         // re-render y, con él, una segunda comprobación que no cambia nada.
         return podado.size === prev.size ? prev : podado;
       });
@@ -488,10 +639,12 @@ export function SateliteOrdenesListado({
   const estadoUnico =
     estadosSeleccionados.size === 1 ? [...estadosSeleccionados][0] : null;
   const haySeleccion = seleccionadas.length > 0;
-  // El texto del contador de selección (`role="status"`): una FRASE que nombra el estado común.
-  const textoSeleccion = `${seleccionadas.length} seleccionada(s) en esta página${
-    estadoUnico === null ? " · estados mezclados" : ` · ${etiquetaEstado(estadoUnico)}`
-  }`;
+  // El texto del contador de selección (`role="status"`): el TOTAL marcado y cuántas no se ven
+  // (SLT-222 R1506/D8, mismo texto que `/ordenes`), más el estado común de TODAS las marcadas.
+  const textoSeleccion = `${textoContadorSeleccion(
+    seleccionadas.length,
+    contarFueraDeVista(marcadas, ordenes),
+  )}${estadoUnico === null ? " · estados mezclados" : ` · ${etiquetaEstado(estadoUnico)}`}`;
 
   /**
    * R48 — `true` si hay al menos una orden de ese estado ENTRE LAS SELECCIONADAS.
@@ -526,14 +679,15 @@ export function SateliteOrdenesListado({
       {
         id: "seleccionar",
         value: "Seleccionar",
-        // R47: "seleccionar todo" marca EXACTAMENTE las filas de la página visible.
+        // R47 / SLT-222 R1512-R1513: "seleccionar todo" marca y desmarca EXACTAMENTE las filas
+        // de la página visible; lo marcado fuera de ella se queda.
         renderHeader: () => {
           const ids = ordenes.map((orden) => orden.id);
           return (
             <SelectAllCheckbox
               selectableIds={ids}
               selectedIds={seleccionados}
-              onToggleAll={(checked) => toggleTodos(ids, checked)}
+              onToggleAll={(checked) => toggleTodos(ordenes, checked)}
               ariaLabel="Seleccionar todas las órdenes de esta página"
             />
           );
@@ -541,7 +695,7 @@ export function SateliteOrdenesListado({
         render: (orden: RecepcionSateliteDTO) => (
           <Checkbox
             checked={seleccionados.has(orden.id)}
-            onCheckedChange={(checked) => toggleUno(orden.id, checked === true)}
+            onCheckedChange={(checked) => toggleUno(orden, checked === true)}
             aria-label={`Seleccionar ${orden.numRemision}`}
           />
         ),
@@ -597,25 +751,12 @@ export function SateliteOrdenesListado({
               hayFiltros
               ? `${total} de ${totalSinFiltros} órdenes`
               : `${total} órdenes`}
-          {/* Q-K7 — el aviso de lo marcado en OTRAS páginas.
-              Va aquí dentro y en letra menor A PROPÓSITO: la barra ya dice dos cosas (el
-              contador/la selección a la izquierda y, si los estados están mezclados, el
-              motivo por el que no hay acción a la derecha), y un tercer mensaje al mismo
-              nivel estorbaría más de lo que ayuda. Es una coletilla SUBORDINADA a la línea
-              de la selección, que es de lo que habla.
-              Y sólo aparece cuando hay algo que avisar: si todo lo marcado está a la vista
-              no se pinta nada. El número es el de FUERA de la página, no el total marcado:
-              decir el total convertiría el aviso en mentira en cuanto se marca una fila de
-              la página actual. */}
-          {marcadasFuera > 0 ? (
-            <span className="mt-0.5 block text-xs">
-              Tienes {marcadasFuera} orden(es) marcadas en otras páginas que no
-              entran en esta acción.
-            </span>
-          ) : null}
+          {/* SLT-222 R1505: aquí vivía el aviso Q-K7 («…marcadas en otras páginas que no
+              entran en esta acción»). Ya no aplica: la acción se lleva TODAS las marcadas y
+              el contador dice cuántas no se ven («· M fuera de esta búsqueda»). */}
           {/* FICHA 355 — la explicación de los estados que este listado no alcanza.
-              Misma forma y mismo tamaño que el aviso de Q-K7: una nota subordinada al
-              contador, no un tercer mensaje al mismo nivel. Y aquí y no en el vacío de la
+              Una nota subordinada al contador, no un tercer mensaje al mismo nivel. Y aquí
+              y no en el vacío de la
               tabla porque a 390 px aquella celda queda fuera de la vista (ver
               `mensajeEstadosFueraDelListado`). */}
           {etiquetasFuera.length > 0 ? (
@@ -697,6 +838,13 @@ export function SateliteOrdenesListado({
               Selecciona órdenes del mismo estado para actuar sobre ellas.
             </p>
           ) : null}
+          {/* SLT-222 R1507: «Limpiar» desmarca TODO, visible o no, como en `/ordenes`. Es la
+              única forma de quitar de golpe lo marcado en otras búsquedas. */}
+          {haySeleccion ? (
+            <Button type="button" size="sm" variant="ghost" onClick={() => setMarcadas(new Map())}>
+              Limpiar
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -712,23 +860,55 @@ export function SateliteOrdenesListado({
         // `ReactNode` opaco): solo lo coloca.
         filtros={
           <BuscadorFiltros
-            label="Buscar"
+            escaneo
+            // SLT-160 (R772, DC2): nombre accesible propio del listado.
+            label="Buscar órdenes de la bodega"
             placeholder={PLACEHOLDER_BUSQUEDA}
             minChars={BUSQUEDA_MIN_CHARS}
             onChange={cambiarTermino}
             filtros={filtrosOfrecidos}
             activos={filtrosActivos}
-            onActivosChange={setFiltrosActivos}
+            onActivosChange={cambiarActivos}
+            // SLT-210 (R1409): la costura de la 453 para reponer el término de una vista.
+            siembra={{ senal: senalSiembra, termino: siembraTermino }}
+            // SLT-210 (R1400/R1411): el control «Vistas», al principio de la fila, con su
+            // superficie PROPIA. Las vistas son de cada usuario (P1), como en `/ordenes`.
+            vistas={{
+              superficie: "ordenes-bodega-satelite",
+              filtroActual,
+              catalogo: catalogoVistas,
+              vistaPuestaId,
+              onAplicar: aplicarVista,
+              onGuardada: setVistaPuestaId,
+            }}
             // "Limpiar todo" lo pone la barra al final de la fila, igual que en `/ordenes`.
             onLimpiarTodo={limpiarFiltros}
             hayFiltrosAplicados={filtrosActivos.length > 0 || hayFiltros}
           >
+            {/* SLT-210 (R1400/R1413) — los dos conmutadores de orden de `/ordenes`, en el mismo
+                sitio (primeros hijos, tras «Vistas»), en solo icono y con el mismo tamaño: no
+                se les pasa ninguna clase propia. */}
+            <SegmentedToggle
+              ariaLabel={ETIQUETA_CAMPO_ORDEN}
+              options={OPCIONES_CAMPO_ORDEN}
+              valor={sortBy}
+              onChange={cambiarCampoOrden}
+              soloIcono
+            />
+            <SegmentedToggle
+              ariaLabel={ETIQUETA_DIRECCION[sortBy]}
+              options={OPCIONES_DIRECCION[sortBy]}
+              valor={sortDir}
+              onChange={cambiarDireccionOrden}
+              soloIcono
+            />
             {filtrosMontados.length > 0 ? (
               <FilterComponent
                 key={resetFiltros}
                 filters={filtrosMontados}
                 onChange={cambiarFiltros}
                 debounceMs={0}
+                siembra={{ senal: senalSiembra, seleccion: siembraSeleccion }}
               />
             ) : null}
           </BuscadorFiltros>

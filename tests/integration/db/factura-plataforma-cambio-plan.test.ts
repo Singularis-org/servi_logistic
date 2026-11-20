@@ -27,11 +27,15 @@ import { crearPlan, planesEnTx, revertida, sqlstateDe } from "./_fixtures/planes
 // `organizacion.plan_cambio_*` y los aplica la cola real.
 //
 // R30 por P9 (T11.2): un cambio a un tipo más largo guardado por `PlanesService` con su reloj fijo.
-// T15.3: R36 (la periodicidad de órdenes del plan editada en los dos sentidos, por `PlanesService`) y R38 (un
+// T15.3: R36 (la periodicidad de órdenes del plan cambiada en los dos sentidos; desde SLT-135, a mano, porque
+// editar ya no la cambia en el acto) y R38 (un
 // cambio a un plan de órdenes mensuales con efecto en un corte; el caso «R16: un plan con órdenes mensuales
 // tomado por una factura quincenal…» es el mismo con tipo quincenal → mensual). R33 queda fuera de este archivo.
 // Review m4 (R39, humano 2026-11-11): el cierre espera también a una edición programada de la periodicidad del
 // plan que el barrido aún no aplicó, y no abre la siguiente con la periodicidad vieja.
+// SLT-128 (design §2.2; R7, R9): m4 se rehace con la recepción de cada empresa. El cierre espera a la recepción
+// pendiente de la empresa (de cualquier edición programada, no solo de la periodicidad); cada empresa cambia de
+// periodicidad en SU recepción y la factura que se cierra después lleva el nombre nuevo en la cuota.
 //
 // Precios: quincenal 15 500 = 31 000 al mes con tipo quincenal; mensual 31 000; anual 372 000. Las horas son
 // las de la plataforma (−06:00): las 00:00 del día D son `cero(D)`.
@@ -201,14 +205,24 @@ async function asignar(
 }
 
 /**
- * R36: el superadmin edita en el acto la periodicidad de órdenes del plan el 10 de noviembre por `PlanesService`
- * (con el repositorio real), mandando el resto del plan tal cual.
+ * R36: la periodicidad de órdenes del plan cambia el 10 de noviembre, con la factura en curso ya abierta. SLT-135:
+ * editar ya no la cambia en el acto (programa, y cada empresa la recibe en su período siguiente); aquí lo que se
+ * mide es el cierre de la factura con el plan ya cambiado, así que el cambio se escribe a mano, como dueño.
+ */
+async function periodicidadDelPlanAMano(tx: TxDeTest, planId: string, periodicidadOrdenes: "quincenal" | "mensual"): Promise<void> {
+  const n = await tx.$executeRawUnsafe(`UPDATE "plan" SET "periodicidad_ordenes" = $2 WHERE "id" = $1`, planId, periodicidadOrdenes);
+  if (n !== 1) throw new Error(`no existe el plan ${planId}`);
+}
+
+/**
+ * El superadmin programa la periodicidad de órdenes del plan el 10 de noviembre por `PlanesService` (con el
+ * repositorio real), mandando el resto del plan tal cual.
  */
 async function editarPeriodicidad(
   tx: TxDeTest,
   planId: string,
   periodicidadOrdenes: "quincenal" | "mensual",
-  programada: { vigenteDesde: string; nombre?: string } | null = null,
+  programada: { vigenteDesde: string; nombre?: string },
 ) {
   const plan = await planesEnTx(tx).plan(planId);
   if (plan === null) throw new Error(`no existe el plan ${planId}`);
@@ -216,26 +230,38 @@ async function editarPeriodicidad(
   const servicio = new PlanesService(planesEnTx(tx), () => new Date("2026-11-10T15:00:00.000Z"));
   return servicio.editar(SUPERADMIN, {
     planId,
-    nombre: programada?.nombre ?? plan.nombre,
+    nombre: programada.nombre ?? plan.nombre,
     topes: plan.topes,
     modulos: plan.modulos,
     precio: plan.precio,
     costoPorOrden: plan.costoPorOrden,
     costoPorOrdenPorcentual: plan.costoPorOrdenPorcentual,
     periodicidadOrdenes,
-    vigenteDesde: programada?.vigenteDesde ?? null,
+    vigenteDesde: programada.vigenteDesde,
   });
 }
 
-/** El barrido de `plan_cambios_vencidos` aplica la edición programada del plan con su reloj. */
-async function aplicarEdicionProgramada(tx: TxDeTest, planId: string, ahora: string): Promise<void> {
+/**
+ * SLT-128 (design §3.3): la cola (o el barrido) da a UNA empresa la edición programada del plan, en su recepción,
+ * con su reloj.
+ */
+async function recibirEdicionProgramada(tx: TxDeTest, planId: string, organizacionId: string, ahora: string): Promise<void> {
   const [{ cambio }] = await tx.$queryRawUnsafe<{ cambio: string }[]>(
     `SELECT "id" AS cambio FROM "plan_cambio_programado" WHERE "plan_id" = $1`,
     planId,
   );
   await fijarEmpresa(tx, "");
-  const r = await planesEnTx(tx).aplicarCambioProgramado({ planId, cambioId: cambio }, new Date(ahora));
-  if (r.estado !== "aplicado") throw new Error(`aplicarCambioProgramado: ${JSON.stringify(r)}`);
+  const r = await planesEnTx(tx).recibirCambio({ planId, cambioId: cambio }, organizacionId, new Date(ahora));
+  if (r.estado !== "aplicado") throw new Error(`recibirCambio: ${JSON.stringify(r)}`);
+}
+
+/** La recepción aún sin recibir de la empresa, como `cero(...)`; `null` si no tiene. */
+async function recepcionDe(tx: TxDeTest, organizacionId: string): Promise<string | null> {
+  const filas = await tx.$queryRawUnsafe<{ recibe: string }[]>(
+    `SELECT to_char("recibe_at", ${ISO}) AS recibe FROM "plan_cambio_recepcion" WHERE "empresa_id" = $1 AND "recibido_at" IS NULL`,
+    organizacionId,
+  );
+  return filas[0]?.recibe ?? null;
 }
 
 /** Un pendiente guardado por otra vía (antes de esta ficha o por SQL), con su efecto a las 00:00 de `fecha`. */
@@ -548,7 +574,7 @@ describeSiHayBase("SLT-118 — las facturas de la plataforma cuando cambia el pl
       const e = await empresa(tx, cero("2026-11-01"), { id: plan, tipo: "mensual" });
       await cerrar(tx, e.id, "2026-11-10T14:00:00.000Z");
       const antesDeEditar = await fotoDeFilas(tx, e.id);
-      const editado = await editarPeriodicidad(tx, plan, "mensual");
+      await periodicidadDelPlanAMano(tx, plan, "mensual");
       const trasEditar = await fotoDeFilas(tx, e.id);
       const emitidas = [
         await cerrar(tx, e.id, corrida("2026-11-16")),
@@ -556,10 +582,9 @@ describeSiHayBase("SLT-118 — las facturas de la plataforma cuando cambia el pl
         await cerrar(tx, e.id, corrida("2026-12-16")),
         await cerrar(tx, e.id, corrida("2027-01-01")),
       ];
-      return { plan, editado, antesDeEditar, trasEditar, emitidas, lista: await facturas(tx, e.id) };
+      return { plan, antesDeEditar, trasEditar, emitidas, lista: await facturas(tx, e.id) };
     });
-    expect(r.editado).toMatchObject({ estado: "ok", cambio: true });
-    // Editar no toca la factura en curso: sigue quincenal desde el 1.
+    // Cambiar el plan no toca la factura en curso: sigue quincenal desde el 1.
     expect(r.trasEditar).toEqual(r.antesDeEditar);
     expect(r.emitidas).toEqual([1, 1, 0, 1]);
     expect(r.lista.map((f) => [f.estado, f.desde, f.hasta, f.periodicidad, f.plan_id])).toEqual([
@@ -577,16 +602,15 @@ describeSiHayBase("SLT-118 — las facturas de la plataforma cuando cambia el pl
       const e = await empresa(tx, cero("2026-11-01"), { id: plan, tipo: "mensual" });
       await cerrar(tx, e.id, "2026-11-10T14:00:00.000Z");
       const antesDeEditar = await fotoDeFilas(tx, e.id);
-      const editado = await editarPeriodicidad(tx, plan, "quincenal");
+      await periodicidadDelPlanAMano(tx, plan, "quincenal");
       const trasEditar = await fotoDeFilas(tx, e.id);
       const emitidas = [
         await cerrar(tx, e.id, corrida("2026-11-16")),
         await cerrar(tx, e.id, corrida("2026-12-01")),
         await cerrar(tx, e.id, corrida("2026-12-16")),
       ];
-      return { plan, editado, antesDeEditar, trasEditar, emitidas, lista: await facturas(tx, e.id) };
+      return { plan, antesDeEditar, trasEditar, emitidas, lista: await facturas(tx, e.id) };
     });
-    expect(r.editado).toMatchObject({ estado: "ok", cambio: true });
     expect(r.trasEditar).toEqual(r.antesDeEditar);
     // El 16 de noviembre no hay corte: la de noviembre se abrió mensual.
     expect(r.emitidas).toEqual([0, 1, 1]);
@@ -597,36 +621,172 @@ describeSiHayBase("SLT-118 — las facturas de la plataforma cuando cambia el pl
     ]);
   });
 
-  it("R39, R36: una edición programada de la periodicidad al 16 que la cola aún no aplicó a las 00:10: la del 1 al 15 queda en curso; tras aplicarla, se cierra y la siguiente se abre mensual", async () => {
+  it("SLT-128 R7, R9 (m4): órdenes quincenales → mensuales con F = 16 y dos empresas: la mensual cambia el 1 de diciembre y la bimestral el 1 de enero; cada cierre espera a SU recepción", async () => {
     const r = await revertida(base, async (tx) => {
       const plan = await planConPrecio(tx, "31000.00");
-      const e = await empresa(tx, cero("2026-11-01"), { id: plan, tipo: "mensual" });
-      await cerrar(tx, e.id, "2026-11-10T14:00:00.000Z");
+      const mensual = await empresa(tx, cero("2026-11-01"), { id: plan, tipo: "mensual" });
+      const bimestral = await empresa(tx, cero("2026-11-01"), { id: plan, tipo: "bimestral" });
+      await cerrar(tx, mensual.id, "2026-11-10T14:00:00.000Z");
+      await cerrar(tx, bimestral.id, "2026-11-10T14:00:00.000Z");
       const programada = await editarPeriodicidad(tx, plan, "mensual", { vigenteDesde: "2026-11-16" });
-      // Control: una edición programada al 16 que no cambia la periodicidad (solo el nombre) no hace esperar.
+      const recepciones = { mensual: await recepcionDe(tx, mensual.id), bimestral: await recepcionDe(tx, bimestral.id) };
+      // Control: una edición programada al 16 que no cambia la periodicidad (solo el nombre), con una empresa
+      // mensual: su recepción es el 1 de diciembre, así que el cierre del 16 no la espera.
       const otro = await planConPrecio(tx, "31000.00");
       const control = await empresa(tx, cero("2026-11-01"), { id: otro, tipo: "mensual" });
       await editarPeriodicidad(tx, otro, "quincenal", { vigenteDesde: "2026-11-16", nombre: `Otro ${randomUUID().slice(0, 8)}` });
       const controlEl16 = await cerrar(tx, control.id, corrida("2026-11-16"));
-      // El barrido va tarde: a las 00:10 del 16 la edición sigue programada.
-      const enEspera = await cerrar(tx, e.id, corrida("2026-11-16"));
-      const esperando = await facturas(tx, e.id);
-      await aplicarEdicionProgramada(tx, plan, mas(cero("2026-11-16"), 40));
-      const trasAplicar = await cerrar(tx, e.id, mas(cero("2026-11-16"), 70));
-      const el1Dic = await cerrar(tx, e.id, corrida("2026-12-01"));
-      return { plan, programada, controlEl16, enEspera, esperando, trasAplicar, el1Dic, lista: await facturas(tx, e.id) };
+
+      const deLaMensual: number[] = [];
+      const deLaBimestral: number[] = [];
+      deLaMensual.push(await cerrar(tx, mensual.id, corrida("2026-11-16")));
+      deLaBimestral.push(await cerrar(tx, bimestral.id, corrida("2026-11-16")));
+      // El 1 de diciembre la cola va tarde con la mensual: a las 00:10 la del 16 al 30 no se cierra.
+      deLaMensual.push(await cerrar(tx, mensual.id, corrida("2026-12-01")));
+      const mensualEsperando = await facturas(tx, mensual.id);
+      deLaBimestral.push(await cerrar(tx, bimestral.id, corrida("2026-12-01")));
+      await recibirEdicionProgramada(tx, plan, mensual.id, mas(cero("2026-12-01"), 40));
+      deLaMensual.push(await cerrar(tx, mensual.id, mas(cero("2026-12-01"), 70)));
+      deLaMensual.push(await cerrar(tx, mensual.id, corrida("2026-12-16")));
+      deLaBimestral.push(await cerrar(tx, bimestral.id, corrida("2026-12-16")));
+      // El 1 de enero, lo mismo con la bimestral; su recepción es la última y promueve el plan.
+      deLaBimestral.push(await cerrar(tx, bimestral.id, corrida("2027-01-01")));
+      const bimestralEsperando = await facturas(tx, bimestral.id);
+      await recibirEdicionProgramada(tx, plan, bimestral.id, mas(cero("2027-01-01"), 40));
+      deLaBimestral.push(await cerrar(tx, bimestral.id, mas(cero("2027-01-01"), 70)));
+      deLaMensual.push(await cerrar(tx, mensual.id, corrida("2027-01-01")));
+      for (const fecha of ["2027-01-16", "2027-02-01"]) {
+        deLaMensual.push(await cerrar(tx, mensual.id, corrida(fecha)));
+        deLaBimestral.push(await cerrar(tx, bimestral.id, corrida(fecha)));
+      }
+      const [columna] = await tx.$queryRawUnsafe<{ p: string }[]>(`SELECT "periodicidad_ordenes" AS p FROM "plan" WHERE "id" = $1`, plan);
+      return {
+        programada,
+        recepciones,
+        controlEl16,
+        deLaMensual,
+        deLaBimestral,
+        mensualEsperando,
+        bimestralEsperando,
+        columna: columna.p,
+        mensual: await facturas(tx, mensual.id),
+        bimestral: await facturas(tx, bimestral.id),
+      };
     });
     expect(r.programada).toMatchObject({ estado: "ok", cambio: true });
+    expect(r.recepciones).toEqual({ mensual: cero("2026-12-01"), bimestral: cero("2027-01-01") });
     expect(r.controlEl16).toBe(1);
-    expect([r.enEspera, r.trasAplicar, r.el1Dic]).toEqual([0, 1, 1]);
+    // Mensual: 16 nov, 1 dic (espera), 1 dic tras recibir, 16 dic (sin corte), 1 ene, 16 ene (sin corte), 1 feb.
+    expect(r.deLaMensual).toEqual([1, 0, 1, 0, 1, 0, 1]);
+    // Bimestral: 16 nov, 1 dic, 16 dic, 1 ene (espera), 1 ene tras recibir, 16 ene (sin corte), 1 feb.
+    expect(r.deLaBimestral).toEqual([1, 1, 1, 0, 1, 0, 1]);
     // En espera no se fija ni se abre la siguiente con la periodicidad vieja.
-    expect(r.esperando.map((f) => [f.estado, f.desde, f.hasta, f.periodicidad])).toEqual([
-      ["en_curso", cero("2026-11-01"), null, "quincenal"],
+    expect(r.mensualEsperando.map((f) => [f.estado, f.desde, f.hasta, f.periodicidad])).toEqual([
+      ["cerrada", cero("2026-11-01"), cero("2026-11-16"), "quincenal"],
+      ["en_curso", cero("2026-11-16"), null, "quincenal"],
     ]);
-    expect(r.lista.map((f) => [f.estado, f.desde, f.hasta, f.periodicidad, f.plan_id])).toEqual([
-      ["cerrada", cero("2026-11-01"), cero("2026-11-16"), "quincenal", r.plan],
-      ["cerrada", cero("2026-11-16"), cero("2026-12-01"), "mensual", r.plan],
-      ["en_curso", cero("2026-12-01"), null, "mensual", r.plan],
+    expect(r.bimestralEsperando.at(-1)).toMatchObject({ estado: "en_curso", desde: cero("2026-12-16"), hasta: null, periodicidad: "quincenal" });
+    // R7: la en curso cierra con la periodicidad con la que se abrió; la siguiente abre en la recepción con la nueva.
+    expect(r.mensual.map((f) => [f.estado, f.desde, f.hasta, f.periodicidad])).toEqual([
+      ["cerrada", cero("2026-11-01"), cero("2026-11-16"), "quincenal"],
+      ["cerrada", cero("2026-11-16"), cero("2026-12-01"), "quincenal"],
+      ["cerrada", cero("2026-12-01"), cero("2027-01-01"), "mensual"],
+      ["cerrada", cero("2027-01-01"), cero("2027-02-01"), "mensual"],
+      ["en_curso", cero("2027-02-01"), null, "mensual"],
+    ]);
+    expect(r.bimestral.map((f) => [f.estado, f.desde, f.hasta, f.periodicidad])).toEqual([
+      ["cerrada", cero("2026-11-01"), cero("2026-11-16"), "quincenal"],
+      ["cerrada", cero("2026-11-16"), cero("2026-12-01"), "quincenal"],
+      ["cerrada", cero("2026-12-01"), cero("2026-12-16"), "quincenal"],
+      ["cerrada", cero("2026-12-16"), cero("2027-01-01"), "quincenal"],
+      ["cerrada", cero("2027-01-01"), cero("2027-02-01"), "mensual"],
+      ["en_curso", cero("2027-02-01"), null, "mensual"],
+    ]);
+    // R10: el plan pasa a mensual con la última recepción (la bimestral).
+    expect(r.columna).toBe("mensual");
+  });
+
+  it("SLT-128 R9: una edición programada de solo el nombre con recepción el 16 que la cola aún no aplicó a las 00:10: la del 1 al 15 espera; recibida, se cierra con el nombre nuevo en la cuota", async () => {
+    const r = await revertida(base, async (tx) => {
+      const plan = await planConPrecio(tx, "31000.00");
+      const e = await empresa(tx, cero("2026-11-01"), { id: plan, tipo: "quincenal" });
+      // Otra empresa del plan, mensual (recepción el 1 de diciembre): el plan no se promueve el 16 y el nombre de la
+      // cuota solo puede salir de la versión propia de `e`.
+      await empresa(tx, cero("2026-11-01"), { id: plan, tipo: "mensual" });
+      await cerrar(tx, e.id, "2026-11-10T14:00:00.000Z");
+      const [{ viejo }] = await tx.$queryRawUnsafe<{ viejo: string }[]>(`SELECT "nombre" AS "viejo" FROM "plan" WHERE "id" = $1`, plan);
+      const nombre = `Nuevo ${randomUUID().slice(0, 8)}`;
+      const programada = await editarPeriodicidad(tx, plan, "quincenal", { vigenteDesde: "2026-11-16", nombre });
+      const recepcion = await recepcionDe(tx, e.id);
+      const enEspera = await cerrar(tx, e.id, corrida("2026-11-16"));
+      const esperando = await facturas(tx, e.id);
+      await recibirEdicionProgramada(tx, plan, e.id, mas(cero("2026-11-16"), 40));
+      const trasRecibir = await cerrar(tx, e.id, mas(cero("2026-11-16"), 70));
+      const nombres = await tx.$queryRawUnsafe<{ desde: string; plan_nombre: string | null; cuota_plan_nombre: string | null }[]>(
+        `SELECT to_char("desde_at", ${ISO}) AS desde, "plan_nombre", "cuota_plan_nombre"
+           FROM "factura_plataforma" WHERE "organizacion_id" = $1 ORDER BY "desde_at"`,
+        e.id,
+      );
+      const [{ delPlan }] = await tx.$queryRawUnsafe<{ delPlan: string }[]>(`SELECT "nombre" AS "delPlan" FROM "plan" WHERE "id" = $1`, plan);
+      return { plan, programada, recepcion, enEspera, esperando, trasRecibir, nombres, nombre, viejo, delPlan, lista: await facturas(tx, e.id) };
+    });
+    expect(r.programada).toMatchObject({ estado: "ok", cambio: true });
+    expect(r.recepcion).toBe(cero("2026-11-16"));
+    expect([r.enEspera, r.trasRecibir]).toEqual([0, 1]);
+    expect(r.esperando.map((f) => [f.estado, f.desde, f.hasta])).toEqual([["en_curso", cero("2026-11-01"), null]]);
+    expect(r.lista.map(resumen)).toEqual([
+      { estado: "cerrada", desde: cero("2026-11-01"), hasta: cero("2026-11-16"), plan: r.plan, cuota: "15500.00", cuotaDesde: cero("2026-11-16"), primera: null, marca: null },
+      { estado: "en_curso", desde: cero("2026-11-16"), hasta: null, plan: r.plan, cuota: null, cuotaDesde: null, primera: null, marca: null },
+    ]);
+    // La cerrada lleva el nombre nuevo en la cuota (la de la quincena que empieza en la recepción) y la siguiente se
+    // abre con él, aunque el plan siga con el de antes hasta que lo reciba la mensual (R2, R10).
+    expect(r.nombres.map((f) => [f.desde, f.cuota_plan_nombre])).toEqual([
+      [cero("2026-11-01"), r.nombre],
+      [cero("2026-11-16"), null],
+    ]);
+    expect(r.nombres[1].plan_nombre).toBe(r.nombre);
+    expect(r.delPlan).toBe(r.viejo);
+  });
+
+  it("SLT-128 R28, R9: una recepción «no aplicada» ya no frena el cierre: la del 16 al 30 de noviembre espera mientras está pendiente y se cierra en cuanto queda no aplicada; la siguiente sigue quincenal", async () => {
+    const r = await revertida(base, async (tx) => {
+      const plan = await planConPrecio(tx, "31000.00");
+      // Órdenes quincenales → mensuales con F = 1 de diciembre, guardado sin empresas (R37 no rechaza).
+      const programada = await editarPeriodicidad(tx, plan, "mensual", { vigenteDesde: "2026-12-01" });
+      const [{ cambio }] = await tx.$queryRawUnsafe<{ cambio: string }[]>(
+        `SELECT "id" AS cambio FROM "plan_cambio_programado" WHERE "plan_id" = $1`,
+        plan,
+      );
+      // B quedó quincenal por un error de asignación (por SQL), con su recepción del 1 de diciembre.
+      const b = await empresa(tx, cero("2026-11-01"), { id: plan, tipo: "quincenal" });
+      await tx.$executeRawUnsafe(
+        `INSERT INTO "plan_cambio_recepcion" ("cambio_id", "empresa_id", "recibe_at") VALUES ($1, $2, $3::timestamp)`,
+        cambio,
+        b.id,
+        cero("2026-12-01"),
+      );
+      await cerrar(tx, b.id, "2026-11-10T14:00:00.000Z");
+      const el16 = await cerrar(tx, b.id, corrida("2026-11-16"));
+      // Pendiente: a las 00:05 del 1 la del 16 al 30 espera (R9).
+      const pendiente = await cerrar(tx, b.id, mas(cero("2026-12-01"), 5));
+      await fijarEmpresa(tx, "");
+      const recibida = await planesEnTx(tx).recibirCambio({ planId: plan, cambioId: cambio }, b.id, new Date(mas(cero("2026-12-01"), 7)));
+      // No aplicada: la corrida de las 00:10 la cierra y abre la siguiente con la versión que B conserva.
+      const noAplicada = await cerrar(tx, b.id, corrida("2026-12-01"));
+      const el16Dic = await cerrar(tx, b.id, corrida("2026-12-16"));
+      const [columna] = await tx.$queryRawUnsafe<{ p: string }[]>(`SELECT "periodicidad_ordenes" AS p FROM "plan" WHERE "id" = $1`, plan);
+      return { programada, recibida, el16, pendiente, noAplicada, el16Dic, columna: columna.p, lista: await facturas(tx, b.id) };
+    });
+    expect(r.programada).toMatchObject({ estado: "ok", cambio: true });
+    expect(r.recibida).toEqual({ estado: "no_aplicada", motivo: "cobro_quincenal_ordenes_mensuales" });
+    expect([r.el16, r.pendiente, r.noAplicada, r.el16Dic]).toEqual([1, 0, 1, 1]);
+    // El plan se promovió (la no aplicada cuenta como resuelta); B sigue quincenal.
+    expect(r.columna).toBe("mensual");
+    expect(r.lista.map((f) => [f.estado, f.desde, f.hasta, f.periodicidad])).toEqual([
+      ["cerrada", cero("2026-11-01"), cero("2026-11-16"), "quincenal"],
+      ["cerrada", cero("2026-11-16"), cero("2026-12-01"), "quincenal"],
+      ["cerrada", cero("2026-12-01"), cero("2026-12-16"), "quincenal"],
+      ["en_curso", cero("2026-12-16"), null, "quincenal"],
     ]);
   });
 
@@ -636,7 +796,7 @@ describeSiHayBase("SLT-118 — las facturas de la plataforma cuando cambia el pl
       const e = await empresa(tx, cero("2026-11-01"), { id: plan, tipo: "mensual" });
       await cerrar(tx, e.id, "2026-11-10T14:00:00.000Z");
       const antes = await fines(tx, e.id);
-      await editarPeriodicidad(tx, plan, "mensual");
+      await periodicidadDelPlanAMano(tx, plan, "mensual");
       const trasEditar = await fines(tx, e.id);
       // Antes del 16 nada se fija: el fin que manda es el guardado, no uno recalculado con la periodicidad nueva.
       const el15 = await cerrar(tx, e.id, corrida("2026-11-15"));

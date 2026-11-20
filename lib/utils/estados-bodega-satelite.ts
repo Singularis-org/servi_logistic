@@ -29,7 +29,7 @@
 //
 // Helper PURO (`lib/utils/`): sin Prisma, sin servicios, sin React.
 
-import { TRANSICIONES } from "@/lib/types/order-status-transiciones";
+import { ESTADOS_TERMINALES, TRANSICIONES } from "@/lib/types/order-status-transiciones";
 import type { OrderStatusValue } from "@/lib/types/order-status";
 
 /**
@@ -96,6 +96,70 @@ export const ESTADOS_PAQUETE_EN_ESTANTE = [
 
 /** `value` de estatus cuyo paquete esta en el estante de una bodega satelite (377/R2). */
 export type EstadoPaqueteEnEstante = (typeof ESTADOS_PAQUETE_EN_ESTANTE)[number];
+
+/**
+ * SLT-224 PR 2 (design §2.4, D6, R1721/R1723/R1725) — POR QUE UNA ORDEN CON ZONA ERRADA SE QUEDA
+ * CON ELLA, decidido SOLO por su estado. `se_mueve` = el estado no la protege (aun la puede
+ * proteger un cobro en curso, R1722, que vive en el `WHERE` del helper y no aqui).
+ *
+ *   · `estante_satelite` — el paquete esta en el estante de una satelite (377, D3).
+ *   · `finalizada`       — `ESTADOS_TERMINALES` (R1721): ya llego a un fin.
+ *   · `devolucion`       — vuelve a la central o a la tienda (P3). `por_devolver_a_bodega_central`
+ *     solo la envia el `adminSatelite` de SU zona (`EnvioDevolucionCentralService`): moverle la zona
+ *     la dejaria sin nadie que la envie. `devolucion_a_origen_por_rechazo` es la entrada del retorno.
+ *   · `por_liberar`      — `reprogramado`: el paquete espera en la bodega del cierre a que el cron lo
+ *     libere, y la liberacion decide bodega con `orden.zonaId` (P4, valor por defecto del spec).
+ */
+export type ClaseReconciliacionZona =
+  | "se_mueve"
+  | "estante_satelite"
+  | "finalizada"
+  | "devolucion"
+  | "por_liberar";
+
+const FINALIZADA = Object.fromEntries(
+  ESTADOS_TERMINALES.map((v) => [v, "finalizada" as const]),
+) as Record<(typeof ESTADOS_TERMINALES)[number], "finalizada">;
+
+const ESTANTE = Object.fromEntries(
+  ESTADOS_PAQUETE_EN_ESTANTE.map((v) => [v, "estante_satelite" as const]),
+) as Record<EstadoPaqueteEnEstante, "estante_satelite">;
+
+/**
+ * R1725 — CADA estado del catalogo, clasificado. Un `Record` sobre `OrderStatusValue`: si el
+ * catalogo gana un estado y nadie lo clasifica aqui, el typecheck falla (mismo patron que
+ * `_EnsureExhaustive` de `order-status-transiciones.ts`). `finalizada` y `estante_satelite` se
+ * construyen desde sus listas de dominio para que no haya una segunda copia que diverja.
+ */
+export const CLASE_RECONCILIACION_ZONA: Record<OrderStatusValue, ClaseReconciliacionZona> = {
+  en_preparacion: "se_mueve",
+  por_recolectar_en_tienda: "se_mueve",
+  recolectando: "se_mueve",
+  en_ruta_bodega_central: "se_mueve",
+  en_bodega_central: "se_mueve",
+  mensajero_recogiendo_en_bodega: "se_mueve",
+  en_ruta_bodega_satelite: "se_mueve",
+  en_reparto: "se_mueve",
+  // Lleva un cierre `vencido` (sin aprobar): en la practica la protege R1722 hasta que se apruebe.
+  novedad_interna: "se_mueve",
+  ...ESTANTE,
+  ...FINALIZADA,
+  por_devolver_a_bodega_central: "devolucion",
+  devolviendo_a_bodega_central: "devolucion",
+  devolucion_a_origen_por_rechazo: "devolucion",
+  novedad: "devolucion",
+  por_devolver_a_tienda: "devolucion",
+  devolviendo_a_tienda: "devolucion",
+  reprogramado: "por_liberar",
+};
+
+/**
+ * Los estados que la reconciliacion NO mueve (R1721, R1723): todo lo que no es `se_mueve`. Es el
+ * `notIn` del `findMany` de elegibles del helper compartido.
+ */
+export const ESTADOS_QUE_NO_SE_MUEVEN: readonly OrderStatusValue[] = (
+  Object.keys(CLASE_RECONCILIACION_ZONA) as OrderStatusValue[]
+).filter((v) => CLASE_RECONCILIACION_ZONA[v] !== "se_mueve");
 
 /**
  * 377/R15 — ¿el paquete de esta orden esta AHORA MISMO en el estante de una satelite?

@@ -2,14 +2,17 @@
 // SLT-58 (design §6.3; R14, R15, R18) — el formulario de crear y editar un plan del superadmin.
 //
 // Se mide lo que sale hacia la action (la inyectada por props, como hace la página) y lo que se pinta
-// con cada respuesta: la visibilidad solo ofrece «Público» y «Custom», al editar se elige «De
-// inmediato» o «A partir de» una fecha, y los `fieldErrors` de la action van junto a su campo.
+// con cada respuesta: la visibilidad solo ofrece «Público» y «Custom», al editar se programa «A partir de»
+// una fecha (SLT-135: sin la edición inmediata), y los `fieldErrors` de la action van junto a su campo.
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup, within, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import userEvent, { type UserEvent } from "@testing-library/user-event";
 
 import { PlanForm } from "@/app/(app)/plataforma/planes/_components/PlanForm";
 import type { PlanDTO, PlanResult } from "@/lib/types/planes";
+import { mananaCalendarioCR } from "@/lib/utils/fecha-cr";
+
+import { avanzarHasta, terminar, conBorrador, conBorradorDeCambio, botonDeLaLista } from "./plan-form-pasos";
 
 const ORG = "6f1c2a4e-7b1d-4c3e-9a2f-1b2c3d4e5f60";
 const PLAN_ID = "0b6f3a2e-1c4d-4e5f-8a9b-0c1d2e3f4a5b";
@@ -49,7 +52,7 @@ function montarCrear(enviar = vi.fn().mockResolvedValue(OK), onGuardado = vi.fn(
       inicioCicloPorDefecto={MANANA}
       rangoInicioCiclo={RANGO}
       rangoFechaDeEfecto={RANGO_EFECTO}
-      enviar={enviar}
+      {...conBorrador(enviar)}
       previsualizar={vi.fn().mockResolvedValue({ estado: "ok", avisos: [] })}
       onGuardado={onGuardado}
     />,
@@ -58,8 +61,20 @@ function montarCrear(enviar = vi.fn().mockResolvedValue(OK), onGuardado = vi.fn(
 }
 
 function montarEditar(enviar = vi.fn().mockResolvedValue(OK), onGuardado = vi.fn()) {
-  render(<PlanForm modo="editar" plan={PLAN} enviar={enviar} onGuardado={onGuardado} />);
+  render(<PlanForm modo="editar" plan={PLAN} {...conBorradorDeCambio(enviar)} onGuardado={onGuardado} />);
   return { enviar, onGuardado };
+}
+
+/**
+ * SLT-130 (R10): agrega una línea de descuento (sale con el primer período libre, «Quincenal») y la pasa
+ * a `periodo`. Devuelve el grupo de la línea.
+ */
+async function agregarDescuento(user: UserEvent, periodo: string): Promise<HTMLElement> {
+  await user.click(screen.getByRole("button", { name: "Agregar descuento" }));
+  const nueva = screen.getByRole("group", { name: "Descuento quincenal" });
+  await user.click(within(nueva).getByRole("combobox", { name: "Período" }));
+  await user.click(within(await screen.findByRole("listbox")).getByRole("option", { name: periodo }));
+  return screen.getByRole("group", { name: `Descuento ${periodo.toLowerCase()}` });
 }
 
 describe("SLT-58 R14 — crear un plan", () => {
@@ -81,16 +96,23 @@ describe("SLT-58 R14 — crear un plan", () => {
     await user.click(screen.getByRole("radio", { name: "Custom" }));
     await user.click(screen.getByRole("combobox", { name: "Empresa" }));
     await user.click(within(await screen.findByRole("listbox")).getByRole("option", { name: "Envíos Norte" }));
-    await user.type(screen.getByLabelText("Usuarios activos con el rol Mensajero"), "5");
-    await user.click(screen.getByRole("checkbox", { name: "Monitoreo" }));
+    // SLT-130: cada campo en su paso.
+    await avanzarHasta(user, "Precio y descuentos");
     await user.click(screen.getByRole("radio", { name: "Con monto" }));
     // SLT-66 R9: el rótulo «Monto mensual» pasa a «Costo base mensual».
     await user.type(screen.getByLabelText("Costo base mensual"), "25.50");
-    // SLT-86 (R23): el descuento anual es uno de los cuatro por período.
-    const anual = screen.getByRole("group", { name: "Descuento anual" });
-    await user.click(within(anual).getByRole("radio", { name: "Porcentaje" }));
-    await user.type(within(anual).getByRole("textbox", { name: "Porcentaje" }), "10");
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+    // SLT-86 (R23); SLT-130 (R10): el descuento anual es una línea de la lista.
+    const anual = await agregarDescuento(user, "Anual");
+    await user.click(within(anual).getByRole("radio", { name: "%" }));
+    await user.type(within(anual).getByRole("textbox", { name: "Valor" }), "10");
+    await avanzarHasta(user, "Topes");
+    await user.type(screen.getByLabelText("Usuarios activos con el rol Mensajero"), "5");
+    await avanzarHasta(user, "Módulos");
+    await user.click(screen.getByRole("checkbox", { name: "Monitoreo" }));
+    await avanzarHasta(user, "Revisar y crear");
+    // R28: el custom de una empresa sin plan espera su vista previa antes de poder crearse.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Crear plan" })).toBeEnabled());
+    await terminar(user);
 
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
     expect(enviar).toHaveBeenCalledWith({
@@ -103,6 +125,8 @@ describe("SLT-58 R14 — crear un plan", () => {
       costoPorOrden: null, // SLT-66 R8: campo nuevo; vacío = null
       costoPorOrdenPorcentual: null, // SLT-83: campo nuevo; el modo no elegido viaja null
       periodicidadOrdenes: "quincenal", // SLT-118 (R35): viaja siempre
+      beneficios: [], // SLT-214 (R15, R16): el paso «Beneficios» viaja siempre; sin tocarlo, vacío
+      niveles: [], // SLT-215 (R15, R16): el paso «Niveles» viaja siempre; sin tocarlo, vacío
       // Ajuste planes-custom (D2, D4–D6): el custom se asigna al crearlo; la empresa no tiene plan.
       tipoCobro: "mensual",
       inicioCiclo: MANANA,
@@ -116,7 +140,7 @@ describe("SLT-58 R14 — crear un plan", () => {
     const { enviar } = montarCrear();
 
     await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Libre");
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+    await terminar(user);
 
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
     expect(enviar).toHaveBeenCalledWith({
@@ -129,6 +153,8 @@ describe("SLT-58 R14 — crear un plan", () => {
       costoPorOrden: null, // SLT-66 R8: campo nuevo; vacío = null
       costoPorOrdenPorcentual: null, // SLT-83: campo nuevo; el modo no elegido viaja null
       periodicidadOrdenes: "quincenal", // SLT-118 (R35): viaja siempre
+      beneficios: [], // SLT-214 (R15, R16): el paso «Beneficios» viaja siempre; sin tocarlo, vacío
+      niveles: [], // SLT-215 (R15, R16): el paso «Niveles» viaja siempre; sin tocarlo, vacío
     });
   });
 
@@ -138,7 +164,8 @@ describe("SLT-58 R14 — crear un plan", () => {
 
     await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Plan Norte");
     await user.click(screen.getByRole("radio", { name: "Custom" }));
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+    // SLT-130 (R18): «Guardar y continuar» valida General con el esquema de la action y no deja pasar.
+    await user.click(screen.getByRole("button", { name: "Guardar y continuar" }));
 
     expect(enviar).not.toHaveBeenCalled();
     expect(screen.getByRole("combobox", { name: "Empresa" })).toHaveAttribute("aria-invalid", "true");
@@ -151,39 +178,54 @@ describe("SLT-58 R14 — crear un plan", () => {
     montarCrear(enviar);
 
     await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Libre");
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+    await terminar(user);
 
     await waitFor(() => expect(screen.getByRole("button", { name: /Crear plan/ })).toBeDisabled());
     resolver(OK);
-    await waitFor(() => expect(screen.getByRole("button", { name: /Crear plan/ })).toBeEnabled());
+    // SLT-144 (design §4.4): tras el `ok` el panel se cierra y el formulario se desmonta; hasta entonces
+    // sigue en vuelo y «Crear plan» no se vuelve a habilitar.
+    await waitFor(() => expect(screen.getByRole("button", { name: /Crear plan/ })).toBeDisabled());
   });
 });
 
 describe("SLT-58 R15 — editar: de inmediato o a partir de una fecha", () => {
-  it("R15: no ofrece cambiar la visibilidad y precarga la versión vigente", () => {
+  it("R15: no ofrece cambiar la visibilidad y precarga la versión vigente", async () => {
+    const user = userEvent.setup();
     montarEditar();
-    expect(screen.queryByRole("radiogroup", { name: "Visibilidad" })).toBeNull();
+    // SLT-130 (R9): la visibilidad se ve, pero deshabilitada; no se puede cambiar.
+    const visibilidad = screen.getByRole("radiogroup", { name: "Visibilidad" });
+    for (const radio of within(visibilidad).getAllByRole("radio")) expect(radio).toHaveAttribute("aria-disabled", "true");
     expect(screen.getByRole("textbox", { name: "Nombre" })).toHaveValue("Básico");
-    expect(screen.getByLabelText("Usuarios activos con el rol Mensajero")).toHaveValue("5");
-    // SLT-86 (R8, R23): sin tope de órdenes.
-    expect(screen.queryByLabelText("Órdenes por ciclo")).toBeNull();
+    await avanzarHasta(user, "Precio y descuentos");
     // SLT-67: el servidor serializa «10.00»; el campo lo muestra sin «.00».
     // SLT-66 R9: el rótulo «Monto mensual» pasa a «Costo base mensual».
     expect(screen.getByLabelText("Costo base mensual")).toHaveValue("10");
+    await avanzarHasta(user, "Topes");
+    expect(screen.getByLabelText("Usuarios activos con el rol Mensajero")).toHaveValue("5");
+    // SLT-86 (R8, R23): sin tope de órdenes.
+    expect(screen.queryByLabelText("Órdenes por ciclo")).toBeNull();
+    await avanzarHasta(user, "Módulos");
     expect(screen.getByRole("checkbox", { name: "Analítica" })).toHaveAttribute("aria-checked", "true");
   });
 
-  it("R15: «De inmediato» envía vigenteDesde null", async () => {
+  it("R15: abre con mañana", async () => {
+    const user = userEvent.setup();
+    montarEditar();
+    // Sin `precioDesdePorDefecto`, mañana con el reloj del navegador en la hora de la plataforma.
+    await avanzarHasta(user, "Cuándo rige");
+    expect(screen.getByLabelText("A partir de")).toHaveValue(mananaCalendarioCR());
+  });
+
+  it("R16: Programar cambio envía la fecha de A partir de", async () => {
     const user = userEvent.setup();
     const { enviar } = montarEditar();
 
-    const grupo = screen.getByRole("radiogroup", { name: "Aplicar" });
-    expect(within(grupo).getAllByRole("radio").map((r) => r.closest("label")?.textContent)).toEqual([
-      "De inmediato",
-      "A partir de",
-    ]);
+    await avanzarHasta(user, "Topes");
     await user.type(screen.getByLabelText("API keys activas"), "2");
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await avanzarHasta(user, "Revisar y programar");
+    // SLT-135 (R16): sin cambio de precio, el botón final también es «Programar cambio».
+    expect(screen.queryByRole("button", { name: "Guardar" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Programar cambio" }));
 
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
     expect(enviar).toHaveBeenCalledWith({
@@ -195,7 +237,34 @@ describe("SLT-58 R15 — editar: de inmediato o a partir de una fecha", () => {
       costoPorOrden: null, // SLT-66 R8: campo nuevo; vacío = null
       costoPorOrdenPorcentual: null, // SLT-83: campo nuevo; el modo no elegido viaja null
       periodicidadOrdenes: "quincenal", // SLT-118 (R35): viaja siempre
-      vigenteDesde: null,
+      beneficios: [], // SLT-214 (R15, R16): el paso «Beneficios» viaja siempre; sin tocarlo, vacío
+      niveles: [], // SLT-215 (R15, R16): el paso «Niveles» viaja siempre; sin tocarlo, vacío
+      // Sin tocar «A partir de», la fecha por defecto: mañana.
+      vigenteDesde: mananaCalendarioCR(),
+    });
+  });
+
+  it("R16: con cambio de precio envía la de Rige desde", async () => {
+    const user = userEvent.setup();
+    const { enviar } = montarEditar();
+
+    await avanzarHasta(user, "Precio y descuentos");
+    const mensual = screen.getByLabelText("Costo base mensual");
+    await user.clear(mensual);
+    await user.type(mensual, "12");
+    await avanzarHasta(user, "Cuándo rige");
+    expect(screen.queryByLabelText("A partir de")).toBeNull();
+    const fecha = screen.getByLabelText("Rige desde");
+    await user.clear(fecha);
+    await user.type(fecha, "2030-02-01");
+    await avanzarHasta(user, "Revisar y programar");
+    await user.click(screen.getByRole("button", { name: "Programar cambio" }));
+
+    await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
+    expect(enviar.mock.calls[0][0]).toMatchObject({
+      planId: PLAN_ID,
+      precio: { tipo: "monto", mensual: "12", descuentos: {} },
+      vigenteDesde: "2030-02-01",
     });
   });
 
@@ -206,13 +275,17 @@ describe("SLT-58 R15 — editar: de inmediato o a partir de una fecha", () => {
       ...PLAN,
       precio: { tipo: "monto", mensual: "500.00", descuentos: { anual: { tipo: "monto", monto: "5000.00" } } },
     };
-    render(<PlanForm modo="editar" plan={plan} enviar={enviar} onGuardado={vi.fn()} />);
+    render(<PlanForm modo="editar" plan={plan} {...conBorradorDeCambio(enviar)} onGuardado={vi.fn()} />);
 
+    await avanzarHasta(user, "Precio y descuentos");
     // SLT-66 R9: el rótulo «Monto mensual» pasa a «Costo base mensual».
     expect(screen.getByLabelText("Costo base mensual")).toHaveValue("500");
+    // SLT-130 (R13): el descuento del plan abre como una línea de la lista, con su tipo «Fijo».
     const anual = screen.getByRole("group", { name: "Descuento anual" });
-    expect(within(anual).getByRole("textbox", { name: "Monto fijo" })).toHaveValue("5000");
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    expect(within(anual).getByRole("radio", { name: "Fijo" })).toBeChecked();
+    expect(within(anual).getByRole("textbox", { name: "Valor" })).toHaveValue("5000");
+    // El precio no cambia (el plan ya lo tenía), así que «Cuándo rige» ofrece «Aplicar» y el botón dice «Guardar».
+    await terminar(user);
 
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
     const precio = enviar.mock.calls[0][0].precio;
@@ -225,12 +298,46 @@ describe("SLT-58 R15 — editar: de inmediato o a partir de una fecha", () => {
     const user = userEvent.setup();
     const { enviar } = montarEditar();
 
-    await user.click(screen.getByRole("radio", { name: "A partir de" }));
-    await user.type(screen.getByLabelText("Fecha"), "2030-01-15");
+    await avanzarHasta(user, "Cuándo rige");
+    const fecha = screen.getByLabelText("A partir de");
+    await user.clear(fecha);
+    await user.type(fecha, "2030-01-15");
+    await avanzarHasta(user, "Revisar y programar");
     await user.click(screen.getByRole("button", { name: "Programar cambio" }));
 
     await waitFor(() => expect(enviar).toHaveBeenCalledTimes(1));
     expect(enviar.mock.calls[0][0]).toMatchObject({ planId: PLAN_ID, vigenteDesde: "2030-01-15" });
+  });
+});
+
+describe("SLT-135 — «Cuándo rige» sin «De inmediato»", () => {
+  it("R14: Cuándo rige sin De inmediato y con A partir de", async () => {
+    const user = userEvent.setup();
+    montarEditar();
+
+    await avanzarHasta(user, "Cuándo rige");
+    expect(screen.queryByRole("radiogroup", { name: "Aplicar" })).toBeNull();
+    expect(screen.queryByRole("radio", { name: "De inmediato" })).toBeNull();
+    expect(screen.queryByText("De inmediato")).toBeNull();
+    // Un solo campo de fecha: «A partir de» con su ayuda, y no «Rige desde» (el precio no cambia).
+    const fecha = screen.getByLabelText("A partir de");
+    expect(fecha).toHaveAttribute("type", "date");
+    expect(fecha).toHaveAccessibleDescription(/Rige desde las 00:00 de ese día, hora de la plataforma\./);
+    expect(screen.queryByLabelText("Rige desde")).toBeNull();
+  });
+
+  it("R17: fecha vacía no avanza", async () => {
+    const user = userEvent.setup();
+    montarEditar();
+
+    await avanzarHasta(user, "Cuándo rige");
+    const fecha = screen.getByLabelText("A partir de");
+    await user.clear(fecha);
+    await user.click(screen.getByRole("button", { name: "Guardar y continuar" }));
+
+    await waitFor(() => expect(fecha).toHaveAttribute("aria-invalid", "true"));
+    expect(fecha.getAttribute("aria-describedby")).toBeTruthy();
+    expect(botonDeLaLista("Cuándo rige")).toHaveAttribute("aria-current", "step");
   });
 });
 
@@ -246,20 +353,25 @@ describe("SLT-58 R18 — los rechazos se explican y no dan el cambio por hecho",
     } satisfies PlanResult);
     const { onGuardado } = montarEditar(enviar);
 
-    await user.click(screen.getByRole("radio", { name: "A partir de" }));
-    await user.type(screen.getByLabelText("Fecha"), "2030-01-15");
+    await avanzarHasta(user, "Cuándo rige");
+    await user.clear(screen.getByLabelText("A partir de"));
+    await user.type(screen.getByLabelText("A partir de"), "2030-01-15");
+    await avanzarHasta(user, "Revisar y programar");
     await user.click(screen.getByRole("button", { name: "Programar cambio" }));
 
-    const fecha = await screen.findByLabelText("Fecha");
-    await waitFor(() => expect(fecha).toHaveAttribute("aria-invalid", "true"));
-    const errorFecha = document.getElementById(fecha.getAttribute("aria-describedby")!.split(" ").at(-1)!);
-    expect(errorFecha).toHaveTextContent("La fecha de vigencia tiene que ser posterior a hoy.");
-
-    const mensajero = screen.getByLabelText("Usuarios activos con el rol Mensajero");
-    expect(mensajero).toHaveAttribute("aria-invalid", "true");
+    // SLT-130 (R25): el formulario va al paso del primer error en pantalla, Topes.
+    const mensajero = await screen.findByLabelText("Usuarios activos con el rol Mensajero");
+    await waitFor(() => expect(mensajero).toHaveAttribute("aria-invalid", "true"));
     // El tope enlaza su error y la ayuda «Vacío = sin límite»; el error va primero.
     const errorMensajero = document.getElementById(mensajero.getAttribute("aria-describedby")!.split(" ")[0]);
     expect(errorMensajero).toHaveTextContent("Tope inválido.");
+
+    // La fecha conserva su error en su paso, «Cuándo rige».
+    await user.click(botonDeLaLista("Cuándo rige"));
+    const fecha = screen.getByLabelText("A partir de");
+    expect(fecha).toHaveAttribute("aria-invalid", "true");
+    const errorFecha = document.getElementById(fecha.getAttribute("aria-describedby")!.split(" ").at(-1)!);
+    expect(errorFecha).toHaveTextContent("La fecha de vigencia tiene que ser posterior a hoy.");
     expect(onGuardado).not.toHaveBeenCalled();
   });
 
@@ -272,7 +384,7 @@ describe("SLT-58 R18 — los rechazos se explican y no dan el cambio por hecho",
     const user = userEvent.setup();
     const { onGuardado } = montarEditar(vi.fn().mockResolvedValue(respuesta));
 
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await terminar(user);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(texto);
     expect(onGuardado).not.toHaveBeenCalled();
@@ -283,7 +395,7 @@ describe("SLT-58 R18 — los rechazos se explican y no dan el cambio por hecho",
     const consola = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const { onGuardado } = montarEditar(vi.fn().mockRejectedValue(new Error("red")));
 
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await terminar(user);
 
     expect(await screen.findByRole("alert")).toHaveTextContent("No se pudo guardar. Inténtalo de nuevo.");
     expect(onGuardado).not.toHaveBeenCalled();
@@ -303,11 +415,13 @@ describe("SLT-58 — revisión de diseño del formulario", () => {
     } satisfies PlanResult);
     montarEditar(enviar);
 
-    await user.click(screen.getByRole("radio", { name: "A partir de" }));
-    await user.type(screen.getByLabelText("Fecha"), "2030-01-15");
+    await avanzarHasta(user, "Cuándo rige");
+    await user.clear(screen.getByLabelText("A partir de"));
+    await user.type(screen.getByLabelText("A partir de"), "2030-01-15");
+    await avanzarHasta(user, "Revisar y programar");
     await user.click(screen.getByRole("button", { name: "Programar cambio" }));
 
-    const mensajero = screen.getByLabelText("Usuarios activos con el rol Mensajero");
+    const mensajero = await screen.findByLabelText("Usuarios activos con el rol Mensajero");
     await waitFor(() => expect(mensajero).toHaveFocus());
     expect(scroll).toHaveBeenCalled();
     expect(scroll.mock.contexts.at(-1)).toBe(mensajero);
@@ -318,7 +432,8 @@ describe("SLT-58 — revisión de diseño del formulario", () => {
     const { enviar } = montarCrear();
 
     await user.click(screen.getByRole("radio", { name: "Custom" }));
-    await user.click(screen.getByRole("button", { name: "Crear plan" }));
+    // SLT-130 (R18): la validación del cliente corre al pulsar «Guardar y continuar» en General.
+    await user.click(screen.getByRole("button", { name: "Guardar y continuar" }));
 
     expect(enviar).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.getByRole("textbox", { name: "Nombre" })).toHaveFocus());
@@ -332,7 +447,7 @@ describe("SLT-58 — revisión de diseño del formulario", () => {
     } satisfies PlanResult);
     montarEditar(enviar);
 
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await terminar(user);
 
     const aviso = await screen.findByRole("alert");
     expect(aviso).toHaveTextContent("El plan no es válido.");
@@ -343,7 +458,7 @@ describe("SLT-58 — revisión de diseño del formulario", () => {
     const user = userEvent.setup();
     montarEditar(vi.fn().mockResolvedValue({ estado: "forbidden" } satisfies PlanResult));
 
-    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await terminar(user);
 
     const aviso = await screen.findByRole("alert");
     await waitFor(() => expect(aviso).toHaveFocus());
@@ -358,7 +473,7 @@ describe("SLT-58 — revisión de diseño del formulario", () => {
         inicioCicloPorDefecto={MANANA}
         rangoInicioCiclo={RANGO}
         rangoFechaDeEfecto={RANGO_EFECTO}
-        enviar={vi.fn()}
+        {...conBorrador(vi.fn())}
         previsualizar={vi.fn().mockResolvedValue({ estado: "ok", avisos: [] })}
         onGuardado={vi.fn()}
       />,
@@ -373,8 +488,11 @@ describe("SLT-58 — revisión de diseño del formulario", () => {
     );
   });
 
-  it("los topes dicen «Sin límite» de placeholder, enlazan la ayuda y van en una sola columna", () => {
+  it("los topes dicen «Sin límite» de placeholder, enlazan la ayuda y van en una sola columna", async () => {
+    const user = userEvent.setup();
     montarCrear();
+    await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Libre");
+    await avanzarHasta(user, "Topes");
     for (const nombre of ["Usuarios activos con el rol Mensajero", "API keys activas"]) {
       const campo = screen.getByLabelText(nombre);
       expect(campo).toHaveAttribute("placeholder", "Sin límite");
@@ -383,14 +501,19 @@ describe("SLT-58 — revisión de diseño del formulario", () => {
     }
   });
 
-  it("las casillas de módulos toman su nombre del <label> visible, sin aria-label duplicado", () => {
+  it("las casillas de módulos toman su nombre del <label> visible, sin aria-label duplicado", async () => {
+    const user = userEvent.setup();
     montarCrear();
+    await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Libre");
+    await avanzarHasta(user, "Módulos");
     expect(screen.getByRole("checkbox", { name: "Monitoreo" })).not.toHaveAttribute("aria-label");
   });
 
   it("el precio ofrece «Con monto» (no «Mensual») y cada descuento lleva un título visible, sin «Pago anual»", async () => {
     const user = userEvent.setup();
     montarCrear();
+    await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Libre");
+    await avanzarHasta(user, "Precio y descuentos");
 
     // SLT-66 R9: el grupo «Precio informativo» pasa a «Costo base».
     const precio = screen.getByRole("radiogroup", { name: "Costo base" });
@@ -401,26 +524,22 @@ describe("SLT-58 — revisión de diseño del formulario", () => {
     await user.click(screen.getByRole("radio", { name: "Con monto" }));
 
     // SLT-86 (R23): el pago anual fijo y su descuento se van; entra un descuento por período.
+    // SLT-130 (R10): los descuentos son una lista con su título visible; cada línea se nombra por su período.
     expect(screen.queryByRole("group", { name: "Pago anual" })).toBeNull();
-    const anual = screen.getByRole("group", { name: "Descuento anual" });
-    expect(within(anual).getByText("Descuento anual")).toBeVisible();
-    expect(within(anual).getByRole("radiogroup", { name: "Descuento anual" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Descuentos" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Descuentos" })).toBeVisible();
+    const anual = await agregarDescuento(user, "Anual");
+    expect(within(anual).getByRole("radiogroup", { name: "Tipo del descuento" })).toBeInTheDocument();
   });
 
-  it("al editar, el botón dice «Programar cambio» con «A partir de» y vuelve a «Guardar» con «De inmediato»", async () => {
+  it("el pie con el botón de enviar queda fijo al fondo del panel", async () => {
+    // SLT-130 (design §3): el pie del componente de pasos queda fuera del contenido con scroll, sin `sticky`.
     const user = userEvent.setup();
-    montarEditar();
-
-    expect(screen.getByRole("button", { name: "Guardar" })).toBeInTheDocument();
-    await user.click(screen.getByRole("radio", { name: "A partir de" }));
-    expect(screen.getByRole("button", { name: "Programar cambio" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Guardar" })).toBeNull();
-    await user.click(screen.getByRole("radio", { name: "De inmediato" }));
-    expect(screen.getByRole("button", { name: "Guardar" })).toBeInTheDocument();
-  });
-
-  it("el pie con el botón de enviar queda fijo al fondo del panel", () => {
     montarCrear();
-    expect(screen.getByRole("button", { name: "Crear plan" }).parentElement).toHaveClass("sticky", "bottom-0");
+    await user.type(screen.getByRole("textbox", { name: "Nombre" }), "Libre");
+    await avanzarHasta(user, "Revisar y crear");
+    const boton = screen.getByRole("button", { name: "Crear plan" });
+    expect(boton.closest(".overflow-y-auto")).toBeNull();
+    expect(boton.closest(".flex-none.border-t")).not.toBeNull();
   });
 });

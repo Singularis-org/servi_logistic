@@ -6,7 +6,6 @@ import { sinRetenidas } from "@/tests/fixtures/retenidas-doble";
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 import { filtrosConLimites, type FiltrosDescargaGestiones } from "@/lib/types/filtros-cierres";
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
-import type { ICierresAdminRepository } from "@/lib/interfaces/repositories/ICierresAdminRepository";
 import type { ICierresBodegaAdminRepository } from "@/lib/interfaces/repositories/ICierresBodegaAdminRepository";
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { IZonaRepository } from "@/lib/interfaces/repositories/IZonaRepository";
@@ -16,6 +15,7 @@ import type {
   CierreGestionDescargaRow,
   RechazoTiendaDescargaDTO,
 } from "@/lib/interfaces/services/ICierresAdminService";
+import { dobleCierresAdmin } from "@/tests/fixtures/dobles/cierres-admin-repository";
 
 // La mecanica del tope (N entra, N+1 no) no depende del valor real: se fija en 2.
 vi.mock("@/lib/config/descarga", async (original) => {
@@ -112,15 +112,10 @@ const R1: RechazoTiendaDescargaDTO = {
 };
 
 function repoAdmin(filas: CierreGestionDescargaRow[]) {
-  const findGestionesPorAlcanceCompleto = vi.fn(async () => filas);
-  const findRechazosTiendaModeloNuevoCompleto = vi.fn(async () => [R1]);
-  return {
-    findGestionesPorAlcanceCompleto,
-    findRechazosTiendaModeloNuevoCompleto,
-  } as unknown as ICierresAdminRepository & {
-    findGestionesPorAlcanceCompleto: typeof findGestionesPorAlcanceCompleto;
-    findRechazosTiendaModeloNuevoCompleto: typeof findRechazosTiendaModeloNuevoCompleto;
-  };
+  return dobleCierresAdmin({
+    findGestionesPorAlcanceCompleto: vi.fn(async () => filas),
+    findRechazosTiendaModeloNuevoCompleto: vi.fn(async () => [R1]),
+  });
 }
 
 function servicioAdmin(repo: ReturnType<typeof repoAdmin>) {
@@ -198,8 +193,11 @@ describe("SLT-113 — servicio de la descarga «Detalle» de /cierres-admin", ()
     expect(r.status === "ok" ? r.rechazosDeTienda : r.status).toEqual([R1]);
   });
 
-  it("R376 (c): la satelite recibe el dia del cargo y el fulfillment en null; la central, intactos", async () => {
-    const sat = await servicioAdmin(repoAdmin([fila("N-1", "nuevo")])).listarGestionesCierresAdminCompleto(
+  it("R376 (c) + R482: la satelite recibe el dia del cargo y el bloque de la empresa en null; la central, intactos", async () => {
+    // El COD del bloque distinto del monto recibido: que no se pueda sacar de otro campo por casualidad.
+    const filaSat = fila("N-1", "nuevo");
+    filaSat.ingresoEmpresa = { ...filaSat.ingresoEmpresa!, montoCobrar: "24990.00" };
+    const sat = await servicioAdmin(repoAdmin([filaSat])).listarGestionesCierresAdminCompleto(
       SATELITE,
       FILTROS,
     );
@@ -210,24 +208,25 @@ describe("SLT-113 — servicio de la descarga «Detalle» de /cierres-admin", ()
     if (sat.status !== "ok" || central.status !== "ok") throw new Error("se esperaba ok");
 
     expect(sat.items[0]!.fulfillmentCargadoDia).toBeNull();
-    expect(sat.items[0]!.ingresoEmpresa).toMatchObject({
-      fulfillment: null,
-      ivaFulfillment: null,
-      fulfillmentConIva: null,
-      ivaPctFulfillment: null,
-      fulfillmentCargadoAt: null,
-    });
-    // Lo que no es fulfillment no se toca.
-    expect(sat.items[0]!.ingresoEmpresa?.total).toBe("4520.00");
+    // SLT-161 (R482): el bloque entero de la empresa (fulfillment incluido) va en null; el COD a
+    // recaudar y el modelo de tarifa viajan aparte con el valor que tenian dentro del bloque.
+    expect(sat.items[0]!.ingresoEmpresa).toBeNull();
+    expect(sat.items[0]!.montoCobrar).toBe("24990.00");
+    expect(sat.items[0]!.tarifaModelo).toBe("nuevo");
 
+    // La central: la fila tal cual la emite el repositorio, bloque completo y sin los campos aparte.
     expect(central.items[0]!.fulfillmentCargadoDia).toBe("2026-11-06");
+    expect(central.items[0]).toEqual(fila("N-1", "nuevo"));
     expect(central.items[0]!.ingresoEmpresa).toMatchObject({
       fulfillment: "600.00",
       ivaFulfillment: "78.00",
       fulfillmentConIva: "678.00",
       ivaPctFulfillment: "13.00",
       fulfillmentCargadoAt: "2026-11-07T02:30:00.000Z",
+      total: "4520.00",
     });
+    expect(central.items[0]).not.toHaveProperty("montoCobrar");
+    expect(central.items[0]).not.toHaveProperty("tarifaModelo");
   });
 
   it("R372 (d): mas gestiones que el tope -> limite_excedido sin pedir los rechazos", async () => {

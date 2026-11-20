@@ -7,13 +7,13 @@ import type {
   Alcance,
   AlcanceLecturaDetalle,
   CierreAdminResumenRow,
-  ICierresAdminRepository,
 } from "@/lib/interfaces/repositories/ICierresAdminRepository";
 import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlProvider";
 import type { IZonaRepository } from "@/lib/interfaces/repositories/IZonaRepository";
 import type { IOrdenRepository } from "@/lib/interfaces/repositories/IOrdenRepository";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { RolValue } from "@prisma/client";
+import { dobleCierresAdmin } from "@/tests/fixtures/dobles/cierres-admin-repository";
 
 /**
  * SLT-104 «Detalle de cierre de bodega en el detalle único (central)» — PA1 / R116.
@@ -69,14 +69,8 @@ function cubreSatelite(a: AlcanceLecturaDetalle): boolean {
   return a.destinoTipo === "bodega_satelite" && (a.destinoZonaId === null || a.destinoZonaId === ZONA_SAT);
 }
 
-function fakeRepo(): ICierresAdminRepository {
-  return {
-    leerTopeIntentos: vi.fn(async () => 3),
-    findCierresByAlcance: vi.fn(async () => [] as CierreAdminResumenRow[]),
-    findHistoricoPaginado: vi.fn(async () => ({ items: [] as CierreAdminResumenRow[], total: 0 })),
-    findColaPaginada: vi.fn(async () => ({ items: [] as CierreAdminResumenRow[], total: 0 })),
-    findHistoricoCompleto: vi.fn(async () => [] as CierreAdminResumenRow[]),
-    findColaCompleta: vi.fn(async () => [] as CierreAdminResumenRow[]),
+function fakeRepo() {
+  return dobleCierresAdmin({
     findCierreByIdEnAlcance: vi.fn(async (id: string, a: AlcanceLecturaDetalle) =>
       id === CIERRE_SAT && cubreSatelite(a)
         ? {
@@ -95,17 +89,7 @@ function fakeRepo(): ICierresAdminRepository {
     forzarSolicitudVencido: vi.fn(async (_id: string, a: Alcance) =>
       cubreSatelite(a) ? ("updated" as const) : ("fuera_de_alcance" as const),
     ),
-    findGestionesIncidenteDelCierre: vi.fn(async () => []),
-    findGestionesRetornablesDelCierre: vi.fn(async () => []),
-    findBarridasDelCierre: vi.fn(async () => []),
-    findGestionesPorAlcanceCompleto: vi.fn(async () => []),
-    findCatalogoFiltros: vi.fn(async () => ({ zonas: [], mensajeros: [], mensajerosFiltro: [] })),
-    // La gestion `g-sat` es del cierre de satelite: solo se encuentra con un alcance que lo cubra.
-    findGestionEditableEnCierre: vi.fn(async () => null),
-    actualizarPagosGestion: vi.fn(async () => ({ status: "conflict" as const })),
-    corregirResultadoGestionEnCierre: vi.fn(async () => ({ status: "conflict" as const })),
-    ajustarPagoMensajeroEnCierre: vi.fn(async () => ({ status: "conflict" as const })),
-  } as unknown as ICierresAdminRepository;
+  });
 }
 
 function newService() {

@@ -11,8 +11,12 @@
  *
  * Mide el diff de la rama contra el merge-base con la rama de integracion, mas lo no commiteado y lo
  * nuevo sin seguimiento. No cuentan `specs/`, `progress/`, los lockfiles ni los snapshots, ni lo que
- * el perfil anada en `gate.tamano_pr.excluir`. Limites en `arnes.config.json > gate.tamano_pr`
- * (`max_archivos`, por defecto 40; `max_lineas`, anadidas + borradas, por defecto 1000).
+ * el perfil anada en `gate.tamano_pr.excluir`. Las lineas (anadidas + borradas) se cuentan en dos
+ * montones con tope propio: produccion y tests. Es test lo que casa con `gate.tamano_pr.tests` del
+ * perfil, que SUSTITUYE a `TESTS_POR_DEFECTO`. Limites en `arnes.config.json > gate.tamano_pr`:
+ * `max_archivos` (por defecto 40, cuenta tests y produccion juntos), `max_lineas` (produccion, por
+ * defecto 1000) y `max_lineas_tests` (tests, por defecto 3000). Un cierre con su E2E y sus tests
+ * de integracion rompia el tope unico solo por los tests, que no cuestan lo mismo de revisar.
  *
  * La salida de emergencia es humana y queda escrita: la linea
  *   <!-- tamano-pr-aceptado: AAAA-MM-DD · <motivo> -->
@@ -38,7 +42,8 @@ export const EXCLUIR_SIEMPRE = [
   '**/__snapshots__/**',
   '**/*.snap',
 ];
-export const LIMITES_POR_DEFECTO = { max_archivos: 40, max_lineas: 1000 };
+export const TESTS_POR_DEFECTO = ['tests/**', 'e2e/**', '**/*.test.*', '**/*.spec.*', '**/__tests__/**'];
+export const LIMITES_POR_DEFECTO = { max_archivos: 40, max_lineas: 1000, max_lineas_tests: 3000 };
 const MARCADOR = /<!--\s*tamano-pr-aceptado:\s*([^>]*?)\s*-->/;
 
 /** Limites del perfil, con los por defecto donde falten. */
@@ -48,29 +53,44 @@ export function limites(config) {
   return {
     max_archivos: ent(t.max_archivos, LIMITES_POR_DEFECTO.max_archivos),
     max_lineas: ent(t.max_lineas, LIMITES_POR_DEFECTO.max_lineas),
+    max_lineas_tests: ent(t.max_lineas_tests, LIMITES_POR_DEFECTO.max_lineas_tests),
     excluir: [...EXCLUIR_SIEMPRE, ...(Array.isArray(t.excluir) ? t.excluir : [])],
+    tests: Array.isArray(t.tests) ? t.tests : TESTS_POR_DEFECTO,
   };
 }
 
 /**
- * Archivos y lineas del diff, sin lo excluido. Pura.
+ * Archivos y lineas del diff, sin lo excluido, con las lineas de tests aparte. Pura.
  * @param {Array<{ruta: string, lineas: number}>} cambios
+ * @param {string[]} excluir
+ * @param {string[]} tests globs de lo que es test (por defecto `TESTS_POR_DEFECTO`)
  */
-export function medir(cambios, excluir) {
+export function medir(cambios, excluir, tests = TESTS_POR_DEFECTO) {
   const cuentan = cambios.filter((c) => !casaAlguno(c.ruta, excluir));
-  return { archivos: cuentan.length, lineas: cuentan.reduce((s, c) => s + c.lineas, 0), lista: cuentan };
+  let lineas = 0;
+  let lineas_tests = 0;
+  for (const c of cuentan) {
+    if (casaAlguno(c.ruta, tests)) lineas_tests += c.lineas;
+    else lineas += c.lineas;
+  }
+  return { archivos: cuentan.length, lineas, lineas_tests, lista: cuentan };
 }
 
 /**
- * `ok`, `aviso` o `error`, con el mensaje. Pura.
- * @param {{archivos: number, lineas: number}} m
- * @param {{max_archivos: number, max_lineas: number}} l
+ * `ok`, `aviso` o `error`, con el mensaje. Pura. Sin `lineas_tests` (o sin su tope) cuenta 0
+ * y el tope por defecto.
+ * @param {{archivos: number, lineas: number, lineas_tests?: number}} m
+ * @param {{max_archivos: number, max_lineas: number, max_lineas_tests?: number}} l
  * @param {string|null} aceptado el texto del marcador, si lo hay
  */
 export function veredicto(m, l, aceptado = null) {
-  const pasa = m.archivos > l.max_archivos || m.lineas > l.max_lineas;
-  const cerca = m.archivos >= 0.8 * l.max_archivos || m.lineas >= 0.8 * l.max_lineas;
-  const cifras = `${m.archivos}/${l.max_archivos} archivos, ${m.lineas}/${l.max_lineas} lineas`;
+  const lt = m.lineas_tests ?? 0;
+  const maxLt = l.max_lineas_tests ?? LIMITES_POR_DEFECTO.max_lineas_tests;
+  const pasa = m.archivos > l.max_archivos || m.lineas > l.max_lineas || lt > maxLt;
+  const cerca = m.archivos >= 0.8 * l.max_archivos || m.lineas >= 0.8 * l.max_lineas || lt >= 0.8 * maxLt;
+  const cifras =
+    `${m.archivos}/${l.max_archivos} archivos, ${m.lineas}/${l.max_lineas} lineas de produccion, ` +
+    `${lt}/${maxLt} de tests`;
   if (pasa && aceptado) return { nivel: 'aviso', texto: `el PR pasa del tamano (${cifras}), aceptado por el humano: ${aceptado}` };
   if (pasa) {
     return {
@@ -128,7 +148,7 @@ function main() {
   const l = limites(config);
   const notas = path.join('progress', 'features', `${key}.md`);
   const aceptado = existsSync(notas) ? MARCADOR.exec(readFileSync(notas, 'utf8'))?.[1] ?? null : null;
-  const v = veredicto(medir(cambios, l.excluir), l, aceptado);
+  const v = veredicto(medir(cambios, l.excluir, l.tests), l, aceptado);
   if (v.nivel === 'error') { console.error(`${key}: ${v.texto}`); return 1; }
   console.log(v.nivel === 'aviso' ? `AVISO: ${key}: ${v.texto}` : `${key}: ${v.texto}`);
   return 0;

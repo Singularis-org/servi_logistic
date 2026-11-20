@@ -217,7 +217,9 @@ describe("477 → SLT-109 — el rechazado como página, con «Corregir» (R62, 
     expect(screen.queryByRole("region", { name: REGION })).toBeNull();
     const franja = within(detalle()).getByText("Motivo del rechazo:").closest('[role="status"]');
     expect(franja).toHaveTextContent("«Falta el efectivo de la REM-A»");
-    expect(within(detalle()).getByText("Rechazado")).toBeInTheDocument();
+    // SLT-153: «Rechazado» también es un rótulo de la cabecera; la pastilla vive en la fila del título.
+    const filaTitulo = detalle().querySelector("header")!.firstElementChild as HTMLElement;
+    expect(within(filaTitulo).getByText("Rechazado")).toBeInTheDocument();
     expect(within(detalle()).getAllByRole("tab").map((t) => t.textContent)).toEqual([
       "Corregir",
       "Gestiones (2)",
@@ -278,7 +280,7 @@ describe("477 → SLT-109 — el rechazado como página, con «Corregir» (R62, 
     expect(boton).toBeDisabled();
     expect(boton).toHaveAttribute(
       "title",
-      "Esta orden la resolvió la tienda desde su pantalla de ayuda; solo ella puede corregirlo. Escribile por el chat de la orden.",
+      "Esta orden la resolvió la tienda desde su pantalla de ayuda; solo ella puede corregirlo. Escríbele por el chat de la orden.",
     );
   });
 

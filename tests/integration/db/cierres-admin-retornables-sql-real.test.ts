@@ -8,9 +8,9 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 
 /**
  * Feature 238 (T1.3, R2/R3/R4/R6) — EL `WHERE` DEL CONJUNTO ESPERADO, EJECUTADO CONTRA POSTGRES.
@@ -80,25 +80,19 @@ describeSiHayBase("238/T1.3 — findGestionesRetornablesDelCierre contra Postgre
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const fks = await fksDeOrden(prisma);
-    // Fallo RUIDOSO, no `return` silencioso: con base alcanzable y sin catalogo, este archivo no
-    // puede comprobar nada, y un `passed` en esas condiciones es exactamente la clase de verde
-    // que este repo ya se comio una vez.
-    if (fks === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar el " +
-          "corpus. Corre `pnpm run db:seed` (y las semillas de zonas) antes de esta suite.",
-      );
-    }
-    // `gestion_orden.mensajero_id` y `cierre_dia.mensajero_id` son FK -> `usuario`. Se reusa el
-    // id de la tienda de una orden real: lo que se mide aqui es un WHERE, no un rol.
-    const usuarioId = fks.tiendaId;
-
     conCorpus = (fn) =>
       enTransaccionRevertida(prisma, async (tx) => {
         // PRIMERA sentencia: serializa contra los otros archivos que escriben en las tablas
         // reales de `public` (ver `_postgres-real.ts`).
         await serializarEscriturasReales(tx);
+
+        // SLT-178: tienda y zona se crean aqui, en la transaccion revertida. `gestion_orden` y
+        // `cierre_dia` llevan FK -> `usuario`: se reusa la tienda SEMBRADA (lo que se mide es un
+        // WHERE, no un rol).
+        const fks = await crearFksDeOrden(tx);
+        const usuarioId = fks.tiendaId;
+        expect(await tx.usuario.count({ where: { id: usuarioId } }), "tienda sembrada").toBe(1);
+        expect(await tx.zona.count({ where: { id: fks.zonaId } }), "zona sembrada").toBe(1);
 
         const nuevoCierre = (destinoTipo: "bodega_central" | "bodega_satelite") =>
           tx.cierreDia.create({

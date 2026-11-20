@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { Prisma, PrismaClient } from "@prisma/client";
 
@@ -32,10 +34,11 @@ import {
   clienteConTransaccionAnidada,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { comoApp } from "@/tests/fabricas/organizaciones";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
@@ -103,7 +106,9 @@ interface EstadoDeOrden {
 
 describeSiHayBase("425/B7 — aprobar un cierre con rechazos de tienda, contra Postgres", () => {
   let prisma: PrismaClient;
-  let fks: NonNullable<Awaited<ReturnType<typeof fksDeOrden>>>;
+  // SLT-178: `fks` y `centralZonaId` los asigna `sembrarBaseDelCaso` en cada escenario, dentro de
+  // su transaccion revertida; nunca se leen de la base.
+  let fks: Awaited<ReturnType<typeof crearFksDeOrden>>;
   let fksUsuario: { tipoIdentificacionId: string; rolId: string };
   let estatus: Map<string, string>;
   let centralZonaId: string;
@@ -118,6 +123,33 @@ describeSiHayBase("425/B7 — aprobar un cierre con rechazos de tienda, contra P
   // ---------------------------------------------------------------------------------------------
   // Siembra
   // ---------------------------------------------------------------------------------------------
+
+  /**
+   * SLT-178: tienda, zona de las ordenes y zona CENTRAL de la empresa del caso, creadas en su
+   * transaccion revertida. El codigo bajo test busca la central con una lectura global
+   * (`findCentralZonaId`): por eso el caso corre como `servi_app` con la empresa de la tx (RLS),
+   * igual que en produccion, y solo ve la suya.
+   */
+  async function sembrarBaseDelCaso(tx: TxDeTest): Promise<void> {
+    const [{ org }] = await tx.$queryRawUnsafe<{ org: string | null }[]>(
+      `SELECT current_setting('app.organizacion_id', true) AS org`,
+    );
+    if (!org) throw new Error("la transaccion del caso no tiene empresa fijada");
+    fks = await crearFksDeOrden(tx);
+    centralZonaId = (
+      await tx.zona.create({
+        data: { nombre: `Central SLT-178 ${randomUUID()}`, sinpeNumero: "80000000", sinpeNombre: "Titular de Prueba", esCentral: true },
+        select: { id: true },
+      })
+    ).id;
+    await comoApp(tx, org);
+    expect(
+      await tx.zona.count({ where: { id: { in: [fks.zonaId, centralZonaId] } } }),
+      "zonas sembradas (la de las ordenes y la central)",
+    ).toBe(2);
+    expect(await tx.zona.count({ where: { esCentral: true } }), "centrales visibles en la empresa del caso").toBe(1);
+    expect(await tx.usuario.count({ where: { id: fks.tiendaId } }), "tienda sembrada").toBe(1);
+  }
 
   async function crearUsuario(tx: TxDeTest, prefijo: string, zonaId: string): Promise<string> {
     const clave = `${SUFIJO}${(n += 1)}`;
@@ -355,6 +387,7 @@ describeSiHayBase("425/B7 — aprobar un cierre con rechazos de tienda, contra P
   function escenarioNA981() {
     return enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const ctx = montar(tx);
       const p = await sembrarPersonas(tx);
 
@@ -456,6 +489,7 @@ describeSiHayBase("425/B7 — aprobar un cierre con rechazos de tienda, contra P
   function escenarioConCalle(conRechazosDeTienda: boolean) {
     return enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const ctx = montar(tx);
       const p = await sembrarPersonas(tx);
 
@@ -571,6 +605,7 @@ describeSiHayBase("425/B7 — aprobar un cierre con rechazos de tienda, contra P
   function escenarioRechazado() {
     return enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const ctx = montar(tx);
       const p = await sembrarPersonas(tx);
 
@@ -676,6 +711,7 @@ describeSiHayBase("425/B7 — aprobar un cierre con rechazos de tienda, contra P
   function escenarioAdminSinMensajero(destrabar: boolean) {
     return enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
+      await sembrarBaseDelCaso(tx);
       const ctx = montar(tx);
       const p = await sembrarPersonas(tx);
 
@@ -757,30 +793,20 @@ describeSiHayBase("425/B7 — aprobar un cierre con rechazos de tienda, contra P
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const encontradas = await fksDeOrden(prisma);
-    if (encontradas === null) {
-      throw new Error("hay DATABASE_URL pero la tabla `orden` esta vacia: corre `pnpm run db:seed`.");
+    // SLT-178: las FK de catalogo del usuario se leen POR SU CLAVE (rol `mensajero`, tipo `cedula`),
+    // nunca de un usuario que ya este en la base.
+    const rol = await prisma.rol.findUnique({ where: { value: "mensajero" }, select: { id: true } });
+    const tipo = await prisma.tipoIdentificacion.findUnique({ where: { value: "cedula" }, select: { id: true } });
+    if (rol === null || tipo === null) {
+      throw new Error("falta el rol `mensajero` o el tipo de identificacion `cedula`: aplica las migraciones y `pnpm run db:seed`.");
     }
-    fks = encontradas;
-    const usuario = await prisma.usuario.findFirst({
-      select: { tipoIdentificacionId: true, rolId: true },
-    });
-    if (usuario === null) throw new Error("hace falta al menos UN usuario en la base.");
-    fksUsuario = usuario;
+    fksUsuario = { tipoIdentificacionId: tipo.id, rolId: rol.id };
     const catalogo = await prisma.orderStatus.findMany({
       where: { value: { in: [...ESTATUS_USADOS] } },
       select: { id: true, value: true },
     });
     estatus = new Map(catalogo.map((c) => [c.value, c.id]));
     for (const v of ESTATUS_USADOS) idDe(v);
-    const central = await prisma.zona.findFirst({ where: { esCentral: true }, select: { id: true } });
-    if (central === null) {
-      throw new Error(
-        "la base no tiene zona CENTRAL (`zona.es_central`): sin ella R11 no se puede medir. " +
-          "Corre `pnpm exec tsx scripts/seed-zonas.ts`.",
-      );
-    }
-    centralZonaId = central.id;
 
     na981 = await escenarioNA981();
     conRechazos = await escenarioConCalle(true);

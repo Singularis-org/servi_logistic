@@ -68,7 +68,9 @@ test.describe.serial("Cierre vencido — el mensajero lo envía y la bodega lo a
     await expect(aviso).toBeVisible();
     await expect(aviso).toContainText(NO_PUEDES);
     await expect(detalle.getByText("Vencido", { exact: true })).toBeVisible();
-    await expect(detalle).toContainText("venció sin solicitarse");
+    // SLT-153 «Cabecera del detalle del cierre con rótulos y folio buscable» (R452): el vencido
+    // lleva «Del día» en lugar de «Solicitado».
+    await expect(detalle.locator("header dt", { hasText: /^Del día$/ })).toBeVisible();
     // R249: sus gestiones, sin «Devolver a gestión»; y no se pinta el cierre de hoy (R240).
     await expect(detalle.getByRole("tab", { name: "Gestiones (1)" })).toBeVisible();
     await expect(detalle.getByRole("button", { name: /^Devolver a gestión/ })).toHaveCount(0);

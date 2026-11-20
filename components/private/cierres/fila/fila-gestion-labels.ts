@@ -20,15 +20,24 @@ import {
 export const FILTRAR_POR_RESULTADO = "Filtrar por resultado";
 export const FILTRO_TODAS = "Todas";
 export const FILTRO_CON_SENALES = "Con señales";
-/** «Entregado 12», como el canvas: el conteo detrás del nombre, separado por un espacio (R84). */
-export const textoFiltro = (nombre: string, n: number): string => `${nombre} ${n}`;
+/** «Entregado (12)»: el conteo entre paréntesis, como las pestañas de la cola (SLT-152 PA1, R450). */
+export const textoFiltro = (nombre: string, n: number): string => `${nombre} (${n})`;
 export const ORDENES_DEL_CIERRE = "Órdenes del cierre";
 export const SIN_GESTIONES = "Este cierre no tiene gestiones.";
 export const SIN_GESTIONES_CON_SENALES = "Ninguna gestión de este cierre tiene señales.";
 
+// --- Lista en el teléfono (SLT-156, R526, R527) ---
+/** P2 de SLT-156 (Carlos, 2026-11-14): busca por guía, remisión o destinatario. */
+export const BUSCAR_GESTION_PLACEHOLDER = "Guía, remisión o nombre";
+export const BUSCAR_GESTION_LABEL = "Buscar gestión";
+export const SIN_COINCIDENCIAS = "Ninguna gestión coincide con la búsqueda.";
+export const PAGINACION_GESTIONES_LABEL = "Páginas de las gestiones";
+
 // --- Columnas (R23) ---
 export const COL_GUIA = "Guía";
-export const COL_DESTINO = "Destinatario · tienda";
+// SLT-152: «Destinatario · tienda» se parte en dos columnas (R440).
+export const COL_DESTINATARIO = "Destinatario";
+export const COL_TIENDA = "Tienda";
 export const COL_MENSAJERO = "Mensajero";
 export const COL_RESULTADO = "Resultado";
 export const COL_RECIBIDO = "Recibido";
@@ -88,13 +97,14 @@ export const devolverAriaLabel = (remision: string, destinatario: string): strin
  * que registró la tienda (`desdeAyudaTienda`). Mudado de `CierreDiaModule.tsx` en SLT-109 (R244) sin
  * cambiar un carácter.
  *
- * ⚠️ EL TEXTO ES EL MISMO que devuelve el servidor si alguien llega a la acción por otra vía
- * (`MSG_GESTION_DE_LA_TIENDA`, `lib/services/CierreDiaService.ts`). Está duplicado a propósito: esa
- * constante NO se exporta y traerla aquí arrastraría Prisma al navegador. Si alguien cambia uno,
- * tiene que cambiar el otro: son las dos mitades de la MISMA regla, dicha antes y después.
+ * ⚠️ Es la MISMA regla que devuelve el servidor si alguien llega a la acción por otra vía
+ * (`MSG_GESTION_DE_LA_TIENDA`, `lib/services/CierreDiaService.ts`), con el mismo imperativo
+ * («Escríbele»); la frase de la pantalla, además, nombra la pantalla de ayuda (SLT-103, Anexo A: J3 y
+ * L4). Está duplicada a propósito: esa constante NO se exporta y traerla aquí arrastraría Prisma al
+ * navegador. Si alguien cambia una, tiene que revisar la otra: son las dos mitades de la MISMA regla.
  */
 export const DESHACER_BLOQUEO_TIENDA =
-  "Esta orden la resolvió la tienda desde su pantalla de ayuda; solo ella puede corregirlo. Escribile por el chat de la orden.";
+  "Esta orden la resolvió la tienda desde su pantalla de ayuda; solo ella puede corregirlo. Escríbele por el chat de la orden.";
 /** R244 — el motivo viaja también en el nombre accesible: un botón `disabled` sale del tabulador. */
 export const devolverNoDisponibleAriaLabel = (remision: string, destinatario: string, motivo: string): string =>
   `${devolverAriaLabel(remision, destinatario)} — no disponible: ${motivo}`;

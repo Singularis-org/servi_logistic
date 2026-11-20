@@ -185,6 +185,8 @@ const RECHAZOS: Record<Exclude<PlanResult["estado"], "ok" | "tope_excedido" | "v
   archivado: "El plan está archivado.",
   custom_de_otra_empresa: "Ese plan es de otra empresa.",
   sin_cambio_programado: "La empresa ya no tiene un cambio pendiente.",
+  // SLT-128 (design §3.4): asignar no lo devuelve; SLT-135: el genérico del formulario del plan.
+  cambio_a_medias: "No se pudo guardar. Inténtalo de nuevo.",
 };
 
 export interface PlanEmpresaProps {

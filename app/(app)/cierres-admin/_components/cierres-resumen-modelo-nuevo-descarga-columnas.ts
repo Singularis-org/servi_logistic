@@ -31,7 +31,23 @@ import type { AudienciaDescargaGestionesFundida } from "./cierres-gestiones-fund
 /** La columna que es dato de la CENTRAL (R382, F481): la satélite no la recibe. */
 const CLAVE_PAGO_ENTREGADO = "pagoEntregado";
 
-/** Las 20 columnas de «Cierres» para la central, en el orden de R379. */
+/**
+ * Las columnas de «Cierres» que son dinero de la empresa (SLT-161 R485, R489): solo la central las
+ * recibe. «Pago entregado» (R382) ya lo era.
+ */
+const CLAVES_EMPRESA = new Set<string>([
+  CLAVE_PAGO_ENTREGADO,
+  "pagoTienda",
+  "totalFacturado",
+  "ivaFacturado",
+  "netoEmpresa",
+]);
+
+/**
+ * Las 19 columnas de «Cierres» para la central, en el orden de R379. SLT-169 (R628): una sola columna
+ * de la tienda, «Se le paga a la tienda», que ya resta todo lo facturado; «Gana la tienda en total»
+ * valía lo mismo y sale.
+ */
 const COLUMNAS_CIERRES: DescargaColumna[] = [
   { clave: "folio", encabezado: "Folio" },
   { clave: "mensajero", encabezado: "Mensajero" },
@@ -44,7 +60,6 @@ const COLUMNAS_CIERRES: DescargaColumna[] = [
   { clave: "transferencia", encabezado: "Transferencia", formato: "monto" },
   { clave: "recaudado", encabezado: "Recaudado", formato: "monto" },
   { clave: "pagoTienda", encabezado: "Se le paga a la tienda", formato: "monto" },
-  { clave: "ganaLaTienda", encabezado: "Gana la tienda en total", formato: "monto" },
   { clave: "pagoMensajero", encabezado: "Pago al mensajero", formato: "monto" },
   { clave: "pagoBodega", encabezado: "Pago a la bodega satélite", formato: "monto" },
   { clave: "totalFacturado", encabezado: "Total facturado", formato: "monto" },
@@ -55,12 +70,15 @@ const COLUMNAS_CIERRES: DescargaColumna[] = [
   { clave: CLAVE_PAGO_ENTREGADO, encabezado: "Pago entregado", formato: "monto" },
 ];
 
-/** Columnas de «Cierres» para una audiencia: la satélite, sin «Pago entregado» (falla cerrado). */
+/**
+ * Columnas de «Cierres» para una audiencia: la satélite, sin las de la empresa (falla cerrado;
+ * SLT-161 R485).
+ */
 export function columnasCierresModeloNuevoPara(
   audiencia: AudienciaDescargaGestionesFundida,
 ): DescargaColumna[] {
   if (audiencia === "admin") return COLUMNAS_CIERRES;
-  return COLUMNAS_CIERRES.filter((columna) => columna.clave !== CLAVE_PAGO_ENTREGADO);
+  return COLUMNAS_CIERRES.filter((columna) => !CLAVES_EMPRESA.has(columna.clave));
 }
 
 /** Lo que proyecta UNA fila de «Cierres»: el cierre, sus cifras del servidor y su folio. */
@@ -92,19 +110,18 @@ export function filaCierreModeloNuevo(
     sinpe: item.totales.simpe,
     transferencia: item.totales.transferencia,
     recaudado: item.totales.general,
-    pagoTienda: cifras.pagoTienda,
-    ganaLaTienda: cifras.ganaLaTienda,
     pagoMensajero: item.totalPagoMensajero,
     pagoBodega: item.totalIngresoBodegaRechazos,
-    totalFacturado: cifras.totalFacturado,
-    ivaFacturado: cifras.ivaFacturado,
-    netoEmpresa: cifras.netoEmpresa,
     gestiones: cifras.gestiones,
     pagosAjustados: item.senalesCola?.pagosAjustados ?? null,
   };
-  // R382: lo de la central solo entra en la fila de la central (el servidor ya lo anula para la
-  // satélite; aquí además no viaja la clave).
+  // R382, SLT-161 R489: lo de la empresa solo entra en la fila de la central (el servidor ya lo
+  // anula para la satélite; aquí además no viaja la clave).
   if (audiencia === "admin") {
+    fila.pagoTienda = cifras.pagoTienda;
+    fila.totalFacturado = cifras.totalFacturado;
+    fila.ivaFacturado = cifras.ivaFacturado;
+    fila.netoEmpresa = cifras.netoEmpresa;
     fila[CLAVE_PAGO_ENTREGADO] = cifras.pagoEntregado;
   }
   return fila;
@@ -112,13 +129,12 @@ export function filaCierreModeloNuevo(
 
 // --- «Por tienda» -----------------------------------------------------------------------------
 
-/** Las 5 columnas de «Por tienda», en el orden de R379. */
+/** Las 4 columnas de «Por tienda», en el orden de R379; SLT-169 (R630): sin «Gana en total». */
 export const COLUMNAS_POR_TIENDA: DescargaColumna[] = [
   { clave: "folio", encabezado: "Folio" },
   { clave: "tienda", encabezado: "Tienda" },
   { clave: "recaudado", encabezado: "Recaudado", formato: "monto" },
   { clave: "pagoTienda", encabezado: "Se le paga hoy", formato: "monto" },
-  { clave: "ganaLaTienda", encabezado: "Gana en total", formato: "monto" },
 ];
 
 /** Lo que proyecta UNA fila de «Por tienda»: una parte del reparto y el folio de su cierre. */
@@ -134,6 +150,5 @@ export function filaPorTienda({ folio, parte }: EntradaFilaPorTienda): DescargaF
     tienda: parte.tiendaNombre,
     recaudado: parte.recaudado,
     pagoTienda: parte.pagoTienda,
-    ganaLaTienda: parte.ganaLaTienda,
   };
 }

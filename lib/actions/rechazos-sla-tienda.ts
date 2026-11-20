@@ -14,6 +14,8 @@ import type {
   IRechazosSlaTiendaService,
   ListarRechazosSlaTiendaServiceResult,
 } from "@/lib/interfaces/services/IRechazosSlaTiendaService";
+import { BUSQUEDA_MAX_CHARS, BUSQUEDA_MIN_CHARS } from "@/lib/types/orden";
+import { terminoDeBusqueda } from "@/lib/utils/filtros-listado-ordenes";
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import type { AppErrorShape } from "@/lib/errors";
 
@@ -27,9 +29,12 @@ import type { AppErrorShape } from "@/lib/errors";
 // Tamano de pagina FIJO (paridad con /novedades). El cliente NO lo elige.
 const PAGE_SIZE = 10;
 
-// Valida solo `page` (entero >= 1, default 1). `input` opcional/undefined -> pagina 1.
+// Valida `page` (entero >= 1, default 1). `input` opcional/undefined -> pagina 1.
+// SLT-194 (R955): `q` opcional, validado igual que el `q` de `/ordenes` (`lib/types/orden.ts`):
+// recortado y entre `BUSQUEDA_MIN_CHARS` y `BUSQUEDA_MAX_CHARS` caracteres.
 const listarRechazosSlaTiendaSchema = z.object({
   page: z.number().int().min(1).default(1),
+  q: z.string().trim().min(BUSQUEDA_MIN_CHARS).max(BUSQUEDA_MAX_CHARS).optional(),
 });
 
 export type ListarRechazosSlaTiendaActionResult =
@@ -77,17 +82,24 @@ export interface RechazosSlaTiendaDeps {
   getActor?: () => Promise<Actor | null>;
 }
 
-/** R12/R14: lista paginada (10/pagina) de las ordenes rechazadas por SLA de la tienda del adminTienda. */
+/**
+ * R12/R14: lista paginada (10/pagina) de las ordenes rechazadas por SLA de la tienda del adminTienda.
+ * SLT-194 (R953/R955): con `q`, solo las que casan con el termino (criterio de `/ordenes`).
+ */
 export async function listarRechazosSlaTiendaAction(
-  input?: { page?: number },
+  input?: { page?: number; q?: string },
   deps: RechazosSlaTiendaDeps = {},
 ): Promise<ListarRechazosSlaTiendaActionResult> {
   const r = await withErrorHandler(async () => {
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // antes de tocar el service
-    const { page } = listarRechazosSlaTiendaSchema.parse(input ?? {}); // ZodError -> VALIDATION_ERROR
+    const { page, q } = listarRechazosSlaTiendaSchema.parse(input ?? {}); // ZodError -> VALIDATION_ERROR
     const service = deps.service ?? buildService();
-    return service.listar({ page, pageSize: PAGE_SIZE }, actor);
+    // Sin `q`, el input del servicio es el de siempre: ni la clave `busqueda` viaja (R957).
+    return service.listar(
+      { page, pageSize: PAGE_SIZE, ...(q ? { busqueda: terminoDeBusqueda(q) } : {}) },
+      actor,
+    );
   });
   return isAppErrorShape(r) ? toRechazosSlaTiendaActionError(r) : r;
 }

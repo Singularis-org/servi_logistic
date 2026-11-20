@@ -47,9 +47,9 @@ export const PAGO_MENSAJERO_TEXTO = {
    * que importa: el cierre quedó aprobado. La deuda queda abierta y visible (R26).
    */
   cierreSigueAprobado:
-    "El cierre quedó aprobado. El pago no se registró: podés registrarlo después desde el detalle del cierre.",
+    "El cierre quedó aprobado. El pago no se registró: puedes registrarlo después desde el detalle del cierre.",
   /** Mismo caso, pero pagando desde el detalle de un cierre ya aprobado (R19). */
-  pagoNoRegistrado: "No se registró el pago. Revisá el aviso del formulario e intentá de nuevo.",
+  pagoNoRegistrado: "No se registró el pago. Revisa el aviso del formulario e inténtalo de nuevo.",
   /**
    * T F.5 — confirmación de la anulación con el pendiente que devolvió el SERVIDOR (R71: es
    * exactamente el que había antes de ese pago). Se pinta tal cual, sin recalcular nada.

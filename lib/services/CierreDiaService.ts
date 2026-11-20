@@ -2,6 +2,7 @@ import { cierreConfig } from "@/lib/config/cierre";
 import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlProvider";
 import type {
   CierreGestionPendienteRow,
+  CierrePasadoDeRepositorio,
   GestionPendienteDeCierreRow,
   ICierreDiaRepository,
 } from "@/lib/interfaces/repositories/ICierreDiaRepository";
@@ -637,7 +638,7 @@ export class CierreDiaService implements ICierreDiaService {
    * el alcance. Se llaman UNA vez cada una, tambien con la lista vacia: el numero de consultas no
    * depende de la pagina (R165). Solo un `aprobado` tiene pendiente; los demas van a `null`.
    */
-  private async conPendientePago(items: CierrePasadoDTO[]): Promise<CierrePasadoDTO[]> {
+  private async conPendientePago(items: CierrePasadoDeRepositorio[]): Promise<CierrePasadoDTO[]> {
     if (!this.pendientes) return items;
 
     const porCierre = await this.pendientesPorCierre(
@@ -648,8 +649,9 @@ export class CierreDiaService implements ICierreDiaService {
           cierreId: c.cierreId,
           totalPagoMensajero: c.totalPagoMensajero,
           efectivo: c.totales.efectivo,
-          // SLT-123 (R320, R327): la marca de ESTE cierre; ausente = `false` (regla de la 44).
-          pagoIndependienteEfectivo: c.pagoIndependienteEfectivo === true,
+          // SLT-123 (R320, R327) + SLT-147 (D68, R417): la marca de ESTE cierre tal como la
+          // entrego el repositorio. Es obligatoria en el tipo: sin valor por defecto.
+          pagoIndependienteEfectivo: c.pagoIndependienteEfectivo,
         })),
     );
 

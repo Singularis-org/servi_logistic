@@ -4,8 +4,11 @@ import { conEmpresa } from "../../lib/db/contexto-empresa";
 import { getPrismaClient } from "../../lib/db/prisma-client";
 import type { Actor } from "../../lib/interfaces/services/IOrdenService";
 import { CierreBodegaRepository } from "../../lib/repositories/CierreBodegaRepository";
+import { CierresBodegaAdminRepository } from "../../lib/repositories/CierresBodegaAdminRepository";
 import { OrdenRepository } from "../../lib/repositories/OrdenRepository";
+import { SaldosSatelitesRepository } from "../../lib/repositories/SaldosSatelitesRepository";
 import { CierreBodegaService } from "../../lib/services/CierreBodegaService";
+import { ConciliacionSatelitesService } from "../../lib/services/ConciliacionSatelitesService";
 import { construirReglasPaisEmpresa } from "../../lib/services/ReglasPaisEmpresaService";
 import {
   cierresAdmin,
@@ -142,7 +145,7 @@ export function importe(n: number, opts: { solo?: boolean } = {}): RegExp {
 //
 //   pestanaDeCola(page, "Pendientes" | "Resueltos") → Locator
 //     La pestaña (`tab`) del `tablist` «Cierres del día por estado». Su nombre lleva el conteo
-//     («Resueltos 12»), así que se busca por el comienzo.
+//     («Resueltos (12)»), así que se busca por el comienzo.
 //
 //   pestanaDeColaBodega(page, "Por conciliar" | "Conciliados") → Locator
 //   regionColaBodega(page, "Por conciliar" | "Conciliados") → Locator
@@ -161,14 +164,14 @@ export function filaDeCola(region: Locator, nombre: string): Locator {
 export function pestanaDeCola(page: Page, nombre: "Pendientes" | "Resueltos"): Locator {
   return page
     .getByRole("tablist", { name: "Cierres del día por estado" })
-    .getByRole("tab", { name: new RegExp(`^${nombre} \\d+$`) });
+    .getByRole("tab", { name: new RegExp(`^${nombre} \\(\\d+\\)$`) });
 }
 
-/** SLT-127: la pestaña de la cola de bodega de la central («Por conciliar 3», «Conciliados 21»). */
+/** SLT-127: la pestaña de la cola de bodega de la central («Por conciliar (3)», «Conciliados (21)»). */
 export function pestanaDeColaBodega(page: Page, nombre: "Por conciliar" | "Conciliados"): Locator {
   return page
     .getByRole("tablist", { name: "Cierres de bodega por estado" })
-    .getByRole("tab", { name: new RegExp(`^${nombre} \\d+$`) });
+    .getByRole("tab", { name: new RegExp(`^${nombre} \\(\\d+\\)$`) });
 }
 
 /** SLT-127: la región (y la tabla) de la pestaña activa de la cola de bodega. */
@@ -265,4 +268,24 @@ export async function cierreModeloNuevo(
   });
   await gestionar(r, orden, m, { resultado: "entregado", pagos: [{ metodo: "efectivo", monto: a.montoCobrar }] });
   return { m, orden, cierreId: await solicitarCierre(r, m) };
+}
+
+// ── Conciliar un cierre de bodega (SLT-141 T5.1) ────────────────────────────────────────────────
+//
+//   conciliarCierreBodega(r, cierreBodegaId, montoRecibido) → void
+//     `ConciliacionSatelitesService.marcarRecibida` con el maestro, montado como en
+//     `lib/actions/conciliacion-satelites.ts`. Es lo que hace «Marcar recibido» en el pie del detalle
+//     (el recorrido por la pantalla vive en `cierre-bodega-satelite.spec.ts`); aquí deja el cierre en
+//     «Conciliados» cuando el monto es el que debía llegar a la central.
+
+export async function conciliarCierreBodega(r: RepartoE2E, cierreBodegaId: string, montoRecibido: string): Promise<void> {
+  const prisma = getPrismaClient();
+  const res = await conEmpresa(r.empresa.organizacionId, () =>
+    new ConciliacionSatelitesService(
+      new SaldosSatelitesRepository(prisma),
+      new CierresBodegaAdminRepository(prisma),
+      construirReglasPaisEmpresa(prisma),
+    ).marcarRecibida({ cierreBodegaId, montoRecibido }, r.actores.maestro),
+  );
+  if (res.status !== "ok") throw new Error(`SLT-141 E2E: marcarRecibida no fue ok: ${JSON.stringify(res)}`);
 }

@@ -190,7 +190,7 @@ export async function crearEmpresaE2E(etiqueta: string): Promise<EmpresaE2E> {
 export async function crearUsuarioE2E(
   e: EmpresaE2E,
   rol: RolValue,
-  extra: { zonaId?: string; vehiculoId?: string; seRecogeEnTienda?: boolean } = {},
+  extra: { nombre?: string; zonaId?: string; vehiculoId?: string; seRecogeEnTienda?: boolean } = {},
 ): Promise<UsuarioE2E> {
   await comprobarBaseE2E();
   const s = sufijo();

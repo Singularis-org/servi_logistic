@@ -24,7 +24,6 @@ import { ApiKeyRepository } from "@/lib/repositories/ApiKeyRepository";
 import { CierreBodegaRepository } from "@/lib/repositories/CierreBodegaRepository";
 import { CierreDiaRepository } from "@/lib/repositories/CierreDiaRepository";
 import { CierresBodegaAdminRepository } from "@/lib/repositories/CierresBodegaAdminRepository";
-import { CobroPlataformaMovimientoRepository } from "@/lib/repositories/CobroPlataformaMovimientoRepository";
 import { CorteDiarioRepository } from "@/lib/repositories/CorteDiarioRepository";
 import { DevolucionTiendaRepository } from "@/lib/repositories/DevolucionTiendaRepository";
 import { DistritoZonaEspecialRepository } from "@/lib/repositories/DistritoZonaEspecialRepository";
@@ -55,6 +54,7 @@ import { CajaAporteCapitalFeedService } from "@/lib/services/CajaAporteCapitalFe
 import { CajaPagoTiendaFeedService } from "@/lib/services/CajaPagoTiendaFeedService";
 import { CierreBodegaService } from "@/lib/services/CierreBodegaService";
 import { ConciliacionSatelitesService } from "@/lib/services/ConciliacionSatelitesService";
+import { CorregirDatosClienteService } from "@/lib/services/CorregirDatosClienteService";
 import { CorteDiarioService } from "@/lib/services/CorteDiarioService";
 import { DevolucionOrigenService } from "@/lib/services/DevolucionOrigenService";
 import { DevolucionTiendaService } from "@/lib/services/DevolucionTiendaService";
@@ -70,12 +70,14 @@ import { RecoleccionTiendaService } from "@/lib/services/RecoleccionTiendaServic
 import { TopePagoPlataformaService } from "@/lib/services/TopePagoPlataformaService";
 import { WalletEgresoService } from "@/lib/services/WalletEgresoService";
 import { WalletIndemnizacionIncidenteFeedService } from "@/lib/services/WalletIndemnizacionIncidenteFeedService";
+import { buildOptimizacionRutaService } from "@/lib/services/jobs/optimizacion-ruta-handler";
 import { SupabaseFileStorage } from "@/lib/storage/SupabaseFileStorage";
 import { SupabaseSignedUrlProvider } from "@/lib/storage/SupabaseSignedUrlProvider";
 import { registrarAbonoTiendaSchema } from "@/lib/types/abono-tienda";
 import { generarApiKeySchema } from "@/lib/types/api-key";
 import { registrarAporteCapitalSchema } from "@/lib/types/aporte-capital";
 import { marcarConsolidacionRecibidaSchema } from "@/lib/types/conciliacion-satelites";
+import { corregirDatosClienteSchema } from "@/lib/types/correccion-datos-cliente";
 import { distritosEspecialesSchema } from "@/lib/types/distrito-zona-especial";
 import { aprobarIncidenteSchema, reportarIncidenteSchema } from "@/lib/types/incidente";
 import { registrarPagoMensajeroSchema } from "@/lib/types/liquidacion";
@@ -198,6 +200,12 @@ const TABLAS_SIN_FILAS = ["integracion", "webhook_suscripcion", "plantilla_mensa
 const MONTO_A_COBRAR = 8000;
 const EFECTIVO_DEL_PAGO_MIXTO = 1000;
 const MONTO_ENTREGA_SATELITE = 1000;
+/**
+ * SLT-200 (punto 5): el peso, en kg, de las órdenes en reparto del mensajero-reposo, por orden de
+ * remisión (se reparte en ciclo). La carga masiva no trae peso (feature 15/R4): se pone después, por
+ * la corrección de datos del cliente, como lo haría el admin. Los de los ejemplos de la API.
+ */
+const PESOS_EN_REPARTO = [1.5, 0.8] as const;
 /** Con B recortada: con 4 entregas sin cobro, los fletes superan lo cobrado más el abono (medido en local). */
 const ENTREGAS_SIN_COBRO_CON_RECORTE = 4;
 /** SLT-126 R13: el costo por orden fijo del plan de la demo. */
@@ -590,7 +598,9 @@ export async function crearEmpresaDemo(
     aCierreRechazado: plan("central", 1),
     aCierrePendiente: plan("central", 1),
     aRecoger: plan("central", n),
-    enReparto: plan("central", n),
+    // SLT-200 (punto 5): la primera cobra y las demás no, para ver en la tarjeta «COBRAR» con importe
+    // y sin él, y el KPI «Por cobrar» con cifra. Su mensajero no entrega: no mueve ningún saldo.
+    enReparto: [...plan("central", 1, MONTO_A_COBRAR), ...plan("central", n - 1)],
   };
 
   /** Las órdenes de la tienda con bodega, por remisión. Las llena `ordenesDeBodega`. */
@@ -1139,7 +1149,21 @@ export async function crearEmpresaDemo(
       ),
     );
 
-    // Pago a la plataforma (SL-45): el tope exige que la deuda de cargos ya cubra el monto.
+    // SLT-60 (R3): solo se paga lo facturado en facturas cerradas, y la demo no espera al fin de su período.
+    // Como dueño, abre la factura en curso si aún no la tiene (un cierre con la hora de la base no cierra nada)
+    // y la cierra con `fin_natural_at + 6 min`: el artificio de SLT-119 §9 y de
+    // `tests/integration/db/_fixtures/factura-cerrada.ts`. Su total son los cargos de las órdenes ya creadas
+    // (más la cuota del plan), que cubren el pago de abajo.
+    await enPaso("factura_plataforma_cerrar (antes del pago a la plataforma)", async () => {
+      await dueno.$queryRaw`SELECT factura_plataforma_cerrar(${org}, (now() AT TIME ZONE 'UTC')::timestamp)`;
+      const filas = await dueno.$queryRaw<{ n: number }[]>`
+        SELECT factura_plataforma_cerrar(f."organizacion_id", f."fin_natural_at" + interval '6 minutes')::int AS "n"
+          FROM "factura_plataforma" f
+         WHERE f."organizacion_id" = ${org} AND f."estado" = 'en_curso'`;
+      if (filas[0]?.n !== 1) throw new Error(`[demo-qa] el cierre de la factura en curso cerró ${String(filas[0]?.n ?? 0)}, no 1`);
+    });
+
+    // Pago a la plataforma (SL-45): el tope de SLT-60 exige que lo pendiente de la factura cerrada cubra el monto.
     await llamar(
       "WalletEgresoService.registrarEgreso(pago_plataforma)",
       () => conEmpresa(org, () =>
@@ -1147,7 +1171,7 @@ export async function crearEmpresaDemo(
           caja,
           app,
           buildComprobantes(app),
-          new TopePagoPlataformaService(new CobroPlataformaMovimientoRepository(app), new PagoPlataformaRepository(app)),
+          new TopePagoPlataformaService(new PagoPlataformaRepository(app)),
           construirReglasPaisEmpresa(app), // SLT-42 (R22): la zona horaria del pais de la empresa.
         ).registrarEgreso(
           registrarEgresoConLateralesSchema(zona).parse({
@@ -1228,9 +1252,41 @@ export async function crearEmpresaDemo(
   }
 
   // Órdenes en reposo: recogiendo en bodega y en reparto (su mensajero no cierra: R-a).
+  //
+  // SLT-200 (punto 5): las de reparto, con su peso y su posición en la ruta, que es lo que la tarjeta
+  // del mensajero pinta (sin ellas, «Sin posición · —»). El orden de los pasos sale de las guardas
+  // de la ruta: «Sincronizar ruta» no calcula la primera ruta del día con menos del
+  // `RUTA_PRIMERA_MIN_RECOGIDO_PCT` de lo asignado recogido, así que va con las de reparto ya
+  // recogidas y ANTES de asignarle las que se quedan por recoger. Ni la asignación ni la recogida
+  // encolan `optimizacion_ruta` (SLT-79: solo la gestión y el traspaso), y este mensajero no gestiona.
   async function enReposo(): Promise<void> {
-    await llevarA(aRecoger, "mensajero_recogiendo_en_bodega", mReposo);
+    await enPaso("corregir el peso de las órdenes en reparto", () => ponerPeso(enReparto));
     await alReparto(enReparto, mReposo);
+    await enPaso("sincronizar la ruta del mensajero-reposo", () => sincronizarRuta(mReposo, enReparto.length));
+    await llevarA(aRecoger, "mensajero_recogiendo_en_bodega", mReposo);
+  }
+
+  /** El peso por `CorregirDatosClienteService`, montado como en `lib/actions/corregir-datos-cliente.ts`. */
+  async function ponerPeso(ordenes: OrdenEscenario[]): Promise<void> {
+    const correccion = new CorregirDatosClienteService(new OrdenRepository(app), new TarifaVigenteRepository(app), construirReglasPaisEmpresa(app));
+    for (const [i, o] of ordenes.entries()) {
+      const d = corregirDatosClienteSchema.parse({ ordenId: o.id, peso: PESOS_EN_REPARTO[i % PESOS_EN_REPARTO.length] });
+      await llamar("CorregirDatosClienteService.corregir", () => conEmpresa(org, () => correccion.corregir({ ordenId: d.ordenId, peso: d.peso }, actorAdmin)));
+    }
+  }
+
+  /**
+   * El botón «Sincronizar ruta» del mensajero (`lib/actions/ruta-mensajero.ts`): la MISMA fábrica y
+   * `ejecutar` con motivo `manual`, sin GPS. La empresa demo no tiene la integración de rutas, así que
+   * el servicio cae solo al orden local (Haversine) y no llama a nadie (R24 de SL-43).
+   */
+  async function sincronizarRuta(m: MensajeroEscenario, paradas: number): Promise<void> {
+    const r = await conEmpresa(org, () => buildOptimizacionRutaService().ejecutar(m.id, { motivo: "manual" }));
+    // Con una sola parada el servicio no ordena (R35 de la 92) pero guarda su posición: vale.
+    if (r.status !== "ok" && paradas > 1) {
+      // Solo el desenlace: el trazado lleva coordenadas de las entregas (R14 de la 92).
+      throw new Error(`[demo-qa] «Sincronizar ruta» no calculó la ruta del mensajero-reposo: ${r.status}${"razon" in r ? ` (${r.razon})` : ""}`);
+    }
   }
 
   await enPaso("después del corte", () =>

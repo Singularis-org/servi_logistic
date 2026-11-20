@@ -9,7 +9,9 @@ import {
   enTransaccionRevertida,
   etiquetasDeEnum,
   serializarEscriturasReales,
+  type TxDeTest,
 } from "./_postgres-real";
+import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import { PostulacionRecursoRepository } from "@/lib/repositories/PostulacionRecursoRepository";
 
 // Feature 253 (T1.4, T3.3) — la migracion `*_postulacion_recurso` y el repositorio que vive encima.
@@ -248,17 +250,33 @@ describeSiHayBase("253 / bloque B — el DDL aplicado, leido de los catalogos", 
     ).toBe(1);
   });
 
-  it("R22: la RLS esta ENCENDIDA y hay CERO policies", async () => {
-    const filas = await prisma.$queryRawUnsafe<
-      { relrowsecurity: boolean; policies: bigint }[]
-    >(
-      `SELECT c.relrowsecurity,
-              (SELECT count(*) FROM pg_policy p WHERE p.polrelid = c.oid) AS policies
+  it("R22: la RLS esta ENCENDIDA y su UNICA policy es la de aislamiento por empresa (SL-17)", async () => {
+    // SLT-187: SL-17 (`20261022130100_organizacion_id_en_negocio`) anadio, a proposito,
+    // `postulacion_recurso_por_empresa`. La intencion de R22 se conserva: ninguna policy para
+    // otro rol que `servi_app`, y la autorizacion sigue en el servidor.
+    const filas = await prisma.$queryRawUnsafe<{ relrowsecurity: boolean }[]>(
+      `SELECT c.relrowsecurity
          FROM pg_class c
         WHERE c.relname = 'postulacion_recurso' AND c.relnamespace = 'public'::regnamespace`,
     );
     expect(filas[0].relrowsecurity).toBe(true);
-    expect(Number(filas[0].policies)).toBe(0);
+    const policies = await prisma.$queryRawUnsafe<
+      { policyname: string; cmd: string; roles: string; qual: string; with_check: string }[]
+    >(
+      `SELECT policyname, cmd, roles::text AS roles, qual, with_check FROM pg_policies
+        WHERE schemaname = 'public' AND tablename = 'postulacion_recurso'`,
+    );
+    const porEmpresa =
+      "(organizacion_id = NULLIF(current_setting('app.organizacion_id'::text, true), ''::text))";
+    expect(policies, "SLT-187: postulacion_recurso debe tener exactamente la policy por empresa").toEqual([
+      {
+        policyname: "postulacion_recurso_por_empresa",
+        cmd: "ALL",
+        roles: "{servi_app}",
+        qual: porEmpresa,
+        with_check: porEmpresa,
+      },
+    ]);
   });
 
   it("el enum nativo tiene exactamente `vehiculo` y `bodega`, en ese orden", async () => {
@@ -285,6 +303,8 @@ describeSiHayBase("253 / bloque B — el DDL aplicado, leido de los catalogos", 
       created_at: "NO",
       atendida_at: "YES",
       atendida_por_id: "YES",
+      // SLT-187: la empresa, anadida por SL-17 (`20261022130100_organizacion_id_en_negocio`).
+      organizacion_id: "NO",
     });
   });
 
@@ -326,8 +346,13 @@ describeSiHayBase("253 / bloque B — el DDL aplicado, leido de los catalogos", 
     expect(Object.keys(porNombre).sort()).toEqual([
       "postulacion_recurso_atendida_at_created_at_idx",
       "postulacion_recurso_atendida_por_id_idx",
+      // SLT-187: el indice de la empresa, anadido por SL-17.
+      "postulacion_recurso_organizacion_id_idx",
       "postulacion_recurso_pkey",
     ]);
+    expect(porNombre["postulacion_recurso_organizacion_id_idx"]).toBe(
+      "CREATE INDEX postulacion_recurso_organizacion_id_idx ON public.postulacion_recurso USING btree (organizacion_id)",
+    );
     expect(porNombre["postulacion_recurso_atendida_at_created_at_idx"]).toMatch(
       /\(atendida_at, created_at\)/,
     );
@@ -381,25 +406,15 @@ describeSiHayBase("253 / bloque C — el repositorio REAL contra la base REAL", 
   });
 
   /**
-   * Un usuario existente para la FK de `atendida_por_id`. Se LEE, no se crea: este bloque no
-   * escribe una sola fila en `usuario`. Si no hay ninguno, FALLA con el motivo — no se salta.
+   * Un usuario para la FK de `atendida_por_id`. SLT-187: se CREA dentro de la transaccion
+   * revertida del caso (antes se leia uno cualquiera de la base, y en una base migrada vacia no
+   * habia ninguno). Control positivo: el sembrado se lee de vuelta, exactamente uno.
    */
-  async function unUsuario(tx: {
-    $queryRawUnsafe: <T>(sql: string) => Promise<T>;
-  }): Promise<string> {
-    const filas = await tx.$queryRawUnsafe<{ id: string }[]>(
-      `SELECT id FROM public."usuario" ORDER BY id LIMIT 1`,
-    );
-    if (filas.length === 0) {
-      throw new Error(
-        "La base de pruebas no tiene ni un usuario en `public.usuario`: sin el, la FK " +
-          "`postulacion_recurso_atendida_por_id_fkey` no deja marcar nada como atendido. Esta " +
-          "suite necesita crear su usuario en el test (SL-31). Este bloque NO se salta en este " +
-          "caso (si lo hiciera, R32 y la " +
-          "purga quedarian verdes sin haberse comprobado contra Postgres).",
-      );
-    }
-    return filas[0].id;
+  async function unUsuario(tx: TxDeTest): Promise<string> {
+    const { id } = await crearUsuarioDePrueba(tx, "maestro");
+    const n = await tx.usuario.count({ where: { id } });
+    if (n !== 1) throw new Error(`SLT-187: el usuario sembrado no esta en la base (${n})`);
+    return id;
   }
 
   /** Inserta una postulacion con instantes controlados. Devuelve su id. */

@@ -360,11 +360,14 @@ describe("R23 — camino 3 (bodega): `CierresBodegaAdminRepository.findCierreBod
             solicitadoAt: new Date("2026-07-11T15:00:00.000Z"), // SLT-104 (PA3): lo pide la proyeccion
             mensajero: { nombre: "Ana" },
             _count: { gestiones: 0 }, // SLT-56 (R20): el conteo de gestiones ajustadas del select
+            // SLT-148: las gestiones llegan como relacion de esta lectura, con la proyeccion de admin.
+            gestiones: [filaAdmin()],
           },
         ]),
       },
-      gestionOrden: { findMany: vi.fn().mockResolvedValue([filaAdmin()]) },
-      cierreDetail: { findMany: vi.fn().mockResolvedValue([filaSnapshot()]) },
+      // SLT-148: la fila congelada se busca por (cierreId, ordenId).
+      gestionOrden: { findMany: vi.fn() },
+      cierreDetail: { findMany: vi.fn().mockResolvedValue([filaSnapshot({ cierreId: "cd1" })]) },
       // SLT-110 (R210): el cargo vigente de fulfillment. Vacio: esta suite mide el desglose de pagos.
       ordenFulfillmentMovimiento: { findMany: vi.fn().mockResolvedValue([]) },
     };
@@ -387,7 +390,9 @@ describe("R23 — camino 3 (bodega): `CierresBodegaAdminRepository.findCierreBod
 
     await repo.findCierreBodegaConDetalle("cb1", ZONA_CR, { lectura: "toda_la_empresa" });
 
-    expect(prisma.gestionOrden.findMany.mock.calls[0][0].select).toBe(GESTION_ADMIN_SELECT);
+    // SLT-148: la pide como relacion de los cierre_dia, con la MISMA referencia.
+    expect(prisma.cierreDia.findMany.mock.calls[0][0].select.gestiones.select).toBe(GESTION_ADMIN_SELECT);
+    expect(prisma.gestionOrden.findMany).not.toHaveBeenCalled();
   });
 });
 
