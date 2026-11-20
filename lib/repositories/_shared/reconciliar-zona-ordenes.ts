@@ -147,7 +147,7 @@ export async function reconciliarZonaDeOrdenes(
   const actor = await resolverActorCongelado(tx, actorUsuarioId);
 
   // R1721/R1723: lo que el `findMany` de elegibles NO mueve por su estado: todo lo que la
-  // clasificacion no marca `se_mueve` (estante, finalizadas, devoluciones, por liberar). Los tres
+  // clasificacion no marca `se_mueve` (estante, finalizadas, devoluciones). Los tres
   // llamadores excluyen lo mismo (R1706).
   const noSeMueven = [...ESTADOS_QUE_NO_SE_MUEVEN];
 
