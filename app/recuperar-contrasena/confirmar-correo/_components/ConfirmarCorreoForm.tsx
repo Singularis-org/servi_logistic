@@ -16,8 +16,9 @@ const PREFIJO_ENLACE = "#enlace=";
 // Textos de la pantalla en un solo sitio (R1622-R1624).
 export const TEXTOS_CONFIRMAR_CORREO = {
   titulo: "Confirma tu correo",
+  // «pidió cambiar» y no «cambió»: el correo no cambia hasta que la persona confirma (D2, R1615).
   explicacion:
-    "Tu administrador cambió el correo de tu cuenta. Confírmalo para empezar a entrar con él.",
+    "Tu administrador pidió cambiar el correo de tu cuenta. Confírmalo para empezar a entrar con el correo nuevo.",
   confirmar: "Confirmar correo",
   confirmando: "Confirmando...",
   tituloHecho: "Correo confirmado",

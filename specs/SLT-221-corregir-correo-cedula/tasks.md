@@ -185,7 +185,10 @@ Empieza con PR 1 mergeado y la rama al día con `dev`.
 - [x] **T3.2 — Página pública** (depende de T2.0 y T2.5).
   `app/recuperar-contrasena/confirmar-correo/page.tsx` + `_components/ConfirmarCorreoForm.tsx`.
   Abrirla no llama a nada (R1626); el botón confirma; los tres mensajes (R1622-R1624). **Hecho:**
-  cubierto por T3.3. La página se ve sin sesión, sin tocar `PUBLIC_ROUTES`.
+  `tests/unit/components/confirmar-correo-form.test.tsx` cubre R1622, R1623 (`invalid_or_expired`,
+  `validation_error` y sin `#enlace=`), R1624 (`correo_en_uso`) y R1626 (al montar no llama a la
+  acción); T3.3 cubre R1622, R1623 y R1626 de punta a punta. La página se ve sin sesión, sin tocar
+  `PUBLIC_ROUTES`.
 - [x] **T3.3 — E2E** (depende de T3.1 y T3.2).
   `e2e/usuario-cambio-correo.spec.ts`:
   - el maestro pide el cambio y ve el pendiente;

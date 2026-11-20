@@ -198,6 +198,12 @@ test("R1618, R1619, R1622, R1623, R1626, R1628: pedir, cancelar, confirmar sin s
   await expect(publico.getByRole("heading", { level: 1, name: "Confirma tu correo" })).toBeVisible({
     timeout: 60_000,
   });
+  // El correo aún no ha cambiado: la página dice que se PIDIÓ el cambio (review PR 3, m3).
+  await expect(
+    publico.getByText(
+      "Tu administrador pidió cambiar el correo de tu cuenta. Confírmalo para empezar a entrar con el correo nuevo.",
+    ),
+  ).toBeVisible();
   const alAbrir = await base().usuario.findUniqueOrThrow({ where: { id }, select: { email: true } });
   expect(alAbrir.email).toBe(anterior);
   expect(await pendientesAbiertos(id)).toHaveLength(1);

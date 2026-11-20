@@ -435,9 +435,9 @@ T2.0 omitido por decisión de Carlos (2026-11-19): componentes de hoy, sin canva
 | R1620 | `cambio-correo-usuario.test.tsx` (reenviar pide el MISMO correo y muestra el vencimiento nuevo) |
 | conflict / validation_error | `cambio-correo-usuario.test.tsx` (junto al campo; el motivo del servidor tal cual) |
 | R1622 | E2E pasos 6, 8 y 9 (correo cambiado en la base, entra con el nuevo y no con el anterior, fila del Histórico) |
-| R1623 | E2E paso 7 (el mismo enlace otra vez: mensaje genérico) |
-| R1624 | texto en `ConfirmarCorreoForm` (`correo_en_uso`); el caso lo prueban los tests de servicio y acción del PR 2 |
-| R1626, R1628 | E2E paso 5 (sin sesión; al abrir, correo y pendiente intactos y el fragmento sale de la barra) |
+| R1623 | E2E paso 7 (el mismo enlace otra vez: mensaje genérico) + `confirmar-correo-form.test.tsx` (`invalid_or_expired`, `validation_error`, sin `#enlace=`; vuelta 2) |
+| R1624 | `confirmar-correo-form.test.tsx` › «con `correo_en_uso` muestra el texto de R1624, no el genérico» (vuelta 2; antes sin test de UI, B1) |
+| R1626, R1628 | E2E paso 5 (sin sesión; al abrir, correo y pendiente intactos y el fragmento sale de la barra) + `confirmar-correo-form.test.tsx` › «al montar con enlace no llama a la acción» (vuelta 2) |
 
 ## Salida real
 

@@ -946,6 +946,23 @@ describe("UsuarioForm — el rol apiKey no se asigna a mano", () => {
     // ...pero no se puede cambiar.
     expect(rolTrigger).toBeDisabled();
   }, 15000);
+
+  // SLT-221 «Maestro: corregir correo y cédula de un usuario» (review PR 3, m1): la cuenta de
+  // máquina no recibe correos, así que la edición no le ofrece el bloque «Cambiar correo». El
+  // servidor lo rechaza igual (R1613); esto fija que la UI no lo enseña.
+  it("SLT-221: el bloque «Cambiar correo» sale al editar a una persona y no a la cuenta apiKey", async () => {
+    listarRolesMock.mockResolvedValue({ status: "ok", roles: [...ROLES_CON_API] });
+    renderIsolated(<UsuarioForm mode="editar" usuario={USUARIO} />);
+    expect(await screen.findByRole("region", { name: "Cambiar correo" })).toBeInTheDocument();
+    cleanup();
+
+    renderIsolated(<UsuarioForm mode="editar" usuario={USUARIO_API} />);
+    // Se espera a que el rol esté resuelto: antes de eso el bloque no sale para nadie.
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: "Rol" })).toHaveTextContent("apiKey"),
+    );
+    expect(screen.queryByRole("region", { name: "Cambiar correo" })).toBeNull();
+  }, 15000);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────
