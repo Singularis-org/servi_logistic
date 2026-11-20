@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 
+import type { FormatoMoneda } from "@/lib/config/moneda";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { IEtiquetaGuiaService } from "@/lib/interfaces/services/IEtiquetaGuiaService";
 import type {
@@ -7,6 +8,7 @@ import type {
   EtiquetasLotePdfResultado,
   IEtiquetasLotePdfService,
 } from "@/lib/interfaces/services/IEtiquetasLotePdfService";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import type { IFileStorage } from "@/lib/interfaces/external/IFileStorage";
 import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlProvider";
 import type { EtiquetaGuiaDTO } from "@/lib/types/etiqueta-guia";
@@ -44,8 +46,28 @@ export class EtiquetasLotePdfService implements IEtiquetasLotePdfService {
     private readonly ttlSeg: number,
     /** Tope de etiquetas por PDF (`etiquetasConfig.MAX_ETIQUETAS_POR_PDF`). */
     private readonly maxEtiquetas: number,
-    private readonly build: (dtos: EtiquetaGuiaDTO[]) => Promise<Uint8Array> = buildEtiquetasLotePdf,
+    private readonly build: (
+      dtos: EtiquetaGuiaDTO[],
+      moneda: FormatoMoneda,
+    ) => Promise<Uint8Array> = buildEtiquetasLotePdf,
+    /** SL-21 (R14) — de aqui sale la moneda del pais de la empresa con la que se pinta el importe. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "moneda">,
   ) {}
+
+  /**
+   * SL-21 (R14, R6) — la moneda del pais de la empresa en curso. Se pide DESPUES de saber que hay
+   * etiquetas (un lote vacio no la lee) y ANTES de `build`, para que un `PaisSinMoneda` salga sin
+   * haber subido nada. Opcional en el constructor solo por los tests que no la usan: sin ella se
+   * lanza en vez de caer a la moneda de la plataforma, que seria pintar la de otro pais.
+   */
+  private async monedaDeLaEmpresa(operacion: string): Promise<FormatoMoneda> {
+    if (!this.reglasPais) {
+      throw new Error(
+        `${operacion} requiere las reglas del pais de la empresa: sin ellas no hay moneda (SL-21)`,
+      );
+    }
+    return this.reglasPais.moneda();
+  }
 
   async generarYAlmacenar(
     ordenIds: string[],
@@ -65,8 +87,9 @@ export class EtiquetasLotePdfService implements IEtiquetasLotePdfService {
       throw new EtiquetasLoteExcedeTopeError(res.etiquetas.length, this.maxEtiquetas);
     }
 
-    // 2. PDF consolidado (R1-R6).
-    const bytes = await this.build(res.etiquetas);
+    // 2. PDF consolidado (R1-R6), con la moneda del pais (SL-21 R14).
+    const moneda = await this.monedaDeLaEmpresa("EtiquetasLotePdfService.generarYAlmacenar");
+    const bytes = await this.build(res.etiquetas, moneda);
 
     // 3. Path aislado por dueño y unico por lote (R11).
     const path = `${actor.usuarioId}/${randomUUID()}.pdf`;
@@ -105,9 +128,10 @@ export class EtiquetasLotePdfService implements IEtiquetasLotePdfService {
     // 3. Un PDF de una pagina por etiqueta, cada uno con su path aislado por dueño y su URL
     //    firmada. Se correlaciona por `ordenId` (el DTO ya lo lleva) para que el llamador
     //    persista cada URL en el `orden.download_url` de SU orden.
+    const moneda = await this.monedaDeLaEmpresa("EtiquetasLotePdfService.generarYAlmacenarPorOrden");
     const resultados: EtiquetaOrdenPdfResultado[] = [];
     for (const etiqueta of res.etiquetas) {
-      const bytes = await this.build([etiqueta]);
+      const bytes = await this.build([etiqueta], moneda);
       const path = `${actor.usuarioId}/${randomUUID()}.pdf`;
       await this.storage.upload({ path, bytes, contentType: "application/pdf" });
       const signedUrl = await this.signedUrls.createSignedUrl(path, this.ttlSeg);

@@ -193,6 +193,8 @@ function buildDescargaService(): IEtiquetasDescargaService {
     new SupabaseSignedUrlProvider(undefined, bucket),
     etiquetasConfig.SIGNED_URL_TTL_SECONDS,
     etiquetasConfig.MAX_ETIQUETAS_POR_PDF,
+    undefined, // el `build` de produccion, el de por defecto
+    construirReglasPaisEmpresa(prisma), // SL-21 R14/R21: la moneda del pais de la empresa
   );
   return new EtiquetasDescargaService(pdfService, new OrdenRepository(prisma));
 }

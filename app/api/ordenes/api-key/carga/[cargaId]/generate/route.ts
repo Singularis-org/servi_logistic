@@ -68,6 +68,8 @@ function buildPdfService(): IApiPdfEtiquetaService {
     signedUrls,
     ttl,
     etiquetasConfig.MAX_ETIQUETAS_POR_PDF,
+    undefined, // el `build` de produccion, el de por defecto
+    construirReglasPaisEmpresa(prisma), // SL-21 R14/R21: la moneda del pais de la empresa
   );
   return new ApiPdfEtiquetaService(repo, lotePdf, signedUrls, ttl);
 }
