@@ -74,21 +74,21 @@
 
 ## T4 — Tests de la base: intento, máquina y eventos (depende de T3)
 
-- [ ] **T4.1** `tests/integration/db/cobro-intento.test.ts`, con la tabla de §8. **Hecho:** cubre R1–R11, R25 y
+- [x] **T4.1** `tests/integration/db/cobro-intento.test.ts`, con la tabla de §8. **Hecho:** cubre R1–R11, R25 y
   R26, en verde, y las mutaciones 1, 2 y 6 lo ponen en rojo.
-- [ ] **T4.2** `[P]` `tests/integration/db/cobro-webhook-evento.test.ts`. **Hecho:** cubre R12, R13 y R26
+- [x] **T4.2** `[P]` `tests/integration/db/cobro-webhook-evento.test.ts`. **Hecho:** cubre R12, R13 y R26
   (eventos), en verde.
 
 ## T5 — Backend (depende de T3; puede ir junto con T4)
 
-- [ ] **T5.1** `[P]` Los tipos y el esquema zod (`lib/types/cobro.ts`) y el puerto
+- [x] **T5.1** `[P]` Los tipos y el esquema zod (`lib/types/cobro.ts`) y el puerto
   (`lib/interfaces/external/IProveedorCobro.ts`). **Hecho:** typecheck en verde.
-- [ ] **T5.2** `ICobroIntentoRepository` y `CobroIntentoRepository` (§4.3), con la entrada en
+- [x] **T5.2** `ICobroIntentoRepository` y `CobroIntentoRepository` (§4.3), con la entrada en
   `EXCEPCIONES_DE_PLATAFORMA`. **Hecho:** `plataforma-solo-en-lista` en verde.
-- [ ] **T5.3** `ICobroIntentoService` y `CobroIntentoService` (§4.4). **Hecho:** typecheck y lint en verde.
-- [ ] **T5.4** `tests/unit/services/cobro-intento-service.test.ts`. **Hecho:** cubre R13–R16, R20 (traducción) y
+- [x] **T5.3** `ICobroIntentoService` y `CobroIntentoService` (§4.4). **Hecho:** typecheck y lint en verde.
+- [x] **T5.4** `tests/unit/services/cobro-intento-service.test.ts`. **Hecho:** cubre R13–R16, R20 (traducción) y
   R27, en verde.
-- [ ] **T5.5** `[P]` «Pagado en línea» en «Registró» (R29, design §5.1): la marca `enLinea` en
+- [x] **T5.5** `[P]` «Pagado en línea» en «Registró» (R29, design §5.1): la marca `enLinea` en
   `MarcasDeLaPlataforma` y `LibroCajaAutoriaRepository.marcasDeLaPlataforma`, la acción `pago_en_linea` en
   `LibroCajaAutoriaService.registro` y en `RegistroDTO`, y su texto en `ACCION_AUTOMATICA_LABEL` / `textoRegistro`.
   Tests: amplía `libro-caja-autoria-plataforma.test.ts` y `detalle-movimiento-panel-labels-plataforma.test.ts`; la

@@ -106,4 +106,6 @@ export interface ILibroCajaAutoriaRepository {
 export interface MarcasDeLaPlataforma {
   registrados: Set<string>;
   anulados: Set<string>;
+  /** SLT-226 (design §5.1, R29): los pagos que nacieron de un intento aprobado en línea (confirmación `en_linea`). */
+  enLinea: Set<string>;
 }
