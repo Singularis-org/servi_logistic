@@ -19,12 +19,24 @@
  *
  * Bajadas:
  * - 2026-11-20 (SLT-235 R19): sale `app/paquete/[numGuia]/page.tsx`, que ya pinta el monto con la
- *   moneda del pais de la empresa. El tope pasa de 20 a 19. Las entradas que quedan a nombre de
- *   SLT-235 nombran en el motivo la rebanada que las retira (design §8); pasarles la ficha pide sumar
- *   SLT-240..SLT-246 a `FichaQueLoRetira` y a la lista de la guardia.
+ *   moneda del pais de la empresa. El tope pasa de 20 a 19. Las entradas que quedaban a nombre de
+ *   SLT-235 pasan a la rebanada que las retira (design §8): SLT-241, SLT-242 y SLT-245.
  */
 
-export type FichaQueLoRetira = "SLT-81" | "SLT-90" | "SL-22" | "SLT-235" | "SLT-237" | "permanente";
+export type FichaQueLoRetira =
+  | "SLT-81"
+  | "SLT-90"
+  | "SL-22"
+  | "SLT-235"
+  | "SLT-237"
+  | "SLT-240"
+  | "SLT-241"
+  | "SLT-242"
+  | "SLT-243"
+  | "SLT-244"
+  | "SLT-245"
+  | "SLT-246"
+  | "permanente";
 
 export interface ExcepcionPaisSinLiterales {
   /** Ruta relativa a la raiz, con `/`. */
@@ -36,7 +48,7 @@ export interface ExcepcionPaisSinLiterales {
 export const EXCEPCIONES_PAIS_SIN_LITERALES: readonly ExcepcionPaisSinLiterales[] = [
   {
     archivo: "lib/analytics/metrics.ts",
-    ficha: "SLT-235",
+    ficha: "SLT-242",
     motivo: "rotulos y descripciones de las metricas de analitica con «IVA» (pantalla); los toma del pais la rebanada SLT-242 (design §8)",
   },
   {
@@ -51,12 +63,12 @@ export const EXCEPCIONES_PAIS_SIN_LITERALES: readonly ExcepcionPaisSinLiterales[
   },
   {
     archivo: "lib/constants/impuesto-rotulo.ts",
-    ficha: "SLT-235",
+    ficha: "SLT-245",
     motivo: "`IMPUESTO_ROTULO = \"IVA\"`: rotulo de pantalla (wallet, detalle de cierres); SLT-235 lo toma del pais en la rebanada SLT-245 (design §8)",
   },
   {
     archivo: "lib/constants/wallet-rotulos.ts",
-    ficha: "SLT-235",
+    ficha: "SLT-245",
     motivo: "rotulos de los movimientos de la wallet con «IVA» (pantalla); los toma del pais la rebanada SLT-245 (design §8)",
   },
   {
@@ -76,27 +88,27 @@ export const EXCEPCIONES_PAIS_SIN_LITERALES: readonly ExcepcionPaisSinLiterales[
   },
   {
     archivo: "lib/repositories/TarifaValorRepository.ts",
-    ficha: "SLT-235",
+    ficha: "SLT-241",
     motivo: "texto «IVA 13.00» del historial de tarifas, que se pinta en pantalla (decision del humano, 2026-11-20); lo retira la rebanada SLT-241 (design §8)",
   },
   {
     archivo: "lib/repositories/_shared/resolver-tarifas.ts",
-    ficha: "SLT-235",
+    ficha: "SLT-241",
     motivo: "mensaje interno de error «no tiene IVA» del resolver de tarifas; lo nombra con el impuesto del pais la rebanada SLT-241 (design §8)",
   },
   {
     archivo: "lib/services/AnaliticaFinancieraService.ts",
-    ficha: "SLT-235",
+    ficha: "SLT-242",
     motivo: "`monedaConfig.currency` en el DTO que pintan las pantallas de analitica financiera; la moneda del pais la pone la rebanada SLT-242 (design §8)",
   },
   {
     archivo: "lib/types/plantilla-datos.ts",
-    ficha: "SLT-235",
+    ficha: "SLT-241",
     motivo: "ejemplo «₡12.500» del selector de variables y la moneda de la plataforma por defecto de la vista previa en el navegador; la pasa a la del pais la rebanada SLT-241 (decision del humano, P2 de SLT-235, 2026-11-20)",
   },
   {
     archivo: "lib/types/tarifa-flexible.ts",
-    ficha: "SLT-235",
+    ficha: "SLT-241",
     motivo: "mensaje de validacion «El IVA debe ser…» del formulario de tarifas (pantalla); lo toma del pais la rebanada SLT-241 (design §8)",
   },
   {
@@ -126,7 +138,7 @@ export const EXCEPCIONES_PAIS_SIN_LITERALES: readonly ExcepcionPaisSinLiterales[
   },
   {
     archivo: "lib/whatsapp-envios/informes/transito/informe.ts",
-    ficha: "SLT-235",
+    ficha: "SLT-241",
     motivo: "ejemplo «₡322.900» de `por_cobrar` en el panel de variables (pantalla); el valor real ya sale en la moneda del pais; lo retira la rebanada SLT-241 (decision del humano, P2 de SLT-235, 2026-11-20)",
   },
 ];

@@ -202,7 +202,7 @@ Veredicto: T3.3, T3.4, T3.5 y T4.1 hechas; typecheck, lint y sus tests en verde;
 | R16 | cada caso con `MONEDA_CR` igual que sin proveedor + tests existentes sin tocar |
 | R17 | `moneda-del-pais-pantallas.test.tsx` > `useImpuestoDelPais` da «IGV» |
 | R18 | `moneda-del-pais-pantallas.test.tsx` > «censo de R18» con contraprueba |
-| R19 | `tests/unit/guards/pais-sin-literales.guardia.test.ts` > «la lista solo baja…» (exige quitar `/paquete`, que ya no tiene literales) y «la lista no crece respecto de su tope» (tope 19). El paso de dueño va en el motivo de cada entrada, no en `ficha` (ver T4.2 abajo) |
+| R19 | `tests/unit/guards/pais-sin-literales.guardia.test.ts` > «la lista solo baja…» (exige quitar `/paquete`, que ya no tiene literales) y «la lista no crece respecto de su tope» (tope 19). «cada excepcion trae ficha admitida…» con las 9 entradas ya a nombre de SLT-241, SLT-242 y SLT-245 |
 | R20 | lo comprueba el reviewer en el diff: sin cambios en `monto-cliente.ts`, `plantilla-datos.ts`, `informe.ts`, las pantallas de plataforma de planes, los nombres internos con «iva» ni `openapi-spec.ts` |
 
 ### Verificación de esta tanda
@@ -216,11 +216,10 @@ Veredicto: T3.3, T3.4, T3.5 y T4.1 hechas; typecheck, lint y sus tests en verde;
 ## Cierre final (implementer, 2026-11-20) — T4.2 y T4.4
 
 ### Archivos
-- `tests/unit/guards/_pais-sin-literales-excepciones.ts`: sale `app/paquete/[numGuia]/page.tsx` y `TOPE_EXCEPCIONES` baja de 20 a 19 (R19). Las 9 entradas que siguen con `ficha: "SLT-235"` nombran en su motivo la rebanada que las retira (design §8): `metrics.ts` y `AnaliticaFinancieraService.ts` → SLT-242; `impuesto-rotulo.ts` y `wallet-rotulos.ts` → SLT-245; `TarifaValorRepository.ts`, `resolver-tarifas.ts` y `tarifa-flexible.ts` → SLT-241; los ejemplos «₡12.500» (`plantilla-datos.ts`) y «₡322.900» (`informe.ts`) → SLT-241 (P2, decisión humana).
+- `tests/unit/guards/_pais-sin-literales-excepciones.ts`: sale `app/paquete/[numGuia]/page.tsx` y `TOPE_EXCEPCIONES` baja de 20 a 19 (R19). Las 9 entradas que estaban a nombre de SLT-235 pasan a la rebanada que las retira, en `ficha` y en el motivo (design §8): `metrics.ts` y `AnaliticaFinancieraService.ts` → SLT-242; `impuesto-rotulo.ts` y `wallet-rotulos.ts` → SLT-245; `TarifaValorRepository.ts`, `resolver-tarifas.ts` y `tarifa-flexible.ts` → SLT-241; los ejemplos «₡12.500» (`plantilla-datos.ts`) y «₡322.900» (`informe.ts`) → SLT-241 (P2, decisión humana).
 - `specs/SLT-235-moneda-pais-pantallas/tasks.md`: T4.2 y T4.4 en `[x]`.
 
-### Desviación (abierta para el leader)
-- R19, segunda frase («DEBEN pasar a la ficha de la rebanada»), queda cumplida solo en el motivo. Ampliar `FichaQueLoRetira` con SLT-240..SLT-246 obliga a ampliar también la lista fija de fichas de `tests/unit/guards/pais-sin-literales.guardia.test.ts` (línea 147), que no está en «Archivos esperados»: sería el archivo 34 (tope aceptado 33). No se tocó.
+- `tests/unit/guards/pais-sin-literales.guardia.test.ts` (archivo 34, aceptado por el leader): la lista fija de fichas admitidas pasa a `FICHAS_ADMITIDAS: readonly FichaQueLoRetira[]` con SLT-240..SLT-246. `FichaQueLoRetira` gana las mismas siete.
 
 ### Verificación
 - `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: exit 0.
@@ -229,4 +228,4 @@ Veredicto: T3.3, T3.4, T3.5 y T4.1 hechas; typecheck, lint y sus tests en verde;
 - `pnpm run test:guardias`: 357 archivos verdes, 3 saltados (360); 5413 tests verdes, 28 saltados.
 - `./init.sh` completo y E2E (`dinero`, `mis-asignaciones`, `recepcion-satelite`, `asignacion-satelite`, `pwa-mensajero-*`): NO corridos en local (el local muere por memoria); delegados a CI.
 
-Veredicto: T1.1–T4.4 hechas; verificación local acotada en verde; R19 con el dueño en el motivo (ver desviación).
+Veredicto: T1.1–T4.4 hechas; verificación local acotada en verde; R19 completo.

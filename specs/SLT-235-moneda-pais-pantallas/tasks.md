@@ -69,7 +69,7 @@ esperado.
   archivos de design §7 y su contraprueba.
   - *Hecho:* en verde, y rojo si en uno de ellos se reescribe un `money(` o un `formatMonto(` de
     `@/lib/config/moneda`.
-- [x] **T4.2** (2026-11-20: `/paquete` fuera y tope 20 → 19. El campo `ficha` sigue en `SLT-235` porque la guardia `pais-sin-literales.guardia.test.ts` fija la lista de fichas admitidas y tocarla sería el archivo 34; cada motivo nombra ya la rebanada que la retira, y los dos ejemplos van a SLT-241 por P2. Pasar el campo queda para la primera rebanada que toque la guardia.) Lista de excepciones de `pais-sin-literales` (design §8). Depende de que SL-21 T5.1 esté
+- [x] **T4.2** (2026-11-20: `/paquete` fuera y tope 20 → 19; `FichaQueLoRetira` y la lista de la guardia ganan SLT-240..SLT-246; las 9 entradas SLT-235 pasan a SLT-241, SLT-242 y SLT-245, y los dos ejemplos a SLT-241 por P2. `pais-sin-literales.guardia.test.ts` es el archivo 34, aceptado por el leader.) Lista de excepciones de `pais-sin-literales` (design §8). Depende de que SL-21 T5.1 esté
   en esta rama.
   - Se quita la entrada de `/paquete` y se baja el tope.
   - `FichaQueLoRetira` gana `SLT-240` a `SLT-246`, y cada entrada `SLT-235` pasa a su rebanada. Los dos
