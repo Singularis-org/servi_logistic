@@ -32,7 +32,7 @@
   - Este último gana el caso de R7: una moneda cuyo símbolo la fuente no cubre lanza
     `ErrorCaracterNoImprimible` antes de escribir.
   - *Hecho:* los tres en verde; `etiquetas-lote-pdf-service.test.ts` verde sin tocarlo.
-- [ ] **T2.2** `app/(app)/ordenes/_components/etiquetas-pdf.ts`: `moneda` obligatoria en
+- [x] **T2.2** `app/(app)/ordenes/_components/etiquetas-pdf.ts`: `moneda` obligatoria en
   `buildEtiquetasPdf` y `descargarEtiquetasPdf`, y se pasa a `drawEtiqueta`. Depende de T2.1.
   - Los llamantes de test pasan `MONEDA_PLATAFORMA`:
     - `tests/unit/components/etiquetas-pdf.test.ts`, con el `@ts-expect-error` de R14 para
@@ -41,7 +41,7 @@
     - `tests/components/EtiquetaFechaEnPantalla.test.tsx`.
   - `tests/unit/pdf/etiquetas-dos-generadores.test.ts` gana el caso de R6 con `MONEDA_DE_PRUEBA`.
   - *Hecho:* los cuatro en verde.
-- [ ] **T2.3** `EtiquetasGuiaModal.tsx` lee `useMonedaDelPais()` y la pasa a `descargarEtiquetasPdf`.
+- [x] **T2.3** `EtiquetasGuiaModal.tsx` lee `useMonedaDelPais()` y la pasa a `descargarEtiquetasPdf`.
   `EtiquetaGuia.tsx` pinta con `formatearMontoEn(moneda, montoCobrar)`. Depende de T2.2.
   - `tests/components/EtiquetasGuiaModal.test.tsx`: las dos aserciones `toHaveBeenCalledWith` ganan el
     cuarto argumento (`MONEDA_PLATAFORMA` sin proveedor), más un caso con el proveedor de prueba (R6).

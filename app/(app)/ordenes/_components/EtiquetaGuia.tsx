@@ -4,7 +4,8 @@ import type { Ref } from "react";
 import { QRCodeCanvas } from "qrcode.react";
 import Barcode from "react-barcode";
 
-import { formatMonto } from "@/lib/config/moneda";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
+import { formatearMontoEn } from "@/lib/config/moneda";
 import {
   geografiaLegible,
   ROTULO_GUIA,
@@ -54,6 +55,9 @@ const QR_RASTER_SIZE = 512;
  * barras (R8, `barcodeValue`). No decide que codificar: usa `qrValue`/
  * `barcodeValue` tal cual los resuelve el backend. `montoCobrar` se formatea con
  * la config de moneda (R5, sin hardcodear moneda); null -> "-".
+ *
+ * SLT-240 (R5, R6) — La moneda es la del pais de la empresa (`useMonedaDelPais()`),
+ * la misma que el modal pasa al PDF: vista previa y papel dicen el mismo importe.
  *
  * Feature 282 (T27, R31) — El valor del monto se pinta con `familiaMonto`, la
  * familia registrada desde los MISMOS bytes que jsPDF embebe en el PDF. Es el
@@ -114,6 +118,7 @@ export function EtiquetaGuia({
   // LIMPIO: ya NO se codifica `orden.id` (UUID); las etiquetas impresas con el
   // formato anterior dejan de escanear y se reimprimen.
   const qrUrl = buildPaqueteUrl(numGuia);
+  const moneda = useMonedaDelPais();
 
   return (
     <article
@@ -200,7 +205,7 @@ export function EtiquetaGuia({
               : undefined
           }
         >
-          {formatMonto(montoCobrar)}
+          {formatearMontoEn(moneda, montoCobrar)}
         </span>
       </div>
 
