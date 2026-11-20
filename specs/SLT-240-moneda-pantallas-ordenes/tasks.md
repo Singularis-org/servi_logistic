@@ -82,7 +82,7 @@
   - Celdas de `ordenes-columns` (R1).
   - `PosOrderCardDetalle` con `novedadAOrdenCard` (R8).
   - *Hecho:* casos de R1 y R8 en verde, sin tocar producción.
-- [ ] **T3.6** Rótulos con impuesto de órdenes (R16, design §5). Va después de T3.2, porque comparte
+- [x] **T3.6** Rótulos con impuesto de órdenes (R16, design §5). Va después de T3.2, porque comparte
   `CorregirUbicacionAviso.tsx`.
   - `rotulos-con-impuesto.ts` (nuevo) con `rotuloFleteConImpuesto` y `rotuloComisionConImpuesto`.
   - `ordenes-columns.tsx`: los encabezados de `flete` y `comision` desde

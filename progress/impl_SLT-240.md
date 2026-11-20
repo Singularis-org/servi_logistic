@@ -154,3 +154,46 @@ fuera de la lista (los `MONTO_*` de `CierresAdminModule.tsx` son suyos y no se t
   `DineroIdentidadesEnPantalla.test.tsx:542` (directiva `eslint-disable` sin uso; línea no tocada).
 
 Veredicto (T3.3, T3.4): hechas; casos de R9/R10/R11 en verde, tests existentes verdes sin cambiar valores, typecheck en 0, sin archivos fuera de la lista.
+
+## Tanda 5 — T3.6 rótulos con impuesto de órdenes (frontend_dev, 2026-11-20)
+
+### Archivos
+
+- Nuevo: `app/(app)/ordenes/_components/rotulos-con-impuesto.ts` (`rotuloFleteConImpuesto`, `rotuloComisionConImpuesto`).
+- `app/(app)/ordenes/_components/ordenes-columns.tsx`: `flete`/`comision` con `rotulo…ConImpuesto(IMPUESTO_ROTULO)`;
+  nueva `conImpuestoDelPais(columnas, impuesto)` (identidad con `IMPUESTO_ROTULO`).
+- `app/(app)/ordenes/_components/OrdenesModule.tsx`: `useImpuestoDelPais()`, `useMemo(conImpuestoDelPais(columnsProp ?? ordenesColumnsDe(etiquetas), impuesto))`
+  y `columnasDescargaOrdenes(etiquetas, impuesto)`.
+- `app/(app)/ordenes/_components/ordenes-descarga-columnas.ts`: caída en `COLUMNAS_DESCARGA_ORDENES`;
+  `columnasDescargaOrdenes(etiquetas, impuesto)` sustituye los encabezados de `fleteConIva`/`comisionConIva`.
+- `app/(app)/ordenes/_components/CorregirUbicacionAviso.tsx`: borradas `AVISO_FILA_FLETE`/`AVISO_FILA_COMISION`
+  (sin otros llamantes); filas con `rotulo…ConImpuesto(useImpuestoDelPais())`.
+- Tests: `tests/unit/components/ordenes-descarga-columnas.test.ts`, `tests/components/moneda-del-pais-ordenes.test.tsx`.
+
+### R → test
+
+- R16: `moneda-del-pais-ordenes.test.tsx` > «SLT-240 R16 — rótulos con impuesto de órdenes» (listado montado
+  por `OrdenesModule` con «Flete + IGV»/«Comisión + IGV»; selector de columnas de la descarga con los dos;
+  aviso con las dos filas) y «censo “sin IVA”» (4 archivos de design §5 + contraprueba).
+  `ordenes-descarga-columnas.test.ts` > «SLT-240/R16» (caso «IGV»: solo cambian `fleteConIva`/`comisionConIva`;
+  `conImpuestoDelPais` con «IGV» solo cambia `flete`/`comision`).
+- R12: mismo archivo, casos «R13 y R12» del listado y del aviso (CR = sin proveedor = «Flete + IVA»);
+  `conImpuestoDelPais(cols, IMPUESTO_ROTULO)` devuelve el mismo arreglo (`toBe`); la lista de 22 encabezados
+  intacta; siguen verdes sin tocarlos `ordenes-columns.test.tsx`, `OrdenesPage.test.tsx`,
+  `OrdenesDescargaColumnas.test.tsx`, `detalle-columnas.test.tsx`, `recibidas-columns.test.tsx`,
+  `ordenes-columnas-money-safe.guardia.test.ts`, `descarga-dataset-roundtrip.test.ts`, `descarga-170-volumen.test.ts`,
+  `archivo-identico-470.test.ts`.
+- R15: caso «IGV» de la descarga (claves y orden del contrato; solo dos encabezados distintos); `filaDescargaOrden` sin cambios.
+- R17: ningún texto de formato de entrada tocado; el «IVA» solo sale de `IMPUESTO_ROTULO` (censo «sin IVA»).
+
+### Salida real (worktree, NODE_OPTIONS=--max-old-space-size=8192)
+
+- `pnpm exec vitest run tests/components/moneda-del-pais-ordenes.test.tsx tests/unit/components/ordenes-descarga-columnas.test.ts`:
+  `Test Files 2 passed (2)` / `Tests 58 passed (58)`.
+- `pnpm exec vitest related --run` de los 5 archivos de producción: `Test Files 73 passed (73)` / `Tests 1027 passed (1027)`
+  (pasa de ~60 archivos, pero corrió entero y en verde).
+- Explícitos (los 6 de «sin tocarlos» + 3 de descarga): `Test Files 9 passed (9)` / `Tests 141 passed (141)`.
+- `pnpm run typecheck` (`tsc --noEmit`): sin errores.
+- `pnpm exec eslint` de los 7 archivos tocados: sin salida (0 errores, 0 warnings).
+
+Veredicto (T3.6): hecha; R16 en verde con CR idéntico, sin «IVA» literal nuevo en producción, solo archivos de la lista.

@@ -24,6 +24,11 @@ import {
   CorregirUbicacionAviso,
 } from "@/app/(app)/ordenes/_components/CorregirUbicacionAviso";
 import { ordenesColumnsDe } from "@/app/(app)/ordenes/_components/ordenes-columns";
+import { OrdenesModule } from "@/app/(app)/ordenes/_components/OrdenesModule";
+import { IMPUESTO_ROTULO } from "@/lib/constants/impuesto-rotulo";
+import { quitarComentarios } from "@/tests/fixtures/sin-comentarios";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { PosOrderCardDetalle } from "@/app/(app)/mis-asignaciones/_components/pos-card/PosOrderCardDetalle";
 import {
   novedadAOrdenCard,
@@ -98,6 +103,16 @@ vi.mock("@/lib/actions/historial-acciones", () => ({
 }));
 vi.mock("@/lib/actions/etiquetas-guia", () => ({
   generarEtiquetas: vi.fn(async () => ({ status: "ok", etiquetas: [], omitidas: [] })),
+}));
+// El listado de órdenes (R16) se monta con `OrdenesModule` real; esto solo dobla sus lecturas, como
+// `OrdenesDescargaColumnas.test.tsx`.
+const { listarOrdenesMock } = vi.hoisted(() => ({ listarOrdenesMock: vi.fn() }));
+vi.mock("@/lib/actions/ordenes", () => ({
+  listarOrdenes: listarOrdenesMock,
+  listarOrdenesCompleto: vi.fn(),
+}));
+vi.mock("@/lib/actions/order-status", () => ({
+  listarOrderStatus: vi.fn(async () => ({ status: "ok", estatus: [] })),
 }));
 
 /** El nombre de impuesto del país de prueba: otro que el de la plataforma. */
@@ -417,6 +432,111 @@ describe("SLT-240 R4 — aviso de cambio de ubicación (CorregirUbicacionAviso)"
 
   it("R12: con la moneda de CR, las mismas celdas que sin proveedor", () => {
     expect(celdasDelAviso(MONEDA_CR)).toEqual(celdasDelAviso());
+  });
+});
+
+// ── R16: los rótulos con impuesto de órdenes (listado, su descarga y el aviso) ──────────────────
+
+/** Los rótulos de las filas del aviso (`th scope="row"`), con el proveedor de `moneda` o sin él. */
+function rotulosDelAviso(moneda?: FormatoMoneda): string[] {
+  const { unmount } = render(
+    <CorregirUbicacionAviso aviso={AVISO} onConfirmar={() => {}} />,
+    moneda ? { wrapper: conPais(moneda) } : undefined,
+  );
+  const rotulos = screen.getAllByRole("rowheader").map((th) => (th.textContent ?? "").trim());
+  unmount();
+  return rotulos;
+}
+
+/** Monta el listado REAL (`OrdenesModule`) con la descarga, con el proveedor de `moneda` o sin él. */
+async function montarListado(moneda?: FormatoMoneda) {
+  listarOrdenesMock.mockResolvedValue({
+    status: "ok",
+    items: [makeOrdenListado()],
+    page: 1,
+    pageSize: 25,
+    total: 1,
+  });
+  const utils = render(
+    <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+      <OrdenesModule permitirDescarga />
+    </SWRConfig>,
+    moneda ? { wrapper: conPais(moneda) } : undefined,
+  );
+  await screen.findByText("REM-R1");
+  return utils;
+}
+
+/** Los encabezados de columna del listado montado por `OrdenesModule`. */
+async function encabezadosDelListado(moneda?: FormatoMoneda): Promise<string[]> {
+  const { unmount } = await montarListado(moneda);
+  const encabezados = screen.getAllByRole("columnheader").map((th) => (th.textContent ?? "").trim());
+  unmount();
+  return encabezados;
+}
+
+describe("SLT-240 R16 — rótulos con impuesto de órdenes", () => {
+  it("listado (OrdenesModule): con el país de prueba, «Flete + IGV» y «Comisión + IGV»", async () => {
+    const encabezados = await encabezadosDelListado(MONEDA_DE_PRUEBA);
+    expect(encabezados).toContain(`Flete + ${IMPUESTO_DE_PRUEBA}`);
+    expect(encabezados).toContain(`Comisión + ${IMPUESTO_DE_PRUEBA}`);
+    expect(encabezados).not.toContain(`Flete + ${IMPUESTO_ROTULO}`);
+    expect(encabezados).not.toContain(`Comisión + ${IMPUESTO_ROTULO}`);
+  });
+
+  it("listado, R13 y R12: sin proveedor «Flete + IVA», y con CR los mismos encabezados", async () => {
+    const sinProveedor = await encabezadosDelListado();
+    expect(sinProveedor).toContain("Flete + IVA");
+    expect(sinProveedor).toContain("Comisión + IVA");
+    expect(await encabezadosDelListado(MONEDA_CR)).toEqual(sinProveedor);
+  });
+
+  it("descarga del listado (OrdenesModule): el selector de columnas ofrece «Flete + IGV» y «Comisión + IGV»", async () => {
+    const user = userEvent.setup();
+    const { unmount } = await montarListado(MONEDA_DE_PRUEBA);
+    await user.click(screen.getAllByRole("button", { name: "Elegir columnas de la descarga" })[0]!);
+    expect(screen.getByRole("checkbox", { name: `Flete + ${IMPUESTO_DE_PRUEBA}` })).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: `Comisión + ${IMPUESTO_DE_PRUEBA}` })).toBeTruthy();
+    expect(screen.queryByRole("checkbox", { name: `Flete + ${IMPUESTO_ROTULO}` })).toBeNull();
+    unmount();
+  });
+
+  it("aviso de cambio de ubicación: con el país de prueba, «Flete + IGV» y «Comisión + IGV»", () => {
+    const rotulos = rotulosDelAviso(MONEDA_DE_PRUEBA);
+    expect(rotulos).toContain(`Flete + ${IMPUESTO_DE_PRUEBA}`);
+    expect(rotulos).toContain(`Comisión + ${IMPUESTO_DE_PRUEBA}`);
+    expect(rotulos).not.toContain(`Flete + ${IMPUESTO_ROTULO}`);
+  });
+
+  it("aviso, R13 y R12: sin proveedor «Flete + IVA», y con CR los mismos rótulos", () => {
+    const sinProveedor = rotulosDelAviso();
+    expect(sinProveedor).toContain("Flete + IVA");
+    expect(sinProveedor).toContain("Comisión + IVA");
+    expect(rotulosDelAviso(MONEDA_CR)).toEqual(sinProveedor);
+  });
+});
+
+/** Los cuatro archivos de design §5 que pintan los rótulos con impuesto de órdenes. */
+const CENSO_SIN_IVA = [
+  "app/(app)/ordenes/_components/ordenes-columns.tsx",
+  "app/(app)/ordenes/_components/ordenes-descarga-columnas.ts",
+  "app/(app)/ordenes/_components/CorregirUbicacionAviso.tsx",
+  "app/(app)/ordenes/_components/rotulos-con-impuesto.ts",
+];
+
+/** ¿Escribe el código (sin comentarios) la palabra «IVA»? */
+const escribeIva = (fuente: string) => /\bIVA\b/.test(quitarComentarios(fuente));
+
+describe("SLT-240 R16 — censo «sin IVA» de los rótulos con impuesto de órdenes", () => {
+  it.each(CENSO_SIN_IVA)("%s no escribe «IVA» fuera de los comentarios", (archivo) => {
+    expect(escribeIva(readFileSync(join(process.cwd(), archivo), "utf8"))).toBe(false);
+  });
+
+  it("contraprueba: un «IVA» en el código se detecta; en un comentario, no; `fleteConIva`, tampoco", () => {
+    expect(escribeIva('export const ROTULO = "Flete + IVA";')).toBe(true);
+    expect(escribeIva("const r = <th>Comisión + IVA</th>;")).toBe(true);
+    expect(escribeIva('// el flete + IVA\n/* comisión + IVA */\nexport const r = "Flete";')).toBe(false);
+    expect(escribeIva("const v = orden.fleteConIva;")).toBe(false);
   });
 });
 

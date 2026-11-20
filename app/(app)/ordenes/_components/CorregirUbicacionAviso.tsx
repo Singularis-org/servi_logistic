@@ -2,7 +2,8 @@
 
 import { useId } from "react";
 import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
-import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
+import { useImpuestoDelPais, useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
+import { rotuloComisionConImpuesto, rotuloFleteConImpuesto } from "./rotulos-con-impuesto";
 
 import { Button } from "@/components/ui/button";
 import { formatearMontoEn, SIN_MONTO_RAYA, type FormatoMoneda } from "@/lib/config/moneda";
@@ -59,8 +60,8 @@ export const AVISO_COL_ACTUAL = "Ahora";
 export const AVISO_COL_PROPUESTA = "Con el cambio";
 
 export const AVISO_FILA_ZONA = "Zona";
-export const AVISO_FILA_FLETE = "Flete + IVA";
-export const AVISO_FILA_COMISION = "Comisión + IVA";
+// SLT-240 (R16): las filas del flete y la comisión se rotulan con `rotulo…ConImpuesto` y el
+// impuesto del país (`useImpuestoDelPais`), dentro del componente.
 
 /** Cuando la orden no tiene distrito guardado (solo puede pasar en la columna «Ahora»). */
 export const AVISO_SIN_DISTRITO = "Sin distrito";
@@ -151,6 +152,8 @@ export function CorregirUbicacionAviso({
   const etiquetas = useEtiquetasGeograficas();
   // SLT-240 (R4): los importes, con la moneda del país de la empresa.
   const moneda = useMonedaDelPais();
+  // SLT-240 (R16): los rótulos del flete y la comisión, con el nombre del impuesto del país.
+  const impuesto = useImpuestoDelPais();
 
   return (
     <section
@@ -198,14 +201,14 @@ export function CorregirUbicacionAviso({
           </tr>
           <tr>
             <th scope="row" className="py-1 text-left font-normal text-muted-foreground">
-              {AVISO_FILA_FLETE}
+              {rotuloFleteConImpuesto(impuesto)}
             </th>
             <td className="py-1">{importe(aviso.actual, "fleteConIva", moneda)}</td>
             <td className="py-1 font-medium">{importe(aviso.propuesta, "fleteConIva", moneda)}</td>
           </tr>
           <tr>
             <th scope="row" className="py-1 text-left font-normal text-muted-foreground">
-              {AVISO_FILA_COMISION}
+              {rotuloComisionConImpuesto(impuesto)}
             </th>
             <td className="py-1">{importe(aviso.actual, "comisionConIva", moneda)}</td>
             <td className="py-1 font-medium">{importe(aviso.propuesta, "comisionConIva", moneda)}</td>
