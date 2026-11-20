@@ -80,6 +80,7 @@ function renderModulo() {
           cobroVehiculo: false,
           distritosCount: 3,
           esCentral: true,
+          activa: true,
         },
       ]}
       provincias={provincias()}

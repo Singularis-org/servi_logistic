@@ -494,6 +494,9 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("398/T1.5 (b) — el down recrea las listas 
       // SLT-221: los dos tipos de `20261120130000_slt221_historial_correo_cedula`.
       "usuario_cedula_cambiada",
       "usuario_email_cambiado",
+      // SLT-225: los dos tipos de `20261123120000_historial_zona_desactivada`.
+      "zona_desactivada",
+      "zona_reactivada",
     ];
     expect([...origenAntes].sort()).toEqual(
       ORDEN_HISTORIAL_ORIGEN_TIPO_SEED.filter(

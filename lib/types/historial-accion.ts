@@ -50,7 +50,7 @@ import { esFechaCalendarioValida } from "@/lib/utils/calendario-zona";
 // saldo con el que la central lo persigue. El motivo de cada uno esta escrito a su lado.
 
 /**
- * Los 86 tipos de accion. El ORDEN de esta tupla es el del Anexo A (dinero, desaparicion,
+ * Los 90 tipos de accion. El ORDEN de esta tupla es el del Anexo A (dinero, desaparicion,
  * permisos) mas las integraciones de SL-36, los modulos de SL-23 y el plan de SL-24 (y su tipo de cobro, D16, y
  * el cambio cancelado, SLT-86) y el tope de intentos de SLT-77, y es el que consume el selector de filtros: no se
  * reordena por gusto.
@@ -284,7 +284,7 @@ export const HISTORIAL_ACCION_TIPOS = [
   // rechazos, y un rechazo genera cobro. `valor_anterior`/`valor_nuevo` llevan los dos numeros y nada mas (R41).
   "tope_intentos_cambiado", // TopeIntentosRepository.guardar
 
-  // --- A.2 · hace desaparecer algo (12) ---
+  // --- A.2 · hace desaparecer algo (14) ---
   // ⭑ FICHA 371 — la fecha de una reprogramacion ya registrada, corregida por un coordinador.
   // ENTRA AQUI, EN «hace desaparecer algo», PORQUE LA ORDEN PUEDE DEJAR DE ESTAR DONDE ESTABA:
   // corregir la fecha a HOY dispara la liberacion en el mismo acto (desenlace `liberada`), asi que
@@ -308,6 +308,11 @@ export const HISTORIAL_ACCION_TIPOS = [
   // borra en FISICO, `db/schema.prisma`).
   "tarifa_borrada", // TarifaService.borrar (sembrados; sin action desde SLT-54)
   "zona_borrada", // zonas.borrarZona — fisico, y arrastra sus tarifas en cascada
+  // ⭑ SLT-225 — desactivar (y reactivar) una zona. LOS DOS AQUI, en «hace desaparecer algo»: es el
+  // precedente literal de `nodo_geografico_desactivado`/`_activado` (la zona sale del trabajo nuevo
+  // sin borrar su historia). `valor_anterior`/`valor_nuevo` en NULL: el par de tipos dice la transicion.
+  "zona_desactivada", // ZonaRepository.desactivar
+  "zona_reactivada", // ZonaRepository.reactivar
   // SLT-52: AQUI por el mismo motivo que `tarifa_borrada`: borrar un grupo es fisico y se lleva sus
   // valores por cascada (R12); lo que la fila documenta es esa desaparicion.
   "grupo_distritos_borrado", // GrupoDistritosService.borrarGrupo
@@ -598,6 +603,9 @@ export const CATEGORIA_POR_ACCION: Record<HistorialAccionTipo, CategoriaAccion> 
   orden_recuperada: "hace_desaparecer",
   tarifa_borrada: "hace_desaparecer",
   zona_borrada: "hace_desaparecer",
+  // SLT-225: los DOS en la misma categoria, como `nodo_geografico_*`.
+  zona_desactivada: "hace_desaparecer",
+  zona_reactivada: "hace_desaparecer",
   // SLT-52: como `tarifa_borrada`; arrastra los valores del grupo por cascada.
   grupo_distritos_borrado: "hace_desaparecer",
   vehiculo_borrado: "hace_desaparecer",
@@ -701,6 +709,8 @@ export const ACCION_LABELS: Record<HistorialAccionTipo, string> = {
   orden_recuperada: "Recuperó una orden",
   tarifa_borrada: "Borró una tarifa",
   zona_borrada: "Borró una zona",
+  zona_desactivada: "Desactivó una zona",
+  zona_reactivada: "Reactivó una zona",
   grupo_distritos_borrado: "Borró un grupo de distritos",
   vehiculo_borrado: "Borró un vehículo",
   plantilla_eliminada: "Eliminó una plantilla",

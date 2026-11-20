@@ -175,6 +175,9 @@ describe("366/T1 — el `migration.sql` y el `down.sql`, como texto", () => {
       // SLT-221: los dos tipos de `20261120130000_slt221_historial_correo_cedula`.
       "usuario_cedula_cambiada",
       "usuario_email_cambiado",
+      // SLT-225: los dos tipos de `20261123120000_historial_zona_desactivada`.
+      "zona_desactivada",
+      "zona_reactivada",
     ];
     expect([...HISTORIAL_ACCION_TIPOS].sort()).toEqual(
       [...previos, VALOR_NUEVO, ...POSTERIORES].sort(),

@@ -604,6 +604,22 @@ const CENSO: EntradaCenso[] = [
     forma: "abre_tx",
     mutacion: /tx\.zona\.delete\(/,
   },
+  // SLT-225 (R1749, R1750) — un metodo por tipo: la marca cambia con un `updateMany` condicionado
+  // al estado previo, en la misma transaccion que la fila.
+  {
+    tipos: ["zona_desactivada"],
+    archivo: "lib/repositories/ZonaRepository.ts",
+    metodo: "desactivar",
+    forma: "abre_tx",
+    mutacion: /tx\.zona\.updateMany\(/,
+  },
+  {
+    tipos: ["zona_reactivada"],
+    archivo: "lib/repositories/ZonaRepository.ts",
+    metodo: "reactivar",
+    forma: "abre_tx",
+    mutacion: /tx\.zona\.updateMany\(/,
+  },
   // SL-42 (P1) — `VehiculoRepository.delete` estaba aqui como productor de `vehiculo_borrado`. El
   // borrado se retiro y el catalogo es del superadmin: sale del censo, ver `SIN_ESCRITOR_DESDE`.
   {
@@ -1297,7 +1313,8 @@ describe("362/R16 — cada tipo del catalogo tiene al menos un punto de escritur
     // 86 desde SLT-211 (`ordenes_retiradas_a_central`, de `OrdenRepository.retirarSateliteLote`).
     // 88 desde SLT-221 (`usuario_cedula_cambiada`, de `UserRepository.update`, y
     // `usuario_email_cambiado`, con escritor pendiente hasta el PR 2).
-    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(88);
+    // 90 desde SLT-225 (`zona_desactivada`/`zona_reactivada`, de `ZonaRepository.desactivar`/`reactivar`).
+    expect(HISTORIAL_ACCION_TIPOS).toHaveLength(90);
   });
 });
 

@@ -1,3 +1,4 @@
+import { MSG_ZONA_DESACTIVADA_USUARIO } from "@/lib/types/zona";
 import {
   CatalogoInvalidoError,
   UsuarioDuplicadoError,
@@ -74,6 +75,8 @@ const VEHICULO_ROLES = new Set<string>(["mensajero"]);
 // Mensaje de error de vehiculo segun el motivo: obligatorio para el rol, inexistente o, desde
 // SL-42 (R18), desactivado por la plataforma para elecciones nuevas.
 type VehiculoMotivo = "required" | "not_found" | "inactive";
+// SLT-225 (R1755): `inactive` = la zona esta desactivada y no es la que el usuario ya tenia.
+type ZonaMotivo = "required" | "not_found" | "inactive";
 
 function vehiculoErrorMessage(reason: VehiculoMotivo): string {
   if (reason === "required") return "El vehiculo es obligatorio para el rol mensajero";
@@ -82,7 +85,8 @@ function vehiculoErrorMessage(reason: VehiculoMotivo): string {
 }
 
 // Mensaje de error de zona segun el motivo (obligatoria para el rol vs inexistente).
-function zonaErrorMessage(reason: "required" | "not_found"): string {
+function zonaErrorMessage(reason: ZonaMotivo): string {
+  if (reason === "inactive") return MSG_ZONA_DESACTIVADA_USUARIO; // SLT-225 (R1755)
   return reason === "required"
     ? "La zona es obligatoria para este rol"
     : "La zona indicada no existe";
@@ -901,11 +905,11 @@ export class UsuarioService implements IUsuarioService {
     actual: Pick<UsuarioPublico, "rolId" | "zonaId">,
   ): Promise<
     | { ok: true; zonaId: string | null }
-    | { ok: false; reason: "required" | "not_found" }
+    | { ok: false; reason: ZonaMotivo }
   > {
     const rolIdResultante = input.rolId ?? actual.rolId;
     const deseado = input.zonaId !== undefined ? input.zonaId : actual.zonaId;
-    return this.resolverZona(rolIdResultante, deseado);
+    return this.resolverZona(rolIdResultante, deseado, actual.zonaId);
   }
 
   // Feature 24/R27/R28: resuelve el `zonaId` efectivo. Solo mensajero/adminSatelite
@@ -913,12 +917,17 @@ export class UsuarioService implements IUsuarioService {
   // null (ignora el valor recibido, R27). Cuando aplica y se provee una zona, valida
   // su existencia (R28). Distingue el fallo por zona ausente (`required`) del de zona
   // inexistente (`not_found`) para reportar el mensaje correcto.
+  //
+  // SLT-225 (R1755): una zona desactivada no se acepta como eleccion NUEVA. `actual` es la zona que
+  // el usuario ya tiene (solo en la edicion; `null` en el alta): conservarla sigue valiendo, como
+  // el vehiculo inactivo de SL-42. El trigger `usuario_zona_exige_activa` aplica la misma regla.
   private async resolverZona(
     rolId: string,
     deseado: string | null | undefined,
+    actual: string | null = null,
   ): Promise<
     | { ok: true; zonaId: string | null }
-    | { ok: false; reason: "required" | "not_found" }
+    | { ok: false; reason: ZonaMotivo }
   > {
     const roles = await this.repo.listRoles();
     const rolValue = roles.find((r) => r.id === rolId)?.value;
@@ -936,6 +945,7 @@ export class UsuarioService implements IUsuarioService {
     if (this.zonaRepo) {
       const zona = await this.zonaRepo.findById(deseado, false);
       if (!zona) return { ok: false, reason: "not_found" };
+      if (zona.activa === false && deseado !== actual) return { ok: false, reason: "inactive" };
     }
     return { ok: true, zonaId: deseado };
   }

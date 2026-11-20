@@ -8,9 +8,11 @@ import {
   type ActualizarZonaResult,
   type BorrarZonaResult,
   type CrearZonaResult,
+  type DesactivarZonaResult,
   type ImpactoZonaCentralResult,
   type ListarZonasResult,
   type ObtenerZonaResult,
+  type ReactivarZonaResult,
   type ZonaActionError,
 } from "@/lib/types/zona";
 import type { Actor, IZonaService } from "@/lib/interfaces/services/IZonaService";
@@ -187,6 +189,65 @@ export async function borrarZona(
   // rechazo de R10—. El rechazo de R10 NO se lanza: viaja tipado como `"es_central"` por el
   // `return` del service y no pasa por aqui.
   return error.status === "conflict" ? { status: "conflict", motivo: "en_uso" } : error;
+}
+
+/**
+ * ⭑ SLT-225 (R1741-R1748, R1751) — desactivar una zona (solo maestro). Sale del trabajo nuevo y su
+ * historia se queda. El rechazo por impedimentos viaja tipado con TODOS ellos (R1746): la pantalla
+ * los pinta en la confirmacion, este borde no redacta texto.
+ *
+ * @sin-superficie SLT-225 en curso: la monta el boton «Desactivar» de ZonasModule (T5, frontend_dev). Quitar esta anotacion al montarla.
+ */
+export async function desactivarZona(
+  id: unknown,
+  deps: ZonaActionDeps = {},
+): Promise<DesactivarZonaResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError();
+    const parsedId = idSchema.safeParse(id);
+    if (!parsedId.success) {
+      throw new ValidationError(MSG.VALIDATION_ERROR, { fieldErrors: { id: ["id invalido"] } });
+    }
+    const service = deps.zonaService ?? buildZonaService();
+    return service.desactivar(parsedId.data, actor);
+  });
+  return isAppErrorShape(r) ? sinConflictoSuelto(toZonaActionError(r)) : r;
+}
+
+/**
+ * ⭑ SLT-225 (R1747, R1748, R1751) — reactivar una zona desactivada (solo maestro). No le devuelve
+ * distritos ni usuarios.
+ *
+ * @sin-superficie SLT-225 en curso: la monta el boton «Reactivar» de ZonasModule (T5, frontend_dev). Quitar esta anotacion al montarla.
+ */
+export async function reactivarZona(
+  id: unknown,
+  deps: ZonaActionDeps = {},
+): Promise<ReactivarZonaResult> {
+  const r = await withErrorHandler(async () => {
+    const actor = await (deps.getActor ?? resolveActorFromSession)();
+    if (!actor) throw new UnauthenticatedError();
+    const parsedId = idSchema.safeParse(id);
+    if (!parsedId.success) {
+      throw new ValidationError(MSG.VALIDATION_ERROR, { fieldErrors: { id: ["id invalido"] } });
+    }
+    const service = deps.zonaService ?? buildZonaService();
+    return service.reactivar(parsedId.data, actor);
+  });
+  return isAppErrorShape(r) ? sinConflictoSuelto(toZonaActionError(r)) : r;
+}
+
+/**
+ * SLT-225: por el manejador global no llega ningun `conflict` de desactivar/reactivar (los dos
+ * rechazos viajan tipados por el `return` del service). Si alguno llegara, es un error inesperado
+ * y no un motivo que la pantalla sepa nombrar: se trata como interno.
+ */
+function sinConflictoSuelto(
+  error: ZonaActionError,
+): Exclude<ZonaActionError, { status: "conflict" }> {
+  if (error.status === "conflict") throw new Error("internal");
+  return error;
 }
 
 /**
