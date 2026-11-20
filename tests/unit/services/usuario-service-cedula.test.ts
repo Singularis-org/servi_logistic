@@ -175,6 +175,8 @@ describe("SLT-221 R1602 — una cedula que no cumple la regla del tipo resultant
       deLaEmpresa: () => Promise.reject(new EmpresaNoResuelta("Pais", "deLaEmpresa")),
       zonaHoraria: () => Promise.reject(new EmpresaNoResuelta("Pais", "zonaHoraria")),
       tipoDocumento: () => Promise.reject(new EmpresaNoResuelta("Pais", "tipoDocumento")),
+      moneda: () => Promise.reject(new EmpresaNoResuelta("Pais", "moneda")),
+      nombreImpuesto: () => Promise.reject(new EmpresaNoResuelta("Pais", "nombreImpuesto")),
     };
     const repo = repoDoble();
     const rechazo = await servicio(repo, sinEmpresa).actualizar("usr-1", { cedula: "12-AB" }, MAESTRO);

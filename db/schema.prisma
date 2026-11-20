@@ -6065,6 +6065,19 @@ model Pais {
   telefonoDigitosNacionales Int?    @map("telefono_digitos_nacionales") @db.SmallInt
   /// Identificador IANA. Sin CHECK en la base: se valida en el servidor (tzdata de Node ≠ de Postgres).
   zonaHoraria               String? @map("zona_horaria")
+  /// SL-21 (R1; 20261124120000): la moneda del país. Las cinco a la vez o ninguna (CHECK en el SQL);
+  /// NULL = el país aún no la tiene (R6, R17). Código ISO 4217 en tres mayúsculas.
+  monedaCodigo              String? @map("moneda_codigo")
+  /// Va delante del importe; de 1 a 5 caracteres.
+  monedaSimbolo             String? @map("moneda_simbolo")
+  /// Un solo carácter, distinto del decimal.
+  monedaSeparadorMiles      String? @map("moneda_separador_miles")
+  /// '.' o ','.
+  monedaSeparadorDecimal    String? @map("moneda_separador_decimal")
+  /// De 0 a 2: los importes son DECIMAL(12,2).
+  monedaDecimales           Int?    @map("moneda_decimales") @db.SmallInt
+  /// SL-21 (R1, R7): el nombre del impuesto del país («IVA»). La tasa NO vive aquí: va en cada tarifa.
+  impuestoNombre            String? @map("impuesto_nombre")
 
   provincias          Provincia[]
   organizaciones      Organizacion[]

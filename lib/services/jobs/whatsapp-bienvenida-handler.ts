@@ -15,6 +15,7 @@ import type { JobHandler } from "@/lib/interfaces/services/IJobQueueService";
 import { ChatWhatsappService } from "@/lib/services/ChatWhatsappService";
 import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import type { FormatoMoneda } from "@/lib/config/moneda";
 import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 import { ChatConversacionRepository } from "@/lib/repositories/ChatConversacionRepository";
 import { ChatMensajeRepository } from "@/lib/repositories/ChatMensajeRepository";
@@ -27,7 +28,7 @@ import { whatsappDeLaEmpresa } from "@/lib/services/whatsapp/whatsapp-de-la-empr
 import { consoleLogger } from "@/lib/services/whatsapp/chat-logger";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { construirComponentsEnvio } from "@/lib/utils/whatsapp-template";
-import { necesitaZona, resolverValoresPlantilla } from "@/lib/types/plantilla-datos";
+import { necesitaMoneda, necesitaZona, resolverValoresPlantilla } from "@/lib/types/plantilla-datos";
 import { renderPlantilla } from "@/lib/utils/plantilla-mensaje";
 import type { IPlantillaMensajeRepository } from "@/lib/interfaces/repositories/IPlantillaMensajeRepository";
 import type { IOrdenEnvioReader } from "@/lib/repositories/OrdenEnvioReader";
@@ -50,8 +51,9 @@ export interface WhatsappBienvenidaDeps {
   /**
    * SLT-42 (R22, R28): la zona del pais de la empresa del job, para las fechas con hora de la
    * plantilla. Solo se lee si la plantilla pinta alguna; sin el puerto, falla en ese caso.
+   * SL-21 (R10, R11): igual con la moneda de los importes.
    */
-  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria" | "moneda">;
 }
 
 /**
@@ -177,7 +179,16 @@ export function crearWhatsappBienvenidaHandler(
     const zona = necesitaZona(plantilla.variables)
       ? await zonaDeLaEmpresa(deps.reglasPais, "whatsapp_bienvenida")
       : undefined;
-    const valores = resolverValoresPlantilla(plantilla.variables, datos, zona);
+    // SL-21 (R10, R11): los importes, en la moneda del pais de la empresa del job; solo si la
+    // plantilla pinta alguno, y sin moneda (`PaisSinMoneda`) falla antes de enviar nada.
+    let moneda: FormatoMoneda | undefined;
+    if (necesitaMoneda(plantilla.variables)) {
+      if (deps.reglasPais === undefined) {
+        throw new Error("whatsapp_bienvenida requiere las reglas del pais de la empresa: sin ellas no hay moneda (SL-21)");
+      }
+      moneda = await deps.reglasPais.moneda();
+    }
+    const valores = resolverValoresPlantilla(plantilla.variables, datos, zona, moneda);
     const componentes = construirComponentsEnvio(plantilla.variables, valores);
     const cuerpoRenderizado = renderPlantilla(plantilla.cuerpo, valores);
     const idioma = plantilla.templateIdioma || deps.idiomaPorDefecto || "es";
