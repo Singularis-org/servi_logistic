@@ -36,6 +36,7 @@ import {
 } from "@/lib/utils/vista-filtro-aplicabilidad";
 
 import { OrdenesModule, type AccionLote } from "./OrdenesModule";
+import { ActualizarZonasButton } from "./ActualizarZonasButton";
 import { OrdenesCargaMasivaButton } from "./OrdenesCargaMasivaButton";
 import { EscanerRecepcionOrigen } from "./EscanerRecepcionOrigen";
 import { EscanerRecepcionBodegaCentral } from "./EscanerRecepcionBodegaCentral";
@@ -259,6 +260,7 @@ export function OrdenesListado({
   puedeCargarMasiva = false,
   puedeEscanearQr = false,
   puedeRecibirBodegaCentral = false,
+  puedeActualizarZonas = false,
   mostrarHistorial = false,
   accionesLote = false,
   catalogoFiltros = null,
@@ -292,6 +294,11 @@ export function OrdenesListado({
    * revalida server-side. `adminTienda` y otros roles NO lo reciben.
    */
   puedeRecibirBodegaCentral?: boolean;
+  /**
+   * SLT-224 (R1713): el botón «Actualizar zonas» a la derecha de «Recibir paquete». Solo
+   * maestro/admin (`esAccesoTotal`); las Server Actions revalidan el rol (R1714).
+   */
+  puedeActualizarZonas?: boolean;
   mostrarHistorial?: boolean;
   /**
    * Habilita la selección por checkbox + barra de acciones por lote (asignar
@@ -598,6 +605,13 @@ export function OrdenesListado({
   // de modo que esto NO rompe el encadenado guía → etiquetas.
   function revalidarTablas() {
     setResetSeleccion((n) => n + 1);
+    revalidarListado();
+  }
+
+  // SLT-222 R1510 (D4): revalidar SIN vaciar. Lo usa la recepción por escaneo («Recibir
+  // paquete»), que no es una acción sobre la selección: recibir un paquete no puede tirar
+  // las órdenes que la persona fue marcando en sus búsquedas.
+  function revalidarListado() {
     void mutate(
       (key) => Array.isArray(key) && key[0] === "ordenes:list",
       undefined,
@@ -623,11 +637,17 @@ export function OrdenesListado({
     if (!open) setModalAbierto(null);
   }
 
-  // Éxito de una acción por lote que NO encadena (devolver a tienda; escaneo de
-  // recepción): cierra y revalida.
+  // Éxito de una acción por lote que NO encadena (devolver a tienda, etc.): cierra,
+  // revalida y desmarca (SLT-222 R1508).
   function handleSuccess() {
     setModalAbierto(null);
     revalidarTablas();
+  }
+
+  // SLT-222 R1510: fin de la recepción por escaneo. Revalida (lo recibido cambia de estado)
+  // y NO desmarca: antes pasaba por `handleSuccess` y vaciaba la selección.
+  function handleRecibida() {
+    revalidarListado();
   }
 
   // Feature 95: éxito de "Generar guía" / "Asignar mensajero" → revalida las tablas
@@ -1066,6 +1086,17 @@ export function OrdenesListado({
   const verEliminadas =
     (seleccionFiltros[CLAVE_ELIMINADOS] ?? [])[0] === BOOLEAN_MARCADO;
 
+  // SLT-222 R1511 (D5): poner o quitar «Eliminadas» SÍ desmarca todo. Cambia el universo
+  // del listado, y con el interruptor puesto la barra ofrece «Recuperar» para TODA la
+  // selección (`accionesPara`): mezclar órdenes vivas y borradas lo ofrecería sobre vivas.
+  // Se mira el valor derivado, así cubre la barra, las vistas guardadas y «Limpiar todo».
+  // Patrón "ajustar estado durante el render", como los resets de `OrdenesModule`.
+  const [verEliminadasPrevio, setVerEliminadasPrevio] = useState(verEliminadas);
+  if (verEliminadas !== verEliminadasPrevio) {
+    setVerEliminadasPrevio(verEliminadas);
+    setResetSeleccion((n) => n + 1);
+  }
+
   // FICHA 355: el control de estado, con sus opciones, sus etiquetas y sus textos, tal
   // como lo declara el módulo compartido. `estadosDisponibles` ya aplicó el recorte, así
   // que aquí se le pasa sin volver a excluir nada.
@@ -1412,7 +1443,8 @@ export function OrdenesListado({
   // La carga masiva y los escáneres viven a nivel del contenedor (no dependen del
   // filtro): son acciones independientes del estado. La carga masiva y la recepción en
   // origen se ofrecen al adminTienda (feature 26); la recepción en bodega central
-  // (feature 138) al maestro/admin. `onRecibida={handleSuccess}` revalida el listado
+  // (feature 138) al maestro/admin. `onRecibida={handleRecibida}` revalida el listado
+  // sin desmarcar (SLT-222 R1510)
   // (R14) al cerrar la sesión continua (SLT-159 R592), de modo que lo recibido refleja su
   // nuevo estado. Quien no puede recibir no ve ni el botón. El disparador vive a la
   // IZQUIERDA, donde empieza la lectura de la página; la carga masiva, a la derecha.
@@ -1426,11 +1458,16 @@ export function OrdenesListado({
         <div className="flex w-full flex-wrap items-center gap-2">
           <RecibirPaquetesEntrada href="/ordenes/recibir">
             {puedeRecibirBodegaCentral ? (
-              <EscanerRecepcionBodegaCentral modo="continua" onRecibida={handleSuccess} />
+              <EscanerRecepcionBodegaCentral modo="continua" onRecibida={handleRecibida} />
             ) : (
-              <EscanerRecepcionOrigen modo="continua" onRecibida={handleSuccess} />
+              <EscanerRecepcionOrigen modo="continua" onRecibida={handleRecibida} />
             )}
           </RecibirPaquetesEntrada>
+          {/* SLT-224 (R1713): no depende de la selección; refresca el listado al cerrar (R1718). */}
+          <ActualizarZonasButton
+            puedeActualizarZonas={puedeActualizarZonas}
+            onSuccess={handleSuccess}
+          />
           {puedeCargarMasiva ? (
             <div className="ms-auto flex gap-2">
               <OrdenesCargaMasivaButton />

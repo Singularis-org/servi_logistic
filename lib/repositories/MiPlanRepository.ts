@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import type { IMiPlanRepository, LecturaDeMiPlan, PlanDeLaEmpresaLeido } from "@/lib/interfaces/repositories/IMiPlanRepository";
 import { ORDEN_MODULOS } from "@/lib/modulos/catalogo";
+import { beneficioSchema } from "@/lib/planes/beneficios";
 import { costoVigenteDeLaTarifa } from "@/lib/planes/costeo";
 import { pendienteDeEmpresa, precioDelHistorial } from "@/lib/repositories/_shared/precio-del-periodo";
 import { type RolConTope, type TopesPlan, tipoCobroSchema, versionPlanSchema } from "@/lib/types/planes";
@@ -72,6 +73,8 @@ export const planDeLaEmpresaFilaSchema = z.object({
   tope_api_keys: conteo.nullable(),
   topes_rol: z.array(z.object({ rol: z.string(), maximo: conteo })),
   modulos: z.array(z.enum(ORDEN_MODULOS)),
+  // SLT-214 (R23, R18): los de la versión propia si la trae; si no, los del plan, en su orden.
+  beneficios: z.array(beneficioSchema),
   // SLT-86 (R5): la entrada de la empresa, siempre las 00:00 de un día.
   ciclo_ancla: instanteUtcSchema,
   uso: z.object({
@@ -113,6 +116,7 @@ function aLeido(f: FilaPlanDeLaEmpresa): PlanDeLaEmpresaLeido {
       nombre: f.nombre,
       topes: topesDe(f),
       modulos: f.modulos,
+      beneficios: f.beneficios,
       precio: precioDelHistorial(f.precio_mensual, f.descuentos),
       costoPorOrden: f.costo_por_orden,
       costoPorOrdenPorcentual:

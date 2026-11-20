@@ -1,0 +1,12 @@
+-- SLT-215 (design §2.6, §5; R29) — el trabajo diario que cierra los meses de los niveles por volumen.
+--
+-- `plan_niveles_cerrar` es RECURRENTE (cada día a las 06:20 UTC, 00:20 de la plataforma, P1) y va SIN empresa:
+-- corre una vez, en plataforma (`RECURRENTES_DE_PLATAFORMA`), y cierra los meses pendientes de cada empresa con
+-- `plan_nivel_cerrar_meses` de 20261121140100. Es de núcleo (`MODULO_POR_JOB`). Su primera fila la siembra
+-- `scripts/siembra-jobs-recurrentes.ts`.
+--
+-- VA SOLA: Postgres prohíbe USAR un valor de enum en la misma transacción que lo añade (55P04), como
+-- 20261111130000_factura_plataforma_job_enum. Nada aquí escribe filas; el primer uso ocurre en runtime.
+--
+-- Prefijo 20261121: va después de la mayor migración de `dev` (20261120130000_slt221_historial_correo_cedula).
+ALTER TYPE "job_tipo" ADD VALUE IF NOT EXISTS 'plan_niveles_cerrar';

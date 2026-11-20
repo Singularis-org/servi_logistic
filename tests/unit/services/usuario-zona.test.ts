@@ -7,6 +7,7 @@ import {
 } from "@/lib/interfaces/repositories/IUserRepository";
 import type { IZonaRepository } from "@/lib/interfaces/repositories/IZonaRepository";
 import type { Actor } from "@/lib/interfaces/services/IUsuarioService";
+import { MSG_ZONA_DESACTIVADA_USUARIO } from "@/lib/types/zona";
 
 // Feature 24/R27/R28: asignacion de zona a usuarios mensajero/adminSatelite.
 
@@ -76,12 +77,15 @@ function buildZonaRepo(exists: boolean): IZonaRepository {
     findById: vi
       .fn()
       .mockResolvedValue(
-        exists ? { id: "z1", nombre: "GAM", cobroVehiculo: false, distritosCount: 0, esCentral: false } : null,
+        exists ? { id: "z1", nombre: "GAM", cobroVehiculo: false, distritosCount: 0, esCentral: false, activa: true } : null,
       ),
     list: vi.fn(),
     listLite: vi.fn().mockResolvedValue([]), // feature 144; no ejercitado aqui
     update: vi.fn(),
     hardDelete: vi.fn(),
+    // SLT-225: desactivar/reactivar; por defecto salen bien.
+    desactivar: vi.fn().mockResolvedValue({ estado: "ok" }),
+    reactivar: vi.fn().mockResolvedValue({ estado: "ok" }),
     countExistingDistritos: vi.fn(),
     countExistingVehiculos: vi.fn(),
     findCentralZonaId: vi.fn().mockResolvedValue(null),
@@ -298,5 +302,56 @@ describe("actualizar — zona por rol (R27/R28)", () => {
         ).toEqual(alta);
       }
     }
+  });
+});
+
+/**
+ * SLT-225 «Desactivar zona: sacarla del trabajo nuevo sin borrar su historia» (R1755) — una zona
+ * desactivada no se acepta como eleccion NUEVA, ni al crear ni al cambiar la zona; el usuario que
+ * ya la tenia la conserva al guardar otra cosa. Misma regla que el vehiculo inactivo de SL-42.
+ */
+describe("SLT-225 — zona desactivada (R1755)", () => {
+  function zonaRepoDesactivada(): IZonaRepository {
+    const z = buildZonaRepo(true);
+    (z.findById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "z1",
+      nombre: "GAM Kevin",
+      cobroVehiculo: false,
+      distritosCount: 0,
+      esCentral: false,
+      activa: false,
+    });
+    return z;
+  }
+  const svc = () =>
+    new UsuarioService(repo, zonaRepoDesactivada(), undefined, undefined, undefined, reglasPaisFijas(CR));
+
+  it("crear con una zona desactivada -> validation_error con el mensaje y no persiste", async () => {
+    const r = await svc().crear({ ...baseCrear, rolId: "rol-sat", zonaId: "z1" }, MAESTRO);
+    expect(r).toEqual({ status: "validation_error", fieldErrors: { zonaId: [MSG_ZONA_DESACTIVADA_USUARIO] } });
+    expect(repo.create).not.toHaveBeenCalled();
+    expect(MSG_ZONA_DESACTIVADA_USUARIO).toBe("Esa zona está desactivada; elige otra.");
+  });
+
+  it("cambiar la zona de un usuario A una desactivada -> validation_error y no escribe", async () => {
+    repo = buildRepo({ findById: vi.fn().mockResolvedValue(usuario({ rolId: "rol-msg", zonaId: "z-otra" })) });
+    const r = await svc().actualizar("usr-1", { zonaId: "z1" }, MAESTRO);
+    expect(r).toEqual({ status: "validation_error", fieldErrors: { zonaId: [MSG_ZONA_DESACTIVADA_USUARIO] } });
+    expect(repo.update).not.toHaveBeenCalled();
+  });
+
+  it("el usuario que YA la tenia la conserva: guardar otra cosa, o reenviar la misma zona, sale ok", async () => {
+    repo = buildRepo({ findById: vi.fn().mockResolvedValue(usuario({ rolId: "rol-msg", zonaId: "z1" })) });
+    const sinCampo = await svc().actualizar("usr-1", { nombre: "Otra" }, MAESTRO);
+    expect(sinCampo.status).toBe("ok");
+    const mismaZona = await svc().actualizar("usr-1", { zonaId: "z1" }, MAESTRO);
+    expect(mismaZona.status).toBe("ok");
+    expect(repo.update).toHaveBeenCalledTimes(2);
+  });
+
+  it("cambiarle el rol a otro con zona conserva la desactivada que ya tenia (no es eleccion nueva)", async () => {
+    repo = buildRepo({ findById: vi.fn().mockResolvedValue(usuario({ rolId: "rol-msg", zonaId: "z1" })) });
+    const r = await svc().actualizar("usr-1", { rolId: "rol-sat" }, MAESTRO);
+    expect(r.status).toBe("ok");
   });
 });

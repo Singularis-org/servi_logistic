@@ -477,11 +477,13 @@ describeSiHayBase("SLT-198 — zona sin distritos, contra Postgres real", () => 
     expect(m.retiro).toBe("ok");
     expect(m.estadoTrasRetiro).toBe("en_ruta_bodega_central");
 
-    // R1228: recibida en la central sigue siendo de Cartago hasta re-guardar GAM; entonces pasa.
+    // R1228, ENMENDADO por SLT-224/R1700: al recibirla en la central ya toma la zona de su distrito
+    // (GAM); antes seguia de Cartago hasta re-guardar GAM, que es el defecto que SLT-224 cierra. El
+    // re-guardado ya no tiene nada que mover.
     expect(m.recepcion).toBe("ok");
     expect(m.estadoTrasRecepcion).toBe("en_bodega_central");
-    expect(m.zonaTrasRecepcion).toBe(m.cartago);
-    expect(m.reGuardar.ordenesReconciliadas).toBe(1);
+    expect(m.zonaTrasRecepcion).toBe(m.gam);
+    expect(m.reGuardar.ordenesReconciliadas).toBe(0);
     expect(m.reGuardar.ordenesRetenidasEnBodegaSatelite).toBe(0);
     expect(m.zonaFinal).toBe(m.gam);
   });

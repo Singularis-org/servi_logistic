@@ -69,7 +69,6 @@ function buildRepo(overrides: Partial<IWalletMovimientoRepository> = {}): IWalle
         origenTipo: m.origenTipo,
         origenId: m.origenId,
         descripcion: m.descripcion ?? null,
-        registradoPor: m.registradoPor ?? null,
         fechaMovimiento: (m.fechaMovimiento ?? new Date(INSTANTE_DEL_DEFAULT)).toISOString(),
       }),
     );
@@ -238,7 +237,6 @@ describe("WalletEgresoService.reversarEgreso (R13/R15/R16/R17/R32)", () => {
       origenTipo: "gasto",
       origenId: "p-alquiler:2026-07",
       descripcion: "Alquiler — 2026-07",
-      registradoPor: null,
     });
     const repo = buildRepo({ obtenerPorId: vi.fn().mockResolvedValue(cronEgreso) });
     const svc = new WalletEgresoService(repo, writeClient, undefined, undefined, reglasPaisFijas());

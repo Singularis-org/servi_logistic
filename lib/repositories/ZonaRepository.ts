@@ -8,24 +8,34 @@ import {
   esViolacionDeUnico,
   textoConstraintP2002,
 } from "@/lib/repositories/_shared/prisma-unique";
-import { zonaUnicaDeDistrito } from "@/lib/repositories/_shared/zona-colapso";
-import { ESTADOS_PAQUETE_EN_ESTANTE } from "@/lib/utils/estados-bodega-satelite";
+import { reconciliarZonaDeOrdenes } from "@/lib/repositories/_shared/reconciliar-zona-ordenes";
 import { normalizeName } from "@/lib/utils/normalize";
+import { NOMBRE_USUARIO_SELECT, nombreCompletoUsuario } from "@/lib/utils/nombre-usuario";
+import { ESTADOS_TERMINALES } from "@/lib/types/order-status-transiciones";
+import type { OrderStatusValue } from "@/lib/types/order-status";
 import { appendAccion, resolverActorCongelado } from "@/lib/repositories/registrar-accion";
 import {
   ETIQUETA_DESCONOCIDA,
   etiquetaDeEntidad,
   valorDeCatalogo,
 } from "@/lib/types/historial-accion-etiquetas";
-import type { ImpactoZonaCentralDTO, TarifaZonaMensajeroDTO, ZonaDTO } from "@/lib/types/zona";
+import {
+  MUESTRA_ORDENES_VIVAS,
+  type ImpactoZonaCentralDTO,
+  type ImpedimentosDesactivacion,
+  type TarifaZonaMensajeroDTO,
+  type ZonaDTO,
+} from "@/lib/types/zona";
 import type {
   CreateZonaData,
   CreateZonaResult,
   DeleteZonaResult,
+  DesactivarZonaRepoResult,
   DistritoEnOtraZona,
   IZonaRepository,
   ListZonasParams,
   ListZonasResult,
+  ReactivarZonaRepoResult,
   SinpeZonaRow,
   UpdateZonaData,
   UpdateZonaResult,
@@ -66,6 +76,8 @@ type ZonaPrismaClient = Pick<
   // fila por la API de modelo, y sin el dos guardados simultaneos sobre la misma bodega leerian el
   // mismo valor «anterior» y escribirian dos filas que cuentan la misma transicion dos veces.
   | "$queryRaw"
+  // SLT-225 (R1742): el valor de cada estado del conteo agrupado de ordenes vivas.
+  | "orderStatus"
 >;
 
 /** Una zona nombrada, tal como la necesita una fila del historial (376/R12/R13). */
@@ -180,7 +192,7 @@ function tarifaToDTO(row: TarifaRow): TarifaZonaMensajeroDTO {
 }
 
 function toDTO(
-  zona: { id: string; nombre: string; cobroVehiculo: boolean; esCentral: boolean },
+  zona: { id: string; nombre: string; cobroVehiculo: boolean; esCentral: boolean; activa: boolean },
   distritosCount: number,
   tarifas: TarifaRow[] | undefined,
 ): ZonaDTO {
@@ -190,6 +202,7 @@ function toDTO(
     cobroVehiculo: zona.cobroVehiculo,
     distritosCount,
     esCentral: zona.esCentral,
+    activa: zona.activa,
   };
   if (tarifas !== undefined) dto.tarifas = tarifas.map(tarifaToDTO);
   return dto;
@@ -272,6 +285,92 @@ async function leerDistritosEnOtraZona(
   return filas.map((f) => ({ distritoNombre: f.distrito.nombre, zonaNombre: f.zona.nombre }));
 }
 
+/**
+ * ⭑ SLT-225 (D4, R1742) — «ORDEN VIVA» DE UNA ZONA: no eliminada y fuera de `ESTADOS_TERMINALES`.
+ *
+ * Es la definicion del retiro de geografia (FICHA 374, `contarSinEntregarPorNodoGeografico`), no la
+ * de `contarOrdenesVivasPorZona` (esa cuenta tambien una entregada sin cierre: responde otra
+ * pregunta). Devolviendo y por devolver a tienda SI son vivas: el paquete aun no volvio (P3).
+ * Declarada una vez: el conteo por estado y la muestra salen del MISMO corte.
+ */
+function whereOrdenViva(zonaId: string): Prisma.OrdenWhereInput {
+  return { zonaId, deletedAt: null, estatus: { value: { notIn: [...ESTADOS_TERMINALES] } } };
+}
+
+/** «#<guia>» o, si la orden aun no tiene guia, «remisión <n>» (R1742). */
+function nombreDeOrdenViva(o: { numGuia: number | null; numRemision: string }): string {
+  return o.numGuia !== null ? `#${o.numGuia}` : `remisión ${o.numRemision}`;
+}
+
+/**
+ * SLT-225 (R1746) — el centinela que deshace la marca. Se lanza DENTRO del callback de
+ * `$transaction` para que el `updateMany` que ya corrio se revierta, y se atrapa fuera: nunca sale
+ * del repositorio.
+ */
+class DesactivacionBloqueada extends Error {
+  constructor(readonly impedimentos: ImpedimentosDesactivacion) {
+    super("zona con impedimentos para desactivar");
+  }
+}
+
+type TxImpedimentos = Pick<PrismaClient, "zonaDistrito" | "usuario" | "orden" | "orderStatus">;
+
+/**
+ * SLT-225 (R1742-R1745) — TODOS los impedimentos, leidos por la `tx` de la desactivacion DESPUES
+ * de su `updateMany`: la escritura que compita en el mismo instante o ya hizo commit (y se cuenta)
+ * o espera al bloqueo de fila y la rechaza el trigger (design §1.2). Secuencial: nada de
+ * `Promise.all` dentro de la `tx`. La empresa la ponen la extension y la RLS (R1752).
+ */
+async function leerImpedimentos(
+  tx: TxImpedimentos,
+  zonaId: string,
+  esCentral: boolean,
+): Promise<ImpedimentosDesactivacion> {
+  const distritos = await tx.zonaDistrito.count({ where: { zonaId } });
+  // P2: cualquier estado cuenta; al reactivar a la persona quedaria en una zona desactivada.
+  const usuarios = await tx.usuario.findMany({
+    where: { zonaId },
+    select: { ...NOMBRE_USUARIO_SELECT, estado: true, rol: { select: { value: true } } },
+    orderBy: { nombre: "asc" },
+  });
+  const grupos = await tx.orden.groupBy({
+    by: ["estatusId"],
+    where: whereOrdenViva(zonaId),
+    _count: { _all: true },
+  });
+  const estados =
+    grupos.length === 0
+      ? []
+      : await tx.orderStatus.findMany({
+          where: { id: { in: grupos.map((g) => g.estatusId) } },
+          select: { id: true, value: true },
+        });
+  const valorDe = new Map(estados.map((e) => [e.id, e.value as OrderStatusValue]));
+  const porEstado = grupos
+    .map((g) => ({ estado: valorDe.get(g.estatusId) as OrderStatusValue, cantidad: g._count._all }))
+    .sort((a, b) => b.cantidad - a.cantidad || a.estado.localeCompare(b.estado));
+  const total = porEstado.reduce((n, g) => n + g.cantidad, 0);
+  const muestra =
+    total === 0
+      ? []
+      : await tx.orden.findMany({
+          where: whereOrdenViva(zonaId),
+          select: { numGuia: true, numRemision: true },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+          take: MUESTRA_ORDENES_VIVAS,
+        });
+  return {
+    esCentral,
+    distritos,
+    usuarios: usuarios.map((u) => ({ nombre: nombreCompletoUsuario(u), rol: u.rol.value, estado: u.estado })),
+    ordenesVivas: { total, porEstado, muestra: muestra.map(nombreDeOrdenViva) },
+  };
+}
+
+function hayImpedimentos(i: ImpedimentosDesactivacion): boolean {
+  return i.esCentral || i.distritos > 0 || i.usuarios.length > 0 || i.ordenesVivas.total > 0;
+}
+
 function tarifaCreateRows(zonaId: string, tarifas: CreateZonaData["tarifas"]) {
   return tarifas.map((t) => ({
     zonaId,
@@ -279,46 +378,6 @@ function tarifaCreateRows(zonaId: string, tarifas: CreateZonaData["tarifas"]) {
     cobroRechazado: new Prisma.Decimal(t.cobroRechazado),
     vehiculoId: t.vehiculoId,
   }));
-}
-
-/**
- * ⭑ EL CORTE DE ELEGIBILIDAD DE LA RECONCILIACION (366/R6/R7/R8), EN UNA SOLA DECLARACION.
- *
- * Vive en el `WHERE` a proposito: son condiciones sobre filas de OTRAS tablas (`cierre_detail` y
- * `gestion_orden`), no `if`s que un doble pueda esquivar. Sus cuatro cortes, sin ninguno de
- * estado:
- *   · `deletedAt: null`       — una orden borrada no se re-estampa;
- *   · `cierreDetalles: none`  — ya tiene un detalle congelado en un cierre: eso ya se facturo, y
- *     `cierre_detail` es INMUTABLE (366/R8);
- *   · `gestiones: none {...}` — tiene una gestion VIGENTE cuyo resultado ya decidio dinero
- *     (`entregada`, `rechazada`, `incidente`). Una `reprogramada` o una `devuelta` vigentes NO
- *     excluyen: las dos se rutean HACIA ADELANTE por `orden.zonaId`
- *     (`LiberacionReprogramadaService`, `DevolucionSlaService`), asi que dejarlas con la zona
- *     vieja las liberaria a la bodega equivocada — el mismo atasco que la 366 vino a arreglar.
- *
- * ⭑ FICHA 377 (design §3.3) — POR QUE ES UNA FUNCION Y NO DOS `where` ESCRITOS DOS VECES. La 377
- * lo lee DOS veces en cada grupo: una para las ordenes que SE MUEVEN (`notIn` estante) y otra
- * para CONTAR las que se quedan (`in` estante). Si las dos copiaran el corte, el dia que cambie
- * uno de los cuatro cortes de arriba el conteo se quedaria contando otra cosa y nada fallaria —
- * es la misma leccion que `OrdenRepository`/184-R16, donde el `WHERE` de la pagina y el del
- * conjunto no pueden despegarse.
- *
- * El estado NO entra aqui: cada consumidor le añade su clausula COMPLEMENTARIA, y esa
- * complementariedad es lo que hace que los dos conjuntos sean disjuntos por construccion.
- */
-function whereBaseElegible(distritoIds: string[], zonaResueltaId: string): Prisma.OrdenWhereInput {
-  return {
-    distritoId: { in: distritoIds },
-    zonaId: { not: zonaResueltaId },
-    deletedAt: null,
-    cierreDetalles: { none: {} },
-    gestiones: {
-      none: {
-        anuladaAt: null,
-        resultado: { in: ["entregado", "devolucion_a_origen_por_rechazo", "incidente"] },
-      },
-    },
-  };
 }
 
 export class ZonaRepository implements IZonaRepository {
@@ -416,7 +475,8 @@ export class ZonaRepository implements IZonaRepository {
   async list(params: ListZonasParams): Promise<ListZonasResult> {
     const [rows, total] = await Promise.all([
       this.prisma.zona.findMany({
-        orderBy: { nombre: "asc" },
+        // SLT-225 (R1759): las activas primero; dentro de cada grupo, por nombre.
+        orderBy: [{ activa: "desc" }, { nombre: "asc" }],
         skip: params.skip,
         take: params.take,
         include: { _count: { select: { distritos: true } } },
@@ -484,11 +544,15 @@ export class ZonaRepository implements IZonaRepository {
         // 376/R5: la lectura que ya existia gana UNA columna. No hace falta contar zonas: el
         // indice unico parcial `zona_es_central_unico` garantiza «a lo sumo una», asi que «esta
         // zona ES la central» equivale a «quitarle la marca deja el sistema sin ninguna».
+        // SLT-225 (R1753): la misma lectura gana `activa`, en vez de una consulta mas.
         const exists = await tx.zona.findUnique({
           where: { id },
-          select: { id: true, esCentral: true },
+          select: { id: true, esCentral: true, activa: true },
         });
         if (!exists) return { estado: "not_found" as const };
+        // SLT-225 (R1753): antes de la primera escritura, asi que no se guarda nada: ni nombre, ni
+        // distritos (el trigger los rechazaria igual), ni tarifas, ni la marca, ni la reconciliacion.
+        if (exists.activa === false) return { estado: "zona_desactivada" as const };
 
         // ⭑ 376/R5 — EL RECHAZO SALE ANTES DE LA PRIMERA ESCRITURA, y por eso no se aplica NADA
         // del guardado: ni el nombre, ni los distritos, ni las tarifas, ni la marca. Solo un
@@ -610,113 +674,11 @@ export class ZonaRepository implements IZonaRepository {
           ...new Set([...distritosPrevios.map((d) => d.distritoId), ...data.distritoIds]),
         ];
 
-        let ordenesReconciliadas = 0;
-        // 377/R8: las que HABRIAN cambiado de zona y no lo hacen porque su paquete ya esta en el
-        // estante de una satelite. Se devuelve en la misma respuesta del guardado (R8/R10).
-        let ordenesRetenidasEnBodegaSatelite = 0;
-        if (distritosAfectados.length > 0) {
-          // El estado YA reemplazado de la N:M: es el que decide cual es la zona correcta.
-          const filas = await tx.zonaDistrito.findMany({
-            where: { distritoId: { in: distritosAfectados } },
-            select: { distritoId: true, zonaId: true },
-          });
-
-          const zonasPorDistrito = new Map<string, string[]>();
-          for (const fila of filas) {
-            const bucket = zonasPorDistrito.get(fila.distritoId);
-            if (bucket) bucket.push(fila.zonaId);
-            else zonasPorDistrito.set(fila.distritoId, [fila.zonaId]);
-          }
-
-          // 366/R2/R3: el colapso 1/0/>1 es EL MISMO que usan la carga masiva y la correccion
-          // manual (`_shared/zona-colapso`). Un distrito con 0 o con >1 zonas resuelve `null` y NO
-          // mueve ninguna orden: no se inventa una zona eligiendo la primera.
-          const distritosPorZonaResuelta = new Map<string, string[]>();
-          for (const distritoId of distritosAfectados) {
-            const zonaResuelta = zonaUnicaDeDistrito(zonasPorDistrito.get(distritoId) ?? []);
-            if (zonaResuelta === null) continue;
-            const bucket = distritosPorZonaResuelta.get(zonaResuelta);
-            if (bucket) bucket.push(distritoId);
-            else distritosPorZonaResuelta.set(zonaResuelta, [distritoId]);
-          }
-
-          if (distritosPorZonaResuelta.size > 0) {
-            // 366/R11: UN lote por GUARDADO, aunque toque varias zonas resueltas. Y UN solo
-            // `resolverActorCongelado` para todas sus filas (362/design §2.4).
-            const loteId = randomUUID();
-            const actor = await resolverActorCongelado(tx, actorUsuarioId);
-
-            for (const [zonaResueltaId, distritoIds] of distritosPorZonaResuelta) {
-              // El corte de elegibilidad de la 366 (los cuatro cortes que NO miran el estado) vive
-              // en `whereBaseElegible`, arriba, y lo leen las DOS consultas de este bloque.
-              const base = whereBaseElegible(distritoIds, zonaResueltaId);
-
-              // ══════════════════════════════════════════════════════════════════════════════
-              // ⭑ FICHA 377 (R2/R8) — LO QUE SE QUEDA, Y POR QUE SE CUENTA
-              // ══════════════════════════════════════════════════════════════════════════════
-              //
-              // EN TRANSITO SI, EN EL ESTANTE NO. `orden.zona_id` hace dos trabajos a la vez
-              // (377/design §1): dice a que zona GEOGRAFICA pertenece la direccion —de ahi la
-              // tarifa— y dice QUE BODEGA tiene el paquete —de ahi el permiso: el listado
-              // (`OrdenRepository.condicionesSatelite`), la asignacion
-              // (`AsignacionSateliteService`, motivo `zona_ajena`) y el deshacer—. El estado dice
-              // cual de los dos manda:
-              //
-              //   · `en_ruta_bodega_satelite` — el paquete lo tiene la CENTRAL, que aun decide
-              //     adonde lo manda. Reconciliar es CORRECTO y ademas DESBLOQUEA la recepcion,
-              //     porque `recibirEnSatelite` acota su guarda por `zonaId` (366/design §8: 41 de
-              //     42 ordenes represadas el 2026-09-03). NO SE TOCA.
-              //   · `en_bodega_satelite` — el paquete esta en el estante de una bodega concreta,
-              //     que lo recibio con su propia transicion. Moverle la zona le quita el permiso a
-              //     quien LO TIENE sin darselo a nadie que pueda usarlo: desaparece del listado de
-              //     su bodega, esa bodega ya no puede asignarlo (`zona_ajena`), la otra lo ve pero
-              //     no tiene el paquete, y desde ese estado NO HAY transicion de salida hacia otra
-              //     bodega. Por eso se queda como esta.
-              //
-              // El conteo se hace SIEMPRE, tambien cuando no haya nada que mover: R8 no depende de
-              // que este guardado reconcilie algo. Y se hace en SQL —no filtrando en JS lo que ya
-              // se trajo— porque un corte que decide quien se mueve tiene que poder matarse con
-              // una mutacion y que un test contra Postgres lo note (design §3.2).
-              ordenesRetenidasEnBodegaSatelite += await tx.orden.count({
-                where: { ...base, estatus: { value: { in: [...ESTADOS_PAQUETE_EN_ESTANTE] } } },
-              });
-
-              const elegibles = await tx.orden.findMany({
-                where: { ...base, estatus: { value: { notIn: [...ESTADOS_PAQUETE_EN_ESTANTE] } } },
-                select: { id: true, numGuia: true, numRemision: true },
-              });
-              if (elegibles.length === 0) continue;
-
-              // 366/R9: SOLO `zonaId`. Ni el estado, ni el mensajero, ni el monto, ni la
-              // ubicacion: esta ficha corrige la zona y nada mas.
-              await tx.orden.updateMany({
-                where: { id: { in: elegibles.map((o) => o.id) } },
-                data: { zonaId: zonaResueltaId },
-              });
-
-              // 362/R9 + 366/R10: una fila POR ORDEN ALCANZADA (no por orden candidata) y en la
-              // MISMA transaccion. La etiqueta es la guia —o la remision si no hay guia—, que es
-              // un identificador de envio de la empresa; `valorAnterior`/`valorNuevo`/`monto` van
-              // NULL a proposito: ahi irian la zona vieja y la nueva, que R10 deja fuera.
-              await appendAccion(
-                tx,
-                elegibles.map((o) => ({
-                  accion: "orden_zona_reconciliada" as const,
-                  entidadTipo: "orden" as const,
-                  entidadId: o.id,
-                  entidadEtiqueta: etiquetaDeEntidad("orden", {
-                    numGuia: o.numGuia,
-                    numRemision: o.numRemision,
-                  }),
-                  ...actor,
-                })),
-                loteId,
-              );
-
-              ordenesReconciliadas += elegibles.length;
-            }
-          }
-        }
+        // 366/377 → SLT-224 (design §2.2): la reconciliacion vive en `_shared/reconciliar-zona-ordenes`,
+        // compartida con la recepcion en la central y el boton «Actualizar zonas». Mismo orden de
+        // consultas, mismo resultado; sin distritos afectados, los dos contadores valen 0.
+        const { ordenesReconciliadas, ordenesRetenidasEnBodegaSatelite } =
+          await reconciliarZonaDeOrdenes(tx, { distritoIds: distritosAfectados }, actorUsuarioId);
 
         // ⭑ 376/R12-R17 — EL RASTRO DEL CAMBIO DE MARCA. Va DESPUES de las escrituras y DENTRO del
         // mismo callback, recibiendo la `tx` y nunca `this.prisma`: escribir por `this.prisma`
@@ -910,6 +872,77 @@ export class ZonaRepository implements IZonaRepository {
       if (esViolacionDeClaveForanea(e)) return "referenced";
       throw e;
     }
+  }
+
+  /**
+   * ⭑ SLT-225 (R1741-R1746, R1749) — DESACTIVAR, EN UNA SOLA TRANSACCION.
+   *
+   * 1. El `updateMany` condicionado a `activa: true` va PRIMERO: toma el bloqueo de fila que
+   *    ordena la carrera con los triggers (design §1.2). Si no toca nada, un `findUnique` distingue
+   *    `not_found` de `ya_desactivada` (R1748) y se sale sin escribir.
+   * 2. Los impedimentos se leen despues, por la misma `tx`. Si hay alguno, el centinela deshace el
+   *    paso 1: ni marca ni fila de historial (R1746).
+   * 3. Sin impedimentos, la fila `zona_desactivada` en la misma transaccion. `valor_anterior` y
+   *    `valor_nuevo` en NULL, como `nodo_geografico_*`: el par de tipos ya dice la transicion.
+   * No toca ordenes, usuarios, tarifas, grupos ni cierres (R1741).
+   */
+  async desactivar(id: string, actorUsuarioId: string | null): Promise<DesactivarZonaRepoResult> {
+    try {
+      return await this.prisma.$transaction(async (tx): Promise<DesactivarZonaRepoResult> => {
+        const marcadas = await tx.zona.updateMany({ where: { id, activa: true }, data: { activa: false } });
+        if (marcadas.count === 0) {
+          const existe = await tx.zona.findUnique({ where: { id }, select: { id: true } });
+          return existe ? { estado: "ya_desactivada" } : { estado: "not_found" };
+        }
+        const zona = await tx.zona.findUniqueOrThrow({
+          where: { id },
+          select: { nombre: true, esCentral: true },
+        });
+        const impedimentos = await leerImpedimentos(tx, id, zona.esCentral);
+        if (hayImpedimentos(impedimentos)) throw new DesactivacionBloqueada(impedimentos);
+
+        const actor = await resolverActorCongelado(tx, actorUsuarioId);
+        await appendAccion(tx, [
+          {
+            accion: "zona_desactivada",
+            entidadTipo: "zona",
+            entidadId: id,
+            entidadEtiqueta: etiquetaDeEntidad("zona", { nombre: zona.nombre }),
+            ...actor,
+          },
+        ]);
+        return { estado: "ok" };
+      });
+    } catch (e) {
+      if (e instanceof DesactivacionBloqueada) return { estado: "bloqueada", impedimentos: e.impedimentos };
+      throw e;
+    }
+  }
+
+  /**
+   * ⭑ SLT-225 (R1747, R1748, R1750) — REACTIVAR. Solo la marca y su fila `zona_reactivada`, en la
+   * misma transaccion: no devuelve distritos ni usuarios (se quitaron a mano antes de desactivar).
+   */
+  async reactivar(id: string, actorUsuarioId: string | null): Promise<ReactivarZonaRepoResult> {
+    return this.prisma.$transaction(async (tx): Promise<ReactivarZonaRepoResult> => {
+      const marcadas = await tx.zona.updateMany({ where: { id, activa: false }, data: { activa: true } });
+      if (marcadas.count === 0) {
+        const existe = await tx.zona.findUnique({ where: { id }, select: { id: true } });
+        return existe ? { estado: "ya_activa" } : { estado: "not_found" };
+      }
+      const zona = await tx.zona.findUniqueOrThrow({ where: { id }, select: { nombre: true } });
+      const actor = await resolverActorCongelado(tx, actorUsuarioId);
+      await appendAccion(tx, [
+        {
+          accion: "zona_reactivada",
+          entidadTipo: "zona",
+          entidadId: id,
+          entidadEtiqueta: etiquetaDeEntidad("zona", { nombre: zona.nombre }),
+          ...actor,
+        },
+      ]);
+      return { estado: "ok" };
+    });
   }
 
   async countExistingDistritos(ids: string[]): Promise<number> {

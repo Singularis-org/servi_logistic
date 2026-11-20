@@ -14,7 +14,8 @@ import {
   idDeRol,
   insertarUsuario,
   intentar,
-  liberarHuecoDeSuperadmin,
+  saltarSiHaySuperadminAjeno,
+  superadminDeLaBase,
   tomarLockDeSuperadmin,
 } from "./_fixtures/superadmin-32";
 
@@ -22,8 +23,11 @@ import {
 // `usuario_empresa_o_superadmin` de 20261023100200_usuario_empresa_o_superadmin. Contra Postgres
 // real y por SQL a mano, con usuarios propios y una organizacion de la fabrica de SL-17.
 //
-// Cada caso corre en una transaccion revertida y serializada con el lock de la 227. Se aparta el
-// superadmin que la base pudiera tener, para que el indice de R27 no responda por el CHECK.
+// Cada caso corre en una transaccion revertida y serializada con el lock de la 227. Si la base ya
+// tiene un superadmin que no es del test (una base de desarrollo), no se aparta ni se toca: los
+// rechazos se comprueban con el NOMBRE de la restriccion, asi que un 23505 del indice de R27 en lugar
+// del CHECK pondria el caso en rojo, no en verde. Solo el caso que necesita el hueco del indice (un
+// superadmin con NULL que pasa) se salta entonces, con el motivo a la vista. En CI corren todos.
 //
 // Mutacion de T3: sin el ADD CONSTRAINT en el migration.sql, en una base desechable, caen los casos
 // que esperan 23514.
@@ -35,6 +39,7 @@ const RECHAZO_DEL_CHECK = { ok: false, sqlstate: "23514", restriccion: CHECK_EMP
 let prisma: PrismaClient;
 // Tarea A de SL-32: los archivos que crean un superadmin se turnan; ver `tomarLockDeSuperadmin`.
 let soltarSuperadmin: () => Promise<void> = async () => {};
+let hayAjeno = false;
 
 type Contexto = { tx: TxDeTest; rolSuperadmin: string; rolMaestro: string; empresa: string };
 
@@ -43,7 +48,6 @@ function enCaso<T>(fn: (c: Contexto) => Promise<T>): Promise<T> {
     await serializarEscriturasReales(tx);
     const rolSuperadmin = await idDeRol(tx, "superadmin");
     const rolMaestro = await idDeRol(tx, "maestro");
-    await liberarHuecoDeSuperadmin(tx, rolSuperadmin);
     const empresa = (await crearOrganizacion(tx)).id;
     return fn({ tx, rolSuperadmin, rolMaestro, empresa });
   });
@@ -53,6 +57,7 @@ describeSiHayBase("SL-32 — empresa o superadmin en usuario (R28)", () => {
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
     soltarSuperadmin = await tomarLockDeSuperadmin();
+    hayAjeno = (await superadminDeLaBase(prisma)) !== null;
   });
 
   afterAll(async () => {
@@ -104,7 +109,8 @@ describeSiHayBase("SL-32 — empresa o superadmin en usuario (R28)", () => {
     expect(r.update).toEqual(RECHAZO_DEL_CHECK);
   });
 
-  it("un superadmin con NULL y un maestro con empresa pasan", async () => {
+  it("un superadmin con NULL y un maestro con empresa pasan", async (ctx) => {
+    saltarSiHaySuperadminAjeno(ctx, hayAjeno);
     const r = await enCaso(async ({ tx, rolSuperadmin, rolMaestro, empresa }) => {
       const superadmin = await insertarUsuario(tx, rolSuperadmin, null);
       const maestro = await insertarUsuario(tx, rolMaestro, empresa);

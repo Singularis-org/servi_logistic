@@ -62,6 +62,7 @@ describe("R32 — el drenador resuelve el handler de geocodificacion y no lo re-
       // el recordatorio que los reparte.
       "plan_aviso_correo",
       "plan_cambios_vencidos",
+      "plan_niveles_cerrar", // SLT-215 (design §5): el cierre diario (06:20 UTC) de los niveles por volumen (RECURRENTE)
       "plan_recordatorio_cambio",
       // FICHA 410: entrega de un aviso ya creado a las suscripciones push de sus
       // destinatarios. PUNTUAL -lo encola el decorador del repositorio de notificaciones-,
@@ -97,7 +98,9 @@ describe("R32 — el drenador resuelve el handler de geocodificacion y no lo re-
     expect(recurrencias.has("plan_cambios_vencidos")).toBe(true);
     // SLT-118 (design §4.2): el QUINTO, el cierre horario (HH:10) de las facturas de la plataforma.
     expect(recurrencias.has("factura_plataforma_cerrar")).toBe(true);
-    expect(recurrencias.size).toBe(5);
+    // SLT-215 (design §5): el SEXTO, el cierre diario (06:20 UTC) de los niveles por volumen.
+    expect(recurrencias.has("plan_niveles_cerrar")).toBe(true);
+    expect(recurrencias.size).toBe(6);
   });
 
   it("al drenar, el handler se ejecuta, el job se completa y NO se re-encola", async () => {

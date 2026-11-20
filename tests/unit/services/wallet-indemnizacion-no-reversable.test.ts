@@ -34,7 +34,6 @@ function movimiento(over: Partial<WalletMovimientoDTO> = {}): WalletMovimientoDT
     origenTipo: "cierre_dia", // el egreso del camino del mensajero
     origenId: "c1",
     descripcion: null,
-    registradoPor: null,
     fechaMovimiento: "2026-07-30T10:00:00.000Z",
     ...over,
   };

@@ -26,14 +26,13 @@ import {
 } from "./_planes-fixture";
 import {
   altaDeEmpresaPorPantalla,
+  type AltaPorPantalla,
   asegurarSuperadmin,
   conCandadoDelSuperadmin,
+  entrarComoSuperadmin,
   entrarConOtp,
   fijarModulosPorPantalla,
-  olvidarDispositivos,
   recuperarContrasena,
-  SUPERADMIN_DE_PRUEBA,
-  type AltaPorPantalla,
 } from "./_superadmin-fixture";
 
 /**
@@ -147,8 +146,7 @@ test.beforeAll(async ({ browser }) => {
   const sa = await ctxSa.newPage();
   const altas: Partial<Record<Letra, AltaPorPantalla>> = {};
   await conCandadoDelSuperadmin(async () => {
-    await olvidarDispositivos(db, SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL);
-    await entrarConOtp(sa, SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL, SUPERADMIN_DE_PRUEBA.SUPERADMIN_PASSWORD);
+    await entrarComoSuperadmin(sa, db);
     for (const letra of ["A", "B"] as const) {
       const d = altaNueva(letra);
       await altaDeEmpresaPorPantalla(sa, d);

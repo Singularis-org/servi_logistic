@@ -57,7 +57,6 @@ function fila(over: Partial<WalletMovimientoDTO>): WalletMovimientoDTO {
     origenTipo: "cierre_dia",
     origenId: "c1c1c1c1-1111-4111-8111-c1c1c1c1c1c1",
     descripcion: null,
-    registradoPor: null,
     fechaMovimiento: "2026-09-20T12:00:00.000Z",
     dueno: "propio",
     documento: null,

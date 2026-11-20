@@ -2,6 +2,9 @@ import type { ModuloApagable, PlanRastroAccion } from "@prisma/client";
 import { z } from "zod";
 
 import { ORDEN_MODULOS } from "@/lib/modulos/catalogo";
+import { beneficiosSchema, type Beneficio } from "@/lib/planes/beneficios";
+import { SOLO_UNA_FORMA, porcentajeSchema } from "@/lib/planes/importes";
+import { nivelesSchema, type Nivel } from "@/lib/planes/niveles";
 import type { MotivoNoAplicada } from "@/lib/planes/mensajes";
 import type { CambiosDelPlan } from "@/lib/planes/rastro";
 import { montoCobroSchema } from "@/lib/types/cobro-plataforma";
@@ -70,24 +73,13 @@ export type TopesPlan = {
 /** Un tope de `INTEGER`: ni negativo (los `CHECK` de §2.1) ni más de lo que cabe en la columna. */
 const tope = z.int().min(0).max(2_147_483_647);
 
-/**
- * Porcentaje de descuento de un período (SLT-86 R10; antes, sobre el anual): texto, hasta dos decimales, `> 0` y `≤ 100` (R3). Se
- * compara en centésimas enteras, así que no hay redondeo de coma flotante. SLT-83 (R2): el mismo rango
- * vale para el costo por orden porcentual, así que se exporta en vez de copiarlo.
- */
-export const porcentajeSchema = z
-  .string()
-  .regex(/^\d{1,3}(\.\d{1,2})?$/)
-  .refine((s) => {
-    const [entero, decimales = ""] = s.split(".");
-    const centesimas = Number.parseInt(entero, 10) * 100 + Number.parseInt(decimales.padEnd(2, "0"), 10);
-    return centesimas > 0 && centesimas <= 10_000;
-  });
+// SLT-86 (R10), SLT-83 (R2): `porcentajeSchema` y `SOLO_UNA_FORMA` se exportan desde aquí con su nombre de
+// siempre. SLT-215: se definen en `importes.ts`, la hoja que también usa `niveles.ts` (ver su cabecera).
+export { porcentajeSchema, SOLO_UNA_FORMA };
 
 // SLT-86 (R10): la clave de la otra forma se declara `never` en vez de dejarla a `.strict()`, para que el
 // error de «las dos formas» caiga en `precio.descuentos.<periodo>.<campo>` y la pantalla lo ponga junto
 // a su campo, no en el descuento entero.
-const SOLO_UNA_FORMA = "Un descuento es porcentaje o monto fijo, no los dos.";
 export const descuentoPeriodoSchema = z.discriminatedUnion("tipo", [
   z
     .object({
@@ -244,6 +236,11 @@ export const crearPlanSchema = z
     // SLT-118 (R35): ausente = `quincenal` (el DEFAULT de la columna). Opcional para no tocar las peticiones de
     // los tests de planes que no la conocen; el formulario la manda siempre.
     periodicidadOrdenes: periodicidadOrdenesSchema.optional(),
+    // SLT-214 (R1, R15): ausente = sin beneficios. Opcional por la misma razón que `periodicidadOrdenes`; el
+    // borrador lo manda siempre.
+    beneficios: beneficiosSchema.optional(),
+    // SLT-215 (R1, R15): ausente = sin niveles. Opcional, como `beneficios`; el borrador lo manda siempre.
+    niveles: nivelesSchema.optional(),
   })
   .strict()
   .refine(customConEmpresa, CUSTOM_CON_EMPRESA)
@@ -274,6 +271,12 @@ const edicionDelPlan = z
     // SLT-118 (R35): ausente = sin cambio. La hereda `versionPlanSchema`, así que una versión programada
     // guardada antes, sin ella, sigue validando.
     periodicidadOrdenes: periodicidadOrdenesSchema.optional(),
+    // SLT-214 (R18): ausente = sin cambio en los beneficios, como `periodicidadOrdenes`. Una versión guardada
+    // antes de SLT-214 no lo trae y sigue validando.
+    beneficios: beneficiosSchema.optional(),
+    // SLT-215 (R18): ausente = sin cambio en los niveles, como `beneficios`. Una versión guardada antes de
+    // SLT-215 no lo trae y sigue validando.
+    niveles: nivelesSchema.optional(),
     // SLT-135 (R1): obligatoria, cambie el precio o no; toda edición se programa (SLT-128). Ausente o
     // `null` lleva `FECHA_DE_EFECTO_OBLIGATORIA`. El `≥ hoy` (R2) lo mira el servicio, que tiene el reloj.
     vigenteDesde: z.string({ error: FECHA_DE_EFECTO_OBLIGATORIA }).pipe(fechaSchema),
@@ -360,7 +363,15 @@ export type PrevisualizarCustomInput = z.infer<typeof previsualizarCustomSchema>
 /** Lo que define una versión del plan: lo editable (§16.1: `version` es esto mismo). */
 export type VersionPlan = Pick<
   EditarPlanInput,
-  "nombre" | "topes" | "modulos" | "precio" | "costoPorOrden" | "costoPorOrdenPorcentual" | "periodicidadOrdenes"
+  | "nombre"
+  | "topes"
+  | "modulos"
+  | "precio"
+  | "costoPorOrden"
+  | "costoPorOrdenPorcentual"
+  | "periodicidadOrdenes"
+  | "beneficios"
+  | "niveles"
 >;
 
 export type PlanDTO = {
@@ -380,6 +391,16 @@ export type PlanDTO = {
    * tipo para no tocar los dobles de `PlanDTO` de los tests. Ausente = `quincenal` (el DEFAULT de la columna).
    */
   periodicidadOrdenes?: PeriodicidadOrdenes;
+  /**
+   * SLT-214 (R1): los beneficios, en su orden. Las lecturas del repositorio los llenan siempre; opcional en el
+   * tipo, como `periodicidadOrdenes`, para no tocar los dobles de `PlanDTO` de los tests. Ausente = ninguno.
+   */
+  beneficios?: Beneficio[];
+  /**
+   * SLT-215 (R1): los niveles por volumen, en su orden (el número es la posición + 1). Opcional en el tipo, como
+   * `beneficios`, para no tocar los dobles de `PlanDTO` de los tests. Ausente = ninguno.
+   */
+  niveles?: Nivel[];
   archivado: boolean;
 };
 
@@ -633,7 +654,18 @@ export type VistaPreviaAsignacionResult =
 // Serializables: cruzan de Server Component a cliente. Sin `organizacionId`: la empresa es la de la sesión (R2).
 
 /** Lo que el carrusel y el detalle necesitan de un plan (R5, R8). */
-export type PlanVista = Pick<PlanDTO, "id" | "nombre" | "precio" | "costoPorOrden" | "costoPorOrdenPorcentual" | "topes" | "modulos">;
+export type PlanVista = Pick<
+  PlanDTO,
+  | "id"
+  | "nombre"
+  | "precio"
+  | "costoPorOrden"
+  | "costoPorOrdenPorcentual"
+  | "topes"
+  | "modulos"
+  | "beneficios"
+  | "niveles"
+>;
 
 /** SLT-86 (R25): el primer período (o tramo) que abriría un cambio y su costo base (lo calcula `primerPeriodoDelCambio`). */
 export interface PrimerPeriodo {

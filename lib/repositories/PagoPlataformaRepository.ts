@@ -20,8 +20,9 @@ export class PagoPlataformaRepository implements IPagoPlataformaRepository {
   ): Promise<string> {
     // El filtro por empresa va escrito aunque la extensión y la RLS ya acoten a la empresa de la sesión
     // (R25): el aislamiento del dinero no depende de con qué cliente se construyó el repositorio.
+    // SLT-143 (R26): lo aplicado por un pago que la plataforma anuló ya no cuenta como pagado.
     const r = await (cliente ?? this.prisma).pagoPlataformaAplicacion.aggregate({
-      where: { organizacionId },
+      where: { organizacionId, confirmacion: { anulaciones: { none: {} } } },
       _sum: { monto: true },
     });
     return new Prisma.Decimal(r._sum.monto ?? 0).toFixed(2);

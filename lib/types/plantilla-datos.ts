@@ -18,7 +18,7 @@
 // cabecera que es tipos puros justamente para poder cruzar esa frontera).
 
 import { EMPRESA, MARCA } from "@/lib/config/marca";
-import { formatMonto } from "@/lib/config/moneda";
+import { formatearMontoEn, MONEDA_PLATAFORMA, type FormatoMoneda } from "@/lib/config/moneda";
 import { nombreDeEstado } from "@/lib/types/order-status";
 import { PARAM_GUIA } from "@/app/_landing/guia-en-url";
 import { fechaCalendario, horaDePared } from "@/lib/utils/calendario-zona";
@@ -142,11 +142,14 @@ const numero = (v: number | null): string => (v === null ? VACIO : String(v));
 const siNo = (v: boolean | null): string => (v === null ? VACIO : v ? "Sí" : "No");
 
 /**
- * Dinero con el formato UNICO del repo (`lib/config/moneda.ts`): simbolo configurable, miles
- * con punto y SIN centimos — `₡12.500`, no `12500` ni `₡12,500.00`. Un `null` no se pinta como
- * la raya de las pantallas: en un WhatsApp esa raya no significa nada.
+ * Dinero con el formato UNICO del repo (`lib/config/moneda.ts`), en la moneda del pais de la
+ * empresa (SL-21, R10): la pasa quien resuelve en el servidor (`necesitaMoneda`). Sin moneda, la
+ * de la plataforma: es la vista previa del navegador, que no tiene el pais a mano (SLT-235).
+ * Centimos solo cuando existen — `₡12.500`, no `12500` ni `₡12,500.00`. Un `null` no se pinta
+ * como la raya de las pantallas: en un WhatsApp esa raya no significa nada.
  */
-const dinero = (v: number | null): string => (v === null ? VACIO : formatMonto(v));
+const dinero = (v: number | null, _zona: string | undefined, moneda: FormatoMoneda | undefined): string =>
+  v === null ? VACIO : formatearMontoEn(moneda ?? MONEDA_PLATAFORMA, v);
 
 /** Kilogramos, con la unidad pegada: `1.5 kg`. Mismo criterio que `pos-format.formatPeso`. */
 const peso = (v: number | null): string => (v === null ? VACIO : `${v} kg`);
@@ -224,13 +227,18 @@ export interface CampoPlantilla {
    * con hora). Quien resuelve la lee solo si alguna variable la necesita (`necesitaZona`).
    */
   usaZona?: boolean;
+  /**
+   * SL-21 (R10, R11): `true` = el texto es un importe y se pinta en la moneda del pais de la
+   * empresa. Quien resuelve la lee solo si alguna variable la necesita (`necesitaMoneda`).
+   */
+  usaMoneda?: true;
   /** El valor CRUDO, tal como viene en `DatosPlantilla`. */
   leer(datos: DatosPlantilla): unknown;
   /**
-   * Convierte ese crudo en el texto que se envia. Puro: mismo valor (y misma zona) -> mismo texto.
-   * `zona` solo la usan los campos con `usaZona`.
+   * Convierte ese crudo en el texto que se envia. Puro: mismo valor (y misma zona y moneda) ->
+   * mismo texto. `zona` solo la usan los campos con `usaZona`; `moneda`, los de `usaMoneda`.
    */
-  transform(valor: unknown, zona?: string): string;
+  transform(valor: unknown, zona?: string, moneda?: FormatoMoneda): string;
 }
 
 /**
@@ -246,8 +254,9 @@ function definir<V>(def: {
   ejemplo: string;
   sensible?: boolean;
   usaZona?: boolean;
+  usaMoneda?: true;
   leer: (datos: DatosPlantilla) => V;
-  transform: (valor: V, zona: string | undefined) => string;
+  transform: (valor: V, zona: string | undefined, moneda: FormatoMoneda | undefined) => string;
 }): CampoPlantilla {
   return {
     clave: def.clave,
@@ -257,8 +266,10 @@ function definir<V>(def: {
     ejemplo: def.ejemplo,
     ...(def.sensible === true ? { sensible: true } : {}),
     ...(def.usaZona === true ? { usaZona: true } : {}),
+    ...(def.usaMoneda === true ? { usaMoneda: true as const } : {}),
     leer: def.leer,
-    transform: (valor: unknown, zona?: string) => def.transform(valor as V, zona),
+    transform: (valor: unknown, zona?: string, moneda?: FormatoMoneda) =>
+      def.transform(valor as V, zona, moneda),
   };
 }
 
@@ -315,6 +326,7 @@ const MONTO = definir({
   nombre: "Monto a cobrar",
   descripcion: "Lo que el cliente paga contra entrega, con símbolo y separador de miles.",
   ejemplo: "₡12.500",
+  usaMoneda: true,
   leer: (d) => d.orden.montoCobrar,
   transform: dinero,
 });
@@ -849,10 +861,15 @@ export const DATOS_PLANTILLA_EJEMPLO: DatosPlantilla = {
  * modelo de plantillas es abierto (se acepta cualquier `{{clave}}` bien formada) y una clave
  * desconocida no puede romper un envio.
  */
-export function valorDeCampo(clave: string, datos: DatosPlantilla, zona?: string): string {
+export function valorDeCampo(
+  clave: string,
+  datos: DatosPlantilla,
+  zona?: string,
+  moneda?: FormatoMoneda,
+): string {
   const campo = CAMPOS_PLANTILLA_POR_CLAVE.get(clave);
   if (campo === undefined) return VACIO;
-  return campo.transform(campo.leer(datos), zona);
+  return campo.transform(campo.leer(datos), zona, moneda);
 }
 
 /**
@@ -865,6 +882,15 @@ export function necesitaZona(variables: readonly string[]): boolean {
 }
 
 /**
+ * SL-21 (R10, R11): `true` si alguna de `variables` pinta un importe, y entonces quien resuelve en
+ * el servidor tiene que pasar la moneda del pais de la empresa. Asi la moneda solo se lee (y su
+ * falta, `PaisSinMoneda`, solo falla) cuando la plantilla la usa.
+ */
+export function necesitaMoneda(variables: readonly string[]): boolean {
+  return variables.some((clave) => CAMPOS_PLANTILLA_POR_CLAVE.get(clave)?.usaMoneda === true);
+}
+
+/**
  * Mapa `clave -> texto` para las variables que la plantilla DECLARA, y solo para esas. Es el
  * filtro que mantiene la promesa del envio: se leen muchos campos, pero a Meta solo viaja lo
  * que el cuerpo de la plantilla escribe.
@@ -873,10 +899,11 @@ export function resolverValoresPlantilla(
   variables: string[],
   datos: DatosPlantilla,
   zona?: string,
+  moneda?: FormatoMoneda,
 ): Record<string, string> {
   const valores: Record<string, string> = {};
   for (const clave of variables) {
-    valores[clave] = valorDeCampo(clave, datos, zona);
+    valores[clave] = valorDeCampo(clave, datos, zona, moneda);
   }
   return valores;
 }

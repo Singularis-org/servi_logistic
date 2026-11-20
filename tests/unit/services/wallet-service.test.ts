@@ -90,7 +90,6 @@ function buildRepo(): IWalletMovimientoRepository {
         origenTipo: m.origenTipo,
         origenId: m.origenId,
         descripcion: m.descripcion ?? null,
-        registradoPor: m.registradoPor ?? null,
         fechaMovimiento: (m.fechaMovimiento ?? new Date(INSTANTE_DEL_DEFAULT)).toISOString(),
       }),
     );
@@ -656,7 +655,7 @@ describe("WalletService.registrarMovimientoManual (R1/R3/R15/R19)", () => {
   it("R15: maestro -> crea manual con origen_tipo manual, origen_id null, registrado_por actor", async () => {
     const repo = buildRepo();
     (repo.listar as ReturnType<typeof vi.fn>).mockResolvedValue({
-      movimientos: [mov({ id: "w-manual", tipo: "egreso", categoria: "egreso_ajuste", monto: "50.00", origenTipo: "manual", origenId: null, descripcion: "correccion", registradoPor: "u-maestro" })],
+      movimientos: [mov({ id: "w-manual", tipo: "egreso", categoria: "egreso_ajuste", monto: "50.00", origenTipo: "manual", origenId: null, descripcion: "correccion" })],
       total: 1,
     });
     const svc = new WalletService(repo, writeClient, SIN_SALDO_INICIAL_459, SIN_DOCUMENTOS_459, undefined, undefined, reglasPaisFijas());

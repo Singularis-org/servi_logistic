@@ -87,9 +87,18 @@ export class OrganizacionService implements IOrganizacionService {
   }
 }
 
-/** R6: sin prefijo, sin dígitos nacionales o sin zona, el país aún no admite empresas (SLT-81 los carga). */
+/**
+ * R6: sin prefijo, sin dígitos nacionales o sin zona, el país aún no admite empresas (SLT-81 los carga).
+ * SL-21 (R17): tampoco sin moneda o sin nombre de impuesto; la respuesta es la misma, en `paisId`.
+ */
 function paisIncompleto(pais: PaisDTO): boolean {
-  return pais.prefijoTelefonico === null || pais.telefonoDigitosNacionales === null || pais.zonaHoraria === null;
+  return (
+    pais.prefijoTelefonico === null ||
+    pais.telefonoDigitosNacionales === null ||
+    pais.zonaHoraria === null ||
+    pais.moneda === null ||
+    pais.impuestoNombre === null
+  );
 }
 
 // 32 bytes de `crypto.randomBytes`: el secreto vive solo en esta función. No se devuelve, no se

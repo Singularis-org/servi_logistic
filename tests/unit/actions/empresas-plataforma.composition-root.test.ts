@@ -94,9 +94,10 @@ describe("SL-32 — listarEmpresasPlataforma cablea el repositorio real y esPlat
       { tipo: "plataforma", ficha: "SL-32", motivo: "listado de empresas del superadmin" },
     ]);
     // SLT-60 (R7, R8): «Pagado» y la deuda salen de las aplicaciones de las empresas del listado, no del libro.
+    // SLT-143 (R26): sin lo aplicado por los pagos que la plataforma anuló.
     expect(groupByAplicaciones).toHaveBeenCalledWith({
       by: ["organizacionId"],
-      where: { organizacionId: { in: ["org-1"] } },
+      where: { organizacionId: { in: ["org-1"] }, confirmacion: { anulaciones: { none: {} } } },
       _sum: { monto: true },
     });
     expect(findManyLibro).not.toHaveBeenCalled();

@@ -7,9 +7,14 @@ import { llevaSqlstate, mensajesDeLaCadena } from "@/lib/db/sqlstate";
 
 export const SQLSTATE_PAGO_PLATAFORMA = "SL060";
 
-/** Los códigos que lanza `pago_plataforma_confirmar` (design §3.4). */
+/**
+ * Los códigos que lanzan `pago_plataforma_confirmar` (SLT-60 design §3.4) y, desde SLT-143 (design §3.6),
+ * `pago_plataforma_registrar_por_fuera` y `pago_plataforma_anular_confirmado`.
+ */
 export const CODIGOS_DE_CONFIRMACION = [
   "pago_no_encontrado",
+  "pago_no_confirmado",
+  "motivo_vacio",
   "factura_no_valida",
   "monto_no_positivo",
   "factura_repetida",
@@ -63,4 +68,29 @@ export function traducirErrorDeConfirmacion(e: unknown): ErrorDeConfirmacion | n
  */
 export function esPagoConfirmadoError(e: unknown): boolean {
   return jsonsDelError(e).some((o) => o.codigo === "pago_confirmado");
+}
+
+/** SQLSTATE `check_violation`: el que lanza el trigger del tope. */
+const CHECK_VIOLATION = "23514";
+const CONSTRAINT_TOPE = "wallet_movimiento_tope_pago_plataforma";
+
+/** Visita `e` y sus causas (`cause`, `meta`, `driverAdapterError`), sin ciclos. */
+function algunNodo(e: unknown, visita: (o: Record<string, unknown>) => boolean, vistos = new Set<unknown>()): boolean {
+  if (e === null || typeof e !== "object" || vistos.has(e)) return false;
+  vistos.add(e);
+  const o = e as Record<string, unknown>;
+  return visita(o) || ["cause", "meta", "driverAdapterError"].some((k) => algunNodo(o[k], visita, vistos));
+}
+
+/**
+ * SLT-143 (design §3.6; R6) — ¿Es `e` el rechazo del trigger del tope (`wallet_movimiento_tope_pago_plataforma`)
+ * en el INSERT del pago por fuera? Es un `check_violation` con ese CONSTRAINT. `@prisma/adapter-pg` no guarda
+ * el nombre del constraint de un 23514 (solo los de 23505/23503), así que se reconoce también por su mensaje,
+ * literal en la migración 20261116120000 («… supera la deuda vigente de la empresa …»), cuando el SQLSTATE es
+ * ese. Otro `check_violation` (el `CHECK` de un importe, por ejemplo) no lo es.
+ */
+export function esTopeDelPagoSuperado(e: unknown): boolean {
+  if (!llevaSqlstate(e, CHECK_VIOLATION)) return false;
+  if (algunNodo(e, (o) => o.constraint === CONSTRAINT_TOPE)) return true;
+  return mensajesDeLaCadena(e).some((m) => m.includes("supera la deuda vigente de la empresa"));
 }

@@ -129,7 +129,6 @@ function movimiento(over: Partial<WalletMovimientoDTO> = {}): WalletMovimientoDT
     origenId: "pago-1",
     // Medido en producción: los pagos a mensajeros se escriben SIN descripción (R17).
     descripcion: null,
-    registradoPor: null,
     fechaMovimiento: "2026-08-14T10:00:00.000Z",
     dueno: "propio",
     documento: null, // ficha 459 (design §7.3): fila sin documento

@@ -18,10 +18,9 @@ import { crearOrdenesDirectas, crearPlanPublicoConCosto } from "./_planes-fixtur
 import {
   asegurarSuperadmin,
   conCandadoDelSuperadmin,
-  entrarConOtp,
+  entrarComoSuperadmin,
   NO_ENCONTRADO,
-  olvidarDispositivos,
-  SUPERADMIN_DE_PRUEBA,
+  superadminDeLaBase,
 } from "./_superadmin-fixture";
 
 /**
@@ -121,10 +120,7 @@ test.beforeAll(async ({ browser }) => {
 
   // El superadmin de prueba es el actor del plan y el que abre el detalle de la empresa.
   await conCandadoDelSuperadmin(() => asegurarSuperadmin(db()));
-  const fila = await db().usuario.findFirstOrThrow({
-    where: { email: SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL, rol: { value: "superadmin" } },
-    select: { id: true },
-  });
+  const fila = await superadminDeLaBase(db());
   superadminId = fila.id;
 
   // Costo base 1 000 mensual (el de la fixture) y 300,00 por orden, desde las 00:00 de hoy (SLT-86 R2).
@@ -177,8 +173,7 @@ test.beforeAll(async ({ browser }) => {
   contextoSa = await browser.newContext();
   sa = await contextoSa.newPage();
   await conCandadoDelSuperadmin(async () => {
-    await olvidarDispositivos(db(), SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL);
-    await entrarConOtp(sa!, SUPERADMIN_DE_PRUEBA.SUPERADMIN_EMAIL, SUPERADMIN_DE_PRUEBA.SUPERADMIN_PASSWORD);
+    await entrarComoSuperadmin(sa!, db());
   });
 });
 

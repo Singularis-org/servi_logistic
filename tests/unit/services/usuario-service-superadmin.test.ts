@@ -204,6 +204,8 @@ describe("SLT-42 R17 — sin empresa, telefono y documento con la regla generica
     deLaEmpresa: () => Promise.reject(new EmpresaNoResuelta("Pais", "deLaEmpresa")),
     zonaHoraria: () => Promise.reject(new EmpresaNoResuelta("Pais", "zonaHoraria")),
     tipoDocumento: () => Promise.reject(new EmpresaNoResuelta("Pais", "tipoDocumento")),
+    moneda: () => Promise.reject(new EmpresaNoResuelta("Pais", "moneda")),
+    nombreImpuesto: () => Promise.reject(new EmpresaNoResuelta("Pais", "nombreImpuesto")),
   };
 
   it("R17: un telefono y un documento de solo digitos y largo generico entran aunque no sean de CR", async () => {

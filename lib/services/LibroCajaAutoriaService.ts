@@ -1,3 +1,4 @@
+import { PLATAFORMA_ANULO } from "@/components/shared/wallet/detalle-movimiento-panel-labels";
 import { esAccesoTotal } from "@/lib/auth/acceso-total";
 import type {
   AnulacionDeDocumento,
@@ -24,6 +25,14 @@ import type {
   AutoriaLibroCajaServiceResult,
   ILibroCajaAutoriaService,
 } from "@/lib/interfaces/services/ILibroCajaAutoriaService";
+
+/**
+ * SLT-143: el contra-asiento de la anulación de un egreso con origen `gasto` (el único con que se anula un pago
+ * a la plataforma, 458-B): `ingreso_ajuste` con el egreso original en `origen_id`.
+ */
+function esContraAsientoDeEgreso(m: MovimientoDeCajaParaAutoria): m is MovimientoDeCajaParaAutoria & { origenId: string } {
+  return m.categoria === "ingreso_ajuste" && m.origenTipo === "gasto" && m.origenId !== null;
+}
 
 const NADIE: AQuienDTO = { nombre: null, beneficiario: null, cuenta: null, esEmpresa: false };
 
@@ -90,6 +99,15 @@ export class LibroCajaAutoriaService implements ILibroCajaAutoriaService {
     const anotaciones = await this.repo.anotaciones([
       ...new Set(movs.filter((m) => m.origenTipo === "gasto" || m.origenTipo === "manual").map(movimientoDeLaAnotacion)),
     ]);
+    // SLT-143 (design §5, §5.1; R13, R36): los pagos a la plataforma de la página y los que anulan los
+    // contra-asientos (su `origen_id`). Sin ninguno, no se lee.
+    const marcas = await this.repo.marcasDeLaPlataforma([
+      ...new Set(
+        movs.flatMap((m) =>
+          m.categoria === "egreso_pago_plataforma" ? [m.id] : esContraAsientoDeEgreso(m) ? [m.origenId] : [],
+        ),
+      ),
+    ]);
 
     const aQuien = (m: MovimientoDeCajaParaAutoria): AQuienDTO => {
       const o = m.origenId;
@@ -128,6 +146,13 @@ export class LibroCajaAutoriaService implements ILibroCajaAutoriaService {
     };
 
     const registro = (m: MovimientoDeCajaParaAutoria): RegistroDTO => {
+      // SLT-143 (R13, R36): antes de mirar `registradoPor`, que es el superadmin: ni su nombre ni su id salen.
+      if (m.categoria === "egreso_pago_plataforma" && marcas.registrados.has(m.id)) {
+        return { nombre: null, automatico: { accion: "plataforma", por: null } };
+      }
+      if (esContraAsientoDeEgreso(m) && marcas.anulados.has(m.origenId)) {
+        return { nombre: null, automatico: { accion: "plataforma_anulacion", por: null } };
+      }
       if (m.registradoPor !== null) return { nombre: nombres.get(m.registradoPor) ?? null, automatico: null };
       const o = m.origenId;
       switch (m.origenTipo) {
@@ -231,9 +256,11 @@ export class LibroCajaAutoriaService implements ILibroCajaAutoriaService {
           a = o === null ? undefined : anulaciones.incentivos.get(o);
           break;
       }
-      return a === undefined
-        ? null
-        : { motivo: a.motivo, por: a.por, ...diaYHora(a.fecha) };
+      if (a === undefined) return null;
+      // SLT-143 (R36): la constancia lleva al superadmin; la empresa ve «la plataforma». Una anulación de la
+      // empresa (SL-45) no está en `anulados` y conserva el nombre.
+      const por = m.categoria === "egreso_pago_plataforma" && marcas.anulados.has(m.id) ? PLATAFORMA_ANULO : a.por;
+      return { motivo: a.motivo, por, ...diaYHora(a.fecha) };
     };
 
     // Ficha 458-E (revision B1, R58): CUANDO se registro — el `created_at` de la fila en dia y hora del

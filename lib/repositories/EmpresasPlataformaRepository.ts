@@ -186,9 +186,10 @@ export class EmpresasPlataformaRepository implements IEmpresasPlataformaReposito
       where: { organizacionId: { in: organizacionIds }, estado: "cerrada" },
       _sum: { cuota: true, primeraCuota: true },
     });
+    // SLT-143 (R26): sin lo aplicado por los pagos que la plataforma anuló.
     const confirmados = await this.prisma.pagoPlataformaAplicacion.groupBy({
       by: ["organizacionId"],
-      where: { organizacionId: { in: organizacionIds } },
+      where: { organizacionId: { in: organizacionIds }, confirmacion: { anulaciones: { none: {} } } },
       _sum: { monto: true },
     });
 
