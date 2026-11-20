@@ -119,6 +119,8 @@ describe("Feature 239 · enum — `anclaje_devolucion` (R7/P8)", () => {
       "rechazo_tope_intentos",
       // ficha 398 (2026-09-08): la correccion en sitio del resultado de una gestion
       "correccion_resultado_gestion",
+      // SLT-247 (2026-11-20): el retorno a la calle de las barridas al rechazar el cierre
+      "retorno_por_rechazo_cierre",
     ]);
     expect(new Set(valores)).toEqual(
       new Set(ORDEN_HISTORIAL_ORIGEN_TIPO_SEED.filter((v) => !POSTERIORES.has(v))),

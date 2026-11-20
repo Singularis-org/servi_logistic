@@ -6,6 +6,7 @@ import type {
   CierreGestionPendienteRow,
   CorreccionCierreRow,
   ICierreDiaRepository,
+  ResolicitarRechazadoResult,
 } from "@/lib/interfaces/repositories/ICierreDiaRepository";
 import type { CierreEstado } from "@/lib/types/cierre";
 import type { CierrePasadoDTO } from "@/lib/interfaces/services/ICierreDiaService";
@@ -35,7 +36,7 @@ const TARIFA_DESTINO: PagoTarifa = { cobroEntregado: "1700.00", cobroRechazado: 
 
 function montar(opts: {
   resolicitable?: { id: string; estado: CierreEstado; destinoZonaId: string } | null;
-  resolicitado?: boolean;
+  resolicitado?: ResolicitarRechazadoResult;
   cierresPasados?: CierrePasadoDTO[];
   correcciones?: CorreccionCierreRow[];
   gestionesDelCierre?: CierreGestionPendienteRow[];
@@ -43,7 +44,7 @@ function montar(opts: {
   const repo = {
     findCierreResolicitableMasViejo: vi.fn(async () => opts.resolicitable ?? null),
     transicionarASolicitado: vi.fn(async () => true),
-    resolicitarCierreRechazado: vi.fn(async () => opts.resolicitado ?? true),
+    resolicitarCierreRechazado: vi.fn(async (): Promise<ResolicitarRechazadoResult> => opts.resolicitado ?? { status: "ok" }),
     findCierreParaAviso: vi.fn(async (cierreId: string) => ({
       id: cierreId,
       destinoZonaId: "z-destino",
@@ -126,7 +127,7 @@ describe("477 · solicitarCierre — la rama de re-solicitud por estado", () => 
   it("R22: la escritura pierde la carrera -> el conflict de hoy, sin aviso", async () => {
     const { service, notificar } = montar({
       resolicitable: { id: "c-rech", estado: "rechazado", destinoZonaId: "z-destino" },
-      resolicitado: false,
+      resolicitado: { status: "conflict" },
     });
 
     const r = await service.solicitarCierre(MENSAJERO);
@@ -144,6 +145,25 @@ describe("477 · solicitarCierre — la rama de re-solicitud por estado", () => 
 
     expect(repo.findCierreParaAviso).toHaveBeenCalledWith("c-rech");
     expect(notificar).toHaveBeenCalledWith({ cierreId: "c-rech", zonaId: "z-destino", mensajeroNombre: "Ana" });
+  });
+
+  // SLT-247 (R1782): el repositorio no reenvio porque quedan barridas sin gestionar -> conflict con
+  // el motivo que dice cuantas y cuales, sin aviso a la bodega.
+  it("SLT-247/R1782: obligatorias pendientes -> conflict con el motivo que las nombra, sin aviso", async () => {
+    const { service, notificar } = montar({
+      resolicitable: { id: "c-rech", estado: "rechazado", destinoZonaId: "z-destino" },
+      resolicitado: { status: "obligatorias_pendientes", guias: [1201, 1202, 1250], total: 3 },
+    });
+
+    const r = await service.solicitarCierre(MENSAJERO);
+
+    expect(r).toEqual({
+      status: "conflict",
+      motivo:
+        "Antes de enviar de nuevo este cierre tienes que gestionar 3 órdenes que pasaron a " +
+        "Novedad interna: guía 1201, 1202 y 1250. Están en Entregas.",
+    });
+    expect(notificar).not.toHaveBeenCalled();
   });
 });
 
@@ -243,6 +263,32 @@ describe("477 · T4.7 — listarCierreDia devuelve `correcciones`", () => {
       evidenciaUrl: "https://f/ev/g2.jpg", evidenciaUrls: ["https://f/ev/g2.jpg"],
       desdeAyudaTienda: true,
     });
+  });
+
+  // SLT-247 (R1795): la marca `obligatoria` viaja del repositorio a la pantalla; sin ella, como hoy.
+  it("SLT-247/R1795: la barrida devuelta llega marcada `obligatoria`; la deshecha, sin marca", async () => {
+    const { service } = montar({
+      cierresPasados: [pasado("rechazado", "c-rech")],
+      correcciones: [
+        {
+          cierreId: "c-rech",
+          motivoRechazo: null,
+          ordenesEnCorreccion: [
+            { ordenId: "o7", numGuia: 107, numRemision: "R-7", destinatario: "Eva", regestionada: false, obligatoria: true },
+            { ordenId: "o1", numGuia: 101, numRemision: "R-1", destinatario: "Ana", regestionada: true },
+          ],
+        },
+      ],
+    });
+
+    const r = await service.listarCierreDia(MENSAJERO);
+
+    if (r.status !== "ok") throw new Error("esperaba ok");
+    expect(r.correcciones?.[0].ordenesEnCorreccion).toEqual([
+      { ordenId: "o7", numGuia: 107, numRemision: "R-7", destinatario: "Eva", regestionada: false, obligatoria: true },
+      { ordenId: "o1", numGuia: 101, numRemision: "R-1", destinatario: "Ana", regestionada: true },
+    ]);
+    expect(r.correcciones?.[0].ordenesEnCorreccion[1]).not.toHaveProperty("obligatoria");
   });
 
   it("un storage caido no deja al mensajero sin la lista (firma best-effort)", async () => {

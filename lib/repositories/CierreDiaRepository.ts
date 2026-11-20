@@ -13,6 +13,7 @@ import type {
   GestionPendienteDeCierreRow,
   ICierreDiaRepository,
   ResolicitarCierreRechazadoInput,
+  ResolicitarRechazadoResult,
 } from "@/lib/interfaces/repositories/ICierreDiaRepository";
 import type {
   ITarifaVigenteRepository,
@@ -72,7 +73,10 @@ import { toLineasPago } from "@/lib/utils/lineas-pago";
 // FICHA 477 (D2/D3/D5): el predicado unico de «orden en correccion», el recalculo de los seis
 // totales por SUMA DE SNAPSHOTS (el mismo de la 398) y el congelado del pago/ingreso por resultado
 // (el mismo de la 39/56) para las gestiones que la re-solicitud vincula.
-import { ordenesEnCorreccion } from "@/lib/repositories/correccion-cierre";
+import {
+  ordenesEnCorreccion,
+  whereOrdenNoRetenidaPorRechazado,
+} from "@/lib/repositories/correccion-cierre";
 import {
   computeTotales,
   derivarIngresoBodega,
@@ -155,6 +159,16 @@ class NoAnulable extends Error {}
 // FICHA 477 (D5, R22): sentinela de la re-solicitud de un `rechazado`. El cierre ya no estaba en el
 // estado leido (otra re-solicitud, la valvula del admin) -> rollback, `false`, sin efectos.
 class CierreYaNoRechazado extends Error {}
+
+/**
+ * SLT-247 (R1782/R1783) — sentinela de la re-solicitud: quedan barridas sin gestionar. Se LANZA
+ * antes de escribir nada, dentro de la tx y tras el candado, para que el rollback sea trivial.
+ */
+class ObligatoriasPendientes extends Error {
+  constructor(readonly guias: (number | null)[]) {
+    super("obligatorias pendientes");
+  }
+}
 
 /**
  * FICHA 477 (D3/D5, R3/R19) — LOS SEIS TOTALES DEL CIERRE, sobre las gestiones VIGENTES que le
@@ -1015,6 +1029,135 @@ type GestionVinculadaEnResolicitud = Prisma.GestionOrdenGetPayload<{
 }>;
 
 /**
+ * SLT-247 (design §4 paso 5) — EL COBRO CONGELADO DE `cierre_detail`, extraido TAL CUAL de
+ * `crearCierre` (feature 69 + 274 + SL-38 + SLT-52) para que la re-solicitud de un rechazado
+ * congele igual el detalle de sus barridas gestionadas (R1784). Mismo calculo, misma tx, mismas
+ * consultas: `crearCierre` lo llama con las mismas `filas` de siempre y sus tests no cambian.
+ * Devuelve el modelo del cobro (`null` sin filas) y, en el modelo nuevo, el cobro congelado por
+ * orden en memoria (la base del % del pago, SLT-52/R55).
+ */
+async function congelarDetalleDeOrdenes(
+  tx: Prisma.TransactionClient,
+  tarifaRepo: ITarifaVigenteRepository,
+  cierreId: string,
+  filas: SnapshotRow[],
+): Promise<{
+  modeloCobro: "viejo" | "nuevo" | null;
+  cobroCongeladoPorOrden: Map<string, CobroCongeladoDeOrden>;
+}> {
+  // SLT-52 (R37): el modelo del cobro de ESTE cierre; `null` si no hay ordenes que congelar.
+  let modeloCobro: "viejo" | "nuevo" | null = null;
+  const cobroCongeladoPorOrden = new Map<string, CobroCongeladoDeOrden>();
+  if (filas.length > 0) {
+    // Feature 69/R8 + feature 274/R22 — la tarifa vigente de cada PAR (tienda, zona)
+    // distinto, EN LA MISMA tx y en UNA query (sin N+1, R7). Hasta la 273 esto se
+    // resolvia por TIENDA sola (`resolveTarifasPorTiendas`), asi que dos ordenes de la
+    // misma tienda en zonas distintas congelaban la MISMA fila; desde la 274 la fila la
+    // elige la cascada sobre el par (design §4.2), la misma que usa el listado (R21).
+    // `null` para un par sin tarifa = gap R9/R23: las 9 columnas quedan NULL y el cierre
+    // se crea igual (decision (c) + R39: el gap NO bloquea, y el 409 de las APIs por key
+    // NO llega hasta aqui).
+    // SLT-52 (R16/R18): el distrito de la ORDEN viaja en el par; decide su grupo de distritos.
+    const pares = filas.map((f): ParTarifa => ({
+      tiendaId: f.orden.tiendaId,
+      zonaId: f.orden.zonaId,
+      distritoId: f.orden.distritoId,
+    }));
+    const tarifas = await tarifaRepo.resolveTarifas(pares, tx);
+    const tarifaDe = (f: SnapshotRow): TarifaTienda | null =>
+      tarifas.get(
+        clavePar({
+          tiendaId: f.orden.tiendaId,
+          zonaId: f.orden.zonaId,
+          distritoId: f.orden.distritoId,
+        }),
+      ) ?? null;
+    // El resolver decide el modelo UNA vez por llamada (R37): todas las no nulas son del mismo.
+    // Todas nulas = viejo sin tarifa (el nuevo nunca devuelve `null`).
+    const modelo = filas.map(tarifaDe).find((t) => t !== null)?.modelo ?? "viejo";
+    modeloCobro = modelo;
+    // FICHA 450 (T2.7): los descriptivos que antes traia la relacion anidada, leidos en
+    // SERIE sobre la conexion de esta transaccion. Mismas tablas, mismos ids, mismos valores.
+    const descriptivos = await leerDescriptivosDeOrdenes(filas, tx);
+    const detalles = filas.map((f) => {
+      const tarifa = tarifaDe(f);
+      return {
+        cierreId,
+        ordenId: f.ordenId,
+        // money-critical (R6). `montoCobrar` ya es Decimal|null en origen: se copia
+        // tal cual, sin pasar por number (R11).
+        montoCobrar: f.orden.montoCobrar,
+        cobraComision: f.orden.cobraComision,
+        zonaId: f.orden.zonaId,
+        tiendaId: f.orden.tiendaId,
+        esCentral: descriptivoDe(descriptivos.zonas, f.orden.zonaId, "zona").esCentral,
+        // R20 (SL-38): congela la marca de la EMPRESA en este instante; desmarcar despues
+        // no mueve esta fila. Una orden sin distrito (el unico FK nullable de `orden`)
+        // congela `false`: sin distrito no hay marca que aplicar.
+        esZonaEspecial:
+          f.orden.distritoId === null
+            ? false
+            : descriptivoDe(descriptivos.distritos, f.orden.distritoId, "distrito")
+                .zonaEspecial,
+        // SLT-52 (R40, R42): con que modelo se congela. En el viejo la fila se escribe EXACTAMENTE
+        // como antes de la ficha (sin la columna: su DEFAULT es `viejo`, y la lista de columnas
+        // escritas es contrato de la 69/R24); en el nuevo se marca, las columnas `tarifa_*` van
+        // NULL y el cobro se congela en `cierre_detail_concepto`.
+        ...(modelo === "nuevo" ? { tarifaModelo: modelo } : {}),
+        ...tarifaColumnas(tarifa?.modelo === "viejo" ? tarifa.tarifa : null),
+        // descriptivos (R7).
+        numGuia: f.orden.numGuia,
+        numRemision: f.orden.numRemision,
+        destinatario: f.orden.destinatario,
+        direccion: f.orden.direccion,
+        producto: f.orden.producto,
+        tiendaNombre: descriptivoDe(descriptivos.tiendas, f.orden.tiendaId, "usuario").nombre,
+        zonaNombre: descriptivoDe(descriptivos.zonas, f.orden.zonaId, "zona").nombre,
+        provinciaNombre: descriptivoDe(
+          descriptivos.provincias,
+          f.orden.provinciaId,
+          "provincia",
+        ).nombre,
+        cantonNombre: descriptivoDe(descriptivos.cantones, f.orden.cantonId, "canton").nombre,
+        distritoNombre:
+          f.orden.distritoId === null
+            ? null
+            : descriptivoDe(descriptivos.distritos, f.orden.distritoId, "distrito").nombre,
+      };
+    });
+    if (modelo === "viejo") {
+      await tx.cierreDetail.createMany({ data: detalles });
+    } else {
+      // SLT-52 (T5.2, R40): el cobro congelado cuelga del id de cada `cierre_detail`, asi que
+      // aqui se crean devolviendo `(id, ordenId)`. Misma tx: todo o nada.
+      const creados = await tx.cierreDetail.createManyAndReturn({
+        data: detalles,
+        select: { id: true, ordenId: true },
+      });
+      const idPorOrden = new Map(creados.map((d) => [d.ordenId, d.id]));
+      const conceptos = filas.flatMap((f) => {
+        const id = idPorOrden.get(f.ordenId);
+        if (id === undefined) {
+          throw new Error(`snapshot del cierre: no se creo el detalle de la orden ${f.ordenId}`);
+        }
+        return conceptosCongeladosDe(id, tarifaDe(f));
+      });
+      if (conceptos.length > 0) await tx.cierreDetailConcepto.createMany({ data: conceptos });
+      // SLT-52 (T5.5, R55): el cobro que ESTA tx acaba de congelar, por orden y en memoria
+      // (las mismas entradas que el detalle y los mismos conceptos): la base del % sale de aqui.
+      detalles.forEach((d, i) => {
+        cobroCongeladoPorOrden.set(d.ordenId, {
+          ...d,
+          tarifaModelo: "nuevo",
+          conceptos: conceptosEnMemoriaDe(tarifaDe(filas[i])),
+        });
+      });
+    }
+  }
+  return { modeloCobro, cobroCongeladoPorOrden };
+}
+
+/**
  * Feature 37 — repositorio del cierre del dia. SOLO queries Prisma (sin logica de
  * negocio: los estados "pendientes" los decide el service y se pasan por parametro;
  * los totales snapshot llegan ya calculados como STRING). `crearCierre` es
@@ -1357,6 +1500,10 @@ export class CierreDiaRepository implements ICierreDiaRepository {
                     deletedAt: null,
                     OR: noReservadaParaDespues, // feature 246/R11
                     ...whereOrdenSinGestionPendiente(), // ficha 454/R43
+                    // SLT-247 (R1788): GEMELO de la seleccion del corte. La barrida de un cierre que
+                    // sigue `rechazado` es del mensajero para gestionarla antes de reenviar: no se
+                    // vuelve a barrer mientras el cierre siga rechazado.
+                    ...whereOrdenNoRetenidaPorRechazado(),
                   },
                   // FEATURE 264 (B3, R1/R9/R11): el pre-SELECT proyecta ADEMAS los descriptivos que
                   // la fila del vinculo congela.
@@ -1556,115 +1703,13 @@ export class CierreDiaRepository implements ICierreDiaRepository {
         for (const g of gestiones) if (!porOrden.has(g.ordenId)) porOrden.set(g.ordenId, g);
         const filas = [...porOrden.values()];
 
-        // SLT-52 (R37): el modelo del cobro de ESTE cierre; `null` si no hay ordenes que congelar.
-        let modeloCobro: "viejo" | "nuevo" | null = null;
-        const cobroCongeladoPorOrden = new Map<string, CobroCongeladoDeOrden>();
-        if (filas.length > 0) {
-          // Feature 69/R8 + feature 274/R22 — la tarifa vigente de cada PAR (tienda, zona)
-          // distinto, EN LA MISMA tx y en UNA query (sin N+1, R7). Hasta la 273 esto se
-          // resolvia por TIENDA sola (`resolveTarifasPorTiendas`), asi que dos ordenes de la
-          // misma tienda en zonas distintas congelaban la MISMA fila; desde la 274 la fila la
-          // elige la cascada sobre el par (design §4.2), la misma que usa el listado (R21).
-          // `null` para un par sin tarifa = gap R9/R23: las 9 columnas quedan NULL y el cierre
-          // se crea igual (decision (c) + R39: el gap NO bloquea, y el 409 de las APIs por key
-          // NO llega hasta aqui).
-          // SLT-52 (R16/R18): el distrito de la ORDEN viaja en el par; decide su grupo de distritos.
-          const pares = filas.map((f): ParTarifa => ({
-            tiendaId: f.orden.tiendaId,
-            zonaId: f.orden.zonaId,
-            distritoId: f.orden.distritoId,
-          }));
-          const tarifas = await this.tarifaRepo.resolveTarifas(pares, tx);
-          const tarifaDe = (f: SnapshotRow): TarifaTienda | null =>
-            tarifas.get(
-              clavePar({
-                tiendaId: f.orden.tiendaId,
-                zonaId: f.orden.zonaId,
-                distritoId: f.orden.distritoId,
-              }),
-            ) ?? null;
-          // El resolver decide el modelo UNA vez por llamada (R37): todas las no nulas son del mismo.
-          // Todas nulas = viejo sin tarifa (el nuevo nunca devuelve `null`).
-          const modelo = filas.map(tarifaDe).find((t) => t !== null)?.modelo ?? "viejo";
-          modeloCobro = modelo;
-          // FICHA 450 (T2.7): los descriptivos que antes traia la relacion anidada, leidos en
-          // SERIE sobre la conexion de esta transaccion. Mismas tablas, mismos ids, mismos valores.
-          const descriptivos = await leerDescriptivosDeOrdenes(filas, tx);
-          const detalles = filas.map((f) => {
-            const tarifa = tarifaDe(f);
-            return {
-              cierreId: cierre.id,
-              ordenId: f.ordenId,
-              // money-critical (R6). `montoCobrar` ya es Decimal|null en origen: se copia
-              // tal cual, sin pasar por number (R11).
-              montoCobrar: f.orden.montoCobrar,
-              cobraComision: f.orden.cobraComision,
-              zonaId: f.orden.zonaId,
-              tiendaId: f.orden.tiendaId,
-              esCentral: descriptivoDe(descriptivos.zonas, f.orden.zonaId, "zona").esCentral,
-              // R20 (SL-38): congela la marca de la EMPRESA en este instante; desmarcar despues
-              // no mueve esta fila. Una orden sin distrito (el unico FK nullable de `orden`)
-              // congela `false`: sin distrito no hay marca que aplicar.
-              esZonaEspecial:
-                f.orden.distritoId === null
-                  ? false
-                  : descriptivoDe(descriptivos.distritos, f.orden.distritoId, "distrito")
-                      .zonaEspecial,
-              // SLT-52 (R40, R42): con que modelo se congela. En el viejo la fila se escribe EXACTAMENTE
-              // como antes de la ficha (sin la columna: su DEFAULT es `viejo`, y la lista de columnas
-              // escritas es contrato de la 69/R24); en el nuevo se marca, las columnas `tarifa_*` van
-              // NULL y el cobro se congela en `cierre_detail_concepto`.
-              ...(modelo === "nuevo" ? { tarifaModelo: modelo } : {}),
-              ...tarifaColumnas(tarifa?.modelo === "viejo" ? tarifa.tarifa : null),
-              // descriptivos (R7).
-              numGuia: f.orden.numGuia,
-              numRemision: f.orden.numRemision,
-              destinatario: f.orden.destinatario,
-              direccion: f.orden.direccion,
-              producto: f.orden.producto,
-              tiendaNombre: descriptivoDe(descriptivos.tiendas, f.orden.tiendaId, "usuario").nombre,
-              zonaNombre: descriptivoDe(descriptivos.zonas, f.orden.zonaId, "zona").nombre,
-              provinciaNombre: descriptivoDe(
-                descriptivos.provincias,
-                f.orden.provinciaId,
-                "provincia",
-              ).nombre,
-              cantonNombre: descriptivoDe(descriptivos.cantones, f.orden.cantonId, "canton").nombre,
-              distritoNombre:
-                f.orden.distritoId === null
-                  ? null
-                  : descriptivoDe(descriptivos.distritos, f.orden.distritoId, "distrito").nombre,
-            };
-          });
-          if (modelo === "viejo") {
-            await tx.cierreDetail.createMany({ data: detalles });
-          } else {
-            // SLT-52 (T5.2, R40): el cobro congelado cuelga del id de cada `cierre_detail`, asi que
-            // aqui se crean devolviendo `(id, ordenId)`. Misma tx: todo o nada.
-            const creados = await tx.cierreDetail.createManyAndReturn({
-              data: detalles,
-              select: { id: true, ordenId: true },
-            });
-            const idPorOrden = new Map(creados.map((d) => [d.ordenId, d.id]));
-            const conceptos = filas.flatMap((f) => {
-              const id = idPorOrden.get(f.ordenId);
-              if (id === undefined) {
-                throw new Error(`snapshot del cierre: no se creo el detalle de la orden ${f.ordenId}`);
-              }
-              return conceptosCongeladosDe(id, tarifaDe(f));
-            });
-            if (conceptos.length > 0) await tx.cierreDetailConcepto.createMany({ data: conceptos });
-            // SLT-52 (T5.5, R55): el cobro que ESTA tx acaba de congelar, por orden y en memoria
-            // (las mismas entradas que el detalle y los mismos conceptos): la base del % sale de aqui.
-            detalles.forEach((d, i) => {
-              cobroCongeladoPorOrden.set(d.ordenId, {
-                ...d,
-                tarifaModelo: "nuevo",
-                conceptos: conceptosEnMemoriaDe(tarifaDe(filas[i])),
-              });
-            });
-          }
-        }
+        // SLT-247 (design §4): el congelado del detalle vive en `congelarDetalleDeOrdenes`, sin cambios.
+        const { modeloCobro, cobroCongeladoPorOrden } = await congelarDetalleDeOrdenes(
+          tx,
+          this.tarifaRepo,
+          cierre.id,
+          filas,
+        );
 
         // SLT-52 (T5.2, R40, R37) — el pago congelado de cada gestion, en esta MISMA tx. Solo las
         // que esta tx VINCULO (como el `updateMany` del pago, guardado por `cierreId`): una gestion
@@ -2124,15 +2169,43 @@ export class CierreDiaRepository implements ICierreDiaRepository {
    * R20 por construccion: sin correcciones, el paso 1 no encuentra ordenes, los pasos 3-5 no tocan
    * ninguna fila y el 6 escribe la suma de los snapshots, que es el total que ya estaba congelado.
    */
-  async resolicitarCierreRechazado(input: ResolicitarCierreRechazadoInput): Promise<boolean> {
+  async resolicitarCierreRechazado(
+    input: ResolicitarCierreRechazadoInput,
+  ): Promise<ResolicitarRechazadoResult> {
     const { cierreId, mensajeroId, zonaId, vehiculoId } = input;
     try {
       return await this.prisma.$transaction(async (tx) => {
         // (1)
         await tx.$queryRaw`SELECT "id" FROM "cierre_dia" WHERE "id" = ${cierreId} FOR UPDATE`;
-        const enCorreccion = (await ordenesEnCorreccion(tx, { mensajeroId, cierreId })).map(
-          (f) => f.ordenId,
-        );
+        const filasEnCorreccion = await ordenesEnCorreccion(tx, { mensajeroId, cierreId });
+        const enCorreccion = filasEnCorreccion.map((f) => f.ordenId);
+
+        // SLT-247 (R1782/R1783) — las BARRIDAS que el rechazo devolvio son OBLIGATORIAS: cada una
+        // necesita una gestion que este reenvio se lleve (el MISMO predicado de vinculacion del paso
+        // 3). Si falta alguna, nada se escribe: se lanza y la tx revierte (aun no escribio nada).
+        const obligatorias = filasEnCorreccion
+          .filter((f) => f.fuente === "sin_gestion")
+          .map((f) => f.ordenId);
+        if (obligatorias.length > 0) {
+          const conGestion = new Set(
+            (
+              await tx.gestionOrden.findMany({
+                where: { AND: [gestionesDelCierreWhere(mensajeroId), { ordenId: { in: obligatorias } }] },
+                select: { ordenId: true },
+              })
+            ).map((g) => g.ordenId),
+          );
+          const pendientes = obligatorias.filter((ordenId) => !conGestion.has(ordenId));
+          if (pendientes.length > 0) {
+            const guias = await tx.cierreSinGestion.findMany({
+              where: { cierreId, ordenId: { in: pendientes } },
+              orderBy: [{ numGuia: "asc" }, { ordenId: "asc" }],
+              select: { numGuia: true },
+            });
+            throw new ObligatoriasPendientes(guias.map((g) => g.numGuia));
+          }
+        }
+
         // (2)
         const movido = await tx.cierreDia.updateMany({
           where: { id: cierreId, mensajeroId, estado: "rechazado" },
@@ -2157,6 +2230,33 @@ export class CierreDiaRepository implements ICierreDiaRepository {
               where: { id: { in: ids }, cierreId },
               select: GESTION_VINCULADA_SELECT,
             });
+          }
+        }
+
+        // SLT-247 (R1784) — el `cierre_detail` de las vinculadas que no lo tienen en este cierre (las
+        // barridas: el corte no les escribe detalle) con el MISMO congelado que `crearCierre`. Va
+        // ANTES del pago: `rebasarConElCobroCongelado` lee el detalle de cada una (69/R14). Sin
+        // barridas vinculadas no hace ni una consulta de escritura (R1786).
+        if (vinculadas.length > 0) {
+          const conDetalle = new Set(
+            (
+              await tx.cierreDetail.findMany({
+                where: { cierreId, ordenId: { in: [...new Set(vinculadas.map((g) => g.ordenId))] } },
+                select: { ordenId: true },
+              })
+            ).map((d) => d.ordenId),
+          );
+          const sinDetalle = vinculadas.filter((g) => !conDetalle.has(g.ordenId)).map((g) => g.id);
+          if (sinDetalle.length > 0) {
+            const gestiones = (await tx.gestionOrden.findMany({
+              where: { id: { in: sinDetalle }, cierreId },
+              orderBy: { createdAt: "asc" },
+              select: SNAPSHOT_SELECT,
+            })) as SnapshotRow[];
+            // R2 de la 69: el grano es la ORDEN (unico `(cierre_id, orden_id)`).
+            const porOrden = new Map<string, SnapshotRow>();
+            for (const g of gestiones) if (!porOrden.has(g.ordenId)) porOrden.set(g.ordenId, g);
+            await congelarDetalleDeOrdenes(tx, this.tarifaRepo, cierreId, [...porOrden.values()]);
           }
         }
 
@@ -2231,9 +2331,11 @@ export class CierreDiaRepository implements ICierreDiaRepository {
           }
         }
 
-        // (5)
+        // (5) SLT-247: solo las de la 477 (`detalle`). Una obligatoria no llega aqui sin rehacer.
         const rehechas = new Set(vinculadas.map((g) => g.ordenId));
-        const sinRehacer = enCorreccion.filter((ordenId) => !rehechas.has(ordenId));
+        const sinRehacer = filasEnCorreccion
+          .filter((f) => f.fuente !== "sin_gestion" && !rehechas.has(f.ordenId))
+          .map((f) => f.ordenId);
         if (sinRehacer.length > 0) {
           await tx.cierreDetail.deleteMany({ where: { cierreId, ordenId: { in: sinRehacer } } });
         }
@@ -2241,10 +2343,13 @@ export class CierreDiaRepository implements ICierreDiaRepository {
         // (6)
         const recalculado = await recalcularTotalesDelCierre(tx, cierreId, ESTADO_SOLICITADO);
         if (!recalculado) throw new CierreYaNoRechazado();
-        return true;
+        return { status: "ok" as const };
       });
     } catch (err) {
-      if (err instanceof CierreYaNoRechazado) return false;
+      if (err instanceof CierreYaNoRechazado) return { status: "conflict" };
+      if (err instanceof ObligatoriasPendientes) {
+        return { status: "obligatorias_pendientes", guias: err.guias, total: err.guias.length };
+      }
       throw err;
     }
   }
@@ -2268,20 +2373,43 @@ export class CierreDiaRepository implements ICierreDiaRepository {
 
     const enCorreccion = await ordenesEnCorreccion(this.prisma, { mensajeroId });
     const ordenIds = [...new Set(enCorreccion.map((f) => f.ordenId))];
-    const detalles =
-      ordenIds.length === 0
+    const cierreIds = rechazados.map((c) => c.id);
+    const descriptivosSelect = {
+      cierreId: true,
+      ordenId: true,
+      numGuia: true,
+      numRemision: true,
+      destinatario: true,
+    } as const;
+    // SLT-247 (R1795): cada fuente con SUS descriptivos congelados. `detalle` de `cierre_detail`
+    // (como hoy); `sin_gestion` de `cierre_sin_gestion` (lo que congelo el corte al barrer).
+    const deFuente = (fuente: "detalle" | "sin_gestion") => [
+      ...new Set(enCorreccion.filter((f) => f.fuente === fuente).map((f) => f.ordenId)),
+    ];
+    const idsDetalle = deFuente("detalle");
+    const idsSinGestion = deFuente("sin_gestion");
+    const deDetalle =
+      idsDetalle.length === 0
         ? []
         : await this.prisma.cierreDetail.findMany({
-            where: { cierreId: { in: rechazados.map((c) => c.id) }, ordenId: { in: ordenIds } },
+            where: { cierreId: { in: cierreIds }, ordenId: { in: idsDetalle } },
             orderBy: [{ numGuia: "asc" }, { ordenId: "asc" }],
-            select: {
-              cierreId: true,
-              ordenId: true,
-              numGuia: true,
-              numRemision: true,
-              destinatario: true,
-            },
+            select: descriptivosSelect,
           });
+    const deSinGestion =
+      idsSinGestion.length === 0
+        ? []
+        : await this.prisma.cierreSinGestion.findMany({
+            where: { cierreId: { in: cierreIds }, ordenId: { in: idsSinGestion } },
+            orderBy: [{ numGuia: "asc" }, { ordenId: "asc" }],
+            select: descriptivosSelect,
+          });
+    const fuenteDe = new Map(enCorreccion.map((f) => [`${f.cierreId}:${f.ordenId}`, f.fuente]));
+    // Obligatorias primero (R1795: se listan antes que las deshechas); dentro, por guia.
+    const detalles = [
+      ...deSinGestion.filter((d) => fuenteDe.get(`${d.cierreId}:${d.ordenId}`) === "sin_gestion"),
+      ...deDetalle.filter((d) => fuenteDe.get(`${d.cierreId}:${d.ordenId}`) === "detalle"),
+    ];
     const regestionadas =
       ordenIds.length === 0
         ? new Set<string>()
@@ -2293,19 +2421,20 @@ export class CierreDiaRepository implements ICierreDiaRepository {
               })
             ).map((g) => g.ordenId),
           );
-    const enCorreccionDe = new Set(enCorreccion.map((f) => `${f.cierreId}:${f.ordenId}`));
-
     return rechazados.map((c) => ({
       cierreId: c.id,
       motivoRechazo: c.motivoRechazo,
       ordenesEnCorreccion: detalles
-        .filter((d) => d.cierreId === c.id && enCorreccionDe.has(`${d.cierreId}:${d.ordenId}`))
+        .filter((d) => d.cierreId === c.id)
         .map((d) => ({
           ordenId: d.ordenId,
           numGuia: d.numGuia,
           numRemision: d.numRemision,
           destinatario: d.destinatario,
           regestionada: regestionadas.has(d.ordenId),
+          ...(fuenteDe.get(`${d.cierreId}:${d.ordenId}`) === "sin_gestion"
+            ? { obligatoria: true as const }
+            : {}),
         })),
     }));
   }

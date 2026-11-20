@@ -74,10 +74,11 @@ describe("ORDEN_HISTORIAL_ORIGEN_TIPO_SEED (R23)", () => {
     "habilitacion_api", // feature 266 (2026-08-23): ApiHabilitacionService -> OrdenRepository.transicionarAyuda (ayuda_tienda -> en_reparto, actor = el usuario dedicado de la API key). Familia propia y NO `rescate_ayuda_tienda`: el actor no distingue las vias, porque el usuario de la key ES la tienda. NO es visita real (R26): nadie fue a ninguna puerta
     "rechazo_tope_intentos", // feature 276 (2026-08-24): CierresAdminRepository.resolverCierre (aprobar, sin_gestionar -> rechazada sobre una orden que ya agoto sus intentos). Enlaza gestion sintetica. NO es visita real: contarla subiria su propio contador y cobraria de mas
     "correccion_resultado_gestion", // ficha 398 (2026-09-08): CierresAdminRepository.corregirResultadoGestionEnCierre (entregada -> rechazada sobre una gestion que YA esta dentro de un cierre ABIERTO, actor = maestro/admin). Enlaza la gestion corregida. NO es visita real: la orden ya tiene contada su visita por la fila de familia `gestion` de la entrega original
+    "retorno_por_rechazo_cierre", // SLT-247 (2026-11-20): CierresAdminRepository.resolverCierre (rechazar, novedad_interna -> en_reparto sobre las barridas del cierre, actor = el admin que rechaza). Sin gestion enlazada. NO es visita real: nadie visito la orden
   ];
 
-  it("contiene exactamente los 34 tipos de origen esperados (conjunto cerrado)", () => {
-    expect(ORDEN_HISTORIAL_ORIGEN_TIPO_SEED).toHaveLength(34); // 2026-09-08 (398): +correccion_resultado_gestion · 2026-08-19 (235): +solicitud_ayuda_tienda, +rescate_ayuda_tienda · 2026-08-20 (237): +gestion_tienda_ayuda · 2026-08-20 (240): +rechazo_tienda · 2026-08-23 (266): +habilitacion_api · 2026-08-24 (276): +rechazo_tope_intentos
+  it("contiene exactamente los 35 tipos de origen esperados (conjunto cerrado)", () => {
+    expect(ORDEN_HISTORIAL_ORIGEN_TIPO_SEED).toHaveLength(35); // 2026-11-20 (SLT-247): +retorno_por_rechazo_cierre · 2026-09-08 (398): +correccion_resultado_gestion · 2026-08-19 (235): +solicitud_ayuda_tienda, +rescate_ayuda_tienda · 2026-08-20 (237): +gestion_tienda_ayuda · 2026-08-20 (240): +rechazo_tienda · 2026-08-23 (266): +habilitacion_api · 2026-08-24 (276): +rechazo_tope_intentos
     expect([...ORDEN_HISTORIAL_ORIGEN_TIPO_SEED].sort()).toEqual([...ESPERADOS].sort());
   });
 
@@ -202,5 +203,26 @@ describe("ORDEN_HISTORIAL_ORIGEN_TIPO_SEED (R23)", () => {
     // Igual que `escalado_devuelta_sla`, `anclaje_devolucion` y `gestion_tienda_ayuda`: esa lista
     // solo desambigua la NULIDAD del enlace (67/R25-R26), y estas filas nacen con el poblado.
     expect([...ORIGEN_TIPOS_CON_GESTION]).not.toContain("rechazo_tienda");
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// SLT-247 (T1.2, R1771) — `retorno_por_rechazo_cierre`: el retorno de las barridas por el corte
+// a la calle al RECHAZAR el cierre. 💰 Si entrara en `ORIGEN_TIPOS_VISITA_REAL`, cada rechazo de
+// cierre sumaria un intento de entrega a cada orden devuelta —nadie la visito— y adelantaria el
+// escalado del cron SLA (99) y su `cobroRechazado` (56).
+// ---------------------------------------------------------------------------------------------
+describe("SLT-247/R1771 — la familia `retorno_por_rechazo_cierre`", () => {
+  it("esta en el SEED, AL FINAL (orden de `ADD VALUE`), y en el enum Prisma", () => {
+    expect(ORDEN_HISTORIAL_ORIGEN_TIPO_SEED.at(-1)).toBe("retorno_por_rechazo_cierre");
+    expect(Object.values(PrismaOrdenHistorialOrigenTipo)).toContain("retorno_por_rechazo_cierre");
+  });
+
+  it("💰 NO es visita real: el retorno no cuenta como intento de entrega", () => {
+    expect([...ORIGEN_TIPOS_VISITA_REAL]).not.toContain("retorno_por_rechazo_cierre");
+  });
+
+  it("NO entra en `ORIGEN_TIPOS_CON_GESTION`: la fila nace sin `gestion_orden_id`", () => {
+    expect([...ORIGEN_TIPOS_CON_GESTION]).not.toContain("retorno_por_rechazo_cierre");
   });
 });

@@ -670,6 +670,9 @@ describe("CierreDiaRepository.crearCierre — corteSinGestionar (feature 109/R4/
       deletedAt: null,
       OR: OR_NO_RESERVADA, // feature 246/R11: el dia entra en el WHERE, no en memoria
       ...SIN_GESTION_PENDIENTE,
+      // SLT-247 (R1788): ni las barridas de un cierre que sigue `rechazado`. Literal a proposito: es
+      // el contrato del gemelo de la seleccion del corte, no su fuente.
+      cierresSinGestion: { none: { cierre: { estado: "rechazado" } } },
     });
     // updateMany GUARDADO por estatus_id=en_reparto -> sin_gestionar; NO limpia mensajero (Q1).
     const upd = tx.orden.updateMany.mock.calls[0][0];
