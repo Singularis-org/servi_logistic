@@ -423,3 +423,11 @@ T6 y T7 hechas: typecheck, lint, tests de la tanda y los afectados en verde; gua
   Además `demo-qa.test.ts` y `verificar-rls-despliegue.test.ts` en verde en la corrida del renombrado.
 - No corridos en local (orden del leader, por memoria): `./init.sh`, E2E (los 5 adaptados y `planes-niveles`) y `next build`.
   Los verifica el CI (`gate-completo`).
+
+## Rojo de CI en #254 (run 44648260747) — 2026-11-19
+- Causa (nuestra): cuatro tests con listas cerradas que la feature amplía: el job recurrente `plan_niveles_cerrar` en
+  `procesar-jobs-geocodificacion`, `procesar-jobs-webhook-estado` y `jobs-registro`; la tabla `plan_nivel_empresa`
+  (DEFAULT en `updated_at`) en `schema-drift-saneamiento`. Ningún otro test tiene esas listas.
+- Arreglo: las listas esperadas incluyen lo nuevo. Sin cambios de producción.
+- Local (`servi_logistic_slt215`, `--no-file-parallelism`): los 4 archivos + `jobs-niveles` + `procesar-jobs-registro`:
+  6/6 archivos, 51/51 tests. eslint sin errores.
