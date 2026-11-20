@@ -8,6 +8,8 @@ import type {
   AvanzarRepoResult,
   CerrarEventoRepoInput,
   ICobroIntentoRepository,
+  MarcarPagadoManualRepoInput,
+  MarcarPagadoManualRepoResult,
   ObtenerOCrearRepoInput,
   ObtenerOCrearRepoResult,
   RegistrarEnlaceRepoInput,
@@ -18,9 +20,11 @@ import type {
 import {
   CobroIntentoInvalido,
   ESTADOS_COBRO,
+  METODOS_COBRO,
   PROVEEDORES_COBRO,
   type CobroIntentoDTO,
   type EstadoCobro,
+  type MetodoCobro,
   type ProveedorCobroId,
 } from "@/lib/types/cobro";
 
@@ -85,6 +89,7 @@ function aDTO(i: CobroIntento): CobroIntentoDTO {
     id: i.id,
     facturaId: i.facturaId,
     proveedor: deLista<ProveedorCobroId>(PROVEEDORES_COBRO, i.proveedor, "proveedor"),
+    metodo: deLista<MetodoCobro>(METODOS_COBRO, i.metodo, "metodo"),
     estado: deLista<EstadoCobro>(ESTADOS_COBRO, i.estado, "estado"),
     montoLocal: i.montoLocal.toFixed(2),
     monedaLocal: i.monedaLocal,
@@ -105,13 +110,13 @@ export class CobroIntentoRepository implements ICobroIntentoRepository {
   constructor(private readonly prisma: CobroIntentoPrismaClient) {}
 
   obtenerOCrear(input: ObtenerOCrearRepoInput): Promise<ObtenerOCrearRepoResult> {
-    return comoPlataforma(FICHA, "SLT-226: crear o reutilizar el intento de cobro en línea de una factura de la empresa (R1–R5)", () =>
+    return comoPlataforma(FICHA, "SLT-226: crear o reutilizar el intento de cobro en línea de una factura de la empresa (R1–R5, R31, R32)", () =>
       traduciendo(async () => {
         // Una sola sentencia: el candado de la empresa y el FOR UPDATE de la factura serializan dos pedidos (R4).
         const [fila] = await this.prisma.$queryRaw<{ resultado: string; intento_id: string | null }[]>`
           SELECT r."resultado", r."intento_id"
             FROM cobro_intento_obtener_o_crear(${input.organizacionId}, ${input.facturaId}, ${input.proveedor},
-                                               ${input.monedaLocal}, ${input.por},
+                                               ${input.metodo}, ${input.monedaLocal}, ${input.por},
                                                ${comoTimestamp(input.ahora)}::timestamp) r`;
         if (fila?.resultado === "factura_no_valida" || fila?.resultado === "sin_saldo") return { estado: fila.resultado };
         if ((fila?.resultado !== "creado" && fila?.resultado !== "existente") || !fila.intento_id) {
@@ -168,6 +173,30 @@ export class CobroIntentoRepository implements ICobroIntentoRepository {
           throw inesperado("cobro_registrar_pago_aprobado", r);
         }
         return { resultado: r, intentoId: r === "sin_intento" ? null : await this.idDelIntento(input.proveedor, input.idExterno) };
+      }),
+    );
+  }
+
+  marcarPagadoManual(input: MarcarPagadoManualRepoInput): Promise<MarcarPagadoManualRepoResult> {
+    return comoPlataforma(FICHA, "SLT-226: el superadmin marca pagado a mano un intento de cualquier empresa cuando el aviso del proveedor no llega (R35–R39)", () =>
+      traduciendo(async () => {
+        // Una sola sentencia: el candado, el intento, el movimiento, la confirmación y la aplicación, o nada (R35, R37).
+        const [fila] = await this.prisma.$queryRaw<{ resultado: string }[]>`
+          SELECT cobro_marcar_pagado_manual(${input.intentoId}, ${input.referencia}, ${input.por},
+                                            ${comoTimestamp(input.ahora)}::timestamp) AS "resultado"`;
+        const r = fila?.resultado;
+        if (
+          r === "ok" ||
+          r === "ya_registrado" ||
+          r === "sin_intento" ||
+          r === "no_vivo" ||
+          r === "referencia_vacia" ||
+          r === "referencia_en_otro_intento" ||
+          r === "requiere_revision"
+        ) {
+          return r;
+        }
+        throw inesperado("cobro_marcar_pagado_manual", r);
       }),
     );
   }

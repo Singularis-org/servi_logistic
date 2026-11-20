@@ -135,15 +135,15 @@
   intento.
 - [x] **T8.3** `[P]` `db/schema.prisma`: `metodo String` en `CobroIntento`. **Hecho:** `prisma validate` y
   `prisma migrate diff` contra la base migrada dicen «No difference detected».
-- [ ] **T8.4** `[P]` Tipos (§12.6): `PROVEEDORES_COBRO` con los tres, `METODOS_COBRO`, `metodo` en el DTO,
+- [x] **T8.4** `[P]` Tipos (§12.6): `PROVEEDORES_COBRO` con los tres, `METODOS_COBRO`, `metodo` en el DTO,
   `marcarPagadoManualSchema` y `MarcarPagadoManualResult`. **Hecho:** typecheck en verde.
-- [ ] **T8.5** Repositorio y servicio (§12.6): `metodo` en `obtenerOCrear`, sin el literal `"rebill"` en el
+- [x] **T8.5** Repositorio y servicio (§12.6): `metodo` en `obtenerOCrear`, sin el literal `"rebill"` en el
   servicio; `marcarPagadoManual` en las dos interfaces y las dos clases; el motivo de `EXCEPCIONES_DE_PLATAFORMA`.
   Depende de T8.4. **Hecho:** typecheck y lint en verde, y `grep '"rebill"' lib/services` no da nada.
 - [x] **T8.6** Tests de la base (§12.7): R30–R34 en `cobro-intento.test.ts` y `cobro-webhook-evento.test.ts`;
   R35–R39 (la parte de la base) en `cobro-pago-en-linea.test.ts`; el fixture y la clave de los tests que ya
   existen. Depende de T8.1–T8.3. **Hecho:** en verde, y las mutaciones 7, 8 y 9 los ponen en rojo.
-- [ ] **T8.7** `[P]` Tests del servicio (§12.7): R30, R31, R38 y R39 en `cobro-intento-service.test.ts`. Depende de
+- [x] **T8.7** `[P]` Tests del servicio (§12.7): R30, R31, R38 y R39 en `cobro-intento-service.test.ts`. Depende de
   T8.5. **Hecho:** en verde, y la mutación 10 lo pone en rojo.
 - [ ] **T8.8** Cierre: el mapa `R<n> → test` de `progress/impl_SLT-226.md` con R30–R39; `migracion-slt226-ida-y-vuelta`
   y las suites de SLT-60 y SLT-143 en verde sin cambiar afirmaciones (R28); `./init.sh` y el grupo `dinero` de E2E

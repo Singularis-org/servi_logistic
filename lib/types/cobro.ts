@@ -15,14 +15,19 @@ export const ESTADOS_COBRO = [
 ] as const;
 export type EstadoCobro = (typeof ESTADOS_COBRO)[number];
 
-/** El único proveedor que admite el CHECK de `cobro_intento.proveedor` y de `cobro_webhook_evento.proveedor`. */
-export const PROVEEDORES_COBRO = ["rebill"] as const;
+/** Los proveedores que admite el CHECK de `cobro_intento.proveedor` y de `cobro_webhook_evento.proveedor` (R30). */
+export const PROVEEDORES_COBRO = ["rebill", "wompi", "global66"] as const;
 export type ProveedorCobroId = (typeof PROVEEDORES_COBRO)[number];
+
+/** Los métodos que admite el CHECK de `cobro_intento.metodo` (R31). Con el proveedor, forman parte de la clave (R32). */
+export const METODOS_COBRO = ["tarjeta", "recurrente", "transferencia"] as const;
+export type MetodoCobro = (typeof METODOS_COBRO)[number];
 
 export interface CobroIntentoDTO {
   id: string;
   facturaId: string;
   proveedor: ProveedorCobroId;
+  metodo: MetodoCobro;
   estado: EstadoCobro;
   montoLocal: string;
   monedaLocal: string;
@@ -63,6 +68,29 @@ export type ResultadoDelEvento = "aplicado" | "sin_cambio" | "sin_intento" | "re
 export type ProcesarEventoResult =
   | { estado: "ignorado" } // R13: ya procesado
   | { estado: "procesado"; resultado: ResultadoDelEvento };
+
+/**
+ * R35–R38: la marca a mano del superadmin. El tope de 200 es una red contra basura, no un límite de ningún proveedor
+ * (design §12.6): si un adaptador necesita referencias más largas, lo sube.
+ */
+export const marcarPagadoManualSchema = z.object({
+  intentoId: z.string().min(1),
+  referencia: z.string().trim().min(1).max(200),
+});
+export type MarcarPagadoManualInput = z.infer<typeof marcarPagadoManualSchema>;
+
+/** Las respuestas de `cobro_marcar_pagado_manual` (design §12.4) y el `forbidden` del servicio (R39). */
+export type MarcarPagadoManualResult = {
+  estado:
+    | "ok"
+    | "ya_registrado"
+    | "forbidden"
+    | "sin_intento"
+    | "no_vivo"
+    | "referencia_vacia"
+    | "referencia_en_otro_intento"
+    | "requiere_revision";
+};
 
 export type IntentosDeFacturaResult = { estado: "ok"; intentos: CobroIntentoDTO[] } | { estado: "forbidden" };
 

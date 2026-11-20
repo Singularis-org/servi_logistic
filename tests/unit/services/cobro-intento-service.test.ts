@@ -30,6 +30,7 @@ const INTENTO_DTO: CobroIntentoDTO = {
   id: INTENTO,
   facturaId: FACTURA,
   proveedor: "rebill",
+  metodo: "tarjeta",
   estado: "creado",
   montoLocal: "20000.00",
   monedaLocal: "CRC",
@@ -65,6 +66,7 @@ function montar(opciones: {
     registrarEvento: vi.fn<ICobroIntentoRepository["registrarEvento"]>(async () => opciones.llegada ?? "nuevo"),
     cerrarEvento: vi.fn<ICobroIntentoRepository["cerrarEvento"]>(async () => "ok"),
     intentosDeFactura: vi.fn<ICobroIntentoRepository["intentosDeFactura"]>(async () => [INTENTO_DTO]),
+    marcarPagadoManual: vi.fn<ICobroIntentoRepository["marcarPagadoManual"]>(async () => "ok"),
   } satisfies ICobroIntentoRepository;
   const consultarPago = vi.fn<IProveedorCobro["consultarPago"]>(opciones.consultar ?? (async () => pagoDelProveedor("aprobado")));
   const proveedor: IProveedorCobro = { proveedor: "rebill", consultarPago };
@@ -72,7 +74,7 @@ function montar(opciones: {
   return { service, repo, consultarPago };
 }
 
-describe("SLT-226 — procesarEvento (R13–R16, R20)", () => {
+describe("SLT-226 — procesarEvento (R13–R16, R20, R30)", () => {
   it("R13: un evento ya procesado se ignora sin consultar al proveedor ni escribir nada", async () => {
     const { service, repo, consultarPago } = montar({ llegada: "repetido" });
     await expect(service.procesarEvento(EVENTO)).resolves.toEqual({ estado: "ignorado" });
@@ -165,6 +167,21 @@ describe("SLT-226 — procesarEvento (R13–R16, R20)", () => {
     expect(repo.cerrarEvento).toHaveBeenCalledWith(expect.objectContaining({ resultado: "sin_intento", intentoId: null }));
   });
 
+  it.each(["stripe", "", "REBILL"])("R30: un evento con un proveedor desconocido (%j) lanza sin registrar ni consultar", async (proveedor) => {
+    const { service, repo, consultarPago } = montar();
+    await expect(service.procesarEvento({ ...EVENTO, proveedor })).rejects.toThrow(/forma esperada/);
+    expect(repo.registrarEvento).not.toHaveBeenCalled();
+    expect(consultarPago).not.toHaveBeenCalled();
+    expect(repo.cerrarEvento).not.toHaveBeenCalled();
+  });
+
+  it("R30: un proveedor admitido sin adaptador enchufado lanza sin registrar ni consultar", async () => {
+    const { service, repo, consultarPago } = montar();
+    await expect(service.procesarEvento({ ...EVENTO, proveedor: "wompi" })).rejects.toThrow(/no hay adaptador/);
+    expect(repo.registrarEvento).not.toHaveBeenCalled();
+    expect(consultarPago).not.toHaveBeenCalled();
+  });
+
   it("R12: un evento sin logId se rechaza antes de escribir", async () => {
     const { service, repo } = montar();
     await expect(service.procesarEvento({ ...EVENTO, logId: "" })).rejects.toThrow(/forma esperada/);
@@ -172,10 +189,12 @@ describe("SLT-226 — procesarEvento (R13–R16, R20)", () => {
   });
 });
 
-describe("SLT-226 — obtenerOCrearIntento y registrarEnlace (R1, R2, R10)", () => {
+describe("SLT-226 — obtenerOCrearIntento y registrarEnlace (R1, R2, R10, R31)", () => {
+  const PEDIDO = { organizacionId: ORG, facturaId: FACTURA, proveedor: "rebill", metodo: "tarjeta" } as const;
+
   it("R1: pide el intento en la moneda local, con el actor y la hora del reloj, y lo marca nuevo", async () => {
     const { service, repo } = montar();
-    await expect(service.obtenerOCrearIntento({ organizacionId: ORG, facturaId: FACTURA, actorUsuarioId: "u-1" })).resolves.toEqual({
+    await expect(service.obtenerOCrearIntento({ ...PEDIDO, actorUsuarioId: "u-1" })).resolves.toEqual({
       estado: "ok",
       intento: INTENTO_DTO,
       nuevo: true,
@@ -184,6 +203,7 @@ describe("SLT-226 — obtenerOCrearIntento y registrarEnlace (R1, R2, R10)", () 
       organizacionId: ORG,
       facturaId: FACTURA,
       proveedor: "rebill",
+      metodo: "tarjeta",
       monedaLocal: "CRC",
       por: "u-1",
       ahora: AHORA,
@@ -193,7 +213,7 @@ describe("SLT-226 — obtenerOCrearIntento y registrarEnlace (R1, R2, R10)", () 
   it("R2: un intento existente vuelve con nuevo = false", async () => {
     const { service, repo } = montar();
     repo.obtenerOCrear.mockResolvedValueOnce({ estado: "existente", intento: INTENTO_DTO });
-    await expect(service.obtenerOCrearIntento({ organizacionId: ORG, facturaId: FACTURA, actorUsuarioId: null })).resolves.toMatchObject({
+    await expect(service.obtenerOCrearIntento({ ...PEDIDO, actorUsuarioId: null })).resolves.toMatchObject({
       estado: "ok",
       nuevo: false,
     });
@@ -202,11 +222,18 @@ describe("SLT-226 — obtenerOCrearIntento y registrarEnlace (R1, R2, R10)", () 
   it("R5: «sin_saldo» y «factura_no_valida» pasan tal cual", async () => {
     const { service, repo } = montar();
     repo.obtenerOCrear.mockResolvedValueOnce({ estado: "sin_saldo" });
-    await expect(service.obtenerOCrearIntento({ organizacionId: ORG, facturaId: FACTURA, actorUsuarioId: null })).resolves.toEqual({ estado: "sin_saldo" });
+    await expect(service.obtenerOCrearIntento({ ...PEDIDO, actorUsuarioId: null })).resolves.toEqual({ estado: "sin_saldo" });
     repo.obtenerOCrear.mockResolvedValueOnce({ estado: "factura_no_valida" });
-    await expect(service.obtenerOCrearIntento({ organizacionId: ORG, facturaId: FACTURA, actorUsuarioId: null })).resolves.toEqual({
+    await expect(service.obtenerOCrearIntento({ ...PEDIDO, actorUsuarioId: null })).resolves.toEqual({
       estado: "factura_no_valida",
     });
+  });
+
+  it("R31: obtenerOCrearIntento pasa al repositorio el proveedor y el método que recibe", async () => {
+    const { service, repo } = montar();
+    await service.obtenerOCrearIntento({ ...PEDIDO, proveedor: "global66", metodo: "transferencia", actorUsuarioId: "u-1" });
+    expect(repo.obtenerOCrear).toHaveBeenCalledTimes(1);
+    expect(repo.obtenerOCrear).toHaveBeenCalledWith(expect.objectContaining({ proveedor: "global66", metodo: "transferencia" }));
   });
 
   it("R10: registrarEnlace pasa la empresa, el intento y el id externo con la hora del reloj", async () => {
@@ -244,5 +271,56 @@ describe("SLT-226 — intentosDeFactura (R27)", () => {
     const { service, repo } = montar();
     await expect(service.intentosDeFactura(actor(RolValue.maestro, null), FACTURA)).resolves.toEqual({ estado: "forbidden" });
     expect(repo.intentosDeFactura).not.toHaveBeenCalled();
+  });
+});
+
+describe("SLT-226 — marcarPagadoManual (R35, R38, R39)", () => {
+  const actor = (rol: RolValue, organizacionId: string | null = ORG): Actor => ({ usuarioId: "u-1", rol, organizacionId });
+  const superadmin: Actor = { usuarioId: "sa-1", rol: RolValue.superadmin, organizacionId: null };
+  const MARCA = { intentoId: INTENTO, referencia: "G66-123" };
+
+  it.each([RolValue.maestro, RolValue.admin, RolValue.mensajero, RolValue.adminTienda, RolValue.adminSatelite, RolValue.apiKey])(
+    "R39: %s recibe forbidden sin llamadas",
+    async (rol) => {
+      const { service, repo } = montar();
+      await expect(service.marcarPagadoManual(actor(rol), MARCA)).resolves.toEqual({ estado: "forbidden" });
+      // Ni siquiera una entrada mal formada llega a validarse: la autorización va primero.
+      await expect(service.marcarPagadoManual(actor(rol), { intentoId: "", referencia: "" })).resolves.toEqual({ estado: "forbidden" });
+      for (const llamada of Object.values(repo)) expect(llamada).not.toHaveBeenCalled();
+    },
+  );
+
+  it("R39: el superadmin marca con su usuarioId como actor", async () => {
+    const { service, repo } = montar();
+    await expect(service.marcarPagadoManual(superadmin, MARCA)).resolves.toEqual({ estado: "ok" });
+    expect(repo.marcarPagadoManual).toHaveBeenCalledWith({ intentoId: INTENTO, referencia: "G66-123", por: "sa-1", ahora: AHORA });
+  });
+
+  it("R35: la referencia llega al repositorio sin los espacios de los bordes", async () => {
+    const { service, repo } = montar();
+    await service.marcarPagadoManual(superadmin, { intentoId: INTENTO, referencia: "  G66-123 " });
+    expect(repo.marcarPagadoManual).toHaveBeenCalledWith(expect.objectContaining({ referencia: "G66-123" }));
+  });
+
+  it.each(["", "   ", "\t\n"])("R38: una referencia en blanco (%j) devuelve referencia_vacia sin llamar al repositorio", async (referencia) => {
+    const { service, repo } = montar();
+    await expect(service.marcarPagadoManual(superadmin, { intentoId: INTENTO, referencia })).resolves.toEqual({ estado: "referencia_vacia" });
+    expect(repo.marcarPagadoManual).not.toHaveBeenCalled();
+  });
+
+  it.each(["ya_registrado", "sin_intento", "no_vivo", "referencia_en_otro_intento", "requiere_revision"] as const)(
+    "R38: la respuesta «%s» de la base pasa tal cual",
+    async (respuesta) => {
+      const { service, repo } = montar();
+      repo.marcarPagadoManual.mockResolvedValueOnce(respuesta);
+      await expect(service.marcarPagadoManual(superadmin, MARCA)).resolves.toEqual({ estado: respuesta });
+    },
+  );
+
+  it("R38: un intento vacío o una referencia de más de 200 es un error de programación: lanza sin llamar", async () => {
+    const { service, repo } = montar();
+    await expect(service.marcarPagadoManual(superadmin, { intentoId: "", referencia: "G66-123" })).rejects.toThrow(/forma esperada/);
+    await expect(service.marcarPagadoManual(superadmin, { intentoId: INTENTO, referencia: "x".repeat(201) })).rejects.toThrow(/forma esperada/);
+    expect(repo.marcarPagadoManual).not.toHaveBeenCalled();
   });
 });

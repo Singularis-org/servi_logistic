@@ -10,8 +10,11 @@ import type {
 } from "@/lib/interfaces/services/ICobroIntentoService";
 import {
   eventoProveedorSchema,
+  marcarPagadoManualSchema,
   type EventoProveedor,
   type IntentosDeFacturaResult,
+  type MarcarPagadoManualInput,
+  type MarcarPagadoManualResult,
   type ObtenerIntentoResult,
   type ProcesarEventoResult,
   type ProveedorCobroId,
@@ -22,8 +25,8 @@ import {
 // SLT-226 (design §4.4) — el cobro en línea. Las reglas de dinero (el saldo, la clave, el candado, la idempotencia
 // del pago) las decide la base, en las funciones del dueño; aquí se orquesta el evento y se autoriza la lectura.
 //
-// El proveedor se elige por el `proveedor` del evento: hoy solo Rebill, pero el puerto ya va por mapa para que
-// SLT-227 enchufe su adaptador en el composition root sin tocar el servicio.
+// El adaptador se elige por el `proveedor` del evento, por mapa: cada proveedor (R30) enchufa el suyo en el
+// composition root sin tocar el servicio. El proveedor y el método de un intento los elige quien lo pide (R31).
 
 type Intento = { resultado: ResultadoDelEvento; intentoId: string | null };
 
@@ -40,8 +43,8 @@ export class CobroIntentoService implements ICobroIntentoService {
     const r = await this.repo.obtenerOCrear({
       organizacionId: input.organizacionId,
       facturaId: input.facturaId,
-      // El único que admite el CHECK de `cobro_intento.proveedor` (design §1.1).
-      proveedor: "rebill",
+      proveedor: input.proveedor,
+      metodo: input.metodo,
       monedaLocal: this.monedaLocal,
       por: input.actorUsuarioId,
       ahora: this.ahora(),
@@ -94,6 +97,27 @@ export class CobroIntentoService implements ICobroIntentoService {
     const organizacionId = actor.organizacionId ?? null;
     if (!esAccesoTotal(actor.rol) || organizacionId === null) return { estado: "forbidden" };
     return { estado: "ok", intentos: await this.repo.intentosDeFactura({ tipo: "empresa", organizacionId }, facturaId) };
+  }
+
+  async marcarPagadoManual(actor: Actor, entrada: MarcarPagadoManualInput): Promise<MarcarPagadoManualResult> {
+    // R39: la función de la base confía en `por`; la única puerta es esta, antes de validar o leer nada.
+    if (!esPlataforma(actor.rol)) return { estado: "forbidden" };
+
+    const parsed = marcarPagadoManualSchema.safeParse(entrada);
+    if (!parsed.success) {
+      // R38: una referencia en blanco es un caso del negocio; cualquier otro fallo de forma es de programación.
+      const soloReferenciaVacia = parsed.error.issues.every((i) => i.path[0] === "referencia" && i.code === "too_small");
+      if (soloReferenciaVacia) return { estado: "referencia_vacia" };
+      throw new Error(`CobroIntentoService.marcarPagadoManual: la entrada no tiene la forma esperada: ${parsed.error.message}`);
+    }
+
+    const estado = await this.repo.marcarPagadoManual({
+      intentoId: parsed.data.intentoId,
+      referencia: parsed.data.referencia,
+      por: actor.usuarioId,
+      ahora: this.ahora(),
+    });
+    return { estado };
   }
 
   /** R14, R16: el estado sale del proveedor, no del evento. Si la consulta falla, el evento queda sin cerrar. */

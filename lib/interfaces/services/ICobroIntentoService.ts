@@ -1,8 +1,12 @@
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type {
   IntentosDeFacturaResult,
+  MarcarPagadoManualInput,
+  MarcarPagadoManualResult,
+  MetodoCobro,
   ObtenerIntentoResult,
   ProcesarEventoResult,
+  ProveedorCobroId,
   RegistrarEnlaceResult,
 } from "@/lib/types/cobro";
 
@@ -14,6 +18,9 @@ export interface ObtenerOCrearIntentoInput {
   /** La empresa la resuelve quien llama (desde la sesión); la función de la base la valida contra la factura (R5). */
   organizacionId: string;
   facturaId: string;
+  /** Los elige quien llama (SLT-230 y SLT-231, con lo que diga SLT-251): el servicio no fija ninguno (R31). */
+  proveedor: ProveedorCobroId;
+  metodo: MetodoCobro;
   actorUsuarioId: string | null;
 }
 
@@ -35,4 +42,9 @@ export interface ICobroIntentoService {
   procesarEvento(evento: unknown): Promise<ProcesarEventoResult>;
   /** R27: `maestro` y `admin` de su empresa; el superadmin, de cualquiera; los demás, `forbidden` sin leer. */
   intentosDeFactura(actor: Actor, facturaId: string): Promise<IntentosDeFacturaResult>;
+  /**
+   * R35–R39: solo el superadmin; los demás, `forbidden` sin leer ni escribir. La entrada se valida otra vez con
+   * `marcarPagadoManualSchema`: una referencia en blanco da `referencia_vacia`; otro fallo de forma lanza.
+   */
+  marcarPagadoManual(actor: Actor, entrada: MarcarPagadoManualInput): Promise<MarcarPagadoManualResult>;
 }
