@@ -1,6 +1,6 @@
 import { FACTURAS_TEXTOS, sumaDeCuotas } from "@/components/shared/facturas/facturas-vista";
 import { MARCA_FACTURA } from "@/lib/config/marca";
-import { monedaConfig } from "@/lib/config/moneda";
+import { MONEDA_DE_LOS_PLANES } from "@/lib/config/moneda";
 import { aCentimos, aCentimosConSigno, aTexto } from "@/lib/planes/centimos";
 import { fechaCalendarioPlataforma } from "@/lib/planes/ciclo";
 import type { DatosDescargaFactura, TipoLineaFactura } from "@/lib/types/factura-plataforma";
@@ -45,8 +45,8 @@ export const FACTURA_DESCARGA_TEXTOS = {
     unica: (tarifa: string) => `Los cargos y reversos se cobran a ${tarifa} por orden.`,
     varias: "Los cargos y reversos se cobran con varias tarifas por orden.",
   },
-  /** R11 (P3): el código y el símbolo salen de la configuración, sin literal de moneda. */
-  notaMoneda: `Montos en ${monedaConfig.currency} (${monedaConfig.simbolo}).`,
+  /** R11 (P3): el código y el símbolo salen de la configuración, sin literal de moneda. SL-21 (R15): los de los planes, no los del país. */
+  notaMoneda: `Montos en ${MONEDA_DE_LOS_PLANES.codigo} (${MONEDA_DE_LOS_PLANES.simbolo}).`,
   /** R26: la celda de tarifa cuando no hay una sola. */
   tarifa: { varias: "Varias", sin: "—" },
   desglose: {
@@ -173,7 +173,8 @@ export function importeDocumento(valor: string): string {
   const [, signo, enteros, decimales] = partes;
   // «-0.00» no es negativo: sale «₡0,00».
   const negativo = signo === "-" && /[1-9]/.test(enteros + decimales);
-  const { simbolo, separadorDecimal } = monedaConfig;
+  // SL-21 (R15): la moneda de los planes, sea cual sea el país de la empresa (SLT-237).
+  const { simbolo, separadorDecimal } = MONEDA_DE_LOS_PLANES;
   return `${negativo ? "-" : ""}${simbolo}${agrupado(enteros)}${separadorDecimal}${decimales}`;
 }
 

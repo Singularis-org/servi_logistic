@@ -1,7 +1,7 @@
 import type { ModuloApagable, RolValue } from "@prisma/client";
 
 import { ROL_LABELS } from "@/lib/auth/rol-label";
-import { money } from "@/lib/config/moneda";
+import { formatearMontoEn, MONEDA_DE_LOS_PLANES, SIN_MONTO_RAYA } from "@/lib/config/moneda";
 import { nombreDelModulo } from "@/lib/modulos/catalogo";
 import { cambiosDeBeneficios, type Beneficio } from "@/lib/planes/beneficios";
 import { importeCanonico } from "@/lib/planes/rastro";
@@ -426,11 +426,12 @@ function textoDelPorcentualOVacio(c: CostoPorOrdenPorcentual | null): string {
 
 /**
  * SLT-83 (design §4.4; R22): la columna «Cobro por orden» del listado de «Empresas». El modo fijo es el
- * importe de hoy, con `money` como lo pinta la celda desde SL-40; el porcentual, `«{p} % (mín. {m})»` o
+ * importe de hoy, como lo pinta la celda desde SL-40 (`money`); el porcentual, `«{p} % (mín. {m})»` o
  * `«{p} %»`, sin moneda como el resto de importes del plan (SLT-66 §2.5). La fuente va aparte.
  */
 export function textoDelCobroVigente(c: CostoVigente): string {
-  if (c.modo === "fijo") return money(c.monto);
+  // SL-21 (R15): la moneda de los planes (la de la plataforma), no la del país de la empresa (SLT-237).
+  if (c.modo === "fijo") return formatearMontoEn(MONEDA_DE_LOS_PLANES, c.monto, SIN_MONTO_RAYA);
   const porcentaje = `${importeCanonico(c.porcentaje)} %`;
   return c.minimo === null ? porcentaje : `${porcentaje} (mín. ${importeCanonico(c.minimo)})`;
 }
