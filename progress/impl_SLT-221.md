@@ -483,7 +483,7 @@ Merge de `origin/feature/SLT-221-correo-backend` (vuelta 2 del PR 2): solo choca
   producción contra `dev` sin #258).
 - A mano: `typecheck` 0, `lint` 0, `test:guardias` 0 (360 files, 5424 passed, 1 skipped),
   `test:rapido` 1: un rojo NUEVO fuera del área, `satelite-detalle-sin-dinero-empresa-sql-real` (R460,
-  `AppErrorCode inesperado INTERNAL`); solo pasa 8/8. Antes, una corrida en paralelo con las
+  `AppErrorCode inesperado INTERNAL`); corrido aparte pasa 8/8. Antes, una corrida en paralelo con las
   guardias tumbó un worker de vitest.
 - E2E (`servi_slt221_e2e_pr3`, `next build` exit 0, `E2E_PUERTO=3321`): `usuario-cambio-correo` +
   `usuario-corregir-cedula`: 12 passed, `E2E_EXIT=0`.
