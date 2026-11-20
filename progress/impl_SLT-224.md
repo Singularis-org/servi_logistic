@@ -195,4 +195,5 @@ spec decía que seguiría verde; pide cambiar la expectativa → parado, sin toc
 `resolverDestinoCierre(orden.zonaId)`, y el paquete está en la bodega del cierre (`cierre_dia.destino_zona_id` = zona del
 mensajero, `CierreDiaService:984`). Moverles la zona los marcaría en la bodega de la zona nueva con el paquete en otra.
 
-**Veredicto:** PARADO — T12-T14 hechos y probados, pero un literal de la 377 pide cambio y P4 queda en el valor por defecto.
+**Desbloqueo (leader):** el literal de 377/T4 se reescribe A MANO con el corte de D6 (`BASE_D1_ZA` y los 11 estados
+del `notIn`), no derivado del helper. Mutaciones 2 y 5 contra él: 1 rojo cada una (61 tests). P4 queda por defecto.

@@ -722,6 +722,9 @@ cada uno de los cinco motivos (R1726).
 **Regresión.** `zona-reconciliacion-ordenes.test.ts`, `zona-central-guarda-y-rastro.test.ts`,
 `zona-pago-mensajero-rastro.test.ts` y `zona-repository.test.ts` verdes **sin tocar expectativas**. Si
 alguno pide cambiar una, se para: es un cambio de comportamiento del guardado que este spec no prevé.
+*(Enmienda 2026-11-19, leader: `zona-repository.test.ts` › «377/T4 ⭑ R2/R9» fija LITERAL el `where` base
+y el `notIn`, que son justo el corte que cambia D6. Se reescribe a mano con el corte nuevo y los 11
+estados de `ESTADOS_QUE_NO_SE_MUEVEN`, sin derivarlo del helper. Es el único test de la lista que cambia.)*
 
 ## 8. Alternativas descartadas
 

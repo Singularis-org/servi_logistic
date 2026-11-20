@@ -133,36 +133,38 @@
 
 ## T12 — La clasificación de estados (R1721, R1723, R1725) — sin dependencias
 
-- [ ] `lib/utils/estados-bodega-satelite.ts`: `ClaseReconciliacionZona`, `CLASE_RECONCILIACION_ZONA`
+- [x] `lib/utils/estados-bodega-satelite.ts`: `ClaseReconciliacionZona`, `CLASE_RECONCILIACION_ZONA`
   (`Record<OrderStatusValue, …>`, la tabla de `design.md §2.4`), `ESTADOS_QUE_NO_SE_MUEVEN` derivada;
   `ESTADOS_DEVOLUCION_SIN_RECONCILIAR` derivada de la clase `devolucion` (sale `devuelta_a_tienda`,
   entra `devolucion_a_origen_por_rechazo`). `finalizada` se construye desde `ESTADOS_TERMINALES`.
-- [ ] Nuevo `tests/unit/utils/clase-reconciliacion-zona.test.ts` (`design.md §7.5 > Unit`).
+- [x] Nuevo `tests/unit/utils/clase-reconciliacion-zona.test.ts` (`design.md §7.5 > Unit`).
 - **Hecho:** test y typecheck verdes; quitar una clave del mapa rompe el typecheck.
 
 ## T13 — El corte nuevo en el helper (R1720–R1724, R1706, R1707) — depende de T12
 
-- [ ] `lib/repositories/_shared/reconciliar-zona-ordenes.ts`: `whereBaseElegible` con el corte de
+- [x] `lib/repositories/_shared/reconciliar-zona-ordenes.ts`: `whereBaseElegible` con el corte de
   `design.md §2.4`; `notIn` de elegibles = `ESTADOS_QUE_NO_SE_MUEVEN`; el `count` del estante sin
   cambios; se quita `excluirEstados` de `AlcanceReconciliacion`. Comentarios de cabecera al día (D6).
-- [ ] `lib/repositories/ActualizacionZonasRepository.ts`: llamada sin `excluirEstados`.
-- [ ] Nuevo `tests/integration/db/reconciliar-zona-corte-vivas.int.test.ts` (`design.md §7.5`), con
+- [x] `lib/repositories/ActualizacionZonasRepository.ts`: llamada sin `excluirEstados`.
+- [x] Nuevo `tests/integration/db/reconciliar-zona-corte-vivas.int.test.ts` (`design.md §7.5`), con
   las seis mutaciones y su rojo en `progress/impl_SLT-224.md`.
-- [ ] Caso nuevo en `tests/integration/db/recepcion-central-reconcilia-zona.int.test.ts` (cierre
+- [x] Caso nuevo en `tests/integration/db/recepcion-central-reconcilia-zona.int.test.ts` (cierre
   aprobado anterior se mueve al recibir).
-- [ ] Si `zona-reconciliacion-no-retarifa.guardia.test.ts` no reconoce la forma nueva del corte, se
+- [x] Si `zona-reconciliacion-no-retarifa.guardia.test.ts` no reconoce la forma nueva del corte, se
   ajusta el detector (no la regla) con su contraprueba.
 - **Hecho:** los nuevos verdes; `zona-reconciliacion-ordenes.test.ts`, `zona-central-guarda-y-rastro.test.ts`,
   `zona-pago-mensajero-rastro.test.ts`, `zona-repository.test.ts` y los casos de R1701 verdes **sin
   cambiar ninguna expectativa** (si alguno lo pide, se para y se avisa al leader); `pnpm run test:guardias` verde.
+  *(Enmienda 2026-11-19: `zona-repository.test.ts` › «377/T4 ⭑ R2/R9» sí cambia: fija literal el corte de
+  la 366; se reescribió a mano con el corte de D6, con OK del leader. Ver `design.md §7.5 > Regresión`.)*
 
 ## T14 — Los motivos del botón (R1726, R1727) — depende de T12
 
-- [ ] `lib/types/actualizacion-zonas.ts`: `MotivoSaltada` con los cinco motivos; `FilaZonaErrada` con
+- [x] `lib/types/actualizacion-zonas.ts`: `MotivoSaltada` con los cinco motivos; `FilaZonaErrada` con
   `cobroEnCurso` en vez de `conCierre`/`conGestion`.
-- [ ] `ActualizacionZonasRepository.sqlZonaErrada()`: `cobroEnCurso` con el SQL de `design.md §3b.5`.
-- [ ] `ActualizacionZonasService.motivoDeSaltada`: clase del estado, luego cobro en curso.
-- [ ] `tests/integration/db/actualizacion-zonas.int.test.ts`: motivos literales nuevos y el caso R1727
+- [x] `ActualizacionZonasRepository.sqlZonaErrada()`: `cobroEnCurso` con el SQL de `design.md §3b.5`.
+- [x] `ActualizacionZonasService.motivoDeSaltada`: clase del estado, luego cobro en curso.
+- [x] `tests/integration/db/actualizacion-zonas.int.test.ts`: motivos literales nuevos y el caso R1727
   con su mutación; `tests/unit/services/actualizacion-zonas-action.test.ts`: motivos y precedencia.
 - **Hecho:** los dos verdes; la mutación del SQL de `design.md §7.5` da rojo en R1727.
 
