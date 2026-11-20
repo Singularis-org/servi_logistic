@@ -135,19 +135,7 @@ Vocabulario:
 
 ## Preguntas abiertas
 
-- **P1. `components/shared/monto-cliente.ts` no formatea importes.** Solo valida lo que se teclea («hasta
-  2 decimales», mayor que 0), y está en el Alcance por el corte (el spec_author lo listó ahí por error
-  en la propuesta). Limitar los decimales a los de la moneda dejaría al cliente más estricto que el
-  servidor, que acepta 2 (lo que su propio comentario prohíbe), y los céntimos de entrada son de
-  SLT-238. **Propuesta:** no se toca en esta ficha. El spec lo trata así hasta que el humano diga otra
-  cosa.
-- **P2. Los ejemplos «₡12.500» (`lib/types/plantilla-datos.ts`) y «₡322.900»
-  (`lib/whatsapp-envios/informes/transito/informe.ts`).** Son textos de ejemplo del catálogo de
-  variables que ve quien edita plantillas e informes. Siguen en la lista de excepciones de
-  `pais-sin-literales` a nombre de SLT-235, y ninguna rebanada del corte los nombra. **Propuesta:**
-  pasan a SLT-241 «Moneda e impuesto del país en pantallas: tarifas, configuración y ranking», si el
-  editor de plantillas cuenta como configuración. Si no, a `permanente`, con la fecha y el motivo
-  «ejemplo fijo del catálogo, igual para todas las empresas».
+Ninguna.
 
 ## Decisiones cerradas (no reabrir)
 
@@ -162,3 +150,5 @@ Vocabulario:
 | 2026-11-20 | ¿Token, caché o carga por pantalla? | La sesión es una cookie opaca: no hay token donde guardarlo. La moneda va en el layout junto a las etiquetas de SL-20 (la usan casi todas las pantallas). No se carga bajo demanda por pantalla ni en `localStorage`: primer pintado equivocado, datos viejos por navegador y riesgo de mezclar empresas. |
 | 2026-11-20 | Consulta del país | `PaisRepository.deLaEmpresa` pasa a una sola consulta (`pais.findFirst` con `organizaciones: { some: { id } }`, que Postgres resuelve como semi-join). Hoy son dos (`organizacion` y luego `pais`). No se activa `relationJoins` ni se escribe `$queryRaw`. |
 | 2026-11-20 | Caché del país | Memo por proceso `organizacionId → PaisDTO` con caducidad de 10 min, mismo patrón que `lib/auth/empresa-de-la-peticion.ts`. Lo comparten etiquetas, moneda e impuesto. Un cambio de moneda tarda hasta 10 min en verse por instancia: el humano lo acepta como caso raro. |
+| 2026-11-20 | `components/shared/monto-cliente.ts` (solo valida lo tecleado) | Sale del alcance: no se toca en esta ficha. Los céntimos al teclear son de SLT-238 (humano). |
+| 2026-11-20 | Ejemplos «₡12.500» (`lib/types/plantilla-datos.ts`) y «₡322.900» (`lib/whatsapp-envios/informes/transito/informe.ts`) del catálogo de variables | Pasan a SLT-241 «Moneda e impuesto del país en pantallas: tarifas, configuración y ranking»: sus entradas en la lista de excepciones de `pais-sin-literales` cambian de dueño a SLT-241 (humano). |
