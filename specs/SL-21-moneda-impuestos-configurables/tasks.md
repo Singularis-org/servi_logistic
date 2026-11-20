@@ -5,17 +5,17 @@
 
 ## Bloque 1 — Datos del país (R1–R4)
 
-- [ ] **T1.1** Migración `20261122120000_sl21_pais_moneda_impuesto` (`migration.sql` y `down.sql`).
+- [x] **T1.1** Migración `20261122120000_sl21_pais_moneda_impuesto` (`migration.sql` y `down.sql`).
   - Contenido: las 6 columnas, los 8 `CHECK`, la precondición de la fila CR y el `UPDATE` de CR
     (design §2.1).
   - Si al implementar ya hay migraciones con timestamp posterior en `dev`, se renombra al siguiente
     libre.
   - *Hecho:* `prisma migrate deploy` sobre una base desechable aplica; el `down.sql` revierte; subir
     otra vez aplica.
-- [ ] **T1.2** `db/schema.prisma`: los 6 campos de `Pais` con su comentario `///`.
+- [x] **T1.2** `db/schema.prisma`: los 6 campos de `Pais` con su comentario `///`.
   - *Hecho:* `prisma validate` y `prisma generate` en verde, y `prisma migrate diff` entre esquema y
     migraciones vacío.
-- [ ] **T1.3** Tests de base (depende de T1.1 y T1.2):
+- [x] **T1.3** Tests de base (depende de T1.1 y T1.2):
   - `tests/integration/db/migracion-sl21-ida-y-vuelta.test.ts` (R1, R3, R19);
   - `tests/integration/db/pais-moneda-impuesto.test.ts` (R2, R4).
   - `tests/fabricas/paises.ts > crearPaisDePrueba` acepta moneda e impuesto (NULL por defecto).
@@ -23,13 +23,13 @@
 
 ## Bloque 2 — Formato (R8, R9)
 
-- [ ] **T2.1** [P] `lib/config/moneda.ts`: `FormatoMoneda`, `MONEDA_PLATAFORMA`,
+- [x] **T2.1** [P] `lib/config/moneda.ts`: `FormatoMoneda`, `MONEDA_PLATAFORMA`,
   `MONEDA_DE_LOS_PLANES` y `formatearMontoEn`. Los 6 caminos de hoy delegan en él (design §3).
   - *Hecho:* `tests/unit/config/moneda-formato-pais.test.ts` en verde (R8), y los tests de dinero
     existentes sin cambiar ningún valor esperado.
-- [ ] **T2.2** Guardia 359 con el séptimo camino (depende de T2.1).
+- [x] **T2.2** Guardia 359 con el séptimo camino (depende de T2.1).
   - *Hecho:* `pnpm run test:guardias` en verde, con el recuento en 7 (R9).
-- [ ] **T2.3** Test «CR migrada = plataforma» en `moneda-formato-pais.test.ts`, como test de
+- [x] **T2.3** Test «CR migrada = plataforma» en `moneda-formato-pais.test.ts`, como test de
   integración (depende de T1.1 y T2.1).
   - *Hecho:* en verde con `MONEDA_*` vacías.
 
