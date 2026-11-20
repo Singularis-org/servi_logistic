@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { buildHandlers, buildRecurrencias } from "@/app/api/cron/procesar-jobs/route";
+import { RECURRENTES_DE_PLATAFORMA, buildHandlers, buildRecurrencias } from "@/app/api/cron/procesar-jobs/route";
 import { JobQueueService } from "@/lib/services/JobQueueService";
 import type { IJobRepository, JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
 import type { JobHandler } from "@/lib/interfaces/services/IJobQueueService";
@@ -56,6 +56,7 @@ describe("R21 — registro en el drenador", () => {
       // el recordatorio que los reparte.
       "plan_aviso_correo",
       "plan_cambios_vencidos",
+      "plan_niveles_cerrar", // SLT-215 (design §5): el cierre diario (06:20 UTC) de los niveles por volumen (RECURRENTE)
       "plan_recordatorio_cambio",
       // FICHA 410: entrega de UNA notificacion ya creada a las suscripciones push de sus
       // destinatarios. PUNTUAL —lo encola el decorador del repositorio de notificaciones—, asi que
@@ -96,6 +97,7 @@ describe("R21 — registro en el drenador", () => {
       "factura_plataforma_cerrar", // SLT-118 (design §4.2): el cierre horario (HH:10) de las facturas de la plataforma
       "liberar_reprogramadas",
       "plan_cambios_vencidos", // SL-24: barrido horario de cambios de plan vencidos
+      "plan_niveles_cerrar", // SLT-215: cierre diario (06:20 UTC) de los niveles por volumen
       "whatsapp_envio_mantenimiento", // ficha 474: mantenimiento diario 03:30 CR
     ]);
   });
@@ -103,6 +105,12 @@ describe("R21 — registro en el drenador", () => {
   it("SLT-136/R30 — `factura_plataforma_aviso` tiene handler y NO es recurrente (lo encola el cierre)", () => {
     expect(buildHandlers(() => AHORA).has("factura_plataforma_aviso")).toBe(true);
     expect(buildRecurrencias().has("factura_plataforma_aviso")).toBe(false);
+  });
+
+  it("SLT-215 — `plan_niveles_cerrar` tiene handler, es RECURRENTE y de plataforma (una corrida, no una por empresa)", () => {
+    expect(buildHandlers(() => AHORA).has("plan_niveles_cerrar")).toBe(true);
+    expect(buildRecurrencias().has("plan_niveles_cerrar")).toBe(true);
+    expect(RECURRENTES_DE_PLATAFORMA.has("plan_niveles_cerrar")).toBe(true);
   });
 
   it("R36 (124) — `analitica_rollup_diario` esta en AMBOS mapas y su recurrencia es a las 06:30 UTC", () => {

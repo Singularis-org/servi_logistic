@@ -3790,6 +3790,9 @@ enum JobTipo {
   /// PUNTUAL, con empresa; lo encola `FacturaPlataformaRepository.cerrar` en su transacción. Payload { facturaId },
   /// dedupe `factura_plataforma_aviso:<facturaId>`. Núcleo
   factura_plataforma_aviso
+  /// SLT-215 (design §5; R29, R30): RECURRENTE diario a las 06:20 UTC, sin empresa; cierra los meses pendientes de los
+  /// niveles por volumen de cada empresa. Payload {}, dedupe `plan_niveles_cerrar:<AAAA-MM-DD>`. Núcleo
+  plan_niveles_cerrar
 
   @@map("job_tipo")
 }

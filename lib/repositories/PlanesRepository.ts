@@ -203,6 +203,16 @@ function filaDelNivel(numero: number, n: Nivel) {
   };
 }
 
+/**
+ * SLT-215 (design §3.4; R31, R34): si dos listas de niveles son la misma. Compara meta y descuento con los importes
+ * normalizados, como el rastro: «10» y «10.00» no son un cambio, y una recepción así no recalcula nada.
+ */
+function mismosNiveles(a: readonly Nivel[], b: readonly Nivel[]): boolean {
+  const clave = (n: Nivel) =>
+    `${n.meta}:${n.descuento.tipo}:${importeCanonico(n.descuento.tipo === "porcentaje" ? n.descuento.porcentaje : n.descuento.monto)}`;
+  return a.length === b.length && a.every((n, i) => clave(n) === clave(b[i]));
+}
+
 function aDTO(f: FilaPlan): PlanDTO {
   const porRol: TopesPlan["porRol"] = {};
   for (const t of f.topesPorRol) if (ROLES.has(t.rol)) porRol[t.rol as RolConTope] = t.maximo;
@@ -1770,6 +1780,11 @@ export class PlanesRepository
     ahora: Date,
   ): Promise<void> {
     const entra = empresa.plan_id !== plan.id;
+    // SLT-215 (design §3.4; R32): los meses pendientes se cierran con los niveles del plan de antes. Antes de salir
+    // de él: `salirDelCambioEnTx` borra su versión propia, que puede traer los niveles que corría.
+    if (entra && empresa.plan_id !== null) {
+      await tx.$executeRaw`SELECT plan_nivel_cerrar_meses(${empresa.id}, ${comoTimestamp(ahora)}::timestamp)`;
+    }
     const aPromover = entra && empresa.plan_id !== null ? await salirDelCambioEnTx(tx, empresa.id, empresa.plan_id, ahora) : null;
     if (!entra) await moverRecepcionEnTx(tx, empresa.id, plan.id, tipoCobro, desde, ahora);
     // Antes de `tomar_cambio`: la factura que abre lee el nombre y la periodicidad de la versión de la empresa.
@@ -1784,6 +1799,9 @@ export class PlanesRepository
          SET "plan_id" = ${plan.id}, "plan_tipo_cobro" = ${tipoCobro}, "plan_ciclo_ancla_at" = ${comoTimestamp(desde)}::timestamp,
              ${SIN_PENDIENTE}
        WHERE "id" = ${empresa.id}`;
+    // SLT-215 (R32, R33; R34: un cambio de solo tipo no lo toca): con el plan nuevo ya escrito, y su versión si
+    // entra con la de un cambio a medias. Primera asignación → nivel 0 sin historial; cambio → recálculo.
+    if (entra) await tx.$executeRaw`SELECT plan_nivel_tomar_plan(${empresa.id}, ${comoTimestamp(desde)}::timestamp)`;
     // SLT-128 (R18): era la última del plan de antes sin recibir su pendiente, y F ya pasó. R29: su
     // `plan_aplicar_cambio` sin empresa ya no tiene nada que promover.
     if (aPromover !== null) {
@@ -2119,6 +2137,12 @@ export class PlanesRepository
         );
         // 5. R3: el precio rige desde F en el historial del plan; cada empresa lo toma en su primer período desde F.
         await escribirPrecioDelCambio(tx, plan, pendiente.vigenteDesde, version.precio);
+        // SLT-215 (design §3.4; R31, R34): una versión sin `niveles` corre los del plan (R18). Si los que corre
+        // cambian, sus meses pendientes se cierran ANTES de escribir la versión nueva, con los niveles de antes.
+        const cambianNiveles = !mismosNiveles(tenia.niveles ?? [], version.niveles ?? plan.niveles ?? []);
+        if (cambianNiveles) {
+          await tx.$executeRaw`SELECT plan_nivel_cerrar_meses(${organizacionId}, ${comoTimestamp(ahora)}::timestamp)`;
+        }
         // 6. R2: su versión propia, que leen los triggers, la tarifa, «Mi plan» y la factura. Sin tocar el ciclo (R5).
         // R28: sin la marca de una no aplicada anterior: el aviso del detalle se va solo.
         const fila = {
@@ -2135,6 +2159,11 @@ export class PlanesRepository
           update: fila,
         });
         await tx.planCambioRecepcion.update({ where: clave, data: { recibidoAt: ahora } });
+        // SLT-215 (R31): con la versión nueva ya escrita, el nivel con sus metas sobre el último mes cerrado.
+        if (cambianNiveles) {
+          await tx.$executeRaw`
+            SELECT plan_nivel_recalcular(${organizacionId}, ${comoTimestamp(recepcion.recibeAt)}::timestamp, 'cambio_niveles')`;
+        }
         // 7. R10: era la última y F ya pasó → el plan se promueve en esta misma transacción.
         if (pendiente.vigenteDesde.getTime() <= ahora.getTime() && (await recepcionesSinRecibir(tx, pendiente.id)) === 0) {
           await promoverEnTx(tx, pendiente);

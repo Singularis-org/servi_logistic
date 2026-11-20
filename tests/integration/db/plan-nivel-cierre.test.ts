@@ -3,7 +3,11 @@ import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { crearOrganizacion } from "@/tests/fabricas/organizaciones";
+import type { EnqueueOpts, IJobRepository, JobTxClient } from "@/lib/interfaces/repositories/IJobRepository";
+import { recurrenciaCierreNiveles, sembrarCierreNiveles } from "@/lib/planes/jobs-niveles";
+import { JobRepository } from "@/lib/repositories/JobRepository";
+import { NivelesEmpresaRepository } from "@/lib/repositories/NivelesEmpresaRepository";
+import { crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones";
 
 import {
   HAY_BASE_DE_DATOS,
@@ -567,6 +571,87 @@ describeSiHayBase("SLT-215 R29 — el cierre de los meses pendientes", () => {
       });
       await Promise.all([c1.$disconnect(), c2.$disconnect(), sujeta.$disconnect()]);
     }
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* T7 — el repositorio y la siembra del trabajo diario                        */
+/* -------------------------------------------------------------------------- */
+
+async function contarJobs(tx: TxDeTest): Promise<number> {
+  const [f] = await tx.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS n FROM "jobs" WHERE "tipo" = 'plan_niveles_cerrar'`;
+  return f.n;
+}
+
+describeSiHayBase("SLT-215 R29, R30 — NivelesEmpresaRepository (lo que usa el trabajo diario)", () => {
+  beforeAll(() => {
+    base = crearPrismaDeTest();
+  });
+
+  afterAll(async () => {
+    await base?.$disconnect();
+  });
+
+  it("R29: lista las empresas con algún mes terminado sin cerrar, cierra cada una por la función y después ya no las lista", async () => {
+    const r = await revertida(base, async (tx) => {
+      const repo = new NivelesEmpresaRepository(tx);
+      const conAgosto = await empresaConMetas(tx, [2], AGO);
+      const conSeptiembre = await empresaConMetas(tx, [2], SEP);
+      await ordenesConCargo(tx, conSeptiembre, 2, a("2026-09-10"));
+      const nuestras = (ids: string[]) => ids.filter((id) => id === conAgosto.id || id === conSeptiembre.id);
+      const el2 = a("2026-10-02", 20);
+      const antes = nuestras(await repo.empresasConMesPendiente(new Date(el2)));
+      // El 20 de septiembre solo la de agosto tiene un mes terminado (agosto); la de septiembre, aún no.
+      const el20 = nuestras(await repo.empresasConMesPendiente(new Date(a("2026-09-20"))));
+      const cerrados = [await repo.cerrarMeses(conAgosto.id, new Date(el2)), await repo.cerrarMeses(conSeptiembre.id, new Date(el2))];
+      const otraVez = await repo.cerrarMeses(conSeptiembre.id, new Date(el2));
+      return {
+        ids: { agosto: conAgosto.id, septiembre: conSeptiembre.id },
+        antes,
+        el20,
+        cerrados,
+        otraVez,
+        despues: nuestras(await repo.empresasConMesPendiente(new Date(el2))),
+        historial: await historial(tx, conSeptiembre.id),
+      };
+    });
+    expect([...r.antes].sort()).toEqual([r.ids.agosto, r.ids.septiembre].sort());
+    expect(r.el20).toEqual([r.ids.agosto]);
+    // Agosto y septiembre para una; septiembre para la otra. Repetir no cierra nada.
+    expect(r.cerrados).toEqual([2, 1]);
+    expect(r.otraVez).toBe(0);
+    expect(r.despues).toEqual([]);
+    expect(r.historial).toEqual([`subida 0→1 desde ${OCT} mes ${SEP} órdenes 2`]);
+  });
+
+  it("R29: la siembra del cierre (sembrarCierreNiveles) y su re-agendado dejan UNA fila por día (contarJobs)", async () => {
+    const r = await revertida(base, async (tx) => {
+      // El trabajo es de plataforma: nace sin empresa (DEFAULT de `jobs`).
+      await fijarEmpresa(tx, "");
+      const real = new JobRepository(base);
+      const repo = {
+        enqueue: (tipo, payload, opts?: EnqueueOpts) => real.enqueue(tipo, payload, opts, tx as unknown as JobTxClient),
+      } as IJobRepository;
+      const antes = await contarJobs(tx);
+      const primera = await sembrarCierreNiveles(repo, new Date("2026-12-01T01:00:00.000Z"));
+      const segunda = await sembrarCierreNiveles(repo, new Date("2026-12-01T05:00:00.000Z"));
+      const { runAfter, dedupeKey } = recurrenciaCierreNiveles.siguiente(new Date("2026-12-01T06:19:00.000Z"), []);
+      const reencolada = await repo.enqueue("plan_niveles_cerrar", {}, { runAfter, dedupeKey });
+      return { antes, despues: await contarJobs(tx), primera, segunda, reencolada };
+    });
+    expect(r.primera?.dedupeKey).toBe("plan_niveles_cerrar:2026-12-01");
+    expect(r.primera?.runAfter.toISOString()).toBe("2026-12-01T06:20:00.000Z");
+    expect(r.segunda).toBeNull();
+    expect(r.reencolada).toBeNull();
+    expect(r.despues).toBe(r.antes + 1);
+  });
+
+  it("R29: un día en que ninguna empresa tiene meses pendientes, la lista sale vacía", async () => {
+    const r = await revertida(base, async (tx) => {
+      await empresaConMetas(tx, [2], SEP);
+      return new NivelesEmpresaRepository(tx).empresasConMesPendiente(new Date("2020-01-15T12:00:00.000Z"));
+    });
+    expect(r).toEqual([]);
   });
 });
 

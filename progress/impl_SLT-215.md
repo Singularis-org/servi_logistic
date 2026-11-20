@@ -187,3 +187,186 @@ Rojos ambientales, no de esta tanda:
 
 T3, T4 y T5 hechas con sus tests en verde cuando el cliente de Prisma corresponde a la rama; quedan dos bloqueos
 ambientales (cliente de Prisma y zod compartidos) y el rojo esperado del formulario hasta T8/T10.
+
+## Tanda 3 (front): T8, T9 y T10 — 2026-11-19
+
+### Archivos
+
+Nuevos:
+- `app/(app)/plataforma/planes/_components/plan-form/PasoNiveles.tsx` — lista editable (R8, R9): «Nivel n», meta,
+  `RadioGroup` porcentaje/monto fijo, valor (sufijo «%» o `MontoInput`), «Quitar nivel n», «Agregar nivel»
+  deshabilitado con `MAX_NIVELES`; foco a la meta nueva; errores con `FieldError` bajo su campo.
+- `tests/components/PlanFormNiveles.test.tsx`
+
+Modificados (producción):
+- `plan-form/estado.ts` — `NivelEnPantalla`, `nuevaClaveDeNivel`, `nivelesEnPantalla`, `nivelesDe` (meta no entera →
+  `NaN`), `Formulario.niveles`, `inicial` (R13), `versionDe`, `camposEnOrden` (`niveles`, `niveles.<i>.meta`,
+  `niveles.<i>.descuento.<tipo>`), `IdPaso`/`pasosDe` con «Niveles» tras «Beneficios», `pasoDeLaClave`.
+- `plan-form/borrador.ts` — `valoresDelPaso` y `formDelBorrador` del paso `niveles` (R11).
+- `plan-form/textos.ts` — textos de design §7 y `nivelEscrito` (ver Desviaciones).
+- `plan-form/PasoRevisar.tsx` — fila «Niveles» tras «Beneficios» (R14); al editar, solo si cambian, «antes → después».
+- `PlanForm.tsx` — `case "niveles"`.
+- `PlanesModule.tsx`, `plan-vista.ts` (`lineasDeNiveles`) — columna «Niveles» tras «Beneficios», `SOLO_DESDE_MD` (R21).
+- `[planId]/_components/PlanDetalle.tsx` — alta «Niveles: …» (R19) y la edición pasa `niveles` a
+  `lineasDeCambioDelPlan` («Niveles por volumen: …», R20).
+
+Modificados (tests, T10 y ampliaciones):
+- `tests/components/plan-form-pasos.ts` (comentario; `MAX_PASOS` = 10 ya cubre 9 pasos),
+  `PlanFormBorrador.test.tsx` (contadores 7/8; «5 de 7» en el de `pasos_pendientes`), `PlanFormPasos.test.tsx` (R7),
+  `PlanForm.test.tsx` (`niveles: []` en las tres cargas útiles, como hizo SLT-214 con `beneficios`),
+  `PlanFormBeneficios.test.tsx` (tras «Beneficios» viene «Niveles»), `PlanFormRevisar.test.tsx` (fila «Niveles»),
+  `PlanesModule.test.tsx` (R21 + celda «Sin niveles» y clases móviles), `PlanDetalle.test.tsx` (R19, R7),
+  `tests/unit/planes/plan-form-borrador.test.ts` (R11, R3, R13, R7).
+- E2E (no corridos, los verifica el CI): `planes-borrador` (Niveles en crear y editar; contadores 7 y 8),
+  `planes-superadmin`, `planes-costeo`, `planes-costo-porcentual`, `planes-beneficios`.
+
+### Mapa R → test (de esta tanda)
+
+| R | Test |
+|---|---|
+| R7 | `PlanFormPasos.test.tsx` («R7: pasos al crear / al editar»); `plan-form-borrador.test.ts` («R7: los pasos que se guardan…»); `PlanesModule.test.tsx` y `PlanDetalle.test.tsx` («R6: el panel abre el formulario por pasos») |
+| R8 | `PlanFormNiveles.test.tsx` («R8: agregar al final en porcentaje…», «R8: con 10 niveles…») |
+| R9 | `PlanFormNiveles.test.tsx` («R9: la lista vacía…», «R9: quitar el último…») |
+| R10 | `PlanFormNiveles.test.tsx` (tres «R10: …»: meta 0, meta que no crece, % 150, monto 0, meta 1.5, error del servidor) |
+| R11 | `plan-form-borrador.test.ts` («SLT-215 — el paso «Niveles»»: ida y vuelta, vacía, borrador sobre el plan) |
+| R13 | `PlanFormNiveles.test.tsx` («R13: el paso abre con los niveles vigentes…», «R13: sin tocarlos…»); `plan-form-borrador.test.ts` («R13: …») |
+| R14 | `PlanFormNiveles.test.tsx` («R14: al crear lista…», «sin niveles», «al editar antes → después», «se queda sin niveles»); `PlanFormRevisar.test.tsx` («R22: al crear lista los valores finales») |
+| R19 | `PlanDetalle.test.tsx` («SLT-215 R19 — los niveles en el rastro del plan») |
+| R21 | `PlanesModule.test.tsx` («SLT-215 R21 — la columna «Niveles»»: orden, % y monto, «Sin niveles»; y «R13: una fila por plan…») |
+
+### Salida real
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: `tsc --noEmit` sin salida, exit 0.
+- `pnpm exec eslint` sobre los 9 de producción, los 10 de tests y los 5 E2E: «ESLint: No issues found», exit 0.
+- `vitest run` de `tests/components/PlanDetalle*`, `PlanEmpresaCostoPorcentual`, `PlanesModule`, `PlanForm*`,
+  `PlanVistaCosteo`, `tests/unit/planes/plan-form-borrador` y `plan-form-revision`: **21 archivos, 300 tests pasan, 0
+  fallan**.
+- E2E: no corridos (por instrucción; los verifica el CI).
+
+### Desviaciones
+
+1. **Texto `nivelEscrito` en `textos.ts`.** «Revisar» no valida; un nivel que aún no pasa el esquema se pinta con lo
+   escrito («Nivel n: desde <meta> órdenes, −<valor>») en vez de «NaN» o «abc.00», como ya hacen los descuentos y los
+   topes (`revision.ts`). Es el mismo formato aprobado de R21, sin canonizar; no es un texto nuevo de producto.
+2. **`PlanDetalle` también pinta la edición** («Niveles por volumen: antes → después» vía `lineasDeCambioDelPlan`),
+   además del alta de R19: el rastro ya guarda las dos listas y sin esto una edición de niveles no dejaba línea.
+3. **Tests fuera de la lista de T10** adaptados por el paso nuevo: `PlanForm.test.tsx`, `PlanFormBeneficios.test.tsx`,
+   `PlanFormRevisar.test.tsx` (cambio mínimo, igual que SLT-214).
+
+### Veredicto
+
+T8, T9 y T10 hechas: typecheck y lint en verde, 300/300 tests de planes en verde; E2E adaptados sin correr.
+
+## Tanda 4 (E2E) — T11
+
+### Archivos
+
+- `e2e/planes-niveles.spec.ts` (nuevo).
+- `playwright.config.ts`: `planes-niveles` registrado en el proyecto `aislamiento`, tras `planes-beneficios`
+  (sin esto la guardia `e2e-sin-saltos` lo marca: cada spec cae en exactamente un proyecto).
+
+### Mapa R → test
+
+| R | Test |
+|---|---|
+| R38.1, R38.2 | `e2e/planes-niveles.spec.ts` «R38: crear un plan con 2 niveles, uno en porcentaje y otro en monto, y verlos en orden en el listado» (paso «Niveles» vacío, nivel 1 en «Porcentaje» y 2 en «Monto fijo», «Revisar y crear» en orden, `plan_nivel` en la base, columna «Niveles» en orden) |
+| R38.3 | `e2e/planes-niveles.spec.ts` «R38: editar los niveles programa el cambio con su fecha sin cambiar todavía la columna «Niveles»» (empresa mensual asignada por detrás; nivel 2 a 800 y nivel 3 nuevo; «Cambio programado desde F» con la línea «Niveles por volumen: antes → después»; columna «Niveles» igual, «Cambio» = «Desde F», base igual) |
+
+Los textos esperados de las líneas salen de `textoDelNivel` / `textoDeLosNiveles` (`lib/planes/niveles.ts`), no
+escritos a mano; los rótulos del paso, de `plan-form/textos.ts`.
+
+### Salida real
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: `tsc --noEmit` sin salida, exit 0.
+- `pnpm exec eslint e2e/planes-niveles.spec.ts playwright.config.ts`: «ESLint: No issues found», exit 0.
+- `pnpm exec playwright test --list e2e/planes-niveles.spec.ts`: carga sin levantar la app; lista
+  `[aislamiento] › planes-niveles.spec.ts` con los 2 casos (191:5 y 242:5), más los 10 de `plataforma-vacia` que
+  arrastra por dependencia. «Total: 12 tests in 3 files», exit 0.
+- E2E: **no corrido en local, por orden del leader**; lo verifica el CI.
+
+### Veredicto
+
+T11 hecha: spec de R38 escrito y registrado, typecheck/eslint/--list en verde; falta la corrida en CI.
+
+## Tanda 3 (backend_dev): T6 y T7 — 2026-11-19
+
+### Archivos
+
+Nuevos:
+- `lib/interfaces/repositories/INivelesEmpresaRepository.ts` — `empresasConMesPendiente(ahora)` y `cerrarMeses(org, ahora)`.
+- `lib/repositories/NivelesEmpresaRepository.ts` — en `comoPlataforma("SL-24", …)`; la lista usa
+  `plan_inicio_periodo_calendario('mensual', ahora)` (una sola definición de «mes», R23); `cerrarMeses` llama a
+  `plan_nivel_cerrar_meses` en su transacción (sin `$transaction`, en la de quien llama).
+- `lib/planes/jobs-niveles.ts` — `proximaCorridaCierreNiveles` (06:20 UTC), `dedupeKeyCierreNiveles`
+  (`plan_niveles_cerrar:<AAAA-MM-DD>`), `recurrenciaCierreNiveles`, `sembrarCierreNiveles`, `crearCierreNivelesHandler`.
+- `tests/integration/db/plan-nivel-recalculo.test.ts` — T6.
+- `tests/unit/planes/jobs-niveles.test.ts` — T7.
+
+Modificados (producción):
+- `lib/repositories/PlanesRepository.ts` — `mismosNiveles`; `recibirCambio` (cierra con los de antes antes del upsert
+  de la versión y recalcula con `recibeAt` después); `aplicarEnTx` (cierra antes de salir del plan de antes y llama a
+  `plan_nivel_tomar_plan` tras el `UPDATE "organizacion"`; solo si `entra`).
+- `db/schema.prisma` — `plan_niveles_cerrar` en `enum JobTipo` (la base ya lo tenía desde T2). `prisma generate` hecho
+  en el `node_modules` propio del worktree.
+- `lib/modulos/reparto.ts` — `MODULO_POR_JOB.plan_niveles_cerrar = "nucleo"`.
+- `app/api/cron/procesar-jobs/route.ts` — handler, recurrencia y `RECURRENTES_DE_PLATAFORMA`.
+- `scripts/siembra-jobs-recurrentes.ts` — entrada en `SIEMBRAS_RECURRENTES`.
+- `lib/db/excepciones-aislamiento.ts` — `NivelesEmpresaRepository.ts` en `EXCEPCIONES_DE_PLATAFORMA` (ficha `SL-24`, D29).
+
+Modificados (tests):
+- `tests/integration/db/plan-nivel-cierre.test.ts` — bloque T7: el repositorio (lista, cierre, repetir, lista vacía)
+  y la idempotencia de la siembra con `contarJobs`.
+- `tests/unit/api/procesar-jobs-registro.test.ts` — el tipo en los dos censos exactos y un caso propio.
+- `tests/unit/guards/jobs-handler-por-tipo.guardia.test.ts` y `tests/unit/guards/jobs-recurrentes-con-siembra.guardia.test.ts`
+  — el tipo en los censos de recurrentes y la prueba de idempotencia de la siembra en la lista del frente 4 (fuera de
+  la lista de `tasks.md`; precedente SLT-118, commit aefeef8c).
+
+### Mapa R → test (de esta tanda)
+
+| R | Test |
+|---|---|
+| R16 (mitad «cada empresa corre la de su versión») | `plan-nivel-recalculo.test.ts` («R16: con el cambio a medias, A … y B …»: A sube al 2 con 10/14; B se queda en 0 con 20; al recibir, B recalcula) |
+| R29 | `jobs-niveles.test.ts` (06:20 UTC en 4 bordes, `dedupe_key` por día, siembra con la misma clave, registro recurrente de plataforma y de núcleo, handler cableado en plataforma); `plan-nivel-cierre.test.ts` (bloque T7: lista de pendientes, `cerrarMeses` 2 y 1, repetir 0, ya no se lista, lista vacía; siembra + re-agendado = 1 fila); `procesar-jobs-registro.test.ts` |
+| R30 | `jobs-niveles.test.ts` («si una empresa falla, cierra las demás y DESPUÉS falla con sus ids y causas», «un fallo al listar…») |
+| R31 | `plan-nivel-recalculo.test.ts` («R31: primero cierra el mes pendiente con las metas de antes…»: cerrado hasta noviembre sin «subida»; historial `cambio_niveles 0→1` desde la recepción, mes de octubre, 12 órdenes) |
+| R32 | `plan-nivel-recalculo.test.ts` («R32: cambio de plan → …»: octubre cerrado con el de antes, recálculo con octubre entero, entrada = efecto, historial con el plan nuevo; en diciembre solo cuentan las 11 de después de la entrada) y («R32: … con la versión de un cambio a medias del plan nuevo») |
+| R33 | `plan-nivel-recalculo.test.ts` («R33: la primera asignación…»: nivel 0, cuenta 0, entrada = efecto, `cerrado_hasta` = mes de la entrada, sin historial aunque octubre cumpla) |
+| R34 | `plan-nivel-recalculo.test.ts` (cambio de solo tipo; recepción con los mismos niveles escritos de otra forma; recepción sin `niveles`: nivel, cuenta, entrada y `cerrado_hasta` intactos, sin historial) |
+
+### Salida real
+
+- `pnpm exec prisma generate` y `pnpm run typecheck`: `tsc --noEmit` sin errores (exit 0, 0 `error TS`; el formulario de
+  T8 ya compila).
+- `pnpm exec eslint` sobre los 15 archivos tocados: «No issues found», exit 0.
+- `vitest run` unit: `jobs-niveles`, `procesar-jobs-registro`, `jobs-factura-plataforma` 39/39; `planes-repository-tipo-cobro`,
+  `planes.composition-root`, `procesar-jobs-plan-cambio`, `jobs-cambio-empresa` 73/73; guardias `jobs-handler-por-tipo`,
+  `jobs-recurrentes-con-siembra`, `plataforma-solo-en-lista` 41/41.
+- `vitest run --no-file-parallelism` integración (base `servi_logistic_slt215`): `plan-nivel-recalculo` 8/8,
+  `plan-nivel-cierre` 21/21, `plan-nivel` 12/12 (en la corrida conjunta, 40/40 antes del caso de siembra). Los que pasan
+  por `aplicarEnTx`/`recibirCambio`: `planes-version-por-empresa`, `factura-plataforma-cambio-plan`,
+  `planes-cambio-empresa`, `planes-asignacion`, `planes-cambio-por-empresa`, `mi-plan-cambiar-plan`,
+  `plan-borrador-confirmar`, `planes-edicion-en-uso`: 8 archivos, 123/123.
+- `pnpm run test:guardias`: 359 archivos pasan, 1 rojo; 5413 tests pasan, 1 falla, 1 saltado. El rojo es
+  `lectura-guia-unica.guardia.test.ts` (R567, regla de dígitos `/^\d+$/` suelta) en
+  `app/(app)/plataforma/planes/_components/plan-form/estado.ts`: archivo de T8 (frontend), no de esta tanda.
+
+### Desviaciones
+
+1. **`aplicarEnTx`: el cierre va antes de `salirDelCambioEnTx`**, no justo antes de `factura_plataforma_tomar_cambio`
+   (sigue siendo «antes»). `salirDelCambioEnTx` borra la versión propia de la empresa en el plan de antes, que puede
+   traer los niveles que corría (R16); cerrar después cerraría con los del plan y no con los suyos.
+2. **`recibirCambio` compara contra `version.niveles ?? plan.niveles`**, no contra `version.niveles` a secas: una versión
+   sin `niveles` corre los del plan (R18), y si la empresa venía de una versión propia con otros niveles, eso sí es un
+   cambio. Con `version.niveles` ausente y la empresa en los del plan, no hay cambio (R34, probado).
+3. **`plan_nivel_recalcular` sin fila sigue devolviendo NULL** (revisado contra R32/R33): toda empresa con plan tiene fila
+   (relleno de R37 y `plan_nivel_tomar_plan` en cada `aplicarEnTx` que entra), y `tomar_plan` resuelve la primera
+   asignación por la ausencia de fila. Solo una empresa con `plan_id` puesto a mano (fixtures de tests viejos) llega sin
+   fila; ahí no hacer nada deja verdes esos tests, y su siguiente cambio de plan la trata como primera asignación.
+4. **Riesgo de §10 también en `recibirCambio`:** el cierre usa `ahora` (como dice el design) y el recálculo el mes de
+   antes de `recibeAt`. Una recepción que llega con más de un borde de mes de retraso cierra ese mes con los niveles de
+   antes y el recálculo lo pisa. Hoy el barrido es horario; no lo cambié.
+
+### Veredicto
+
+T6 y T7 hechas: typecheck, lint, tests de la tanda y los afectados en verde; guardias en verde salvo
+`lectura-guia-unica` por `estado.ts` de T8.

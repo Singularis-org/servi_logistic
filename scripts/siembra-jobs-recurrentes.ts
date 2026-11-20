@@ -10,6 +10,7 @@ import { seedJobAnaliticaRollupDiario } from "./seed-jobs-analitica-rollup-diari
 import { seedJobWhatsappEnvioMantenimiento } from "./seed-jobs-whatsapp-envio-mantenimiento";
 import { sembrarPlanCambiosVencidos } from "@/lib/planes/jobs-cambio-plan";
 import { sembrarCierreFacturas } from "@/lib/planes/jobs-factura-plataforma";
+import { sembrarCierreNiveles } from "@/lib/planes/jobs-niveles";
 import { AVISO_SIN_ZONAS } from "@/lib/services/jobs/serie-diaria-por-zona";
 
 // Ficha 313 — REGISTRO UNICO DE LAS SIEMBRAS DE LOS JOBS RECURRENTES, y lo que las corre.
@@ -113,6 +114,16 @@ export const SIEMBRAS_RECURRENTES: readonly SiembraRecurrente[] = [
       "las facturas de la plataforma no se emiten nunca: las cuotas de los planes no llegan a la deuda y " +
       "la factura en curso de cada empresa se queda abierta sin que nada falle",
     sembrar: sembrarCierreFacturas,
+  },
+  {
+    // SLT-215 (design §5; P1, R29): el cierre diario de los niveles por volumen. El sembrador vive junto a su
+    // recurrencia, con la MISMA `dedupe_key`.
+    tipo: "plan_niveles_cerrar",
+    script: "lib/planes/jobs-niveles.ts",
+    siNoCorre:
+      "los meses no se cierran nunca: ninguna empresa sube ni baja de nivel por volumen y sus meses pendientes " +
+      "se acumulan sin que nada falle",
+    sembrar: sembrarCierreNiveles,
   },
 ];
 
