@@ -1,3 +1,4 @@
+import type { FormatoMoneda } from "@/lib/config/moneda";
 import type { Actor } from "@/lib/interfaces/services/IVehiculoService";
 import type {
   CambiarDisponibilidadPaisInput,
@@ -6,7 +7,8 @@ import type {
   PaisDTO,
 } from "@/lib/types/pais";
 
-// SL-20 (design §5) — los países del superadmin y los nombres de nivel de una empresa.
+// SL-20 (design §5) — los países del superadmin y, desde SLT-235, los datos del país para las pantallas
+// de una empresa.
 // `unauthenticated` no aparece: lo resuelve la Server Action antes de llamar al servicio.
 
 export type ListarPaisesServiceResult = { status: "ok"; paises: PaisDTO[] } | { status: "forbidden" };
@@ -52,8 +54,20 @@ export interface IPaisService {
   ): Promise<CambiarDisponibilidadPaisServiceResult>;
 
   /**
-   * R19: cómo llama a sus niveles el país de la empresa. Lo llama el layout con la empresa de la
-   * sesión; sin empresa (el superadmin) el layout usa `ETIQUETAS_NEUTRAS` y no llama aquí.
+   * SLT-235 (R1, R3, R4, R7; design §5): los nombres de nivel (SL-20 R19), la moneda y el nombre del
+   * impuesto del país de la empresa, de una sola lectura memorizada. Lo llama el layout con la empresa
+   * de la sesión; sin empresa (el superadmin) no se llama (R2). Si la empresa no tiene país visible,
+   * lanza: quien llama decide la caída (`paisParaPantallasDelActor`).
    */
-  etiquetasDeEmpresa(organizacionId: string): Promise<EtiquetasGeograficas>;
+  paraPantallas(organizacionId: string): Promise<PaisParaPantallas>;
+}
+
+/**
+ * SLT-235 (design §5) — lo que las pantallas del portal necesitan del país de la empresa. Si al país
+ * le falta moneda o impuesto, aquí ya llegan los de la plataforma (R3, R4).
+ */
+export interface PaisParaPantallas {
+  etiquetas: EtiquetasGeograficas;
+  moneda: FormatoMoneda;
+  impuestoNombre: string;
 }

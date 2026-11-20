@@ -56,7 +56,7 @@ function paisDoble(o: Partial<Record<keyof IPaisService, Espia>> = {}) {
     listarDisponibles: vi.fn(async () => ({ status: "ok" as const, paises: [] })),
     crear: vi.fn(async () => ({ status: "conflict" as const, campo: "id" as const })),
     cambiarDisponible: vi.fn(async () => ({ status: "ok" as const, id: "CR", disponible: false })),
-    etiquetasDeEmpresa: vi.fn(),
+    paraPantallas: vi.fn(),
     ...o,
   } satisfies Record<keyof IPaisService, Espia>;
 }

@@ -12,6 +12,7 @@ import {
 } from "@/lib/utils/dia-reparto-textos";
 
 import { UbicacionTrigger } from "../UbicacionTrigger";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
 import { formatMonto, lineaUbicacion } from "./pos-format";
 import { CLASE_NOTA_AYUDA, claseChipEstado, marcasDeTarjeta, textoParada } from "./pos-estado";
 import { textoMensajero } from "./pos-mensajero";
@@ -55,6 +56,8 @@ export function PosOrderCardDetalle({
   // retorno, por la regla de los hooks; la vista de siempre no lo lee.
   const [abierta, setAbierta] = useState(false);
   const idDespliegue = useId();
+  // SLT-235 (R11): el monto en la moneda del país de la empresa.
+  const moneda = useMonedaDelPais();
   // FICHA 455 (R7/R8): el chip es el estado de la orden; activa/detalle/nota van en marcas aparte.
   const marcas = marcasDeTarjeta(esActiva, esDetalle, nota);
   // Feature 196: las mismas compuertas que las otras dos vistas, con el mismo default.
@@ -237,7 +240,7 @@ export function PosOrderCardDetalle({
                 Valor a cobrar
               </span>
               <span className={`text-right font-mono text-sm font-bold text-foreground ${COLUMNA_FIJA}`}>
-                {formatMonto(orden.montoCobrar)}
+                {formatMonto(orden.montoCobrar, moneda)}
               </span>
             </span>
           ) : null}
@@ -332,7 +335,7 @@ export function PosOrderCardDetalle({
             Cobrar
           </span>
           <span className={`text-right font-mono text-sm font-bold text-foreground ${COLUMNA_FIJA}`}>
-            {formatMonto(orden.montoCobrar)}
+            {formatMonto(orden.montoCobrar, moneda)}
           </span>
         </div>
       ) : null}

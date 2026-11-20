@@ -1,4 +1,4 @@
-import { formatMonto as formatMontoConfigurado, SIN_MONTO_RAYA } from "@/lib/config/moneda";
+import { formatearMontoEn, SIN_MONTO_RAYA, type FormatoMoneda } from "@/lib/config/moneda";
 import type { MiAsignacionDTO } from "@/lib/interfaces/services/IMisAsignacionesService";
 import {
   urlNavegacion,
@@ -25,9 +25,12 @@ import {
  * (`SIN_MONTO_RAYA`), no el guion corto que `formatMonto` usa por defecto. Se pasa
  * explícito para que la mudanza no cambie en silencio lo que se lee cuando no hay
  * monto que cobrar.
+ *
+ * SLT-235 (R11): la moneda es la del país de la empresa y es OBLIGATORIA, para que ningún
+ * llamante caiga en silencio a la de la plataforma; cada uno la lee de `useMonedaDelPais`.
  */
-export function formatMonto(monto: number | null): string {
-  return formatMontoConfigurado(monto, SIN_MONTO_RAYA);
+export function formatMonto(monto: number | null, moneda: FormatoMoneda): string {
+  return formatearMontoEn(moneda, monto, SIN_MONTO_RAYA);
 }
 
 /** Peso en kilogramos (p. ej. "1.5 kg"), o "—" si es nulo. */

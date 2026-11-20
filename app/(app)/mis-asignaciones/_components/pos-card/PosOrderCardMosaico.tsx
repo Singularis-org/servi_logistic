@@ -18,6 +18,7 @@ import {
 
 import { AsignacionDetalle } from "../AsignacionDetalle";
 import { UbicacionTrigger } from "../UbicacionTrigger";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
 import { formatMonto, formatPeso } from "./pos-format";
 import { CLASE_NOTA_AYUDA, claseChipEstado, marcasDeTarjeta, textoParada } from "./pos-estado";
 import { textoMensajero } from "./pos-mensajero";
@@ -58,6 +59,8 @@ export function PosOrderCardMosaico({
   const conPosicion = !mostrarRuta && posicion !== undefined;
   // Estado del desplegable del detalle: UI efímera, de un solo consumidor.
   const [detalleAbierto, setDetalleAbierto] = useState(false);
+  // SLT-235 (R11): el monto en la moneda del país de la empresa.
+  const moneda = useMonedaDelPais();
   // FICHA 455 (R7/R8): el chip es el estado de la orden; activa/detalle/nota van en marcas aparte.
   const marcas = marcasDeTarjeta(esActiva, esDetalle, nota);
   // Feature 196: las mismas cuatro compuertas que la card completa, con el mismo default.
@@ -276,7 +279,7 @@ export function PosOrderCardMosaico({
             Cobrar
           </span>
           <span className={`text-right font-mono text-sm font-bold text-foreground ${COLUMNA_FIJA}`}>
-            {formatMonto(orden.montoCobrar)}
+            {formatMonto(orden.montoCobrar, moneda)}
           </span>
         </div>
       ) : null}

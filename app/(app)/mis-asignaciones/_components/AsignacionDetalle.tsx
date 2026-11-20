@@ -8,9 +8,10 @@ import {
   IntentosValor,
   valorIntentos,
 } from "@/components/shared/intentos-entrega";
-import { formatMonto as formatMontoConfigurado, SIN_MONTO_RAYA } from "@/lib/config/moneda";
+import { formatearMontoEn, SIN_MONTO_RAYA, type FormatoMoneda } from "@/lib/config/moneda";
 import type { MiAsignacionDTO } from "@/lib/interfaces/services/IMisAsignacionesService";
 import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
 
 // Feature 36 (R11) / rediseño 63: detalle de una orden asignada en TRES secciones
 // (Pedido, Entrega, Cobro), cada una como lista de definición accesible (<dt>/<dd>).
@@ -30,9 +31,11 @@ import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
  * formateador "estilo EEUU" (`₡13,331,832.72`), la misma que en `pos-format.ts`,
  * `RecepcionDetalle` y `SateliteOrderCard`. El marcador de ausencia se pasa
  * explícito (`SIN_MONTO_RAYA`) porque el default del compartido es el guion corto.
+ *
+ * SLT-235 (R11): con la moneda del país de la empresa, que el componente lee del hook.
  */
-function formatMonto(monto: number | null): string {
-  return formatMontoConfigurado(monto, SIN_MONTO_RAYA);
+function formatMonto(monto: number | null, moneda: FormatoMoneda): string {
+  return formatearMontoEn(moneda, monto, SIN_MONTO_RAYA);
 }
 
 /** Peso en kilogramos (p. ej. "1.5 kg"), o "—" si es nulo. */
@@ -88,6 +91,8 @@ export interface AsignacionDetalleProps {
 export function AsignacionDetalle({ orden }: AsignacionDetalleProps) {
   // SL-20 (design §7; R19): los rótulos de la ubicación son los nombres de nivel del país.
   const etiquetas = useEtiquetasGeograficas();
+  // SLT-235 (R11): el monto a cobrar en la moneda del país de la empresa.
+  const moneda = useMonedaDelPais();
   return (
     <div className="flex flex-col gap-3">
       {/* Sección 1 — Pedido */}
@@ -153,7 +158,7 @@ export function AsignacionDetalle({ orden }: AsignacionDetalleProps) {
               Valor a cobrar
             </dt>
             <dd className="font-mono text-2xl font-bold">
-              {formatMonto(orden.montoCobrar)}
+              {formatMonto(orden.montoCobrar, moneda)}
             </dd>
           </div>
           {/* `@xs` = 20rem de CONTENEDOR: por debajo de eso el peso le roba sitio al valor a

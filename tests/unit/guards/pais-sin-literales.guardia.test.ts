@@ -17,8 +17,8 @@
 //     `ingreso_iva` o `ACTIVA` no casan) y un import de un formateador que pinta con la moneda de la
 //     plataforma sin nombrarla (`money`, `formatMonto`, `monedaConfig`…). La moneda y el impuesto salen
 //     del pais de la empresa (`IReglasPaisEmpresa.moneda()`, `formatearMontoEn`).
-// Las excepciones (la UI que pasa a SLT-81 y a SLT-235, los planes que pasan a SLT-90 y a SLT-237,
-// SINPE, de SL-22, y la OpenAPI, permanente) viven en `_pais-sin-literales-excepciones.ts`, con su
+// Las excepciones (la UI que pasa a SLT-81 y a las rebanadas SLT-240..SLT-246 de SLT-235, los
+// planes que pasan a SLT-90 y a SLT-237, SINPE, de SL-22, y la OpenAPI, permanente) viven en `_pais-sin-literales-excepciones.ts`, con su
 // ficha y su motivo, y la lista solo baja.
 //
 // Segunda guardia del archivo (decision del humano tras T5.3): `reglasPais` es OPCIONAL en los
@@ -35,9 +35,30 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 import { quitarComentarios } from "../../fixtures/sin-comentarios";
-import { EXCEPCIONES_PAIS_SIN_LITERALES, TOPE_EXCEPCIONES } from "./_pais-sin-literales-excepciones";
+import {
+  EXCEPCIONES_PAIS_SIN_LITERALES,
+  type FichaQueLoRetira,
+  TOPE_EXCEPCIONES,
+} from "./_pais-sin-literales-excepciones";
 
 const RAIZ = path.resolve(__dirname, "../../..");
+
+// Fichas que pueden retirar una excepcion. SLT-240 a SLT-246 son las rebanadas de SLT-235 (R19).
+const FICHAS_ADMITIDAS: readonly FichaQueLoRetira[] = [
+  "SLT-81",
+  "SLT-90",
+  "SL-22",
+  "SLT-235",
+  "SLT-237",
+  "SLT-240",
+  "SLT-241",
+  "SLT-242",
+  "SLT-243",
+  "SLT-244",
+  "SLT-245",
+  "SLT-246",
+  "permanente",
+];
 
 function recorrer(relativo: string, acepta: (rel: string) => boolean, salida: string[] = []): string[] {
   for (const entrada of readdirSync(path.join(RAIZ, relativo), { withFileTypes: true })) {
@@ -144,7 +165,7 @@ describe("SLT-42 · R29 — el servidor no escribe el pais a mano", () => {
   it("cada excepcion trae ficha admitida, motivo, un archivo que existe y no se repite; la lista esta ordenada", () => {
     const rutas = EXCEPCIONES_PAIS_SIN_LITERALES.map((e) => e.archivo);
     for (const e of EXCEPCIONES_PAIS_SIN_LITERALES) {
-      expect(["SLT-81", "SLT-90", "SL-22", "SLT-235", "SLT-237", "permanente"], e.archivo).toContain(e.ficha);
+      expect(FICHAS_ADMITIDAS, e.archivo).toContain(e.ficha);
       expect(e.motivo.trim().length, e.archivo).toBeGreaterThan(10);
       // Sin ficha que la retire, lo unico que la ata es la decision: su fecha va en el motivo.
       if (e.ficha === "permanente") expect(e.motivo, e.archivo).toMatch(/\b20\d\d-\d\d-\d\d\b/);

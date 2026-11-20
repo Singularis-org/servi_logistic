@@ -150,12 +150,17 @@ export class PaisRepository implements IPaisRepository {
     });
   }
 
+  /**
+   * SLT-235 (R6; design §3): una sola sentencia. Con `organizacion` + `pais` eran dos idas a la base
+   * en cada página del portal; el `some` lo resuelve Postgres como semi-join. La RLS de
+   * `organizacion` sigue decidiendo: el id de una empresa que el contexto no ve no casa y da `null`.
+   */
   async deLaEmpresa(organizacionId: string): Promise<PaisDTO | null> {
-    const fila = await this.prisma.organizacion.findUnique({
-      where: { id: organizacionId },
-      select: { pais: { select: SELECT_PAIS } },
+    const fila = await this.prisma.pais.findFirst({
+      where: { organizaciones: { some: { id: organizacionId } } },
+      select: SELECT_PAIS,
     });
-    return fila?.pais ? paisDeFila(fila.pais) : null;
+    return fila === null ? null : paisDeFila(fila);
   }
 
   /**

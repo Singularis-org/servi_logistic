@@ -76,13 +76,15 @@ describe("436/R22 — el panel es HERMANO de `{children}`, jamás envolviéndolo
     // Sin esto, el caso de arriba podría estar verde porque el detector no detecta.
     const envuelve = /<AsistentePanel[^/>]*>[\s\S]*\{children\}/;
     // SL-20 (T5.1): `{children}` ya no va directo en `AyudaProvider`, sino dentro de
-    // `EtiquetasGeograficasProvider`; la mutación apunta al nodo real que hoy lo pinta.
+    // `EtiquetasGeograficasProvider`; y desde SLT-235 (T2.2), dentro de `MonedaDelPaisProvider`, que
+    // va dentro de aquel. La mutación apunta al nodo real que hoy lo pinta. Es una regex y no un
+    // literal porque ese nodo ocupa tres líneas y su sangría la decide el formateador.
     const original = leer(LAYOUT);
-    const objetivo =
-      "<EtiquetasGeograficasProvider etiquetas={etiquetas}>{children}</EtiquetasGeograficasProvider>";
-    // Si el layout cambia y el texto ya no existe, la contraprueba debe fallar en ruidoso, no
+    const nodo = /<MonedaDelPaisProvider\b[^>]*>\s*\{children\}\s*<\/MonedaDelPaisProvider>/;
+    // Si el layout cambia y el nodo ya no existe, la contraprueba debe fallar en ruidoso, no
     // quedarse sin mutar en silencio.
-    expect(original, "la contraprueba no encuentra el nodo a mutar en el layout").toContain(objetivo);
+    expect(original, "la contraprueba no encuentra el nodo a mutar en el layout").toMatch(nodo);
+    const objetivo = original.match(nodo)![0];
     const mutado = original.replace(objetivo, `<AsistentePanel>${objetivo}</AsistentePanel>`);
     expect(mutado).not.toBe(original);
     expect(envuelve.test(mutado)).toBe(true);
