@@ -316,6 +316,10 @@ describe("427/T2 — el UP y el DOWN, leidos del archivo", () => {
       // no tocan `orden_traspaso_mensajero`.
       "20261121140000_plan_nivel_job_enum",
       "20261121140100_plan_nivel",
+      // SLT-225: los tipos `zona_desactivada`/`zona_reactivada` y la marca `zona.activa` con sus dos
+      // triggers; no tocan `orden_traspaso_mensajero`.
+      "20261123120000_historial_zona_desactivada",
+      "20261123120100_zona_activa",
     ]);
   });
 });
