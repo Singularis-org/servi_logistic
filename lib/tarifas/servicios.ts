@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 
+import { IMPUESTO_ROTULO } from "@/lib/constants/impuesto-rotulo";
 import type { IGrupoDistritosService } from "@/lib/interfaces/services/IGrupoDistritosService";
 import type { ITarifaActivacionService } from "@/lib/interfaces/services/ITarifaActivacionService";
 import type { ITarifasPantallaService } from "@/lib/interfaces/services/ITarifasPantallaService";
@@ -33,11 +34,18 @@ export interface ServiciosDeTarifas {
  * SLT-54 (design §4, R6): activar recibe el MISMO service que la pantalla como fuente de faltantes, asi
  * que la confirmacion se decide con la lista que el maestro ve.
  * `tests/unit/tarifas/servicios-composicion.test.ts` comprueba que cada dependencia llega.
+ *
+ * SLT-241 (R5, R6, design §5.2): `impuestoNombre` llega al servicio de valores (mensajes de validacion)
+ * y a su repositorio (texto del historial). Quien escribe valores lo lee del pais de la empresa de la
+ * sesion (`guardarValoresTarifa`); el resto de acciones no escribe `tarifa_valor` y usa el de siempre.
  */
-export function serviciosDeTarifas(prisma: PrismaClient): ServiciosDeTarifas {
+export function serviciosDeTarifas(
+  prisma: PrismaClient,
+  impuestoNombre: string = IMPUESTO_ROTULO,
+): ServiciosDeTarifas {
   const tarifasPantalla = new TarifasPantallaService(new TarifasPantallaRepository(prisma));
   return {
-    tarifaValor: new TarifaValorService(new TarifaValorRepository(prisma)),
+    tarifaValor: new TarifaValorService(new TarifaValorRepository(prisma, impuestoNombre), impuestoNombre),
     grupoDistritos: new GrupoDistritosService(new GrupoDistritosRepository(prisma)),
     tarifaActivacion: new TarifaActivacionService(new TarifaActivacionRepository(prisma), tarifasPantalla),
     tarifasPantalla,

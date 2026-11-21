@@ -9,10 +9,10 @@
 
 ## Bloque 1 — Escritura de tarifas en el servidor (R5–R9)
 
-- [ ] **T1.1** `lib/types/tarifa-flexible.ts`: `escrituraValorSchemaDe(impuesto)` y los tres esquemas
+- [x] **T1.1** `lib/types/tarifa-flexible.ts`: `escrituraValorSchemaDe(impuesto)` y los tres esquemas
   de siempre construidos con `IMPUESTO_ROTULO` (design §5.1). Sin «IVA» fuera de comentarios.
   - *Hecho:* `esquemas-escritura.test.ts` y `tarifa-schemas.test.ts` verdes sin tocarlos.
-- [ ] **T1.2** Servicio, repositorio y fábrica (design §5.2). Depende de T1.1.
+- [x] **T1.2** Servicio, repositorio y fábrica (design §5.2). Depende de T1.1.
   - `TarifaValorService(repo, impuestoNombre = IMPUESTO_ROTULO)` valida con
     `escrituraValorSchemaDe(impuestoNombre)`.
   - `TarifaValorRepository(prisma, impuestoNombre = IMPUESTO_ROTULO)` y `textoDelValor(v, impuesto)`.
@@ -22,13 +22,13 @@
   - *Hecho:* esos casos en verde; el resto del archivo, `tarifas-flexibles-escritura.test.ts`,
     `tarifa-activacion.test.ts`, `servicios-composicion.test.ts` y `tarifas-action.test.ts` verdes sin
     tocarlos.
-- [ ] **T1.3** `lib/actions/tarifas.ts > guardarValoresTarifa`: sin `deps.servicio`, lee el país con
+- [x] **T1.3** `lib/actions/tarifas.ts > guardarValoresTarifa`: sin `deps.servicio`, lee el país con
   `paisParaPantallasDelActor(await empresaDeLaPeticion(), construirPaisService())` antes del bucle y
   construye `serviciosDeTarifas(getPrismaClient(), impuestoNombre)` (design §3, §5.2). Depende de T1.2.
   - En `moneda-del-pais-tarifas.test.tsx`: los casos de R7 y R8 y el cableado de §9 (fuente de la
     acción y `serviciosDeTarifas(prisma, "IGV")` hasta el servicio y el repositorio).
   - *Hecho:* en verde; `tarifas-action.test.ts` verde sin tocarlo.
-- [ ] **T1.4** [P] `lib/repositories/_shared/resolver-tarifas.ts`: el error de `aValorCobro` nombra la
+- [x] **T1.4** [P] `lib/repositories/_shared/resolver-tarifas.ts`: el error de `aValorCobro` nombra la
   columna, no un impuesto (R9, design §6).
   - *Hecho:* `tarifas-flexibles-resolver.test.ts` verde sin tocarlo y el archivo sin «IVA» fuera de
     comentarios.

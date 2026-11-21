@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient, type TarifaConcepto } from "@prisma/client";
 
+import { IMPUESTO_ROTULO } from "@/lib/constants/impuesto-rotulo";
 import { ESTADOS_USUARIO_NO_ASIGNABLES } from "@/lib/constants/estado-usuario-asignable";
 import { textoConstraintP2002 } from "@/lib/repositories/_shared/prisma-unique";
 import { WHERE_VEHICULO_ELEGIBLE } from "@/lib/repositories/_shared/vehiculo-activo";
@@ -33,14 +34,20 @@ type TarifaValorPrismaClient = Pick<
 
 type TxValor = Pick<Prisma.TransactionClient, "tarifaValor">;
 
-/** El importe tal como se guarda, para el antes/despues del historial (cabe en `varchar(60)`). */
-function textoDelValor(v: {
-  modo: string;
-  valor: Prisma.Decimal | string;
-  ivaPct: Prisma.Decimal | string | null;
-}): string {
+/**
+ * El importe tal como se guarda, para el antes/despues del historial (cabe en `varchar(60)`).
+ * SLT-241 (R6): con % de impuesto, el texto lleva el nombre del impuesto del pais de la empresa.
+ */
+function textoDelValor(
+  v: {
+    modo: string;
+    valor: Prisma.Decimal | string;
+    ivaPct: Prisma.Decimal | string | null;
+  },
+  impuesto: string,
+): string {
   const valor = new Prisma.Decimal(v.valor).toFixed(2);
-  const iva = v.ivaPct === null ? "" : ` IVA ${new Prisma.Decimal(v.ivaPct).toFixed(2)}`;
+  const iva = v.ivaPct === null ? "" : ` ${impuesto} ${new Prisma.Decimal(v.ivaPct).toFixed(2)}`;
   return valorDeCatalogo(`${v.modo} ${valor}${iva}`);
 }
 
@@ -112,8 +119,15 @@ export function valorADTO(f: FilaDTO): TarifaValorDTO {
   };
 }
 
+/**
+ * SLT-241 (R6, design §5.2): `impuestoNombre` es el impuesto del pais de la empresa de la sesion, para el
+ * texto del valor en el historial. Lo pasa `serviciosDeTarifas`; sin el, el rotulo de la plataforma (R8).
+ */
 export class TarifaValorRepository implements ITarifaValorRepository {
-  constructor(private readonly prisma: TarifaValorPrismaClient) {}
+  constructor(
+    private readonly prisma: TarifaValorPrismaClient,
+    private readonly impuestoNombre: string = IMPUESTO_ROTULO,
+  ) {}
 
   async existeZona(zonaId: string): Promise<boolean> {
     const fila = await this.prisma.zona.findFirst({ where: { id: zonaId }, select: { id: true } });
@@ -240,8 +254,8 @@ export class TarifaValorRepository implements ITarifaValorRepository {
             entidadId: fila.id,
             entidadEtiqueta: await etiquetaDelValor(tx, fila.id),
             ...actor,
-            valorAnterior: anterior === null ? null : textoDelValor(anterior),
-            valorNuevo: textoDelValor(datos),
+            valorAnterior: anterior === null ? null : textoDelValor(anterior, this.impuestoNombre),
+            valorNuevo: textoDelValor(datos, this.impuestoNombre),
           },
         ]);
         return { id: fila.id, reemplazo: anterior !== null };
@@ -277,7 +291,7 @@ export class TarifaValorRepository implements ITarifaValorRepository {
           entidadId: id,
           entidadEtiqueta: etiqueta,
           ...actor,
-          valorAnterior: textoDelValor(anterior),
+          valorAnterior: textoDelValor(anterior, this.impuestoNombre),
           valorNuevo: null,
         },
       ]);

@@ -636,3 +636,92 @@ describe("R8 — carrera en tarifa_valor_nivel_key (repositorio real)", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// SLT-241 (R5, R6, R16) — el nombre del impuesto del pais de la empresa de la sesion. Llega por el
+// constructor (design §5.2); sin el, el rotulo de la plataforma y los textos de siempre.
+// ---------------------------------------------------------------------------------------------
+
+function servicioRealCon(raiz: unknown, impuesto: string): TarifaValorService {
+  return new TarifaValorService(
+    new TarifaValorRepository(raiz as ConstructorParameters<typeof TarifaValorRepository>[0], impuesto),
+    impuesto,
+  );
+}
+
+describe("SLT-241 R5 — los mensajes de validacion nombran el impuesto del pais", () => {
+  it("R5: un % de impuesto mal formado en un cobro dice «El IGV debe ser…»", async () => {
+    const repo = repoDoble();
+    const res = await new TarifaValorService(repo, "IGV").fijarValor(cobro({ ivaPct: "101" }), MAESTRO);
+    expect(res).toEqual({
+      status: "validation_error",
+      fieldErrors: { ivaPct: ["El IGV debe ser un porcentaje entre 0 y 100 con hasta 2 decimales."] },
+    });
+    expect(repo.fijar).not.toHaveBeenCalled();
+  });
+
+  it("R5: un pago con % de impuesto dice «… no llevan IGV.»", async () => {
+    const repo = repoDoble();
+    const res = await new TarifaValorService(repo, "IGV").fijarValor(pago({ ivaPct: "0" }), MAESTRO);
+    expect(res).toEqual({
+      status: "validation_error",
+      fieldErrors: { ivaPct: ["Los pagos al mensajero y a la satelite no llevan IGV."] },
+    });
+    expect(repo.fijar).not.toHaveBeenCalled();
+  });
+
+  it("R5/R16: sin impuesto (y con «IVA») los mensajes son los de hoy, caracter a caracter", async () => {
+    for (const servicio of [new TarifaValorService(repoDoble()), new TarifaValorService(repoDoble(), "IVA")]) {
+      expect(await servicio.fijarValor(cobro({ ivaPct: "101" }), MAESTRO)).toEqual({
+        status: "validation_error",
+        fieldErrors: { ivaPct: ["El IVA debe ser un porcentaje entre 0 y 100 con hasta 2 decimales."] },
+      });
+      expect(await servicio.fijarValor(pago({ ivaPct: "0" }), MAESTRO)).toEqual({
+        status: "validation_error",
+        fieldErrors: { ivaPct: ["Los pagos al mensajero y a la satelite no llevan IVA."] },
+      });
+    }
+  });
+});
+
+describe("SLT-241 R6 — el texto del valor en el historial nombra el impuesto del pais (repositorio real)", () => {
+  it("R6: reemplazar un cobro deja «monto 1500.00 IGV 13.00» → «monto 1800.00 IGV 13.00»", async () => {
+    const { tx, raiz } = prismaDoble({
+      id: "tv-1",
+      modo: "monto",
+      valor: new Prisma.Decimal("1500"),
+      ivaPct: new Prisma.Decimal("13"),
+    });
+    const res = await servicioRealCon(raiz, "IGV").fijarValor(cobro({ valor: "1800" }), MAESTRO);
+
+    expect(res).toEqual({ status: "ok", id: "tv-1" });
+    const [fila] = tx.historialAccion.createMany.mock.calls[0][0].data;
+    expect(fila).toMatchObject({
+      valorAnterior: "monto 1500.00 IGV 13.00",
+      valorNuevo: "monto 1800.00 IGV 13.00",
+    });
+  });
+
+  it("R6: quitar un cobro deja «IGV» en el valor que se fue", async () => {
+    const { tx, raiz } = prismaDoble({
+      id: "tv-1",
+      modo: "porcentaje",
+      valor: new Prisma.Decimal("7.5"),
+      ivaPct: new Prisma.Decimal("18"),
+    });
+    const res = await servicioRealCon(raiz, "IGV").quitarValor("tv-1", MAESTRO);
+
+    expect(res).toEqual({ status: "ok" });
+    const [fila] = tx.historialAccion.createMany.mock.calls[0][0].data;
+    expect(fila).toMatchObject({ valorAnterior: "porcentaje 7.50 IGV 18.00", valorNuevo: null });
+  });
+
+  it("R6: un pago, sin % de impuesto, deja el mismo texto que hoy («monto 800.00»)", async () => {
+    const { tx, raiz } = prismaDoble(null);
+    const res = await servicioRealCon(raiz, "IGV").fijarValor(pago({ valor: "800" }), MAESTRO);
+
+    expect(res).toEqual({ status: "ok", id: "tv-nuevo" });
+    const [fila] = tx.historialAccion.createMany.mock.calls[0][0].data;
+    expect(fila).toMatchObject({ valorAnterior: null, valorNuevo: "monto 800.00" });
+  });
+});
