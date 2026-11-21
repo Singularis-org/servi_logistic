@@ -485,3 +485,108 @@ Modificados:
 
 Veredicto: T4.1 completa; servicio, actions y tipos listos para T4.2 y T4.3, con typecheck, lint, guardias y sus tests
 en verde.
+
+## Tanda 4: T4.2 (frontend_dev, 2026-11-21)
+
+### Archivos
+Creados:
+- `app/(app)/_components/AvisoMora.tsx`: el banner (design §7.1), Server Component sin `"use client"`, sobre
+  `components/ui/alert`. Textos de `MORA_TEXTOS.banner`; `role="status"` (en plazo, descongelada a mano) o
+  `role="alert"` (vencida, congelada); `al_dia` y `null` no pintan nada. «Ver facturas» (`/mi-plan`) solo en
+  `en_plazo` y solo si el rol está en `ROLES_MI_PLAN`.
+- `tests/components/AvisoMora.test.tsx` (R24).
+
+Modificados:
+- `app/(app)/layout.tsx`: quinta posición del `Promise.all` de la rama de empresa,
+  `esAccesoTotal(actor.rol) ? avisoMoraDelLayout() : null` (los demás roles, `null` literal sin promesa; el
+  superadmin y sin sesión, `null`). `<AvisoMora>` entre la hamburguesa y `{children}`, como hermano.
+- `lib/actions/mora-empresa.ts`: quitada solo la línea `@sin-superficie` de `avisoMoraDelLayout`.
+- `tests/components/AppLayout.test.tsx`: doble de `@/lib/actions/mora-empresa` y bloque «SLT-121 R24 — el banner de
+  la mora en el layout».
+- `tests/unit/guards/mi-plan-solo-maestro.guardia.test.ts`: `AvisoMora.tsx` en la autocomprobación, en `permitidos`
+  y en la lista exacta de `href` a `/mi-plan` (design §10 la enmienda).
+
+### Desvíos frente al spec
+- La guardia de SLT-91 también fija la lista exacta de archivos con `href="/mi-plan"`; el design §10 solo nombra
+  `permitidos`. El banner sí lleva un `href`, así que entra en las dos listas, con su condición a `ROLES_MI_PLAN`
+  probada en `AvisoMora.test.tsx`.
+- El enlace se condiciona con `ROLES_MI_PLAN` y no con `rol === "maestro"`: es la constante única de SLT-91 R5.
+
+### R → test (Tanda 4: T4.2)
+| R | Test |
+|---|---|
+| R24 | `tests/components/AvisoMora.test.tsx`: en plazo con fecha y enlace para el maestro (`status`); admin sin enlace; vencida (`alert`, maestro y admin); congelada (`alert`); descongelada a mano (`status`, fecha hasta); `al_dia` y `null` sin banner |
+| R24 | `tests/components/AppLayout.test.tsx` > «SLT-121 R24 — el banner de la mora en el layout»: maestro y admin consultan una vez y ven el banner; mensajero, adminTienda y superadmin no consultan ni ven banner; `null` → sin banner y la página se pinta |
+| R24 | `tests/unit/guards/mi-plan-solo-maestro.guardia.test.ts` (enmendada): el único `href` nuevo a `/mi-plan` es el del banner |
+
+### Verificación (salida real)
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: `tsc --noEmit` sin errores.
+- `npx eslint` sobre los 6 archivos tocados: `ESLint: No issues found`, exit 0.
+- `pnpm exec vitest run` de `AvisoMora`, `AppLayout`, `mora-empresa` (actions) y `mi-plan-solo-maestro`: 4 archivos,
+  58/58.
+- `pnpm exec vitest run` de las guardias `superficie-de-uso`, `asistente-panel-hermano`,
+  `etiquetas-geograficas-sin-literal`, `modulos-reparto`, `push-alta-punto-unico`, `pwa-aviso-sin-recarga`,
+  `revision-sinpe-no-bloquea`, `use-server-exports-async`, `use-server-sin-reexport-de-tipos`,
+  `superadmin-fuera-de-empresa` + `tests/integration/app-layout-superadmin.test.tsx`: 10/11 archivos, 154/155; el
+  rojo era `superficie-de-uso` R-A por las tres anotaciones de T4.3 (en curso en paralelo). Tras quitarlas T4.3,
+  `superficie-de-uso` + `mora-empresa`: 2 archivos, 29/29.
+
+Veredicto: T4.2 completa; banner de la mora en el layout para maestro y admin, con typecheck, lint, guardias y tests
+en verde.
+
+## Tanda 4: T4.3 (frontend_dev, 2026-11-21)
+
+### Archivos
+
+Creados:
+- `app/(app)/plataforma/empresas/[organizacionId]/_components/MoraEmpresa.tsx` (design §7.2): sección «Plazo de pago
+  y mora» (cliente). Gracia vigente («15 días (propia)» / «7 días (global)»), campo de 1 a 60 con «Guardar» y «Usar
+  la global» (este, solo con gracia propia), estado con su fecha, tabla de facturas vencidas (número, fecha límite,
+  saldo) con el saldo vencido, historial de la mora (R31, con `ACCION_LABELS`) y «Descongelar…» solo si está
+  congelada: diálogo (`Modal`) con motivo (`Textarea`, `maxLength` 200) y «Habilitada hasta» (`min`/`max` =
+  `descongelar.desde`/`hasta`, valor inicial `porDefecto`). Textos del dominio de `MORA_TEXTOS.plataforma` (estado,
+  gracia, errores); los propios de la pantalla en `TEXTOS`.
+- `tests/components/MoraEmpresa.test.tsx` (34 casos).
+
+Modificados:
+- `app/(app)/plataforma/empresas/[organizacionId]/page.tsx`: `leerMora` aislada (throw o estado distinto de `ok` →
+  `null`) en el `Promise.all`; `<MoraEmpresa>` al principio de la pestaña «Empresa», antes de `PlanEmpresa`, con
+  `fijarGraciaEmpresaAction` y `descongelarEmpresaAction` ligadas con `.bind(null, empresa.organizacionId)`.
+- `lib/actions/mora-empresa.ts`: quitadas las tres `@sin-superficie` de `verMoraDeEmpresaAction`,
+  `fijarGraciaEmpresaAction` y `descongelarEmpresaAction` (la de `avisoMoraDelLayout` es de T4.2).
+
+### Desvíos frente al spec
+- **Tabla de facturas = `facturasVencidas`**, no `facturas`: R32 pide «las facturas vencidas con su saldo» y así se
+  ven también durante un descongelamiento a mano. Las no vencidas con saldo no se pintan (el estado «En plazo» ya
+  da la fecha límite más próxima).
+- **La validación del cliente repite la del servidor** (gracia entera de 1 a 60; motivo recortado de 1 a 200; fecha
+  dentro de `descongelar.desde … hasta`): lo que ya se sabe que caerá no se manda. El formulario de la gracia lleva
+  `noValidate` para que el error sea el de `FormField` (`aria-invalid` + texto), no la burbuja nativa de `min`/`max`.
+- El entero se comprueba con `String(Number.parseInt(t, 10)) === t`, no con `/^\d+$/`: la guardia
+  `lectura-guia-unica` (R567) prohíbe esa regex suelta en `app/`.
+- **`fijarGracia` con `forbidden` o `not_found`** muestra el mensaje como `role="alert"` bajo el formulario (el design
+  §7.2 solo habla del diálogo de descongelar).
+
+### R → test (Tanda 4: T4.3)
+| R | Test (`tests/components/MoraEmpresa.test.tsx`) |
+|---|---|
+| R3 | «SLT-121 R3, R32 — cambiar o quitar la gracia propia»: «Guardar» manda `{ dias: 30 }` y refresca; «Usar la global» manda `{ dias: null }`; «0», «61», «», «-3» y «7.5» no llegan al servidor y marcan el campo; `validation_error` del servidor bajo el campo; `forbidden` como alerta |
+| R22 | «SLT-121 R22, R32 — descongelar a mano»: sin botón si no está congelada (4 estados); el diálogo propone hoy + 7 con `min`/`max` y `maxLength` 200; manda el motivo recortado y la fecha, cierra y refresca; sin motivo y fecha fuera de rango no llegan al servidor; `no_congelada`, `not_found` y `forbidden` en el diálogo, que sigue abierto; `validation_error` bajo su campo |
+| R31 | «SLT-121 R31 — el historial de la mora»: fecha, acción (`ACCION_LABELS`), quién o «Sistema», detalle (antes → después, monto); vacío |
+| R32 | «SLT-121 R32 — lo que ve el superadmin»: gracia propia y global con su valor; los 5 estados con su fecha; facturas vencidas con número, fecha límite y saldo, y saldo vencido; vencidas también descongelada a mano; sin vencidas; lectura `null` → «No se pudo cargar la mora» |
+
+### Verificación (salida real)
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: `tsc --noEmit` sin errores.
+- `npx eslint` sobre `MoraEmpresa.tsx`, `page.tsx`, `lib/actions/mora-empresa.ts` y el test: `ESLint: No issues found`,
+  exit 0.
+- `pnpm exec vitest run` de `MoraEmpresa`, `mora-empresa` (actions) y las guardias `superficie-de-uso`,
+  `superadmin-fuera-de-empresa`, `plataforma-solo-en-lista`, `pais-sin-literales`, `use-server-exports-async` y
+  `vistas-superficies-declaradas`: 8 archivos, 146/146.
+- `pnpm run test:guardias`: 361 archivos, 357 verdes, 3 saltados, 1 rojo (5429 pasados): `lectura-guia-unica` por
+  `/^\d+$/` en `MoraEmpresa.tsx`. Arreglado (arriba); vuelto a correr `MoraEmpresa`, `lectura-guia-unica`,
+  `mora-empresa` (actions), `superficie-de-uso` y `superadmin-fuera-de-empresa`: 5 archivos, 85/85; typecheck y
+  eslint otra vez limpios. Con el caso «7.5» añadido, `MoraEmpresa`: 34/34.
+- Sin base de datos: ningún test de T4.3 la necesita. Sin E2E: lo cubre T5.1.
+
+Veredicto: T4.3 completa; sección de la mora del superadmin con gracia propia y descongelar a mano, con typecheck,
+lint, guardias y tests en verde.

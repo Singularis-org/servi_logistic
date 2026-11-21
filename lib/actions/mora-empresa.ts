@@ -35,7 +35,6 @@ function conEmpresaLigada(organizacionId: string, input: unknown): Record<string
 /**
  * R24: el banner de `app/(app)/layout.tsx`. `null` para quien no es `maestro` ni `admin` (sin leer nada) y también
  * si la lectura falla: el banner es un aviso, y su fallo no debe tumbar la página (design §7.1).
- * @sin-superficie SLT-121 por tandas: la monta `app/(app)/layout.tsx` en T4.2 (frontend_dev), que quita esta línea.
  */
 export async function avisoMoraDelLayout(deps: MoraEmpresaDeps = {}): Promise<EstadoMora | null> {
   try {
@@ -48,7 +47,6 @@ export async function avisoMoraDelLayout(deps: MoraEmpresaDeps = {}): Promise<Es
 
 /**
  * R31, R32: la sección «Plazo de pago y mora» de la empresa `organizacionId` (superadmin).
- * @sin-superficie SLT-121 por tandas: la lee la página del detalle de empresa en T4.3 (frontend_dev), que quita esta línea.
  */
 export async function verMoraDeEmpresaAction(
   organizacionId: string,
@@ -59,7 +57,6 @@ export async function verMoraDeEmpresaAction(
 
 /**
  * R3, R5: `{ dias }` de 1 a 60, o `{ dias: null }` para volver a la global, de la empresa ligada.
- * @sin-superficie SLT-121 por tandas: la liga `MoraEmpresa.tsx` del detalle de empresa en T4.3 (frontend_dev), que quita esta línea.
  */
 export async function fijarGraciaEmpresaAction(
   organizacionId: string,
@@ -71,7 +68,6 @@ export async function fijarGraciaEmpresaAction(
 
 /**
  * R22: `{ motivo, hasta }` (`AAAA-MM-DD`) para descongelar a mano la empresa ligada.
- * @sin-superficie SLT-121 por tandas: la liga `MoraEmpresa.tsx` del detalle de empresa en T4.3 (frontend_dev), que quita esta línea.
  */
 export async function descongelarEmpresaAction(
   organizacionId: string,

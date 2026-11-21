@@ -17,7 +17,8 @@ import { mensajeDelTope } from "@/lib/planes/mensajes";
 //
 // SLT-121 (design §4.2; R26-R28) la enmienda igual: los correos de la mora (recordatorio, congelada y activa de
 // nuevo) van solo a los maestros y llevan el botón «Ver facturas» a «Mi plan». Tampoco es un `href`. El banner
-// (`AvisoMora.tsx`, R24) entra en la lista con su tanda.
+// (`AvisoMora.tsx`, design §7.1; R24) sí lleva un `href`, condicionado a `ROLES_MI_PLAN`: el admin ve el aviso sin
+// el enlace (lo prueba `tests/components/AvisoMora.test.tsx`).
 
 const RAIZ = process.cwd();
 const RAICES_A_BARRER = ["app", "components", "lib", "public"];
@@ -48,8 +49,9 @@ describe("SLT-91 — la autocomprobación del barrido", () => {
         // SLT-136 R32: los dos admitidos nuevos tienen que aparecer, o la lista admitiría a quien ya no la nombra.
         "lib/notificaciones/catalogo-avisos.ts",
         "lib/services/email/plantillas/factura-emitida.ts",
-        // SLT-121 R26-R28.
+        // SLT-121 R26-R28 y R24.
         "lib/services/email/plantillas/mora-aviso.ts",
+        "app/(app)/_components/AvisoMora.tsx",
       ]),
     );
     expect(conPatron(MODULO_CONSUMO)).toEqual(
@@ -100,12 +102,15 @@ describe("SLT-91 R10 — ninguna otra vía a «Mi plan»", () => {
       "lib/services/email/plantillas/factura-emitida.ts",
       // SLT-121 R26-R28: el botón de los correos de la mora, que solo reciben los maestros.
       "lib/services/email/plantillas/mora-aviso.ts",
+      // SLT-121 R24: el «Ver facturas» del banner, con el `href` condicionado a `ROLES_MI_PLAN`.
+      "app/(app)/_components/AvisoMora.tsx",
     ];
     expect(conPatron(RUTA_MI_PLAN).filter((archivo) => !permitidos.includes(archivo))).toEqual([]);
   });
 
-  it("R10 (enmendado por SLT-136 R32): los únicos `href` a la ruta son el del menú y el atajo del aviso de la factura", () => {
+  it("R10 (enmendado por SLT-136 R32 y SLT-121 R24): los únicos `href` a la ruta son el del menú, el atajo del aviso de la factura y el del banner de la mora", () => {
     expect(conPatron(/href\s*[:=]\s*\{?\s*["'`]\/mi-plan(?=["'`/?#])/)).toEqual([
+      "app/(app)/_components/AvisoMora.tsx",
       "lib/auth/menu-visibility.ts",
       "lib/notificaciones/catalogo-avisos.ts",
     ]);

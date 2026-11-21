@@ -177,6 +177,14 @@ vi.mock("@/providers/EtiquetasGeograficasProvider", () => ({
   },
 }));
 
+// SLT-121 (design §7.1; R24) — la quinta lectura: el estado de la mora para el banner. Se dobla la action para
+// saber QUIÉN consulta (solo maestro y admin) y qué baja al banner. Por defecto, nada que avisar.
+const { avisoMoraMock } = vi.hoisted(() => ({ avisoMoraMock: vi.fn() }));
+vi.mock("@/lib/actions/mora-empresa", () => ({
+  avisoMoraDelLayout: () => avisoMoraMock(),
+}));
+avisoMoraMock.mockResolvedValue(null);
+
 // Por defecto, alguien que no ha decidido nada: la preferencia «no puesta» (422/R2).
 avisosPushDeMock.mockResolvedValue(false);
 // Por defecto, nada que pedir: es la respuesta NORMAL del resolvedor.
@@ -679,5 +687,55 @@ describe("SL-20/T5.1 — el layout baja los nombres de nivel del país de la emp
     expect(propsDelProveedorEtiquetas).toEqual([{ etiquetas: ETIQUETAS_NEUTRAS }]);
     expect(enLosLogs).toHaveBeenCalled();
     enLosLogs.mockRestore();
+  });
+});
+
+describe("SLT-121 R24 — el banner de la mora en el layout", () => {
+  beforeEach(() => {
+    avisoMoraMock.mockReset();
+    avisoMoraMock.mockResolvedValue(null);
+    etiquetasDeEmpresaMock.mockResolvedValue(ETIQUETAS_NEUTRAS);
+    cookieTemaMock.mockReturnValue(undefined);
+  });
+
+  it.each(["maestro", "admin"] as const)(
+    "R24: el %s consulta la mora y el banner se pinta encima de la página",
+    async (rol) => {
+      avisoMoraMock.mockResolvedValue({ estado: "vencida", facturas: [], saldoVencido: "10.00" });
+      resolveActorMock.mockResolvedValue({ usuarioId: "u1", rol, organizacionId: "org-xa" });
+
+      await renderLayout(<div data-testid="page-children">Contenido</div>);
+
+      expect(avisoMoraMock).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole("alert")).toHaveTextContent("Tienes facturas vencidas.");
+      expect(screen.getByTestId("page-children")).toBeInTheDocument();
+    },
+  );
+
+  it.each(["mensajero", "adminTienda", "superadmin"] as const)(
+    "R24: el %s no consulta la mora ni ve banner",
+    async (rol) => {
+      resolveActorMock.mockResolvedValue({
+        usuarioId: "u9",
+        rol,
+        organizacionId: rol === "superadmin" ? null : "org-xa",
+      });
+
+      await renderLayout(<div data-testid="page-children">Contenido</div>);
+
+      expect(avisoMoraMock).not.toHaveBeenCalled();
+      expect(screen.queryByText(/factura|congelada|habilitada/i)).toBeNull();
+      expect(screen.getByTestId("page-children")).toBeInTheDocument();
+    },
+  );
+
+  it("R24: sin estado (la lectura falló y la action devolvió `null`), sin banner y la página se pinta", async () => {
+    resolveActorMock.mockResolvedValue({ usuarioId: "u1", rol: "maestro", organizacionId: "org-xa" });
+
+    await renderLayout(<div data-testid="page-children">Contenido</div>);
+
+    expect(avisoMoraMock).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/factura|congelada|habilitada/i)).toBeNull();
+    expect(screen.getByTestId("page-children")).toBeInTheDocument();
   });
 });
