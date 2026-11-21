@@ -27,6 +27,9 @@ import type {
 import { PlantillaMensajeService } from "@/lib/services/PlantillaMensajeService";
 import { PlantillaMensajeRepository } from "@/lib/repositories/PlantillaMensajeRepository";
 import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
+import { construirPaisService } from "@/lib/actions/_shared/paises-plataforma";
+import { empresaDeLaPeticion } from "@/lib/auth/empresa-de-la-peticion";
+import { paisParaPantallasDelActor } from "@/lib/services/pais-para-pantallas";
 import { JobRepository } from "@/lib/repositories/JobRepository";
 import { construirWhatsappTemplatePort } from "@/lib/services/whatsapp/construir-template-port";
 import { WhatsappEnvioRepository } from "@/lib/repositories/WhatsappEnvioRepository";
@@ -82,6 +85,11 @@ async function buildPlantillaService(): Promise<IPlantillaMensajeService> {
     envios: new WhatsappEnvioRepository(prisma),
     resolutorAppId: new ResolutorAppIdMeta({ leerWhatsapp: async () => wa ?? whatsappDeLaEmpresa() }),
     reglasPais: construirReglasPaisEmpresa(prisma), // SLT-42 (R22): la zona de la vista previa.
+    // SLT-241 (R12): la moneda del pais para el importe de la vista previa. Perezosa: el servicio
+    // la pide solo si el cuerpo pinta un importe. Nunca lanza: si la lectura falla, la de la
+    // plataforma y el error en el log (`paisParaPantallasDelActor`).
+    monedaDeVistaPrevia: async () =>
+      (await paisParaPantallasDelActor(await empresaDeLaPeticion(), construirPaisService())).moneda,
   });
 }
 

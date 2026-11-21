@@ -6,7 +6,7 @@ import { CATALOGO_CONCEPTOS, esConceptoTienda } from "@/lib/tarifas/catalogo";
 import type { ReferenciaDeZona, Referencia } from "@/lib/tarifas/referencia-vigente";
 import type { ModoTarifa, TarifaValorDTO } from "@/lib/types/tarifa-flexible";
 
-import { TEXTOS } from "./tarifas-textos";
+import { TEXTOS, textosDelImpuesto } from "./tarifas-textos";
 
 /**
  * SLT-54 (R20, R34-R36, R38, R61) — de lo digitado al payload de `guardarValoresTarifa`. Aparte y puro porque
@@ -112,9 +112,14 @@ export interface PlanDeGuardado {
 
 /**
  * R35: se envia solo lo cambiado. Vacio con valor guardado = quitar; vacio sin valor = nada, nunca un 0. El
- * pago se construye sin la clave `ivaPct`: el service rechaza tambien `null` y `"0"` (R36).
+ * pago se construye sin la clave `ivaPct`: el service rechaza tambien `null` y `"0"` (R36). SLT-241 (R4): el
+ * error de impuesto vacio nombra el impuesto del pais.
  */
-export function planDeGuardado(editadas: readonly CeldaEditada[], columnas: ColumnasDelNivel): PlanDeGuardado {
+export function planDeGuardado(
+  editadas: readonly CeldaEditada[],
+  columnas: ColumnasDelNivel,
+  impuesto: string,
+): PlanDeGuardado {
   const cambios: CambioDeValor[] = [];
   const errores: Record<string, string[]> = {};
 
@@ -141,7 +146,7 @@ export function planDeGuardado(editadas: readonly CeldaEditada[], columnas: Colu
 
     const ivaPct = decimalDeCampo(celda.ivaPct);
     if (ivaPct === "") {
-      errores[clave] = [TEXTOS.ivaObligatorio];
+      errores[clave] = [textosDelImpuesto(impuesto).impuestoObligatorio];
       continue;
     }
     const sinCambio =

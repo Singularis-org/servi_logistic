@@ -20,6 +20,11 @@ export interface VariableInforme {
   readonly descripcion: string;
   /** Lo que se usa en la vista previa y viaja a Meta como ejemplo del parametro (R4/R5). */
   readonly ejemplo: string;
+  /**
+   * SLT-241 (R13): el importe crudo (escala 2) de una variable que ES un importe. La vista previa
+   * de la pantalla lo pinta en la moneda del pais; `ejemplo` sigue siendo lo que viaja a Meta (R15).
+   */
+  readonly importeEjemplo?: string;
 }
 
 /** Lo que la pantalla sabe pintar como formulario de parametros. */

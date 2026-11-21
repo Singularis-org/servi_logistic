@@ -24,7 +24,10 @@ import type {
 } from "@/lib/interfaces/services/ITopeIntentosService";
 import { serviciosDeTarifas } from "@/lib/tarifas/servicios";
 import { getPrismaClient } from "@/lib/db/prisma-client";
+import { construirPaisService } from "@/lib/actions/_shared/paises-plataforma";
+import { empresaDeLaPeticion } from "@/lib/auth/empresa-de-la-peticion";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
+import { paisParaPantallasDelActor } from "@/lib/services/pais-para-pantallas";
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError, type AppErrorShape } from "@/lib/errors";
 import { defaultLogger } from "@/lib/errors/logger";
 import {
@@ -167,6 +170,10 @@ export type GuardarValoresTarifaResult =
  * SLT-54 (design §7, R35, R38): fija o quita cada concepto, en serie, cada uno con su transaccion y su
  * historial. Sin transaccion comun a proposito: un fallo en una fila no debe tirar lo demas, y por eso
  * la excepcion de una fila se queda en su resultado y el guardado sigue.
+ *
+ * SLT-241 (R5-R8, design §3, §5.2): el servicio real se construye con el nombre del impuesto del pais de
+ * la empresa de la sesion, leido UNA vez y antes del bucle (memo de SLT-235). Esa lectura nunca lanza:
+ * si falla o el pais no tiene impuesto, cae al rotulo de la plataforma y lo deja en el log (R8).
  */
 export async function guardarValoresTarifa(
   input: unknown,
@@ -176,7 +183,11 @@ export async function guardarValoresTarifa(
     const actor = await actorDe(deps);
     const parseado = guardarValoresTarifaSchema.safeParse(input);
     if (!parseado.success) return invalida(parseado.error);
-    const servicio = deps.servicio ?? serviciosDeTarifas(getPrismaClient()).tarifaValor;
+    let servicio = deps.servicio;
+    if (servicio === undefined) {
+      const { impuestoNombre } = await paisParaPantallasDelActor(await empresaDeLaPeticion(), construirPaisService());
+      servicio = serviciosDeTarifas(getPrismaClient(), impuestoNombre).tarifaValor;
+    }
 
     const resultados: ResultadoDeCambio[] = [];
     for (const cambio of parseado.data.cambios) {

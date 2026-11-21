@@ -25,7 +25,8 @@ import type {
 } from "@/lib/types/plantilla-mensaje";
 import { descargaConfig } from "@/lib/config/descarga";
 import { previewConEjemplos, validarCuerpo } from "@/lib/utils/plantilla-mensaje";
-import { necesitaZona } from "@/lib/types/plantilla-datos";
+import { necesitaMoneda, necesitaZona } from "@/lib/types/plantilla-datos";
+import type { FormatoMoneda } from "@/lib/config/moneda";
 import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 import type { PlantillaWhatsappPropagator } from "@/lib/services/whatsapp/plantilla-whatsapp-sync";
@@ -70,6 +71,11 @@ export interface PlantillaInformeDeps {
    * pinta una fecha con hora. Solo se lee en ese caso; sin el puerto, la vista previa falla ahi.
    */
   reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
+  /**
+   * SLT-241 (R12): la moneda del pais de la empresa para la vista previa. Solo se lee si el cuerpo
+   * pinta un importe (`necesitaMoneda`); sin ella, la moneda de la plataforma, como antes.
+   */
+  monedaDeVistaPrevia?: () => Promise<FormatoMoneda>;
 }
 
 /** R6: la combinacion final (informe, documento, tienda) es valida. `null` si lo es. */
@@ -466,6 +472,11 @@ export class PlantillaMensajeService implements IPlantillaMensajeService {
     const zona = necesitaZona(validado.variables)
       ? await zonaDeLaEmpresa(this.informe.reglasPais, "vista previa de plantilla")
       : undefined;
-    return { status: "ok", texto: previewConEjemplos(cuerpo, zona) }; // R18/R19
+    // SLT-241 (R12): el importe del ejemplo, en la moneda del pais, como en el envio real.
+    const moneda =
+      necesitaMoneda(validado.variables) && this.informe.monedaDeVistaPrevia !== undefined
+        ? await this.informe.monedaDeVistaPrevia()
+        : undefined;
+    return { status: "ok", texto: previewConEjemplos(cuerpo, zona, moneda) }; // R18/R19
   }
 }

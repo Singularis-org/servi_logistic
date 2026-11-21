@@ -8,6 +8,7 @@
 import type { IInformeTransitoRepository } from "@/lib/interfaces/repositories/IInformeTransitoRepository";
 import type { InformeWhatsapp, ResultadoInforme } from "@/lib/whatsapp-envios/informes/tipos";
 import { getPrismaClient } from "@/lib/db/prisma-client";
+import { formatearMontoEn, MONEDA_PLATAFORMA } from "@/lib/config/moneda";
 import { detalleDeCausa } from "@/lib/whatsapp-envios/informes/causa";
 import { InformeTransitoRepository } from "@/lib/repositories/InformeTransitoRepository";
 import {
@@ -26,6 +27,13 @@ import {
 import { nombreArchivoTransito, pdfInformeTransito } from "@/lib/whatsapp-envios/informes/transito/pdf";
 
 export const CLAVE_INFORME_TRANSITO = "transito";
+
+/**
+ * SLT-241 (R13, R14): el importe crudo del ejemplo de `por_cobrar`. La pantalla lo pinta en la
+ * moneda del pais (`importeEjemplo`); `ejemplo`, lo que viaja a Meta (R15), sale del formateador en
+ * la moneda de la plataforma, nombrada.
+ */
+const POR_COBRAR_EJEMPLO = "322900.00";
 
 export interface DepsInformeTransito {
   repo: IInformeTransitoRepository;
@@ -126,7 +134,8 @@ export function crearInformeTransito(deps?: DepsInformeTransito): InformeWhatsap
         clave: "por_cobrar",
         nombre: "Por cobrar en la calle",
         descripcion: "Suma de lo que hay que cobrar en los paquetes en alerta.",
-        ejemplo: "₡322.900",
+        ejemplo: formatearMontoEn(MONEDA_PLATAFORMA, POR_COBRAR_EJEMPLO),
+        importeEjemplo: POR_COBRAR_EJEMPLO,
       },
       { clave: "en_alerta_gam", nombre: "En alerta en la GAM", descripcion: "Paquetes en alerta de la zona central.", ejemplo: "5" },
       {

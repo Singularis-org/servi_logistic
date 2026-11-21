@@ -17,6 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useImpuestoDelPais, useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
 import { useToast } from "@/hooks/useToast";
 import { guardarValoresTarifa, type GuardarValoresTarifaResult } from "@/lib/actions/tarifas";
 import type { MensajeroDePantalla } from "@/lib/interfaces/repositories/ITarifasPantallaRepository";
@@ -31,7 +32,7 @@ import {
   type Celda,
   type CeldaEditada,
 } from "./tarifas-borrador";
-import { conceptosDeActor, etiquetaConcepto, etiquetaModo, modoPorDefecto, TEXTOS } from "./tarifas-textos";
+import { conceptosDeActor, etiquetaConcepto, etiquetaModo, modoPorDefecto, TEXTOS, textosDelImpuesto } from "./tarifas-textos";
 import type { FilaMensajero } from "./TarifasMensajeros";
 
 const CAMPO = "h-auto min-h-11 w-[110px] max-sm:w-full focus-visible:ring-3 focus-visible:ring-ring";
@@ -69,6 +70,10 @@ export function TarifaMensajeroDialogo({
   onCambio,
 }: Readonly<TarifaMensajeroDialogoProps>) {
   const toast = useToast();
+  // SLT-241 (R2, R4): la moneda y el impuesto del pais; sin proveedor, los de la plataforma.
+  const moneda = useMonedaDelPais();
+  const impuesto = useImpuestoDelPais();
+  const ti = useMemo(() => textosDelImpuesto(impuesto), [impuesto]);
   const [elegido, setElegido] = useState(mensajeroInicialId ?? "");
   // Tras guardar algo, el elegido gana valores y sale de `disponibles`; además, cambiarlo aquí dejaría atrás lo ya
   // guardado sin decirlo. Por eso el selector desaparece.
@@ -85,7 +90,7 @@ export function TarifaMensajeroDialogo({
     const [concepto] = clave.split(":") as [TarifaConcepto, string];
     return { clave, concepto, vehiculoId: null, guardado: guardados.get(clave), celda };
   });
-  const plan = planDeGuardado(editadas, { zonaId: null, grupoId: null, tiendaId: null, mensajeroId: elegido });
+  const plan = planDeGuardado(editadas, { zonaId: null, grupoId: null, tiendaId: null, mensajeroId: elegido }, impuesto);
 
   function celdaDe(concepto: TarifaConcepto): Celda {
     const clave = claveDeCelda(concepto, null);
@@ -135,7 +140,7 @@ export function TarifaMensajeroDialogo({
   }
 
   const sinOpciones = !fijado && disponibles.length === 0;
-  const nota = `${TEXTOS.sinIva} ${TEXTOS.vacioGrupo} ${TEXTOS.ceroPaga} ${TEXTOS.mensajerosBase}`;
+  const nota = `${ti.sinImpuesto} ${TEXTOS.vacioGrupo} ${TEXTOS.ceroPaga} ${ti.mensajerosBase}`;
   const titulo = mensajeroInicialId === null ? TEXTOS.anadirMensajeroTitulo : TEXTOS.editarMensajeroTitulo(nombre);
 
   return (
@@ -227,8 +232,8 @@ export function TarifaMensajeroDialogo({
                         disabled={deshabilitada}
                         onValueChange={(m) => editar(concepto, { modo: m === "porcentaje" ? "porcentaje" : "monto" })}
                         options={[
-                          { value: "monto", label: etiquetaModo("monto") },
-                          { value: "porcentaje", label: etiquetaModo("porcentaje") },
+                          { value: "monto", label: etiquetaModo("monto", moneda) },
+                          { value: "porcentaje", label: etiquetaModo("porcentaje", moneda) },
                         ]}
                         className={CAMPO}
                       />

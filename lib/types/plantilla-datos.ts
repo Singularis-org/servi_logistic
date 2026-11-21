@@ -320,12 +320,20 @@ const REMISION = definir({
   transform: texto,
 });
 
+/**
+ * SLT-241 (R14): el importe del ejemplo, en crudo. Lo usan el fixture
+ * (`DATOS_PLANTILLA_EJEMPLO.orden.montoCobrar`) y el `ejemplo` de `{{monto}}`, que sale del
+ * formateador en la moneda de la plataforma, nombrada: el catalogo es de modulo y lo comparten el
+ * envio real, la vista previa y Meta (R15). La moneda del pais entra por quien resuelve (R12).
+ */
+const MONTO_COBRAR_EJEMPLO = 12500;
+
 const MONTO = definir({
   clave: "monto",
   campo: "orden.montoCobrar",
   nombre: "Monto a cobrar",
   descripcion: "Lo que el cliente paga contra entrega, con símbolo y separador de miles.",
-  ejemplo: "₡12.500",
+  ejemplo: formatearMontoEn(MONEDA_PLATAFORMA, MONTO_COBRAR_EJEMPLO),
   usaMoneda: true,
   leer: (d) => d.orden.montoCobrar,
   transform: dinero,
@@ -816,7 +824,7 @@ export const DATOS_PLANTILLA_EJEMPLO: DatosPlantilla = {
     producto: "2 pares de zapatos",
     peso: 1.5,
     notas: "Entregar después de las 3 p.m.",
-    montoCobrar: 12500,
+    montoCobrar: MONTO_COBRAR_EJEMPLO,
     cobraComision: true,
     prioridad: false,
     intentosContacto: 2,
