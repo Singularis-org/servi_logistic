@@ -88,14 +88,14 @@
 
 ## Tanda 5 — Punta a punta y cierre
 
-- [ ] **T5.1** `e2e/mora-congelamiento.spec.ts` (proyecto `dinero`), según design §11. Se corren en local, sobre una
+- [x] **T5.1** `e2e/mora-congelamiento.spec.ts` (proyecto `dinero`), según design §11. Se corren en local, sobre una
       base desechable: el archivo nuevo, `--project=dinero` y `e2e/dos-empresas-humo.spec.ts`. Depende de T1–T4.
       *Hecho:* los tres en verde, sin reintentos (R35, R18).
 - [x] **T5.2** `docs/architecture.md > Facturas de la plataforma`: sección «Mora y congelamiento». Recoge las columnas,
       las funciones, el trigger y su guardia, los permisos, la corrida, los correos, la enmienda a SLT-136 y al
       repositorio de SLT-60 y SLT-143, y la frontera con SLT-226, SLT-230 y SLT-231.
       *Hecho:* el texto nombra cada pieza con su ruta.
-- [ ] **T5.3** `progress/impl_SLT-121.md` con el mapa `R<n> → test` y `./init.sh` en verde.
+- [x] **T5.3** `progress/impl_SLT-121.md` con el mapa `R<n> → test` y `./init.sh` en verde.
       *Hecho:* los 35 requisitos tienen su test.
 
 ## Archivos esperados

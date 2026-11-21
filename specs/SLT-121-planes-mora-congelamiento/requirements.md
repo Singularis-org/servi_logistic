@@ -156,12 +156,16 @@
   usarla. Es el enganche para SLT-226 «Cobro automático: modelo del cobro e idempotencia» y SLT-231.
 - **R35** — Un E2E DEBE recorrer de punta a punta, contra la app real, este camino:
   1. una empresa con una factura vencida se congela;
-  2. el maestro ve el banner;
-  3. un `admin` no puede crear una orden y ve el error;
+  2. el maestro y el `admin` ven el banner;
+  3. la tienda (`adminTienda`) no puede crear una orden y ve el error;
   4. la API por key responde 403 a una carga y 200 a una consulta;
   5. el maestro registra el pago a la plataforma desde la wallet;
   6. el superadmin lo confirma;
-  7. la empresa queda descongelada, sin banner, y el `admin` vuelve a crear la orden.
+  7. la empresa queda descongelada: el maestro y el `admin` ya no ven el banner, y la tienda vuelve a crear la
+     orden.
+
+  Enmienda del 2026-11-21 (humano: «Enmendar R35 a tienda»): el `admin` no tiene pantalla para crear órdenes (la
+  carga masiva es de `adminTienda`), así que la escritura la intenta y la hace la tienda.
 
   `e2e/dos-empresas-humo.spec.ts` DEBE seguir en verde.
 
@@ -226,3 +230,4 @@ es 403 con `details.codigo = "empresa_congelada"`, la misma convención que `mod
 | 2026-11-20 | P4 — Rango de la fecha hasta del descongelamiento a mano | **De hoy a hoy + 60 días**, hora de la plataforma (humano). |
 | 2026-11-20 | P5 — El motivo del descongelamiento a mano en `historial_accion` | Se guarda con una **segunda excepción declarada** a la regla de texto libre, solo para `empresa_descongelada_a_mano` y recortado a 200 caracteres. **Condición de la review:** Carlos Restrepo la acepta en la review del PR (humano). |
 | 2026-11-20 | ¿Cómo toman la fila de la empresa las funciones de la mora (`organizacion_mora_*`)? | Con **`FOR NO KEY UPDATE`**, no con `FOR UPDATE`: con la empresa congelada, anular un pago mientras el superadmin lo confirma daba `40P01` (deadlock) contra la anulación de SLT-60. Opción (a); detalle en design §2 (humano). |
+| 2026-11-21 | R35 — ¿Quién intenta crear la orden en el E2E, si el `admin` no tiene pantalla para hacerlo? | **La tienda** (`adminTienda`): la intenta con la empresa congelada y la crea al final; el `admin` ve el banner y ve que desaparece (humano: «Enmendar R35 a tienda»). |

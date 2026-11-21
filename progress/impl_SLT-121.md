@@ -718,3 +718,55 @@ falla antes, así que el botón de confirmar no llega a existir (el E2E afirma s
   mismo texto en pantalla y ninguna orden (R12, R14, R35) (1.2s)»; `6 passed (27.5s)`, exit 0.
 
 Veredicto: R14 cerrado en la pantalla de carga masiva; unit, componente y E2E en verde.
+
+## Tanda 5: T5.3 — mapa consolidado R1–R35 → test (implementer, 2026-11-21)
+
+Enmienda de R35 (humano, 2026-11-21: «Enmendar R35 a tienda»): `requirements.md` (R35 y la tabla de decisiones) y
+`design.md` §11. La escritura la intenta y la hace la tienda (`adminTienda`); el `admin` ve el banner y ve que
+desaparece. El E2E de T5.1 ya seguía ese camino, así que no cambia.
+
+Integración = `tests/integration/`; unidad = `tests/unit/`; componentes = `tests/components/`.
+
+| R | Test(s) |
+|---|---|
+| R1 | `integration/db/factura-plataforma-mora.test.ts` (tabla `_fixtures/fecha-limite-pago.ts`); `unit/planes/mora.test.ts` > «fechaLimiteDePago y venceEn con la tabla compartida» |
+| R2 | `unit/config/factura-gracia.test.ts` |
+| R3 | `integration/db/mora-migration.test.ts` (CHECK); `integration/repositories/mora-empresa-repository.test.ts` > «R3, R30 …»; `unit/services/mora-empresa-service.test.ts` > «fijarGracia — R3»; `components/MoraEmpresa.test.tsx` > «SLT-121 R3, R32 …» |
+| R4 | `unit/services/mora-empresa-service.test.ts` > «R4: solo el superadmin …»; `unit/actions/mora-empresa.test.ts` > «R4: un rol de empresa no llega a la base» |
+| R5 | `integration/db/mora-congelar.test.ts`; `integration/repositories/mora-empresa-repository.test.ts` > «R5, R28, R30 …» y «R5: subir la gracia sin dejar la factura en plazo …» |
+| R6 | `integration/db/factura-plataforma-mora.test.ts`; `unit/planes/mora.test.ts` > «estaVencida» |
+| R7 | `integration/db/mora-congelar.test.ts`; `mora-empresa-repository.test.ts` > «R7, R27, R30 …»; `unit/planes/jobs-mora.test.ts` > «SLT-121/R7 …»; `integration/db/siembra-mora-diaria-idempotente.test.ts` |
+| R8 | `integration/db/mora-congelar.test.ts`; `unit/planes/mora.test.ts` > «enFranjaDeMadrugada»; `mora-empresa-repository.test.ts` > «R8 …» |
+| R9 | `integration/db/mora-congelar.test.ts`; `mora-empresa-repository.test.ts` > «R9 …»; `unit/planes/jobs-mora.test.ts` > «R9 …»; `siembra-mora-diaria-idempotente.test.ts` |
+| R10 | `integration/db/bloqueo-por-mora.test.ts` (las lecturas pasan); `e2e/mora-congelamiento.spec.ts` (`beforeAll` y caso 1) |
+| R11 | `unit/actions/wallet-egresos-mora.test.ts`; `unit/db/extension-empresa-mora.test.ts`; `unit/guards/mora-permiso-solo-en-lista.guardia.test.ts`; E2E caso 4 |
+| R12 | `integration/db/bloqueo-por-mora.test.ts` (`SL121` en escrituras de `servi_app`); `unit/actions/wallet-egresos-mora.test.ts` (`forbidden`); E2E caso 2 |
+| R13 | `integration/api/api-key-empresa-congelada.route.test.ts`; `unit/db/extension-empresa-mora.test.ts`; E2E caso 3 |
+| R14 | `integration/api/carga-masiva-empresa-congelada.route.test.ts`; `components/OrdenesCargaUpload.test.tsx` y `components/CargaMasivaChunks.test.ts` > «SLT-121/R14 …»; E2E caso 2 (texto exacto) |
+| R15 | `unit/services/webhook-whatsapp-mora.test.ts`; `mora-permiso-solo-en-lista.guardia.test.ts` |
+| R16 | `integration/db/bloqueo-por-mora.test.ts`, `bloqueo-por-mora-cobertura.test.ts` y `mora-migration.test.ts`; `unit/db/extension-empresa-mora.test.ts` (traducción) |
+| R17 | `unit/cron/procesar-jobs-mora.test.ts`; `mora-permiso-solo-en-lista.guardia.test.ts` |
+| R18 | `integration/db/mora-congelar.test.ts` y `bloqueo-por-mora.test.ts` (la otra empresa escribe); `e2e/dos-empresas-humo.spec.ts` |
+| R19 | `integration/repositories/pago-plataforma-recalcula-mora.test.ts`; E2E caso 5 |
+| R20 | `pago-plataforma-recalcula-mora.test.ts` > «R20 …»; E2E caso 4 (sigue congelada) |
+| R21 | `integration/db/mora-congelar.test.ts`; `pago-plataforma-recalcula-mora.test.ts` > «R21 …» |
+| R22 | `mora-empresa-repository.test.ts` > «R22, R28, R30 …», «decisión P5 …», «R22 … no_congelada»; `unit/services/mora-empresa-service.test.ts` > «descongelar — R22, decisión P4»; `components/MoraEmpresa.test.tsx` > «SLT-121 R22, R32 …» |
+| R23 | `integration/db/mora-congelar.test.ts` |
+| R24 | `unit/planes/mora.test.ts` > «estadoDeMora …»; `mora-empresa-repository.test.ts` > «R24, §6.2 …»; `unit/services/mora-empresa-service.test.ts` > «avisoDeMiEmpresa — R24»; `unit/actions/mora-empresa.test.ts` > «el banner del layout»; `components/AvisoMora.test.tsx`; `components/AppLayout.test.tsx` > «SLT-121 R24 …»; `unit/guards/mi-plan-solo-maestro.guardia.test.ts`; E2E casos 1 y 6 |
+| R25 | `unit/services/email/plantilla-factura-emitida.test.ts` > «SLT-121/R25 …»; `unit/planes/jobs-factura-aviso.test.ts` > «SLT-121/R25 …»; `mora-empresa-repository.test.ts` > «R25 …» |
+| R26 | `mora-empresa-repository.test.ts` > «R26 …»; `unit/planes/jobs-mora.test.ts` > «SLT-121/R26 …»; `unit/services/email/plantilla-mora-aviso.test.ts` > «SLT-121/R26 …» |
+| R27 | `mora-empresa-repository.test.ts` > «R7, R27, R30 …»; `jobs-mora.test.ts` y `plantilla-mora-aviso.test.ts` > «SLT-121/R27 …» |
+| R28 | `mora-empresa-repository.test.ts` (gracia y a mano); `pago-plataforma-recalcula-mora.test.ts` (pago); `jobs-mora.test.ts` y `plantilla-mora-aviso.test.ts` > «SLT-121/R28 …» |
+| R29 | `jobs-mora.test.ts` > «SLT-121/R29 …» (empresa que falla, envío que falla); `mora-empresa-repository.test.ts` > «R30: si el registro falla …» |
+| R30 | `mora-empresa-repository.test.ts`; `pago-plataforma-recalcula-mora.test.ts`; `unit/historial-accion/catalogo-y-choke-point.test.ts` > «SLT-121 R30»; guardias `historial-accion-escrituras-cubiertas` y `historial-accion-sin-datos-cliente` (P5); E2E caso 5 |
+| R31 | `mora-empresa-repository.test.ts` > «R32, R31 …»; `unit/services/mora-empresa-service.test.ts` > «moraDeEmpresa — R31, R32»; `components/MoraEmpresa.test.tsx` > «SLT-121 R31 …» |
+| R32 | `mora-empresa-repository.test.ts` > «R32, R31 …» y «R32: existeEmpresa …»; `mora-empresa-service.test.ts` > «moraDeEmpresa — R31, R32»; `unit/actions/mora-empresa.test.ts` > «la empresa ligada manda»; `components/MoraEmpresa.test.tsx` > «SLT-121 R32 …»; E2E caso 5 |
+| R33 | `integration/db/factura-plataforma-mora.test.ts` (`42501`); `mora-empresa-repository.test.ts` > «R33 …»; `mora-empresa-service.test.ts` > «R33 …» |
+| R34 | `integration/db/mora-congelar.test.ts` (pieza SQL); `pago-plataforma-recalcula-mora.test.ts` > «R34 …», «… ya_confirmado no recalcula» y «decisión §2: … cruces forzados» |
+| R35 | `e2e/mora-congelamiento.spec.ts` (casos 1–6, R35 enmendado a la tienda) + `e2e/dos-empresas-humo.spec.ts` |
+
+Los 35 requisitos tienen al menos un test concreto; ninguno queda sin cubrir.
+
+Verificación de cierre: tras el merge con `origin/dev` (`448056ee`), el typecheck y los tests locales los mató el
+sistema por falta de memoria. Por indicación del leader, la verificación del merge la hace el CI de #264 (no se
+relanzó en local ni se corrió `./init.sh`).

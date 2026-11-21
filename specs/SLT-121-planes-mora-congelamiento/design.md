@@ -625,13 +625,22 @@ a `organizacion_mora_congelar` con un `ahora` dentro de la franja.
 
 **Pasos:**
 1. El maestro entra y ve «Empresa congelada por falta de pago».
-2. El `admin` entra (sin banner) e intenta crear una orden: ve un error y la orden no existe.
+2. El `admin` entra y ve el banner. La tienda (`adminTienda`) intenta crear una orden por la carga masiva: ve
+   «Empresa suspendida por falta de pago.» y la orden no existe.
 3. Con una key de la empresa, `POST /api/ordenes/api-key/carga` → 403 y `details.codigo`, y `GET /api/ordenes/api-key`
    → 200.
 4. El maestro registra el pago a la plataforma desde la wallet.
 5. El superadmin lo confirma en el detalle de la empresa. La sección «Plazo de pago y mora» pasa a «Al día» y muestra
    la fila «descongelada por pago».
-6. El maestro ya no ve el banner, y el `admin` crea la orden.
+6. El maestro y el `admin` ya no ven el banner, y la tienda crea la orden.
+
+**Enmienda del 2026-11-21 (humano: «Enmendar R35 a tienda»):** el `admin` no tiene pantalla para crear órdenes (la
+carga masiva es solo de `adminTienda`: `app/(app)/ordenes/page.tsx` y `app/api/ordenes/carga-masiva/chunk/route.ts`),
+así que la escritura la intenta y la hace la tienda.
+
+**Desvío de la siembra (T5.1):** el `hasta` de la factura no se puede adelantar porque el trigger
+`factura_plataforma_inmutable` no deja cambiar una factura cerrada. El spec llama a `organizacion_mora_congelar` con
+un `ahora` de la madrugada en que la factura ya vence, y no fija la gracia propia.
 
 La PWA del mensajero no se recorre: R12 en entregas lo cubre `bloqueo-por-mora.test.ts`, porque el trigger es el
 mismo para todos los caminos. Correr en local, antes del PR, `--project=dinero` y `dos-empresas-humo` (perfil de
