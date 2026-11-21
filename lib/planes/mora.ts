@@ -143,6 +143,15 @@ export const MORA_TEXTOS = {
       congelada: "Congelada",
       descongelada_a_mano: "Descongelada a mano",
     } satisfies Record<EstadoMora["estado"], string>,
+    // Los rechazos de `MoraEmpresaService` (design §5.3), por campo; la pantalla los pinta bajo el suyo.
+    errores: {
+      dias: `La gracia debe ser un número entero de ${GRACIA_MIN} a ${GRACIA_MAX} días.`,
+      motivo: `El motivo es obligatorio y tiene como máximo ${MOTIVO_MAX} caracteres.`,
+      hasta: `La fecha hasta debe estar entre hoy y dentro de ${HASTA_MAX_DIAS} días.`,
+      noCongelada: "La empresa no está congelada.",
+      noEncontrada: "La empresa no existe.",
+      sinPermiso: "No tienes permiso para cambiar la mora de una empresa.",
+    },
   },
   error: MENSAJE_EMPRESA_CONGELADA,
 } as const;

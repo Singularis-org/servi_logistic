@@ -380,6 +380,15 @@ describeSiHayBase("SLT-121 — MoraEmpresaRepository (R5, R7, R9, R22, R26, R30-
       expect(r[0]).toBeInstanceOf(EmpresaNoResuelta);
       expect(r[1]).toBeInstanceOf(EmpresaNoResuelta);
     });
+
+    it("R32: existeEmpresa dice true de una empresa que existe y false de un id que no", async () => {
+      const r = await revertida(base, async (tx) => {
+        const org = await empresa(tx);
+        const repo = repoEn(tx);
+        return [await repo.existeEmpresa(org), await repo.existeEmpresa("00000000-0000-4000-8000-000000000121")];
+      });
+      expect(r).toEqual([true, false]);
+    });
   });
 
   describe("la corrida", () => {

@@ -76,7 +76,7 @@
 
 ## Tanda 4 — Servicio, actions y pantallas (backend_dev → frontend_dev)
 
-- [ ] **T4.1** `MoraEmpresaService` + `IMoraEmpresaService` + `lib/actions/mora-empresa.ts` (`nucleo` en
+- [x] **T4.1** `MoraEmpresaService` + `IMoraEmpresaService` + `lib/actions/mora-empresa.ts` (`nucleo` en
       `MODULO_POR_ACTION`) + tipos en `lib/types/mora.ts` (design §5.3, §5.4). Depende de T2.4.
       *Hecho:* `mora-empresa-service.test.ts` y `mora-empresa.test.ts` (R3, R4, R22, R24, R32).
 - [ ] **T4.2** [P] Banner: `app/(app)/_components/AvisoMora.tsx` y la lectura aislada en `app/(app)/layout.tsx`

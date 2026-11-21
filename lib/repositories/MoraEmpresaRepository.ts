@@ -270,6 +270,15 @@ export class MoraEmpresaRepository implements IMoraEmpresaRepository {
     );
   }
 
+  async existeEmpresa(organizacionId: string): Promise<boolean> {
+    // De plataforma: con `servi_app` la RLS de `organizacion` solo deja ver la propia, y el superadmin no tiene.
+    return comoPlataforma(FICHA, "SLT-121: el superadmin comprueba que la empresa existe antes de cambiar su mora (R32)", async () => {
+      const filas = await this.prisma.$queryRaw<{ existe: boolean }[]>`
+        SELECT EXISTS (SELECT 1 FROM "organizacion" WHERE "id" = ${organizacionId}) AS "existe"`;
+      return filas[0]?.existe === true;
+    });
+  }
+
   async empresasConMora(): Promise<string[]> {
     return comoPlataforma(FICHA, "SLT-121: la corrida de madrugada lista las empresas con facturas con saldo o congeladas (R7)", async () => {
       const filas = await this.prisma.$queryRaw<{ id: string }[]>`

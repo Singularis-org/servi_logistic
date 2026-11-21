@@ -420,3 +420,68 @@ Modificados en esta pasada:
 
 Veredicto: T3.1, T3.2 y T3.3 completas y coherentes con el spec; typecheck, lint, guardias y los tests de la tanda en
 verde (salvo el rojo de versión de Postgres de SLT-93, ajeno).
+
+## Tanda 4: T4.1 (backend_dev, 2026-11-21)
+
+### Archivos
+
+Creados:
+- `lib/types/mora.ts`: esquemas zod del borde (`moraDeEmpresaSchema`, `fijarGraciaSchema`, `descongelarSchema`),
+  `MoraEmpresaVista`, `FacturaConSaldoVista` y los resultados `MoraDeEmpresaResult`, `FijarGraciaResult`,
+  `DescongelarResult`; reexporta los tipos del dominio (`EstadoMora`, `FacturaVencida`, `FilaMora`,
+  `OrganizacionMora`, `FilaHistorialMora`).
+- `lib/interfaces/services/IMoraEmpresaService.ts` y `lib/services/MoraEmpresaService.ts` (design §5.3).
+- `lib/actions/_shared/mora-empresa.ts` (`construirMoraEmpresaService`, composition root fuera de "use server").
+- `lib/actions/mora-empresa.ts` (design §5.4): `avisoMoraDelLayout`, `verMoraDeEmpresaAction`,
+  `fijarGraciaEmpresaAction`, `descongelarEmpresaAction`.
+- `tests/unit/services/mora-empresa-service.test.ts`, `tests/unit/actions/mora-empresa.test.ts`.
+
+Modificados:
+- `lib/modulos/reparto.ts`: `"mora-empresa": "nucleo"` en `MODULO_POR_ACTION`.
+- `lib/planes/mora.ts`: `MORA_TEXTOS.plataforma.errores` (días, motivo, hasta, no congelada, no encontrada, sin
+  permiso).
+- `lib/interfaces/repositories/IMoraEmpresaRepository.ts` y `lib/repositories/MoraEmpresaRepository.ts`:
+  `existeEmpresa(organizacionId)` (en `comoPlataforma`; la RLS de `organizacion` no deja verla con `servi_app`).
+- `tests/integration/repositories/mora-empresa-repository.test.ts`: caso de `existeEmpresa`.
+- `tests/unit/planes/jobs-mora.test.ts`: el doble del repositorio suma `existeEmpresa`.
+
+### Desvíos frente al spec
+- **`not_found` también en `fijarGracia` y `descongelar`** (el design §5.3 solo lo pone en `moraDeEmpresa`): el
+  repositorio lanza sin empresa en `fijarGracia` y en `descongelarAMano` respondería `no_congelada`, que es falso.
+  Para eso, método nuevo `existeEmpresa` en el repositorio. Un `organizacionId` que no es uuid también es
+  `not_found` (no `validation_error`): la empresa la liga el servidor, no la escribe nadie.
+- **`MoraEmpresaVista` más ancha que `EstadoMora`**: trae `facturas` (todas las de saldo, con `vencida`),
+  `facturasVencidas` (también durante un descongelamiento a mano, cuando `EstadoMora` no las lleva y R32 pide
+  verlas) y `descongelar: { desde, hasta, porDefecto }` (hoy, hoy + 60 y hoy + 7 de la plataforma) para el diálogo.
+- **El aislamiento del banner vive en `avisoMoraDelLayout`**: si la lectura lanza, devuelve `null` y lo registra con
+  `console.error` (design §7.1 lo pide a la lectura; el layout no necesita su propio `try`).
+- **`@sin-superficie` en las cuatro actions**: la guardia `superficie-de-uso` exige que una action sea alcanzable
+  desde una ruta. Las montan T4.2 y T4.3; quien las cablee debe quitar la anotación (la guardia lo exige: la
+  excepción caduca).
+
+### R → test (Tanda 4)
+| R | Test |
+|---|---|
+| R3 | `mora-empresa-service.test.ts` > «fijarGracia — R3»: 1, 15 y 60 se guardan; `null` vuelve a la global; `sin_cambio`; 0, 61, 7.5, -3, "15" y ausente → `validation_error` sin tocar el repositorio |
+| R4 | `mora-empresa-service.test.ts` > «R4: solo el superadmin …» (maestro, admin, mensajero y sin sesión × 3 métodos, sin llamadas); `mora-empresa.test.ts` > «R4: un rol de empresa no llega a la base» (servicio real con repositorio que lanza) |
+| R22 | `mora-empresa-service.test.ts` > «descongelar — R22, decisión P4»: extremos hoy y hoy + 60; hoy de la plataforma a las 23:30; ayer, hoy + 61, 30 de febrero y otro formato; motivo vacío, de espacios, de 201 y de 200; `no_congelada`; `not_found` |
+| R24 | `mora-empresa-service.test.ts` > «avisoDeMiEmpresa — R24» (maestro y admin leen; mensajero, superadmin, adminTienda y sin sesión → `null` sin leer; al día; congelada); `mora-empresa.test.ts` > «el banner del layout» (fallo → `null`) |
+| R32 | `mora-empresa-service.test.ts` > «moraDeEmpresa — R31, R32» (gracia global y propia, estado, facturas, vencidas, rango, historial; descongelada a mano con vencidas); `mora-empresa.test.ts` > «la empresa ligada manda»; `mora-empresa-repository.test.ts` > «R32: existeEmpresa …» |
+| R33 | `mora-empresa-service.test.ts` > «R33: una empresa que no existe responde not_found …» |
+
+### Verificación (salida real)
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: `tsc --noEmit` sin errores.
+- `pnpm run lint`: exit 0, `✖ 249 problems (0 errors, 249 warnings)` (heredados, los mismos que en la Tanda 3).
+  `eslint` sobre los 13 archivos tocados: exit 0, sin avisos.
+- `pnpm exec vitest run` de `mora-empresa-service`, `mora-empresa` (actions), `jobs-mora` y `mora`: 4 archivos,
+  136/136.
+- `pnpm exec vitest run` de `mora-empresa-repository` (Postgres real) + guardias `modulos-reparto`,
+  `use-server-exports-async`, `use-server-sin-reexport-de-tipos`, `superadmin-fuera-de-empresa`,
+  `plataforma-solo-en-lista`, `sql-a-mano-por-empresa`, `historial-acciones-solo-lectura` e
+  `historial-accion-escrituras-cubiertas`: 9 archivos, 230/230 (el de integración, 17/17 con `existeEmpresa`).
+- `pnpm run test:guardias`: 361 archivos, 360 verdes, 1 rojo (5456 pasados, 1 saltado): `superficie-de-uso` R-A con
+  las cuatro actions nuevas. Arreglado con `@sin-superficie` (arriba); vuelto a correr con `mora-empresa` y
+  `use-server-exports-async`: 3 archivos, 32/32.
+
+Veredicto: T4.1 completa; servicio, actions y tipos listos para T4.2 y T4.3, con typecheck, lint, guardias y sus tests
+en verde.

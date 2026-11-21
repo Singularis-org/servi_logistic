@@ -190,6 +190,8 @@ export const MODULO_POR_ACTION: Readonly<Record<string, Destino>> = {
   manifiesto: "nucleo",
   "mis-asignaciones": "nucleo",
   "modulos-empresa": "nucleo",
+  // SLT-121: la mora de una empresa; el banner de maestro y admin, y la sección del superadmin, ambos núcleo.
+  "mora-empresa": "nucleo",
   notificaciones: "nucleo",
   "orden-ayuda": "nucleo",
   "orden-historial": "nucleo",

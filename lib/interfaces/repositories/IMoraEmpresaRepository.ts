@@ -68,6 +68,11 @@ export interface IMoraEmpresaRepository {
     actorUsuarioId: string,
     ahora: Date,
   ): Promise<"ok" | "no_congelada">;
+  /**
+   * Superadmin: si la empresa existe. El servicio lo pregunta antes de `fijarGracia` (que lanza sin ella) y de
+   * `descongelarAMano` (que diría `no_congelada`), para responder `not_found`.
+   */
+  existeEmpresa(organizacionId: string): Promise<boolean>;
   /** Corrida: las empresas con alguna factura cerrada con saldo o congeladas (§4.1). */
   empresasConMora(): Promise<string[]>;
   /** Corrida: congela si toca, con su historial y su correo (R7-R9, R27, R30). */

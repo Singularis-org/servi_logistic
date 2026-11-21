@@ -37,6 +37,7 @@ const repoCableado: IMoraEmpresaRepository = {
   moraParaPlataforma: async () => Promise.reject(new Error("no se usa")),
   fijarGracia: async () => Promise.reject(new Error("no se usa")),
   descongelarAMano: async () => Promise.reject(new Error("no se usa")),
+  existeEmpresa: async () => Promise.reject(new Error("no se usa")),
 };
 let usarRepoDoble = false;
 let depsAvisoCableadas: DepsAvisoMora | null = null;
