@@ -47,7 +47,9 @@ Base sobre SLT-65 (PR #75) en `fe16f5d1`. La base local `logistic` tiene drift d
   `reparto` filtrado a CR (Islandia de `geografia-superadmin`). D37 de SLT-71 renumerada a D82. Base de #81: `geo_jerarquica`.
   Local, base nueva `servi_logistic_slt71_integ`: typecheck y lint verdes; guardias 365/365 tras el arreglo; integración geo
   (7 archivos, 46 tests) verde. CI 1.ª corrida roja por tamaño y por el escenario reparto:
-  https://github.com/Singularis-org/servi_logistic/actions/runs/44926936099
+  https://github.com/Singularis-org/servi_logistic/actions/runs/44926936099 . Tras `88d28365` (filtro CR y marcador):
+  CI verde completo (gate-completo y e2e reparto/dinero/aislamiento) en
+  https://github.com/Singularis-org/servi_logistic/actions/runs/44928845508 sobre `88d283654f1a`.
 
 <!-- tamano-pr-aceptado: 2026-11-21 · pila geo aceptada por el humano -->
 
