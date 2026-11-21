@@ -159,3 +159,57 @@ tests llaman a `previewConEjemplos` con 1–2 argumentos y siguen compilando).
 pantalla de T4.2, que además devuelve el typecheck a verde.
 
 - **T4.2, parte de pantalla (frontend_dev, 2026-11-21):** `VistaPreviaMensaje.tsx` y `VariablesInsert.tsx` leen `useMonedaDelPais()` y la pasan a `componerVistaPrevia` (tipo de `variables` → `VariableDeInforme`). Caso montado de R13 en `moneda-del-pais-tarifas.test.tsx` > «SLT-241 R13 — montado: `VistaPreviaMensaje` y `VariablesInsert` pintan el importe en la moneda del pais» (`it.each` de las dos pantallas: prueba → `Por cobrar €322 900, vencidos 7`; CR = sin proveedor = moneda de la plataforma). Verificación: typecheck exit 0; lint `✖ 249 problems (0 errors, 249 warnings)`, exit 0, y eslint de los 3 archivos sin avisos; vitest de `moneda-del-pais-tarifas` + `informe-transito-informe`, `catalogo-de-variables`, `VariablesInsert`, `ConfiguracionEnviosWhatsappPage`, `ConfiguracionPlantillasPage` → `Test Files 6 passed (6)`, `Tests 88 passed (88)`. T4.2 completa.
+
+## Bloque 2 — Pantalla de Tarifas (T2.1–T2.2, R1–R4) · frontend_dev · 2026-11-21
+
+### Archivos
+
+Producción (modificados):
+- `app/(app)/configuracion/tarifas/_components/tarifas-textos.ts` — T2.1: sin `money` ni `monedaConfig`.
+  `etiquetaModo(modo, moneda)`, `porcentajeParaVer(valor, moneda)`, `textoReferencia(ref, moneda, impuesto)`,
+  `textoValorSinIva(v, moneda)`, `textoValor(v, moneda, impuesto)`; los importes con
+  `formatearMontoEn(moneda, x, SIN_MONTO_RAYA)`. `textosDelImpuesto(impuesto)` con las 7 entradas que salen de
+  `TEXTOS` (`colIva`, `ivaDe`, `notaMensajero`, `notaSatelite`, `ivaObligatorio`, `mensajerosBase`, `sinIva`).
+  Decisión del leader: además `porcentajeParaVerEnLaPlataforma(valor)` = `porcentajeParaVer(valor, MONEDA_PLATAFORMA)`.
+- `app/(app)/configuracion/tarifas/_components/tarifas-borrador.ts` — T2.1: `planDeGuardado(editadas, columnas, impuesto)`;
+  el error es `textosDelImpuesto(impuesto).impuestoObligatorio`.
+- `TarifasValores.tsx`, `TarifasVehiculo.tsx`, `TarifasGrupos.tsx`, `TarifasMensajeros.tsx`, `TarifasTiendas.tsx`,
+  `TarifaMensajeroDialogo.tsx` — T2.2: leen `useMonedaDelPais()` / `useImpuestoDelPais()` una vez y los pasan; las
+  auxiliares de módulo (`notaDe`, `resumenDeActor`, `valorDe`, `flete`) reciben la moneda (o `ti`) por argumento.
+  `TarifasVehiculo` deja `monedaConfig`: `TEXTOS.enMonto(moneda.simbolo)`.
+- `components/private/cierres/fila/fila-gestion-labels.ts` — solo el import y el nombre en sus 3 llamadas:
+  `porcentajeParaVerEnLaPlataforma` (sin cambio visible; el «IVA» y `money` siguen igual).
+
+Tests:
+- `tests/components/TarifasMensajeros.test.tsx` — sus 4 llamadas a `planDeGuardado` pasan `IMPUESTO_ROTULO`
+  (+ el import); ningún valor esperado cambia.
+- `tests/components/moneda-del-pais-tarifas.test.tsx` — al final, el bloque 2: casos puros (T2.1), montados (T2.2) y
+  el censo «sin IVA» de los 8 archivos con 2 contrapruebas. Imports del bloque junto a los demás.
+
+El typecheck no señaló otros llamantes fuera de «Archivos esperados».
+
+### Mapa R → test (bloque 2), todo en `moneda-del-pais-tarifas.test.tsx`
+
+| R | Test |
+|---|---|
+| R1 | «SLT-241 R1 — `tarifas-textos`…» (4 casos: «€1 801», «Hoy rige»/«Varía» en €, raya larga sin importe, CR = plataforma); montados: «`TarifasValores`» > «R1/R16/R17: el valor guardado…», «R1/R4: «Hoy rige»…»; «`TarifasVehiculo`» > «R1/R16/R17: el valor de un vehiculo…», «R1: «Hoy rige» de la celda…»; «`TarifasGrupos`» (flete y resumen del mensajero); «`TarifasTiendas`»; «`TarifasMensajeros`…» > «R1/R16/R17: el valor propio…» |
+| R2 | «SLT-241 R2 — `etiquetaModo`…» (2); montados: «R2: la columna Modo… «Monto €»» (`TarifasValores`), «R2: «En €» bajo una celda…» (`TarifasVehiculo`), «R2: el selector de modo del dialogo ofrece «Monto €»» |
+| R3 | «SLT-241 R3 — `porcentajeParaVer`…» (punto con prueba, coma con CR, valor en % y % del impuesto, CR = plataforma) |
+| R4 | «SLT-241 R4 — `textosDelImpuesto` y `planDeGuardado`…» (7 entradas con «IGV», las de siempre con «IVA», «+ 13 % IGV», aviso obligatorio); montados: encabezado «IGV», etiqueta accesible «IGV de …», notas «Sin IGV» de mensajero y satélite, flete del grupo, base del %, nota del diálogo; censo «sin IVA» de los 8 archivos + 2 contrapruebas |
+| R16/R17 (bloque 2) | Cada caso montado compara CR con sin proveedor (`compruebaLosTresMontajes`, `compruebaElImpuesto`); los puros comparan CR con `MONEDA_PLATAFORMA` / `IMPUESTO_ROTULO`; los 10 archivos `tests/components/Tarifas*.test.tsx` verdes (9 sin tocar) |
+| R18 (cierres) | «R18: `porcentajeParaVerEnLaPlataforma`…»; tests de cierres que importan `fila-gestion-labels` verdes sin tocarlos |
+
+### Verificación (salida real, 2026-11-21, `NODE_OPTIONS=--max-old-space-size=8192`)
+
+- `pnpm run typecheck` → exit 0.
+- `pnpm run lint` → exit 0, `✖ 249 problems (0 errors, 249 warnings)` (los mismos 249 de antes); `eslint` sobre
+  los 10 archivos tocados → «No issues found», exit 0.
+- `vitest run tests/components/moneda-del-pais-tarifas.test.tsx` → `Test Files 1 passed (1)`, `Tests 82 passed (82)`.
+- `vitest run` de `TarifasMensajeros`, `TarifasValores`, `TarifasVehiculo`, `TarifasGrupos`, `TarifasTiendas`,
+  `TarifasModulo`, `TarifasFulfillmentSoloTienda`, `TarifasDisposicion` (Hecho de T2.1/T2.2) + los que importan
+  `fila-gestion-labels` (`cierres-trato-tu.guardia`, `liquidacion-money-safe`, `pwa-mensajero-sin-recorte.guardia`,
+  `fila-gestion-vista`) + `FilaGestion` → `Test Files 13 passed (13)`, `Tests 514 passed (514)`.
+- `TarifasActivar` y `TarifasTopeIntentos` (también importan `tarifas-textos`) → `Test Files 2 passed (2)`, `Tests 35 passed (35)`.
+- `pais-sin-literales` no se corrió: rojo esperado hasta T5.2.
+
+**Veredicto:** bloque 2 hecho (T2.1 y T2.2; R1–R4 con test y en verde); los tests de Tarifas y de cierres, verdes sin cambiar valores.

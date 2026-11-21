@@ -16,6 +16,7 @@ import {
   TarifasMensajeros,
   type TarifasMensajerosProps,
 } from "@/app/(app)/configuracion/tarifas/_components/TarifasMensajeros";
+import { IMPUESTO_ROTULO } from "@/lib/constants/impuesto-rotulo";
 import type { MensajeroDePantalla } from "@/lib/interfaces/repositories/ITarifasPantallaRepository";
 import type { TarifaValorDTO } from "@/lib/types/tarifa-flexible";
 
@@ -103,6 +104,7 @@ describe("SLT-55 T4.1 — planDeGuardado", () => {
     const { cambios } = planDeGuardado(
       [{ clave: "mensajero_entregado:todos", concepto: "mensajero_entregado", vehiculoId: null, guardado: undefined, celda: CELDA("2900") }],
       COLUMNAS_PROPIO,
+      IMPUESTO_ROTULO,
     );
     expect(cambios).toEqual([
       {
@@ -128,6 +130,7 @@ describe("SLT-55 T4.1 — planDeGuardado", () => {
     const { cambios } = planDeGuardado(
       [{ clave: "mensajero_novedad:todos", concepto: "mensajero_novedad", vehiculoId: null, guardado: undefined, celda: CELDA("10", { ivaPct: "13" }) }],
       COLUMNAS_PROPIO,
+      IMPUESTO_ROTULO,
     );
     const unico = cambios[0];
     expect(unico !== undefined && unico.accion === "fijar" && "ivaPct" in unico.datos).toBe(false);
@@ -137,6 +140,7 @@ describe("SLT-55 T4.1 — planDeGuardado", () => {
     const { cambios } = planDeGuardado(
       [{ clave: "mensajero_entregado:todos", concepto: "mensajero_entregado", vehiculoId: null, guardado: undefined, celda: CELDA("2200") }],
       { zonaId: "z1", grupoId: null, tiendaId: null },
+      IMPUESTO_ROTULO,
     );
     expect(cambios).toEqual([
       {
@@ -151,6 +155,7 @@ describe("SLT-55 T4.1 — planDeGuardado", () => {
     const { cambios } = planDeGuardado(
       [{ clave: "tienda_flete_entregado:todos", concepto: "tienda_flete_entregado", vehiculoId: null, guardado: undefined, celda: CELDA("3000", { ivaPct: "13" }) }],
       { zonaId: "z1", grupoId: null, tiendaId: null },
+      IMPUESTO_ROTULO,
     );
     expect(cambios).toEqual([
       {

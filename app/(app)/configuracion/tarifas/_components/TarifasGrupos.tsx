@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
+import { useImpuestoDelPais, useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
 import { useToast } from "@/hooks/useToast";
 import {
   borrarGrupoDistritos,
@@ -21,6 +22,7 @@ import {
 } from "@/lib/actions/tarifas";
 import type { DistritoDeSelector } from "@/lib/interfaces/services/ITarifasPantallaService";
 import { CATALOGO_CONCEPTOS } from "@/lib/tarifas/catalogo";
+import type { FormatoMoneda } from "@/lib/config/moneda";
 import type { GrupoDistritosDTO, TarifaValorDTO } from "@/lib/types/tarifa-flexible";
 
 import { textoValor, textoValorSinIva, TEXTOS } from "./tarifas-textos";
@@ -45,12 +47,12 @@ type Dialogo =
 
 const FOCO = "focus-visible:ring-3 focus-visible:ring-ring";
 
-/** La maqueta `Vigente`: lo que define el grupo, o que cae a la zona. */
-function resumenDeActor(propios: readonly TarifaValorDTO[], actor: TarifaActor): string {
+/** La maqueta `Vigente`: lo que define el grupo, o que cae a la zona. SLT-241 (R1): con la moneda del pais. */
+function resumenDeActor(propios: readonly TarifaValorDTO[], actor: TarifaActor, moneda: FormatoMoneda): string {
   const delActor = propios.filter((v) => CATALOGO_CONCEPTOS[v.concepto].actor === actor);
   if (delActor.length === 0) return TEXTOS.usaElDeLaZona;
   const entregado = delActor.find((v) => CATALOGO_CONCEPTOS[v.concepto].resultado === "entregado" && v.vehiculoId === null);
-  return entregado === undefined ? TEXTOS.valoresPropios(delActor.length) : textoValorSinIva(entregado);
+  return entregado === undefined ? TEXTOS.valoresPropios(delActor.length) : textoValorSinIva(entregado, moneda);
 }
 
 /** R42-R46: los grupos de la zona. La zona especial es un grupo mas: aqui no tiene campo ni trato propio. */
@@ -66,6 +68,9 @@ export function TarifasGrupos({
 }: Readonly<TarifasGruposProps>) {
   const toast = useToast();
   const etiquetas = useEtiquetasGeograficas();
+  // SLT-241 (R1, R4): la moneda y el impuesto del pais; sin proveedor, los de la plataforma.
+  const moneda = useMonedaDelPais();
+  const impuesto = useImpuestoDelPais();
   const distritoPlural = etiquetas.distrito.plural.toLowerCase();
   const distritoSingular = etiquetas.distrito.singular.toLowerCase();
 
@@ -175,7 +180,7 @@ export function TarifasGrupos({
             const propios = valores.filter((v) => v.grupoId === grupo.id && v.tiendaId === null);
             const flete = (concepto: TarifaValorDTO["concepto"]) => {
               const v = propios.find((p) => p.concepto === concepto);
-              return v === undefined ? TEXTOS.usaElDeLaZona : textoValor(v);
+              return v === undefined ? TEXTOS.usaElDeLaZona : textoValor(v, moneda, impuesto);
             };
             return (
               <li
@@ -212,11 +217,11 @@ export function TarifasGrupos({
                   </div>
                   <div>
                     <dt className="text-xs text-muted-foreground">{TEXTOS.pagoMensajero}</dt>
-                    <dd className="mt-0.5 font-semibold">{resumenDeActor(propios, "mensajero")}</dd>
+                    <dd className="mt-0.5 font-semibold">{resumenDeActor(propios, "mensajero", moneda)}</dd>
                   </div>
                   <div>
                     <dt className="text-xs text-muted-foreground">{TEXTOS.pagoSatelite}</dt>
-                    <dd className="mt-0.5 font-semibold">{resumenDeActor(propios, "satelite")}</dd>
+                    <dd className="mt-0.5 font-semibold">{resumenDeActor(propios, "satelite", moneda)}</dd>
                   </div>
                 </dl>
               </li>

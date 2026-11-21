@@ -35,7 +35,7 @@
 
 ## Bloque 2 — Pantalla de Tarifas (R1–R4) (puede ir en paralelo con el bloque 1)
 
-- [ ] **T2.1** `tarifas-textos.ts`: `etiquetaModo`, `porcentajeParaVer`, `textoReferencia`,
+- [x] **T2.1** `tarifas-textos.ts`: `etiquetaModo`, `porcentajeParaVer`, `textoReferencia`,
   `textoValorSinIva` y `textoValor` reciben la moneda (y el impuesto); `textosDelImpuesto(impuesto)`
   con las 7 entradas que hoy dicen «IVA»; sin `money` ni `monedaConfig` (design §4.1).
   `tarifas-borrador.ts`: `planDeGuardado(editadas, columnas, impuesto)`.
@@ -43,7 +43,7 @@
     `IMPUESTO_ROTULO`; ningún valor esperado cambia.
   - Casos puros de R1–R4 en `moneda-del-pais-tarifas.test.tsx`.
   - *Hecho:* en verde.
-- [ ] **T2.2** Componentes de la pantalla (design §4.2). Depende de T2.1.
+- [x] **T2.2** Componentes de la pantalla (design §4.2). Depende de T2.1.
   - `TarifasValores.tsx`, `TarifasVehiculo.tsx`, `TarifasGrupos.tsx`, `TarifasMensajeros.tsx`,
     `TarifasTiendas.tsx` y `TarifaMensajeroDialogo.tsx` leen los hooks y los pasan.
   - Casos montados de R1, R2 y R4 en `moneda-del-pais-tarifas.test.tsx`, y el censo «sin IVA» de los 8
@@ -135,6 +135,7 @@ Producción:
 - `lib/utils/vista-previa-informe.ts`
 - `app/(app)/configuracion/envios-whatsapp/_components/VistaPreviaMensaje.tsx`
 - `app/(app)/configuracion/plantillas/_components/VariablesInsert.tsx`
+- `components/private/cierres/fila/fila-gestion-labels.ts` (solo el import de la variante con la moneda de la plataforma; decisión del leader 2026-11-21, archivo 35/40)
 
 Tests:
 - `tests/components/moneda-del-pais-tarifas.test.tsx`

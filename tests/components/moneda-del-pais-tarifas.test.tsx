@@ -45,6 +45,24 @@ import { componerVistaPrevia } from "@/lib/utils/vista-previa-informe";
 import { catalogoDeVariables, ejemploDeVariableInforme } from "@/lib/whatsapp-envios/informes/catalogo";
 import { VistaPreviaMensaje } from "@/app/(app)/configuracion/envios-whatsapp/_components/VistaPreviaMensaje";
 import { VariablesInsert } from "@/app/(app)/configuracion/plantillas/_components/VariablesInsert";
+// Bloque 2 (R1-R4)
+import { planDeGuardado, type CeldaEditada } from "@/app/(app)/configuracion/tarifas/_components/tarifas-borrador";
+import {
+  etiquetaModo,
+  porcentajeParaVer,
+  porcentajeParaVerEnLaPlataforma,
+  textoReferencia,
+  textosDelImpuesto,
+  textoValor,
+  textoValorSinIva,
+} from "@/app/(app)/configuracion/tarifas/_components/tarifas-textos";
+import { TarifaMensajeroDialogo } from "@/app/(app)/configuracion/tarifas/_components/TarifaMensajeroDialogo";
+import { TarifasGrupos } from "@/app/(app)/configuracion/tarifas/_components/TarifasGrupos";
+import { TarifasMensajeros, type FilaMensajero } from "@/app/(app)/configuracion/tarifas/_components/TarifasMensajeros";
+import { TarifasTiendas, type FilaPrecioTienda } from "@/app/(app)/configuracion/tarifas/_components/TarifasTiendas";
+import { TarifasValores, type TarifasValoresProps } from "@/app/(app)/configuracion/tarifas/_components/TarifasValores";
+import type { FormatoMoneda } from "@/lib/config/moneda";
+import { mensajeroPantalla, referenciaUniforme, valor, valorPropio } from "@/tests/fixtures/tarifas-pantalla";
 
 // SLT-241 — Moneda e impuesto del pais en pantallas: tarifas, configuracion y ranking.
 //
@@ -871,5 +889,399 @@ describe("SLT-241 R13 — montado: `VistaPreviaMensaje` y `VariablesInsert` pint
     expect(texto("prueba")).toBe(`Por cobrar ${formatearMontoEn(MONEDA_DE_PRUEBA, IMPORTE)}, vencidos 7`);
     compruebaLosTresMontajes(texto, IMPORTE);
     expect(texto("sin proveedor")).toBe(`Por cobrar ${formatearMontoEn(MONEDA_PLATAFORMA, IMPORTE)}, vencidos 7`);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Bloque 2 — pantalla de Tarifas (R1-R4, design §4, §9)
+// ---------------------------------------------------------------------------------------------
+//
+// Primero los formatos puros de `tarifas-textos.ts` y `planDeGuardado` (T2.1): con la moneda de prueba,
+// con CR y con la de la plataforma, que es la que la pantalla usa sin proveedor. Despues, los componentes
+// montados (T2.2) con los tres montajes de `conMontaje`, y el censo «sin IVA» de los 8 archivos.
+//
+// Los textos con «IVA» van escritos a mano: son los de antes de esta ficha, y con CR deben salir iguales
+// caracter a caracter (R16).
+
+/** Un importe con cola y miles: con la moneda de prueba (0 decimales, espacio de miles) sale `€1 801`. */
+const IMPORTE_TARIFA = "1800.50";
+const IMPORTE_HOY = "2800.00";
+
+/** Las dos monedas cuyo texto debe ser el mismo: Costa Rica y la de la plataforma (sin proveedor). */
+const MONEDAS_DE_SIEMPRE: readonly [string, FormatoMoneda][] = [
+  ["CR", MONEDA_CR],
+  ["la plataforma", MONEDA_PLATAFORMA],
+];
+
+describe("SLT-241 R1 — `tarifas-textos`: los importes de la pantalla de Tarifas, en la moneda dada", () => {
+  it("R1: un valor en monto, con la moneda de prueba, sale «€1 801» (sus reglas de formato)", () => {
+    expect(textoValorSinIva({ modo: "monto", valor: IMPORTE_TARIFA }, MONEDA_DE_PRUEBA)).toBe("€1 801");
+    expect(textoValor({ modo: "monto", valor: IMPORTE_TARIFA, ivaPct: null }, MONEDA_DE_PRUEBA, "IGV")).toBe("€1 801");
+  });
+
+  it("R1: «Hoy rige» en monto y «Varía: … a …» con la moneda de prueba", () => {
+    expect(textoReferencia({ tipo: "monto", valor: IMPORTE_HOY, ivaPct: null }, MONEDA_DE_PRUEBA, "IGV")).toBe("€2 800");
+    expect(textoReferencia({ tipo: "varia", desde: "1000.00", hasta: "12500.00" }, MONEDA_DE_PRUEBA, "IGV")).toBe(
+      "Varía: €1 000 a €12 500",
+    );
+  });
+
+  it("R1: sin importe pinta la raya larga de hoy", () => {
+    expect(textoValorSinIva({ modo: "monto", valor: "" }, MONEDA_DE_PRUEBA)).toBe(SIN_MONTO_RAYA);
+  });
+
+  it.each(MONEDAS_DE_SIEMPRE)("R1/R16/R17: con %s, el importe de siempre (el de la plataforma)", (_n, moneda) => {
+    const deSiempre = formatearMontoEn(MONEDA_PLATAFORMA, IMPORTE_TARIFA, SIN_MONTO_RAYA);
+    expect(textoValorSinIva({ modo: "monto", valor: IMPORTE_TARIFA }, moneda)).toBe(deSiempre);
+    expect(textoReferencia({ tipo: "varia", desde: IMPORTE_TARIFA, hasta: IMPORTE_HOY }, moneda, "IVA")).toBe(
+      `Varía: ${deSiempre} a ${formatearMontoEn(MONEDA_PLATAFORMA, IMPORTE_HOY, SIN_MONTO_RAYA)}`,
+    );
+  });
+});
+
+describe("SLT-241 R2 — `etiquetaModo`: el rotulo del modo monto lleva el simbolo de la moneda dada", () => {
+  it("R2: «Monto €» con la moneda de prueba; el porcentaje sigue «%»", () => {
+    expect(etiquetaModo("monto", MONEDA_DE_PRUEBA)).toBe("Monto €");
+    expect(etiquetaModo("porcentaje", MONEDA_DE_PRUEBA)).toBe("%");
+  });
+
+  it("R2/R16/R17: con CR, lo mismo que con la moneda de la plataforma", () => {
+    expect(etiquetaModo("monto", MONEDA_CR)).toBe(etiquetaModo("monto", MONEDA_PLATAFORMA));
+    expect(etiquetaModo("monto", MONEDA_PLATAFORMA)).toBe(`Monto ${MONEDA_PLATAFORMA.simbolo}`);
+  });
+});
+
+describe("SLT-241 R3 — `porcentajeParaVer`: el separador decimal es el de la moneda dada", () => {
+  it("R3: «3.50» sale «3.5» con la moneda de prueba (punto) y «3,5» con CR (coma); sin ceros de cola", () => {
+    expect(porcentajeParaVer("3.50", MONEDA_DE_PRUEBA)).toBe("3.5");
+    expect(porcentajeParaVer("3.50", MONEDA_CR)).toBe("3,5");
+    expect(porcentajeParaVer("13.00", MONEDA_DE_PRUEBA)).toBe("13");
+  });
+
+  it("R3: un valor en % y el % del impuesto usan el separador de la moneda", () => {
+    expect(textoValorSinIva({ modo: "porcentaje", valor: "3.50" }, MONEDA_DE_PRUEBA)).toBe("3.5 %");
+    expect(textoValor({ modo: "monto", valor: IMPORTE_TARIFA, ivaPct: "13.50" }, MONEDA_DE_PRUEBA, "IGV")).toBe(
+      "€1 801 + 13.5 % IGV",
+    );
+  });
+
+  it("R3/R16/R17: con CR, lo mismo que con la moneda de la plataforma", () => {
+    expect(porcentajeParaVer("3.50", MONEDA_CR)).toBe(porcentajeParaVer("3.50", MONEDA_PLATAFORMA));
+  });
+
+  it("R18: `porcentajeParaVerEnLaPlataforma` (la fila de gestion de cierres) sigue con la moneda de la plataforma", () => {
+    expect(porcentajeParaVerEnLaPlataforma("3.50")).toBe(porcentajeParaVer("3.50", MONEDA_PLATAFORMA));
+  });
+});
+
+describe("SLT-241 R4 — `textosDelImpuesto` y `planDeGuardado` nombran el impuesto dado", () => {
+  it("R4: con «IGV», las 7 entradas dicen «IGV»", () => {
+    const ti = textosDelImpuesto("IGV");
+    expect(ti.colImpuesto).toBe("IGV");
+    expect(ti.impuestoDe("Flete por entregado")).toBe("IGV de Flete por entregado");
+    expect(ti.notaMensajero).toBe("Sin IGV. Por defecto vale para todos los vehículos; se puede fijar un valor por vehículo.");
+    expect(ti.notaSatelite).toBe("Sin IGV. Pagas a la satélite solo por los resultados que definas.");
+    expect(ti.impuestoObligatorio).toBe("Digita el IGV de este cobro. Si no lleva, escribe 0.");
+    expect(ti.mensajerosBase).toBe("En % se calcula sobre el flete sin IGV que se le cobra a la tienda por esa gestión.");
+    expect(ti.sinImpuesto).toBe("Sin IGV.");
+  });
+
+  it("R4/R16/R17: con «IVA» (CR y el rotulo de la plataforma), los textos de antes de la ficha", () => {
+    const ti = textosDelImpuesto(IMPUESTO_ROTULO);
+    expect(ti.colImpuesto).toBe("IVA");
+    expect(ti.impuestoDe("Flete por entregado")).toBe("IVA de Flete por entregado");
+    expect(ti.notaMensajero).toBe("Sin IVA. Por defecto vale para todos los vehículos; se puede fijar un valor por vehículo.");
+    expect(ti.notaSatelite).toBe("Sin IVA. Pagas a la satélite solo por los resultados que definas.");
+    expect(ti.impuestoObligatorio).toBe("Digita el IVA de este cobro. Si no lleva, escribe 0.");
+    expect(ti.mensajerosBase).toBe("En % se calcula sobre el flete sin IVA que se le cobra a la tienda por esa gestión.");
+    expect(ti.sinImpuesto).toBe("Sin IVA.");
+  });
+
+  it("R4: «+ <n> % <impuesto>» en el valor y en «Hoy rige»", () => {
+    expect(textoValor({ modo: "monto", valor: IMPORTE_TARIFA, ivaPct: "13.00" }, MONEDA_DE_PRUEBA, "IGV")).toBe("€1 801 + 13 % IGV");
+    expect(textoReferencia({ tipo: "porcentaje", valor: "2.00", ivaPct: "13.00" }, MONEDA_DE_PRUEBA, "IGV")).toBe(
+      "2 % + 13 % IGV",
+    );
+  });
+
+  it("R4: el aviso de impuesto obligatorio de `planDeGuardado` nombra el impuesto dado", () => {
+    const sinImpuesto: CeldaEditada = {
+      clave: "tienda_flete_entregado:todos",
+      concepto: "tienda_flete_entregado",
+      vehiculoId: null,
+      guardado: undefined,
+      celda: { valor: "3000", modo: "monto", ivaPct: "" },
+    };
+    const columnas = { zonaId: "z1", grupoId: null, tiendaId: null };
+    expect(planDeGuardado([sinImpuesto], columnas, "IGV").errores).toEqual({
+      "tienda_flete_entregado:todos": ["Digita el IGV de este cobro. Si no lleva, escribe 0."],
+    });
+    expect(planDeGuardado([sinImpuesto], columnas, IMPUESTO_ROTULO).errores).toEqual({
+      "tienda_flete_entregado:todos": ["Digita el IVA de este cobro. Si no lleva, escribe 0."],
+    });
+  });
+});
+
+// --- T2.2: los componentes montados --------------------------------------------------------------
+
+/** El texto de todo el documento (los dialogos van en un portal, fuera del `container`). */
+function textoDelDocumento(montaje: Montaje, ui: ReactNode): string {
+  const { unmount } = render(<ToastProvider>{conMontaje(montaje, ui)}</ToastProvider>);
+  const texto = document.body.textContent ?? "";
+  unmount();
+  return texto;
+}
+
+/**
+ * R4/R16/R17 sobre un texto pintado: con el pais de prueba nombra «IGV» y nunca «IVA»; sin proveedor,
+ * el mismo texto con «IVA»; con CR, byte a byte lo de sin proveedor.
+ */
+function compruebaElImpuesto(texto: (montaje: Montaje) => string, esperadoConPrueba: string, esperadoSinProveedor: string) {
+  const conPrueba = texto("prueba");
+  expect(conPrueba).toContain(esperadoConPrueba);
+  expect(conPrueba).not.toMatch(/\bIVA\b/);
+  const sinProveedor = texto("sin proveedor");
+  expect(sinProveedor).toContain(esperadoSinProveedor);
+  expect(texto("cr")).toBe(sinProveedor);
+}
+
+function propsValores(extra: Partial<TarifasValoresProps> = {}): TarifasValoresProps {
+  return {
+    zonaId: "z1",
+    nivel: { tipo: "zona" },
+    valores: [],
+    referencia: referenciaUniforme({ tipo: "monto", valor: IMPORTE_HOY, ivaPct: "13.00" }),
+    vehiculos: [{ id: "v1", nombre: "Moto", activo: true }],
+    activada: false,
+    puedeEscribir: false,
+    actor: "tienda",
+    onActor: () => {},
+    onGuardado: () => {},
+    onSucioChange: () => {},
+    ...extra,
+  };
+}
+
+/** Con la moneda de la plataforma, como se pinta sin proveedor. */
+const dePlataforma = (importe: string) => formatearMontoEn(MONEDA_PLATAFORMA, importe, SIN_MONTO_RAYA);
+
+describe("SLT-241 R1/R2/R4 — montado: `TarifasValores`", () => {
+  const conValor = propsValores({
+    valores: [valor("tienda_flete_entregado", { valor: IMPORTE_TARIFA, ivaPct: "13.00" })],
+  });
+
+  it("R1/R16/R17: el valor guardado en monto sale en la moneda del pais; con CR, lo de sin proveedor", () => {
+    const ui = <TarifasValores {...conValor} />;
+    expect(textoEn("prueba", ui)).toContain("€1 801");
+    compruebaLosTresMontajes((montaje) => textoEn(montaje, ui), IMPORTE_TARIFA);
+  });
+
+  it("R1/R4: «Hoy rige» en monto con «+ 13 % IGV»; con CR, lo de sin proveedor", () => {
+    const ui = <TarifasValores {...conValor} />;
+    compruebaElImpuesto((montaje) => textoEn(montaje, ui), "€2 800 + 13 % IGV", `${dePlataforma(IMPORTE_HOY)} + 13 % IVA`);
+    compruebaLosTresMontajes((montaje) => textoEn(montaje, ui), IMPORTE_HOY);
+  });
+
+  it("R2: la columna Modo de un valor guardado dice «Monto €»", () => {
+    const ui = <TarifasValores {...conValor} />;
+    expect(textoEn("prueba", ui)).toContain("Monto €");
+    expect(textoEn("sin proveedor", ui)).toContain(`Monto ${MONEDA_PLATAFORMA.simbolo}`);
+    expect(textoEn("cr", ui)).toBe(textoEn("sin proveedor", ui));
+  });
+
+  it("R4: el encabezado de la columna del impuesto dice «IGV»", () => {
+    const { unmount } = render(<ToastProvider>{conMontaje("prueba", <TarifasValores {...conValor} />)}</ToastProvider>);
+    expect(screen.getByRole("columnheader", { name: "IGV" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "IVA" })).toBeNull();
+    unmount();
+  });
+
+  it("R4: la etiqueta accesible del campo del impuesto dice «IGV de …»; sin proveedor, «IVA de …»", () => {
+    const editable = <TarifasValores {...propsValores({ puedeEscribir: true })} />;
+    const conPrueba = render(<ToastProvider>{conMontaje("prueba", editable)}</ToastProvider>);
+    expect(screen.getByRole("textbox", { name: "IGV de Flete por entregado" })).toBeInTheDocument();
+    conPrueba.unmount();
+    const sinProveedor = render(<ToastProvider>{conMontaje("sin proveedor", editable)}</ToastProvider>);
+    expect(screen.getByRole("textbox", { name: "IVA de Flete por entregado" })).toBeInTheDocument();
+    sinProveedor.unmount();
+  });
+
+  it.each([
+    ["mensajero", "Por defecto vale para todos los vehículos"],
+    ["satelite", "Pagas a la satélite solo por los resultados que definas."],
+  ] as const)("R4: la nota «Sin <impuesto>» de la pestaña %s", (actor, cola) => {
+    const ui = <TarifasValores {...propsValores({ actor, referencia: null })} />;
+    compruebaElImpuesto((montaje) => textoEn(montaje, ui), `Sin IGV. ${cola}`, `Sin IVA. ${cola}`);
+  });
+});
+
+describe("SLT-241 R1/R2 — montado: `TarifasVehiculo` (pago por vehiculo, dentro de `TarifasValores`)", () => {
+  it("R1/R16/R17: el valor de un vehiculo en solo lectura sale en la moneda del pais", () => {
+    const ui = (
+      <TarifasValores
+        {...propsValores({
+          actor: "mensajero",
+          referencia: null,
+          valores: [valor("mensajero_entregado", { vehiculoId: "v1", valor: IMPORTE_TARIFA })],
+        })}
+      />
+    );
+    expect(textoEn("prueba", ui)).toContain("€1 801");
+    compruebaLosTresMontajes((montaje) => textoEn(montaje, ui), IMPORTE_TARIFA);
+  });
+
+  it("R1: «Hoy rige» de la celda «Todos los vehiculos» en la moneda del pais", () => {
+    const ui = (
+      <TarifasValores
+        {...propsValores({
+          actor: "mensajero",
+          referencia: referenciaUniforme({ tipo: "monto", valor: IMPORTE_HOY, ivaPct: null }),
+          valores: [valor("mensajero_entregado", { vehiculoId: "v1", valor: IMPORTE_TARIFA })],
+        })}
+      />
+    );
+    expect(textoEn("prueba", ui)).toContain(`Hoy rige: ${formatearMontoEn(MONEDA_DE_PRUEBA, IMPORTE_HOY)}`);
+    compruebaLosTresMontajes((montaje) => textoEn(montaje, ui), IMPORTE_HOY);
+  });
+
+  it("R2: «En €» bajo una celda en monto cuando la fila va en %", () => {
+    const ui = (
+      <TarifasValores
+        {...propsValores({
+          actor: "mensajero",
+          referencia: null,
+          puedeEscribir: true,
+          valores: [
+            valor("mensajero_entregado", { modo: "porcentaje", valor: "10.00" }),
+            valor("mensajero_entregado", { vehiculoId: "v1", valor: IMPORTE_TARIFA }),
+          ],
+        })}
+      />
+    );
+    expect(textoEn("prueba", ui)).toContain("En €");
+    expect(textoEn("sin proveedor", ui)).toContain(`En ${MONEDA_PLATAFORMA.simbolo}`);
+    expect(textoEn("cr", ui)).toBe(textoEn("sin proveedor", ui));
+  });
+});
+
+describe("SLT-241 R1/R4 — montado: `TarifasGrupos`", () => {
+  const ui = (
+    <TarifasGrupos
+      zona={{ id: "z1", nombre: "Norte" }}
+      grupos={[{ id: "g1", zonaId: "z1", nombre: "Centro", distritos: [{ id: "d1", nombre: "Uno" }] }]}
+      distritos={[]}
+      valores={[
+        valor("tienda_flete_entregado", { grupoId: "g1", valor: IMPORTE_TARIFA, ivaPct: "13.00" }),
+        valor("mensajero_entregado", { grupoId: "g1", valor: IMPORTE_HOY }),
+      ]}
+      activada={false}
+      puedeEscribir={false}
+      onCambio={() => {}}
+    />
+  );
+
+  it("R1/R4/R16/R17: el flete del grupo con «+ 13 % IGV»; con CR, lo de sin proveedor", () => {
+    compruebaElImpuesto((montaje) => textoEn(montaje, ui), "€1 801 + 13 % IGV", `${dePlataforma(IMPORTE_TARIFA)} + 13 % IVA`);
+    compruebaLosTresMontajes((montaje) => textoEn(montaje, ui), IMPORTE_TARIFA);
+  });
+
+  it("R1: el resumen del pago al mensajero del grupo en la moneda del pais", () => {
+    compruebaLosTresMontajes((montaje) => textoEn(montaje, ui), IMPORTE_HOY);
+  });
+});
+
+describe("SLT-241 R1 — montado: `TarifasTiendas`", () => {
+  const FILA: FilaPrecioTienda = {
+    id: "t1:todas",
+    tiendaId: "t1",
+    tiendaNombre: "Tienda Uno",
+    zonaId: null,
+    grupoId: null,
+    aplica: "Todas sus zonas",
+    valores: [valor("tienda_flete_entregado", { tiendaId: "t1", zonaId: null, valor: IMPORTE_TARIFA })],
+  };
+
+  it("R1/R16/R17: el flete de la tienda en la moneda del pais; con CR, lo de sin proveedor", () => {
+    const ui = <TarifasTiendas filas={[FILA]} puedeEscribir={false} onAnadir={() => {}} onEditar={() => {}} onCambio={() => {}} />;
+    expect(textoEn("prueba", ui)).toContain("€1 801");
+    compruebaLosTresMontajes((montaje) => textoEn(montaje, ui), IMPORTE_TARIFA);
+  });
+});
+
+describe("SLT-241 R1/R2/R4 — montado: `TarifasMensajeros` y `TarifaMensajeroDialogo`", () => {
+  const FILA: FilaMensajero = {
+    mensajeroId: "m1",
+    nombre: "Ana Torres",
+    inactivo: false,
+    valores: [valorPropio("mensajero_entregado", "m1", { valor: IMPORTE_TARIFA })],
+  };
+  const lista = (
+    <TarifasMensajeros filas={[FILA]} mensajeros={[mensajeroPantalla()]} activada={false} puedeEscribir={false} onCambio={() => {}} />
+  );
+  const dialogo = (
+    <TarifaMensajeroDialogo filas={[FILA]} disponibles={[]} mensajeroInicialId="m1" activada={false} onCerrar={() => {}} onCambio={() => {}} />
+  );
+
+  it("R1/R16/R17: el valor propio del mensajero en la moneda del pais", () => {
+    expect(textoEn("prueba", lista)).toContain("€1 801");
+    compruebaLosTresMontajes((montaje) => textoEn(montaje, lista), IMPORTE_TARIFA);
+  });
+
+  it("R4: la base del % del mensajero dice «sin IGV»", () => {
+    const base = (impuesto: string) => `En % se calcula sobre el flete sin ${impuesto} que se le cobra a la tienda por esa gestión.`;
+    compruebaElImpuesto((montaje) => textoEn(montaje, lista), base("IGV"), base("IVA"));
+  });
+
+  it("R4/R16/R17: la nota del dialogo dice «Sin IGV.» y la base «sin IGV»", () => {
+    const texto = (montaje: Montaje) => textoDelDocumento(montaje, dialogo);
+    compruebaElImpuesto(texto, "Sin IGV. ", "Sin IVA. ");
+    compruebaElImpuesto(texto, "flete sin IGV que se le cobra", "flete sin IVA que se le cobra");
+  });
+
+  it("R2: el selector de modo del dialogo ofrece «Monto €»", async () => {
+    const user = userEvent.setup();
+    const { unmount } = render(<ToastProvider>{conMontaje("prueba", dialogo)}</ToastProvider>);
+    await user.click(screen.getByRole("combobox", { name: "Modo de Por entregado" }));
+    expect(await screen.findByRole("option", { name: "Monto €" })).toBeInTheDocument();
+    unmount();
+  });
+});
+
+// --- R4: censo «sin IVA» de los 8 archivos de la pantalla de Tarifas --------------------------
+
+const ARCHIVOS_DE_TARIFAS = [
+  "tarifas-textos.ts",
+  "tarifas-borrador.ts",
+  "TarifasValores.tsx",
+  "TarifasVehiculo.tsx",
+  "TarifasGrupos.tsx",
+  "TarifasMensajeros.tsx",
+  "TarifasTiendas.tsx",
+  "TarifaMensajeroDialogo.tsx",
+].map((archivo) => `app/(app)/configuracion/tarifas/_components/${archivo}`);
+
+/** Las lineas de codigo (sin comentarios) que dicen «IVA» como palabra. Vacio = bien. */
+function ivaEnElCodigo(fuente: string): string[] {
+  return quitarComentarios(fuente)
+    .split("\n")
+    .filter((linea) => /\bIVA\b/.test(linea))
+    .map((linea) => linea.trim());
+}
+
+describe("SLT-241 R4 — censo: los archivos de la pantalla de Tarifas no dicen «IVA» fuera de los comentarios", () => {
+  it.each(ARCHIVOS_DE_TARIFAS)("R4: %s", (archivo) => {
+    expect(ivaEnElCodigo(readFileSync(join(process.cwd(), archivo), "utf8"))).toEqual([]);
+  });
+
+  it("contraprueba: un texto con «IVA» en el codigo se detecta; en un comentario, no", () => {
+    expect(ivaEnElCodigo('const x = "Sin IVA.";')).toEqual(['const x = "Sin IVA.";']);
+    expect(ivaEnElCodigo("// Sin IVA.\n/** el IVA */\nconst conIva = 1;")).toEqual([]);
+  });
+
+  it("contraprueba: el archivo real de textos, con una entrada «IVA» de vuelta, se detecta", () => {
+    const real = readFileSync(join(process.cwd(), ARCHIVOS_DE_TARIFAS[0]), "utf8");
+    const conIva = real.replace("export const TEXTOS = {", 'export const TEXTOS = {\n  colIva: "IVA",');
+    expect(conIva).not.toBe(real);
+    expect(ivaEnElCodigo(conIva)).toEqual(['colIva: "IVA",']);
   });
 });
