@@ -21,6 +21,9 @@
  * - 2026-11-20 (SLT-235 R19): sale `app/paquete/[numGuia]/page.tsx`, que ya pinta el monto con la
  *   moneda del pais de la empresa. El tope pasa de 20 a 19. Las entradas que quedaban a nombre de
  *   SLT-235 pasan a la rebanada que las retira (design §8): SLT-241, SLT-242 y SLT-245.
+ * - 2026-11-21 (SLT-241 R20): salen `TarifaValorRepository.ts`, `resolver-tarifas.ts`,
+ *   `plantilla-datos.ts`, `tarifa-flexible.ts` y `informe.ts` de transito, que ya toman la moneda y
+ *   el impuesto del pais. El tope pasa de 19 a 14.
  */
 
 export type FichaQueLoRetira =
@@ -87,29 +90,9 @@ export const EXCEPCIONES_PAIS_SIN_LITERALES: readonly ExcepcionPaisSinLiterales[
     motivo: "planes: la fecha del reinicio y del cambio pendiente, en CR; la pasa a la zona de cada empresa SLT-90 (decision del humano, 2026-11-06; antes SLT-86)",
   },
   {
-    archivo: "lib/repositories/TarifaValorRepository.ts",
-    ficha: "SLT-241",
-    motivo: "texto «IVA 13.00» del historial de tarifas, que se pinta en pantalla (decision del humano, 2026-11-20); lo retira la rebanada SLT-241 (design §8)",
-  },
-  {
-    archivo: "lib/repositories/_shared/resolver-tarifas.ts",
-    ficha: "SLT-241",
-    motivo: "mensaje interno de error «no tiene IVA» del resolver de tarifas; lo nombra con el impuesto del pais la rebanada SLT-241 (design §8)",
-  },
-  {
     archivo: "lib/services/AnaliticaFinancieraService.ts",
     ficha: "SLT-242",
     motivo: "`monedaConfig.currency` en el DTO que pintan las pantallas de analitica financiera; la moneda del pais la pone la rebanada SLT-242 (design §8)",
-  },
-  {
-    archivo: "lib/types/plantilla-datos.ts",
-    ficha: "SLT-241",
-    motivo: "ejemplo «₡12.500» del selector de variables y la moneda de la plataforma por defecto de la vista previa en el navegador; la pasa a la del pais la rebanada SLT-241 (decision del humano, P2 de SLT-235, 2026-11-20)",
-  },
-  {
-    archivo: "lib/types/tarifa-flexible.ts",
-    ficha: "SLT-241",
-    motivo: "mensaje de validacion «El IVA debe ser…» del formulario de tarifas (pantalla); lo toma del pais la rebanada SLT-241 (design §8)",
   },
   {
     archivo: "lib/utils/fecha-cr.ts",
@@ -136,11 +119,6 @@ export const EXCEPCIONES_PAIS_SIN_LITERALES: readonly ExcepcionPaisSinLiterales[
     ficha: "SLT-81",
     motivo: "envoltorio de CR sobre telefono-pais.ts para los botones de contacto y el chat de la UI",
   },
-  {
-    archivo: "lib/whatsapp-envios/informes/transito/informe.ts",
-    ficha: "SLT-241",
-    motivo: "ejemplo «₡322.900» de `por_cobrar` en el panel de variables (pantalla); el valor real ya sale en la moneda del pais; lo retira la rebanada SLT-241 (decision del humano, P2 de SLT-235, 2026-11-20)",
-  },
 ];
 
-export const TOPE_EXCEPCIONES = 19;
+export const TOPE_EXCEPCIONES = 14;

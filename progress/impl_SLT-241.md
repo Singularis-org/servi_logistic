@@ -213,3 +213,59 @@ El typecheck no señaló otros llamantes fuera de «Archivos esperados».
 - `pais-sin-literales` no se corrió: rojo esperado hasta T5.2.
 
 **Veredicto:** bloque 2 hecho (T2.1 y T2.2; R1–R4 con test y en verde); los tests de Tarifas y de cierres, verdes sin cambiar valores.
+
+## Bloque 5 — Guardias (T5.1–T5.2, R19–R20) · backend_dev · 2026-11-21
+
+T5.3 (cierre: `./init.sh` y E2E) queda para CI / el leader.
+
+### Archivos
+
+- `tests/components/moneda-del-pais-pantallas.test.tsx` — `CENSO_MONEDA_DEL_PAIS` gana los 16 archivos de design §9
+  (bloque «SLT-241 (rebanada 3, design §9, R19)»). Caso nuevo «SLT-241 R19: los 16 archivos de la rebanada 3 están
+  en el censo y dan rojo con money( o formatMontoString(»: cuenta 16 y, para cada uno, el fuente real + `money(1)` y
+  el fuente real + `formatMontoString("1")` dan su infracción.
+- `tests/unit/guards/_pais-sin-literales-excepciones.ts` — fuera las 5 entradas de SLT-241 (`TarifaValorRepository.ts`,
+  `resolver-tarifas.ts`, `plantilla-datos.ts`, `tarifa-flexible.ts`, `informe.ts` de tránsito); `TOPE_EXCEPCIONES = 14`;
+  línea nueva en «Bajadas». `FichaQueLoRetira` sin tocar.
+- `tests/components/moneda-del-pais-tarifas.test.tsx` — al final, «SLT-241 R20 — ninguna excepcion…»: ninguna entrada
+  con `ficha === "SLT-241"`, `TOPE_EXCEPCIONES` = 14 y el largo ≤ tope.
+
+Contraprueba manual de T5.1: `ranking-labels.ts` + `import { money } …; export const _contra = money(1);` →
+`moneda-del-pais-pantallas.test.tsx -t censo` da `Tests 1 failed` («R18: 'app/(app)/ranking/_components/ranking…' no
+llama a los formateadores implícitos…»). Archivo restaurado (git status: solo los 3 archivos de arriba).
+
+### Verificación (salida real, 2026-11-21, `NODE_OPTIONS=--max-old-space-size=8192`)
+
+- `pnpm run typecheck` → exit 0, sin errores.
+- `pnpm run lint` → `✖ 249 problems (0 errors, 249 warnings)` (los mismos 249 de antes); `eslint` sobre los 3
+  archivos tocados → sin salida, exit 0.
+- `pnpm run test:guardias` → `Test Files 357 passed | 3 skipped (360)`, `Tests 5419 passed | 28 skipped (5447)`.
+- `vitest run tests/components/moneda-del-pais-tarifas.test.tsx tests/components/moneda-del-pais-pantallas.test.tsx`
+  → `Test Files 2 passed (2)`, `Tests 181 passed (181)`.
+
+## Mapa R → test (feature completa, R1–R20)
+
+| R | Test |
+|---|---|
+| R1 | `moneda-del-pais-tarifas.test.tsx` > «SLT-241 R1 — `tarifas-textos`…» y los montados de `TarifasValores`, `TarifasVehiculo`, `TarifasGrupos`, `TarifasTiendas`, `TarifasMensajeros` (bloque 2) |
+| R2 | `moneda-del-pais-tarifas.test.tsx` > «SLT-241 R2 — `etiquetaModo`…» y montados «Monto €» / «En €» (bloque 2) |
+| R3 | `moneda-del-pais-tarifas.test.tsx` > «SLT-241 R3 — `porcentajeParaVer`…» (bloque 2) |
+| R4 | `moneda-del-pais-tarifas.test.tsx` > «SLT-241 R4 — `textosDelImpuesto` y `planDeGuardado`…», montados con «IGV» y censo «sin IVA» de los 8 archivos + contrapruebas (bloque 2) |
+| R5 | `tarifa-valor-service.test.ts` > «SLT-241 R5 — …»; `moneda-del-pais-tarifas.test.tsx` > «§9/R5…» (bloque 1) |
+| R6 | `tarifa-valor-service.test.ts` > «SLT-241 R6 — …»; `moneda-del-pais-tarifas.test.tsx` > «§9/R6…» (bloque 1) |
+| R7 | `moneda-del-pais-tarifas.test.tsx` > «SLT-241 R7 — …» y «SLT-241 §9 — el fuente de `guardarValoresTarifa`…» (bloque 1) |
+| R8 | `moneda-del-pais-tarifas.test.tsx` > «SLT-241 R8 — …»; país sin impuesto en `pais-para-pantallas.test.ts` (SLT-235) |
+| R9 | `pais-sin-literales.guardia.test.ts` en verde con `resolver-tarifas.ts` fuera de la lista (bloque 5); `tarifas-flexibles-resolver.test.ts` sin tocar |
+| R10 | `moneda-del-pais-tarifas.test.tsx` > «SLT-241 R10 — el aviso de impacto…» (bloque 3) |
+| R11 | `moneda-del-pais-tarifas.test.tsx` > «SLT-241 R11 — el ranking pinta el premio…» (bloque 3) |
+| R12 | `moneda-del-pais-tarifas.test.tsx` > «SLT-241 R12 — …» y «SLT-241 §9 — `buildPlantillaService`…» (bloque 4) |
+| R13 | `moneda-del-pais-tarifas.test.tsx` > «SLT-241 R13 — la vista previa de un informe…» (bloque 4) |
+| R14 | `pais-sin-literales.guardia.test.ts` en verde con `plantilla-datos.ts` e `informe.ts` fuera de la lista (bloque 5); casos «R14/R15…» (bloque 4) |
+| R15 | `plantilla-mensaje-utils.test.ts` y `catalogo-de-variables.test.ts` verdes sin tocarlos; casos «R14/R15…» (bloque 4) |
+| R16 | Los casos con `MONEDA_CR` + «IVA» = sin proveedor de cada bloque («…/R16/R17», `compruebaLosTresMontajes`, `compruebaElImpuesto`, «R5/R16…», «§9/R16…») y los tests existentes de Tarifas, ranking, plantillas e informes verdes sin cambiar valores esperados |
+| R17 | Los casos «sin proveedor» de cada bloque (= `formatearMontoEn(MONEDA_PLATAFORMA, v)` / `IMPUESTO_ROTULO`), junto a los de R16 |
+| R18 | Sin test: lo comprueba el reviewer en el diff (design §11): sin migración ni escritura sobre `historial_accion` existente; las dos `*-descarga-columnas.ts` del ranking sin cambios; ningún «IVA» cambiado fuera de §4–§6; ningún archivo de wallet ni de plataforma |
+| R19 | `moneda-del-pais-pantallas.test.tsx` > «SLT-235/T4.1 — censo de R18…» con los 16 archivos de §9 (it.each + «rojo si un archivo REAL…») y «SLT-241 R19: los 16 archivos de la rebanada 3…» |
+| R20 | `pais-sin-literales.guardia.test.ts` en verde (sin las 5 entradas, tope 14); `moneda-del-pais-tarifas.test.tsx` > «SLT-241 R20 — ninguna excepcion de `pais-sin-literales` queda a nombre de SLT-241» |
+
+**Veredicto:** bloque 5 hecho (T5.1 y T5.2; R19 y R20 con test y en verde, guardias verdes); falta T5.3 en CI.

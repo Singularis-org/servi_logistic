@@ -1285,3 +1285,18 @@ describe("SLT-241 R4 — censo: los archivos de la pantalla de Tarifas no dicen 
     expect(ivaEnElCodigo(conIva)).toEqual(['colIva: "IVA",']);
   });
 });
+
+// ── Bloque 5 (T5.2): la lista de excepciones de `pais-sin-literales` baja ───────────────────────
+
+import {
+  EXCEPCIONES_PAIS_SIN_LITERALES,
+  TOPE_EXCEPCIONES,
+} from "@/tests/unit/guards/_pais-sin-literales-excepciones";
+
+describe("SLT-241 R20 — ninguna excepcion de `pais-sin-literales` queda a nombre de SLT-241", () => {
+  it("R20: la lista no tiene entradas de SLT-241 y el tope baja a 14", () => {
+    expect(EXCEPCIONES_PAIS_SIN_LITERALES.filter((e) => e.ficha === "SLT-241")).toEqual([]);
+    expect(TOPE_EXCEPCIONES).toBe(14);
+    expect(EXCEPCIONES_PAIS_SIN_LITERALES.length).toBeLessThanOrEqual(TOPE_EXCEPCIONES);
+  });
+});
