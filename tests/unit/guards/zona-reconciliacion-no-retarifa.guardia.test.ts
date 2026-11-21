@@ -23,7 +23,8 @@ import { codigoSinComentarios } from "../../fixtures/sin-comentarios";
  * SLT-224 (design §2.3): la reconciliacion se movio de `ZonaRepository.update` a un helper
  * compartido por TRES llamadores (el guardado de zona, la recepcion en la central y el boton
  * «Actualizar zonas»). El detector se aplica al cuerpo del helper, y dos aserciones mas vigilan que
- * los tres lo usen y que ninguno repita el corte ni la accion (R1706).
+ * los tres lo usen y que ninguno repita el corte ni la accion (R1706). SLT-65: la lectura del helper
+ * es `planificarReconciliacion` (solo lee); el detector de escrituras se aplica a quien la aplica.
  *
  * EL DETECTOR SE AUTO-PRUEBA: se ejerce sobre cuerpos MUTADOS EN MEMORIA, porque una guardia
  * estatica rota no falla, CALLA.
@@ -89,6 +90,22 @@ function cuerpoDe(archivo: string, nombre: string): string {
   const cuerpo = bloqueBalanceado(codigo, cierreFirma);
   if (cuerpo === null) throw new Error(`el cuerpo de \`${nombre}\` no cierra: el recortador esta roto`);
   return cuerpo;
+}
+
+/**
+ * SLT-65 (design §6.1; decision humana 2026-11-03): la LECTURA de las ordenes elegibles vive en
+ * `planificarReconciliacion`, en el MISMO helper; `reconciliarZonaDeOrdenes` la llama y aplica el
+ * plan. Su cuerpo se recorta con `cuerpoDe(HELPER, "planificarReconciliacion")`, que LANZA si no esta.
+ */
+
+/** El plan SOLO LEE: ninguna escritura sobre ningun modelo. Vacio = cumple. */
+export function escriturasDelPlan(cuerpo: string): string[] {
+  const fallos: string[] = [];
+  for (const op of MUTACIONES) {
+    const m = new RegExp(`\\b(\\w+)\\s*\\.\\s*${op}\\s*\\(`, "g");
+    for (const hallado of cuerpo.matchAll(m)) fallos.push(`escribe en \`${hallado[1]}.${op}()\``);
+  }
+  return fallos;
 }
 
 /** EL DETECTOR, en una funcion, para poder ejercerlo sobre cuerpos mutados. Vacio = cumple. */
@@ -184,7 +201,22 @@ describe("366/T8 — el detector se prueba a si mismo", () => {
 
   it("CONTRAPRUEBA: pedir una funcion que no existe LANZA en vez de medir vacio", () => {
     expect(cuerpoDe(HELPER, "reconciliarZonaDeOrdenes").length).toBeGreaterThan(400);
+    expect(cuerpoDe(HELPER, "planificarReconciliacion").length).toBeGreaterThan(400);
     expect(() => cuerpoDe(HELPER, "funcionQueNoExiste")).toThrow(/no se encontro/);
+  });
+
+  it("CONTRAPRUEBA (SLT-65): un plan que solo lee NO produce fallos; uno que escribe, si", () => {
+    const PLAN_SANO = `{
+      retenidas += await tx.orden.count({ where: base });
+      const elegibles = await tx.orden.findMany({ where: base });
+      if (elegibles.length > 0) porZona.set(zona, elegibles);
+    }`;
+    expect(escriturasDelPlan(PLAN_SANO)).toEqual([]);
+    const mutado = PLAN_SANO.replace(
+      "if (elegibles.length > 0)",
+      "await tx.orden.updateMany({ where: base, data: { zonaId: zona } }); if (elegibles.length > 0)",
+    );
+    expect(escriturasDelPlan(mutado)).toEqual(["escribe en `orden.updateMany()`"]);
   });
 });
 
@@ -219,9 +251,19 @@ describe("SLT-224/R1706 — el detector de los llamadores se prueba a si mismo",
 describe("⭑ 366/R8/R9 + SLT-224/R1707 — la reconciliacion no re-tarifa nada hacia atras", () => {
   it("el helper no escribe en ninguna tabla de dinero y su UPDATE de la orden toca SOLO `zonaId`", () => {
     const cuerpo = cuerpoDe(HELPER, "reconciliarZonaDeOrdenes");
-    // Anti-vacuidad: el recorte trae la reconciliacion entera, no un `{}`.
+    // Anti-vacuidad: el recorte trae la reconciliacion entera, no un `{}`. SLT-65 (design §6.1): la
+    // lectura de las elegibles vive en `planificarReconciliacion`; el helper la llama y aplica el plan.
     expect(cuerpo).toContain("appendAccion");
-    expect(cuerpo).toContain("orden.findMany(");
+    expect(cuerpo).toContain("planificarReconciliacion(");
+    const plan = cuerpoDe(HELPER, "planificarReconciliacion");
+    expect(plan).toContain("orden.findMany(");
+    expect(plan).toContain("orden.count(");
+
+    expect(
+      escriturasDelPlan(plan),
+      "el plan solo LEE: las escrituras de la reconciliacion son las de `reconciliarZonaDeOrdenes`, y nada mas",
+    ).toEqual([]);
+    for (const tabla of TABLAS_PROHIBIDAS) expect(plan).not.toMatch(new RegExp(`\\b${tabla}\\b`));
 
     expect(
       fallosDeLaReconciliacion(cuerpo),

@@ -257,6 +257,11 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Qué falta:** si vuelve a caer en CI, buscar la causa. `playwright.config.ts:70` usa `on-first-retry`, así que el intento que cae no guarda traza; solo la guarda el reintento. `e2e/mi-wallet.spec.ts:71` tiene el mismo clic crudo.
 - **Dueño:** Carlos Restrepo.
 
+### D81 — `enUnaFoto` reutiliza la constante de opciones de `$transaction`
+- **Origen:** SLT-65 (2026-10-31, review F2.2 de 2026-11-03, menor 4). `CatalogoGeograficoRepository.enUnaFoto` (SLT-44) pasa la constante `OPCIONES_TRANSACCION` a `$transaction`. Prisma 7 escribe `newTxId` en ese objeto, y tras abrir un `tx` anidado la siguiente carga falla con «Transaction already closed». SLT-65 lo rodea con `lib/repositories/_shared/sin-transaccion-anidada.ts`.
+- **Qué falta:** el arreglo de raíz en SLT-44, una línea: `{ ...OPCIONES_TRANSACCION }`. Después, valorar si se retira el rodeo de SLT-65.
+- **Dueño:** Camilo (SLT-44, PR #55). Era D43 en la rama de SLT-65; renumerada a D81 al integrar con `geo_jerarquica` (2026-11-20), que ya traía otra D43.
+
 ### D43 — Encabezado de la descarga «Flete por devolución a origen + IVA» con el modelo nuevo
 - **Origen:** D40. `cierres-gestiones-fundida-descarga-columnas.ts:292` lo escribe para los dos modelos; en el nuevo el importe es correcto y el nombre, impreciso. Cambiarlo toca el archivo del modelo viejo.
 - **Qué falta:** decidir si se hace antes de promover EP-8 o cuando el modelo viejo se retire (SLT-57).

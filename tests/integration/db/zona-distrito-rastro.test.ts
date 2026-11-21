@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
+import { conEmpresa } from "@/lib/db/contexto-empresa";
 import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
 import type { UpdateZonaData, UpdateZonaResult } from "@/lib/interfaces/repositories/IZonaRepository";
 import { comoApp, crearOrganizacion, fijarEmpresa } from "@/tests/fabricas/organizaciones";
@@ -132,7 +133,9 @@ describeSiHayBase("SLT-76 — rastro de los distritos de una zona (Postgres real
       const [{ rol }] = await tx.$queryRawUnsafe<{ rol: string }[]>(`SELECT current_user AS rol`);
       if (rol !== "servi_app") throw new Error(`el escenario no bajo al rol de la app: ${rol}`);
 
-      return fn({
+      // `enTransaccionRevertida` deja en `contextoActual` su empresa por defecto, no la del caso: el
+      // catalogo (SLT-44/SLT-65) pide `organizacion` por el id del contexto y con la RLS no la hallaria.
+      return conEmpresa(empresa, () => fn({
         tx,
         repo: new ZonaRepository(clienteSoloTransaccion(tx)),
         maestro,
@@ -160,7 +163,7 @@ describeSiHayBase("SLT-76 — rastro de los distritos de una zona (Postgres real
             },
             orderBy: [{ valorAnterior: { sort: "asc", nulls: "last" } }],
           }),
-      });
+      }));
     });
   }
 

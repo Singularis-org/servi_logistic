@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Prisma } from "@prisma/client";
 import { empresaSinActivar } from "../../fixtures/tarifa-tienda";
 
+import { delegadosDelCatalogo } from "@/tests/fixtures/doble-catalogo-geografico";
+
 /**
  * ⏳ 2026-09-10 — FEATURE 415 (T5): LOS DOS COMPOSITION ROOTS INYECTAN DE VERDAD.
  *
@@ -95,6 +97,8 @@ const prismaFalso = {
     findFirst: vi.fn(async () => filaOrden()),
   },
   tarifa: { findMany: vi.fn(async () => [FILA_TARIFA]) },
+  // SLT-65: la marca de zona especial sale del catalogo de la empresa (sin marcas por defecto).
+  ...delegadosDelCatalogo(),
   // SLT-52: empresa sin valores del modelo nuevo -> el resolver unico usa la cascada vieja (R36).
   ...empresaSinActivar(),
 };

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
+import { delegadosDelCatalogo } from "@/tests/fixtures/doble-catalogo-geografico";
 import { FILA_PRISMA_415 } from "@/tests/fixtures/api-orden-costeo-415";
 
 // Feature 177 (Bloque C: T6/T7/T8/T9) — metodos de repositorio del canal integrador para la
@@ -25,6 +26,8 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
     ordenHistorialEstado: { createMany: vi.fn() },
     orderStatus: { findUnique: vi.fn() },
     $queryRaw: vi.fn(),
+    // SLT-65: la marca de zona especial sale del catalogo de la empresa (sin marcas por defecto).
+    ...delegadosDelCatalogo(),
     ...overrides,
   };
 }

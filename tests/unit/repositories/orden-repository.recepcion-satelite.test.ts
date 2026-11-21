@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
+import { delegadosDelCatalogo } from "@/tests/fixtures/doble-catalogo-geografico";
 import { idEstado, sembrarCatalogoEstados } from "@/tests/fixtures/catalogo-estados";
 
 // Feature 33 — repo de la bodega satelite. Prisma se mockea con dobles simples
@@ -25,6 +26,8 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
     // pendiente y la ayuda con UNA consulta SQL. Sin filas: señales en reposo.
     $queryRaw: vi.fn().mockResolvedValue([]),
     $transaction: vi.fn(),
+    // SLT-65: la marca de zona especial sale del catalogo de la empresa (sin marcas por defecto).
+    ...delegadosDelCatalogo(),
     ...overrides,
   };
   prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => fn(prisma));

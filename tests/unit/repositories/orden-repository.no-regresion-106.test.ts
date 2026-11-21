@@ -118,8 +118,10 @@ const SELECT_DETALLE_106 = {
   cobraComision: true,
   // `esCentral` se lee pero NO se publica: elige la columna de flete (GAM vs estandar).
   zona: { select: { id: true, nombre: true, esCentral: true } },
-  // Del distrito, SOLO la marca de la empresa (SL-38). Ni nombre, ni provincia, ni canton (415/R5).
-  distrito: { select: { zonasEspeciales: { select: { id: true }, take: 1 } } },
+  // SLT-65 (design §3; decision humana 2026-10-31, «Sí, actualizar los literales»): la marca de la
+  // empresa ya no viaja en la relacion `distrito`; sale del catalogo sobre el lugar de la orden, y
+  // aqui solo van las dos FK que lo definen (`distritoId` ya va arriba, por SLT-52). Ni nombres ni geografia publicada (415/R5).
+  cantonId: true,
   // La fila congelada elegible MAS RECIENTE. El `where` lleva las DOS mitades y las dos son
   // load-bearing: `tiendaId` es el tienda_id CONGELADO (415/R33) y `cierre.estado` impide que
   // `costoReal` cambie hacia atras cuando haya un cierre solicitado o rechazado (415/R26).

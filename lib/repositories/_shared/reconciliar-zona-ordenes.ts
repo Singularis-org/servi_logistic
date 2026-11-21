@@ -1,8 +1,14 @@
 import { randomUUID } from "node:crypto";
 
 import type { Prisma } from "@prisma/client";
-import { zonaUnicaDeDistrito } from "@/lib/repositories/_shared/zona-colapso";
+import {
+  CatalogoGeograficoRepository,
+  type CatalogoPrismaClient,
+} from "@/lib/repositories/CatalogoGeograficoRepository";
+import { whereLugarEn } from "@/lib/repositories/_shared/lugar-orden";
+import { sinTransaccionAnidada } from "@/lib/repositories/_shared/sin-transaccion-anidada";
 import { appendAccion, resolverActorCongelado } from "@/lib/repositories/registrar-accion";
+import { nodosBajo, zonaQueCubre } from "@/lib/services/geografia-dominio";
 import { etiquetaDeEntidad } from "@/lib/types/historial-accion-etiquetas";
 import {
   ESTADOS_PAQUETE_EN_ESTANTE,
@@ -22,10 +28,19 @@ import {
  * no». El corte deja de excluir todo cierre y toda gestion: solo protege el dinero EN CURSO (un
  * cierre sin aprobar, o una gestion que decidio dinero y aun no tiene cierre aprobado), y el estado
  * lo decide `CLASE_RECONCILIACION_ZONA`. Los tres llamadores heredan el corte sin cambio.
+ *
+ * SLT-65 (design §6.1, §6.3): la zona de cada lugar sale del catalogo jerarquico de SLT-44
+ * (`zonaQueCubre`, la asignacion mas especifica) y la orden entra por su LUGAR (`whereLugarEn`), no
+ * por `distrito_id`. La parte que SOLO LEE es `planificarReconciliacion`, exportada para que el
+ * script de equivalencia la pregunte sobre una conexion de solo lectura;
+ * `reconciliarZonaDeOrdenes` la llama y aplica el plan.
  */
 
 export interface AlcanceReconciliacion {
-  /** Distritos a re-evaluar. Siempre presente: la regla parte del mapa `zona_distrito`. */
+  /**
+   * Nodos a re-evaluar (distritos, o cantones con lo que cuelga de ellos: SLT-65 R13). Siempre
+   * presente: la regla parte de las asignaciones de zona.
+   */
   distritoIds: string[];
   /** Si viene, acota ademas a estas ordenes (la recepcion pasa la suya). Ausente = todas las del distrito. */
   ordenIds?: string[];
@@ -34,6 +49,19 @@ export interface AlcanceReconciliacion {
 export interface ResultadoReconciliacion {
   ordenesReconciliadas: number;
   ordenesRetenidasEnBodegaSatelite: number;
+}
+
+/**
+ * SLT-65 (design §6.3) — lo que el plan de la reconciliacion lee del cliente de la transaccion: las
+ * ordenes y los modelos del catalogo (`CatalogoPrismaClient`).
+ */
+export type TxDeReconciliacion = Pick<Prisma.TransactionClient, "orden"> & CatalogoPrismaClient;
+
+/** SLT-65 (design §6.1): lo que movera un guardado, calculado sin escribir. */
+export interface PlanDeReconciliacion {
+  /** Por zona destino: las ordenes que se mueven (id, guia, remision). Sin zonas vacias. */
+  porZona: Map<string, { id: string; numGuia: number | null; numRemision: string | null }[]>;
+  retenidasEnBodegaSatelite: number;
 }
 
 /**
@@ -50,29 +78,34 @@ export interface ResultadoReconciliacion {
  *     (69/R10) y no impide mover la zona (R1720): el proximo cierre cobra con la zona nueva;
  *   · `gestiones: none {...}` — R1722: una gestion VIGENTE cuyo resultado ya decidio dinero
  *     (`entregado`, rechazo, `incidente`) y que aun NO tiene cierre aprobado (sin cierre, o con uno
- *     sin aprobar). Una `reprogramada` o una `devuelta` vigentes NO excluyen por aqui.
+ *     sin aprobar). Una `reprogramada` o una `devuelta` vigentes NO excluyen por aqui: las dos se
+ *     rutean HACIA ADELANTE por `orden.zonaId` (`LiberacionReprogramadaService`,
+ *     `DevolucionSlaService`), asi que dejarlas con la zona vieja las liberaria a la bodega
+ *     equivocada — el mismo atasco que la 366 vino a arreglar.
  *
  * ⭑ FICHA 377 (design §3.3) — POR QUE ES UNA FUNCION Y NO DOS `where` ESCRITOS DOS VECES. La 377
- * lo lee DOS veces en cada grupo: una para las ordenes que SE MUEVEN (`notIn` estante) y otra
- * para CONTAR las que se quedan (`in` estante). Si las dos copiaran el corte, el dia que cambie
- * uno de los cuatro cortes de arriba el conteo se quedaria contando otra cosa y nada fallaria —
- * es la misma leccion que `OrdenRepository`/184-R16, donde el `WHERE` de la pagina y el del
- * conjunto no pueden despegarse.
+ * lo lee DOS veces en cada grupo: una para las ordenes que SE MUEVEN (`notIn` de lo que no se
+ * mueve) y otra para CONTAR las que se quedan en el estante (`in` estante). Si las dos copiaran el
+ * corte, el dia que cambie uno de los cortes de arriba el conteo se quedaria contando otra cosa y
+ * nada fallaria — es la misma leccion que `OrdenRepository`/184-R16, donde el `WHERE` de la pagina
+ * y el del conjunto no pueden despegarse.
  *
- * El estado NO entra aqui: cada consumidor le añade su clausula COMPLEMENTARIA, y esa
- * complementariedad es lo que hace que los dos conjuntos sean disjuntos por construccion.
+ * El estado NO entra aqui: cada consumidor le añade su clausula de estado.
+ *
+ * SLT-65 (design §6.1, paso 4): la orden entra por su LUGAR (`whereLugarEn`), no por `distrito_id`.
+ * Con lugares que son solo distritos, la rama del canton no casa con nada y el corte es el de antes.
  *
  * SLT-224: `ordenIds` acota ademas a unas ordenes concretas (la recepcion pasa la suya). Sin el,
  * el `where` es exactamente el de la 366/377: el campo no se añade, ni siquiera como `undefined`.
  */
 function whereBaseElegible(
-  distritoIds: string[],
+  lugares: readonly string[],
   zonaResueltaId: string,
-  ordenIds: string[] | undefined,
+  ordenIds: readonly string[] | undefined,
 ): Prisma.OrdenWhereInput {
   return {
-    ...(ordenIds !== undefined ? { id: { in: ordenIds } } : {}),
-    distritoId: { in: distritoIds },
+    ...(ordenIds !== undefined ? { id: { in: [...ordenIds] } } : {}),
+    ...whereLugarEn(lugares),
     zonaId: { not: zonaResueltaId },
     deletedAt: null,
     // R1722: solo el detalle de un cierre SIN APROBAR protege.
@@ -89,72 +122,56 @@ function whereBaseElegible(
 }
 
 /**
- * Re-deriva la zona de las ordenes de `alcance.distritoIds` desde `zona_distrito`, con el colapso
- * 1/0/>1, el corte de `whereBaseElegible`, la retencion del estante (377) y una accion
- * `orden_zona_reconciliada` por orden movida, todo con UN lote por llamada.
+ * ⭑ SLT-65 (design §6.1; R13–R15, R17) — QUE MOVERIA UNA RECONCILIACION, SIN ESCRIBIR NADA.
  *
- * Recibe la `tx` y nunca abre la suya: la atomicidad con el guardado de la zona, con la recepcion
- * o con el boton la da quien llama. Lee `zona_distrito` y `orden` por la `tx`, asi que la empresa
- * la acota el cliente con la empresa en contexto (RLS).
+ * Se extrajo de `ZonaRepository.update` para que el script de equivalencia (design §9) pueda
+ * preguntarlo sobre una conexion de solo lectura. `reconciliarZonaDeOrdenes` lo llama y aplica el
+ * plan con las mismas escrituras de siempre.
+ *
+ * 1. El catalogo y las asignaciones salen de `deLaEmpresa()` SOBRE `tx`: no abre otra transaccion,
+ *    lee en serie en la del llamador y ve el `zona_distrito` que este acaba de reescribir (R17).
+ * 2. Los lugares son los nodos afectados y todo lo que cuelga de ellos (R13).
+ * 3. La zona de cada lugar es `zonaQueCubre`: la asignacion mas especifica, con el colapso 1/0/>1 de
+ *    la 366 (R2/R3). `null` (0 o >1 zonas) no mueve nada: no se inventa una zona eligiendo la primera.
+ * 4. Por zona, las dos consultas de la 377 sobre el MISMO `whereBaseElegible`: el conteo de las del
+ *    estante y las elegibles. Una zona sin elegibles no entra en `porZona`.
  */
-export async function reconciliarZonaDeOrdenes(
-  tx: Prisma.TransactionClient,
-  alcance: AlcanceReconciliacion,
-  actorUsuarioId: string | null,
-): Promise<ResultadoReconciliacion> {
-  const { distritoIds: distritosAfectados, ordenIds } = alcance;
-  let ordenesReconciliadas = 0;
-  // 377/R8: las que HABRIAN cambiado de zona y no lo hacen porque su paquete ya esta en el
-  // estante de una satelite. Se devuelve en la misma respuesta del guardado (R8/R10).
-  let ordenesRetenidasEnBodegaSatelite = 0;
-  if (distritosAfectados.length === 0) {
-    return { ordenesReconciliadas, ordenesRetenidasEnBodegaSatelite };
+export async function planificarReconciliacion(
+  tx: TxDeReconciliacion,
+  nodosAfectados: readonly string[],
+  ordenIds?: readonly string[],
+): Promise<PlanDeReconciliacion> {
+  const porZona: PlanDeReconciliacion["porZona"] = new Map();
+  let retenidasEnBodegaSatelite = 0;
+  if (nodosAfectados.length === 0) return { porZona, retenidasEnBodegaSatelite };
+
+  const { catalogo, asignaciones } = await new CatalogoGeograficoRepository(tx).deLaEmpresa();
+
+  // En el orden de los nodos afectados, cada uno seguido de lo que cuelga de el, sin repetidos.
+  const lugares = new Set<string>();
+  for (const n of nodosAfectados) {
+    lugares.add(n);
+    for (const bajo of nodosBajo(catalogo, n)) lugares.add(bajo.id);
   }
 
-  // El estado YA reemplazado de la N:M: es el que decide cual es la zona correcta.
-  const filas = await tx.zonaDistrito.findMany({
-    where: { distritoId: { in: distritosAfectados } },
-    select: { distritoId: true, zonaId: true },
-  });
-
-  const zonasPorDistrito = new Map<string, string[]>();
-  for (const fila of filas) {
-    const bucket = zonasPorDistrito.get(fila.distritoId);
-    if (bucket) bucket.push(fila.zonaId);
-    else zonasPorDistrito.set(fila.distritoId, [fila.zonaId]);
+  const lugaresPorZona = new Map<string, string[]>();
+  for (const lugar of lugares) {
+    const zonaId = zonaQueCubre(catalogo, asignaciones, lugar)?.id;
+    if (zonaId === undefined) continue;
+    const bucket = lugaresPorZona.get(zonaId);
+    if (bucket) bucket.push(lugar);
+    else lugaresPorZona.set(zonaId, [lugar]);
   }
-
-  // 366/R2/R3: el colapso 1/0/>1 es EL MISMO que usan la carga masiva y la correccion
-  // manual (`_shared/zona-colapso`). Un distrito con 0 o con >1 zonas resuelve `null` y NO
-  // mueve ninguna orden: no se inventa una zona eligiendo la primera.
-  const distritosPorZonaResuelta = new Map<string, string[]>();
-  for (const distritoId of distritosAfectados) {
-    const zonaResuelta = zonaUnicaDeDistrito(zonasPorDistrito.get(distritoId) ?? []);
-    if (zonaResuelta === null) continue;
-    const bucket = distritosPorZonaResuelta.get(zonaResuelta);
-    if (bucket) bucket.push(distritoId);
-    else distritosPorZonaResuelta.set(zonaResuelta, [distritoId]);
-  }
-
-  if (distritosPorZonaResuelta.size === 0) {
-    return { ordenesReconciliadas, ordenesRetenidasEnBodegaSatelite };
-  }
-
-  // 366/R11: UN lote por LLAMADA (un guardado, una recepcion, una confirmacion del boton), aunque
-  // toque varias zonas resueltas. Y UN solo `resolverActorCongelado` para todas sus filas
-  // (362/design §2.4).
-  const loteId = randomUUID();
-  const actor = await resolverActorCongelado(tx, actorUsuarioId);
 
   // R1721/R1723: lo que el `findMany` de elegibles NO mueve por su estado: todo lo que la
   // clasificacion no marca `se_mueve` (estante, finalizadas, devoluciones, por liberar). Los tres
   // llamadores excluyen lo mismo (R1706).
   const noSeMueven = [...ESTADOS_QUE_NO_SE_MUEVEN];
 
-  for (const [zonaResueltaId, distritoIds] of distritosPorZonaResuelta) {
-    // El corte de elegibilidad (los cortes que NO miran el estado) vive en
-    // `whereBaseElegible`, arriba, y lo leen las DOS consultas de este bloque (R1724).
-    const base = whereBaseElegible(distritoIds, zonaResueltaId, ordenIds);
+  for (const [zonaResueltaId, lugaresDeLaZona] of lugaresPorZona) {
+    // El corte de elegibilidad (los cortes que NO miran el estado) vive en `whereBaseElegible`,
+    // arriba, y lo leen las DOS consultas de este bloque (R1724).
+    const base = whereBaseElegible(lugaresDeLaZona, zonaResueltaId, ordenIds);
 
     // ══════════════════════════════════════════════════════════════════════════════
     // ⭑ FICHA 377 (R2/R8) — LO QUE SE QUEDA, Y POR QUE SE CUENTA
@@ -180,7 +197,7 @@ export async function reconciliarZonaDeOrdenes(
     // que este guardado reconcilie algo. Y se hace en SQL —no filtrando en JS lo que ya
     // se trajo— porque un corte que decide quien se mueve tiene que poder matarse con
     // una mutacion y que un test contra Postgres lo note (design §3.2).
-    ordenesRetenidasEnBodegaSatelite += await tx.orden.count({
+    retenidasEnBodegaSatelite += await tx.orden.count({
       where: { ...base, estatus: { value: { in: [...ESTADOS_PAQUETE_EN_ESTANTE] } } },
     });
 
@@ -188,8 +205,47 @@ export async function reconciliarZonaDeOrdenes(
       where: { ...base, estatus: { value: { notIn: noSeMueven } } },
       select: { id: true, numGuia: true, numRemision: true },
     });
-    if (elegibles.length === 0) continue;
+    if (elegibles.length > 0) porZona.set(zonaResueltaId, elegibles);
+  }
+  return { porZona, retenidasEnBodegaSatelite };
+}
 
+/**
+ * Re-deriva la zona de las ordenes de los nodos de `alcance.distritoIds` (y lo que cuelga de ellos)
+ * desde las asignaciones de zona: calcula el plan (`planificarReconciliacion`) y lo aplica con una
+ * accion `orden_zona_reconciliada` por orden movida, todo con UN lote por llamada.
+ *
+ * Recibe la `tx` y nunca abre la suya: la atomicidad con el guardado de la zona, con la recepcion
+ * o con el boton la da quien llama. Lee el catalogo y `orden` por la `tx`, asi que la empresa la
+ * acota el cliente con la empresa en contexto (RLS).
+ */
+export async function reconciliarZonaDeOrdenes(
+  tx: Prisma.TransactionClient,
+  alcance: AlcanceReconciliacion,
+  actorUsuarioId: string | null,
+): Promise<ResultadoReconciliacion> {
+  const { distritoIds: distritosAfectados, ordenIds } = alcance;
+  if (distritosAfectados.length === 0) {
+    return { ordenesReconciliadas: 0, ordenesRetenidasEnBodegaSatelite: 0 };
+  }
+
+  // El `tx` va SIN `$transaction` (`sinTransaccionAnidada`, ahi el porque): con el, la carga del
+  // catalogo abriria una transaccion anidada y dejaria rota la siguiente que se abra fuera de
+  // esta. Sin el, lee en serie en la del llamador.
+  const plan = await planificarReconciliacion(sinTransaccionAnidada(tx), distritosAfectados, ordenIds);
+  let ordenesReconciliadas = 0;
+  // 377/R8: las que HABRIAN cambiado de zona y no lo hacen porque su paquete ya esta en el
+  // estante de una satelite. Se devuelve en la misma respuesta del guardado (R8/R10).
+  const ordenesRetenidasEnBodegaSatelite = plan.retenidasEnBodegaSatelite;
+  if (plan.porZona.size === 0) return { ordenesReconciliadas, ordenesRetenidasEnBodegaSatelite };
+
+  // 366/R11: UN lote por LLAMADA (un guardado, una recepcion, una confirmacion del boton), aunque
+  // toque varias zonas resueltas. Y UN solo `resolverActorCongelado` para todas sus filas
+  // (362/design §2.4).
+  const loteId = randomUUID();
+  const actor = await resolverActorCongelado(tx, actorUsuarioId);
+
+  for (const [zonaResueltaId, elegibles] of plan.porZona) {
     // 366/R9: SOLO `zonaId`. Ni el estado, ni el mensajero, ni el monto, ni la
     // ubicacion: esta regla corrige la zona y nada mas.
     await tx.orden.updateMany({

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { Prisma, type PrismaClient, type RolValue } from "@prisma/client";
 import { ConflictError } from "@/lib/errors";
+import type { CatalogoPrismaClient } from "@/lib/repositories/CatalogoGeograficoRepository";
 import { cambioElPagoAlMensajero } from "@/lib/repositories/_shared/pago-mensajero-cambio";
 import { esViolacionDeClaveForanea } from "@/lib/repositories/_shared/prisma-fk";
 import {
@@ -78,7 +79,10 @@ type ZonaPrismaClient = Pick<
   | "$queryRaw"
   // SLT-225 (R1742): el valor de cada estado del conteo agrupado de ordenes vivas.
   | "orderStatus"
->;
+> &
+  // SLT-65 (design §6.3): la reconciliacion carga el catalogo de SLT-44 dentro de la transaccion.
+  // Los modelos van por el tipo del catalogo: el de las marcas solo lo nombra su punto unico.
+  CatalogoPrismaClient;
 
 /** Una zona nombrada, tal como la necesita una fila del historial (376/R12/R13). */
 interface ZonaConNombre {
@@ -669,7 +673,8 @@ export class ZonaRepository implements IZonaRepository {
         // y el veredicto describe la base y no el payload.
         const tarifas = await tx.tarifaZonaMensajero.findMany({ where: { zonaId: id } });
 
-        // 366/R5 (design §2): LA UNION de los distritos de ANTES y los de DESPUES.
+        // 366/R5 (design §2): LA UNION de los distritos de ANTES y los de DESPUES. SLT-65 (R13): son
+        // los nodos afectados; el plan añade lo que cuelga de ellos.
         const distritosAfectados = [
           ...new Set([...distritosPrevios.map((d) => d.distritoId), ...data.distritoIds]),
         ];

@@ -75,19 +75,17 @@ import type {
 } from "@/lib/interfaces/repositories/IOrdenHistorialRepository";
 import { appendCambioEstado } from "@/lib/repositories/registrar-cambio-estado";
 import { reconciliarZonaDeOrdenes } from "@/lib/repositories/_shared/reconciliar-zona-ordenes";
-// SL-38 (R22): la marca de zona especial es de la EMPRESA y se lee por un unico punto.
-import {
-  esZonaEspecialDeLaEmpresa,
-  SELECT_MARCA_ZONA_ESPECIAL,
-  type MarcaZonaEspecialProyectada,
-  type ClienteDeMarcas,
-} from "@/lib/repositories/_shared/zona-especial";
+// SL-38 (R22): la marca de zona especial es de la EMPRESA. Desde SLT-65 se calcula sobre el catalogo
+// (`marcasDeOrdenes`); de aqui solo queda el tipo del cliente de las marcas.
+import type { ClienteDeMarcas } from "@/lib/repositories/_shared/zona-especial";
+import { lugarDeLaOrden, whereLugarEn } from "@/lib/repositories/_shared/lugar-orden";
 import { CatalogoGeograficoRepository } from "@/lib/repositories/CatalogoGeograficoRepository";
 import {
   ancestros,
   esZonaEspecial,
   estaActivo,
   nodo as nodoDelCatalogo,
+  nodosBajo,
   nodosDeProfundidad,
   zonaQueCubre,
   type CatalogoGeografico,
@@ -365,12 +363,10 @@ function apiOrdenSelect(ownerId: string) {
      * donde responder «¿es GAM?».
      */
     zona: { select: { id: true, nombre: true, esCentral: true } },
-    // R20/R21: la marca de zona especial, la otra entrada viva. Desde SL-38 es de la EMPRESA de
-    // la orden (`distrito_zona_especial`, acotada por la RLS) y se resuelve en `toApiOrdenRow` con
-    // el punto unico; `distrito` es el unico FK nullable de `orden`, asi que la relacion puede
-    // venir `null`. No se publica ni la marca ni nada del distrito (ni provincia, ni canton, ni
-    // el nombre).
-    distrito: { select: { ...SELECT_MARCA_ZONA_ESPECIAL } },
+    // R20/R21: la marca de zona especial, la otra entrada viva, es de la EMPRESA de la orden. Desde
+    // SLT-65 (design §3) sale del catalogo sobre el lugar de la orden (`marcasDeOrdenes`), y aqui
+    // solo viajan las dos FK que lo definen (`distritoId` ya va arriba, por SLT-52). No se publica ni la marca ni nada de la geografia.
+    cantonId: true,
     /**
      * R25/R26/R27/R31/R33 — LA FILA CONGELADA de `cierre_detail` con la que se deriva `costoReal`.
      *
@@ -617,8 +613,8 @@ type ApiOrdenSelectRow = {
   distritoId: string | null;
   cobraComision: boolean;
   zona: { id: string; nombre: string; esCentral: boolean };
-  // El unico FK nullable de `orden`. La marca es de la empresa (SL-38): `[]` = no especial.
-  distrito: MarcaZonaEspecialProyectada | null;
+  // SLT-65: el lugar de la orden (`lugarDeLaOrden`, con `distritoId` de arriba), entrada de la marca. No se publica.
+  cantonId: string;
   // La fila congelada elegible mas reciente. `take: 1` -> `[]` o exactamente un elemento.
   cierreDetalles: Array<
     TarifaCongeladaRow & {
@@ -668,7 +664,7 @@ type ApiOrdenDetalleSelectRow = ApiOrdenSelectRow & {
   }[];
 };
 
-function toApiOrdenRow(r: ApiOrdenSelectRow): ApiOrdenRow {
+function toApiOrdenRow(r: ApiOrdenSelectRow, esZonaEspecial: boolean): ApiOrdenRow {
   return {
     numGuia: r.numGuia,
     numRemision: r.numRemision,
@@ -695,9 +691,8 @@ function toApiOrdenRow(r: ApiOrdenSelectRow): ApiOrdenRow {
       zonaId: r.zonaId,
       distritoId: r.distritoId,
       esCentral: r.zona.esCentral,
-      // R21 / SL-38: la marca de la EMPRESA de la orden. Una orden SIN distrito entra como
-      // `false`: sin distrito no hay marca que aplicar.
-      esZonaEspecial: esZonaEspecialDeLaEmpresa(r.distrito),
+      // R21 / SL-38: la marca de la EMPRESA de la orden, ya calculada sobre su lugar (SLT-65).
+      esZonaEspecial,
       // R17 / design §D9: CADENA de escala 2, no el `number` publicado de arriba. Las dos salen de
       // la misma columna, pero la que alimenta el calculo no pasa por coma flotante.
       montoCobrar: r.montoCobrar !== null ? r.montoCobrar.toFixed(2) : null,
@@ -799,7 +794,7 @@ function primerEstadoPorGestion(
  * el suyo aqui: `evidencias[]` el de la 106/268 —resultado con foto, SIN mirar `anuladaAt`, tal y
  * como estaba— y `gestiones[]` el de la 405 —`anulada_at IS NULL`, sea cual sea el resultado—.
  */
-function toApiOrdenDetalleRow(row: ApiOrdenDetalleSelectRow): ApiOrdenDetalleRow {
+function toApiOrdenDetalleRow(row: ApiOrdenDetalleSelectRow, esZonaEspecial: boolean): ApiOrdenDetalleRow {
   const deGestiones = row.gestiones
     // 405: el predicado ORIGINAL de la 106/268, palabra por palabra, sobre el superconjunto.
     .filter(
@@ -857,7 +852,7 @@ function toApiOrdenDetalleRow(row: ApiOrdenDetalleSelectRow): ApiOrdenDetalleRow
     }));
 
   return {
-    ...toApiOrdenRow(row),
+    ...toApiOrdenRow(row, esZonaEspecial),
     evidencias: [...deGestiones, ...deIncidentesAdmin],
     gestiones,
   };
@@ -893,6 +888,10 @@ type OrdenPrismaClient = Pick<
   | "organizacion"
 > &
   ClienteDeMarcas;
+
+// SLT-65 (design §5, paso 2; design §13): la unica correspondencia entre el nivel de tres valores
+// (SL-20) y la profundidad del catalogo. Se retira con SLT-47/SLT-48, cuando el nivel deje de viajar.
+const PROFUNDIDAD_DEL_NIVEL: Record<NivelGeografico, number> = { provincia: 1, canton: 2, distrito: 3 };
 
 /**
  * FICHA 362 — lo que el `RETURNING` de los tres borrados por lote trae de vuelta: el id de la
@@ -1143,10 +1142,10 @@ const WITH_ESTATUS_Y_TIENDA = {
     zona: { select: { id: true, nombre: true, esCentral: true } },
     provincia: { select: { id: true, nombre: true } },
     canton: { select: { id: true, nombre: true } },
-    // La marca de zona especial (2026-08-25; de la EMPRESA desde SL-38) viaja con el distrito
-    // porque decide el MONTO del flete que muestran las dos columnas de dinero de la fila, no solo
-    // su etiqueta.
-    distrito: { select: { id: true, nombre: true, ...SELECT_MARCA_ZONA_ESPECIAL } },
+    // El id y el nombre del distrito son presentacion (SLT-47). La marca de zona especial, que
+    // decide el MONTO del flete de las dos columnas de dinero, ya no viaja aqui: desde SLT-65 sale
+    // del catalogo sobre el lugar de la orden (`marcasDeOrdenes`) y `toListItemDTO` la recibe.
+    distrito: { select: { id: true, nombre: true } },
     mensajeroAsignado: { select: { id: true, ...NOMBRE_USUARIO_SELECT } },
     // Gestion de reprogramacion VIGENTE (a lo sumo una, `take: 1`): alimenta la
     // columna "Liberada el" de la tab `reprogramada`. `orden -> gestiones` es 1:N
@@ -1294,7 +1293,11 @@ function toRelaciones(row: OrdenListRow, tarifa: TarifaListRow | null): OrdenLis
 // WITH_ESTATUS_Y_TIENDA: `include` no restringe los escalares del modelo).
 // Ademas expone en `relaciones` los datos de TODAS las relaciones directas (FK),
 // con la tarifa activa anidada dentro de `tienda` (resueltas via joins en el listado).
-function toListItemDTO(row: OrdenListRow, tarifa: TarifaDeFila | null): OrdenListItemDTO {
+function toListItemDTO(
+  row: OrdenListRow,
+  tarifa: TarifaDeFila | null,
+  esZonaEspecial: boolean,
+): OrdenListItemDTO {
   // Feature 204: las dos columnas de dinero DERIVADO ("Flete + IVA" y "Comisión + IVA") se
   // resuelven AQUI, con Decimal, y viajan como STRING ya derivado. Antes las calculaba el
   // navegador multiplicando los `number` de la tarifa, y no daba lo mismo: sobre las órdenes
@@ -1306,9 +1309,8 @@ function toListItemDTO(row: OrdenListRow, tarifa: TarifaDeFila | null): OrdenLis
   const montoCobrar = row.montoCobrar ? row.montoCobrar.toFixed(2) : null;
   const costos = costosListadoOrden(tarifa?.cobro ?? null, {
     esCentral: row.zona.esCentral,
-    // SL-38: la marca de la EMPRESA de la orden. Una orden sin distrito entra como `false`: sin
-    // distrito no hay marca que aplicar.
-    esZonaEspecial: esZonaEspecialDeLaEmpresa(row.distrito),
+    // SL-38: la marca de la EMPRESA de la orden, ya calculada sobre su lugar (SLT-65).
+    esZonaEspecial,
     montoCobrar,
     cobraComision: row.cobraComision,
   });
@@ -1851,8 +1853,8 @@ function ordenBodegaSatelite(orden?: OrdenamientoListado<CampoOrdenBodegaSatelit
  * tendria a quien servir. Si algun dia el satelite pasa a ver esos importes, esto vuelve a ser
  * `resolverTarifasDePagina` + `tarifaDe`, exactamente como en `findMany`.
  */
-function toBodegaSateliteRow(row: OrdenListRow): RecepcionSateliteRow {
-  const base = recortarPorAlcance(toListItemDTO(row, null), "zona");
+function toBodegaSateliteRow(row: OrdenListRow, esZonaEspecial: boolean): RecepcionSateliteRow {
+  const base = recortarPorAlcance(toListItemDTO(row, null, esZonaEspecial), "zona");
   // `fleteOrigen` describe DE DONDE salio el importe de `fleteConIva`, y ese importe no viaja a
   // este alcance. Dejarlo seria publicar una afirmacion sin referente —y ademas FALSA en el caso
   // que el campo existe para señalar: con la tarifa sin resolver siempre diria "normal", incluso
@@ -1956,6 +1958,24 @@ export class OrdenRepository implements IOrdenRepository {
   private catalogoGeografico(): CatalogoGeograficoRepository {
     this.catalogoRepo ??= new CatalogoGeograficoRepository(this.prisma);
     return this.catalogoRepo;
+  }
+
+  /**
+   * SLT-65 (design §3; R1–R4) — la marca de zona especial de cada orden, en el orden de `filas`.
+   *
+   * Es la marca de su LUGAR (`lugarDeLaOrden`) segun el catalogo y las asignaciones de la empresa:
+   * el lugar o uno de sus ancestros marcado (R7 de SLT-44). Con marcas solo en distritos da la de
+   * hoy, y `false` para una orden sin distrito, cuyo lugar es un canton (R2).
+   *
+   * Sin filas no carga el catalogo. En plataforma o sin empresa, `deLaEmpresa` lanza
+   * `EmpresaNoResuelta` y la lectura no devuelve nada (R4).
+   */
+  private async marcasDeOrdenes(
+    filas: readonly { distritoId: string | null; cantonId: string }[],
+  ): Promise<boolean[]> {
+    if (filas.length === 0) return [];
+    const { catalogo, asignaciones } = await this.catalogoGeografico().deLaEmpresa();
+    return filas.map((f) => esZonaEspecial(catalogo, asignaciones, lugarDeLaOrden(f)));
   }
 
   // BORRADO 2026-08-07 (tanda 2 del chore de deuda de superficie): aqui vivia `create`, el
@@ -2151,12 +2171,15 @@ export class OrdenRepository implements IOrdenRepository {
     // tres consultas y solo DOS de datos, sea la pagina de 1 fila o de 50.
     const tarifas = await this.resolverTarifasDePagina(items);
 
+    // SLT-65 (design §3): la marca de cada fila, del catalogo (una carga por instancia).
+    const marcas = await this.marcasDeOrdenes(items);
+
     // FICHA 454 (R29): y UNA mas, las señales de la gestion pendiente y la ayuda abierta, sobre las
     // filas que el `where` de arriba (con el acotamiento por rol) ya dejo pasar.
     return {
       items: await anotarSenalesGestion(
         this.prisma,
-        items.map((row) => toListItemDTO(row, tarifaDe(tarifas, row))),
+        items.map((row, i) => toListItemDTO(row, tarifaDe(tarifas, row), marcas[i])),
       ),
       total,
     };
@@ -2244,8 +2267,9 @@ export class OrdenRepository implements IOrdenRepository {
     // Feature 274 (T8.1): la MISMA resolucion de tarifa que `list()`, y por el mismo motivo por
     // el que comparte include y mapeo — si no, el detalle del tablero diverge del listado.
     const tarifas = await this.resolverTarifasDePagina(rows);
+    const marcas = await this.marcasDeOrdenes(rows);
     // R2: el MISMO mapeo que `list()`.
-    return rows.map((row) => toListItemDTO(row, tarifaDe(tarifas, row)));
+    return rows.map((row, i) => toListItemDTO(row, tarifaDe(tarifas, row), marcas[i]));
   }
 
   async update(
@@ -2819,21 +2843,22 @@ export class OrdenRepository implements IOrdenRepository {
         distritoId: true,
         montoCobrar: true,
         cobraComision: true,
+        // SLT-65: el lugar de la orden (con `distritoId` de arriba), entrada de la marca.
+        cantonId: true,
         zona: { select: { esCentral: true } },
-        distrito: { select: { ...SELECT_MARCA_ZONA_ESPECIAL } },
       },
     });
     if (row === null) return null;
+    const [esZonaEspecialDeLaOrden] = await this.marcasDeOrdenes([row]);
     return {
       ordenId: row.id,
       tiendaId: row.tiendaId,
       zonaId: row.zonaId,
       distritoId: row.distritoId,
       esCentral: row.zona.esCentral,
-      // La marca es del distrito PARA LA EMPRESA de la orden (SL-38), no de la zona. Una orden
-      // sin distrito -- el unico FK nullable de `orden`-- entra como `false`: sin distrito no hay
-      // marca que aplicar. Mismo punto unico que usan `findParaCorreccion` y el listado.
-      esZonaEspecial: esZonaEspecialDeLaEmpresa(row.distrito),
+      // La marca es del lugar de la orden PARA SU EMPRESA (SL-38), no de la zona. La calcula
+      // `marcasDeOrdenes`, el mismo punto que usan `findParaCorreccion` y el listado (SLT-65).
+      esZonaEspecial: esZonaEspecialDeLaOrden,
       montoCobrar: row.montoCobrar ? row.montoCobrar.toFixed(2) : null,
       cobraComision: row.cobraComision,
     };
@@ -2859,11 +2884,14 @@ export class OrdenRepository implements IOrdenRepository {
         distritoId: true,
         estatus: { select: { value: true } },
         zona: { select: { id: true, nombre: true, esCentral: true } },
-        distrito: { select: { nombre: true, ...SELECT_MARCA_ZONA_ESPECIAL } },
         cierreDetalles: { select: { id: true }, take: 1 },
       },
     });
     if (row === null) return null;
+    // SLT-65 (design §2.1, fila 4): el nombre y la marca, del catalogo. Las dos llamadas comparten
+    // la carga: `deLaEmpresa` la memoriza por instancia.
+    const { catalogo } = await this.catalogoGeografico().deLaEmpresa();
+    const [esZonaEspecialDeLaOrden] = await this.marcasDeOrdenes([row]);
     return {
       id: row.id,
       tiendaId: row.tiendaId,
@@ -2880,13 +2908,12 @@ export class OrdenRepository implements IOrdenRepository {
       provinciaId: row.provinciaId,
       cantonId: row.cantonId,
       distritoId: row.distritoId,
-      distritoNombre: row.distrito?.nombre ?? null,
+      distritoNombre: row.distritoId === null ? null : (nodoDelCatalogo(catalogo, row.distritoId)?.nombre ?? null),
       zonaId: row.zona.id,
       zonaNombre: row.zona.nombre,
       esCentral: row.zona.esCentral,
-      // La marca es del distrito PARA LA EMPRESA de la orden (SL-38), no de la zona. Una orden
-      // sin distrito (el unico FK nullable) entra como `false`.
-      esZonaEspecial: esZonaEspecialDeLaEmpresa(row.distrito),
+      // La marca es del lugar de la orden PARA SU EMPRESA (SL-38), no de la zona (SLT-65).
+      esZonaEspecial: esZonaEspecialDeLaOrden,
       yaEnUnCierre: row.cierreDetalles.length > 0,
       // FICHA 454 (R64): la ayuda deja de ser estado; se deriva (punto unico, `ayuda-abierta.ts`).
       ayudaAbierta: (await conAyudaAbiertaDe(this.prisma, [row.id])).has(row.id),
@@ -2950,16 +2977,24 @@ export class OrdenRepository implements IOrdenRepository {
    * estados terminales son dos definiciones de «entregado» que un dia divergen, y la que divergiera
    * contaria mal justo en la pantalla que decide retirar territorio.
    */
+  //
+  // SLT-65 (design §5; R9–R12): ya no se cuenta por la columna del nivel sino por el LUGAR de la
+  // orden (`whereLugarEn`) entre el nodo y los que cuelgan de el, que calcula el dominio sobre el
+  // catalogo. Con la cadena coherente es el mismo conjunto que antes (R11). Corre en
+  // `comoPlataforma`, sin empresa: por eso el catalogo es `dePais` del nodo y no `deLaEmpresa`, que
+  // lanzaria (R12).
   async contarSinEntregarPorNodoGeografico(nivel: NivelGeografico, id: string): Promise<number> {
-    const porNivel =
-      nivel === "provincia"
-        ? { provinciaId: id }
-        : nivel === "canton"
-          ? { cantonId: id }
-          : { distritoId: id };
+    const pedido = await this.prisma.nodoGeografico.findUnique({
+      where: { id },
+      select: { paisId: true, profundidad: true },
+    });
+    // R10: un id que no existe, o el de otro nivel, no casaba con la columna del nivel y daba 0.
+    if (pedido === null || pedido.profundidad !== PROFUNDIDAD_DEL_NIVEL[nivel]) return 0;
+    const catalogo = await this.catalogoGeografico().dePais(pedido.paisId);
+    const ids = [id, ...nodosBajo(catalogo, id).map((n) => n.id)];
     return this.prisma.orden.count({
       where: {
-        ...porNivel,
+        ...whereLugarEn(ids),
         deletedAt: null,
         estatus: { value: { notIn: [...ESTADOS_TERMINALES] } },
       },
@@ -3586,7 +3621,9 @@ export class OrdenRepository implements IOrdenRepository {
       }),
       this.prisma.orden.count({ where }),
     ]);
-    return { items: rows.map(toApiOrdenRow), total };
+    // SLT-65 (design §3): la marca de cada fila, del catalogo.
+    const marcas = await this.marcasDeOrdenes(rows);
+    return { items: rows.map((r, i) => toApiOrdenRow(r, marcas[i])), total };
   }
 
   // --- Feature 177: consulta por identificador libre + PDF de etiquetas por API key ---
@@ -3640,7 +3677,8 @@ export class OrdenRepository implements IOrdenRepository {
       select: apiOrdenDetalleSelect(ownerId),
     });
     if (!row) return null;
-    return toApiOrdenDetalleRow(row);
+    const [esZonaEspecialDeLaOrden] = await this.marcasDeOrdenes([row]);
+    return toApiOrdenDetalleRow(row, esZonaEspecialDeLaOrden);
   }
 
   /**
@@ -4355,8 +4393,12 @@ export class OrdenRepository implements IOrdenRepository {
       // FICHA 349: la MISMA proyeccion que `/ordenes`, no una segunda.
       ...WITH_ESTATUS_Y_TIENDA,
     });
+    const marcas = await this.marcasDeOrdenes(rows);
     // FICHA 454 (R29): las señales de la gestion pendiente y la ayuda, en una consulta mas.
-    return anotarSenalesGestion(this.prisma, rows.map(toBodegaSateliteRow));
+    return anotarSenalesGestion(
+      this.prisma,
+      rows.map((row, i) => toBodegaSateliteRow(row, marcas[i])),
+    );
   }
 
   /**
@@ -4523,14 +4565,15 @@ export class OrdenRepository implements IOrdenRepository {
       // acotamiento, y compartir la proyeccion no puede ensancharlo.
       ...WITH_ESTATUS_Y_TIENDA,
     });
-    const porId = new Map(filas.map((fila) => [fila.id, fila]));
+    const marcas = await this.marcasDeOrdenes(filas);
+    const porId = new Map(filas.map((fila, i) => [fila.id, { fila, marca: marcas[i] }]));
     // FICHA 454 (R29): las señales de la gestion pendiente y la ayuda, en UNA consulta por pagina
     // (la comparten la pagina y la descarga, como el resto de la hidratacion).
     return anotarSenalesGestion(
       this.prisma,
       ids.flatMap((id) => {
-        const fila = porId.get(id);
-        return fila === undefined ? [] : [toBodegaSateliteRow(fila)];
+        const hallada = porId.get(id);
+        return hallada === undefined ? [] : [toBodegaSateliteRow(hallada.fila, hallada.marca)];
       }),
     );
   }

@@ -222,6 +222,79 @@ seguía devolviendo Cartago en `canton` y en `correccion`.
 - Commit `7d16628a`, `git push` normal. CI lanzado sin esperar:
   https://github.com/Singularis-org/servi_logistic/actions/runs/44644761926
 
+## SLT-65
+
+SLT-65 «Geografía jerárquica: consultas de órdenes, cierres y zonas sobre el nodo» (PR #75, base
+`geo_jerarquica`). Puesta al día de `feature/SLT-65-geo-jerarquica-consultas` (`49f3296c`) con
+`origin/geo_jerarquica` (`88442421`, tras #44 y #55): merge, sin rebase. La rama de SLT-44 no tenía
+commits fuera de la épica, así que no hizo falta un merge aparte.
+
+### Conflictos y criterio
+
+- `progress/deudas.md`: SLT-65 había dado de alta su D43 (`enUnaFoto` reutiliza
+  `OPCIONES_TRANSACCION`) y `dev` trae otra D43 (encabezado de la descarga), más D44-D80. Se
+  conservan todas; la de SLT-65 se renumera a **D81** con una nota en su «Dueño». Las menciones a
+  «D43» en `progress/impl_SLT-65.md` son historia y no se tocan.
+- `tests/integration/db/cierre-detail-congelado.test.ts`,
+  `tests/unit/repositories/cierre-dia-repository.test.ts`,
+  `tests/unit/repositories/gestion-desde-ayuda-cierre.test.ts`: solo imports. Se conservan los dos
+  (`delegadosDelCatalogo` de SLT-65 y `ZONA_DE_CR`/`ZONA_CR` de dev); los dos se usan.
+- `tests/integration/db/gestiones-detalle-api-405.test.ts` (censo exacto de consultas del detalle):
+  SLT-65 baja de 14 a 12 en caliente (salen `distrito` y `distrito_zona_especial` del `select`) y
+  dev sube de 14 a 15 con `cierre_detail_concepto` (SLT-52, medido en SLT-186). En el código
+  fusionado el `select` del detalle trae `cierreDetail.conceptos` y no trae `zonasEspeciales`, así
+  que el censo es **13**: la lista de SLT-65 más `cierre_detail_concepto`. Medido en local (verde).
+- Auto-fusionados y revisados: `zona-sin-distritos.test.ts` y `orden-traspaso-migration.test.ts`
+  quedan idénticos a `geo_jerarquica` (el arreglo `7d16628a` y el censo de migraciones geo
+  intactos). SLT-65 no añade migraciones ni entidades de historial. `lib/db/excepciones-aislamiento.ts`
+  conserva las excepciones de los dos scripts de SLT-65.
+
+### Marca de tamaño
+
+`progress/features/SLT-65.md` lleva
+`<!-- tamano-pr-aceptado: 2026-11-20 · pila geo aceptada entera por el humano (2026-11-19) -->`.
+
+### Verificación local
+
+- `pnpm install --frozen-lockfile` y `pnpm prisma generate`: sin errores.
+- Base desechable `logistic_slt65_r1120` (localhost; `migrate deploy` de todas las migraciones y
+  `db:seed`). No se usó `servi_logistic_simprod`.
+- `vitest run` de los cuatro archivos en conflicto más `zona-sin-distritos` y
+  `orden-traspaso-migration` (`NODE_OPTIONS=--max-old-space-size=8192`):
+  `Test Files 6 passed (6)`, `Tests 172 passed (172)`.
+- `pnpm run typecheck` (`tsc --noEmit`): exit 0. `pnpm run lint`: 0 errores (249 avisos, ya existentes).
+- `vitest run tests/unit/guards`: `Test Files 262 passed (262)`, `Tests 3990 passed | 4 skipped`.
+
+### CI
+
+- Commit del merge `13457e3d`, `git push` normal. CI lanzado sin esperar (`gh workflow run gate.yml`):
+  https://github.com/Singularis-org/servi_logistic/actions/runs/44775310940
+
+## SLT-65 — rojos CI 44775310940
+
+El CI sobre `13457e3d` dio dos archivos en rojo que no están en el baseline. Los dos se reprodujeron
+en local contra `logistic_slt65_r1120`. Los dos eran del montaje de los tests, no de producción.
+
+- `tests/integration/db/costo-y-zona-api-415.test.ts`, censo exacto de consultas. Es el mismo cruce
+  que en `gestiones-detalle-api-405`: SLT-65 quita `distrito` y `distrito_zona_especial` del
+  `select`, y SLT-52 añade `cierre_detail_concepto`. Medido con el espía del propio test: el detalle
+  emite **13** consultas (antes 15) y el listado **9** (antes 11) con `limit=1` y con `limit=50`.
+  La invariante de que el listado no depende del tamaño de la página sigue igual. Se actualizan
+  las dos listas y los dos números.
+- `tests/integration/db/tarifas-valor-propio-caminos.test.ts` (SLT-55, llega de dev). Daba 32 rojos
+  con `EmpresaNoResuelta: Sin empresa en contexto para Organizacion.findFirst`, lanzado en
+  `CatalogoGeograficoRepository.ts:104`. La causa es la misma que en `49f3296c`: su `comoEmpresa`
+  fijaba la empresa solo en la base (`comoApp`), y el contexto seguía en la empresa por defecto de
+  `enTransaccionRevertida`. Arreglo: `comoEmpresa` corre `fn` dentro de `conEmpresa(org, …)`. No
+  cambia ningún `expect` ni código de app.
+- Otros censos: el CI completo solo marcó estos dos archivos. El resto de tests con espía de
+  consultas (`tablasDe`, `crearPrismaDeTestConEspia`) salieron en verde en ese run. El grep de
+  `"distrito_zona_especial"` en `tests/integration` no encuentra más censos.
+- Local: 415, `tarifas-valor-propio-caminos` y 405 dan `Test Files 3 passed (3)` y
+  `Tests 60 passed (60)`. `eslint` de los dos archivos, sin salida.
+- Commit `122c1292`, `git push` normal. CI lanzado sin esperar:
+  https://github.com/Singularis-org/servi_logistic/actions/runs/44784347315
+
 ## dev → geo_jerarquica
 
 Rama `chore/dev-a-geo-jerarquica` (worktree `.worktrees/chore-dev-a-geo`), desde

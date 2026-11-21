@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
+import { delegadosDelCatalogo } from "@/tests/fixtures/doble-catalogo-geografico";
 
 // Feature 106 (T5/T6) — LECTURA scoped por owner del canal integrador. Prisma mock: el scope
 // (`tienda_id = ownerId AND deleted_at IS NULL`) se afirma sobre el `where` que llega a Prisma.
@@ -22,6 +23,8 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
     ordenHistorialEstado: { createMany: vi.fn() },
     orderStatus: { findUnique: vi.fn() },
     $queryRaw: vi.fn(),
+    // SLT-65: la marca sale del catalogo de la empresa (sin marcas por defecto).
+    ...delegadosDelCatalogo(),
     ...overrides,
   };
 }
@@ -47,6 +50,9 @@ function ordenSelectRow(overrides: Record<string, unknown> = {}) {
     cobraComision: false,
     zona: { id: ZONA_ID, nombre: "GAM", esCentral: true },
     distrito: null,
+    // SLT-65: el lugar de la orden, del que sale la marca. Por DEFECTO, sin distrito.
+    distritoId: null,
+    cantonId: "canton-1",
     cierreDetalles: [],
     ...overrides,
   };
@@ -151,6 +157,9 @@ describe("OrdenRepository.listByOwner (feature 106, T5)", () => {
       zona: { id: ZONA_ID, nombre: "GAM" },
       costeo: {
         zonaId: ZONA_ID,
+        // SLT-52 (R16/R18): el `costeo` lleva el distrito de la orden (par de la tarifa); la fila
+        // del doble no tiene distrito. Autorizado por Cristian el 2026-11-04 (SLT-65, vuelta 3).
+        distritoId: null,
         esCentral: true,
         esZonaEspecial: false,
         // R17: CADENA de escala 2, mientras que el publicado de arriba es el `number` 1500.
@@ -525,12 +534,13 @@ describe("OrdenRepository — zona y costo del canal (feature 415)", () => {
 
     const select = (prisma.orden.findMany as ReturnType<typeof vi.fn>).mock.calls[0][0].select;
     expect(select.zona).toEqual({ select: { id: true, nombre: true, esCentral: true } });
-    // R5: del distrito solo la marca, ni el nombre ni la geografia. SL-38: la marca es la de la
-    // EMPRESA (`distrito_zona_especial`), por el fragmento del punto unico. Literal a proposito:
-    // es el contrato de lo que viaja, no se compara contra `SELECT_MARCA_ZONA_ESPECIAL`.
-    expect(select.distrito).toEqual({
-      select: { zonasEspeciales: { select: { id: true }, take: 1 } },
-    });
+    // R5: ni el nombre ni la geografia. SL-38: la marca es la de la EMPRESA. Desde SLT-65 (design
+    // §3; decision humana 2026-10-31, «Sí, actualizar los literales») sale del catalogo sobre el
+    // lugar de la orden: la relacion `distrito` ya no viaja, solo las dos FK del lugar. Literal a
+    // proposito: es el contrato de lo que viaja.
+    expect(select.distrito).toBeUndefined();
+    expect(select.distritoId).toBe(true);
+    expect(select.cantonId).toBe(true);
   });
 
   it("415/R21: distrito SIN marca de la empresa y orden SIN distrito dan los DOS `false`", async () => {
@@ -539,15 +549,21 @@ describe("OrdenRepository — zona y costo del canal (feature 415)", () => {
     const prisma = buildPrisma({
       orden: {
         findMany: vi.fn().mockResolvedValue([
-          ordenSelectRow({ distrito: { zonasEspeciales: [] } }),
+          ordenSelectRow({ distrito: { zonasEspeciales: [] }, distritoId: "d-sin-marca" }),
           ordenSelectRow({ numRemision: "REM-2", distrito: null }),
           // Y el contraste: con marca SI es `true`, para que el caso de arriba no salga verde por
           // vacio (un mapeo que devolviera siempre `false` moriria aqui).
-          ordenSelectRow({ numRemision: "REM-3", distrito: { zonasEspeciales: [{ id: "m-1" }] } }),
+          ordenSelectRow({
+            numRemision: "REM-3",
+            distrito: { zonasEspeciales: [{ id: "m-1" }] },
+            distritoId: "d-con-marca",
+          }),
         ]),
         count: vi.fn().mockResolvedValue(3),
         findFirst: vi.fn(),
       },
+      // SLT-65: la marca de la empresa, ahora en el catalogo (antes en `zonasEspeciales`).
+      ...delegadosDelCatalogo({ nodos: ["d-sin-marca"], marcas: ["d-con-marca"] }),
     });
     const repo = new OrdenRepository(prisma as unknown as PrismaClient);
 

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { idEstado, sembrarCatalogoEstados } from "@/tests/fixtures/catalogo-estados";
+import { delegadosDelCatalogo } from "@/tests/fixtures/doble-catalogo-geografico";
 
 // Feature 138 + 139 (STATE-AWARE) — repo de la recepcion en la BODEGA CENTRAL. Prisma se mockea con
 // dobles simples (patron orden-repository.recepcion-satelite.test.ts): sin DB real, se verifica la
@@ -20,10 +21,16 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
     orden: {
       findFirst: vi.fn(),
       updateMany: vi.fn(),
+      // SLT-65: las dos lecturas del plan de la reconciliacion, solo si el distrito resuelve zona.
+      count: vi.fn<(args: { where: unknown }) => Promise<number>>(async () => 0),
+      findMany: vi.fn<(args: { where: unknown }) => Promise<unknown[]>>(async () => []),
     },
     ordenHistorialEstado: { createMany: vi.fn() },
-    // SLT-224: la reconciliacion de zona lee el mapa `zona_distrito`. Vacio = distrito sin zona,
-    // el helper no escribe nada mas.
+    // SLT-65 (design §14.1): la reconciliacion resuelve la zona con el catalogo de SLT-44
+    // (`deLaEmpresa`), que lee estos delegados. `d1` es un nodo del catalogo del doble.
+    ...delegadosDelCatalogo({ nodos: ["d1"] }),
+    // SLT-224: la reconciliacion de zona lee el mapa `zona_distrito` (desde SLT-65, dentro de la carga
+    // del catalogo). Vacio = distrito sin zona, el helper no escribe nada mas.
     zonaDistrito: { findMany: vi.fn(async (_args: { where: unknown }) => [] as unknown[]) },
     $transaction: vi.fn(),
     ...overrides,
@@ -215,6 +222,9 @@ describe("OrdenRepository.recibirEnBodegaCentral (R2/R3/R9/R18 · STATE-AWARE 13
 
   it("SLT-224/R1700: con reconciliaZona y distrito, lee el mapa de ESE distrito DESPUES del historial", async () => {
     const prisma = buildPrisma();
+    prisma.zonaDistrito.findMany.mockResolvedValue([
+      { distritoId: "d1", zona: { id: "zA", nombre: "zA", esCentral: false } },
+    ]);
     prisma.orden.findFirst.mockResolvedValue({ estatusId: idEstado("en_ruta_bodega_central"), distritoId: "d1" });
     prisma.orden.updateMany.mockResolvedValue({ count: 1 });
     const repo = new OrdenRepository(prisma as unknown as PrismaClient);
@@ -223,10 +233,17 @@ describe("OrdenRepository.recibirEnBodegaCentral (R2/R3/R9/R18 · STATE-AWARE 13
 
     expect(prisma.orden.findFirst.mock.calls[0][0].select).toEqual({ estatusId: true, distritoId: true });
     expect(prisma.zonaDistrito.findMany).toHaveBeenCalledTimes(1);
-    expect(prisma.zonaDistrito.findMany.mock.calls[0][0].where).toEqual({ distritoId: { in: ["d1"] } });
     expect(prisma.ordenHistorialEstado.createMany.mock.invocationCallOrder[0]).toBeLessThan(
       prisma.zonaDistrito.findMany.mock.invocationCallOrder[0],
     );
+    // SLT-65: la carga del catalogo lee el mapa ENTERO de la empresa (sin `where`); el distrito de la
+    // orden viaja en la lectura de ordenes del plan, por su LUGAR y acotada a ESTA orden.
+    expect(prisma.orden.count).toHaveBeenCalledTimes(1);
+    expect(prisma.orden.count.mock.calls[0][0].where).toMatchObject({
+      id: { in: ["o1"] },
+      OR: [{ distritoId: { in: ["d1"] } }, { distritoId: null, cantonId: { in: ["d1"] } }],
+      zonaId: { not: "zA" },
+    });
   });
 
   it("SLT-224/R1704: sin reconciliaZona (devolucion) no lee el mapa de zonas", async () => {
