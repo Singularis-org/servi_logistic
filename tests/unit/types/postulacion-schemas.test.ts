@@ -100,17 +100,37 @@ describe("postulacionSchema — confirmacion (R7)", () => {
   });
 });
 
-describe("postulacionSchema — cedula/telefono numericos (R8)", () => {
-  it("rechaza cedula no numerica", () => {
+// SLT-42 (design §4.2): el borde ya no exige dígitos. Valida solo la FORMA; la regla depende del
+// país de la empresa y la aplica `PostulacionMensajeroService` (R10, R14; ver
+// `tests/unit/services/postulacion-mensajero-service-pais.test.ts`).
+describe("postulacionSchema — cedula/telefono solo de forma (SLT-42; antes R8)", () => {
+  it("acepta un documento alfanumérico (p. ej. un pasaporte): la regla es del tipo, en el servicio", () => {
     const parsed = postulacionSchema.safeParse(payloadValido({ cedula: "12ab567" }));
-    expect(parsed.success).toBe(false);
-    if (!parsed.success) expect(parsed.error.flatten().fieldErrors.cedula).toBeDefined();
+    expect(parsed.success).toBe(true);
   });
 
-  it("rechaza telefono demasiado corto", () => {
-    const parsed = postulacionSchema.safeParse(payloadValido({ telefono: "123" }));
+  it("acepta un teléfono con prefijo y separadores: lo normaliza el servicio (R15)", () => {
+    const parsed = postulacionSchema.safeParse(payloadValido({ telefono: "+506 8888-7777" }));
+    expect(parsed.success).toBe(true);
+  });
+
+  it("rechaza cedula y telefono vacíos", () => {
+    const parsed = postulacionSchema.safeParse(payloadValido({ cedula: "  ", telefono: "" }));
     expect(parsed.success).toBe(false);
-    if (!parsed.success) expect(parsed.error.flatten().fieldErrors.telefono).toBeDefined();
+    if (!parsed.success) {
+      expect(parsed.error.flatten().fieldErrors.cedula).toBeDefined();
+      expect(parsed.error.flatten().fieldErrors.telefono).toBeDefined();
+    }
+  });
+
+  it("rechaza cedula y telefono de más de 30 caracteres", () => {
+    const largo = "1".repeat(31);
+    const parsed = postulacionSchema.safeParse(payloadValido({ cedula: largo, telefono: largo }));
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(parsed.error.flatten().fieldErrors.cedula).toBeDefined();
+      expect(parsed.error.flatten().fieldErrors.telefono).toBeDefined();
+    }
   });
 });
 

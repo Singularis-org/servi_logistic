@@ -2,6 +2,7 @@
 
 import {
   useCallback,
+  useEffect,
   useMemo,
   useState,
   useSyncExternalStore,
@@ -85,6 +86,43 @@ export interface CarruselCardsProps<T> {
   singular?: string;
   plural?: string;
   className?: string;
+  /**
+   * SLT-166 (R542): índice (en `items`) de la primera tarjeta de la página a la vista, cada vez que
+   * el carrusel cambia de página. Reparto lo usa para centrar el mapa en esa parada.
+   */
+  onIndiceChange?: (indice: number) => void;
+}
+
+/**
+ * Primera tarjeta de la página seleccionada. Con `slidesToScroll: "auto"` una página agrupa
+ * varias tarjetas (2 o 3 desde `sm`), así que el índice del snap NO es el de la tarjeta: lo traduce
+ * el registro de embla. Sin registro (un doble de pruebas) el snap ya es la tarjeta.
+ */
+function primeraDeLaPagina(api: NonNullable<CarouselApi>): number {
+  const snap = api.selectedScrollSnap();
+  return api.internalEngine?.()?.slideRegistry?.[snap]?.[0] ?? snap;
+}
+
+/**
+ * Avisa del cambio de página. Va en un efecto suscrito a embla (fuente EXTERNA) y no se deriva de
+ * `indicesEnVista`: esos cambian también mientras la tarjeta se desliza, y el mapa saltaría a
+ * medio gesto.
+ */
+function useAvisoDeIndice(
+  api: CarouselApi | undefined,
+  onIndiceChange: ((indice: number) => void) | undefined,
+): void {
+  useEffect(() => {
+    if (!api || !onIndiceChange) return;
+    const avisar = () => onIndiceChange(primeraDeLaPagina(api));
+    // `reInit`: al cambiar la lista (búsqueda, filtro) embla recoloca la página sin `select`.
+    api.on("select", avisar);
+    api.on("reInit", avisar);
+    return () => {
+      api.off("select", avisar);
+      api.off("reInit", avisar);
+    };
+  }, [api, onIndiceChange]);
 }
 
 export function CarruselCards<T>({
@@ -96,9 +134,11 @@ export function CarruselCards<T>({
   singular,
   plural,
   className,
+  onIndiceChange,
 }: CarruselCardsProps<T>) {
   const [api, setApi] = useState<CarouselApi>();
   const indicesEnVista = useIndicesEnVista(api);
+  useAvisoDeIndice(api, onIndiceChange);
   const etiqueta = etiquetaRango(indicesEnVista, items.length, {
     singular,
     plural,

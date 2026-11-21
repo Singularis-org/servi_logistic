@@ -23,6 +23,8 @@
 // la misma frontera multi-tenant.
 
 import { describirDenegado } from "@/lib/analytics/auditoria";
+import { zonaDelBordeConActor } from "@/lib/actions/_shared/zona-del-borde";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import { prepararConsultaProductos } from "@/lib/analytics/productos-consulta";
 import type { ActorAnalitica, MotivoDenegacion } from "@/lib/analytics/alcance";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
@@ -50,6 +52,8 @@ export interface DetalleDineroProductoDeps {
   readonly logger?: ErrorLogger;
   /** Reloj inyectable: misma entrada y mismo `now` => mismo resultado. */
   readonly now?: () => Date;
+  /** SLT-42 (R22, R28): la zona del pais de la empresa; en produccion, la real (`zonaDelBorde`). */
+  readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
 }
 
 /**
@@ -89,7 +93,8 @@ export async function consultarDetalleDineroProducto(
   const actor = await (deps.getActor ?? resolveActorFromSession)();
 
   // 2. La MISMA puerta que la tabla. El `tienda_id` de la fila viaja DENTRO de `filtro`.
-  const preparada = prepararConsultaProductos(parseado.data.filtro, actor, now());
+  const zona = await zonaDelBordeConActor(actor, deps.reglasPais); // SLT-42 (R22, R28)
+  const preparada = prepararConsultaProductos(parseado.data.filtro, actor, zona, now());
   if (preparada.status === "validation_error") {
     return { status: "validation_error", fieldErrors: preparada.fieldErrors };
   }

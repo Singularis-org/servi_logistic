@@ -4,6 +4,7 @@
 // Este tipo de job NO es recurrente: NO se registra en `buildRecurrencias()`. Se encola por
 // EVENTO (recogida con debounce, gestion inmediata), no por reloj.
 import { z } from "zod";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import type { JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
 import type { JobHandler } from "@/lib/interfaces/services/IJobQueueService";
 import type { IRouteOptimizationClient } from "@/lib/interfaces/external/IRouteOptimizationClient";
@@ -196,5 +197,6 @@ export function buildOptimizacionRutaService(
     now,
     undefined,
     routes,
+    construirReglasPaisEmpresa(prisma), // SLT-42 (R22, R28): la zona horaria del pais de la empresa.
   );
 }

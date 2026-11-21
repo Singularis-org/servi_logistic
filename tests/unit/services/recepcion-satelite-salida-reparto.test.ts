@@ -8,6 +8,7 @@ import {
   listarOrdenesBodegaPaginadoSchema,
 } from "@/lib/types/recepcion-satelite";
 import { repoSateliteEnMemoria, SAT_A } from "@/tests/fixtures/satelite-bodega-almacen";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FICHA 370 — «salida a reparto» llega a LAS TRES consultas de la bodega satelite.
@@ -35,7 +36,7 @@ function servicio(repo: IOrdenRepository): RecepcionSateliteService {
   const historial = {
     contarIntentosEnLote: vi.fn(async () => new Map<string, number>()),
   } as unknown as Pick<IOrdenHistorialService, "contarIntentosEnLote">;
-  return new RecepcionSateliteService(repo, historial);
+  return new RecepcionSateliteService(repo, historial, undefined, reglasPaisFijas());
 }
 
 describe("FICHA 370 — la bodega satelite pasa «salida a reparto» a sus tres consultas", () => {

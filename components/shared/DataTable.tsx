@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type {
   DescargaColumna,
   DescargaFila,
+  DescargaHoja,
   DescargaTipo,
 } from "@/lib/types/descarga";
 import { cn } from "@/lib/utils";
@@ -120,6 +121,12 @@ export type DescargaFilasResult =
        */
       filasDestacadas?: readonly number[];
       filasDestacadasDetalle?: readonly number[];
+      /**
+       * SLT-113 — el LIBRO entero, ya resuelto por el consumidor (nombres, columnas y filas de cada
+       * hoja). Presente ⇒ el control genera siempre xlsx con estas hojas y el selector de columnas no
+       * se aplica a ellas; `filas` lleva las de la primera hoja. Ausente ⇒ todo como siempre.
+       */
+      libro?: { hojas: [DescargaHoja, ...DescargaHoja[]] };
     }
   | { status: "error"; mensaje: string };
 
@@ -242,8 +249,11 @@ export interface DataTableProps<T> {
   /**
    * Nombre accesible del botón de expandir de cada fila. Debe identificar SU fila, no ser
    * un genérico "Ver detalle" repetido N veces.
+   *
+   * SLT-162 (R760): recibe además si la fila está desplegada, para que el nombre pueda decir lo
+   * que hará el botón («Ver…»/«Ocultar…»). Opcional en la firma: quien solo mira la fila no cambia.
    */
-  expandAriaLabel?: (row: T) => string;
+  expandAriaLabel?: (row: T, abierta: boolean) => string;
   /**
    * Clase(s) opcional(es) por fila de DATOS, derivadas de la propia fila. Se
    * combinan con la clase base del `<tr>` vía `cn("border-b", rowClassName?.(row))`,
@@ -532,7 +542,7 @@ export function DataTable<T>({
                     onClick={() => toggle(key)}
                     aria-expanded={abierta}
                     aria-controls={`${key}-expandido`}
-                    aria-label={expandAriaLabel?.(row)}
+                    aria-label={expandAriaLabel?.(row, abierta)}
                     className="inline-flex items-center justify-center rounded p-1 text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                   >
                     <ExpandIcon open={abierta} />

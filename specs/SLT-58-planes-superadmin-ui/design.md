@@ -1,5 +1,10 @@
 # SLT-58 — planes-superadmin-ui · design.md
 
+> **Enmendado por SLT-91 (2026-11-06):** «Mi plan» pasa a ser solo del `maestro`. El `admin` no ve el ítem, la ruta le da
+> no encontrado y deja de ver las marcas del consumo. Lo que hace el plan para el `admin` no cambia. Lo de abajo se
+> conserva como historia; cada afirmación de `maestro` y `admin` sobre «Mi plan» lleva la marca «enmendado por SLT-91».
+> Vigente: `specs/SLT-91-mi-plan-solo-maestro/`.
+
 > Requisitos: `requirements.md` (R1–R28; R29–R42 de la enmienda del 2026-10-29, diseñados en §11).
 > Se heredan las decisiones y el diseño de
 > `specs/SL-24-planes-y-limites/` (sus §N se citan como «SL-24 §N»).
@@ -30,7 +35,7 @@ catálogo o detalle.
 
 Tres superficies y dos lecturas nuevas:
 
-1. **«Mi plan»** (`/mi-plan`, `maestro` y `admin`): plan, precio, módulos, consumo por tope, días hasta
+1. **«Mi plan»** (`/mi-plan`, `maestro` y `admin`; enmendado por SLT-91: solo el `maestro`): plan, precio, módulos, consumo por tope, días hasta
    el reinicio, marcas 80 % / 100 % y cambio pendiente. Lee por una función nueva de la base,
    `plan_de_la_empresa`, acotada a la empresa del contexto.
 2. **«Planes»** (`/plataforma/planes` y `/plataforma/planes/[planId]`, superadmin): catálogo, crear,
@@ -122,7 +127,7 @@ app/(app)/mi-plan/page.tsx                    Server Component: actor de la sesi
 
 - **Autorización (R8):** `MiPlanService.ver(actor)` responde `{ estado: "forbidden" }` si
   `actor === null` o `!ROLES_MI_PLAN.includes(actor.rol)`, **antes** de llamar al repositorio.
-  `ROLES_MI_PLAN = ["maestro", "admin"] as const satisfies readonly RolValue[]` vive en
+  `ROLES_MI_PLAN = ["maestro", "admin"] as const satisfies readonly RolValue[]` (enmendado por SLT-91: `["maestro"]`) vive en
   `lib/auth/menu-visibility.ts` y la leen el ítem del menú, el `notFound()` de la página y el
   servicio (precedente `ROLES_HISTORIAL_ACCIONES`, ficha 362). El superadmin no está en la lista: no
   tiene empresa.
@@ -172,11 +177,11 @@ componentes cliente reciben las actions por props desde el Server Component (pat
 - **Ruta:** `/mi-plan` (`app/(app)/mi-plan/page.tsx`). Patrón de nombre de `/mi-wallet` y `/mi-bodega`.
 - **Menú:** ítem de primer nivel `{ label: "Mi plan", href: "/mi-plan", iconKey: "gaugeCircle",
   roles: ROLES_MI_PLAN }`, **justo después de «Histórico» y antes de «Empresas»**.
-  - Por qué no dentro de «Configuración»: es `roles: ["maestro"]`, y `puedeVer` exige el rol del
+  - Por qué no dentro de «Configuración» (enmendado por SLT-91: este argumento pasa a ser historia; la posición no se mueve): es `roles: ["maestro"]`, y `puedeVer` exige el rol del
     padre antes de mirar los hijos; el `admin` no lo vería, y la decisión dice maestro **y** admin.
     Ensanchar «Configuración» le regalaría al `admin` Usuarios, Tarifas y API (el mismo argumento
     escrito para «SINPE por bodega»).
-  - Aterrizaje (R10): para `maestro` y `admin` el primer ítem visible es «Inicio»; un ítem después de
+  - Aterrizaje (R10): para `maestro` y `admin` (enmendado por SLT-91: el ítem es solo del `maestro`; el aterrizaje de los dos no cambia) el primer ítem visible es «Inicio»; un ítem después de
     «Histórico» no lo mueve. No lleva `destinoInicial: false` (el test de destino afirma que solo
     `/analitica` y `/monitoreo` lo llevan).
   - Icono: `IconKey` es una unión cerrada con un icono propio por sección; se añade `gaugeCircle`

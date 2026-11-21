@@ -10,7 +10,21 @@ import {
   serializarEscriturasReales,
   type TxDeTest,
 } from "./_postgres-real";
+import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import { tomarExclusionDemoQa, type ExclusionDemoQa } from "./_exclusion-demo-qa";
+
+/**
+ * SLT-183: el destinatario del aviso, SEMBRADO (un mensajero) en la tx revertida del caso. Antes se leia
+ * `(SELECT "id" FROM "usuario" LIMIT 1)`, y la base recien migrada no tiene ninguno.
+ */
+async function destinatarioSembrado(tx: TxDeTest): Promise<string> {
+  const { id } = await crearUsuarioDePrueba(tx, "mensajero");
+  // Control positivo (R1104): la siembra llego a la base. LANZA, no `return`.
+  if ((await tx.usuario.count({ where: { id } })) !== 1) {
+    throw new Error("SLT-183: el mensajero sembrado (destinatario del aviso) no esta en la base");
+  }
+  return id;
+}
 
 // FICHA 427 (T5, R42/R43) — la migracion que anade los DOS avisos del traspaso a los DOS enums de
 // `notificacion`, y las propiedades que dependen de ella.
@@ -452,11 +466,12 @@ describeSiHayBase("427/T5 — el DOWN ejercitado de verdad, con su precondicion"
              ("id","tipo","evento","descripcion","entidad_tipo","entidad_id","destinatario_usuario_id")
            VALUES ($1, 'box'::"notificacion_tipo", $2::"notificacion_evento",
                    'Recibiste 31 ordenes de otro mensajero.', $3::"notificacion_entidad_tipo",
-                   $4, (SELECT "id" FROM "usuario" LIMIT 1))`,
+                   $4, $5)`,
           randomUUID(),
           "traspaso_ordenes_recibido",
           "orden_traspaso_lote",
           randomUUID(),
+          await destinatarioSembrado(tx),
         );
 
         for (const sentencia of sentenciasDelDown()) await tx.$executeRawUnsafe(sentencia);
@@ -478,9 +493,10 @@ describeSiHayBase("427/T5 — el DOWN ejercitado de verdad, con su precondicion"
          VALUES ($1, 'box'::"notificacion_tipo", 'traspaso_ordenes_cedido'::"notificacion_evento",
                  '31 ordenes tuyas pasaron a otro mensajero.',
                  'orden_traspaso_lote'::"notificacion_entidad_tipo", $2,
-                 (SELECT "id" FROM "usuario" LIMIT 1))`,
+                 $3)`,
         id,
         randomUUID(),
+        await destinatarioSembrado(tx),
       );
       await tx.$executeRawUnsafe(`SAVEPOINT antes_del_down`);
       let abortado = false;

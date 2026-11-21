@@ -1,6 +1,8 @@
+import type { EstadoUsuario, RolValue } from "@prisma/client";
 import { z } from "zod";
 import { zonasConfig } from "@/lib/config/zonas";
 import { sinpeNombreSchema, sinpeNumeroSchema } from "@/lib/utils/sinpe-cr";
+import type { OrderStatusValue } from "@/lib/types/order-status";
 
 // Feature 24 (redefinida). Zod en el borde. Montos >= 0 (patron tarifa.ts).
 const montoSchema = z.number().nonnegative();
@@ -18,14 +20,21 @@ export const tarifaZonaMensajeroInputSchema = z
   .strict();
 export type TarifaZonaMensajeroInput = z.infer<typeof tarifaZonaMensajeroInputSchema>;
 
-// Campos de una zona COMUNES a crear y a actualizar: datos propios + distritos (N:M) + tarifas
-// por mensajero. La marca de zona central NO esta aqui: es el UNICO campo cuya semantica difiere
+// Campos de una zona COMUNES a crear y a actualizar: datos propios + tarifas
+// por mensajero. La marca de zona central y los distritos NO estan aqui: su semantica difiere
 // entre las dos operaciones (ficha 376/R1-R3, ver abajo).
 const zonaFieldsComunes = {
   nombre: nombreSchema,
-  // distritoIds: conjunto de distritos que componen la zona (N:M). Al menos uno.
-  distritoIds: z.array(idSchema).min(1),
 };
+
+// distritoIds: conjunto de distritos que componen la zona (N:M). SLT-198: al CREAR, al menos uno;
+// al ACTUALIZAR puede quedar vacio, para cerrar una bodega satelite y pasar sus distritos a otra
+// zona (el distrito es unico por empresa). La central nunca queda vacia (R1222, abajo y en el repo).
+const distritoIdsSchema = z.array(idSchema);
+
+// Literal de R1222: lo comparten este zod y la traduccion del servicio.
+export const MENSAJE_CENTRAL_SIN_DISTRITOS =
+  "La zona de bodega principal necesita al menos un distrito. Para vaciarla, marca primero otra zona como bodega principal.";
 
 const tarifasArraySchema = z.array(tarifaZonaMensajeroInputSchema);
 
@@ -109,6 +118,7 @@ function applyTarifaRules(
 export const crearZonaSchema = z
   .object({
     ...zonaFieldsComunes,
+    distritoIds: distritoIdsSchema.min(1),
     // SLT-51 (R5): el formulario de zona ya no manda costos. Al CREAR, ausente es «zona sin pagos»,
     // asi que el default materializa exactamente eso; `applyTarifaRules` pasa con `false` + `[]`.
     cobroVehiculo: z.boolean().default(false),
@@ -144,6 +154,7 @@ export type CrearZonaInput = z.infer<typeof crearZonaSchema>;
 export const actualizarZonaSchema = z
   .object({
     ...zonaFieldsComunes,
+    distritoIds: distritoIdsSchema,
     // SLT-51 (R7): mismo criterio que `esCentral`. SIN default a proposito: un `[]` materializado
     // aqui haria que el repositorio borrara los pagos de la zona en cada guardado de distritos.
     cobroVehiculo: z.boolean().optional(),
@@ -154,6 +165,15 @@ export const actualizarZonaSchema = z
   })
   .strict()
   .superRefine((data, ctx) => {
+    // SLT-198 (R1222): marcarla central y vaciarla en el mismo guardado. El caso «ya es central y
+    // llega sin la marca» solo lo ve el repositorio, que conoce el estado guardado.
+    if (data.esCentral === true && data.distritoIds.length === 0) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["distritoIds"],
+        message: MENSAJE_CENTRAL_SIN_DISTRITOS,
+      });
+    }
     const { cobroVehiculo, tarifas } = data;
     // R7: ninguno de los dos = «no toques el pago al mensajero».
     if (cobroVehiculo === undefined && tarifas === undefined) return;
@@ -202,6 +222,7 @@ export interface ZonaDTO {
   cobroVehiculo: boolean;
   distritosCount: number;
   esCentral: boolean; // feature 54: flag de zona central (antes esGam)
+  activa: boolean; // SLT-225 (R1740/R1759): false = desactivada, fuera del trabajo nuevo
   // Presente en crear/actualizar/obtener; en listar solo si include incluye "tarifas".
   tarifas?: TarifaZonaMensajeroDTO[];
 }
@@ -286,3 +307,49 @@ export type ImpactoZonaCentralResult =
 // (feature 55/R10) eran los resultados de las Server Actions de `lib/actions/geo.ts`, borradas
 // el 2026-08-07. `ZonaActionError`, del que colgaban, SI sigue vivo: lo usan las cinco acciones
 // de zonas que quedan.
+
+/* --- SLT-225 — desactivar y reactivar una zona ------------------------------------------- */
+
+/**
+ * SLT-225 (R1742-R1746) — TODO lo que impide desactivar una zona, en una sola respuesta.
+ *
+ * Viaja al navegador: por eso no lleva ids de usuario. `rol` y `estado` van como VALOR y no como
+ * texto: la pantalla ya tiene su fuente unica de etiquetas (`ROL_LABELS`, `ESTADO_LABELS`) y el
+ * servicio no redacta texto (design §3.7). `estado` de una orden se nombra con `NOMBRE_ESTADO`.
+ */
+export interface ImpedimentosDesactivacion {
+  esCentral: boolean; // R1745
+  distritos: number; // R1744
+  usuarios: { nombre: string; rol: RolValue; estado: EstadoUsuario }[]; // R1743, de cualquier estado
+  ordenesVivas: {
+    total: number;
+    porEstado: { estado: OrderStatusValue; cantidad: number }[];
+    muestra: string[]; // R1742: hasta 20, «#<guia>» o «remisión <n>» si aun no tiene guia
+  };
+}
+
+/** Cuantas ordenes nombra la muestra de R1742; el total y el conteo por estado no se recortan. */
+export const MUESTRA_ORDENES_VIVAS = 20;
+
+export type DesactivarZonaResult =
+  | { status: "ok" }
+  | { status: "conflict"; motivo: "impedimentos"; impedimentos: ImpedimentosDesactivacion }
+  | { status: "conflict"; motivo: "ya_desactivada" }
+  | Exclude<ZonaActionError, { status: "conflict" }>;
+
+export type ReactivarZonaResult =
+  | { status: "ok" }
+  | { status: "conflict"; motivo: "ya_activa" }
+  | Exclude<ZonaActionError, { status: "conflict" }>;
+
+export const MSG_ZONA_DESACTIVADA_EDITAR = "Esta zona está desactivada. Reactívala para editarla."; // R1753
+export const MSG_ZONA_DESACTIVADA_USUARIO = "Esa zona está desactivada; elige otra."; // R1755
+
+/**
+ * R1756 — las zonas que ofrece el selector de zona de un usuario: las activas y, si la tiene, la que
+ * ese usuario ya tiene aunque este desactivada (si no, el selector la perderia y el guardado la
+ * cambiaria sin que nadie lo pida). Conserva el orden de entrada.
+ */
+export function opcionesZonaUsuario(zonas: ZonaDTO[], zonaActualId: string | null): ZonaDTO[] {
+  return zonas.filter((z) => z.activa || z.id === zonaActualId);
+}

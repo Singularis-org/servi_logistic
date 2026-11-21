@@ -20,7 +20,7 @@ const DETALLE: DetallePlan = {
     nombre: "Básico",
     visibilidad: "publico",
     organizacionId: null,
-    topes: { ordenesPorCiclo: null, porRol: {}, apiKeys: null },
+    topes: { porRol: {}, apiKeys: null },
     modulos: [],
     precio: { tipo: "sin_precio" },
     costoPorOrden: null,
@@ -53,7 +53,7 @@ afterEach(() => cleanup());
 
 describe("SLT-66 R34 — la fila «desasignado» del rastro", () => {
   it("R34: dice la acción, el actor de sistema y la frase con la empresa", () => {
-    render(<PlanDetalle detalle={DETALLE} editarPlan={vi.fn()} archivarPlan={vi.fn()} cancelarCambio={vi.fn()} />);
+    render(<PlanDetalle detalle={DETALLE} borrador={{ guardarPaso: vi.fn(), leer: vi.fn(), descartar: vi.fn(), confirmar: vi.fn() }} previsualizarCambio={vi.fn()} archivarPlan={vi.fn()} cancelarCambio={vi.fn()} />);
 
     const filas = within(screen.getByRole("region", { name: "Historial del plan" })).getAllByRole("row").slice(1);
     expect(filas).toHaveLength(1);

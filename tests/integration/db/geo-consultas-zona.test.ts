@@ -3,7 +3,11 @@ import type { PrismaClient } from "@prisma/client";
 
 import { conEmpresa } from "@/lib/db/contexto-empresa";
 import type { UpdateZonaResult } from "@/lib/interfaces/repositories/IZonaRepository";
-import { ZonaRepository, planificarReconciliacion, type PlanDeReconciliacion } from "@/lib/repositories/ZonaRepository";
+import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
+import {
+  planificarReconciliacion,
+  type PlanDeReconciliacion,
+} from "@/lib/repositories/_shared/reconciliar-zona-ordenes";
 import { planDeHoy, type PlanDeHoy } from "@/scripts/geo-equivalencia/consultas-de-hoy";
 import { comoApp } from "@/tests/fabricas/organizaciones";
 import { crearEscenarioGeo65, type EmpresaGeo65, type EscenarioGeo65 } from "./_fixtures/geo-65";

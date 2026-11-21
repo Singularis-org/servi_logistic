@@ -13,11 +13,16 @@
 import { jsPDF } from "jspdf";
 import { EMPRESA } from "@/lib/config/marca";
 import { fuenteEtiqueta } from "@/lib/pdf/etiquetas-fuente";
-import { cubreCodePoint, registrarFuente } from "@/lib/pdf/etiquetas-fuente-registro";
-import { formatMontoString } from "@/lib/config/moneda";
+import { registrarFuente } from "@/lib/pdf/etiquetas-fuente-registro";
+import { imprimible } from "@/lib/pdf/imprimible";
+import { formatearMontoEn, type FormatoMoneda } from "@/lib/config/moneda";
 import { sumarMontos } from "@/lib/utils/kpis-financieros";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
-import { fechaCRLegible, fechaLargaCR, horaCRLegible } from "@/lib/whatsapp-envios/informes/formato";
+import { fechaCalendario } from "@/lib/utils/calendario-zona";
+import {
+  fechaLargaEnZona,
+  fechaLegibleEnZona,
+  horaLegibleEnZona,
+} from "@/lib/whatsapp-envios/informes/formato";
 import { nombreDeEstado } from "@/lib/types/order-status";
 import { HITO_EN_PALABRAS } from "@/lib/whatsapp-envios/informes/transito/parametros";
 import type {
@@ -43,18 +48,8 @@ const AMBAR: [number, number, number] = [146, 64, 14];
 const LINEA: [number, number, number] = [227, 232, 242];
 
 /** Nombre del archivo (R33): `transito-YYYY-MM-DD.pdf` con la fecha CR. */
-export function nombreArchivoTransito(ahora: Date): string {
-  return `transito-${fechaCalendarioCR(ahora)}.pdf`;
-}
-
-/** Sustituye por «?» lo que la fuente embebida no puede imprimir (nunca desaparece en silencio). */
-function imprimible(texto: string): string {
-  let out = "";
-  for (const c of texto.replace(/[\r\n\t]+/g, " ")) {
-    const cp = c.codePointAt(0) ?? 0x3f;
-    out += cubreCodePoint(fuenteEtiqueta, cp) ? c : "?";
-  }
-  return out;
+export function nombreArchivoTransito(ahora: Date, zona: string): string {
+  return `transito-${fechaCalendario(ahora, zona)}.pdf`;
 }
 
 function plural(n: number, uno: string, varios: string): string {
@@ -192,8 +187,8 @@ class Lienzo {
   }
 }
 
-function porCobrarCelda(monto: string | null): string {
-  return sinImporte(monto) ? "—" : formatMontoString(monto);
+function porCobrarCelda(monto: string | null, moneda: FormatoMoneda): string {
+  return sinImporte(monto) ? "—" : formatearMontoEn(moneda, monto);
 }
 
 function cantonDistrito(p: PaqueteTransito): string {
@@ -212,14 +207,14 @@ function encabezado(l: Lienzo, m: ModeloInformeTransito): void {
   l.estilo(8, GRIS);
   l.texto("Paquetes sin cierre logístico que están por vencer su plazo o ya lo pasaron", MARGEN, 30);
   l.estilo(10);
-  l.texto(fechaLargaCR(m.ahora), ANCHO - MARGEN, 16, { derecha: true });
+  l.texto(fechaLargaEnZona(m.ahora, m.zona), ANCHO - MARGEN, 16, { derecha: true });
   l.estilo(8, GRIS);
-  l.texto(`${horaCRLegible(m.ahora)} · hora de Costa Rica`, ANCHO - MARGEN, 21, { derecha: true });
+  l.texto(`${horaLegibleEnZona(m.ahora, m.zona)} · hora local`, ANCHO - MARGEN, 21, { derecha: true });
   l.texto(`Días contados desde ${HITO_EN_PALABRAS[m.hito]}`, ANCHO - MARGEN, 26, { derecha: true });
   l.y = 35;
 }
 
-function totales(l: Lienzo, m: ModeloInformeTransito): void {
+function totales(l: Lienzo, m: ModeloInformeTransito, moneda: FormatoMoneda): void {
   const t = m.totales;
   const recuadros: { k: string; v: string; s: string; color: [number, number, number] }[] = [
     { k: "VENCIDOS", v: String(t.vencidos), s: "pasaron su plazo", color: t.vencidos > 0 ? ROJO : TINTA },
@@ -227,7 +222,7 @@ function totales(l: Lienzo, m: ModeloInformeTransito): void {
     { k: "PARADOS", v: String(t.parados), s: "sin moverse de estado", color: t.parados > 0 ? AMBAR : TINTA },
     {
       k: "POR COBRAR",
-      v: formatMontoString(t.porCobrar),
+      v: formatearMontoEn(moneda, t.porCobrar),
       s: `en ${plural(t.enAlerta, "paquete", "paquetes")}`,
       color: TINTA,
     },
@@ -274,14 +269,14 @@ function bloqueParados(l: Lienzo, grupos: readonly GrupoParados[], total: number
   l.y += 4;
 }
 
-function tablaZona(l: Lienzo, z: ZonaConAlertas): void {
+function tablaZona(l: Lienzo, z: ZonaConAlertas, moneda: FormatoMoneda): void {
   l.asegurar(8 + ALTO_CABECERA + ALTO_FILA);
   l.estilo(11);
   l.texto(z.zona.nombre, MARGEN, l.y + 4);
   l.estilo(7.5, GRIS);
   l.texto(
     `Plazo ${plural(z.plazo.plazoDias, "día", "días")} · alerta desde el día ${z.umbral} · ` +
-      `${plural(z.paquetes.length, "paquete", "paquetes")} · ${formatMontoString(z.porCobrar)} por cobrar`,
+      `${plural(z.paquetes.length, "paquete", "paquetes")} · ${formatearMontoEn(moneda, z.porCobrar)} por cobrar`,
     ANCHO - MARGEN,
     l.y + 4,
     { derecha: true },
@@ -297,7 +292,7 @@ function tablaZona(l: Lienzo, z: ZonaConAlertas): void {
       nombreDeEstado(p.estado),
       p.destinatario,
       cantonDistrito(p),
-      porCobrarCelda(p.montoCobrar),
+      porCobrarCelda(p.montoCobrar, moneda),
       "",
     ],
     (p) => (p.vencido ? ROJO : TINTA),
@@ -319,7 +314,7 @@ function tablaZona(l: Lienzo, z: ZonaConAlertas): void {
   l.y += 4;
 }
 
-function seccionFuera(l: Lienzo, m: ModeloInformeTransito): void {
+function seccionFuera(l: Lienzo, m: ModeloInformeTransito, moneda: FormatoMoneda): void {
   const paquetes = m.fuera.reduce((n, z) => n + z.paquetes.length, 0);
   const porCobrar = sumarMontos(m.fuera.map((z) => z.porCobrar));
   l.asegurar(14 + 8 + ALTO_CABECERA + ALTO_FILA);
@@ -328,12 +323,12 @@ function seccionFuera(l: Lienzo, m: ModeloInformeTransito): void {
   l.estilo(8, GRIS);
   l.texto(
     `${plural(paquetes, "paquete", "paquetes")} en ${plural(m.fuera.length, "zona", "zonas")} · ` +
-      `${formatMontoString(porCobrar)} por cobrar`,
+      `${formatearMontoEn(moneda, porCobrar)} por cobrar`,
     MARGEN,
     l.y + 10,
   );
   l.y += 14;
-  for (const z of m.fuera) tablaZona(l, z);
+  for (const z of m.fuera) tablaZona(l, z, moneda);
 }
 
 function resumenParametros(l: Lienzo, m: ModeloInformeTransito): void {
@@ -371,7 +366,7 @@ function resumenParametros(l: Lienzo, m: ModeloInformeTransito): void {
 function pies(l: Lienzo, m: ModeloInformeTransito): void {
   const total = l.doc.getNumberOfPages();
   const membrete = EMPRESA.membrete === null ? "" : `${EMPRESA.membrete} · `;
-  const sello = `${membrete}Informe de tránsito · ${fechaCRLegible(m.ahora)} ${horaCRLegible(m.ahora)}`;
+  const sello = `${membrete}Informe de tránsito · ${fechaLegibleEnZona(m.ahora, m.zona)} ${horaLegibleEnZona(m.ahora, m.zona)}`;
   for (let i = 1; i <= total; i++) {
     l.doc.setPage(i);
     l.linea(ALTO - 12);
@@ -381,11 +376,14 @@ function pies(l: Lienzo, m: ModeloInformeTransito): void {
   }
 }
 
-/** El PDF del informe. Con 0 paquetes en alerta, una hoja que lo dice (R19). */
-export function pdfInformeTransito(m: ModeloInformeTransito): Uint8Array {
+/**
+ * El PDF del informe. Con 0 paquetes en alerta, una hoja que lo dice (R19). Los importes, en la
+ * moneda del pais de la empresa (SL-21, R12).
+ */
+export function pdfInformeTransito(m: ModeloInformeTransito, moneda: FormatoMoneda): Uint8Array {
   const l = new Lienzo();
   encabezado(l, m);
-  totales(l, m);
+  totales(l, m, moneda);
 
   if (m.totales.enAlerta === 0) {
     l.estilo(11);
@@ -393,11 +391,11 @@ export function pdfInformeTransito(m: ModeloInformeTransito): Uint8Array {
     l.y += 10;
   } else {
     if (m.parados.length > 0) bloqueParados(l, m.parados, m.totales.parados);
-    if (m.central !== null) tablaZona(l, m.central);
+    if (m.central !== null) tablaZona(l, m.central, moneda);
     if (m.fuera.length > 0) {
       // Maqueta: las zonas fuera de la GAM empiezan pagina si ya se dibujo algo antes.
       if (m.central !== null || m.parados.length > 0) l.nuevaPagina();
-      seccionFuera(l, m);
+      seccionFuera(l, m, moneda);
     }
   }
 

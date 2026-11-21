@@ -3,10 +3,12 @@ titulo: Órdenes
 modulo: ordenes
 pantalla: /ordenes
 roles: [maestro, admin]
-actualizado: 2026-09-25
+actualizado: 2026-11-19
 fuentes:
   - app/(app)/ordenes/page.tsx
   - app/(app)/ordenes/_components/OrdenesListado.tsx
+  - app/(app)/ordenes/_components/RetirarACentralModal.tsx
+  - app/(app)/ordenes/_components/ActualizarZonasButton.tsx
   - app/(app)/ordenes/_components/NotaGestionPendiente.tsx
   - app/(app)/ordenes/_components/HistorialOrdenTimeline.tsx
   - components/shared/EstadoInfo.tsx
@@ -64,6 +66,50 @@ una vez. Al asignar se elige el día de reparto — hoy o mañana.
 > **Si elegís mañana, el mensajero no va a poder recogerla ni gestionarla hasta ese día.** La va a ver
 > marcada en su lista, pero el sistema no lo deja adelantarse. Es a propósito: se puso después de que
 > un paquete reservado se entregara antes de tiempo.
+
+### Retirar a bodega central
+
+Cuando una bodega satélite deja de operar y en su zona no hay quien entregue, seleccioná las órdenes
+que siguen en su estante (filtrá por estado **En bodega satélite** y por la zona) y usá **Retirar a
+bodega central**. Pasan a **En ruta a bodega central**, sin mensajero, y podés descargar el manifiesto
+del lote para que viaje con la carga. El traslado no cobra ni paga nada.
+
+Cuando llegan, recibilas con el **escáner de recepción** de la central: quedan **En bodega central**
+y, al recibirlas, toman la zona de su distrito. Si mientras estaban en el estante de la satélite su
+distrito se pasó a otra zona, llegan ya con la nueva; si no, conservan la de la satélite. Una orden que
+tiene un cobro en curso (un cierre que todavía no se aprobó, o una entrega, un rechazo o un incidente
+que todavía no entró en un cierre aprobado) conserva su zona. Cuando la zona vuelva a tener cobertura,
+salen otra vez con **Rutear a bodega satélite**. Si las querés repartir desde la central, primero pasá
+su distrito a la zona central en la configuración de zonas.
+
+Si alguna orden del lote ya no está en el estante (por ejemplo, la satélite la acaba de asignar), no se
+retira ninguna: el diálogo te dice cuál y podés actualizar la lista y volver a intentarlo.
+
+## Actualizar zonas
+
+Junto a **Recibir paquete** está el botón **Actualizar zonas**. No depende de las órdenes que tengas
+seleccionadas: busca en toda tu empresa las órdenes cuya zona no es la de su distrito. Antes de cambiar
+nada abre un diálogo que te muestra cuántas se actualizarían, agrupadas por zona actual y zona nueva,
+el total, y cuáles se saltan y por qué. Si no hay ninguna que corregir, te dice que todas las zonas
+están al día y no ofrece confirmar.
+
+Se actualizan las órdenes vivas, aunque ya hayan pasado por un cierre aprobado. Se saltan, con su guía
+y el motivo:
+
+- **en el estante de una satélite**: esa bodega tiene el paquete y es la que lo tiene que despachar o
+  retirar a la central;
+- **finalizada**: ya se entregó, volvió a la tienda o cerró con un incidente; su zona queda como está;
+- **en devolución**: va camino de la central o de vuelta a la tienda; cambiarle la zona no la
+  desbloquea y puede dejarla sin quien la envíe;
+- **esperando liberación en bodega**: está reprogramada y retenida hasta que se libere;
+- **cobro en curso (gestión o cierre sin aprobar)**: tiene un cierre que todavía no se aprobó, o una entrega, un
+  rechazo o un incidente que todavía no entró en un cierre aprobado.
+
+Al confirmar, el sistema vuelve a revisar cada orden en ese momento, les pone la zona de su distrito y
+te dice cuántas se actualizaron y cuáles se saltaron. Una orden saltada no impide que se actualicen las
+demás. Al cerrar el diálogo, el listado se refresca. Cada orden actualizada deja una fila en el
+**histórico de acciones** con quien confirmó. Lo que se actualiza es solo la zona: el cobro de lo ya
+cerrado no cambia, y el próximo cierre de esa orden usa la tarifa de la zona nueva.
 
 ## Acciones por orden
 

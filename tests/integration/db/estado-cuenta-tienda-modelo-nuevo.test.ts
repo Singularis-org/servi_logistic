@@ -17,6 +17,7 @@ import { OrigenLegibleService } from "@/lib/services/OrigenLegibleService";
 import { WalletTiendaFeedService } from "@/lib/services/WalletTiendaFeedService";
 import type { FilaEstadoCuentaDTO } from "@/lib/types/estado-cuenta";
 import { comoApp, crearOrganizacion, fijarEmpresa, sembrarActivacion } from "@/tests/fabricas/organizaciones";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 import { busquedaPorGuiaDe } from "./_fixtures/busqueda-469";
 import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import {
@@ -166,8 +167,9 @@ function servicio(cli: PrismaClient): EstadoCuentaService {
   return new EstadoCuentaService(
     new EstadoCuentaRepository(cli),
     new RechazoTiendaCobroAnulacionRepository(cli),
-    new OrigenLegibleService(new OrigenLegibleRepository(cli)),
+    new OrigenLegibleService(new OrigenLegibleRepository(cli), reglasPaisFijas()),
     busquedaPorGuiaDe(cli),
+    reglasPaisFijas(),
   );
 }
 
@@ -350,6 +352,9 @@ describeSiHayBase("SLT-54 D38 — incluyeModeloNuevo en la fila del estado de cu
           } as never,
           {} as never,
           new TarifaZonaMensajeroRepository(cli),
+          undefined,
+          undefined,
+          reglasPaisFijas(),
         ).solicitarCierre({ usuarioId: M, rol: "mensajero" });
       });
       if (s.status !== "ok" || s.cierreId === undefined) {

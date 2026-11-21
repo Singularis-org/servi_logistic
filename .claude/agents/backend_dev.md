@@ -50,8 +50,10 @@ Al terminar, escribe tu bitacora en `progress/impl_<key>.md` con:
   cambio, la estructura de un modulo) usa primero el grafo: `search_graph`, `trace_path`,
   `get_code_snippet`, `search_code`. Grep/Read para lo que no es codigo (docs, specs, JSON,
   configs, textos de UI) y para leer un archivo antes de editarlo.
-- Tu proyecto es el de tu worktree: `list_projects` y el que tenga `root_path` en
-  `.worktrees/<key>-<slug>`. No consultes el de otro worktree.
+- Tu proyecto es el de tu worktree. Su nombre es la ruta absoluta del worktree con `:/` y `/`
+  cambiados por `-` (`R:/repo/.worktrees/PROY-8-x` -> `R-repo-.worktrees-PROY-8-x`). Confirma con
+  `index_status` (rapido); **no uses `list_projects` para buscarlo**: abre todos los indices y
+  tarda 5-15 s. No consultes el de otro worktree.
 - No indexas: el indice lo mantiene el leader. Lo que tocaste en esta tanda puede no estar
   todavia; ahi usa Grep/Read.
 - Si el MCP no responde, sigue con Grep/Read y anotalo en tu informe. No pares.

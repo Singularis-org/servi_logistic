@@ -10,6 +10,8 @@ import type { IJobQueueService } from "@/lib/interfaces/services/IJobQueueServic
 import type { JobHandler, RecurrenciaSpec } from "@/lib/interfaces/services/IJobQueueService";
 import { JobQueueService } from "@/lib/services/JobQueueService";
 import { JobRepository, empresaDelJob } from "@/lib/repositories/JobRepository";
+import { PaisRepository } from "@/lib/repositories/PaisRepository";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { comoPlataforma, conEmpresa } from "@/lib/db/contexto-empresa";
 import { paraCadaEmpresa, type ClienteDeOrganizaciones } from "@/lib/db/para-cada-empresa";
 import { getPrismaClient } from "@/lib/db/prisma-client";
@@ -62,12 +64,24 @@ import {
 import {
   buildDepsAvisoCorreo,
   buildPlanesRepositoryDeJobs,
+  crearPlanAplicarCambioEmpresaHandler,
   crearPlanAplicarCambioHandler,
   crearPlanAvisoCorreoHandler,
   crearPlanCambiosVencidosHandler,
   crearPlanRecordatorioCambioHandler,
   recurrenciaPlanCambiosVencidos,
 } from "@/lib/planes/jobs-cambio-plan";
+import {
+  buildFacturaPlataformaRepositoryDeJobs,
+  crearCierreFacturasHandler,
+  recurrenciaCierreFacturas,
+} from "@/lib/planes/jobs-factura-plataforma";
+import { buildDepsAvisoFactura, crearFacturaAvisoHandler } from "@/lib/planes/jobs-factura-aviso";
+import {
+  buildNivelesEmpresaRepositoryDeJobs,
+  crearCierreNivelesHandler,
+  recurrenciaCierreNiveles,
+} from "@/lib/planes/jobs-niveles";
 
 export interface ProcesarJobsDeps {
   // Secreto esperado (inyectable en tests). Por defecto, `CRON_SECRET` del entorno.
@@ -154,7 +168,8 @@ export function buildHandlers(
   const handlers = new Map<JobTipo, JobHandler>();
   handlers.set(
     "liberar_reprogramadas",
-    crearLiberarReprogramadasHandler(buildLiberarReprogramadasService(), now),
+    // SLT-42 (design §6.1; R25, R28): cada empresa con la zona de su pais.
+    crearLiberarReprogramadasHandler(buildLiberarReprogramadasService(), now, construirReglasPaisEmpresa(getPrismaClient())),
   );
   // Feature 91 (R32): geocodificacion de la direccion de UNA orden. NO se registra en
   // `buildRecurrencias()`: se encola por EVENTO, no por reloj. Un fallo suyo (p. ej. una
@@ -198,10 +213,10 @@ export function buildHandlers(
   // perezosamente en el handler: un env ausente falla ESTE job (con su motivo en `last_error`),
   // no el drenado de los demas tipos.
   handlers.set("whatsapp_bienvenida", crearWhatsappBienvenidaHandler());
-  // Feature 124 (D4->C1, R36): agrega en el rollup diario la fecha CR que acaba de cerrar.
+  // Feature 124 (D4->C1, R36): agrega en el rollup diario la fecha local que acaba de cerrar.
   // A DIFERENCIA de geocodificacion / optimizacion / webhook / whatsapp, este tipo SI se
   // registra en `buildRecurrencias()`: no lo dispara ningun evento del dominio —nadie "crea"
-  // un dia—, lo dispara el RELOJ, una vez por dia CR. Sin recurrencia la cola se vaciaria
+  // un dia—, lo dispara el RELOJ, una vez por zona y dia (SLT-42). Sin recurrencia la cola se vaciaria
   // tras la primera corrida y el rollup dejaria de escribirse en silencio, que es el modo de
   // fallo mas caro de esta feature: la tabla no se rompe, simplemente deja de crecer.
   handlers.set(
@@ -215,6 +230,7 @@ export function buildHandlers(
       now,
       undefined,
       crearAnaliticaCacheDeNext(),
+      construirReglasPaisEmpresa(getPrismaClient()), // SLT-42 (R25, R28): la zona del pais de cada empresa.
     ),
   );
   // Feature 128 (R14): invalidacion de la cache de analitica tras un recomputo del backfill
@@ -260,6 +276,21 @@ export function buildHandlers(
   handlers.set("plan_cambios_vencidos", crearPlanCambiosVencidosHandler(planes, now));
   handlers.set("plan_recordatorio_cambio", crearPlanRecordatorioCambioHandler(planes));
   handlers.set("plan_aviso_correo", crearPlanAvisoCorreoHandler(planes, buildDepsAvisoCorreo));
+  // SLT-86 (design §5.2; R17, R20): el cambio de empresa con fecha. PUNTUAL y CON empresa (`conSuEmpresa`
+  // lo corre en su contexto); el repositorio aplica en plataforma, bajo el cerrojo de la empresa.
+  handlers.set("plan_aplicar_cambio_empresa", crearPlanAplicarCambioEmpresaHandler(planes, now));
+  // SLT-118 (design §4.2; R3, R12): el cierre de las facturas de la plataforma, RECURRENTE (cada hora a los
+  // :10) y de plataforma: recorre todas las empresas. `getPrismaClient()` es perezoso.
+  handlers.set(
+    "factura_plataforma_cerrar",
+    crearCierreFacturasHandler(buildFacturaPlataformaRepositoryDeJobs(), now),
+  );
+  // SLT-136 (design §7.2; R22, R30): el aviso de UNA factura recién cerrada. PUNTUAL y CON empresa (lo encola
+  // el cierre en su transacción, con la empresa de la factura). Las deps se construyen al correr.
+  handlers.set("factura_plataforma_aviso", crearFacturaAvisoHandler(buildDepsAvisoFactura));
+  // SLT-215 (design §5; R29, R30): el cierre mensual de los niveles por volumen, RECURRENTE (diario a las 06:20
+  // UTC) y de plataforma: recorre las empresas con meses pendientes. `getPrismaClient()` es perezoso.
+  handlers.set("plan_niveles_cerrar", crearCierreNivelesHandler(buildNivelesEmpresaRepositoryDeJobs(), now));
   return new Map(
     [...handlers].map(([tipo, h]) => [
       tipo,
@@ -279,11 +310,18 @@ export function buildHandlers(
  * Barrer los cambios vencidos una vez por empresa repetiría el mismo barrido N veces, y con cero
  * empresas no correría nunca. Siguen re-agendándose por `buildRecurrencias`.
  */
-export const RECURRENTES_DE_PLATAFORMA: ReadonlySet<JobTipo> = new Set<JobTipo>(["plan_cambios_vencidos"]);
+export const RECURRENTES_DE_PLATAFORMA: ReadonlySet<JobTipo> = new Set<JobTipo>([
+  "plan_cambios_vencidos",
+  // SLT-118 (design §4.2): el cierre de facturas es de todas las empresas, y una por empresa no abriría la
+  // primera factura de una empresa nueva.
+  "factura_plataforma_cerrar",
+  // SLT-215 (design §5): el cierre de los niveles es de todas las empresas con meses pendientes.
+  "plan_niveles_cerrar",
+]);
 
 /**
  * Registro de recurrencia por tipo. Recurrentes son los tipos que dispara el RELOJ:
- * `liberar_reprogramadas` (00:00 CR) y, desde la 124, `analitica_rollup_diario` (00:30 CR).
+ * `liberar_reprogramadas` (00:00 locales) y, desde la 124, `analitica_rollup_diario` (00:30 locales, SLT-42: por zona).
  * La geocodificacion, la optimizacion de ruta, el webhook de estado y los dos de WhatsApp se
  * encolan por EVENTO y NO deben re-agendarse (R32/R21). Exportada por el mismo motivo que
  * `buildHandlers`.
@@ -293,7 +331,7 @@ export function buildRecurrencias(): Map<JobTipo, RecurrenciaSpec> {
   recurrencias.set("liberar_reprogramadas", recurrenciaLiberarReprogramadas);
   // Feature 124 (D4->C1, R36): el rollup diario es RECURRENTE porque nada en el dominio lo
   // dispara —el hecho de que un dia cierre no genera ningun evento—. Cada corrida re-agenda
-  // la siguiente a las 00:30 CR con el `dedupe_key` de la fecha que agregara, asi que la
+  // la siguiente a las 00:30 locales con el `dedupe_key` de la fecha que agregara, asi que la
   // cola se auto-perpetua y un fallo terminal de una ocurrencia no detiene la serie.
   recurrencias.set("analitica_rollup_diario", recurrenciaAnaliticaRollupDiario);
   // FICHA 474 (R25/R44): el mantenimiento diario de los envios por WhatsApp (03:30 CR). Lo dispara
@@ -303,6 +341,12 @@ export function buildRecurrencias(): Map<JobTipo, RecurrenciaSpec> {
   // SL-24 (design §16.3): el barrido de cambios de plan vencidos, cada hora en punto. Corre una vez
   // en plataforma (`RECURRENTES_DE_PLATAFORMA`); su primera fila la siembra `SIEMBRAS_RECURRENTES`.
   recurrencias.set("plan_cambios_vencidos", recurrenciaPlanCambiosVencidos);
+  // SLT-118 (design §4.2; R25): el cierre de las facturas de la plataforma, cada hora a los :10. Corre una
+  // vez en plataforma (`RECURRENTES_DE_PLATAFORMA`); su primera fila la siembra `SIEMBRAS_RECURRENTES`.
+  recurrencias.set("factura_plataforma_cerrar", recurrenciaCierreFacturas);
+  // SLT-215 (design §5; P1, R29): el cierre de los niveles por volumen, diario a las 06:20 UTC. Corre una vez en
+  // plataforma (`RECURRENTES_DE_PLATAFORMA`); su primera fila la siembra `SIEMBRAS_RECURRENTES`.
+  recurrencias.set("plan_niveles_cerrar", recurrenciaCierreNiveles);
   return recurrencias;
 }
 
@@ -314,6 +358,9 @@ function buildService(now: () => Date, opciones: OpcionesDeEmpresa): IJobQueueSe
     buildRecurrencias(),
     loadJobsConfig(),
     now,
+    undefined,
+    // SLT-42 (design §6.1; R25): las zonas con empresas, para agendar los diarios por zona.
+    () => new PaisRepository(prisma).zonasConEmpresas(),
   );
 }
 

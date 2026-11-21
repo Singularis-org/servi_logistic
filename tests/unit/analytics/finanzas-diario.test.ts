@@ -8,6 +8,7 @@ import { derivarFinanzasDiarias } from "@/lib/utils/finanzas-diarias";
 import { derivarCaja } from "@/lib/utils/caja-tesoreria";
 import type { AgregadoDiarioCajaRow } from "@/lib/interfaces/repositories/IFinanzasDiarioRepository";
 
+import { reglasPaisFijas, ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 const AHORA = new Date("2026-08-17T12:00:00.000Z");
 
 /** Atajo para escribir filas del agregado sin repetir la forma. */
@@ -266,7 +267,7 @@ describe("La derivación del dinero por día", () => {
 describe("El servicio: la ventana la pone el reloj", () => {
   function servicio(now: Date) {
     const repo = { sumarPorDia: vi.fn().mockResolvedValue([]) };
-    return { repo, service: new FinanzasDiarioService(repo, { now: () => now }) };
+    return { repo, service: new FinanzasDiarioService(repo, { now: () => now }, reglasPaisFijas()) };
   }
 
   // Últimos 30 días CR resueltos por `resolverRango`, no por aritmética propia: es el mismo
@@ -278,9 +279,26 @@ describe("El servicio: la ventana la pone el reloj", () => {
 
     expect(dto.hasta).toBe("2026-08-17");
     expect(dto.desde).toBe("2026-07-19"); // 30 días contando hoy
-    const [desde, hasta] = repo.sumarPorDia.mock.calls[0] ?? [];
+    const [desde, hasta, zona] = repo.sumarPorDia.mock.calls[0] ?? [];
     expect(desde).toEqual(new Date("2026-07-19T06:00:00.000Z"));
     expect(hasta).toEqual(new Date("2026-08-18T06:00:00.000Z")); // semiabierta
+    expect(zona).toBe(ZONA_DE_CR); // SLT-42 (R22): la del país de la empresa, para agrupar por día
+  });
+
+  it("con una empresa en otra zona, la ventana y la zona del agrupamiento son las suyas (R22, R23)", async () => {
+    const repo = { sumarPorDia: vi.fn().mockResolvedValue([]) };
+    // 2026-03-08 es el día de 23 horas de Nueva York (pasa de UTC-5 a UTC-4).
+    const service = new FinanzasDiarioService(
+      repo,
+      { now: () => new Date("2026-03-08T16:00:00.000Z") },
+      reglasPaisFijas({ paisId: "US", zonaHoraria: "America/New_York" }),
+    );
+
+    await service.consultar();
+
+    const [, hasta, zona] = repo.sumarPorDia.mock.calls[0] ?? [];
+    expect(zona).toBe("America/New_York");
+    expect(hasta).toEqual(new Date("2026-03-09T04:00:00.000Z")); // 00:00 EDT del día siguiente
   });
 
   it("`lastSync` sale del reloj inyectado", async () => {
@@ -293,30 +311,35 @@ describe("El servicio: la ventana la pone el reloj", () => {
 describe("La consulta que se ejecuta", () => {
   /** Doble del cliente Prisma: captura el SQL y devuelve filas fijas. */
   function prismaFalso(filas: unknown[]) {
-    const capturado = { sql: "" };
+    const capturado = { sql: "", completo: Prisma.empty };
     const prisma = {
       $queryRaw: (plantilla: TemplateStringsArray, ...valores: { sql?: string }[]) => {
         capturado.sql = [...plantilla].map((t, i) => t + (valores[i]?.sql ?? "")).join("");
+        // El SQL tal como sale hacia Postgres: fragmentos aplanados y cada valor como `$n`.
+        capturado.completo = Prisma.sql([...plantilla], ...(valores as never[]));
         return Promise.resolve(filas);
       },
     };
     return { prisma, capturado };
   }
 
-  // ⚠ NI UNA ZONA HORARIA EN EL SQL: sería una segunda definición del día operativo fuera del
-  // alcance de `fecha-cr.ts` — el off-by-one de seis horas del que avisa `ranges.ts`.
-  it("agrupa por día CR sin nombrar ninguna zona horaria", async () => {
+  // ⚠ LA REGLA DE LA 180, AJUSTADA POR SLT-42 (decisión del humano del 2026-11-06): no se ESCRIBE
+  // ninguna zona ni desfase; el día sale de `AT TIME ZONE` con la zona como PARÁMETRO (R22, R23).
+  it("agrupa por día con `AT TIME ZONE` parametrizado, sin escribir ninguna zona", async () => {
     const { prisma, capturado } = prismaFalso([]);
 
     await new FinanzasDiarioRepository(prisma as never).sumarPorDia(
-      new Date("2026-07-19T06:00:00.000Z"),
-      new Date("2026-08-18T06:00:00.000Z"),
+      new Date("2026-03-01T05:00:00.000Z"),
+      new Date("2026-03-15T04:00:00.000Z"),
+      "America/New_York",
     );
 
-    expect(capturado.sql).not.toMatch(/AT TIME ZONE/i);
-    expect(capturado.sql).not.toMatch(/America|Costa_Rica/i);
-    expect(capturado.sql).not.toMatch(/interval\s+'6 hours'/i);
-    expect(capturado.sql).toContain("interval '1 second'");
+    expect(capturado.completo.text).toMatch(
+      /\(m\."fecha_movimiento" AT TIME ZONE 'UTC'\) AT TIME ZONE \$\d+::text/,
+    );
+    expect(capturado.completo.values).toContain("America/New_York");
+    expect(capturado.completo.text).not.toMatch(/America|Costa_Rica/i);
+    expect(capturado.sql).not.toMatch(/interval/i);
     expect(capturado.sql).toContain("::date");
     expect(capturado.sql).toContain("GROUP BY 1, 2, 3");
   });
@@ -326,7 +349,7 @@ describe("La consulta que se ejecuta", () => {
   it("compara la ventana como `timestamp`, no como `timestamptz`", async () => {
     const { prisma, capturado } = prismaFalso([]);
 
-    await new FinanzasDiarioRepository(prisma as never).sumarPorDia(new Date(), new Date());
+    await new FinanzasDiarioRepository(prisma as never).sumarPorDia(new Date(), new Date(), ZONA_DE_CR);
 
     expect(capturado.sql).toContain("::timestamp");
     expect(capturado.sql).not.toContain("::timestamptz");
@@ -340,6 +363,7 @@ describe("La consulta que se ejecuta", () => {
     const filas = await new FinanzasDiarioRepository(prisma as never).sumarPorDia(
       new Date(),
       new Date(),
+      ZONA_DE_CR,
     );
 
     expect(filas[0]?.total).toBe("12.50");

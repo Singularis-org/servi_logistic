@@ -24,6 +24,9 @@ import {
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import type { AppErrorShape } from "@/lib/errors";
 import { exigirModuloActivo } from "@/lib/modulos/exigir-modulo";
+import { zonaDelBorde } from "@/lib/actions/_shared/zona-del-borde";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 
 // Feature 293 (T4.3, design §7.3) — Server Actions del PREMIO DEL RANKING.
 //
@@ -99,6 +102,7 @@ function buildService(): IPremioRankingDevengoService {
     new CajaPremioRankingFeedService(new WalletMovimientoRepository(prisma)),
     // R20: UNA transaccion para las dos escrituras. Si cualquiera falla, no queda ninguna.
     (fn) => prisma.$transaction((tx) => fn(tx as unknown as PremioTx)),
+    construirReglasPaisEmpresa(prisma), // SLT-42 (R22, R28): la zona horaria del pais de la empresa.
   );
 }
 
@@ -106,6 +110,8 @@ function buildService(): IPremioRankingDevengoService {
 export interface PremioRankingDeps {
   service?: IPremioRankingDevengoService;
   getActor?: () => Promise<Actor | null>;
+  /** SLT-42 (R22, R28): la zona del pais de la empresa; en produccion, la real (`zonaDelBorde`). */
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
 }
 
 /**
@@ -123,7 +129,8 @@ export async function listarPremiosDelDiaAction(
     await exigirModuloActivo("ranking");
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError(); // R2: antes de tocar el service
-    const data = listarPremiosDelDiaSchema.parse(input); // R8: ZodError -> VALIDATION_ERROR
+    const zona = await zonaDelBorde(deps.reglasPais); // SLT-42 (R22, R28)
+    const data = listarPremiosDelDiaSchema(zona).parse(input); // R8: ZodError -> VALIDATION_ERROR
     const service = deps.service ?? buildService();
     return service.listarPremiosDelDia(data, actor);
   });

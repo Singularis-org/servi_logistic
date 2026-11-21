@@ -16,6 +16,7 @@ import type {
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { CierreDiaService } from "@/lib/services/CierreDiaService";
 import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // SLT-64 / T4.4 — R12, R14, R15, R16: deshacer una gestión invalida las lecturas de entregas.
 //
@@ -203,6 +204,9 @@ describe("R12 · las tres vías, con `CierreDiaService` real y el repositorio do
       },
       { createSignedUrl: vi.fn(), createSignedUrls: vi.fn(async () => ({})) },
       { resolvePagoTarifa: vi.fn(async () => null) } as never,
+      undefined,
+      undefined,
+      reglasPaisFijas(),
     );
     return { service, escrituras };
   }

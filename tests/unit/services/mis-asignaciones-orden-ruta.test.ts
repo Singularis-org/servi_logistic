@@ -13,6 +13,7 @@ import type { IFileStorage } from "@/lib/interfaces/external/IFileStorage";
 import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlProvider";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { fakeIntentosEnLote } from "@/tests/fixtures/intentos-entrega";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 92 (R28/R29) — el ORDEN de las cards, resuelto en el SERVICE.
 //
@@ -119,6 +120,7 @@ function build(rows: MiAsignacionRow[], rutaPrevia: RutaOptimizadaDTO | null) {
     rutaRepo,
     metaRepo,
     fakeIntentosEnLote(), // feature 160: dep requerida, no ejercitada aqui
+    reglasPaisFijas(),
   );
 }
 

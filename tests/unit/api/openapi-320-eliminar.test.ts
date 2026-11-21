@@ -119,7 +119,7 @@ describe("FICHA 320 — el DELETE esta publicado en el objeto TS", () => {
   it("declara los codigos que el borde devuelve de verdad: 200/401/403/404/409/422", () => {
     // Espejo EXACTO de `handleEliminarOrdenApi`: si el handler ganara o perdiera un codigo, el
     // contrato tiene que moverse con el. `toEqual` y no `toContain`, a proposito.
-    expect(Object.keys(operacion.responses)).toEqual(["200", "401", "403", "404", "409", "422"]);
+    expect(Object.keys(operacion.responses)).toEqual(["200", "401", "403", "404", "409", "422", "500"]); // SLT-201: + 500
   });
 
   it("el 200 responde `EliminacionResponse`, y el 409 y el 404 reusan los de siempre", () => {
@@ -165,11 +165,11 @@ describe("FICHA 320 — el .yaml publicado dice lo MISMO", () => {
     expect(bloque.join("\n")).toContain("summary: Eliminar una orden propia");
   });
 
-  it("declara los mismos seis codigos de respuesta", () => {
+  it("declara los mismos siete codigos de respuesta (SLT-201: + 500)", () => {
     const codigos = subBloque(bloque, "responses", 6)
       .filter((l) => indent(l) === 8)
       .map((l) => l.trim().replace(/:$/, "").replace(/"/g, ""));
-    expect(codigos).toEqual(["200", "401", "403", "404", "409", "422"]);
+    expect(codigos).toEqual(["200", "401", "403", "404", "409", "422", "500"]); // SLT-201: + 500
   });
 
   it("el 200 apunta al mismo schema EliminacionResponse", () => {

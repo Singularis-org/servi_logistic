@@ -19,6 +19,8 @@ import {
   sembrarCierreAprobable,
 } from "./_fixtures/slt73-cierre-aprobable";
 import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // SLT-76 · T2 · R3/R4 — «DESMARCAR» SE OFRECE SOLO CUANDO REVERTIR NO DEVOLVERIA `con_asientos`.
 //
@@ -103,10 +105,23 @@ describeSiHayBase("SLT-76 R3/R4 — `desmarcable` en las dos superficies (Postgr
       const deLista = <T extends { cierreBodegaId: string; desmarcable: boolean }>(filas: T[]) =>
         ids.map((id) => filas.find((f) => f.cierreBodegaId === id)?.desmarcable ?? "ausente");
 
-      const historicoMaestro = deLista((await admin.findHistoricoPaginado(PAGINA)).items);
-      const historicoCompleto = deLista(await admin.findHistoricoCompleto());
+      // SLT-105 «Cola de bodega de la central: Por conciliar y Conciliados» (R122): (ii) es un
+      // recibido incompleto (4.600 de 5.000) y vive en la cola; (i) y (iii), en el historico. Cada
+      // una se busca SOLO en su lista: si cayera en la otra, saldria «ausente».
+      const dondeVive = ["historico", "cola", "historico"] as const;
+      const deMaestro = <T extends { cierreBodegaId: string; desmarcable: boolean }>(cola: T[], historico: T[]) =>
+        ids.map(
+          (id, i) =>
+            (dondeVive[i] === "cola" ? cola : historico).find((f) => f.cierreBodegaId === id)?.desmarcable ??
+            "ausente",
+        );
+      const historicoMaestro = deMaestro(
+        (await admin.findColaPaginada(PAGINA)).items,
+        (await admin.findHistoricoPaginado(PAGINA)).items,
+      );
+      const historicoCompleto = deMaestro(await admin.findColaCompleta(), await admin.findHistoricoCompleto());
       const detalleMaestro = await Promise.all(
-        ids.map(async (id) => (await admin.findCierreBodegaConDetalle(id))?.cierre.desmarcable ?? "ausente"),
+        ids.map(async (id) => (await admin.findCierreBodegaConDetalle(id, ZONA_CR, { lectura: "toda_la_empresa" }))?.cierre.desmarcable ?? "ausente"),
       );
       const paginaSatelite = deLista(
         (await new CierreBodegaRepository(cliente).findCierresBodegaByZonaPaginado(k.zonaId, PAGINA)).items,
@@ -117,7 +132,7 @@ describeSiHayBase("SLT-76 R3/R4 — `desmarcable` en las dos superficies (Postgr
 
       const revertir: string[] = [];
       for (const id of ids) {
-        revertir.push(await admin.revertirConciliacion({ id, actorUsuarioId: k.maestroId }));
+        revertir.push(await admin.revertirConciliacion({ zonaHoraria: ZONA_DE_CR, id, actorUsuarioId: k.maestroId }));
       }
       return { control, historicoMaestro, historicoCompleto, detalleMaestro, paginaSatelite, desglose, revertir };
     });
@@ -149,7 +164,7 @@ describeSiHayBase("SLT-76 R3/R4 — `desmarcable` en las dos superficies (Postgr
       const fila = (
         await new SaldosSatelitesRepository(cliente).findConsolidacionesPaginado(k.zonaId, PAGINA)
       ).items.find((f) => f.cierreBodegaId === id);
-      const cabecera = (await new CierresBodegaAdminRepository(cliente).findCierreBodegaConDetalle(id))?.cierre;
+      const cabecera = (await new CierresBodegaAdminRepository(cliente).findCierreBodegaConDetalle(id, ZONA_CR, { lectura: "toda_la_empresa" }))?.cierre;
       return { fila, cabecera };
     });
     expect(r.fila?.conciliado).toBe(false);

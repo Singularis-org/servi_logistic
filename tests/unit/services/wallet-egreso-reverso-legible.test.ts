@@ -8,6 +8,7 @@ import type {
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { WalletEgresoService } from "@/lib/services/WalletEgresoService";
 import type { WalletMovimientoDTO } from "@/lib/types/wallet";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Ficha 458-A (TA.6, R4, C4.2 de design §1.1) — el texto del reverso de un egreso NO cae al id
 // interno cuando el egreso no tiene descripcion: cae al NOMBRE del concepto.
@@ -25,7 +26,6 @@ function original(over: Partial<WalletMovimientoDTO>): WalletMovimientoDTO {
     origenTipo: "gasto",
     origenId: null,
     descripcion: null,
-    registradoPor: "u-maestro",
     fechaMovimiento: "2026-09-12T15:00:00.000Z",
     dueno: "propio",
     documento: null,
@@ -39,7 +39,7 @@ async function descripcionDelReverso(o: WalletMovimientoDTO): Promise<string | n
     obtenerPorId: vi.fn(async () => o),
     crearMovimientoRegistrado,
   } as unknown as IWalletMovimientoRepository;
-  const svc = new WalletEgresoService(repo, {} as WalletTxClient);
+  const svc = new WalletEgresoService(repo, {} as WalletTxClient, undefined, undefined, reglasPaisFijas());
   const r = await svc.reversarEgreso({ movimientoId: ID }, MAESTRO);
   expect(r).toEqual({ status: "ok" });
   const [mov] = crearMovimientoRegistrado.mock.calls[0] as unknown as [CrearMovimientoInput];

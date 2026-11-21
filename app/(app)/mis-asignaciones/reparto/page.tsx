@@ -63,11 +63,11 @@ export default async function RepartoPage() {
 
   return (
     <AppPage title="Reparto" description="Órdenes en reparto por gestionar">
-      {/* Feature 61: KPIs del portal del mensajero sobre la lista de asignaciones. Viven
-          en Reparto y no en "Por recoger" (decisión del humano): resumen el turno, y el
-          turno se trabaja aquí. */}
-      <KpisMensajero kpis={result.kpis} />
       <RepartoModule
+        // Feature 61: KPIs del portal del mensajero sobre la lista de asignaciones. Viven en
+        // Reparto y no en "Por recoger" (decisión del humano): resumen el turno, y el turno se
+        // trabaja aquí. SLT-156 (R503): los pinta el módulo, bajo el aviso de bloqueo.
+        kpis={<KpisMensajero kpis={result.kpis} />}
         porGestionar={result.porGestionar}
         // Feature 235 (R18): la tercera lista llega YA SEPARADA del servidor; el módulo no vuelve
         // a decidir el corte.

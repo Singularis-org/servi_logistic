@@ -60,12 +60,13 @@ describe("R11: la preview es el mismo par de llamadas que el envio", () => {
     expect(resolverValoresPlantilla).toHaveBeenCalledWith(
       ["cliente", "monto"],
       DATOS_PLANTILLA_EJEMPLO,
+      undefined, // SLT-42: sin fechas con hora, la vista previa no pide zona
     );
   });
 
   it("un cuerpo sin variables tambien pasa por el resolutor (con lista vacia)", () => {
     previewConEjemplos("Sin placeholders");
-    expect(resolverValoresPlantilla).toHaveBeenCalledWith([], DATOS_PLANTILLA_EJEMPLO);
+    expect(resolverValoresPlantilla).toHaveBeenCalledWith([], DATOS_PLANTILLA_EJEMPLO, undefined);
   });
 
   // El antiguo R25 de la feature 107 («clave desconocida -> marcador en MAYUSCULAS») queda

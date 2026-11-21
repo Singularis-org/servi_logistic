@@ -8,6 +8,8 @@ import {
 import * as encolado from "@/lib/services/jobs/optimizacion-ruta-encolado";
 import type { EnqueueOpts, IJobRepository } from "@/lib/interfaces/repositories/IJobRepository";
 import type { JobTipo } from "@prisma/client";
+import { inicioDelDiaEnUtc } from "@/lib/utils/calendario-zona";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 // Feature 92 (R17/R18) y SLT-59 (R23, R24, R32) — las claves de idempotencia del job de
 // optimizacion.
@@ -214,6 +216,6 @@ describe("SLT-59 glosario — primera ruta pendiente (puro, R67)", () => {
     ["calculada justo al empezar el dia CR (06:00Z)", new Date("2026-07-20T06:00:00.000Z"), false],
     ["calculada hoy a mediodia", new Date("2026-07-20T18:00:00.000Z"), false],
   ])("%s -> %s", (_caso, calculadaAt, esperado) => {
-    expect(primeraRutaPendiente(calculadaAt, "2026-07-20")).toBe(esperado);
+    expect(primeraRutaPendiente(calculadaAt, inicioDelDiaEnUtc("2026-07-20", ZONA_CR))).toBe(esperado);
   });
 });

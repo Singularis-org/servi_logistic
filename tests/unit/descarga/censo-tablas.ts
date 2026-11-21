@@ -92,6 +92,14 @@ export interface TablaCensada {
    * no exista.
    */
   montajes?: string[];
+  /**
+   * SLT-102 «Cola de cierres única: mensajeros (central y satélite)» — las fichas que montarán esta
+   * tabla compartida en otras pantallas y aún no lo hacen. Solo para una tabla de `components/`
+   * que hoy tiene UN montaje porque nació para varias (la cola única de SLT-95): sin este campo,
+   * un solo montaje exige que la tabla viva en la pantalla que la usa. No sustituye a
+   * `montajes`, que sigue contrastándose contra el árbol.
+   */
+  montajesPrevistos?: string[];
 }
 
 export interface ArchivoCensado {
@@ -114,8 +122,9 @@ export interface ArchivoCensado {
 //     Cierres de bodega solicitados ......... CierresBodegaSolicitadosTabla.tsx (archivo borrado)
 //     Cierres del día a consolidar .......... ConsolidacionBodegaModule.tsx
 //
-// Siete instancias, seis archivos: `CierreDiaModule` sigue en el censo porque conserva su OTRA
-// tabla, la de gestiones del día por resultado, que no es un listado de cierres.
+// Siete instancias, seis archivos: `CierreDiaModule` seguía en el censo porque conservaba su OTRA
+// tabla, la de gestiones del día por resultado, que no es un listado de cierres (SLT-109 la retiró:
+// ver su entrada, más abajo).
 //
 // LO QUE NO CAMBIA, y es la razón de que esto sea una baja del CENSO y no de la capacidad: los
 // siete listados **siguen descargando**. La configuración `descarga` no se borró: se movió del
@@ -266,14 +275,13 @@ export const CENSO_DATATABLE: ArchivoCensado[] = [
       },
     ],
   },
-  {
-    // Pedido humano del 2026-08-16: «Cierres solicitados (mensajero)» DEJÓ DE SER UNA TABLA.
-    // Ver la nota de SEIS BAJAS en la cabecera de este archivo. La que queda es la del día.
-    ruta: "app/(app)/cierre-dia/_components/CierreDiaModule.tsx",
-    tablas: [
-      { nombre: "Gestiones del cierre del día por resultado", estado: "con_descarga" },
-    ],
-  },
+  // SLT-109 «/cierre-dia: el cierre de hoy, rechazado o vencido como página» (R255, R256, PA4) — BAJA
+  // de un archivo, `con_descarga`: «Gestiones del cierre del día por resultado»
+  // (`CierreDiaModule.tsx`, una `<DataTable>` por resultado con su descarga). Las gestiones del día
+  // pasan a la lista única de la pestaña «Gestiones» del detalle (`GestionesCierre`), que no es un
+  // `<DataTable>`, con UNA descarga («Gestiones del cierre de hoy», columnas del mensajero de R152).
+  // La descarga no se pierde: se funden las cinco en una, como aceptó Carlos en la PA4.
+  // `CierreDiaModule.tsx` sigue montando la cola (`ColaCierres`, montaje de abajo).
   // FICHA 482 (2026-10-15) — BAJA de una tabla, `con_descarga`: «Gestiones de un cierre por
   // resultado (detalle)», que montaba `cierre-detalle-shared.tsx` (`DetalleSecciones`). La 478 la
   // sustituyó en el detalle de bodega por la lista en pestañas de `cierre-factura`, que no es un
@@ -310,6 +318,20 @@ export const CENSO_DATATABLE: ArchivoCensado[] = [
         nota:
           "no es un libro: es una lista corta de configuracion que llega entera, sin paginacion " +
           "ni filtros, y cada fila resume dos conceptos de varios: un archivo diria menos que la " +
+          "pantalla. Quien necesite auditar los cambios tiene el registro de acciones, que si descarga",
+      },
+    ],
+  },
+  {
+    // SLT-55 (R27) — SUMA de una tabla: el valor propio de cada mensajero. Nace `fuera`, como las tiendas.
+    ruta: "app/(app)/configuracion/tarifas/_components/TarifasMensajeros.tsx",
+    tablas: [
+      {
+        nombre: "Mensajeros con valor propio",
+        estado: "fuera",
+        nota:
+          "no es un libro: es una lista corta de configuracion que llega entera, sin paginacion " +
+          "ni filtros, y cada fila ya enseña todos sus valores: un archivo no diria mas que la " +
           "pantalla. Quien necesite auditar los cambios tiene el registro de acciones, que si descarga",
       },
     ],
@@ -654,6 +676,43 @@ export const CENSO_DATATABLE: ArchivoCensado[] = [
         montajes: [
           "app/(app)/cierres-admin/_components/PagoMensajeroSeccion.tsx",
           "app/(app)/wallet/tiendas/_components/PagosTiendaEstadoCuenta.tsx",
+        ],
+      },
+    ],
+  },
+  {
+    // SLT-102 «Cola de cierres única: mensajeros (central y satélite)» — la cola única de cierres de
+    // SLT-95. Sustituye, en `/cierres-admin` › Mensajero, a las dos tiras de comprobantes que el
+    // pedido humano del 2026-08-16 había sacado de este censo (cabecera de arriba): vuelve a ser UNA
+    // `<DataTable>`, que pinta la pestaña activa (Pendientes o Resueltos).
+    ruta: "components/private/cierres/cola/ColaCierres.tsx",
+    tablas: [
+      {
+        nombre:
+          "Cola de cierres: del día (Pendientes / Resueltos) y de bodega de la central " +
+          "(Por conciliar / Conciliados)",
+        estado: "fuera",
+        nota:
+          "La descarga NO falta: va fuera de la tabla, en la fila de la barra («Descargar» de la " +
+          "pestaña activa, `DescargarCierresButton` con Resumen y Detalle), para que cambiar de " +
+          "pestaña no la desmonte (R100). Es el mismo conjunto del servidor que antes, y lo vigila " +
+          "`paginacion-transversal` (R52). Por eso el `<DataTable>` no declara `descarga=`. " +
+          "SLT-127: la de bodega igual, con «Cierres de bodega pendientes/resueltos». " +
+          "SLT-106: la de la satélite igual, con «Cierres del día a consolidar» y la de los " +
+          "solicitados, los mismos archivos de hoy.",
+        // SLT-127 «Cola de bodega de la central con la cola única»: segundo montaje real, así que
+        // `montajesPrevistos` caduca (`cobertura-tablas.guardia`); SLT-108 la añadirá aquí.
+        // SLT-106 «Bodega satélite: A consolidar con la cola única» (R204): tercer montaje. Con él,
+        // «Cierres del día a consolidar» vuelve a ser una `<DataTable>` (la de la cola, sin
+        // `descarga=`; la baja de la cabecera de arriba queda en 5 de los 7 listados).
+        // SLT-137 «/cierre-dia: cola de cierres del mensajero con filtros» (R60): cuarto montaje, la
+        // cola con rol mensajero. «Cierres solicitados (mensajero)» vuelve a ser una `<DataTable>`
+        // (la de la cola, sin `descarga=`; «Descargar» va en la barra con la configuración de hoy).
+        montajes: [
+          "app/(app)/cierre-dia/_components/CierreDiaModule.tsx",
+          "app/(app)/cierres-admin/_components/CierresAdminModule.tsx",
+          "app/(app)/cierres-admin/_components/CierresBodegaAdminModule.tsx",
+          "app/(app)/cierres-admin/_components/ConsolidacionBodegaModule.tsx",
         ],
       },
     ],

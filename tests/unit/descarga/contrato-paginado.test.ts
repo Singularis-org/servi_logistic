@@ -18,6 +18,7 @@ import { listarPlantillasSchema } from "@/lib/types/plantilla-mensaje";
 import { listarApiKeysSchema } from "@/lib/types/api-key";
 import { fakeIntentosEnLote } from "@/tests/fixtures/intentos-entrega";
 import type { PaginaListado } from "@/lib/types/listado-paginado";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 170 — FASE 2, T H.2 (R41): CONTRATO COMUN de listado paginado
 // `{ items, page, pageSize, total }` (lib/types/listado-paginado.ts).
@@ -64,6 +65,8 @@ const LISTADOS_YA_PAGINADOS: ListadoYaPaginado[] = [
       new OrdenService(
         { list: listVacio() } as unknown as IOrdenRepository,
         fakeIntentosEnLote(),
+        undefined,
+        reglasPaisFijas(),
       ).listar(listarOrdenesSchema.parse({ page: 2, pageSize: 10 }), MAESTRO),
   },
   {

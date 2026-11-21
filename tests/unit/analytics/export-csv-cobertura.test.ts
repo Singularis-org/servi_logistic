@@ -10,6 +10,7 @@ import { filasDeSerie } from "@/app/(app)/analitica/_components/operativo/export
 import { PENUMBRA, type SerieOperativa } from "@/lib/types/analitica-operativa";
 import { construirDescarga } from "@/lib/utils/descarga-dataset";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 134 — R13, R14, R15. LO QUE NO PUEDE PERDERSE POR EL CAMINO.
 //
 // D3 — la cobertura y el dia parcial viajan en COLUMNAS POR FILA, no en un bloque de
@@ -56,7 +57,7 @@ async function tabla(): Promise<{ cabecera: string[]; filas: Map<string, string[
     titulo: "Ordenes creadas",
     columnas: COLUMNAS_DESCARGA_ANALITICA_OPERATIVA,
     filas: filasDeSerie(FUENTES),
-  });
+  }, ZONA_CR);
   const [cab, ...datos] = String(archivo.contenido).split("\r\n");
   const cabecera = cab.split(",");
   const iFecha = cabecera.indexOf("Fecha");

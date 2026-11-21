@@ -206,6 +206,7 @@ async function abrirChat(): Promise<HTMLElement> {
 async function montarReparto(): Promise<void> {
   renderConSwr(
     <RepartoModule
+      kpis={null}
       porGestionar={[EN_REPARTO]}
       conAyuda={[]}
       porRecoger={[POR_RECOGER_HOY, POR_RECOGER_MANANA]}
@@ -285,6 +286,7 @@ describe("(1) la orden asignada y sin recoger YA tiene conversación", () => {
   it("sin ninguna asignada, el vacío ya no habla de «reparto»", async () => {
     renderConSwr(
       <RepartoModule
+        kpis={null}
         porGestionar={[]}
         conAyuda={[]}
         porRecoger={[]}
@@ -399,6 +401,8 @@ describe("(4) conversar no es aceptar: el chat no ofrece trabajar la orden", () 
     // acciones de la card del portal.
     expect(within(modal).queryByRole("button", { name: /Gestionar/ })).toBeNull();
     expect(within(modal).queryByRole("button", { name: /más tarde/i })).toBeNull();
+    // SLT-156 (R511): el verbo del gate de la guía tampoco; confirmar la guía es del modo foco.
+    expect(within(modal).queryByRole("button", { name: /Confirmar guía/ })).toBeNull();
   });
 
   // ⏳ 2026-09-24 (FICHA 455, R7): el chip dice el NOMBRE del estado de la orden, no «Por recoger».

@@ -237,3 +237,76 @@ describe("Ranking histórico · descarga", () => {
     expect(descargarBlobMock).not.toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// SLT-162 «Ranking del mensajero en tarjetas en el móvil» (R762) — en el teléfono el Histórico
+// pinta tarjetas, pero el archivo sigue con las MISMAS columnas y filas. `useIsMobile` se simula
+// con `matchMedia`.
+// ---------------------------------------------------------------------------------------------
+
+function simularAncho(ancho: number) {
+  vi.spyOn(window, "matchMedia").mockImplementation(
+    (query: string) =>
+      ({
+        matches: (() => {
+          const max = /max-width:\s*(\d+)px/.exec(query);
+          return max ? ancho <= Number(max[1]) : false;
+        })(),
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      }) as unknown as MediaQueryList,
+  );
+}
+
+async function descargaA(ancho: number) {
+  simularAncho(ancho);
+  buildXlsxRowsMock.mockClear();
+  const user = userEvent.setup();
+  const { unmount } = montar();
+  await user.click(screen.getByRole("button", { name: `Descargar ${TITULO}` }));
+  await waitFor(() => expect(buildXlsxRowsMock).toHaveBeenCalledTimes(1));
+  const [columnas, filas] = buildXlsxRowsMock.mock.calls[0];
+  unmount();
+  vi.restoreAllMocks();
+  return { claves: columnas.map((c) => c.key), filas };
+}
+
+describe("SLT-162 — Ranking histórico · descarga en el teléfono (R762)", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("a 360 px entrega las mismas columnas y filas que a 1280", async () => {
+    const escritorio = await descargaA(1280);
+    const telefono = await descargaA(360);
+    expect(telefono.claves).toEqual([
+      "puesto",
+      "posicion",
+      "mensajero",
+      "porcentaje",
+      "entregadas",
+      "asignadas",
+      "premio",
+    ]);
+    expect(telefono.claves).toEqual(escritorio.claves);
+    expect(telefono.filas).toEqual([
+      { puesto: 1, posicion: 1, mensajero: "Ana Mensajera", porcentaje: "100.0", entregadas: 5, asignadas: 5, premio: "5000.00" },
+      { puesto: 2, posicion: 2, mensajero: "Beto Repartidor", porcentaje: "80.0", entregadas: 4, asignadas: 5, premio: null },
+      { puesto: 3, posicion: null, mensajero: "Caro Sin Ruta", porcentaje: null, entregadas: 0, asignadas: 0, premio: null },
+    ]);
+    expect(telefono.filas).toEqual(escritorio.filas);
+  });
+
+  it("sigue habiendo UNA tabla en la pantalla, en los dos anchos", () => {
+    for (const ancho of [360, 1280]) {
+      simularAncho(ancho);
+      const { unmount } = montar();
+      expect(screen.getAllByRole("table")).toHaveLength(1);
+      unmount();
+      vi.restoreAllMocks();
+    }
+  });
+});

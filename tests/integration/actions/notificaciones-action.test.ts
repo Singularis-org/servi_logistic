@@ -15,6 +15,7 @@ import type {
   INotificacionRepository,
 } from "@/lib/interfaces/repositories/INotificacionRepository";
 
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Feature 146 — B11. Integration del BORDE (Server Actions) con actor y service falsos.
 // Cubre R34, R36, R38 y R39.
 
@@ -184,7 +185,7 @@ describe("R39 — la carga terminada notifica SOLO al ejecutor y una sola vez po
 
   it("usa siempre el actor autenticado como destinatario, sin parametro para designarlo", async () => {
     const repo = new RepoDedupe();
-    const service = new NotificacionService(repo);
+    const service = new NotificacionService(repo, undefined, undefined, undefined, reglasPaisFijas());
 
     const r = await notificarCargaMasivaTerminada(
       // el input trae un intento de designar a otro usuario: la accion lo ignora porque
@@ -202,7 +203,7 @@ describe("R39 — la carga terminada notifica SOLO al ejecutor y una sola vez po
 
   it("una segunda invocacion con el mismo loteId no crea otra notificacion", async () => {
     const repo = new RepoDedupe();
-    const service = new NotificacionService(repo);
+    const service = new NotificacionService(repo, undefined, undefined, undefined, reglasPaisFijas());
     const input = { creadas: 3, total: 4, loteId: LOTE };
 
     const primera = await notificarCargaMasivaTerminada(input, { service, getActor });
@@ -215,7 +216,7 @@ describe("R39 — la carga terminada notifica SOLO al ejecutor y una sola vez po
 
   it("un lote DISTINTO si produce su propia notificacion", async () => {
     const repo = new RepoDedupe();
-    const service = new NotificacionService(repo);
+    const service = new NotificacionService(repo, undefined, undefined, undefined, reglasPaisFijas());
 
     await notificarCargaMasivaTerminada({ creadas: 1, total: 1, loteId: LOTE }, { service, getActor });
     await notificarCargaMasivaTerminada(

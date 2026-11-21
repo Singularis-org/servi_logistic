@@ -9,9 +9,14 @@ import { textoConstraintP2002 } from "@/lib/repositories/_shared/prisma-unique";
 import { escaparComodinesLike } from "@/lib/utils/escapar-like";
 import { NOMBRE_USUARIO_SELECT, nombreCompletoUsuario } from "@/lib/utils/nombre-usuario";
 import {
+  CambioCorreoSimultaneoError,
   CatalogoInvalidoError,
   UsuarioDuplicadoError,
+  type AbrirCambioCorreoInput,
+  type CambioCorreoAbierto,
+  type CambioCorreoParaCanje,
   type CreateUsuarioInput,
+  type ICambioCorreoRepository,
   type CuentaConHash,
   type CuentaPublica,
   type CuentaTiendaValidacion,
@@ -32,7 +37,9 @@ import type { CuentaTiendaDTO, MensajeroFiltroDTO } from "@/lib/types/filtros-or
 type UserPrismaClient = Pick<
   PrismaClient,
   "usuario" | "tipoIdentificacion" | "rol" | "$transaction" | "historialAccion"
->;
+> &
+  // SLT-221: opcional para que los dobles de Prisma que no tocan el cambio de correo sigan valiendo.
+  Partial<Pick<PrismaClient, "usuarioCambioCorreo">>;
 
 const PUBLIC_SELECT = {
   id: true,
@@ -43,7 +50,7 @@ const PUBLIC_SELECT = {
   cedula: true,
   tipoIdentificacionId: true,
   rolId: true,
-  fulfillment: true, // feature 27/R14: expuesto en la forma publica (nunca el hash)
+  seRecogeEnTienda: true, // SLT-94 R9: expuesto en la forma publica (nunca el hash)
   zonaId: true, // feature 24/R27: zona asignada (mensajero/adminSatelite)
   vehiculoId: true, // feature 21: vehiculo asociado (mensajero)
   createdAt: true,
@@ -108,8 +115,14 @@ function ordenarCuentas<T extends CuentaPublica>(cuentas: T[]): T[] {
   });
 }
 
-export class UserRepository implements IUserRepository {
+export class UserRepository implements IUserRepository, ICambioCorreoRepository {
   constructor(private readonly prisma: UserPrismaClient) {}
+
+  private get cambiosCorreo(): PrismaClient["usuarioCambioCorreo"] {
+    const delegado = this.prisma.usuarioCambioCorreo;
+    if (!delegado) throw new Error("UserRepository: el cliente no trae `usuarioCambioCorreo` (SLT-221)");
+    return delegado;
+  }
 
   async findCuentasPorEmailConHash(email: string): Promise<CuentaConHash[]> {
     const filas = await this.prisma.usuario.findMany({
@@ -155,8 +168,8 @@ export class UserRepository implements IUserRepository {
       // §2.3: era un `create` suelto) para que el alta y su rastro sean atomicos.
       return await this.prisma.$transaction(async (tx) => {
         const usuario = await tx.usuario.create({
-          // Feature 27/R3: `fulfillment` ausente se persiste como `false` (no null).
-          data: { ...input, fulfillment: input.fulfillment ?? false },
+          // SLT-94 (R3): la marca ausente se persiste como «si» (no null).
+          data: { ...input, seRecogeEnTienda: input.seRecogeEnTienda ?? true },
           select: PUBLIC_SELECT,
         });
 
@@ -320,10 +333,15 @@ export class UserRepository implements IUserRepository {
    * Feature 16/R1/R2/R3: solo mensajeros activos, proyectados a id/nombre (sin
    * PII) mas su zona (feature 24/R6, nullable) para que el select del resumen de
    * carga masiva pueda filtrar por la zona de la orden.
+   *
+   * SLT-124 (R12, R14): solo los de la ZONA CENTRAL (`zona.es_central`), la misma regla con la que
+   * nacen sus cierres (`resolverDestinoCierre`). La consumen solo el ranking en vivo y el congelado,
+   * que asi parten del mismo universo. Sin zona, o de satelite, no entran; sin zona central marcada
+   * la lista sale vacia.
    */
   async listMensajeros(): Promise<MensajeroDTO[]> {
     const rows = await this.prisma.usuario.findMany({
-      where: { rol: { value: "mensajero" }, estado: "activo" },
+      where: { rol: { value: "mensajero" }, estado: "activo", zona: { esCentral: true } },
       select: {
         id: true,
         ...NOMBRE_USUARIO_SELECT,
@@ -506,99 +524,121 @@ export class UserRepository implements IUserRepository {
       if (!rol) throw new CatalogoInvalidoError("rolId", data.rolId);
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      // ═══════════════════════════════════════════════════════════════════════════════════════
-      // FICHA 362 (R7/R9) — EL ESTADO PREVIO, LEIDO ANTES DEL `UPDATE` Y DENTRO DE LA MISMA
-      // TRANSACCION.
-      //
-      // Este formulario edita a la vez el rol, la zona, el `fulfillment` y media docena de datos
-      // personales. El registro solo se escribe para los TRES que cambian lo que la persona puede
-      // hacer o lo que se le cobra, y SOLO SI CAMBIAN DE VERDAD: editar el telefono no deja fila
-      // (el caso (b) de T3.1). Sin esta lectura previa no se puede distinguir «se mando el mismo
-      // rol otra vez» de «se cambio el rol», y la diferencia es la que hace util al registro.
-      // ═══════════════════════════════════════════════════════════════════════════════════════
-      const previo = await tx.usuario.findUnique({
-        where: { id },
-        select: {
-          rolId: true,
-          zonaId: true,
-          fulfillment: true,
-          rol: { select: { value: true } },
-          zona: { select: { nombre: true } },
-        },
-      });
-
-      const result = await tx.usuario.updateMany({
-        where: { id },
-        data: this.toUpdateData(data), // R16: solo campos editables
-      });
-      if (result.count === 0) return null; // R17
-
-      const usuario = await tx.usuario.findUnique({ where: { id }, select: PUBLIC_SELECT });
-
-      if (previo !== null) {
-        const despues = await tx.usuario.findUnique({
+    // SLT-221 (R1603): corregir la cedula puede chocar con `usuario_cedula_key`; se traduce como en el alta.
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        // ═══════════════════════════════════════════════════════════════════════════════════════
+        // FICHA 362 (R7/R9) — EL ESTADO PREVIO, LEIDO ANTES DEL `UPDATE` Y DENTRO DE LA MISMA
+        // TRANSACCION.
+        //
+        // Este formulario edita a la vez el rol, la zona, la marca «se recoge en tienda» y media docena de datos
+        // personales. El registro solo se escribe para los TRES que cambian lo que la persona puede
+        // hacer o lo que se le cobra, y SOLO SI CAMBIAN DE VERDAD: editar el telefono no deja fila
+        // (el caso (b) de T3.1). Sin esta lectura previa no se puede distinguir «se mando el mismo
+        // rol otra vez» de «se cambio el rol», y la diferencia es la que hace util al registro.
+        // ═══════════════════════════════════════════════════════════════════════════════════════
+        const previo = await tx.usuario.findUnique({
           where: { id },
           select: {
-            nombre: true,
-            primerApellido: true,
-            fulfillment: true,
+            rolId: true,
+            zonaId: true,
+            seRecogeEnTienda: true,
+            cedula: true, // SLT-221 R1604
             rol: { select: { value: true } },
             zona: { select: { nombre: true } },
           },
         });
-        const etiqueta = etiquetaDeEntidad("usuario", {
-          nombre: despues?.nombre ?? "",
-          primerApellido: despues?.primerApellido ?? null,
+
+        const result = await tx.usuario.updateMany({
+          where: { id },
+          data: this.toUpdateData(data), // R16: solo campos editables
         });
-        const base = { entidadTipo: "usuario" as const, entidadId: id, entidadEtiqueta: etiqueta };
-        const entradas: EntradaAccion[] = [];
-        const actor = await resolverActorCongelado(tx, actorUsuarioId);
+        if (result.count === 0) return null; // R17
 
-        // (1) EL ROL. `valorAnterior`/`valorNuevo` llevan el `RolValue` —vocabulario CERRADO de
-        // un enum del dominio—, nunca texto libre (design §1.3-e).
-        if (data.rolId !== undefined && data.rolId !== previo.rolId) {
-          entradas.push({
-            accion: "usuario_rol_cambiado",
-            ...base,
-            ...actor,
-            valorAnterior: previo.rol?.value ?? null,
-            valorNuevo: despues?.rol?.value ?? null,
+        const usuario = await tx.usuario.findUnique({ where: { id }, select: PUBLIC_SELECT });
+
+        if (previo !== null) {
+          const despues = await tx.usuario.findUnique({
+            where: { id },
+            select: {
+              nombre: true,
+              primerApellido: true,
+              seRecogeEnTienda: true,
+              cedula: true, // SLT-221 R1604
+              rol: { select: { value: true } },
+              zona: { select: { nombre: true } },
+            },
           });
-        }
-        // (2) LA ZONA. Aqui el valor es el NOMBRE de la zona, que es un catalogo cerrado de la
-        // casa, no un dato de ninguna persona.
-        if (data.zonaId !== undefined && data.zonaId !== previo.zonaId) {
-          entradas.push({
-            accion: "usuario_zona_cambiada",
-            ...base,
-            ...actor,
-            valorAnterior: previo.zona?.nombre ?? null,
-            valorNuevo: despues?.zona?.nombre ?? null,
+          const etiqueta = etiquetaDeEntidad("usuario", {
+            nombre: despues?.nombre ?? "",
+            primerApellido: despues?.primerApellido ?? null,
           });
-        }
-        // (3) ⭑ Q2, CERRADA POR EL HUMANO EL 2026-09-02: el `fulfillment` SI entra al catalogo,
-        // porque activa un cobro periodico de bodega — o sea, mueve dinero. Su categoria es
-        // «mueve dinero» y no «permisos», aunque se edite desde este mismo formulario: no cambia
-        // lo que la persona PUEDE HACER.
-        if (data.fulfillment !== undefined && data.fulfillment !== previo.fulfillment) {
-          entradas.push({
-            accion: "usuario_fulfillment_cambiado",
-            ...base,
-            ...actor,
-            valorAnterior: previo.fulfillment ? "true" : "false",
-            valorNuevo: despues?.fulfillment ? "true" : "false",
-          });
+          const base = { entidadTipo: "usuario" as const, entidadId: id, entidadEtiqueta: etiqueta };
+          const entradas: EntradaAccion[] = [];
+          const actor = await resolverActorCongelado(tx, actorUsuarioId);
+
+          // (1) EL ROL. `valorAnterior`/`valorNuevo` llevan el `RolValue` —vocabulario CERRADO de
+          // un enum del dominio—, nunca texto libre (design §1.3-e).
+          if (data.rolId !== undefined && data.rolId !== previo.rolId) {
+            entradas.push({
+              accion: "usuario_rol_cambiado",
+              ...base,
+              ...actor,
+              valorAnterior: previo.rol?.value ?? null,
+              valorNuevo: despues?.rol?.value ?? null,
+            });
+          }
+          // (2) LA ZONA. Aqui el valor es el NOMBRE de la zona, que es un catalogo cerrado de la
+          // casa, no un dato de ninguna persona.
+          if (data.zonaId !== undefined && data.zonaId !== previo.zonaId) {
+            entradas.push({
+              accion: "usuario_zona_cambiada",
+              ...base,
+              ...actor,
+              valorAnterior: previo.zona?.nombre ?? null,
+              valorNuevo: despues?.zona?.nombre ?? null,
+            });
+          }
+          // (3) SLT-94 (R8): la marca «se recoge en tienda». Hereda la decision de la Q2 de la 362
+          // (2026-09-02) sobre el `fulfillment` al que sustituye: entra al catalogo como «mueve
+          // dinero» porque decide donde nace la orden. La accion vieja
+          // `usuario_fulfillment_cambiado` queda en el enum solo para las filas historicas.
+          if (
+            data.seRecogeEnTienda !== undefined &&
+            data.seRecogeEnTienda !== previo.seRecogeEnTienda
+          ) {
+            entradas.push({
+              accion: "usuario_se_recoge_en_tienda_cambiado",
+              ...base,
+              ...actor,
+              valorAnterior: previo.seRecogeEnTienda ? "true" : "false",
+              valorNuevo: despues?.seRecogeEnTienda ? "true" : "false",
+            });
+          }
+          // (4) SLT-221 (R1604, R1605): la cedula. Excepcion DECLARADA a «ningun dato de persona en la
+          // fila» (D10): Carlos pidio el valor anterior y el nuevo. La vigila
+          // `historial-accion-sin-datos-cliente` (EXCEPCIONES_DECLARADAS).
+          if (data.cedula !== undefined && despues !== null && despues.cedula !== previo.cedula) {
+            entradas.push({
+              accion: "usuario_cedula_cambiada",
+              ...base,
+              ...actor,
+              valorAnterior: previo.cedula,
+              valorNuevo: despues.cedula,
+            });
+          }
+
+          // UNA sola llamada con las N entradas: comparten `lote_id` (R7), asi que cambiar rol y
+          // zona a la vez se lee como UN acto de dos efectos y no como dos actos sueltos.
+          // `entradas` vacio es no-op: editar solo el telefono no escribe nada.
+          await appendAccion(tx, entradas);
         }
 
-        // UNA sola llamada con las N entradas: comparten `lote_id` (R7), asi que cambiar rol y
-        // zona a la vez se lee como UN acto de dos efectos y no como dos actos sueltos.
-        // `entradas` vacio es no-op: editar solo el telefono no escribe nada.
-        await appendAccion(tx, entradas);
-      }
-
-      return usuario;
-    });
+        return usuario;
+      });
+    } catch (error) {
+      throw mapDuplicadoError(error);
+    }
   }
 
   /**
@@ -643,11 +683,18 @@ export class UserRepository implements IUserRepository {
     });
   }
 
-  /** Feature 25/R29: catalogo `tipo_identificacion` proyectado a id/value. */
-  async listTiposIdentificacion(): Promise<TipoIdentificacionItem[]> {
+  /** Feature 25/R29 y SLT-42 (R5): ver el contrato en `IUserRepository`. */
+  async listTiposIdentificacion(paisId?: string): Promise<TipoIdentificacionItem[]> {
+    const select = { id: true, value: true, nombre: true, clave: true };
+    if (paisId === undefined) {
+      return this.prisma.tipoIdentificacion.findMany({ select, orderBy: { value: "asc" } });
+    }
+    // El pais va en el WHERE aunque la RLS ya lo acote para `servi_app`: la consulta tiene que dar
+    // lo mismo con el rol que no la tiene (plataforma, dueño).
     return this.prisma.tipoIdentificacion.findMany({
-      select: { id: true, value: true },
-      orderBy: { value: "asc" },
+      where: { paisId, activo: true },
+      select,
+      orderBy: { orden: "asc" },
     });
   }
 
@@ -659,6 +706,148 @@ export class UserRepository implements IUserRepository {
     });
   }
 
+  // ── SLT-221 (design §3.4): el cambio de correo pendiente. La empresa la ponen la extensión y la RLS.
+
+  async existeEmailEnEmpresa(email: string, excluirUsuarioId: string): Promise<boolean> {
+    const fila = await this.prisma.usuario.findFirst({
+      where: { email, id: { not: excluirUsuarioId } },
+      select: { id: true },
+    });
+    return fila !== null;
+  }
+
+  async abrirCambioCorreo(input: AbrirCambioCorreoInput): Promise<{ id: string; expiraAt: Date }> {
+    try {
+      return await this.abrirCambioCorreoEnTx(input);
+    } catch (error) {
+      // m5: la otra petición creó su abierto entre nuestro `updateMany` y el `create`.
+      const texto = textoConstraintP2002(error);
+      if (texto && (texto.includes("usuario_cambio_correo_abierto") || texto.includes("usuario_id"))) {
+        throw new CambioCorreoSimultaneoError();
+      }
+      throw error;
+    }
+  }
+
+  private abrirCambioCorreoEnTx(input: AbrirCambioCorreoInput): Promise<{ id: string; expiraAt: Date }> {
+    return this.prisma.$transaction(async (tx) => {
+      // R1616, R1620: el abierto anterior deja de valer antes de crear el nuevo (índice parcial).
+      await tx.usuarioCambioCorreo.updateMany({
+        where: { usuarioId: input.usuarioId, confirmadoAt: null, anuladoAt: null },
+        data: { anuladoAt: new Date() },
+      });
+      return tx.usuarioCambioCorreo.create({
+        data: {
+          usuarioId: input.usuarioId,
+          emailNuevo: input.emailNuevo,
+          secretoHash: input.secretoHash,
+          solicitadoPorId: input.solicitadoPorId,
+          expiraAt: input.expiraAt,
+        },
+        select: { id: true, expiraAt: true },
+      });
+    });
+  }
+
+  async anularCambioCorreo(id: string): Promise<void> {
+    await this.cambiosCorreo.updateMany({
+      where: { id, confirmadoAt: null, anuladoAt: null },
+      data: { anuladoAt: new Date() },
+    });
+  }
+
+  async anularCambioCorreoAbierto(usuarioId: string): Promise<void> {
+    await this.cambiosCorreo.updateMany({
+      where: { usuarioId, confirmadoAt: null, anuladoAt: null },
+      data: { anuladoAt: new Date() },
+    });
+  }
+
+  async cambioCorreoAbierto(usuarioId: string): Promise<CambioCorreoAbierto | null> {
+    return this.cambiosCorreo.findFirst({
+      where: { usuarioId, confirmadoAt: null, anuladoAt: null },
+      select: { id: true, emailNuevo: true, expiraAt: true },
+    });
+  }
+
+  async empresaDelCambioCorreo(id: string): Promise<string | null> {
+    const fila = await this.cambiosCorreo.findUnique({
+      where: { id },
+      select: { organizacionId: true },
+    });
+    return fila?.organizacionId ?? null;
+  }
+
+  async cambioCorreoParaCanje(id: string): Promise<CambioCorreoParaCanje | null> {
+    return this.cambiosCorreo.findFirst({
+      where: { id, confirmadoAt: null, anuladoAt: null, expiraAt: { gt: new Date() } },
+      select: {
+        id: true,
+        usuarioId: true,
+        emailNuevo: true,
+        secretoHash: true,
+        solicitadoPorId: true,
+      },
+    });
+  }
+
+  /**
+   * SLT-221 (R1622, R1624, R1625) — `usuario_email_cambiado`. Se consume ANTES de escribir el
+   * correo: de dos canjes concurrentes, el segundo espera el bloqueo de la fila y su `updateMany` ya
+   * no la ve abierta. Un P2002 de `usuario_email_key` revierte la transacción entera y el pendiente
+   * queda como estaba.
+   */
+  async aplicarCambioCorreo(id: string): Promise<"ok" | "invalido" | "correo_en_uso"> {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const ahora = new Date();
+        const consumido = await tx.usuarioCambioCorreo.updateMany({
+          where: { id, confirmadoAt: null, anuladoAt: null, expiraAt: { gt: ahora } },
+          data: { confirmadoAt: ahora },
+        });
+        if (consumido.count === 0) return "invalido" as const;
+
+        const pendiente = await tx.usuarioCambioCorreo.findUniqueOrThrow({
+          where: { id },
+          select: { usuarioId: true, emailNuevo: true, solicitadoPorId: true },
+        });
+        const previo = await tx.usuario.findUniqueOrThrow({
+          where: { id: pendiente.usuarioId },
+          select: { email: true },
+        });
+        const usuario = await tx.usuario.update({
+          where: { id: pendiente.usuarioId },
+          data: { email: pendiente.emailNuevo },
+          select: { id: true, nombre: true, primerApellido: true },
+        });
+
+        // Excepción DECLARADA a «ningún dato de persona en la fila» (D10), como la cédula.
+        const actor = await resolverActorCongelado(tx, pendiente.solicitadoPorId);
+        await appendAccion(tx, [
+          {
+            accion: "usuario_email_cambiado",
+            entidadTipo: "usuario",
+            entidadId: usuario.id,
+            entidadEtiqueta: etiquetaDeEntidad("usuario", {
+              nombre: usuario.nombre,
+              primerApellido: usuario.primerApellido,
+            }),
+            ...actor,
+            valorAnterior: previo.email,
+            valorNuevo: pendiente.emailNuevo,
+          },
+        ]);
+        return "ok" as const;
+      });
+    } catch (error) {
+      const traducido = mapDuplicadoError(error);
+      if (traducido instanceof UsuarioDuplicadoError && traducido.campo === "email") {
+        return "correo_en_uso";
+      }
+      throw error;
+    }
+  }
+
   private toUpdateData(data: UpdateUsuarioData): Prisma.UsuarioUncheckedUpdateManyInput {
     const out: Prisma.UsuarioUncheckedUpdateManyInput = {};
     if (data.nombre !== undefined) out.nombre = data.nombre;
@@ -667,7 +856,8 @@ export class UserRepository implements IUserRepository {
     if (data.tipoIdentificacionId !== undefined) {
       out.tipoIdentificacionId = data.tipoIdentificacionId;
     }
-    if (data.fulfillment !== undefined) out.fulfillment = data.fulfillment; // feature 27/R12
+    if (data.cedula !== undefined) out.cedula = data.cedula; // SLT-221 R1601
+    if (data.seRecogeEnTienda !== undefined) out.seRecogeEnTienda = data.seRecogeEnTienda; // SLT-94 R4
     if (data.zonaId !== undefined) out.zonaId = data.zonaId; // feature 24/R27
     if (data.vehiculoId !== undefined) out.vehiculoId = data.vehiculoId; // feature 21
     return out;

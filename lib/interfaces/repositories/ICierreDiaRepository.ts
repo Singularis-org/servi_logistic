@@ -8,8 +8,10 @@ import type {
   CierreRechazoDeTienda,
   CierreTotales,
   IngresoEmpresaDTO,
+  PagoPorTarifaDTO,
 } from "@/lib/interfaces/services/ICierreDiaService";
 import type { PaginaRepositorio, RangoPagina } from "@/lib/utils/rango-pagina";
+import type { FiltrosColaPropiaRepo } from "@/lib/types/filtros-cierres";
 import type { PagosDelCierre } from "@/lib/types/tarifa-flexible";
 
 // Feature 37 — contrato del repositorio del cierre del dia. Solo queries Prisma;
@@ -190,6 +192,11 @@ export interface CierreGestionPendienteRow {
   // selecciona (Q2: el mensajero ve el valor nuevo, sin marca ni motivo). Ausente != lista vacia:
   // ausente es «esta vista no lo lee», `[]` es «no hay ajustes».
   ajustesPago?: AjustePagoGestionDTO[];
+  // SLT-101 (R66, R95): el pago «por tarifa» congelado del mensajero. Solo los repos de ADMIN.
+  pagoPorTarifa?: PagoPorTarifaDTO | null;
+  // SLT-101 (R96): en los repos de ADMIN, derivado de lo congelado (modelo nuevo sin fila del
+  // mensajero). Ausente en la vista en vivo, que lo calcula aparte y lo pasa a `toDetalleDTO`.
+  tarifaFaltante?: boolean;
 }
 
 /**
@@ -275,6 +282,15 @@ export interface CrearCierreInput {
 
 // Fila cruda de un cierre pasado (R18); el repo la mapea a CierrePasadoDTO.
 export type CierrePasadoRow = CierrePasadoDTO & { estado: CierreEstado };
+
+/**
+ * SLT-147 (D68, R416) — el cierre pasado tal como el repositorio lo entrega al servicio en la
+ * lectura PAGINADA del historico, la unica de la que el servicio deriva el pendiente de pago. Aqui
+ * la marca `pagoIndependienteEfectivo` es OBLIGATORIA: si el mapper la perdiera, un cierre de
+ * satelite ya conciliado saldria con `P − min(P,E)` en vez de 0.00, y ahora eso no compila.
+ * En `CierrePasadoDTO` sigue opcional porque la pantalla no la lee y sus dobles la omiten.
+ */
+export type CierrePasadoDeRepositorio = CierrePasadoDTO & { pagoIndependienteEfectivo: boolean };
 
 // Feature 67 — proyeccion MINIMA de la gestion candidata a deshacerse + el estado real de su
 // orden, con TODO lo que necesitan las guardias del service (design 64 §5.2) y nada mas (no
@@ -418,6 +434,17 @@ export interface CierreSolicitadoInfo {
   mensajeroNombre: string | null;
 }
 
+/**
+ * SLT-112 (R350) — un cierre aprobado del mensajero, con lo que pide `derivarPendienteCierre`.
+ * Todos los campos son obligatorios: uno opcional se perdería sin aviso en el mapper (SLT-123).
+ */
+export interface CierreAprobadoParaPendienteRow {
+  cierreId: string;
+  totalPagoMensajero: string; // P, escala 2
+  totalEfectivo: string; // E, escala 2
+  pagoIndependienteEfectivo: boolean; // SLT-123 (R327): la regla de ESTE cierre
+}
+
 export interface ICierreDiaRepository {
   /**
    * R2/R3: gestiones del mensajero con `cierre_id IS NULL` + detalle de la orden
@@ -435,7 +462,8 @@ export interface ICierreDiaRepository {
    * (`gestionesDelCierreWhere`): lo que la pantalla lista y lo que el documento se lleva no pueden
    * ser dos conjuntos.
    */
-  findGestionesPendientes(mensajeroId: string): Promise<GestionPendienteDeCierreRow[]>;
+  /** SLT-42 (R22): `zona` es la del pais de la empresa; con ella se fecha cada gestion. */
+  findGestionesPendientes(mensajeroId: string, zona: string): Promise<GestionPendienteDeCierreRow[]>;
   /**
    * R10: cuenta las ordenes asignadas al mensajero (no borradas) cuyo estado esta
    * en `estados` (por_recoger/en_reparto/ayuda_tienda = pendientes de gestion) **y** que no esten
@@ -550,8 +578,14 @@ export interface ICierreDiaRepository {
    *     pero hoy nadie lo emite. Es alcance de otra ficha.
    */
   crearCierre(input: CrearCierreInput): Promise<string | null>;
-  /** R18: cierres del mensajero (mas reciente primero) con estado + totales. */
-  findCierresByMensajero(mensajeroId: string): Promise<CierrePasadoDTO[]>;
+  /**
+   * R18: cierres del mensajero (mas reciente primero) con estado + totales.
+   * SLT-138 (R172, R174): `filtros` opcional recorta DENTRO del alcance del mensajero.
+   */
+  findCierresByMensajero(
+    mensajeroId: string,
+    filtros?: FiltrosColaPropiaRepo,
+  ): Promise<CierrePasadoDTO[]>;
   /**
    * Cierre PROPIO del mensajero (cabecera + sus gestiones vinculadas), para el detalle de
    * "ver" un cierre anterior. El scope va en el WHERE (`id` + `mensajero_id`): un cierre de
@@ -565,6 +599,8 @@ export interface ICierreDiaRepository {
   findCierrePropioConGestiones(
     cierreId: string,
     mensajeroId: string,
+    /** SLT-42 (R22): la zona del pais de la empresa, con la que se fecha cada gestion. */
+    zona: string,
   ): Promise<{
     cierre: CierrePasadoDTO;
     gestiones: CierreGestionPendienteRow[];
@@ -590,11 +626,18 @@ export interface ICierreDiaRepository {
    * Es `findCierresByMensajero` con el recorte `skip`/`take`, compartiendo proyeccion, mapper
    * y `orderBy solicitadoAt desc` (R51). El `where { mensajeroId }` es el acotamiento por
    * actor y va tambien en el `count`: pagina y total cuentan el MISMO conjunto (R41/R44).
+   * SLT-138 (R172): con `filtros`, el total es el del conjunto FILTRADO.
    */
   findCierresByMensajeroPaginado(
     mensajeroId: string,
     rango: RangoPagina,
-  ): Promise<PaginaRepositorio<CierrePasadoDTO>>;
+    filtros?: FiltrosColaPropiaRepo,
+  ): Promise<PaginaRepositorio<CierrePasadoDeRepositorio>>;
+  /**
+   * SLT-112 (R350) — los cierres `aprobado` del mensajero, con solo lo que pide la regla de lo
+   * pendiente. Sin filtros ni pagina: las cifras son del conjunto (R354). Importes en escala 2.
+   */
+  findAprobadosParaPendiente(mensajeroId: string): Promise<CierreAprobadoParaPendienteRow[]>;
   /**
    * Feature 67 — lee la gestion candidata a deshacerse + el estado real de su orden. Devuelve
    * la fila SIN juzgarla (las guardias de R2/R3/R5/R6/R9 viven en el service); `null` si la

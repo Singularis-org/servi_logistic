@@ -1,10 +1,12 @@
 "use server";
 
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
+import { zonaDelBorde } from "@/lib/actions/_shared/zona-del-borde";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { WalletMovimientoRepository } from "@/lib/repositories/WalletMovimientoRepository";
 import { WalletEgresoService } from "@/lib/services/WalletEgresoService";
 import { TopePagoPlataformaService } from "@/lib/services/TopePagoPlataformaService";
-import { CobroPlataformaMovimientoRepository } from "@/lib/repositories/CobroPlataformaMovimientoRepository";
 import { PagoPlataformaRepository } from "@/lib/repositories/PagoPlataformaRepository";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
@@ -67,18 +69,18 @@ function toEgresoActionError(
 function buildService(): IWalletEgresoService {
   const prisma = getPrismaClient();
   const repo = new WalletMovimientoRepository(prisma);
-  // SL-45 (design §6): el tope del pago a la plataforma, con los repositorios reales. Sin él, el
-  // servicio rechaza todo pago (lo vigila `wallet-egresos.composition-root.test.ts`).
-  const tope = new TopePagoPlataformaService(
-    new CobroPlataformaMovimientoRepository(prisma),
-    new PagoPlataformaRepository(prisma),
-  );
-  return new WalletEgresoService(repo, prisma, buildComprobantes(prisma), tope);
+  // SL-45 (design §6): el tope del pago a la plataforma, con el repositorio real. Sin él, el servicio
+  // rechaza todo pago (lo vigila `wallet-egresos.composition-root.test.ts`). SLT-60 (design §4.2): un
+  // solo repositorio, que lee lo disponible de la base.
+  const tope = new TopePagoPlataformaService(new PagoPlataformaRepository(prisma));
+  return new WalletEgresoService(repo, prisma, buildComprobantes(prisma), tope, construirReglasPaisEmpresa(prisma)); // SLT-42 (R22, R28): la zona horaria del pais de la empresa.
 }
 
 export interface WalletEgresoDeps {
   service?: IWalletEgresoService;
   getActor?: () => Promise<Actor | null>;
+  /** SLT-42 (R22, R28): la zona del pais de la empresa; en produccion, la real (`zonaDelBorde`). */
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">;
 }
 
 /**
@@ -103,7 +105,9 @@ export async function registrarEgresoAdministrativoAction(
     if (!actor) throw new UnauthenticatedError(); // R18: antes de tocar el service
     // FICHA 458-B (R42/R74): el objeto de hoy o un FormData con «a quien», referencia y comprobante.
     const { crudo, comprobante } = separarComprobante(input);
-    const data = registrarEgresoConLateralesSchema.parse(crudo); // ZodError -> VALIDATION_ERROR (R4/R5/R19)
+    // SLT-42 (R22, R28): «hoy» en la zona del pais de la empresa; sin zona, falla sin tocar nada.
+    const zona = await zonaDelBorde(deps.reglasPais);
+    const data = registrarEgresoConLateralesSchema(zona).parse(crudo); // ZodError -> VALIDATION_ERROR (R4/R5/R19)
     const archivo = await leerComprobanteOpcional(comprobante);
     const service = deps.service ?? buildService();
     return archivo === null ? service.registrarEgreso(data, actor) : service.registrarEgreso(data, actor, archivo);
@@ -128,7 +132,9 @@ export async function verDesgloseEgresosAction(
   const r = await withErrorHandler(async () => {
     const actor = await (deps.getActor ?? resolveActorFromSession)();
     if (!actor) throw new UnauthenticatedError();
-    const data = listarMovimientosSchema.parse(input); // mismos filtros que el libro
+    // SLT-42 (R22, R28): «hoy» en la zona del pais de la empresa; sin zona, falla sin tocar nada.
+    const zona = await zonaDelBorde(deps.reglasPais);
+    const data = listarMovimientosSchema(zona).parse(input); // mismos filtros que el libro
     const service = deps.service ?? buildService();
     return service.verDesgloseEgresos(data, actor);
   });

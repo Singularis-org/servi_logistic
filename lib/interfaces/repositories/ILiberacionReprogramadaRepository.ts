@@ -140,9 +140,13 @@ export interface ILiberacionReprogramadaRepository {
    */
   liberarOrden(input: LiberarOrdenInput): Promise<boolean>;
   /**
-   * R15/R16: ordenes liberadas HOY (CR) de una bodega = `liberada_reprogramada_at` en el
-   * dia de `hoyCR` + estatus destino + zona. Alimenta el aviso derivado (sin tabla de
-   * notificaciones). NO incluye borradas.
+   * R15/R16: ordenes liberadas HOY de una bodega = `liberada_reprogramada_at` dentro de `dia` +
+   * estatus destino + zona. Alimenta el aviso derivado (sin tabla de notificaciones). NO incluye
+   * borradas. SLT-42 (R22, R23): `dia` es la ventana `[desde, hasta)` del dia de hoy en la zona del
+   * pais de la empresa, ya calculada por quien llama; el repositorio no conoce la zona.
    */
-  findLiberadasHoy(filter: LiberadaHoyFilter, hoyCR: Date): Promise<LiberadaHoyRow[]>;
+  findLiberadasHoy(
+    filter: LiberadaHoyFilter,
+    dia: { desde: Date; hasta: Date },
+  ): Promise<LiberadaHoyRow[]>;
 }

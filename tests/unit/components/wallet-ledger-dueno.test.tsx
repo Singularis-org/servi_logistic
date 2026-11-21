@@ -45,7 +45,6 @@ const INGRESO_PROPIO: WalletMovimientoDTO = {
   origenTipo: "cierre_dia",
   origenId: "cierre-1",
   descripcion: "Flete del día",
-  registradoPor: null,
   fechaMovimiento: "2026-07-12T10:00:00.000Z",
   dueno: "propio",
   documento: null, // ficha 459 (design §7.3): fila sin documento
@@ -59,7 +58,6 @@ const INGRESO_DE_TERCEROS: WalletMovimientoDTO = {
   origenTipo: "cierre_dia",
   origenId: "cierre-1",
   descripcion: "Contra-entrega del día",
-  registradoPor: null,
   fechaMovimiento: "2026-07-12T10:00:00.000Z",
   dueno: "terceros",
   documento: null, // ficha 459 (design §7.3): fila sin documento
@@ -225,7 +223,6 @@ describe("SLT-73 R29 — la diferencia de la satélite tiene dueño «Satélite�
     origenTipo: "cierre_dia",
     origenId: "cierre-2",
     descripcion: "Diferencia al conciliar",
-    registradoPor: null,
     fechaMovimiento: "2026-07-13T10:00:00.000Z",
     dueno: "por_cobrar_satelite",
     documento: null,

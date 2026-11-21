@@ -16,14 +16,19 @@ import type {
 import type { ISaldoCorridoCajaRepository } from "@/lib/interfaces/repositories/ISaldoCorridoCajaRepository";
 import type {
   AgregadoCajaRow,
+  WalletCategoriaRotuloPorModelo,
   WalletMovimientoCategoria,
   WalletMovimientoDTO,
   WalletOrigenTipo,
 } from "@/lib/types/wallet";
 import { NATURALEZA_POR_CATEGORIA } from "@/lib/utils/caja-tesoreria";
-import { WALLET_MOVIMIENTO_CATEGORIA_SEED } from "@/lib/types/wallet";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
-import { whereLibroCajaConTerminoSql, whereLibroCajaSql } from "@/lib/repositories/libro-caja-a-quien-sql";
+import { WALLET_CATEGORIA_ROTULO_POR_MODELO_SEED, WALLET_MOVIMIENTO_CATEGORIA_SEED } from "@/lib/types/wallet";
+import { fechaCalendario } from "@/lib/utils/calendario-zona";
+import {
+  categoriasConModeloNuevoSql,
+  whereLibroCajaConTerminoSql,
+  whereLibroCajaSql,
+} from "@/lib/repositories/libro-caja-a-quien-sql";
 import type { AQuienFiltro } from "@/lib/types/libro-caja-a-quien";
 import { ordenTotal, type DireccionOrden } from "@/lib/types/ordenamiento-listado";
 import { derivarBalance } from "@/lib/utils/wallet-balance";
@@ -69,7 +74,7 @@ function toDTO(r: MovimientoRow): WalletMovimientoDTO {
     origenTipo: r.origenTipo,
     origenId: r.origenId,
     descripcion: r.descripcion,
-    registradoPor: r.registradoPor,
+    // SLT-143 (B1): `r.registradoPor` NO se proyecta; ver el tipo `WalletMovimientoDTO`.
     fechaMovimiento: r.fechaMovimiento.toISOString(),
     dueno: NATURALEZA_POR_CATEGORIA[r.categoria],
     // Ficha 459 (design §7.3): el repositorio no conoce los documentos. Lo resuelve EN LOTE
@@ -373,6 +378,12 @@ export class WalletMovimientoRepository implements IWalletMovimientoRepository, 
     }));
   }
 
+  /** D39 — ver el contrato. El orden es el del catalogo: el resultado no depende de como lea el motor. */
+  async categoriasConModeloNuevo(filtros: BalanceFiltros): Promise<WalletCategoriaRotuloPorModelo[]> {
+    const filas = await this.prisma.$queryRaw<{ categoria: string }[]>(categoriasConModeloNuevoSql(filtros));
+    return WALLET_CATEGORIA_ROTULO_POR_MODELO_SEED.filter((c) => filas.some((f) => f.categoria === c));
+  }
+
   /**
    * Ficha 468 (design §3.4, R12/R15) — el saldo de la caja ENTERA tras cada movimiento de la descarga.
    *
@@ -455,13 +466,13 @@ export class WalletMovimientoRepository implements IWalletMovimientoRepository, 
   }
 
   /**
-   * Ficha 459 (design §2.5, R15/R71) — el dia CR del primer movimiento de la caja, o `null`.
+   * Ficha 459 (design §2.5, R15/R71) — el dia del primer movimiento de la caja, o `null`.
    *
    * `MIN(fecha_movimiento)` sobre el indice `wallet_movimiento_fecha_movimiento_idx`, y el dia se
-   * resuelve con `fechaCalendarioCR` (la convencion CR del repo, UTC−6). Con `excluirCapital`, el
+   * resuelve en `zonaHoraria`, la zona del pais de la empresa (SLT-42, R22). Con `excluirCapital`, el
    * `WHERE` deja fuera las categorias que `NATURALEZA_POR_CATEGORIA` declara `capital`.
    */
-  async primerDiaDeLaCaja(opciones: { excluirCapital?: boolean } = {}): Promise<string | null> {
+  async primerDiaDeLaCaja(opciones: { excluirCapital?: boolean; zonaHoraria: string }): Promise<string | null> {
     const where: Prisma.WalletMovimientoWhereInput =
       opciones.excluirCapital === true ? { categoria: { notIn: [...CATEGORIAS_DE_CAPITAL] } } : {};
     const agregado = await this.prisma.walletMovimiento.aggregate({
@@ -469,7 +480,7 @@ export class WalletMovimientoRepository implements IWalletMovimientoRepository, 
       _min: { fechaMovimiento: true },
     });
     const primero = agregado._min.fechaMovimiento;
-    return primero === null ? null : fechaCalendarioCR(primero);
+    return primero === null ? null : fechaCalendario(primero, opciones.zonaHoraria);
   }
 
   /** Feature 45 (R11): SUM(monto) por categoria administrativa, con los mismos filtros. STRING. */

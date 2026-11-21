@@ -265,7 +265,7 @@ describe("listar (R20/R24)", () => {
       origenTipo: "cierre_dia",
       origenId: "c1",
       descripcion: null,
-      registradoPor: null,
+      // SLT-143 (B1, R13/R36): sin `registradoPor` — el uuid del autor no viaja al navegador.
       fechaMovimiento: "2026-07-12T10:00:00.000Z",
       // Feature 231 (R31): el dueño lo pone el SERVIDOR, en el unico punto de proyeccion.
       dueno: "propio",
@@ -377,6 +377,8 @@ describe("agregarPorCategoriaYTipo (R8/R47)", () => {
     expect(metodos).toEqual([
       "agregarPorCategoria",
       "agregarPorCategoriaYTipo",
+      // D39: LECTURA de que rotulo lleva cada fila de la tarjeta. Sin importes y no es una mutacion.
+      "categoriasConModeloNuevo",
       "crearMovimientoRegistrado",
       "crearMovimientos",
       "listar",

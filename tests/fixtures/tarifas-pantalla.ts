@@ -1,5 +1,6 @@
 import type { TarifaConcepto } from "@prisma/client";
 
+import type { MensajeroDePantalla } from "@/lib/interfaces/repositories/ITarifasPantallaRepository";
 import type { CargarZonaResult, ZonaResumen } from "@/lib/interfaces/services/ITarifasPantallaService";
 import type { Referencia, ReferenciaDeZona } from "@/lib/tarifas/referencia-vigente";
 import { CONCEPTOS, CATALOGO_CONCEPTOS } from "@/lib/tarifas/catalogo";
@@ -23,6 +24,20 @@ export function valor(concepto: TarifaConcepto, extra: Partial<TarifaValorDTO> =
     updatedAt: new Date("2026-11-01T12:00:00Z"),
     ...extra,
   };
+}
+
+/** SLT-55: un valor propio tal como lo da la lectura: sin zona, sin IVA y con el nivel `mensajero`. */
+export function valorPropio(
+  concepto: TarifaConcepto,
+  mensajeroId: string,
+  extra: Partial<TarifaValorDTO> = {},
+): TarifaValorDTO {
+  return valor(concepto, { id: `id-${concepto}-${mensajeroId}`, nivel: "mensajero", zonaId: null, mensajeroId, ...extra });
+}
+
+/** SLT-55: un mensajero elegible, de nombre neutro. */
+export function mensajeroPantalla(extra: Partial<MensajeroDePantalla> = {}): MensajeroDePantalla {
+  return { id: "m1", nombre: "Ana Torres", elegible: true, ...extra };
 }
 
 export function zonaResumen(extra: Partial<ZonaResumen> = {}): ZonaResumen {

@@ -16,9 +16,9 @@
  * A cambio, la pregunta que si contesta —«¿aparecio un archivo que antes no fallaba?»— aguanta
  * el ruido.
  *
- * Estado en QuimiCloude (2026-08-28): el baseline nace VACIO porque la suite esta verde
- * (93/93, gate completo en 113 s). Con el baseline vacio esto no afloja nada: cualquier
- * archivo rojo es "nuevo" y bloquea. La maquinaria queda montada para cuando la suite crezca.
+ * En un proyecto con la suite verde el baseline nace VACIO. Con el baseline vacio esto no
+ * afloja nada: cualquier archivo rojo es "nuevo" y bloquea. La maquinaria queda montada para
+ * cuando la suite crezca.
  *
  * Salida: resumen de una linea por stdout (para el `ok` de init.sh), errores y avisos por
  * stderr, exit 0/1.

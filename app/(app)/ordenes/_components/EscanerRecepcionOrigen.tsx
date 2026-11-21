@@ -1,159 +1,91 @@
 "use client";
 
-import { useCallback, useState } from "react";
-
-import { EscanerGuiaCard } from "@/components/shared/EscanerGuiaCard";
-import { useToast } from "@/hooks/useToast";
+import { TarjetaEscaneoContinuo } from "@/components/shared/EscaneoContinuo";
+import { RecepcionContinuaPagina } from "@/components/shared/RecepcionContinuaPagina";
 import { recibirEnOrigenPorQr } from "@/lib/actions/recepcion-origen";
-import { extractNumGuiaFromScan } from "@/lib/utils/paquete-url";
+import type { DesenlaceRecepcion, ModoRecepcion } from "@/lib/utils/sesion-escaneo";
 import type { RecibirEnOrigenResult } from "@/lib/types/recepcion-origen";
 
 import { estatusLabel } from "./estatus-label";
 
-// Escáner de la tienda en `/ordenes`: cierra el flujo de devolución. El adminTienda
-// escanea el QR de la etiqueta de una orden que viaja de vuelta ("En ruta a origen")
-// y la marca como recibida en su tienda (`devolviendo_a_tienda` -> `devuelta_a_tienda`).
-// Mismo patrón que `EscanerRecepcion` de la bodega satélite: resuelve el num_guia del
-// texto decodificado, llama a la Server Action y traduce el resultado a un toast.
+// Receptor de la tienda en `/ordenes`: cierra el flujo de devolución. El adminTienda lee la guía
+// de una orden que viaja de vuelta («En ruta a origen») y la marca recibida en su tienda
+// (`devolviendo_a_tienda` -> `devuelta_a_tienda`). Llama a `recibirEnOrigenPorQr` y traduce cada
+// respuesta a la fila de la sesión continua (`desenlaceOrigen`, SLT-159 R583), con los motivos de
+// la guía suelta de prod.
 //
-// A diferencia del escáner de `/qr`, este NO navega: la acción es marcar la recepción
-// sin salir del listado, para poder escanear varias seguidas.
+// SLT-202 «Escritorio igual a prod: tamaños de controles y un solo botón de recibir» (Carlos,
+// 2026-11-18): la guía suelta (tarjeta y toast por lectura) se quitó; queda la recepción continua,
+// en diálogo (`continua`) o en página (`pagina`).
 
 export interface EscanerRecepcionOrigenProps {
-  /** Se invoca tras una recepción efectiva o idempotente (ok/ya_recibida). */
-  onRecibida: () => void;
+  /**
+   * Se invoca tras una recepción efectiva o idempotente (ok/ya_recibida). SLT-159 (R592): en
+   * `continua`, una sola vez al cerrar el diálogo si hubo alguna.
+   */
+  onRecibida?: () => void;
+  /**
+   * SLT-159: `continua` (el diálogo con lista) o `pagina`. SLT-202: la guía `suelta` se quitó (la
+   * cubre la continua).
+   */
+  modo: ModoRecepcion;
+  /** SLT-159 (R613): en `pagina`, adónde vuelve «Terminar recepción». */
+  volverA?: string;
+}
+
+const sinRefresco = () => {};
+
+/** SLT-159 (R583): la respuesta traducida a desenlace de la fila, con los motivos de prod. */
+export function desenlaceOrigen(result: RecibirEnOrigenResult): DesenlaceRecepcion {
+  const noSePudo = (motivo: string): DesenlaceRecepcion => ({ tipo: "no_se_pudo", motivo });
+  switch (result.status) {
+    case "ok":
+      return { tipo: "recibida", resumen: result.resumen };
+    case "ya_recibida":
+      return { tipo: "ya_recibida", resumen: result.resumen };
+    case "no_encontrada":
+      return { tipo: "no_encontrada" };
+    case "tienda_ajena":
+      return noSePudo("Esta orden es de otra tienda.");
+    case "estado_invalido":
+      return noSePudo(`No se puede recibir: la orden está en "${estatusLabel(result.estado)}".`);
+    case "validation_error":
+      return noSePudo("Código inválido.");
+    case "forbidden":
+      return noSePudo("No tienes permiso para recibir órdenes.");
+    case "unauthenticated":
+      return noSePudo("Tu sesión expiró. Inicia sesión de nuevo.");
+    case "conflict":
+      return noSePudo("La orden cambió de estado. Vuelve a escanear.");
+  }
+}
+
+async function recibirOrigen(numGuia: number): Promise<DesenlaceRecepcion> {
+  return desenlaceOrigen(await recibirEnOrigenPorQr({ numGuia }));
 }
 
 export function EscanerRecepcionOrigen({
-  onRecibida,
+  onRecibida = sinRefresco,
+  modo,
+  volverA = "/ordenes",
 }: Readonly<EscanerRecepcionOrigenProps>) {
-  const toast = useToast();
-  const [procesando, setProcesando] = useState(false);
-  const [ultimaRecibida, setUltimaRecibida] = useState<number | null>(null);
-
-  /** Traduce cada resultado de la acción a un toast. */
-  const notificar = useCallback(
-    (result: RecibirEnOrigenResult, numGuia: number) => {
-      switch (result.status) {
-        case "ok":
-          toast.success(`Guía ${numGuia} recibida en tienda.`);
-          setUltimaRecibida(numGuia);
-          onRecibida();
-          break;
-        case "ya_recibida":
-          toast.info(`La guía ${numGuia} ya estaba recibida.`);
-          onRecibida();
-          break;
-        case "tienda_ajena":
-          toast.error("Esta orden es de otra tienda.");
-          break;
-        case "estado_invalido":
-          toast.error(
-            `No se puede recibir: la orden está en "${estatusLabel(result.estado)}".`,
-          );
-          break;
-        case "no_encontrada":
-          toast.error("Orden no encontrada.");
-          break;
-        case "validation_error":
-          toast.error("Código inválido.");
-          break;
-        case "forbidden":
-          toast.error("No tienes permiso para recibir órdenes.");
-          break;
-        case "unauthenticated":
-          toast.error("Tu sesión expiró. Inicia sesión de nuevo.");
-          break;
-        case "conflict":
-          toast.error("La orden cambió de estado. Vuelve a escanear.");
-          break;
-      }
-    },
-    [toast, onRecibida],
-  );
-
-  /**
-   * El QR de la etiqueta codifica la URL del paquete (`<origin>/paquete/<numGuia>`);
-   * se extrae el num_guia del último segmento. Un texto que no resuelve a num_guia
-   * (p. ej. el UUID de una etiqueta vieja) se rechaza aquí, sin llamar a la acción.
-   */
-  const procesar = useCallback(
-    async (escaneado: string) => {
-      if (procesando) return;
-      const numGuia = extractNumGuiaFromScan(escaneado);
-      if (numGuia === null) {
-        toast.error("Código inválido.");
-        return;
-      }
-      setProcesando(true);
-      try {
-        const result = await recibirEnOrigenPorQr({ numGuia });
-        notificar(result, numGuia);
-      } finally {
-        setProcesando(false);
-      }
-    },
-    [notificar, procesando, toast],
-  );
-
-  const onDecoded = useCallback(
-    (texto: string) => {
-      void procesar(texto);
-    },
-    [procesar],
-  );
-
-  /**
-   * Camino MANUAL (pedido humano del 2026-08-10): el admin de tienda teclea el número de
-   * guía en vez de escanearlo. `EscanerGuiaCard` ya ofrecía las dos vías —es la tarjeta
-   * compartida de todas las superficies de escaneo— pero esta pantalla no las activaba, así
-   * que degradaba a solo cámara: sin cámara disponible, o con una etiqueta ilegible, no
-   * había forma de recibir.
-   *
-   * Lo tecleado ES el número, sin pasar por `extractNumGuiaFromScan`: ese helper existe para
-   * desenvolver la URL que codifica el QR (`<origin>/paquete/<numGuia>`), y aplicarlo aquí
-   * rechazaría el número escrito a secas. Mismo criterio que la recolección en tienda.
-   *
-   * Devolver `false` conserva lo tecleado en el campo para corregirlo, en vez de vaciarlo y
-   * obligar a reescribir la guía entera.
-   */
-  const onManual = useCallback(
-    async (valor: string): Promise<boolean> => {
-      if (!/^\d+$/.test(valor)) {
-        toast.error("El número de guía solo admite dígitos.");
-        return false;
-      }
-      if (procesando) return false;
-      const numGuia = Number(valor);
-      setProcesando(true);
-      try {
-        const result = await recibirEnOrigenPorQr({ numGuia });
-        notificar(result, numGuia);
-        return result.status === "ok";
-      } finally {
-        setProcesando(false);
-      }
-    },
-    [notificar, procesando, toast],
-  );
-
+  if (modo === "pagina") {
+    return (
+      <RecepcionContinuaPagina recibir={recibirOrigen} volverA={volverA} nombreRecepcion="Tienda" />
+    );
+  }
+  // SLT-202 (Carlos, 2026-11-18): la guía suelta se quitó; `/ordenes` tiene un solo «Recibir paquete»,
+  // que abre la continua (SLT-159). Fuera de `pagina`, la tarjeta continua.
   return (
-    <EscanerGuiaCard
-      ariaLabel="Recepción en tienda por escaneo"
-      titulo="Recibir en tienda"
-      descripcion="Escanea el código de la guía devuelta o ingresa su número"
-      manual={{ onSubmit: onManual, submitLabel: "Recibir en tienda" }}
-      onDecoded={onDecoded}
-      procesando={procesando}
-      mensajeErrorCamara="No se pudo abrir la cámara."
-      exito={
-        ultimaRecibida === null ? undefined : (
-          <>
-            Guía <span className="font-semibold">{ultimaRecibida}</span> recibida
-            correctamente.
-          </>
-        )
-      }
+    // SLT-193 (R927): vive en el diálogo de `RecibirPaquetesEntrada`, que lleva el título en su barra.
+    <TarjetaEscaneoContinuo
+      sinEncabezado
+      recibir={recibirOrigen}
+      alCerrarConRecepcion={onRecibida}
+      ariaLabel="Recepción continua en tienda"
+      titulo="Recibir paquetes"
+      descripcion="Escanea las guías una tras otra"
+      submitLabel="Recibir"
     />
   );
 }

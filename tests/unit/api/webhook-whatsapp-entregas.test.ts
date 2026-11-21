@@ -58,7 +58,7 @@ function servicio(entregaEstado: () => IEntregaEstadoService) {
     anotarWebhook: async () => {},
     ingesta: { ingerirEventos },
     entregaEstado,
-    logger: { warn: () => {} },
+    logger: { warn: () => {}, error: () => {} },
   });
   return { ingerirEventos, service };
 }

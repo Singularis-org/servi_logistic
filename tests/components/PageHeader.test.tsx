@@ -18,6 +18,13 @@ vi.mock("next/navigation", () => ({
   usePathname: () => rutaActual,
 }));
 
+// SLT-193 (R911): «Instalar la aplicación» solo se pinta cuando el navegador lo ofrece; jsdom no
+// lo ofrece nunca, así que el doble lo enciende donde hace falta (por defecto, apagado como hoy).
+let instalarDisponible = false;
+vi.mock("@/hooks/useInstalarPwa", () => ({
+  useInstalarPwa: () => ({ disponible: instalarDisponible, instalar: vi.fn() }),
+}));
+
 vi.mock("@/hooks/useToast", () => ({
   useToast: () => ({
     success: vi.fn(),
@@ -38,6 +45,7 @@ vi.mock("@/lib/actions/auth", () => ({
 beforeEach(() => {
   vi.clearAllMocks();
   rutaActual = "/";
+  instalarDisponible = false;
 });
 
 describe("PageHeader — topbar con control de logout (feature 57)", () => {
@@ -147,5 +155,65 @@ describe("433/R18 — el encabezado MONTA el «?» de la ayuda de esa pantalla",
     rutaActual = "/wallet";
     render(<PageHeader title="Wallet" />);
     expect(ayuda()).toBeNull();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// SLT-193 «Botones de 44 px pendientes en la PWA del mensajero» (R911, R913, R921)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// En móvil, cada control del encabezado mide 44 × 44 para cualquier rol (`TACTIL_MOVIL`); en
+// escritorio no cambia: toda clase de tamaño nueva va con `max-md:`. jsdom no aplica Tailwind:
+// se afirman las clases. La hamburguesa vive en el layout de servidor y la cubre el E2E. Cada
+// control se busca por su rol y su nombre de hoy (R921).
+describe("SLT-193 — controles del encabezado a 44 × 44 en móvil", () => {
+  const TACTIL = ["max-md:min-h-11", "max-md:min-w-11"];
+
+  function montarCompleto() {
+    instalarDisponible = true;
+    rutaActual = "/mis-asignaciones/reparto";
+    return render(
+      <AyudaProvider mapa={{ "/mis-asignaciones/reparto": "mensajero/reparto" }}>
+        <PageHeader title="Reparto" />
+      </AyudaProvider>,
+    );
+  }
+
+  /** Los controles del encabezado, por su rol y su nombre de hoy (R921). */
+  function controles(): HTMLElement[] {
+    return [
+      // «Instalar» se monta dos veces (icono por debajo de `sm`, con texto por encima).
+      ...screen.getAllByRole("button", { name: "Instalar la aplicación" }),
+      screen.getByRole("button", { name: "Ayuda de esta pantalla" }),
+      screen.getByRole("button", { name: /tema/i }),
+      screen.getByRole("button", { name: /^Notificaciones/ }),
+      screen.getByRole("button", { name: "Salir" }),
+    ];
+  }
+
+  it("R911: Instalar, Ayuda, Tema, Notificaciones y Salir llevan 44 × 44 en móvil", () => {
+    montarCompleto();
+    const lista = controles();
+    expect(lista).toHaveLength(6);
+    for (const control of lista) {
+      expect(control.className.split(/\s+/), control.getAttribute("aria-label") ?? control.textContent ?? "").toEqual(
+        expect.arrayContaining(TACTIL),
+      );
+    }
+  });
+
+  it("R913: ninguna clase de alto o ancho mínimo sin `max-md:`; «Salir» sigue en `h-8` en escritorio", () => {
+    montarCompleto();
+    for (const control of controles()) {
+      expect(control.className.split(/\s+/).filter((c) => /^min-[hw]-/.test(c))).toEqual([]);
+    }
+    const salir = screen.getByRole("button", { name: "Salir" }).className.split(/\s+/);
+    expect(salir).toContain("h-8");
+    expect(salir).not.toContain("h-11");
+  });
+
+  it("R921: los controles conservan su texto visible de hoy", () => {
+    montarCompleto();
+    expect(screen.getByRole("button", { name: "Salir" })).toHaveTextContent("Salir");
+    expect(screen.getByRole("button", { name: "Ayuda de esta pantalla" })).toHaveTextContent("Ayuda");
   });
 });

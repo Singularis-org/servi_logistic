@@ -45,6 +45,11 @@ export type PerfilEventoEnvio =
 
 /** Instante FIJO del ejemplo del webhook: un ejemplo que cambia con el reloj no es un ejemplo. */
 const INSTANTE_EJEMPLO_WEBHOOK = new Date("2026-10-05T14:00:00.000Z");
+/**
+ * SLT-42 — la zona del ejemplo. Es un texto de catalogo, sin empresa: a las 14:00 UTC es el mismo
+ * dia (el 5) en cualquier zona de UTC-12 a UTC+9, asi que el ejemplo no depende del pais.
+ */
+const ZONA_EJEMPLO_WEBHOOK = "UTC";
 
 export const EVENTOS_ENVIO_WHATSAPP = {
   // ---------------------------------------------------------------------------------------------
@@ -90,7 +95,7 @@ export const EVENTOS_ENVIO_WHATSAPP = {
     disponible: true,
     nombre: "Un webhook lleva fallando",
     descripcion: "Un webhook de un integrador lleva fallando seguido. Uno por racha.",
-    ejemploTexto: textoWebhookSuscripcionPausada(INSTANTE_EJEMPLO_WEBHOOK),
+    ejemploTexto: textoWebhookSuscripcionPausada(INSTANTE_EJEMPLO_WEBHOOK, ZONA_EJEMPLO_WEBHOOK),
   },
   geocodificacion_caida: {
     disponible: true,
@@ -147,6 +152,11 @@ export const EVENTOS_ENVIO_WHATSAPP = {
     disponible: false,
     porQue:
       "Solo existe acotado a una tienda (adminTienda + tiendaId) y su texto no la nombra: seria un mensaje por tienda y por dia sin decir de cual.",
+  },
+  // SLT-136 (design §7.3): los envios por WhatsApp no son parte del alcance.
+  factura_plataforma_emitida: {
+    disponible: false,
+    porQue: "Aviso del dinero de la empresa con la plataforma, solo para su maestro; ya le llega por correo.",
   },
 } as const satisfies Record<NotificacionEvento, PerfilEventoEnvio>;
 

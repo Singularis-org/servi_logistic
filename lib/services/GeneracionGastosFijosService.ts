@@ -17,7 +17,9 @@ import {
   notificadorNoOp,
   type GastoFijoCobroPendienteNotificador,
 } from "@/lib/notificaciones/notificadores";
-import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
+import { fechaCalendario } from "@/lib/utils/calendario-zona";
 import { aplicaHoy, periodoDe } from "@/lib/utils/periodicidad";
 
 /**
@@ -28,7 +30,7 @@ import { aplicaHoy, periodoDe } from "@/lib/utils/periodicidad";
  *
  * Feature 84 — el cron ahora corre DIARIO (`0 6 * * *`) y es ESTE service el que decide que
  * plantillas disparan hoy: lee las ACTIVAS y las filtra con `aplicaHoy` (logica pura en
- * `lib/utils/periodicidad.ts`, dia calendario CR). Solo las que aplican entran a la corrida.
+ * `lib/utils/periodicidad.ts`, dia calendario del pais de la empresa, SLT-42). Solo las que aplican entran a la corrida.
  *
  * FICHA 333 — LA CORRIDA SE PARTE EN DOS SEGUN EL INTERRUPTOR DE CADA PLANTILLA:
  *   - `requiereAprobacion === false` («cobra sola») -> egreso DIRECTO al libro, EXACTAMENTE como
@@ -45,7 +47,7 @@ import { aplicaHoy, periodoDe } from "@/lib/utils/periodicidad";
  *   - `meses`  -> periodo `YYYY-MM`. El MISMO formato de antes de la 84: si se le cambiara, en el
  *     mes del deploy la clave vieja (`:2026-07`) y la nueva no colisionarian y se cobraria DOS
  *     VECES. Unica porque una mensual dispara como maximo una vez por mes.
- *   - `dias`/`semanas` -> periodo `YYYY-MM-DD` (fecha CR del disparo). Unica porque disparan como
+ *   - `dias`/`semanas` -> periodo `YYYY-MM-DD` (fecha del disparo en la zona del pais). Unica porque disparan como
  *     maximo una vez por dia.
  * El formato lo decide `periodoDe`; ver el comentario largo alli.
  *
@@ -76,12 +78,18 @@ export class GeneracionGastosFijosService implements IGeneracionGastosFijosServi
      * Lo vigila `tests/unit/services/notificacion-notificadores-reales.test.ts` (R34).
      */
     private readonly notificarCobrosPendientes: GastoFijoCobroPendienteNotificador = notificadorNoOp,
+    /**
+     * SLT-42 (R22, R24, R28): la zona del pais de la empresa de la corrida. El cron la pone por
+     * empresa (`paraCadaEmpresa`); sin zona, la corrida de ESA empresa falla sin escribir nada.
+     */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
 
   async ejecutarGeneracion(now: Date): Promise<GeneracionGastosFijosResult> {
-    // Fecha CALENDARIO de CR de la corrida. Es el resumen, el `generado_el` de los cobros y —lo
-    // importante— LA ENTIDAD del aviso de la campana (design §4.2).
-    const fecha = fechaCalendarioCR(now);
+    // Fecha CALENDARIO de la corrida en la zona del pais (SLT-42). Es el resumen, el `generado_el` de
+    // los cobros y —lo importante— LA ENTIDAD del aviso de la campana (design §4.2).
+    const zona = await zonaDeLaEmpresa(this.reglasPais, "GeneracionGastosFijosService.ejecutarGeneracion");
+    const fecha = fechaCalendario(now, zona);
 
     // R12/R27: solo las plantillas ACTIVAS generan algo; las inactivas se excluyen en el repo y
     // no generan NI egreso NI cobro, sea cual sea su interruptor.
@@ -89,14 +97,14 @@ export class GeneracionGastosFijosService implements IGeneracionGastosFijosServi
 
     // Feature 84: de las activas, solo las que disparan HOY segun su periodicidad. Una inactiva
     // nunca llega hasta aca (ni siquiera se evalua).
-    const aplican = plantillas.filter((p) => aplicaHoy(p, now));
+    const aplican = plantillas.filter((p) => aplicaHoy(p, now, zona));
 
     // R5/R6/R7/R8/R11: LA PARTICION. La clave y el periodo se derivan UNA vez por plantilla, con
     // `periodoDe`, y el interruptor decide a cual de las dos colecciones va la fila.
     const movs: CrearMovimientoInput[] = [];
     const cobros: CrearCobroPendienteInput[] = [];
     for (const p of aplican) {
-      const periodo = periodoDe(p, now);
+      const periodo = periodoDe(p, now, zona);
       const origenId = `${p.id}:${periodo}`; // LA CLAVE, resuelta una sola vez (R8)
       if (p.requiereAprobacion) {
         // R6/R7: nace un cobro PENDIENTE con la COPIA del concepto y del monto que la plantilla
@@ -149,7 +157,7 @@ export class GeneracionGastosFijosService implements IGeneracionGastosFijosServi
       });
     }
 
-    // R13/R29: resumen SIN PII (solo conteos + fecha CR).
+    // R13/R29: resumen SIN PII (solo conteos + fecha local).
     return {
       fecha,
       plantillasActivas: plantillas.length,

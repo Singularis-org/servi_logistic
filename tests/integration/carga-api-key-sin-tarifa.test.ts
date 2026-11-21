@@ -76,7 +76,7 @@ function tarifaRepo(porZona: Record<string, TarifaVigenteResuelta>): ITarifaVige
  */
 function ordenRepo(): IOrdenRepository {
   return {
-    findUsuarioFulfillment: vi.fn(async () => false),
+    findUsuarioSeRecogeEnTienda: vi.fn(async () => true),
     findEstatusIdByValue: vi.fn(async () => "os-erbp"),
     findExistingRemisiones: vi.fn(async () => new Map<string, string>()),
     findAllProvincias: vi.fn(async () => [{ id: "p1", nombre: "Pichincha", disponible: true }]),

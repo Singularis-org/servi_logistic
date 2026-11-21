@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { gestionar } from "@/lib/actions/mis-asignaciones";
 import type { IMisAsignacionesService } from "@/lib/interfaces/services/IMisAsignacionesService";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // ⚠️ Feature 193 (R10), decision humana del 2026-08-10: la gestion EXIGE la ubicacion del
 // mensajero (o un motivo tecnico). Los FormData validos de abajo se AMPLIAN con las dos
@@ -55,7 +56,7 @@ describe("R5: getAll('evidencia') -> lista de N EvidenciaArchivo, en orden", () 
     fd.append("evidencia", imagenFile("b.png", "image/png"));
     fd.append("evidencia", imagenFile("c.webp", "image/webp"));
 
-    const r = await gestionar(fd, { service, getActor: actorMensajero });
+    const r = await gestionar(fd, { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
 
     expect(r.status).toBe("ok");
     const input = inputRecibido(service);
@@ -78,7 +79,7 @@ describe("R5: getAll('evidencia') -> lista de N EvidenciaArchivo, en orden", () 
     fd.set("motivo", "cliente rechazo");
     fd.set("evidencia", imagenFile("a.jpg"));
 
-    const r = await gestionar(fd, { service, getActor: actorMensajero });
+    const r = await gestionar(fd, { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
 
     expect(r.status).toBe("ok");
     const input = inputRecibido(service);
@@ -99,7 +100,7 @@ describe("R5: getAll('evidencia') -> lista de N EvidenciaArchivo, en orden", () 
     fd.append("evidencia", imagenFile("a.jpg"));
     fd.append("evidencia", imagenFile("b.jpg"));
 
-    const r = await gestionar(fd, { service, getActor: actorMensajero });
+    const r = await gestionar(fd, { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
 
     expect(r.status).toBe("ok");
     const input = inputRecibido(service);
@@ -118,7 +119,7 @@ describe("R6/R7: el borde revalida el conteo (min 1 / max) sin invocar al servic
     fd.set("resultado", "devolucion_a_origen_por_rechazo");
     fd.set("motivo", "cliente rechazo");
 
-    const r = await gestionar(fd, { service, getActor: actorMensajero });
+    const r = await gestionar(fd, { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
 
     expect(r.status).toBe("validation_error");
     expect(service.gestionar).not.toHaveBeenCalled();
@@ -134,7 +135,7 @@ describe("R6/R7: el borde revalida el conteo (min 1 / max) sin invocar al servic
     fd.set("motivo", "cliente rechazo");
     for (const nombre of ["a", "b", "c", "d"]) fd.append("evidencia", imagenFile(`${nombre}.jpg`));
 
-    const r = await gestionar(fd, { service, getActor: actorMensajero });
+    const r = await gestionar(fd, { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
 
     expect(r.status).toBe("validation_error");
     expect(service.gestionar).not.toHaveBeenCalled();
@@ -151,7 +152,7 @@ describe("R6/R7: el borde revalida el conteo (min 1 / max) sin invocar al servic
     fd.append("evidencia", imagenFile("a.jpg"));
     fd.append("evidencia", new File([new Uint8Array([1])], "doc.pdf", { type: "application/pdf" }));
 
-    const r = await gestionar(fd, { service, getActor: actorMensajero });
+    const r = await gestionar(fd, { service, reglasPais: reglasPaisFijas(), getActor: actorMensajero });
 
     expect(r.status).toBe("validation_error");
     expect(service.gestionar).not.toHaveBeenCalled();

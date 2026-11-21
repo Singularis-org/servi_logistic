@@ -31,6 +31,7 @@ import type {
   ImporteSoloBruto,
 } from "@/lib/types/analitica-financiera";
 
+import { ZONA_DE_CR, reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 // Feature 127 / TANDA D — DOBLES DE LOS CUATRO REPOSITORIOS (R31).
 //
 // El servicio se construye con interfaces, asi que su suite entera corre SIN base de datos y sin
@@ -77,7 +78,7 @@ const MAESTRO: ActorAnalitica = { usuarioId: "u-maestro", rol: "maestro" };
 export const AHORA = new Date("2026-08-02T15:00:00.000Z");
 
 export function consultaDe(metricaId: string, raw: unknown = { rango: "dia" }): ConsultaAnalitica {
-  const r = prepararConsultaAnalitica(raw, MAESTRO, metricaId, AHORA);
+  const r = prepararConsultaAnalitica(raw, MAESTRO, metricaId, ZONA_DE_CR, AHORA);
   if (r.status !== "ok") throw new Error(`no se pudo preparar la consulta de ${metricaId}`);
   return r.consulta;
 }
@@ -308,14 +309,14 @@ export function armarServicio(datos: Partial<DatosFinancieros> = {}, umbral?: st
 
   const servicio =
     umbral === undefined
-      ? new AnaliticaFinancieraService(ingresos, recaudo, cuentasPorPagar, conciliacion, logger)
+      ? new AnaliticaFinancieraService(ingresos, recaudo, cuentasPorPagar, conciliacion, logger, undefined, reglasPaisFijas())
       : new AnaliticaFinancieraService(
           ingresos,
           recaudo,
           cuentasPorPagar,
           conciliacion,
           logger,
-          umbral,
+          umbral, reglasPaisFijas(),
         );
 
   return {

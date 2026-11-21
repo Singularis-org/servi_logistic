@@ -12,6 +12,7 @@ import {
 } from "@/lib/repositories/CierresAdminRepository";
 import { CierresBodegaAdminRepository } from "@/lib/repositories/CierresBodegaAdminRepository";
 import type { ITarifaVigenteRepository } from "@/lib/interfaces/repositories/ITarifaVigenteRepository";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 /**
  * Feature 212 (T10, R21/R22/R23) — el DESGLOSE del recaudo llega por los TRES caminos de
@@ -39,6 +40,7 @@ function lineasMixtas() {
 /** Fila de `gestion_orden` como la lee `WITH_DETALLE` (vista EN VIVO del mensajero). */
 function filaEnVivo(overrides: Record<string, unknown> = {}) {
   return {
+    createdAt: new Date("2026-07-15T18:00:00.000Z"),
     id: "g1",
     ordenId: "o1",
     resultado: "entregado",
@@ -76,6 +78,7 @@ function filaEnVivo(overrides: Record<string, unknown> = {}) {
 /** Fila de `gestion_orden` como la lee `GESTION_ADMIN_SELECT` (detalles de admin y bodega). */
 function filaAdmin(overrides: Record<string, unknown> = {}) {
   return {
+    createdAt: new Date("2026-07-15T18:00:00.000Z"),
     id: "g1",
     ordenId: "o1",
     resultado: "entregado",
@@ -92,6 +95,7 @@ function filaAdmin(overrides: Record<string, unknown> = {}) {
     indemnizacion: null,
     historialEstados: [],
     ajustesPagoMensajero: [], // SLT-56 (R19): la relacion que ahora lee GESTION_ADMIN_SELECT
+    pagosCongelados: [], // SLT-101 (R66): el pago congelado del mensajero (vacio = sin fila)
     ...overrides,
   };
 }
@@ -186,7 +190,7 @@ describe("R21 — camino 1 (vivo): `CierreDiaRepository.findGestionesPendientes`
     const prisma = prismaDoble([filaEnVivo()]);
     const repo = new CierreDiaRepository(prisma as never, tarifaRepoStub);
 
-    const rows = await repo.findGestionesPendientes("m1");
+    const rows = await repo.findGestionesPendientes("m1", ZONA_CR);
 
     expect(rows[0].pagos).toEqual(DESGLOSE_ESPERADO);
     for (const linea of rows[0].pagos) expect(typeof linea.monto).toBe("string");
@@ -196,7 +200,7 @@ describe("R21 — camino 1 (vivo): `CierreDiaRepository.findGestionesPendientes`
     const prisma = prismaDoble([filaEnVivo()]);
     const repo = new CierreDiaRepository(prisma as never, tarifaRepoStub);
 
-    await repo.findGestionesPendientes("m1");
+    await repo.findGestionesPendientes("m1", ZONA_CR);
 
     const arg = prisma.gestionOrden.findMany.mock.calls[0][0];
     expect(arg.select.pagos).toEqual({
@@ -215,7 +219,7 @@ describe("R21 — camino 1 (vivo): `CierreDiaRepository.findGestionesPendientes`
     ]);
     const repo = new CierreDiaRepository(prisma as never, tarifaRepoStub);
 
-    const rows = await repo.findGestionesPendientes("m1");
+    const rows = await repo.findGestionesPendientes("m1", ZONA_CR);
 
     expect(rows[0].metodoPago).toBe("efectivo");
     expect(rows[0].montoRecibido).toBe("5000.00");
@@ -226,6 +230,7 @@ describe("R21 — camino 1 (vivo): `CierreDiaRepository.findGestionesPendientes`
     const row = toPendienteRow(
       filaEnVivo({ resultado: "reprogramado", montoRecibido: null, pagos: [] }) as never,
       false, // feature 237 (D6/R41): el flag lo resuelve el repo en lote; aqui no se ejercita
+      ZONA_CR,
     );
     expect(row.pagos).toEqual([]);
   });
@@ -265,6 +270,8 @@ describe("R21 — camino 2 (admin): `CierresAdminRepository.findCierreByIdEnAlca
       cierreSinGestion: { findMany: vi.fn().mockResolvedValue([]) },
       // FICHA 425 (B11): la cuarta consulta del detalle. Vacia: esta suite mide el desglose de pagos.
       cierreRechazoTienda: { findMany: vi.fn().mockResolvedValue([]) },
+      // SLT-101 (R94): la QUINTA consulta del detalle, el ultimo movimiento de fulfillment por orden.
+      ordenFulfillmentMovimiento: { findMany: vi.fn().mockResolvedValue([]) },
       $transaction: vi.fn(),
     };
   }
@@ -288,14 +295,14 @@ describe("R21 — camino 2 (admin): `CierresAdminRepository.findCierreByIdEnAlca
 
   it("la gestión del detalle trae el desglose, money-safe y en orden de enum", async () => {
     const prisma = prismaDoble();
-    const r = await repoDe(prisma).findCierreByIdEnAlcance("c1", { destinoTipo: "bodega_central", destinoZonaId: null });
+    const r = await repoDe(prisma).findCierreByIdEnAlcance("c1", { destinoTipo: "bodega_central", destinoZonaId: null }, ZONA_CR);
 
     expect(r?.gestiones[0].pagos).toEqual(DESGLOSE_ESPERADO);
   });
 
   it("la CONSULTA de gestiones pide el desglose", async () => {
     const prisma = prismaDoble();
-    await repoDe(prisma).findCierreByIdEnAlcance("c1", { destinoTipo: "bodega_central", destinoZonaId: null });
+    await repoDe(prisma).findCierreByIdEnAlcance("c1", { destinoTipo: "bodega_central", destinoZonaId: null }, ZONA_CR);
 
     const arg = prisma.gestionOrden.findMany.mock.calls[0][0];
     expect(arg.select).toBe(GESTION_ADMIN_SELECT); // la MISMA definición, no una copia
@@ -309,7 +316,7 @@ describe("R23 — camino 3 (bodega): `CierresBodegaAdminRepository.findCierreBod
   function prismaDoble() {
     return {
       cierreBodega: {
-        findUnique: vi.fn().mockResolvedValue({
+        findFirst: vi.fn().mockResolvedValue({
           id: "cb1",
           zonaId: "z1",
           solicitadoPor: "sat-1",
@@ -350,13 +357,19 @@ describe("R23 — camino 3 (bodega): `CierresBodegaAdminRepository.findCierreBod
             totalGeneral: new Prisma.Decimal("8000.00"),
             totalPagoMensajero: new Prisma.Decimal("5.00"),
             totalIngresoBodegaRechazos: new Prisma.Decimal("0.00"),
+            solicitadoAt: new Date("2026-07-11T15:00:00.000Z"), // SLT-104 (PA3): lo pide la proyeccion
             mensajero: { nombre: "Ana" },
             _count: { gestiones: 0 }, // SLT-56 (R20): el conteo de gestiones ajustadas del select
+            // SLT-148: las gestiones llegan como relacion de esta lectura, con la proyeccion de admin.
+            gestiones: [filaAdmin()],
           },
         ]),
       },
-      gestionOrden: { findMany: vi.fn().mockResolvedValue([filaAdmin()]) },
-      cierreDetail: { findMany: vi.fn().mockResolvedValue([filaSnapshot()]) },
+      // SLT-148: la fila congelada se busca por (cierreId, ordenId).
+      gestionOrden: { findMany: vi.fn() },
+      cierreDetail: { findMany: vi.fn().mockResolvedValue([filaSnapshot({ cierreId: "cd1" })]) },
+      // SLT-110 (R210): el cargo vigente de fulfillment. Vacio: esta suite mide el desglose de pagos.
+      ordenFulfillmentMovimiento: { findMany: vi.fn().mockResolvedValue([]) },
     };
   }
 
@@ -364,7 +377,7 @@ describe("R23 — camino 3 (bodega): `CierresBodegaAdminRepository.findCierreBod
     const prisma = prismaDoble();
     const repo = new CierresBodegaAdminRepository(prisma as unknown as PrismaClient);
 
-    const r = await repo.findCierreBodegaConDetalle("cb1");
+    const r = await repo.findCierreBodegaConDetalle("cb1", ZONA_CR, { lectura: "toda_la_empresa" });
 
     expect(r?.cierresDia[0].gestiones[0].pagos).toEqual(DESGLOSE_ESPERADO);
   });
@@ -375,9 +388,11 @@ describe("R23 — camino 3 (bodega): `CierresBodegaAdminRepository.findCierreBod
     const prisma = prismaDoble();
     const repo = new CierresBodegaAdminRepository(prisma as unknown as PrismaClient);
 
-    await repo.findCierreBodegaConDetalle("cb1");
+    await repo.findCierreBodegaConDetalle("cb1", ZONA_CR, { lectura: "toda_la_empresa" });
 
-    expect(prisma.gestionOrden.findMany.mock.calls[0][0].select).toBe(GESTION_ADMIN_SELECT);
+    // SLT-148: la pide como relacion de los cierre_dia, con la MISMA referencia.
+    expect(prisma.cierreDia.findMany.mock.calls[0][0].select.gestiones.select).toBe(GESTION_ADMIN_SELECT);
+    expect(prisma.gestionOrden.findMany).not.toHaveBeenCalled();
   });
 });
 
@@ -395,6 +410,7 @@ describe("R21/R22/R30 — los mappers serializan el desglose sin tocar el orden"
         ],
       }) as never,
       false, // feature 237 (D6/R41): irrelevante para el orden del desglose
+      ZONA_CR,
     );
     expect(row.pagos.map((p) => p.metodo)).toEqual(["efectivo", "SINPE", "transferencia"]);
   });
@@ -403,6 +419,7 @@ describe("R21/R22/R30 — los mappers serializan el desglose sin tocar el orden"
     const row = toPendienteRowDesdeSnapshot(
       filaAdmin({ pagos: [{ metodo: "efectivo", monto: new Prisma.Decimal("0.1") }] }) as never,
       filaSnapshot() as never,
+      ZONA_CR,
     );
     expect(row.pagos).toEqual([{ metodo: "efectivo", monto: "0.10" }]);
     expect(typeof row.pagos[0].monto).toBe("string");

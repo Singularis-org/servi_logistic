@@ -10,12 +10,13 @@ import userEvent from "@testing-library/user-event";
 
 import { TarifasModule, type PantallaOk } from "@/app/(app)/configuracion/tarifas/_components/TarifasModule";
 import { TarifasActivarDialog } from "@/app/(app)/configuracion/tarifas/_components/TarifasActivarDialog";
-import { valor, zonaOk, zonaResumen, referenciaUniforme } from "../fixtures/tarifas-pantalla";
+import { mensajeroPantalla, valor, valorPropio, zonaOk, zonaResumen, referenciaUniforme } from "../fixtures/tarifas-pantalla";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@/lib/actions/tarifas", () => ({
   cargarZonaTarifas: vi.fn(),
   guardarValoresTarifa: vi.fn(),
+  guardarTopeIntentos: vi.fn(),
   activarTarifasNuevas: vi.fn(),
   crearGrupoDistritos: vi.fn(),
   renombrarGrupoDistritos: vi.fn(),
@@ -33,6 +34,9 @@ const PANTALLA: PantallaOk = {
   vehiculos: [{ id: "v1", nombre: "Tipo", activo: true }],
   tiendas: [],
   preciosTienda: [valor("tienda_flete_entregado", { tiendaId: "t", zonaId: null, nivel: "tienda_general" })],
+  mensajeros: [],
+  valoresMensajero: [],
+  topeIntentos: 3,
   puedeEscribir: true,
 };
 
@@ -130,6 +134,68 @@ describe("SLT-54 — disposición (design §12)", () => {
     expect(within(tiendas).getAllByRole("columnheader")).toHaveLength(5);
   });
 
+  it("SLT-55 R38: la sección de mensajeros va tras las tiendas, con acciones de 44 y sin desbordar la página", () => {
+    montar({
+      mensajeros: [mensajeroPantalla()],
+      valoresMensajero: [valorPropio("mensajero_entregado", "m1")],
+    });
+    const seccion = screen.getByRole("region", { name: "Mensajeros con valor propio" });
+    const tiendas = screen.getByRole("region", { name: "Tiendas con precio propio" });
+    expect(tiendas.compareDocumentPosition(seccion) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // jsdom no mide: lo que evita el scroll de página a 390 px es que la tabla se recorta aquí y desplaza por dentro.
+    expect(clases(seccion)).toContain("overflow-hidden");
+    expect(within(seccion).getAllByRole("columnheader")).toHaveLength(7);
+    for (const nombre of ["Añadir mensajero", "Editar valor propio de Ana Torres", "Quitar valor propio de Ana Torres"]) {
+      expect(clases(within(seccion).getByRole("button", { name: nombre }))).toContain("min-h-11");
+    }
+  });
+
+  it("SLT-77 R12, R17: la sección del tope va al final, con selector y botón de 44, y a 390 px no desborda la página", () => {
+    montar();
+    const seccion = screen.getByRole("region", { name: "Intentos de entrega" });
+    const mensajeros = screen.getByRole("region", { name: "Mensajeros con valor propio" });
+    expect(mensajeros.compareDocumentPosition(seccion) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(clases(within(seccion).getByRole("combobox", { name: "Intentos de entrega" }))).toEqual(
+      expect.arrayContaining(["min-h-11", "w-[110px]", "focus-visible:ring-ring"]),
+    );
+    const guardar = within(seccion).getByRole("button", { name: "Guardar" });
+    expect(clases(guardar)).toContain("min-h-11");
+    // jsdom no mide, y T6.1 mide a 390 px: aquí, lo que lo evita. La fila parte en vez de empujar la página.
+    expect(clases(seccion)).toContain("overflow-hidden");
+    expect(clases(guardar.parentElement)).toEqual(expect.arrayContaining(["flex", "flex-wrap"]));
+  });
+
+  it("SLT-55 R38: en el diálogo, selector y campos de 44 y botones de 44", async () => {
+    const u = userEvent.setup();
+    montar({ mensajeros: [mensajeroPantalla()] });
+    await u.click(screen.getByRole("button", { name: "Añadir mensajero" }));
+    const d = await screen.findByRole("dialog");
+    expect(clases(d)).toContain("[&_button[data-slot=button]]:min-h-11");
+    expect(clases(within(d).getByRole("combobox", { name: "Mensajero" }))).toContain("min-h-11");
+    const fila = within(d).getByRole("row", { name: /Por entregado/ });
+    expect(clases(within(fila).getByRole("textbox", { name: "Valor de Por entregado" }))).toContain("min-h-11");
+    expect(clases(within(fila).getByRole("combobox", { name: "Modo de Por entregado" }))).toContain("min-h-11");
+  });
+
+  it("SLT-55 R38: en un teléfono la fila del diálogo se apila; desde `sm` sigue siendo una tabla de campos de 110", async () => {
+    const u = userEvent.setup();
+    montar({ mensajeros: [mensajeroPantalla()] });
+    await u.click(screen.getByRole("button", { name: "Añadir mensajero" }));
+    const d = await screen.findByRole("dialog");
+    // jsdom no mide: que un importe no se corte lo mira el E2E a 390 px. Aquí, que escritorio no cambia y que el apilado no quita la tabla.
+    const fila = within(d).getByRole("row", { name: /Por entregado/ });
+    expect(clases(fila)).toEqual(expect.arrayContaining(["max-sm:grid", "max-sm:grid-cols-2"]));
+    expect(clases(within(fila).getByRole("textbox", { name: "Valor de Por entregado" }))).toEqual(expect.arrayContaining(["w-[110px]", "max-sm:w-full"]));
+    expect(fila).toHaveAttribute("role", "row");
+    expect(within(d).getByRole("table")).toHaveAttribute("role", "table");
+    for (const celda of within(fila).getAllByRole("cell")) expect(celda).toHaveAttribute("role", "cell");
+    for (const rotulo of within(fila).getAllByText(/^(Modo|Valor)$/)) {
+      expect(rotulo).toHaveAttribute("aria-hidden", "true");
+      expect(clases(rotulo)).toContain("sm:hidden");
+    }
+    expect(within(fila).getAllByText(/^(Modo|Valor)$/)).toHaveLength(2);
+  });
+
   it("R70: el diálogo de 640 con padding de 24, casilla de 20 en fila de 44", () => {
     render(
       <TarifasActivarDialog
@@ -170,14 +236,17 @@ describe("SLT-54 — lo que no puede estar escrito en el código de la pantalla"
   const DIR = path.resolve(__dirname, "../../app/(app)/configuracion/tarifas/_components");
   const fuentes = readdirSync(DIR).map((f) => ({ f, t: readFileSync(path.join(DIR, f), "utf8") }));
 
-  it("Los 10 archivos de la pantalla nueva, y ninguno de la vieja", () => {
+  it("Los 13 archivos de la pantalla nueva, y ninguno de la vieja", () => {
     expect(fuentes.map((x) => x.f).sort()).toEqual(
       [
+        "TarifaMensajeroDialogo.tsx",
         "TarifasActivarDialog.tsx",
         "TarifasEstado.tsx",
         "TarifasGrupos.tsx",
+        "TarifasMensajeros.tsx",
         "TarifasModule.tsx",
         "TarifasTiendas.tsx",
+        "TarifasTopeIntentos.tsx",
         "TarifasValores.tsx",
         "TarifasVehiculo.tsx",
         "TarifasZonas.tsx",

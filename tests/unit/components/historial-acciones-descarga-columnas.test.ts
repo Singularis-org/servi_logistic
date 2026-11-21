@@ -219,3 +219,36 @@ describe("SLT-76 (R11) — la fila del rastro de distritos, en pantalla y en des
     expect(accionesDeCategoria("mueve_dinero")).toContain("zona_distrito_cambiado");
   });
 });
+
+describe("SLT-221 (R1609) — la fila de la cédula corregida, en descarga y en pantalla", () => {
+  // La fila tal como la escribe `UserRepository.update`, pasada por el mismo `aDTO` que usa el
+  // listado. Los textos esperados van escritos a mano: son el contrato de R1609.
+  const fila = aDTO({
+    id: "7d3e9a41-3c4d-4e5f-8a9b-1c2d3e4f5a6b",
+    createdAt: new Date("2026-11-20T15:00:00.000Z"),
+    accion: "usuario_cedula_cambiada",
+    entidadTipo: "usuario",
+    entidadEtiqueta: "Luis Rojas",
+    actorUsuarioId: null,
+    actorNombre: "Ana Mora",
+    actorRol: "maestro",
+    monto: null,
+    valorAnterior: "112340567",
+    valorNuevo: "198760543",
+    loteId: "8e4f0b52-4d5e-4f60-9b0c-2d3e4f5a6b7c",
+  });
+
+  it("descarga: etiqueta, categoría y el documento anterior y el nuevo", () => {
+    const d = filaDescargaHistorialAccion(fila);
+    expect(d.accion).toBe("Cambió la cédula de un usuario");
+    // R1609 la llama «Cambia quién puede hacer qué»; en pantalla y archivo es `cambia_permisos`.
+    expect(d.categoria).toBe("Cambia permisos");
+    expect(d.entidad).toBe("Luis Rojas");
+    expect(d.anterior).toBe("112340567");
+    expect(d.nuevo).toBe("198760543");
+  });
+
+  it("el filtro por categoría «Cambia quién puede hacer qué» la encuentra", () => {
+    expect(accionesDeCategoria("cambia_permisos")).toContain("usuario_cedula_cambiada");
+  });
+});

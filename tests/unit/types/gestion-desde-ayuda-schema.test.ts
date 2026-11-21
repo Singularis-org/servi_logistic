@@ -5,7 +5,7 @@ import {
   gestionarDesdeAyudaSchema,
   RESULTADOS_DESDE_AYUDA,
 } from "@/lib/types/gestion-desde-ayuda";
-import { fechaCalendarioCR, mananaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendarioCR, mananaCalendarioCR, ZONA_CR } from "@/lib/utils/fecha-cr";
 
 /** Un dia calendario de Costa Rica, desplazado `n` dias respecto de hoy. */
 const UN_DIA_MS = 24 * 60 * 60 * 1000;
@@ -48,7 +48,7 @@ function reprogramacion(over: Record<string, unknown> = {}) {
 
 /** Los campos con error, para poder afirmar QUE campo se queja (la ventana los pinta por campo). */
 function camposConError(input: unknown): string[] {
-  const r = gestionarDesdeAyudaSchema.safeParse(input);
+  const r = gestionarDesdeAyudaSchema(ZONA_CR).safeParse(input);
   if (r.success) return [];
   return [...new Set(r.error.issues.map((i) => i.path.join(".")))].sort();
 }
@@ -65,8 +65,8 @@ describe("R1 — la tienda tiene EXACTAMENTE dos desenlaces desde ayuda", () => 
   });
 
   it("los DOS parsean con sus campos completos", () => {
-    expect(gestionarDesdeAyudaSchema.safeParse(rechazo()).success).toBe(true);
-    expect(gestionarDesdeAyudaSchema.safeParse(reprogramacion()).success).toBe(true);
+    expect(gestionarDesdeAyudaSchema(ZONA_CR).safeParse(rechazo()).success).toBe(true);
+    expect(gestionarDesdeAyudaSchema(ZONA_CR).safeParse(reprogramacion()).success).toBe(true);
   });
 
   it.each(["entregado", "novedad", "incidente"])(
@@ -79,16 +79,16 @@ describe("R1 — la tienda tiene EXACTAMENTE dos desenlaces desde ayuda", () => 
       // Las tres estan fuera por una razon operativa, no por prudencia: la tienda no puede
       // declarar entregado un paquete que no vio, ni devolver por su cuenta lo que sigue en la
       // moto del mensajero, ni reportar un incidente que no presencio.
-      const r = gestionarDesdeAyudaSchema.safeParse(rechazo({ resultado }));
+      const r = gestionarDesdeAyudaSchema(ZONA_CR).safeParse(rechazo({ resultado }));
       expect(r.success).toBe(false);
     },
   );
 
   it("un `resultado` ausente o vacio tampoco parsea", () => {
-    expect(gestionarDesdeAyudaSchema.safeParse(rechazo({ resultado: undefined })).success).toBe(
+    expect(gestionarDesdeAyudaSchema(ZONA_CR).safeParse(rechazo({ resultado: undefined })).success).toBe(
       false,
     );
-    expect(gestionarDesdeAyudaSchema.safeParse(rechazo({ resultado: "" })).success).toBe(false);
+    expect(gestionarDesdeAyudaSchema(ZONA_CR).safeParse(rechazo({ resultado: "" })).success).toBe(false);
   });
 });
 
@@ -127,7 +127,7 @@ describe("R12/D2 — motivo y evidencia son obligatorios en LOS DOS desenlaces",
     // mas se usa. Este caso AFIRMA el agujero para que sea decision y no olvido: el dia que se
     // cierre, se cierra en `gestion-orden.ts` y este caso se pone rojo a proposito.
     const largo = "x".repeat(50_000);
-    expect(gestionarDesdeAyudaSchema.safeParse(rechazo({ motivo: largo })).success).toBe(true);
+    expect(gestionarDesdeAyudaSchema(ZONA_CR).safeParse(rechazo({ motivo: largo })).success).toBe(true);
   });
 });
 
@@ -157,14 +157,14 @@ describe("R13 — el borde revalida las fotos aunque la interfaz no lo haga", ()
     expect(camposConError(rechazo({ evidencias: [gorda] }))).toContain("evidencias.0");
     // Y justo en el tope si pasa: el limite es `>`, no `>=`.
     const justa = { type: "image/jpeg", size: gestionConfig.MAX_FILE_BYTES };
-    expect(gestionarDesdeAyudaSchema.safeParse(rechazo({ evidencias: [justa] })).success).toBe(
+    expect(gestionarDesdeAyudaSchema(ZONA_CR).safeParse(rechazo({ evidencias: [justa] })).success).toBe(
       true,
     );
   });
 
   it("una foto invalida invalida el envio ENTERO, aunque las otras esten bien", () => {
     const mezcla = [FOTO, { type: "application/pdf", size: 10 }, FOTO];
-    expect(gestionarDesdeAyudaSchema.safeParse(rechazo({ evidencias: mezcla })).success).toBe(
+    expect(gestionarDesdeAyudaSchema(ZONA_CR).safeParse(rechazo({ evidencias: mezcla })).success).toBe(
       false,
     );
   });
@@ -173,7 +173,7 @@ describe("R13 — el borde revalida las fotos aunque la interfaz no lo haga", ()
     const tope = gestionConfig.MAX_EVIDENCIAS_POR_GESTION;
     const enElTope = Array.from({ length: tope }, () => FOTO);
     const unaMas = Array.from({ length: tope + 1 }, () => FOTO);
-    expect(gestionarDesdeAyudaSchema.safeParse(rechazo({ evidencias: enElTope })).success).toBe(
+    expect(gestionarDesdeAyudaSchema(ZONA_CR).safeParse(rechazo({ evidencias: enElTope })).success).toBe(
       true,
     );
     expect(camposConError(rechazo({ evidencias: unaMas }))).toContain("evidencias");
@@ -187,7 +187,7 @@ describe("R13 — el borde revalida las fotos aunque la interfaz no lo haga", ()
 describe("R14 — la fecha de reprogramacion es mañana o posterior, en el calendario de CR", () => {
   it("mañana SI parsea", () => {
     expect(
-      gestionarDesdeAyudaSchema.safeParse(
+      gestionarDesdeAyudaSchema(ZONA_CR).safeParse(
         reprogramacion({ fechaReprogramacion: mananaCalendarioCR() }),
       ).success,
     ).toBe(true);
@@ -228,7 +228,7 @@ describe("R14 — la fecha de reprogramacion es mañana o posterior, en el calen
   it("RECHAZAR no admite fecha: el campo no existe en esa rama", () => {
     // Al ser una `discriminatedUnion`, un cliente que la envie no la consigue persistir — no
     // aparece en el tipo parseado de la rama. Mismo blindaje que la causa de la 73.
-    const r = gestionarDesdeAyudaSchema.safeParse(
+    const r = gestionarDesdeAyudaSchema(ZONA_CR).safeParse(
       rechazo({ fechaReprogramacion: "2027-01-05" }),
     );
     expect(r.success).toBe(true);

@@ -20,11 +20,12 @@ import {
  * E2E — «Mis asignaciones», el portal del mensajero (features 36, 96, 98, 113, 213; SL-44 T5.2, R18).
  *
  * Reescrito contra la UI ACTUAL:
- *  - RECOGER es por número de guía (o escáner) desde «Recoger paquete» en `/mis-asignaciones/recoger`
+ *  - RECOGER es por número de guía (o escáner) desde «Escanear o escribir guía» (tarjeta «Recoger paquete») en `/mis-asignaciones/recoger`
  *    (feature 96; ya no hay «Recoger» por fila ni modal de confirmación);
- *  - GESTIONAR es un panel EN LÍNEA en `/mis-asignaciones/reparto` (feature 113): «Gestionar esta
- *    orden» abre la verificación de la guía (feature 98), y el resultado se elige con BOTONES
- *    («Entregar», «Rechazar», «Reprogramar»), no con un select;
+ *  - GESTIONAR se abre en MODO FOCO desde la tarjeta de `/mis-asignaciones/reparto` (SLT-156 R510):
+ *    «Gestionar» + «Aceptar» deja solo el panel, con la verificación de la guía ya abierta (feature
+ *    98) y su botón «Confirmar guía» (R511); el resultado se elige con BOTONES («Entregar»,
+ *    «Rechazar», «Reprogramar»), no con un select;
  *  - el cobro es un desglose por líneas (feature 213): «Método de pago línea N» + «Monto línea N».
  *
  * Casos:
@@ -32,7 +33,7 @@ import {
  *  (b) recoger → Rechazar + foto + motivo → gestión `devolucion_a_origen_por_rechazo`;
  *  (c) recoger → Reprogramar (mañana) + motivo → gestión `reprogramado`;
  *  (d) recoger → Entregar MIXTO, 8.000 = 5.000 efectivo + 3.000 transferencia → en `/cierre-dia`
- *      «Totales del día» dice Efectivo 5.000 y Transferencia 3.000 (feature 213/R35: lo capturado
+ *      «Recaudado» dice Efectivo 5.000 y Transferencia 3.000 (feature 213/R35: lo capturado
  *      aquí ES la `E` del `min(P, E)` con que se paga al mensajero).
  *
  * Desde la ficha 454 la gestión NO cambia el estado de la orden (lo cambia la aprobación del
@@ -59,25 +60,33 @@ async function prepararCaso(montoCobrar: number): Promise<{ m: MensajeroE2E; ord
   return { m, orden };
 }
 
-/** Recoge la orden por su guía y abre su gestión en el panel en línea, ya verificada. */
+/** Recoge la orden por su guía y abre su gestión en modo foco, ya verificada. */
 async function recogerYAbrirGestion(browser: Browser, m: MensajeroE2E, orden: OrdenE2E): Promise<{ page: Page; panel: ReturnType<Page["getByRole"]> }> {
   const page = await paginaDe(browser, m, CONTEXTO_MENSAJERO);
   await page.goto("/mis-asignaciones/recoger");
   await expect(page.getByRole("region", { name: "Recoger en bodega" }).getByText(orden.numRemision).first()).toBeVisible();
-  await page.getByRole("button", { name: "Recoger paquete" }).click();
+  // SLT-156 (R500): el disparador único de las pantallas del mensajero; dentro, la tarjeta «Recoger paquete».
+  await page.getByRole("button", { name: "Escanear o escribir guía" }).click();
   const tarjeta = page.getByRole("region", { name: "Recoger por número de guía o escaneo" });
   await tarjeta.getByLabel("Número de guía").fill(String(orden.numGuia));
   await tarjeta.getByRole("button", { name: "Recoger", exact: true }).click();
-  await expect(page.getByText(`Guía ${orden.numGuia} recogida.`, { exact: true })).toBeVisible();
+  // SLT-168 (R596): el diálogo es continuo; la lectura es una fila de «Lecturas» que dice «Recogida».
+  const lectura = page
+    .getByRole("log", { name: "Lecturas" })
+    .getByRole("listitem")
+    .filter({ hasText: String(orden.numGuia) });
+  await expect(lectura.getByText("Recogida", { exact: true })).toBeVisible();
   await expect.poll(() => estadoDe(orden)).toBe("en_reparto");
 
   await page.goto("/mis-asignaciones/reparto");
+  // SLT-156 (R504, R510): sin panel en la lista; la tarjeta lleva al foco tras «¿Gestionar esta orden?».
+  await page.getByRole("button", { name: `Gestionar la orden ${orden.numRemision}` }).click();
+  await page.getByRole("dialog", { name: "¿Gestionar esta orden?" }).getByRole("button", { name: "Aceptar" }).click();
   const panel = page.getByRole("region", { name: "Detalle de la orden" });
   await expect(panel.getByText(`Guía ${orden.numGuia}`).first()).toBeVisible();
-  await panel.getByRole("button", { name: "Gestionar esta orden" }).click();
   const gate = panel.getByRole("region", { name: "Verificar la guía del paquete antes de gestionar" });
   await gate.getByLabel("Número de guía").fill(String(orden.numGuia));
-  await gate.getByRole("button", { name: "Gestionar", exact: true }).click();
+  await gate.getByRole("button", { name: "Confirmar guía", exact: true }).click();
   await expect(panel.getByText("¿Cómo terminó la gestión?")).toBeVisible();
   return { page, panel };
 }
@@ -185,9 +194,11 @@ test.describe("Mis asignaciones — recoger y gestionar", () => {
 
     // R35: los totales del día no se recalculan aquí, los ALIMENTA lo capturado arriba.
     await page.goto("/cierre-dia");
-    const totales = page.getByRole("region", { name: "Totales del día" });
+    // SLT-109 (R241): «Totales del día» pasó a la cifra «Recaudado» del detalle, con los métodos que no
+    // valen cero debajo.
+    const totales = page.getByRole("group", { name: "Recaudado", exact: true });
     await expect(totales).toBeVisible();
-    // Cada total es una pareja rótulo/importe (`TotalItem`): el contenedor del rótulo exacto.
+    // Cada método es una pareja rótulo/importe (`dt`/`dd`): el contenedor del rótulo exacto.
     const efectivo = totales.getByText("Efectivo", { exact: true }).locator("..");
     const transferencia = totales.getByText("Transferencia", { exact: true }).locator("..");
     await expect(efectivo).toContainText(monto(5));

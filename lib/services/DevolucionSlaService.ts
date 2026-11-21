@@ -1,5 +1,4 @@
 import type { GestionCausaDevolucion } from "@prisma/client";
-import { reintentosConfig } from "@/lib/config/reintentos";
 import { devolucionSlaConfig } from "@/lib/config/devolucion-sla";
 import type {
   DevueltaSlaRow,
@@ -49,7 +48,7 @@ type OrdenRepo = Pick<IOrdenRepository, "findEstatusIdByValue">;
  *      divergencia que 215/R4 («una sola definicion de intento») existe para impedir;
  *  (b) de paso desaparece el N+1: una consulta por corrida en vez de una por orden.
  */
-type HistorialSvc = Pick<IOrdenHistorialService, "contarIntentosEnLote">;
+type HistorialSvc = Pick<IOrdenHistorialService, "contarIntentosEnLote" | "topeIntentos">;
 
 // Log de aviso inyectable: por defecto console.warn. NUNCA registra PII/secretos (R11): solo
 // conteos agregados.
@@ -102,7 +101,9 @@ export class DevolucionSlaService implements IDevolucionSlaService {
     // R12: la clasificacion a central usa la zona central (o null: todo cae a satelite, fallback
     // seguro de `resolverDestinoCierre`).
     const centralZonaId = await this.zonaRepo.findCentralZonaId();
-    const umbral = reintentosConfig.MIN_INTENTOS_ENTREGA; // R15/R16
+    // SLT-77 (R22, R26, R34): el de la empresa que se procesa, y uno solo por corrida. Fuera del `try` de
+    // cada orden: sin tope (R27) la corrida de ESTA empresa falla entera, y `paraCadaEmpresa` sigue con las demas.
+    const umbral = await this.historial.topeIntentos(); // R15/R16
 
     const candidatas = await this.repo.findDevueltasSla();
 
@@ -162,10 +163,11 @@ export class DevolucionSlaService implements IDevolucionSlaService {
         // contador. Por eso R33 congela el criterio de conteo en esta ficha.
         const esWrong = orden.causa !== "not_found";
         const escalaPorTope = esWrong && intentos >= umbral;
+        const vencida = venceVentana(orden.causa, orden.ancladaAt, now);
 
         // R14/R13/R17 (ventana viva): aun no vence -> la orden reposa en `devuelta`, no se actua.
         // R29: por DEBAJO del umbral la ventana de cinco dias se aplica exactamente como hoy.
-        if (!escalaPorTope && !venceVentana(orden.causa, orden.ancladaAt, now)) {
+        if (!escalaPorTope && !vencida) {
           evaluadas += 1;
           continue;
         }
@@ -198,8 +200,8 @@ export class DevolucionSlaService implements IDevolucionSlaService {
           // era. El dano pasa de dinero mal cobrado a mercaderia parada. La alerta operativa que
           // vigila esa poblacion (M3 del §7bis de la 215) sigue siendo ficha aparte.
           if (intentos >= umbral) {
-            // R16: alcanzo el umbral -> escala a `rechazada`.
-            const ok = await this.escalar(orden, estatusDevueltaId, estatusRechazadaId);
+            // R16: alcanzo el umbral -> escala a `rechazada`. SLT-77 (R35): rechazo por tope, con veto.
+            const ok = await this.escalar(orden, estatusDevueltaId, estatusRechazadaId, { intentos });
             if (ok) escaladas += 1;
             else omitidas += 1; // R24/R25: guarda de estado ya no vigente
           } else {
@@ -216,7 +218,9 @@ export class DevolucionSlaService implements IDevolucionSlaService {
           }
         } else {
           // R17: `wrong_number` / `wrong_address` -> escalado DIRECTO a `rechazada`, sin bucle.
-          const ok = await this.escalar(orden, estatusDevueltaId, estatusRechazadaId);
+          // SLT-77 (R35): con la ventana vencida escala igual, suba o no el tope; el veto es para el adelanto.
+          const veto = vencida ? undefined : { intentos };
+          const ok = await this.escalar(orden, estatusDevueltaId, estatusRechazadaId, veto);
           if (ok) escaladas += 1;
           else omitidas += 1;
         }
@@ -263,6 +267,7 @@ export class DevolucionSlaService implements IDevolucionSlaService {
     orden: DevueltaSlaRow,
     estatusDevueltaId: string,
     estatusRechazadaId: string,
+    vetoPorTope?: { intentos: number },
   ): Promise<boolean> {
     return this.repo.escalarDevueltaSla({
       ordenId: orden.ordenId,
@@ -270,6 +275,7 @@ export class DevolucionSlaService implements IDevolucionSlaService {
       estatusRechazadaId,
       mensajeroId: orden.mensajeroId, // R22: atribuye el ingreso de bodega a este mensajero
       motivo: `escalado SLA ${orden.causa}`,
+      ...(vetoPorTope ? { vetoPorTope } : {}),
     });
   }
 }

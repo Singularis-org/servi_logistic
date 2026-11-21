@@ -233,7 +233,9 @@ const POR_EMPRESA: Caso[] = [
  */
 const POR_EMPRESA_DESDE_SL18: Caso[] = [
   { tabla: "usuario", indice: "usuario_email_key", valores: { email: "misma@ejemplo.test" } },
-  { tabla: "usuario", indice: "usuario_cedula_key", valores: { cedula: "1-0000-0001" } },
+  // SLT-42 (R13): el documento es unico por empresa Y TIPO; el tipo va fijo, si no el relleno lo
+  // sortea y dos filas nunca chocarian.
+  { tabla: "usuario", indice: "usuario_cedula_key", valores: { tipo_identificacion_id: "tipo-1", cedula: "1-0000-0001" } },
 ];
 
 /** Los que siguen globales a proposito: el mismo valor en dos empresas sigue fallando. */

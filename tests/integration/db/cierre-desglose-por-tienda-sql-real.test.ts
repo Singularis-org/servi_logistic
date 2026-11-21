@@ -9,9 +9,10 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 /**
  * 💰 FICHA 396 (B3) — **QUÉ FILAS SE AGRUPAN, EJECUTADO CONTRA POSTGRES.**
@@ -73,20 +74,17 @@ const NOMBRE_COMPARTIDO = "Abastos del Valle";
  *     flete+IVA      2.260,00   (2.000,00 + 260,00)
  *     comisión+IVA   3.390,00   (3% de 100.000,00 = 3.000,00, + 390,00)
  *     facturado      7.345,00   (5.650,00 de la entrega + 1.695,00 del rechazo)
- *     se le paga    94.350,00   (100.000,00 − 2.260,00 − 3.390,00)
- *     gana          92.655,00   (100.000,00 − 7.345,00)
+ *     se le paga    92.655,00   (100.000,00 − 7.345,00; SLT-169 R621: resta TODO lo facturado;
+ *                                antes 94.350,00)
  *
  *   Tienda B (una entrega de 40.000,00, SIN rechazos)
  *     recaudado     40.000,00
- *     se le paga    36.384,00   (40.000,00 − 2.260,00 − 1.356,00)
- *     gana          36.384,00   (40.000,00 − 3.616,00)
+ *     se le paga    36.384,00   (40.000,00 − 3.616,00)
  */
 const A_RECAUDADO = "100000.00";
-const A_PAGO = "94350.00";
-const A_GANA = "92655.00";
+const A_PAGO = "92655.00";
 const B_RECAUDADO = "40000.00";
 const B_PAGO = "36384.00";
-const B_GANA = "36384.00";
 
 describeSiHayBase("396/B3 — el desglose por tienda agrupa por lo CONGELADO, contra Postgres", () => {
   let prisma: PrismaClient;
@@ -108,34 +106,10 @@ describeSiHayBase("396/B3 — el desglose por tienda agrupa por lo CONGELADO, co
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
 
-    const fks = await fksDeOrden(prisma);
-    // Fallo RUIDOSO, no `return` silencioso: con base alcanzable y sin catálogo este archivo no
-    // puede comprobar nada, y un `passed` en esas condiciones es peor que no tener el test.
-    if (fks === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar el " +
-          "corpus. Corre `pnpm run db:seed` (y las semillas de zonas) antes de esta suite.",
-      );
-    }
-
-    // Plantilla para crear las DOS tiendas nuevas. Se crean en vez de reusar usuarios existentes
-    // porque hacen falta dos que NO tengan tarifa propia (la que se siembra abajo es única por
-    // par `(zona, tienda)`) y porque el nombre compartido tiene que ser cosa del test.
-    const plantilla = await prisma.usuario.findFirst({
-      select: { tipoIdentificacionId: true, rolId: true, passwordHash: true },
-    });
-    if (plantilla === null) {
-      throw new Error(
-        "la tabla `usuario` esta vacia: no hay de donde tomar `tipo_identificacion_id` ni " +
-          "`rol_id` para crear las dos tiendas del corpus. Corre las semillas antes.",
-      );
-    }
-
-    // `cierre_dia.mensajero_id` es FK -> `usuario`. Se reusa uno REAL: lo que se mide aqui es el
-    // agrupamiento por tienda, no un rol.
-    const mensajero = await prisma.usuario.findFirst({ select: { id: true } });
-    if (mensajero === null) throw new Error("no hay ningun usuario para ser el mensajero");
-
+    // SLT-175 R670: de la base solo se leen CATÁLOGOS por su clave. La zona, la geografía, las
+    // dos tiendas y el mensajero se crean dentro de la transacción de cada caso (`conCorpus`),
+    // con el fixture de SL-11, y el rollback se los lleva. Si falta un catálogo, el fixture o este
+    // `findFirst` LANZAN nombrándolo: nunca un `return` silencioso (R673).
     const estatus = await prisma.orderStatus.findFirst({
       where: { value: "en_reparto" },
       select: { id: true },
@@ -153,26 +127,25 @@ describeSiHayBase("396/B3 — el desglose por tienda agrupa por lo CONGELADO, co
         // reales de `public` (ver `_postgres-real.ts`).
         await serializarEscriturasReales(tx);
 
-        const nuevaTienda = async (clave: string) =>
-          (
-            await tx.usuario.create({
-              data: {
-                // El nombre VIVO también es el mismo en las dos: nada en el corpus permite
-                // distinguirlas por texto.
-                nombre: NOMBRE_COMPARTIDO,
-                email: `tienda-${clave}-${SUFIJO}@ejemplo.test`,
-                telefono: "88880000",
-                passwordHash: plantilla.passwordHash,
-                cedula: `C-${clave}-${SUFIJO}`,
-                tipoIdentificacionId: plantilla.tipoIdentificacionId,
-                rolId: plantilla.rolId,
-              },
-              select: { id: true },
-            })
-          ).id;
+        // Zona y geografía propias (SLT-175). La tienda que crea el fixture no se usa: las dos
+        // del corpus se crean aparte para que ninguna tenga tarifa propia y compartan nombre.
+        const fks = await crearFksDeOrden(tx);
+        // `cierre_dia.mensajero_id` es FK -> `usuario`: un mensajero propio del caso.
+        const mensajero = await crearUsuarioDePrueba(tx, "mensajero");
 
-        const tiendaA = await nuevaTienda("a");
-        const tiendaB = await nuevaTienda("b");
+        // Dos tiendas NUEVAS con el MISMO nombre vivo: nada en el corpus permite distinguirlas
+        // por texto. El fixture les da un nombre propio; se renombran en la tx.
+        const nuevaTienda = async () => {
+          const tienda = await crearUsuarioDePrueba(tx, "adminTienda");
+          await tx.usuario.update({
+            where: { id: tienda.id },
+            data: { nombre: NOMBRE_COMPARTIDO, primerApellido: null },
+          });
+          return tienda.id;
+        };
+
+        const tiendaA = await nuevaTienda();
+        const tiendaB = await nuevaTienda();
 
         // LA TARIFA CONGELADA del corpus. `cierre_detail.tarifa_id` es FK con ON DELETE RESTRICT,
         // asi que tiene que apuntar a una fila real; se crea una sola y la comparten las tres
@@ -376,7 +349,7 @@ describeSiHayBase("396/B3 — el desglose por tienda agrupa por lo CONGELADO, co
     // Sin esto, todo lo de abajo podría estar midiendo el vacío. Nada de `if (!filas) return;`:
     // un `return` silencioso reporta `passed` sin haber comprobado nada.
     const { cardinalGestiones, tiendasCongeladas, esperadas } = await conCorpus(async (ctx) => {
-      const r = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreId, ALCANCE_TOTAL);
+      const r = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreId, ALCANCE_TOTAL, ZONA_CR);
       if (r === null) throw new Error("el cierre sembrado no se encontro: el corpus no existe");
       return {
         cardinalGestiones: r.gestiones.length,
@@ -395,7 +368,7 @@ describeSiHayBase("396/B3 — el desglose por tienda agrupa por lo CONGELADO, co
     // dice HOY. Si `DETALLE_ADMIN_SELECT` dejara de proyectar `tienda_id`, o si el mapper leyera
     // `orden.tienda_id`, estas dos columnas coincidirían y el caso cae.
     const medido = await conCorpus(async (ctx) => {
-      const r = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreId, ALCANCE_TOTAL);
+      const r = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreId, ALCANCE_TOTAL, ZONA_CR);
       if (r === null) throw new Error("el cierre sembrado no se encontro");
       const porRemision = new Map(r.gestiones.map((g) => [g.numRemision, g.tiendaId]));
       return {
@@ -425,7 +398,7 @@ describeSiHayBase("396/B3 — el desglose por tienda agrupa por lo CONGELADO, co
 
   it("R6/R7: el desglose sale de lo congelado y NO se funde aunque las dos tiendas se llamen igual", async () => {
     const partes = await conCorpus(async (ctx) => {
-      const r = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreId, ALCANCE_TOTAL);
+      const r = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreId, ALCANCE_TOTAL, ZONA_CR);
       if (r === null) throw new Error("el cierre sembrado no se encontro");
       const salida = partesPorTienda(r.gestiones);
       return salida.map((p) => ({
@@ -449,7 +422,6 @@ describeSiHayBase("396/B3 — el desglose por tienda agrupa por lo CONGELADO, co
         tiendaNombre: p.tiendaNombre,
         recaudado: p.recaudado,
         pagoTienda: p.pagoTienda,
-        ganaLaTienda: p.ganaLaTienda,
       })),
     ).toEqual([
       {
@@ -457,21 +429,19 @@ describeSiHayBase("396/B3 — el desglose por tienda agrupa por lo CONGELADO, co
         tiendaNombre: NOMBRE_COMPARTIDO,
         recaudado: A_RECAUDADO,
         pagoTienda: A_PAGO,
-        ganaLaTienda: A_GANA,
       },
       {
         cual: "B",
         tiendaNombre: NOMBRE_COMPARTIDO,
         recaudado: B_RECAUDADO,
         pagoTienda: B_PAGO,
-        ganaLaTienda: B_GANA,
       },
     ]);
   });
 
-  it("las identidades se sostienen sobre datos que salieron de Postgres, no de un doble", async () => {
-    const { sumaPago, sumaGana, sumaRecaudado, difA, difB } = await conCorpus(async (ctx) => {
-      const r = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreId, ALCANCE_TOTAL);
+  it("las identidades se sostienen sobre datos que salieron de Postgres, no de un doble (SLT-169 R621)", async () => {
+    const { sumaPago, sumaRecaudado, difA, difB } = await conCorpus(async (ctx) => {
+      const r = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreId, ALCANCE_TOTAL, ZONA_CR);
       if (r === null) throw new Error("el cierre sembrado no se encontro");
       const partes = partesPorTienda(r.gestiones);
       const suma = (montos: string[]) =>
@@ -479,25 +449,24 @@ describeSiHayBase("396/B3 — el desglose por tienda agrupa por lo CONGELADO, co
       const dif = (id: string) => {
         const p = partes.find((x) => x.tiendaId === id);
         if (p === undefined) throw new Error("falta una tienda en el desglose");
-        return new Prisma.Decimal(p.pagoTienda).minus(p.ganaLaTienda).toFixed(2);
+        // SLT-169: lo que se le paga MAS su flete por rechazo, contra lo que se le pagaba antes.
+        return new Prisma.Decimal(p.pagoTienda).minus(p.recaudado).toFixed(2);
       };
       return {
         sumaPago: suma(partes.map((p) => p.pagoTienda)),
-        sumaGana: suma(partes.map((p) => p.ganaLaTienda)),
         sumaRecaudado: suma(partes.map((p) => p.recaudado)),
         difA: dif(ctx.tiendaA),
         difB: dif(ctx.tiendaB),
       };
     });
 
-    // R10 / R11 / R12, contra literales escritos a mano.
-    expect(sumaPago).toBe("130734.00"); // 94.350,00 + 36.384,00
-    expect(sumaGana).toBe("129039.00"); // 92.655,00 + 36.384,00
+    // R10 / R12, contra literales escritos a mano (R11 desaparecio con SLT-174).
+    expect(sumaPago).toBe("129039.00"); // 92.655,00 + 36.384,00 (SLT-169 R621)
     expect(sumaRecaudado).toBe("140000.00"); // 100.000,00 + 40.000,00
 
-    // La CUARTA identidad, por tienda: A tuvo un rechazo (1.695,00) y B no (0,00). Que una de
-    // las dos NO sea cero es lo que impide que este caso pase sin comprobar nada.
-    expect(difA).toBe("1695.00");
-    expect(difB).toBe("0.00");
+    // SLT-169 R621, por tienda: pago − recaudado = −(todo lo facturado a ESA tienda). A tuvo un
+    // rechazo, así que su facturado (7.345,00) incluye los 1.695,00 del flete por rechazo; B no.
+    expect(difA).toBe("-7345.00");
+    expect(difB).toBe("-3616.00");
   });
 });

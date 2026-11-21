@@ -64,6 +64,11 @@ export function paresDeChipBodega(chip: ChipBodega): ParDeChip[] {
  *   pago de un gasto (459)        pago_por_cuenta ↔ pago_por_cuenta_anulado  (el documento)
  *   pago de la tienda (457)       abono_tienda ↔ abono_tienda_anulado        (el documento)
  *   cobro por rechazo (458-B)     flete_devolucion ↔ flete_devolucion_anulado; IVA ↔ IVA (la gestion)
+ *
+ * SLT-94: el cobro de fulfillment (`fulfillment`, `iva_fulfillment`) y su devolucion (`*_anulado`) NO
+ * forman pares: cada evento lleva SU `origen_id` (el id de su `orden_fulfillment_movimiento`), y una
+ * orden puede cobrarse, devolverse y re-cobrarse. Las dos filas se ven en el periodo, cada una con su
+ * rotulo y su orden (R36), y la suma sigue cuadrando.
  */
 export function claveDeParTienda(m: Pick<MovimientoDelPeriodoRow, "id" | "categoria" | "origenTipo" | "origenId">): {
   clave: string;

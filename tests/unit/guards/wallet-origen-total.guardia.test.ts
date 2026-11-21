@@ -95,7 +95,10 @@ describe("458-A R94 — ninguna superficie de la wallet pinta un origen sin nomb
     for (const [archivo, n] of Object.entries(esperado)) {
       const fuente = codigo(archivo);
       expect({ archivo, n: fuente.split("deps.origenes ?? buildOrigenes()").length - 1 }).toEqual({ archivo, n });
-      expect(fuente).toMatch(/new OrigenLegibleService\(new OrigenLegibleRepository\(getPrismaClient\(\)\)\)/);
+      // SLT-42 (T5.4): el servicio real lleva ademas las reglas REALES del pais (la zona del dia de un cierre).
+      expect(fuente).toMatch(
+        /new OrigenLegibleService\(new OrigenLegibleRepository\(getPrismaClient\(\)\), construirReglasPaisEmpresa\(getPrismaClient\(\)\)\)/,
+      );
     }
   });
 

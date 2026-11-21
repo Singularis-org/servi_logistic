@@ -771,16 +771,45 @@ describe("366/T4 — ZonaRepository.update reconcilia la zona de las ordenes", (
 // COMPLEMENTARIAS sobre el MISMO `where` base, y que los dos numeros lleguen al retorno separados.
 
 describe("377/T4 — el corte por estado y el conteo de retenidas", () => {
-  /** El `where` base de elegibilidad (366), tal cual, sin nada de estado. */
-  // SLT-65 (design §6.1, decision humana 2026-11-03): la orden entra por su LUGAR (`whereLugarEn`),
-  // escrito LITERAL aqui por el mismo motivo que el resto: el distrito, o el canton sin distrito.
+  /**
+   * El `where` base de elegibilidad, tal cual, sin nada de estado. SLT-224 PR 2 (D6, R1720/R1722):
+   * el corte de la 366 cambio por decision aprobada; solo protege el dinero EN CURSO. Escrito a mano
+   * a proposito, no armado desde el helper: es el contrato del corte.
+   *
+   * SLT-65 (design §6.1, decision humana 2026-11-03): la orden entra por su LUGAR (`whereLugarEn`),
+   * escrito LITERAL aqui por el mismo motivo que el resto: el distrito, o el canton sin distrito.
+   */
   const BASE_D1_ZA = {
     OR: [{ distritoId: { in: ["d1"] } }, { distritoId: null, cantonId: { in: ["d1"] } }],
     zonaId: { not: "zA" },
     deletedAt: null,
-    cierreDetalles: { none: {} },
-    gestiones: { none: { anuladaAt: null, resultado: { in: ["entregado", "devolucion_a_origen_por_rechazo", "incidente"] } } },
+    cierreDetalles: { none: { cierre: { estado: { not: "aprobado" } } } },
+    gestiones: {
+      none: {
+        anuladaAt: null,
+        resultado: { in: ["entregado", "devolucion_a_origen_por_rechazo", "incidente"] },
+        OR: [{ cierreId: null }, { cierre: { estado: { not: "aprobado" } } }],
+      },
+    },
   };
+
+  /**
+   * SLT-224 PR 2 (R1721/R1723): los 11 estados que no se mueven, LITERAL y en el orden en que los
+   * declara `CLASE_RECONCILIACION_ZONA` (estante, finalizadas, devoluciones, por liberar).
+   */
+  const NO_SE_MUEVEN = [
+    "en_bodega_satelite",
+    "entregado",
+    "devuelta_a_tienda",
+    "incidente",
+    "por_devolver_a_bodega_central",
+    "devolviendo_a_bodega_central",
+    "devolucion_a_origen_por_rechazo",
+    "novedad",
+    "por_devolver_a_tienda",
+    "devolviendo_a_tienda",
+    "reprogramado",
+  ];
 
   it("⭑ R2/R9: las dos consultas comparten el `where` base y solo difieren en el estado", async () => {
     // Escrito como igualdad LITERAL de los dos `where` completos —y no comparando una consulta
@@ -800,7 +829,7 @@ describe("377/T4 — el corte por estado y el conteo de retenidas", () => {
     });
     expect(tx.orden.findMany.mock.calls[0][0].where).toEqual({
       ...BASE_D1_ZA,
-      estatus: { value: { notIn: ["en_bodega_satelite"] } },
+      estatus: { value: { notIn: NO_SE_MUEVEN } },
     });
   });
 

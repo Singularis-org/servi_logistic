@@ -1,6 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
+import { esSinPlanConPendiente, type LecturaDeMiPlan, type PlanDeLaEmpresaLeido } from "@/lib/interfaces/repositories/IMiPlanRepository";
+import { aCentimos, aTexto } from "@/lib/planes/centimos";
+import { costoDelPeriodoEnCurso } from "@/lib/planes/cobro";
 import { planConConsumo } from "@/lib/planes/consumo";
 import { MiPlanRepository } from "@/lib/repositories/MiPlanRepository";
 import { comoApp, crearOrganizacion } from "@/tests/fabricas/organizaciones";
@@ -33,6 +36,12 @@ import { asignarPlan, capturar, planesEnTx, revertida, sqlstateDe } from "./_fix
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
 let base: PrismaClient;
+
+/** SLT-86 (R26): la lectura de una empresa con plan; sin plan es un fallo del caso. */
+function conPlan(r: LecturaDeMiPlan): PlanDeLaEmpresaLeido {
+  if (r === null || esSinPlanConPendiente(r)) throw new Error("A tiene plan");
+  return r;
+}
 
 /** Lleva la fecha de alta de una orden al ciclo anterior (el ancla está a 10 días). */
 async function alCicloAnterior(tx: TxDeTest, ordenId: string): Promise<void> {
@@ -133,7 +142,7 @@ describeSiHayBase("SLT-83 R23, R24 — lo cobrado en el ciclo y las órdenes sin
       return { crudo: await planCrudo(tx, a.id), leido: await new MiPlanRepository(tx).planDeLaEmpresa() };
     });
     expect(r.crudo.cobro_ciclo).toEqual({ cobrado: "-246.90", pendientes: 1 });
-    expect(r.leido?.cobroCiclo).toEqual({ cobrado: "-246.90", pendientes: 1 });
+    expect(conPlan(r.leido).cobroCiclo).toEqual({ cobrado: "-246.90", pendientes: 1 });
   });
 
   it("R23, R24: «Mi plan» (MiPlanRepository) lee el modo, lo cobrado y las pendientes, y arma el total base + cobrado", async () => {
@@ -141,23 +150,24 @@ describeSiHayBase("SLT-83 R23, R24 — lo cobrado en el ciclo y las órdenes sin
     const r = await revertida(base, async (tx) => {
       const a = await escenario(tx);
       await comoApp(tx, a.id);
-      return new MiPlanRepository(tx).planDeLaEmpresa();
+      return conPlan(await new MiPlanRepository(tx).planDeLaEmpresa());
     });
-    if (r === null) throw new Error("A tiene plan");
     expect(r.vigente.costoPorOrden).toBeNull();
     expect(r.vigente.costoPorOrdenPorcentual).toEqual({ porcentaje: "2.00", minimo: "500.00" });
     expect(r.costoVigente).toEqual({ modo: "porcentual", porcentaje: "2.00", minimo: "500.00", fuente: "plan" });
     expect(r.cobroCiclo).toEqual({ cobrado: "1500.00", pendientes: 2 });
+    // SLT-86 (R28): la base es el costo del período en curso o de su tramo (la entrada va diez días atrás:
+    // según el día del mes es tramo o período completo); el total, base + lo cobrado en el período.
+    const costoBase = costoDelPeriodoEnCurso({ tipo: "monto", mensual: "50000.00", descuentos: {} }, "mensual", r.entrada, AHORA) as string;
     expect(planConConsumo(r, AHORA).costeo).toEqual({
       modo: "porcentual",
-      base: { tipo: "monto", mensual: "50000.00" },
+      base: { tipo: "monto", periodo: costoBase },
       porcentaje: "2.00",
       minimo: "500.00",
       cobrado: "1500.00",
       pendientes: 2,
-      total: "51500.00",
+      total: aTexto(aCentimos(costoBase) + aCentimos("1500.00")),
       sinCostoConcreto: false,
-      anualNoAplicaAlCosto: false,
     });
   });
 
@@ -179,10 +189,10 @@ describeSiHayBase("SLT-83 R23, R24 — lo cobrado en el ciclo y las órdenes sin
       await asignarPlan(tx, a.id, plan, "10 days");
       await crearOrden(tx, a, { montoCobrar: "50000" });
       await comoApp(tx, a.id);
-      return new MiPlanRepository(tx).planDeLaEmpresa();
+      return conPlan(await new MiPlanRepository(tx).planDeLaEmpresa());
     });
-    expect(r?.costoVigente).toEqual({ modo: "fijo", monto: "100.00", fuente: "plan" });
-    expect(r?.cobroCiclo).toEqual({ cobrado: "100.00", pendientes: 0 });
+    expect(r.costoVigente).toEqual({ modo: "fijo", monto: "100.00", fuente: "plan" });
+    expect(r.cobroCiclo).toEqual({ cobrado: "100.00", pendientes: 0 });
   });
 });
 

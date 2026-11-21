@@ -12,8 +12,8 @@ import { expect, type Locator, type Page } from "@playwright/test";
  *
  * Cómo: se reintenta clic + comprobación hasta que lo esperado aparece. Antes de cada clic se mira
  * si ya llegó, para no pulsar un control que el primer clic ya hizo desaparecer (la navegación) ni
- * pulsar dos veces cuando el primer clic solo fue lento. Por eso NO sirve para un control que
- * alterna (abre/cierra): ahí un segundo clic deshace el primero.
+ * pulsar dos veces cuando el primer clic solo fue lento. Por eso `abrirCon` NO sirve para un control
+ * que alterna (abre/cierra): ahí un segundo clic deshace el primero. Para esos está `desplegar`.
  *
  * No esconde un fallo real: si lo esperado nunca llega, `toPass` agota su plazo y el test CAE con
  * el último error del clic o de la comprobación.
@@ -40,6 +40,23 @@ export async function abrirCon(
     control,
     () => abierto.isVisible(),
     () => expect(abierto).toBeVisible({ timeout: 2_000 }),
+    timeout,
+  );
+}
+
+/**
+ * Despliega un control que alterna hasta que su `aria-expanded` es `true`. Lee el estado del propio
+ * control, así que solo pulsa si sigue cerrado (medido en SLT-73: tras el clic perdido, `aria-expanded`
+ * seguía en `false`, y las lecturas del montaje llegaban después del clic).
+ */
+export async function desplegar(
+  control: Locator,
+  { timeout = 30_000 }: { timeout?: number } = {},
+): Promise<void> {
+  await pulsarHasta(
+    control,
+    async () => (await control.getAttribute("aria-expanded", { timeout: 2_000 })) === "true",
+    () => expect(control).toHaveAttribute("aria-expanded", "true", { timeout: 2_000 }),
     timeout,
   );
 }

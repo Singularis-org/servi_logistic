@@ -12,10 +12,11 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTestConEspia,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
   type EventoSqlDeTest,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 /**
  * FEATURE 486 — las proyecciones de cierre leen TODAS las evidencias de una gestion, EJECUTADO
@@ -78,17 +79,16 @@ describeSiHayBase("486 — evidencias de una gestion en los cierres, contra Post
   beforeAll(async () => {
     ({ prisma, eventos } = crearPrismaDeTestConEspia());
 
-    const fks = await fksDeOrden(prisma);
-    if (fks === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar el corpus. " +
-          "Corre `pnpm run db:seed` antes de esta suite.",
-      );
+    // SLT-180 (R1042): ya no se leen «la primera orden» ni «el primer usuario» de la base. De la
+    // base solo se leen catalogos por su clave; zona, tienda y mensajero se siembran en la tx.
+    const catalogo = {
+      cedula: await prisma.tipoIdentificacion.findUnique({ where: { value: "cedula" }, select: { id: true } }),
+      adminTienda: await prisma.rol.findUnique({ where: { value: "adminTienda" }, select: { id: true } }),
+      mensajero: await prisma.rol.findUnique({ where: { value: "mensajero" }, select: { id: true } }),
+    };
+    for (const [clave, fila] of Object.entries(catalogo)) {
+      if (fila === null) throw new Error(`falta «${clave}» en el catalogo: corre \`pnpm run db:seed\`.`);
     }
-    const plantilla = await prisma.usuario.findFirst({
-      select: { tipoIdentificacionId: true, rolId: true, passwordHash: true },
-    });
-    if (plantilla === null) throw new Error("la tabla `usuario` esta vacia: corre las semillas.");
     const estatus = await prisma.orderStatus.findFirst({
       where: { value: "en_reparto" },
       select: { id: true },
@@ -98,25 +98,35 @@ describeSiHayBase("486 — evidencias de una gestion en los cierres, contra Post
     conCorpus = (fn) =>
       enTransaccionRevertida(prisma, async (tx) => {
         await serializarEscriturasReales(tx);
+        // SLT-180 (R1044): siembra propia + control positivo que nombra la fila.
+        const fks = await crearFksDeOrden(tx);
+        expect(
+          await tx.zona.count({ where: { id: fks.zonaId } }),
+          "SLT-180: la zona sembrada no esta en la base",
+        ).toBe(1);
 
-        const nuevoUsuario = async (clave: string, nombre: string) =>
+        const nuevoUsuario = async (clave: string, nombre: string, rolId: string) =>
           (
             await tx.usuario.create({
               data: {
                 nombre,
                 email: `u-${clave}-${SUFIJO}@ejemplo.test`,
                 telefono: "88880000",
-                passwordHash: plantilla.passwordHash,
+                passwordHash: "x",
                 cedula: `C-${clave}-${SUFIJO}`,
-                tipoIdentificacionId: plantilla.tipoIdentificacionId,
-                rolId: plantilla.rolId,
+                tipoIdentificacionId: catalogo.cedula!.id,
+                rolId,
               },
               select: { id: true },
             })
           ).id;
 
-        const tienda = await nuevoUsuario("tienda", "Tienda 486");
-        const mensajero = await nuevoUsuario("mensajero", "Mensajero 486");
+        const tienda = await nuevoUsuario("tienda", "Tienda 486", catalogo.adminTienda!.id);
+        const mensajero = await nuevoUsuario("mensajero", "Mensajero 486", catalogo.mensajero!.id);
+        expect(
+          await tx.usuario.count({ where: { id: { in: [tienda, mensajero] } } }),
+          "SLT-180: la tienda y el mensajero sembrados no estan en la base",
+        ).toBe(2);
 
         const tarifa = await tx.tarifa.create({
           data: {
@@ -317,7 +327,7 @@ describeSiHayBase("486 — evidencias de una gestion en los cierres, contra Post
 
   it("R1/R4/R5/R6: el detalle de cierre de mensajero (admin) trae las 3 rutas de A en orden, B=[portada], C=[]", async () => {
     await conCorpus(async (ctx) => {
-      const r = await ctx.admin.findCierreByIdEnAlcance(ctx.cierreId, ctx.alcance);
+      const r = await ctx.admin.findCierreByIdEnAlcance(ctx.cierreId, ctx.alcance, ZONA_CR);
       expect(r).not.toBeNull();
       afirmarConjunto(r!.gestiones, ctx.delCierre, "cierre");
     });
@@ -325,7 +335,7 @@ describeSiHayBase("486 — evidencias de una gestion en los cierres, contra Post
 
   it("R2/R4/R5/R6: el detalle de cierre de bodega trae las 3 rutas de A en orden", async () => {
     await conCorpus(async (ctx) => {
-      const r = await ctx.bodega.findCierreBodegaConDetalle(ctx.cierreBodegaId);
+      const r = await ctx.bodega.findCierreBodegaConDetalle(ctx.cierreBodegaId, ZONA_CR, { lectura: "toda_la_empresa" });
       expect(r).not.toBeNull();
       expect(r!.cierresDia).toHaveLength(1);
       afirmarConjunto(r!.cierresDia[0]!.gestiones, ctx.delCierre, "cierre");
@@ -334,7 +344,7 @@ describeSiHayBase("486 — evidencias de una gestion en los cierres, contra Post
 
   it("R3/R4/R5/R6: el cierre pasado del mensajero (y la correccion 477) trae las 3 rutas", async () => {
     await conCorpus(async (ctx) => {
-      const r = await ctx.mensajero.findCierrePropioConGestiones(ctx.cierreId, ctx.mensajeroId);
+      const r = await ctx.mensajero.findCierrePropioConGestiones(ctx.cierreId, ctx.mensajeroId, ZONA_CR);
       expect(r).not.toBeNull();
       afirmarConjunto(r!.gestiones, ctx.delCierre, "cierre");
     });
@@ -342,7 +352,7 @@ describeSiHayBase("486 — evidencias de una gestion en los cierres, contra Post
 
   it("R3/R4/R5/R6: la vista en vivo del mensajero trae las 3 rutas", async () => {
     await conCorpus(async (ctx) => {
-      const r = await ctx.mensajero.findGestionesPendientes(ctx.mensajeroId);
+      const r = await ctx.mensajero.findGestionesPendientes(ctx.mensajeroId, ZONA_CR);
       afirmarConjunto(r, ctx.enVivo, "vivo");
     });
   });
@@ -351,7 +361,7 @@ describeSiHayBase("486 — evidencias de una gestion en los cierres, contra Post
     await conCorpus(async (ctx) => {
       const medir = async (cierreId: string) => {
         const antes = eventos.length;
-        const r = await ctx.admin.findCierreByIdEnAlcance(cierreId, ctx.alcance);
+        const r = await ctx.admin.findCierreByIdEnAlcance(cierreId, ctx.alcance, ZONA_CR);
         const consultas = eventos.slice(antes).filter((e) => /gestion_orden_evidencia/.test(e.query));
         return { r, total: eventos.length - antes, deEvidencia: consultas.length };
       };

@@ -7,7 +7,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { CascadasCierreMensajero } from "@/app/(app)/cierres-admin/_components/CascadasCierreMensajero";
 import {
   COBROS_TITULO,
   COBROS_TOTAL_LABEL,
@@ -16,7 +15,6 @@ import {
   FLETE_DEV_CON_IVA_LABEL,
   FLETE_NO_ENTREGADAS_CON_IVA_LABEL,
   FLETE_RECHAZO_LABEL,
-  FLETE_RECHAZO_NO_DEDUCIBLE_NOTA,
   FULFILLMENT_FUERA_DEL_TOTAL_TITULO,
   IVA_FLETE_RECHAZO_LABEL,
   SIN_TARIFA_CONGELADA_NOTA,
@@ -29,7 +27,6 @@ import {
   GestionesPorResultado,
 } from "@/app/(app)/cierres-admin/_components/cierre-factura";
 import {
-  FLETE_NO_ENTREGADAS_NOTA,
   FULFILLMENT_COL,
   fleteDevConIvaDeGestion,
   fleteNoEntregaLabel,
@@ -306,35 +303,6 @@ describe("SLT-54 R65 — el flete que no es de entrega nombra lo que suma", () =
     expect(screen.queryByText(FLETE_NO_ENTREGADAS_CON_IVA_LABEL)).toBeNull();
   });
 
-  const cascadas = (modeloNuevo?: boolean) => (
-    <CascadasCierreMensajero
-      mensajeroNombre="Beto"
-      estado="solicitado"
-      general="25000.00"
-      totalesIngreso={TOTALES}
-      totalPagoMensajero="100.00"
-      totalIngresoBodegaRechazos="0.00"
-      pagoTienda="22000.00"
-      cobradoSobreRecaudado="2486.00"
-      ivaFacturado="364.00"
-      netoEmpresa="2700.00"
-      ganaLaTienda="21836.00"
-      fleteRechazoYaCobradoATienda={false}
-      partesPorTienda={[]}
-      modeloNuevo={modeloNuevo}
-    />
-  );
-
-  it("cascada de la tienda: rótulo y nota siguen al modelo", () => {
-    const { rerender } = render(cascadas(true));
-    expect(screen.getByText(FLETE_NO_ENTREGADAS_CON_IVA_LABEL)).toBeInTheDocument();
-    expect(screen.getByText(FLETE_NO_ENTREGADAS_NOTA)).toBeInTheDocument();
-    expect(screen.queryByText(FLETE_DEV_CON_IVA_LABEL)).toBeNull();
-    rerender(cascadas());
-    expect(screen.getByText(FLETE_DEV_CON_IVA_LABEL)).toBeInTheDocument();
-    expect(screen.getByText(FLETE_RECHAZO_NO_DEDUCIBLE_NOTA)).toBeInTheDocument();
-    expect(screen.queryByText(FLETE_NO_ENTREGADAS_NOTA)).toBeNull();
-  });
 });
 
 describe("SLT-54 R63 — el modelo viejo se ve como hoy", () => {

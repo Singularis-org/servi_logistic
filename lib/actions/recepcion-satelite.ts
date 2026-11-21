@@ -1,5 +1,6 @@
 "use server";
 
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { OrdenHistorialRepository } from "@/lib/repositories/OrdenHistorialRepository";
@@ -76,6 +77,9 @@ function buildService(): IRecepcionSateliteService {
       new OrdenDiaRepartoCambioRepository(prisma),
       new OrdenTraspasoRepository(prisma),
     ),
+    undefined, // el parametro opcional previo, con su valor por defecto
+    // SLT-42 (R22): la zona horaria del pais de la empresa.
+    construirReglasPaisEmpresa(prisma),
   );
 }
 
@@ -96,6 +100,8 @@ function buildAsignacionService(): IAsignacionSateliteService {
       new OrdenDiaRepartoCambioRepository(prisma),
       new OrdenTraspasoRepository(prisma),
     ),
+    // SLT-42 (R22): la zona horaria del pais de la empresa.
+    construirReglasPaisEmpresa(prisma),
   );
 }
 

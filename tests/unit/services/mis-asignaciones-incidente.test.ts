@@ -15,6 +15,7 @@ import { CAUSA_INCIDENTE_SEED } from "@/lib/types/causa-incidente";
 import { fakeIntentosEnLote } from "@/tests/fixtures/intentos-entrega";
 import { SIN_BLOQUEO } from "@/lib/utils/bloqueo-cierre";
 import { bloqueoConVencido } from "@/tests/fixtures/bloqueo-cierre";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // Feature 158 (R6/R7/R8/R10/R11) — el SERVICE del reporte de incidente del mensajero. Dobles
 // del repo/storage (nada de DB real): lo que se afirma es el `GestionOrdenData` EMITIDO hacia
@@ -110,6 +111,7 @@ function newService(
     rutaRepo,
     metaRepo,
     fakeIntentosEnLote(),
+    reglasPaisFijas(),
   );
   return { service, ordenRepo, storage, signed };
 }
@@ -190,6 +192,7 @@ describe("Feature 158 · R6 — la gestion y la transicion viajan en UNA sola tr
         findMarcarLuegoByMensajero: vi.fn(async () => new Set<string>()),
       },
       fakeIntentosEnLote(),
+      reglasPaisFijas(),
     );
 
     const r = await service.gestionar(incidente(), MENSAJERO);

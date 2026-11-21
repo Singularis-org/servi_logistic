@@ -14,7 +14,7 @@ import {
   leerDescriptivosDeOrdenes,
 } from "@/lib/repositories/CierreDiaRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
-import { planificarReconciliacion, type TxDeReconciliacion } from "@/lib/repositories/ZonaRepository";
+import { planificarReconciliacion, type TxDeReconciliacion } from "@/lib/repositories/_shared/reconciliar-zona-ordenes";
 import type { NivelGeografico } from "@/lib/types/geografia-nodo";
 import { CONCEPTO_CONGELADO_SELECT, tarifaDe } from "@/lib/utils/cierre-detalle";
 import { derivarIngresoOrden } from "@/lib/utils/ingreso-empresa";

@@ -113,6 +113,35 @@ export interface PosOrderCardProps {
    * directo que nadie pidió. Para hablar con él ya está el hilo de notas de la orden.
    */
   mensajero?: string | null;
+  /**
+   * SLT-156 (R508) — vista Detalle COMPACTA, solo la lee `PosOrderCardDetalle`: una fila
+   * (parada · guía y destinatario · «Valor a cobrar») que al tocarla despliega el resto, las
+   * `acciones` incluidas. Opcional y apagada por defecto: Novedades (la tienda) y las pantallas
+   * que todavía no la adoptaron siguen con la fila de siempre.
+   */
+  compacta?: boolean;
+  /**
+   * SLT-189 (R790-R792, R800, DS2) — fila compacta de REPARTO, solo la lee `PosOrderCardDetalle`
+   * con `compacta`: arriba la guía (`numGuia ?? numRemision`) y debajo «destinatario · {dato}»,
+   * donde el dato es la dirección o la tienda. Ausente = la fila de hoy (remisión y destinatario
+   * solo), la que siguen usando Recoger y Recolección (R794).
+   */
+  filaReparto?: "direccion" | "tienda";
+  /**
+   * SLT-190 (R855-R857, DS3) — posición de la orden en la LISTA VISIBLE (1..n), con `total` como n.
+   * Solo la leen Mosaico y Detalle, y solo sin `mostrarRuta`: no es una parada (estas órdenes no
+   * entran en la ruta), así que su nombre accesible es «Orden {n} de {total}», sin «Parada» ni
+   * «Pendiente de optimizar». Ausente = como hoy (sin número). La calcula el consumidor sobre lo que
+   * deja a la vista su buscador, para que la numeración no tenga huecos.
+   */
+  posicion?: number;
+  /**
+   * SLT-190 (R862-R865, DS5, DS6) — fila compacta de RECOLECCIÓN, solo la lee `PosOrderCardDetalle`
+   * con `compacta`: remisión, destinatario, la tienda (P3: solo su nombre) y el nombre vigente del
+   * estado, plegados. `sufijo` se pinta tras la tienda con « · » («Recogido a las {hora}» en
+   * «Recogidos en tienda hoy»). Ausente = la fila de hoy, la que sigue usando Recoger (R866).
+   */
+  filaRecoleccion?: { sufijo?: ReactNode };
 }
 
 export function PosOrderCard({

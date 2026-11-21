@@ -1,32 +1,24 @@
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { formatearConteo } from "@/lib/planes/consumo";
-import { apiKeysYaPasadas, ordenesYaPasadas, rolYaPasado } from "@/lib/planes/mensajes";
+import { apiKeysYaPasadas, rolYaPasado } from "@/lib/planes/mensajes";
 import type { TopeExcedido } from "@/lib/types/planes";
 
 /**
- * Ajuste planes-custom (D12): si no se pudo leer el día del siguiente ciclo, el aviso de órdenes dice
- * «hasta el inicio del siguiente ciclo» en vez de inventar una fecha (el ciclo lo calcula el servidor).
+ * SLT-58 R37/R42 — el texto de un tope que la empresa ya pasa con el plan. Lo comparten el modal de
+ * primera asignación del detalle de empresa y el formulario del plan custom (ajuste planes-custom, D12
+ * y D13). SLT-86 (R8): sin el aviso de órdenes, que ya no tienen tope, ni la fecha del siguiente ciclo
+ * que solo servía a ese aviso.
  */
-const SIN_FECHA_DEL_SIGUIENTE_CICLO = "el inicio del siguiente ciclo";
-
-/**
- * SLT-58 R37/R42 — el texto de un tope que la empresa ya pasa con el plan. `siguienteCiclo` es la fecha
- * de P10 (`AAAA-MM-DD`), la que devuelve la vista previa. Lo comparten el modal de primera asignación
- * del detalle de empresa y el formulario del plan custom (ajuste planes-custom, D12 y D13).
- */
-export function textoDelAvisoDeTope(aviso: TopeExcedido, siguienteCiclo: string | null): string {
+export function textoDelAvisoDeTope(aviso: TopeExcedido): string {
   const usados = formatearConteo(aviso.usados);
   const maximo = formatearConteo(aviso.maximo);
-  if (aviso.tope === "ordenes") {
-    return ordenesYaPasadas(usados, maximo, siguienteCiclo ?? SIN_FECHA_DEL_SIGUIENTE_CICLO);
-  }
   if (aviso.tope === "api_keys") return apiKeysYaPasadas(usados, maximo);
   return rolYaPasado(usados, maximo, aviso.tope);
 }
 
 /** Los textos de varios avisos, en el orden en que llegan. */
-export function textosDeLosAvisosDeTopes(avisos: readonly TopeExcedido[], siguienteCiclo: string | null): string[] {
-  return avisos.map((a) => textoDelAvisoDeTope(a, siguienteCiclo));
+export function textosDeLosAvisosDeTopes(avisos: readonly TopeExcedido[]): string[] {
+  return avisos.map(textoDelAvisoDeTope);
 }
 
 /**

@@ -2,6 +2,11 @@
 // queries Prisma (docs/architecture.md): sin logica de negocio (la ventana de 24 h, el
 // dedupe y la resolucion D4 viven en `ChatWhatsappService`). La interfaz NO expone
 // `PrismaClient`.
+//
+// SLT-42 (R18, R19): los metodos que NORMALIZAN un telefono reciben las reglas del pais de la
+// empresa (`ReglasTelefono`). El repositorio no lee el pais: se las pasa su servicio, que las saca
+// de `IReglasPaisEmpresa` una vez por operacion.
+import type { ReglasTelefono } from "@/lib/utils/telefono-pais";
 
 /** DTO plano de un hilo de chat (nunca la entidad Prisma cruda). */
 export interface ChatConversacionDTO {
@@ -55,13 +60,17 @@ export interface IChatConversacionRepository {
    * `telefono_dest` coincide con el numero entrante. `null` si el numero no mapea a ninguna
    * orden viva y asignada (el service registra no-PII y sigue, sin romper el 200).
    */
-  resolverOrdenActivaPorNumero(telefonoE164: string): Promise<ResolucionOrdenEntrante | null>;
+  resolverOrdenActivaPorNumero(
+    telefonoE164: string,
+    reglas: ReglasTelefono,
+  ): Promise<ResolucionOrdenEntrante | null>;
 
   /**
    * R13: get-or-create del hilo por (orden, numero). Devuelve el hilo (nuevo o existente)
-   * con su `ultimoEntranteAt` actual. Idempotente ante el unico (orden_id, telefono_e164).
+   * con su `ultimoEntranteAt` actual. Idempotente ante el unico (orden_id, telefono_e164). El
+   * numero se normaliza con `reglas` antes de keyear (SLT-42, R18).
    */
-  upsertParaOrden(input: UpsertHiloInput): Promise<ChatConversacionDTO>;
+  upsertParaOrden(input: UpsertHiloInput, reglas: ReglasTelefono): Promise<ChatConversacionDTO>;
 
   /** R13: sella `ultimo_entrante_at` al llegar un entrante (fuente de la ventana 24 h). */
   marcarUltimoEntrante(conversacionId: string, ocurridoAt: Date): Promise<void>;
@@ -108,7 +117,7 @@ export interface IChatConversacionRepository {
    * NO toca el telefono de la orden ni el del cliente (R17): este repositorio solo escribe en
    * `chat_conversacion`.
    */
-  migrarTelefono(anterior: string, nuevo: string): Promise<number>;
+  migrarTelefono(anterior: string, nuevo: string, reglas: ReglasTelefono): Promise<number>;
 
   /**
    * SLT-40 (design §3, R4/R7/R13): el hilo del SALIENTE cuyo `wa_message_id` es `waMessageId`,

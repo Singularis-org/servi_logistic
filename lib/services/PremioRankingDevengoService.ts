@@ -27,6 +27,9 @@ import type {
   RegistrarPremioInput,
 } from "@/lib/types/premio-ranking-devengo";
 import { fechaComoDate, ventanaDelDia } from "@/lib/ranking/snapshot-dia";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
+import { ALCANCE_ACCESO_TOTAL } from "@/lib/services/alcance-cierres";
 
 /**
  * Feature 293 (T4.2, design §7) — EL MAESTRO REGISTRA EL PREMIO DEL PODIO COMO DEVENGO IMPUTADO
@@ -68,7 +71,14 @@ export class PremioRankingDevengoService implements IPremioRankingDevengoService
     >,
     private readonly caja: ICajaPremioRankingFeedService,
     private readonly runTransaction: PremioTxRunner,
+    /** SLT-42 (R22, R28): la zona del pais de la empresa, con la que se busca el cierre del dia. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
+
+  /** SLT-42 (R22, R28, R30): la zona de la empresa en curso, leida en cada operacion. */
+  private zona(operacion: string): Promise<string> {
+    return zonaDeLaEmpresa(this.reglasPais, `PremioRankingDevengoService.${operacion}`);
+  }
 
   /** R2 — «solo el maestro», expresado como en el resto de Wallet: `maestro` o `admin`. */
   private sinAcceso(actor: Actor): boolean {
@@ -137,9 +147,12 @@ export class PremioRankingDevengoService implements IPremioRankingDevengoService
       return { ...base, estado: registro, cierreEstado: null };
     }
 
+    // SLT-124 (R4): la misma resolucion que el registro. Solo cierres de la central: con solo
+    // cierres de satelite sale `sin_cierre`, y en el caso mixto manda el estado del central.
     const cierre = await this.cierreRepo.resolverCierreDelDia(
       fila.mensajeroId,
-      ventanaDelDia(fechaTexto),
+      ventanaDelDia(fechaTexto, await this.zona("listarPremiosDelDia")),
+      ALCANCE_ACCESO_TOTAL,
     );
     if (cierre === null) return { ...base, estado: "sin_cierre", cierreEstado: null };
     if (cierre.estado !== "aprobado") {
@@ -174,9 +187,12 @@ export class PremioRankingDevengoService implements IPremioRankingDevengoService
     const monto = fila.premioMonto as string;
 
     const fechaTexto = textoDeFecha(fila.fecha);
+    // SLT-124 (R1-R3): la central solo imputa el premio a un cierre suyo (`bodega_central`). Un
+    // cierre de satelite no lo paga nadie en el sistema (SLT-122, D1), asi que nunca se elige.
     const cierre = await this.cierreRepo.resolverCierreDelDia(
       fila.mensajeroId,
-      ventanaDelDia(fechaTexto),
+      ventanaDelDia(fechaTexto, await this.zona("registrarPremio")),
+      ALCANCE_ACCESO_TOTAL,
     );
     // R11: no hay cierre de ese dia. Causa EXACTA, no un error generico.
     if (cierre === null) return { status: "sin_cierre" };

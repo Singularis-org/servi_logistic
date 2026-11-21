@@ -10,6 +10,8 @@ import { RolValue } from "@prisma/client";
 import OrdenesPage from "@/app/(app)/ordenes/page";
 import { ToastProvider } from "@/providers/ToastProvider";
 import { listarOrdenes } from "@/lib/actions/ordenes";
+import { recibirEnBodegaCentralPorQr } from "@/lib/actions/recepcion-bodega-central";
+import { recibirEnOrigenPorQr } from "@/lib/actions/recepcion-origen";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { resolverAlcanceEtiquetasOrden } from "@/lib/services/alcance-etiquetas-orden";
 import type { CatalogoFiltrosOrdenesDTO } from "@/lib/types/filtros-ordenes";
@@ -20,6 +22,11 @@ import type {
 
 // SL-20 (R19): las pantallas nombran los niveles con los del país de la empresa. Estos casos son de
 // Costa Rica: el hook da sus etiquetas (sin proveedor daría las neutras, «Nivel 1»…).
+// SLT-42 (T5.7): la página lee la zona del país de la empresa de la sesión; aquí, la de Costa Rica.
+vi.mock("@/lib/actions/_shared/zona-del-borde", async () => {
+  const { ZONA_DE_CR } = await import("@/tests/fabricas/reglas-pais");
+  return { zonaDelBorde: async () => ZONA_DE_CR };
+});
 vi.mock("@/hooks/use-etiquetas-geograficas", async () => {
   const { ETIQUETAS_CR } = await import("../fabricas/etiquetas-geograficas");
   return { useEtiquetasGeograficas: () => ETIQUETAS_CR };
@@ -33,6 +40,10 @@ vi.mock("next/navigation", () => ({
 
 // La Server Action se mockea: los tests afirman el render de SWR (carga/datos/
 // vacío/error) sin DB ni sesión. `listarOrdenes` es el fetcher de la página.
+// SLT-159 (review m1): las dos acciones de recepción, dobladas para ver a cuál llega el diálogo continuo.
+vi.mock("@/lib/actions/recepcion-bodega-central", () => ({ recibirEnBodegaCentralPorQr: vi.fn() }));
+vi.mock("@/lib/actions/recepcion-origen", () => ({ recibirEnOrigenPorQr: vi.fn() }));
+
 vi.mock("@/lib/actions/ordenes", () => ({
   listarOrdenes: vi.fn(),
 }));
@@ -575,9 +586,12 @@ describe("OrdenesPage", () => {
       // 2026-08-10 (pedido humano: esa pantalla también acepta el número tecleado), y el
       // test pasó a fallar por un motivo que nada tenía que ver con lo que afirma. La
       // región es un discriminador que no depende de qué controles ofrezca cada una.
+      // SLT-202 «Escritorio igual a prod: tamaños de controles y un solo botón de recibir» (Carlos,
+      // 2026-11-18): «Recibir paquete» es el único disparador y abre la recepción continua (en
+      // jsdom, táctil: el diálogo). La región de la continua de la bodega central es la que manda.
       await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
       expect(
-        screen.getByRole("region", { name: "Recepción en bodega central" }),
+        await screen.findByRole("region", { name: "Recepción continua en bodega central" }),
       ).toBeInTheDocument();
       expect(screen.getByLabelText("Número de guía")).toBeInTheDocument();
       expect(
@@ -613,12 +627,11 @@ describe("OrdenesPage", () => {
     await renderPage();
     await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
     expect(
-      screen.queryByRole("region", { name: "Recepción en bodega central" }),
+      screen.queryByRole("region", { name: "Recepción continua en bodega central" }),
     ).toBeNull();
     expect(
-      screen.getByRole("region", { name: "Recepción en tienda por escaneo" }),
+      await screen.findByRole("region", { name: "Recepción continua en tienda" }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Recibir" })).toBeNull();
     cleanup();
 
     // Sin sesión (actor null): ni siquiera se ofrece el receptor.
@@ -630,6 +643,59 @@ describe("OrdenesPage", () => {
     expect(screen.queryByLabelText("Número de guía")).toBeNull();
     expect(screen.queryByRole("button", { name: "Recibir" })).toBeNull();
   });
+
+  // SLT-202 «Escritorio igual a prod: tamaños de controles y un solo botón de recibir» (Carlos,
+  // 2026-11-18): un solo disparador, «Recibir paquete», que con puntero fino es el enlace a la
+  // recepción continua. Enmienda R611 y R594 de SLT-159 (las dos entradas, una junto a otra).
+  it("SLT-202: maestro con puntero fino ve un solo «Recibir paquete», el enlace a la recepción continua", async () => {
+    listarOrdenesMock.mockResolvedValue({ status: "ok", items: [], page: 1, pageSize: 25, total: 0 });
+    const matchMediaOriginal = window.matchMedia;
+    window.matchMedia = ((consulta: string) => ({
+      matches: consulta === "(pointer: fine)",
+      media: consulta,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })) as unknown as typeof window.matchMedia;
+    try {
+      resolveActorMock.mockResolvedValueOnce({ usuarioId: "u", rol: RolValue.maestro });
+      await renderPage();
+
+      expect(screen.getByRole("link", { name: "Recibir paquete" })).toHaveAttribute(
+        "href",
+        "/ordenes/recibir",
+      );
+      expect(screen.getAllByRole("link", { name: /Recibir paquete/ })).toHaveLength(1);
+      expect(screen.queryByRole("button", { name: /Recibir paquete/ })).toBeNull();
+    } finally {
+      window.matchMedia = matchMediaOriginal;
+    }
+  });
+
+  it.each([
+    [RolValue.maestro, "central"],
+    [RolValue.adminTienda, "origen"],
+  ] as const)(
+    "SLT-159 (m1, R580) y SLT-202: %s, táctil, un solo «Recibir paquete» abre la continua y la lectura llega a la recepción de su rol",
+    async (rol, destino) => {
+      listarOrdenesMock.mockResolvedValue({ status: "ok", items: [], page: 1, pageSize: 25, total: 0 });
+      const central = vi.mocked(recibirEnBodegaCentralPorQr);
+      const origen = vi.mocked(recibirEnOrigenPorQr);
+      central.mockResolvedValue({ status: "no_encontrada" });
+      origen.mockResolvedValue({ status: "no_encontrada" });
+      const user = userEvent.setup();
+      resolveActorMock.mockResolvedValueOnce({ usuarioId: "u", rol });
+      await renderPage();
+
+      expect(screen.getAllByRole("button", { name: /Recibir paquete/ })).toHaveLength(1);
+      await user.click(screen.getByRole("button", { name: "Recibir paquete" }));
+      await user.type(screen.getByLabelText("Número de guía"), "1024{Enter}");
+
+      const [esperada, otra] = destino === "central" ? [central, origen] : [origen, central];
+      await vi.waitFor(() => expect(esperada).toHaveBeenCalledWith({ numGuia: 1024 }));
+      expect(otra).not.toHaveBeenCalled();
+      expect(screen.getByRole("log", { name: "Lecturas" })).toBeInTheDocument();
+    },
+  );
 
   it("seguridad: mensajero y adminSatelite NO alcanzan /ordenes (notFound)", async () => {
     // El mensajero opera en /mis-asignaciones y el adminSatelite en /recepcion-satelite;

@@ -12,6 +12,7 @@ import {
   llamadasIntentos,
   type IntentosSvcDoble,
 } from "@/tests/fixtures/intentos-entrega";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 const ADMIN: Actor = { usuarioId: "as1", rol: "adminSatelite" };
 const MAESTRO: Actor = { usuarioId: "u-maestro", rol: "maestro" };
@@ -31,6 +32,7 @@ type RepoMethods = Pick<
   | "findByNumGuiaForTransicion"
   | "findEstatusIdByValue"
   | "recibirEnSatelite"
+  | "resumenRecepcion"
 >;
 
 function transicionRow(overrides: Partial<OrdenTransicionRow> = {}): OrdenTransicionRow {
@@ -79,6 +81,8 @@ function fakeRepo(overrides: Partial<RepoMethods> = {}): RepoMethods {
     findByNumGuiaForTransicion: vi.fn(async () => transicionRow()),
     findEstatusIdByValue: vi.fn(async (v: string) => ESTATUS_ID_BY_VALUE[v] ?? null),
     recibirEnSatelite: vi.fn(async () => true),
+    // SLT-167: sin datos -> la respuesta sale sin `resumen` (R715); lo mide recepcion-resumen.test.ts.
+    resumenRecepcion: vi.fn(async () => null),
     ...overrides,
   };
 }
@@ -88,7 +92,7 @@ function newService(
   // Feature 160: derivador de intentos EN LOTE, dependencia REQUERIDA del constructor.
   intentos: IntentosSvcDoble = fakeIntentosEnLote(),
 ) {
-  return new RecepcionSateliteService(repo as unknown as IOrdenRepository, intentos);
+  return new RecepcionSateliteService(repo as unknown as IOrdenRepository, intentos, undefined, reglasPaisFijas());
 }
 
 // --- listar (R3/R4/R5/R6/R8/R9) ---

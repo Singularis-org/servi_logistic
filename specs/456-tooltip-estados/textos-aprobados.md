@@ -7,7 +7,7 @@ ni `ayuda_tienda` (los retira la 454). Mismo texto para todos los roles y el ras
 |---|---|
 | Por recolectar en tienda | El paquete está en la tienda y todavía no hay un mensajero asignado para recogerlo. |
 | Recolectando | Ya hay un mensajero asignado y va camino a la tienda a recoger el paquete. |
-| En ruta a bodega central | El mensajero recogió el paquete en la tienda y lo lleva a la bodega central. |
+| En ruta a bodega central | El paquete va camino a la bodega central. |
 | En preparación | El paquete ya está en nuestra bodega y se está preparando su guía para despacharlo. |
 | En bodega central | El paquete está en la bodega central, listo para asignarse a un mensajero o enviarse a una bodega satélite. |
 | En ruta a bodega satélite | El paquete viaja desde la bodega central hacia la bodega satélite de su zona. |
@@ -25,6 +25,9 @@ ni `ayuda_tienda` (los retira la 454). Mismo texto para todos los roles y el ras
 | Por devolver a tienda | El paquete devuelto está en la bodega central, esperando ser enviado a la tienda. |
 | Devolviendo a tienda | El paquete va camino de regreso a la tienda. También pasa aquí cuando la tienda cancela el envío. |
 | Devuelta a tienda | La tienda recibió de vuelta su paquete. Fin del recorrido. |
+
+Enmienda 2026-11-17 (SLT-197, D7 de Carlos): «En ruta a bodega central» pasa a «El paquete va camino a
+la bodega central.», porque ahora también llegan a ese estado los paquetes retirados de una satélite.
 
 ## Validado contra el código (2026-09-23)
 - Novedad: plazos en `lib/config/devolucion-sla.ts` (5 días `wrong_*`, 24 h `not_found`); decisión en

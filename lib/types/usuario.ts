@@ -4,11 +4,13 @@ import { usuariosConfig } from "@/lib/config/usuarios";
 import { ROL_LABELS } from "@/lib/auth/rol-label";
 import { esPlataforma } from "@/lib/auth/plataforma";
 import { strongPasswordSchema } from "@/lib/types/password-policy";
+import { crearConEnlaceSchema } from "@/lib/types/password-reset";
 import type { ListarCompletoResult } from "@/lib/types/descarga-listado";
 import type { ListarPaginadoResult } from "@/lib/types/listado-paginado";
 import type { ResultadoTopePlan } from "@/lib/types/planes";
 import type {
   RolItem,
+  TipoIdentificacionItem,
   UsuarioListItem,
   UsuarioPublico,
 } from "@/lib/interfaces/repositories/IUserRepository";
@@ -23,17 +25,26 @@ import type { ImpactoSalidaAdminSatelite } from "@/lib/interfaces/services/IUsua
 export const USUARIO_SORT_FIELDS = ["createdAt", "nombre", "email", "estado"] as const;
 export type UsuarioSortField = (typeof USUARIO_SORT_FIELDS)[number];
 
+// SLT-42 (design §4.2): el borde solo valida la FORMA del telefono y del documento. La regla depende
+// del pais de la empresa, que el schema no conoce, y la aplica `UsuarioService` (R10, R14, R17). El
+// tope es el `largo_max` mas alto que admite el catalogo (CHECK de `tipo_identificacion`); al
+// telefono le sobra para un numero internacional con separadores.
+export const USUARIO_DOCUMENTO_MAX_CHARS = 30;
+export const USUARIO_TELEFONO_MAX_CHARS = 30;
+const telefonoForma = z.string().min(1).max(USUARIO_TELEFONO_MAX_CHARS);
+const documentoForma = z.string().min(1).max(USUARIO_DOCUMENTO_MAX_CHARS);
+
 // Campos base comunes a la creacion (cualquier rol, set base — Decision 2).
 const baseCrearFields = {
   nombre: z.string().min(1),
   email: z.string().email(),
-  telefono: z.string().min(1),
+  telefono: telefonoForma,
   tipoIdentificacionId: z.string().min(1),
-  cedula: z.string().min(1),
+  cedula: documentoForma,
   rolId: z.string().min(1),
-  // Feature 27/R10: flag de fulfillment de tienda, booleano opcional en el borde.
-  // El default (false) y la invariante por rol (R4a) los aplica el service.
-  fulfillment: z.boolean().optional(),
+  // SLT-94 (R1/R3/R4): marca «se recoge en tienda», booleano opcional en el borde.
+  // El default («si») y la invariante por rol (solo adminTienda puede «no») los aplica el service.
+  seRecogeEnTienda: z.boolean().optional(),
   // Feature 24/R27/R28: zona del usuario. Solo mensajero/adminSatelite la
   // conservan; el service valida existencia y aplica la invariante por rol.
   zonaId: z.string().min(1).nullable().optional(),
@@ -65,18 +76,19 @@ export const crearUsuarioSchema = z.discriminatedUnion("passwordMode", [
 ]);
 export type CrearUsuarioInput = z.infer<typeof crearUsuarioSchema>;
 
-// R16: edicion solo de campos editables (nombre/telefono/rolId/
-// tipoIdentificacionId). NUNCA email/cedula/password. `strict` rechaza cualquier
-// otro campo (incluye intentos de tocar email/cedula/password).
+// R16: edicion solo de campos editables. NUNCA email ni password: `strict` los rechaza. SLT-221
+// (R1601, R1607): la cedula SI se corrige aqui; el correo solo cambia por su flujo de confirmacion.
 export const actualizarUsuarioSchema = z
   .object({
     nombre: z.string().min(1),
-    telefono: z.string().min(1),
+    telefono: telefonoForma,
+    // SLT-221 (R1601): misma forma que en el alta; el service la normaliza con la regla del tipo.
+    cedula: documentoForma,
     rolId: z.string().min(1),
     tipoIdentificacionId: z.string().min(1),
-    // Feature 27/R13: fulfillment editable; el service recalcula la invariante
-    // R4a segun el rol resultante. `.strict()` sigue rechazando email/cedula/password.
-    fulfillment: z.boolean(),
+    // SLT-94 (R4): marca «se recoge en tienda» editable; el service recalcula la invariante
+    // segun el rol resultante.
+    seRecogeEnTienda: z.boolean(),
     // Feature 24/R27/R28: zona editable (null la libera). El service valida
     // existencia y aplica la invariante por rol (solo mensajero/adminSatelite).
     zonaId: z.string().min(1).nullable(),
@@ -239,7 +251,7 @@ export type CambiarEstadoUsuarioResult =
   | ResultadoTopePlan
   | ActionError;
 export type ListarTiposIdentificacionResult =
-  | { status: "ok"; tipos: { id: string; value: string }[] }
+  | { status: "ok"; tipos: TipoIdentificacionItem[] }
   | ActionError;
 export type ListarRolesResult = { status: "ok"; roles: RolItem[] } | ActionError;
 
@@ -270,3 +282,42 @@ export type RestablecerContrasenaResult =
   | { status: "ok"; usuarioId: string; generatedPassword: string; sesionesRevocadas: number }
   | { status: "self_reset_forbidden" } // R5
   | ActionError; // unauthenticated (R1) | forbidden (R2) | not_found (R4) | validation_error (R6)
+
+// SLT-221 (design §3.2): el maestro pide el correo nuevo. Misma forma que el alta; `.strict()`.
+export const solicitarCambioCorreoSchema = z.object({ email: z.string().email() }).strict();
+export type SolicitarCambioCorreoInput = z.infer<typeof solicitarCambioCorreoSchema>;
+
+/** SLT-221 (design §3.2, R1618): lo que ve el maestro del pendiente. Nunca el id ni el hash. */
+export interface CambioCorreoPendienteDTO {
+  emailNuevo: string;
+  /** ISO 8601. */
+  expiraAt: string;
+  vencido: boolean;
+}
+
+export type SolicitarCambioCorreoResult =
+  | { status: "ok"; pendiente: CambioCorreoPendienteDTO }
+  | { status: "envio_fallido" } // R1617
+  // Review PR 2 (m5): dos pedidos a la vez del mismo usuario; la pantalla muestra `mensaje`.
+  | { status: "conflict"; campo: "email"; mensaje: string }
+  | ActionError;
+export type CancelarCambioCorreoResult = { status: "ok" } | ActionError;
+export type ObtenerCambioCorreoPendienteResult =
+  | { status: "ok"; pendiente: CambioCorreoPendienteDTO | null }
+  | ActionError;
+
+/**
+ * SLT-221 (design §3.3): confirmar un cambio de correo con su enlace. El campo es el MISMO del canje
+ * de contraseña, no una copia del regex.
+ */
+export const confirmarCambioCorreoSchema = z
+  .object({ enlace: crearConEnlaceSchema.shape.enlace })
+  .strict();
+export type ConfirmarCambioCorreoInput = z.infer<typeof confirmarCambioCorreoSchema>;
+
+/** SLT-221 (R1622-R1624): no devuelve ni el correo ni el nombre. */
+export type ConfirmarCambioCorreoResult =
+  | { status: "ok" }
+  | { status: "invalid_or_expired" } // R1623, R1625, R1629
+  | { status: "correo_en_uso" } // R1624
+  | { status: "validation_error" };

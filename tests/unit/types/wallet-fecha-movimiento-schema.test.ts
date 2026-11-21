@@ -7,6 +7,7 @@ import {
 } from "@/lib/types/wallet";
 import { walletMovimientoConfig } from "@/lib/config/wallet-movimiento";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /**
  * Ficha 334 / T A.2 (R19/R20/R21) — la FECHA del movimiento manual en el BORDE.
  *
@@ -36,13 +37,13 @@ afterEach(() => {
 describe("fechaMovimientoSchema — el dia en curso y el futuro (R19/R20)", () => {
   it("acepta el dia calendario EN CURSO de Costa Rica", () => {
     conRelojEn("2026-08-29T15:00:00.000Z"); // 09:00 CR del 29
-    expect(fechaMovimientoSchema.safeParse("2026-08-29").success).toBe(true);
-    expect(esFechaMovimientoValida("2026-08-29")).toBe(true);
+    expect(fechaMovimientoSchema(ZONA_CR).safeParse("2026-08-29").success).toBe(true);
+    expect(esFechaMovimientoValida("2026-08-29", ZONA_CR)).toBe(true);
   });
 
   it("R20: rechaza MAÑANA, y el mensaje dice por que", () => {
     conRelojEn("2026-08-29T15:00:00.000Z");
-    const r = fechaMovimientoSchema.safeParse("2026-08-30");
+    const r = fechaMovimientoSchema(ZONA_CR).safeParse("2026-08-30");
     expect(r.success).toBe(false);
     expect(r.error?.issues.map((i) => i.message)).toContain(
       "La fecha no puede ser posterior a hoy.",
@@ -51,8 +52,8 @@ describe("fechaMovimientoSchema — el dia en curso y el futuro (R19/R20)", () =
 
   it("R22: acepta una fecha PASADA dentro de la ventana", () => {
     conRelojEn("2026-08-29T15:00:00.000Z");
-    expect(fechaMovimientoSchema.safeParse("2026-08-28").success).toBe(true);
-    expect(problemaDeFechaMovimiento("2026-08-28")).toBeNull();
+    expect(fechaMovimientoSchema(ZONA_CR).safeParse("2026-08-28").success).toBe(true);
+    expect(problemaDeFechaMovimiento("2026-08-28", ZONA_CR)).toBeNull();
   });
 });
 
@@ -61,14 +62,14 @@ describe("fechaMovimientoSchema — forma y calendario (R21)", () => {
     conRelojEn("2026-08-29T15:00:00.000Z");
     // Control: la forma es correcta — o sea que lo que rechaza es el calendario, no el regex.
     expect(/^\d{4}-\d{2}-\d{2}$/.test("2026-02-31")).toBe(true);
-    const r = fechaMovimientoSchema.safeParse("2026-02-31");
+    const r = fechaMovimientoSchema(ZONA_CR).safeParse("2026-02-31");
     expect(r.success).toBe(false);
     expect(r.error?.issues.map((i) => i.message)).toContain("Esa fecha no existe en el calendario.");
   });
 
   it("R21: rechaza un formato que no es YYYY-MM-DD, con UN solo mensaje", () => {
     conRelojEn("2026-08-29T15:00:00.000Z");
-    const r = fechaMovimientoSchema.safeParse("29-08-2026");
+    const r = fechaMovimientoSchema(ZONA_CR).safeParse("29-08-2026");
     expect(r.success).toBe(false);
     // Un solo issue: el de la forma. Sin la salida temprana del `superRefine`, zod v4 emitiria
     // ademas «esa fecha no existe» y el dialogo pintaria dos avisos que dicen lo mismo.
@@ -79,8 +80,8 @@ describe("fechaMovimientoSchema — forma y calendario (R21)", () => {
 
   it("rechaza el vacio y un texto cualquiera", () => {
     conRelojEn("2026-08-29T15:00:00.000Z");
-    expect(fechaMovimientoSchema.safeParse("").success).toBe(false);
-    expect(fechaMovimientoSchema.safeParse("ayer").success).toBe(false);
+    expect(fechaMovimientoSchema(ZONA_CR).safeParse("").success).toBe(false);
+    expect(fechaMovimientoSchema(ZONA_CR).safeParse("ayer").success).toBe(false);
   });
 });
 
@@ -96,13 +97,13 @@ describe("la ventana hacia atras (decision del leader, pregunta abierta 1)", () 
     // default de la ventana, este caso se pone rojo y hay que decidirlo a proposito en vez de
     // que la cota se mueva sola.
     expect(walletMovimientoConfig.DIAS_HACIA_ATRAS).toBe(30);
-    expect(primerDiaMovimientoAdmisible()).toBe("2026-07-30");
-    expect(fechaMovimientoSchema.safeParse("2026-07-30").success).toBe(true);
+    expect(primerDiaMovimientoAdmisible(ZONA_CR)).toBe("2026-07-30");
+    expect(fechaMovimientoSchema(ZONA_CR).safeParse("2026-07-30").success).toBe(true);
   });
 
   it("rechaza el dia ANTERIOR a la ventana, y el mensaje nombra el primer dia admisible", () => {
     conRelojEn("2026-08-29T15:00:00.000Z");
-    const r = fechaMovimientoSchema.safeParse("2026-07-29");
+    const r = fechaMovimientoSchema(ZONA_CR).safeParse("2026-07-29");
     expect(r.success).toBe(false);
     expect(r.error?.issues.map((i) => i.message)).toEqual([
       "No se admiten movimientos anteriores al 2026-07-30.",
@@ -111,8 +112,8 @@ describe("la ventana hacia atras (decision del leader, pregunta abierta 1)", () 
 
   it("rechaza una fecha de hace años — el caso que motivo la cota", () => {
     conRelojEn("2026-08-29T15:00:00.000Z");
-    expect(esFechaMovimientoValida("2019-03-04")).toBe(false);
-    expect(fechaMovimientoSchema.safeParse("2019-03-04").success).toBe(false);
+    expect(esFechaMovimientoValida("2019-03-04", ZONA_CR)).toBe(false);
+    expect(fechaMovimientoSchema(ZONA_CR).safeParse("2019-03-04").success).toBe(false);
   });
 });
 
@@ -126,14 +127,14 @@ describe("las 20:00 de Costa Rica — el dia NO se adelanta (R19/R20)", () => {
 
   it("a las 20:00 CR del 29, «hoy» sigue siendo el 29 y se acepta", () => {
     conRelojEn(VEINTE_HORAS_CR);
-    expect(fechaMovimientoSchema.safeParse("2026-08-29").success).toBe(true);
+    expect(fechaMovimientoSchema(ZONA_CR).safeParse("2026-08-29").success).toBe(true);
   });
 
   it("a las 20:00 CR del 29, el 30 es MAÑANA y se rechaza (el UTC ya dice 30)", () => {
     conRelojEn(VEINTE_HORAS_CR);
     // Control: el reloj UTC efectivamente ya marca el dia siguiente.
     expect(new Date().toISOString().slice(0, 10)).toBe("2026-08-30");
-    const r = fechaMovimientoSchema.safeParse("2026-08-30");
+    const r = fechaMovimientoSchema(ZONA_CR).safeParse("2026-08-30");
     expect(r.success).toBe(false);
     expect(r.error?.issues.map((i) => i.message)).toEqual([
       "La fecha no puede ser posterior a hoy.",
@@ -142,12 +143,12 @@ describe("las 20:00 de Costa Rica — el dia NO se adelanta (R19/R20)", () => {
 
   it("y a las 23:59 CR del 29 (05:59Z del 30) tampoco se ha adelantado", () => {
     conRelojEn("2026-08-30T05:59:00.000Z");
-    expect(esFechaMovimientoValida("2026-08-29")).toBe(true);
-    expect(esFechaMovimientoValida("2026-08-30")).toBe(false);
+    expect(esFechaMovimientoValida("2026-08-29", ZONA_CR)).toBe(true);
+    expect(esFechaMovimientoValida("2026-08-30", ZONA_CR)).toBe(false);
   });
 
   it("y a las 00:00 CR del 30 (06:00Z) SI se ha adelantado", () => {
     conRelojEn("2026-08-30T06:00:00.000Z");
-    expect(esFechaMovimientoValida("2026-08-30")).toBe(true);
+    expect(esFechaMovimientoValida("2026-08-30", ZONA_CR)).toBe(true);
   });
 });

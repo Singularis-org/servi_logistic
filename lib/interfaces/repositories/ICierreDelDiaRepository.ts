@@ -4,8 +4,14 @@
 //
 // Es una lectura NUEVA y no un metodo mas de `ICierresAdminRepository` porque la pregunta es otra:
 // aquel resuelve «los cierres del ALCANCE de un admin»; este resuelve «que cierre agrupa el
-// trabajo de este mensajero en esta fecha calendario», que no depende de ningun alcance ni de
-// ningun actor.
+// trabajo de este mensajero en esta fecha calendario».
+//
+// SLT-124 (R1-R5): desde esta ficha la resolucion SI depende del alcance. La central solo cuelga
+// un premio de un cierre suyo (`bodega_central`); un cierre de satelite no lo paga nadie en el
+// sistema (SLT-122, D1). El alcance va en el WHERE, y no como filtro en memoria, para que el
+// desempate elija entre los cierres del alcance y el caso mixto resuelva el central (R3).
+
+import type { Alcance } from "@/lib/interfaces/repositories/ICierresAdminRepository";
 
 /** El cierre elegido para un dia, con su estado. Quien decide si sirve es el servicio. */
 export interface CierreDelDiaRow {
@@ -34,5 +40,7 @@ export interface ICierreDelDiaRepository {
   resolverCierreDelDia(
     mensajeroId: string,
     ventana: { desde: Date; hasta: Date },
+    /** SLT-124 (R1, R5): obligatorio y sin valor por defecto, para que ningun llamador lo olvide. */
+    alcance: Alcance,
   ): Promise<CierreDelDiaRow | null>;
 }

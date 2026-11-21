@@ -15,6 +15,7 @@ const {
   clearMock,
   decodeCallback,
   configEscaneo,
+  configConstructor,
 } = vi.hoisted(
   () => ({
     errorMock: vi.fn(),
@@ -31,6 +32,8 @@ const {
         };
       },
     },
+    // Lo que el componente pasa al constructor de `Html5Qrcode` (SLT-157, R564).
+    configConstructor: { current: undefined as unknown },
   }),
 );
 
@@ -50,6 +53,9 @@ vi.mock("html5-qrcode", () => ({
     start = startMock;
     stop = stopMock;
     clear = clearMock;
+    constructor(_regionId: string, config?: unknown) {
+      configConstructor.current = config;
+    }
   },
 }));
 
@@ -64,6 +70,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   decodeCallback.current = null;
   configEscaneo.current = null;
+  configConstructor.current = undefined;
   startMock.mockImplementation(
     async (
       _config: unknown,
@@ -127,6 +134,26 @@ describe("QrScanner", () => {
     expect(
       screen.getByRole("button", { name: "Escanear con cámara" }),
     ).toHaveAttribute("aria-pressed", "false");
+  });
+
+  // SLT-157 (R564): la etiqueta lleva QR y CODE128 con el mismo dato; el visor
+  // declara exactamente esos dos formatos, ni uno más.
+  it("R564: decodifica solo QR y CODE128", async () => {
+    const user = userEvent.setup();
+    render(<QrScanner onDecoded={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: "Escanear con cámara" }));
+    await vi.waitFor(() => expect(decodeCallback.current).not.toBeNull());
+
+    // Los nombres salen de la lib REAL (no del doble): si una versión renumerara el
+    // enum, los literales del componente dejarían de ser QR y CODE128 y esto se pone rojo.
+    const { Html5QrcodeSupportedFormats } =
+      await vi.importActual<typeof import("html5-qrcode")>("html5-qrcode");
+    const config = configConstructor.current as { formatsToSupport?: number[] };
+    const nombres = (config.formatsToSupport ?? []).map(
+      (f) => Html5QrcodeSupportedFormats[f],
+    );
+    expect([...nombres].sort()).toEqual(["CODE_128", "QR_CODE"]);
   });
 
   it("si la cámara falla muestra el mensaje de error por defecto y la cierra", async () => {
@@ -256,5 +283,92 @@ describe("QrScanner", () => {
 
     await vi.waitFor(() => expect(stopMock).toHaveBeenCalled());
     await vi.waitFor(() => expect(clearMock).toHaveBeenCalled());
+  });
+});
+
+describe("QrScanner — SLT-160 (D4) `encendidaAlMontar`", () => {
+  it("arranca la cámara sin clic y entrega la lectura", async () => {
+    const onDecoded = vi.fn();
+    render(<QrScanner onDecoded={onDecoded} encendidaAlMontar />);
+
+    expect(screen.queryByRole("button", { name: "Escanear con cámara" })).toBeNull();
+    await vi.waitFor(() => expect(startMock).toHaveBeenCalledTimes(1));
+    await decodificar("1024");
+    expect(onDecoded).toHaveBeenCalledWith("1024");
+  });
+
+  it("sin la prop arranca apagada, como siempre", () => {
+    render(<QrScanner onDecoded={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Escanear con cámara" })).toBeInTheDocument();
+    expect(startMock).not.toHaveBeenCalled();
+  });
+});
+
+// SLT-159 «Escaneo continuo en recepciones y recogidas» — la cámara continua.
+describe("QrScanner — modo continuo (R588, R589)", () => {
+  it("R588: en continuo, tras dos textos distintos la cámara sigue encendida y entrega los dos", async () => {
+    const onDecoded = vi.fn();
+    render(<QrScanner onDecoded={onDecoded} continuo encendidaAlMontar />);
+    await vi.waitFor(() => expect(decodeCallback.current).not.toBeNull());
+
+    await decodificar("1024");
+    await decodificar("2048");
+
+    expect(onDecoded.mock.calls).toEqual([["1024"], ["2048"]]);
+    expect(stopMock).not.toHaveBeenCalled();
+    expect(screen.getByRole("region", { name: "Visor de cámara QR" })).toBeInTheDocument();
+  });
+
+  it("R588: en guía suelta, tras una lectura la cámara se apaga", async () => {
+    const onDecoded = vi.fn();
+    render(<QrScanner onDecoded={onDecoded} encendidaAlMontar />);
+    await vi.waitFor(() => expect(decodeCallback.current).not.toBeNull());
+
+    await decodificar("1024");
+
+    expect(onDecoded).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(stopMock).toHaveBeenCalled());
+  });
+
+  describe("R589: el mismo texto antes de 3 s se ignora", () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(2026, 10, 16, 17, 42, 0));
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    async function montarYLeer(segundaTras: number, segundo: string) {
+      const onDecoded = vi.fn();
+      render(<QrScanner onDecoded={onDecoded} continuo encendidaAlMontar />);
+      await vi.waitFor(() => expect(decodeCallback.current).not.toBeNull());
+      await decodificar("1024");
+      vi.setSystemTime(Date.now() + segundaTras);
+      await decodificar(segundo);
+      return onDecoded;
+    }
+
+    it("mismo texto a 1 s: una entrega", async () => {
+      expect(await montarYLeer(1000, "1024")).toHaveBeenCalledTimes(1);
+    });
+
+    it("mismo texto a 3,1 s: dos entregas", async () => {
+      expect(await montarYLeer(3100, "1024")).toHaveBeenCalledTimes(2);
+    });
+
+    it("texto distinto a 0,5 s: dos entregas", async () => {
+      expect(await montarYLeer(500, "2048")).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("«Cerrar cámara» llama a alCerrar", async () => {
+    const user = userEvent.setup();
+    const alCerrar = vi.fn();
+    render(<QrScanner onDecoded={vi.fn()} continuo encendidaAlMontar alCerrar={alCerrar} />);
+
+    await user.click(screen.getByRole("button", { name: "Cerrar cámara" }));
+
+    expect(alCerrar).toHaveBeenCalledTimes(1);
   });
 });

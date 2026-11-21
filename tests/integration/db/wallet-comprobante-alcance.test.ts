@@ -18,6 +18,18 @@ import type { AdjuntarComprobanteResult, VerComprobanteResult } from "@/lib/type
 
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest } from "./_postgres-real";
 import { cargarCatalogo459, enTransaccionRevertida459, montarServicios459, sembrarEscenario459 } from "./_fixtures/caja-459";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+
+// SLT-42 (T5.4): la zona del pais de la empresa es la de CR, como antes. Las reglas reales leen el pais
+// de la empresa en curso con el cliente global, que no ve la empresa de una transaccion revertida ni
+// tiene empresa fuera de `conEmpresa`; la zona por pais la miden `hora-por-pais-wallet` y `demo-qa`.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
 
 // SL-23 (design §10): la puerta de módulo con todo encendido; aquí no se prueba el módulo apagado.
 vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
@@ -103,8 +115,10 @@ describeSiHayBase("458-B/TB.10 — comprobante lateral: una vez, a su destino, y
           storage,
           urls,
           (fn) => s.cliente.$transaction((t) => fn(t)),
+          undefined,
+          reglasPaisFijas(),
         );
-        const como = (actor: Actor) => ({ getActor: async () => actor, service: servicio });
+        const como = (actor: Actor) => ({ reglasPais: reglasPaisFijas(), getActor: async () => actor, service: servicio });
         const tiendaA: Actor = { usuarioId: esc.tiendaA, rol: "adminTienda" };
         const tiendaB: Actor = { usuarioId: esc.tiendaB, rol: "adminTienda" };
 
@@ -115,7 +129,7 @@ describeSiHayBase("458-B/TB.10 — comprobante lateral: una vez, a su destino, y
         const claveSueldo = randomUUID();
         const nuevoSueldo = await registrarEgresoAdministrativoAction(
           { tipoEgreso: "sueldo", monto: "25.00", descripcion: "Sueldo sin anular", claveIdempotencia: claveSueldo, contraparteNombre: "Ana" },
-          { getActor: async () => esc.maestro, service: s.egresos },
+          { reglasPais: reglasPaisFijas(), getActor: async () => esc.maestro, service: s.egresos },
         );
         if (nuevoSueldo.status !== "ok") throw new Error(`sueldo: ${JSON.stringify(nuevoSueldo)}`);
         const sueldo = await tx.walletMovimiento.findFirstOrThrow({ where: { claveIdempotencia: claveSueldo }, select: { id: true } });

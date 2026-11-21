@@ -8,6 +8,7 @@ import {
   MSG_DIRECCION_NO_ENCONTRADA,
   MSG_UBICACION_NO_VERIFICADA,
 } from "@/app/(app)/_components/geocodificacion-motivo-messages";
+import { MSG_TOPE_INTENTOS_ASIGNACION } from "@/lib/services/mensajes-bloqueo";
 
 // Feature 93 (R9) — el mapeo de los 5 `motivo` del gate de coordenadas (92) a
 // los 2 mensajes de usuario vive en UN solo sitio y lo consultan los DOS mappers
@@ -174,5 +175,28 @@ describe("cada motivo del backend llega al usuario con su causa y su salida", ()
     expect(mensaje).toMatch(esperado);
     // Ninguno cae ya en el generico, que es lo que hacia el mensaje impreciso.
     expect(mensaje).not.toMatch(/ya no admite esta acción/i);
+  });
+});
+
+// SLT-77 (R42). El motivo sale de la constante que emite el servidor, para que el fragmento del
+// mapper no se quede atrás si ese texto cambia; lo esperado va a mano, es el contrato de la pantalla.
+describe("SLT-77 R42 · la orden agotada se dice en las dos pantallas de asignación", () => {
+  const ESPERADO =
+    "Alguna orden de la selección ya agotó sus intentos de entrega y no puede volver a salir a reparto. Quítala de la selección.";
+
+  it("R42: bodega central", () => {
+    expect(
+      guiaDecisionErrorMessage(
+        conflict(MSG_TOPE_INTENTOS_ASIGNACION, MSG_TOPE_INTENTOS_ASIGNACION),
+      ),
+    ).toBe(ESPERADO);
+  });
+
+  it("R42: bodega satélite", () => {
+    expect(
+      asignacionSateliteErrorMessage(
+        conflict(MSG_TOPE_INTENTOS_ASIGNACION, MSG_TOPE_INTENTOS_ASIGNACION),
+      ),
+    ).toBe(ESPERADO);
   });
 });

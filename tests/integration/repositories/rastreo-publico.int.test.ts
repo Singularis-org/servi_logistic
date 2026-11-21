@@ -3,6 +3,7 @@ import type { PrismaClient } from "@prisma/client";
 
 import { RastreoPublicoRepository } from "@/lib/repositories/RastreoPublicoRepository";
 import { RastreoPublicoService } from "@/lib/services/RastreoPublicoService";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 import type { RastreoPublicoConfig } from "@/lib/config/rastreo-publico";
 
 // Feature 229 — T2.7: el repositorio publico contra datos.
@@ -143,13 +144,12 @@ const CONFIG: RastreoPublicoConfig = {
   RATE_MAX: 8,
   RATE_WINDOW_MINUTES: 10,
   DIGITOS_SEGUNDO_FACTOR: 4,
-  ZONA_HORARIA: "America/Costa_Rica",
 };
 
 function build() {
   const { prisma, findUnique, findMany, queryRaw } = buildPrisma();
   const repo = new RastreoPublicoRepository(prisma);
-  return { repo, service: new RastreoPublicoService(repo, CONFIG), findUnique, findMany, queryRaw };
+  return { repo, service: new RastreoPublicoService(repo, CONFIG, reglasPaisFijas()), findUnique, findMany, queryRaw };
 }
 
 describe("R21 — la linea de tiempo sale en UNA consulta y ordenada asc", () => {

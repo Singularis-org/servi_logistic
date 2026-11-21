@@ -10,6 +10,7 @@ import { clavePar, elegirPorCascada, type ParTarifa } from "@/lib/utils/cascada-
 import { mapaViejo, tarifaVieja } from "../../fixtures/tarifa-tienda";
 import { ORIGENES_GESTION_FUERA_DEL_CIERRE } from "@/lib/types/orden-historial";
 import { delegadosDelCatalogo } from "@/tests/fixtures/doble-catalogo-geografico";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 // 💰 FICHA 337 (2026-08-31) — LA CUARTA CONDICION DEL PREDICADO DE PERTENENCIA AL CIERRE.
 //
@@ -40,6 +41,7 @@ const HOY_CR = new Date("2026-08-25T00:00:00.000Z");
 
 function detalleRow(overrides: Record<string, unknown> = {}) {
   return {
+    createdAt: new Date("2026-07-15T18:00:00.000Z"),
     id: "g1",
     ordenId: "o1",
     resultado: "entregado",
@@ -198,7 +200,7 @@ describe("💰 Feature 237 — `desdeAyudaTienda` en la fila del cierre (D6/R41)
     const prisma = conDosGestiones(["g-tienda"]);
     const repo = new CierreDiaRepository(prisma as unknown as PrismaClient, buildTarifaRepo());
 
-    const rows = await repo.findGestionesPendientes("m1");
+    const rows = await repo.findGestionesPendientes("m1", ZONA_CR);
 
     expect(rows.map((r) => [r.gestionId, r.desdeAyudaTienda])).toEqual([
       ["g-tienda", true],
@@ -210,7 +212,7 @@ describe("💰 Feature 237 — `desdeAyudaTienda` en la fila del cierre (D6/R41)
     const prisma = conDosGestiones([]);
     const repo = new CierreDiaRepository(prisma as unknown as PrismaClient, buildTarifaRepo());
 
-    const rows = await repo.findGestionesPendientes("m1");
+    const rows = await repo.findGestionesPendientes("m1", ZONA_CR);
 
     expect(rows.every((r) => r.desdeAyudaTienda === false)).toBe(true);
   });
@@ -226,7 +228,7 @@ describe("💰 Feature 237 — `desdeAyudaTienda` en la fila del cierre (D6/R41)
     const prisma = conDosGestiones(["g-tienda"]);
     const repo = new CierreDiaRepository(prisma as unknown as PrismaClient, buildTarifaRepo());
 
-    await repo.findGestionesPendientes("m1");
+    await repo.findGestionesPendientes("m1", ZONA_CR);
 
     // ⏳ 2026-08-20 (feature 240, D6/R43): `origenTipo` pasa de una IGUALDAD a un `in` de las dos
     // familias con las que la tienda registra una gestion (la pestaña de ayuda y el rechazo manual
@@ -247,7 +249,7 @@ describe("💰 Feature 237 — `desdeAyudaTienda` en la fila del cierre (D6/R41)
     const prisma = conDosGestiones(["g-tienda"]);
     const repo = new CierreDiaRepository(prisma as unknown as PrismaClient, buildTarifaRepo());
 
-    await repo.findGestionesPendientes("m1");
+    await repo.findGestionesPendientes("m1", ZONA_CR);
 
     expect(prisma.ordenHistorialEstado.findMany).toHaveBeenCalledTimes(1);
   });
@@ -257,7 +259,7 @@ describe("💰 Feature 237 — `desdeAyudaTienda` en la fila del cierre (D6/R41)
     prisma.gestionOrden.findMany.mockResolvedValue([]);
     const repo = new CierreDiaRepository(prisma as unknown as PrismaClient, buildTarifaRepo());
 
-    expect(await repo.findGestionesPendientes("m1")).toEqual([]);
+    expect(await repo.findGestionesPendientes("m1", ZONA_CR)).toEqual([]);
     expect(prisma.ordenHistorialEstado.findMany).not.toHaveBeenCalled();
   });
 
@@ -279,7 +281,7 @@ describe("💰 Feature 237 — `desdeAyudaTienda` en la fila del cierre (D6/R41)
     });
     const repo = new CierreDiaRepository(prisma as unknown as PrismaClient, buildTarifaRepo());
 
-    const r = await repo.findCierrePropioConGestiones("c1", "m1");
+    const r = await repo.findCierrePropioConGestiones("c1", "m1", ZONA_CR);
 
     expect(r?.gestiones.map((g) => [g.gestionId, g.desdeAyudaTienda])).toEqual([
       ["g-tienda", true],
@@ -294,7 +296,7 @@ describe("CierreDiaRepository.findGestionesPendientes (R2/R3)", () => {
     prisma.gestionOrden.findMany.mockResolvedValue([]);
     const repo = new CierreDiaRepository(prisma as unknown as PrismaClient, buildTarifaRepo());
 
-    await repo.findGestionesPendientes("m1");
+    await repo.findGestionesPendientes("m1", ZONA_CR);
 
     const arg = prisma.gestionOrden.findMany.mock.calls[0][0];
     expect(arg.where).toMatchObject({ mensajeroId: "m1", cierreId: null });
@@ -309,7 +311,7 @@ describe("CierreDiaRepository.findGestionesPendientes (R2/R3)", () => {
     prisma.gestionOrden.findMany.mockResolvedValue([]);
     const repo = new CierreDiaRepository(prisma as unknown as PrismaClient, buildTarifaRepo());
 
-    await repo.findGestionesPendientes("m1");
+    await repo.findGestionesPendientes("m1", ZONA_CR);
 
     const arg = prisma.gestionOrden.findMany.mock.calls[0][0];
     expect(arg.where).toEqual({
@@ -339,7 +341,7 @@ describe("CierreDiaRepository.findGestionesPendientes (R2/R3)", () => {
     ]);
     const repo = new CierreDiaRepository(prisma as unknown as PrismaClient, buildTarifaRepo());
 
-    const rows = await repo.findGestionesPendientes("m1");
+    const rows = await repo.findGestionesPendientes("m1", ZONA_CR);
 
     expect(rows[0]).toMatchObject({
       gestionId: "g1",
@@ -2181,7 +2183,7 @@ describe("Feature 69/R16 — la vista EN VIVO no depende del snapshot", () => {
     prisma.gestionOrden.findMany.mockResolvedValue([detalleRow()]);
     const repo = new CierreDiaRepository(prisma as unknown as PrismaClient, buildTarifaRepo());
 
-    const rows = await repo.findGestionesPendientes("m1");
+    const rows = await repo.findGestionesPendientes("m1", ZONA_CR);
 
     expect(rows).toHaveLength(1);
     const arg = prisma.gestionOrden.findMany.mock.calls[0][0];
@@ -2946,7 +2948,7 @@ describe("264/B9 — findCierrePropioConGestiones trae las ordenes sin gestionar
     const prisma = prismaConDetallePropio(CABECERA, [FILA_CRUDA]);
     const repo = new CierreDiaRepository(prisma as unknown as PrismaClient, buildTarifaRepo());
 
-    await repo.findCierrePropioConGestiones("c1", "m1");
+    await repo.findCierrePropioConGestiones("c1", "m1", ZONA_CR);
 
     const arg = (prisma.cierreSinGestion as { findMany: ReturnType<typeof vi.fn> }).findMany.mock
       .calls[0][0] as { where: unknown; orderBy: unknown };
@@ -2960,7 +2962,7 @@ describe("264/B9 — findCierrePropioConGestiones trae las ordenes sin gestionar
     const prisma = prismaConDetallePropio(CABECERA, [FILA_CRUDA]);
     const repo = new CierreDiaRepository(prisma as unknown as PrismaClient, buildTarifaRepo());
 
-    const r = await repo.findCierrePropioConGestiones("c1", "m1");
+    const r = await repo.findCierrePropioConGestiones("c1", "m1", ZONA_CR);
 
     expect(r?.sinGestion).toEqual([
       {
@@ -2981,7 +2983,7 @@ describe("264/B9 — findCierrePropioConGestiones trae las ordenes sin gestionar
     const prisma = prismaConDetallePropio(CABECERA, [{ ...FILA_CRUDA, estatusOrigen: null }]);
     const repo = new CierreDiaRepository(prisma as unknown as PrismaClient, buildTarifaRepo());
 
-    const r = await repo.findCierrePropioConGestiones("c1", "m1");
+    const r = await repo.findCierrePropioConGestiones("c1", "m1", ZONA_CR);
 
     expect(r?.sinGestion[0].estatusOrigen).toBeNull();
   });
@@ -2990,7 +2992,7 @@ describe("264/B9 — findCierrePropioConGestiones trae las ordenes sin gestionar
     const prisma = prismaConDetallePropio({ ...CABECERA, sinGestionRegistrado: false }, []);
     const repo = new CierreDiaRepository(prisma as unknown as PrismaClient, buildTarifaRepo());
 
-    const r = await repo.findCierrePropioConGestiones("c1", "m1");
+    const r = await repo.findCierrePropioConGestiones("c1", "m1", ZONA_CR);
 
     // `[]` + `false` NO es «no hubo ninguna»: es «no lo sabemos». Los dos campos viajan juntos.
     expect(r?.sinGestion).toEqual([]);
@@ -3001,7 +3003,7 @@ describe("264/B9 — findCierrePropioConGestiones trae las ordenes sin gestionar
     const prisma = prismaConDetallePropio(null, [FILA_CRUDA]);
     const repo = new CierreDiaRepository(prisma as unknown as PrismaClient, buildTarifaRepo());
 
-    const r = await repo.findCierrePropioConGestiones("c-ajeno", "m1");
+    const r = await repo.findCierrePropioConGestiones("c-ajeno", "m1", ZONA_CR);
 
     expect(r).toBeNull();
     // La guardia esta en el `findFirst` (scope `id` + `mensajeroId` en el WHERE) y CORTA antes:
@@ -3276,7 +3278,7 @@ describe("425/B11 — findCierrePropioConGestiones trae los rechazos de tienda d
     const prisma = prismaCon(CABECERA, [FILA_CRUDA]);
     const repo = new CierreDiaRepository(prisma as unknown as PrismaClient, buildTarifaRepo());
 
-    await repo.findCierrePropioConGestiones("c1", "m1");
+    await repo.findCierrePropioConGestiones("c1", "m1", ZONA_CR);
 
     const arg = (prisma.cierreRechazoTienda as { findMany: ReturnType<typeof vi.fn> }).findMany.mock
       .calls[0][0] as { where: unknown; orderBy: unknown };
@@ -3288,7 +3290,7 @@ describe("425/B11 — findCierrePropioConGestiones trae los rechazos de tienda d
     const prisma = prismaCon(CABECERA, [FILA_CRUDA]);
     const repo = new CierreDiaRepository(prisma as unknown as PrismaClient, buildTarifaRepo());
 
-    const r = await repo.findCierrePropioConGestiones("c1", "m1");
+    const r = await repo.findCierrePropioConGestiones("c1", "m1", ZONA_CR);
 
     expect(r?.rechazosDeTienda).toEqual([
       {
@@ -3310,7 +3312,7 @@ describe("425/B11 — findCierrePropioConGestiones trae los rechazos de tienda d
     const prisma = prismaCon(CABECERA, []);
     const repo = new CierreDiaRepository(prisma as unknown as PrismaClient, buildTarifaRepo());
 
-    const r = await repo.findCierrePropioConGestiones("c1", "m1");
+    const r = await repo.findCierrePropioConGestiones("c1", "m1", ZONA_CR);
 
     expect(r?.rechazosDeTienda).toEqual([]);
   });
@@ -3319,7 +3321,7 @@ describe("425/B11 — findCierrePropioConGestiones trae los rechazos de tienda d
     const prisma = prismaCon(null, [FILA_CRUDA]);
     const repo = new CierreDiaRepository(prisma as unknown as PrismaClient, buildTarifaRepo());
 
-    expect(await repo.findCierrePropioConGestiones("c-ajeno", "m1")).toBeNull();
+    expect(await repo.findCierrePropioConGestiones("c-ajeno", "m1", ZONA_CR)).toBeNull();
     expect(
       (prisma.cierreRechazoTienda as { findMany: ReturnType<typeof vi.fn> }).findMany,
     ).not.toHaveBeenCalled();

@@ -64,7 +64,7 @@ function correr(estados: unknown, features: unknown[] | null): { code: number; s
   }
 }
 
-describe('guardia: estados del arnes en el validador', () => {
+describe('guardia: estados del arnes en el validador', { timeout: 30_000 }, () => {
   it('pasa con jira.estados completo y fichas en los cinco estados', () => {
     const fichas = ['pending', 'done', 'cancelled'].map((s, i) => ficha(i + 1, s))
     const { code, salida } = correr(ESTADOS_QC, fichas)

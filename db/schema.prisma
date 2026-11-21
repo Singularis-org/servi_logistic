@@ -13,12 +13,30 @@ model Session {
   createdAt DateTime @default(now())
 }
 
+// SLT-42 (design §2.2; 20261107120100): catálogo de tipos de documento POR PAÍS. Las filas «cedula»,
+// «ruc» y «pasaporte» de antes son ahora tipos de CR (mismo `id`, el usuario no se tocó). La empresa
+// solo lee los de su país (política restrictiva `tipo_identificacion_del_pais`); escribe la plataforma.
 model TipoIdentificacion {
-  id    String @id @default(uuid())
-  value String @unique // seed: "cedula", "ruc", "pasaporte"
+  id         String  @id @default(uuid())
+  /// Compatibilidad: único global y aún lo envían los formularios. Un tipo de otro país lleva
+  /// `<PAIS>_<clave>`; las búsquedas nuevas van por `(paisId, clave)` o por `id`.
+  value      String  @unique
+  paisId     String  @map("pais_id")
+  /// Única dentro del país: `cedula_fisica`, `cedula_juridica`, `dimex`, `nite`, `pasaporte`…
+  clave      String
+  nombre     String
+  /// `digitos` | `alfanumerico` (CHECK `tipo_identificacion_caracteres`).
+  caracteres String
+  largoMin   Int     @map("largo_min") @db.SmallInt
+  largoMax   Int     @map("largo_max") @db.SmallInt
+  orden      Int     @db.SmallInt
+  activo     Boolean @default(true)
 
+  pais     Pais      @relation(fields: [paisId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   usuarios Usuario[]
 
+  @@unique([paisId, clave], map: "tipo_identificacion_pais_clave_key")
+  @@index([paisId], map: "tipo_identificacion_pais_idx")
   @@map("tipo_identificacion")
 }
 
@@ -95,7 +113,11 @@ model Usuario {
   rolId                String        @map("rol_id")
   vehiculoId           String?       @map("vehiculo_id") // feature 21: solo mensajeros; FK -> vehiculos
   placa                String? // feature 21: placa del vehiculo del mensajero, normalizada uppercase/trim
-  fulfillment          Boolean       @default(false) // feature 27: tienda con fulfillment (rol adminTienda); default false
+  /// SLT-94 (D4): la columna vieja `fulfillment` (feature 27) no se lee ni se escribe. No se borra; el
+  /// campo se renombra para que todo lector olvidado rompa el typecheck. La marca vigente es `seRecogeEnTienda`.
+  fulfillmentRetirado  Boolean       @default(false) @map("fulfillment")
+  seRecogeEnTienda     Boolean       @default(true) @map("se_recoge_en_tienda") // SLT-94 (R1-R5): «se recoge en tienda»; solo decide el estado en que nace la orden. Solo `adminTienda` puede tenerla en false
+
   zonaId               String?       @map("zona_id") // feature 24/R6: nullable; solo mensajero/adminSatelite lo llevan
   ordenEnGestionId     String?       @map("orden_en_gestion_id") // feature 36/R19-R21: orden activa 1-a-1 en gestion; NULL = ninguna
   contrasenaDefinidaAt DateTime?     @map("contrasena_definida_at") // SL-41/R38: la pone updatePasswordHash cuando el usuario fija SU contrasena; NULL = nunca (o fila anterior a SL-41)
@@ -159,6 +181,8 @@ model Usuario {
   aportesCapitalAnulados              AporteCapitalAnulacion[]           @relation("AporteCapitalAnulacionActor") // ficha 459/R74: anulaciones de saldo inicial o aporte
   cobrosTiendaAnulados                CobroTiendaAnulacion[]             @relation("CobroTiendaAnulacionActor") // ficha 461/R10: anulaciones de cobros de la empresa a una tienda que este usuario hizo; FK RESTRICT (quien devolvio dinero es evidencia)
   ajustesCajaAnulados                 AjusteCajaAnulacion[]              @relation("AjusteCajaAnulacionActor") // ficha 461/R69: anulaciones de correcciones de caja que este usuario hizo; FK RESTRICT
+  pagosPlataformaConfirmados          PagoPlataformaConfirmacion[]       @relation("PagoPlataformaConfirmador") // SLT-60: pagos a la plataforma que este superadmin confirmó; FK RESTRICT
+  pagosPlataformaAnulados             PagoPlataformaAnulacion[]          @relation("PagoPlataformaAnulador") // SLT-143: pagos confirmados que este superadmin anuló; FK RESTRICT
   abonosComoTienda                    AbonoTienda[]                      @relation("AbonoTiendaTienda") // ficha 457/R1: pagos que ESTA tienda le hizo a la empresa
   abonosRegistrados                   AbonoTienda[]                      @relation("AbonoTiendaRegistrador") // ficha 457/R1: pagos de una tienda a la empresa que este usuario registro
   abonosAnulados                      AbonoTiendaAnulacion[]             @relation("AbonoTiendaAnulacionActor") // ficha 457/R31: anulaciones de pagos de una tienda a la empresa que este usuario hizo; FK RESTRICT
@@ -182,6 +206,7 @@ model Usuario {
   habilitacionesApiPedidas            OrdenHabilitacionApi[]             @relation("OrdenHabilitacionApiActor") // feature 266/R21: habilitaciones pedidas por el canal integrador a nombre de ESTE usuario (302: el dueno resuelto de la key -- su cuenta dedicada, o la tienda real a la que apunta); la FK es RESTRICT (la autoria es evidencia y no se pierde al dar de baja al usuario)
   cobrosGastoFijo                     GastoFijoCobro[]                   @relation("GastoFijoCobroDecisor") // ficha 333/R15/R21: cobros de gasto fijo que ESTE usuario aprobo o rechazo; la FK es RESTRICT (quien autorizo dinero es evidencia y no se pierde al dar de baja al usuario), mismo criterio que `orden_dia_reparto_cambio.actor_usuario_id`
   cobrosRechazoTiendaDecididos        RechazoTiendaCobro[]               @relation("RechazoTiendaCobroDecisor") // ficha 337: cobros por rechazo de tienda que ESTE usuario aprobo o rechazo. FK RESTRICT por el mismo motivo que la linea de arriba: quien autorizo un cobro es evidencia y no se pierde al dar de baja al usuario.
+  fulfillmentMovimientosComoTienda    OrdenFulfillmentMovimiento[]       @relation("OrdenFulfillmentMovimientoTienda") // SLT-94 (R21/R31): cobros y devoluciones de fulfillment de ESTA tienda, con la tienda CONGELADA en la fila. FK RESTRICT: el dinero es evidencia
   cobrosRechazoTiendaComoTienda       RechazoTiendaCobro[]               @relation("RechazoTiendaCobroTienda") // ficha 337: cobros por rechazo emitidos CONTRA esta tienda. `tienda_id` va CONGELADO en la fila (leccion 69/R13), asi que esta relacion es historia y no una consulta viva sobre `orden.tienda_id`.
   historialAcciones                   HistorialAccion[]                  @relation("HistorialAccionActor") // ficha 362/R3: acciones (dinero / desaparicion / permisos) que ESTE usuario ejecuto. La FK es RESTRICT: quien borro 79 ordenes o aprobo un cierre es evidencia y no se pierde al dar de baja al usuario. `actor_nombre` y `actor_rol` van CONGELADOS en la fila, asi que esta relacion NO es la que pinta el listado.
   historialPlataforma                 HistorialPlataforma[]              @relation("HistorialPlataformaActor") // SL-20: acciones del superadmin sobre paises y geografia (D15)
@@ -200,6 +225,10 @@ model Usuario {
   // FICHA 419 (design §D3): lotes de confirmacion central de entrega a la tienda. FK RESTRICT: quien certifico la entrega, y a que tienda, es evidencia
   devolucionesTiendaComoTienda        DevolucionTiendaComprobante[]      @relation("DevolucionTiendaComprobanteTienda")
   devolucionesTiendaSubidas           DevolucionTiendaComprobante[]      @relation("DevolucionTiendaComprobanteSubidoPor")
+  bugReports                          BugReport[] // SLT-87: reportes de problema que ESTA persona envió; CASCADE (la tabla es de plataforma y no bloquea el borrado)
+  bugReportUploadQuotas               BugReportUploadQuota[] // SLT-98: su conteo diario de permisos de subida de imágenes (tope diario); CASCADE, es un contador y no historia
+  cambiosCorreo                       UsuarioCambioCorreo[]              @relation("UsuarioCambioCorreoUsuario") // SLT-221: cambios de correo pedidos PARA esta cuenta; CASCADE
+  cambiosCorreoSolicitados            UsuarioCambioCorreo[]              @relation("UsuarioCambioCorreoSolicitadoPor") // SLT-221: cambios que ESTE maestro pidió; RESTRICT (es el actor del Histórico)
 
   organizacionId String? @default(dbgenerated()) @map("organizacion_id") // SL-17/R2/R3: NULL = superadmin
   organizacion   Organizacion? @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
@@ -214,7 +243,9 @@ model Usuario {
   // lo busca). En la base van con NULLS NOT DISTINCT (dos cuentas sin empresa chocan), que Prisma
   // no expresa: vive en la migracion 20261026090000_usuario_unico_por_empresa.
   @@unique([organizacionId, email], map: "usuario_email_key")
-  @@unique([organizacionId, cedula], map: "usuario_cedula_key")
+  // SLT-42/R13 (P4): el documento es único por empresa Y TIPO, con el mismo nombre de índice
+  // (20261107120200_slt42_usuario_documento_unico_por_tipo; NULLS NOT DISTINCT también vive ahí).
+  @@unique([organizacionId, tipoIdentificacionId, cedula], map: "usuario_cedula_key")
   @@index([email]) // SL-18/R25: el login y la recuperacion buscan por email sin empresa
   @@map("usuario")
 }
@@ -570,6 +601,11 @@ model Zona {
   nombre        String  // feature 24: nombre unico (indice zona_nombre_key); feature 54 restaura el @unique perdido en el refactor
   cobroVehiculo Boolean @default(false) @map("cobro_vehiculo") // feature 24: cobro extra por vehiculo en esta zona
   esCentral     Boolean @default(false) @map("es_central") // feature 54: flag de zona central (renombrado del viejo es_gam); a lo sumo una via indice unico parcial
+  // SLT-225 (R1740): NOT NULL DEFAULT true, como `activo` de la geografia (FICHA 374): toda zona esta
+  // activa o desactivada, y null no significaria nada. Femenino y no `activo`: la guardia de la 374
+  // prohibe el literal `activo: true` en lib/ fuera de geografia-activa.ts, y esta marca no es geografia.
+  // Los triggers de 20261123120100 impiden darle distritos o usuarios nuevos mientras este en false.
+  activa        Boolean @default(true)
 
   /// ⭑ FICHA 429 — EL SINPE DE ESTA BODEGA: el numero al que el cliente transfiere y el titular a
   /// cuyo nombre esta. Hasta esta ficha habia UNO SOLO para toda la operacion, en
@@ -984,6 +1020,12 @@ model Orden {
   // SLT-83 (design §2.2): las condiciones congeladas del cobro porcentual de ESTA orden. A lo sumo UNA
   // (PK = orden_id); la escribe solo el trigger de alta. La FK es CASCADE, como la de SL-40.
   cobroPorcentual            CobroPlataformaPorcentualOrden?
+  // SLT-85: la traza de facturación de cada movimiento de ESTA orden. La escribe solo el trigger sobre
+  // `cobro_plataforma_movimiento`; la FK es CASCADE, como la de SL-40.
+  cobrosPlataformaTraza      CobroPlataformaTraza[]
+  // SLT-94: el cobro de fulfillment de ESTA orden a su tienda (cargo, reverso, cargo…). Lo escriben solo
+  // los triggers de la base; la FK es RESTRICT (el dinero es evidencia).
+  fulfillmentMovimientos     OrdenFulfillmentMovimiento[]
   // Ficha 419 (design §D3): enlace al comprobante del lote central que la paso a `devuelta_a_tienda`. A lo sumo UNO (PK = orden_id)
   devolucionTiendaEnlace     DevolucionTiendaOrden?             @relation("DevolucionTiendaOrdenOrden")
 
@@ -1653,6 +1695,14 @@ model CierreDia {
   // `false` exactamente los que no se pueden reconstruir (`estado` fuera de los tres abiertos).
   sinGestionRegistrado Boolean @default(true) @map("sin_gestion_registrado")
 
+  // SLT-123 (R310-R312, D5) — QUE REGLA DE PAGO AL MENSAJERO TIENE ESTE CIERRE. `false` = la de la
+  // feature 44: su pago sale del efectivo que recaudo (`pago_efectivo = min(P,E)`, pendiente
+  // `P - min(P,E)`). `true` = el pago es independiente del efectivo: el libro solo devenga `P` y lo
+  // pendiente es `P` completo. La pone SOLO `resolverCierre` al aprobar un cierre de la central, en
+  // la misma tx. `DEFAULT false` sin backfill: los cierres ya aprobados no cambian ni un centimo.
+  // Es la UNICA fuente de la regla: ningun consumidor decide por fecha, destino ni libro (R327).
+  pagoIndependienteEfectivo Boolean @default(false) @map("pago_independiente_efectivo")
+
   mensajero          Usuario               @relation("CierreMensajero", fields: [mensajeroId], references: [id])
   destinoZona        Zona                  @relation(fields: [destinoZonaId], references: [id])
   resueltoPorUsuario Usuario?              @relation("CierreResueltoPor", fields: [resueltoPor], references: [id]) // feature 38/R14
@@ -2029,6 +2079,7 @@ model TarifaValor {
   cierreDetailConceptos  CierreDetailConcepto[]
   gestionPagosCongelados GestionPagoCongelado[]
   rechazoTiendaCobros    RechazoTiendaCobro[]
+  fulfillmentMovimientos OrdenFulfillmentMovimiento[] // SLT-94 (R21): traza del valor que produjo cada cobro; FK SET NULL
 
   organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
@@ -2255,6 +2306,12 @@ enum WalletMovimientoCategoria {
   // `conciliacion_bodega_ajuste`. Migracion `20261031140000_slt73_diferencia_satelite_enums`.
   egreso_diferencia_satelite
   ingreso_diferencia_satelite
+  // SLT-94 (design §1 M1, R19/R26): espejo en la caja del cobro de fulfillment a la tienda (ingresos) y de
+  // su devolución (egresos). Origen `orden_fulfillment`. Los escriben solo los triggers de 20261108120300.
+  ingreso_fulfillment
+  ingreso_iva_fulfillment
+  egreso_reverso_fulfillment
+  egreso_reverso_iva_fulfillment
 
   @@map("wallet_movimiento_categoria")
 }
@@ -2302,6 +2359,9 @@ enum WalletOrigenTipo {
   // correccion). `origen_id` = id de la fila de `conciliacion_bodega_ajuste`; hace falta porque el
   // unico de la caja `(origen_tipo, origen_id, categoria)` no admite dos diferencias con el mismo origen.
   conciliacion_bodega_ajuste
+  // SLT-94 (design §1): el cobro o la devolución de fulfillment de una orden. `origen_id` = id de la fila
+  // de `orden_fulfillment_movimiento` (cada evento tiene su propia clave).
+  orden_fulfillment
 
   @@map("wallet_origen_tipo")
 }
@@ -2348,6 +2408,10 @@ model WalletMovimiento {
   // sin `deleted_at` y sin `update`/`delete` expuestos en su repositorio (R3 de la 42). La FK
   // vive en `gasto_fijo_cobro.movimiento_id` y es RESTRICT: el libro no se borra nunca.
   cobroGastoFijo  GastoFijoCobro?
+  // SLT-60: la confirmación del superadmin de un `egreso_pago_plataforma`. 0 o 1 por el UNIQUE
+  // (organizacion_id, pago_id); lista porque Prisma solo admite un 1 a 1 sobre un único de una columna.
+  // La FK vive en `pago_plataforma_confirmacion.pago_id`: la fila del libro sigue append-only.
+  confirmacionesPagoPlataforma PagoPlataformaConfirmacion[]
 
   organizacionId String @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
@@ -2423,6 +2487,13 @@ enum WalletTiendaMovimientoCategoria {
   /// Contrapartida en la caja: `egreso_reverso_flete_devolucion` / `egreso_reverso_iva_flete_devolucion`.
   flete_devolucion_anulado
   iva_flete_devolucion_anulado
+  /// SLT-94 (design §1 M1, R19/R26): el COBRO DE FULFILLMENT por paquete (débitos) y su DEVOLUCIÓN al
+  /// eliminar o cancelar por API (créditos). Contrapartida en la caja: `ingreso_fulfillment` /
+  /// `ingreso_iva_fulfillment` y `egreso_reverso_fulfillment` / `egreso_reverso_iva_fulfillment`.
+  fulfillment
+  iva_fulfillment
+  fulfillment_anulado
+  iva_fulfillment_anulado
 
   @@map("wallet_tienda_movimiento_categoria")
 }
@@ -2511,6 +2582,11 @@ enum PagoMensajeroMovimientoCategoria {
   // migracion `20261030120100_incentivo_mensajero_checks`.
   incentivo
   reverso_incentivo
+  // SLT-139 (design §3, R317, R330): «PAGADO POR LA SATÉLITE». Rama `pago`: al conciliar un cierre
+  // NUEVO de satélite (marca `pago_independiente_efectivo` en true) la satélite le pagó P al
+  // mensajero. Solo cuelga de un `cierre_dia`; el CHECK tipo<->categoria y el CHECK de origen viven
+  // en la migracion `20261115120100_pago_satelite_checks`.
+  pago_satelite
 
   @@map("pago_mensajero_movimiento_categoria")
 }
@@ -3731,6 +3807,17 @@ enum JobTipo {
   plan_aviso_correo
   /// SL-24 (design §16.3): RECURRENTE, sin empresa; barrido de seguridad de los cambios vencidos. Núcleo
   plan_cambios_vencidos
+  /// SLT-86 (design §5.2): aplica UN cambio de empresa pendiente a sus 00:00; CON empresa, payload { cambioId }. Núcleo
+  plan_aplicar_cambio_empresa
+  /// SLT-118 (design §4): RECURRENTE cada hora a los :10, sin empresa; cierra las facturas de la plataforma vencidas. Núcleo
+  factura_plataforma_cerrar
+  /// SLT-136 (design §7.1-§7.2, R21/R30): avisa a los maestros de UNA factura recién cerrada (campanita, push y correo).
+  /// PUNTUAL, con empresa; lo encola `FacturaPlataformaRepository.cerrar` en su transacción. Payload { facturaId },
+  /// dedupe `factura_plataforma_aviso:<facturaId>`. Núcleo
+  factura_plataforma_aviso
+  /// SLT-215 (design §5; R29, R30): RECURRENTE diario a las 06:20 UTC, sin empresa; cierra los meses pendientes de los
+  /// niveles por volumen de cada empresa. Payload {}, dedupe `plan_niveles_cerrar:<AAAA-MM-DD>`. Núcleo
+  plan_niveles_cerrar
 
   @@map("job_tipo")
 }
@@ -3994,6 +4081,10 @@ enum NotificacionEvento {
   // ⚠️ Su entidad es `${ambito}:${dia_CR}` con `ambito = 'central' | <zona_id>`: ver
   // `reprogramadas_esperan_cierre_dia` mas abajo. La regla 276 NO cambia: esto solo AVISA.
   reprogramadas_esperan_cierre
+  // SLT-136 (design §7.3, R22-R24) - se cerró una factura de la plataforma de la empresa. Una fila
+  // `alert` al rol `maestro` y a nadie más (ni admin ni superadmin); texto con número y período, SIN
+  // montos. PUSH: solo `maestro`. Lo emite el job `factura_plataforma_aviso`.
+  factura_plataforma_emitida
 
   @@map("notificacion_evento")
 }
@@ -4129,6 +4220,9 @@ enum NotificacionEntidadTipo {
   // Es `'central'` y NO `'global'` a proposito: maestro y admin NO cuentan el total del sistema
   // sino los cierres con destino `bodega_central`, que es lo que ven en `/cierres-admin`.
   reprogramadas_esperan_cierre_dia
+  // SLT-136 (design §7.3) - la entidad es la fila de `factura_plataforma`. Una factura se cierra una
+  // sola vez, así que `notificacion_dedupe_key` da UN aviso por factura para siempre (R22, R27).
+  factura_plataforma
 
   @@map("notificacion_entidad_tipo")
 }
@@ -5035,6 +5129,35 @@ enum HistorialAccionTipo {
   /// la empresa ya tiene (D10). Entidad: `plan` (el de la empresa); etiqueta: `Plan «<nombre>»`;
   /// `valor_anterior` = el tipo de antes y `valor_nuevo` = el nuevo (`mensual` o `anual`).
   plan_tipo_cobro_cambiado
+  /// SLT-86 (design §5.3, 20261106150000; decisión del 2026-11-05): el superadmin cancela el cambio de plan
+  /// o de tipo pendiente de una empresa («Cancelar cambio», la petición igual a lo vigente o el archivado
+  /// del plan). Entidad: `plan` (el del pendiente); `valor_anterior` NULL y `valor_nuevo` = «AAAA-MM-DD ·
+  /// tipo», la fecha de efecto y el tipo del cambio cancelado.
+  plan_cambio_empresa_cancelado
+  /// SLT-77 (R10, design §2.3): el maestro cambio el tope de intentos de entrega. Mueve dinero: bajarlo
+  /// adelanta rechazos, y un rechazo genera cobro. Entidad: `organizacion`; `valor_anterior` y `valor_nuevo`
+  /// son los dos numeros.
+  tope_intentos_cambiado
+  /// SLT-94 (R8): cambió la marca «se recoge en tienda» de una tienda. Mueve dinero: decide dónde nace la
+  /// orden. `valor_anterior` y `valor_nuevo` son la marca. `usuario_fulfillment_cambiado` queda para las
+  /// filas históricas.
+  usuario_se_recoge_en_tienda_cambiado
+  /// SLT-211: un maestro/admin retiró paquetes del estante de una satélite a la central (SLT-197). Hace
+  /// desaparecer algo: los paquetes dejan el estante de la satélite. Entidad: `zona` (la satélite), una
+  /// fila por satélite del lote con el mismo `lote_id`; la etiqueta lleva el conteo y las guías.
+  ordenes_retiradas_a_central
+  /// SLT-221 (R1604): el maestro corrigió el número de documento de un usuario. Cambia quién puede hacer
+  /// qué: la cédula es la identidad de la cuenta. `valor_anterior` y `valor_nuevo` son el documento (D10).
+  usuario_cedula_cambiada
+  /// SLT-221 (R1622): el usuario confirmó el correo nuevo que pidió el maestro. Cambia quién entra en la
+  /// cuenta. `valor_anterior` y `valor_nuevo` son el correo (D10). Su escritor llega en el PR 2.
+  usuario_email_cambiado
+  /// SLT-225 (R1749): un maestro desactivó una zona sin trabajo vivo. Hace desaparecer algo, como
+  /// `nodo_geografico_desactivado`: la zona sale del trabajo nuevo. Entidad: `zona`; `valor_anterior` y
+  /// `valor_nuevo` NULL (el par de tipos ya dice la transición).
+  zona_desactivada
+  /// SLT-225 (R1750): el maestro la reactivó. Misma categoría que su par, como `nodo_geografico_activado`.
+  zona_reactivada
 
   @@map("historial_accion_tipo")
 }
@@ -5093,6 +5216,8 @@ enum HistorialAccionEntidad {
   nodo_geografico
   /// SLT-54: la activacion del modelo nuevo de tarifas, 1:1 con su tabla. `entidad_id` sin FK.
   tarifa_activacion
+  /// SLT-77: la empresa misma, 1:1 con su tabla, por el tope de intentos. `entidad_id` sin FK.
+  organizacion
 
   @@map("historial_accion_entidad")
 }
@@ -5160,11 +5285,14 @@ model HistorialAccion {
   /// PUBLICO del mismo genero que el nombre de una zona. En todos los demas tipos van NULL.
   /// ⚠️ LA REGLA NO CAMBIA: aqui NO se vuelca texto libre tecleado por una persona ni un dato del
   /// destinatario de una orden. Una guardia sobre los puntos de escritura lo mantiene asi.
-  /// ⚠️ ANCHURA 60: quien escriba aqui un texto que pueda ser mas largo TIENE que recortarlo en su
-  /// origen (Postgres no trunca, ABORTA). `GeoRepository.renombrar` lo hace, igual que
-  /// `appendAccion` recorta `entidad_etiqueta` a 120.
-  valorAnterior String? @map("valor_anterior") @db.VarChar(60)
-  valorNuevo    String? @map("valor_nuevo") @db.VarChar(60)
+  /// UNICA EXCEPCION DECLARADA (SLT-221, D10): `usuario_cedula_cambiada` y `usuario_email_cambiado`
+  /// guardan el documento y el correo de un usuario de la empresa, anterior y nuevo. Se descargan y no
+  /// se purgan: consecuencia aceptada por Carlos el 2026-11-19.
+  /// ⚠️ ANCHURA 254 (SLT-221, R1608: cabe un correo entero): quien escriba aqui un texto que pueda ser
+  /// mas largo TIENE que recortarlo en su origen (Postgres no trunca, ABORTA). `GeoRepository.renombrar`
+  /// lo hace, igual que `appendAccion` recorta `entidad_etiqueta` a 120.
+  valorAnterior String? @map("valor_anterior") @db.VarChar(254)
+  valorNuevo    String? @map("valor_nuevo") @db.VarChar(254)
 
   /// uuid POR ACCION (R7), no por fila: todas las filas de un mismo acto lo comparten. Es lo que
   /// distingue «se borraron 79 ordenes de una vez» de «hubo 79 borrados».
@@ -5416,6 +5544,35 @@ model UsuarioPreferencia {
 
   @@index([organizacionId])
   @@map("usuario_preferencia")
+}
+
+// SLT-221 (design §2.2): el cambio de correo que el maestro pidió y la persona aún no confirmó. El
+// correo de login no cambia hasta el canje (R1615, R1622). En la base solo el hash del secreto (R1632).
+// Viven solo en el SQL de 20261122120000: el CHECK «confirmado o anulado, no los dos» y el índice
+// único PARCIAL de un solo abierto por usuario (R1616).
+model UsuarioCambioCorreo {
+  id              String    @id @default(uuid())
+  usuarioId       String    @map("usuario_id")
+  emailNuevo      String    @map("email_nuevo") @db.VarChar(254)
+  secretoHash     String    @map("secreto_hash")
+  solicitadoPorId String    @map("solicitado_por_id")
+  expiraAt        DateTime  @map("expira_at")
+  confirmadoAt    DateTime? @map("confirmado_at")
+  anuladoAt       DateTime? @map("anulado_at") // cancelar, reemplazar o envío fallido
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  // CASCADE: el pendiente no es evidencia. El cambio aplicado queda en el Histórico.
+  usuario       Usuario @relation("UsuarioCambioCorreoUsuario", fields: [usuarioId], references: [id], onDelete: Cascade)
+  // RESTRICT: es el actor del Histórico al confirmar.
+  solicitadoPor Usuario @relation("UsuarioCambioCorreoSolicitadoPor", fields: [solicitadoPorId], references: [id], onDelete: Restrict)
+
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
+  @@index([usuarioId])
+  @@index([solicitadoPorId])
+  @@index([organizacionId])
+  @@map("usuario_cambio_correo")
 }
 
 // ⭑ FICHA 436 (design §4.1, R16/R17/R30) — EL TOPE DE GASTO DEL ASISTENTE: una fila por
@@ -5752,6 +5909,9 @@ model Organizacion {
   slug      String   @unique
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  // SLT-77: intentos de entrega de la empresa, de 1 a 10. Lo edita su `maestro`. El rango es un CHECK que
+  // Prisma no sabe expresar: vive en `20261107130100_organizacion_tope_intentos`.
+  topeIntentosEntrega Int @default(3) @map("tope_intentos_entrega")
 
   usuarios Usuario[]
   mensajeroDocumentos MensajeroDocumento[]
@@ -5836,41 +5996,57 @@ model Organizacion {
   rankingSnapshotFilas RankingSnapshotFila[]
   cobrosPlataforma CobroPlataformaMovimiento[] // SL-40
   cobrosPorcentuales CobroPlataformaPorcentualOrden[] // SLT-83
+  cobrosPlataformaTraza CobroPlataformaTraza[] // SLT-85
+  facturasPlataforma FacturaPlataforma[] // SLT-118
+  planNivel          PlanNivelEmpresa? // SLT-215: su nivel por volumen, si tiene plan
+  planNivelHistorial PlanNivelHistorial[] // SLT-215
+  pagosPlataformaConfirmacion PagoPlataformaConfirmacion[] // SLT-60
+  pagosPlataformaAplicacion PagoPlataformaAplicacion[] // SLT-60
+  pagosPlataformaAnulacion PagoPlataformaAnulacion[] // SLT-143
+  ordenFulfillmentMovimientos OrdenFulfillmentMovimiento[] // SLT-94
   conciliacionBodegaAjustes ConciliacionBodegaAjuste[] // SLT-73
+  usuarioCambiosCorreo UsuarioCambioCorreo[] // SLT-221
   integraciones Integracion[] // SL-36
   integracionPruebasMinuto IntegracionPruebaMinuto[] // SL-36
+  bugReports BugReport[] // SLT-87: reportes de problema de su gente; la empresa no los lee (tabla de plataforma)
   jobs Job[] // SL-17 M4 (D16): `jobs` es diferida, no de negocio
   modulos OrganizacionModulo[] // SL-23
-
-  // SL-40 (design §3.2): excepción de la empresa al valor global del cobro por orden. NULL = usa el
-  // global. Solo la escribe el superadmin: `organizacion` es de solo lectura para `servi_app`. El
-  // `CHECK (… IS NULL OR … >= 0)` vive solo en el SQL de 20261023130000 (Prisma no expresa CHECK).
-  cobroPlataformaPorOrden Decimal? @map("cobro_plataforma_por_orden") @db.Decimal(12, 2)
 
   // SL-43 (design §3.1): la creó la demo de QA, que borra solo estas. Por la marca y no por el slug,
   // para no borrar nunca una empresa real con un slug parecido. Solo la pone la demo, como dueño.
   esDemo Boolean @default(false) @map("es_demo")
 
-  // SL-24 (design §2.4): el plan asignado y el ancla de sus ciclos. NULL = sin plan, sin límites (R14).
-  // Solo los escribe el superadmin: `organizacion` es de solo lectura para `servi_app`. El
+  // SL-24 (design §2.4): el plan asignado. NULL = sin plan, sin límites (R14). Solo lo escribe el
+  // superadmin: `organizacion` es de solo lectura para `servi_app`. El
   // `CHECK ("plan_id" IS NULL OR "plan_ciclo_ancla_at" IS NOT NULL)` vive solo en el SQL de
   // 20261028130000 (Prisma no expresa CHECK). FK NO ACTION y no RESTRICT: ver esa migración.
+  // SLT-86 (design §1.3, R35): `planCicloAnclaAt` es la ENTRADA de la empresa a su plan y tipo vigentes,
+  // siempre las 00:00 de un día de la plataforma y nunca futura. El período en curso empieza en
+  // `max(entrada, inicio del período de calendario)` (`plan_inicio_ciclo_de`).
   planId           String?   @map("plan_id")
   plan             Plan?     @relation("PlanAsignado", fields: [planId], references: [id], onDelete: NoAction, onUpdate: Cascade)
   planCicloAnclaAt DateTime? @map("plan_ciclo_ancla_at")
   planesExclusivos Plan[]    @relation("PlanExclusivo") // SL-24: los custom de esta empresa
 
-  // SLT-58 (design §11.2, R34): dónde empieza el ciclo corto, el instante de la primera asignación
-  // cuando la fecha elegida es futura. NULL en todo lo demás (R41). El
-  // `CHECK (… IS NULL OR (ancla IS NOT NULL AND … < ancla))` vive solo en el SQL de 20261029150000.
-  // Lo lee `plan_inicio_ciclo_en_curso`; solo lo escribe el superadmin, como el ancla.
-  planCicloCortoDesdeAt DateTime? @map("plan_ciclo_corto_desde_at") @db.Timestamp(3)
-
-  // Ajuste planes-custom (D6, 2026-10-31): cómo paga la empresa su plan, `mensual` o `anual`. Se elige
-  // en cada asignación y lo escribe solo el superadmin, junto al `plan_id`. El
-  // `CHECK ("plan_tipo_cobro" IN ('mensual', 'anual'))` vive solo en el SQL de 20261104130000. Sin plan
-  // conserva el último valor y no se lee. La empresa lo ve por `plan_de_la_empresa`.
+  // Ajuste planes-custom (D6) y SLT-86 (R1): cómo paga la empresa su plan, `quincenal`, `mensual`,
+  // `bimestral` o `anual`. Lo escribe solo el superadmin, junto al `plan_id`. El CHECK de los cuatro
+  // valores vive solo en el SQL de 20261106120000. Sin plan conserva el último valor y no se lee. La
+  // empresa lo ve por `plan_de_la_empresa`.
   planTipoCobro String @default("mensual") @map("plan_tipo_cobro")
+
+  // SLT-86 (design §1.3, R16–R21): el cambio pendiente de la empresa, a aplicar a las 00:00 de
+  // `planCambioDesdeAt`. Puede existir sin `planId` (primera asignación con fecha futura, P4 = a). Viven
+  // solo en el SQL de 20261106120000 el CHECK «las cinco o ninguna» y el de los cuatro tipos. Lo escribe
+  // solo `PlanesRepository`, bajo el cerrojo de la empresa. El actor no sale en `plan_de_la_empresa` (R32).
+  planCambioId        String?   @map("plan_cambio_id")
+  planCambioPlanId    String?   @map("plan_cambio_plan_id")
+  planCambioPlan      Plan?     @relation("PlanCambioEmpresa", fields: [planCambioPlanId], references: [id], onDelete: NoAction, onUpdate: Cascade)
+  planCambioTipoCobro String?   @map("plan_cambio_tipo_cobro")
+  planCambioDesdeAt   DateTime? @map("plan_cambio_desde_at") @db.Timestamp(3)
+  planCambioActorId   String?   @map("plan_cambio_actor_id")
+  // SLT-128 (design §1): sus recepciones de cambios programados y su versión propia del plan
+  planRecepciones PlanCambioRecepcion[]
+  planVersion     PlanVersionEmpresa?
 
   // SL-20 (design §2.2): el país de la empresa, fijado en el alta. No cambia nunca: lo impide el
   // trigger `organizacion_pais_inmutable` (SQLSTATE SL020, R7). El `DEFAULT 'CR'` es solo para los
@@ -5903,10 +6079,30 @@ model Pais {
   /// SL-20 (enmienda 2026-10-26, decisión 6; 20261026130500): hay cobertura en el país (R44). Con
   /// `false` no se acepta en un alta NUEVA de empresa (R45); las que ya están siguen igual (R46).
   disponible          Boolean  @default(true)
+  /// SLT-42 (R1; 20261107120000): datos de teléfono y hora. NULL = el país aún no los tiene (R6, R28).
+  /// Prefijo internacional en dígitos, sin '+'.
+  prefijoTelefonico         String? @map("prefijo_telefonico")
+  telefonoDigitosNacionales Int?    @map("telefono_digitos_nacionales") @db.SmallInt
+  /// Identificador IANA. Sin CHECK en la base: se valida en el servidor (tzdata de Node ≠ de Postgres).
+  zonaHoraria               String? @map("zona_horaria")
+  /// SL-21 (R1; 20261124120000): la moneda del país. Las cinco a la vez o ninguna (CHECK en el SQL);
+  /// NULL = el país aún no la tiene (R6, R17). Código ISO 4217 en tres mayúsculas.
+  monedaCodigo              String? @map("moneda_codigo")
+  /// Va delante del importe; de 1 a 5 caracteres.
+  monedaSimbolo             String? @map("moneda_simbolo")
+  /// Un solo carácter, distinto del decimal.
+  monedaSeparadorMiles      String? @map("moneda_separador_miles")
+  /// '.' o ','.
+  monedaSeparadorDecimal    String? @map("moneda_separador_decimal")
+  /// De 0 a 2: los importes son DECIMAL(12,2).
+  monedaDecimales           Int?    @map("moneda_decimales") @db.SmallInt
+  /// SL-21 (R1, R7): el nombre del impuesto del país («IVA»). La tasa NO vive aquí: va en cada tarifa.
+  impuestoNombre            String? @map("impuesto_nombre")
 
   provincias          Provincia[]
   organizaciones      Organizacion[]
   historialPlataforma HistorialPlataforma[]
+  tiposIdentificacion TipoIdentificacion[]
   /// SLT-43 (R2, R3): los tres tipos de nivel; los crea y actualiza el trigger `pais_tipos_de_nivel`.
   tiposDeNivel        TipoNivelGeografico[]
   /// SLT-43 (R4): los nodos de la geografía jerárquica del país.
@@ -6047,6 +6243,25 @@ model HistorialPlataforma {
   @@map("historial_plataforma")
 }
 
+// SLT-94 (design §1 M3): un movimiento del cobro de fulfillment. Alterna cargo/reverso empezando por cargo.
+enum OrdenFulfillmentMovimientoTipo {
+  cargo
+  reverso
+
+  @@map("orden_fulfillment_movimiento_tipo")
+}
+
+// SLT-94 (D11/D12): qué evento produjo el movimiento. Cargos: `creacion`, `restauracion`. Reversos:
+// `eliminacion`, `cancelacion_api`. Solo un reverso por eliminación se re-cobra al restaurar (R29/R39).
+enum OrdenFulfillmentMovimientoCausa {
+  creacion
+  restauracion
+  eliminacion
+  cancelacion_api
+
+  @@map("orden_fulfillment_movimiento_causa")
+}
+
 // SL-40 (design §3.3): un movimiento del cobro de la plataforma.
 enum CobroPlataformaTipo {
   cargo
@@ -6118,21 +6333,19 @@ enum PlanRastroAccion {
 // `organizacion_exclusiva_id`, que no aísla nada: dice de quién es el plan). Los topes `NULL` son «sin
 // tope». No se borra: se archiva (R6). Viven solo en el SQL de 20261028130000, porque Prisma no los
 // expresa:
-//   · los CHECK `plan_nombre_check`, `plan_custom_con_empresa`, `plan_precio_forma` (las formas del
-//     precio, R3; sin «negociable» desde 20261104130000) y los de rango de topes, montos y porcentaje;
+//   · los CHECK `plan_nombre_check`, `plan_custom_con_empresa` y los de rango de topes y montos;
 //   · la RLS sin políticas y el `REVOKE ALL … FROM servi_app` (R8).
 // CASCADE con la empresa del custom: un custom no tiene sentido sin ella (design §2.1).
+// SLT-86 (R8, R33, R34): sin tope de órdenes ni precio anual. `precioMensual` es el costo base mensual
+// vigente; los descuentos por período viven en `PlanDescuentoPeriodo`.
 model Plan {
   id                      String          @id @default(uuid())
   nombre                  String          @db.VarChar(80)
   visibilidad             PlanVisibilidad
   organizacionExclusivaId String?         @map("organizacion_exclusiva_id")
   organizacionExclusiva   Organizacion?   @relation("PlanExclusivo", fields: [organizacionExclusivaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  topeOrdenesCiclo        Int?            @map("tope_ordenes_ciclo")
   topeApiKeys             Int?            @map("tope_api_keys")
   precioMensual           Decimal?        @map("precio_mensual") @db.Decimal(12, 2)
-  precioAnual             Decimal?        @map("precio_anual") @db.Decimal(12, 2)
-  descuentoAnualPct       Decimal?        @map("descuento_anual_pct") @db.Decimal(5, 2)
   // SLT-66 (R7, R8): NULL = el plan no lo fija y se cobra el global (R12). El CHECK
   // `plan_costo_por_orden_check` (`>= 0`) vive solo en el SQL de 20261031140000.
   costoPorOrden           Decimal?        @map("costo_por_orden") @db.Decimal(12, 2)
@@ -6142,16 +6355,57 @@ model Plan {
   // solo con porcentaje) y `plan_costo_por_orden_un_modo` (nunca fijo y porcentual a la vez).
   costoPorOrdenPct        Decimal?        @map("costo_por_orden_pct") @db.Decimal(5, 2)
   costoPorOrdenMinimo     Decimal?        @map("costo_por_orden_minimo") @db.Decimal(12, 2)
+  // SLT-118 (R35, P14): cada cuánto se facturan las órdenes de las empresas con este plan. El CHECK
+  // `plan_periodicidad_ordenes_check` (`quincenal` | `mensual`) vive solo en el SQL de 20261111130100.
+  periodicidadOrdenes     String          @default("quincenal") @map("periodicidad_ordenes")
   archivadoAt           DateTime?       @map("archivado_at")
   createdAt               DateTime        @default(now()) @map("created_at")
   updatedAt               DateTime        @default(now()) @updatedAt @map("updated_at")
 
   topesPorRol      PlanTopeRol[]
   modulos          PlanModulo[]
-  empresas         Organizacion[]        @relation("PlanAsignado")
+  beneficios       PlanBeneficio[] // SLT-214: en su orden, por `posicion`
+  niveles          PlanNivel[] // SLT-215: en su orden, por `nivel`
+  empresas         Organizacion[]         @relation("PlanAsignado")
   cambioProgramado PlanCambioProgramado?
+  cambiosDeEmpresa Organizacion[]         @relation("PlanCambioEmpresa") // SLT-86: pendientes hacia este plan
+  descuentos       PlanDescuentoPeriodo[] // SLT-86
+  historialPrecio  PlanPrecioHistorial[] // SLT-86
+  versionesDeEmpresa PlanVersionEmpresa[] // SLT-128: empresas que ya corren el cambio a medias
+  borradorDeCambio   PlanBorrador? // SLT-129: el cambio a medio llenar, uno por plan
 
   @@map("plan")
+}
+
+// SLT-86 (design §1.1, R10, R11) — el descuento vigente de un plan en un período. Sin fila = sin
+// descuento. De PLATAFORMA. Viven solo en el SQL de 20261106120000: el CHECK del período, los de rango
+// (`porcentaje > 0 AND <= 100`, `monto >= 0`), `plan_descuento_periodo_una_forma` (una forma o la otra),
+// la RLS sin políticas y el `REVOKE ALL … FROM servi_app` (R32).
+model PlanDescuentoPeriodo {
+  planId     String   @map("plan_id")
+  plan       Plan     @relation(fields: [planId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  periodo    String
+  porcentaje Decimal? @db.Decimal(5, 2)
+  monto      Decimal? @db.Decimal(12, 2)
+
+  @@id([planId, periodo])
+  @@map("plan_descuento_periodo")
+}
+
+// SLT-86 (design §1.2, R15) — el precio de un plan desde un instante: 00:00 de la fecha de efecto en UTC,
+// o `-infinity` (desde siempre) en la fila que siembran la migración y `crear`. Solo se añade. El costo de
+// un período que empieza en S usa la fila con el mayor `desdeAt ≤ S`. `descuentos` tiene la forma de
+// `PrecioPlan.descuentos`. De PLATAFORMA: la RLS sin políticas y el `REVOKE ALL … FROM servi_app` viven
+// solo en el SQL de 20261106120000.
+model PlanPrecioHistorial {
+  planId        String   @map("plan_id")
+  plan          Plan     @relation(fields: [planId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  desdeAt       DateTime @map("desde_at") @db.Timestamp(3)
+  precioMensual Decimal? @map("precio_mensual") @db.Decimal(12, 2)
+  descuentos    Json     @default("{}")
+
+  @@id([planId, desdeAt])
+  @@map("plan_precio_historial")
 }
 
 // SL-24 (design §2.2) — el tope de un rol en un plan. Sin fila = ese rol no tiene tope. De PLATAFORMA.
@@ -6177,6 +6431,36 @@ model PlanModulo {
 
   @@id([planId, modulo])
   @@map("plan_modulo")
+}
+
+// SLT-214 (design §1.1; R1, R6) — un beneficio de texto de un plan, en su posición. De PLATAFORMA, como
+// `plan_modulo`. Viven solo en el SQL de 20261120120000: los CHECK de posición, texto e ícono, la RLS sin
+// políticas y el `REVOKE ALL … FROM servi_app`. Sin único por texto: R4 compara sin tildes y eso vive en zod.
+model PlanBeneficio {
+  planId   String @map("plan_id")
+  plan     Plan   @relation(fields: [planId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  posicion Int
+  icono    String
+  texto    String @db.VarChar(120)
+
+  @@id([planId, posicion])
+  @@map("plan_beneficio")
+}
+
+// SLT-215 (design §1.1; R1, R6) — un nivel de beneficio por volumen de un plan. De PLATAFORMA, como
+// `plan_beneficio`. Viven solo en el SQL de 20261121140100: los CHECK (número de 1 a 10, meta ≥ 1, una sola forma
+// de descuento, porcentaje en (0, 100] y monto > 0), la RLS sin políticas y el `REVOKE ALL … FROM servi_app`. Que
+// las metas crezcan con el nivel vive en zod (`nivelesSchema`).
+model PlanNivel {
+  planId         String   @map("plan_id")
+  plan           Plan     @relation(fields: [planId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  nivel          Int
+  meta           Int
+  descuentoPct   Decimal? @map("descuento_pct") @db.Decimal(5, 2)
+  descuentoMonto Decimal? @map("descuento_monto") @db.Decimal(12, 2)
+
+  @@id([planId, nivel])
+  @@map("plan_nivel")
 }
 
 // SL-24 (design §2.8) — el rastro de plataforma de crear, editar y archivar un plan (R29). Solo se
@@ -6215,7 +6499,74 @@ model PlanCambioProgramado {
   actorNombre       String   @map("actor_nombre") @db.VarChar(120)
   createdAt         DateTime @default(now()) @map("created_at")
 
+  recepciones PlanCambioRecepcion[] // SLT-128
+
   @@map("plan_cambio_programado")
+}
+
+// SLT-128 (design §1.1, R1, R5, R9) — cuándo recibe cada empresa del plan su cambio programado: el inicio
+// de su período de cobro en F o después. Pendiente = `recibidoAt` y `noAplicadaAt` NULL; `noAplicada*`
+// (R28): no se pudo aplicar por una regla del plan, cuenta como resuelta. Reemplazar o cancelar el
+// pendiente borra sus filas en cascada. De PLATAFORMA. Viven solo en el SQL de 20261114120000: los `CHECK`
+// de `no_aplicada_*`, el índice parcial de las pendientes, la RLS sin políticas y el `REVOKE ALL … FROM
+// servi_app` (R26). La empresa va en `empresa_id`, no en `organizacion_id`: la guardia
+// organizacion-en-modelos prohíbe esa columna en tablas de plataforma (decisión del humano, 2026-11-12).
+model PlanCambioRecepcion {
+  cambioId       String                @map("cambio_id")
+  cambio         PlanCambioProgramado  @relation(fields: [cambioId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  empresaId      String                @map("empresa_id")
+  empresa        Organizacion          @relation(fields: [empresaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  recibeAt       DateTime              @map("recibe_at") @db.Timestamp(3)
+  recibidoAt     DateTime?             @map("recibido_at") @db.Timestamp(3)
+  noAplicadaAt   DateTime?             @map("no_aplicada_at") @db.Timestamp(3)
+  noAplicadaMotivo String?             @map("no_aplicada_motivo")
+
+  @@id([cambioId, empresaId])
+  @@index([empresaId])
+  @@map("plan_cambio_recepcion")
+}
+
+// SLT-128 (design §1.2, R2, R10, R13) — la versión del plan que corre una empresa durante un cambio a
+// medias. Sin fila, la empresa corre la del plan; al promover el plan se borran todas. `cambioId` es
+// opaco y SIN FK, a propósito: la versión sobrevive al reemplazo del pendiente que la trajo (R13).
+// `version` tiene la forma de `versionPlanSchema` con `periodicidadOrdenes` siempre presente. De
+// PLATAFORMA: la RLS sin políticas y el `REVOKE ALL … FROM servi_app` viven solo en el SQL de
+// 20261114120000 (R26). `empresa_id`, no `organizacion_id`, como `PlanCambioRecepcion`.
+model PlanVersionEmpresa {
+  empresaId      String       @id @map("empresa_id")
+  empresa        Organizacion @relation(fields: [empresaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  planId         String       @map("plan_id")
+  plan           Plan         @relation(fields: [planId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  cambioId       String       @map("cambio_id")
+  version        Json
+  desdeAt        DateTime     @map("desde_at") @db.Timestamp(3)
+  // R28 (§14.1): la versión que la empresa conserva por una recepción no aplicada tras promover el plan.
+  noAplicadaAt   DateTime?    @map("no_aplicada_at") @db.Timestamp(3)
+  noAplicadaMotivo String?    @map("no_aplicada_motivo")
+
+  @@index([planId])
+  @@map("plan_version_empresa")
+}
+
+// SLT-129 (design §1.1; R5, R22, R23) — el avance del formulario de planes del superadmin, paso a paso.
+// `planId` NULL = borrador de un plan nuevo (varios a la vez); con valor = el borrador del cambio de ese plan,
+// uno solo (UNIQUE) y cae con el plan. `pasos` es `{ "<idPaso>": <valores validados> }`: guardar un paso
+// mezcla su clave con `||` en una sola sentencia, así que dos pasos a la vez no se pisan (R4). Es un objeto
+// aparte de `plan` para que ninguna lectura de planes vea un plan a medias (design §1.3). `iniciadoPor*` son
+// opacos y SIN FK, como el actor del rastro. De PLATAFORMA. Viven solo en el SQL de 20261117120000: los CHECK
+// `plan_borrador_pasos_objeto`, `plan_borrador_pasos_conocidos` y `plan_borrador_vigencia_solo_cambio`, la RLS
+// sin políticas y el `REVOKE ALL … FROM servi_app` (R23).
+model PlanBorrador {
+  id                   String   @id @default(uuid())
+  planId               String?  @unique @map("plan_id")
+  plan                 Plan?    @relation(fields: [planId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  pasos                Json     @default("{}")
+  iniciadoPorUsuarioId String   @map("iniciado_por_usuario_id")
+  iniciadoPorNombre    String   @map("iniciado_por_nombre") @db.VarChar(120)
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("plan_borrador")
 }
 
 // SL-40 (design §3.3) — los cargos y reversos del cobro de la plataforma, append-only. De NEGOCIO.
@@ -6236,7 +6587,8 @@ model CobroPlataformaMovimiento {
   ocurridoAt DateTime              @map("ocurrido_at")
   createdAt  DateTime              @default(now()) @map("created_at")
 
-  orden Orden @relation(fields: [ordenId], references: [id], onDelete: Cascade)
+  orden  Orden                  @relation(fields: [ordenId], references: [id], onDelete: Cascade)
+  trazas CobroPlataformaTraza[] // SLT-85: exactamente una, por el UNIQUE (organizacion_id, movimiento_id)
 
   organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
@@ -6246,6 +6598,48 @@ model CobroPlataformaMovimiento {
   @@index([ordenId])
   @@index([organizacionId, ocurridoAt]) // SLT-83 (R24): lo cobrado en el ciclo, por la fecha del cargo
   @@map("cobro_plataforma_movimiento")
+}
+
+// SLT-94 (design §1 M3) — el cobro de FULFILLMENT por paquete a la tienda, append-only. De NEGOCIO.
+// Un registro inmutable por evento: cargo al crear (secuencia 1, causa `creacion`), reverso al eliminar
+// (`eliminacion`) o al cancelar por API (`cancelacion_api`), re-cargo al restaurar (`restauracion`).
+// Congela monto, % de IVA, IVA, la tienda cobrada y el valor que lo produjo (R21, R31). Los escriben SOLO
+// los triggers de 20261108120300 (SECURITY DEFINER), que en la misma sentencia asientan sus filas en el
+// libro de la tienda y en la caja (origen `orden_fulfillment`, `origen_id` = id de esta fila).
+// Viven solo en el SQL de 20261108120200, porque Prisma no los expresa:
+//   · los CHECK: `monto > 0`, `iva_pct >= 0`, `iva >= 0`, `secuencia >= 1`, secuencia impar <=> cargo,
+//     causa casada con tipo, y `causa = creacion` <=> `secuencia = 1`;
+//   · la política `orden_fulfillment_movimiento_por_empresa`;
+//   · el `REVOKE INSERT, UPDATE, DELETE … FROM servi_app` (R25): la empresa lee y no toca;
+//   · los triggers de misma empresa de SL-17.
+// El `id` no tiene default en Prisma porque ningún código de la app crea filas: lo pone el trigger.
+model OrdenFulfillmentMovimiento {
+  id            String                          @id
+  ordenId       String                          @map("orden_id")
+  tiendaId      String                          @map("tienda_id") // CONGELADA en el cargo (R21/R31)
+  secuencia     Int
+  tipo          OrdenFulfillmentMovimientoTipo
+  causa         OrdenFulfillmentMovimientoCausa
+  monto         Decimal                         @db.Decimal(12, 2)
+  ivaPct        Decimal                         @map("iva_pct") @db.Decimal(5, 2)
+  iva           Decimal                         @db.Decimal(12, 2)
+  tarifaValorId String?                         @map("tarifa_valor_id") // traza, nunca bloqueo
+  ocurridoAt    DateTime                        @map("ocurrido_at")
+  createdAt     DateTime                        @default(now()) @map("created_at")
+
+  orden       Orden        @relation(fields: [ordenId], references: [id], onDelete: Restrict)
+  tienda      Usuario      @relation("OrdenFulfillmentMovimientoTienda", fields: [tiendaId], references: [id], onDelete: Restrict)
+  tarifaValor TarifaValor? @relation(fields: [tarifaValorId], references: [id], onDelete: SetNull)
+
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
+  @@unique([organizacionId, ordenId, secuencia], map: "orden_fulfillment_movimiento_orden_secuencia_key") // R23/R27
+  @@index([organizacionId])
+  @@index([ordenId])
+  @@index([tiendaId])
+  @@index([tarifaValorId])
+  @@map("orden_fulfillment_movimiento")
 }
 
 // SLT-83 (design §2.2) — las condiciones congeladas de una orden porcentual: el porcentaje y el mínimo del
@@ -6269,6 +6663,262 @@ model CobroPlataformaPorcentualOrden {
   @@unique([organizacionId, ordenId])
   @@index([organizacionId])
   @@map("cobro_plataforma_porcentual_orden")
+}
+
+// SLT-85 (design §1) — la traza de facturación de cada movimiento del cobro de la plataforma: la copia
+// del momento (orden, regla, plan y período) que el movimiento no guarda. Una fila por movimiento. De
+// NEGOCIO. La escribe SOLO el trigger `AFTER INSERT` sobre `cobro_plataforma_movimiento` de
+// 20261109120000 (SECURITY DEFINER); las filas de antes de esa migración salen del relleno con
+// `reconstruido = true` y sin los datos que no se guardaron. Viven solo en el SQL de 20261109120000,
+// porque Prisma no los expresa:
+//   · los CHECK: `tipo_cobro` y `periodo_tipo` en su lista, la regla (fijo con valor fijo y sin % ni
+//     mínimo; porcentual con % y sin valor fijo), el signo (cargo >= 0, reverso <= 0), `reverso_de` solo
+//     en los reversos y el período entero o vacío;
+//   · la política `cobro_plataforma_traza_por_empresa`;
+//   · el `REVOKE INSERT, UPDATE, DELETE … FROM servi_app`: la empresa lee su traza y no la toca (R23);
+//   · el trigger `cobro_plataforma_traza_inmutable`: nadie cambia una fila, tampoco el dueño (SL085, R24);
+//   · los triggers de misma empresa de SL-17.
+// El 1 a 1 con el movimiento lo da el UNIQUE (organizacion_id, movimiento_id): por eso `trazas` es una
+// lista en Prisma, que solo admite un 1 a 1 sobre un único de una columna. Ídem `reversos`.
+// `planId` es una copia sin FK, como `PlanRastro.planId`. El `id` no tiene default: lo pone el trigger.
+model CobroPlataformaTraza {
+  id              String                @id
+  ordenId         String                @map("orden_id")
+  movimientoId    String                @map("movimiento_id")
+  tipoMovimiento  CobroPlataformaTipo   @map("tipo_movimiento")
+  reversoDeId     String?               @map("reverso_de")
+  numGuia         Int?                  @map("num_guia")
+  montoCobrar     Decimal?              @map("monto_cobrar") @db.Decimal(12, 2)
+  estadoOrden     String?               @map("estado_orden")
+  tipoCobro       String                @map("tipo_cobro") // CHECK: fijo | porcentual
+  fuente          CobroPlataformaFuente
+  planId          String?               @map("plan_id")
+  planNombre      String?               @map("plan_nombre") @db.VarChar(80)
+  porcentaje      Decimal?              @db.Decimal(5, 2)
+  minimo          Decimal?              @db.Decimal(12, 2)
+  valorFijo       Decimal?              @map("valor_fijo") @db.Decimal(12, 2)
+  valorCobrado    Decimal               @map("valor_cobrado") @db.Decimal(12, 2)
+  cobradoAt       DateTime              @map("cobrado_at")
+  periodoTipo     String?               @map("periodo_tipo") // CHECK: quincenal | mensual | bimestral | anual
+  periodoInicioAt DateTime?             @map("periodo_inicio_at")
+  periodoFinAt    DateTime?             @map("periodo_fin_at")
+  reconstruido    Boolean               @default(false)
+  createdAt       DateTime              @default(now()) @map("created_at")
+
+  orden      Orden                     @relation(fields: [ordenId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  movimiento CobroPlataformaMovimiento @relation(fields: [movimientoId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  reversoDe  CobroPlataformaTraza?     @relation("CobroPlataformaTrazaReverso", fields: [reversoDeId], references: [id], onDelete: NoAction, onUpdate: Restrict)
+  reversos   CobroPlataformaTraza[]    @relation("CobroPlataformaTrazaReverso")
+
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict, onUpdate: Cascade) // SL-17/R2
+
+  @@unique([organizacionId, movimientoId]) // R1: una traza por movimiento
+  @@unique([organizacionId, reversoDeId]) // un cargo lo anula como mucho un reverso
+  @@index([organizacionId])
+  @@index([ordenId])
+  @@index([organizacionId, cobradoAt])
+  @@map("cobro_plataforma_traza")
+}
+
+// SLT-118 (design §1.1) — la factura de la plataforma: el estado de cuenta interno de una empresa por corte
+// de su periodicidad de órdenes. Lleva las órdenes de `[desde, hasta)` y se EMITE en `hasta` con la cuota del
+// período de cobro que empieza ahí (por adelantado, R8) y, aparte, la primera cuota de un plan (R16, R28,
+// R29). De NEGOCIO. La escriben SOLO las funciones del dueño de 20261111130100 (`factura_plataforma_avanzar`,
+// `_tomar_cambio`, `_cerrar`); `servi_app` solo la lee. Viven solo en el SQL de esa migración, porque Prisma no
+// los expresa:
+//   · los CHECK: `estado`, `periodicidad` y los tipos de cobro en su lista; fin nulo solo en curso y posterior
+//     al inicio; número, cifras y las dos cuotas solo en la cerrada (la marca `primeraCuotaDesdeAt`, no); el
+//     plan (id, nombre, tipo) entero o vacío; la cuota (9 columnas) entera o vacía; la primera cuota (8
+//     columnas) entera o vacía y solo con marca; la marca igual a `desde` o a `hasta`; `0 < días cobrados <=
+//     días del período` y el tramo con fin posterior al inicio en las dos;
+//   · el único parcial `(organizacion_id) WHERE estado = 'en_curso'`: una sola en curso (R1);
+//   · la política `factura_plataforma_por_empresa` y el `REVOKE INSERT, UPDATE, DELETE … FROM servi_app` (R22);
+//   · el trigger `factura_plataforma_inmutable`: una cerrada no cambia, tampoco para el dueño; una por cerrar
+//     no cambia su plan, su periodicidad ni sus fechas, y la marca solo pasa de nula a un valor (SL118, R13, R16);
+//   · el trigger de «sin cambio de empresa» de SL-17.
+// `planId`, `cuotaPlanId` y `primeraCuotaPlanId` son copias sin FK, como en la traza (el plan es de plataforma y
+// la copia es del momento). La FK a la empresa es CASCADE (design §1.1): las limpiezas de los tests y el
+// borrado de la demo borran empresas que ya tienen factura.
+model FacturaPlataforma {
+  id            String    @id @default(dbgenerated("(gen_random_uuid())::text"))
+  estado        String // CHECK: en_curso | por_cerrar | cerrada
+  numero        Int? // R14: solo en la cerrada, correlativo por empresa desde 1
+  desdeAt       DateTime  @map("desde_at")
+  hastaAt       DateTime? @map("hasta_at") // excluido, y la emisión; NULL solo en curso
+  // P20: el fin natural (R2), fijado al abrirla; solo R16 lo recalcula. La sembrada histórica (R26) guarda el
+  // primer corte tras la migración. CHECK factura_plataforma_fin_natural: > desde_at y hasta_at <= él.
+  finNaturalAt  DateTime  @map("fin_natural_at") @db.Timestamp(3)
+  periodicidad  String // CHECK: quincenal | mensual. La de órdenes: la del plan al abrirla, o quincenal (R2)
+  // El plan de las ÓRDENES (R5): el de la empresa al abrirla; solo R16 lo cambia mientras está en curso.
+  planId        String?   @map("plan_id")
+  planNombre    String?   @map("plan_nombre") @db.VarChar(80)
+  tipoCobro     String?   @map("tipo_cobro") // CHECK: quincenal | mensual | bimestral | anual
+  // Marca (R16, R28): inicio del tramo de la primera cuota que esta factura emitirá; su `desde` o su `hasta`.
+  primeraCuotaDesdeAt       DateTime? @map("primera_cuota_desde_at")
+  // La primera cuota (R29, P18), al cerrar: su plan, el fin de su tramo (que empieza en la marca), su precio,
+  // su importe y sus días. Las ocho o ninguna.
+  primeraCuotaHastaAt       DateTime? @map("primera_cuota_hasta_at")
+  primeraCuotaPlanId        String?   @map("primera_cuota_plan_id")
+  primeraCuotaPlanNombre    String?   @map("primera_cuota_plan_nombre") @db.VarChar(80)
+  primeraCuotaTipoCobro     String?   @map("primera_cuota_tipo_cobro") // CHECK: quincenal | mensual | bimestral | anual
+  primeraCuotaPrecioMensual Decimal?  @map("primera_cuota_precio_mensual") @db.Decimal(12, 2)
+  primeraCuota              Decimal?  @map("primera_cuota") @db.Decimal(12, 2)
+  primeraCuotaDiasCobrados  Int?      @map("primera_cuota_dias_cobrados")
+  primeraCuotaDiasPeriodo   Int?      @map("primera_cuota_dias_periodo")
+  cargos        Decimal?  @db.Decimal(14, 2)
+  reversos      Decimal?  @db.Decimal(14, 2) // en positivo
+  totalOrdenes  Decimal?  @map("total_ordenes") @db.Decimal(14, 2)
+  movimientos   Int?
+  // La cuota de la emisión (R8), al cerrar: su plan (el de la factura siguiente), el período completo que
+  // empieza en la emisión, su precio, su importe y sus días (iguales). Las nueve o ninguna.
+  cuotaPlanId     String?   @map("cuota_plan_id")
+  cuotaPlanNombre String?   @map("cuota_plan_nombre") @db.VarChar(80)
+  cuotaTipoCobro  String?   @map("cuota_tipo_cobro") // CHECK: quincenal | mensual | bimestral | anual
+  cuotaDesdeAt    DateTime? @map("cuota_desde_at")
+  cuotaHastaAt    DateTime? @map("cuota_hasta_at")
+  precioMensual Decimal?  @map("precio_mensual") @db.Decimal(12, 2)
+  cuota         Decimal?  @db.Decimal(12, 2)
+  diasCobrados  Int?      @map("dias_cobrados")
+  diasPeriodo   Int?      @map("dias_periodo")
+  total         Decimal?  @db.Decimal(14, 2) // total de órdenes + cuota + primera cuota
+  cerradaAt     DateTime? @map("cerrada_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Cascade, onUpdate: Cascade) // SL-17/R2
+
+  // SLT-60: lo que los pagos confirmados aplicaron a esta factura. El saldo NO es una columna (la cerrada es
+  // inmutable): lo calcula `factura_plataforma_saldos(org)` desde estas filas.
+  aplicacionesPago PagoPlataformaAplicacion[]
+
+  @@unique([organizacionId, desdeAt]) // R11: un intervalo no se factura dos veces
+  @@unique([organizacionId, numero]) // R14: sin repetidos
+  @@index([organizacionId, estado])
+  @@map("factura_plataforma")
+}
+
+// SLT-215 (design §1.2; R24–R37) — el nivel vigente de una empresa con plan y lo que el cierre necesita. Una fila
+// por empresa con plan. De NEGOCIO. La escriben SOLO las funciones del dueño de 20261121140100; `servi_app` solo la
+// lee. Viven solo en ese SQL: los CHECK (`nivel` de 0 a 10, `meses_sin_cumplir` 0 o 1), la política
+// `plan_nivel_empresa_por_empresa`, el `REVOKE INSERT, UPDATE, DELETE … FROM servi_app` y el trigger de «sin cambio
+// de empresa». `cerradoHastaAt` es el fin (excluido, UTC) del último mes cerrado; `entradaAt`, la entrada al plan
+// actual (no `plan_ciclo_ancla_at`, que también mueve un cambio de solo tipo de cobro). El `@@index` repite la
+// clave a propósito: la guardia `organizacion-en-modelos` lo pide a toda tabla de negocio, como en
+// `tarifa_activacion`.
+model PlanNivelEmpresa {
+  nivel           Int      @default(0)
+  mesesSinCumplir Int      @default(0) @map("meses_sin_cumplir")
+  cerradoHastaAt  DateTime @map("cerrado_hasta_at") @db.Timestamp(3)
+  entradaAt       DateTime @map("entrada_at") @db.Timestamp(3)
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at")
+
+  organizacionId String       @id @map("organizacion_id")
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizacionId])
+  @@map("plan_nivel_empresa")
+}
+
+// SLT-215 (design §1.3; R35) — cada inicio de nivel de una empresa: subida, bajada o recálculo. Solo se añade. De
+// NEGOCIO, como `plan_nivel_empresa`. `planId` es una copia sin FK, como en `cobro_plataforma_traza`. Viven solo
+// en el SQL de 20261121140100: los CHECK (motivo, niveles de 0 a 10, órdenes ≥ 0, mes y órdenes los dos o
+// ninguno), el único parcial `plan_nivel_historial_un_cierre_por_mes` (un cierre por empresa y mes), la política,
+// el `REVOKE` y el trigger. El nivel vigente en `t` es el de la fila con el mayor `desdeAt <= t`; sin fila, 0.
+model PlanNivelHistorial {
+  id               String    @id @default(dbgenerated("(gen_random_uuid())::text"))
+  planId           String    @map("plan_id")
+  nivel            Int
+  nivelAnterior    Int       @map("nivel_anterior")
+  motivo           String // CHECK: subida | bajada | cambio_niveles | cambio_plan
+  desdeAt          DateTime  @map("desde_at") @db.Timestamp(3)
+  mesInicioAt      DateTime? @map("mes_inicio_at") @db.Timestamp(3)
+  ordenesEfectivas Int?      @map("ordenes_efectivas")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  organizacionId String       @map("organizacion_id")
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([organizacionId, desdeAt])
+  @@map("plan_nivel_historial")
+}
+
+// SLT-60 (design §1) — la confirmación del superadmin de un pago a la plataforma (`egreso_pago_plataforma` de
+// `wallet_movimiento`). De NEGOCIO. El estado del pago no se guarda: confirmado = tiene esta fila; anulado = tiene
+// su contra-asiento; por confirmar = ni lo uno ni lo otro. La escribe SOLO `pago_plataforma_confirmar` (función
+// del dueño de 20261116120000); `servi_app` solo la lee. Viven solo en el SQL de esa migración:
+//   · la política `pago_plataforma_confirmacion_por_empresa` y el `REVOKE INSERT, UPDATE, DELETE … FROM servi_app`
+//     (R25);
+//   · el trigger `pago_plataforma_confirmacion_inmutable`: nadie la cambia, tampoco el dueño (SL060, R26);
+//   · los triggers de misma empresa y de «sin cambio de empresa» de SL-17. `confirmado_por` es el superadmin, sin
+//     empresa: el trigger de misma empresa lo deja pasar (T0.1).
+// Las FK a `wallet_movimiento` van sin acción: el libro no se borra.
+model PagoPlataformaConfirmacion {
+  id           String   @id @default(dbgenerated("(gen_random_uuid())::text"))
+  pagoId       String   @map("pago_id")
+  confirmadoPor String  @map("confirmado_por")
+  confirmadoAt DateTime @map("confirmado_at") @db.Timestamp(3)
+  // SLT-143 (design §1.2): true solo si el pago lo registró el superadmin por fuera (R13, R14). Lo escribe solo
+  // `pago_plataforma_registrar_por_fuera`; las confirmaciones anteriores a 20261121130000 quedan en false (R33).
+  porFuera     Boolean  @default(false) @map("por_fuera")
+
+  pago         WalletMovimiento @relation(fields: [pagoId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  confirmador  Usuario          @relation("PagoPlataformaConfirmador", fields: [confirmadoPor], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  aplicaciones PagoPlataformaAplicacion[]
+  // SLT-143: 0 o 1 por el UNIQUE (organizacion_id, confirmacion_id); lista porque Prisma solo admite un 1 a 1
+  // sobre un único de una columna (como `WalletMovimiento.confirmacionesPagoPlataforma`).
+  anulaciones  PagoPlataformaAnulacion[]
+
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Cascade, onUpdate: Cascade) // SL-17/R2
+
+  @@unique([organizacionId, pagoId], map: "pago_plataforma_confirmacion_org_pago_key") // R19: una confirmación por pago
+  @@index([organizacionId]) // SL-17/R2
+  @@map("pago_plataforma_confirmacion")
+}
+
+// SLT-60 (design §1) — cuánto de un pago confirmado se aplicó a cada factura cerrada. De NEGOCIO; la escribe solo
+// `pago_plataforma_confirmar`. Σ de las aplicaciones de una confirmación = monto del pago (lo exige la función). Viven
+// solo en el SQL de 20261116120000: el CHECK `monto > 0`, la política, el REVOKE, el trigger
+// `pago_plataforma_aplicacion_inmutable` y los de SL-17.
+model PagoPlataformaAplicacion {
+  id             String  @id @default(dbgenerated("(gen_random_uuid())::text"))
+  confirmacionId String  @map("confirmacion_id")
+  facturaId      String  @map("factura_id")
+  monto          Decimal @db.Decimal(14, 2) // CHECK > 0
+
+  confirmacion PagoPlataformaConfirmacion @relation(fields: [confirmacionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  factura      FacturaPlataforma          @relation(fields: [facturaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Cascade, onUpdate: Cascade) // SL-17/R2
+
+  @@unique([organizacionId, confirmacionId, facturaId], map: "pago_plataforma_aplicacion_org_conf_factura_key") // una fila por factura
+  @@index([organizacionId, facturaId], map: "pago_plataforma_aplicacion_org_factura_idx") // el saldo de cada factura
+  @@map("pago_plataforma_aplicacion")
+}
+
+// SLT-143 (design §1.1) — la anulación de un pago confirmado hecha por el superadmin. De NEGOCIO. Su existencia
+// es lo que deja pasar el contra-asiento en el trigger `pago_plataforma_no_anular_confirmado` (R29): por eso la
+// escribe SOLO `pago_plataforma_anular_confirmado` (función del dueño de 20261121130000) y `servi_app` solo la lee
+// (R32). El motivo no se duplica: vive en la constancia `ajuste_caja_anulacion` de la misma operación. Viven solo
+// en el SQL de esa migración: la política, el REVOKE, el trigger `pago_plataforma_anulacion_inmutable` y los de
+// SL-17 (`anulado_por` es el superadmin, sin empresa).
+model PagoPlataformaAnulacion {
+  id             String   @id @default(dbgenerated("(gen_random_uuid())::text"))
+  confirmacionId String   @map("confirmacion_id")
+  anuladoPor     String   @map("anulado_por")
+  anuladoAt      DateTime @map("anulado_at") @db.Timestamp(3)
+
+  confirmacion PagoPlataformaConfirmacion @relation(fields: [confirmacionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  anulador     Usuario                    @relation("PagoPlataformaAnulador", fields: [anuladoPor], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  organizacionId String       @default(dbgenerated()) @map("organizacion_id") // SL-17/R2
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Cascade, onUpdate: Cascade) // SL-17/R2
+
+  @@unique([organizacionId, confirmacionId], map: "pago_plataforma_anulacion_org_confirmacion_key") // una anulación por confirmación
+  @@index([organizacionId]) // SL-17/R2
+  @@map("pago_plataforma_anulacion")
 }
 
 // SL-36 (design §2.1) — los cuatro servicios que una empresa conecta con sus propias cuentas.
@@ -6336,4 +6986,126 @@ model IntegracionPruebaMinuto {
   @@unique([organizacionId, minuto], map: "integracion_prueba_minuto_organizacion_id_minuto_key")
   @@index([organizacionId])
   @@map("integracion_prueba_minuto")
+}
+
+// SLT-87 (design §2.1-§2.3; R13, R14, R19) — un reporte de problema enviado desde el botón flotante del
+// portal. De PLATAFORMA: la RLS sin políticas y el `REVOKE ALL … FROM servi_app` viven solo en el SQL de
+// 20261110120000, igual que los `CHECK` (largo de la descripción, ruta sin query ni fragmento, rol que no
+// es de plataforma). La escribe solo `lib/repositories/BugReportRepository.ts`, en `comoPlataforma`.
+//
+// `organizationId` es un ATRIBUTO (quién reportó), no reparte la tabla: va en inglés por la decisión de
+// identificadores (Q5, 2026-11-09) y está anotado en `docs/architecture.md > Multi-empresa`. Las FK son
+// CASCADE para no bloquear el borrado de las empresas demo (SL-43).
+model BugReport {
+  id             String       @id @default(uuid())
+  organizationId String       @map("organization_id")
+  reporterUserId String       @map("reporter_user_id")
+  /// El nombre en el momento del reporte (R13).
+  reporterName   String       @map("reporter_name") @db.VarChar(120)
+  reporterRole   RolValue     @map("reporter_role")
+  /// 1-500 caracteres tras recortar (`DESCRIPCION_MAX`, `lib/config/reporte-bug.ts`).
+  description    String
+  /// Solo la ruta: sin query ni fragmento (Q2).
+  pagePath       String       @map("page_path") @db.VarChar(2048)
+  userAgent      String       @map("user_agent") @db.VarChar(512)
+  viewportWidth  Int?         @map("viewport_width")
+  viewportHeight Int?         @map("viewport_height")
+  isStandalone   Boolean?     @map("is_standalone")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @default(now()) @updatedAt @map("updated_at")
+  /// Borrado lógico (R19). En SLT-87 nada lo escribe.
+  deletedAt      DateTime?    @map("deleted_at")
+  /// SLT-97 (design §2.1; R16): nace «Nuevo»; el trigger `bug_report_status_solo_adelante`
+  /// (20261111120000) solo lo deja avanzar.
+  status         BugReportStatus @default(new)
+
+  organization  Organizacion            @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  reporter      Usuario                 @relation(fields: [reporterUserId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  statusChanges BugReportStatusChange[] // SLT-97: su historial de cambios de estado; CASCADE
+  images        BugReportImage[]        // SLT-98: sus imágenes, por `position`; CASCADE
+
+  @@index([createdAt(sort: Desc), id])
+  @@index([organizationId, createdAt(sort: Desc)])
+  // SLT-97 (design §2.1): el filtro por estado del listado del superadmin.
+  @@index([status, createdAt(sort: Desc), id])
+  @@map("bug_report")
+}
+
+// SLT-97 (design §2.1) — el estado de un reporte de problema. Solo avanza: new → in_review → resolved o
+// dismissed, o new → resolved o dismissed (trigger `bug_report_status_solo_adelante`, SL097).
+enum BugReportStatus {
+  new
+  in_review
+  resolved
+  dismissed
+
+  @@map("bug_report_status")
+}
+
+// SLT-97 (design §2.2-§2.4; R21, R23) — historial de cambios de estado de un reporte. De PLATAFORMA, como
+// `bug_report`: la RLS sin políticas y el `REVOKE ALL … FROM servi_app` viven solo en el SQL de
+// 20261111120000, igual que los `CHECK` y el trigger de inmutabilidad (SL097). Sin `updated_at` ni
+// `deleted_at` a propósito: la fila no se cambia ni se borra, salvo en cascada con su reporte.
+// `actorUserId` es opaco y sin FK, como en `plan_rastro` y `vehiculo_rastro`: la autoría sobrevive a la
+// cuenta. La escribe solo `lib/repositories/BugReportRepository.ts`, en `comoPlataforma`.
+model BugReportStatusChange {
+  id          String          @id @default(uuid())
+  bugReportId String          @map("bug_report_id")
+  fromStatus  BugReportStatus @map("from_status")
+  toStatus    BugReportStatus @map("to_status")
+  /// `null` = sin nota; si hay, 1-500 tras recortar (`NOTA_MAX`, `lib/types/reporte-bug.ts`).
+  note        String?
+  actorUserId String          @map("actor_user_id")
+  /// Nombre del superadmin en el momento del cambio.
+  actorName   String          @map("actor_name") @db.VarChar(120)
+  createdAt   DateTime        @default(now()) @map("created_at")
+
+  bugReport BugReport @relation(fields: [bugReportId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([bugReportId, createdAt(sort: Desc), id])
+  @@map("bug_report_status_change")
+}
+
+// SLT-98 (design §2.1-§2.3; R13, R18, R19) — las imágenes de un reporte de problema, una fila por imagen.
+// De PLATAFORMA, como `bug_report`: la RLS sin políticas y el `REVOKE ALL … FROM servi_app` viven solo en
+// el SQL de 20261112120000, igual que los `CHECK` (position 1-5, los tres tipos, 1 B-5 MB, la forma de la
+// ruta). Sin `organization_id`: la empresa es la del reporte padre. Sin `updated_at` ni `deleted_at` a
+// propósito: muere con su reporte. La escribe solo `lib/repositories/BugReportRepository.ts`, en
+// `comoPlataforma`.
+model BugReportImage {
+  /// El `imagenId` (uuid) que dio el servidor al preparar la subida; también es el nombre del archivo.
+  id          String   @id
+  bugReportId String   @map("bug_report_id")
+  /// El orden en que se adjuntó, 1-5 (`IMAGENES_MAX`, `lib/config/reporte-bug.ts`).
+  position    Int      @db.SmallInt
+  /// `<usuario_id>/<imagen_id>.<ext>`, relativa a la carpeta de la empresa en el bucket.
+  storagePath String   @unique @map("storage_path") @db.VarChar(255)
+  contentType String   @map("content_type") @db.VarChar(20)
+  /// El tamaño medido por el servidor, 1-5242880 (`IMAGEN_BYTES_MAX`, `lib/config/reporte-bug.ts`).
+  sizeBytes   Int      @map("size_bytes")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  bugReport BugReport @relation(fields: [bugReportId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([bugReportId, position])
+  @@map("bug_report_image")
+}
+
+// SLT-98 (design §16.2; R24–R27, R31) — el tope diario de imágenes: cuántos permisos de subida se le dieron
+// a un usuario en un día. De PLATAFORMA: la RLS sin políticas, el `REVOKE ALL … FROM servi_app` y el
+// `CHECK (permits_granted >= 0)` viven solo en el SQL de 20261112120000. La PK compuesta es la que usa el
+// `ON CONFLICT` de `BugReportRepository.consumir`: es la atomicidad de R26. Sin `updated_at` a propósito.
+model BugReportUploadQuota {
+  userId         String   @map("user_id")
+  /// El día calendario en la zona horaria del país de la empresa (la fecha la calcula el servidor);
+  /// se escribe y se lee con `::date` sobre `YYYY-MM-DD`, nunca con un `Date` de JS.
+  day            DateTime @db.Date
+  /// Permisos concedidos ese día. Con el tope blando llega como mucho a 25 (20 + 5).
+  permitsGranted Int      @map("permits_granted")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  user Usuario @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([userId, day])
+  @@map("bug_report_upload_quota")
 }

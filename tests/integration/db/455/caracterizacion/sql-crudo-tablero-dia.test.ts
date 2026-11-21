@@ -7,6 +7,7 @@ import { C, CLAVES_RESULTADO, R } from "../../../../fixtures/codigos-455";
 import { HAY_BASE_DE_DATOS } from "../../_postgres-real";
 import { conEscenario, prepararMundo, type Mundo } from "../../454/_escenario";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /**
  * FEATURE 455 — FASE 0 · C04 (R46, R52). EL TABLERO DEL DIA: CONTADORES POR RESULTADO Y BUCKETS.
  *
@@ -41,7 +42,7 @@ describeSiHayBase("455/C04 — tablero del dia (Postgres real)", () => {
       await e.sembrarOrden({ estatus: C.novedadInterna as never, montoCobrar: 1000 });
 
       const filas = await new TableroDiaRepository(e.cliente).contarPorMensajero(
-        ventanaDelDiaEnCursoCR(new Date()),
+        ventanaDelDiaEnCursoCR(new Date(), ZONA_CR),
         { tipo: "global" },
       );
       const mia = filas.find((f) => f.mensajeroId === e.mensajeroId);

@@ -18,6 +18,7 @@ import type {
 import { clavePar } from "@/lib/utils/cascada-tarifa";
 import type { TarifaTienda } from "@/lib/types/tarifa-flexible";
 import { tarifaVieja } from "../../fixtures/tarifa-tienda";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 // 💰 Feature 240 (T3.1) — regla del RECHAZO MANUAL por la tienda. Molde:
 // `reprogramacion-tienda-service.test.ts` (100), su hermana de esta misma card.
@@ -179,6 +180,7 @@ function build(
       tarifaRepo,
       cobroRepo,
       () => AHORA,
+      reglasPaisFijas(),
     ),
   };
 }

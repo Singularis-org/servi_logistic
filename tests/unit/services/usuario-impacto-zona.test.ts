@@ -41,7 +41,7 @@ function usuario(over: Partial<UsuarioPublico> = {}): UsuarioPublico {
     cedula: "1710034065",
     tipoIdentificacionId: "tipo-1",
     rolId: "rol-sat",
-    fulfillment: false,
+    seRecogeEnTienda: true,
     zonaId: "z1",
     createdAt: new Date("2026-01-01"),
     updatedAt: new Date("2026-01-01"),
@@ -90,6 +90,9 @@ function buildZonaRepo(over: Partial<IZonaRepository> = {}): IZonaRepository {
     listLite: vi.fn().mockResolvedValue([]),
     update: vi.fn(),
     hardDelete: vi.fn(),
+    // SLT-225: desactivar/reactivar; por defecto salen bien.
+    desactivar: vi.fn().mockResolvedValue({ estado: "ok" }),
+    reactivar: vi.fn().mockResolvedValue({ estado: "ok" }),
     countExistingDistritos: vi.fn(),
     countExistingVehiculos: vi.fn(),
     findCentralZonaId: vi.fn().mockResolvedValue(null),

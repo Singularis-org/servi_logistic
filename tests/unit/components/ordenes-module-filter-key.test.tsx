@@ -164,7 +164,9 @@ describe("OrdenesModule — reset ante el cambio de filtro (R60)", () => {
     });
   });
 
-  it("R60: cambiar el filtro limpia la selección de filas", async () => {
+  // SLT-222 R1502 sustituye R60 de la 144: cambiar el filtro vuelve a la página 1 (arriba)
+  // pero CONSERVA las filas marcadas.
+  it("R60 + SLT-222 R1502: cambiar el filtro conserva la selección de filas", async () => {
     const user = userEvent.setup();
     const { rerender } = renderModule(
       <OrdenesModule filter={{ zona_id: ["z1"] }} selectable acciones={[]} />,
@@ -185,9 +187,14 @@ describe("OrdenesModule — reset ante el cambio de filtro (R60)", () => {
     );
 
     await waitFor(() =>
+      expect(listarOrdenesMock).toHaveBeenCalledWith(
+        expect.objectContaining({ filter: { zona_id: ["z2"] } }),
+      ),
+    );
+    await waitFor(() =>
       expect(
         screen.getByRole("checkbox", { name: /Seleccionar orden REM-o1/ }),
-      ).not.toBeChecked(),
+      ).toBeChecked(),
     );
   });
 });

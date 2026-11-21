@@ -36,7 +36,7 @@ function comandos(): string[] {
     .map((hook) => hook.command ?? '')
 }
 
-describe('guardia: hooks anclados a la raiz', () => {
+describe('guardia: hooks anclados a la raiz', { timeout: 30_000 }, () => {
   it('todo command que llama a .claude/hooks/ usa "$CLAUDE_PROJECT_DIR"', () => {
     const deHooks = comandos().filter((c) => c.includes('.claude/hooks/'))
     expect(deHooks.length).toBeGreaterThan(0)

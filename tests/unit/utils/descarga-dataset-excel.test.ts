@@ -22,6 +22,7 @@ import { comprobarLimiteExcel } from "@/lib/utils/limite-excel";
 import { buildXlsxLibro, buildXlsxRows } from "@/lib/utils/xlsx-template";
 import { mensajeLimiteExcel } from "@/components/shared/descarga-resultado";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 const COLUMNAS: DescargaColumna[] = [{ clave: "guia", encabezado: "Guía" }];
 const POCAS: DescargaFila[] = [{ guia: "A-1" }, { guia: "B-2" }];
 
@@ -40,7 +41,7 @@ describe("R2 · el límite de Excel es el de la hoja", () => {
   });
 
   it("hoja PRINCIPAL con 1.048.576 filas ⇒ LimiteExcelExcedidoError con hoja y filas, y exceljs no se invoca", async () => {
-    const p = construirDescarga({ tipo: "xlsx", titulo: "Órdenes", columnas: COLUMNAS, filas: filas(1_048_576) });
+    const p = construirDescarga({ tipo: "xlsx", titulo: "Órdenes", columnas: COLUMNAS, filas: filas(1_048_576) }, ZONA_CR);
     await expect(p).rejects.toBeInstanceOf(LimiteExcelExcedidoError);
     await expect(p).rejects.toMatchObject({ hoja: "Órdenes", filas: 1_048_576, limite: 1_048_575 });
     expect(buildXlsxRows).not.toHaveBeenCalled();
@@ -49,7 +50,7 @@ describe("R2 · el límite de Excel es el de la hoja", () => {
 
   it("tipo ausente (xlsx por defecto) también pasa por la guardia", async () => {
     await expect(
-      construirDescarga({ titulo: "Órdenes", columnas: COLUMNAS, filas: filas(1_048_576) }),
+      construirDescarga({ titulo: "Órdenes", columnas: COLUMNAS, filas: filas(1_048_576) }, ZONA_CR),
     ).rejects.toBeInstanceOf(LimiteExcelExcedidoError);
     expect(buildXlsxRows).not.toHaveBeenCalled();
   });
@@ -61,7 +62,7 @@ describe("R2 · el límite de Excel es el de la hoja", () => {
       columnas: COLUMNAS,
       filas: POCAS,
       hojasAdicionales: [{ titulo: "Detalle por guía", columnas: COLUMNAS, filas: filas(1_048_576) }],
-    });
+    }, ZONA_CR);
     await expect(p).rejects.toMatchObject({ name: "LimiteExcelExcedidoError", hoja: "Detalle por guía", filas: 1_048_576 });
     expect(buildXlsxLibro).not.toHaveBeenCalled();
   });
@@ -77,7 +78,7 @@ describe("R2 · el límite de Excel es el de la hoja", () => {
   });
 
   it("por debajo del límite el archivo se arma como siempre", async () => {
-    const archivo = await construirDescarga({ tipo: "xlsx", titulo: "Órdenes", columnas: COLUMNAS, filas: POCAS });
+    const archivo = await construirDescarga({ tipo: "xlsx", titulo: "Órdenes", columnas: COLUMNAS, filas: POCAS }, ZONA_CR);
     expect(buildXlsxRows).toHaveBeenCalledTimes(1);
     expect(archivo.nombreArchivo).toMatch(/^ordenes-\d{4}-\d{2}-\d{2}\.xlsx$/);
   });

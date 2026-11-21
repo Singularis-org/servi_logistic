@@ -2,11 +2,12 @@ import { randomUUID } from "node:crypto";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { Prisma, type PrismaClient } from "@prisma/client";
 
+import { conEmpresa } from "@/lib/db/contexto-empresa";
 import { CoberturaRepository } from "@/lib/repositories/CoberturaRepository";
 import type { DistritoCoberturaRow } from "@/lib/interfaces/repositories/ICoberturaRepository";
 
 import { comoApp, crearOrganizacion, fijarEmpresa, sembrarActivacion } from "@/tests/fabricas/organizaciones";
-import { crearFksDeOrden } from "./_fixtures/orden-minima";
+import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
@@ -64,18 +65,8 @@ describeSiHayBase("465 — CoberturaRepository contra Postgres real", () => {
   let prisma: PrismaClient;
   let tiendaId: string;
 
-  beforeAll(async () => {
+  beforeAll(() => {
     prisma = crearPrismaDeTest();
-    const tienda = await prisma.usuario.findFirst({
-      where: { rol: { value: "adminTienda" } },
-      select: { id: true },
-    });
-    // SIN `if (!tienda) return;`: sin tienda no hay tarifa (T, ·) que sembrar y el test no probaria
-    // el filtro de tienda. Mejor rojo que verde vacio.
-    if (tienda === null) {
-      throw new Error("no hay ningun usuario adminTienda en esta base: corre `pnpm run db:seed`");
-    }
-    tiendaId = tienda.id;
   });
 
   afterAll(async () => {
@@ -84,6 +75,20 @@ describeSiHayBase("465 — CoberturaRepository contra Postgres real", () => {
 
   async function sembrar(tx: TxDeTest): Promise<Semilla> {
     await serializarEscriturasReales(tx);
+
+    // SLT-183: la tienda se SIEMBRA en la tx revertida del caso; antes se leia «el primer
+    // adminTienda» de la base, y la recien migrada no tiene ninguno. SIN `return`: sin tienda no hay
+    // tarifa (T, ·) que sembrar y el test no probaria el filtro de tienda. Mejor rojo que verde vacio.
+    tiendaId = (await crearUsuarioDePrueba(tx, "adminTienda")).id;
+    // Control positivo (R1104): la siembra llego a la base.
+    if ((await tx.usuario.count({ where: { id: tiendaId } })) !== 1) {
+      throw new Error("SLT-183: el adminTienda sembrado no esta en la base");
+    }
+    // SLT-183 (R1102): la central y la tarifa por defecto se buscan en la empresa del caso, no en
+    // toda la base (otra empresa tiene las suyas).
+    const [{ empresaId }] = await tx.$queryRawUnsafe<{ empresaId: string }[]>(
+      `SELECT current_setting('app.organizacion_id') AS "empresaId"`,
+    );
 
     const zona = async (marca: string) =>
       (
@@ -97,7 +102,10 @@ describeSiHayBase("465 — CoberturaRepository contra Postgres real", () => {
     const z3 = await zona("Z3");
 
     // A lo sumo UNA zona central (indice unico parcial): se usa la que haya o se crea.
-    let central = await tx.zona.findFirst({ where: { esCentral: true }, select: { id: true, nombre: true } });
+    let central = await tx.zona.findFirst({
+      where: { esCentral: true, organizacionId: empresaId },
+      select: { id: true, nombre: true },
+    });
     if (central === null) {
       central = await tx.zona.create({
         data: { nombre: `${SUFIJO}-central`, esCentral: true, sinpeNumero: "80000000", sinpeNombre: "Titular de Prueba" },
@@ -112,7 +120,7 @@ describeSiHayBase("465 — CoberturaRepository contra Postgres real", () => {
     if ((await tx.tarifa.count({ where: { zonaId: null, tiendaId } })) === 0) {
       await tx.tarifa.create({ data: datosDeTarifa(null, tiendaId) });
     }
-    if ((await tx.tarifa.count({ where: { zonaId: null, tiendaId: null } })) === 0) {
+    if ((await tx.tarifa.count({ where: { zonaId: null, tiendaId: null, organizacionId: empresaId } })) === 0) {
       await tx.tarifa.create({ data: datosDeTarifa(null, null) });
     }
 
@@ -322,9 +330,15 @@ describeSiHayBase("SLT-54 R30 — el Excel de cobertura por modelo, leyendo como
   it("la marca sigue en el Excel tras activar, y es la de la empresa", async () => {
     await enTransaccionRevertida(prisma, async (tx) => {
       const e = await sembrarR30(tx);
+      // La empresa en la base (RLS, `comoApp`) y en el contexto (`conEmpresa`), como en produccion.
+      // SLT-44 R9/R20: el Excel lee el catalogo de la empresa DEL CONTEXTO; sin el `conEmpresa`
+      // quedaria la empresa por defecto de `enTransaccionRevertida`, que la RLS de `org` no deja ver
+      // (R10: EmpresaNoResuelta). Mismo montaje que `tarifa-empresa-nueva.test.ts`.
       const marcaComo = async (org: string) => {
         await comoApp(tx, org);
-        const filas = await new CoberturaRepository(tx as unknown as PrismaClient).listDistritos();
+        const filas = await conEmpresa(org, () =>
+          new CoberturaRepository(tx as unknown as PrismaClient).listDistritos(),
+        );
         await tx.$executeRawUnsafe("RESET ROLE");
         const fila = filas.find((r) => r.canton.nombre === "Cartago" && r.distrito.nombre === e.distritoMarcado.nombre);
         if (fila === undefined) throw new Error("el distrito sembrado no aparece en el Excel");

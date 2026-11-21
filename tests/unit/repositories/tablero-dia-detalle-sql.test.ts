@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { TableroDiaRepository } from "@/lib/repositories/TableroDiaRepository";
 import { ventanaDelDiaEnCursoCR } from "@/lib/utils/ventana-dia-cr";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 192 (B7.3) — R41, R55, R56, R58.
 //
 // El detalle es la SEGUNDA puerta a las mismas filas. Este archivo comprueba que su `WHERE`
@@ -11,7 +12,7 @@ import { ventanaDelDiaEnCursoCR } from "@/lib/utils/ventana-dia-cr";
 // esta acotada con `LIMIT`/`OFFSET`: nunca materializa el dia entero para recortarlo despues
 // (la deuda de la ficha 191).
 
-const VENTANA = ventanaDelDiaEnCursoCR(new Date("2026-08-08T19:00:00.000Z"));
+const VENTANA = ventanaDelDiaEnCursoCR(new Date("2026-08-08T19:00:00.000Z"), ZONA_CR);
 const ZONA = "22222222-2222-4222-8222-222222222222";
 const MENSAJERO = "33333333-3333-4333-8333-333333333333";
 const PAGINA = { pagina: 3, pageSize: 25 };

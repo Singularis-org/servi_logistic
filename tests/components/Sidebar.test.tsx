@@ -423,6 +423,8 @@ describe("Feature 129 — ítem de sidebar de Analítica", () => {
     "layers",
     // SL-42 (R1): «Vehículos», el catálogo de tipos de vehículo del superadmin.
     "car",
+    // SLT-97 (R1): «Reportes», los reportes de bugs del superadmin.
+    "bug",
   ] as const satisfies readonly IconKey[];
   // Comprobación de exhaustividad tipada: si `IconKey` gana una clave que no está en
   // el array de arriba, `Exclude<IconKey, (typeof TODAS_LAS_CLAVES)[number]>` deja de
@@ -650,5 +652,58 @@ describe("Sidebar — logo de la marca (R6, R7, R24)", () => {
       (el) => `${el.getAttribute("alt") ?? ""} ${el.getAttribute("aria-label") ?? ""} ${el.getAttribute("title") ?? ""}`,
     );
     expect(nombres.join(" ").toLowerCase()).not.toContain(NOMBRE_ANTERIOR);
+  });
+});
+
+// SLT-193 «Botones de 44 px pendientes en la PWA del mensajero» (R914, R915, R921): en móvil, cada
+// ítem y subítem del menú mide 44 px de alto, para cualquier rol; en escritorio siguen `h-8` / `h-7`
+// (rail incluido). jsdom no aplica Tailwind: se afirman las clases.
+describe("SLT-193 — ítems y subítems del menú a 44 px en móvil", () => {
+  /**
+   * Ítems (enlaces y disparadores de submenú) y subítems. Los subítems y los enlaces simples llevan
+   * su `data-slot` de shadcn; el disparador de un submenú lo pisa `CollapsibleTrigger`, así que se
+   * reconoce por `aria-expanded`.
+   */
+  function botonesDelMenu(slot: "sidebar-menu-button" | "sidebar-menu-sub-button"): HTMLElement[] {
+    const porSlot = Array.from(document.querySelectorAll<HTMLElement>(`[data-slot="${slot}"]`));
+    if (slot === "sidebar-menu-sub-button") return porSlot;
+    const nav = screen.getByRole("navigation", { name: /navegación principal/i });
+    const disparadores = Array.from(nav.querySelectorAll<HTMLElement>("button[aria-expanded]"));
+    return [...new Set([...porSlot, ...disparadores])];
+  }
+
+  it("R914: cada ítem (enlace o disparador) y cada subítem lleva `max-md:h-11`", async () => {
+    const user = userEvent.setup();
+    renderSidebar(SIN_TARIFAS_DE_ADMIN);
+    await user.click(screen.getByRole("button", { name: /configuración/i }));
+
+    const items = botonesDelMenu("sidebar-menu-button");
+    const subitems = botonesDelMenu("sidebar-menu-sub-button");
+    expect(items.length).toBeGreaterThan(3);
+    expect(subitems.length).toBeGreaterThan(0);
+    // Un enlace simple y un disparador de submenú, por nombre (R921: los nombres no cambian).
+    expect(items).toContain(linkPorHref("/ordenes"));
+    expect(items).toContain(screen.getByRole("button", { name: /configuración/i }));
+    expect(subitems).toContain(screen.getByRole("link", { name: "Zonas" }));
+    for (const el of [...items, ...subitems]) {
+      expect(el.className.split(/\s+/)).toContain("max-md:h-11");
+    }
+  });
+
+  it("R915: en escritorio siguen `h-8` (ítems) y `h-7` (subítems); la clase nueva va siempre con `max-md:`", async () => {
+    const user = userEvent.setup();
+    renderSidebar(SIN_TARIFAS_DE_ADMIN);
+    await user.click(screen.getByRole("button", { name: /configuración/i }));
+
+    for (const el of botonesDelMenu("sidebar-menu-button")) {
+      const clases = el.className.split(/\s+/);
+      expect(clases).toContain("h-8");
+      expect(clases).not.toContain("h-11");
+    }
+    for (const el of botonesDelMenu("sidebar-menu-sub-button")) {
+      const clases = el.className.split(/\s+/);
+      expect(clases).toContain("h-7");
+      expect(clases).not.toContain("h-11");
+    }
   });
 });

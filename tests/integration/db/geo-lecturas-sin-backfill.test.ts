@@ -24,7 +24,8 @@ import { DineroProductosRepository } from "@/lib/repositories/DineroProductosRep
 import { InformeTransitoRepository } from "@/lib/repositories/InformeTransitoRepository";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
-import { ZonaRepository, planificarReconciliacion } from "@/lib/repositories/ZonaRepository";
+import { ZonaRepository } from "@/lib/repositories/ZonaRepository";
+import { planificarReconciliacion } from "@/lib/repositories/_shared/reconciliar-zona-ordenes";
 import type { NivelGeografico } from "@/lib/types/geografia-nodo";
 import { estadosIncluidos, PARAMETROS_POR_DEFECTO } from "@/lib/whatsapp-envios/informes/transito/parametros";
 import type { ConsultaTransito } from "@/lib/whatsapp-envios/informes/transito/tipos";

@@ -137,7 +137,7 @@ const escaner = () =>
 
 /** El disparador del desplegable: el acceso al escaneo, esté la tarjeta abierta o no. */
 const disparador = () =>
-  screen.queryByRole("button", { name: "Recolectar en tienda" });
+  screen.queryByRole("button", { name: "Escanear o escribir guía" });
 
 /**
  * Despliega la tarjeta de escaneo. El escáner arranca PLEGADO en toda la app (decisión del
@@ -146,7 +146,7 @@ const disparador = () =>
  * es lo que hace el mensajero.
  */
 async function abrirEscaner(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole("button", { name: "Recolectar en tienda" }));
+  await user.click(screen.getByRole("button", { name: "Escanear o escribir guía" }));
 }
 
 /**
@@ -307,10 +307,16 @@ describe("RecoleccionModule — las dos vistas pintan la card completa", () => {
     expect(screen.getAllByRole("group", { name: "Vista de las órdenes" })).toHaveLength(1);
   });
 
-  it("sin nada por recolectar no hay conmutador: no hay cards que conmutar", () => {
-    renderModule({ porRecolectar: [] });
+  // SLT-190 (R860, DS4): sustituye a «sin nada por recolectar no hay conmutador». El conmutador
+  // gobierna también «Recogidos en tienda hoy», así que con «Por recolectar» vacía sigue en la
+  // barra: antes desaparecía con la lista de arriba y dejaba la de abajo sin mando.
+  it("R860: con «Por recolectar» vacía el único conmutador sigue en la barra", () => {
+    renderModule({ porRecolectar: [], recolectadasHoy: [makeRecolectada()] });
 
-    expect(screen.queryByRole("group", { name: "Vista de las órdenes" })).toBeNull();
+    const conmutadores = screen.getAllByRole("group", { name: "Vista de las órdenes" });
+    expect(conmutadores).toHaveLength(1);
+    const barra = screen.getByRole("searchbox", { name: "Buscar guías" }).closest(".sticky");
+    expect(barra?.contains(conmutadores[0])).toBe(true);
   });
 });
 
@@ -399,8 +405,43 @@ describe("RecoleccionModule — el escáner está SIEMPRE accesible (R7/R8)", ()
   });
 });
 
-describe("RecoleccionModule — confirmar la recolección (R10/R11/R12/R13/R14/R15)", () => {
-  it("R10: la vía manual confirma la guía y revalida el apartado", async () => {
+// SLT-168 «Escaneo continuo en las recogidas del mensajero»: el diálogo es la sesión continua de
+// SLT-159. Cada lectura es una fila con su desenlace (R596) y NO hay toasts (R590); la lista se
+// relee UNA vez al cerrar si hubo alguna recolectada o ya recolectada (R598). Textos a mano.
+
+/** Las filas de la lista de la sesión, la más reciente primero. */
+function filas(): HTMLElement[] {
+  return within(screen.getByRole("log", { name: "Lecturas" })).queryAllByRole("listitem");
+}
+
+/** Espera a que la última lectura diga `estado` y la devuelve. */
+async function lecturaQueDice(estado: string): Promise<HTMLElement> {
+  await waitFor(() => expect(within(filas()[0]).getByText(estado)).toBeInTheDocument());
+  return filas()[0];
+}
+
+/** «Recogidas en tienda1»: el rótulo y su valor, tal como se leen. */
+function contador(rotulo: string): string {
+  return screen.getByText(rotulo).parentElement?.textContent ?? "";
+}
+
+function sinToasts() {
+  expect(toastSuccess).not.toHaveBeenCalled();
+  expect(toastError).not.toHaveBeenCalled();
+  expect(toastInfo).not.toHaveBeenCalled();
+}
+
+async function teclear(user: ReturnType<typeof userEvent.setup>, ...guias: string[]) {
+  for (const g of guias) await user.type(screen.getByRole("textbox"), `${g}{Enter}`);
+}
+
+async function cerrarEscaner(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: "Cerrar" }));
+  await waitFor(() => expect(escaner()).toBeNull());
+}
+
+describe("RecoleccionModule — confirmar la recolección (R10/R11/R12/R13/R14 + SLT-168)", () => {
+  it("R10 + R596: la vía manual confirma la guía y la fila dice «Recogida en tienda», sin toast", async () => {
     const user = userEvent.setup();
     renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
 
@@ -409,9 +450,8 @@ describe("RecoleccionModule — confirmar la recolección (R10/R11/R12/R13/R14/R
     await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
 
     await waitFor(() => expect(recolectarMock).toHaveBeenCalledWith({ numGuia: 1001 }));
-    // R14: la orden deja de estar pendiente y pasa a "Recolectadas hoy"; las dos listas las
-    // resuelve el servidor, así que la verdad se relee de allí.
-    expect(refreshMock).toHaveBeenCalled();
+    await lecturaQueDice("Recogida en tienda");
+    sinToasts();
   });
 
   it("R10: la vía CÁMARA confirma exactamente igual (mismo action, mismo resultado)", async () => {
@@ -423,8 +463,7 @@ describe("RecoleccionModule — confirmar la recolección (R10/R11/R12/R13/R14/R
     await user.click(screen.getByRole("button", { name: "Simular escaneo" }));
 
     await waitFor(() => expect(recolectarMock).toHaveBeenCalledWith({ numGuia: 1001 }));
-    expect(toastSuccess).toHaveBeenCalled();
-    expect(refreshMock).toHaveBeenCalled();
+    await lecturaQueDice("Recogida en tienda");
   });
 
   it("R11: un código que no son dígitos no llega a la action (vía manual)", async () => {
@@ -438,7 +477,7 @@ describe("RecoleccionModule — confirmar la recolección (R10/R11/R12/R13/R14/R
     expect(recolectarMock).not.toHaveBeenCalled();
   });
 
-  it("R11: un QR que no es la URL del paquete tampoco llega a la action (vía cámara)", async () => {
+  it("R11 + R597: un QR que no es guía es una fila «Código inválido» que no suma (vía cámara)", async () => {
     const user = userEvent.setup();
     textoEscaneado = "esto-no-es-una-url";
     renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
@@ -446,11 +485,15 @@ describe("RecoleccionModule — confirmar la recolección (R10/R11/R12/R13/R14/R
     await abrirEscaner(user);
     await user.click(screen.getByRole("button", { name: "Simular escaneo" }));
 
+    await lecturaQueDice("Código inválido");
     expect(recolectarMock).not.toHaveBeenCalled();
-    expect(toastError).toHaveBeenCalledWith("Código inválido.");
+    expect(contador("Recogidas en tienda")).toBe("Recogidas en tienda0");
+    expect(contador("Repetidas")).toBe("Repetidas0");
+    expect(contador("No encontradas")).toBe("No encontradas0");
+    sinToasts();
   });
 
-  it("R12: una guía que NO está en la lista cargada SÍ llega al servidor", async () => {
+  it("R12 + R596: una guía que NO está en la lista cargada SÍ llega al servidor; `no_encontrada` → «No está entre tus órdenes»", async () => {
     const user = userEvent.setup();
     // SUSTITUYE al caso de la 157 "una guía que NO es suya se rechaza en cliente". El
     // servidor es la autoridad: con la lista vacía o desactualizada, el corte local
@@ -459,32 +502,27 @@ describe("RecoleccionModule — confirmar la recolección (R10/R11/R12/R13/R14/R
     renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
 
     await abrirEscaner(user);
-    await user.type(screen.getByRole("textbox"), "9999");
-    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
+    await teclear(user, "7777777");
 
-    await waitFor(() => expect(recolectarMock).toHaveBeenCalledWith({ numGuia: 9999 }));
-    // R13: el mensaje sale del resultado del SERVIDOR, y dice lo mismo que decía el corte
-    // local — el mensajero no pierde información por el cambio.
-    expect(toastError).toHaveBeenCalledWith(
-      "La guía 9999 no está entre tus órdenes por recolectar.",
-    );
+    await waitFor(() => expect(recolectarMock).toHaveBeenCalledWith({ numGuia: 7777777 }));
+    const fila = await lecturaQueDice("No está entre tus órdenes");
+    expect(within(fila).getByText(/^— · — · /)).toBeInTheDocument();
+    await cerrarEscaner(user);
     // No hubo transición: no hay nada que revalidar.
     expect(refreshMock).not.toHaveBeenCalled();
   });
 
-  it("R13: escanear dos veces la misma etiqueta informa, no dice que sea un error", async () => {
+  it("R13 + R596: `ya_recolectada` → «Ya recogida en tienda», no un error", async () => {
     const user = userEvent.setup();
     recolectarMock.mockResolvedValue({ status: "ya_recolectada" });
     renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
 
     await abrirEscaner(user);
-    await user.type(screen.getByRole("textbox"), "1001");
-    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
+    await teclear(user, "1001");
 
-    await waitFor(() => expect(toastInfo).toHaveBeenCalled());
-    expect(toastError).not.toHaveBeenCalled();
-    // R14: idempotente, la lista se revalida igual porque esa orden ya no va aquí.
-    expect(refreshMock).toHaveBeenCalled();
+    await lecturaQueDice("Ya recogida en tienda");
+    expect(screen.queryByText("No se pudo recolectar")).toBeNull();
+    sinToasts();
   });
 
   it("R13: un estado inválido dice EN QUÉ estado está, no un error genérico", async () => {
@@ -496,16 +534,13 @@ describe("RecoleccionModule — confirmar la recolección (R10/R11/R12/R13/R14/R
     renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
 
     await abrirEscaner(user);
-    await user.type(screen.getByRole("textbox"), "1001");
-    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
+    await teclear(user, "1001");
 
     // ⏳ 2026-09-24 (FICHA 455, R3): el estado se nombra con su nombre visible, no con el código.
-    await waitFor(() =>
-      expect(toastError).toHaveBeenCalledWith(
-        "La guía 1001 ya no está por recolectar (está en «En bodega central»).",
-      ),
-    );
-    expect(refreshMock).not.toHaveBeenCalled();
+    const fila = await lecturaQueDice("No se pudo recolectar");
+    expect(
+      within(fila).getByText("La guía 1001 ya no está por recolectar (está en «En bodega central»)."),
+    ).toBeInTheDocument();
   });
 
   it("R13: un conflicto (bloqueo o carrera) traslada el MOTIVO que da el servidor", async () => {
@@ -517,34 +552,25 @@ describe("RecoleccionModule — confirmar la recolección (R10/R11/R12/R13/R14/R
     renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
 
     await abrirEscaner(user);
-    await user.type(screen.getByRole("textbox"), "1001");
-    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
+    await teclear(user, "1001");
 
-    await waitFor(() =>
-      expect(toastError).toHaveBeenCalledWith("Tienes un cierre pendiente."),
-    );
+    const fila = await lecturaQueDice("No se pudo recolectar");
+    expect(within(fila).getByText("Tienes un cierre pendiente.")).toBeInTheDocument();
   });
 
-  // Los TRES resultados que faltaban (hallazgo m1 del review). Son inalcanzables desde la
-  // pantalla en la práctica —la página hace `notFound` antes de montar nada para un rol ajeno o
-  // sin sesión (R3), y el código mal formado se corta en cliente (R11)—, pero R13 exige un
-  // mensaje propio para CADA resultado, y lo que el mensajero lee no lo prueba el test de la
-  // action: aquel verifica el `status` que devuelve el servidor, no el texto del toast.
-  it("R13: `forbidden` dice que no tiene permiso, no un error genérico", async () => {
+  it("R13 + R596: `forbidden` → «No se pudo recolectar» + «No tienes permiso para recolectar órdenes.» con «Reintentar»", async () => {
     const user = userEvent.setup();
     recolectarMock.mockResolvedValue({ status: "forbidden" });
     renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
 
     await abrirEscaner(user);
-    await user.type(screen.getByRole("textbox"), "1001");
-    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
+    await teclear(user, "1001");
 
-    await waitFor(() =>
-      expect(toastError).toHaveBeenCalledWith("No tienes permiso para recolectar órdenes."),
-    );
-    // No hubo transición: nada que revalidar y nada que confirmar en pantalla.
-    expect(refreshMock).not.toHaveBeenCalled();
+    const fila = await lecturaQueDice("No se pudo recolectar");
+    expect(within(fila).getByText("No tienes permiso para recolectar órdenes.")).toBeInTheDocument();
+    expect(within(fila).getByRole("button", { name: "Reintentar" })).toBeInTheDocument();
     expect(screen.queryByText(/recolectada correctamente/i)).toBeNull();
+    sinToasts();
   });
 
   it("R13: `unauthenticated` manda a iniciar sesión de nuevo (no dice que la guía esté mal)", async () => {
@@ -553,13 +579,10 @@ describe("RecoleccionModule — confirmar la recolección (R10/R11/R12/R13/R14/R
     renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
 
     await abrirEscaner(user);
-    await user.type(screen.getByRole("textbox"), "1001");
-    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
+    await teclear(user, "1001");
 
-    await waitFor(() =>
-      expect(toastError).toHaveBeenCalledWith("Tu sesión expiró. Inicia sesión de nuevo."),
-    );
-    expect(refreshMock).not.toHaveBeenCalled();
+    const fila = await lecturaQueDice("No se pudo recolectar");
+    expect(within(fila).getByText("Tu sesión expiró. Inicia sesión de nuevo.")).toBeInTheDocument();
   });
 
   it("R13: `validation_error` del SERVIDOR también dice que el código es inválido", async () => {
@@ -571,50 +594,188 @@ describe("RecoleccionModule — confirmar la recolección (R10/R11/R12/R13/R14/R
     renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
 
     await abrirEscaner(user);
-    await user.type(screen.getByRole("textbox"), "1001");
-    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
+    await teclear(user, "1001");
 
     // A diferencia del corte de R11, aquí el viaje al servidor SÍ ocurrió: el rechazo lo dio el
     // borde (zod) y el mensajero lee el mismo texto, sin jerga de validación.
     await waitFor(() => expect(recolectarMock).toHaveBeenCalledWith({ numGuia: 1001 }));
-    expect(toastError).toHaveBeenCalledWith("Código inválido.");
+    const fila = await lecturaQueDice("No se pudo recolectar");
+    expect(within(fila).getByText("Código inválido.")).toBeInTheDocument();
+  });
+});
+
+describe("RecoleccionModule — escaneo continuo (SLT-168: R595, R597, R598, R830-R833)", () => {
+  it("R595: tres lecturas seguidas (cámara y Enter) sin cerrar: tres llamadas en orden, el diálogo sigue y sin toasts; la repetida no se reenvía", async () => {
+    const user = userEvent.setup();
+    textoEscaneado = TEXTO_QR(1001);
+    renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
+
+    await abrirEscaner(user);
+    await user.click(screen.getByRole("button", { name: "Simular escaneo" }));
+    textoEscaneado = "1002";
+    await user.click(screen.getByRole("button", { name: "Simular escaneo" }));
+    await teclear(user, "1003", "1002");
+
+    await waitFor(() => expect(recolectarMock).toHaveBeenCalledTimes(3));
+    expect(recolectarMock.mock.calls).toEqual([
+      [{ numGuia: 1001 }],
+      [{ numGuia: 1002 }],
+      [{ numGuia: 1003 }],
+    ]);
+    await waitFor(() => {
+      expect(filas()).toHaveLength(4);
+      expect(within(filas()[0]).getByText("Ya recogida en tienda")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Simular escaneo" })).toBeInTheDocument();
+    sinToasts();
+  });
+
+  it("R597: `ok`, `ya_recolectada` y `no_encontrada` → «Recogidas en tienda» 1, «Repetidas» 1, «No encontradas» 1", async () => {
+    const user = userEvent.setup();
+    recolectarMock
+      .mockResolvedValueOnce({ status: "ok", ordenId: "o1", estado: "en_ruta_bodega_central" })
+      .mockResolvedValueOnce({ status: "ya_recolectada" })
+      .mockResolvedValueOnce({ status: "no_encontrada" });
+    renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
+
+    await abrirEscaner(user);
+    await teclear(user, "1001", "5001", "7777777");
+
+    await lecturaQueDice("No está entre tus órdenes");
+    expect(contador("Recogidas en tienda")).toBe("Recogidas en tienda1");
+    expect(contador("Repetidas")).toBe("Repetidas1");
+    expect(contador("No encontradas")).toBe("No encontradas1");
+  });
+
+  it("R598: dos recolectadas y cerrar: router.refresh una vez y ninguna antes de cerrar", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
+
+    await abrirEscaner(user);
+    await teclear(user, "1001", "1002");
+    await waitFor(() => expect(contador("Recogidas en tienda")).toBe("Recogidas en tienda2"));
+    expect(refreshMock).not.toHaveBeenCalled();
+
+    await cerrarEscaner(user);
+
+    await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
+  });
+
+  it("R598: un `ya_recolectada` solo también refresca una vez al cerrar", async () => {
+    const user = userEvent.setup();
+    recolectarMock.mockResolvedValue({ status: "ya_recolectada" });
+    renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
+
+    await abrirEscaner(user);
+    await teclear(user, "1001");
+    await lecturaQueDice("Ya recogida en tienda");
+    expect(refreshMock).not.toHaveBeenCalled();
+
+    await cerrarEscaner(user);
+
+    await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
+  });
+
+  it("R598: solo errores y cerrar: router.refresh no se llama", async () => {
+    const user = userEvent.setup();
+    recolectarMock.mockResolvedValue({ status: "forbidden" });
+    renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
+
+    await abrirEscaner(user);
+    await teclear(user, "1001");
+    await lecturaQueDice("No se pudo recolectar");
+
+    await cerrarEscaner(user);
+
     expect(refreshMock).not.toHaveBeenCalled();
   });
 
-  it("R15: la confirmación de la última guía PERMANECE tras el toast", async () => {
+  it("R830: con la acción de 1024 pendiente, la fila dice «Recolectando…»", async () => {
     const user = userEvent.setup();
-    renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
+    let soltar: () => void = () => {};
+    recolectarMock.mockImplementationOnce(
+      () =>
+        new Promise((res) => {
+          soltar = () => res({ status: "ok", ordenId: "o1", estado: "en_ruta_bodega_central" });
+        }),
+    );
+    renderModule({ porRecolectar: [makeOrden({ numGuia: 1024 })] });
 
     await abrirEscaner(user);
-    expect(screen.queryByText(/recolectada correctamente/i)).toBeNull();
+    await teclear(user, "1024");
 
-    await user.type(screen.getByRole("textbox"), "1001");
-    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
-
-    // En una tanda de decenas de paquetes el toast se va solo y el mensajero necesita ver
-    // que la anterior sí entró.
-    const exito = await screen.findByText(/recolectada correctamente/i);
-    expect(exito).toHaveTextContent("1001");
+    await lecturaQueDice("Recolectando…");
+    expect(screen.queryByText("Recibiendo…")).toBeNull();
+    soltar();
+    await lecturaQueDice("Recogida en tienda");
   });
 
-  it("R15: la confirmación sobrevive a cerrar y volver a abrir la tarjeta", async () => {
+  it("R831: 1024 dos veces → la segunda dice «Ya recogida en tienda», la action se llama una vez y suma a Repetidas", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: [makeOrden({ numGuia: 1024 })] });
+
+    await abrirEscaner(user);
+    await teclear(user, "1024", "1024");
+
+    await waitFor(() => {
+      expect(filas()).toHaveLength(2);
+      expect(within(filas()[1]).getByText("Recogida en tienda")).toBeInTheDocument();
+    });
+    expect(within(filas()[0]).getByText("Ya recogida en tienda")).toBeInTheDocument();
+    expect(recolectarMock).toHaveBeenCalledTimes(1);
+    expect(contador("Repetidas")).toBe("Repetidas1");
+  });
+
+  it("R832: destinatario y tienda de «Por recolectar» (ok), de «Recogidos en tienda hoy» (ya recolectada) y «—» fuera de las listas", async () => {
+    const user = userEvent.setup();
+    recolectarMock
+      .mockResolvedValueOnce({ status: "ok", ordenId: "o1", estado: "en_ruta_bodega_central" })
+      .mockResolvedValueOnce({ status: "ya_recolectada" })
+      .mockResolvedValueOnce({ status: "ok", ordenId: "o9", estado: "en_ruta_bodega_central" });
+    renderModule({
+      porRecolectar: [
+        makeOrden({
+          numGuia: 1001,
+          destinatario: "Ana Quesada Mora",
+          tiendaNombre: "Tienda Prueba Norte",
+        }),
+      ],
+      recolectadasHoy: [
+        makeRecolectada({
+          numGuia: 5001,
+          destinatario: "Beto Ruiz",
+          tiendaNombre: "Tienda Prueba Sur",
+        }),
+      ],
+    });
+
+    await abrirEscaner(user);
+    await teclear(user, "1001", "5001", "7777777");
+
+    await waitFor(() => expect(recolectarMock).toHaveBeenCalledTimes(3));
+    await lecturaQueDice("Recogida en tienda");
+    expect(within(filas()[2]).getByText(/^Ana Quesada Mora · Tienda Prueba Norte · /)).toBeInTheDocument();
+    expect(within(filas()[1]).getByText("Ya recogida en tienda")).toBeInTheDocument();
+    expect(within(filas()[1]).getByText(/^Beto Ruiz · Tienda Prueba Sur · /)).toBeInTheDocument();
+    expect(within(filas()[0]).getByText(/^— · — · /)).toBeInTheDocument();
+  });
+
+  it("R833: tras un éxito conserva título, nombre accesible y botón, sin la línea «recolectada correctamente»; un solo disparador", async () => {
     const user = userEvent.setup();
     renderModule({ porRecolectar: [makeOrden({ numGuia: 1001 })] });
 
     await abrirEscaner(user);
-    await user.type(screen.getByRole("textbox"), "1001");
-    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
-    await screen.findByText(/recolectada correctamente/i);
+    await teclear(user, "1001");
+    await lecturaQueDice("Recogida en tienda");
 
-    // La guía confirmada la recuerda el MÓDULO, que vive por encima del modal: cerrar
-    // apaga la cámara, no el rastro de lo que el mensajero acaba de recolectar.
-    await user.click(screen.getByRole("button", { name: "Cerrar" }));
-    await waitFor(() => expect(escaner()).toBeNull());
-    await abrirEscaner(user);
-
-    expect(await screen.findByText(/recolectada correctamente/i)).toHaveTextContent(
-      "1001",
-    );
+    expect(escaner()).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toHaveTextContent("Recolectar en tienda");
+    expect(screen.getByRole("button", { name: "Confirmar recolección" })).toBeInTheDocument();
+    expect(screen.queryByText(/recolectada correctamente/)).toBeNull();
+    expect(
+      screen.getAllByRole("button", { name: "Escanear o escribir guía", hidden: true }),
+    ).toHaveLength(1);
   });
 });
 
@@ -875,5 +1036,540 @@ describe("RecoleccionModule — «Recolectadas hoy» (R24/R28/R30/R31)", () => {
 
     expect(within(lista()).getAllByText("REM-H1").length).toBeGreaterThan(0);
     expect(within(lista()).getByText(/9:30/)).toBeInTheDocument();
+  });
+});
+
+// SLT-157 «Guía única leída por cámara o pistola»: los dos caminos leen con `leerGuia`.
+describe("RecoleccionModule — guía única por cámara o pistola (SLT-157)", () => {
+  it("R565: el CODE128 por cámara y la URL del QR tecleada llegan con el mismo numGuia", async () => {
+    const user = userEvent.setup();
+    // `no_encontrada`: sin transición, el escáner sigue igual entre las dos lecturas.
+    recolectarMock.mockResolvedValue({ status: "no_encontrada" });
+    textoEscaneado = "1024";
+    renderModule({ porRecolectar: [makeOrden({ numGuia: 1024 })] });
+
+    await abrirEscaner(user);
+    await user.click(screen.getByRole("button", { name: "Simular escaneo" }));
+    await waitFor(() => expect(recolectarMock).toHaveBeenCalledTimes(1));
+    expect(recolectarMock).toHaveBeenNthCalledWith(1, { numGuia: 1024 });
+
+    await user.type(screen.getByRole("textbox"), "https://app.ejemplo.test/paquete/1024");
+    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
+    await waitFor(() => expect(recolectarMock).toHaveBeenCalledTimes(2));
+    expect(recolectarMock).toHaveBeenNthCalledWith(2, { numGuia: 1024 });
+  });
+
+  it("R566: lo que no es guía es «Código inválido» por los dos caminos y no llama a la action", async () => {
+    const user = userEvent.setup();
+    textoEscaneado = "1024abc";
+    renderModule({ porRecolectar: [makeOrden({ numGuia: 1024 })] });
+
+    await abrirEscaner(user);
+    await user.click(screen.getByRole("button", { name: "Simular escaneo" }));
+
+    // Antes, lo tecleado que no eran dígitos se descartaba EN SILENCIO. SLT-168: cada lectura es
+    // una fila «Código inválido».
+    await user.type(screen.getByRole("textbox"), "1024abc");
+    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
+    await waitFor(() => {
+      expect(filas()).toHaveLength(2);
+      expect(within(filas()[0]).getByText("Código inválido")).toBeInTheDocument();
+    });
+    expect(within(filas()[1]).getByText("Código inválido")).toBeInTheDocument();
+    expect(recolectarMock).not.toHaveBeenCalled();
+  });
+});
+
+// SLT-164 «PWA del mensajero: Recoger en bodega y Recolección» (rebanada C de SLT-156): el escáner
+// único bajo el encabezado, UNA barra fija para las dos listas, Mosaico de entrada y Detalle con la
+// tarjeta compacta de Reparto.
+describe("SLT-156 rebanada C — Recolección en el móvil (R500, R506, R516, R517, R519-R522)", () => {
+  /** `true` si `a` va ANTES que `b` en el documento. */
+  const antes = (a: Element, b: Element) =>
+    Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+  const buscador = () => screen.getByRole("searchbox", { name: "Buscar guías" });
+  const seccionPor = () => screen.getByRole("region", { name: "Por recolectar en tienda" });
+  const seccionHoy = () => screen.getByRole("region", { name: "Recogidos en tienda hoy" });
+  const VACIO_BUSQUEDA = "Ninguna guía por recolectar coincide con la búsqueda.";
+
+  const DOS_POR_RECOLECTAR = [
+    makeOrden({ id: "p1", numGuia: 2001, numRemision: "REM-P1", destinatario: "Ana Gómez" }),
+    makeOrden({
+      id: "p2",
+      numGuia: 2002,
+      numRemision: "REM-P2",
+      destinatario: "Bruno Solís",
+      telefonoDest: "61234567",
+    }),
+  ];
+  const DOS_RECOGIDAS = [
+    makeRecolectada({ id: "h1", numGuia: 5001, numRemision: "REM-H1", destinatario: "Ána Torres" }),
+    makeRecolectada({ id: "h2", numGuia: 5002, numRemision: "REM-H2", destinatario: "Carla Mora" }),
+  ];
+
+  it("R519/R500: «Escanear o escribir guía» (cerrado) → barra fija → «Por recolectar en tienda» → «Recogidos en tienda hoy»", () => {
+    renderModule({ porRecolectar: DOS_POR_RECOLECTAR, recolectadasHoy: DOS_RECOGIDAS });
+
+    const boton = disparador();
+    expect(boton).not.toBeNull();
+    // Arranca cerrado: sin diálogo ni tarjeta montada.
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(escaner()).toBeNull();
+    expect(antes(boton!, buscador())).toBe(true);
+    expect(antes(buscador(), seccionPor())).toBe(true);
+    expect(antes(seccionPor(), seccionHoy())).toBe(true);
+    // La barra está pegada arriba y su padre llega hasta la última lista (`sticky` se pega
+    // dentro de su padre).
+    const barra = buscador().closest(".sticky");
+    expect(barra).not.toBeNull();
+    expect(barra!.className.split(/\s+/)).toEqual(expect.arrayContaining(["sticky", "top-0"]));
+    expect(barra!.parentElement!.contains(seccionHoy())).toBe(true);
+  });
+
+  // SLT-202 «Escritorio igual a prod: tamaños de controles y un solo botón de recibir» (Carlos, 2026-11-18): 44 px solo en el móvil; en escritorio, el tamaño de prod.
+  it("R493: el disparador mide 44 px y va a todo el ancho en el móvil; en escritorio, el `h-8` de prod", () => {
+    renderModule({ porRecolectar: DOS_POR_RECOLECTAR });
+    const cl = disparador()!.className.split(/\s+/);
+    expect(cl).toEqual(expect.arrayContaining(["h-8", "max-md:h-11", "max-md:w-full"]));
+    expect(cl).not.toContain("h-11");
+  });
+
+  it("R516/R519: bloqueado no hay disparador; el aviso va primero y la barra sigue", () => {
+    renderModule({ porRecolectar: DOS_POR_RECOLECTAR, bloqueo: bloqueoConVencido() });
+    expect(disparador()).toBeNull();
+    const aviso = screen.getByRole("alert");
+    expect(antes(aviso, buscador())).toBe(true);
+    expect(antes(buscador(), seccionPor())).toBe(true);
+  });
+
+  it("R495/R506: un solo campo, con el placeholder «Guía, remisión, teléfono o nombre», que busca también por teléfono", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: DOS_POR_RECOLECTAR });
+
+    expect(screen.getAllByRole("searchbox")).toHaveLength(1);
+    expect(buscador()).toHaveAttribute("placeholder", "Guía, remisión, teléfono o nombre");
+
+    await user.type(buscador(), "6123-4567");
+    expect(within(seccionPor()).getByText("REM-P2")).toBeInTheDocument();
+    expect(within(seccionPor()).queryByText("REM-P1")).toBeNull();
+  });
+
+  it("R520: el término filtra las DOS listas y las cabeceras siguen contando el día entero", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: DOS_POR_RECOLECTAR, recolectadasHoy: DOS_RECOGIDAS });
+
+    await user.type(buscador(), "ana");
+
+    // Sin distinguir mayúsculas ni acentos: «Ana Gómez» y «Ána Torres» quedan; las otras no.
+    expect(within(seccionPor()).getByText("REM-P1")).toBeInTheDocument();
+    expect(within(seccionPor()).queryByText("REM-P2")).toBeNull();
+    expect(within(seccionHoy()).getByText("REM-H1")).toBeInTheDocument();
+    expect(within(seccionHoy()).queryByText("REM-H2")).toBeNull();
+    expect(
+      within(seccionPor()).getByText("2 paquetes por recolectar en tienda."),
+    ).toBeInTheDocument();
+    expect(
+      within(seccionHoy()).getByText("2 paquetes recogidos en tienda hoy."),
+    ).toBeInTheDocument();
+  });
+
+  it("R521: sin coincidencias cada lista dice el vacío de búsqueda, distinto del vacío sin órdenes", async () => {
+    const user = userEvent.setup();
+    const { unmount } = renderModule({
+      porRecolectar: DOS_POR_RECOLECTAR,
+      recolectadasHoy: DOS_RECOGIDAS,
+    });
+
+    await user.type(buscador(), "zzzz");
+    expect(within(seccionPor()).getByText(VACIO_BUSQUEDA)).toBeInTheDocument();
+    expect(within(seccionHoy()).getByText(VACIO_BUSQUEDA)).toBeInTheDocument();
+    expect(screen.queryByText(/No tienes órdenes por recolectar/)).toBeNull();
+    expect(screen.queryByText(/Todavía no has recolectado/)).toBeNull();
+    unmount();
+
+    // Sin órdenes, el término no cambia el vacío de siempre.
+    renderModule({});
+    await user.type(buscador(), "zzzz");
+    expect(within(seccionPor()).getByText(/No tienes órdenes por recolectar/)).toBeInTheDocument();
+    expect(within(seccionHoy()).getByText(/Todavía no has recolectado/)).toBeInTheDocument();
+    expect(screen.queryByText(VACIO_BUSQUEDA)).toBeNull();
+  });
+
+  it("R517: arranca en Mosaico (carruseles) y Detalle pinta las tarjetas compactas", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: DOS_POR_RECOLECTAR, recolectadasHoy: DOS_RECOGIDAS });
+
+    // SLT-190 (R860): el conmutador es el ÚNICO de la pantalla, en la barra (ya no en la cabecera).
+    const conmutador = screen.getByRole("group", { name: "Vista de las órdenes" });
+    expect(within(conmutador).getByRole("button", { name: /Mosaico/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("region", { name: "Órdenes por recolectar" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Paquetes recogidos en tienda hoy" }),
+    ).toBeInTheDocument();
+
+    await user.click(within(conmutador).getByRole("button", { name: /Detalle/ }));
+    expect(
+      await within(seccionPor()).findByRole("button", { expanded: false, name: /REM-P1/ }),
+    ).toBeInTheDocument();
+    expect(
+      within(seccionHoy()).getByRole("button", { expanded: false, name: /REM-H1/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("R522: la guía confirmada en el escáner se recolecta con el mismo resultado; SLT-168: la fila lo dice y refresca al cerrar", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: DOS_POR_RECOLECTAR });
+
+    await abrirEscaner(user);
+    expect(screen.getByRole("dialog")).toHaveTextContent("Recolectar en tienda");
+    await user.type(screen.getByRole("textbox"), "2001");
+    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
+
+    await waitFor(() => expect(recolectarMock).toHaveBeenCalledWith({ numGuia: 2001 }));
+    const fila = await lecturaQueDice("Recogida en tienda");
+    expect(within(fila).getByText(/^Ana Gómez · Tienda Norte · /)).toBeInTheDocument();
+    await cerrarEscaner(user);
+    await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
+  });
+});
+
+// =================================================================================================
+// SLT-190 «Recoger y Recolección según el canvas» — filtro «Tienda» (R850-R854), numeración (R857),
+// un solo conmutador en la barra (R860), fila plegada de Recolección (R862-R865) y la barra del
+// diálogo (R868-R870). jsdom no aplica Tailwind: se afirman las clases; la medida a 360/414 px y el
+// pegado al desplazar son del E2E `e2e/pwa-mensajero-recoger-recoleccion.spec.ts`.
+// =================================================================================================
+describe("SLT-190 — Recolección según el canvas", () => {
+  const seccionPor = () => screen.getByRole("region", { name: "Por recolectar en tienda" });
+  const seccionHoy = () => screen.getByRole("region", { name: "Recogidos en tienda hoy" });
+  const buscador = () => screen.getByRole("searchbox", { name: "Buscar guías" });
+  const barra = () => buscador().closest(".sticky") as HTMLElement;
+  const conmutador = () => screen.getByRole("group", { name: "Vista de las órdenes" });
+  const VACIO_BUSQUEDA = "Ninguna guía por recolectar coincide con la búsqueda.";
+
+  const POR = [
+    makeOrden({ id: "p1", numGuia: 2001, numRemision: "REM-P1", destinatario: "Ana Gómez", tiendaNombre: "Tienda Sur" }),
+    makeOrden({ id: "p2", numGuia: 2002, numRemision: "REM-P2", destinatario: "Bruno Solís", tiendaNombre: "Tienda Norte" }),
+    makeOrden({ id: "p3", numGuia: 2003, numRemision: "REM-P3", destinatario: "Carla Mora", tiendaNombre: "Tienda Sur" }),
+  ];
+  const HOY = [
+    makeRecolectada({ id: "h1", numGuia: 5001, numRemision: "REM-H1", destinatario: "Dani Rojas", tiendaNombre: "Tienda Norte" }),
+    makeRecolectada({ id: "h2", numGuia: 5002, numRemision: "REM-H2", destinatario: "Eva Vargas", tiendaNombre: "Tienda Este" }),
+  ];
+
+  async function ponerTienda(user: ReturnType<typeof userEvent.setup>, tienda: string) {
+    await user.click(screen.getByRole("button", { name: /^Filtros/ }));
+    const selector = await screen.findByRole("listbox", { name: "Filtros" });
+    await user.click(within(selector).getByRole("option", { name: "Tienda" }));
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("combobox", { name: "Filtrar por tienda" }));
+    const lista = await screen.findByRole("listbox");
+    await user.click(within(lista).getByRole("option", { name: tienda }));
+  }
+
+  async function aDetalle(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(within(conmutador()).getByRole("button", { name: /Detalle/ }));
+    await waitFor(() =>
+      expect(within(conmutador()).getByRole("button", { name: /Detalle/ })).toHaveAttribute("aria-pressed", "true"),
+    );
+  }
+
+  it("R850: las opciones de «Tienda» salen de las dos listas, sin repetir y en orden", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: POR, recolectadasHoy: HOY });
+    await user.click(screen.getByRole("button", { name: /^Filtros/ }));
+    const selector = await screen.findByRole("listbox", { name: "Filtros" });
+    await user.click(within(selector).getByRole("option", { name: "Tienda" }));
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("combobox", { name: "Filtrar por tienda" }));
+    const lista = await screen.findByRole("listbox");
+    expect(within(lista).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Todas",
+      "Tienda Este",
+      "Tienda Norte",
+      "Tienda Sur",
+    ]);
+  });
+
+  it("R851/R853: filtra las DOS listas (con el término también); las cabeceras siguen contando todo", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: POR, recolectadasHoy: HOY });
+    await ponerTienda(user, "Tienda Norte");
+
+    expect(within(seccionPor()).getByText("REM-P2")).toBeInTheDocument();
+    expect(within(seccionPor()).queryByText("REM-P1")).toBeNull();
+    expect(within(seccionHoy()).getByText("REM-H1")).toBeInTheDocument();
+    expect(within(seccionHoy()).queryByText("REM-H2")).toBeNull();
+    expect(within(seccionPor()).getByText("3 paquetes por recolectar en tienda.")).toBeInTheDocument();
+    expect(within(seccionHoy()).getByText("2 paquetes recogidos en tienda hoy.")).toBeInTheDocument();
+
+    await user.type(buscador(), "bruno");
+    expect(within(seccionPor()).getByText("REM-P2")).toBeInTheDocument();
+    expect(within(seccionHoy()).getByText(VACIO_BUSQUEDA)).toBeInTheDocument();
+  });
+
+  it("R853: el filtro no cambia lo que acepta el escáner (una guía de otra tienda llega al servidor)", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: POR, recolectadasHoy: HOY });
+    await ponerTienda(user, "Tienda Norte");
+
+    await abrirEscaner(user);
+    await user.type(screen.getByRole("textbox"), "2001");
+    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
+    await waitFor(() => expect(recolectarMock).toHaveBeenCalledWith({ numGuia: 2001 }));
+    const fila = await lecturaQueDice("Recogida en tienda");
+    expect(within(fila).getByText(/^Ana Gómez · Tienda Sur · /)).toBeInTheDocument();
+  });
+
+  it("R852: «Filtros (1)», «Tienda: {nombre}» a 44 px y «Limpiar todo» que vuelve a todas y vacía el término", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: POR, recolectadasHoy: HOY });
+    await ponerTienda(user, "Tienda Sur");
+    await user.type(buscador(), "ana");
+
+    expect(within(barra()).getByRole("button", { name: /^Filtros \(1\)/ })).toBeInTheDocument();
+    const control = within(barra()).getByRole("combobox", { name: "Filtrar por tienda" });
+    expect(control).toHaveTextContent("Tienda: Tienda Sur");
+    // 44 px como alto MÍNIMO, y el nombre entero: parte línea, sin «…» (decisión de Carlos, 2026-11-17).
+    expect(control.className.split(/\s+/)).toContain("max-md:min-h-11");
+    expect(control.querySelector(".truncate")).toBeNull();
+    expect(control.querySelector(".whitespace-normal")).not.toBeNull();
+
+    await user.click(within(barra()).getByRole("button", { name: "Limpiar todo" }));
+    expect(buscador()).toHaveValue("");
+    for (const rem of ["REM-P1", "REM-P2", "REM-P3"]) {
+      expect(within(seccionPor()).getByText(rem)).toBeInTheDocument();
+    }
+    expect(within(seccionHoy()).getByText("REM-H2")).toBeInTheDocument();
+  });
+
+  // SLT-206 «Filtro Tienda duplicado en Recoger y Recolección»: fija el comportamiento del filtro
+  // antes de llevarlo al hook compartido (`useFiltroTienda`). El mismo par vive en RecogerModule.test.
+  it("R852 (SLT-206): quitar «Tienda» de «Filtros» vacía su valor: vuelve todo y, al ponerlo otra vez, dice «Todas»", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: POR, recolectadasHoy: HOY });
+    await ponerTienda(user, "Tienda Norte");
+    expect(within(seccionPor()).queryByText("REM-P1")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: /^Filtros/ }));
+    const selector = await screen.findByRole("listbox", { name: "Filtros" });
+    await user.click(within(selector).getByRole("option", { name: "Tienda" }));
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("combobox", { name: "Filtrar por tienda" })).toBeNull();
+    for (const rem of ["REM-P1", "REM-P2", "REM-P3"]) {
+      expect(within(seccionPor()).getByText(rem)).toBeInTheDocument();
+    }
+    expect(within(seccionHoy()).getByText("REM-H2")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /^Filtros/ }));
+    const otraVez = await screen.findByRole("listbox", { name: "Filtros" });
+    await user.click(within(otraVez).getByRole("option", { name: "Tienda" }));
+    await user.keyboard("{Escape}");
+    const control = screen.getByRole("combobox", { name: "Filtrar por tienda" });
+    expect(control).toHaveTextContent("Todas");
+    expect(control).not.toHaveTextContent("Tienda Norte");
+  });
+
+  it("R852 (SLT-206): «Tienda» puesto sin valor ya ofrece «Limpiar todo», y este retira el control", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: POR, recolectadasHoy: HOY });
+    expect(within(barra()).queryByRole("button", { name: "Limpiar todo" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: /^Filtros/ }));
+    const selector = await screen.findByRole("listbox", { name: "Filtros" });
+    await user.click(within(selector).getByRole("option", { name: "Tienda" }));
+    await user.keyboard("{Escape}");
+    expect(within(barra()).getByRole("combobox", { name: "Filtrar por tienda" })).toBeInTheDocument();
+
+    await user.click(within(barra()).getByRole("button", { name: "Limpiar todo" }));
+    expect(screen.queryByRole("combobox", { name: "Filtrar por tienda" })).toBeNull();
+    expect(within(barra()).queryByRole("button", { name: "Limpiar todo" })).toBeNull();
+  });
+
+  it("R854: con solo el filtro, la lista que queda vacía dice el vacío de búsqueda, no «sin órdenes»", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: POR, recolectadasHoy: HOY });
+    await ponerTienda(user, "Tienda Este");
+
+    expect(within(seccionPor()).getByText(VACIO_BUSQUEDA)).toBeInTheDocument();
+    expect(screen.queryByText(/No tienes órdenes por recolectar/)).toBeNull();
+    expect(within(seccionHoy()).getByText("REM-H2")).toBeInTheDocument();
+  });
+
+  it("R857: cada lista se numera sola sobre lo visible, de 1 a n", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: POR, recolectadasHoy: HOY });
+    await aDetalle(user);
+    expect(within(seccionPor()).getByText("Orden 3 de 3")).toBeInTheDocument();
+    expect(within(seccionHoy()).getByText("Orden 2 de 2")).toBeInTheDocument();
+
+    await ponerTienda(user, "Tienda Sur");
+    const fila = within(seccionPor()).getByRole("button", { name: /REM-P3/ });
+    expect(within(fila).getByText("Orden 2 de 2")).toBeInTheDocument();
+    expect(within(seccionPor()).queryByText(/de 3$/)).toBeNull();
+  });
+
+  // SLT-200 «PWA Reparto: buscador, KPI, tarjeta y leyenda del mapa tras Preview» (punto 1): el mismo
+  // arreglo que Reparto. Con la cámara (`escaneo`) la barra aún tiene menos sitio; en el móvil el
+  // conmutador baja a su propia línea para que el campo no se quede en la lupa. `escaneo` se queda.
+  it("SLT-200: en el móvil el conmutador ocupa su propia línea y deja la primera al campo y a «Filtros»", () => {
+    renderModule({ porRecolectar: POR, recolectadasHoy: HOY });
+    expect(barra().contains(conmutador())).toBe(true);
+    const clases = conmutador().className.split(/\s+/);
+    expect(clases).toEqual(expect.arrayContaining(["max-md:basis-full", "max-md:[&>button]:flex-1"]));
+    expect(clases).not.toContain("basis-full");
+    expect(clases).not.toContain("w-full");
+  });
+
+  it("R860: un único conmutador, en la barra tras «Filtros»; las cabeceras no lo llevan y cambia las dos listas a la vez", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: POR, recolectadasHoy: HOY });
+
+    expect(screen.getAllByRole("group", { name: "Vista de las órdenes" })).toHaveLength(1);
+    expect(barra().contains(conmutador())).toBe(true);
+    const filtros = within(barra()).getByRole("button", { name: /^Filtros/ });
+    expect(filtros.compareDocumentPosition(conmutador()) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    for (const nombre of ["Por recolectar en tienda", "Recogidos en tienda hoy"]) {
+      const cabecera = screen.getByRole("heading", { name: nombre }).parentElement as HTMLElement;
+      expect(within(cabecera).queryByRole("button", { name: /Mosaico|Detalle/ })).toBeNull();
+    }
+
+    await aDetalle(user);
+    expect(await within(seccionPor()).findByRole("button", { expanded: false, name: /REM-P1/ })).toBeInTheDocument();
+    expect(within(seccionHoy()).getByRole("button", { expanded: false, name: /REM-H1/ })).toBeInTheDocument();
+  });
+
+  it("R862/R864: en Detalle la fila plegada lleva número, remisión, destinatario, tienda, estado vigente y «Valor a cobrar»", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: POR, recolectadasHoy: HOY });
+    await aDetalle(user);
+
+    const fila = await within(seccionPor()).findByRole("button", { expanded: false, name: /REM-P1/ });
+    expect(within(fila).getByText("Orden 1 de 3")).toBeInTheDocument();
+    expect(within(fila).getByText("REM-P1")).toBeInTheDocument();
+    expect(within(fila).getByText("Ana Gómez")).toBeInTheDocument();
+    expect(within(fila).getByText("Tienda Sur")).toBeInTheDocument();
+    // El estado y su (i) van en la fila plegada, fuera del botón (B1): se ven sin desplegar.
+    const tarjeta = fila.closest("article")!;
+    expect(within(tarjeta).getByText("Recolectando")).toBeInTheDocument();
+    expect(within(tarjeta).getByRole("button", { name: "Qué significa «Recolectando»" })).toBeInTheDocument();
+    expect(within(fila).getByText("Valor a cobrar")).toBeInTheDocument();
+    expect(tarjeta.textContent).not.toMatch(/Por recolectar|Recolectada|Recolectado/);
+  });
+
+  it("R863/R865: en «Recogidos hoy» la hora va plegada tras la tienda y no se repite al desplegar; en Mosaico sigue al pie", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: POR, recolectadasHoy: [HOY[0]] });
+
+    // Mosaico (de entrada): «Recogido a las» al pie de la card, como hoy.
+    expect(within(seccionHoy()).getByText(/Recogido a las/)).toBeInTheDocument();
+    expect(within(seccionHoy()).getByText(/9:30/)).toBeInTheDocument();
+
+    await aDetalle(user);
+    const fila = await within(seccionHoy()).findByRole("button", { expanded: false, name: /REM-H1/ });
+    const linea = within(fila).getByText(/^Tienda Norte · Recogido a las/);
+    expect(linea.textContent).toMatch(/9:30/);
+
+    await user.click(fila);
+    const abierta = within(seccionHoy()).getByRole("button", { expanded: true });
+    const despliegue = document.getElementById(abierta.getAttribute("aria-controls") ?? "")!;
+    expect(within(despliegue).getByRole("button", { name: "Qué significa «Recolectando»" })).toBeInTheDocument();
+    expect(within(despliegue).queryByText(/Recogido a las/)).toBeNull();
+    expect(within(seccionHoy()).getAllByText(/Recogido a las/)).toHaveLength(1);
+  });
+
+  it("R868/R869/R870: el diálogo lleva la barra «Recolectar en tienda» con un solo «Cerrar» de 44 px; la sesión y los nombres siguen", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: POR });
+    await abrirEscaner(user);
+
+    const dialogo = screen.getByRole("dialog", { name: "Recolectar en tienda" });
+    const titulos = within(dialogo).getAllByText("Recolectar en tienda");
+    expect(titulos).toHaveLength(1);
+    expect(titulos[0]).not.toHaveClass("sr-only");
+    expect(within(dialogo).queryByText("Escanea o ingresa el número de guía")).toBeNull();
+    // Un solo encabezado: el de la barra (el título del diálogo).
+    expect(within(dialogo).getAllByRole("heading")).toEqual([titulos[0]]);
+    // La cámara es el doble de este archivo («Simular escaneo»): va debajo de la barra.
+    expect(within(dialogo).getByRole("button", { name: "Simular escaneo" })).toBeInTheDocument();
+    expect(within(dialogo).getByText("o")).toBeInTheDocument();
+    const cerrar = within(dialogo).getAllByRole("button", { name: "Cerrar" });
+    expect(cerrar).toHaveLength(1);
+    // SLT-202 «Escritorio igual a prod: tamaños de controles y un solo botón de recibir» (Carlos, 2026-11-18): 44 px solo en el móvil; en escritorio, el tamaño de prod.
+    expect(cerrar[0].className.split(/\s+/)).toEqual(expect.arrayContaining(["size-7", "max-md:size-11"]));
+    expect(escaner()).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Confirmar recolección" })).toBeInTheDocument();
+
+    await user.type(screen.getByRole("textbox"), "2001");
+    await user.click(screen.getByRole("button", { name: "Confirmar recolección" }));
+    await lecturaQueDice("Recogida en tienda");
+    await cerrarEscaner(user);
+    await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
+  });
+});
+
+// SLT-194 «Buscar escaneando en recolección, devoluciones y rechazos» (R940-R944, D2) le puso al
+// buscador «Buscar guías» la cámara (`escaneo`). SLT-200 «PWA Reparto: buscador, KPI, tarjeta y
+// leyenda del mapa tras Preview», punto 6: Carlos decidió el 2026-11-18 «quitar la camarita». El
+// buscador vuelve a ser un campo de texto que filtra las dos listas; el ÚNICO escáner de la pantalla
+// es «Escanear o escribir guía», el que recolecta. Guías imposibles por casualidad: `91024` y `95555`.
+describe("SLT-200 — Recolección: el buscador sin cámara (antes SLT-194 R940-R944)", () => {
+  const buscador = () => screen.getByRole("searchbox", { name: "Buscar guías" }) as HTMLInputElement;
+  const camara = () => screen.queryByRole("button", { name: "Escanear con cámara" });
+  const seccionPor = () => screen.getByRole("region", { name: "Por recolectar en tienda" });
+  const seccionHoy = () => screen.getByRole("region", { name: "Recogidos en tienda hoy" });
+
+  const POR = [
+    makeOrden({ id: "p1", numGuia: 91024, numRemision: "REM-PA", destinatario: "Ana Gómez" }),
+    makeOrden({ id: "p2", numGuia: 95555, numRemision: "REM-PB", destinatario: "Bruno Solís" }),
+  ];
+  const HOY = [
+    makeRecolectada({ id: "h1", numGuia: 91024, numRemision: "REM-HA", destinatario: "Carla Mora" }),
+  ];
+
+  it("el buscador no lleva cámara ni la ayuda del escaneo; nombre, placeholder, «Filtros» y conmutador siguen", () => {
+    renderModule({ porRecolectar: POR, recolectadasHoy: HOY });
+
+    expect(screen.getAllByRole("searchbox")).toHaveLength(1);
+    expect(buscador()).toHaveAttribute("placeholder", "Guía, remisión, teléfono o nombre");
+    expect(camara()).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Escanear con cámara" })).toBeNull();
+    expect(buscador()).not.toHaveAccessibleDescription(/pistola o por la cámara/);
+    const barra = buscador().closest(".sticky");
+    expect(barra).not.toBeNull();
+    expect(within(barra as HTMLElement).getByRole("button", { name: /^Filtros/ })).toBeInTheDocument();
+    expect(
+      within(barra as HTMLElement).getByRole("group", { name: "Vista de las órdenes" }),
+    ).toBeInTheDocument();
+  });
+
+  it("lo escrito (o leído por la pistola como texto) filtra las DOS listas al momento y no recolecta", async () => {
+    const user = userEvent.setup();
+    renderModule({ porRecolectar: POR, recolectadasHoy: HOY });
+
+    await user.type(buscador(), "91024");
+
+    expect(within(seccionPor()).getByText("REM-PA")).toBeInTheDocument();
+    expect(within(seccionPor()).queryByText("REM-PB")).toBeNull();
+    expect(within(seccionHoy()).getByText("REM-HA")).toBeInTheDocument();
+    expect(recolectarMock).not.toHaveBeenCalled();
+  });
+
+  it("el único escáner de la pantalla es «Escanear o escribir guía»", () => {
+    renderModule({ porRecolectar: POR });
+    expect(disparador()).not.toBeNull();
+    expect(camara()).toBeNull();
+  });
+
+  it("bloqueado: sin «Escanear o escribir guía», con «Buscar guías» y sin cámara", () => {
+    renderModule({ porRecolectar: POR, bloqueo: bloqueoConVencido() });
+
+    expect(disparador()).toBeNull();
+    expect(buscador()).toBeInTheDocument();
+    expect(camara()).toBeNull();
   });
 });

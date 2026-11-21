@@ -128,7 +128,7 @@ export function PlantillaInformeFields({
             {informe.generaDocumento ? AYUDA_CON_DOCUMENTO : AYUDA_SIN_DOCUMENTO}
           </p>
           {avisoAppMeta ? (
-            <p id={docAvisoId} role="alert" className="rounded-lg border border-warning/60 bg-warning-soft p-2.5 text-sm text-warning-strong">
+            <p id={docAvisoId} role="alert" className="rounded-lg border border-warning/60 bg-warning-soft p-2.5 dark:bg-warning/15 text-sm text-warning-strong">
               {avisoAppMeta}
             </p>
           ) : null}

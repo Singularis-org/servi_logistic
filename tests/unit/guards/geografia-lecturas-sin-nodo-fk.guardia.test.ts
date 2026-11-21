@@ -38,11 +38,13 @@ const HASTA = "async findDistritoParaCorreccion(";
  * SLT-65 (T7.2; R19; design §14) — las lecturas de SLT-65 (design §2.1, filas 1–7) viven en estos
  * archivos, y se barren ENTEROS: `OrdenRepository` deja de mirarse solo en el bloque de SLT-44.
  * `_shared/sin-transaccion-anidada.ts` no entra: no lee ninguna tabla (envuelve el cliente).
+ * La reconciliacion de la zona (`planificarReconciliacion`) vive en `_shared/reconciliar-zona-ordenes.ts`
+ * desde SLT-224, que la saco de `ZonaRepository` para compartirla con sus otros dos llamadores.
  */
 const ARCHIVOS_SLT65 = [
   ORDEN_REPOSITORY,
   "lib/repositories/CierreDiaRepository.ts",
-  "lib/repositories/ZonaRepository.ts",
+  "lib/repositories/_shared/reconciliar-zona-ordenes.ts",
   "lib/repositories/_shared/lugar-orden.ts",
 ];
 
@@ -55,7 +57,10 @@ const LECTURAS_SLT65: Record<string, string[]> = {
     "async contarSinEntregarPorNodoGeografico(",
   ],
   "lib/repositories/CierreDiaRepository.ts": ["export async function leerDescriptivosDeOrdenes(", "deLaEmpresa()"],
-  "lib/repositories/ZonaRepository.ts": ["export async function planificarReconciliacion(", "deLaEmpresa()"],
+  "lib/repositories/_shared/reconciliar-zona-ordenes.ts": [
+    "export async function planificarReconciliacion(",
+    "deLaEmpresa()",
+  ],
   "lib/repositories/_shared/lugar-orden.ts": ["export function lugarDeLaOrden(", "export function whereLugarEn("],
 };
 
@@ -180,7 +185,7 @@ describe("SLT-65 R19 — las lecturas de SLT-65 no leen la columna nueva (archiv
     }
   });
 
-  it("ni `OrdenRepository`, ni `CierreDiaRepository`, ni `ZonaRepository`, ni `lugar-orden` nombran la columna", () => {
+  it("ni `OrdenRepository`, ni `CierreDiaRepository`, ni `reconciliar-zona-ordenes`, ni `lugar-orden` nombran la columna", () => {
     const hallazgos = ARCHIVOS_SLT65.flatMap((rel) => mencionesDelNodoEn(leer(rel)).map((m) => `${rel}: ${m}`));
     expect(
       hallazgos,

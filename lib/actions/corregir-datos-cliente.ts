@@ -6,6 +6,7 @@ import { getPrismaClient } from "@/lib/db/prisma-client";
 import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { TarifaVigenteRepository } from "@/lib/repositories/TarifaVigenteRepository";
 import { CorregirDatosClienteService } from "@/lib/services/CorregirDatosClienteService";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type {
@@ -59,6 +60,8 @@ function buildService(): ICorregirDatosClienteService {
   return new CorregirDatosClienteService(
     new OrdenRepository(prisma),
     new TarifaVigenteRepository(prisma),
+    // SLT-42: el telefono se valida con el prefijo y los digitos del pais de la empresa.
+    construirReglasPaisEmpresa(prisma),
   );
 }
 

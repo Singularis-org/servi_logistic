@@ -72,11 +72,19 @@ describe('guardia: cliente de Trello, tarjeta -> ficha', () => {
       sdd: true,
       complexity: 'medium',
       zone: 'backend',
+      ruta: null,
       branch: 'feature/AB-7-alta-de-clientes',
       depends_on: ['AB-3', 'XY-12'],
       spec_path: 'specs/AB-7-alta-de-clientes',
       assignee: { accountId: 'm1', displayName: 'Ana Pérez' },
     })
+  })
+
+  it('el label ruta: da la ruta de la feature, y F0 no la borra si el label se pierde', () => {
+    expect(tarjetaAFicha(tarjeta({ labels: [label('ruta:ligera'), label('slug:a')] }), CTX).ruta).toBe('ligera')
+    const { fichas, avisos } = fusionarConCopia([{ key: 'AB-7', status: 'pending', ruta: null }], [{ key: 'AB-7', status: 'pending', ruta: 'directa' }])
+    expect(fichas[0].ruta).toBe('directa')
+    expect(avisos.join('\n')).toContain('ruta:directa')
   })
 
   it('el label key: manda sobre el idShort (features migradas de Jira)', () => {

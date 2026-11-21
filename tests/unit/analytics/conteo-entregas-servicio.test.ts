@@ -6,10 +6,11 @@ import type { IAnaliticaCache } from "@/lib/interfaces/external/IAnaliticaCache"
 import type { IConteoEntregasRepository } from "@/lib/interfaces/repositories/IConteoEntregasRepository";
 import { ConteoEntregasService } from "@/lib/services/ConteoEntregasService";
 
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 const AHORA = new Date("2026-08-17T12:00:00.000Z");
 
 function consultaDe(raw: object = { rango: "semana" }): ConsultaConteoEntregas {
-  const preparada = prepararConteoEntregas(raw, { usuarioId: "u1", rol: "maestro" }, AHORA);
+  const preparada = prepararConteoEntregas(raw, { usuarioId: "u1", rol: "maestro" }, ZONA_DE_CR, AHORA);
   if (preparada.status !== "ok") throw new Error("filtro de prueba inválido");
   return preparada.consulta;
 }

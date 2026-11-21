@@ -8,9 +8,10 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 /**
  * Feature 264 (B7, R1/R5/R7/R9/R11/R12) — EL `WHERE` Y EL `ORDER BY` DE LA LISTA, EJECUTADOS
@@ -88,16 +89,6 @@ describeSiHayBase("264/B7 — la lista de ordenes sin gestionar contra Postgres 
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
-    const fks = await fksDeOrden(prisma);
-    // Fallo RUIDOSO, no `return` silencioso: con base alcanzable y sin catalogo este archivo no
-    // puede comprobar nada, y un `passed` en esas condiciones es exactamente la clase de verde
-    // que este repo ya se comio una vez.
-    if (fks === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar el " +
-          "corpus. Corre `pnpm run db:seed` (y las semillas de zonas) antes de esta suite.",
-      );
-    }
     const catalogo = await prisma.orderStatus.findMany({
       where: { value: { in: ["en_reparto", "novedad_interna", "en_bodega_central"] } },
       select: { id: true, value: true },
@@ -115,22 +106,22 @@ describeSiHayBase("264/B7 — la lista de ordenes sin gestionar contra Postgres 
     const sinGestionar = idPorValue.get("novedad_interna") as string;
     const enBodega = idPorValue.get("en_bodega_central") as string;
 
-    // `cierre_dia.mensajero_id` es FK -> `usuario`. Se reusan dos usuarios REALES distintos: lo
-    // que se mide aqui es un WHERE, no un rol. Hacen falta DOS para el señuelo «otro mensajero».
-    const usuarios = await prisma.usuario.findMany({ select: { id: true }, take: 2 });
-    if (usuarios.length < 2) {
-      throw new Error(
-        "hacen falta al menos DOS usuarios en la base para sembrar el señuelo de «otro " +
-          "mensajero». Corre las semillas antes de esta suite.",
-      );
-    }
-    const [m1, m2] = usuarios;
-
     conCorpus = (fn) =>
       enTransaccionRevertida(prisma, async (tx) => {
         // PRIMERA sentencia: serializa contra los otros archivos que escriben en las tablas
         // reales de `public` (ver `_postgres-real.ts`).
         await serializarEscriturasReales(tx);
+
+        // SLT-178: tienda, zona y los DOS mensajeros (el del caso y el señuelo «otro mensajero») se
+        // crean aqui, en la transaccion revertida; nada de negocio se lee de la base.
+        const fks = await crearFksDeOrden(tx);
+        const m1 = await crearUsuarioDePrueba(tx, "mensajero");
+        const m2 = await crearUsuarioDePrueba(tx, "mensajero");
+        expect(
+          await tx.usuario.count({ where: { id: { in: [fks.tiendaId, m1.id, m2.id] } } }),
+          "usuarios sembrados (tienda, m1, m2)",
+        ).toBe(3);
+        expect(await tx.zona.count({ where: { id: fks.zonaId } }), "zona sembrada").toBe(1);
 
         const nuevoCierre = (mensajeroId: string) =>
           tx.cierreDia.create({
@@ -251,7 +242,7 @@ describeSiHayBase("264/B7 — la lista de ordenes sin gestionar contra Postgres 
 
   it("R1/R7: devuelve las CUATRO barridas de ESTE cierre y ninguna mas", async () => {
     const { salen, esperadas } = await conCorpus(async (ctx) => {
-      const r = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreA, ALCANCE_TOTAL);
+      const r = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreA, ALCANCE_TOTAL, ZONA_CR);
       return {
         salen: (r?.sinGestion ?? []).map((f) => f.numRemision).sort(),
         esperadas: ORDEN_ESPERADO.map((c) => ctx.remisionPorClave.get(c) as string).sort(),
@@ -267,8 +258,8 @@ describeSiHayBase("264/B7 — la lista de ordenes sin gestionar contra Postgres 
 
   it("R7: el cierre B (mismo mensajero) trae SOLO lo suyo, y el C SOLO lo suyo", async () => {
     const { b, c } = await conCorpus(async (ctx) => {
-      const rb = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreB, ALCANCE_TOTAL);
-      const rc = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreC, ALCANCE_TOTAL);
+      const rb = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreB, ALCANCE_TOTAL, ZONA_CR);
+      const rc = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreC, ALCANCE_TOTAL, ZONA_CR);
       return {
         b: (rb?.sinGestion ?? []).map((f) => f.numRemision),
         c: (rc?.sinGestion ?? []).map((f) => f.numRemision),
@@ -283,8 +274,8 @@ describeSiHayBase("264/B7 — la lista de ordenes sin gestionar contra Postgres 
 
   it("R12: el orden es por guia ascendente con los `null` al final, y es el MISMO dos veces", async () => {
     const { primera, segunda } = await conCorpus(async (ctx) => {
-      const a = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreA, ALCANCE_TOTAL);
-      const b = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreA, ALCANCE_TOTAL);
+      const a = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreA, ALCANCE_TOTAL, ZONA_CR);
+      const b = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreA, ALCANCE_TOTAL, ZONA_CR);
       return {
         primera: (a?.sinGestion ?? []).map((f) => f.numRemision),
         segunda: (b?.sinGestion ?? []).map((f) => f.numRemision),
@@ -304,7 +295,7 @@ describeSiHayBase("264/B7 — la lista de ordenes sin gestionar contra Postgres 
 
   it("R5: la orden ya LIBERADA a bodega sigue apareciendo en el detalle de su cierre", async () => {
     const fila = await conCorpus(async (ctx) => {
-      const r = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreA, ALCANCE_TOTAL);
+      const r = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreA, ALCANCE_TOTAL, ZONA_CR);
       return (
         (r?.sinGestion ?? []).find(
           (f) => f.numRemision === ctx.remisionPorClave.get("a-liberada"),
@@ -323,7 +314,7 @@ describeSiHayBase("264/B7 — la lista de ordenes sin gestionar contra Postgres 
   it("R11: devuelve el descriptivo CONGELADO, no el de la orden viva", async () => {
     const { congelado, vivo } = await conCorpus(async (ctx) => {
       const remision = ctx.remisionPorClave.get("a-congelada") as string;
-      const r = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreA, ALCANCE_TOTAL);
+      const r = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreA, ALCANCE_TOTAL, ZONA_CR);
       const fila = (r?.sinGestion ?? []).find((f) => f.numRemision === remision);
       return {
         congelado: fila?.destinatario ?? null,
@@ -343,7 +334,7 @@ describeSiHayBase("264/B7 — la lista de ordenes sin gestionar contra Postgres 
 
   it("R9/R32: la fila sin guia viaja con `numGuia: null` y sin estatus de origen inventado", async () => {
     const fila = await conCorpus(async (ctx) => {
-      const r = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreA, ALCANCE_TOTAL);
+      const r = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreA, ALCANCE_TOTAL, ZONA_CR);
       return (
         (r?.sinGestion ?? []).find(
           (f) => f.numRemision === ctx.remisionPorClave.get("a-sin-guia"),
@@ -358,7 +349,7 @@ describeSiHayBase("264/B7 — la lista de ordenes sin gestionar contra Postgres 
 
   it("R9: los ocho campos llegan resueltos, con el estatus de origen traducido a su `value`", async () => {
     const fila = await conCorpus(async (ctx) => {
-      const r = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreA, ALCANCE_TOTAL);
+      const r = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreA, ALCANCE_TOTAL, ZONA_CR);
       return (
         (r?.sinGestion ?? []).find(
           (f) => f.numRemision === ctx.remisionPorClave.get("a-normal"),
@@ -380,7 +371,7 @@ describeSiHayBase("264/B7 — la lista de ordenes sin gestionar contra Postgres 
 
   it("R27: el cierre nace con la marca en `true` (el DEFAULT de la columna, no una linea de codigo)", async () => {
     const marca = await conCorpus(async (ctx) => {
-      const r = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreA, ALCANCE_TOTAL);
+      const r = await ctx.repo.findCierreByIdEnAlcance(ctx.cierreA, ALCANCE_TOTAL, ZONA_CR);
       return r?.sinGestionRegistrado ?? null;
     });
 
@@ -394,10 +385,11 @@ describeSiHayBase("264/B7 — la lista de ordenes sin gestionar contra Postgres 
       fuera: await ctx.repo.findCierreByIdEnAlcance(ctx.cierreA, {
         destinoTipo: "bodega_satelite",
         destinoZonaId: "zona-que-no-existe",
-      }),
+      }, ZONA_CR),
       inexistente: await ctx.repo.findCierreByIdEnAlcance(
         "00000000-0000-4000-8000-000000000000",
         ALCANCE_TOTAL,
+        ZONA_CR,
       ),
     }));
 

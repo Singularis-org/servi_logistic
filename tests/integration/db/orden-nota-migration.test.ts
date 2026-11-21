@@ -9,6 +9,7 @@ import {
   enTransaccionRevertida,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearFksDeOrden } from "./_fixtures/orden-minima";
 
 // Feature 227 (T1.3) — cobertura de la migracion M1 `*_orden_nota`. Cubre R26 (RLS habilitada
 // SIN policies), R28 (el indice compuesto que sostiene la lectura del hilo en UNA consulta) y
@@ -389,26 +390,16 @@ describeSiHayBase("227 / M1 — el DDL REAL contra Postgres (R26, R28, R30)", ()
 
   /** Una orden NUEVA del test, con las FK obligatorias tomadas de los catalogos. */
   async function crearOrden(tx: Tx, tiendaId: string, mensajeroId: string): Promise<string> {
-    const [geo] = await tx.$queryRawUnsafe<{
-      zona_id: string;
-      provincia_id: string;
-      canton_id: string;
-    }[]>(
-      `SELECT z."id" AS zona_id, p."id" AS provincia_id, c."id" AS canton_id
-         FROM public."zona" z, public."provincia" p, public."canton" c
-        WHERE c."provincia_id" = p."id"
-        LIMIT 1`,
-    );
-    const [estatus] = await tx.$queryRawUnsafe<{ id: string }[]>(
-      `SELECT "id" FROM public."order_status" LIMIT 1`,
-    );
-    if (!geo || !estatus) {
-      throw new Error(
-        "La base de pruebas no tiene catalogos de geografia/estatus sembrados: sin ellos no " +
-          "se puede crear la orden propia del test (y sin orden, R30 no se puede ejercitar). " +
-          "Corre `pnpm db:seed`. Este test NO se salta en ese caso a proposito.",
-      );
-    }
+    // SLT-184 (R1122/R1124): la zona es PROPIA, sembrada en la tx con `crearFksDeOrden`, con su
+    // control positivo; estatus y Cartago/Cartago se leen por su clave. Antes salian de un
+    // producto cartesiano `zona × provincia × canton LIMIT 1`: con la base vacia no habia zona.
+    const fks = await crearFksDeOrden(tx);
+    expect(
+      await tx.zona.count({ where: { id: fks.zonaId } }),
+      "SLT-184: la zona sembrada no esta en la base",
+    ).toBe(1);
+    const geo = { zona_id: fks.zonaId, provincia_id: fks.provinciaId, canton_id: fks.cantonId };
+    const estatus = { id: fks.estatusId };
     const id = randomUUID();
     await tx.$executeRawUnsafe(
       `INSERT INTO public."orden"

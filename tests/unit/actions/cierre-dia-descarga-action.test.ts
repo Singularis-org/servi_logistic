@@ -9,9 +9,9 @@ import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 // Feature 184 — Tanda C (T C.1, R4/R6/R7/R17) — el BORDE del conjunto de «Cierres solicitados»
 // del mensajero.
 //
-// Este listado no tiene filtros, así que su lista blanca —derivada de la de su página quitando
-// `page`/`pageSize`— no deja NINGUNA clave. Eso no hace el borde prescindible: lo hace más
-// estricto. Y aquí la clave que importa tiene nombre propio: `mensajeroId`. Es el ÚNICO listado
+// Su lista blanca —derivada de la de su página quitando `page`/`pageSize`— deja una sola clave,
+// `filtros` (SLT-138; su borde lo prueba `cierre-dia-filtros-borde.test.ts`). Todo lo demás muere
+// aquí. Y aquí la clave que importa tiene nombre propio: `mensajeroId`. Es el ÚNICO listado
 // del Anexo A cuyo alcance es el propio usuario, de modo que una clave de alcance que el servicio
 // llegara a leer algún día abriría el histórico de dinero de otro mensajero. `page`/`pageSize`
 // son las que demuestran que la lista blanca es una DERIVADA del schema de la página y no una

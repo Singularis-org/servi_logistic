@@ -4,20 +4,24 @@ import type { IGrupoDistritosService } from "@/lib/interfaces/services/IGrupoDis
 import type { ITarifaActivacionService } from "@/lib/interfaces/services/ITarifaActivacionService";
 import type { ITarifasPantallaService } from "@/lib/interfaces/services/ITarifasPantallaService";
 import type { ITarifaValorService } from "@/lib/interfaces/services/ITarifaValorService";
+import type { ITopeIntentosService } from "@/lib/interfaces/services/ITopeIntentosService";
 import { GrupoDistritosRepository } from "@/lib/repositories/GrupoDistritosRepository";
 import { TarifaActivacionRepository } from "@/lib/repositories/TarifaActivacionRepository";
 import { TarifasPantallaRepository } from "@/lib/repositories/TarifasPantallaRepository";
 import { TarifaValorRepository } from "@/lib/repositories/TarifaValorRepository";
+import { TopeIntentosRepository } from "@/lib/repositories/TopeIntentosRepository";
 import { GrupoDistritosService } from "@/lib/services/GrupoDistritosService";
 import { TarifaActivacionService } from "@/lib/services/TarifaActivacionService";
 import { TarifasPantallaService } from "@/lib/services/TarifasPantallaService";
 import { TarifaValorService } from "@/lib/services/TarifaValorService";
+import { TopeIntentosService } from "@/lib/services/TopeIntentosService";
 
 export interface ServiciosDeTarifas {
   tarifaValor: ITarifaValorService;
   grupoDistritos: IGrupoDistritosService;
   tarifaActivacion: ITarifaActivacionService;
   tarifasPantalla: ITarifasPantallaService;
+  topeIntentos: ITopeIntentosService;
 }
 
 /**
@@ -37,5 +41,6 @@ export function serviciosDeTarifas(prisma: PrismaClient): ServiciosDeTarifas {
     grupoDistritos: new GrupoDistritosService(new GrupoDistritosRepository(prisma)),
     tarifaActivacion: new TarifaActivacionService(new TarifaActivacionRepository(prisma), tarifasPantalla),
     tarifasPantalla,
+    topeIntentos: new TopeIntentosService(new TopeIntentosRepository(prisma)),
   };
 }

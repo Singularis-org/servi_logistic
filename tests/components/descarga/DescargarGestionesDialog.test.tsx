@@ -486,7 +486,7 @@ describe("valores por defecto del diálogo", () => {
 
     expect(
       screen.getByText(
-        "Recorta por la fecha de solicitud del cierre. Vacías no recortan nada: se lleva todo el historial de los mensajeros elegidos. Vaciá una fecha para quitar ese extremo, o «Limpiar» para quitar las dos.",
+        "Recorta por la fecha de solicitud del cierre. Vacías no recortan nada: se lleva todo el historial de los mensajeros elegidos. Vacía una fecha para quitar ese extremo, o «Limpiar» para quitar las dos.",
       ),
     ).toBeInTheDocument();
   });
@@ -606,7 +606,7 @@ describe("aviso de conjunto vacío (ficha 384)", () => {
     await waitFor(() => expect(errorToastMock).toHaveBeenCalledTimes(1));
     const aviso = errorToastMock.mock.calls[0][0] as string;
     expect(aviso).toBe(
-      "Los mensajeros elegidos no tienen gestiones de cierre. Elegí otros mensajeros y volvé a intentarlo.",
+      "Los mensajeros elegidos no tienen gestiones de cierre. Elige otros mensajeros y vuelve a intentarlo.",
     );
     // Lo que NO puede decir: el usuario no aplicó ningún filtro que ajustar.
     expect(aviso).not.toContain(CULPA_A_LOS_FILTROS);
@@ -628,7 +628,7 @@ describe("aviso de conjunto vacío (ficha 384)", () => {
 
     await waitFor(() => expect(errorToastMock).toHaveBeenCalledTimes(1));
     expect(errorToastMock.mock.calls[0][0]).toBe(
-      "No hay gestiones de cierre en el rango de fechas elegido para esos mensajeros. Ampliá el rango o vaciá las fechas y volvé a intentarlo.",
+      "No hay gestiones de cierre en el rango de fechas elegido para esos mensajeros. Amplía el rango o vacía las fechas y vuelve a intentarlo.",
     );
 
     // Y con los dos extremos, el mismo aviso.
@@ -665,7 +665,7 @@ describe("aviso de conjunto vacío (ficha 384)", () => {
     // `calls[0]` a secas pasaría también si los dos fueran `undefined` — un caso que se
     // auto-aprueba. Con el literal delante, «iguales» significa «iguales Y correctos».
     expect(errorToastMock.mock.calls[0][0]).toBe(
-      "Los mensajeros elegidos no tienen gestiones de cierre. Elegí otros mensajeros y volvé a intentarlo.",
+      "Los mensajeros elegidos no tienen gestiones de cierre. Elige otros mensajeros y vuelve a intentarlo.",
     );
     expect(errorToastMock.mock.calls[1][0]).toBe(errorToastMock.mock.calls[0][0]);
     expect(descargarBlobMock).not.toHaveBeenCalled();

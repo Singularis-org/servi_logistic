@@ -13,6 +13,10 @@ import { z } from "zod";
 import type { JobDTO } from "@/lib/interfaces/repositories/IJobRepository";
 import type { JobHandler } from "@/lib/interfaces/services/IJobQueueService";
 import { ChatWhatsappService } from "@/lib/services/ChatWhatsappService";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import type { FormatoMoneda } from "@/lib/config/moneda";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 import { ChatConversacionRepository } from "@/lib/repositories/ChatConversacionRepository";
 import { ChatMensajeRepository } from "@/lib/repositories/ChatMensajeRepository";
 import { PlantillaMensajeRepository } from "@/lib/repositories/PlantillaMensajeRepository";
@@ -23,9 +27,8 @@ import { WhatsappCloudClient } from "@/lib/clients/whatsapp-cloud";
 import { whatsappDeLaEmpresa } from "@/lib/services/whatsapp/whatsapp-de-la-empresa";
 import { consoleLogger } from "@/lib/services/whatsapp/chat-logger";
 import { getPrismaClient } from "@/lib/db/prisma-client";
-import { normalizarTelefonoWa } from "@/lib/utils/whatsapp-telefono";
 import { construirComponentsEnvio } from "@/lib/utils/whatsapp-template";
-import { resolverValoresPlantilla } from "@/lib/types/plantilla-datos";
+import { necesitaMoneda, necesitaZona, resolverValoresPlantilla } from "@/lib/types/plantilla-datos";
 import { renderPlantilla } from "@/lib/utils/plantilla-mensaje";
 import type { IPlantillaMensajeRepository } from "@/lib/interfaces/repositories/IPlantillaMensajeRepository";
 import type { IOrdenEnvioReader } from "@/lib/repositories/OrdenEnvioReader";
@@ -45,6 +48,12 @@ export interface WhatsappBienvenidaDeps {
   /** Idioma del template si la plantilla no trae el suyo sincronizado desde Meta. */
   idiomaPorDefecto?: string;
   logger?: ChatLogger;
+  /**
+   * SLT-42 (R22, R28): la zona del pais de la empresa del job, para las fechas con hora de la
+   * plantilla. Solo se lee si la plantilla pinta alguna; sin el puerto, falla en ese caso.
+   * SL-21 (R10, R11): igual con la moneda de los importes.
+   */
+  reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria" | "moneda">;
 }
 
 /**
@@ -62,6 +71,8 @@ export async function buildWhatsappBienvenidaDeps(): Promise<WhatsappBienvenidaD
     service: new ChatWhatsappService({
       conversacionRepo: new ChatConversacionRepository(prisma),
       mensajeRepo: new ChatMensajeRepository(prisma),
+      // SLT-42 (R18): el telefono del cliente se normaliza con el pais de la empresa.
+      reglasPais: construirReglasPaisEmpresa(prisma),
       client: new WhatsappCloudClient({ config, logger: consoleLogger, fetchImpl }),
       // ⚠️ ESTA LINEA ES LA QUE SEPARA LOS FALLOS DE META DE LOS DE ESTE JOB, y por eso NO se
       // copia `buildWhatsappChatEnvioService`, que la omite a proposito (alli seria recursivo:
@@ -79,6 +90,7 @@ export async function buildWhatsappBienvenidaDeps(): Promise<WhatsappBienvenidaD
     plantillaRepo: new PlantillaMensajeRepository(prisma),
     ordenReader: new OrdenEnvioReader(prisma),
     idiomaPorDefecto: config.templateIdioma,
+    reglasPais: construirReglasPaisEmpresa(prisma), // SLT-42 (R22): la zona del pais de la empresa.
     logger: consoleLogger,
   };
 }
@@ -145,7 +157,11 @@ export function crearWhatsappBienvenidaHandler(
     // ANTES de tocar Meta y —esto es lo que importa— antes de que `enviarPlantilla` haga su
     // `upsertParaOrden`: sin esta guarda se crearia un hilo de chat con `telefono_e164 = ""`
     // que despues Meta rechazaria igual.
-    if (normalizarTelefonoWa(datos.orden.telefonoDest) === "") {
+    //
+    // SLT-42: «sin telefono» es «sin un solo digito». Con cualquier pais `normalizarTelefono` da
+    // `""` justo en ese caso, asi que la guarda no necesita leer el pais; la normalizacion con
+    // el prefijo de la empresa la hace `enviarPlantilla`.
+    if (!/\d/.test(datos.orden.telefonoDest)) {
       throw new Error("bienvenida no enviada: la orden no tiene telefono de destinatario");
     }
 
@@ -159,7 +175,20 @@ export function crearWhatsappBienvenidaHandler(
     }
 
     // Misma cadena que `enviarPlantillaChat` (`lib/actions/chat-whatsapp.ts:159-163`).
-    const valores = resolverValoresPlantilla(plantilla.variables, datos);
+    // SLT-42 (R22, R28): las fechas con hora, en la zona del pais de la empresa del job.
+    const zona = necesitaZona(plantilla.variables)
+      ? await zonaDeLaEmpresa(deps.reglasPais, "whatsapp_bienvenida")
+      : undefined;
+    // SL-21 (R10, R11): los importes, en la moneda del pais de la empresa del job; solo si la
+    // plantilla pinta alguno, y sin moneda (`PaisSinMoneda`) falla antes de enviar nada.
+    let moneda: FormatoMoneda | undefined;
+    if (necesitaMoneda(plantilla.variables)) {
+      if (deps.reglasPais === undefined) {
+        throw new Error("whatsapp_bienvenida requiere las reglas del pais de la empresa: sin ellas no hay moneda (SL-21)");
+      }
+      moneda = await deps.reglasPais.moneda();
+    }
+    const valores = resolverValoresPlantilla(plantilla.variables, datos, zona, moneda);
     const componentes = construirComponentsEnvio(plantilla.variables, valores);
     const cuerpoRenderizado = renderPlantilla(plantilla.cuerpo, valores);
     const idioma = plantilla.templateIdioma || deps.idiomaPorDefecto || "es";

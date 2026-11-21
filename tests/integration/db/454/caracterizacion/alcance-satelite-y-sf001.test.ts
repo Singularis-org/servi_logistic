@@ -4,6 +4,7 @@ import { CierreBodegaRepository } from "@/lib/repositories/CierreBodegaRepositor
 import { CierreBodegaService } from "@/lib/services/CierreBodegaService";
 import { HAY_BASE_DE_DATOS } from "../../_postgres-real";
 import { conEscenario, prepararMundo, type Mundo } from "../_escenario";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FEATURE 454 — FASE 0 · C24 (R61, R64). ALCANCE DEL adminSatelite Y CIERRE DE BODEGA (SF-001, 431).
@@ -38,7 +39,7 @@ describeSiHayBase("454/C24 — alcance satelite y cierre de bodega (Postgres rea
       const aprobSat = await e.aprobar(cierreSat, e.actorAdminSatelite);
       const aprobCentral = await e.aprobar(cierreCentral, e.actorMaestro);
 
-      const bodega = new CierreBodegaService(new CierreBodegaRepository(e.cliente), e.s.ordenRepo);
+      const bodega = new CierreBodegaService(new CierreBodegaRepository(e.cliente), e.s.ordenRepo, reglasPaisFijas());
       const solicitudBodega = await bodega.solicitarCierreBodega(e.actorAdminSatelite);
       const cb = await e.tx.cierreBodega.findFirst({
         where: { zonaId: e.zonaSateliteId },

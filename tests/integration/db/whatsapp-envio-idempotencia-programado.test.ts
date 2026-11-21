@@ -2,8 +2,18 @@ import { randomUUID } from "node:crypto";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 import { WhatsappEjecucionRepository } from "@/lib/repositories/WhatsappEjecucionRepository";
-import { HAY_BASE_DE_DATOS, crearPrismaDeTest, enTransaccionRevertida, serializarEscriturasReales } from "./_postgres-real";
+import {
+  HAY_BASE_DE_DATOS,
+  bajoLockDeEscrituraReal,
+  crearPrismaDeTest,
+  enTransaccionRevertida,
+  serializarEscriturasReales,
+  type TxDeTest,
+} from "./_postgres-real";
+import { crearUsuarioDePrueba } from "./_fixtures/orden-minima";
+import { datosDeOrganizacionDePrueba, fijarEmpresa } from "@/tests/fabricas/organizaciones";
 import { crearEnvio, crearPlantilla } from "./_whatsapp-envios-474";
+import { conAislamientoPorEmpresa } from "@/lib/db/extension-empresa";
 
 // Ficha 474 (T6.2, R23) — COMO MUCHO UN mensaje por (dia CR, destinatario, envio), TAMBIEN con
 // ejecuciones CONCURRENTES. La concurrencia de verdad exige dos conexiones y filas COMMITEADAS (una
@@ -15,41 +25,68 @@ const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 describeSiHayBase("474/R23 — idempotencia de la ejecucion programada", () => {
   let a: PrismaClient;
   let b: PrismaClient;
-  const sembrado: { envioId?: string; plantillaId?: string; usuarios: string[] } = { usuarios: [] };
+  // SLT-185 (R1141): los repositorios bajo prueba escriben como en produccion: con la envoltura de
+  // `getPrismaClient()` y la empresa que resolveria la sesion (la sembrada). Sin ella, la ejecucion
+  // nace con `organizacion_id` NULL y el trigger de misma empresa la rechaza (SL017,
+  // `whatsapp_envio_ejecucion.envio_id -> whatsapp_envio`). `a`/`b` (dueno) siembran y limpian.
+  let appA: PrismaClient;
+  let appB: PrismaClient;
+  const sembrado: { envioId?: string; plantillaId?: string; empresaId?: string; usuarios: string[] } = {
+    usuarios: [],
+  };
 
   beforeAll(async () => {
     a = crearPrismaDeTest();
     b = crearPrismaDeTest();
-    // Siembra COMMITEADA (la ven las dos conexiones). Los destinatarios son DOS usuarios QUE YA
-    // EXISTEN (los mas antiguos): crear y borrar usuarios commiteados abre una carrera con los
-    // archivos que eligen «cualquier usuario» en su `beforeAll` (p. ej. `cierre-bloqueo-nv-sql-real`
-    // toma `usuario.findMany({ take: 3 })`): si eligen uno de estos y este archivo lo borra, su FK
-    // revienta. Aqui solo se commitean y se borran filas de tablas de la 474.
-    const existentes = await a.$queryRawUnsafe<{ id: string }[]>(
-      `SELECT "id" FROM "usuario" ORDER BY "created_at", "id" LIMIT 2`,
-    );
-    if (existentes.length < 2) throw new Error("474: hacen falta dos usuarios en la base de test");
-    sembrado.usuarios = existentes.map((u) => u.id);
+    const empresaDeLaSesion = async () => sembrado.empresaId ?? null;
+    appA = conAislamientoPorEmpresa(a, empresaDeLaSesion);
+    appB = conAislamientoPorEmpresa(b, empresaDeLaSesion);
+    // Siembra COMMITEADA (la ven las dos conexiones). SLT-183: los destinatarios son DOS usuarios
+    // SEMBRADOS aqui, con su empresa (R1103); antes eran «los dos mas antiguos» de la base, y la
+    // recien migrada no tiene ninguno. Son nuevos y con claves propias: ningun otro archivo los
+    // elige, asi que borrarlos en el `afterAll` no le revienta una FK a nadie.
+    // La empresa se crea DESPUES del lock de la 227: un INSERT de `organizacion` antes de el choca
+    // con el DDL de otro archivo (40P01, medido).
     await a.$transaction(async (tx) => {
       await serializarEscriturasReales(tx);
+      const empresa = await tx.organizacion.create({ data: datosDeOrganizacionDePrueba(), select: { id: true } });
+      sembrado.empresaId = empresa.id;
+      await fijarEmpresa(tx, empresa.id);
+      for (let i = 0; i < 2; i++) {
+        sembrado.usuarios.push((await crearUsuarioDePrueba(tx as unknown as TxDeTest, "mensajero")).id);
+      }
       const p = await crearPlantilla(tx);
       sembrado.plantillaId = p.id;
       sembrado.envioId = await crearEnvio(tx, { plantillaId: p.id, nombre: `474 R23 ${randomUUID()}`, usuarioIds: sembrado.usuarios });
     });
+    // Control positivo (R1104): los dos destinatarios sembrados llegaron a la base.
+    if ((await a.usuario.count({ where: { id: { in: sembrado.usuarios } } })) !== 2) {
+      throw new Error("SLT-183: los dos destinatarios sembrados no estan en la base");
+    }
   });
 
   afterAll(async () => {
     await a.$executeRawUnsafe(`DELETE FROM "whatsapp_envio_ejecucion" WHERE "envio_id" = $1`, sembrado.envioId);
     await a.$executeRawUnsafe(`DELETE FROM "whatsapp_envio" WHERE "id" = $1`, sembrado.envioId);
     await a.$executeRawUnsafe(`DELETE FROM "plantilla_mensaje" WHERE "id" = $1`, sembrado.plantillaId);
+    // SLT-183 (R1103): los usuarios y la empresa sembrados commiteados se van; se comprueba contando.
+    // Bajo el lock de la 227, como la siembra.
+    await bajoLockDeEscrituraReal(async () => {
+      await a.usuario.deleteMany({ where: { id: { in: sembrado.usuarios } } });
+      if (sembrado.empresaId !== undefined) await a.organizacion.deleteMany({ where: { id: sembrado.empresaId } });
+    });
+    const quedan =
+      (await a.usuario.count({ where: { id: { in: sembrado.usuarios } } })) +
+      (sembrado.empresaId === undefined ? 0 : await a.organizacion.count({ where: { id: sembrado.empresaId } }));
     await a.$disconnect();
     await b.$disconnect();
+    if (quedan !== 0) throw new Error(`SLT-183: ${quedan} filas sembradas siguen en la base`);
   });
 
   it("⭑ dos ejecuciones CONCURRENTES del mismo dia -> 1 ejecucion y 1 entrega por usuario", async () => {
     const envioId = sembrado.envioId as string;
-    const ra = new WhatsappEjecucionRepository(a);
-    const rb = new WhatsappEjecucionRepository(b);
+    const ra = new WhatsappEjecucionRepository(appA);
+    const rb = new WhatsappEjecucionRepository(appB);
     const instante = new Date("2099-03-02T11:00:00.000Z");
     const [x, y] = await Promise.all([
       ra.insertarProgramada({ envioId, fechaCr: "2099-03-02", instanteProgramado: instante }),
@@ -76,10 +113,17 @@ describeSiHayBase("474/R23 — idempotencia de la ejecucion programada", () => {
       envioId,
     );
     expect(ejecuciones[0].n).toBe(1);
+    // SLT-185 (R1146): la ejecucion es de la empresa sembrada.
+    const deLaEmpresa = await a.$queryRawUnsafe<{ n: number }[]>(
+      `SELECT count(*)::int AS n FROM "whatsapp_envio_ejecucion" WHERE "id" = $1 AND "organizacion_id" = $2`,
+      x.id,
+      sembrado.empresaId,
+    );
+    expect(deLaEmpresa[0].n, "SLT-185: empresa en contexto").toBe(1);
   });
 
   it("otro dia CR es otra ejecucion", async () => {
-    const r = new WhatsappEjecucionRepository(a);
+    const r = new WhatsappEjecucionRepository(appA);
     const envioId = sembrado.envioId as string;
     const d1 = await r.insertarProgramada({ envioId, fechaCr: "2099-03-03", instanteProgramado: new Date("2099-03-03T11:00:00Z") });
     const d2 = await r.insertarProgramada({ envioId, fechaCr: "2099-03-04", instanteProgramado: new Date("2099-03-04T11:00:00Z") });
@@ -87,6 +131,7 @@ describeSiHayBase("474/R23 — idempotencia de la ejecucion programada", () => {
   });
 
   it("R23: las PRUEBAS no tienen unico ni consumen el cupo del dia", async () => {
+    // SLT-185: la tx revertida corre en la empresa del envio sembrado, no en una nueva.
     const r = await enTransaccionRevertida(a, async (tx) => {
       const repo = new WhatsappEjecucionRepository(tx as unknown as PrismaClient);
       const envioId = sembrado.envioId as string;
@@ -94,11 +139,12 @@ describeSiHayBase("474/R23 — idempotencia de la ejecucion programada", () => {
       const p2 = await repo.insertarPrueba({ envioId, solicitadaPor: sembrado.usuarios[1] });
       const prog = await repo.insertarProgramada({ envioId, fechaCr: "2099-03-09", instanteProgramado: new Date("2099-03-09T11:00:00Z") });
       return { distintas: p1 !== p2, progCreada: prog.creada };
-    });
+    }, { organizacionId: sembrado.empresaId });
     expect(r).toEqual({ distintas: true, progCreada: true });
   });
 
   it("R24: una omitida ocupa el dia (no se reenvia esa ocurrencia)", async () => {
+    // SLT-185: la tx revertida corre en la empresa del envio sembrado, no en una nueva.
     const r = await enTransaccionRevertida(a, async (tx) => {
       const repo = new WhatsappEjecucionRepository(tx as unknown as PrismaClient);
       const envioId = sembrado.envioId as string;
@@ -112,7 +158,7 @@ describeSiHayBase("474/R23 — idempotencia de la ejecucion programada", () => {
       const otra = await repo.insertarProgramada({ envioId, fechaCr: "2099-03-10", instanteProgramado: new Date("2099-03-10T11:00:00Z") });
       const fila = await repo.obtener(om.id);
       return { mismo: om.id === otra.id, creada: otra.creada, estado: fila?.estado };
-    });
+    }, { organizacionId: sembrado.empresaId });
     expect(r).toEqual({ mismo: true, creada: false, estado: "omitida" });
   });
 });

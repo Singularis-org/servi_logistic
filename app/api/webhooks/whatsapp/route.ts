@@ -26,6 +26,7 @@ import { IntegracionRepository } from "@/lib/repositories/IntegracionRepository"
 import { JobRepository } from "@/lib/repositories/JobRepository";
 import { WhatsappEjecucionRepository } from "@/lib/repositories/WhatsappEjecucionRepository";
 import { ChatWhatsappService, type ChatLogger } from "@/lib/services/ChatWhatsappService";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { CredencialesIntegracionService } from "@/lib/services/CredencialesIntegracionService";
 import { EntregaEstadoService } from "@/lib/services/EntregaEstadoService";
 import { crearEncolarReintentoChatEnvio } from "@/lib/services/jobs/whatsapp-chat-envio-encolado";
@@ -78,6 +79,8 @@ export function buildWebhookWhatsappService(opciones: WebhookComposicion = {}): 
     ingesta: new ChatWhatsappService({
       conversacionRepo: new ChatConversacionRepository(prisma),
       mensajeRepo: new ChatMensajeRepository(prisma),
+      // SLT-42 (R18): el telefono del cliente se normaliza con el pais de la empresa.
+      reglasPais: construirReglasPaisEmpresa(prisma),
       // El webhook solo INGIERE: no envia. Sin cliente de envio (la ingesta no lo usa).
       encolarReintento: crearEncolarReintentoChatEnvio(new JobRepository(prisma)),
       // Diagnostico de los `failed`: codigo/motivo de Meta al log, sin PII (R11).

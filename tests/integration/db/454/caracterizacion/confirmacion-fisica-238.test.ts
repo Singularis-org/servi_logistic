@@ -3,6 +3,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { ConfirmacionFisicaNoAplicableError } from "@/lib/repositories/CierresAdminRepository";
 import { HAY_BASE_DE_DATOS, clienteConSavepoint } from "../../_postgres-real";
 import { conEscenario, montarServicios, prepararMundo, type Escenario, type Mundo } from "../_escenario";
+import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FEATURE 454 — FASE 0 · C23 (R60). LA CONFIRMACION FISICA DE LA APROBACION (238), sobre HOY.
@@ -63,7 +64,7 @@ describeSiHayBase("454/C23 — confirmacion fisica al aprobar (Postgres real)", 
       let error: unknown = null;
       try {
         // Savepoint REAL: el `throw` del repositorio tiene que revertir lo que ya escribio.
-        await montarServicios(clienteConSavepoint(e.tx)).adminRepo.resolverCierre({
+        await montarServicios(clienteConSavepoint(e.tx)).adminRepo.resolverCierre({ zonaHoraria: ZONA_DE_CR,
           cierreId,
           alcance: { destinoTipo: "bodega_satelite", destinoZonaId: e.zonaSateliteId },
           nuevoEstado: "aprobado",

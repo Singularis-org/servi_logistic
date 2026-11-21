@@ -13,11 +13,52 @@ evidencia) vive en `docs/verification.md` del proyecto.
 | PR hacia la rama de integración (`ramas.integracion`, p. ej. `dev`) | `./init.sh --completo` | CI (`.github/workflows/gate.yml`), check `gate-completo` |
 | PR integración → producción (`ramas.produccion`, p. ej. `dev` → `main`, despliegue) | `./init.sh --completo` + E2E (Playwright) | CI, check `gate-completo` + E2E |
 
-- **Los nombres de rama salen de `arnes.config.json > ramas`.** `gate.yml` los lleva escritos
-  (GitHub no lee el JSON) y `./init.sh` falla si no coinciden (`scripts/check-perfil.mjs`).
+- **Los nombres de rama salen de `arnes.config.json > ramas`.** El `gate.yml` se genera de ahí
+  (abajo) y `./init.sh` falla si no está al día (`scripts/check-perfil.mjs`).
+
+### El CI se genera
+
+Nadie escribe ni copia el workflow a mano:
+
+| Archivo | De quién | Cómo llega |
+| --- | --- | --- |
+| `.github/workflows/arnes-gate.yml` | del arnés: toda la mecánica (shards, `gate-completo`, E2E, borradores, runner) | lo trae `./scripts/arnes-sync.sh --aplicar`, como el resto del arnés |
+| `.github/workflows/gate.yml` | del proyecto, pero **generado**: unas 30 líneas que llaman al de arriba | `node scripts/ci.mjs generar`, desde `ramas` y el bloque `ci` de `arnes.config.json`. El sync lo regenera solo |
+| `scripts/ci-entorno.sh` | del proyecto (opcional): lo que la suite necesita en `$GITHUB_ENV` (credenciales efímeras del seed) | se escribe una vez, desde `plantillas/github/ci-entorno.sh` |
+| `scripts/ci-e2e-preparar.sh` | del proyecto (opcional): la base y lo demás que el E2E necesita | se escribe una vez, desde `plantillas/github/ci-e2e-preparar.sh` |
+
+- **El bloque `ci`** (`arnes.config.json`): `shards` (3), `postgres_image` (`postgres:17`),
+  `node_version` (`24`), `navegadores` (`chromium`), `e2e` (`true`). Para cambiar algo, se edita el
+  bloque y `node scripts/ci.mjs generar`.
+- **`./init.sh` falla si el `gate.yml` generado no está al día** con `arnes.config.json`, o si falta
+  `arnes-gate.yml`. Un `gate.yml` escrito a mano no se pisa nunca: el gate avisa de que conviene
+  pasarlo al generado.
+- **Los checks se llaman `gate / estatico`, `gate / vitest (shard i/N)`, `gate / gate-completo`** y
+  `gate / e2e`: el prefijo es el job que llama. La regla de merge sigue siendo la misma:
+  `gate-completo` en verde.
+- **Un PR que solo toca `progress/` o `specs/` publica `gate-completo` y `e2e` en verde sin correr
+  la suite.** Lo decide el job `cambios` (`git diff` contra la base del PR) y lo anuncia en el
+  resumen del job. No vuelvas a poner `paths-ignore` en el `on:`: un workflow que no corre no
+  publica el check, y la protección de la rama lo espera para siempre. Cualquier otro PR, y el
+  `workflow_dispatch`, corren todo. La guardia es `tests/guards/guard-ci.test.ts`.
+
+### Por qué
+
+Antes cada proyecto copiaba un workflow de 400 líneas y lo adaptaba, así que cada mejora del CI del
+arnés (shards, CI por tanda, runner propio…) había que volver a copiarla a mano en cada proyecto, y
+la copia se desalineaba en silencio. Ahora la mecánica viaja con el sync y lo del proyecto es un
+dato que el gate comprueba.
+
+El PR solo de estado o specs se saltaba con `paths-ignore`, y eso tenía un agujero: el 2026-11-16 el
+#190 (solo `progress/`) se quedó bloqueado, porque la protección de `dev` exige `gate-completo` y
+el workflow, al no correr, nunca lo publicó. Un `workflow_dispatch` no sirve: su check no cuenta
+para el PR. Ahora el workflow corre siempre y es el job `cambios` el que decide saltarse la suite.
 
 - **En local corre siempre el rápido**: typecheck + lint + los tests que el grafo de imports
   (`vitest related`) relaciona con tu diff + **todas** las guardias (~1 min).
+- **El paso 2 de `init.sh` (dependencias) mide** que cada paquete declarado en `package.json` está
+  en `node_modules` (`scripts/verificar-dependencias.mjs`), no que la carpeta exista. Si falta
+  alguno, corta en rojo nombrándolo; la guardia es `tests/guards/guard-dependencias-declaradas-presentes.test.ts`.
 - **El completo (la suite entera) corre en CI**, como check del PR (`gate-completo`). Nadie
   mergea con ese check en rojo o sin terminar. Si el plan de GitHub no permite hacerlo
   obligatorio con *branch protection*, rige como convención (`docs/equipo.md > Merge sin
@@ -40,11 +81,104 @@ evidencia) vive en `docs/verification.md` del proyecto.
 - `./init.sh` **avisa** (no falla) de los tests que recorren `app/`, `lib/` o `components/` y no
   casan con ningún patrón (`scripts/tests-de-arbol.mjs`). Un test sale del aviso con
   `// gate: related` y su motivo.
+- El rápido corre también, siempre y fuera del presupuesto, los tests que **nombran por su ruta**
+  un archivo del diff (`'app/x/Y.tsx'`, con o sin extensión, entre comillas o backticks): los que
+  leen el código como texto sin importarlo. No hace falta declararlos. Una ruta armada con
+  `path.join` o por partes no se ve: para esa, un disparador.
+
+### Disparadores: lo que no es un import
+
+`vitest related` solo ve imports. Los tests que leen el esquema, las migraciones o recorren un
+módulo no importan lo que vigilan: salen verdes en local y rojos en CI. Para esos, el perfil
+declara disparadores en `arnes.config.json > gate.disparadores`: «si el diff toca esto, corre estos
+tests».
+
+```json
+"disparadores": [
+  { "si_cambia": ["db/schema.prisma", "db/migrations/**"], "corre": ["schema", "tests/integration/"] },
+  { "si_cambia": "lib/modules/<m>/**", "corre": ["tests/unit/<m>/", "tests/integration/<m>/"] }
+]
+```
+
+- `si_cambia`: glob o lista. `**` = cualquier cosa, `*` = un segmento, `<nombre>` = un segmento
+  capturado.
+- `corre`: filtros de vitest (subcadena de la ruta del test, como `gate.siempre`), con `<nombre>`
+  sustituido por lo capturado.
+- El diff incluye lo que aún no está commiteado. `./init.sh` falla si la forma no es válida
+  (`scripts/check-perfil.mjs`).
+- **Cuando un rojo de CI no salió en local, añade el disparador que lo habría cazado:** es el
+  procedimiento de la sección siguiente. Es el equivalente a un test de regresión, pero para el
+  gate.
+- Para ver qué correría el rápido sin correr nada: `node scripts/test-rapido.mjs --seleccion`.
+
+Ejemplos por tipo de acoplamiento. Usa las rutas y nombres reales de tu proyecto; esto es la
+forma, no los valores:
+
+| El test… | `si_cambia` | `corre` |
+| --- | --- | --- |
+| lee el esquema de la base | `db/schema.prisma` | `schema` |
+| lee o aplica migraciones | `db/migrations/**` | `migration`, `tests/integration/` |
+| comprueba el alcance de un módulo (`scope`, contratos) | `lib/modules/<m>/**` | `tests/unit/<m>/scope`, `module-contract` |
+| prueba la integración de un módulo contra la base | `lib/modules/<m>/adapters/**` | `tests/integration/<m>/` |
+| lee un JSON o una config (rutas, permisos, menús) | `lib/shared/routes.ts`, `config/*.json` | el nombre del test que la lee |
+| compara textos o traducciones | `messages/**` | `i18n`, `textos` |
+
+Reglas para escribirlos:
+- **Estrecho por los dos lados.** `si_cambia` tiene que nombrar la fuente real del acoplamiento
+  (no `lib/**`) y `corre` la familia de tests que la lee (no `tests/`). Un disparador ancho
+  convierte el rápido en la suite entera.
+- **Un disparador por acoplamiento,** no uno por test: si mañana aparece otro test de esquema, ya
+  entra solo.
+- Si un test recorre el árbol entero y no depende de ningún archivo concreto, no es un disparador:
+  va en `gate.siempre`.
+
+### Cuando el CI sale rojo y el local salió verde
+
+Es el aviso de que falta un disparador. Lo hace el **leader** en F2.4, antes de devolver el rojo al
+implementer (`AGENTS.md > F2.4`):
+
+1. **Lee qué falló.** `gh run view <id> --log-failed` muestra, en el job `gate-completo`, la línea
+   «hay N archivo(s) de test en rojo que NO están en el baseline» y su lista.
+2. **Comprueba si el rápido lo habría corrido:**
+   `node scripts/test-rapido.mjs --comprobar <test1> <test2>`. «entra» quiere decir que el rápido
+   sí lo seleccionaba: entonces el rojo es de verdad nuevo y va al implementer, sin disparador.
+   «NO entra»: sigue.
+3. **Encuentra el acoplamiento.** Abre el test y busca qué lee sin importarlo: `readFileSync`,
+   `readdir`/`glob`, una ruta armada por partes, la base de datos, una variable de entorno (una
+ruta escrita entera en un string ya la selecciona el rápido: si `--comprobar` dice «NO entra»,
+no es ese caso). Cruza eso
+   con `git diff --name-only origin/<integracion>...HEAD`: el archivo de tu diff que el test lee es
+   el `si_cambia`.
+4. **Escribe el disparador** en `arnes.config.json > gate.disparadores` (el leader puede editar
+   ese archivo), estrecho por los dos lados y siguiendo la tabla de arriba.
+5. **Verifica:** `node scripts/test-rapido.mjs --comprobar <test>` tiene que decir «entra». Sin
+   eso, el disparador no está probado.
+6. **Commitea** `arnes.config.json` en la rama de la feature (`chore(<key>): disparador para
+   <test>`) y anota una línea en `progress/features/<key>.md > Decisiones`.
+
+Después, el rojo vuelve al implementer como cualquier otro: con el disparador puesto, su
+`./init.sh` ya lo reproduce en local.
+
+### Presupuesto del rápido
+
+Si los tests relacionados por imports pasan de `arnes.config.json > gate.presupuesto_rapido`
+(por defecto 150 archivos), **no se corren en local**. Pasa cuando tocas algo que importa medio
+repo. Las guardias, `gate.siempre` y los disparadores sí corren. El rápido lo dice en voz alta, y
+el resto lo cubre el CI completo del PR, que es obligatorio. `TEST_RAPIDO_SIN_PRESUPUESTO=1
+./init.sh` los corre igualmente.
+
+**Cómo elegir el número:** el objetivo es que el rápido no pase de ~3 min (p90 en
+`node scripts/metricas.mjs informe`). Si el p90 pasa de ahí, baja el presupuesto. Si casi siempre
+se queda muy por debajo y el CI saca rojos de tests relacionados, súbelo. Cámbialo en pasos del 25%
+y mira el informe tras una semana.
 
 ### Lo que `--rapido` NO cubre — no te engañes
 
-- Acoplamientos que **no son imports**: SQL, nombres de archivo, lectura de `feature_list.json`.
-- Un cambio en un archivo **sin tests que lo importen** selecciona cero tests y sale verde.
+- Acoplamientos que **no son imports**, no nombran el archivo por su ruta literal y ningún
+  disparador declara: SQL, rutas armadas por código, lectura de `feature_list.json`.
+- Un cambio en un archivo **sin tests que lo importen ni disparador** selecciona cero tests y sale
+  verde.
+- Los relacionados que pasan del presupuesto.
 - Regresiones lejanas que solo aparecen con la suite entera.
 
 Eso lo cubre el completo de CI, y por eso no se mergea sin él en verde. **Si tocas `init.sh` o
@@ -61,14 +195,112 @@ pnpm exec vitest related --run $(git diff --name-only origin/dev...HEAD)   # tre
 
 ### En CI la suite va en shards
 
-- El CI parte la suite de vitest en N shards (`GATE_SHARD=i/N`); el N lo fija el perfil en `gate.yml`.
+- El CI parte la suite de vitest en N shards (`GATE_SHARD=i/N`); el N es `arnes.config.json > ci.shards`.
 - **Ningún shard da veredicto.** Un shard puede no traer ni un archivo de `integration`: la
-  garantía «los tres proyectos corrieron» solo vale sobre el informe unido.
+  garantía «los proyectos declarados corrieron» solo vale sobre el informe unido.
 - El job final `gate-completo` une los informes (`./init.sh --unir <dir> <N>`) y aplica baseline y
   garantías una sola vez. **Un shard sin informe es rojo**, no «un shard menos».
 - typecheck y lint van en su propio job (`GATE_PARTE=estatico`); `gate-completo` exige que también
   salga verde.
 - En local nada cambia: `./init.sh --completo` corre todo sin shard.
+
+### CI en cada tanda (opcional)
+
+El PR se abre **listo** tras el primer push de la feature (`AGENTS.md > F2.1`), así que el gate
+completo corre en cada push: un rojo llega en la tanda que lo causó, no al final. Nadie lo mergea
+antes del aviso «#n listo para mergear» del leader (review OK + `gate-completo` verde). Dos
+variables del repo en GitHub (*Settings → Secrets and variables → Actions → Variables*) ajustan
+dónde y cuándo corre:
+
+| Variable | Efecto |
+| --- | --- |
+| `GATE_RUNNER=<label>` | los jobs corren en ese runner (p. ej. `self-hosted`) en vez de `ubuntu-latest` |
+| `GATE_EN_BORRADOR=true` | el gate corre también en PRs en borrador (solo exploratorios: el flujo normal ya no usa borrador) |
+
+- **Coste:** cada push factura ~30 min de CI. En un repo público es gratis; en uno privado del
+  plan Free hay 2000 min al mes y, con muchas tandas, conviene un runner propio.
+- **Check obligatorio.** Si el repo lo permite (público o plan de pago), marca `gate-completo`
+  como check requerido en la rama de integración, sin pedir aprobaciones. GitHub bloquea el botón
+  de merge hasta el verde:
+  `gh api -X PUT repos/<org>/<repo>/branches/<integracion>/protection --input proteccion.json`,
+  con `{"required_status_checks":{"strict":false,"contexts":["gate-completo"]},"enforce_admins":false,"required_pull_request_reviews":null,"restrictions":null}`.
+- **Runner propio (self-hosted):** no gasta minutos, conserva la caché entre corridas y permite
+  más shards. Necesita una máquina Linux con Docker (los jobs levantan Postgres como servicio).
+  Se instala desde *Settings → Actions → Runners → New self-hosted runner*. Después,
+  `GATE_RUNNER=self-hosted`.
+- Sin ninguna de las dos, el gate corre en `ubuntu-latest` en cada push al PR (listo).
+
+**Activarlo, paso a paso** (lo hace una persona con permisos de admin en el repo):
+
+1. Antes de tocar nada, toma la foto: `node scripts/metricas.mjs informe` (sobre todo la línea
+   del CI).
+2. **Con runner propio** (recomendado si hay una máquina Linux con Docker siempre encendida):
+   - en GitHub, *Settings → Actions → Runners → New self-hosted runner*, Linux. Sigue los
+     comandos que da GitHub en esa máquina e instálalo como servicio
+     (`sudo ./svc.sh install && sudo ./svc.sh start`);
+   - comprueba que aparece *Idle* en esa pantalla;
+   - `gh variable set GATE_RUNNER --body self-hosted`.
+3. Comprueba que funciona: haz push a una rama con PR abierto y mira
+   `gh run list --branch <rama> --limit 1`; tiene que aparecer el workflow `gate` en ese runner.
+4. Al cabo de una semana, repite el informe y compara los minutos y la tasa de rojo.
+
+Para desactivarlo: `gh variable delete GATE_RUNNER` (si el runner deja de existir: sin runner
+disponible, los jobs se quedan en cola).
+
+### Acelerar la suite (perfil)
+
+Lo que acelera la suite es del proyecto, no del arnés: cambia su configuración de vitest y puede
+añadir dependencias, que se aprueban como cualquier otra (regla 7). Las palancas, de menos a más
+riesgo, **cada una medida antes y después con `node scripts/metricas.mjs informe`**:
+
+- **Separar entornos:** solo los tests de componentes llevan entorno DOM; los de lógica, `node`.
+  Montar jsdom cuesta 200–400 ms por archivo.
+- **happy-dom en vez de jsdom** en el proyecto de UI: arranca más rápido, pero se comporta distinto
+  en algunos casos. Pruébalo por proyecto y compara rojos.
+- **Base de datos de tests:** clonar una base plantilla ya migrada por test o archivo en vez de
+  migrar cada vez. Para tests de lógica de datos, Postgres en memoria (PGlite) es mucho más rápido,
+  pero no es Postgres completo: no sustituye a la integración contra Postgres real en CI.
+- **Más shards en CI**, con runner propio (arriba).
+- **`isolate: false`** solo con vigilancia de flakes: comparte estado entre archivos.
+
+**Procedimiento** (cada palanca es una feature del board del proyecto, por la ruta ligera o la
+completa, nunca un cambio suelto):
+
+1. **Mide antes:** `node scripts/metricas.mjs informe` y el tiempo del proyecto de vitest afectado
+   (`pnpm exec vitest run --project <p>`, tres veces, quédate con la mediana).
+2. **Cambia una sola palanca** por PR. Dos a la vez no dicen cuál sirvió.
+3. **Mide después** igual, y comprueba que la suite tiene los mismos rojos que antes (ni más ni
+   menos).
+4. **Anota** el antes y el después en `docs/verification.md` del proyecto: por qué se hizo y qué
+   ganó. Si no ganó nada, se revierte.
+
+### Medir el ciclo
+
+`node scripts/metricas.mjs informe` resume dónde se va el tiempo:
+- **el gate local:** `./init.sh` registra cada corrida al salir (modo, segundos, resultado);
+- **el ciclo por fase:** el leader registra F1.0, F1.3, F1.4, F2.1, F2.4 y F2.5 con
+  `node scripts/metricas.mjs fase <key> <fase>`;
+- **el CI:** se lee de GitHub con `gh`.
+
+Los eventos van a `progress/logs/metricas.jsonl` (no se versiona: es de cada máquina). Cualquier
+cambio al gate o a la suite se justifica con el informe de antes y el de después.
+
+**Cuándo se mira:**
+- **al cerrar cada feature (F2.6):** el leader copia `node scripts/metricas.mjs informe --key <key>`
+  en `progress/features/<key>.md > Cierre`. Queda el historial de cada feature en git;
+- **al revisar el perfil** (`/arnes-init revisar`) y siempre que el equipo note que todo va lento:
+  el informe completo.
+
+**Qué decidir con él:**
+
+| Si el informe dice… | Entonces… |
+| --- | --- |
+| el CI sale en rojo a menudo (> 20%) | revisa los rojos con `--log-failed`: los que el rápido no corrió piden disparadores (arriba) |
+| el p90 del rápido pasa de ~3 min | baja `gate.presupuesto_rapido` o estrecha disparadores anchos |
+| la mediana del CI pasa de ~10 min | más shards con runner propio, o una palanca de `Acelerar la suite` |
+| la espera de aprobación del spec es la fase más larga | más features por la ruta ligera o directa (`docs/specs.md > Tres rutas`) y avisar al humano del cuello de botella |
+| la implementación hasta el PR es la fase más larga | features más pequeñas (`docs/specs.md > Partir una feature`) |
+| muchas corridas del gate por feature | tandas más pequeñas, o un rojo recurrente que hay que mirar |
 
 ### Por qué
 
@@ -92,9 +324,9 @@ importan lo que vigilan**: recorren el árbol de archivos (censo de tablas, colu
 módulos puros, emisores de una categoría). **Ningún grafo de imports las selecciona**, así que
 serían justo lo que se pierde. Cuestan ~8 s.
 
-**`gate.siempre`.** El 2026-10-08, QC-230 pasó `./init.sh` en verde y el CI completo salió rojo por
+**`gate.siempre`.** El 2026-10-08, una feature pasó `./init.sh` en verde y el CI completo salió rojo por
 tres `module-contract.test.ts`: recorren el árbol de código, no se llamaban `guard` y nadie los
-corría en modo rápido. En QuimiCloude, los cuatro patrones (`guard`, `module-contract`,
+corría en modo rápido. En el proyecto de origen del arnés, los cuatro patrones (`guard`, `module-contract`,
 `route-contract`, `scope.test`) suman unos 13 s. Ampliarlo a todo lo que recorre el árbol subía el
 rápido de ~35 s a ~145 s; por eso el resto solo **avisa**, y el número queda a la vista para la
 revisión del perfil.
@@ -105,11 +337,66 @@ tests**— y entró un guard rojo en la rama de integración.
 
 **Merge-base.** Contra el último commit, una tanda de tres commits solo mira el tercero.
 
-- **Shards en CI.** El 2026-10-07 el run 37568468781 tardó 22 min, y 14,5 de ellos fueron del
-  proyecto `ui` (jsdom: importar módulos y montar el entorno, no los tests). `isolate: false` daba
-  3–5× pero se descartó por fugas entre archivos (`progress/fix-ci-velocidad-ui.md`, PR #161).
-  **Coste aceptado:** con 3 shards se facturan ~30 min por corrida frente a ~23 de un solo job, en
-  el plan Free (2000 min/mes); a cambio, el reloj del PR baja.
+**Disparadores, presupuesto y métricas (2026-11-07).** Medido en el proyecto de origen:
+- el CI tardaba 13,4 min de media y el 41% de las corridas salía en rojo o cancelada;
+- 4 de los 5 últimos rojos eran tests de esquema, de migración, de `scope` o de integración que el
+  rápido no había seleccionado, porque no los relaciona ningún import;
+- una corrida del rápido llegó a 978 s, porque el diff tocaba algo muy importado;
+- nadie medía nada de esto: hubo que reconstruirlo a mano.
+
+De ahí salen las tres piezas.
+
+**Shards en CI.** En el proyecto de origen (2026-10-07) una corrida tardó 22 min, y 14,5 de ellos
+fueron del proyecto `ui` (jsdom: importar módulos y montar el entorno, no los tests).
+`isolate: false` daba 3–5× pero se descartó por fugas de estado entre archivos.
+**Coste aceptado:** con 3 shards se facturan ~30 min por corrida frente a ~23 de un solo job, en el
+plan Free (2000 min/mes); a cambio, el reloj del PR baja.
+
+**Tests que nombran un archivo.** En servi_logistic (2026-11-13), SLT-141 cambió
+`CierresBodegaSolicitadosLista.tsx`; `paginacion-transversal`, que lo lee como texto por su ruta
+literal, no lo importaba ni se llamaba `guard*`. El rápido salió verde y el rojo apareció en
+`gate-completo`. Buscar la ruta en el texto de los tests cuesta unos cientos de ms por corrida y
+cubre ese caso sin que nadie declare nada.
+
+**El paso 2 mide las dependencias.** En el proyecto de origen del arnés (ficha 420, 2026-09-11)
+el paso 2 solo miraba si existía la carpeta `node_modules` e imprimía «dependencias presentes».
+Tras mergear una ficha que añadía `web-push`, el gate completo dio ese visto bueno en verde y dos pasos más tarde el
+typecheck reventó con `Cannot find module 'web-push'`: parecía un error de código y era un
+`pnpm install` que faltaba. Peor: si falta solo el paquete y siguen sus tipos en `@types/`, el
+typecheck pasa y el fallo sale en ejecución. Instalar siempre se descartó porque repara en silencio
+y nadie se entera de que el árbol estaba mal. El arreglo se hizo en ese proyecto y nunca llegó a la
+plantilla: el `init.sh` del arnés no traía la llamada, y en los proyectos que heredaron la guardia
+esta vivió en el baseline de rojos desde el primer día, hasta que la mejora viajó a la plantilla.
+
+## Tamaño del PR
+
+`./init.sh` mide el diff de la feature de tu rama contra la rama de integración, con lo no
+commiteado incluido (`scripts/tamano-pr.mjs`). Corre también en el CI.
+
+- **Límites** en `arnes.config.json > gate.tamano_pr`: `max_archivos` (por defecto 40, tests
+  incluidos), `max_lineas` de producción (por defecto 1000) y `max_lineas_tests` (por defecto
+  3000), en líneas añadidas más borradas. Es test lo que casa con `gate.tamano_pr.tests` (por
+  defecto `tests/**`, `e2e/**`, `**/*.test.*`, `**/*.spec.*`, `**/__tests__/**`; si el perfil lo
+  define, sustituye a esos). No cuentan `specs/`, `progress/`, los lockfiles, los snapshots ni lo
+  que añadas en `gate.tamano_pr.excluir`.
+- **Al 80%, aviso:** cierra la rebanada actual o pide partir la feature.
+- **Por encima, rojo:** la feature se parte (`docs/specs.md > Partir una feature`).
+- **La única salida es humana y queda escrita:** con el sí del humano, el leader añade a
+  `progress/features/<key>.md` la línea
+  `<!-- tamano-pr-aceptado: AAAA-MM-DD · <motivo y frase del humano> -->`, y el rojo pasa a aviso.
+  Típico: una migración mecánica o un renombrado que no se puede partir.
+
+### Por qué
+
+En el proyecto de origen (2026-11-07) los PRs de feature tocaban entre 50 y 160 archivos. Un PR así
+falla más en CI, se revisa peor, choca con más compañeros y cuesta más de mergear. La regla vivía
+como consejo y nadie la cumplía: ahora la mide el gate, y saltársela es una decisión humana
+escrita.
+
+En servi_logistic (2026-11-12/13), SLT-140 y SLT-141 pasaron el tope solo por sus tests (SLT-141:
+933 líneas de producción y 2391 de tests y E2E), y cada vez hizo falta un OK escrito para un PR
+cuyo código cabía de sobra. Probar bien no debe obligar a partir la feature ni a pedir permiso: el
+código de producción sigue con su tope y los tests tienen el suyo.
 
 ## Rojos heredados: la pregunta es «¿rompí algo YO?»
 

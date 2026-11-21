@@ -17,7 +17,13 @@ import {
   type TxDeTest,
 } from "./_postgres-real";
 import { errorEnSavepoint, revertida } from "./_fixtures/pais-20";
-import { exigirSinSuperadmin, idDeRol, insertarUsuario, tomarLockDeSuperadmin } from "./_fixtures/superadmin-32";
+import {
+  idDeRol,
+  insertarUsuario,
+  obtenerOCrearSuperadmin,
+  saltarSiHaySuperadminAjeno,
+  tomarLockDeSuperadmin,
+} from "./_fixtures/superadmin-32";
 
 /**
  * SL-20 (design §6; R24, R25, R26, R33, R35) — LA CARGA DE LA DIVISION DE UN PAIS, CONTRA POSTGRES.
@@ -37,6 +43,9 @@ import { exigirSinSuperadmin, idDeRol, insertarUsuario, tomarLockDeSuperadmin } 
  * el archivo sostiene `tomarLockDeSuperadmin` desde antes de crearlo hasta después de borrarlo, y
  * el de la 227 va por dentro (orden de locks de `superadmin-32.ts`). Todo lo que cuelga del usuario
  * (las filas de historial) se escribe dentro de `revertida` y se va con el rollback.
+ *
+ * En una base de desarrollo que ya tiene su superadmin, se usa ese de actor y NO se borra ni se toca
+ * (`obtenerOCrearSuperadmin`); solo el control de que el actor es el de la suite se salta.
  */
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
@@ -87,20 +96,24 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
   let actor: Actor;
   let actorNombre: string;
   let superadminId: string | null = null;
+  let superadminPropio = false;
   let soltarSuperadmin: () => Promise<void> = async () => {};
 
   beforeAll(async () => {
     prisma = crearPrismaDeTest();
     soltarSuperadmin = await tomarLockDeSuperadmin();
-    await exigirSinSuperadmin(prisma);
-    superadminId = await bajoLockDeEscrituraReal(() =>
-      prisma.$transaction(async (tx) => {
-        const u = await insertarUsuario(tx, await idDeRol(tx, "superadmin"), null);
-        if (!u.desenlace.ok) throw new Error(`no se sembró el superadmin: ${JSON.stringify(u.desenlace)}`);
-        return u.id;
-      }),
+    const superadmin = await obtenerOCrearSuperadmin(prisma, () =>
+      bajoLockDeEscrituraReal(() =>
+        prisma.$transaction(async (tx) => {
+          const u = await insertarUsuario(tx, await idDeRol(tx, "superadmin"), null);
+          if (!u.desenlace.ok) throw new Error(`no se sembró el superadmin: ${JSON.stringify(u.desenlace)}`);
+          return u.id;
+        }),
+      ),
     );
-    // Se lee SOLO el usuario recién creado, por su id: el nombre congelado esperado (R33).
+    superadminId = superadmin.id;
+    superadminPropio = superadmin.propio;
+    // Se lee SOLO el usuario del actor, por su id: el nombre congelado esperado (R33).
     const usuario = await prisma.usuario.findUniqueOrThrow({
       where: { id: superadminId },
       select: { nombre: true, primerApellido: true },
@@ -111,7 +124,8 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
 
   afterAll(async () => {
     try {
-      if (prisma !== undefined && superadminId !== null) {
+      // Solo el superadmin propio: el que ya tenia la base no se borra.
+      if (prisma !== undefined && superadminId !== null && superadminPropio) {
         const id = superadminId;
         await bajoLockDeEscrituraReal(() => prisma.$executeRawUnsafe(`DELETE FROM "usuario" WHERE "id" = $1`, id));
       }
@@ -121,7 +135,8 @@ describeSiHayBase("SL-20 — la carga de la division de un pais (Postgres real)"
     }
   }, 60_000);
 
-  it("control: el actor es el superadmin de la suite, sin empresa (no un usuario sembrado)", async () => {
+  it("control: el actor es el superadmin de la suite, sin empresa (no un usuario sembrado)", async (ctx) => {
+    saltarSiHaySuperadminAjeno(ctx, !superadminPropio);
     const u = await prisma.usuario.findUnique({
       where: { id: actor.usuarioId },
       select: { organizacionId: true, email: true },

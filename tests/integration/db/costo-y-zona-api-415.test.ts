@@ -11,9 +11,9 @@ import {
   HAY_BASE_DE_DATOS,
   crearPrismaDeTestConEspia,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
 } from "./_postgres-real";
+import { crearFksDeOrden, crearUsuarioDePrueba } from "./_fixtures/orden-minima";
 
 /**
  * ⏳ 2026-09-10 — FEATURE 415 (T7): `zona` Y EL COSTO, EJECUTADOS CONTRA POSTGRES.
@@ -72,7 +72,10 @@ const CONSULTAS_DEL_DETALLE = [
   "order_status", //   2. `estatus` de la orden
   "usuario", //   3. `mensajeroAsignado` (feature 404)
   "zona", // ⭑ 4. 415: `zona` (id, nombre, esCentral)
-  "distrito", // ⭑ 5. 415: el distrito (desde SL-38 la marca es la relacion de 9b)
+  // ⭑ 5 y 9b. SLT-65 (design §3; integracion con dev 2026-11-20): salen `distrito` y
+  //   `distrito_zona_especial` como relaciones del detalle; la marca sale del catalogo geografico, que
+  //   este escenario ya cargo con las lecturas previas del mismo repositorio (lectura EN CALIENTE).
+  //   MEDIDO con este mismo espia en `logistic_slt65_r1120`: de QUINCE a TRECE.
   "cierre_detail", // ⭑ 6. 415: la fila congelada, con su `where`, su `orderBy` y su `take: 1`
   "gestion_orden", //   7. la relacion `gestiones` (superconjunto, 405)
   "orden_historial_estado", //   8. 405: el historial de la ORDEN
@@ -80,8 +83,11 @@ const CONSULTAS_DEL_DETALLE = [
   // ⭑ 9b. SL-38 (2026-10-23): `distrito.zonasEspeciales` — la marca de zona especial de la EMPRESA,
   //   que sustituye a la columna `distrito.zona_especial`. Es una relacion anidada mas, y Prisma la
   //   resuelve con su propia consulta (UNA para la orden, take 1). MEDIDO con este mismo espia en
-  //   `sl38_base` (progress/impl_SL-38.md, T7): el detalle pasa de TRECE a CATORCE.
-  "distrito_zona_especial",
+  //   `sl38_base` (progress/impl_SL-38.md, T7): el detalle pasa de TRECE a CATORCE. (Retirada por
+  //   SLT-65, ver 5 y 9b arriba.)
+  // ⭑ 9c. SLT-52 (tarifas flexibles): `cierreDetail.conceptos` — el cobro congelado por concepto (R40/R43).
+  //   MEDIDO con este mismo espia en una base desechable (SLT-186): de CATORCE a QUINCE.
+  "cierre_detail_concepto",
   "usuario", //  10. 405: `gestiones.mensajero`
   // ⭑ 11b. FICHA 454 (R32, 2026-09-23): `gestiones.eventos` — el evento de registro de CALLE de
   //   cada gestion (take 1), que deriva `pendienteConfirmacion`. UNA consulta para todas las
@@ -97,11 +103,15 @@ const CONSULTAS_DEL_LISTADO = [
   "order_status", //   2. `estatus`
   "usuario", //   3. `mensajeroAsignado`
   "zona", // ⭑ 4. 415
-  "distrito", // ⭑ 5. 415
+  // ⭑ 5 y 6b. SLT-65 (integracion con dev 2026-11-20): salen `distrito` y `distrito_zona_especial`
+  //   (la marca sale del catalogo, ya cargado). MEDIDO en `logistic_slt65_r1120`: de ONCE a NUEVE.
   "cierre_detail", // ⭑ 6. 415
-  // ⭑ 6b. SL-38: `distrito.zonasEspeciales`, UNA consulta para la pagina entera (medido, T7).
-  "distrito_zona_especial",
+  // ⭑ 6c. SLT-52: `cierreDetail.conceptos`, UNA consulta para la pagina entera (medido, SLT-186).
+  "cierre_detail_concepto",
   "orden", //   7. el `count` del total
+  // ⭑ 7b. SLT-54: el interruptor de tarifas de la empresa (`tarifa_activacion`), UNA consulta por
+  //   pagina para decidir modelo viejo/nuevo (medido, SLT-186).
+  "tarifa_activacion",
   "tarifas", // ⭑ 8. 415: UNA consulta de tarifas para la pagina entera (R24)
 ];
 
@@ -120,41 +130,12 @@ const T = {
 describeSiHayBase("ficha 415 — zona y costo por orden, contra Postgres real", () => {
   let prisma: PrismaClient;
   let eventos: { query: string }[];
-  let fks: NonNullable<Awaited<ReturnType<typeof fksDeOrden>>>;
-  let usuarios: { id: string }[];
-  let zonas: { id: string; nombre: string; esCentral: boolean }[];
   let estatusId: string;
 
   beforeAll(async () => {
     const espia = crearPrismaDeTestConEspia();
     prisma = espia.prisma;
     eventos = espia.eventos;
-
-    const encontradas = await fksDeOrden(prisma);
-    if (encontradas === null) {
-      throw new Error(
-        "hay DATABASE_URL pero la tabla `orden` esta vacia: sin FKs no se puede sembrar. " +
-          "Corre `pnpm run db:seed` antes de esta suite.",
-      );
-    }
-    fks = encontradas;
-
-    usuarios = await prisma.usuario.findMany({ select: { id: true }, take: 2 });
-    if (usuarios.length < 2) {
-      throw new Error(
-        "hacen falta al menos DOS usuarios: uno es la tienda duena y el otro la tienda ajena " +
-          "que demuestra que el `tienda_id` CONGELADO acota (R33).",
-      );
-    }
-
-    zonas = await prisma.zona.findMany({
-      select: { id: true, nombre: true, esCentral: true },
-      take: 2,
-      orderBy: { nombre: "asc" },
-    });
-    if (zonas.length < 2) {
-      throw new Error("hacen falta al menos DOS zonas en el catalogo: corre `pnpm run db:seed`.");
-    }
 
     const est = await prisma.orderStatus.findFirst({
       where: { value: "en_bodega_central" },
@@ -199,7 +180,31 @@ describeSiHayBase("ficha 415 — zona y costo por orden, contra Postgres real", 
   async function escenario() {
     return enTransaccionRevertida(prisma, async (tx) => {
       await serializarEscriturasReales(tx);
-      const [tiendaPropia, tiendaAjena] = usuarios;
+      // SLT-181 — las DOS tiendas (la duena y la ajena que demuestra que el `tienda_id` CONGELADO
+      // acota, R33) y las DOS zonas nacen en ESTA tx: nada se lee de la base salvo catalogos.
+      const fks = await crearFksDeOrden(tx);
+      const tiendaAjena = await crearUsuarioDePrueba(tx, "adminTienda");
+      // La zona A es la CENTRAL: la aritmetica de `COSTO_REAL_ESPERADO` es la de `esCentral: true`.
+      for (const [letra, esCentral] of [["A", true], ["B", false]] as const) {
+        await tx.zona.create({
+          data: {
+            nombre: `Zona fixture 415-${letra} ${SUFIJO}`,
+            sinpeNumero: "80000000",
+            sinpeNombre: "Titular de Prueba",
+            esCentral,
+          },
+        });
+      }
+      const tiendaPropia = { id: fks.tiendaId };
+      // Control positivo: lo sembrado esta en la base, o el caso cae nombrando la fila.
+      const usuarios = await tx.usuario.count({ where: { id: { in: [tiendaPropia.id, tiendaAjena.id] } } });
+      expect(usuarios, "SLT-181: las dos tiendas sembradas no estan en la base").toBe(2);
+      const zonas = await tx.zona.findMany({
+        where: { nombre: { in: [`Zona fixture 415-A ${SUFIJO}`, `Zona fixture 415-B ${SUFIJO}`] } },
+        select: { id: true, nombre: true, esCentral: true },
+        orderBy: { nombre: "asc" },
+      });
+      expect(zonas, "SLT-181: las dos zonas sembradas no estan en la base").toHaveLength(2);
       const [zonaA, zonaB] = zonas;
 
       // ⭑ UNA FILA DE `tarifas` PARA EL PAR (tienda propia, zona A): es la VIGENTE con la que se
@@ -487,6 +492,11 @@ describeSiHayBase("ficha 415 — zona y costo por orden, contra Postgres real", 
     comision: "906.50",
     ivaComision: "117.85",
     fulfillment: "692.00",
+    // SLT-186: SLT-52 anadio el sexto concepto al contrato publico. La tarifa sembrada es del modelo
+    // VIEJO (sin `tienda_fulfillment` en sus valores), y para el viejo el IVA del fulfillment es CERO
+    // por regla (R47, `ivaFulfillmentDeTarifa` en lib/utils/ingreso-empresa.ts; «"0.00" si tu tarifa
+    // no tiene fulfillment o no le aplica IVA», openapi). Un cero afirmado, no ausencia.
+    ivaFulfillment: "0.00",
   };
 
   /** Lo mismo con la tarifa VIGENTE, cuyo unico cambio es el fulfillment: 696.00. */
@@ -562,7 +572,7 @@ describeSiHayBase("ficha 415 — zona y costo por orden, contra Postgres real", 
     expect(JSON.stringify(m.detalles.duenoCambiado)).not.toContain("7777.00");
   });
 
-  it('R28: una fila congelada con `tarifa_id IS NULL` trae los cinco `"0.00"`', async () => {
+  it('R28: una fila congelada con `tarifa_id IS NULL` trae los seis `"0.00"`', async () => {
     const m = await escenario();
 
     expect(m.detalles.sinTarifaCongelada).not.toBeNull();
@@ -573,6 +583,7 @@ describeSiHayBase("ficha 415 — zona y costo por orden, contra Postgres real", 
       comision: "0.00",
       ivaComision: "0.00",
       fulfillment: "0.00",
+      ivaFulfillment: "0.00", // SLT-186: sexto concepto (SLT-52)
     });
     // Y la ASIMETRIA, en el mismo caso: el ESTIMADO de esa misma orden SI tiene importes, porque
     // la tienda si tiene tarifa vigente hoy. Lo que falto fue la del dia del cierre.
@@ -602,13 +613,13 @@ describeSiHayBase("ficha 415 — zona y costo por orden, contra Postgres real", 
     expect(m.detalles.zonaMovida!.costoReal).toEqual(COSTO_REAL_ESPERADO);
   });
 
-  it("R8/R31 (+454): el DETALLE emite EXACTAMENTE 14 consultas, y son estas catorce", async () => {
+  it("R8/R31 (+454, +SLT-52, SLT-65): el DETALLE emite EXACTAMENTE 13 consultas, y son estas trece", async () => {
     const m = await escenario();
 
     // El espia esta midiendo de verdad: una lista vacia significaria que el `log: query` no llego.
     expect(m.tablasDetalle.length).toBeGreaterThan(0);
     expect(m.tablasDetalle).toEqual(CONSULTAS_DEL_DETALLE);
-    expect(m.tablasDetalle).toHaveLength(14); // ficha 454: +`orden_evento` (R32); SL-38: +la marca
+    expect(m.tablasDetalle).toHaveLength(13); // ficha 454: +`orden_evento` (R32); SL-38: +la marca; SLT-52: +conceptos; SLT-65: -distrito, -la marca
   });
 
   it("R8/R24/R31: el LISTADO emite 9 consultas, y NO cambia entre `limit=1` y `limit=50`", async () => {
@@ -620,6 +631,6 @@ describeSiHayBase("ficha 415 — zona y costo por orden, contra Postgres real", 
     //   de la pagina. Con `limit=50` entran las nueve ordenes sembradas, en DOS zonas distintas y
     //   con hasta dos cierres cada una, y sigue siendo el MISMO conjunto de consultas.
     expect(m.tablasListado50).toEqual(m.tablasListado1);
-    expect(m.tablasListado50).toHaveLength(9); // SL-38: +`distrito_zona_especial`
+    expect(m.tablasListado50).toHaveLength(9); // SL-38: +`distrito_zona_especial`; SLT-52/54: +conceptos, +activacion; SLT-65: -distrito, -la marca
   });
 });

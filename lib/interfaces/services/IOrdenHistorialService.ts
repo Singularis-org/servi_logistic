@@ -10,6 +10,9 @@ import type { OrdenHistorialEntradaDTO } from "@/lib/types/orden-historial";
 // consume `contarIntentos`) y el `umbral` configurable (R3), para que la UI muestre
 // "intento X de N" con la MISMA autorizacion de la orden (no se añade regla nueva, R17).
 //
+// SLT-77 (R32): `umbral` es `null` para el `mensajero`: el numero no cruza a su navegador, ni
+// siquiera por esta Server Action. Los demas roles reciben el tope de la empresa de la orden (R25).
+//
 // FICHA 454 (R29, BLOQUEO-1 de la fase 2, 2026-09-24): el `ok` gana las dos señales del detalle
 // —`gestionPendiente` (`{ resultado, registradaAt }` o `null`) y `ayudaAbierta`—, leidas DESPUES
 // de autorizar, con la misma visibilidad de la orden (sin regla nueva).
@@ -18,7 +21,7 @@ export type ObtenerHistorialServiceResult =
       status: "ok";
       entradas: OrdenHistorialEntradaDTO[];
       intentos: number;
-      umbral: number;
+      umbral: number | null;
     } & SenalesGestionDTO)
   | { status: "forbidden" }
   | { status: "not_found" };
@@ -43,6 +46,11 @@ export interface IOrdenHistorialService {
    * devuelve, y eso gobierna dinero real (`rechazada` -> `cobroRechazado`, 56).
    */
   contarIntentos(ordenId: string): Promise<number>;
+  /**
+   * SLT-77 (design §3, R27) — el tope de intentos de la empresa en contexto. Sin cache (R9), y falla
+   * si no hay empresa: nunca da un valor por defecto. Quien decide lo lee una vez por ejecucion (R34).
+   */
+  topeIntentos(): Promise<number>;
   /**
    * Feature 215 (R4/R7/R8) — el MISMO conteo para un LOTE de ordenes, resuelto con UNA sola
    * consulta (ya no hace falta leer el catalogo de estados: el criterio se expresa sobre enums).

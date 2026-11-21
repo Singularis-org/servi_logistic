@@ -21,6 +21,8 @@ import type { PaginaRepositorio, RangoPagina } from "@/lib/utils/rango-pagina";
 // alcanza. Lo puso rojo `tests/unit/guards/pagos-captura.guardia.test.ts`, y el camino entero
 // esta escrito en `lib/types/alcance-tablero.ts`.
 import type { FiltroAlcanceTablero } from "@/lib/types/alcance-tablero";
+import type { OrdenamientoListado } from "@/lib/types/ordenamiento-listado";
+import type { CampoOrdenBodegaSatelite } from "@/lib/types/recepcion-satelite";
 // Feature 236 (T2.2, R5): el grupo de novedad viaja en la firma de los dos metodos del listado.
 import type { GrupoNovedad } from "@/lib/types/novedad-grupo";
 // ⏳ 2026-09-09 (feature 404, design §D5): la forma del mensajero publico se declara UNA vez, en el
@@ -649,11 +651,15 @@ export interface OrderStatusLiteRow {
 
 // Feature 17 — decision final por orden ya resuelta por el service (estatusId y
 // mensajeroAsignadoId concretos, no el `value`/`mensajeroId` crudo del input).
-export interface GenerarGuiaDecisionData {
+/**
+ * SLT-42 (R22): si la decision asigna mensajero, lleva tambien su dia de reparto (convencion
+ * `@db.Date`), resuelto por el servicio en la zona del pais de la empresa: el repositorio no
+ * calcula ningun dia (feature 261/B7). Hoy «generar guia» nunca asigna (156/R2).
+ */
+export type GenerarGuiaDecisionData = {
   ordenId: string;
   estatusId: string;
-  mensajeroAsignadoId: string | null;
-}
+} & ({ mensajeroAsignadoId: null } | { mensajeroAsignadoId: string; fechaReparto: Date });
 
 export interface GenerarGuiaResultRow {
   ordenId: string;
@@ -886,6 +892,13 @@ export interface RecepcionSateliteFiltro {
    */
   busquedaDigitos?: string;
   /**
+   * SLT-160 «Buscar escaneando en los listados» (R606-R608) — GUIA EXACTA. La pone el servicio
+   * en lugar de `busqueda` cuando el termino son solo digitos y `existeGuiaEnBodega` confirma que
+   * es la guia de una orden del listado (con su alcance y sus filtros). Va en el AND, nunca en un
+   * `OR`: solo estrecha.
+   */
+  numGuia?: number;
+  /**
    * FICHA 370 — SALIDA A REPARTO, el MISMO criterio y el MISMO tipo que el listado de
    * `/ordenes` (`ListOrdenesWhere.salioAReparto`). Aqui esta el grueso del valor: medido en
    * produccion, 44 de las 48 ordenes «nuevas» viven en bodega satelite (en la central son 2 de
@@ -896,6 +909,13 @@ export interface RecepcionSateliteFiltro {
    * actor, lo parte en dos dentro de lo que ya puede ver. Ausente = los dos grupos.
    */
   salioAReparto?: SalioAReparto;
+  /**
+   * SLT-210 (R1403) — el orden DENTRO de cada grupo de estado. Solo mueve el termino de recencia
+   * del `ORDER BY` (`created_at` o `clave_remision`, en la direccion pedida); el grupo de estado,
+   * la prioridad y el desempate por `id` siguen delante y detras. No es un filtro: no cambia el
+   * conjunto (R1404). Ausente = fecha de creacion descendente, el orden de siempre (R1401).
+   */
+  orden?: OrdenamientoListado<CampoOrdenBodegaSatelite>;
 }
 
 // Feature 41 (R17/R18) -> 241 -> ⭑ FICHA 431 — resultado del bloqueo derivado de una bodega
@@ -1289,6 +1309,17 @@ export interface RechazoSlaTiendaRow {
   monto: string | null;
 }
 
+/**
+ * SLT-194 (D3) — el termino de busqueda de Rechazos, en las formas que da `terminoDeBusqueda`
+ * (`lib/utils/filtros-listado-ordenes.ts`): normalizado y, si difiere, solo-digitos. Se escribe aqui
+ * con la misma forma y no se importa `TerminoBusqueda` porque aquel modulo ya importa de este
+ * (`SalioAReparto`), y el import cerraria un ciclo. Son estructuralmente el mismo tipo.
+ */
+export interface BusquedaRechazosSla {
+  busqueda: string;
+  busquedaDigitos?: string;
+}
+
 // --- FICHA 427: traspasar a otro mensajero lo que ya lleva encima ---
 
 /**
@@ -1340,6 +1371,17 @@ export class TraspasoMensajeroConflictoError extends Error {
     super(`traspaso de mensajero: ${ordenIdsNoMovidas.length} orden(es) del lote no se movieron`);
     this.name = "TraspasoMensajeroConflictoError";
   }
+}
+
+/**
+ * SLT-167 (R710, R713) — lo que la recepcion por guia devuelve para reconocer el paquete: el
+ * destinatario de la orden y el nombre de la tienda duena. EXACTAMENTE estas dos claves: ni
+ * telefono, ni direccion, ni correo (privacidad). Lo reutilizan los resultados de las tres
+ * recepciones.
+ */
+export interface ResumenRecepcion {
+  destinatario: string;
+  tienda: string;
 }
 
 export interface IOrdenRepository {
@@ -1604,11 +1646,11 @@ export interface IOrdenRepository {
   restore(ids: readonly string[], actorUsuarioId: string | null): Promise<number>;
   findEstatusIdByValue(value: string): Promise<string | null>;
   /**
-   * Feature 27/R15/R16/R17: lee `usuario.fulfillment` de la tienda que realiza la
-   * carga masiva (el `adminTienda` autenticado). `null` si el usuario no resuelve: SL-17
-   * (D15) la usa de lectura previa, y una tienda de otra empresa es «no encontrada».
+   * SLT-94 (R5): lee la marca «se recoge en tienda» de la tienda DUEÑA de la orden (la que carga
+   * por pantalla, o la tienda de la API key). `null` si el usuario no resuelve: SL-17 (D15) la usa
+   * de lectura previa, y una tienda de otra empresa es «no encontrada».
    */
-  findUsuarioFulfillment(usuarioId: string): Promise<boolean | null>;
+  findUsuarioSeRecogeEnTienda(usuarioId: string): Promise<boolean | null>;
   // BORRADO 2026-08-07 (tanda 2): `existsGeo`. Ver la lapida de `GeoExistence` arriba.
 
   // --- Feature 15: carga masiva (metodos batch, R19/R21/R22/R25/R27) ---
@@ -1808,6 +1850,11 @@ export interface IOrdenRepository {
    */
   findByNumGuiaForTransicion(numGuia: number): Promise<OrdenTransicionRow | null>;
   /**
+   * SLT-167 (R713, R714): destinatario y nombre de la tienda de la orden `ordenId`, solo si es de la
+   * empresa de la sesion; `null` si es de otra empresa o no existe.
+   */
+  resumenRecepcion(ordenId: string): Promise<ResumenRecepcion | null>;
+  /**
    * R28: subconjunto de `ids` que corresponde a un usuario con rol `mensajero`,
    * SIN filtro de zona (el filtrado por zona/GAM es la feature 30, ver design.md
    * "Limites"). Feature 159: la referencia cruzada de este comentario apuntaba al
@@ -1911,6 +1958,21 @@ export interface IOrdenRepository {
     historial: HistorialContexto,
   ): Promise<number>;
 
+  /**
+   * SLT-197 (R971-R974): retira un lote de `en_bodega_satelite` a `destinoEstatusId`
+   * (`en_ruta_bodega_central`), todo o nada. La guarda de estado (ids, no borrada,
+   * `en_bodega_satelite`) va en el `WHERE`; si el conteo no es exacto revierte y devuelve
+   * `"conflicto"` sin cambios ni historial. Limpia mensajero, `asignado_at` y dia de reparto;
+   * conserva la zona. Un historial por orden con `historial.origenTipo` (`ajuste_estado`).
+   * SLT-211: en la misma transaccion, una accion `ordenes_retiradas_a_central` por satelite del lote
+   * (Historico › Acciones); un conflicto no deja ninguna.
+   */
+  retirarSateliteLote(
+    ordenIds: string[],
+    destinoEstatusId: string,
+    historial: HistorialContexto,
+  ): Promise<"ok" | "conflicto">;
+
   // --- Feature 32: etiqueta de guia (READ derivado, R1/R3) ---
 
   /**
@@ -1927,7 +1989,8 @@ export interface IOrdenRepository {
    * parametro opcional que alguien olvida falla ABIERTO; asi cada llamador escribe `null` y lo
    * decide.
    */
-  findEtiquetasByIds(ids: string[], tiendaId: string | null): Promise<EtiquetaRow[]>;
+  /** SLT-42 (R22): `zona` es la del pais de la empresa; con ella se fecha `fechaCreacion`. */
+  findEtiquetasByIds(ids: string[], tiendaId: string | null, zona: string): Promise<EtiquetaRow[]>;
   /**
    * Feature 32/R1/R3 (QR por guia): fila para la etiqueta resuelta por `num_guia`
    * (UNIQUE en `orden`), con los mismos nombres legibles y el mismo filtro
@@ -1938,7 +2001,12 @@ export interface IOrdenRepository {
    * SLT-49/R9/R10: `tiendaId` con la misma semantica que en `findEtiquetasByIds` (string ->
    * frontera de tienda en el `where`; `null` -> sin ella). Obligatorio por el mismo motivo.
    */
-  findEtiquetaByNumGuia(numGuia: number, tiendaId: string | null): Promise<EtiquetaRow | null>;
+  /** SLT-42 (R22): `zona` es la del pais de la empresa; con ella se fecha `fechaCreacion`. */
+  findEtiquetaByNumGuia(
+    numGuia: number,
+    tiendaId: string | null,
+    zona: string,
+  ): Promise<EtiquetaRow | null>;
 
   // --- Feature 148: manifiesto Excel por lote (READ derivado, R4/R6/R7/R12/R29) ---
 
@@ -1965,7 +2033,7 @@ export interface IOrdenRepository {
   ): Promise<ManifiestoOrdenRow[]>;
   /**
    * Feature 148/R9: `usuario.nombre` del actor que ejecuto la operacion, resuelto
-   * server-side por `usuarioId` (espejo de `findUsuarioFulfillment`/`findUsuarioZonaId`).
+   * server-side por `usuarioId` (espejo de `findUsuarioSeRecogeEnTienda`/`findUsuarioZonaId`).
    * Alimenta la columna `responsable` cuando el flujo NO deja mensajero asignado
    * (design.md §9.8). `null` si el usuario no resuelve. `Actor` solo lleva
    * `{ usuarioId, rol }`, por eso el nombre se lee aqui y no viaja desde el borde.
@@ -1976,7 +2044,7 @@ export interface IOrdenRepository {
 
   /**
    * Feature 33/R4/R5: `usuario.zonaId` del adminSatelite autenticado, resuelto
-   * server-side por `usuarioId` (espejo de `findUsuarioFulfillment`). `null` si
+   * server-side por `usuarioId` (espejo de `findUsuarioSeRecogeEnTienda`). `null` si
    * el usuario no resuelve o no tiene zona asignada (R5: modulo vacio + sin_zona
    * en la recepcion). No hay logica de negocio: solo la query.
    */
@@ -2056,6 +2124,15 @@ export interface IOrdenRepository {
     ids: readonly string[],
   ): Promise<string[]>;
   /**
+   * SLT-160 (R606, R608): ¿hay en el listado de la bodega —el MISMO criterio que la pagina:
+   * zona, no borradas, paso por la bodega, estados y filtros— una orden con `filtro.numGuia`?
+   * Lo pregunta el servicio una vez por peticion para decidir entre guia exacta y contencion.
+   * `false` sin consultar si `estatusValues` esta vacio. Solo query.
+   */
+  existeGuiaEnBodega(
+    filtro: RecepcionSateliteFiltro & { numGuia: number },
+  ): Promise<boolean>;
+  /**
    * Feature 33/R11/R18: transicion atomica y concurrencia-segura de UNA orden a
    * `en_bodega_satelite`. UPDATE guardado por estado de ORIGEN (solo si sigue en
    * `en_ruta_bodega_satelite`), zona (`zonaId`) y no borrada (`deletedAt IS
@@ -2102,13 +2179,18 @@ export interface IOrdenRepository {
    * `mensajeroAsignadoId`, `asignadoAt` y `fechaReparto` (la recoleccion llega con el recolector
    * puesto); la devolucion (139) pasa `false` y conserva la asignacion. Obligatorio, sin valor por
    * defecto: quien llama tiene que decidirlo.
+   *
+   * SLT-224 (R1700-R1704): con `opciones.reconciliaZona`, y SOLO si transiciono, la zona de la orden
+   * se re-deriva desde `zona_distrito` con la regla compartida (`_shared/reconciliar-zona-ordenes`),
+   * acotada a esta orden y en la MISMA tx. El caso 138 pasa `true`; la devolucion (139), `false`.
+   * Ausente = `false` (no reconcilia): es la salida segura para un llamador que no lo decide.
    */
   recibirEnBodegaCentral(
     ordenId: string,
     origenValue: string,
     destinoEstatusId: string,
     historial: HistorialContexto,
-    opciones: { liberaAsignacion: boolean },
+    opciones: { liberaAsignacion: boolean; reconciliaZona?: boolean },
   ): Promise<boolean>;
 
   // --- Feature 157: recoleccion en tienda por el mensajero (R3-R5, R26-R38) ---
@@ -2334,6 +2416,12 @@ export interface IOrdenRepository {
     actor: { usuarioId: string; rol: RolValue };
     /** R28: obligatorio, ya recortado en el borde. */
     motivo: string;
+    /**
+     * SLT-42 (R22, R23): el INSTANTE en que empezo el dia en curso en la zona del pais de la empresa,
+     * con el que se mira si la primera ruta del dia de cada mensajero sigue pendiente. Lo calcula el
+     * servicio.
+     */
+    inicioDelDia: Date;
   }): Promise<TraspasoMensajeroAplicado>;
 
   // --- Feature 41 -> 241 -> 271: el bloqueo derivado, que ahora es un CONTEO (R1-R12) ---
@@ -2376,7 +2464,8 @@ export interface IOrdenRepository {
    * solo el primero se deduce «espera a la administracion» cuando `solicitarCierre` si le deja
    * reenviar el segundo.
    */
-  findBloqueoDetalle(mensajeroId: string): Promise<BloqueoDetalle>;
+  /** SLT-42 (R22): `zona` es la del pais de la empresa; con ella se fecha la jornada de cada cierre. */
+  findBloqueoDetalle(mensajeroId: string, zona: string): Promise<BloqueoDetalle>;
   /**
    * FICHA 477 (design D2/§5.1, T1.2) — de `ordenIds`, las que estan EN CORRECCION de un cierre
    * `rechazado` del propio `mensajeroId`: con fila en `cierre_detail` de ese cierre y sin ninguna
@@ -2405,7 +2494,8 @@ export interface IOrdenRepository {
    * Cierre inexistente -> `null`. NO se acota por alcance: el llamador ya releyo el cierre con el
    * alcance que autorizo la escritura antes de pedir esto.
    */
-  findJornadaDeCierre(cierreId: string): Promise<string | null>;
+  /** SLT-42 (R22): `zona` es la del pais de la empresa; con ella se fecha la jornada. */
+  findJornadaDeCierre(cierreId: string, zona: string): Promise<string | null>;
   /**
    * Zonas (central y satelite) con AL MENOS 1 mensajero bloqueado: mismo criterio que
    * `findMensajerosBloqueadosPorCierres`, agregado por zona. Una zona sin mensajeros nunca
@@ -2613,17 +2703,22 @@ export interface IOrdenRepository {
    * (`deleted_at IS NULL`), su estatus ACTUAL es `rechazada` Y existe una transicion del cron SLA
    * en su historial (`origen_tipo = escalado_devuelta_sla`, feature 99). Al salir de `rechazada` o
    * al borrarse, cae del conteo (R15). Alimenta el `total` paginado.
+   *
+   * SLT-194 (R953/R954): con `busqueda`, ademas, la columna de busqueda contiene el termino (el
+   * criterio de `/ordenes`), en AND con todo lo anterior. Sin ella, el predicado de siempre (R957).
    */
-  countRechazadasSlaByTienda(tiendaId: string): Promise<number>;
+  countRechazadasSlaByTienda(tiendaId: string, busqueda?: BusquedaRechazosSla): Promise<number>;
   /**
    * Feature 102/R12/R14/R15: una PAGINA de RECHAZOS POR SLA de `tiendaId` con el MISMO predicado
    * que `countRechazadasSlaByTienda`, ordenada por `Orden.createdAt` desc. Por cada orden, el
    * `monto` = `ingreso_bodega_rechazo` de su gestion sintetica SLA (la enlazada por la transicion
    * `origen_tipo = escalado_devuelta_sla`), YA serializado a STRING escala 2; `null` mientras no
    * este snapshoteada (pendiente de cierre, Q2 default). `skip`/`take` para la paginacion.
+   * SLT-194 (R953): `busqueda` con el MISMO efecto que en `countRechazadasSlaByTienda`.
    */
   findRechazadasSlaByTienda(
     tiendaId: string,
     pagination: { skip: number; take: number },
+    busqueda?: BusquedaRechazosSla,
   ): Promise<RechazoSlaTiendaRow[]>;
 }

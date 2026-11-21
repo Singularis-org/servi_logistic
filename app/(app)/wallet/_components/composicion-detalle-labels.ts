@@ -81,6 +81,9 @@ export const EGRESO_NOMBRADO_LABEL: Record<WalletEgresoNombrado, string> = {
   // SL-45 (design §7.3): la fila de los pagos a la plataforma. En singular, a diferencia de las otras,
   // porque R24 nombra la fila «Pago a la plataforma», igual que cada movimiento en el libro.
   egreso_pago_plataforma: "Pago a la plataforma",
+  // SLT-94 (R26, R37): la fila de las devoluciones del fulfillment (eliminar o cancelar por API la
+  // orden); en el libro, cada fila se rotula «Devolución de fulfillment a la tienda».
+  egreso_reverso_fulfillment: "Devoluciones de fulfillment a una tienda",
 };
 
 /**

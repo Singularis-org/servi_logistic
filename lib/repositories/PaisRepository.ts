@@ -1,5 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 
+import type { FormatoMoneda } from "@/lib/config/moneda";
+import { comoPlataforma } from "@/lib/db/contexto-empresa";
 import type {
   ActorDeAltaDePais,
   CrearPaisRepoResultado,
@@ -8,7 +10,8 @@ import type {
 import { textoConstraintP2002 } from "@/lib/repositories/_shared/prisma-unique";
 import { appendAccionPlataforma } from "@/lib/repositories/registrar-accion-plataforma";
 import { resolverActorCongelado } from "@/lib/repositories/registrar-accion";
-import type { DatosDeAltaDePais, PaisDisponibleDTO, PaisDTO } from "@/lib/types/pais";
+import type { DatosDeAltaDePais, PaisDisponibleDTO, PaisDTO, TipoDocumentoDTO } from "@/lib/types/pais";
+import type { ReglaDocumento } from "@/lib/utils/documento";
 
 /**
  * SL-20 (design §2.1, §5; R23, R33) — la tabla `pais`, de plataforma.
@@ -16,10 +19,15 @@ import type { DatosDeAltaDePais, PaisDisponibleDTO, PaisDTO } from "@/lib/types/
  * No abre `comoPlataforma`: el contexto lo pone quien llama (la action del superadmin para leer y
  * crear; el layout, en el contexto de la empresa, para `deLaEmpresa`). Una empresa lee `pais` y no
  * lo escribe (R3): un `crear` fuera de plataforma lo rechaza la base.
+ *
+ * SLT-42: la única excepción es `zonasConEmpresas`, que abre `comoPlataforma` ella misma (design §6.1).
  */
-export type PaisPrismaClient = Pick<PrismaClient, "pais" | "organizacion" | "$transaction">;
+export type PaisPrismaClient = Pick<PrismaClient, "pais" | "organizacion" | "tipoIdentificacion" | "$transaction">;
 
-/** Lo que sale de la base de cada país: el DTO entero, nada más (`created_at` no lo usa nadie). */
+/**
+ * Lo que sale de la base de cada país: el DTO entero, nada más (`created_at` no lo usa nadie). Las
+ * columnas de moneda llegan sueltas y `paisDeFila` las junta en `PaisDTO.moneda`.
+ */
 const SELECT_PAIS = {
   id: true,
   nombre: true,
@@ -33,13 +41,34 @@ const SELECT_PAIS = {
   digitosCodigoNivel2: true,
   digitosCodigoNivel3: true,
   disponible: true,
+  // SLT-42 (R1): teléfono y hora del país.
+  prefijoTelefonico: true,
+  telefonoDigitosNacionales: true,
+  zonaHoraria: true,
+  // SL-21 (R1; design §5.1): moneda e impuesto del país.
+  monedaCodigo: true,
+  monedaSimbolo: true,
+  monedaSeparadorMiles: true,
+  monedaSeparadorDecimal: true,
+  monedaDecimales: true,
+  impuestoNombre: true,
 } as const;
+
+/** Una fila de `pais` con las columnas de `SELECT_PAIS`, antes de juntar la moneda. */
+type FilaDePais = Omit<PaisDTO, "moneda"> & {
+  monedaCodigo: string | null;
+  monedaSimbolo: string | null;
+  monedaSeparadorMiles: string | null;
+  monedaSeparadorDecimal: string | null;
+  monedaDecimales: number | null;
+};
 
 export class PaisRepository implements IPaisRepository {
   constructor(private readonly prisma: PaisPrismaClient) {}
 
-  listar(): Promise<PaisDTO[]> {
-    return this.prisma.pais.findMany({ orderBy: [{ nombre: "asc" }], select: SELECT_PAIS });
+  async listar(): Promise<PaisDTO[]> {
+    const filas = await this.prisma.pais.findMany({ orderBy: [{ nombre: "asc" }], select: SELECT_PAIS });
+    return filas.map(paisDeFila);
   }
 
   /** R9/R45: el filtro va en el SQL, no en la pantalla; un país apagado no sale de la base. */
@@ -51,8 +80,9 @@ export class PaisRepository implements IPaisRepository {
     });
   }
 
-  porId(id: string): Promise<PaisDTO | null> {
-    return this.prisma.pais.findUnique({ where: { id }, select: SELECT_PAIS });
+  async porId(id: string): Promise<PaisDTO | null> {
+    const fila = await this.prisma.pais.findUnique({ where: { id }, select: SELECT_PAIS });
+    return fila === null ? null : paisDeFila(fila);
   }
 
   /**
@@ -63,7 +93,7 @@ export class PaisRepository implements IPaisRepository {
   async crear(datos: DatosDeAltaDePais, actor: ActorDeAltaDePais): Promise<CrearPaisRepoResultado> {
     try {
       return await this.prisma.$transaction(async (tx) => {
-        const pais = await tx.pais.create({ data: datos, select: SELECT_PAIS });
+        const pais = paisDeFila(await tx.pais.create({ data: datos, select: SELECT_PAIS }));
         const congelado = await resolverActorCongelado(tx, actor.usuarioId);
         await appendAccionPlataforma(tx, [
           {
@@ -125,8 +155,99 @@ export class PaisRepository implements IPaisRepository {
       where: { id: organizacionId },
       select: { pais: { select: SELECT_PAIS } },
     });
-    return fila?.pais ?? null;
+    return fila?.pais ? paisDeFila(fila.pais) : null;
   }
+
+  /**
+   * SLT-42 (R11). El país va en el `WHERE`: un `id` o un `value` de otro país no casa. Si el texto
+   * casara con el `id` de un tipo y el `value` de otro, gana el `id`.
+   */
+  async tipoDocumentoDelPais(paisId: string, idOValue: string): Promise<TipoDocumentoDTO | null> {
+    // Sin `select`: la fila es corta y el DTO se arma campo a campo abajo. (Un `select` con el
+    // literal del flag lo confundiría la guardia de 374, que lo reserva a la geografía.)
+    const filas = await this.prisma.tipoIdentificacion.findMany({
+      where: { paisId, OR: [{ id: idOValue }, { value: idOValue }] },
+    });
+    const fila = filas.find((f) => f.id === idOValue) ?? filas[0];
+    if (!fila) return null;
+    return {
+      id: fila.id,
+      value: fila.value,
+      paisId: fila.paisId,
+      clave: fila.clave,
+      nombre: fila.nombre,
+      caracteres: caracteresDeDocumento(fila.caracteres),
+      largoMin: fila.largoMin,
+      largoMax: fila.largoMax,
+      activo: fila.activo,
+    };
+  }
+
+  /** SLT-42 (R6). El inactivo no cuenta: no se puede elegir en ningún alta (R11). */
+  async tieneTipoDocumentoActivo(paisId: string): Promise<boolean> {
+    const fila = await this.prisma.tipoIdentificacion.findFirst({ where: { paisId, activo: true }, select: { id: true } });
+    return fila !== null;
+  }
+
+  /**
+   * SLT-42 (design §6.1, R25): `SELECT DISTINCT p.zona_horaria FROM pais p JOIN organizacion o ON
+   * o.pais_id = p.id WHERE p.zona_horaria IS NOT NULL`, escrito con el cliente. En plataforma porque
+   * la cola de jobs no tiene empresa y la RLS de `organizacion` solo deja ver la propia.
+   */
+  zonasConEmpresas(): Promise<string[]> {
+    return comoPlataforma("SL-20", "SLT-42: zonas horarias de los países con empresas, para agendar los jobs diarios por zona", async () => {
+      const filas = await this.prisma.pais.findMany({
+        where: { zonaHoraria: { not: null }, organizaciones: { some: {} } },
+        distinct: ["zonaHoraria"],
+        orderBy: [{ zonaHoraria: "asc" }],
+        select: { zonaHoraria: true },
+      });
+      return filas.flatMap((f) => (f.zonaHoraria === null ? [] : [f.zonaHoraria]));
+    });
+  }
+}
+
+/**
+ * SL-21 (design §5.1) — la fila al DTO: las cinco columnas de moneda se juntan en `moneda`. El CHECK
+ * «todo o nada» de 20261124120000 garantiza que no hay mitades; aun así, una fila a medias o con
+ * decimales fuera de 0–2 es una base que no cumple su propia regla y se lanza, no se inventa nada.
+ */
+function paisDeFila(fila: FilaDePais): PaisDTO {
+  const { monedaCodigo, monedaSimbolo, monedaSeparadorMiles, monedaSeparadorDecimal, monedaDecimales, ...resto } = fila;
+  const columnas = [monedaCodigo, monedaSimbolo, monedaSeparadorMiles, monedaSeparadorDecimal, monedaDecimales];
+  if (columnas.every((c) => c === null)) return { ...resto, moneda: null };
+  if (
+    monedaCodigo === null ||
+    monedaSimbolo === null ||
+    monedaSeparadorMiles === null ||
+    monedaSeparadorDecimal === null ||
+    monedaDecimales === null
+  ) {
+    throw new Error(`pais.moneda_* a medias en ${fila.id}`);
+  }
+  const moneda: FormatoMoneda = {
+    codigo: monedaCodigo,
+    simbolo: monedaSimbolo,
+    separadorMiles: monedaSeparadorMiles,
+    separadorDecimal: monedaSeparadorDecimal,
+    decimales: decimalesDeMoneda(monedaDecimales),
+  };
+  return { ...resto, moneda };
+}
+
+/** `moneda_decimales` es `SMALLINT` con el CHECK `BETWEEN 0 AND 2`. */
+function decimalesDeMoneda(valor: number): FormatoMoneda["decimales"] {
+  if (valor === 0 || valor === 1 || valor === 2) return valor;
+  throw new Error(`pais.moneda_decimales inesperado: ${valor}`);
+}
+
+/**
+ * La columna es `TEXT` con el CHECK `tipo_identificacion_caracteres` (`digitos` | `alfanumerico`).
+ * Otro valor es una base que no cumple su propia regla: se lanza en vez de validar con una regla inventada.
+ */
+function caracteresDeDocumento(valor: string): ReglaDocumento["caracteres"] {
+  if (valor === "digitos" || valor === "alfanumerico") return valor;
+  throw new Error(`tipo_identificacion.caracteres inesperado: ${valor}`);
 }
 
 /**

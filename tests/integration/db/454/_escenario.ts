@@ -42,10 +42,13 @@ import {
   clienteConTransaccionAnidada,
   crearPrismaDeTest,
   enTransaccionRevertida,
-  fksDeOrden,
   serializarEscriturasReales,
   type TxDeTest,
 } from "../_postgres-real";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
+import { comoApp, crearOrganizacion } from "@/tests/fabricas/organizaciones";
+import { conEmpresa } from "@/lib/db/contexto-empresa";
+import { conAislamientoPorEmpresa } from "@/lib/db/extension-empresa";
 
 /**
  * FEATURE 454 (T0.1) — EL ESCENARIO COMPARTIDO DE LA FASE 0.
@@ -100,12 +103,15 @@ const RETIRADOS = new Set<string>(ESTATUS_RETIRADOS_454);
 
 export interface Mundo {
   prisma: PrismaClient;
-  fks: { tiendaId: string; zonaId: string; provinciaId: string; cantonId: string };
+  // `tiendaId` y `zonaId` ya no salen de la base (SLT-177); quedan opcionales para los Mundo armados a mano.
+  fks: { tiendaId?: string; zonaId?: string; provinciaId: string; cantonId: string };
   tipoIdentificacionId: string;
   rolId: Map<string, string>;
   estatus: Map<string, string>;
   valorDeEstatus: Map<string, string>;
   centralZonaId: string;
+  /** SLT-177: `true` en el Mundo de `prepararMundo`: `crearEscenario` siembra la central en su tx. */
+  sembrarCentral?: boolean;
 }
 
 let secuencia = 0;
@@ -128,10 +134,15 @@ export function guiaUnica(): number {
 /** Carga el catalogo y las FKs. Falla ruidosamente si la base no esta sembrada. */
 export async function prepararMundo(): Promise<Mundo> {
   const prisma = crearPrismaDeTest();
-  const fks = await fksDeOrden(prisma);
-  if (fks === null) throw new Error("tabla `orden` vacia: corre `pnpm run db:seed`.");
-  const u = await prisma.usuario.findFirst({ select: { tipoIdentificacionId: true } });
-  if (u === null) throw new Error("hace falta al menos un usuario en la base.");
+  // SLT-177 (R737): del `beforeAll` solo se leen catalogos y geografia por su clave. La tienda y las
+  // zonas (central incluida) son datos de negocio: las crea `crearEscenario` en la tx de cada caso.
+  const canton = await prisma.canton.findFirst({
+    where: { nombre: "Cartago", provincia: { nombre: "Cartago" } },
+    select: { id: true, provinciaId: true },
+  });
+  if (canton === null) throw new Error("falta la geografia Cartago/Cartago: aplica las migraciones.");
+  const tipo = await prisma.tipoIdentificacion.findUnique({ where: { value: "cedula" }, select: { id: true } });
+  if (tipo === null) throw new Error("falta el tipo de identificacion «cedula»: aplica las migraciones.");
   const roles = await prisma.rol.findMany({ select: { id: true, value: true } });
   const rolId = new Map(roles.map((r) => [r.value as string, r.id]));
   for (const r of ["maestro", "admin", "mensajero", "adminTienda", "adminSatelite"]) {
@@ -144,20 +155,25 @@ export async function prepararMundo(): Promise<Mundo> {
     if (RETIRADOS.has(v)) continue; // m4: los siembra el escenario, si hacen falta
     if (!estatus.has(v)) throw new Error(`falta el estatus «${v}» en \`order_status\``);
   }
-  const central = await prisma.zona.findFirst({ where: { esCentral: true }, select: { id: true } });
-  if (central === null) {
-    throw new Error("la base no tiene zona central: corre `pnpm exec tsx scripts/seed-zonas.ts`.");
-  }
   return {
     prisma,
-    fks,
-    tipoIdentificacionId: u.tipoIdentificacionId,
+    fks: { provinciaId: canton.provinciaId, cantonId: canton.id },
+    tipoIdentificacionId: tipo.id,
     rolId,
     estatus,
     valorDeEstatus,
-    centralZonaId: central.id,
+    sembrarCentral: true,
+    get centralZonaId(): string {
+      if (centralActual454 === null) {
+        throw new Error("454: no hay zona central sembrada: se lee dentro de un escenario (crearEscenario)");
+      }
+      return centralActual454;
+    },
   };
 }
+
+/** SLT-177 (R737): la zona central del escenario en curso; la crea `crearEscenario` en su tx. */
+let centralActual454: string | null = null;
 
 const URLS: ISignedUrlProvider = {
   createSignedUrl: async (ruta: string) => ruta,
@@ -199,6 +215,7 @@ export function montarServicios(cliente: PrismaClient) {
   return {
     notaRepo,
     gestionDesdeAyuda: new GestionDesdeAyudaService({
+      reglasPais: reglasPaisFijas(),
       notaRepo,
       ordenRepo,
       gestionRepo,
@@ -227,8 +244,9 @@ export function montarServicios(cliente: PrismaClient) {
       new RutaOptimizadaRepository(cliente),
       new OrdenMensajeroMetaRepository(cliente),
       historialService,
+      reglasPaisFijas(),
     ),
-    cierreDia: new CierreDiaService(cierreDiaRepo, zonaRepo, ordenRepo, URLS, tarifaZonaRepo),
+    cierreDia: new CierreDiaService(cierreDiaRepo, zonaRepo, ordenRepo, URLS, tarifaZonaRepo, undefined, undefined, reglasPaisFijas()),
     cierresAdmin: new CierresAdminService(
       adminRepo,
       zonaRepo,
@@ -238,6 +256,11 @@ export function montarServicios(cliente: PrismaClient) {
       new PagoMensajeroMovimientoRepository(cliente),
       // FICHA 462: el conteo REAL de retenidas, sobre la misma tx (la marca de S3 con datos reales).
       buildReprogramadasRetenidasService(cliente),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      reglasPaisFijas(),
     ),
     /** El corte REAL, con la seleccion REAL recortada a los mensajeros de ESTE escenario. */
     corteDe: (mensajeros: string[]) =>
@@ -253,6 +276,8 @@ export function montarServicios(cliente: PrismaClient) {
         ordenRepo,
         tarifaZonaRepo,
         { warn: () => {} },
+        undefined,
+        reglasPaisFijas(),
       ),
   };
 }
@@ -345,9 +370,14 @@ export async function crearEscenario(
           `el estatus retirado «${v}» no esta en el catalogo y un escenario COMPROMETIDO no lo puede sembrar`,
         );
       }
+      // SLT-177: el catalogo es de plataforma y `servi_app` no puede escribirlo; la fila de m4 se
+      // inserta con el rol del dueno y se vuelve al de la app si el escenario lo tenia.
+      const [{ rol }] = await tx.$queryRawUnsafe<{ rol: string }[]>(`SELECT current_setting('role') AS rol`);
+      if (rol === "servi_app") await tx.$executeRawUnsafe("RESET ROLE");
       await tx.$executeRaw`INSERT INTO "order_status" ("id", "value")
         SELECT gen_random_uuid()::text, ${v}
          WHERE NOT EXISTS (SELECT 1 FROM "order_status" WHERE "value" = ${v})`;
+      if (rol === "servi_app") await tx.$executeRawUnsafe(`SELECT set_config('role', 'servi_app', true)`);
       const fila = await tx.orderStatus.findUniqueOrThrow({ where: { value: v }, select: { id: true } });
       retiradosLocales.set(v, fila.id);
       valorRetiradoLocal.set(fila.id, v);
@@ -377,6 +407,18 @@ export async function crearEscenario(
   }
 
   const clave = claveUnica();
+  // SLT-177 (R737): con el Mundo de `prepararMundo`, la zona central es propia del escenario (una por
+  // empresa; la tx tiene la suya). Un Mundo armado a mano trae ya su central y no se toca.
+  if (mundo.sembrarCentral === true) {
+    const central = await tx.zona.create({
+      data: { sinpeNumero: "80000000", sinpeNombre: "Titular 454", nombre: `Central 454 ${clave}`, esCentral: true },
+      select: { id: true },
+    });
+    // Control positivo (R739): la central sembrada se lee de vuelta, exactamente una.
+    const centrales = await tx.zona.count({ where: { id: central.id, esCentral: true } });
+    if (centrales !== 1) throw new Error(`454: la zona central sembrada no esta en la base (${centrales})`);
+    centralActual454 = central.id;
+  }
   const zona = await tx.zona.create({
     data: { sinpeNumero: "80000000", sinpeNombre: "Titular 454", nombre: `Zona 454 ${clave}` },
     select: { id: true },
@@ -712,9 +754,27 @@ export async function crearEscenario(
 export type Escenario = Awaited<ReturnType<typeof crearEscenario>>;
 
 /** Corre `fn` sobre un escenario nuevo, en una transaccion que SIEMPRE se revierte. */
-export function conEscenario<T>(mundo: Mundo, fn: (e: Escenario) => Promise<T>): Promise<T> {
+/**
+ * `opciones.rolDeLaApp` (por defecto `true`): el escenario corre como `servi_app` con RLS. Lo apagan
+ * solo los tests de migracion que hacen DDL o escriben el catalogo dentro del escenario (eso es del
+ * dueno de las tablas); esos no llaman a lecturas globales del codigo bajo test.
+ */
+export function conEscenario<T>(
+  mundo: Mundo,
+  fn: (e: Escenario) => Promise<T>,
+  opciones: { rolDeLaApp?: boolean } = {},
+): Promise<T> {
   return enTransaccionRevertida(mundo.prisma, async (tx) => {
     await serializarEscriturasReales(tx);
+    // SLT-177: el escenario corre con el rol de la app (`servi_app`, sin BYPASSRLS) y la empresa de
+    // la tx, como en produccion. Sin esto el `tx` es el del dueno de las tablas y una lectura global
+    // del codigo bajo test (p. ej. `ZonaRepository.findCentralZonaId`, `findFirst({ esCentral })`)
+    // devolvia la central de OTRA empresa en una base con datos: la aprobacion mandaba a satelite.
+    const [{ org }] = await tx.$queryRawUnsafe<{ org: string | null }[]>(
+      `SELECT current_setting('app.organizacion_id', true) AS org`,
+    );
+    if (!org) throw new Error("454: la transaccion del escenario no tiene empresa fijada");
+    if (opciones.rolDeLaApp !== false) await comoApp(tx, org);
     const cliente = clienteConTransaccionAnidada(tx);
     const e = await crearEscenario(mundo, tx, cliente);
     return fn(e);
@@ -728,6 +788,10 @@ export function diaCR(dias = 0, now: Date = new Date()): Date {
 }
 
 export interface Comprometido {
+  /** SLT-185 (R1144): la empresa propia del escenario confirmado; la borra `limpiarComprometido`, la ultima. */
+  organizacionId: string;
+  /** SLT-185 (R1145): la zona central propia del escenario (SLT-177), que tambien se borra. */
+  centralZonaId: string | null;
   usuarios: string[];
   zonaId: string;
   ordenIds: string[];
@@ -746,30 +810,62 @@ export interface Comprometido {
 export async function sembrarComprometido(
   mundo: Mundo,
   fn: (e: Escenario) => Promise<{ ordenIds: string[] }>,
+  opciones?: { marca?: string },
 ): Promise<Comprometido> {
-  return mundo.prisma.$transaction(
-    async (tx) => {
-      const e = await crearEscenario(mundo, tx, clienteConTransaccionAnidada(tx), { comprometido: true });
-      const { ordenIds } = await fn(e);
-      return {
-        usuarios: [e.tiendaId, e.mensajeroId, e.mensajero2Id, e.adminSateliteId, e.maestroId],
+  // SLT-185 (R1144): el escenario confirmado crea y fija SU empresa, como `conEscenario`: sin ella el
+  // `zona.create` de la central viola `organizacion_id NOT NULL` (SL-17). La organizacion se confirma
+  // aparte; si la siembra falla, se borra aqui mismo (R1145).
+  // SLT-204 (D80): con `marca`, el nombre de la empresa empieza por ella y `barrerComprometidosHuerfanos`
+  // la reconoce en el arranque siguiente si el worker murio antes de limpiarla.
+  const nombre = opciones?.marca === undefined ? undefined : `${opciones.marca} ${claveUnica()}`;
+  const organizacionId = (await crearOrganizacion(mundo.prisma, { nombre })).id;
+  try {
+    return await conEmpresa(organizacionId, () =>
+      mundo.prisma.$transaction(
+        async (tx) => {
+          await comoApp(tx, organizacionId);
+          const e = await crearEscenario(mundo, tx, clienteConTransaccionAnidada(tx), { comprometido: true });
+          const { ordenIds } = await fn(e);
+          return {
+            organizacionId,
+            centralZonaId: mundo.sembrarCentral === true ? mundo.centralZonaId : null,
+            usuarios: [e.tiendaId, e.mensajeroId, e.mensajero2Id, e.adminSateliteId, e.maestroId],
         zonaId: e.zonaSateliteId,
         ordenIds,
         mensajeroId: e.mensajeroId,
         mensajero2Id: e.mensajero2Id,
         tiendaId: e.tiendaId,
-        actorMensajero: e.actorMensajero,
-        actorTienda: e.actorTienda,
-      };
-    },
-    { timeout: 30_000, maxWait: 15_000 },
-  );
+            actorMensajero: e.actorMensajero,
+            actorTienda: e.actorTienda,
+          };
+        },
+        { timeout: 30_000, maxWait: 15_000 },
+      ),
+    );
+  } catch (error) {
+    await mundo.prisma.organizacion.delete({ where: { id: organizacionId } }).catch(() => {});
+    throw error;
+  }
+}
+
+/**
+ * SLT-185 (R1144): un cliente propio de un test de concurrencia con la MISMA envoltura que
+ * `getPrismaClient()`: sus transacciones fijan la empresa del contexto y bajan a `servi_app` (RLS y
+ * triggers de misma empresa activos), como en produccion. La empresa sale de `enEmpresaDe`.
+ */
+export function clienteDeLaApp454(base: PrismaClient): PrismaClient {
+  return conAislamientoPorEmpresa(base, async () => null);
+}
+
+/** SLT-185 (R1144): corre `fn` con la empresa del escenario confirmado en contexto, como una peticion. */
+export function enEmpresaDe<T>(s: Pick<Comprometido, "organizacionId">, fn: () => Promise<T>): Promise<T> {
+  return conEmpresa(s.organizacionId, fn);
 }
 
 /** Borra, en orden de FKs, todo lo que un escenario CONFIRMADO pudo dejar. */
 export async function limpiarComprometido(
   prisma: PrismaClient,
-  s: { usuarios: string[]; zonaId: string; ordenIds: string[] },
+  s: { usuarios: string[]; zonaId: string; ordenIds: string[]; organizacionId?: string; centralZonaId?: string | null },
 ): Promise<void> {
   const cierres = (
     await prisma.cierreDia.findMany({ where: { mensajeroId: { in: s.usuarios } }, select: { id: true } })
@@ -807,4 +903,86 @@ export async function limpiarComprometido(
   await prisma.usuario.deleteMany({ where: { id: { in: s.usuarios } } });
   await prisma.tarifaZonaMensajero.deleteMany({ where: { zonaId: s.zonaId } });
   await prisma.zona.deleteMany({ where: { id: s.zonaId } });
+  // SLT-185 (R1145): la central propia (SLT-177) y la empresa, la ULTIMA: las tablas de negocio la
+  // referencian con RESTRICT, asi que una fila olvidada hace fallar el borrado en vez de quedar muda.
+  if (s.centralZonaId) {
+    await prisma.tarifaZonaMensajero.deleteMany({ where: { zonaId: s.centralZonaId } });
+    await prisma.zona.deleteMany({ where: { id: s.centralZonaId } });
+  }
+  if (s.organizacionId) await prisma.organizacion.delete({ where: { id: s.organizacionId } });
 }
+
+/**
+ * SLT-204 (D80): marca de la empresa de C02 (`caracterizacion/corte-concurrencia`). Si el worker muere
+ * a medias, su escenario confirmado queda con este nombre: en el informe de filas de SLT-188 se ve de
+ * quien es, y el siguiente arranque de C02 lo barre.
+ */
+export const MARCA_C02 = "Resto 454-C02 corte-concurrencia (worker caido)";
+
+/**
+ * SLT-204 (D80): borra los escenarios CONFIRMADOS que una corrida anterior dejo sin limpiar porque su
+ * worker murio (`afterAll` no llego; un `finally` tampoco, muere el proceso). Reconoce la empresa por
+ * `marca` al principio de su nombre y reune lo que cuelga de ella por `organizacion_id`. Devuelve
+ * cuantas empresas barrio.
+ *
+ * Solo se llama con la marca PROPIA del archivo: un archivo nunca corre dos veces a la vez en una
+ * corrida, asi que no hay escenario vivo con esa marca que barrer por error.
+ */
+export async function barrerComprometidosHuerfanos(prisma: PrismaClient, marca: string): Promise<number> {
+  const huerfanas = await prisma.organizacion.findMany({
+    where: { nombre: { startsWith: `${marca} ` } },
+    select: { id: true },
+  });
+  for (const { id } of huerfanas) {
+    const usuarios = (await prisma.usuario.findMany({ where: { organizacionId: id }, select: { id: true } })).map(
+      (u) => u.id,
+    );
+    const ordenIds = (await prisma.orden.findMany({ where: { organizacionId: id }, select: { id: true } })).map(
+      (o) => o.id,
+    );
+    const zonas = await prisma.zona.findMany({ where: { organizacionId: id }, select: { id: true, esCentral: true } });
+    const satelites = zonas.filter((z) => !z.esCentral).map((z) => z.id);
+    const centrales = zonas.filter((z) => z.esCentral).map((z) => z.id);
+    // Una zona por llamada; la empresa se borra con la ultima. Si quedara algo que la referencia, el
+    // RESTRICT hace fallar el borrado en voz alta (R1145), no lo deja mudo.
+    const pares = Math.max(satelites.length, centrales.length, 1);
+    for (let i = 0; i < pares; i++) {
+      const ultima = i === pares - 1;
+      await limpiarComprometido(prisma, {
+        usuarios,
+        ordenIds,
+        zonaId: satelites[i] ?? "",
+        centralZonaId: centrales[i] ?? null,
+        organizacionId: ultima ? id : undefined,
+      });
+    }
+  }
+  return huerfanas.length;
+}
+
+/**
+ * SLT-204 (D80, review B1): el arranque y la siembra de un archivo que CONFIRMA su escenario, atados a
+ * su marca. `preparar` = `prepararMundo` + barrido de los restos con la marca; `sembrar` =
+ * `sembrarComprometido` con la marca. Asi «barre al arrancar» y «siembra marcado» viven aqui, donde
+ * `corte-concurrencia-restos.test.ts` los prueba con una marca propia (sin tocar la de C02 en vivo).
+ */
+export interface EscenarioConfirmado {
+  marca: string;
+  preparar(): Promise<Mundo>;
+  sembrar(mundo: Mundo, fn: (e: Escenario) => Promise<{ ordenIds: string[] }>): Promise<Comprometido>;
+}
+
+export function escenarioConfirmadoDe(marca: string): EscenarioConfirmado {
+  return {
+    marca,
+    async preparar() {
+      const mundo = await prepararMundo();
+      await barrerComprometidosHuerfanos(mundo.prisma, marca);
+      return mundo;
+    },
+    sembrar: (mundo, fn) => sembrarComprometido(mundo, fn, { marca }),
+  };
+}
+
+/** SLT-204 (D80): el de C02 (`caracterizacion/corte-concurrencia`). */
+export const ESCENARIO_C02 = escenarioConfirmadoDe(MARCA_C02);

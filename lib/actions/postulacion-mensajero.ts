@@ -5,6 +5,7 @@ import { getPrismaClient } from "@/lib/db/prisma-client";
 import { contextoActual } from "@/lib/db/contexto-empresa";
 import { PostulacionRepository } from "@/lib/repositories/PostulacionRepository";
 import { PostulacionMensajeroService } from "@/lib/services/PostulacionMensajeroService";
+import { construirReglasPaisEmpresa } from "@/lib/services/ReglasPaisEmpresaService";
 import { SupabaseFileStorage } from "@/lib/storage/SupabaseFileStorage";
 import { notificarPostulacionPendienteReal } from "@/lib/notificaciones/notificadores";
 import { ResetRateLimiter } from "@/lib/utils/reset-rate-limit";
@@ -54,6 +55,9 @@ function buildService(): IPostulacionMensajeroService {
     // se cablea aqui —donde ya vive el acceso a la base— y NO como default del service, para
     // que un service construido sin cablear (dobles de test) no pueda escribir en la base.
     notificarPostulacionPendienteReal,
+    // SLT-42 (R10, R11, R14-R16): las reglas del pais de la empresa que pone el contexto (la
+    // postulacion solo llega aqui con empresa; ver el guard de `postularMensajero`).
+    construirReglasPaisEmpresa(prisma),
   );
 }
 

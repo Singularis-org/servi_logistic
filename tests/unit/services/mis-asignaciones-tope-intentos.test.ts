@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
 import type { IFileStorage } from "@/lib/interfaces/external/IFileStorage";
 import type { ISignedUrlProvider } from "@/lib/interfaces/external/ISignedUrlProvider";
@@ -13,9 +13,9 @@ import type { GestionarInput } from "@/lib/interfaces/services/IMisAsignacionesS
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import { MisAsignacionesService } from "@/lib/services/MisAsignacionesService";
 import { MSG_TOPE_INTENTOS_GESTION } from "@/lib/services/mensajes-bloqueo";
-import { reintentosConfig } from "@/lib/config/reintentos";
 import { fakeIntentosEnLote } from "@/tests/fixtures/intentos-entrega";
 import { SIN_BLOQUEO, type BloqueoDetalle } from "@/lib/utils/bloqueo-cierre";
+import { reglasPaisFijas } from "@/tests/fabricas/reglas-pais";
 
 /**
  * FEATURE 276 (T4) — LA PUERTA DEL TOPE EN EL PANEL DEL MENSAJERO. R1, R2, R5, R6, R7, R11.
@@ -33,7 +33,7 @@ import { SIN_BLOQUEO, type BloqueoDetalle } from "@/lib/utils/bloqueo-cierre";
 const MENSAJERO: Actor = { usuarioId: "m1", rol: "mensajero" };
 
 /** El umbral REAL de la configuracion. Ningun caso escribe `3`: el numero sale de aqui. */
-const UMBRAL = reintentosConfig.MIN_INTENTOS_ENTREGA;
+const UMBRAL = 3; // el de toda empresa nueva (SLT-77 R2)
 
 const ESTATUS_ID_BY_VALUE: Record<string, string> = {
   mensajero_recogiendo_en_bodega: "os-espera",
@@ -126,6 +126,7 @@ function montar(intentos: number, repoOver: Partial<IGestionOrdenRepository> = {
     fakeRutaRepo(),
     fakeMetaRepo(),
     historial,
+    reglasPaisFijas(),
   );
   return { service, repo, storage, historial };
 }
@@ -304,47 +305,29 @@ describe("276/T4 · R5 — el rechazo por tope no produce NINGUN efecto", () => 
 });
 
 /* -------------------------------------------------------------------------- */
-/* 6 · R7 — el umbral sale de la configuracion, no de un `3` a mano            */
+/* 6 · SLT-77 R18 — el tope sale de la empresa, no de un `3` a mano           */
 /* -------------------------------------------------------------------------- */
 
-describe("276/T4 · R7 — el umbral es configurable de verdad", () => {
-  const ANTES = process.env.REINTENTOS_MIN_INTENTOS;
-
-  afterEach(() => {
-    if (ANTES === undefined) delete process.env.REINTENTOS_MIN_INTENTOS;
-    else process.env.REINTENTOS_MIN_INTENTOS = ANTES;
-    vi.resetModules();
-  });
-
-  /**
-   * `reintentosConfig` se congela AL IMPORTAR (`lib/config/reintentos.ts`), asi que mover el env
-   * no basta: hay que re-importar el modulo. `vi.resetModules()` + `await import(...)` es la unica
-   * forma honesta de medir esto; cambiar el servicio para que lea el env en cada llamada seria
-   * cambiar produccion para que el test sea comodo.
-   */
-  async function montarConUmbral5(intentos: number) {
-    process.env.REINTENTOS_MIN_INTENTOS = "5";
-    vi.resetModules();
-    const { MisAsignacionesService: Fresco } = await import(
-      "@/lib/services/MisAsignacionesService"
-    );
+describe("SLT-77 R18 — el tope que manda es el de la empresa", () => {
+  function montarConUmbral5(intentos: number) {
     const repo = fakeRepo();
-    const service = new Fresco(
+    const service = new MisAsignacionesService(
       repo,
       fakeOrdenRepo(),
       fakeStorage(),
       fakeSignedUrls(),
       fakeRutaRepo(),
       fakeMetaRepo(),
-      fakeIntentosEnLote({ o1: intentos }),
+      fakeIntentosEnLote({ o1: intentos }, 5),
+      reglasPaisFijas(),
     );
     return { service, repo };
   }
 
   it("6a. con umbral 5 e `intentos = 3`, reprogramar PASA", async () => {
-    // Con el umbral por defecto (3) este mismo caso estaria bloqueado: 3 >= 3-1. Que pase es la
-    // prueba de que el numero salio de la configuracion.
-    const { service, repo } = await montarConUmbral5(3);
+    // Con el tope inicial (3) este mismo caso estaria bloqueado: 3 >= 3-1. Que pase es la prueba de
+    // que el numero salio de la empresa.
+    const { service, repo } = montarConUmbral5(3);
 
     const r = await service.gestionar(ENTRADA.reprogramado(), MENSAJERO);
 
@@ -353,7 +336,7 @@ describe("276/T4 · R7 — el umbral es configurable de verdad", () => {
   });
 
   it("6b. con umbral 5 e `intentos = 4`, reprogramar NO pasa", async () => {
-    const { service, repo } = await montarConUmbral5(4);
+    const { service, repo } = montarConUmbral5(4);
 
     const r = await service.gestionar(ENTRADA.reprogramado(), MENSAJERO);
 
@@ -416,6 +399,7 @@ describe("276/T4 · R11 — la decision no depende de lo que mande el cliente", 
       fakeRutaRepo(),
       fakeMetaRepo(),
       fakeIntentosEnLote({ o1: UMBRAL - 1 }),
+      reglasPaisFijas(),
     );
 
     const r = await service.gestionar(ENTRADA.reprogramado(), MENSAJERO);

@@ -8,7 +8,9 @@ import type {
 import { emitirBestEffort, notificadorNoOp } from "@/lib/notificaciones/notificadores";
 import type { RepartoMananaNotificador } from "@/lib/notificaciones/notificadores";
 import { fechaRepartoComoTexto, resolverFechaReparto } from "@/lib/utils/dia-reparto";
-import { fechaCalendarioCR, startOfDayCR } from "@/lib/utils/fecha-cr";
+import { fechaCalendario, inicioDelDiaComoFecha } from "@/lib/utils/calendario-zona";
+import type { IReglasPaisEmpresa } from "@/lib/interfaces/services/IReglasPaisEmpresa";
+import { zonaDeLaEmpresa } from "@/lib/services/zona-de-la-empresa";
 
 // FICHA 413 (T5.1/T5.1b, design §6) — EL PROCESO DE LA TARDE que emite el aviso del reparto de
 // mañana.
@@ -28,21 +30,22 @@ import { fechaCalendarioCR, startOfDayCR } from "@/lib/utils/fecha-cr";
 // ---------------------------------------------------------------------------------------------
 // ⚠️ LAS DOS FECHAS DE ESTA CORRIDA, Y POR QUE SE DERIVAN CON ESTAS FUNCIONES Y NO CON OTRAS
 // ---------------------------------------------------------------------------------------------
+// SLT-42 (R22, R24): las dos fechas salen de la zona del pais de la empresa (`IReglasPaisEmpresa`).
 // La corrida es a las 19:00 CR, o sea `01:00Z` DEL DIA SIGUIENTE en UTC. Es decir: en el instante
 // en que este metodo corre, el reloj UTC YA VA POR EL DIA DE MAÑANA. Cualquier derivacion que use
 // campos UTC crudos (`toISOString().slice(0,10)`) daria el dia equivocado en el 100 % de las
 // corridas — no en un caso raro, SIEMPRE.
 //
-//   · `diaEnCurso = startOfDayCR(now)` — la cota contra `orden.fecha_reparto`, que es **`@db.Date`**.
-//     `inicioDelDiaCREnUtc` —el helper correcto contra columnas `timestamp`— desplazaria el dia
-//     SEIS HORAS. Ver la cabecera de `RepartoMananaRepository`.
-//   · `diaAnunciadoISO = fechaRepartoComoTexto(resolverFechaReparto("manana", now))` — y esto no
+//   · `diaEnCurso = inicioDelDiaComoFecha(now, zona)` — la cota contra `orden.fecha_reparto`, que es
+//     **`@db.Date`**. `inicioDelDiaEnUtc` —el helper correcto contra columnas `timestamp`— desplazaria
+//     el dia el desfase de la zona. Ver la cabecera de `RepartoMananaRepository`.
+//   · `diaAnunciadoISO = fechaRepartoComoTexto(resolverFechaReparto("manana", zona, now))` — y esto no
 //     es una conversion cualquiera: `resolverFechaReparto` es LITERALMENTE la funcion con la que
 //     la asignacion ESCRIBIO esos `fecha_reparto`, y `fechaRepartoComoTexto` la que los pone en
 //     texto para el SQL crudo. Derivar el dia anunciado con otra cosa seria tener dos definiciones
 //     de «mañana» en el mismo sistema, que es como se acaba con dos verdades.
 //
-// `fechaCalendarioCR(now)` es el dia de la CORRIDA (el de HOY en hora de pared CR) y va SOLO al
+// `fechaCalendario(now, zona)` es el dia de la CORRIDA (el de HOY en hora de pared local) y va SOLO al
 // resumen, para que quien lea la respuesta del cron sepa que tarde fue. El aviso habla del
 // siguiente.
 
@@ -69,11 +72,14 @@ export class RepartoMananaAvisoService implements IRepartoMananaAvisoService {
      */
     private readonly notificar: RepartoMananaNotificador = notificadorNoOp,
     private readonly logger: ErrorLogger = defaultLogger,
+    /** SLT-42 (R22, R24, R28): la zona del pais de la empresa, de la que salen hoy y mañana. */
+    private readonly reglasPais?: Pick<IReglasPaisEmpresa, "zonaHoraria">,
   ) {}
 
   async ejecutar(now: Date): Promise<RepartoMananaResumen> {
-    const diaEnCurso = startOfDayCR(now);
-    const diaAnunciadoISO = fechaRepartoComoTexto(resolverFechaReparto("manana", now));
+    const zona = await zonaDeLaEmpresa(this.reglasPais, "RepartoMananaAvisoService.ejecutar");
+    const diaEnCurso = inicioDelDiaComoFecha(now, zona);
+    const diaAnunciadoISO = fechaRepartoComoTexto(resolverFechaReparto("manana", zona, now));
 
     const resumen = await this.repo.resumenPorMensajero(diaEnCurso);
     const conReparto = resumen.filter((fila) => fila.total > 0); // R18
@@ -115,7 +121,7 @@ export class RepartoMananaAvisoService implements IRepartoMananaAvisoService {
     }
 
     return {
-      fecha: fechaCalendarioCR(now),
+      fecha: fechaCalendario(now, zona),
       diaAnunciado: diaAnunciadoISO,
       mensajerosConReparto: conReparto.length,
       mensajerosBloqueados: saltadosPorBloqueo,

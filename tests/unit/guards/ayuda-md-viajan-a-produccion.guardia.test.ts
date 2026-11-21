@@ -223,7 +223,12 @@ describe("436/R31 — la ruta del asistente lee la documentación del catálogo,
     // no vuelva a proponer acotar la clave.
     const claves = Object.keys(INCLUDES ?? {});
     expect(claves).toContain("/**");
-    expect(claves, "acotar la clave dejaría sin .md a la ruta del asistente").toEqual(["/**"]);
+    // SLT-80 (R1312): una clave MÁS, que no acota `/**` sino que añade la colección de Postman a su
+    // ruta de descarga. Se nombra para que cualquier otra clave nueva siga poniendo esto en rojo.
+    expect(
+      claves.filter((clave) => clave !== "/**"),
+      "acotar la clave dejaría sin .md a la ruta del asistente",
+    ).toEqual(["/ayuda/descargas/postman"]);
     expect((INCLUDES ?? {})["/**"]).toEqual([`./${RUTA_DOCS}/**/*.md`]);
   });
 });

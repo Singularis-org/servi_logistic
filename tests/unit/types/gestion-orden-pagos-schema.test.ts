@@ -5,6 +5,7 @@ import type { ZodError } from "zod";
 import { gestionarSchema } from "@/lib/types/gestion-orden";
 import { normalizarPagos } from "@/lib/utils/pagos-recaudo";
 
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 // Feature 212 (R11-R16) — el BORDE (zod) del DESGLOSE del recaudo. MISMO schema en cliente
 // (el panel hace `safeParse` con el) y en servidor (Server Action): validarlo aqui valida las
 // dos defensas. Cada caso invalido afirma el CAMPO del error, no solo que falla: el panel
@@ -32,7 +33,7 @@ function camposConError(error: ZodError<unknown>): string[] {
 }
 
 function erroresDe(input: unknown): { campos: string[]; mensajes: string[] } {
-  const r = gestionarSchema.safeParse(input);
+  const r = gestionarSchema(ZONA_CR).safeParse(input);
   if (r.success) throw new Error("se esperaba un fallo de validacion y el parse fue exitoso");
   const fieldErrors = r.error.flatten().fieldErrors as Record<string, string[] | undefined>;
   return {
@@ -43,7 +44,7 @@ function erroresDe(input: unknown): { campos: string[]; mensajes: string[] } {
 
 describe("R11: el desglose valido entra (regla 5 del superRefine · la suma cuadra)", () => {
   it("dos lineas que suman el monto recibido -> valido, y las lineas se conservan", () => {
-    const r = gestionarSchema.safeParse(
+    const r = gestionarSchema(ZONA_CR).safeParse(
       entrega({
         montoRecibido: 8000,
         pagos: [
@@ -75,7 +76,7 @@ describe("R11: el desglose valido entra (regla 5 del superRefine · la suma cuad
   });
 
   it("R30: una suma con decimales que en float NO cuadraria (0.1 + 0.2 = 0.3) SI se acepta", () => {
-    const r = gestionarSchema.safeParse(
+    const r = gestionarSchema(ZONA_CR).safeParse(
       entrega({
         montoRecibido: 0.3,
         pagos: [
@@ -149,7 +150,7 @@ describe("R14 (regla 4): entrega SIN cobro", () => {
 
   it("montoRecibido 0 con desglose VACIO -> valido, y normaliza a CERO lineas", () => {
     const input = entrega({ montoRecibido: 0, pagos: [] });
-    const r = gestionarSchema.safeParse(input);
+    const r = gestionarSchema(ZONA_CR).safeParse(input);
     expect(r.success).toBe(true);
     if (r.success && r.data.resultado === "entregado") {
       expect(normalizarPagos(r.data)).toEqual([]);
@@ -157,7 +158,7 @@ describe("R14 (regla 4): entrega SIN cobro", () => {
   });
 
   it("montoRecibido 0 con el escalar `efectivo` que hoy fuerza el panel -> valido y CERO lineas", () => {
-    const r = gestionarSchema.safeParse(entrega({ montoRecibido: 0, metodoPago: "efectivo" }));
+    const r = gestionarSchema(ZONA_CR).safeParse(entrega({ montoRecibido: 0, metodoPago: "efectivo" }));
     expect(r.success).toBe(true);
     if (r.success && r.data.resultado === "entregado") {
       // El panel manda `efectivo` porque su control lo exige; con el modelo nuevo eso NO es
@@ -169,7 +170,7 @@ describe("R14 (regla 4): entrega SIN cobro", () => {
 
 describe("R12: la forma ESCALAR historica sigue validando (compatibilidad en produccion)", () => {
   it("solo `metodoPago` + monto > 0 -> valido y normaliza a UNA linea con el total", () => {
-    const r = gestionarSchema.safeParse(
+    const r = gestionarSchema(ZONA_CR).safeParse(
       entrega({ montoRecibido: 12500, metodoPago: "transferencia" }),
     );
     expect(r.success).toBe(true);
@@ -195,7 +196,7 @@ describe("R16: ninguna otra rama admite recaudo ni desglose", () => {
 
   for (const base of OTRAS) {
     it(`${base.resultado}: un desglose enviado por el cliente NO llega al dato parseado`, () => {
-      const r = gestionarSchema.safeParse({
+      const r = gestionarSchema(ZONA_CR).safeParse({
         ordenId: "o1",
         ubicacion: UBICACION,
         ...base,

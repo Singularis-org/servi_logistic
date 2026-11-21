@@ -6,6 +6,7 @@ import type { ISaldosSatelitesRepository } from "@/lib/interfaces/repositories/I
 import type { Actor } from "@/lib/interfaces/services/IOrdenService";
 import type { SaldoSateliteDTO } from "@/lib/types/conciliacion-satelites";
 import { descargaConfig } from "@/lib/config/descarga";
+import { reglasPaisFijas, ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 
 // Ficha 470 (T1.3, riesgo K6) — el tope real de la descarga es ahora el limite de Excel
 // (1.048.575 filas). Este archivo prueba la MECANICA del tope (N entra, N+1 no), que no depende
@@ -102,7 +103,7 @@ function newService(
   saldos = fakeSaldos(),
   escrituras = fakeEscrituras(),
 ) {
-  return { service: new ConciliacionSatelitesService(saldos, escrituras), saldos, escrituras };
+  return { service: new ConciliacionSatelitesService(saldos, escrituras, reglasPaisFijas()), saldos, escrituras };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -198,6 +199,7 @@ describe("431/T8 — marcar y revertir: la UNICA llamada, y los tres desenlaces"
       nota: "faltaron 15",
       // El actor sale de la SESION, nunca del payload: quien marca no se puede suplantar.
       actorUsuarioId: "u-maestro",
+      zonaHoraria: ZONA_DE_CR, // SLT-42 (R22): el dia del cierre en el historial
     });
     expect(escrituras.revertirConciliacion).not.toHaveBeenCalled();
     // Y no se lee nada de mas: marcar no lista saldos.
@@ -248,6 +250,7 @@ describe("431/T8 — marcar y revertir: la UNICA llamada, y los tres desenlaces"
     expect(escrituras.revertirConciliacion).toHaveBeenCalledWith({
       id: "cb1",
       actorUsuarioId: "u-maestro",
+      zonaHoraria: ZONA_DE_CR, // SLT-42 (R22): el dia del cierre en el historial
     });
     expect(escrituras.marcarConciliado).not.toHaveBeenCalled();
   });
@@ -333,6 +336,7 @@ describe("473/T3 — corregirRecibida", () => {
       montoRecibido: "200800.00",
       nota: "llego el resto",
       actorUsuarioId: actor.usuarioId,
+      zonaHoraria: ZONA_DE_CR, // SLT-42 (R22): el dia del cierre en el historial
     });
     expect(escrituras.marcarConciliado).not.toHaveBeenCalled();
     expect(escrituras.revertirConciliacion).not.toHaveBeenCalled();
@@ -383,7 +387,7 @@ describe("431/T8 — las lecturas: paginacion, recorte y tope de descarga", () =
     const { service, saldos } = newService();
     const r = await service.listarSaldosSatelites({ page: 3, pageSize: 10 }, MAESTRO);
 
-    expect(saldos.findSaldosPaginado).toHaveBeenCalledWith({ skip: 20, take: 10 });
+    expect(saldos.findSaldosPaginado).toHaveBeenCalledWith({ skip: 20, take: 10 }, ZONA_DE_CR);
     if (r.status !== "ok") throw new Error("esperaba ok");
     expect(r.page).toBe(3);
     expect(r.pageSize).toBe(10);
@@ -429,5 +433,75 @@ describe("431/T8 — las lecturas: paginacion, recorte y tope de descarga", () =
     if (r.status !== "ok") throw new Error("esperaba ok");
     expect(r.items[0].saldoSinConciliar).toBe("1015.00");
     expect(r.items[0].totalEfectivo).toBe("2300.00");
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// ⭑ SLT-96 «Consolidación de ₡0 no se puede marcar recibida» (R2/R4/R9) — el servicio traduce el
+// desenlace `monto_cero_no_permitido` del repositorio, que es quien lee lo declarado de la base.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+describe("SLT-96 — el 0 con lo declarado distinto de 0", () => {
+  // El literal ES el contrato (R2): no se compara contra la constante que lo genera.
+  const ESPERADO = {
+    status: "validation_error",
+    fieldErrors: { montoRecibido: ["Solo se puede registrar 0 cuando lo declarado es 0."] },
+  };
+
+  it("R2 marcar: `monto_cero_no_permitido` del repositorio -> validation_error en el campo del monto", async () => {
+    const { service, escrituras } = newService(
+      fakeSaldos(),
+      fakeEscrituras({ marcarConciliado: vi.fn(async () => "monto_cero_no_permitido" as const) }),
+    );
+    const r = await service.marcarRecibida({ cierreBodegaId: "cb1", montoRecibido: "0.00" }, MAESTRO);
+    expect(r).toEqual(ESPERADO);
+    expect(escrituras.marcarConciliado).toHaveBeenCalledTimes(1);
+    expect(escrituras.corregirConciliacion).not.toHaveBeenCalled();
+  });
+
+  it("R4 corregir: `monto_cero_no_permitido` del repositorio -> validation_error en el campo del monto", async () => {
+    const { service, escrituras } = newService(
+      fakeSaldos(),
+      fakeEscrituras({ corregirConciliacion: vi.fn(async () => "monto_cero_no_permitido" as const) }),
+    );
+    const r = await service.corregirRecibida({ cierreBodegaId: "cb1", montoRecibido: "0.00" }, MAESTRO);
+    expect(r).toEqual(ESPERADO);
+    expect(escrituras.marcarConciliado).not.toHaveBeenCalled();
+  });
+
+  it("R9 marcar con 0 una inexistente: `fuera_de_alcance` -> no_encontrada, igual que con monto > 0", async () => {
+    const { service } = newService(
+      fakeSaldos(),
+      fakeEscrituras({ marcarConciliado: vi.fn(async () => "fuera_de_alcance" as const) }),
+    );
+    expect(
+      await service.marcarRecibida({ cierreBodegaId: "cb1", montoRecibido: "0.00" }, MAESTRO),
+    ).toEqual({ status: "no_encontrada" });
+  });
+
+  it("R9 corregir con 0 una inexistente: `fuera_de_alcance` -> no_encontrada", async () => {
+    const { service } = newService(
+      fakeSaldos(),
+      fakeEscrituras({ corregirConciliacion: vi.fn(async () => "fuera_de_alcance" as const) }),
+    );
+    expect(
+      await service.corregirRecibida({ cierreBodegaId: "cb1", montoRecibido: "0.00" }, MAESTRO),
+    ).toEqual({ status: "no_encontrada" });
+  });
+
+  it("R1 marcar con 0 aceptado por el repositorio -> ok, y el monto viaja como STRING tal cual", async () => {
+    const { service, escrituras } = newService();
+    const r = await service.marcarRecibida({ cierreBodegaId: "cb1", montoRecibido: "0.00" }, MAESTRO);
+    expect(r).toEqual({ status: "ok", cierreBodegaId: "cb1" });
+    const arg = llamadasDe(escrituras.marcarConciliado)[0][0] as { montoRecibido: unknown };
+    expect(arg.montoRecibido).toBe("0.00");
+  });
+
+  it("el rol sigue primero: sin acceso total, ni con 0 se llama al repositorio", async () => {
+    const { service, escrituras } = newService();
+    expect(
+      await service.marcarRecibida({ cierreBodegaId: "cb1", montoRecibido: "0.00" }, MENSAJERO),
+    ).toEqual({ status: "forbidden" });
+    for (const fn of Object.values(escrituras)) expect(fn).not.toHaveBeenCalled();
   });
 });

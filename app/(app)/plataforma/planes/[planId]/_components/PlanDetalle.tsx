@@ -7,6 +7,7 @@ import type { ModuloApagable, PlanRastroAccion } from "@prisma/client";
 import { TriangleAlert } from "lucide-react";
 
 import { EmptyState } from "@/components/shared/EmptyState";
+import { ListaDeBeneficios } from "@/components/shared/planes/BeneficiosDelPlan";
 import { Modal } from "@/components/shared/Modal";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -15,32 +16,51 @@ import { Select } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { nombreDelModulo } from "@/lib/modulos/catalogo";
-import { tieneCostoConcreto } from "@/lib/planes/costo-concreto";
+import type { Beneficio } from "@/lib/planes/beneficios";
+import { textoDeLosNiveles, type Nivel } from "@/lib/planes/niveles";
+import { formatearConteo } from "@/lib/planes/consumo";
 import {
+  lineaNoAplicada,
   lineasDeCambioDelPlan,
+  MENSAJE_ARCHIVAR_CAMBIO_A_MEDIAS,
+  MENSAJE_CANCELAR_CAMBIO_A_MEDIAS,
   mensajeTopesPasados,
+  SIN_LIMITE,
   SIN_LINEAS_DE_CAMBIO,
   textoCambioProgramado,
   textoDelPrecio,
+  textoRecepcionesDelCambio,
   TITULO_LINEAS_DE_CAMBIO,
+  type CambioDelPlanParaCorreo,
 } from "@/lib/planes/mensajes";
-import type {
-  ArchivarPlanInput,
-  CancelarCambioPlanInput,
-  CostoPorOrdenPorcentual,
-  DetallePlan,
-  EditarPlanInput,
-  FilaRastro,
-  PlanResult,
-  PrecioPlan,
-  TopeExcedido,
-  TopesPlan,
+import {
+  TIPOS_COBRO,
+  type ArchivarPlanInput,
+  type CancelarCambioPlanInput,
+  type CostoPorOrdenPorcentual,
+  type DescuentoPeriodo,
+  type DetallePlan,
+  type FilaRastro,
+  type PlanResult,
+  type PrecioPlan,
+  type TipoCobro,
+  type TopeExcedido,
+  type TopesPlan,
+  type VistaPreviaCambioResult,
 } from "@/lib/types/planes";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
-import { horaCostaRica } from "@/lib/utils/hora-cr";
 import { cn } from "@/lib/utils";
 
-import { mensajeDelRechazo, PlanForm, RECHAZO_GENERICO, TEXTOS_PLAN_FORM } from "../../_components/PlanForm";
+import {
+  ESTILO_SHEET_PLAN,
+  mensajeDelRechazo,
+  RECHAZO_GENERICO,
+  TEXTOS_PLAN_FORM,
+  type AccionesDelBorrador,
+  type PrevisualizarCambioInput,
+} from "../../_components/PlanForm";
+import { AbrirPlanForm } from "../../_components/plan-form/AbrirPlanForm";
+import { fechaHora } from "../../_components/plan-form/borrador";
 import {
   lineasDeTopes,
   TEXTOS_PLAN,
@@ -62,6 +82,9 @@ const TEXTOS = {
   topes: "Topes",
   modulos: "Módulos incluidos",
   sinModulos: "Ninguno",
+  // SLT-214 (design §6; R22).
+  beneficios: "Beneficios",
+  sinBeneficios: "Sin beneficios",
   pendiente: "Cambio programado",
   sinPendiente: "No hay ningún cambio programado.",
   cancelarCambio: "Cancelar cambio",
@@ -85,7 +108,6 @@ const TEXTOS = {
   confirmarCancelarTexto: (fecha: string) => `El cambio previsto para ${fecha} no se aplicará; el plan sigue igual.`,
   confirmarCancelarBoton: "Cancelar cambio",
   volverAtras: "Volver",
-  guardadoInmediato: "Cambios guardados.",
   guardadoProgramado: (fecha: string) => `${textoCambioProgramado(fecha)}.`,
   sinCambios: "No había nada que cambiar.",
   archivado: "Plan archivado.",
@@ -94,23 +116,38 @@ const TEXTOS = {
   creadoCon: "Alta del plan",
   /** Texto único del cambio pendiente (Decisiones cerradas, design §6.5). */
   cambioProgramado: textoCambioProgramado,
+  /** SLT-128 (R11): cuántas de sus empresas ya recibieron el cambio programado. */
+  recepciones: textoRecepcionesDelCambio,
   /** Solo el rastro: una fila que fija la vigencia de un cambio, no la sección del pendiente. */
   rigeDesde: (fecha: string) => `Rige desde ${fecha}`,
   reemplaza: (antes: string, despues: string) => `Reemplaza al previsto para ${antes}; rige desde ${despues}`,
   cancelaPrevisto: (fecha: string) => `Se cancela el previsto para ${fecha}`,
   nombreDelPlan: (nombre: string) => `Nombre del plan: ${nombre}`,
   modulosDelPlan: (modulos: string) => `Módulos: ${modulos}`,
+  /** SLT-214 (R19): el alta con beneficios; un alta sin ellos no trae la clave. */
+  beneficiosDelPlan: (textos: string) => `Beneficios: ${textos}`,
+  /** SLT-215 (R19): el alta con niveles; un alta sin ellos no trae la clave. */
+  nivelesDelPlan: (textos: string) => `Niveles: ${textos}`,
+  /** SLT-86 (R30): el tope de órdenes de un alta anterior a la ficha, con el texto de entonces. */
+  ordenesPorCiclo: (limite: string) => `Órdenes por ciclo: ${limite}`,
   // SLT-66 (design §6.6; R33).
   empresaAsignar: "Empresa",
   empresaPlaceholder: TEXTOS_PLAN_FORM.empresaPlaceholder,
   asignarAEmpresa: "Asignar a una empresa",
-  sinCostoParaAsignar: "Para asignarlo, dale costo base mensual y costo por orden.",
   /** El mismo texto que el formulario cuando no se pudieron leer las empresas. */
   sinEmpresasCandidatas: TEXTOS_PLAN_FORM.sinEmpresas,
   // SLT-66 (design §2.3 bis; R34): la fila `desasignado` que escribe la migración.
   desasignadoDe: (empresa: string) =>
     `Desasignado de ${empresa} por la migración: el plan no tenía costo base concreto`,
+  /** SLT-144 (R13): al cerrar el panel con algún paso guardado y sin confirmar. */
+  borradorQueda: "El borrador queda guardado. Puedes retomarlo luego.",
 } as const;
+
+/** SLT-128 (design §7): el texto del rechazo `cambio_a_medias` de cada confirmación (R14 cancelar, R15 archivar). */
+const RECHAZO_CAMBIO_A_MEDIAS: Record<"archivar" | "cancelar", string> = {
+  archivar: MENSAJE_ARCHIVAR_CAMBIO_A_MEDIAS,
+  cancelar: MENSAJE_CANCELAR_CAMBIO_A_MEDIAS,
+};
 
 /** La acción del rastro, traducida. `Record` total: una acción nueva no compila sin su texto. */
 const ACCIONES: Record<PlanRastroAccion, string> = {
@@ -126,8 +163,16 @@ const ACCIONES: Record<PlanRastroAccion, string> = {
 
 export interface PlanDetalleProps {
   detalle: DetallePlan;
+  /**
+   * SLT-144 (design §4.7, §6): las actions de `lib/actions/plan-borrador.ts`. Editar guarda por pasos en el
+   * borrador de cambio del plan y lo confirma; no hay action de editar aparte.
+   */
+  borrador: AccionesDelBorrador;
+  /** SLT-144 (design §3.1): `previsualizarCambioPlanAction`, la fecha en que cada empresa recibe el cambio. */
+  previsualizarCambio: (input: PrevisualizarCambioInput) => Promise<VistaPreviaCambioResult>;
+  /** SLT-144 (R26): `?editar=1` en la dirección, al retomar un borrador de cambio desde la lista. */
+  abrirEditar?: boolean;
   /** Las actions de SL-24, inyectadas desde la página para poder probarlas. */
-  editarPlan: (input: EditarPlanInput) => Promise<PlanResult>;
   archivarPlan: (input: ArchivarPlanInput) => Promise<PlanResult>;
   cancelarCambio: (input: CancelarCambioPlanInput) => Promise<PlanResult>;
   /**
@@ -136,6 +181,8 @@ export interface PlanDetalleProps {
    * pudieron leer.
    */
   empresasCandidatas?: { id: string; nombre: string }[] | null;
+  /** SLT-86 (R23): «Rige desde» por defecto al editar el precio (mañana), del reloj del servidor. */
+  precioDesdePorDefecto?: string;
 }
 
 /** Lo último que pasó en la pantalla: un aviso de éxito (con los topes pasados, R15) o un rechazo (R18). */
@@ -152,14 +199,21 @@ type Desenlace =
  */
 export function PlanDetalle({
   detalle,
-  editarPlan,
+  borrador,
+  previsualizarCambio,
+  abrirEditar = false,
   archivarPlan,
   cancelarCambio,
   empresasCandidatas = [],
+  precioDesdePorDefecto,
 }: PlanDetalleProps) {
   const router = useRouter();
   const { plan, pendiente } = detalle;
-  const [editando, setEditando] = useState(false);
+  const noAplicadas = detalle.noAplicadas ?? [];
+  // SLT-144 (R26): un plan archivado no se edita, aunque la dirección lo pida.
+  const [editando, setEditando] = useState(abrirEditar && !plan.archivado);
+  /** SLT-144 (R13): el panel abierto guardó algún paso; vuelve a `false` al abrirlo y al confirmar. */
+  const guardadoEnElPanel = useRef(false);
   const [confirmar, setConfirmar] = useState<"archivar" | "cancelar" | null>(null);
   const [desenlace, setDesenlace] = useState<Desenlace | null>(null);
   /** El aviso de desenlace, que recibe el foco cuando el botón que abrió la confirmación desaparece. */
@@ -195,21 +249,30 @@ export function PlanDetalle({
       focoTrasOk.current = cual;
       setDesenlace({ tipo: "ok", mensaje: exito, avisos: [] });
       router.refresh();
+    } else if (r.estado === "cambio_a_medias") {
+      // SLT-128 (R14, R15): el mismo rechazo dice cosas distintas según la acción.
+      setDesenlace({ tipo: "rechazo", mensaje: RECHAZO_CAMBIO_A_MEDIAS[cual] });
     } else {
       setDesenlace({ tipo: "rechazo", mensaje: mensajeDelRechazo(r) ?? RECHAZO_GENERICO });
     }
   }
 
   function alEditar(r: Extract<PlanResult, { estado: "ok" }>) {
+    guardadoEnElPanel.current = false;
     setEditando(false);
+    // SLT-135 (R20): editar siempre programa; sin cambio, «No había nada que cambiar.».
     const mensaje =
-      r.vigenteDesde !== null
-        ? TEXTOS.guardadoProgramado(r.vigenteDesde)
-        : r.cambio
-          ? TEXTOS.guardadoInmediato
-          : TEXTOS.sinCambios;
+      r.cambio && r.vigenteDesde !== null ? TEXTOS.guardadoProgramado(r.vigenteDesde) : TEXTOS.sinCambios;
     setDesenlace({ tipo: "ok", mensaje, avisos: r.avisos });
     router.refresh();
+  }
+
+  /** SLT-144 (R13): cerrar sin confirmar con algún paso guardado avisa de que el borrador sigue ahí. */
+  function alCambiarPanel(abierto: boolean) {
+    setEditando(abierto);
+    if (abierto || !guardadoEnElPanel.current) return;
+    guardadoEnElPanel.current = false;
+    setDesenlace({ tipo: "ok", mensaje: TEXTOS.borradorQueda, avisos: [] });
   }
 
   return (
@@ -227,6 +290,7 @@ export function PlanDetalle({
               type="button"
               onClick={() => {
                 setDesenlace(null);
+                guardadoEnElPanel.current = false;
                 setEditando(true);
               }}
             >
@@ -265,10 +329,6 @@ export function PlanDetalle({
           <Dato termino={TEXTOS.costoPorOrden}>
             {/* SLT-83 (R21): el porcentual si el plan lo tiene. */}
             {textoDelCostoPorOrdenDelPlan(plan)}
-            {/* R10: el anual (fijo o con descuento) no toca el costo por orden. */}
-            {plan.precio.tipo === "monto" && plan.precio.anual !== null ? (
-              <p className="text-xs text-muted-foreground">{TEXTOS_PLAN.anualNoAplica}</p>
-            ) : null}
           </Dato>
           <Dato termino={TEXTOS.topes}>
             <ul className="flex flex-col gap-0.5">
@@ -291,6 +351,10 @@ export function PlanDetalle({
               </ul>
             )}
           </Dato>
+          {/* SLT-214 (design §4.4; R22): todos, con su ícono y en orden. */}
+          <Dato termino={TEXTOS.beneficios}>
+            <ListaDeBeneficios beneficios={plan.beneficios ?? []} vacio={TEXTOS.sinBeneficios} />
+          </Dato>
         </dl>
       </Seccion>
 
@@ -300,6 +364,7 @@ export function PlanDetalle({
         ) : (
           <div className="flex flex-col gap-3 text-sm">
             <p className="font-medium">{TEXTOS.cambioProgramado(pendiente.vigenteDesde)}</p>
+            <p>{TEXTOS.recepciones(pendiente.recibidas, pendiente.total)}</p>
             {pendiente.lineas.length === 0 ? (
               <p>{SIN_LINEAS_DE_CAMBIO}</p>
             ) : (
@@ -328,6 +393,18 @@ export function PlanDetalle({
             )}
           </div>
         )}
+        {/* SLT-128 (R28): fuera del bloque del pendiente; tras promover el aviso sigue mientras la empresa
+            conserve su versión anterior, ya sin pendiente. */}
+        {noAplicadas.length > 0 ? (
+          <ul className="flex flex-col gap-1 text-sm">
+            {noAplicadas.map((n) => (
+              <li key={n.empresaId} className="flex items-start gap-2">
+                <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-warning-strong" />
+                <span>{lineaNoAplicada(n.empresa, n.motivo)}</span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </Seccion>
 
       <Seccion titulo={TEXTOS.empresas}>
@@ -347,11 +424,7 @@ export function PlanDetalle({
             ))}
           </ul>
         )}
-        {plan.archivado ? null : tieneCostoConcreto(plan) ? (
-          <AsignarAEmpresa planId={plan.id} empresas={empresasCandidatas} />
-        ) : (
-          <p className="text-sm text-muted-foreground">{TEXTOS.sinCostoParaAsignar}</p>
-        )}
+        {plan.archivado ? null : <AsignarAEmpresa planId={plan.id} empresas={empresasCandidatas} />}
       </Seccion>
 
       <Seccion titulo={TEXTOS.rastro}>
@@ -360,14 +433,27 @@ export function PlanDetalle({
 
       {plan.archivado ? null : (
         <>
-          <Sheet open={editando} onOpenChange={setEditando}>
-            <SheetContent className="w-full overflow-y-auto sm:max-w-lg data-[side=right]:sm:max-w-lg">
+          <Sheet open={editando} onOpenChange={alCambiarPanel}>
+            <SheetContent className="gap-0" style={ESTILO_SHEET_PLAN}>
               <SheetHeader>
                 <SheetTitle>{TEXTOS.tituloEditar}</SheetTitle>
                 <SheetDescription>{TEXTOS.descripcionEditar}</SheetDescription>
               </SheetHeader>
-              <div className="px-4 pb-4">
-                <PlanForm modo="editar" plan={plan} enviar={editarPlan} onGuardado={(r) => alEditar(r)} />
+              <div className="flex min-h-0 flex-1">
+                {/* SLT-144 (design §4.5): lee el borrador de cambio del plan antes de montar el formulario. */}
+                <AbrirPlanForm
+                  origen={{ planId: plan.id }}
+                  onCerrar={() => alCambiarPanel(false)}
+                  modo="editar"
+                  plan={plan}
+                  precioDesdePorDefecto={precioDesdePorDefecto}
+                  borrador={borrador}
+                  previsualizarCambio={previsualizarCambio}
+                  onGuardado={(r) => alEditar(r)}
+                  onBorradorGuardado={() => {
+                    guardadoEnElPanel.current = true;
+                  }}
+                />
               </div>
             </SheetContent>
           </Sheet>
@@ -509,13 +595,6 @@ function AvisoDesenlace({ desenlace, focoRef }: { desenlace: Desenlace; focoRef:
   );
 }
 
-/** «AAAA-MM-DD HH:mm» de un instante, en la hora de la plataforma (design §7). */
-function fechaHora(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return `${fechaCalendarioCR(d)} ${horaCostaRica(iso)}`;
-}
-
 /** El día (`AAAA-MM-DD`, hora de la plataforma) de un `vigenteDesde` guardado como instante. */
 function diaDe(valor: unknown): string | null {
   if (typeof valor !== "string") return null;
@@ -550,15 +629,20 @@ function lineasDelRastro(fila: FilaRastro): string[] {
   const precioAlta = deAlta(c.precio);
   const topesAlta = deAlta(c.topes);
   const modulosAlta = deAlta(c.modulos);
-  if (nombreAlta) lineas.push(TEXTOS.nombreDelPlan(String(nombreAlta.despues)));
-  // SLT-66 (R9): la línea de alta dice «Costo base», como el resto de pantallas.
-  if (precioAlta) lineas.push(TEXTOS_PLAN.costoBase(textoDelPrecio(precioAlta.despues as PrecioPlan)));
   // SLT-66 (R11): el costo por orden nace a menudo vacío, así que `antes: null` no distingue un alta de
-  // una edición desde vacío: lo decide la acción de la fila.
+  // una edición desde vacío: lo decide la acción de la fila. SLT-86 (R31): igual los descuentos.
+  const esAlta = fila.accion === "creado";
+  if (nombreAlta) lineas.push(TEXTOS.nombreDelPlan(String(nombreAlta.despues)));
+  // SLT-66 (R9): la línea de alta dice «Costo base», como el resto de pantallas. SLT-86 (R24, R31): con los
+  // descuentos del alta, que el rastro guarda cada uno en su clave.
+  if (precioAlta) {
+    const precio = precioAlta.despues as PrecioPlan;
+    const descuentos = esAlta ? descuentosDelAlta(c) : {};
+    lineas.push(TEXTOS_PLAN.costoBase(textoDelPrecio(precio.tipo === "monto" ? { ...precio, descuentos } : precio)));
+  }
   const costo = c.costoPorOrden;
   // SLT-83 (R4, R21): el modo porcentual viaja en su propio campo del rastro; un rastro anterior no lo trae.
   const porcentual = c.costoPorOrdenPorcentual;
-  const esAlta = fila.accion === "creado";
   if (costo && esAlta) {
     lineas.push(
       TEXTOS_PLAN.costoPorOrden(
@@ -569,16 +653,39 @@ function lineasDelRastro(fila: FilaRastro): string[] {
       ),
     );
   }
-  if (topesAlta) lineas.push(...lineasDeTopes(topesAlta.despues as TopesPlan));
+  if (topesAlta) {
+    // SLT-86 (R30): un alta anterior a la ficha trae también el tope de órdenes; se sigue pintando.
+    const topes = topesAlta.despues as TopesPlan & { ordenesPorCiclo?: number | null };
+    if ("ordenesPorCiclo" in topes) {
+      lineas.push(TEXTOS.ordenesPorCiclo(topes.ordenesPorCiclo == null ? SIN_LIMITE : formatearConteo(topes.ordenesPorCiclo)));
+    }
+    lineas.push(...lineasDeTopes(topes));
+  }
   if (modulosAlta) {
     const modulos = modulosAlta.despues as ModuloApagable[];
     lineas.push(TEXTOS.modulosDelPlan(modulos.length === 0 ? TEXTOS.sinModulos : modulos.map(nombreDelModulo).join(", ")));
+  }
+  // SLT-214 (design §3.6; R19): el alta con beneficios los lista en orden.
+  const beneficiosAlta = deAlta(c.beneficios);
+  if (beneficiosAlta) {
+    const beneficios = beneficiosAlta.despues as Beneficio[];
+    if (beneficios.length > 0) lineas.push(TEXTOS.beneficiosDelPlan(beneficios.map((b) => b.texto).join(", ")));
+  }
+  // SLT-215 (design §3.6; R19): el alta con niveles, «Niveles: <nivel 1>; <nivel 2>; …».
+  const nivelesAlta = deAlta(c.niveles);
+  if (nivelesAlta) {
+    const niveles = nivelesAlta.despues as Nivel[];
+    if (niveles.length > 0) lineas.push(TEXTOS.nivelesDelPlan(textoDeLosNiveles(niveles)));
   }
 
   const nombre = deEdicion(c.nombre);
   const topes = deEdicion(c.topes);
   const modulos = deEdicion(c.modulos);
+  const beneficios = deEdicion(c.beneficios);
+  const niveles = deEdicion(c.niveles);
   const precio = deEdicion(c.precio);
+  // SLT-118 (R35): la periodicidad de órdenes; el alta la trae con `antes: null` y no pinta línea.
+  const periodicidadOrdenes = deEdicion(c.periodicidadOrdenes);
   lineas.push(
     ...lineasDeCambioDelPlan({
       nombre: nombre ? { antes: String(nombre.antes), despues: String(nombre.despues) } : undefined,
@@ -586,6 +693,12 @@ function lineasDelRastro(fila: FilaRastro): string[] {
       modulos: modulos
         ? { antes: modulos.antes as ModuloApagable[], despues: modulos.despues as ModuloApagable[] }
         : undefined,
+      // SLT-214 (R19, R25): «Se agrega / Se quita» o la línea de solo íconos u orden, tras los módulos.
+      beneficios: beneficios
+        ? { antes: beneficios.antes as Beneficio[], despues: beneficios.despues as Beneficio[] }
+        : undefined,
+      // SLT-215 (R19, R20): «Niveles por volumen: antes → después», tras los beneficios.
+      niveles: niveles ? { antes: niveles.antes as Nivel[], despues: niveles.despues as Nivel[] } : undefined,
       precio: precio ? { antes: precio.antes as PrecioPlan, despues: precio.despues as PrecioPlan } : undefined,
       costoPorOrden:
         costo && !esAlta
@@ -598,6 +711,12 @@ function lineasDelRastro(fila: FilaRastro): string[] {
               despues: porcentual.despues as CostoPorOrdenPorcentual | null,
             }
           : undefined,
+      // SLT-86 (R30, R31): cada descuento en su línea, y la fila de la migración que retiró el tope de órdenes.
+      ...(esAlta ? {} : descuentosDeLaEdicion(c)),
+      tope_ordenes_ciclo: c.tope_ordenes_ciclo as CambioDelPlanParaCorreo["tope_ordenes_ciclo"],
+      periodicidadOrdenes: periodicidadOrdenes
+        ? (periodicidadOrdenes as NonNullable<CambioDelPlanParaCorreo["periodicidadOrdenes"]>)
+        : undefined,
     }),
   );
 
@@ -610,6 +729,30 @@ function lineasDelRastro(fila: FilaRastro): string[] {
     else if (antes !== null) lineas.push(TEXTOS.cancelaPrevisto(antes));
   }
   return lineas;
+}
+
+/** SLT-86 (R31): los descuentos con que nació un plan, leídos de sus claves `descuento_<periodo>`. */
+function descuentosDelAlta(c: Record<string, Par | undefined>): Partial<Record<TipoCobro, DescuentoPeriodo>> {
+  const descuentos: Partial<Record<TipoCobro, DescuentoPeriodo>> = {};
+  for (const tipo of TIPOS_COBRO) {
+    const d = c[`descuento_${tipo}`]?.despues as DescuentoPeriodo | null | undefined;
+    if (d) descuentos[tipo] = d;
+  }
+  return descuentos;
+}
+
+/** SLT-86 (R31): los descuentos que cambió una edición, con su antes y su después. */
+function descuentosDeLaEdicion(c: Record<string, Par | undefined>): Partial<CambioDelPlanParaCorreo> {
+  const cambios: Partial<CambioDelPlanParaCorreo> = {};
+  for (const tipo of TIPOS_COBRO) {
+    const par = c[`descuento_${tipo}`];
+    if (par === undefined) continue;
+    cambios[`descuento_${tipo}`] = {
+      antes: (par.antes ?? null) as DescuentoPeriodo | null,
+      despues: (par.despues ?? null) as DescuentoPeriodo | null,
+    };
+  }
+  return cambios;
 }
 
 function Rastro({ filas }: { filas: FilaRastro[] }) {

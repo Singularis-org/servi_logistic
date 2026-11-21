@@ -18,10 +18,11 @@ import { capturar, crearPlan, planesEnTx, revertida, sqlstateDe } from "./_fixtu
 // formas válidas (vacío, fijo, porcentual con y sin mínimo). Cada caso corre en un SAVEPOINT dentro de
 // una transacción que se revierte.
 //
-// T8 (design §4.2; R1, R2, R4): la escritura por `PlanesService` y `PlanesRepository` REALES. Crear,
-// editar de inmediato y programar guardan el modo con la versión; `plan_rastro` deja antes y después en
-// forma canónica; una edición sin cambio real no escribe; aplicar el programado deja las columnas; y lo
-// que el esquema rechaza no llega a la base.
+// T8 (design §4.2; R1, R2, R4): la escritura por `PlanesService` y `PlanesRepository` REALES. Crear y
+// programar guardan el modo con la versión; `plan_rastro` deja antes y después en forma canónica; una edición
+// sin cambio real no escribe; aplicar el programado deja las columnas; y lo que el esquema rechaza no llega a
+// la base. SLT-135: ya no hay edición inmediata; editar con F = hoy programa y, sin empresas, lo aplica la
+// siguiente pasada de la cola (`aplicarCambioProgramado`).
 
 const describeSiHayBase = HAY_BASE_DE_DATOS ? describe : describe.skip;
 
@@ -168,6 +169,8 @@ describeSiHayBase("SLT-83 R1, R2 — los CHECK del costo por orden porcentual", 
 const SUPERADMIN: Actor = { usuarioId: randomUUID(), rol: "superadmin", organizacionId: null };
 /** 2026-10-31 12:00 UTC = 06:00 en la plataforma. */
 const AHORA = new Date("2026-10-31T12:00:00.000Z");
+/** SLT-135: el día de `AHORA` en la plataforma, la F de una edición que rige hoy. */
+const HOY = "2026-10-31";
 /** 2026-12-01 a las 00:00 de la plataforma (−06:00), más un minuto: ya rige. */
 const YA_RIGE = new Date("2026-12-01T06:01:00.000Z");
 
@@ -178,9 +181,9 @@ function entrada(modo: Modo): CrearPlanInput {
     nombre: `slt83 ${randomUUID().slice(0, 8)}`,
     visibilidad: "publico",
     organizacionId: null,
-    topes: { ordenesPorCiclo: 100, porRol: {}, apiKeys: null },
+    topes: { porRol: {}, apiKeys: null },
     modulos: [],
-    precio: { tipo: "monto", mensual: "50000", anual: null },
+    precio: { tipo: "monto", mensual: "50000", descuentos: {} },
     ...modo,
   };
 }
@@ -194,9 +197,19 @@ async function preparar(tx: TxDeTest, modo: Modo) {
   const { visibilidad: _v, organizacionId: _o, ...version } = e;
   void _v;
   void _o;
-  const editar = (cambio: Partial<Modo>, vigenteDesde: string | null = null) =>
+  const editar = (cambio: Partial<Modo>, vigenteDesde: string = HOY) =>
     servicio.editar(SUPERADMIN, { planId: creado.planId, ...version, ...cambio, vigenteDesde });
-  return { planId: creado.planId, servicio, editar };
+  /** SLT-135: edita con F = hoy y la cola lo aplica en su siguiente pasada (el plan no tiene empresas). */
+  const editarYAplicar = async (cambio: Partial<Modo>) => {
+    const res = await editar(cambio);
+    const pendiente = await tx.planCambioProgramado.findUnique({ where: { planId: creado.planId }, select: { id: true } });
+    if (pendiente !== null) {
+      const aplicado = await planesEnTx(tx).aplicarCambioProgramado({ planId: creado.planId, cambioId: pendiente.id }, AHORA);
+      if (aplicado.estado !== "aplicado") throw new Error(`aplicar: ${JSON.stringify(aplicado)}`);
+    }
+    return res;
+  };
+  return { planId: creado.planId, servicio, editar, editarYAplicar };
 }
 
 /** Las dos claves del rastro que mira esta ficha, en el orden en que se escribieron. */
@@ -249,14 +262,14 @@ describeSiHayBase("SLT-83 R1, R2, R4 — el modo porcentual se guarda con la ver
     expect(r.columnasSinMinimo).toEqual({ fijo: null, pct: "2.35", minimo: null });
   });
 
-  it("R4: editar de inmediato pasa de fijo a porcentual y de vuelta, con antes y después en el rastro", async () => {
+  it("R4: editar con F hoy pasa de fijo a porcentual y de vuelta, con antes y después en el rastro", async () => {
     const r = await revertida(base, async (tx) => {
       const p = await preparar(tx, { costoPorOrden: "100", costoPorOrdenPorcentual: null });
-      const aPorcentual = await p.editar(PORCENTUAL);
+      const aPorcentual = await p.editarYAplicar(PORCENTUAL);
       const enPorcentual = await leer(tx, p.planId);
-      const otroPorcentaje = await p.editar({ costoPorOrden: null, costoPorOrdenPorcentual: { porcentaje: "5", minimo: null } });
+      const otroPorcentaje = await p.editarYAplicar({ costoPorOrden: null, costoPorOrdenPorcentual: { porcentaje: "5", minimo: null } });
       const enOtro = await leer(tx, p.planId);
-      const aFijo = await p.editar({ costoPorOrden: "80", costoPorOrdenPorcentual: null });
+      const aFijo = await p.editarYAplicar({ costoPorOrden: "80", costoPorOrdenPorcentual: null });
       return {
         aPorcentual,
         enPorcentual,
@@ -267,20 +280,21 @@ describeSiHayBase("SLT-83 R1, R2, R4 — el modo porcentual se guarda con la ver
         rastro: await rastro(tx, p.planId),
       };
     });
-    expect(r.aPorcentual).toMatchObject({ estado: "ok", cambio: true });
+    expect(r.aPorcentual).toMatchObject({ estado: "ok", cambio: true, vigenteDesde: HOY });
     expect(r.enPorcentual).toEqual({ fijo: null, pct: "2.00", minimo: "500.00" });
     expect(r.otroPorcentaje).toMatchObject({ estado: "ok", cambio: true });
     expect(r.enOtro).toEqual({ fijo: null, pct: "5.00", minimo: null });
     expect(r.aFijo).toMatchObject({ estado: "ok", cambio: true });
     expect(r.final).toEqual({ fijo: "80.00", pct: null, minimo: null });
-    expect(r.rastro.slice(1)).toEqual([
+    // SLT-135: el antes y el después quedan en la fila `cambio_aplicado` de cada cambio.
+    expect(r.rastro.filter((f) => f.accion === "cambio_aplicado")).toEqual([
       {
-        accion: "editado",
+        accion: "cambio_aplicado",
         costoPorOrden: { antes: "100.00", despues: null },
         costoPorOrdenPorcentual: { antes: null, despues: { porcentaje: "2.00", minimo: "500.00" } },
       },
       {
-        accion: "editado",
+        accion: "cambio_aplicado",
         costoPorOrden: undefined,
         costoPorOrdenPorcentual: {
           antes: { porcentaje: "2.00", minimo: "500.00" },
@@ -288,7 +302,7 @@ describeSiHayBase("SLT-83 R1, R2, R4 — el modo porcentual se guarda con la ver
         },
       },
       {
-        accion: "editado",
+        accion: "cambio_aplicado",
         costoPorOrden: { antes: null, despues: "80.00" },
         costoPorOrdenPorcentual: { antes: { porcentaje: "5.00", minimo: null }, despues: null },
       },
