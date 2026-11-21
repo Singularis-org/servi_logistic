@@ -55,3 +55,48 @@ Tests:
   archivo de excepciones no es de este bloque.
 
 **Veredicto:** bloque 1 hecho (R5–R9 con test y en verde); queda el rojo de `pais-sin-literales` para T5.2.
+
+## Bloque 3 — Configuración > Usuarios y ranking (T3.1–T3.2, R10–R11) · frontend_dev · 2026-11-21
+
+### Archivos
+
+Producción (modificados):
+- `app/(app)/configuracion/_components/UsuariosModule.tsx` — T3.1: `textoAvisoZona(aviso, moneda)` con
+  `formatearMontoEn(moneda, impacto.totalSinConsolidar)` (mismo marcador `-`); el componente lee `useMonedaDelPais()`.
+- `app/(app)/ranking/_components/PremioInputRow.tsx` — T3.2: `formatearMontoEn(moneda, premio.monto, SIN_MONTO_RAYA)`
+  con el hook.
+- `app/(app)/ranking/_components/RankingPodio.tsx` — T3.2: el hook dentro de `EscalonPodio` (antes del retorno temprano).
+- `app/(app)/ranking/historico/_components/RankingHistoricoModule.tsx` — T3.2: `columnasHistorico(moneda)` de módulo,
+  montada con `useMemo(() => columnasHistorico(moneda), [moneda])`; `TarjetaHistorico` lee el hook.
+- `app/(app)/ranking/_components/ranking-labels.ts` — T3.2: fuera el reexport de `money` (no lo importaba nadie más).
+
+Tests:
+- `tests/components/moneda-del-pais-tarifas.test.tsx` — al final, el bloque 3 (sus imports, junto a los demás;
+  `vi.mock` de `@/lib/actions/usuarios`, `@/lib/actions/ranking` y `next/navigation`, que ningún otro bloque importa).
+  Cada caso, con `MONEDA_DE_PRUEBA` + «IGV», con `MONEDA_CR` + «IVA» y sin proveedor.
+
+El typecheck no señaló otros llamantes de `textoAvisoZona` ni del `money` reexportado.
+
+### Mapa R → test (bloque 3)
+
+| R | Test |
+|---|---|
+| R10 | `moneda-del-pais-tarifas.test.tsx` > «SLT-241 R10 — el aviso de impacto…» > «R10/R16/R17: con el pais de prueba «€»; con CR, lo mismo que sin proveedor…» |
+| R11 | `moneda-del-pais-tarifas.test.tsx` > «SLT-241 R11 — el ranking pinta el premio en la moneda del pais» > «R11/R16/R17: `RankingPodio`, el premio del escalon», «R11: `RankingPodio` sin premio no pinta importe», «R11/R16/R17: `PremioInputRow`, el monto del premio en solo lectura», «R11: `PremioInputRow` sin monto pinta «Sin premio asignado»», «R11/R16/R17: `RankingHistoricoModule` en escritorio, la celda del premio de la tabla», «R11: … en escritorio, sin premio la celda pinta la raya larga», «R11/R16/R17: … en el telefono, el premio de la tarjeta», «R11: … en el telefono, sin premio la tarjeta dice «Sin premio asignado»» |
+| R16/R17 (bloque 3) | Los casos «R…/R16/R17» de arriba (CR = sin proveedor = moneda de la plataforma); `RankingPodio.test.tsx`, `RankingHistoricoModule.test.tsx`, `RankingModule.test.tsx`, `descarga/RankingHistoricoDescarga.test.tsx` y los 8 tests de Usuarios verdes sin tocarlos |
+
+### Verificación (salida real, 2026-11-21)
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck` → exit 0.
+- `pnpm run lint` → exit 0, `✖ 249 problems (0 errors, 249 warnings)`; `eslint` sobre los 6 archivos tocados →
+  «No issues found».
+- `vitest run tests/components/moneda-del-pais-tarifas.test.tsx` → `Test Files 1 passed (1)`, `Tests 23 passed (23)`.
+- `vitest run` de `RankingPodio`, `RankingHistoricoModule`, `RankingModule`, `usuarios-aviso-zona` y
+  `UsuariosTopePlan` → `Test Files 5 passed (5)`, `Tests 87 passed (87)`.
+- `vitest run` de `descarga/RankingHistoricoDescarga`, `usuario-form`, `usuarios-columns`, `usuarios-filtros-def`,
+  `usuarios-module`, `usuarios-nombre-no-imprimible`, `usuarios-restablecer` y `moneda-del-pais-pantallas` →
+  `Test Files 8 passed (8)`, `Tests 202 passed (202)`.
+- `pwa-mensajero-sin-recorte.guardia.test.ts` (nombra `PremioInputRow`) → `Tests 54 passed (54)`.
+
+**Veredicto:** bloque 3 hecho (R10 y R11 con test y en verde, CR idéntico a sin proveedor); los 5 archivos entran
+en el censo de R18 en T5.1.

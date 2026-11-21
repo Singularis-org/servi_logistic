@@ -54,10 +54,10 @@
 
 ## Bloque 3 — Configuración > Usuarios y ranking (R10, R11) (en paralelo con los bloques 1 y 2)
 
-- [ ] **T3.1** [P] `UsuariosModule.tsx`: `textoAvisoZona(aviso, moneda)` con `formatearMontoEn` (R10,
+- [x] **T3.1** [P] `UsuariosModule.tsx`: `textoAvisoZona(aviso, moneda)` con `formatearMontoEn` (R10,
   design §7).
   - *Hecho:* caso de R10 en verde; los tests de Usuarios, verdes sin tocarlos.
-- [ ] **T3.2** [P] Ranking: `PremioInputRow.tsx`, `RankingPodio.tsx` y `RankingHistoricoModule.tsx`
+- [x] **T3.2** [P] Ranking: `PremioInputRow.tsx`, `RankingPodio.tsx` y `RankingHistoricoModule.tsx`
   (`columnasHistorico(moneda)` con `useMemo`) con el hook; se borra el reexport de `money` de
   `ranking-labels.ts` (R11, design §7).
   - *Hecho:* casos de R11 en verde; `RankingPodio.test.tsx`, `RankingHistoricoModule.test.tsx`,

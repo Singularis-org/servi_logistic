@@ -16,8 +16,25 @@ import { TarifaValorRepository } from "@/lib/repositories/TarifaValorRepository"
 import { TarifaValorService } from "@/lib/services/TarifaValorService";
 import { serviciosDeTarifas } from "@/lib/tarifas/servicios";
 import { ETIQUETAS_NEUTRAS } from "@/lib/types/pais";
-import { MONEDA_DE_PRUEBA } from "@/tests/fabricas/reglas-pais";
+import { MONEDA_CR, MONEDA_DE_PRUEBA } from "@/tests/fabricas/reglas-pais";
 import { quitarComentarios } from "@/tests/fixtures/sin-comentarios";
+// Bloque 3 (R10, R11)
+import type { ReactNode } from "react";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { SWRConfig } from "swr";
+import { UsuariosModule } from "@/app/(app)/configuracion/_components/UsuariosModule";
+import { PremioInputRow } from "@/app/(app)/ranking/_components/PremioInputRow";
+import { RankingPodio } from "@/app/(app)/ranking/_components/RankingPodio";
+import { PREMIOS_LABELS } from "@/app/(app)/ranking/_components/ranking-labels";
+import { RankingHistoricoModule } from "@/app/(app)/ranking/historico/_components/RankingHistoricoModule";
+import { MONEDA_PLATAFORMA, SIN_MONTO_RAYA, formatearMontoEn } from "@/lib/config/moneda";
+import type { ImpactoSalidaAdminSatelite } from "@/lib/interfaces/services/IUsuarioService";
+import type { PremioRankingDTO, RankingRowDTO } from "@/lib/types/ranking";
+import type { RankingSnapshotData, RankingSnapshotFilaDTO } from "@/lib/types/ranking-snapshot";
+import type { UsuarioListItemDTO } from "@/lib/types/usuario";
+import { MonedaDelPaisProvider } from "@/providers/MonedaDelPaisProvider";
+import { ToastProvider } from "@/providers/ToastProvider";
 
 // SLT-241 — Moneda e impuesto del pais en pantallas: tarifas, configuracion y ranking.
 //
@@ -352,5 +369,281 @@ describe("SLT-241 §9 — el fuente de `guardarValoresTarifa` pasa el impuesto d
       "serviciosDeTarifas(getPrismaClient()) /* serviciosDeTarifas(getPrismaClient(), impuestoNombre) */",
     );
     expect(faltasDeCableado(soloComentario)).toEqual(["serviciosDeTarifas( no recibe el impuesto como segundo argumento"]);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Bloque 3 — Configuracion > Usuarios y ranking (R10, R11, design §7)
+// ---------------------------------------------------------------------------------------------
+//
+// Cada pantalla se pinta tres veces: con el pais de prueba (`MONEDA_DE_PRUEBA` + «IGV»), con Costa
+// Rica (`MONEDA_CR` + «IVA») y sin proveedor. Con el de prueba sale el importe en su moneda y no el
+// de la plataforma (R10, R11); con CR, el texto es el mismo que sin proveedor (R16), y sin proveedor,
+// el de la plataforma (R17).
+//
+// Dobles de este bloque (los `vi.mock` se elevan al principio del archivo, pero ningun otro bloque
+// importa estos modulos): las acciones de usuarios y de ranking, que son de servidor, y el router de
+// Next, que `PremioInputRow` y `RankingHistoricoModule` leen al montarse.
+
+const { dobleUsuarios } = vi.hoisted(() => ({
+  dobleUsuarios: {
+    listarUsuarios: vi.fn(),
+    cambiarEstadoUsuario: vi.fn(),
+    consultarImpactoCambioUsuario: vi.fn(),
+    obtenerUsuario: vi.fn(),
+    restablecerContrasenaUsuario: vi.fn(),
+  },
+}));
+
+vi.mock("@/lib/actions/usuarios", () => ({
+  listarUsuarios: (...a: unknown[]) => dobleUsuarios.listarUsuarios(...a),
+  listarUsuariosCompleto: vi.fn(),
+  cambiarEstadoUsuario: (...a: unknown[]) => dobleUsuarios.cambiarEstadoUsuario(...a),
+  consultarImpactoCambioUsuario: (...a: unknown[]) => dobleUsuarios.consultarImpactoCambioUsuario(...a),
+  obtenerUsuario: (...a: unknown[]) => dobleUsuarios.obtenerUsuario(...a),
+  crearUsuario: vi.fn(),
+  actualizarUsuario: vi.fn(),
+  listarTiposIdentificacion: vi.fn(),
+  listarRoles: vi.fn(),
+  restablecerContrasenaUsuario: (...a: unknown[]) => dobleUsuarios.restablecerContrasenaUsuario(...a),
+}));
+
+vi.mock("@/lib/actions/ranking", () => ({
+  editarPremioAction: vi.fn(),
+  obtenerRankingAction: vi.fn(),
+}));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), back: vi.fn(), prefetch: vi.fn() }),
+  usePathname: () => "/",
+  useSearchParams: () => new URLSearchParams(),
+}));
+
+const IMPUESTO_DE_PRUEBA = "IGV";
+const IMPUESTO_CR = "IVA";
+
+/** Los tres montajes de cada caso: el pais de prueba, Costa Rica y sin proveedor. */
+type Montaje = "prueba" | "cr" | "sin proveedor";
+
+/** Envuelve `ui` con el proveedor del montaje (ninguno para «sin proveedor»). */
+function conMontaje(montaje: Montaje, ui: ReactNode): ReactNode {
+  if (montaje === "sin proveedor") return ui;
+  const [moneda, impuesto] =
+    montaje === "prueba" ? [MONEDA_DE_PRUEBA, IMPUESTO_DE_PRUEBA] : [MONEDA_CR, IMPUESTO_CR];
+  return (
+    <MonedaDelPaisProvider moneda={moneda} impuestoNombre={impuesto}>
+      {ui}
+    </MonedaDelPaisProvider>
+  );
+}
+
+/** Lo que pinta `ui` (su texto entero) en el montaje dado. */
+function textoEn(montaje: Montaje, ui: ReactNode): string {
+  const { container, unmount } = render(<ToastProvider>{conMontaje(montaje, ui)}</ToastProvider>);
+  const texto = container.textContent ?? "";
+  unmount();
+  return texto;
+}
+
+/**
+ * Las tres comprobaciones de un importe pintado: con el pais de prueba, su moneda y no la de la
+ * plataforma (R10/R11); sin proveedor, la de la plataforma (R17); con CR, byte a byte lo de sin
+ * proveedor (R16).
+ */
+function compruebaLosTresMontajes(texto: (montaje: Montaje) => string, importe: string) {
+  const conPrueba = texto("prueba");
+  expect(conPrueba).toContain(formatearMontoEn(MONEDA_DE_PRUEBA, importe));
+  expect(conPrueba).not.toContain(formatearMontoEn(MONEDA_PLATAFORMA, importe));
+
+  const sinProveedor = texto("sin proveedor");
+  expect(sinProveedor).toContain(formatearMontoEn(MONEDA_PLATAFORMA, importe));
+  expect(texto("cr")).toBe(sinProveedor);
+}
+
+/** `useIsMobile` lee `matchMedia`: con 360 px es telefono (la tarjeta), con 1280 escritorio (la tabla). */
+function simularAncho(ancho: number) {
+  vi.spyOn(window, "matchMedia").mockImplementation(
+    (query: string) =>
+      ({
+        matches: (() => {
+          const max = /max-width:\s*(\d+)px/.exec(query);
+          return max ? ancho <= Number(max[1]) : false;
+        })(),
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      }) as unknown as MediaQueryList,
+  );
+}
+
+// --- R10: Configuracion > Usuarios ------------------------------------------------------------
+
+/** El unico Admin satelite activo de su zona: inactivarlo abre el aviso de impacto. */
+const SATELITE: UsuarioListItemDTO = {
+  id: "u-sat",
+  nombre: "Rosa Vargas",
+  email: "rosa@example.com",
+  rolValue: "adminSatelite",
+  estado: "activo",
+  zonaNombre: "Puntarenas",
+  createdAt: new Date("2026-01-01T00:00:00Z"),
+};
+
+/** Con cola y miles: con la moneda de prueba (0 decimales, espacio de miles) se pinta distinto. */
+const TOTAL_SIN_CONSOLIDAR = "1234567.89";
+
+const IMPACTO_ZONA: ImpactoSalidaAdminSatelite = {
+  zonaNombre: "Puntarenas",
+  cierresSinConsolidar: 4,
+  totalSinConsolidar: TOTAL_SIN_CONSOLIDAR,
+  adminSatelitesActivosRestantes: 0,
+};
+
+/** Monta `UsuariosModule`, pulsa «Inactivar» y devuelve el texto del aviso de impacto. */
+async function textoDelAvisoDeZona(montaje: Montaje): Promise<string> {
+  dobleUsuarios.listarUsuarios.mockResolvedValue({ status: "ok", items: [SATELITE], page: 1, pageSize: 25, total: 1 });
+  dobleUsuarios.consultarImpactoCambioUsuario.mockResolvedValue({ status: "ok", impacto: IMPACTO_ZONA });
+
+  const user = userEvent.setup();
+  const { unmount } = render(
+    <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+      <ToastProvider>
+        {conMontaje(montaje, <UsuariosModule initialData={{ items: [SATELITE], total: 1, pageSize: 25 }} />)}
+      </ToastProvider>
+    </SWRConfig>,
+  );
+  await user.click(await screen.findByRole("button", { name: "Inactivar" }));
+  const continuar = await screen.findByRole("button", { name: "Continuar" });
+  const texto = continuar.closest('[role="dialog"]')?.textContent ?? "";
+  unmount();
+  return texto;
+}
+
+describe("SLT-241 R10 — el aviso de impacto de Configuracion > Usuarios pinta el total en la moneda del pais", () => {
+  it("R10/R16/R17: con el pais de prueba «€»; con CR, lo mismo que sin proveedor (la moneda de la plataforma)", async () => {
+    const textos: Record<Montaje, string> = {
+      prueba: await textoDelAvisoDeZona("prueba"),
+      cr: await textoDelAvisoDeZona("cr"),
+      "sin proveedor": await textoDelAvisoDeZona("sin proveedor"),
+    };
+
+    expect(textos.prueba).toContain(`por ${formatearMontoEn(MONEDA_DE_PRUEBA, TOTAL_SIN_CONSOLIDAR)}.`);
+    expect(textos.prueba).toContain("€1 234 568");
+    compruebaLosTresMontajes((montaje) => textos[montaje], TOTAL_SIN_CONSOLIDAR);
+  }, 30000);
+});
+
+// --- R11: ranking -------------------------------------------------------------------------------
+
+/** El premio de los casos de ranking: con cola y miles, como `TOTAL_SIN_CONSOLIDAR`. */
+const PREMIO = "12500.50";
+
+function filaRanking(over: Partial<RankingRowDTO> = {}): RankingRowDTO {
+  return {
+    posicion: 1,
+    mensajeroId: "m1",
+    nombre: "Ana Mensajera",
+    entregadasHoy: 5,
+    asignadasHoy: 5,
+    pct: "100.0",
+    premio: PREMIO,
+    ...over,
+  };
+}
+
+function filaHistorico(over: Partial<RankingSnapshotFilaDTO> = {}): RankingSnapshotFilaDTO {
+  return {
+    puesto: 1,
+    posicion: 1,
+    mensajeroId: "m1",
+    nombre: "Ana Mensajera",
+    entregadas: 5,
+    asignadas: 5,
+    pct: "100.0",
+    premioMonto: PREMIO,
+    premioDescripcion: "Bono oro",
+    ...over,
+  };
+}
+
+function snapshotCon(filas: RankingSnapshotFilaDTO[]): RankingSnapshotData {
+  return { fecha: "2026-08-09", generadoAt: "2026-08-10T06:00:00.000Z", minAsignadasPodio: 1, filas };
+}
+
+/** `PremioInputRow` es una fila: va dentro de su tabla. */
+function filaDePremio(premio: PremioRankingDTO) {
+  return (
+    <table>
+      <tbody>
+        <PremioInputRow premio={premio} ocupanteNombre="Ana Mensajera" esEditable={false} />
+      </tbody>
+    </table>
+  );
+}
+
+describe("SLT-241 R11 — el ranking pinta el premio en la moneda del pais", () => {
+  it("R11/R16/R17: `RankingPodio`, el premio del escalon", () => {
+    const ui = <RankingPodio ranking={[filaRanking()]} />;
+    compruebaLosTresMontajes((montaje) => textoEn(montaje, ui), PREMIO);
+  });
+
+  it("R11: `RankingPodio` sin premio no pinta importe (lo de hoy)", () => {
+    const ui = <RankingPodio ranking={[filaRanking({ premio: null })]} />;
+    expect(textoEn("prueba", ui)).toBe(textoEn("sin proveedor", ui));
+    expect(textoEn("prueba", ui)).not.toContain("€");
+  });
+
+  it("R11/R16/R17: `PremioInputRow`, el monto del premio en solo lectura", () => {
+    const ui = filaDePremio({ posicion: 1, monto: PREMIO, descripcion: "Bono oro" });
+    compruebaLosTresMontajes((montaje) => textoEn(montaje, ui), PREMIO);
+  });
+
+  it("R11: `PremioInputRow` sin monto pinta «Sin premio asignado», como hoy", () => {
+    const ui = filaDePremio({ posicion: 1, monto: null, descripcion: null });
+    expect(textoEn("prueba", ui)).toContain(PREMIOS_LABELS.sinMonto);
+    expect(textoEn("prueba", ui)).toBe(textoEn("sin proveedor", ui));
+  });
+
+  it("R11/R16/R17: `RankingHistoricoModule` en escritorio, la celda del premio de la tabla", () => {
+    simularAncho(1280);
+    const ui = <RankingHistoricoModule fecha="2026-08-09" snapshot={snapshotCon([filaHistorico()])} />;
+    compruebaLosTresMontajes((montaje) => textoEn(montaje, ui), PREMIO);
+  });
+
+  it("R11: `RankingHistoricoModule` en escritorio, sin premio la celda pinta la raya larga, como hoy", () => {
+    simularAncho(1280);
+    const ui = (
+      <RankingHistoricoModule
+        fecha="2026-08-09"
+        snapshot={snapshotCon([filaHistorico({ premioMonto: null, premioDescripcion: null })])}
+      />
+    );
+    const { unmount } = render(<ToastProvider>{conMontaje("prueba", ui)}</ToastProvider>);
+    expect(screen.getAllByRole("cell").some((celda) => celda.textContent === SIN_MONTO_RAYA)).toBe(true);
+    unmount();
+    expect(textoEn("prueba", ui)).toBe(textoEn("sin proveedor", ui));
+  });
+
+  it("R11/R16/R17: `RankingHistoricoModule` en el telefono, el premio de la tarjeta", () => {
+    simularAncho(360);
+    const ui = <RankingHistoricoModule fecha="2026-08-09" snapshot={snapshotCon([filaHistorico()])} />;
+    expect(textoEn("prueba", ui)).toContain(`${formatearMontoEn(MONEDA_DE_PRUEBA, PREMIO)} · Bono oro`);
+    compruebaLosTresMontajes((montaje) => textoEn(montaje, ui), PREMIO);
+  });
+
+  it("R11: `RankingHistoricoModule` en el telefono, sin premio la tarjeta dice «Sin premio asignado», como hoy", () => {
+    simularAncho(360);
+    const ui = (
+      <RankingHistoricoModule
+        fecha="2026-08-09"
+        snapshot={snapshotCon([filaHistorico({ premioMonto: null, premioDescripcion: null })])}
+      />
+    );
+    expect(textoEn("prueba", ui)).toContain(PREMIOS_LABELS.sinMonto);
+    expect(textoEn("prueba", ui)).toBe(textoEn("sin proveedor", ui));
   });
 });

@@ -19,6 +19,7 @@
 // Fundir los dos últimos en un «no hay datos» haría indistinguible un día tranquilo de un
 // cron caído, que es justo lo que el alternativa F del design descartó a nivel de esquema.
 
+import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Trophy } from "lucide-react";
 
@@ -41,13 +42,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
+import { SIN_MONTO_RAYA, formatearMontoEn, type FormatoMoneda } from "@/lib/config/moneda";
 import type { RankingSnapshotData, RankingSnapshotFilaDTO } from "@/lib/types/ranking-snapshot";
 import { cn } from "@/lib/utils";
 
 import {
   PREMIOS_LABELS,
   SIN_DATO,
-  money,
   ordinal,
   porcentaje,
 } from "../../_components/ranking-labels";
@@ -70,54 +72,61 @@ const RUTA_HISTORICO = "/ranking/historico";
 const ID_SELECTOR_FECHA = "ranking-historico-fecha";
 
 /**
- * Columnas de la tabla (design §6/§7). Viven fuera del componente porque no dependen de
- * props ni de estado, igual que en `RankingModule`. Los rótulos salen de
+ * Columnas de la tabla (design §6/§7). Se declaran fuera del componente, como en
+ * `RankingModule`. Los rótulos salen de
  * `RANKING_HISTORICO_COLUMNAS`, el mismo objeto que encabeza el archivo descargado.
+ *
+ * SLT-241 (R11): dependen de la moneda del país (el premio), así que son una función de módulo y el
+ * componente las monta con `useMemo` por moneda.
  */
-const COLUMNAS: Column<RankingSnapshotFilaDTO>[] = [
-  {
-    id: "puesto",
-    value: RANKING_HISTORICO_COLUMNAS.puesto,
-    render: (fila) => <span className="font-medium tabular-nums">{fila.puesto}</span>,
-  },
-  {
-    id: "posicion",
-    value: RANKING_HISTORICO_COLUMNAS.posicion,
-    render: (fila) => <span className="tabular-nums">{fila.posicion ?? SIN_DATO}</span>,
-  },
-  {
-    id: "mensajero",
-    value: RANKING_HISTORICO_COLUMNAS.mensajero,
-    render: (fila) => fila.nombre,
-  },
-  {
-    id: "porcentaje",
-    value: RANKING_HISTORICO_COLUMNAS.porcentaje,
-    render: (fila) => porcentaje(fila.pct),
-  },
-  {
-    id: "entregadas",
-    value: RANKING_HISTORICO_COLUMNAS.entregadas,
-    render: (fila) => <span className="tabular-nums">{fila.entregadas}</span>,
-  },
-  {
-    id: "asignadas",
-    value: RANKING_HISTORICO_COLUMNAS.asignadas,
-    render: (fila) => <span className="tabular-nums">{fila.asignadas}</span>,
-  },
-  {
-    id: "premio",
-    value: RANKING_HISTORICO_COLUMNAS.premio,
-    render: (fila) => (
-      <span className="flex flex-col">
-        <span className="tabular-nums">{money(fila.premioMonto)}</span>
-        {fila.premioDescripcion ? (
-          <span className="text-xs text-muted-foreground">{fila.premioDescripcion}</span>
-        ) : null}
-      </span>
-    ),
-  },
-];
+function columnasHistorico(moneda: FormatoMoneda): Column<RankingSnapshotFilaDTO>[] {
+  return [
+    {
+      id: "puesto",
+      value: RANKING_HISTORICO_COLUMNAS.puesto,
+      render: (fila) => <span className="font-medium tabular-nums">{fila.puesto}</span>,
+    },
+    {
+      id: "posicion",
+      value: RANKING_HISTORICO_COLUMNAS.posicion,
+      render: (fila) => <span className="tabular-nums">{fila.posicion ?? SIN_DATO}</span>,
+    },
+    {
+      id: "mensajero",
+      value: RANKING_HISTORICO_COLUMNAS.mensajero,
+      render: (fila) => fila.nombre,
+    },
+    {
+      id: "porcentaje",
+      value: RANKING_HISTORICO_COLUMNAS.porcentaje,
+      render: (fila) => porcentaje(fila.pct),
+    },
+    {
+      id: "entregadas",
+      value: RANKING_HISTORICO_COLUMNAS.entregadas,
+      render: (fila) => <span className="tabular-nums">{fila.entregadas}</span>,
+    },
+    {
+      id: "asignadas",
+      value: RANKING_HISTORICO_COLUMNAS.asignadas,
+      render: (fila) => <span className="tabular-nums">{fila.asignadas}</span>,
+    },
+    {
+      id: "premio",
+      value: RANKING_HISTORICO_COLUMNAS.premio,
+      render: (fila) => (
+        <span className="flex flex-col">
+          <span className="tabular-nums">
+            {formatearMontoEn(moneda, fila.premioMonto, SIN_MONTO_RAYA)}
+          </span>
+          {fila.premioDescripcion ? (
+            <span className="text-xs text-muted-foreground">{fila.premioDescripcion}</span>
+          ) : null}
+        </span>
+      ),
+    },
+  ];
+}
 
 /**
  * SLT-162 «Ranking del mensajero en tarjetas en el móvil» (R755) — la tarjeta del Histórico en el
@@ -126,6 +135,8 @@ const COLUMNAS: Column<RankingSnapshotFilaDTO>[] = [
  * día». Lo demás (Puesto, Entregado, Asignados) va al desplegar (`detalleHistoricoMovil`).
  */
 function TarjetaHistorico({ fila }: Readonly<{ fila: RankingSnapshotFilaDTO }>) {
+  // SLT-241 (R11): el premio de la tarjeta, con la moneda del país.
+  const moneda = useMonedaDelPais();
   const encabezado =
     fila.posicion === null
       ? `${SIN_DATO} · ${fila.nombre}`
@@ -143,7 +154,9 @@ function TarjetaHistorico({ fila }: Readonly<{ fila: RankingSnapshotFilaDTO }>) 
               PREMIOS_LABELS.sinMonto
             ) : (
               <>
-                <span className={COLUMNA_FIJA}>{money(fila.premioMonto)}</span>
+                <span className={COLUMNA_FIJA}>
+                  {formatearMontoEn(moneda, fila.premioMonto, SIN_MONTO_RAYA)}
+                </span>
                 {fila.premioDescripcion ? ` · ${fila.premioDescripcion}` : null}
               </>
             )}
@@ -225,6 +238,8 @@ export interface RankingHistoricoModuleProps {
 export function RankingHistoricoModule({ fecha, snapshot }: RankingHistoricoModuleProps) {
   const router = useRouter();
   const esMovil = useIsMobile();
+  const moneda = useMonedaDelPais();
+  const columnas = useMemo(() => columnasHistorico(moneda), [moneda]);
   const titulo = tituloRankingHistorico(fecha);
 
   // El estado de la fecha vive en la URL y no en un `useState` (design §6): así la vista es
@@ -281,7 +296,7 @@ export function RankingHistoricoModule({ fecha, snapshot }: RankingHistoricoModu
           </div>
         ) : (
           <DataTable
-            columns={esMovil ? COLUMNAS_MOVIL : COLUMNAS}
+            columns={esMovil ? COLUMNAS_MOVIL : columnas}
             data={snapshot.filas}
             rowKey="mensajeroId"
             ariaLabel={RANKING_HISTORICO_LABELS.tablaAria}
