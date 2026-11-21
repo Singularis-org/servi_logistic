@@ -93,6 +93,8 @@ export default defineConfig({
         "zona-sin-distritos",
         // SLT-225 R1759, R1760: el usuario asignado frena la desactivación; sin él, se desactiva y se reactiva.
         "zona-desactivar",
+        // Geo jerárquica: el superadmin carga, crea, renombra y desactiva nodos; la empresa lo ve en «Corregir datos».
+        "geografia-superadmin",
         // SLT-221 R1606, R1609: el maestro corrige la cédula de un usuario y la ve en el Histórico.
         "usuario-corregir-cedula",
         // SLT-221 R1618-R1628: el maestro pide el cambio de correo y la persona lo confirma sin sesión.

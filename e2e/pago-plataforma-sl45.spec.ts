@@ -157,7 +157,8 @@ async function crearOrdenes(db: PrismaClient, e: Empresa, n: number): Promise<st
     const rol = await tx.rol.findFirst({ where: { value: "adminTienda" satisfies RolValue }, select: { id: true } });
     const tipo = await tx.tipoIdentificacion.findUnique({ where: { value: "cedula" }, select: { id: true } });
     const estatus = await tx.orderStatus.findUnique({ where: { value: "en_preparacion" }, select: { id: true } });
-    const canton = await tx.canton.findFirst({ select: { id: true, provinciaId: true } });
+    // La empresa es de CR: un cantón de otro país (p. ej. el que deja `geografia-superadmin`) lo rechaza el trigger.
+    const canton = await tx.canton.findFirst({ where: { provincia: { paisId: "CR" } }, select: { id: true, provinciaId: true } });
     if (!rol || !tipo || !estatus || !canton) {
       throw new Error("SL-45: faltan catálogos o geografía (¿base sin migrar o sin `pnpm run db:seed`?)");
     }
