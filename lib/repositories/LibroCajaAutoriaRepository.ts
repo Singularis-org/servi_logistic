@@ -293,19 +293,21 @@ export class LibroCajaAutoriaRepository implements ILibroCajaAutoriaRepository {
   }
 
   async marcasDeLaPlataforma(pagoIds: readonly string[]): Promise<MarcasDeLaPlataforma> {
-    if (pagoIds.length === 0) return { registrados: new Set(), anulados: new Set() };
-    // Una sola lectura para las dos marcas: la confirmación dice si fue por fuera y si su anulación existe.
-    // Solo se leen los ids: ni quién confirmó ni quién anuló llegan a la empresa (R13, R36).
+    if (pagoIds.length === 0) return { registrados: new Set(), anulados: new Set(), enLinea: new Set() };
+    // Una sola lectura para las tres marcas: la confirmación dice si fue por fuera, si fue en línea (SLT-226,
+    // R29) y si su anulación existe. Solo se leen los ids: ni quién confirmó ni quién anuló llegan a la empresa
+    // (R13, R36).
     const cs = await this.prisma.pagoPlataformaConfirmacion.findMany({
       where: {
         pagoId: { in: [...pagoIds] },
-        OR: [{ porFuera: true }, { anulaciones: { some: {} } }],
+        OR: [{ porFuera: true }, { enLinea: true }, { anulaciones: { some: {} } }],
       },
-      select: { pagoId: true, porFuera: true, anulaciones: { select: { id: true } } },
+      select: { pagoId: true, porFuera: true, enLinea: true, anulaciones: { select: { id: true } } },
     });
     return {
       registrados: new Set(cs.filter((c) => c.porFuera).map((c) => c.pagoId)),
       anulados: new Set(cs.filter((c) => c.anulaciones.length > 0).map((c) => c.pagoId)),
+      enLinea: new Set(cs.filter((c) => c.enLinea).map((c) => c.pagoId)),
     };
   }
 }
