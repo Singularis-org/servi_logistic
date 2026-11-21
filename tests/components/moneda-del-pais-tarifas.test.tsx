@@ -19,7 +19,7 @@ import { ETIQUETAS_NEUTRAS } from "@/lib/types/pais";
 import { MONEDA_CR, MONEDA_DE_PRUEBA } from "@/tests/fabricas/reglas-pais";
 import { quitarComentarios } from "@/tests/fixtures/sin-comentarios";
 // Bloque 3 (R10, R11)
-import type { ReactNode } from "react";
+import { createRef, type ReactNode } from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SWRConfig } from "swr";
@@ -35,6 +35,16 @@ import type { RankingSnapshotData, RankingSnapshotFilaDTO } from "@/lib/types/ra
 import type { UsuarioListItemDTO } from "@/lib/types/usuario";
 import { MonedaDelPaisProvider } from "@/providers/MonedaDelPaisProvider";
 import { ToastProvider } from "@/providers/ToastProvider";
+// Bloque 4 (R12, R13)
+import type { IPlantillaMensajeRepository } from "@/lib/interfaces/repositories/IPlantillaMensajeRepository";
+import type { Actor as ActorPlantillas } from "@/lib/interfaces/services/IPlantillaMensajeService";
+import { PlantillaMensajeService } from "@/lib/services/PlantillaMensajeService";
+import { DATOS_PLANTILLA_EJEMPLO, EJEMPLOS_POR_CLAVE, resolverValoresPlantilla } from "@/lib/types/plantilla-datos";
+import { extraerVariables, previewConEjemplos, renderPlantilla } from "@/lib/utils/plantilla-mensaje";
+import { componerVistaPrevia } from "@/lib/utils/vista-previa-informe";
+import { catalogoDeVariables, ejemploDeVariableInforme } from "@/lib/whatsapp-envios/informes/catalogo";
+import { VistaPreviaMensaje } from "@/app/(app)/configuracion/envios-whatsapp/_components/VistaPreviaMensaje";
+import { VariablesInsert } from "@/app/(app)/configuracion/plantillas/_components/VariablesInsert";
 
 // SLT-241 — Moneda e impuesto del pais en pantallas: tarifas, configuracion y ranking.
 //
@@ -645,5 +655,221 @@ describe("SLT-241 R11 — el ranking pinta el premio en la moneda del pais", () 
     );
     expect(textoEn("prueba", ui)).toContain(PREMIOS_LABELS.sinMonto);
     expect(textoEn("prueba", ui)).toBe(textoEn("sin proveedor", ui));
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Bloque 4 — ejemplos de plantillas e informes (R12, R13, design §8, §9)
+// ---------------------------------------------------------------------------------------------
+//
+// Funciones puras y el servicio, sin pantalla: cada caso se mira con el pais de prueba
+// (`MONEDA_DE_PRUEBA`), con Costa Rica (`MONEDA_CR`) y sin moneda. Con CR el texto es el de siempre,
+// el mismo que sin moneda (R16, R17). Los casos montados de R13 (`VistaPreviaMensaje`,
+// `VariablesInsert`) van al final del bloque.
+
+const MAESTRO_PLANTILLAS: ActorPlantillas = { usuarioId: "u-maestro", rol: "maestro" };
+
+/** `preview` no toca el repositorio: un doble vacio basta. */
+const REPO_PLANTILLAS = {} as unknown as IPlantillaMensajeRepository;
+
+const IMPORTE_DEL_FIXTURE = DATOS_PLANTILLA_EJEMPLO.orden.montoCobrar;
+
+/** El texto que el envio real daria para ese cuerpo con el fixture y esa moneda (R12). */
+function envioReal(cuerpo: string, moneda?: typeof MONEDA_DE_PRUEBA): string {
+  return renderPlantilla(
+    cuerpo,
+    resolverValoresPlantilla(extraerVariables(cuerpo), DATOS_PLANTILLA_EJEMPLO, undefined, moneda),
+  );
+}
+
+/** `preview` con `monedaDeVistaPrevia` → `moneda`; sin `moneda`, el servicio sin la dependencia. */
+async function previewCon(cuerpo: string, moneda?: typeof MONEDA_DE_PRUEBA) {
+  const monedaDeVistaPrevia = vi.fn(async () => moneda ?? MONEDA_PLATAFORMA);
+  const servicio =
+    moneda === undefined
+      ? new PlantillaMensajeService(REPO_PLANTILLAS)
+      : new PlantillaMensajeService(REPO_PLANTILLAS, undefined, { monedaDeVistaPrevia });
+  const r = await servicio.preview(cuerpo, MAESTRO_PLANTILLAS);
+  if (r.status !== "ok") throw new Error(`preview no ok: ${r.status}`);
+  return { texto: r.texto, monedaDeVistaPrevia };
+}
+
+describe("SLT-241 R12 — la vista previa de una plantilla de orden pinta el importe en la moneda del pais", () => {
+  it("R12: con el pais de prueba, `Total {{monto}}` sale en «€», igual que el envio real con esa moneda", async () => {
+    const { texto, monedaDeVistaPrevia } = await previewCon("Total {{monto}}", MONEDA_DE_PRUEBA);
+    expect(texto).toBe("Total €12 500");
+    expect(texto).toBe(envioReal("Total {{monto}}", MONEDA_DE_PRUEBA));
+    expect(monedaDeVistaPrevia).toHaveBeenCalledTimes(1);
+  });
+
+  it("R12/R16/R17: con CR, el mismo texto que sin la dependencia (la moneda de la plataforma)", async () => {
+    const conCr = (await previewCon("Total {{monto}}", MONEDA_CR)).texto;
+    const sinMoneda = (await previewCon("Total {{monto}}")).texto;
+    expect(conCr).toBe(sinMoneda);
+    expect(sinMoneda).toBe(`Total ${formatearMontoEn(MONEDA_PLATAFORMA, IMPORTE_DEL_FIXTURE)}`);
+    expect(sinMoneda).not.toContain("€");
+  });
+
+  it("R12: un cuerpo sin importe no pide la moneda", async () => {
+    const cuerpo = "Hola {{cliente}}, guia {{num_guia}}";
+    const { texto, monedaDeVistaPrevia } = await previewCon(cuerpo, MONEDA_DE_PRUEBA);
+    expect(texto).toBe(envioReal(cuerpo));
+    expect(monedaDeVistaPrevia).not.toHaveBeenCalled();
+  });
+
+  it("R12: el alias `{{total}}` tambien pinta el importe en la moneda del pais", async () => {
+    const { texto } = await previewCon("{{total}}", MONEDA_DE_PRUEBA);
+    expect(texto).toBe(formatearMontoEn(MONEDA_DE_PRUEBA, IMPORTE_DEL_FIXTURE));
+  });
+
+  it("R12/R16/R17: `previewConEjemplos(cuerpo, zona, moneda)`; con CR, lo mismo que sin moneda", () => {
+    expect(previewConEjemplos("Total {{monto}}", undefined, MONEDA_DE_PRUEBA)).toBe("Total €12 500");
+    expect(previewConEjemplos("Total {{monto}}", undefined, MONEDA_CR)).toBe(previewConEjemplos("Total {{monto}}"));
+  });
+
+  it("R14/R15: el ejemplo de `{{monto}}` del catalogo (el que va a Meta) sigue en la moneda de la plataforma", () => {
+    expect(EJEMPLOS_POR_CLAVE.monto).toBe(formatearMontoEn(MONEDA_PLATAFORMA, IMPORTE_DEL_FIXTURE));
+    expect(EJEMPLOS_POR_CLAVE.monto).toBe(previewConEjemplos("{{monto}}"));
+  });
+});
+
+const FUENTE_ACCION_PLANTILLAS = join(process.cwd(), "lib/actions/plantillas.ts");
+
+/** El cuerpo de `buildPlantillaService`, sin comentarios: de su firma a la llave que la cierra. */
+function cuerpoDeBuildPlantillas(fuente: string): string {
+  const codigo = quitarComentarios(fuente);
+  const inicio = codigo.indexOf("async function buildPlantillaService(");
+  if (inicio === -1) return "";
+  const abre = codigo.indexOf("{", codigo.indexOf(")", inicio));
+  let nivel = 0;
+  for (let j = abre; j < codigo.length; j++) {
+    if (codigo[j] === "{") nivel += 1;
+    if (codigo[j] === "}") {
+      nivel -= 1;
+      if (nivel === 0) return codigo.slice(abre, j + 1);
+    }
+  }
+  return "";
+}
+
+const MONEDA_DEL_PAIS_RE =
+  /monedaDeVistaPrevia:\s*async\s*\(\)\s*=>\s*\(?\s*await\s+paisParaPantallasDelActor\(\s*await\s+empresaDeLaPeticion\(\)\s*,\s*construirPaisService\(\)\s*,?\s*\)\s*\)?\s*\.moneda/;
+
+/**
+ * Lo que §9 exige del fuente, como lista de faltas (vacia = bien cableado): el
+ * `new PlantillaMensajeService(` de `buildPlantillaService` recibe `monedaDeVistaPrevia`, y esa moneda
+ * sale de `paisParaPantallasDelActor(` con la empresa de la sesion.
+ */
+function faltasDeCableadoPlantillas(fuente: string): string[] {
+  const cuerpo = cuerpoDeBuildPlantillas(fuente);
+  if (cuerpo === "") return ["no se encontro buildPlantillaService"];
+  const i = cuerpo.indexOf("new PlantillaMensajeService(");
+  if (i === -1) return ["no se construye PlantillaMensajeService"];
+  const llamada = cuerpo.slice(i);
+  if (!/monedaDeVistaPrevia\s*:/.test(llamada)) return ["new PlantillaMensajeService( no recibe monedaDeVistaPrevia"];
+  if (!MONEDA_DEL_PAIS_RE.test(llamada)) return ["monedaDeVistaPrevia no sale de paisParaPantallasDelActor("];
+  return [];
+}
+
+describe("SLT-241 §9 — `buildPlantillaService` pasa la moneda del pais a la vista previa", () => {
+  const fuente = readFileSync(FUENTE_ACCION_PLANTILLAS, "utf8");
+
+  it("§9/R12: `monedaDeVistaPrevia` sale de `paisParaPantallasDelActor(await empresaDeLaPeticion(), construirPaisService())`", () => {
+    expect(faltasDeCableadoPlantillas(fuente)).toEqual([]);
+  });
+
+  it("contraprueba: sin la dependencia, la comprobacion falla", () => {
+    const sinDep = fuente.replace(/monedaDeVistaPrevia:/, "otraCosa:");
+    expect(sinDep).not.toBe(fuente);
+    expect(faltasDeCableadoPlantillas(sinDep)).toEqual(["new PlantillaMensajeService( no recibe monedaDeVistaPrevia"]);
+  });
+
+  it("contraprueba: con la moneda de otro sitio, la comprobacion falla", () => {
+    const deOtroSitio = fuente.replace(/paisParaPantallasDelActor\(\s*await empresaDeLaPeticion/, "otraLectura(await empresaDeLaPeticion");
+    expect(deOtroSitio).not.toBe(fuente);
+    expect(faltasDeCableadoPlantillas(deOtroSitio)).toEqual(["monedaDeVistaPrevia no sale de paisParaPantallasDelActor("]);
+  });
+
+  it("contraprueba: un comentario con la dependencia no cuenta", () => {
+    const soloComentario = fuente.replace(/monedaDeVistaPrevia:/, "/* monedaDeVistaPrevia: */ otraCosa:");
+    expect(faltasDeCableadoPlantillas(soloComentario)).toEqual(["new PlantillaMensajeService( no recibe monedaDeVistaPrevia"]);
+  });
+});
+
+describe("SLT-241 R13 — la vista previa de un informe pinta el ejemplo de un importe en la moneda del pais", () => {
+  const CUERPO = "Por cobrar {{por_cobrar}}, vencidos {{vencidos}}";
+  const variables = catalogoDeVariables("transito");
+
+  it("R13: con el pais de prueba, `{{por_cobrar}}` sale «€322 900» y `{{vencidos}}` sigue «7»", () => {
+    const { texto, datos } = componerVistaPrevia(CUERPO, variables, {}, MONEDA_DE_PRUEBA);
+    expect(texto).toBe("Por cobrar €322 900, vencidos 7");
+    expect(datos.map((d) => d.valor)).toEqual(["€322 900", "7"]);
+  });
+
+  it("R13/R16/R17: con CR, el texto de siempre (el `ejemplo` del catalogo), igual que con la moneda de la plataforma", () => {
+    const conCr = componerVistaPrevia(CUERPO, variables, {}, MONEDA_CR).texto;
+    expect(conCr).toBe(componerVistaPrevia(CUERPO, variables, {}, MONEDA_PLATAFORMA).texto);
+    const porCobrar = variables.find((v) => v.clave === "por_cobrar");
+    expect(conCr).toBe(`Por cobrar ${porCobrar?.ejemplo}, vencidos 7`);
+  });
+
+  it("R13: un valor dado gana al ejemplo, tambien en un importe", () => {
+    const { texto } = componerVistaPrevia(CUERPO, variables, { por_cobrar: "X" }, MONEDA_DE_PRUEBA);
+    expect(texto).toBe("Por cobrar X, vencidos 7");
+  });
+
+  it("R13: solo `por_cobrar` lleva `importeEjemplo`; los ejemplos que no son importes no cambian con la moneda", () => {
+    expect(variables.filter((v) => v.importeEjemplo !== undefined).map((v) => v.clave)).toEqual(["por_cobrar"]);
+    for (const v of variables.filter((x) => x.importeEjemplo === undefined)) {
+      expect(componerVistaPrevia(`{{${v.clave}}}`, variables, {}, MONEDA_DE_PRUEBA).texto).toBe(v.ejemplo);
+    }
+  });
+
+  it("R14/R15: el `ejemplo` de `por_cobrar` (lo que viaja a Meta) sale del formateador en la moneda de la plataforma", () => {
+    expect(ejemploDeVariableInforme("transito")("por_cobrar")).toBe(formatearMontoEn(MONEDA_PLATAFORMA, "322900.00"));
+  });
+});
+
+// Casos montados de R13 (parte de pantalla de T4.2): las dos pantallas que pintan la vista previa de
+// un informe leen `useMonedaDelPais()` y se la pasan a `componerVistaPrevia`. Cada una se monta con el
+// pais de prueba, con CR y sin proveedor; con CR, el texto es el mismo que sin proveedor (R16, R17).
+describe("SLT-241 R13 — montado: `VistaPreviaMensaje` y `VariablesInsert` pintan el importe en la moneda del pais", () => {
+  const CUERPO = "Por cobrar {{por_cobrar}}, vencidos {{vencidos}}";
+  const variables = catalogoDeVariables("transito");
+  const IMPORTE = "322900.00";
+
+  /** El texto de la vista previa de Envios automaticos en ese montaje. */
+  function textoEnvios(montaje: Montaje): string {
+    const { unmount } = render(
+      <>{conMontaje(montaje, <VistaPreviaMensaje cuerpo={CUERPO} variables={variables} conDocumento={false} lector={null} />)}</>,
+    );
+    const texto = screen.getByTestId("vista-previa-texto").textContent ?? "";
+    unmount();
+    return texto;
+  }
+
+  /** El panel «Así lo verá el cliente» de Plantillas (rama de informe) en ese montaje. */
+  function textoPlantillas(montaje: Montaje): string {
+    const ref = createRef<HTMLTextAreaElement>();
+    const { unmount } = render(
+      <>
+        {conMontaje(
+          montaje,
+          <VariablesInsert textareaRef={ref} value={CUERPO} onInsert={() => {}} variablesInforme={variables} />,
+        )}
+      </>,
+    );
+    const texto = (screen.getByTestId("plantilla-preview") as HTMLTextAreaElement).value;
+    unmount();
+    return texto;
+  }
+
+  it.each([
+    ["VistaPreviaMensaje (Envios automaticos)", textoEnvios],
+    ["VariablesInsert (Plantillas, rama de informe)", textoPlantillas],
+  ])("R13/R16/R17: %s — con el pais de prueba su moneda; con CR, lo mismo que sin proveedor", (_nombre, texto) => {
+    expect(texto("prueba")).toBe(`Por cobrar ${formatearMontoEn(MONEDA_DE_PRUEBA, IMPORTE)}, vencidos 7`);
+    compruebaLosTresMontajes(texto, IMPORTE);
+    expect(texto("sin proveedor")).toBe(`Por cobrar ${formatearMontoEn(MONEDA_PLATAFORMA, IMPORTE)}, vencidos 7`);
   });
 });

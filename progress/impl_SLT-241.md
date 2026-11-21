@@ -100,3 +100,62 @@ El typecheck no señaló otros llamantes de `textoAvisoZona` ni del `money` reex
 
 **Veredicto:** bloque 3 hecho (R10 y R11 con test y en verde, CR idéntico a sin proveedor); los 5 archivos entran
 en el censo de R18 en T5.1.
+
+## Bloque 4 — parte de lib/ (T4.1 completa, T4.2 sin los dos componentes) · backend_dev · 2026-11-21
+
+Producción (modificados):
+- `lib/types/plantilla-datos.ts` — T4.1: `MONTO_COBRAR_EJEMPLO = 12500` (fixture y catálogo); el `ejemplo` de
+  `{{monto}}` es `formatearMontoEn(MONEDA_PLATAFORMA, MONTO_COBRAR_EJEMPLO)` (mismo texto con CR, R14/R15).
+- `lib/utils/plantilla-mensaje.ts` — T4.1: `previewConEjemplos(cuerpo, zona?, moneda?)`. Sin moneda llama a
+  `resolverValoresPlantilla` con tres argumentos, como antes: `preview-mismo-motor.test.ts` (sin tocar) espía la
+  llamada con `toHaveBeenCalledWith(vars, fixture, undefined)` y un cuarto `undefined` lo ponía rojo.
+- `lib/services/PlantillaMensajeService.ts` — T4.1: `monedaDeVistaPrevia?: () => Promise<FormatoMoneda>` en
+  `PlantillaInformeDeps`; `preview` la pide solo con `necesitaMoneda(variables)`.
+- `lib/actions/plantillas.ts` — T4.1: `buildPlantillaService` pasa `monedaDeVistaPrevia: async () => (await
+  paisParaPantallasDelActor(await empresaDeLaPeticion(), construirPaisService())).moneda`.
+- `lib/whatsapp-envios/informes/tipos.ts`, `catalogo.ts` — T4.2: `importeEjemplo?` en `VariableInforme` y
+  `VariableCatalogo`.
+- `lib/whatsapp-envios/informes/transito/informe.ts` — T4.2: `por_cobrar` con `importeEjemplo: "322900.00"` y
+  `ejemplo: formatearMontoEn(MONEDA_PLATAFORMA, "322900.00")`.
+- `lib/utils/vista-previa-informe.ts` — T4.2: `importeEjemplo?` en `VariableDeInforme`;
+  `componerVistaPrevia(cuerpo, variables, valores, moneda)` (los dos últimos obligatorios): una variable con
+  `importeEjemplo` se pinta con `formatearMontoEn(moneda, …)`; `valores[clave]` gana.
+
+Tests:
+- `tests/components/moneda-del-pais-tarifas.test.tsx` — bloque 4 al final (imports junto a los demás, bajo
+  «// Bloque 4»): R12 (servicio, `previewConEjemplos`, ejemplo del catálogo), cableado de `buildPlantillaService`
+  (lectura del fuente sin comentarios + 3 contrapruebas) y el caso puro de R13 sobre `componerVistaPrevia`.
+  Cada caso con `MONEDA_DE_PRUEBA`, con `MONEDA_CR` y sin moneda (CR = sin moneda).
+
+**Pendiente (frontend_dev):** `VistaPreviaMensaje.tsx` y `VariablesInsert.tsx` deben pasar `useMonedaDelPais()` a
+`componerVistaPrevia` (y su tipo de `variables`, ganar `importeEjemplo?`); hasta entonces el typecheck falla en
+ellos (abajo). El caso montado de R13 (`VistaPreviaMensaje` con el proveedor) va con esa parte. No apareció otro
+llamante de `previewConEjemplos` ni de `componerVistaPrevia` fuera de «Archivos esperados» en producción (los de
+tests llaman a `previewConEjemplos` con 1–2 argumentos y siguen compilando).
+
+### Mapa R → test (bloque 4, parte lib/)
+
+| R | Test |
+|---|---|
+| R12 | `moneda-del-pais-tarifas.test.tsx` > «SLT-241 R12 — la vista previa de una plantilla de orden…» > «R12: con el pais de prueba, `Total {{monto}}` sale en «€», igual que el envio real…», «R12/R16/R17: con CR, el mismo texto que sin la dependencia», «R12: un cuerpo sin importe no pide la moneda», «R12: el alias `{{total}}`…», «R12/R16/R17: `previewConEjemplos(cuerpo, zona, moneda)`…»; «SLT-241 §9 — `buildPlantillaService` pasa la moneda del pais…» (+ 3 contrapruebas) |
+| R13 | `moneda-del-pais-tarifas.test.tsx` > «SLT-241 R13 — la vista previa de un informe…» > «R13: con el pais de prueba, `{{por_cobrar}}` sale «€322 900» y `{{vencidos}}` sigue «7»», «R13/R16/R17: con CR, el texto de siempre…», «R13: un valor dado gana…», «R13: solo `por_cobrar` lleva `importeEjemplo`…». Falta el caso montado (frontend_dev) |
+| R14/R15 | Mismo archivo: «R14/R15: el ejemplo de `{{monto}}` del catalogo…» y «R14/R15: el `ejemplo` de `por_cobrar`…»; `plantilla-mensaje-utils.test.ts` y `catalogo-de-variables.test.ts` verdes sin tocarlos; la guardia ya marca `plantilla-datos.ts` e `informe.ts` sin literales (baja en T5.2) |
+
+### Verificación (salida real, 2026-11-21)
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck` → exit 2, solo los dos componentes de frontend_dev:
+  - `VistaPreviaMensaje.tsx(37,43): error TS2554: Expected 4 arguments, but got 3.`
+  - `VariablesInsert.tsx(173,36): error TS2554: Expected 4 arguments, but got 2.`
+- `pnpm run lint` → `✖ 249 problems (0 errors, 249 warnings)`; `eslint` sobre los 9 archivos tocados → sin salida, exit 0.
+- `vitest run` de `moneda-del-pais-tarifas`, `plantilla-datos`, `preview-mismo-motor`, `preview-fecha-hora-zona`,
+  `PlantillaMensajeService`, `plantillas-composition-root-474`, `plantilla-mensaje-utils`,
+  `informe-transito-informe`, `catalogo-de-variables`, `VariablesInsert`, `ConfiguracionEnviosWhatsappPage`,
+  `ConfiguracionPlantillasPage`, `campos-ocultos-siguen-resolviendo` y `pais-sin-literales.guardia` →
+  `Test Files 1 failed | 13 passed (14)`, `Tests 1 failed | 373 passed (374)`. El rojo es el esperado de
+  `pais-sin-literales` «la lista solo baja»: las 5 entradas de SLT-241 ya no tienen literales (se quitan en T5.2).
+  `moneda-del-pais-tarifas.test.tsx` sola → `Tests 38 passed (38)`.
+
+**Veredicto:** parte lib/ del bloque 4 hecha (R12 completo con cableado; R13 puro en verde); falta la parte de
+pantalla de T4.2, que además devuelve el typecheck a verde.
+
+- **T4.2, parte de pantalla (frontend_dev, 2026-11-21):** `VistaPreviaMensaje.tsx` y `VariablesInsert.tsx` leen `useMonedaDelPais()` y la pasan a `componerVistaPrevia` (tipo de `variables` → `VariableDeInforme`). Caso montado de R13 en `moneda-del-pais-tarifas.test.tsx` > «SLT-241 R13 — montado: `VistaPreviaMensaje` y `VariablesInsert` pintan el importe en la moneda del pais» (`it.each` de las dos pantallas: prueba → `Por cobrar €322 900, vencidos 7`; CR = sin proveedor = moneda de la plataforma). Verificación: typecheck exit 0; lint `✖ 249 problems (0 errors, 249 warnings)`, exit 0, y eslint de los 3 archivos sin avisos; vitest de `moneda-del-pais-tarifas` + `informe-transito-informe`, `catalogo-de-variables`, `VariablesInsert`, `ConfiguracionEnviosWhatsappPage`, `ConfiguracionPlantillasPage` → `Test Files 6 passed (6)`, `Tests 88 passed (88)`. T4.2 completa.

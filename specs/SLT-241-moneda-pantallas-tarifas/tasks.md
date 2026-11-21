@@ -65,7 +65,7 @@
 
 ## Bloque 4 — Ejemplos de plantillas e informes (R12–R15) (en paralelo con los bloques 1–3)
 
-- [ ] **T4.1** [P] Plantillas de orden (design §8.1, §8.2).
+- [x] **T4.1** [P] Plantillas de orden (design §8.1, §8.2).
   - `plantilla-datos.ts`: `MONTO_COBRAR_EJEMPLO` y el `ejemplo` de `monto` desde el formateador.
   - `plantilla-mensaje.ts`: `previewConEjemplos(cuerpo, zona?, moneda?)`.
   - `PlantillaMensajeService.ts`: `monedaDeVistaPrevia?` en `PlantillaInformeDeps`, pedida solo con
@@ -75,7 +75,7 @@
   - *Hecho:* en verde; `plantilla-datos.test.ts`, `preview-mismo-motor.test.ts`,
     `preview-fecha-hora-zona.test.ts`, `PlantillaMensajeService.test.ts`,
     `plantillas-composition-root-474.test.ts` y `plantilla-mensaje-utils.test.ts` verdes sin tocarlos.
-- [ ] **T4.2** [P] Informes (design §8.3).
+- [x] **T4.2** [P] Informes (design §8.3).
   - `importeEjemplo?` en `VariableInforme` (`tipos.ts`), `VariableCatalogo` (`catalogo.ts`) y
     `VariableDeInforme` (`vista-previa-informe.ts`).
   - `transito/informe.ts`: `por_cobrar` con `importeEjemplo` y `ejemplo` desde el formateador.
