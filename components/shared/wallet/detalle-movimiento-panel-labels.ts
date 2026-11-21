@@ -69,6 +69,8 @@ export const ACCION_AUTOMATICA_LABEL: Record<NonNullable<RegistroDTO["automatico
   // SLT-143 (design §5/§5.1; R13, R36) — el pago por fuera y su anulación: la plataforma, sin nombre ni id.
   plataforma: "Registrado por la plataforma",
   plataforma_anulacion: "Anulado por la plataforma",
+  // SLT-226 (design §5.1, R29) — el pago aprobado en línea: no lo registró nadie ni una plantilla.
+  pago_en_linea: "Pagado en línea",
 };
 
 /** SLT-143 (design §5.1; R36) — quién anuló un pago por fuera, en la línea «Anulado el … por …». */
@@ -78,8 +80,10 @@ export function textoRegistro(registro: RegistroDTO): string {
   if (registro.nombre !== null) return registro.nombre;
   if (registro.automatico === null) return PANEL_TEXTO.sinDato;
   const { accion, por } = registro.automatico;
-  // SLT-143 (R13, R36) — la decisión fija el literal: sin el prefijo «Automático · ».
-  if (accion === "plataforma" || accion === "plataforma_anulacion") return ACCION_AUTOMATICA_LABEL[accion];
+  // SLT-143 (R13, R36) y SLT-226 (R29) — la decisión fija el literal: sin el prefijo «Automático · ».
+  if (accion === "plataforma" || accion === "plataforma_anulacion" || accion === "pago_en_linea") {
+    return ACCION_AUTOMATICA_LABEL[accion];
+  }
   return `Automático · ${ACCION_AUTOMATICA_LABEL[accion]}${por === null ? "" : ` por ${por}`}`;
 }
 

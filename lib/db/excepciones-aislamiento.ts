@@ -258,6 +258,14 @@ export const EXCEPCIONES_DE_PLATAFORMA: readonly ExcepcionDeAislamiento[] = [
     motivo:
       "SLT-87 y SLT-97: guardar un reporte de problema y, para el superadmin, leerlos y cambiar su estado con su historial, en tablas de plataforma que la empresa no puede leer ni escribir (R13, R14 de SLT-87; R3 de SLT-97)",
   },
+  {
+    // SLT-226 (design §4.3). Lleva `SL-45` (la ficha del pago a la plataforma) porque `FichaJira` no admite
+    // `SLT` (deuda D29).
+    archivo: "lib/repositories/CobroIntentoRepository.ts",
+    ficha: "SL-45",
+    motivo:
+      "SLT-226: el cobro en línea; llama a las funciones del dueño de 20261124140100, que `servi_app` no puede ejecutar (`cobro_intento_obtener_o_crear`, `cobro_intento_registrar_enlace`, `cobro_intento_avanzar`, `cobro_registrar_pago_aprobado`, `cobro_evento_registrar`, `cobro_evento_cerrar` y `cobro_marcar_pagado_manual`), el superadmin lee los intentos de una factura de cualquier empresa y marca pagado a mano un intento de cualquiera (R1–R5, R10, R12–R24, R27, R35–R39)",
+  },
 ];
 
 /**

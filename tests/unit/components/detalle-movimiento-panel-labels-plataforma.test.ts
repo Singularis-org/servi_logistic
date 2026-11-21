@@ -36,3 +36,18 @@ describe("SLT-143 — textos de la plataforma en la wallet", () => {
     expect(textoRegistro(registro)).toBe("Automático · Registro del sistema");
   });
 });
+
+// SLT-226 (design §5.1, §8; R29) — el pago aprobado en línea: «Pagado en línea», sin «Automático · ».
+describe("SLT-226 — «Pagado en línea» en la wallet (R29)", () => {
+  it("R29 — un pago aprobado en línea dice «Pagado en línea», sin «Automático»", () => {
+    const registro: RegistroDTO = { nombre: null, automatico: { accion: "pago_en_linea", por: null } };
+    expect(ACCION_AUTOMATICA_LABEL.pago_en_linea).toBe("Pagado en línea");
+    expect(textoRegistro(registro)).toBe("Pagado en línea");
+    expect(textoRegistro(registro)).not.toContain("Automático");
+  });
+
+  it("R29 — un gasto de plantilla sigue diciendo «Automático · Plantilla de gasto fijo»", () => {
+    const registro: RegistroDTO = { nombre: null, automatico: { accion: "plantilla_gasto_fijo", por: null } };
+    expect(textoRegistro(registro)).toBe("Automático · Plantilla de gasto fijo");
+  });
+});

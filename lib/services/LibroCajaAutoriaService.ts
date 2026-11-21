@@ -150,6 +150,11 @@ export class LibroCajaAutoriaService implements ILibroCajaAutoriaService {
       if (m.categoria === "egreso_pago_plataforma" && marcas.registrados.has(m.id)) {
         return { nombre: null, automatico: { accion: "plataforma", por: null } };
       }
+      // SLT-226 (design §5.1, R29): el pago en línea nace con `registrado_por` nulo y `origen_tipo = 'gasto'`;
+      // sin esta marca caería en «plantilla de gasto fijo», que no es lo que pasó.
+      if (m.categoria === "egreso_pago_plataforma" && marcas.enLinea.has(m.id)) {
+        return { nombre: null, automatico: { accion: "pago_en_linea", por: null } };
+      }
       if (esContraAsientoDeEgreso(m) && marcas.anulados.has(m.origenId)) {
         return { nombre: null, automatico: { accion: "plataforma_anulacion", por: null } };
       }

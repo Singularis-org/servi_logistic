@@ -102,7 +102,9 @@ esta bien hecha, no solo si "funciona".
     `tests/unit/guards/_unicos-sin-empresa.ts`): `api_key.key_hash`, `orden.num_guia`, `push_suscripcion.endpoint`, `chat_mensaje.wa_message_id` y
     `whatsapp_envio_entrega.wa_message_id`. Después de SL-17 se sumaron
     `integracion.whatsapp_numero_id` e `integracion.whatsapp_resumen_verificacion` (SL-36: el webhook
-    de WhatsApp lleva a una sola empresa) y `usuario_un_solo_superadmin` (SL-32: un solo superadmin).
+    de WhatsApp lleva a una sola empresa), `usuario_un_solo_superadmin` (SL-32: un solo superadmin) y
+    `cobro_intento_proveedor_id_externo_key` y `cobro_intento_proveedor_pago_key` (SLT-226: el webhook del
+    proveedor de cobro llega sin empresa, y un cobro o un pago del proveedor lleva a un solo intento).
   - El resto de los únicos sin `organizacion_id` son **anclados**: llevan una FK NOT NULL a una fila de
     negocio, que ya es de una empresa. La guardia `unicos-por-empresa` lee las migraciones y falla si
     un único de negocio nuevo no empieza por `organizacion_id` y no está en la lista, si una entrada
