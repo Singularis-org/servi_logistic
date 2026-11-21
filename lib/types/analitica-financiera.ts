@@ -79,7 +79,10 @@ export interface ImporteConNeto {
   readonly bruto: string;
   /** Σ CON SIGNO agregado. STRING escala 2; puede venir negativo ("-123.45"). */
   readonly neto: string;
-  /** Codigo ISO 4217 resuelto por `lib/config/moneda.ts` (S2 / R29). Nunca un simbolo. */
+  /**
+   * Codigo ISO 4217 de la moneda del pais de la empresa de la sesion (SLT-242 R7); sin ella, el de la
+   * plataforma (R10). Lo escribe solo el servicio (S2 / R29). Nunca un simbolo.
+   */
   readonly moneda: string;
 }
 
@@ -96,7 +99,10 @@ export interface ImporteSoloBruto {
   readonly forma: "solo_bruto";
   /** Σ de las categorias nominales, SIN signo. STRING escala 2. */
   readonly bruto: string;
-  /** Codigo ISO 4217 resuelto por `lib/config/moneda.ts` (S2 / R29). Nunca un simbolo. */
+  /**
+   * Codigo ISO 4217 de la moneda del pais de la empresa de la sesion (SLT-242 R7); sin ella, el de la
+   * plataforma (R10). Lo escribe solo el servicio (S2 / R29). Nunca un simbolo.
+   */
   readonly moneda: string;
 }
 

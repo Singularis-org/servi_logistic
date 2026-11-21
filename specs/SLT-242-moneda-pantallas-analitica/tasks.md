@@ -9,13 +9,13 @@
 
 ## Bloque 1 — Servidor: catálogo, servicio y acción (R7–R11)
 
-- [ ] **T1.1** [P] `lib/analytics/metrics.ts`: `rotuloIngresoPorImpuesto(impuesto)`,
+- [x] **T1.1** [P] `lib/analytics/metrics.ts`: `rotuloIngresoPorImpuesto(impuesto)`,
   `etiquetaEnElPais(metrica, impuesto)`, la etiqueta de `ingreso_iva` con `IMPUESTO_ROTULO` y las 5
   apariciones de «IVA» de las descripciones interpoladas (design §7). Sin «IVA» fuera de comentarios.
   - Casos de R8 (`etiquetaEnElPais` puro) y R11 en `moneda-del-pais-analitica.test.tsx`.
   - *Hecho:* en verde; `modulo-puro.guardia.test.ts`, `catalogo-produccion.guardia.test.ts`,
     `metrics-caja-naturaleza.guardia.test.ts` y el resto de `tests/unit/analytics/` verdes sin tocarlos.
-- [ ] **T1.2** `lib/services/AnaliticaFinancieraService.ts`: `PaisDeLaAnalitica`,
+- [x] **T1.2** `lib/services/AnaliticaFinancieraService.ts`: `PaisDeLaAnalitica`,
   `PAIS_DE_LA_PLATAFORMA`, octavo parámetro del constructor, `importeConNeto` / `importeSoloBruto` con
   el código y la etiqueta de `cabecera` con `etiquetaEnElPais` (design §6.1). Sin `monedaConfig`.
   Corrige el comentario de `moneda` en `lib/types/analitica-financiera.ts`. Depende de T1.1.
@@ -24,7 +24,7 @@
     `financiera-contratos.test.ts`,
     `cache-financiera.guardia.test.ts` y los de integración que construyen el servicio, verdes sin
     tocarlos.
-- [ ] **T1.3** `lib/actions/analitica-financiera.ts`: `deps.paisService`, lectura del país con
+- [x] **T1.3** `lib/actions/analitica-financiera.ts`: `deps.paisService`, lectura del país con
   `paisParaPantallasDelActor(actor?.organizacionId ?? null, …)` después del `forbidden` y solo sin
   `deps.service`; `construirServicio(logger, pais)` (design §6.2). Depende de T1.2.
   - Casos de R9 y R10 (`vi.mock` del servicio, `paisService` doblado).
@@ -85,7 +85,7 @@
   archivos de design §8; el test de SLT-241 corta 16 entradas; caso nuevo «los 17 de SLT-242 dan rojo
   con `money(` o `formatMontoString(`» (R15).
   - *Hecho:* en verde, y rojo si en uno de ellos se reescribe un `money(`.
-- [ ] **T4.2** `pais-sin-literales` (R16): fuera las 2 entradas de SLT-242, `TOPE_EXCEPCIONES = 12` y la
+- [x] **T4.2** `pais-sin-literales` (R16): fuera las 2 entradas de SLT-242, `TOPE_EXCEPCIONES = 12` y la
   línea de «Bajadas» del comentario de cabecera. No se toca `FichaQueLoRetira`.
   - Caso en `moneda-del-pais-analitica.test.tsx`: ninguna excepción con `ficha === "SLT-242"` y tope 12.
   - *Hecho:* `pnpm run test:guardias` en verde.

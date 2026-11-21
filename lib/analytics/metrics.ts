@@ -32,6 +32,7 @@
 // alternativa 1 descartada en `design.md §7`.
 
 import { EMPRESA } from "@/lib/config/marca";
+import { IMPUESTO_ROTULO } from "@/lib/constants/impuesto-rotulo";
 import { ORDER_STATUS_SEED, type OrderStatusValue } from "@/lib/types/order-status";
 import { ESTADOS_CREACION, ESTADOS_TERMINALES } from "@/lib/types/order-status-transiciones";
 import type {
@@ -174,6 +175,18 @@ const ESTADOS_CICLO = [
  * `readonly Metrica[]` que declara `design.md §3.2` — asi los consumidores acceden a
  * los campos opcionales de `definicion` sin estrechar por metrica.
  */
+/* -------------------------------------------------------------------------- */
+/* Nombre del impuesto en las etiquetas (SLT-242, R8 y R11)                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * La etiqueta de la metrica del impuesto (`ingreso_iva`), con el nombre que se le pase. El catalogo
+ * la arma con `IMPUESTO_ROTULO`; la respuesta financiera, con el impuesto del pais de la empresa.
+ */
+export function rotuloIngresoPorImpuesto(impuesto: string): string {
+  return `Ingreso por ${impuesto}`;
+}
+
 const CATALOGO = [
   /* ---------------------------- 15 OPERATIVAS ---------------------------- */
   {
@@ -598,9 +611,13 @@ const CATALOGO = [
   },
   {
     id: "ingreso_iva",
-    etiqueta: "Ingreso por IVA",
+    // SLT-242 (R11): la etiqueta y la descripcion toman el nombre del impuesto de UN solo rotulo.
+    // Con el de la plataforma, el texto es byte a byte el de antes. La etiqueta con el impuesto del
+    // pais la pone `etiquetaEnElPais` en la respuesta financiera (R8); la descripcion no la pinta
+    // ninguna pantalla, asi que se queda con el de la plataforma.
+    etiqueta: rotuloIngresoPorImpuesto(IMPUESTO_ROTULO),
     descripcion:
-      "IVA facturado sobre flete, flete de devolucion y comision COD segun el libro append-only de la wallet; DESDE LA FICHA 458-B la ANULACION de un cobro por devolución a origen se DESCUENTA de esta cifra: el reverso de su IVA (egreso_reverso_iva_flete_devolucion) entra en la definicion, de modo que el bruto cuenta los DOS movimientos y el neto es el IVA que de verdad se facturo. Se lee del ledger, no de ordenes, y las gestiones anuladas no generan movimiento que contar.",
+      `${IMPUESTO_ROTULO} facturado sobre flete, flete de devolucion y comision COD segun el libro append-only de la wallet; DESDE LA FICHA 458-B la ANULACION de un cobro por devolución a origen se DESCUENTA de esta cifra: el reverso de su ${IMPUESTO_ROTULO} (egreso_reverso_iva_flete_devolucion) entra en la definicion, de modo que el bruto cuenta los DOS movimientos y el neto es el ${IMPUESTO_ROTULO} que de verdad se facturo. Se lee del ledger, no de ordenes, y las gestiones anuladas no generan movimiento que contar.`,
     dominio: "financiera",
     clase: "live",
     unidad: "moneda",
@@ -762,7 +779,7 @@ const CATALOGO = [
     id: "ganancia_empresa",
     etiqueta: `Ganancia de ${EMPRESA.enFrase}`,
     descripcion:
-      `RESULTADO: ingresos propios de ${EMPRESA.enFrase} menos sus egresos propios, dejando fuera el dinero de terceros que solo pasa por la caja (el contra-entrega y su devolucion a la tienda). Incluye lo que ${EMPRESA.enFrase} les cobra a las tiendas (el cobro de ${EMPRESA.enFrase} a una tienda es ganancia: se toma del saldo que le guardaba) y descuenta sus anulaciones. Sin el IVA: el IVA cobrado se publica aparte en \`ingreso_iva\`. Se lee del libro append-only de la wallet, no de ordenes, y las gestiones anuladas no generan movimiento que contar.`,
+      `RESULTADO: ingresos propios de ${EMPRESA.enFrase} menos sus egresos propios, dejando fuera el dinero de terceros que solo pasa por la caja (el contra-entrega y su devolucion a la tienda). Incluye lo que ${EMPRESA.enFrase} les cobra a las tiendas (el cobro de ${EMPRESA.enFrase} a una tienda es ganancia: se toma del saldo que le guardaba) y descuenta sus anulaciones. Sin el ${IMPUESTO_ROTULO}: el ${IMPUESTO_ROTULO} cobrado se publica aparte en \`ingreso_iva\`. Se lee del libro append-only de la wallet, no de ordenes, y las gestiones anuladas no generan movimiento que contar.`,
     dominio: "financiera",
     clase: "live",
     unidad: "moneda",
@@ -947,6 +964,27 @@ const POR_ID: ReadonlyMap<string, MetricaCatalogo> = new Map(METRICAS.map((m) =>
 /** Busqueda TOTAL por id: devuelve la metrica o `undefined`. No lanza, sin `any` (R4). */
 export function getMetrica(id: string): MetricaCatalogo | undefined {
   return POR_ID.get(id);
+}
+
+/**
+ * SLT-242 (R8): las metricas cuya etiqueta nombra el impuesto, con la funcion que la arma. La regla
+ * vive en el catalogo para que el servicio no ramifique por id de metrica.
+ */
+const ETIQUETA_CON_IMPUESTO: ReadonlyMap<string, (impuesto: string) => string> = new Map<
+  MetricaId,
+  (impuesto: string) => string
+>([["ingreso_iva", rotuloIngresoPorImpuesto]]);
+
+/**
+ * SLT-242 (R8): la etiqueta de una metrica con el nombre del impuesto del pais. La de las metricas que
+ * no lo nombran sale tal cual del catalogo.
+ */
+export function etiquetaEnElPais(
+  metrica: Pick<Metrica, "id" | "etiqueta">,
+  impuesto: string,
+): string {
+  const armar = ETIQUETA_CON_IMPUESTO.get(metrica.id);
+  return armar ? armar(impuesto) : metrica.etiqueta;
 }
 
 /**
