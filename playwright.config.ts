@@ -154,6 +154,8 @@ export default defineConfig({
         "pwa-mensajero-botones-44",
         // SLT-197 · R980, R971, R977, R978: retirar del estante de la satélite, recibir en la central y volver a rutear.
         "retiro-satelite-central",
+        // SLT-224 · R1700, R1702-R1704, R1707: la recepción por QR en la central re-deriva la zona con la regla de SLT-65.
+        "recepcion-central-reconcilia-zona",
         // SLT-202: Órdenes a 1280 px con la barra de 32 px alineada y a 360 px con 44; un solo «Recibir paquete».
         "escritorio-igual-a-prod",
         // SLT-222 · R1501, R1505, R1506: la selección se mantiene entre búsquedas en /ordenes y en la satélite.
