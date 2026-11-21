@@ -281,7 +281,9 @@ async function dosDistritos(db: PrismaClient): Promise<[Geo, Geo]> {
     where: {
       activo: true,
       NOT: [{ nombre: { contains: "(" } }, { canton: { nombre: { contains: "(" } } }],
-      canton: { activo: true, provincia: { activo: true } },
+      // Solo Costa Rica: `e2e/geografia-superadmin.spec.ts` deja un pais Islandia en la misma base, y
+      // un distrito suyo no lo acepta la zona de una empresa de CR («distritoIds no existen»).
+      canton: { activo: true, paisId: "CR", provincia: { activo: true } },
     },
     select: { id: true, nombre: true, cantonId: true, canton: { select: { nombre: true, provincia: { select: { nombre: true } } } } },
     orderBy: { id: "asc" },

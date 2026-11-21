@@ -31,6 +31,15 @@ import { Prisma } from "@prisma/client";
 import type { PrismaClient } from "@prisma/client";
 
 import { condicionDeAlcance } from "@/lib/repositories/ConteoPorStatusRepository";
+import {
+  CatalogoGeograficoRepository,
+  type CatalogoPrismaClient,
+} from "@/lib/repositories/CatalogoGeograficoRepository";
+import {
+  condicionesDeLugar,
+  lugaresDelFiltro,
+  type LugaresDelFiltro,
+} from "@/lib/repositories/_shared/lugares-del-filtro";
 import type { ConsultaConteoEntregas } from "@/lib/analytics/entregas-conteo";
 import type {
   CausaCruda,
@@ -39,7 +48,7 @@ import type {
 import { CAUSA_SIN_TIPIFICAR } from "@/lib/types/conteo-devoluciones";
 
 /** Cliente MINIMO consumido (patron `ConteoPorStatusRepository`): una sola consulta cruda. */
-type ConteoDevolucionesPrismaClient = Pick<PrismaClient, "$queryRaw">;
+type ConteoDevolucionesPrismaClient = Pick<PrismaClient, "$queryRaw"> & CatalogoPrismaClient; // SLT-71: mas el catalogo, solo con faceta geografica
 
 interface FilaCausa {
   readonly causa: string;
@@ -73,7 +82,7 @@ function enLista(columna: Prisma.Sql, ids: readonly string[] | undefined): Prism
  * exactamente lo que `lib/analytics/alcance-columnas.ts` prohibe: «los TRES recortes de
  * `gestion_orden` pasan por la relacion `orden`».
  */
-export function condicionesDeDevoluciones(consulta: ConsultaConteoEntregas): Prisma.Sql[] {
+export function condicionesDeDevoluciones(consulta: ConsultaConteoEntregas, lugares: LugaresDelFiltro): Prisma.Sql[] {
   const { filtro, rango, alcance } = consulta;
 
   const condiciones: Prisma.Sql[] = [
@@ -87,17 +96,14 @@ export function condicionesDeDevoluciones(consulta: ConsultaConteoEntregas): Pri
   ];
 
   // Las cinco facetas geograficas y de tienda van sobre la ORDEN: la gestion no las tiene.
-  const facetas: [Prisma.Sql, readonly string[] | undefined][] = [
-    [Prisma.sql`o."zona_id"`, filtro.zona_id],
-    [Prisma.sql`o."provincia_id"`, filtro.provincia_id],
-    [Prisma.sql`o."canton_id"`, filtro.canton_id],
-    [Prisma.sql`o."distrito_id"`, filtro.distrito_id],
-    [Prisma.sql`o."tienda_id"`, filtro.tienda_id],
-  ];
-  for (const [columna, ids] of facetas) {
-    const fragmento = enLista(columna, ids);
-    if (fragmento) condiciones.push(fragmento);
-  }
+  // SLT-71 (design §3.3; R1, R2): las tres facetas geograficas ya no filtran por su columna sino por
+  // el LUGAR de la orden, con los ids que resolvio el dominio (`lugares`), en el mismo sitio que antes
+  // (entre la zona y la tienda). `lugares` es obligatorio: ninguna lectura filtra por columna en silencio.
+  const zona = enLista(Prisma.sql`o."zona_id"`, filtro.zona_id);
+  if (zona) condiciones.push(zona);
+  condiciones.push(...condicionesDeLugar(lugares));
+  const tienda = enLista(Prisma.sql`o."tienda_id"`, filtro.tienda_id);
+  if (tienda) condiciones.push(tienda);
 
   // El mensajero, en cambio, SI es columna propia de la gestion, y aqui es ademas la lectura
   // natural: quien registro ESTA devolucion. En las otras lecturas hacia falta un `EXISTS`
@@ -119,12 +125,20 @@ export function condicionesDeDevoluciones(consulta: ConsultaConteoEntregas): Pri
 }
 
 export class ConteoDevolucionesRepository implements IConteoDevolucionesRepository {
+  // SLT-71 (R13, R16): el catalogo, uno por instancia y creado al primer uso.
+  private catalogoRepo: CatalogoGeograficoRepository | null = null;
+
   constructor(private readonly prisma: ConteoDevolucionesPrismaClient) {}
+
+  private catalogoGeografico(): CatalogoGeograficoRepository {
+    return (this.catalogoRepo ??= new CatalogoGeograficoRepository(this.prisma));
+  }
 
   async contarDevolucionesPorCausa(
     consulta: ConsultaConteoEntregas,
   ): Promise<readonly CausaCruda[]> {
-    const where = Prisma.join(condicionesDeDevoluciones(consulta), " AND ");
+    const lugares = await lugaresDelFiltro(() => this.catalogoGeografico(), consulta.filtro);
+    const where = Prisma.join(condicionesDeDevoluciones(consulta, lugares), " AND ");
 
     // `COALESCE(causa::text, 'sin_causa')`: el `NULL` de `causa_devolucion` tiene significado
     // de dominio —una devolucion anterior a la feature 73, que NO se backfilleo— y sin el

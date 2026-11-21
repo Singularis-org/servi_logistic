@@ -5,6 +5,7 @@ import {
   type ConsultaConteoEntregas,
 } from "@/lib/analytics/entregas-conteo";
 import { CohorteCargaRepository } from "@/lib/repositories/CohorteCargaRepository";
+import { delegadosDelCatalogo } from "./_catalogo-facetas";
 
 import { ZONA_DE_CR } from "@/tests/fabricas/reglas-pais";
 // Ficha 411 / T5.3 — UNA sola consulta por lectura (R38).
@@ -30,6 +31,9 @@ function consultaDe(raw: object): ConsultaConteoEntregas {
 function prismaEspia() {
   const llamadas: string[] = [];
   const prisma = {
+    // SLT-71 (design §11.1): los delegados del catalogo, que el repositorio lee solo con faceta
+    // geografica. No pasan por `$queryRaw`, asi que no cuentan como consulta de la cohorte.
+    ...delegadosDelCatalogo(),
     $queryRaw: (trozos: TemplateStringsArray, ...valores: unknown[]) => {
       llamadas.push(trozos.join("?"));
       void valores;
