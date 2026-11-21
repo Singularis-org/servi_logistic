@@ -590,3 +590,86 @@ Modificados:
 
 Veredicto: T4.3 completa; sección de la mora del superadmin con gracia propia y descongelar a mano, con typecheck,
 lint, guardias y tests en verde.
+
+## Tanda 5: T5.1 (frontend_dev, 2026-11-21)
+
+### Archivos
+Creados:
+- `e2e/mora-congelamiento.spec.ts` (proyecto `dinero`, serie, 6 casos; design §11).
+
+Modificados:
+- `playwright.config.ts`: solo la línea `"mora-congelamiento"` en `dinero`, con su comentario `SLT-121 · R35`.
+
+### Siembra (como dueño, antes de congelar)
+`altaDeEmpresa` + `prepararAcceso` + `sembrarDatos` (`_dos-empresas-fixture`); secreto conocido para la API key
+sembrada (técnica de `guia-api-ejemplos-ejecutables.spec.ts`); distrito de la plantilla enlazado a la zona; un
+`admin` y una tienda (`adminTienda`) con `crearUsuarioE2E`; plan custom con 500,00 por orden y dos órdenes con
+cargo (`_planes-fixture`); la factura se cierra con el atajo de `pago-plataforma-confirmacion.spec.ts`
+(`factura_plataforma_cerrar` con `fin_natural_at + 6 min`): N.º 1, total 1000,00. Después,
+`organizacion_mora_congelar(org, vence_at + 30 min, 7)` con el `vence_at` leído de `factura_plataforma_mora`:
+00:30 de la plataforma del día en que vence → `congelada`. Los logins (maestro, admin, tienda, superadmin) van
+DESPUÉS de congelar (R10).
+
+### Desvíos frente al spec
+- **El `hasta` de la factura no se mueve 8 días atrás ni se fija gracia propia 1** (design §11): el trigger
+  `factura_plataforma_inmutable` rechaza con `SL118` cualquier cambio de una cerrada, también al dueño. En su lugar
+  el `ahora` de `organizacion_mora_congelar` es el de la madrugada en que la factura ya vence (el mismo artificio de
+  reloj que el cierre, solo para esta empresa desechable). Sin filas escritas a mano: todo pasa por funciones de la
+  base, servicios y fixtures existentes.
+- **Los pasos 2 y 6 («crear una orden») los hace la tienda (`adminTienda`), no el `admin`**: el `admin` no tiene
+  ninguna pantalla para crear órdenes. La única creación por pantalla es la carga masiva, que es solo de
+  `adminTienda` (`app/(app)/ordenes/page.tsx:90` y `app/api/ordenes/carga-masiva/chunk/route.ts:115`). El `admin`
+  sí se recorre para el banner (R24): lo ve congelada y no lo ve al terminar; el caso 6 afirma además que no tiene el
+  botón «Carga masiva». **R35 (3) y (7) nombran al `admin`; hay que enmendar el texto de R35 o decidir otra cosa.**
+- **HALLAZGO para el leader (R14, no del test):** con la empresa congelada, el chunk de la carga masiva responde 403
+  con `message: "Empresa suspendida por falta de pago."` (el E2E lo afirma sobre la respuesta), pero la pantalla
+  pinta `No se pudo validar el archivo (estado 403).` (`OrdenesCargaUpload.tsx > mensajeDeError`, que solo mira el
+  status de `ChunkRequestError`). R14 pide ese mensaje en la carga masiva por pantalla, y el design §6.4 dice que el
+  texto exacto «se garantiza en la API, la carga masiva y el banner». El E2E afirma «un error en pantalla»
+  (`role="alert"` en el diálogo), como dice el design §11, y registra el texto con `MEDIDO`. No lo arreglo (fuera de
+  T5.1): pide una tarea de frontend en la carga masiva o aceptar el texto actual.
+
+### R → test (Tanda 5: T5.1)
+| R | Test (`e2e/mora-congelamiento.spec.ts`) |
+|---|---|
+| R35 (1) | `beforeAll`: `organizacion_mora_congelar` → `congelada`, `congelada_at` no nula |
+| R10 | `beforeAll` (los cuatro logins con la empresa congelada) y caso 1 |
+| R24, R35 (2) | caso 1: maestro (en `/wallet`) y admin (en `/ordenes`) ven el `alert` con «Empresa congelada por falta de pago. …»; caso 6: ninguno lo ve |
+| R12, R14, R35 (3) | caso 2: el chunk responde 403 con «Empresa suspendida por falta de pago.» y `empresa_congelada`, el diálogo muestra un `alert`, no hay «Confirmar y cargar», la remisión no existe y el total de órdenes de la empresa no cambia |
+| R13, R35 (4) | caso 3: `POST /api/ordenes/api-key/carga` → 403 con el cuerpo exacto, sin orden; `GET /api/ordenes/api-key` → 200 |
+| R11, R20, R35 (5) | caso 4: el maestro registra el pago del total desde la wallet; queda en el libro y la empresa sigue congelada |
+| R19, R30, R32, R35 (6) | caso 5: la sección «Plazo de pago y mora» dice `congelada`; el superadmin confirma; `congelada_at` nula; tras recargar, «Al día» y la fila «Descongeló la operación por un pago» en «Historial de la mora» |
+| R35 (7) | caso 6: sin banner y la tienda crea la orden por la carga masiva («Confirmar y cargar 1 nueva», la remisión en su empresa, sin 5xx) |
+| R18 | `e2e/dos-empresas-humo.spec.ts` (sin cambios), corrido abajo |
+
+### Verificación (salida real)
+Base desechable `servi_logistic_slt121_e2e` (mismo servidor que la de la feature, solo cambia el nombre): `DROP` /
+`CREATE`, `pnpm exec prisma migrate deploy` («All migrations have been successfully applied.») y `pnpm run db:seed`
+(«Seed de catalogos completado (rol, order_status, vehiculos).»). `next build` con
+`NEXT_PUBLIC_APP_URL=http://localhost:3044` y `NODE_OPTIONS=--max-old-space-size=8192`: exit 0. Todo en serie, sin
+build y tests a la vez.
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: `tsc --noEmit` sin errores.
+- `npx eslint e2e/mora-congelamiento.spec.ts playwright.config.ts`: `ESLint: No issues found`, exit 0.
+- `pnpm exec vitest run tests/unit/guards/e2e-sin-saltos.guardia.test.ts`: 1 archivo, 38/38.
+- `E2E_PUERTO=3044 pnpm exec playwright test e2e/mora-congelamiento.spec.ts --project=dinero --reporter=list`,
+  corrida 1:
+  ```
+  MEDIDO factura N.º 1: total=1000.00; congelar → {"facturas":[{"id":"7065c59e-…","saldo":"1000.00","numero":1}],"resultado":"congelada","saldo_vencido":"1000.00"}
+    ✓  1 … 1. con la empresa congelada, el maestro y el admin entran y ven «Empresa congelada por falta de pago» (R10, R24, R35) (7.0s)
+  MEDIDO error de la carga masiva congelada: «No se pudo validar el archivo (estado 403).»
+    ✓  2 … 2. la tienda intenta crear una orden por la carga masiva: 403 «Empresa suspendida…», un error en pantalla y ninguna orden (R12, R14, R35) (3.2s)
+    ✓  3 … 3. la API por key responde 403 con el cuerpo de R13 a una carga, sin orden, y 200 a una consulta (R13, R35) (288ms)
+    ✓  4 … 4. el maestro registra el pago a la plataforma del total desde la wallet (R11, R35) (2.8s)
+    ✓  5 … 5. el superadmin confirma el pago y «Plazo de pago y mora» pasa a «Al día» con la fila «descongelada por pago» (R19, R30, R32, R35) (4.8s)
+    ✓  6 … 6. sin banner para el maestro ni el admin, y la tienda vuelve a crear la orden por la carga masiva (R24, R35) (9.8s)
+    6 passed (1.4m)
+  ```
+- Corrida 2, sobre la misma base: `6 passed (1.1m)`, 0 failed, 0 flaky, 0 skipped.
+- `E2E_PUERTO=3044 pnpm exec playwright test e2e/dos-empresas-humo.spec.ts --project=aislamiento --reporter=list`
+  (arrastra `plataforma-vacia` por `dependencies`): `18 passed (3.8m)` (10 de `plataforma-vacia`, 8 del humo).
+- `E2E_PUERTO=3044 pnpm exec playwright test --project=dinero --reporter=list`: `138 passed (18.3m)`, 0 failed,
+  0 flaky, 0 skipped; los 6 de `mora-congelamiento` en verde (66–71). Ningún spec ajeno falló.
+
+Veredicto: T5.1 completa; E2E de la mora en verde dos veces seguidas, con `dinero` entero y el humo de dos empresas en
+verde; quedan para el leader el desvío del `admin` en R35 y el texto de la carga masiva frente a R14.
