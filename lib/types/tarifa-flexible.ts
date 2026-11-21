@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { GestionResultado, TarifaConcepto, TarifaNivel } from "@prisma/client";
 
+import { IMPUESTO_ROTULO } from "@/lib/constants/impuesto-rotulo";
 import {
   CONCEPTOS_PAGO,
   CONCEPTOS_TIENDA,
@@ -137,9 +138,12 @@ const valorSchema = z
   .string()
   .regex(DECIMAL_NO_NEGATIVO, "El valor debe ser un numero >= 0 con hasta 2 decimales.");
 
-const ivaPctSchema = z
-  .string()
-  .regex(PORCENTAJE_0_A_100, "El IVA debe ser un porcentaje entre 0 y 100 con hasta 2 decimales.");
+/** SLT-241 (R5): el mensaje nombra el impuesto del pais de la empresa de la sesion. */
+function ivaPctSchemaDe(impuesto: string) {
+  return z
+    .string()
+    .regex(PORCENTAJE_0_A_100, `El ${impuesto} debe ser un porcentaje entre 0 y 100 con hasta 2 decimales.`);
+}
 
 /**
  * Los niveles; que la combinacion sea valida para el actor (R7) lo decide el service (T6.2).
@@ -182,39 +186,62 @@ function fulfillmentSoloMonto(dato: ConModoYValor & { concepto: string }, ctx: z
   }
 }
 
-/** Cobro a la tienda: `ivaPct` OBLIGATORIO (R3, R4). */
-export const escrituraCobroSchema = z
-  .object({
-    concepto: z.enum(CONCEPTOS_TIENDA),
-    modo: z.enum(["monto", "porcentaje"]),
-    valor: valorSchema,
-    ivaPct: ivaPctSchema,
-    ...nivelSchema,
-  })
-  .superRefine(porcentajeHasta100)
-  .superRefine(fulfillmentSoloMonto);
-
 /**
- * Pago al mensajero o a la satelite: `ivaPct` PROHIBIDO, tambien `"0"` y `null` (R45, P4). Se
- * rechaza en vez de ignorarse para que nadie crea haber guardado un IVA de pago que la app nunca
- * aplicaria. `z.never().optional()` deja el error en la ruta `ivaPct`, que es la que el service
- * devuelve como `validation_error` (T6.2).
+ * SLT-241 (R5, design §5.1) — los tres esquemas de escritura con los mensajes en el impuesto dado. El
+ * servicio los construye con el impuesto del pais de la empresa de la sesion; los exportados de abajo
+ * son los de siempre, con el rotulo de la plataforma.
  */
-export const escrituraPagoSchema = z
-  .object({
-    concepto: z.enum(CONCEPTOS_PAGO),
-    modo: z.enum(["monto", "porcentaje"]),
-    valor: valorSchema,
-    ivaPct: z.never({ error: "Los pagos al mensajero y a la satelite no llevan IVA." }).optional(),
-    ...nivelSchema,
-  })
-  .superRefine(porcentajeHasta100);
+function esquemasDeEscritura(impuesto: string) {
+  /** Cobro a la tienda: `ivaPct` OBLIGATORIO (R3, R4). */
+  const cobro = z
+    .object({
+      concepto: z.enum(CONCEPTOS_TIENDA),
+      modo: z.enum(["monto", "porcentaje"]),
+      valor: valorSchema,
+      ivaPct: ivaPctSchemaDe(impuesto),
+      ...nivelSchema,
+    })
+    .superRefine(porcentajeHasta100)
+    .superRefine(fulfillmentSoloMonto);
 
-/** Discriminada por el concepto, que fija el actor: cada concepto cae en UNA sola rama. */
-export const escrituraValorSchema = z.discriminatedUnion("concepto", [
-  escrituraCobroSchema,
-  escrituraPagoSchema,
-]);
+  /**
+   * Pago al mensajero o a la satelite: `ivaPct` PROHIBIDO, tambien `"0"` y `null` (R45, P4). Se
+   * rechaza en vez de ignorarse para que nadie crea haber guardado un IVA de pago que la app nunca
+   * aplicaria. `z.never().optional()` deja el error en la ruta `ivaPct`, que es la que el service
+   * devuelve como `validation_error` (T6.2).
+   */
+  const pago = z
+    .object({
+      concepto: z.enum(CONCEPTOS_PAGO),
+      modo: z.enum(["monto", "porcentaje"]),
+      valor: valorSchema,
+      ivaPct: z.never({ error: `Los pagos al mensajero y a la satelite no llevan ${impuesto}.` }).optional(),
+      ...nivelSchema,
+    })
+    .superRefine(porcentajeHasta100);
+
+  /** Discriminada por el concepto, que fija el actor: cada concepto cae en UNA sola rama. */
+  const valor = z.discriminatedUnion("concepto", [cobro, pago]);
+
+  return { cobro, pago, valor };
+}
+
+const ESQUEMAS_DE_LA_PLATAFORMA = esquemasDeEscritura(IMPUESTO_ROTULO);
+
+/** Cobro a la tienda, con el rotulo de la plataforma en los mensajes. */
+export const escrituraCobroSchema = ESQUEMAS_DE_LA_PLATAFORMA.cobro;
+
+/** Pago al mensajero o a la satelite, con el rotulo de la plataforma en los mensajes. */
+export const escrituraPagoSchema = ESQUEMAS_DE_LA_PLATAFORMA.pago;
+
+/** La union de los dos, con el rotulo de la plataforma en los mensajes. */
+export const escrituraValorSchema = ESQUEMAS_DE_LA_PLATAFORMA.valor;
+
+/** SLT-241 (R5): los esquemas de escritura con los mensajes en el impuesto dado. */
+export function escrituraValorSchemaDe(impuesto: string): typeof escrituraValorSchema {
+  if (impuesto === IMPUESTO_ROTULO) return escrituraValorSchema;
+  return esquemasDeEscritura(impuesto).valor;
+}
 
 export type EscrituraValorInput = z.infer<typeof escrituraValorSchema>;
 

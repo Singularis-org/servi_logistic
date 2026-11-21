@@ -14,7 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { monedaConfig } from "@/lib/config/moneda";
+import { useImpuestoDelPais, useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
 import type { VehiculoDePantalla } from "@/lib/interfaces/repositories/ITarifasPantallaRepository";
 import type { Referencia } from "@/lib/tarifas/referencia-vigente";
 import type { ModoTarifa, TarifaValorDTO } from "@/lib/types/tarifa-flexible";
@@ -58,6 +58,9 @@ export function TarifasVehiculo({
   soloLectura,
   placeholderTodos,
 }: Readonly<TarifasVehiculoProps>) {
+  // SLT-241 (R1-R4): la moneda y el impuesto del pais; sin proveedor, los de la plataforma.
+  const moneda = useMonedaDelPais();
+  const impuesto = useImpuestoDelPais();
   const anchoMinimo = ANCHO_CONCEPTO_PX + ANCHO_COLUMNA_PX * (columnas.length + 1);
   const columnasConTodos: readonly (VehiculoDePantalla | null)[] = [null, ...columnas];
 
@@ -92,8 +95,8 @@ export function TarifasVehiculo({
                       value={modoDeFila(concepto)}
                       onValueChange={(m) => onModoDeFila(concepto, m === "porcentaje" ? "porcentaje" : "monto")}
                       options={[
-                        { value: "monto", label: etiquetaModo("monto") },
-                        { value: "porcentaje", label: etiquetaModo("porcentaje") },
+                        { value: "monto", label: etiquetaModo("monto", moneda) },
+                        { value: "porcentaje", label: etiquetaModo("porcentaje", moneda) },
                       ]}
                       className={cn("mt-1 h-auto min-h-10 max-lg:min-h-11 w-[110px] font-normal", FOCO)}
                     />
@@ -114,7 +117,7 @@ export function TarifasVehiculo({
                   return (
                     <TableCell key={clave} className="text-right align-top whitespace-normal">
                       {soloLectura ? (
-                        <span>{guardado === undefined ? v === null ? placeholderTodos : TEXTOS.usaGeneral : textoValorSinIva(guardado)}</span>
+                        <span>{guardado === undefined ? v === null ? placeholderTodos : TEXTOS.usaGeneral : textoValorSinIva(guardado, moneda)}</span>
                       ) : (
                         <MontoInput
                           aria-label={TEXTOS.celdaDe(nombre, columna)}
@@ -129,11 +132,11 @@ export function TarifasVehiculo({
                       )}
                       {otroModo && !soloLectura ? (
                         <span className="mt-1 block text-xs text-muted-foreground">
-                          {actual.modo === "porcentaje" ? TEXTOS.enPorcentaje : TEXTOS.enMonto(monedaConfig.simbolo)}
+                          {actual.modo === "porcentaje" ? TEXTOS.enPorcentaje : TEXTOS.enMonto(moneda.simbolo)}
                         </span>
                       ) : null}
                       {hoy === null ? null : (
-                        <span className="mt-1 block text-xs text-muted-foreground">{TEXTOS.hoy(textoReferencia(hoy))}</span>
+                        <span className="mt-1 block text-xs text-muted-foreground">{TEXTOS.hoy(textoReferencia(hoy, moneda, impuesto))}</span>
                       )}
                       <FieldError id={idError} messages={fallos} />
                     </TableCell>

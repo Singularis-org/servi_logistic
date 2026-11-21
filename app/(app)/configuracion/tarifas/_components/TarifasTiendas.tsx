@@ -5,9 +5,11 @@ import { useState } from "react";
 import { DataTable, type Column } from "@/components/shared/DataTable";
 import { Modal } from "@/components/shared/Modal";
 import { Button } from "@/components/ui/button";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
 import { useToast } from "@/hooks/useToast";
 import { guardarValoresTarifa } from "@/lib/actions/tarifas";
 import type { TiendaDePantalla } from "@/lib/interfaces/repositories/ITarifasPantallaRepository";
+import type { FormatoMoneda } from "@/lib/config/moneda";
 import type { TarifaValorDTO } from "@/lib/types/tarifa-flexible";
 
 import { claveDeCelda } from "./tarifas-borrador";
@@ -70,21 +72,23 @@ export interface TarifasTiendasProps {
   onCambio: () => Promise<void> | void;
 }
 
-function flete(fila: FilaPrecioTienda, concepto: TarifaValorDTO["concepto"]): string {
+function flete(fila: FilaPrecioTienda, concepto: TarifaValorDTO["concepto"], moneda: FormatoMoneda): string {
   const v = fila.valores.find((x) => x.concepto === concepto);
-  return v === undefined ? TEXTOS.usaValorGeneral : textoValorSinIva(v);
+  return v === undefined ? TEXTOS.usaValorGeneral : textoValorSinIva(v, moneda);
 }
 
 /** R41, R57: la lista de precios propios. Editar y añadir usan el panel de valores: no hay un segundo formulario. */
 export function TarifasTiendas({ filas, puedeEscribir, onAnadir, onEditar, onCambio }: Readonly<TarifasTiendasProps>) {
   const toast = useToast();
+  // SLT-241 (R1): la moneda del pais; sin proveedor, la de la plataforma.
+  const moneda = useMonedaDelPais();
   const [aQuitar, setAQuitar] = useState<FilaPrecioTienda | null>(null);
 
   const columnas: Column<FilaPrecioTienda>[] = [
     { id: "tienda", value: TEXTOS.colTienda, render: (f) => <span className="font-medium">{f.tiendaNombre}</span> },
     { id: "aplica", value: TEXTOS.colAplica, render: (f) => f.aplica },
-    { id: "entregado", value: TEXTOS.colFleteEntregado, render: (f) => flete(f, "tienda_flete_entregado") },
-    { id: "devolucion", value: TEXTOS.colFleteDevolucion, render: (f) => flete(f, "tienda_flete_rechazo") },
+    { id: "entregado", value: TEXTOS.colFleteEntregado, render: (f) => flete(f, "tienda_flete_entregado", moneda) },
+    { id: "devolucion", value: TEXTOS.colFleteDevolucion, render: (f) => flete(f, "tienda_flete_rechazo", moneda) },
   ];
   if (puedeEscribir) {
     columnas.push({

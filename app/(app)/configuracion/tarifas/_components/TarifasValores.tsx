@@ -19,6 +19,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useImpuestoDelPais, useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
 import { useToast } from "@/hooks/useToast";
 import { guardarValoresTarifa, type GuardarValoresTarifaResult } from "@/lib/actions/tarifas";
 import type { VehiculoDePantalla } from "@/lib/interfaces/repositories/ITarifasPantallaRepository";
@@ -50,6 +51,7 @@ import {
   PESTANAS,
   porcentajeParaVer,
   textoReferencia,
+  textosDelImpuesto,
   textoValorSinIva,
   TEXTOS,
 } from "./tarifas-textos";
@@ -81,11 +83,11 @@ function placeholderDeNivel(nivel: Nivel): string {
   return nivel.tipo === "grupo" ? TEXTOS.usaZona : TEXTOS.usaGeneral;
 }
 
-function notaDe(nivel: Nivel, actor: TarifaActor): string {
+function notaDe(nivel: Nivel, actor: TarifaActor, ti: ReturnType<typeof textosDelImpuesto>): string {
   const vacio =
     nivel.tipo === "zona" ? TEXTOS.vacioZona : nivel.tipo === "grupo" ? TEXTOS.vacioGrupo : TEXTOS.vacioTienda;
   if (actor === "tienda") return `${vacio} ${TEXTOS.ceroCobra}`;
-  const previa = actor === "mensajero" ? TEXTOS.notaMensajero : TEXTOS.notaSatelite;
+  const previa = actor === "mensajero" ? ti.notaMensajero : ti.notaSatelite;
   return `${previa} ${vacio} ${TEXTOS.ceroPaga}`;
 }
 
@@ -108,6 +110,10 @@ export function TarifasValores({
   onSucioChange,
 }: Readonly<TarifasValoresProps>) {
   const toast = useToast();
+  // SLT-241 (R1-R4): la moneda y el impuesto del pais de la empresa; sin proveedor, los de la plataforma.
+  const moneda = useMonedaDelPais();
+  const impuesto = useImpuestoDelPais();
+  const ti = useMemo(() => textosDelImpuesto(impuesto), [impuesto]);
   const [borrador, setBorrador] = useState<Readonly<Record<string, Celda>>>({});
   const [errores, setErrores] = useState<Readonly<Record<string, string[]>>>({});
   const [guardando, setGuardando] = useState(false);
@@ -149,7 +155,7 @@ export function TarifasValores({
       },
     ];
   });
-  const plan = planDeGuardado(editadas, columnasNivel);
+  const plan = planDeGuardado(editadas, columnasNivel, impuesto);
   const haySinGuardar = plan.cambios.length > 0 || Object.keys(plan.errores).length > 0;
 
   useEffect(() => {
@@ -359,7 +365,7 @@ export function TarifasValores({
                         </TableHead>
                         {conIva ? (
                           <TableHead scope="col" className="text-xs font-semibold text-muted-foreground">
-                            {TEXTOS.colIva}
+                            {ti.colImpuesto}
                           </TableHead>
                         ) : null}
                         {conHoy ? (
@@ -390,7 +396,7 @@ export function TarifasValores({
                                 <TableCell>
                                   {/* SLT-94 (R13): un concepto con modo fijo no tiene selector; el texto dice cuál rige. */}
                                   {fijo !== null ? (
-                                    <span className="text-sm">{etiquetaModo(fijo)}</span>
+                                    <span className="text-sm">{etiquetaModo(fijo, moneda)}</span>
                                   ) : (
                                     <Select
                                       aria-label={TEXTOS.modoDe(nombre)}
@@ -399,8 +405,8 @@ export function TarifasValores({
                                         editar(concepto, null, { modo: m === "porcentaje" ? "porcentaje" : "monto" })
                                       }
                                       options={[
-                                        { value: "monto", label: etiquetaModo("monto") },
-                                        { value: "porcentaje", label: etiquetaModo("porcentaje") },
+                                        { value: "monto", label: etiquetaModo("monto", moneda) },
+                                        { value: "porcentaje", label: etiquetaModo("porcentaje", moneda) },
                                       ]}
                                       className={cn("h-auto min-h-10 max-lg:min-h-11 w-[110px]", FOCO)}
                                     />
@@ -420,7 +426,7 @@ export function TarifasValores({
                                 {conIva ? (
                                   <TableCell>
                                     <Input
-                                      aria-label={TEXTOS.ivaDe(nombre)}
+                                      aria-label={ti.impuestoDe(nombre)}
                                       inputMode="decimal"
                                       value={actual.ivaPct}
                                       onChange={(ev) => editar(concepto, null, { ivaPct: ev.target.value })}
@@ -431,18 +437,18 @@ export function TarifasValores({
                               </>
                             ) : (
                               <>
-                                <TableCell>{guardado === undefined ? "—" : etiquetaModo(guardado.modo)}</TableCell>
-                                <TableCell>{guardado === undefined ? placeholder : textoValorSinIva(guardado)}</TableCell>
+                                <TableCell>{guardado === undefined ? "—" : etiquetaModo(guardado.modo, moneda)}</TableCell>
+                                <TableCell>{guardado === undefined ? placeholder : textoValorSinIva(guardado, moneda)}</TableCell>
                                 {conIva ? (
                                   <TableCell>
-                                    {guardado?.ivaPct == null ? "—" : `${porcentajeParaVer(guardado.ivaPct)} %`}
+                                    {guardado?.ivaPct == null ? "—" : `${porcentajeParaVer(guardado.ivaPct, moneda)} %`}
                                   </TableCell>
                                 ) : null}
                               </>
                             )}
                             {conHoy ? (
                               <TableCell className="text-muted-foreground">
-                                {hoy === null ? "—" : textoReferencia(hoy)}
+                                {hoy === null ? "—" : textoReferencia(hoy, moneda, impuesto)}
                               </TableCell>
                             ) : null}
                           </TableRow>
@@ -457,7 +463,7 @@ export function TarifasValores({
               )}
 
               <div className="flex flex-wrap items-center justify-between gap-3 px-[18px] pt-3 pb-4 text-[13px] text-muted-foreground">
-                <span className="min-w-0 flex-[1_1_240px]">{notaDe(nivel, actor)}</span>
+                <span className="min-w-0 flex-[1_1_240px]">{notaDe(nivel, actor, ti)}</span>
                 {puedeEscribir ? (
                   <Button
                     type="button"
