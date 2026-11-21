@@ -39,6 +39,7 @@ import {
   conEmpresaDeLaKey,
   type AutenticadorApiKey,
 } from "@/lib/api/api-key-request";
+import { exigirEmpresaOperativa } from "@/lib/planes/empresa-congelada";
 import { TOPE_FILAS_HABILITAR } from "@/lib/config/habilitacion-api";
 
 // Prisma y el hash de la API key no corren en edge.
@@ -88,6 +89,9 @@ export async function handleHabilitarApi(
 
     // SL-17 (R13): todo lo que sigue opera con la empresa de la key, no con la de nadie mas.
     return conEmpresaDeLaKey(auth, async () => {
+      // SLT-121 (design §6.2, R13): con la empresa de la key congelada por mora, 403 `empresa_congelada`
+      // antes de leer el cuerpo o tocar nada (auth -> puerta -> cuerpo).
+      await exigirEmpresaOperativa();
       // 2. R6: cuerpo JSON + envoltorio. Los dos fallos posibles son el mismo 422.
       let json: unknown;
       try {

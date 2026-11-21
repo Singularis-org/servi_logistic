@@ -139,6 +139,7 @@ describe("SLT-136/R8, R22, R26 — campanita, correo y PDF dicen el mismo perío
       factura,
       contacto: null,
       urlApp: null,
+      gracia: 7,
     });
     const frase = textoFacturaEmitida(3, periodoDeFactura(DESDE, HASTA));
     expect(frase).toBe("Se emitió la factura N.º 3 de la plataforma, del 01/11/2026 al 15/11/2026.");

@@ -190,6 +190,8 @@ export const MODULO_POR_ACTION: Readonly<Record<string, Destino>> = {
   manifiesto: "nucleo",
   "mis-asignaciones": "nucleo",
   "modulos-empresa": "nucleo",
+  // SLT-121: la mora de una empresa; el banner de maestro y admin, y la sección del superadmin, ambos núcleo.
+  "mora-empresa": "nucleo",
   notificaciones: "nucleo",
   "orden-ayuda": "nucleo",
   "orden-historial": "nucleo",
@@ -274,6 +276,9 @@ export const MODULO_POR_JOB: Readonly<Record<JobTipo, Destino>> = {
   factura_plataforma_aviso: "nucleo",
   // SLT-215 (design §5): el cierre diario de los niveles por volumen; de plataforma, sin módulo.
   plan_niveles_cerrar: "nucleo",
+  // SLT-121 (design §4): la corrida diaria de la mora, de plataforma, y sus avisos por correo; sin módulo.
+  mora_diaria: "nucleo",
+  mora_aviso_correo: "nucleo",
 };
 
 /** §3.4 — carpetas de `app/api/cron/`. */

@@ -6,6 +6,8 @@ import userEvent from "@testing-library/user-event";
 import { OrdenesCargaUpload } from "@/app/(app)/ordenes/_components/OrdenesCargaUpload";
 import type { ArchivoParseado } from "@/app/(app)/ordenes/_components/carga-masiva-parser";
 import type { RowResult } from "@/lib/types/carga-masiva";
+import { ChunkRequestError } from "@/app/(app)/ordenes/_components/carga-masiva-chunks";
+import { MENSAJE_EMPRESA_CONGELADA } from "@/lib/planes/mora";
 
 // Se controlan el parseo y la orquestación de chunks; el resto (dedup, combinar,
 // clasificar, errores) queda real para ejercitar la lógica del componente.
@@ -249,6 +251,38 @@ describe("OrdenesCargaUpload — validaciones de borde", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/máximo permitido/i);
     expect(procesarEnChunksMock).not.toHaveBeenCalled();
+    expect(onValidated).not.toHaveBeenCalled();
+  });
+});
+
+// SLT-121 (R14, design §6.3): con la empresa congelada, el chunk responde 403 con
+// `details.codigo = "empresa_congelada"` y la pantalla rechaza el lote con el texto exacto.
+describe("OrdenesCargaUpload — empresa congelada (SLT-121/R14)", () => {
+  it("SLT-121/R14: un 403 empresa_congelada muestra exactamente «Empresa suspendida por falta de pago.»", async () => {
+    const user = userEvent.setup();
+    parseArchivoMock.mockResolvedValue(archivo(["REM-1"]));
+    procesarEnChunksMock.mockRejectedValue(new ChunkRequestError(403, "empresa_congelada"));
+    const onValidated = vi.fn();
+
+    render(<OrdenesCargaUpload onValidated={onValidated} />);
+    await user.upload(fileInput(), csvFile());
+
+    const alerta = await screen.findByRole("alert");
+    expect(alerta.textContent?.trim()).toBe(MENSAJE_EMPRESA_CONGELADA);
+    expect(MENSAJE_EMPRESA_CONGELADA).toBe("Empresa suspendida por falta de pago.");
+    expect(onValidated).not.toHaveBeenCalled();
+  });
+
+  it("SLT-121/R14: otro 403 sin ese codigo conserva el mensaje con el estado", async () => {
+    const user = userEvent.setup();
+    parseArchivoMock.mockResolvedValue(archivo(["REM-1"]));
+    procesarEnChunksMock.mockRejectedValue(new ChunkRequestError(403));
+    const onValidated = vi.fn();
+
+    render(<OrdenesCargaUpload onValidated={onValidated} />);
+    await user.upload(fileInput(), csvFile());
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("No se pudo validar el archivo (estado 403).");
     expect(onValidated).not.toHaveBeenCalled();
   });
 });

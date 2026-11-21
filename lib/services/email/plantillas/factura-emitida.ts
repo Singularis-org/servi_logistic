@@ -2,7 +2,8 @@ import { sumaDeCuotas } from "@/components/shared/facturas/facturas-vista";
 import { formatearMontoEn, MONEDA_DE_LOS_PLANES, SIN_MONTO_RAYA } from "@/lib/config/moneda";
 import type { EmailMessage } from "@/lib/interfaces/external/IEmailSender";
 import { periodoDeFactura, textoFacturaEmitida } from "@/lib/notificaciones/emitir";
-import { aCentimos, aTexto } from "@/lib/planes/centimos";
+import { aCentimos, aCentimosConSigno, aTexto } from "@/lib/planes/centimos";
+import { fechaLegible, fechaLimiteDePago } from "@/lib/planes/mora";
 import { componerCorreo, type Bloque } from "@/lib/services/email/plantillas/plantilla-marca";
 import type { FacturaPlataformaDTO } from "@/lib/types/factura-plataforma";
 
@@ -33,6 +34,8 @@ export const FACTURA_EMITIDA_TEXTOS = {
   cargos: "Cargos por orden",
   reversos: "Reversos de cargos",
   total: "Total a pagar",
+  /** SLT-121 R25: la fecha límite de pago, solo con total mayor que 0. */
+  pagaHasta: (fechaLimite: string) => `Paga hasta el ${fechaLegible(fechaLimite)}.`,
   boton: "Ver factura",
   /** R29: sin la URL de la app no hay botón; el correo dice dónde está la factura. */
   sinUrl: "Encuéntrala en Mi plan, dentro de la app.",
@@ -52,6 +55,11 @@ export interface FacturaEmitidaParams {
   contacto: string | null;
   /** URL base de la app (`baseUrlDeLaApp()`), o `null`: sin ella, sin botón (R29). */
   urlApp: string | null;
+  /**
+   * SLT-121 (R25): la gracia vigente de la empresa (la propia o la global), en días. La fecha límite sale de ella con
+   * la gemela de `factura_plataforma_mora` (`fechaLimiteDePago`), así el correo dice lo mismo que el banner.
+   */
+  gracia: number;
 }
 
 /**
@@ -72,6 +80,10 @@ export function plantillaFacturaEmitida(p: FacturaEmitidaParams): EmailMessage {
     linea(T.cargos, factura.cargos),
     linea(T.reversos, aTexto(-aCentimos(factura.reversos))),
     linea(T.total, factura.total),
+    // SLT-121 R25: una factura de 0 (o negativa) no tiene nada que pagar, así que no lleva fecha límite.
+    ...(aCentimosConSigno(factura.total) > BigInt(0)
+      ? [{ tipo: "parrafo", texto: T.pagaHasta(fechaLimiteDePago(factura.hasta, p.gracia)) } satisfies Bloque]
+      : []),
     p.urlApp === null
       ? { tipo: "nota", texto: T.sinUrl }
       : { tipo: "boton", texto: T.boton, url: `${p.urlApp}/mi-plan` },

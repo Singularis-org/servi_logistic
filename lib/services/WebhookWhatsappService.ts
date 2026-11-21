@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 
 import { conEmpresa } from "@/lib/db/contexto-empresa";
+import { permitidoEnMora } from "@/lib/db/permiso-en-mora";
 import { PaisIncompleto } from "@/lib/db/errores-pais";
 import type { IResumenSecreto } from "@/lib/interfaces/external/IResumenSecreto";
 import type {
@@ -198,8 +199,9 @@ export class WebhookWhatsappService implements IWebhookWhatsappService {
     let validas = 0;
     let firmasInvalidas = 0;
     for (const lote of lotes) {
-      const valida = await conEmpresa(lote.destino.organizacionId, () =>
-        this.procesarSiFirmaValida(lote, cuerpoCrudo, firma, resumen),
+      // SLT-121 (design §6.1; R15): los mensajes entrantes se guardan también con la empresa congelada.
+      const valida = await permitidoEnMora("whatsapp_entrante", () =>
+        conEmpresa(lote.destino.organizacionId, () => this.procesarSiFirmaValida(lote, cuerpoCrudo, firma, resumen)),
       );
       if (valida) validas += 1;
       else firmasInvalidas += 1;
@@ -278,7 +280,10 @@ export class WebhookWhatsappService implements IWebhookWhatsappService {
    */
   private async anotarSinRomper(destino: DestinoWebhook): Promise<void> {
     try {
-      await conEmpresa(destino.organizacionId, () => this.deps.anotarWebhook(destino.integracionId, this.reloj()));
+      // SLT-121 (R15): anotar el contacto de Meta es parte de la ingesta, también con la empresa congelada.
+      await permitidoEnMora("whatsapp_entrante", () =>
+        conEmpresa(destino.organizacionId, () => this.deps.anotarWebhook(destino.integracionId, this.reloj())),
+      );
     } catch (error) {
       this.deps.logger.warn(`[webhook-whatsapp] ultimo webhook no anotado: ${nombreDelError(error)}`);
     }

@@ -40,6 +40,8 @@ const PARAMS: FacturaEmitidaParams = {
   },
   contacto: "soporte@plataforma.example",
   urlApp: "https://app.example.com",
+  // SLT-121 R25: con `hasta` = 1 dic a las 00:00 de la plataforma, la fecha límite es el 8 dic.
+  gracia: 7,
 };
 
 const correo = (extra: Partial<FacturaEmitidaParams> = {}) => plantillaFacturaEmitida({ ...PARAMS, ...extra });
@@ -69,6 +71,8 @@ describe("SLT-136/R26 — el correo de la factura emitida", () => {
         "Reversos de cargos: -₡300",
         "",
         "Total a pagar: ₡13.434,75",
+        "",
+        "Paga hasta el 08/12/2026.",
         "",
         "Ver factura: https://app.example.com/mi-plan",
         "",
@@ -118,5 +122,24 @@ describe("SLT-136/R29 — sin la URL de la app", () => {
     expect(m.html).not.toContain("/mi-plan");
     expect(m.text).toContain("Encuéntrala en Mi plan, dentro de la app.");
     expect(m.html).toContain("Encuéntrala en Mi plan, dentro de la app.");
+  });
+});
+
+describe("SLT-121/R25 — la fecha límite de pago en el correo de cierre", () => {
+  it("⭑ con total mayor que 0 lleva «Paga hasta el dd/mm/aaaa», con la gracia de la empresa", () => {
+    expect(correo().text).toContain("Paga hasta el 08/12/2026.\n");
+    expect(correo().html).toContain("Paga hasta el 08/12/2026.");
+    // La gracia propia de la empresa manda: 15 días desde el 1 dic.
+    expect(correo({ gracia: 15 }).text).toContain("Paga hasta el 16/12/2026.\n");
+    // Fin de mes: el 30 de noviembre más 1 día de gracia pasa al 1 de diciembre.
+    expect(correo({ gracia: 1, factura: { ...PARAMS.factura, hasta: new Date("2026-11-30T06:00:00.000Z") } }).text).toContain(
+      "Paga hasta el 01/12/2026.\n",
+    );
+  });
+
+  it("⭑ con total 0 o negativo no la lleva", () => {
+    expect(conFactura({ total: "0.00" }).text).not.toContain("Paga hasta");
+    expect(conFactura({ total: "-50.00" }).text).not.toContain("Paga hasta");
+    expect(conFactura({ total: "0.01" }).text).toContain("Paga hasta el 08/12/2026.");
   });
 });

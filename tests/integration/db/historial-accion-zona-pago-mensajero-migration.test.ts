@@ -455,6 +455,12 @@ describe.skipIf(!HAY_BASE_DE_DATOS)("380/T3 (b) — el down recrea la lista PREV
       // SLT-225: los dos tipos de `20261123120000_historial_zona_desactivada`.
       "zona_desactivada",
       "zona_reactivada",
+      // SLT-121: los cinco tipos de `20261126120000_mora_enums`.
+      "empresa_congelada",
+      "empresa_descongelada_por_pago",
+      "empresa_descongelada_a_mano",
+      "empresa_descongelada_por_gracia",
+      "factura_dias_gracia_cambiada",
     ];
     const catalogoPrevio = HISTORIAL_ACCION_TIPOS.filter(
       (t) => t !== VALOR_NUEVO && !POSTERIORES.includes(t),

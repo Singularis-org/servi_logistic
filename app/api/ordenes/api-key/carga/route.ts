@@ -36,6 +36,7 @@ import {
   conEmpresaDeLaKey,
   type AutenticadorApiKey,
 } from "@/lib/api/api-key-request";
+import { exigirEmpresaOperativa } from "@/lib/planes/empresa-congelada";
 import type {
   DownloadType,
   IEtiquetasDescargaService,
@@ -279,6 +280,9 @@ export async function handleCargaApi(req: Request, deps: CargaApiDeps = {}): Pro
 
     // SL-17 (R13): todo lo que sigue opera con la empresa de la key, no con la de nadie mas.
     return conEmpresaDeLaKey(auth, async () => {
+      // SLT-121 (design §6.2, R13): con la empresa de la key congelada por mora, 403 `empresa_congelada`
+      // antes de leer el cuerpo o tocar nada (auth -> puerta -> cuerpo).
+      await exigirEmpresaOperativa();
       // 3. R7: cuerpo válido (JSON + schema).
       let json: unknown;
       try {

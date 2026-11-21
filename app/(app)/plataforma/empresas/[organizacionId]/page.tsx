@@ -11,6 +11,11 @@ import { zonaDelBorde } from "@/lib/actions/_shared/zona-del-borde";
 import { descargarFacturaEmpresaAction, verDetalleFacturaEmpresaAction } from "@/lib/actions/facturas-plataforma";
 import { fijarModuloEmpresaAction } from "@/lib/actions/modulos-empresa";
 import {
+  descongelarEmpresaAction,
+  fijarGraciaEmpresaAction,
+  verMoraDeEmpresaAction,
+} from "@/lib/actions/mora-empresa";
+import {
   anularPagoConfirmadoAction,
   confirmarPagoPlataformaAction,
   registrarPagoPorFueraAction,
@@ -37,9 +42,11 @@ import {
 } from "@/lib/planes/ciclo";
 import type { PagosDeEmpresa } from "@/lib/types/pago-plataforma";
 import type { FacturaPlataformaDTO } from "@/lib/types/factura-plataforma";
+import type { MoraEmpresaVista } from "@/lib/types/mora";
 import type { PlanDeEmpresaVista, PlanDTO, PreciosQueRigen } from "@/lib/types/planes";
 
 import { ModulosEmpresa } from "./_components/ModulosEmpresa";
+import { MoraEmpresa } from "./_components/MoraEmpresa";
 import { PagosConfirmados } from "./_components/PagosConfirmados";
 import { PagosPorConfirmar } from "./_components/PagosPorConfirmar";
 import { PlanEmpresa } from "./_components/PlanEmpresa";
@@ -108,6 +115,20 @@ async function leerFacturas(actor: Actor, organizacionId: string): Promise<Factu
     return r.estado === "ok" ? r.facturas : null;
   } catch (error) {
     console.error("[EmpresaDetallePage] verFacturasDeEmpresa lanzó", error);
+    return null;
+  }
+}
+
+/**
+ * SLT-121 (design §7.2; R31, R32) — la mora de la empresa, aislada como el plan: un throw o un estado distinto de
+ * `ok` da `null`, la sección dice «No se pudo cargar la mora» y el resto del detalle se pinta igual.
+ */
+async function leerMora(actor: Actor, organizacionId: string): Promise<MoraEmpresaVista | null> {
+  try {
+    const r = await verMoraDeEmpresaAction(organizacionId, { getActor: async () => actor });
+    return r.estado === "ok" ? r.datos : null;
+  } catch (error) {
+    console.error("[EmpresaDetallePage] verMoraDeEmpresaAction lanzó", error);
     return null;
   }
 }
@@ -201,13 +222,14 @@ export default async function EmpresaDetallePage({
   if (!actor || !esPlataforma(actor.rol)) notFound();
 
   const { organizacionId } = await params;
-  const [r, plan, asignables, pagos, facturas, zona] = await Promise.all([
+  const [r, plan, asignables, pagos, facturas, zona, mora] = await Promise.all([
     verModulosEmpresa(actor, { organizacionId }),
     leerPlan(actor, organizacionId),
     leerAsignables(organizacionId),
     leerPagos(actor, organizacionId),
     leerFacturas(actor, organizacionId),
     leerZona(organizacionId),
+    leerMora(actor, organizacionId),
   ]);
   if (r.estado !== "ok") notFound();
   const planActual = await leerPlanActual(actor, plan, asignables);
@@ -251,6 +273,13 @@ export default async function EmpresaDetallePage({
           </TabsList>
 
           <TabsContent value="empresa" className="flex flex-col gap-6">
+            {/* SLT-121 (design §7.2): «Plazo de pago y mora», antes del plan; las actions, ligadas a la empresa de la URL. */}
+            <MoraEmpresa
+              datos={mora}
+              fijarGracia={fijarGraciaEmpresaAction.bind(null, empresa.organizacionId)}
+              descongelar={descongelarEmpresaAction.bind(null, empresa.organizacionId)}
+            />
+
             <PlanEmpresa
               organizacionId={empresa.organizacionId}
               empresaNombre={empresa.nombre}

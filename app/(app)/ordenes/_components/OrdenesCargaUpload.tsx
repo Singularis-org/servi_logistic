@@ -27,6 +27,7 @@ import {
 import { findMissingHeaders } from "@/lib/types/carga-masiva";
 import { FORMATO_CANTON_DISTRITO } from "@/lib/utils/canton-distrito";
 import { cargaMasivaConfig } from "@/lib/config/carga-masiva";
+import { MENSAJE_EMPRESA_CONGELADA } from "@/lib/planes/mora";
 
 export interface OrdenesCargaUploadResult {
   /** Clasificación agregada del dry-run (nada persistido aún). */
@@ -67,9 +68,18 @@ function mensajeCabeceraFaltante(faltantes: string[], headers: string[]): string
     : base;
 }
 
+/**
+ * SLT-121 (R14, design §6.3): `details.codigo` del 403 del chunk con la empresa congelada. Es el
+ * `CODIGO_EMPRESA_CONGELADA` de `lib/planes/empresa-congelada.ts`, que no se importa aquí porque ese
+ * módulo arrastra `node:async_hooks` (vía `lib/db/contexto-empresa`) y este es un componente de cliente.
+ */
+const CODIGO_EMPRESA_CONGELADA = "empresa_congelada";
+
 function mensajeDeError(cause: unknown): string {
   if (cause instanceof ParseArchivoError) return cause.message;
   if (cause instanceof ChunkRequestError) {
+    // R14: con la empresa congelada, el lote entero se rechaza con el texto exacto de la API.
+    if (cause.codigo === CODIGO_EMPRESA_CONGELADA) return MENSAJE_EMPRESA_CONGELADA;
     return `No se pudo validar el archivo (estado ${cause.status}).`;
   }
   return cause instanceof Error && cause.message

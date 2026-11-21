@@ -31,6 +31,7 @@ import { OrdenRepository } from "@/lib/repositories/OrdenRepository";
 import { buildReprogramadasRetenidasService } from "@/lib/services/reprogramadas-retenidas-composicion";
 import { avisosDiariosConfig } from "@/lib/config/avisos-diarios";
 import { getPrismaClient } from "@/lib/db/prisma-client";
+import { permitidoEnMora } from "@/lib/db/permiso-en-mora";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { esPlataforma } from "@/lib/auth/plataforma";
 import {
@@ -135,7 +136,8 @@ export async function marcarTodasLeidas(
   const r = await withErrorHandler(async () => {
     const actor = await actorRequerido(deps);
     if (sinNotificacionesDeEmpresa(actor)) return { status: "ok" as const, marcadas: 0 };
-    return (deps.service ?? buildService()).marcarTodasLeidas(actor);
+    // SLT-121 (design §6.1, decision P2): marcar sus avisos como leídos vale con la empresa congelada.
+    return permitidoEnMora("cuenta_propia", () => (deps.service ?? buildService()).marcarTodasLeidas(actor));
   });
   return isAppErrorShape(r) ? toActionError(r) : r;
 }
@@ -151,7 +153,8 @@ export async function descartarNotificacion(
     // Su lista siempre está vacía, así que no hay ninguna que sea suya: es el `forbidden` que el
     // servicio ya da a quien descarta una notificación que no ve.
     if (sinNotificacionesDeEmpresa(actor)) throw new ForbiddenError();
-    return (deps.service ?? buildService()).descartar(notificacionId, actor);
+    // SLT-121 (decision P2): descartar un aviso propio, también con la empresa congelada.
+    return permitidoEnMora("cuenta_propia", () => (deps.service ?? buildService()).descartar(notificacionId, actor));
   });
   return isAppErrorShape(r) ? toActionError(r) : r;
 }
