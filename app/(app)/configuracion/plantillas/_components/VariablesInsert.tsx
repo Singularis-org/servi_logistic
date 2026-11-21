@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useState, type RefObject } from "react";
 
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
 import { previewPlantilla } from "@/lib/actions/plantillas";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -102,6 +103,7 @@ export function VariablesInsert({
   const [preview, setPreview] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const previewLabelId = useId();
+  const moneda = useMonedaDelPais();
   function insertarClave(key: string) {
     const el = textareaRef.current;
     const start = el?.selectionStart ?? value.length;
@@ -170,7 +172,7 @@ export function VariablesInsert({
         .filter((clave) => !nombresInforme.has(clave))
         .map((clave) => ({ clave, etiqueta: clave, retirada: false }))
     : clavesSinCampo(value, variablesNombres);
-  const textoPreview = deInforme ? componerVistaPrevia(value, variablesInforme).texto : (preview ?? "");
+  const textoPreview = deInforme ? componerVistaPrevia(value, variablesInforme, {}, moneda).texto : (preview ?? "");
 
   return (
     <div className="flex flex-col gap-3">

@@ -28,7 +28,7 @@ const CREADO = new Date("2026-11-19T15:00:00.000Z");
 
 const MAESTRO: Actor = { usuarioId: MAESTRA_ID, rol: RolValue.maestro, organizacionId: ORG };
 
-const pago = (id: string, registradoPor: string): MovimientoDeCajaParaAutoria => ({
+const pago = (id: string, registradoPor: string | null): MovimientoDeCajaParaAutoria => ({
   id,
   tipo: "egreso",
   categoria: "egreso_pago_plataforma",
@@ -62,7 +62,7 @@ const MOVS: MovimientoDeCajaParaAutoria[] = [
 /** El nombre del superadmin: si llega a una fila, la marca falló (R13, R36). */
 const NOMBRE_SUPERADMIN = "Sara Superadmin";
 
-function montar(marcas: MarcasDeLaPlataforma) {
+function montar(marcas: MarcasDeLaPlataforma, movs: readonly MovimientoDeCajaParaAutoria[] = MOVS) {
   const constancia = (por: string): AnulacionDeDocumento => ({
     motivo: "Pago duplicado",
     por,
@@ -71,7 +71,7 @@ function montar(marcas: MarcasDeLaPlataforma) {
   const vacio = () => new Map();
   const marcasDeLaPlataforma = vi.fn<ILibroCajaAutoriaRepository["marcasDeLaPlataforma"]>(async () => marcas);
   const repo: ILibroCajaAutoriaRepository = {
-    movimientos: async (ids) => MOVS.filter((m) => ids.includes(m.id)),
+    movimientos: async (ids) => movs.filter((m) => ids.includes(m.id)),
     nombres: async () =>
       new Map([
         [SUPERADMIN_ID, NOMBRE_SUPERADMIN],
@@ -109,9 +109,12 @@ function montar(marcas: MarcasDeLaPlataforma) {
   return { service, marcasDeLaPlataforma };
 }
 
-async function filas(marcas: MarcasDeLaPlataforma): Promise<Map<string, AutoriaDeFilaDTO>> {
-  const { service } = montar(marcas);
-  const r = await service.resolver({ movimientoIds: MOVS.map((m) => m.id) }, MAESTRO);
+async function filas(
+  marcas: MarcasDeLaPlataforma,
+  movs: readonly MovimientoDeCajaParaAutoria[] = MOVS,
+): Promise<Map<string, AutoriaDeFilaDTO>> {
+  const { service } = montar(marcas, movs);
+  const r = await service.resolver({ movimientoIds: movs.map((m) => m.id) }, MAESTRO);
   if (r.status !== "ok") throw new Error(`resolver respondió ${r.status}`);
   return new Map(r.filas.map((f) => [f.movimientoId, f]));
 }
@@ -119,6 +122,7 @@ async function filas(marcas: MarcasDeLaPlataforma): Promise<Map<string, AutoriaD
 const MARCAS: MarcasDeLaPlataforma = {
   registrados: new Set([POR_FUERA]),
   anulados: new Set([POR_FUERA]),
+  enLinea: new Set(),
 };
 
 describe("SLT-143 — la marca de la plataforma en el libro de la caja (R13, R14, R36)", () => {
@@ -166,7 +170,7 @@ describe("SLT-143 — la marca de la plataforma en el libro de la caja (R13, R14
   });
 
   it("R13: un pago por fuera aún vigente lleva la marca del registro; su contra-asiento sin anulación de la plataforma, no", async () => {
-    const todas = await filas({ registrados: new Set([POR_FUERA]), anulados: new Set() });
+    const todas = await filas({ registrados: new Set([POR_FUERA]), anulados: new Set(), enLinea: new Set() });
     expect(todas.get(POR_FUERA)?.registro.automatico?.accion).toBe("plataforma");
     expect(todas.get(CONTRA_PLATAFORMA)?.registro.automatico?.accion).not.toBe("plataforma_anulacion");
   });
@@ -175,5 +179,44 @@ describe("SLT-143 — la marca de la plataforma en el libro de la caja (R13, R14
     const { service, marcasDeLaPlataforma } = montar(MARCAS);
     await service.resolver({ movimientoIds: ["0a000000-0000-4000-8000-0000000000ff"] }, MAESTRO);
     expect(marcasDeLaPlataforma).toHaveBeenCalledWith([]);
+  });
+});
+
+// SLT-226 (design §5.1, §8; R29) — «Pagado en línea» en «Registró». El pago en línea nace con `registrado_por`
+// nulo y `origen_tipo = 'gasto'`, igual que un gasto de plantilla: solo la marca `enLinea` los distingue. La
+// lectura real de la columna `en_linea` con la RLS la afirma `tests/integration/db/cobro-pago-en-linea.test.ts`.
+const EN_LINEA = "0a000000-0000-4000-8000-000000000006";
+const DE_PLANTILLA = "0a000000-0000-4000-8000-000000000007";
+const MOVS_EN_LINEA: MovimientoDeCajaParaAutoria[] = [
+  pago(EN_LINEA, null),
+  pago(DE_PLANTILLA, null),
+  pago(POR_FUERA, SUPERADMIN_ID),
+];
+const MARCAS_EN_LINEA: MarcasDeLaPlataforma = {
+  registrados: new Set([POR_FUERA]),
+  anulados: new Set(),
+  enLinea: new Set([EN_LINEA]),
+};
+
+describe("SLT-226 — «Pagado en línea» en Registró (R29)", () => {
+  it("R29: el pago aprobado en línea dice «pago_en_linea» en Registró, sin persona", async () => {
+    const f = (await filas(MARCAS_EN_LINEA, MOVS_EN_LINEA)).get(EN_LINEA);
+    expect(f?.registro).toEqual({ nombre: null, automatico: { accion: "pago_en_linea", por: null } });
+  });
+
+  it("R29: un pago a la plataforma automático sin la marca en línea sigue en «plantilla_gasto_fijo»", async () => {
+    const f = (await filas(MARCAS_EN_LINEA, MOVS_EN_LINEA)).get(DE_PLANTILLA);
+    expect(f?.registro).toEqual({ nombre: null, automatico: { accion: "plantilla_gasto_fijo", por: null } });
+  });
+
+  it("R29: la marca por fuera de SLT-143 sigue en «plataforma» junto a un pago en línea", async () => {
+    const f = (await filas(MARCAS_EN_LINEA, MOVS_EN_LINEA)).get(POR_FUERA);
+    expect(f?.registro).toEqual({ nombre: null, automatico: { accion: "plataforma", por: null } });
+  });
+
+  it("R29: pide las marcas también del pago en línea", async () => {
+    const { service, marcasDeLaPlataforma } = montar(MARCAS_EN_LINEA, MOVS_EN_LINEA);
+    await service.resolver({ movimientoIds: MOVS_EN_LINEA.map((m) => m.id) }, MAESTRO);
+    expect(new Set(marcasDeLaPlataforma.mock.calls[0][0])).toEqual(new Set([EN_LINEA, DE_PLANTILLA, POR_FUERA]));
   });
 });

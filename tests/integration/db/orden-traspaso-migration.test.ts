@@ -327,6 +327,10 @@ describe("427/T2 — el UP y el DOWN, leidos del archivo", () => {
       // SLT-247 (2026-11-20): el valor `retorno_por_rechazo_cierre` del enum del historial; no toca
       // `orden_traspaso_mensajero`.
       "20261124130000_orden_historial_origen_retorno_rechazo_cierre",
+      // SLT-226: los dos valores del historial de plataforma (sola, por el 55P04) y las tablas `cobro_intento` y
+      // `cobro_webhook_evento` con sus funciones; no tocan `orden_traspaso_mensajero`.
+      "20261124140000_cobro_historial_enum",
+      "20261124140100_cobro_intento",
       // SLT-121: los siete valores de enum de la mora, y las columnas, funciones y triggers del congelamiento. A
       // `orden_traspaso_mensajero` solo le suma el trigger por sentencia `…_bloqueo_por_mora`; no cambia su tabla.
       "20261126120000_mora_enums",

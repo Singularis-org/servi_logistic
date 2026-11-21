@@ -158,7 +158,8 @@ export interface RegistroDTO {
   automatico: {
     // SLT-143 (design §5, §5.1; R13, R36): `plataforma` es el pago que registró el superadmin y
     // `plataforma_anulacion`, el contra-asiento de su anulación. Los dos van con `por: null`: el nombre del
-    // superadmin no llega a la empresa.
+    // superadmin no llega a la empresa. SLT-226 (design §5.1, R29): `pago_en_linea` es el pago aprobado en línea,
+    // también con `por: null`.
     accion:
       | "aprobacion_cierre"
       | "plantilla_gasto_fijo"
@@ -167,7 +168,8 @@ export interface RegistroDTO {
       | "premio_del_ranking"
       | "sistema"
       | "plataforma"
-      | "plataforma_anulacion";
+      | "plataforma_anulacion"
+      | "pago_en_linea";
     por: string | null;
   } | null;
 }

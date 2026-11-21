@@ -2,6 +2,7 @@
 // `{{clave}}` del cuerpo de una plantilla. No hay lista blanca cerrada: cualquier clave
 // bien formada se ACEPTA (Decision humana 4); solo se valida la FORMA (R16).
 
+import type { FormatoMoneda } from "@/lib/config/moneda";
 import {
   CAMPOS_PLANTILLA_POR_CLAVE,
   DATOS_PLANTILLA_EJEMPLO,
@@ -87,13 +88,22 @@ export function renderPlantilla(cuerpo: string, valores: Record<string, string>)
  * seguridad para llamadores que no resuelvan todas las claves, pero ya no es alcanzable desde
  * aqui: `resolverValoresPlantilla` devuelve una entrada por CADA clave extraida.
  */
-export function previewConEjemplos(cuerpo: string, zona?: string): string {
+export function previewConEjemplos(
+  cuerpo: string,
+  zona?: string,
+  moneda?: FormatoMoneda,
+): string {
   // SLT-42 (R22): `zona` es la del pais de la empresa; las fechas con hora del ejemplo se pintan
   // en ella, como en el envio real. Hace falta solo si el cuerpo pinta alguna (`necesitaZona`).
-  return renderPlantilla(
-    cuerpo,
-    resolverValoresPlantilla(extraerVariables(cuerpo), DATOS_PLANTILLA_EJEMPLO, zona),
-  );
+  // SLT-241 (R12): `moneda` es la del pais de la empresa; el importe del ejemplo se pinta en ella,
+  // como en el envio real. Sin ella, la de la plataforma (la vista previa del navegador): entonces
+  // la llamada es la de siempre, con tres argumentos (lo vigila `preview-mismo-motor.test.ts`).
+  const variables = extraerVariables(cuerpo);
+  const valores =
+    moneda === undefined
+      ? resolverValoresPlantilla(variables, DATOS_PLANTILLA_EJEMPLO, zona)
+      : resolverValoresPlantilla(variables, DATOS_PLANTILLA_EJEMPLO, zona, moneda);
+  return renderPlantilla(cuerpo, valores);
 }
 
 /**

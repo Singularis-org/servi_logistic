@@ -770,3 +770,34 @@ Los 35 requisitos tienen al menos un test concreto; ninguno queda sin cubrir.
 Verificación de cierre: tras el merge con `origin/dev` (`448056ee`), el typecheck y los tests locales los mató el
 sistema por falta de memoria. Por indicación del leader, la verificación del merge la hace el CI de #264 (no se
 relanzó en local ni se corrió `./init.sh`).
+
+## Merge con `origin/dev` (#263 SLT-226, #275 SLT-241) — backend_dev, 2026-11-21
+
+### Conflictos
+- `tests/integration/db/orden-traspaso-migration.test.ts` (lista de migraciones): quedan las dos partes en orden de
+  timestamp: `20261124140000_cobro_historial_enum`, `20261124140100_cobro_intento` (SLT-226) y después
+  `20261126120000_mora_enums`, `20261126120100_mora_congelamiento` (SLT-121).
+- Mezclados solos y revisados: `db/schema.prisma` (modelo `CobroIntento`/`CobroWebhookEvento`, enums del historial de
+  plataforma; ningún choque con las columnas de mora de `organizacion`), `docs/architecture.md` (únicos sin empresa de
+  SLT-226), `lib/db/excepciones-aislamiento.ts` (`CobroIntentoRepository`), `lib/db/modelos-de-negocio.ts`. Nada que
+  registrar de las dos juntas: SLT-226 escribe solo con funciones del dueño (SECURITY DEFINER), que el trigger
+  `bloqueo_por_mora` deja pasar, y no usa enums de SLT-121 ni al revés.
+- `cobro_intento` tiene la política `cobro_intento_por_empresa`: en una base migrada en orden (CI, despliegue) el bucle
+  de `20261126120100` le instala `cobro_intento_bloqueo_por_mora`. En la base local de SLT-121 las de SLT-226 se
+  aplicaron DESPUÉS de la mora (`migrate deploy`), así que ahí `cobro_intento` no tiene el trigger y
+  `bloqueo-por-mora-cobertura.test.ts` da rojo en local; es un artefacto del orden local, no del código.
+
+### Pendiente (frontera con SLT-228)
+- `recalcularCongelamiento` NO se conecta al pago en línea (`cobro_registrar_pago_aprobado` / `CobroIntentoRepository`).
+  Un pago en línea aprobado no descongela todavía a la empresa; lo conecta SLT-228 «Cobro automático: webhook por
+  proveedor y el de Rebill».
+
+### Verificación (salida real, local)
+- `npx tsc --noEmit -p .` (NODE_OPTIONS=--max-old-space-size=8192): exit 0, sin errores.
+- `vitest run` de `orden-traspaso-migration`, `mora-migration`, `historico-sin-migracion`, `rls-por-empresa`,
+  `unicos-por-empresa`, `organizacion-en-modelos`, `plataforma-solo-en-lista`, `fk-misma-empresa`,
+  `sql-a-mano-por-empresa`, `mora-permiso-solo-en-lista`, `historial-accion-*` y `historial-acciones-*`:
+  `Test Files 17 passed (17)`, `Tests 334 passed (334)`.
+- Suite completa: no corrida en local (memoria); la corre el CI de #264.
+
+Veredicto: merge resuelto sin cambios de código; typecheck y tests tocados en verde.

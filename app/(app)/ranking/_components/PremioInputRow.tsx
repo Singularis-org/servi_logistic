@@ -7,11 +7,13 @@ import { COLUMNA_FIJA, TACTIL_MOVIL, TEXTO_ENTERO } from "@/components/shared/te
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/useToast";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
+import { SIN_MONTO_RAYA, formatearMontoEn } from "@/lib/config/moneda";
 import { editarPremioAction } from "@/lib/actions/ranking";
 import type { PremioRankingDTO } from "@/lib/types/ranking";
 import { cn } from "@/lib/utils";
 
-import { PREMIOS_FEEDBACK, PREMIOS_LABELS, money } from "./ranking-labels";
+import { PREMIOS_FEEDBACK, PREMIOS_LABELS } from "./ranking-labels";
 
 /**
  * SLT-162 «Ranking del mensajero en tarjetas en el móvil» (R752, R753) — en el teléfono la fila se
@@ -39,7 +41,7 @@ const ROTULO_TARJETA = "block text-xs font-normal text-muted-foreground md:hidde
 // —monto (vacío = sin premio, R9) y descripción (texto libre, vacío = sin descripción,
 // R25)— y un botón que llama a `editarPremioAction` (Server Action, NUNCA fetch a /api).
 // El mensajero (R17) ve todo en solo-lectura, incluida la descripción. Money-safe: el
-// monto se muestra TAL CUAL con `money`, sin parseFloat/Number.
+// monto se muestra TAL CUAL con `formatearMontoEn` (SLT-241 R11: con la moneda del país), sin parseFloat/Number.
 
 export interface PremioInputRowProps {
   premio: PremioRankingDTO;
@@ -56,6 +58,8 @@ export function PremioInputRow({
 }: PremioInputRowProps) {
   const router = useRouter();
   const toast = useToast();
+  // SLT-241 (R11): el monto del premio se pinta con la moneda del país.
+  const moneda = useMonedaDelPais();
 
   const [monto, setMonto] = useState(premio.monto ?? "");
   const [descripcion, setDescripcion] = useState(premio.descripcion ?? "");
@@ -179,7 +183,7 @@ export function PremioInputRow({
               </span>
             ) : (
               <span className={cn("block max-md:text-xl max-md:font-bold md:inline", COLUMNA_FIJA)}>
-                {money(premio.monto)}
+                {formatearMontoEn(moneda, premio.monto, SIN_MONTO_RAYA)}
               </span>
             )}
           </td>

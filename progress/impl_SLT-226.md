@@ -1,0 +1,318 @@
+# impl SLT-226 «Cobro automático: modelo del cobro e idempotencia»
+
+## Tanda 1 (T0–T3), 2026-11-20
+
+Base de la feature: `servi_logistic_slt226` en localhost (migrada hasta `20261124140100_cobro_intento`, catálogos
+sembrados, sin empresas).
+
+### Primera parte (commit 4a4d5f6c)
+- T0.1, T0.2, T0.4, T0.5, T0.6: anotados en `design.md` (§1.4, §3.5, §5, §11).
+- T1.1, T1.2: `db/migrations/20261124140000_cobro_historial_enum/{migration.sql,down.sql}`, con ida y vuelta.
+- T0.3 quedó BLOQUEADA: con el trigger `cobro_intento_sin_borrar` y la FK `RESTRICT` de `creado_por`, una empresa
+  con intentos no se podía limpiar.
+
+### Decisiones del humano (2026-11-20), aplicadas al spec
+1. T0.3, opción a: sin trigger de borrado; lo cierra solo el `REVOKE DELETE` a `servi_app`. R8 ajustado, §1.1, §3.9,
+   §8 y §11 del design, T0.3 [x] y T2.2 sin el trigger.
+2. «Pagado en línea» en «Registró» en este PR: R29 nuevo, design §5.1 y §8, alternativa 6 ya no descartada, T5.5
+   en tasks (tanda 2), tamaño a ~34 archivos.
+
+### Segunda parte: T2 y T3
+Archivos:
+- `db/migrations/20261124140100_cobro_intento/migration.sql` (nuevo, 714 líneas): tablas, CHECK, índices, RLS,
+  REVOKE, triggers de SL-17 (generados), `cobro_intento_solo_avanza`, `cobro_webhook_evento_inmutable`, la
+  confirmación sin persona, la sobrecarga de `_pago_plataforma_aplicar`, el tope con la salida del pago en línea,
+  `_cobro_historial`, `_cobro_intento_pasar`, las funciones de §3.1–§3.3, §3.5 y §3.8 y los triggers de §3.4.
+- `db/migrations/20261124140100_cobro_intento/down.sql` (nuevo, 146 líneas): guarda, cuerpos literales del tope
+  (20261116120000 §8) y de `_pago_plataforma_aplicar` de 7 argumentos (20261121130000 §4, extraídos del archivo),
+  DROP de lo nuevo, la columna y el CHECK.
+- `db/schema.prisma` (+~90): `CobroIntento`, `CobroWebhookEvento`, `PagoPlataformaConfirmacion` (`confirmadoPor?`,
+  `confirmador?`, `enLinea`), relaciones inversas en `Usuario`, `WalletMovimiento`, `Organizacion` y
+  `FacturaPlataforma`, comentarios de `HistorialPlataforma`. Solo mis líneas (sin `prisma format`, por el choque con
+  SLT-221).
+- `lib/db/modelos-de-negocio.ts` (+4): `CobroIntento` en negocio y `CobroWebhookEvento` en plataforma.
+- `tests/unit/guards/_unicos-sin-empresa.ts` (+12) y `docs/architecture.md` (+3): los dos globales.
+- `tests/unit/guards/rls-por-empresa.guardia.test.ts` (97) y `scripts/verificar-rls-despliegue.ts` (186).
+- `tests/fixtures/api-key-dependencias-usuario.ts` (+4): `CobroIntento.creador`, `no_alcanzable` (lo pidió la guardia
+  `api-key-dependencias-usuario`; no estaba en «Archivos esperados», ya añadido).
+- `specs/…/requirements.md`, `design.md`, `tasks.md`: las dos decisiones, notas de implementación (§3.9) y T0.3,
+  T2.1–T2.6 y T3.1–T3.4 en [x].
+
+Conteos reales de T3.4 (medidos en la base migrada): 97 tablas de negocio, 186 triggers de misma empresa, 97
+`…_sin_cambio_de_empresa`, 98 políticas `…_por_empresa`. Quitar el trigger de borrado no los mueve.
+
+### Verificación (salida real)
+- `pnpm exec prisma validate`: «The schema at db\schema.prisma is valid».
+- `prisma migrate diff --from-config-datasource --to-schema db/schema.prisma` (base migrada y base desechable):
+  «No difference detected».
+- `tsx scripts/generar-misma-empresa.ts --faltantes`: 0 `CREATE TRIGGER` pendientes.
+- T2.1: `pg_indexes` de `cobro_intento` muestra los seis índices más la PK.
+- T2.4: las 9 funciones nuevas del dueño (y la sobrecarga) con `prosecdef = true` y sin EXECUTE para `servi_app`.
+- Ida y vuelta en `servi_logistic_slt226_ida` (borrada después), con una huella del catálogo (funciones con su
+  definición y ACL, columnas, constraints, triggers, índices, políticas, enums y grants):
+  - up → down de 120100: idéntica a la base antes de la migración;
+  - con un intento: el down aborta («rollback SLT-226: 1 filas en cobro_intento») y la huella no cambia;
+  - down de 120100 y de 120000, y vuelta a subir las dos: misma huella que la primera subida; bajar otra vez,
+    idéntica a la de antes.
+- Humo en transacciones con ROLLBACK: R1, R2, R10 (`ok`/`ya_pendiente`), eventos `nuevo`/`pendiente`/`repetido`,
+  pago aprobado `ok` y luego `ya_registrado` (caja negativa, confirmación `en_linea` sin persona, saldo 0),
+  `devuelto`/`sin_cambio`/`no_alcanzable`, `creado`→`aprobado` con dos filas de historial, R11 por la confirmación
+  de SLT-60 y por la anulación de SLT-143, SL226 `transicion_invalida` y `columna_fija`, `servi_app` con «permiso
+  denegado» al borrar intentos, al leer eventos y al ejecutar las funciones.
+- T0.3: `borrarFilasDeEmpresas` de la demo, en una base desechable (borrada después), limpia en una pasada una
+  empresa demo con un intento aprobado y otro vivo con `creado_por` de su usuario: `{ filas: 9, pasadas: 1 }`, 0
+  intentos y 0 empresas. Quedan las 2 filas de historial con actor nulo, como todo `historial_plataforma` (la fila
+  sobrevive a su sujeto). `borrar.ts` y `limpiar459` no cambian.
+- `vitest run` con `DATABASE_URL` a la base de la feature: `pago-plataforma-confirmacion`, `pago-plataforma-por-fuera`,
+  `migracion-slt143-ida-y-vuelta`, `migracion-slt60-ida-y-vuelta`: 4 archivos, 53 tests en verde, sin cambios.
+- `pnpm run typecheck` (con `--max-old-space-size=8192`): `tsc --noEmit` sale con 0.
+- `pnpm run lint`: 0 errores, 249 avisos, los mismos de antes.
+- `pnpm run test:guardias` (sin `DATABASE_URL`): 357 archivos en verde y 3 saltados; 5399 tests en verde y 28 saltados
+  (los que piden base). La primera corrida dio rojo en `api-key-dependencias-usuario` (relación nueva sin
+  clasificar, ya corregido) y un timeout de 20 s en `cierres-componentes-retirados` bajo carga, que pasa solo y en la
+  corrida final.
+
+Veredicto de la tanda 1: T0–T3 cerradas.
+
+## Mapa R<n> → test (T7.3)
+
+Archivos: `CI` = `tests/integration/db/cobro-intento.test.ts`, `WE` = `tests/integration/db/cobro-webhook-evento.test.ts`,
+`PL` = `tests/integration/db/cobro-pago-en-linea.test.ts`, `MI` = `tests/integration/db/migracion-slt226-ida-y-vuelta.test.ts`,
+`SV` = `tests/unit/services/cobro-intento-service.test.ts`, `LA` = `tests/unit/services/libro-caja-autoria-plataforma.test.ts`,
+`PA` = `tests/unit/components/detalle-movimiento-panel-labels-plataforma.test.ts`.
+
+| R | Tests |
+|---|---|
+| R1 | CI «R1, R25: factura de 30 000 con 10 000 confirmados → intento `creado` de 20 000…»; SV (capa de servicio) |
+| R2 | CI «R2: pedirlo otra vez con la misma clave devuelve `existente`…» |
+| R3 | CI «R3, R25: un vivo con OTRA clave… se anula `clave_distinta` y nace uno nuevo…» |
+| R4 | CI «R4: dos pedidos a la vez sobre A3…»; CI «R4: un INSERT del dueño de un segundo vivo… 23505» |
+| R5 | CI «R5: la factura en curso, la de otra empresa, una inexistente y una con saldo 0 se rechazan…» |
+| R6 | CI «R6: los importes son decimales, y el dueño no puede escribir un monto ≤ 0…» |
+| R7 | CI «R7: el dueño solo puede mover un intento por la tabla de R7…» (22 transiciones) |
+| R8 | CI «R8: el dueño no puede cambiar la empresa, la factura…»; CI «R8, R26: como `servi_app`… no puede borrar… (42501)» |
+| R9 | CI «R9: `aprobado` sin el pago del proveedor o sin el pago del libro da 23514» |
+| R10 | CI «R10, R25: registrar el enlace pasa el intento a `pendiente`…»; CI «R10: el mismo id externo en un intento de B da 23505…» |
+| R11 | CI «R11, R25: … confirmar (SLT-60)…»; CI «R11: anular (SLT-143)…»; CI «R11: un pago por fuera (SLT-143)…» |
+| R12 | WE «R12: guarda el evento una vez…»; WE «R12: el único (proveedor, log_id)… (23505)»; SV (evento sin logId) |
+| R13 | WE «R13: si llegó antes y su proceso no terminó…»; WE «R13: cerrado… `repetido`…»; WE «R13: lo recibido no cambia…»; SV «R13: un evento ya procesado se ignora…»; SV «R13: un evento que llegó y no terminó se procesa otra vez…» |
+| R14 | SV «R14: el evento dice «pendiente» y el proveedor «aprobado»…»; SV «R14: … el proveedor «rechazado»…»; PL «R14, R25: un intento aún `creado` con su id externo… → `aprobado`» (sembrado a mano: hueco anotado para SLT-230) |
+| R15 | SV «R15: con «%s» el evento se cierra como «sin_cambio»…»; PL «R15: `pendiente` sobre un aprobado → `sin_cambio`…» |
+| R16 | SV «R16: si la consulta al proveedor falla, no cambia el intento, no cierra el evento…» |
+| R17 | PL «R17, R25: el pago aprobado de 30 000 → `ok`; caja 20 000, deuda 0…» |
+| R18 | PL «R18: C con la caja en 0 recibe un pago en línea de 10 000 → `ok`…» |
+| R19 | PL «R19: el pago en línea no sale en `pago_plataforma_por_confirmar`…» |
+| R20 | PL «R20: el mismo pago otra vez → `ya_registrado`…»; PL «R20: el mismo pago de B1 registrado a la vez desde dos conexiones…»; SV «R20: un pago ya registrado cierra el evento como «aplicado»» |
+| R21 | PL «R21: un intento `anulado`, otro monto (29 999) u otra moneda → `requiere_revision`…»; SV (requiere_revision) |
+| R22 | PL «R22: con un pago de la wallet de 10 000 por confirmar…» |
+| R23 | PL «R23: `avanzar` a `devuelto`…»; PL «R23: `contracargo` sobre un aprobado…» |
+| R24 | PL «R24: `rechazado` y `expirado` sobre un vivo → el intento cierra…» |
+| R25 | CI y PL en los tests de R1, R3, R10, R11, R14 y R17; CI «R25: si la transacción que cambia un estado falla después…» |
+| R26 | CI «R8, R26: como `servi_app`…»; CI «R26: como `servi_app`, B lee solo sus intentos…»; WE «R26: como `servi_app` de cualquier empresa, ni se leen ni se escriben los eventos…» |
+| R27 | CI «R27: el repositorio real da a la empresa los intentos de su factura del más nuevo al más viejo, [] con la factura de otra empresa, y al superadmin la de cualquiera» (integración, review vuelta 1); SV «R27: %s lee los intentos de su empresa»; SV «R27: el superadmin lee…»; SV «R27: %s recibe forbidden…»; SV «R27: un maestro sin empresa…» |
+| R28 | MI «R28: no insertan ni cambian datos»; MI «R28: no crean datos…»; MI «R28: la confirmación que ya existía sigue igual…»; MI «R28: el down.sql aborta sin tocar nada si hay un intento»; MI «R28: sin intentos, los dos down.sql dejan el esquema como antes…»; suites de SLT-60 y SLT-143 sin cambios (T7.2) |
+| R29 | LA «R29: el pago aprobado en línea dice «pago_en_linea» en Registró…» (y 3 más); PA «R29 — un pago aprobado en línea dice «Pagado en línea»…»; PA «R29 — un gasto de plantilla sigue diciendo «Automático · …»»; PL «R29: como `servi_app` de A, `marcasDeLaPlataforma` devuelve el pago en `enLinea`…» |
+
+## Tanda 2 (T4, T5): commit dc824e6e
+
+- T4: `cobro-intento` y `cobro-webhook-evento`: 2 archivos, 26 tests en verde, también en la segunda pasada (la
+  limpieza es idempotente). Mutaciones en `servi_logistic_slt226_mut` (borrada): 1a 8 rojos, 1b 1, 2 10, 6 8.
+- T5: `cobro-intento-service`, más los dos tests ampliados de R29: 3 archivos y 42 tests en verde.
+  `vitest related` de los 6 archivos de producción: 63 archivos en verde y 7 saltados; 834 tests.
+- Typecheck en verde con T4 y T5 juntos; lint con 0 errores; guardias con 5399 tests en verde.
+- Fuera de `lib/` y `tests/`: `components/shared/wallet/detalle-movimiento-panel-labels.ts` (R29, solo el mapeo
+  del texto).
+
+## Tanda 3 (T6, T7): la cierra el implementer
+
+El `backend_dev` escribió los dos archivos, pero no entregó informe. Verifiqué todo de nuevo con
+`DATABASE_URL` en `servi_logistic_slt226`:
+- `vitest run` de `cobro-pago-en-linea`, `migracion-slt226-ida-y-vuelta`, `cobro-intento` y `cobro-webhook-evento`:
+  `Test Files 4 passed (4)`, `Tests 47 passed (47)`, ninguno saltado.
+- T7.2: `pago-plataforma-confirmacion`, `pago-plataforma-por-fuera`, `migracion-slt143-ida-y-vuelta`,
+  `migracion-slt60-ida-y-vuelta`, `pago-plataforma-sl45`, `-sl45-blindaje` y `-sl45-concurrencia`:
+  `Test Files 7 passed (7)`, `Tests 84 passed (84)`. Ninguno cambia frente a `origin/dev`.
+- Mutaciones sobre `cobro-pago-en-linea`, en `servi_logistic_slt226_mut` creada desde la base de la feature
+  (TEMPLATE) y borrada después:
+  - 3: `cobro_registrar_pago_aprobado` sin el chequeo R20 y sin candado ni `FOR UPDATE`. 2 rojos, los dos R20:
+    secuencial y concurrente.
+  - 4: la aplicación va antes de `aprobado`. 10 rojos: R17, R29, R20, R18, R22, R14, R23, R15.
+  - 5: el tope sin la salida de §3.7. 1 rojo: R22.
+- T7.4: ver abajo.
+
+### T7.4: gate local y E2E
+
+- `NODE_OPTIONS=--max-old-space-size=8192 ./init.sh` (rápido): `exit 1` en el paso 3, antes de llegar al diff.
+  `✗ feature_list.json invalido`: zona fullstack 15/7 y zona backend 7/6, el exceso que aceptó el humano;
+  además «faltan specs para features sdd en vuelo: SLT-247», que no es de esta ficha. Es el estado del board, no el
+  código. En CI no hay copia del board, así que ese paso sale en verde.
+- Pasos del rápido corridos a mano:
+  - typecheck: 0 errores.
+  - lint: 0 errores y 249 avisos, los de antes.
+  - `test:guardias`: con la CPU al 99 % por procesos de otras features, 8 archivos dieron rojo por
+    timeout de 20 s. Corridos aparte, todos en verde; los dos que seguían lentos pasan con
+    `--testTimeout=180000` (19 tests en 8 s). Ningún rojo es de lógica.
+  - `scripts/tamano-pr.mjs`: AVISO (31/40 archivos, 1752/1000 de producción, 2534/3000 de tests), aceptado por P5. El
+    marcador está en `progress/features/SLT-226.md`.
+- E2E `dinero` en local, con el `backend_dev` de la tanda 3. Base nueva `servi_logistic_slt226_e2e` (migrate deploy y
+  `db:seed`), `next build` con `NEXT_PUBLIC_APP_URL=http://localhost:3226` (`E2E_PUERTO=3226`,
+  `docs/verification.md > En local`) y `pnpm exec playwright test --project=dinero`. Dos corridas seguidas sobre la
+  misma base: `132 passed (13.2m)` y `132 passed (8.5m)`, sin fallos, saltos ni inestables. Después se borró la base.
+- E2E `dinero` en CI: en verde sobre `dc824e6e` (9 min 32 s) y sobre `d887fab3` (12 min 8 s).
+- El primer CI del PR (#263) dio rojo solo por el tamaño, sin marcador. `estatico` y los tres shards de vitest
+  cortaron ahí. El E2E `aislamiento` dio timeout de `page.goto` en la landing (`marca.spec.ts` y
+  `rastreo-publico.spec.ts`); el diff no toca la landing, y en la primera corrida del PR estaba en verde.
+
+### CI del PR #263 sobre d887fab3: 4 rojos fuera del baseline
+
+- `catalogo-postgres-acota-esquema`: dos consultas de los tests nuevos leían `pg_enum` y `pg_trigger` sin acotar el
+  esquema. Ahora acotan a `public`.
+- `verificar-rls-despliegue.test.ts`: las cifras seguían en las de SLT-221. Pasan a 97 tablas, 186 triggers sme, 98
+  políticas y 97 sin cambio. El script ya estaba bien.
+- `orden-traspaso-migration`: a la lista exacta de migraciones posteriores le faltaban las dos de SLT-226.
+- `caja-caracterizacion-459`: no es de SLT-226. Falla 1 de cada 1000 corridas porque `diaDelPremio()`
+  (`_fixtures/caja-459.ts:129`) sortea dos fechas que pueden coincidir en la misma empresa. Lo trae `86d70bf0`. No se
+  tocó ni se añadió al baseline: va a una rama `chore/`, que decide el leader.
+- Local, con la base de la feature: los 4 archivos más los 2 tocados dan `Test Files 6 passed (6)` y
+  `Tests 76 passed (76)`.
+
+## Tanda T8 (enmienda del 2026-11-20): la base, T8.1, T8.2, T8.3 y T8.6 (backend_dev)
+
+Archivos (ninguno nuevo):
+- `db/migrations/20261124140100_cobro_intento/migration.sql`, editada en el sitio (§12.1, §12.3, §12.4): CHECK de
+  proveedor con `rebill`, `wompi` y `global66` en las dos tablas; `metodo` con su CHECK y entre las columnas fijas de
+  `cobro_intento_solo_avanza`; `_cobro_historial` con `p_manual` y el detalle con `proveedor` y `metodo`;
+  `cobro_intento_obtener_o_crear` de 7 argumentos con la clave `…||proveedor|metodo`; `_cobro_aprobar` (interna);
+  `cobro_registrar_pago_aprobado` con el paso 0 y delegando en `_cobro_aprobar`; `cobro_marcar_pagado_manual`.
+- `db/migrations/20261124140100_cobro_intento/down.sql` (§12.5): las firmas nuevas y las dos funciones nuevas.
+- `db/schema.prisma`: `metodo String` en `CobroIntento`.
+- Tests: `_fixtures/cobro.ts` (`METODO`, `claveDe`, `marcarPagadoManual`, proveedor y método opcionales),
+  `cobro-intento`, `cobro-webhook-evento`, `cobro-pago-en-linea` y `migracion-slt226-ida-y-vuelta` (la lista de
+  funciones nuevas suma las dos, y el intento sembrado lleva `metodo`).
+
+Base de la feature (`servi_logistic_slt226`): bajada con el `down.sql` anterior, borrada su fila de
+`_prisma_migrations`, y rehecha con `prisma migrate deploy` («All migrations have been successfully applied»).
+`prisma generate` hecho; `prisma validate` en verde; `prisma migrate diff --from-config-datasource --to-schema
+db/schema.prisma`: «No difference detected». Las cinco funciones tocadas o nuevas tienen `prosecdef = true` y
+`has_function_privilege('servi_app', …, 'EXECUTE') = false`.
+
+Verificación, con `DATABASE_URL` en `servi_logistic_slt226`:
+- `vitest run` de `cobro-intento`, `cobro-webhook-evento`, `cobro-pago-en-linea` y `migracion-slt226-ida-y-vuelta`:
+  `Test Files 4 passed (4)`, `Tests 60 passed (60)`.
+- Mutaciones, una a una, en `servi_logistic_slt226_mut` (TEMPLATE de la de la feature; borrada al acabar):
+  - 7, la clave sin el método: `cobro-intento` con 5 rojos (R32 «con un vivo de tarjeta, pedir transferencia…»,
+    R31 x2, R1 y R3 por el formato de la clave).
+  - 8, `cobro_registrar_pago_aprobado` sin el paso 0: `cobro-pago-en-linea` con 1 rojo (R37 «…el aviso de un pago
+    marcado a mano → `ya_registrado`, sin id externo y con él»): el aviso sin id externo da `sin_intento`.
+  - 9, `cobro_marcar_pagado_manual` sin el candado ni los `FOR UPDATE`: 1 rojo (R37 «la marca y el aviso … a la
+    vez»), por 40P01.
+- `eslint` de los 5 archivos de tests: 0 errores y 0 avisos. `pnpm run typecheck` (con
+  `NODE_OPTIONS=--max-old-space-size=8192`; sin él, el proceso se queda sin memoria): exit 0.
+- Pendiente de T8.5 (otro backend_dev): `lib/repositories/CobroIntentoRepository.ts` sigue llamando a
+  `cobro_intento_obtener_o_crear` con 6 argumentos. Compila, pero contra la base nueva falla en ejecución hasta que
+  pase `metodo`.
+
+Mapa `R<n> → test` (la parte de base):
+
+| R | Test |
+|---|---|
+| R30 | CI «R30: el proveedor del intento admite rebill, wompi y global66, y la base rechaza otro (23514)…»; WE «R30: un evento de global66 (y de wompi) se guarda; uno de otro proveedor da 23514…» |
+| R31 | CI «R31: pedido con wompi y tarjeta → el intento y su historial llevan los dos»; CI «R31: un método fuera del conjunto da 23514 y no deja filas…» |
+| R32 | CI «R32: con un vivo de tarjeta, pedir transferencia lo anula `clave_distinta`…»; CI «R32, R2: lo mismo con otro proveedor; con el mismo proveedor y el mismo método, `existente`» |
+| R33 | CI «R8, R33: el dueño no puede cambiar … ni el método…» |
+| R34 | CI «R34: las columnas de cobro_intento son exactamente las del design y ninguna del medio de pago» |
+| R35 | PL «R35, R36, R29: marcar a mano un `pendiente` de global66 sin id externo → `ok`…»; PL «R35, R36: marcar a mano un `creado` de global66 por transferencia…» |
+| R36 | Los dos de R35 (historial con el superadmin y `manual: true`; `confirmado_por` del superadmin) |
+| R37 | PL «R37: marcar otra vez la misma referencia → `ya_registrado`; el aviso…, sin id externo y con él…»; PL «R37: la marca y el aviso del mismo pago a la vez…» |
+| R38 | PL «R38: inexistente, `aprobado`, `rechazado`, `expirado`, `anulado`, referencia en blanco, referencia de otro intento y saldo menor…» |
+| R39 | PL «R39: como `servi_app`, ejecutar `cobro_marcar_pagado_manual` da 42501…» |
+
+Veredicto: la parte de base de T8 en verde, con las mutaciones 7, 8 y 9 muertas; falta T8.4, T8.5 y T8.7.
+
+## Tanda T8: T8.4, T8.5 y T8.7 (backend_dev) y cierre T8.8 (implementer)
+
+Commits: `fc03a509` (base) y `12ee23b5` (tipos, repositorio y servicio).
+
+- Archivos: `lib/types/cobro.ts`, `lib/interfaces/repositories/ICobroIntentoRepository.ts`,
+  `lib/interfaces/services/ICobroIntentoService.ts`, `lib/repositories/CobroIntentoRepository.ts` (llamada de 7
+  argumentos y `marcarPagadoManual` bajo `comoPlataforma("SL-45", …)`), `lib/services/CobroIntentoService.ts`,
+  `lib/db/excepciones-aislamiento.ts`, `tests/unit/services/cobro-intento-service.test.ts`.
+- `grep '"rebill"' lib/services`: vacío.
+- Mutación 10 (`marcarPagadoManual` sin `esPlataforma`): `Tests 6 failed | 39 passed (45)`, los 6 «R39: %s recibe
+  forbidden sin llamadas». Revertida.
+
+Mapa `R<n> → test` (parte del servicio, `cobro-intento-service.test.ts`):
+
+| R | Test |
+|---|---|
+| R30 | «R30: un evento con un proveedor desconocido (%j) lanza sin registrar ni consultar»; «R30: un proveedor admitido sin adaptador enchufado lanza…» |
+| R31 | «R31: obtenerOCrearIntento pasa al repositorio el proveedor y el método que recibe» |
+| R38 | «R38: una referencia en blanco (%j) devuelve referencia_vacia sin llamar al repositorio»; «R38: la respuesta «%s» de la base pasa tal cual»; «R38: un intento vacío o una referencia de más de 200 … lanza sin llamar» |
+| R39 | «R39: %s recibe forbidden sin llamadas» (6 roles); «R39: el superadmin marca con su usuarioId como actor» |
+
+Con la tabla de base de arriba, R30–R39 tienen test; R1–R29 siguen en las tablas de las tandas 1–3.
+
+### Verificación del implementer (salida real, `DATABASE_URL` de `dburl_SLT226`)
+
+- `cobro-intento`, `cobro-webhook-evento`, `cobro-pago-en-linea`, `migracion-slt226-ida-y-vuelta` y
+  `cobro-intento-service`: `Test Files 5 passed (5)`, `Tests 105 passed (105)`.
+- SLT-60, SLT-143 y SL-45 (`pago-plataforma-confirmacion`, `pago-plataforma-por-fuera`,
+  `migracion-slt143-ida-y-vuelta`, `migracion-slt60-ida-y-vuelta`, `pago-plataforma-sl45`, `-sl45-blindaje`,
+  `-sl45-concurrencia`): `Test Files 7 passed (7)`, `Tests 84 passed (84)`, sin cambiar afirmaciones (R28).
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: exit 0.
+- `pnpm run lint`: 0 errores, 249 avisos (los de antes).
+- `pnpm run test:guardias`: `Test Files 357 passed | 3 skipped (360)`, `Tests 5413 passed | 28 skipped (5441)`.
+- `scripts/tamano-pr.mjs`: AVISO, 33/40 archivos, 1968/1000 de producción, **3112/3000 de tests**. Pasa del tope de
+  tests; aceptado por el humano el 2026-11-20 (marcador `tamano-pr-aceptado` de `progress/features/SLT-226.md`).
+- No corridos en local en esta tanda: `./init.sh` (se corta en la validación del board, ver T7.4) y el E2E `dinero`
+  (la enmienda no toca UI ni rutas); los cubre el CI de #263.
+
+Desvíos frente al spec (§12.7): `FUNCIONES_NUEVAS` de `migracion-slt226-ida-y-vuelta` suma `_cobro_aprobar` y
+`cobro_marcar_pagado_manual` (para que el test compruebe que el `down` las quita); `metodo` en dos INSERT de tests
+existentes (NOT NULL); empresa E nueva en `cobro-pago-en-linea`; R39 del servicio cubre además adminSatelite y apiKey;
+tests extra de servicio (R30 wompi sin adaptador, R38 respuestas de la base, R35 referencia sin espacios).
+
+## F2.3: sincronización con `dev` y segundo renombre (2026-11-20)
+
+- `git merge origin/dev` (39 commits). Conflicto en `orden-traspaso-migration.test.ts`: la de SLT-247 y las dos de
+  SLT-226, en orden cronológico.
+- SLT-247 entró en `dev` con `20261124130000_orden_historial_origen_retorno_rechazo_cierre`, el mismo prefijo que la
+  del enum. Por la convención (marca posterior a todas las de `dev`, precedente SL-45 D10), `git mv` a
+  `20261124140000_cobro_historial_enum` y `20261124140100_cobro_intento` (sin `125`). Referencias actualizadas en
+  migraciones, `schema.prisma`, `lib/`, `scripts/verificar-rls-despliegue.ts`, tests, design, tasks y esta
+  bitácora (las menciones de las tandas anteriores ya usan el nombre nuevo). `PREVIA` de la ida y vuelta: la de
+  SLT-247.
+- Base `servi_logistic_slt226` (solo `dburl_SLT226`): los dos `down.sql`, borradas las filas viejas de
+  `_prisma_migrations`, `migrate deploy` (entra la de SLT-247 y las dos renombradas), `prisma generate`;
+  `migrate diff` → «No difference detected».
+- Verificación:
+  - SLT-226 (`cobro-intento`, `cobro-webhook-evento`, `cobro-pago-en-linea`, `migracion-slt226-ida-y-vuelta`,
+    `cobro-intento-service`) y `orden-traspaso-migration`: `Test Files 6 passed (6)`, `Tests 120 passed (120)`.
+  - SLT-60, SLT-143 y SL-45 (los 7 de antes): `Test Files 7 passed (7)`, `Tests 84 passed (84)`.
+  - Nota: corridos los 13 archivos en una sola invocación, 3–4 dan `Hook timed out in 300000ms` en el `beforeAll`
+    (esperan locks de asesoría compartidos con la carga de la máquina). Solos o en los dos grupos de siempre, verdes.
+  - Typecheck (8192 MB): exit 0.
+  - Lint: 0 errores, 249 avisos. `test:guardias`: `Test Files 357 passed | 3 skipped (360)`,
+    `Tests 5419 passed | 28 skipped (5447)`.
+
+## Review vuelta 1 (2026-11-20): arreglos
+
+- Hallazgo 1 (bloqueante, R27): test de integración del repositorio real; ver abajo.
+- Hallazgos menores 2 y 5: no llevan código. Quedan como frontera con otras fichas:
+  - 2, el evento se cierra `aplicado` con `intento_id` nulo cuando el paso 0 corta por una marca a mano sin
+    `id_externo`: lo recoge SLT-228 «Cobro automático: webhook por proveedor y el de Rebill» (buscar el intento por
+    `(proveedor, pago_proveedor_id)` cuando la respuesta es `ya_registrado`).
+  - 5, la marca y el aviso sin `id_externo` a la vez (el aviso da `sin_intento` y un reenvío con el mismo `logId`
+    sale `repetido`): riesgo aceptado en §12.4; lo recoge la conciliación de SLT-233 «Cobro automático: conciliación,
+    devoluciones y contracargos».
+- Hallazgos 3 y 4: sin acción.
+- Hallazgo 1: test nuevo en `cobro-intento.test.ts`, «R27: el repositorio real da a la empresa los intentos de su
+  factura del más nuevo al más viejo, [] con la factura de otra empresa, y al superadmin la de cualquiera», con
+  `new CobroIntentoRepository(ctx.app)` sobre las facturas A1 (tres intentos) y B1 del fixture.
+  - Mutación (a), la rama `empresa` con `comoPlataforma` y sin filtro `organizacionId`: `Tests 1 failed | 25 passed
+    (26)` (A vio el intento de B). Mutación (b), `orderBy createdAt` `asc`: `Tests 1 failed | 25 passed (26)`.
+    Revertidas; `git diff --quiet lib/` limpio.
+  - SLT-226 (`cobro-intento`, `cobro-webhook-evento`, `cobro-pago-en-linea`, `migracion-slt226-ida-y-vuelta`,
+    `cobro-intento-service`): `Test Files 5 passed (5)`, `Tests 106 passed (106)`. Typecheck (8192 MB): exit 0.
+    `eslint` del test: exit 0 (el `pnpm run lint` completo lo cortó el sistema por falta de memoria; el diff solo
+    toca este test).

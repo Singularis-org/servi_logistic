@@ -24,7 +24,8 @@ import {
   restablecerContrasenaUsuario,
 } from "@/lib/actions/usuarios";
 import { ROL_LABELS } from "@/lib/auth/rol-label";
-import { formatMontoString } from "@/lib/config/moneda";
+import { formatearMontoEn, type FormatoMoneda } from "@/lib/config/moneda";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
 import type { UsuarioListItemDTO } from "@/lib/types/usuario";
 import { USUARIO_BUSQUEDA_MIN_CHARS } from "@/lib/types/usuario";
 import type { UsuarioPublico } from "@/lib/interfaces/repositories/IUserRepository";
@@ -145,6 +146,8 @@ type FormMode = "crear" | "editar";
  */
 export function UsuariosModule({ initialData }: UsuariosModuleProps) {
   const toast = useToast();
+  // SLT-241 (R10): el total sin consolidar del aviso se pinta con la moneda del país.
+  const moneda = useMonedaDelPais();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(initialData.pageSize);
 
@@ -639,7 +642,7 @@ export function UsuariosModule({ initialData }: UsuariosModuleProps) {
           if (!next) setAviso(null);
         }}
         title={aviso ? tituloAvisoZona(aviso) : null}
-        description={aviso ? textoAvisoZona(aviso) : null}
+        description={aviso ? textoAvisoZona(aviso, moneda) : null}
         confirmLabel="Continuar"
         cancelLabel="Cancelar"
         closeOnConfirm={false}
@@ -713,14 +716,14 @@ function tituloAvisoZona(aviso: AvisoZonaPendiente): string {
 /**
  * FICHA 379/R10/R19/R20/R23 — el cuerpo del aviso, en tres ramas.
  *
- * El importe se pinta con `formatMontoString`, que formatea DESDE EL STRING y no pasa por
+ * El importe se pinta con `formatearMontoEn`, que formatea DESDE EL STRING y no pasa por
  * `Number` en ningún punto (R19): el `Decimal(12,2)` que llega del servidor sigue siendo el
- * mismo cuando se pinta.
+ * mismo cuando se pinta. SLT-241 (R10): con la moneda del país que le pasa el componente.
  *
  * La rama de cero cierres existe a propósito (AS1): el daño no es el dinero de hoy, es que la
  * zona se queda sin nadie que pueda cerrarla, así que todo lo que entre después queda retenido.
  */
-function textoAvisoZona(aviso: AvisoZonaPendiente): string {
+function textoAvisoZona(aviso: AvisoZonaPendiente, moneda: FormatoMoneda): string {
   const { impacto } = aviso;
 
   // R20 — ni silencio ni bloqueo: se dice que no se pudo comprobar, y se deja continuar.
@@ -745,7 +748,7 @@ function textoAvisoZona(aviso: AvisoZonaPendiente): string {
 
   return (
     `${cabeza} Ahora mismo hay ${cierresAprobados(impacto.cierresSinConsolidar)} sin ` +
-    `consolidar, por ${formatMontoString(impacto.totalSinConsolidar)}.`
+    `consolidar, por ${formatearMontoEn(moneda, impacto.totalSinConsolidar)}.`
   );
 }
 

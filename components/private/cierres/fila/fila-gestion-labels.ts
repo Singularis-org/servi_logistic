@@ -7,7 +7,7 @@
 // reciben como STRING del servidor y lo pasan por `money()`.
 
 import { money } from "@/lib/config/moneda";
-import { porcentajeParaVer } from "@/app/(app)/configuracion/tarifas/_components/tarifas-textos";
+import { porcentajeParaVerEnLaPlataforma } from "@/app/(app)/configuracion/tarifas/_components/tarifas-textos";
 import type { OrigenTarifaDTO } from "@/lib/interfaces/services/ICierreDiaService";
 
 import {
@@ -80,7 +80,7 @@ export const motivoAjuste = (motivo: string): string => `Motivo: «${motivo}»`;
 export const ajusto = (nombre: string, cuando: string): string => `Ajustó ${nombre} · ${cuando}`;
 export const FULFILLMENT_TITULO = "Fulfillment · se cobró al crear la orden";
 export const FULFILLMENT_TOTAL = "Se cobró";
-export const ivaConPorcentaje = (pct: string): string => `IVA ${porcentajeParaVer(pct)} %`;
+export const ivaConPorcentaje = (pct: string): string => `IVA ${porcentajeParaVerEnLaPlataforma(pct)} %`;
 export const FULFILLMENT_NO_DEPENDE = "No depende de esta gestión ni de este cierre.";
 /** R94: sin fecha de cargo solo queda la segunda frase. */
 export const notaFulfillment = (fecha: string | null): string =>
@@ -118,11 +118,11 @@ export const MONTO_FIJO = "Monto fijo";
 export const tarifaDe = (origen: string): string => `Tarifa: ${origen}`;
 /** «2 % de ₡25.000»: el % es el string congelado; el importe, el del servidor por `money()`. */
 export const porcentajeDe = (valor: string, base: string | null): string =>
-  base === null ? `${porcentajeParaVer(valor)} %` : `${porcentajeParaVer(valor)} % de ${money(base)}`;
+  base === null ? `${porcentajeParaVerEnLaPlataforma(valor)} %` : `${porcentajeParaVerEnLaPlataforma(valor)} % de ${money(base)}`;
 /** Modelo viejo (R29): la columna aplicada con los rótulos de hoy. */
 export const tarifaVieja = (columna: string): string => `tarifa ${columna}`;
 export const conPorcentaje = (rotulo: string, pct: string, base: string): string =>
-  `${rotulo} (${porcentajeParaVer(pct)} % de ${money(base)})`;
+  `${rotulo} (${porcentajeParaVerEnLaPlataforma(pct)} % de ${money(base)})`;
 const NOTA_CALCULO_COLA = "Si después cambian, aquí no cambia nada.";
 export const notaCalculo = (cuando: string | null): string =>
   cuando === null

@@ -15,13 +15,9 @@
  */
 export const SIN_DATO = "—";
 
-/**
- * Feature 201 (tanda C) — `money` ya NO se declara aquí: era una de las ocho copias byte a
- * byte del mismo helper (de ahí `₡13331832.72` sin separador de miles). Vive en
- * `lib/config/moneda.ts` y se RE-EXPORTA, así que ningún consumidor cambia su import.
- * Money-safe igual que antes, y `null` sigue dando la raya larga (R9).
- */
-export { money } from "@/lib/config/moneda";
+// SLT-241 (R11): el reexport de `money` se borró. Los premios se pintan con
+// `formatearMontoEn(useMonedaDelPais(), monto, SIN_MONTO_RAYA)` en cada componente, con la moneda
+// del país; `null` sigue dando la raya larga.
 
 /** Formatea el porcentaje ya redondeado (STRING) del servidor. `null` → "—" (R3). */
 export function porcentaje(value: string | null): string {
