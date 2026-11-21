@@ -14,7 +14,9 @@
 > - `AnaliticaFinancieraService`: el campo `moneda` de cada importe que devuelve, y la etiqueta de la
 >   métrica del impuesto;
 > - `lib/analytics/metrics.ts`: la palabra «IVA» escrita en la etiqueta y las descripciones del
->   catálogo.
+>   catálogo;
+> - las dos pistas con «IVA» del detalle de dinero por producto (`DineroProductoDetalle.tsx`), con el
+>   nombre del impuesto del país (P1, cerrada por el humano el 2026-11-21).
 >
 > Salen de la lista de excepciones de `pais-sin-literales` las 2 entradas a nombre de SLT-242
 > (`lib/analytics/metrics.ts` y `lib/services/AnaliticaFinancieraService.ts`), y su tope baja de 14
@@ -24,8 +26,6 @@
 > - Los conteos, porcentajes y duraciones de la analítica: siguen con `monedaConfig.locale`, que el
 >   censo de SLT-235 admite. Las fechas (`ActualizarAnalitica`) → SLT-92 «Pantallas: fechas y teléfonos
 >   en la zona y el prefijo del país de la empresa».
-> - Los textos «IVA» de las pistas del detalle de dinero por producto (`DineroProductoDetalle.tsx`):
->   ver P1.
 > - Reactivar la sección de finanzas de `/analitica` (comentada el 2026-08-18): se migra su código, no
 >   se enciende.
 > - Los ids y nombres internos con «iva» (`ingreso_iva`, `ingreso_iva_flete`…): no se renombran
@@ -91,6 +91,14 @@ Vocabulario:
   R7 y R8 DEBEN usar la moneda y el rótulo de la plataforma, el aviso o el error DEBE quedar en el log
   (SLT-235 R3–R5), y la consulta NO DEBE fallar por ello.
 
+### Nombre del impuesto en el detalle de dinero por producto
+
+- **R17.** CUANDO el detalle de dinero de un producto pinta sus pistas con el impuesto (la de lo que
+  cobró la empresa, «flete + <impuesto> y comisión + <impuesto>», y la del flete por devolución a
+  origen, «… + <impuesto> de las órdenes en …»), el sistema DEBE escribir el nombre del impuesto del
+  país. Sin los datos del país, DEBE usar el rótulo de la plataforma. `DineroProductoDetalle.tsx` NO
+  DEBE contener la palabra «IVA» fuera de los comentarios.
+
 ### Catálogo de métricas
 
 - **R11.** El catálogo de métricas NO DEBE escribir a mano el nombre de un impuesto fuera de los
@@ -100,13 +108,12 @@ Vocabulario:
 ### Costa Rica, caídas y lo que no cambia
 
 - **R12.** MIENTRAS la empresa sea de Costa Rica, lo que pintan las pantallas de esta ficha, el campo
-  `moneda` («CRC»), las etiquetas y las descripciones del catálogo y las descargas de la analítica
-  financiera DEBEN ser idénticos, carácter a carácter, a lo de antes de esta ficha.
+  `moneda` («CRC»), las etiquetas y las descripciones del catálogo, las pistas de R17 (con «IVA») y las
+  descargas de la analítica financiera DEBEN ser idénticos, carácter a carácter, a lo de antes de esta ficha.
 - **R13.** MIENTRAS una pantalla de esta ficha se pinte sin los datos del país (fuera del portal, o
   montada sola en un test), el sistema DEBE usar la moneda de la plataforma (SLT-235 R15).
 - **R14.** El sistema NO DEBE cambiar en esta ficha: las cifras, las sumas y las restas de la analítica;
-  los ids y nombres internos con «iva»; los textos «IVA» de `DineroProductoDetalle.tsx` (P1); el estado
-  apagado de la sección de finanzas; la animación del KPI en moneda; ni los textos de pantallas que no
+  los ids y nombres internos con «iva»; el estado apagado de la sección de finanzas; la animación del KPI en moneda; ni los textos de pantallas que no
   son de esta ficha.
 
 ### Guardias
@@ -131,21 +138,12 @@ Vocabulario:
 | Heredadas de SL-21: nombres internos con «iva» sin renombrar; OpenAPI sin cambios | R14 |
 | `FichaQueLoRetira` y `FICHAS_ADMITIDAS` no se tocan (SLT-240 P2) | R16 |
 | `AnaliticaFinancieraService.ts` y `metrics.ts` son de SLT-242 (SLT-235 design §8) | R7, R8, R11, R16 |
+| P1: los «IVA» de `DineroProductoDetalle.tsx` entran en SLT-242 con `useImpuestoDelPais()` | R17, R12 |
 
 ## Preguntas abiertas
 
-- **P1. Los textos «IVA» del detalle de dinero por producto.** `DineroProductoDetalle.tsx` escribe
-  «Solo de lo ya liquidado: flete + IVA y comisión + IVA» (línea 86) y «Flete por devolución a origen
-  + IVA de las órdenes en …» (línea 106). Es un componente de cliente, así que la guardia
-  `pais-sin-literales` no lo ve. SLT-235 R17 reparte los textos «IVA» de pantalla entre SLT-241 y
-  SLT-243 a SLT-246, y ninguna de esas fichas tiene la analítica en su alcance: estos dos textos no
-  tienen dueño. El título de esta ficha solo habla de la moneda.
-  - Opción A: entran aquí. El archivo ya está en el diff (R3), así que no suma archivos: dos textos con
-    `useImpuestoDelPais()` y un caso de test.
-  - Opción B: quedan fuera y se anotan para otra ficha (¿cuál?).
-
-  **El spec asume B** hasta que el humano decida (R14 lo dice). Si decide A, se añade un requisito y
-  un caso de test, sin archivos nuevos.
+Ninguna. P1 (los textos «IVA» de `DineroProductoDetalle.tsx`) la cerró el humano el 2026-11-21 (ver
+«Decisiones cerradas»).
 
 ## Decisiones cerradas (no reabrir)
 
@@ -163,3 +161,4 @@ de SLT-240 y de SLT-241. Las fija el leader al lanzar este spec (2026-11-21):
 | 2026-11-20 | Heredadas de SL-21 | Los nombres internos con «iva» no se renombran; la OpenAPI no cambia. |
 | 2026-11-20 | Reparto de las excepciones de SLT-235 (design §8) | `AnaliticaFinancieraService.ts` y `metrics.ts` pasan a SLT-242. |
 | 2026-11-20 | `FichaQueLoRetira` y `FICHAS_ADMITIDAS` (SLT-240 P2) | No se tocan: se limpian cuando cierre la última rebanada del corte de SLT-235. |
+| 2026-11-21 | P1: los dos textos «IVA» de `DineroProductoDetalle.tsx` (líneas 86 y 106), que ninguna rebanada tenía | Entran en SLT-242 con `useImpuestoDelPais()`. Costa Rica sigue diciendo «IVA» (humano). |

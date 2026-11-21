@@ -54,7 +54,7 @@
     `AnalyticsPesoBajoUnPunto.test.tsx`, `analytics-paleta.test.ts` y los tests de las gráficas verdes
     sin cambiar valores.
 
-## Bloque 3 — Pantallas de `/analitica` (R1, R3, R4) (depende del bloque 2)
+## Bloque 3 — Pantallas de `/analitica` (R1, R3, R4, R17) (depende del bloque 2)
 
 - [ ] **T3.1** [P] Tablero financiero (design §4.2): `TableroFinanciero.tsx` (`TotalDelDto` y la línea
   del bruto) y `PanelConciliacion.tsx` (las tres cifras del cuadre) con `CifraAnalitica`.
@@ -67,7 +67,15 @@
   - `ProductosTablaDinero.test.tsx`: sus 2 llamadas a `textoPendiente` pasan `MONEDA_PLATAFORMA`.
   - Casos de R3.
   - *Hecho:* en verde; el resto de tests de productos y `DineroIdentidadesEnPantalla.test.tsx` sin
-    cambiar valores. `DineroProductoDetalle.tsx` conserva sus dos textos «IVA» (P1).
+    cambiar valores.
+- [ ] **T3.4** Pistas con el impuesto en `DineroProductoDetalle.tsx` (R17, design §5.2). Depende de
+  T3.2 (mismo archivo).
+  - `pistasConImpuesto(impuesto)` con `empresaPista` y `retornoPista`; salen de la constante de textos.
+  - El componente lee `useImpuestoDelPais()` y la pasa con `useMemo`.
+  - Casos de R17 en `moneda-del-pais-analitica.test.tsx`, con el censo «sin IVA» del archivo y su
+    contraprueba.
+  - *Hecho:* en verde; `ProductosTablaDinero.test.tsx` y `DineroIdentidadesEnPantalla.test.tsx` siguen
+    esperando «IVA» sin cambiar ningún valor.
 - [ ] **T3.3** [P] `KpisFinancieros.tsx` con `MontoAnalitico` (R4, design §4.2).
   - *Hecho:* caso de R4 en verde; los tests de las tarjetas financieras sin cambiar valores.
 
@@ -88,7 +96,7 @@
     `e2e/analitica-roles.spec.ts`, `e2e/cierres-admin.spec.ts` y `e2e/guia-api-ejemplos-ejecutables.spec.ts`).
   - El mapa R → test va en `progress/impl_SLT-242.md`.
   - El reviewer comprueba en el diff lo de R14 (design §10).
-  - *Hecho:* todo verde y el mapa con los 16 requisitos.
+  - *Hecho:* todo verde y el mapa con los 17 requisitos.
 
 ## Archivos esperados
 
@@ -107,7 +115,7 @@ Producción:
 - `app/(app)/analitica/_components/financiero/TableroFinanciero.tsx`
 - `app/(app)/analitica/_components/financiero/PanelConciliacion.tsx`
 - `app/(app)/analitica/_components/entregas/ProductosTabla.tsx`
-- `app/(app)/analitica/_components/entregas/DineroProductoDetalle.tsx`
+- `app/(app)/analitica/_components/entregas/DineroProductoDetalle.tsx` (también R17: sin archivo nuevo)
 - `app/(app)/analitica/_components/finanzas/KpisFinancieros.tsx`
 - `lib/services/AnaliticaFinancieraService.ts`
 - `lib/actions/analitica-financiera.ts`
@@ -135,8 +143,8 @@ que puede ser `moneda`, o de `textoPendiente`, se añade aquí antes del PR (des
 
 | | Archivos | Líneas (añadidas + borradas) |
 |---|---|---|
-| Producción | 20 | unas 300 |
-| Tests | 12 | unas 650 (unas 500 del archivo nuevo) |
+| Producción | 20 | unas 320 |
+| Tests | 12 | unas 700 (unas 550 del archivo nuevo) |
 | **Total** | **32** | |
 
 Es el 80% de `gate.tamano_pr` (40 archivos): llega al umbral del aviso sin pasarlo. Quedan 8 archivos

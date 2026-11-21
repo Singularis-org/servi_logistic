@@ -41,7 +41,7 @@ No apareció ninguna ficha ni código que ya resuelva R1–R11.
    (`TableroFinanciero`, `PanelConciliacion`, `KpiCard`, `KpisFinancieros`) pintan el importe con una
    hoja de cliente nueva que lee el hook (R1, R4).
 3. La tabla y el detalle de productos pasan de `money(` a `formatearMontoEn(moneda, …, SIN_MONTO_RAYA)`
-   (R3).
+   (R3). Las dos pistas con «IVA» del detalle toman el nombre del impuesto del país (R17).
 4. La acción financiera lee el país una vez por consulta y lo pasa al servicio por constructor: el
    servicio pone el código de la moneda en cada importe y el nombre del impuesto en la etiqueta de su
    métrica (R7–R10).
@@ -152,9 +152,25 @@ export function MontoAnalitico({ monto }: { readonly monto: string | null }): JS
 
 ### 5.2 Detalle de dinero (`DineroProductoDetalle.tsx`)
 
-`ImporteCabecera` e `Importe` leen el hook: `formatearMontoEn(moneda, valor, SIN_MONTO_RAYA)`. Sus dos
-textos «IVA» no se tocan (P1, R14). Sigue en el censo de la 359 (`DineroIdentidadesEnPantalla`), que
-acepta `formatearMontoEn` desde SLT-240.
+`ImporteCabecera` e `Importe` leen el hook: `formatearMontoEn(moneda, valor, SIN_MONTO_RAYA)`. Sigue en
+el censo de la 359 (`DineroIdentidadesEnPantalla`), que acepta `formatearMontoEn` desde SLT-240.
+
+**Las dos pistas con el impuesto (R17, P1 cerrada el 2026-11-21).** Hoy son entradas de la constante de
+módulo de textos: `totales.empresaPista` («Solo de lo ya liquidado: flete + IVA y comisión + IVA») y
+`totales.retornoPista` («Flete por devolución a origen + IVA de las órdenes en …»). Mismo patrón que
+`textosDelImpuesto` de SLT-241 §4.1:
+
+```ts
+/** R17: las dos pistas que nombran el impuesto. */
+export function pistasConImpuesto(impuesto: string): { empresaPista: string; retornoPista: string };
+```
+
+- Mismo texto de hoy cambiando «IVA» por `${impuesto}`. Las dos entradas salen de la constante.
+- El componente lee `useImpuestoDelPais()` una vez y lo pasa: `useMemo(() => pistasConImpuesto(impuesto), [impuesto])`.
+  Sin proveedor, `IMPUESTO_ROTULO` («IVA»): con CR y sin proveedor el texto es el de hoy (R12, R13).
+- El archivo no queda con `\bIVA\b` fuera de los comentarios. Lo comprueba un caso del test nuevo con
+  `quitarComentarios`, con su contraprueba sobre una fuente inventada.
+- No suma archivos: `DineroProductoDetalle.tsx` ya estaba en el diff por R3.
 
 ### 5.3 Lo que no cambia
 
@@ -308,9 +324,10 @@ con `MonedaDelPaisProvider` y `MONEDA_DE_PRUEBA` + «IGV», con `MONEDA_CR` + «
 | R11 | `pais-sin-literales.guardia.test.ts` en verde con `metrics.ts` fuera de la lista; en `moneda-del-pais-analitica.test.tsx`, `getMetrica("ingreso_iva").descripcion` y `getMetrica("ganancia_empresa").descripcion` contienen `IMPUESTO_ROTULO` y el fuente sin comentarios no tiene `\bIVA\b` |
 | R12 | Cada caso de R1–R8 con `MONEDA_CR` + «IVA» da el mismo texto que sin proveedor, y `getMetrica("ingreso_iva").etiqueta` = «Ingreso por IVA». Y siguen verdes sin cambiar ningún valor esperado: `TableroFinanciero.test.tsx`, `PanelConciliacion.test.tsx`, `AnalyticsKpiCard.test.tsx`, `AnalyticsTablaResumen.test.tsx`, `ProductosTablaDinero.test.tsx`, `DineroIdentidadesEnPantalla.test.tsx`, `analytics-formato.test.ts`, `dinero-centimos-cuando-existen.guardia.test.ts`, `analitica-financiera-action.test.ts` y los de la descarga financiera |
 | R13 | `moneda-del-pais-analitica.test.tsx`: sin proveedor, cada pantalla = `formatearMontoEn(MONEDA_PLATAFORMA, v)` |
-| R14 | El reviewer comprueba en el diff: ninguna suma ni resta nueva; ningún id con «iva» renombrado; `DineroProductoDetalle.tsx` conserva sus dos textos «IVA»; `page.tsx` sin cambios (la sección de finanzas sigue comentada); `DECIMALES_DE_LA_CUENTA` sin cambios; ningún archivo de otra rebanada ni de plataforma |
+| R14 | El reviewer comprueba en el diff: ninguna suma ni resta nueva; ningún id con «iva» renombrado; `page.tsx` sin cambios (la sección de finanzas sigue comentada); `DECIMALES_DE_LA_CUENTA` sin cambios; ningún archivo de otra rebanada ni de plataforma |
 | R15 | `moneda-del-pais-pantallas.test.tsx > censo de R18` con los 17 archivos de §8 y el caso de rojo con `money(` / `formatMontoString(` |
 | R16 | `pais-sin-literales.guardia.test.ts` en verde (sin las 2 entradas, tope 12), y en `moneda-del-pais-analitica.test.tsx` `EXCEPCIONES_PAIS_SIN_LITERALES.filter((e) => e.ficha === "SLT-242")` = `[]` y `TOPE_EXCEPCIONES` = 12 |
+| R17 | `moneda-del-pais-analitica.test.tsx`: `pistasConImpuesto("IGV")` da «Solo de lo ya liquidado: flete + IGV y comisión + IGV» y «Flete por devolución a origen + IGV de las órdenes en …»; `DineroProductoDetalle` montado con el proveedor de prueba pinta las dos con «IGV», y con `MONEDA_CR` + «IVA» y sin proveedor, los textos de hoy; censo «sin IVA» de `DineroProductoDetalle.tsx` (fuente sin comentarios) con su contraprueba |
 
 ## 11. Riesgos
 
