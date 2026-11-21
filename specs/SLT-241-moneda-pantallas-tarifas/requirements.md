@@ -139,29 +139,13 @@ Vocabulario:
 | Ejemplos «₡12.500» y «₡322.900» del catálogo de variables pasan a SLT-241 (SLT-235 P2) | R12–R15, R20 |
 | Texto «IVA 13.00» del historial de tarifas a esta ficha (SL-21, SLT-235) | R6, R8, R16 |
 | `FichaQueLoRetira` conserva `SLT-241` hasta la última rebanada (SLT-240 P2) | R20 |
+| P1: 34/40 en una sola ficha | Ninguno: es de tamaño del PR; lo vigila `tasks.md > Tamaño` |
+| P2: se deja el artículo «el» delante del nombre del impuesto | R4, R16 |
 
 ## Preguntas abiertas
 
-- **P1 — Tamaño (bloquea la aprobación del spec).** `tasks.md > Archivos esperados` suma **34 de 40**
-  archivos (29 de producción, 5 de tests): el **85%**, por encima del aviso del 80% de
-  `gate.tamano_pr`. Con SLT-240 «Moneda del país en pantallas: órdenes, novedades e incidentes» el
-  humano aceptó pasar del 80% con un máximo de 40. Dos opciones:
-  - **(a) Aceptarlo** como en SLT-240, con 6 archivos de margen.
-  - **(b) Partir** en dos rebanadas verticales que se mergean solas:
-    - **SLT-241**: Tarifas (pantalla, validación, historial y resolver), Configuración > Usuarios y
-      ranking. Unos 19 de producción y 4 de tests (≈ 23). Baja las 3 excepciones de tarifas; el tope,
-      de 19 a 16.
-    - **Ficha nueva**: «Ejemplos de importe de plantillas e informes en la moneda del país»
-      (`plantilla-datos.ts`, `informe.ts`, vistas previas de Plantillas y Envíos automáticos). Unos 10
-      de producción y 3 de tests (≈ 13). Baja las otras 2 excepciones; el tope, de 16 a 14.
-
-    La opción (b) reabre la decisión SLT-235 P2, que mandó los dos ejemplos a SLT-241: solo el humano
-    puede hacerlo.
-- **P2 — Artículo delante del nombre del impuesto.** Los textos de Tarifas dicen «Digita **el** IVA…» y
-  «Sin IVA». Con el nombre del país quedan «Digita el IGV…». Un impuesto de nombre femenino («la TVA»)
-  saldría con el artículo equivocado. Esta ficha no lo resuelve (el país no guarda el género del
-  nombre). ¿Se acepta así, o se reescriben esos textos sin artículo («Digita el % de <impuesto>…»)? Si
-  se reescriben, R16 deja de cumplirse para Costa Rica en esos dos textos.
+Ninguna. P1 (tamaño) y P2 (artículo delante del nombre del impuesto) las cerró el humano el
+2026-11-21 (ver «Decisiones cerradas»).
 
 ## Decisiones cerradas (no reabrir)
 
@@ -179,3 +163,5 @@ de SLT-240, fijadas por el leader al lanzar este spec (2026-11-21):
 | 2026-11-20 | Ejemplos «₡12.500» y «₡322.900» del catálogo de variables (SLT-235 P2) | Pasan a SLT-241: sus entradas de la lista de excepciones cambian de dueño a SLT-241 (humano). |
 | 2026-11-20 | Texto «IVA 13.00» del historial de tarifas (SL-21) | Va al corte de SLT-235; SLT-235 design §8 lo asigna a SLT-241 junto con `tarifa-flexible.ts` y `resolver-tarifas.ts`. |
 | 2026-11-20 | `FichaQueLoRetira` y `FICHAS_ADMITIDAS` (SLT-240 P2) | No se tocan: se limpian cuando cierre la última rebanada del corte de SLT-235. |
+| 2026-11-21 | P1: el spec suma 34 de 40 archivos (85%), por encima del aviso del 80% | El humano acepta 34/40 en una sola ficha, sin partirla. Máximo 40: si se pasa, el implementer para y decide el leader. |
+| 2026-11-21 | P2: artículo delante del nombre del impuesto («Digita el <impuesto>…», «Sin <impuesto>») | Se deja el artículo «el» (humano). Costa Rica no cambia; si llega un país con un impuesto de nombre femenino, se ajusta entonces. |

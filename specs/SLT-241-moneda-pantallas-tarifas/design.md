@@ -332,7 +332,8 @@ fixtures de Tarifas son los de `tests/fixtures/tarifas-pantalla.ts`.
   `TarifaValorRepository` caen a `IMPUESTO_ROTULO` si nadie les pasa el impuesto. Con CR no se nota;
   con otro país, el historial diría «IVA». Lo cierra el test de cableado de §9, que falla si la acción
   deja de pasarlo.
-- **Artículo del impuesto (P2).** «Digita el <impuesto>…» supone un nombre masculino.
+- **Artículo del impuesto (P2, cerrada).** «Digita el <impuesto>…» supone un nombre masculino. El
+  humano decidió dejarlo así y ajustarlo si llega un impuesto de nombre femenino.
 - **Textos del historial mezclados.** Una empresa cuyo país cambie de impuesto verá filas viejas con el
   nombre anterior y nuevas con el nuevo. Es lo correcto para un dato congelado.
 - **Memo de 10 min.** Un cambio del nombre del impuesto tarda hasta 10 min en llegar al historial y a
@@ -372,7 +373,7 @@ fixtures de Tarifas son los de `tests/fixtures/tarifas-pantalla.ts`.
 ## 14. Tamaño
 
 Ver `tasks.md > Tamaño`: 34 archivos (29 de producción, 5 de tests), el 85% del tope de 40. Pasa del
-aviso del 80%: lo decide el humano en P1 de `requirements.md`.
+aviso del 80%; el humano lo aceptó el 2026-11-21 (P1 en «Decisiones cerradas», máximo 40).
 
 ## Dependencias de terceros
 

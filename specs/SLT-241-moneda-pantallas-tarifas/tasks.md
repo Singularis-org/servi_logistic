@@ -1,7 +1,6 @@
 # SLT-241 — Moneda e impuesto del país en pantallas: tarifas, configuración y ranking · tasks
 
-> Requisitos en `requirements.md`; el cómo, en `design.md`. **No se empieza sin resolver P1 y P2 de
-> `requirements.md`.** Una task está hecha cuando pasa su criterio **y** `pnpm run typecheck` está en
+> Requisitos en `requirements.md`; el cómo, en `design.md`. Una task está hecha cuando pasa su criterio **y** `pnpm run typecheck` está en
 > verde. `[P]` = puede ir en paralelo con las otras `[P]` de su bloque. Cada task de pantalla añade sus
 > casos a `tests/components/moneda-del-pais-tarifas.test.tsx` (archivo nuevo, lo crea la primera que
 > llegue). Cada caso se prueba con `MONEDA_DE_PRUEBA` + «IGV», con `MONEDA_CR` + «IVA» y sin proveedor:
@@ -156,7 +155,7 @@ Grep del 2026-11-21. Si el typecheck o un test señalan otro llamante (de `etiqu
 | Tests | 5 | unas 700 (unas 600 del archivo nuevo) |
 | **Total** | **34** | |
 
-Es el 85% de `gate.tamano_pr` (40 archivos): pasa del aviso del 80%. Lo decide el humano en P1 de
-`requirements.md` (aceptar, como en SLT-240, o partir). Quedan 6 archivos de margen; si se pasa de 40,
+Es el 85% de `gate.tamano_pr` (40 archivos): pasa del aviso del 80%, y el humano lo aceptó el
+2026-11-21 en una sola ficha (P1 en `requirements.md > Decisiones cerradas`, máximo 40). Quedan 6 archivos de margen; si se pasa de 40,
 el implementer para y el leader decide. Las líneas quedan muy por debajo de sus dos topes (1 000 de
 producción y 3 000 de tests).
