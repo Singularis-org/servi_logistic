@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 
+import { CobroIntentoRepository } from "@/lib/repositories/CobroIntentoRepository";
 import { comoApp } from "@/tests/fabricas/organizaciones";
 
 import { HAY_BASE_DE_DATOS, bajoLockDeEscrituraReal, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
@@ -806,6 +807,32 @@ describeSiHayBase("SLT-226 — el intento de cobro: creación, máquina de estad
     expect(deA.ids).toEqual(expect.arrayContaining([intento.a1, intento.a1b, intento.a1c, intento.a2, intento.a2b, intento.a3]));
     expect(deA.ids).not.toContain(intento.b1);
     expect(await leerComo(null)).toEqual({ empresas: [], ids: [] });
+  });
+
+  /* ------------------- la lectura del repositorio real (R27) ----------------- */
+
+  // Hallazgo 1 de la review: el `CobroIntentoRepository` de verdad, sobre la base envuelta como en producción
+  // (`ctx.app`). Mata a) la rama `empresa` sin el filtro de empresa (y como plataforma, que la RLS no lo tape) y
+  // b) el orden `createdAt asc`.
+  it("R27: el repositorio real da a la empresa los intentos de su factura del más nuevo al más viejo, [] con la factura de otra empresa, y al superadmin la de cualquiera", async () => {
+    const repo = new CobroIntentoRepository((ctx as ContextoCobro).app);
+    const deA = { tipo: "empresa", organizacionId: orgDe(empresaA()) } as const;
+
+    const verdad = await intentosDeFactura(base, factura.A1.id);
+    expect(verdad.length).toBeGreaterThanOrEqual(2);
+    const propios = await repo.intentosDeFactura(deA, factura.A1.id);
+    expect(new Set(propios.map((i) => i.id))).toEqual(new Set(verdad.map((i) => i.id)));
+    expect(propios.map((i) => i.facturaId)).toEqual(Array(verdad.length).fill(factura.A1.id));
+    // Del más nuevo al más viejo, y con horas distintas: si no, el orden no se mediría.
+    const horas = propios.map((i) => i.createdAt.getTime());
+    expect(horas).toEqual([...horas].sort((x, y) => y - x));
+    expect(horas[0]).toBeGreaterThan(horas[horas.length - 1]);
+    expect(propios.map((i) => i.id)).toContain(intento.a1c);
+
+    expect(await repo.intentosDeFactura(deA, factura.B1.id)).toEqual([]);
+
+    const comoSuperadmin = await repo.intentosDeFactura({ tipo: "plataforma" }, factura.B1.id);
+    expect(comoSuperadmin.map((i) => i.id)).toEqual([intento.b1]);
   });
 
   /* --------------------------- atomicidad del historial (R25) ---------------- */

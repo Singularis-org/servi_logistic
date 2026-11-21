@@ -109,7 +109,7 @@ Archivos: `CI` = `tests/integration/db/cobro-intento.test.ts`, `WE` = `tests/int
 | R24 | PL «R24: `rechazado` y `expirado` sobre un vivo → el intento cierra…» |
 | R25 | CI y PL en los tests de R1, R3, R10, R11, R14 y R17; CI «R25: si la transacción que cambia un estado falla después…» |
 | R26 | CI «R8, R26: como `servi_app`…»; CI «R26: como `servi_app`, B lee solo sus intentos…»; WE «R26: como `servi_app` de cualquier empresa, ni se leen ni se escriben los eventos…» |
-| R27 | SV «R27: %s lee los intentos de su empresa»; SV «R27: el superadmin lee…»; SV «R27: %s recibe forbidden…»; SV «R27: un maestro sin empresa…» |
+| R27 | CI «R27: el repositorio real da a la empresa los intentos de su factura del más nuevo al más viejo, [] con la factura de otra empresa, y al superadmin la de cualquiera» (integración, review vuelta 1); SV «R27: %s lee los intentos de su empresa»; SV «R27: el superadmin lee…»; SV «R27: %s recibe forbidden…»; SV «R27: un maestro sin empresa…» |
 | R28 | MI «R28: no insertan ni cambian datos»; MI «R28: no crean datos…»; MI «R28: la confirmación que ya existía sigue igual…»; MI «R28: el down.sql aborta sin tocar nada si hay un intento»; MI «R28: sin intentos, los dos down.sql dejan el esquema como antes…»; suites de SLT-60 y SLT-143 sin cambios (T7.2) |
 | R29 | LA «R29: el pago aprobado en línea dice «pago_en_linea» en Registró…» (y 3 más); PA «R29 — un pago aprobado en línea dice «Pagado en línea»…»; PA «R29 — un gasto de plantilla sigue diciendo «Automático · …»»; PL «R29: como `servi_app` de A, `marcasDeLaPlataforma` devuelve el pago en `enLinea`…» |
 
@@ -294,3 +294,25 @@ tests extra de servicio (R30 wompi sin adaptador, R38 respuestas de la base, R35
   - Typecheck (8192 MB): exit 0.
   - Lint: 0 errores, 249 avisos. `test:guardias`: `Test Files 357 passed | 3 skipped (360)`,
     `Tests 5419 passed | 28 skipped (5447)`.
+
+## Review vuelta 1 (2026-11-20): arreglos
+
+- Hallazgo 1 (bloqueante, R27): test de integración del repositorio real; ver abajo.
+- Hallazgos menores 2 y 5: no llevan código. Quedan como frontera con otras fichas:
+  - 2, el evento se cierra `aplicado` con `intento_id` nulo cuando el paso 0 corta por una marca a mano sin
+    `id_externo`: lo recoge SLT-228 «Cobro automático: webhook por proveedor y el de Rebill» (buscar el intento por
+    `(proveedor, pago_proveedor_id)` cuando la respuesta es `ya_registrado`).
+  - 5, la marca y el aviso sin `id_externo` a la vez (el aviso da `sin_intento` y un reenvío con el mismo `logId`
+    sale `repetido`): riesgo aceptado en §12.4; lo recoge la conciliación de SLT-233 «Cobro automático: conciliación,
+    devoluciones y contracargos».
+- Hallazgos 3 y 4: sin acción.
+- Hallazgo 1: test nuevo en `cobro-intento.test.ts`, «R27: el repositorio real da a la empresa los intentos de su
+  factura del más nuevo al más viejo, [] con la factura de otra empresa, y al superadmin la de cualquiera», con
+  `new CobroIntentoRepository(ctx.app)` sobre las facturas A1 (tres intentos) y B1 del fixture.
+  - Mutación (a), la rama `empresa` con `comoPlataforma` y sin filtro `organizacionId`: `Tests 1 failed | 25 passed
+    (26)` (A vio el intento de B). Mutación (b), `orderBy createdAt` `asc`: `Tests 1 failed | 25 passed (26)`.
+    Revertidas; `git diff --quiet lib/` limpio.
+  - SLT-226 (`cobro-intento`, `cobro-webhook-evento`, `cobro-pago-en-linea`, `migracion-slt226-ida-y-vuelta`,
+    `cobro-intento-service`): `Test Files 5 passed (5)`, `Tests 106 passed (106)`. Typecheck (8192 MB): exit 0.
+    `eslint` del test: exit 0 (el `pnpm run lint` completo lo cortó el sistema por falta de memoria; el diff solo
+    toca este test).
