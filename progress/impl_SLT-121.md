@@ -673,3 +673,48 @@ build y tests a la vez.
 
 Veredicto: T5.1 completa; E2E de la mora en verde dos veces seguidas, con `dinero` entero y el humo de dos empresas en
 verde; quedan para el leader el desvío del `admin` en R35 y el texto de la carga masiva frente a R14.
+
+## Tanda 5: arreglo R14 (pantalla de carga masiva)
+
+Cierra el HALLAZGO de T5.1: con la empresa congelada, la pantalla de carga masiva pintaba
+«No se pudo validar el archivo (estado 403).» en vez del texto exacto de R14.
+
+### Archivos
+- `app/(app)/ordenes/_components/carga-masiva-chunks.ts`: `ChunkRequestError` gana `codigo` (el `details.codigo`
+  del cuerpo de error, `null` si no lo hay o no es JSON); `procesarEnChunks` lo lee con `codigoDeError(res)` antes
+  de lanzar. Status y mensaje del error, sin cambios.
+- `app/(app)/ordenes/_components/OrdenesCargaUpload.tsx`: `mensajeDeError` devuelve `MENSAJE_EMPRESA_CONGELADA`
+  (importado de `lib/planes/mora.ts`, puro) cuando `codigo === "empresa_congelada"`; el resto de errores igual. El
+  código va como constante local con comentario: `CODIGO_EMPRESA_CONGELADA` vive en `lib/planes/empresa-congelada.ts`,
+  que arrastra `node:async_hooks` (vía `lib/db/contexto-empresa`) y no se puede importar desde un componente de cliente.
+- `tests/components/CargaMasivaChunks.test.ts`: 2 casos SLT-121/R14 (403 de mora → `codigo = "empresa_congelada"`;
+  cuerpo no JSON → `codigo = null`) y `codigo` nulo en el caso 401 existente.
+- `tests/components/OrdenesCargaUpload.test.tsx`: 2 casos SLT-121/R14 (el `alert` es exactamente
+  «Empresa suspendida por falta de pago.»; otro 403 sin ese código conserva «… (estado 403).»).
+- `e2e/mora-congelamiento.spec.ts`: el caso 2 exige `toHaveText(TEXTO.suspendida)` en el `alert` del diálogo (antes
+  solo `toBeVisible` + `MEDIDO`); título y cabecera del caso ajustados.
+
+`OrdenesCargaMasivaButton.tsx` (toast del paso de confirmar) no se toca: con la empresa congelada el dry-run ya
+falla antes, así que el botón de confirmar no llega a existir (el E2E afirma su ausencia).
+
+### R → test
+| R | Test |
+|---|---|
+| R14 | `tests/components/OrdenesCargaUpload.test.tsx` › «SLT-121/R14: un 403 empresa_congelada muestra exactamente «Empresa suspendida por falta de pago.»» y «… otro 403 sin ese codigo conserva el mensaje con el estado» |
+| R14 | `tests/components/CargaMasivaChunks.test.ts` › «SLT-121/R14: lanza ChunkRequestError con codigo empresa_congelada …» y «… un cuerpo de error que no es JSON deja codigo en null» |
+| R14 (E2E) | `e2e/mora-congelamiento.spec.ts` › caso 2 (`toHaveText("Empresa suspendida por falta de pago.")`) |
+
+### Verificación (salida real)
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: `tsc --noEmit` sin errores.
+- `npx eslint` de los 5 archivos tocados: `ESLint: No issues found`, exit 0.
+- `pnpm exec vitest run tests/components/CargaMasivaChunks.test.ts tests/components/OrdenesCargaUpload.test.tsx tests/components/OrdenesCargaMasivaButton.test.tsx`:
+  `Test Files 3 passed (3)`, `Tests 43 passed (43)`.
+- Guardias `lib-no-importa-app`, `pais-sin-literales`, `lectura-guia-unica`, `e2e-sin-saltos`:
+  `Test Files 4 passed (4)`, `Tests 97 passed (97)`.
+- `next build` (`NEXT_PUBLIC_APP_URL=http://localhost:3044`, `NODE_OPTIONS=--max-old-space-size=8192`, `DATABASE_URL`
+  en `servi_logistic_slt121_e2e`): exit 0. Después, en serie,
+  `E2E_PUERTO=3044 pnpm exec playwright test e2e/mora-congelamiento.spec.ts --project=dinero --reporter=list`:
+  los 6 casos ✓, incluido «2. la tienda intenta crear una orden por la carga masiva: 403 «Empresa suspendida…», el
+  mismo texto en pantalla y ninguna orden (R12, R14, R35) (1.2s)»; `6 passed (27.5s)`, exit 0.
+
+Veredicto: R14 cerrado en la pantalla de carga masiva; unit, componente y E2E en verde.

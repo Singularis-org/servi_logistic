@@ -60,10 +60,29 @@ export interface ProcesarChunksOpts {
   totalFiles?: number;
 }
 
-/** Error de un lote (HTTP no-ok); el llamador lo traduce a alerta/toast. */
+/**
+ * Error de un lote (HTTP no-ok); el llamador lo traduce a alerta/toast.
+ *
+ * SLT-121 (R14, design §6.3): `codigo` es el `details.codigo` del cuerpo de error de la
+ * API, si lo trae (p. ej. `empresa_congelada`); `null` si el cuerpo no es JSON o no lo trae.
+ */
 export class ChunkRequestError extends Error {
-  constructor(readonly status: number) {
+  constructor(
+    readonly status: number,
+    readonly codigo: string | null = null,
+  ) {
     super(`chunk_failed_${status}`);
+  }
+}
+
+/** Lee `details.codigo` de un cuerpo de error de la API; `null` si no lo hay o no es JSON. */
+async function codigoDeError(res: Response): Promise<string | null> {
+  try {
+    const cuerpo = (await res.json()) as { details?: { codigo?: unknown } } | null;
+    const codigo = cuerpo?.details?.codigo;
+    return typeof codigo === "string" ? codigo : null;
+  } catch {
+    return null;
   }
 }
 
@@ -103,7 +122,7 @@ export async function procesarEnChunks(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (!res.ok) throw new ChunkRequestError(res.status);
+    if (!res.ok) throw new ChunkRequestError(res.status, await codigoDeError(res));
 
     const summary = (await res.json()) as BulkSummary;
     // Token del lote emitido por el servidor: se conserva el primero que llegue (los chunks

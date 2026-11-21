@@ -26,8 +26,8 @@ import { abrirCon } from "./_escenarios/pulsar";
 // Pasos:
 // 1. El maestro y el admin entran con la empresa congelada (R10) y ven «Empresa congelada por falta de pago» (R24).
 // 2. La tienda intenta crear una orden por la carga masiva: el lote vuelve 403 con «Empresa suspendida por falta de
-//    pago.», la pantalla muestra un error y la orden no existe (R12, R14). La tienda y no el `admin`: el `admin` no
-//    tiene pantalla para crear órdenes (la carga masiva es solo de `adminTienda`, `app/(app)/ordenes/page.tsx`).
+//    pago.», la pantalla muestra ese mismo texto y la orden no existe (R12, R14). La tienda y no el `admin`: el
+//    `admin` no tiene pantalla para crear órdenes (la carga masiva es solo de `adminTienda`, `app/(app)/ordenes/page.tsx`).
 // 3. Con la key de la empresa, `POST /api/ordenes/api-key/carga` → 403 con el cuerpo exacto de R13 y sin orden, y
 //    `GET /api/ordenes/api-key` → 200.
 // 4. El maestro registra el pago a la plataforma del total desde la wallet (R11).
@@ -331,7 +331,7 @@ test("1. con la empresa congelada, el maestro y el admin entran y ven «Empresa 
   }
 });
 
-test("2. la tienda intenta crear una orden por la carga masiva: 403 «Empresa suspendida…», un error en pantalla y ninguna orden (R12, R14, R35)", async ({ browser }) => {
+test("2. la tienda intenta crear una orden por la carga masiva: 403 «Empresa suspendida…», el mismo texto en pantalla y ninguna orden (R12, R14, R35)", async ({ browser }) => {
   test.setTimeout(300_000);
   const rem = `SLT121-C-${randomBytes(5).toString("hex")}`;
   const antes = await ordenesDeLaEmpresa();
@@ -351,7 +351,8 @@ test("2. la tienda intenta crear una orden por la carga masiva: 403 «Empresa su
 
     const error = dialogo.getByRole("alert");
     await expect(error).toBeVisible({ timeout: 60_000 });
-    console.log(`MEDIDO error de la carga masiva congelada: «${(await error.innerText()).trim()}»`);
+    // R14: la pantalla pinta el texto exacto de la API, no el genérico «estado 403».
+    await expect(error).toHaveText(TEXTO.suspendida);
     await expect(dialogo.getByRole("button", { name: /^Confirmar y cargar/ })).toHaveCount(0);
   } finally {
     await ctx.close();
