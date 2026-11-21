@@ -1,7 +1,15 @@
 "use client";
 
+import { useMemo } from "react";
+
 import { DataTable, type Column } from "@/components/shared/DataTable";
-import { montoExacto } from "@/components/shared/DesglosePagoField";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
+import {
+  ESCALA_PRESENTACION,
+  formatearMontoEn,
+  SIN_MONTO_RAYA,
+  type FormatoMoneda,
+} from "@/lib/config/moneda";
 import type { OrdenMontoAjustado } from "@/app/(app)/ordenes/_components/carga-masiva-clasificacion";
 
 export interface OrdenesConMontoAjustadoTablaProps {
@@ -35,11 +43,21 @@ export interface OrdenesConMontoAjustadoTablaProps {
  * caso —es la excepción declarada a «el dinero se pinta sin céntimos»— y sobre un monto sin
  * cola decimal (la columna «aplicado», siempre entera) devuelve exactamente lo mismo que el
  * formateador de siempre.
+ *
+ * SLT-240 (R3, design §4) — los dos montos van con el símbolo y los separadores de la moneda del
+ * país, pero a la ESCALA DE PRESENTACIÓN (2), que es la del dato, y no a la de la moneda: con una
+ * moneda de 0 decimales `11898.81` y `11899` volverían a salir con el mismo texto. Con la moneda
+ * de la plataforma (o la de CR) es exactamente lo que pintaba `montoExacto`.
  */
 export function OrdenesConMontoAjustadoTabla({
   ajustadas,
   descripcion,
 }: OrdenesConMontoAjustadoTablaProps) {
+  const moneda = useMonedaDelPais();
+  const exacta = useMemo<FormatoMoneda>(
+    () => ({ ...moneda, decimales: ESCALA_PRESENTACION }),
+    [moneda],
+  );
   const columns: Column<OrdenMontoAjustado>[] = [
     {
       id: "fila",
@@ -57,13 +75,13 @@ export function OrdenesConMontoAjustadoTabla({
     {
       id: "original",
       value: "Monto del archivo",
-      render: (row) => montoExacto(row.original),
+      render: (row) => formatearMontoEn(exacta, row.original, SIN_MONTO_RAYA),
       align: "right",
     },
     {
       id: "aplicado",
       value: "Monto aplicado",
-      render: (row) => montoExacto(row.aplicado),
+      render: (row) => formatearMontoEn(exacta, row.aplicado, SIN_MONTO_RAYA),
       align: "right",
     },
   ];

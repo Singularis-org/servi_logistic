@@ -18,7 +18,9 @@ import {
   ERROR_FUENTE_ETIQUETA,
 } from "@/app/(app)/ordenes/_components/etiquetas-fuente-carga";
 import { getHojaEtiqueta } from "@/lib/config/etiquetas-hoja";
-import { formatMonto } from "@/lib/config/moneda";
+import { formatearMontoEn, formatMonto, MONEDA_PLATAFORMA } from "@/lib/config/moneda";
+import { MonedaDelPaisProvider } from "@/providers/MonedaDelPaisProvider";
+import { MONEDA_DE_PRUEBA } from "@/tests/fabricas/reglas-pais";
 import type { FuenteEmbebida } from "@/lib/pdf/etiquetas-fuente-registro";
 import type { EtiquetaGuiaDTO } from "@/lib/types/etiqueta-guia";
 import type { OrdenListItemDTO } from "@/lib/types/orden";
@@ -204,6 +206,35 @@ describe("EtiquetasGuiaModal", () => {
       etiquetas,
       expect.any(Map),
       getHojaEtiqueta("100x100"),
+      // SLT-240 (R14): sin proveedor, la moneda de la plataforma (R13).
+      MONEDA_PLATAFORMA,
+    );
+  });
+
+  it("SLT-240 R6: dentro del proveedor del pais, el PDF se pide con la moneda del pais", async () => {
+    const user = userEvent.setup();
+    const etiquetas = [makeEtiqueta({ ordenId: "o1", numGuia: 11, montoCobrar: 12500.5 })];
+    generarEtiquetasMock.mockResolvedValue({ status: "ok", etiquetas, omitidas: [] });
+
+    render(
+      <MonedaDelPaisProvider moneda={MONEDA_DE_PRUEBA} impuestoNombre="IGV">
+        <EtiquetasGuiaModal open ordenes={[makeOrden("o1")]} onOpenChange={vi.fn()} />
+      </MonedaDelPaisProvider>,
+    );
+
+    await screen.findAllByTestId("etiqueta-guia");
+    // La vista previa ya pinta con la misma moneda que va al PDF.
+    expect(screen.getByTestId("etiqueta-monto")).toHaveTextContent(
+      formatearMontoEn(MONEDA_DE_PRUEBA, 12500.5),
+    );
+    await user.click(screen.getByRole("button", { name: "Descargar etiquetas" }));
+
+    expect(descargarEtiquetasPdfMock).toHaveBeenCalledTimes(1);
+    expect(descargarEtiquetasPdfMock).toHaveBeenCalledWith(
+      etiquetas,
+      expect.any(Map),
+      getHojaEtiqueta("100x100"),
+      MONEDA_DE_PRUEBA,
     );
   });
 
@@ -353,6 +384,7 @@ describe("EtiquetasGuiaModal — tamaño de hoja (feature 150)", () => {
       etiquetas,
       expect.any(Map),
       getHojaEtiqueta("a4"),
+      MONEDA_PLATAFORMA,
     );
     // Feature 350 (T5): la hoja gana su REJILLA de celdas, hoy 1 x 1 en las
     // cuatro. El literal se mantiene literal —es el contrato del catalogo, no un

@@ -6,6 +6,8 @@ import {
   columnasDescargaOrdenes,
   filaDescargaOrden,
 } from "@/app/(app)/ordenes/_components/ordenes-descarga-columnas";
+import { conImpuestoDelPais, ordenesColumnsDe } from "@/app/(app)/ordenes/_components/ordenes-columns";
+import { IMPUESTO_ROTULO } from "@/lib/constants/impuesto-rotulo";
 import { ETIQUETAS_CR, ETIQUETAS_XA } from "../../fabricas/etiquetas-geograficas";
 import type { OrdenListItemDTO } from "@/lib/types/orden";
 
@@ -181,7 +183,7 @@ describe("columnas de descarga del listado de órdenes", () => {
     // Los 22 encabezados, en su orden y escritos a mano: son CONTRATO. Es lo que el usuario
     // recibe por correo y lo que lee quien procesa la hoja. SL-20 (R19): los de nivel son los del
     // país de la empresa; éstos, los de Costa Rica.
-    expect(columnasDescargaOrdenes(ETIQUETAS_CR).map((c) => c.encabezado)).toEqual([
+    expect(columnasDescargaOrdenes(ETIQUETAS_CR, IMPUESTO_ROTULO).map((c) => c.encabezado)).toEqual([
       "Nº Guía",
       "Nº Remisión",
       "Estado",
@@ -379,7 +381,7 @@ describe("columnas de descarga del listado de órdenes", () => {
 
 describe("SL-20/R19 — la descarga de órdenes nombra los niveles con los del país de la empresa", () => {
   it("con un país de prueba, los encabezados de nivel dicen «Departamento», «Municipio» y «Aldea»", () => {
-    const columnas = columnasDescargaOrdenes(ETIQUETAS_XA);
+    const columnas = columnasDescargaOrdenes(ETIQUETAS_XA, IMPUESTO_ROTULO);
     const porClave = Object.fromEntries(columnas.map((c) => [c.clave, c.encabezado]));
     expect([porClave.provincia, porClave.canton, porClave.distrito]).toEqual([
       "Departamento",
@@ -388,5 +390,34 @@ describe("SL-20/R19 — la descarga de órdenes nombra los niveles con los del p
     ]);
     // Claves y orden, los del contrato: el país solo cambia el nombre.
     expect(columnas.map((c) => c.clave)).toEqual(COLUMNAS_DESCARGA_ORDENES.map((c) => c.clave));
+  });
+});
+
+describe("SLT-240/R16 — los rótulos con impuesto de órdenes, con el del país", () => {
+  it("R16/R15: con «IGV», la descarga cambia SOLO los encabezados del flete y la comisión", () => {
+    const base = columnasDescargaOrdenes(ETIQUETAS_XA, IMPUESTO_ROTULO);
+    const conIgv = columnasDescargaOrdenes(ETIQUETAS_XA, "IGV");
+    const porClave = Object.fromEntries(conIgv.map((c) => [c.clave, c.encabezado]));
+    expect([porClave.fleteConIva, porClave.comisionConIva]).toEqual(["Flete + IGV", "Comisión + IGV"]);
+    // Claves y orden, los del contrato; el resto de encabezados, los mismos.
+    expect(conIgv.map((c) => c.clave)).toEqual(COLUMNAS_DESCARGA_ORDENES.map((c) => c.clave));
+    const distintas = conIgv.filter((c, i) => c.encabezado !== base[i]?.encabezado).map((c) => c.clave);
+    expect(distintas).toEqual(["fleteConIva", "comisionConIva"]);
+  });
+
+  it("R12: `conImpuestoDelPais` con el rótulo de la plataforma devuelve EL MISMO arreglo", () => {
+    const columnas = ordenesColumnsDe(ETIQUETAS_CR);
+    expect(conImpuestoDelPais(columnas, IMPUESTO_ROTULO)).toBe(columnas);
+  });
+
+  it("R16: `conImpuestoDelPais` con «IGV» cambia solo el `value` de `flete` y `comision`", () => {
+    const columnas = ordenesColumnsDe(ETIQUETAS_CR);
+    const conIgv = conImpuestoDelPais(columnas, "IGV");
+    expect(conIgv).not.toBe(columnas);
+    const porId = Object.fromEntries(conIgv.map((c) => [c.id, c.value]));
+    expect([porId.flete, porId.comision]).toEqual(["Flete + IGV", "Comisión + IGV"]);
+    conIgv.forEach((c, i) => {
+      if (c.id !== "flete" && c.id !== "comision") expect(c).toBe(columnas[i]);
+    });
   });
 });

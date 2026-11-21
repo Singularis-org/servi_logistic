@@ -6,6 +6,8 @@ import type { EtiquetasGeograficas } from "@/lib/types/pais";
 import { EstatusBadge } from "./EstatusBadge";
 import { NotaGestionPendiente } from "./NotaGestionPendiente";
 import { toValidNumber } from "@/lib/utils/number";
+import { IMPUESTO_ROTULO } from "@/lib/constants/impuesto-rotulo";
+import { rotuloComisionConImpuesto, rotuloFleteConImpuesto } from "./rotulos-con-impuesto";
 
 // Placeholder para valores ausentes (relación opcional no resuelta).
 const SIN_DATO = "—";
@@ -95,6 +97,21 @@ export function ordenesColumnsDe(etiquetas: EtiquetasGeograficas): Column<OrdenL
   const columnas = construirOrdenesColumns(etiquetas);
   MEMO_COLUMNAS.set(etiquetas, columnas);
   return columnas;
+}
+
+/**
+ * SLT-240 (design §5; R16, R12) — las columnas con los rótulos del flete y la comisión en el
+ * impuesto del país (`useImpuestoDelPais()`). Solo cambia el `value` de las columnas `flete` y
+ * `comision`; el resto son los mismos objetos. Con el rótulo de la plataforma devuelve EL MISMO
+ * arreglo: con Costa Rica la tabla no ve columnas nuevas.
+ */
+export function conImpuestoDelPais<T>(columnas: Column<T>[], impuesto: string): Column<T>[] {
+  if (impuesto === IMPUESTO_ROTULO) return columnas;
+  return columnas.map((columna) => {
+    if (columna.id === "flete") return { ...columna, value: rotuloFleteConImpuesto(impuesto) };
+    if (columna.id === "comision") return { ...columna, value: rotuloComisionConImpuesto(impuesto) };
+    return columna;
+  });
 }
 
 function construirOrdenesColumns(etiquetas: EtiquetasGeograficas): Column<OrdenListItemDTO>[] {
@@ -192,7 +209,8 @@ function construirOrdenesColumns(etiquetas: EtiquetasGeograficas): Column<OrdenL
     },
     {
       id: "flete",
-      value: "Flete + IVA",
+      // SLT-240 (R16): rótulo de caída; `conImpuestoDelPais` pone el del país.
+      value: rotuloFleteConImpuesto(IMPUESTO_ROTULO),
       // STRING ya derivado por el servidor (monto pactado del distrito especial, o flete GAM /
       // estándar según la zona, + su IVA). Sin tarifa activa el servidor manda "0.00", y un DTO
       // viejo sin el campo cae al ₡0,00 de PriceLabel: la misma degradación segura de siempre (R9).
@@ -227,7 +245,7 @@ function construirOrdenesColumns(etiquetas: EtiquetasGeograficas): Column<OrdenL
     },
     {
       id: "comision",
-      value: "Comisión + IVA",
+      value: rotuloComisionConImpuesto(IMPUESTO_ROTULO),
       // STRING ya derivado por el servidor (comisión COD sobre el valor de cobro + su IVA).
       // Sin tarifa, o si la orden NO cobra comisión, el servidor manda "0.00".
       render: (row) => <PriceLabel value={row.comisionConIva} />,

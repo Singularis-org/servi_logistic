@@ -6,7 +6,8 @@ import { DataTable, type Column } from "@/components/shared/DataTable";
 import { DescargarManifiestoButton } from "@/components/shared/DescargarManifiestoButton";
 import { Button } from "@/components/ui/button";
 import { resumenCargaMasiva } from "@/lib/actions/carga-masiva-resumen";
-import { formatMonto } from "@/lib/config/moneda";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
+import { formatearMontoEn } from "@/lib/config/moneda";
 import type { ResumenCargaOrdenDTO } from "@/lib/types/carga-masiva-resumen";
 
 import type { OrdenMontoAjustado } from "./carga-masiva-clasificacion";
@@ -59,6 +60,8 @@ export function OrdenesCargaResumen({
   // Etiquetas del lote recién cargado. Se abre sobre las filas YA resueltas del resumen,
   // que son las que traen el `id` de cada orden (las remisiones del prop no bastan).
   const [etiquetasAbierto, setEtiquetasAbierto] = useState(false);
+  // SLT-240 (R2): el monto se pinta con la moneda del país de la empresa.
+  const moneda = useMonedaDelPais();
 
   // R6/R7: resumen del lote. Una sola lectura al montar el paso; no hay mutación
   // que revalidar (el listado ya se revalida tras la carga real, en el padre).
@@ -126,7 +129,8 @@ export function OrdenesCargaResumen({
       // crudo, asi que gana el simbolo y el separador de miles que el resto de la
       // app ya tenia. `formatMonto` devuelve el mismo `-` que esta celda ponia a
       // mano cuando no hay monto (`SIN_MONTO`), asi que la ausencia no cambia.
-      render: (row) => formatMonto(row.montoCobrar),
+      // SLT-240 (R2): con la moneda del pais; sin monto, el mismo `SIN_MONTO` por defecto.
+      render: (row) => formatearMontoEn(moneda, row.montoCobrar),
     },
     {
       id: "direccion",

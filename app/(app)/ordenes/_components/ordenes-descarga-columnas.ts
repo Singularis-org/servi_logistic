@@ -27,7 +27,9 @@ import type { DescargaColumna, DescargaFila } from "@/lib/types/descarga";
 import type { OrdenListItemDTO } from "@/lib/types/orden";
 import { ETIQUETAS_NEUTRAS, type EtiquetasGeograficas } from "@/lib/types/pais";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { IMPUESTO_ROTULO } from "@/lib/constants/impuesto-rotulo";
 import { estatusLabel } from "./estatus-label";
+import { rotuloComisionConImpuesto, rotuloFleteConImpuesto } from "./rotulos-con-impuesto";
 
 /**
  * Identificador del ÁMBITO de preferencia de columnas de esta descarga (314/R1, R10).
@@ -70,8 +72,9 @@ export const COLUMNAS_DESCARGA_ORDENES: DescargaColumna[] = [
   { clave: "canton", encabezado: ETIQUETAS_NEUTRAS.canton.singular },
   { clave: "distrito", encabezado: ETIQUETAS_NEUTRAS.distrito.singular },
   { clave: "montoCobrar", encabezado: "Monto a cobrar" },
-  { clave: "fleteConIva", encabezado: "Flete + IVA" },
-  { clave: "comisionConIva", encabezado: "Comisión + IVA" },
+  // SLT-240 (R16): rótulos de caída; `columnasDescargaOrdenes` pone los del país.
+  { clave: "fleteConIva", encabezado: rotuloFleteConImpuesto(IMPUESTO_ROTULO) },
+  { clave: "comisionConIva", encabezado: rotuloComisionConImpuesto(IMPUESTO_ROTULO) },
   { clave: "mensajero", encabezado: "Mensajero" },
   { clave: "intentos", encabezado: "Intentos" },
   { clave: "fechaCreacion", encabezado: "Fecha de creación" },
@@ -85,13 +88,26 @@ export const COLUMNAS_DESCARGA_ORDENES: DescargaColumna[] = [
  * empresa (`etiquetas`, de `useEtiquetasGeograficas`). Es lo que monta la pantalla.
  * `COLUMNAS_DESCARGA_ORDENES` sigue siendo el contrato de claves y orden, pero sus encabezados de provincia, cantón
  * y distrito son los neutros («Nivel 1»…): no se descarga con ella directamente.
+ *
+ * SLT-240 (design §5; R16, R15) — y los del flete y la comisión con el nombre del impuesto del país
+ * (`impuesto`, de `useImpuestoDelPais`). Solo cambian encabezados: claves, orden e importes no.
  */
-export function columnasDescargaOrdenes(etiquetas: EtiquetasGeograficas): DescargaColumna[] {
-  return COLUMNAS_DESCARGA_ORDENES.map((columna) =>
-    columna.clave === "provincia" || columna.clave === "canton" || columna.clave === "distrito"
-      ? { ...columna, encabezado: etiquetas[columna.clave].singular }
-      : columna,
-  );
+export function columnasDescargaOrdenes(
+  etiquetas: EtiquetasGeograficas,
+  impuesto: string,
+): DescargaColumna[] {
+  return COLUMNAS_DESCARGA_ORDENES.map((columna) => {
+    if (columna.clave === "provincia" || columna.clave === "canton" || columna.clave === "distrito") {
+      return { ...columna, encabezado: etiquetas[columna.clave].singular };
+    }
+    if (columna.clave === "fleteConIva") {
+      return { ...columna, encabezado: rotuloFleteConImpuesto(impuesto) };
+    }
+    if (columna.clave === "comisionConIva") {
+      return { ...columna, encabezado: rotuloComisionConImpuesto(impuesto) };
+    }
+    return columna;
+  });
 }
 
 /**
