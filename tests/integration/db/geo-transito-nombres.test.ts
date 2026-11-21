@@ -22,6 +22,7 @@ import { crearEscenarioGeo71, type EmpresaGeo71, revertidaLarga, TIEMPO_DE_TEST_
 import { DATOS_PERSONALES_GEO65 } from "./_fixtures/geo-65";
 import { comoDueno } from "./_fixtures/pais-20";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 // SLT-71 (T4.2; R8–R13; design §4, §11) — EL INFORME DE TRANSITO NOMBRA CANTON Y DISTRITO CON EL
 // CATALOGO, contra la copia congelada de hoy (`filasEnAlertaDeHoy`) y sobre Postgres real, en el
@@ -193,8 +194,8 @@ describeSiHayBase("SLT-71 T4.2 — transito nombra con el catalogo (Postgres rea
               transito: [emp.ordenes.transitoConDistritoId, emp.ordenes.transitoSinDistritoId].sort(),
               nuevas: porId(await new InformeTransitoRepository(cliente).filasEnAlerta(q)),
               deHoy: porId(await hoy.filasEnAlertaDeHoy(cliente, q)),
-              modeloNuevo: (await seleccionarTransito(new InformeTransitoRepository(cliente), PARAMETROS_POR_DEFECTO, ahora)).modelo,
-              modeloDeHoy: (await seleccionarTransito(repoDeHoy(cliente), PARAMETROS_POR_DEFECTO, ahora)).modelo,
+              modeloNuevo: (await seleccionarTransito(new InformeTransitoRepository(cliente), PARAMETROS_POR_DEFECTO, ahora, ZONA_CR)).modelo,
+              modeloDeHoy: (await seleccionarTransito(repoDeHoy(cliente), PARAMETROS_POR_DEFECTO, ahora, ZONA_CR)).modelo,
             };
           }),
         );
@@ -220,7 +221,7 @@ describeSiHayBase("SLT-71 T4.2 — transito nombra con el catalogo (Postgres rea
       const medir = async () => {
         const { cliente, reg } = clienteEspia(tx);
         const filas = await comoLaEmpresa(tx, emp.base.base.empresaId, async () => {
-          const sel = await seleccionarTransito(new InformeTransitoRepository(cliente), PARAMETROS_POR_DEFECTO, new Date());
+          const sel = await seleccionarTransito(new InformeTransitoRepository(cliente), PARAMETROS_POR_DEFECTO, new Date(), ZONA_CR);
           return sel.modelo;
         });
         return { consultas: reg.sql.length + reg.catalogo.length, sql: reg.sql.map((s) => s.text), filas };
@@ -267,7 +268,7 @@ describeSiHayBase("SLT-71 T4.2 — transito nombra con el catalogo (Postgres rea
       const informe = crearInformeTransito({ repo: new InformeTransitoRepository(cliente, logger) });
       const resultado = await comoLaEmpresa(tx, emp.base.base.empresaId, () =>
         informe
-          .generar({ parametros: PARAMETROS_POR_DEFECTO, ahora: new Date(), conDocumento: true })
+          .generar({ parametros: PARAMETROS_POR_DEFECTO, ahora: new Date(), zona: ZONA_CR, conDocumento: true })
           .then((x) => ({ ok: x as unknown, error: null as unknown }), (err: unknown) => ({ ok: null, error: err })),
       );
       // Los nombres de todos los nodos del fixture, para comprobar que ninguno sale en el log.
@@ -282,6 +283,7 @@ describeSiHayBase("SLT-71 T4.2 — transito nombra con el catalogo (Postgres rea
         crearInformeTransito({ repo: new InformeTransitoRepository(tx as unknown as PrismaClient, loggerCompleto) }).generar({
           parametros: PARAMETROS_POR_DEFECTO,
           ahora: new Date(),
+          zona: ZONA_CR,
           conDocumento: false,
         }),
       );

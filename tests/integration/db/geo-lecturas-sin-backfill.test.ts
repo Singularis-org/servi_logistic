@@ -37,6 +37,7 @@ import { crearEscenarioGeo65, type EmpresaGeo65, type EscenarioGeo65 } from "./_
 import { crearEscenarioGeo71, type EmpresaGeo71, type EscenarioGeo71 } from "./_fixtures/geo-71";
 import { comoDueno, revertida } from "./_fixtures/pais-20";
 import { HAY_BASE_DE_DATOS, clienteConSavepoint, type TxDeTest } from "./_postgres-real";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 // SLT-44 (T4.6; R12; design §10) — LAS LECTURAS DE R18 Y R20 NO DEPENDEN DEL BACKFILL DE SLT-43.
 //
@@ -459,7 +460,7 @@ async function leerLas7(tx: TxDeTest, e: EscenarioGeo65) {
 const MAESTRO_71 = { usuarioId: "geo-lecturas-sin-backfill", rol: "maestro" } as const;
 
 function consulta71(raw: object): ConsultaConteoEntregas {
-  const p = prepararConteoEntregas(raw, MAESTRO_71);
+  const p = prepararConteoEntregas(raw, MAESTRO_71, ZONA_CR);
   if (p.status !== "ok") throw new Error(`consulta de prueba no concedida: ${p.status}`);
   return p.consulta;
 }
@@ -497,7 +498,7 @@ async function leerLasDe71DeUna(tx: TxDeTest, e: EmpresaGeo71, ahora: Date) {
           await new ConteoDevolucionesRepository(c).contarDevolucionesPorCausa(q),
           await new CicloVidaRepository(c).acumularCiclos(q),
         );
-        const productos = prepararConsultaProductos(raw, MAESTRO_71);
+        const productos = prepararConsultaProductos(raw, MAESTRO_71, ZONA_CR);
         if (productos.status !== "ok") throw new Error(`consulta de productos no concedida: ${productos.status}`);
         analitica.push(
           await new ConteoProductosRepository(c).contarProductos(productos.consulta),

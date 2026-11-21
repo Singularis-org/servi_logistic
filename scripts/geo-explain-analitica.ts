@@ -28,6 +28,7 @@ import {
   type ResultadoDeLectura as ResultadoGenerico,
 } from "./geo-equivalencia/medicion";
 import { crearClienteDeMedicion, esBaseLocal, leerArgumentos, UMBRAL_DE_REGRESION } from "./geo-explain-consultas";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 // SLT-71 (design §9; R19–R22) — `pnpm geo:explain-analitica [--empresa <id>]`.
 //
@@ -138,7 +139,7 @@ export async function provinciaConMasOrdenes(cliente: PrismaClient, organizacion
 }
 
 function consultaDeAnalitica(provinciaId: string): ConsultaConteoEntregas {
-  const p = prepararConteoEntregas({ provincia_id: [provinciaId] }, ACTOR_MAESTRO);
+  const p = prepararConteoEntregas({ provincia_id: [provinciaId] }, ACTOR_MAESTRO, ZONA_CR);
   // Solo el estado: el detalle de la preparacion podria repetir la entrada.
   if (p.status !== "ok") throw new Error(`geo:explain-analitica: consulta no concedida (${p.status})`);
   return p.consulta;
@@ -165,7 +166,7 @@ export async function medirLecturas(
       transito = {
         hito: PARAMETROS_POR_DEFECTO.hito,
         estados: estadosIncluidos(PARAMETROS_POR_DEFECTO),
-        cortes: cortesPorZona(zonas, PARAMETROS_POR_DEFECTO, new Date()),
+        cortes: cortesPorZona(zonas, PARAMETROS_POR_DEFECTO, new Date(), ZONA_CR),
       };
     } catch (error) {
       resultados.push({ estado: "fallida", lectura: "transito-filas", error: nombreDeError(error) });

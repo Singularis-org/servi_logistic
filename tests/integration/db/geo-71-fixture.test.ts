@@ -19,6 +19,7 @@ import { comoApp } from "@/tests/fabricas/organizaciones";
 import { crearEscenarioGeo71, type EmpresaGeo71, revertidaLarga, TIEMPO_DE_TEST_LARGO } from "./_fixtures/geo-71";
 import { comoDueno } from "./_fixtures/pais-20";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
+import { ZONA_CR } from "@/lib/utils/fecha-cr";
 
 // SLT-71 (T0.2; design §11) — ANTIVACIO del fixture `geo-71.ts`. Corre cada lectura del alcance con
 // el repositorio de HOY sobre cada empresa del fixture, como la app (RLS de la empresa, actor
@@ -34,13 +35,13 @@ function actorMaestro() {
 }
 
 function consultaEntregas(raw: object): ConsultaConteoEntregas {
-  const p = prepararConteoEntregas(raw, actorMaestro());
+  const p = prepararConteoEntregas(raw, actorMaestro(), ZONA_CR);
   if (p.status !== "ok") throw new Error(`consulta de prueba no concedida: ${JSON.stringify(p)}`);
   return p.consulta;
 }
 
 function consultaProductos(raw: object): ConsultaProductos {
-  const p = prepararConsultaProductos(raw, actorMaestro());
+  const p = prepararConsultaProductos(raw, actorMaestro(), ZONA_CR);
   if (p.status !== "ok") throw new Error(`consulta de productos no concedida: ${JSON.stringify(p)}`);
   return p.consulta;
 }
