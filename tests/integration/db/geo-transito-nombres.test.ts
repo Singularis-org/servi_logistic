@@ -23,6 +23,7 @@ import { DATOS_PERSONALES_GEO65 } from "./_fixtures/geo-65";
 import { comoDueno } from "./_fixtures/pais-20";
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
+import { MONEDA_CR } from "@/tests/fabricas/reglas-pais";
 
 // SLT-71 (T4.2; R8–R13; design §4, §11) — EL INFORME DE TRANSITO NOMBRA CANTON Y DISTRITO CON EL
 // CATALOGO, contra la copia congelada de hoy (`filasEnAlertaDeHoy`) y sobre Postgres real, en el
@@ -268,7 +269,7 @@ describeSiHayBase("SLT-71 T4.2 — transito nombra con el catalogo (Postgres rea
       const informe = crearInformeTransito({ repo: new InformeTransitoRepository(cliente, logger) });
       const resultado = await comoLaEmpresa(tx, emp.base.base.empresaId, () =>
         informe
-          .generar({ parametros: PARAMETROS_POR_DEFECTO, ahora: new Date(), zona: ZONA_CR, conDocumento: true })
+          .generar({ parametros: PARAMETROS_POR_DEFECTO, ahora: new Date(), zona: ZONA_CR, moneda: async () => MONEDA_CR, conDocumento: true })
           .then((x) => ({ ok: x as unknown, error: null as unknown }), (err: unknown) => ({ ok: null, error: err })),
       );
       // Los nombres de todos los nodos del fixture, para comprobar que ninguno sale en el log.
@@ -284,6 +285,7 @@ describeSiHayBase("SLT-71 T4.2 — transito nombra con el catalogo (Postgres rea
           parametros: PARAMETROS_POR_DEFECTO,
           ahora: new Date(),
           zona: ZONA_CR,
+          moneda: async () => MONEDA_CR,
           conDocumento: false,
         }),
       );
