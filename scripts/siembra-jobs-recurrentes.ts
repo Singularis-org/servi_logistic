@@ -11,6 +11,7 @@ import { seedJobWhatsappEnvioMantenimiento } from "./seed-jobs-whatsapp-envio-ma
 import { sembrarPlanCambiosVencidos } from "@/lib/planes/jobs-cambio-plan";
 import { sembrarCierreFacturas } from "@/lib/planes/jobs-factura-plataforma";
 import { sembrarCierreNiveles } from "@/lib/planes/jobs-niveles";
+import { sembrarMoraDiaria } from "@/lib/planes/jobs-mora";
 import { AVISO_SIN_ZONAS } from "@/lib/services/jobs/serie-diaria-por-zona";
 
 // Ficha 313 — REGISTRO UNICO DE LAS SIEMBRAS DE LOS JOBS RECURRENTES, y lo que las corre.
@@ -124,6 +125,16 @@ export const SIEMBRAS_RECURRENTES: readonly SiembraRecurrente[] = [
       "los meses no se cierran nunca: ninguna empresa sube ni baja de nivel por volumen y sus meses pendientes " +
       "se acumulan sin que nada falle",
     sembrar: sembrarCierreNiveles,
+  },
+  {
+    // SLT-121 (design §4.1; R7, R26): la corrida diaria de la mora. El sembrador vive junto a su recurrencia, con la
+    // MISMA `dedupe_key`.
+    tipo: "mora_diaria",
+    script: "lib/planes/jobs-mora.ts",
+    siNoCorre:
+      "ninguna empresa con facturas vencidas se congela nunca y los recordatorios de la víspera de la fecha límite no " +
+      "salen, sin que nada falle",
+    sembrar: sembrarMoraDiaria,
   },
 ];
 

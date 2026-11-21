@@ -47,6 +47,9 @@ describe("R26 — el drenador resuelve el handler de webhook_estado y no lo re-a
       "factura_plataforma_cerrar", // SLT-118 (design §4.2): el cierre horario (HH:10) de las facturas de la plataforma (RECURRENTE)
       "geocodificacion",
       "liberar_reprogramadas",
+      // SLT-121 (design §4): la corrida de la mora (RECURRENTE, 06:30 UTC, de plataforma) y sus correos (PUNTUAL).
+      "mora_aviso_correo",
+      "mora_diaria",
       "optimizacion_ruta",
       // SL-24 (design §16.3): aplicar un cambio de plan programado (PUNTUAL) y su barrido horario.
       "plan_aplicar_cambio",
@@ -91,6 +94,7 @@ describe("R26 — el drenador resuelve el handler de webhook_estado y no lo re-a
       "plan_cambios_vencidos", // SL-24 (design §16.3): barrido horario de cambios de plan vencidos
       "factura_plataforma_cerrar", // SLT-118 (design §4.2): el cierre horario (HH:10) de las facturas de la plataforma
       "plan_niveles_cerrar", // SLT-215 (design §5): el cierre diario (06:20 UTC) de los niveles por volumen
+      "mora_diaria", // SLT-121 (design §4.1): la corrida diaria (06:30 UTC) de la mora
     ]);
   });
 

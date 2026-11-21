@@ -143,6 +143,15 @@ export class MoraEmpresaRepository implements IMoraEmpresaRepository {
     return (await this.leerDelContexto(ahora, gracia, "moraDeLaEmpresa")).mora;
   }
 
+  async graciaDeLaEmpresa(gracia: number): Promise<number> {
+    const filas = await this.prisma.$queryRaw<{ dias: number | null }[]>`
+      SELECT o."factura_dias_gracia" AS "dias"
+        FROM "organizacion" o
+       WHERE o."id" = NULLIF(current_setting('app.organizacion_id', true), '')`;
+    if (filas.length === 0) throw new EmpresaNoResuelta("organizacion", "graciaDeLaEmpresa");
+    return filas[0].dias ?? gracia;
+  }
+
   async estaCongelada(): Promise<boolean> {
     const filas = await this.prisma.$queryRaw<{ congelada: boolean }[]>`
       SELECT (o."congelada_at" IS NOT NULL) AS "congelada"

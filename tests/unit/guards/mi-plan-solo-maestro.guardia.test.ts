@@ -14,6 +14,10 @@ import { mensajeDelTope } from "@/lib/planes/mensajes";
 // SLT-136 (design §8; R32) enmienda R10: la lista de quien puede nombrar la ruta admite además el catálogo de
 // avisos (el atajo «Ver factura» del aviso de la factura emitida, solo para el maestro) y la plantilla del correo
 // de esa factura (su botón). El catálogo es un `href`; la plantilla no (es la URL de un botón de correo).
+//
+// SLT-121 (design §4.2; R26-R28) la enmienda igual: los correos de la mora (recordatorio, congelada y activa de
+// nuevo) van solo a los maestros y llevan el botón «Ver facturas» a «Mi plan». Tampoco es un `href`. El banner
+// (`AvisoMora.tsx`, R24) entra en la lista con su tanda.
 
 const RAIZ = process.cwd();
 const RAICES_A_BARRER = ["app", "components", "lib", "public"];
@@ -44,6 +48,8 @@ describe("SLT-91 — la autocomprobación del barrido", () => {
         // SLT-136 R32: los dos admitidos nuevos tienen que aparecer, o la lista admitiría a quien ya no la nombra.
         "lib/notificaciones/catalogo-avisos.ts",
         "lib/services/email/plantillas/factura-emitida.ts",
+        // SLT-121 R26-R28.
+        "lib/services/email/plantillas/mora-aviso.ts",
       ]),
     );
     expect(conPatron(MODULO_CONSUMO)).toEqual(
@@ -85,13 +91,15 @@ describe("SLT-91 R8, R9 — los avisos del plan", () => {
 });
 
 describe("SLT-91 R10 — ninguna otra vía a «Mi plan»", () => {
-  it("R10 (enmendado por SLT-136 R32): fuera del menú, el reparto, la página, el catálogo de avisos y el correo de la factura, nadie nombra la ruta", () => {
+  it("R10 (enmendado por SLT-136 R32 y SLT-121 R26-R28): fuera del menú, el reparto, la página, el catálogo de avisos y los correos de la factura y de la mora, nadie nombra la ruta", () => {
     const permitidos = [
       "app/(app)/mi-plan/page.tsx",
       "lib/auth/menu-visibility.ts",
       "lib/modulos/reparto.ts",
       "lib/notificaciones/catalogo-avisos.ts",
       "lib/services/email/plantillas/factura-emitida.ts",
+      // SLT-121 R26-R28: el botón de los correos de la mora, que solo reciben los maestros.
+      "lib/services/email/plantillas/mora-aviso.ts",
     ];
     expect(conPatron(RUTA_MI_PLAN).filter((archivo) => !permitidos.includes(archivo))).toEqual([]);
   });

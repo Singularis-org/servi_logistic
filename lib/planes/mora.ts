@@ -129,7 +129,9 @@ export const MORA_TEXTOS = {
     descongeladaAMano: (hasta: string) => `La operación está habilitada hasta el ${fechaLegible(hasta)}.`,
     verFacturas: "Ver facturas",
   },
-  superadmin: {
+  // La sección de la ficha de la empresa en plataforma (design §7.2). La clave no es `superadmin`: ese literal solo
+  // vive en los archivos de `superadmin-fuera-de-empresa.guardia`.
+  plataforma: {
     titulo: "Plazo de pago y mora",
     sinCargar: "No se pudo cargar la mora",
     graciaPropia: (dias: number) => `${dias} días (propia)`,

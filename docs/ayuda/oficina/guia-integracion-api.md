@@ -149,6 +149,7 @@ Cada uno se avisó a los integradores en su fecha. Los que quitan algo van marca
 | 2026-11-05 | Sin ruptura para empresas de Costa Rica, solo textos: `desde`/`hasta` (listado y analítica), el «hoy» por defecto y el eco `rango.hasta` se miden en la zona horaria del país de la empresa de la key, no en «hora de Costa Rica (UTC-6)». | secciones 4.5, 5.3 y 5.8 |
 | 2026-11-18 | Sin ruptura, solo documentación: el contrato publica `manifiesto.filas[].intentos` de la carga (entero, intentos de entrega de la orden; `0` en una orden recién creada). La respuesta ya traía la clave; ahora `ManifiestoFila` la declara obligatoria. Si valida con un esquema cerrado, regenérelo. | sección 5.1 |
 | 2026-11-18 | Sin ruptura, solo documentación: revisión completa de esta guía, de la colección de Postman y del contrato contra el código. La base de producción es `https://www.servilogistic.co` en los tres; el contrato vuelve a declarar ese servidor. Se corrigen los campos obligatorios de la carga (`peso` no se usa; `direccion` y `monto_cobrar` son opcionales), los mensajes de error de fila, la pantalla donde se genera la clave, la rotación, los `409` que no traen mensaje propio y la zona horaria de `desde`/`hasta`. Se añaden ejemplos ejecutables de cotización, detalle y habilitación, un ejemplo verificable de firma de webhook y la sección sobre varias empresas con una misma URL. | secciones 3, 4.8, 5 y 6.3 |
+| 2026-11-20 | Sin ruptura para un cliente que ya ramifica por código HTTP: un `403` nuevo, `details.codigo: "empresa_congelada"` (`message` «Empresa suspendida por falta de pago.»), en las seis rutas que escriben mientras la empresa tiene facturas de la plataforma vencidas sin pagar. No tiene efectos y llega antes de validar el cuerpo. Las consultas y la cotización no cambian. | secciones 4.3, 4.4 y 8.1 |
 
 La versión de agosto además **omitía dos endpoints que ya existían** —`PUT …/{numGuia}/cancelar` y `POST …/habilitar`— y describía la eliminación con la ruta y la respuesta equivocadas. Quedan documentados en las secciones 5.7, 5.9 y 5.10.
 
@@ -293,7 +294,7 @@ Todos los errores comparten esta forma (`details` es opcional; en un `422` trae 
 | --- | --- | --- |
 | `VALIDATION_ERROR` | 422 | Los datos enviados no son validos. |
 | `UNAUTHORIZED` | 401 | No hay una sesion valida. |
-| `FORBIDDEN` | 403 | No tienes permiso para realizar esta accion. (En analítica, con el módulo apagado: «El módulo Analítica no está activo para esta empresa.», ver sección 5.8) |
+| `FORBIDDEN` | 403 | No tienes permiso para realizar esta accion. (En analítica, con el módulo apagado: «El módulo Analítica no está activo para esta empresa.», ver sección 5.8. En las seis rutas que escriben, con la empresa suspendida por falta de pago: «Empresa suspendida por falta de pago.», con `details.codigo: "empresa_congelada"`, ver sección 4.4) |
 | `NOT_FOUND` | 404 | El recurso solicitado no existe. |
 | `CONFLICT` | 409 | La operacion entra en conflicto con el estado actual. Solo tres casos traen un mensaje propio: la carga y la cotización sin ninguna tarifa (secciones 5.1 y 5.2) y el nombre de lote repetido (sección 5.1). |
 | `INTERNAL` | 500 | Error interno del servidor. |
@@ -305,9 +306,29 @@ Los textos del `message` van sin tildes en los cinco mensajes genéricos; compá
 | Código | Significado |
 | --- | --- |
 | `401` | No mandó key (header ausente, esquema distinto de `Bearer`, más de un espacio o token vacío), **o** la key no existe (nunca existió, fue eliminada o su secreto se rotó). Atención: los casos son indistinguibles a propósito. |
-| `403` | La key existe, pero está desactivada, **o** su cuenta dedicada no está activa, **o** la tienda a la que apunta fue dada de baja. En analítica, además: pidió una métrica no publicable, o la empresa no tiene activo el módulo de Analítica (sección 5.8). |
+| `403` | La key existe, pero está desactivada, **o** su cuenta dedicada no está activa, **o** la tienda a la que apunta fue dada de baja. En analítica, además: pidió una métrica no publicable, o la empresa no tiene activo el módulo de Analítica (sección 5.8). En las seis rutas que escriben, además: la empresa está suspendida por falta de pago (ver abajo). |
 
 Consecuencia práctica: un `401` es problema de su cliente HTTP o de su secreto; un `403` requiere hablar con la empresa (salvo el de analítica).
+
+**Empresa suspendida por falta de pago.** Si la empresa tiene facturas de la plataforma vencidas y sin pagar, su operación queda suspendida. Mientras dure, las seis rutas que escriben responden `403` sin hacer nada, antes de validar el cuerpo:
+
+- `POST /api/ordenes/api-key/carga`;
+- `POST /api/ordenes/api-key/carga/{cargaId}/generate`;
+- `POST /api/ordenes/api-key/habilitar`;
+- `PUT /api/ordenes/api-key/{numGuia}/cancelar`;
+- `POST /api/ordenes/api-key/orden/{id}/generate`;
+- `DELETE /api/ordenes/api-key/orden/{id}`.
+
+```json
+{
+  "status": "error",
+  "code": "FORBIDDEN",
+  "message": "Empresa suspendida por falta de pago.",
+  "details": { "codigo": "empresa_congelada" }
+}
+```
+
+Las consultas (`GET`) y la cotización (`POST /api/ordenes/api-key/cotizacion`) siguen respondiendo igual. Ramifique por `details.codigo`: con `empresa_congelada` no reintente en bucle ni cambie la key; avise a la empresa. La suspensión se levanta en cuanto queda pagado lo vencido o la plataforma reactiva la empresa, y vale desde la petición siguiente.
 
 ## 4.5 Fechas y horas
 
@@ -1066,7 +1087,7 @@ Cinco eventos que no son un cambio de estado. Llegan al mismo callback, firmados
 | HTTP | `code` | Causa probable | Acción concreta |
 | --- | --- | --- | --- |
 | `401` | `UNAUTHORIZED` | No mandó el header, lo mandó mal formado (sin `Bearer`, con dos espacios), **o** la key no existe (eliminada o con el secreto rotado). Los casos son indistinguibles. | Revise que envía `Authorization: Bearer svl_...` en **todos** los endpoints. Verifique que el secreto llegó completo (no truncado por su gestor de config). |
-| `403` | `FORBIDDEN` | La key existe pero está **desactivada**, o su **cuenta dedicada** (o la tienda a la que apunta) no está activa. En analítica: pidió una métrica no publicable, o la empresa tiene apagado el módulo de Analítica (`message`: «El módulo Analítica no está activo para esta empresa.»). | Si es analítica, valide sus ids contra la lista de la sección 5.8. En cualquier otro endpoint, contacte a la empresa: no es algo que se arregle desde su lado. |
+| `403` | `FORBIDDEN` | La key existe pero está **desactivada**, o su **cuenta dedicada** (o la tienda a la que apunta) no está activa. En analítica: pidió una métrica no publicable, o la empresa tiene apagado el módulo de Analítica (`message`: «El módulo Analítica no está activo para esta empresa.»). En las seis rutas que escriben: la empresa está suspendida por falta de pago (`details.codigo: "empresa_congelada"`, `message`: «Empresa suspendida por falta de pago.»). | Si es analítica, valide sus ids contra la lista de la sección 5.8. En cualquier otro endpoint, contacte a la empresa: no es algo que se arregle desde su lado. Si `details.codigo` es `empresa_congelada`, no reintente en bucle: las consultas siguen funcionando y la escritura vuelve cuando la empresa paga lo vencido (sección 4.4). |
 | `404` | `NOT_FOUND` | Recurso inexistente, borrado, **o de otra tienda o de otra empresa**. Deliberadamente indistinguibles. También la ruta retirada `GET …/api-key/{numGuia}`. | Confirme el `numGuia`/`numRemision`/`cargaId` y la ruta (`/orden/{id}`). Si cree que la orden es suya, verifíquela con el listado (sección 5.3). |
 | `409` | `CONFLICT` | Ninguna fila resolvió tarifa; nombre de lote repetido; orden sin guía imprimible; lote sin etiquetas o por encima del tope; eliminación o cancelación desde un estado no permitido, o con intentos de entrega. | Si el `message` es el genérico (`La operacion entra en conflicto con el estado actual.`), la causa es el estado de la orden o del lote: consulte el detalle (sección 5.4) antes de reintentar. Solo la falta de tarifa y el nombre de lote repetido traen un mensaje propio; la tarifa es un tema comercial con la empresa, no de código. |
 | `422` | `VALIDATION_ERROR` | Cuerpo, path o query params mal formados; fecha inexistente; rango invertido; `estado` con un **código anterior** al cambio de nombres. | Lea `details.fieldErrors`: trae el campo y el mensaje. Si el mensaje dice «ya no existe: ahora se llama», reemplace el literal por el código vigente. |
@@ -1104,6 +1125,7 @@ Estos son los que más tiempo cuestan, porque la API responde `200`.
 
 | Fecha | Versión | Qué cambió |
 | --- | --- | --- |
+| 2026-11-20 | Empresa suspendida por falta de pago | Nuevo `403` con `details.codigo: "empresa_congelada"` y `message` «Empresa suspendida por falta de pago.» en las seis rutas que escriben, mientras la empresa tiene facturas de la plataforma vencidas sin pagar. Las consultas y la cotización no cambian. Secciones 4.3, 4.4 y 8.1. |
 | 2026-11-18 | Revisión completa | Revisada de principio a fin contra el código del canal, junto con la colección de Postman y el contrato de Swagger. URL base de producción real (`https://www.servilogistic.co`) en todos los ejemplos. Corregidos: campos obligatorios y mensajes de error de la carga, pantalla y rol que generan la clave, rotación, formato exacto del header, `409` sin mensaje propio, `403` de analítica por módulo apagado, zona horaria de las fechas, ejemplo de cancelación y de habilitación. Nuevos: ejemplos de cotización, detalle y habilitación, ejemplo verificable de firma de webhook, sección 3.7 (varias empresas, una sola URL) y sección 4.8 (Postman y Swagger). Las referencias internas se escriben como «sección 5.9». Todos los ejemplos `curl` de esta guía y todas las peticiones de la colección de Postman se ejecutan en una prueba automática contra la aplicación. |
 | noviembre 2026 | Cambios de contrato | Recoge los bloques A y B (códigos de estado y eventos nuevos) y los cambios del bloque C. |
 | agosto 2026 | Versión anterior | La versión que describe el canal antes de los bloques A, B y C. |

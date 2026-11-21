@@ -43,6 +43,11 @@ export type ResultadoCongelar =
 export interface IMoraEmpresaRepository {
   /** La empresa del contexto (`servi_app`): banner (R24). Sin empresa falla sin leer (R33). */
   moraDeLaEmpresa(ahora: Date, gracia: number): Promise<MoraLeida>;
+  /**
+   * La empresa del contexto: su gracia vigente, la propia o `gracia` (la global) si no tiene. La usa el correo de
+   * cierre de SLT-136 para la fecha límite (R25). Sin empresa falla sin leer (R33).
+   */
+  graciaDeLaEmpresa(gracia: number): Promise<number>;
   /** La empresa del contexto: la puerta del borde (§6.2). Una lectura por llamada, sin caché. */
   estaCongelada(): Promise<boolean>;
   /** Superadmin: la mora de `organizacionId` leída con esa empresa fijada (R32), con su historial (R31). */

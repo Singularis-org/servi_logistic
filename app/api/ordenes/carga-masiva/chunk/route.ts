@@ -29,6 +29,7 @@ import { getPrismaClient } from "@/lib/db/prisma-client";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import type { RawRow } from "@/lib/parsers/spreadsheet";
 import { cargaMasivaConfig } from "@/lib/config/carga-masiva";
+import { exigirEmpresaOperativa } from "@/lib/planes/empresa-congelada";
 
 export interface CargaMasivaChunkDeps {
   getActor?: () => Promise<Actor | null>;
@@ -112,6 +113,9 @@ export async function handleCargaMasivaChunk(
     // Autorización antes de tocar el cuerpo (defensa en profundidad; el service
     // vuelve a autorizar).
     if (actor.rol !== "adminTienda") throw new ForbiddenError();
+    // SLT-121 (design §6.2, R14): con la empresa de la sesion congelada por mora, el lote entero se
+    // rechaza (403 `empresa_congelada`) antes de leer el cuerpo: ni el dry-run ni la carga llegan al service.
+    await exigirEmpresaOperativa();
 
     let json: unknown;
     try {

@@ -307,3 +307,116 @@ Modificados:
 
 Veredicto: T2.1, T2.2, T2.4 y T2.5 hechas y en verde contra `servi_logistic_slt121`. Queda abierto el deadlock con la
 empresa congelada (P3), que pide `FOR NO KEY UPDATE` en las funciones de la Tanda 1.
+
+## Deadlock: opción (a) (decisión del 2026-11-20)
+
+- **Qué se eligió:** `FOR NO KEY UPDATE` sobre `organizacion` en las tres funciones `organizacion_mora_*`
+  (`db/migrations/20261126120100_mora_congelamiento/migration.sql`), con `design.md` §2 y `requirements.md`
+  enmendados. Cierra el cruce que la Tanda 2 dejaba abierto (la empresa anula su pago por confirmar mientras el
+  superadmin lo confirma, con la empresa congelada): `FOR NO KEY UPDATE` no choca con el `FOR KEY SHARE` de la FK del
+  contra-asiento y sigue serializando a las tres funciones entre sí.
+- `lib/planes/mora-recalcular.ts`: solo el comentario (habla de `FOR NO KEY UPDATE`). La lectura previa sin bloquear
+  se queda: ahorra la llamada en el caso normal (empresa no congelada).
+- **Prueba:** `tests/integration/repositories/pago-plataforma-recalcula-mora.test.ts` > «decisión §2: … cruces
+  forzados — la confirmación termina sin 40P01, la anulación responde forbidden y la empresa sigue congelada»: verde
+  contra `servi_logistic_slt121` (8/8 en el archivo; salida en la Tanda 3).
+- **Desvío 10 aceptado:** `organizacion_mora_congelar` con una empresa que no existe lanza `P0002` (Tanda 1,
+  «Desvíos»). El design no lo dice; queda así.
+
+## Tanda 3: T3.1, T3.2 y T3.3 (backend_dev, 2026-11-21)
+
+La empezaron dos agentes que se cortaron; esta pasada revisa lo que dejaron contra el spec, lo completa y lo verifica.
+Base: `servi_logistic_slt121` (el archivo `dburl_SLT121_NO_TOCAR` del leader). Sin migraciones nuevas.
+
+### Revisión contra el spec
+- **T3.1 (§6.2, §6.3; R13, R14):** `exigirEmpresaOperativa()` va justo después de `conEmpresaDeLaKey` y antes del
+  cuerpo en las seis rutas (`carga`, `carga/{cargaId}/generate`, `habilitar`, `{numGuia}/cancelar`,
+  `orden/{id}/generate` y el `DELETE` de `orden/{id}`; el `GET` de esa ruta no la lleva), y en `carga-masiva/chunk`
+  tras la sesión y el rol. La cotización y los `GET` no la llevan. El 403 va en la response compartida `Forbidden`
+  de `openapi-spec.ts` y del YAML (las seis rutas ya la referencian por `$ref`), en `CHANGELOG.md` y en la guía
+  (4.3, 4.4, 8.1 y el historial). Completo.
+- **T3.2 (§4; R7, R9, R26–R29):** `jobs-mora.ts` con `mora_diaria` (06:30 UTC, dedupe `mora_diaria:<AAAA-MM-DD>`,
+  `RECURRENTES_DE_PLATAFORMA`, siembra) y `mora_aviso_correo` (zod de las tres formas, relee el estado, un correo por
+  maestro, error sin correos). Cableado en `procesar-jobs/route.ts`, `MODULO_POR_JOB` (`nucleo`, Tanda 2) y
+  `SIEMBRAS_RECURRENTES`. Faltaba la prueba de idempotencia de la siembra contra Postgres que exige
+  `jobs-recurrentes-con-siembra` (ficha 313, frente 4): añadida.
+- **T3.3 (§4.2; R25–R28):** plantilla `mora-aviso.ts` con los tres asuntos del design y el botón a `/mi-plan`;
+  `factura-emitida.ts` pinta «Paga hasta el dd/mm/aaaa» solo con total > 0, con `fechaLimiteDePago` (la gemela de
+  `factura_plataforma_mora`); `jobs-factura-aviso.ts` lee al enviar la gracia vigente de la empresa
+  (`MoraEmpresaRepository.graciaDeLaEmpresa`, nueva). El único productor de `FacturaEmitidaParams` en `lib/` es
+  `jobs-factura-aviso.ts`, y pasa `gracia`. `mi-plan-solo-maestro.guardia` enmendada. Completo.
+
+### Archivos
+Creados (los seis primeros, por los agentes anteriores):
+- `lib/planes/jobs-mora.ts`; `lib/services/email/plantillas/mora-aviso.ts`;
+- `tests/integration/api/api-key-empresa-congelada.route.test.ts`,
+  `tests/integration/api/carga-masiva-empresa-congelada.route.test.ts`;
+- `tests/unit/planes/jobs-mora.test.ts`, `tests/unit/services/email/plantilla-mora-aviso.test.ts`;
+- `tests/integration/db/siembra-mora-diaria-idempotente.test.ts` (esta pasada).
+
+Modificados por los agentes anteriores (revisados): las siete rutas de T3.1, `lib/api/openapi-spec.ts`,
+`docs/api/api-key-openapi.yaml`, `docs/api/CHANGELOG.md`, `docs/ayuda/oficina/guia-integracion-api.md`,
+`app/api/cron/procesar-jobs/route.ts`, `scripts/siembra-jobs-recurrentes.ts`,
+`lib/services/email/plantillas/factura-emitida.ts`, `lib/planes/jobs-factura-aviso.ts`,
+`lib/interfaces/repositories/IMoraEmpresaRepository.ts` y `lib/repositories/MoraEmpresaRepository.ts`
+(`graciaDeLaEmpresa`), y los tests `api-key-empresa`, `mora-empresa-repository`, `jobs-factura-aviso`,
+`plantilla-factura-emitida`, `mi-plan-solo-maestro.guardia` y `jobs-handler-por-tipo.guardia`.
+
+Modificados en esta pasada:
+- `lib/services/email/plantillas/mora-aviso.ts`: `facturas` de `ContenidoAvisoMora` pasa a `readonly` (la plantilla
+  solo la lee; el test le pasaba un literal `as const`).
+- `lib/planes/mora.ts` y `tests/unit/planes/mora.test.ts`: la clave `MORA_TEXTOS.superadmin` pasa a
+  `MORA_TEXTOS.plataforma`. El literal `superadmin:` ponía roja `superadmin-fuera-de-empresa.guardia` (rojo que venía
+  de la Tanda 2). Nadie más la usa todavía; T4.3 la leerá con el nombre nuevo.
+- `docs/api/api-key-openapi.yaml`: el comentario dice «design 6.3» sin `§` (`api-artefactos-url-y-simbolos`).
+- `docs/ayuda/oficina/guia-integracion-api.md` (8.1): la frase de `empresa_congelada` va después de «En cualquier
+  otro endpoint, contacte a la empresa: …», que es una frase fija de `docs-marca-heredada` (SL-16 R7).
+- `gracia: 7` en el literal de `FacturaEmitidaParams`: `tests/unit/notificaciones/emitir-factura-emitida.test.ts` y
+  `tests/unit/planes/factura-moneda-plataforma.test.ts`.
+- Inventarios cerrados de la cola con `mora_diaria` (y `mora_aviso_correo` en los de handlers):
+  `tests/integration/api/procesar-jobs-geocodificacion.test.ts` (recurrencias: 7),
+  `tests/integration/api/procesar-jobs-webhook-estado.test.ts`, `tests/unit/api/procesar-jobs-registro.test.ts`,
+  `tests/unit/services/jobs-registro.test.ts` y `tests/unit/guards/jobs-recurrentes-con-siembra.guardia.test.ts`
+  (censo y prueba de idempotencia).
+- `tests/unit/guards/openapi-carga-claves-reales.guardia.test.ts`: ejecuta la ruta de la carga, que ahora pasa por la
+  puerta; a la puerta REAL se le inyecta un lector con la empresa al día (el `getPrismaClient` doble de la guardia
+  lanza a propósito).
+
+### R → test (Tanda 3)
+| R | Test |
+|---|---|
+| R7 | `jobs-mora.test.ts` > «SLT-121/R7 …» (cada empresa, mismo «ahora» y gracia); `siembra-mora-diaria-idempotente.test.ts` (06:30 UTC) |
+| R9 | `jobs-mora.test.ts` > «R9: repetir la corrida …»; `siembra-mora-diaria-idempotente.test.ts` (una fila por día) |
+| R13 | `api-key-empresa-congelada.route.test.ts`: las seis rutas en 403 `empresa_congelada` sin efectos; los `GET` y la cotización igual y sin consultar; descongelar vale desde la petición siguiente |
+| R14 | `carga-masiva-empresa-congelada.route.test.ts`: el lote entero se rechaza, el 403 llega antes del 422, control al día en 200 |
+| R25 | `plantilla-factura-emitida.test.ts` > «SLT-121/R25 …» (total > 0 sí; 0 y negativo no); `jobs-factura-aviso.test.ts` > «SLT-121/R25 …»; `mora-empresa-repository.test.ts` > «R25: la gracia de la empresa del contexto …» |
+| R26 | `jobs-mora.test.ts` > «SLT-121/R26 …» (relee la factura: pagada, con otra fecha o vencida no sale); `plantilla-mora-aviso.test.ts` > «SLT-121/R26 …» |
+| R27 | `jobs-mora.test.ts` > «SLT-121/R27 …»; `plantilla-mora-aviso.test.ts` > «SLT-121/R27 …» |
+| R28 | `jobs-mora.test.ts` > «SLT-121/R28 …»; `plantilla-mora-aviso.test.ts` > «SLT-121/R28 …» (pago, gracia y a mano) |
+| R29 | `jobs-mora.test.ts` > «SLT-121/R29 — una empresa que falla no frena a las demás» y «— un envío que falla» |
+
+### Verificación (salida real)
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck`: `tsc --noEmit` sin errores. Antes de esta pasada daba
+  5 errores (`emitir-factura-emitida`, `factura-moneda-plataforma` y tres en `plantilla-mora-aviso`).
+- `pnpm run lint`: exit 0, `✖ 249 problems (0 errors, 249 warnings)` (heredados). `eslint` sobre los 16 archivos de
+  esta pasada: exit 0, sin avisos.
+- `pnpm run test:guardias`: 361 archivos, 357 verdes, 4 rojos (5453 pasados, 1 saltado). Los cuatro, resueltos:
+  - `api-artefactos-url-y-simbolos` (`§` en el YAML), `docs-marca-heredada` (frase de 8.1) y
+    `superadmin-fuera-de-empresa` (`lib/planes/mora.ts`): arreglados arriba;
+  - `ordenes-columnas-money-safe`: timeout de 20 s con todas las guardias a la vez; sola, verde.
+  - Vueltas a correr las cuatro + `mora`, `guia-api-fuente-unica`, `guia-api-descargas`,
+    `openapi-contrato-en-reparto` y `openapi-466-descripciones`: 9 archivos, 192/192.
+- `pnpm exec vitest run` sobre 82 archivos (las 106 coincidencias por import pasaban de 80; elegidos: procesar-jobs,
+  siembra, catálogo de módulos, OpenAPI, rutas api-key, carga masiva, plantillas, notificaciones de factura, jobs de
+  planes y los de la Tanda 3): 80 verdes, 1040 pasados, 5 fallidos:
+  - 4 de `openapi-carga-claves-reales.guardia` (500 por la puerta): arreglados; solo, 16/16.
+  - 1 de `carga-nombre-duplicado-real` (SLT-93): «version de Postgres no reconocida: expected 160001 to be greater
+    than or equal to 170000». La base local es PG 16 y el test exige ≥ 17; ajeno a esta feature.
+  - La primera pasada (65 archivos, antes de los inventarios) dio además 8 rojos de inventarios cerrados de la cola
+    (`procesar-jobs-geocodificacion`, `procesar-jobs-webhook-estado`, `procesar-jobs-registro`,
+    `jobs-recurrentes-con-siembra`): arreglados arriba y verdes en la segunda.
+- `pago-plataforma-recalcula-mora.test.ts` + `siembra-mora-diaria-idempotente.test.ts`, `--reporter=verbose`: 2
+  archivos, 9/9, entre ellos «decisión §2: … cruces forzados» y la siembra.
+
+Veredicto: T3.1, T3.2 y T3.3 completas y coherentes con el spec; typecheck, lint, guardias y los tests de la tanda en
+verde (salvo el rojo de versión de Postgres de SLT-93, ajeno).

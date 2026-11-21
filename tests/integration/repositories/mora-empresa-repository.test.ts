@@ -345,6 +345,26 @@ describeSiHayBase("SLT-121 — MoraEmpresaRepository (R5, R7, R9, R22, R26, R30-
       expect(r.deLaOtra).toBe(false);
     });
 
+    it("R25: la gracia de la empresa del contexto es la propia, o la global si no tiene; la otra empresa no cuenta", async () => {
+      const r = await revertida(base, async (tx) => {
+        const conPropia = await empresa(tx);
+        const sinPropia = await empresa(tx);
+        await tx.$executeRawUnsafe(`UPDATE "organizacion" SET "factura_dias_gracia" = 15 WHERE "id" = $1`, conPropia);
+        const repo = repoEn(tx);
+        await comoApp(tx, conPropia);
+        const propia = await repo.graciaDeLaEmpresa(GRACIA_GLOBAL);
+        await comoApp(tx, sinPropia);
+        const global = await repo.graciaDeLaEmpresa(GRACIA_GLOBAL);
+        await comoApp(tx, "");
+        const sinEmpresa = await capturar(tx, () => repo.graciaDeLaEmpresa(GRACIA_GLOBAL));
+        await comoDueno(tx);
+        return { propia, global, sinEmpresa };
+      });
+      expect(r.propia).toBe(15);
+      expect(r.global).toBe(GRACIA_GLOBAL);
+      expect(r.sinEmpresa).toBeInstanceOf(EmpresaNoResuelta);
+    });
+
     it("R33: sin empresa en el contexto, las lecturas de la empresa fallan sin devolver datos", async () => {
       const r = await revertida(base, async (tx) => {
         await empresaVencida(tx);

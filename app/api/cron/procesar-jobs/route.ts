@@ -83,6 +83,13 @@ import {
   crearCierreNivelesHandler,
   recurrenciaCierreNiveles,
 } from "@/lib/planes/jobs-niveles";
+import {
+  buildDepsAvisoMora,
+  buildMoraEmpresaRepositoryDeJobs,
+  crearMoraAvisoHandler,
+  crearMoraDiariaHandler,
+  recurrenciaMoraDiaria,
+} from "@/lib/planes/jobs-mora";
 
 export interface ProcesarJobsDeps {
   // Secreto esperado (inyectable en tests). Por defecto, `CRON_SECRET` del entorno.
@@ -295,6 +302,12 @@ export function buildHandlers(
   // SLT-215 (design §5; R29, R30): el cierre mensual de los niveles por volumen, RECURRENTE (diario a las 06:20
   // UTC) y de plataforma: recorre las empresas con meses pendientes. `getPrismaClient()` es perezoso.
   handlers.set("plan_niveles_cerrar", crearCierreNivelesHandler(buildNivelesEmpresaRepositoryDeJobs(), now));
+  // SLT-121 (design §4.1; R7, R9, R26): la corrida de la mora, RECURRENTE (diaria a las 06:30 UTC) y de plataforma:
+  // congela las empresas con facturas vencidas y encola los recordatorios del día. `getPrismaClient()` es perezoso.
+  handlers.set("mora_diaria", crearMoraDiariaHandler(buildMoraEmpresaRepositoryDeJobs(), now));
+  // SLT-121 (design §4.2; R26-R29): los correos de la mora. PUNTUAL y CON empresa (los encola el cambio en su
+  // transacción); relee el estado antes de enviar. Las deps se construyen al correr.
+  handlers.set("mora_aviso_correo", crearMoraAvisoHandler(buildDepsAvisoMora, now));
   return new Map(
     [...handlers].map(([tipo, h]) => [
       tipo,
@@ -321,6 +334,9 @@ export const RECURRENTES_DE_PLATAFORMA: ReadonlySet<JobTipo> = new Set<JobTipo>(
   "factura_plataforma_cerrar",
   // SLT-215 (design §5): el cierre de los niveles es de todas las empresas con meses pendientes.
   "plan_niveles_cerrar",
+  // SLT-121 (design §4.1): la corrida de la mora recorre las empresas con saldo o congeladas, cada una en su
+  // transacción; una vez por empresa repetiría el listado N veces.
+  "mora_diaria",
 ]);
 
 /**
@@ -351,6 +367,9 @@ export function buildRecurrencias(): Map<JobTipo, RecurrenciaSpec> {
   // SLT-215 (design §5; P1, R29): el cierre de los niveles por volumen, diario a las 06:20 UTC. Corre una vez en
   // plataforma (`RECURRENTES_DE_PLATAFORMA`); su primera fila la siembra `SIEMBRAS_RECURRENTES`.
   recurrencias.set("plan_niveles_cerrar", recurrenciaCierreNiveles);
+  // SLT-121 (design §4.1): la corrida de la mora, diaria a las 06:30 UTC. Corre una vez en plataforma
+  // (`RECURRENTES_DE_PLATAFORMA`); su primera fila la siembra `SIEMBRAS_RECURRENTES`.
+  recurrencias.set("mora_diaria", recurrenciaMoraDiaria);
   return recurrencias;
 }
 

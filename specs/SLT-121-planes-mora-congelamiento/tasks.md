@@ -60,16 +60,16 @@
 
 ## Tanda 3 — Bordes, cola y correos (backend_dev)
 
-- [ ] **T3.1** [P] `exigirEmpresaOperativa()` en las seis rutas de escritura de la API por key y en
+- [x] **T3.1** [P] `exigirEmpresaOperativa()` en las seis rutas de escritura de la API por key y en
       `carga-masiva/chunk`; documentar el 403 en `lib/api/openapi-spec.ts`, `docs/api/api-key-openapi.yaml`,
       `docs/api/CHANGELOG.md` y `docs/ayuda/oficina/guia-integracion-api.md` (design §6.2, §6.3). Depende de T2.3.
       *Hecho:* `api-key-empresa-congelada.route.test.ts` y `carga-masiva-empresa-congelada.route.test.ts` (R13,
       R14); los tests de OpenAPI siguen en verde.
-- [ ] **T3.2** [P] `lib/planes/jobs-mora.ts`: `mora_diaria` (recurrencia, siembra y manejador) y `mora_aviso_correo`.
+- [x] **T3.2** [P] `lib/planes/jobs-mora.ts`: `mora_diaria` (recurrencia, siembra y manejador) y `mora_aviso_correo`.
       Se cablean en `app/api/cron/procesar-jobs/route.ts`, `lib/modulos/reparto.ts` y
       `scripts/siembra-jobs-recurrentes.ts` (design §4). Depende de T2.4.
       *Hecho:* `jobs-mora.test.ts` (R7, R9, R26–R29).
-- [ ] **T3.3** [P] Plantilla `lib/services/email/plantillas/mora-aviso.ts`; la fecha límite en
+- [x] **T3.3** [P] Plantilla `lib/services/email/plantillas/mora-aviso.ts`; la fecha límite en
       `factura-emitida.ts` y `jobs-factura-aviso.ts` (SLT-136); `mi-plan-solo-maestro.guardia` enmendada (design §4.2,
       R25). Depende de T2.2.
       *Hecho:* `plantilla-mora-aviso.test.ts` y las ampliaciones de `plantilla-factura-emitida` y `jobs-factura-aviso`.
@@ -210,3 +210,8 @@
 - `tests/integration/db/historial-accion-zona-sinpe-migration.test.ts`
 - `tests/integration/db/orden-traspaso-migration.test.ts`
 - `tests/unit/historial-accion/catalogo-y-choke-point.test.ts`
+- `tests/integration/db/siembra-mora-diaria-idempotente.test.ts`
+- Inventarios de la cola: `procesar-jobs-geocodificacion`, `procesar-jobs-webhook-estado`, `procesar-jobs-registro`,
+  `jobs-registro`, `jobs-recurrentes-con-siembra` y `jobs-handler-por-tipo.guardia`
+- `tests/unit/guards/openapi-carga-claves-reales.guardia.test.ts`, `tests/unit/notificaciones/emitir-factura-emitida.test.ts`,
+  `tests/unit/planes/factura-moneda-plataforma.test.ts`, `tests/unit/api/api-key-empresa.test.ts`

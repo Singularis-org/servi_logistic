@@ -2612,16 +2612,30 @@ components:
             status: error
             code: UNAUTHORIZED
             message: No hay una sesion valida.
+    # SLT-121 (design 6.3, R13): la empresa congelada por mora es un 403 más, con su `details.codigo`,
+    # en la response compartida (las seis rutas de escritura la referencian por `$ref`). `example` pasa
+    # a `examples`: OpenAPI no admite los dos.
     Forbidden:
-      description: "La key existe pero no puede operar: su usuario dedicado no está activo, la key está desactivada, la cuenta de la key no es una cuenta de integración, o la tienda a la que apunta la key está dada de baja o inactiva. La respuesta no dice cuál de estas causas aplica. En `GET /api/ordenes/api-key/analitica`, además: el módulo de Analítica de tu empresa está apagado (`details.codigo: \"modulo_inactivo\"`), o la consulta cae fuera del alcance de la key."
+      description: "La key existe pero no puede operar: su usuario dedicado no está activo, la key está desactivada, la cuenta de la key no es una cuenta de integración, o la tienda a la que apunta la key está dada de baja o inactiva. La respuesta no dice cuál de estas causas aplica. En `GET /api/ordenes/api-key/analitica`, además: el módulo de Analítica de tu empresa está apagado (`details.codigo: \"modulo_inactivo\"`), o la consulta cae fuera del alcance de la key. En las seis rutas que escriben (`POST /api/ordenes/api-key/carga`, `POST /api/ordenes/api-key/carga/{cargaId}/generate`, `POST /api/ordenes/api-key/habilitar`, `PUT /api/ordenes/api-key/{numGuia}/cancelar`, `POST /api/ordenes/api-key/orden/{id}/generate` y `DELETE /api/ordenes/api-key/orden/{id}`), además: tu empresa está suspendida por falta de pago (`details.codigo: \"empresa_congelada\"`). Esa respuesta llega antes de validar el cuerpo y la petición no tiene ningún efecto; las consultas (`GET`) y la cotización siguen respondiendo igual. Se levanta en cuanto queda pagado lo vencido o la plataforma reactiva la empresa, y vale desde la petición siguiente."
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
-          example:
-            status: error
-            code: FORBIDDEN
-            message: "No tienes permiso para realizar esta accion."
+          examples:
+            sin_permiso:
+              summary: "La key no puede operar"
+              value:
+                status: error
+                code: FORBIDDEN
+                message: "No tienes permiso para realizar esta accion."
+            empresa_congelada:
+              summary: "Empresa suspendida por falta de pago (solo en las rutas que escriben)"
+              value:
+                status: error
+                code: FORBIDDEN
+                message: "Empresa suspendida por falta de pago."
+                details:
+                  codigo: empresa_congelada
     NotFound:
       description: La orden no existe o pertenece a otro dueño (mismo 404).
       content:

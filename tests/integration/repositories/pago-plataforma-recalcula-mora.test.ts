@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
+import { anularMovimientoAction } from "@/lib/actions/wallet-anulacion";
+import { conEmpresa } from "@/lib/db/contexto-empresa";
 import { recalcularCongelamiento } from "@/lib/planes/mora-recalcular";
 import { PagoPlataformaConfirmacionRepository } from "@/lib/repositories/PagoPlataformaConfirmacionRepository";
 import { comoApp } from "@/tests/fabricas/organizaciones";
@@ -10,14 +12,27 @@ import { comoApp } from "@/tests/fabricas/organizaciones";
 import {
   HAY_BASE_DE_DATOS,
   RegistroCaido,
+  bajoLockDeEscrituraReal,
   clienteConSavepoint,
   crearPrismaDeTest,
   type TxDeTest,
 } from "../db/_postgres-real";
 import { GRACIA_GLOBAL, aLas, cero, comoDueno, congelar, empresa, estadoDe, facturaCerrada } from "../db/_fixtures/mora-121";
+import { limpiar459, sembrarPersonas459, type Personas459 } from "../db/_fixtures/escrituras-459";
 import { crearUsuarioDePrueba } from "../db/_fixtures/orden-minima";
 import { capturar, revertida, superadminEnTx } from "../db/_fixtures/planes";
-import { tomarLockDeSuperadmin } from "../db/_fixtures/superadmin-32";
+import { idDeRol, insertarUsuario, obtenerOCrearSuperadmin, tomarLockDeSuperadmin } from "../db/_fixtures/superadmin-32";
+
+// La anulación del cruce va por la action real de la wallet (molde `pago-plataforma-confirmacion.test.ts`): la zona
+// del país fija y la puerta de módulo abierta. Los casos con `revertida` no pasan por ninguna de las dos.
+vi.mock("@/lib/services/ReglasPaisEmpresaService", async (importOriginal) => {
+  const { reglasPaisFijas } = await import("@/tests/fabricas/reglas-pais");
+  return {
+    ...(await importOriginal<typeof import("@/lib/services/ReglasPaisEmpresaService")>()),
+    construirReglasPaisEmpresa: () => reglasPaisFijas(),
+  };
+});
+vi.mock("@/lib/modulos/exigir-modulo", async () => (await import("@/tests/fabricas/modulos")).puertasAbiertas());
 
 // SLT-121 · T2.5 (design §5.2; R19, R20, R21, R34) — el enganche de la mora en `PagoPlataformaConfirmacionRepository`,
 // contra Postgres real. Confirmar, registrar por fuera y anular corren ahora en una transacción que, si el
@@ -260,4 +275,202 @@ describeSiHayBase("SLT-121 — el pago a la plataforma recalcula la mora (R19, R
     expect(r.acciones).toHaveLength(1);
     expect(r.avisos).toHaveLength(1);
   });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// Design §2 (decisión del 2026-11-20): EL CRUCE CON LA ANULACIÓN DE SLT-60, con la empresa YA congelada y filas
+// COMMITEADAS. La empresa anula su pago por confirmar (decisión P3) mientras el superadmin lo confirma.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+//
+// El orden malo se FUERZA, no se espera a que salga: la confirmación corre con un cliente que, dentro de su
+// transacción, se detiene justo antes del recálculo; ya tiene el candado `pago_plataforma:` y todavía no tomó la
+// empresa. Con ella detenida arranca la anulación por la action real: escribe (su FK toma FOR KEY SHARE sobre
+// `organizacion`) y se queda esperando el candado. Se espera a VERLA esperar en `pg_locks` y recién entonces se
+// suelta la confirmación, que llama a `organizacion_mora_descongelar_si_pagada`.
+//   · Con FOR NO KEY UPDATE en la función, la confirmación no choca con el FOR KEY SHARE: termina `ok`, suelta el
+//     candado y la anulación, que lo toma después, responde `forbidden` (ya está confirmado: R21 de SLT-60).
+//   · Con FOR UPDATE (la mutación, medida en `progress/impl_SLT-121.md` > «Deadlock: opción (a)»), cada una espera
+//     a la otra: 40P01.
+// Se repite el cruce RONDAS veces, cada una con su pago; la factura de 1 000 000 sigue vencida, así que la empresa
+// sigue congelada en todas.
+
+const RONDAS = 5;
+
+/** Una señal de un solo uso. */
+function senal() {
+  let dar: () => void = () => undefined;
+  const p = new Promise<void>((r) => {
+    dar = r;
+  });
+  return { p, dar };
+}
+
+/** Espera a que `condicion` se cumpla, mirándola cada 20 ms; si a los 20 s no se cumplió, falla diciendo cuál. */
+async function hastaQue(condicion: () => Promise<boolean>, que: string): Promise<void> {
+  const limite = Date.now() + 20_000;
+  while (!(await condicion())) {
+    if (Date.now() > limite) throw new Error(`no llegó a cumplirse: ${que}`);
+    await new Promise((r) => setTimeout(r, 20));
+  }
+}
+
+/**
+ * Un cliente para el repositorio cuya transacción se DETIENE antes de la lectura con la que empieza
+ * `recalcularCongelamiento`: avisa con `detenida` y sigue cuando se cumple `seguir`.
+ */
+function clienteQueSeDetiene(cliente: PrismaClient, detenida: () => void, seguir: Promise<void>): PrismaClient {
+  const envoltura = {
+    $queryRaw: cliente.$queryRaw.bind(cliente),
+    walletMovimiento: cliente.walletMovimiento,
+    $transaction: (fn: (tx: TxDeTest) => Promise<unknown>) =>
+      cliente.$transaction(
+        (tx) =>
+          fn(
+            new Proxy(tx, {
+              get(objetivo, clave, receptor) {
+                if (clave !== "$queryRaw") return Reflect.get(objetivo, clave, receptor);
+                return async (sql: TemplateStringsArray, ...valores: unknown[]) => {
+                  if (sql.join("").includes(`"congelada_at" IS NOT NULL`)) {
+                    detenida();
+                    await seguir;
+                  }
+                  return objetivo.$queryRaw(sql, ...valores);
+                };
+              },
+            }),
+          ),
+        { timeout: 60_000, maxWait: 15_000 },
+      ),
+  };
+  return envoltura as unknown as PrismaClient;
+}
+
+/** El desenlace de una promesa sin que un rechazo corte el caso: se compara entero. */
+const desenlace = <T>(p: Promise<T>) =>
+  p.then(
+    (ok) => ({ ok }),
+    (e: unknown) => ({ error: String(e) }),
+  );
+
+describeSiHayBase("SLT-121 — design §2: anular y confirmar a la vez con la empresa congelada no da 40P01", () => {
+  let base2: PrismaClient;
+  let confirmador: PrismaClient;
+  let soltar: () => Promise<void> = async () => {};
+  let p: Personas459 | null = null;
+  let superadminId: string | null = null;
+  let superadminPropio = false;
+  let caso: Caso;
+
+  const org = () => (p as Personas459).organizacionId;
+
+  /** La anulación de la empresa, por la action real (molde de SLT-60). */
+  const anular = (movimientoId: string) =>
+    conEmpresa(org(), () =>
+      anularMovimientoAction(
+        { destino: { libro: "caja", movimientoId }, motivo: "Pago mal registrado SLT121" },
+        { getActor: async () => (p as Personas459).maestro },
+      ),
+    );
+
+  /** ¿Hay alguien esperando el candado de los pagos de la empresa? */
+  async function alguienEsperaElCandado(): Promise<boolean> {
+    const [{ n }] = await base2.$queryRaw<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM pg_locks l
+       WHERE l.locktype = 'advisory' AND NOT l.granted AND l.objsubid = 1
+         AND l.objid::text::bigint = (hashtext('pago_plataforma:' || ${org()})::bigint & 4294967295)`;
+    return n > 0;
+  }
+
+  beforeAll(async () => {
+    base2 = crearPrismaDeTest();
+    confirmador = crearPrismaDeTest();
+    soltar = await tomarLockDeSuperadmin();
+    const s = await obtenerOCrearSuperadmin(base2, () =>
+      bajoLockDeEscrituraReal(() =>
+        base2.$transaction(async (tx) => {
+          const u = await insertarUsuario(tx, await idDeRol(tx, "superadmin"), null);
+          if (!u.desenlace.ok) throw new Error(`no se sembró el superadmin: ${JSON.stringify(u.desenlace)}`);
+          return u.id;
+        }),
+      ),
+    );
+    superadminId = s.id;
+    superadminPropio = s.propio;
+    p = await sembrarPersonas459(base2);
+    const personas = p;
+    caso = await bajoLockDeEscrituraReal(() =>
+      base2.$transaction(async (tx) => {
+        const factura = await facturaCerrada(tx, personas.organizacionId, {
+          numero: 1,
+          hasta: cero("2026-11-16"),
+          total: "1000000.00",
+        });
+        const r = await congelar(tx, personas.organizacionId, MADRUGADA, GRACIA_GLOBAL);
+        if (r.resultado !== "congelada") throw new Error(`la siembra no congeló: ${JSON.stringify(r)}`);
+        return { org: personas.organizacionId, factura, superadmin: s.id, maestro: personas.maestro.usuarioId };
+      }),
+    );
+  }, 120_000);
+
+  afterAll(async () => {
+    if (base2 === undefined) return;
+    try {
+      if (p !== null) {
+        const id = org();
+        // La FK del pago a su confirmación no tiene acción: las aplicaciones y las confirmaciones, antes que el libro.
+        await bajoLockDeEscrituraReal(async () => {
+          for (const tabla of ["pago_plataforma_aplicacion", "pago_plataforma_confirmacion", "historial_accion", "jobs"]) {
+            await base2.$executeRawUnsafe(`DELETE FROM "${tabla}" WHERE "organizacion_id" = $1`, id);
+          }
+        });
+        // Las facturas se van con la empresa (ON DELETE CASCADE).
+        await limpiar459(base2, p);
+      }
+      if (superadminId !== null && superadminPropio) {
+        const id = superadminId;
+        await bajoLockDeEscrituraReal(() => base2.$executeRawUnsafe(`DELETE FROM "usuario" WHERE "id" = $1`, id));
+      }
+    } finally {
+      await soltar();
+      await Promise.all([base2.$disconnect(), confirmador?.$disconnect()]);
+    }
+  }, 120_000);
+
+  it(`decisión §2: ${RONDAS} cruces forzados — la confirmación termina sin 40P01, la anulación responde forbidden y la empresa sigue congelada`, async () => {
+    for (let ronda = 1; ronda <= RONDAS; ronda++) {
+      const pagoId = await bajoLockDeEscrituraReal(() => base2.$transaction((tx) => pagoDeLaEmpresa(tx, caso, "1000.00")));
+      const detenida = senal();
+      const seguir = senal();
+      const repo = new PagoPlataformaConfirmacionRepository(clienteQueSeDetiene(confirmador, detenida.dar, seguir.p));
+      const confirmacion = desenlace(
+        repo.confirmar({
+          organizacionId: caso.org,
+          pagoId,
+          aplicaciones: [{ facturaId: caso.factura, monto: "1000.00" }],
+          por: caso.superadmin,
+          ahora: AHORA,
+        }),
+      );
+      // La confirmación tiene el candado y todavía no tomó la empresa.
+      await detenida.p;
+      expect(await alguienEsperaElCandado(), `ronda ${ronda}: nadie espera todavía el candado`).toBe(false);
+
+      // La anulación escribe y se queda esperando el candado, con su FOR KEY SHARE sobre la empresa.
+      const anulacion = desenlace(anular(pagoId));
+      await hastaQue(alguienEsperaElCandado, `ronda ${ronda}: la anulación espera el candado de los pagos`);
+      seguir.dar();
+
+      expect({ confirmacion: await confirmacion, anulacion: await anulacion }, `ronda ${ronda}`).toEqual({
+        confirmacion: { ok: { estado: "ok" } },
+        anulacion: { ok: { status: "forbidden" } },
+      });
+      const [fila] = await base2.$queryRaw<{ confirmado: number; contra: number }[]>`
+        SELECT (SELECT count(*)::int FROM "pago_plataforma_confirmacion" WHERE "pago_id" = ${pagoId}) AS confirmado,
+               (SELECT count(*)::int FROM "wallet_movimiento"
+                 WHERE "origen_tipo" = 'gasto' AND "origen_id" = ${pagoId} AND "categoria" = 'ingreso_ajuste') AS contra`;
+      expect(fila, `ronda ${ronda}`).toEqual({ confirmado: 1, contra: 0 });
+    }
+    const estado = await base2.$transaction((tx) => estadoDe(tx, caso.org));
+    expect(estado.congeladaAt).toBe(MADRUGADA);
+  }, 180_000);
 });

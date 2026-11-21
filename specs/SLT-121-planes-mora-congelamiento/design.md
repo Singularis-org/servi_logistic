@@ -100,6 +100,18 @@ Todas las del dueño son `SECURITY DEFINER`, con `SET search_path = public, pg_t
 La gracia global llega siempre por parámetro (`p_gracia_global int`): la variable de entorno se lee en TS y la base
 no la conoce.
 
+**La fila de la empresa se toma con `FOR NO KEY UPDATE`, nunca con `FOR UPDATE`** (decisión del 2026-11-20, humano),
+en las tres `organizacion_mora_*` (§2.2–§2.4).
+- **Por qué:** la anulación de un pago de la empresa (SLT-60, y la de un pago por confirmar, decisión P3) escribe
+  primero; la FK de esa escritura toma `FOR KEY SHARE` sobre `organizacion`, y después espera el candado
+  `pago_plataforma:`. La confirmación ya tiene ese candado y, con la empresa congelada, llama a
+  `organizacion_mora_descongelar_si_pagada`. Con `FOR UPDATE` esa fila esperaba a la anulación y la anulación al
+  candado: `40P01` (deadlock).
+- `FOR NO KEY UPDATE` no choca con `FOR KEY SHARE` y sigue serializando a las tres funciones entre sí. El `UPDATE`
+  de `congelada_at` / `descongelada_hasta` tampoco pide más: ninguna de las dos columnas está en un índice único.
+- Lo vigila `tests/integration/repositories/pago-plataforma-recalcula-mora.test.ts` > «decisión §2: 5 cruces
+  forzados…»; con `FOR UPDATE` da `40P01`.
+
 ### 2.1 La única definición del plazo: `factura_plataforma_mora(p_org, p_ahora, p_gracia_global)`
 
 Devuelve una fila por factura **cerrada con saldo > 0**:
@@ -123,7 +135,7 @@ vencida      boolean         -- p_ahora >= vence_at                 (R6)
 
 Corre en la transacción de la corrida de madrugada (§4) y hace, en este orden:
 
-1. Toma `pg_advisory_xact_lock(hashtext('pago_plataforma:' || p_org))` (§4.3) y después la empresa en `FOR UPDATE`.
+1. Toma `pg_advisory_xact_lock(hashtext('pago_plataforma:' || p_org))` (§4.3) y después la empresa en `FOR NO KEY UPDATE`.
 2. Con `p_ahora` fuera de la franja de 00:00 a 05:59 de la plataforma, responde `{"resultado":"fuera_de_franja"}` y
    no escribe (R8).
 3. Ya congelada: `{"resultado":"ya_congelada"}` (R9).
@@ -139,7 +151,7 @@ saltarse la guardia `historial-accion-escrituras-cubiertas`.
 
 La pieza SQL de «recalcular» (R34):
 
-- toma la empresa en `FOR UPDATE`;
+- toma la empresa en `FOR NO KEY UPDATE`;
 - si no está congelada, responde `sin_cambio`;
 - si está congelada y `factura_plataforma_mora(…)` no tiene ninguna `vencida`, fija `congelada_at = NULL` y responde
   `descongelada`;
@@ -149,7 +161,7 @@ La pieza SQL de «recalcular» (R34):
 
 ### 2.4 `organizacion_mora_descongelar_a_mano(p_org, p_hasta date, p_ahora) → text`
 
-- Toma la empresa en `FOR UPDATE`. Si no está congelada, responde `no_congelada`.
+- Toma la empresa en `FOR NO KEY UPDATE`. Si no está congelada, responde `no_congelada`.
 - Si no, fija `congelada_at = NULL` y `descongelada_hasta = p_hasta`, y responde `ok`.
 - El motivo y el rango de la fecha (R22) los valida el servicio. La base no guarda el motivo: va solo al historial
   (decisión P5).
@@ -275,8 +287,8 @@ El manejador:
 | Choque | Cómo se evita |
 |---|---|
 | Congelar mientras el superadmin confirma un pago | Las dos toman `pago_plataforma:<org>`. Si congelar entra primero, la confirmación descongela al terminar (R19). Si entra después, ve el saldo ya bajado y no congela |
-| Dos corridas de la misma madrugada | `FOR UPDATE` sobre la empresa y la respuesta `ya_congelada` (R9) |
-| Descongelar a mano mientras corre la madrugada | `FOR UPDATE` sobre la empresa. Gana el orden de llegada y los dos resultados son coherentes |
+| Dos corridas de la misma madrugada | `FOR NO KEY UPDATE` sobre la empresa y la respuesta `ya_congelada` (R9) |
+| Descongelar a mano mientras corre la madrugada | `FOR NO KEY UPDATE` sobre la empresa. Gana el orden de llegada y los dos resultados son coherentes |
 | Una escritura de la empresa a la vez que se congela | El trigger lee `congelada_at` confirmado. Una escritura que empezó antes de que congelar confirmara pasa: se acepta, porque es de madrugada (decisión «¿Cuándo cae?») |
 
 ## 5. Repositorio, servicio y actions

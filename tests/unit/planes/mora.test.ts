@@ -149,7 +149,7 @@ describe("SLT-121 R24 — textos", () => {
     expect(MORA_TEXTOS.banner.descongeladaAMano("2026-12-01")).toBe("La operación está habilitada hasta el 01/12/2026.");
     expect(MORA_TEXTOS.banner.congelada).toContain("Empresa congelada por falta de pago");
     expect(MENSAJE_EMPRESA_CONGELADA).toBe("Empresa suspendida por falta de pago.");
-    expect(MORA_TEXTOS.superadmin.graciaPropia(15)).toBe("15 días (propia)");
-    expect(MORA_TEXTOS.superadmin.graciaGlobal(7)).toBe("7 días (global)");
+    expect(MORA_TEXTOS.plataforma.graciaPropia(15)).toBe("15 días (propia)");
+    expect(MORA_TEXTOS.plataforma.graciaGlobal(7)).toBe("7 días (global)");
   });
 });

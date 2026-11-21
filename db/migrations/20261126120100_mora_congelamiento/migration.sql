@@ -75,8 +75,13 @@ GRANT EXECUTE ON FUNCTION factura_plataforma_mora(text, timestamp, integer) TO s
 
 -- ─── 3. Congelar (§2.2; R7, R8, R9, R23) ────────────────────────────────────────────────────────────
 -- En la transacción de la corrida de madrugada. El candado de los pagos de la empresa va PRIMERO, como en
--- `pago_plataforma_confirmar`, para no cruzarse con una confirmación (§4.3); después la empresa en FOR UPDATE, para
--- que dos corridas o un descongelamiento a mano se serialicen.
+-- `pago_plataforma_confirmar`, para no cruzarse con una confirmación (§4.3); después la empresa en FOR NO KEY UPDATE,
+-- para que dos corridas o un descongelamiento a mano se serialicen.
+-- FOR NO KEY UPDATE y no FOR UPDATE en las TRES funciones `organizacion_mora_*` (§2, decisión del 2026-11-20): la
+-- anulación de SLT-60 toma FOR KEY SHARE sobre `organizacion` (la FK de sus escrituras) y después espera el candado
+-- `pago_plataforma:`; con FOR UPDATE, la confirmación que ya lo tiene esperaba esa fila y daba 40P01. FOR NO KEY
+-- UPDATE no choca con FOR KEY SHARE y sigue serializando entre sí a las tres funciones. El UPDATE de `congelada_at`
+-- también toma solo NO KEY UPDATE: la columna no está en ningún índice único.
 -- Solo de 00:00 a 05:59 de la plataforma (R8): fuera de la franja responde sin escribir, también en un reintento.
 CREATE FUNCTION organizacion_mora_congelar(p_org text, p_ahora timestamp, p_gracia_global integer) RETURNS jsonb
   LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
@@ -88,7 +93,7 @@ DECLARE
 BEGIN
   PERFORM pg_advisory_xact_lock(hashtext('pago_plataforma:' || p_org));
   SELECT o."id", o."congelada_at", o."descongelada_hasta" INTO v_org
-    FROM "organizacion" o WHERE o."id" = p_org FOR UPDATE;
+    FROM "organizacion" o WHERE o."id" = p_org FOR NO KEY UPDATE;
   IF v_org."id" IS NULL THEN
     RAISE EXCEPTION USING ERRCODE = 'P0002', MESSAGE = 'organizacion_mora_congelar: no existe la empresa ' || p_org;
   END IF;
@@ -127,7 +132,7 @@ CREATE FUNCTION organizacion_mora_descongelar_si_pagada(p_org text, p_ahora time
 DECLARE
   v_congelada timestamp;
 BEGIN
-  SELECT o."congelada_at" INTO v_congelada FROM "organizacion" o WHERE o."id" = p_org FOR UPDATE;
+  SELECT o."congelada_at" INTO v_congelada FROM "organizacion" o WHERE o."id" = p_org FOR NO KEY UPDATE;
   IF v_congelada IS NULL THEN
     RETURN 'sin_cambio';
   END IF;
@@ -147,7 +152,7 @@ CREATE FUNCTION organizacion_mora_descongelar_a_mano(p_org text, p_hasta date, p
 DECLARE
   v_congelada timestamp;
 BEGIN
-  SELECT o."congelada_at" INTO v_congelada FROM "organizacion" o WHERE o."id" = p_org FOR UPDATE;
+  SELECT o."congelada_at" INTO v_congelada FROM "organizacion" o WHERE o."id" = p_org FOR NO KEY UPDATE;
   IF v_congelada IS NULL THEN
     RETURN 'no_congelada';
   END IF;

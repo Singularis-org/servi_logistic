@@ -41,11 +41,11 @@ export async function recalcularCongelamiento(
   causa: CausaRecalculo,
   gracia?: number,
 ): Promise<"descongelada" | "sin_cambio"> {
-  // Sin bloquear nada si no está congelada, que es casi siempre. La función toma la empresa en FOR UPDATE, y eso
-  // choca con el FOR KEY SHARE de cualquier escritura de la empresa que espera el candado de los pagos que esta
-  // transacción ya tiene: un deadlock (medido con el «anular y confirmar a la vez» de SLT-60). La lectura es
-  // segura: con el candado tomado nadie congela a la vez (congelar lo pide antes), y un descongelamiento
-  // concurrente solo podría dejarla en «no congelada».
+  // Sin bloquear nada si no está congelada, que es casi siempre. La función toma la empresa en FOR NO KEY UPDATE
+  // (design §2): no choca con el FOR KEY SHARE de las escrituras de la empresa que esperan el candado de los pagos
+  // que esta transacción ya tiene; con FOR UPDATE eso era un deadlock (el «anular y confirmar a la vez» de SLT-60).
+  // La lectura es segura: con el candado tomado nadie congela a la vez (congelar lo pide antes), y un
+  // descongelamiento concurrente solo podría dejarla en «no congelada».
   const [estado] = await tx.$queryRaw<{ congelada: boolean }[]>`
     SELECT ("congelada_at" IS NOT NULL) AS "congelada" FROM "organizacion" WHERE "id" = ${org}`;
   if (estado?.congelada !== true) return "sin_cambio";
