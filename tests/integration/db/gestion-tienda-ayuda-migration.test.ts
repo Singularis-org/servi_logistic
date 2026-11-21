@@ -153,6 +153,8 @@ describe("Feature 237 · el DOWN deja la base legible por el codigo anterior (R4
       "rechazo_tope_intentos",
       // ficha 398 (2026-09-08): la correccion en sitio del resultado de una gestion
       "correccion_resultado_gestion",
+      // SLT-247 (2026-11-20): el retorno a la calle de las barridas al rechazar el cierre
+      "retorno_por_rechazo_cierre",
     ]; // 240 (2026-08-20) · 266 (2026-08-23) · 276 (2026-08-24) · 398 (2026-09-08)
     expect(new Set(valores)).toEqual(
       new Set(

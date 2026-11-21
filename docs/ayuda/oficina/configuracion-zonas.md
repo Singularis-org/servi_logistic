@@ -50,8 +50,8 @@ distrito se ve en qué zona está hoy. El catálogo no se edita acá: lo adminis
 ## Editar y eliminar
 
 Al guardar una zona con otros distritos, las órdenes de esos distritos pasan a la zona nueva y el
-aviso dice cuántas se reubicaron. Las que ya tienen el paquete en una bodega no cambian de zona, y
-el aviso también lo dice.
+aviso dice cuántas se reubicaron. Las que tienen el paquete en el estante de una bodega satélite no
+cambian de zona, y el aviso también lo dice.
 
 Eliminar pide confirmación. Si se rechaza, el aviso dice por qué:
 

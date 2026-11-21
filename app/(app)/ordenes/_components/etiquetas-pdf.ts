@@ -2,6 +2,7 @@ import { jsPDF } from "jspdf";
 import JsBarcode from "jsbarcode";
 
 import type { HojaEtiqueta } from "@/lib/config/etiquetas-hoja";
+import type { FormatoMoneda } from "@/lib/config/moneda";
 import type { EtiquetaGuiaDTO } from "@/lib/types/etiqueta-guia";
 
 import { drawEtiqueta } from "@/lib/pdf/etiquetas-dibujo";
@@ -70,6 +71,11 @@ export function etiquetasPdfFilename(hoja: HojaEtiqueta): string {
  * el importe sin simbolo. Los dos bugs pasarian inadvertidos; asi los caza el
  * compilador.
  *
+ * SLT-240 (R14) — `moneda` sigue el mismo criterio: es la del pais de la empresa
+ * (la lee el modal de `useMonedaDelPais()`) y no tiene default. Con uno, un
+ * llamador que la olvidase imprimiria con la moneda de la plataforma y con CR
+ * nadie lo veria.
+ *
  * La funcion sigue siendo SINCRONA y pura respecto de la fuente: se puede probar
  * con la fuente real sin tocar el `import()` diferido. Quien cruza ese borde es
  * `descargarEtiquetasPdf`.
@@ -79,6 +85,7 @@ export function buildEtiquetasPdf(
   qrCanvases: Map<string, HTMLCanvasElement>,
   hoja: HojaEtiqueta,
   fuente: FuenteEmbebida,
+  moneda: FormatoMoneda,
 ): jsPDF {
   const layout = crearLayout(hoja);
   const format: [number, number] = [hoja.anchoMm, hoja.altoMm];
@@ -97,6 +104,7 @@ export function buildEtiquetasPdf(
         barcode: barcodeDataUrl(etiqueta.barcodeValue, layout),
       },
       fuente,
+      moneda,
     );
   });
   return doc;
@@ -117,8 +125,9 @@ export async function descargarEtiquetasPdf(
   etiquetas: EtiquetaGuiaDTO[],
   qrCanvases: Map<string, HTMLCanvasElement>,
   hoja: HojaEtiqueta,
+  moneda: FormatoMoneda,
 ): Promise<void> {
   const fuente = await cargarFuenteEtiqueta();
-  const doc = buildEtiquetasPdf(etiquetas, qrCanvases, hoja, fuente);
+  const doc = buildEtiquetasPdf(etiquetas, qrCanvases, hoja, fuente, moneda);
   doc.save(etiquetasPdfFilename(hoja));
 }

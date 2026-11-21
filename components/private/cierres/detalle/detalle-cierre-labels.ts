@@ -181,6 +181,20 @@ export const CORRECCION_PENDIENTE = "Falta volver a gestionarla";
 export const CORRECCION_IR_ENTREGAS = "Ir a Entregas";
 export const RUTA_ENTREGAS = "/mis-asignaciones/reparto";
 
+// SLT-247 «Cierre rechazado: el mensajero gestiona las órdenes que pasaron a Novedad interna antes de
+// reenviarlo» (R1795, R1796) — las órdenes que el corte barrió y el rechazo devolvió a Entregas. Van
+// aparte de las deshechas de la 477: estas no se pueden dejar fuera del cierre.
+export const OBLIGATORIAS_TITULO = "Órdenes que pasaron a Novedad interna";
+export const OBLIGATORIAS_EXPLICACION = "Tienes que gestionarlas antes de enviar de nuevo el cierre.";
+export const OBLIGATORIA_GESTIONADA = "Ya la gestionaste";
+export const OBLIGATORIA_PENDIENTE = "Falta gestionarla";
+/** R1796 — el motivo del reenvío deshabilitado, con cuántas faltan. */
+export function motivoFaltanObligatorias(n: number): string {
+  return n === 1
+    ? "Te falta 1 orden que pasó a Novedad interna. Gestiónala en Entregas y vuelve a enviar el cierre."
+    : `Te faltan ${n} órdenes que pasaron a Novedad interna. Gestiónalas en Entregas y vuelve a enviar el cierre.`;
+}
+
 // --- El cierre de la página (SLT-109, R253, R256) ---
 /** R253 — la lectura del cierre por reenviar falló: el mensajero no ve el detalle, pero puede enviarlo. */
 export const REENVIABLE_ERROR = "No se pudo cargar el cierre que tienes que enviar. Recarga la página.";

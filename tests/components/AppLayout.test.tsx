@@ -7,6 +7,9 @@ import userEvent from "@testing-library/user-event";
 import type { ComponentProps, ReactNode } from "react";
 import AppLayout from "@/app/(app)/layout";
 import { ETIQUETAS_NEUTRAS } from "@/lib/types/pais";
+import { MONEDA_PLATAFORMA } from "@/lib/config/moneda";
+import { IMPUESTO_ROTULO } from "@/lib/constants/impuesto-rotulo";
+import { MONEDA_DE_PRUEBA } from "@/tests/fabricas/reglas-pais";
 
 // El layout monta el <Sidebar /> (Client Component) que usa usePathname; se
 // mockea next/navigation y next/link igual que en Sidebar.test.tsx.
@@ -160,19 +163,37 @@ vi.mock("@/lib/ayuda/catalogo", async (importOriginal) => {
   };
 });
 
-// ⭑ SL-20 (design §7; R19) — los nombres de nivel del país de la empresa. Se doblan las dos piezas:
-//   · el servicio, para saber CON QUÉ empresa se preguntó (y que el superadmin no pregunta);
-//   · el proveedor, para AFIRMAR QUE ALGUIEN LE PASA LAS ETIQUETAS, no que se importa.
-const { etiquetasDeEmpresaMock, propsDelProveedorEtiquetas } = vi.hoisted(() => ({
-  etiquetasDeEmpresaMock: vi.fn(),
+// ⭑ SL-20 (design §7; R19) y SLT-235 (design §6; R1) — el país de la empresa para las pantallas. Se
+// doblan tres piezas:
+//   · el servicio (`paraPantallas`), para saber CON QUÉ empresa se preguntó, CUÁNTAS veces, y que el
+//     superadmin no pregunta;
+//   · los dos proveedores, para AFIRMAR QUE ALGUIEN LES PASA lo suyo, no que se importan.
+// El memo de `pais-para-pantallas.ts` no interviene: vive en `PaisService`, que aquí está doblado.
+const { paraPantallasMock, propsDelProveedorEtiquetas, propsDelProveedorMoneda } = vi.hoisted(() => ({
+  paraPantallasMock: vi.fn(),
   propsDelProveedorEtiquetas: [] as { etiquetas: unknown }[],
+  propsDelProveedorMoneda: [] as { moneda: unknown; impuestoNombre: unknown }[],
 }));
 vi.mock("@/lib/actions/_shared/paises-plataforma", () => ({
-  construirPaisService: () => ({ etiquetasDeEmpresa: etiquetasDeEmpresaMock }),
+  construirPaisService: () => ({ paraPantallas: paraPantallasMock }),
 }));
 vi.mock("@/providers/EtiquetasGeograficasProvider", () => ({
   EtiquetasGeograficasProvider: ({ etiquetas, children }: { etiquetas: unknown; children: ReactNode }) => {
     propsDelProveedorEtiquetas.push({ etiquetas });
+    return <>{children}</>;
+  },
+}));
+vi.mock("@/providers/MonedaDelPaisProvider", () => ({
+  MonedaDelPaisProvider: ({
+    moneda,
+    impuestoNombre,
+    children,
+  }: {
+    moneda: unknown;
+    impuestoNombre: unknown;
+    children: ReactNode;
+  }) => {
+    propsDelProveedorMoneda.push({ moneda, impuestoNombre });
     return <>{children}</>;
   },
 }));
@@ -189,6 +210,13 @@ avisoMoraMock.mockResolvedValue(null);
 avisosPushDeMock.mockResolvedValue(false);
 // Por defecto, nada que pedir: es la respuesta NORMAL del resolvedor.
 resolverRevisionMock.mockResolvedValue(null);
+// Por defecto, el país de una empresa da lo de la plataforma: los bloques que no miran el país no
+// dependen de qué devuelva, pero el layout lee sus campos y un `undefined` lo tumbaría.
+paraPantallasMock.mockResolvedValue({
+  etiquetas: ETIQUETAS_NEUTRAS,
+  moneda: MONEDA_PLATAFORMA,
+  impuestoNombre: IMPUESTO_ROTULO,
+});
 
 // Como el layout es async, se invoca y se espera su árbol antes de renderizar.
 async function renderLayout(children: ReactNode) {
@@ -636,56 +664,65 @@ describe("433/R20 — el mapa del «?» baja acotado, y la ayuda se degrada sin 
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
-// ⭑ SL-20 / T5.1 (design §7; R19) — LOS NOMBRES DE NIVEL BAJAN DESDE AQUÍ
+// ⭑ SL-20 / T5.1 (design §7; R19) y SLT-235 / T2.2 (design §6; R1, R2, R5) — EL PAÍS BAJA DESDE AQUÍ
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 //
-// Con empresa: los de su país (`PaisService.etiquetasDeEmpresa`). Sin empresa (el superadmin): las
-// neutras, sin consulta. Si la lectura falla, el portal se pinta igual con las neutras y queda en los
-// logs: este layout se pinta en todas las páginas.
+// Con empresa: una sola llamada a `PaisService.paraPantallas`, y de ella salen los nombres de nivel
+// (proveedor de etiquetas) y la moneda y el impuesto (proveedor de moneda). Sin empresa (el
+// superadmin): lo neutro y lo de la plataforma, sin consulta. Si la lectura falla, el portal se pinta
+// igual con eso y queda en los logs: este layout se pinta en todas las páginas.
 
-describe("SL-20/T5.1 — el layout baja los nombres de nivel del país de la empresa", () => {
+describe("SL-20/T5.1 y SLT-235/T2.2 — el layout baja el país de la empresa a sus pantallas", () => {
   const DEPARTAMENTO = {
     provincia: { singular: "Departamento", plural: "Departamentos" },
     canton: { singular: "Municipio", plural: "Municipios" },
     distrito: { singular: "Aldea", plural: "Aldeas" },
   };
+  // El país de prueba: todo distinto de lo de la plataforma, para que nada pase por casualidad.
+  const PAIS_DE_PRUEBA = { etiquetas: DEPARTAMENTO, moneda: MONEDA_DE_PRUEBA, impuestoNombre: "IGV" };
+  const DE_LA_PLATAFORMA = { moneda: MONEDA_PLATAFORMA, impuestoNombre: IMPUESTO_ROTULO };
 
   beforeEach(() => {
     propsDelProveedorEtiquetas.length = 0;
-    etiquetasDeEmpresaMock.mockReset();
+    propsDelProveedorMoneda.length = 0;
+    paraPantallasMock.mockReset();
     cookieTemaMock.mockReturnValue(undefined);
   });
 
-  it("⭑ con una empresa, ALGUIEN le pasa al proveedor las etiquetas de SU país", async () => {
-    etiquetasDeEmpresaMock.mockResolvedValue(DEPARTAMENTO);
+  it("⭑ R1: con una empresa, UNA llamada, y cada proveedor recibe lo suyo de SU país", async () => {
+    paraPantallasMock.mockResolvedValue(PAIS_DE_PRUEBA);
     resolveActorMock.mockResolvedValue({ usuarioId: "u1", rol: "maestro", organizacionId: "org-xa" });
 
     await renderLayout(<div data-testid="page-children">Contenido</div>);
 
-    expect(etiquetasDeEmpresaMock).toHaveBeenCalledWith("org-xa");
+    expect(paraPantallasMock).toHaveBeenCalledTimes(1);
+    expect(paraPantallasMock).toHaveBeenCalledWith("org-xa");
     expect(propsDelProveedorEtiquetas).toEqual([{ etiquetas: DEPARTAMENTO }]);
+    expect(propsDelProveedorMoneda).toEqual([{ moneda: MONEDA_DE_PRUEBA, impuestoNombre: "IGV" }]);
     expect(screen.getByTestId("page-children")).toBeInTheDocument();
   });
 
-  it("el superadmin (sin empresa) recibe las neutras y no se pregunta por ningún país", async () => {
+  it("R2: el superadmin (sin empresa) recibe lo neutro y lo de la plataforma, y no se pregunta por ningún país", async () => {
     resolveActorMock.mockResolvedValue({ usuarioId: "s1", rol: "superadmin", organizacionId: null });
 
     await renderLayout(<div>Contenido</div>);
 
-    expect(etiquetasDeEmpresaMock).not.toHaveBeenCalled();
+    expect(paraPantallasMock).not.toHaveBeenCalled();
     expect(propsDelProveedorEtiquetas).toEqual([{ etiquetas: ETIQUETAS_NEUTRAS }]);
+    expect(propsDelProveedorMoneda).toEqual([DE_LA_PLATAFORMA]);
   });
 
-  it("si la lectura del país falla, el portal se pinta con las neutras y lo dice en los logs", async () => {
+  it("R5: si la lectura del país falla, el portal se pinta con lo neutro y lo de la plataforma, y lo dice en los logs", async () => {
     const enLosLogs = vi.spyOn(console, "error").mockImplementation(() => {});
-    etiquetasDeEmpresaMock.mockRejectedValue(new Error("sin país"));
+    paraPantallasMock.mockRejectedValue(new Error("sin país"));
     resolveActorMock.mockResolvedValue({ usuarioId: "u1", rol: "maestro", organizacionId: "org-rota" });
 
     await renderLayout(<div data-testid="page-children">Contenido</div>);
 
     expect(screen.getByTestId("page-children")).toBeInTheDocument();
     expect(propsDelProveedorEtiquetas).toEqual([{ etiquetas: ETIQUETAS_NEUTRAS }]);
-    expect(enLosLogs).toHaveBeenCalled();
+    expect(propsDelProveedorMoneda).toEqual([DE_LA_PLATAFORMA]);
+    expect(enLosLogs).toHaveBeenCalledWith(expect.stringContaining("org-rota"), expect.any(Error));
     enLosLogs.mockRestore();
   });
 });

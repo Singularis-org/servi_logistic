@@ -2,7 +2,9 @@ import { redirect, notFound } from "next/navigation";
 
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { obtenerEtiquetaPorGuia } from "@/lib/actions/etiquetas-guia";
-import { formatMonto } from "@/lib/config/moneda";
+import { formatearMontoEn } from "@/lib/config/moneda";
+import { construirPaisService } from "@/lib/actions/_shared/paises-plataforma";
+import { paisParaPantallasDelActor } from "@/lib/services/pais-para-pantallas";
 import { PAQUETE_BASE_PATH } from "@/lib/utils/paquete-url";
 import type { EtiquetaGuiaDTO } from "@/lib/types/etiqueta-guia";
 import { Logo } from "@/components/shared/Logo";
@@ -55,6 +57,13 @@ export default async function PaquetePage({
 
   const orden = res.etiqueta;
 
+  // SLT-235 (R14): esta página está fuera del layout del portal, así que lee la moneda por su cuenta,
+  // con el mismo memo y las mismas caídas (R3, R5). El servicio se construye solo si hay empresa: sin
+  // ella no se consulta ningún país y se pinta en la moneda de la plataforma.
+  const pais = await paisParaPantallasDelActor(actor.organizacionId ?? null, {
+    paraPantallas: (organizacionId) => construirPaisService().paraPantallas(organizacionId),
+  });
+
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col gap-6 px-5 py-10">
       <header className="flex flex-col gap-1">
@@ -105,7 +114,7 @@ export default async function PaquetePage({
           <Campo label="Dirección" valor={orden.direccion ?? SIN_DATO} />
           <Campo label="Ubicación" valor={ubicacionLegible(orden)} />
           <Campo label="Producto" valor={orden.producto} />
-          <Campo label="Monto a cobrar" valor={formatMonto(orden.montoCobrar)} />
+          <Campo label="Monto a cobrar" valor={formatearMontoEn(pais.moneda, orden.montoCobrar)} />
           <Campo label="Tienda" valor={orden.tiendaNombre} />
         </dl>
       </section>

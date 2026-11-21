@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
-import { montoExacto } from "@/lib/config/moneda";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
+import { formatearMontoEn, montoExacto, MONEDA_PLATAFORMA, SIN_MONTO_RAYA, type FormatoMoneda } from "@/lib/config/moneda";
 import { aCentimos } from "@/lib/utils/pagos-recaudo";
 import {
   acotarMonto,
@@ -47,6 +48,15 @@ import {
  * cola NO se puede esconder, porque es exactamente lo que impide cerrar la orden.
  */
 export { montoExacto };
+
+/**
+ * SLT-235 — `montoExacto` con la moneda que se le pasa: el mismo marcador de ausencia (la raya
+ * larga) y el mismo formateador base, así que con la moneda de la plataforma da byte a byte lo
+ * mismo que `montoExacto`.
+ */
+function montoEn(moneda: FormatoMoneda, monto: number): string {
+  return formatearMontoEn(moneda, monto, SIN_MONTO_RAYA);
+}
 
 export const DESGLOSE_TEXTOS = {
   titulo: "Método de pago",
@@ -94,15 +104,21 @@ export const DESGLOSE_TEXTOS = {
  * El orden importa y no es casual: lo INALCANZABLE se mira primero. Con céntimos en el total,
  * `capturaCuadra` no puede dar `true` jamás (toda suma tecleable es entera), así que el otro
  * mensaje nunca sería el correcto — pero preguntarlo en este orden deja escrito el porqué.
+ *
+ * SLT-235 (R11): los importes del aviso van en la moneda que se le pasa, la del país de la
+ * empresa. El tercer argumento es opcional solo mientras `CorregirPagosDialog` (cierres del
+ * admin, SLT-243) siga sin migrar: hasta entonces cuadra con la de la plataforma, como el resto
+ * de esa pantalla.
  */
 export function mensajeDeCuadre(
   lineas: readonly LineaEnEdicion[],
   montoACobrar: number,
+  moneda: FormatoMoneda = MONEDA_PLATAFORMA,
 ): string | undefined {
   if (cuadreInalcanzable(montoACobrar)) {
     return DESGLOSE_TEXTOS.noCuadraPorCentimos(
-      montoExacto(montoACobrar),
-      montoExacto(centimosNoCapturables(montoACobrar) / 100),
+      montoEn(moneda, montoACobrar),
+      montoEn(moneda, centimosNoCapturables(montoACobrar) / 100),
     );
   }
   return capturaCuadra(lineas, montoACobrar) ? undefined : DESGLOSE_TEXTOS.noCuadra;
@@ -146,6 +162,7 @@ export function DesglosePagoField({
   errorServidor: string | undefined;
   onChange: (lineas: LineaEnEdicion[]) => void;
 }) {
+  const moneda = useMonedaDelPais();
   const capturado = totalCapturado(lineas);
   // R11: la diferencia se saca en CÉNTIMOS ENTEROS. `pendiente` no sirve aquí porque se acota a
   // 0: en el resumen hay que poder ver que se capturó de MÁS, y eso es una diferencia negativa.
@@ -242,7 +259,7 @@ export function DesglosePagoField({
       ) : null}
 
       {/* R8: los tres importes, siempre visibles y recalculados en cada tecla.
-          Feature 300: se pintan con `montoExacto`, que es `money()` mientras no haya céntimos
+          Feature 300: se pintan con `montoExacto` (desde SLT-235, `montoEn` con la moneda del país), que es `money()` mientras no haya céntimos
           —o sea, siempre que la orden esté sana— y solo enseña la cola decimal cuando ES la
           razón por la que la diferencia no llega a cero. Antes, «Diferencia ₡0» en rojo junto
           al error de descuadre era la contradicción que bloqueaba al mensajero. */}
@@ -252,18 +269,18 @@ export function DesglosePagoField({
       >
         <div className="flex gap-1.5">
           <dt>{DESGLOSE_TEXTOS.aCobrar}</dt>
-          <dd className="font-semibold text-foreground">{montoExacto(montoACobrar)}</dd>
+          <dd className="font-semibold text-foreground">{montoEn(moneda, montoACobrar)}</dd>
         </div>
         <div className="flex gap-1.5">
           <dt>{DESGLOSE_TEXTOS.capturado}</dt>
-          <dd className="font-semibold text-foreground">{montoExacto(capturado)}</dd>
+          <dd className="font-semibold text-foreground">{montoEn(moneda, capturado)}</dd>
         </div>
         <div className="flex gap-1.5">
           <dt>{DESGLOSE_TEXTOS.diferencia}</dt>
           <dd
             className={`font-semibold ${diferencia === 0 ? "text-foreground" : "text-destructive"}`}
           >
-            {montoExacto(diferencia)}
+            {montoEn(moneda, diferencia)}
           </dd>
         </div>
       </dl>

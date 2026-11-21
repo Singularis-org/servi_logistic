@@ -260,8 +260,8 @@ describeSiHayBase("477/T4.4 — re-solicitar un cierre rechazado (Postgres real)
     // Anti-vacuidad: hay una rehecha sin cierre que la re-solicitud se habria llevado.
     expect(r.trasAjeno.g1b.cierreId).toBeNull();
     expect(r.trasAjeno.cierre.estado).toBe("rechazado");
-    expect(r.ajeno).toBe(false);
-    expect(r.carrera).toBe(false);
+    expect(r.ajeno).toEqual({ status: "conflict" });
+    expect(r.carrera).toEqual({ status: "conflict" });
     expect(r.despues).toEqual(r.antes);
   });
 });

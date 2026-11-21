@@ -33,6 +33,7 @@ import {
   separacionBajoGuiaMm,
 } from "@/lib/pdf/etiquetas-maqueta";
 import {
+  drawEtiqueta,
   ROTULO_FECHA,
   ROTULO_GUIA,
   ROTULO_REMISION,
@@ -45,7 +46,7 @@ import {
   getHojaEtiqueta,
   type HojaEtiqueta,
 } from "@/lib/config/etiquetas-hoja";
-import { formatMonto } from "@/lib/config/moneda";
+import { formatMonto, MONEDA_PLATAFORMA } from "@/lib/config/moneda";
 import type { EtiquetaGuiaDTO } from "@/lib/types/etiqueta-guia";
 
 import { MARCA_CORTE } from "@/lib/pdf/etiquetas-ajuste";
@@ -99,13 +100,16 @@ function etiqueta(overrides: Partial<EtiquetaGuiaDTO> = {}): EtiquetaGuiaDTO {
  * parametro (feature 282) y aqui siempre es la REAL, la misma que ships. Nada de
  * dobles: el requisito caro de esta ficha es que el glifo salga de verdad en el
  * papel, y un doble de fuente no demuestra nada sobre eso.
+ *
+ * SLT-240 (R14): la moneda tambien es obligatoria; aqui, la de la plataforma, y
+ * ningun valor esperado cambia.
  */
 function construir(
   etiquetas: EtiquetaGuiaDTO[],
   qrCanvases: Map<string, HTMLCanvasElement>,
   hoja: HojaEtiqueta,
 ) {
-  return buildEtiquetasPdf(etiquetas, qrCanvases, hoja, fuenteEtiqueta);
+  return buildEtiquetasPdf(etiquetas, qrCanvases, hoja, fuenteEtiqueta, MONEDA_PLATAFORMA);
 }
 
 function bytesDe(doc: ReturnType<typeof buildEtiquetasPdf>): Buffer {
@@ -871,7 +875,7 @@ describe("R21 — todo lo que necesita la fuente embebida pasa por exigirCobertu
 
       // (c) Control positivo: el importe SIEMPRE esta entre los Type0.
       expect(conType0, `caso «${caso.id}»`).toContain(monto);
-      expect(textosConFuenteEmbebida(caso.dto)).toContain(monto);
+      expect(textosConFuenteEmbebida(caso.dto, MONEDA_PLATAFORMA)).toContain(monto);
     }
   });
 
@@ -907,5 +911,30 @@ describe("R15/R22 — el importe: una linea, su recuadro y sus caracteres intact
     const textos = textosDecodificados(bytesDe(doc));
     expect(textos).toContain(CASO_EVIDENCIA.esperado.montoCobrar);
     expect(CASO_EVIDENCIA.esperado.montoCobrar).toBe("₡18.000");
+  });
+});
+
+describe("SLT-240 R14 — sin moneda por defecto en el PDF del navegador", () => {
+  it("buildEtiquetasPdf y drawEtiqueta no compilan sin moneda (lo hace cumplir el typecheck)", () => {
+    // Las llamadas viven en una funcion que NO se ejecuta: lo que se prueba es el
+    // tipo. Si alguien vuelve a dar a `moneda` un default, el `@ts-expect-error`
+    // deja de tener error que esperar y `pnpm run typecheck` falla.
+    const sinMoneda = (hoja: HojaEtiqueta) => {
+      // @ts-expect-error R14: la moneda es obligatoria en buildEtiquetasPdf.
+      buildEtiquetasPdf([etiqueta()], new Map(), hoja, fuenteEtiqueta);
+      const doc = construir([], new Map(), hoja);
+      // @ts-expect-error R14: la moneda es obligatoria en drawEtiqueta.
+      drawEtiqueta(doc, crearLayout(hoja), etiqueta(), { qr: null, barcode: "" }, fuenteEtiqueta);
+    };
+    expect(typeof sinMoneda).toBe("function");
+  });
+
+  it("en ejecucion, sin moneda no imprime con la de la plataforma: no hay PDF", () => {
+    // Defensa en profundidad de lo de arriba: si un llamador JS se la salta, el
+    // generador falla en vez de caer en silencio a la moneda de la plataforma.
+    const sinTipo = buildEtiquetasPdf as (...args: unknown[]) => unknown;
+    expect(() =>
+      sinTipo([etiqueta()], new Map(), getHojaEtiqueta("100x100"), fuenteEtiqueta),
+    ).toThrow();
   });
 });

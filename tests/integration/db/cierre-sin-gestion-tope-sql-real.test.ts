@@ -353,6 +353,11 @@ describeSiHayBase("276/T9 — el rechazo por tope al aprobar el cierre (Postgres
                   resueltoPor: adminId,
                   motivoRechazo: "no cuadra la caja",
                   zonaHoraria: ZONA_DE_CR,
+                  // SLT-247 (R1770): el servicio real lo pasa siempre al rechazar.
+                  retornoSinGestion: {
+                    sinGestionarEstatusId: estatus.get("novedad_interna") as string,
+                    enRepartoEstatusId: estatus.get("en_reparto") as string,
+                  },
                 },
           );
 
@@ -572,7 +577,10 @@ describeSiHayBase("276/T9 — el rechazo por tope al aprobar el cierre (Postgres
   /* Caso 5 · R27 — rechazar el cierre no rechaza ninguna orden         */
   /* ------------------------------------------------------------------ */
 
-  it("5. RECHAZAR el cierre no mueve ninguna orden ni crea ninguna gestion (R27)", async () => {
+  // SLT-247 (R1770/R1772): desde esta ficha el rechazo DEVUELVE las barridas al mensajero
+  // (`novedad_interna -> en_reparto`), y sigue sin rechazar por tope, sin liberar a bodega y sin crear
+  // ninguna gestion: R27 de la 109 se enmienda solo en el retorno.
+  it("5. RECHAZAR el cierre devuelve las barridas a en_reparto y no crea ninguna gestion (R27 + SLT-247)", async () => {
     const { tope, bajo, gestiones, filas, estatus } = await conCorpus(async (ctx) => {
       await ctx.resolver("rechazado");
       return {
@@ -584,13 +592,14 @@ describeSiHayBase("276/T9 — el rechazo por tope al aprobar el cierre (Postgres
       };
     });
 
-    // Las dos siguen exactamente donde el corte las dejo, con su mensajero.
-    expect(tope?.estatusId).toBe(estatus.get("novedad_interna"));
-    expect(bajo?.estatusId).toBe(estatus.get("novedad_interna"));
+    // Las dos vuelven a la calle con su mensajero (SLT-247/R1770), aunque una este en el tope.
+    expect(tope?.estatusId).toBe(estatus.get("en_reparto"));
+    expect(bajo?.estatusId).toBe(estatus.get("en_reparto"));
     expect(tope?.mensajeroAsignadoId).not.toBeNull();
     expect(gestiones).toHaveLength(0);
     expect(filas.filter((f) => f.origenTipo === "rechazo_tope_intentos")).toHaveLength(0);
     expect(filas.filter((f) => f.origenTipo === "liberacion_sin_gestionar")).toHaveLength(0);
+    expect(filas.filter((f) => f.origenTipo === "retorno_por_rechazo_cierre")).toHaveLength(1);
   });
 });
 

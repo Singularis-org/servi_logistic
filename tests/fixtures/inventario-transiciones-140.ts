@@ -95,6 +95,10 @@ export const INVENTARIO_FLUJO: readonly AristaInventario[] = [
   // la orden ya agoto sus intentos de entrega. Par NUEVO: `sin_gestionar -> rechazada` no estaba
   // declarado por nadie.
   { n: "68", origen: "novedad_interna", destino: "devolucion_a_origen_por_rechazo", via: "rechazo_tope_intentos", callSite: "CierresAdminService.aprobarCierre -> resolverCierre, bloque liberacionSinGestionar (276)" },
+  // SLT-247 (R1770/R1771): la CUARTA salida de `sin_gestionar`, y la unica que no la saca del
+  // mensajero. Al RECHAZAR el cierre, la barrida vuelve a la calle para que la gestione antes de
+  // reenviarlo. Par NUEVO: de `sin_gestionar` no se volvia a `en_reparto`.
+  { n: "74", origen: "novedad_interna", destino: "en_reparto", via: "retorno_por_rechazo_cierre", callSite: "CierresAdminService.rechazarCierre -> resolverCierre, bloque retornoSinGestion (SLT-247)" },
   { n: "19", origen: "novedad", destino: "en_bodega_central", via: "liberacion_devuelta_sla", callSite: "DevolucionSlaRepository.liberarDevueltaSla" },
   { n: "20", origen: "novedad", destino: "en_bodega_satelite", via: "liberacion_devuelta_sla", callSite: "liberarDevueltaSla" },
   { n: "21", origen: "novedad", destino: "devolucion_a_origen_por_rechazo", via: "escalado_devuelta_sla", callSite: "escalarDevueltaSla" },
@@ -254,7 +258,8 @@ export const RECUENTO_INVENTARIO = {
   // 2026-09-23 (ficha 454, retiro del catalogo): 65 -> 59. RETIRA OCHO (#59-#66: las aristas de los
   // dos estados retirados) y suma DOS de metadato (#71/#72, `gestion_tienda_ayuda` desde `en_reparto`).
   // 2026-11-17 (ficha SLT-197): 59 -> 60. Suma UNA (#73) y NO retira ninguna.
-  aristasFlujo: 60, // +2 (157); +3 -1 (239); +3 (235); +2 (237); +1 (240); +1 (276); +1 (398); +1 -8 +2 (454); +1 (SLT-197)
+  // 2026-11-20 (ficha SLT-247): 60 -> 61. Suma UNA (#74) y NO retira ninguna.
+  aristasFlujo: 61, // +2 (157); +3 -1 (239); +3 (235); +2 (237); +1 (240); +1 (276); +1 (398); +1 -8 +2 (454); +1 (SLT-197); +1 (SLT-247)
   // 52 -> 54 (239) -> 57 (235) -> 59 (237): las dos altas de la 237 son pares NUEVOS
   // (`ayuda_tienda -> reprogramada` y `ayuda_tienda -> rechazada`; ninguno estaba declarado, y
   // hasta la 237 de `ayuda_tienda` solo se salia rescatando o por el corte), igual que las tres de
@@ -286,6 +291,8 @@ export const RECUENTO_INVENTARIO = {
   // #13/#71 y #15/#72).
   // 2026-11-17 (ficha SLT-197): 54 -> 55. La arista #73 (`en_bodega_satelite -> en_ruta_bodega_central`)
   // es un par NUEVO, asi que la diferencia `aristas - pares` se queda en 5.
-  paresUnicos: 55,
+  // 2026-11-20 (ficha SLT-247): 55 -> 56. La arista #74 (`sin_gestionar -> en_reparto`) es un par
+  // NUEVO, asi que la diferencia `aristas - pares` se queda en 5.
+  paresUnicos: 56,
   aristasCreacion: 2,
 } as const;

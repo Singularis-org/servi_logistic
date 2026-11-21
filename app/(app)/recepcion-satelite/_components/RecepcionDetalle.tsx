@@ -6,8 +6,9 @@ import {
   valorIntentos,
 } from "@/components/shared/intentos-entrega";
 import { EstadoConInfo } from "@/components/shared/EstadoInfo";
-import { formatMonto as formatMontoConfigurado, SIN_MONTO_RAYA } from "@/lib/config/moneda";
+import { formatearMontoEn, SIN_MONTO_RAYA, type FormatoMoneda } from "@/lib/config/moneda";
 import type { RecepcionSateliteDTO } from "@/lib/interfaces/services/IRecepcionSateliteService";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
 
 // Feature 33 (R9): detalle de presentación de una orden del módulo satélite,
 // como lista de definición accesible (<dt>/<dd>). Componente puro (sin lógica de
@@ -21,9 +22,11 @@ import type { RecepcionSateliteDTO } from "@/lib/interfaces/services/IRecepcionS
  * Feature 201: el formato sale de `lib/config/moneda.ts` (era una copia del
  * formateador "estilo EEUU", `₡13,331,832.72`). El marcador de ausencia se pasa
  * explícito porque el default del compartido es el guion corto.
+ *
+ * SLT-235 (R11): con la moneda del país de la empresa, que el componente lee del hook.
  */
-function formatMonto(monto: number | null): string {
-  return formatMontoConfigurado(monto, SIN_MONTO_RAYA);
+function formatMonto(monto: number | null, moneda: FormatoMoneda): string {
+  return formatearMontoEn(moneda, monto, SIN_MONTO_RAYA);
 }
 
 /** Une la jerarquía geográfica en una línea legible (omite los vacíos). */
@@ -72,6 +75,8 @@ export interface RecepcionDetalleProps {
 
 /** Detalle de una orden del módulo satélite (R9). */
 export function RecepcionDetalle({ orden }: RecepcionDetalleProps) {
+  // SLT-235 (R11): el monto a cobrar en la moneda del país de la empresa.
+  const moneda = useMonedaDelPais();
   return (
     <dl className="grid grid-cols-2 gap-x-4 gap-y-4 lg:grid-cols-3">
       <Campo label="Nº Guía" mono>
@@ -93,7 +98,7 @@ export function RecepcionDetalle({ orden }: RecepcionDetalleProps) {
       <Campo label="Ubicación">{ubicacion(orden) || "—"}</Campo>
       <Campo label="Producto">{orden.producto}</Campo>
       <Campo label="Monto a cobrar" mono>
-        {formatMonto(orden.montoCobrar)}
+        {formatMonto(orden.montoCobrar, moneda)}
       </Campo>
       {/* Feature 160 (R18/R19/R25): intentos de entrega como UN CAMPO MAS del detalle
           —mismo `Campo` (<dt>/<dd>) que sus hermanos, misma jerarquia—, en los dos

@@ -2,9 +2,11 @@
 
 import { useId } from "react";
 import { useEtiquetasGeograficas } from "@/hooks/use-etiquetas-geograficas";
+import { useImpuestoDelPais, useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
+import { rotuloComisionConImpuesto, rotuloFleteConImpuesto } from "./rotulos-con-impuesto";
 
 import { Button } from "@/components/ui/button";
-import { money } from "@/lib/config/moneda";
+import { formatearMontoEn, SIN_MONTO_RAYA, type FormatoMoneda } from "@/lib/config/moneda";
 import type {
   AvisoCambioUbicacion,
   UbicacionConCostos,
@@ -58,8 +60,8 @@ export const AVISO_COL_ACTUAL = "Ahora";
 export const AVISO_COL_PROPUESTA = "Con el cambio";
 
 export const AVISO_FILA_ZONA = "Zona";
-export const AVISO_FILA_FLETE = "Flete + IVA";
-export const AVISO_FILA_COMISION = "Comisión + IVA";
+// SLT-240 (R16): las filas del flete y la comisión se rotulan con `rotulo…ConImpuesto` y el
+// impuesto del país (`useImpuestoDelPais`), dentro del componente.
 
 /** Cuando la orden no tiene distrito guardado (solo puede pasar en la columna «Ahora»). */
 export const AVISO_SIN_DISTRITO = "Sin distrito";
@@ -108,10 +110,17 @@ export interface CorregirUbicacionAvisoProps {
  * ⚠️ LA RAMA ES `u.tarifa`, NO EL VALOR DEL IMPORTE. Ver la cabecera: con `"sin_tarifa"` el importe
  * también llega `"0.00"`, así que decidir por el número pintaría `₡0` donde debe decir que nadie
  * configuró la tarifa.
+ *
+ * SLT-240 (R4): el importe se pinta con la moneda del país que le pasa el componente; la rama de
+ * «sin tarifa» sigue yendo primero.
  */
-function importe(u: UbicacionConCostos, campo: "fleteConIva" | "comisionConIva"): string {
+function importe(
+  u: UbicacionConCostos,
+  campo: "fleteConIva" | "comisionConIva",
+  moneda: FormatoMoneda,
+): string {
   if (u.tarifa === "sin_tarifa") return AVISO_SIN_TARIFA;
-  return money(u[campo]);
+  return formatearMontoEn(moneda, u[campo], SIN_MONTO_RAYA);
 }
 
 /** El nombre del distrito, o el marcador de ausencia. La orden puede no tener distrito guardado. */
@@ -141,6 +150,10 @@ export function CorregirUbicacionAviso({
   // SL-20 (design §7; R19): la fila del nivel 3 se rotula con el nombre del país de la empresa
   // (antes `AVISO_FILA_DISTRITO`, con el de Costa Rica).
   const etiquetas = useEtiquetasGeograficas();
+  // SLT-240 (R4): los importes, con la moneda del país de la empresa.
+  const moneda = useMonedaDelPais();
+  // SLT-240 (R16): los rótulos del flete y la comisión, con el nombre del impuesto del país.
+  const impuesto = useImpuestoDelPais();
 
   return (
     <section
@@ -188,17 +201,17 @@ export function CorregirUbicacionAviso({
           </tr>
           <tr>
             <th scope="row" className="py-1 text-left font-normal text-muted-foreground">
-              {AVISO_FILA_FLETE}
+              {rotuloFleteConImpuesto(impuesto)}
             </th>
-            <td className="py-1">{importe(aviso.actual, "fleteConIva")}</td>
-            <td className="py-1 font-medium">{importe(aviso.propuesta, "fleteConIva")}</td>
+            <td className="py-1">{importe(aviso.actual, "fleteConIva", moneda)}</td>
+            <td className="py-1 font-medium">{importe(aviso.propuesta, "fleteConIva", moneda)}</td>
           </tr>
           <tr>
             <th scope="row" className="py-1 text-left font-normal text-muted-foreground">
-              {AVISO_FILA_COMISION}
+              {rotuloComisionConImpuesto(impuesto)}
             </th>
-            <td className="py-1">{importe(aviso.actual, "comisionConIva")}</td>
-            <td className="py-1 font-medium">{importe(aviso.propuesta, "comisionConIva")}</td>
+            <td className="py-1">{importe(aviso.actual, "comisionConIva", moneda)}</td>
+            <td className="py-1 font-medium">{importe(aviso.propuesta, "comisionConIva", moneda)}</td>
           </tr>
         </tbody>
       </table>

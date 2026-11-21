@@ -12,6 +12,13 @@ import { DataTable, type Column } from "@/components/shared/DataTable";
 import { Pagination } from "@/components/shared/Pagination";
 import { filasDesdeResultado } from "@/components/shared/descarga-resultado";
 import { useToast } from "@/hooks/useToast";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
+import {
+  formatearMontoEn,
+  formatearTopeEn,
+  SIN_MONTO_RAYA,
+  type FormatoMoneda,
+} from "@/lib/config/moneda";
 import { incidentesConfig } from "@/lib/config/incidentes";
 import {
   aprobarIncidente,
@@ -27,17 +34,14 @@ import { montoValido } from "@/app/(app)/wallet/_components/wallet-labels";
 // panel del mensajero (T2.1) y el modal de reporte (T2.7): las tres pantallas hablan de la
 // misma causa y no pueden llamarla distinto. Precedente de forma: `estatus-label`.
 import { CAUSA_INCIDENTE_LABEL } from "@/app/(app)/mis-asignaciones/_components/causa-incidente-options";
-// `money` y el badge de estado se REUSAN de los cierres: el patrón de aprobación es el mismo
-// (enum `CierreEstado`, dos colas, motivo sólo al rechazar) y el formato del dinero no puede
-// divergir entre dos pantallas del mismo administrador. Lo que NO se reusa es
+// El badge de estado se REUSA de los cierres: el patrón de aprobación es el mismo (enum
+// `CierreEstado`, dos colas, motivo sólo al rechazar). El dinero ya no sale de allí: SLT-240
+// (R9, R10) lo pinta con la moneda del país (`formatearMontoEn` / `formatearTopeEn`), que con
+// la moneda de la plataforma da lo mismo que `money` / `moneyTope`. Lo que NO se reusa es
 // `EstadoHistoricoRotulo`: su marcador «bloqueante hasta re-solicitud» es del cierre del
 // mensajero y sería FALSO aquí (un incidente rechazado devuelve la orden a su origen y se
 // puede volver a reportar; no bloquea a nadie).
-import {
-  money,
-  moneyTope,
-  EstadoCierreBadge,
-} from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
+import { EstadoCierreBadge } from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
 import { EstadoConInfo } from "@/components/shared/EstadoInfo";
 import {
   IncidentesHistoricoTabla,
@@ -105,7 +109,13 @@ export const APROBAR_DETALLE =
   "Al aprobar, el monto sale de la caja principal como un egreso de indemnización. La orden se queda en incidente: esta decisión no se deshace.";
 export const APROBAR_CONFIRMAR = "Aprobar e indemnizar";
 export const MONTO_LABEL = "Monto de la indemnización";
-export const MONTO_AYUDA = `Mayor que 0 y hasta ${moneyTope(INDEMNIZACION_MONTO_MAX)}, con hasta 2 decimales (por ejemplo 12500.00).`;
+/**
+ * SLT-240 (R10, R17): el tope se escribe con la moneda del país; el resto del texto no cambia.
+ * Es función y no constante porque la moneda llega por el hook del componente.
+ */
+export function montoAyuda(moneda: FormatoMoneda): string {
+  return `Mayor que 0 y hasta ${formatearTopeEn(moneda, INDEMNIZACION_MONTO_MAX, SIN_MONTO_RAYA)}, con hasta 2 decimales (por ejemplo 12500.00).`;
+}
 /**
  * Mensajes POR CAUSA del monto inválido: dicen QUÉ corregir. Es la misma lección de m5 del PR 1
  * —un «monto inválido» único deja al admin adivinando si sobra un dígito o si el problema es la
@@ -115,11 +125,16 @@ export const MONTO_AYUDA = `Mayor que 0 y hasta ${moneyTope(INDEMNIZACION_MONTO_
 // —«₡9.999.999.999» se lee de un vistazo y `₡9999999999.99` hay que contarlo con el dedo—, y
 // el EJEMPLO de entrada se queda crudo porque el campo no admite separador de miles.
 //
-// Feature 230: se pinta con `moneyTope`, NO con `money`. Un máximo no se redondea al alza:
-// `money` lo subía a `₡10.000.000.000`, que es un dígito más de los que la propia frase
-// anuncia y justo lo que el validador rechaza. `moneyTope` corta la cola y deja el mensaje
-// del lado estricto.
-export const MONTO_EXCEDE = `El monto no puede superar ${moneyTope(INDEMNIZACION_MONTO_MAX)} (10 dígitos y 2 decimales). Revisá si sobra un dígito.`;
+// Feature 230: se pinta con el formateador de TOPES, no con el de montos. Un máximo no se
+// redondea al alza: el de montos lo subía a `₡10.000.000.000`, que es un dígito más de los que
+// la propia frase anuncia y justo lo que el validador rechaza. El de topes corta la cola y deja
+// el mensaje del lado estricto.
+//
+// SLT-240 (R10): con la moneda del país. `formatearTopeEn` corta a la escala de esa moneda, así
+// que con una de 0 decimales tampoco anuncia más de lo que acepta el validador.
+export function montoExcede(moneda: FormatoMoneda): string {
+  return `El monto no puede superar ${formatearTopeEn(moneda, INDEMNIZACION_MONTO_MAX, SIN_MONTO_RAYA)} (10 dígitos y 2 decimales). Revisá si sobra un dígito.`;
+}
 export const MONTO_FORMATO =
   "Escribí un monto mayor que 0, con punto decimal y sin separador de miles (por ejemplo 12500.00).";
 
@@ -188,6 +203,8 @@ export function IncidentesAdminModule({
 }: Readonly<IncidentesAdminModuleProps>) {
   const router = useRouter();
   const toast = useToast();
+  // SLT-240 (R9, R10): moneda del país; sin proveedor, la de la plataforma (R13).
+  const moneda = useMonedaDelPais();
 
   // Incidente abierto en el detalle (null = modal cerrado).
   const [detalle, setDetalle] = useState<IncidenteAdminDTO | null>(null);
@@ -304,7 +321,7 @@ export function IncidentesAdminModule({
     const limpio = valor.trim();
     if (limpio === "" || montoValido(limpio, INDEMNIZACION_MONTO_MAX)) return undefined;
     // Bien formado pero por encima del tope → el problema es el tamaño, no la sintaxis.
-    return montoValido(limpio) ? MONTO_EXCEDE : MONTO_FORMATO;
+    return montoValido(limpio) ? montoExcede(moneda) : MONTO_FORMATO;
   }
 
   /** R50/R52: aprueba con el monto capturado. */
@@ -493,7 +510,7 @@ export function IncidentesAdminModule({
                 label="Indemnización"
                 nota={detalle.indemnizacion === null ? INDEMNIZACION_PENDIENTE_NOTA : undefined}
               >
-                {money(detalle.indemnizacion)}
+                {formatearMontoEn(moneda, detalle.indemnizacion, SIN_MONTO_RAYA)}
               </Dato>
               {detalle.resueltoPorNombre ? (
                 <Dato label="Resuelto por">
@@ -638,7 +655,7 @@ export function IncidentesAdminModule({
             </p>
           ) : (
             <p id="incidente-monto-ayuda" className="text-xs text-muted-foreground">
-              {MONTO_AYUDA}
+              {montoAyuda(moneda)}
             </p>
           )}
         </div>

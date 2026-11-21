@@ -71,6 +71,7 @@ vi.mock("@/lib/actions/etiquetas-guia", () => ({
 import { EtiquetaGuia } from "@/app/(app)/ordenes/_components/EtiquetaGuia";
 import { buildEtiquetasPdf } from "@/app/(app)/ordenes/_components/etiquetas-pdf";
 import { getHojaEtiqueta } from "@/lib/config/etiquetas-hoja";
+import { MONEDA_PLATAFORMA } from "@/lib/config/moneda";
 import { fuenteEtiqueta } from "@/lib/pdf/etiquetas-fuente";
 import type { EtiquetaGuiaDTO } from "@/lib/types/etiqueta-guia";
 
@@ -237,6 +238,7 @@ describe("Feature 295 — la previa y el PDF muestran LA MISMA fecha", () => {
       new Map(),
       getHojaEtiqueta("100x100"),
       fuenteEtiqueta,
+      MONEDA_PLATAFORMA,
     );
     const u8 = new Uint8Array(Buffer.from(doc.output("arraybuffer")));
     const fuentes = fuentesDePagina(u8);

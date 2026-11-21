@@ -87,6 +87,11 @@ const ORIGENES_ADMITIDOS_EN_CIERRE = [
   // evita dejar huerfana su fila de `cierre_detail`, que es INMUTABLE. Meterla en la lista de
   // exclusion sacaria del cierre la gestion que la correccion acaba de arreglar.
   "correccion_resultado_gestion",
+  // SLT-247 — el retorno a la calle de las barridas al RECHAZAR el cierre. ADMITIDA porque no
+  // produce gestion: su fila nace sin `gestion_orden_id`, asi que no hay gestion que sacar de
+  // ningun cierre. La gestion que el mensajero registre despues sobre esa orden es de familia
+  // `gestion`, la normal.
+  "retorno_por_rechazo_cierre",
 ] as const satisfies readonly OrdenHistorialOrigenTipo[];
 
 const orden = (xs: readonly string[]) => [...xs].sort();

@@ -483,6 +483,11 @@ export interface OrdenEnCorreccionDTO {
   numRemision: string;
   destinatario: string;
   regestionada: boolean;
+  /**
+   * SLT-247 (R1795): `true` = orden que el corte paso a Novedad interna y el rechazo devolvio; hay
+   * que gestionarla antes de reenviar. Ausente = orden deshecha de la 477.
+   */
+  obligatoria?: true;
 }
 
 /**
@@ -543,6 +548,11 @@ export interface CierreOrdenSinGestion {
    * (`ayuda_tienda`) en las barridas historicas, que se siguen leyendo igual.
    */
   estatusOrigen: OrderStatusValue | OrderStatusRetirado | null;
+  /**
+   * SLT-247 (R1791): `true` = la orden ya NO esta en `novedad_interna` (el rechazo la devolvio al
+   * mensajero): bodega no la confirma ni la aprobacion la libera. Ausente = como hoy. No es dinero.
+   */
+  fueraDeNovedadInterna?: true;
 }
 
 /**

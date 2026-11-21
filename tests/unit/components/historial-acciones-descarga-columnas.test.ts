@@ -8,6 +8,7 @@ import {
   COLUMNAS_DESCARGA_HISTORIAL_ACCIONES,
   filaDescargaHistorialAccion,
 } from "@/app/(app)/historico/acciones/_components/historial-acciones-descarga-columnas";
+import { MONEDA_PLATAFORMA } from "@/lib/config/moneda";
 import { mensajeLimiteHistorial } from "@/app/(app)/historico/acciones/_components/historial-acciones-descarga";
 import { accionesDeCategoria, type HistorialAccionDTO } from "@/lib/types/historial-accion";
 import { aDTO } from "@/lib/services/HistorialAccionService";
@@ -94,7 +95,7 @@ describe("pantalla y archivo dicen LO MISMO", () => {
   it("las diez columnas de la tabla son las diez del archivo, en el mismo orden", () => {
     // Si divergieran, quien audita tendría dos versiones de un mismo hecho y ninguna forma de
     // saber cuál vale.
-    expect(columnasHistorialAcciones.map((c) => c.id)).toEqual(
+    expect(columnasHistorialAcciones(MONEDA_PLATAFORMA).map((c) => c.id)).toEqual(
       COLUMNAS_DESCARGA_HISTORIAL_ACCIONES.map((c) => c.clave),
     );
   });
@@ -184,7 +185,7 @@ describe("SLT-76 (R11) — la fila del rastro de distritos, en pantalla y en des
   // Las diez columnas de esta tabla pintan con una funcion; una que no lo hiciera revienta aqui.
   const pantalla = (fila: HistorialAccionDTO) =>
     Object.fromEntries(
-      columnasHistorialAcciones.map((c) => {
+      columnasHistorialAcciones(MONEDA_PLATAFORMA).map((c) => {
         if (typeof c.render !== "function") throw new Error(`la columna ${c.id} no pinta con una funcion`);
         return [c.id, c.render(fila)];
       }),

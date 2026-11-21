@@ -116,6 +116,27 @@ const MSG_VACIO = "No tienes gestiones pendientes de cierre."; // R11
 const MSG_DUPLICADO = "Ese cierre ya se envió a aprobación; actualiza la página."; // R19
 const MSG_SIN_ZONA = "No tienes una zona asignada; contacta a tu administrador."; // R16
 
+/** SLT-247 (design §4): cuantas guias nombra el motivo antes de resumir el resto. */
+const MAX_GUIAS_EN_MOTIVO = 10;
+
+/**
+ * SLT-247 (R1782, design §4) — el motivo del conflicto al reenviar un rechazado con barridas sin
+ * gestionar: cuantas faltan y sus guias (hasta 10 + «y N más»). Una guia `null` se nombra «una orden
+ * sin guía». `guias` llega ordenada del repositorio; `total` es cuantas faltan.
+ */
+export function motivoObligatoriasPendientes(guias: readonly (number | null)[], total: number): string {
+  const nombradas = guias
+    .slice(0, MAX_GUIAS_EN_MOTIVO)
+    .map((g) => (g === null ? "una orden sin guía" : String(g)));
+  const resto = total - nombradas.length;
+  const partes = resto > 0 ? [...nombradas, `${resto} más`] : nombradas;
+  const lista =
+    partes.length <= 1 ? (partes[0] ?? "") : `${partes.slice(0, -1).join(", ")} y ${partes[partes.length - 1]}`;
+  const ordenes = total === 1 ? "1 orden que pasó" : `${total} órdenes que pasaron`;
+  const donde = total === 1 ? "Está en Entregas." : "Están en Entregas.";
+  return `Antes de enviar de nuevo este cierre tienes que gestionar ${ordenes} a Novedad interna: guía ${lista}. ${donde}`;
+}
+
 // ⚠️ FEATURE 271 — AQUI VIVIA `MSG_BLOQUEADO`, un texto FIJO. Se va, y no es limpieza: el motivo
 // del bloqueo tiene que CONTAR (cuantos cierres arrastra y cual toca resolver primero, R27/R43) y
 // un texto fijo no puede. Lo compone `avisoBloqueo` a partir del `BloqueoDetalle`, que es el MISMO
@@ -514,6 +535,7 @@ export class CierreDiaService implements ICierreDiaService {
           numRemision: o.numRemision,
           destinatario: o.destinatario,
           regestionada: o.regestionada,
+          ...(o.obligatoria ? { obligatoria: true as const } : {}), // SLT-247 (R1795)
         })),
       });
     }
@@ -882,12 +904,17 @@ export class CierreDiaService implements ICierreDiaService {
         // del repositorio (solo alli se sabe cuales se vinculan); aqui se fija la zona de ESTE
         // camino (la destino del cierre, R17) y el vehiculo.
         const vehiculoId = await this.ordenRepo.findUsuarioVehiculoId(actor.usuarioId);
-        ok = await this.repo.resolicitarCierreRechazado({
+        const res = await this.repo.resolicitarCierreRechazado({
           cierreId: resolicitable.id,
           mensajeroId: actor.usuarioId,
           zonaId: resolicitable.destinoZonaId,
           vehiculoId,
         });
+        // SLT-247 (R1782): quedan barridas sin gestionar -> conflicto con el motivo que las nombra.
+        if (res.status === "obligatorias_pendientes") {
+          return { status: "conflict", motivo: motivoObligatoriasPendientes(res.guias, res.total) };
+        }
+        ok = res.status === "ok";
       } else {
         ok = await this.repo.transicionarASolicitado(
           resolicitable.id,

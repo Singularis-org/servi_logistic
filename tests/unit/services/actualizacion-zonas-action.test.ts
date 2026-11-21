@@ -88,7 +88,9 @@ describe("SLT-224/R1715/R1726 — la clasificacion de las saltadas (funcion pura
     expect(motivoDeSaltada(fila({ estado: "en_bodega_satelite", cobroEnCurso: true }))).toBe("estante_satelite");
     expect(motivoDeSaltada(fila({ estado: "entregado", cobroEnCurso: true }))).toBe("finalizada");
     expect(motivoDeSaltada(fila({ estado: "por_devolver_a_tienda", cobroEnCurso: true }))).toBe("devolucion");
-    expect(motivoDeSaltada(fila({ estado: "reprogramado", cobroEnCurso: true }))).toBe("por_liberar");
+    // SLT-248 (R1802): `reprogramado` y `novedad` ya no tienen clase propia; las salta solo el cobro.
+    expect(motivoDeSaltada(fila({ estado: "reprogramado", cobroEnCurso: true }))).toBe("cobro_en_curso");
+    expect(motivoDeSaltada(fila({ estado: "novedad", cobroEnCurso: true }))).toBe("cobro_en_curso");
     expect(motivoDeSaltada(fila({ estado: "en_reparto", cobroEnCurso: true }))).toBe("cobro_en_curso");
     expect(motivoDeSaltada(fila({ estado: "en_bodega_central", cobroEnCurso: true }))).toBe("cobro_en_curso");
   });
@@ -99,12 +101,11 @@ describe("SLT-224/R1715/R1726 — la clasificacion de las saltadas (funcion pura
     }
   });
 
-  it("R1726: los seis estados de devolucion se saltan como devolucion", () => {
+  it("R1726/R1805: los cinco estados de devolucion se saltan como devolucion (SLT-248 saco `novedad`)", () => {
     for (const estado of [
       "por_devolver_a_bodega_central",
       "devolviendo_a_bodega_central",
       "devolucion_a_origen_por_rechazo",
-      "novedad",
       "por_devolver_a_tienda",
       "devolviendo_a_tienda",
     ] as const) {
@@ -112,8 +113,9 @@ describe("SLT-224/R1715/R1726 — la clasificacion de las saltadas (funcion pura
     }
   });
 
-  it("R1726: `reprogramado` sin cobro en curso se salta como por_liberar", () => {
-    expect(motivoDeSaltada(fila({ estado: "reprogramado" }))).toBe("por_liberar");
+  it("SLT-248/R1803: `reprogramado` y `novedad` sin cobro en curso no se saltan", () => {
+    expect(motivoDeSaltada(fila({ estado: "reprogramado" }))).toBeNull();
+    expect(motivoDeSaltada(fila({ estado: "novedad" }))).toBeNull();
   });
 
   it("la vista previa agrupa por zona actual -> nueva y separa las saltadas", () => {

@@ -119,7 +119,7 @@ function fakeRepo(overrides: Partial<Repo> = {}): Repo {
     // FICHA 454 (T1.11): la rama NUEVA del deshacer (gestion pendiente, sin transicion).
     anularGestionPendiente: vi.fn(async () => true),
     // FICHA 477: re-solicitud del rechazado, deshacer en cierre rechazado y correcciones.
-    resolicitarCierreRechazado: vi.fn(async () => true),
+    resolicitarCierreRechazado: vi.fn(async () => ({ status: "ok" as const })),
     anularGestionDeCierreRechazado: vi.fn(async () => true),
     findCorreccionesPendientes: vi.fn(async () => []),
     ...overrides,
@@ -1650,7 +1650,7 @@ describe("Feature 109 · solicitarCierre — re-solicitar un `rechazado` (R28)",
   it("R28 + 271/R18 + 477/D5: con un rechazado -> re-solicita ESE cierre (via resolicitado), NO crea uno nuevo", async () => {
     const repo = fakeRepo({
       findCierreResolicitableMasViejo: vi.fn(async () => ({ id: "c-rech", estado: "rechazado" as const, destinoZonaId: ZONA_MENSAJERO })),
-      resolicitarCierreRechazado: vi.fn(async () => true),
+      resolicitarCierreRechazado: vi.fn(async () => ({ status: "ok" as const })),
     });
     const { service } = newService({ repo });
 
@@ -1686,7 +1686,7 @@ describe("Feature 109 · solicitarCierre — re-solicitar un `rechazado` (R28)",
   it("R28 + 477/R22: carrera (la re-solicitud no escribe) -> conflict, sin crear", async () => {
     const repo = fakeRepo({
       findCierreResolicitableMasViejo: vi.fn(async () => ({ id: "c-rech", estado: "rechazado" as const, destinoZonaId: ZONA_MENSAJERO })),
-      resolicitarCierreRechazado: vi.fn(async () => false), // ya re-solicitado/resuelto
+      resolicitarCierreRechazado: vi.fn(async () => ({ status: "conflict" as const })), // ya re-solicitado/resuelto
     });
     const { service } = newService({ repo });
 

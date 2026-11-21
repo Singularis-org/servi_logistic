@@ -19,12 +19,12 @@ import { guiaDecisionErrorMessage } from "./guia-decision-error-messages";
 /**
  * SLT-224 (design §3b.5, R1726): el texto de cada motivo por el que una orden con la zona errada NO
  * se actualiza. Exhaustivo: un motivo nuevo en `MotivoSaltada` sin su texto rompe el typecheck.
+ * SLT-248 (R1804) quito «esperando liberación en bodega»: las reprogramadas ya se actualizan.
  */
 export const TEXTO_MOTIVO_SALTADA: Record<MotivoSaltada, string> = {
   estante_satelite: "en el estante de una satélite",
   finalizada: "finalizada",
   devolucion: "en devolución",
-  por_liberar: "esperando liberación en bodega",
   cobro_en_curso: "cobro en curso (gestión o cierre sin aprobar)",
 };
 

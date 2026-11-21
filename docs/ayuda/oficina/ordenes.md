@@ -101,7 +101,6 @@ y el motivo:
 - **finalizada**: ya se entregó, volvió a la tienda o cerró con un incidente; su zona queda como está;
 - **en devolución**: va camino de la central o de vuelta a la tienda; cambiarle la zona no la
   desbloquea y puede dejarla sin quien la envíe;
-- **esperando liberación en bodega**: está reprogramada y retenida hasta que se libere;
 - **cobro en curso (gestión o cierre sin aprobar)**: tiene un cierre que todavía no se aprobó, o una entrega, un
   rechazo o un incidente que todavía no entró en un cierre aprobado.
 

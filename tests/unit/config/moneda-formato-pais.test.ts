@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import type { PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 
 import {
   MONEDA_DE_LOS_PLANES,
@@ -8,6 +8,7 @@ import {
   SIN_MONTO_RAYA,
   formatMontoString,
   formatearMontoEn,
+  formatearTopeEn,
   type FormatoMoneda,
 } from "@/lib/config/moneda";
 import { MONEDA_DE_PRUEBA } from "@/tests/fabricas/reglas-pais";
@@ -113,6 +114,46 @@ describe("formatearMontoEn — dos decimales con otros separadores y símbolo", 
     expect(f("99999999999.995")).toBe("Fr.100'000'000'000");
     expect(f("-0.004")).toBe("Fr.0");
     expect(f("-0.49")).toBe("-Fr.0.49");
+  });
+});
+
+describe("formatearTopeEn — la cota en la moneda del país (SLT-240 R10)", () => {
+  /** Lo pintado, de vuelta a un decimal: sin símbolo ni separador de miles, con el punto decimal. */
+  function recompuesto(moneda: FormatoMoneda, pintado: string): Prisma.Decimal {
+    const crudo = pintado
+      .replace(moneda.simbolo, "")
+      .split(moneda.separadorMiles)
+      .join("")
+      .replace(moneda.separadorDecimal, ".");
+    return new Prisma.Decimal(crudo);
+  }
+
+  it("R10: con la moneda de prueba (0 decimales) el tope de la indemnización se anuncia sin subir", () => {
+    expect(formatearTopeEn(MONEDA_DE_PRUEBA, "9999999999.99")).toBe("€9 999 999 999");
+  });
+
+  it("R10: en un corpus de topes, lo recompuesto nunca supera la entrada", () => {
+    const corpus = [
+      "0", "0.01", "0.49", "0.5", "0.99", "1", "9.5", "9.99", "99.999", "999.5", "999.995",
+      "1000", "1234.56", "99999.99", "999999.5", "1234567.891", "9999999999.99", "99999999999.995",
+    ];
+    const porEncima: string[] = [];
+    for (const moneda of [MONEDA_DE_PRUEBA, UN_DECIMAL, DOS_DECIMALES]) {
+      for (const entrada of corpus) {
+        const pintado = formatearTopeEn(moneda, entrada);
+        if (recompuesto(moneda, pintado).gt(new Prisma.Decimal(entrada))) {
+          porEncima.push(`${moneda.simbolo} ${entrada} -> ${pintado}`);
+        }
+      }
+    }
+    expect(porEncima).toEqual([]);
+    // Contraprueba: el formateador de redondeo SÍ sube en ese corpus, así que el censo distingue.
+    expect(recompuesto(MONEDA_DE_PRUEBA, formatearMontoEn(MONEDA_DE_PRUEBA, "999.5")).gt(new Prisma.Decimal("999.5"))).toBe(true);
+  });
+
+  it("R10: sin importe pinta el marcador, por defecto `SIN_MONTO`", () => {
+    expect(formatearTopeEn(MONEDA_DE_PRUEBA, null)).toBe(SIN_MONTO);
+    expect(formatearTopeEn(MONEDA_DE_PRUEBA, null, SIN_MONTO_RAYA)).toBe(SIN_MONTO_RAYA);
   });
 });
 
