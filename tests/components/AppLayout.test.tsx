@@ -731,7 +731,11 @@ describe("SLT-121 R24 — el banner de la mora en el layout", () => {
   beforeEach(() => {
     avisoMoraMock.mockReset();
     avisoMoraMock.mockResolvedValue(null);
-    etiquetasDeEmpresaMock.mockResolvedValue(ETIQUETAS_NEUTRAS);
+    paraPantallasMock.mockResolvedValue({
+      etiquetas: ETIQUETAS_NEUTRAS,
+      moneda: MONEDA_PLATAFORMA,
+      impuestoNombre: IMPUESTO_ROTULO,
+    });
     cookieTemaMock.mockReturnValue(undefined);
   });
 
