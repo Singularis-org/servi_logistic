@@ -9,6 +9,8 @@ import {
   traducirErrorDeEmpresa,
 } from "./contexto-empresa";
 import { MODELO_NEGOCIO_NULABLE, esModeloDeNegocio } from "./modelos-de-negocio";
+import { permisoEnMoraActual } from "./permiso-en-mora";
+import { traducirErrorDeMora } from "@/lib/planes/empresa-congelada";
 
 // SL-17 (design §6) — la extension que aisla por empresa el cliente de la app. Tabla de §6.1:
 //
@@ -185,14 +187,22 @@ function exigirEmpresaDeclaradaEnUsuario(operacion: string, args: unknown): void
 /* La extension                                                                */
 /* -------------------------------------------------------------------------- */
 
+/** SL017 → `EmpresaCruzada` y, despues, SLT-121 (design §6.1): SL121 → `EmpresaCongelada`. */
+function traducirError(e: unknown, modelo?: string): unknown {
+  return traducirErrorDeMora(traducirErrorDeEmpresa(e, modelo));
+}
+
 export function conAislamientoPorEmpresa(
   base: PrismaClient,
   resolver: () => Promise<string | null>,
 ): PrismaClient {
   // Siempre con el cliente BASE: por el extendido, el `set_config` volveria a pasar por la
   // extension y abriria otra transaccion en otra conexion.
+  //
+  // SLT-121 (design §6.1): el permiso de la mora va en la MISMA sentencia que la empresa, sin otro viaje a
+  // la base. Se lee al fijar: quien lo concede envuelve la operacion entera (`permitidoEnMora`).
   const fijarEmpresa = (id: string) =>
-    base.$executeRaw`SELECT set_config('app.organizacion_id', ${id}, true), set_config('role', 'servi_app', true)`;
+    base.$executeRaw`SELECT set_config('app.organizacion_id', ${id}, true), set_config('role', 'servi_app', true), set_config('app.mora_permitida', ${permisoEnMoraActual() ?? ""}, true)`;
 
   function aplicar(ctx: ContextoDatos | undefined, p: ParamsOperacion): Promise<unknown> {
     const { model, operation, args, query } = p;
@@ -225,7 +235,7 @@ export function conAislamientoPorEmpresa(
   }
 
   function manejar(p: ParamsOperacion): Promise<unknown> {
-    const traducir = (e: unknown) => Promise.reject(traducirErrorDeEmpresa(e, p.model ?? p.operation));
+    const traducir = (e: unknown) => Promise.reject(traducirError(e, p.model ?? p.operation));
     try {
       const explicito = contextoActual();
       // Con contexto explicito, todo es sincrono hasta `query`: en un `$transaction([...])` el
@@ -264,7 +274,7 @@ export function conAislamientoPorEmpresa(
   // para que lo de dentro no se vuelva a envolver. Una llamada al `$transaction` del cliente
   // dentro de otra transaccion abre una NUEVA (otra conexion), asi que tambien se fija.
   function transaccion(arg: unknown, opciones?: unknown): Promise<unknown> {
-    const traducir = (e: unknown) => Promise.reject(traducirErrorDeEmpresa(e));
+    const traducir = (e: unknown) => Promise.reject(traducirError(e));
     return contextoDeTransaccion()
       .then((ctx): Promise<unknown> => {
         if (ctx?.tipo !== "empresa") {
@@ -286,7 +296,7 @@ export function conAislamientoPorEmpresa(
         return extendido.$transaction(
           (tx) =>
             dentroDeTransaccionDeEmpresa(id, async () => {
-              await tx.$executeRaw`SELECT set_config('app.organizacion_id', ${id}, true), set_config('role', 'servi_app', true)`;
+              await tx.$executeRaw`SELECT set_config('app.organizacion_id', ${id}, true), set_config('role', 'servi_app', true), set_config('app.mora_permitida', ${permisoEnMoraActual() ?? ""}, true)`;
               return fn(tx);
             }),
           opciones as never,

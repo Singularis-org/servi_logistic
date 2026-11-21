@@ -45,6 +45,7 @@ const CORREO: FacturaEmitidaParams = {
   },
   contacto: "soporte@plataforma.example",
   urlApp: "https://app.example.com",
+  gracia: 7,
 };
 
 describe("SL-21 R15 · la moneda de los planes es la de la plataforma", () => {

@@ -24,14 +24,19 @@ const queryRaw = vi.fn<(sql: TemplateStringsArray, ...valores: unknown[]) => Pro
 const findFirstPago = vi.fn<(args: unknown) => Promise<unknown>>();
 const findFirstComprobante = vi.fn<(args: unknown) => Promise<unknown>>();
 
-vi.mock("@/lib/db/prisma-client", () => ({
-  getPrismaClient: () => ({
+// SLT-121 (design §5.2): confirmar, registrar por fuera y anular abren una `$transaction` para recalcular la mora;
+// el cliente falso la ejecuta sobre sí mismo. El recálculo lee si la empresa está congelada: por defecto no
+// (`beforeEach`), así que responde `sin_cambio` sin más llamadas. La mora se prueba contra la base en
+// `tests/integration/repositories/pago-plataforma-recalcula-mora.test.ts`.
+vi.mock("@/lib/db/prisma-client", () => {
+  const cliente: Record<string, unknown> = {
     $queryRaw: queryRaw,
     walletMovimiento: { findFirst: findFirstPago },
     walletComprobante: { findFirst: findFirstComprobante },
-  }),
-  PRISMA_OMIT: {},
-}));
+  };
+  cliente.$transaction = (fn: (tx: unknown) => Promise<unknown>) => fn(cliente);
+  return { getPrismaClient: () => cliente, PRISMA_OMIT: {} };
+});
 
 const BUCKET = "bucket-de-la-wallet";
 const TTL = 777;
@@ -112,6 +117,8 @@ const sqlDe = (n: number) => queryRaw.mock.calls[n][0].join("?");
 
 beforeEach(() => {
   queryRaw.mockReset();
+  // SLT-121: lo que lee el recálculo de la mora después de un `ok` (la empresa no está congelada).
+  queryRaw.mockResolvedValue([{ congelada: false }]);
   findFirstPago.mockReset();
   findFirstComprobante.mockReset();
   firmas.length = 0;
@@ -195,8 +202,10 @@ describe("SLT-60 — confirmarPagoPlataformaAction usa PagoPlataformaConfirmacio
   it("R16: sin deps.service, confirma por la función de la base con el superadmin de la sesión", async () => {
     queryRaw.mockResolvedValueOnce([{ resultado: "ok" }]);
     expect(await acciones.confirmarPagoPlataformaAction(entrada, { getActor: async () => SUPERADMIN })).toEqual({ estado: "ok" });
-    expect(queryRaw).toHaveBeenCalledTimes(1);
+    // SLT-121 (R19, R34): después del `ok`, en la misma transacción, el recálculo de la mora.
+    expect(queryRaw).toHaveBeenCalledTimes(2);
     expect(sqlDe(0)).toContain("pago_plataforma_confirmar(");
+    expect(sqlDe(1)).toContain('"congelada_at" IS NOT NULL');
     const [, org, pago, aplicaciones, por] = queryRaw.mock.calls[0];
     expect([org, pago, por]).toEqual([ORG, PAGO, "u-sa"]);
     expect(JSON.parse(aplicaciones as string)).toEqual([{ factura_id: F1, monto: "300000.00" }]);
@@ -388,8 +397,10 @@ describe("SLT-143 — registrarPagoPorFueraAction cablea el registro real (R1, R
     });
     expect(r).toEqual({ estado: "ok" });
     expect(almacen).toEqual([{ op: "subir", bucket: BUCKET, ruta: expect.stringMatching(/\.png$/), empresa: ORG }]);
-    expect(queryRaw).toHaveBeenCalledTimes(1);
+    // SLT-121 (R19, R34): después del `ok`, en la misma transacción, el recálculo de la mora.
+    expect(queryRaw).toHaveBeenCalledTimes(2);
     expect(sqlDe(0)).toContain("pago_plataforma_registrar_por_fuera(");
+    expect(sqlDe(1)).toContain('"congelada_at" IS NOT NULL');
     const [, org, , monto, fecha, referencia, clave, aplicaciones, por, , ruta, tipo] = queryRaw.mock.calls[0];
     expect([org, monto, fecha, referencia, clave, por]).toEqual([ORG, "100000", null, "Transferencia del día", CLAVE, "u-sa"]);
     expect(JSON.parse(aplicaciones as string)).toEqual([{ factura_id: F1, monto: "100000.00" }]);

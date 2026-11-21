@@ -47,6 +47,7 @@ import {
   conEmpresaDeLaKey,
   type AutenticadorApiKey,
 } from "@/lib/api/api-key-request";
+import { exigirEmpresaOperativa } from "@/lib/planes/empresa-congelada";
 
 export interface CargaGenerateApiDeps {
   autenticar?: AutenticadorApiKey;
@@ -94,6 +95,9 @@ export async function handleCargaGenerateApi(
 
     // SL-17 (R13): todo lo que sigue opera con la empresa de la key, no con la de nadie mas.
     return conEmpresaDeLaKey(auth, async () => {
+      // SLT-121 (design §6.2, R13): con la empresa de la key congelada por mora, 403 `empresa_congelada`
+      // antes de leer el cuerpo o tocar nada (auth -> puerta -> cuerpo).
+      await exigirEmpresaOperativa();
       // 2. Valida el path param como uuid (design §5.3, paso 2). Sin invocar el service.
       const parsed = cargaIdSchema.safeParse(rawCargaId);
       if (!parsed.success) {

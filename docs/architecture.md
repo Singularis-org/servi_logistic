@@ -500,6 +500,132 @@ esta bien hecha, no solo si "funciona".
     - **Enmienda de la guardia de SLT-91 R10:** `mi-plan-solo-maestro` admite nombrar `/mi-plan` en
       `lib/notificaciones/catalogo-avisos.ts` (atajo «Ver factura») y en
       `lib/services/email/plantillas/factura-emitida.ts`.
+  - **Mora y congelamiento (SLT-121, 2026-11-21).** Cada factura cerrada con saldo tiene una fecha
+    límite de pago; si vence sin pagar, la madrugada siguiente se **congela** la operación de la
+    empresa: lee todo, pero no escribe, salvo una lista cerrada de caminos. Migraciones
+    `20261126120000_mora_enums` (los enums, aparte por `55P04`) y `20261126120100_mora_congelamiento`,
+    cada una con su `down.sql`. Sin tabla nueva: el estado va en `organizacion` y el rastro en
+    `historial_accion`.
+    - **Columnas de `organizacion`** (de plataforma; `servi_app` solo las lee, sin `GRANT UPDATE`):
+      `factura_dias_gracia` (`INTEGER NULL`, CHECK 1–60; `NULL` = rige la global), `congelada_at`
+      (`TIMESTAMP(3) NULL`, UTC; no nula = congelada) y `descongelada_hasta` (`DATE NULL`, último día de
+      un descongelamiento manual). Índice parcial `organizacion_congelada_idx`. La gracia global es
+      `FACTURA_DIAS_GRACIA` (`diasDeGraciaGlobal`, `lib/config/factura-gracia.ts`: 7 si falta o no es un
+      entero de 1 a 60); la base no la conoce y la recibe por parámetro (`p_gracia_global`).
+    - **Enums:** `historial_accion_tipo` suma `empresa_congelada`, `empresa_descongelada_por_pago`,
+      `empresa_descongelada_a_mano`, `empresa_descongelada_por_gracia` y `factura_dias_gracia_cambiada`
+      (categoría `mora`, «Mora y congelamiento», en `lib/types/historial-accion.ts`); `job_tipo` suma
+      `mora_diaria` y `mora_aviso_correo`.
+    - **La única definición del plazo:** `factura_plataforma_mora(p_org, p_ahora, p_gracia_global)`
+      devuelve las cerradas con saldo > 0 (saldo de `factura_plataforma_saldos`, sin recalcular) con
+      `fecha_limite` = día de emisión de la plataforma (`hasta_at` − 6 h) + gracia, `vence_at` (00:00
+      de la plataforma del día siguiente, en UTC) y `vencida`. Tiene `GRANT EXECUTE` a `servi_app` y da
+      `42501` con otra empresa o sin empresa. Su gemela TS es `lib/planes/mora.ts` (`fechaLimiteDePago`,
+      `venceEn`, `estaVencida`, `enFranjaDeMadrugada`, `estadoDeMora`, `MORA_TEXTOS`,
+      `MENSAJE_EMPRESA_CONGELADA`), probada con la misma tabla de casos
+      (`tests/integration/db/_fixtures/fecha-limite-pago.ts`). Toma la hora de la plataforma de
+      `lib/planes/ciclo.ts`, sin entrada propia en `_pais-sin-literales-excepciones.ts`.
+    - **Funciones del dueño** (`SECURITY DEFINER`, `EXECUTE` revocado a `PUBLIC`). Las tres toman la
+      empresa en **`FOR NO KEY UPDATE`, nunca `FOR UPDATE`** (decisión del 2026-11-20): la anulación de
+      un pago toma `FOR KEY SHARE` sobre `organizacion` por su FK y después espera el candado
+      `pago_plataforma:`; con `FOR UPDATE`, una confirmación con la empresa congelada daba `40P01`. Lo
+      vigila `tests/integration/repositories/pago-plataforma-recalcula-mora.test.ts` > «decisión §2 …
+      cruces forzados».
+      - `organizacion_mora_congelar(p_org, p_ahora, p_gracia_global) → jsonb`: toma primero el candado
+        `pago_plataforma:<org>`. Responde `fuera_de_franja` fuera de 00:00–05:59 de la plataforma,
+        `ya_congelada`, `descongelada_a_mano` (con `descongelada_hasta` ≥ hoy), `al_dia`, o fija
+        `congelada_at` y responde `congelada` con las facturas y el saldo vencido. Con una empresa que
+        no existe lanza `P0002`. No escribe historial ni encola.
+      - `organizacion_mora_descongelar_si_pagada(p_org, p_ahora, p_gracia_global) → text`:
+        `descongelada` si estaba congelada y ya no tiene vencidas; si no, `sin_cambio`. **Nunca congela**
+        ni toca `descongelada_hasta`.
+      - `organizacion_mora_descongelar_a_mano(p_org, p_hasta, p_ahora) → text`: `ok` (anula
+        `congelada_at` y fija `descongelada_hasta`) o `no_congelada`. El motivo no se guarda en la base:
+        va solo al historial.
+    - **El bloqueo en la base (falla cerrado):** la función de trigger `bloqueo_por_mora()` (**sin**
+      `SECURITY DEFINER`, necesita el `current_user` real) lanza `SQLSTATE SL121` si quien escribe es
+      `servi_app`, `app.mora_permitida` está vacío y la empresa de `app.organizacion_id` tiene
+      `congelada_at`. Va como `<tabla>_bloqueo_por_mora`, `BEFORE INSERT OR UPDATE OR DELETE … FOR EACH
+      STATEMENT`, en cada tabla con la política `<tabla>_por_empresa` (la migración las recorre en
+      `pg_policy`) y en `organizacion`. Una lectura por clave primaria por sentencia; las lecturas no lo
+      disparan. El dueño pasa (superadmin, cierres, funciones del dueño), y una empresa no congela a
+      otra. Guardia de cobertura: `tests/integration/db/bloqueo-por-mora-cobertura.test.ts` (una tabla
+      con `_por_empresa` sin su trigger pone el gate en rojo).
+    - **Permisos en mora:** `lib/db/permiso-en-mora.ts` (`MOTIVOS_EN_MORA`: `pago_plataforma`,
+      `cuenta_propia`, `whatsapp_entrante`, `sistema`; `permitidoEnMora`, `permisoEnMoraActual`) guarda
+      el motivo en un `AsyncLocalStorage` propio. Las dos envolturas de `lib/db/extension-empresa.ts`
+      fijan `app.mora_permitida` en la **misma** sentencia que la empresa y el rol. Lista cerrada, que
+      vigila `tests/unit/guards/mora-permiso-solo-en-lista.guardia.test.ts`:
+      - `pago_plataforma`: `lib/actions/wallet-egresos.ts` (solo `tipoEgreso === "pago_plataforma"`) y
+        `lib/actions/wallet-anulacion.ts` (solo la anulación de un `egreso_pago_plataforma`, decidida con
+        una lectura previa de la categoría; «por confirmar» lo sigue imponiendo
+        `pago_plataforma_no_anular_confirmado`);
+      - `cuenta_propia`: `lib/actions/confirmar-correo.ts` (el canje), `push.ts`, `notificaciones.ts`
+        (no `notificarCargaMasivaTerminada`) y `vistas-filtro.ts`, solo sobre filas del propio usuario.
+        `actualizarUsuario` queda bloqueada, también sobre uno mismo;
+      - `whatsapp_entrante`: los dos `conEmpresa` de `lib/services/WebhookWhatsappService.ts`;
+      - `sistema`: `conSuEmpresa` de `app/api/cron/procesar-jobs/route.ts` y `lib/db/para-cada-empresa.ts`.
+    - **Traducción:** `lib/planes/empresa-congelada.ts`. `traducirErrorDeMora` convierte `SL121` en
+      `EmpresaCongelada`, un `ForbiddenError` con `MENSAJE_EMPRESA_CONGELADA` («Empresa suspendida por
+      falta de pago.») y `details.codigo = "empresa_congelada"`; se encadena en los dos `traducir` de la
+      extensión, después de `traducirErrorDeEmpresa`. `withErrorHandler` lo da como `FORBIDDEN` y
+      `toActionError` como `{ status: "forbidden" }`; el `AppErrorCode` cerrado no se amplía. Las
+      pantallas no esconden botones: la action ve su error de permiso.
+    - **La puerta del borde:** `exigirEmpresaOperativa()` (mismo archivo) lee
+      `MoraEmpresaRepository.estaCongelada()` una vez por petición, sin caché, y lanza `EmpresaCongelada`.
+      Va justo después de `conEmpresaDeLaKey` y antes del cuerpo en las seis rutas de escritura de la API
+      (`app/api/ordenes/api-key/carga`, `carga/[cargaId]/generate`, `habilitar`, `[numGuia]/cancelar`,
+      `orden/[id]/generate` y el `DELETE` de `orden/[id]`) y en `app/api/ordenes/carga-masiva/chunk`.
+      Respuesta: **403** `FORBIDDEN` con `details.codigo: "empresa_congelada"`, antes del 422; la
+      cotización y los `GET` no la llevan. Documentado en `lib/api/openapi-spec.ts`,
+      `docs/api/api-key-openapi.yaml`, `docs/api/CHANGELOG.md` y
+      `docs/ayuda/oficina/guia-integracion-api.md`.
+    - **La corrida (`lib/planes/jobs-mora.ts`, de núcleo):** `mora_diaria` es recurrente y de
+      plataforma, cada día a las 06:30 UTC (00:30 de la plataforma), dedupe `mora_diaria:<AAAA-MM-DD>`,
+      en `RECURRENTES_DE_PLATAFORMA`, `MODULO_POR_JOB` y `scripts/siembra-jobs-recurrentes.ts`. Lista
+      las empresas con mora (`empresasConMora`) y, cada una en su transacción, llama a
+      `MoraEmpresaRepository.congelarSiVencida` (que, con `congelada`, escribe `empresa_congelada` con
+      `appendAccion` y encola el aviso en la misma transacción) y encola los recordatorios de las
+      facturas que vencen mañana (`run_after` a las 08:00 de la plataforma, dedupe
+      `mora_aviso:recordatorio:<facturaId>:<fechaLimite>`). Una empresa que falla no frena a las demás;
+      después el trabajo falla nombrándolas. Un reintento fuera de la franja ya no congela.
+    - **Correos:** `mora_aviso_correo` (por evento, con empresa; payload zod `recordatorio`,
+      `congelada` o `descongelada` con motivo `pago`, `a_mano` o `gracia`) relee el estado al
+      ejecutarse, envía uno por maestro activo (`destinatariosDelAviso`) y, si un envío falla, sigue y
+      después lanza sin correos en el mensaje. Plantillas en
+      `lib/services/email/plantillas/mora-aviso.ts`, con «Ver facturas» a `/mi-plan`. El payload y las
+      dedupes están en `lib/repositories/_shared/encolar-aviso-mora.ts`. Sin campanita.
+    - **Enmienda a SLT-136:** el correo de cierre (`plantillaFacturaEmitida`) suma «Paga hasta el
+      dd/mm/aaaa» con total > 0, con `fechaLimiteDePago` y la gracia vigente que
+      `lib/planes/jobs-factura-aviso.ts` lee al enviar (`MoraEmpresaRepository.graciaDeLaEmpresa`). La
+      guardia `mi-plan-solo-maestro` admite también `mora-aviso.ts` y `app/(app)/_components/AvisoMora.tsx`.
+    - **Enmienda al repositorio de SLT-60 y SLT-143:** `PagoPlataformaConfirmacionRepository.confirmar`,
+      `registrarPorFuera` y `anularConfirmado` van en `$transaction` y, tras un `ok`, llaman a
+      `recalcularCongelamiento(tx, org, ahora, { causa: "pago", actor })` (`lib/planes/mora-recalcular.ts`).
+      Su contrato no cambia y ninguna función `pago_plataforma_*` se reescribe. El recálculo lee primero
+      `congelada_at` sin bloquear y solo con la empresa congelada llama a
+      `organizacion_mora_descongelar_si_pagada`; con `descongelada` escribe
+      `empresa_descongelada_por_pago` (o `_por_gracia`) y encola el aviso. Si falla, el pago se deshace.
+      Anular nunca congela en el acto: lo hace la madrugada siguiente. Un pago por confirmar no
+      descongela.
+    - **Servicio, actions y pantallas:** `MoraEmpresaRepository` (`lib/repositories/`, en
+      `EXCEPCIONES_DE_PLATAFORMA` con ficha `"SL-24"`): `fijarGracia` (empresa en `FOR NO KEY UPDATE`;
+      `sin_cambio` no escribe; recalcula con causa `gracia`), `descongelarAMano`, `existeEmpresa` (en
+      `comoPlataforma`) y `moraParaPlataforma` (con `conEmpresa`, historial de los cinco tipos, 50 filas).
+      `MoraEmpresaService` (`lib/services/`, la autorización vive ahí): el banner solo para `maestro` y
+      `admin`; lo demás solo superadmin (`forbidden` antes de leer) y `not_found` con una empresa que no
+      existe, también al fijar la gracia y al descongelar. Tipos y zod en `lib/types/mora.ts`; actions en
+      `lib/actions/mora-empresa.ts` (`nucleo`), con la empresa ligada por `.bind`. Banner
+      `app/(app)/_components/AvisoMora.tsx` desde `app/(app)/layout.tsx` (`avisoMoraDelLayout`, aislado:
+      si falla, sin banner); sección «Plazo de pago y mora» del superadmin en
+      `app/(app)/plataforma/empresas/[organizacionId]/_components/MoraEmpresa.tsx` (gracia propia o
+      global, facturas vencidas, historial y «Descongelar» con motivo y fecha hasta, de hoy a hoy + 60).
+    - **Frontera:** SLT-226 «Cobro automático: modelo del cobro e idempotencia» llama a
+      `recalcularCongelamiento(tx, org, ahora, { causa: "pago", actor: null })` dentro de la misma
+      transacción en la que registra el pago aprobado en línea, con el candado `pago_plataforma:<org>`;
+      quien mergee segundo añade la llamada. SLT-231 «Cobro automático: botón «Pagar» y estado de la
+      factura» pinta «vencida» con `factura_plataforma_mora` o `estaVencida`. SLT-230 «Cobro automático:
+      enlace de pago por factura» caduca el enlace en `venceEn(fechaLimiteDePago(…))`.
 - **Reportes de problemas (SLT-87, 2026-11-09).** `bug_report` (migración `20261110120000`) es de
   plataforma (`MODELOS_DE_PLATAFORMA`): RLS sin políticas y `REVOKE ALL … FROM servi_app`, así que la
   empresa no la lee ni la escribe, ni lo suyo ni lo de su gente (`42501`). La escribe solo

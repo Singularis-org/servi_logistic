@@ -20,6 +20,7 @@ import { registrarEgresoConLateralesSchema, separarComprobante } from "@/lib/typ
 import { buildComprobantes, leerComprobanteOpcional } from "@/lib/actions/_shared/comprobante-lateral";
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import type { AppErrorShape } from "@/lib/errors";
+import { permitidoEnMora } from "@/lib/db/permiso-en-mora";
 
 // Feature 45 (T5) — Server Actions de EGRESOS administrativos (mutaciones/lecturas internas
 // del mismo proyecto -> Server Action, no Route API, patron lib/actions/wallet.ts). Resuelve
@@ -52,7 +53,8 @@ function toEgresoActionError(
   shape: AppErrorShape,
 ):
   | { status: "validation_error"; fieldErrors: Record<string, string[]> }
-  | { status: "unauthenticated" } {
+  | { status: "unauthenticated" }
+  | { status: "forbidden" } {
   switch (shape.code) {
     case "VALIDATION_ERROR":
       return {
@@ -61,6 +63,10 @@ function toEgresoActionError(
       };
     case "UNAUTHORIZED":
       return { status: "unauthenticated" };
+    // SLT-121 (design §6.4; R12): la base rechaza el egreso de una empresa congelada (`EmpresaCongelada`).
+    // Es el mismo `forbidden` que el servicio ya devuelve como resultado, y la pantalla ya lo pinta.
+    case "FORBIDDEN":
+      return { status: "forbidden" };
     default:
       throw new Error(`wallet-egresos: AppErrorCode inesperado ${shape.code}`);
   }
@@ -110,7 +116,12 @@ export async function registrarEgresoAdministrativoAction(
     const data = registrarEgresoConLateralesSchema(zona).parse(crudo); // ZodError -> VALIDATION_ERROR (R4/R5/R19)
     const archivo = await leerComprobanteOpcional(comprobante);
     const service = deps.service ?? buildService();
-    return archivo === null ? service.registrarEgreso(data, actor) : service.registrarEgreso(data, actor, archivo);
+    const registrar = () =>
+      archivo === null ? service.registrarEgreso(data, actor) : service.registrarEgreso(data, actor, archivo);
+    // SLT-121 (design §6.1; R11): con la empresa congelada solo pasa el pago a la plataforma, que es como
+    // sale de la mora. El permiso se decide con la forma ya validada: el tipo lo fija el schema, no el cliente
+    // con un campo suelto. Cualquier otro egreso lo rechaza la base (R12).
+    return data.tipoEgreso === "pago_plataforma" ? permitidoEnMora("pago_plataforma", registrar) : registrar();
   });
   return isAppErrorShape(r) ? toEgresoActionError(r) : r;
 }

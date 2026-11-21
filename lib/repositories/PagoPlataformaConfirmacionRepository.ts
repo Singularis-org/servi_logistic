@@ -13,6 +13,7 @@ import type {
   RegistrarPorFueraRepoInput,
   RegistrarPorFueraRepoResult,
 } from "@/lib/interfaces/repositories/IPagoPlataformaConfirmacionRepository";
+import { recalcularCongelamiento } from "@/lib/planes/mora-recalcular";
 import type { PagosDeEmpresa } from "@/lib/types/pago-plataforma";
 import { nombreCompletoUsuarioSql } from "@/lib/utils/nombre-usuario";
 
@@ -32,8 +33,13 @@ import { nombreCompletoUsuarioSql } from "@/lib/utils/nombre-usuario";
 // `pagoDeLaEmpresa` (design §4.8) es la excepción: NO corre como plataforma. La llama el servicio dentro de
 // `conEmpresa(organizacionId)`, así que la extensión baja a `servi_app` con esa empresa y la RLS esconde los
 // pagos de las demás (R34).
+//
+// SLT-121 (design §5.2; R19, R21, R34): `confirmar`, `registrarPorFuera` y `anularConfirmado` envuelven su función
+// en una transacción que, si el resultado es `ok`, llama a `recalcularCongelamiento`: si el pago deja a una
+// empresa congelada sin facturas vencidas con saldo, se descongela en la misma transacción, con su historial y su
+// correo. Las respuestas «ya hecho» y los rechazos no recalculan (no cambió el saldo). El contrato no cambia.
 
-type PagoPlataformaConfirmacionPrismaClient = Pick<PrismaClient, "$queryRaw" | "walletMovimiento">;
+type PagoPlataformaConfirmacionPrismaClient = Pick<PrismaClient, "$queryRaw" | "$transaction" | "walletMovimiento">;
 
 const FICHA = "SL-45";
 
@@ -203,14 +209,20 @@ export class PagoPlataformaConfirmacionRepository implements IPagoPlataformaConf
     return comoPlataforma(FICHA, "SLT-60: el superadmin confirma un pago a la plataforma y lo reparte entre facturas cerradas (R16)", async () => {
       const aplicaciones = aplicacionesJson(input.aplicaciones);
       try {
-        // Una sola sentencia: su propia transacción. La función toma el candado de los pagos de la empresa,
-        // así que se serializa con el registro, la anulación y otra confirmación del mismo pago (R19, R21).
-        const [fila] = await this.prisma.$queryRaw<{ resultado: string }[]>`
-          SELECT pago_plataforma_confirmar(${input.organizacionId}, ${input.pagoId}, ${aplicaciones}::jsonb,
-                                           ${input.por}, ${comoTimestamp(input.ahora)}::timestamp) AS "resultado"`;
-        if (fila?.resultado === "ok") return { estado: "ok" };
-        if (fila?.resultado === "ya_confirmado") return { estado: "ya_confirmado" };
-        throw new Error(`pago_plataforma_confirmar devolvió un resultado inesperado: ${String(fila?.resultado)}`);
+        // SLT-121 (R19, R34): la confirmación y el recálculo del congelamiento, en una transacción. La función toma
+        // el candado de los pagos de la empresa, así que se serializa con el registro, la anulación, otra
+        // confirmación del mismo pago (R19, R21 de SLT-60) y el congelamiento de madrugada.
+        return await this.prisma.$transaction(async (tx): Promise<ConfirmarPagoRepoResult> => {
+          const [fila] = await tx.$queryRaw<{ resultado: string }[]>`
+            SELECT pago_plataforma_confirmar(${input.organizacionId}, ${input.pagoId}, ${aplicaciones}::jsonb,
+                                             ${input.por}, ${comoTimestamp(input.ahora)}::timestamp) AS "resultado"`;
+          if (fila?.resultado === "ya_confirmado") return { estado: "ya_confirmado" };
+          if (fila?.resultado !== "ok") {
+            throw new Error(`pago_plataforma_confirmar devolvió un resultado inesperado: ${String(fila?.resultado)}`);
+          }
+          await recalcularCongelamiento(tx, input.organizacionId, input.ahora, { causa: "pago", actor: input.por });
+          return { estado: "ok" };
+        });
       } catch (e) {
         const error = traducirErrorDeConfirmacion(e);
         if (error !== null) return { estado: "rechazado", error };
@@ -223,16 +235,22 @@ export class PagoPlataformaConfirmacionRepository implements IPagoPlataformaConf
     return comoPlataforma(FICHA, "SLT-143: el superadmin registra un pago hecho por fuera, ya confirmado y repartido entre facturas cerradas (R1, R10, R11)", async () => {
       const fecha = input.fecha === null ? null : comoTimestamp(input.fecha);
       try {
-        // Una sola sentencia: el pago, el comprobante, la confirmación y las aplicaciones, o nada (R5, R9).
-        const [fila] = await this.prisma.$queryRaw<{ resultado: string }[]>`
-          SELECT pago_plataforma_registrar_por_fuera(
-                   ${input.organizacionId}, ${input.pagoId}, ${input.monto}::numeric, ${fecha}::timestamp,
-                   ${input.referencia}, ${input.claveIdempotencia}, ${aplicacionesJson(input.aplicaciones)}::jsonb,
-                   ${input.por}, ${comoTimestamp(input.ahora)}::timestamp,
-                   ${input.comprobante?.storagePath ?? null}, ${input.comprobante?.contentType ?? null}) AS "resultado"`;
-        if (fila?.resultado === "ok") return { estado: "ok" };
-        if (fila?.resultado === "ya_registrado") return { estado: "ya_registrado" };
-        throw new Error(`pago_plataforma_registrar_por_fuera devolvió un resultado inesperado: ${String(fila?.resultado)}`);
+        // El pago, el comprobante, la confirmación y las aplicaciones van en una sola sentencia (R5, R9 de
+        // SLT-143); SLT-121 (R19, R34) la envuelve con el recálculo del congelamiento: todo o nada.
+        return await this.prisma.$transaction(async (tx): Promise<RegistrarPorFueraRepoResult> => {
+          const [fila] = await tx.$queryRaw<{ resultado: string }[]>`
+            SELECT pago_plataforma_registrar_por_fuera(
+                     ${input.organizacionId}, ${input.pagoId}, ${input.monto}::numeric, ${fecha}::timestamp,
+                     ${input.referencia}, ${input.claveIdempotencia}, ${aplicacionesJson(input.aplicaciones)}::jsonb,
+                     ${input.por}, ${comoTimestamp(input.ahora)}::timestamp,
+                     ${input.comprobante?.storagePath ?? null}, ${input.comprobante?.contentType ?? null}) AS "resultado"`;
+          if (fila?.resultado === "ya_registrado") return { estado: "ya_registrado" };
+          if (fila?.resultado !== "ok") {
+            throw new Error(`pago_plataforma_registrar_por_fuera devolvió un resultado inesperado: ${String(fila?.resultado)}`);
+          }
+          await recalcularCongelamiento(tx, input.organizacionId, input.ahora, { causa: "pago", actor: input.por });
+          return { estado: "ok" };
+        });
       } catch (e) {
         if (esTopeDelPagoSuperado(e)) return { estado: "tope_superado" };
         const error = traducirErrorDeConfirmacion(e);
@@ -245,12 +263,19 @@ export class PagoPlataformaConfirmacionRepository implements IPagoPlataformaConf
   anularConfirmado(input: AnularConfirmadoRepoInput): Promise<AnularConfirmadoRepoResult> {
     return comoPlataforma(FICHA, "SLT-143: el superadmin anula un pago confirmado a la plataforma y devuelve el monto a la caja de la empresa (R21, R24)", async () => {
       try {
-        const [fila] = await this.prisma.$queryRaw<{ resultado: string }[]>`
-          SELECT pago_plataforma_anular_confirmado(${input.organizacionId}, ${input.pagoId}, ${input.motivo},
-                                                   ${input.por}, ${comoTimestamp(input.ahora)}::timestamp) AS "resultado"`;
-        if (fila?.resultado === "ok") return { estado: "ok" };
-        if (fila?.resultado === "ya_anulado") return { estado: "ya_anulado" };
-        throw new Error(`pago_plataforma_anular_confirmado devolvió un resultado inesperado: ${String(fila?.resultado)}`);
+        // SLT-121 (R21, R34): el recálculo nunca congela; con el saldo de vuelta, casi siempre es `sin_cambio`, y
+        // la madrugada siguiente congela si hace falta.
+        return await this.prisma.$transaction(async (tx): Promise<AnularConfirmadoRepoResult> => {
+          const [fila] = await tx.$queryRaw<{ resultado: string }[]>`
+            SELECT pago_plataforma_anular_confirmado(${input.organizacionId}, ${input.pagoId}, ${input.motivo},
+                                                     ${input.por}, ${comoTimestamp(input.ahora)}::timestamp) AS "resultado"`;
+          if (fila?.resultado === "ya_anulado") return { estado: "ya_anulado" };
+          if (fila?.resultado !== "ok") {
+            throw new Error(`pago_plataforma_anular_confirmado devolvió un resultado inesperado: ${String(fila?.resultado)}`);
+          }
+          await recalcularCongelamiento(tx, input.organizacionId, input.ahora, { causa: "pago", actor: input.por });
+          return { estado: "ok" };
+        });
       } catch (e) {
         const error = traducirErrorDeConfirmacion(e);
         if (error !== null) return { estado: "rechazado", error };
