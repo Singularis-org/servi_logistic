@@ -4,6 +4,7 @@ import { createElement, Fragment, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { columnasHistorialAcciones } from "@/app/(app)/historico/acciones/_components/historial-acciones-columnas";
+import { MONEDA_PLATAFORMA } from "@/lib/config/moneda";
 import { HistorialAccionRepository } from "@/lib/repositories/HistorialAccionRepository";
 import { HistorialAccionService } from "@/lib/services/HistorialAccionService";
 import type { HistorialAccionDTO } from "@/lib/types/historial-accion";
@@ -53,7 +54,7 @@ describeSiHayBase("455/C16 — snapshot de la correccion de resultado (Postgres 
       );
       const filas: HistorialAccionDTO[] = listado.status === "ok" ? listado.items : [];
       const pintar = (id: string, f: HistorialAccionDTO): unknown => {
-        const render = columnasHistorialAcciones.find((c) => c.id === id)?.render;
+        const render = columnasHistorialAcciones(MONEDA_PLATAFORMA).find((c) => c.id === id)?.render;
         // ⏳ 2026-09-24 (FICHA 456, T3.13/R10): la celda pinta el resultado con `EstadoConInfo` (nombre
         // + botón de información), así que `render` devuelve un elemento y no una cadena. Se lee su
         // TEXTO visible (el botón no tiene texto: solo `aria-label`); la aserción no cambia.

@@ -1,7 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { jsPDF } from "jspdf";
 
 import { getHojaEtiqueta } from "@/lib/config/etiquetas-hoja";
+import { MONEDA_PLATAFORMA, type FormatoMoneda } from "@/lib/config/moneda";
 import { drawEtiqueta } from "@/lib/pdf/etiquetas-dibujo";
 import { fuenteEtiqueta } from "@/lib/pdf/etiquetas-fuente";
 import {
@@ -57,13 +58,17 @@ function dto(overrides: Partial<EtiquetaGuiaDTO> = {}): EtiquetaGuiaDTO {
   };
 }
 
-function dibujar(etiqueta: EtiquetaGuiaDTO, fuente: FuenteEmbebida = fuenteEtiqueta): void {
+function dibujar(
+  etiqueta: EtiquetaGuiaDTO,
+  fuente: FuenteEmbebida = fuenteEtiqueta,
+  moneda: FormatoMoneda = MONEDA_PLATAFORMA,
+): void {
   const hoja = getHojaEtiqueta("100x100");
   const doc = new jsPDF({ unit: "mm", format: [hoja.anchoMm, hoja.altoMm] });
   // Se registran SIEMPRE los bytes reales: lo que un caso puede estrechar es la
   // COBERTURA declarada, no el programa de fuente que jsPDF parsea.
   registrarFuente(doc, fuenteEtiqueta);
-  drawEtiqueta(doc, crearLayout(hoja), etiqueta, { qr: PNG_1X1, barcode: PNG_1X1 }, fuente);
+  drawEtiqueta(doc, crearLayout(hoja), etiqueta, { qr: PNG_1X1, barcode: PNG_1X1 }, fuente, moneda);
 }
 
 function errorAlDibujar(
@@ -178,5 +183,60 @@ describe("Feature 382 — el caracter no imprimible del IMPORTE tambien dice la 
     // Prueba que lo que lanza es la cobertura estrecha y no el importe en si:
     // sin esto, los dos de arriba podrian estar verdes por cualquier otro motivo.
     expect(() => dibujar(dto({ montoCobrar: 18000 }))).not.toThrow();
+  });
+});
+
+/**
+ * SLT-240 (R7) — LA MONEDA DEL PAIS CON UN SIMBOLO QUE LA FUENTE NO CUBRE.
+ *
+ * Con la moneda obligatoria, el PDF del navegador imprime el importe en la moneda
+ * del pais. Si su simbolo no esta en el subconjunto embebido, la descarga tiene
+ * que fallar con `ErrorCaracterNoImprimible` ANTES de escribir un solo texto: un
+ * PDF con el simbolo borrado es el fallo mudo de la 282. Aqui la cobertura es la
+ * REAL; lo que cambia es la moneda.
+ */
+describe("SLT-240 — una moneda cuyo simbolo la fuente embebida no cubre", () => {
+  /** Moneda de prueba (codigo ISO de pruebas) con el simbolo U+20BF, fuera del subconjunto. */
+  const MONEDA_SIN_GLIFO: FormatoMoneda = {
+    codigo: "XTS",
+    simbolo: "\u20BF",
+    separadorMiles: " ",
+    separadorDecimal: ".",
+    decimales: 0,
+  };
+
+  it("R7: lanza ErrorCaracterNoImprimible desde el IMPORTE y sin haber escrito nada", () => {
+    const hoja = getHojaEtiqueta("100x100");
+    const doc = new jsPDF({ unit: "mm", format: [hoja.anchoMm, hoja.altoMm] });
+    registrarFuente(doc, fuenteEtiqueta);
+    const escritos = vi.spyOn(doc, "text");
+    const etiqueta = dto({ montoCobrar: 18000, destinatario: NOMBRE_NORMAL });
+
+    let capturado: unknown = null;
+    try {
+      drawEtiqueta(
+        doc,
+        crearLayout(hoja),
+        etiqueta,
+        { qr: PNG_1X1, barcode: PNG_1X1 },
+        fuenteEtiqueta,
+        MONEDA_SIN_GLIFO,
+      );
+    } catch (e) {
+      capturado = e;
+    }
+
+    expect(capturado).toBeInstanceOf(ErrorCaracterNoImprimible);
+    const error = capturado as ErrorCaracterNoImprimible;
+    expect(error.campo).toBe("Monto a cobrar");
+    expect(error.numGuia).toBe(GUIA_AFECTADA);
+    expect(error.codePoint).toBe(0x20bf);
+    expect(escritos).not.toHaveBeenCalled();
+  });
+
+  it("control positivo: la misma etiqueta con la moneda de la plataforma se dibuja", () => {
+    expect(() =>
+      dibujar(dto({ montoCobrar: 18000, destinatario: NOMBRE_NORMAL }), fuenteEtiqueta, MONEDA_PLATAFORMA),
+    ).not.toThrow();
   });
 });

@@ -412,11 +412,21 @@ export function formatMontoTope(max: string | null, sinMonto: string = SIN_MONTO
 
 /**
  * SL-21 — la variante de cota de `formatearMontoEn`: el cuerpo que antes tenia
- * `formatMontoTope`, con la moneda como parametro. No se exporta: hoy el unico
- * tope del repo es de pantalla y va con la moneda de la plataforma, y un camino
- * publico mas tendria que entrar en el censo de la guardia 359.
+ * `formatMontoTope`, con la moneda como parametro. SLT-240 (R10) la exporta: el
+ * formulario de indemnizacion anuncia su tope en la moneda del pais. Al ser un
+ * camino publico entra en el censo de la guardia 359, en el caso de `moneyTope`:
+ * con `MONEDA_PLATAFORMA` es byte a byte `formatMontoTope`, y con cualquier
+ * moneda lo pintado, recompuesto, nunca supera la entrada (corta la cola a
+ * `moneda.decimales` sin mirar el sobrante). No suma a `CAMINOS_PUBLICOS`: ese
+ * contador es el de los formateadores de redondeo al mas cercano.
+ *
+ * @param sinMonto que pintar cuando no hay importe. Por defecto `SIN_MONTO`.
  */
-function formatearTopeEn(moneda: FormatoMoneda, max: string | null, sinMonto: string): string {
+export function formatearTopeEn(
+  moneda: FormatoMoneda,
+  max: string | null,
+  sinMonto: string = SIN_MONTO,
+): string {
   if (max === null) return sinMonto;
   const texto = max.trim();
   if (texto === "") return sinMonto;

@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 import { History, SearchX } from "lucide-react";
 import useSWR from "swr";
 
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
+
 import {
   DataTable,
   type DataTableDescarga,
@@ -193,6 +195,9 @@ export function HistorialAccionesModule({
   );
 
   const orden = useMemo(() => ordenamientoHistorial(sortDir), [sortDir]);
+  // SLT-240 (R11): moneda del pais; sin proveedor, la de la plataforma (R13).
+  const moneda = useMonedaDelPais();
+  const columnas = useMemo(() => columnasHistorialAcciones(moneda), [moneda]);
 
   /**
    * El filtro COMPLETO: lo de los controles más el término del campo, que viaja por su
@@ -295,7 +300,7 @@ export function HistorialAccionesModule({
   return (
     <section className="flex flex-col gap-4">
       <DataTable
-        columns={columnasHistorialAcciones}
+        columns={columnas}
         data={items}
         rowKey="id"
         ariaLabel={TITULO_HISTORIAL_ACCIONES}

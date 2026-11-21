@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { jsPDF } from "jspdf";
 
 import { HOJAS_ETIQUETA, type HojaEtiqueta } from "@/lib/config/etiquetas-hoja";
+import { MONEDA_PLATAFORMA } from "@/lib/config/moneda";
 import { drawEtiqueta } from "@/lib/pdf/etiquetas-dibujo";
 import { fuenteEtiqueta } from "@/lib/pdf/etiquetas-fuente";
 import { registrarFuente } from "@/lib/pdf/etiquetas-fuente-registro";
@@ -101,6 +102,7 @@ function medir(hoja: HojaEtiqueta, largo: number): Medida {
       dto(direccionDe(largo)),
       { qr: PNG_1X1, barcode: PNG_1X1 },
       fuenteEtiqueta,
+      MONEDA_PLATAFORMA,
     );
   } catch {
     // El unico fallo posible aqui es `ErrorEtiquetaNoCabe` (R7): el resto de
@@ -296,6 +298,7 @@ describe("R7/R8 — el peor caso medido y el margen que queda", () => {
         dto(direccionDe(CAPACIDAD["100x100"].antesDeR7 + 1)),
         { qr: PNG_1X1, barcode: PNG_1X1 },
         fuenteEtiqueta,
+        MONEDA_PLATAFORMA,
       ),
     ).toThrow(/no cabe en la hoja/);
   });

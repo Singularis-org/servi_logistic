@@ -30,6 +30,8 @@ import { buildEtiquetasPdf } from "@/app/(app)/ordenes/_components/etiquetas-pdf
 import { buildEtiquetasLotePdf } from "@/lib/pdf/etiquetas-pdf-lote";
 import { fuenteEtiqueta } from "@/lib/pdf/etiquetas-fuente";
 import { getHojaEtiqueta } from "@/lib/config/etiquetas-hoja";
+import { formatearMontoEn, MONEDA_PLATAFORMA } from "@/lib/config/moneda";
+import { MONEDA_DE_PRUEBA } from "@/tests/fabricas/reglas-pais";
 
 import { CORPUS_282 } from "../../fixtures/etiquetas-282";
 import {
@@ -129,6 +131,7 @@ describe("R22 — los dos generadores producen la MISMA etiqueta en 100 x 100", 
           new Map([[caso.dto.ordenId, document.createElement("canvas")]]),
           getHojaEtiqueta("100x100"),
           fuenteEtiqueta,
+          MONEDA_PLATAFORMA,
         ).output("arraybuffer"),
       );
       const servidor = await buildEtiquetasLotePdf([caso.dto]);
@@ -166,6 +169,7 @@ describe("R22 — los dos generadores producen la MISMA etiqueta en 100 x 100", 
         new Map(),
         getHojaEtiqueta("100x100"),
         fuenteEtiqueta,
+        MONEDA_PLATAFORMA,
       ).output("arraybuffer"),
     );
     const servidor = await buildEtiquetasLotePdf([dto]);
@@ -182,5 +186,30 @@ describe("R22 — los dos generadores producen la MISMA etiqueta en 100 x 100", 
     expect(a!.encoding).toBe(b!.encoding);
     // Un solo artefacto, no dos: el programa embebido pesa lo mismo.
     expect(a!.fontFile2!.byteLength).toBe(b!.fontFile2!.byteLength);
+  });
+});
+
+describe("SLT-240 R6 — con la moneda del pais, el PDF del navegador dice el importe del lote", () => {
+  it("con MONEDA_DE_PRUEBA, el importe del navegador = el del lote = formatearMontoEn(moneda, v)", async () => {
+    const dto = CORPUS_282[0].dto;
+    const esperado = formatearMontoEn(MONEDA_DE_PRUEBA, dto.montoCobrar);
+    // Sanidad: la moneda de prueba se ve distinta de la de la plataforma, asi que
+    // el caso no pasa por casualidad con la moneda de siempre.
+    expect(esperado).not.toBe(formatearMontoEn(MONEDA_PLATAFORMA, dto.montoCobrar));
+
+    const cliente = new Uint8Array(
+      buildEtiquetasPdf(
+        [dto],
+        new Map([[dto.ordenId, document.createElement("canvas")]]),
+        getHojaEtiqueta("100x100"),
+        fuenteEtiqueta,
+        MONEDA_DE_PRUEBA,
+      ).output("arraybuffer"),
+    );
+    const servidor = await buildEtiquetasLotePdf([dto], MONEDA_DE_PRUEBA);
+
+    const textosCliente = lineasDe(cliente).map((l) => l.texto);
+    expect(textosCliente).toContain(esperado);
+    expect(lineasDe(servidor)).toEqual(lineasDe(cliente));
   });
 });
