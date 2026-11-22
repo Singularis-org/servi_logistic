@@ -262,6 +262,11 @@ Una deuda por bloque `### D<n> — título` con **Origen**, **Qué falta** y **D
 - **Qué falta:** el arreglo de raíz en SLT-44, una línea: `{ ...OPCIONES_TRANSACCION }`. Después, valorar si se retira el rodeo de SLT-65.
 - **Dueño:** Camilo (SLT-44, PR #55). Era D43 en la rama de SLT-65; renumerada a D81 al integrar con `geo_jerarquica` (2026-11-20), que ya traía otra D43.
 
+### D82 — Las suites `informe-transito-*` leen sin empresa
+- **Origen:** SLT-71 (2026-11-05, review F2.2 vuelta 1, menor 4). Las cinco suites de integración `informe-transito-*` están en `tests/baseline-rojos.json` porque la base de test no tiene usuarios (ficha 475). Leen como dueño de la tabla y sin contexto de empresa. Con SLT-71, tránsito carga el catálogo del país de la empresa: cuando esas suites tengan datos, la carga puede tomar una empresa de otro país y R12 las haría fallar.
+- **Qué falta:** al retirarlas del baseline, correrlas dentro de `conEmpresa`/`comoLaEmpresa` con la empresa de su fixture.
+- **Dueño:** quien retire esas suites del baseline (ficha 475). Era D37 en la rama de SLT-71; renumerada a D82 al integrar con `geo_jerarquica` (2026-11-21), que ya traía otra D37.
+
 ### D43 — Encabezado de la descarga «Flete por devolución a origen + IVA» con el modelo nuevo
 - **Origen:** D40. `cierres-gestiones-fundida-descarga-columnas.ts:292` lo escribe para los dos modelos; en el nuevo el importe es correcto y el nombre, impreciso. Cambiarlo toca el archivo del modelo viejo.
 - **Qué falta:** decidir si se hace antes de promover EP-8 o cuando el modelo viejo se retire (SLT-57).

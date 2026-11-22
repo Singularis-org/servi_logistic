@@ -88,6 +88,11 @@ import type {
   LecturaDineroProductos,
 } from "@/lib/interfaces/repositories/IDineroProductosRepository";
 import { condicionesDeConsulta } from "@/lib/repositories/ConteoPorStatusRepository";
+import {
+  CatalogoGeograficoRepository,
+  type CatalogoPrismaClient,
+} from "@/lib/repositories/CatalogoGeograficoRepository";
+import { lugaresDelFiltro } from "@/lib/repositories/_shared/lugares-del-filtro";
 import { descargaConfig } from "@/lib/config/descarga";
 import { tarifaDe, type ConceptoCongeladoRow, type TarifaCongelada } from "@/lib/utils/cierre-detalle";
 import { fulfillmentCongeladoDe } from "@/lib/utils/fulfillment-congelado";
@@ -95,7 +100,7 @@ import type { OrdenCongelada } from "@/lib/utils/aporte-por-orden";
 import { RESULTADOS_QUE_APORTAN } from "@/lib/utils/dinero-por-producto";
 
 /** Cliente MINIMO consumido (patron `ConteoProductosRepository`): una sola consulta cruda. */
-type DineroProductosPrismaClient = Pick<PrismaClient, "$queryRaw">;
+type DineroProductosPrismaClient = Pick<PrismaClient, "$queryRaw"> & CatalogoPrismaClient; // SLT-71: mas el catalogo, solo con faceta geografica
 
 /**
  * EL TOPE DE ORDENES DE ESTA LECTURA (R76), y por que NO es un numero nuevo.
@@ -258,10 +263,18 @@ function fulfillmentDe(f: FilaCruda): string | null {
 }
 
 export class DineroProductosRepository implements IDineroProductosRepository {
+  // SLT-71 (R7, R13, R16): el catalogo, uno por instancia y creado al primer uso.
+  private catalogoRepo: CatalogoGeograficoRepository | null = null;
+
   constructor(private readonly prisma: DineroProductosPrismaClient) {}
 
+  private catalogoGeografico(): CatalogoGeograficoRepository {
+    return (this.catalogoRepo ??= new CatalogoGeograficoRepository(this.prisma));
+  }
+
   async leerDineroPorOrden(consulta: ConsultaProductos): Promise<LecturaDineroProductos> {
-    const where = Prisma.join(condicionesDeConsulta(consulta), " AND ");
+    const lugares = await lugaresDelFiltro(() => this.catalogoGeografico(), consulta.filtro);
+    const where = Prisma.join(condicionesDeConsulta(consulta, lugares), " AND ");
     const limite = topeDeOrdenes();
 
     // `LIMIT tope + 1`: el `+1` es lo que permite detectar el desbordamiento SIN un `COUNT`

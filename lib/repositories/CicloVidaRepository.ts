@@ -36,6 +36,15 @@ import { Prisma } from "@prisma/client";
 import type { PrismaClient } from "@prisma/client";
 
 import { condicionDeAlcance } from "@/lib/repositories/ConteoPorStatusRepository";
+import {
+  CatalogoGeograficoRepository,
+  type CatalogoPrismaClient,
+} from "@/lib/repositories/CatalogoGeograficoRepository";
+import {
+  condicionesDeLugar,
+  lugaresDelFiltro,
+  type LugaresDelFiltro,
+} from "@/lib/repositories/_shared/lugares-del-filtro";
 import type { ConsultaConteoEntregas } from "@/lib/analytics/entregas-conteo";
 import type {
   CicloCrudo,
@@ -44,7 +53,7 @@ import type {
 import { RESULTADOS_DE_CIERRE } from "@/lib/types/conteo-ciclo-vida";
 
 /** Cliente MINIMO consumido (patron del resto de la vertical): una sola consulta cruda. */
-type CicloVidaPrismaClient = Pick<PrismaClient, "$queryRaw">;
+type CicloVidaPrismaClient = Pick<PrismaClient, "$queryRaw"> & CatalogoPrismaClient; // SLT-71: mas el catalogo, solo con faceta geografica
 
 interface FilaCiclo {
   readonly seg: string | number | null;
@@ -72,7 +81,7 @@ function enLista(columna: Prisma.Sql, ids: readonly string[] | undefined): Prism
  * La ventana NO esta aqui porque fecha la gestion, no la orden: ver
  * `condicionDeVentanaDeCierre`.
  */
-export function condicionesDeCiclo(consulta: ConsultaConteoEntregas): Prisma.Sql[] {
+export function condicionesDeCiclo(consulta: ConsultaConteoEntregas, lugares: LugaresDelFiltro): Prisma.Sql[] {
   const { filtro, alcance } = consulta;
 
   const condiciones: Prisma.Sql[] = [
@@ -81,17 +90,14 @@ export function condicionesDeCiclo(consulta: ConsultaConteoEntregas): Prisma.Sql
     Prisma.sql`o."deleted_at" IS NULL`,
   ];
 
-  const facetas: [Prisma.Sql, readonly string[] | undefined][] = [
-    [Prisma.sql`o."zona_id"`, filtro.zona_id],
-    [Prisma.sql`o."provincia_id"`, filtro.provincia_id],
-    [Prisma.sql`o."canton_id"`, filtro.canton_id],
-    [Prisma.sql`o."distrito_id"`, filtro.distrito_id],
-    [Prisma.sql`o."tienda_id"`, filtro.tienda_id],
-  ];
-  for (const [columna, ids] of facetas) {
-    const fragmento = enLista(columna, ids);
-    if (fragmento) condiciones.push(fragmento);
-  }
+  // SLT-71 (design §3.3; R1, R2): las tres facetas geograficas ya no filtran por su columna sino por
+  // el LUGAR de la orden, con los ids que resolvio el dominio (`lugares`), en el mismo sitio que antes
+  // (entre la zona y la tienda). `lugares` es obligatorio: ninguna lectura filtra por columna en silencio.
+  const zona = enLista(Prisma.sql`o."zona_id"`, filtro.zona_id);
+  if (zona) condiciones.push(zona);
+  condiciones.push(...condicionesDeLugar(lugares));
+  const tienda = enLista(Prisma.sql`o."tienda_id"`, filtro.tienda_id);
+  if (tienda) condiciones.push(tienda);
 
   // Mensajero: quien REGISTRO alguna gestion vigente de la orden, igual que en las lecturas
   // cuyo universo es la orden. `orden.mensajero_asignado_id` seria el asignado ACTUAL, que
@@ -121,10 +127,18 @@ export function condicionDeVentanaDeCierre(consulta: ConsultaConteoEntregas): Pr
 }
 
 export class CicloVidaRepository implements ICicloVidaRepository {
+  // SLT-71 (R13, R16): el catalogo, uno por instancia y creado al primer uso.
+  private catalogoRepo: CatalogoGeograficoRepository | null = null;
+
   constructor(private readonly prisma: CicloVidaPrismaClient) {}
 
+  private catalogoGeografico(): CatalogoGeograficoRepository {
+    return (this.catalogoRepo ??= new CatalogoGeograficoRepository(this.prisma));
+  }
+
   async acumularCiclos(consulta: ConsultaConteoEntregas): Promise<CicloCrudo> {
-    const where = Prisma.join(condicionesDeCiclo(consulta), " AND ");
+    const lugares = await lugaresDelFiltro(() => this.catalogoGeografico(), consulta.filtro);
+    const where = Prisma.join(condicionesDeCiclo(consulta, lugares), " AND ");
     const ventana = condicionDeVentanaDeCierre(consulta);
 
     // `SUM(...)::bigint` llega como STRING por el driver cuando el tipo es `bigint`, y como

@@ -238,7 +238,9 @@ describe("374/G2 — el barrido lee de verdad", () => {
       "lib/repositories/GeoRepository.ts",
       "lib/repositories/CoberturaRepository.ts",
       "lib/repositories/OrdenRepository.ts",
-      "lib/repositories/InformeTransitoRepository.ts",
+      // SLT-71: `InformeTransitoRepository` ya no une con `canton`/`distrito`; nombra con el
+      // catalogo, que es quien toca la geografia. Su sitio en esta lista lo ocupa el catalogo.
+      "lib/repositories/CatalogoGeograficoRepository.ts",
     ]) {
       expect(esCodigoGeografico(codigoSinComentarios(rel)), rel).toBe(true);
     }

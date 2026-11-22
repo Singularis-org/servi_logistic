@@ -219,7 +219,9 @@ describe("FICHA 347 · el dinero por producto NO se recorta con un criterio prop
   it("(2) el repositorio de dinero IMPORTA `condicionesDeConsulta` y la usa", () => {
     const codigo = quitarComentarios(fs.readFileSync(FUENTE_DINERO, "utf8"));
     expect(codigo).toContain("@/lib/repositories/ConteoPorStatusRepository");
-    expect(codigo).toContain("condicionesDeConsulta(consulta)");
+    // SLT-71 (design §3.3): `lugares` es obligatorio, asi que la llamada lleva los ids resueltos.
+    // Cambio autorizado por el humano el 2026-11-04.
+    expect(codigo).toContain("condicionesDeConsulta(consulta, lugares)");
   });
 
   it("(2 bis) y NO escribe ninguna condicion de recorte propia", () => {
