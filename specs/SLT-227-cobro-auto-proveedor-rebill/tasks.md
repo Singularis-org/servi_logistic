@@ -70,14 +70,14 @@
 
 ## Tanda 3 — Transporte, entorno y registro (depende de T2.1; [P] con T2.2–T2.6)
 
-- [ ] **T3.1** `lib/config/cobro.ts`: `entornoDeCobro`, `TIEMPO_MAXIMO_COBRO_MS`, `ESPERAS_REINTENTO_CONSULTA_MS` y
+- [x] **T3.1** `lib/config/cobro.ts`: `entornoDeCobro`, `TIEMPO_MAXIMO_COBRO_MS`, `ESPERAS_REINTENTO_CONSULTA_MS` y
   `URL_BASE_REBILL = "https://api.rebill.com"`, una sola para los dos entornos (design §2).
   *Hecho:* los tests de R3 en verde (`VERCEL_ENV` `production`, `preview`, ausente; `NODE_ENV=production` sin
   `VERCEL_ENV`).
-- [ ] **T3.2** `lib/clients/cobro/http-proveedor.ts`: `pedirUnaVez`, `pedirIdempotente` y `traducirFalla` (design §5).
+- [x] **T3.2** `lib/clients/cobro/http-proveedor.ts`: `pedirUnaVez`, `pedirIdempotente` y `traducirFalla` (design §5).
   *Hecho:* los tests de R20, R21, R23 y la tabla de R24 en verde, con `fetch` y `esperar` dobles. Las mutaciones 1 y
   2 caen.
-- [ ] **T3.3** `lib/clients/cobro/registro-proveedores.ts` con `construirRegistroProveedoresCobro` (design §7).
+- [x] **T3.3** `lib/clients/cobro/registro-proveedores.ts` con `construirRegistroProveedoresCobro` (design §7).
   `rebill` devuelve el adaptador, aunque sea el esqueleto de T4.1.
   *Hecho:* el test de R2 en verde: con `wompi` y `global66`, `proveedor_no_disponible` y 0 lecturas de credenciales.
 

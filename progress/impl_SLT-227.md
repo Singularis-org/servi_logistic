@@ -103,3 +103,57 @@ Lo comprobó el leader: la migración más alta de `origin/dev` y de `origin/fea
 
 Veredicto: T0 y T1 cerradas en verde; T2.1 hecha y en verde en typecheck y en su test, pero no cerrada por el choque
 de `"rechazada"` con la guardia 455/R40, que pide decisión.
+
+## T3 — Transporte, entorno y registro (2026-11-21)
+
+**Archivos:**
+- `lib/config/cobro.ts` (nuevo): `entornoDeCobro(env = process.env)` por `VERCEL_ENV`, `TIEMPO_MAXIMO_COBRO_MS = 10_000`,
+  `ESPERAS_REINTENTO_CONSULTA_MS = [250, 1_000]` y `URL_BASE_REBILL`, una sola URL para los dos entornos.
+- `lib/clients/cobro/http-proveedor.ts` (nuevo): `TransporteDeps`, `RespuestaCruda`, `FallaProveedor`,
+  `traducirFalla(proveedor, operacion, falla)` (la tabla de R24, pura), `pedirUnaVez`, `pedirIdempotente` (lanza un
+  error de programación si el método no es `GET`) y `esperarConTemporizador`.
+  - Cada intento lleva su `AbortSignal.timeout`, que corta también la lectura del cuerpo.
+  - El cuerpo de una respuesta no `2xx` se cancela sin leerlo (R25).
+  - Un `2xx` que no es JSON da `respuesta_invalida`.
+  - Nunca se lee el mensaje de la excepción de `fetch`.
+- `lib/clients/cobro/registro-proveedores.ts` (nuevo): `RegistroProveedoresCobro.obtener(proveedor, paisId)` y
+  `construirRegistroProveedoresCobro()`, con el entorno de R3, `crearLectorCredencialesCobro` de T2.3 con
+  `CobroCredencialRepository` y `BovedaIntegraciones`, y `fetch` real.
+- `lib/clients/cobro/rebill-proveedor.ts` (nuevo, **esqueleto**): `RebillProveedorCobro` con el constructor de design §6
+  y los getters `paisId` y `entorno`. Las cuatro operaciones lanzan `rebill <op>: sin implementar (SLT-227 T4.2)`.
+  T4.2 las rellena y les pone los parámetros.
+- `tests/unit/clients/cobro-http-registro.test.ts` (nuevo): 39 tests con `fetch` y `esperar` dobles. Usa el host
+  inventado `rebill-doble.invalid`, no el de Rebill (R26). Solo el caso de R20 espera de verdad: los 20 ms del
+  `AbortSignal.timeout`, que dispara el corte.
+
+**Salidas reales:**
+- `pnpm run typecheck`: sin errores en mis archivos. En el último pase salió un único error en
+  `tests/unit/services/cobro-credencial-service.test.ts(83,41)` (TS2493), que es el archivo en curso de T2.3/T2.5 y no
+  es mío. Con `tsc --noEmit` filtrado sin ese archivo: sin salida.
+- `pnpm exec eslint lib/config/cobro.ts lib/clients/cobro/ tests/unit/clients/cobro-http-registro.test.ts`: `No issues found`.
+- `pnpm exec vitest run tests/unit/clients/cobro-http-registro.test.ts`: `Test Files 1 passed (1) · Tests 39 passed (39)`.
+- Guardias `credenciales-sin-consola-cruda`, `pais-sin-literales`, `censo-order-status-rename`, `censo-simpe`,
+  `sin-credenciales-de-entorno`, `plataforma-solo-en-lista`, `organizacion-en-modelos`,
+  `etiquetas-geograficas-sin-literal` y `quitador-comentarios`: `Tests 1 failed | 152 passed (153)`. El único rojo es
+  el `IProveedorCobro.ts:61 rechazada` de T2.1 (455/R40), que ya estaba y no es de T3.
+
+**Mutaciones (design §12), una a la vez, revertidas y con el test otra vez en verde:**
+- **Mutación 1 (sin reintentos en lo que tiene efecto):** `devolver` no existe hasta T4.2, así que la apliqué al
+  transporte. `pedirUnaVez` delega en `pedirIdempotente` y reintenta → `Tests 4 failed | 35 passed (39)`. Caen las
+  cuatro filas de «R22: … 1 petición … e incierto» (`devolver` y `crearEnlace`, con 503 y con fallo de red). T4.2
+  repite la mutación en el adaptador contra el doble.
+- **Mutación 2 (reintentar ante un 401):** en `pedirIdempotente`, `(!reintentable && estadoHttp !== 401)` →
+  `Tests 1 failed | 38 passed (39)`. Cae «R23: consultarPago con 401 ⇒ 1 petición y credencial_rechazada».
+
+**Mapa `R<n>` → test (HR = `tests/unit/clients/cobro-http-registro.test.ts`):**
+| R | Test |
+|---|---|
+| R2 | HR «R2: el registro da el adaptador de rebill para CR; wompi y global66 dan proveedor_no_disponible sin leer credenciales» (proveedor, país, entorno; `operacion: null`; 0 lecturas y 0 peticiones) |
+| R3 | HR «R3: el entorno es produccion solo con VERCEL_ENV=production» (`production`, `preview`, ausente, `NODE_ENV=production` sin `VERCEL_ENV`, `development`) |
+| R20 | HR «R20: una petición que pasa del tiempo máximo se corta con tiempo_agotado» (un `fetch` doble que respeta la `signal`) |
+| R21 | HR «R21: consultarPago con 503, 503 y 200 hace 3 peticiones y espera [250, 1000]; con tres 503, proveedor_caido» (más 429 y fallo de red) |
+| R22 (transporte) | HR «R22: crearEnlace y devolver hacen una sola petición, y la falla con efecto posible es incierta» |
+| R23 | HR «R23: un 401, un 404 o un 422 no se reintentan» (más 403 y un 200 que no es JSON) |
+| R24 | HR «R24: la tabla de traducción da el código, reintentable e incierto de cada falla» (12 filas × 4 operaciones, el mensaje y que no lleva ni el cuerpo ni la URL) |
+
+Veredicto: T3.1, T3.2 y T3.3 cerradas. Mis tests y el lint están en verde, y las mutaciones 1 y 2 caen.
