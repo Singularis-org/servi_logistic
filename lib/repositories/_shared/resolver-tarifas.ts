@@ -190,7 +190,7 @@ function aValorCobro(e: ValorElegido<FilaValorDb>): ValorCobro {
   }
   // El CHECK `tarifa_valor_iva_solo_tienda` lo impide; si llegara, se para en vez de cobrar sin IVA.
   if (fila.ivaPct === null) {
-    throw new Error(`resolver de tarifas: el cobro ${fila.id} (${fila.concepto}) no tiene IVA`);
+    throw new Error(`resolver de tarifas: el cobro ${fila.id} (${fila.concepto}) no tiene % de impuesto (ivaPct)`);
   }
   return {
     concepto: fila.concepto,

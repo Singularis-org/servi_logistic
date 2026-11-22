@@ -5,6 +5,8 @@ import { Award, Crown, Medal, Trophy } from "lucide-react";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { COLUMNA_FIJA, TEXTO_ENTERO } from "@/components/shared/texto-entero";
 import { Card, CardContent } from "@/components/ui/card";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
+import { SIN_MONTO_RAYA, formatearMontoEn } from "@/lib/config/moneda";
 import type { RankingRowDTO } from "@/lib/types/ranking";
 import { cn } from "@/lib/utils";
 
@@ -15,7 +17,6 @@ import {
   anchoBarra,
   conteoCrudo,
   iniciales,
-  money,
   porcentaje,
 } from "./ranking-labels";
 
@@ -104,6 +105,8 @@ function EscalonPodio({
 }) {
   const s = ESCALONES[posicion];
   const destacado = posicion === 1;
+  // SLT-241 (R11): el premio se pinta con la moneda del país (antes del retorno temprano: es un hook).
+  const moneda = useMonedaDelPais();
 
   // Posición sin ocupante elegible (R15): pedestal apagado, NO se inventa mensajero.
   if (fila === null) {
@@ -172,7 +175,7 @@ function EscalonPodio({
               TEXTO_ENTERO,
             )}
           >
-            {money(fila.premio)}
+            {formatearMontoEn(moneda, fila.premio, SIN_MONTO_RAYA)}
           </div>
         ) : null}
       </div>

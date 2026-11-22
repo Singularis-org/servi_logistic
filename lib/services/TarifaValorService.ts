@@ -1,6 +1,7 @@
 import type { TarifaConcepto } from "@prisma/client";
 import { z } from "zod";
 
+import { IMPUESTO_ROTULO } from "@/lib/constants/impuesto-rotulo";
 import type { ITarifaValorRepository } from "@/lib/interfaces/repositories/ITarifaValorRepository";
 import type {
   Actor,
@@ -10,7 +11,7 @@ import type {
   QuitarValorResult,
 } from "@/lib/interfaces/services/ITarifaValorService";
 import { nivelDeValor } from "@/lib/tarifas/niveles";
-import { escrituraValorSchema, type FijarValorInput } from "@/lib/types/tarifa-flexible";
+import { escrituraValorSchemaDe, type FijarValorInput } from "@/lib/types/tarifa-flexible";
 
 // R13 (matriz de `TarifaService`, D4): maestro escribe; maestro y admin leen; cualquier otro rol,
 // incluido uno que no se reconozca, `forbidden`.
@@ -31,15 +32,25 @@ const NIVEL_OCUPADO = errorEn(
 /**
  * SLT-52 (design §8) — escribe y lee `tarifa_valor`. La empresa sale del contexto (la extension del
  * cliente), nunca del input; el historial lo escribe el repositorio en la misma transaccion (R14).
+ *
+ * SLT-241 (R5, design §5.2): `impuestoNombre` es el impuesto del pais de la empresa de la sesion, para
+ * los mensajes de validacion. Lo pasa `serviciosDeTarifas`; sin el, el rotulo de la plataforma (R8).
  */
 export class TarifaValorService implements ITarifaValorService {
-  constructor(private readonly repo: ITarifaValorRepository) {}
+  private readonly esquema: ReturnType<typeof escrituraValorSchemaDe>;
+
+  constructor(
+    private readonly repo: ITarifaValorRepository,
+    impuestoNombre: string = IMPUESTO_ROTULO,
+  ) {
+    this.esquema = escrituraValorSchemaDe(impuestoNombre);
+  }
 
   async fijarValor(input: FijarValorInput, actor: Actor): Promise<FijarValorResult> {
     if (!ROLES_QUE_ESCRIBEN.has(actor.rol)) return { status: "forbidden" };
 
     // R3/R4/R45: rangos, IVA obligatorio en el cobro y prohibido (tambien "0") en el pago.
-    const parseado = escrituraValorSchema.safeParse(input);
+    const parseado = this.esquema.safeParse(input);
     if (!parseado.success) {
       return { status: "validation_error", fieldErrors: z.flattenError(parseado.error).fieldErrors };
     }

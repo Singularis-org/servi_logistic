@@ -50,7 +50,9 @@ import {
 } from "@/app/(app)/ordenes/_components/etiquetas-fuente-carga";
 import { buildEtiquetasPdf } from "@/app/(app)/ordenes/_components/etiquetas-pdf";
 import { getHojaEtiqueta } from "@/lib/config/etiquetas-hoja";
-import { formatMonto } from "@/lib/config/moneda";
+import { formatearMontoEn, formatMonto, MONEDA_PLATAFORMA } from "@/lib/config/moneda";
+import { MonedaDelPaisProvider } from "@/providers/MonedaDelPaisProvider";
+import { MONEDA_DE_PRUEBA } from "@/tests/fabricas/reglas-pais";
 import { fuenteEtiqueta } from "@/lib/pdf/etiquetas-fuente";
 
 import { CUERPOS_BASE } from "@/lib/pdf/etiquetas-maqueta";
@@ -262,6 +264,7 @@ describe("R32 — la familia de pantalla es la del /BaseFont con el que el PDF d
       new Map(),
       getHojaEtiqueta("100x100"),
       fuenteEtiqueta,
+      MONEDA_PLATAFORMA,
     );
     const u8 = new Uint8Array(Buffer.from(doc.output("arraybuffer")));
     const fuentes = fuentesDePagina(u8);
@@ -355,6 +358,7 @@ describe("R23 — la pantalla y el papel dicen lo mismo, en el mismo orden y con
       new Map([[dto.ordenId, document.createElement("canvas")]]),
       getHojaEtiqueta("100x100"),
       fuenteEtiqueta,
+      MONEDA_PLATAFORMA,
     );
     const u8 = new Uint8Array(Buffer.from(doc.output("arraybuffer")));
     const fuentes = fuentesDePagina(u8);
@@ -459,5 +463,42 @@ describe("R23 — la pantalla y el papel dicen lo mismo, en el mismo orden y con
     expect(destino).toHaveTextContent(esperado.destinatario);
     expect(destino).toHaveTextContent(esperado.telefonoDest);
     expect(destino).toHaveTextContent(esperado.ubicacion);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SLT-240 (R6) — con la moneda del pais, la vista previa y el PDF dicen lo mismo.
+//
+// El modal lee la moneda de `useMonedaDelPais()` y la pasa al PDF; la vista
+// previa la lee del MISMO hook. Aqui se monta la vista previa bajo el proveedor
+// con la moneda de prueba y se exige que su importe sea, caracter a caracter, el
+// que el generador dibuja con esa moneda.
+// ---------------------------------------------------------------------------
+
+describe("SLT-240 R6 — paridad vista previa <-> PDF con la moneda del pais", () => {
+  it("con MONEDA_DE_PRUEBA, el importe de pantalla es el texto del importe del PDF", () => {
+    const dto = CASO_EVIDENCIA.dto;
+    render(
+      <MonedaDelPaisProvider moneda={MONEDA_DE_PRUEBA} impuestoNombre="IGV">
+        <EtiquetaGuia etiqueta={dto} />
+      </MonedaDelPaisProvider>,
+    );
+    const enPantalla = (screen.getByTestId("etiqueta-monto").textContent ?? "").trim();
+    const esperado = formatearMontoEn(MONEDA_DE_PRUEBA, dto.montoCobrar);
+    expect(enPantalla).toBe(esperado);
+    // No pasa por casualidad con la moneda de siempre.
+    expect(enPantalla).not.toBe(formatMonto(dto.montoCobrar));
+
+    const doc = buildEtiquetasPdf(
+      [dto],
+      new Map(),
+      getHojaEtiqueta("100x100"),
+      fuenteEtiqueta,
+      MONEDA_DE_PRUEBA,
+    );
+    const u8 = new Uint8Array(Buffer.from(doc.output("arraybuffer")));
+    const fuentes = fuentesDePagina(u8);
+    const enPapel = textosDePagina(u8).map((t) => textoLegible(t, fuentes.get(t.fuenteRes)));
+    expect(enPapel).toContain(enPantalla);
   });
 });

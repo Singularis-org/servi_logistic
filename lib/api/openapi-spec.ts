@@ -9,6 +9,7 @@ import { EVENTOS_PUBLICOS } from "@/lib/types/webhook-eventos";
 import { METRICAS_API_KEY, METRICAS_TODAS } from "@/lib/analytics/publicacion-api-key";
 import { TOPE_FILAS_HABILITAR } from "@/lib/config/habilitacion-api";
 import { URL_PRODUCCION_API } from "@/lib/api/url-produccion";
+import { MENSAJE_EMPRESA_CONGELADA } from "@/lib/planes/mora";
 // El literal de `penumbra` NO se reescribe aqui: se importa del contrato interno, que es donde
 // vive (126/R20). Una segunda copia es la clasica cifra duplicada que un dia diverge.
 import { PENUMBRA } from "@/lib/types/analitica-operativa";
@@ -2617,15 +2618,35 @@ export const openApiSpec = {
         // `ApiKeyAuthService.autenticar` (usuario no activo, key desactivada, cuenta que no es de
         // integracion, tienda destino de baja o inactiva) y de la ruta de analitica (modulo
         // apagado, consulta fuera de alcance). La respuesta no dice cual aplica, a proposito.
+        //
+        // SLT-121 (design §6.3, R13): la empresa congelada por mora es un 403 mas, con su propio
+        // `details.codigo`, como `modulo_inactivo`. Va en la response compartida y no en una propia de las
+        // seis rutas de escritura: sus tests (177, 266, 320) fijan el 403 como `$ref` a `Forbidden`. La
+        // descripcion nombra las seis y deja fuera las consultas y la cotizacion. `example` pasa a
+        // `examples` (OpenAPI no admite los dos) para mostrar las dos formas.
         description:
-          "La key existe pero no puede operar: su usuario dedicado no está activo, la key está desactivada, la cuenta de la key no es una cuenta de integración, o la tienda a la que apunta la key está dada de baja o inactiva. La respuesta no dice cuál de estas causas aplica. En `GET /api/ordenes/api-key/analitica`, además: el módulo de Analítica de tu empresa está apagado (`details.codigo: \"modulo_inactivo\"`), o la consulta cae fuera del alcance de la key.",
+          "La key existe pero no puede operar: su usuario dedicado no está activo, la key está desactivada, la cuenta de la key no es una cuenta de integración, o la tienda a la que apunta la key está dada de baja o inactiva. La respuesta no dice cuál de estas causas aplica. En `GET /api/ordenes/api-key/analitica`, además: el módulo de Analítica de tu empresa está apagado (`details.codigo: \"modulo_inactivo\"`), o la consulta cae fuera del alcance de la key. En las seis rutas que escriben (`POST /api/ordenes/api-key/carga`, `POST /api/ordenes/api-key/carga/{cargaId}/generate`, `POST /api/ordenes/api-key/habilitar`, `PUT /api/ordenes/api-key/{numGuia}/cancelar`, `POST /api/ordenes/api-key/orden/{id}/generate` y `DELETE /api/ordenes/api-key/orden/{id}`), además: tu empresa está suspendida por falta de pago (`details.codigo: \"empresa_congelada\"`). Esa respuesta llega antes de validar el cuerpo y la petición no tiene ningún efecto; las consultas (`GET`) y la cotización siguen respondiendo igual. Se levanta en cuanto queda pagado lo vencido o la plataforma reactiva la empresa, y vale desde la petición siguiente.",
         content: {
           "application/json": {
             schema: { $ref: "#/components/schemas/Error" },
-            example: {
-              status: "error",
-              code: "FORBIDDEN",
-              message: "No tienes permiso para realizar esta accion.",
+            examples: {
+              sin_permiso: {
+                summary: "La key no puede operar",
+                value: {
+                  status: "error",
+                  code: "FORBIDDEN",
+                  message: "No tienes permiso para realizar esta accion.",
+                },
+              },
+              empresa_congelada: {
+                summary: "Empresa suspendida por falta de pago (solo en las rutas que escriben)",
+                value: {
+                  status: "error",
+                  code: "FORBIDDEN",
+                  message: MENSAJE_EMPRESA_CONGELADA,
+                  details: { codigo: "empresa_congelada" },
+                },
+              },
             },
           },
         },

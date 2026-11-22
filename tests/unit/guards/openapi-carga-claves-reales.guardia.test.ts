@@ -32,6 +32,13 @@ vi.mock("@/lib/db/prisma-client", () => ({
   PRISMA_OMIT: {},
 }));
 
+// SLT-121 (design §6.2): la ruta pasa por la puerta de la mora (`exigirEmpresaOperativa`) antes del cuerpo. La
+// puerta es la real; solo su lectura va con doble, con la empresa al día, para que esta guardia no toque la base.
+vi.mock("@/lib/planes/empresa-congelada", async (original) => {
+  const real = await original<typeof import("@/lib/planes/empresa-congelada")>();
+  return { ...real, exigirEmpresaOperativa: () => real.exigirEmpresaOperativa({ estaCongelada: async () => false }) };
+});
+
 import { EJEMPLO_NOMBRE_LOTE, openApiSpec } from "@/lib/api/openapi-spec";
 import { withErrorHandler } from "@/lib/errors";
 import { CargaNombreDuplicadoError } from "@/lib/interfaces/repositories/IOrdenRepository";

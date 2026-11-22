@@ -243,6 +243,13 @@ export const EXCEPCIONES_DE_PLATAFORMA: readonly ExcepcionDeAislamiento[] = [
       "SLT-215: cerrar los meses de los niveles por volumen de todas las empresas; llama a `plan_nivel_cerrar_meses`, función del dueño que `servi_app` no puede ejecutar (R29, R36)",
   },
   {
+    // SLT-121 (design §5.1). Lleva `SL-24` (la ficha de los planes) porque `FichaJira` no admite `SLT` (deuda D29).
+    archivo: "lib/repositories/MoraEmpresaRepository.ts",
+    ficha: "SL-24",
+    motivo:
+      "SLT-121: el superadmin fija la gracia y descongela a mano, y la corrida de madrugada recorre las empresas con mora, las congela y encola sus recordatorios; llama a `organizacion_mora_congelar`, `organizacion_mora_descongelar_a_mano`, `organizacion_mora_descongelar_si_pagada` y `factura_plataforma_saldos`, funciones del dueño que `servi_app` no puede ejecutar, y escribe columnas de `organizacion` que `servi_app` no puede escribir (R3, R5, R7, R22, R26)",
+  },
+  {
     // SLT-60 (design §4.3). Lleva `SL-45` (la ficha del pago a la plataforma) porque `FichaJira` no admite
     // `SLT` (deuda D29).
     archivo: "lib/repositories/PagoPlataformaConfirmacionRepository.ts",

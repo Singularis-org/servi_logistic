@@ -71,6 +71,7 @@ import { descargarEtiquetasPdf } from "@/app/(app)/ordenes/_components/etiquetas
 import { cargarFuenteEtiqueta } from "@/app/(app)/ordenes/_components/etiquetas-fuente-carga";
 import { fuenteEtiqueta } from "@/lib/pdf/etiquetas-fuente";
 import { HOJAS_ETIQUETA, getHojaEtiqueta } from "@/lib/config/etiquetas-hoja";
+import { MONEDA_PLATAFORMA } from "@/lib/config/moneda";
 import type { EtiquetaGuiaDTO } from "@/lib/types/etiqueta-guia";
 
 function etiqueta(ordenId = "ord-1"): EtiquetaGuiaDTO {
@@ -110,15 +111,15 @@ describe("descargarEtiquetasPdf (R19)", () => {
   it("guarda con el nombre que incluye el identificador del tamaño elegido", async () => {
     for (const hoja of HOJAS_ETIQUETA) {
       saveMock.mockClear();
-      await descargarEtiquetasPdf([etiqueta()], new Map(), hoja);
+      await descargarEtiquetasPdf([etiqueta()], new Map(), hoja, MONEDA_PLATAFORMA);
       expect(saveMock).toHaveBeenCalledTimes(1);
       expect(saveMock).toHaveBeenCalledWith(`etiquetas-guia-${hoja.id}.pdf`);
     }
   });
 
   it("dos descargas con tamaños distintos NO producen el mismo nombre", async () => {
-    await descargarEtiquetasPdf([etiqueta()], new Map(), getHojaEtiqueta("a4"));
-    await descargarEtiquetasPdf([etiqueta()], new Map(), getHojaEtiqueta("carta"));
+    await descargarEtiquetasPdf([etiqueta()], new Map(), getHojaEtiqueta("a4"), MONEDA_PLATAFORMA);
+    await descargarEtiquetasPdf([etiqueta()], new Map(), getHojaEtiqueta("carta"), MONEDA_PLATAFORMA);
     const nombres = saveMock.mock.calls.map((c) => c[0]);
     expect(nombres).toEqual(["etiquetas-guia-a4.pdf", "etiquetas-guia-carta.pdf"]);
     expect(new Set(nombres).size).toBe(2);
@@ -130,6 +131,7 @@ describe("descargarEtiquetasPdf (R19)", () => {
       [etiqueta("a"), etiqueta("b"), etiqueta("c")],
       new Map(),
       hoja,
+      MONEDA_PLATAFORMA,
     );
     expect(addPageMock).toHaveBeenCalledTimes(2); // la primera pagina ya existe
     for (const call of addPageMock.mock.calls) {
@@ -144,6 +146,7 @@ describe("descargarEtiquetasPdf — la fuente embebida (feature 282)", () => {
       [etiqueta("a"), etiqueta("b"), etiqueta("c")],
       new Map(),
       getHojaEtiqueta("100x100"),
+      MONEDA_PLATAFORMA,
     );
     // Una sola vez para las tres etiquetas: `addFont` descodifica y parsea el
     // TTF entero, y ese coste se paga por PDF, no por pagina.
@@ -169,7 +172,7 @@ describe("descargarEtiquetasPdf — la fuente embebida (feature 282)", () => {
     const fallo = new Error("chunk perdido");
     cargarFuenteEtiquetaMock.mockRejectedValueOnce(fallo);
     await expect(
-      descargarEtiquetasPdf([etiqueta()], new Map(), getHojaEtiqueta("100x100")),
+      descargarEtiquetasPdf([etiqueta()], new Map(), getHojaEtiqueta("100x100"), MONEDA_PLATAFORMA),
     ).rejects.toBe(fallo);
     // Lo que NO puede pasar: un PDF descargado con el importe sin simbolo.
     expect(saveMock).not.toHaveBeenCalled();
@@ -187,8 +190,10 @@ describe("R28 — simbolo no cubierto: en el navegador tampoco se descarga nada"
       const { descargarEtiquetasPdf: descargar } = await import(
         "@/app/(app)/ordenes/_components/etiquetas-pdf"
       );
+      // SLT-240 (R14): la moneda va explicita; la reimportada lee el entorno.
+      const { MONEDA_PLATAFORMA: monedaDelEntorno } = await import("@/lib/config/moneda");
       await expect(
-        descargar([etiqueta()], new Map(), getHojaEtiqueta("100x100")),
+        descargar([etiqueta()], new Map(), getHojaEtiqueta("100x100"), monedaDelEntorno),
       ).rejects.toThrow(/U\+20B9[\s\S]*Monto a cobrar/);
     } finally {
       delete process.env.MONEDA_SIMBOLO;

@@ -38,6 +38,7 @@ import {
   conEmpresaDeLaKey,
   type AutenticadorApiKey,
 } from "@/lib/api/api-key-request";
+import { exigirEmpresaOperativa } from "@/lib/planes/empresa-congelada";
 import { idOrdenApiSchema } from "@/lib/api/api-orden-identificador";
 
 export interface GenerarPdfOrdenApiDeps {
@@ -88,6 +89,9 @@ export async function handleGenerarPdfOrdenApi(
 
     // SL-17 (R13): todo lo que sigue opera con la empresa de la key, no con la de nadie mas.
     return conEmpresaDeLaKey(auth, async () => {
+      // SLT-121 (design §6.2, R13): con la empresa de la key congelada por mora, 403 `empresa_congelada`
+      // antes de leer el cuerpo o tocar nada (auth -> puerta -> cuerpo).
+      await exigirEmpresaOperativa();
       // 2. R13/R19: mismo zod que la consulta, sin consultar la base.
       const parsed = idOrdenApiSchema.safeParse(rawId);
       if (!parsed.success) {

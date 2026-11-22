@@ -54,6 +54,9 @@ describe("R32 — el drenador resuelve el handler de geocodificacion y no lo re-
       "factura_plataforma_cerrar", // SLT-118 (design §4.2): el cierre horario (HH:10) de las facturas de la plataforma (RECURRENTE)
       "geocodificacion",
       "liberar_reprogramadas",
+      // SLT-121 (design §4): la corrida de la mora (RECURRENTE, 06:30 UTC, de plataforma) y sus correos (PUNTUAL).
+      "mora_aviso_correo",
+      "mora_diaria",
       "optimizacion_ruta",
       // SL-24 (design §16.3): aplicar un cambio de plan programado (PUNTUAL) y su barrido horario.
       "plan_aplicar_cambio",
@@ -100,7 +103,9 @@ describe("R32 — el drenador resuelve el handler de geocodificacion y no lo re-
     expect(recurrencias.has("factura_plataforma_cerrar")).toBe(true);
     // SLT-215 (design §5): el SEXTO, el cierre diario (06:20 UTC) de los niveles por volumen.
     expect(recurrencias.has("plan_niveles_cerrar")).toBe(true);
-    expect(recurrencias.size).toBe(6);
+    // SLT-121 (design §4.1): el SÉPTIMO, la corrida diaria (06:30 UTC) de la mora.
+    expect(recurrencias.has("mora_diaria")).toBe(true);
+    expect(recurrencias.size).toBe(7);
   });
 
   it("al drenar, el handler se ejecuta, el job se completa y NO se re-encola", async () => {

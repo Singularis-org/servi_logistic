@@ -682,6 +682,36 @@ const CENSO_MONEDA_DEL_PAIS: readonly { archivo: string; servidor?: true }[] = [
   { archivo: "app/(app)/recepcion-satelite/_components/RecepcionDetalle.tsx" },
   { archivo: "app/(app)/recepcion-satelite/_components/SateliteOrderCard.tsx" },
   { archivo: "app/paquete/[numGuia]/page.tsx", servidor: true },
+  // SLT-240 (rebanada 2, design §7).
+  { archivo: "app/(app)/ordenes/_components/OrdenesCargaResumen.tsx" },
+  { archivo: "app/(app)/ordenes/_components/OrdenesConMontoAjustadoTabla.tsx" },
+  { archivo: "app/(app)/ordenes/_components/CorregirUbicacionAviso.tsx" },
+  { archivo: "app/(app)/ordenes/_components/EtiquetaGuia.tsx" },
+  { archivo: "app/(app)/ordenes/_components/EtiquetasGuiaModal.tsx" },
+  { archivo: "app/(app)/ordenes/_components/etiquetas-pdf.ts" },
+  { archivo: "app/(app)/ordenes/_components/OrdenesModule.tsx" },
+  { archivo: "lib/pdf/etiquetas-dibujo.ts" },
+  { archivo: "app/(app)/incidentes/_components/IncidentesAdminModule.tsx" },
+  { archivo: "app/(app)/incidentes/_components/IncidentesHistoricoTabla.tsx" },
+  { archivo: "app/(app)/historico/acciones/_components/historial-acciones-columnas.ts" },
+  { archivo: "app/(app)/historico/acciones/_components/HistorialAccionesModule.tsx" },
+  // SLT-241 (rebanada 3, design §9, R19).
+  { archivo: "app/(app)/configuracion/tarifas/_components/tarifas-textos.ts" },
+  { archivo: "app/(app)/configuracion/tarifas/_components/tarifas-borrador.ts" },
+  { archivo: "app/(app)/configuracion/tarifas/_components/TarifasValores.tsx" },
+  { archivo: "app/(app)/configuracion/tarifas/_components/TarifasVehiculo.tsx" },
+  { archivo: "app/(app)/configuracion/tarifas/_components/TarifasGrupos.tsx" },
+  { archivo: "app/(app)/configuracion/tarifas/_components/TarifasMensajeros.tsx" },
+  { archivo: "app/(app)/configuracion/tarifas/_components/TarifasTiendas.tsx" },
+  { archivo: "app/(app)/configuracion/tarifas/_components/TarifaMensajeroDialogo.tsx" },
+  { archivo: "app/(app)/configuracion/_components/UsuariosModule.tsx" },
+  { archivo: "app/(app)/ranking/_components/PremioInputRow.tsx" },
+  { archivo: "app/(app)/ranking/_components/RankingPodio.tsx" },
+  { archivo: "app/(app)/ranking/historico/_components/RankingHistoricoModule.tsx" },
+  { archivo: "app/(app)/ranking/_components/ranking-labels.ts" },
+  { archivo: "app/(app)/configuracion/envios-whatsapp/_components/VistaPreviaMensaje.tsx" },
+  { archivo: "app/(app)/configuracion/plantillas/_components/VariablesInsert.tsx" },
+  { archivo: "lib/utils/vista-previa-informe.ts" },
 ];
 
 /** Los formateadores que usan la moneda de la plataforma sin nombrarla (R18). */
@@ -795,10 +825,23 @@ describe("SLT-235/T4.1 — censo de R18: las pantallas en la moneda del país no
     for (const { archivo, servidor } of CENSO_MONEDA_DEL_PAIS) {
       const reescrito = `${leer(archivo)}\nimport { money as dinero } from "${MODULO_MONEDA}";\nexport const _x = dinero(1);\n`;
       expect(infraccionesDeMoneda(reescrito, { servidor }), archivo).not.toEqual([]);
+      const conFormatMonto = `${leer(archivo)}\nimport { formatMonto as montoImplicito } from "${MODULO_MONEDA}";\nexport const _y = montoImplicito(1);\n`;
+      expect(infraccionesDeMoneda(conFormatMonto, { servidor }), archivo).toContain(`llama a formatMonto( de ${MODULO_MONEDA}`);
     }
     const posFormat = leer("app/(app)/mis-asignaciones/_components/pos-card/pos-format.ts")
       .replace(`import { formatearMontoEn,`, `import { formatMonto as formatMontoConfigurado, formatearMontoEn,`)
       .replace(`formatearMontoEn(moneda, monto, SIN_MONTO_RAYA)`, `formatMontoConfigurado(monto, SIN_MONTO_RAYA)`);
     expect(infraccionesDeMoneda(posFormat)).toEqual([`llama a formatMonto( de ${MODULO_MONEDA}`]);
+  });
+
+  it("SLT-241 R19: los 16 archivos de la rebanada 3 están en el censo y dan rojo con money( o formatMontoString(", () => {
+    const deSlt241 = CENSO_MONEDA_DEL_PAIS.slice(CENSO_MONEDA_DEL_PAIS.findIndex((e) => e.archivo.endsWith("tarifas-textos.ts")));
+    expect(deSlt241).toHaveLength(16);
+    for (const { archivo, servidor } of deSlt241) {
+      const conMoney = `${leer(archivo)}\nexport const _m = money(1);\n`;
+      expect(infraccionesDeMoneda(conMoney, { servidor }), archivo).toContain("llama a money(");
+      const conString = `${leer(archivo)}\nexport const _s = formatMontoString("1");\n`;
+      expect(infraccionesDeMoneda(conString, { servidor }), archivo).toContain("llama a formatMontoString(");
+    }
   });
 });

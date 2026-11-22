@@ -4,15 +4,16 @@ import { useId, useState } from "react";
 import { ChevronDown } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
 import { cn } from "@/lib/utils";
 
-import { componerVistaPrevia } from "@/lib/utils/vista-previa-informe";
+import { componerVistaPrevia, type VariableDeInforme } from "@/lib/utils/vista-previa-informe";
 
 export interface VistaPreviaMensajeProps {
   /** Cuerpo de la plantilla elegida; `null` = aún no hay plantilla. */
   cuerpo: string | null;
   /** Las variables del informe (ya incluyen la común `destinatario_nombre`, R53). */
-  variables: readonly { clave: string; nombre: string; descripcion: string; ejemplo: string }[];
+  variables: readonly VariableDeInforme[];
   /** La plantilla lleva cabecera documento: se pinta la tarjeta del PDF encima del texto. */
   conDocumento: boolean;
   /** Nombre de quien lo va a leer en la vista previa (el primer destinatario), si hay. */
@@ -32,9 +33,10 @@ export interface VistaPreviaMensajeProps {
 export function VistaPreviaMensaje({ cuerpo, variables, conDocumento, lector }: VistaPreviaMensajeProps) {
   const [abierta, setAbierta] = useState(false);
   const contenidoId = useId();
+  const moneda = useMonedaDelPais();
   const primerNombre = lector?.trim().split(/\s+/)[0] ?? null;
   const valores: Record<string, string> = primerNombre ? { destinatario_nombre: primerNombre } : {};
-  const previa = cuerpo === null ? null : componerVistaPrevia(cuerpo, variables, valores);
+  const previa = cuerpo === null ? null : componerVistaPrevia(cuerpo, variables, valores, moneda);
 
   return (
     <section aria-label="Vista previa del mensaje" className="flex flex-col gap-3">

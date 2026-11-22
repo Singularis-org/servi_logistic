@@ -7,13 +7,15 @@ import { DataTable, type Column } from "@/components/shared/DataTable";
 import { Modal } from "@/components/shared/Modal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useImpuestoDelPais, useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
 import { useToast } from "@/hooks/useToast";
 import { guardarValoresTarifa } from "@/lib/actions/tarifas";
 import type { MensajeroDePantalla } from "@/lib/interfaces/repositories/ITarifasPantallaRepository";
+import type { FormatoMoneda } from "@/lib/config/moneda";
 import type { TarifaValorDTO } from "@/lib/types/tarifa-flexible";
 
 import { claveDeCelda } from "./tarifas-borrador";
-import { conceptosDeActor, etiquetaConcepto, TEXTOS, textoValorSinIva } from "./tarifas-textos";
+import { conceptosDeActor, etiquetaConcepto, TEXTOS, textosDelImpuesto, textoValorSinIva } from "./tarifas-textos";
 import { TarifaMensajeroDialogo } from "./TarifaMensajeroDialogo";
 
 export interface FilaMensajero {
@@ -55,9 +57,10 @@ export interface TarifasMensajerosProps {
   onCambio: () => Promise<void> | void;
 }
 
-function valorDe(fila: FilaMensajero, concepto: TarifaConcepto): string {
+/** SLT-241 (R1): con la moneda del pais. */
+function valorDe(fila: FilaMensajero, concepto: TarifaConcepto, moneda: FormatoMoneda): string {
   const v = fila.valores.find((x) => x.concepto === concepto);
-  return v === undefined ? TEXTOS.usaZona : textoValorSinIva(v);
+  return v === undefined ? TEXTOS.usaZona : textoValorSinIva(v, moneda);
 }
 
 type Dialogo = { tipo: "anadir" } | { tipo: "editar"; mensajeroId: string };
@@ -65,6 +68,9 @@ type Dialogo = { tipo: "anadir" } | { tipo: "editar"; mensajeroId: string };
 /** R27-R36: el pago propio de cada mensajero. Sale de la lista por `elegible` y por tener valor, nunca por su rol. */
 export function TarifasMensajeros({ filas, mensajeros, activada, puedeEscribir, onCambio }: Readonly<TarifasMensajerosProps>) {
   const toast = useToast();
+  // SLT-241 (R1, R4): la moneda y el impuesto del pais; sin proveedor, los de la plataforma.
+  const moneda = useMonedaDelPais();
+  const impuesto = useImpuestoDelPais();
   const [dialogo, setDialogo] = useState<Dialogo | null>(null);
   const [aQuitarId, setAQuitarId] = useState<string | null>(null);
 
@@ -87,7 +93,7 @@ export function TarifasMensajeros({ filas, mensajeros, activada, puedeEscribir, 
       (concepto): Column<FilaMensajero> => ({
         id: concepto,
         value: etiquetaConcepto(concepto),
-        render: (f) => valorDe(f, concepto),
+        render: (f) => valorDe(f, concepto, moneda),
       }),
     ),
   ];
@@ -163,7 +169,7 @@ export function TarifasMensajeros({ filas, mensajeros, activada, puedeEscribir, 
         <div className="min-w-0 flex-[1_1_320px]">
           <h2 className="text-lg font-bold">{TEXTOS.mensajerosTitulo}</h2>
           <p className="mt-[3px] text-[13px] text-muted-foreground">{TEXTOS.mensajerosNota}</p>
-          <p className="text-[13px] text-muted-foreground">{TEXTOS.mensajerosBase}</p>
+          <p className="text-[13px] text-muted-foreground">{textosDelImpuesto(impuesto).mensajerosBase}</p>
           <p className="text-[13px] text-muted-foreground">
             {activada ? TEXTOS.mensajerosEnVigor : TEXTOS.mensajerosSinActivar}
           </p>

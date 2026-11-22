@@ -19,6 +19,7 @@ import type { IVistaFiltroService } from "@/lib/interfaces/services/IVistaFiltro
 import { VistaFiltroRepository } from "@/lib/repositories/VistaFiltroRepository";
 import { VistaFiltroService } from "@/lib/services/VistaFiltroService";
 import { getPrismaClient } from "@/lib/db/prisma-client";
+import { permitidoEnMora } from "@/lib/db/permiso-en-mora";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { withErrorHandler, isAppErrorShape, UnauthenticatedError } from "@/lib/errors";
 import { toActionError } from "@/lib/actions/_shared/to-action-error";
@@ -38,6 +39,8 @@ export interface VistasFiltroActionDeps {
   getActor?: () => Promise<Actor | null>;
 }
 
+// SLT-121 (design §6.1, decision P2): las vistas de filtro son de la persona (`usuarioId` de la sesión), no
+// de la operación de la empresa: guardarlas, renombrarlas o borrarlas vale con la empresa congelada.
 function buildServicio(): IVistaFiltroService {
   return new VistaFiltroService(new VistaFiltroRepository(getPrismaClient()));
 }
@@ -83,7 +86,7 @@ export async function guardarVistaFiltro(
   const r = await withErrorHandler(async () => {
     const actor = await actorRequerido(deps);
     const data = guardarVistaFiltroSchema.parse(input);
-    return (deps.servicio ?? buildServicio()).guardar(actor.usuarioId, data);
+    return permitidoEnMora("cuenta_propia", () => (deps.servicio ?? buildServicio()).guardar(actor.usuarioId, data));
   });
   return isAppErrorShape(r) ? toActionError(r) : r;
 }
@@ -98,7 +101,7 @@ export async function renombrarVistaFiltro(
   const r = await withErrorHandler(async () => {
     const actor = await actorRequerido(deps);
     const data = renombrarVistaFiltroSchema.parse(input);
-    return (deps.servicio ?? buildServicio()).renombrar(actor.usuarioId, data);
+    return permitidoEnMora("cuenta_propia", () => (deps.servicio ?? buildServicio()).renombrar(actor.usuarioId, data));
   });
   return isAppErrorShape(r) ? toActionError(r) : r;
 }
@@ -115,7 +118,7 @@ export async function actualizarVistaFiltro(
   const r = await withErrorHandler(async () => {
     const actor = await actorRequerido(deps);
     const data = actualizarVistaFiltroSchema.parse(input);
-    return (deps.servicio ?? buildServicio()).actualizar(actor.usuarioId, data);
+    return permitidoEnMora("cuenta_propia", () => (deps.servicio ?? buildServicio()).actualizar(actor.usuarioId, data));
   });
   return isAppErrorShape(r) ? toActionError(r) : r;
 }
@@ -134,7 +137,7 @@ export async function eliminarVistaFiltro(
   const r = await withErrorHandler(async () => {
     const actor = await actorRequerido(deps);
     const data = eliminarVistaFiltroSchema.parse(input);
-    return (deps.servicio ?? buildServicio()).eliminar(actor.usuarioId, data.id);
+    return permitidoEnMora("cuenta_propia", () => (deps.servicio ?? buildServicio()).eliminar(actor.usuarioId, data.id));
   });
   return isAppErrorShape(r) ? toActionError(r) : r;
 }

@@ -21,6 +21,48 @@
 
 ---
 
+## 2026-11-20 — Un `403` NUEVO en las rutas que escriben: empresa suspendida por falta de pago (`empresa_congelada`)
+
+> **Sin ruptura de forma.** El `403` ya existía y conserva su forma uniforme (`code: "FORBIDDEN"`).
+> Lo nuevo es una causa más, con su propio `details.codigo`, igual que `modulo_inactivo` en la
+> analítica. Si su cliente trata todo `403` como «key mal configurada», ramifique por `details.codigo`.
+
+Mientras la empresa de la key tiene facturas de la plataforma vencidas y sin pagar, su operación queda
+suspendida. En ese tiempo, estas seis rutas responden `403` **sin hacer nada** y **antes de validar el
+cuerpo** (una petición mal formada recibe este `403`, no el `422`):
+
+| Ruta |
+|---|
+| `POST /api/ordenes/api-key/carga` |
+| `POST /api/ordenes/api-key/carga/{cargaId}/generate` |
+| `POST /api/ordenes/api-key/habilitar` |
+| `PUT /api/ordenes/api-key/{numGuia}/cancelar` |
+| `POST /api/ordenes/api-key/orden/{id}/generate` |
+| `DELETE /api/ordenes/api-key/orden/{id}` |
+
+```json
+{
+  "status": "error",
+  "code": "FORBIDDEN",
+  "message": "Empresa suspendida por falta de pago.",
+  "details": { "codigo": "empresa_congelada" }
+}
+```
+
+**Lo que NO cambia:** las consultas (`GET /api/ordenes/api-key`, `GET /api/ordenes/api-key/orden/{id}`,
+`GET /api/ordenes/api-key/analitica`) y la cotización (`POST /api/ordenes/api-key/cotizacion`, que no
+escribe) responden igual que antes. Los webhooks siguen saliendo.
+
+**Qué hacer:** con `empresa_congelada` no reintente en bucle ni rote la key: avise a la empresa. La
+suspensión se levanta en cuanto queda pagado lo vencido o la plataforma reactiva la empresa, y vale desde
+la petición siguiente.
+
+Contrato: `lib/api/openapi-spec.ts` y su espejo `docs/api/api-key-openapi.yaml` (la response compartida
+`Forbidden` gana la causa y el ejemplo `empresa_congelada`); guía de integración:
+`docs/ayuda/oficina/guia-integracion-api.md` (secciones 4.3, 4.4 y 8.1, y el historial de la sección 9).
+
+---
+
 ## 2026-11-18 — Sin ruptura — La guía, Postman y el contrato apuntan a producción y se corrigen contra el código
 
 > **Sin ruptura.** El comportamiento del canal no cambia: ninguna ruta, ningún código de respuesta,

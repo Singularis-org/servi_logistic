@@ -13,10 +13,13 @@ import {
 } from "@/lib/actions/incidentes";
 import type { IncidenteAdminDTO } from "@/lib/interfaces/services/IIncidenteAdminService";
 import { CAUSA_INCIDENTE_LABEL } from "@/app/(app)/mis-asignaciones/_components/causa-incidente-options";
+import { EstadoCierreBadge } from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
 import {
-  money,
-  EstadoCierreBadge,
-} from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
+  formatearMontoEn,
+  SIN_MONTO_RAYA,
+  type FormatoMoneda,
+} from "@/lib/config/moneda";
 
 import {
   COLUMNAS_DESCARGA_INCIDENTES_HISTORICO,
@@ -83,6 +86,8 @@ export function IncidentesHistoricoTabla({
   onAbrir,
 }: Readonly<IncidentesHistoricoTablaProps>) {
   const [page, setPage] = useState(1);
+  // SLT-240 (R9): moneda del país; sin proveedor, la de la plataforma (R13).
+  const moneda = useMonedaDelPais();
   const [pageSize, setPageSize] = useState(initialData.pageSize);
 
   const { data, error } = useSWR(
@@ -105,7 +110,7 @@ export function IncidentesHistoricoTabla({
       <h2 className="text-lg font-semibold">{titulo}</h2>
       <div className="overflow-x-auto">
         <DataTable
-          columns={columnasHistorico(onAbrir)}
+          columns={columnasHistorico(onAbrir, moneda)}
           data={data?.items ?? []}
           rowKey="incidenteId"
           ariaLabel={titulo}
@@ -165,6 +170,7 @@ export function IncidentesHistoricoTabla({
 // `IncidentesAdminModule`: ni una columna ni el orden cambian (R44). ---
 function columnasHistorico(
   abrir: (incidenteId: string) => void,
+  moneda: FormatoMoneda,
 ): Column<IncidenteAdminDTO>[] {
   return [
     {
@@ -184,7 +190,8 @@ function columnasHistorico(
     {
       id: "indemnizacion",
       value: "Indemnización",
-      render: (i) => money(i.indemnizacion),
+      // SLT-240 (R9): con la moneda del país; sin importe, la raya larga.
+      render: (i) => formatearMontoEn(moneda, i.indemnizacion, SIN_MONTO_RAYA),
     },
     { id: "resueltoPor", value: "Resuelto por", render: (i) => i.resueltoPorNombre ?? "—" },
     {

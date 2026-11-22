@@ -14,7 +14,7 @@ import {
   APROBAR_CONFIRMAR,
   RECHAZAR_CONFIRMAR,
   MONTO_LABEL,
-  MONTO_EXCEDE,
+  montoExcede,
   MONTO_FORMATO,
   MOTIVO_RECHAZO_LABEL,
   MOTIVO_RECHAZO_REQUERIDO,
@@ -27,6 +27,7 @@ import {
   listarHistoricoIncidentesPaginado,
   listarPendientesIncidentesPaginado,
 } from "@/lib/actions/incidentes";
+import { MONEDA_PLATAFORMA } from "@/lib/config/moneda";
 import { paginaInicial } from "@/tests/fixtures/pagina-inicial";
 import { CAUSA_INCIDENTE_LABEL } from "@/app/(app)/mis-asignaciones/_components/causa-incidente-options";
 import { RECHAZADO_BLOQUEANTE_LABEL } from "@/app/(app)/cierres-admin/_components/cierre-detalle-shared";
@@ -343,7 +344,7 @@ describe("Feature 158 (T2.8) — R50/R55: no se aprueba con un monto inválido",
       target: { value: "99999999999.99" }, // 11 dígitos enteros
     });
     expect(confirmar).toBeDisabled();
-    // ⚠️ El esperado es un LITERAL, no `MONTO_EXCEDE`. Hasta la 230 esta línea comparaba la
+    // ⚠️ El esperado es un LITERAL, no `montoExcede(...)`. Hasta la 230 esta línea comparaba la
     // constante contra sí misma: afirmaba una tautología, y por eso ningún rojo delató que el
     // mensaje hubiera pasado a anunciar `₡10.000.000.000` —un tope que la propia pantalla
     // rechaza—. Escrito el texto entero, cualquier cambio del tope pintado cae aquí.
@@ -366,7 +367,7 @@ describe("Feature 158 (T2.8) — R50/R55: no se aprueba con un monto inválido",
     // FICHA 359 — la extracción tiene que llevarse también la COLA, que ahora existe. Con el
     // regex de antes (`/₡[\d.]+/`) el test seguiría verde leyendo sólo la parte entera, y
     // dejaría de mirar justo los dos dígitos que la ficha añade.
-    const anunciado = /₡[\d.]+(?:,\d\d)?/.exec(MONTO_EXCEDE)?.[0] ?? "";
+    const anunciado = /₡[\d.]+(?:,\d\d)?/.exec(montoExcede(MONEDA_PLATAFORMA))?.[0] ?? "";
     expect(anunciado).not.toBe("");
     expect(anunciado, "el tope anunciado perdió su cola").toContain(",");
     // Se recompone el money-safe DESDE LO PINTADO —quitando el símbolo y los miles, y

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { Modal } from "@/components/shared/Modal";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select } from "@/components/ui/select";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
 import { generarEtiquetas } from "@/lib/actions/etiquetas-guia";
 import {
   formatMm,
@@ -198,6 +199,9 @@ export function EtiquetasGuiaModal({
   // Canvas del QR por `ordenId`, recolectados de la vista previa para rasterizar
   // al PDF (qrcode.react reenvia la ref al canvas nativo).
   const qrCanvases = useRef<Map<string, HTMLCanvasElement>>(new Map());
+  // SLT-240 (R6, R14) — La moneda del pais de la empresa, la MISMA con la que
+  // `EtiquetaGuia` pinta la vista previa: el PDF dice el importe que se ve.
+  const moneda = useMonedaDelPais();
 
   // Reinicia a "cargando" solo al transicionar a `open` (ajuste de estado durante
   // el render, no en un `useEffect`, para evitar el render en cascada). Patrón de
@@ -292,7 +296,7 @@ export function EtiquetasGuiaModal({
     setErrorDescarga(null);
     try {
       // R9: el PDF sale con el tamaño que esté seleccionado en este momento.
-      await descargarEtiquetasPdf(etiquetas, qrCanvases.current, hoja);
+      await descargarEtiquetasPdf(etiquetas, qrCanvases.current, hoja, moneda);
     } catch (error) {
       // Feature 350 (R7): el caso «no cabe» SÍ se distingue, porque el operador
       // puede hacer algo al respecto —cambiar de tamaño de hoja o corregir el

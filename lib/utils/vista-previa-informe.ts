@@ -3,12 +3,16 @@
 // previa» + «De dónde sale cada dato» de la maqueta aprobada). Las variables llegan del servidor por
 // `listarInformesWhatsapp()`: este módulo NO importa el catálogo de informes (arrastra jspdf).
 
+import { formatearMontoEn, type FormatoMoneda } from "@/lib/config/moneda";
+
 /** Una variable del catálogo de un informe, tal como la sirve `listarInformesWhatsapp()`. */
 export interface VariableDeInforme {
   clave: string;
   nombre: string;
   descripcion: string;
   ejemplo: string;
+  /** SLT-241 (R13): importe crudo de una variable de importe; se pinta en la moneda del país. */
+  importeEjemplo?: string;
 }
 
 /** Un dato de la lista «De dónde sale cada dato». */
@@ -28,11 +32,15 @@ const PLACEHOLDER = /\{\{\s*([^{}]+?)\s*\}\}/g;
  * Sustituye cada `{{clave}}` por su ejemplo (o por `valores[clave]` si se da) y devuelve, en el
  * orden de aparición, de dónde sale cada dato. Una clave desconocida se deja tal cual en el texto,
  * para que se vea que no se va a rellenar.
+ *
+ * SLT-241 (R13): una variable con `importeEjemplo` se pinta con `moneda` (la del país de la
+ * empresa); las demás, con su `ejemplo` de siempre. Un `valores[clave]` dado gana siempre.
  */
 export function componerVistaPrevia(
   cuerpo: string,
-  variables: readonly Pick<VariableDeInforme, "clave" | "nombre" | "ejemplo">[],
-  valores: Readonly<Record<string, string>> = {},
+  variables: readonly Pick<VariableDeInforme, "clave" | "nombre" | "ejemplo" | "importeEjemplo">[],
+  valores: Readonly<Record<string, string>>,
+  moneda: FormatoMoneda,
 ): { texto: string; datos: DatoDeVariable[] } {
   const porClave = new Map(variables.map((v) => [v.clave, v]));
   const datos: DatoDeVariable[] = [];
@@ -46,7 +54,7 @@ export function componerVistaPrevia(
         posicion: datos.length + 1,
         clave,
         nombre: v?.nombre ?? clave,
-        valor: valores[clave] ?? v?.ejemplo ?? "",
+        valor: valores[clave] ?? ejemploEn(v, moneda),
         conocida: v !== undefined,
       };
       vistas.set(clave, dato);
@@ -55,4 +63,13 @@ export function componerVistaPrevia(
     return dato.conocida ? dato.valor : completo;
   });
   return { texto, datos };
+}
+
+/** El ejemplo de una variable: un importe, en `moneda`; lo demás, tal cual. Sin variable, vacío. */
+function ejemploEn(
+  v: Pick<VariableDeInforme, "ejemplo" | "importeEjemplo"> | undefined,
+  moneda: FormatoMoneda,
+): string {
+  if (v === undefined) return "";
+  return v.importeEjemplo === undefined ? v.ejemplo : formatearMontoEn(moneda, v.importeEjemplo);
 }

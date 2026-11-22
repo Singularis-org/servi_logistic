@@ -22,6 +22,9 @@ import { mapaRutaDocumento } from "@/lib/ayuda/documento";
 import { COOKIE_TEMA, normalizarTema } from "@/lib/tema/tema";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { esPlataforma } from "@/lib/auth/plataforma";
+import { esAccesoTotal } from "@/lib/auth/acceso-total";
+import { avisoMoraDelLayout } from "@/lib/actions/mora-empresa";
+import { AvisoMora } from "./_components/AvisoMora";
 import { comoPlataforma } from "@/lib/db/contexto-empresa";
 import { resolverRevisionSinpePendiente } from "@/lib/auth/revision-sinpe-pendiente";
 import { puedeEditarAlgunSinpe } from "@/lib/types/sinpe-bodega";
@@ -98,8 +101,12 @@ export default async function AppLayout({
   // `pais-para-pantallas.ts`, así que casi ninguna carga llega a la base. Sin empresa (el superadmin,
   // o un actor sin `organizacionId`) no hay país: lo de la plataforma, sin promesa ni consulta (R2). Si
   // la lectura falla, `paisParaPantallasDelActor` cae a lo de la plataforma y lo deja en el log (R5).
-  const [usuarioRow, avisosRecordados, revisionSinpe, pais] = !actor
-    ? ([null, false, null, PARA_PANTALLAS_DE_PLATAFORMA] as const)
+  //
+  // SLT-121 (design §7.1; R24) — LA QUINTA LECTURA: el estado de la mora de la empresa, para el banner. Solo
+  // `maestro` y `admin` consultan; los demás roles llevan `null` literal, sin promesa. `avisoMoraDelLayout` aísla
+  // su fallo (devuelve `null` y lo registra): sin banner, la página se pinta igual.
+  const [usuarioRow, avisosRecordados, revisionSinpe, pais, mora] = !actor
+    ? ([null, false, null, PARA_PANTALLAS_DE_PLATAFORMA, null] as const)
     : deLaPlataforma
     ? await Promise.all([
         comoPlataforma("SL-32", "nombre del superadmin en el pie", () =>
@@ -108,6 +115,7 @@ export default async function AppLayout({
         false,
         null,
         PARA_PANTALLAS_DE_PLATAFORMA,
+        null,
       ])
     : await Promise.all([
         new UserRepository(getPrismaClient()).findById(actor.usuarioId),
@@ -116,6 +124,7 @@ export default async function AppLayout({
           ? resolverRevisionSinpePendiente(actor, new ZonaRepository(getPrismaClient()))
           : null,
         paisParaPantallasDelActor(actor.organizacionId ?? null, construirPaisService()),
+        esAccesoTotal(actor.rol) ? avisoMoraDelLayout() : null,
       ]);
   const usuario =
     actor && usuarioRow
@@ -178,6 +187,8 @@ export default async function AppLayout({
             >
               {/* SLT-193 (R911): la hamburguesa a 44 × 44 en móvil (solo existe por debajo de `md`). */}
               <SidebarTrigger className={cn("relative md:hidden", TACTIL_MOVIL)} />
+              {/* SLT-121 (R24) — el banner de la mora, encima de la página. Hermano de `{children}`: no lo envuelve. */}
+              {actor && <AvisoMora estado={mora} rol={actor.rol} />}
               {/* ⭑ Ficha 433 — el proveedor envuelve SÓLO a `{children}` porque es ahí donde
                   vive el `PageHeader` que consume el mapa, y así el cambio no re-indenta el
                   resto del layout. No pinta ninguna caja: es un proveedor de contexto. */}

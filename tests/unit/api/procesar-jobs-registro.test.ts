@@ -47,6 +47,9 @@ describe("R21 — registro en el drenador", () => {
       "factura_plataforma_cerrar", // SLT-118 (design §4.2): el cierre horario (HH:10) de las facturas de la plataforma (RECURRENTE)
       "geocodificacion",
       "liberar_reprogramadas",
+      // SLT-121 (design §4): la corrida de la mora (RECURRENTE, 06:30 UTC, de plataforma) y sus correos (PUNTUAL).
+      "mora_aviso_correo",
+      "mora_diaria",
       "optimizacion_ruta",
       // SL-24 (design §16.3): aplicar un cambio programado (PUNTUAL) y el barrido horario de los
       // vencidos (RECURRENTE).
@@ -96,6 +99,7 @@ describe("R21 — registro en el drenador", () => {
       "analitica_rollup_diario",
       "factura_plataforma_cerrar", // SLT-118 (design §4.2): el cierre horario (HH:10) de las facturas de la plataforma
       "liberar_reprogramadas",
+      "mora_diaria", // SLT-121 (design §4.1): la corrida diaria (06:30 UTC) de la mora
       "plan_cambios_vencidos", // SL-24: barrido horario de cambios de plan vencidos
       "plan_niveles_cerrar", // SLT-215: cierre diario (06:20 UTC) de los niveles por volumen
       "whatsapp_envio_mantenimiento", // ficha 474: mantenimiento diario 03:30 CR

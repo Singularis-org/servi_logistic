@@ -50,9 +50,9 @@ import { esFechaCalendarioValida } from "@/lib/utils/calendario-zona";
 // saldo con el que la central lo persigue. El motivo de cada uno esta escrito a su lado.
 
 /**
- * Los 90 tipos de accion. El ORDEN de esta tupla es el del Anexo A (dinero, desaparicion,
+ * Los 95 tipos de accion. El ORDEN de esta tupla es el del Anexo A (dinero, desaparicion,
  * permisos) mas las integraciones de SL-36, los modulos de SL-23 y el plan de SL-24 (y su tipo de cobro, D16, y
- * el cambio cancelado, SLT-86) y el tope de intentos de SLT-77, y es el que consume el selector de filtros: no se
+ * el cambio cancelado, SLT-86), el tope de intentos de SLT-77 y la mora de SLT-121, y es el que consume el selector de filtros: no se
  * reordena por gusto.
  */
 export const HISTORIAL_ACCION_TIPOS = [
@@ -430,6 +430,20 @@ export const HISTORIAL_ACCION_TIPOS = [
   // deja fila. Misma entidad (`plan`, el del pendiente) y misma categoria. `valor_nuevo` = «AAAA-MM-DD ·
   // tipo» del cambio que no llegó a regir.
   "plan_cambio_empresa_cancelado", // PlanesRepository.cancelarPendienteDeEmpresaEnTx
+
+  // --- A.7 · mora y congelamiento de una empresa (5) ---
+  // SLT-121 (design §1.2, §5, §7.3; R30): categoria propia. Congelar no mueve dinero (no hay asiento), no
+  // borra nada y no cambia quien puede hacer que: decide si la empresa OPERA. Entidad `organizacion`.
+  //   - `empresa_congelada`: `valor_nuevo` = numeros de las facturas vencidas, `monto` = saldo vencido;
+  //   - `empresa_descongelada_a_mano`: `valor_nuevo` = «hasta AAAA-MM-DD — <motivo>». Es la SEGUNDA
+  //     excepcion declarada a «nada de texto libre en la fila» (decision P5; la vigila
+  //     `historial-accion-sin-datos-cliente`);
+  //   - `factura_dias_gracia_cambiada`: `valor_anterior`/`valor_nuevo` = «15» o «7 (global)».
+  "empresa_congelada", // MoraEmpresaRepository.congelarSiVencida (T2.4)
+  "empresa_descongelada_por_pago", // mora-recalcular.recalcularCongelamiento (T2.5)
+  "empresa_descongelada_a_mano", // MoraEmpresaRepository.descongelarAMano (T2.4)
+  "empresa_descongelada_por_gracia", // mora-recalcular.recalcularCongelamiento (T2.5)
+  "factura_dias_gracia_cambiada", // MoraEmpresaRepository.fijarGracia (T2.4)
 ] as const satisfies readonly PrismaHistorialAccionTipo[];
 
 export type HistorialAccionTipo = (typeof HISTORIAL_ACCION_TIPOS)[number];
@@ -512,6 +526,8 @@ export const CATEGORIAS_ACCION = [
   "cambia_modulos",
   // SL-24 (design §9): la sexta, para el plan asignado a una empresa.
   "cambia_plan",
+  // SLT-121 (design §7.3): la septima, para la mora y el congelamiento de una empresa.
+  "mora",
 ] as const;
 
 export type CategoriaAccion = (typeof CATEGORIAS_ACCION)[number];
@@ -643,6 +659,12 @@ export const CATEGORIA_POR_ACCION: Record<HistorialAccionTipo, CategoriaAccion> 
   plan_tipo_cobro_cambiado: "cambia_plan",
   // SLT-86: cancelar un cambio pendiente; tampoco mueve dinero.
   plan_cambio_empresa_cancelado: "cambia_plan",
+  // SLT-121 (design §7.3): los cinco en su categoria propia.
+  empresa_congelada: "mora",
+  empresa_descongelada_por_pago: "mora",
+  empresa_descongelada_a_mano: "mora",
+  empresa_descongelada_por_gracia: "mora",
+  factura_dias_gracia_cambiada: "mora",
 };
 
 /** Etiqueta legible de cada tipo. Exhaustiva por el mismo mecanismo que la categoria. */
@@ -743,6 +765,13 @@ export const ACCION_LABELS: Record<HistorialAccionTipo, string> = {
   plan_asignado: "Asignó un plan a una empresa",
   plan_tipo_cobro_cambiado: "Cambió el tipo de cobro del plan de una empresa",
   plan_cambio_empresa_cancelado: "Canceló el cambio de plan pendiente de una empresa",
+  // SLT-121 (R30): verbo en pasado con la persona como sujeto (o el sistema). Sin «la empresa»: SL-15 R4 la
+  // reserva a la marca (`EMPRESA`), y aqui la empresa es la de la fila.
+  empresa_congelada: "Congeló la operación por mora",
+  empresa_descongelada_por_pago: "Descongeló la operación por un pago",
+  empresa_descongelada_a_mano: "Descongeló a mano la operación",
+  empresa_descongelada_por_gracia: "Descongeló la operación por un cambio de gracia",
+  factura_dias_gracia_cambiada: "Cambió los días de gracia para pagar las facturas",
 };
 
 /** Etiqueta legible de cada categoria, para el selector de filtros y la descarga. */
@@ -753,6 +782,7 @@ export const CATEGORIA_LABELS: Record<CategoriaAccion, string> = {
   cambia_integraciones: "Cambia integraciones",
   cambia_modulos: "Cambia módulos",
   cambia_plan: "Cambia el plan",
+  mora: "Mora y congelamiento", // SLT-121 (design §7.3)
 };
 
 /** Etiqueta legible de cada tipo de entidad. */

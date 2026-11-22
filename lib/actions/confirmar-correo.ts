@@ -7,6 +7,7 @@ import {
 import type { IConfirmarCorreoService } from "@/lib/interfaces/services/IConfirmarCorreoService";
 import { comoPlataforma, conEmpresa } from "@/lib/db/contexto-empresa";
 import { getPrismaClient } from "@/lib/db/prisma-client";
+import { permitidoEnMora } from "@/lib/db/permiso-en-mora";
 import { UserRepository } from "@/lib/repositories/UserRepository";
 import { ConfirmarCorreoService } from "@/lib/services/ConfirmarCorreoService";
 import { ResetRateLimiter } from "@/lib/utils/reset-rate-limit";
@@ -53,5 +54,6 @@ export async function confirmarCambioCorreo(
   if (organizacionId === null) return { status: "invalid_or_expired" }; // R1623
 
   // El canje corre bajo la RLS de esa empresa: el UPDATE y la fila del Histórico.
-  return conEmpresa(organizacionId, () => service.confirmar(entrada));
+  // SLT-121 (design §6.1; R11): confirmar el propio correo vale también con la empresa congelada.
+  return permitidoEnMora("cuenta_propia", () => conEmpresa(organizacionId, () => service.confirmar(entrada)));
 }

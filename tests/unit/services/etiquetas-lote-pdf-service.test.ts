@@ -581,13 +581,12 @@ describe("SL-21 R14 · EtiquetasLotePdfService con la moneda del pais", () => {
     expect(buildStub).not.toHaveBeenCalled();
   });
 
-  it("el dato `montoCobrar` de la etiqueta se pinta en la moneda recibida; sin ella, en la de CR", () => {
+  it("el dato `montoCobrar` de la etiqueta se pinta en la moneda recibida", () => {
     const e = { ...etiqueta(1), montoCobrar: 1234567 };
-    const monto = (moneda?: FormatoMoneda) =>
+    const monto = (moneda: FormatoMoneda) =>
       datosDeEtiqueta(e, moneda).find((d) => d.id === "montoCobrar")?.valor;
     expect(monto(MONEDA_DE_PRUEBA)).toBe("€1 234 567");
     expect(monto(MONEDA_CR)).toBe("₡1.234.567");
-    expect(monto()).toBe("₡1.234.567"); // el generador del navegador, sin pais (SLT-235)
   });
 
   it("con el generador REAL, el PDF que se sube lleva el importe en la moneda del pais", async () => {

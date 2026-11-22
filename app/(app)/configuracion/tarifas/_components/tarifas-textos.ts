@@ -1,6 +1,6 @@
 import type { GestionResultado, TarifaActor, TarifaConcepto } from "@prisma/client";
 
-import { money, monedaConfig } from "@/lib/config/moneda";
+import { formatearMontoEn, MONEDA_PLATAFORMA, SIN_MONTO_RAYA, type FormatoMoneda } from "@/lib/config/moneda";
 import { CATALOGO_CONCEPTOS, type EntradaCatalogo } from "@/lib/tarifas/catalogo";
 import type { ConceptoEsencial } from "@/lib/tarifas/faltantes";
 import type { Referencia } from "@/lib/tarifas/referencia-vigente";
@@ -72,8 +72,9 @@ export const PESTANAS: readonly { actor: TarifaActor; nombre: string }[] = [
   { actor: "satelite", nombre: "Pago a la satélite" },
 ];
 
-export function etiquetaModo(modo: ModoTarifa): string {
-  return modo === "monto" ? `Monto ${monedaConfig.simbolo}` : "%";
+/** R2 (SLT-241): el símbolo del modo monto es el de la moneda del país. */
+export function etiquetaModo(modo: ModoTarifa, moneda: FormatoMoneda): string {
+  return modo === "monto" ? `Monto ${moneda.simbolo}` : "%";
 }
 
 /** La maqueta: la comision se pacta en %. Un `3,5` en monto cobraria 3,5 de moneda por orden sin que nadie lo note. */
@@ -115,25 +116,42 @@ export function enumerar(partes: readonly string[]): string {
   return `${partes.slice(0, -1).join(", ")} y ${partes[partes.length - 1]}`;
 }
 
-/** `"3.50"` → `3,5`; `"13.00"` → `13`. Sobre el texto: un porcentaje de dinero no pasa por `number`. */
-export function porcentajeParaVer(valor: string): string {
+/**
+ * `"3.50"` → `3,5`; `"13.00"` → `13`. Sobre el texto: un porcentaje de dinero no pasa por `number`. R3
+ * (SLT-241): el separador decimal es el de la moneda del país.
+ */
+export function porcentajeParaVer(valor: string, moneda: FormatoMoneda): string {
   const sinCeros = valor.includes(".") ? valor.replace(/\.?0+$/, "") : valor;
-  return sinCeros.replace(".", monedaConfig.separadorDecimal);
+  return sinCeros.replace(".", moneda.separadorDecimal);
 }
 
-function conIva(texto: string, ivaPct: string | null): string {
-  return ivaPct === null ? texto : `${texto} + ${porcentajeParaVer(ivaPct)} % IVA`;
+/**
+ * SLT-241 — `porcentajeParaVer` con la moneda de la plataforma, para los textos que todavía no pasan a la
+ * moneda del país (la fila de gestión de cierres). Tiene nombre propio para que el llamante diga POR QUÉ no
+ * usa la del país, como `MONEDA_DE_LOS_PLANES`.
+ */
+export function porcentajeParaVerEnLaPlataforma(valor: string): string {
+  return porcentajeParaVer(valor, MONEDA_PLATAFORMA);
+}
+
+/** R1 (SLT-241): un importe de la pantalla, con la moneda del país y la raya larga de siempre sin importe. */
+function importe(valor: string, moneda: FormatoMoneda): string {
+  return formatearMontoEn(moneda, valor, SIN_MONTO_RAYA);
+}
+
+function conIva(texto: string, ivaPct: string | null, moneda: FormatoMoneda, impuesto: string): string {
+  return ivaPct === null ? texto : `${texto} + ${porcentajeParaVer(ivaPct, moneda)} % ${impuesto}`;
 }
 
 /** R22: un importe, un porcentaje, «Varía», «No cobra», «No paga» o «Sin tarifa». */
-export function textoReferencia(referencia: Referencia): string {
+export function textoReferencia(referencia: Referencia, moneda: FormatoMoneda, impuesto: string): string {
   switch (referencia.tipo) {
     case "monto":
-      return conIva(money(referencia.valor), referencia.ivaPct);
+      return conIva(importe(referencia.valor, moneda), referencia.ivaPct, moneda, impuesto);
     case "porcentaje":
-      return conIva(`${porcentajeParaVer(referencia.valor)} %`, referencia.ivaPct);
+      return conIva(`${porcentajeParaVer(referencia.valor, moneda)} %`, referencia.ivaPct, moneda, impuesto);
     case "varia":
-      return `Varía: ${money(referencia.desde)} a ${money(referencia.hasta)}`;
+      return `Varía: ${importe(referencia.desde, moneda)} a ${importe(referencia.hasta, moneda)}`;
     case "no_cobra":
       return "No cobra";
     case "no_paga":
@@ -143,12 +161,29 @@ export function textoReferencia(referencia: Referencia): string {
   }
 }
 
-export function textoValorSinIva(valor: Pick<TarifaValorDTO, "modo" | "valor">): string {
-  return valor.modo === "monto" ? money(valor.valor) : `${porcentajeParaVer(valor.valor)} %`;
+export function textoValorSinIva(valor: Pick<TarifaValorDTO, "modo" | "valor">, moneda: FormatoMoneda): string {
+  return valor.modo === "monto" ? importe(valor.valor, moneda) : `${porcentajeParaVer(valor.valor, moneda)} %`;
 }
 
-export function textoValor(valor: Pick<TarifaValorDTO, "modo" | "valor" | "ivaPct">): string {
-  return conIva(textoValorSinIva(valor), valor.ivaPct);
+export function textoValor(
+  valor: Pick<TarifaValorDTO, "modo" | "valor" | "ivaPct">,
+  moneda: FormatoMoneda,
+  impuesto: string,
+): string {
+  return conIva(textoValorSinIva(valor, moneda), valor.ivaPct, moneda, impuesto);
+}
+
+/** R4 (SLT-241): los textos de la pantalla que nombran el impuesto, con el nombre del impuesto del país. */
+export function textosDelImpuesto(impuesto: string) {
+  return {
+    colImpuesto: impuesto,
+    impuestoDe: (concepto: string) => `${impuesto} de ${concepto}`,
+    notaMensajero: `Sin ${impuesto}. Por defecto vale para todos los vehículos; se puede fijar un valor por vehículo.`,
+    notaSatelite: `Sin ${impuesto}. Pagas a la satélite solo por los resultados que definas.`,
+    impuestoObligatorio: `Digita el ${impuesto} de este cobro. Si no lleva, escribe 0.`,
+    mensajerosBase: `En % se calcula sobre el flete sin ${impuesto} que se le cobra a la tienda por esa gestión.`,
+    sinImpuesto: `Sin ${impuesto}.`,
+  } as const;
 }
 
 export function textoEstadoZona(estado: "completa" | "faltan" | "sin_empezar", faltantes: number): string {
@@ -201,12 +236,10 @@ export const TEXTOS = {
   colConcepto: "Concepto",
   colModo: "Modo",
   colValor: "Valor",
-  colIva: "IVA",
   colHoy: "Hoy rige",
   hoy: (texto: string) => `Hoy rige: ${texto}`,
   modoDe: (concepto: string) => `Modo de ${concepto}`,
   valorDe: (concepto: string) => `Valor de ${concepto}`,
-  ivaDe: (concepto: string) => `IVA de ${concepto}`,
 
   sinDefinir: "Sin definir",
   usaZona: "Usa la zona",
@@ -216,8 +249,6 @@ export const TEXTOS = {
   vacioTienda: "Un campo vacío usa el valor general.",
   ceroCobra: "Un 0 escrito cobra 0.",
   ceroPaga: "Un 0 escrito paga 0.",
-  notaMensajero: "Sin IVA. Por defecto vale para todos los vehículos; se puede fijar un valor por vehículo.",
-  notaSatelite: "Sin IVA. Pagas a la satélite solo por los resultados que definas.",
 
   guardarBorrador: "Guardar borrador",
   guardarCambios: "Guardar cambios",
@@ -226,7 +257,6 @@ export const TEXTOS = {
   guardadoParcial: "Lo demás se guardó. Revisa las filas marcadas: conservan lo que digitaste.",
   guardadoNinguno: "No se pudo guardar. Revisa las filas marcadas: conservan lo que digitaste.",
   errorGuardar: "No se pudo guardar. Lo digitado sigue aquí: vuelve a intentarlo.",
-  ivaObligatorio: "Digita el IVA de este cobro. Si no lleva, escribe 0.",
   filaNoExiste: "Este valor ya no existe. Recarga la pantalla.",
   filaSinPermiso: "No tienes permiso para cambiar este valor.",
   filaError: "No se pudo guardar este concepto. Vuelve a intentarlo.",
@@ -325,7 +355,6 @@ export const TEXTOS = {
 
   mensajerosTitulo: "Mensajeros con valor propio",
   mensajerosNota: "Gana sobre el grupo y la zona, en cualquier zona donde trabaje. Lo que no digites usa el valor de la zona.",
-  mensajerosBase: "En % se calcula sobre el flete sin IVA que se le cobra a la tienda por esa gestión.",
   mensajerosSinActivar: "Lo que digites aquí no cambia ningún pago hasta que actives las tarifas nuevas.",
   mensajerosEnVigor: "Un cambio aplica desde el siguiente cierre. Los cierres ya hechos no cambian.",
   anadirMensajero: "Añadir mensajero",
@@ -356,6 +385,5 @@ export const TEXTOS = {
   elegirMensajero: "Elige el mensajero",
   sinMensajeros: "No hay mensajeros para añadir. Todos los activos ya tienen valor propio, o aún no hay ninguno: se crean en Usuarios.",
   mensajeroInactivoNota: "Este mensajero está inactivo: puedes cambiar o quitar sus valores, pero no añadir otros.",
-  sinIva: "Sin IVA.",
   cerrar: "Cerrar",
 } as const;

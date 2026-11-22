@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { baseUrlDeLaApp } from "@/lib/config/app-url";
 import { emailContacto } from "@/lib/config/email";
+import { diasDeGraciaGlobal } from "@/lib/config/factura-gracia";
 import { getPrismaClient } from "@/lib/db/prisma-client";
 import type { IEmailSender } from "@/lib/interfaces/external/IEmailSender";
 import type { IFacturaPlataformaRepository } from "@/lib/interfaces/repositories/IFacturaPlataformaRepository";
@@ -11,6 +12,7 @@ import type { JobHandler } from "@/lib/interfaces/services/IJobQueueService";
 import type { FacturaEmitidaContexto } from "@/lib/notificaciones/emitir";
 import { emitirFacturaEmitidaReal } from "@/lib/notificaciones/notificadores";
 import { FacturaPlataformaRepository } from "@/lib/repositories/FacturaPlataformaRepository";
+import { MoraEmpresaRepository } from "@/lib/repositories/MoraEmpresaRepository";
 import { PlanesRepository } from "@/lib/repositories/PlanesRepository";
 import { crearEmailSender } from "@/lib/services/EmailProvider";
 import { plantillaFacturaEmitida } from "@/lib/services/email/plantillas/factura-emitida";
@@ -34,6 +36,11 @@ export interface DepsAvisoFactura {
   contacto: string | null;
   /** URL base de la app, o `null`: el correo sale sin botón (R29). */
   urlApp: string | null;
+  /**
+   * SLT-121 (R25): la gracia vigente de la empresa del trabajo (la propia o la global), para la fecha límite del
+   * correo. Se lee al enviar: si el superadmin la cambió entre el cierre y el envío, el correo dice la nueva.
+   */
+  graciaDeLaEmpresa: () => Promise<number>;
 }
 
 const payloadSchema = z.object({ facturaId: z.string().min(1) });
@@ -52,7 +59,8 @@ export function facturaDelPayload(job: Pick<JobDTO, "payload">): string {
  *   3. crea el aviso de la campanita al maestro. Si lanza, el trabajo falla antes de enviar nada y se
  *      reintenta; el reintento no lo duplica, porque la entidad es la factura (R22);
  *   4. lee los maestros activos; sin ninguno, termina con el aviso ya creado (R28);
- *   5. envía un correo por maestro (R26). Si alguno falla, sigue con los demás y después lanza, sin correos en el
+ *   5. SLT-121 (R25): lee la gracia vigente de la empresa, para la fecha límite del correo;
+ *   6. envía un correo por maestro (R26). Si alguno falla, sigue con los demás y después lanza, sin correos en el
  *      motivo (R27).
  */
 export function crearFacturaAvisoHandler(deps: () => DepsAvisoFactura): JobHandler {
@@ -60,7 +68,7 @@ export function crearFacturaAvisoHandler(deps: () => DepsAvisoFactura): JobHandl
     const organizacionId = empresaDelJob(job);
     if (organizacionId === null) throw new Error("factura_plataforma_aviso: el trabajo no tiene empresa");
     const facturaId = facturaDelPayload(job);
-    const { facturas, destinatarios, emitirAviso, sender, contacto, urlApp } = deps();
+    const { facturas, destinatarios, emitirAviso, sender, contacto, urlApp, graciaDeLaEmpresa } = deps();
 
     const factura = (await facturas.deLaEmpresa()).find((f) => f.id === facturaId);
     if (factura === undefined || factura.estado !== "cerrada" || factura.numero === null) return;
@@ -69,6 +77,7 @@ export function crearFacturaAvisoHandler(deps: () => DepsAvisoFactura): JobHandl
 
     const destino = await destinatarios.destinatariosDelAviso(organizacionId, null);
     if (destino === null || destino.maestros.length === 0) return;
+    const gracia = await graciaDeLaEmpresa();
 
     let fallidos = 0;
     for (const maestro of destino.maestros) {
@@ -81,6 +90,7 @@ export function crearFacturaAvisoHandler(deps: () => DepsAvisoFactura): JobHandl
             factura,
             contacto,
             urlApp,
+            gracia,
           }),
         );
       } catch {
@@ -105,5 +115,6 @@ export function buildDepsAvisoFactura(): DepsAvisoFactura {
     sender: crearEmailSender(),
     contacto: emailContacto(),
     urlApp: baseUrlDeLaApp(),
+    graciaDeLaEmpresa: () => new MoraEmpresaRepository(getPrismaClient()).graciaDeLaEmpresa(diasDeGraciaGlobal()),
   };
 }

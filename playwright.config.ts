@@ -201,6 +201,9 @@ export default defineConfig({
         // SLT-119 R19: las facturas de la plataforma en «Mi plan» y en la pestaña «Facturación»; cierra una
         // factura de su empresa con la función de cierre de la base y usa el superadmin de prueba.
         "facturas-plataforma",
+        // SLT-121 · R35: la empresa con una factura vencida se congela, paga desde la wallet y el superadmin la
+        // descongela al confirmar. Cierra la factura con la función de la base y usa el superadmin de prueba.
+        "mora-congelamiento",
         // SLT-156 A · R490-R492, R497, R501: Reparto a 360/414 px y «Gestiones» de /cierre-dia con importes.
         "pwa-mensajero-base",
         // SLT-165, rebanada D de SLT-156 · R523-R537: /cierre-dia a 360/414 px, tarjetas, barra fija y «Ver».

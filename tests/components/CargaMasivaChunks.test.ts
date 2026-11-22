@@ -147,6 +147,38 @@ describe("carga-masiva-chunks — procesarEnChunks", () => {
 
     expect(error).toBeInstanceOf(ChunkRequestError);
     expect((error as ChunkRequestError).status).toBe(401);
+    expect((error as ChunkRequestError).codigo).toBeNull();
+  });
+
+  // SLT-121 (R14, design §6.3): el 403 de la empresa congelada lleva `details.codigo`; el cliente lo
+  // conserva en el error para que la pantalla pinte el texto exacto.
+  it("SLT-121/R14: lanza ChunkRequestError con codigo empresa_congelada si el lote responde 403 de mora", async () => {
+    const cuerpo = JSON.stringify({
+      status: "error",
+      code: "FORBIDDEN",
+      message: "Empresa suspendida por falta de pago.",
+      details: { codigo: "empresa_congelada" },
+    });
+    const fetchImpl = vi.fn(
+      async () => new Response(cuerpo, { status: 403, headers: { "Content-Type": "application/json" } }),
+    ) as unknown as typeof fetch;
+
+    const error = await procesarEnChunks([fila("A", 1)], { dryRun: true, chunkSize: 10, fetchImpl }).catch(
+      (e: unknown) => e,
+    );
+
+    expect(error).toBeInstanceOf(ChunkRequestError);
+    expect((error as ChunkRequestError).status).toBe(403);
+    expect((error as ChunkRequestError).codigo).toBe("empresa_congelada");
+  });
+
+  it("SLT-121/R14: un cuerpo de error que no es JSON deja codigo en null", async () => {
+    const fetchImpl = vi.fn(async () => new Response("nope", { status: 500 })) as unknown as typeof fetch;
+    const error = await procesarEnChunks([fila("A", 1)], { dryRun: true, chunkSize: 10, fetchImpl }).catch(
+      (e: unknown) => e,
+    );
+    expect((error as ChunkRequestError).status).toBe(500);
+    expect((error as ChunkRequestError).codigo).toBeNull();
   });
 });
 

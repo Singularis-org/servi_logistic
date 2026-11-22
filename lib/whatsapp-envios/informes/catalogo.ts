@@ -59,6 +59,8 @@ export interface VariableCatalogo {
   nombre: string;
   descripcion: string;
   ejemplo: string;
+  /** SLT-241 (R13): importe crudo de una variable de importe; la pantalla lo pinta en la moneda del pais. */
+  importeEjemplo?: string;
 }
 
 /**

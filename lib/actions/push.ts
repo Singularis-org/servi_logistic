@@ -24,6 +24,7 @@ import { PushEndpointPlataformaRepository } from "@/lib/repositories/PushEndpoin
 import { PushSuscripcionRepository } from "@/lib/repositories/PushSuscripcionRepository";
 import { UsuarioPreferenciaRepository } from "@/lib/repositories/UsuarioPreferenciaRepository";
 import { getPrismaClient } from "@/lib/db/prisma-client";
+import { permitidoEnMora } from "@/lib/db/permiso-en-mora";
 import { clavePublicaPush } from "@/lib/config/push";
 import { resolveActorFromSession } from "@/lib/auth/resolve-actor";
 import { esPlataforma } from "@/lib/auth/plataforma";
@@ -131,7 +132,9 @@ export async function registrarSuscripcionPush(
       data.endpoint,
       actor.organizacionId ?? "",
     );
-    await (deps.repo ?? buildRepo()).registrar(actor.usuarioId, data);
+    // SLT-121 (design §6.1, decision P2): activar los avisos de la propia persona vale con la empresa
+    // congelada. Lo de arriba corre en plataforma y no lo frena la mora.
+    await permitidoEnMora("cuenta_propia", () => (deps.repo ?? buildRepo()).registrar(actor.usuarioId, data));
 
     // ⚠️ LA SUSCRIPCION PRIMERO Y LA PREFERENCIA DESPUES, Y EL FALLO DE LA SEGUNDA NO SE PROPAGA.
     // No es descuido: es lo mismo que R12 pide para la baja, por el lado del alta, y aqui tiene
@@ -142,7 +145,9 @@ export async function registrarSuscripcionPush(
     // quedaria sin avisos por una columna que no decide a donde sale un push (R6). El fallo no se
     // absorbe en silencio: queda registrado con su operacion y su causa (docs/conventions.md).
     try {
-      await (deps.preferenciaRepo ?? buildPreferenciaRepo()).fijarAvisosPush(actor.usuarioId, true);
+      await permitidoEnMora("cuenta_propia", () =>
+        (deps.preferenciaRepo ?? buildPreferenciaRepo()).fijarAvisosPush(actor.usuarioId, true),
+      );
     } catch (error) {
       console.error("[push] anotar la preferencia de avisos fallo", error);
     }
@@ -174,7 +179,10 @@ export async function olvidarPreferenciaDeAvisos(
     const actor = await actorRequerido(deps);
     // No tiene preferencia guardada: «no» ya es su estado, y no hay nada que borrar.
     if (sinCanalDeEmpresa(actor)) return { status: "ok" as const };
-    await (deps.preferenciaRepo ?? buildPreferenciaRepo()).fijarAvisosPush(actor.usuarioId, false);
+    // SLT-121 (decision P2): la preferencia propia, también con la empresa congelada.
+    await permitidoEnMora("cuenta_propia", () =>
+      (deps.preferenciaRepo ?? buildPreferenciaRepo()).fijarAvisosPush(actor.usuarioId, false),
+    );
     return { status: "ok" as const };
   });
   return isAppErrorShape(r) ? toActionError(r) : r;
@@ -200,7 +208,8 @@ export async function eliminarSuscripcionPush(
     const data = eliminarSuscripcionSchema.parse(input);
     // Ninguna suscripción es suya, y «nada que borrar» ya es `ok` (lo necesita el cierre de sesión).
     if (sinCanalDeEmpresa(actor)) return { status: "ok" as const };
-    await (deps.repo ?? buildRepo()).eliminarDeUsuario(actor.usuarioId, data.endpoint);
+    // SLT-121 (decision P2): la baja de su propio dispositivo, también con la empresa congelada.
+    await permitidoEnMora("cuenta_propia", () => (deps.repo ?? buildRepo()).eliminarDeUsuario(actor.usuarioId, data.endpoint));
     return { status: "ok" as const };
   });
   return isAppErrorShape(r) ? toActionError(r) : r;

@@ -45,6 +45,9 @@ function filaPorHash(keyHash: string) {
 }
 
 const prismaDoble = {
+  // SLT-121 (design §6.2): la puerta de la mora de las rutas de escritura (`exigirEmpresaOperativa`) lee
+  // `MoraEmpresaRepository.estaCongelada()` por SQL a mano; aquí la empresa nunca está congelada.
+  $queryRaw: vi.fn(async () => [{ congelada: false }]),
   apiKey: {
     findUnique: vi.fn(async (args: { where: { keyHash?: string; id?: string } }) => {
       if (args.where.keyHash !== undefined) {

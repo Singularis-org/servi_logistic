@@ -102,6 +102,8 @@ function dobles(o: {
   /** Los destinatarios cuyo envío lanza. */
   fallanA?: string[];
   urlApp?: string | null;
+  /** SLT-121 R25: la gracia vigente de la empresa. */
+  gracia?: number;
 } = {}): Dobles {
   const enviados: EmailMessage[] = [];
   const pasos: string[] = [];
@@ -137,6 +139,10 @@ function dobles(o: {
     },
     contacto: "soporte@plataforma.test",
     urlApp: o.urlApp === undefined ? "https://app.test" : o.urlApp,
+    graciaDeLaEmpresa: async () => {
+      pasos.push("leer gracia");
+      return o.gracia ?? 7;
+    },
   };
   return { deps, pasos, avisos, consultas, enviados };
 }
@@ -145,7 +151,7 @@ describe("SLT-136/R22 — el trabajo avisa una vez, en el orden de §7.2", () =>
   it("⭑ lee la factura, crea el aviso con su número y su período, lee los maestros activos y les envía el correo", async () => {
     const d = dobles();
     await crearFacturaAvisoHandler(() => d.deps)(job());
-    expect(d.pasos).toEqual(["leer factura", "aviso", "leer maestros", "enviar a@uno.test", "enviar b@uno.test"]);
+    expect(d.pasos).toEqual(["leer factura", "aviso", "leer maestros", "leer gracia", "enviar a@uno.test", "enviar b@uno.test"]);
     expect(d.avisos).toEqual([
       {
         facturaId: ID,
@@ -208,7 +214,7 @@ describe("SLT-136/R27 — un envío que falla", () => {
     );
     expect(error?.message).toBe("factura_plataforma_aviso: fallaron 1 de 2 envío(s) a la empresa org-a");
     expect(error?.message).not.toContain("@");
-    expect(d.pasos).toEqual(["leer factura", "aviso", "leer maestros", "enviar a@uno.test", "enviar b@uno.test"]);
+    expect(d.pasos).toEqual(["leer factura", "aviso", "leer maestros", "leer gracia", "enviar a@uno.test", "enviar b@uno.test"]);
     expect(d.enviados.map((m) => m.to)).toEqual(["b@uno.test"]);
   });
 
@@ -237,7 +243,7 @@ describe("SLT-136/R25 — una factura de ₡0 avisa igual", () => {
       facturas: [factura({ cargos: "0.00", reversos: "0.00", movimientos: 0, totalOrdenes: "0.00", total: "0.00" })],
     });
     await crearFacturaAvisoHandler(() => d.deps)(job());
-    expect(d.pasos).toEqual(["leer factura", "aviso", "leer maestros", "enviar a@uno.test", "enviar b@uno.test"]);
+    expect(d.pasos).toEqual(["leer factura", "aviso", "leer maestros", "leer gracia", "enviar a@uno.test", "enviar b@uno.test"]);
     expect(d.avisos).toHaveLength(1);
     // R25 + R26: el correo también sale, con sus importes en cero.
     expect(d.enviados).toHaveLength(2);
@@ -317,10 +323,35 @@ describe("SLT-136/R30 — en la cola: con manejador, de núcleo y no recurrente"
     registro.length = 0;
     try {
       await buildHandlers(() => AHORA).get("factura_plataforma_aviso")!(job());
-      expect(d.pasos).toEqual(["leer factura", "aviso", "leer maestros", "enviar a@uno.test", "enviar b@uno.test"]);
+      expect(d.pasos).toEqual(["leer factura", "aviso", "leer maestros", "leer gracia", "enviar a@uno.test", "enviar b@uno.test"]);
       expect(registro[0]?.contexto).toMatchObject({ organizacionId: ORG });
     } finally {
       depsCableadas = null;
     }
+  });
+});
+
+describe("SLT-121/R25 — el correo de cierre lleva la fecha límite con la gracia de la empresa", () => {
+  it("⭑ lee la gracia vigente de la empresa y se la pasa a la plantilla: 15 días desde el 1 dic", async () => {
+    const d = dobles({ gracia: 15 });
+    await crearFacturaAvisoHandler(() => d.deps)(job());
+    expect(d.enviados).toHaveLength(2);
+    expect(d.enviados[0]!.text).toContain("Paga hasta el 16/12/2026.");
+    expect(d.enviados[1]!.text).toContain("Paga hasta el 16/12/2026.");
+  });
+
+  it("con la global (7) dice el 8 dic; con total 0 no hay fecha", async () => {
+    const d = dobles();
+    await crearFacturaAvisoHandler(() => d.deps)(job());
+    expect(d.enviados[0]!.text).toContain("Paga hasta el 08/12/2026.");
+    const cero = dobles({ facturas: [factura({ total: "0.00" })] });
+    await crearFacturaAvisoHandler(() => cero.deps)(job());
+    expect(cero.enviados[0]!.text).not.toContain("Paga hasta");
+  });
+
+  it("sin maestros no lee la gracia", async () => {
+    const d = dobles({ destino: { empresaNombre: "Tienda Uno", maestros: [] } });
+    await crearFacturaAvisoHandler(() => d.deps)(job());
+    expect(d.pasos).not.toContain("leer gracia");
   });
 });
