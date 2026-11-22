@@ -396,11 +396,12 @@ describe("SLT-242 R16 — la lista de excepciones de `pais-sin-literales` pierde
     );
   });
 
-  it("el tope baja a 12 y la lista no lo supera", async () => {
+  it("el tope queda en 12 o menos y la lista no lo supera", async () => {
     const { EXCEPCIONES_PAIS_SIN_LITERALES, TOPE_EXCEPCIONES } = await import(
       "@/tests/unit/guards/_pais-sin-literales-excepciones"
     );
-    expect(TOPE_EXCEPCIONES).toBe(12);
+    // Rebanadas posteriores de SLT-235 bajan el tope: se fija como maximo, no exacto.
+    expect(TOPE_EXCEPCIONES).toBeLessThanOrEqual(12);
     expect(EXCEPCIONES_PAIS_SIN_LITERALES.length).toBeLessThanOrEqual(TOPE_EXCEPCIONES);
   });
 });
