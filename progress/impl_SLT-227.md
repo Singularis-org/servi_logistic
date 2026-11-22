@@ -104,6 +104,68 @@ Lo comprobó el leader: la migración más alta de `origin/dev` y de `origin/fea
 Veredicto: T0 y T1 cerradas en verde; T2.1 hecha y en verde en typecheck y en su test, pero no cerrada por el choque
 de `"rechazada"` con la guardia 455/R40, que pide decisión.
 
+## T2.2–T2.6 — Las credenciales (2026-11-21)
+
+**Archivos:**
+- nuevos: `lib/interfaces/repositories/ICobroCredencialRepository.ts`, `lib/repositories/CobroCredencialRepository.ts`,
+  `lib/interfaces/services/ICobroCredencialService.ts`, `lib/services/CobroCredencialService.ts`,
+  `scripts/cobro-credencial-guardar.ts`, `tests/unit/services/cobro-credencial-service.test.ts`;
+- modificados: `lib/db/excepciones-aislamiento.ts` (entrada `SL-36` del repositorio), `package.json`
+  (`"cobro:credencial"`, un script, no una dependencia), `lib/services/RecifradoIntegracionesService.ts`,
+  `scripts/recifrar-integraciones.ts`, `tests/integration/db/cobro-proveedor-credencial.test.ts` (bloque T2.4),
+  `tests/integration/db/recifrado-integraciones.test.ts` (los casos SL-36 pasan un repositorio de plataforma vacío;
+  sus afirmaciones no cambian).
+
+**Decisiones de implementación (dentro del spec):**
+- `guardar` del repositorio: `INSERT … ON CONFLICT (proveedor, pais_id, entorno) DO UPDATE … WHERE id = EXCLUDED.id
+  RETURNING id`; 0 filas ⇒ `conflicto`. La `23503` ⇒ `pais_no_existe`. `estado` lee solo
+  `jsonb_object_keys(secretos)` y la fecha como texto ISO UTC (`to_char`), para no depender de cómo el driver lee un
+  `timestamp` sin zona.
+- `validation_error` lleva `campos: string[]` (design §8.3: «no repite el valor, solo el nombre del campo»). Una clave
+  de más se nombra en genérico (`campo_no_reconocido`), porque la escribió quien llama.
+- El lector traduce solo `CredencialIlegibleError` a `ProveedorCobroError("credencial_ilegible")` (con
+  `operacion: null`: el lector no sabe qué operación lo pidió); `ConfiguracionBovedaError` y el resto salen tal cual
+  (design §4).
+- `ORGANIZACION_PLATAFORMA_EN_BOVEDA` vive en `CobroCredencialService.ts` y lo importa el recifrado.
+- El comando acepta `--x v` y `--x=v`; una bandera repetida, que falte o cualquier otro argumento ⇒ 1 con «Argumento
+  no reconocido o incompleto», sin repetirlo. Una línea de stdin sin `campo=valor` o un campo repetido ⇒ 1.
+- `RecifradoDeps.plataforma` es obligatorio; la pasada corre después de `recorrerEmpresas` con el mismo `catch` que
+  cuenta en `empresasConError`.
+
+**Salidas (base de la feature, `NODE_OPTIONS=--max-old-space-size=8192`):**
+- `pnpm run typecheck`: sin errores (tras cada task).
+- `eslint` de cada archivo tocado: sin errores ni avisos.
+- T2.2: guardias `plataforma-solo-en-lista` y `sql-a-mano-por-empresa`: `Test Files 2 passed (2) · Tests 26 passed (26)`.
+- T2.3 + T2.5: `tests/unit/services/cobro-credencial-service.test.ts`: `Tests 15 passed (15)`.
+- T2.4: `tests/integration/db/cobro-proveedor-credencial.test.ts`: `Tests 12 passed (12)` (7 de T1.3 + 5 nuevos).
+- T2.6: `tests/integration/db/recifrado-integraciones.test.ts`: `Tests 5 passed (5)` (3 de SL-36 + 2 de R13).
+- `tests/guards/guard-dependencias-aprobadas.test.ts`: `2 passed`.
+- Pasada final, 10 archivos (los 4 de arriba, `cobro-intento-service`, y las guardias `plataforma-solo-en-lista`,
+  `sql-a-mano-por-empresa`, `organizacion-en-modelos`, `credenciales-sin-consola-cruda`,
+  `sin-credenciales-de-entorno`, `quitador-comentarios`): `Test Files 10 passed (10) · Tests 179 passed (179)`.
+
+**Mutaciones (una a la vez, revertidas):**
+- **5** (contexto de la bóveda sin el id de la fila: `integracionId: "cobro"`): `Tests 1 failed | 11 passed (12)`;
+  cae «R7: un secreto copiado a otro trío o a otro campo da credencial_ilegible» («copia entre tríos: expected
+  { apiKey: 'sk_test_PRIMERA_227', … } to be an instance of ProveedorCobroError»). Revertida ⇒ `12 passed`.
+- **8** (sin la pasada de plataforma): `Tests 2 failed | 3 passed (5)`; caen los dos casos R13 («expected 'Recifrados
+  a v2: 3.' to contain 'Recifrados a v2: 5.'» y «expected +0 to be 1» en `empresasConError`). Revertida ⇒ `5 passed`.
+- **6** (estado con secretos) la mata el caso unitario «R9: con fila, … y nada más de lo que traiga el repositorio»
+  (el servicio copia campo a campo); no se corrió como mutación aparte.
+
+**Mapa `R<n>` → test (lo de esta tanda):**
+| R | Test |
+|---|---|
+| R5 | CB «R5: guardar cifra los dos campos; el lector los devuelve en claro y ninguna columna lleva un valor» |
+| R7 | CB «R7: un secreto copiado a otro trío o a otro campo da credencial_ilegible»; CS «crearLectorCredencialesCobro …» |
+| R8 | CB «R8: guardar dos veces reemplaza sin otra fila y registra quién y cuándo» y «R8: un país inexistente da pais_no_existe y no escribe nada»; CS «R8: falta un campo, sobra uno o va vacío ⇒ validation_error sin cifrar; wompi ⇒ proveedor_no_disponible» y «R8: una apiKey pk_ o un secretoWebhook sin la forma whsec_ + 64 hex ⇒ validation_error» |
+| R9 | CB «R9: estado devuelve los campos y el último cambio, y ningún valor; un trío sin fila, configurada: false»; CS «R9: un trío sin fila ⇒ configurada: false» |
+| R10 | CS «R10: maestro, admin, mensajero y tienda reciben forbidden al guardar y al consultar, sin llamadas» |
+| R12 | CS «R12: el comando lee los secretos de la entrada estándar, guarda como el superadmin y no imprime ningún valor» y «R12: un argumento desconocido sale con 1 sin repetirlo; sin superadmin, sale con 1» |
+| R13 | RC «R13: el recifrado lleva a v2 las credenciales de cobro en v1 y las suma al resumen» |
+
+Veredicto T2.2–T2.6: cerradas en verde; mutaciones 5 y 8 caen como pide el spec.
+
 ## T3 — Transporte, entorno y registro (2026-11-21)
 
 **Archivos:**
