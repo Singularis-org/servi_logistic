@@ -8,31 +8,31 @@
 
 ## Tanda 0 — Comprobaciones (sin código)
 
-- [ ] **T0.1** Listar las migraciones de `origin/dev` y de los PR abiertos, y fijar el prefijo: mayor que todas, y en
+- [x] **T0.1** Listar las migraciones de `origin/dev` y de los PR abiertos, y fijar el prefijo: mayor que todas, y en
   particular que `20261126120100` de SLT-121 «Planes: plazo de pago de la factura y operación congelada por mora»
   (PR #264). Sin «125» en el nombre (propuesto `20261127120000_cobro_proveedor_credencial`).
   *Hecho:* el prefijo está anotado en `progress/impl_SLT-227.md`.
-- [ ] **T0.2** [P] Confirmar que `exigirContexto` acepta `organizacionId: "plataforma"` y que ningún `organizacion.id`
+- [x] **T0.2** [P] Confirmar que `exigirContexto` acepta `organizacionId: "plataforma"` y que ningún `organizacion.id`
   puede valer eso (son `uuid`).
   *Hecho:* anotado, con la línea de la migración que fija el tipo del id.
-- [ ] **T0.3** [P] Leer tres guardias y anotar qué piden para una tabla de plataforma con un único sin
+- [x] **T0.3** [P] Leer tres guardias y anotar qué piden para una tabla de plataforma con un único sin
   `organizacion_id`: `unicos-por-empresa`, `rls-por-empresa` y `scripts/verificar-rls-despliegue.ts`.
   *Hecho:* está decidido si entran `tests/unit/guards/_unicos-sin-empresa.ts` y `scripts/verificar-rls-despliegue.ts`
   (design §1).
-- [ ] **T0.4** [P] Confirmar que `RecifradoIntegracionesService.empresa` puede recibir el repositorio como parámetro
+- [x] **T0.4** [P] Confirmar que `RecifradoIntegracionesService.empresa` puede recibir el repositorio como parámetro
   sin cambiar el resumen de las empresas.
   *Hecho:* los tests actuales de `recifrado-integraciones.test.ts` siguen en verde con el cambio de firma.
 
 ## Tanda 1 — El modelo (depende de T0)
 
-- [ ] **T1.1** La migración `…_cobro_proveedor_credencial` con su `down.sql` (design §1, §1.1): la tabla, los CHECK
+- [x] **T1.1** La migración `…_cobro_proveedor_credencial` con su `down.sql` (design §1, §1.1): la tabla, los CHECK
   (el de forma cifrada, copiado de `integracion_secretos_cifrados`), el único del trío, la RLS sin políticas y
   `REVOKE ALL` a `servi_app`. El `down` aborta con filas.
   *Hecho:* se aplica y se revierte en una base desechable.
-- [ ] **T1.2** `db/schema.prisma`: el modelo `CobroProveedorCredencial` y su relación con `Pais`. Además, la entrada en
+- [x] **T1.2** `db/schema.prisma`: el modelo `CobroProveedorCredencial` y su relación con `Pais`. Además, la entrada en
   `MODELOS_DE_PLATAFORMA` (`lib/db/modelos-de-negocio.ts`).
   *Hecho:* `pnpm run typecheck` y la guardia `organizacion-en-modelos` en verde.
-- [ ] **T1.3** Los tests de base de `cobro-proveedor-credencial.test.ts`:
+- [x] **T1.3** Los tests de base de `cobro-proveedor-credencial.test.ts`:
   - el INSERT del dueño en claro da `23514` (R5);
   - un segundo trío igual da `23505` (R5);
   - como `servi_app`, `42501` al leer y al escribir (R6);
