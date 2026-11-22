@@ -127,7 +127,7 @@
   Si T0.3 lo pidió, también el único global. Hay un choque aceptado con SLT-55, SLT-61 y SLT-77
   (`progress/features/SLT-227.md`).
   *Hecho:* el párrafo está escrito y la guardia `unicos-por-empresa` está en verde.
-- [ ] **T5.3** `node scripts/tamano-pr.mjs` y el mapa `R<n> → test` en `progress/impl_SLT-227.md`.
+- [x] **T5.3** `node scripts/tamano-pr.mjs` y el mapa `R<n> → test` en `progress/impl_SLT-227.md`.
   *Hecho:* cada R tiene su test. El tamaño se mide y se anota: el exceso de líneas de producción está aceptado
   (P6, marcador `tamano-pr-aceptado`), y los archivos y las líneas de tests siguen dentro de sus topes.
 

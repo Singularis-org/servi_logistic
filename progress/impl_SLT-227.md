@@ -358,3 +358,37 @@ pendiente humano. Los únicos rojos de guardia son el `"rechazada"` (pendiente d
 | R26 | GU «R26: ningún archivo de tests/ ni e2e/ nombra los hosts reales de Rebill» y «R26: ninguna prueba importa URL_BASE_REBILL, y el adaptador se prueba contra el doble» |
 
 Veredicto T5.1–T5.2: cerradas en verde. Las tres mutaciones caen, y `unicos-por-empresa` sigue en verde con el párrafo.
+
+## T5.3 — Tamaño y mapa consolidado (implementer, 2026-11-21)
+
+- `node scripts/tamano-pr.mjs`: `29/40 archivos, 1372/1000 lineas de produccion, 2312/3000 de tests`. El exceso de
+  producción está aceptado por el humano (P6, «Aceptar, un solo PR»); archivos y tests, dentro de sus topes.
+- `pnpm run typecheck`: sin errores. `eslint` de todos los `.ts`/`.mjs` del diff contra `origin/dev`: sin salida.
+- Rojo local ajeno resuelto: `api-key-dependencias-usuario` caía porque la copia de trabajo de `db/schema.prisma`
+  tenía CRLF (el índice está en LF). Se restauró desde el índice y la guardia sale con 12 passed. No hubo commit.
+
+### Mapa `R<n>` → archivo de test (consolidado)
+
+Abreviaturas del mapa de `tasks.md`. Los nombres exactos de cada caso están en las secciones de cada tanda.
+
+| R | Archivo |
+|---|---|
+| R1, R4, R14–R19, R25 | RP `tests/integration/cobro/rebill-proveedor.test.ts` (69 passed) |
+| R2, R3, R20, R21, R23, R24 | HR `tests/unit/clients/cobro-http-registro.test.ts` (39 passed) |
+| R22 | RP y HR |
+| R5, R6, R7 | CB `tests/integration/db/cobro-proveedor-credencial.test.ts` (12 passed) |
+| R8, R9 | CB y CS `tests/unit/services/cobro-credencial-service.test.ts` (15 passed) |
+| R10, R12 | CS |
+| R13 | RC `tests/integration/db/recifrado-integraciones.test.ts` (5 passed) |
+| R11, R26 | GU `tests/unit/guards/credenciales-cobro-solo-adaptador.guardia.test.ts` (12 passed) |
+| R27 | CI `tests/unit/services/cobro-intento-service.test.ts` (45 passed, sin cambiar afirmaciones) |
+
+### Pendiente
+
+- **T2.1 queda abierta por un rojo de la guardia `tests/unit/guards/censo-order-status-rename.test.ts` (455/R40).**
+  El literal `"rechazada"` de `EstadoDevolucion` (design §3 y §6.4) es un código anterior del estado de la orden.
+  Aparece en tres líneas: `lib/interfaces/external/IProveedorCobro.ts:61`, `lib/clients/cobro/rebill-proveedor.ts:76` y
+  `tests/integration/cobro/rebill-proveedor.test.ts:476`. Se arregla con una de dos salidas: (a) otro valor en el spec, p. ej.
+  `"denegada"`, o (b) tres entradas en `EXCEPCIONES_455`. La decisión es del leader o del humano. Hasta entonces no se
+  abre el PR.
+- **T4.5** (contraste en el sandbox de Rebill): queda pendiente para el humano, como deuda de SLT-230.
