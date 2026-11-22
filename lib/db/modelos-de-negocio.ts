@@ -217,6 +217,9 @@ export const MODELOS_DE_PLATAFORMA: readonly ModeloClasificado[] = [
   { modelo: "BugReportUploadQuota", tabla: "bug_report_upload_quota" },
   // Eventos del proveedor de cobro (SLT-226, R12): llegan sin empresa; sin acceso para `servi_app` (R26)
   { modelo: "CobroWebhookEvento", tabla: "cobro_webhook_evento" },
+  // Credenciales de los proveedores de cobro (SLT-227, R5, R6): de la plataforma, por proveedor, país y entorno;
+  // sin acceso para `servi_app`
+  { modelo: "CobroProveedorCredencial", tabla: "cobro_proveedor_credencial" },
 ];
 
 // SL-19 (design §5.1). `organizacion_id` nulable a proposito: no entra en negocio porque la unica

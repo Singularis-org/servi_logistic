@@ -6120,6 +6120,7 @@ model Pais {
   organizaciones      Organizacion[]
   historialPlataforma HistorialPlataforma[]
   tiposIdentificacion TipoIdentificacion[]
+  credencialesCobro   CobroProveedorCredencial[]
 
   @@map("pais")
 }
@@ -6943,6 +6944,28 @@ model CobroWebhookEvento {
 
   @@unique([proveedor, logId], map: "cobro_webhook_evento_proveedor_log_key") // capa 2 de la idempotencia
   @@map("cobro_webhook_evento")
+}
+
+// SLT-227 (design §1; R5, R6) — las credenciales de los proveedores de cobro, de PLATAFORMA: una fila por
+// (proveedor, país, entorno), sin `organizacion_id`. Viven solo en el SQL de 20261127120000 el CHECK de forma
+// cifrada (R5), la RLS sin políticas y el `REVOKE ALL … FROM servi_app` (R6).
+model CobroProveedorCredencial {
+  /// SIN default: el service lo genera antes de cifrar, porque va en los datos asociados (design §8.1, R7).
+  id             String   @id
+  proveedor      String
+  paisId         String   @map("pais_id")
+  entorno        String
+  /// `{ campo: "v<n>:<iv>:<tag>:<cifrado>" }`; nunca un valor en claro (R5).
+  secretos       Json
+  /// Opaco y sin FK, como `plan_rastro.actor_usuario_id`.
+  actualizadoPor String?  @map("actualizado_por")
+  createdAt      DateTime @default(dbgenerated("(now() AT TIME ZONE 'UTC'::text)")) @map("created_at") @db.Timestamp(3)
+  updatedAt      DateTime @map("updated_at") @db.Timestamp(3)
+
+  pais Pais @relation(fields: [paisId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([proveedor, paisId, entorno], map: "cobro_proveedor_credencial_trio_key")
+  @@map("cobro_proveedor_credencial")
 }
 
 // SL-36 (design §2.1) — los cuatro servicios que una empresa conecta con sus propias cuentas.
