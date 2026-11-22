@@ -53,7 +53,7 @@
 - [x] **T2.3** `ICobroCredencialService` y `CobroCredencialService.ts`: `guardar`, `estado`, `CAMPOS_POR_PROVEEDOR`,
   `guardarCredencialSchema`, el contexto de la bóveda (§8.1) y `crearLectorCredencialesCobro` (§8.3).
   *Hecho:* los tests unitarios de R8, R9 y R10 en verde.
-- [ ] **T2.4** Los tests de base de las credenciales:
+- [x] **T2.4** Los tests de base de las credenciales:
   - guardar y leer con la bóveda real;
   - reemplazar sin otra fila;
   - `pais_no_existe`;

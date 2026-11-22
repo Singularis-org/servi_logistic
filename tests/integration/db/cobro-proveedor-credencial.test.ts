@@ -1,8 +1,15 @@
 import { randomUUID } from "node:crypto";
 
-import type { PrismaClient } from "@prisma/client";
+import { RolValue, type PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import type { AnilloDeClaves } from "@/lib/config/integraciones";
+import { BovedaIntegraciones } from "@/lib/crypto/boveda-integraciones";
+import type { TrioCredencialCobro } from "@/lib/interfaces/external/IProveedorCobro";
+import type { Actor } from "@/lib/interfaces/services/IOrdenService";
+import { CobroCredencialRepository } from "@/lib/repositories/CobroCredencialRepository";
+import { CobroCredencialService, crearLectorCredencialesCobro } from "@/lib/services/CobroCredencialService";
+import { ProveedorCobroError } from "@/lib/types/cobro";
 import { comoApp, crearOrganizacion } from "@/tests/fabricas/organizaciones";
 
 import { HAY_BASE_DE_DATOS, crearPrismaDeTest, type TxDeTest } from "./_postgres-real";
@@ -211,5 +218,210 @@ describeSiHayBase("SLT-227 — las credenciales de los proveedores de cobro: cif
     expect(r.codigo).toBe("P0001");
     expect(r.mensaje).toContain("rollback SLT-227");
     expect(r.n).toBeGreaterThanOrEqual(1);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// SLT-227 T2.4 (design §8; R5, R7, R8, R9) — el servicio, el repositorio y el lector reales, con la bóveda real.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Todo dentro de `revertida`: el repositorio recibe la transacción del dueño (sin extensión), así que su
+// `comoPlataforma` solo deja el rastro y nada sale de la transacción.
+//
+// Mutación medida (design §12, n.º 5): el contexto de la bóveda sin el id de la fila ⇒ cae el caso R7 de la copia
+// entre tríos (progress/impl_SLT-227.md).
+
+const ANILLO: AnilloDeClaves = { activa: "v1", claves: new Map([["v1", Buffer.alloc(32, 0x27)]]) };
+const SUPERADMIN: Actor = { usuarioId: "u-superadmin-227", rol: RolValue.superadmin };
+const API_KEY_1 = "sk_test_PRIMERA_227";
+const API_KEY_2 = "sk_test_SEGUNDA_227";
+const WEBHOOK = `whsec_${"c0ffee".repeat(10)}c0ff`;
+
+type ClienteDelRepositorio = ConstructorParameters<typeof CobroCredencialRepository>[0];
+
+function enTx(tx: TxDeTest, reloj: { ahora: Date }) {
+  const repo = new CobroCredencialRepository(tx as unknown as ClienteDelRepositorio);
+  const cifrador = new BovedaIntegraciones(() => ANILLO);
+  const servicio = new CobroCredencialService({
+    repo,
+    cifrador,
+    fuente: { nuevoId: () => randomUUID() },
+    ahora: () => reloj.ahora,
+  });
+  return { repo, servicio, leer: crearLectorCredencialesCobro({ repo, cifrador }) };
+}
+
+interface FilaDeRebill {
+  id: string;
+  entorno: string;
+  secretos: Record<string, string>;
+  actualizado_por: string | null;
+  updated_at: string;
+}
+
+function filasDe(tx: TxDeTest, pais: string): Promise<FilaDeRebill[]> {
+  return tx.$queryRawUnsafe<FilaDeRebill[]>(
+    `SELECT "id", "entorno", "secretos", "actualizado_por",
+            to_char("updated_at", 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "updated_at"
+       FROM "${TABLA}" WHERE "proveedor" = 'rebill' AND "pais_id" = $1 ORDER BY "entorno"`,
+    pais,
+  );
+}
+
+function contar(tx: TxDeTest): Promise<number> {
+  return tx
+    .$queryRawUnsafe<{ n: number }[]>(`SELECT count(*)::int AS n FROM "${TABLA}"`)
+    .then(([f]) => f.n);
+}
+
+const entradaDe = (pais: string, entorno: "sandbox" | "produccion", apiKey: string) => ({
+  proveedor: "rebill",
+  paisId: pais,
+  entorno,
+  secretos: { apiKey, secretoWebhook: WEBHOOK },
+});
+
+const trioDe = (pais: string, entorno: "sandbox" | "produccion"): TrioCredencialCobro => ({
+  proveedor: "rebill",
+  paisId: pais,
+  entorno,
+});
+
+describeSiHayBase("SLT-227 T2.4 — guardar, leer y consultar las credenciales con la bóveda real (Postgres)", () => {
+  beforeAll(() => {
+    // Cliente propio: el `afterAll` del bloque de arriba ya desconectó el suyo.
+    base = crearPrismaDeTest();
+  });
+
+  afterAll(async () => {
+    await base?.$disconnect();
+  });
+
+  it("R5: guardar cifra los dos campos; el lector los devuelve en claro y ninguna columna lleva un valor", async () => {
+    const r = await revertida(base, async (tx) => {
+      const pais = await unPais(tx);
+      const { servicio, leer } = enTx(tx, { ahora: new Date("2026-11-21T10:00:00.000Z") });
+      const guardado = await servicio.guardar(SUPERADMIN, entradaDe(pais, "sandbox", API_KEY_1));
+      const [fila] = await tx.$queryRawUnsafe<Record<string, unknown>[]>(
+        `SELECT * FROM "${TABLA}" WHERE "proveedor" = 'rebill' AND "pais_id" = $1 AND "entorno" = 'sandbox'`,
+        pais,
+      );
+      return { pais, guardado, fila, leido: await leer(trioDe(pais, "sandbox")) };
+    });
+    expect(r.pais).toMatch(/^[A-Z]{2}$/);
+    expect(r.guardado).toEqual({ estado: "ok", campos: ["apiKey", "secretoWebhook"] });
+    const secretos = r.fila.secretos as Record<string, string>;
+    expect(Object.keys(secretos).sort()).toEqual(["apiKey", "secretoWebhook"]);
+    for (const valor of Object.values(secretos)) expect(valor).toMatch(/^v1:/);
+    const textoDeLaFila = JSON.stringify(r.fila);
+    expect(textoDeLaFila).not.toContain(API_KEY_1);
+    expect(textoDeLaFila).not.toContain(WEBHOOK);
+    expect(r.leido).toEqual({ apiKey: API_KEY_1, secretoWebhook: WEBHOOK });
+  });
+
+  it("R8: guardar dos veces reemplaza sin otra fila y registra quién y cuándo", async () => {
+    const r = await revertida(base, async (tx) => {
+      const pais = await unPais(tx);
+      const reloj = { ahora: new Date("2026-11-21T10:00:00.000Z") };
+      const { servicio, leer } = enTx(tx, reloj);
+      const primero = await servicio.guardar(SUPERADMIN, entradaDe(pais, "sandbox", API_KEY_1));
+      const antes = await filasDe(tx, pais);
+      reloj.ahora = new Date("2026-11-21T11:30:00.250Z");
+      const otro: Actor = { ...SUPERADMIN, usuarioId: "u-otro-227" };
+      const segundo = await servicio.guardar(otro, entradaDe(pais, "sandbox", API_KEY_2));
+      const despues = await filasDe(tx, pais);
+      return { primero, segundo, antes, despues, leido: await leer(trioDe(pais, "sandbox")) };
+    });
+    expect([r.primero.estado, r.segundo.estado]).toEqual(["ok", "ok"]);
+    expect(r.antes).toHaveLength(1);
+    expect(r.despues).toHaveLength(1);
+    expect(r.despues[0].id).toBe(r.antes[0].id);
+    expect(r.antes[0]).toMatchObject({ actualizado_por: "u-superadmin-227", updated_at: "2026-11-21T10:00:00.000Z" });
+    expect(r.despues[0]).toMatchObject({ actualizado_por: "u-otro-227", updated_at: "2026-11-21T11:30:00.250Z" });
+    expect(r.despues[0].secretos.apiKey).not.toBe(r.antes[0].secretos.apiKey);
+    expect(r.leido).toEqual({ apiKey: API_KEY_2, secretoWebhook: WEBHOOK });
+  });
+
+  it("R8: un país inexistente da pais_no_existe y no escribe nada", async () => {
+    const r = await revertida(base, async (tx) => {
+      const { servicio } = enTx(tx, { ahora: new Date("2026-11-21T10:00:00.000Z") });
+      const [{ existe }] = await tx.$queryRawUnsafe<{ existe: boolean }[]>(
+        `SELECT EXISTS (SELECT 1 FROM "pais" WHERE "id" = 'ZZ') AS existe`,
+      );
+      const antes = await contar(tx);
+      // En un SAVEPOINT: el rechazo de la FK aborta la transacción, y después hay que contar.
+      await tx.$executeRawUnsafe(`SAVEPOINT pais_no_existe`);
+      const guardado = await servicio.guardar(SUPERADMIN, entradaDe("ZZ", "sandbox", API_KEY_1));
+      await tx.$executeRawUnsafe(`ROLLBACK TO SAVEPOINT pais_no_existe`);
+      return { existe, guardado, antes, despues: await contar(tx) };
+    });
+    expect(r.existe).toBe(false);
+    expect(r.guardado).toEqual({ estado: "pais_no_existe" });
+    expect(r.despues).toBe(r.antes);
+  });
+
+  it("R7: un secreto copiado a otro trío o a otro campo da credencial_ilegible", async () => {
+    const r = await revertida(base, async (tx) => {
+      const pais = await unPais(tx);
+      const { servicio, leer } = enTx(tx, { ahora: new Date("2026-11-21T10:00:00.000Z") });
+      await servicio.guardar(SUPERADMIN, entradaDe(pais, "sandbox", API_KEY_1));
+      await servicio.guardar(SUPERADMIN, entradaDe(pais, "produccion", API_KEY_2));
+      // Control: antes de copiar, cada trío se lee con lo suyo.
+      const control = [await leer(trioDe(pais, "sandbox")), await leer(trioDe(pais, "produccion"))];
+
+      // La API key cifrada de sandbox, copiada tal cual a la fila de produccion (otro trío, otro id).
+      await tx.$executeRawUnsafe(
+        `UPDATE "${TABLA}" p SET "secretos" = jsonb_set(p."secretos", '{apiKey}', s."secretos"->'apiKey')
+           FROM "${TABLA}" s
+          WHERE p."proveedor" = 'rebill' AND p."pais_id" = $1 AND p."entorno" = 'produccion'
+            AND s."proveedor" = 'rebill' AND s."pais_id" = $1 AND s."entorno" = 'sandbox'`,
+        pais,
+      );
+      const entreTrios = await leer(trioDe(pais, "produccion")).catch((e: unknown) => e);
+
+      // Dentro de la fila de sandbox, la API key cifrada copiada al campo del webhook.
+      await tx.$executeRawUnsafe(
+        `UPDATE "${TABLA}" SET "secretos" = jsonb_set("secretos", '{secretoWebhook}', "secretos"->'apiKey')
+          WHERE "proveedor" = 'rebill' AND "pais_id" = $1 AND "entorno" = 'sandbox'`,
+        pais,
+      );
+      const entreCampos = await leer(trioDe(pais, "sandbox")).catch((e: unknown) => e);
+      return { control, entreTrios, entreCampos };
+    });
+    expect(r.control).toEqual([
+      { apiKey: API_KEY_1, secretoWebhook: WEBHOOK },
+      { apiKey: API_KEY_2, secretoWebhook: WEBHOOK },
+    ]);
+    expect(r.entreTrios, "copia entre tríos").toBeInstanceOf(ProveedorCobroError);
+    expect(r.entreTrios).toMatchObject({ codigo: "credencial_ilegible", proveedor: "rebill" });
+    expect(r.entreCampos, "copia entre campos").toBeInstanceOf(ProveedorCobroError);
+    expect(r.entreCampos).toMatchObject({ codigo: "credencial_ilegible", proveedor: "rebill" });
+    expect(String(r.entreTrios) + String(r.entreCampos)).not.toContain(API_KEY_1);
+  });
+
+  it("R9: estado devuelve los campos y el último cambio, y ningún valor; un trío sin fila, configurada: false", async () => {
+    const r = await revertida(base, async (tx) => {
+      const pais = await unPais(tx);
+      const { servicio } = enTx(tx, { ahora: new Date("2026-11-21T12:00:00.000Z") });
+      await servicio.guardar(SUPERADMIN, entradaDe(pais, "sandbox", API_KEY_1));
+      const [fila] = await filasDe(tx, pais);
+      return {
+        fila,
+        conFila: await servicio.estado(SUPERADMIN, trioDe(pais, "sandbox")),
+        sinFila: await servicio.estado(SUPERADMIN, trioDe(pais, "produccion")),
+      };
+    });
+    expect(r.conFila).toEqual({
+      estado: "ok",
+      configurada: true,
+      campos: ["apiKey", "secretoWebhook"],
+      actualizadoAt: new Date("2026-11-21T12:00:00.000Z"),
+      actualizadoPor: "u-superadmin-227",
+    });
+    expect(r.sinFila).toEqual({ estado: "ok", configurada: false });
+    const texto = JSON.stringify(r.conFila);
+    for (const prohibido of [API_KEY_1, WEBHOOK, "v1:", ...Object.values(r.fila.secretos)]) {
+      expect(texto).not.toContain(prohibido);
+    }
   });
 });
