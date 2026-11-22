@@ -75,9 +75,16 @@ export class RecifradoIntegracionesService implements IRecifradoIntegracionesSer
     return resumen;
   }
 
-  private async empresa(organizacionId: string, activa: string, soloContar: boolean): Promise<ConteoDeEmpresa> {
+  // SLT-227 (design §9.2): el repositorio es parametro para que la pasada de plataforma reuse este
+  // mismo recorrido sobre las credenciales de cobro, con su propio repositorio.
+  private async empresa(
+    organizacionId: string,
+    activa: string,
+    soloContar: boolean,
+    repositorio: IIntegracionRecifradoRepository = this.deps.repositorio,
+  ): Promise<ConteoDeEmpresa> {
     const conteo: ConteoDeEmpresa = { porVersion: new Map(), ilegibles: 0, recifrados: 0, conflictos: 0 };
-    for (const fila of await this.deps.repositorio.listarSecretos()) {
+    for (const fila of await repositorio.listarSecretos()) {
       const nuevos: Record<string, string> = {};
       /** La version de cada valor legible tal como esta guardado hoy. */
       const antes: string[] = [];
@@ -102,7 +109,7 @@ export class RecifradoIntegracionesService implements IRecifradoIntegracionesSer
         aMover += 1;
       }
 
-      if (aMover > 0 && (await this.deps.repositorio.reemplazarSecretos(fila.id, fila.secretos, nuevos))) {
+      if (aMover > 0 && (await repositorio.reemplazarSecretos(fila.id, fila.secretos, nuevos))) {
         conteo.recifrados += aMover;
         for (let i = 0; i < antes.length; i += 1) sumarVersion(conteo.porVersion, activa);
         continue;
