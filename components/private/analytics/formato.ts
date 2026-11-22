@@ -5,9 +5,16 @@
 // Ni un simbolo de moneda ni un codigo ISO escritos aqui (R13): la moneda sale
 // de `lib/config/moneda.ts`. Ni un literal de idioma (R20): el locale sale del
 // mismo modulo de configuracion y las unidades de tiempo las nombra `Intl`.
+//
+// SLT-242 (design §3; R5, R6) — el dinero se pinta con la moneda QUE SE LE PASA
+// (la del pais de la empresa, `useMonedaDelPais()` en pantalla), no con la de la
+// plataforma. Conteos, porcentajes y duraciones siguen con `monedaConfig.locale`.
 
 import type { MetricaUnidad } from "@/lib/analytics/types";
-import { formatMonto, monedaConfig, SIN_MONTO } from "@/lib/config/moneda";
+import { formatearMontoEn, monedaConfig, SIN_MONTO, type FormatoMoneda } from "@/lib/config/moneda";
+
+/** Las unidades que nunca son dinero: con ellas no hace falta moneda. */
+type UnidadSinMoneda = Exclude<MetricaUnidad, "moneda">;
 
 const SEGUNDOS_POR_MINUTO = 60;
 const SEGUNDOS_POR_HORA = 3600;
@@ -60,12 +67,26 @@ function formatearSegundos(valor: number): string {
  * `null` es DATO AUSENTE y se marca con `SIN_MONTO` (`lib/config/moneda.ts`),
  * nunca con `0` (R11, R14): un cero es una afirmacion sobre el dato y aqui no
  * hay dato que afirmar.
+ *
+ * Dos firmas y no un tercer parametro opcional (SLT-242 R6): con un default, un
+ * llamador que olvide la moneda pintaria en silencio con la de la plataforma, y
+ * con Costa Rica nadie lo veria. Asi el typecheck rechaza
+ * `formatearValor(x, unidad)` cuando `unidad` puede ser `moneda`.
  */
-export function formatearValor(valor: number | null, unidad: MetricaUnidad): string {
+/** Conteo, porcentaje o duracion: no hay dinero, no hace falta moneda. */
+export function formatearValor(valor: number | null, unidad: UnidadSinMoneda): string;
+/** Una unidad que puede ser `moneda` (la de una metrica, una columna, una prop): la moneda es obligatoria. */
+export function formatearValor(valor: number | null, unidad: MetricaUnidad, moneda: FormatoMoneda): string;
+export function formatearValor(valor: number | null, unidad: MetricaUnidad, moneda?: FormatoMoneda): string {
   if (valor === null || !Number.isFinite(valor)) return SIN_MONTO;
   switch (unidad) {
     case "moneda":
-      return formatMonto(valor);
+      // Solo llega aqui sin moneda desde codigo sin tipos: es un fallo de
+      // programacion, no una caida, y se dice en voz alta.
+      if (moneda === undefined) {
+        throw new Error(`formatearValor: la unidad "${unidad}" necesita una moneda y no se paso ninguna`);
+      }
+      return formatearMontoEn(moneda, valor);
     case "porcentaje":
       return formatearPorcentaje(valor);
     case "segundos":

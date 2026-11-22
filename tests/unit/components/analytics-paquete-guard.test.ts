@@ -134,7 +134,7 @@ describe("ubicacion y pureza del paquete (R1, R2)", () => {
     const formato = DEL_PAQUETE.find(({ ruta }) => ruta.endsWith("formato.ts"));
     expect(formato, "falta formato.ts").toBeDefined();
     expect(formato?.codigo).toMatch(/from\s+["']@\/lib\/config\/moneda["']/);
-    expect(formato?.codigo).toMatch(/\bformatMonto\b/);
+    expect(formato?.codigo).toMatch(/\bformatearMontoEn\b/);
     expect(formato?.codigo).toMatch(/monedaConfig\.locale/);
   });
 

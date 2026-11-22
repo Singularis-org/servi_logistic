@@ -23,6 +23,8 @@
 // `pesosDeReparto` (el reparto por resto mayor, con su ancho) y `paleta` (el color por posición).
 // Escribir aquí otro juego de estados los separaría del resto de gráficas a la primera.
 
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
+
 import { formatearValor } from "./formato";
 import { GraficaMarco } from "./GraficaMarco";
 import { varDeSerie } from "./paleta";
@@ -43,6 +45,8 @@ export function GraficaReparto({
   className,
   proporcion,
 }: GraficaProps) {
+  // SLT-242 (R2): la moneda del pais para las cifras con la unidad de la grafica.
+  const moneda = useMonedaDelPais();
   const serie = series[0];
   const puntos = serie?.puntos ?? [];
   // Con todo a cero no hay reparto que dibujar: una barra vacía y seis ceros en la leyenda se
@@ -132,7 +136,7 @@ export function GraficaReparto({
                 />
                 <span className="text-muted-foreground">{punto.categoria}</span>
                 <span className="tabular-nums text-foreground">
-                  {cifraConPeso(formatearValor(punto.valor, unidad), pesosFormateados[indice])}
+                  {cifraConPeso(formatearValor(punto.valor, unidad, moneda), pesosFormateados[indice])}
                 </span>
               </li>
             ))}

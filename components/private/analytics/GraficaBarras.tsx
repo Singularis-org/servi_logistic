@@ -12,6 +12,8 @@
 
 import { Suspense, lazy } from "react";
 
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
+
 import { formatearValor } from "./formato";
 import { clasesDeLienzo, GraficaMarco } from "./GraficaMarco";
 import { SerieTextual } from "./SerieTextual";
@@ -34,6 +36,8 @@ export function GraficaBarras({
   horizontal,
   grosorBarra,
 }: GraficaProps & BarrasProps) {
+  // SLT-242 (R2): la moneda del pais para las cifras con la unidad de la grafica.
+  const moneda = useMonedaDelPais();
   const hayDatos = series.some((serie) => serie.puntos.length > 0);
 
   // Los topes solo se aplican cuando hay algo que pintar: con error o cargando
@@ -56,7 +60,7 @@ export function GraficaBarras({
             <Suspense fallback={null}>
               <BarrasLienzo
                 series={preparadas.series}
-                formatear={(valor) => formatearValor(valor, unidad)}
+                formatear={(valor) => formatearValor(valor, unidad, moneda)}
                 apilado={apilado}
                 horizontal={horizontal}
                 grosorBarra={grosorBarra}

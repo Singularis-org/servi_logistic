@@ -12,6 +12,7 @@
 //      sumando dentro del JSX (R23), y la renderiza distinguible de las de datos.
 
 import { DataTable, type Column } from "@/components/shared/DataTable";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
 
 import { formatearValor, totalizar } from "./formato";
 import type { ColumnaResumen, EstadoVisual, FilaResumen, TextoVacio } from "./tipos";
@@ -64,13 +65,15 @@ export function TablaResumen({
   error = null,
   className,
 }: TablaResumenProps) {
+  // SLT-242 (R2): la moneda del pais, leida una vez para todas las columnas.
+  const moneda = useMonedaDelPais();
   const columnasTabla: Column<FilaTabla>[] = [
     { id: "categoria", value: encabezadoCategoria, render: (fila) => fila.categoria },
     ...columnas.map((columna) => ({
       id: columna.id,
       value: columna.etiqueta,
       render: (fila: FilaTabla) =>
-        formatearValor(fila.valores[columna.id] ?? null, columna.unidad),
+        formatearValor(fila.valores[columna.id] ?? null, columna.unidad, moneda),
     })),
   ];
 

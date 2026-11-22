@@ -48,6 +48,7 @@
 import { useCallback } from "react";
 
 import { KpiValorAnimado } from "@/components/shared/KpiValorAnimado";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
 
 import { formatearValor } from "./formato";
 import type { MetricaUnidad } from "./tipos";
@@ -83,10 +84,12 @@ export function KpiValor({ valor, unidad }: Readonly<KpiValorProps>) {
   // Memoizada: `react-countup` relanza la cuenta desde 0 cuando cambia la IDENTIDAD de su
   // `formattingFn`, así que sin esto cualquier re-render del padre —pasar el ratón por una
   // gráfica vecina basta— reiniciaría el contador.
-  const formatear = useCallback((n: number) => formatearValor(n, unidad), [unidad]);
+  // SLT-242 (R2): la moneda del pais; entra en las dependencias porque cambia el texto.
+  const moneda = useMonedaDelPais();
+  const formatear = useCallback((n: number) => formatearValor(n, unidad, moneda), [unidad, moneda]);
 
   if (valor === null || !Number.isFinite(valor)) {
-    return <>{formatearValor(valor, unidad)}</>;
+    return <>{formatearValor(valor, unidad, moneda)}</>;
   }
 
   return (

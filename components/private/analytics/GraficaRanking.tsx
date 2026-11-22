@@ -30,6 +30,7 @@
 // textual se reusan del paquete.
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
 
 import { formatearValor } from "./formato";
 import { GraficaMarco } from "./GraficaMarco";
@@ -57,6 +58,8 @@ export function GraficaRanking({
   className,
   proporcion,
 }: GraficaProps) {
+  // SLT-242 (R2): la moneda del pais para las cifras con la unidad de la grafica.
+  const moneda = useMonedaDelPais();
   const serie = series[0];
   const puntos = serie?.puntos ?? [];
   const hayDatos = puntos.length > 0;
@@ -136,7 +139,7 @@ export function GraficaRanking({
                   />
                 </span>
                 <span className="tabular-nums text-foreground">
-                  {cifraConPeso(formatearValor(punto.valor, unidad), pesos[indice])}
+                  {cifraConPeso(formatearValor(punto.valor, unidad, moneda), pesos[indice])}
                 </span>
               </li>
             ))}

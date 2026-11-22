@@ -32,7 +32,7 @@
 
 ## Bloque 2 — Formateador y paquete de analítica (R2, R5, R6) (en paralelo con el bloque 1)
 
-- [ ] **T2.1** `components/private/analytics/formato.ts`: las dos firmas de `formatearValor`, `"moneda"`
+- [x] **T2.1** `components/private/analytics/formato.ts`: las dos firmas de `formatearValor`, `"moneda"`
   con `formatearMontoEn(moneda, …)`, lanza si falta la moneda; sin `formatMonto` (design §3).
   - Tests que solo cambian la forma de llamar (tercer argumento `MONEDA_PLATAFORMA`):
     `analytics-formato.test.ts`, `AnalyticsTablaResumen.test.tsx`, `AnalyticsKpiCard.test.tsx`,
@@ -42,10 +42,10 @@
     `formatMonto` (design §8).
   - Casos de R5 y R6 (`@ts-expect-error` y el `throw`).
   - *Hecho:* en verde.
-- [ ] **T2.2** Hoja de cliente `components/private/analytics/CifraAnalitica.tsx` (`CifraAnalitica` y
+- [x] **T2.2** Hoja de cliente `components/private/analytics/CifraAnalitica.tsx` (`CifraAnalitica` y
   `MontoAnalitico`, design §4.2). Depende de T2.1.
   - *Hecho:* casos de R4 (`MontoAnalitico`) y R13 en verde; `analytics-paquete-guard.test.ts` verde.
-- [ ] **T2.3** Componentes del paquete (design §4.1 y la fila de `KpiCard` de §4.2). Depende de T2.2.
+- [x] **T2.3** Componentes del paquete (design §4.1 y la fila de `KpiCard` de §4.2). Depende de T2.2.
   - `KpiValor.tsx`, las cinco `Grafica*.tsx`, `SerieTextual.tsx` y `TablaResumen.tsx` leen
     `useMonedaDelPais()`.
   - `KpiCard.tsx` pinta la variación con `CifraAnalitica`, sin `"use client"`.
@@ -56,19 +56,19 @@
 
 ## Bloque 3 — Pantallas de `/analitica` (R1, R3, R4, R17) (depende del bloque 2)
 
-- [ ] **T3.1** [P] Tablero financiero (design §4.2): `TableroFinanciero.tsx` (`TotalDelDto` y la línea
+- [x] **T3.1** [P] Tablero financiero (design §4.2): `TableroFinanciero.tsx` (`TotalDelDto` y la línea
   del bruto) y `PanelConciliacion.tsx` (las tres cifras del cuadre) con `CifraAnalitica`.
   - `tablero-financiero.guardia.test.ts`: el contrapeso acepta `<CifraAnalitica` (design §8).
   - Casos de R1.
   - *Hecho:* en verde; `TableroFinanciero.test.tsx`, `PanelConciliacion.test.tsx`,
     `DineroIdentidadesEnPantalla.test.tsx` y `tablero-financiero.guardia.test.ts` sin cambiar valores.
-- [ ] **T3.2** [P] Productos (design §5.1, §5.2): `ProductosTabla.tsx` (`textoPendiente(…, moneda)`,
+- [x] **T3.2** [P] Productos (design §5.1, §5.2): `ProductosTabla.tsx` (`textoPendiente(…, moneda)`,
   columnas con la moneda) y `DineroProductoDetalle.tsx` con `formatearMontoEn(moneda, …, SIN_MONTO_RAYA)`.
   - `ProductosTablaDinero.test.tsx`: sus 2 llamadas a `textoPendiente` pasan `MONEDA_PLATAFORMA`.
   - Casos de R3.
   - *Hecho:* en verde; el resto de tests de productos y `DineroIdentidadesEnPantalla.test.tsx` sin
     cambiar valores.
-- [ ] **T3.4** Pistas con el impuesto en `DineroProductoDetalle.tsx` (R17, design §5.2). Depende de
+- [x] **T3.4** Pistas con el impuesto en `DineroProductoDetalle.tsx` (R17, design §5.2). Depende de
   T3.2 (mismo archivo).
   - `pistasConImpuesto(impuesto)` con `empresaPista` y `retornoPista`; salen de la constante de textos.
   - El componente lee `useImpuestoDelPais()` y la pasa con `useMemo`.
@@ -76,7 +76,7 @@
     contraprueba.
   - *Hecho:* en verde; `ProductosTablaDinero.test.tsx` y `DineroIdentidadesEnPantalla.test.tsx` siguen
     esperando «IVA» sin cambiar ningún valor.
-- [ ] **T3.3** [P] `KpisFinancieros.tsx` con `MontoAnalitico` (R4, design §4.2).
+- [x] **T3.3** [P] `KpisFinancieros.tsx` con `MontoAnalitico` (R4, design §4.2).
   - *Hecho:* caso de R4 en verde; los tests de las tarjetas financieras sin cambiar valores.
 
 ## Bloque 4 — Guardias y cierre (depende de los bloques 1–3)

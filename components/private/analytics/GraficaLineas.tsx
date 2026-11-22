@@ -5,6 +5,8 @@
 
 import { Suspense, lazy } from "react";
 
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
+
 import { formatearValor } from "./formato";
 import { clasesDeLienzo, GraficaMarco } from "./GraficaMarco";
 import { SerieTextual } from "./SerieTextual";
@@ -24,6 +26,8 @@ export function GraficaLineas({
   className,
   proporcion,
 }: GraficaProps) {
+  // SLT-242 (R2): la moneda del pais para las cifras con la unidad de la grafica.
+  const moneda = useMonedaDelPais();
   const hayDatos = series.some((serie) => serie.puntos.length > 0);
   const preparadas = hayDatos && !error && !cargando ? prepararSeries(series) : null;
 
@@ -43,7 +47,7 @@ export function GraficaLineas({
             <Suspense fallback={null}>
               <LineasLienzo
                 series={preparadas.series}
-                formatear={(valor) => formatearValor(valor, unidad)}
+                formatear={(valor) => formatearValor(valor, unidad, moneda)}
               />
             </Suspense>
           </div>

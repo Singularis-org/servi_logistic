@@ -24,7 +24,7 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
-import { formatearValor } from "./formato";
+import { CifraAnalitica } from "./CifraAnalitica";
 import {
   CLASES_CIFRA,
   CLASES_ROTULO,
@@ -91,7 +91,11 @@ export function KpiCard({
           </p>
           {variacion ? (
             <p className={cn("text-sm", claseDelSigno(variacion.delta))}>
-              {`${textoDelSigno(variacion)} ${formatearValor(Math.abs(variacion.delta), unidad)} ${variacion.etiqueta}`}
+              {/* SLT-242 (R2): la cifra con la moneda del pais, en una hoja de cliente; la tarjeta
+                  sigue siendo server-compatible y el texto queda en el mismo <p>. */}
+              {`${textoDelSigno(variacion)} `}
+              <CifraAnalitica valor={Math.abs(variacion.delta)} unidad={unidad} />
+              {` ${variacion.etiqueta}`}
             </p>
           ) : null}
         </>

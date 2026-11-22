@@ -24,6 +24,7 @@
 // son equivalentes en todo el repo y partirlos aqui crearia una tercera categoria
 // de rol que nadie mas conoce.
 
+import { CifraAnalitica } from "@/components/private/analytics/CifraAnalitica";
 import { TablaResumen } from "@/components/private/analytics/TablaResumen";
 import { formatearValor } from "@/components/private/analytics/formato";
 import type {
@@ -168,7 +169,8 @@ export function PanelConciliacion({ datos }: PanelConciliacionProps) {
           <div key={cifra.id} className="flex items-baseline gap-2">
             <dt className="text-muted-foreground">{cifra.etiqueta}</dt>
             <dd className="tabular-nums text-foreground">
-              {formatearValor(aNumero(cifra.importe), UNIDAD.importe)}
+              {/* SERVIDOR: la moneda del pais la pone la hoja de cliente (SLT-242, R1). */}
+              <CifraAnalitica valor={aNumero(cifra.importe)} unidad={UNIDAD.importe} />
             </dd>
           </div>
         ))}

@@ -12,7 +12,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { KpiCard } from "@/components/private/analytics/KpiCard";
 import { formatearValor } from "@/components/private/analytics/formato";
 import { CLASES_CIFRA } from "@/components/private/analytics/jerarquia";
-import { formatMonto, SIN_MONTO } from "@/lib/config/moneda";
+import { formatMonto, MONEDA_PLATAFORMA, SIN_MONTO } from "@/lib/config/moneda";
 
 /**
  * El doble de `react-countup` del setup global se sustituye por otro que hace LO MISMO
@@ -56,7 +56,7 @@ describe("KpiCard (R12-R15)", () => {
       render(<KpiCard etiqueta="Entregas" valor={3500} unidad={unidad} />);
 
       expect(screen.getByText("Entregas")).toBeInTheDocument();
-      expect(screen.getByText(norm(formatearValor(3500, unidad)))).toBeInTheDocument();
+      expect(screen.getByText(norm(formatearValor(3500, unidad, MONEDA_PLATAFORMA)))).toBeInTheDocument();
     },
   );
 
