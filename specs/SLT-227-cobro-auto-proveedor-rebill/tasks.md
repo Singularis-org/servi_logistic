@@ -64,7 +64,7 @@
 - [x] **T2.5** [P] `scripts/cobro-credencial-guardar.ts` y `package.json` (`"cobro:credencial"`), con
   `ejecutarGuardado` exportado (design §9.1).
   *Hecho:* los tests de R12 en verde, en `cobro-credencial-service.test.ts`.
-- [ ] **T2.6** [P] El recifrado (design §9.2): `RecifradoIntegracionesService` con la pasada de plataforma y
+- [x] **T2.6** [P] El recifrado (design §9.2): `RecifradoIntegracionesService` con la pasada de plataforma y
   `scripts/recifrar-integraciones.ts` cableado. El test de R13 va en `recifrado-integraciones.test.ts`.
   *Hecho:* en verde. Sin la pasada, el test cae (mutación 8).
 

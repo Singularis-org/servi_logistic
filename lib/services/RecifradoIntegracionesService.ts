@@ -5,6 +5,7 @@ import type {
   OpcionesRecifrado,
   ResumenRecifrado,
 } from "@/lib/interfaces/services/IRecifradoIntegracionesService";
+import { ORGANIZACION_PLATAFORMA_EN_BOVEDA } from "@/lib/services/CobroCredencialService";
 
 // SL-36 (design §12; D10, R38-R40) — la rotacion de la clave maestra de las integraciones.
 //
@@ -23,6 +24,8 @@ export interface RecifradoDeps {
   repositorio: IIntegracionRecifradoRepository;
   /** `paraCadaEmpresa`: corre `fn` una vez por empresa, dentro de `conEmpresa`. */
   recorrerEmpresas: (fn: (organizacionId: string) => Promise<void>) => Promise<unknown>;
+  /** SLT-227 (design §9.2, R13): las credenciales de cobro, de plataforma (`CobroCredencialRepository`). */
+  plataforma: IIntegracionRecifradoRepository;
 }
 
 /** Lo que una empresa aporta al resumen. Se suma solo si la empresa termina sin error de base. */
@@ -53,10 +56,10 @@ export class RecifradoIntegracionesService implements IRecifradoIntegracionesSer
       empresasConError: 0,
     };
 
-    await this.deps.recorrerEmpresas(async (organizacionId) => {
+    const pasada = async (organizacionId: string, repositorio: IIntegracionRecifradoRepository): Promise<void> => {
       let conteo: ConteoDeEmpresa;
       try {
-        conteo = await this.empresa(organizacionId, activa, opciones.soloContar);
+        conteo = await this.empresa(organizacionId, activa, opciones.soloContar, repositorio);
       } catch {
         // El error NO se propaga ni se imprime: `paraCadaEmpresa` lo volcaria entero, y el mensaje
         // de un error de Prisma lleva los argumentos de la consulta, cifrados incluidos. Basta con
@@ -69,7 +72,13 @@ export class RecifradoIntegracionesService implements IRecifradoIntegracionesSer
       resumen.ilegibles += conteo.ilegibles;
       resumen.recifrados += conteo.recifrados;
       resumen.conflictos += conteo.conflictos;
-    });
+    };
+
+    await this.deps.recorrerEmpresas((organizacionId) => pasada(organizacionId, this.deps.repositorio));
+    // SLT-227 (design §9.2, R13): las credenciales de los proveedores de cobro, con el contexto de la boveda de
+    // plataforma (design §8.1). Sin esta pasada una version vieja seguiria en uso sin que el resumen lo dijera. Un
+    // fallo aqui cuenta en `empresasConError`, como el de una empresa.
+    await pasada(ORGANIZACION_PLATAFORMA_EN_BOVEDA, this.deps.plataforma);
 
     resumen.porVersion = Object.fromEntries([...porVersion].sort(([a], [b]) => a.localeCompare(b)));
     return resumen;
