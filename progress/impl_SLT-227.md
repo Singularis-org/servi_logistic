@@ -219,3 +219,93 @@ Veredicto T2.2–T2.6: cerradas en verde; mutaciones 5 y 8 caen como pide el spe
 | R24 | HR «R24: la tabla de traducción da el código, reintentable e incierto de cada falla» (12 filas × 4 operaciones, el mensaje y que no lleva ni el cuerpo ni la URL) |
 
 Veredicto: T3.1, T3.2 y T3.3 cerradas. Mis tests y el lint están en verde, y las mutaciones 1 y 2 caen.
+
+## T4 — El adaptador de Rebill y su doble (2026-11-21)
+
+**Archivos:**
+- `e2e/_rebill-falso/servidor.mjs` (nuevo, T4.1): `arrancarRebillFalso({ puerto, apiKey, secretoWebhook })` →
+  `{ url, puerto, firmarAviso, cerrar }` y `firmar(cuerpo, secreto)`. Node puro, en memoria, con el molde del doble de
+  Storage. Rutas `POST /v3/payment-links` (valida `title`, uno de `prices`/`product`/`plan`, el largo y la moneda de
+  `prices` y `paymentMethods`), `GET /v3/payments/:id` (sembrado o `404`) y `POST /v3/refunds/:paymentId` (`400` si no
+  es `card`, no está `approved`/`partially_refunded` o pasa de lo que queda; `201 { status }`). El `401` repite la key
+  recibida a propósito. Control: `/__control/{pagos,fallos,peticiones,reiniciar}`. Cada ruta cita su página de
+  `docs.rebill.com`; ningún host de la API de Rebill aparece en el doble ni en el test (R26).
+  - **Extensiones al control de design §11** (para cubrir los caminos sin trucos): un fallo admite además `cuerpo`
+    (para servir un `2xx` con otra forma o un `status` concreto de devolución) y `cortar` (cierra el socket: el fallo de
+    red, sin depender de un puerto cerrado, que en Windows tarda ~2 s). Sin `cuerpo`, la respuesta del fallo repite la
+    key recibida, también en un `2xx` (el camino `respuesta_invalida` de R25). `peticiones` anota también el
+    `content-type`.
+- `lib/clients/cobro/rebill-proveedor.ts` (relleno, T4.2): las cuatro operaciones, `MontoJson`, `cuerpoJsonConMontos`,
+  `rebillEnlaceSchema`, `rebillPagoSchema`, `rebillDevolucionSchema`, `ESTADO_REBILL_A_PROVEEDOR` y
+  `ESTADO_DEVOLUCION_REBILL`. Decisiones menores dentro del design:
+  - los mapas se leen con `Object.hasOwn` (un `status: "constructor"` no da una función del prototipo);
+  - `consultarPago` exige además que el `id` de la respuesta sea el pedido (si no, `respuesta_invalida`);
+  - una fila sin el campo que hace falta (`apiKey` o `secretoWebhook`) es `sin_configuracion`;
+  - `credencial_ilegible` se reconoce venga como `CredencialIlegibleError` de la bóveda o como el
+    `ProveedorCobroError` del lector, y sale con la operación;
+  - un id de pago vacío o una descripción vacía son `solicitud_invalida` sin leer credenciales.
+- `tests/integration/cobro/rebill-proveedor.test.ts` (nuevo, T4.2–T4.4): 69 tests, el doble en el puerto 0, sin base.
+
+**T4.5 — PENDIENTE HUMANO (deuda para SLT-230 «Cobro automático: enlace de pago por factura»):** no se hizo el contraste
+manual en el sandbox de Rebill (no hay credenciales de sandbox). Queda por confirmar: que se acepta `language: "es"`,
+que el `GET /v3/payments/:id` trae `metadata.paymentLinkId` y la forma de `amount`. Si algo difiere, el doble y el
+adaptador se corrigen juntos.
+
+**El literal `"rechazada"` en lo mío** (`\brechazada\b`, comentarios incluidos): 2 apariciones, una por archivo.
+- `lib/clients/cobro/rebill-proveedor.ts:76`: `cancelled: "rechazada",` en `ESTADO_DEVOLUCION_REBILL` (la única del
+  adaptador; ningún comentario lo nombra).
+- `tests/integration/cobro/rebill-proveedor.test.ts:476`: `["cancelled", "rechazada"],` (la afirmación del mapa).
+- `e2e/_rebill-falso/servidor.mjs`: 0.
+- Con la de T2.1 (`lib/interfaces/external/IProveedorCobro.ts:61`), la guardia
+  `tests/unit/guards/censo-order-status-rename.test.ts` lista hoy 3 líneas. `solicitud_rechazada` y
+  `credencial_rechazada` no casan (el `_` quita la frontera).
+
+**Salidas reales:**
+- `pnpm run typecheck`: sin errores.
+- `pnpm exec eslint e2e/_rebill-falso/servidor.mjs lib/clients/cobro/rebill-proveedor.ts tests/integration/cobro/rebill-proveedor.test.ts`:
+  `ESLint: No issues found`.
+- `pnpm exec vitest run tests/integration/cobro/rebill-proveedor.test.ts`: `Test Files 1 passed (1) · Tests 69 passed (69)`.
+- Guardias `credenciales-sin-consola-cruda`, `pais-sin-literales`, `censo-order-status-rename`, `censo-simpe`,
+  `sin-credenciales-de-entorno`, `quitador-comentarios`, `etiquetas-geograficas-sin-literal`,
+  `pagos-aritmetica-decimal`, `api-key-dependencias-usuario`, `guard-dependencias-aprobadas`, más
+  `tests/unit/clients/cobro-http-registro.test.ts`: `Test Files 2 failed | 9 passed (11) · Tests 10 failed | 191 passed`.
+  - `censo-order-status-rename`: las 3 líneas de `"rechazada"` de arriba (pendiente de decisión del leader).
+  - `api-key-dependencias-usuario` (9 rojos): el extractor lee 0 relaciones de `db/schema.prisma` (`expected 0 to be
+    greater than 40`). Solo lee el esquema, que no toqué; el archivo está con CRLF en este worktree, que parece la
+    causa. No es mío; lo anoto para el leader.
+
+**Mutaciones (design §12), una a la vez, revertidas desde copia y con el test otra vez en 69/69:**
+- **M9** (`prices[0].amount = Number(entrada.monto)`): `3 failed | 66 passed`. Caen R16 «₡20 000,00 … cuerpo crudo»,
+  «los bordes del monto … 0.10 y 9999999999.99» y «una descripción que imita la ficha».
+- **M10a** (la clave del HMAC sin `whsec_`): `2 failed | 67 passed`. Caen las dos de R18.
+- **M10b** (digest en base64 comparado con `===`): `1 failed | 68 passed`. Cae «el cuerpo firmado por el doble … ⇒ true».
+- **M3a** (el cuerpo de la respuesta de error en el mensaje, en `intentar` del transporte): `18 failed | 51 passed`.
+  Caen los caminos HTTP de «R25» en las tres operaciones y «el 401 real de otra cuenta».
+- **M3b** (el mismo cuerpo en `cause`, no enumerable): `18 failed | 51 passed`. Lo caza `inspect(error, { showHidden })`.
+- **M3c** (el cuerpo `2xx` inválido en `cause`, en el adaptador): `3 failed | 66 passed`. Caen los tres «respuesta
+  inválida (2xx con la key en el cuerpo)».
+- **M1** (repetida contra el doble), en dos formas:
+  - literal, `pedirIdempotente` en `devolver`: cae en masa (R15, R19, R22, R25 de `devolver`), porque
+    `pedirIdempotente` lanza su error de programación ante un `POST` y no sale ninguna petición;
+  - con efecto real, `devolver` envuelto en 3 intentos de `pedirUnaVez`: `5 failed | 64 passed`. Caen las tres de
+    «R22: devolver con 503 / tiempo agotado / fallo de red ⇒ 1 petición, incierto», la de R19 con `400` (3 peticiones)
+    y «el 401 real de otra cuenta» (5 peticiones en vez de 3).
+
+**Mapa `R<n>` → test (RP = `tests/integration/cobro/rebill-proveedor.test.ts`):**
+| R | Test |
+|---|---|
+| R1 | RP «R1: el adaptador ofrece las cuatro operaciones, consultar recibe solo el id y devuelve null si no lo conoce» |
+| R4 | RP «R4: … en sandbox, con credenciales de CR solo en produccion ⇒ sin_configuracion y 0 peticiones» y su control «en produccion, el mismo lector da la key y sale la petición con ella» |
+| R14 | RP «R14: … con la fila ausente (null), las cuatro operaciones fallan y el doble recibe 0 peticiones», «… sin el campo …» y «una credencial ilegible da credencial_ilegible …» |
+| R15 | RP «R15: la petición va por la API v3 con la API key del trío en x-api-key y cuerpo JSON» |
+| R16 | RP «R16: crear un enlace» (6 tests: el cuerpo crudo con `"amount":20000.00`, `"methods":["card"]` y la `metadata`; `0.10` y `9999999999.99`; la ficha imitada; `cuerpoJsonConMontos`; `venceAt` y forma inválida; `metodo_no_soportado` y `solicitud_invalida` sin leer ni llamar) |
+| R17 | RP «R17: consultar un pago» (los 7 estados con `it.each`; bordes `0.1`, `20000`, `9999999999.99` y `0.005`; estado fuera de la tabla y formas inválidas; `404` ⇒ `null`) |
+| R18 | RP «R18: verificar la firma de un aviso» (firmado por el doble ⇒ true, también en mayúsculas; byte cambiado, ausente, mal formada, base64, otro secreto y sin `whsec_` ⇒ false; 0 peticiones) |
+| R19 | RP «R19: devolver un pago» (parcial y resto ⇒ `aprobada`, cuerpo crudo `{"amount":5000.00}`; transferencia, no aprobado y de más ⇒ `solicitud_rechazada` con 1 petición; el mapa de `status`; `solicitud_invalida` sin llamar) |
+| R22 | RP «R22: crearEnlace y devolver …» (503, tiempo agotado y fallo de red, cada una ⇒ 1 petición, `incierto`, sin esperas) y el contraste de la consulta (3 peticiones, nunca incierta) |
+| R24 (HTTP) | RP «R25 …» (`401`, `403`, `404`, `422`, `429`, `503`, tiempo, red y respuesta inválida, con su código en cada operación) |
+| R25 | RP «SLT-227 · R25: el secreto no sale» (27 caminos de red, el `401` real de otra cuenta, `credencial_ilegible`/`sin_configuracion` y la firma mala; `message`, `stack`, `String`, `JSON.stringify`, `inspect` con `showHidden` y `cause`, y las 5 funciones de `console` espiadas), con su control de no vacuidad (el doble recibió el centinela y lo repite en su cuerpo) |
+| R26 | El doble en el puerto 0 en todo RP; la guardia de R26 es T5.1 |
+
+Veredicto: T4.1–T4.4 cerradas en verde (69/69, typecheck y lint limpios; M1, M3, M9 y M10 caen). T4.5 queda como
+pendiente humano. Los únicos rojos de guardia son el `"rechazada"` (pendiente de decisión) y `api-key-dependencias-usuario`; ninguno de los dos es mío.

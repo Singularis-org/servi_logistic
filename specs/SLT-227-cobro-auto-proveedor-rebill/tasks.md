@@ -83,19 +83,19 @@
 
 ## Tanda 4 — El adaptador de Rebill y su doble (depende de T3)
 
-- [ ] **T4.1** `e2e/_rebill-falso/servidor.mjs` (design §11), con las formas de design §6.1 y el enlace a la página de
+- [x] **T4.1** `e2e/_rebill-falso/servidor.mjs` (design §11), con las formas de design §6.1 y el enlace a la página de
   la doc en cada ruta.
   *Hecho:* arranca en el puerto 0, responde `/salud`, rechaza con `401` una key incorrecta y valida el largo de
   `prices` y `paymentMethods`.
-- [ ] **T4.2** `lib/clients/cobro/rebill-proveedor.ts` (design §6.2–§6.6): `crearEnlace`, `consultarPago`,
+- [x] **T4.2** `lib/clients/cobro/rebill-proveedor.ts` (design §6.2–§6.6): `crearEnlace`, `consultarPago`,
   `verificarFirma` y `devolver`, más `cuerpoJsonConMontos`, los esquemas zod, `ESTADO_REBILL_A_PROVEEDOR` y el mapa de
   la devolución.
   *Hecho:* los tests de R14–R19 y R22 en verde contra el doble, incluido el cuerpo crudo con `"amount":20000.00` y los
   bordes de la lectura del monto. Las mutaciones 9 y 10 caen.
-- [ ] **T4.3** La sección «R25: el secreto no sale» de `rebill-proveedor.test.ts` (design §12), con su control de no
+- [x] **T4.3** La sección «R25: el secreto no sale» de `rebill-proveedor.test.ts` (design §12), con su control de no
   vacuidad.
   *Hecho:* en verde. Con la mutación 3, cae.
-- [ ] **T4.4** El test de R4 con el registro real y el lector doble: en `sandbox`, el trío de `produccion` no se usa y
+- [x] **T4.4** El test de R4 con el registro real y el lector doble: en `sandbox`, el trío de `produccion` no se usa y
   sale `sin_configuracion` sin peticiones.
   *Hecho:* en verde.
 - [ ] **T4.5** Contraste manual en el sandbox de Rebill, **no automatizado** (R26), con credenciales de sandbox que da
