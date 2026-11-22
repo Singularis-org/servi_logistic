@@ -47,7 +47,7 @@
   `IProveedorCobro` ampliado, los tipos de entrada y salida, y `LeerCredencialesCobro` (design §3).
   `CobroIntentoService.ts` y su test pasan a `IConsultaPagoProveedor`, solo en los tipos.
   *Hecho:* typecheck en verde, y `cobro-intento-service.test.ts` en verde sin cambiar ninguna afirmación (R27).
-- [ ] **T2.2** `ICobroCredencialRepository` y `CobroCredencialRepository` (design §8.2), en `comoPlataforma("SL-36")`,
+- [x] **T2.2** `ICobroCredencialRepository` y `CobroCredencialRepository` (design §8.2), en `comoPlataforma("SL-36")`,
   con su entrada en `EXCEPCIONES_DE_PLATAFORMA`. Implementa también `IIntegracionRecifradoRepository`.
   *Hecho:* las guardias `plataforma-solo-en-lista` y `sql-a-mano-por-empresa` en verde.
 - [ ] **T2.3** `ICobroCredencialService` y `CobroCredencialService.ts`: `guardar`, `estado`, `CAMPOS_POR_PROVEEDOR`,
