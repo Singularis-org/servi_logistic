@@ -81,7 +81,7 @@
 
 ## Bloque 4 — Guardias y cierre (depende de los bloques 1–3)
 
-- [ ] **T4.1** Censo de R18 de SLT-235: `CENSO_MONEDA_DEL_PAIS` gana el bloque «SLT-242» con los 17
+- [x] **T4.1** Censo de R18 de SLT-235: `CENSO_MONEDA_DEL_PAIS` gana el bloque «SLT-242» con los 17
   archivos de design §8; el test de SLT-241 corta 16 entradas; caso nuevo «los 17 de SLT-242 dan rojo
   con `money(` o `formatMontoString(`» (R15).
   - *Hecho:* en verde, y rojo si en uno de ellos se reescribe un `money(`.
