@@ -89,7 +89,7 @@
   línea de «Bajadas» del comentario de cabecera. No se toca `FichaQueLoRetira`.
   - Caso en `moneda-del-pais-analitica.test.tsx`: ninguna excepción con `ficha === "SLT-242"` y tope 12.
   - *Hecho:* `pnpm run test:guardias` en verde.
-- [ ] **T4.3** Cierre.
+- [x] **T4.3** Cierre.
   - `./init.sh` en verde.
   - E2E en local sobre una base desechable (`docs/perfil-agentes.md > E2E en local antes del PR`): el
     grupo `dinero` y los que salgan de `grep -rl` en `e2e/` por `analitica` (hoy
