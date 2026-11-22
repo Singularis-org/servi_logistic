@@ -91,6 +91,41 @@ esta bien hecha, no solo si "funciona".
     anterior.
   - **Lectura:** los consumidores leen con `CredencialesIntegracionService` dentro de `conEmpresa`. Nada
     derivado de una credencial (cliente, token, resultado) se cachea entre empresas (R28).
+- **Credenciales de los proveedores de cobro (SLT-227).** Son de la plataforma, por proveedor, país y
+  entorno, no de una empresa: la plataforma cobra a las empresas con ellas.
+  - **La tabla:** `cobro_proveedor_credencial` (migración `20261127120000_cobro_proveedor_credencial`,
+    en `MODELOS_DE_PLATAFORMA`). Tiene una fila por trío (`proveedor`, `pais_id`, `entorno`), con el
+    índice único `cobro_proveedor_credencial_trio_key`. `secretos` es un JSON con un valor cifrado por
+    campo: un `CHECK` rechaza un valor en claro, también para el dueño. Guarda `actualizado_por` y
+    `updated_at`. Tiene RLS sin políticas y `REVOKE ALL … FROM servi_app` (`42501`). Solo la toca
+    `CobroCredencialRepository`, en `comoPlataforma` y con su entrada en `EXCEPCIONES_DE_PLATAFORMA`.
+    Cifra con la bóveda de SL-36, con `"plataforma"` como empresa y el id de la fila en el contexto: un
+    secreto copiado a otro trío o a otro campo da `credencial_ilegible`.
+  - **Quién la lee:** guardar y consultar el estado pasan por `CobroCredencialService`, solo para el
+    superadmin (`forbidden` antes de leer nada). El estado devuelve los nombres de los campos y el último
+    cambio, nunca un valor. El secreto descifrado sale solo por `crearLectorCredencialesCobro`, que usa
+    el registro de `lib/clients/cobro/`. La guardia `credenciales-cobro-solo-adaptador` falla si el lector
+    o `secretosDe` se nombran fuera del servicio, el repositorio, su interfaz y `lib/clients/cobro/**`,
+    o si una prueba nombra el host de Rebill.
+  - **El entorno:** `entornoDeCobro()` (`lib/config/cobro.ts`) da `produccion` solo con
+    `VERCEL_ENV=production`, y si no, `sandbox`. No se usa `NODE_ENV`, porque el E2E de CI corre
+    `next start`. Rebill tiene una sola URL (`URL_BASE_REBILL`) para los dos entornos: los separa la API
+    key.
+  - **El registro:** `construirRegistroProveedoresCobro()` (`lib/clients/cobro/registro-proveedores.ts`)
+    lee el entorno una vez y da `obtener(proveedor, paisId)`, el adaptador ligado al país. Hoy solo
+    `rebill`. `wompi` y `global66` dan `proveedor_no_disponible` sin leer credenciales. Un país sin
+    credenciales falla en la primera operación con `sin_configuracion`.
+  - **Los reintentos** (`lib/clients/cobro/http-proveedor.ts`): cada intento tiene un tiempo máximo de
+    10 s. Solo la consulta del pago se reintenta (`pedirIdempotente`): hasta 3 intentos, con esperas de
+    250 ms y 1 s, ante un `429`, un `5xx`, un tiempo agotado o un fallo de red. Crear el enlace y devolver
+    hacen una sola petición (`pedirUnaVez`). Si fallan así, el error lleva `incierto`, porque pudieron
+    tener efecto. Un `401`, un `404` o un `422` no se reintentan. Ningún error lleva la API key, el secreto ni el cuerpo del
+    proveedor.
+  - **La carga y el recifrado:** mientras no exista la pantalla de SLT-251, se cargan con
+    `pnpm cobro:credencial --proveedor rebill --pais CR --entorno sandbox`. Los secretos entran por la
+    entrada estándar, un `campo=valor` por línea, y el actor es el superadmin. Nunca se imprime un valor.
+    `pnpm integraciones:recifrar` hace, después de las empresas, una pasada de plataforma sobre esta
+    tabla, y la suma al resumen.
 - **Únicos:** los de negocio por empresa son compuestos con `organizacion_id` primero (migraciones
   `20261023090000_unicos_por_empresa` y, para `usuario`, `20261026090000_usuario_unico_por_empresa`).
   `orden.num_guia` y `orden_num_guia_seq` siguen globales a propósito (SL-18, 2026-10-26). La guía sale

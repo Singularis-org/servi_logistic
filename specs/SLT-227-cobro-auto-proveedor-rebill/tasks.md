@@ -116,7 +116,7 @@
 - [x] **T5.1** `tests/unit/guards/credenciales-cobro-solo-adaptador.guardia.test.ts` (R11, R26), con su control de no
   vacuidad.
   *Hecho:* en verde. Si se importa el lector en un archivo de `lib/actions/` de prueba, cae.
-- [ ] **T5.2** `docs/architecture.md > Multi-empresa`: un párrafo «Credenciales de los proveedores de cobro (SLT-227)»
+- [x] **T5.2** `docs/architecture.md > Multi-empresa`: un párrafo «Credenciales de los proveedores de cobro (SLT-227)»
   con:
   - la tabla de plataforma y quién la lee;
   - el entorno por `VERCEL_ENV`;

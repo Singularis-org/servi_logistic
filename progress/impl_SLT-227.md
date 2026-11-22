@@ -309,3 +309,52 @@ adaptador se corrigen juntos.
 
 Veredicto: T4.1–T4.4 cerradas en verde (69/69, typecheck y lint limpios; M1, M3, M9 y M10 caen). T4.5 queda como
 pendiente humano. Los únicos rojos de guardia son el `"rechazada"` (pendiente de decisión) y `api-key-dependencias-usuario`; ninguno de los dos es mío.
+
+## T5.1–T5.2 — Guardia y docs (2026-11-21)
+
+**Archivos:**
+- `tests/unit/guards/credenciales-cobro-solo-adaptador.guardia.test.ts` (nuevo, 12 tests):
+  - R11: `crearLectorCredencialesCobro` y `secretosDe` (con `\b`, así `secretosDelFormulario` no cuenta) solo se
+    nombran en `CobroCredencialService.ts`, `CobroCredencialRepository.ts`, `ICobroCredencialRepository.ts` y
+    `lib/clients/cobro/**`. Censa todas las raíces de `tests/fixtures/raices-de-codigo.ts` (`app/`, `lib/`,
+    `scripts/`, `e2e/`, …; `tests/` queda fuera).
+  - R11, añadido: ninguno de los archivos permitidos que nombran el lector lleva `"use server"`. Con esa directiva,
+    el lector exportado sería una Server Action que puede invocar un cliente.
+  - R26: ningún archivo de `tests/` ni de `e2e/` contiene el host de `URL_BASE_REBILL`, que se lee del literal de
+    `lib/config/cobro.ts` sin importarlo. Ninguno nombra `URL_BASE_REBILL`, salvo esta guardia: una prueba que la
+    importara llamaría a Rebill real sin escribir el host. RP importa `arrancarRebillFalso` del doble.
+  - Contraprueba y no vacuidad: el detector ve el lector en líneas sintéticas y no confunde nombres parecidos. El
+    lector está en su archivo, y el detector lo ve en `registro-proveedores.ts`. El censo tiene >500 archivos,
+    >50 en `lib/actions/` y >50 en `app/`. El host acaba en `.rebill.com`, y hay >1000 archivos de prueba, con
+    `e2e/_rebill-falso/servidor.mjs` entre ellos.
+- `docs/architecture.md > Multi-empresa`: el párrafo «Credenciales de los proveedores de cobro (SLT-227)», justo
+  después del de SL-36. Cubre la tabla y quién la lee, el entorno por `VERCEL_ENV`, el registro, los reintentos, el
+  comando de carga y el recifrado. No nombra un único global (T0.3).
+
+**Mutaciones (cada una, revertida; luego la guardia otra vez 12/12):**
+- `lib/actions/zz-mutacion-slt227.ts` con `"use server"` y un `import { crearLectorCredencialesCobro }`:
+  `Tests 1 failed | 11 passed (12)`. Cae «R11: el lector … solo aparece en el servicio, el repositorio y
+  lib/clients/cobro», con las líneas 2 y 3 del archivo.
+- `"use server";` al principio de `lib/services/CobroCredencialService.ts`: `1 failed | 11 passed`. Cae «R11:
+  ningún archivo que nombra el lector es una Server Action».
+- `tests/zz-mutacion-slt227.ts` con `"https://API.rebill.com/v3"`: `1 failed | 11 passed`. Cae «R26: ningún archivo
+  de tests/ ni e2e/ nombra los hosts reales de Rebill».
+
+**Salidas reales:**
+- La guardia corrió después de los commits de T4 (`3cc4044f`, `0f9a35ff`): `Tests 12 passed (12)`. Los archivos
+  de T4 no la ponen roja.
+- `pnpm run typecheck`: `tsc --noEmit` sin errores.
+- `pnpm exec eslint tests/unit/guards/credenciales-cobro-solo-adaptador.guardia.test.ts`: sin salida.
+- Guardias que leen `docs/architecture.md` o `docs/`, con la mía: `unicos-por-empresa`, `lib-no-importa-app`,
+  `dinero-centimos-cuando-existen`, `pagos-captura`, `guard-dependencias-aprobadas`, `docs-marca-heredada` y
+  `credenciales-cobro-solo-adaptador`: `Test Files 7 passed (7) · Tests 123 passed (123)`. Después,
+  `nombres-estado-retirados`, `nombres-wallet-461`, `sin-nombre-heredado` y `api-artefactos-url-y-simbolos`:
+  `4 passed · 87 passed`.
+
+**Mapa `R<n>` → test (GU = la guardia nueva):**
+| R | Test |
+|---|---|
+| R11 | GU «R11: el lector de secretos descifrados solo aparece en el servicio, el repositorio y lib/clients/cobro» y «R11: ningún archivo que nombra el lector es una Server Action ('use server')» |
+| R26 | GU «R26: ningún archivo de tests/ ni e2e/ nombra los hosts reales de Rebill» y «R26: ninguna prueba importa URL_BASE_REBILL, y el adaptador se prueba contra el doble» |
+
+Veredicto T5.1–T5.2: cerradas en verde. Las tres mutaciones caen, y `unicos-por-empresa` sigue en verde con el párrafo.
