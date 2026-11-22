@@ -17,6 +17,7 @@ import {
   ORGANIZACION_PLATAFORMA_EN_BOVEDA,
 } from "@/lib/services/CobroCredencialService";
 import { ProveedorCobroError } from "@/lib/types/cobro";
+import { ejecutarGuardado } from "@/scripts/cobro-credencial-guardar";
 
 // SLT-227 (design §8.3, §9.1, §12; R8–R10, R12) — el servicio de las credenciales de cobro con el repositorio, el
 // cifrador y la fuente de ids dobles. Lo que hace la base (el CHECK, el único, la FK, el reemplazo) y la bóveda real
@@ -204,5 +205,98 @@ describe("SLT-227 — crearLectorCredencialesCobro (R7, R11)", () => {
     const despliegue = new Error("faltan las variables del anillo");
     const sinAnillo = crearLectorCredencialesCobro({ repo: { secretosDe }, cifrador: { descifrar: async () => Promise.reject(despliegue) } });
     await expect(sinAnillo(TRIO)).rejects.toBe(despliegue);
+  });
+});
+
+// ─── R12: el comando `pnpm cobro:credencial` (design §9.1) ──────────────────────────────────────────────────────
+
+function salidaDoble() {
+  const lineas: { canal: "log" | "error"; texto: string }[] = [];
+  return {
+    lineas,
+    texto: () => lineas.map((l) => l.texto).join("\n"),
+    salida: { log: (texto: string) => lineas.push({ canal: "log", texto }), error: (texto: string) => lineas.push({ canal: "error", texto }) },
+  };
+}
+
+const ARGUMENTOS = ["--proveedor", "rebill", "--pais", "CR", "--entorno", "sandbox"];
+const ENTRADA = `apiKey=${API_KEY}\nsecretoWebhook=${WEBHOOK}\n`;
+
+describe("SLT-227 — R12: el comando de carga", () => {
+  it("R12: el comando lee los secretos de la entrada estándar, guarda como el superadmin y no imprime ningún valor", async () => {
+    const d = dobles();
+    const guardar = vi.spyOn(d.servicio, "guardar");
+    const s = salidaDoble();
+    expect(await ejecutarGuardado(d.servicio, "u-super", ARGUMENTOS, ENTRADA, s.salida)).toBe(0);
+    expect(guardar).toHaveBeenCalledWith(
+      { usuarioId: "u-super", rol: "superadmin" },
+      { proveedor: "rebill", paisId: "CR", entorno: "sandbox", secretos: { apiKey: API_KEY, secretoWebhook: WEBHOOK } },
+    );
+    // Pasó por la regla de R8 de verdad: el cifrador recibió los dos valores y el repositorio guardó como el superadmin.
+    expect(d.cifrador.cifrar.mock.calls.map(([t]) => t)).toEqual([API_KEY, WEBHOOK]);
+    expect(d.repo.guardar.mock.calls[0][0]).toMatchObject({ por: "u-super", trio: TRIO });
+    expect(s.lineas).toEqual([{ canal: "log", texto: "Guardadas: rebill · CR · sandbox (apiKey, secretoWebhook)" }]);
+
+    // Con `--opcion=valor`, CRLF y líneas en blanco, lo mismo.
+    const otra = salidaDoble();
+    const crlf = `\r\napiKey=${API_KEY}\r\n\r\nsecretoWebhook=${WEBHOOK}\r\n`;
+    expect(await ejecutarGuardado(dobles().servicio, "u-super", ["--proveedor=rebill", "--pais=CR", "--entorno=sandbox"], crlf, otra.salida)).toBe(0);
+    expect(otra.texto()).toBe("Guardadas: rebill · CR · sandbox (apiKey, secretoWebhook)");
+  });
+
+  it("R12: con una entrada que no cumple R8, sale con 1, nombra el campo y no repite ningún valor", async () => {
+    const casos = [
+      `apiKey=pk_test_PUBLICA_CENTINELA\nsecretoWebhook=${WEBHOOK}`,
+      `apiKey=${API_KEY}`,
+      `apiKey=${API_KEY}\nsecretoWebhook=${WEBHOOK}\nsobra=OTRO_CENTINELA`,
+      `${API_KEY}\nsecretoWebhook=${WEBHOOK}`,
+      `apiKey=${API_KEY}\napiKey=${API_KEY}\nsecretoWebhook=${WEBHOOK}`,
+    ];
+    for (const entrada of casos) {
+      const d = dobles();
+      const s = salidaDoble();
+      expect(await ejecutarGuardado(d.servicio, "u-super", ARGUMENTOS, entrada, s.salida), entrada).toBe(1);
+      expect(d.repo.guardar).not.toHaveBeenCalled();
+      expect(s.lineas.every((l) => l.canal === "error")).toBe(true);
+      for (const prohibido of [API_KEY, WEBHOOK, "pk_test_PUBLICA_CENTINELA", "OTRO_CENTINELA"]) {
+        expect(s.texto()).not.toContain(prohibido);
+      }
+    }
+    const s = salidaDoble();
+    await ejecutarGuardado(dobles().servicio, "u-super", ARGUMENTOS, casos[0], s.salida);
+    expect(s.texto()).toBe("No se guardó: validation_error en secretos.apiKey.");
+  });
+
+  it("R12: un argumento desconocido sale con 1 sin repetirlo; sin superadmin, sale con 1", async () => {
+    const malos = [
+      [...ARGUMENTOS, "--api-key=sk_live_PEGADA_CENTINELA"],
+      [...ARGUMENTOS, "sk_live_PEGADA_CENTINELA"],
+      ["--proveedor", "rebill", "--pais", "CR"],
+      ["--proveedor", "rebill", "--proveedor", "rebill", "--pais", "CR", "--entorno", "sandbox"],
+      ["--proveedor", "rebill", "--pais", "CR", "--entorno"],
+    ];
+    for (const argumentos of malos) {
+      const d = dobles();
+      const s = salidaDoble();
+      expect(await ejecutarGuardado(d.servicio, "u-super", argumentos, ENTRADA, s.salida), argumentos.join(" ")).toBe(1);
+      expect(s.texto()).toContain("Argumento no reconocido");
+      expect(s.texto()).not.toContain("PEGADA_CENTINELA");
+      sinLlamadas(d);
+    }
+
+    const d = dobles();
+    const s = salidaDoble();
+    expect(await ejecutarGuardado(d.servicio, null, ARGUMENTOS, ENTRADA, s.salida)).toBe(1);
+    expect(s.texto()).toContain("pnpm arranque:superadmin");
+    sinLlamadas(d);
+  });
+
+  it("R12: si el servicio lanza, sale con 1 sin imprimir el mensaje del error", async () => {
+    const d = dobles();
+    d.repo.guardar.mockRejectedValueOnce(Object.assign(new Error(`fallo con ${API_KEY} dentro`), { code: "P2010" }));
+    const s = salidaDoble();
+    expect(await ejecutarGuardado(d.servicio, "u-super", ARGUMENTOS, ENTRADA, s.salida)).toBe(1);
+    expect(s.texto()).toContain("Error P2010");
+    expect(s.texto()).not.toContain(API_KEY);
   });
 });

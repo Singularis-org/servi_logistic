@@ -61,7 +61,7 @@
   - `estado` sin secretos.
 
   Son R5, R7, R8 y R9. *Hecho:* en verde. Con la mutación 5 de design §12, el test de R7 cae.
-- [ ] **T2.5** [P] `scripts/cobro-credencial-guardar.ts` y `package.json` (`"cobro:credencial"`), con
+- [x] **T2.5** [P] `scripts/cobro-credencial-guardar.ts` y `package.json` (`"cobro:credencial"`), con
   `ejecutarGuardado` exportado (design §9.1).
   *Hecho:* los tests de R12 en verde, en `cobro-credencial-service.test.ts`.
 - [ ] **T2.6** [P] El recifrado (design §9.2): `RecifradoIntegracionesService` con la pasada de plataforma y
