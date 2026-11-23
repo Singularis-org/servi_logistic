@@ -106,7 +106,7 @@
   `ficha === "SLT-243"` y `TOPE_EXCEPCIONES` ≤ 12 (`toBeLessThanOrEqual`). No se edita
   `_pais-sin-literales-excepciones.ts`.
   - *Hecho:* `pnpm run test:guardias` en verde.
-- [ ] **T5.3** Cierre.
+- [x] **T5.3** Cierre.
   - `./init.sh` en verde.
   - E2E en local sobre una base desechable (`docs/perfil-agentes.md > E2E en local antes del PR`):
     - el grupo `dinero`;
