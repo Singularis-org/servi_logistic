@@ -32,6 +32,7 @@ import {
   codigoSinComentarios,
 } from "@/tests/fixtures/money-safe";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
+import { MONEDA_PLATAFORMA } from "@/lib/config/moneda";
 import type { CierreAdminResumen } from "@/lib/interfaces/services/ICierresAdminService";
 import type {
   CierreGrupos,
@@ -384,7 +385,7 @@ describe("T E.1/R16 — tras aprobar con pendiente > 0 se OFRECE registrar el pa
     );
     await waitFor(() =>
       expect(successMock).toHaveBeenCalledWith(
-        PAGO_MENSAJERO_TEXTO.registrado("50000.00"),
+        PAGO_MENSAJERO_TEXTO.registrado("50000.00", MONEDA_PLATAFORMA),
       ),
     );
   });

@@ -18,7 +18,7 @@
 
 ## Bloque 1 — Aviso de cuadre con la moneda obligatoria (R7, R8)
 
-- [ ] **T1.1** En `components/shared/DesglosePagoField.tsx`, `mensajeDeCuadre` pierde el default de
+- [x] **T1.1** En `components/shared/DesglosePagoField.tsx`, `mensajeDeCuadre` pierde el default de
   `moneda` y se corrige su comentario (design §4.1). `CorregirPagosDialog.tsx` lee
   `useMonedaDelPais()` y se la pasa.
   - Cambian de forma `GestionarOrdenPanelCentimos.test.tsx` (3 llamadas con `MONEDA_PLATAFORMA`) y
@@ -31,14 +31,14 @@
 
 ## Bloque 2 — Importes de las pantallas (R1–R5) (en paralelo con el bloque 1)
 
-- [ ] **T2.1** [P] `/cierre-dia`: `CierreDiaModule.tsx`, con los 2 totales (design §3).
+- [x] **T2.1** [P] `/cierre-dia`: `CierreDiaModule.tsx`, con los 2 totales (design §3).
   - Casos de R1.
   - *Hecho:* en verde; los tests que ya existían de `/cierre-dia` pasan sin cambiar valores.
-- [ ] **T2.2** [P] `AjustarPagoMensajeroDialog.tsx` y `MarcaAjustado.tsx` (design §3).
+- [x] **T2.2** [P] `AjustarPagoMensajeroDialog.tsx` y `MarcaAjustado.tsx` (design §3).
   - Casos de R2 y R3.
   - *Hecho:* en verde; `cierre-detalle-ajuste-badge.test.tsx` y los tests del ajuste del pago pasan
     sin cambiar valores.
-- [ ] **T2.3** [P] Los 4 totales agregados de `ConsolidacionBodegaModule.tsx` y `TotalesPanel` de
+- [x] **T2.3** [P] Los 4 totales agregados de `ConsolidacionBodegaModule.tsx` y `TotalesPanel` de
   `cierre-detalle-shared.tsx` (solo ese componente; design §3).
   - Casos de R4 y R5.
   - *Hecho:* en verde; `CorregirResultadoCierre.test.tsx`, los tests de consolidación y la guardia
@@ -46,7 +46,7 @@
 
 ## Bloque 3 — Pago al mensajero e indemnización (R6, R8, R9) (en paralelo con el bloque 2)
 
-- [ ] **T3.1** [P] Pago al mensajero (design §3 y §4.2).
+- [x] **T3.1** [P] Pago al mensajero (design §3 y §4.2).
   - En `pago-mensajero-labels.ts`, `registrado(monto, moneda)` y `anulado(pendiente, moneda)`.
   - `PendienteLiquidarBadge.tsx`, `RegistrarPagoMensajeroDialog.tsx` y `PagoMensajeroSeccion.tsx`
     leen el hook.
@@ -54,7 +54,7 @@
   - Casos de R6 y los dos `@ts-expect-error` de R8.
   - *Hecho:* en verde; `CierrePremioPendiente.test.tsx` y la guardia `liquidacion-alcance` pasan sin
     tocarlos.
-- [ ] **T3.2** [P] Tope de la indemnización en `CierresAdminModule.tsx`:
+- [x] **T3.2** [P] Tope de la indemnización en `CierresAdminModule.tsx`:
   `indemnizacionMontoExcede(moneda)` e `indemnizacionMontoAyuda(moneda)` con `formatearTopeEn`, y
   fuera el import de `moneyTope` (design §4.3).
   - Casos de R9.

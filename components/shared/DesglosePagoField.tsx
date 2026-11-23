@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
-import { formatearMontoEn, montoExacto, MONEDA_PLATAFORMA, SIN_MONTO_RAYA, type FormatoMoneda } from "@/lib/config/moneda";
+import { formatearMontoEn, montoExacto, SIN_MONTO_RAYA, type FormatoMoneda } from "@/lib/config/moneda";
 import { aCentimos } from "@/lib/utils/pagos-recaudo";
 import {
   acotarMonto,
@@ -105,15 +105,14 @@ export const DESGLOSE_TEXTOS = {
  * `capturaCuadra` no puede dar `true` jamás (toda suma tecleable es entera), así que el otro
  * mensaje nunca sería el correcto — pero preguntarlo en este orden deja escrito el porqué.
  *
- * SLT-235 (R11): los importes del aviso van en la moneda que se le pasa, la del país de la
- * empresa. El tercer argumento es opcional solo mientras `CorregirPagosDialog` (cierres del
- * admin, SLT-243) siga sin migrar: hasta entonces cuadra con la de la plataforma, como el resto
- * de esa pantalla.
+ * SLT-235 (R11) y SLT-243 (R7, R8): los importes del aviso van en la moneda que se le pasa, la
+ * del país de la empresa. Es obligatoria y sin default: cada pantalla que pinta el aviso pasa la
+ * suya (`useMonedaDelPais()`), así ninguna cae a la de la plataforma por olvido.
  */
 export function mensajeDeCuadre(
   lineas: readonly LineaEnEdicion[],
   montoACobrar: number,
-  moneda: FormatoMoneda = MONEDA_PLATAFORMA,
+  moneda: FormatoMoneda,
 ): string | undefined {
   if (cuadreInalcanzable(montoACobrar)) {
     return DESGLOSE_TEXTOS.noCuadraPorCentimos(

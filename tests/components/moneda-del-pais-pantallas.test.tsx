@@ -315,8 +315,10 @@ describe("SLT-235/T3.1 — componentes compartidos de monto", () => {
     expect(mensajeDeCuadre(LINEAS_ENTERAS, CON_CENTIMOS, MONEDA_DE_PRUEBA)).toBe(avisoEn(MONEDA_DE_PRUEBA));
   });
 
-  it("R15, R16: mensajeDeCuadre sin moneda usa la de la plataforma, y con la de CR da lo mismo", () => {
-    const sinMoneda = mensajeDeCuadre(LINEAS_ENTERAS, CON_CENTIMOS);
+  it("R15, R16: mensajeDeCuadre con la moneda de la plataforma, y con la de CR da lo mismo", () => {
+    // SLT-243 (R8) volvio obligatoria la moneda: el caso «sin moneda» ya no compila (lo afirma un
+    // `@ts-expect-error` de `moneda-del-pais-cierres-admin.test.tsx`).
+    const sinMoneda = mensajeDeCuadre(LINEAS_ENTERAS, CON_CENTIMOS, MONEDA_PLATAFORMA);
     expect(sinMoneda).toBe(avisoEn(MONEDA_PLATAFORMA));
     expect(mensajeDeCuadre(LINEAS_ENTERAS, CON_CENTIMOS, MONEDA_CR)).toBe(sinMoneda);
   });

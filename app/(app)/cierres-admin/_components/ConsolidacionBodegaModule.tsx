@@ -25,7 +25,7 @@ import {
   type EvidenciaAbierta,
 } from "@/components/private/cierres/dialogos/VisorEvidencia";
 import { RESUMEN_SOLICITUD_BODEGA_TEXTO } from "@/components/private/cierres/dialogos/dialogos-labels";
-import { money } from "@/lib/config/moneda";
+import { formatearMontoEn, SIN_MONTO_RAYA } from "@/lib/config/moneda";
 import type { DataTableDescarga } from "@/components/shared/DataTable";
 import {
   CATALOGO_FILTROS_CIERRES_VACIO,
@@ -36,6 +36,7 @@ import {
   sinFiltrosBodega,
 } from "@/lib/types/filtros-cierres";
 import { filasDesdeResultado } from "@/components/shared/descarga-resultado";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
 import { useToast } from "@/hooks/useToast";
 import { cierreConfig } from "@/lib/config/cierre";
 import { cierreBodegaConfig } from "@/lib/config/cierre-bodega";
@@ -139,7 +140,8 @@ async function leerSolicitados(
 // el gate `puedesSolicitar`/`motivoBloqueo` (R6/R7) y su histórico propio (F1.4-h),
 // todo ya acotado server-side (R1/R3). La única mutación (Solicitar cierre de
 // bodega) va por Server Action y refresca la ruta. Money-safe (R13): los montos son
-// STRING; se renderizan con `money()` sin `parseFloat`/`Number`.
+// STRING; se renderizan con `formatearMontoEn` en la moneda del país (SLT-243), sin
+// `parseFloat`/`Number`.
 
 export interface ConsolidacionBodegaModuleProps {
   /**
@@ -299,6 +301,8 @@ export function ConsolidacionBodegaModule({
 }: ConsolidacionBodegaModuleProps) {
   const router = useRouter();
   const toast = useToast();
+  // SLT-243 (R4): los totales agregados del resumen, en la moneda del país de la empresa.
+  const moneda = useMonedaDelPais();
   const { mutate } = useSWRConfig();
 
   // Confirmación de "Solicitar cierre de bodega"; true = modal abierto.
@@ -575,7 +579,7 @@ export function ConsolidacionBodegaModule({
       <VisorEvidencia evidencia={evidencia} onClose={() => setEvidencia(null)} />
 
       {/* Confirmación de "Solicitar cierre de bodega". R48/R207: el resumen con las MISMAS
-          props que las tarjetas, formateadas con `money()`. */}
+          props que las tarjetas, en la moneda del país (SLT-243, R4). */}
       <Modal
         open={confirmar}
         onOpenChange={setConfirmar}
@@ -590,17 +594,17 @@ export function ConsolidacionBodegaModule({
           className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-2 text-sm"
         >
           <dt className="text-muted-foreground">{RESUMEN_SOLICITUD_BODEGA_TEXTO.recaudado}</dt>
-          <dd className="text-right font-medium tabular-nums">{money(totalesAgregados.general)}</dd>
+          <dd className="text-right font-medium tabular-nums">{formatearMontoEn(moneda, totalesAgregados.general, SIN_MONTO_RAYA)}</dd>
           <dt className="text-muted-foreground">{RESUMEN_SOLICITUD_BODEGA_TEXTO.pagoMensajeros}</dt>
           <dd className="text-right font-medium tabular-nums">
-            {money(totalPagoMensajeroAgregado)}
+            {formatearMontoEn(moneda, totalPagoMensajeroAgregado, SIN_MONTO_RAYA)}
           </dd>
           <dt className="text-muted-foreground">{RESUMEN_SOLICITUD_BODEGA_TEXTO.ganaBodega}</dt>
           <dd className="text-right font-medium tabular-nums">
-            {money(totalIngresoBodegaRechazosAgregado)}
+            {formatearMontoEn(moneda, totalIngresoBodegaRechazosAgregado, SIN_MONTO_RAYA)}
           </dd>
           <dt className="text-muted-foreground">{RESUMEN_SOLICITUD_BODEGA_TEXTO.debeLlegar}</dt>
-          <dd className="text-right font-semibold tabular-nums">{money(paraLaCentralAgregado)}</dd>
+          <dd className="text-right font-semibold tabular-nums">{formatearMontoEn(moneda, paraLaCentralAgregado, SIN_MONTO_RAYA)}</dd>
         </dl>
       </Modal>
     </section>

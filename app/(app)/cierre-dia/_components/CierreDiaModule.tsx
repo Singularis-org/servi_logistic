@@ -15,8 +15,9 @@ import type { DataTableDescarga } from "@/components/shared/DataTable";
 import { Pagination } from "@/components/shared/Pagination";
 import { useToast } from "@/hooks/useToast";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
 import { cierreConfig } from "@/lib/config/cierre";
-import { money } from "@/lib/config/moneda";
+import { formatearMontoEn, SIN_MONTO_RAYA } from "@/lib/config/moneda";
 import {
   deshacerGestion,
   listarCierresPasadosPaginado,
@@ -284,6 +285,8 @@ export function CierreDiaModule({
   // SLT-156 (R536): en el teléfono la paginación de «Cierres solicitados» va sin números de página
   // (con ellos, a 44 px, no cabe en 360 px).
   const esMovil = useIsMobile();
+  // SLT-243 (R1): los totales del resumen de la solicitud, en la moneda del país de la empresa.
+  const moneda = useMonedaDelPais();
 
   // R240: el cierre que pinta la página. Con uno por reenviar, ESE (`aReenviarPrimero`, el mismo que
   // mueve `solicitarCierre`, que no recibe id: si se pintara otro, su botón enviaría un cierre
@@ -668,9 +671,9 @@ export function CierreDiaModule({
           <dt className="text-muted-foreground">{RESUMEN_SOLICITUD_TEXTO.gestiones}</dt>
           <dd className="text-right font-medium">{gestionesDeHoy.length}</dd>
           <dt className="text-muted-foreground">{RESUMEN_SOLICITUD_TEXTO.recaudado}</dt>
-          <dd className="text-right font-medium">{money(totales.general)}</dd>
+          <dd className="text-right font-medium">{formatearMontoEn(moneda, totales.general, SIN_MONTO_RAYA)}</dd>
           <dt className="text-muted-foreground">{RESUMEN_SOLICITUD_TEXTO.tuGanancia}</dt>
-          <dd className="text-right font-semibold">{money(totalPagoMensajero)}</dd>
+          <dd className="text-right font-semibold">{formatearMontoEn(moneda, totalPagoMensajero, SIN_MONTO_RAYA)}</dd>
         </dl>
       </Modal>
 
