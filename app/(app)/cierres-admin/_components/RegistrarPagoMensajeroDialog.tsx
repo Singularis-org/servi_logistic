@@ -2,6 +2,7 @@
 
 import { RegistrarPagoDialog } from "@/components/shared/liquidacion/RegistrarPagoDialog";
 import type { RegistrarPagoCampos } from "@/components/shared/liquidacion/RegistrarPagoDialog";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
 import { useToast } from "@/hooks/useToast";
 import { registrarPagoMensajeroAction } from "@/lib/actions/liquidacion";
 import type { PagoRegistradoDTO, RegistrarPagoResult } from "@/lib/types/liquidacion";
@@ -59,6 +60,8 @@ export function RegistrarPagoMensajeroDialog({
   onRegistrado,
 }: Readonly<RegistrarPagoMensajeroDialogProps>) {
   const toast = useToast();
+  // SLT-243 (R6): el aviso del pago registrado dice el importe en la moneda del país.
+  const moneda = useMonedaDelPais();
 
   /** R17 — el pago no quedó registrado. Lo primero que se dice es qué SÍ quedó hecho. */
   function avisarNoRegistrado() {
@@ -85,7 +88,7 @@ export function RegistrarPagoMensajeroDialog({
   }
 
   async function trasRegistrar(pago: PagoRegistradoDTO) {
-    toast.success(PAGO_MENSAJERO_TEXTO.registrado(pago.monto));
+    toast.success(PAGO_MENSAJERO_TEXTO.registrado(pago.monto, moneda));
     await onRegistrado?.(pago);
   }
 

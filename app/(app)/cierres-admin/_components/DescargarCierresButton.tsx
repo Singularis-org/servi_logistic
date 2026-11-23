@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { ColumnasPopover } from "@/components/shared/ColumnasPopover";
 import { DescargarDatasetButton } from "@/components/shared/DescargarDatasetButton";
 import type { DataTableDescarga, DescargaFilasResult } from "@/components/shared/DataTable";
 import { RadioGroup, type RadioGroupOption } from "@/components/ui/radio-group";
+import { useImpuestoDelPais } from "@/hooks/use-moneda-del-pais";
 import { usePreferenciaColumnas } from "@/hooks/usePreferenciaColumnas";
 import { claveDeAmbitoDescarga } from "@/lib/columnas/preferencia-columnas";
 import type { CatalogoFiltrosCierresDTO } from "@/lib/types/filtros-cierres";
@@ -21,6 +22,7 @@ import {
   columnasDescargaGestionesFundidaPara,
   type AudienciaDescargaGestionesFundida,
 } from "./cierres-gestiones-fundida-descarga-columnas";
+import { conImpuestoEnColumnas } from "./encabezados-con-impuesto";
 
 /**
  * UN SOLO botón «Descargar» para las dos pantallas de cierres del maestro (pedido humano del
@@ -214,9 +216,17 @@ export function DescargarCierresButton({
   // que no puede leer es un ámbito cuya unicidad no puede comprobar.
   const nivelActivo = esDetalle ? DETALLE_GESTIONES : resumen;
   // Falla cerrado: lo que no es `admin` recibe la hoja sin las columnas de la central.
-  const columnas = esDetalle
-    ? COLUMNAS_DETALLE_POR_AUDIENCIA[audiencia === "admin" ? "admin" : "satelite"]
-    : resumen.columnas;
+  const audienciaDetalle = audiencia === "admin" ? "admin" : "satelite";
+  // SLT-243 (R10): el selector y la hoja «Gestiones modelo anterior» dicen el impuesto del país. Con
+  // el de la plataforma, `conImpuestoEnColumnas` devuelve el MISMO arreglo; con otro, el nuevo se
+  // memoriza: estas columnas son dependencia del hook de preferencia y no pueden cambiar de
+  // identidad en cada render.
+  const impuesto = useImpuestoDelPais();
+  const columnasDetalle = useMemo(
+    () => conImpuestoEnColumnas(COLUMNAS_DETALLE_POR_AUDIENCIA[audienciaDetalle], impuesto),
+    [audienciaDetalle, impuesto],
+  );
+  const columnas = esDetalle ? columnasDetalle : resumen.columnas;
   const clave = claveDeAmbitoDescarga(nivelActivo.ambitoColumnas);
 
   // Las MARCADAS, en el orden efectivo del ámbito. Se resuelven aquí y viajan ya resueltas al

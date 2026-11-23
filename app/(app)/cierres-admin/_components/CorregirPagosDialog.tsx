@@ -13,6 +13,7 @@ import {
   lineasParaEnviar,
   type LineaEnEdicion,
 } from "@/app/(app)/mis-asignaciones/_components/desglose-captura";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
 import { useToast } from "@/hooks/useToast";
 import { actualizarPagosGestion } from "@/lib/actions/cierres-admin";
 import type { CierreDetalleGestion } from "@/lib/interfaces/services/ICierreDiaService";
@@ -69,6 +70,8 @@ export function CorregirPagosDialog({
   onCorregido,
 }: Readonly<CorregirPagosDialogProps>) {
   const toast = useToast();
+  // SLT-243 (R7): el aviso de cuadre dice sus importes en la moneda del país de la empresa.
+  const moneda = useMonedaDelPais();
   const [lineas, setLineas] = useState<LineaEnEdicion[]>(() =>
     gestion ? lineasDesde(gestion) : [],
   );
@@ -166,7 +169,7 @@ export function CorregirPagosDialog({
           // desde la feature 300 por el MISMO `mensajeDeCuadre`, no por dos expresiones
           // paralelas: un `monto_recibido` con céntimos tampoco se puede cuadrar desde aquí, y
           // el admin merece leer por qué igual que el mensajero.
-          errorCuadre={mensajeDeCuadre(lineas, montoACobrar)}
+          errorCuadre={mensajeDeCuadre(lineas, montoACobrar, moneda)}
           errorMetodo={undefined}
           errorServidor={errorServidor}
           onChange={setLineas}

@@ -122,7 +122,7 @@ const MARCADAS: DescargaColumna[] = [
 const ENCABEZADOS_CIERRES_CENTRAL = [
   "Folio", "Mensajero", "Destino", "Estado", "Solicitado", "Resuelto", "Efectivo", "SINPE",
   "Transferencia", "Recaudado", "Se le paga a la tienda",
-  "Pago al mensajero", "Pago a la bodega satélite", "Total facturado", "IVA facturado",
+  "Pago al mensajero", "Pago a la bodega satélite", "Total facturado", "Impuesto (IVA) facturado",
   "Le queda a la empresa", "Gestiones", "Pagos ajustados", "Pago entregado",
 ];
 
@@ -198,7 +198,7 @@ describe("SLT-140 — columnas de «Cierres» y «Por tienda» (R379, R382)", ()
       .map((c) => c.encabezado);
     expect(montos).toEqual([
       "Efectivo", "SINPE", "Transferencia", "Recaudado", "Se le paga a la tienda",
-      "Pago al mensajero", "Pago a la bodega satélite", "Total facturado", "IVA facturado",
+      "Pago al mensajero", "Pago a la bodega satélite", "Total facturado", "Impuesto (IVA) facturado",
       "Le queda a la empresa", "Pago entregado",
     ]);
   });

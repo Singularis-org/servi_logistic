@@ -14,7 +14,9 @@ import {
   sinFiltrosBodega,
 } from "@/lib/types/filtros-cierres";
 import { filasDesdeResultado } from "@/components/shared/descarga-resultado";
+import { useImpuestoDelPais } from "@/hooks/use-moneda-del-pais";
 import { useToast } from "@/hooks/useToast";
+import { IMPUESTO_ROTULO } from "@/lib/constants/impuesto-rotulo";
 import { cierreBodegaConfig } from "@/lib/config/cierre-bodega";
 // ⭑ FICHA 431 (T17, R25): las DOS acciones de la conciliacion, el MISMO componente que monta el
 // desglose de `/wallet/satelites`. Mismo boton para la misma fila: si esta pantalla tuviera su
@@ -64,6 +66,7 @@ import {
 import { descargarDatos } from "@/components/shared/descarga-datos";
 import { PARAM_CIERRE_BODEGA } from "./cierre-enlace";
 import { obtenerResumenCierresBodega } from "./cierres-bodega-modelo-nuevo-descarga";
+import { conImpuestoEnResultado } from "./encabezados-con-impuesto";
 
 /** Nombre visible de la cola: hoja, base del archivo y nombre del control (R12/R13). */
 const TITULO_DESCARGA_PENDIENTES = "Cierres de bodega pendientes";
@@ -187,6 +190,8 @@ type DetalleAbierto = Extract<CierreBodegaDetalleServiceResult, { status: "ok" }
 export function descargaColaBodega(
   filtros: FiltrosCierresBodega,
   audiencia: AudienciaDescargaGestionesFundida,
+  // SLT-243 (R10): el impuesto del país, para los encabezados del libro. Sin él, el de la plataforma.
+  impuesto: string = IMPUESTO_ROTULO,
 ): DescargaResumenCierres {
   return {
     titulo: TITULO_DESCARGA_PENDIENTES,
@@ -200,12 +205,15 @@ export function descargaColaBodega(
       ),
     // SLT-141 (R384, R385): con cierres de bodega del modelo nuevo, el libro «Cierres» + «Por tienda»
     // (+ la hoja de hoy como «Cierres modelo anterior» si es mixto); sin ellos, el archivo de hoy.
-    obtenerFilasConColumnas: (columnasMarcadas) =>
-      obtenerResumenCierresBodega(
-        () => descargarDatos("listarPendientesCierresBodegaCompleto", { filtros }),
-        filaDescargaBodegaPendiente,
-        columnasMarcadas,
-        audiencia,
+    obtenerFilasConColumnas: async (columnasMarcadas) =>
+      conImpuestoEnResultado(
+        await obtenerResumenCierresBodega(
+          () => descargarDatos("listarPendientesCierresBodegaCompleto", { filtros }),
+          filaDescargaBodegaPendiente,
+          columnasMarcadas,
+          audiencia,
+        ),
+        impuesto,
       ),
   };
 }
@@ -235,6 +243,8 @@ const TITULO_DESCARGA = "Cierres de bodega resueltos";
 export function descargaBodegaResueltos(
   filtros: FiltrosCierresBodega,
   audiencia: AudienciaDescargaGestionesFundida,
+  // SLT-243 (R10): como en `descargaColaBodega`.
+  impuesto: string = IMPUESTO_ROTULO,
 ): DescargaResumenCierres {
   return {
     titulo: TITULO_DESCARGA,
@@ -247,12 +257,15 @@ export function descargaBodegaResueltos(
         filaDescargaBodegaResuelto,
       ),
     // SLT-141 (R384, R385): el libro del modelo nuevo si el conjunto lo tiene; si no, el de hoy.
-    obtenerFilasConColumnas: (columnasMarcadas) =>
-      obtenerResumenCierresBodega(
-        () => descargarDatos("listarHistoricoCierresBodegaCompleto", { filtros }),
-        filaDescargaBodegaResuelto,
-        columnasMarcadas,
-        audiencia,
+    obtenerFilasConColumnas: async (columnasMarcadas) =>
+      conImpuestoEnResultado(
+        await obtenerResumenCierresBodega(
+          () => descargarDatos("listarHistoricoCierresBodegaCompleto", { filtros }),
+          filaDescargaBodegaResuelto,
+          columnasMarcadas,
+          audiencia,
+        ),
+        impuesto,
       ),
   };
 }
@@ -295,6 +308,8 @@ export function CierresBodegaAdminModule({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const toast = useToast();
+  // SLT-243 (R10): los encabezados con impuesto del libro de la descarga dicen el del país.
+  const impuesto = useImpuestoDelPais();
   const { mutate } = useSWRConfig();
 
   // Detalle del cierre de bodega abierto (null = modal cerrado).
@@ -528,8 +543,8 @@ export function CierresBodegaAdminModule({
           <DescargarCierresButton
             resumen={
               porConciliar
-                ? descargaColaBodega(filtros, audiencia)
-                : descargaBodegaResueltos(filtros, audiencia)
+                ? descargaColaBodega(filtros, audiencia, impuesto)
+                : descargaBodegaResueltos(filtros, audiencia, impuesto)
             }
             catalogo={catalogoFiltros}
             accion={(f) => descargarDatos("listarGestionesCierresBodegaCompleto", f)}

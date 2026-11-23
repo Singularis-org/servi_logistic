@@ -157,7 +157,7 @@ afterEach(cleanup);
 const ENCABEZADOS_CIERRES_CENTRAL = [
   "Folio", "Mensajero", "Destino", "Estado", "Solicitado", "Resuelto", "Efectivo", "SINPE",
   "Transferencia", "Recaudado", "Se le paga a la tienda",
-  "Pago al mensajero", "Pago a la bodega satélite", "Total facturado", "IVA facturado",
+  "Pago al mensajero", "Pago a la bodega satélite", "Total facturado", "Impuesto (IVA) facturado",
   "Le queda a la empresa", "Gestiones", "Pagos ajustados", "Pago entregado",
 ];
 // SLT-161 (R485): 19 − «Pago entregado» − las cuatro de la empresa = 14.

@@ -1,8 +1,9 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import { money } from "@/components/shared/liquidacion/liquidacion-labels";
 import { montoValido } from "@/components/shared/monto-cliente";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
+import { formatearMontoEn, SIN_MONTO_RAYA } from "@/lib/config/moneda";
 
 import { PAGO_MENSAJERO_TEXTO } from "./pago-mensajero-labels";
 
@@ -41,6 +42,8 @@ export interface PendienteLiquidarBadgeProps {
 }
 
 export function PendienteLiquidarBadge({ pendiente }: Readonly<PendienteLiquidarBadgeProps>) {
+  // SLT-243 (R6): el importe pendiente, en la moneda del país de la empresa.
+  const moneda = useMonedaDelPais();
   if (pendiente === null) {
     // R28: en un cierre no aprobado no se muestra nada relativo al pago.
     return <span className="text-muted-foreground">—</span>;
@@ -48,5 +51,5 @@ export function PendienteLiquidarBadge({ pendiente }: Readonly<PendienteLiquidar
   if (!hayPendienteDeLiquidar(pendiente)) {
     return <Badge variant="success">{PAGO_MENSAJERO_TEXTO.sinPendiente}</Badge>;
   }
-  return <Badge variant="warning">{money(pendiente)}</Badge>;
+  return <Badge variant="warning">{formatearMontoEn(moneda, pendiente, SIN_MONTO_RAYA)}</Badge>;
 }

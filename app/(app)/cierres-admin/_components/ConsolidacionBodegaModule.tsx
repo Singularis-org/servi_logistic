@@ -25,7 +25,7 @@ import {
   type EvidenciaAbierta,
 } from "@/components/private/cierres/dialogos/VisorEvidencia";
 import { RESUMEN_SOLICITUD_BODEGA_TEXTO } from "@/components/private/cierres/dialogos/dialogos-labels";
-import { money } from "@/lib/config/moneda";
+import { formatearMontoEn, SIN_MONTO_RAYA } from "@/lib/config/moneda";
 import type { DataTableDescarga } from "@/components/shared/DataTable";
 import {
   CATALOGO_FILTROS_CIERRES_VACIO,
@@ -36,6 +36,8 @@ import {
   sinFiltrosBodega,
 } from "@/lib/types/filtros-cierres";
 import { filasDesdeResultado } from "@/components/shared/descarga-resultado";
+import { useImpuestoDelPais, useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
+import { IMPUESTO_ROTULO } from "@/lib/constants/impuesto-rotulo";
 import { useToast } from "@/hooks/useToast";
 import { cierreConfig } from "@/lib/config/cierre";
 import { cierreBodegaConfig } from "@/lib/config/cierre-bodega";
@@ -64,6 +66,7 @@ import {
 } from "./cierres-bodega-descarga-columnas";
 import { descargarDatos } from "@/components/shared/descarga-datos";
 import { obtenerResumenCierresBodega } from "./cierres-bodega-modelo-nuevo-descarga";
+import { conImpuestoEnResultado } from "./encabezados-con-impuesto";
 
 /** Nombre visible del listado de consolidables: hoja, archivo y control (R12/R13). */
 const TITULO_DESCARGA_CONSOLIDABLES = "Cierres del día a consolidar";
@@ -139,7 +142,8 @@ async function leerSolicitados(
 // el gate `puedesSolicitar`/`motivoBloqueo` (R6/R7) y su histórico propio (F1.4-h),
 // todo ya acotado server-side (R1/R3). La única mutación (Solicitar cierre de
 // bodega) va por Server Action y refresca la ruta. Money-safe (R13): los montos son
-// STRING; se renderizan con `money()` sin `parseFloat`/`Number`.
+// STRING; se renderizan con `formatearMontoEn` en la moneda del país (SLT-243), sin
+// `parseFloat`/`Number`.
 
 export interface ConsolidacionBodegaModuleProps {
   /**
@@ -258,7 +262,11 @@ export const PAGINACION_BODEGA_SOLICITADOS_LABEL =
  * que el actor podía ver (R44). Pedido humano del 2026-08-16: «el CONJUNTO» pasa a significar
  * «el conjunto FILTRADO» — los `filtros` viajan porque el usuario los puso; el alcance, nunca.
  */
-export function descargaBodegaSolicitados(filtros: FiltrosCierresBodega): DataTableDescarga {
+export function descargaBodegaSolicitados(
+  filtros: FiltrosCierresBodega,
+  // SLT-243 (R10): el impuesto del país, para los encabezados del libro. Sin él, el de la plataforma.
+  impuesto: string = IMPUESTO_ROTULO,
+): DataTableDescarga {
   return {
     titulo: TITULO_DESCARGA,
     columnas: COLUMNAS_DESCARGA_BODEGA_SOLICITADOS,
@@ -268,12 +276,15 @@ export function descargaBodegaSolicitados(filtros: FiltrosCierresBodega): DataTa
     // del modelo nuevo, el libro (sin «Pago entregado», R386); sin ellos, el archivo de hoy. Esta
     // descarga no pasa las columnas marcadas a `obtenerFilas`: «Cierres modelo anterior» sale con
     // todas las de hoy, en su orden (PA3).
-    obtenerFilas: () =>
-      obtenerResumenCierresBodega(
-        () => descargarDatos("listarCierresBodegaSolicitadosCompleto", { filtros }),
-        filaDescargaBodegaSolicitado,
-        COLUMNAS_DESCARGA_BODEGA_SOLICITADOS,
-        "satelite",
+    obtenerFilas: async () =>
+      conImpuestoEnResultado(
+        await obtenerResumenCierresBodega(
+          () => descargarDatos("listarCierresBodegaSolicitadosCompleto", { filtros }),
+          filaDescargaBodegaSolicitado,
+          COLUMNAS_DESCARGA_BODEGA_SOLICITADOS,
+          "satelite",
+        ),
+        impuesto,
       ),
   };
 }
@@ -299,6 +310,10 @@ export function ConsolidacionBodegaModule({
 }: ConsolidacionBodegaModuleProps) {
   const router = useRouter();
   const toast = useToast();
+  // SLT-243 (R4): los totales agregados del resumen, en la moneda del país de la empresa.
+  const moneda = useMonedaDelPais();
+  // SLT-243 (R10): los encabezados con impuesto del libro de «Solicitados» dicen el del país.
+  const impuesto = useImpuestoDelPais();
   const { mutate } = useSWRConfig();
 
   // Confirmación de "Solicitar cierre de bodega"; true = modal abierto.
@@ -494,7 +509,7 @@ export function ConsolidacionBodegaModule({
           }
           descargar={
             <DescargarDatasetButton
-              {...(enConsolidar ? descargaConsolidables(filtros) : descargaBodegaSolicitados(filtros))}
+              {...(enConsolidar ? descargaConsolidables(filtros) : descargaBodegaSolicitados(filtros, impuesto))}
             />
           }
           filas={pagina.items}
@@ -575,7 +590,7 @@ export function ConsolidacionBodegaModule({
       <VisorEvidencia evidencia={evidencia} onClose={() => setEvidencia(null)} />
 
       {/* Confirmación de "Solicitar cierre de bodega". R48/R207: el resumen con las MISMAS
-          props que las tarjetas, formateadas con `money()`. */}
+          props que las tarjetas, en la moneda del país (SLT-243, R4). */}
       <Modal
         open={confirmar}
         onOpenChange={setConfirmar}
@@ -590,17 +605,17 @@ export function ConsolidacionBodegaModule({
           className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-2 text-sm"
         >
           <dt className="text-muted-foreground">{RESUMEN_SOLICITUD_BODEGA_TEXTO.recaudado}</dt>
-          <dd className="text-right font-medium tabular-nums">{money(totalesAgregados.general)}</dd>
+          <dd className="text-right font-medium tabular-nums">{formatearMontoEn(moneda, totalesAgregados.general, SIN_MONTO_RAYA)}</dd>
           <dt className="text-muted-foreground">{RESUMEN_SOLICITUD_BODEGA_TEXTO.pagoMensajeros}</dt>
           <dd className="text-right font-medium tabular-nums">
-            {money(totalPagoMensajeroAgregado)}
+            {formatearMontoEn(moneda, totalPagoMensajeroAgregado, SIN_MONTO_RAYA)}
           </dd>
           <dt className="text-muted-foreground">{RESUMEN_SOLICITUD_BODEGA_TEXTO.ganaBodega}</dt>
           <dd className="text-right font-medium tabular-nums">
-            {money(totalIngresoBodegaRechazosAgregado)}
+            {formatearMontoEn(moneda, totalIngresoBodegaRechazosAgregado, SIN_MONTO_RAYA)}
           </dd>
           <dt className="text-muted-foreground">{RESUMEN_SOLICITUD_BODEGA_TEXTO.debeLlegar}</dt>
-          <dd className="text-right font-semibold tabular-nums">{money(paraLaCentralAgregado)}</dd>
+          <dd className="text-right font-semibold tabular-nums">{formatearMontoEn(moneda, paraLaCentralAgregado, SIN_MONTO_RAYA)}</dd>
         </dl>
       </Modal>
     </section>

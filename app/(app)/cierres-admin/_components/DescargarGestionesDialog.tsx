@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Modal } from "@/components/shared/Modal";
 import { SelectAllCheckbox } from "@/components/shared/SelectAllCheckbox";
 import { DescargarDatasetButton } from "@/components/shared/DescargarDatasetButton";
+import { useImpuestoDelPais } from "@/hooks/use-moneda-del-pais";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
 import type { DescargaFilasResult } from "@/components/shared/DataTable";
 import { filasDesdeResultado } from "@/components/shared/descarga-resultado";
@@ -29,6 +30,7 @@ import {
   type AudienciaDescargaGestionesFundida,
 } from "./cierres-gestiones-fundida-descarga-columnas";
 import { libroGestiones } from "./cierres-gestiones-modelo-nuevo-descarga";
+import { conImpuestoEnHojas } from "./encabezados-con-impuesto";
 
 /**
  * Feature 230 (T4.1, design §7) — el DIÁLOGO de la descarga DETALLADA de cierres: elegir uno o
@@ -225,19 +227,24 @@ export interface DescargarGestionesDialogProps {
   audiencia?: AudienciaDescargaGestionesFundida;
 }
 
-/** SLT-113 — las hojas del modelo nuevo de una respuesta `ok`, o `null` (el archivo de siempre). */
+/**
+ * SLT-113 — las hojas del modelo nuevo de una respuesta `ok`, o `null` (el archivo de siempre).
+ * SLT-243 (R10): con los encabezados con impuesto en el del país.
+ */
 function libroDe(
   respuesta: Awaited<ReturnType<AccionGestionesDescarga>> | null,
   columnasAnterior: DescargaColumna[],
   audiencia: AudienciaDescargaGestionesFundida,
+  impuesto: string,
 ) {
   if (respuesta === null || respuesta.status !== "ok") return null;
-  return libroGestiones({
+  const hojas = libroGestiones({
     items: respuesta.items,
     rechazos: respuesta.rechazosDeTienda,
     columnasAnterior,
     audiencia,
   });
+  return hojas === null ? null : conImpuestoEnHojas(hojas, impuesto);
 }
 
 export function DescargarGestionesDialog({
@@ -251,6 +258,8 @@ export function DescargarGestionesDialog({
   audiencia = "satelite",
 }: Readonly<DescargarGestionesDialogProps>) {
   const [abierto, setAbierto] = useState(false);
+  // SLT-243 (R10): el impuesto del país, para los encabezados del libro del modelo nuevo.
+  const impuesto = useImpuestoDelPais();
 
   /** Los ids del catálogo, en su orden: el universo de lo elegible y el defecto de la selección. */
   const idsCatalogo = useMemo(
@@ -349,7 +358,7 @@ export function DescargarGestionesDialog({
       accion(recorteElegido()).then((r) => (respuesta = r)),
       filaDescargaGestionFundida,
     );
-    const hojas = libroDe(respuesta, columnas, audiencia);
+    const hojas = libroDe(respuesta, columnas, audiencia, impuesto);
     const resultado: DescargaFilasResult =
       hojas === null ? deSiempre : { status: "ok", filas: hojas[0].filas, libro: { hojas } };
     // FICHA 384: el conjunto VACÍO se redacta aquí (ver `MENSAJE_SIN_DATOS_EN_RANGO`). El

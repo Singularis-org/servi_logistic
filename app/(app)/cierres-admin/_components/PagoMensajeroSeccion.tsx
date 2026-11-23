@@ -11,6 +11,7 @@ import type {
   RepartoAnuladoOk,
 } from "@/components/shared/liquidacion/AnularPagoDialog";
 import { ANULAR_REPARTO_RESPUESTA } from "@/components/shared/liquidacion/liquidacion-labels";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
 import { useToast } from "@/hooks/useToast";
 import {
   anularPagoAction,
@@ -98,6 +99,8 @@ export function PagoMensajeroSeccion({
 }: Readonly<PagoMensajeroSeccionProps>) {
   const { mutate } = useSWRConfig();
   const toast = useToast();
+  // SLT-243 (R6): el aviso del pago anulado dice el pendiente en la moneda del país.
+  const moneda = useMonedaDelPais();
   const [abierto, setAbierto] = useState(false);
 
   const { data, error, isLoading } = useSWR(clavePagosDeCierre(cierreId), () =>
@@ -149,7 +152,7 @@ export function PagoMensajeroSeccion({
   async function trasAnular(resultado: PagoAnuladoOk) {
     if (resultado.status === "ok") {
       // R71: el pendiente vuelve a lo que era antes del pago. Lo dice el servidor.
-      toast.success(PAGO_MENSAJERO_TEXTO.anulado(resultado.restante));
+      toast.success(PAGO_MENSAJERO_TEXTO.anulado(resultado.restante, moneda));
     } else {
       toast.info(PAGO_MENSAJERO_TEXTO.yaAnulado);
     }

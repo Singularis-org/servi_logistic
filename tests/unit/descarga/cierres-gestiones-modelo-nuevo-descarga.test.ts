@@ -215,15 +215,15 @@ const ENCABEZADOS_CENTRAL = [
   "Transferencia",
   "Flete por entregado",
   "Tarifa del flete",
-  "IVA del flete",
+  "Impuesto (IVA) del flete",
   "Comisión COD",
   "Tarifa de la comisión",
-  "IVA de la comisión",
+  "Impuesto (IVA) de la comisión",
   "Flete de gestiones no entregadas",
   "Tarifa del flete de gestiones no entregadas",
-  "IVA del flete de gestiones no entregadas",
+  "Impuesto (IVA) del flete de gestiones no entregadas",
   "Se le cobra a la tienda",
-  "De eso, IVA",
+  "De eso, impuesto (IVA)",
   "Pago por tarifa",
   "Tarifa del pago",
   "Ajuste",
@@ -232,7 +232,7 @@ const ENCABEZADOS_CENTRAL = [
   "Ajustó",
   "Gana la bodega satélite",
   "Fulfillment",
-  "IVA de fulfillment",
+  "Impuesto (IVA) de fulfillment",
   "Fulfillment cargado el",
   "Señales",
 ];
@@ -268,10 +268,10 @@ describe("SLT-113 — encabezados (R373)", () => {
       .filter((c) => c.formato === "monto")
       .map((c) => c.encabezado);
     expect(conMonto).toEqual([
-      "Recibido", "Efectivo", "SINPE", "Transferencia", "Flete por entregado", "IVA del flete",
-      "Comisión COD", "IVA de la comisión", "Flete de gestiones no entregadas", "IVA del flete de gestiones no entregadas",
-      "Se le cobra a la tienda", "De eso, IVA", "Pago por tarifa", "Ajuste", "Pago al mensajero",
-      "Gana la bodega satélite", "Fulfillment", "IVA de fulfillment",
+      "Recibido", "Efectivo", "SINPE", "Transferencia", "Flete por entregado", "Impuesto (IVA) del flete",
+      "Comisión COD", "Impuesto (IVA) de la comisión", "Flete de gestiones no entregadas", "Impuesto (IVA) del flete de gestiones no entregadas",
+      "Se le cobra a la tienda", "De eso, impuesto (IVA)", "Pago por tarifa", "Ajuste", "Pago al mensajero",
+      "Gana la bodega satélite", "Fulfillment", "Impuesto (IVA) de fulfillment",
     ]);
   });
 

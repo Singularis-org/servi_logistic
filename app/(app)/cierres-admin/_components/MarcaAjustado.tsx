@@ -7,8 +7,9 @@ import {
   PopoverTitle,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { useMonedaDelPais } from "@/hooks/use-moneda-del-pais";
 import { ROL_LABELS } from "@/lib/auth/rol-label";
-import { money } from "@/lib/config/moneda";
+import { formatearMontoEn, SIN_MONTO_RAYA } from "@/lib/config/moneda";
 import type { AjustePagoGestionDTO } from "@/lib/interfaces/services/ICierreDiaService";
 import { cn } from "@/lib/utils";
 import { fechaCalendarioCR } from "@/lib/utils/fecha-cr";
@@ -40,8 +41,12 @@ function cuandoAjuste(iso: string): string {
  * se pintan con el mismo formateador que la celda (money-safe).
  *
  * El `click` no sube: la marca vive dentro de la fila desplegable y un toque no puede plegarla.
+ *
+ * SLT-243 (R3): los importes van en la moneda del país de la empresa. La marca lee el hook ella
+ * misma, así sale bien en cualquier fila que la monte sin pasarle la moneda por prop.
  */
 export function MarcaAjustado({ ajustes }: Readonly<{ ajustes: readonly AjustePagoGestionDTO[] }>) {
+  const moneda = useMonedaDelPais();
   return (
     <Popover modal={false}>
       <PopoverTrigger
@@ -71,7 +76,7 @@ export function MarcaAjustado({ ajustes }: Readonly<{ ajustes: readonly AjustePa
                 {cuandoAjuste(a.creadoAt)} · {a.actorNombre} ({ROL_LABELS[a.actorRol]})
               </span>
               <span className="font-medium tabular-nums">
-                {money(a.pagoAnterior)} → {money(a.pagoNuevo)}
+                {formatearMontoEn(moneda, a.pagoAnterior, SIN_MONTO_RAYA)} → {formatearMontoEn(moneda, a.pagoNuevo, SIN_MONTO_RAYA)}
               </span>
               <span className="text-xs">
                 {AJUSTE_MOTIVO_LABEL}: {a.motivo}

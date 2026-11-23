@@ -17,7 +17,7 @@
  * aprobación, volvería a aprobar un cierre que ya lo está — y, peor, podría creer que el
  * mensajero sigue bloqueado (feature 111) por un trámite administrativo ajeno a él.
  */
-import { money } from "@/components/shared/liquidacion/liquidacion-labels";
+import { formatearMontoEn, SIN_MONTO_RAYA, type FormatoMoneda } from "@/lib/config/moneda";
 
 /** Rótulo de la columna del listado y de la línea del detalle (R26). Uno solo, compartido. */
 export const PENDIENTE_LIQUIDAR_COL = "Pendiente de liquidar";
@@ -40,8 +40,12 @@ export const PAGO_MENSAJERO_TEXTO = {
   sinSaldo: "Este mensajero no tiene ganancia pendiente de pago en este cierre, así que no hay nada que pagar.",
   /** Insignia del cierre aprobado sin nada pendiente (R27). */
   sinPendiente: "Liquidado",
-  /** Confirmación de un pago registrado. El monto es el STRING del servidor, tal cual. */
-  registrado: (monto: string) => `Pago de ${money(monto)} registrado.`,
+  /**
+   * Confirmación de un pago registrado. El monto es el STRING del servidor, tal cual, en la
+   * moneda del país de la empresa (SLT-243, R6). La moneda es obligatoria (R8).
+   */
+  registrado: (monto: string, moneda: FormatoMoneda) =>
+    `Pago de ${formatearMontoEn(moneda, monto, SIN_MONTO_RAYA)} registrado.`,
   /**
    * R17 — el pago NO se registró y el diálogo venía de aprobar. El mensaje **empieza** por lo
    * que importa: el cierre quedó aprobado. La deuda queda abierta y visible (R26).
@@ -52,10 +56,11 @@ export const PAGO_MENSAJERO_TEXTO = {
   pagoNoRegistrado: "No se registró el pago. Revisa el aviso del formulario e inténtalo de nuevo.",
   /**
    * T F.5 — confirmación de la anulación con el pendiente que devolvió el SERVIDOR (R71: es
-   * exactamente el que había antes de ese pago). Se pinta tal cual, sin recalcular nada.
+   * exactamente el que había antes de ese pago). Se pinta tal cual, sin recalcular nada, en la
+   * moneda del país de la empresa (SLT-243, R6). La moneda es obligatoria (R8).
    */
-  anulado: (pendiente: string) =>
-    `Pago anulado. ${PENDIENTE_LIQUIDAR_COL}: ${money(pendiente)}.`,
+  anulado: (pendiente: string, moneda: FormatoMoneda) =>
+    `Pago anulado. ${PENDIENTE_LIQUIDAR_COL}: ${formatearMontoEn(moneda, pendiente, SIN_MONTO_RAYA)}.`,
   /** R75: el segundo intento no anula nada nuevo; se conserva la anulación original. */
   yaAnulado: "Este pago ya estaba anulado.",
 } as const;

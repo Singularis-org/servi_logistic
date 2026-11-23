@@ -123,9 +123,6 @@ import { fechaDiaInstanteCR } from "@/lib/utils/fecha-dia-iso";
 
 import {
   CAUSA_INCIDENTE_COL,
-  COMISION_CON_IVA_LABEL,
-  FLETE_CON_IVA_LABEL,
-  FLETE_DEV_CON_IVA_LABEL,
   FULFILLMENT_COL,
   fulfillmentDeIngreso,
   INDEMNIZACION_COL,
@@ -143,6 +140,7 @@ import {
   motivoGestionLegible,
 } from "./cierre-labels";
 import { CLAVE_MEDIO_PAGO, MEDIOS_PAGO, montoPorMetodo } from "./desglose-pago";
+import { encabezadoBase } from "./encabezados-con-impuesto";
 
 import { ZONA_CR } from "@/lib/utils/fecha-cr";
 /**
@@ -288,9 +286,9 @@ export const COLUMNAS_DESCARGA_GESTIONES_FUNDIDA: DescargaColumna[] = [
   { clave: "origenRechazo", encabezado: RECHAZO_ORIGEN_COL },
   { clave: "causa", encabezado: CAUSA_INCIDENTE_COL },
   { clave: "motivo", encabezado: "Motivo" },
-  { clave: "fleteConIva", encabezado: FLETE_CON_IVA_LABEL },
-  { clave: "comisionConIva", encabezado: COMISION_CON_IVA_LABEL },
-  { clave: "fleteDevolucionConIva", encabezado: FLETE_DEV_CON_IVA_LABEL },
+  { clave: "fleteConIva", encabezado: encabezadoBase("fleteConIva") },
+  { clave: "comisionConIva", encabezado: encabezadoBase("comisionConIva") },
+  { clave: "fleteDevolucionConIva", encabezado: encabezadoBase("fleteDevolucionConIva") },
   { clave: "ingresoTotal", encabezado: INGRESO_TOTAL_COL },
   { clave: "pagoMensajero", encabezado: PAGO_MENSAJERO_COL },
   { clave: "ingresoBodega", encabezado: INGRESO_BODEGA_RECHAZOS_COL },
