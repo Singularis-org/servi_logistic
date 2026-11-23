@@ -74,7 +74,7 @@
       - los tres avisos nuevos;
       - el estado `con_plazo`.
       *Hecho:* la sección ya no nombra `descongelarAMano` ni el estado `descongelada_a_mano` del banner.
-- [ ] **T5.3** Correr `./init.sh` en el worktree.
+- [x] **T5.3** Correr `./init.sh` en el worktree. _(2026-11-23: rojo solo por el cupo fullstack heredado, que el humano autorizó ignorar; typecheck, lint y guardias en verde a mano, y `gate-completo` verde en CI sobre `7f0ca6c5`.)_
       *Hecho:* verde, y `progress/impl_SLT-255.md` con el mapa R1–R23 → test.
 
 ## Archivos esperados
