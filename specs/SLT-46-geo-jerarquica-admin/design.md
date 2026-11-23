@@ -514,6 +514,11 @@ la maqueta. Si algo de la maqueta choca con este contrato, T6 para y pregunta.
   los botones de confirmar pasan a «Sí, <verbo>» y desaparece el chip «Inactivo por su <nivel>» (el
   nombre se muestra atenuado). Quedan dentro de R12, que se refiere al desenlace del servidor (status,
   campos de error, mensajes y filas viejas), y el servidor responde igual.
+- **Enmienda a D1 (humano, 2026-11-23, merge con geo_jerarquica; R64).** El nodo inactivo por un
+  antecesor retirado sigue atenuado y además muestra en su fila el texto visible «Inactivo: su <nivel>
+  está retirado», con el nombre singular del tipo del antecesor retirado más cercano (de `tipos`, nunca
+  fijo). Sustituye al botón deshabilitado «Activar <hijo>. Primero hay que activar su <nivel>.» que
+  comprobaban los E2E de cascada.
 - Componentes de `components/ui/` y `components/shared/` existentes; nada nuevo de shadcn; ninguna
   librería nueva salvo `@dnd-kit/*` para el arrastre (P13, §14).
 

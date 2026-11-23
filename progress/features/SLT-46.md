@@ -44,8 +44,10 @@ Antes de `done`: `gate-completo` verde en CI (cierra T0.1), merge humano en orde
 <!-- tamano-pr-aceptado: 2026-11-09 · humano: «Un PR, aceptando el tamaño»; feature ya implementada y revisada junta, ~mitad tests -->
 <!-- tamano-pr-aceptado: 2026-11-23 · pila geo, aceptado por el humano -->
 
+- 2026-11-23 (humano, vía leader): el nodo inactivo por su antecesor sigue gris y muestra el texto visible «Inactivo: su <nivel> está retirado» (nivel del antecesor retirado, de los tipos del país); R64 en el spec, enmienda a D1 en design. Los 2 `TODO(SLT-46 merge)` del E2E pasan a comprobar ese texto. Migraciones: no se renombran. `@sin-superficie`: se deja como está.
+
 ## Preguntas abiertas
-- 2026-11-23 (implementer, merge geo_jerarquica): `e2e/geografia-superadmin.spec.ts` (de la épica) adaptado a la UI de SLT-46 (modales «Sí, …», Retirar/Reactivar, confirmación del CSV y del interruptor). Quedan 2 `TODO(SLT-46 merge)` (tests «desactivar un cantón…» y «desactivar una provincia…»): esperan el botón deshabilitado «Activar <hijo>. Primero hay que activar su <nivel>.», que SLT-46 quitó (D1). El hijo heredado solo se ve en gris, sin texto accesible. Decide el humano: sustituir la aserción (y dar a la fila un nombre accesible) o quitarla. El E2E no corre en `gate-completo`; sí en el PR a producción.
+- [cerrada 2026-11-23, ver Decisiones] 2026-11-23 (implementer, merge geo_jerarquica): `e2e/geografia-superadmin.spec.ts` (de la épica) adaptado a la UI de SLT-46 (modales «Sí, …», Retirar/Reactivar, confirmación del CSV y del interruptor). Quedan 2 `TODO(SLT-46 merge)` (tests «desactivar un cantón…» y «desactivar una provincia…»): esperan el botón deshabilitado «Activar <hijo>. Primero hay que activar su <nivel>.», que SLT-46 quitó (D1). El hijo heredado solo se ve en gris, sin texto accesible. Decide el humano: sustituir la aserción (y dar a la fila un nombre accesible) o quitarla. El E2E no corre en `gate-completo`; sí en el PR a producción.
 - 2026-11-09 (implementer, tanda 4): borrar las 3 anotaciones `@sin-superficie SLT-46 T6.3` vencidas en `lib/actions/geografia-plataforma.ts` (208, 236, 261), que ponen en rojo `superficie-de-uso`. El permiso del entorno denegó la edición al implementer: decide el humano.
 
 ## Tandas

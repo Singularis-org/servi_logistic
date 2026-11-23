@@ -227,6 +227,11 @@ https://claude.ai/artifact/QFq31uvvXmLXF4AGt9PFfH, versión 7); si algo de la ma
   tiene 3 niveles (§4.1, §4.4, §6). (R63)
   *Hecho:* `pais-schemas.test.ts`, `pais-alta-tipos.test.ts` (R63, con contraprueba) y
   `GeografiaPlataformaAltaPais.test.tsx` verdes.
+- [x] **T6.7** (humano, 2026-11-23) Fila del nodo inactivo por un antecesor retirado: atenuada y con el
+  texto visible «Inactivo: su <nivel> está retirado» (nivel del antecesor retirado más cercano, de los
+  tipos del país) en `GeografiaAdminModule.tsx`; los E2E de cascada de `geografia-superadmin.spec.ts`
+  lo comprueban. (R64)
+  *Hecho:* `geografia-arbol-n-niveles.test.tsx` (describe «R64», 4 casos, país de 4 niveles y CR) verde.
 
 ## T7 — Guardias (depende de T3)
 
@@ -250,7 +255,7 @@ https://claude.ai/artifact/QFq31uvvXmLXF4AGt9PFfH, versión 7); si algo de la ma
 
 ## T9 — Cierre
 
-- [x] **T9.1** `./init.sh` verde; mapa `R<n> → test` (R1–R63) en `progress/impl_SLT-46.md`; R45: sin
+- [x] **T9.1** `./init.sh` verde; mapa `R<n> → test` (R1–R64) en `progress/impl_SLT-46.md`; R45: sin
   archivos nuevos en `e2e/`; R52: aprobación de la maqueta anotada con fecha anterior al primer commit
   de T6.
   *Hecho (2026-11-09):* mapa consolidado, R45 y R52 en `progress/impl_SLT-46.md > T9.1`. La parte

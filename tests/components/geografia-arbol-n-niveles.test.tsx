@@ -178,6 +178,56 @@ describe("R21 — el árbol a cualquier profundidad", () => {
   });
 });
 
+describe("R64 — un lugar activo apagado por arriba dice por qué (decisión del 2026-11-23)", () => {
+  // Sur (región) retirada → Valdivia (comuna) activa y Osorno (comuna) retirada → Isla (barrio) activo
+  // bajo Osorno: su ascendiente retirado más cercano es la comuna, no la región.
+  const RAICES_MOTIVO: NodoArbolPlataformaDTO[] = [
+    nodo("r1", "Norte", 1, { hijos: [nodo("c1", "Arica", 2)] }),
+    nodo("r2", "Sur", 1, {
+      activo: false,
+      hijos: [
+        nodo("c3", "Valdivia", 2, { hijos: [nodo("b3", "Niebla", 3)] }),
+        nodo("c4", "Osorno", 2, { activo: false, hijos: [nodo("b4", "Isla", 3)] }),
+      ],
+    }),
+  ];
+
+  it("el hijo de un retirado dice, en texto visible, el nivel de su padre según los tipos del país", async () => {
+    const user = userEvent.setup();
+    const { container } = montar({ raices: RAICES_MOTIVO });
+    await expandir(user, "Sur");
+    expect(within(fila(container, "c3")).getByText("Inactivo: su región está retirado")).toBeVisible();
+  });
+
+  it("toma el ascendiente retirado MÁS CERCANO: el nieto dice su región si la comuna está activa, y su comuna si no", async () => {
+    const user = userEvent.setup();
+    const { container } = montar({ raices: RAICES_MOTIVO });
+    await expandir(user, "Sur", "Valdivia", "Osorno");
+    expect(within(fila(container, "b3")).getByText("Inactivo: su región está retirado")).toBeInTheDocument();
+    expect(within(fila(container, "b4")).getByText("Inactivo: su comuna está retirado")).toBeInTheDocument();
+    expect(within(fila(container, "b4")).queryByText(/región/)).toBeNull();
+  });
+
+  it("no lo dice un retirado (dice «Retirado») ni un lugar activo con la cadena activa", async () => {
+    const user = userEvent.setup();
+    const { container } = montar({ raices: RAICES_MOTIVO });
+    await expandir(user, "Norte", "Sur");
+    for (const id of ["r1", "c1", "r2", "c4"]) {
+      expect(within(fila(container, id)).queryByText(/^Inactivo:/)).toBeNull();
+    }
+    expect(within(fila(container, "c4")).getByText("Retirado")).toBeInTheDocument();
+  });
+
+  it("con los tipos de Costa Rica dice «cantón» y «provincia»", async () => {
+    const user = userEvent.setup();
+    const tiposCr = [tipo(1, "Provincia", "Provincias"), tipo(2, "Cantón", "Cantones"), tipo(3, "Distrito", "Distritos")];
+    const { container } = montar({ tipos: tiposCr, raices: RAICES_MOTIVO, paisId: "CR", paisNombre: "Costa Rica" });
+    await expandir(user, "Sur", "Valdivia", "Osorno");
+    expect(within(fila(container, "c3")).getByText("Inactivo: su provincia está retirado")).toBeInTheDocument();
+    expect(within(fila(container, "b4")).getByText("Inactivo: su cantón está retirado")).toBeInTheDocument();
+  });
+});
+
 describe("R22 — no hay mover", () => {
   it("ninguna fila ofrece mover ni se puede arrastrar", async () => {
     const user = userEvent.setup();

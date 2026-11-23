@@ -171,6 +171,21 @@ async function desactivar(page: Page, nombre: string): Promise<void> {
   await expect(page.getByRole("button", { name: `Reactivar ${nombre}`, exact: true })).toBeEnabled({ timeout: 30_000 });
 }
 
+/**
+ * La fila del árbol de un lugar: el `data-nodo` envuelve SOLO esa fila (sus hijos van en la lista
+ * hermana), así que lo que se busque dentro no puede venir de otro lugar.
+ */
+function filaDelArbol(page: Page, nombre: string) {
+  return page.locator("[data-nodo]").filter({ has: page.getByText(nombre, { exact: true }) });
+}
+
+/** SLT-46 (decisión del 2026-11-23): un lugar activo apagado por arriba dice cuál lo apaga. */
+async function esperarInactivoPor(page: Page, nombre: string, nivel: string): Promise<void> {
+  await expect(filaDelArbol(page, nombre).getByText(`Inactivo: su ${nivel} está retirado`, { exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
+}
+
 /** SLT-46 (D1): «Activar» del árbol pasa a «Reactivar», confirmado en el modal. */
 async function activar(page: Page, nombre: string): Promise<void> {
   await page.getByRole("button", { name: `Reactivar ${nombre}`, exact: true }).click();
@@ -430,17 +445,9 @@ test("desactivar un cantón lo saca, con sus distritos, del selector de la empre
   await abrirPais(page, "CR");
   await filtrarArbol(page, "Costa Rica");
   await desactivar(page, CR.canton1);
-  // TODO(SLT-46 merge): SLT-46 (decisión D1, «sin chip «Inactivo por su <nivel>»») quitó del árbol el
-  // botón deshabilitado «Activar <hijo>. Primero hay que activar su <nivel>.»: retirar apaga solo el
-  // flag del lugar y sus hijos siguen con su «Retirar». La herencia ya no se marca con un control
-  // accesible (solo el nombre en gris, `GeografiaAdminModule.tsx` FilaNodo). Esta aserción no puede
-  // pasar con la UI nueva; decide el leader si se sustituye o se quita.
-  // El árbol del superadmin marca la herencia: sus distritos no se pueden activar sueltos.
-  for (const d of [CR.d1, CR.d2]) {
-    await expect(
-      page.getByRole("button", { name: `Activar ${d}. Primero hay que activar su cantón.`, exact: true }),
-    ).toBeDisabled();
-  }
+  // El árbol del superadmin marca la herencia con texto visible: el filtro por el sufijo lo deja
+  // abierto entero, así que las filas de los distritos están pintadas.
+  for (const d of [CR.d1, CR.d2]) await esperarInactivoPor(page, d, "cantón");
 
   try {
     const m = await paginaMaestro(browser);
@@ -477,21 +484,8 @@ test("desactivar una provincia cascada a sus cantones y distritos en el selector
   await abrirPais(page, "CR");
   await filtrarArbol(page, "Costa Rica");
   await desactivar(page, CR.provincia);
-  // TODO(SLT-46 merge): SLT-46 (decisión D1, «sin chip «Inactivo por su <nivel>»») quitó del árbol el
-  // botón deshabilitado «Activar <hijo>. Primero hay que activar su <nivel>.»: retirar apaga solo el
-  // flag del lugar y sus hijos siguen con su «Retirar». La herencia ya no se marca con un control
-  // accesible (solo el nombre en gris, `GeografiaAdminModule.tsx` FilaNodo). Esta aserción no puede
-  // pasar con la UI nueva; decide el leader si se sustituye o se quita.
-  for (const c of [CR.canton1, CR.canton2]) {
-    await expect(
-      page.getByRole("button", { name: `Activar ${c}. Primero hay que activar su provincia.`, exact: true }),
-    ).toBeDisabled();
-  }
-  for (const d of [CR.d1, CR.d2, CR.d3]) {
-    await expect(
-      page.getByRole("button", { name: `Activar ${d}. Primero hay que activar su provincia.`, exact: true }),
-    ).toBeDisabled();
-  }
+  // Los cantones siguen activos: el ascendiente retirado más cercano de todos es la provincia.
+  for (const nombre of [CR.canton1, CR.canton2, CR.d1, CR.d2, CR.d3]) await esperarInactivoPor(page, nombre, "provincia");
 
   try {
     const m = await paginaMaestro(browser);

@@ -431,12 +431,21 @@ export function GeografiaAdminModule({
     router.refresh();
   }
 
-  /** Una rama del árbol, a cualquier profundidad. `cadena` son los flags de sus ascendientes. */
-  function rama(nodos: readonly NodoArbolPlataformaDTO[], cadena: readonly boolean[]): ReactNode {
+  /**
+   * Una rama del árbol, a cualquier profundidad. `cadena` son los flags de sus ascendientes y
+   * `retiradoMasCercano`, la profundidad del ascendiente retirado más cercano (`null` si ninguno):
+   * con ella la fila dice POR QUÉ está apagada sin estar retirada (decisión del 2026-11-23).
+   */
+  function rama(
+    nodos: readonly NodoArbolPlataformaDTO[],
+    cadena: readonly boolean[],
+    retiradoMasCercano: number | null,
+  ): ReactNode {
     return nodos.map((n) => {
       const nodo: NodoObjetivo = { id: n.id, nombre: n.nombre, profundidad: n.profundidad };
       const tipoHijo = tipoDe.get(n.profundidad + 1) ?? null;
       const flags = [...cadena, n.activo];
+      const retiradoParaHijos = n.activo ? retiradoMasCercano : n.profundidad;
       const tieneHijos = n.hijos.length > 0;
       const expandido = tieneHijos ? abierto(n.id) : undefined;
       return (
@@ -445,6 +454,12 @@ export function GeografiaAdminModule({
             nodo={n}
             tipo={singular(n.profundidad)}
             disponible={activoEnCascada(flags)}
+            // Solo en un lugar activo apagado por arriba; el retirado ya dice «Retirado».
+            motivoInactivo={
+              n.activo && retiradoMasCercano !== null
+                ? `Inactivo: su ${enFrase(singular(retiradoMasCercano))} está retirado`
+                : undefined
+            }
             detalle={
               tipoHijo === null || !tieneHijos
                 ? undefined
@@ -467,7 +482,9 @@ export function GeografiaAdminModule({
           />
           {errorDeFila?.id === n.id ? <FieldError>{errorDeFila.mensaje}</FieldError> : null}
           {tieneHijos && expandido ? (
-            <ul className="ml-5 flex flex-col border-l border-border pl-2">{rama(n.hijos, flags)}</ul>
+            <ul className="ml-5 flex flex-col border-l border-border pl-2">
+              {rama(n.hijos, flags, retiradoParaHijos)}
+            </ul>
           ) : null}
         </li>
       );
@@ -631,7 +648,7 @@ export function GeografiaAdminModule({
           )}
         </div>
       ) : (
-        <ul className="flex flex-col divide-y divide-border rounded-md border border-border">{rama(filtradas, [])}</ul>
+        <ul className="flex flex-col divide-y divide-border rounded-md border border-border">{rama(filtradas, [], null)}</ul>
       )}
 
       {modal === null ? null : (
@@ -661,6 +678,7 @@ function FilaNodo({
   nodo,
   tipo,
   disponible,
+  motivoInactivo,
   detalle,
   expandido,
   onExpandir,
@@ -674,6 +692,8 @@ function FilaNodo({
   tipo: string;
   /** Disponibilidad efectiva: ni él ni ningún ascendiente retirado. */
   disponible: boolean;
+  /** Por qué un lugar activo no se ofrece: su ascendiente retirado más cercano. Texto visible. */
+  motivoInactivo?: string;
   detalle?: string;
   /** `undefined` en un lugar sin hijos: no se pliega. */
   expandido?: boolean;
@@ -720,6 +740,8 @@ function FilaNodo({
       {detalle === undefined ? null : <span className="text-xs text-muted-foreground">({detalle})</span>}
 
       {nodo.activo ? null : <Badge variant="secondary">Retirado</Badge>}
+
+      {motivoInactivo === undefined ? null : <span className="text-xs text-muted-foreground">{motivoInactivo}</span>}
 
       <div className="ml-auto flex flex-wrap items-center gap-2">
         {agregarHijo === null ? null : (

@@ -152,6 +152,7 @@
 | R | Requisito | Decisión |
 |---|---|---|
 | R52 | La pantalla (árbol de N niveles, lista de tipos del alta, edición de tipos y agregar nivel) NO DEBE implementarse hasta que exista una maqueta aprobada por el humano, con su fecha y su referencia anotadas en `progress/impl_SLT-46.md`, y lo implementado DEBE seguir esa maqueta. | P9; Maqueta T0.2 aprobada |
+| R64 | MIENTRAS un nodo del árbol del superadmin está activo por sí mismo pero inactivo porque un antecesor está retirado, la pantalla DEBE pintar su fila atenuada Y mostrar en ella un texto visible (en el DOM, legible por lector de pantalla, no solo tooltip ni solo `aria-*`) «Inactivo: su <nivel> está retirado», donde <nivel> es el nombre singular del tipo de nivel del antecesor retirado más cercano, tomado de los tipos del país (nunca un nombre fijo); un nodo retirado él mismo y un nodo activo NO DEBEN mostrarlo. | Texto de la herencia (humano, 2026-11-23) |
 
 ### Reordenar niveles
 
@@ -202,6 +203,7 @@
 | P11 «Disponible» y CSV confirman (2026-11-09) | R58 |
 | P12 Estado pedido ya presente es éxito (2026-11-09) | R19 |
 | P13 Arrastre táctil con `@dnd-kit` (2026-11-09) | R53 |
+| Texto de la herencia (2026-11-23) | R64 |
 
 ## Preguntas abiertas
 Sembradas por `/afinar-feature`: ninguna. P1–P9 (spec_author, F1.2) respondidas por el humano el
@@ -241,3 +243,4 @@ P11–P13 (`spec_author`, revisión F1.2 del 2026-11-09) respondidas por el huma
 | 2026-11-09 | P11. ¿El interruptor «Disponible» y la carga CSV también piden confirmación? | Sí, con el mismo modal (disponible: estado actual → el otro; CSV: archivo y país, sin el resumen, que solo se sabe al cargar). La confirmación es solo de pantalla: las actions no cambian (R58). |
 | 2026-11-09 | P12. ¿Se avisa si otro ya dejó el lugar en el estado pedido mientras el modal estaba abierto? | No: es éxito (R19 sin cambios) y la pantalla se refresca para mostrar el estado. |
 | 2026-11-09 | P13. ¿El arrastre funciona con el dedo? | Sí, con `@dnd-kit/core` + `@dnd-kit/sortable` + `@dnd-kit/utilities` (clásica), aprobada como excepción al check 2 (sin release desde 2024-12); filas `aprobada` en `docs/dependencias.md`. Sensores de puntero y táctil; el teclado sigue siendo un manejador propio de la manija, sin flechas visibles (R53). |
+| 2026-11-23 | ¿Cómo se ve un nodo inactivo por su antecesor tras quitar el chip (D1)? | Fila atenuada MÁS texto visible «Inactivo: su <nivel> está retirado» con el nivel del antecesor retirado, sacado de los tipos del país (R64). Los E2E de cascada de `geografia-superadmin.spec.ts` comprueban ese texto. |

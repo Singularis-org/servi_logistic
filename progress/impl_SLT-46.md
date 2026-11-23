@@ -1324,3 +1324,24 @@ excluye `specs/**`, `progress/**`, lockfiles y snapshots; límite por defecto 40
   skipped`; `55 · 757`; `1 failed | 54 · 4 failed | 764`; `55 · 953`; `56 · 852 | 1 skipped`; `56 · 709`.
   Único rojo: `dependencias-declaradas-presentes` (4, aceptado del baseline).
 - Integración: no se tocó `lib/` ni `db/`; no hizo falta base. E2E: ninguno. Sin push.
+
+## Ajuste 2026-11-23 — «Inactivo: su <nivel> está retirado» (frontend_dev)
+
+Decisión humana: la fila de un lugar ACTIVO apagado por un ascendiente retirado sigue en gris y dice,
+en texto visible, «Inactivo: su <nivel> está retirado», con <nivel> el singular (en minúscula) del
+tipo del ascendiente retirado MÁS CERCANO, sacado de los tipos del país. Un retirado no lo dice.
+
+- `app/(app)/plataforma/geografia/_components/GeografiaAdminModule.tsx`: `rama` arrastra la
+  profundidad del retirado más cercano; `FilaNodo` recibe `motivoInactivo` y lo pinta en un `<span>`.
+- `tests/components/geografia-arbol-n-niveles.test.tsx`: describe «R21 — un lugar activo apagado por
+  arriba dice por qué» (4 tests: padre, más cercano en el nieto, sin texto en retirado/activos, CR).
+- `e2e/geografia-superadmin.spec.ts`: fuera los dos `TODO(SLT-46 merge)`; helpers `filaDelArbol`
+  (`[data-nodo]` filtrado por el nombre exacto) y `esperarInactivoPor`. No se corrió Playwright.
+
+Salida real:
+- `vitest run tests/components/geografia-arbol-n-niveles.test.tsx` → `Test Files 1 passed (1)` · `Tests 25 passed (25)`.
+- `eslint` de los 3 archivos → sin salida, exit 0.
+
+Veredicto: hecho; falta que el CI corra el E2E.
+
+Mapa: R64 → `tests/components/geografia-arbol-n-niveles.test.tsx` (describe «R64 — un lugar activo apagado por arriba dice por qué») + `e2e/geografia-superadmin.spec.ts` (tests de cascada de cantón y provincia).
